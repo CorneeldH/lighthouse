@@ -26,7 +26,7 @@ func testSite() fs.FS {
 }
 
 // stubSource yields no issues, so both lists are empty.
-type stubSource struct{}
+type stubSource struct{ forge.Forge }
 
 func (stubSource) OpenIssues(context.Context) ([]forge.Issue, error) { return nil, nil }
 

@@ -14,7 +14,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 )
@@ -23,7 +22,7 @@ import (
 type askEnv struct {
 	Getenv   func(string) string
 	Cwd      string        // where ask runs; its git top is the worktree and holds lighthouse.toml
-	ForgeURL string        // "" is forge.DefaultBaseURL
+	ForgeURL string        // the API root of a GitHub repo; "" is forge.DefaultBaseURL
 	GhToken  func() string // the token of `gh auth token`; "" when there is none
 }
 
@@ -41,15 +40,12 @@ func ghAuthToken() string {
 	return strings.TrimSpace(string(out))
 }
 
-// token is GH_TOKEN, then GITHUB_TOKEN, then `gh auth token`.
-func (e askEnv) token() string {
-	if t := githubToken(e.Getenv); t != "" {
-		return t
-	}
-	if e.GhToken == nil {
-		return ""
-	}
-	return e.GhToken()
+// askOpener opens the forge of the repo with the token of its kind; a GitHub repo falls back
+// to `gh auth token`, and only a GitHub repo is sent to ForgeURL.
+func askOpener(e askEnv) *forgeOpener {
+	o := newForgeOpener(e.Getenv, e.ForgeURL)
+	o.ghToken = e.GhToken
+	return o
 }
 
 // askSessionEnv carries the session of the run; the controller reads it back from the footer.
@@ -146,14 +142,11 @@ func ask(ctx context.Context, env askEnv, in askInput, out io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("%w; nothing posted", err)
 	}
-	token := env.token()
-	if token == "" {
-		return errors.New("no GitHub token: set GH_TOKEN or GITHUB_TOKEN; nothing posted")
+	rf, err := askOpener(env).forRepo(ctx, repo)
+	if err != nil {
+		return fmt.Errorf("%w; nothing posted", err)
 	}
-	c := forge.New(repo.Slug, token)
-	if env.ForgeURL != "" {
-		c.BaseURL = env.ForgeURL
-	}
+	c := rf.Forge
 	issue, err := c.Issue(ctx, in.issue)
 	if err != nil {
 		return fmt.Errorf("post failed: %w", err)

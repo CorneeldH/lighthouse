@@ -9,40 +9,26 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
-	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 )
 
 // maxConcurrent caps the comment fetches that run at the same time.
 const maxConcurrent = 8
 
-// Source is where the open issues and their comments come from; *forge.Client satisfies it.
-type Source interface {
-	OpenIssues(ctx context.Context) ([]forge.Issue, error)
-	Comments(ctx context.Context, number int) ([]protocol.Comment, error)
-}
-
 // Filter returns the numbers of the issues the overview may show. A nil Filter shows every
 // open issue, as without [dispatch].
 type Filter func(ctx context.Context) (map[int]bool, error)
 
-// BoardReader lists the items of a Projects v2 board; *forge.Client satisfies it.
-type BoardReader interface {
-	BoardItems(ctx context.Context, projectID string) ([]forge.BoardItem, error)
-}
-
-// ControllerIssues is the Filter of the issues of slug whose Status on board b is the option
-// b.StatusOptions["Controller"]. The caller makes sure that option is set: an empty option ID
-// would match every item without a Status.
-func ControllerIssues(r BoardReader, slug string, b repoconfig.Board) Filter {
-	controller := b.StatusOptions["Controller"]
+// ControllerIssues is the Filter of the issues of slug whose Status on the board of f is
+// Controller.
+func ControllerIssues(f forge.Forge, slug string) Filter {
 	return func(ctx context.Context) (map[int]bool, error) {
-		items, err := r.BoardItems(ctx, b.ProjectID)
+		items, err := f.BoardItems(ctx)
 		if err != nil {
 			return nil, err
 		}
 		in := map[int]bool{}
 		for _, it := range items {
-			if it.Repo == slug && it.SingleSelect[b.StatusFieldID] == controller {
+			if it.Repo == slug && it.Status == "Controller" {
 				in[it.Issue] = true
 			}
 		}
@@ -83,7 +69,7 @@ type Overview struct {
 // controller filter (nil shows every open issue).
 type RepoSource struct {
 	Slug         string
-	Src          Source
+	Src          forge.Forge
 	InController Filter
 }
 
@@ -122,7 +108,7 @@ type entry[T any] struct {
 // Build lists the open questions and returned issues, oldest header comment first. With a
 // non-nil inController only the issues it names count, and no comments are read for the
 // others. Any failure fails the whole build: a partial list would hide issues.
-func Build(ctx context.Context, src Source, inController Filter) (Overview, error) {
+func Build(ctx context.Context, src forge.Forge, inController Filter) (Overview, error) {
 	issues, err := src.OpenIssues(ctx)
 	if err != nil {
 		return Overview{}, err
@@ -195,7 +181,7 @@ func sorted[T any](entries []entry[T]) []T {
 
 // fetchStatuses classifies the comments of every issue that has any, at most maxConcurrent
 // at a time. The first error cancels the rest and is the one returned.
-func fetchStatuses(ctx context.Context, src Source, issues []forge.Issue) ([]protocol.Status, error) {
+func fetchStatuses(ctx context.Context, src forge.Forge, issues []forge.Issue) ([]protocol.Status, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 

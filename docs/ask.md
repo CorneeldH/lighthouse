@@ -20,8 +20,8 @@ document: een bediende repo heeft de docs van lighthouse niet. De help beschrijf
    (bijvoorbeeld een veldkop in de tekst), dan volgt een fout en geen post.
 5. Post de vraag als comment, met de sessie in de voet, en schrijft de comment-URL op stdout.
 
-`ask` opent nooit de database. Het token komt uit `GH_TOKEN`, dan `GITHUB_TOKEN`, dan
-`gh auth token`.
+`ask` opent nooit de database. Het token komt per repo uit `GH_TOKEN`/`GITHUB_TOKEN` (github), `GITLAB_TOKEN` (gitlab) of de
+variabele van `[forge] token_env`; voor een GitHub-repo is `gh auth token` de laatste bron.
 
 ## Vlaggen
 

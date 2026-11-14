@@ -13,7 +13,7 @@ import (
 
 // writeServer answers every request with status and body after checking the wire contract:
 // POST, path, JSON body and the fixed headers.
-func writeServer(t *testing.T, wantPath, wantBody string, status int, resp string) *Client {
+func writeServer(t *testing.T, wantPath, wantBody string, status int, resp string) *GitHub {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -58,19 +58,19 @@ func TestCreateCommentPosts(t *testing.T) {
 	}
 }
 
-func TestAddRocket(t *testing.T) {
+func TestAcknowledge(t *testing.T) {
 	const path = "/repos/o/r/issues/comments/42/reactions"
 	for _, status := range []int{200, 201} {
 		t.Run(http.StatusText(status), func(t *testing.T) {
 			c := writeServer(t, path, `{"content":"rocket"}`, status, `{"id":1,"content":"rocket"}`)
-			if err := c.AddRocket(context.Background(), 42); err != nil {
+			if err := c.Acknowledge(context.Background(), 0, 42); err != nil {
 				t.Fatal(err)
 			}
 		})
 	}
 	t.Run("forbidden", func(t *testing.T) {
 		c := writeServer(t, path, `{"content":"rocket"}`, 403, `{"message":"Resource not accessible"}`)
-		err := c.AddRocket(context.Background(), 42)
+		err := c.Acknowledge(context.Background(), 0, 42)
 		if err == nil {
 			t.Fatal("want error")
 		}
@@ -87,7 +87,7 @@ func TestAddRocket(t *testing.T) {
 
 // mergeServer answers a PUT merge request with status, header and resp after checking the wire
 // contract: method, path, the squash body and the fixed headers.
-func mergeServer(t *testing.T, status int, header map[string]string, resp string) *Client {
+func mergeServer(t *testing.T, status int, header map[string]string, resp string) *GitHub {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPut {

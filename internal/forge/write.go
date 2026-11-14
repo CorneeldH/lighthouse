@@ -11,7 +11,7 @@ import (
 )
 
 // CreateComment posts a comment on issue number and returns it as the forge stored it.
-func (c *Client) CreateComment(ctx context.Context, number int, body string) (protocol.Comment, error) {
+func (c *GitHub) CreateComment(ctx context.Context, number int, body string) (protocol.Comment, error) {
 	if err := c.configured(); err != nil {
 		return protocol.Comment{}, err
 	}
@@ -31,9 +31,10 @@ func (c *Client) CreateComment(ctx context.Context, number int, body string) (pr
 	return protocol.Comment{ID: out.ID, Author: out.User.Login, Body: out.Body, CreatedAt: out.CreatedAt, URL: out.HTMLURL}, nil
 }
 
-// AddRocket adds a 🚀 reaction to a comment. GitHub answers 200 when the reaction already
-// existed and 201 when it is new; both are success.
-func (c *Client) AddRocket(ctx context.Context, commentID int64) error {
+// Acknowledge adds a 🚀 reaction to a comment. GitHub answers 200 when the reaction already
+// existed and 201 when it is new; both are success. number is not used: GitHub addresses a
+// comment by its ID alone.
+func (c *GitHub) Acknowledge(ctx context.Context, _ int, commentID int64) error {
 	if err := c.configured(); err != nil {
 		return err
 	}
@@ -51,7 +52,7 @@ type MergeRefused struct{ Message string }
 func (e *MergeRefused) Error() string { return "forge: merge refused: " + e.Message }
 
 // MergePR squash-merges pull request number, only when its head is still sha.
-func (c *Client) MergePR(ctx context.Context, number int, sha string) error {
+func (c *GitHub) MergePR(ctx context.Context, number int, sha string) error {
 	if err := c.configured(); err != nil {
 		return err
 	}

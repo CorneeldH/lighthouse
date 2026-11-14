@@ -9,12 +9,13 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/forge/forgetest"
 )
 
-// client returns a forgetest server and a client for o/r pointed at it.
-func client(t *testing.T) (*forgetest.Server, *forge.Client) {
+// client returns a forgetest server and a client for o/r, with the board of testRepo, pointed at it.
+func client(t *testing.T) (*forgetest.Server, *forge.GitHub) {
 	t.Helper()
 	srv := forgetest.New(t)
 	c := forge.New("o/r", "secret-token")
 	c.BaseURL = srv.URL()
+	c.Board = testRepo.Board
 	return srv, c
 }
 

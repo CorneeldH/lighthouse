@@ -58,6 +58,7 @@ func TestPrepareBlockerStatus(t *testing.T) {
 	board := *testRepo.Board
 	board.StatusOptions = map[string]string{"Controller": "opt-ctrl", "On hold": "opt-hold", "In progress": "opt-prog"}
 	repo.Board = &board
+	c.Board = &board
 	blocker := func(repo string, n int) any {
 		return map[string]any{"number": n, "state": "OPEN", "repository": map[string]any{"nameWithOwner": repo},
 			"closedByPullRequestsReferences": map[string]any{"nodes": []any{}}}
@@ -81,6 +82,41 @@ func TestPrepareBlockerStatus(t *testing.T) {
 	}
 	if got := pre.Items[0].BlockedBy; !reflect.DeepEqual(got, want) {
 		t.Errorf("BlockedBy = %+v, want %+v", got, want)
+	}
+}
+
+// An option status_options does not list reads as no status everywhere in Pre: the forge's
+// "unknown:<option ID>" must not reach a status, the Statuses map or a blocker's comment text.
+func TestPrepareUnmappedStatusIsEmpty(t *testing.T) {
+	srv, c := client(t)
+	blocker8 := map[string]any{"blockedBy": map[string]any{"nodes": []any{map[string]any{
+		"number": 8, "state": "OPEN", "repository": map[string]any{"nameWithOwner": "o/r"},
+		"closedByPullRequestsReferences": map[string]any{"nodes": []any{}},
+	}}}}
+	srv.BoardNodes = []map[string]any{
+		node("I7", map[string]string{"F_status": "opt-prog"}, issue("o/r", 7, blocker8)),
+		node("I8", map[string]string{"F_status": "opt-prog"}, issue("o/r", 8, nil)),
+		node("I9", map[string]string{"F_status": "opt-ctrl"}, issue("o/r", 9, blocker8)),
+	}
+	open := []runs.OpenRun{{ID: 15, Issue: 7}}
+	pre, err := Prepare(context.Background(), c, testRepo, open, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pre.Items) != 2 || pre.Items[0].Issue != 7 || pre.Items[1].Issue != 9 {
+		t.Fatalf("Items = %+v, want issues 7 and 9", pre.Items)
+	}
+	if got := pre.Items[0].Status; got != "" {
+		t.Errorf("Items[7].Status = %q, want \"\"", got)
+	}
+	if want := map[int]string{7: "", 8: "", 9: "Controller"}; !reflect.DeepEqual(pre.Statuses, want) {
+		t.Errorf("Statuses = %v, want %v", pre.Statuses, want)
+	}
+	want := []forge.Blocker{{Repo: "o/r", Issue: 8, State: "OPEN"}}
+	for _, it := range pre.Items {
+		if !reflect.DeepEqual(it.BlockedBy, want) {
+			t.Errorf("Items[%d].BlockedBy = %+v, want %+v", it.Issue, it.BlockedBy, want)
+		}
 	}
 }
 
@@ -151,6 +187,7 @@ func TestPrepareStatuses(t *testing.T) {
 	board := *testRepo.Board
 	board.StatusOptions = map[string]string{"Controller": "opt-ctrl", "On hold": "opt-hold", "In progress": "opt-prog"}
 	repo.Board = &board
+	c.Board = &board
 	srv.BoardNodes = []map[string]any{
 		node("I945", map[string]string{"F_status": "opt-prog"}, issue("o/r", 945, nil)),
 		node("I12", map[string]string{"F_status": "opt-ctrl"}, issue("o/r", 12, nil)),

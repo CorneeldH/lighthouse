@@ -11,7 +11,7 @@ import (
 )
 
 // peopleServer serves handler and returns a client pointed at it.
-func peopleServer(t *testing.T, handler http.HandlerFunc) *Client {
+func peopleServer(t *testing.T, handler http.HandlerFunc) *GitHub {
 	t.Helper()
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
@@ -33,7 +33,7 @@ func TestLogin(t *testing.T) {
 	}
 }
 
-func TestRocketLoginsFollowsPages(t *testing.T) {
+func TestAcknowledgersFollowsPages(t *testing.T) {
 	var srvURL string
 	c := peopleServer(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/repos/o/r/issues/comments/42/reactions" || r.URL.Query().Get("content") != "rocket" {
@@ -54,7 +54,7 @@ func TestRocketLoginsFollowsPages(t *testing.T) {
 		_, _ = io.WriteString(w, "["+strings.Join(items, ",")+"]")
 	})
 	srvURL = c.BaseURL
-	got, err := c.RocketLogins(context.Background(), 42)
+	got, err := c.Acknowledgers(context.Background(), 0, 42)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +63,7 @@ func TestRocketLoginsFollowsPages(t *testing.T) {
 	}
 }
 
-func TestRoleName(t *testing.T) {
+func TestRole(t *testing.T) {
 	cases := []struct {
 		name, user string
 		status     int
@@ -85,7 +85,7 @@ func TestRoleName(t *testing.T) {
 				w.WriteHeader(tc.status)
 				_, _ = io.WriteString(w, tc.body)
 			})
-			got, err := c.RoleName(context.Background(), tc.user)
+			got, err := c.Role(context.Background(), tc.user)
 			if tc.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
 					t.Fatalf("err = %v, want it to contain %s", err, tc.wantErr)
@@ -93,20 +93,20 @@ func TestRoleName(t *testing.T) {
 				return
 			}
 			if err != nil || got != tc.want {
-				t.Fatalf("RoleName = %q, %v; want %q", got, err, tc.want)
+				t.Fatalf("Role = %q, %v; want %q", got, err, tc.want)
 			}
 		})
 	}
 }
 
-func TestRoleNameEscapesUser(t *testing.T) {
+func TestRoleEscapesUser(t *testing.T) {
 	c := peopleServer(t, func(w http.ResponseWriter, r *http.Request) {
 		if want := "/repos/o/r/collaborators/a%2Fb/permission"; r.URL.EscapedPath() != want {
 			t.Errorf("escaped path = %s, want %s", r.URL.EscapedPath(), want)
 		}
 		_, _ = io.WriteString(w, `{"role_name":"read"}`)
 	})
-	if _, err := c.RoleName(context.Background(), "a/b"); err != nil {
+	if _, err := c.Role(context.Background(), "a/b"); err != nil {
 		t.Fatal(err)
 	}
 }

@@ -49,6 +49,8 @@ NOT_READERS = {
         "the name of a unit in a list of tools, not a read of the command",
     ("python.source_dirs", "pack/python/scripts/quality/prcov.py"):
         "its docstring names the key; the directories arrive as an argument from ratchet.py",
+    ("host.controller", "internal/repoconfig/repoconfig.go"):
+        "its tags host and controller are [forge] host and [controller] of lighthouse.toml, not host.toml",
 }
 INDIRECT_READERS = {
     ("forge.board.project_id", "pack/core/scripts/board_start.py"): ".project_id",

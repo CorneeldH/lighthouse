@@ -17,6 +17,7 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/dispatch"
 	"github.com/CorneeldH/lighthouse/internal/flock"
+	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/forge/forgetest"
 	"github.com/CorneeldH/lighthouse/internal/hostconfig"
 	"github.com/CorneeldH/lighthouse/internal/park"
@@ -128,6 +129,16 @@ func fakeForge(t *testing.T, env *tickEnv) *forgetest.Server {
 	srv.Login = "lh-bot"
 	env.ForgeURL = srv.URL()
 	return srv
+}
+
+// botForge is the forge of repo at env.ForgeURL, with token tok and token login lh-bot.
+func botForge(t *testing.T, env tickEnv, repo repoconfig.Repo) repoForge {
+	t.Helper()
+	f, err := forge.Open(forge.Config{Repo: repo.Slug, Token: "tok", BaseURL: env.ForgeURL, Board: repo.Board})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return repoForge{Forge: f, who: func() (string, error) { return "lh-bot", nil }}
 }
 
 // boardNode is a board item in GraphQL shape: issue number of repo o/r with Status option status.
@@ -242,9 +253,11 @@ func TestTickNoRepos_NoHostToml(t *testing.T) {
 }
 
 func TestTickSkipsBadRepos(t *testing.T) {
-	noController := repoDir(t, strings.Replace(completeRepo, "[controller]\n\n", "", 1))
-	noGuard := repoDir(t, strings.Replace(completeRepo, "controller = true", "controller = false", 1))
-	noOption := repoDir(t, strings.Replace(completeRepo, "\"Controller\" = \"c1\"\n", "", 1))
+	// Each bad repo has a slug of its own: two paths with one slug are both refused.
+	slug := func(s, name string) string { return strings.Replace(s, `repo = "o/r"`, `repo = "o/`+name+`"`, 1) }
+	noController := repoDir(t, slug(strings.Replace(completeRepo, "[controller]\n\n", "", 1), "a"))
+	noGuard := repoDir(t, slug(strings.Replace(completeRepo, "controller = true", "controller = false", 1), "b"))
+	noOption := repoDir(t, slug(strings.Replace(completeRepo, "\"Controller\" = \"c1\"\n", "", 1), "c"))
 	good := repoDir(t, completeRepo)
 	env, db := tickFixture(t, noController, noGuard, noOption, good)
 	fakeForge(t, &env)
@@ -393,7 +406,64 @@ func TestTickBesideServe(t *testing.T) {
 	}
 }
 
-func TestTickLogsInOncePerTick(t *testing.T) {
+// A repo whose token is not set is skipped; the repo with a token is still ticked.
+func TestTickSkipsRepoWithoutToken(t *testing.T) {
+	good := repoDir(t, completeRepo)
+	noToken := repoDir(t, strings.Replace(completeRepo, `repo = "o/r"`, "repo = \"o/x\"\ntoken_env = \"MISSING\"", 1))
+	env, db := tickFixture(t, good, noToken)
+	fakeForge(t, &env)
+	var errOut bytes.Buffer
+	if err := tick(context.Background(), env, db, &errOut); !errors.Is(err, errSilent) {
+		t.Fatalf("err = %v, want errSilent\n%s", err, errOut.String())
+	}
+	want := "lighthouse: gathered o/r: 0 items (first)\nlighthouse: skip " + noToken + ": no GitHub token: set MISSING\n"
+	if errOut.String() != want {
+		t.Errorf("errOut = %q, want %q", errOut.String(), want)
+	}
+}
+
+// When no repo gets a forge, tick fails on the first token error before it opens the store.
+func TestTickFailsWhenNoRepoHasToken(t *testing.T) {
+	noToken := repoDir(t, strings.Replace(completeRepo, `repo = "o/r"`, "repo = \"o/x\"\ntoken_env = \"MISSING\"", 1))
+	env, db := tickFixture(t, noToken)
+	var errOut bytes.Buffer
+	err := tick(context.Background(), env, db, &errOut)
+	if want := "tick: no GitHub token: set MISSING"; err == nil || err.Error() != want {
+		t.Fatalf("err = %v, want %q", err, want)
+	}
+	if errOut.Len() != 0 {
+		t.Errorf("errOut = %q, want nothing", errOut.String())
+	}
+	if _, err := os.Stat(db); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("database exists after a tick without any token: %v", err)
+	}
+}
+
+// Two paths with the same slug are both skipped, each line naming both paths; neither is gathered.
+func TestTickSkipsDuplicateSlug(t *testing.T) {
+	first, second := repoDir(t, completeRepo), repoDir(t, completeRepo)
+	env, db := tickFixture(t, first, second)
+	srv := fakeForge(t, &env)
+	var errOut bytes.Buffer
+	if err := tick(context.Background(), env, db, &errOut); !errors.Is(err, errSilent) {
+		t.Fatalf("err = %v, want errSilent\n%s", err, errOut.String())
+	}
+	lines := strings.Split(strings.TrimSpace(errOut.String()), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("errOut = %q, want two skip lines", errOut.String())
+	}
+	for i, self := range []string{first, second} {
+		if !strings.HasPrefix(lines[i], "lighthouse: skip "+self+": ") || !strings.Contains(lines[i], first) ||
+			!strings.Contains(lines[i], second) || !strings.Contains(lines[i], "o/r") {
+			t.Errorf("line %d = %q, want a skip line for %s naming both paths and o/r", i, lines[i], self)
+		}
+	}
+	if n := srv.Count("Board"); n != 0 {
+		t.Errorf("Board requests = %d, want 0: no repo with a duplicate slug is gathered", n)
+	}
+}
+
+func TestTickOneLoginForSharedToken(t *testing.T) {
 	first := repoDir(t, completeRepo)
 	second := repoDir(t, strings.Replace(completeRepo, `repo = "o/r"`, `repo = "o/s"`, 1))
 	env, db := tickFixture(t, first, second)
@@ -1066,7 +1136,7 @@ func TestTickAdoptFailureIsLoudNotFatal(t *testing.T) {
 		t.Fatal(err)
 	}
 	var errOut bytes.Buffer
-	in, _, _, err := gatherRepo(ctx, env, conn, hostconfig.Dispatch{}, hostFacts{}, repo, "tok", func() (string, error) { return "lh-bot", nil }, &errOut)
+	in, _, _, err := gatherRepo(ctx, env, conn, hostconfig.Dispatch{}, hostFacts{}, repo, botForge(t, env, repo), &errOut)
 	if err != nil || in == nil {
 		t.Fatalf("gatherRepo = %v, %v, want the repo gathered\n%s", in, err, errOut.String())
 	}
@@ -1119,9 +1189,8 @@ func TestTickAdoptsBeforePrepare(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := hostconfig.Dispatch{MaxWait: time.Hour, MaxRuntime: 8 * time.Hour}
-	login := func() (string, error) { return "lh-bot", nil }
 	var errOut bytes.Buffer
-	in, _, _, err := gatherRepo(ctx, env, conn, cfg, hostFacts{}, repo, "tok", login, &errOut)
+	in, _, _, err := gatherRepo(ctx, env, conn, cfg, hostFacts{}, repo, botForge(t, env, repo), &errOut)
 	if err != nil || in == nil {
 		t.Fatalf("gatherRepo = %v, %v\n%s", in, err, errOut.String())
 	}

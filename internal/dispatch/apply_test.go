@@ -47,9 +47,14 @@ func (l *callLog) all() []string {
 	return append([]string(nil), l.calls...)
 }
 
-// fakePoster keeps what was posted; postErr and rocketErr make the call fail.
-type fakePoster struct {
+// fakeForge is the forge of one repo: it keeps what was posted, the rockets and the status
+// sets; postErr, rocketErr, mergeErr and setErr make the call fail. A method apply must not
+// call panics on the nil Forge.
+type fakeForge struct {
+	forge.Forge
 	log       *callLog
+	setErr    error
+	sets      []string // "<itemID> <status>" per SetStatus
 	postErr   error
 	rocketErr error
 	mergeErr  error
@@ -59,9 +64,10 @@ type fakePoster struct {
 	issues    []int
 	bodies    []string
 	rockets   []int64
+	rocketOn  []int // the issue number per Acknowledge
 }
 
-func (p *fakePoster) CreateComment(_ context.Context, number int, body string) (protocol.Comment, error) {
+func (p *fakeForge) CreateComment(_ context.Context, number int, body string) (protocol.Comment, error) {
 	p.log.add("CreateComment")
 	if p.onPost != nil {
 		p.onPost()
@@ -75,31 +81,25 @@ func (p *fakePoster) CreateComment(_ context.Context, number int, body string) (
 	return protocol.Comment{ID: 1000 + p.nextID, Body: body}, nil
 }
 
-func (p *fakePoster) AddRocket(_ context.Context, commentID int64) error {
-	p.log.add("AddRocket")
+func (p *fakeForge) Acknowledge(_ context.Context, number int, commentID int64) error {
+	p.log.add("Acknowledge")
+	p.rocketOn = append(p.rocketOn, number)
 	p.rockets = append(p.rockets, commentID)
 	return p.rocketErr
 }
 
-func (p *fakePoster) MergePR(_ context.Context, number int, sha string) error {
+func (p *fakeForge) MergePR(_ context.Context, number int, sha string) error {
 	p.log.add("MergePR")
 	p.merges = append(p.merges, fmt.Sprintf("%d %s", number, sha))
 	return p.mergeErr
 }
 
-// fakeBoard keeps every status set as "<itemID> <status>"; err makes the call fail.
-type fakeBoard struct {
-	log  *callLog
-	err  error
-	sets []string
-}
-
-func (b *fakeBoard) SetStatus(_ context.Context, itemID, status string) error {
-	b.log.add("SetStatus")
-	if b.err != nil {
-		return b.err
+func (p *fakeForge) SetStatus(_ context.Context, item forge.BoardItem, status string) error {
+	p.log.add("SetStatus")
+	if p.setErr != nil {
+		return p.setErr
 	}
-	b.sets = append(b.sets, itemID+" "+status)
+	p.sets = append(p.sets, item.ItemID+" "+status)
 	return nil
 }
 
@@ -180,8 +180,7 @@ func (w *fakeWorkplace) Discard(_ context.Context, workspaceID string) error {
 type harness struct {
 	db      *sql.DB
 	log     *callLog
-	posters map[string]*fakePoster
-	board   *fakeBoard
+	posters map[string]*fakeForge
 	wp      *fakeWorkplace
 	places  []string // "<repo> <node> <profile>" per Env.Workplace call
 	out     *bytes.Buffer
@@ -206,19 +205,18 @@ func newHarness(t *testing.T) *harness {
 func newHarnessOn(t *testing.T, db *sql.DB) *harness {
 	t.Helper()
 	log := &callLog{}
-	h := &harness{db: db, log: log, posters: map[string]*fakePoster{}, board: &fakeBoard{log: log},
+	h := &harness{db: db, log: log, posters: map[string]*fakeForge{},
 		wp: &fakeWorkplace{log: log}, out: &bytes.Buffer{}}
 	h.env = Env{
 		DB: db,
-		Poster: func(repo string) Poster {
+		Forge: func(repo string) forge.Forge {
 			p, ok := h.posters[repo]
 			if !ok {
-				p = &fakePoster{log: log}
+				p = &fakeForge{log: log}
 				h.posters[repo] = p
 			}
 			return p
 		},
-		Board: func(string) Board { return h.board },
 		Workplace: func(repo, node, profile string) workplace.Workplace {
 			h.places = append(h.places, repo+" "+node+" "+profile)
 			return h.wp
@@ -234,8 +232,8 @@ func newHarnessOn(t *testing.T, db *sql.DB) *harness {
 	return h
 }
 
-func (h *harness) poster(repo string) *fakePoster {
-	return h.env.Poster(repo).(*fakePoster)
+func (h *harness) poster(repo string) *fakeForge {
+	return h.env.Forge(repo).(*fakeForge)
 }
 
 func (h *harness) history(t *testing.T) []runs.Row {
@@ -290,7 +288,7 @@ func TestApplyStartOrder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
-	wantCalls := []string{"Prepare", "Sessions ws-issue-7-x", "CreateComment", "AddRocket", "Prepare", "Spawn"}
+	wantCalls := []string{"Prepare", "Sessions ws-issue-7-x", "CreateComment", "Acknowledge", "Prepare", "Spawn"}
 	if got := h.log.all(); !reflect.DeepEqual(got, wantCalls) {
 		t.Fatalf("calls = %q, want %q", got, wantCalls)
 	}
@@ -322,6 +320,9 @@ func TestApplyStartOrder(t *testing.T) {
 	}
 	if !reflect.DeepEqual(p.rockets, []int64{55}) {
 		t.Errorf("rockets = %v, want [55]", p.rockets)
+	}
+	if !reflect.DeepEqual(p.rocketOn, []int{7}) {
+		t.Errorf("rocket on issues %v, want [7]", p.rocketOn)
 	}
 	instructions := filepath.Join(h.env.StateDir, "runs", freshSession, "instructions.md")
 	wantSpec := workplace.LaunchSpec{
@@ -517,7 +518,7 @@ func TestApplyRocketFailsStillLaunches(t *testing.T) {
 	if len(res.Failed) != 0 {
 		t.Errorf("Failed = %v, want none", res.Failed)
 	}
-	want := []string{"Prepare", "Sessions ws-issue-7-x", "CreateComment", "AddRocket", "Prepare", "Spawn"}
+	want := []string{"Prepare", "Sessions ws-issue-7-x", "CreateComment", "Acknowledge", "Prepare", "Spawn"}
 	if got := h.log.all(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("calls = %q, want %q", got, want)
 	}
@@ -853,6 +854,9 @@ func TestApplyRocketAndDefer(t *testing.T) {
 	}
 	if got := h.poster(applyRepo).rockets; !reflect.DeepEqual(got, []int64{41}) {
 		t.Errorf("rockets = %v, want [41]", got)
+	}
+	if got := h.poster(applyRepo).rocketOn; !reflect.DeepEqual(got, []int{7}) {
+		t.Errorf("rocket on issues %v, want [7]", got)
 	}
 	if !reflect.DeepEqual(res.Deferred, []string{"o/r#9: night"}) {
 		t.Errorf("Deferred = %q, want [o/r#9: night]", res.Deferred)
@@ -1225,7 +1229,7 @@ func TestApplyResumeKillsEarlierClaudeAfterTheClaim(t *testing.T) {
 	if openAtKill != 1 {
 		t.Errorf("open runs at Kill = %d, want 1: the resume's own claim", openAtKill)
 	}
-	want := []string{"Prepare", "Sessions ws-issue-7-x", "Kill", "CreateComment", "AddRocket", "Prepare", "Spawn"}
+	want := []string{"Prepare", "Sessions ws-issue-7-x", "Kill", "CreateComment", "Acknowledge", "Prepare", "Spawn"}
 	if got := h.log.all(); !reflect.DeepEqual(got, want) {
 		t.Errorf("calls = %q, want %q", got, want)
 	}
@@ -1287,7 +1291,7 @@ func TestApplyStartKillsClaudeOfReturnedRunAfterTheClaim(t *testing.T) {
 	if openAtKill != 1 {
 		t.Errorf("open runs at Kill = %d, want 1: the start's own claim", openAtKill)
 	}
-	want := []string{"Prepare", "Sessions ws-issue-7-x", "Kill", "CreateComment", "AddRocket", "Prepare", "Spawn"}
+	want := []string{"Prepare", "Sessions ws-issue-7-x", "Kill", "CreateComment", "Acknowledge", "Prepare", "Spawn"}
 	if got := h.log.all(); !reflect.DeepEqual(got, want) {
 		t.Errorf("calls = %q, want %q", got, want)
 	}
@@ -1341,8 +1345,8 @@ func TestApplyParkPostsThenHolds(t *testing.T) {
 	if len(p.bodies) != 1 || p.issues[0] != 7 || !strings.HasPrefix(p.bodies[0], "🤖 Geparkeerd\nblocked_by: o/r#5 (In progress)") {
 		t.Errorf("posted %q on %v, want one Geparkeerd naming o/r#5 (In progress) on #7", p.bodies, p.issues)
 	}
-	if want := []string{"I7 On hold"}; !reflect.DeepEqual(h.board.sets, want) {
-		t.Errorf("status sets = %q, want %q", h.board.sets, want)
+	if want := []string{"I7 On hold"}; !reflect.DeepEqual(h.poster(applyRepo).sets, want) {
+		t.Errorf("status sets = %q, want %q", h.poster(applyRepo).sets, want)
 	}
 }
 
@@ -1363,7 +1367,7 @@ func TestApplyParkPostFailsNoBoard(t *testing.T) {
 
 func TestApplyParkBoardFails(t *testing.T) {
 	h := newHarness(t)
-	h.board.err = errors.New("board refused")
+	h.poster(applyRepo).setErr = errors.New("board refused")
 	res, err := Apply(context.Background(), h.env, []Action{parkAction()})
 	if err == nil || !strings.Contains(err.Error(), "board refused") {
 		t.Fatalf("Apply: %v, want the board error", err)
@@ -1384,8 +1388,8 @@ func TestApplyHold(t *testing.T) {
 	if got, want := h.log.all(), []string{"SetStatus"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("calls = %q, want %q", got, want)
 	}
-	if want := []string{"I7 On hold"}; !reflect.DeepEqual(h.board.sets, want) {
-		t.Errorf("status sets = %q, want %q", h.board.sets, want)
+	if want := []string{"I7 On hold"}; !reflect.DeepEqual(h.poster(applyRepo).sets, want) {
+		t.Errorf("status sets = %q, want %q", h.poster(applyRepo).sets, want)
 	}
 }
 
@@ -1397,8 +1401,8 @@ func TestApplyUnpark(t *testing.T) {
 	if got, want := h.log.all(), []string{"SetStatus"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("calls = %q, want %q", got, want)
 	}
-	if want := []string{"I7 Controller"}; !reflect.DeepEqual(h.board.sets, want) {
-		t.Errorf("status sets = %q, want %q", h.board.sets, want)
+	if want := []string{"I7 Controller"}; !reflect.DeepEqual(h.poster(applyRepo).sets, want) {
+		t.Errorf("status sets = %q, want %q", h.poster(applyRepo).sets, want)
 	}
 }
 

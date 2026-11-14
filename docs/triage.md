@@ -72,7 +72,7 @@ lighthouse triage [--dry-run] [--issue <owner>/<naam>#<nr>]... [--db <pad>]
   `[controller.triage]` in `[dispatch] repos`, dan is dat een foutregel en exitcode 2.
 - Het commando loopt over de repo's in `[dispatch] repos` van `host.toml` die `[controller.triage]`
   hebben. Een repo die er niet in staat, bestaat voor de ronde niet.
-- Het vereist `GH_TOKEN` of `GITHUB_TOKEN`, zoals de tick.
+- Het token komt per repo uit `GH_TOKEN`/`GITHUB_TOKEN` (github), `GITLAB_TOKEN` (gitlab) of de variabele van `[forge] token_env`, zoals bij de tick; een repo zonder token krijgt een skip-regel.
 - Een eigen `triage.lock` (`${XDG_RUNTIME_DIR}/lighthouse/triage.lock`) voorkomt twee rondes
   tegelijk. De ronde neemt `tick.lock` niet: de tick draait door.
 

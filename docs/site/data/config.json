@@ -172,9 +172,15 @@
               "required": "no",
               "about": "The host name of a self-hosted GitLab, without scheme, port or path. Valid only with kind gitlab.",
               "example": "git.example.org",
-              "readers": [
-                "internal/initcmd/initcmd.go"
-              ]
+              "readers": ["internal/initcmd/initcmd.go", "internal/repoconfig/repoconfig.go"]
+            },
+            {
+              "key": "forge.token_env",
+              "level": "advanced",
+              "required": "no",
+              "about": "The name of the environment variable that holds the forge token, instead of GH_TOKEN and GITHUB_TOKEN (github) or GITLAB_TOKEN (gitlab). The token itself never goes in lighthouse.toml.",
+              "example": "WORK_GITLAB_TOKEN",
+              "readers": ["internal/repoconfig/repoconfig.go"]
             },
             {
               "key": "forge.default_branch",
@@ -270,6 +276,7 @@
               "example": "PVT_...",
               "readers": [
                 "internal/cli/triage.go",
+                "internal/forge/board.go",
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/scripts/board_start.py",
                 "pack/core/skills/close-issue",
@@ -321,7 +328,9 @@
               "readers": [
                 "internal/cli/serve.go",
                 "internal/cli/triage.go",
-                "internal/dispatch/board.go",
+                "internal/dispatch/gather.go",
+                "internal/forge/board.go",
+                "internal/forge/forge.go",
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/scripts/board_start.py",
                 "pack/core/skills/write-handoff",

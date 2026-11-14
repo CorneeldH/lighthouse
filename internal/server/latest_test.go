@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/CorneeldH/lighthouse/internal/overview"
+	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
 )
 
@@ -45,7 +45,7 @@ func TestLatestCommentRedirectsToLastComment(t *testing.T) {
 
 func TestLatestCommentFallsBackToIssuePage(t *testing.T) {
 	cases := map[string]struct {
-		src overview.Source
+		src forge.Forge
 	}{
 		"no comments":   {fakeSource{}},
 		"comment error": {failingComments{}},

@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -66,25 +67,6 @@ func TestServeDefaults(t *testing.T) {
 	}
 }
 
-func TestGithubToken(t *testing.T) {
-	tests := []struct {
-		name string
-		env  map[string]string
-		want string
-	}{
-		{"both set", map[string]string{"GH_TOKEN": "gh", "GITHUB_TOKEN": "github"}, "gh"},
-		{"only GITHUB_TOKEN", map[string]string{"GITHUB_TOKEN": "github"}, "github"},
-		{"none", map[string]string{}, ""},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := githubToken(func(k string) string { return tt.env[k] }); got != tt.want {
-				t.Errorf("githubToken = %q, want %q", got, tt.want)
-			}
-		})
-	}
-}
-
 // waitListening waits for the serve start line and returns the address it names.
 func waitListening(t *testing.T, errOut *syncBuf, done <-chan error) string {
 	t.Helper()
@@ -114,7 +96,7 @@ func startServe(t *testing.T) (addr string, stop func() error) {
 	errOut := &syncBuf{}
 	done := make(chan error, 1)
 	go func() {
-		done <- serve(ctx, "127.0.0.1:0", filepath.Join(t.TempDir(), "l.db"), nil, server.RunsMeta{}, server.RefreshInterval, errOut)
+		done <- serve(ctx, "127.0.0.1:0", filepath.Join(t.TempDir(), "l.db"), nil, nil, server.RunsMeta{}, server.RefreshInterval, errOut)
 	}()
 
 	addr = waitListening(t, errOut, done)
@@ -156,22 +138,6 @@ func TestServeForgeNotConfigured(t *testing.T) {
 	}
 	if err := stop(); err != nil {
 		t.Fatalf("serve = %v, want nil", err)
-	}
-}
-
-func TestNewForgeTrimsSlash(t *testing.T) {
-	getenv := func(k string) string {
-		if k == "GH_TOKEN" {
-			return "tok"
-		}
-		return ""
-	}
-	c := newForge("o/r", "http://x/", getenv)
-	if c.BaseURL != "http://x" {
-		t.Errorf("BaseURL = %q, want http://x", c.BaseURL)
-	}
-	if c.Token != "tok" || c.Repo != "o/r" {
-		t.Errorf("Token = %q, Repo = %q, want tok and o/r", c.Token, c.Repo)
 	}
 }
 
@@ -342,7 +308,7 @@ func TestForgeReposFromHostToml(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var errOut bytes.Buffer
-			got, err := forgeRepos(tt.hostToml, tt.repo, "http://forge", func(string) string { return "t" }, &errOut)
+			got, _, err := forgeRepos(tt.hostToml, tt.repo, "http://forge", func(string) string { return "t" }, &errOut)
 			if err != nil {
 				t.Fatalf("forgeRepos: %v", err)
 			}
@@ -386,7 +352,7 @@ func TestForgeReposDispatchClientPerRepo(t *testing.T) {
 	withBoard := repoDir(t, completeRepo)
 	noBoard := repoDir(t, "[forge]\nrepo = \"o/s\"\n")
 	var errOut bytes.Buffer
-	got, err := forgeRepos(hostToml(t, withBoard, noBoard), "", "http://forge", func(string) string { return "t" }, &errOut)
+	got, _, err := forgeRepos(hostToml(t, withBoard, noBoard), "", "http://forge", func(string) string { return "t" }, &errOut)
 	if err != nil {
 		t.Fatalf("forgeRepos: %v", err)
 	}
@@ -395,7 +361,7 @@ func TestForgeReposDispatchClientPerRepo(t *testing.T) {
 	}
 	wantFilter := []bool{true, false}
 	for i, g := range got {
-		c, ok := g.Src.(*forge.Client)
+		c, ok := g.Src.(*forge.GitHub)
 		if !ok || c.Repo != g.Slug {
 			t.Errorf("source %s: Src = %+v, want the forge client of %s", g.Slug, g.Src, g.Slug)
 		}
@@ -412,7 +378,7 @@ func TestForgeReposSkipsBrokenRepo(t *testing.T) {
 	broken := repoDir(t, "[forge")
 	other := repoDir(t, strings.Replace(completeRepo, `repo = "o/r"`, `repo = "o/s"`, 1))
 	var errOut bytes.Buffer
-	got, err := forgeRepos(hostToml(t, broken, other), "", "http://forge", func(string) string { return "t" }, &errOut)
+	got, _, err := forgeRepos(hostToml(t, broken, other), "", "http://forge", func(string) string { return "t" }, &errOut)
 	if err != nil {
 		t.Fatalf("forgeRepos: %v", err)
 	}
@@ -434,14 +400,14 @@ func TestForgeReposWithoutDispatch(t *testing.T) {
 		return ""
 	}
 	var errOut bytes.Buffer
-	got, err := forgeRepos(missing, "o/r", "http://forge/", getenv, &errOut)
+	got, _, err := forgeRepos(missing, "o/r", "http://forge/", getenv, &errOut)
 	if err != nil {
 		t.Fatalf("forgeRepos: %v", err)
 	}
 	if len(got) != 1 || got[0].Slug != "o/r" || got[0].InController != nil {
 		t.Fatalf("forgeRepos = %+v, want one source o/r without filter", got)
 	}
-	c, ok := got[0].Src.(*forge.Client)
+	c, ok := got[0].Src.(*forge.GitHub)
 	if !ok || c.Repo != "o/r" || c.Token != "tok" || c.BaseURL != "http://forge" {
 		t.Errorf("Src = %+v, want the forge client of o/r at http://forge with token tok", got[0].Src)
 	}
@@ -450,7 +416,7 @@ func TestForgeReposWithoutDispatch(t *testing.T) {
 	}
 
 	// Without --repo there is nothing to serve.
-	got, err = forgeRepos(missing, "", "http://forge", getenv, &errOut)
+	got, _, err = forgeRepos(missing, "", "http://forge", getenv, &errOut)
 	if err != nil || len(got) != 0 {
 		t.Errorf("forgeRepos without repo = (%+v, %v), want (none, nil)", got, err)
 	}
@@ -458,7 +424,7 @@ func TestForgeReposWithoutDispatch(t *testing.T) {
 
 func TestForgeReposIgnoresRepoFlag(t *testing.T) {
 	var errOut bytes.Buffer
-	got, err := forgeRepos(hostToml(t, repoDir(t, completeRepo)), "x/y", "http://forge", func(string) string { return "t" }, &errOut)
+	got, _, err := forgeRepos(hostToml(t, repoDir(t, completeRepo)), "x/y", "http://forge", func(string) string { return "t" }, &errOut)
 	if err != nil {
 		t.Fatalf("forgeRepos: %v", err)
 	}
@@ -472,7 +438,7 @@ func TestForgeReposIgnoresRepoFlag(t *testing.T) {
 
 func TestForgeReposUnreadableHostToml(t *testing.T) {
 	for _, repo := range []string{"o/r", ""} {
-		if _, err := forgeRepos(unreadableHostToml(t), repo, "http://forge", func(string) string { return "t" }, io.Discard); err == nil {
+		if _, _, err := forgeRepos(unreadableHostToml(t), repo, "http://forge", func(string) string { return "t" }, io.Discard); err == nil {
 			t.Errorf("forgeRepos(repo %q) on an unreadable host.toml = nil error, want one", repo)
 		}
 	}
@@ -609,8 +575,11 @@ func TestServeRunsFromTickState(t *testing.T) {
 	}
 }
 
-// countingSource is an overview.Source without issues that counts its OpenIssues calls.
-type countingSource struct{ calls atomic.Int32 }
+// countingSource is a forge.Forge without issues that counts its OpenIssues calls.
+type countingSource struct {
+	forge.Forge
+	calls atomic.Int32
+}
 
 func (c *countingSource) OpenIssues(context.Context) ([]forge.Issue, error) {
 	c.calls.Add(1)
@@ -686,5 +655,93 @@ func TestStartOverviewBuildsOnceAndStops(t *testing.T) {
 	case <-done:
 	case <-time.After(time.Second):
 		t.Fatal("stopped() did not return within 1s of cancel")
+	}
+}
+
+// A served repo without its token is skipped for the forge, with one line, but its slug stays
+// among those /api/runs shows.
+func TestServeSkipsRepoWithoutToken(t *testing.T) {
+	withToken := repoDir(t, completeRepo)
+	without := repoDir(t, "[forge]\nrepo = \"o/s\"\ntoken_env = \"MISSING\"\n")
+	getenv := func(k string) string { return map[string]string{"GH_TOKEN": "t"}[k] }
+	var errOut bytes.Buffer
+	got, served, err := forgeRepos(hostToml(t, withToken, without), "", "http://forge", getenv, &errOut)
+	if err != nil {
+		t.Fatalf("forgeRepos: %v", err)
+	}
+	if s := slugs(got); s != "o/r" {
+		t.Errorf("sources = %q, want o/r", s)
+	}
+	if want := "lighthouse: skip " + without + ": no GitHub token: set MISSING\n"; errOut.String() != want {
+		t.Errorf("errOut = %q, want %q", errOut.String(), want)
+	}
+	if !slices.Equal(served, []string{"o/r", "o/s"}) {
+		t.Errorf("slugs = %q, want [o/r o/s]", served)
+	}
+}
+
+// Without any token serve still starts: /api/runs shows the runs of the served repo from the
+// database, and the forge endpoints answer 503.
+func TestServeRunsOfTokenlessRepo(t *testing.T) {
+	db := filepath.Join(t.TempDir(), "l.db")
+	ctx := context.Background()
+	st, err := store.Open(ctx, db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC)
+	views := []dispatch.RunView{{Issue: 7, Title: "zeven", State: "open", Stand: "working"}}
+	if err := dispatch.SaveRunView(ctx, st.DB, "o/r", views, at); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("GH_TOKEN", "")
+	t.Setenv("GITHUB_TOKEN", "")
+	t.Setenv("LIGHTHOUSE_HOST_TOML", hostToml(t, repoDir(t, completeRepo)))
+	addr, stop := startServeCommand(t, "--db", db)
+	code, body := getBody(t, addr, "/api/runs")
+	if code != http.StatusOK {
+		t.Fatalf("runs = %d %s, want 200", code, body)
+	}
+	var got struct {
+		Runs []dispatch.RunView `json:"runs"`
+	}
+	if err := json.Unmarshal([]byte(body), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Runs) != 1 || got.Runs[0].Repo != "o/r" || got.Runs[0].Issue != 7 {
+		t.Errorf("runs = %+v, want #7 of o/r", got.Runs)
+	}
+	if code, body := getBody(t, addr, "/api/questions"); code != http.StatusServiceUnavailable {
+		t.Errorf("questions = %d %s, want 503", code, body)
+	}
+	if err := stop(); err != nil {
+		t.Fatalf("serve = %v, want nil", err)
+	}
+}
+
+// --forge-url defaults to "": the opener then sends a GitHub repo to https://api.github.com and
+// a GitLab repo to its own host, never one URL for both.
+func TestServeForgeURLDefaultEmpty(t *testing.T) {
+	noHostToml(t)
+	t.Setenv("LIGHTHOUSE_FORGE_URL", "")
+	var out bytes.Buffer
+	root := NewRoot(strings.NewReader(""), &out, &out)
+	cmd, _, err := root.Find([]string{"serve"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f := cmd.Flags().Lookup("forge-url"); f == nil || f.DefValue != "" {
+		t.Fatalf("--forge-url = %+v, want a flag with default \"\"", f)
+	}
+	root.SetArgs([]string{"serve", "--help"})
+	if err := root.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "https://api.github.com") {
+		t.Errorf("serve --help lacks https://api.github.com:\n%s", out.String())
 	}
 }
