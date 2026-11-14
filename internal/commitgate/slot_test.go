@@ -182,21 +182,27 @@ func TestOpenSlotsFileErrorHasTheHookText(t *testing.T) {
 func TestSlotDirFollowsTheThreeRules(t *testing.T) {
 	for _, c := range []struct {
 		name       string
+		goos       string
 		env        string
 		uid        int
 		runUserDir bool
 		want       string
 	}{
-		{"env wins", "/x/slots", 1000, true, "/x/slots"},
-		{"run user dir", "", 1000, true, "/run/user/1000/lighthouse-gate-slots"},
-		{"tmp fallback", "", 1000, false, "/tmp/lighthouse-gate-slots-1000"},
+		{"env wins", "linux", "/x/slots", 1000, true, "/x/slots"},
+		{"run user dir", "linux", "", 1000, true, "/run/user/1000/lighthouse-gate-slots"},
+		{"tmp fallback", "linux", "", 1000, false, "/tmp/lighthouse-gate-slots-1000"},
+		{"darwin tmp fallback", "darwin", "", 501, false, "/tmp/lighthouse-gate-slots-501"},
+		{"windows temp dir, no uid", "windows", "", -1, false, filepath.Join("C:/Temp", "lighthouse-gate-slots")},
+		{"windows env wins", "windows", "D:/slots", -1, false, "D:/slots"},
 	} {
-		if got := slotDir(c.env, c.uid, c.runUserDir); got != c.want {
+		if got := slotDir(c.goos, c.env, c.uid, c.runUserDir, "C:/Temp"); got != c.want {
 			t.Errorf("%s: slotDir = %q, want %q", c.name, got, c.want)
 		}
 	}
-	t.Setenv("LIGHTHOUSE_GATE_SLOT_DIR", "/seam/slots")
-	if got := SlotDir(); got != "/seam/slots" {
-		t.Errorf("SlotDir with the seam = %q", got)
+}
+
+func TestSlotDirForHonoursTheSeam(t *testing.T) {
+	if got := slotDirFor("/seam/slots"); got != "/seam/slots" {
+		t.Errorf("slotDirFor with the seam = %q", got)
 	}
 }

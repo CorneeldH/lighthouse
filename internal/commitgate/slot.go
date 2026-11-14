@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"time"
 
@@ -39,18 +40,22 @@ func (e *SlotOpenError) Error() string {
 }
 func (e *SlotOpenError) Unwrap() error { return e.Err }
 
-// SlotDir is $LIGHTHOUSE_GATE_SLOT_DIR, else /run/user/$UID/lighthouse-gate-slots when that
-// /run/user/$UID exists, else /tmp/lighthouse-gate-slots-$UID.
-func SlotDir() string {
-	uid := os.Getuid()
-	info, err := os.Stat("/run/user/" + strconv.Itoa(uid))
-	return slotDir(os.Getenv("LIGHTHOUSE_GATE_SLOT_DIR"), uid, err == nil && info.IsDir())
+// slotDirFor is the slot directory of this host: see slotDir. gate.takeSlot uses it with the
+// value of $LIGHTHOUSE_GATE_SLOT_DIR in the gate's own environment.
+func slotDirFor(env string) string {
+	_, runUser := runUserDir()
+	return slotDir(runtime.GOOS, env, os.Getuid(), runUser, os.TempDir())
 }
 
-func slotDir(env string, uid int, runUserDirExists bool) string {
+// slotDir is env ($LIGHTHOUSE_GATE_SLOT_DIR), else /run/user/$UID/lighthouse-gate-slots when that
+// /run/user/$UID exists, else /tmp/lighthouse-gate-slots-$UID. Windows has no uid (os.Getuid is
+// -1) and no /tmp: there it is lighthouse-gate-slots under tempDir, which is per user already.
+func slotDir(goos, env string, uid int, runUserDirExists bool, tempDir string) string {
 	switch {
 	case env != "":
 		return env
+	case goos == "windows":
+		return filepath.Join(tempDir, "lighthouse-gate-slots")
 	case runUserDirExists:
 		return "/run/user/" + strconv.Itoa(uid) + "/lighthouse-gate-slots"
 	default:

@@ -278,8 +278,7 @@ func runUserDir() (string, bool) {
 // takeSlot takes one of s.slots slots. The slot stays taken as long as the returned file is open;
 // the files of the other slots are closed. The test command does not inherit it.
 func (g *Gate) takeSlot(s *settings) (*os.File, *Result) {
-	_, runUser := runUserDir()
-	dir := slotDir(getenv(g.Env, "LIGHTHOUSE_GATE_SLOT_DIR"), os.Getuid(), runUser)
+	dir := slotDirFor(getenv(g.Env, "LIGHTHOUSE_GATE_SLOT_DIR"))
 	files, err := OpenSlots(dir, s.slots)
 	if err != nil {
 		res := g.slotFailed(err.Error())
