@@ -33,6 +33,22 @@ when it stamps the build, and the binary reports `dev` instead of the version.
   next release, which removes them with the rest.
 - Never create a `vX.Y.Z` tag by hand.
 
+## The macOS gate
+
+A release waits for a green run of `macos.yml` (the pytest suite, the Go race tests and the e2e
+tests on `macos-latest`) on the commit that started the release run, `github.sha`. Pull requests
+run no macOS job (#337).
+
+- macOS is red: no tag and no release commit; the fragments stay open. Choose *Re-run failed
+  jobs* on the run: it tests the same commit again.
+- `main` moved during the macOS run: the run stops green without a release. The run of the newer
+  commit releases.
+- A Monday cron that stops this way leaves fragments with only `added`, `changed` or `removed`
+  waiting a week. Run the `release` workflow by hand from `main` with `bump: auto` instead.
+- A `release` run started by hand from a branch other than `main` releases nothing.
+- To test a branch on macOS before its merge, run `macos.yml` by hand (`workflow_dispatch`) on
+  that branch.
+
 ## Changelog fragments
 
 Every PR adds a fragment to `changelog.d/`. A fragment is a markdown file with one `type:` line
@@ -78,7 +94,7 @@ retries, three times at most.
 
 - The workflow failed before or during the push: nothing landed, or the fragments are still
   open. Choose *Re-run failed jobs* on the failed run first: it keeps the event, so a failed
-  push run follows the push rule again. Only then dispatch the `release` workflow with
+  push run follows the push rule again, and it runs the failed macOS jobs again too. Only then dispatch the `release` workflow with
   `bump: auto`. A dispatch follows the schedule rule: with only `added` open it releases a minor
   at once, where the failed push run would have waited for Monday.
 - The tag exists but the build failed: run the `build` workflow by hand (`workflow_dispatch`)
