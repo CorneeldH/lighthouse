@@ -45,6 +45,13 @@ command = "python3 .lighthouse/scripts/gate_go.py -- go test -race && python3 pa
 # 3: a selector could not check, so nothing was tested (see the scripts).
 unchecked_exit_codes = [3]
 
+# The GitHub App that releases waiting issues after a close (`lighthouse-unblock-dependents.yml`).
+# The same App as in personal_ai_agent; the client id is a repo variable, the private key a secret.
+[ci]
+bot_client_id_var = "PAIA_BOT_CLIENT_ID"
+bot_private_key_secret = "PAIA_BOT_PRIVATE_KEY"
+bot_login = "paia-bot[bot]"
+
 [worktree_audit]
 # entire's checkpoint refs and shadow branches (#194): no PR, never merged, never cleanable.
 protected_refs = ["entire/*"]
