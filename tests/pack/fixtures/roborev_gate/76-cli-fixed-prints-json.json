@@ -1,0 +1,29 @@
+{
+  "description": "",
+  "level": "cli",
+  "setup": [
+    {
+      "do": "fix_commit",
+      "name": "a.py",
+      "subject": "fix: a\n\nroborev: p.py:1 (high)",
+      "as": "c1"
+    }
+  ],
+  "steps": [
+    {
+      "op": "cli",
+      "args": [
+        "fixed"
+      ],
+      "exit": 0,
+      "stdout_json": [
+        {
+          "path": "p.py",
+          "line": 1,
+          "severity": "high",
+          "commit": "$c1"
+        }
+      ]
+    }
+  ]
+}

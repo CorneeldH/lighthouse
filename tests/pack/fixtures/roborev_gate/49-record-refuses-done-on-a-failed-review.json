@@ -1,0 +1,21 @@
+{
+  "description": "",
+  "setup": [
+    {
+      "do": "raw",
+      "name": "feat",
+      "text": "Error: codex: 401 unauthorized\n"
+    }
+  ],
+  "steps": [
+    {
+      "op": "record",
+      "sha": "bf1eb24",
+      "decisions": [],
+      "error": "review faalde: Error: codex: 401 unauthorized",
+      "absent": [
+        "feat"
+      ]
+    }
+  ]
+}

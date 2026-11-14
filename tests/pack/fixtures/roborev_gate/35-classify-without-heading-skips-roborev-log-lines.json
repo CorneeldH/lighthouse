@@ -1,0 +1,14 @@
+{
+  "description": "",
+  "setup": [],
+  "steps": [
+    {
+      "op": "classify",
+      "text": "2026/11/01 15:04:29 ci review: ref=a..b agents=[codex]\nError: codex: 401 unauthorized\n",
+      "expect_exact": {
+        "verdict": "skip",
+        "reason": "review faalde: Error: codex: 401 unauthorized"
+      }
+    }
+  ]
+}

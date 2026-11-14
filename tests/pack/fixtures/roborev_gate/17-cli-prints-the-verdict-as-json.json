@@ -1,0 +1,24 @@
+{
+  "description": "gate through the CLI; skips before the budget",
+  "level": "cli",
+  "setup": [
+    {
+      "do": "remove",
+      "path": ".roborev.toml"
+    }
+  ],
+  "steps": [
+    {
+      "op": "cli",
+      "args": [
+        "gate"
+      ],
+      "exit": 0,
+      "stdout_json": {
+        "verdict": "skip",
+        "reason": "geen .roborev.toml"
+      },
+      "subset": true
+    }
+  ]
+}

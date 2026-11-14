@@ -1,0 +1,69 @@
+{
+  "description": "",
+  "setup": [
+    {
+      "do": "raw",
+      "name": "feat",
+      "fixture": "review-complete.md"
+    }
+  ],
+  "steps": [
+    {
+      "op": "record",
+      "sha": "bf1eb24",
+      "decisions": [
+        [
+          "scripts/forge_drager.py",
+          93,
+          "medium",
+          "fixed",
+          "abc1234",
+          null
+        ],
+        [
+          "scripts/forge_agent.sh",
+          612,
+          "medium",
+          "refuted",
+          null,
+          "klopt niet"
+        ]
+      ],
+      "returns": "$state/feat.json",
+      "state_file": {
+        "name": "feat",
+        "equals": {
+          "range": "$base..$head",
+          "uitkomst": "done",
+          "sha": "bf1eb24",
+          "bevindingen": [
+            {
+              "path": "scripts/forge_drager.py",
+              "line": 93,
+              "severity": "medium",
+              "uitkomst": "fixed",
+              "commit": "abc1234",
+              "reden": null
+            },
+            {
+              "path": "scripts/forge_agent.sh",
+              "line": 612,
+              "severity": "medium",
+              "uitkomst": "refuted",
+              "commit": null,
+              "reden": "klopt niet"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "op": "gate",
+      "budget": "forbidden",
+      "expect": {
+        "verdict": "done",
+        "sha": "bf1eb24"
+      }
+    }
+  ]
+}

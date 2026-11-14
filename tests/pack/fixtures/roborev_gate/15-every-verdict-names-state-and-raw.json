@@ -1,0 +1,92 @@
+{
+  "description": "run, skip, classify and done all carry absolute state and raw",
+  "setup": [],
+  "steps": [
+    {
+      "op": "gate",
+      "budget": [
+        0,
+        "{\"decision\":\"codex\",\"reason\":\"ok\"}"
+      ],
+      "expect": {
+        "verdict": "run",
+        "state": "$state/feat.json",
+        "raw": "$state/feat.md"
+      },
+      "absolute": [
+        "state",
+        "raw"
+      ]
+    },
+    {
+      "op": "gate",
+      "budget": [
+        6,
+        "{\"decision\":\"fallback\",\"reason\":\"5h 93%\"}"
+      ],
+      "expect": {
+        "verdict": "skip",
+        "state": "$state/feat.json",
+        "raw": "$state/feat.md"
+      },
+      "absolute": [
+        "state",
+        "raw"
+      ]
+    },
+    {
+      "op": "prepare",
+      "setup": [
+        {
+          "do": "remove_state",
+          "name": "feat"
+        },
+        {
+          "do": "raw",
+          "name": "feat",
+          "text": "x"
+        }
+      ]
+    },
+    {
+      "op": "gate",
+      "budget": "forbidden",
+      "expect": {
+        "verdict": "classify",
+        "state": "$state/feat.json",
+        "raw": "$state/feat.md"
+      },
+      "absolute": [
+        "state",
+        "raw"
+      ]
+    },
+    {
+      "op": "prepare",
+      "setup": [
+        {
+          "do": "state",
+          "name": "feat",
+          "json": {
+            "range": "a..b",
+            "uitkomst": "done",
+            "sha": "s"
+          }
+        }
+      ]
+    },
+    {
+      "op": "gate",
+      "budget": "forbidden",
+      "expect": {
+        "verdict": "done",
+        "state": "$state/feat.json",
+        "raw": "$state/feat.md"
+      },
+      "absolute": [
+        "state",
+        "raw"
+      ]
+    }
+  ]
+}

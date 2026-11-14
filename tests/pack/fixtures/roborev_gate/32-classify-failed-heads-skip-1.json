@@ -1,0 +1,18 @@
+{
+  "description": "",
+  "setup": [],
+  "steps": [
+    {
+      "op": "classify",
+      "fixture": "review-failed.md",
+      "replace": [
+        "Review Failed",
+        "Review Failed"
+      ],
+      "expect_exact": {
+        "verdict": "skip",
+        "reason": "review faalde: Review Failed"
+      }
+    }
+  ]
+}

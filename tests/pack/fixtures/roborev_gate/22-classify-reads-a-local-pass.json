@@ -1,0 +1,15 @@
+{
+  "description": "",
+  "setup": [],
+  "steps": [
+    {
+      "op": "classify",
+      "fixture": "review-local-passed.md",
+      "expect": {
+        "verdict": "done",
+        "sha": "HEAD",
+        "findings": []
+      }
+    }
+  ]
+}
