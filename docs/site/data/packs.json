@@ -56,6 +56,7 @@
       },
       {
         "name": "pr-create-gate",
+        "source": "internal/hooks/prcreategate.go",
         "events": [
           "PreToolUse"
         ],
