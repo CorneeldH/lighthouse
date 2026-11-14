@@ -251,6 +251,17 @@ func alive(pid int) bool {
 	return len(fields) == 0 || fields[0] != "Z"
 }
 
+// gone waits up to 2 s for pid to end, and reads alive once per round: a busy runner reaps a
+// killed child late, and a second read after the loop can see a pid the loop already saw go.
+func gone(pid int) bool {
+	for end := time.Now().Add(2 * time.Second); time.Now().Before(end); time.Sleep(10 * time.Millisecond) {
+		if !alive(pid) {
+			return true
+		}
+	}
+	return false
+}
+
 // A `grep` stub starts `sleep 60 &`, which holds the pipe, and then sleeps itself. At the
 // deadline the row is `timeout after 1 s`, the run does not wait for the child, and the child
 // is gone: the kill reached the whole group, not only grep.
@@ -273,10 +284,7 @@ func TestRunRowKillsTheGroupOnTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("pid of the background child: %v", err)
 	}
-	for end := time.Now().Add(500 * time.Millisecond); alive(pid) && time.Now().Before(end); {
-		time.Sleep(10 * time.Millisecond)
-	}
-	if alive(pid) {
+	if !gone(pid) {
 		t.Errorf("background child %d of grep still runs: the group was not killed", pid)
 	}
 }
@@ -298,10 +306,7 @@ func TestRunRowKillsTheGroupAfterEOF(t *testing.T) {
 	if err != nil {
 		t.Fatalf("pid of the background child: %v", err)
 	}
-	for end := time.Now().Add(500 * time.Millisecond); alive(pid) && time.Now().Before(end); {
-		time.Sleep(10 * time.Millisecond)
-	}
-	if alive(pid) {
+	if !gone(pid) {
 		t.Errorf("background child %d of grep still runs after EOF: the group was not killed", pid)
 	}
 }
