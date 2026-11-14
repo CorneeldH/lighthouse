@@ -124,5 +124,20 @@
 {"name": "outcome-of-na-PR-niet-gemeten", "kind": "outcome_of", "cell": "na PR, niet gemeten", "expect": "evidence_after_pr_unmeasured"},
 {"name": "outcome-of-klopt-nietje", "kind": "outcome_of", "cell": "klopt nietje", "expect": null},
 {"name": "outcome-of-holds-back", "kind": "outcome_of", "cell": "holds back", "expect": null},
-{"name": "outcome-of-het-klopt", "kind": "outcome_of", "cell": "het klopt", "expect": null}
+{"name": "outcome-of-het-klopt", "kind": "outcome_of", "cell": "het klopt", "expect": null},
+{"name": "jq-dollar-env-refused", "kind": "check", "cell": "`gh api repos/x/y --jq $ENV.HOME`", "expect": "`--jq` expression reads the environment or input"},
+{"name": "jq-input-refused", "kind": "check", "cell": "`gh pr view 5 --json body -q 'input'`", "expect": "`-q` expression reads the environment or input"},
+{"name": "jq-inputs-refused", "kind": "check", "cell": "`gh issue view 5 --json body --jq '[inputs]'`", "expect": "`--jq` expression reads the environment or input"},
+{"name": "jq-env-after-a-dot-refused", "kind": "check", "cell": "`gh api repos/x/y --jq .env`", "expect": "`--jq` expression reads the environment or input"},
+{"name": "jq-env-inside-a-word-allowed", "kind": "check", "cell": "`gh api repos/x/y --jq .envy`", "expect": null},
+{"name": "jq-env-after-a-non-ascii-letter-allowed", "kind": "check", "cell": "`gh api repos/x/y --jq .éenv`", "expect": null},
+{"name": "jq-inputs-inside-a-word-allowed", "kind": "check", "cell": "`gh api repos/x/y --jq .inputsx`", "expect": null},
+{"name": "git-log-n-superscript-digit-allowed", "kind": "check", "cell": "`git log -n²`", "expect": null},
+{"name": "git-log-n-letter-refused", "kind": "check", "cell": "`git log -nX`", "expect": "`-n` accepts only a number"},
+{"name": "graphql-dotted-capital-i-is-no-mutation", "kind": "check", "cell": "`gh api graphql -f query=MUTATİON`", "expect": null},
+{"name": "graphql-capital-mutation-refused", "kind": "check", "cell": "`gh api graphql -f 'query=MUTATION{x}'`", "expect": "gh api graphql: a mutation is not allowed"},
+{"name": "outcome-of-unicode-space-padding", "kind": "outcome_of", "cell": " klopt ", "expect": "evidence_holds"},
+{"name": "outcome-of-vertical-tab-padding", "kind": "outcome_of", "cell": "\u000bholds\f", "expect": "evidence_holds"},
+{"name": "split-unicode-space-is-a-word-character", "kind": "split", "cell": "`grep a b f`", "expect": ["grep", "a b", "f"]},
+{"name": "split-strips-unicode-space", "kind": "split", "cell": " `ls` ", "expect": ["ls"]}
 ]
