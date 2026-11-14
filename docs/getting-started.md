@@ -14,9 +14,9 @@ commit, PR bodies with evidence and, with `codex`, adversarial reviews.
 | Requirement | Package | Needed for | Without it |
 |---|---|---|---|
 | Claude Code | all | running the skills and the hooks | The hooks do not run. Codex and OpenCode read `AGENTS.md`, but nothing enforces it: run the test gate yourself. |
-| Python 3.11+ (`python3`, `tomllib`) | all | every hook, the helper scripts of the skills, reading `lighthouse.toml` | The core hooks report `COULD NOT CHECK`, and the blocking ones block: no commit passes `main-commit-gate` or `commit-test-gate`. |
+| Python 3.11+ (`python3`, `tomllib`) | all | the helper scripts of the skills, reading `lighthouse.toml` from them | Those skill steps fail. Every hook runs in the `lighthouse` binary and needs no Python. |
 | `git` | core, expo, go, shell | worktrees, the commit gates, every skill | Nothing works: the hooks report `COULD NOT CHECK`; the blocking ones block, `worktree-check` only warns. |
-| `jq` | core, go, python, shell | reading the payload of a hook | The hooks report `COULD NOT CHECK`; `main-commit-gate`, `commit-test-gate`, `pr-create-gate` and `md-link-check` block. |
+| `jq` | core, go, python, shell | the helper commands of the skills | Those skill steps fail. Every hook runs in the `lighthouse` binary and needs no `jq`. |
 | `gh` | core, python | reading and writing issues and PRs | The issue and PR skills cannot reach GitHub. `pr-create-gate` passes without counting the acceptance criteria, and says so. |
 | `superpowers` (Claude Code plugin) | core, expo | the steps the skills hand off: worktrees, brainstorming, plans, debugging | The skills cannot hand off; `/lighthouse-start-issue` loses its worktree, spec and plan steps. |
 | `codex` (optional) | core | adversarial reviews by another model family; `lighthouse usage codex` | `/lighthouse-review-spec` and `/lighthouse-review-plan` stop with `CODEX_MISSING`. |
@@ -24,8 +24,8 @@ commit, PR bodies with evidence and, with `codex`, adversarial reviews.
 | `go` | go | `go-lint-gate` | `go-lint-gate` reports `COULD NOT CHECK` at Stop; nothing was linted. |
 | `gofmt` | go | `gofmt-check` after every edit | `gofmt-check` blocks with `COULD NOT CHECK`. |
 | `golangci-lint` | go | `go-lint-gate` | `go-lint-gate` reports `COULD NOT CHECK` at Stop; nothing was linted. |
-| `node` | node | the test gate `gate_node.py` | `gate_node.py` reports `COULD NOT CHECK` (exit 3); with 3 in `unchecked_exit_codes` the gate reports the commit as not tested. |
-| `npm` | node | the web checks of `gate_node.py` (`npm run …`) | As for `node`. |
+| `node` | node | the test gate `lighthouse gate node` | `lighthouse gate node` reports `COULD NOT CHECK` (exit 3); with 3 in `unchecked_exit_codes` the gate reports the commit as not tested. |
+| `npm` | node | the web checks of `lighthouse gate node` (`npm run …`) | As for `node`. |
 | `curl` | shell | the first download of the pinned `shellcheck`, verified with sha256sum or shasum | No download. Without a `shellcheck` on your `PATH`, the `shell-lint-check` hook blocks with `COULD NOT CHECK` on every shell script you edit. |
 | `tar` | shell | unpacking that download | As for `curl`. |
 | `xz` | shell | unpacking that download | As for `curl`. |

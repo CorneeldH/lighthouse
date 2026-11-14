@@ -152,7 +152,7 @@ sandbox:
 B=$(lighthouse config forge.default_branch) &&
 git fetch origin "$B" &&
 git worktree add --detach "<scratch>/after-merge-<nr>" "origin/$B" &&
-{ python3 .lighthouse/lib/lighthouse_lib/evidence.py run --issue <nr> --body-file "<scratch>/evidence.md" --cwd "<scratch>/after-merge-<nr>" > "<scratch>/run.txt" 2> "<scratch>/run.err"; rc=$?; echo "rc=$rc"; git worktree remove --force "<scratch>/after-merge-<nr>"; }
+{ lighthouse evidence run --issue <nr> --body-file "<scratch>/evidence.md" --cwd "<scratch>/after-merge-<nr>" > "<scratch>/run.txt" 2> "<scratch>/run.err"; rc=$?; echo "rc=$rc"; git worktree remove --force "<scratch>/after-merge-<nr>"; }
 ```
 
 No `--before-pr`. `rc` is caught before the `git worktree remove`. No `rc=` line, or an exit code
@@ -288,7 +288,7 @@ scratch=$(mktemp -d) && echo "scratch=$scratch" &&
 gh pr view <pr> --json body --jq .body > "$scratch/body.md" &&
 git fetch origin "$B" &&
 git worktree add --detach "$scratch/after-merge-<nr>" "origin/$B" &&
-{ python3 .lighthouse/lib/lighthouse_lib/evidence.py run --issue <nr> --body-file "$scratch/body.md" --cwd "$scratch/after-merge-<nr>" > "$scratch/run.txt" 2> "$scratch/run.err"; rc=$?; echo "rc=$rc"; git worktree remove --force "$scratch/after-merge-<nr>"; }
+{ lighthouse evidence run --issue <nr> --body-file "$scratch/body.md" --cwd "$scratch/after-merge-<nr>" > "$scratch/run.txt" 2> "$scratch/run.err"; rc=$?; echo "rc=$rc"; git worktree remove --force "$scratch/after-merge-<nr>"; }
 ```
 
 `<scratch>` below is the path the `scratch=` line prints; copy it literally. A fresh `mktemp -d`

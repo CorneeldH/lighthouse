@@ -58,7 +58,7 @@ session for one phase of an issue. Most likely nobody is watching.
   first, in a new commit.
 - A run started with `/lighthouse-write-pr <nr>` verifies the acceptance criteria and opens the
   PR, the body through `--body-file`. Then it posts the handoff
-  `next: /lighthouse-close-issue <nr>` and stops. When it opens no PR (red tests, `evidence.py`
+  `next: /lighthouse-close-issue <nr>` and stops. When it opens no PR (red tests, `lighthouse evidence`
   exit 3 or 4, a block of `pr-create-gate`, a PR that already exists), it posts no handoff: it
   asks with `lighthouse ask` when the user has to choose, else it ends without one.
 - Never wait for CI and never poll `gh pr checks`, also not in `/lighthouse-fix-pr`. After a

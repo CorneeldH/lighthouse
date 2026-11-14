@@ -46,12 +46,14 @@ func TestExecRunner(t *testing.T) {
 }
 
 func TestExecRunnerTimeoutWithGrandchildHoldingStdout(t *testing.T) {
+	// The right outcome takes the 200 ms timeout plus the 2 s WaitDelay; waiting for the
+	// grandchild takes 120 s. The bound is a quarter of the wrong outcome (#338).
 	start := time.Now()
-	_, _, err := ExecRunner()(context.Background(), 200*time.Millisecond, "sh", "-c", "sleep 30 & wait")
+	_, _, err := ExecRunner()(context.Background(), 200*time.Millisecond, "sh", "-c", "sleep 120 & wait")
 	if err == nil {
 		t.Fatal("want timeout error")
 	}
-	if d := time.Since(start); d > 5*time.Second {
+	if d := time.Since(start); d > 30*time.Second {
 		t.Errorf("returned after %v, want near the 200ms timeout", d)
 	}
 }

@@ -1,5 +1,5 @@
 // Package deadline runs a command until an absolute deadline, then stops its process group. It
-// ports pack/core/lib/deadline.py (`run_until` with capture and raise_on_signal).
+// ports the former pack/core/lib/deadline.py (`run_until` with capture and raise_on_signal).
 //
 // A PreToolUse hook that hits its own timeout is fail-open: Claude sees silence, and the gate is
 // skipped unnoticed. By ending the gate itself on a deadline, well within the hook timeout, and
@@ -100,7 +100,7 @@ func RunCapture(deadline time.Time, argv []string, o Options) (code int, output 
 		}
 		cmd.Stdin = in
 	}
-	inOwnGroup(cmd)
+	InOwnGroup(cmd)
 	if err := cmd.Start(); err != nil {
 		if errors.Is(err, exec.ErrNotFound) || errors.Is(err, fs.ErrNotExist) {
 			return NotFoundExit, nil, nil
@@ -127,10 +127,10 @@ func RunCapture(deadline time.Time, argv []string, o Options) (code int, output 
 	select {
 	case <-done:
 	case <-graceTimer.C:
-		hardKill(cmd)
+		KillGroup(cmd)
 		<-done
 	case <-stop:
-		hardKill(cmd)
+		KillGroup(cmd)
 		<-done
 	}
 	if got != nil {

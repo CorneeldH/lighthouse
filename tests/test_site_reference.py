@@ -56,7 +56,7 @@ def test_reference_links_a_go_hook_to_its_source():
     entries = run_map(f"m.referenceEntries({json.dumps(load('packs.json'))}, 'hooks')")
     hrefs = {i["name"]: i["href"] for e in entries for i in e["items"]}
     assert hrefs["code-language-check"] == REPO_BLOB + "internal/codelang/hook.go"
-    assert hrefs["commit-test-gate"] == REPO_BLOB + "pack/core/hooks/commit-test-gate.sh"
+    assert hrefs["commit-test-gate"] == REPO_BLOB + "internal/hooks/committestgate.go"
 
 
 def test_reference_marks_standard_skills():

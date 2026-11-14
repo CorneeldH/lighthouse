@@ -12,7 +12,8 @@ import (
 	"time"
 )
 
-// The PostToolUse step. Port of `_marker_roots` to `run_post` in pack/core/lib/bash_writes.py.
+// The PostToolUse step. Port of `_marker_roots` to `run_post` in the former
+// pack/core/lib/bash_writes.py.
 
 // defaultPostDeadline is the one deadline of post, from its start; with the grace per gate well
 // within the hook timeout of 120 s.

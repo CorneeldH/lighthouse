@@ -1,0 +1,215 @@
+[
+  {
+    "name": "go file maps to its package",
+    "listing": [
+      {
+        "rel": "a",
+        "GoFiles": [
+          "a.go"
+        ]
+      },
+      {
+        "rel": "b",
+        "GoFiles": [
+          "b.go"
+        ]
+      }
+    ],
+    "files": [
+      "a/a.go"
+    ],
+    "want": [
+      "example.com/m/a"
+    ]
+  },
+  {
+    "name": "test file maps to its package",
+    "listing": [
+      {
+        "rel": "a",
+        "GoFiles": [
+          "a.go"
+        ],
+        "TestGoFiles": [
+          "a_test.go"
+        ]
+      }
+    ],
+    "files": [
+      "a/a_test.go"
+    ],
+    "want": [
+      "example.com/m/a"
+    ]
+  },
+  {
+    "name": "embedded file maps to embedding package",
+    "listing": [
+      {
+        "rel": "pack",
+        "GoFiles": [
+          "pack.go"
+        ],
+        "EmbedFiles": [
+          "core/hooks/x.sh"
+        ]
+      }
+    ],
+    "files": [
+      "pack/core/hooks/x.sh"
+    ],
+    "want": [
+      "example.com/m/pack"
+    ]
+  },
+  {
+    "name": "testdata maps to package",
+    "listing": [
+      {
+        "rel": "a",
+        "GoFiles": [
+          "a.go"
+        ]
+      }
+    ],
+    "files": [
+      "a/testdata/in/case.txt"
+    ],
+    "want": [
+      "example.com/m/a"
+    ]
+  },
+  {
+    "name": "go.mod alone selects nothing",
+    "listing": [
+      {
+        "rel": "",
+        "GoFiles": [
+          "main.go"
+        ]
+      }
+    ],
+    "files": [
+      "go.mod",
+      "go.sum"
+    ],
+    "want": []
+  },
+  {
+    "name": "unrelated file selects nothing",
+    "listing": [
+      {
+        "rel": "a",
+        "GoFiles": [
+          "a.go"
+        ]
+      }
+    ],
+    "files": [
+      "a/README.md",
+      "docs/x.md"
+    ],
+    "want": []
+  },
+  {
+    "name": "importers are not selected",
+    "listing": [
+      {
+        "rel": "a",
+        "GoFiles": [
+          "a.go"
+        ],
+        "Imports": [
+          "example.com/m/b"
+        ]
+      },
+      {
+        "rel": "b",
+        "GoFiles": [
+          "b.go"
+        ]
+      }
+    ],
+    "files": [
+      "b/b.go"
+    ],
+    "want": [
+      "example.com/m/b"
+    ]
+  },
+  {
+    "name": "deleted go file maps to its directory",
+    "listing": [
+      {
+        "rel": "a",
+        "GoFiles": [
+          "a.go"
+        ]
+      }
+    ],
+    "files": [
+      "a/gone.go"
+    ],
+    "want": [
+      "example.com/m/a"
+    ]
+  },
+  {
+    "name": "deleted go file in removed directory selects nothing",
+    "listing": [
+      {
+        "rel": "a",
+        "GoFiles": [
+          "a.go"
+        ]
+      }
+    ],
+    "files": [
+      "old/gone.go"
+    ],
+    "want": []
+  },
+  {
+    "name": "path with space",
+    "listing": [
+      {
+        "rel": "dir x",
+        "GoFiles": [
+          "y.go"
+        ]
+      }
+    ],
+    "files": [
+      "dir x/y.go"
+    ],
+    "want": [
+      "example.com/m/dir x"
+    ]
+  },
+  {
+    "name": "result is sorted and unique",
+    "listing": [
+      {
+        "rel": "b",
+        "GoFiles": [
+          "b.go"
+        ]
+      },
+      {
+        "rel": "a",
+        "GoFiles": [
+          "a.go"
+        ]
+      }
+    ],
+    "files": [
+      "b/b.go",
+      "a/a.go",
+      "b/b.go"
+    ],
+    "want": [
+      "example.com/m/a",
+      "example.com/m/b"
+    ]
+  }
+]

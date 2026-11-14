@@ -8,6 +8,7 @@ refresh variables, no real `lighthouse` on PATH; `run_guard` puts the shim of
 
 import json
 import os
+import shutil
 import subprocess
 import time
 from datetime import datetime, timedelta, timezone
@@ -150,24 +151,48 @@ def test_alarm_fields_are_not_globbed(tmp_path: Path) -> None:
     assert "resets at ?." in result.stdout
 
 
+# A `sleep` for the shim's LIGHTHOUSE_SHIM_DELAY: `until-released` waits for the file
+# $SHIM_RELEASE (at most 120 s, so no shim outlives a failed test); any other argument
+# goes to the real sleep.
+_HELD_SLEEP = """#!/bin/sh
+if [ "$1" = until-released ]; then
+  n=0
+  while [ ! -e "$SHIM_RELEASE" ] && [ "$n" -lt 2400 ]; do {sleep} 0.05; n=$((n + 1)); done
+  exit 0
+fi
+exec {sleep} "$@"
+"""
+
+
 def test_refresh_is_detached(tmp_path: Path) -> None:
     root = tmp_path / "root"
     install_core(root)
-    env = guard_env(tmp_path, LIGHTHOUSE_SHIM_DELAY="2")
+    held = tmp_path / "held-sleep"
+    held.mkdir()
+    (held / "sleep").write_text(_HELD_SLEEP.format(sleep=shutil.which("sleep")))
+    (held / "sleep").chmod(0o755)
+    release = tmp_path / "release"
+    env = guard_env(tmp_path, LIGHTHOUSE_SHIM_DELAY="until-released", SHIM_RELEASE=str(release))
+    env["PATH"] = f"{held}{os.pathsep}{env['PATH']}"
     trace = refresh_trace(env)
     write_alarm(env, alarm_line())
 
-    start = time.monotonic()
-    result = run_guard(root, "prompt", _payload(tmp_path, "prompt"), env)
-    elapsed = time.monotonic() - start
+    # A synchronisation point, not a wall-clock bound (#338): the refresh is held until
+    # the test releases it, so a hook that waits for it never returns (run_guard's
+    # timeout), and one that returns did so while the refresh had not yet run.
+    try:
+        result = run_guard(root, "prompt", _payload(tmp_path, "prompt"), env)
+        written_before_release = trace.exists() and trace.read_text(encoding="utf-8")
+    finally:
+        release.touch()
 
     assert result.returncode == 0
-    assert elapsed < 1.5, elapsed
+    assert not written_before_release
     # The payload still reached the hook: the handoff path carries the session id.
     context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
     assert "s1.handoff.md" in context
     # `> trace` creates the file before printf writes: poll for the content.
-    deadline = time.monotonic() + 5
+    deadline = time.monotonic() + 30
     seen = ""
     while seen != "usage refresh|1" and time.monotonic() < deadline:
         time.sleep(0.05)

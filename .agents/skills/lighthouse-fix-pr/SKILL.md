@@ -144,7 +144,7 @@ gate failed.
 
 Gates before CI break the commit or the push, not the PR: `.claude/hooks/lighthouse/run.sh bash-write-check`
 (per edit, with the gates of the language packs that are installed),
-`.claude/hooks/lighthouse/commit-test-gate.sh` (after each commit, on its files) and a pre-push hook, if present
+`.claude/hooks/lighthouse/run.sh commit-test-gate` (after each commit, on its files) and a pre-push hook, if present
 (`test -x "$(git rev-parse --git-path hooks/pre-push)"`).
 The `main-commit-gate` hook blocks a commit that lands on the default branch.
 
@@ -271,6 +271,8 @@ Row 4 sees only a `Skill` call; a review done by hand in the same turn does not 
 - **`gh issue list --json` breaks under the rtk proxy.** Use `gh api`.
 - **A merge conflict gives no fail check.** `mergeStateStatus: DIRTY` is the signal; the
   failure-log part of the diagnosis block stays empty then and that is correct.
+  A PR always has a pushed branch, so resolve it with `git merge origin/<default branch>` per the
+  update rule in *Lighthouse: core*: resolve the conflicts once, commit the merge, push without force.
 - **Links: absolute in chat, relative in files.** In a chat answer a link to a file that exists
   only on the branch must carry the full absolute worktree path: the IDE resolves chat links
   against the main checkout. In a `.md` file, relative instead;

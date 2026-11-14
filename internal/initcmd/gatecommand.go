@@ -1,0 +1,148 @@
+package initcmd
+
+import (
+	"fmt"
+	"io"
+	"regexp"
+	"strings"
+)
+
+// gateRewrites are the only texts init --upgrade rewrites in [test_gate] command.
+var gateRewrites = []struct{ from, to string }{
+	{"python3 .lighthouse/scripts/gate_go.py", "lighthouse gate go"},
+	{"python3 .lighthouse/scripts/gate_node.py", "lighthouse gate node"},
+}
+
+// gateRef matches a path into the installed scripts or lib directory.
+var gateRef = regexp.MustCompile(`\.lighthouse/(?:scripts|lib)/[A-Za-z0-9_./-]*[A-Za-z0-9_/-]`)
+
+const staleLib = "lighthouse_lib"
+
+// migrateGateCommand rewrites the value of [test_gate] command in old and leaves the rest
+// of the file as it is. before and after are the old and new value (empty when nothing
+// changed). stale lists what the value, after the rewrite, still references that
+// installed says lighthouse does not install: a path, or lighthouse_lib.
+func migrateGateCommand(old []byte, installed func(rel string) bool) (out []byte, before, after string, stale []string) {
+	lines := strings.SplitAfter(string(old), "\n")
+	inGate := false
+	var values []string
+	for i := 0; i < len(lines); i++ {
+		t := strings.TrimSpace(lines[i])
+		if strings.HasPrefix(t, "[") {
+			name, _, _ := strings.Cut(t, "#")
+			inGate = isGateHeader(strings.TrimSpace(name))
+			continue
+		}
+		if !inGate {
+			continue
+		}
+		key, rest, ok := strings.Cut(lines[i], "=")
+		if !ok || strings.TrimSpace(key) != "command" {
+			continue
+		}
+		end := valueEnd(lines, i, rest)
+		block := strings.Join(lines[i:end+1], "")
+		head, all, _ := strings.Cut(block, "=")
+		raw, tail := splitValue(all)
+		rewritten := raw
+		for _, r := range gateRewrites {
+			rewritten = strings.ReplaceAll(rewritten, r.from, r.to)
+		}
+		if rewritten != raw {
+			lines[i] = head + "=" + rewritten + tail
+			for j := i + 1; j <= end; j++ {
+				lines[j] = ""
+			}
+			before, after = strings.TrimSpace(raw), strings.TrimSpace(rewritten)
+		}
+		values = append(values, rewritten)
+		i = end
+	}
+	out = []byte(strings.Join(lines, ""))
+	joined := strings.Join(values, "\n")
+	for _, p := range gateRef.FindAllString(joined, -1) {
+		if !installed(p) {
+			stale = append(stale, p)
+		}
+	}
+	for _, p := range gateRef.Split(joined, -1) {
+		if strings.Contains(p, staleLib) {
+			stale = append(stale, staleLib)
+			break
+		}
+	}
+	return out, before, after, stale
+}
+
+// isGateHeader says whether h, a table header without its comment, opens [test_gate]. TOML
+// allows whitespace inside the brackets and a quoted key: `[ test_gate ]`, `["test_gate"]`.
+func isGateHeader(h string) bool {
+	if strings.HasPrefix(h, "[[") || !strings.HasPrefix(h, "[") || !strings.HasSuffix(h, "]") {
+		return false
+	}
+	key := strings.TrimSpace(h[1 : len(h)-1])
+	if len(key) >= 2 && (key[0] == '"' || key[0] == '\'') && key[len(key)-1] == key[0] {
+		key = key[1 : len(key)-1]
+	}
+	return key == "test_gate"
+}
+
+// reportGateCommand tells what migrateGateCommand did.
+func reportGateCommand(w io.Writer, before, after string, stale []string) {
+	if before != after {
+		_, _ = fmt.Fprintf(w, "lighthouse.toml: [test_gate] command rewritten\n  old: %s\n  new: %s\n", before, after)
+	}
+	for _, s := range stale {
+		if s == staleLib {
+			_, _ = fmt.Fprintln(w, "warning: lighthouse.toml: [test_gate] command uses lighthouse_lib, which lighthouse is phasing out; move it to a lighthouse command")
+			continue
+		}
+		_, _ = fmt.Fprintf(w, "warning: lighthouse.toml: [test_gate] command calls %s, which lighthouse no longer installs; the test gate breaks until you change it\n", s)
+	}
+}
+
+// valueEnd is the index of the last line of the value that starts on lines[i], whose
+// text after the equals sign is rest: later lines only for a multi-line string.
+func valueEnd(lines []string, i int, rest string) int {
+	q := strings.TrimSpace(rest)
+	if !strings.HasPrefix(q, `"""`) && !strings.HasPrefix(q, `'''`) {
+		return i
+	}
+	delim := q[:3]
+	if strings.Contains(q[3:], delim) {
+		return i
+	}
+	for j := i + 1; j < len(lines); j++ {
+		if strings.Contains(lines[j], delim) {
+			return j
+		}
+	}
+	return len(lines) - 1
+}
+
+// splitValue splits the text after the equals sign into the TOML string and what follows
+// it (an inline comment, the line end), so only the string is rewritten and scanned.
+func splitValue(s string) (value, tail string) {
+	t := strings.TrimLeft(s, " \t")
+	if t == "" || (t[0] != '"' && t[0] != '\'') {
+		v, _, _ := strings.Cut(s, "#")
+		return v, s[len(v):]
+	}
+	lead := len(s) - len(t)
+	delim := t[:1]
+	skip := 1
+	if strings.HasPrefix(t, strings.Repeat(delim, 3)) {
+		delim, skip = strings.Repeat(delim, 3), 3
+	}
+	for i := skip; i < len(t); i++ {
+		if t[i] == '\\' && delim[0] == '"' {
+			i++
+			continue
+		}
+		if strings.HasPrefix(t[i:], delim) {
+			end := lead + i + len(delim)
+			return s[:end], s[end:]
+		}
+	}
+	return s, ""
+}

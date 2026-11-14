@@ -87,9 +87,12 @@ func NewRoot(in io.Reader, out, errOut io.Writer) *cobra.Command {
 	root.AddCommand(newRunCommand())
 	root.AddCommand(newTriageCommand(defaultTriageEnv))
 	root.AddCommand(newPauseCommand())
+	root.AddCommand(newGateCommand())
 	root.AddCommand(newAskCommand(defaultAskEnv()))
 	root.AddCommand(newSelfUpdateCommand())
 	root.AddCommand(newTurnRootsCommand())
+	root.AddCommand(newPrBodyGateCommand())
+	root.AddCommand(newEvidenceCommand())
 	root.AddCommand(&cobra.Command{
 		Use:   "version",
 		Short: "Print the version of this binary",

@@ -349,7 +349,7 @@ func TestUpgradeDetectionErrorIsANote(t *testing.T) {
 }
 
 // The files lighthouse itself installs do not make a package fit: a core-only repo
-// has shell hooks under .claude/hooks/lighthouse/, and is no shell repo for that.
+// has a shell hook (run.sh) under .claude/hooks/lighthouse/, and is no shell repo for that.
 func TestDetectIgnoresInstalledFiles(t *testing.T) {
 	root := newRepo(t)
 	write(t, root, "README.md", "# x\n")
@@ -358,7 +358,7 @@ func TestDetectIgnoresInstalledFiles(t *testing.T) {
 	if r.code != 0 || !strings.HasPrefix(r.out, "Packages: core\n") {
 		t.Fatalf("init: rc %d\nout:\n%s\nerr:\n%s", r.code, r.out, r.err)
 	}
-	if !exists(root, ".claude/hooks/lighthouse/commit-test-gate.sh") {
+	if !exists(root, ".claude/hooks/lighthouse/run.sh") {
 		t.Fatal("core hooks not installed")
 	}
 	r = run(t, root, "", all(upgrade, realPacks))

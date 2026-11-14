@@ -18,12 +18,27 @@ import (
 var (
 	realPlaceholder = regexp.MustCompile(`\{real:([^}]+)\}`)
 	homePlaceholder = regexp.MustCompile(`\{home:([^}]+)\}`)
+	revPlaceholder  = regexp.MustCompile(`\{rev:([^:}]+):([^}]+)\}`)
 )
 
-// Fill replaces {root}, {real:<path>} (the realpath of {root}/<path>) and {home:<name>} (the home
-// directory of user <name>) in value.
+// emptyTree is the tree git hashes for an empty repository.
+const emptyTree = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+
+// Fill replaces {root}, {real:<path>} (the realpath of {root}/<path>), {home:<name>} (the home
+// directory of user <name>), {rev:<path>:<rev>} (`git rev-parse <rev>` in {root}/<path>) and
+// {empty_tree} in value. Call it after the last step of the case. The keys of a map are the
+// caller's to fill, as fill_fixture does.
 func Fill(t *testing.T, value, root string) string {
 	t.Helper()
+	value = revPlaceholder.ReplaceAllStringFunc(value, func(m string) string {
+		parts := revPlaceholder.FindStringSubmatch(m)
+		out, err := exec.Command("git", "-C", filepath.Join(root, parts[1]), "rev-parse", parts[2]).Output()
+		if err != nil {
+			t.Fatalf("rev-parse %s in %s: %v", parts[2], parts[1], err)
+		}
+		return strings.TrimSpace(string(out))
+	})
+	value = strings.ReplaceAll(value, "{empty_tree}", emptyTree)
 	value = realPlaceholder.ReplaceAllStringFunc(value, func(m string) string {
 		path := filepath.Join(root, realPlaceholder.FindStringSubmatch(m)[1])
 		real, err := filepath.EvalSymlinks(path)
@@ -66,7 +81,8 @@ func str(t *testing.T, step map[string]any, key string) string {
 
 // Build creates the tree of steps under root. A step is one of repo (+branch), dir, file (+text),
 // symlink (+to), overwrite (+text), worktree (+of, +branch: a linked worktree of repo `of`) and
-// origin (+url: remote origin of that repo).
+// origin (+url: remote origin of that repo), unborn (a repo on main without a commit), commit
+// (+message: `add -A` and commit in that repo) and mv (+from, +to: `git mv` in that repo).
 func Build(t *testing.T, root string, steps []map[string]any) {
 	t.Helper()
 	write := func(rel, text string) {
@@ -107,6 +123,18 @@ func Build(t *testing.T, root string, steps []map[string]any) {
 				filepath.Join(root, str(t, step, "worktree")), "-b", str(t, step, "branch"))
 		case step["origin"] != nil:
 			Git(t, filepath.Join(root, str(t, step, "origin")), "remote", "add", "origin", str(t, step, "url"))
+		case step["unborn"] != nil:
+			dir := filepath.Join(root, str(t, step, "unborn"))
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			Git(t, dir, "init", "-q", "-b", "main")
+		case step["commit"] != nil:
+			dir := filepath.Join(root, str(t, step, "commit"))
+			Git(t, dir, "add", "-A")
+			Git(t, dir, "commit", "-qm", str(t, step, "message"))
+		case step["mv"] != nil:
+			Git(t, filepath.Join(root, str(t, step, "mv")), "mv", str(t, step, "from"), str(t, step, "to"))
 		default:
 			t.Fatalf("unknown setup step %v", step)
 		}

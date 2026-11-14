@@ -1,8 +1,8 @@
 # CI for lighthouse: one job per domain (python, go, web), each run only when ci/domains.py
 # finds a changed path in it. Go runs as three parallel jobs, `go`, `go-test` and `go-e2e`, and
-# Python as a matrix of three parts of the pytest suite (tests/conftest.py). Python, `go-test`
-# and `go-e2e` run on Linux and macOS (#90). A `binary` job builds the SPA itself, embeds it in
-# the Go binary and smoke-tests it, next to web instead of after it.
+# Python as a matrix of three parts of the pytest suite (tests/conftest.py). Everything runs on
+# Linux; macOS runs in macos.yml, as the gate before the release (#337). A `binary` job builds the
+# SPA itself, embeds it in the Go binary and smoke-tests it, next to web instead of after it.
 name: ci
 
 on:
@@ -87,13 +87,11 @@ jobs:
   python:
     needs: changes
     if: needs.changes.outputs.python == 'true'
-    runs-on: ${{ matrix.os }}
-    # macOS runners are slower than ubuntu-latest (#90).
-    timeout-minutes: 15
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
         shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -114,7 +112,7 @@ jobs:
       - run: uv run pytest -n auto
         env:
           LIGHTHOUSE_PYTEST_SHARD: ${{ matrix.shard }}/3
-      - if: matrix.shard == 1 && matrix.os == 'ubuntu-latest'
+      - if: matrix.shard == 1
         run: |
           ci/literal-grep.sh
           LITERAL_DENYLIST=ci/literal-denylist-go.txt LITERAL_SKIP_TESTS=1 ci/literal-grep.sh internal cmd
@@ -155,12 +153,8 @@ jobs:
   go-test:
     needs: changes
     if: needs.changes.outputs.go == 'true'
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     timeout-minutes: 10
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -174,12 +168,8 @@ jobs:
   go-e2e:
     needs: changes
     if: needs.changes.outputs.go == 'true'
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     timeout-minutes: 10
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

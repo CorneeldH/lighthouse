@@ -116,7 +116,7 @@ def test_entry_b_runs_the_evidence_of_merged_refs_prs():
             _STRIP_COMMENTS,
             "--limit 9999",
             "### Evidence #<nr>",
-            "python3 .lighthouse/lib/lighthouse_lib/evidence.py run",
+            "{ lighthouse evidence run --issue <nr>",
             "git worktree add --detach",
             "lighthouse config forge.default_branch",
             "only the row of the latest merged PR",
@@ -156,7 +156,7 @@ def test_b7_includes_b2a():
 
 def test_entry_c_runs_only_the_runner():
     for body in skill():
-        assert "python3 .lighthouse/lib/lighthouse_lib/evidence.py run" in body
+        assert "{ lighthouse evidence run --issue <nr>" in body
         assert "git worktree add --detach" in body
         assert "lighthouse config forge.default_branch" in _entry_c(body)
 
@@ -237,7 +237,7 @@ def test_entry_c_scratch_is_fresh_and_chained():
         c = _entry_c(body)
         assert "scratch=$(mktemp -d)" in c
         assert 'git worktree add --detach "$scratch/after-merge-<nr>" "origin/$B" &&' in c
-        assert c.index("scratch=$(mktemp -d)") < c.index("evidence.py run")
+        assert c.index("scratch=$(mktemp -d)") < c.index("lighthouse evidence run")
         assert "no `rc=` line" in c
 
 
