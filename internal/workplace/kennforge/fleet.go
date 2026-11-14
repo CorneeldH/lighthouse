@@ -129,7 +129,7 @@ func (a *Adapter) notFound(ctx context.Context, err error, what string) error {
 // there as foreign until #327. Example:
 //
 //	{"launch_targets":[…],"sessions":[
-//	  {"key":"k1","workspace_id":"ws1","target_key":"paia-software","label":"Claude",
+//	  {"key":"k1","workspace_id":"ws1","target_key":"software","label":"Claude",
 //	   "kind":"agent","status":"running","display_region":"main",
 //	   "created_at":"2026-11-13T10:00:00Z"}]}
 type wireRuntime struct {
