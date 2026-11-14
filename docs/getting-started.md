@@ -14,9 +14,9 @@ commit, PR bodies with evidence and, with `codex`, adversarial reviews.
 | Requirement | Package | Needed for | Without it |
 |---|---|---|---|
 | Claude Code | all | running the skills and the hooks | The hooks do not run. Codex and OpenCode read `AGENTS.md`, but nothing enforces it: run the test gate yourself. |
-| Python 3.11+ (`python3`, `tomllib`) | all | every hook except `commit-test-gate` (it runs in the `lighthouse` binary), the helper scripts of the skills, reading `lighthouse.toml` | The core hooks report `COULD NOT CHECK`, and the blocking ones block: no commit passes `main-commit-gate`. |
+| Python 3.11+ (`python3`, `tomllib`) | all | `pr-create-gate` and `code-language-check`, the helper scripts of the skills, reading `lighthouse.toml` from them | Those hooks report `COULD NOT CHECK`, and the blocking one, `pr-create-gate`, blocks. `main-commit-gate`, `commit-test-gate`, `bash-write-check`, `worktree-check` and `md-link-check` run in the `lighthouse` binary and need no Python. |
 | `git` | core, expo, go, shell | worktrees, the commit gates, every skill | Nothing works: the hooks report `COULD NOT CHECK`; the blocking ones block, `worktree-check` only warns. |
-| `jq` | core, go, python, shell | reading the payload of a hook | The hooks report `COULD NOT CHECK`; `main-commit-gate`, `pr-create-gate` and `md-link-check` block. `commit-test-gate` needs no `jq`. |
+| `jq` | core, go, python, shell | reading the payload of `pr-create-gate` and `code-language-check` | Those hooks report `COULD NOT CHECK`; `pr-create-gate` blocks. The hooks that run in the `lighthouse` binary need no `jq`. |
 | `gh` | core, python | reading and writing issues and PRs | The issue and PR skills cannot reach GitHub. `pr-create-gate` passes without counting the acceptance criteria, and says so. |
 | `superpowers` (Claude Code plugin) | core, expo | the steps the skills hand off: worktrees, brainstorming, plans, debugging | The skills cannot hand off; `/lighthouse-start-issue` loses its worktree, spec and plan steps. |
 | `codex` (optional) | core | adversarial reviews by another model family; `lighthouse usage codex` | `/lighthouse-review-spec` and `/lighthouse-review-plan` stop with `CODEX_MISSING`. |
