@@ -187,3 +187,15 @@ func TestGitLabBoardNeedsBoardConfig(t *testing.T) {
 		t.Error("SetStatus without [forge.board] = nil; want an error")
 	}
 }
+
+// An issue that no longer exists is not on the board: ok is false and the tick goes on, so one
+// deleted issue with an open run cannot fail dispatch.Prepare. AddToBoard still fails on it.
+func TestGitLabIssueItemMissingIssueIsNotOK(t *testing.T) {
+	_, f := gitlabBoardOn(t, repoconfig.Board{StatusOptions: map[string]string{"To do": "To do"}}, "To do")
+	if _, ok, err := f.IssueItem(t.Context(), 99); err != nil || ok {
+		t.Errorf("IssueItem(99) = ok %v, err %v; want ok false and no error", ok, err)
+	}
+	if _, err := f.AddToBoard(t.Context(), 99); err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Errorf("AddToBoard(99) = %v; want a not found error", err)
+	}
+}

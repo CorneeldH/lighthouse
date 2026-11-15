@@ -370,13 +370,18 @@ func (g *GitLab) workItems(ctx context.Context, b *repoconfig.Board, filter map[
 }
 
 // IssueItem returns the item of issue number. Every issue is on the GitLab board, so ok is
-// true for an issue that exists; one that does not is an error.
+// true for an issue that exists. One that does not exist (deleted, or in no such project
+// number) gives ok false and no error, so a single missing issue cannot fail a dispatch tick;
+// any other failure is an error.
 func (g *GitLab) IssueItem(ctx context.Context, number int) (item BoardItem, ok bool, err error) {
 	b, err := g.board()
 	if err != nil {
 		return BoardItem{}, false, err
 	}
 	w, err := g.workItem(ctx, gitlabIssueItemQuery, number)
+	if errors.Is(err, errIssueNotFound) {
+		return BoardItem{}, false, nil
+	}
 	if err != nil {
 		return BoardItem{}, false, err
 	}
@@ -384,21 +389,31 @@ func (g *GitLab) IssueItem(ctx context.Context, number int) (item BoardItem, ok 
 	return it, err == nil, err
 }
 
-// workItem reads the work item of issue number with query, which selects by $iid.
+// errIssueNotFound is a project that exists without an issue of that number.
+var errIssueNotFound = errors.New("not found")
+
+// workItem reads the work item of issue number with query, which selects by $iid. A missing
+// project is an error of its own; a missing issue wraps errIssueNotFound.
 func (g *GitLab) workItem(ctx context.Context, query string, number int) (gqlWorkItem, error) {
 	var data gqlWorkItems
 	if err := g.graphql(ctx, query, map[string]any{"project": g.Repo, "iid": strconv.Itoa(number)}, &data); err != nil {
 		return gqlWorkItem{}, err
 	}
-	if data.Project == nil || len(data.Project.WorkItems.Nodes) == 0 {
-		return gqlWorkItem{}, fmt.Errorf("forge: issue %s#%d not found", g.Repo, number)
+	if data.Project == nil {
+		return gqlWorkItem{}, fmt.Errorf("forge: project %s not found", g.Repo)
+	}
+	if len(data.Project.WorkItems.Nodes) == 0 {
+		return gqlWorkItem{}, fmt.Errorf("forge: issue %s#%d %w", g.Repo, number, errIssueNotFound)
 	}
 	return data.Project.WorkItems.Nodes[0], nil
 }
 
 // AddToBoard writes nothing: every issue is on the GitLab board. It returns IssueItem.
 func (g *GitLab) AddToBoard(ctx context.Context, number int) (BoardItem, error) {
-	it, _, err := g.IssueItem(ctx, number)
+	it, ok, err := g.IssueItem(ctx, number)
+	if err == nil && !ok {
+		err = fmt.Errorf("forge: issue %s#%d %w", g.Repo, number, errIssueNotFound)
+	}
 	return it, err
 }
 
