@@ -36,6 +36,7 @@
                 "pack/core/lib/headings.py",
                 "pack/core/lib/protocol.py",
                 "pack/core/skills/close-issue",
+                "pack/core/skills/upgrade",
                 "pack/core/skills/write-handoff",
                 "pack/core/skills/write-issue",
                 "pack/core/skills/write-pr",
@@ -202,6 +203,7 @@
                 "pack/core/skills/audit-worktrees",
                 "pack/core/skills/close-issue",
                 "pack/core/skills/start-issue",
+                "pack/core/skills/upgrade",
                 "pack/core/skills/write-handoff",
                 "pack/core/skills/write-issue",
                 "pack/core/workflows/unblock-dependents.yml",
@@ -357,6 +359,7 @@
                 "internal/initcmd/gatecommand.go",
                 "pack/core/instructions/AGENTS.md",
                 "pack/core/skills/fix-pr",
+                "pack/core/skills/upgrade",
                 "pack/core/skills/write-pr",
                 "pack/go/skills/go-standard",
                 "pack/python/skills/python-standard"
@@ -465,7 +468,8 @@
               "about": "The file that lists instruction files exempt from the mirror check.",
               "example": "docs/mirror-exceptions.md",
               "readers": [
-                "pack/core/scripts/check-instructions.sh"
+                "pack/core/scripts/check-instructions.sh",
+                "pack/core/skills/upgrade"
               ]
             },
             {
