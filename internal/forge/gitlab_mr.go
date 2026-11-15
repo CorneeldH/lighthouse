@@ -5,7 +5,6 @@ import (
 	"errors"
 	"net/http"
 	neturl "net/url"
-	"regexp"
 	"strconv"
 	"time"
 )
@@ -39,8 +38,8 @@ var pipelineChecks = map[string]string{
 	"waiting_for_resource": "PENDING", "scheduled": "PENDING", "manual": "PENDING",
 }
 
-// mrToPR translates a merge request to a PR by the table of the forge spec. Closes is not set
-// here: it takes one more call, see closes.
+// mrToPR translates a merge request to a PR by the table of the forge spec. Closes stays
+// false: only the board knows which issue a merge request closes (closingMergeRequests).
 func mrToPR(m glMR) PR {
 	p := PR{Number: m.IID, Draft: m.Draft, HeadSHA: m.SHA, HeadRef: m.SourceBranch, URL: m.WebURL,
 		CrossRepo: m.SourceProjectID != m.TargetProjectID}
@@ -75,25 +74,6 @@ func mrToPR(m glMR) PR {
 	return p
 }
 
-// closingRef matches what GitLab reads as a closing pattern in a description: a closing
-// keyword, then an issue reference (#7, group/project#7 or an issue URL).
-var closingRef = regexp.MustCompile(`(?i)\b(?:clos(?:e[sd]?|ing)|fix(?:e[sd]|ing)?|resolv(?:e[sd]?|ing)|implement(?:s|ed|ing)?)\b:?\s+(?:\S*#\d+|https?://\S+/issues/\d+)`)
-
-// closes reports whether the merge request closes an issue. Only closes_issues knows, and that
-// is one call per MR, so the call is made only for an MR whose description holds a closing
-// reference: GitLab derives closes_issues from the description (and commit messages) and an
-// MR without such a reference in its description is not asked. A merge request whose closing
-// reference sits only in a commit message reads as Closes false.
-func (g *GitLab) closes(ctx context.Context, m glMR) (bool, error) {
-	if !closingRef.MatchString(m.Description) {
-		return false, nil
-	}
-	issues, err := getAll[struct {
-		IID int `json:"iid"`
-	}](ctx, g, g.projectPath("/merge_requests/"+strconv.Itoa(m.IID)+"/closes_issues"), nil)
-	return len(issues) > 0, err
-}
-
 // prs reads the merge requests of the project that match q, following every page.
 func (g *GitLab) prs(ctx context.Context, q neturl.Values) ([]glMR, error) {
 	return getAll[glMR](ctx, g, g.projectPath("/merge_requests"), q)
@@ -113,6 +93,8 @@ func (g *GitLab) OpenPRs(ctx context.Context) ([]OpenPR, error) {
 }
 
 // BranchPRs lists the merge requests whose source branch is branch, open, closed and merged.
+// Closes is false on each, as on GitHub: the branch says nothing about which issue a merge
+// request closes.
 func (g *GitLab) BranchPRs(ctx context.Context, branch string) ([]PR, error) {
 	mrs, err := g.prs(ctx, neturl.Values{"source_branch": {branch}, "state": {"all"}})
 	if err != nil {
@@ -120,11 +102,7 @@ func (g *GitLab) BranchPRs(ctx context.Context, branch string) ([]PR, error) {
 	}
 	out := make([]PR, 0, len(mrs))
 	for _, m := range mrs {
-		p := mrToPR(m)
-		if p.Closes, err = g.closes(ctx, m); err != nil {
-			return nil, err
-		}
-		out = append(out, p)
+		out = append(out, mrToPR(m))
 	}
 	return out, nil
 }

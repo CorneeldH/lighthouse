@@ -47,7 +47,6 @@ type Server struct {
 	awards   map[int64][]map[string]any
 	links    map[int][]map[string]any
 	mrs      []map[string]any
-	closes   map[int][]map[string]any    // merge request iid to the issues it closes
 	closedBy map[string][]map[string]any // "project#iid" to the merge requests that close it
 	users    map[string]int64            // username to user ID
 	members  map[string]int              // username to access level
@@ -63,7 +62,7 @@ func newServer(t reporter) *Server {
 	s := &Server{
 		t: t, Project: "group/project", nextID: 1000,
 		issues: map[int]map[string]any{}, notes: map[int][]map[string]any{},
-		awards: map[int64][]map[string]any{}, links: map[int][]map[string]any{}, closedBy: map[string][]map[string]any{}, closes: map[int][]map[string]any{},
+		awards: map[int64][]map[string]any{}, links: map[int][]map[string]any{}, closedBy: map[string][]map[string]any{},
 		users: map[string]int64{}, members: map[string]int{}, status: map[int]string{},
 	}
 	mux := http.NewServeMux()
@@ -82,7 +81,6 @@ func newServer(t reporter) *Server {
 	// closed_by answers for any project: a blocker can live in another one.
 	s.route(mux, "GET "+p+"/issues/{iid}/closed_by", s.listClosedBy)
 	s.route(mux, "GET "+p+"/merge_requests", s.project(s.listMRs))
-	s.route(mux, "GET "+p+"/merge_requests/{iid}/closes_issues", s.project(s.listClosesIssues))
 	s.route(mux, "PUT "+p+"/merge_requests/{iid}/merge", s.project(s.mergeMR))
 	mux.HandleFunc("POST /api/graphql", s.graphql)
 	mux.HandleFunc("/", s.unexpected)
@@ -318,15 +316,6 @@ func (s *Server) listMRs(w http.ResponseWriter, r *http.Request) {
 	paginate(w, r, out)
 }
 
-// listClosesIssues serves the issues the merge request closes, as AddClosesIssues seeded them.
-func (s *Server) listClosesIssues(w http.ResponseWriter, r *http.Request) {
-	iid, _ := strconv.Atoi(r.PathValue("iid"))
-	s.mu.Lock()
-	out := toAny(s.closes[iid])
-	s.mu.Unlock()
-	paginate(w, r, out)
-}
-
 // mergeMR marks the merge request merged, as GitLab does for a squash merge: 409 when the sha
 // is not the head, 405 for a merge request that is not open, 406 for one with conflicts. A
 // merge without squash=true is an unexpected request: lighthouse only squash-merges. It is
@@ -448,13 +437,6 @@ func (s *Server) AddMR(m map[string]any) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.mrs = append(s.mrs, m)
-}
-
-// AddClosesIssues seeds an issue that merge request iid closes, as closes_issues lists it.
-func (s *Server) AddClosesIssues(iid int, issue map[string]any) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.closes[iid] = append(s.closes[iid], issue)
 }
 
 // AddLabel adds a label to issue iid, which must be seeded.

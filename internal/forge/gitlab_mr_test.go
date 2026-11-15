@@ -3,7 +3,6 @@ package forge_test
 import (
 	"errors"
 	"slices"
-	"strings"
 	"testing"
 	"time"
 
@@ -98,36 +97,13 @@ func TestMRToPR(t *testing.T) {
 	})
 }
 
-func TestBranchPRsClosesIssues(t *testing.T) {
-	for _, tc := range []struct {
-		name, desc string
-		closes     bool
-		wantCall   bool
-	}{
-		{"no description", "", false, false},
-		{"description without a reference", "Fixes the thing, see the discussion", false, false},
-		{"reference to an issue it closes", "Closes #7", true, true},
-		{"keyword in other case", "fixes #7", true, true},
-		{"reference that closes nothing", "Closes #99", false, true},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			srv, f := gitlabOn(t, "g/p")
-			srv.AddMR(mr(12, map[string]any{"description": tc.desc}))
-			if tc.closes {
-				srv.AddClosesIssues(12, map[string]any{"iid": 7})
-			}
-			prs, err := f.BranchPRs(t.Context(), "issue-7-x")
-			if err != nil || len(prs) != 1 {
-				t.Fatalf("BranchPRs = %+v, %v", prs, err)
-			}
-			if prs[0].Closes != tc.closes {
-				t.Errorf("Closes = %v, want %v", prs[0].Closes, tc.closes)
-			}
-			called := slices.ContainsFunc(srv.Requests(), func(r string) bool { return strings.Contains(r, "/closes_issues") })
-			if called != tc.wantCall {
-				t.Errorf("closes_issues called = %v, want %v; requests %q", called, tc.wantCall, srv.Requests())
-			}
-		})
+// A merge request on the branch may close another issue than the one of the branch, so
+// BranchPRs never says Closes, as on GitHub; the board's closingMergeRequests does.
+func TestBranchPRsNeverCloses(t *testing.T) {
+	for _, desc := range []string{"", "Closes #7", "fixes #7"} {
+		if p := branchPR(t, map[string]any{"description": desc, "state": "merged"}); p.Closes {
+			t.Errorf("description %q: Closes = true, want false", desc)
+		}
 	}
 }
 
