@@ -79,3 +79,29 @@ milestones_only = true
 wait_for_night = true
 max_forwarded = 5
 max_judgments = 15
+
+# What lighthouse took over from other projects; `lighthouse pins check` measures them upstream and
+# here. The versions are what runs today; raising one is a conscious step.
+[pins.superpowers]
+kind = "plugin"
+repo = "obra/superpowers"
+version = "7.0.2"
+
+[pins.kenn-forge]
+kind = "tool"
+repo = "kenn-io/forge"
+version = "0.5.1"
+command = "kenn-forge"
+version_args = ["version"]
+
+[pins.roborev]
+kind = "tool"
+repo = "roborev-dev/roborev"
+version = "0.69.0"
+version_args = ["version"]
+
+[pins.codex]
+kind = "tool"
+repo = "openai/codex"
+version = "0.157.0"
+tag_prefix = "rust-v"
