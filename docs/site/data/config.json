@@ -85,6 +85,7 @@
               "default": 3000,
               "about": "The word budget for the instruction files; the check fails above it.",
               "readers": [
+                "internal/checkinstr/run.go",
                 "internal/initcmd/budget.go",
                 "pack/core/scripts/check-instructions.sh",
                 "pack/core/skills/place-instruction"
@@ -463,6 +464,9 @@
               "about": "The file that lists instruction files exempt from the mirror check.",
               "example": "docs/mirror-exceptions.md",
               "readers": [
+                "internal/checkinstr/mirror.go",
+                "internal/checkinstr/run.go",
+                "internal/cli/checkinstructions.go",
                 "pack/core/scripts/check-instructions.sh"
               ]
             },
