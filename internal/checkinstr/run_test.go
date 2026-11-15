@@ -12,7 +12,7 @@ func TestExceptionsPathKeepsAbsolutePaths(t *testing.T) {
 	cases := []struct{ value, want string }{
 		{native, native},
 		{"/srv/mirror-exceptions.txt", "/srv/mirror-exceptions.txt"},
-		{"docs/mirror-exceptions.txt", "/repo/docs/mirror-exceptions.txt"},
+		{"mirror/exceptions.txt", "/repo/mirror/exceptions.txt"},
 	}
 	for _, c := range cases {
 		if got := exceptionsPath("/repo", c.value); got != c.want {
