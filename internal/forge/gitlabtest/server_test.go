@@ -65,7 +65,7 @@ func TestServerRejectsUnknownRoute(t *testing.T) {
 	}
 }
 
-func TestServerRefusesGraphQLUntilOperationsExist(t *testing.T) {
+func TestServerRefusesUnknownGraphQLOperation(t *testing.T) {
 	rec := &recorder{TB: t}
 	srv := newServer(rec)
 	defer rec.close()
@@ -79,6 +79,54 @@ func TestServerRefusesGraphQLUntilOperationsExist(t *testing.T) {
 	if resp.StatusCode != http.StatusNotFound || len(rec.errs) != 1 {
 		t.Errorf("status = %d, errors = %q; want 404 and one error", resp.StatusCode, rec.errs)
 	}
+}
+
+// postGraphQL posts body to the GraphQL endpoint and returns the response body.
+func postGraphQL(t *testing.T, srv *Server, body string) string {
+	t.Helper()
+	req, _ := http.NewRequest(http.MethodPost, strings.TrimSuffix(srv.URL(), "/v4")+"/graphql", strings.NewReader(body))
+	req.Header.Set("PRIVATE-TOKEN", "secret")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	b, _ := io.ReadAll(resp.Body)
+	return string(b)
+}
+
+func TestServerRefusesWorkItemUpdateOfUnknownID(t *testing.T) {
+	const mutation = `mutation LighthouseSetStatus($id: WorkItemID!, $status: String!) { x }`
+	for _, tc := range []struct{ name, id string }{
+		{"the iid instead of the global ID", "gid://gitlab/WorkItem/7"},
+		{"no gid", "9007"},
+		{"an issue that does not exist", "gid://gitlab/WorkItem/9008"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := &recorder{TB: t}
+			srv := newServer(rec)
+			defer rec.close()
+			srv.SetStatuses("To do", "Controller")
+			srv.AddIssue(map[string]any{"iid": 7, "id": 9007, "state": "opened"})
+			srv.SetWorkItemStatus(7, "To do")
+			body := postGraphQL(t, srv, fmt.Sprintf(`{"query":%q,"variables":{"id":%q,"status":"Controller"}}`, mutation, tc.id))
+			if len(rec.errs) != 1 || !strings.Contains(body, `"errors"`) || srv.WorkItemStatus(7) != "To do" {
+				t.Errorf("errors = %q, body %s, status %q; want one test error, a GraphQL error and To do unchanged",
+					rec.errs, body, srv.WorkItemStatus(7))
+			}
+		})
+	}
+	t.Run("the global ID of a known issue", func(t *testing.T) {
+		rec := &recorder{TB: t}
+		srv := newServer(rec)
+		defer rec.close()
+		srv.SetStatuses("To do", "Controller")
+		srv.AddIssue(map[string]any{"iid": 7, "id": 9007, "state": "opened"})
+		postGraphQL(t, srv, fmt.Sprintf(`{"query":%q,"variables":{"id":"gid://gitlab/WorkItem/9007","status":"controller"}}`, mutation))
+		if len(rec.errs) != 0 || srv.WorkItemStatus(7) != "Controller" {
+			t.Errorf("errors = %q, status %q; want none and Controller", rec.errs, srv.WorkItemStatus(7))
+		}
+	})
 }
 
 func TestServerPaginates(t *testing.T) {

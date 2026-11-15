@@ -68,16 +68,22 @@ func (g *GitLab) project() string { return neturl.PathEscape(g.Repo) }
 // projectPath is the path under the API root of sub, which starts with "/" or is empty.
 func (g *GitLab) projectPath(sub string) string { return "/projects/" + g.project() + sub }
 
-// do is the only place that makes a request. A non-nil body is sent as JSON; a non-nil into
-// receives the decoded JSON response. It returns the x-next-page header, "" on the last page.
-// The next page is a number, never a URL, so the token cannot go to another host.
+// do makes a request to path under the API root. A non-nil body is sent as JSON; a non-nil
+// into receives the decoded JSON response. It returns the x-next-page header, "" on the last
+// page. The next page is a number, never a URL, so the token cannot go to another host.
 func (g *GitLab) do(ctx context.Context, method, path string, q neturl.Values, body, into any) (string, error) {
-	if err := g.configured(); err != nil {
-		return "", err
-	}
 	url := g.BaseURL + path
 	if len(q) > 0 {
 		url += "?" + q.Encode()
+	}
+	return g.send(ctx, method, url, body, into)
+}
+
+// send is the only place that makes a request. url is under the host of BaseURL: the API root,
+// or the GraphQL endpoint next to it.
+func (g *GitLab) send(ctx context.Context, method, url string, body, into any) (string, error) {
+	if err := g.configured(); err != nil {
+		return "", err
 	}
 	var rd io.Reader
 	if body != nil {

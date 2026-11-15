@@ -125,11 +125,6 @@ func (s *Server) unexpected(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusNotFound, map[string]any{"message": "404 Not Found"})
 }
 
-// graphql refuses every operation until a task adds one, recognised by its name in query.
-func (s *Server) graphql(w http.ResponseWriter, r *http.Request) {
-	s.unexpected(w, r)
-}
-
 // project runs h only for the known project; any other is an unexpected request.
 func (s *Server) project(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -460,6 +455,23 @@ func (s *Server) AddClosesIssues(iid int, issue map[string]any) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.closes[iid] = append(s.closes[iid], issue)
+}
+
+// AddLabel adds a label to issue iid, which must be seeded.
+func (s *Server) AddLabel(iid int, label string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	it := s.issues[iid]
+	var labels []any
+	switch ls := it["labels"].(type) {
+	case []string:
+		for _, l := range ls {
+			labels = append(labels, l)
+		}
+	case []any:
+		labels = ls
+	}
+	it["labels"] = append(labels, label)
 }
 
 // SetStatuses sets the status lifecycle of the top-level group, the names a work item can have.

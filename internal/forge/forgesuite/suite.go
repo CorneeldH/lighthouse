@@ -342,7 +342,7 @@ func once[K comparable](t *testing.T, what string, got []K, want []K) {
 
 // pagination lists 101 records, one more than a page of 100, through each list method. The
 // subtests share one fixture: the parent adds the open issues 1..101 and the closed issue 500
-// that is on no board; each subtest adds only records the others do not list. BranchPRs is
+// that is on no GitHub board; each subtest adds only records the others do not list. BranchPRs is
 // left out: more than 20 PRs on a branch is an error there, not a page.
 func pagination(t *testing.T, f Fixture) {
 	ctx := t.Context()
@@ -452,9 +452,13 @@ func pagination(t *testing.T, f Fixture) {
 		if err != nil {
 			t.Fatalf("BoardItems: %v", err)
 		}
+		// Only the open items count: on GitLab every issue is on the board, so the closed
+		// issues the other subtests add within the window of closed issues are listed too.
 		var nums []int
 		for _, it := range got {
-			nums = append(nums, it.Issue)
+			if it.IssueState == "OPEN" {
+				nums = append(nums, it.Issue)
+			}
 		}
 		once(t, "BoardItems", nums, open)
 	})

@@ -9,6 +9,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/forge/forgesuite"
 	"github.com/CorneeldH/lighthouse/internal/forge/gitlabtest"
+	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 )
 
 func TestGitLabConformance(t *testing.T) { forgesuite.Run(t, newGitLabFixture) }
@@ -19,13 +20,7 @@ const conformance = "TestGitLabConformance"
 // pending maps a suite case, or one subtest of Pagination, to the task that implements the
 // methods it calls. Such a case skips until then, so no case runs on a stub. Each task removes
 // its names.
-var pending = map[string]int{
-	"BoardStatusAndPriority":  5,
-	"IssueItem":               5,
-	"AddToBoardThenSetStatus": 5,
-	"SetStatusUnknownName":    5,
-	"Pagination/BoardItems":   5,
-}
+var pending = map[string]int{}
 
 // skipIfPending skips t when its name, or the case it belongs to, is in pending.
 func skipIfPending(t *testing.T) {
@@ -54,12 +49,25 @@ func newGitLabFixture(t *testing.T) forgesuite.Fixture {
 	srv := gitlabtest.New(t)
 	srv.Login = "lh-bot"
 	srv.Project = "g/sub/p"
-	f, err := forge.Open(forge.Config{Kind: "gitlab", Repo: srv.Project, Token: "secret-token", BaseURL: srv.URL()})
+	srv.SetStatuses(gitlabLifecycle...)
+	board := gitlabBoard
+	f, err := forge.Open(forge.Config{Kind: "gitlab", Repo: srv.Project, Token: "secret-token", BaseURL: srv.URL(), Board: &board})
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
 	return &gitlabFixture{srv: srv, f: f}
 }
+
+// gitlabBoard is the [forge.board] of the GitLab fixture: lighthouse names to GitLab status
+// names and priority labels.
+var gitlabBoard = repoconfig.Board{
+	StatusOptions:   map[string]string{"To do": "To do", "Controller": "Controller", "On hold": "On hold"},
+	PriorityOptions: map[string]string{"P1": "priority::P1", "P2": "priority::P2"},
+}
+
+// gitlabLifecycle is the status lifecycle of the fixture's top-level group: GitLab's defaults
+// plus the two lighthouse adds.
+var gitlabLifecycle = []string{"To do", "In progress", "Done", "Won't do", "Duplicate", "On hold", "Controller"}
 
 func (g *gitlabFixture) Forge() forge.Forge { return g.f }
 func (g *gitlabFixture) Repo() string       { return g.srv.Project }
@@ -162,22 +170,45 @@ func (g *gitlabFixture) AddBranchPR(_ *testing.T, branch string, pr forge.PR) {
 	g.srv.AddMR(m)
 }
 
-func (g *gitlabFixture) PutOnBoard(t *testing.T, _ int, _, _ string) {
+// PutOnBoard gives issue number the GitLab status of status and the label of priority. Every
+// issue is on the GitLab board; "" leaves the status or label unset.
+func (g *gitlabFixture) PutOnBoard(t *testing.T, number int, status, priority string) {
 	t.Helper()
-	skipIfPending(t)
-	t.Fatal("gitlabFixture.PutOnBoard: not written yet")
+	if status != "" {
+		name, ok := gitlabBoard.StatusOptions[status]
+		if !ok {
+			t.Fatalf("gitlabFixture: status %q is not in the board config", status)
+		}
+		g.srv.SetWorkItemStatus(number, name)
+	}
+	if priority != "" {
+		label, ok := gitlabBoard.PriorityOptions[priority]
+		if !ok {
+			t.Fatalf("gitlabFixture: priority %q is not in the board config", priority)
+		}
+		g.srv.AddLabel(number, label)
+	}
 }
 
-func (g *gitlabFixture) PutOnBoardUnmapped(t *testing.T, _ int) string {
-	t.Helper()
-	skipIfPending(t)
-	t.Fatal("gitlabFixture.PutOnBoardUnmapped: not written yet")
-	return ""
+// PutOnBoardUnmapped gives issue number a lifecycle status the board config does not map.
+func (g *gitlabFixture) PutOnBoardUnmapped(_ *testing.T, number int) string {
+	g.srv.SetWorkItemStatus(number, "Won't do")
+	return "Won't do"
 }
 
-func (g *gitlabFixture) StatusOf(t *testing.T, _ int) string {
+// StatusOf names the GitLab status of issue number by its lighthouse name, case-insensitively
+// as GitLab matches it; "" without a status.
+func (g *gitlabFixture) StatusOf(t *testing.T, number int) string {
 	t.Helper()
-	skipIfPending(t)
-	t.Fatal("gitlabFixture.StatusOf: not written yet")
+	raw := g.srv.WorkItemStatus(number)
+	if raw == "" {
+		return ""
+	}
+	for name, gl := range gitlabBoard.StatusOptions {
+		if strings.EqualFold(gl, raw) {
+			return name
+		}
+	}
+	t.Fatalf("gitlabFixture: status %q of #%d is not in the board config", raw, number)
 	return ""
 }
