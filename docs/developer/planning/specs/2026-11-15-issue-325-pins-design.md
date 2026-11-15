@@ -336,23 +336,38 @@ De grenzen zelf zijn aan de bouwer.
 PR van de lane draagt een onzichtbare marker in de body met de sleutel, het soort item en de
 doelversie (bij skill en bestand: de upstream-commit), bijvoorbeeld
 `<!-- lighthouse-pin: codex behind 0.169.0 -->` (vorm aan de bouwer). Soorten: `pr` (schone
-merge), `conflict` (issue), `behind` (issue, plugin of tool), `error` (issue). Per sleutel staat
-hoogstens één lane-item open. De lane zoekt alle items van die sleutel, open en gesloten, issues
-en PR's, en beslist:
+merge), `conflict` (issue), `behind` (issue, plugin of tool), `error` (issue). De lane zoekt
+alle items van die sleutel, open en gesloten, issues en PR's.
 
-| Uitkomst nu | Gevonden | Actie |
+*(Eigen keuze na spec-review, r2-f1 en r2-f2.)* Twee sporen per sleutel, elk met hoogstens één
+open item: het **achterstandsspoor** (`pr`, `conflict`, `behind`) en het **foutspoor**
+(`error`). Een fout raakt het achterstandsspoor niet: een tijdelijke storing sluit geen open
+`behind`-issue of draft-PR.
+
+Sluit de lane zelf een item, dan zet hij in de sluitcomment een tweede marker
+(`<!-- lighthouse-pin-closed-by-lane -->`, vorm aan de bouwer). Een item dat de lane sloot,
+telt bij het zoeken niet mee. Alleen een item dat een mens sloot, betekent "deze versie niet".
+
+Achterstandsspoor, bij uitkomst `pr`, `conflict` of `behind`:
+
+| Gevonden | Actie |
+|---|---|
+| open item, zelfde soort, zelfde doelversie | niets |
+| open item, zelfde soort, oudere doelversie | bijwerken (body, en bij `pr` de branch) |
+| open item, ander soort (`pr` ↔ `conflict`) | het oude sluiten met de lane-marker, het nieuwe aanmaken |
+| geen open item; een door een mens gesloten item met dezelfde doelversie (elk soort) | niets |
+| anders | aanmaken |
+
+Bij uitkomst `current` blijft een open item in dit spoor staan: de mens sluit het met de PR die
+de pin ophoogt. Bij uitkomst `error` verandert er in dit spoor niets.
+
+Foutspoor:
+
+| Uitkomst | Gevonden | Actie |
 |---|---|---|
-| zelfde soort, zelfde doelversie | open | niets |
-| zelfde soort, zelfde doelversie | alleen gesloten | niets: sluiten zonder ophogen betekent "deze versie niet" |
-| zelfde soort, nieuwere doelversie | open | bijwerken (body, en bij `pr` de branch) |
-| ander soort (`pr` ↔ `conflict`, of `behind`/`pr`/`conflict` na `error`) | open | het oude item sluiten met een comment, het nieuwe aanmaken |
 | `error` | open `error` | body bijwerken |
 | `error` | geen open `error` | een nieuw `error`-issue, ook als er een gesloten is: een fout blijft luid |
-| `current` | open `error` | sluiten met een comment |
-| `current` | open `pr`, `conflict` of `behind` | laten staan: de mens sluit het met de PR die de pin ophoogt |
-| iets anders | geen | aanmaken |
-
-Een gesloten `pr` telt net zo als een gesloten issue: dezelfde doelversie maakt geen nieuwe PR.
+| meetbaar (`current`, `behind`, `pr`, `conflict`) | open `error` | sluiten met de lane-marker |
 
 **Nooit automatisch mergen.** Draft, geen `Closes`, geen board-item en geen milestone: de
 dispatcher merget alleen de eigen PR van een run (`mergeReady`), en `milestones_only = true` laat
@@ -394,8 +409,10 @@ Elk anti-doel heeft een test die faalt als het gedrag breekt:
   een nieuw issue. Hetzelfde voor een gesloten lane-PR.
 - Een `error`-issue wordt gesloten zodra de pin weer meetbaar is; breekt de pin later opnieuw,
   dan komt er een nieuw `error`-issue.
-- Elke rij van de tabel in *Geen dubbel werk* heeft een test, de overgangen `pr` ↔ `conflict`
-  inbegrepen: het oude item gaat dicht, het nieuwe komt.
+- Elke rij van beide tabellen in *Geen dubbel werk* heeft een test, de overgangen `pr` ↔
+  `conflict` inbegrepen: het oude item gaat dicht, het nieuwe komt. Ook `pr` X → `conflict` X →
+  `pr` X geeft weer een PR, omdat de lane de eerste PR zelf sloot. En een `error` naast een open
+  `behind`-issue laat dat issue open.
 - Een schone merge geeft een draft-PR zonder `Closes`, met de opgehoogde pin, de bijgewerkte
   `SOURCES.toml` en, onder `pack/`, de dogfood-kopieën; een conflict geeft een issue en geen
   PR; een merge die `.github/workflows/` raakt, geeft een issue.
@@ -436,7 +453,8 @@ geen test praat met GitHub.
 - `ahead` als vierde status, alleen in de lokale meting.
 - De lane-PR is een draft; een `error` wordt een issue, niet alleen een rode run.
 - Een verdwenen upstream-pad is `error`, geen `behind`.
-- Eén lane-item per pin per doelversie; sluiten zonder ophogen = "deze versie niet".
+- Eén lane-item per pin per doelversie; sluiten zonder ophogen door een mens = "deze versie
+  niet".
 - De lane sluit zijn eigen `error`-issue zodra de pin weer meetbaar is.
 - Lane-items krijgen geen milestone, zodat triage en controller ze laten liggen.
 - De App achter `[ci]` blijft de schrijver; een ontbrekend recht wordt een instelling van die
