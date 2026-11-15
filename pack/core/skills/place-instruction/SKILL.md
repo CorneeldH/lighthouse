@@ -19,16 +19,17 @@ Not here: the craft of writing a skill — this skill delegates that to
 `superpowers:writing-skills`. And not the guarding afterwards: that is
 `.lighthouse/scripts/check-instructions.sh`.
 
-## Step 1 — External first. Write nothing until this is done.
+## Step 1 — Look outside first. Hold off on writing until you have.
 
-The cheapest skill is someone else's. Before you write anything, look:
+A skill that already exists elsewhere costs the least. Search before drafting a single line:
 
 ```bash
 npx skills find "<topic>"
-npx skills add -l <owner>/<repo>     # show the content, install nothing
+npx skills add -l <owner>/<repo>     # list what a repo holds, install nothing
 ```
 
-Fixed places: `anthropics/skills`, `obra/superpowers`, the official marketplace.
+Search these sources every time, in the same order: `anthropics/skills`, `obra/superpowers`
+and the official marketplace.
 
 If you find something usable: **vet the licence before adoption.** Copying is the one act that
 makes copyleft actually apply, also for a hosted product. Permissive (MIT/Apache-2.0/BSD/ISC/HPND)
@@ -44,38 +45,37 @@ commit the copy **descends from** — not today's HEAD. With `origin: external` 
 without a leading `/`. Without a pin, falling behind is invisible and an update is no reviewable
 diff.
 
-## Step 2 — The provenance gate. No source, no instruction.
+## Step 2 — The provenance gate. Without a source there is no instruction.
 
-**The question:** where does the content of this instruction come from?
+**Ask this first:** what is the content of this instruction based on?
 
-Valid sources:
+Sources that count:
 
-- a session in which it actually went wrong, with the user's correction — by far the most common
-  case
-- a measured defect: a red CI run, a hook that fired, an outage, an OOM
-- git history of fixes, or a closed issue
-- upstream or vendor documentation (the Agent Skills spec, systemd, Anthropic, a library)
-- a spec or ADR in the repo
-- the user telling it in this conversation
+- a session where something went wrong and the user corrected it — by far the usual case
+- a defect someone measured: a failed CI run, a hook that triggered, an outage, an out-of-memory kill
+- the history of earlier fixes in git, or an issue that was closed
+- documentation from an upstream project or vendor (the Agent Skills spec, systemd, Anthropic, a library)
+- a spec or ADR kept in the repo
+- something the user states in this very conversation
 
-**The only case that blocks: general model knowledge.** No source does not mean "then we just
-write it down" — that yields text that *sounds* like knowledge ("handle errors carefully",
-"document your assumptions") and costs context in every session without ever changing behaviour.
-Then write nothing, and say this:
+**One case stops you: the model's own general knowledge.** Having no source is not a licence to
+write it down anyway. That produces sentences that merely *sound* informed ("handle errors
+carefully", "document your assumptions"), take up context in every session and never alter what
+the agent does. Write nothing then, and answer along these lines:
 
-> There is no material yet to base this instruction on. Do it once for real — I note your
-> corrections — and after that we distil the norm from it. Otherwise you get an instruction that
-> sounds like knowledge but is not.
+> I have nothing concrete yet to ground this instruction in. Carry out the task once for real,
+> I will take note of what you correct, and then we extract the norm from that. If we skip it,
+> the result reads like knowledge without being any.
 
-**No ceremony.** If the source is evident — the user corrected you two messages ago — one line
-that names it is enough. The gate stops *only* at *no* source. A gate that starts an
-interrogation at every trivial `CLAUDE.md` line becomes the first step everyone skips.
+**Keep it light.** When the origin is obvious (the user corrected you a moment ago), one line
+that names it suffices. The gate halts only when there is *no* source at all. If it grilled
+people over every small `CLAUDE.md` line, it would be the step everybody learns to skip.
 
-This gate holds for **all five layers** of step 3, not only for skills. It stands before the
-choice of layer because without a source you choose no layer: then you write nothing. If it
-becomes a skill, the answer lands in the `source` field (step 5); for a `CLAUDE.md` line or a
-rule it lands in the commit message or the issue — `CLAUDE.md` has no frontmatter per line and a
-rule carries one `paths:` block for a whole topic.
+The gate covers **all five layers** of step 3, skills included but not alone. It comes ahead of
+the choice of layer, since with no source there is no layer to pick and nothing gets written. A
+skill records the answer in its `source` field (step 5). A `CLAUDE.md` line or a rule records it
+in the commit message or the issue instead: `CLAUDE.md` has no frontmatter per line, and a rule
+has a single `paths:` block that spans its whole topic.
 
 ## Step 3 — Choose the layer
 
@@ -153,19 +153,19 @@ gets lost:
 | `upstream-path` | path in the upstream repo, without a leading `/` | Belongs to `upstream`; required at `external` |
 | `source` | `"#<nr>"` \| commit SHA \| path in the repo \| public URL \| `self` | The answer to the gate of step 2. Without the field that answer evaporates as soon as the conversation is over, and three months on nobody can tell whether a norm rests on anything |
 
-`source` has five forms, and the difference is in who can reach it:
+`source` takes five forms; what separates them is who is able to look it up:
 
-| Form | Example | Consequence |
+| Form | Example | What follows from it |
 |---|---|---|
-| issue or PR | `source: "#42"` | the discussion is the source and stays readable; quote it, otherwise YAML reads `#` as a comment and the value is empty |
-| commit | `source: 68af7e22` | a measured fix; `git show` is the evidence |
-| path in the repo | `source: docs/specs/<spec>.md` | when that file changes, the skill should move along — and the path is machine-checkable |
-| public URL | `source: https://agentskills.io/specification` | anyone can check it; the skill may summarise and refer |
-| `self` | `source: self` | the user told it, recorded nowhere else |
+| issue or PR | `source: "#42"` | the thread itself is the source and remains readable; put the value in quotes, or YAML treats `#` as a comment and the value comes out empty |
+| commit | `source: 68af7e22` | a fix backed by measurement; `git show` gives the proof |
+| path in the repo | `source: docs/specs/<spec>.md` | the skill has to follow when that file changes, and a tool can verify the path exists |
+| public URL | `source: https://agentskills.io/specification` | anybody can verify it, so the skill can condense it and point to it |
+| `self` | `source: self` | the user said so and it is written down nowhere else |
 
-`self` is the escape and therefore carries the heaviest demand: there is **no original** to fall
-back on, so the skill must carry the substance fully itself. Whoever uses it without writing out
-that substance leaves a reference that points nowhere.
+`self` is the fallback, which is why it asks the most: nothing **original** exists to turn to,
+so the skill has to contain the whole substance on its own. Using `self` without spelling that
+substance out leaves a pointer to nothing.
 
 **Absence is no error** — existing skills do not get the fields after the fact.
 
