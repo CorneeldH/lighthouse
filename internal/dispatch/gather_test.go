@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/forge"
+	"github.com/CorneeldH/lighthouse/internal/forge/gitlabtest"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/runs"
@@ -594,5 +595,58 @@ func TestCompleteSkipsPRCommentsOnGitLab(t *testing.T) {
 	f.kind = "github"
 	if _, err := Complete(context.Background(), f, pre, NewTrust(f, defaultAllowed), "lh-bot", &bytes.Buffer{}, time.Now()); err == nil {
 		t.Error("Complete on github skipped the PR comments, want them read")
+	}
+}
+
+// gitlabPrepare opens a GitLab client on a fake of project g/p, whose lifecycle holds the
+// statuses of the board, and returns it with the repo that carries that board.
+func gitlabPrepare(t *testing.T) (*gitlabtest.Server, forge.Forge, repoconfig.Repo) {
+	t.Helper()
+	srv := gitlabtest.New(t)
+	srv.Login = "lh-bot"
+	srv.Project = "g/p"
+	srv.SetStatuses("To do", "Done")
+	board := &repoconfig.Board{StatusOptions: map[string]string{"Controller": "To do", "Done": "Done"}}
+	f, err := forge.Open(forge.Config{Kind: "gitlab", Repo: srv.Project, Token: "secret-token", BaseURL: srv.URL(), Board: board})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	return srv, f, repoconfig.Repo{Slug: "g/p", Kind: "gitlab", Board: board}
+}
+
+func gitlabIssue(n int, state string, updated time.Time) map[string]any {
+	return map[string]any{"iid": n, "id": 9000 + n, "title": "Issue", "state": state,
+		"labels": []string{}, "updated_at": updated.UTC().Format(time.RFC3339)}
+}
+
+// A closed issue whose last update is older than the closed window of BoardItems is not in
+// its list. With an open run it must still reach the tick, as CLOSED, so the run closes.
+func TestPrepareClosesRunOutsideBoardWindow(t *testing.T) {
+	srv, f, repo := gitlabPrepare(t)
+	srv.AddIssue(gitlabIssue(4, "closed", time.Now().Add(-60*24*time.Hour)))
+	srv.AddIssue(gitlabIssue(5, "closed", time.Now().Add(-60*24*time.Hour))) // no open run: stays out
+	open := []runs.OpenRun{{ID: 15, Issue: 4}}
+	pre, err := Prepare(context.Background(), f, repo, open, nil)
+	if err != nil {
+		t.Fatalf("Prepare: %v", err)
+	}
+	if len(pre.Items) != 1 || pre.Items[0].Issue != 4 || pre.Items[0].State != "CLOSED" {
+		t.Fatalf("Items = %+v, want only issue 4, CLOSED", pre.Items)
+	}
+	if _, ok := pre.Statuses[4]; !ok {
+		t.Errorf("Statuses = %v, want issue 4 in it", pre.Statuses)
+	}
+}
+
+// An open run on an issue that no longer exists must not fail the tick of the whole repo.
+func TestPrepareSurvivesRunOnMissingIssue(t *testing.T) {
+	srv, f, repo := gitlabPrepare(t)
+	srv.AddIssue(gitlabIssue(6, "opened", time.Now()))
+	pre, err := Prepare(context.Background(), f, repo, []runs.OpenRun{{ID: 15, Issue: 99}, {ID: 16, Issue: 6}}, nil)
+	if err != nil {
+		t.Fatalf("Prepare: %v", err)
+	}
+	if len(pre.Items) != 1 || pre.Items[0].Issue != 6 {
+		t.Errorf("Items = %+v, want only issue 6", pre.Items)
 	}
 }

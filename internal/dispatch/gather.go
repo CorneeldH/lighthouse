@@ -67,6 +67,29 @@ func Prepare(ctx context.Context, f forge.Forge, repo repoconfig.Repo, open []ru
 	if err != nil {
 		return Pre{}, err
 	}
+	// An open run is closed only through its board item. A forge whose BoardItems lists a window
+	// (GitLab: open issues and recently closed ones) can leave out the issue of an open run, so
+	// that issue is read on its own: one IssueItem call per open run outside the list, none on
+	// GitHub, where every issue of a run is on the board. An issue that does not exist stays out.
+	onBoard := make(map[int]bool, len(board))
+	for _, bi := range board {
+		if bi.Repo == repo.Slug {
+			onBoard[bi.Issue] = true
+		}
+	}
+	for _, r := range open {
+		if r.Issue <= 0 || onBoard[r.Issue] {
+			continue
+		}
+		bi, ok, err := f.IssueItem(ctx, r.Issue)
+		if err != nil {
+			return Pre{}, err
+		}
+		if ok {
+			board = append(board, bi)
+			onBoard[r.Issue] = true
+		}
+	}
 	// The status of every board item, before the dispatch filter: a blocker is usually not a
 	// dispatch item.
 	type ref struct {
