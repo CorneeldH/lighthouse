@@ -193,16 +193,51 @@ risk, with no code to guard it; when the budget runs out both endpoints answer 5
 existing `forgeError`.
 
 Give it a token: `GH_TOKEN` (else `GITHUB_TOKEN`) in the environment, or `GITLAB_TOKEN` for a
-GitLab repository (GitLab repositories are supported from #259). Een GitLab-repo heeft in `[forge.board]` alleen
-`status_options` en `priority_options`; `project_number`, `project_id`, `status_field_id` en
-`priority_field_id` zijn er niet toegestaan. Beperking: de Python-scripts van `pack/core`
-(`lib/config.py` is bevroren) eisen die sleutels voor elk board, dus ze falen op zo'n repo tot de
-follow-up klaar is. `[forge] token_env` in a repository's `lighthouse.toml` names another variable
+GitLab repository. `[forge] token_env` in a repository's `lighthouse.toml` names another variable
 instead. A repository without a token is skipped for questions and returned issues, with a line on
 stderr, but `serve` still shows its runs. `--forge-url` (`LIGHTHOUSE_FORGE_URL`) sets the API base
 URL for GitHub repositories only; the GitHub token is never sent to a GitLab host. Create a fine-grained
 personal access token for those repositories with only the *Issues: read* permission. The
 server only reads. With the Controller filter described below it also needs the `project` scope.
+
+### A GitLab repository
+
+Set `kind = "gitlab"` under `[forge]` in the repository's `lighthouse.toml`, with `repo` as
+`group/name` or `group/subgroup/name`. A self-hosted GitLab adds `host = "gitlab.example.com"`
+(host name only; without `host` it is `gitlab.com`). The client speaks the REST API v4 and is
+tested against GitLab 19.4. The token (`GITLAB_TOKEN`, or the `token_env` variable) needs the
+`api` scope to write, `read_api` to only read.
+
+GitLab keeps the status of an issue in its built-in issue status (a work item widget), not in a
+label. Add the statuses *On hold* and *Controller* to the top group of the lifecycle, under
+*Settings → Work items → Statuses*. A status the lifecycle lacks stops the write with an error
+that names the status and this place. Names are matched case-insensitively.
+
+The `[forge.board]` of a GitLab repository has two forms only:
+
+```toml
+[forge]
+kind = "gitlab"
+repo = "group/sub/project"
+host = "gitlab.example.com"
+
+[forge.board.status_options]
+"To do" = "To do"       # lighthouse name = GitLab status name
+
+[forge.board.priority_options]
+"P1" = "priority::P1"   # lighthouse name = scoped label
+```
+
+`project_number`, `project_id`, `status_field_id` and `priority_field_id` are GitHub Projects
+keys and are refused for GitLab. Limits of this first GitLab version:
+
+- The Python scripts of `pack/core` (`lib/config.py` is frozen) require those GitHub keys for
+  every `[forge.board]`, so they fail on a GitLab repository that has one. The board scripts such
+  as `board_start.py` stay GitHub-only; a follow-up issue covers the Python side.
+- The client refuses a redirect to another scheme or host, also a same-host `http` to `https`
+  one, so the token is never sent anywhere else. Give `host` the address that answers directly.
+- roborev notes on a GitLab merge request are only read once #260 lands.
+- `--forge-url` does not apply to GitLab; use `host`.
 
 Under systemd, put both in `~/.config/lighthouse/forge.env`, which the unit loads through
 `EnvironmentFile=`. The token is a secret, so keep the file private:
