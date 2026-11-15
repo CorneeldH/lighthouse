@@ -2,6 +2,7 @@ package forge
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -10,6 +11,10 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/protocol"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 )
+
+// ErrIssueNotFound means an issue does not exist: IssueItem wraps it, on every forge. It is
+// not "the issue is not on the board", which is IssueItem's ok=false.
+var ErrIssueNotFound = errors.New("issue not found")
 
 // Forge is one repository on a forge: its issues, comments, acknowledgements, pull requests
 // and board. A status is an option name of [forge.board] status_options, never an ID.

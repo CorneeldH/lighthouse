@@ -20,10 +20,6 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 )
 
-// ErrIssueNotFound means an issue does not exist: IssueItem wraps it, on every forge. It is
-// not "the issue is not on the board", which is IssueItem's ok=false.
-var ErrIssueNotFound = errors.New("issue not found")
-
 // ErrNotConfigured means the client has no repo or no token, so no request was made.
 var ErrNotConfigured = errors.New("forge not configured")
 

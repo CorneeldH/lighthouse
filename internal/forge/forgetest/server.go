@@ -440,7 +440,11 @@ func (s *Server) graphql(w http.ResponseWriter, r *http.Request) {
 			"nodes":    append([]map[string]any{}, nodes...),
 		}}}
 	case "IssueItems":
-		data = s.issueItems(req.Query, req.Variables)
+		var errs []any
+		if data, errs = s.issueItems(req.Query, req.Variables); errs != nil {
+			writeJSON(w, http.StatusOK, map[string]any{"data": data, "errors": errs})
+			return
+		}
 	case "AddToBoard":
 		data = s.addToBoard(req.Variables)
 	case "SetStatus":
@@ -487,8 +491,10 @@ func (s *Server) board(vars map[string]any) any {
 
 // issueItems serves the BoardNodes whose content.number is $number, each with project { id }
 // from ProjectID. The content is left out, as the real query does not select it, and so is
-// isArchived when the query does not select it.
-func (s *Server) issueItems(query string, vars map[string]any) any {
+// isArchived when the query does not select it. An issue with neither an Issues entry nor a
+// BoardNodes item does not exist: it answers as GitHub does, issue null plus a NOT_FOUND error
+// on the path repository.issue.
+func (s *Server) issueItems(query string, vars map[string]any) (data any, errs []any) {
 	number, _ := vars["number"].(float64)
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -507,12 +513,17 @@ func (s *Server) issueItems(query string, vars map[string]any) any {
 		nodes = append(nodes, cp)
 	}
 	if _, known := s.Issues[int(number)]; !known && len(nodes) == 0 {
-		return map[string]any{"repository": map[string]any{"issue": nil}} // an issue that does not exist
+		return map[string]any{"repository": map[string]any{"issue": nil}}, []any{map[string]any{
+			"type":      "NOT_FOUND",
+			"path":      []any{"repository", "issue"},
+			"locations": []any{map[string]any{"line": 3, "column": 5}},
+			"message":   fmt.Sprintf("Could not resolve to an Issue with the number of %d.", int(number)),
+		}}
 	}
 	return map[string]any{"repository": map[string]any{"issue": map[string]any{"projectItems": map[string]any{
 		"pageInfo": map[string]any{"hasNextPage": false},
 		"nodes":    nodes,
-	}}}}
+	}}}}, nil
 }
 
 // addToBoard appends a BoardNodes item "item-<content>" for the Issues item whose node_id is

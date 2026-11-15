@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/forge"
+	"github.com/CorneeldH/lighthouse/internal/forge/forgetest"
 	"github.com/CorneeldH/lighthouse/internal/forge/gitlabtest"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
@@ -666,5 +667,45 @@ func TestPrepareIssueItemErrors(t *testing.T) {
 	f = &issueItemFake{err: boom}
 	if _, err := Prepare(context.Background(), f, testRepo, open, nil); !errors.Is(err, boom) {
 		t.Errorf("Prepare with a failing IssueItem = %v; want the error", err)
+	}
+}
+
+// On GitHub every issue of a run is on the board, so IssueItem only meets an issue that left
+// it. A deleted or transferred issue (GitHub answers issue null plus NOT_FOUND) and an archived
+// item (BoardItems lists none) both stay out, and the tick goes on, as before IssueItem existed.
+func TestPrepareGitHubIssueOffBoard(t *testing.T) {
+	cases := []struct {
+		name  string
+		setup func(srv *forgetest.Server)
+	}{
+		{"deleted issue", func(*forgetest.Server) {}},
+		{"archived item", func(srv *forgetest.Server) {
+			archived := node("I7", map[string]string{"F_status": "opt-ctrl"}, issue("o/r", 7, nil))
+			archived["isArchived"] = true
+			srv.BoardNodes = append(srv.BoardNodes, archived)
+			srv.Issues = map[int]map[string]any{7: {"number": 7}}
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv, c := client(t)
+			srv.ProjectID = testRepo.Board.ProjectID
+			srv.BoardNodes = []map[string]any{node("I2", map[string]string{"F_status": "opt-ctrl"}, issue("o/r", 2, nil))}
+			tc.setup(srv)
+			open := []runs.OpenRun{{ID: 15, Issue: 7}}
+			pre, err := Prepare(context.Background(), c, testRepo, open, nil)
+			if err != nil {
+				t.Fatalf("Prepare: %v; want the tick to go on", err)
+			}
+			if len(pre.Items) != 1 || pre.Items[0].Issue != 2 {
+				t.Errorf("Items = %+v, want only issue 2", pre.Items)
+			}
+			if _, ok := pre.Statuses[7]; ok {
+				t.Errorf("Statuses = %v, want no issue 7", pre.Statuses)
+			}
+			if n := srv.Count("IssueItems"); n != 1 {
+				t.Errorf("Count(IssueItems) = %d, want 1", n)
+			}
+		})
 	}
 }
