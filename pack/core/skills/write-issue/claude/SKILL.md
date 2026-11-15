@@ -1,6 +1,8 @@
 ---
 name: lighthouse-write-issue
 description: 'Writing and maintaining GitHub issues and milestones of this repo. Use when creating new issues, editing issue titles or bodies, setting a block between issues, or cleaning up issue metadata. NOTE — not for a PR body: that follows .github/pull_request_template.md and lighthouse-write-pr.'
+metadata:
+  origin: own
 ---
 
 # Writing and maintaining GitHub issues

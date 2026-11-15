@@ -1,6 +1,8 @@
 ---
 name: lighthouse-python-standard
 description: Use when writing or changing Python in this repository's source or test directories — modules, pytest tests, and the ruff/ty checks on them — and when planning a refactor, merging modules or choosing a test strategy, before a file is open. Carries a KPI table whose every row is a command that runs in this repository, plus the measurement rules (a ty zero without its extras is not a zero). NOT for shell that guards something (use lighthouse-shell-standard if present), workflow YAML, or files outside the repository.
+metadata:
+  origin: own
 ---
 
 # Writing Python in this repository
