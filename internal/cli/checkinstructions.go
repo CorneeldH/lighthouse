@@ -2,6 +2,7 @@ package cli
 
 import (
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 
@@ -50,5 +51,10 @@ func personalSkills() string {
 	if dir := os.Getenv("CHECK_INSTRUCTIONS_PERSONAL"); dir != "" {
 		return dir
 	}
-	return os.Getenv("HOME") + "/.claude/skills"
+	home, err := os.UserHomeDir()
+	if err != nil {
+		// No home: the literal text is no directory, so the personal checks say SKIPPED.
+		return "$HOME/.claude/skills"
+	}
+	return filepath.Join(home, ".claude", "skills")
 }

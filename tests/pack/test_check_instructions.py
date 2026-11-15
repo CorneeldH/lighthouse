@@ -347,6 +347,9 @@ def test_unreadable_skill_dir_is_not_measured_and_not_equal(tmp_path):
             directory.chmod(0o755)
     assert "SKIPPED  mirror-content" in result.stdout, result.stdout
     assert "ok    mirror-content" not in result.stdout
+    assert result.returncode == 0, result.stdout + result.stderr
+    # find named the directory it could not read; so does the command.
+    assert str(dirs[0]) in result.stderr, result.stderr
 
 
 # --- overlap without a bounding clause --------------------------------------
@@ -1321,3 +1324,21 @@ def test_hook_names_without_settings_skips(tmp_path):
     result = _run(tmp_path)
     assert result.returncode == 0, result.stdout
     assert "SKIPPED  hook-names" in result.stdout
+
+
+def test_without_git_and_wc_both_checks_are_skipped(tmp_path):
+    """With an empty PATH check 11 cannot run `git diff` and check 10 cannot run `wc`: both
+    say SKIPPED, loudly, and the run still exits 0."""
+    claude, agents, _ = _tree(tmp_path)
+    _skill(claude, "paia-dicht")
+    _skill(agents, "paia-dicht")
+    (tmp_path / "repo" / "CLAUDE.md").write_text("een twee drie\n", encoding="utf-8")
+    empty = tmp_path / "empty-path"
+    empty.mkdir()
+    result = _run(tmp_path, toml=MIRROR_TOML, extra_env={"PATH": str(empty)})
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (
+        "SKIPPED  mirror-content: diff could not compare a skill pair, so the content "
+        "was not measured\n"
+    ) in result.stdout, result.stdout
+    assert "SKIPPED  size: 'wc' is missing on this machine" in result.stdout, result.stdout

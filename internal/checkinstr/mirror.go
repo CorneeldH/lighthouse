@@ -3,6 +3,7 @@ package checkinstr
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -10,6 +11,11 @@ import (
 	"sort"
 	"strings"
 )
+
+// reportWalkError names the directory that could not be read on stderr, as find did.
+func reportWalkError(errOut io.Writer, err error) {
+	_, _ = fmt.Fprintf(errOut, "check-instructions: %v\n", err)
+}
 
 // errCompare is "git could not compare a pair": could not measure, never "no difference".
 var errCompare = errors.New("diff could not compare a skill pair")
@@ -55,10 +61,12 @@ func mirrorDifferences(rp *repo, errOut io.Writer) (string, error) {
 		// difference".
 		leftFiles, err := files(left)
 		if err != nil {
+			reportWalkError(errOut, err)
 			return b.String(), errCompare
 		}
 		rightFiles, err := files(right)
 		if err != nil {
+			reportWalkError(errOut, err)
 			return b.String(), errCompare
 		}
 		for _, rel := range union(leftFiles, rightFiles) {

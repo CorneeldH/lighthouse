@@ -116,3 +116,34 @@ func TestDisplayIgnoresExternalDiff(t *testing.T) {
 		t.Errorf("display:\n got: %q\nwant: %q", got, want)
 	}
 }
+
+// Red when an unreadable skill directory is no longer named on stderr: bash let find's
+// "Permission denied" through, and without it the SKIPPED line gives no clue where to look.
+func TestMirrorDifferencesNamesUnreadableDir(t *testing.T) {
+	root := t.TempDir()
+	for _, dir := range []string{root + "/.claude/skills/demo", root + "/.agents/skills/demo"} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(dir+"/SKILL.md", []byte("x\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	closed := root + "/.claude/skills/demo"
+	if err := os.Chmod(closed, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(closed, 0o755) })
+	if _, err := os.ReadDir(closed); err == nil {
+		t.Skip("directory is readable (running as root)")
+	}
+	rp := &repo{root: root, claudeSkills: root + "/.claude/skills", agentsSkills: root + "/.agents/skills"}
+	var errOut bytes.Buffer
+	out, err := mirrorDifferences(rp, &errOut)
+	if err != errCompare || out != "" {
+		t.Errorf("got (%q, %v), want (\"\", errCompare)", out, err)
+	}
+	if !strings.Contains(errOut.String(), closed) {
+		t.Errorf("stderr %q does not name %s", errOut.String(), closed)
+	}
+}
