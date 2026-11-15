@@ -212,3 +212,51 @@ func TestGoPackagesResolvesSymlinkedRoot(t *testing.T) {
 		t.Errorf("GoPackages = %q, want example.com/m/a", got)
 	}
 }
+
+// A package directory that no longer exists, reached through a symlink, still matches the
+// resolved root: on macOS t.TempDir() itself lies under the /var -> /private/var symlink.
+func TestGoPackagesMissingDirUnderSymlink(t *testing.T) {
+	real := t.TempDir()
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Skip("no symlinks: ", err)
+	}
+	listing := []GoPackage{{ImportPath: "example.com/m/a", Dir: filepath.Join(link, "a"), GoFiles: []string{"a.go"}}}
+	got := GoPackages([]string{"a/a.go"}, listing, real)
+	if len(got) != 1 || got[0] != "example.com/m/a" {
+		t.Errorf("GoPackages = %q, want example.com/m/a", got)
+	}
+}
+
+func TestResolve(t *testing.T) {
+	base := t.TempDir()
+	real, err := filepath.EvalSymlinks(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(base, "dir"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(base, link); err != nil {
+		t.Skip("no symlinks: ", err)
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct{ name, in, want string }{
+		{"existing through link", filepath.Join(link, "dir"), filepath.Join(real, "dir")},
+		{"missing file through link", filepath.Join(link, "dir", "gone.go"), filepath.Join(real, "dir", "gone.go")},
+		{"missing dirs through link", filepath.Join(link, "x", "y", "z.go"), filepath.Join(real, "x", "y", "z.go")},
+		{"dotdot cleaned", filepath.Join(link, "x", "..", "dir"), filepath.Join(real, "dir")},
+		{"relative missing", "no-such-dir/f.go", filepath.Join(cwd, "no-such-dir", "f.go")},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := resolve(c.in); got != c.want {
+				t.Errorf("resolve(%q) = %q, want %q", c.in, got, c.want)
+			}
+		})
+	}
+}
