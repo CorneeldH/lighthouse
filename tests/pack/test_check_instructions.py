@@ -1,10 +1,9 @@
-"""`pack/core/scripts/check-instructions.sh`: the generic checks over the instruction layer.
+"""`lighthouse check-instructions`: the generic checks over the instruction layer.
 
-The script runs as a subprocess against temporary trees, so the contract
-(exit code + stdout) is tested and not a reimplementation of it. It runs
-from its installed place (`_testkit.INSTALL_ROOT`), so it finds its config reader
-in `.lighthouse/lib` as in a project. Checks 1, 2, 3, 4, 5, 7, 8, 10, 11 and
-14 carry their number from the source; 6, 9, 12 and 13 are project-specific and are not in here.
+The binary of this checkout runs as a subprocess against temporary trees, so the contract
+(exit code + stdout) is tested and not a reimplementation of it. Checks 1, 2, 3, 4, 5, 7, 8,
+10, 11 and 14 carry their number from the source; 6, 9, 12 and 13 are project-specific and are
+not in here.
 """
 
 import json
@@ -14,10 +13,14 @@ from pathlib import Path
 
 import pytest
 
-from tests.pack._testkit import INSTALL_ROOT
+from tests.pack._testkit import lighthouse_dir
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = INSTALL_ROOT / ".lighthouse" / "scripts" / "check-instructions.sh"
+
+
+def _cmd(*args: str) -> list[str]:
+    """`lighthouse check-instructions` of this checkout, built once per process."""
+    return [str(lighthouse_dir() / "lighthouse"), "check-instructions", *args]
 
 
 def _skill(
@@ -90,50 +93,17 @@ def _run(
     )
     if extra_env:
         env.update(extra_env)
-    # `timeout`: the script is deterministic and by default runs here in
+    # `timeout`: the command is deterministic and by default runs here in
     # a few seconds. A hang should therefore show up as a test failure,
     # not as a test run that waits forever.
     return subprocess.run(
-        [str(SCRIPT), *args],
+        _cmd(*args),
         capture_output=True,
         text=True,
         env=env,
         check=False,
         timeout=30,
     )
-
-
-def _path_without_python3(tmp_path: Path) -> str:
-    """A PATH that contains everything the script needs, except python3.
-
-    No `command -v python3` shadowing with an empty stub: `command -v` keeps
-    searching the next PATH directory as soon as an entry is not executable, so
-    a stub does not reliably remove python3. Instead a
-    complete replacement bin directory with symlinks to everything that IS on the real
-    PATH, except every `python3*` name.
-    """
-    bindir = tmp_path / "bin-zonder-python3"
-    bindir.mkdir(exist_ok=True)
-    seen: set[str] = set()
-    for directory in os.environ.get("PATH", "").split(os.pathsep):
-        if not directory or not os.path.isdir(directory):
-            continue
-        try:
-            entries = os.listdir(directory)
-        except OSError:
-            continue
-        for entry in entries:
-            if entry in seen or entry.startswith("python3"):
-                continue
-            src = os.path.join(directory, entry)
-            if not os.path.isfile(src) or not os.access(src, os.X_OK):
-                continue
-            seen.add(entry)
-            try:
-                (bindir / entry).symlink_to(src)
-            except OSError:
-                continue
-    return str(bindir)
 
 
 # --- identity: duplicate name, byte-identical pair, mirror ------------------
@@ -218,17 +188,14 @@ def _exceptions_file(tmp_path: Path) -> Path:
     return tmp_path / "repo" / "mirror-exceptions.txt"
 
 
+# The difference of the `paia-harnas` pair below, in the form `--print-mirror-exceptions`
+# prints; `TestMirrorFixtures` in internal/checkinstr pins that form byte for byte.
+HARNAS_EXCEPTIONS = "=== paia-harnas/SKILL.md\n< Draai in Claude Code.\n> Draai in Codex.\n"
+
+
 def _record_current_differences(tmp_path: Path) -> None:
-    """Write the current differences away as the script prints them itself."""
-    result = subprocess.run(
-        [str(SCRIPT), "--print-mirror-exceptions"],
-        capture_output=True,
-        text=True,
-        env=_env(tmp_path, MIRROR_TOML),
-        check=True,
-        timeout=30,
-    )
-    _exceptions_file(tmp_path).write_text(result.stdout, encoding="utf-8")
+    """Record the difference of the `paia-harnas` pair as an exception, written by hand."""
+    _exceptions_file(tmp_path).write_text(HARNAS_EXCEPTIONS, encoding="utf-8")
 
 
 def test_equal_mirror_reports_content_equal(tmp_path):
@@ -506,7 +473,6 @@ def test_shadow_check_reports_it_cannot_measure(tmp_path):
     # skip line of check_scoping and the test would test its own name.
     assert "SKIPPED  shadow:" in result.stdout
     assert "does not exist" in result.stdout
-
 
 
 def _write_rule(root, name, front):
@@ -804,37 +770,6 @@ def test_disabled_variant_does_not_count_as_registration(tmp_path):
     assert "counterpart" in result.stdout
 
 
-def test_pairing_without_python3_is_skipped(tmp_path):
-    """(A) Without python3 `hook_registered()` cannot measure. That must
-    never show up as FAIL for an otherwise correctly paired skill --
-    the gate would then claim "measured, found something" while nothing
-    was measured at all."""
-    repo = tmp_path / "repo"
-    hooks = repo / ".claude" / "hooks"
-    hooks.mkdir(parents=True, exist_ok=True)
-    (hooks / "streng.sh").write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
-    (repo / ".claude" / "settings.json").write_text(
-        '{"hooks":{"PostToolUse":[{"matcher":"Edit",'
-        '"hooks":[{"type":"command","command":"$CLAUDE_PROJECT_DIR/.claude/hooks/streng.sh"}]}]}}',
-        encoding="utf-8",
-    )
-    claude, agents, _ = _tree(tmp_path)
-    for skill_root in (claude, agents):
-        _skill(
-            skill_root,
-            "paia-streng",
-            metadata=STRICT,
-            body="De afdwinging zit in `.claude/hooks/streng.sh`.\n",
-        )
-    result = _run(tmp_path, extra_env={"PATH": _path_without_python3(tmp_path)})
-    assert result.returncode == 0, result.stdout + result.stderr
-    # Specifically the SKIPPED line of check_pairing (see the note at
-    # test_settings_missing_still_fails_on_skill_without_hook_path above).
-    assert "SKIPPED  pairing:" in result.stdout
-    assert "python3" in result.stdout
-    assert "FAIL" not in result.stdout
-
-
 def test_settings_json_not_an_object_fails_without_traceback(tmp_path):
     """(B) Valid JSON that is not an object (here: a list) must not make
     `hook_registered()` crash on `data.get(...)` -- a
@@ -930,7 +865,7 @@ def test_this_script_is_green_on_this_repo(tmp_path):
         CHECK_INSTRUCTIONS_PERSONAL=str(tmp_path / "personal" / "skills"),
     )
     result = subprocess.run(
-        [str(SCRIPT)], capture_output=True, text=True, check=False, env=env
+        _cmd(), capture_output=True, text=True, check=False, env=env
     )
     assert result.returncode == 0, result.stdout + result.stderr
 
@@ -1069,8 +1004,6 @@ def test_ceiling_default_is_3000_without_override(tmp_path):
     )
 
 
-
-
 # --- lighthouse: root, config, marker, hook subdirectories -------------------
 
 
@@ -1161,7 +1094,7 @@ def test_check_11_without_exceptions_key_has_no_exceptions(tmp_path):
     assert result.returncode == 1, result.stdout
     assert "FAIL  mirror-content" in result.stdout
     assert "[paths] mirror_exceptions" in result.stdout
-    assert ".lighthouse/scripts/check-instructions.sh --print-mirror-exceptions" in result.stdout
+    assert "lighthouse check-instructions --print-mirror-exceptions" in result.stdout
 
 
 def test_check_11_exceptions_path_in_hint(tmp_path):
@@ -1171,7 +1104,7 @@ def test_check_11_exceptions_path_in_hint(tmp_path):
     result = _run(tmp_path, toml=MIRROR_TOML)
     assert result.returncode == 1, result.stdout
     assert (
-        ".lighthouse/scripts/check-instructions.sh --print-mirror-exceptions"
+        "lighthouse check-instructions --print-mirror-exceptions"
         " > mirror-exceptions.txt" in result.stdout
     )
 
@@ -1212,7 +1145,7 @@ def test_root_from_git_without_env(tmp_path):
     env = _env(tmp_path, "")
     del env["LIGHTHOUSE_REPO_ROOT"]
     result = subprocess.run(
-        [str(SCRIPT)], capture_output=True, text=True, env=env, cwd=repo, timeout=30
+        _cmd(), capture_output=True, text=True, env=env, cwd=repo, timeout=30
     )
     assert "ok    CLAUDE.md counts 5 words" in result.stdout, result.stdout + result.stderr
 
@@ -1224,7 +1157,7 @@ def test_no_root_is_could_not_check(tmp_path):
     plain = tmp_path / "geen-repo"
     plain.mkdir()
     result = subprocess.run(
-        [str(SCRIPT)], capture_output=True, text=True, env=env, cwd=plain, timeout=30
+        _cmd(), capture_output=True, text=True, env=env, cwd=plain, timeout=30
     )
     assert result.returncode == 2, result.stdout + result.stderr
     assert result.stderr.startswith("check-instructions: COULD NOT CHECK — ")
@@ -1234,7 +1167,7 @@ def test_missing_root_dir_is_could_not_check(tmp_path):
     env = _env(tmp_path, "")
     env["LIGHTHOUSE_REPO_ROOT"] = str(tmp_path / "bestaat-niet")
     result = subprocess.run(
-        [str(SCRIPT)], capture_output=True, text=True, env=env, timeout=30
+        _cmd(), capture_output=True, text=True, env=env, timeout=30
     )
     assert result.returncode == 2, result.stdout + result.stderr
     assert result.stderr.startswith("check-instructions: COULD NOT CHECK — ")
@@ -1246,19 +1179,6 @@ def test_broken_config_is_could_not_check(tmp_path):
     assert result.returncode == 2, result.stdout + result.stderr
     assert result.stderr.startswith("check-instructions: COULD NOT CHECK — config: ")
     assert "Traceback" not in result.stderr
-
-
-def test_without_python3_config_checks_skip(tmp_path):
-    """Without python3 `lighthouse.toml` cannot be read: checks 10 and 11 then measure
-    nothing, and say so."""
-    claude, agents, _ = _tree(tmp_path)
-    _skill(claude, "paia-gelijk")
-    _skill(agents, "paia-gelijk")
-    (tmp_path / "repo" / "CLAUDE.md").write_text("woord " * 5, encoding="utf-8")
-    result = _run(tmp_path, extra_env={"PATH": _path_without_python3(tmp_path)})
-    assert result.returncode == 0, result.stdout + result.stderr
-    assert "SKIPPED  size: python3" in result.stdout
-    assert "SKIPPED  mirror-content: python3" in result.stdout
 
 
 def test_final_line_counts_findings(tmp_path):

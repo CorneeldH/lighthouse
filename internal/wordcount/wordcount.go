@@ -1,4 +1,4 @@
-// Package wordcount counts words the way check 10 of check-instructions.sh does: with `wc -w`.
+// Package wordcount counts words the way check 10 of `lighthouse check-instructions` does: with `wc -w`.
 //
 // There is no Go fallback on purpose: strings.Fields and wc disagree on some whitespace, and
 // the budget must match the gate.
