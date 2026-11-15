@@ -20,6 +20,7 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/flock"
 	"github.com/CorneeldH/lighthouse/internal/forge/forgetest"
+	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/runs"
 )
 
@@ -1474,5 +1475,32 @@ func TestTriageNoRepoNoToken(t *testing.T) {
 	_, errOut, err := fx.run(triageOpts{})
 	if exitCode(err) != 2 || err.Error() != "triage: no GitHub token: set GH_TOKEN or GITHUB_TOKEN" || errOut != "" {
 		t.Errorf("triage = %v (exit %d), errOut %q; want exit 2 with the token error and no other output", err, exitCode(err), errOut)
+	}
+}
+
+// boardReady asks a GitLab repo for its To do status only, a GitHub repo for the IDs too.
+func TestBoardReadyPerKind(t *testing.T) {
+	status := map[string]string{"To do": "To do"}
+	rows := []struct {
+		name string
+		repo repoconfig.Repo
+		want string
+	}{
+		{"gitlab", repoconfig.Repo{Kind: "gitlab", Board: &repoconfig.Board{StatusOptions: status}}, ""},
+		{"gitlab without To do", repoconfig.Repo{Kind: "gitlab", Board: &repoconfig.Board{StatusOptions: map[string]string{}}}, "missing forge.board.status_options.To do"},
+		{"github without project_id", repoconfig.Repo{Kind: "github", Board: &repoconfig.Board{StatusFieldID: "SF", StatusOptions: status}}, "forge.board.project_id is empty"},
+		{"github without status_field_id", repoconfig.Repo{Kind: "github", Board: &repoconfig.Board{ProjectID: "P", StatusOptions: status}}, "forge.board.status_field_id is empty"},
+		{"no board", repoconfig.Repo{Kind: "gitlab"}, "missing [forge.board]"},
+	}
+	for _, tc := range rows {
+		t.Run(tc.name, func(t *testing.T) {
+			err := boardReady(tc.repo)
+			switch {
+			case tc.want == "" && err != nil:
+				t.Errorf("boardReady = %v, want nil", err)
+			case tc.want != "" && (err == nil || err.Error() != tc.want):
+				t.Errorf("boardReady = %v, want %q", err, tc.want)
+			}
+		})
 	}
 }

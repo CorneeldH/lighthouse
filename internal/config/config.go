@@ -414,6 +414,15 @@ func (c *Config) options(table map[string]any, tablePath []string, where, path s
 func (c *Config) board(board map[string]any, needsController bool, path string) (*Board, error) {
 	const where = "forge.board."
 	boardPath := []string{"forge", "board"}
+	gitlab := c.Kind == "gitlab"
+	if gitlab {
+		// GitLab's built-in status and scoped labels need no project or field IDs.
+		for _, key := range []string{"project_number", "project_id", "status_field_id", "priority_field_id"} {
+			if _, ok := board[key]; ok {
+				return nil, errf("%s: key %s%s is only valid with kind = 'github'", path, where, key)
+			}
+		}
+	}
 	rawStatus, err := getTable(board, "status_options", where, path)
 	if err != nil {
 		return nil, err
@@ -432,7 +441,7 @@ func (c *Config) board(board map[string]any, needsController bool, path string) 
 		}
 	}
 	b := &Board{StatusOptions: status}
-	if _, ok := board["priority_field_id"]; ok {
+	if _, ok := board["priority_field_id"]; ok && !gitlab {
 		if b.PriorityFieldID, err = getString(board, "priority_field_id", where, path); err != nil {
 			return nil, err
 		}
@@ -443,14 +452,16 @@ func (c *Config) board(board map[string]any, needsController bool, path string) 
 			return nil, errf("%s: key forge.board.priority_options must be a table", path)
 		}
 	}
-	if b.ProjectNumber, err = getInt(board, "project_number", where, path); err != nil {
-		return nil, err
-	}
-	if b.ProjectID, err = getString(board, "project_id", where, path); err != nil {
-		return nil, err
-	}
-	if b.StatusFieldID, err = getString(board, "status_field_id", where, path); err != nil {
-		return nil, err
+	if !gitlab {
+		if b.ProjectNumber, err = getInt(board, "project_number", where, path); err != nil {
+			return nil, err
+		}
+		if b.ProjectID, err = getString(board, "project_id", where, path); err != nil {
+			return nil, err
+		}
+		if b.StatusFieldID, err = getString(board, "status_field_id", where, path); err != nil {
+			return nil, err
+		}
 	}
 	b.PriorityOptions, err = c.options(priority, append(boardPath, "priority_options"), where+"priority_options.", path)
 	if err != nil {

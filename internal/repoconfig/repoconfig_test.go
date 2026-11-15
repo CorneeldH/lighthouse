@@ -478,3 +478,50 @@ func TestControllerLocations(t *testing.T) {
 		}
 	})
 }
+
+const gitlabFull = `[forge]
+kind = "gitlab"
+repo = "g/sub/p"
+
+[forge.board.status_options]
+"Controller" = "Controller"
+"On hold" = "On hold"
+
+[forge.board.priority_options]
+P1 = "priority::P1"
+
+[controller]
+
+[usage_guard]
+controller = true
+`
+
+// A GitLab board has no project or field IDs: Dispatchable asks only for the status options.
+func TestDispatchableGitLab(t *testing.T) {
+	load := func(body string) Repo {
+		r, err := Load(write(t, body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r
+	}
+	if err := Dispatchable(load(gitlabFull)); err != nil {
+		t.Fatalf("GitLab repo with status_options only: %v", err)
+	}
+	for _, key := range []string{"Controller", "On hold"} {
+		r := load(gitlabFull)
+		delete(r.Board.StatusOptions, key)
+		if err := Dispatchable(r); err == nil || !strings.Contains(err.Error(), "forge.board.status_options."+key) {
+			t.Errorf("without %s: err = %v", key, err)
+		}
+	}
+	// The same board on GitHub still misses its IDs.
+	r := load(gitlabFull)
+	r.Kind = "github"
+	err := Dispatchable(r)
+	for _, want := range []string{"project_number", "project_id", "status_field_id", "priority_field_id"} {
+		if err == nil || !strings.Contains(err.Error(), "forge.board."+want) {
+			t.Errorf("GitHub repo without %s: err = %v", want, err)
+		}
+	}
+}

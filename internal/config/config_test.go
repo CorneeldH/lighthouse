@@ -314,3 +314,60 @@ func TestRunWithoutKey(t *testing.T) {
 		t.Errorf("rc = %d, stderr = %q; want 2 and a usage line", rc, errOut.String())
 	}
 }
+
+const gitlabBoard = `[forge]
+kind = "gitlab"
+repo = "g/sub/p"
+[forge.board.status_options]
+"To do" = "To do"
+"In progress" = "In progress"
+Done = "Done"
+"On hold" = "On hold"
+[forge.board.priority_options]
+P1 = "priority::P1"
+`
+
+func TestParseGitLabBoard(t *testing.T) {
+	c, err := Parse([]byte(gitlabBoard), "lighthouse.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := Board{
+		StatusOptions:   map[string]string{"To do": "To do", "In progress": "In progress", "Done": "Done", "On hold": "On hold"},
+		PriorityOptions: map[string]string{"P1": "priority::P1"},
+	}
+	if c.Board == nil || !reflect.DeepEqual(*c.Board, want) {
+		t.Errorf("Board = %+v, want %+v", c.Board, want)
+	}
+}
+
+func TestParseBoardPerKind(t *testing.T) {
+	githubBoard := strings.NewReplacer(`kind = "gitlab"`, `kind = "github"`, "g/sub/p", "o/r").Replace(gitlabBoard)
+	githubBoard = strings.Replace(githubBoard, "[forge.board.status_options]", "[forge.board]\nproject_number = 3\n[forge.board.status_options]", 1)
+	rows := []struct {
+		name, src, want string
+	}{
+		{"gitlab project_number", strings.Replace(gitlabBoard, "[forge.board.status_options]", "[forge.board]\nproject_number = 3\n[forge.board.status_options]", 1),
+			"lighthouse.toml: key forge.board.project_number is only valid with kind = 'github'"},
+		{"gitlab project_id", strings.Replace(gitlabBoard, "[forge.board.status_options]", "[forge.board]\nproject_id = \"x\"\n[forge.board.status_options]", 1),
+			"lighthouse.toml: key forge.board.project_id is only valid with kind = 'github'"},
+		{"gitlab status_field_id", strings.Replace(gitlabBoard, "[forge.board.status_options]", "[forge.board]\nstatus_field_id = \"x\"\n[forge.board.status_options]", 1),
+			"lighthouse.toml: key forge.board.status_field_id is only valid with kind = 'github'"},
+		{"gitlab priority_field_id", strings.Replace(gitlabBoard, "[forge.board.status_options]", "[forge.board]\npriority_field_id = \"x\"\n[forge.board.status_options]", 1),
+			"lighthouse.toml: key forge.board.priority_field_id is only valid with kind = 'github'"},
+		{"gitlab empty status name", strings.Replace(gitlabBoard, `Done = "Done"`, `Done = ""`, 1),
+			"must be a non-empty string"},
+		{"gitlab empty priority label", strings.Replace(gitlabBoard, `P1 = "priority::P1"`, `P1 = ""`, 1),
+			"must be a non-empty string"},
+		{"github without project_id", githubBoard,
+			"lighthouse.toml: missing key forge.board.project_id"},
+	}
+	for _, tc := range rows {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := Parse([]byte(tc.src), "lighthouse.toml")
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("Parse error = %v, want it to contain %q", err, tc.want)
+			}
+		})
+	}
+}

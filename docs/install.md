@@ -193,8 +193,11 @@ risk, with no code to guard it; when the budget runs out both endpoints answer 5
 existing `forgeError`.
 
 Give it a token: `GH_TOKEN` (else `GITHUB_TOKEN`) in the environment, or `GITLAB_TOKEN` for a
-GitLab repository (GitLab repositories are supported from #259; until then such a repository is
-skipped with `forge: GitLab client not implemented yet`). `[forge] token_env` in a repository's `lighthouse.toml` names another variable
+GitLab repository (GitLab repositories are supported from #259). Een GitLab-repo heeft in `[forge.board]` alleen
+`status_options` en `priority_options`; `project_number`, `project_id`, `status_field_id` en
+`priority_field_id` zijn er niet toegestaan. Beperking: de Python-scripts van `pack/core`
+(`lib/config.py` is bevroren) eisen die sleutels voor elk board, dus ze falen op zo'n repo tot de
+follow-up klaar is. `[forge] token_env` in a repository's `lighthouse.toml` names another variable
 instead. A repository without a token is skipped for questions and returned issues, with a line on
 stderr, but `serve` still shows its runs. `--forge-url` (`LIGHTHOUSE_FORGE_URL`) sets the API base
 URL for GitHub repositories only; the GitHub token is never sent to a GitLab host. Create a fine-grained
