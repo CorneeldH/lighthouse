@@ -22,7 +22,7 @@ Before the first edit, write the classification sentence from that skill in the 
 and their minimal checks are in its section *Classify first*:
 
 ```text
-This is a <class> change; the likely regression surface is <observable behaviour>.
+Class: <class>. At risk: <the observable behaviour that could change>.
 ```
 
 ## KPIs

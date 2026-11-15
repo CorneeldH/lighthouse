@@ -230,7 +230,7 @@ def test_root_advice_matches_the_hook(variant):
     assert "path you received" in para
 
 
-CLASSIFICATION = "This is a <class> change; the likely regression surface is <observable behaviour>."
+CLASSIFICATION = "Class: <class>. At risk: <the observable behaviour that could change>."
 
 
 @pytest.mark.parametrize("variant", VARIANTS)

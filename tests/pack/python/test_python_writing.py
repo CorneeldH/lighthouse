@@ -193,8 +193,8 @@ def test_points_to_the_testing_skill():
     for path in VARIANTS:
         text = path.read_text(encoding="utf-8")
         assert "lighthouse-test-standard" in text, path
-        assert "<observable behaviour>." in text, f"{path}: the classification sentence"
-        assert "This is a <class> change" in text, f"{path}: the classification sentence"
+        assert "<the observable behaviour that could change>." in text, f"{path}: the classification sentence"
+        assert "Class: <class>. At risk:" in text, f"{path}: the classification sentence"
 
 
 def test_python_form_of_the_testing_norms():
