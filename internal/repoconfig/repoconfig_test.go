@@ -515,10 +515,22 @@ func TestDispatchableGitLab(t *testing.T) {
 			t.Errorf("without %s: err = %v", key, err)
 		}
 	}
-	// The same board on GitHub still misses its IDs.
 	r := load(gitlabFull)
-	r.Kind = "github"
+	r.Board.StatusOptions["On hold"] = "controller"
+	r.Board.PriorityOptions["P2"] = "priority::P1"
 	err := Dispatchable(r)
+	for _, want := range []string{
+		"forge.board.status_options.Controller and forge.board.status_options.On hold map to the same GitLab status",
+		"forge.board.priority_options.P1 and forge.board.priority_options.P2 map to the same label",
+	} {
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("shared option: err = %v, want it to contain %q", err, want)
+		}
+	}
+	// The same board on GitHub still misses its IDs.
+	r = load(gitlabFull)
+	r.Kind = "github"
+	err = Dispatchable(r)
 	for _, want := range []string{"project_number", "project_id", "status_field_id", "priority_field_id"} {
 		if err == nil || !strings.Contains(err.Error(), "forge.board."+want) {
 			t.Errorf("GitHub repo without %s: err = %v", want, err)

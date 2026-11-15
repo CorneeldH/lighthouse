@@ -330,6 +330,15 @@ func Dispatchable(r Repo) error {
 		if r.Kind != "gitlab" && b.PriorityFieldID == "" {
 			add("forge.board.priority_field_id is empty")
 		}
+		// GitLab reads a status or label back to its name: two names on one would flip at random.
+		if r.Kind == "gitlab" {
+			if a, c, dup := config.SharedOption(b.StatusOptions, true); dup {
+				add("forge.board.status_options.%s and forge.board.status_options.%s map to the same GitLab status", a, c)
+			}
+			if a, c, dup := config.SharedOption(b.PriorityOptions, false); dup {
+				add("forge.board.priority_options.%s and forge.board.priority_options.%s map to the same label", a, c)
+			}
+		}
 	}
 	return errors.Join(errs...)
 }

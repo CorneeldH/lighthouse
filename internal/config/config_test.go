@@ -341,6 +341,39 @@ func TestParseGitLabBoard(t *testing.T) {
 	}
 }
 
+// On GitHub two names may share an option ID: the reader does not look at it.
+func TestParseGitHubBoardAllowsSharedOption(t *testing.T) {
+	src := strings.NewReplacer(`kind = "gitlab"`, `kind = "github"`, "g/sub/p", "o/r", `"On hold" = "On hold"`, `"On hold" = "To do"`).Replace(gitlabBoard)
+	src = strings.Replace(src, "[forge.board.status_options]", "[forge.board]\nproject_number = 3\nproject_id = \"P\"\nstatus_field_id = \"F\"\n[forge.board.status_options]", 1)
+	if _, err := Parse([]byte(src), "lighthouse.toml"); err != nil {
+		t.Errorf("Parse = %v, want no error", err)
+	}
+}
+
+func TestSharedOption(t *testing.T) {
+	cases := []struct {
+		name          string
+		options       map[string]string
+		fold          bool
+		first, second string
+		ok            bool
+	}{
+		{"empty", map[string]string{}, true, "", "", false},
+		{"distinct", map[string]string{"A": "x", "B": "y"}, true, "", "", false},
+		{"same value", map[string]string{"B": "x", "A": "x", "C": "z"}, false, "A", "B", true},
+		{"case differs, folded", map[string]string{"A": "To do", "B": "TO DO"}, true, "A", "B", true},
+		{"case differs, exact", map[string]string{"A": "To do", "B": "TO DO"}, false, "", "", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			first, second, ok := SharedOption(tc.options, tc.fold)
+			if first != tc.first || second != tc.second || ok != tc.ok {
+				t.Errorf("SharedOption = %q, %q, %v; want %q, %q, %v", first, second, ok, tc.first, tc.second, tc.ok)
+			}
+		})
+	}
+}
+
 func TestParseBoardPerKind(t *testing.T) {
 	githubBoard := strings.NewReplacer(`kind = "gitlab"`, `kind = "github"`, "g/sub/p", "o/r").Replace(gitlabBoard)
 	githubBoard = strings.Replace(githubBoard, "[forge.board.status_options]", "[forge.board]\nproject_number = 3\n[forge.board.status_options]", 1)
@@ -359,6 +392,10 @@ func TestParseBoardPerKind(t *testing.T) {
 			"must be a non-empty string"},
 		{"gitlab empty priority label", strings.Replace(gitlabBoard, `P1 = "priority::P1"`, `P1 = ""`, 1),
 			"must be a non-empty string"},
+		{"gitlab two statuses on one GitLab status", strings.Replace(gitlabBoard, `"On hold" = "On hold"`, `"On hold" = "to DO"`, 1),
+			`lighthouse.toml: options forge.board.status_options.On hold and forge.board.status_options.To do map to the same GitLab status 'to DO'`},
+		{"gitlab two priorities on one label", strings.Replace(gitlabBoard, `P1 = "priority::P1"`, "P1 = \"priority::P1\"\nP2 = \"priority::P1\"", 1),
+			`lighthouse.toml: options forge.board.priority_options.P1 and forge.board.priority_options.P2 map to the same label 'priority::P1'`},
 		{"github without project_id", githubBoard,
 			"lighthouse.toml: missing key forge.board.project_id"},
 	}

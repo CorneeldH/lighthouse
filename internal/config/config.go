@@ -411,6 +411,29 @@ func (c *Config) options(table map[string]any, tablePath []string, where, path s
 	return out, nil
 }
 
+// SharedOption returns the first two names, in sorted order, of options whose values are the
+// same, compared case-insensitively when fold; ok is false when every value is its own. On
+// GitLab such a pair would read back as either name, at random.
+func SharedOption(options map[string]string, fold bool) (first, second string, ok bool) {
+	names := make([]string, 0, len(options))
+	for name := range options {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	seen := make(map[string]string, len(names))
+	for _, name := range names {
+		v := options[name]
+		if fold {
+			v = strings.ToLower(v)
+		}
+		if prev, dup := seen[v]; dup {
+			return prev, name, true
+		}
+		seen[v] = name
+	}
+	return "", "", false
+}
+
 func (c *Config) board(board map[string]any, needsController bool, path string) (*Board, error) {
 	const where = "forge.board."
 	boardPath := []string{"forge", "board"}
@@ -440,6 +463,9 @@ func (c *Config) board(board map[string]any, needsController bool, path string) 
 			return nil, errf("%s: missing status option %s in forge.board.status_options", path, pyStrRepr(name))
 		}
 	}
+	if a, b, dup := SharedOption(status, true); dup && gitlab {
+		return nil, errf("%s: options %sstatus_options.%s and %sstatus_options.%s map to the same GitLab status %s", path, where, a, where, b, pyStrRepr(status[a]))
+	}
 	b := &Board{StatusOptions: status}
 	if _, ok := board["priority_field_id"]; ok && !gitlab {
 		if b.PriorityFieldID, err = getString(board, "priority_field_id", where, path); err != nil {
@@ -466,6 +492,9 @@ func (c *Config) board(board map[string]any, needsController bool, path string) 
 	b.PriorityOptions, err = c.options(priority, append(boardPath, "priority_options"), where+"priority_options.", path)
 	if err != nil {
 		return nil, err
+	}
+	if p1, p2, dup := SharedOption(b.PriorityOptions, false); dup && gitlab {
+		return nil, errf("%s: options %spriority_options.%s and %spriority_options.%s map to the same label %s", path, where, p1, where, p2, pyStrRepr(b.PriorityOptions[p1]))
 	}
 	return b, nil
 }

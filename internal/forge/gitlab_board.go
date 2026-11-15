@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -297,10 +299,12 @@ func blocker(w gqlLinkedIssue) (Blocker, error) {
 }
 
 // statusName is the lighthouse name of GitLab status raw, matched case-insensitively as GitLab
-// matches names; "unknown:<raw>" for a status that status_options does not map.
+// matches names; "unknown:<raw>" for a status that status_options does not map. Names are
+// tried in sorted order, so two names on one status, which the config readers refuse, still
+// read back the same every time.
 func statusName(options map[string]string, raw string) string {
-	for name, gl := range options {
-		if strings.EqualFold(gl, raw) {
+	for _, name := range slices.Sorted(maps.Keys(options)) {
+		if strings.EqualFold(options[name], raw) {
 			return name
 		}
 	}
@@ -308,10 +312,10 @@ func statusName(options map[string]string, raw string) string {
 }
 
 // labelPriority is the lighthouse name of priority label label, "" for a label that
-// priority_options does not list.
+// priority_options does not list. Names are tried in sorted order, as in statusName.
 func labelPriority(options map[string]string, label string) string {
-	for name, l := range options {
-		if l == label {
+	for _, name := range slices.Sorted(maps.Keys(options)) {
+		if options[name] == label {
 			return name
 		}
 	}
