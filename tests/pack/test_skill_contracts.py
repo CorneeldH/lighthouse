@@ -368,11 +368,12 @@ def test_requires_python_only_where_the_skill_uses_it(skill):
 
 
 def test_tool_patterns_see_python_and_tomllib():
-    """Both directions pass empty when the patterns miss: python3 must hit a real skill. No core
-    skill runs a lighthouse Python module any more, so the tomllib pattern meets a module call
-    as a skill would write it; a skill without one stays unseen."""
-    place = "\n".join(_texts(CORE / "skills" / "place-instruction").values())
-    assert re.search(_TOOL_USES["python3"], place, re.MULTILINE)
+    """Both directions pass empty when the patterns miss: python3 must hit a real unit. No core
+    skill calls python3 any more (#284, #281), so the python3 pattern meets check-instructions.sh,
+    the last core unit on that row of requires.toml. The tomllib pattern meets a module call as a
+    skill would write it; a skill without one stays unseen."""
+    check = (CORE / "scripts" / "check-instructions.sh").read_text(encoding="utf-8")
+    assert re.search(_TOOL_USES["python3"], check, re.MULTILINE)
     assert re.search(_TOOL_USES["tomllib"], "python3 .lighthouse/lib/lighthouse_lib/config.py", re.MULTILINE)
     route = "\n".join(_texts(CORE / "skills" / "route-issue").values())
     assert not re.search(_TOOL_USES["tomllib"], route, re.MULTILINE)
