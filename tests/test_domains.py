@@ -68,6 +68,8 @@ def _repo_reads(text: str) -> list[str]:
         (["tests/test_x.py", "README.md"], {"python"}),
         (["tests/pack/fixtures/protocol/headers.json"], {"go", "python"}),
         (["pack/core/README.md"], {"go", "python"}),
+        (["docs/install.md"], {"go", "python"}),
+        (["docs/other.md"], {"python"}),
         (["testsx/a.py"], {"go", "python"}),
         ([], set()),
     ],
@@ -91,6 +93,9 @@ def _without_default_paths(rel: str, text: str) -> str:
         # The size rule of roborev-gate classifies a changed path as code or not (docs/ is not);
         # it reads no file there.
         return text.replace("docs/", "")
+    if rel == "internal/config/config_test.go":
+        # TestInstallDocGitLabExampleParses reads docs/install.md; ci/domains.py keeps that file in go.
+        return text.replace("docs/install.md", "")
     return text
 
 
