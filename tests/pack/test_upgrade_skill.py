@@ -97,3 +97,25 @@ def test_push_and_pr_after_consent_through_write_pr(v):
 
 def test_agents_md_lists_the_skill():
     assert "- `/lighthouse-upgrade`:" in (CORE / "instructions" / "AGENTS.md").read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("v", VARIANTS)
+def test_network_steps_name_the_sandbox_and_report_a_failed_fetch(v):
+    t = VARIANTS[v]
+    step3 = t[t.index("### 3."):t.index("### 4.")]
+    assert re.search(r"sandbox", step3, re.I)
+    assert "could not fetch release" in step3
+    step2 = t[t.index("### 2."):t.index("### 3.")]
+    assert re.search(r"network", step2)
+
+
+@pytest.mark.parametrize("v", VARIANTS)
+def test_empty_version_stops_before_comparing(v):
+    assert re.search(r"is empty.*stop, before any comparison", VARIANTS[v], re.S)
+
+
+@pytest.mark.parametrize("v", VARIANTS)
+def test_empty_test_gate_is_no_evidence(v):
+    t = VARIANTS[v]
+    assert re.search(r"prints nothing.*skip it.*no evidence", t, re.S)
+    assert 'never count `bash -c ""` as green' in t

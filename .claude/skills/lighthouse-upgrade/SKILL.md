@@ -37,6 +37,8 @@ M=${M#v}; B=${B#v}; N=${N#v}
 echo "repo=$M binary=$B newest=$N"
 ```
 
+- `M` or `B` is empty (the manifest has no version, or `lighthouse version` printed nothing): say so
+  and stop, before any comparison.
 - `M` or `B` is `dev`: say so and stop. Never compare a `dev` build.
 - `B` is older than the repo (`M` > `B` by `sort -V`): say "the binary is older than the repo" and
   stop. Never run `init --upgrade` then; it would downgrade.
@@ -44,7 +46,7 @@ echo "repo=$M binary=$B newest=$N"
 ### 2. The binary
 
 If `N` is newer than `B` (`sort -V`), propose `lighthouse self-update` and warn that it replaces the
-binary for the whole host. Run it only after the user agrees (`AskUserQuestion`), then read `B`
+binary for the whole host. It needs the network: run it with `dangerouslyDisableSandbox: true`. Run it only after the user agrees (`AskUserQuestion`), then read `B`
 again.
 
 If the user declines, or nothing newer exists, compare `B` with `M`:
@@ -52,7 +54,10 @@ If the user declines, or nothing newer exists, compare `B` with `M`:
 - `B` = `M`: say "already current" and stop.
 - `B` is ahead of `M`: continue with `B`, the binary the user has.
 
-### 3. Release notes (skipped when none can be fetched)
+### 3. Release notes (a failed fetch is reported, never skipped silently)
+
+The `gh` calls need the network: run it with `dangerouslyDisableSandbox: true`. If a fetch fails, tell the user "could not fetch release
+notes" and why; do not go on as if there were none.
 
 For every tag with `M < tag <= B`, show the notes. Fetch at most 200 tags, strip the `v` with
 `${x#v}`, and filter with `sort -V`, never on the order `gh` returns them.
@@ -94,11 +99,11 @@ stop. Never `--force`.
 
 In this order; at the first red, stop, report what it says and do not commit.
 
-1. The test gate. `lighthouse config test_gate.command` exits 1 when none is set: say so and skip it,
-   it is no evidence. Otherwise run it with the variable the hook would set:
+1. The test gate. `lighthouse config test_gate.command` exits 1 when none is set, or prints nothing
+   when it is empty: say so and skip it, it is no evidence; never count `bash -c ""` as green. Otherwise run it with the variable the hook would set:
    `LIGHTHOUSE_GATE_TMP=$(mktemp -d) bash -c "$(lighthouse config test_gate.command)"`.
 2. `.lighthouse/scripts/check-instructions.sh`.
-3. If `[paths] mirror_exceptions` is set: run `check-instructions.sh --print-mirror-exceptions` and
+3. If `[paths] mirror_exceptions` is set (the file: `lighthouse config paths.mirror_exceptions`): run `check-instructions.sh --print-mirror-exceptions` and
    write its output to that file.
 4. `lighthouse init --upgrade </dev/null` once more must print exactly `No changes.`.
 
