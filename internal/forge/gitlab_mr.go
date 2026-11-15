@@ -95,6 +95,11 @@ func (g *GitLab) OpenPRs(ctx context.Context) ([]OpenPR, error) {
 // BranchPRs lists the merge requests whose source branch is branch, open, closed and merged.
 // Closes is false on each, as on GitHub: the branch says nothing about which issue a merge
 // request closes.
+//
+// GitLab's merge request list carries no head_pipeline; only the single merge request does.
+// So each open merge request costs one more call, GET …/merge_requests/:iid, for its Checks.
+// A closed or merged one is not read again and has Checks "": the dispatcher reads the checks
+// of an open PR only.
 func (g *GitLab) BranchPRs(ctx context.Context, branch string) ([]PR, error) {
 	mrs, err := g.prs(ctx, neturl.Values{"source_branch": {branch}, "state": {"all"}})
 	if err != nil {
@@ -102,6 +107,13 @@ func (g *GitLab) BranchPRs(ctx context.Context, branch string) ([]PR, error) {
 	}
 	out := make([]PR, 0, len(mrs))
 	for _, m := range mrs {
+		if m.State == "opened" || m.State == "locked" {
+			var detail glMR
+			if _, err := g.get(ctx, g.projectPath("/merge_requests/"+strconv.Itoa(m.IID)), nil, &detail); err != nil {
+				return nil, err
+			}
+			m.HeadPipeline = detail.HeadPipeline
+		}
 		out = append(out, mrToPR(m))
 	}
 	return out, nil

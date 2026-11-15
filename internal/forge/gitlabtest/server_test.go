@@ -305,6 +305,23 @@ func TestServerListsMergeRequestsByStateAndBranch(t *testing.T) {
 	}
 }
 
+// GitLab's merge request list carries no head_pipeline; only the single merge request does.
+func TestServerHeadPipelineOnlyOnSingleMergeRequest(t *testing.T) {
+	srv := New(t)
+	srv.Project = "g/p"
+	srv.AddMR(map[string]any{"iid": 1, "state": "opened", "head_pipeline": map[string]any{"status": "failed"}})
+	base := srv.URL() + "/projects/g%2Fp/merge_requests"
+	if _, body := get(t, base); strings.Contains(body, "head_pipeline") || !strings.Contains(body, `"iid":1`) {
+		t.Errorf("GET merge_requests = %s; want MR 1 without head_pipeline", body)
+	}
+	if resp, body := get(t, base+"/1"); resp.StatusCode != http.StatusOK || !strings.Contains(body, `"head_pipeline":{"status":"failed"}`) {
+		t.Errorf("GET merge_requests/1 = %d %s; want MR 1 with its head_pipeline", resp.StatusCode, body)
+	}
+	if resp, _ := get(t, base+"/2"); resp.StatusCode != http.StatusNotFound {
+		t.Errorf("GET merge_requests/2 = %d, want 404", resp.StatusCode)
+	}
+}
+
 func TestServerMergeRefusals(t *testing.T) {
 	srv := New(t)
 	srv.Project = "g/p"

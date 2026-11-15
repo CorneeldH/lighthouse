@@ -81,6 +81,7 @@ func newServer(t reporter) *Server {
 	// closed_by answers for any project: a blocker can live in another one.
 	s.route(mux, "GET "+p+"/issues/{iid}/closed_by", s.listClosedBy)
 	s.route(mux, "GET "+p+"/merge_requests", s.project(s.listMRs))
+	s.route(mux, "GET "+p+"/merge_requests/{iid}", s.project(s.getMR))
 	s.route(mux, "PUT "+p+"/merge_requests/{iid}/merge", s.project(s.mergeMR))
 	mux.HandleFunc("POST /api/graphql", s.graphql)
 	mux.HandleFunc("/", s.unexpected)
@@ -298,7 +299,8 @@ func (s *Server) listLinks(w http.ResponseWriter, r *http.Request) {
 }
 
 // listMRs serves the merge requests, filtered on state (opened, closed, merged; default all)
-// and on source_branch. It encodes copies: mergeMR changes the seeded maps under mu.
+// and on source_branch. It leaves out head_pipeline, as GitLab's list does: only the single
+// merge request (getMR) carries it. It encodes copies: mergeMR changes the seeded maps under mu.
 func (s *Server) listMRs(w http.ResponseWriter, r *http.Request) {
 	state, branch := r.URL.Query().Get("state"), r.URL.Query().Get("source_branch")
 	s.mu.Lock()
@@ -310,10 +312,30 @@ func (s *Server) listMRs(w http.ResponseWriter, r *http.Request) {
 		if b, _ := mr["source_branch"].(string); branch != "" && branch != b {
 			continue
 		}
-		out = append(out, maps.Clone(mr))
+		cp := maps.Clone(mr)
+		delete(cp, "head_pipeline")
+		out = append(out, cp)
 	}
 	s.mu.Unlock()
 	paginate(w, r, out)
+}
+
+// getMR serves one merge request, head_pipeline included; an unknown iid answers 404.
+func (s *Server) getMR(w http.ResponseWriter, r *http.Request) {
+	iid, _ := strconv.Atoi(r.PathValue("iid"))
+	s.mu.Lock()
+	var found map[string]any
+	for _, mr := range s.mrs {
+		if toInt(mr["iid"]) == iid {
+			found = maps.Clone(mr)
+		}
+	}
+	s.mu.Unlock()
+	if found == nil {
+		writeJSON(w, http.StatusNotFound, map[string]any{"message": "404 Not found"})
+		return
+	}
+	writeJSON(w, http.StatusOK, found)
 }
 
 // mergeMR marks the merge request merged, as GitLab does for a squash merge: 409 when the sha
@@ -432,7 +454,8 @@ func (s *Server) AddClosedBy(project string, iid int, mr map[string]any) {
 	s.closedBy[key] = append(s.closedBy[key], mr)
 }
 
-// AddMR seeds a merge request in GitLab's REST shape.
+// AddMR seeds a merge request in GitLab's REST shape. A head_pipeline in it is served only by
+// the single merge request, not by the list.
 func (s *Server) AddMR(m map[string]any) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

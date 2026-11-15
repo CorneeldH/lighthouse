@@ -3,6 +3,7 @@ package forge_test
 import (
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -123,6 +124,37 @@ func TestBranchPRsListsEveryState(t *testing.T) {
 	}
 	if !slices.Equal(got, []int{1, 2, 3}) {
 		t.Errorf("BranchPRs numbers = %v, want [1 2 3]", got)
+	}
+}
+
+// The merge request list carries no head_pipeline, so BranchPRs reads each open merge request
+// on its own for its checks, and no other.
+func TestBranchPRsReadsPipelineOfOpenMRsOnly(t *testing.T) {
+	srv, f := gitlabOn(t, "g/p")
+	failed := map[string]any{"status": "failed"}
+	srv.AddMR(mr(1, map[string]any{"state": "merged", "head_pipeline": failed}))
+	srv.AddMR(mr(2, map[string]any{"state": "closed", "head_pipeline": failed}))
+	srv.AddMR(mr(3, map[string]any{"state": "opened", "head_pipeline": failed}))
+	srv.AddMR(mr(4, map[string]any{"state": "locked", "head_pipeline": failed}))
+	prs, err := f.BranchPRs(t.Context(), "issue-7-x")
+	if err != nil || len(prs) != 4 {
+		t.Fatalf("BranchPRs = %+v, %v; want four PRs", prs, err)
+	}
+	for _, p := range prs {
+		want := map[int]string{1: "", 2: "", 3: "FAILURE", 4: "FAILURE"}[p.Number]
+		if p.Checks != want {
+			t.Errorf("PR %d Checks = %q, want %q", p.Number, p.Checks, want)
+		}
+	}
+	var details []string
+	for _, r := range srv.Requests() {
+		if strings.HasPrefix(r, "GET /api/v4/projects/g%2Fp/merge_requests/") {
+			details = append(details, r)
+		}
+	}
+	want := []string{"GET /api/v4/projects/g%2Fp/merge_requests/3", "GET /api/v4/projects/g%2Fp/merge_requests/4"}
+	if !slices.Equal(details, want) {
+		t.Errorf("single merge request reads = %q, want %q", details, want)
 	}
 }
 

@@ -141,6 +141,9 @@ func (g *gitlabFixture) AddOpenPR(_ *testing.T, pr forge.OpenPR) {
 		"source_branch": pr.HeadRef, "source_project_id": 1, "target_project_id": 1})
 }
 
+// ChecksOnClosedPRs: BranchPRs reads head_pipeline only for an open merge request.
+func (g *gitlabFixture) ChecksOnClosedPRs() bool { return false }
+
 // pipelineStatus, mergeStatus and mrState are the GitLab words of the neutral PR values.
 var (
 	pipelineStatus = map[string]string{"SUCCESS": "success", "FAILURE": "failed", "PENDING": "running"}

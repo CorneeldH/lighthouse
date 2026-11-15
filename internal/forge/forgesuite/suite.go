@@ -43,6 +43,10 @@ type Fixture interface {
 	// StatusOf is the last status the forge wrote for issue number, as a lighthouse name; ""
 	// when it wrote none.
 	StatusOf(t *testing.T, number int) string
+	// ChecksOnClosedPRs reports whether BranchPRs carries the checks of a closed or merged PR
+	// too. GitHub does; GitLab reads head_pipeline only for an open merge request, the only
+	// PR whose checks the dispatcher reads.
+	ChecksOnClosedPRs() bool
 }
 
 // Case is one contract case.
@@ -488,9 +492,13 @@ func prFields(t *testing.T, f Fixture) {
 		t.Fatalf("BranchPRs = %+v, want one PR", prs)
 	}
 	p := prs[0]
+	wantChecks := ""
+	if f.ChecksOnClosedPRs() {
+		wantChecks = "SUCCESS"
+	}
 	if p.Number != 12 || p.State != "MERGED" || p.HeadSHA != "abc123" || p.HeadRef != "issue-7-x" ||
-		p.Checks != "SUCCESS" || p.Mergeable != "MERGEABLE" || !p.MergedAt.Equal(mergedAt) || p.Closes {
-		t.Errorf("BranchPRs[0] = %+v; want #12 MERGED at %s, head abc123 on issue-7-x, checks SUCCESS, MERGEABLE, Closes false", p, mergedAt)
+		p.Checks != wantChecks || p.Mergeable != "MERGEABLE" || !p.MergedAt.Equal(mergedAt) || p.Closes {
+		t.Errorf("BranchPRs[0] = %+v; want #12 MERGED at %s, head abc123 on issue-7-x, checks %q, MERGEABLE, Closes false", p, mergedAt, wantChecks)
 	}
 
 	f.AddOpenPR(t, forge.OpenPR{Number: 13, Title: "Fix it", Body: "Closes #7", HeadRef: "issue-7-x"})
@@ -500,5 +508,16 @@ func prFields(t *testing.T, f Fixture) {
 	}
 	if len(open) != 1 || open[0] != (forge.OpenPR{Number: 13, Title: "Fix it", Body: "Closes #7", HeadRef: "issue-7-x"}) {
 		t.Errorf("OpenPRs = %+v; want #13 Fix it, body Closes #7, head issue-7-x", open)
+	}
+
+	// An open PR carries its checks on every forge.
+	f.AddBranchPR(t, "issue-8-y", forge.PR{Number: 14, State: "OPEN", HeadSHA: "def456", HeadRef: "issue-8-y",
+		Checks: "FAILURE", Mergeable: "CONFLICTING"})
+	prs, err = f.Forge().BranchPRs(t.Context(), "issue-8-y")
+	if err != nil {
+		t.Fatalf("BranchPRs(issue-8-y): %v", err)
+	}
+	if len(prs) != 1 || prs[0].Number != 14 || prs[0].State != "OPEN" || prs[0].Checks != "FAILURE" || prs[0].Mergeable != "CONFLICTING" {
+		t.Errorf("BranchPRs(issue-8-y) = %+v; want #14 OPEN, checks FAILURE, CONFLICTING", prs)
 	}
 }
