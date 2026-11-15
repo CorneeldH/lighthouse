@@ -9,6 +9,8 @@ import (
 	"os/exec"
 	"sort"
 	"strings"
+
+	"github.com/CorneeldH/lighthouse/internal/forge"
 )
 
 // Status is the outcome of one measurement of one pin.
@@ -26,12 +28,16 @@ type CommitInfo struct {
 	SHA, Subject, Body string
 }
 
-// Result is the outcome of one measurement. Target is the upstream HEAD sha when known.
+// Result is the outcome of one measurement. Target is the upstream HEAD sha, or for a release
+// measurement the newest version, when known.
 type Result struct {
 	Status  Status
 	Detail  string
 	Target  string
 	Commits []CommitInfo
+	// Releases are the upstream releases above the pin, newest first; only plugin and tool
+	// measurements fill it.
+	Releases []forge.Release
 }
 
 // Errors a Clone returns so that the measurement can say what is wrong with the pin.

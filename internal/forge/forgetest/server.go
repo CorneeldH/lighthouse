@@ -44,6 +44,13 @@ type Server struct {
 	// BlockedBy are the blockers per issue number in REST issue shape (number, state,
 	// repository_url), served by GET .../issues/{number}/dependencies/blocked_by.
 	BlockedBy map[int][]map[string]any
+	// Releases are the releases per repo ("owner/name") in REST shape (tag_name, name, body,
+	// html_url, draft, prerelease), served by GET /repos/{owner}/{name}/releases in the order
+	// given, in pages.
+	Releases map[string][]map[string]any
+	// FailFirst maps "METHOD path" to the status only the first such request answers; the next
+	// ones are served as usual. Fail wins over FailFirst.
+	FailFirst map[string]int
 	// Fail maps "METHOD path", such as "POST /repos/o/r/issues/7/comments", to the status that
 	// request answers instead. A failed POST is still in Posts, but changes nothing.
 	Fail map[string]int
@@ -106,6 +113,7 @@ func New(t *testing.T) *Server {
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues/{number}", s.issue)
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues/{number}/dependencies/blocked_by", s.blockedBy)
 	mux.HandleFunc("GET /repos/{owner}/{name}/pulls", s.pulls)
+	mux.HandleFunc("GET /repos/{owner}/{name}/releases", s.releases)
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues/{number}/comments", s.comments)
 	mux.HandleFunc("POST /repos/{owner}/{name}/issues/{number}/comments", s.createComment)
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues/comments/{id}/reactions", s.reactions)
@@ -162,8 +170,29 @@ func (s *Server) record(next http.Handler) http.Handler {
 			writeJSON(w, status, map[string]any{"message": http.StatusText(status)})
 			return
 		}
+		if status := s.failFirst(r.Method + " " + r.URL.Path); status != 0 {
+			writeJSON(w, status, map[string]any{"message": http.StatusText(status)})
+			return
+		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// failFirst returns the FailFirst status for key once and then forgets it.
+func (s *Server) failFirst(key string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	status := s.FailFirst[key]
+	delete(s.FailFirst, key)
+	return status
+}
+
+func (s *Server) releases(w http.ResponseWriter, r *http.Request) {
+	var out []any
+	for _, rel := range s.Releases[r.PathValue("owner")+"/"+r.PathValue("name")] {
+		out = append(out, rel)
+	}
+	s.page(w, r, out)
 }
 
 func (s *Server) user(w http.ResponseWriter, _ *http.Request) {
