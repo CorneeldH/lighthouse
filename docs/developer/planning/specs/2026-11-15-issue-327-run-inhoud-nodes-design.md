@@ -145,6 +145,13 @@ serve_token_file = "/home/<user>/.config/lighthouse/node-<naam>.token"   # nieuw
 - Zonder `serve_url` of `serve_token_file` is de node-config ongeldig: fout met de sleutel, zoals de
   andere fouten van #187. *(Keuze van de ontwerper: een node zonder `serve` kan geen echte run draaien,
   en een run die half werkt, is erger dan een run die niet start.)*
+- **Migratie van #187.** Een bestaande `[dispatch.nodes.*]` zonder deze sleutels geeft vanaf de
+  volgende tick die fout, en `lighthouse serve` start dan ook niet (beide laden `LoadDispatch`). De fout
+  noemt de sleutel en de stap (de twee sleutels toevoegen). Het changelog-fragment en `docs/tick.md`
+  noemen dit als brekende wijziging. Een run die onder #187 op een node open stond, wordt zoals elke
+  andere run op die node gemeten via `serve`. De sweep wist de achtergebleven tick-kant-drager
+  (`carriers/<node>/<id>.json`) van een gesloten run van die node eenmalig, omdat `Discard` nu naar
+  `serve` gaat. *(Eigen keuze na spec-review, r1-f4.)*
 - `serve_url` moet `https` zijn, of `http` naar een loopback-adres (voor de tests). *(Keuze van de
   ontwerper.)*
 - Het token wordt per verzoek gelezen, net als het forge-token. Een ontbrekend of leeg tokenbestand is
@@ -166,6 +173,8 @@ token_file = "/Users/<user>/.config/lighthouse/node.token"
 - Zonder `[node]` heeft `serve` geen node-routes (404), zoals nu. De Beelink als tick-host heeft
   ze dus niet.
 - Met `[node]` en zonder bruikbaar `[dispatch.forge]` start `serve` niet: fout met de sleutel.
+  *Bruikbaar* = het tokenbestand bestaat en is niet leeg (`DefaultDispatch` vult `url` en `token_file`
+  altijd, dus de tabel ontbreekt nooit). *(Eigen keuze na spec-review, r1-f10.)*
 - De statemap van de node volgt dezelfde regel als op de tick
   (`${XDG_STATE_HOME:-$HOME/.local/state}/lighthouse/dispatch`). Daar lezen de launcher (paia) en de hook
   `permission-check`.
@@ -206,12 +215,21 @@ Gemeenschappelijk:
   kent: `Remove` en het `ErrGone`-pad van `Cleanup` wissen de drager pas nadat de workspace weg is.
   *(Keuze van de ontwerper.)*
 - **Veilige namen.** Workspace-id en sessie-id volgen dezelfde patronen als nu (`safeIDPattern`, de
-  UUID van de drager, `safeSession`). Een ander id: 400, vóór elke handeling.
+  UUID van de drager, `safeSession`). Een ander id: 400, vóór elke handeling. `merged_head` is leeg of
+  `^[0-9a-f]{40}$`, anders 400, want het gaat als argument naar git. *(Eigen keuze na spec-review,
+  r1-f6.)*
+- **Het profiel komt van de tick.** De adapter van de node kent het profiel van de run niet, en `Stop`
+  (`UnitName(prefix, profile, dir)`) en `Kill` (de tak `software`: de devcontainer) hangen ervan af. Elke
+  route waarvan de adaptermethode `Profile` leest (`transcript`, `stop`, `kill`) krijgt het profiel mee:
+  als query bij `transcript`, in de body bij `stop` en `kill`. `serve` toetst het aan de bekende
+  profielen van de adapter en weigert een leeg of onbekend profiel met 400, zodat een node nooit stil
+  op de host zoekt naar een claude die in de container draait. Een test: `Kill` op een node met het
+  profiel `software` doodt binnen de container. *(Eigen keuze na spec-review, r1-f1.)*
 - **Fouten zijn gegevens.** Een `*workplace.OwnWorkError` uit `follow` komt terug als 409 met zijn
   velden (workspace, aantal eigen commits, vuil). De tick maakt er weer een `*workplace.OwnWorkError`
   van, zodat de dispatcher hem afhandelt zoals op `self` (`returned`, `reason_own_work`).
 - **Geen meting op de node.** `transcript` en `permission` geven ruwe bestanden. De tick rekent ze uit
-  met `untarTranscript`/`ReadTranscript` en met de parser van `dispatch.ReadPermission`. Zo rekent een
+  met `ReadTranscript` op zijn spiegel (zie *Transcript*) en met de parser van `dispatch.ReadPermission`. Zo rekent een
   node met een andere versie nooit anders. *(Keuze van de ontwerper.)* `git` geeft twee booleans, want
   daar is de meting de git-aanroep zelf. Die moet op de node draaien.
 
@@ -260,7 +278,12 @@ hub blijft gelden.
 
 - `Transcript` op een node: `serve` bepaalt de transcriptmap met dezelfde code als op `self`
   (`HostTranscriptDir`, of de devcontainer bij `software`) en stuurt `<sessie>.jsonl` en
-  `<sessie>/subagents` als tar. Staat de sessie er niet, dan is het 404 `no transcript`, en de tick
+  `<sessie>/subagents` als tar. Het lezen vanaf een offset is nieuwe code, op de host en in de
+  container: `containerScript` stuurt nu hele bestanden en `untarTranscript` pakt uit in een
+  verse tijdelijke map. Alleen `ReadTranscript` blijft de gedeelde meting. *(Eigen keuze na
+  spec-review, r1-f5.)* Staat de sessie er niet, dan is het 404 `no transcript`, en de twee 404's dragen een
+  eigen machineleesbare `code` (`workspace_gone`, `no_transcript`) waarop de tick afbeeldt (nooit op
+  de status alleen), en de tick
   maakt er `fs.ErrNotExist` van, zoals nu. Het profiel geeft de tick mee als query.
 - **Een spiegel op de tick, die alleen aanvult.** `ReadTranscript` leest niet alleen een staart:
   `scanWork` (achtergrondwerk, open beurt) en `scanStart` (eerste assistent-beurt, onbekend commando)
@@ -269,7 +292,11 @@ hub blijft gelden.
   (`<statemap>/mirror/<node_id>/<sessie>/`, map 0700, bestanden 0600). Hij vraagt per bestand alleen de
   bytes vanaf de lengte van zijn spiegel (`?from=<bestand>:<offset>,…`). `serve` antwoordt per bestand
   met zijn huidige lengte en de nieuwe bytes. Is een bestand op de node korter dan de spiegel, dan
-  stuurt `serve` het hele bestand en vervangt de tick zijn kopie. Daarna draait de tick
+  stuurt `serve` het hele bestand en vervangt de tick zijn kopie. De tick neemt per sessie een `flock` op de
+  spiegelmap voor hij leest en bijschrijft, want `lighthouse run` neemt geen `tick.lock` en meet
+  ook transcripten: twee processen mogen nooit dezelfde delta bijschrijven. Een test met twee
+  gelijktijdige ophalingen geeft een spiegel gelijk aan het bestand op de node. *(Eigen keuze na
+  spec-review, r1-f3.)* Daarna draait de tick
   `ReadTranscript` op de spiegelmap, zonder enige wijziging aan `ReadTranscript`. Claude schrijft
   transcripten alleen aan het eind bij. *(Keuze van de ontwerper.)* De spiegel verdwijnt als de run
   sluit, en de sweep ruimt achtergebleven spiegels van gesloten runs op.
@@ -331,13 +358,19 @@ Op een node blijven de hook en de markers ongewijzigd. Alleen de tick haalt en z
 - **Pauze en alarm naar de node.** Elke tick stuurt de tick naar elke node de inhoud van zijn eigen
   `PAUSE` en alarmspiegel (`PUT …/usage`), of "geen" als het bestand er niet is. `serve` schrijft ze
   atomair op dezelfde plek op de node, of wist ze. De hook op de node leest dan precies wat hij op
-  `self` zou lezen. De bytes gaan ongewijzigd mee: de geldigheid (de `until` van een pauze, de reset
+  `self` zou lezen: eerst het eigen alarm van de node (`p.Alarm()`), pas daarna de spiegel, zoals
+  `CurrentAlarm`. Die volgorde blijft zo. *(Eigen keuze na spec-review, r1-f9.)* De bytes gaan ongewijzigd mee: de geldigheid (de `until` van een pauze, de reset
   van een alarm) staat in de bestanden zelf.
 - **Markers van de node.** `readHostFacts` leest naast de eigen markermap de markers van elke node
   (`GET …/markers`). Een marker van een node telt voor de rem en voor hervatten zoals een eigen marker.
   De bijbehorende run staat al met zijn `node` in de runstaat, en een hervatting erft die node (#187).
-- **Marker wissen.** Na een hervatting wist apply de marker op de node van de run
-  (`DELETE …/markers/{sessie}?key=…`), met dezelfde sleutelregel als `park.RemoveMarker`. Een fout
+- **Marker wissen.** `readHostFacts` onthoudt per marker de node waar hij vandaan komt (een map van
+  sessie naar node). Elk pad dat een marker wist, de hervatting én `drop_marker` (een marker van een
+  gesloten of vastgelopen run, dat `Decide` uitgeeft zonder node), wist hem op die node
+  (`DELETE …/markers/{sessie}?key=…`) in plaats van in de lokale `MarkerDir`. Anders blijft de
+  marker van een gesloten run op `mac` staan en telt de rem hem elke tick mee. Een test: een
+  node-marker van een gesloten issue is na één tick van de node verdwenen. *(Eigen keuze na
+  spec-review, r1-f2.)* met dezelfde sleutelregel als `park.RemoveMarker`. Een fout
   is, net als nu, een logregel en geen fout van de actie: de volgende tick laat de marker weer vallen.
 
 Een node die niet antwoordt bij `PUT …/usage`, houdt de pauze en het alarm van zijn laatste geslaagde
@@ -345,7 +378,8 @@ keer. Een pauze of alarm verloopt vanzelf op de tijd in het bestand. Een nieuwe 
 als de node weer bereikbaar is. Dat is dezelfde grens als bij de metingen: wat de tick niet bereikt,
 kan hij niet sturen. *(Keuze van de ontwerper.)* Een node die niet antwoordt bij `GET …/markers`:
 zijn geparkeerde runs tellen deze tick niet mee, en de rem van die node gaat dicht tot de markers weer
-leesbaar zijn, zodat een onbekende bezetting nooit een extra start toelaat. *(Keuze van de
+leesbaar zijn (een veld `NodeSlots.Unmeasured`; `readHostFacts` dient `tick` en `lighthouse run`
+allebei), zodat een onbekende bezetting nooit een extra start toelaat. *(Keuze van de
 ontwerper.)*
 
 ### Storingen
