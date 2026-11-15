@@ -23,8 +23,12 @@ eigen pytest-bestand pint het gedrag dat de spec vastlegt.
 - De lighthouse-repo staat in elke variant precies op één regel, exact `L=CorneeldH/lighthouse`,
   en alle `gh release`-aanroepen gebruiken `--repo "$L"`.
 - `--force` komt alleen voor in een verbod ("never `--force`").
-- `requires.toml`: `upgrade` bij `git` en `gh`; niet bij `python3`, `tomllib`, `jq`, `codex` of
-  `superpowers`, tenzij de tekst die echt gebruikt (de contracttests controleren beide kanten).
+- `requires.toml`: `upgrade` bij `git` en `gh`; niet bij `python3`, `tomllib`, `codex` of
+  `superpowers`, tenzij de tekst die echt gebruikt (de contracttests controleren beide kanten, maar
+  de omgekeerde richting alleen voor `python3` en `tomllib`). Bij `jq`: `test_requires_names_the_skill_per_tool`
+  (`tests/pack/test_skill_contracts.py:326`) matcht `--jq .x` als gebruik van `jq`. Gebruikt de tekst
+  `--jq`, zet `upgrade` dan ook bij `jq`; gebruikt ze `--template` of geen filter, dan niet. De skill
+  kiest `--jq`, dus `upgrade` komt ook bij `jq`.
 - Commitonderwerp in de gebruiker-repo: `chore(lighthouse): <upgrade to <tag>, in [project] language>`.
   De spec noemt `upgrade naar <B>`; dat is de `nl`-vorm. De skill schrijft hem in de taal van de
   repo, omdat commitberichten artefacten zijn (core-regel).
@@ -51,7 +55,7 @@ eigen pytest-bestand pint het gedrag dat de spec vastlegt.
 **Bestanden:**
 - Maken: `pack/core/skills/upgrade/claude/SKILL.md`, `pack/core/skills/upgrade/agents/SKILL.md`
 - Maken: `tests/pack/test_upgrade_skill.py`
-- Wijzigen: `pack/core/requires.toml` (regels `gh` en `git`)
+- Wijzigen: `pack/core/requires.toml` (regels `gh`, `git` en `jq`)
 - Wijzigen: `pack/SOURCES.toml` (twee `[[file]]`-blokken met `new = true`, na het blok van
   `pack/core/skills/test-standard/SKILL.md`)
 - Wijzigen: `pack/core/instructions/AGENTS.md:15-28` (skillijst)
@@ -157,15 +161,34 @@ Verwacht: FAIL bij het inlezen (`FileNotFoundError` op `upgrade/claude/SKILL.md`
     tussen `M` (exclusief) en `B` (inclusief);
   - stap 4: default branch uit `lighthouse config forge.default_branch`, worktree onder
     `.claude/worktrees/`;
+  - stap 5: `lighthouse init --upgrade </dev/null` toont de diff en weigert dan (stdin is leeg, dus
+    "Apply these changes? [y/N]" valt op nee: `internal/initcmd/initcmd.go:215-221`, `ask()` leest EOF
+    als nee); dat is bedoeld en is geen fout. Daarna akkoord vragen, en pas dan
+    `lighthouse init --upgrade --yes` draaien. "Declined" is dus alleen het antwoord van de
+    gebruiker, nooit de uitkomst van de eerste aanroep. `refused:` op stderr (exit ≠ 0) blijft een stop;
   - stap 6: `[paths] mirror_exceptions` is optioneel ("if set"); `test_gate.command` lezen met
-    `lighthouse config test_gate.command`;
+    `lighthouse config test_gate.command` (exit 1 = geen testcommando ingesteld: zeg dat en sla het
+    over, geen bewijs) en draaien als
+    `LIGHTHOUSE_GATE_TMP=$(mktemp -d) bash -c "$(lighthouse config test_gate.command)"`: de hook zet
+    die variabele, een kaal commando met `--basetemp=\"$LIGHTHOUSE_GATE_TMP\"` (zoals in
+    `lighthouse.toml`) faalt anders met een pytest-usagefout; en de laatste `No changes.`-check
+    met `lighthouse init --upgrade </dev/null`;
+  - de woorden `release`/`release notes` vallen onder `test_optional_steps_guarded`
+    (`tests/pack/test_skill_contracts.py:102,258-271`): elke alinea of elk codeblok met `release`
+    moet zelf "if present" of "skipped" zeggen, of onder een kop met die woorden staan. Eerlijk
+    invullen, de regex niet aanpassen: de `N=`-regel krijgt in het blok de commentaarregel
+    `# skipped when gh cannot reach the repo: then self-update is not offered`; de kop van stap 3 is
+    `Release notes (skipped when none can be fetched)`; de description zegt "changelog", niet
+    "release". Stap 6 draait die test en moet groen zijn;
+  - stap 3: `gh release list` met `--limit 200` (standaard 30), de tags genormaliseerd met `${x#v}`
+    en gefilterd op `M < tag <= B` met `sort -V`, nooit op volgorde van `gh`;
   - stap 7: push en `/lighthouse-write-pr` alleen na akkoord.
 
 - [ ] **Stap 4: schrijf `pack/core/skills/upgrade/agents/SKILL.md`**: dezelfde tekst, met akkoord
   als vraag in de chat in plaats van `AskUserQuestion`.
 
 - [ ] **Stap 5: registreer**
-  - `requires.toml`: `"upgrade"` achteraan bij `gh` en bij `git`;
+  - `requires.toml`: `"upgrade"` achteraan bij `gh`, `git` en `jq`;
   - `SOURCES.toml`: `[[file]] path = "pack/core/skills/upgrade/claude/SKILL.md" new = true`, idem
     voor `agents`;
   - `pack/core/instructions/AGENTS.md`: `` - `/lighthouse-upgrade`: bring this repo to the installed lighthouse version. ``
@@ -179,6 +202,14 @@ Verwacht: FAIL bij het inlezen (`FileNotFoundError` op `upgrade/claude/SKILL.md`
 pack/core/skills/upgrade/claude/SKILL.md:L=CorneeldH/lighthouse
 pack/core/skills/upgrade/agents/SKILL.md:L=CorneeldH/lighthouse
 ```
+
+- [ ] **Stap 5b: scherp de pin-tests aan** (zwakke tests laten een verkeerde tekst door):
+  `test_declined_self_update_continues_only_when_binary_is_ahead` pint ook de zin voor het doorgaan
+  (`re.search(r"ahead.*continue|continue.*ahead", t, re.I | re.S)`); `test_commit_holds_only_what_init_wrote`
+  pint ook de stop bij vreemde bestanden (`re.search(r"anything else.*stop", t, re.I | re.S)`);
+  `test_evidence_in_order` zoekt alleen in het deel vanaf `## Workflow`
+  (`t = t[t.index("## Workflow"):]`); nieuw `test_init_applies_only_after_consent_with_yes`: `"--upgrade --yes"`
+  komt ná `"</dev/null"` in de tekst, en `LIGHTHOUSE_GATE_TMP` staat er.
 
 - [ ] **Stap 6: draai alles van deze taak, verwacht groen**
 
