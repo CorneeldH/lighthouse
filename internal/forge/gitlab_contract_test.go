@@ -14,30 +14,6 @@ import (
 
 func TestGitLabConformance(t *testing.T) { forgesuite.Run(t, newGitLabFixture) }
 
-// conformance is the name of the test that runs the suite; pending is keyed below it.
-const conformance = "TestGitLabConformance"
-
-// pending maps a suite case, or one subtest of Pagination, to the task that implements the
-// methods it calls. Such a case skips until then, so no case runs on a stub. Each task removes
-// its names.
-var pending = map[string]int{}
-
-// skipIfPending skips t when its name, or the case it belongs to, is in pending.
-func skipIfPending(t *testing.T) {
-	t.Helper()
-	name := strings.TrimPrefix(t.Name(), conformance+"/")
-	for {
-		if task, ok := pending[name]; ok {
-			t.Skipf("taak %d", task)
-		}
-		i := strings.LastIndex(name, "/")
-		if i < 0 {
-			return
-		}
-		name = name[:i]
-	}
-}
-
 // gitlabFixture is the GitLab client against gitlabtest.Server, which serves GitLab's shapes.
 type gitlabFixture struct {
 	srv *gitlabtest.Server
@@ -45,7 +21,6 @@ type gitlabFixture struct {
 }
 
 func newGitLabFixture(t *testing.T) forgesuite.Fixture {
-	skipIfPending(t)
 	srv := gitlabtest.New(t)
 	srv.Login = "lh-bot"
 	srv.Project = "g/sub/p"
