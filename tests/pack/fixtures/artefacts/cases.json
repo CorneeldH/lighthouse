@@ -1,0 +1,1143 @@
+[
+ {
+  "name": "test_public_names",
+  "fn": "constants",
+  "input": {},
+  "expect": {
+   "KINDS": [
+    "spec",
+    "plan"
+   ],
+   "GITHUB_LIMIT": 65536
+  }
+ },
+ {
+  "name": "test_roundtrip",
+  "fn": "roundtrip",
+  "input": {
+   "meta": {
+    "kind": "plan",
+    "version": 2,
+    "part": 1,
+    "parts": 4,
+    "file": "docs/developer/planning/plans/2026-10-03-x.md",
+    "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "hash": "0123456789ab",
+    "replaces": "https://github.com/Owner/repo/issues/1094#issuecomment-123"
+   },
+   "content": "# Titel\n\ntekst\n",
+   "repo": "Owner/repo",
+   "language": "nl"
+  },
+  "expect": {
+   "meta": {
+    "kind": "plan",
+    "version": 2,
+    "part": 1,
+    "parts": 4,
+    "file": "docs/developer/planning/plans/2026-10-03-x.md",
+    "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "hash": "0123456789ab",
+    "replaces": "https://github.com/Owner/repo/issues/1094#issuecomment-123",
+    "extra": {}
+   }
+  }
+ },
+ {
+  "name": "test_first_line_and_sub_line",
+  "fn": "render",
+  "input": {
+   "meta": {
+    "kind": "plan",
+    "version": 2,
+    "part": 1,
+    "parts": 4,
+    "file": "docs/developer/planning/plans/2026-10-03-x.md",
+    "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "hash": "0123456789ab",
+    "replaces": "https://github.com/Owner/repo/issues/1094#issuecomment-123"
+   },
+   "content": "x",
+   "repo": "Owner/repo",
+   "language": "nl"
+  },
+  "expect": {
+   "body": "<!-- lighthouse: {\"kind\":\"plan\",\"version\":2,\"part\":1,\"parts\":4,\"file\":\"docs/developer/planning/plans/2026-10-03-x.md\",\"commit\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"hash\":\"0123456789ab\",\"replaces\":\"https://github.com/Owner/repo/issues/1094#issuecomment-123\"} -->\n<sub>plan · versie 2 · deel 1/4 · bron <a href=\"https://github.com/Owner/repo/blob/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/docs/developer/planning/plans/2026-10-03-x.md\">docs/developer/planning/plans/2026-10-03-x.md</a> @ aaaaaaa</sub>\n\nx"
+  }
+ },
+ {
+  "name": "test_sub_line_follows_language",
+  "fn": "render",
+  "input": {
+   "meta": {
+    "kind": "plan",
+    "version": 2,
+    "part": 1,
+    "parts": 4,
+    "file": "docs/developer/planning/plans/2026-10-03-x.md",
+    "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "hash": "0123456789ab",
+    "replaces": "https://github.com/Owner/repo/issues/1094#issuecomment-123"
+   },
+   "content": "x",
+   "repo": "Owner/repo",
+   "language": "en"
+  },
+  "expect": {
+   "body": "<!-- lighthouse: {\"kind\":\"plan\",\"version\":2,\"part\":1,\"parts\":4,\"file\":\"docs/developer/planning/plans/2026-10-03-x.md\",\"commit\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"hash\":\"0123456789ab\",\"replaces\":\"https://github.com/Owner/repo/issues/1094#issuecomment-123\"} -->\n<sub>plan · version 2 · part 1/4 · source <a href=\"https://github.com/Owner/repo/blob/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/docs/developer/planning/plans/2026-10-03-x.md\">docs/developer/planning/plans/2026-10-03-x.md</a> @ aaaaaaa</sub>\n\nx"
+  }
+ },
+ {
+  "name": "test_writes_new_marker_and_keys",
+  "fn": "render",
+  "input": {
+   "meta": {
+    "kind": "plan",
+    "version": 1,
+    "part": 1,
+    "parts": 1,
+    "file": "p.md",
+    "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "hash": "bbbbbbbbbbbb",
+    "replaces": null
+   },
+   "content": "x",
+   "repo": "Owner/repo",
+   "language": "nl"
+  },
+  "expect": {
+   "body": "<!-- lighthouse: {\"kind\":\"plan\",\"version\":1,\"part\":1,\"parts\":1,\"file\":\"p.md\",\"commit\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"hash\":\"bbbbbbbbbbbb\",\"replaces\":null} -->\n<sub>plan · versie 1 · deel 1/1 · bron <a href=\"https://github.com/Owner/repo/blob/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/p.md\">p.md</a> @ aaaaaaa</sub>\n\nx"
+  }
+ },
+ {
+  "name": "test_reads_legacy_artefact_marker",
+  "fn": "parse_meta",
+  "input": {
+   "body": "<!-- paia: {\"soort\":\"plan\",\"versie\":2,\"deel\":1,\"delen\":1,\"bestand\":\"p.md\",\"commit\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"hash\":\"bbbbbbbbbbbb\",\"vervangt\":null} -->\nx"
+  },
+  "expect": {
+   "kind": "plan",
+   "version": 2,
+   "part": 1,
+   "parts": 1,
+   "file": "p.md",
+   "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "hash": "bbbbbbbbbbbb",
+   "replaces": null,
+   "extra": {}
+  }
+ },
+ {
+  "name": "test_reads_new_keys_under_legacy_marker",
+  "fn": "parse_meta",
+  "input": {
+   "body": "<!-- paia: {\"kind\":\"plan\",\"version\":2,\"part\":1,\"parts\":4,\"file\":\"docs/developer/planning/plans/2026-10-03-x.md\",\"commit\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"hash\":\"0123456789ab\",\"replaces\":\"https://github.com/Owner/repo/issues/1094#issuecomment-123\"} -->\n<sub>plan · versie 2 · deel 1/4 · bron <a href=\"https://github.com/Owner/repo/blob/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/docs/developer/planning/plans/2026-10-03-x.md\">docs/developer/planning/plans/2026-10-03-x.md</a> @ aaaaaaa</sub>\n\nx"
+  },
+  "expect": {
+   "kind": "plan",
+   "version": 2,
+   "part": 1,
+   "parts": 4,
+   "file": "docs/developer/planning/plans/2026-10-03-x.md",
+   "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "hash": "0123456789ab",
+   "replaces": "https://github.com/Owner/repo/issues/1094#issuecomment-123",
+   "extra": {}
+  }
+ },
+ {
+  "name": "test_legacy_marker_without_replaces_is_unreadable",
+  "fn": "parse_meta",
+  "input": {
+   "body": "<!-- paia: {\"soort\":\"plan\",\"versie\":2,\"deel\":1,\"delen\":1,\"bestand\":\"p.md\",\"commit\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"hash\":\"bbbbbbbbbbbb\"} -->\nx"
+  },
+  "expect": null
+ },
+ {
+  "name": "test_unknown_fields_survive",
+  "fn": "parse_meta_roundtrip",
+  "input": {
+   "meta": {
+    "kind": "plan",
+    "version": 2,
+    "part": 1,
+    "parts": 4,
+    "file": "docs/developer/planning/plans/2026-10-03-x.md",
+    "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "hash": "0123456789ab",
+    "replaces": "https://github.com/Owner/repo/issues/1094#issuecomment-123"
+   },
+   "content": "x",
+   "repo": "Owner/repo",
+   "language": "nl",
+   "extra": {
+    "future": [
+     1,
+     2
+    ]
+   }
+  },
+  "expect": {
+   "kind": "plan",
+   "version": 2,
+   "part": 1,
+   "parts": 4,
+   "file": "docs/developer/planning/plans/2026-10-03-x.md",
+   "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "hash": "0123456789ab",
+   "replaces": "https://github.com/Owner/repo/issues/1094#issuecomment-123",
+   "extra": {
+    "future": [
+     1,
+     2
+    ]
+   }
+  }
+ },
+ {
+  "name": "test_replaces_null",
+  "fn": "parse_meta_roundtrip",
+  "input": {
+   "meta": {
+    "kind": "plan",
+    "version": 2,
+    "part": 1,
+    "parts": 4,
+    "file": "docs/developer/planning/plans/2026-10-03-x.md",
+    "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "hash": "0123456789ab",
+    "replaces": null
+   },
+   "content": "x",
+   "repo": "Owner/repo",
+   "language": "nl"
+  },
+  "expect": {
+   "kind": "plan",
+   "version": 2,
+   "part": 1,
+   "parts": 4,
+   "file": "docs/developer/planning/plans/2026-10-03-x.md",
+   "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "hash": "0123456789ab",
+   "replaces": null,
+   "extra": {}
+  }
+ },
+ {
+  "name": "test_invalid_value_gives_none[kind=\"other\"]",
+  "fn": "parse_meta",
+  "input": {
+   "body": "<!-- lighthouse: {\"kind\": \"other\", \"version\": 2, \"part\": 1, \"parts\": 4, \"file\": \"docs/developer/planning/plans/2026-10-03-x.md\", \"commit\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"hash\": \"0123456789ab\", \"replaces\": \"https://github.com/Owner/repo/issues/1094#issuecomment-123\"} -->\n<sub>x</sub>\n\ny"
+  },
+  "expect": null
+ },
+ {
+  "name": "test_invalid_value_gives_none[version=0]",
+  "fn": "parse_meta",
+  "input": {
+   "body": "<!-- lighthouse: {\"kind\": \"plan\", \"version\": 0, \"part\": 1, \"parts\": 4, \"file\": \"docs/developer/planning/plans/2026-10-03-x.md\", \"commit\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"hash\": \"0123456789ab\", \"replaces\": \"https://github.com/Owner/repo/issues/1094#issuecomment-123\"} -->\n<sub>x</sub>\n\ny"
+  },
+  "expect": null
+ },
+ {
+  "name": "test_invalid_value_gives_none[part=true]",
+  "fn": "parse_meta",
+  "input": {
+   "body": "<!-- lighthouse: {\"kind\": \"plan\", \"version\": 2, \"part\": true, \"parts\": 4, \"file\": \"docs/developer/planning/plans/2026-10-03-x.md\", \"commit\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"hash\": \"0123456789ab\", \"replaces\": \"https://github.com/Owner/repo/issues/1094#issuecomment-123\"} -->\n<sub>x</sub>\n\ny"
+  },
+  "expect": null
+ },
+ {
+  "name": "test_invalid_value_gives_none[part=5]",
+  "fn": "parse_meta",
+  "input": {
+   "body": "<!-- lighthouse: {\"kind\": \"plan\", \"version\": 2, \"part\": 5, \"parts\": 4, \"file\": \"docs/developer/planning/plans/2026-10-03-x.md\", \"commit\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"hash\": \"0123456789ab\", \"replaces\": \"https://github.com/Owner/repo/issues/1094#issuecomment-123\"} -->\n<sub>x</sub>\n\ny"
+  },
+  "expect": null
+ },
+ {
+  "name": "test_invalid_value_gives_none[commit=\"x\"]",
+  "fn": "parse_meta",
+  "input": {
+   "body": "<!-- lighthouse: {\"kind\": \"plan\", \"version\": 2, \"part\": 1, \"parts\": 4, \"file\": \"docs/developer/planning/plans/2026-10-03-x.md\", \"commit\": \"x\", \"hash\": \"0123456789ab\", \"replaces\": \"https://github.com/Owner/repo/issues/1094#issuecomment-123\"} -->\n<sub>x</sub>\n\ny"
+  },
+  "expect": null
+ },
+ {
+  "name": "test_invalid_value_gives_none[hash=\"0123456789a\"]",
+  "fn": "parse_meta",
+  "input": {
+   "body": "<!-- lighthouse: {\"kind\": \"plan\", \"version\": 2, \"part\": 1, \"parts\": 4, \"file\": \"docs/developer/planning/plans/2026-10-03-x.md\", \"commit\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"hash\": \"0123456789a\", \"replaces\": \"https://github.com/Owner/repo/issues/1094#issuecomment-123\"} -->\n<sub>x</sub>\n\ny"
+  },
+  "expect": null
+ },
+ {
+  "name": "test_invalid_value_gives_none[hash=\"0123456789AB\"]",
+  "fn": "parse_meta",
+  "input": {
+   "body": "<!-- lighthouse: {\"kind\": \"plan\", \"version\": 2, \"part\": 1, \"parts\": 4, \"file\": \"docs/developer/planning/plans/2026-10-03-x.md\", \"commit\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"hash\": \"0123456789AB\", \"replaces\": \"https://github.com/Owner/repo/issues/1094#issuecomment-123\"} -->\n<sub>x</sub>\n\ny"
+  },
+  "expect": null
+ },
+ {
+  "name": "test_unreadable_gives_none[0]",
+  "fn": "parse_meta",
+  "input": {
+   "body": "<!-- lighthouse: {broken -->\nx"
+  },
+  "expect": null
+ },
+ {
+  "name": "test_unreadable_gives_none[1]",
+  "fn": "parse_meta",
+  "input": {
+   "body": "<!-- lighthouse: {\"kind\":\"plan\"} -->\nx"
+  },
+  "expect": null
+ },
+ {
+  "name": "test_unreadable_gives_none[2]",
+  "fn": "parse_meta",
+  "input": {
+   "body": "<!-- paia: {broken -->\nx"
+  },
+  "expect": null
+ },
+ {
+  "name": "test_unreadable_gives_none[3]",
+  "fn": "parse_meta",
+  "input": {
+   "body": "<!-- other: {} -->\nx"
+  },
+  "expect": null
+ },
+ {
+  "name": "test_unreadable_gives_none[4]",
+  "fn": "parse_meta",
+  "input": {
+   "body": "ordinary comment"
+  },
+  "expect": null
+ },
+ {
+  "name": "test_unreadable_gives_none[5]",
+  "fn": "parse_meta",
+  "input": {
+   "body": ""
+  },
+  "expect": null
+ },
+ {
+  "name": "test_render_refuses_double_dash",
+  "fn": "render",
+  "input": {
+   "meta": {
+    "kind": "plan",
+    "version": 2,
+    "part": 1,
+    "parts": 4,
+    "file": "docs/developer/planning/plans/a--b.md",
+    "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "hash": "0123456789ab",
+    "replaces": "https://github.com/Owner/repo/issues/1094#issuecomment-123"
+   },
+   "content": "x",
+   "repo": "Owner/repo",
+   "language": "nl"
+  },
+  "expect": {
+   "error_contains": "metadata holds '--'; that closes the HTML comment"
+  }
+ },
+ {
+  "name": "test_render_without_repo_is_a_config_error",
+  "fn": "render",
+  "input": {
+   "meta": {
+    "kind": "plan",
+    "version": 2,
+    "part": 1,
+    "parts": 4,
+    "file": "docs/developer/planning/plans/2026-10-03-x.md",
+    "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "hash": "0123456789ab",
+    "replaces": "https://github.com/Owner/repo/issues/1094#issuecomment-123"
+   },
+   "content": "x",
+   "repo": null,
+   "language": "nl"
+  },
+  "expect": {
+   "error_contains": "forge.repo is not set"
+  }
+ },
+ {
+  "name": "test_hash_of",
+  "fn": "hash_of",
+  "input": {
+   "text": "abc"
+  },
+  "expect": "ba7816bf8f01"
+ },
+ {
+  "name": "test_fits_in_one_part",
+  "fn": "split",
+  "input": {
+   "text": "kort\n"
+  },
+  "expect": {
+   "parts": [
+    "kort\n"
+   ]
+  }
+ },
+ {
+  "name": "test_empty_file_is_one_empty_part",
+  "fn": "split",
+  "input": {
+   "text": ""
+  },
+  "expect": {
+   "parts": [
+    ""
+   ]
+  }
+ },
+ {
+  "name": "test_cuts_before_an_h2",
+  "fn": "split",
+  "input": {
+   "text": "## a\nb\nb\nb\nb\nb\nb\nb\nb\nb\nb\nb\nb\nb\nb\nb\nb\nb\nb\nb\nb\nb\nb\nb\nb\nb\nb\nb\nb\nb\nb\n## c\nd\nd\nd\nd\nd\nd\nd\nd\nd\nd\nd\nd\nd\nd\nd\nd\nd\nd\nd\nd\nd\nd\nd\nd\nd\nd\nd\nd\nd\nd\n",
+   "limit": 70
+  },
+  "expect": {
+   "parts": [
+    "## a\nb\nb\nb\nb\nb\nb\nb\nb\nb\nb\nb\nb\nb\nb\nb\nb\nb\nb\nb\nb\nb\nb\nb\nb\nb\nb\nb\nb\nb\nb\n",
+    "## c\nd\nd\nd\nd\nd\nd\nd\nd\nd\nd\nd\nd\nd\nd\nd\nd\nd\nd\nd\nd\nd\nd\nd\nd\nd\nd\nd\nd\nd\nd\n"
+   ]
+  }
+ },
+ {
+  "name": "test_no_cut_at_offset_zero",
+  "fn": "split",
+  "input": {
+   "text": "## a\nbbbbbbbbbb\ncccccccccc\n",
+   "limit": 20
+  },
+  "expect": {
+   "parts": [
+    "## a\nbbbbbbbbbb\n",
+    "cccccccccc\n"
+   ]
+  }
+ },
+ {
+  "name": "test_not_in_a_code_block_when_there_is_another_cut_point",
+  "fn": "split",
+  "input": {
+   "text": "intro\n\n````md\n```\n## binnen\n\n## binnen\n\n## binnen\n\n## binnen\n\n## binnen\n\n```\n````\n\n## na\n",
+   "limit": 77
+  },
+  "expect": {
+   "parts": [
+    "intro\n\n",
+    "````md\n```\n## binnen\n\n## binnen\n\n## binnen\n\n## binnen\n\n## binnen\n\n```\n````\n\n",
+    "## na\n"
+   ]
+  }
+ },
+ {
+  "name": "test_tilde_fence_and_indented_fence",
+  "fn": "split",
+  "input": {
+   "text": "a\n\n   ~~~\n## binnen\n~~~\nz\n",
+   "limit": 22
+  },
+  "expect": {
+   "parts": [
+    "a\n\n",
+    "   ~~~\n## binnen\n~~~\n",
+    "z\n"
+   ]
+  }
+ },
+ {
+  "name": "test_line_longer_than_the_limit_cuts_mid_line",
+  "fn": "split",
+  "input": {
+   "text": "xxxxxxxxxxxxxxxxxxxxxxxxx",
+   "limit": 10
+  },
+  "expect": {
+   "parts": [
+    "xxxxxxxxxx",
+    "xxxxxxxxxx",
+    "xxxxx"
+   ]
+  }
+ },
+ {
+  "name": "test_roundtrip_crlf_and_without_final_newline[crlf]",
+  "fn": "split",
+  "input": {
+   "text": "a\r\nb\r\n\r\n## c\r\na\r\nb\r\n\r\n## c\r\na\r\nb\r\n\r\n## c\r\na\r\nb\r\n\r\n## c\r\na\r\nb\r\n\r\n## c\r\na\r\nb\r\n\r\n## c\r\na\r\nb\r\n\r\n## c\r\na\r\nb\r\n\r\n## c\r\na\r\nb\r\n\r\n## c\r\na\r\nb\r\n\r\n## c\r\na\r\nb\r\n\r\n## c\r\na\r\nb\r\n\r\n## c\r\na\r\nb\r\n\r\n## c\r\na\r\nb\r\n\r\n## c\r\na\r\nb\r\n\r\n## c\r\na\r\nb\r\n\r\n## c\r\na\r\nb\r\n\r\n## c\r\na\r\nb\r\n\r\n## c\r\na\r\nb\r\n\r\n## c\r\na\r\nb\r\n\r\n## c\r\n",
+   "limit": 15
+  },
+  "expect": {
+   "parts": [
+    "a\r\nb\r\n\r\n",
+    "## c\r\na\r\nb\r\n\r\n",
+    "## c\r\na\r\nb\r\n\r\n",
+    "## c\r\na\r\nb\r\n\r\n",
+    "## c\r\na\r\nb\r\n\r\n",
+    "## c\r\na\r\nb\r\n\r\n",
+    "## c\r\na\r\nb\r\n\r\n",
+    "## c\r\na\r\nb\r\n\r\n",
+    "## c\r\na\r\nb\r\n\r\n",
+    "## c\r\na\r\nb\r\n\r\n",
+    "## c\r\na\r\nb\r\n\r\n",
+    "## c\r\na\r\nb\r\n\r\n",
+    "## c\r\na\r\nb\r\n\r\n",
+    "## c\r\na\r\nb\r\n\r\n",
+    "## c\r\na\r\nb\r\n\r\n",
+    "## c\r\na\r\nb\r\n\r\n",
+    "## c\r\na\r\nb\r\n\r\n",
+    "## c\r\na\r\nb\r\n\r\n",
+    "## c\r\na\r\nb\r\n\r\n",
+    "## c\r\na\r\nb\r\n\r\n",
+    "## c\r\n"
+   ]
+  }
+ },
+ {
+  "name": "test_roundtrip_crlf_and_without_final_newline[no-final-newline]",
+  "fn": "split",
+  "input": {
+   "text": "a\n\n## b\nzonder slot",
+   "limit": 15
+  },
+  "expect": {
+   "parts": [
+    "a\n\n",
+    "## b\n",
+    "zonder slot"
+   ]
+  }
+ },
+ {
+  "name": "test_a_real_plan",
+  "fn": "split",
+  "input": {
+   "text": {
+    "repeat": [
+     [
+      "# Plan\n\n",
+      1
+     ],
+     [
+      "## Taak é\n\n### Stap\n\n```bash\necho é && go test\n```\n\nTekst met é en ... \n\n",
+      120
+     ]
+    ]
+   },
+   "limit_quarter": true
+  },
+  "expect": {
+   "lengths": [
+    2125,
+    2190,
+    2190,
+    2190,
+    73
+   ],
+   "fits_limit": true
+  }
+ },
+ {
+  "name": "test_render_escapes_quote_and_ampersand",
+  "fn": "render",
+  "input": {
+   "meta": {
+    "kind": "plan",
+    "version": 2,
+    "part": 1,
+    "parts": 4,
+    "file": "docs/it's \"a\" & b.md",
+    "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "hash": "0123456789ab",
+    "replaces": "https://github.com/Owner/repo/issues/1094#issuecomment-123"
+   },
+   "content": "x",
+   "repo": "Owner/repo",
+   "language": "nl"
+  },
+  "expect": {
+   "body": "<!-- lighthouse: {\"kind\":\"plan\",\"version\":2,\"part\":1,\"parts\":4,\"file\":\"docs/it's \\\"a\\\" & b.md\",\"commit\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"hash\":\"0123456789ab\",\"replaces\":\"https://github.com/Owner/repo/issues/1094#issuecomment-123\"} -->\n<sub>plan · versie 2 · deel 1/4 · bron <a href=\"https://github.com/Owner/repo/blob/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/docs/it&#x27;s &quot;a&quot; &amp; b.md\">docs/it&#x27;s &quot;a&quot; &amp; b.md</a> @ aaaaaaa</sub>\n\nx"
+  }
+ },
+ {
+  "name": "test_render_keeps_angle_brackets",
+  "fn": "render",
+  "input": {
+   "meta": {
+    "kind": "plan",
+    "version": 2,
+    "part": 1,
+    "parts": 4,
+    "file": "docs/<x>&y.md",
+    "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "hash": "0123456789ab",
+    "replaces": "https://github.com/Owner/repo/issues/1094#issuecomment-123"
+   },
+   "content": "x",
+   "repo": "Owner/repo",
+   "language": "nl"
+  },
+  "expect": {
+   "body": "<!-- lighthouse: {\"kind\":\"plan\",\"version\":2,\"part\":1,\"parts\":4,\"file\":\"docs/<x>&y.md\",\"commit\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"hash\":\"0123456789ab\",\"replaces\":\"https://github.com/Owner/repo/issues/1094#issuecomment-123\"} -->\n<sub>plan · versie 2 · deel 1/4 · bron <a href=\"https://github.com/Owner/repo/blob/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/docs/&lt;x&gt;&amp;y.md\">docs/&lt;x&gt;&amp;y.md</a> @ aaaaaaa</sub>\n\nx"
+  }
+ },
+ {
+  "name": "test_render_keeps_unicode_separators_in_json",
+  "fn": "render",
+  "input": {
+   "meta": {
+    "kind": "plan",
+    "version": 2,
+    "part": 1,
+    "parts": 4,
+    "file": "docs/a b cé.md",
+    "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "hash": "0123456789ab",
+    "replaces": "https://github.com/Owner/repo/issues/1094#issuecomment-123"
+   },
+   "content": "x",
+   "repo": "Owner/repo",
+   "language": "nl"
+  },
+  "expect": {
+   "body": "<!-- lighthouse: {\"kind\":\"plan\",\"version\":2,\"part\":1,\"parts\":4,\"file\":\"docs/a b cé.md\",\"commit\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"hash\":\"0123456789ab\",\"replaces\":\"https://github.com/Owner/repo/issues/1094#issuecomment-123\"} -->\n<sub>plan · versie 2 · deel 1/4 · bron <a href=\"https://github.com/Owner/repo/blob/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/docs/a b cé.md\">docs/a b cé.md</a> @ aaaaaaa</sub>\n\nx"
+  }
+ },
+ {
+  "name": "test_render_writes_unknown_fields_like_json_dumps",
+  "fn": "render",
+  "input": {
+   "meta": {
+    "kind": "plan",
+    "version": 2,
+    "part": 1,
+    "parts": 4,
+    "file": "docs/developer/planning/plans/2026-10-03-x.md",
+    "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "hash": "0123456789ab",
+    "replaces": "https://github.com/Owner/repo/issues/1094#issuecomment-123"
+   },
+   "content": "x",
+   "repo": "Owner/repo",
+   "language": "nl",
+   "extra": {
+    "t": "<a&b> ",
+    "n": 1.50,
+    "e": 1e2,
+    "z": [
+     true,
+     null,
+     {
+      "k": "v"
+     }
+    ]
+   }
+  },
+  "expect": {
+   "body": "<!-- lighthouse: {\"kind\":\"plan\",\"version\":2,\"part\":1,\"parts\":4,\"file\":\"docs/developer/planning/plans/2026-10-03-x.md\",\"commit\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"hash\":\"0123456789ab\",\"replaces\":\"https://github.com/Owner/repo/issues/1094#issuecomment-123\",\"t\":\"<a&b> \",\"n\":1.5,\"e\":100.0,\"z\":[true,null,{\"k\":\"v\"}]} -->\n<sub>plan · versie 2 · deel 1/4 · bron <a href=\"https://github.com/Owner/repo/blob/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/docs/developer/planning/plans/2026-10-03-x.md\">docs/developer/planning/plans/2026-10-03-x.md</a> @ aaaaaaa</sub>\n\nx"
+  }
+ },
+ {
+  "name": "test_split_on_unicode_line_breaks",
+  "fn": "split",
+  "input": {
+   "text": "aaaa\u000b## bbbb\f## cccc\u001c## dddd\u001d## eeee\u001e## ffff## gggg ## hhhh ## iiii\n",
+   "limit": 12
+  },
+  "expect": {
+   "parts": [
+    "aaaa\u000b",
+    "## bbbb\f",
+    "## cccc\u001c",
+    "## dddd\u001d",
+    "## eeee\u001e",
+    "## ffff",
+    "## gggg ",
+    "## hhhh ",
+    "## iiii\n"
+   ]
+  }
+ },
+ {
+  "name": "test_split_counts_code_points_at_the_fence",
+  "fn": "split",
+  "input": {
+   "text": {
+    "repeat": [
+     [
+      "ééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé\n",
+      300
+     ],
+     [
+      "```\n",
+      1
+     ],
+     [
+      "ééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé\n",
+      400
+     ],
+     [
+      "## after\n",
+      1
+     ]
+    ]
+   }
+  },
+  "expect": {
+   "lengths": [
+    59904,
+    10109
+   ],
+   "fits_limit": true
+  }
+ },
+ {
+  "name": "test_split_multibyte_cut_on_the_border",
+  "fn": "split",
+  "input": {
+   "text": "éé\néé\n",
+   "limit": 3
+  },
+  "expect": {
+   "parts": [
+    "éé\n",
+    "éé\n"
+   ]
+  }
+ },
+ {
+  "name": "test_parse_meta_strips_python_whitespace",
+  "fn": "parse_meta",
+  "input": {
+   "body": "\u001c <!-- lighthouse: {\"kind\":\"plan\",\"version\":2,\"part\":1,\"parts\":4,\"file\":\"docs/developer/planning/plans/2026-10-03-x.md\",\"commit\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"hash\":\"0123456789ab\",\"replaces\":\"https://github.com/Owner/repo/issues/1094#issuecomment-123\"} -->\n<sub>plan · versie 2 · deel 1/4 · bron <a href=\"https://github.com/Owner/repo/blob/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/docs/developer/planning/plans/2026-10-03-x.md\">docs/developer/planning/plans/2026-10-03-x.md</a> @ aaaaaaa</sub>\n\nx\u001f"
+  },
+  "expect": {
+   "kind": "plan",
+   "version": 2,
+   "part": 1,
+   "parts": 4,
+   "file": "docs/developer/planning/plans/2026-10-03-x.md",
+   "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "hash": "0123456789ab",
+   "replaces": "https://github.com/Owner/repo/issues/1094#issuecomment-123",
+   "extra": {}
+  }
+ },
+ {
+  "name": "test_highest_complete_version_beats_an_incomplete_higher_one",
+  "fn": "chain",
+  "input": {
+   "comments": [
+    {
+     "id": 1,
+     "meta": {
+      "kind": "spec",
+      "version": 1,
+      "part": 1,
+      "parts": 2,
+      "file": "docs/developer/planning/specs/a.md",
+      "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "hash": "000000000000",
+      "replaces": null
+     }
+    },
+    {
+     "id": 2,
+     "meta": {
+      "kind": "spec",
+      "version": 1,
+      "part": 2,
+      "parts": 2,
+      "file": "docs/developer/planning/specs/a.md",
+      "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "hash": "000000000000",
+      "replaces": null
+     }
+    },
+    {
+     "id": 3,
+     "meta": {
+      "kind": "spec",
+      "version": 2,
+      "part": 1,
+      "parts": 2,
+      "file": "docs/developer/planning/specs/a.md",
+      "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "hash": "000000000000",
+      "replaces": null
+     }
+    }
+   ],
+   "kind": "spec",
+   "file": "docs/developer/planning/specs/a.md"
+  },
+  "expect": {
+   "current": [
+    1,
+    2
+   ],
+   "next": 3
+  }
+ },
+ {
+  "name": "test_parts_in_order_even_when_mixed",
+  "fn": "chain",
+  "input": {
+   "comments": [
+    {
+     "id": 2,
+     "meta": {
+      "kind": "spec",
+      "version": 1,
+      "part": 2,
+      "parts": 2,
+      "file": "docs/developer/planning/specs/a.md",
+      "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "hash": "000000000000",
+      "replaces": null
+     }
+    },
+    {
+     "id": 1,
+     "meta": {
+      "kind": "spec",
+      "version": 1,
+      "part": 1,
+      "parts": 2,
+      "file": "docs/developer/planning/specs/a.md",
+      "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "hash": "000000000000",
+      "replaces": null
+     }
+    }
+   ],
+   "kind": "spec",
+   "file": "docs/developer/planning/specs/a.md"
+  },
+  "expect": {
+   "current": [
+    1,
+    2
+   ],
+   "next": 2
+  }
+ },
+ {
+  "name": "test_double_part_makes_a_version_incomplete",
+  "fn": "chain",
+  "input": {
+   "comments": [
+    {
+     "id": 1,
+     "meta": {
+      "kind": "spec",
+      "version": 1,
+      "part": 1,
+      "parts": 1,
+      "file": "docs/developer/planning/specs/a.md",
+      "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "hash": "000000000000",
+      "replaces": null
+     }
+    },
+    {
+     "id": 2,
+     "meta": {
+      "kind": "spec",
+      "version": 2,
+      "part": 1,
+      "parts": 2,
+      "file": "docs/developer/planning/specs/a.md",
+      "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "hash": "000000000000",
+      "replaces": null
+     }
+    },
+    {
+     "id": 3,
+     "meta": {
+      "kind": "spec",
+      "version": 2,
+      "part": 1,
+      "parts": 2,
+      "file": "docs/developer/planning/specs/a.md",
+      "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "hash": "000000000000",
+      "replaces": null
+     }
+    },
+    {
+     "id": 4,
+     "meta": {
+      "kind": "spec",
+      "version": 2,
+      "part": 2,
+      "parts": 2,
+      "file": "docs/developer/planning/specs/a.md",
+      "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "hash": "000000000000",
+      "replaces": null
+     }
+    }
+   ],
+   "kind": "spec",
+   "file": "docs/developer/planning/specs/a.md"
+  },
+  "expect": {
+   "current": [
+    1
+   ],
+   "next": 3
+  }
+ },
+ {
+  "name": "test_unequal_parts_make_a_version_incomplete",
+  "fn": "chain",
+  "input": {
+   "comments": [
+    {
+     "id": 1,
+     "meta": {
+      "kind": "spec",
+      "version": 1,
+      "part": 1,
+      "parts": 2,
+      "file": "docs/developer/planning/specs/a.md",
+      "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "hash": "000000000000",
+      "replaces": null
+     }
+    },
+    {
+     "id": 2,
+     "meta": {
+      "kind": "spec",
+      "version": 1,
+      "part": 2,
+      "parts": 3,
+      "file": "docs/developer/planning/specs/a.md",
+      "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "hash": "000000000000",
+      "replaces": null
+     }
+    }
+   ],
+   "kind": "spec",
+   "file": "docs/developer/planning/specs/a.md"
+  },
+  "expect": {
+   "current": [],
+   "next": 2
+  }
+ },
+ {
+  "name": "test_two_chains_do_not_see_each_other[a]",
+  "fn": "chain",
+  "input": {
+   "comments": [
+    {
+     "id": 1,
+     "meta": {
+      "kind": "spec",
+      "version": 1,
+      "part": 1,
+      "parts": 1,
+      "file": "docs/developer/planning/specs/a.md",
+      "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "hash": "000000000000",
+      "replaces": null
+     }
+    },
+    {
+     "id": 2,
+     "meta": {
+      "kind": "spec",
+      "version": 1,
+      "part": 1,
+      "parts": 1,
+      "file": "docs/developer/planning/specs/b.md",
+      "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "hash": "000000000000",
+      "replaces": null
+     }
+    },
+    {
+     "id": 3,
+     "meta": {
+      "kind": "spec",
+      "version": 2,
+      "part": 1,
+      "parts": 1,
+      "file": "docs/developer/planning/specs/b.md",
+      "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "hash": "000000000000",
+      "replaces": null
+     }
+    }
+   ],
+   "kind": "spec",
+   "file": "docs/developer/planning/specs/a.md"
+  },
+  "expect": {
+   "current": [
+    1
+   ],
+   "next": 2
+  }
+ },
+ {
+  "name": "test_two_chains_do_not_see_each_other[b]",
+  "fn": "chain",
+  "input": {
+   "comments": [
+    {
+     "id": 1,
+     "meta": {
+      "kind": "spec",
+      "version": 1,
+      "part": 1,
+      "parts": 1,
+      "file": "docs/developer/planning/specs/a.md",
+      "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "hash": "000000000000",
+      "replaces": null
+     }
+    },
+    {
+     "id": 2,
+     "meta": {
+      "kind": "spec",
+      "version": 1,
+      "part": 1,
+      "parts": 1,
+      "file": "docs/developer/planning/specs/b.md",
+      "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "hash": "000000000000",
+      "replaces": null
+     }
+    },
+    {
+     "id": 3,
+     "meta": {
+      "kind": "spec",
+      "version": 2,
+      "part": 1,
+      "parts": 1,
+      "file": "docs/developer/planning/specs/b.md",
+      "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "hash": "000000000000",
+      "replaces": null
+     }
+    }
+   ],
+   "kind": "spec",
+   "file": "docs/developer/planning/specs/b.md"
+  },
+  "expect": {
+   "current": [
+    3
+   ],
+   "next": 3
+  }
+ },
+ {
+  "name": "test_other_kind_and_ordinary_comments_do_not_count",
+  "fn": "chain",
+  "input": {
+   "comments": [
+    {
+     "id": 1,
+     "meta": {
+      "kind": "plan",
+      "version": 5,
+      "part": 1,
+      "parts": 1,
+      "file": "docs/developer/planning/specs/a.md",
+      "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "hash": "000000000000",
+      "replaces": null
+     }
+    },
+    {
+     "id": 2,
+     "body": "hoi"
+    }
+   ],
+   "kind": "spec",
+   "file": "docs/developer/planning/specs/a.md"
+  },
+  "expect": {
+   "current": [],
+   "next": 1
+  }
+ },
+ {
+  "name": "test_legacy_and_new_parts_form_one_chain",
+  "fn": "chain",
+  "input": {
+   "comments": [
+    {
+     "id": 1,
+     "meta": {
+      "kind": "spec",
+      "version": 1,
+      "part": 1,
+      "parts": 1,
+      "file": "docs/developer/planning/specs/a.md",
+      "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "hash": "000000000000",
+      "replaces": null
+     },
+     "legacy_marker": true
+    }
+   ],
+   "kind": "spec",
+   "file": "docs/developer/planning/specs/a.md"
+  },
+  "expect": {
+   "current": [
+    1
+   ],
+   "next": 2
+  }
+ },
+ {
+  "name": "test_render_source_link_follows_config",
+  "fn": "render",
+  "input": {
+   "meta": {
+    "kind": "plan",
+    "version": 2,
+    "part": 1,
+    "parts": 4,
+    "file": "docs/developer/planning/plans/2026-10-03-x.md",
+    "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "hash": "0123456789ab",
+    "replaces": "https://github.com/Owner/repo/issues/1094#issuecomment-123"
+   },
+   "content": "x",
+   "repo": "Other/repo",
+   "language": "nl"
+  },
+  "expect": {
+   "body": "<!-- lighthouse: {\"kind\":\"plan\",\"version\":2,\"part\":1,\"parts\":4,\"file\":\"docs/developer/planning/plans/2026-10-03-x.md\",\"commit\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"hash\":\"0123456789ab\",\"replaces\":\"https://github.com/Owner/repo/issues/1094#issuecomment-123\"} -->\n<sub>plan · versie 2 · deel 1/4 · bron <a href=\"https://github.com/Other/repo/blob/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/docs/developer/planning/plans/2026-10-03-x.md\">docs/developer/planning/plans/2026-10-03-x.md</a> @ aaaaaaa</sub>\n\nx"
+  }
+ }
+]

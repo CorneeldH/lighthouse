@@ -6,8 +6,8 @@ import (
 	"strings"
 )
 
-// The renderers are the Go twins of render_* in pack/core/lib/protocol.py: the same text for
-// the same input. Headings come from the table, never from a literal here.
+// The renderers write the same text for the same input. Headings come from the table, never from
+// a literal here.
 
 // clean keeps free text from breaking open a footer or a code block. It works one way only.
 func clean(text string) string {
@@ -101,7 +101,7 @@ func RenderReturned(reason, session, detail, language string) string {
 }
 
 // RenderParked renders a `🤖 Parked`: the header and one `blocked_by:` line with the open
-// predecessors. It has no session and no footer. There is no Python twin: only the tick posts one.
+// predecessors. It has no session and no footer. Only the tick posts one.
 func RenderParked(blockers []string, language string) string {
 	return Robot + " " + Heading("kind_parked", language) + "\nblocked_by: " + strings.Join(blockers, ", ")
 }

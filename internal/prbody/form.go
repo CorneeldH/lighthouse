@@ -1,6 +1,5 @@
-// Package prbody checks a `gh pr create` body for a valid form. It ports
-// pack/core/lib/pr_body_gate.py, which stays frozen for worktree_audit.py; both read the shared
-// fixtures in tests/pack/fixtures/pr_body_gate.
+// Package prbody checks a `gh pr create` body for a valid form. It is the port of
+// pr_body_gate.py; its fixtures are tests/pack/fixtures/pr_body_gate.
 //
 // A body must have at least one of three forms (mixing is allowed):
 //

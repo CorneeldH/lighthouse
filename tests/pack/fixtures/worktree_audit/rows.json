@@ -1,0 +1,4242 @@
+[
+ {
+  "name": "test_unmeasurable_session_pid_is_live",
+  "input": {
+   "worktrees": [
+    {
+     "path": "/repo",
+     "branch": "main",
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null
+    },
+    {
+     "path": "/repo/.claude/worktrees/wt-a",
+     "branch": "feat-a",
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null
+    }
+   ],
+   "local_branches": [
+    "main",
+    "feat-a",
+    "entire/checkpoints/v1"
+   ],
+   "remote_branches": [
+    "main",
+    "feat-a",
+    "feat-verweesd"
+   ],
+   "pulls": {
+    "feat-a": {
+     "number": 700,
+     "state": "merged",
+     "merged_at": null
+    }
+   },
+   "probes": {
+    "feat-a": {
+     "dirty": false,
+     "unpushed": 0
+    }
+   },
+   "sessions": {
+    "/repo/.claude/worktrees/wt-a": {
+     "pid": 4242,
+     "session_id": "aef024ab-8bef-4939-bba3-24b4e36ea94c",
+     "cwd": "/repo/.claude/worktrees/wt-a"
+    }
+   },
+   "transcripts": {
+    "/repo/.claude/worktrees/wt-a": [
+     1700000.0,
+     "oude-sessie-id"
+    ]
+   },
+   "detached_dirty": {},
+   "orphans": [
+    {
+     "name": "worktrees",
+     "path": "/repo/.claude/worktrees/worktrees",
+     "dir_entries": [
+      ".port-registry"
+     ]
+    }
+   ],
+   "ports": {
+    "700": "20700"
+   },
+   "pr_lookup_ok": true
+  },
+  "alive": "unmeasurable",
+  "judge_alive": "unmeasurable",
+  "expect": {
+   "rows": [
+    {
+     "name": "entire/checkpoints/v1",
+     "local": true,
+     "remote": false,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "feat-a",
+     "local": true,
+     "remote": true,
+     "worktree": "/repo/.claude/worktrees/wt-a",
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": false,
+     "unpushed": 0,
+     "pr_number": 700,
+     "pr_state": "merged",
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": 1700000.0,
+     "session_id": "aef024ab-8bef-4939-bba3-24b4e36ea94c",
+     "live": true,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "feat-verweesd",
+     "local": false,
+     "remote": true,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "main",
+     "local": true,
+     "remote": true,
+     "worktree": "/repo",
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "worktrees",
+     "local": false,
+     "remote": false,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": "/repo/.claude/worktrees/worktrees",
+     "dir_entries": [
+      ".port-registry"
+     ]
+    }
+   ],
+   "verdicts": [
+    {
+     "rank": 1,
+     "icon": "🔒",
+     "text": "never touch",
+     "modifiers": [],
+     "safe": false,
+     "render": "🔒 never touch"
+    },
+    {
+     "rank": 2,
+     "icon": "⛔",
+     "text": "running session",
+     "modifiers": [],
+     "safe": false,
+     "render": "⛔ running session"
+    },
+    {
+     "rank": 7,
+     "icon": "⚠️",
+     "text": "content check failed — check",
+     "modifiers": [],
+     "safe": false,
+     "render": "⚠️ content check failed — check"
+    },
+    {
+     "rank": 1,
+     "icon": "🔒",
+     "text": "never touch",
+     "modifiers": [],
+     "safe": false,
+     "render": "🔒 never touch"
+    },
+    {
+     "rank": 1,
+     "icon": "🔒",
+     "text": "never touch",
+     "modifiers": [],
+     "safe": false,
+     "render": "🔒 never touch"
+    }
+   ]
+  }
+ },
+ {
+  "name": "test_every_branch_local_or_remote_becomes_a_row",
+  "input": {
+   "worktrees": [
+    {
+     "path": "/repo",
+     "branch": "main",
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null
+    },
+    {
+     "path": "/repo/.claude/worktrees/wt-a",
+     "branch": "feat-a",
+     "locked": true,
+     "lock_pid": 4242,
+     "lock_reason": null
+    }
+   ],
+   "local_branches": [
+    "main",
+    "feat-a",
+    "entire/checkpoints/v1"
+   ],
+   "remote_branches": [
+    "main",
+    "feat-a",
+    "feat-verweesd"
+   ],
+   "pulls": {
+    "feat-a": {
+     "number": 700,
+     "state": "merged",
+     "merged_at": null
+    }
+   },
+   "probes": {
+    "feat-a": {
+     "dirty": false,
+     "unpushed": 0
+    }
+   },
+   "sessions": {
+    "/repo/.claude/worktrees/wt-a": {
+     "pid": 4242,
+     "session_id": "aef024ab-8bef-4939-bba3-24b4e36ea94c",
+     "cwd": "/repo/.claude/worktrees/wt-a"
+    }
+   },
+   "transcripts": {
+    "/repo/.claude/worktrees/wt-a": [
+     1700000.0,
+     "oude-sessie-id"
+    ]
+   },
+   "detached_dirty": {},
+   "orphans": [
+    {
+     "name": "worktrees",
+     "path": "/repo/.claude/worktrees/worktrees",
+     "dir_entries": [
+      ".port-registry"
+     ]
+    }
+   ],
+   "ports": {
+    "700": "20700"
+   },
+   "pr_lookup_ok": true
+  },
+  "alive": "always",
+  "judge_alive": "never",
+  "expect": {
+   "rows": [
+    {
+     "name": "entire/checkpoints/v1",
+     "local": true,
+     "remote": false,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "feat-a",
+     "local": true,
+     "remote": true,
+     "worktree": "/repo/.claude/worktrees/wt-a",
+     "locked": true,
+     "lock_pid": 4242,
+     "lock_reason": null,
+     "dirty": false,
+     "unpushed": 0,
+     "pr_number": 700,
+     "pr_state": "merged",
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": 1700000.0,
+     "session_id": "aef024ab-8bef-4939-bba3-24b4e36ea94c",
+     "live": true,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "feat-verweesd",
+     "local": false,
+     "remote": true,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "main",
+     "local": true,
+     "remote": true,
+     "worktree": "/repo",
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "worktrees",
+     "local": false,
+     "remote": false,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": "/repo/.claude/worktrees/worktrees",
+     "dir_entries": [
+      ".port-registry"
+     ]
+    }
+   ],
+   "verdicts": [
+    {
+     "rank": 1,
+     "icon": "🔒",
+     "text": "never touch",
+     "modifiers": [],
+     "safe": false,
+     "render": "🔒 never touch"
+    },
+    {
+     "rank": 2,
+     "icon": "⛔",
+     "text": "running session",
+     "modifiers": [
+      "stale lock"
+     ],
+     "safe": false,
+     "render": "⛔ running session [stale lock]"
+    },
+    {
+     "rank": 7,
+     "icon": "⚠️",
+     "text": "content check failed — check",
+     "modifiers": [],
+     "safe": false,
+     "render": "⚠️ content check failed — check"
+    },
+    {
+     "rank": 1,
+     "icon": "🔒",
+     "text": "never touch",
+     "modifiers": [],
+     "safe": false,
+     "render": "🔒 never touch"
+    },
+    {
+     "rank": 1,
+     "icon": "🔒",
+     "text": "never touch",
+     "modifiers": [],
+     "safe": false,
+     "render": "🔒 never touch"
+    }
+   ]
+  }
+ },
+ {
+  "name": "test_a_remote_only_branch_has_no_worktree",
+  "input": {
+   "worktrees": [
+    {
+     "path": "/repo",
+     "branch": "main",
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null
+    },
+    {
+     "path": "/repo/.claude/worktrees/wt-a",
+     "branch": "feat-a",
+     "locked": true,
+     "lock_pid": 4242,
+     "lock_reason": null
+    }
+   ],
+   "local_branches": [
+    "main",
+    "feat-a",
+    "entire/checkpoints/v1"
+   ],
+   "remote_branches": [
+    "main",
+    "feat-a",
+    "feat-verweesd"
+   ],
+   "pulls": {
+    "feat-a": {
+     "number": 700,
+     "state": "merged",
+     "merged_at": null
+    }
+   },
+   "probes": {
+    "feat-a": {
+     "dirty": false,
+     "unpushed": 0
+    }
+   },
+   "sessions": {
+    "/repo/.claude/worktrees/wt-a": {
+     "pid": 4242,
+     "session_id": "aef024ab-8bef-4939-bba3-24b4e36ea94c",
+     "cwd": "/repo/.claude/worktrees/wt-a"
+    }
+   },
+   "transcripts": {
+    "/repo/.claude/worktrees/wt-a": [
+     1700000.0,
+     "oude-sessie-id"
+    ]
+   },
+   "detached_dirty": {},
+   "orphans": [
+    {
+     "name": "worktrees",
+     "path": "/repo/.claude/worktrees/worktrees",
+     "dir_entries": [
+      ".port-registry"
+     ]
+    }
+   ],
+   "ports": {
+    "700": "20700"
+   },
+   "pr_lookup_ok": true
+  },
+  "alive": "always",
+  "judge_alive": "never",
+  "expect": {
+   "rows": [
+    {
+     "name": "entire/checkpoints/v1",
+     "local": true,
+     "remote": false,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "feat-a",
+     "local": true,
+     "remote": true,
+     "worktree": "/repo/.claude/worktrees/wt-a",
+     "locked": true,
+     "lock_pid": 4242,
+     "lock_reason": null,
+     "dirty": false,
+     "unpushed": 0,
+     "pr_number": 700,
+     "pr_state": "merged",
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": 1700000.0,
+     "session_id": "aef024ab-8bef-4939-bba3-24b4e36ea94c",
+     "live": true,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "feat-verweesd",
+     "local": false,
+     "remote": true,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "main",
+     "local": true,
+     "remote": true,
+     "worktree": "/repo",
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "worktrees",
+     "local": false,
+     "remote": false,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": "/repo/.claude/worktrees/worktrees",
+     "dir_entries": [
+      ".port-registry"
+     ]
+    }
+   ],
+   "verdicts": [
+    {
+     "rank": 1,
+     "icon": "🔒",
+     "text": "never touch",
+     "modifiers": [],
+     "safe": false,
+     "render": "🔒 never touch"
+    },
+    {
+     "rank": 2,
+     "icon": "⛔",
+     "text": "running session",
+     "modifiers": [
+      "stale lock"
+     ],
+     "safe": false,
+     "render": "⛔ running session [stale lock]"
+    },
+    {
+     "rank": 7,
+     "icon": "⚠️",
+     "text": "content check failed — check",
+     "modifiers": [],
+     "safe": false,
+     "render": "⚠️ content check failed — check"
+    },
+    {
+     "rank": 1,
+     "icon": "🔒",
+     "text": "never touch",
+     "modifiers": [],
+     "safe": false,
+     "render": "🔒 never touch"
+    },
+    {
+     "rank": 1,
+     "icon": "🔒",
+     "text": "never touch",
+     "modifiers": [],
+     "safe": false,
+     "render": "🔒 never touch"
+    }
+   ]
+  }
+ },
+ {
+  "name": "test_worktree_fields_are_joined_onto_the_branch",
+  "input": {
+   "worktrees": [
+    {
+     "path": "/repo",
+     "branch": "main",
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null
+    },
+    {
+     "path": "/repo/.claude/worktrees/wt-a",
+     "branch": "feat-a",
+     "locked": true,
+     "lock_pid": 4242,
+     "lock_reason": null
+    }
+   ],
+   "local_branches": [
+    "main",
+    "feat-a",
+    "entire/checkpoints/v1"
+   ],
+   "remote_branches": [
+    "main",
+    "feat-a",
+    "feat-verweesd"
+   ],
+   "pulls": {
+    "feat-a": {
+     "number": 700,
+     "state": "merged",
+     "merged_at": null
+    }
+   },
+   "probes": {
+    "feat-a": {
+     "dirty": false,
+     "unpushed": 0
+    }
+   },
+   "sessions": {
+    "/repo/.claude/worktrees/wt-a": {
+     "pid": 4242,
+     "session_id": "aef024ab-8bef-4939-bba3-24b4e36ea94c",
+     "cwd": "/repo/.claude/worktrees/wt-a"
+    }
+   },
+   "transcripts": {
+    "/repo/.claude/worktrees/wt-a": [
+     1700000.0,
+     "oude-sessie-id"
+    ]
+   },
+   "detached_dirty": {},
+   "orphans": [
+    {
+     "name": "worktrees",
+     "path": "/repo/.claude/worktrees/worktrees",
+     "dir_entries": [
+      ".port-registry"
+     ]
+    }
+   ],
+   "ports": {
+    "700": "20700"
+   },
+   "pr_lookup_ok": true
+  },
+  "alive": "always",
+  "judge_alive": "never",
+  "expect": {
+   "rows": [
+    {
+     "name": "entire/checkpoints/v1",
+     "local": true,
+     "remote": false,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "feat-a",
+     "local": true,
+     "remote": true,
+     "worktree": "/repo/.claude/worktrees/wt-a",
+     "locked": true,
+     "lock_pid": 4242,
+     "lock_reason": null,
+     "dirty": false,
+     "unpushed": 0,
+     "pr_number": 700,
+     "pr_state": "merged",
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": 1700000.0,
+     "session_id": "aef024ab-8bef-4939-bba3-24b4e36ea94c",
+     "live": true,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "feat-verweesd",
+     "local": false,
+     "remote": true,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "main",
+     "local": true,
+     "remote": true,
+     "worktree": "/repo",
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "worktrees",
+     "local": false,
+     "remote": false,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": "/repo/.claude/worktrees/worktrees",
+     "dir_entries": [
+      ".port-registry"
+     ]
+    }
+   ],
+   "verdicts": [
+    {
+     "rank": 1,
+     "icon": "🔒",
+     "text": "never touch",
+     "modifiers": [],
+     "safe": false,
+     "render": "🔒 never touch"
+    },
+    {
+     "rank": 2,
+     "icon": "⛔",
+     "text": "running session",
+     "modifiers": [
+      "stale lock"
+     ],
+     "safe": false,
+     "render": "⛔ running session [stale lock]"
+    },
+    {
+     "rank": 7,
+     "icon": "⚠️",
+     "text": "content check failed — check",
+     "modifiers": [],
+     "safe": false,
+     "render": "⚠️ content check failed — check"
+    },
+    {
+     "rank": 1,
+     "icon": "🔒",
+     "text": "never touch",
+     "modifiers": [],
+     "safe": false,
+     "render": "🔒 never touch"
+    },
+    {
+     "rank": 1,
+     "icon": "🔒",
+     "text": "never touch",
+     "modifiers": [],
+     "safe": false,
+     "render": "🔒 never touch"
+    }
+   ]
+  }
+ },
+ {
+  "name": "test_live_session_id_wins_over_the_transcript_id",
+  "input": {
+   "worktrees": [
+    {
+     "path": "/repo",
+     "branch": "main",
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null
+    },
+    {
+     "path": "/repo/.claude/worktrees/wt-a",
+     "branch": "feat-a",
+     "locked": true,
+     "lock_pid": 4242,
+     "lock_reason": null
+    }
+   ],
+   "local_branches": [
+    "main",
+    "feat-a",
+    "entire/checkpoints/v1"
+   ],
+   "remote_branches": [
+    "main",
+    "feat-a",
+    "feat-verweesd"
+   ],
+   "pulls": {
+    "feat-a": {
+     "number": 700,
+     "state": "merged",
+     "merged_at": null
+    }
+   },
+   "probes": {
+    "feat-a": {
+     "dirty": false,
+     "unpushed": 0
+    }
+   },
+   "sessions": {
+    "/repo/.claude/worktrees/wt-a": {
+     "pid": 4242,
+     "session_id": "aef024ab-8bef-4939-bba3-24b4e36ea94c",
+     "cwd": "/repo/.claude/worktrees/wt-a"
+    }
+   },
+   "transcripts": {
+    "/repo/.claude/worktrees/wt-a": [
+     1700000.0,
+     "oude-sessie-id"
+    ]
+   },
+   "detached_dirty": {},
+   "orphans": [
+    {
+     "name": "worktrees",
+     "path": "/repo/.claude/worktrees/worktrees",
+     "dir_entries": [
+      ".port-registry"
+     ]
+    }
+   ],
+   "ports": {
+    "700": "20700"
+   },
+   "pr_lookup_ok": true
+  },
+  "alive": "always",
+  "judge_alive": "never",
+  "expect": {
+   "rows": [
+    {
+     "name": "entire/checkpoints/v1",
+     "local": true,
+     "remote": false,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "feat-a",
+     "local": true,
+     "remote": true,
+     "worktree": "/repo/.claude/worktrees/wt-a",
+     "locked": true,
+     "lock_pid": 4242,
+     "lock_reason": null,
+     "dirty": false,
+     "unpushed": 0,
+     "pr_number": 700,
+     "pr_state": "merged",
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": 1700000.0,
+     "session_id": "aef024ab-8bef-4939-bba3-24b4e36ea94c",
+     "live": true,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "feat-verweesd",
+     "local": false,
+     "remote": true,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "main",
+     "local": true,
+     "remote": true,
+     "worktree": "/repo",
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "worktrees",
+     "local": false,
+     "remote": false,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": "/repo/.claude/worktrees/worktrees",
+     "dir_entries": [
+      ".port-registry"
+     ]
+    }
+   ],
+   "verdicts": [
+    {
+     "rank": 1,
+     "icon": "🔒",
+     "text": "never touch",
+     "modifiers": [],
+     "safe": false,
+     "render": "🔒 never touch"
+    },
+    {
+     "rank": 2,
+     "icon": "⛔",
+     "text": "running session",
+     "modifiers": [
+      "stale lock"
+     ],
+     "safe": false,
+     "render": "⛔ running session [stale lock]"
+    },
+    {
+     "rank": 7,
+     "icon": "⚠️",
+     "text": "content check failed — check",
+     "modifiers": [],
+     "safe": false,
+     "render": "⚠️ content check failed — check"
+    },
+    {
+     "rank": 1,
+     "icon": "🔒",
+     "text": "never touch",
+     "modifiers": [],
+     "safe": false,
+     "render": "🔒 never touch"
+    },
+    {
+     "rank": 1,
+     "icon": "🔒",
+     "text": "never touch",
+     "modifiers": [],
+     "safe": false,
+     "render": "🔒 never touch"
+    }
+   ]
+  }
+ },
+ {
+  "name": "test_dead_session_pid_is_not_live",
+  "input": {
+   "worktrees": [
+    {
+     "path": "/repo",
+     "branch": "main",
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null
+    },
+    {
+     "path": "/repo/.claude/worktrees/wt-a",
+     "branch": "feat-a",
+     "locked": true,
+     "lock_pid": 4242,
+     "lock_reason": null
+    }
+   ],
+   "local_branches": [
+    "main",
+    "feat-a",
+    "entire/checkpoints/v1"
+   ],
+   "remote_branches": [
+    "main",
+    "feat-a",
+    "feat-verweesd"
+   ],
+   "pulls": {
+    "feat-a": {
+     "number": 700,
+     "state": "merged",
+     "merged_at": null
+    }
+   },
+   "probes": {
+    "feat-a": {
+     "dirty": false,
+     "unpushed": 0
+    }
+   },
+   "sessions": {
+    "/repo/.claude/worktrees/wt-a": {
+     "pid": 4242,
+     "session_id": "aef024ab-8bef-4939-bba3-24b4e36ea94c",
+     "cwd": "/repo/.claude/worktrees/wt-a"
+    }
+   },
+   "transcripts": {
+    "/repo/.claude/worktrees/wt-a": [
+     1700000.0,
+     "oude-sessie-id"
+    ]
+   },
+   "detached_dirty": {},
+   "orphans": [
+    {
+     "name": "worktrees",
+     "path": "/repo/.claude/worktrees/worktrees",
+     "dir_entries": [
+      ".port-registry"
+     ]
+    }
+   ],
+   "ports": {
+    "700": "20700"
+   },
+   "pr_lookup_ok": true
+  },
+  "alive": "never",
+  "judge_alive": "never",
+  "expect": {
+   "rows": [
+    {
+     "name": "entire/checkpoints/v1",
+     "local": true,
+     "remote": false,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "feat-a",
+     "local": true,
+     "remote": true,
+     "worktree": "/repo/.claude/worktrees/wt-a",
+     "locked": true,
+     "lock_pid": 4242,
+     "lock_reason": null,
+     "dirty": false,
+     "unpushed": 0,
+     "pr_number": 700,
+     "pr_state": "merged",
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": 1700000.0,
+     "session_id": "aef024ab-8bef-4939-bba3-24b4e36ea94c",
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "feat-verweesd",
+     "local": false,
+     "remote": true,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "main",
+     "local": true,
+     "remote": true,
+     "worktree": "/repo",
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "worktrees",
+     "local": false,
+     "remote": false,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": "/repo/.claude/worktrees/worktrees",
+     "dir_entries": [
+      ".port-registry"
+     ]
+    }
+   ],
+   "verdicts": [
+    {
+     "rank": 1,
+     "icon": "🔒",
+     "text": "never touch",
+     "modifiers": [],
+     "safe": false,
+     "render": "🔒 never touch"
+    },
+    {
+     "rank": 6,
+     "icon": "✅",
+     "text": "safe to remove",
+     "modifiers": [
+      "stale lock"
+     ],
+     "safe": true,
+     "render": "✅ safe to remove [stale lock]"
+    },
+    {
+     "rank": 7,
+     "icon": "⚠️",
+     "text": "content check failed — check",
+     "modifiers": [],
+     "safe": false,
+     "render": "⚠️ content check failed — check"
+    },
+    {
+     "rank": 1,
+     "icon": "🔒",
+     "text": "never touch",
+     "modifiers": [],
+     "safe": false,
+     "render": "🔒 never touch"
+    },
+    {
+     "rank": 1,
+     "icon": "🔒",
+     "text": "never touch",
+     "modifiers": [],
+     "safe": false,
+     "render": "🔒 never touch"
+    }
+   ]
+  }
+ },
+ {
+  "name": "test_orphan_dir_carries_its_entries_so_rank_one_can_see_them",
+  "input": {
+   "worktrees": [
+    {
+     "path": "/repo",
+     "branch": "main",
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null
+    },
+    {
+     "path": "/repo/.claude/worktrees/wt-a",
+     "branch": "feat-a",
+     "locked": true,
+     "lock_pid": 4242,
+     "lock_reason": null
+    }
+   ],
+   "local_branches": [
+    "main",
+    "feat-a",
+    "entire/checkpoints/v1"
+   ],
+   "remote_branches": [
+    "main",
+    "feat-a",
+    "feat-verweesd"
+   ],
+   "pulls": {
+    "feat-a": {
+     "number": 700,
+     "state": "merged",
+     "merged_at": null
+    }
+   },
+   "probes": {
+    "feat-a": {
+     "dirty": false,
+     "unpushed": 0
+    }
+   },
+   "sessions": {
+    "/repo/.claude/worktrees/wt-a": {
+     "pid": 4242,
+     "session_id": "aef024ab-8bef-4939-bba3-24b4e36ea94c",
+     "cwd": "/repo/.claude/worktrees/wt-a"
+    }
+   },
+   "transcripts": {
+    "/repo/.claude/worktrees/wt-a": [
+     1700000.0,
+     "oude-sessie-id"
+    ]
+   },
+   "detached_dirty": {},
+   "orphans": [
+    {
+     "name": "worktrees",
+     "path": "/repo/.claude/worktrees/worktrees",
+     "dir_entries": [
+      ".port-registry"
+     ]
+    }
+   ],
+   "ports": {
+    "700": "20700"
+   },
+   "pr_lookup_ok": true
+  },
+  "alive": "always",
+  "judge_alive": "never",
+  "expect": {
+   "rows": [
+    {
+     "name": "entire/checkpoints/v1",
+     "local": true,
+     "remote": false,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "feat-a",
+     "local": true,
+     "remote": true,
+     "worktree": "/repo/.claude/worktrees/wt-a",
+     "locked": true,
+     "lock_pid": 4242,
+     "lock_reason": null,
+     "dirty": false,
+     "unpushed": 0,
+     "pr_number": 700,
+     "pr_state": "merged",
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": 1700000.0,
+     "session_id": "aef024ab-8bef-4939-bba3-24b4e36ea94c",
+     "live": true,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "feat-verweesd",
+     "local": false,
+     "remote": true,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "main",
+     "local": true,
+     "remote": true,
+     "worktree": "/repo",
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "worktrees",
+     "local": false,
+     "remote": false,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": "/repo/.claude/worktrees/worktrees",
+     "dir_entries": [
+      ".port-registry"
+     ]
+    }
+   ],
+   "verdicts": [
+    {
+     "rank": 1,
+     "icon": "🔒",
+     "text": "never touch",
+     "modifiers": [],
+     "safe": false,
+     "render": "🔒 never touch"
+    },
+    {
+     "rank": 2,
+     "icon": "⛔",
+     "text": "running session",
+     "modifiers": [
+      "stale lock"
+     ],
+     "safe": false,
+     "render": "⛔ running session [stale lock]"
+    },
+    {
+     "rank": 7,
+     "icon": "⚠️",
+     "text": "content check failed — check",
+     "modifiers": [],
+     "safe": false,
+     "render": "⚠️ content check failed — check"
+    },
+    {
+     "rank": 1,
+     "icon": "🔒",
+     "text": "never touch",
+     "modifiers": [],
+     "safe": false,
+     "render": "🔒 never touch"
+    },
+    {
+     "rank": 1,
+     "icon": "🔒",
+     "text": "never touch",
+     "modifiers": [],
+     "safe": false,
+     "render": "🔒 never touch"
+    }
+   ]
+  }
+ },
+ {
+  "name": "test_missing_probe_leaves_the_state_unknown_not_clean",
+  "input": {
+   "worktrees": [
+    {
+     "path": "/repo",
+     "branch": "main",
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null
+    },
+    {
+     "path": "/repo/.claude/worktrees/wt-a",
+     "branch": "feat-a",
+     "locked": true,
+     "lock_pid": 4242,
+     "lock_reason": null
+    }
+   ],
+   "local_branches": [
+    "main",
+    "feat-a",
+    "entire/checkpoints/v1"
+   ],
+   "remote_branches": [
+    "main",
+    "feat-a",
+    "feat-verweesd"
+   ],
+   "pulls": {
+    "feat-a": {
+     "number": 700,
+     "state": "merged",
+     "merged_at": null
+    }
+   },
+   "probes": {},
+   "sessions": {
+    "/repo/.claude/worktrees/wt-a": {
+     "pid": 4242,
+     "session_id": "aef024ab-8bef-4939-bba3-24b4e36ea94c",
+     "cwd": "/repo/.claude/worktrees/wt-a"
+    }
+   },
+   "transcripts": {
+    "/repo/.claude/worktrees/wt-a": [
+     1700000.0,
+     "oude-sessie-id"
+    ]
+   },
+   "detached_dirty": {},
+   "orphans": [
+    {
+     "name": "worktrees",
+     "path": "/repo/.claude/worktrees/worktrees",
+     "dir_entries": [
+      ".port-registry"
+     ]
+    }
+   ],
+   "ports": {
+    "700": "20700"
+   },
+   "pr_lookup_ok": true
+  },
+  "alive": "always",
+  "judge_alive": "never",
+  "expect": {
+   "rows": [
+    {
+     "name": "entire/checkpoints/v1",
+     "local": true,
+     "remote": false,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "feat-a",
+     "local": true,
+     "remote": true,
+     "worktree": "/repo/.claude/worktrees/wt-a",
+     "locked": true,
+     "lock_pid": 4242,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": 700,
+     "pr_state": "merged",
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": 1700000.0,
+     "session_id": "aef024ab-8bef-4939-bba3-24b4e36ea94c",
+     "live": true,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "feat-verweesd",
+     "local": false,
+     "remote": true,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "main",
+     "local": true,
+     "remote": true,
+     "worktree": "/repo",
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "worktrees",
+     "local": false,
+     "remote": false,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": "/repo/.claude/worktrees/worktrees",
+     "dir_entries": [
+      ".port-registry"
+     ]
+    }
+   ],
+   "verdicts": [
+    {
+     "rank": 1,
+     "icon": "🔒",
+     "text": "never touch",
+     "modifiers": [],
+     "safe": false,
+     "render": "🔒 never touch"
+    },
+    {
+     "rank": 2,
+     "icon": "⛔",
+     "text": "running session",
+     "modifiers": [
+      "stale lock"
+     ],
+     "safe": false,
+     "render": "⛔ running session [stale lock]"
+    },
+    {
+     "rank": 7,
+     "icon": "⚠️",
+     "text": "content check failed — check",
+     "modifiers": [],
+     "safe": false,
+     "render": "⚠️ content check failed — check"
+    },
+    {
+     "rank": 1,
+     "icon": "🔒",
+     "text": "never touch",
+     "modifiers": [],
+     "safe": false,
+     "render": "🔒 never touch"
+    },
+    {
+     "rank": 1,
+     "icon": "🔒",
+     "text": "never touch",
+     "modifiers": [],
+     "safe": false,
+     "render": "🔒 never touch"
+    }
+   ]
+  }
+ },
+ {
+  "name": "test_port_block_lands_on_the_matching_branch_not_on_an_unrelated_one",
+  "input": {
+   "worktrees": [
+    {
+     "path": "/repo",
+     "branch": "main",
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null
+    },
+    {
+     "path": "/repo/.claude/worktrees/wt-a",
+     "branch": "feat-a",
+     "locked": true,
+     "lock_pid": 4242,
+     "lock_reason": null
+    }
+   ],
+   "local_branches": [
+    "main",
+    "feat-a",
+    "entire/checkpoints/v1",
+    "issue-700-poort"
+   ],
+   "remote_branches": [
+    "main",
+    "feat-a",
+    "feat-verweesd",
+    "issue-700-poort"
+   ],
+   "pulls": {
+    "feat-a": {
+     "number": 700,
+     "state": "merged",
+     "merged_at": null
+    }
+   },
+   "probes": {
+    "feat-a": {
+     "dirty": false,
+     "unpushed": 0
+    }
+   },
+   "sessions": {
+    "/repo/.claude/worktrees/wt-a": {
+     "pid": 4242,
+     "session_id": "aef024ab-8bef-4939-bba3-24b4e36ea94c",
+     "cwd": "/repo/.claude/worktrees/wt-a"
+    }
+   },
+   "transcripts": {
+    "/repo/.claude/worktrees/wt-a": [
+     1700000.0,
+     "oude-sessie-id"
+    ]
+   },
+   "detached_dirty": {},
+   "orphans": [
+    {
+     "name": "worktrees",
+     "path": "/repo/.claude/worktrees/worktrees",
+     "dir_entries": [
+      ".port-registry"
+     ]
+    }
+   ],
+   "ports": {
+    "700": "20700"
+   },
+   "pr_lookup_ok": true
+  },
+  "alive": "always",
+  "judge_alive": "never",
+  "expect": {
+   "rows": [
+    {
+     "name": "entire/checkpoints/v1",
+     "local": true,
+     "remote": false,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "feat-a",
+     "local": true,
+     "remote": true,
+     "worktree": "/repo/.claude/worktrees/wt-a",
+     "locked": true,
+     "lock_pid": 4242,
+     "lock_reason": null,
+     "dirty": false,
+     "unpushed": 0,
+     "pr_number": 700,
+     "pr_state": "merged",
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": 1700000.0,
+     "session_id": "aef024ab-8bef-4939-bba3-24b4e36ea94c",
+     "live": true,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "feat-verweesd",
+     "local": false,
+     "remote": true,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "issue-700-poort",
+     "local": true,
+     "remote": true,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": "20700",
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "main",
+     "local": true,
+     "remote": true,
+     "worktree": "/repo",
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "worktrees",
+     "local": false,
+     "remote": false,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": "/repo/.claude/worktrees/worktrees",
+     "dir_entries": [
+      ".port-registry"
+     ]
+    }
+   ],
+   "verdicts": [
+    {
+     "rank": 1,
+     "icon": "🔒",
+     "text": "never touch",
+     "modifiers": [],
+     "safe": false,
+     "render": "🔒 never touch"
+    },
+    {
+     "rank": 2,
+     "icon": "⛔",
+     "text": "running session",
+     "modifiers": [
+      "stale lock"
+     ],
+     "safe": false,
+     "render": "⛔ running session [stale lock]"
+    },
+    {
+     "rank": 7,
+     "icon": "⚠️",
+     "text": "content check failed — check",
+     "modifiers": [],
+     "safe": false,
+     "render": "⚠️ content check failed — check"
+    },
+    {
+     "rank": 4,
+     "icon": "⚠️",
+     "text": "unpushed commits unknown — check",
+     "modifiers": [],
+     "safe": false,
+     "render": "⚠️ unpushed commits unknown — check"
+    },
+    {
+     "rank": 1,
+     "icon": "🔒",
+     "text": "never touch",
+     "modifiers": [],
+     "safe": false,
+     "render": "🔒 never touch"
+    },
+    {
+     "rank": 1,
+     "icon": "🔒",
+     "text": "never touch",
+     "modifiers": [],
+     "safe": false,
+     "render": "🔒 never touch"
+    }
+   ]
+  }
+ },
+ {
+  "name": "test_unique_files_from_the_probe_lands_on_the_row",
+  "input": {
+   "worktrees": [
+    {
+     "path": "/repo",
+     "branch": "main",
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null
+    },
+    {
+     "path": "/repo/.claude/worktrees/wt-a",
+     "branch": "feat-a",
+     "locked": true,
+     "lock_pid": 4242,
+     "lock_reason": null
+    }
+   ],
+   "local_branches": [
+    "main",
+    "feat-a",
+    "entire/checkpoints/v1"
+   ],
+   "remote_branches": [
+    "main",
+    "feat-a",
+    "feat-verweesd"
+   ],
+   "pulls": {
+    "feat-a": {
+     "number": 700,
+     "state": "merged",
+     "merged_at": null
+    }
+   },
+   "probes": {
+    "feat-a": {
+     "dirty": false,
+     "unpushed": 0,
+     "unique_files": [
+      "src/x.py"
+     ]
+    }
+   },
+   "sessions": {
+    "/repo/.claude/worktrees/wt-a": {
+     "pid": 4242,
+     "session_id": "aef024ab-8bef-4939-bba3-24b4e36ea94c",
+     "cwd": "/repo/.claude/worktrees/wt-a"
+    }
+   },
+   "transcripts": {
+    "/repo/.claude/worktrees/wt-a": [
+     1700000.0,
+     "oude-sessie-id"
+    ]
+   },
+   "detached_dirty": {},
+   "orphans": [
+    {
+     "name": "worktrees",
+     "path": "/repo/.claude/worktrees/worktrees",
+     "dir_entries": [
+      ".port-registry"
+     ]
+    }
+   ],
+   "ports": {
+    "700": "20700"
+   },
+   "pr_lookup_ok": true
+  },
+  "alive": "always",
+  "judge_alive": "never",
+  "expect": {
+   "rows": [
+    {
+     "name": "entire/checkpoints/v1",
+     "local": true,
+     "remote": false,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "feat-a",
+     "local": true,
+     "remote": true,
+     "worktree": "/repo/.claude/worktrees/wt-a",
+     "locked": true,
+     "lock_pid": 4242,
+     "lock_reason": null,
+     "dirty": false,
+     "unpushed": 0,
+     "pr_number": 700,
+     "pr_state": "merged",
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": [
+      "src/x.py"
+     ],
+     "own_commits": null,
+     "last_session": 1700000.0,
+     "session_id": "aef024ab-8bef-4939-bba3-24b4e36ea94c",
+     "live": true,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "feat-verweesd",
+     "local": false,
+     "remote": true,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "main",
+     "local": true,
+     "remote": true,
+     "worktree": "/repo",
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "worktrees",
+     "local": false,
+     "remote": false,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": "/repo/.claude/worktrees/worktrees",
+     "dir_entries": [
+      ".port-registry"
+     ]
+    }
+   ],
+   "verdicts": [
+    {
+     "rank": 1,
+     "icon": "🔒",
+     "text": "never touch",
+     "modifiers": [],
+     "safe": false,
+     "render": "🔒 never touch"
+    },
+    {
+     "rank": 2,
+     "icon": "⛔",
+     "text": "running session",
+     "modifiers": [
+      "stale lock"
+     ],
+     "safe": false,
+     "render": "⛔ running session [stale lock]"
+    },
+    {
+     "rank": 7,
+     "icon": "⚠️",
+     "text": "content check failed — check",
+     "modifiers": [],
+     "safe": false,
+     "render": "⚠️ content check failed — check"
+    },
+    {
+     "rank": 1,
+     "icon": "🔒",
+     "text": "never touch",
+     "modifiers": [],
+     "safe": false,
+     "render": "🔒 never touch"
+    },
+    {
+     "rank": 1,
+     "icon": "🔒",
+     "text": "never touch",
+     "modifiers": [],
+     "safe": false,
+     "render": "🔒 never touch"
+    }
+   ]
+  }
+ },
+ {
+  "name": "test_own_commits_from_the_probe_lands_on_the_row",
+  "input": {
+   "worktrees": [
+    {
+     "path": "/repo",
+     "branch": "main",
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null
+    },
+    {
+     "path": "/repo/.claude/worktrees/wt-a",
+     "branch": "feat-a",
+     "locked": true,
+     "lock_pid": 4242,
+     "lock_reason": null
+    }
+   ],
+   "local_branches": [
+    "main",
+    "feat-a",
+    "entire/checkpoints/v1"
+   ],
+   "remote_branches": [
+    "main",
+    "feat-a",
+    "feat-verweesd"
+   ],
+   "pulls": {
+    "feat-a": {
+     "number": 700,
+     "state": "merged",
+     "merged_at": null
+    }
+   },
+   "probes": {
+    "feat-a": {
+     "dirty": false,
+     "unpushed": 0,
+     "unique_files": [],
+     "own_commits": 0
+    }
+   },
+   "sessions": {
+    "/repo/.claude/worktrees/wt-a": {
+     "pid": 4242,
+     "session_id": "aef024ab-8bef-4939-bba3-24b4e36ea94c",
+     "cwd": "/repo/.claude/worktrees/wt-a"
+    }
+   },
+   "transcripts": {
+    "/repo/.claude/worktrees/wt-a": [
+     1700000.0,
+     "oude-sessie-id"
+    ]
+   },
+   "detached_dirty": {},
+   "orphans": [
+    {
+     "name": "worktrees",
+     "path": "/repo/.claude/worktrees/worktrees",
+     "dir_entries": [
+      ".port-registry"
+     ]
+    }
+   ],
+   "ports": {
+    "700": "20700"
+   },
+   "pr_lookup_ok": true
+  },
+  "alive": "always",
+  "judge_alive": "never",
+  "expect": {
+   "rows": [
+    {
+     "name": "entire/checkpoints/v1",
+     "local": true,
+     "remote": false,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "feat-a",
+     "local": true,
+     "remote": true,
+     "worktree": "/repo/.claude/worktrees/wt-a",
+     "locked": true,
+     "lock_pid": 4242,
+     "lock_reason": null,
+     "dirty": false,
+     "unpushed": 0,
+     "pr_number": 700,
+     "pr_state": "merged",
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": [],
+     "own_commits": 0,
+     "last_session": 1700000.0,
+     "session_id": "aef024ab-8bef-4939-bba3-24b4e36ea94c",
+     "live": true,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "feat-verweesd",
+     "local": false,
+     "remote": true,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "main",
+     "local": true,
+     "remote": true,
+     "worktree": "/repo",
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "worktrees",
+     "local": false,
+     "remote": false,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": "/repo/.claude/worktrees/worktrees",
+     "dir_entries": [
+      ".port-registry"
+     ]
+    }
+   ],
+   "verdicts": [
+    {
+     "rank": 1,
+     "icon": "🔒",
+     "text": "never touch",
+     "modifiers": [],
+     "safe": false,
+     "render": "🔒 never touch"
+    },
+    {
+     "rank": 2,
+     "icon": "⛔",
+     "text": "running session",
+     "modifiers": [
+      "stale lock"
+     ],
+     "safe": false,
+     "render": "⛔ running session [stale lock]"
+    },
+    {
+     "rank": 7,
+     "icon": "⚠️",
+     "text": "content check failed — check",
+     "modifiers": [],
+     "safe": false,
+     "render": "⚠️ content check failed — check"
+    },
+    {
+     "rank": 1,
+     "icon": "🔒",
+     "text": "never touch",
+     "modifiers": [],
+     "safe": false,
+     "render": "🔒 never touch"
+    },
+    {
+     "rank": 1,
+     "icon": "🔒",
+     "text": "never touch",
+     "modifiers": [],
+     "safe": false,
+     "render": "🔒 never touch"
+    }
+   ]
+  }
+ },
+ {
+  "name": "test_failed_pr_lookup_lands_on_every_branch_row",
+  "input": {
+   "worktrees": [
+    {
+     "path": "/repo",
+     "branch": "main",
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null
+    },
+    {
+     "path": "/repo/.claude/worktrees/wt-a",
+     "branch": "feat-a",
+     "locked": true,
+     "lock_pid": 4242,
+     "lock_reason": null
+    }
+   ],
+   "local_branches": [
+    "main",
+    "feat-a",
+    "entire/checkpoints/v1"
+   ],
+   "remote_branches": [
+    "main",
+    "feat-a",
+    "feat-verweesd"
+   ],
+   "pulls": {
+    "feat-a": {
+     "number": 700,
+     "state": "merged",
+     "merged_at": null
+    }
+   },
+   "probes": {
+    "feat-a": {
+     "dirty": false,
+     "unpushed": 0
+    }
+   },
+   "sessions": {
+    "/repo/.claude/worktrees/wt-a": {
+     "pid": 4242,
+     "session_id": "aef024ab-8bef-4939-bba3-24b4e36ea94c",
+     "cwd": "/repo/.claude/worktrees/wt-a"
+    }
+   },
+   "transcripts": {
+    "/repo/.claude/worktrees/wt-a": [
+     1700000.0,
+     "oude-sessie-id"
+    ]
+   },
+   "detached_dirty": {},
+   "orphans": [
+    {
+     "name": "worktrees",
+     "path": "/repo/.claude/worktrees/worktrees",
+     "dir_entries": [
+      ".port-registry"
+     ]
+    }
+   ],
+   "ports": {
+    "700": "20700"
+   },
+   "pr_lookup_ok": false
+  },
+  "alive": "always",
+  "judge_alive": "never",
+  "expect": {
+   "rows": [
+    {
+     "name": "entire/checkpoints/v1",
+     "local": true,
+     "remote": false,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": false,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "feat-a",
+     "local": true,
+     "remote": true,
+     "worktree": "/repo/.claude/worktrees/wt-a",
+     "locked": true,
+     "lock_pid": 4242,
+     "lock_reason": null,
+     "dirty": false,
+     "unpushed": 0,
+     "pr_number": 700,
+     "pr_state": "merged",
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": false,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": 1700000.0,
+     "session_id": "aef024ab-8bef-4939-bba3-24b4e36ea94c",
+     "live": true,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "feat-verweesd",
+     "local": false,
+     "remote": true,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": false,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "main",
+     "local": true,
+     "remote": true,
+     "worktree": "/repo",
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": false,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "worktrees",
+     "local": false,
+     "remote": false,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": "/repo/.claude/worktrees/worktrees",
+     "dir_entries": [
+      ".port-registry"
+     ]
+    }
+   ],
+   "verdicts": [
+    {
+     "rank": 1,
+     "icon": "🔒",
+     "text": "never touch",
+     "modifiers": [],
+     "safe": false,
+     "render": "🔒 never touch"
+    },
+    {
+     "rank": 2,
+     "icon": "⛔",
+     "text": "running session",
+     "modifiers": [
+      "stale lock"
+     ],
+     "safe": false,
+     "render": "⛔ running session [stale lock]"
+    },
+    {
+     "rank": 7,
+     "icon": "⚠️",
+     "text": "PR status unknown — check",
+     "modifiers": [],
+     "safe": false,
+     "render": "⚠️ PR status unknown — check"
+    },
+    {
+     "rank": 1,
+     "icon": "🔒",
+     "text": "never touch",
+     "modifiers": [],
+     "safe": false,
+     "render": "🔒 never touch"
+    },
+    {
+     "rank": 1,
+     "icon": "🔒",
+     "text": "never touch",
+     "modifiers": [],
+     "safe": false,
+     "render": "🔒 never touch"
+    }
+   ]
+  }
+ },
+ {
+  "name": "test_detached_head_worktree_gets_its_own_row",
+  "input": {
+   "worktrees": [
+    {
+     "path": "/repo",
+     "branch": "main",
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null
+    },
+    {
+     "path": "/repo/.claude/worktrees/wt-a",
+     "branch": "feat-a",
+     "locked": true,
+     "lock_pid": 4242,
+     "lock_reason": null
+    },
+    {
+     "path": "/repo/.claude/worktrees/detached-spike",
+     "branch": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null
+    }
+   ],
+   "local_branches": [
+    "main",
+    "feat-a",
+    "entire/checkpoints/v1"
+   ],
+   "remote_branches": [
+    "main",
+    "feat-a",
+    "feat-verweesd"
+   ],
+   "pulls": {
+    "feat-a": {
+     "number": 700,
+     "state": "merged",
+     "merged_at": null
+    }
+   },
+   "probes": {
+    "feat-a": {
+     "dirty": false,
+     "unpushed": 0
+    }
+   },
+   "sessions": {
+    "/repo/.claude/worktrees/wt-a": {
+     "pid": 4242,
+     "session_id": "aef024ab-8bef-4939-bba3-24b4e36ea94c",
+     "cwd": "/repo/.claude/worktrees/wt-a"
+    }
+   },
+   "transcripts": {
+    "/repo/.claude/worktrees/wt-a": [
+     1700000.0,
+     "oude-sessie-id"
+    ]
+   },
+   "detached_dirty": {
+    "/repo/.claude/worktrees/detached-spike": true
+   },
+   "orphans": [
+    {
+     "name": "worktrees",
+     "path": "/repo/.claude/worktrees/worktrees",
+     "dir_entries": [
+      ".port-registry"
+     ]
+    }
+   ],
+   "ports": {
+    "700": "20700"
+   },
+   "pr_lookup_ok": true
+  },
+  "alive": "always",
+  "judge_alive": "never",
+  "expect": {
+   "rows": [
+    {
+     "name": "entire/checkpoints/v1",
+     "local": true,
+     "remote": false,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "feat-a",
+     "local": true,
+     "remote": true,
+     "worktree": "/repo/.claude/worktrees/wt-a",
+     "locked": true,
+     "lock_pid": 4242,
+     "lock_reason": null,
+     "dirty": false,
+     "unpushed": 0,
+     "pr_number": 700,
+     "pr_state": "merged",
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": 1700000.0,
+     "session_id": "aef024ab-8bef-4939-bba3-24b4e36ea94c",
+     "live": true,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "feat-verweesd",
+     "local": false,
+     "remote": true,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "main",
+     "local": true,
+     "remote": true,
+     "worktree": "/repo",
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "detached-spike",
+     "local": false,
+     "remote": false,
+     "worktree": "/repo/.claude/worktrees/detached-spike",
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": true,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "worktrees",
+     "local": false,
+     "remote": false,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": "/repo/.claude/worktrees/worktrees",
+     "dir_entries": [
+      ".port-registry"
+     ]
+    }
+   ],
+   "verdicts": [
+    {
+     "rank": 1,
+     "icon": "🔒",
+     "text": "never touch",
+     "modifiers": [],
+     "safe": false,
+     "render": "🔒 never touch"
+    },
+    {
+     "rank": 2,
+     "icon": "⛔",
+     "text": "running session",
+     "modifiers": [
+      "stale lock"
+     ],
+     "safe": false,
+     "render": "⛔ running session [stale lock]"
+    },
+    {
+     "rank": 7,
+     "icon": "⚠️",
+     "text": "content check failed — check",
+     "modifiers": [],
+     "safe": false,
+     "render": "⚠️ content check failed — check"
+    },
+    {
+     "rank": 1,
+     "icon": "🔒",
+     "text": "never touch",
+     "modifiers": [],
+     "safe": false,
+     "render": "🔒 never touch"
+    },
+    {
+     "rank": 3,
+     "icon": "⛔",
+     "text": "save first",
+     "modifiers": [],
+     "safe": false,
+     "render": "⛔ save first"
+    },
+    {
+     "rank": 1,
+     "icon": "🔒",
+     "text": "never touch",
+     "modifiers": [],
+     "safe": false,
+     "render": "🔒 never touch"
+    }
+   ]
+  }
+ },
+ {
+  "name": "test_clean_detached_head_worktree_is_an_orphan_to_hand",
+  "input": {
+   "worktrees": [
+    {
+     "path": "/repo",
+     "branch": "main",
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null
+    },
+    {
+     "path": "/repo/.claude/worktrees/detached-spike",
+     "branch": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null
+    }
+   ],
+   "local_branches": [
+    "main",
+    "feat-a",
+    "entire/checkpoints/v1"
+   ],
+   "remote_branches": [
+    "main",
+    "feat-a",
+    "feat-verweesd"
+   ],
+   "pulls": {
+    "feat-a": {
+     "number": 700,
+     "state": "merged",
+     "merged_at": null
+    }
+   },
+   "probes": {
+    "feat-a": {
+     "dirty": false,
+     "unpushed": 0
+    }
+   },
+   "sessions": {
+    "/repo/.claude/worktrees/wt-a": {
+     "pid": 4242,
+     "session_id": "aef024ab-8bef-4939-bba3-24b4e36ea94c",
+     "cwd": "/repo/.claude/worktrees/wt-a"
+    }
+   },
+   "transcripts": {
+    "/repo/.claude/worktrees/wt-a": [
+     1700000.0,
+     "oude-sessie-id"
+    ]
+   },
+   "detached_dirty": {
+    "/repo/.claude/worktrees/detached-spike": false
+   },
+   "orphans": [
+    {
+     "name": "worktrees",
+     "path": "/repo/.claude/worktrees/worktrees",
+     "dir_entries": [
+      ".port-registry"
+     ]
+    }
+   ],
+   "ports": {
+    "700": "20700"
+   },
+   "pr_lookup_ok": true
+  },
+  "alive": "always",
+  "judge_alive": "never",
+  "expect": {
+   "rows": [
+    {
+     "name": "entire/checkpoints/v1",
+     "local": true,
+     "remote": false,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "feat-a",
+     "local": true,
+     "remote": true,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": false,
+     "unpushed": 0,
+     "pr_number": 700,
+     "pr_state": "merged",
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "feat-verweesd",
+     "local": false,
+     "remote": true,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "main",
+     "local": true,
+     "remote": true,
+     "worktree": "/repo",
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "detached-spike",
+     "local": false,
+     "remote": false,
+     "worktree": "/repo/.claude/worktrees/detached-spike",
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": false,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "worktrees",
+     "local": false,
+     "remote": false,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": "/repo/.claude/worktrees/worktrees",
+     "dir_entries": [
+      ".port-registry"
+     ]
+    }
+   ],
+   "verdicts": [
+    {
+     "rank": 1,
+     "icon": "🔒",
+     "text": "never touch",
+     "modifiers": [],
+     "safe": false,
+     "render": "🔒 never touch"
+    },
+    {
+     "rank": 6,
+     "icon": "✅",
+     "text": "safe to remove",
+     "modifiers": [],
+     "safe": true,
+     "render": "✅ safe to remove"
+    },
+    {
+     "rank": 7,
+     "icon": "⚠️",
+     "text": "content check failed — check",
+     "modifiers": [],
+     "safe": false,
+     "render": "⚠️ content check failed — check"
+    },
+    {
+     "rank": 1,
+     "icon": "🔒",
+     "text": "never touch",
+     "modifiers": [],
+     "safe": false,
+     "render": "🔒 never touch"
+    },
+    {
+     "rank": 9,
+     "icon": "❓",
+     "text": "detached worktree — manual",
+     "modifiers": [],
+     "safe": false,
+     "render": "❓ detached worktree — manual"
+    },
+    {
+     "rank": 1,
+     "icon": "🔒",
+     "text": "never touch",
+     "modifiers": [],
+     "safe": false,
+     "render": "🔒 never touch"
+    }
+   ]
+  }
+ },
+ {
+  "name": "test_names_sort_by_code_point",
+  "input": {
+   "worktrees": [
+    {
+     "path": "/repo",
+     "branch": "main",
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null
+    },
+    {
+     "path": "/repo/.claude/worktrees/wt-a",
+     "branch": "feat-a",
+     "locked": true,
+     "lock_pid": 4242,
+     "lock_reason": null
+    }
+   ],
+   "local_branches": [
+    "zeta",
+    "Zulu",
+    "éclair",
+    "a-b",
+    "a_b",
+    "a.b"
+   ],
+   "remote_branches": [],
+   "pulls": {},
+   "probes": {},
+   "sessions": {
+    "/repo/.claude/worktrees/wt-a": {
+     "pid": 4242,
+     "session_id": "aef024ab-8bef-4939-bba3-24b4e36ea94c",
+     "cwd": "/repo/.claude/worktrees/wt-a"
+    }
+   },
+   "transcripts": {
+    "/repo/.claude/worktrees/wt-a": [
+     1700000.0,
+     "oude-sessie-id"
+    ]
+   },
+   "detached_dirty": {},
+   "orphans": [],
+   "ports": {},
+   "pr_lookup_ok": true
+  },
+  "alive": "always",
+  "judge_alive": "never",
+  "expect": {
+   "rows": [
+    {
+     "name": "Zulu",
+     "local": true,
+     "remote": false,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "a-b",
+     "local": true,
+     "remote": false,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "a.b",
+     "local": true,
+     "remote": false,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "a_b",
+     "local": true,
+     "remote": false,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "zeta",
+     "local": true,
+     "remote": false,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "éclair",
+     "local": true,
+     "remote": false,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    }
+   ],
+   "verdicts": [
+    {
+     "rank": 4,
+     "icon": "⚠️",
+     "text": "unpushed commits unknown — check",
+     "modifiers": [],
+     "safe": false,
+     "render": "⚠️ unpushed commits unknown — check"
+    },
+    {
+     "rank": 4,
+     "icon": "⚠️",
+     "text": "unpushed commits unknown — check",
+     "modifiers": [],
+     "safe": false,
+     "render": "⚠️ unpushed commits unknown — check"
+    },
+    {
+     "rank": 4,
+     "icon": "⚠️",
+     "text": "unpushed commits unknown — check",
+     "modifiers": [],
+     "safe": false,
+     "render": "⚠️ unpushed commits unknown — check"
+    },
+    {
+     "rank": 4,
+     "icon": "⚠️",
+     "text": "unpushed commits unknown — check",
+     "modifiers": [],
+     "safe": false,
+     "render": "⚠️ unpushed commits unknown — check"
+    },
+    {
+     "rank": 4,
+     "icon": "⚠️",
+     "text": "unpushed commits unknown — check",
+     "modifiers": [],
+     "safe": false,
+     "render": "⚠️ unpushed commits unknown — check"
+    },
+    {
+     "rank": 4,
+     "icon": "⚠️",
+     "text": "unpushed commits unknown — check",
+     "modifiers": [],
+     "safe": false,
+     "render": "⚠️ unpushed commits unknown — check"
+    }
+   ]
+  }
+ },
+ {
+  "name": "test_port_for_matches_unicode_digits",
+  "input": {
+   "worktrees": [
+    {
+     "path": "/repo",
+     "branch": "main",
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null
+    },
+    {
+     "path": "/repo/.claude/worktrees/wt-a",
+     "branch": "feat-a",
+     "locked": true,
+     "lock_pid": 4242,
+     "lock_reason": null
+    }
+   ],
+   "local_branches": [
+    "issue-٧٠٠-x",
+    "issue-12-x"
+   ],
+   "remote_branches": [],
+   "pulls": {},
+   "probes": {},
+   "sessions": {
+    "/repo/.claude/worktrees/wt-a": {
+     "pid": 4242,
+     "session_id": "aef024ab-8bef-4939-bba3-24b4e36ea94c",
+     "cwd": "/repo/.claude/worktrees/wt-a"
+    }
+   },
+   "transcripts": {
+    "/repo/.claude/worktrees/wt-a": [
+     1700000.0,
+     "oude-sessie-id"
+    ]
+   },
+   "detached_dirty": {},
+   "orphans": [],
+   "ports": {
+    "٧٠٠": "21700",
+    "12": "20012"
+   },
+   "pr_lookup_ok": true
+  },
+  "alive": "always",
+  "judge_alive": "never",
+  "expect": {
+   "rows": [
+    {
+     "name": "issue-12-x",
+     "local": true,
+     "remote": false,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": "20012",
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "issue-٧٠٠-x",
+     "local": true,
+     "remote": false,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": "21700",
+     "orphan_dir": null,
+     "dir_entries": []
+    }
+   ],
+   "verdicts": [
+    {
+     "rank": 4,
+     "icon": "⚠️",
+     "text": "unpushed commits unknown — check",
+     "modifiers": [],
+     "safe": false,
+     "render": "⚠️ unpushed commits unknown — check"
+    },
+    {
+     "rank": 4,
+     "icon": "⚠️",
+     "text": "unpushed commits unknown — check",
+     "modifiers": [],
+     "safe": false,
+     "render": "⚠️ unpushed commits unknown — check"
+    }
+   ]
+  }
+ },
+ {
+  "name": "test_detached_worktree_takes_the_session_of_its_path",
+  "input": {
+   "worktrees": [
+    {
+     "path": "/repo",
+     "branch": "main",
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null
+    },
+    {
+     "path": "/repo/.claude/worktrees/detached-spike",
+     "branch": null,
+     "locked": true,
+     "lock_pid": 99,
+     "lock_reason": "x (pid 99)"
+    }
+   ],
+   "local_branches": [
+    "main",
+    "feat-a",
+    "entire/checkpoints/v1"
+   ],
+   "remote_branches": [
+    "main",
+    "feat-a",
+    "feat-verweesd"
+   ],
+   "pulls": {
+    "feat-a": {
+     "number": 700,
+     "state": "merged",
+     "merged_at": null
+    }
+   },
+   "probes": {
+    "feat-a": {
+     "dirty": false,
+     "unpushed": 0
+    }
+   },
+   "sessions": {
+    "/repo/.claude/worktrees/detached-spike": {
+     "pid": 77,
+     "session_id": "s-77",
+     "cwd": "/repo/.claude/worktrees/detached-spike"
+    }
+   },
+   "transcripts": {
+    "/repo/.claude/worktrees/detached-spike": [
+     1700100.5,
+     "t-1"
+    ]
+   },
+   "detached_dirty": {},
+   "orphans": [
+    {
+     "name": "worktrees",
+     "path": "/repo/.claude/worktrees/worktrees",
+     "dir_entries": [
+      ".port-registry"
+     ]
+    }
+   ],
+   "ports": {
+    "700": "20700"
+   },
+   "pr_lookup_ok": true
+  },
+  "alive": "always",
+  "judge_alive": "never",
+  "expect": {
+   "rows": [
+    {
+     "name": "entire/checkpoints/v1",
+     "local": true,
+     "remote": false,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "feat-a",
+     "local": true,
+     "remote": true,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": false,
+     "unpushed": 0,
+     "pr_number": 700,
+     "pr_state": "merged",
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "feat-verweesd",
+     "local": false,
+     "remote": true,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "main",
+     "local": true,
+     "remote": true,
+     "worktree": "/repo",
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "detached-spike",
+     "local": false,
+     "remote": false,
+     "worktree": "/repo/.claude/worktrees/detached-spike",
+     "locked": true,
+     "lock_pid": 99,
+     "lock_reason": "x (pid 99)",
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": 1700100.5,
+     "session_id": "s-77",
+     "live": true,
+     "port_block": null,
+     "orphan_dir": null,
+     "dir_entries": []
+    },
+    {
+     "name": "worktrees",
+     "local": false,
+     "remote": false,
+     "worktree": null,
+     "locked": false,
+     "lock_pid": null,
+     "lock_reason": null,
+     "dirty": null,
+     "unpushed": null,
+     "pr_number": null,
+     "pr_state": null,
+     "pr_merged_at": null,
+     "tip_committed_at": null,
+     "root_commit": null,
+     "pr_lookup_ok": true,
+     "unique_files": null,
+     "own_commits": null,
+     "last_session": null,
+     "session_id": null,
+     "live": false,
+     "port_block": null,
+     "orphan_dir": "/repo/.claude/worktrees/worktrees",
+     "dir_entries": [
+      ".port-registry"
+     ]
+    }
+   ],
+   "verdicts": [
+    {
+     "rank": 1,
+     "icon": "🔒",
+     "text": "never touch",
+     "modifiers": [],
+     "safe": false,
+     "render": "🔒 never touch"
+    },
+    {
+     "rank": 6,
+     "icon": "✅",
+     "text": "safe to remove",
+     "modifiers": [],
+     "safe": true,
+     "render": "✅ safe to remove"
+    },
+    {
+     "rank": 7,
+     "icon": "⚠️",
+     "text": "content check failed — check",
+     "modifiers": [],
+     "safe": false,
+     "render": "⚠️ content check failed — check"
+    },
+    {
+     "rank": 1,
+     "icon": "🔒",
+     "text": "never touch",
+     "modifiers": [],
+     "safe": false,
+     "render": "🔒 never touch"
+    },
+    {
+     "rank": 2,
+     "icon": "⛔",
+     "text": "running session",
+     "modifiers": [
+      "stale lock"
+     ],
+     "safe": false,
+     "render": "⛔ running session [stale lock]"
+    },
+    {
+     "rank": 1,
+     "icon": "🔒",
+     "text": "never touch",
+     "modifiers": [],
+     "safe": false,
+     "render": "🔒 never touch"
+    }
+   ]
+  }
+ }
+]

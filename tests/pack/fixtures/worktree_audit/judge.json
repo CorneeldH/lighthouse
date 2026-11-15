@@ -1,0 +1,1663 @@
+[
+ {
+  "name": "test_merged_pr_is_safe_even_though_commits_are_not_in_main",
+  "row": {
+   "name": "worktree-issue-713-osor-artefacten",
+   "local": true,
+   "remote": true,
+   "dirty": false,
+   "unpushed": 0,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "pr_number": 721,
+   "pr_state": "merged"
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 6,
+   "icon": "✅",
+   "text": "safe to remove",
+   "modifiers": [],
+   "safe": true,
+   "render": "✅ safe to remove"
+  }
+ },
+ {
+  "name": "test_row_has_no_merged_into_main_field",
+  "row": {
+   "name": "feat-squashed",
+   "local": true,
+   "remote": true,
+   "dirty": false,
+   "unpushed": 0,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "pr_number": 721,
+   "pr_state": "merged"
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 6,
+   "icon": "✅",
+   "text": "safe to remove",
+   "modifiers": [],
+   "safe": true,
+   "render": "✅ safe to remove"
+  }
+ },
+ {
+  "name": "test_entire_checkpoint_ref_is_never_safe",
+  "row": {
+   "name": "entire/checkpoints/v1",
+   "local": true,
+   "remote": true,
+   "dirty": false,
+   "unpushed": 0,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "pr_number": 1,
+   "pr_state": "merged"
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 1,
+   "icon": "🔒",
+   "text": "never touch",
+   "modifiers": [],
+   "safe": false,
+   "render": "🔒 never touch"
+  }
+ },
+ {
+  "name": "test_entire_session_ref_without_pr_is_never_safe",
+  "row": {
+   "name": "entire/9b8f294-400008",
+   "local": true,
+   "remote": true,
+   "dirty": false,
+   "unpushed": 0,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "pr_number": null,
+   "pr_state": null
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 1,
+   "icon": "🔒",
+   "text": "never touch",
+   "modifiers": [],
+   "safe": false,
+   "render": "🔒 never touch"
+  }
+ },
+ {
+  "name": "test_main_is_never_safe",
+  "row": {
+   "name": "main",
+   "local": true,
+   "remote": true,
+   "dirty": false,
+   "unpushed": 0,
+   "unique_files": [],
+   "pr_lookup_ok": true
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 1,
+   "icon": "🔒",
+   "text": "never touch",
+   "modifiers": [],
+   "safe": false,
+   "render": "🔒 never touch"
+  }
+ },
+ {
+  "name": "test_full_ref_form_is_protected_too",
+  "row": {
+   "name": "refs/heads/entire/checkpoints/v1",
+   "local": true,
+   "remote": true,
+   "dirty": false,
+   "unpushed": 0,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "pr_number": null,
+   "pr_state": null
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 1,
+   "icon": "🔒",
+   "text": "never touch",
+   "modifiers": [],
+   "safe": false,
+   "render": "🔒 never touch"
+  }
+ },
+ {
+  "name": "test_dir_holding_the_port_registry_is_protected_not_orphan",
+  "row": {
+   "name": "worktrees",
+   "local": false,
+   "remote": false,
+   "orphan_dir": "/repo/.claude/worktrees/worktrees",
+   "dir_entries": [
+    ".port-registry"
+   ]
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 1,
+   "icon": "🔒",
+   "text": "never touch",
+   "modifiers": [],
+   "safe": false,
+   "render": "🔒 never touch"
+  }
+ },
+ {
+  "name": "test_plain_orphan_dir_is_manual_never_safe",
+  "row": {
+   "name": "stale-devcontainer-leftover",
+   "local": false,
+   "remote": false,
+   "orphan_dir": "/repo/.claude/worktrees/stale-devcontainer-leftover",
+   "dir_entries": [
+    "README.md"
+   ]
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 9,
+   "icon": "❓",
+   "text": "orphan — manual",
+   "modifiers": [],
+   "safe": false,
+   "render": "❓ orphan — manual"
+  }
+ },
+ {
+  "name": "test_dirty_tree_beats_merged_pr",
+  "row": {
+   "name": "fix-iets",
+   "local": true,
+   "remote": true,
+   "dirty": true,
+   "unpushed": 0,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "worktree": "/repo/.claude/worktrees/fix-iets",
+   "pr_number": 700,
+   "pr_state": "merged"
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 3,
+   "icon": "⛔",
+   "text": "save first",
+   "modifiers": [],
+   "safe": false,
+   "render": "⛔ save first"
+  }
+ },
+ {
+  "name": "test_unpushed_commits_beat_merged_pr",
+  "row": {
+   "name": "feat-544",
+   "local": true,
+   "remote": true,
+   "dirty": false,
+   "unpushed": 2,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "pr_number": 544,
+   "pr_state": "merged"
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 4,
+   "icon": "⚠️",
+   "text": "2 local commits — check",
+   "modifiers": [],
+   "safe": false,
+   "render": "⚠️ 2 local commits — check"
+  }
+ },
+ {
+  "name": "test_unknown_dirty_state_on_a_worktree_blocks",
+  "row": {
+   "name": "fix-iets",
+   "local": true,
+   "remote": true,
+   "dirty": null,
+   "unpushed": 0,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "worktree": "/repo/.claude/worktrees/fix-iets",
+   "pr_number": 700,
+   "pr_state": "merged"
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 3,
+   "icon": "⛔",
+   "text": "tree status unreadable",
+   "modifiers": [],
+   "safe": false,
+   "render": "⛔ tree status unreadable"
+  }
+ },
+ {
+  "name": "test_unknown_unpushed_count_on_a_local_branch_blocks",
+  "row": {
+   "name": "feat-544",
+   "local": true,
+   "remote": true,
+   "dirty": false,
+   "unpushed": null,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "pr_number": 544,
+   "pr_state": "merged"
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 4,
+   "icon": "⚠️",
+   "text": "unpushed commits unknown — check",
+   "modifiers": [],
+   "safe": false,
+   "render": "⚠️ unpushed commits unknown — check"
+  }
+ },
+ {
+  "name": "test_live_lock_pid_blocks",
+  "row": {
+   "name": "issue-624",
+   "local": true,
+   "remote": true,
+   "dirty": false,
+   "unpushed": 0,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "worktree": "/repo/.claude/worktrees/issue-624",
+   "locked": true,
+   "lock_pid": 472155,
+   "pr_number": 1,
+   "pr_state": "merged"
+  },
+  "alive": "always",
+  "expect": {
+   "rank": 2,
+   "icon": "⛔",
+   "text": "active session (pid 472155)",
+   "modifiers": [],
+   "safe": false,
+   "render": "⛔ active session (pid 472155)"
+  }
+ },
+ {
+  "name": "test_unmeasurable_lock_pid_blocks",
+  "row": {
+   "name": "issue-624",
+   "local": true,
+   "remote": true,
+   "dirty": false,
+   "unpushed": 0,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "worktree": "/repo/.claude/worktrees/issue-624",
+   "locked": true,
+   "lock_pid": 472155,
+   "pr_number": 1,
+   "pr_state": "merged"
+  },
+  "alive": "unmeasurable",
+  "expect": {
+   "rank": 2,
+   "icon": "⛔",
+   "text": "locked, pid 472155 not measurable",
+   "modifiers": [],
+   "safe": false,
+   "render": "⛔ locked, pid 472155 not measurable"
+  }
+ },
+ {
+  "name": "test_dead_lock_pid_falls_through_with_modifier",
+  "row": {
+   "name": "issue-624",
+   "local": true,
+   "remote": true,
+   "dirty": false,
+   "unpushed": 0,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "worktree": "/repo/.claude/worktrees/issue-624",
+   "locked": true,
+   "lock_pid": 472155,
+   "pr_number": 1,
+   "pr_state": "merged"
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 6,
+   "icon": "✅",
+   "text": "safe to remove",
+   "modifiers": [
+    "stale lock"
+   ],
+   "safe": true,
+   "render": "✅ safe to remove [stale lock]"
+  }
+ },
+ {
+  "name": "test_lock_without_a_pid_blocks",
+  "row": {
+   "name": "issue-624",
+   "local": true,
+   "remote": true,
+   "dirty": false,
+   "unpushed": 0,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "worktree": "/repo/.claude/worktrees/issue-624",
+   "locked": true,
+   "lock_pid": null,
+   "pr_number": 1,
+   "pr_state": "merged"
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 2,
+   "icon": "⛔",
+   "text": "locked, pid unknown",
+   "modifiers": [],
+   "safe": false,
+   "render": "⛔ locked, pid unknown"
+  }
+ },
+ {
+  "name": "test_live_session_in_a_clean_worktree_without_pr_blocks",
+  "row": {
+   "name": "worktree-bridge-cse_013SdshNAm9nZXnDCpDXZdRg",
+   "local": true,
+   "remote": false,
+   "dirty": false,
+   "unpushed": 0,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "worktree": "/home/corneel/repositories/personal_ai_agent/.claude/worktrees/bridge-cse_013SdshNAm9nZXnDCpDXZdRg",
+   "pr_number": null,
+   "pr_state": null,
+   "live": true
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 2,
+   "icon": "⛔",
+   "text": "running session",
+   "modifiers": [],
+   "safe": false,
+   "render": "⛔ running session"
+  }
+ },
+ {
+  "name": "test_live_session_beats_a_merged_pr",
+  "row": {
+   "name": "worktree-bridge-cse_013SdshNAm9nZXnDCpDXZdRg",
+   "local": true,
+   "remote": false,
+   "dirty": false,
+   "unpushed": 0,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "worktree": "/home/corneel/repositories/personal_ai_agent/.claude/worktrees/bridge-cse_013SdshNAm9nZXnDCpDXZdRg",
+   "pr_number": 1,
+   "pr_state": "merged",
+   "live": true
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 2,
+   "icon": "⛔",
+   "text": "running session",
+   "modifiers": [],
+   "safe": false,
+   "render": "⛔ running session"
+  }
+ },
+ {
+  "name": "test_a_non_bridge_lock_still_wins_with_its_own_text",
+  "row": {
+   "name": "worktree-bridge-cse_013SdshNAm9nZXnDCpDXZdRg",
+   "local": true,
+   "remote": false,
+   "dirty": false,
+   "unpushed": 0,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "worktree": "/home/corneel/repositories/personal_ai_agent/.claude/worktrees/bridge-cse_013SdshNAm9nZXnDCpDXZdRg",
+   "pr_number": null,
+   "pr_state": null,
+   "live": true,
+   "locked": true,
+   "lock_pid": 4242,
+   "lock_reason": "claude session issue-1-x"
+  },
+  "alive": "always",
+  "expect": {
+   "rank": 2,
+   "icon": "⛔",
+   "text": "active session (pid 4242)",
+   "modifiers": [],
+   "safe": false,
+   "render": "⛔ active session (pid 4242)"
+  }
+ },
+ {
+  "name": "test_bridge_lock_with_a_live_server_pid_and_ended_session_is_safe",
+  "row": {
+   "name": "worktree-bridge-cse_013SdshNAm9nZXnDCpDXZdRg",
+   "local": true,
+   "remote": false,
+   "dirty": false,
+   "unpushed": 0,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "worktree": "/home/corneel/repositories/personal_ai_agent/.claude/worktrees/bridge-cse_013SdshNAm9nZXnDCpDXZdRg",
+   "pr_number": null,
+   "pr_state": null,
+   "live": false,
+   "locked": true,
+   "lock_pid": 272877,
+   "lock_reason": "claude agent bridge-cse_013SdshNAm9nZXnDCpDXZdRg"
+  },
+  "alive": "always",
+  "expect": {
+   "rank": 8,
+   "icon": "✅",
+   "text": "safe to remove",
+   "modifiers": [
+    "server-lock"
+   ],
+   "safe": true,
+   "render": "✅ safe to remove [server-lock]"
+  }
+ },
+ {
+  "name": "test_bridge_lock_does_not_mask_a_live_session",
+  "row": {
+   "name": "worktree-bridge-cse_013SdshNAm9nZXnDCpDXZdRg",
+   "local": true,
+   "remote": false,
+   "dirty": false,
+   "unpushed": 0,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "worktree": "/home/corneel/repositories/personal_ai_agent/.claude/worktrees/bridge-cse_013SdshNAm9nZXnDCpDXZdRg",
+   "pr_number": null,
+   "pr_state": null,
+   "live": true,
+   "locked": true,
+   "lock_pid": 272877,
+   "lock_reason": "claude agent bridge-cse_013SdshNAm9nZXnDCpDXZdRg"
+  },
+  "alive": "always",
+  "expect": {
+   "rank": 2,
+   "icon": "⛔",
+   "text": "running session",
+   "modifiers": [
+    "server-lock"
+   ],
+   "safe": false,
+   "render": "⛔ running session [server-lock]"
+  }
+ },
+ {
+  "name": "test_bridge_lock_with_own_commits_needs_review",
+  "row": {
+   "name": "worktree-bridge-cse_013SdshNAm9nZXnDCpDXZdRg",
+   "local": true,
+   "remote": false,
+   "dirty": false,
+   "unpushed": 2,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "worktree": "/home/corneel/repositories/personal_ai_agent/.claude/worktrees/bridge-cse_013SdshNAm9nZXnDCpDXZdRg",
+   "pr_number": null,
+   "pr_state": null,
+   "live": false,
+   "locked": true,
+   "lock_pid": 272877,
+   "lock_reason": "claude agent bridge-cse_013SdshNAm9nZXnDCpDXZdRg"
+  },
+  "alive": "always",
+  "expect": {
+   "rank": 4,
+   "icon": "⚠️",
+   "text": "2 local commits — check",
+   "modifiers": [
+    "server-lock"
+   ],
+   "safe": false,
+   "render": "⚠️ 2 local commits — check [server-lock]"
+  }
+ },
+ {
+  "name": "test_ended_session_without_own_commits_is_safe",
+  "row": {
+   "name": "worktree-bridge-cse_013SdshNAm9nZXnDCpDXZdRg",
+   "local": true,
+   "remote": false,
+   "dirty": false,
+   "unpushed": 0,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "worktree": "/home/corneel/repositories/personal_ai_agent/.claude/worktrees/bridge-cse_013SdshNAm9nZXnDCpDXZdRg",
+   "pr_number": null,
+   "pr_state": null,
+   "live": false
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 8,
+   "icon": "✅",
+   "text": "safe to remove",
+   "modifiers": [],
+   "safe": true,
+   "render": "✅ safe to remove"
+  }
+ },
+ {
+  "name": "test_ended_session_with_own_commits_needs_review",
+  "row": {
+   "name": "worktree-bridge-cse_013SdshNAm9nZXnDCpDXZdRg",
+   "local": true,
+   "remote": false,
+   "dirty": false,
+   "unpushed": 2,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "worktree": "/home/corneel/repositories/personal_ai_agent/.claude/worktrees/bridge-cse_013SdshNAm9nZXnDCpDXZdRg",
+   "pr_number": null,
+   "pr_state": null,
+   "live": false
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 4,
+   "icon": "⚠️",
+   "text": "2 local commits — check",
+   "modifiers": [],
+   "safe": false,
+   "render": "⚠️ 2 local commits — check"
+  }
+ },
+ {
+  "name": "test_rank_three_wins_over_rank_six",
+  "row": {
+   "name": "beide",
+   "local": true,
+   "remote": true,
+   "dirty": true,
+   "unpushed": 0,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "worktree": "/repo/.claude/worktrees/beide",
+   "pr_number": 99,
+   "pr_state": "merged"
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 3,
+   "icon": "⛔",
+   "text": "save first",
+   "modifiers": [],
+   "safe": false,
+   "render": "⛔ save first"
+  }
+ },
+ {
+  "name": "test_rank_one_wins_over_rank_two",
+  "row": {
+   "name": "main",
+   "local": true,
+   "remote": true,
+   "dirty": false,
+   "unpushed": 0,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "worktree": "/repo",
+   "locked": true,
+   "lock_pid": 1
+  },
+  "alive": "always",
+  "expect": {
+   "rank": 1,
+   "icon": "🔒",
+   "text": "never touch",
+   "modifiers": [],
+   "safe": false,
+   "render": "🔒 never touch"
+  }
+ },
+ {
+  "name": "test_open_pr_pauses_before_content_check",
+  "row": {
+   "name": "worktree-issue-681",
+   "local": true,
+   "remote": true,
+   "dirty": false,
+   "unpushed": 0,
+   "unique_files": [
+    "a.py"
+   ],
+   "pr_lookup_ok": true,
+   "pr_number": 722,
+   "pr_state": "open"
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 5,
+   "icon": "⏸️",
+   "text": "PR #722 open",
+   "modifiers": [],
+   "safe": false,
+   "render": "⏸️ PR #722 open"
+  }
+ },
+ {
+  "name": "test_no_pr_with_unique_files_is_a_warning",
+  "row": {
+   "name": "oud-experiment",
+   "local": true,
+   "remote": true,
+   "dirty": false,
+   "unpushed": 0,
+   "unique_files": [
+    "src/x.py",
+    "src/y.py"
+   ],
+   "pr_lookup_ok": true,
+   "pr_number": null,
+   "pr_state": null
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 7,
+   "icon": "⚠️",
+   "text": "unique work — review (2 files)",
+   "modifiers": [],
+   "safe": false,
+   "render": "⚠️ unique work — review (2 files)"
+  }
+ },
+ {
+  "name": "test_no_pr_content_already_in_main_is_safe",
+  "row": {
+   "name": "oud-experiment",
+   "local": true,
+   "remote": true,
+   "dirty": false,
+   "unpushed": 0,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "pr_number": null,
+   "pr_state": null
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 8,
+   "icon": "✅",
+   "text": "safe to remove",
+   "modifiers": [],
+   "safe": true,
+   "render": "✅ safe to remove"
+  }
+ },
+ {
+  "name": "test_no_pr_without_own_commits_is_named_empty",
+  "row": {
+   "name": "issue-941-spike",
+   "local": true,
+   "remote": true,
+   "dirty": false,
+   "unpushed": 0,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "pr_number": null,
+   "pr_state": null,
+   "own_commits": 0
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 8,
+   "icon": "✅",
+   "text": "empty — no own commits",
+   "modifiers": [],
+   "safe": true,
+   "render": "✅ empty — no own commits"
+  }
+ },
+ {
+  "name": "test_own_commits_whose_content_is_in_main_keep_the_plain_verdict",
+  "row": {
+   "name": "oud-experiment",
+   "local": true,
+   "remote": true,
+   "dirty": false,
+   "unpushed": 0,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "pr_number": null,
+   "pr_state": null,
+   "own_commits": 3
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 8,
+   "icon": "✅",
+   "text": "safe to remove",
+   "modifiers": [],
+   "safe": true,
+   "render": "✅ safe to remove"
+  }
+ },
+ {
+  "name": "test_failed_content_check_blocks_instead_of_reading_as_clean",
+  "row": {
+   "name": "oud-experiment",
+   "local": true,
+   "remote": true,
+   "dirty": false,
+   "unpushed": 0,
+   "unique_files": null,
+   "pr_lookup_ok": true,
+   "pr_number": null,
+   "pr_state": null
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 7,
+   "icon": "⚠️",
+   "text": "content check failed — check",
+   "modifiers": [],
+   "safe": false,
+   "render": "⚠️ content check failed — check"
+  }
+ },
+ {
+  "name": "test_failed_pr_lookup_blocks_instead_of_reading_as_clean",
+  "row": {
+   "name": "oud-experiment",
+   "local": true,
+   "remote": true,
+   "dirty": false,
+   "unpushed": 0,
+   "unique_files": [],
+   "pr_lookup_ok": false,
+   "pr_number": null,
+   "pr_state": null
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 7,
+   "icon": "⚠️",
+   "text": "PR status unknown — check",
+   "modifiers": [],
+   "safe": false,
+   "render": "⚠️ PR status unknown — check"
+  }
+ },
+ {
+  "name": "test_merged_pr_still_wins_over_a_failed_content_check",
+  "row": {
+   "name": "feat-merged",
+   "local": true,
+   "remote": true,
+   "dirty": false,
+   "unpushed": 0,
+   "unique_files": null,
+   "pr_lookup_ok": true,
+   "pr_number": 700,
+   "pr_state": "merged"
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 6,
+   "icon": "✅",
+   "text": "safe to remove",
+   "modifiers": [],
+   "safe": true,
+   "render": "✅ safe to remove"
+  }
+ },
+ {
+  "name": "test_detached_worktree_and_orphan_dir_get_different_text[detached]",
+  "row": {
+   "name": "detached-spike",
+   "local": false,
+   "remote": false,
+   "worktree": "/repo/.claude/worktrees/detached-spike",
+   "dirty": false
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 9,
+   "icon": "❓",
+   "text": "detached worktree — manual",
+   "modifiers": [],
+   "safe": false,
+   "render": "❓ detached worktree — manual"
+  }
+ },
+ {
+  "name": "test_detached_worktree_and_orphan_dir_get_different_text[orphan]",
+  "row": {
+   "name": "stale-devcontainer-leftover",
+   "local": false,
+   "remote": false,
+   "orphan_dir": "/repo/.claude/worktrees/stale-devcontainer-leftover"
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 9,
+   "icon": "❓",
+   "text": "orphan — manual",
+   "modifiers": [],
+   "safe": false,
+   "render": "❓ orphan — manual"
+  }
+ },
+ {
+  "name": "test_render_without_modifiers",
+  "row": {
+   "name": "feat-merged",
+   "local": true,
+   "remote": true,
+   "dirty": false,
+   "unpushed": 0,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "pr_number": 1,
+   "pr_state": "merged"
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 6,
+   "icon": "✅",
+   "text": "safe to remove",
+   "modifiers": [],
+   "safe": true,
+   "render": "✅ safe to remove"
+  }
+ },
+ {
+  "name": "test_render_with_modifiers",
+  "row": {
+   "name": "issue-624",
+   "local": true,
+   "remote": true,
+   "dirty": false,
+   "unpushed": 0,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "worktree": "/repo/.claude/worktrees/issue-624",
+   "locked": true,
+   "lock_pid": 472155,
+   "pr_number": 1,
+   "pr_state": "merged"
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 6,
+   "icon": "✅",
+   "text": "safe to remove",
+   "modifiers": [
+    "stale lock"
+   ],
+   "safe": true,
+   "render": "✅ safe to remove [stale lock]"
+  }
+ },
+ {
+  "name": "test_tip_before_merge_is_the_squash_artefact_not_unpushed_work",
+  "row": {
+   "name": "worktree-441-besluithistorie-docs",
+   "local": true,
+   "remote": true,
+   "dirty": false,
+   "unpushed": 12,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "pr_number": 457,
+   "pr_state": "merged",
+   "pr_merged_at": 1754040000.0,
+   "tip_committed_at": 1754036400.0
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 6,
+   "icon": "✅",
+   "text": "safe to remove",
+   "modifiers": [
+    "squash-merge"
+   ],
+   "safe": true,
+   "render": "✅ safe to remove [squash-merge]"
+  }
+ },
+ {
+  "name": "test_commit_after_the_merge_still_blocks",
+  "row": {
+   "name": "feat-544",
+   "local": true,
+   "remote": true,
+   "dirty": false,
+   "unpushed": 2,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "pr_number": 544,
+   "pr_state": "merged",
+   "pr_merged_at": 1754040000.0,
+   "tip_committed_at": 1754043600.0
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 4,
+   "icon": "⚠️",
+   "text": "2 local commits — check",
+   "modifiers": [],
+   "safe": false,
+   "render": "⚠️ 2 local commits — check"
+  }
+ },
+ {
+  "name": "test_missing_merge_timestamp_keeps_the_block",
+  "row": {
+   "name": "feat-544",
+   "local": true,
+   "remote": true,
+   "dirty": false,
+   "unpushed": 2,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "pr_number": 544,
+   "pr_state": "merged",
+   "pr_merged_at": null,
+   "tip_committed_at": 1754036400.0
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 4,
+   "icon": "⚠️",
+   "text": "2 local commits — check",
+   "modifiers": [],
+   "safe": false,
+   "render": "⚠️ 2 local commits — check"
+  }
+ },
+ {
+  "name": "test_missing_tip_timestamp_keeps_the_block",
+  "row": {
+   "name": "feat-544",
+   "local": true,
+   "remote": true,
+   "dirty": false,
+   "unpushed": 2,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "pr_number": 544,
+   "pr_state": "merged",
+   "pr_merged_at": 1754040000.0,
+   "tip_committed_at": null
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 4,
+   "icon": "⚠️",
+   "text": "2 local commits — check",
+   "modifiers": [],
+   "safe": false,
+   "render": "⚠️ 2 local commits — check"
+  }
+ },
+ {
+  "name": "test_open_pr_is_never_excused_by_timestamps",
+  "row": {
+   "name": "feat-open",
+   "local": true,
+   "remote": true,
+   "dirty": false,
+   "unpushed": 2,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "pr_number": 542,
+   "pr_state": "open",
+   "pr_merged_at": 1754040000.0,
+   "tip_committed_at": 1754036400.0
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 4,
+   "icon": "⚠️",
+   "text": "2 local commits — check",
+   "modifiers": [],
+   "safe": false,
+   "render": "⚠️ 2 local commits — check"
+  }
+ },
+ {
+  "name": "test_dirty_tree_still_beats_the_squash_excuse",
+  "row": {
+   "name": "feat-vuil",
+   "local": true,
+   "remote": true,
+   "dirty": true,
+   "unpushed": 12,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "worktree": "/repo/.claude/worktrees/feat-vuil",
+   "pr_number": 457,
+   "pr_state": "merged",
+   "pr_merged_at": 1754040000.0,
+   "tip_committed_at": 1754036400.0
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 3,
+   "icon": "⛔",
+   "text": "save first",
+   "modifiers": [],
+   "safe": false,
+   "render": "⛔ save first"
+  }
+ },
+ {
+  "name": "test_tip_equal_to_merge_is_the_squash_artefact",
+  "row": {
+   "name": "feat-equal",
+   "local": true,
+   "remote": true,
+   "dirty": false,
+   "unpushed": 3,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "pr_number": 458,
+   "pr_state": "merged",
+   "pr_merged_at": 1754040000.0,
+   "tip_committed_at": 1754040000.0
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 6,
+   "icon": "✅",
+   "text": "safe to remove",
+   "modifiers": [
+    "squash-merge"
+   ],
+   "safe": true,
+   "render": "✅ safe to remove [squash-merge]"
+  }
+ },
+ {
+  "name": "test_parentless_local_branch_is_named_as_leakage",
+  "row": {
+   "name": "branch-dirty",
+   "local": true,
+   "remote": false,
+   "dirty": false,
+   "unpushed": 1,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "root_commit": true,
+   "pr_number": null,
+   "pr_state": null
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 4,
+   "icon": "⚠️",
+   "text": "orphan commit without parent — likely test leakage",
+   "modifiers": [],
+   "safe": false,
+   "render": "⚠️ orphan commit without parent — likely test leakage"
+  }
+ },
+ {
+  "name": "test_leakage_is_never_safe",
+  "row": {
+   "name": "branch-dirty",
+   "local": true,
+   "remote": false,
+   "dirty": false,
+   "unpushed": 1,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "root_commit": true
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 4,
+   "icon": "⚠️",
+   "text": "orphan commit without parent — likely test leakage",
+   "modifiers": [],
+   "safe": false,
+   "render": "⚠️ orphan commit without parent — likely test leakage"
+  }
+ },
+ {
+  "name": "test_branch_with_a_parent_is_not_leakage",
+  "row": {
+   "name": "v2.1-mac-thin-client",
+   "local": true,
+   "remote": false,
+   "dirty": false,
+   "unpushed": 27,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "root_commit": false
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 4,
+   "icon": "⚠️",
+   "text": "27 local commits — check",
+   "modifiers": [],
+   "safe": false,
+   "render": "⚠️ 27 local commits — check"
+  }
+ },
+ {
+  "name": "test_a_pushed_orphan_branch_is_not_leakage",
+  "row": {
+   "name": "gh-pages",
+   "local": true,
+   "remote": true,
+   "dirty": false,
+   "unpushed": 1,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "root_commit": true
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 4,
+   "icon": "⚠️",
+   "text": "1 local commits — check",
+   "modifiers": [],
+   "safe": false,
+   "render": "⚠️ 1 local commits — check"
+  }
+ },
+ {
+  "name": "test_orphan_with_a_pr_is_not_leakage",
+  "row": {
+   "name": "orphan-met-pr",
+   "local": true,
+   "remote": false,
+   "dirty": false,
+   "unpushed": 1,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "root_commit": true,
+   "pr_number": 99,
+   "pr_state": "open"
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 4,
+   "icon": "⚠️",
+   "text": "1 local commits — check",
+   "modifiers": [],
+   "safe": false,
+   "render": "⚠️ 1 local commits — check"
+  }
+ },
+ {
+  "name": "test_unknown_root_state_is_not_called_leakage",
+  "row": {
+   "name": "onbekend",
+   "local": true,
+   "remote": false,
+   "dirty": false,
+   "unpushed": 1,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "root_commit": null
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 4,
+   "icon": "⚠️",
+   "text": "1 local commits — check",
+   "modifiers": [],
+   "safe": false,
+   "render": "⚠️ 1 local commits — check"
+  }
+ },
+ {
+  "name": "test_defaults_protect_only_main[main]",
+  "config": "[project]\nlanguage = \"en\"\n",
+  "row": {
+   "name": "main",
+   "local": true,
+   "remote": true,
+   "dirty": false,
+   "unpushed": 0,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "pr_number": 1,
+   "pr_state": "merged"
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 1,
+   "icon": "🔒",
+   "text": "never touch",
+   "modifiers": [],
+   "safe": false,
+   "render": "🔒 never touch"
+  }
+ },
+ {
+  "name": "test_protected_from_config[main]",
+  "config": "[worktree_audit]\nprotected_refs = [\"entire/*\"]\nprotected_paths = [\".port-registry\"]\n",
+  "row": {
+   "name": "main",
+   "local": true,
+   "remote": true,
+   "dirty": false,
+   "unpushed": 0,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "pr_number": 1,
+   "pr_state": "merged"
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 1,
+   "icon": "🔒",
+   "text": "never touch",
+   "modifiers": [],
+   "safe": false,
+   "render": "🔒 never touch"
+  }
+ },
+ {
+  "name": "test_defaults_protect_only_main[entire/checkpoints/v1]",
+  "config": "[project]\nlanguage = \"en\"\n",
+  "row": {
+   "name": "entire/checkpoints/v1",
+   "local": true,
+   "remote": true,
+   "dirty": false,
+   "unpushed": 0,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "pr_number": 1,
+   "pr_state": "merged"
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 6,
+   "icon": "✅",
+   "text": "safe to remove",
+   "modifiers": [],
+   "safe": true,
+   "render": "✅ safe to remove"
+  }
+ },
+ {
+  "name": "test_protected_from_config[entire/checkpoints/v1]",
+  "config": "[worktree_audit]\nprotected_refs = [\"entire/*\"]\nprotected_paths = [\".port-registry\"]\n",
+  "row": {
+   "name": "entire/checkpoints/v1",
+   "local": true,
+   "remote": true,
+   "dirty": false,
+   "unpushed": 0,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "pr_number": 1,
+   "pr_state": "merged"
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 1,
+   "icon": "🔒",
+   "text": "never touch",
+   "modifiers": [],
+   "safe": false,
+   "render": "🔒 never touch"
+  }
+ },
+ {
+  "name": "test_defaults_protect_only_main[x]",
+  "config": "[project]\nlanguage = \"en\"\n",
+  "row": {
+   "name": "x",
+   "local": true,
+   "remote": true,
+   "dirty": false,
+   "unpushed": 0,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "pr_number": 1,
+   "pr_state": "merged",
+   "dir_entries": [
+    ".port-registry"
+   ]
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 6,
+   "icon": "✅",
+   "text": "safe to remove",
+   "modifiers": [],
+   "safe": true,
+   "render": "✅ safe to remove"
+  }
+ },
+ {
+  "name": "test_protected_from_config[x]",
+  "config": "[worktree_audit]\nprotected_refs = [\"entire/*\"]\nprotected_paths = [\".port-registry\"]\n",
+  "row": {
+   "name": "x",
+   "local": true,
+   "remote": true,
+   "dirty": false,
+   "unpushed": 0,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "pr_number": 1,
+   "pr_state": "merged",
+   "dir_entries": [
+    ".port-registry"
+   ]
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 1,
+   "icon": "🔒",
+   "text": "never touch",
+   "modifiers": [],
+   "safe": false,
+   "render": "🔒 never touch"
+  }
+ },
+ {
+  "name": "test_default_branch_from_config[trunk]",
+  "config": "[forge]\ndefault_branch = \"trunk\"\n",
+  "row": {
+   "name": "trunk",
+   "local": true,
+   "remote": true,
+   "dirty": false,
+   "unpushed": 0,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "pr_number": 1,
+   "pr_state": "merged"
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 1,
+   "icon": "🔒",
+   "text": "never touch",
+   "modifiers": [],
+   "safe": false,
+   "render": "🔒 never touch"
+  }
+ },
+ {
+  "name": "test_default_branch_from_config[main]",
+  "config": "[forge]\ndefault_branch = \"trunk\"\n",
+  "row": {
+   "name": "main",
+   "local": true,
+   "remote": true,
+   "dirty": false,
+   "unpushed": 0,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "pr_number": 1,
+   "pr_state": "merged"
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 6,
+   "icon": "✅",
+   "text": "safe to remove",
+   "modifiers": [],
+   "safe": true,
+   "render": "✅ safe to remove"
+  }
+ },
+ {
+  "name": "test_protect_patterns_are_fnmatch[release-1]",
+  "config": "[worktree_audit]\nprotected_refs = [\"release-?\", \"keep[!a-c]*\", \"wip[\", \"*/pinned\"]\nprotected_paths = [\"*.lock\"]\n",
+  "row": {
+   "name": "release-1",
+   "local": true,
+   "remote": true,
+   "dirty": false,
+   "unpushed": 0,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "pr_number": 1,
+   "pr_state": "merged"
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 1,
+   "icon": "🔒",
+   "text": "never touch",
+   "modifiers": [],
+   "safe": false,
+   "render": "🔒 never touch"
+  }
+ },
+ {
+  "name": "test_protect_patterns_are_fnmatch[release-10]",
+  "config": "[worktree_audit]\nprotected_refs = [\"release-?\", \"keep[!a-c]*\", \"wip[\", \"*/pinned\"]\nprotected_paths = [\"*.lock\"]\n",
+  "row": {
+   "name": "release-10",
+   "local": true,
+   "remote": true,
+   "dirty": false,
+   "unpushed": 0,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "pr_number": 1,
+   "pr_state": "merged"
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 6,
+   "icon": "✅",
+   "text": "safe to remove",
+   "modifiers": [],
+   "safe": true,
+   "render": "✅ safe to remove"
+  }
+ },
+ {
+  "name": "test_protect_patterns_are_fnmatch[keepd-x]",
+  "config": "[worktree_audit]\nprotected_refs = [\"release-?\", \"keep[!a-c]*\", \"wip[\", \"*/pinned\"]\nprotected_paths = [\"*.lock\"]\n",
+  "row": {
+   "name": "keepd-x",
+   "local": true,
+   "remote": true,
+   "dirty": false,
+   "unpushed": 0,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "pr_number": 1,
+   "pr_state": "merged"
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 1,
+   "icon": "🔒",
+   "text": "never touch",
+   "modifiers": [],
+   "safe": false,
+   "render": "🔒 never touch"
+  }
+ },
+ {
+  "name": "test_protect_patterns_are_fnmatch[keepa-x]",
+  "config": "[worktree_audit]\nprotected_refs = [\"release-?\", \"keep[!a-c]*\", \"wip[\", \"*/pinned\"]\nprotected_paths = [\"*.lock\"]\n",
+  "row": {
+   "name": "keepa-x",
+   "local": true,
+   "remote": true,
+   "dirty": false,
+   "unpushed": 0,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "pr_number": 1,
+   "pr_state": "merged"
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 6,
+   "icon": "✅",
+   "text": "safe to remove",
+   "modifiers": [],
+   "safe": true,
+   "render": "✅ safe to remove"
+  }
+ },
+ {
+  "name": "test_protect_patterns_are_fnmatch[wip[]",
+  "config": "[worktree_audit]\nprotected_refs = [\"release-?\", \"keep[!a-c]*\", \"wip[\", \"*/pinned\"]\nprotected_paths = [\"*.lock\"]\n",
+  "row": {
+   "name": "wip[",
+   "local": true,
+   "remote": true,
+   "dirty": false,
+   "unpushed": 0,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "pr_number": 1,
+   "pr_state": "merged"
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 1,
+   "icon": "🔒",
+   "text": "never touch",
+   "modifiers": [],
+   "safe": false,
+   "render": "🔒 never touch"
+  }
+ },
+ {
+  "name": "test_protect_patterns_are_fnmatch[a/b/pinned]",
+  "config": "[worktree_audit]\nprotected_refs = [\"release-?\", \"keep[!a-c]*\", \"wip[\", \"*/pinned\"]\nprotected_paths = [\"*.lock\"]\n",
+  "row": {
+   "name": "a/b/pinned",
+   "local": true,
+   "remote": true,
+   "dirty": false,
+   "unpushed": 0,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "pr_number": 1,
+   "pr_state": "merged"
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 1,
+   "icon": "🔒",
+   "text": "never touch",
+   "modifiers": [],
+   "safe": false,
+   "render": "🔒 never touch"
+  }
+ },
+ {
+  "name": "test_protect_patterns_are_fnmatch[x]",
+  "config": "[worktree_audit]\nprotected_refs = [\"release-?\", \"keep[!a-c]*\", \"wip[\", \"*/pinned\"]\nprotected_paths = [\"*.lock\"]\n",
+  "row": {
+   "name": "x",
+   "local": true,
+   "remote": true,
+   "dirty": false,
+   "unpushed": 0,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "pr_number": 1,
+   "pr_state": "merged",
+   "dir_entries": [
+    "sub/deep.lock"
+   ]
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 1,
+   "icon": "🔒",
+   "text": "never touch",
+   "modifiers": [],
+   "safe": false,
+   "render": "🔒 never touch"
+  }
+ },
+ {
+  "name": "test_server_lock_without_pid_is_the_server_lock",
+  "row": {
+   "name": "worktree-bridge-cse_013SdshNAm9nZXnDCpDXZdRg",
+   "local": true,
+   "remote": false,
+   "dirty": false,
+   "unpushed": 0,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "worktree": "/home/corneel/repositories/personal_ai_agent/.claude/worktrees/bridge-cse_013SdshNAm9nZXnDCpDXZdRg",
+   "pr_number": null,
+   "pr_state": null,
+   "live": false,
+   "locked": true,
+   "lock_pid": null,
+   "lock_reason": "claude agent bridge-cse_013SdshNAm9nZXnDCpDXZdRg"
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 8,
+   "icon": "✅",
+   "text": "safe to remove",
+   "modifiers": [
+    "server-lock"
+   ],
+   "safe": true,
+   "render": "✅ safe to remove [server-lock]"
+  }
+ },
+ {
+  "name": "test_pr_number_zero_is_still_named_in_an_open_verdict",
+  "row": {
+   "name": "feat-zero",
+   "local": true,
+   "remote": true,
+   "dirty": false,
+   "unpushed": 0,
+   "unique_files": [],
+   "pr_lookup_ok": true,
+   "pr_number": 0,
+   "pr_state": "open"
+  },
+  "alive": "never",
+  "expect": {
+   "rank": 5,
+   "icon": "⏸️",
+   "text": "PR #0 open",
+   "modifiers": [],
+   "safe": false,
+   "render": "⏸️ PR #0 open"
+  }
+ }
+]

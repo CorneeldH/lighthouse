@@ -1,7 +1,7 @@
 // Package repoidentity tells whether a tree is a checkout of this project's repo beyond
 // `--git-common-dir`: the same `origin` host and path, whatever the form (https, ssh, scp), is the
 // same repo. A local path or `file://` remote says nothing about the upstream and never matches:
-// precision before recall. It ports pack/core/lib/repo_identity.py.
+// precision before recall. It is the port of repo_identity.py.
 package repoidentity
 
 import (

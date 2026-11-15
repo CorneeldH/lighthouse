@@ -32,9 +32,7 @@
                 "internal/review/openpoints.go",
                 "internal/triage/judgment.go",
                 "pack/core/instructions/AGENTS.md",
-                "pack/core/lib/artefacts.py",
                 "pack/core/lib/headings.py",
-                "pack/core/lib/protocol.py",
                 "pack/core/skills/close-issue",
                 "pack/core/skills/write-handoff",
                 "pack/core/skills/write-issue",
@@ -143,17 +141,17 @@
               "about": "The repository as owner/name. With kind gitlab, group/name or group/subgroup/.../name.",
               "example": "owner/name",
               "readers": [
+                "internal/boardstart/boardstart.go",
+                "internal/cli/worktreeaudit.go",
+                "internal/postartefact/postartefact.go",
                 "internal/prbody/form.go",
                 "internal/prbody/gate.go",
                 "internal/prbody/scope.go",
+                "internal/protocol/artefact.go",
                 "internal/repoconfig/repoconfig.go",
                 "internal/workplace/local/adapter.go",
-                "pack/core/lib/artefacts.py",
-                "pack/core/lib/pr_body_gate.py",
-                "pack/core/scripts/board_start.py",
+                "internal/worktreeaudit/collect.go",
                 "pack/core/scripts/create_labels.py",
-                "pack/core/scripts/post_artefact.py",
-                "pack/core/scripts/worktree_audit.py",
                 "pack/core/skills/audit-worktrees",
                 "pack/core/skills/close-issue",
                 "pack/core/skills/fix-pr",
@@ -189,16 +187,16 @@
               "default": "main",
               "about": "The branch that work is merged into and that commits are guarded on.",
               "readers": [
+                "internal/cli/worktreeaudit.go",
                 "internal/commitgate/pre.go",
                 "internal/hooks/hooks.go",
                 "internal/hooks/maincommitgate.go",
                 "internal/hooks/worktreecheck.go",
+                "internal/postartefact/postartefact.go",
                 "internal/repoconfig/repoconfig.go",
                 "internal/roborev/gate.go",
                 "internal/workplace/local/adapter.go",
-                "pack/core/lib/protocol.py",
-                "pack/core/scripts/post_artefact.py",
-                "pack/core/scripts/worktree_audit.py",
+                "internal/worktreeaudit/collect.go",
                 "pack/core/skills/audit-worktrees",
                 "pack/core/skills/close-issue",
                 "pack/core/skills/start-issue",
@@ -216,7 +214,7 @@
               "required": "derived",
               "about": "The name part of forge.repo, derived by config.py.",
               "readers": [
-                "pack/core/scripts/board_start.py",
+                "internal/boardstart/boardstart.go",
                 "pack/core/skills/close-issue",
                 "pack/core/skills/write-handoff",
                 "pack/python/scripts/quality/prcov_issues.py"
@@ -228,7 +226,7 @@
               "required": "derived",
               "about": "The owner part of forge.repo, derived by config.py.",
               "readers": [
-                "pack/core/scripts/board_start.py",
+                "internal/boardstart/boardstart.go",
                 "pack/core/skills/close-issue",
                 "pack/core/skills/write-handoff",
                 "pack/core/skills/write-issue",
@@ -275,10 +273,10 @@
               "about": "The node id of the GitHub project board.",
               "example": "PVT_...",
               "readers": [
+                "internal/boardstart/boardstart.go",
                 "internal/cli/triage.go",
                 "internal/forge/board.go",
                 "internal/repoconfig/repoconfig.go",
-                "pack/core/scripts/board_start.py",
                 "pack/core/skills/close-issue",
                 "pack/core/skills/write-handoff",
                 "pack/core/skills/write-issue",
@@ -306,9 +304,9 @@
               "about": "The id of the board's Status field.",
               "example": "PVTSSF_...",
               "readers": [
+                "internal/boardstart/boardstart.go",
                 "internal/cli/triage.go",
                 "internal/repoconfig/repoconfig.go",
-                "pack/core/scripts/board_start.py",
                 "pack/core/skills/close-issue",
                 "pack/core/skills/write-handoff",
                 "pack/python/scripts/quality/prcov_issues.py"
@@ -326,13 +324,13 @@
                 "On hold": "..."
               },
               "readers": [
+                "internal/boardstart/boardstart.go",
                 "internal/cli/serve.go",
                 "internal/cli/triage.go",
                 "internal/dispatch/gather.go",
                 "internal/forge/board.go",
                 "internal/forge/forge.go",
                 "internal/repoconfig/repoconfig.go",
-                "pack/core/scripts/board_start.py",
                 "pack/core/skills/write-handoff",
                 "pack/core/skills/write-issue",
                 "pack/python/scripts/quality/prcov_issues.py"
@@ -476,8 +474,8 @@
               "about": "Where plans are written.",
               "readers": [
                 "internal/kpi/startissue.go",
+                "internal/postartefact/postartefact.go",
                 "internal/review/openpoints.go",
-                "pack/core/scripts/post_artefact.py",
                 "pack/core/skills/review-plan",
                 "pack/core/skills/start-issue",
                 "pack/core/skills/write-handoff",
@@ -504,8 +502,8 @@
               "about": "Where specs are written.",
               "readers": [
                 "internal/kpi/startissue.go",
+                "internal/postartefact/postartefact.go",
                 "internal/review/openpoints.go",
-                "pack/core/scripts/post_artefact.py",
                 "pack/core/skills/review-spec",
                 "pack/core/skills/start-issue",
                 "pack/core/skills/write-handoff",
@@ -563,9 +561,9 @@
               "default": "blocked-issue",
               "about": "The label for an issue blocked by another issue.",
               "readers": [
+                "internal/cli/unblockdependents.go",
                 "internal/repoconfig/repoconfig.go",
                 "internal/triage/rules.go",
-                "pack/core/scripts/unblock_dependents.py",
                 "pack/core/skills/close-issue",
                 "pack/core/skills/route-issue",
                 "pack/core/skills/start-issue",
@@ -810,7 +808,7 @@
               "default": [],
               "about": "Worktree paths the audit never proposes to remove.",
               "readers": [
-                "pack/core/scripts/worktree_audit.py"
+                "internal/worktreeaudit/collect.go"
               ]
             },
             {
@@ -820,7 +818,7 @@
               "default": [],
               "about": "Branches the worktree audit never proposes to remove.",
               "readers": [
-                "pack/core/scripts/worktree_audit.py"
+                "internal/worktreeaudit/collect.go"
               ]
             }
           ]

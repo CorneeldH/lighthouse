@@ -1,0 +1,13 @@
+[
+  {
+    "name": "test_fake_gh_replays_in_order",
+    "argv": ["sh", "-c", "gh a; gh b"],
+    "config": "",
+    "env": {},
+    "calls": [
+      {"argv": ["gh", "a"], "stdin": null, "stdout": "A\n", "stderr": "", "code": 0},
+      {"argv": ["gh", "b"], "stdin": null, "stdout": "B\n", "stderr": "", "code": 0}
+    ],
+    "expect": {"stdout": "A\nB\n", "stderr": "", "code": 0}
+  }
+]

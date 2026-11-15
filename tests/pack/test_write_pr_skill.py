@@ -8,6 +8,7 @@ pr-create-gate`): it writes the PR body (`Closes #N` + Evidence table, `Refs #N 
 """
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -15,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.pack._testkit import CORE, load_hook_lib
+from tests.pack._testkit import CORE, MINIMAL_TOML, init_repo
 
 ALLOWLIST = json.loads(
     (Path(__file__).parent / "fixtures" / "evidence" / "allowlist.json").read_text(encoding="utf-8")
@@ -125,7 +126,6 @@ def test_pytest_dir_comes_from_config():
 def test_example_row_holds_against_the_template(tmp_path):
     """Row 1 of the example block, copied, must give `holds` in a repo with the installed
     template (grep, no network)."""
-    gate = load_hook_lib("pr_body_gate")
     (tmp_path / ".github").mkdir()
     shutil.copyfile(
         CORE / "templates" / "pull_request_template.md",
@@ -133,14 +133,14 @@ def test_example_row_holds_against_the_template(tmp_path):
     )
     # The example itself contains `## Related issues`: cut up to the next real heading.
     block = TEXT[TEXT.index("## Shape of the evidence block") : TEXT.index("## Counterpart")]
-    rows = gate.evidence_rows(block, 1091)
-    assert isinstance(rows, list), rows
-    row = rows[0]
+    table = block[block.index("|---|---|---|\n") + len("|---|---|---|\n") :]
+    row = table.splitlines()[0]
+    assert row.startswith("| 1. "), row
     body = tmp_path / "body.md"
     body.write_text(
         "Refs #1091 — close-issue runs the rows\n\n### Evidence #1091\n\n"
         "| AC | Command | Result |\n|---|---|---|\n"
-        f"| {row.ac} | {row.command} | {row.result} |\n",
+        f"{row}\n",
         encoding="utf-8",
     )
     proc = subprocess.run(
@@ -172,17 +172,38 @@ def test_v3_always_writes_refs():
     assert "Mixing is allowed" not in TEXT
 
 
-def test_example_block_is_a_valid_refs_body():
+@pytest.mark.usefixtures("lighthouse_bin")
+def test_example_block_is_a_valid_refs_body(tmp_path):
     """The example is a body write-pr could produce: `Refs` with a table, and the gate lets it
-    through without asking the forge for the criteria count."""
-    gate = load_hook_lib("pr_body_gate")
+    through without asking the forge for the criteria count (a `gh` here would leave a mark)."""
     block = TEXT[TEXT.index("## Shape of the evidence block") : TEXT.index("## Counterpart")]
     assert "Refs #1091 — " in block and "Closes #1091" not in block
-
-    def no_forge(nr):
-        raise AssertionError("a Refs body must not count criteria")
-
-    assert gate.check_body(block, ac_count=no_forge).blockers == []
+    project = tmp_path / "project"
+    init_repo(project)
+    (project / "body.md").write_text(block, encoding="utf-8")
+    toml = tmp_path / "lighthouse.toml"
+    toml.write_text(MINIMAL_TOML, encoding="utf-8")
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    mark = tmp_path / "gh-called"
+    (bin_dir / "gh").write_text(f"#!/bin/sh\ntouch {mark}\nexit 1\n", encoding="utf-8")
+    (bin_dir / "gh").chmod(0o755)
+    env = dict(
+        os.environ,
+        PATH=f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        LIGHTHOUSE_TOML=str(toml),
+        CLAUDE_PROJECT_DIR=str(project),
+    )
+    proc = subprocess.run(
+        ["lighthouse", "pr-body-gate", str(project)],
+        input="gh pr create --repo Acme/widgets -F body.md",
+        capture_output=True,
+        text=True,
+        env=env,
+        check=False,
+    )
+    assert (proc.returncode, proc.stdout) == (0, "pr-create-gate: body checked — Refs #1091\n"), proc.stderr
+    assert not mark.exists()
 
 
 def test_v2b_runs_in_the_build_session():

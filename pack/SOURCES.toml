@@ -2,12 +2,6 @@
 # exactly one entry (tests/test_sources.py). A file taken over has source_path (the
 # path in the source repository; a list when it merges several) and source_sha (the
 # commit it was taken from). A file written for lighthouse has new = true.
-# The first file reached lighthouse through the English bootstrap of M0 (a0).
-
-[[file]]
-path = "pack/core/lib/git_invocations.py"
-source_path = ".claude/hooks/lib/git_invocations.py"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/hooks/hooks.json"
@@ -27,10 +21,6 @@ new = true
 
 [[file]]
 path = "pack/core/lib/__init__.py"
-new = true
-
-[[file]]
-path = "pack/core/lib/repo_identity.py"
 new = true
 
 [[file]]
@@ -55,43 +45,8 @@ path = "pack/core/lib/headings.py"
 new = true
 
 [[file]]
-path = "pack/core/lib/pr_body_gate.py"
-source_path = ".claude/hooks/lib/pr_body_gate.py"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
-
-[[file]]
-path = "pack/core/lib/protocol.py"
-source_path = "src/controller/comments.py"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
-
-[[file]]
-path = "pack/core/lib/artefacts.py"
-source_path = "src/controller/artefacten.py"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
-
-[[file]]
-path = "pack/core/scripts/post_artefact.py"
-source_path = "scripts/post_artefact.py"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
-
-[[file]]
-path = "pack/core/scripts/board_start.py"
-source_path = "scripts/board_start.py"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
-
-[[file]]
 path = "pack/core/scripts/create_labels.py"
 new = true
-
-[[file]]
-path = "pack/core/scripts/worktree_audit.py"
-source_path = "scripts/worktree_audit.py"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
-
-[[file]]
-path = "pack/core/scripts/unblock_dependents.py"
-source_path = "scripts/unblock_dependents.py"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/workflows/unblock-dependents.yml"

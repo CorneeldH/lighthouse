@@ -37,7 +37,7 @@ works as described below.
 3. Show the same block also in the chat.
 
 The pause form skips every side effect of a phase transition, also when
-`LIGHTHOUSE_CONTROLLER_RUN` is set: `post_artefact.py` is skipped (so no push), the
+`LIGHTHOUSE_CONTROLLER_RUN` is set: `lighthouse post-artefact` is skipped (so no push), the
 *Controller mode* section is skipped (no `🤖` comment, no board status), there is no question
 to the user, and the `/clear` suggestion is skipped. Then stop.
 
@@ -70,9 +70,9 @@ for an external event, such as red CI or a merge. Workflow step 4 applies this r
    also in controller mode (if present) before the `🤖 heading:kind_handoff`,
    with `dangerouslyDisableSandbox: true` (Go TLS of `gh`):
    ```bash
-   cd <worktree> && python3 .lighthouse/scripts/post_artefact.py <nr> <absolute path>
+   cd <worktree> && lighthouse post-artefact <nr> <absolute path>
    ```
-   The script is idempotent: without a content change it posts nothing. If GitHub does not know
+   The command is idempotent: without a content change it posts nothing. If GitHub does not know
    the commit yet, it pushes the branch itself (only without an open PR, never the default
    branch). Put the `artefact:` line in the block under `State:`.
    An error does not block the handoff: the error line goes under `Watch out:`.
@@ -269,7 +269,7 @@ tick starts the next phase itself. Two entries:
    For native there is an extra line `lane: native` between `next:` and `when:` (without
    a blank line); otherwise leave it out. The field is valid only next to
    `next: /superpowers:executing-plans <absolute plan path>`; elsewhere the controller returns it.
-   The field names are fixed tokens (`lighthouse_lib.protocol`); the prose of the block follows
+   The field names are fixed tokens (`lighthouse protocol`); the prose of the block follows
    `[project] language`.
 6. **Status on `Controller`** (only interactive, also at `default`, after the comment; only with a
    board, otherwise skipped). Without an item ID from step 2
@@ -298,7 +298,7 @@ Anchor: <issue #nr | path to plan/spec | PR #nr>
 Context: <decisions and findings that are not in the anchor, or a reference to them>
 Auto: <category> — <question in one sentence> → <chosen option>   ← only in a controller run (if present)
 State: <what is committed; explicitly "nothing uncommitted" or what is open>
-artefact: <the line from post_artefact.py>   ← only with a spec or plan anchor
+artefact: <the line from lighthouse post-artefact>   ← only with a spec or plan anchor
 First step: <slash command> <on what>, <what next>
 Watch out: <pitfall>   ← only if there is one
 ```

@@ -93,6 +93,10 @@ func NewRoot(in io.Reader, out, errOut io.Writer) *cobra.Command {
 	root.AddCommand(newTurnRootsCommand())
 	root.AddCommand(newPrBodyGateCommand())
 	root.AddCommand(newEvidenceCommand())
+	root.AddCommand(newBoardStartCommand())
+	root.AddCommand(newUnblockDependentsCommand())
+	root.AddCommand(newPostArtefactCommand(defaultPostArtefactEnv()))
+	root.AddCommand(newWorktreeAuditCommand(defaultWorktreeAuditEnv()))
 	root.AddCommand(&cobra.Command{
 		Use:   "version",
 		Short: "Print the version of this binary",
