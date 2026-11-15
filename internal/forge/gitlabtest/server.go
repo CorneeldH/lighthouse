@@ -5,6 +5,7 @@ package gitlabtest
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -187,15 +188,29 @@ func (s *Server) member(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusNotFound, map[string]any{"message": "404 Not found"})
 }
 
-// listIssues serves the issues by iid, filtered on state (opened, closed, all; default all).
+// listIssues serves the issues by iid, filtered on state (opened, closed, all; default all),
+// on milestone (the milestone title) and on updated_after (an RFC 3339 time; an issue updated
+// earlier is left out).
 func (s *Server) listIssues(w http.ResponseWriter, r *http.Request) {
-	state := r.URL.Query().Get("state")
+	q := r.URL.Query()
+	state, milestone := q.Get("state"), q.Get("milestone")
+	after, _ := time.Parse(time.RFC3339, q.Get("updated_after"))
 	s.mu.Lock()
 	var out []any
 	for _, iid := range sortedKeys(s.issues) {
 		it := s.issues[iid]
 		if st, _ := it["state"].(string); state != "" && state != "all" && state != st {
 			continue
+		}
+		if milestone != "" {
+			if m, _ := it["milestone"].(map[string]any); m == nil || m["title"] != milestone {
+				continue
+			}
+		}
+		if !after.IsZero() {
+			if at, _ := time.Parse(time.RFC3339, fmt.Sprint(it["updated_at"])); at.Before(after) {
+				continue
+			}
 		}
 		out = append(out, it)
 	}

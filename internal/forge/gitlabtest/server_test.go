@@ -172,3 +172,20 @@ func between(s, a, b string) string {
 	v, _, _ := strings.Cut(rest, b)
 	return v
 }
+
+func TestServerFiltersIssuesOnMilestoneAndUpdatedAfter(t *testing.T) {
+	srv := New(t)
+	srv.AddIssue(map[string]any{"iid": 1, "state": "closed", "updated_at": "2026-11-01T10:00:00Z", "milestone": map[string]any{"title": "M3"}})
+	srv.AddIssue(map[string]any{"iid": 2, "state": "closed", "updated_at": "2026-10-01T10:00:00Z", "milestone": map[string]any{"title": "M3"}})
+	srv.AddIssue(map[string]any{"iid": 3, "state": "closed", "updated_at": "2026-11-01T10:00:00Z", "milestone": map[string]any{"title": "M4"}})
+	srv.AddIssue(map[string]any{"iid": 4, "state": "closed", "updated_at": "2026-11-01T10:00:00Z"})
+
+	_, body := get(t, srv.URL()+"/projects/group%2Fproject/issues?milestone=M3&updated_after=2026-10-15T00:00:00Z")
+	if iids := strings.Count(body, `"iid"`); iids != 1 || !strings.Contains(body, `"iid":1,`) {
+		t.Errorf("milestone M3 updated after 15 Oct = %s; want only issue 1", body)
+	}
+	_, body = get(t, srv.URL()+"/projects/group%2Fproject/issues?milestone=M3")
+	if iids := strings.Count(body, `"iid"`); iids != 2 {
+		t.Errorf("milestone M3 = %s; want issues 1 and 2", body)
+	}
+}

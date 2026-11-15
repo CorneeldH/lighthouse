@@ -2,7 +2,6 @@ package forge
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -42,6 +41,7 @@ type Forge interface {
 }
 
 var _ Forge = (*GitHub)(nil)
+var _ Forge = (*GitLab)(nil)
 
 // Config is what Open needs to reach one repository.
 type Config struct {
@@ -68,7 +68,7 @@ func Open(cfg Config) (Forge, error) {
 		c.Board = cfg.Board
 		return c, nil
 	case "gitlab":
-		return nil, errors.New("forge: GitLab client not implemented yet")
+		return newGitLab(cfg), nil
 	default:
 		return nil, fmt.Errorf("forge: kind %q is not github or gitlab", cfg.Kind)
 	}
