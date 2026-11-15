@@ -56,13 +56,14 @@ regexes = ['''^(?:runtime_session_key|untime_session_key|ntime_session_key|time_
 # generic-api-key reads `credentials, OnFailure/notification` as a key with a value: it is
 # prose, a list of what the Host-deploy section of docs/secret-scan.md explains, in a
 # session's brief to its subagent (#228). Exact match, decided by the user. The match may
-# end on the space or the backtick after it (the changelog fragment quotes it).
+# end on the space, backtick or quote after it (the changelog fragment and this file
+# quote it), and the session that wrote this allowlist also typed the plural (#228).
 # The match may end on the space or backtick after it.
 [[allowlists]]
 description = "prose 'credentials, OnFailure/notification' in a session brief, not a secret"
 targetRules = ["generic-api-key"]
 regexTarget = "match"
-regexes = ['''^credentials, OnFailure/notification[ `]?$''']
+regexes = ['''^credentials, OnFailure/notifications?[ `'"]?$''']
 
 # A session read the .gitleaks.toml of another repository, whose allowlists name its
 # synthetic test values: two AWS keys "from the redaction validation and the allowlist
