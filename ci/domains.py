@@ -20,6 +20,8 @@ _WEB_TOO = frozenset({".github/workflows/ci.yml", "ci/domains.py", "lighthouse.t
 # Inside web/, but read by Go: the API snapshot test and the module that keeps `./...` out of
 # web/node_modules.
 _GO_TOO = frozenset({"web/openapi.json", "web/go.mod"})
+# Inside docs/, but read by Go: internal/config/config_test.go parses the GitLab example in it.
+_GO_DOCS = frozenset({"docs/install.md"})
 # Inside tests/, but read by Go: internal/protocol/header_test.go:19 reads the fixtures.
 _GO_FIXTURES = "tests/pack/fixtures/"
 # Outside web/, but read by no Go build or test, so they leave out go (python stays: pytest reads
@@ -59,7 +61,7 @@ def classify(paths: Iterable[str]) -> set[str]:
         )
         if in_web or path in _WEB_TOO:
             touched.add("web")
-        if (not in_web and not not_go) or path in _GO_TOO:
+        if (not in_web and not not_go) or path in _GO_TOO or path in _GO_DOCS:
             touched.add("go")
         if not in_web:
             touched.add("python")

@@ -2,6 +2,7 @@ package forge
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -415,6 +416,7 @@ func TestIssueItem(t *testing.T) {
 	srv, c := boardClient(t)
 	srv.ProjectID = "P1"
 	srv.BoardNodes = []map[string]any{issueNode("PVTI_7", 7, "s1"), issueNode("PVTI_9", 9, "s2")}
+	srv.Issues = map[int]map[string]any{8: {"number": 8}} // exists, on no board
 	ctx := context.Background()
 	c.Board = &repoconfig.Board{ProjectID: "P1", StatusFieldID: "F_status", StatusOptions: map[string]string{"S1": "s1"}}
 
@@ -458,6 +460,45 @@ func TestIssueItemArchived(t *testing.T) {
 	got, ok, err = c.IssueItem(ctx, 9)
 	if err != nil || !ok || got.ItemID != "PVTI_9" || got.Archived {
 		t.Errorf("IssueItem(P1, 9) = %+v, %v, %v; want PVTI_9, not archived", got, ok, err)
+	}
+}
+
+// Only GitHub's answer for a missing issue, a NOT_FOUND on repository.issue, is
+// ErrIssueNotFound; any other GraphQL error on IssueItems stays a plain error.
+func TestIssueItemGraphQLErrors(t *testing.T) {
+	srv, c := boardClient(t)
+	srv.ProjectID = "P1"
+	c.Board = &repoconfig.Board{ProjectID: "P1"}
+	ctx := context.Background()
+	_, ok, err := c.IssueItem(ctx, 99)
+	if ok || !errors.Is(err, ErrIssueNotFound) || !strings.Contains(err.Error(), "o/r#99") {
+		t.Errorf("IssueItem(99) ok=%v err=%v; want an error wrapping ErrIssueNotFound naming o/r#99", ok, err)
+	}
+	srv.FailOps = map[string]string{"IssueItems": "Something went wrong"}
+	_, ok, err = c.IssueItem(ctx, 99)
+	if ok || err == nil || errors.Is(err, ErrIssueNotFound) || !strings.Contains(err.Error(), "Something went wrong") {
+		t.Errorf("IssueItem with another GraphQL error ok=%v err=%v; want that error, not ErrIssueNotFound", ok, err)
+	}
+}
+
+func TestGraphQLErrorsNotFound(t *testing.T) {
+	cases := []struct {
+		name string
+		errs graphqlErrors
+		want bool
+	}{
+		{"not found on the path", graphqlErrors{{Type: "NOT_FOUND", Path: []any{"repository", "issue"}}}, true},
+		{"second error matches", graphqlErrors{{Type: "FORBIDDEN"}, {Type: "NOT_FOUND", Path: []any{"repository", "issue"}}}, true},
+		{"not found on the repository", graphqlErrors{{Type: "NOT_FOUND", Path: []any{"repository"}}}, false},
+		{"other type on the path", graphqlErrors{{Type: "FORBIDDEN", Path: []any{"repository", "issue"}}}, false},
+		{"no type", graphqlErrors{{Message: "boom", Path: []any{"repository", "issue"}}}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.errs.notFound("repository", "issue"); got != tc.want {
+				t.Errorf("notFound = %v, want %v", got, tc.want)
+			}
+		})
 	}
 }
 

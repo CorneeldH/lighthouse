@@ -170,7 +170,7 @@
               "required": "no",
               "about": "The host name of a self-hosted GitLab, without scheme, port or path. Valid only with kind gitlab.",
               "example": "git.example.org",
-              "readers": ["internal/initcmd/initcmd.go", "internal/repoconfig/repoconfig.go"]
+              "readers": ["internal/cli/serve.go", "internal/forge/gitlab.go", "internal/initcmd/initcmd.go", "internal/repoconfig/repoconfig.go"]
             },
             {
               "key": "forge.token_env",
@@ -255,7 +255,7 @@
               "key": "forge.board.priority_options",
               "level": "optional",
               "required": "no",
-              "about": "The ids of the Priority options, one entry per option name.",
+              "about": "The ids of the Priority options, one entry per option name. With kind gitlab each value is the scoped label that carries the priority, for example priority::P1; two names on one label are refused.",
               "example": {
                 "P0": "...",
                 "P1": "...",
@@ -316,7 +316,7 @@
               "key": "forge.board.status_options",
               "level": "optional",
               "required": "with [forge.board]",
-              "about": "The ids of the Status options, one entry per option name.",
+              "about": "The ids of the Status options, one entry per option name. With kind gitlab each value is the name of the issue status, for example To do; two names on one status (case-insensitive) are refused.",
               "example": {
                 "To do": "...",
                 "In progress": "...",
@@ -330,6 +330,7 @@
                 "internal/dispatch/gather.go",
                 "internal/forge/board.go",
                 "internal/forge/forge.go",
+                "internal/forge/gitlab_board.go",
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/write-handoff",
                 "pack/core/skills/write-issue",

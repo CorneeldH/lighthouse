@@ -20,6 +20,7 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/dispatch"
 	"github.com/CorneeldH/lighthouse/internal/forge"
+	"github.com/CorneeldH/lighthouse/internal/forge/gitlabtest"
 	"github.com/CorneeldH/lighthouse/internal/hostconfig"
 	"github.com/CorneeldH/lighthouse/internal/overview"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
@@ -743,5 +744,50 @@ func TestServeForgeURLDefaultEmpty(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "https://api.github.com") {
 		t.Errorf("serve --help lacks https://api.github.com:\n%s", out.String())
+	}
+}
+
+// A GitLab repo of [dispatch] repos is served from its own forge: its open issues and their
+// comments reach the overview, and the GitHub URL and token are never part of it.
+func TestServeShowsGitLabRepo(t *testing.T) {
+	srv := gitlabtest.New(t)
+	srv.Login = "lh-bot"
+	srv.Project = "g/sub/p"
+	srv.SetStatuses("To do")
+	srv.AddIssue(map[string]any{"iid": 7, "id": 9007, "title": "zeven", "state": "opened", "labels": []string{},
+		"web_url": "https://gl/g/sub/p/-/issues/7", "user_notes_count": 1, "updated_at": time.Now().UTC().Format(time.RFC3339)})
+	srv.AddNote(7, "lh-bot", "🤖 Vraag\n\nWelke kleur?", false)
+	dir := repoDir(t, `[forge]
+kind = "gitlab"
+repo = "g/sub/p"
+
+[forge.board]
+
+[forge.board.status_options]
+"Controller" = "To do"
+`)
+	vars := map[string]string{"GITLAB_TOKEN": "gl-secret", "GH_TOKEN": "gh-secret"}
+	github := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		t.Errorf("GitHub got %s %s, want no request for a GitLab repo", r.Method, r.URL)
+	}))
+	defer github.Close()
+	o := newForgeOpener(func(k string) string { return vars[k] }, github.URL)
+	o.gitlabURL = srv.URL()
+	var errOut bytes.Buffer
+	repos, slugs, err := forgeReposWith(hostToml(t, dir), "", o, &errOut)
+	if err != nil || len(repos) != 1 || len(slugs) != 1 || slugs[0] != "g/sub/p" {
+		t.Fatalf("forgeReposWith = %v, %v, %v; want the one GitLab repo", repos, slugs, err)
+	}
+	if errOut.Len() != 0 {
+		t.Errorf("errOut = %q, want nothing", errOut.String())
+	}
+	srv.SetWorkItemStatus(7, "To do")
+	ov, err := overview.BuildAll(t.Context(), repos)
+	if err != nil {
+		t.Fatalf("BuildAll: %v", err)
+	}
+	if len(ov.Questions) != 1 || ov.Questions[0].Number != 7 || ov.Questions[0].Repo != "g/sub/p" ||
+		!strings.Contains(ov.Questions[0].Question, "Welke kleur?") {
+		t.Errorf("Questions = %+v, want the question on g/sub/p#7", ov.Questions)
 	}
 }
