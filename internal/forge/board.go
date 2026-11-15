@@ -478,7 +478,7 @@ func (c *GitHub) IssueItem(ctx context.Context, number int) (item BoardItem, ok 
 		return BoardItem{}, false, err
 	}
 	if data.Repository == nil || data.Repository.Issue == nil {
-		return BoardItem{}, false, fmt.Errorf("forge: issue %s#%d not found", c.Repo, number)
+		return BoardItem{}, false, fmt.Errorf("forge: issue %s#%d: %w", c.Repo, number, ErrIssueNotFound)
 	}
 	items := data.Repository.Issue.ProjectItems
 	if items.PageInfo.HasNextPage {

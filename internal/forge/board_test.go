@@ -415,6 +415,7 @@ func TestIssueItem(t *testing.T) {
 	srv, c := boardClient(t)
 	srv.ProjectID = "P1"
 	srv.BoardNodes = []map[string]any{issueNode("PVTI_7", 7, "s1"), issueNode("PVTI_9", 9, "s2")}
+	srv.Issues = map[int]map[string]any{8: {"number": 8}} // exists, on no board
 	ctx := context.Background()
 	c.Board = &repoconfig.Board{ProjectID: "P1", StatusFieldID: "F_status", StatusOptions: map[string]string{"S1": "s1"}}
 

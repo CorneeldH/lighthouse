@@ -35,6 +35,8 @@ type Forge interface {
 	OpenPRs(ctx context.Context) ([]OpenPR, error)
 	BranchPRs(ctx context.Context, branch string) ([]PR, error)
 	BoardItems(ctx context.Context) ([]BoardItem, error)
+	// IssueItem reads the board item of issue number. ok is false for an issue that exists but
+	// is not on the board. An issue that does not exist is an error wrapping ErrIssueNotFound.
 	IssueItem(ctx context.Context, number int) (item BoardItem, ok bool, err error)
 	AddToBoard(ctx context.Context, number int) (BoardItem, error)
 	SetStatus(ctx context.Context, item BoardItem, status string) error

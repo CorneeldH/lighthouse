@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -638,15 +639,32 @@ func TestPrepareClosesRunOutsideBoardWindow(t *testing.T) {
 	}
 }
 
-// An open run on an issue that no longer exists must not fail the tick of the whole repo.
-func TestPrepareSurvivesRunOnMissingIssue(t *testing.T) {
-	srv, f, repo := gitlabPrepare(t)
-	srv.AddIssue(gitlabIssue(6, "opened", time.Now()))
-	pre, err := Prepare(context.Background(), f, repo, []runs.OpenRun{{ID: 15, Issue: 99}, {ID: 16, Issue: 6}}, nil)
-	if err != nil {
-		t.Fatalf("Prepare: %v", err)
+// issueItemFake is a forge whose BoardItems is empty and whose IssueItem answers as set.
+type issueItemFake struct {
+	forge.Forge
+	err   error
+	calls int
+}
+
+func (f *issueItemFake) BoardItems(context.Context) ([]forge.BoardItem, error) { return nil, nil }
+
+func (f *issueItemFake) IssueItem(context.Context, int) (forge.BoardItem, bool, error) {
+	f.calls++
+	return forge.BoardItem{}, false, f.err
+}
+
+// An open run on an issue that no longer exists, on any forge, must not fail the tick of the
+// whole repo; any other IssueItem error does.
+func TestPrepareIssueItemErrors(t *testing.T) {
+	open := []runs.OpenRun{{ID: 15, Issue: 99}}
+	f := &issueItemFake{err: fmt.Errorf("forge: issue o/r#99: %w", forge.ErrIssueNotFound)}
+	pre, err := Prepare(context.Background(), f, testRepo, open, nil)
+	if err != nil || len(pre.Items) != 0 || len(pre.OpenRuns) != 1 || f.calls != 1 {
+		t.Errorf("Prepare with a missing issue = %+v, %v, %d calls; want no error, no item and the run kept", pre, err, f.calls)
 	}
-	if len(pre.Items) != 1 || pre.Items[0].Issue != 6 {
-		t.Errorf("Items = %+v, want only issue 6", pre.Items)
+	boom := errors.New("boom")
+	f = &issueItemFake{err: boom}
+	if _, err := Prepare(context.Background(), f, testRepo, open, nil); !errors.Is(err, boom) {
+		t.Errorf("Prepare with a failing IssueItem = %v; want the error", err)
 	}
 }

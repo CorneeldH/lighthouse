@@ -506,6 +506,9 @@ func (s *Server) issueItems(query string, vars map[string]any) any {
 		}
 		nodes = append(nodes, cp)
 	}
+	if _, known := s.Issues[int(number)]; !known && len(nodes) == 0 {
+		return map[string]any{"repository": map[string]any{"issue": nil}} // an issue that does not exist
+	}
 	return map[string]any{"repository": map[string]any{"issue": map[string]any{"projectItems": map[string]any{
 		"pageInfo": map[string]any{"hasNextPage": false},
 		"nodes":    nodes,

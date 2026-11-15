@@ -4,6 +4,7 @@
 package forgesuite
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -62,6 +63,7 @@ var Cases = []Case{
 	{"Acknowledge", acknowledge},
 	{"BoardStatusAndPriority", boardStatusAndPriority},
 	{"IssueItem", issueItem},
+	{"IssueItemMissingIssue", issueItemMissingIssue},
 	{"AddToBoardThenSetStatus", addToBoardThenSetStatus},
 	{"SetStatusUnknownName", setStatusUnknownName},
 	{"Pagination", pagination},
@@ -284,6 +286,16 @@ func issueItem(t *testing.T, f Fixture) {
 	}
 	if it.Status != "On hold" || it.Issue != 7 || it.ItemID == "" {
 		t.Errorf("IssueItem(7) = %+v; want Status On hold, Issue 7 and an ItemID", it)
+	}
+}
+
+// A nonexistent issue is an ErrIssueNotFound error, whatever the forge: ok=false is for an
+// issue that exists but is not on the board.
+func issueItemMissingIssue(t *testing.T, f Fixture) {
+	f.AddIssue(t, openIssue(7))
+	_, ok, err := f.Forge().IssueItem(t.Context(), 99)
+	if ok || !errors.Is(err, forge.ErrIssueNotFound) {
+		t.Errorf("IssueItem(99) = ok %v, err %v; want an error wrapping forge.ErrIssueNotFound", ok, err)
 	}
 }
 
