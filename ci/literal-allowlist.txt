@@ -7,3 +7,8 @@ pack/core/lib/protocol.py:LEGACY_MARKERS = ("<!-- paia:",)
 # The install command run.sh names when no binary is found (spec zonder-python §1).
 # Pinned by tests/pack/test_run_sh.py::test_missing_binary_blocks_blocking_hook.
 pack/core/hooks/run.sh:  module=github.com/CorneeldH/lighthouse/cmd/lighthouse
+
+# The lighthouse repo, for the release notes the upgrade skill shows (spec #46 § Vastgelegd).
+# Pinned by tests/pack/test_upgrade_skill.py::test_release_notes_come_from_the_lighthouse_repo.
+pack/core/skills/upgrade/claude/SKILL.md:L=CorneeldH/lighthouse
+pack/core/skills/upgrade/agents/SKILL.md:L=CorneeldH/lighthouse

@@ -255,6 +255,14 @@ path = "pack/core/skills/test-standard/SKILL.md"
 new = true
 
 [[file]]
+path = "pack/core/skills/upgrade/claude/SKILL.md"
+new = true
+
+[[file]]
+path = "pack/core/skills/upgrade/agents/SKILL.md"
+new = true
+
+[[file]]
 path = "pack/core/skills/write-issue/claude/SKILL.md"
 source_path = ".claude/skills/paia-write-issue/SKILL.md"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
