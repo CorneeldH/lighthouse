@@ -643,6 +643,10 @@ BETA = 'oauth-2025-04-20","interleaved-thinking-2025-05-14"'
         PROSE + " ",
         PROSE,
         PROSE + "`",
+        PROSE + "'",
+        PROSE + '"',
+        PROSE + "s ",
+        PROSE + "s'",
     ],
 )
 def test_allowlist_takes_cut_off_header_and_attribution_key(match):
@@ -660,7 +664,7 @@ def test_allowlist_takes_cut_off_header_and_attribution_key(match):
         f'api_key":"{FORGE_KEY}"',
         f'runtime_session_key":"{FORGE_KEY}x"',
         f"{PROSE[:13]}{FAKE_PAT} ",
-        PROSE + "s ",
+        f"{PROSE}{FAKE_PAT[4:]} ",
     ],
 )
 def test_allowlist_keeps_a_real_key_next_to_them_red(match):
