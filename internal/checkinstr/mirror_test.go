@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-// fixtureDir holds the check-11 fixtures that check-instructions.sh recorded before the port:
+// fixtureDir holds the check-11 fixtures that the former check-instructions.sh script recorded before the port:
 // per case a claude/ and an agents/ skill tree, the stdout of --print-mirror-exceptions and the
 // check-11 block of a full run. The root path without its leading slash is {root}; the hint of
 // the recorded block names `lighthouse check-instructions` instead of the script. They were

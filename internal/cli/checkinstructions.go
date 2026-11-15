@@ -10,7 +10,7 @@ import (
 )
 
 // newCheckInstructionsCommand is `lighthouse check-instructions`, the port of
-// check-instructions.sh.
+// the former check-instructions.sh script.
 func newCheckInstructionsCommand() *cobra.Command {
 	var printExceptions bool
 	cmd := scriptCommand(&cobra.Command{

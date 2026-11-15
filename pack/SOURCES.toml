@@ -54,11 +54,6 @@ source_path = ".github/workflows/unblock-dependents.yml"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
-path = "pack/core/scripts/check-instructions.sh"
-source_path = "scripts/hooks/check-instructies.sh"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
-
-[[file]]
 path = "pack/core/templates/labels.md"
 new = true
 

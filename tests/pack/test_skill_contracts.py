@@ -295,14 +295,14 @@ def _install_skills(root: Path) -> None:
 
 
 def test_descriptions_pass_the_overlap_check(tmp_path):
-    """Check 4 of check-instructions.sh fails two descriptions that share five trigger words
+    """Check 4 of `lighthouse check-instructions` fails two descriptions that share five trigger words
     unless one carries a bounding clause it recognises ("not for", "instead", …). The core
     skills land together in every repo, and a language package adds its own, so all of them
     together must pass it."""
     import os
     import subprocess
 
-    from tests.pack._testkit import install_core
+    from tests.pack._testkit import install_core, lighthouse_dir
 
     install_core(tmp_path)
     _install_skills(tmp_path)
@@ -312,8 +312,9 @@ def test_descriptions_pass_the_overlap_check(tmp_path):
         "CHECK_INSTRUCTIONS_PERSONAL": str(tmp_path / "no-personal-skills"),
     }
     out = subprocess.run(
-        [str(tmp_path / ".lighthouse/scripts/check-instructions.sh")],
+        [str(lighthouse_dir() / "lighthouse"), "check-instructions"],
         env=env,
+        cwd=tmp_path,
         capture_output=True,
         text=True,
         check=False,

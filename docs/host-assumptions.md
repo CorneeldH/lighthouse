@@ -54,7 +54,7 @@ One row per file and assumption. The `Where` column links to the file and names 
 |---|---|
 | [`serve.go:32`](../internal/cli/serve.go#L32) | `127.0.0.1:8127` is the loopback default of `serve`, valid on every host |
 | [`server/host.go`](../internal/server/host.go#L10) | A comment about the Host header check; it assumes no tool |
-| [`check-instructions.sh`](../pack/core/scripts/check-instructions.sh#L51) | `sha256sum` with a `shasum -a 256` fallback |
+| `lighthouse check-instructions` | The binary hashes the skill files itself; it needs neither `sha256sum` nor `shasum` |
 | [`site/install.html`](site/install.html), [`site/agents/install.md`](site/agents/install.md) | `sha256sum` and `shasum` as alternatives, per platform |
 | [`ask.md`](ask.md), [`dispatch/instructions/run.md`](../internal/dispatch/instructions/run.md) | The example installs `ripgrep`; the scan matched `pgrep` inside the word |
 | [`place-instruction/SKILL.md`](../pack/core/skills/place-instruction/SKILL.md#L57) | Names systemd as an example of vendor documentation |

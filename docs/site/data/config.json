@@ -87,7 +87,6 @@
               "readers": [
                 "internal/checkinstr/run.go",
                 "internal/initcmd/budget.go",
-                "pack/core/scripts/check-instructions.sh",
                 "pack/core/skills/place-instruction"
               ]
             },
@@ -465,8 +464,7 @@
               "example": "docs/mirror-exceptions.md",
               "readers": [
                 "internal/checkinstr/mirror.go",
-                "internal/checkinstr/run.go",
-                "pack/core/scripts/check-instructions.sh"
+                "internal/checkinstr/run.go"
               ]
             },
             {
