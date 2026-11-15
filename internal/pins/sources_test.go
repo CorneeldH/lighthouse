@@ -142,7 +142,8 @@ func TestFindSourcePins_missingOrInvalidFieldIsError(t *testing.T) {
 	cases := map[string]string{
 		"missing commit":   skillDoc(upstreamMeta("https://github.com/o/r", "", "skills/x")),
 		"short sha":        skillDoc(upstreamMeta("https://github.com/o/r", sha[:39], "skills/x")),
-		"external no path": skillDoc(upstreamMeta("https://github.com/o/r", sha, "")),
+		"no path":          skillDoc(upstreamMeta("https://github.com/o/r", sha, "")),
+		"extended no path": skillDoc("  origin: extended\n  upstream: https://github.com/o/r\n  upstream-commit: \"" + sha + "\"\n"),
 		"bad upstream":     skillDoc(upstreamMeta("https://example.com/x", sha, "skills/x")),
 	}
 	for name, doc := range cases {
@@ -158,6 +159,34 @@ func TestFindSourcePins_missingOrInvalidFieldIsError(t *testing.T) {
 			}
 		})
 	}
+	for name, body := range map[string]string{
+		"sources.toml bad source_repo":   "source_repo = \"nonsense\"\nsource_sha = \"" + sha + "\"\nsource_path = \"a\"\n",
+		"sources.toml empty source_path": "source_repo = \"o/r\"\nsource_sha = \"" + sha + "\"\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			writeFile(t, root, "pack/SOURCES.toml", "[[file]]\npath = \"pack/a\"\n"+body)
+			got, err := FindSourcePins(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(got) != 1 || got[0].Err == nil {
+				t.Fatalf("want one pin with Err, got %+v", got)
+			}
+		})
+	}
+	t.Run("upstream in one variant only", func(t *testing.T) {
+		root := t.TempDir()
+		writeFile(t, root, "pack/core/skills/x/claude/SKILL.md", skillDoc(upstreamMeta("https://github.com/o/r", sha, "skills/x")))
+		writeFile(t, root, "pack/core/skills/x/agents/SKILL.md", skillDoc("  origin: own\n"))
+		got, err := FindSourcePins(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(got) != 1 || got[0].Err == nil {
+			t.Fatalf("want one pin with Err, got %+v", got)
+		}
+	})
 	t.Run("sources.toml bad sha", func(t *testing.T) {
 		root := t.TempDir()
 		writeFile(t, root, "pack/SOURCES.toml", "[[file]]\npath = \"pack/a\"\nsource_repo = \"o/r\"\nsource_sha = \"abc\"\nsource_path = \"a\"\n")
@@ -175,6 +204,7 @@ func TestRepoFromUpstream(t *testing.T) {
 	for in, want := range map[string]string{
 		"https://github.com/o/r (MIT)":                                "o/r",
 		"https://github.com/o/r.git":                                  "o/r",
+		"https://github.com/o/r.":                                     "o/r",
 		"https://github.com/o/r/tree/main/x":                          "o/r",
 		"https://github.com/o/r, MIT":                                 "o/r",
 		"see https://github.com/o/r (MIT) and https://github.com/p/q": "o/r",

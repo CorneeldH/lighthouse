@@ -29,6 +29,7 @@ type SourcePin struct {
 
 var (
 	shaRe      = regexp.MustCompile(`^[0-9a-f]{40}$`)
+	repoRe     = regexp.MustCompile(`^[\w.-]+/[\w.-]+$`)
 	upstreamRe = regexp.MustCompile(`https://github\.com/([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+)`)
 )
 
@@ -78,6 +79,8 @@ func findSkillPins(root string) ([]SourcePin, error) {
 			if b := filepath.Base(dir); b == "claude" || b == "agents" {
 				dir = filepath.Dir(dir)
 			}
+			// Both paths lie under packDir and root by construction (WalkDir of a glob under
+			// them), so Rel cannot fail.
 			key, _ := filepath.Rel(packDir, dir)
 			key = filepath.ToSlash(key)
 			rel, _ := filepath.Rel(root, p)
@@ -137,7 +140,7 @@ func buildSkillPin(key string, vs map[string]skillFields) (SourcePin, bool) {
 	pin.Path = normalizePath(first.path)
 	if !shaRe.MatchString(pin.Commit) {
 		pin.Err = fmt.Errorf("skill %s: upstream-commit must be 40 hex, got %q", key, pin.Commit)
-	} else if pin.Path == "" && first.origin == "external" {
+	} else if pin.Path == "" {
 		pin.Err = fmt.Errorf("skill %s: upstream-path is missing", key)
 	}
 	return pin, true
@@ -172,7 +175,7 @@ func findFilePins(root string) ([]SourcePin, error) {
 			Path: normalizePath(e.SourcePath), Files: []string{e.Path},
 		}
 		switch {
-		case !regexp.MustCompile(`^[\w.-]+/[\w.-]+$`).MatchString(e.SourceRepo):
+		case !repoRe.MatchString(e.SourceRepo):
 			pin.Err = fmt.Errorf("file %s: source_repo must be owner/repo, got %q", e.Path, e.SourceRepo)
 		case !shaRe.MatchString(e.SourceSHA):
 			pin.Err = fmt.Errorf("file %s: source_sha must be 40 hex, got %q", e.Path, e.SourceSHA)
@@ -191,7 +194,7 @@ func RepoFromUpstream(u string) (string, error) {
 	if m == nil {
 		return "", fmt.Errorf("upstream %q holds no https://github.com/<owner>/<repo>", u)
 	}
-	repo := strings.TrimSuffix(m[2], ".git")
+	repo := strings.TrimSuffix(strings.TrimRight(m[2], "."), ".git")
 	if repo == "" {
 		return "", fmt.Errorf("upstream %q holds no repository name", u)
 	}
