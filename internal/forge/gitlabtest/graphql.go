@@ -29,7 +29,7 @@ var workItemFields = []string{
 	"WorkItemWidgetLabels", "labels", "title",
 	"WorkItemWidgetLinkedItems", "linkedItems(filter: BLOCKED_BY", "workItem", "namespace", "fullPath",
 	"WorkItemWidgetDevelopment", "closingMergeRequests", "mergeRequest",
-	"diffHeadSha", "sourceBranch", "headPipeline", "detailedMergeStatus", "mergedAt", "sourceProjectId", "targetProjectId",
+	"draft", "webUrl", "diffHeadSha", "sourceBranch", "headPipeline", "detailedMergeStatus", "mergedAt", "sourceProjectId", "targetProjectId",
 }
 
 // graphql serves the GraphQL operations lighthouse sends, recognised by their operation name.
@@ -246,7 +246,8 @@ func workItemState(rest any) string {
 // iid a string, the pipeline and merge status as upper-case enum values.
 func gqlMR(m map[string]any) map[string]any {
 	out := map[string]any{
-		"iid": strconv.Itoa(toInt(m["iid"])), "state": m["state"], "diffHeadSha": m["sha"],
+		"iid": strconv.Itoa(toInt(m["iid"])), "state": m["state"], "draft": m["draft"] == true, "webUrl": m["web_url"],
+		"diffHeadSha":  m["sha"],
 		"sourceBranch": m["source_branch"], "mergedAt": m["merged_at"],
 		"sourceProjectId": m["source_project_id"], "targetProjectId": m["target_project_id"],
 		"detailedMergeStatus": nil, "headPipeline": nil,

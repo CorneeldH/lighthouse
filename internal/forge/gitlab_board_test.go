@@ -91,11 +91,11 @@ func TestGitLabBoardItemsClosingPRs(t *testing.T) {
 	srv.AddIssue(is)
 	srv.SetWorkItemStatus(7, "In progress") // in the lifecycle, not in the board config
 	srv.AddClosedBy("g/p", 7, map[string]any{"iid": 12, "state": "opened", "sha": "abc123", "source_branch": "issue-7-x",
-		"head_pipeline": map[string]any{"status": "failed"}, "detailed_merge_status": "mergeable",
+		"head_pipeline": map[string]any{"status": "failed"}, "detailed_merge_status": "mergeable", "draft": true, "web_url": "https://gitlab.example/g/p/-/merge_requests/12",
 		"source_project_id": 1, "target_project_id": 2})
 	srv.AddClosedBy("g/p", 7, map[string]any{"iid": 13, "state": "merged", "sha": "def456", "source_branch": "issue-7-y",
 		"detailed_merge_status": "conflict", "merged_at": updated.Format(time.RFC3339),
-		"source_project_id": 1, "target_project_id": 1})
+		"web_url": "https://gitlab.example/g/p/-/merge_requests/13", "source_project_id": 1, "target_project_id": 1})
 	srv.AddLink(7, map[string]any{"iid": 5, "state": "closed", "link_type": "is_blocked_by",
 		"references": map[string]any{"full": "o/other#5"}})
 	srv.AddClosedBy("o/other", 5, map[string]any{"iid": 1, "state": "merged"})
@@ -118,9 +118,9 @@ func TestGitLabBoardItemsClosingPRs(t *testing.T) {
 	}
 	wantPRs := []forge.PR{
 		{Number: 12, State: "OPEN", HeadSHA: "abc123", HeadRef: "issue-7-x", Checks: "FAILURE", Mergeable: "MERGEABLE",
-			CrossRepo: true, Closes: true},
+			CrossRepo: true, Closes: true, Draft: true, URL: "https://gitlab.example/g/p/-/merge_requests/12"},
 		{Number: 13, State: "MERGED", HeadSHA: "def456", HeadRef: "issue-7-y", Mergeable: "CONFLICTING", Closes: true,
-			MergedAt: updated, ClosedAt: updated},
+			MergedAt: updated, ClosedAt: updated, URL: "https://gitlab.example/g/p/-/merge_requests/13"},
 	}
 	if len(it.ClosingPRs) != len(wantPRs) {
 		t.Fatalf("ClosingPRs = %+v; want %+v", it.ClosingPRs, wantPRs)
@@ -128,7 +128,7 @@ func TestGitLabBoardItemsClosingPRs(t *testing.T) {
 	for i, w := range wantPRs {
 		g := it.ClosingPRs[i]
 		if g.Number != w.Number || g.State != w.State || g.HeadSHA != w.HeadSHA || g.HeadRef != w.HeadRef ||
-			g.Checks != w.Checks || g.Mergeable != w.Mergeable || g.CrossRepo != w.CrossRepo || g.Closes != w.Closes ||
+			g.Checks != w.Checks || g.Mergeable != w.Mergeable || g.CrossRepo != w.CrossRepo || g.Closes != w.Closes || g.Draft != w.Draft || g.URL != w.URL ||
 			!g.MergedAt.Equal(w.MergedAt) || !g.ClosedAt.Equal(w.ClosedAt) {
 			t.Errorf("ClosingPRs[%d] = %+v; want %+v", i, g, w)
 		}

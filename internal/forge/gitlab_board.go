@@ -15,8 +15,10 @@ import (
 // with an open run outside it reaches the dispatcher through IssueItem (dispatch.Prepare).
 const closedWindow = 14 * 24 * time.Hour
 
-// gitlabGQLMRFields is the selection of a closing merge request, the fields of gitlabGQLMR.
-const gitlabGQLMRFields = `iid state diffHeadSha sourceBranch headPipeline { status } detailedMergeStatus mergedAt sourceProjectId targetProjectId`
+// gitlabGQLMRFields is the selection of a closing merge request, the fields of gitlabGQLMR. It
+// extends the plan's selection with draft and webUrl: the dispatcher keeps a closing PR over the
+// branch PR of the same number, so a draft or URL missing here is missing for good.
+const gitlabGQLMRFields = `iid state draft webUrl diffHeadSha sourceBranch headPipeline { status } detailedMergeStatus mergedAt sourceProjectId targetProjectId`
 
 // workItemSelection is one issue work item as BoardItems and IssueItem read it: the status
 // widget, the labels, the blockers (with the state of their closing merge requests) and the
@@ -107,6 +109,8 @@ const gitlabSetStatusMutation = `mutation LighthouseSetStatus($id: WorkItemID!, 
 type gitlabGQLMR struct {
 	IID          string `json:"iid"`
 	State        string `json:"state"`
+	Draft        bool   `json:"draft"`
+	WebURL       string `json:"webUrl"`
 	DiffHeadSHA  string `json:"diffHeadSha"`
 	SourceBranch string `json:"sourceBranch"`
 	HeadPipeline *struct {
@@ -126,7 +130,7 @@ func (m gitlabGQLMR) rest() (glMR, error) {
 		return glMR{}, fmt.Errorf("merge request iid %q: %w", m.IID, err)
 	}
 	status := strings.ToLower(m.DetailedMergeStatus)
-	out := glMR{IID: iid, State: m.State, SHA: m.DiffHeadSHA, SourceBranch: m.SourceBranch,
+	out := glMR{IID: iid, State: m.State, Draft: m.Draft, WebURL: m.WebURL, SHA: m.DiffHeadSHA, SourceBranch: m.SourceBranch,
 		DetailedMergeStatus: status, HasConflicts: status == "conflict", MergedAt: m.MergedAt,
 		SourceProjectID: m.SourceProjectID, TargetProjectID: m.TargetProjectID}
 	if p := m.HeadPipeline; p != nil {
