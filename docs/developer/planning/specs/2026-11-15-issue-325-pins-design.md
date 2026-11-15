@@ -106,10 +106,13 @@ Besloten (eigenaar, 2026-11-14 en 2026-11-15):
 
 - **`pack/SOURCES.toml`.** De 56 regels met `source_path` en `source_sha` (allemaal paia,
   bootstrap van #12; 14 met een lijst als `source_path`) worden `new = true`. Een regel die nog `source_path` heeft, krijgt een
-  verplicht `source_repo` (`owner/repo`); `source_sha` blijft de volle SHA. Na deze stap heeft
+  verplicht `source_repo` (`owner/repo`); `source_sha` blijft de volle SHA, en `source_path`
+  is dan één string, geen lijst *(eigen keuze na spec-review, r1-f13)*. Een bestand in de map
+  van een overgenomen skill krijgt `pin = "<sleutel>"` en verder geen bronvelden: de pin staat
+  in de frontmatter van die skill *(eigen keuze na spec-review, r1-f1)*. Na deze stap heeft
   geen enkele regel meer een bron; de lane kan er wel een lezen (zie *Wat een pin is*).
-  `tests/test_sources.py` eist `source_repo` naast `source_sha`; de kop van `SOURCES.toml`
-  noemt paia niet meer.
+  `tests/test_sources.py` eist precies één van `new = true`, `pin` of de drie bronvelden; de kop
+  van `SOURCES.toml` noemt paia niet meer.
 - **`place-instruction`.** Wat uit cedanl/.github `create-skill` komt (stap 1, stap 2 en de
   `source:`-rij van de tabel in stap 5), wordt in eigen woorden herschreven. De regels zelf
   blijven gelden; alleen de tekst is nieuw. `origin: own`, geen `upstream`.
@@ -179,6 +182,22 @@ meldt dus drie keer `behind`, en dat is de bedoeling.
 haalt `owner/repo` uit het eerste `https://github.com/<owner>/<repo>`; een `upstream` waaruit dat
 niet lukt, is `error`.
 
+**Vindplaats en sleutel** *(eigen keuze na spec-review, r1-f2)*. De meting zoekt skillpins alleen
+in `pack/*/skills/`, nooit in de geïnstalleerde kopieën (`.claude/skills/`, `.agents/skills/`):
+die dragen dezelfde frontmatter en zouden elke pin twee tot vier keer tellen. De sleutel van een
+pin is stabiel en uniek, en dezelfde in uitvoer, branchnaam en marker:
+
+- skill: de skillmap relatief aan `pack/`, bijvoorbeeld `core/skills/test-standard`. De
+  varianten `claude/SKILL.md` en `agents/SKILL.md` in die map vormen samen één pin en moeten
+  dezelfde `upstream`, `upstream-commit` en `upstream-path` dragen; verschillen ze, dan is de pin
+  `error`. Bij de merge hoort het upstream-`SKILL.md` bij elke variant-`SKILL.md`; elk ander
+  bestand bij hetzelfde relatieve pad in de skillmap;
+- overgenomen bestand: zijn `path` uit `SOURCES.toml`;
+- plugin of tool: de naam van `[pins.<naam>]`.
+
+Voor een `SKILL.md` en de bestanden in zijn map is de frontmatter de bron van waarheid;
+`SOURCES.toml` verwijst daar alleen naar (`pin`).
+
 ### 3. De meting: `lighthouse pins check`
 
 Twee metingen, apart te draaien:
@@ -186,9 +205,17 @@ Twee metingen, apart te draaien:
 - **Upstream** (netwerk): elke pin tegen upstream. Voor CI en voor de hand.
 - **Lokaal** (geen netwerk): elke plugin- en toolpin tegen wat op deze host staat.
 
-Zonder vlag draait het commando beide. De vlagnamen zijn aan de bouwer. Uitvoer per pin één
-regel `<naam> <current|behind|error> <detail>`, en met `--json` een lijst voor de workflow.
-Exitcode 0 alleen als geen enkele pin `error` is; `behind` is geen fout van het commando.
+Zonder vlag draait het commando beide. De vlagnamen zijn aan de bouwer. Elke meting geeft per
+pin een eigen uitslag; ze worden nooit tot één status samengevoegd *(eigen keuze na
+spec-review, r1-f3)*:
+
+- tekst: één regel per pin per meting, `<sleutel> upstream <status> <detail>` en
+  `<sleutel> lokaal <status> <detail>`;
+- `--json`: per pin een object met `key`, `kind` en de velden `upstream` en `local`, elk
+  `{status, detail}` of afwezig als die meting niet draaide of niet voor die soort geldt.
+
+Exitcode 1 zodra één uitslag van één meting `error` is, anders 0; `behind` en `ahead` zijn geen
+fout van het commando.
 
 **Skill en bestand, upstream.** Een bare, partial clone (`--filter=blob:none`) van
 `owner/repo` in een tijdelijke map; geen checkout, geen hooks, geen submodules. Vergelijk de
@@ -200,11 +227,17 @@ tree van `upstream-path` op de pin met die op de default branch van upstream:
   veld ontbreekt of is ongeldig → `error`. Een pad dat upstream verdween is `error` en geen
   `behind`: daar valt niets te mergen.
 
-**Plugin en tool, upstream.** De releases van `repo` via de release-API, zonder drafts en
-prereleases. Een tag zonder `tag_prefix`, of een rest die geen `MAJOR.MINOR.PATCH` is, wordt
-overgeslagen als het een ander soort tag is en is `error` als de tag van de pin zelf zo niet
-parseert. Laatste release hoger dan `version` → `behind` met de tussenliggende releases; gelijk
-→ `current`; geen enkele bruikbare release, of de API onbereikbaar → `error`.
+**Plugin en tool, upstream.** Alle releases van `repo` via de release-API, met paginering tot de
+laatste pagina, zonder drafts en prereleases *(eigen keuze na spec-review, r1-f8: de release
+van codex 0.157.0 staat op plek 146 van 200)*. Een tag zonder `tag_prefix`, of een rest die
+geen `MAJOR.MINOR.PATCH` is, wordt overgeslagen als het een ander soort tag is en is `error` als
+de tag van de pin zelf zo niet parseert. De release van de pin moet bestaan onder de bruikbare
+releases *(eigen keuze na spec-review, r1-f4)*:
+
+- laatste release hoger dan `version` → `behind`, met de tussenliggende releases;
+- gelijk → `current`;
+- de release van de pin bestaat niet, de laatste release is lager dan `version`, er is geen
+  enkele bruikbare release, of de API is onbereikbaar → `error`.
 
 **Plugin, lokaal.** Superpowers uit `installed_plugins.json`, naam `superpowers@<marketplace>`.
 De scope volgt de repo, in deze volgorde: `project` met `projectPath` gelijk aan de huidige
@@ -214,7 +247,10 @@ beide versies (`behind` als lager, `ahead` als hoger: hoger is niet beoordeeld e
 `current`).
 
 **Tool, lokaal.** `<command> <version_args>`, met een time-out (`kenn-forge` en `roborev`
-kennen geen `--version`, alleen het subcommando `version`); de eerste `X.Y.Z` in de uitvoer telt.
+kennen geen `--version`, alleen het subcommando `version`). Het eerste semver-token in de
+uitvoer telt, compleet: `0.169.0-alpha.11` blijft `0.169.0-alpha.11` en is nooit gelijk aan
+een pin `0.169.0`. Vergelijken gaat op semver-voorrang, dus een prerelease van de pinversie is
+`behind` *(eigen keuze na spec-review, r1-f7)*.
 Een tool die lokaal draait is geïnstalleerde code van de gebruiker, geen upstream-code die de
 meting ophaalt. Niet op PATH, time-out, of geen versie in de uitvoer → `error`. Afwijking zoals
 bij de plugin.
@@ -225,7 +261,9 @@ De lokale meting voegt de status `ahead` toe; de upstream-meting kent alleen de 
 
 `lighthouse init` (ook `--upgrade`) draait de lokale meting en meldt elke afwijking en elke
 `error`, zoals het nu een ontbrekende tool meldt
-([`internal/deps`](../../../../internal/deps/deps.go)): melden, niet stoppen. De controller
+([`internal/deps`](../../../../internal/deps/deps.go)): melden, niet stoppen. De meldingen gaan
+naar stderr en de exitcode van `init` verandert niet; stdout blijft schoon voor de dogfood-stap
+(`No changes.`) in CI, waar geen van de tools staat *(eigen keuze na spec-review, r1-f12)*. De controller
 (tick, dispatch) doet niets met pins. Dat is een besluit, geen vergeten stap.
 
 ### 5. De lane: `.github/workflows/pins.yml`
@@ -238,6 +276,20 @@ alleen `issues: write`; of hij de andere twee rechten heeft en naar `pins/*` mag
 (rulesets), controleert de bouwer vóór de eerste run. Ontbreekt een recht, dan is dat een
 instelling in de App, geen andere App.
 
+- **Eén run tegelijk** *(eigen keuze na spec-review, r1-f6)*. Eén `concurrency`-groep voor de
+  hele workflow, `cancel-in-progress: false`: zoeken en aanmaken zijn niet atomair, dus een
+  geplande run en een handmatige start mogen niet overlappen.
+- **Wie commit** *(eigen keuze na spec-review, r1-f11)*. De App pusht, maar auteur en committer
+  van een lane-commit zijn `github-actions[bot]`
+  (`41898282+github-actions[bot]@users.noreply.github.com`). Die staat al in `bots` van
+  [`cla-signatures.json`](../../../../.github/cla-signatures.json), als *commits from workflows
+  in this repository*; `paia-bot[bot]` staat er niet in, en `check_cla.py` weigert hem in
+  dezelfde PR toe te voegen.
+- **Per pin, niet alles-of-niets** *(eigen keuze na spec-review, r1-f8)*. Mislukt een
+  forge-write of een push voor één pin, dan gaat de lane door met de volgende en eindigt de run
+  met exitcode 1 en de fout per pin. Omdat de lane eerst zoekt (zie *Geen dubbel werk*), maakt
+  een volgende run het af zonder dubbel item.
+
 Per pin met `behind` of `error` in de upstream-meting:
 
 - **Skill of bestand, `behind`.** Probeer per bestand een 3-way-merge (`git merge-file`):
@@ -246,10 +298,15 @@ Per pin met `behind` of `error` in de upstream-meting:
   dan per bestand erin; een bestand dat upstream nieuw is, komt mee, een bestand dat upstream
   verdween, geeft een conflict. Elke `origin` gaat zo; bij `extended` is een conflict de
   gewone uitkomst.
-  - Schoon → één rollende branch `pins/<naam>` met de merge, de opgehoogde `upstream-commit`
-    (of `source_sha`), een `changelog.d/`-fragment en, als het pad onder `pack/` ligt, de
+  - Schoon → één rollende branch `pins/<sleutel>` met de merge, de opgehoogde
+    `upstream-commit` (of `source_sha`), een `changelog.d/`-fragment, de bijgewerkte
+    `SOURCES.toml` (een nieuw bestand krijgt `pin = "<sleutel>"`, een verdwenen bestand verliest
+    zijn regel; *eigen keuze na spec-review, r1-f1*) en, als het pad onder `pack/` ligt, de
     kopieën die `init --upgrade` daarna schrijft (anders faalt de dogfood-stap in
-    [`ci.yml`](../../../../.github/workflows/ci.yml)). De PR is een **draft**, heeft geen
+    [`ci.yml`](../../../../.github/workflows/ci.yml)). Raakt de merge of `init --upgrade` een
+    bestand onder `.github/workflows/`, dan wordt het een issue en geen PR: pushen daarheen
+    vraagt het recht `workflows`, en dat krijgt de lane niet *(eigen keuze na spec-review,
+    r1-f16)*. De PR is een **draft**, heeft geen
     `Closes`, staat niet op het board en heeft een body met `No issue: <reden>`, de
     upstream-commits met hun berichten, en de diff. Bestaat de PR al, dan wordt de branch
     bijgewerkt (force-push mag hier: de branch is van de lane, nooit van een mens) en de body
@@ -261,17 +318,41 @@ Per pin met `behind` of `error` in de upstream-meting:
 - **`error`.** Eén issue per pin met de fout. Een rode run is niet genoeg: een wekelijkse
   workflow die rood is, ziet niemand.
 
-**Geen dubbel werk.** Elk issue en elke PR van de lane draagt een onzichtbare marker in de body
-met de pin en de doelversie (bij skill en bestand: de upstream-commit), bijvoorbeeld
-`<!-- lighthouse-pin: codex 0.169.0 -->` (vorm aan de bouwer). De lane zoekt eerst een item van
-die pin:
+**Upstream-tekst in een body** *(eigen keuze na spec-review, r1-f8 en r1-f9)*. Release-notes,
+commitberichten en diffs komen van anderen en zijn groot: de notes van codex 0.157.0 tot
+0.169.0 zijn samen ~198.000 tekens, en GitHub weigert een body boven 65.536. Daarom:
 
-- open, met een oudere doelversie → bijwerken naar de nieuwe;
-- open of gesloten met dezelfde doelversie → niets doen. Een issue sluiten zonder op te hogen
-  betekent "deze versie niet"; pas een nieuwere upstream geeft een nieuw item;
-- geen → aanmaken.
+- alle upstream-tekst staat in een fenced codeblok (met een fence die langer is dan elke reeks
+  backticks in de tekst), zodat GitHub er geen `@`-vermelding, `#N`-verwijzing of
+  sluitwoord (`Fixes #2118`) in leest;
+- per release of commit: tag of korte SHA, link, en een uittreksel van hoogstens een vast
+  aantal tekens; de diff als `--stat` plus een compare-link naar upstream;
+- de hele body blijft onder een vaste grens ruim onder 65.536 tekens; wat afvalt, wordt een
+  regel "nog N releases, zie <link>".
 
-Een `error`-issue sluit de lane zelf, met een comment, zodra de pin weer meetbaar is.
+De grenzen zelf zijn aan de bouwer.
+
+**Geen dubbel werk** *(eigen keuze na spec-review, r1-f5, r1-f10 en r1-f14)*. Elk issue en elke
+PR van de lane draagt een onzichtbare marker in de body met de sleutel, het soort item en de
+doelversie (bij skill en bestand: de upstream-commit), bijvoorbeeld
+`<!-- lighthouse-pin: codex behind 0.169.0 -->` (vorm aan de bouwer). Soorten: `pr` (schone
+merge), `conflict` (issue), `behind` (issue, plugin of tool), `error` (issue). Per sleutel staat
+hoogstens één lane-item open. De lane zoekt alle items van die sleutel, open en gesloten, issues
+en PR's, en beslist:
+
+| Uitkomst nu | Gevonden | Actie |
+|---|---|---|
+| zelfde soort, zelfde doelversie | open | niets |
+| zelfde soort, zelfde doelversie | alleen gesloten | niets: sluiten zonder ophogen betekent "deze versie niet" |
+| zelfde soort, nieuwere doelversie | open | bijwerken (body, en bij `pr` de branch) |
+| ander soort (`pr` ↔ `conflict`, of `behind`/`pr`/`conflict` na `error`) | open | het oude item sluiten met een comment, het nieuwe aanmaken |
+| `error` | open `error` | body bijwerken |
+| `error` | geen open `error` | een nieuw `error`-issue, ook als er een gesloten is: een fout blijft luid |
+| `current` | open `error` | sluiten met een comment |
+| `current` | open `pr`, `conflict` of `behind` | laten staan: de mens sluit het met de PR die de pin ophoogt |
+| iets anders | geen | aanmaken |
+
+Een gesloten `pr` telt net zo als een gesloten issue: dezelfde doelversie maakt geen nieuwe PR.
 
 **Nooit automatisch mergen.** Draft, geen `Closes`, geen board-item en geen milestone: de
 dispatcher merget alleen de eigen PR van een run (`mergeReady`), en `milestones_only = true` laat
@@ -280,10 +361,11 @@ triage een item zonder milestone liggen. De lane zelf roept `MergePR` nooit aan.
 ### 6. Forge-uitbreiding
 
 `internal/forge` krijgt wat de lane nodig heeft, met een contracttest zoals de bestaande
-methodes: issue aanmaken, issue-body bijwerken, issue sluiten, gesloten issues met een marker
-vinden, PR aanmaken als draft, PR-body bijwerken, open
-items met een marker vinden (`OpenIssues` en `OpenPRs` geven de body al), en de releases van
-een andere repo lezen. Of releases op `Forge` horen of op een losse lezer per
+methodes: issue aanmaken, issue-body bijwerken, issue sluiten met een comment, PR aanmaken als
+draft, PR-body bijwerken, PR sluiten met een comment, issues én PR's in elke staat (open en
+gesloten) met hun body vinden op een marker (`OpenIssues` slaat PR's over en `OpenPRs` ziet
+alleen open PR's; *eigen keuze na spec-review, r1-f5*), en alle releases van een andere repo
+lezen, gepagineerd. Of releases op `Forge` horen of op een losse lezer per
 upstream-repo, is aan de bouwer: `Forge` is nu één repository.
 
 ### 7. Een pin ophogen
@@ -309,13 +391,27 @@ Elk anti-doel heeft een test die faalt als het gedrag breekt:
 - Twee runs achter elkaar op dezelfde achterstand: één issue, en bij een nieuwere release een
   bijgewerkte body in plaats van een tweede issue.
 - Een gesloten issue voor doelversie X: een volgende run op X maakt niets; een run op X+1 maakt
-  een nieuw issue.
-- Een `error`-issue wordt gesloten zodra de pin weer meetbaar is.
-- Een schone merge geeft een draft-PR zonder `Closes`, met de opgehoogde pin en, onder `pack/`,
-  de dogfood-kopieën; een conflict geeft een issue en geen PR.
+  een nieuw issue. Hetzelfde voor een gesloten lane-PR.
+- Een `error`-issue wordt gesloten zodra de pin weer meetbaar is; breekt de pin later opnieuw,
+  dan komt er een nieuw `error`-issue.
+- Elke rij van de tabel in *Geen dubbel werk* heeft een test, de overgangen `pr` ↔ `conflict`
+  inbegrepen: het oude item gaat dicht, het nieuwe komt.
+- Een schone merge geeft een draft-PR zonder `Closes`, met de opgehoogde pin, de bijgewerkte
+  `SOURCES.toml` en, onder `pack/`, de dogfood-kopieën; een conflict geeft een issue en geen
+  PR; een merge die `.github/workflows/` raakt, geeft een issue.
+- Een body met upstream-tekst vol `@naam`, `#123` en `Fixes #123` levert geen vermelding,
+  verwijzing of sluitwoord op (test op de gerenderde body: alles staat in het codeblok), en
+  blijft onder de grens, ook met de notes van twintig releases.
+- De releases worden gepagineerd gelezen: een fixture met de pin op pagina 2 geeft geen `error`.
+- Een pin die geen bestaande release is, of hoger dan de laatste release, geeft `error`.
+- Een lokale `0.169.0-alpha.11` tegen een pin `0.169.0` is `behind`, nooit `current`.
+- Twee varianten van één skill met verschillende `upstream-commit` geven `error`; een
+  geïnstalleerde kopie onder `.claude/skills/` telt nooit als pin.
 - De lane roept `MergePR` nooit aan (fake forge).
-- De meting voert niets uit de clone uit: een fixture-upstream met een `post-checkout`-hook en
-  een uitvoerbaar bestand onder het pad, en een test dat geen van beide draait.
+- De meting voert niets uit de clone uit *(eigen keuze na spec-review, r1-f15: hooks reizen
+  niet mee met een clone, dus een hook in de fixture-upstream bewijst niets)*: de clone heeft
+  geen werkboom, en een hook via een globale `core.hooksPath` die een merkbestand schrijft,
+  draait niet tijdens de meting.
 
 Netwerk en git-upstreams als lokale fixtures (bare repo's in `t.TempDir()`, een fake forge);
 geen test praat met GitHub.
@@ -327,6 +423,10 @@ geen test praat met GitHub.
 - Waar de documentatie van *Een pin ophogen* komt.
 - Of de herkomst-opschoning (ontwerp 1) een eigen PR wordt vóór de lane. Aanbevolen: ja, het is
   los te reviewen en blokkeert niets.
+- De grenzen van een body: tekens per release of commit, en voor de hele body.
+- Aanbevolen indeling in drie plannen, elk los te leveren *(eigen keuze na spec-review,
+  r1-f17)*: (1) herkomst, ontwerp 1; (2) meting en lokaal signaal, ontwerp 2 tot en met 4;
+  (3) lane en forge-uitbreiding, ontwerp 5 en 6.
 
 ## Keuzes van de schrijver
 
