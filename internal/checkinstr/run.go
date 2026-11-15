@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -138,14 +139,20 @@ func open(root, personal string, errOut io.Writer) (*repo, int) {
 	if err != nil {
 		return nil, CouldNotCheck(errOut, "config: "+err.Error())
 	}
-	switch {
-	case !set:
-	case strings.HasPrefix(mirror, "/"):
-		rp.mirrorExceptions = mirror
-	default:
-		rp.mirrorExceptions = root + "/" + mirror
+	if set {
+		rp.mirrorExceptions = exceptionsPath(root, mirror)
 	}
 	return rp, 0
+}
+
+// exceptionsPath resolves the configured exceptions file against root. An absolute value
+// (a leading slash, as in the script, or a native absolute path such as C:\…) stays as is; a
+// relative one is joined with "/" so it appears in messages as the script printed it.
+func exceptionsPath(root, value string) string {
+	if strings.HasPrefix(value, "/") || filepath.IsAbs(value) {
+		return value
+	}
+	return root + "/" + value
 }
 
 // configValue is the value of key as `lighthouse config <key>` prints it, its lines joined;
