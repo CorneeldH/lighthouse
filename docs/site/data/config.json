@@ -257,7 +257,7 @@
               "key": "forge.board.priority_options",
               "level": "optional",
               "required": "no",
-              "about": "The ids of the Priority options, one entry per option name. With kind gitlab each value is the scoped label that carries the priority, for example priority::P1.",
+              "about": "The ids of the Priority options, one entry per option name. With kind gitlab each value is the scoped label that carries the priority, for example priority::P1; two names on one label are refused.",
               "example": {
                 "P0": "...",
                 "P1": "...",
@@ -318,7 +318,7 @@
               "key": "forge.board.status_options",
               "level": "optional",
               "required": "with [forge.board]",
-              "about": "The ids of the Status options, one entry per option name. With kind gitlab each value is the name of the issue status, for example To do.",
+              "about": "The ids of the Status options, one entry per option name. With kind gitlab each value is the name of the issue status, for example To do; two names on one status (case-insensitive) are refused.",
               "example": {
                 "To do": "...",
                 "In progress": "...",

@@ -374,6 +374,36 @@ func TestSharedOption(t *testing.T) {
 	}
 }
 
+// The GitLab example in docs/install.md is a lighthouse.toml a reader may copy: it must load,
+// with and without a [controller] table, and map every status name the reader requires.
+func TestInstallDocGitLabExampleParses(t *testing.T) {
+	doc, err := os.ReadFile("../../docs/install.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var example string
+	for _, block := range strings.Split(string(doc), "```toml\n")[1:] {
+		block, _, _ = strings.Cut(block, "```")
+		if strings.Contains(block, `kind = "gitlab"`) {
+			example = block
+			break
+		}
+	}
+	if example == "" {
+		t.Fatal("docs/install.md has no toml block with kind = \"gitlab\"")
+	}
+	for _, src := range []string{example, example + "\n[controller]\n"} {
+		c, err := Parse([]byte(src), "lighthouse.toml")
+		if err != nil {
+			t.Fatalf("Parse(install.md example) = %v\n%s", err, src)
+		}
+		want := map[string]string{"To do": "To do", "In progress": "In progress", "Done": "Done", "On hold": "On hold", "Controller": "Controller"}
+		if c.Board == nil || !reflect.DeepEqual(c.Board.StatusOptions, want) {
+			t.Errorf("status_options = %v, want %v", c.Board, want)
+		}
+	}
+}
+
 func TestParseBoardPerKind(t *testing.T) {
 	githubBoard := strings.NewReplacer(`kind = "gitlab"`, `kind = "github"`, "g/sub/p", "o/r").Replace(gitlabBoard)
 	githubBoard = strings.Replace(githubBoard, "[forge.board.status_options]", "[forge.board]\nproject_number = 3\n[forge.board.status_options]", 1)
