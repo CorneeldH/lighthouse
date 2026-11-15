@@ -41,7 +41,7 @@ func newCheckInstructionsCommand() *cobra.Command {
 		},
 	})
 	cmd.Flags().BoolVar(&printExceptions, "print-mirror-exceptions", false,
-		"print the current mirror differences in the form of [paths] mirror_exceptions")
+		"print the current mirror differences in the form of the mirror exceptions file")
 	return cmd
 }
 

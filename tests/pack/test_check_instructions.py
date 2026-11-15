@@ -310,6 +310,23 @@ def test_unreadable_file_is_not_measured_and_not_equal(tmp_path):
     assert "ok    mirror-content" not in result.stdout
 
 
+def test_print_mirror_exceptions_unreadable_file_exits_4(tmp_path):
+    """An exceptions file written from a run that could not compare would be wrong: exit 4."""
+    claude, agents, _ = _tree(tmp_path)
+    _skill(claude, "paia-dicht")
+    _skill(agents, "paia-dicht")
+    closed = claude / "paia-dicht" / "SKILL.md"
+    closed.chmod(0)
+    try:
+        if os.access(closed, os.R_OK):  # root reads everything; then there is nothing to test
+            return
+        result = _run(tmp_path, args=("--print-mirror-exceptions",))
+    finally:
+        closed.chmod(0o644)
+    assert result.returncode == 4, result.stdout + result.stderr
+    assert "SKIPPED  diff could not compare a skill pair\n" in result.stderr
+
+
 def test_unreadable_skill_dir_is_not_measured_and_not_equal(tmp_path):
     """If find cannot read a directory, the file list is empty. Empty must never
     read as "no difference"."""

@@ -466,7 +466,6 @@
               "readers": [
                 "internal/checkinstr/mirror.go",
                 "internal/checkinstr/run.go",
-                "internal/cli/checkinstructions.go",
                 "pack/core/scripts/check-instructions.sh"
               ]
             },

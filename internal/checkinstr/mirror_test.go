@@ -104,3 +104,15 @@ func TestDisplayHasNoFunctionContext(t *testing.T) {
 		t.Errorf("display:\n got: %q\nwant: %q", got, want)
 	}
 }
+
+// Red when the FAIL display honours a user's external diff: `true` as diff.external prints
+// nothing, and the FAIL body would be empty.
+func TestDisplayIgnoresExternalDiff(t *testing.T) {
+	t.Setenv("GIT_CONFIG_COUNT", "1")
+	t.Setenv("GIT_CONFIG_KEY_0", "diff.external")
+	t.Setenv("GIT_CONFIG_VALUE_0", "true")
+	want := "@@ -1 +1 @@\n-< old\n+< new\n"
+	if got := display("< old", "< new"); got != want {
+		t.Errorf("display:\n got: %q\nwant: %q", got, want)
+	}
+}

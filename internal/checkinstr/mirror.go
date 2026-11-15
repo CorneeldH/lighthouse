@@ -186,8 +186,9 @@ func display(expected, current string) string {
 		os.WriteFile(now, []byte(current+"\n"), 0o600) != nil {
 		return ""
 	}
-	out, _ := exec.Command("git", "diff", "--no-index", "--no-color", "-U3",
-		"--diff-algorithm=myers", recorded, now).Output()
+	// No external diff or textconv of the user: either could empty or rewrite the body.
+	out, _ := exec.Command("git", "diff", "--no-index", "--no-color", "--no-ext-diff", "--no-textconv",
+		"-U3", "--diff-algorithm=myers", "--no-indent-heuristic", recorded, now).Output()
 	start := bytes.Index(out, []byte("\n@@"))
 	if start < 0 {
 		return ""
