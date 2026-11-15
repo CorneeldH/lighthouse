@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -559,5 +560,39 @@ func TestCompleteReadsPRCommentsOnlyWhenMergeReady(t *testing.T) {
 				t.Errorf("PR comment requests = %d, want 0", n)
 			}
 		})
+	}
+}
+
+// prCommentsFail is a forge of the given kind whose Comments fails for any number but the issue.
+type prCommentsFail struct {
+	forge.Forge
+	kind  string
+	issue int
+}
+
+func (f prCommentsFail) Kind() string { return f.kind }
+
+func (f prCommentsFail) Comments(_ context.Context, number int) ([]protocol.Comment, error) {
+	if number != f.issue {
+		return nil, errors.New("comments of a merge request number read the notes of another issue")
+	}
+	return nil, nil
+}
+
+// On GitLab a merge request is no issue, so its number must not be read as an issue's comments.
+func TestCompleteSkipsPRCommentsOnGitLab(t *testing.T) {
+	pre := preWithRun(readyPR(12))
+	f := prCommentsFail{kind: "gitlab", issue: 7}
+	snap, err := Complete(context.Background(), f, pre, NewTrust(f, defaultAllowed), "lh-bot", &bytes.Buffer{}, time.Now())
+	if err != nil {
+		t.Fatalf("Complete on gitlab: %v; want the PR comments skipped", err)
+	}
+	if got := snap.Items[0].PRs[0].Roborev; got != "" {
+		t.Errorf("Roborev = %q, want the zero value", got)
+	}
+	// The same merge-ready PR on GitHub does read them, so the test fails on a dropped Kind check.
+	f.kind = "github"
+	if _, err := Complete(context.Background(), f, pre, NewTrust(f, defaultAllowed), "lh-bot", &bytes.Buffer{}, time.Now()); err == nil {
+		t.Error("Complete on github skipped the PR comments, want them read")
 	}
 }

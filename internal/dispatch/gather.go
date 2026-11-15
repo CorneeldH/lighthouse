@@ -157,7 +157,7 @@ func mergePRs(closing, onBranch []forge.PR) []forge.PR {
 // set only when tokenLogin put a 🚀 on it. Any failed request fails the whole gather. Every
 // list in the snapshot is non-nil, so its JSON has [] where a list is empty, never null.
 // For an item with an open run, every merge-ready PR gets its roborev state from the PR's
-// comments; the PRs of Pre stay untouched.
+// comments, on GitHub only; the PRs of Pre stay untouched.
 func Complete(ctx context.Context, f forge.Forge, pre Pre, trust *Trust, tokenLogin string, log io.Writer, now time.Time) (Snapshot, error) {
 	items := make([]Item, 0, len(pre.Items))
 	hasRun := make(map[int]bool, len(pre.OpenRuns))
@@ -168,7 +168,10 @@ func Complete(ctx context.Context, f forge.Forge, pre Pre, trust *Trust, tokenLo
 		if hasRun[it.Issue] {
 			it.PRs = slices.Clone(it.PRs)
 			for i, pr := range it.PRs {
-				if !mergeCandidate(pr) {
+				// On GitHub a PR is an issue too, so its comments are those of its number. On
+				// GitLab a merge request has its own numbering, and the number would read the
+				// notes of another issue: the roborev state stays zero there.
+				if !mergeCandidate(pr) || f.Kind() != "github" {
 					continue
 				}
 				prc, err := f.Comments(ctx, pr.Number)
