@@ -5,9 +5,9 @@ them.
 Shared helpers for the hook tests (tasks 1 to 5 of #884/#886).
 
 Taken over from `test_instructie_hooks.py` (the private `_run`, `_git`,
-`_init_repo`, `_bash`, `_tool_bin` from before this task) so that
-`test_git_invocations.py` and later tasks (`test_pre_commit_gate.py`,
-`test_md_links.py`, `test_hook_deadline.py`) use the same plumbing instead of
+`_init_repo`, `_bash`, `_tool_bin` from before this task) so that the hook
+tests (`test_pre_commit_gate.py`, `test_md_links.py`, `test_hook_deadline.py`)
+use the same plumbing instead of
 reimplementing it. `test_instructie_hooks.py` itself stays unchanged: this
 file refactors no existing tests, it gives new tests the same building
 blocks.
@@ -85,11 +85,12 @@ def init_repo(path: Path, branch: str = "main") -> None:
 def build_fixture_setup(root: Path, steps: list[dict]) -> None:
     """Build the directory tree of a shared-fixture `setup` under `root`.
 
-    The steps are the ones of `fixtures/git_invocations/cases.json` (`repo`,
+    The steps are the ones of the git-invocations fixtures (`repo`,
     `dir`, `file`, `symlink`, `overwrite`), plus `worktree` (`{"worktree":
     "x/wt", "of": "x", "branch": "wt"}`: a linked worktree of repo `x`) and
     `origin` (`{"origin": "x", "url": ...}`: remote `origin` of repo `x`),
     `unborn` (`{"unborn": "x"}`: `git init -b main` without a commit),
+    `bare` (`{"bare": "x"}`: `git init --bare`),
     `commit` (`{"commit": "x", "message": "m"}`: `add -A` and commit; the files
     come in before, through `file`) and `mv` (`{"mv": "x", "from": "a", "to": "b"}`).
     """
@@ -121,6 +122,9 @@ def build_fixture_setup(root: Path, steps: list[dict]) -> None:
         elif "unborn" in step:
             (root / step["unborn"]).mkdir(parents=True, exist_ok=True)
             git(root / step["unborn"], "init", "-q", "-b", "main")
+        elif "bare" in step:
+            (root / step["bare"]).mkdir(parents=True, exist_ok=True)
+            git(root / step["bare"], "init", "-q", "--bare")
         elif "commit" in step:
             git(root / step["commit"], "add", "-A")
             git(root / step["commit"], "commit", "-qm", step["message"])
@@ -130,16 +134,57 @@ def build_fixture_setup(root: Path, steps: list[dict]) -> None:
             raise AssertionError(f"unknown setup step {step}")
 
 
+def fake_gh_bin(tmp_path: Path, calls: list[dict]) -> tuple[Path, Path]:
+    """A fake `gh` on a bin dir that replays `calls` in order.
+
+    Returns `(bin_dir, log)`: put `bin_dir` first on PATH; `log` stays empty
+    unless a call deviated (the fake then exits 97 and writes the expected and
+    the actual argv to it), and the fake leaves a `count` file next to it with
+    the number of calls made. A call has `argv`, `stdin`, `stdout`, `stderr`,
+    `code` and optionally `timeout`.
+    """
+    bin_dir = tmp_path / "fakegh-bin"
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    calls_file = tmp_path / "fakegh-calls.json"
+    count = tmp_path / "fakegh-count"
+    log = tmp_path / "fakegh-log"
+    calls_file.write_text(json.dumps(calls), encoding="utf-8")
+    count.write_text("0", encoding="utf-8")
+    log.write_text("", encoding="utf-8")
+    gh = bin_dir / "gh"
+    gh.write_text(
+        "#!/bin/sh\n"
+        f"FAKE_CALLS={shlex.quote(str(calls_file))} "
+        f"FAKE_COUNT={shlex.quote(str(count))} "
+        f"FAKE_LOG={shlex.quote(str(log))} "
+        f'exec python3 -I {shlex.quote(str(Path(__file__).with_name("_fakegh.py")))} "$@"\n',
+        encoding="utf-8",
+    )
+    gh.chmod(0o755)
+    return bin_dir, log
+
+
 def fill_fixture(value, root: str):
     """Fill the placeholders of a shared fixture, recursively.
 
     `{root}` is the temporary directory (not passed through realpath),
     `{real:<path>}` is the realpath of `{root}/<path>` and `{home:<name>}` is
     the home directory of user `<name>`, `{rev:<path>:<rev>}` the output of
-    `git -C {root}/<path> rev-parse <rev>` and `{empty_tree}` the empty tree.
+    `git -C {root}/<path> rev-parse <rev>`, `{short:<path>:<rev>}` the same with
+    `--short=7` and `{empty_tree}` the empty tree.
     Fill them after the last step of the case. The keys of a dict are filled too.
     """
     if isinstance(value, str):
+        value = re.sub(
+            r"\{short:([^:}]+):([^}]+)\}",
+            lambda m: subprocess.run(
+                ["git", "-C", f"{root}/{m[1]}", "rev-parse", "--short=7", m[2]],
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout.strip(),
+            value,
+        )
         value = re.sub(
             r"\{rev:([^:}]+):([^}]+)\}",
             lambda m: subprocess.run(
@@ -593,7 +638,7 @@ DEFAULT_FIXTURE_REPO = "Acme/widgets"
 def write_fixture_config(
     root: Path, repo: str | None = DEFAULT_FIXTURE_REPO, test_dir: str | None = None
 ) -> None:
-    """The config of a `pr_body_gate` or `evidence` fixture case, under `root`.
+    """The config of a PR-body-gate or `evidence` fixture case, under `root`.
 
     A `lighthouse.toml` with `forge.repo = repo` (no key when `repo` is None) and,
     with `test_dir`, `[test_gate] evidence_test_dir`; plus the headings table the
@@ -607,3 +652,26 @@ def write_fixture_config(
     (root / "lighthouse.toml").write_text(toml, encoding="utf-8")
     (root / ".lighthouse").mkdir(parents=True, exist_ok=True)
     shutil.copyfile(CORE / "headings.toml", root / ".lighthouse" / "headings.toml")
+
+
+# --- PR bodies for the pr-create-gate tests ---------------------------------------------------
+
+ROWS1 = [("1. een", "`grep -F a f`", "a")]
+ROWS2 = [*ROWS1, ("2. twee", "`ls`", "f")]
+ROWS3 = [*ROWS2, ("3. drie", "`true`", "ok")]
+
+ISSUE_WITH_THREE_AC = (
+    "## Context\n\ntekst\n\n"
+    "### Acceptatiecriteria\n- [ ] a\n- [x] b\n- [X] c\n\n"
+    "### Definition of Done\n- [ ] d\n"
+)
+
+
+def closes_body(nr: int, rows: list[tuple[str, str, str]]) -> str:
+    """A body with `Closes #nr` and an Evidence table with the given rows."""
+    table = "\n".join(f"| {ac} | {cmd} | {res} |" for ac, cmd, res in rows)
+    return (
+        f"## Related issues\n\nCloses #{nr}\n\n"
+        f"### Evidence #{nr}\n\n"
+        f"| AC | Command | Result |\n|---|---|---|\n{table}\n"
+    )

@@ -1,0 +1,1741 @@
+[
+ {
+  "name": "test_cleanup_emits_the_table_header_from_the_issue",
+  "fn": "cleanup",
+  "rows": [
+   {
+    "name": "main",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "worktree": "/repo"
+   },
+   {
+    "name": "feat-merged",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "pr_number": 700,
+    "pr_state": "merged"
+   },
+   {
+    "name": "feat-merged-2",
+    "local": false,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "pr_number": 701,
+    "pr_state": "merged"
+   },
+   {
+    "name": "feat-open",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "pr_number": 722,
+    "pr_state": "open"
+   },
+   {
+    "name": "feat-dirty",
+    "local": true,
+    "remote": true,
+    "dirty": true,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "worktree": "/repo/.claude/worktrees/feat-dirty"
+   },
+   {
+    "name": "lokaal-only",
+    "local": true,
+    "remote": false,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "pr_number": 9,
+    "pr_state": "merged"
+   },
+   {
+    "name": "worktrees",
+    "local": false,
+    "remote": false,
+    "orphan_dir": "/repo/.claude/worktrees/worktrees",
+    "dir_entries": [
+     ".port-registry"
+    ]
+   }
+  ],
+  "alive": "never",
+  "expect": {
+   "text": "| worktree | branch | PR state | unpushed commits | dirty tree | last session | live? | verdict |\n|---|---|---|---|---|---|---|---|\n| repo | main | — | 0 | no | — | — | 🔒 never touch |\n| worktrees | worktrees | — | ? | ? | — | — | 🔒 never touch |\n| feat-dirty | feat-dirty | — | 0 | yes | — | — | ⛔ save first |\n| — | feat-open | #722 open | 0 | no | — | — | ⏸️ PR #722 open |\n| — | feat-merged | #700 merged | 0 | no | — | — | ✅ safe to remove |\n| — | feat-merged-2 | #701 merged | 0 | no | — | — | ✅ safe to remove |\n| — | lokaal-only | #9 merged | 0 | no | — | — | ✅ safe to remove |\n\nCommands — read the table first; this script runs nothing.\n\n```bash\ngit branch -D feat-merged lokaal-only\n```\n```bash\ngit push origin --delete feat-merged feat-merged-2\n```\n"
+  }
+ },
+ {
+  "name": "test_cleanup_command_blocks_only_list_safe_rows",
+  "fn": "cleanup",
+  "rows": [
+   {
+    "name": "main",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "worktree": "/repo"
+   },
+   {
+    "name": "feat-merged",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "pr_number": 700,
+    "pr_state": "merged"
+   },
+   {
+    "name": "feat-merged-2",
+    "local": false,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "pr_number": 701,
+    "pr_state": "merged"
+   },
+   {
+    "name": "feat-open",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "pr_number": 722,
+    "pr_state": "open"
+   },
+   {
+    "name": "feat-dirty",
+    "local": true,
+    "remote": true,
+    "dirty": true,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "worktree": "/repo/.claude/worktrees/feat-dirty"
+   },
+   {
+    "name": "lokaal-only",
+    "local": true,
+    "remote": false,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "pr_number": 9,
+    "pr_state": "merged"
+   },
+   {
+    "name": "worktrees",
+    "local": false,
+    "remote": false,
+    "orphan_dir": "/repo/.claude/worktrees/worktrees",
+    "dir_entries": [
+     ".port-registry"
+    ]
+   }
+  ],
+  "alive": "never",
+  "expect": {
+   "text": "| worktree | branch | PR state | unpushed commits | dirty tree | last session | live? | verdict |\n|---|---|---|---|---|---|---|---|\n| repo | main | — | 0 | no | — | — | 🔒 never touch |\n| worktrees | worktrees | — | ? | ? | — | — | 🔒 never touch |\n| feat-dirty | feat-dirty | — | 0 | yes | — | — | ⛔ save first |\n| — | feat-open | #722 open | 0 | no | — | — | ⏸️ PR #722 open |\n| — | feat-merged | #700 merged | 0 | no | — | — | ✅ safe to remove |\n| — | feat-merged-2 | #701 merged | 0 | no | — | — | ✅ safe to remove |\n| — | lokaal-only | #9 merged | 0 | no | — | — | ✅ safe to remove |\n\nCommands — read the table first; this script runs nothing.\n\n```bash\ngit branch -D feat-merged lokaal-only\n```\n```bash\ngit push origin --delete feat-merged feat-merged-2\n```\n"
+  }
+ },
+ {
+  "name": "test_cleanup_never_emits_unlock_or_kill",
+  "fn": "cleanup",
+  "rows": [
+   {
+    "name": "main",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "worktree": "/repo"
+   },
+   {
+    "name": "feat-merged",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "pr_number": 700,
+    "pr_state": "merged"
+   },
+   {
+    "name": "feat-merged-2",
+    "local": false,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "pr_number": 701,
+    "pr_state": "merged"
+   },
+   {
+    "name": "feat-open",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "pr_number": 722,
+    "pr_state": "open"
+   },
+   {
+    "name": "feat-dirty",
+    "local": true,
+    "remote": true,
+    "dirty": true,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "worktree": "/repo/.claude/worktrees/feat-dirty"
+   },
+   {
+    "name": "lokaal-only",
+    "local": true,
+    "remote": false,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "pr_number": 9,
+    "pr_state": "merged"
+   },
+   {
+    "name": "worktrees",
+    "local": false,
+    "remote": false,
+    "orphan_dir": "/repo/.claude/worktrees/worktrees",
+    "dir_entries": [
+     ".port-registry"
+    ]
+   }
+  ],
+  "alive": "never",
+  "expect": {
+   "text": "| worktree | branch | PR state | unpushed commits | dirty tree | last session | live? | verdict |\n|---|---|---|---|---|---|---|---|\n| repo | main | — | 0 | no | — | — | 🔒 never touch |\n| worktrees | worktrees | — | ? | ? | — | — | 🔒 never touch |\n| feat-dirty | feat-dirty | — | 0 | yes | — | — | ⛔ save first |\n| — | feat-open | #722 open | 0 | no | — | — | ⏸️ PR #722 open |\n| — | feat-merged | #700 merged | 0 | no | — | — | ✅ safe to remove |\n| — | feat-merged-2 | #701 merged | 0 | no | — | — | ✅ safe to remove |\n| — | lokaal-only | #9 merged | 0 | no | — | — | ✅ safe to remove |\n\nCommands — read the table first; this script runs nothing.\n\n```bash\ngit branch -D feat-merged lokaal-only\n```\n```bash\ngit push origin --delete feat-merged feat-merged-2\n```\n"
+  }
+ },
+ {
+  "name": "test_cleanup_omits_port_block_section_when_nothing_is_registered",
+  "fn": "cleanup",
+  "rows": [
+   {
+    "name": "main",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "worktree": "/repo"
+   },
+   {
+    "name": "feat-merged",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "pr_number": 700,
+    "pr_state": "merged"
+   },
+   {
+    "name": "feat-merged-2",
+    "local": false,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "pr_number": 701,
+    "pr_state": "merged"
+   },
+   {
+    "name": "feat-open",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "pr_number": 722,
+    "pr_state": "open"
+   },
+   {
+    "name": "feat-dirty",
+    "local": true,
+    "remote": true,
+    "dirty": true,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "worktree": "/repo/.claude/worktrees/feat-dirty"
+   },
+   {
+    "name": "lokaal-only",
+    "local": true,
+    "remote": false,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "pr_number": 9,
+    "pr_state": "merged"
+   },
+   {
+    "name": "worktrees",
+    "local": false,
+    "remote": false,
+    "orphan_dir": "/repo/.claude/worktrees/worktrees",
+    "dir_entries": [
+     ".port-registry"
+    ]
+   }
+  ],
+  "alive": "never",
+  "expect": {
+   "text": "| worktree | branch | PR state | unpushed commits | dirty tree | last session | live? | verdict |\n|---|---|---|---|---|---|---|---|\n| repo | main | — | 0 | no | — | — | 🔒 never touch |\n| worktrees | worktrees | — | ? | ? | — | — | 🔒 never touch |\n| feat-dirty | feat-dirty | — | 0 | yes | — | — | ⛔ save first |\n| — | feat-open | #722 open | 0 | no | — | — | ⏸️ PR #722 open |\n| — | feat-merged | #700 merged | 0 | no | — | — | ✅ safe to remove |\n| — | feat-merged-2 | #701 merged | 0 | no | — | — | ✅ safe to remove |\n| — | lokaal-only | #9 merged | 0 | no | — | — | ✅ safe to remove |\n\nCommands — read the table first; this script runs nothing.\n\n```bash\ngit branch -D feat-merged lokaal-only\n```\n```bash\ngit push origin --delete feat-merged feat-merged-2\n```\n"
+  }
+ },
+ {
+  "name": "test_local_only_safe_branch_is_not_pushed_for_deletion",
+  "fn": "cleanup",
+  "rows": [
+   {
+    "name": "feat-lokaal",
+    "local": true,
+    "remote": false,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "pr_number": 1,
+    "pr_state": "merged"
+   }
+  ],
+  "alive": "never",
+  "expect": {
+   "text": "| worktree | branch | PR state | unpushed commits | dirty tree | last session | live? | verdict |\n|---|---|---|---|---|---|---|---|\n| — | feat-lokaal | #1 merged | 0 | no | — | — | ✅ safe to remove |\n\nCommands — read the table first; this script runs nothing.\n\n```bash\ngit branch -D feat-lokaal\n```\n"
+  }
+ },
+ {
+  "name": "test_cleanup_emits_worktree_remove_before_branch_delete",
+  "fn": "cleanup",
+  "rows": [
+   {
+    "name": "feat-wt",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "worktree": "/repo/.claude/worktrees/feat-wt",
+    "pr_number": 5,
+    "pr_state": "merged"
+   }
+  ],
+  "alive": "never",
+  "expect": {
+   "text": "| worktree | branch | PR state | unpushed commits | dirty tree | last session | live? | verdict |\n|---|---|---|---|---|---|---|---|\n| feat-wt | feat-wt | #5 merged | 0 | no | — | — | ✅ safe to remove |\n\nCommands — read the table first; this script runs nothing.\n\n```bash\ngit worktree remove \"/repo/.claude/worktrees/feat-wt\"\n```\n```bash\ngit branch -D feat-wt\n```\n```bash\ngit push origin --delete feat-wt\n```\n"
+  }
+ },
+ {
+  "name": "test_cleanup_fallback_when_nothing_is_safe",
+  "fn": "cleanup",
+  "rows": [
+   {
+    "name": "feat-open",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "pr_number": 1,
+    "pr_state": "open"
+   }
+  ],
+  "alive": "never",
+  "expect": {
+   "text": "| worktree | branch | PR state | unpushed commits | dirty tree | last session | live? | verdict |\n|---|---|---|---|---|---|---|---|\n| — | feat-open | #1 open | 0 | no | — | — | ⏸️ PR #1 open |\n\nCommands — read the table first; this script runs nothing.\n\nNothing with verdict ✅ — no commands.\n"
+  }
+ },
+ {
+  "name": "test_cleanup_excludes_stale_locked_row_from_every_command_block",
+  "fn": "cleanup",
+  "rows": [
+   {
+    "name": "issue-624",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "worktree": "/repo/.claude/worktrees/issue-624",
+    "locked": true,
+    "lock_pid": 472155,
+    "pr_number": 5,
+    "pr_state": "merged"
+   }
+  ],
+  "alive": "never",
+  "expect": {
+   "text": "| worktree | branch | PR state | unpushed commits | dirty tree | last session | live? | verdict |\n|---|---|---|---|---|---|---|---|\n| issue-624 | issue-624 | #5 merged | 0 | no | — | — | ✅ safe to remove [stale lock] |\n\nCommands — read the table first; this script runs nothing.\n\nNothing with verdict ✅ — no commands.\n\nLocked with a dead pid — release the lock by hand first, then run again:\n  /repo/.claude/worktrees/issue-624   (lock-pid 472155, no longer running)\n"
+  }
+ },
+ {
+  "name": "test_cleanup_never_offers_an_unlock_command",
+  "fn": "cleanup",
+  "rows": [
+   {
+    "name": "issue-624",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "worktree": "/repo/.claude/worktrees/issue-624",
+    "locked": true,
+    "lock_pid": 472155,
+    "pr_number": 5,
+    "pr_state": "merged"
+   }
+  ],
+  "alive": "never",
+  "expect": {
+   "text": "| worktree | branch | PR state | unpushed commits | dirty tree | last session | live? | verdict |\n|---|---|---|---|---|---|---|---|\n| issue-624 | issue-624 | #5 merged | 0 | no | — | — | ✅ safe to remove [stale lock] |\n\nCommands — read the table first; this script runs nothing.\n\nNothing with verdict ✅ — no commands.\n\nLocked with a dead pid — release the lock by hand first, then run again:\n  /repo/.claude/worktrees/issue-624   (lock-pid 472155, no longer running)\n"
+  }
+ },
+ {
+  "name": "test_cleanup_keeps_a_server_locked_row_out_of_the_command_blocks",
+  "fn": "cleanup",
+  "rows": [
+   {
+    "name": "worktree-bridge-cse_013SdshNAm9nZXnDCpDXZdRg",
+    "local": true,
+    "remote": false,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "worktree": "/home/corneel/repositories/personal_ai_agent/.claude/worktrees/bridge-cse_013SdshNAm9nZXnDCpDXZdRg",
+    "pr_number": null,
+    "pr_state": null,
+    "live": false,
+    "locked": true,
+    "lock_pid": 272877,
+    "lock_reason": "claude agent bridge-cse_013SdshNAm9nZXnDCpDXZdRg"
+   }
+  ],
+  "alive": "always",
+  "expect": {
+   "text": "| worktree | branch | PR state | unpushed commits | dirty tree | last session | live? | verdict |\n|---|---|---|---|---|---|---|---|\n| bridge-cse_013SdshNAm9nZXnDCpDXZdRg | worktree-bridge-cse_013SdshNAm9nZXnDCpDXZdRg | — | 0 | no | — | — | ✅ safe to remove [server-lock] |\n\nCommands — read the table first; this script runs nothing.\n\nNothing with verdict ✅ — no commands.\n\nLocked by the session server — session ended; release the lock by hand if you want it gone (or wait for the next server start), then run again:\n  /home/corneel/repositories/personal_ai_agent/.claude/worktrees/bridge-cse_013SdshNAm9nZXnDCpDXZdRg   (server-pid 272877, session ended)\n"
+  }
+ },
+ {
+  "name": "test_cleanup_server_lock_without_pid_says_unknown",
+  "fn": "cleanup",
+  "rows": [
+   {
+    "name": "worktree-bridge-cse_013SdshNAm9nZXnDCpDXZdRg",
+    "local": true,
+    "remote": false,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "worktree": "/home/corneel/repositories/personal_ai_agent/.claude/worktrees/bridge-cse_013SdshNAm9nZXnDCpDXZdRg",
+    "pr_number": null,
+    "pr_state": null,
+    "live": false,
+    "locked": true,
+    "lock_pid": null,
+    "lock_reason": "claude agent bridge-cse_013SdshNAm9nZXnDCpDXZdRg"
+   }
+  ],
+  "alive": "always",
+  "expect": {
+   "text": "| worktree | branch | PR state | unpushed commits | dirty tree | last session | live? | verdict |\n|---|---|---|---|---|---|---|---|\n| bridge-cse_013SdshNAm9nZXnDCpDXZdRg | worktree-bridge-cse_013SdshNAm9nZXnDCpDXZdRg | — | 0 | no | — | — | ✅ safe to remove [server-lock] |\n\nCommands — read the table first; this script runs nothing.\n\nNothing with verdict ✅ — no commands.\n\nLocked by the session server — session ended; release the lock by hand if you want it gone (or wait for the next server start), then run again:\n  /home/corneel/repositories/personal_ai_agent/.claude/worktrees/bridge-cse_013SdshNAm9nZXnDCpDXZdRg   (server-pid unknown, session ended)\n"
+  }
+ },
+ {
+  "name": "test_cleanup_lists_port_blocks_after_the_command_blocks",
+  "fn": "cleanup",
+  "rows": [
+   {
+    "name": "issue-700-poort",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "pr_number": 1,
+    "pr_state": "open",
+    "port_block": "20700"
+   },
+   {
+    "name": "orphan-700",
+    "local": false,
+    "remote": false,
+    "orphan_dir": "/repo/.claude/worktrees/orphan-700",
+    "port_block": "20701"
+   },
+   {
+    "name": "issue-700-wt",
+    "local": true,
+    "remote": true,
+    "dirty": true,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "worktree": "/repo/.claude/worktrees/issue-700-wt",
+    "port_block": "20702"
+   }
+  ],
+  "alive": "never",
+  "expect": {
+   "text": "| worktree | branch | PR state | unpushed commits | dirty tree | last session | live? | verdict |\n|---|---|---|---|---|---|---|---|\n| issue-700-wt | issue-700-wt | — | 0 | yes | — | — | ⛔ save first |\n| — | issue-700-poort | #1 open | 0 | no | — | — | ⏸️ PR #1 open |\n| orphan-700 | orphan-700 | — | ? | ? | — | — | ❓ orphan — manual |\n\nCommands — read the table first; this script runs nothing.\n\nNothing with verdict ✅ — no commands.\n\nPort blocks (registered in worktrees/.port-registry, read-only):\n  issue-700-poort  port 20700  no worktree\n  issue-700-wt  port 20702  /repo/.claude/worktrees/issue-700-wt\n  orphan-700  port 20701  /repo/.claude/worktrees/orphan-700\nThe process that actually holds the port is not looked up here — an empty list above does not mean that nothing runs.\n"
+  }
+ },
+ {
+  "name": "test_cleanup_sorts_by_rank_then_code_point",
+  "fn": "cleanup",
+  "rows": [
+   {
+    "name": "zeta",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "pr_number": 1,
+    "pr_state": "merged"
+   },
+   {
+    "name": "éclair",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "pr_number": 2,
+    "pr_state": "merged"
+   },
+   {
+    "name": "Zulu",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "pr_number": 3,
+    "pr_state": "merged"
+   },
+   {
+    "name": "b",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "pr_number": 4,
+    "pr_state": "open"
+   },
+   {
+    "name": "a",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "pr_number": 5,
+    "pr_state": "open"
+   },
+   {
+    "name": "pr-none-state",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [
+     "f"
+    ],
+    "pr_lookup_ok": true,
+    "pr_number": 6,
+    "pr_state": null
+   }
+  ],
+  "alive": "never",
+  "expect": {
+   "text": "| worktree | branch | PR state | unpushed commits | dirty tree | last session | live? | verdict |\n|---|---|---|---|---|---|---|---|\n| — | a | #5 open | 0 | no | — | — | ⏸️ PR #5 open |\n| — | b | #4 open | 0 | no | — | — | ⏸️ PR #4 open |\n| — | Zulu | #3 merged | 0 | no | — | — | ✅ safe to remove |\n| — | zeta | #1 merged | 0 | no | — | — | ✅ safe to remove |\n| — | éclair | #2 merged | 0 | no | — | — | ✅ safe to remove |\n| — | pr-none-state | #6 None | 0 | no | — | — | ⚠️ unique work — review (1 files) |\n\nCommands — read the table first; this script runs nothing.\n\n```bash\ngit branch -D Zulu zeta éclair\n```\n```bash\ngit push origin --delete Zulu zeta éclair\n```\n"
+  }
+ },
+ {
+  "name": "test_sessions_view_emits_a_resume_command",
+  "fn": "sessions",
+  "rows": [
+   {
+    "name": "feat-a",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "worktree": "/repo/.claude/worktrees/wt-a",
+    "session_id": "aef024ab",
+    "last_session": 1700000.0,
+    "live": true
+   }
+  ],
+  "alive": "never",
+  "expect": {
+   "text": "| last session | live? | worktree | resume | verdict |\n|---|---|---|---|---|\n| 01-20 16:13 | LIVE | wt-a | `claude --resume aef024ab` | ⛔ running session |\n"
+  }
+ },
+ {
+  "name": "test_sessions_view_skips_rows_without_a_session",
+  "fn": "sessions",
+  "rows": [
+   {
+    "name": "feat-a",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true
+   }
+  ],
+  "alive": "never",
+  "expect": {
+   "text": "| last session | live? | worktree | resume | verdict |\n|---|---|---|---|---|\n| — | — | — | no sessions found | — |\n"
+  }
+ },
+ {
+  "name": "test_sessions_view_marks_dead_sessions_as_dead",
+  "fn": "sessions",
+  "rows": [
+   {
+    "name": "feat-b",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "worktree": "/repo/.claude/worktrees/wt-b",
+    "session_id": "deadbeef",
+    "last_session": 1700000.0,
+    "live": false
+   }
+  ],
+  "alive": "never",
+  "expect": {
+   "text": "| last session | live? | worktree | resume | verdict |\n|---|---|---|---|---|\n| 01-20 16:13 | dead | wt-b | `claude --resume deadbeef` | ✅ safe to remove |\n"
+  }
+ },
+ {
+  "name": "test_sessions_view_sorts_newest_last_session_first",
+  "fn": "sessions",
+  "rows": [
+   {
+    "name": "feat-old",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "session_id": "oldsession",
+    "last_session": 1000.0
+   },
+   {
+    "name": "feat-new",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "session_id": "newsession",
+    "last_session": 2000.0
+   }
+  ],
+  "alive": "never",
+  "expect": {
+   "text": "| last session | live? | worktree | resume | verdict |\n|---|---|---|---|---|\n| 01-01 00:33 | dead | — | `claude --resume newsession` | ✅ safe to remove |\n| 01-01 00:16 | dead | — | `claude --resume oldsession` | ✅ safe to remove |\n"
+  }
+ },
+ {
+  "name": "test_sessions_view_puts_live_session_first_without_timestamp",
+  "fn": "sessions",
+  "rows": [
+   {
+    "name": "feat-dead",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "session_id": "deadsession",
+    "last_session": 2000.0,
+    "live": false
+   },
+   {
+    "name": "feat-live",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "session_id": "livesession",
+    "last_session": null,
+    "live": true
+   }
+  ],
+  "alive": "never",
+  "expect": {
+   "text": "| last session | live? | worktree | resume | verdict |\n|---|---|---|---|---|\n| — | LIVE | — | `claude --resume livesession` | ⛔ running session |\n| 01-01 00:33 | dead | — | `claude --resume deadsession` | ✅ safe to remove |\n"
+  }
+ },
+ {
+  "name": "test_sessions_view_keeps_input_order_on_ties_and_formats_utc",
+  "fn": "sessions",
+  "rows": [
+   {
+    "name": "t-1",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "session_id": "first",
+    "last_session": 1785658111.9
+   },
+   {
+    "name": "t-2",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "session_id": "second",
+    "last_session": 1785658111.9
+   },
+   {
+    "name": "t-3",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "session_id": "",
+    "last_session": 5.0
+   },
+   {
+    "name": "t-4",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "session_id": "zero",
+    "last_session": 0.0
+   },
+   {
+    "name": "t-5",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "session_id": "none",
+    "last_session": null
+   }
+  ],
+  "alive": "never",
+  "expect": {
+   "text": "| last session | live? | worktree | resume | verdict |\n|---|---|---|---|---|\n| 08-02 08:08 | dead | — | `claude --resume first` | ✅ safe to remove |\n| 08-02 08:08 | dead | — | `claude --resume second` | ✅ safe to remove |\n| 01-01 00:00 | dead | — | `claude --resume zero` | ✅ safe to remove |\n| — | dead | — | `claude --resume none` | ✅ safe to remove |\n"
+  }
+ },
+ {
+  "name": "test_origin_view_lists_only_remote_rows",
+  "fn": "origin",
+  "rows": [
+   {
+    "name": "main",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "worktree": "/repo"
+   },
+   {
+    "name": "feat-merged",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "pr_number": 700,
+    "pr_state": "merged"
+   },
+   {
+    "name": "feat-merged-2",
+    "local": false,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "pr_number": 701,
+    "pr_state": "merged"
+   },
+   {
+    "name": "feat-open",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "pr_number": 722,
+    "pr_state": "open"
+   },
+   {
+    "name": "feat-dirty",
+    "local": true,
+    "remote": true,
+    "dirty": true,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "worktree": "/repo/.claude/worktrees/feat-dirty"
+   },
+   {
+    "name": "lokaal-only",
+    "local": true,
+    "remote": false,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "pr_number": 9,
+    "pr_state": "merged"
+   },
+   {
+    "name": "worktrees",
+    "local": false,
+    "remote": false,
+    "orphan_dir": "/repo/.claude/worktrees/worktrees",
+    "dir_entries": [
+     ".port-registry"
+    ]
+   }
+  ],
+  "alive": "never",
+  "expect": {
+   "text": "| worktree | branch | PR state | unpushed commits | dirty tree | last session | live? | verdict |\n|---|---|---|---|---|---|---|---|\n| repo | main | — | 0 | no | — | — | 🔒 never touch |\n| feat-dirty | feat-dirty | — | 0 | yes | — | — | ⛔ save first |\n| — | feat-open | #722 open | 0 | no | — | — | ⏸️ PR #722 open |\n| — | feat-merged | #700 merged | 0 | no | — | — | ✅ safe to remove |\n| — | feat-merged-2 | #701 merged | 0 | no | — | — | ✅ safe to remove |\n\nCommands — read the table first; this script runs nothing.\n\n```bash\ngit branch -D feat-merged\n```\n```bash\ngit push origin --delete feat-merged feat-merged-2\n```\n"
+  }
+ },
+ {
+  "name": "test_origin_view_lists_only_remote_rows[cleanup]",
+  "fn": "cleanup",
+  "rows": [
+   {
+    "name": "main",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "worktree": "/repo"
+   },
+   {
+    "name": "feat-merged",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "pr_number": 700,
+    "pr_state": "merged"
+   },
+   {
+    "name": "feat-merged-2",
+    "local": false,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "pr_number": 701,
+    "pr_state": "merged"
+   },
+   {
+    "name": "feat-open",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "pr_number": 722,
+    "pr_state": "open"
+   },
+   {
+    "name": "feat-dirty",
+    "local": true,
+    "remote": true,
+    "dirty": true,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "worktree": "/repo/.claude/worktrees/feat-dirty"
+   },
+   {
+    "name": "lokaal-only",
+    "local": true,
+    "remote": false,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "pr_number": 9,
+    "pr_state": "merged"
+   },
+   {
+    "name": "worktrees",
+    "local": false,
+    "remote": false,
+    "orphan_dir": "/repo/.claude/worktrees/worktrees",
+    "dir_entries": [
+     ".port-registry"
+    ]
+   }
+  ],
+  "alive": "never",
+  "expect": {
+   "text": "| worktree | branch | PR state | unpushed commits | dirty tree | last session | live? | verdict |\n|---|---|---|---|---|---|---|---|\n| repo | main | — | 0 | no | — | — | 🔒 never touch |\n| worktrees | worktrees | — | ? | ? | — | — | 🔒 never touch |\n| feat-dirty | feat-dirty | — | 0 | yes | — | — | ⛔ save first |\n| — | feat-open | #722 open | 0 | no | — | — | ⏸️ PR #722 open |\n| — | feat-merged | #700 merged | 0 | no | — | — | ✅ safe to remove |\n| — | feat-merged-2 | #701 merged | 0 | no | — | — | ✅ safe to remove |\n| — | lokaal-only | #9 merged | 0 | no | — | — | ✅ safe to remove |\n\nCommands — read the table first; this script runs nothing.\n\n```bash\ngit branch -D feat-merged lokaal-only\n```\n```bash\ngit push origin --delete feat-merged feat-merged-2\n```\n"
+  }
+ },
+ {
+  "name": "test_kpi_is_one_line_with_four_numbers",
+  "fn": "kpi",
+  "rows": [
+   {
+    "name": "main",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "worktree": "/repo"
+   },
+   {
+    "name": "feat-merged",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "pr_number": 700,
+    "pr_state": "merged"
+   },
+   {
+    "name": "feat-merged-2",
+    "local": false,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "pr_number": 701,
+    "pr_state": "merged"
+   },
+   {
+    "name": "feat-open",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "pr_number": 722,
+    "pr_state": "open"
+   },
+   {
+    "name": "feat-dirty",
+    "local": true,
+    "remote": true,
+    "dirty": true,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "worktree": "/repo/.claude/worktrees/feat-dirty"
+   },
+   {
+    "name": "lokaal-only",
+    "local": true,
+    "remote": false,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "pr_number": 9,
+    "pr_state": "merged"
+   },
+   {
+    "name": "worktrees",
+    "local": false,
+    "remote": false,
+    "orphan_dir": "/repo/.claude/worktrees/worktrees",
+    "dir_entries": [
+     ".port-registry"
+    ]
+   }
+  ],
+  "alive": "never",
+  "expect": {
+   "text": "worktrees=1 safe=3 remote_branches=5 warn=0\n"
+  }
+ },
+ {
+  "name": "test_kpi_worktrees_counts_only_paths_under_claude_worktrees",
+  "fn": "kpi",
+  "rows": [
+   {
+    "name": "main",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "worktree": "/repo"
+   },
+   {
+    "name": "feat-a",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "worktree": "/repo/.claude/worktrees/feat-a",
+    "pr_number": 1,
+    "pr_state": "open"
+   },
+   {
+    "name": "feat-b",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "worktree": "/repo/.claude/worktrees/feat-b",
+    "pr_number": 2,
+    "pr_state": "open"
+   }
+  ],
+  "alive": "never",
+  "expect": {
+   "text": "worktrees=2 safe=0 remote_branches=3 warn=0\n"
+  }
+ },
+ {
+  "name": "test_kpi_counts_warnings",
+  "fn": "kpi",
+  "rows": [
+   {
+    "name": "w4",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 3,
+    "unique_files": [],
+    "pr_lookup_ok": true
+   },
+   {
+    "name": "w7",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [
+     "x"
+    ],
+    "pr_lookup_ok": true,
+    "pr_number": null,
+    "pr_state": null
+   },
+   {
+    "name": "ok",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "pr_number": 1,
+    "pr_state": "merged"
+   }
+  ],
+  "alive": "never",
+  "expect": {
+   "text": "worktrees=0 safe=1 remote_branches=3 warn=2\n"
+  }
+ },
+ {
+  "name": "test_merged_worktree_is_cleanable_in_order",
+  "fn": "only",
+  "rows": [
+   {
+    "name": "issue-9-x",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "worktree": "/repo/.claude/worktrees/issue-9-x",
+    "pr_number": 9,
+    "pr_state": "merged"
+   }
+  ],
+  "alive": "never",
+  "branch": "issue-9-x",
+  "cwd": "/elders",
+  "expect": {
+   "text": "| worktree | branch | PR state | unpushed commits | dirty tree | last session | live? | verdict |\n|---|---|---|---|---|---|---|---|\n| issue-9-x | issue-9-x | #9 merged | 0 | no | — | — | ✅ safe to remove |\n\ncleanup: yes\ngit worktree remove \"/repo/.claude/worktrees/issue-9-x\"\ngit branch -D issue-9-x\n",
+   "ok": true
+  }
+ },
+ {
+  "name": "test_open_pr_is_not_cleanable",
+  "fn": "only",
+  "rows": [
+   {
+    "name": "issue-9-x",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "worktree": "/repo/.claude/worktrees/issue-9-x",
+    "pr_number": 9,
+    "pr_state": "open"
+   }
+  ],
+  "alive": "never",
+  "branch": "issue-9-x",
+  "cwd": "/elders",
+  "expect": {
+   "text": "| worktree | branch | PR state | unpushed commits | dirty tree | last session | live? | verdict |\n|---|---|---|---|---|---|---|---|\n| issue-9-x | issue-9-x | #9 open | 0 | no | — | — | ⏸️ PR #9 open |\n\ncleanup: no — ⏸️ PR #9 open\n",
+   "ok": false
+  }
+ },
+ {
+  "name": "test_dirty_tree_is_not_cleanable",
+  "fn": "only",
+  "rows": [
+   {
+    "name": "issue-9-x",
+    "local": true,
+    "remote": true,
+    "dirty": true,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "worktree": "/repo/.claude/worktrees/issue-9-x",
+    "pr_number": 9,
+    "pr_state": "merged"
+   }
+  ],
+  "alive": "never",
+  "branch": "issue-9-x",
+  "cwd": "/elders",
+  "expect": {
+   "text": "| worktree | branch | PR state | unpushed commits | dirty tree | last session | live? | verdict |\n|---|---|---|---|---|---|---|---|\n| issue-9-x | issue-9-x | #9 merged | 0 | yes | — | — | ⛔ save first |\n\ncleanup: no — ⛔ save first\n",
+   "ok": false
+  }
+ },
+ {
+  "name": "test_unknown_branch",
+  "fn": "only",
+  "rows": [
+   {
+    "name": "issue-9-x",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "worktree": "/repo/.claude/worktrees/issue-9-x",
+    "pr_number": 9,
+    "pr_state": "merged"
+   }
+  ],
+  "alive": "never",
+  "branch": "weg",
+  "cwd": "/elders",
+  "expect": {
+   "text": "cleanup: no — branch weg not found\n",
+   "ok": false
+  }
+ },
+ {
+  "name": "test_server_lock_is_not_cleanable",
+  "fn": "only",
+  "rows": [
+   {
+    "name": "issue-9-x",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "worktree": "/repo/.claude/worktrees/issue-9-x",
+    "pr_number": 9,
+    "pr_state": "merged",
+    "locked": true,
+    "lock_reason": "claude agent bridge-x"
+   }
+  ],
+  "alive": "never",
+  "branch": "issue-9-x",
+  "cwd": "/elders",
+  "expect": {
+   "text": "| worktree | branch | PR state | unpushed commits | dirty tree | last session | live? | verdict |\n|---|---|---|---|---|---|---|---|\n| issue-9-x | issue-9-x | #9 merged | 0 | no | — | — | ✅ safe to remove [server-lock] |\n\ncleanup: no — ✅ safe to remove [server-lock] (locked)\n",
+   "ok": false
+  }
+ },
+ {
+  "name": "test_stale_lock_is_not_cleanable",
+  "fn": "only",
+  "rows": [
+   {
+    "name": "issue-9-x",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "worktree": "/repo/.claude/worktrees/issue-9-x",
+    "pr_number": 9,
+    "pr_state": "merged",
+    "locked": true,
+    "lock_pid": 5,
+    "lock_reason": "x (pid 5)"
+   }
+  ],
+  "alive": "never",
+  "branch": "issue-9-x",
+  "cwd": "/elders",
+  "expect": {
+   "text": "| worktree | branch | PR state | unpushed commits | dirty tree | last session | live? | verdict |\n|---|---|---|---|---|---|---|---|\n| issue-9-x | issue-9-x | #9 merged | 0 | no | — | — | ✅ safe to remove [stale lock] |\n\ncleanup: no — ✅ safe to remove [stale lock] (locked)\n",
+   "ok": false
+  }
+ },
+ {
+  "name": "test_own_cwd_in_subdirectory",
+  "fn": "only",
+  "rows": [
+   {
+    "name": "issue-9-x",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "worktree": "/repo/.claude/worktrees/issue-9-x",
+    "pr_number": 9,
+    "pr_state": "merged"
+   }
+  ],
+  "alive": "never",
+  "branch": "issue-9-x",
+  "cwd": "/repo/.claude/worktrees/issue-9-x/src",
+  "expect": {
+   "text": "| worktree | branch | PR state | unpushed commits | dirty tree | last session | live? | verdict |\n|---|---|---|---|---|---|---|---|\n| issue-9-x | issue-9-x | #9 merged | 0 | no | — | — | ✅ safe to remove |\n\ncleanup: no — own cwd is in /repo/.claude/worktrees/issue-9-x\n",
+   "ok": false
+  }
+ },
+ {
+  "name": "test_own_cwd_is_the_worktree",
+  "fn": "only",
+  "rows": [
+   {
+    "name": "issue-9-x",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "worktree": "/repo/.claude/worktrees/issue-9-x",
+    "pr_number": 9,
+    "pr_state": "merged"
+   }
+  ],
+  "alive": "never",
+  "branch": "issue-9-x",
+  "cwd": "/repo/.claude/worktrees/issue-9-x",
+  "expect": {
+   "text": "| worktree | branch | PR state | unpushed commits | dirty tree | last session | live? | verdict |\n|---|---|---|---|---|---|---|---|\n| issue-9-x | issue-9-x | #9 merged | 0 | no | — | — | ✅ safe to remove |\n\ncleanup: no — own cwd is in /repo/.claude/worktrees/issue-9-x\n",
+   "ok": false
+  }
+ },
+ {
+  "name": "test_own_cwd_with_a_shared_prefix_is_not_inside",
+  "fn": "only",
+  "rows": [
+   {
+    "name": "issue-9-x",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "worktree": "/repo/.claude/worktrees/issue-9-x",
+    "pr_number": 9,
+    "pr_state": "merged"
+   }
+  ],
+  "alive": "never",
+  "branch": "issue-9-x",
+  "cwd": "/repo/.claude/worktrees/issue-9-x-other",
+  "expect": {
+   "text": "| worktree | branch | PR state | unpushed commits | dirty tree | last session | live? | verdict |\n|---|---|---|---|---|---|---|---|\n| issue-9-x | issue-9-x | #9 merged | 0 | no | — | — | ✅ safe to remove |\n\ncleanup: yes\ngit worktree remove \"/repo/.claude/worktrees/issue-9-x\"\ngit branch -D issue-9-x\n",
+   "ok": true
+  }
+ },
+ {
+  "name": "test_local_only_branch",
+  "fn": "only",
+  "rows": [
+   {
+    "name": "issue-9-x",
+    "local": true,
+    "remote": false,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true
+   }
+  ],
+  "alive": "never",
+  "branch": "issue-9-x",
+  "cwd": "/elders",
+  "expect": {
+   "text": "| worktree | branch | PR state | unpushed commits | dirty tree | last session | live? | verdict |\n|---|---|---|---|---|---|---|---|\n| — | issue-9-x | — | 0 | no | — | — | ✅ safe to remove |\n\ncleanup: yes\ngit branch -D issue-9-x\n",
+   "ok": true
+  }
+ },
+ {
+  "name": "test_remote_only_branch_has_nothing_local",
+  "fn": "only",
+  "rows": [
+   {
+    "name": "issue-9-x",
+    "local": false,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "pr_number": 9,
+    "pr_state": "merged"
+   }
+  ],
+  "alive": "never",
+  "branch": "issue-9-x",
+  "cwd": "/elders",
+  "expect": {
+   "text": "| worktree | branch | PR state | unpushed commits | dirty tree | last session | live? | verdict |\n|---|---|---|---|---|---|---|---|\n| — | issue-9-x | #9 merged | 0 | no | — | — | ✅ safe to remove |\n\ncleanup: no — nothing local to clean up\n",
+   "ok": false
+  }
+ },
+ {
+  "name": "test_duplicate_name_is_not_cleanable",
+  "fn": "only",
+  "rows": [
+   {
+    "name": "issue-9-x",
+    "local": true,
+    "remote": false,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true
+   },
+   {
+    "name": "issue-9-x",
+    "local": false,
+    "remote": false,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "worktree": "/repo/.claude/worktrees/issue-9-x",
+    "live": true
+   }
+  ],
+  "alive": "never",
+  "branch": "issue-9-x",
+  "cwd": "/elders",
+  "expect": {
+   "text": "| worktree | branch | PR state | unpushed commits | dirty tree | last session | live? | verdict |\n|---|---|---|---|---|---|---|---|\n| — | issue-9-x | — | 0 | no | — | — | ✅ safe to remove |\n| issue-9-x | issue-9-x | — | 0 | no | — | LIVE | ⛔ running session |\n\ncleanup: no — 2 rows named issue-9-x (detached worktree or orphan dir)\n",
+   "ok": false
+  }
+ },
+ {
+  "name": "test_only_ends_on_a_fixed_cleanup_token[yes]",
+  "fn": "only",
+  "rows": [
+   {
+    "name": "issue-9-x",
+    "local": true,
+    "remote": false,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "pr_number": 9,
+    "pr_state": "merged"
+   }
+  ],
+  "alive": "never",
+  "branch": "issue-9-x",
+  "cwd": "/elders",
+  "expect": {
+   "text": "| worktree | branch | PR state | unpushed commits | dirty tree | last session | live? | verdict |\n|---|---|---|---|---|---|---|---|\n| — | issue-9-x | #9 merged | 0 | no | — | — | ✅ safe to remove |\n\ncleanup: yes\ngit branch -D issue-9-x\n",
+   "ok": true
+  }
+ },
+ {
+  "name": "test_only_ends_on_a_fixed_cleanup_token[gone]",
+  "fn": "only",
+  "rows": [],
+  "alive": "never",
+  "branch": "gone",
+  "cwd": "/elders",
+  "expect": {
+   "text": "cleanup: no — branch gone not found\n",
+   "ok": false
+  }
+ },
+ {
+  "name": "test_unmeasurable_lock_pid_is_not_cleanable",
+  "fn": "only",
+  "rows": [
+   {
+    "name": "issue-9-x",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "worktree": "/repo/.claude/worktrees/issue-9-x",
+    "pr_number": 9,
+    "pr_state": "merged",
+    "locked": true,
+    "lock_pid": 2147483648
+   }
+  ],
+  "alive": "unmeasurable",
+  "branch": "issue-9-x",
+  "cwd": "/elders",
+  "expect": {
+   "text": "| worktree | branch | PR state | unpushed commits | dirty tree | last session | live? | verdict |\n|---|---|---|---|---|---|---|---|\n| issue-9-x | issue-9-x | #9 merged | 0 | no | — | — | ⛔ locked, pid 2147483648 not measurable |\n\ncleanup: no — ⛔ locked, pid 2147483648 not measurable\n",
+   "ok": false
+  }
+ },
+ {
+  "name": "test_two_merged_branches_both_yes",
+  "fn": "issue",
+  "rows": [
+   {
+    "name": "issue-9-x",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "worktree": "/repo/.claude/worktrees/issue-9-x",
+    "pr_number": 1,
+    "pr_state": "merged"
+   },
+   {
+    "name": "issue-9-y",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "pr_number": 2,
+    "pr_state": "merged"
+   }
+  ],
+  "alive": "never",
+  "nr": 9,
+  "pr_heads": [],
+  "cwd": "/elders",
+  "expect": {
+   "text": "branch: issue-9-x\n| worktree | branch | PR state | unpushed commits | dirty tree | last session | live? | verdict |\n|---|---|---|---|---|---|---|---|\n| issue-9-x | issue-9-x | #1 merged | 0 | no | — | — | ✅ safe to remove |\n\ncleanup: yes\ngit worktree remove \"/repo/.claude/worktrees/issue-9-x\"\ngit branch -D issue-9-x\n\nbranch: issue-9-y\n| worktree | branch | PR state | unpushed commits | dirty tree | last session | live? | verdict |\n|---|---|---|---|---|---|---|---|\n| — | issue-9-y | #2 merged | 0 | no | — | — | ✅ safe to remove |\n\ncleanup: yes\ngit branch -D issue-9-y\n"
+  }
+ },
+ {
+  "name": "test_local_branch_without_merged_pr_is_no[open]",
+  "fn": "issue",
+  "rows": [
+   {
+    "name": "issue-9-x",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "pr_number": 1,
+    "pr_state": "open"
+   }
+  ],
+  "alive": "never",
+  "nr": 9,
+  "pr_heads": [],
+  "cwd": "/elders",
+  "expect": {
+   "text": "branch: issue-9-x\n| worktree | branch | PR state | unpushed commits | dirty tree | last session | live? | verdict |\n|---|---|---|---|---|---|---|---|\n| — | issue-9-x | #1 open | 0 | no | — | — | ⏸️ PR #1 open |\n\ncleanup: no — ⏸️ PR #1 open\n"
+  }
+ },
+ {
+  "name": "test_local_branch_without_merged_pr_is_no[no pr]",
+  "fn": "issue",
+  "rows": [
+   {
+    "name": "issue-9-x",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "pr_state": null
+   }
+  ],
+  "alive": "never",
+  "nr": 9,
+  "pr_heads": [],
+  "cwd": "/elders",
+  "expect": {
+   "text": "branch: issue-9-x\n| worktree | branch | PR state | unpushed commits | dirty tree | last session | live? | verdict |\n|---|---|---|---|---|---|---|---|\n| — | issue-9-x | — | 0 | no | — | — | ✅ safe to remove |\n\ncleanup: no — no merged PR\n"
+  }
+ },
+ {
+  "name": "test_own_cwd_blocks_only_its_branch",
+  "fn": "issue",
+  "rows": [
+   {
+    "name": "issue-9-x",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "worktree": "/repo/.claude/worktrees/issue-9-x",
+    "pr_number": 1,
+    "pr_state": "merged"
+   },
+   {
+    "name": "issue-9-y",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "worktree": "/repo/.claude/worktrees/issue-9-y",
+    "pr_number": 2,
+    "pr_state": "merged"
+   }
+  ],
+  "alive": "never",
+  "nr": 9,
+  "pr_heads": [],
+  "cwd": "/repo/.claude/worktrees/issue-9-x/src",
+  "expect": {
+   "text": "branch: issue-9-x\n| worktree | branch | PR state | unpushed commits | dirty tree | last session | live? | verdict |\n|---|---|---|---|---|---|---|---|\n| issue-9-x | issue-9-x | #1 merged | 0 | no | — | — | ✅ safe to remove |\n\ncleanup: no — own cwd is in /repo/.claude/worktrees/issue-9-x\n\nbranch: issue-9-y\n| worktree | branch | PR state | unpushed commits | dirty tree | last session | live? | verdict |\n|---|---|---|---|---|---|---|---|\n| issue-9-y | issue-9-y | #2 merged | 0 | no | — | — | ✅ safe to remove |\n\ncleanup: yes\ngit worktree remove \"/repo/.claude/worktrees/issue-9-y\"\ngit branch -D issue-9-y\n"
+  }
+ },
+ {
+  "name": "test_unknown_pr_head_is_reported",
+  "fn": "issue",
+  "rows": [],
+  "alive": "never",
+  "nr": 9,
+  "pr_heads": [
+   "gone"
+  ],
+  "cwd": "/elders",
+  "expect": {
+   "text": "branch: gone\ncleanup: no — branch gone not found\n"
+  }
+ },
+ {
+  "name": "test_failed_lookup_and_empty[failed]",
+  "fn": "issue",
+  "rows": [
+   {
+    "name": "issue-9-x",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true
+   }
+  ],
+  "alive": "never",
+  "nr": 9,
+  "pr_heads": null,
+  "cwd": "/elders",
+  "expect": {
+   "text": "cleanup: no — PR lookup for issue #9 failed\n"
+  }
+ },
+ {
+  "name": "test_failed_lookup_and_empty[empty]",
+  "fn": "issue",
+  "rows": [],
+  "alive": "never",
+  "nr": 9,
+  "pr_heads": [],
+  "cwd": "/elders",
+  "expect": {
+   "text": "cleanup: no — no branches found for issue #9\n"
+  }
+ },
+ {
+  "name": "test_issue_block_rejoins_python_lines",
+  "fn": "issue",
+  "rows": [
+   {
+    "name": "issue-9-ab",
+    "local": true,
+    "remote": false,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true
+   }
+  ],
+  "alive": "never",
+  "nr": 9,
+  "pr_heads": [],
+  "cwd": "/elders",
+  "expect": {
+   "text": "branch: issue-9-ab\n| worktree | branch | PR state | unpushed commits | dirty tree | last session | live? | verdict |\n|---|---|---|---|---|---|---|---|\n| — | issue-9-a\nb | — | 0 | no | — | — | ✅ safe to remove |\n\ncleanup: no — no merged PR\n"
+  }
+ },
+ {
+  "name": "test_issue_duplicate_rows_are_no",
+  "fn": "issue",
+  "rows": [
+   {
+    "name": "issue-9-x",
+    "local": true,
+    "remote": true,
+    "dirty": false,
+    "unpushed": 0,
+    "unique_files": [],
+    "pr_lookup_ok": true,
+    "pr_number": 1,
+    "pr_state": "merged"
+   },
+   {
+    "name": "issue-9-x",
+    "local": false,
+    "remote": false,
+    "worktree": "/repo/.claude/worktrees/issue-9-x",
+    "dirty": false
+   }
+  ],
+  "alive": "never",
+  "nr": 9,
+  "pr_heads": [],
+  "cwd": "/elders",
+  "expect": {
+   "text": "branch: issue-9-x\n| worktree | branch | PR state | unpushed commits | dirty tree | last session | live? | verdict |\n|---|---|---|---|---|---|---|---|\n| — | issue-9-x | #1 merged | 0 | no | — | — | ✅ safe to remove |\n| issue-9-x | issue-9-x | — | ? | no | — | — | ❓ detached worktree — manual |\n\ncleanup: no — 2 rows named issue-9-x (detached worktree or orphan dir)\n"
+  }
+ }
+]

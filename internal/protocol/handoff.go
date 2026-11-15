@@ -20,7 +20,7 @@ type Handoff struct {
 
 var issueField = regexp.MustCompile(`^#?([0-9]+)$`)
 
-// ParseHandoff reads the fields of a handoff header, as parse_handoff of protocol.py does.
+// ParseHandoff reads the fields of a handoff header.
 func ParseHandoff(h Header) (Handoff, error) {
 	if h.Kind != KindHandoff {
 		return Handoff{}, fmt.Errorf("%w: not a handoff but %s", ErrHandoff, h.Kind)

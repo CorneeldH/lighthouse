@@ -20,8 +20,23 @@ import (
 // defaultFixtureRepo is `forge.repo` of a case without a `repo` key (DEFAULT_FIXTURE_REPO).
 const defaultFixtureRepo = "Acme/widgets"
 
-// fixtureCase is one case of tests/pack/fixtures/pr_body_gate/cases.json; the format is described
-// in tests/pack/test_pr_body_gate_fixtures.py.
+// fixtureCase is one case of tests/pack/fixtures/pr_body_gate/cases.json. Every case has name,
+// kind, expect and the input of its kind:
+//
+//   - closes, refs, refs_targets, no_issue: body (expect: a list of numbers, or a bool);
+//   - evidence_rows: body, nr (expect: a list of [ac, command, result], or {"reason": …});
+//   - count_acs: body (expect: a number or null);
+//   - check_body: body, or body_b64 (the bytes of a body file, read the way --body-file is read:
+//     UTF-8, invalid bytes become U+FFFD, \r\n becomes \n), and counts (issue number as text to
+//     [count|null, cause]; a number not in the map fails the case: the AC count must not be asked
+//     for) (expect: {"blockers": […], "notices": […]});
+//   - find: command, cwd ({root} is the temporary directory, null an unknown cwd) and optional
+//     setup (the steps of fixturesetup) (expect: a list of {cwd, repo, body, body_file, problem,
+//     repo_problem}, or "unparseable");
+//   - normalize_repo: value (expect: text or null);
+//   - scope_repo: value (expect: [decision, reason]).
+//
+// repo is forge.repo of the lighthouse.toml of the case: absent is Acme/widgets, null is none.
 type fixtureCase struct {
 	Name    string            `json:"name"`
 	Kind    string            `json:"kind"`

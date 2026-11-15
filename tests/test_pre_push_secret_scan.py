@@ -617,6 +617,11 @@ def _allowed(rule: str, match: str) -> bool:
 
 
 UUID = "e51f5dd8-a2ee-42c9-83aa-d9e5f0412345"
+# The shape of a kenn-forge runtime_session_key: 16 hex, underscore, 16 hex. Joined, so
+# gitleaks does not read this file as a key with a value.
+FORGE_KEY = "_".join(("0f1e2d3c4b5a6978", "8796a5b4c3d2e1f0"))
+# Prose from a session brief (#228), joined for the same reason.
+PROSE = ", ".join(("credentials", "/".join(("OnFailure", "notification"))))
 # The cut-off forms are slices of the whole header: written out in this file, gitleaks
 # itself would flag them here, ending on a Python quote.
 BETA = 'oauth-2025-04-20","interleaved-thinking-2025-05-14"'
@@ -632,6 +637,16 @@ BETA = 'oauth-2025-04-20","interleaved-thinking-2025-05-14"'
         f'turnAttributionKey":"{UUID}"',
         f'tionKey":"{UUID}"',
         f'ionKey":"{UUID[:30]}',
+        f'runtime_session_key":"{FORGE_KEY}"',
+        f'session_key":"{FORGE_KEY}"',
+        f'key":"{FORGE_KEY[:20]}',
+        PROSE + " ",
+        PROSE,
+        PROSE + "`",
+        PROSE + "'",
+        PROSE + '"',
+        PROSE + "s ",
+        PROSE + "s'",
     ],
 )
 def test_allowlist_takes_cut_off_header_and_attribution_key(match):
@@ -645,6 +660,11 @@ def test_allowlist_takes_cut_off_header_and_attribution_key(match):
         f'oauth-2025-04-20","{FAKE_PAT}"',
         f'apiKey":"{UUID}"',
         f'turnAttributionKey":"{FAKE_PAT}"',
+        f'runtime_session_key":"{FAKE_PAT}"',
+        f'api_key":"{FORGE_KEY}"',
+        f'runtime_session_key":"{FORGE_KEY}x"',
+        f"{PROSE[:13]}{FAKE_PAT} ",
+        f"{PROSE}{FAKE_PAT[4:]} ",
     ],
 )
 def test_allowlist_keeps_a_real_key_next_to_them_red(match):
