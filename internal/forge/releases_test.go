@@ -3,6 +3,7 @@ package forge
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"reflect"
 	"testing"
 
@@ -86,6 +87,77 @@ func TestReleases_refusesForeignNextPage(t *testing.T) {
 	c.HTTP.Transport = ft
 	if _, err := c.Releases(context.Background(), "up/stream"); err == nil {
 		t.Fatal("want sameOrigin to refuse a next page on another host")
+	}
+}
+
+const relFirst = "https://api.github.com/repos/up/stream/releases?per_page=30"
+
+func TestReleases_refusesSelfReferencingNext(t *testing.T) {
+	ft := &fakeTransport{t: t, getOnly: true, responses: map[string]fakeResponse{
+		relFirst: {status: 200, body: "[]", link: nextLink(relFirst)},
+	}}
+	c := New("o/r", "tok")
+	c.HTTP.Transport = ft
+	if _, err := c.Releases(context.Background(), "up/stream"); err == nil {
+		t.Fatal("want an error for a next page that repeats a URL")
+	}
+	if len(ft.requests) > 2 {
+		t.Fatalf("requests = %d, want the loop stopped at the first repeat", len(ft.requests))
+	}
+}
+
+func TestReleases_capsPages(t *testing.T) {
+	resp := map[string]fakeResponse{}
+	page := func(i int) string { return fmt.Sprintf("%s&page=%d", relFirst, i) }
+	resp[relFirst] = fakeResponse{status: 200, body: "[]", link: nextLink(page(2))}
+	for i := 2; i <= 200; i++ {
+		resp[page(i)] = fakeResponse{status: 200, body: "[]", link: nextLink(page(i + 1))}
+	}
+	ft := &fakeTransport{t: t, getOnly: true, responses: resp}
+	c := New("o/r", "tok")
+	c.HTTP.Transport = ft
+	if _, err := c.Releases(context.Background(), "up/stream"); err == nil {
+		t.Fatal("want an error once the page cap is exceeded")
+	}
+	if len(ft.requests) > maxReleasePages {
+		t.Fatalf("requests = %d, want at most %d", len(ft.requests), maxReleasePages)
+	}
+}
+
+func TestReleases_withoutTokenIsAnonymous(t *testing.T) {
+	ft := &fakeTransport{t: t, getOnly: true, responses: map[string]fakeResponse{
+		relFirst: {status: 200, body: `[{"tag_name":"v1","name":"n","body":"b","html_url":"u"}]`},
+	}}
+	c := New("o/r", "")
+	c.HTTP.Transport = ft
+	got, err := c.Releases(context.Background(), "up/stream")
+	if err != nil || len(got) != 1 || got[0].Tag != "v1" {
+		t.Fatalf("got %v, %v; want the release without a token", got, err)
+	}
+	if h := ft.requests[0].Header.Get("Authorization"); h != "" {
+		t.Fatalf("Authorization = %q, want none", h)
+	}
+}
+
+func TestReleases_emptyRepoIsAnError(t *testing.T) {
+	if _, err := New("o/r", "").Releases(context.Background(), ""); err == nil {
+		t.Fatal("want an error for an empty repo")
+	}
+}
+
+func TestReleases_cancelledContextTriesOnce(t *testing.T) {
+	ft := &fakeTransport{t: t, getOnly: true, responses: map[string]fakeResponse{
+		relFirst: {status: 503, body: "{}"},
+	}}
+	c := New("o/r", "tok")
+	c.HTTP = &http.Client{Transport: ft}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := c.Releases(ctx, "up/stream"); err == nil {
+		t.Fatal("want an error")
+	}
+	if len(ft.requests) != 1 {
+		t.Fatalf("requests = %d, want 1: no retry on a cancelled context", len(ft.requests))
 	}
 }
 
