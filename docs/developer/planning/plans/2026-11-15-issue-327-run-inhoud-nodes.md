@@ -49,7 +49,7 @@ Wat de spec impliceert maar geen taak-test vanzelf dekt; elke regel heeft een te
 - [ ] **Step 2: Draai ze** — `go test ./internal/hostconfig -run 'TestNode|TestServe'` — FAIL.
 - [ ] **Step 3: Implementeer** de twee velden in `Node` en in de raw-struct van `LoadDispatch`; valideer na de bestaande node-controles; foutteksten in dezelfde vorm als `dispatch.nodes.<naam>.slots: missing`.
 - [ ] **Step 4: Tests voor `[node]`** (`node_test.go`): `TestLoadNodeAbsentIsFalse`, `TestLoadNodeTokenFileMustBeAbsolute`, `TestValidateNodeForgeNeedsToken` (bestand ontbreekt of leeg → fout met sleutel `dispatch.forge.token_file`; `DefaultDispatch` vult `url` en `token_file` altijd). Implementeer `LoadNode` en `ValidateNodeForge`; `LoadDispatch` blijft sleutels buiten `dispatch` negeren.
-- [ ] **Step 5: Draai `go test ./internal/hostconfig`** — PASS.
+- [ ] **Step 5: Draai `go test ./internal/hostconfig`** — PASS. Voeg `serve_url` en `serve_token_file` toe aan de `host.toml`-fixtures van de bestaande node-tests in `internal/cli` (`tick_nodes_test.go:207-213` e.a.) en in `hostconfig`, zodat ze laden; draai `go test ./...` en herstel wat alleen aan die fixtures lag. Wat in `internal/cli` pas door Taak 9 of 12 echt rood wordt (`TestTickRestartStopsOnNode`, `TestMeasureUsesNodeOfRun`, `TestTickSpawnTimeoutNoSecondPost` e.a.) wordt in Taak 9 Step 5 herschreven, niet verwijderd.
 - [ ] **Step 6: Commit** — `feat(hostconfig): serve_url, serve_token_file en [node] (#327)`.
 
 ---
@@ -62,7 +62,7 @@ Wat de spec impliceert maar geen taak-test vanzelf dekt; elke regel heeft een te
 - Modify: `internal/server/server.go` (`Deps.Node http.Handler`, gemount op `/api/node/`)
 
 **Interfaces:**
-- Produces: `nodeapi.Version`, `nodeapi.CodeWorkspaceGone = "workspace_gone"`, `nodeapi.CodeNoTranscript = "no_transcript"`, `nodeapi.Problem{Status int; Code, Detail string}`, `nodeapi.Info{Version int; Binary, Platform string}`; `nodeserve.Deps{StateDir string; TokenFile string; Forge kennforge.Config; Home string; Run workplace.Runner; Now func() time.Time}`; `func nodeserve.New(d Deps) http.Handler`; intern `func (h *handler) resolve(ctx, id string) (workplace.Workspace, error)` dat het pad opzoekt en toetst.
+- Produces: `nodeapi.Version`, `nodeapi.CodeWorkspaceGone = "workspace_gone"`, `nodeapi.CodeNoTranscript = "no_transcript"`, `nodeapi.Problem{Status int; Code, Detail string}`, `nodeapi.Info{Version int; Binary, Platform string}`; `nodeserve.Deps{StateDir string; TokenFile string; Forge hostconfig.DispatchForge; Profiles map[string]bool; Home string; Run workplace.Runner; Now func() time.Time}`; `func nodeserve.New(d Deps) http.Handler`; `Profiles` zijn de namen uit `[dispatch.profiles]` van `host.toml` op de node (de bekende profielen van de adapter; `serve` bouwt ze in `internal/cli`); een profiel dat niet in `Profiles` staat is 400. Een node zonder `[dispatch.profiles]` met het profiel van de tick krijgt dus 400 op `transcript`, `stop` en `kill`: Taak 13 zet dit in `install.md` als verplicht, Taak 7 test het met `TestServeUnknownProfileIs400` en `TestServeProfileFromNodeHostToml`. Intern `func (h *handler) resolve(ctx, id string) (workplace.Workspace, error)` dat het pad opzoekt en toetst.
 - Consumes: Taak 1 (`LoadNode`).
 
 - [ ] **Step 1: Schrijf falende tests** (`handler_test.go`, nep-forge via `httptest`, git-repo in `t.TempDir()`): `TestNoTokenIs401`, `TestWrongTokenIs403`, `TestEmptyTokenFileIsError` (fout van dat verzoek, niet 200), `TestInfoReportsVersionOne`, `TestUnknownWorkspaceIs404WithCode` (forge-404 → 404 met `code == "workspace_gone"`, géén git-aanroep: tel runner-aanroepen), `TestUnsafeIDIs400BeforeAnyCall`, `TestResolveRejectsRelativePath`, `TestResolveRejectsPathNotToplevel`, `TestResolveFollowsSymlink` (worktree via symlink gemeld; toplevel `EvalSymlinks`-gelijk → ok).
@@ -78,7 +78,7 @@ Wat de spec impliceert maar geen taak-test vanzelf dekt; elke regel heeft een te
 
 **Files:**
 - Modify: `internal/nodeserve/handler.go`; Create: `internal/nodeserve/statemap.go`, `statemap_test.go`
-- Modify: `internal/dispatch/instructions.go` (schrijven van `runs/<sessie>/instructions.md` als herbruikbare functie `WriteInstructions(stateDir, sessionID string, content []byte) (path string, err error)` als die er nog niet zo is)
+- Modify: `internal/dispatch/instructions.go` (schrijven van `runs/<sessie>/instructions.md` als nieuwe functie `WriteInstructionsContent(stateDir, sessionID string, content []byte) (path string, err error)`; de bestaande `WriteInstructions(stateDir, sessionID, atRoundLimit string)` (`instructions.go:21`, aanroeper `apply.go:333`) blijft ongewijzigd en roept hem aan). `Spawn` op een node leest `LaunchSpec.InstructionsFile` en stuurt de bytes als `LaunchRequest.Instructions`
 
 **Interfaces:**
 - Produces: `nodeapi.LaunchRequest{Repo string; Issue int; SessionID, Mode, Profile, Prompt string; Native bool; MCPConfig string; Instructions string}`, antwoord `workplace.Carrier`; `PUT workspaces/{id}/launch`, `DELETE workspaces/{id}/carrier`, `GET runs/{session}/permission` (ruwe bytes, 404 zonder bestand).
@@ -115,7 +115,7 @@ Wat de spec impliceert maar geen taak-test vanzelf dekt; elke regel heeft een te
 **Files:**
 - Create: `internal/workplace/transcriptdelta.go`, `transcriptdelta_test.go`
 - Create: `internal/nodeserve/transcript.go`, `transcript_test.go`
-- Modify: `internal/workplace/kennforge/transcript.go` (`containerScript` krijgt offsets)
+- Modify: `internal/workplace/kennforge/transcript.go` (`containerScript` krijgt offsets; nieuwe geëxporteerde `func (a *Adapter) TranscriptDelta(ctx, workspaceID, sessionID string, from map[string]int64) ([]workplace.FileDelta, error)` voor de containertak, die `nodeserve` aanroept en waarvan `nodeserve` de tar met `LIGHTHOUSE.size`/`LIGHTHOUSE.from` zelf opbouwt; de tar uit de container draagt die records niet)
 
 **Interfaces:**
 - Produces: `workplace.FileDelta{Name string; Size int64; From int64; Data []byte}`; `func workplace.ReadDelta(dir, sessionID string, from map[string]int64) ([]FileDelta, error)` (bestanden: `<sessie>.jsonl` en `<sessie>/subagents/*.jsonl`; is `Size < from[Name]` dan `From = 0` en `Data` het hele bestand); `GET workspaces/{id}/transcript/{session}?profile=…&from=<bestand>:<offset>,…` → tar waarvan elk lid de bytes vanaf `from` bevat plus een header met `Size` en `From` (PAX-records `LIGHTHOUSE.size`, `LIGHTHOUSE.from`); 404 `no_transcript` als `<sessie>.jsonl` ontbreekt.
@@ -187,7 +187,7 @@ Wat de spec impliceert maar geen taak-test vanzelf dekt; elke regel heeft een te
 
 **Files:**
 - Modify: `internal/workplace/kennforge/adapter.go`, `stop.go`, `fleet.go`, `transcript.go`; `internal/workplace/workplace.go` (optionele interfaces)
-- Modify: `internal/workplace/kennforge/contract_test.go`; Create: `internal/workplace/kennforge/node_contract_test.go`
+- Modify: `internal/workplace/kennforge/contract_test.go`, `fakehub_test.go` (hub naar `kennforgetest`); Create: `internal/workplace/kennforge/kennforgetest/`, `internal/nodeserve/contract_test.go`
 - Delete: `remoteStop` en `remoteSessions` in `fleet.go`
 
 **Interfaces:**
@@ -198,11 +198,11 @@ Wat de spec impliceert maar geen taak-test vanzelf dekt; elke regel heeft een te
   Alleen de adapter met `Serve != nil` implementeert ze; de adapter op `self` en de lokale adapter niet.
 - Consumes: Taak 8.
 
-- [ ] **Step 1: Test de contract-suite tegen een echte `nodeserve`**: `node_contract_test.go` bouwt een `Fixture` met nep-hub (bestaande `fakehub_test.go`), `nodeserve.New` boven een nep-forge en een git-repo in een tempmap, en draait `workplacetest.Run`. Voeg aan `workplacetest.Cases` toe wat nog mist als de suite die gevallen nog niet kent: `KillEndsAgentOnNodeAdapter`.
+- [ ] **Step 1: Test de contract-suite tegen een echte `nodeserve`**: de serve-gedragen contract-run staat NIET in `package kennforge` (`nodeserve` importeert `kennforge`: een interne kennforge-test die `nodeserve` importeert is een importcyclus). Hij staat in `internal/nodeserve/contract_test.go` (`package nodeserve_test`), dat een geëxporteerde fake hub uit een nieuw pakket `internal/workplace/kennforge/kennforgetest` (verhuisde `newFakeHub`/`newForgeState` uit `fakehub_test.go`; de kennforge-tests importeren het, `package kennforge` mag dat) gebruikt, `nodeserve.New` boven een nep-forge en een git-repo in een tempmap bouwt, een `Fixture` maakt en `workplacetest.Run` draait. Voeg aan `workplacetest.Cases` toe wat nog mist als de suite die gevallen nog niet kent: `KillEndsAgentOnNodeAdapter`.
 - [ ] **Step 2: Gedragstests** (`adapter_test.go`): `TestSpawnOnNodeWritesCarrierBeforeHandoff` (drager op de node met `session_id` en node-paden; hub ziet de handoff pas daarna), `TestSpawnLaunchFailureSendsNoHandoff` (`ErrNotAccepted`, geen POST), `TestSpawnLaunch5xxDeletesCarrier`, `TestSpawnUncertainKeepsCarrier`, `TestSessionsOnNodeCarrySessionID` (`Own`/`AdoptSessions` herkennen de sessie), `TestPrepareOnNodeFollowsRemote` en `TestPrepareOnNodeOwnWorkReturnsOwnWorkError` (zelfde velden als op `self`), `TestPrepareFollowUnreachableFails`, `TestStopOnNodeEndsClaude` (via `serve`), `TestDiscardAndRemoveDeleteNodeCarrier`, `TestRemoveGoneNeedsHubConfirmation` (404 van `serve` telt alleen als weg als de hub de workspace ook niet kent en de node bereikbaar meldt; anders `ErrUncertain`), `TestAuthFailureIsNotMeasurable`.
 - [ ] **Step 3: Draai** — FAIL.
 - [ ] **Step 4: Implementeer** de takken: `if a.Serve != nil` in `Spawn`, `Prepare`, `Sessions`, `Stop`, `Kill`, `Discard`; `Prepare` roept na de hub `Serve.Follow`; `Dirty`, `Unpushed`, `Relocate`, `Permission` roepen `Serve` aan. De adapter schrijft op een node nooit naar `StateDir/carriers/<node>/`. Verwijder `remoteStop`, `remoteSessions` en de `ErrNotMeasurable`-tak van `Transcript` (die komt in Taak 10).
-- [ ] **Step 5: Draai** `go test ./internal/workplace/...` — PASS (ook de bestaande #187-tests die `remoteStop` pinden: pas ze aan of verwijder ze met een regel in de commit).
+- [ ] **Step 5: Draai** `go test ./...` — PASS (de gate draait importeurs niet mee, dus draai het hier zelf). Ook de bestaande #187-tests die `remoteStop` pinden en de `internal/cli`-nodetests (`tick_nodes_test.go`: `useNodes` bouwt de echte adapter): herschrijf ze zodat ze op `serve` (nep-`nodeserve` via `httptest`) asserteren; verwijder alleen een test die een verwijderd gedrag pinde, met een regel in de commit.
 - [ ] **Step 6: Commit** — `feat(kennforge): een run op een node loopt via serve (#327)`.
 
 ---
@@ -232,10 +232,10 @@ Wat de spec impliceert maar geen taak-test vanzelf dekt; elke regel heeft een te
 - Test: `lifecycle_test.go`, `apply_test.go`, `brake_test.go`, `runstate_test.go`
 
 **Interfaces:**
-- Produces: `dispatch.ParsePermission(data []byte) (*Permission, error)` (`ReadPermission` roept hem aan); `dispatch.NodeSlots.Unmeasured bool` (rem van die node dicht met de reden `markers not readable`); `dispatch.Env.RemoveMarker func(node, session, key string) error` (nil → `park.RemoveMarker` in `MarkerDir`, zoals nu).
+- Produces: `dispatch.ParsePermission(data []byte) (*Permission, error)` (`ReadPermission` roept hem aan); `dispatch.NodeSlots.Unmeasured bool` (rem van die node dicht met de reden `markers not readable`); `dispatch.Env.RemoveMarker func(session, key string) error` (nil → `park.RemoveMarker` in `MarkerDir`, zoals nu; de `KindDropMarker`-actie draagt geen node, dus `apply` geeft er geen door: de sluiting in `internal/cli` zoekt de node van de sessie op in de map uit `readHostFacts`, Taak 12).
 - Consumes: `workplace.GitMeter`, `workplace.Relocator`.
 
-- [ ] **Step 1: Tests**: `TestCleanupOnNodeRunsSameStepsAsSelf` (nep-`GitMeter`; vuil, niet gepusht, gemergede head), `TestCleanupOnNodeGitUnreachableKeeps` (`not measurable: …`, workspace blijft), `TestCleanupNodeWithoutGitMeterKeeps`, `TestApplyRelocatesOnNode` (via `Relocator`; fout → `relocErr`), `TestBusyOnNodeLikeSelf` (geen `liveOwn`: een levende eigen sessie is `Busy`/`Earlier` zoals op `self`), `TestDropMarkerDeletesOnOriginatingNode`, `TestResumeRemovesMarkerOnNode`, `TestMarkerRemovalFailureIsLogNotError`, `TestBrakeClosesNodeWithUnmeasuredMarkers`, `TestParsePermissionSameAsReadPermission`.
+- [ ] **Step 1: Tests**: `TestCleanupOnNodeRunsSameStepsAsSelf` (nep-`GitMeter`; vuil, niet gepusht, gemergede head), `TestCleanupOnNodeGitUnreachableKeeps` (`not measurable: …`, workspace blijft), `TestCleanupNodeWithoutGitMeterKeeps`, `TestApplyRelocatesOnNode` (via `Relocator`; fout → `relocErr`), `TestBusyOnNodeLikeSelf` (geen `liveOwn`: een levende eigen sessie is `Busy`/`Earlier` zoals op `self`), `TestDropMarkerCallsRemoveMarkerWithSessionAndKey` (alleen dat `apply` hem aanroept met sessie en sleutel; het wissen op de node bewijst Taak 12), `TestMarkerRemovalFailureIsLogNotError`, `TestBrakeClosesNodeWithUnmeasuredMarkers`, `TestParsePermissionSameAsReadPermission`.
 - [ ] **Step 2: Draai** — FAIL.
 - [ ] **Step 3: Implementeer**: verwijder de vroege uitstap `no local git` in `Cleanup` en de test die hem pinde; `Cleanup` meet via `w.(GitMeter)` als `c.Node != ""`, anders met de lokale `run`. Verwijder `liveOwn` en zijn aanroep; de `a.Node == ""`-guard rond `Relocate` wordt de `Relocator`-tak. Voeg `Unmeasured` toe aan `nodeClosed`.
 - [ ] **Step 4: Draai** `go test ./internal/workplace ./internal/dispatch ./internal/park` — PASS.
@@ -252,9 +252,9 @@ Wat de spec impliceert maar geen taak-test vanzelf dekt; elke regel heeft een te
 **Interfaces:**
 - Consumes: Taak 1, 8, 9, 10, 11.
 
-- [ ] **Step 1: Tests**: `TestWorkplaceOnNodeGetsServeClient` (`tickEnv.workplace` zet `Serve` uit `cfg.Nodes`), `TestRunProbeReadsPermissionViaServe` (zelfde uitkomst als bestand op `self`; geen bestand → `nil`; `serve` onbereikbaar → run niet meetbaar, geen tickfout), `TestTickPushesPauseAndAlarmToEveryNode` en `TestTickPushesNilWhenPauseCleared` (`PUT usage` per node, elke tick), `TestUsagePushFailureKeepsLastState` (geen tickfout), `TestReadHostFactsCountsNodeMarkers` (marker van een node telt voor rem en hervatten), `TestReadHostFactsNodeMarkersUnreadableSetsUnmeasured` (een node waarvan `GET markers` faalt krijgt deze tick geen start; zowel `tick` als `lighthouse run`), `TestNodeMarkerOfClosedIssueGoneAfterOneTick`, `TestResumeOnNodeRemovesMarkerThere`, `TestSweepRemovesStaleTickSideCarriersAndMirrors` (`carriers/<node>/<id>.json` van een gesloten node-run eenmalig gewist).
+- [ ] **Step 1: Tests**: `TestWorkplaceOnNodeGetsServeClient` (`tickEnv.workplace` zet `Serve` uit `cfg.Nodes`), `TestRunProbeReadsPermissionViaServe` (zelfde uitkomst als bestand op `self`; geen bestand → `nil`; `serve` onbereikbaar → run niet meetbaar, geen tickfout), `TestTickPushesPauseAndAlarmToEveryNode` en `TestTickPushesNilWhenPauseCleared` (`PUT usage` per node, elke tick), `TestUsagePushFailureKeepsLastState` (geen tickfout), `TestReadHostFactsCountsNodeMarkers` (marker van een node telt voor rem en hervatten), `TestReadHostFactsNodeMarkersUnreadableSetsUnmeasured` (een node waarvan `GET markers` faalt krijgt deze tick geen start; zowel `tick` als `lighthouse run`), `TestNodeMarkerOfClosedIssueGoneAfterOneTick`, `TestResumeOnNodeRemovesMarkerThere`, `TestDropMarkerDeletesOnOriginatingNode` (nep-`serve`: `DELETE markers` komt op de node van de sessie, niet lokaal), `TestSweepRemovesStaleTickSideCarriersAndMirrors` (`carriers/<node>/<id>.json` van een gesloten node-run eenmalig gewist).
 - [ ] **Step 2: Draai** — FAIL.
-- [ ] **Step 3: Implementeer**: `workplace()` bouwt de `NodeClient` per node; `runProbe.measure` gebruikt `workplace.PermissionReader` met `dispatch.ParsePermission` als de workplace hem heeft; `readHostFacts` leest `GET markers` per node en onthoudt `map[sessie]node` voor `Env.RemoveMarker`; de tick roept `PutUsage` aan voor elke node, na `readHostFacts`; sweep ruimt oude `carriers/<node>/` en spiegels op.
+- [ ] **Step 3: Implementeer**: `workplace()` bouwt één `NodeClient` per node per tick en deelt hem met alle adapters, `readHostFacts` en `PutUsage` (zo is `GET info` eenmaal per tick en node); `runProbe.measure` gebruikt `workplace.PermissionReader` met `dispatch.ParsePermission` als de workplace hem heeft; `readHostFacts` leest `GET markers` per node en onthoudt `map[sessie]node`, waarmee de `Env.RemoveMarker`-sluiting de node van de sessie vindt (niet gevonden of `""` → lokale `MarkerDir`); de tick roept `PutUsage` aan voor elke node, na `readHostFacts`; sweep ruimt oude `carriers/<node>/` en spiegels op.
 - [ ] **Step 4: Draai** `go test -race ./internal/cli` — PASS.
 - [ ] **Step 5: Commit** — `feat(tick): usage-rem, permissie en markers op een node (#327)`.
 
@@ -263,7 +263,7 @@ Wat de spec impliceert maar geen taak-test vanzelf dekt; elke regel heeft een te
 ### Taak 13: Documentatie en changelog
 
 **Files:**
-- Modify: `docs/workplace.md` (*Een run op een andere node* herschreven: twee kanalen, routes, vervallen beperkingen), `docs/tick.md` (*Nodes*: `serve_url`, `serve_token_file`, brekende wijziging), `docs/install.md` (`serve` op een node, `[node] token_file`, `[dispatch.forge]`, ingang, `lighthouse ask` op het `PATH`, macOS/launchd), `docs/developer/planning/specs/2026-11-13-issue-187-forge-nodes-design.md` (verwijzing in *Vervolg*)
+- Modify: `docs/workplace.md` (*Een run op een andere node* herschreven: twee kanalen, routes, vervallen beperkingen), `docs/tick.md` (*Nodes*: `serve_url`, `serve_token_file`, brekende wijziging), `docs/install.md` (`serve` op een node, `[node] token_file`, `[dispatch.forge]`, `[dispatch.profiles]` met de profielnamen van de tick (verplicht), ingang, `lighthouse ask` op het `PATH`, macOS/launchd), `docs/developer/planning/specs/2026-11-13-issue-187-forge-nodes-design.md` (verwijzing in *Vervolg*)
 - Create: `changelog.d/issue-327-run-inhoud-nodes.md` (`type: breaking` als het formaat dat kent, anders het type dat de bestaande fragmenten voor een brekende wijziging gebruiken; lees `docs/releasing.md`)
 
 - [ ] **Step 1: Schrijf de docs** en controleer relatieve links; `md-link-check` blokkeert kapotte links.
