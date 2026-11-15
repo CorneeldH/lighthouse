@@ -132,9 +132,8 @@ func TestFetchACCountTimeout(t *testing.T) {
 	withConfig(t, "Acme/widgets")
 	setTimeouts(t, 300*time.Millisecond, gateDeadline)
 	pidFile := hangingGH(t)
-	start := time.Now()
 	eq(t, "fetch", fetch(t, context.Background(), "Acme/widgets", 5), fetched{0, false, "timeout after 0.3 s"})
-	assertGroupGone(t, start, pidFile)
+	assertGroupGone(t, pidFile)
 }
 
 // twin of test_fetch_ac_count_deadline_expired
@@ -490,17 +489,39 @@ func threeCloses(withEvidence ...string) string {
 	return body
 }
 
-// twin of test_main_deadline_bounds_slow_gh_fallback
+// slowGH puts a gh first on PATH that logs each start and then hangs for 3 s; it returns the log.
+func slowGH(t *testing.T) string {
+	t.Helper()
+	log := filepath.Join(t.TempDir(), "gh-calls")
+	prependPath(t, stubBin(t, map[string]string{"gh": "#!/bin/sh\necho start >> \"" + log + "\"\nsleep 3\n"}))
+	return log
+}
+
+// ghStarts counts the starts in the log of slowGH.
+func ghStarts(t *testing.T, log string) int {
+	t.Helper()
+	raw, err := os.ReadFile(log)
+	if os.IsNotExist(err) {
+		return 0
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.Count(string(raw), "start\n")
+}
+
+// Three Closes targets, gh hangs: without a total deadline this costs 3 x the timeout. No
+// wall-clock bound (#338): the deadline is total when the hung gh of the first target is the only
+// one started; the later targets find the budget spent.
 func TestMainDeadlineBoundsSlowGHFallback(t *testing.T) {
 	withConfig(t, "Acme/widgets")
 	_, project := newProject(t)
 	setTimeouts(t, acTimeout, time.Second)
-	prependPath(t, stubBin(t, map[string]string{"gh": "#!/bin/sh\nsleep 3\n"}))
+	log := slowGH(t)
 	writeFile(t, filepath.Join(project, "body.md"), threeCloses("5", "6", "7"))
-	start := time.Now()
 	got := runMain(t, project, "gh pr create --repo Acme/widgets -F body.md", project)
-	if elapsed := time.Since(start); elapsed > 2500*time.Millisecond {
-		t.Errorf("took %v, the deadline is 1 s", elapsed)
+	if n := ghStarts(t, log); n > 1 {
+		t.Errorf("gh started %d times, want at most 1: the deadline is not total", n)
 	}
 	notice := func(nr string) string {
 		return "pr-create-gate: AC count not measurable for #" + nr + " (deadline reached) — structure checked only\n"
@@ -515,28 +536,29 @@ func TestMainDeadlineKeepsBlockerOfEarlierTarget(t *testing.T) {
 	withConfig(t, "Acme/widgets")
 	_, project := newProject(t)
 	setTimeouts(t, acTimeout, time.Second)
-	prependPath(t, stubBin(t, map[string]string{"gh": "#!/bin/sh\nsleep 3\n"}))
+	log := slowGH(t)
 	writeFile(t, filepath.Join(project, "body.md"), threeCloses("6", "7"))
-	start := time.Now()
 	got := runMain(t, project, "gh pr create --repo Acme/widgets -F body.md", project)
-	if elapsed := time.Since(start); elapsed > 2500*time.Millisecond {
-		t.Errorf("took %v, the deadline is 1 s", elapsed)
+	// The total deadline, without a wall-clock bound (#338): one hung gh at most.
+	if n := ghStarts(t, log); n > 1 {
+		t.Errorf("gh started %d times, want at most 1: the deadline is not total", n)
 	}
 	eq(t, "main", got, mainResult{2, "", blocked("Closes #5: heading `### Evidence #5` is missing")})
 }
 
-// twin of test_main_deadline_git_blocks_loudly
+// No wall-clock bound (#338): git's own timeout is an hour here, so only the total deadline of
+// 1 s can end the hung git with this message. A git that is not cut off runs 120 s and then exits
+// 0, which gives another answer.
 func TestMainDeadlineGitBlocksLoudly(t *testing.T) {
 	withConfig(t, "Acme/widgets")
 	_, project := newProject(t)
 	setTimeouts(t, acTimeout, time.Second)
-	prependPath(t, stubBin(t, map[string]string{"git": "#!/bin/sh\nsleep 3\n"}))
+	oldGit := gitTimeout
+	gitTimeout = time.Hour
+	t.Cleanup(func() { gitTimeout = oldGit })
+	prependPath(t, stubBin(t, map[string]string{"git": "#!/bin/sh\nsleep 120\n"}))
 	writeFile(t, filepath.Join(project, "body.md"), closesBody("9", 1))
-	start := time.Now()
 	got := runMain(t, project, "gh pr create -F body.md", project)
-	if elapsed := time.Since(start); elapsed > 2500*time.Millisecond {
-		t.Errorf("took %v, the deadline is 1 s", elapsed)
-	}
 	eq(t, "main", got, mainResult{2, "", blocked("repo of the project cannot be determined (COULD NOT CHECK: git timeout or deadline reached)")})
 }
 
@@ -678,19 +700,18 @@ func alive(pid int) bool {
 	return len(fields) == 0 || fields[0] != "Z"
 }
 
-// assertGroupGone fails unless the run ended before waitDelay could end it, and the background
-// child of the stub is gone: the kill reached the whole group, not only gh.
-func assertGroupGone(t *testing.T, start time.Time, pidFile string) {
+// assertGroupGone fails unless the background child of the stub is gone: the kill reached the
+// whole group, not only gh. No wall-clock bound against waitDelay (#338): a run that WaitDelay
+// ended instead of the group kill leaves that child alive, and this check sees it.
+func assertGroupGone(t *testing.T, pidFile string) {
 	t.Helper()
-	if elapsed := time.Since(start); elapsed >= waitDelay {
-		t.Errorf("took %v: the wait ended through WaitDelay (%v), not through the group kill", elapsed, waitDelay)
-	}
 	pid, err := readPid(pidFile)
 	if err != nil {
 		t.Fatalf("pid of the background child: %v", err)
 	}
 	gone := false
-	for end := time.Now().Add(2 * time.Second); time.Now().Before(end); time.Sleep(10 * time.Millisecond) {
+	// 10 s: the loop ends as soon as the child is gone; only a slow runner needs more than 2 s.
+	for end := time.Now().Add(10 * time.Second); time.Now().Before(end); time.Sleep(10 * time.Millisecond) {
 		if !alive(pid) {
 			gone = true
 			break
@@ -706,11 +727,10 @@ func TestRunGHKillsTheGroup(t *testing.T) {
 	pidFile := hangingGH(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
-	start := time.Now()
 	if _, _, err := RunGH(ctx, "api"); err == nil {
 		t.Fatal("want an error after the timeout")
 	}
-	assertGroupGone(t, start, pidFile)
+	assertGroupGone(t, pidFile)
 }
 
 // twin of test_strip_comments_crlf_and_comment

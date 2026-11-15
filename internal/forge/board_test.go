@@ -9,10 +9,11 @@ import (
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/forge/forgetest"
+	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 )
 
 // boardClient returns a forgetest server and a client pointed at it.
-func boardClient(t *testing.T) (*forgetest.Server, *Client) {
+func boardClient(t *testing.T) (*forgetest.Server, *GitHub) {
 	t.Helper()
 	srv := forgetest.New(t)
 	c := New("o/r", "secret-token")
@@ -25,7 +26,8 @@ func TestBoardItemsFollowsPages(t *testing.T) {
 	for i := range 101 {
 		srv.BoardNodes = append(srv.BoardNodes, map[string]any{"id": fmt.Sprintf("I%d", i), "content": map[string]any{}})
 	}
-	got, err := c.BoardItems(context.Background(), "PVT_1")
+	c.Board = &repoconfig.Board{ProjectID: "PVT_1"}
+	got, err := c.BoardItems(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +61,8 @@ func TestBoardItemsStuckCursorFails(t *testing.T) {
 			srv, c := boardClient(t)
 			srv.BoardNodes = []map[string]any{{"id": "I0", "content": map[string]any{}}}
 			srv.BoardStuckCursor = &tc.cursor
-			got, err := c.BoardItems(context.Background(), "PVT_1")
+			c.Board = &repoconfig.Board{ProjectID: "PVT_1"}
+			got, err := c.BoardItems(context.Background())
 			if err == nil || !strings.Contains(err.Error(), "board PVT_1: pagination stuck") || got != nil {
 				t.Fatalf("BoardItems = %v, %v; want a pagination-stuck error and nil items", got, err)
 			}
@@ -100,14 +103,17 @@ func TestBoardItemsMapsFields(t *testing.T) {
 			}},
 		},
 	}}
-	got, err := c.BoardItems(context.Background(), "PVT_1")
+	c.Board = &repoconfig.Board{ProjectID: "PVT_1", StatusFieldID: "F_status", PriorityFieldID: "F_prio",
+		StatusOptions: map[string]string{"Controller": "opt-ctrl"}, PriorityOptions: map[string]string{"P1": "opt-p1"}}
+	got, err := c.BoardItems(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := []BoardItem{{
 		ItemID:         "PVTI_1",
 		ItemUpdatedAt:  time.Date(2026, 10, 30, 9, 0, 0, 0, time.UTC),
-		SingleSelect:   map[string]string{"F_status": "opt-ctrl", "F_prio": "opt-p1"},
+		Status:         "Controller",
+		Priority:       "P1",
 		Repo:           "o/r",
 		Issue:          7,
 		Title:          "Iets doen",
@@ -131,7 +137,8 @@ func TestBoardItemsNonIssueContent(t *testing.T) {
 		{"id": "draft", "updatedAt": "2026-10-30T09:00:00Z", "content": map[string]any{}},
 		{"id": "hidden", "updatedAt": "2026-10-30T09:00:00Z", "content": nil},
 	}
-	got, err := c.BoardItems(context.Background(), "PVT_1")
+	c.Board = &repoconfig.Board{ProjectID: "PVT_1"}
+	got, err := c.BoardItems(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +194,8 @@ func TestBoardItemsTruncatedNestedFails(t *testing.T) {
 			tc.truncate(node, content, blocker)
 			srv, c := boardClient(t)
 			srv.BoardNodes = []map[string]any{node}
-			got, err := c.BoardItems(context.Background(), "PVT_1")
+			c.Board = &repoconfig.Board{ProjectID: "PVT_1"}
+			got, err := c.BoardItems(context.Background())
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("err = %v, want it to contain %q", err, tc.want)
 			}
@@ -217,7 +225,8 @@ func TestBoardItemsNotAProjectFails(t *testing.T) {
 	// that must not read as an empty board.
 	srv, c := boardClient(t)
 	srv.BoardNotAProject = true
-	got, err := c.BoardItems(context.Background(), "I_issue")
+	c.Board = &repoconfig.Board{ProjectID: "I_issue"}
+	got, err := c.BoardItems(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "board I_issue: not a ProjectV2") || got != nil {
 		t.Fatalf("BoardItems = %v, %v; want a not-a-ProjectV2 error and nil items", got, err)
 	}
@@ -227,18 +236,20 @@ func TestGraphQLErrorsOn200(t *testing.T) {
 	const msg = "Could not resolve to a node with the global id of 'PVT_1'"
 	calls := []struct {
 		name string
-		call func(c *Client) (empty bool, err error)
+		call func(c *GitHub) (empty bool, err error)
 	}{
-		{"Board", func(c *Client) (bool, error) {
-			items, err := c.BoardItems(context.Background(), "PVT_1")
+		{"Board", func(c *GitHub) (bool, error) {
+			c.Board = &repoconfig.Board{ProjectID: "PVT_1"}
+			items, err := c.BoardItems(context.Background())
 			return items == nil, err
 		}},
-		{"BranchPRs", func(c *Client) (bool, error) {
+		{"BranchPRs", func(c *GitHub) (bool, error) {
 			prs, err := c.BranchPRs(context.Background(), "issue-1-x")
 			return prs == nil, err
 		}},
-		{"SetStatus", func(c *Client) (bool, error) {
-			return true, c.SetStatus(context.Background(), "PVT_1", "I", "F", "O")
+		{"SetStatus", func(c *GitHub) (bool, error) {
+			c.Board = &repoconfig.Board{ProjectID: "PVT_1", StatusFieldID: "F", StatusOptions: map[string]string{"Controller": "O"}}
+			return true, c.SetStatus(context.Background(), BoardItem{ItemID: "I"}, "Controller")
 		}},
 	}
 	for _, tc := range calls {
@@ -296,7 +307,8 @@ func TestBranchPRsTruncatedFails(t *testing.T) {
 
 func TestSetStatusPosts(t *testing.T) {
 	srv, c := boardClient(t)
-	if err := c.SetStatus(context.Background(), "PVT_1", "PVTI_1", "F_status", "opt-ctrl"); err != nil {
+	c.Board = &repoconfig.Board{ProjectID: "PVT_1", StatusFieldID: "F_status", StatusOptions: map[string]string{"Controller": "opt-ctrl"}}
+	if err := c.SetStatus(context.Background(), BoardItem{ItemID: "PVTI_1"}, "Controller"); err != nil {
 		t.Fatal(err)
 	}
 	if len(srv.Posts) != 1 || srv.Posts[0].Path != "/graphql" {
@@ -333,7 +345,8 @@ func TestBoardPRClosedAt(t *testing.T) {
 			}},
 		},
 	}}
-	got, err := c.BoardItems(context.Background(), "PVT_1")
+	c.Board = &repoconfig.Board{ProjectID: "PVT_1"}
+	got, err := c.BoardItems(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -370,7 +383,8 @@ func TestBoardItemsPRURLAndMergedAt(t *testing.T) {
 			}},
 		},
 	}}
-	got, err := c.BoardItems(context.Background(), "PVT_1")
+	c.Board = &repoconfig.Board{ProjectID: "PVT_1"}
+	got, err := c.BoardItems(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -402,18 +416,20 @@ func TestIssueItem(t *testing.T) {
 	srv.ProjectID = "P1"
 	srv.BoardNodes = []map[string]any{issueNode("PVTI_7", 7, "s1"), issueNode("PVTI_9", 9, "s2")}
 	ctx := context.Background()
+	c.Board = &repoconfig.Board{ProjectID: "P1", StatusFieldID: "F_status", StatusOptions: map[string]string{"S1": "s1"}}
 
-	got, ok, err := c.IssueItem(ctx, "P1", 7)
+	got, ok, err := c.IssueItem(ctx, 7)
 	if err != nil || !ok {
 		t.Fatalf("IssueItem(P1, 7) = %v, %v, %v; want the item", got, ok, err)
 	}
-	if got.ItemID != "PVTI_7" || got.SingleSelect["F_status"] != "s1" || got.Issue != 7 || got.Repo != "o/r" {
-		t.Errorf("item = %+v; want PVTI_7, Status s1, issue 7 of o/r", got)
+	if got.ItemID != "PVTI_7" || got.Status != "S1" || got.Issue != 7 || got.Repo != "o/r" {
+		t.Errorf("item = %+v; want PVTI_7, Status S1, issue 7 of o/r", got)
 	}
-	if _, ok, err := c.IssueItem(ctx, "P1", 8); ok || err != nil {
+	if _, ok, err := c.IssueItem(ctx, 8); ok || err != nil {
 		t.Errorf("IssueItem(P1, 8) ok=%v err=%v; want not on the board and no error", ok, err)
 	}
-	if _, ok, err := c.IssueItem(ctx, "P2", 7); ok || err != nil {
+	c.Board = &repoconfig.Board{ProjectID: "P2"}
+	if _, ok, err := c.IssueItem(ctx, 7); ok || err != nil {
 		t.Errorf("IssueItem(P2, 7) ok=%v err=%v; want not on that board (only on P1)", ok, err)
 	}
 	vars := srv.Posts[0].Body["variables"].(map[string]any)
@@ -433,12 +449,13 @@ func TestIssueItemArchived(t *testing.T) {
 	archived["isArchived"] = true
 	srv.BoardNodes = []map[string]any{archived, issueNode("PVTI_9", 9, "s2")}
 	ctx := context.Background()
+	c.Board = &repoconfig.Board{ProjectID: "P1"}
 
-	got, ok, err := c.IssueItem(ctx, "P1", 7)
+	got, ok, err := c.IssueItem(ctx, 7)
 	if err != nil || !ok || got.ItemID != "PVTI_7" || !got.Archived {
 		t.Errorf("IssueItem(P1, 7) = %+v, %v, %v; want PVTI_7, archived", got, ok, err)
 	}
-	got, ok, err = c.IssueItem(ctx, "P1", 9)
+	got, ok, err = c.IssueItem(ctx, 9)
 	if err != nil || !ok || got.ItemID != "PVTI_9" || got.Archived {
 		t.Errorf("IssueItem(P1, 9) = %+v, %v, %v; want PVTI_9, not archived", got, ok, err)
 	}
@@ -450,7 +467,8 @@ func TestIssueItemTruncated(t *testing.T) {
 	node := issueNode("PVTI_7", 7, "s1")
 	node["fieldValues"].(map[string]any)["pageInfo"] = map[string]any{"hasNextPage": true}
 	srv.BoardNodes = []map[string]any{node}
-	_, ok, err := c.IssueItem(context.Background(), "P1", 7)
+	c.Board = &repoconfig.Board{ProjectID: "P1"}
+	_, ok, err := c.IssueItem(context.Background(), 7)
 	if err == nil || ok || !strings.Contains(err.Error(), "fieldValues truncated") {
 		t.Fatalf("IssueItem ok=%v err=%v; want a fieldValues truncated error", ok, err)
 	}
@@ -461,10 +479,11 @@ func TestAddToBoard(t *testing.T) {
 	srv.ProjectID = "P1"
 	srv.Issues = map[int]map[string]any{7: {"number": 7, "node_id": "I_kw7"}}
 	ctx := context.Background()
+	c.Board = &repoconfig.Board{ProjectID: "P1"}
 
-	id, err := c.AddToBoard(ctx, "P1", "I_kw7")
-	if err != nil || id != "item-I_kw7" {
-		t.Fatalf("AddToBoard = %q, %v; want item-I_kw7", id, err)
+	item, err := c.AddToBoard(ctx, 7)
+	if err != nil || item.ItemID != "item-I_kw7" {
+		t.Fatalf("AddToBoard = %+v, %v; want item-I_kw7", item, err)
 	}
 	vars := srv.Posts[0].Body["variables"].(map[string]any)
 	if vars["project"] != "P1" || vars["content"] != "I_kw7" {
@@ -473,7 +492,7 @@ func TestAddToBoard(t *testing.T) {
 	if srv.Count("AddToBoard") != 1 {
 		t.Errorf("Count(AddToBoard) = %d, want 1", srv.Count("AddToBoard"))
 	}
-	got, ok, err := c.IssueItem(ctx, "P1", 7)
+	got, ok, err := c.IssueItem(ctx, 7)
 	if err != nil || !ok || got.ItemID != "item-I_kw7" {
 		t.Fatalf("IssueItem after AddToBoard = %+v, %v, %v; want item-I_kw7", got, ok, err)
 	}

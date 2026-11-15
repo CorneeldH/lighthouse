@@ -975,7 +975,7 @@ def test_memory_unmeasurable_blocks(gate: Gate) -> None:
 
 def test_memory_wait_stays_within_deadline(gate: Gate) -> None:
     gate.configure(
-        TEST_GATE.replace("slot_wait_seconds = 1", "slot_wait_seconds = 30")
+        TEST_GATE.replace("slot_wait_seconds = 1", "slot_wait_seconds = 300")
         + "deadline_seconds = 2\n"
     )
     gate.host.write_text(HOST_THRESHOLDS, encoding="utf-8")
@@ -985,9 +985,10 @@ def test_memory_wait_stays_within_deadline(gate: Gate) -> None:
     elapsed = time.monotonic() - start
 
     assert result.returncode == 2, result.stdout
-    # The stderr line checks the clip; the bound only that the hook waited no 30 s. It counts
-    # from the test start, so the hook-start lag (>3 s on macOS CI, #303) needs room.
-    assert elapsed < 20
+    # The stderr line checks the clip; the bound only that the hook waited no 300 s. It counts
+    # from the test start, so the hook-start lag (>3 s on macOS CI, #303) needs room: 60 s
+    # is ten times a slow run and a fifth of the wrong one (#338).
+    assert elapsed < 60
     assert re.search(r"host memory below threshold after [12] s", result.stderr), result.stderr
     assert not gate.mark.exists()
 
@@ -1113,8 +1114,9 @@ def test_foreign_commit_takes_no_slot(gate: Gate) -> None:
 
 def test_slot_stays_held_until_deadline_py_ends(gate: Gate) -> None:
     # LIGHTHOUSE_GATE_START: the deadline falls 8 s after now. Fake `uv` records that it
-    # runs and then sleeps long; that way the run lives until that deadline.
-    gate.add_stub("uv", '#!/bin/sh\npwd >> "$UV_MARK"\nsleep 30\n')
+    # runs and then sleeps long; that way the run lives until that deadline. 300 s: a slot
+    # held for as long as `uv` lives stays far above the 60 s bound below (#338).
+    gate.add_stub("uv", '#!/bin/sh\npwd >> "$UV_MARK"\nsleep 300\n')
     tmpdir = gate.tmp / "tmpdir"
     tmpdir.mkdir()
     env = dict(
@@ -1145,7 +1147,7 @@ def test_slot_stays_held_until_deadline_py_ends(gate: Gate) -> None:
     hook.stdin.close()
     try:
         while not gate.marks():
-            assert time.monotonic() - start < 15, "nep-uv startte niet"
+            assert time.monotonic() - start < 60, "nep-uv startte niet"
             time.sleep(0.05)
 
         # `run.sh` dies while pytest runs: the binary lives on and holds the
@@ -1155,8 +1157,10 @@ def test_slot_stays_held_until_deadline_py_ends(gate: Gate) -> None:
         slot = gate.slot_dir / "slot-1"
         assert not _slot_is_free(slot)
 
+        # Free at the latest after the deadline plus the grace, 18 s from the start; 60 s
+        # leaves a slow runner room, and a slot held until `uv` ends (300 s) still fails (#338).
         while not _slot_is_free(slot):
-            assert time.monotonic() - start < 8 + 10 + 2, "slot kwam niet vrij"
+            assert time.monotonic() - start < 60, "slot kwam niet vrij"
             time.sleep(0.2)
     finally:
         if hook.poll() is None:
@@ -1483,9 +1487,10 @@ def test_slot_wait_is_capped_by_the_deadline(gate: Gate) -> None:
 
     assert result.returncode == 2, result.stdout
     # The cap itself, free of the hook-start lag; the bound only guards that the wait
-    # really ended, with room for that lag (>3 s on macOS CI, #303).
+    # really ended, with room for that lag (>3 s on macOS CI, #303): 60 s is ten times a
+    # slow run, the wrong wait is 100000 s (#338).
     assert "all gate slots busy after 2 s" in result.stderr, result.stderr
-    assert elapsed < 30
+    assert elapsed < 60
     assert not gate.mark.exists()
 
 

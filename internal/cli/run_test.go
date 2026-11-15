@@ -154,6 +154,24 @@ func TestRunUnknownRepo(t *testing.T) {
 	}
 }
 
+// Two [dispatch] paths with the slug of the target: run refuses, naming both, and reads nothing.
+func TestRunRefusesDuplicateSlug(t *testing.T) {
+	first, second := repoDir(t, completeRepo), repoDir(t, completeRepo)
+	env, db := tickFixture(t, first, second)
+	srv := fakeForge(t, &env)
+	var errOut bytes.Buffer
+	err := runIssue(context.Background(), env, "o/r#7", db, &errOut)
+	if err == nil || !strings.HasPrefix(err.Error(), "run: ") || !strings.Contains(err.Error(), first) || !strings.Contains(err.Error(), second) {
+		t.Fatalf("err = %v, want a run error naming %s and %s", err, first, second)
+	}
+	if n := srv.Count("Board"); n != 0 {
+		t.Errorf("Board requests = %d, want 0", n)
+	}
+	if errOut.Len() != 0 {
+		t.Errorf("errOut = %q, want nothing", errOut.String())
+	}
+}
+
 func TestRunBadTarget(t *testing.T) {
 	for _, target := range []string{"o/r", "o/r#", "o/r#0", "o/r#-1", "o/r#x", "#7", "r#7", "o/r#7#8"} {
 		env, db := tickFixture(t, repoDir(t, completeRepo))

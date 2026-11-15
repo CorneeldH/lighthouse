@@ -49,7 +49,7 @@ type issueItem struct {
 
 func (it issueItem) issue() Issue {
 	out := Issue{Number: it.Number, Title: it.Title, URL: it.HTMLURL, Comments: it.Comments, State: it.State,
-		Body: it.Body, NodeID: it.NodeID, UpdatedAt: it.UpdatedAt}
+		Body: it.Body, UpdatedAt: it.UpdatedAt}
 	if it.ClosedAt != nil {
 		out.ClosedAt = *it.ClosedAt
 	}
@@ -65,14 +65,14 @@ func (it issueItem) issue() Issue {
 	return out
 }
 
-// ClosedInMilestone lists the closed issues of a milestone that closed at or after since,
-// following every page, without pull requests.
-func (c *Client) ClosedInMilestone(ctx context.Context, milestone int, since time.Time) ([]Issue, error) {
+// ClosedInMilestone lists the closed issues of milestone m (by m.Number) that closed at or
+// after since, following every page, without pull requests.
+func (c *GitHub) ClosedInMilestone(ctx context.Context, m Milestone, since time.Time) ([]Issue, error) {
 	if err := c.configured(); err != nil {
 		return nil, err
 	}
 	var out []Issue
-	url := fmt.Sprintf("%s/repos/%s/issues?state=closed&milestone=%d&per_page=100", c.BaseURL, c.Repo, milestone)
+	url := fmt.Sprintf("%s/repos/%s/issues?state=closed&milestone=%d&per_page=100", c.BaseURL, c.Repo, m.Number)
 	for url != "" {
 		var page []issueItem
 		next, err := c.do(ctx, http.MethodGet, url, nil, &page)
@@ -93,7 +93,7 @@ func (c *Client) ClosedInMilestone(ctx context.Context, milestone int, since tim
 }
 
 // BlockedBy lists the issues that block issue number. MergedPR stays false: REST does not say.
-func (c *Client) BlockedBy(ctx context.Context, number int) ([]Blocker, error) {
+func (c *GitHub) BlockedBy(ctx context.Context, number int) ([]Blocker, error) {
 	if err := c.configured(); err != nil {
 		return nil, err
 	}
@@ -128,7 +128,7 @@ func repoFromURL(u string) string {
 }
 
 // OpenPRs lists all open pull requests of the repo, following every page.
-func (c *Client) OpenPRs(ctx context.Context) ([]OpenPR, error) {
+func (c *GitHub) OpenPRs(ctx context.Context) ([]OpenPR, error) {
 	if err := c.configured(); err != nil {
 		return nil, err
 	}

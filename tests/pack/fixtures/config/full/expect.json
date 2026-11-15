@@ -9,6 +9,14 @@
  },
  {
   "args": [
+   "forge.token_env"
+  ],
+  "rc": 0,
+  "stdout": "WORK_TOKEN\n",
+  "stderr": ""
+ },
+ {
+  "args": [
    "paths.specs"
   ],
   "rc": 0,

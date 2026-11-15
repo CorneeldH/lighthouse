@@ -64,12 +64,14 @@ func TestAcquireGivesBusyWhenBothAreHeld(t *testing.T) {
 	dir, files := twoSlots(t)
 	hold(t, dir, 1)
 	hold(t, dir, 2)
+	// An interval of a minute: an Acquire that sleeps even once before it gives up takes
+	// 60 s, so a bound of half that tells it apart on any runner (#338).
 	start := time.Now()
-	slot, err := Acquire(files, 0, time.Second)
+	slot, err := Acquire(files, 0, time.Minute)
 	if !errors.Is(err, ErrSlotsBusy) || slot != 0 {
 		t.Fatalf("Acquire = %d, %v; want ErrSlotsBusy", slot, err)
 	}
-	if time.Since(start) > 500*time.Millisecond {
+	if time.Since(start) > 30*time.Second {
 		t.Errorf("a wait of 0 took %v", time.Since(start))
 	}
 	if err.Error() != "all gate slots busy" {

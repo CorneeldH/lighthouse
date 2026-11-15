@@ -102,7 +102,9 @@ func TestExecJudgeNonZero(t *testing.T) {
 }
 
 func TestExecJudgeTimeout(t *testing.T) {
-	fakeClaude(t, "exec sleep 5")
+	// The fake sleeps 120 s: a judge that waits for it takes that long, so a bound of
+	// a quarter tells it apart from the 100 ms timeout on any runner (#338).
+	fakeClaude(t, "exec sleep 120")
 	old := judgeTimeout
 	judgeTimeout = 100 * time.Millisecond
 	t.Cleanup(func() { judgeTimeout = old })
@@ -115,8 +117,8 @@ func TestExecJudgeTimeout(t *testing.T) {
 	if !strings.Contains(err.Error(), "deadline exceeded") {
 		t.Errorf("err = %v, want the deadline", err)
 	}
-	if took := time.Since(start); took > 2*time.Second {
-		t.Errorf("took %v, want under 2s", took)
+	if took := time.Since(start); took > 30*time.Second {
+		t.Errorf("took %v, want far under the fake's 120 s", took)
 	}
 }
 

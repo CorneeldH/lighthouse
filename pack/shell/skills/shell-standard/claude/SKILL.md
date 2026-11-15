@@ -166,9 +166,9 @@ runner, check these three by hand.
 - **`realpath -m` exists only in GNU coreutils.** BSD answers
   `realpath: illegal option -- m`, and `X=$(realpath -m "$p") || exit 0` turns that into a
   silent fail-open: defect 4, in the hook that was meant to close the gap. Use a helper
-  that tries `realpath -m` and otherwise
-  `python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))'`. The flag matters:
-  the target path of a `Write` need not exist yet.
+  that tries `realpath -m -- "$p" 2>/dev/null` and otherwise resolves the parent
+  directory: `d=$(cd -P -- "$(dirname -- "$p")" 2>/dev/null && pwd -P) && printf '%s/%s\n' "$d" "$(basename -- "$p")"`.
+  No Python. The flag matters: the target path of a `Write` need not exist yet.
 - **No `VAR=$(cat <<'EOF' … EOF\n)`.** Bash 3.2 reads a heredoc inside a command
   substitution as shell, not as a heredoc; every backtick in the body becomes a
   substitution itself. Result: `unexpected EOF while looking for matching \``. In a

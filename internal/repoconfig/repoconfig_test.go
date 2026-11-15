@@ -390,6 +390,60 @@ func TestDefaultStringPanicsWithoutStringDefault(t *testing.T) {
 	}
 }
 
+func TestLoadReadsHostAndTokenEnv(t *testing.T) {
+	r, err := Load(write(t, "[forge]\nkind = \"gitlab\"\nrepo = \"g/sub/p\"\nhost = \"git.example.org\"\ntoken_env = \"WORK_GITLAB\"\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Host != "git.example.org" || r.TokenEnv != "WORK_GITLAB" {
+		t.Errorf("host/token_env: %q, %q", r.Host, r.TokenEnv)
+	}
+	r, err = Load(write(t, "[forge]\nrepo = \"o/r\"\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Host != "" || r.TokenEnv != "" {
+		t.Errorf("absent host/token_env must be empty: %q, %q", r.Host, r.TokenEnv)
+	}
+}
+
+func TestLoadAllRefusesDuplicateSlug(t *testing.T) {
+	dirA := write(t, "[forge]\nrepo = \"o/r\"\n")
+	dirB := write(t, "[forge]\nrepo = \"o/x\"\n")
+	dirC := write(t, "[forge]\nrepo = \"o/r\"\n")
+	got := LoadAll([]string{dirA, dirB, dirC})
+	if len(got) != 3 {
+		t.Fatalf("got %d results", len(got))
+	}
+	if got[0].Err == nil || got[2].Err == nil || got[1].Err != nil {
+		t.Fatalf("errs: %v, %v, %v", got[0].Err, got[1].Err, got[2].Err)
+	}
+	if got[0].Repo.Slug != "o/r" || got[2].Repo.Slug != "o/r" {
+		t.Errorf("slug must stay filled: %q, %q", got[0].Repo.Slug, got[2].Repo.Slug)
+	}
+	if want := dirA + ": [forge] repo o/r is also the repo of " + dirC; got[0].Err.Error() != want {
+		t.Errorf("err 0 = %q, want %q", got[0].Err, want)
+	}
+	if want := dirC + ": [forge] repo o/r is also the repo of " + dirA; got[2].Err.Error() != want {
+		t.Errorf("err 2 = %q, want %q", got[2].Err, want)
+	}
+	if got[1].Path != dirB || got[1].Repo.Slug != "o/x" {
+		t.Errorf("unique repo: %+v", got[1])
+	}
+}
+
+func TestLoadAllKeepsLoadError(t *testing.T) {
+	dir := t.TempDir()
+	got := LoadAll([]string{dir})
+	_, want := Load(dir)
+	if len(got) != 1 || got[0].Path != dir || got[0].Err == nil || got[0].Err.Error() != want.Error() {
+		t.Fatalf("got %+v, want err %v", got, want)
+	}
+	if got[0].Repo.Slug != "" {
+		t.Errorf("Repo must be empty on a Load error: %+v", got[0].Repo)
+	}
+}
+
 func TestControllerLocations(t *testing.T) {
 	t.Run("map", func(t *testing.T) {
 		r, err := Load(write(t, "[forge]\nrepo = \"o/r\"\n[controller]\n[controller.locations]\nmac = \"mac\"\ncontainer = \"software\"\n"))

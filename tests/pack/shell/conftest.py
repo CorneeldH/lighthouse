@@ -20,7 +20,7 @@ CHECKOUT = Path(__file__).resolve().parents[3]
 
 
 @pytest.fixture(autouse=True)
-def _installed_core(monkeypatch):
+def _installed_core(monkeypatch, lighthouse_bin):
     monkeypatch.setenv("LIGHTHOUSE_REPO_ROOT", str(SHELL_ROOT))
     monkeypatch.delenv("LIGHTHOUSE_TOML", raising=False)
     monkeypatch.delenv("SHELLCHECK_BIN", raising=False)

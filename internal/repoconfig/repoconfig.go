@@ -23,6 +23,8 @@ type Repo struct {
 	Slug                 string // [forge] repo
 	Kind                 string // [forge] kind, default "github"
 	DefaultBranch        string // [forge] default_branch, default "main"
+	Host                 string // [forge] host, "" when absent
+	TokenEnv             string // [forge] token_env, "" when absent
 	Language             string // [project] language, default "en"
 	Board                *Board // nil when [forge.board] is absent
 	Controller           *Controller
@@ -101,6 +103,8 @@ type rawFile struct {
 		Repo          string `toml:"repo"`
 		Kind          string `toml:"kind"`
 		DefaultBranch string `toml:"default_branch"`
+		Host          string `toml:"host"`
+		TokenEnv      string `toml:"token_env"`
 		Board         *Board `toml:"board"`
 	} `toml:"forge"`
 	Project struct {
@@ -153,6 +157,8 @@ func Load(dir string) (Repo, error) {
 		Slug:                 raw.Forge.Repo,
 		Kind:                 cmp.Or(raw.Forge.Kind, "github"),
 		DefaultBranch:        cmp.Or(raw.Forge.DefaultBranch, defaultString("forge.default_branch")),
+		Host:                 raw.Forge.Host,
+		TokenEnv:             raw.Forge.TokenEnv,
 		Language:             cmp.Or(raw.Project.Language, "en"),
 		Board:                raw.Forge.Board,
 		UsageGuardController: raw.UsageGuard.Controller,
@@ -192,6 +198,40 @@ func Load(dir string) (Repo, error) {
 		r.Triage, r.TriageErr = triageFrom(t.Triage, md)
 	}
 	return r, nil
+}
+
+// Loaded is the result of loading one path in LoadAll.
+type Loaded struct {
+	Path string
+	Repo Repo
+	Err  error
+}
+
+// LoadAll loads every path, in order. A path whose Load fails carries that error and an empty
+// Repo. Two paths that load with the same slug both carry an error naming the other path; their
+// Repo stays filled so the caller sees the slug.
+func LoadAll(paths []string) []Loaded {
+	out := make([]Loaded, len(paths))
+	for i, p := range paths {
+		r, err := Load(p)
+		out[i] = Loaded{Path: p, Repo: r, Err: err}
+	}
+	loaded := make([]bool, len(out))
+	for i := range out {
+		loaded[i] = out[i].Err == nil
+	}
+	for i := range out {
+		if !loaded[i] {
+			continue
+		}
+		for j := range out {
+			if j != i && loaded[j] && out[j].Repo.Slug == out[i].Repo.Slug {
+				out[i].Err = fmt.Errorf("%s: [forge] repo %s is also the repo of %s", out[i].Path, out[i].Repo.Slug, out[j].Path)
+				break
+			}
+		}
+	}
+	return out
 }
 
 // triageFrom fills the defaults of [controller.triage] and reports an unknown key, a

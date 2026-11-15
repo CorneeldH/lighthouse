@@ -10,11 +10,15 @@ import (
 
 const (
 	// RefreshInterval is the time from the start of one build to the start of the next.
-	RefreshInterval = 2 * time.Minute
+	// A new comment reaches the page at worst RefreshInterval + BuildTimeout + the page poll
+	// (QUESTIONS_INTERVAL_MS) after it is posted; that sum stays within the 3-minute tick
+	// interval (#307, TestNewCommentOnPageWithinTickInterval).
+	RefreshInterval = 90 * time.Second
 	// RefreshRetry is the wait after a failed build, measured from its start.
 	RefreshRetry = 20 * time.Second
-	// BuildTimeout bounds a single build.
-	BuildTimeout = 90 * time.Second
+	// BuildTimeout bounds a single build: three times the 16–20 s of a live build, for a slow
+	// GitHub. Builds read repositories one after the other, so more repositories need more.
+	BuildTimeout = 60 * time.Second
 )
 
 // BuildFunc builds the forge overview once.

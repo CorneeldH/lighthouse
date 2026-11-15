@@ -77,6 +77,7 @@ const (
 // type. The order is config.py's: with two bad keys the first one in this list is reported.
 var schema = []struct{ key, kind string }{
 	{"forge.default_branch", kStr},
+	{"forge.token_env", kStr},
 	{"paths.specs", kStr},
 	{"paths.plans", kStr},
 	{"paths.tenets", kStr},

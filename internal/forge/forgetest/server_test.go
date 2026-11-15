@@ -15,7 +15,7 @@ import (
 
 // The REST side of the server, driven by the real client the dispatcher tests use.
 
-func client(srv *forgetest.Server) *forge.Client {
+func client(srv *forgetest.Server) *forge.GitHub {
 	c := forge.New("o/r", "secret-token")
 	c.BaseURL = srv.URL()
 	return c
@@ -54,7 +54,7 @@ func TestRocketsPageAt100(t *testing.T) {
 		logins[i] = fmt.Sprintf("u%d", i)
 	}
 	srv.Rockets = map[int64][]string{42: logins}
-	got, err := client(srv).RocketLogins(context.Background(), 42)
+	got, err := client(srv).Acknowledgers(context.Background(), 0, 42)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,15 +70,15 @@ func TestRoles(t *testing.T) {
 	srv := forgetest.New(t)
 	srv.Roles = map[string]string{"ann": "maintain"}
 	c := client(srv)
-	if role, err := c.RoleName(context.Background(), "ann"); err != nil || role != "maintain" {
-		t.Fatalf("RoleName(ann) = %q, %v; want maintain", role, err)
+	if role, err := c.Role(context.Background(), "ann"); err != nil || role != "maintain" {
+		t.Fatalf("Role(ann) = %q, %v; want maintain", role, err)
 	}
-	if role, err := c.RoleName(context.Background(), "nobody"); err != nil || role != "" {
-		t.Fatalf("RoleName(nobody) = %q, %v; want \"\" and no error (404)", role, err)
+	if role, err := c.Role(context.Background(), "nobody"); err != nil || role != "" {
+		t.Fatalf("Role(nobody) = %q, %v; want \"\" and no error (404)", role, err)
 	}
 	srv.RoleStatus = 502
-	if _, err := c.RoleName(context.Background(), "ann"); err == nil || !strings.Contains(err.Error(), "502") {
-		t.Fatalf("RoleName with RoleStatus 502: err = %v, want a 502 error", err)
+	if _, err := c.Role(context.Background(), "ann"); err == nil || !strings.Contains(err.Error(), "502") {
+		t.Fatalf("Role with RoleStatus 502: err = %v, want a 502 error", err)
 	}
 	if n := srv.Count("/repos/o/r/collaborators/ann/permission"); n != 2 {
 		t.Fatalf("permission requests for ann = %d, want 2", n)
@@ -99,7 +99,7 @@ func TestPostedCommentsAndRockets(t *testing.T) {
 		posted.URL != "https://github.com/o/r/issues/7#issuecomment-41" {
 		t.Fatalf("CreateComment = %+v; want id 41 by lh-bot at 11:00 UTC", posted)
 	}
-	if err := c.AddRocket(context.Background(), 40); err != nil {
+	if err := c.Acknowledge(context.Background(), 0, 40); err != nil {
 		t.Fatal(err)
 	}
 	got, err := c.Comments(context.Background(), 7)
@@ -109,8 +109,8 @@ func TestPostedCommentsAndRockets(t *testing.T) {
 	if len(got) != 2 || got[0].Rockets != 1 || got[1].ID != 41 || got[1].Body != "🤖 Gestart" || got[1].Author != "lh-bot" {
 		t.Fatalf("Comments = %+v; want the old one with a rocket, then the posted one", got)
 	}
-	if logins, err := c.RocketLogins(context.Background(), 40); err != nil || len(logins) != 1 || logins[0] != "lh-bot" {
-		t.Fatalf("RocketLogins(40) = %v, %v; want [lh-bot]", logins, err)
+	if logins, err := c.Acknowledgers(context.Background(), 0, 40); err != nil || len(logins) != 1 || logins[0] != "lh-bot" {
+		t.Fatalf("Acknowledgers(40) = %v, %v; want [lh-bot]", logins, err)
 	}
 	if got := srv.IssueComments(7); len(got) != 2 || got[1]["body"] != "🤖 Gestart" {
 		t.Fatalf("IssueComments(7) = %v; want the posted comment last", got)

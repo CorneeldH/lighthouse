@@ -55,7 +55,7 @@ func (f *fakeTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	}, nil
 }
 
-func newTestClient(t *testing.T, responses map[string]fakeResponse) (*Client, *fakeTransport) {
+func newTestClient(t *testing.T, responses map[string]fakeResponse) (*GitHub, *fakeTransport) {
 	t.Helper()
 	ft := &fakeTransport{t: t, getOnly: true, responses: responses}
 	c := New("o/r", "secret-token")
@@ -189,7 +189,7 @@ func TestNewDefaults(t *testing.T) {
 }
 
 func TestNotConfigured(t *testing.T) {
-	for name, c := range map[string]*Client{"no token": New("o/r", ""), "no repo": New("", "t")} {
+	for name, c := range map[string]*GitHub{"no token": New("o/r", ""), "no repo": New("", "t")} {
 		t.Run(name, func(t *testing.T) {
 			ft := &fakeTransport{t: t}
 			c.HTTP = &http.Client{Transport: ft}
@@ -263,9 +263,9 @@ func TestReadsOnlyGET(t *testing.T) {
 
 func TestNextPageOnOtherHostIsRefused(t *testing.T) {
 	evil := "https://evil.example/repositories/1/issues?page=2"
-	methods := map[string]func(c *Client) (any, error){
-		"OpenIssues": func(c *Client) (any, error) { return c.OpenIssues(context.Background()) },
-		"Comments":   func(c *Client) (any, error) { return c.Comments(context.Background(), 7) },
+	methods := map[string]func(c *GitHub) (any, error){
+		"OpenIssues": func(c *GitHub) (any, error) { return c.OpenIssues(context.Background()) },
+		"Comments":   func(c *GitHub) (any, error) { return c.Comments(context.Background(), 7) },
 	}
 	for name, call := range methods {
 		t.Run(name, func(t *testing.T) {

@@ -167,24 +167,37 @@ it as `owner/name#number`. Every `owner/name#number` in the UI links to
   `LIGHTHOUSE_FORGE_REPO=owner/name`.
 
 `/api/questions` and `/api/returned` do not call GitHub per request: they show one shared overview
-that `serve` builds at start and then every 2 minutes (start to start, never two builds at once,
-a time-out of 90 s per build). A build that fails is retried after 20 s, and until one succeeds
+that `serve` builds at start and then every 90 s (start to start, never two builds at once,
+a time-out of 60 s per build, three times the 16–20 s of a live build). A build that fails is retried after 20 s, and until one succeeds
 both endpoints answer 502 (503 without repositories or without a token) instead of old data. The first request after
-a start waits for the first build. So `serve` reads GitHub also when nobody looks: 30 builds an
-hour per set of repositories. The Refresh button of the page re-reads that overview; it does not
-start a build, so a new question can take up to 2 minutes to appear after a click.
+a start waits for the first build. So `serve` reads GitHub also when nobody looks: 40 builds an
+hour per set of repositories. The page re-reads that overview every 15 s; that reads memory, not GitHub. Its Refresh button
+re-reads it too; it does not start a build.
+
+A new question or return is on the page within one tick interval (3 minutes) of its comment. The
+worst case is 90 s until the next build starts, 60 s for that build and 15 s until the page polls:
+165 s. `TestNewCommentOnPageWithinTickInterval` in `internal/server` runs that case and fails
+when the sum passes the `OnUnitActiveSec` of `lighthouse-tick.timer`.
 
 A build costs, per repository, 1 REST call for the open issues (more when they span several pages
 of 100) and 1 REST call per Controller issue that has comments (more for over 100 comments). The
 board items (only with the Controller filter) are 1 GraphQL call, more for a large board, which
-counts against GitHub's separate GraphQL limit, not against the 5000 REST requests an hour. At 30
+counts against GitHub's separate GraphQL limit of 5000 points an hour, not against the 5000 REST
+requests an hour. One page of 100 board items costs 14 points (measured 2026-11-14 with
+`rateLimit(dryRun: true)`), so two repositories on boards under 100 items cost 28 points a build
+and 1120 an hour. At 40
 builds an hour (the steady state; during an outage the 20 s retry can raise that to 180 an hour)
 the REST calls must fit, together with the tick, in the 5000 requests an hour of one token. A repository without the Controller filter reads the comments of every open issue that
 has comments, so it weighs most and reaches the budget first. That is a deliberately accepted
 risk, with no code to guard it; when the budget runs out both endpoints answer 502 through the
 existing `forgeError`.
 
-Give it a token: `GH_TOKEN` (else `GITHUB_TOKEN`) in the environment. Create a fine-grained
+Give it a token: `GH_TOKEN` (else `GITHUB_TOKEN`) in the environment, or `GITLAB_TOKEN` for a
+GitLab repository (GitLab repositories are supported from #259; until then such a repository is
+skipped with `forge: GitLab client not implemented yet`). `[forge] token_env` in a repository's `lighthouse.toml` names another variable
+instead. A repository without a token is skipped for questions and returned issues, with a line on
+stderr, but `serve` still shows its runs. `--forge-url` (`LIGHTHOUSE_FORGE_URL`) sets the API base
+URL for GitHub repositories only; the GitHub token is never sent to a GitLab host. Create a fine-grained
 personal access token for those repositories with only the *Issues: read* permission. The
 server only reads. With the Controller filter described below it also needs the `project` scope.
 

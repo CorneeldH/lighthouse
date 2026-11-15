@@ -170,9 +170,15 @@
               "required": "no",
               "about": "The host name of a self-hosted GitLab, without scheme, port or path. Valid only with kind gitlab.",
               "example": "git.example.org",
-              "readers": [
-                "internal/initcmd/initcmd.go"
-              ]
+              "readers": ["internal/initcmd/initcmd.go", "internal/repoconfig/repoconfig.go"]
+            },
+            {
+              "key": "forge.token_env",
+              "level": "advanced",
+              "required": "no",
+              "about": "The name of the environment variable that holds the forge token, instead of GH_TOKEN and GITHUB_TOKEN (github) or GITLAB_TOKEN (gitlab). The token itself never goes in lighthouse.toml.",
+              "example": "WORK_GITLAB_TOKEN",
+              "readers": ["internal/repoconfig/repoconfig.go"]
             },
             {
               "key": "forge.default_branch",
@@ -269,6 +275,7 @@
               "readers": [
                 "internal/boardstart/boardstart.go",
                 "internal/cli/triage.go",
+                "internal/forge/board.go",
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/close-issue",
                 "pack/core/skills/write-handoff",
@@ -320,7 +327,9 @@
                 "internal/boardstart/boardstart.go",
                 "internal/cli/serve.go",
                 "internal/cli/triage.go",
-                "internal/dispatch/board.go",
+                "internal/dispatch/gather.go",
+                "internal/forge/board.go",
+                "internal/forge/forge.go",
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/write-handoff",
                 "pack/core/skills/write-issue",
@@ -343,6 +352,7 @@
               "readers": [
                 "internal/commitgate/gate.go",
                 "internal/commitgate/message.go",
+                "internal/initcmd/gatecommand.go",
                 "pack/core/instructions/AGENTS.md",
                 "pack/core/skills/fix-pr",
                 "pack/core/skills/write-pr",
@@ -400,9 +410,8 @@
               "about": "Exit codes of the test command that mean the tests could not run; the gate reports COULD NOT CHECK instead of failed tests.",
               "readers": [
                 "internal/commitgate/gate.go",
-                "pack/go/scripts/gate_go.py",
+                "internal/gate/gate.go",
                 "pack/go/skills/go-standard",
-                "pack/node/scripts/gate_node.py",
                 "pack/python/scripts/gate_python.py",
                 "pack/python/skills/python-standard"
               ]

@@ -9,7 +9,7 @@ import (
 )
 
 // Login returns the login of the token's user.
-func (c *Client) Login(ctx context.Context) (string, error) {
+func (c *GitHub) Login(ctx context.Context) (string, error) {
 	if err := c.configured(); err != nil {
 		return "", err
 	}
@@ -22,8 +22,9 @@ func (c *Client) Login(ctx context.Context) (string, error) {
 	return u.Login, nil
 }
 
-// RocketLogins lists the logins that put a 🚀 on one comment, following every page.
-func (c *Client) RocketLogins(ctx context.Context, commentID int64) ([]string, error) {
+// Acknowledgers lists the logins that put a 🚀 on one comment, following every page. number
+// is not used: GitHub addresses a comment by its ID alone.
+func (c *GitHub) Acknowledgers(ctx context.Context, _ int, commentID int64) ([]string, error) {
 	if err := c.configured(); err != nil {
 		return nil, err
 	}
@@ -50,9 +51,9 @@ func (c *Client) RocketLogins(ctx context.Context, commentID int64) ([]string, e
 	return out, nil
 }
 
-// RoleName returns the repository role of user ("admin", "maintain", "write", "triage", "read",
+// Role returns the repository role of user ("admin", "maintain", "write", "triage", "read",
 // or a custom role). An unknown login gives "" and no error.
-func (c *Client) RoleName(ctx context.Context, user string) (string, error) {
+func (c *GitHub) Role(ctx context.Context, user string) (string, error) {
 	if err := c.configured(); err != nil {
 		return "", err
 	}

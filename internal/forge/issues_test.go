@@ -20,7 +20,7 @@ func fieldIssue(n int, state string) map[string]any {
 func wantFields(n int, state string) Issue {
 	return Issue{Number: n, Title: "Titel", URL: "https://github.com/o/r/issues/7", Comments: 2, State: state,
 		Body: "De body", Author: "anna", Labels: []string{"needs-shaping", "area-x"},
-		UpdatedAt: time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC), NodeID: "I_kw7",
+		UpdatedAt: time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC),
 		Milestone: &Milestone{Number: 3, Title: "M2", State: "open", Description: "Omschrijving"}}
 }
 
@@ -71,7 +71,7 @@ func TestClosedInMilestone(t *testing.T) {
 	srv.Issues = map[int]map[string]any{
 		11: mk(11, 3, 10), 12: mk(12, 3, 29), 13: mk(13, 3, 31), 14: mk(14, 4, 1), 15: open,
 	}
-	got, err := c.ClosedInMilestone(context.Background(), 3, now.AddDate(0, 0, -30))
+	got, err := c.ClosedInMilestone(context.Background(), Milestone{Number: 3}, now.AddDate(0, 0, -30))
 	if err != nil {
 		t.Fatal(err)
 	}

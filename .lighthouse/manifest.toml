@@ -29,14 +29,14 @@ kind = "file"
 path = ".agents/skills/lighthouse-go-standard/SKILL.md"
 package = "go"
 version = "dev"
-sha256 = "d675c4ce37ee9b98ffe3b5934ea0369aca769aae4c6c9217f4bab7b910147400"
+sha256 = "6842529e7ebc8fb198b7c867eb4c22ef188ceaf8162d660de754af2bae1e008a"
 
 [[unit]]
 kind = "file"
 path = ".agents/skills/lighthouse-place-instruction/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "144f7f4dc292b57f0eaeaadfaf2ede216f7ed6f16dac386206dfadbf7694b821"
+sha256 = "97a7e0e43d806479c44ef85d4411f8d7cd5ad1a872c49404bfa6e956003a99b2"
 
 [[unit]]
 kind = "file"
@@ -363,14 +363,14 @@ kind = "file"
 path = ".claude/skills/lighthouse-go-standard/SKILL.md"
 package = "go"
 version = "dev"
-sha256 = "5f69fc40c15414e6e8584d7b60dc193cfd2493bd9a4d1a76881bdb74805e8045"
+sha256 = "e455cde8ffc3e9004fe83e8587f113d3329eb6363c12d6088030ab497ca34110"
 
 [[unit]]
 kind = "file"
 path = ".claude/skills/lighthouse-place-instruction/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "144f7f4dc292b57f0eaeaadfaf2ede216f7ed6f16dac386206dfadbf7694b821"
+sha256 = "97a7e0e43d806479c44ef85d4411f8d7cd5ad1a872c49404bfa6e956003a99b2"
 
 [[unit]]
 kind = "file"
@@ -517,7 +517,7 @@ kind = "file"
 path = ".lighthouse/lib/lighthouse_lib/config.py"
 package = "core"
 version = "dev"
-sha256 = "331e2f5f24d1e1ad5b12fa5d044adc88b37260635910452d1826818d1073ad18"
+sha256 = "49afe0fea248c693e04933b043c5335dd8d70418ed274b0f7abacd19e9932794"
 
 [[unit]]
 kind = "file"
@@ -546,20 +546,6 @@ path = ".lighthouse/scripts/create_labels.py"
 package = "core"
 version = "dev"
 sha256 = "cf79f3adc5339bbb0d1b3a768b270707eefeaebfd177f1e5d6f20cfdd263eb49"
-
-[[unit]]
-kind = "file"
-path = ".lighthouse/scripts/gate_go.py"
-package = "go"
-version = "dev"
-sha256 = "6734ce86dc19931582d19867fd39dcadb0a6dd1d88c3eaed8ddbe2cad09d706b"
-
-[[unit]]
-kind = "file"
-path = ".lighthouse/scripts/gate_node.py"
-package = "node"
-version = "dev"
-sha256 = "b333b7e2d9feca85cc3859e7fadd3df1549d741c76c8da4aa35ec59aec46faac"
 
 [[unit]]
 kind = "block"
