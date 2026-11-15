@@ -2,6 +2,8 @@ package forge_test
 
 import (
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"slices"
 	"strings"
 	"testing"
@@ -157,5 +159,28 @@ func TestGitLabUnconfigured(t *testing.T) {
 	}
 	if _, err := f.Login(t.Context()); err == nil || err.Error() != forge.ErrNotConfigured.Error() {
 		t.Errorf("Login without a token = %v; want ErrNotConfigured", err)
+	}
+}
+
+func TestGitLabTokenDoesNotFollowARedirectToAnotherHost(t *testing.T) {
+	var leaked []string
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		leaked = append(leaked, r.Header.Get("PRIVATE-TOKEN"))
+		_, _ = w.Write([]byte(`{"username":"evil"}`))
+	}))
+	defer other.Close()
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, other.URL+r.URL.Path, http.StatusFound)
+	}))
+	defer origin.Close()
+	f, err := forge.Open(forge.Config{Kind: "gitlab", Repo: "g/p", Token: "secret-token", BaseURL: origin.URL + "/api/v4"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := f.Login(t.Context()); err == nil {
+		t.Errorf("Login = %q, nil; want an error for the redirect to another host", got)
+	}
+	if len(leaked) != 0 {
+		t.Errorf("the other host received requests with tokens %q; want none", leaked)
 	}
 }

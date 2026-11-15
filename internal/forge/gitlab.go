@@ -96,7 +96,7 @@ func (g *GitLab) do(ctx context.Context, method, path string, q neturl.Values, b
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	resp, err := g.HTTP.Do(req)
+	resp, err := g.sameHostClient().Do(req)
 	if err != nil {
 		return "", fmt.Errorf("forge %s %s: %w", method, url, err)
 	}
@@ -110,6 +110,31 @@ func (g *GitLab) do(ctx context.Context, method, path string, q neturl.Values, b
 		}
 	}
 	return resp.Header.Get("x-next-page"), nil
+}
+
+// sameHostClient is a copy of g.HTTP that refuses a redirect to another scheme or host: the
+// PRIVATE-TOKEN header is custom, so net/http would forward it. The caller's client is not
+// changed, and its own CheckRedirect still runs.
+func (g *GitLab) sameHostClient() *http.Client {
+	c := *g.HTTP
+	inner := c.CheckRedirect
+	c.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		base, err := neturl.Parse(g.BaseURL)
+		if err != nil {
+			return fmt.Errorf("forge base URL: %w", err)
+		}
+		if req.URL.Scheme != base.Scheme || req.URL.Host != base.Host {
+			return fmt.Errorf("forge redirect to %s://%s refused: not on %s://%s", req.URL.Scheme, req.URL.Host, base.Scheme, base.Host)
+		}
+		if inner != nil {
+			return inner(req, via)
+		}
+		if len(via) >= 10 {
+			return errors.New("forge: stopped after 10 redirects")
+		}
+		return nil
+	}
+	return &c
 }
 
 // get reads one page of path under the API root into out and returns the next page number.
