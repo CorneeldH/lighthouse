@@ -642,6 +642,7 @@ BETA = 'oauth-2025-04-20","interleaved-thinking-2025-05-14"'
         f'key":"{FORGE_KEY[:20]}',
         PROSE + " ",
         PROSE,
+        PROSE + "`",
     ],
 )
 def test_allowlist_takes_cut_off_header_and_attribution_key(match):
