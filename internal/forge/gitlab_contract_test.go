@@ -144,6 +144,9 @@ func (g *gitlabFixture) AddOpenPR(_ *testing.T, pr forge.OpenPR) {
 // ChecksOnClosedPRs: BranchPRs reads head_pipeline only for an open merge request.
 func (g *gitlabFixture) ChecksOnClosedPRs() bool { return false }
 
+// ListsClosedIssues: every issue is on the board, closed ones within the closed window.
+func (g *gitlabFixture) ListsClosedIssues() bool { return true }
+
 // pipelineStatus, mergeStatus and mrState are the GitLab words of the neutral PR values.
 var (
 	pipelineStatus = map[string]string{"SUCCESS": "success", "FAILURE": "failed", "PENDING": "running"}

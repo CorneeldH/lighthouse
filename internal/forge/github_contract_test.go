@@ -53,6 +53,9 @@ func (g *githubFixture) Login() string      { return g.srv.Login }
 // ChecksOnClosedPRs: statusCheckRollup is on every pull request GitHub lists.
 func (g *githubFixture) ChecksOnClosedPRs() bool { return true }
 
+// ListsClosedIssues: BoardItems lists only the items of the project.
+func (g *githubFixture) ListsClosedIssues() bool { return false }
+
 func (g *githubFixture) AddIssue(_ *testing.T, is forge.Issue) {
 	labels := []any{}
 	for _, l := range is.Labels {

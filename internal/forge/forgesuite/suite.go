@@ -47,6 +47,10 @@ type Fixture interface {
 	// too. GitHub does; GitLab reads head_pipeline only for an open merge request, the only
 	// PR whose checks the dispatcher reads.
 	ChecksOnClosedPRs() bool
+	// ListsClosedIssues reports whether BoardItems also lists closed issues no case put on the
+	// board. GitLab does: every issue is on its board, closed ones within a window. GitHub
+	// lists only the items of its project.
+	ListsClosedIssues() bool
 }
 
 // Case is one contract case.
@@ -468,15 +472,30 @@ func pagination(t *testing.T, f Fixture) {
 		if err != nil {
 			t.Fatalf("BoardItems: %v", err)
 		}
-		// Only the open items count: on GitLab every issue is on the board, so the closed
-		// issues the other subtests add within the window of closed issues are listed too.
+		// The open issues are listed once each. A forge that lists closed issues too (GitLab:
+		// the closed issues the other subtests add, within its window) lists each once, as
+		// CLOSED; any other forge lists none.
 		var nums []int
+		closed := map[int]int{}
 		for _, it := range got {
-			if it.IssueState == "OPEN" {
+			switch it.IssueState {
+			case "OPEN":
 				nums = append(nums, it.Issue)
+			case "CLOSED":
+				closed[it.Issue]++
+			default:
+				t.Errorf("BoardItems lists issue %d as %q, want OPEN or CLOSED", it.Issue, it.IssueState)
 			}
 		}
 		once(t, "BoardItems", nums, open)
+		if len(closed) > 0 && !f.ListsClosedIssues() {
+			t.Errorf("BoardItems lists closed issues %v, want only the open issues on the board", closed)
+		}
+		for n, c := range closed {
+			if c > 1 {
+				t.Errorf("BoardItems lists closed issue %d %d times, want once", n, c)
+			}
+		}
 	})
 }
 
