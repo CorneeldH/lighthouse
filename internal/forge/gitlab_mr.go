@@ -1,0 +1,148 @@
+package forge
+
+import (
+	"context"
+	"errors"
+	"net/http"
+	neturl "net/url"
+	"regexp"
+	"strconv"
+	"time"
+)
+
+// glMR is a merge request in GitLab's REST shape.
+type glMR struct {
+	IID                 int        `json:"iid"`
+	Title               string     `json:"title"`
+	Description         string     `json:"description"`
+	State               string     `json:"state"`
+	Draft               bool       `json:"draft"`
+	SourceBranch        string     `json:"source_branch"`
+	SHA                 string     `json:"sha"`
+	WebURL              string     `json:"web_url"`
+	SourceProjectID     int64      `json:"source_project_id"`
+	TargetProjectID     int64      `json:"target_project_id"`
+	HasConflicts        bool       `json:"has_conflicts"`
+	DetailedMergeStatus string     `json:"detailed_merge_status"`
+	MergedAt            *time.Time `json:"merged_at"`
+	ClosedAt            *time.Time `json:"closed_at"`
+	HeadPipeline        *struct {
+		Status string `json:"status"`
+	} `json:"head_pipeline"`
+}
+
+// pipelineChecks translates the status of a head pipeline to the check states of a PR.
+var pipelineChecks = map[string]string{
+	"success": "SUCCESS", "skipped": "SUCCESS",
+	"failed": "FAILURE", "canceled": "FAILURE",
+	"running": "PENDING", "pending": "PENDING", "created": "PENDING", "preparing": "PENDING",
+	"waiting_for_resource": "PENDING", "scheduled": "PENDING", "manual": "PENDING",
+}
+
+// mrToPR translates a merge request to a PR by the table of the forge spec. Closes is not set
+// here: it takes one more call, see closes.
+func mrToPR(m glMR) PR {
+	p := PR{Number: m.IID, Draft: m.Draft, HeadSHA: m.SHA, HeadRef: m.SourceBranch, URL: m.WebURL,
+		CrossRepo: m.SourceProjectID != m.TargetProjectID}
+	switch m.State {
+	case "merged":
+		p.State = "MERGED"
+	case "closed":
+		p.State = "CLOSED"
+	default: // opened, and locked while it merges
+		p.State = "OPEN"
+	}
+	if m.HeadPipeline != nil {
+		p.Checks = pipelineChecks[m.HeadPipeline.Status]
+	}
+	// Mergeable only says "no conflicts", as on GitHub: approvals, threads and a running
+	// pipeline do not count.
+	switch {
+	case m.HasConflicts:
+		p.Mergeable = "CONFLICTING"
+	case m.DetailedMergeStatus == "unchecked" || m.DetailedMergeStatus == "checking" || m.DetailedMergeStatus == "preparing":
+		p.Mergeable = "UNKNOWN"
+	default:
+		p.Mergeable = "MERGEABLE"
+	}
+	if m.MergedAt != nil {
+		p.MergedAt = *m.MergedAt
+		p.ClosedAt = *m.MergedAt // a merged PR has a ClosedAt too, as on GitHub; GitLab sends none
+	}
+	if m.ClosedAt != nil {
+		p.ClosedAt = *m.ClosedAt
+	}
+	return p
+}
+
+// closingRef matches what GitLab reads as a closing pattern in a description: a closing
+// keyword, then an issue reference (#7, group/project#7 or an issue URL).
+var closingRef = regexp.MustCompile(`(?i)\b(?:clos(?:e[sd]?|ing)|fix(?:e[sd]|ing)?|resolv(?:e[sd]?|ing)|implement(?:s|ed|ing)?)\b:?\s+(?:\S*#\d+|https?://\S+/issues/\d+)`)
+
+// closes reports whether the merge request closes an issue. Only closes_issues knows, and that
+// is one call per MR, so the call is made only for an MR whose description holds a closing
+// reference: GitLab derives closes_issues from the description (and commit messages) and an
+// MR without such a reference in its description is not asked. A merge request whose closing
+// reference sits only in a commit message reads as Closes false.
+func (g *GitLab) closes(ctx context.Context, m glMR) (bool, error) {
+	if !closingRef.MatchString(m.Description) {
+		return false, nil
+	}
+	issues, err := getAll[struct {
+		IID int `json:"iid"`
+	}](ctx, g, g.projectPath("/merge_requests/"+strconv.Itoa(m.IID)+"/closes_issues"), nil)
+	return len(issues) > 0, err
+}
+
+// prs reads the merge requests of the project that match q, following every page.
+func (g *GitLab) prs(ctx context.Context, q neturl.Values) ([]glMR, error) {
+	return getAll[glMR](ctx, g, g.projectPath("/merge_requests"), q)
+}
+
+// OpenPRs lists all open merge requests of the project, following every page.
+func (g *GitLab) OpenPRs(ctx context.Context) ([]OpenPR, error) {
+	mrs, err := g.prs(ctx, neturl.Values{"state": {"opened"}})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]OpenPR, 0, len(mrs))
+	for _, m := range mrs {
+		out = append(out, OpenPR{Number: m.IID, Title: m.Title, Body: m.Description, HeadRef: m.SourceBranch})
+	}
+	return out, nil
+}
+
+// BranchPRs lists the merge requests whose source branch is branch, open, closed and merged.
+func (g *GitLab) BranchPRs(ctx context.Context, branch string) ([]PR, error) {
+	mrs, err := g.prs(ctx, neturl.Values{"source_branch": {branch}, "state": {"all"}})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]PR, 0, len(mrs))
+	for _, m := range mrs {
+		p := mrToPR(m)
+		if p.Closes, err = g.closes(ctx, m); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, nil
+}
+
+// MergePR squash-merges merge request number, only when its head is still sha. GitLab answers
+// 409 for a head that moved, and 405 or 406 for a merge it will not do.
+func (g *GitLab) MergePR(ctx context.Context, number int, sha string) error {
+	_, err := g.do(ctx, http.MethodPut, g.projectPath("/merge_requests/"+strconv.Itoa(number)+"/merge"), nil,
+		map[string]any{"sha": sha, "squash": true}, nil)
+	var se *httpStatusError
+	if err == nil || !errors.As(err, &se) {
+		return err
+	}
+	switch se.Code {
+	case http.StatusConflict:
+		return ErrHeadMoved
+	case http.StatusMethodNotAllowed, http.StatusNotAcceptable:
+		return &MergeRefused{Message: se.Message}
+	}
+	return err
+}

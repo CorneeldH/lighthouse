@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -46,6 +47,7 @@ type Server struct {
 	awards   map[int64][]map[string]any
 	links    map[int][]map[string]any
 	mrs      []map[string]any
+	closes   map[int][]map[string]any    // merge request iid to the issues it closes
 	closedBy map[string][]map[string]any // "project#iid" to the merge requests that close it
 	users    map[string]int64            // username to user ID
 	members  map[string]int              // username to access level
@@ -61,7 +63,7 @@ func newServer(t reporter) *Server {
 	s := &Server{
 		t: t, Project: "group/project", nextID: 1000,
 		issues: map[int]map[string]any{}, notes: map[int][]map[string]any{},
-		awards: map[int64][]map[string]any{}, links: map[int][]map[string]any{}, closedBy: map[string][]map[string]any{},
+		awards: map[int64][]map[string]any{}, links: map[int][]map[string]any{}, closedBy: map[string][]map[string]any{}, closes: map[int][]map[string]any{},
 		users: map[string]int64{}, members: map[string]int{}, status: map[int]string{},
 	}
 	mux := http.NewServeMux()
@@ -80,6 +82,7 @@ func newServer(t reporter) *Server {
 	// closed_by answers for any project: a blocker can live in another one.
 	s.route(mux, "GET "+p+"/issues/{iid}/closed_by", s.listClosedBy)
 	s.route(mux, "GET "+p+"/merge_requests", s.project(s.listMRs))
+	s.route(mux, "GET "+p+"/merge_requests/{iid}/closes_issues", s.project(s.listClosesIssues))
 	s.route(mux, "PUT "+p+"/merge_requests/{iid}/merge", s.project(s.mergeMR))
 	mux.HandleFunc("POST /api/graphql", s.graphql)
 	mux.HandleFunc("/", s.unexpected)
@@ -301,25 +304,72 @@ func (s *Server) listLinks(w http.ResponseWriter, r *http.Request) {
 	paginate(w, r, out)
 }
 
+// listMRs serves the merge requests, filtered on state (opened, closed, merged; default all)
+// and on source_branch. It encodes copies: mergeMR changes the seeded maps under mu.
 func (s *Server) listMRs(w http.ResponseWriter, r *http.Request) {
+	state, branch := r.URL.Query().Get("state"), r.URL.Query().Get("source_branch")
 	s.mu.Lock()
-	out := toAny(s.mrs)
+	var out []any
+	for _, mr := range s.mrs {
+		if st, _ := mr["state"].(string); state != "" && state != "all" && state != st {
+			continue
+		}
+		if b, _ := mr["source_branch"].(string); branch != "" && branch != b {
+			continue
+		}
+		out = append(out, maps.Clone(mr))
+	}
 	s.mu.Unlock()
 	paginate(w, r, out)
 }
 
-// mergeMR marks the merge request merged. lighthouse never calls it on its own; the route is
+// listClosesIssues serves the issues the merge request closes, as AddClosesIssues seeded them.
+func (s *Server) listClosesIssues(w http.ResponseWriter, r *http.Request) {
+	iid, _ := strconv.Atoi(r.PathValue("iid"))
+	s.mu.Lock()
+	out := toAny(s.closes[iid])
+	s.mu.Unlock()
+	paginate(w, r, out)
+}
+
+// mergeMR marks the merge request merged, as GitLab does for a squash merge: 409 when the sha
+// is not the head, 405 for a merge request that is not open, 406 for one with conflicts. A
+// merge without squash=true is an unexpected request: lighthouse only squash-merges. It is
 // here because forge.Forge requires MergePR.
 func (s *Server) mergeMR(w http.ResponseWriter, r *http.Request) {
 	iid, _ := strconv.Atoi(r.PathValue("iid"))
+	var body struct {
+		SHA    string `json:"sha"`
+		Squash bool   `json:"squash"`
+	}
+	if !s.decode(w, r, &body) {
+		return
+	}
+	if !body.Squash {
+		s.unexpected(w, r)
+		return
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, mr := range s.mrs {
-		if toInt(mr["iid"]) == iid {
-			mr["state"] = "merged"
-			writeJSON(w, http.StatusOK, mr)
+		if toInt(mr["iid"]) != iid {
+			continue
+		}
+		if head, _ := mr["sha"].(string); body.SHA != "" && head != body.SHA {
+			writeJSON(w, http.StatusConflict, map[string]any{"message": "SHA does not match HEAD of source branch: " + head})
 			return
 		}
+		if st, _ := mr["state"].(string); st != "opened" {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"message": "405 Method Not Allowed"})
+			return
+		}
+		if c, _ := mr["has_conflicts"].(bool); c {
+			writeJSON(w, http.StatusNotAcceptable, map[string]any{"message": "Branch cannot be merged"})
+			return
+		}
+		mr["state"] = "merged"
+		writeJSON(w, http.StatusOK, mr)
+		return
 	}
 	writeJSON(w, http.StatusNotFound, map[string]any{"message": "404 Not found"})
 }
@@ -403,6 +453,13 @@ func (s *Server) AddMR(m map[string]any) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.mrs = append(s.mrs, m)
+}
+
+// AddClosesIssues seeds an issue that merge request iid closes, as closes_issues lists it.
+func (s *Server) AddClosesIssues(iid int, issue map[string]any) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.closes[iid] = append(s.closes[iid], issue)
 }
 
 // SetStatuses sets the status lifecycle of the top-level group, the names a work item can have.

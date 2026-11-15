@@ -20,8 +20,6 @@ const conformance = "TestGitLabConformance"
 // methods it calls. Such a case skips until then, so no case runs on a stub. Each task removes
 // its names.
 var pending = map[string]int{
-	"PRFields":                4,
-	"Pagination/OpenPRs":      4,
 	"BoardStatusAndPriority":  5,
 	"IssueItem":               5,
 	"AddToBoardThenSetStatus": 5,
@@ -130,16 +128,38 @@ func (g *gitlabFixture) AddBlocker(_ *testing.T, number int, b forge.Blocker) {
 	}
 }
 
-func (g *gitlabFixture) AddOpenPR(t *testing.T, _ forge.OpenPR) {
-	t.Helper()
-	skipIfPending(t)
-	t.Fatal("gitlabFixture.AddOpenPR: not written yet")
+func (g *gitlabFixture) AddOpenPR(_ *testing.T, pr forge.OpenPR) {
+	g.srv.AddMR(map[string]any{"iid": pr.Number, "state": "opened", "title": pr.Title, "description": pr.Body,
+		"source_branch": pr.HeadRef, "source_project_id": 1, "target_project_id": 1})
 }
 
-func (g *gitlabFixture) AddBranchPR(t *testing.T, _ string, _ forge.PR) {
-	t.Helper()
-	skipIfPending(t)
-	t.Fatal("gitlabFixture.AddBranchPR: not written yet")
+// pipelineStatus, mergeStatus and mrState are the GitLab words of the neutral PR values.
+var (
+	pipelineStatus = map[string]string{"SUCCESS": "success", "FAILURE": "failed", "PENDING": "running"}
+	mergeStatus    = map[string]string{"MERGEABLE": "mergeable", "UNKNOWN": "checking"}
+	mrState        = map[string]string{"OPEN": "opened", "CLOSED": "closed", "MERGED": "merged"}
+)
+
+func (g *gitlabFixture) AddBranchPR(_ *testing.T, branch string, pr forge.PR) {
+	m := map[string]any{"iid": pr.Number, "state": mrState[pr.State], "source_branch": branch, "sha": pr.HeadSHA,
+		"draft": pr.Draft, "has_conflicts": pr.Mergeable == "CONFLICTING", "web_url": pr.URL,
+		"source_project_id": 1, "target_project_id": 1}
+	if pr.CrossRepo {
+		m["source_project_id"] = 2
+	}
+	if s, ok := mergeStatus[pr.Mergeable]; ok {
+		m["detailed_merge_status"] = s
+	}
+	if s, ok := pipelineStatus[pr.Checks]; ok {
+		m["head_pipeline"] = map[string]any{"status": s}
+	}
+	if !pr.MergedAt.IsZero() {
+		m["merged_at"] = pr.MergedAt.UTC().Format(time.RFC3339)
+	}
+	if !pr.ClosedAt.IsZero() {
+		m["closed_at"] = pr.ClosedAt.UTC().Format(time.RFC3339)
+	}
+	g.srv.AddMR(m)
 }
 
 func (g *gitlabFixture) PutOnBoard(t *testing.T, _ int, _, _ string) {

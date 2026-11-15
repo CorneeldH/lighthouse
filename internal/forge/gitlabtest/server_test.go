@@ -220,3 +220,83 @@ func TestServerClosedByAnswersForAnyProjectAndRefusesDuplicateAwards(t *testing.
 		t.Errorf("award twice = %d then %d; want 201 then 404, as GitLab answers an award that exists", first, second)
 	}
 }
+
+func send(t *testing.T, method, url, body string) *http.Response {
+	t.Helper()
+	req, err := http.NewRequest(method, url, strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("PRIVATE-TOKEN", "secret")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	return resp
+}
+
+func TestServerListsMergeRequestsByStateAndBranch(t *testing.T) {
+	srv := New(t)
+	srv.Project = "g/p"
+	srv.AddMR(map[string]any{"iid": 1, "state": "opened", "source_branch": "a"})
+	srv.AddMR(map[string]any{"iid": 2, "state": "merged", "source_branch": "a"})
+	srv.AddMR(map[string]any{"iid": 3, "state": "opened", "source_branch": "b"})
+	base := srv.URL() + "/projects/g%2Fp/merge_requests"
+	for q, want := range map[string]string{"?state=opened": "1,3", "?source_branch=a": "1,2", "?state=opened&source_branch=b": "3", "": "1,2,3"} {
+		_, body := get(t, base+q)
+		var got []string
+		for _, id := range []string{"1", "2", "3"} {
+			if strings.Contains(body, `"iid":`+id+",") || strings.Contains(body, `"iid":`+id+"}") {
+				got = append(got, id)
+			}
+		}
+		if strings.Join(got, ",") != want {
+			t.Errorf("GET merge_requests%s lists %v, want %s", q, got, want)
+		}
+	}
+}
+
+func TestServerMergeRefusals(t *testing.T) {
+	srv := New(t)
+	srv.Project = "g/p"
+	srv.AddMR(map[string]any{"iid": 1, "state": "opened", "sha": "abc"})
+	srv.AddMR(map[string]any{"iid": 2, "state": "opened", "sha": "abc", "has_conflicts": true})
+	srv.AddMR(map[string]any{"iid": 3, "state": "closed", "sha": "abc"})
+	base := srv.URL() + "/projects/g%2Fp/merge_requests/"
+	for _, tc := range []struct {
+		iid, body string
+		want      int
+	}{
+		{"1", `{"sha":"zzz","squash":true}`, http.StatusConflict},
+		{"2", `{"sha":"abc","squash":true}`, http.StatusNotAcceptable},
+		{"3", `{"sha":"abc","squash":true}`, http.StatusMethodNotAllowed},
+		{"1", `{"sha":"abc","squash":true}`, http.StatusOK},
+		{"1", `{"sha":"abc","squash":true}`, http.StatusMethodNotAllowed},
+	} {
+		if got := send(t, http.MethodPut, base+tc.iid+"/merge", tc.body).StatusCode; got != tc.want {
+			t.Errorf("merge !%s %s = %d, want %d", tc.iid, tc.body, got, tc.want)
+		}
+	}
+}
+
+// A merge while the list is read must not race on the seeded map; go test -race fails it.
+func TestServerMergeWhileListing(t *testing.T) {
+	srv := New(t)
+	srv.Project = "g/p"
+	for i := 1; i <= 20; i++ {
+		srv.AddMR(map[string]any{"iid": i, "state": "opened", "sha": "abc"})
+	}
+	base := srv.URL() + "/projects/g%2Fp/merge_requests"
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 1; i <= 20; i++ {
+			send(t, http.MethodPut, fmt.Sprintf("%s/%d/merge", base, i), `{"sha":"abc","squash":true}`)
+		}
+	}()
+	for i := 0; i < 20; i++ {
+		get(t, base)
+	}
+	<-done
+}
