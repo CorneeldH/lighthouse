@@ -27,7 +27,7 @@
 
 - **Status:** de ingebouwde issuestatus (spec). Het AC "scoped label `status::<naam>`" is achterhaald; Taak 8 past het AC aan, zoals spec *#259 levert* 6 vraagt.
 - **`[forge.board]` voor GitLab:** alleen `status_options` (lighthouse-naam → GitLab-statusnaam, bijvoorbeeld `"To do" = "To do"`) en `priority_options` (lighthouse-naam → label, bijvoorbeeld `"P1" = "priority::P1"`). `project_number`, `project_id`, `status_field_id` en `priority_field_id` zijn voor GitLab niet toegestaan en niet nodig.
-- **Raketten:** de notes-lijst bevat geen award emoji. `Comments` haalt `GET …/notes/:id/award_emoji` alleen voor notes waarvan `protocol.ParseHeader(body)` een lighthouse-header vindt, en telt `rocket`. Andere notes krijgen `Rockets = 0`.
+- **Raketten:** de notes-lijst bevat geen award emoji. `Comments` haalt `GET …/notes/:id/award_emoji` voor elke niet-systeemnote en telt `rocket`. Ook een gewone note moet: het antwoord van de gebruiker draagt geen header en de dispatcher bevestigt dat antwoord (`internal/dispatch/decide.go:1104`), terwijl `answerTo` en `repair` op `Rocket` letten (`decide.go:889-911`, `:1112-1118`). Het aantal aanroepen is per `Comments`-aanroep begrensd door het aantal notes van één issue; leg dat in een commentaar vast.
 - **Venster gesloten issues in `BoardItems`:** gesloten issues met `updated_at` binnen de laatste 14 dagen (constante `closedWindow` in `gitlab_board.go`), samen met alle open issues; `dispatch.Prepare` vangt de rest op via `IssueItem`.
 - **Fake:** `internal/forge/gitlabtest` is een eigen pakket, geen uitbreiding van `forgetest`; dezelfde regel: een onverwacht verzoek laat de test falen.
 
@@ -52,38 +52,39 @@
 
 - [ ] **Step 1: Schrijf `TestServerRejectsUnknownRoute`, `TestServerPaginates`, `TestServerDecodesEncodedProject`** in `server_test.go`: een onbekend pad laat de test falen; 101 issues geven pagina 1 met 100 en header `x-next-page: 2`, pagina 2 met 1 en een lege `x-next-page`; project `g%2Fsub%2Fp` wordt herkend, `g/sub/p` zonder codering niet.
 - [ ] **Step 2: Draai ze, verwacht FAIL** — `go test ./internal/forge/gitlabtest/`.
-- [ ] **Step 3: Implementeer `gitlabtest.Server`** op `httptest.Server`. Routes onder `/api/v4`: `user`, `users?username=`, `projects/:id/members/all/:uid`, `projects/:id/issues` en `/:iid`, `…/notes` (POST en GET, met `page`/`per_page`), `…/notes/:nid/award_emoji` (GET, POST), `…/links`, `…/merge_requests`, `…/merge_requests/:iid/merge`, `groups`-milestones niet; `POST /api/graphql` met de twee operaties uit Taak 5 (herken op operatienaam in `query`). Paginering met `x-next-page`. Eén generieke `paginate(w, r, items)`-helper.
+- [ ] **Step 3: Implementeer `gitlabtest.Server`** op `httptest.Server`. Routes onder `/api/v4`: `user`, `users?username=`, `projects/:id/members/all/:uid`, `projects/:id/issues` en `/:iid`, `…/notes` (POST en GET, met `page`/`per_page`), `…/notes/:nid/award_emoji` (GET, POST), `…/links`, `…/merge_requests`, `…/merge_requests/:iid/merge`, `groups`-milestones niet; `POST /api/graphql` dat tot Taak 5 elk verzoek met 404 en `t.Errorf` weigert; Taak 5 voegt de operaties toe (herken op operatienaam in `query`). Taak 3 en 4 voegen hun eigen routes toe (`closed_by`, `closes_issues`, `merge_requests?source_branch=`). Paginering met `x-next-page`. Eén generieke `paginate(w, r, items)`-helper.
 - [ ] **Step 4: Draai de tests, verwacht PASS.**
 - [ ] **Step 5: Commit** — `feat(forge): nep-GitLab-server voor de conformiteitstests (#259)`.
 
 ### Taak 2: GitLab-client, issues en comments
 
 **Files:**
-- Create: `internal/forge/gitlab.go`, `internal/forge/gitlab_test.go`, `internal/forge/gitlab_contract_test.go`
+- Create: `internal/forge/gitlab.go`, `internal/forge/gitlab_stubs.go`, `internal/forge/gitlab_test.go`, `internal/forge/gitlab_contract_test.go`
 - Modify: `internal/forge/forge.go:44` (compile-check) en `:70-71` (Open), `internal/forge/forge_test.go:38`
 
 **Interfaces:**
 - Consumes: `gitlabtest.Server` uit Taak 1; `forgesuite.Fixture` uit `internal/forge/forgesuite/suite.go:20-45`.
 - Produces: `type GitLab struct` met `Kind() string` = `"gitlab"`; `func (g *GitLab) get(ctx, path string, q url.Values, out any) (next string, err error)` en `getAll[T any](ctx, g, path string, q url.Values) ([]T, error)` (volgt `x-next-page`, `per_page=100`); `func (g *GitLab) project() string` (URL-gecodeerd pad); methoden `Login`, `Role`, `Issue`, `OpenIssues`, `ClosedInMilestone`, `Comments`, `CreateComment`. `Open` geeft voor `kind = "gitlab"` een `*GitLab`, met `cfg.BaseURL` of `https://<host|gitlab.com>/api/v4` (slashes achteraan weg).
-- Fixture: `gitlabFixture` in `gitlab_contract_test.go` implementeert `forgesuite.Fixture`; methoden voor latere taken beginnen met `t.Skip("taak N")` en worden daar ingevuld.
+- `*GitLab` implementeert vanaf deze taak elke methode van `Forge` (`forge.go:17-42`, de compile-check en `Open` eisen dat): de methoden die nog niet aan de beurt zijn (`BlockedBy`, `Acknowledge`, `Acknowledgers`, `MergePR`, `OpenPRs`, `BranchPRs`, `BoardItems`, `IssueItem`, `AddToBoard`, `SetStatus`) staan in `gitlab_stubs.go` en geven `fmt.Errorf("gitlab: %s not implemented yet: %w", name, errors.ErrUnsupported)`; elke latere taak verplaatst zijn methoden uit dat bestand en het bestand verdwijnt in Taak 5.
+- Fixture: `gitlabFixture` in `gitlab_contract_test.go` implementeert `forgesuite.Fixture`. `newGitLabFixture(t)` kent de naam van het subtest (`t.Name()`) en roept `t.Skip("taak N")` voor elke suitecase die nog op een stub zou lopen (een `pending`-tabel casenaam → taak; elke taak haalt zijn cases eruit). Zo is elke commit groen en loopt geen case op een stub.
 
 - [ ] **Step 1: Schrijf `TestGitLabConformance`** (`forgesuite.Run(t, newGitLabFixture)`) en de fixture voor `AddIssue`, `AddComment`, `SetRole`, `Login`, `Repo` (`"g/sub/p"`). Schrijf `TestOpenGitLabBaseURL` in `gitlab_test.go`: tabel `{host "" → https://gitlab.com/api/v4, host "git.example.nl" → https://git.example.nl/api/v4, BaseURL "http://x/api/v4/" → "http://x/api/v4"}`; `TestGitLabEncodesSubgroupPath` (de fake ziet `g%2Fsub%2Fp`).
 - [ ] **Step 2: Draai, verwacht FAIL** — `go test ./internal/forge/ -run 'GitLab'`.
-- [ ] **Step 3: Implementeer `GitLab` en de zeven methoden** volgens de tabel van de spec. `Issue.Number` is de `iid`, `URL` is `web_url`, `Author` is `author.username`. `Role`: `GET /users?username=` (cache per `GitLab`-instantie, vers per tick doordat de opener per tick opent; controleer in `internal/cli/forges.go`) en dan `/members/all/:id`; een 404 geeft `""`. `ClosedInMilestone` filtert op `milestone=<m.Title>` en `state=closed`, `updated_after=since`. Pas `forge_test.go:38` aan: `Open` met `kind = "gitlab"` geeft geen fout meer.
-- [ ] **Step 4: Draai, verwacht PASS** voor de suitecases `Login`, `Role`, `IssueFields`, `OpenIssuesPages`, `ClosedInMilestone`, `Comments`, `Pagination` (voor issues); de rest `SKIP`.
+- [ ] **Step 3: Implementeer `GitLab` en de zeven methoden** volgens de tabel van de spec. `Issue.Number` is de `iid`, `URL` is `web_url`, `Author` is `author.username`. `Role`: `GET /users?username=` (cache per `GitLab`-instantie, vers per tick doordat de opener per tick opent; controleer in `internal/cli/forges.go`) en dan `/members/all/:id`; een 404 geeft `""`. `ClosedInMilestone` filtert op `milestone=<m.Title>` en `state=closed`, `updated_after=since`. `Milestone.Number` is het globale milestone-`id`, niet de `iid` (spec, *Milestone*): geef in de fixture het milestone een `id` die verschilt van de `iid`, zodat de test ze onderscheidt. Pas `forge_test.go:38` aan: `Open` met `kind = "gitlab"` geeft geen fout meer.
+- [ ] **Step 4: Draai, verwacht PASS** voor de suitecases `Login`, `Role`, `IssueFields`, `OpenIssuesPages`, `ClosedInMilestone`, `Comments`, `Pagination` (voor issues); de rest `SKIP` via de `pending`-tabel.
 - [ ] **Step 5: Commit** — `feat(forge): GitLab-client voor issues en comments (#259)`.
 
 ### Taak 3: Bevestigen en blokkades
 
 **Files:**
 - Create: `internal/forge/gitlab_people.go`
-- Modify: `internal/forge/gitlab.go` (`Comments`), `internal/forge/gitlab_contract_test.go`
+- Modify: `internal/forge/gitlab.go` (`Comments`), `internal/forge/gitlab_stubs.go` (haal `Acknowledge`, `Acknowledgers`, `BlockedBy` eruit), `internal/forge/gitlab_contract_test.go` (haal `Acknowledge`, `BlockedBy` uit `pending`), `internal/forge/gitlabtest/server.go` (routes `…/issues/:iid/closed_by`)
 
 **Interfaces:**
 - Consumes: `getAll`, `project()` uit Taak 2; `gitlabtest.Server.AddAward`, `AddLink`.
 - Produces: `Acknowledge(ctx, number int, commentID int64) error` (`POST …/notes/:id/award_emoji?name=rocket`; een 404 of 409 "already awarded" is geen fout), `Acknowledgers(ctx, number int, commentID int64) ([]string, error)`, `BlockedBy(ctx, number int) ([]Blocker, error)` (links met `link_type = is_blocked_by`; `Repo` uit het project-pad van de blokkeerder, `MergedPR` waar een MR uit `closed_by` van de blokkeerder `merged` is).
 
-- [ ] **Step 1: Vul de fixture** (`AddAcknowledgement`, `AddBlocker`) en schrijf `TestGitLabCommentsCountRocketsOnlyOnLighthouseNotes`: een gewone note krijgt geen `award_emoji`-verzoek (`Requests()` bevat het pad niet); een note met lighthouse-header krijgt `Rockets` = aantal `rocket`.
+- [ ] **Step 1: Vul de fixture** (`AddAcknowledgement`, `AddBlocker`) en schrijf `TestGitLabCommentsCountRocketsOnEveryUserNote`: een gewone én een lighthouse-note krijgen `Rockets` = aantal `rocket`; een systeemnote krijgt geen `award_emoji`-verzoek (`Requests()` bevat het pad niet). De suitecase `Acknowledge` (gewone note, `Rockets 1`) blijft ongewijzigd.
 - [ ] **Step 2: Draai, verwacht FAIL** voor `Acknowledge`, `BlockedBy` en de nieuwe test.
 - [ ] **Step 3: Implementeer de drie methoden** en breid `Comments` uit met de raketten volgens het besluit hierboven.
 - [ ] **Step 4: Draai, verwacht PASS** voor `Comments`, `Acknowledge`, `BlockedBy`.
@@ -93,7 +94,7 @@
 
 **Files:**
 - Create: `internal/forge/gitlab_mr.go`
-- Modify: `internal/forge/gitlab_contract_test.go`
+- Modify: `internal/forge/gitlab_stubs.go` (haal de drie MR-methoden eruit), `internal/forge/gitlab_contract_test.go` (haal `PRFields` uit `pending`), `internal/dispatch/gather.go` (zie hieronder), `internal/forge/gitlabtest/server.go` (routes `…/merge_requests/:iid/closes_issues`, `GET …/merge_requests?source_branch=`)
 
 **Interfaces:**
 - Consumes: `getAll`, `project()`; `OpenPR` en `PR` uit `internal/forge/issues.go:19` en `board.go:13`.
@@ -102,6 +103,7 @@
 - [ ] **Step 1: Schrijf `TestMRToPR`** als tabeltest met de rijen van de spec: `opened`/`closed`/`merged`/`locked`; elke pipelinestatus; `unchecked`/`checking`/`preparing` → UNKNOWN; `has_conflicts` → CONFLICTING; geen pipeline → `""`. Vul de fixture (`AddOpenPR`, `AddBranchPR`).
 - [ ] **Step 2: Draai, verwacht FAIL.**
 - [ ] **Step 3: Implementeer `mrToPR` en de drie methoden.** `Closes` en `MergedAt`/`ClosedAt` komen uit de MR zelf; geen aanroep per MR als de lijst ze al levert (`closes_issues` komt alleen via een extra aanroep: één per MR die `description` een `Closes`-verwijzing heeft, anders niet; documenteer de keuze in een commentaar).
+- [ ] **Step 3b: `dispatch.Complete` leest PR-comments niet op GitLab.** `internal/dispatch/gather.go:168-180` roept `f.Comments(ctx, pr.Number)` aan voor het roborev-oordeel. Op GitHub is een PR ook een issue, op GitLab niet: `merge_requests/:iid` is een ander nummer dan `issues/:iid`, dus dat leest de notes van een ander issue of geeft een 404 die de hele `gather` van de repo laat falen. Sla die aanroep over als `f.Kind() != "github"` (de roborev-staat blijft de nulwaarde) en schrijf `TestCompleteSkipsPRCommentsOnGitLab` (een nep-`Forge` met `Kind() = "gitlab"` waarvan `Comments` faalt: `Complete` geeft geen fout). Noteer in de PR als bekende beperking: roborev-notes op een GitLab-MR worden pas door #260 gelezen (een eigen `Forge`-methode voor MR-notes hoort bij een eigen issue).
 - [ ] **Step 4: Draai, verwacht PASS** voor `PRFields` en `TestMRToPR`.
 - [ ] **Step 5: Commit** — `feat(forge): GitLab-client leest en merget merge requests (#259)`.
 
@@ -109,13 +111,13 @@
 
 **Files:**
 - Create: `internal/forge/gitlab_board.go`, `internal/forge/gitlab_graphql.go`
-- Modify: `internal/repoconfig/repoconfig.go:62-69` (alleen indien GitLab een extra veld nodig heeft; het besluit hierboven vraagt er geen), `internal/forge/gitlab_contract_test.go`
+- Modify: `internal/forge/gitlab_contract_test.go` (leeg `pending`), `internal/forge/gitlabtest/server.go` (de GraphQL-operaties), verwijder `internal/forge/gitlab_stubs.go`
 
 **Interfaces:**
 - Consumes: `repoconfig.Board.StatusOptions` en `PriorityOptions` (voor GitLab: lighthouse-naam → GitLab-statusnaam resp. label); `gitlabtest.Server.SetStatuses`, `SetWorkItemStatus`, `WorkItemStatus`.
-- Produces: `BoardItems(ctx) ([]BoardItem, error)` (GraphQL: één query per pagina van 100 work items met `WorkItemWidgetStatus`, labels, `updatedAt`, `blockedByItems` en state; alle open plus gesloten binnen `closedWindow = 14 * 24 * time.Hour`); `IssueItem(ctx, number int) (BoardItem, bool, error)` (altijd `ok = true` voor een bestaand issue); `AddToBoard(ctx, number int) (BoardItem, error)` (geen schrijfactie, geeft `IssueItem`); `SetStatus(ctx, item BoardItem, status string) error` (`workItemUpdate` met `statusWidget: {name: …}`; `item.ItemID` is de `iid`); `Status` van een niet-gekoppelde GitLab-statusnaam is `unknown:<ruwe naam>`; `Priority` is de lighthouse-naam van het label `priority::…` dat in `PriorityOptions` staat, anders `""`.
+- Produces: `BoardItems(ctx) ([]BoardItem, error)` (GraphQL, twee gepagineerde queries van 100 work items: `state: OPEN`, en `state: CLOSED` met `updatedAfter: now-closedWindow` (`closedWindow = 14 * 24 * time.Hour`); één query kan geen OR over state, en zonder filter zou elke tick de hele gesloten geschiedenis lezen. Per work item: `id`, `iid`, `WorkItemWidgetStatus`, labels, `updatedAt`, `blockedByItems`, state en de sluitende MR's uit de development-widget, die `BoardItem.ClosingPRs` en `Blocker.MergedPR` vullen via `mrToPR` met `Closes = true`); `IssueItem(ctx, number int) (BoardItem, bool, error)` (altijd `ok = true` voor een bestaand issue); `AddToBoard(ctx, number int) (BoardItem, error)` (geen schrijfactie, geeft `IssueItem`); `SetStatus(ctx, item BoardItem, status string) error` (`workItemUpdate` met `statusWidget: {name: …}`; `item.ItemID` is de `iid`; `workItemUpdate` eist het globale ID `gid://gitlab/WorkItem/<id>`, dus `SetStatus` leest dat eerst met één query op `iid` en gebruikt het in de mutatie; de fake weigert een `workItemUpdate` waarvan `id` geen `gid://gitlab/WorkItem/…` van een bekend item is. Leg de exacte querytekst vast in een commentaar bij de constante); `Status` van een niet-gekoppelde GitLab-statusnaam is `unknown:<ruwe naam>`; `Priority` is de lighthouse-naam van het label `priority::…` dat in `PriorityOptions` staat, anders `""`.
 
-- [ ] **Step 1: Schrijf de tests:** `TestGitLabSetStatusMissingLifecycleStatus` (de fake kent de status niet: de fout bevat de GitLab-statusnaam en `Settings → Work items → Statuses`), `TestGitLabBoardItemsPageCount` (101 issues kosten vaste pagina's: `Requests()` telt 2 GraphQL-verzoeken, niet 101), `TestGitLabBoardItemsClosedWindow` (een issue 30 dagen gesloten ontbreekt, 3 dagen gesloten staat erin). Vul `PutOnBoard`, `PutOnBoardUnmapped`, `StatusOf` van de fixture; de suitecases `BoardStatusAndPriority`, `IssueItem`, `AddToBoardThenSetStatus`, `SetStatusUnknownName` draaien nu.
+- [ ] **Step 1: Schrijf de tests:** `TestGitLabSetStatusMissingLifecycleStatus` (de fake kent de status niet: de fout bevat de GitLab-statusnaam en `Settings → Work items → Statuses`), `TestGitLabBoardItemsPageCount` (101 open issues kosten 2 pagina's plus 1 voor de gesloten query: `Requests()` telt 3 GraphQL-verzoeken, niet 101; 300 oude gesloten issues buiten het venster kosten geen extra verzoek), `TestGitLabBoardItemsClosingPRs` (een issue met een sluitende MR geeft `ClosingPRs` met `Closes = true`; een blokkeerder met gemergde MR geeft `MergedPR`), `TestGitLabBoardItemsClosedWindow` (een issue 30 dagen gesloten ontbreekt, 3 dagen gesloten staat erin). Vul `PutOnBoard`, `PutOnBoardUnmapped`, `StatusOf` van de fixture; de suitecases `BoardStatusAndPriority`, `IssueItem`, `AddToBoardThenSetStatus`, `SetStatusUnknownName` draaien nu.
 - [ ] **Step 2: Draai, verwacht FAIL.**
 - [ ] **Step 3: Implementeer de vijf methoden** en een kleine `graphql(ctx, query string, vars map[string]any, out any) error` die GraphQL-fouten als fout teruggeeft. `Controller` en `On hold` bestaan alleen als de gebruiker ze toevoegde; de fout uit `workItemUpdate` voor een onbekende naam wordt verpakt met de plek om hem toe te voegen.
 - [ ] **Step 4: Draai de hele suite, verwacht PASS** — `go test -race ./internal/forge/...`.
@@ -124,15 +126,15 @@
 ### Taak 6: Configuratie per soort forge
 
 **Files:**
-- Modify: `internal/config/config.go:414-460` (`board`), `internal/config/config_test.go`, `docs/site/data/config.json` (alleen als de bestaande sleutels hun beschrijving per soort nodig hebben), `docs/install.md:197`
+- Modify: `internal/config/config.go:414-460` (`board`), `internal/config/config_test.go`, `internal/repoconfig/repoconfig.go:300-330` (`Dispatchable`) en `internal/repoconfig/repoconfig_test.go`, `internal/cli/triage.go:331-343` (`boardReady`) en zijn test, `docs/site/data/config.json` (alleen als de bestaande sleutels hun beschrijving per soort nodig hebben), `docs/install.md:197`
 
 **Interfaces:**
 - Consumes: `Config.Kind` (`internal/config/config.go:565`), `Board` (`:231`).
-- Produces: `board()` valideert voor `kind = "gitlab"`: `status_options` en `priority_options` zijn tabellen met niet-lege strings; `project_number`, `project_id`, `status_field_id`, `priority_field_id` zijn fout met `key forge.board.<sleutel> is only valid with kind = 'github'`. Voor GitHub verandert niets.
+- Produces: `board()` valideert voor `kind = "gitlab"`: `status_options` en `priority_options` zijn tabellen met niet-lege strings; `project_number`, `project_id`, `status_field_id`, `priority_field_id` zijn fout met `key forge.board.<sleutel> is only valid with kind = 'github'`. Voor GitHub verandert niets. `repoconfig.Dispatchable` en `boardReady` (`tick.go:279`, `run.go:147`, `gather.go:46`, `triage.go:294` roepen ze aan) zijn kind-bewust: voor GitLab eisen ze alleen `status_options` voor `Controller`, `On hold` en (triage) `To do`, nooit `project_number`, `project_id`, `status_field_id` of `priority_field_id` (spec, *Configuratie*: anders breekt elke hook op een GitLab-repo).
 
-- [ ] **Step 1: Schrijf tests** in `config_test.go`: een geldige GitLab-board geeft geen fout; een GitLab-board met `project_number` geeft de fout hierboven; een GitHub-board zonder `project_id` geeft nog steeds de bestaande fout; een lege statusnaam voor GitLab geeft een fout.
+- [ ] **Step 1: Schrijf tests** in `config_test.go`: een geldige GitLab-board geeft geen fout; een GitLab-board met `project_number` geeft de fout hierboven; een GitHub-board zonder `project_id` geeft nog steeds de bestaande fout; een lege statusnaam voor GitLab geeft een fout; `Dispatchable` van een GitLab-repo met alleen `status_options` en `priority_options` is nil, van een GitHub-repo zonder `project_id` nog steeds een fout; `boardReady` idem; een GitLab-repo in `[dispatch] repos` met zo'n board wordt door `tick`/`run` niet met 'project_number must be positive' geweigerd.
 - [ ] **Step 2: Draai, verwacht FAIL** — `go test ./internal/config/`.
-- [ ] **Step 3: Pas `board()` aan** zodat de verplichte GitHub-sleutels alleen voor GitHub gelden. Draai de pariteitstests (`tests/pack/test_config_fixtures.py`, `tests/test_site_config.py`); ze moeten groen blijven zonder nieuwe `SCHEMA`-regel. Zo niet: één regel in `SCHEMA`, `tests/pack/fixtures/config-schema.json` en `docs/site/data/config.json`, en `init --upgrade`.
+- [ ] **Step 3: Pas `board()` aan** zodat de verplichte GitHub-sleutels alleen voor GitHub gelden. Draai de pariteitstests (`tests/pack/test_config_fixtures.py`, `tests/test_site_config.py`); ze moeten groen blijven zonder nieuwe `SCHEMA`-regel. `pack/core/lib/config.py:342-365` eist `project_number`, `project_id` en `status_field_id` voor elk board en is bevroren: pas het niet aan. Controleer met `grep -rn "board" pack/core/scripts pack/core/lib` welke Python-lezers een board lezen en noteer in de PR wie daarvan op een GitLab-repo draait (verwacht: geen; zo ja, een follow-up-issue, geen logica in `config.py`). Zo niet: één regel in `SCHEMA`, `tests/pack/fixtures/config-schema.json` en `docs/site/data/config.json`, en `init --upgrade`.
 - [ ] **Step 4: Draai de tests, verwacht PASS** — `go test ./internal/config/ ./internal/repoconfig/` en de twee Python-tests.
 - [ ] **Step 5: Commit** — `feat(config): [forge.board] voor GitLab met validatie per soort (#259)`.
 
@@ -143,7 +145,7 @@
 
 **Interfaces:**
 - Consumes: `forge.Open` met `kind = "gitlab"` en `Config.BaseURL` (Taak 2); `Forge.IssueItem` (Taak 5).
-- Produces: `forRepo` zet voor GitLab-repo's `BaseURL` uit een nieuwe kleine veld `gitlabURL` van `forgeOpener` (leeg: de standaard van `Open`); `--forge-url` en `LIGHTHOUSE_FORGE_URL` blijven alleen voor GitHub (nu al zo: `forges.go:63-65`). `runTarget` accepteert `groep/sub/project#5` (splitst op de laatste `#`). `dispatch.Prepare` haalt via `IssueItem` het item op van elk issue met een open run dat niet in `BoardItems` zit — eerst `grep -n IssueItem internal/dispatch/*.go`: staat dit er al sinds #258, sla de implementatie dan over en houd alleen de test.
+- Produces: `forRepo` zet voor GitLab-repo's `BaseURL` uit een nieuw veld `gitlabURL` van `forgeOpener` (leeg: de standaard van `Open`; alleen tests zetten het, in productie blijft het leeg; de test bouwt de `forgeOpener` rechtstreeks en geeft hem aan `forgeRepos` door, zie `internal/cli/forges.go:16-20,37-44`); `--forge-url` en `LIGHTHOUSE_FORGE_URL` blijven alleen voor GitHub (nu al zo: `forges.go:63-65`). `runTarget` accepteert `groep/sub/project#5` (splitst op de laatste `#`). `dispatch.Prepare` haalt via `IssueItem` het item op van elk issue met een open run dat niet in `BoardItems` zit — eerst `grep -n IssueItem internal/dispatch/*.go`: staat dit er al sinds #258, sla de implementatie dan over en houd alleen de test.
 
 - [ ] **Step 1: Schrijf de tests:** `TestServeShowsGitLabRepo` (een `[dispatch] repos`-regel met `kind = "gitlab"` en een opener die `gitlabtest` gebruikt: het overzicht bevat de open issues en comments van die repo, en geen verzoek gaat naar `api.github.com`); `TestRunTargetSubgroup` (`g/sub/p#5` → repo `g/sub/p`, nummer 5; `g/p#5` en `o/r#5` blijven werken; `g/sub/p` zonder `#` is een fout); `TestPrepareClosesRunOutsideBoardWindow` (een gesloten issue met een open run dat niet in `BoardItems` zit: `Prepare` roept `IssueItem` aan en de run sluit af).
 - [ ] **Step 2: Draai, verwacht FAIL** — `go test ./internal/cli/ ./internal/dispatch/ -run 'GitLab|Subgroup|OutsideBoard'`.
