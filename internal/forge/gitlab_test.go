@@ -184,3 +184,104 @@ func TestGitLabTokenDoesNotFollowARedirectToAnotherHost(t *testing.T) {
 		t.Errorf("the other host received requests with tokens %q; want none", leaked)
 	}
 }
+
+func TestGitLabCommentsCountRocketsOnEveryUserNote(t *testing.T) {
+	srv, f := gitlabOn(t, "g/p")
+	srv.AddIssue(map[string]any{"iid": 7, "state": "opened"})
+	sys := srv.AddNote(7, "ann", "added label", true)
+	plain := srv.AddNote(7, "ann", "my answer, no header", false)
+	header := srv.AddNote(7, "lh-bot", "<!-- lighthouse:handoff -->\nstate", false)
+	srv.AddAward(7, plain, "rocket", "bob")
+	srv.AddAward(7, header, "rocket", "bob")
+	srv.AddAward(7, header, "rocket", "cat")
+	srv.AddAward(7, sys, "rocket", "bob")
+	got, err := f.Comments(t.Context(), 7)
+	if err != nil {
+		t.Fatalf("Comments: %v", err)
+	}
+	rockets := map[int64]int{}
+	for _, c := range got {
+		rockets[c.ID] = c.Rockets
+	}
+	if len(got) != 2 || rockets[plain] != 1 || rockets[header] != 2 {
+		t.Errorf("rockets = %v; want the plain note on 1 and the lighthouse note on 2, and no system note", rockets)
+	}
+	path := fmt.Sprintf("/notes/%d/award_emoji", sys)
+	for _, r := range srv.Requests() {
+		if strings.Contains(r, path) {
+			t.Errorf("request %q: a system note must cost no award_emoji call", r)
+		}
+	}
+}
+
+func TestGitLabAcknowledgeTwiceAndAcknowledgers(t *testing.T) {
+	srv, f := gitlabOn(t, "g/p")
+	srv.AddIssue(map[string]any{"iid": 7, "state": "opened"})
+	id := srv.AddNote(7, "ann", "look", false)
+	srv.AddAward(7, id, "thumbsup", "dan")
+	srv.AddAward(7, id, "rocket", "bob")
+	for range 2 {
+		if err := f.Acknowledge(t.Context(), 7, id); err != nil {
+			t.Fatalf("Acknowledge: %v", err)
+		}
+	}
+	got, err := f.Acknowledgers(t.Context(), 7, id)
+	if err != nil || !slices.Equal(got, []string{"bob", "lh-bot"}) {
+		t.Errorf("Acknowledgers = %v, %v; want [bob lh-bot]: only rockets, one per user", got, err)
+	}
+	if !slices.Contains(srv.Requests(), fmt.Sprintf("POST /api/v4/projects/g%%2Fp/issues/7/notes/%d/award_emoji?name=rocket", id)) {
+		t.Errorf("requests = %q; want the award POSTed with name=rocket", srv.Requests())
+	}
+}
+
+func TestGitLabAcknowledgeIgnoresAnExistingAwardButNotOtherErrors(t *testing.T) {
+	for _, tc := range []struct {
+		code    int
+		wantErr bool
+	}{{http.StatusConflict, false}, {http.StatusNotFound, false}, {http.StatusForbidden, true}} {
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(tc.code)
+		}))
+		f, err := forge.Open(forge.Config{Kind: "gitlab", Repo: "g/p", Token: "t", BaseURL: ts.URL})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := f.Acknowledge(t.Context(), 7, 5); (err != nil) != tc.wantErr {
+			t.Errorf("Acknowledge on %d: err = %v; want error %v", tc.code, err, tc.wantErr)
+		}
+		ts.Close()
+	}
+}
+
+func TestGitLabBlockedByReadsBlockingLinksAndMergedPRs(t *testing.T) {
+	srv, f := gitlabOn(t, "g/p")
+	srv.AddIssue(map[string]any{"iid": 7, "state": "opened"})
+	link := func(iid int, state, typ, full string) {
+		srv.AddLink(7, map[string]any{"iid": iid, "state": state, "link_type": typ, "references": map[string]any{"full": full}})
+	}
+	link(1, "opened", "is_blocked_by", "g/p#1")
+	link(2, "closed", "is_blocked_by", "g/p#2")
+	link(3, "closed", "is_blocked_by", "o/sub/other#3")
+	link(4, "opened", "blocks", "g/p#4")
+	link(5, "opened", "relates_to", "g/p#5")
+	srv.AddClosedBy("g/p", 2, map[string]any{"iid": 20, "state": "closed"})
+	srv.AddClosedBy("g/p", 2, map[string]any{"iid": 21, "state": "merged"})
+	srv.AddClosedBy("o/sub/other", 3, map[string]any{"iid": 30, "state": "closed"})
+	got, err := f.BlockedBy(t.Context(), 7)
+	if err != nil {
+		t.Fatalf("BlockedBy: %v", err)
+	}
+	want := []forge.Blocker{
+		{Repo: "g/p", Issue: 1, State: "OPEN"},
+		{Repo: "g/p", Issue: 2, State: "CLOSED", MergedPR: true},
+		{Repo: "o/sub/other", Issue: 3, State: "CLOSED"},
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("BlockedBy = %+v; want %+v", got, want)
+	}
+	for _, r := range srv.Requests() {
+		if strings.Contains(r, "/issues/1/closed_by") {
+			t.Errorf("request %q: an open blocker has no closing MR to look up", r)
+		}
+	}
+}

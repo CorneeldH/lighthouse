@@ -46,8 +46,9 @@ type Server struct {
 	awards   map[int64][]map[string]any
 	links    map[int][]map[string]any
 	mrs      []map[string]any
-	users    map[string]int64 // username to user ID
-	members  map[string]int   // username to access level
+	closedBy map[string][]map[string]any // "project#iid" to the merge requests that close it
+	users    map[string]int64            // username to user ID
+	members  map[string]int              // username to access level
 	statuses []string
 	status   map[int]string
 }
@@ -60,7 +61,7 @@ func newServer(t reporter) *Server {
 	s := &Server{
 		t: t, Project: "group/project", nextID: 1000,
 		issues: map[int]map[string]any{}, notes: map[int][]map[string]any{},
-		awards: map[int64][]map[string]any{}, links: map[int][]map[string]any{},
+		awards: map[int64][]map[string]any{}, links: map[int][]map[string]any{}, closedBy: map[string][]map[string]any{},
 		users: map[string]int64{}, members: map[string]int{}, status: map[int]string{},
 	}
 	mux := http.NewServeMux()
@@ -76,6 +77,8 @@ func newServer(t reporter) *Server {
 	s.route(mux, "GET "+p+"/issues/{iid}/notes/{nid}/award_emoji", s.project(s.listAwards))
 	s.route(mux, "POST "+p+"/issues/{iid}/notes/{nid}/award_emoji", s.project(s.createAward))
 	s.route(mux, "GET "+p+"/issues/{iid}/links", s.project(s.listLinks))
+	// closed_by answers for any project: a blocker can live in another one.
+	s.route(mux, "GET "+p+"/issues/{iid}/closed_by", s.listClosedBy)
 	s.route(mux, "GET "+p+"/merge_requests", s.project(s.listMRs))
 	s.route(mux, "PUT "+p+"/merge_requests/{iid}/merge", s.project(s.mergeMR))
 	mux.HandleFunc("POST /api/graphql", s.graphql)
@@ -264,21 +267,30 @@ func (s *Server) listAwards(w http.ResponseWriter, r *http.Request) {
 func (s *Server) createAward(w http.ResponseWriter, r *http.Request) {
 	iid, _ := strconv.Atoi(r.PathValue("iid"))
 	nid, _ := strconv.ParseInt(r.PathValue("nid"), 10, 64)
-	var body struct {
-		Name string `json:"name"`
-	}
-	if !s.decode(w, r, &body) {
-		return
-	}
+	// The name is a query parameter, as GitLab documents it.
+	name := r.URL.Query().Get("name")
 	s.mu.Lock()
 	known := s.findNote(iid, nid) != nil
+	dup := slices.ContainsFunc(s.awards[nid], func(a map[string]any) bool {
+		u, _ := a["user"].(map[string]any)
+		return a["name"] == name && u["username"] == s.Login
+	})
 	s.mu.Unlock()
-	if !known {
+	if !known || dup {
+		// GitLab answers 404 for an award the user already gave.
 		writeJSON(w, http.StatusNotFound, map[string]any{"message": "404 Not found"})
 		return
 	}
-	s.AddAward(iid, nid, body.Name, s.Login)
-	writeJSON(w, http.StatusCreated, map[string]any{"name": body.Name, "user": map[string]any{"username": s.Login}})
+	s.AddAward(iid, nid, name, s.Login)
+	writeJSON(w, http.StatusCreated, map[string]any{"name": name, "user": map[string]any{"username": s.Login}})
+}
+
+func (s *Server) listClosedBy(w http.ResponseWriter, r *http.Request) {
+	key := r.PathValue("project") + "#" + r.PathValue("iid")
+	s.mu.Lock()
+	out := toAny(s.closedBy[key])
+	s.mu.Unlock()
+	paginate(w, r, out)
 }
 
 func (s *Server) listLinks(w http.ResponseWriter, r *http.Request) {
@@ -375,6 +387,15 @@ func (s *Server) AddLink(iid int, link map[string]any) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.links[iid] = append(s.links[iid], link)
+}
+
+// AddClosedBy seeds a merge request that closes issue iid of project, which may be another
+// project than Project.
+func (s *Server) AddClosedBy(project string, iid int, mr map[string]any) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := fmt.Sprintf("%s#%d", project, iid)
+	s.closedBy[key] = append(s.closedBy[key], mr)
 }
 
 // AddMR seeds a merge request in GitLab's REST shape.

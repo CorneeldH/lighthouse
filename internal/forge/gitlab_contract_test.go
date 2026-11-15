@@ -20,17 +20,13 @@ const conformance = "TestGitLabConformance"
 // methods it calls. Such a case skips until then, so no case runs on a stub. Each task removes
 // its names.
 var pending = map[string]int{
-	"BlockedBy":                3,
-	"Acknowledge":              3,
-	"Pagination/Acknowledgers": 3,
-	"Pagination/BlockedBy":     3,
-	"PRFields":                 4,
-	"Pagination/OpenPRs":       4,
-	"BoardStatusAndPriority":   5,
-	"IssueItem":                5,
-	"AddToBoardThenSetStatus":  5,
-	"SetStatusUnknownName":     5,
-	"Pagination/BoardItems":    5,
+	"PRFields":                4,
+	"Pagination/OpenPRs":      4,
+	"BoardStatusAndPriority":  5,
+	"IssueItem":               5,
+	"AddToBoardThenSetStatus": 5,
+	"SetStatusUnknownName":    5,
+	"Pagination/BoardItems":   5,
 }
 
 // skipIfPending skips t when its name, or the case it belongs to, is in pending.
@@ -118,16 +114,20 @@ func (g *gitlabFixture) SetRole(t *testing.T, user, role string) {
 	g.srv.SetMember(user, level)
 }
 
-func (g *gitlabFixture) AddAcknowledgement(t *testing.T, _ int, _ int64, _ string) {
-	t.Helper()
-	skipIfPending(t)
-	t.Fatal("gitlabFixture.AddAcknowledgement: not written yet")
+func (g *gitlabFixture) AddAcknowledgement(_ *testing.T, number int, commentID int64, login string) {
+	g.srv.AddAward(number, commentID, "rocket", login)
 }
 
-func (g *gitlabFixture) AddBlocker(t *testing.T, _ int, _ forge.Blocker) {
-	t.Helper()
-	skipIfPending(t)
-	t.Fatal("gitlabFixture.AddBlocker: not written yet")
+// AddBlocker seeds an is_blocked_by link whose blocker lives in b.Repo, and a merged closing
+// merge request when b.MergedPR.
+func (g *gitlabFixture) AddBlocker(_ *testing.T, number int, b forge.Blocker) {
+	g.srv.AddLink(number, map[string]any{
+		"iid": b.Issue, "state": gitlabState(strings.ToLower(b.State)), "link_type": "is_blocked_by",
+		"references": map[string]any{"full": fmt.Sprintf("%s#%d", b.Repo, b.Issue)},
+	})
+	if b.MergedPR {
+		g.srv.AddClosedBy(b.Repo, b.Issue, map[string]any{"iid": 1, "state": "merged"})
+	}
 }
 
 func (g *gitlabFixture) AddOpenPR(t *testing.T, _ forge.OpenPR) {

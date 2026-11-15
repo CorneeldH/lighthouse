@@ -13,11 +13,6 @@ func notYet(name string) error {
 	return fmt.Errorf("gitlab: %s not implemented yet: %w", name, errors.ErrUnsupported)
 }
 
-func (g *GitLab) BlockedBy(context.Context, int) ([]Blocker, error) { return nil, notYet("BlockedBy") }
-func (g *GitLab) Acknowledge(context.Context, int, int64) error     { return notYet("Acknowledge") }
-func (g *GitLab) Acknowledgers(context.Context, int, int64) ([]string, error) {
-	return nil, notYet("Acknowledgers")
-}
 func (g *GitLab) MergePR(context.Context, int, string) error { return notYet("MergePR") }
 func (g *GitLab) OpenPRs(context.Context) ([]OpenPR, error)  { return nil, notYet("OpenPRs") }
 func (g *GitLab) BranchPRs(context.Context, string) ([]PR, error) {

@@ -189,3 +189,34 @@ func TestServerFiltersIssuesOnMilestoneAndUpdatedAfter(t *testing.T) {
 		t.Errorf("milestone M3 = %s; want issues 1 and 2", body)
 	}
 }
+
+func TestServerClosedByAnswersForAnyProjectAndRefusesDuplicateAwards(t *testing.T) {
+	srv := New(t)
+	srv.Project = "g/p"
+	srv.AddClosedBy("o/other", 6, map[string]any{"iid": 9, "state": "merged"})
+
+	resp, body := get(t, srv.URL()+"/projects/o%2Fother/issues/6/closed_by")
+	if resp.StatusCode != http.StatusOK || !strings.Contains(body, `"merged"`) {
+		t.Errorf("closed_by = %d %s; want 200 with the merged MR", resp.StatusCode, body)
+	}
+	resp, body = get(t, srv.URL()+"/projects/o%2Fother/issues/7/closed_by")
+	if resp.StatusCode != http.StatusOK || strings.TrimSpace(body) != "[]" {
+		t.Errorf("closed_by of an issue without MRs = %d %s; want 200 and []", resp.StatusCode, body)
+	}
+
+	srv.Login = "lh-bot"
+	id := srv.AddNote(7, "ann", "hi", false)
+	post := func() int {
+		req, _ := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/projects/g%%2Fp/issues/7/notes/%d/award_emoji?name=rocket", srv.URL(), id), nil)
+		req.Header.Set("PRIVATE-TOKEN", "secret")
+		r, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = r.Body.Close()
+		return r.StatusCode
+	}
+	if first, second := post(), post(); first != http.StatusCreated || second != http.StatusNotFound {
+		t.Errorf("award twice = %d then %d; want 201 then 404, as GitLab answers an award that exists", first, second)
+	}
+}
