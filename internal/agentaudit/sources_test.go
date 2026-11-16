@@ -178,7 +178,7 @@ func TestCollectAttributesSources(t *testing.T) {
 	if after := treeHash(t, root, home); after != before {
 		t.Error("Collect changed the tree")
 	}
-	assertRows(t, "statuses", statusRows(inv), []string{"lighthouse ok", "project ok", "lokaal ok", "gebruiker ok"})
+	assertRows(t, "statuses", statusRows(inv), []string{"lighthouse ok", "project ok", "lokaal ok", "gebruiker ok", "managed COULD NOT CHECK — managed settings are not read"})
 	assertRows(t, "hooks", hookRows(inv), []string{
 		`lighthouse PreToolUse "Bash" "$CLAUDE_PROJECT_DIR"/.claude/hooks/lighthouse/run.sh main-commit-gate`,
 		`project PreToolUse "Bash" "$CLAUDE_PROJECT_DIR"/.claude/hooks/check.sh`,
@@ -256,7 +256,7 @@ func TestCollectAbsentSources(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertRows(t, "statuses", statusRows(inv), []string{"lighthouse afwezig", "project afwezig", "lokaal afwezig", "gebruiker afwezig"})
+	assertRows(t, "statuses", statusRows(inv), []string{"lighthouse afwezig", "project afwezig", "lokaal afwezig", "gebruiker afwezig", "managed COULD NOT CHECK — managed settings are not read"})
 }
 
 func TestCollectMissingRoot(t *testing.T) {
@@ -317,7 +317,10 @@ func TestCollectRepoOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertRows(t, "statuses", statusRows(inv), []string{"lighthouse afwezig", "project afwezig", "lokaal ok", "gebruiker overgeslagen (--repo-only)"})
+	assertRows(t, "statuses", statusRows(inv), []string{
+		"lighthouse afwezig", "project afwezig", "lokaal ok", "gebruiker overgeslagen (--repo-only)",
+		"plugin:* overgeslagen (--repo-only)", "managed overgeslagen (--repo-only)",
+	})
 	assertRows(t, "permissions", permRows(inv), []string{"lokaal allow Bash(ls:*)"})
 	assertRows(t, "hooks", hookRows(inv), nil)
 	assertRows(t, "skills", skillRows(inv), nil)

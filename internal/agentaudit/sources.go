@@ -65,24 +65,33 @@ func Collect(env Env) (*Inventory, error) {
 	c.settings(SourceProject, filepath.Join(claude, "settings.json"))
 	c.settings(SourceLocal, filepath.Join(claude, "settings.local.json"))
 	c.skills(SourceProject, "claude", filepath.Join(claude, "skills"))
-	c.agents(SourceProject, filepath.Join(claude, "agents"))
+	c.markdown(SourceProject, "agent", filepath.Join(claude, "agents"))
 	c.skills(SourceProject, "codex", filepath.Join(env.Root, ".agents", "skills"))
 	c.rules(SourceProject, filepath.Join(claude, "rules"))
 	c.mcpFile(SourceProject, filepath.Join(env.Root, ".mcp.json"))
 	c.scripts(SourceProject, filepath.Join(claude, "hooks"))
 
+	var plugins []string
 	if !env.RepoOnly {
 		c.settings(SourceUser, filepath.Join(env.ConfigDir, "settings.json"))
 		c.skills(SourceUser, "claude", filepath.Join(env.ConfigDir, "skills"))
-		c.agents(SourceUser, filepath.Join(env.ConfigDir, "agents"))
+		c.markdown(SourceUser, "agent", filepath.Join(env.ConfigDir, "agents"))
 		c.rules(SourceUser, filepath.Join(env.ConfigDir, "rules"))
 		c.claudeJSON()
 		c.scripts(SourceUser, filepath.Join(env.ConfigDir, "hooks"))
-		// Plugins (plugin:<name>) are read here once collectPlugins exists.
+		plugins = c.plugins()
 	}
 
-	for _, source := range []string{SourceLighthouse, SourceProject, SourceLocal, SourceUser} {
+	sources := append([]string{SourceLighthouse, SourceProject, SourceLocal, SourceUser}, plugins...)
+	for _, source := range sources {
 		c.inv.Statuses = append(c.inv.Statuses, c.status(source))
+	}
+	if env.RepoOnly {
+		c.inv.Statuses = append(c.inv.Statuses,
+			Status{Source: SourcePluginPrefix + "*", State: StateSkipped},
+			Status{Source: SourceManaged, State: StateSkipped})
+	} else {
+		c.inv.Statuses = append(c.inv.Statuses, Status{Source: SourceManaged, State: StateCouldNotCh, Reason: managedReason})
 	}
 	return c.inv, nil
 }
@@ -216,21 +225,28 @@ func (c *collector) settings(source, path string) {
 		return
 	}
 	c.seen(source)
-	if regs, err := settings.Registrations(doc); err != nil {
-		c.fail(source, shown+": "+strings.TrimPrefix(err.Error(), ".claude/settings.json: "))
-	} else {
-		for _, r := range regs {
-			cv, _ := r.Entry.Get("command")
-			command, _ := cv.(string)
-			if command == "" {
-				continue // not a command hook
-			}
-			h := c.hook(source, r.Event, r.Matcher, command)
-			h.File = shown
-			c.inv.Hooks = append(c.inv.Hooks, h)
-		}
-	}
+	c.registrations(source, shown, doc, "")
 	c.permissions(source, shown, doc)
+}
+
+// registrations adds the command hooks of doc.hooks, registered in the file shown;
+// pluginRoot is the installPath of the plugin they belong to, "" outside a plugin.
+func (c *collector) registrations(source, shown string, doc *orderedjson.Object, pluginRoot string) {
+	regs, err := settings.Registrations(doc)
+	if err != nil {
+		c.fail(source, shown+": "+strings.TrimPrefix(err.Error(), ".claude/settings.json: "))
+		return
+	}
+	for _, r := range regs {
+		cv, _ := r.Entry.Get("command")
+		command, _ := cv.(string)
+		if command == "" {
+			continue // not a command hook
+		}
+		h := c.hook(source, r.Event, r.Matcher, command, pluginRoot)
+		h.File = shown
+		c.inv.Hooks = append(c.inv.Hooks, h)
+	}
 }
 
 func (c *collector) permissions(source, shown string, doc *orderedjson.Object) {
@@ -281,13 +297,21 @@ func stringList(v any) ([]string, bool) {
 	return out, true
 }
 
-func (c *collector) hook(source, event, matcher, command string) Hook {
+// hook reads one command hook. With pluginRoot set, $CLAUDE_PLUGIN_ROOT in the command
+// is that directory when the script is looked up; Command keeps the registered text.
+func (c *collector) hook(source, event, matcher, command, pluginRoot string) Hook {
 	// A command into HookDir is lighthouse's, whichever settings file registers it.
 	if packs.IsLighthouseCommand(command) {
 		source = SourceLighthouse
 	}
 	h := Hook{Source: source, Event: event, Matcher: matcher, Command: command}
-	h.Script = scriptPath(command, c.env.Root, c.home)
+	resolved := command
+	if pluginRoot != "" {
+		for _, v := range pluginRootVars {
+			resolved = strings.ReplaceAll(resolved, v, pluginRoot)
+		}
+	}
+	h.Script = scriptPath(resolved, c.env.Root, c.home)
 	if h.Script == "" {
 		h.Content = []byte(command)
 	} else if data, err := os.ReadFile(h.Script); err != nil {
@@ -345,13 +369,15 @@ func (c *collector) skills(source, harness, dir string) {
 	}
 }
 
-func (c *collector) agents(source, dir string) {
+// markdown adds every .md file directly in dir as a skill of kind ("agent" or
+// "command"), named by its frontmatter or else its file name.
+func (c *collector) markdown(source, kind, dir string) {
 	for _, e := range c.readDir(source, dir) {
 		if e.IsDir() || filepath.Ext(e.Name()) != ".md" {
 			continue
 		}
 		p := filepath.Join(dir, e.Name())
-		c.inv.Skills = append(c.inv.Skills, c.skill(c.owner(source, p), "agent", strings.TrimSuffix(e.Name(), ".md"), p))
+		c.inv.Skills = append(c.inv.Skills, c.skill(c.owner(source, p), kind, strings.TrimSuffix(e.Name(), ".md"), p))
 	}
 }
 

@@ -9,6 +9,11 @@ const (
 	SourceProject    = "project"
 	SourceLocal      = "lokaal"
 	SourceUser       = "gebruiker"
+	// SourceManaged is the status line for managed settings, which the audit never
+	// reads. Its COULD NOT CHECK is fixed and does not count in the exit code.
+	SourceManaged = "managed"
+	// SourcePluginPrefix starts the source name of a plugin: plugin:<name>.
+	SourcePluginPrefix = "plugin:"
 )
 
 // States of a source.
