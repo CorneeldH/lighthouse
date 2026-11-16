@@ -1,0 +1,56 @@
+# What each lighthouse hook guards, for `lighthouse agent-audit`. Not installed.
+# Every terms group must match; one term per group is enough.
+
+[main-commit-gate]
+events = ["PreToolUse"]
+matcher = "Bash"
+does = "Blocks a git commit or push on the default branch."
+terms = [
+  ["git commit", "git push"],
+  ["main", "master", "default branch", "allow-main"],
+]
+
+[commit-test-gate]
+events = ["PreToolUse", "PostToolUse", "PostToolUseFailure"]
+matcher = "Bash"
+does = "Blocks git commit --no-verify and runs the test gate on the files of a commit."
+terms = [
+  ["git commit", "commit"],
+  ["--no-verify", "test gate", "test_gate", "tests"],
+]
+
+[pr-create-gate]
+events = ["PreToolUse"]
+matcher = "Bash"
+does = "Blocks a gh pr create whose body lacks a Closes, Refs or No issue line."
+terms = [
+  ["gh pr create", "pr create"],
+  ["closes #", "refs #", "no issue", "pr body", "pull request"],
+]
+
+[bash-write-check]
+events = ["PreToolUse", "PostToolUse", "PostToolUseFailure"]
+matcher = "Bash"
+does = "Runs the write checks on the files a Bash call wrote."
+terms = [
+  ["bash", "shell"],
+  ["write", "wrote", "redirect", "sed -i", "tee"],
+]
+
+[md-link-check]
+events = ["PostToolUse"]
+matcher = "Edit|Write"
+does = "Blocks a markdown link that is absolute or points nowhere."
+terms = [
+  [".md", "markdown"],
+  ["link"],
+]
+
+[code-language-check]
+events = ["PostToolUse"]
+matcher = "Edit|Write"
+does = "Blocks code, comments and file names that are not in the configured code language."
+terms = [
+  ["code_language", "english", "language"],
+  ["comment", "identifier", "file name", "docstring"],
+]
