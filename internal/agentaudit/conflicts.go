@@ -141,6 +141,7 @@ func splitRule(rule string) (tool, arg string, has bool) {
 
 // missingScripts reports a registered hook whose script does not exist, and a lighthouse
 // `run.sh <name>` whose name the binary does not know. An inline command has no script.
+// The text names the command as registered, then what is missing.
 func missingScripts(fs findings, hooks []Hook, hookNames []string) {
 	known := map[string]bool{}
 	for _, n := range hookNames {
@@ -151,13 +152,13 @@ func missingScripts(fs findings, hooks []Hook, hookNames []string) {
 		name, isRunSh := runShName(h.Command)
 		switch {
 		case h.Script != "" && notExist(h.Script):
-			reason = " bestaat niet"
+			reason = h.Shown + " bestaat niet"
 		case h.Source == SourceLighthouse && isRunSh && !known[name]:
-			reason = ": de binary kent geen hook " + name
+			reason = "de binary kent geen hook " + name
 		default:
 			continue
 		}
-		text := fmt.Sprintf("%s: %s (in %s)%s", eventLabel(h.Event, h.Matcher), hookLabel(h), h.File, reason)
+		text := fmt.Sprintf("%s: %s %s (in %s): %s", eventLabel(h.Event, h.Matcher), h.Source, shortCommand(h.Command), h.File, reason)
 		fs.add(KindMissing, KindMissing+":"+h.Source+"/"+h.Command, text, h.Source)
 	}
 }

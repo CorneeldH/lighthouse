@@ -260,8 +260,8 @@ func TestMissingScript(t *testing.T) {
 		Key:  `missing-script:project/"$CLAUDE_PROJECT_DIR"/.claude/hooks/gone.sh`,
 		Kind: "missing-script",
 		Text: []string{
-			"PreToolUse Bash: project .claude/hooks/gone.sh (in .claude/settings.json) bestaat niet",
-			"PostToolUse Bash: project .claude/hooks/gone.sh (in .claude/settings.json) bestaat niet",
+			`PreToolUse Bash: project "$CLAUDE_PROJECT_DIR"/.claude/hooks/gone.sh (in .claude/settings.json): .claude/hooks/gone.sh bestaat niet`,
+			`PostToolUse Bash: project "$CLAUDE_PROJECT_DIR"/.claude/hooks/gone.sh (in .claude/settings.json): .claude/hooks/gone.sh bestaat niet`,
 		},
 		Sources: []string{"project"},
 	})
@@ -285,7 +285,7 @@ func TestMissingRunShName(t *testing.T) {
 		assertFinding(t, got[0], Finding{
 			Key:     "missing-script:lighthouse/" + cmd("onbekend"),
 			Kind:    "missing-script",
-			Text:    []string{"PreToolUse Bash: lighthouse .claude/hooks/lighthouse/run.sh (in .claude/settings.json): de binary kent geen hook onbekend"},
+			Text:    []string{`PreToolUse Bash: lighthouse "$CLAUDE_PROJECT_DIR"/.claude/hooks/lighthouse/run.sh onbekend (in .claude/settings.json): de binary kent geen hook onbekend`},
 			Sources: []string{"lighthouse"},
 		})
 	})
