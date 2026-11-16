@@ -76,13 +76,13 @@
 
 **Interfaces:**
 - Consumes: `Planning`, `PlanIssue`, `MilestoneCount` uit Taak 1.
-- Produces: `(*GitLab).Planning`; de `t.Skip` uit Taak 1 vervalt.
+- Produces: `(*GitLab).Planning`; de GitLab-fixture van `forgesuite` krijgt `SupportsPlanning() == true` (met `AddMilestone` en sluitreden echt ingevuld), zodat het Planning-conformiteitsgeval ook voor GitLab draait; de stub uit Taak 1 vervalt.
 
 - [ ] **Step 1: Failing test `TestGitLabPlanningLinksAndStatistics`** tegen `gitlabtest`: twee open issues, issue 2 heeft `links` van type `is_blocked_by` naar issue 1 (open) en naar een issue in ander project (open); een `relates_to`-link en een gesloten blocker tellen niet mee. Milestone "M1" `issues_statistics` ⇒ `opened:3, closed:2`. Assert dezelfde vorm als GitHub: `BlockedBy` alleen open `is_blocked_by`; `MilestoneCount{Open:3, Done:2}`.
 - [ ] **Step 2: Failing test `TestGitLabPlanningBudgetIsOneLinksCallPerOpenIssue`**: de fake telt requests; 3 open issues op één pagina, 2 milestones ⇒ exact `1 + 3 + 2` requests (plus de milestone-lijst). Een verzoek na een verlopen context ⇒ de fout van de context, geen deelresultaat.
 - [ ] **Step 3: Run** `go test ./internal/forge -run GitLabPlanning` — FAIL.
 - [ ] **Step 4: Implementeer `(*GitLab).Planning`** met REST: `OpenIssues`-pagina's, `GET /projects/:id/issues/:iid/links` per open issue (filter `link_type == "is_blocked_by"` en `state == "opened"`, `Blocker.Repo` uit het projectpad van de link), `GET /projects/:id/milestones?state=active`, `issues_statistics?milestone=<titel>`. Geen gesloten issues per milestone ophalen. Leg het budget als commentaar bij de functie vast.
-- [ ] **Step 5: Verwijder de `t.Skip`**, draai `go test ./internal/forge -race` — groen.
+- [ ] **Step 5: Zet `SupportsPlanning()` van de GitLab-fixture op `true`** (de `forgesuite`-gevallen draaien nu ook voor GitLab), draai `go test ./internal/forge -race` — groen.
 - [ ] **Step 6: Commit** `feat(forge): Planning voor GitLab (#374)`.
 
 ### Task 3: Board-status in de overview-snapshot
