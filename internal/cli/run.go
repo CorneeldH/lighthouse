@@ -42,8 +42,9 @@ func newRunCommand() *cobra.Command {
 	return cmd
 }
 
-// runTarget is <owner/name>#<issue>, with an issue number from 1.
-var runTarget = regexp.MustCompile(`^([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)#([1-9][0-9]*)$`)
+// runTarget is <owner/name>#<issue>, with an issue number from 1. The repo has at least one
+// slash: a GitLab project may sit under subgroups (group/sub/project). The split is on the last #.
+var runTarget = regexp.MustCompile(`^([A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)+)#([1-9][0-9]*)$`)
 
 // runKinds are the actions run applies for its issue. A close comes along: an open run that
 // closes in this decide would otherwise make the claim of the start or resume fail.

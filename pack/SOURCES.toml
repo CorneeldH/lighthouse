@@ -20,42 +20,16 @@ path = "pack/core/instructions/AGENTS.md"
 new = true
 
 [[file]]
-path = "pack/core/lib/__init__.py"
-new = true
-
-[[file]]
-path = "pack/core/lib/config.py"
-new = true
-
-[[file]]
 path = "pack/core/requires.toml"
 new = true
-
-[[file]]
-path = "pack/core/lib/datadir.py"
-source_path = "experiments/lekmeting-keten/lk_common.py"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
 
 [[file]]
 path = "pack/core/headings.toml"
 new = true
 
 [[file]]
-path = "pack/core/lib/headings.py"
-new = true
-
-[[file]]
-path = "pack/core/scripts/create_labels.py"
-new = true
-
-[[file]]
 path = "pack/core/workflows/unblock-dependents.yml"
 source_path = ".github/workflows/unblock-dependents.yml"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
-
-[[file]]
-path = "pack/core/scripts/check-instructions.sh"
-source_path = "scripts/hooks/check-instructies.sh"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
@@ -207,6 +181,14 @@ source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
 path = "pack/core/skills/test-standard/SKILL.md"
+new = true
+
+[[file]]
+path = "pack/core/skills/upgrade/claude/SKILL.md"
+new = true
+
+[[file]]
+path = "pack/core/skills/upgrade/agents/SKILL.md"
 new = true
 
 [[file]]

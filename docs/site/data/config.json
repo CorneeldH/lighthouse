@@ -32,8 +32,8 @@
                 "internal/review/openpoints.go",
                 "internal/triage/judgment.go",
                 "pack/core/instructions/AGENTS.md",
-                "pack/core/lib/headings.py",
                 "pack/core/skills/close-issue",
+                "pack/core/skills/upgrade",
                 "pack/core/skills/write-handoff",
                 "pack/core/skills/write-issue",
                 "pack/core/skills/write-pr",
@@ -85,8 +85,8 @@
               "default": 3000,
               "about": "The word budget for the instruction files; the check fails above it.",
               "readers": [
+                "internal/checkinstr/run.go",
                 "internal/initcmd/budget.go",
-                "pack/core/scripts/check-instructions.sh",
                 "pack/core/skills/place-instruction"
               ]
             },
@@ -151,7 +151,7 @@
                 "internal/repoconfig/repoconfig.go",
                 "internal/workplace/local/adapter.go",
                 "internal/worktreeaudit/collect.go",
-                "pack/core/scripts/create_labels.py",
+                "internal/labels/labels.go",
                 "pack/core/skills/audit-worktrees",
                 "pack/core/skills/close-issue",
                 "pack/core/skills/fix-pr",
@@ -170,7 +170,7 @@
               "required": "no",
               "about": "The host name of a self-hosted GitLab, without scheme, port or path. Valid only with kind gitlab.",
               "example": "git.example.org",
-              "readers": ["internal/initcmd/initcmd.go", "internal/repoconfig/repoconfig.go"]
+              "readers": ["internal/cli/serve.go", "internal/forge/gitlab.go", "internal/initcmd/initcmd.go", "internal/repoconfig/repoconfig.go"]
             },
             {
               "key": "forge.token_env",
@@ -200,6 +200,7 @@
                 "pack/core/skills/audit-worktrees",
                 "pack/core/skills/close-issue",
                 "pack/core/skills/start-issue",
+                "pack/core/skills/upgrade",
                 "pack/core/skills/write-handoff",
                 "pack/core/skills/write-issue",
                 "pack/core/workflows/unblock-dependents.yml",
@@ -212,7 +213,7 @@
               "key": "forge.name",
               "level": "advanced",
               "required": "derived",
-              "about": "The name part of forge.repo, derived by config.py.",
+              "about": "The name part of forge.repo, derived by the lighthouse binary.",
               "readers": [
                 "internal/boardstart/boardstart.go",
                 "pack/core/skills/close-issue",
@@ -224,7 +225,7 @@
               "key": "forge.owner",
               "level": "advanced",
               "required": "derived",
-              "about": "The owner part of forge.repo, derived by config.py.",
+              "about": "The owner part of forge.repo, derived by the lighthouse binary.",
               "readers": [
                 "internal/boardstart/boardstart.go",
                 "pack/core/skills/close-issue",
@@ -255,7 +256,7 @@
               "key": "forge.board.priority_options",
               "level": "optional",
               "required": "no",
-              "about": "The ids of the Priority options, one entry per option name.",
+              "about": "The ids of the Priority options, one entry per option name. With kind gitlab each value is the scoped label that carries the priority, for example priority::P1; two names on one label are refused.",
               "example": {
                 "P0": "...",
                 "P1": "...",
@@ -316,7 +317,7 @@
               "key": "forge.board.status_options",
               "level": "optional",
               "required": "with [forge.board]",
-              "about": "The ids of the Status options, one entry per option name.",
+              "about": "The ids of the Status options, one entry per option name. With kind gitlab each value is the name of the issue status, for example To do; two names on one status (case-insensitive) are refused.",
               "example": {
                 "To do": "...",
                 "In progress": "...",
@@ -330,6 +331,7 @@
                 "internal/dispatch/gather.go",
                 "internal/forge/board.go",
                 "internal/forge/forge.go",
+                "internal/forge/gitlab_board.go",
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/write-handoff",
                 "pack/core/skills/write-issue",
@@ -355,6 +357,7 @@
                 "internal/initcmd/gatecommand.go",
                 "pack/core/instructions/AGENTS.md",
                 "pack/core/skills/fix-pr",
+                "pack/core/skills/upgrade",
                 "pack/core/skills/write-pr",
                 "pack/go/skills/go-standard",
                 "pack/python/skills/python-standard"
@@ -437,7 +440,7 @@
               "key": "paths.history",
               "level": "advanced",
               "required": "no",
-              "about": "The file with the project's history; only config.py checks it for now.",
+              "about": "The file with the project's history; only the lighthouse binary checks it for now.",
               "example": "docs/history.md",
               "readers": []
             },
@@ -451,7 +454,7 @@
                 "internal/cli/init.go",
                 "internal/initcmd/initcmd.go",
                 "internal/projectconfig/projectconfig.go",
-                "pack/core/scripts/create_labels.py",
+                "internal/labels/labels.go",
                 "pack/core/skills/write-issue",
                 "pack/core/skills/write-pr"
               ]
@@ -463,7 +466,9 @@
               "about": "The file that lists instruction files exempt from the mirror check.",
               "example": "docs/mirror-exceptions.md",
               "readers": [
-                "pack/core/scripts/check-instructions.sh"
+                "internal/checkinstr/mirror.go",
+                "internal/checkinstr/run.go",
+                "pack/core/skills/upgrade"
               ]
             },
             {
@@ -763,7 +768,7 @@
               "level": "advanced",
               "required": "no",
               "default": 85,
-              "about": "A [codex_usage] threshold that nothing reads yet; only config.py checks its type.",
+              "about": "A [codex_usage] threshold that nothing reads yet; only the lighthouse binary checks its type.",
               "readers": []
             },
             {
@@ -791,7 +796,7 @@
               "level": "advanced",
               "required": "no",
               "default": 80,
-              "about": "A [codex_usage] threshold that nothing reads yet; only config.py checks its type.",
+              "about": "A [codex_usage] threshold that nothing reads yet; only the lighthouse binary checks its type.",
               "readers": []
             }
           ]

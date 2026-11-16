@@ -102,12 +102,12 @@ func TestUpgradeWarnsOnOtherScriptRef(t *testing.T) {
 	}
 	root = gateRepo(t, gateToml("python3 -m lighthouse_lib.x"))
 	r = run(t, root, "", all(upgrade, yes))
-	want = "warning: lighthouse.toml: [test_gate] command uses lighthouse_lib, which lighthouse is phasing out; move it to a lighthouse command\n"
+	want = "warning: lighthouse.toml: [test_gate] command uses lighthouse_lib, which lighthouse no longer installs; the test gate breaks until you change it\n"
 	if !strings.Contains(r.err, want) {
 		t.Fatalf("stderr lacks %q:\n%s", want, r.err)
 	}
-	if strings.Contains(r.err, "no longer installs") {
-		t.Fatalf("lighthouse_lib is still installed, so no path warning:\n%s", r.err)
+	if strings.Contains(r.err, "command calls") {
+		t.Fatalf("a module name is no path, so no path warning:\n%s", r.err)
 	}
 }
 

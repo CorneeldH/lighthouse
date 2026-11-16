@@ -36,7 +36,7 @@ kind = "file"
 path = ".agents/skills/lighthouse-place-instruction/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "97a7e0e43d806479c44ef85d4411f8d7cd5ad1a872c49404bfa6e956003a99b2"
+sha256 = "4b0dc62493c6d27179e9bee87d7e5dda1fffde623bc07f9f564090489472f979"
 
 [[unit]]
 kind = "file"
@@ -131,10 +131,17 @@ sha256 = "3e40f0a7cdc887e30a7cea5a4ee16f6ff5fd87c94577123b2a1737123416165f"
 
 [[unit]]
 kind = "file"
+path = ".agents/skills/lighthouse-upgrade/SKILL.md"
+package = "core"
+version = "dev"
+sha256 = "55bfd43a602af5e2a975312b61ee1c7496aa1156e7d86ce6a6ce8d5cc8193ded"
+
+[[unit]]
+kind = "file"
 path = ".agents/skills/lighthouse-write-handoff/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "2a68da66c45e61433e3b62dece8c9cad2b071e2971fd108e6602d085ab52230f"
+sha256 = "e109067b530532fd42eb51cc288f01092c745ec7edcb92b8c8a0dc78d5075977"
 
 [[unit]]
 kind = "file"
@@ -370,7 +377,7 @@ kind = "file"
 path = ".claude/skills/lighthouse-place-instruction/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "97a7e0e43d806479c44ef85d4411f8d7cd5ad1a872c49404bfa6e956003a99b2"
+sha256 = "4b0dc62493c6d27179e9bee87d7e5dda1fffde623bc07f9f564090489472f979"
 
 [[unit]]
 kind = "file"
@@ -465,10 +472,17 @@ sha256 = "3e40f0a7cdc887e30a7cea5a4ee16f6ff5fd87c94577123b2a1737123416165f"
 
 [[unit]]
 kind = "file"
+path = ".claude/skills/lighthouse-upgrade/SKILL.md"
+package = "core"
+version = "dev"
+sha256 = "ddfaa8a02ecb77dd5ab062ffae83e70ac2697f167f95855c3df33e3f3a8fbc6d"
+
+[[unit]]
+kind = "file"
 path = ".claude/skills/lighthouse-write-handoff/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "2a68da66c45e61433e3b62dece8c9cad2b071e2971fd108e6602d085ab52230f"
+sha256 = "e109067b530532fd42eb51cc288f01092c745ec7edcb92b8c8a0dc78d5075977"
 
 [[unit]]
 kind = "file"
@@ -506,54 +520,12 @@ version = "dev"
 sha256 = "3fd20cc381b75418127fd3a44c39a24a28636af9b1b1875d1f54465b0783e9ad"
 
 [[unit]]
-kind = "file"
-path = ".lighthouse/lib/lighthouse_lib/__init__.py"
-package = "core"
-version = "dev"
-sha256 = "842568101ac2cacf5f427e064d78c33fb42d75de75d9ccca8dd48184df72e944"
-
-[[unit]]
-kind = "file"
-path = ".lighthouse/lib/lighthouse_lib/config.py"
-package = "core"
-version = "dev"
-sha256 = "49afe0fea248c693e04933b043c5335dd8d70418ed274b0f7abacd19e9932794"
-
-[[unit]]
-kind = "file"
-path = ".lighthouse/lib/lighthouse_lib/datadir.py"
-package = "core"
-version = "dev"
-sha256 = "0026a6fdd41692e374daa4233ca50108f9c70a51f6fd4e1f92a66de0593e60a5"
-
-[[unit]]
-kind = "file"
-path = ".lighthouse/lib/lighthouse_lib/headings.py"
-package = "core"
-version = "dev"
-sha256 = "d91b117b414a6c4a9d486c89a914a07d02a6f70351c35b46633996616a590772"
-
-[[unit]]
-kind = "file"
-path = ".lighthouse/scripts/check-instructions.sh"
-package = "core"
-version = "dev"
-sha256 = "d8ba746d1dad1b7074f6c2541cde14801cf3d7d5cd3736af6c60a6c5a8289e13"
-
-[[unit]]
-kind = "file"
-path = ".lighthouse/scripts/create_labels.py"
-package = "core"
-version = "dev"
-sha256 = "cf79f3adc5339bbb0d1b3a768b270707eefeaebfd177f1e5d6f20cfdd263eb49"
-
-[[unit]]
 kind = "block"
 path = "AGENTS.md"
 id = "core"
 package = "core"
 version = "dev"
-sha256 = "c0bf39786f2f63c7a435f6f0894788bd30eeb12a63e53e79d4d652eb344e03b6"
+sha256 = "9818fa89b08071897434ee60cd833902e6a9b4d06f778507d29c411ec7887eaf"
 
 [[unit]]
 kind = "block"

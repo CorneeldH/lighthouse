@@ -373,7 +373,7 @@ export function configEntries(data, packs) {
           about: key.about,
           status: key.readers.length
             ? "Status: works"
-            : "Status: not used yet — config.py accepts it, nothing acts on it.",
+            : "Status: not used yet — the lighthouse binary accepts it, nothing acts on it.",
           readers: key.readers.map((path) => configReader(path, packs)),
         });
       }
@@ -493,7 +493,7 @@ function configRow(entry) {
     readers = el("ul", "reference-list");
     readers.append(...entry.readers.map(configReaderLink));
   } else {
-    readers = el("p", "config-none", "Nothing reads it yet: config.py only checks it.");
+    readers = el("p", "config-none", "Nothing reads it yet: the lighthouse binary only checks it.");
   }
   return [name, configValue(entry), cell(el("p", "", entry.about)), cell(readers)];
 }

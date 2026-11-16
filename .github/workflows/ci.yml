@@ -78,6 +78,15 @@ jobs:
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.event.pull_request.head.sha }}
         run: gitleaks git . --log-opts="$BASE..$HEAD" --config .gitleaks.toml --no-banner --redact --exit-code 1
+      # checkpoint_scan.py reads its limits through `lighthouse config`, found on PATH. The tests
+      # build the same checkout again through `lighthouse_dir()` (tests/pack/_testkit.py).
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: build lighthouse
+        run: |
+          go build -o "$RUNNER_TEMP/bin/lighthouse" ./cmd/lighthouse
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       - run: uv sync --locked
       - run: uv run pytest -q tests/test_pre_push_secret_scan.py tests/test_checkpoint_scan.py
@@ -102,6 +111,11 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+      # checkpoint_scan.py reads its limits through `lighthouse config`, found on PATH (#285).
+      - name: build lighthouse
+        run: |
+          go build -o "$RUNNER_TEMP/bin/lighthouse" ./cmd/lighthouse
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       - run: uv sync --locked
       # `-n auto` (pytest-xdist): one worker per vCPU the runner has, 4 on ubuntu-latest for a
@@ -180,6 +194,25 @@ jobs:
       # The e2e tests of pack/python run the default test command, `uv run pytest -q`.
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       - run: go test -race -shuffle=on -tags e2e ./e2e/ -v
+
+  # A fresh init with every pack, and each hook it registers, on a PATH without python* (#285).
+  # No setup-uv: Python is what this job proves is not needed.
+  no-python:
+    needs: changes
+    if: needs.changes.outputs.go == 'true' || needs.changes.outputs.python == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: go build -o "$RUNNER_TEMP/lighthouse" ./cmd/lighthouse
+      - run: |
+          mkdir -p "$RUNNER_TEMP/work"
+          ci/no-python.sh "$RUNNER_TEMP/lighthouse" "$RUNNER_TEMP/work"
 
   web:
     needs: changes

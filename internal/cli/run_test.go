@@ -183,6 +183,25 @@ func TestRunBadTarget(t *testing.T) {
 	}
 }
 
+// A GitLab project may sit under subgroups; the repo is everything before the last #.
+func TestRunTargetSubgroup(t *testing.T) {
+	for target, want := range map[string][2]string{
+		"g/sub/p#5": {"g/sub/p", "5"}, "g/s/t/p#12": {"g/s/t/p", "12"}, "g/p#5": {"g/p", "5"}, "o/r#5": {"o/r", "5"},
+	} {
+		m := runTarget.FindStringSubmatch(target)
+		if m == nil || m[1] != want[0] || m[2] != want[1] {
+			t.Errorf("runTarget(%q) = %q, want repo %q and issue %s", target, m, want[0], want[1])
+		}
+	}
+	for _, target := range []string{"g/sub/p", "g/sub/p#", "g//p#5", "/g/p#5", "g/sub/p#0"} {
+		env, db := tickFixture(t, repoDir(t, completeRepo))
+		err := runIssue(context.Background(), env, target, db, &bytes.Buffer{})
+		if want := "run: " + target + " is not <owner/name>#<issue>"; err == nil || err.Error() != want {
+			t.Errorf("target %q: err = %v, want %q", target, err, want)
+		}
+	}
+}
+
 func TestRunCommandInRoot(t *testing.T) {
 	var out bytes.Buffer
 	root := NewRoot(strings.NewReader(""), &out, &bytes.Buffer{})

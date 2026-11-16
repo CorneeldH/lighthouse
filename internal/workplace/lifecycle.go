@@ -36,6 +36,11 @@ const (
 // is the reason the run was closed with; it is empty for the other outcomes.
 func Launch(ctx context.Context, db *sql.DB, w Workplace, runID int64, branch string, l LaunchSpec, now time.Time) (Outcome, string, error) {
 	ws, err := w.Prepare(ctx, branch)
+	// A resume continues the session that made the own work: it runs on that HEAD (#356).
+	var own *OwnWorkError
+	if l.Mode == "resume" && errors.As(err, &own) {
+		ws, err = own.Workspace, nil
+	}
 	if err != nil {
 		reason := "prepare: " + err.Error()
 		return NotAccepted, reason, releaseFailed(ctx, db, runID, reason, now)

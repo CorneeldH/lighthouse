@@ -40,6 +40,31 @@ targetRules = ["generic-api-key"]
 regexTarget = "match"
 regexes = ['''^(?:turnAttributionKey|urnAttributionKey|rnAttributionKey|nAttributionKey|AttributionKey|ttributionKey|tributionKey|ributionKey|ibutionKey|butionKey|utionKey|tionKey|ionKey|onKey|nKey|Key)":"[0-9a-f]{1,8}(?:-[0-9a-f]{0,12}){0,4}"?$''']
 
+# generic-api-key reads `runtime_session_key":"<16 hex>_<16 hex>"` as a key with a value:
+# kenn-forge returns that field in `structuredContent` of its session listing, a handle of
+# an agent session on the local Forge daemon, the `workplace_session` of a run. Forge
+# redacts it in its text output, not there. Decided by the user per ref (#228): a shape,
+# never a value, since this repository is public. A cut-off match keeps any tail of the
+# name down to `key`, and the value may end early. Scoped to the rule, to that name and
+# to that shape, so another key with that shape stays red.
+[[allowlists]]
+description = "kenn-forge runtime_session_key (16 hex, underscore, 16 hex) in checkpoints, not a secret"
+targetRules = ["generic-api-key"]
+regexTarget = "match"
+regexes = ['''^(?:runtime_session_key|untime_session_key|ntime_session_key|time_session_key|ime_session_key|me_session_key|e_session_key|_session_key|session_key|ession_key|ssion_key|sion_key|ion_key|on_key|n_key|_key|key)":"[0-9a-f]{1,16}(?:_[0-9a-f]{0,16})?"?$''']
+
+# generic-api-key reads `credentials, OnFailure/notification` as a key with a value: it is
+# prose, a list of what the Host-deploy section of docs/secret-scan.md explains, in a
+# session's brief to its subagent (#228). Exact match, decided by the user. The match may
+# end on the space, backtick or quote after it (the changelog fragment and this file
+# quote it), and the session that wrote this allowlist also typed the plural (#228).
+# The match may end on the space or backtick after it.
+[[allowlists]]
+description = "prose 'credentials, OnFailure/notification' in a session brief, not a secret"
+targetRules = ["generic-api-key"]
+regexTarget = "match"
+regexes = ['''^credentials, OnFailure/notifications?[ `'"]?$''']
+
 # A session read the .gitleaks.toml of another repository, whose allowlists name its
 # synthetic test values: two AWS keys "from the redaction validation and the allowlist
 # test", a scrubber test token and a slop-signal line. Exact matches only, decided by

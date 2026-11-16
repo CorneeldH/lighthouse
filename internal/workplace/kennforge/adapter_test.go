@@ -360,7 +360,60 @@ func TestPrepareFoundBehindFastForwards(t *testing.T) {
 	}
 }
 
-func TestPrepareFoundOwnCommitHandsBack(t *testing.T) {
+// ahead gives the found workspace issue-1-x tracking origin/issue-1-x with one commit c on
+// top that was never pushed, as a run leaves it that paused or handed off without a push
+// (#356). It returns c.
+func (w gitWorld) ahead(t *testing.T) string {
+	t.Helper()
+	w.pushBranch(t)
+	git(t, w.ws, "fetch", "origin")
+	git(t, w.ws, "checkout", "-b", "issue-1-x", "--track", "origin/issue-1-x")
+	return commit(t, w.ws, "c")
+}
+
+// A HEAD that already holds origin/<branch> is no stale HEAD: the run starts on it, and the
+// commit origin lacks stays (#356). Until #356 this case handed the run back.
+func TestPrepareFoundAheadStartsOnHead(t *testing.T) {
+	w := newGitWorld(t)
+	c := w.ahead(t)
+	a := gitAdapter(t, w.ws)
+	ws, err := a.Prepare(context.Background(), "issue-1-x")
+	if err != nil {
+		t.Fatalf("Prepare: %v, want a start on HEAD", err)
+	}
+	if ws.ID != "ws1" {
+		t.Errorf("workspace = %+v, want ws1", ws)
+	}
+	if got := git(t, w.ws, "rev-parse", "HEAD"); got != c {
+		t.Errorf("HEAD = %s, want own commit %s", got, c)
+	}
+}
+
+// A dirty work tree does not change that, as with HEAD equal to origin.
+func TestPrepareFoundAheadDirtyStartsOnHead(t *testing.T) {
+	w := newGitWorld(t)
+	c := w.ahead(t)
+	if err := os.WriteFile(filepath.Join(w.ws, "c"), []byte("changed"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(w.ws, "new"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a := gitAdapter(t, w.ws)
+	if _, err := a.Prepare(context.Background(), "issue-1-x"); err != nil {
+		t.Fatalf("Prepare: %v, want a start on HEAD", err)
+	}
+	if got := git(t, w.ws, "rev-parse", "HEAD"); got != c {
+		t.Errorf("HEAD = %s, want own commit %s", got, c)
+	}
+	if got := git(t, w.ws, "status", "--porcelain"); got != "M c\n?? new" {
+		t.Errorf("status = %q, want the changes kept", got)
+	}
+}
+
+// Diverged: origin/issue-1-x has b, HEAD has c, both on m1. Starting on HEAD would miss b,
+// and a checkout would drop c: the run goes back (#269).
+func TestPrepareFoundDivergedOwnCommitHandsBack(t *testing.T) {
 	w := newGitWorld(t)
 	w.pushBranch(t)
 	git(t, w.ws, "checkout", "-b", "issue-1-x")

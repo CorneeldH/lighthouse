@@ -1,0 +1,11 @@
+FAIL  mirror-content differs from no recorded exceptions ([paths] mirror_exceptions is not set) (- recorded, + now; < .claude, > .agents):
+      @@ -1 +1,5 @@
+      -
+      +=== demo/SKILL.md
+      +< Run in Claude Code.
+      +> Run in Codex.
+      +< Run the hook.
+      +> Run the plugin.
+      Bring the other side in line. If the difference is deliberate per harness, record it with
+      [paths] mirror_exceptions = "<file>" in lighthouse.toml, and then
+      lighthouse check-instructions --print-mirror-exceptions > <file>

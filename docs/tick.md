@@ -366,8 +366,16 @@ host. Per kandidaat, in deze volgorde; de eerste dichte rem geeft de uitstelteks
   gestarte run reserveert van dezelfde meting.
 - `in_use` komt uit de database en geldt voor de hele host: de open runs over alle repo's, plus de
   geparkeerde runs (een marker met `controller: true` waarvan de laatste run van de sessie nog
-  hervatbaar is). `software_in_use` telt daarvan de runs met profiel `software`. Een run die in deze
-  tick sluit, telt nog mee; de volgende tick ziet de plek vrij.
+  hervatbaar is). `software_in_use` telt daarvan de runs met profiel `software`.
+- Een run die in deze tick sluit, geeft zijn plek al aan de starts van deze tick: een plek van de
+  host, op een node de plek van die node, en bij profiel `software` ook zijn software-plek. Drie
+  sluitingen geven niets vrij. Een geparkeerde run blijft in `in_use` tot zijn usage-hervatting.
+  De fix-pr-handoff van regel 13 geeft niets vrij voor een ander: de fix-pr-start erft de plek
+  (zie hieronder). Een merge
+  (regel 7) laat de run open als GitHub hem weigert; zijn plek komt pas de tick erna vrij. Mislukt
+  de stop van een sessie, dan draait er één tick een run boven `slots` of `max_software`. De
+  volgende tick telt beide, laat geen start door en stopt de sessie alsnog (na een Teruggegeven via
+  regel 4).
 - Een usage-hervatting (de geparkeerde run na de reset, trigger `usage`) slaat Plekken en Software
   over en telt er niet in mee: de run zit al in `in_use`. Hij telt wel mee in `n` van Geheugen.
 - Hetzelfde geldt voor de fix-pr-start van regel 13, als hij op de node en met het profiel van de

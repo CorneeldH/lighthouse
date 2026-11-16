@@ -1,0 +1,10 @@
+FAIL  mirror-content differs from no recorded exceptions ([paths] mirror_exceptions is not set) (- recorded, + now; < .claude, > .agents):
+      @@ -1 +1,4 @@
+      -
+      +=== demo/icon.bin
+      +diff --git a/{root}/.claude/skills/demo/icon.bin b/{root}/.agents/skills/demo/icon.bin
+      +index 52509141c2fe..729def4eed4f 100644
+      +Binary files a/{root}/.claude/skills/demo/icon.bin and b/{root}/.agents/skills/demo/icon.bin differ
+      Bring the other side in line. If the difference is deliberate per harness, record it with
+      [paths] mirror_exceptions = "<file>" in lighthouse.toml, and then
+      lighthouse check-instructions --print-mirror-exceptions > <file>

@@ -1,0 +1,4 @@
+=== demo/icon.bin
+diff --git a/{root}/.claude/skills/demo/icon.bin b/{root}/.agents/skills/demo/icon.bin
+index 52509141c2fe..729def4eed4f 100644
+Binary files a/{root}/.claude/skills/demo/icon.bin and b/{root}/.agents/skills/demo/icon.bin differ

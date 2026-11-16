@@ -1465,6 +1465,43 @@ func TestApplyUsageResumePostsNothing(t *testing.T) {
 	}
 }
 
+// A resume continues the session that made the work in its workspace: own work never hands
+// it back (#356), also when origin moved on and HEAD diverged, and the launch runs in the
+// workspace the OwnWorkError names.
+func TestApplyResumeOwnWorkStarts(t *testing.T) {
+	for _, a := range []Action{usageResumeAction(), resumeAction()} {
+		h := newHarness(t)
+		h.seed(t, 7, oldSession, "start:7", runs.Parked)
+		h.wp.prepareErr = &workplace.OwnWorkError{
+			Workspace: workplace.Workspace{ID: "9c5c2b84ce761720", Path: "/forge/issue-7-x", Branch: "issue-7-x"},
+			Commits:   14, Dirty: true,
+		}
+		res, err := Apply(context.Background(), h.env, []Action{a})
+		if err != nil {
+			t.Fatalf("%s: Apply: %v", a.Trigger, err)
+		}
+		if res.Started != 1 || len(h.wp.spawned) != 1 || h.wp.spawned[0].SessionID != oldSession {
+			t.Errorf("%s: Started = %d, spawned %+v; want one resume of %s", a.Trigger, res.Started, h.wp.spawned, oldSession)
+		}
+		for _, body := range h.poster(applyRepo).bodies {
+			if strings.Contains(body, "Teruggegeven") {
+				t.Errorf("%s: posted %q, want no Returned", a.Trigger, body)
+			}
+		}
+		rows := h.history(t)
+		if len(rows) != 2 || !rows[1].Open {
+			t.Fatalf("%s: rows = %+v, want an open resume", a.Trigger, rows)
+		}
+		var wsID string
+		if err := h.db.QueryRow(`SELECT workspace_id FROM runs WHERE id = ?`, rows[1].ID).Scan(&wsID); err != nil {
+			t.Fatal(err)
+		}
+		if wsID != "9c5c2b84ce761720" {
+			t.Errorf("%s: workspace = %q, want 9c5c2b84ce761720", a.Trigger, wsID)
+		}
+	}
+}
+
 // The second attempt of a usage resume posts no header, so a Returned after the first refusal
 // would stay the last header while its agent runs.
 func TestApplyUsageResumeNotAcceptedReturnsOnSecondAttempt(t *testing.T) {
