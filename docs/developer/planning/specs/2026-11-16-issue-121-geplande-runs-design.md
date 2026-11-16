@@ -128,6 +128,10 @@ output_dir = "docs/developer/reflect"
 | `profile` | nee | het profiel van de run; standaard `[controller] profile`. Telt mee in de rem zoals bij een issue-run (een `software`-profiel ook tegen `max_software`) *(eigen keuze)* |
 | `params` | nee | job-specifiek, zie §5 en §6; elke parameter heeft een standaard |
 
+De doelrepo moet de PR van een geplande run groen kunnen krijgen met alleen de toegestane paden
+(bv. een repo met een changelog-check in CI heeft een configuratie nodig die dat toelaat); anders sluit
+elke periode een rode PR als `failed`.
+
 `repoconfig` leest en valideert het blok bij het laden; een fout maakt de repo-config ongeldig,
 zoals elke andere configfout. Cron in plaats van systemd-`OnCalendar`: dat vraagt in Go een eigen
 parser, en cron dekt beide schema's met het filter `weeks`/`anchor` erbij.
@@ -137,9 +141,11 @@ parser, en cron dekt beide schema's met het filter `weeks`/`anchor` erbij.
 Per repo en per schema, elke tick, na het gather en vóór de nieuwe issue-starts:
 
 1. **Aan de beurt?** Het laatste cron-slot op of vóór nu (door het filter) is later dan het slot
-   van de laatste afhandeling van dit schema. De afhandeling staat in de DB per `(repo, schema)`:
-   het slot en de uitkomst (`skipped`, `started`). Nooit afgehandeld: het laatste slot telt als
-   aan de beurt.
+   het laatste afgehandelde slot van dit schema. Een slot is afgehandeld als `schedule_slots` het als
+   `skipped` kent, of als de runs-rijen van `trigger_key` `scheduled:<name>:<slot>` een echte uitkomst
+   hebben (`done` of `failed`) of twee pogingen (§3). De toestand is dus afgeleid uit de `runs`-rijen;
+   er is geen aparte `started`-stand die los van de run-rij kan achterlopen *(eigen keuze na spec-review, r1-f2)*.
+   Nooit afgehandeld: het laatste slot telt als aan de beurt.
 2. **Inhalen.** Liggen er meerdere slots open (host uit), dan draait er één run, voor het laatste
    slot. Zo werkt `Persistent=true` ook.
 3. **Open run?** Heeft dit schema een open run, dan niets. De afhandeling wacht tot hij sluit.
@@ -149,20 +155,30 @@ Per repo en per schema, elke tick, na het gather en vóór de nieuwe issue-start
    geplande run telt als plek. Houdt de rem hem tegen, dan blijft het slot open en probeert de
    volgende tick het opnieuw; de poort draait dan opnieuw (die is goedkoop).
 6. **Start.** Claim een run-rij (§3), maak de werkplek op branch
-   `scheduled/<name>-<slotdatum>`, start de agent (§4), noteer het slot als `started`.
+   `scheduled/<name>-<slot>-<poging>` (het slot als volledige tijdstempel `YYYYMMDDTHHMM`, zodat een
+   tweede poging en een schema met meer slots per dag een eigen branch en werkplek krijgen *(eigen keuze
+   na spec-review, r1-f10)*), start de agent (§4). Het claimen van de run-rij is de enige schrijfactie
+   die het slot in gang zet; een tick die tussen claim en start sterft, laat een open run-rij achter die
+   de sweep en de regels van §4 afhandelen, nooit een tweede run voor hetzelfde slot.
 
 **Alleen op de tick-host** *(eigen keuze)*. Een geplande run krijgt altijd node `""`, nooit een
 andere node. De nacontrole (§4) heeft lokale git in de workspace nodig, en de sessies van reflect
 staan op deze host. Een `Workplace` met exec- of bestandsmethoden voor andere nodes valt buiten
 dit ontwerp.
 
-**Tijdelijk mislukt** *(eigen keuze)*. Eindigt de run zonder echte uitkomst, dan gaat het slot
-weer open en probeert een volgende tick het met een verse start. Dat geldt voor start mislukt,
+**Tijdelijk mislukt** *(eigen keuze)*. Eindigt de run zonder echte uitkomst, dan sluit hij met de nieuwe uitkomst `retry`
+(niet `returned` of `parked`), gaat het slot weer open en probeert een volgende tick het met een verse
+start. `runs.Take` telt voor trigger `scheduled` elke eerdere run van de `trigger_key` als poging
+(niet alleen `start_failed`): de sleutel is besteed na een `done` of `failed`, of na twee pogingen
+*(eigen keuze na spec-review, r1-f1)*. Dat geldt voor start mislukt,
 start onzeker, stilte, looptijd, en geparkeerd door de usage-guard. Er komen maximaal 2 pogingen
 per slot (`attempt` 1 en 2, zoals bij een issue-run). Daarna is het slot `failed` en wacht het
 schema op zijn volgende slot. Er is geen hervatting van een geplande run: een verse start is
 eenvoudiger, en de werkplek is van de run. Een `failed` uit de nacontrole of de PR is een echte
 uitkomst: dan is het slot afgehandeld, zonder tweede poging.
+
+Het volgende aan de beurt komende slot is een tijdgrens voor de precheck, naast de bestaande
+grenzen die de gather-skip doorbreken; anders ziet de planner een slot pas bij de volgende verouderde gather.
 
 Een geplande run gaat vóór nieuwe issue-starts in dezelfde tick: hij komt hooguit eens per periode
 voor, en anders houdt een volle wachtrij hem eindeloos tegen. Hervattingen en fix-pr-runs van open
@@ -175,19 +191,25 @@ Eén `runs`-tabel, via een nieuwe migratie (tabel herbouwen, zoals `0004`):
 - `issue` wordt nullable; een nieuwe kolom `schedule TEXT` (leeg voor een issue-run).
 - Precies één van beide is gezet (`CHECK`).
 - `trigger` krijgt `scheduled`; `trigger_key` is `scheduled:<name>:<slot>`.
-- `outcome` krijgt `failed` voor een geplande run die de nacontrole of de PR niet haalde.
+- `outcome` krijgt `failed` voor een geplande run die de nacontrole of de PR niet haalde, en `retry`
+  voor een tijdelijk mislukte (§2). Ook de `start_sha` van de start komt als kolom op de run (§4,
+  nacontrole).
 - Naast `runs_open_issue` (nu partieel op `issue IS NOT NULL`) een uniek index
   `runs_open_schedule ON runs(repo, schedule) WHERE ended_at IS NULL AND schedule IS NOT NULL`.
   Dat is de DB-kant van "nooit twee tegelijk".
-- Een tabel `schedule_slots(repo, schedule, slot, outcome, reason, at)` voor de afhandeling uit §2;
-  `outcome` is `skipped`, `started`, `done` of `failed`.
+- Een tabel `schedule_slots(repo, schedule, slot, outcome, reason, at)` voor alleen de `skip`-afhandeling
+  uit §2 (`outcome` is `skipped`); de rest van de afhandeling leest uit de `runs`-rijen.
 
-`RunView` krijgt `Schedule` (leeg voor een issue-run); `Issue` en `Title` blijven, leeg voor een
+`RunView` krijgt `Schedule` (leeg voor een issue-run). `saveRunView` bewaart een geplande run onder
+de `tick_state`-sleutel `scheduled:<name>` (een issue-run onder zijn issuenummer), en `RunViews`
+ontdubbelt alleen issue-runs op issuenummer; twee open geplande runs in één repo blijven dus beide
+zichtbaar (test: twee open geplande runs, AC 4); `Issue` en `Title` blijven, leeg voor een
 geplande run. `GET /api/runs` geeft ze in dezelfde lijst. `web/openapi.json` en de gegenereerde
 client worden opnieuw gemaakt; de web-UI toont een geplande run met zijn schemanaam in plaats van
 een issue.
 
-Alles wat nu een issue van een run verwacht (`OpenAll`, `CountRun`, decide, apply, de sweep,
+Alles wat nu een issue van een run verwacht (`OpenAll`, `CountRun`, `runs.Open`, `runs.Workspaces`,
+de history- en brief-lezers die `issue` in een Go-`int` scannen, decide, apply, de sweep en
 `saveRunView`) moet een geplande run aankunnen of overslaan. Een geplande run post nooit een 🤖
 comment: er is geen issue.
 
@@ -208,12 +230,23 @@ comment: er is geen issue.
   heeft, en de carrier houdt `--strict-mcp-config`. Een MCP-tool (GitHub, mail) is een handeling
   die de containment op `git status` niet ziet. De test bewijst dat er geen MCP-server laadt.
 
-**Afloop.** Decide krijgt een eigen tak voor geplande runs, met dezelfde metingen:
+**Afloop.** Decide krijgt een eigen tak voor geplande runs, met dezelfde metingen. Gather en de
+precheck-vingerafdruk nemen daarvoor de PR's van de branch van elke open geplande run mee (checks,
+mergeability, roborev), niet alleen die van een bordissue; zo is de PR van een open geplande run
+zichtbaar zonder bord-item *(r1-f3)*. De nacontrole is hervatbaar *(r1-f4)*: bestaat de branch al op
+origin of heeft hij een PR, dan hergebruikt de volgende tick die in plaats van opnieuw te committen.
+
+`max_runtime` (regel 19) geldt voor de agentfase, tot en met de nacontrole. Daarna loopt de PR-fase met
+een eigen grens, `pr_timeout` (standaard 60 minuten): een PR die dan niet gemerged is, wordt gesloten en
+de run `failed`, een echte uitkomst, geen tweede poging. Een pauze of een dichte rem tijdens de PR-fase
+telt mee in die 60 minuten *(r1-f6)*.
 
 | Situatie | Uitkomst |
 |---|---|
 | Sessie klaar, nog geen PR | nacontrole (§4, hieronder); geslaagd → commit, push, PR; niets veranderd → `done` zonder PR; mislukt → `failed` met reden |
-| Eigen PR groen, rem open | squash-merge op de gemeten head (de predicaat van regel 7), `done` |
+| Eigen PR groen, rem open | squash-merge op de gemeten head (de predicaat van regel 7), daarna `Forge.DeleteBranch`, `done` |
+| Merge geweigerd (`*MergeRefused`, bv. verplichte review) | PR sluiten, branch verwijderen, `failed` met de reden van de forge |
+| Head verschoven (`ErrHeadMoved`) | niets, de volgende tick meet opnieuw |
 | Eigen PR rood of met conflict | PR sluiten, branch verwijderen, `failed` met reden; geen fix-pr-run (de volgende periode probeert het opnieuw) |
 | Eigen PR gesloten zonder merge | branch verwijderen, `failed` |
 | Regels 9, 10, 15–19, en parkeren door de usage-guard | run sluiten; het slot gaat weer open voor de tweede poging (§2, *Tijdelijk mislukt*). Een PR van deze run wordt gesloten en zijn branch verwijderd |
@@ -227,13 +260,13 @@ Daarna ruimt de sweep de werkplek op. *(eigen keuze)* Een geplande run zonder op
 verloren" van de sweep geldt voor issue-werkplekken. In een geplande werkplek staat niets wat
 bewaard moet worden: wat telt, is gecommit en gepusht of mislukt met een reden in de DB, en het
 transcript blijft bestaan. De sweep-tests bewijzen dat een vuile issue-werkplek blijft staan en
-een vuile geplande werkplek weggaat. De branch wordt na de merge verwijderd, zoals bij een
-issue-PR.
+een vuile geplande werkplek weggaat. De merge van regel 7 ruimt geen branch op (`docs/tick.md`), dus
+de geplande tak roept na een geslaagde merge zelf `Forge.DeleteBranch` aan.
 
 **Nacontrole**, in de werkplek, in deze volgorde. Elke stap die faalt, maakt de run `failed`;
 er komt niets op een branch.
 
-1. **HEAD-guard.** Staat HEAD niet meer op de commit van de start, dan committe de agent zelf:
+1. **HEAD-guard.** Staat HEAD niet meer op `start_sha` (de commit van de start, op de run bewaard), dan committe de agent zelf:
    `git reset --mixed` naar de start, de bestanden blijven staan.
 2. **Containment.** `git status --porcelain` toont alleen paden die de job mag schrijven.
 3. **Volledigheid**, per job (§5, §6).
@@ -243,7 +276,8 @@ er komt niets op een branch.
    daar niet van af.
 6. **Commit** van alleen de toegestane paden (pathspec), push van de branch, PR via een nieuwe
    `Forge.CreatePR(ctx, branch, title, body)`. De PR-body is `No issue: geplande run <name>
-   (<slot>)`.
+   (<slot>)`. De push heeft schrijfrechten nodig in de omgeving van de tick; de bouwer kiest de bron
+   (bv. het forge-token als HTTPS-credential) en test hem, want de tick pusht nu nergens.
 
 Een restore zoals in de paia-scripts is niet nodig: de werkplek is van de run en gaat weg.
 
@@ -271,9 +305,9 @@ Gedrag: `scripts/codebase_map_refresh.py` in paia.
 - **Volledigheid:** elk document uit `documents` bestaat onder `map_dir` met ≥ `min_lines`
   regels.
 - **Afronden:** kopieer de documenten naar `publish_dir` (een kopie, geen symlink) en schrijf
-  daar `index.md` (modus, score, basis, datum). Is de map byte-gelijk aan HEAD, dan geen PR.
+  daar `index.md` (modus, score, basis, datum). Is `map_dir` na de run byte-gelijk aan HEAD (vergeleken vóór het spiegelen en het schrijven van `index.md`), dan geen PR.
 - De looptijdgrens is `max_runtime` uit `host.toml`; paia gebruikte 45 en 120 minuten. Een job mag
-  een eigen `max_runtime` hebben als parameter, met die waarden als standaard.
+  eigen `max_runtime_fast` en `max_runtime_full` als parameter hebben, met 45 en 120 minuten als standaard.
 
 ### 6. Job `reflect`
 
