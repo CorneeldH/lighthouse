@@ -28,7 +28,8 @@ de audit aan via een functie in `initcmd.Options`.
 - De check schrijft niets. Elke test die `Run` aanroept, vergelijkt een hash van de boom vóór en na.
 - `COULD NOT CHECK — <reden>` (em-dash) voor wat niet te meten is, nooit stilte.
 - Exitcodes: 0; 1 alleen met `--strict` en een melding buiten `ignore`; 2 bij `COULD NOT CHECK`
-  van het geheel, of met `--strict` bij een `COULD NOT CHECK` van een bron of hook.
+  van het geheel, of met `--strict` bij een `COULD NOT CHECK` van een bron of hook, behalve de vaste
+  bron `managed`.
 - Tests zetten `HOME` en `CLAUDE_CONFIG_DIR` naar `t.TempDir()`; de host telt nooit mee.
 - Bronnamen exact: `lighthouse`, `project`, `lokaal`, `gebruiker`, `plugin:<naam>`.
 - Statussen exact: `ok`, `afwezig`, `overgeslagen (--repo-only)`, `COULD NOT CHECK — <reden>`.
@@ -60,7 +61,9 @@ de audit aan via een functie in `initcmd.Options`.
 **Bestanden:**
 - Wijzig: `internal/packs/packs.go` (doc-commentaar bovenaan, `Pack`, de top-level-tak in `Load`)
 - Maak: `internal/packs/guards.go`, `internal/packs/guards_test.go`
-- Maak: `pack/core/guards.toml`, `pack/go/guards.toml`
+- Maak: `pack/core/guards.toml`, `pack/go/guards.toml` *(bewust op pakketniveau en niet in `hooks/`
+  zoals spec §3 zegt: `packs.go` kopieert elk bestand uit `hooks/` naar `HookDir`, en `guards.toml`
+  mag niet geïnstalleerd worden)*
 
 **Interfaces:**
 - Produceert:
@@ -107,8 +110,9 @@ de audit aan via een functie in `initcmd.Options`.
 
 - [ ] **Stap 1: falende tests.** `TestFieldFoldedAndLiteral` (een `description: >` over twee regels
   → één regel met spatie; `|` → met newline), `TestFieldMissingIsEmpty`, `TestFieldNoFrontmatter`.
-  `TestNamesListsRegistered`: na de `init()` van `internal/hooks` bevat `hook.Names()`
-  `main-commit-gate` en is gesorteerd.
+  `TestNamesListsRegistered` (in `internal/hook/hook_test.go`, package `hook`; `internal/hooks`
+  importeert `internal/hook`, dus niet importeren): registreer met `hook.Register` twee testnamen
+  in omgekeerde volgorde en controleer dat `hook.Names()` ze gesorteerd bevat.
 - [ ] **Stap 2:** `go test ./internal/frontmatter/ ./internal/hook/` → FAIL.
 - [ ] **Stap 3:** verhuis `frontmatterField` (en `lines`, `isFile`, `startsBlank` voor zover alleen
   die het gebruikt) naar `frontmatter.Field`; `checkinstr` roept `frontmatter.Field` aan. Voeg
@@ -132,7 +136,7 @@ de audit aan via een functie in `initcmd.Options`.
       Root      string       // repo- of worktree-root
       MainRoot  string       // main checkout (map boven --git-common-dir); == Root buiten een worktree
       ConfigDir string       // $CLAUDE_CONFIG_DIR, anders ~/.claude
-      ClaudeJSON string      // ~/.claude.json
+      ClaudeJSON string      // $CLAUDE_CONFIG_DIR/.claude.json als die variabele gezet is, anders ~/.claude.json
       RepoOnly  bool
       Packs     []packs.Pack // de geïnstalleerde pakketten volgens het manifest
       HookNames []string     // hook.Names()
@@ -162,6 +166,7 @@ de audit aan via een functie in `initcmd.Options`.
   ```
 
 - [ ] **Stap 1: falende tests.** Met een helper `tree(t, files map[string]string) string`:
+  `TestClaudeJSONHonoursConfigDir` (`DefaultEnv` met `CLAUDE_CONFIG_DIR` gezet → `<dir>/.claude.json`, zonder → `~/.claude.json`),
   `TestCollectAttributesSources` (een `.claude/settings.json` met één lighthouse-hook
   `.claude/hooks/lighthouse/run.sh main-commit-gate`, één projecthook en `allow
   Bash(lighthouse review-run:*)` plus `allow Bash(make:*)`; `settings.local.json` met `deny
@@ -216,7 +221,9 @@ de audit aan via een functie in `initcmd.Options`.
   `projectPath = MainRoot`, `Root` is een andere map → bron `plugin:p` gemeten, met zijn skill,
   command, agent, hook (`hooks/hooks.json`) en `.mcp.json`-server.
   `TestPluginNotInstalled` (review-focus 4). `TestManagedSettingsNotRead`: er staat een
-  `Status{"managed", "COULD NOT CHECK", "managed settings are not read"}`.
+  `Status{"managed", "COULD NOT CHECK", "managed settings are not read"}`; deze status telt
+  *niet* mee voor de exitcode (bron `managed` is altijd onleesbaar; spec §2 vraagt alleen een
+  zichtbare regel), `TestRunExitCodes` krijgt een geval daarvoor.
   *(De statusnaam `managed` is een uitbreiding op de bronlijst; spec §2.)*
 - [ ] **Stap 2:** FAIL. **Stap 3:** implementeer; `${CLAUDE_PLUGIN_ROOT}` in een plugin-hook wordt
   het `installPath`. **Stap 4:** PASS.
@@ -288,6 +295,11 @@ de audit aan via een functie in `initcmd.Options`.
 - Maak: `internal/cli/agentaudit.go`, `internal/cli/agentaudit_test.go`
 - Wijzig: `internal/cli/root.go` (`root.AddCommand(newAgentAuditCommand())`)
 - Wijzig: `internal/config/config.go` (drie sleutels), `internal/config/config_test.go`
+- Wijzig: `tests/pack/fixtures/config-schema.json` (schema en defaults van de drie sleutels; de
+  test `TestSchemaMatchesSnapshot` vergelijkt daarmee)
+- Wijzig: `pack/core/lib/config.py` en de geïnstalleerde kopie `.lighthouse/lib/lighthouse_lib/config.py`
+  (alleen de tabellen `SCHEMA` en `DEFAULTS`: `tests/pack/test_config_fixtures.py` eist dat ze
+  gelijk zijn aan `config-schema.json`; dit is bestaande Python, geen nieuwe)
 - Wijzig: `docs/site/data/config.json` (tabel `agent_audit`)
 - Wijzig: `pack/core/permissions.json` (`Bash(lighthouse agent-audit:*)`)
 
@@ -311,7 +323,7 @@ de audit aan via een functie in `initcmd.Options`.
 - [ ] **Stap 1: falende tests.** `TestRunSectionOrder` (koppen in de volgorde van spec §7),
   `TestRunWritesNothing` (hash vóór en na), `TestRunExitCodes` (tabel: geen melding → 0; melding
   zonder `Strict` → 0; met `Strict` → 1; `COULD NOT CHECK` van een bron met `Strict` → 2, ook als
-  er meldingen zijn), `TestRunIgnore` (genegeerde sleutel → niet getoond, telt niet voor exit 1),
+  er meldingen zijn; alleen de status `managed` met `Strict` en een melding → 1), `TestRunIgnore` (genegeerde sleutel → niet getoond, telt niet voor exit 1),
   `TestRunStaleIgnore` (verdwenen sleutel van bron `project` → regel `ignore: <sleutel> komt niet
   meer voor`; sleutel van `gebruiker` met `RepoOnly` → geen regel), `TestRunOnlySurface`,
   `TestSummaryHasHint` (laatste regel `Draai /lighthouse-audit-agent-config voor een oordeel over
@@ -322,7 +334,7 @@ de audit aan via een functie in `initcmd.Options`.
   `config.Load` zoals `worktree-audit`; vlaggen `--repo-only`, `--only` (herhaalbaar, onbekende
   waarde → `usageErr`), `--strict`; de lange help bevat de exitcodetabel.
 - [ ] **Stap 4:** `go test ./internal/agentaudit/ ./internal/cli/ ./internal/config/` en
-  `uv run pytest -q tests/test_site_config.py` → PASS.
+  `uv run pytest -q tests/test_site_config.py tests/pack/test_config_fixtures.py` → PASS.
 - [ ] **Stap 5: commit** `feat(agent-audit): lighthouse agent-audit met uitvoer, ignore en exitcodes (#47)`
 
 ### Taak 9: audit bij `init`
@@ -339,7 +351,8 @@ de audit aan via een functie in `initcmd.Options`.
 - [ ] **Stap 1: falende tests** met een opnemende `Audit`-functie: `TestFirstInitRunsAudit`
   (eerste init met `Yes` → één aanroep), `TestDeclinedInitSkipsAudit` (antwoord `n` → geen),
   `TestUpgradeWithoutAuditFlag` (geen), `TestUpgradeWithAuditFlag` (één, ook bij `No changes.`),
-  `TestAuditFailureKeepsInitExit` (in `internal/cli`: `Summary` geeft 2 → `init` eindigt 0 en
+  `TestAuditFailureKeepsInitExit` (in `internal/cli`; `init.go` krijgt een package-variabele
+  `auditSummary = agentaudit.Summary` die de test door een functie laat vervangen die 2 geeft: `Summary` geeft 2 → `init` eindigt 0 en
   stderr bevat `agent-audit: COULD NOT CHECK`).
 - [ ] **Stap 2:** FAIL. **Stap 3:** roep `o.Audit` aan als `!initialized && len(paths) > 0`, of
   `o.Upgrade && o.AuditOnUpgrade`. `--audit` zonder `--upgrade` → fout `--audit needs --upgrade`.
@@ -350,7 +363,14 @@ de audit aan via een functie in `initcmd.Options`.
 
 **Bestanden:**
 - Maak: `pack/core/skills/audit-agent-config/SKILL.md`
-- Wijzig: `pack/core/instructions/AGENTS.md` (skillijst: `/lighthouse-audit-agent-config`)
+- Wijzig: `pack/core/instructions/AGENTS.md` (skillijst, alfabetisch vóór `audit-worktrees`:
+  `- \`/lighthouse-audit-agent-config\`: audit the agentic configuration for conflicts and overlap.`,
+  10 woorden)
+- Wijzig: `internal/packs/budget_test.go` (`blockCeilings["core"]` 363 → 373 en `blocksCeiling`
+  521 → 531) en `tests/test_instruction_files.py` (355 → 365, ook in de docstring): een bewuste
+  verhoging met precies de woorden van die ene regel, de skill is eis van spec §6
+- Wijzig: `internal/packs/core_test.go` (de vaste bestandslijst krijgt de skill en zijn `.agents/`-
+  tweeling) en `docs/site/data/packs.json` (skills van `core`)
 - Maak: `docs/agent-audit.md` (Engels: wat, bronnen, uitvoer, `ignore`, exitcodes)
 - Wijzig: `docs/developer/planning/specs/2026-11-07-zonder-python-design.md` (regel
   `measure_skill_surface.py` → `lighthouse agent-audit --only surface`)
@@ -366,9 +386,9 @@ de audit aan via een functie in `initcmd.Options`.
   veranderen.
 - [ ] **Stap 2:** `go run ./cmd/lighthouse init --upgrade --yes`, daarna nogmaals → `No changes.`
 - [ ] **Stap 3:** `go run ./cmd/lighthouse check-instructions` → geen FAIL;
-  `go run ./cmd/lighthouse agent-audit` in deze repo → exit 0, en de bron `lighthouse` noemt de
-  nieuwe skill in het oppervlak.
-- [ ] **Stap 4:** `go test ./...` en `uv run pytest -q tests/pack tests/test_instruction_files.py`
+  `go run ./cmd/lighthouse agent-audit` in deze repo → exit 0, en `go run ./cmd/lighthouse agent-audit --only inventory` noemt de nieuwe skill onder de bron
+  `lighthouse`.
+- [ ] **Stap 4:** `go test ./...` en `uv run pytest -q tests/pack tests/test_instruction_files.py tests/test_site_packs.py`
   → PASS.
 - [ ] **Stap 5: commit** (twee commits: `feat(core): skill lighthouse-audit-agent-config (#47)` met
   pack en geïnstalleerde kopie; `docs(agent-audit): handleiding, changelog, zonder-python-regel (#47)`).
