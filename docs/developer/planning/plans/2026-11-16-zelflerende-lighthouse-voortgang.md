@@ -33,9 +33,9 @@ Paia = `CorneeldH/personal_ai_agent`. `Paia-actie`: `sluiten` (helemaal verhuisd
 | K5 Ontwerpmetingen | [#385](https://github.com/CorneeldH/lighthouse/issues/385) | #1193, #1286, #1287 | #1193 sluiten; #1286, #1287 inkorten | aangemaakt |
 | K6 Architectuurscan | [#386](https://github.com/CorneeldH/lighthouse/issues/386) | #1205 | sluiten | aangemaakt |
 | K7 Coverage en string-duplicatie | [#387](https://github.com/CorneeldH/lighthouse/issues/387) | #644, #667 | inkorten | aangemaakt |
-| Instructies pack/core | | #1395 | inkorten, naar milestone #52 | |
-| Ontwerp explore/exploit | | #1553 | sluiten | |
-| Multi-harness-slice | | #1126 | sluiten | |
-| lighthouse #103 naar milestone 3 | #103 | — | — | |
-| lighthouse #168 naar milestone 3 | #168 | — | — | |
+| Instructies pack/core | [#390](https://github.com/CorneeldH/lighthouse/issues/390) | #1395 | inkorten, naar milestone #52 | aangemaakt |
+| Ontwerp explore/exploit | [#388](https://github.com/CorneeldH/lighthouse/issues/388) | #1553 | sluiten | aangemaakt |
+| Multi-harness-slice | [#389](https://github.com/CorneeldH/lighthouse/issues/389) | #1126 | sluiten | aangemaakt |
+| lighthouse #103 naar milestone 3 | #103 | — | — | verplaatst |
+| lighthouse #168 naar milestone 3 | #168 | — | — | verplaatst |
 | Blijft in paia | — | #1199 | — | |
