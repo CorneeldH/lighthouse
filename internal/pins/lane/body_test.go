@@ -316,7 +316,7 @@ func TestRender_carryRaiseInstructions(t *testing.T) {
 		}
 	}
 	behind := RenderBehindBody("<!-- m -->", "k", "1", "2", []forge.Release{{Tag: "v2"}}, "u")
-	for _, want := range []string{"docs/pins.md", "lighthouse.toml", "lokaal", "sluit"} {
+	for _, want := range []string{"docs/pins.md", "lighthouse.toml", "lokaal", "sluit", "tussenversie", "Refs"} {
 		if !strings.Contains(stripFences(t, behind), want) {
 			t.Errorf("behind body lacks %q outside fences", want)
 		}

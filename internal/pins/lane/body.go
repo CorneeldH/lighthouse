@@ -153,7 +153,7 @@ const behindSteps = `Zo hoog je deze pin op (uitleg: docs/pins.md, sectie "Een p
 
 1. Lees de releasenotes hieronder; de oudste ontbrekende staan achter de vergelijklink.
 2. Probeer de nieuwe versie lokaal uit.
-3. Verhoog version in de pin in lighthouse.toml, in een PR die dit issue sluit met bewijs.
+3. Verhoog version in de pin in lighthouse.toml, in een PR die dit issue sluit met bewijs. Hoog je op naar een tussenversie, verwijs dan met Refs en laat dit issue open: sluiten verstomt ook de nieuwere releases (zie docs/pins.md).
 4. Past de versie niet, sluit dan dit issue met een reden.
 `
 
