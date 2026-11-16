@@ -108,7 +108,8 @@ func (c *GitHub) MergedPRs(ctx context.Context, since, until time.Time) ([]PRSum
 }
 
 // ClosedIssues lists the issues closed as done in [since, until), oldest close first. An issue
-// closed as "not_planned" is left out; one without a state reason counts as done.
+// closed for another reason ("not_planned", "duplicate") is left out; only "completed" or no reason
+// counts as done.
 func (c *GitHub) ClosedIssues(ctx context.Context, since, until time.Time) ([]Issue, error) {
 	items, err := c.searchPeriod(ctx, "is:issue is:closed", "closed", since, until)
 	if err != nil {
@@ -117,7 +118,7 @@ func (c *GitHub) ClosedIssues(ctx context.Context, since, until time.Time) ([]Is
 	var out []Issue
 	for _, it := range items {
 		is := it.issue()
-		if it.PullRequest != nil || is.StateReason == "not_planned" || !inPeriod(is.ClosedAt, since, until) {
+		if it.PullRequest != nil || (is.StateReason != "" && is.StateReason != "completed") || !inPeriod(is.ClosedAt, since, until) {
 			continue
 		}
 		out = append(out, is)

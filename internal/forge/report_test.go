@@ -442,3 +442,17 @@ func TestOpenPRsWithStatusGraphQLError(t *testing.T) {
 		t.Errorf("got = %+v, want nil", got)
 	}
 }
+
+func TestClosedIssuesSkipsDuplicate(t *testing.T) {
+	s := newSearchServer(t, answer(2, false,
+		closedItem(1, "2026-11-16T08:00:00Z", "duplicate"),
+		closedItem(2, "2026-11-16T09:00:00Z", "completed"),
+	))
+	got, err := s.c.ClosedIssues(context.Background(), periodSince, periodUntil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Number != 2 {
+		t.Errorf("ClosedIssues = %+v, want only #2", got)
+	}
+}

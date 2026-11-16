@@ -39,7 +39,7 @@ type Forge interface {
 	// MergedPRs lists the pull requests that merged in [since, until), oldest merge first.
 	MergedPRs(ctx context.Context, since, until time.Time) ([]PRSummary, error)
 	// ClosedIssues lists the issues closed as done in [since, until), oldest close first;
-	// an issue closed as not planned is left out.
+	// an issue closed for another reason than completed (not planned, duplicate) is left out.
 	ClosedIssues(ctx context.Context, since, until time.Time) ([]Issue, error)
 	// MilestonedIssues lists the open issues put in their current milestone in [since, until),
 	// by milestone title and then number; At is the last such moment.

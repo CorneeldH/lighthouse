@@ -30,7 +30,7 @@ type Issue struct {
 	URL      string // html_url
 	Comments int    // comment count from the list
 	State    string // open, closed
-	// StateReason is why an issue closed: "completed", "not_planned" or "" (open or unknown).
+	// StateReason is why an issue closed: "completed", "not_planned", "duplicate" or "" (open or unknown).
 	StateReason string
 	Body        string
 	Author      string // user.login
