@@ -3,6 +3,8 @@ package cli
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,6 +15,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -21,6 +24,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/dispatch"
 	"github.com/CorneeldH/lighthouse/internal/hostconfig"
 	"github.com/CorneeldH/lighthouse/internal/nodeapi"
+	"github.com/CorneeldH/lighthouse/internal/park"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/runs"
 	"github.com/CorneeldH/lighthouse/internal/workplace"
@@ -47,6 +51,16 @@ type hubNode struct {
 
 	serveSrv   *httptest.Server
 	serveToken string
+
+	// The usage brake on the node (#327): its resume markers, the PUT usage bodies it took, the
+	// DELETE markers it took ("<session> <key>"), and its permission notes per session.
+	markers     []park.Marker
+	usage       []nodeapi.UsageRequest
+	deleted     []string
+	permissions map[string][]byte
+	// markersStatus, usageStatus and authStatus, when set, answer GET markers, PUT usage and
+	// every request (a bad token) with that status.
+	markersStatus, usageStatus, authStatus int
 }
 
 // fleetHub is a kenn-forge hub as v0.7.0 serves it: /api/v1/fleet/hosts/{id}/... goes to
@@ -55,6 +69,7 @@ type hubNode struct {
 // (self) is logged as "self ...".
 type fleetHub struct {
 	srv   *httptest.Server
+	ids   []string // the node ids, in the order newFleetHub got them
 	nodes map[string]*hubNode
 	mu    sync.Mutex
 	log   []string
@@ -62,12 +77,12 @@ type fleetHub struct {
 
 func newFleetHub(t *testing.T, ids ...string) *fleetHub {
 	t.Helper()
-	h := &fleetHub{nodes: map[string]*hubNode{}}
+	h := &fleetHub{ids: ids, nodes: map[string]*hubNode{}}
 	for _, id := range ids {
 		n := &hubNode{
 			workspaces: map[string]string{}, sessions: map[string][]string{}, sids: map[string]string{},
 			carriers: map[string]string{}, stopped: map[string]bool{}, release: make(chan struct{}),
-			serveToken: "serve-" + id,
+			serveToken: "serve-" + id, permissions: map[string][]byte{},
 		}
 		n.serveSrv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			h.add(id + " serve " + r.Method + " " + r.URL.EscapedPath())
@@ -190,17 +205,21 @@ func (n *hubNode) serve(t *testing.T, w http.ResponseWriter, r *http.Request, ro
 	}
 }
 
-// serveNode is lighthouse serve on the node, as nodeserve answers the routes the adapter uses:
+// serveNode is lighthouse serve on the node, as nodeserve answers the routes the tick uses:
 // the bearer check, info, launch (the carrier), carrier, follow, relocate, sessions (with session_id,
-// working until stopped), transcript (none yet), stop and kill. Any other route is an error of
-// the adapter.
+// working until stopped), transcript (none yet), stop, kill, usage, markers and permission. Any
+// other route is an error of the tick.
 func (n *hubNode) serveNode(t *testing.T, w http.ResponseWriter, r *http.Request) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
 	if r.Header.Get("Authorization") != "Bearer "+n.serveToken {
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
-	n.mu.Lock()
-	defer n.mu.Unlock()
+	if n.authStatus != 0 {
+		w.WriteHeader(n.authStatus)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	rest, _ := strings.CutPrefix(r.URL.Path, nodeapi.Prefix+"/")
 	parts := strings.Split(rest, "/")
@@ -208,6 +227,40 @@ func (n *hubNode) serveNode(t *testing.T, w http.ResponseWriter, r *http.Request
 	switch {
 	case route == "GET info":
 		_, _ = fmt.Fprintf(w, `{"version":%d,"binary":"test","platform":"linux/amd64"}`, nodeapi.Version)
+	case route == "GET markers":
+		if n.markersStatus != 0 {
+			w.WriteHeader(n.markersStatus)
+			return
+		}
+		out := append([]park.Marker{}, n.markers...)
+		_ = json.NewEncoder(w).Encode(out)
+	case r.Method == http.MethodDelete && len(parts) == 2 && parts[0] == "markers":
+		key := r.URL.Query().Get("key")
+		n.deleted = append(n.deleted, parts[1]+" "+key)
+		n.markers = slices.DeleteFunc(n.markers, func(m park.Marker) bool { return m.SessionID == parts[1] && m.Key() == key })
+		w.WriteHeader(http.StatusNoContent)
+	case route == "PUT usage":
+		if n.usageStatus != 0 {
+			w.WriteHeader(n.usageStatus)
+			return
+		}
+		var req nodeapi.UsageRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Errorf("fake serve: usage: %v", err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		n.usage = append(n.usage, req)
+		w.WriteHeader(http.StatusNoContent)
+	case r.Method == http.MethodGet && len(parts) == 3 && parts[0] == "runs" && parts[2] == "permission":
+		data, ok := n.permissions[parts[1]]
+		if !ok {
+			w.Header().Set("Content-Type", "application/problem+json")
+			w.WriteHeader(http.StatusNotFound)
+			_ = json.NewEncoder(w).Encode(nodeapi.Problem{Status: 404, Code: nodeapi.CodeNoPermission, Detail: "no permission note"})
+			return
+		}
+		_, _ = w.Write(data)
 	case len(parts) == 3 && parts[0] == "workspaces":
 		n.serveWorkspace(t, w, r, parts[1], r.Method+" "+parts[2])
 	case r.Method == http.MethodGet && len(parts) == 4 && parts[0] == "workspaces" && parts[2] == "transcript":
@@ -278,14 +331,28 @@ func (n *hubNode) serveWorkspace(t *testing.T, w http.ResponseWriter, r *http.Re
 	}
 }
 
-// serveClient is a client of serve on the node, with the node's token.
-func (n *hubNode) serveClient(t *testing.T) *kennforge.NodeClient {
+// tokenFile is a file with the node's serve token.
+func (n *hubNode) tokenFile(t *testing.T) string {
 	t.Helper()
 	tok := filepath.Join(t.TempDir(), "serve-token")
 	if err := os.WriteFile(tok, []byte(n.serveToken+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	return kennforge.NewNodeClient(n.serveSrv.URL, tok)
+	return tok
+}
+
+// set changes the node's state under its lock.
+func (n *hubNode) set(f func(n *hubNode)) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	f(n)
+}
+
+// got reads the node's state under its lock.
+func got[T any](n *hubNode, f func(n *hubNode) T) T {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return f(n)
 }
 
 func (n *hubNode) workspace(id, branch string) string {
@@ -317,14 +384,16 @@ func (n *hubNode) postCount() int {
 var nodeRepo = strings.Replace(completeRepo, "[controller]\n",
 	"[labels]\nlocation_prefix = \"1-loc:\"\n\n[controller]\nprofile = \"software\"\n\n[controller.locations]\nmac = \"mac\"\n", 1)
 
-// nodeHost is the host.toml of the node tests: profile mac on node-a, profile other on node-b,
-// software on self, all behind the forge at hub.
-func nodeHost(t *testing.T, env tickEnv, hub string) {
+// nodeHost is the host.toml of the node tests: profile mac on the first node of hub (name a),
+// profile other on the second (name b), software on self, all behind the forge at hub, each
+// node with its serve and token.
+func nodeHost(t *testing.T, env tickEnv, hub *fleetHub) {
 	t.Helper()
 	token := filepath.Join(t.TempDir(), "token")
 	if err := os.WriteFile(token, []byte("tok\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	a, b := hub.nodes[hub.ids[0]], hub.nodes[hub.ids[1]]
 	appendHostToml(t, env, fmt.Sprintf(`max_runtime = "1h"
 
 [dispatch.forge]
@@ -333,16 +402,16 @@ token_file = %q
 unit_prefix = "lh-"
 
 [dispatch.nodes.a]
-node_id = "node-a"
+node_id = %q
 slots = 1
-serve_url = "https://a.test"
-serve_token_file = "/tok/a"
+serve_url = %q
+serve_token_file = %q
 
 [dispatch.nodes.b]
-node_id = "node-b"
+node_id = %q
 slots = 1
-serve_url = "https://b.test"
-serve_token_file = "/tok/b"
+serve_url = %q
+serve_token_file = %q
 
 [dispatch.profiles.software]
 target_key = "t-software"
@@ -354,7 +423,7 @@ node = "a"
 [dispatch.profiles.other]
 target_key = "t-other"
 node = "b"
-`, hub, token))
+`, hub.srv.URL, token, hub.ids[0], a.serveSrv.URL, a.tokenFile(t), hub.ids[1], b.serveSrv.URL, b.tokenFile(t)))
 }
 
 // macIssue is issue n of o/r in Controller with the location label 1-loc:mac.
@@ -365,15 +434,18 @@ func macIssue(n int) map[string]any {
 }
 
 // useNodes gives self the fake workplace w and every other node the real kenn-forge adapter
-// tick builds, with serve on that node in hub; client, when set, replaces the adapter's HTTP
+// tick builds, with the serve client of the tick; client, when set, replaces the adapter's HTTP
 // client of the hub.
-func useNodes(t *testing.T, env *tickEnv, w *fakeWorkplace, hub *fleetHub, client *http.Client) {
+func useNodes(t *testing.T, env *tickEnv, w *fakeWorkplace, client *http.Client) {
 	t.Helper()
 	real := *env
 	real.Workplace = nil
 	env.Workplace = func(r repoconfig.Repo, node, profile string) workplace.Workplace {
 		if node == "" {
 			return w
+		}
+		if client == nil {
+			return nil // the workplace tick builds
 		}
 		cfg, err := hostconfig.LoadDispatch(env.HostToml)
 		if err != nil {
@@ -384,12 +456,7 @@ func useNodes(t *testing.T, env *tickEnv, w *fakeWorkplace, hub *fleetHub, clien
 		if !ok {
 			t.Fatalf("workplace on %s = %T, want *kennforge.Adapter", node, wp)
 		}
-		if n, known := hub.nodes[node]; known {
-			a.Serve = n.serveClient(t)
-		}
-		if client != nil {
-			a.Client.HTTP = client
-		}
+		a.Client.HTTP = client
 		return wp
 	}
 }
@@ -406,10 +473,10 @@ func TestTickRestartStopsOnNode(t *testing.T) {
 func testTickRestartStopsOnNode(t *testing.T, lostNode bool) {
 	env, db := tickFixture(t, repoDir(t, nodeRepo))
 	hub := newFleetHub(t, "node-a", "node-b")
-	nodeHost(t, env, hub.srv.URL)
+	nodeHost(t, env, hub)
 	srv, w := startable(t, &env)
 	srv.BoardNodes = []map[string]any{macIssue(7)}
-	useNodes(t, &env, w, hub, nil)
+	useNodes(t, &env, w, nil)
 	var errOut bytes.Buffer
 	if err := tick(context.Background(), env, db, &errOut); err != nil {
 		t.Fatalf("tick 1 = %v\n%s", err, errOut.String())
@@ -469,8 +536,11 @@ func testTickRestartStopsOnNode(t *testing.T, lostNode bool) {
 			t.Errorf("node-a request in tick 2 = %q: nothing restarts", l)
 		}
 	}
-	if got := append(hub.requests("node-b "), hub.requests("self ")...); len(got) != 0 {
-		t.Errorf("requests to node-b or self = %q, want none", got)
+	// Every tick reads the markers of every node and pushes its usage there; nothing else.
+	perTick := []string{"node-b serve GET " + nodeapi.PathInfo, "node-b serve GET " + nodeapi.PathMarkers, "node-b serve PUT " + nodeapi.PathUsage}
+	got := slices.DeleteFunc(append(hub.requests("node-b "), hub.requests("self ")...), func(l string) bool { return slices.Contains(perTick, l) })
+	if len(got) != 0 {
+		t.Errorf("requests to node-b or self = %q, want none but markers and usage", got)
 	}
 }
 
@@ -480,10 +550,10 @@ func TestTickUnreachableNodeDoesNotBlockOther(t *testing.T) {
 	env, db := tickFixture(t, repoDir(t, nodeRepo))
 	hub := newFleetHub(t, "node-a", "node-b")
 	hub.nodes["node-a"].listStatus = http.StatusServiceUnavailable
-	nodeHost(t, env, hub.srv.URL)
+	nodeHost(t, env, hub)
 	srv, w := startable(t, &env)
 	srv.BoardNodes = []map[string]any{macIssue(7), boardNode("I8", "c1", issueContent(8, "Issue", nil))}
-	useNodes(t, &env, w, hub, nil)
+	useNodes(t, &env, w, nil)
 	var errOut bytes.Buffer
 	if err := tick(context.Background(), env, db, &errOut); err != errSilent {
 		t.Fatalf("tick = %v, want errSilent\n%s", err, errOut.String())
@@ -510,10 +580,10 @@ func TestTickSpawnTimeoutNoSecondPost(t *testing.T) {
 	env, db := tickFixture(t, repoDir(t, nodeRepo))
 	hub := newFleetHub(t, "node-a", "node-b")
 	hub.nodes["node-a"].handoff = "hang"
-	nodeHost(t, env, hub.srv.URL)
+	nodeHost(t, env, hub)
 	srv, w := startable(t, &env)
 	srv.BoardNodes = []map[string]any{macIssue(7)}
-	useNodes(t, &env, w, hub, &http.Client{Timeout: 300 * time.Millisecond})
+	useNodes(t, &env, w, &http.Client{Timeout: 300 * time.Millisecond})
 	var errOut bytes.Buffer
 	if err := tick(context.Background(), env, db, &errOut); err != nil {
 		t.Fatalf("tick 1 = %v\n%s", err, errOut.String())
@@ -594,6 +664,503 @@ func TestTickPlacesPerNodeAndProfile(t *testing.T) {
 		}
 		if places(r, p.node, p.profile) != a {
 			t.Errorf("workplace %v: built twice", p)
+		}
+	}
+}
+
+// randomNode is a node id no fixture shares.
+func randomNode() string { return "node-" + strings.ToLower(rand.Text()[:8]) }
+
+// nodeTick is a tick fixture on repo o/r (nodeRepo) with the board items, two nodes of random
+// ids behind a fleet hub (nodeHost), and the fake workplace on self.
+func nodeTick(t *testing.T, items ...map[string]any) (tickEnv, string, *fleetHub, *fakeWorkplace) {
+	t.Helper()
+	env, db := tickFixture(t, repoDir(t, nodeRepo))
+	hub := newFleetHub(t, randomNode(), randomNode())
+	nodeHost(t, env, hub)
+	srv, w := startable(t, &env)
+	srv.BoardNodes = items
+	useNodes(t, &env, w, nil)
+	return env, db, hub, w
+}
+
+// nodeConfig is the default [dispatch] with the nodes of hub, named n0, n1, …, each with its serve.
+func nodeConfig(t *testing.T, hub *fleetHub) hostconfig.Dispatch {
+	t.Helper()
+	cfg := hostconfig.DefaultDispatch()
+	cfg.Nodes = map[string]hostconfig.Node{}
+	for i, id := range hub.ids {
+		n := hub.nodes[id]
+		cfg.Nodes[fmt.Sprintf("n%d", i)] = hostconfig.Node{NodeID: id, Slots: 1, ServeURL: n.serveSrv.URL, ServeTokenFile: n.tokenFile(t)}
+	}
+	return cfg
+}
+
+// parkOn opens a run of session on repo#issue on node, in profile mac, and closes it as parked.
+func parkOn(t *testing.T, db *sql.DB, repo string, issue int, session, node string) {
+	t.Helper()
+	ctx := context.Background()
+	r, err := runs.Take(ctx, db, runs.Claim{Repo: repo, Issue: issue, SessionID: session, Mode: "start", Trigger: "handoff",
+		TriggerKey: fmt.Sprintf("start:%d", issue), Command: "/lighthouse-start-issue", Prompt: "p", Profile: "mac", Node: node,
+		Branch: "b", Now: t0.Add(-3 * time.Hour)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runs.Release(ctx, db, r.ID, runs.Parked, "", t0.Add(-2*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// controllerMarker is the controller marker of session, parked at t0-3h, whose window reset at reset.
+func controllerMarker(session string, reset time.Time) park.Marker {
+	return park.Marker{SessionID: session, Cwd: "/work", Window: "session", ResetAt: reset.Format(time.RFC3339),
+		CreatedAt: t0.Add(-3 * time.Hour).Format(time.RFC3339), Source: "guard", Controller: true}
+}
+
+// Every adapter on a node gets the serve client of that node from host.toml, and the adapters of
+// one node share it within a tick, so GET info goes once per node; self gets none.
+func TestWorkplaceOnNodeGetsServeClient(t *testing.T) {
+	one, two := randomNode(), randomNode()
+	cfg := hostconfig.Dispatch{Forge: hostconfig.DispatchForge{URL: "http://localhost:1"}, Nodes: map[string]hostconfig.Node{
+		"one": {NodeID: one, Slots: 1, ServeURL: "https://one.test", ServeTokenFile: "/tok/one"},
+		"two": {NodeID: two, Slots: 1, ServeURL: "https://two.test", ServeTokenFile: "/tok/two"},
+	}}
+	env := tickEnv{Getenv: func(string) string { return "" }}
+	env.serves = newNodeServes(cfg, io.Discard)
+	places := env.places(cfg, "/state")
+	r := repoconfig.Repo{Slug: "o/r", Kind: "github"}
+	adapter := func(node, profile string) *kennforge.Adapter {
+		a, ok := places(r, node, profile).(*kennforge.Adapter)
+		if !ok {
+			t.Fatalf("workplace %s/%s = %T, want *kennforge.Adapter", node, profile, places(r, node, profile))
+		}
+		return a
+	}
+	a, a2, b, self := adapter(one, "mac"), adapter(one, "software"), adapter(two, "mac"), adapter("", "mac")
+	if a.Serve == nil || a.Serve.URL != "https://one.test" || a.Serve.TokenFile != "/tok/one" {
+		t.Errorf("Serve on %s = %+v, want https://one.test with /tok/one", one, a.Serve)
+	}
+	if a2.Serve != a.Serve {
+		t.Errorf("two profiles on %s got two serve clients, want one shared", one)
+	}
+	if b.Serve == nil || b.Serve.URL != "https://two.test" || b.Serve.TokenFile != "/tok/two" {
+		t.Errorf("Serve on %s = %+v, want https://two.test with /tok/two", two, b.Serve)
+	}
+	if self.Serve != nil {
+		t.Errorf("Serve on self = %+v, want none", self.Serve)
+	}
+}
+
+// A tick asks GET info once per node, however many routes it uses there (markers, usage,
+// launch, follow, relocate, sessions, …), and the next tick asks again.
+func TestTickAsksInfoOncePerNodePerTick(t *testing.T) {
+	env, db, hub, _ := nodeTick(t, macIssue(7))
+	var errOut bytes.Buffer
+	for i := 1; i <= 2; i++ {
+		env.Now = func() time.Time { return t0.Add(time.Duration(i) * time.Minute) }
+		errOut.Reset()
+		if err := tick(context.Background(), env, db, &errOut); err != nil {
+			t.Fatalf("tick %d = %v\n%s", i, err, errOut.String())
+		}
+		for _, id := range hub.ids {
+			if got := hub.requests(id + " serve GET " + nodeapi.PathInfo); len(got) != i {
+				t.Errorf("after tick %d: GET info on %s = %d, want %d", i, id, len(got), i)
+			}
+		}
+	}
+	if n := len(hub.requests(hub.ids[0] + " serve PUT /api/node/v1/workspaces/")); n == 0 {
+		t.Errorf("no launch on %s: the tick used no workspace route there", hub.ids[0])
+	}
+}
+
+// permWorkplace is a measureWorkplace whose permission note comes from reader.
+type permWorkplace struct {
+	measureWorkplace
+	reader workplace.PermissionReader
+}
+
+func (w *permWorkplace) Permission(ctx context.Context, sessionID string) ([]byte, error) {
+	return w.reader.Permission(ctx, sessionID)
+}
+
+// The permission note of a run on a node comes through serve and reads as the same note on
+// self; no note is nil; a serve that does not answer makes the run unmeasurable, never a tick
+// error. A run on self reads the file, also when its workplace can read notes on a node.
+func TestRunProbeReadsPermissionViaServe(t *testing.T) {
+	note := []byte(`{"version":1,"at":"2026-10-31T11:00:00Z","tool":"Bash","path":"/work/x","thread":""}`)
+	selfDir := t.TempDir()
+	writeTestFile(t, dispatch.PermissionPath(selfDir, sidMeasured), string(note))
+	want, err := dispatch.ReadPermission(selfDir, sidMeasured)
+	if err != nil || want == nil {
+		t.Fatalf("ReadPermission on self = %v, %v", want, err)
+	}
+	hub := newFleetHub(t, randomNode(), randomNode())
+	id := hub.ids[0]
+	node := hub.nodes[id]
+	node.set(func(n *hubNode) { n.permissions[sidMeasured] = note })
+	sessions := map[string][]workplace.Session{"ws-1": {{Key: "k1", WorkspaceID: "ws-1", State: "running"}}}
+	onNode := func(serve *kennforge.NodeClient) *permWorkplace {
+		return &permWorkplace{measureWorkplace: measureWorkplace{sessions: sessions},
+			reader: &kennforge.Adapter{Node: id, Serve: serve}}
+	}
+	run := runs.OpenRun{ID: 1, Issue: 7, SessionID: sidMeasured, WorkspaceID: "ws-1", WorkplaceSession: "k1", Node: id, Profile: "mac"}
+	ctx := context.Background()
+
+	t.Run("same note as on self", func(t *testing.T) {
+		m := runProbe{w: onNode(kennforge.NewNodeClient(node.serveSrv.URL, node.tokenFile(t))), stateDir: t.TempDir()}
+		_, _, s, err := m.measure(ctx, run)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(s.Permission, want) {
+			t.Errorf("Permission = %+v, want %+v, as on self", s.Permission, want)
+		}
+	})
+	t.Run("no note", func(t *testing.T) {
+		m := runProbe{w: onNode(kennforge.NewNodeClient(node.serveSrv.URL, node.tokenFile(t))), stateDir: selfDir}
+		r := run
+		r.SessionID = sidGone // a note on self under this id would be read by mistake
+		writeTestFile(t, dispatch.PermissionPath(selfDir, sidGone), string(note))
+		_, _, s, err := m.measure(ctx, r)
+		if err != nil || s.Permission != nil {
+			t.Errorf("measure = %+v, %v; want no permission", s.Permission, err)
+		}
+	})
+	t.Run("serve unreachable", func(t *testing.T) {
+		dead := httptest.NewServer(http.NotFoundHandler())
+		dead.Close()
+		w := onNode(kennforge.NewNodeClient(dead.URL, node.tokenFile(t)))
+		env := tickEnv{StateDir: selfDir, Workplace: func(repoconfig.Repo, string, string) workplace.Workplace { return w }}
+		var errOut bytes.Buffer
+		stands, states, err := measure(ctx, env, hostconfig.Dispatch{}, repoconfig.Repo{Slug: "o/r"}, []runs.OpenRun{run}, &errOut)
+		if err != nil {
+			t.Fatalf("measure = %v, want no tick error", err)
+		}
+		if len(stands) != 0 || len(states) != 0 {
+			t.Errorf("stands %v, states %v; want the run unmeasured", stands, states)
+		}
+		if !strings.Contains(errOut.String(), "lighthouse: measure o/r: run 1: ") {
+			t.Errorf("errOut = %q, want a measure line for run 1", errOut.String())
+		}
+	})
+	t.Run("self reads the file", func(t *testing.T) {
+		w := &permWorkplace{measureWorkplace: measureWorkplace{sessions: sessions}, reader: &kennforge.Adapter{}}
+		r := run
+		r.Node = ""
+		m := runProbe{w: w, stateDir: selfDir}
+		_, _, s, err := m.measure(ctx, r)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(s.Permission, want) {
+			t.Errorf("Permission on self = %+v, want %+v from the file", s.Permission, want)
+		}
+	})
+}
+
+// usageBodies is the PUT usage bodies node took, with the pointers read out ("<nil>" for none).
+func usageBodies(n *hubNode) []string {
+	return got(n, func(n *hubNode) []string {
+		var out []string
+		for _, u := range n.usage {
+			text := func(p *string) string {
+				if p == nil {
+					return "<nil>"
+				}
+				return *p
+			}
+			out = append(out, "pause="+text(u.Pause)+" alarm="+text(u.Alarm))
+		}
+		return out
+	})
+}
+
+// usageFiles writes the tick's PAUSE and alarm mirror and returns the path of PAUSE.
+func usageFiles(t *testing.T, env *tickEnv, pause, alarm string) string {
+	t.Helper()
+	path, err := park.PauseFile(env.Getenv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeTestFile(t, path, pause)
+	env.Meter.Paths.Mirror = filepath.Join(t.TempDir(), "usage-window.alarm")
+	writeTestFile(t, env.Meter.Paths.Mirror, alarm)
+	return path
+}
+
+// Every tick sends its PAUSE and alarm mirror to every node, unchanged, after it read the
+// node's markers.
+func TestTickPushesPauseAndAlarmToEveryNode(t *testing.T) {
+	env, db, hub, _ := nodeTick(t)
+	usageFiles(t, &env, "pause-bytes\n", `{"alarm":"bytes"}`)
+	for i := 1; i <= 2; i++ {
+		var errOut bytes.Buffer
+		if err := tick(context.Background(), env, db, &errOut); err != nil {
+			t.Fatalf("tick %d = %v\n%s", i, err, errOut.String())
+		}
+	}
+	for _, id := range hub.ids {
+		want := []string{`pause=pause-bytes` + "\n" + ` alarm={"alarm":"bytes"}`, `pause=pause-bytes` + "\n" + ` alarm={"alarm":"bytes"}`}
+		if got := usageBodies(hub.nodes[id]); !reflect.DeepEqual(got, want) {
+			t.Errorf("usage on %s = %q, want %q", id, got, want)
+		}
+		reqs := hub.requests(id + " serve ")
+		markers := slices.Index(reqs, id+" serve GET "+nodeapi.PathMarkers)
+		put := slices.Index(reqs, id+" serve PUT "+nodeapi.PathUsage)
+		if markers < 0 || put < markers {
+			t.Errorf("requests on %s = %q, want GET markers before PUT usage", id, reqs)
+		}
+	}
+}
+
+// A PAUSE that is gone on the tick is sent as none, so serve removes it on the node; an alarm
+// mirror that is gone likewise.
+func TestTickPushesNilWhenPauseCleared(t *testing.T) {
+	env, db, hub, _ := nodeTick(t)
+	pause := usageFiles(t, &env, "pause-bytes", "alarm-bytes")
+	var errOut bytes.Buffer
+	if err := tick(context.Background(), env, db, &errOut); err != nil {
+		t.Fatalf("tick 1 = %v\n%s", err, errOut.String())
+	}
+	if err := os.Remove(pause); err != nil {
+		t.Fatal(err)
+	}
+	if err := tick(context.Background(), env, db, &errOut); err != nil {
+		t.Fatalf("tick 2 = %v\n%s", err, errOut.String())
+	}
+	if err := os.Remove(env.Meter.Paths.Mirror); err != nil {
+		t.Fatal(err)
+	}
+	if err := tick(context.Background(), env, db, &errOut); err != nil {
+		t.Fatalf("tick 3 = %v\n%s", err, errOut.String())
+	}
+	want := []string{"pause=pause-bytes alarm=alarm-bytes", "pause=<nil> alarm=alarm-bytes", "pause=<nil> alarm=<nil>"}
+	for _, id := range hub.ids {
+		if got := usageBodies(hub.nodes[id]); !reflect.DeepEqual(got, want) {
+			t.Errorf("usage on %s = %q, want %q", id, got, want)
+		}
+	}
+}
+
+// A node that refuses PUT usage keeps what it had: the tick logs it, sends nothing else to clear
+// it, still pushes to the other node, and is no tick error.
+func TestUsagePushFailureKeepsLastState(t *testing.T) {
+	env, db, hub, _ := nodeTick(t)
+	usageFiles(t, &env, "pause-bytes", "alarm-bytes")
+	down, up := hub.nodes[hub.ids[0]], hub.nodes[hub.ids[1]]
+	down.set(func(n *hubNode) { n.usageStatus = http.StatusServiceUnavailable })
+	var errOut bytes.Buffer
+	if err := tick(context.Background(), env, db, &errOut); err != nil {
+		t.Fatalf("tick = %v, want no tick error\n%s", err, errOut.String())
+	}
+	if !strings.Contains(errOut.String(), "lighthouse: usage to node a: ") {
+		t.Errorf("errOut = %q, want a usage line for node a", errOut.String())
+	}
+	if got := hub.requests(hub.ids[0] + " serve PUT " + nodeapi.PathUsage); len(got) != 1 {
+		t.Errorf("PUT usage on node a = %q, want one, not retried", got)
+	}
+	if got := hub.requests(hub.ids[0] + " serve DELETE "); len(got) != 0 {
+		t.Errorf("DELETE on node a = %q, want none", got)
+	}
+	if got := usageBodies(up); !reflect.DeepEqual(got, []string{"pause=pause-bytes alarm=alarm-bytes"}) {
+		t.Errorf("usage on node b = %q, want the push", got)
+	}
+}
+
+// A node whose markers do not read takes no start this tick: its occupancy is unknown.
+func TestTickNodeMarkersUnreadableNoStart(t *testing.T) {
+	env, db, hub, _ := nodeTick(t, macIssue(7))
+	a := hub.nodes[hub.ids[0]]
+	a.set(func(n *hubNode) { n.markersStatus = http.StatusBadGateway })
+	var errOut bytes.Buffer
+	if err := tick(context.Background(), env, db, &errOut); err != nil {
+		t.Fatalf("tick = %v\n%s", err, errOut.String())
+	}
+	if !strings.Contains(errOut.String(), "lighthouse: deferred o/r#7") || !strings.Contains(errOut.String(), "markers not readable") {
+		t.Errorf("errOut = %q, want #7 deferred for markers not readable", errOut.String())
+	}
+	if n := a.postCount(); n != 0 {
+		t.Errorf("handoffs on node a = %d, want none", n)
+	}
+	if rows := history(t, openStore(t, db), "o/r"); len(rows) != 0 {
+		t.Errorf("runs = %+v, want none", rows)
+	}
+}
+
+// A controller marker on a node whose issue left the board is dropped there in one tick: the
+// DELETE goes to that node, with the marker's key.
+func TestNodeMarkerOfClosedIssueGoneAfterOneTick(t *testing.T) {
+	env, db, hub, _ := nodeTick(t)
+	id := hub.ids[0]
+	const sess = "sess-closed"
+	parkOn(t, openStore(t, db), "o/r", 7, sess, id)
+	m := controllerMarker(sess, t0.Add(-time.Hour))
+	a := hub.nodes[id]
+	a.set(func(n *hubNode) { n.markers = []park.Marker{m} })
+	var errOut bytes.Buffer
+	if err := tick(context.Background(), env, db, &errOut); err != nil {
+		t.Fatalf("tick = %v\n%s", err, errOut.String())
+	}
+	if left := got(a, func(n *hubNode) []park.Marker { return n.markers }); len(left) != 0 {
+		t.Errorf("markers on %s after one tick = %+v, want none", id, left)
+	}
+	if del := got(a, func(n *hubNode) []string { return n.deleted }); !reflect.DeepEqual(del, []string{sess + " " + m.Key()}) {
+		t.Errorf("DELETE markers on %s = %q, want the one of %s", id, del, sess)
+	}
+}
+
+// drop_marker removes each marker where it came from: one of the second node there, not on the
+// first and not in the local marker directory; a local one locally.
+func TestDropMarkerDeletesOnOriginatingNode(t *testing.T) {
+	env, db, hub, _ := nodeTick(t)
+	conn := openStore(t, db)
+	first, second := hub.ids[0], hub.ids[1]
+	const onNode, local = "sess-on-node", "sess-local"
+	parkOn(t, conn, "o/r", 7, onNode, second)
+	claim(t, conn, "o/r", 8, local, "software", "handoff", "start:8", runs.Parked)
+	m := controllerMarker(onNode, t0.Add(-time.Hour))
+	hub.nodes[second].set(func(n *hubNode) { n.markers = []park.Marker{m} })
+	writeMarker(t, env, local, true)
+	dir, err := park.MarkerDir(env.Getenv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var errOut bytes.Buffer
+	if err := tick(context.Background(), env, db, &errOut); err != nil {
+		t.Fatalf("tick = %v\n%s", err, errOut.String())
+	}
+	if del := got(hub.nodes[second], func(n *hubNode) []string { return n.deleted }); !reflect.DeepEqual(del, []string{onNode + " " + m.Key()}) {
+		t.Errorf("DELETE markers on the second node = %q, want the one of %s", del, onNode)
+	}
+	if del := got(hub.nodes[first], func(n *hubNode) []string { return n.deleted }); len(del) != 0 {
+		t.Errorf("DELETE markers on the first node = %q, want none", del)
+	}
+	if _, err := os.Stat(filepath.Join(dir, local+".json")); !os.IsNotExist(err) {
+		t.Errorf("local marker of %s: stat = %v, want it removed", local, err)
+	}
+}
+
+// A run parked on a node resumes there once its window reset, and its marker on that node is
+// gone after the resume.
+func TestResumeOnNodeRemovesMarkerThere(t *testing.T) {
+	env, db, hub, _ := nodeTick(t, macIssue(7))
+	id := hub.ids[0]
+	const sess = "33333333-3333-4333-8333-333333333333"
+	conn := openStore(t, db)
+	parkOn(t, conn, "o/r", 7, sess, id)
+	m := controllerMarker(sess, t0.Add(-time.Hour))
+	a := hub.nodes[id]
+	a.set(func(n *hubNode) { n.markers = []park.Marker{m} })
+	var errOut bytes.Buffer
+	if err := tick(context.Background(), env, db, &errOut); err != nil {
+		t.Fatalf("tick = %v\n%s", err, errOut.String())
+	}
+	rows := history(t, conn, "o/r")
+	if len(rows) != 2 || !rows[1].Open || rows[1].Node != id || rows[1].Trigger != "usage" || rows[1].SessionID != sess {
+		t.Fatalf("runs = %+v, want the parked run resumed on %s by usage\n%s", rows, id, errOut.String())
+	}
+	if got := a.carrier("ws1"); got != sess {
+		t.Errorf("carrier on %s = %q, want the resumed session %s", id, got, sess)
+	}
+	if left := got(a, func(n *hubNode) []park.Marker { return n.markers }); len(left) != 0 {
+		t.Errorf("markers on %s after the resume = %+v, want none", id, left)
+	}
+	if del := got(a, func(n *hubNode) []string { return n.deleted }); !reflect.DeepEqual(del, []string{sess + " " + m.Key()}) {
+		t.Errorf("DELETE markers on %s = %q, want the one of the resume", id, del)
+	}
+}
+
+// A 401 or 403 of serve is a configuration error: the tick names the node once per tick,
+// whatever route met it.
+func TestNodeAuthErrorLoggedOncePerTick(t *testing.T) {
+	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
+		t.Run(strconv.Itoa(status), func(t *testing.T) {
+			env, db, hub, _ := nodeTick(t, macIssue(7))
+			hub.nodes[hub.ids[0]].set(func(n *hubNode) { n.authStatus = status })
+			for i := 1; i <= 2; i++ {
+				var errOut bytes.Buffer
+				if err := tick(context.Background(), env, db, &errOut); err != nil && err != errSilent {
+					t.Fatalf("tick %d = %v\n%s", i, err, errOut.String())
+				}
+				want := fmt.Sprintf("lighthouse: node a (%s): serve answered %d: configuration error", hub.ids[0], status)
+				if n := strings.Count(errOut.String(), want); n != 1 {
+					t.Errorf("tick %d: %q lines = %d, want 1\n%s", i, want, n, errOut.String())
+				}
+				if strings.Contains(errOut.String(), "lighthouse: node b ") {
+					t.Errorf("tick %d: errOut = %q, want no line for node b", i, errOut.String())
+				}
+			}
+		})
+	}
+}
+
+// The sweep removes what closed node runs left on the tick: the tick-side carrier of #187
+// (carriers/<node>/<id>.json) and the transcript mirror. Those of an open run stay, and so does a
+// carrier on self.
+func TestSweepRemovesStaleTickSideCarriersAndMirrors(t *testing.T) {
+	env, db := tickFixture(t)
+	conn := openStore(t, db)
+	ctx := context.Background()
+	one, two := randomNode(), randomNode()
+	const sOpen, sClosed = "44444444-4444-4444-8444-444444444444", "55555555-5555-4555-8555-555555555555"
+	open, err := runs.Take(ctx, conn, runs.Claim{Repo: "o/r", Issue: 1, SessionID: sOpen, Mode: "start", Trigger: "handoff",
+		TriggerKey: "start:1", Command: "c", Prompt: "p", Profile: "mac", Node: one, Branch: "b", Now: t0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runs.SetWorkplace(ctx, conn, open.ID, "ws-open", "b"); err != nil {
+		t.Fatal(err)
+	}
+	parkOn(t, conn, "o/r", 2, sClosed, one)
+	dir := env.StateDir
+	keep := []string{
+		workplace.CarrierPath(dir, one, "ws-open"),
+		workplace.CarrierPath(dir, "", "ws-self"),
+		filepath.Join(dir, "mirror", one, sOpen, sOpen+".jsonl"),
+	}
+	gone := []string{
+		workplace.CarrierPath(dir, one, "ws-closed"),
+		workplace.CarrierPath(dir, two, "ws-open"), // the open run is on the first node
+		filepath.Join(dir, "mirror", one, sClosed, sClosed+".jsonl"),
+		filepath.Join(dir, "mirror", two, sOpen, sOpen+".jsonl"),
+	}
+	for _, p := range append(slices.Clone(keep), gone...) {
+		writeTestFile(t, p, "{}")
+	}
+	if err := sweepNodeLeftovers(ctx, conn, dir); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range keep {
+		if _, err := os.Stat(p); err != nil {
+			t.Errorf("%s: %v, want it kept", p, err)
+		}
+	}
+	for _, p := range gone {
+		if _, err := os.Stat(p); !os.IsNotExist(err) {
+			t.Errorf("%s: stat = %v, want it removed", p, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, "carriers", two)); !os.IsNotExist(err) {
+		t.Errorf("carriers/<second node>: stat = %v, want the empty dir removed", err)
+	}
+
+	// The tick runs the sweep: a leftover of a closed run is gone after one tick.
+	tenv, tdb, hub, _ := nodeTick(t)
+	parkOn(t, openStore(t, tdb), "o/r", 2, sClosed, hub.ids[0])
+	leftovers := []string{
+		workplace.CarrierPath(tenv.StateDir, hub.ids[0], "ws-closed"),
+		filepath.Join(tenv.StateDir, "mirror", hub.ids[0], sClosed, sClosed+".jsonl"),
+	}
+	for _, p := range leftovers {
+		writeTestFile(t, p, "{}")
+	}
+	var errOut bytes.Buffer
+	if err := tick(ctx, tenv, tdb, &errOut); err != nil {
+		t.Fatalf("tick = %v\n%s", err, errOut.String())
+	}
+	for _, p := range leftovers {
+		if _, err := os.Stat(p); !os.IsNotExist(err) {
+			t.Errorf("after a tick %s: stat = %v, want it removed", p, err)
 		}
 	}
 }

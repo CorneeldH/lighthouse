@@ -4,6 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"io"
+	"maps"
+	"slices"
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/dispatch"
@@ -20,6 +23,9 @@ type hostFacts struct {
 	PauseUntil time.Time                // zero: no active pause
 	Markers    map[string][]park.Marker // per repo slug: controller markers whose last run is there
 	MarkerDir  string
+	// MarkerNode is the node_id each marker read from a node came from, per session; a marker of
+	// this host is not in it. A resume or drop_marker removes the marker there.
+	MarkerNode map[string]string
 }
 
 // meter is env.Meter, or a meter on the default cache directory and the [usage] table of host.toml.
@@ -46,12 +52,17 @@ func (e tickEnv) memInfo() string {
 	return "/proc/meminfo"
 }
 
-// readHostFacts reads the pause flag, the usage, the free memory, the runs and the resume markers.
+// readHostFacts reads the pause flag, the usage, the free memory, the runs and the resume markers,
+// those of this host and those of every node (GET markers through env's serve clients).
 // A run counts once: open, or parked (a controller marker whose last run is resumable). A marker
 // whose session has no run counts for nothing. An unreadable meter, marker directory or database
 // is an error, because the brake cannot check; a missing meminfo is not, it only closes the
-// memory brake.
-func readHostFacts(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispatch) (hostFacts, error) {
+// memory brake. A node whose markers do not read is not an error either: it gets a line on errOut
+// and NodeSlots.Unmeasured, which closes its brake for tick and lighthouse run alike.
+func readHostFacts(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispatch, errOut io.Writer) (hostFacts, error) {
+	if env.serves == nil {
+		env = env.withServes(cfg, errOut)
+	}
 	var f hostFacts
 	pauseFile, err := park.PauseFile(env.Getenv)
 	if err != nil {
@@ -86,11 +97,22 @@ func readHostFacts(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.
 	for _, r := range open {
 		b.CountRun(r.Node, r.Profile)
 	}
-	markers, parked, err := controllerMarkers(ctx, db, f.MarkerDir)
+	all, err := park.ReadMarkers(f.MarkerDir)
+	if err != nil {
+		return hostFacts{}, fmt.Errorf("resume markers: %w", err)
+	}
+	onNodes, from, unread := env.nodeMarkers(ctx)
+	for _, id := range slices.Sorted(maps.Keys(unread)) {
+		n := b.Nodes[id]
+		n.Unmeasured = true
+		b.Nodes[id] = n
+		_, _ = fmt.Fprintf(errOut, "lighthouse: markers of node %s: %s\n", n.Name, oneLine(unread[id]))
+	}
+	markers, parked, err := controllerMarkers(ctx, db, append(all, onNodes...))
 	if err != nil {
 		return hostFacts{}, err
 	}
-	f.Markers = markers
+	f.Markers, f.MarkerNode = markers, from
 	for _, rows := range parked {
 		for _, last := range rows {
 			b.CountRun(last.Node, last.Profile)
@@ -112,16 +134,11 @@ func nodeSlots(cfg hostconfig.Dispatch) map[string]dispatch.NodeSlots {
 	return out
 }
 
-// controllerMarkers reads the controller markers in markerDir, per repo slug of the last run of
-// their session, and per repo slug the last runs that are resumable for their marker: the parked
-// runs. A marker whose session has no run counts for nothing. An unreadable marker directory or
-// database is an error.
-func controllerMarkers(ctx context.Context, db *sql.DB, markerDir string) (markers map[string][]park.Marker,
+// controllerMarkers sorts the controller markers of all per repo slug of the last run of their
+// session, and gives per repo slug the last runs that are resumable for their marker: the parked
+// runs. A marker whose session has no run counts for nothing. An unreadable database is an error.
+func controllerMarkers(ctx context.Context, db *sql.DB, all []park.Marker) (markers map[string][]park.Marker,
 	parked map[string][]runs.Row, err error) {
-	all, err := park.ReadMarkers(markerDir)
-	if err != nil {
-		return nil, nil, fmt.Errorf("resume markers: %w", err)
-	}
 	markers, parked = map[string][]park.Marker{}, map[string][]runs.Row{}
 	for _, m := range all {
 		if !m.Controller {

@@ -38,9 +38,9 @@ type tickEnv struct {
 	HostToml string
 	ForgeURL string           // the API root of GitHub repos; "" is forge.DefaultBaseURL
 	Now      func() time.Time // nil is time.Now
-	// Workplace is the workplace of a repo; nil follows [dispatch] workplace: "local" is a
-	// local.Adapter, any other value a kennforge.Adapter from [dispatch.forge],
-	// [dispatch.profiles] and the repo.
+	// Workplace is the workplace of a repo; nil, or a nil it returns, follows [dispatch]
+	// workplace: "local" is a local.Adapter, any other value a kennforge.Adapter from
+	// [dispatch.forge], [dispatch.profiles], [dispatch.nodes] and the repo.
 	Workplace func(repo repoconfig.Repo, node, profile string) workplace.Workplace
 	StateDir  string // run instructions, carriers and permission notes; "" is ${XDG_STATE_HOME:-$HOME/.local/state}/lighthouse/dispatch
 	// Meter measures the usage windows; nil is a meter on usage.DefaultPaths and the [usage] table of HostToml.
@@ -49,6 +49,10 @@ type tickEnv struct {
 	MemInfo string
 	// Run runs git for the workplace and the sweep; nil is workplace.ExecRunner.
 	Run workplace.Runner
+
+	// serves are the serve clients of the nodes for this tick or lighthouse run (withServes);
+	// nil builds a client per workplace.
+	serves *nodeServes
 }
 
 func (e tickEnv) runner() workplace.Runner {
@@ -83,10 +87,13 @@ func (e tickEnv) stateDir() (string, error) {
 }
 
 // workplace returns the workplace of repo on node ("" is self) for profile; stateDir is where
-// its carriers go. The local workplace has no nodes and no profile of its own.
+// its carriers go. The local workplace has no nodes and no profile of its own. An adapter on a
+// node gets the serve client of that node for this tick.
 func (e tickEnv) workplace(cfg hostconfig.Dispatch, repo repoconfig.Repo, stateDir, node, profile string) workplace.Workplace {
 	if e.Workplace != nil {
-		return e.Workplace(repo, node, profile)
+		if w := e.Workplace(repo, node, profile); w != nil {
+			return w
+		}
 	}
 	if cfg.Workplace == hostconfig.WorkplaceLocal {
 		return &local.Adapter{
@@ -102,7 +109,7 @@ func (e tickEnv) workplace(cfg hostconfig.Dispatch, repo repoconfig.Repo, stateD
 		Client: kennforge.New(cfg.Forge.URL, cfg.Forge.TokenFile),
 		Kind:   repo.Kind, Repo: repo.Slug, StateDir: stateDir,
 		Targets: targets, Profile: profile, Node: node, Run: e.runner(),
-		Home: e.Getenv("HOME"), UnitPrefix: cfg.Forge.UnitPrefix,
+		Home: e.Getenv("HOME"), UnitPrefix: cfg.Forge.UnitPrefix, Serve: e.serve(cfg, node),
 	}
 }
 
@@ -208,10 +215,12 @@ func tick(ctx context.Context, env tickEnv, dbPath string, errOut io.Writer) err
 	}
 	defer func() { _ = st.Close() }()
 
-	facts, err := readHostFacts(ctx, env, st.DB, cfg)
+	env = env.withServes(cfg, errOut)
+	facts, err := readHostFacts(ctx, env, st.DB, cfg, errOut)
 	if err != nil {
 		return fmt.Errorf("tick: the brake cannot check: %w", err)
 	}
+	pushUsage(ctx, env, errOut)
 
 	// One GET /user per tick for each kind, host, base URL and token (forgeOpener), and none
 	// when no repo is due.
@@ -251,6 +260,9 @@ func tick(ctx context.Context, env tickEnv, dbPath string, errOut io.Writer) err
 		failed = true
 	}
 	if sweepRepos(ctx, env, st.DB, cfg, ticked, checked, errOut) {
+		failed = true
+	}
+	if sweepNodes(ctx, env, st.DB, errOut) {
 		failed = true
 	}
 	if skipped || failed {
@@ -310,7 +322,7 @@ type checkedRepo struct {
 }
 
 // saveRunViews replaces the run view of each repo with its open and parked runs as they stand
-// after apply, with the titles and measured stands of its precheck. Each repo whose view was not
+// after apply (the markers of this host and of the nodes read again), with the titles and measured stands of its precheck. Each repo whose view was not
 // saved gets a save run view line on errOut; failed reports one.
 func saveRunViews(ctx context.Context, env tickEnv, db *sql.DB, repos []checkedRepo, errOut io.Writer) (failed bool) {
 	if len(repos) == 0 {
@@ -318,8 +330,13 @@ func saveRunViews(ctx context.Context, env tickEnv, db *sql.DB, repos []checkedR
 	}
 	markerDir, err := park.MarkerDir(env.Getenv)
 	var parked map[string][]runs.Row
+	var all []park.Marker
 	if err == nil {
-		_, parked, err = controllerMarkers(ctx, db, markerDir)
+		all, err = park.ReadMarkers(markerDir)
+	}
+	if err == nil {
+		onNodes, _, _ := env.nodeMarkers(ctx) // a node that does not read shows no parked run
+		_, parked, err = controllerMarkers(ctx, db, append(all, onNodes...))
 	}
 	if err != nil {
 		_, _ = fmt.Fprintf(errOut, "lighthouse: save run view: %s\n", oneLine(err))
@@ -372,6 +389,20 @@ func sweepRepos(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dis
 	return failed
 }
 
+// sweepNodes removes the transcript mirrors and tick-side carriers of node runs that are no
+// longer open (sweepNodeLeftovers); a failure gets a cleanup line on errOut, and failed reports it.
+func sweepNodes(ctx context.Context, env tickEnv, db *sql.DB, errOut io.Writer) (failed bool) {
+	dir, err := env.stateDir()
+	if err == nil {
+		err = sweepNodeLeftovers(ctx, db, dir)
+	}
+	if err != nil {
+		_, _ = fmt.Fprintf(errOut, "lighthouse: cleanup node leftovers: %s\n", oneLine(err))
+		return true
+	}
+	return false
+}
+
 // sweepOne sweeps one repo, whose forge is f; see sweepRepos.
 func sweepOne(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispatch, f forge.Forge,
 	sr checkedRepo) ([]workplace.Leftover, error) {
@@ -415,7 +446,7 @@ func decideAndApply(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig
 		repos[g.repo.Slug] = g.repo
 	}
 	actions := dispatch.Decide(decideInput(env, cfg, inputs, &facts.Brake))
-	res, err := applyActions(ctx, env, db, cfg, forges, repos, actions, errOut)
+	res, err := applyActions(ctx, env, db, cfg, facts.MarkerNode, forges, repos, actions, errOut)
 	if err != nil {
 		return false, fmt.Errorf("tick: %w", err)
 	}
@@ -460,8 +491,9 @@ func decideAndApply(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig
 // applyActions applies actions to repos, each with its forge in forges and its workplace; apply
 // logs to errOut with the "lighthouse: " of every tick line. Without actions it applies nothing.
 // tick and `lighthouse run` share it. Every repo in repos has a board: Dispatchable guarantees it.
-func applyActions(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispatch, forges map[string]forge.Forge,
-	repos map[string]repoconfig.Repo, actions []dispatch.Action, errOut io.Writer) (dispatch.Result, error) {
+// markerNode is hostFacts.MarkerNode: a marker of a session in it is removed on that node.
+func applyActions(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispatch, markerNode map[string]string,
+	forges map[string]forge.Forge, repos map[string]repoconfig.Repo, actions []dispatch.Action, errOut io.Writer) (dispatch.Result, error) {
 	if len(actions) == 0 {
 		return dispatch.Result{}, nil
 	}
@@ -485,12 +517,28 @@ func applyActions(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.D
 		RoundLimit: func(slug string) string { return repos[slug].Controller.AtRoundLimit },
 		StateDir:   dir,
 		MarkerDir:  markerDir,
+		RemoveMarker: func(session, key string) error {
+			return env.removeMarker(ctx, cfg, markerDir, markerNode[session], session, key)
+		},
 		MaxWait:    cfg.MaxWait,
 		Now:        env.now,
 		NewSession: runs.NewSessionID,
 		Log:        prefixed{errOut},
 	}, actions)
 	return res, nil
+}
+
+// removeMarker removes the resume marker of session while its key is key: on node (DELETE
+// markers through serve), or in markerDir when node is "".
+func (e tickEnv) removeMarker(ctx context.Context, cfg hostconfig.Dispatch, markerDir, node, session, key string) error {
+	if node == "" {
+		return park.RemoveMarker(markerDir, session, key)
+	}
+	c := e.serve(cfg, node)
+	if c == nil {
+		return fmt.Errorf("node %s is not in host.toml: its marker stays", node)
+	}
+	return c.DeleteMarker(ctx, session, key)
 }
 
 // prefixed writes each line apply logs with the "lighthouse: " of every tick line: apply
@@ -636,7 +684,7 @@ type runProbe struct {
 }
 
 // measure reads the sessions of the run's workspace, its transcript when the workplace has
-// one on this host and its permission note. A workspace the workplace no
+// one and its permission note (permission). A workspace the workplace no
 // longer knows is Gone, not an error. measured says whether stand holds the stand of the
 // session whose key the run recorded.
 func (m *runProbe) measure(ctx context.Context, r runs.OpenRun) (stand workplace.Stand, measured bool, s dispatch.RunState, err error) {
@@ -660,10 +708,27 @@ func (m *runProbe) measure(ctx context.Context, r runs.OpenRun) (stand workplace
 			return 0, false, dispatch.RunState{}, err
 		}
 	}
-	if s.Permission, err = dispatch.ReadPermission(m.stateDir, r.SessionID); err != nil {
+	if s.Permission, err = m.permission(ctx, r); err != nil {
 		return 0, false, dispatch.RunState{}, err
 	}
 	return stand, measured, s, nil
+}
+
+// permission is the permission note of the run, nil without one. A run on a node whose
+// workplace reads notes there (workplace.PermissionReader) gets it through serve; any other run
+// reads the state directory. Every kenn-forge adapter is a PermissionReader, also on self, where
+// it is not measurable: hence the node first. A serve that does not answer is an error: the run
+// is not measurable this tick.
+func (m *runProbe) permission(ctx context.Context, r runs.OpenRun) (*dispatch.Permission, error) {
+	pr, ok := m.w.(workplace.PermissionReader)
+	if r.Node == "" || !ok {
+		return dispatch.ReadPermission(m.stateDir, r.SessionID)
+	}
+	data, err := pr.Permission(ctx, r.SessionID)
+	if err != nil || data == nil {
+		return nil, err
+	}
+	return dispatch.ParsePermission(data)
 }
 
 // transcript is the transcript of the run's session, or nil when it is not measurable: a

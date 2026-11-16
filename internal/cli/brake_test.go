@@ -1,13 +1,17 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -62,7 +66,7 @@ func claim(t *testing.T, db *sql.DB, repo string, issue int, session, profile, t
 
 func facts(t *testing.T, env tickEnv, db *sql.DB) hostFacts {
 	t.Helper()
-	f, err := readHostFacts(context.Background(), env, db, hostconfig.DefaultDispatch())
+	f, err := readHostFacts(context.Background(), env, db, hostconfig.DefaultDispatch(), io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,12 +225,14 @@ func TestReadHostFactsPerNode(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	hub := newFleetHub(t, "node-a", "node-b") // serve on each node: its markers read
+	a, b := hub.nodes["node-a"], hub.nodes["node-b"]
 	cfg := hostconfig.DefaultDispatch()
 	cfg.Nodes = map[string]hostconfig.Node{
-		"alpha": {NodeID: "node-a", Slots: 2},
-		"beta":  {NodeID: "node-b", Slots: 1},
+		"alpha": {NodeID: "node-a", Slots: 2, ServeURL: a.serveSrv.URL, ServeTokenFile: a.tokenFile(t)},
+		"beta":  {NodeID: "node-b", Slots: 1, ServeURL: b.serveSrv.URL, ServeTokenFile: b.tokenFile(t)},
 	}
-	f, err := readHostFacts(context.Background(), env, db, cfg)
+	f, err := readHostFacts(context.Background(), env, db, cfg, io.Discard)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,5 +245,64 @@ func TestReadHostFactsPerNode(t *testing.T) {
 	}
 	if f.Brake.InUse != 1 || f.Brake.SoftwareInUse != 1 {
 		t.Errorf("InUse %d, SoftwareInUse %d; want 1 and 1: runs on a node take no local slot", f.Brake.InUse, f.Brake.SoftwareInUse)
+	}
+}
+
+// A controller marker on a node counts like one on this host: its parked run takes a slot of
+// that node, Decide gets the marker with the repo of its run, and the tick remembers the node it
+// came from, so a resume or drop removes it there.
+func TestReadHostFactsCountsNodeMarkers(t *testing.T) {
+	env, dbPath := tickFixture(t)
+	db := openStore(t, dbPath)
+	hub := newFleetHub(t, randomNode(), randomNode())
+	one, two := hub.ids[0], hub.ids[1]
+	const sess = "sess-on-node"
+	parkOn(t, db, "o/a", 3, sess, one)
+	m := controllerMarker(sess, t0.Add(time.Hour))
+	hub.nodes[one].set(func(n *hubNode) { n.markers = []park.Marker{m} })
+	var errOut bytes.Buffer
+	f, err := readHostFacts(context.Background(), env, db, nodeConfig(t, hub), &errOut)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := map[string][]park.Marker{"o/a": {m}}; !reflect.DeepEqual(f.Markers, want) {
+		t.Errorf("Markers = %+v, want %+v", f.Markers, want)
+	}
+	want := map[string]dispatch.NodeSlots{
+		one: {Name: "n0", Slots: 1, InUse: 1},
+		two: {Name: "n1", Slots: 1, InUse: 0},
+	}
+	if !reflect.DeepEqual(f.Brake.Nodes, want) {
+		t.Errorf("Nodes = %+v, want %+v", f.Brake.Nodes, want)
+	}
+	if f.Brake.InUse != 0 {
+		t.Errorf("InUse = %d, want 0: the parked run is on a node", f.Brake.InUse)
+	}
+	if want := map[string]string{sess: one}; !reflect.DeepEqual(f.MarkerNode, want) {
+		t.Errorf("MarkerNode = %v, want %v", f.MarkerNode, want)
+	}
+	if errOut.Len() != 0 {
+		t.Errorf("errOut = %q, want empty", errOut.String())
+	}
+}
+
+// A node whose GET markers fails is unmeasured this tick, with a line naming it; the other node
+// is not, and it is no error: the brake closes only that node.
+func TestReadHostFactsNodeMarkersUnreadableSetsUnmeasured(t *testing.T) {
+	env, dbPath := tickFixture(t)
+	db := openStore(t, dbPath)
+	hub := newFleetHub(t, randomNode(), randomNode())
+	one, two := hub.ids[0], hub.ids[1]
+	hub.nodes[one].set(func(n *hubNode) { n.markersStatus = http.StatusInternalServerError })
+	var errOut bytes.Buffer
+	f, err := readHostFacts(context.Background(), env, db, nodeConfig(t, hub), &errOut)
+	if err != nil {
+		t.Fatalf("readHostFacts = %v, want no error", err)
+	}
+	if !f.Brake.Nodes[one].Unmeasured || f.Brake.Nodes[two].Unmeasured {
+		t.Errorf("Nodes = %+v, want only %s unmeasured", f.Brake.Nodes, one)
+	}
+	if !strings.HasPrefix(errOut.String(), "lighthouse: markers of node n0: ") || strings.Count(errOut.String(), "\n") != 1 {
+		t.Errorf("errOut = %q, want one markers line for node n0", errOut.String())
 	}
 }
