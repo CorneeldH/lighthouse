@@ -56,13 +56,28 @@ func (g *githubFixture) ChecksOnClosedPRs() bool { return true }
 // ListsClosedIssues: BoardItems lists only the items of the project.
 func (g *githubFixture) ListsClosedIssues() bool { return false }
 
+// UniqueMilestoneTitles: GitHub refuses a second milestone with the title of one that exists.
+func (g *githubFixture) UniqueMilestoneTitles() bool { return true }
+
+func (g *githubFixture) AddMilestone(t *testing.T, title string, group bool) forge.Milestone {
+	t.Helper()
+	if group {
+		t.Fatal("githubFixture: GitHub has no group milestones")
+	}
+	n := len(g.srv.Milestones) + 1
+	g.srv.Milestones = append(g.srv.Milestones, map[string]any{"number": n, "title": title, "state": "open", "description": ""})
+	return forge.Milestone{Number: n, Title: title, State: "open"}
+}
+
+func (g *githubFixture) SetLabels(_ *testing.T, names ...string) { g.srv.Labels = names }
+
 func (g *githubFixture) AddIssue(_ *testing.T, is forge.Issue) {
 	labels := []any{}
 	for _, l := range is.Labels {
 		labels = append(labels, map[string]any{"name": l})
 	}
 	it := map[string]any{
-		"number": is.Number, "node_id": fmt.Sprintf("I_%d", is.Number), "title": is.Title, "body": is.Body,
+		"number": is.Number, "id": 9000 + is.Number, "node_id": fmt.Sprintf("I_%d", is.Number), "title": is.Title, "body": is.Body,
 		"state": is.State, "html_url": fmt.Sprintf("https://github.com/o/r/issues/%d", is.Number),
 		"user": map[string]any{"login": is.Author}, "labels": labels,
 	}

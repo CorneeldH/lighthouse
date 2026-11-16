@@ -45,6 +45,27 @@ type Forge interface {
 	IssueItem(ctx context.Context, number int) (item BoardItem, ok bool, err error)
 	AddToBoard(ctx context.Context, number int) (BoardItem, error)
 	SetStatus(ctx context.Context, item BoardItem, status string) error
+
+	// The methods below are the wrapper (`lighthouse forge`). A milestone is given by title;
+	// Milestone.Number is the number the forge uses in a path (on GitLab the global id).
+
+	CreateIssue(ctx context.Context, in NewIssue) (Issue, error)
+	EditIssue(ctx context.Context, number int, e IssueEdit) (Issue, error)
+	ListIssues(ctx context.Context, f IssueFilter) ([]Issue, error)
+	SearchIssues(ctx context.Context, text string) ([]Issue, error)
+	CreateChange(ctx context.Context, in NewPR) (Change, error)
+	Change(ctx context.Context, number int) (Change, error)
+	CreateChangeComment(ctx context.Context, number int, body string) (protocol.Comment, error)
+	// Milestones lists the milestones in state "open", "closed" or "all"; "" is open.
+	Milestones(ctx context.Context, state string) ([]Milestone, error)
+	MilestoneByNumber(ctx context.Context, number int) (Milestone, error)
+	CreateMilestone(ctx context.Context, title, description string) (Milestone, error)
+	EditMilestone(ctx context.Context, number int, title, description *string) (Milestone, error)
+	Labels(ctx context.Context) ([]string, error)
+	// AddBlocker makes issue blocker block issue number.
+	AddBlocker(ctx context.Context, number, blocker int) error
+	// API sends r to the forge's REST API and returns the raw response body.
+	API(ctx context.Context, r APIRequest) ([]byte, error)
 }
 
 var _ Forge = (*GitHub)(nil)
