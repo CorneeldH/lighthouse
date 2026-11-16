@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/forge"
 )
@@ -67,8 +68,25 @@ type Clone interface {
 	Close() error
 }
 
+// DefaultGitTimeout bounds each git command of the measurement (the clone, and every lazy blob
+// fetch after it): an upstream that stops answering ends as an error, not as a hung run.
+const DefaultGitTimeout = 5 * time.Minute
+
+// gitWaitDelay is how long a git command may keep its pipes open after it ended or was killed:
+// a transport helper it started can hold them.
+const gitWaitDelay = 2 * time.Second
+
 type ghSource struct {
 	base func(repo string) string
+	// timeout bounds each git command; zero is DefaultGitTimeout.
+	timeout time.Duration
+}
+
+func (s *ghSource) limit() time.Duration {
+	if s.timeout > 0 {
+		return s.timeout
+	}
+	return DefaultGitTimeout
 }
 
 // NewGitSource clones from https://github.com/<repo>.
@@ -83,8 +101,9 @@ func NewGitSourceAt(base func(repo string) string) GitSource {
 }
 
 type ghClone struct {
-	ctx context.Context
-	dir string
+	ctx     context.Context
+	dir     string
+	timeout time.Duration
 }
 
 // gitEnv strips the caller's git environment and the user's and system's config, so no hook path
@@ -104,6 +123,7 @@ func gitCmd(ctx context.Context, dir string, args ...string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, "git", full...)
 	cmd.Dir = dir
 	cmd.Env = gitEnv()
+	cmd.WaitDelay = gitWaitDelay
 	return cmd
 }
 
@@ -127,16 +147,20 @@ func (s *ghSource) Clone(ctx context.Context, repo string) (Clone, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err := runGitOut(ctx, dir, "clone", "--bare", "--filter=blob:none", "--no-tags", "--quiet",
+	cctx, cancel := context.WithTimeout(ctx, s.limit())
+	defer cancel()
+	if _, err := runGitOut(cctx, dir, "clone", "--bare", "--filter=blob:none", "--no-tags", "--quiet",
 		"--", s.base(repo), dir); err != nil {
 		_ = os.RemoveAll(dir)
 		return nil, fmt.Errorf("clone %s: %w", repo, err)
 	}
-	return &ghClone{ctx: ctx, dir: dir}, nil
+	return &ghClone{ctx: ctx, dir: dir, timeout: s.limit()}, nil
 }
 
 func (c *ghClone) git(args ...string) ([]byte, error) {
-	return runGitOut(c.ctx, c.dir, args...)
+	ctx, cancel := context.WithTimeout(c.ctx, c.timeout)
+	defer cancel()
+	return runGitOut(ctx, c.dir, args...)
 }
 
 func (c *ghClone) Head() (string, error) {

@@ -4,12 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 // upstreamRepo is a local bare repository standing in for github.com/<owner>/<repo>.
@@ -315,5 +318,51 @@ func TestGitHubSource_urlIsHTTPS(t *testing.T) {
 	src := NewGitSource().(*ghSource)
 	if got := src.base("o/r"); got != "https://github.com/o/r" {
 		t.Errorf("base = %q", got)
+	}
+}
+
+// Fails when the measurement's clone waits on an upstream that never answers instead of ending
+// with an error at the clone time-out (a hung weekly lane, or a hung `pins check`).
+func TestClone_timesOutOnSilentRemote(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var mu sync.Mutex
+	var conns []net.Conn // held open, never answered
+	t.Cleanup(func() {
+		_ = ln.Close()
+		mu.Lock()
+		defer mu.Unlock()
+		for _, c := range conns {
+			_ = c.Close()
+		}
+	})
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			mu.Lock()
+			conns = append(conns, c)
+			mu.Unlock()
+		}
+	}()
+	src := &ghSource{
+		base:    func(repo string) string { return "http://" + ln.Addr().String() + "/" + repo },
+		timeout: 300 * time.Millisecond,
+	}
+	start := time.Now()
+	cl, err := src.Clone(context.Background(), "o/r")
+	if err == nil {
+		_ = cl.Close()
+		t.Fatalf("Clone of a silent remote succeeded")
+	}
+	if took := time.Since(start); took > 10*time.Second {
+		t.Fatalf("Clone took %s, want it to stop near the 300ms time-out", took)
+	}
+	if d := (&ghSource{}).limit(); d != DefaultGitTimeout || d < time.Minute {
+		t.Errorf("default git time-out %s, want DefaultGitTimeout of minutes", d)
 	}
 }
