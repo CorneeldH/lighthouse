@@ -4,6 +4,7 @@
 package gitlabtest
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -35,11 +36,15 @@ type Server struct {
 	// Project is the project path ("group/sub/project") the server knows. The default is
 	// "group/project". A request for another project is unexpected.
 	Project string
+	// Free makes the server a GitLab Free plan: a blocking link is refused with 403 on write and
+	// left out of the links on read.
+	Free bool
 
 	t      reporter
 	srv    *httptest.Server
 	mu     sync.Mutex
 	reqs   []string
+	writes []Write
 	nextID int64
 
 	issues   map[int]map[string]any
@@ -52,6 +57,10 @@ type Server struct {
 	members  map[string]int              // username to access level
 	statuses []string
 	status   map[int]string
+
+	milestones []map[string]any
+	labels     []string
+	mrNotes    map[int][]map[string]any
 }
 
 // New starts a server that closes when the test ends.
@@ -63,7 +72,7 @@ func newServer(t reporter) *Server {
 		t: t, Project: "group/project", nextID: 1000,
 		issues: map[int]map[string]any{}, notes: map[int][]map[string]any{},
 		awards: map[int64][]map[string]any{}, links: map[int][]map[string]any{}, closedBy: map[string][]map[string]any{},
-		users: map[string]int64{}, members: map[string]int{}, status: map[int]string{},
+		users: map[string]int64{}, members: map[string]int{}, status: map[int]string{}, mrNotes: map[int][]map[string]any{},
 	}
 	mux := http.NewServeMux()
 	// Register routes here; later tasks add theirs next to these.
@@ -83,6 +92,7 @@ func newServer(t reporter) *Server {
 	s.route(mux, "GET "+p+"/merge_requests", s.project(s.listMRs))
 	s.route(mux, "GET "+p+"/merge_requests/{iid}", s.project(s.getMR))
 	s.route(mux, "PUT "+p+"/merge_requests/{iid}/merge", s.project(s.mergeMR))
+	s.writeRoutes(mux, p)
 	mux.HandleFunc("POST /api/graphql", s.graphql)
 	mux.HandleFunc("/", s.unexpected)
 	s.srv = httptest.NewServer(s.record(mux))
@@ -108,8 +118,15 @@ func (s *Server) Requests() []string {
 // record logs the request and refuses one without a PRIVATE-TOKEN.
 func (s *Server) record(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		r.Body = io.NopCloser(bytes.NewReader(raw))
 		s.mu.Lock()
 		s.reqs = append(s.reqs, r.Method+" "+r.URL.RequestURI())
+		if r.Method != http.MethodGet {
+			var body map[string]any
+			_ = json.Unmarshal(raw, &body)
+			s.writes = append(s.writes, Write{Method: r.Method, Path: r.URL.EscapedPath(), Body: body})
+		}
 		s.mu.Unlock()
 		if r.Header.Get("PRIVATE-TOKEN") == "" {
 			writeJSON(w, http.StatusUnauthorized, map[string]any{"message": "401 Unauthorized"})
@@ -189,11 +206,13 @@ func (s *Server) member(w http.ResponseWriter, r *http.Request) {
 }
 
 // listIssues serves the issues by iid, filtered on state (opened, closed, all; default all),
-// on milestone (the milestone title) and on updated_after (an RFC 3339 time; an issue updated
+// on milestone (the milestone title), on labels (a comma list, all must be on the issue), on
+// search (a case-insensitive part of the title or description) and on updated_after (an RFC 3339 time; an issue updated
 // earlier is left out).
 func (s *Server) listIssues(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	state, milestone := q.Get("state"), q.Get("milestone")
+	label, search := q.Get("labels"), strings.ToLower(q.Get("search"))
 	after, _ := time.Parse(time.RFC3339, q.Get("updated_after"))
 	s.mu.Lock()
 	var out []any
@@ -206,6 +225,12 @@ func (s *Server) listIssues(w http.ResponseWriter, r *http.Request) {
 			if m, _ := it["milestone"].(map[string]any); m == nil || m["title"] != milestone {
 				continue
 			}
+		}
+		if label != "" && !hasLabels(it, label) {
+			continue
+		}
+		if search != "" && !strings.Contains(strings.ToLower(fmt.Sprint(it["title"], " ", it["description"])), search) {
+			continue
 		}
 		if !after.IsZero() {
 			if at, _ := time.Parse(time.RFC3339, fmt.Sprint(it["updated_at"])); at.Before(after) {
@@ -293,9 +318,14 @@ func (s *Server) listClosedBy(w http.ResponseWriter, r *http.Request) {
 func (s *Server) listLinks(w http.ResponseWriter, r *http.Request) {
 	iid, _ := strconv.Atoi(r.PathValue("iid"))
 	s.mu.Lock()
-	out := toAny(s.links[iid])
+	var links []map[string]any
+	for _, l := range s.links[iid] {
+		if !s.Free || l["link_type"] != "is_blocked_by" {
+			links = append(links, l)
+		}
+	}
 	s.mu.Unlock()
-	paginate(w, r, out)
+	paginate(w, r, toAny(links))
 }
 
 // listMRs serves the merge requests, filtered on state (opened, closed, merged; default all)

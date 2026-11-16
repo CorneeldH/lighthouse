@@ -459,38 +459,17 @@ func (c *GitHub) API(ctx context.Context, r APIRequest) ([]byte, error) {
 	if err := c.configured(); err != nil {
 		return nil, err
 	}
-	method := strings.ToUpper(r.Method)
-	if method == "" {
-		method = http.MethodGet
-		if len(r.Fields) > 0 {
-			method = http.MethodPost
-		}
+	method, fields, err := r.resolve()
+	if err != nil {
+		return nil, err
 	}
 	path := strings.NewReplacer("{owner}", c.owner(), "{repo}", c.name()).Replace(strings.TrimPrefix(r.Path, "/"))
 	url := c.BaseURL + "/" + path
 	var body map[string]any
-	if len(r.Fields) > 0 {
-		fields := map[string]any{}
-		for _, f := range r.Fields {
-			v, err := f.value()
-			if err != nil {
-				return nil, err
-			}
-			fields[f.Name] = v
-		}
-		if method == http.MethodGet || method == http.MethodDelete {
-			q := neturl.Values{}
-			for k, v := range fields {
-				q.Set(k, fmt.Sprint(v))
-			}
-			sep := "?"
-			if strings.Contains(url, "?") {
-				sep = "&"
-			}
-			url += sep + q.Encode()
-		} else {
-			body = fields
-		}
+	if method == http.MethodGet || method == http.MethodDelete {
+		url = withQuery(url, fields)
+	} else if len(fields) > 0 {
+		body = fields
 	}
 	var out []byte
 	var reqBody any
@@ -501,6 +480,43 @@ func (c *GitHub) API(ctx context.Context, r APIRequest) ([]byte, error) {
 		return nil, err
 	}
 	return out, nil
+}
+
+// resolve is the method of the request (an empty one is GET, or POST with fields) and its
+// fields with their JSON values.
+func (r APIRequest) resolve() (string, map[string]any, error) {
+	method := strings.ToUpper(r.Method)
+	if method == "" {
+		method = http.MethodGet
+		if len(r.Fields) > 0 {
+			method = http.MethodPost
+		}
+	}
+	fields := map[string]any{}
+	for _, f := range r.Fields {
+		v, err := f.value()
+		if err != nil {
+			return "", nil, err
+		}
+		fields[f.Name] = v
+	}
+	return method, fields, nil
+}
+
+// withQuery adds the fields to the query string of url.
+func withQuery(url string, fields map[string]any) string {
+	if len(fields) == 0 {
+		return url
+	}
+	q := neturl.Values{}
+	for k, v := range fields {
+		q.Set(k, fmt.Sprint(v))
+	}
+	sep := "?"
+	if strings.Contains(url, "?") {
+		sep = "&"
+	}
+	return url + sep + q.Encode()
 }
 
 // value is the JSON value of a field: text when untyped, else a scalar or file contents.
