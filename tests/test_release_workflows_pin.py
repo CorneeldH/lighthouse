@@ -470,6 +470,15 @@ def test_prerelease_tag_job_pushes_only_the_tag():
     exists = 'git ls-remote --exit-code --tags origin "refs/tags/$tag"'
     assert exists in run
     assert run.index(exists) < run.index("ci/tag-with-ui.sh") < run.index("git push")
+    # ls-remote exit codes: 0 = tag exists (refuse), 2 = no such tag (free), anything else = error.
+    capture = exists + " >/dev/null || status=$?"
+    assert capture in run
+    assert "status=0" in run and run.index("status=0") < run.index(capture)
+    refuse = run.index('if [ "$status" -eq 0 ]; then', run.index(capture))
+    error = run.index('elif [ "$status" -ne 2 ]; then', refuse)
+    assert refuse < error < run.index("ci/tag-with-ui.sh")
+    assert "already exists on the remote" in run[refuse:error]
+    assert "exit 1" in run[refuse:error] and "exit 1" in run[error : run.index("ci/tag-with-ui.sh")]
     assert 'ci/tag-with-ui.sh "$tag" "$RUNNER_TEMP/ui-dist"' in run
     assert 'echo "tag=$tag" >> "$GITHUB_OUTPUT"' in run
     assert re.search(r"^      tag: \$\{\{ steps\.\w+\.outputs\.tag \}\}\s*$", tag, re.MULTILINE)
