@@ -190,6 +190,25 @@ jobs:
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       - run: go test -race -shuffle=on -tags e2e ./e2e/ -v
 
+  # A fresh init with every pack, and each hook it registers, on a PATH without python* (#285).
+  # No setup-uv: Python is what this job proves is not needed.
+  no-python:
+    needs: changes
+    if: needs.changes.outputs.go == 'true' || needs.changes.outputs.python == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: go build -o "$RUNNER_TEMP/lighthouse" ./cmd/lighthouse
+      - run: |
+          mkdir -p "$RUNNER_TEMP/work"
+          ci/no-python.sh "$RUNNER_TEMP/lighthouse" "$RUNNER_TEMP/work"
+
   web:
     needs: changes
     if: needs.changes.outputs.web == 'true'
