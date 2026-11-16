@@ -45,8 +45,16 @@ type Server struct {
 	// repository_url), served by GET .../issues/{number}/dependencies/blocked_by.
 	BlockedBy map[int][]map[string]any
 	// Fail maps "METHOD path", such as "POST /repos/o/r/issues/7/comments", to the status that
-	// request answers instead. A failed POST is still in Posts, but changes nothing.
+	// request answers instead. A failed write is still in Posts, but changes nothing.
 	Fail map[string]int
+	// FailMessage maps the same key to the "message" of that failure; the default is the
+	// status text.
+	FailMessage map[string]string
+	// Milestones are the milestones in REST shape (number, title, state, description), served by
+	// GET .../milestones and changed by POST and PATCH; an issue's milestone is looked up here.
+	Milestones []map[string]any
+	// Labels are the label names of the repo, served by GET .../labels.
+	Labels []string
 	// Roles maps a login to its role_name on the repo; a login that is missing answers 404.
 	Roles map[string]string
 	// RoleStatus, when not 0, is the status every permission request answers.
@@ -90,10 +98,12 @@ type Server struct {
 	counts map[string]int
 }
 
-// Post is one POST request as the server received it.
+// Post is one write request (POST, PATCH, PUT or DELETE) as the server received it. Body is nil
+// for a DELETE.
 type Post struct {
-	Path string
-	Body map[string]any
+	Method string
+	Path   string
+	Body   map[string]any
 }
 
 // New starts a server that closes when the test ends.
@@ -106,6 +116,19 @@ func New(t *testing.T) *Server {
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues/{number}", s.issue)
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues/{number}/dependencies/blocked_by", s.blockedBy)
 	mux.HandleFunc("GET /repos/{owner}/{name}/pulls", s.pulls)
+	mux.HandleFunc("GET /repos/{owner}/{name}/pulls/{number}", s.pull)
+	mux.HandleFunc("POST /repos/{owner}/{name}/pulls", s.createPull)
+	mux.HandleFunc("POST /repos/{owner}/{name}/issues", s.createIssue)
+	mux.HandleFunc("PATCH /repos/{owner}/{name}/issues/{number}", s.patchIssue)
+	mux.HandleFunc("POST /repos/{owner}/{name}/issues/{number}/labels", s.addLabels)
+	mux.HandleFunc("DELETE /repos/{owner}/{name}/issues/{number}/labels/{label}", s.removeLabel)
+	mux.HandleFunc("POST /repos/{owner}/{name}/issues/{number}/dependencies/blocked_by", s.addBlockedBy)
+	mux.HandleFunc("GET /search/issues", s.searchIssues)
+	mux.HandleFunc("GET /repos/{owner}/{name}/milestones", s.listMilestones)
+	mux.HandleFunc("GET /repos/{owner}/{name}/milestones/{number}", s.milestone)
+	mux.HandleFunc("POST /repos/{owner}/{name}/milestones", s.createMilestone)
+	mux.HandleFunc("PATCH /repos/{owner}/{name}/milestones/{number}", s.patchMilestone)
+	mux.HandleFunc("GET /repos/{owner}/{name}/labels", s.labels)
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues/{number}/comments", s.comments)
 	mux.HandleFunc("POST /repos/{owner}/{name}/issues/{number}/comments", s.createComment)
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues/comments/{id}/reactions", s.reactions)
@@ -147,19 +170,22 @@ func (s *Server) record(next http.Handler) http.Handler {
 			writeJSON(w, http.StatusUnauthorized, map[string]any{"message": "Requires authentication"})
 			return
 		}
-		if r.Method == http.MethodPost {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			raw, _ := io.ReadAll(r.Body)
 			var body map[string]any
-			if err := json.Unmarshal(raw, &body); err != nil {
-				s.t.Errorf("forgetest: POST %s: body is no JSON object: %v", r.URL.Path, err)
+			if r.Method != http.MethodDelete {
+				if err := json.Unmarshal(raw, &body); err != nil {
+					s.t.Errorf("forgetest: %s %s: body is no JSON object: %v", r.Method, r.URL.Path, err)
+				}
 			}
 			s.mu.Lock()
-			s.Posts = append(s.Posts, Post{Path: r.URL.Path, Body: body})
+			s.Posts = append(s.Posts, Post{Method: r.Method, Path: r.URL.Path, Body: body})
 			s.mu.Unlock()
 			r.Body = io.NopCloser(bytes.NewReader(raw))
 		}
-		if status := s.Fail[r.Method+" "+r.URL.Path]; status != 0 {
-			writeJSON(w, status, map[string]any{"message": http.StatusText(status)})
+		key := r.Method + " " + r.URL.Path
+		if status := s.Fail[key]; status != 0 {
+			writeJSON(w, status, map[string]any{"message": cmp.Or(s.FailMessage[key], http.StatusText(status))})
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -188,6 +214,7 @@ func (s *Server) listIssues(w http.ResponseWriter, r *http.Request) {
 		state = "open"
 	}
 	milestone := r.URL.Query().Get("milestone")
+	label := r.URL.Query().Get("labels")
 	var nums []int
 	for n := range s.Issues {
 		nums = append(nums, n)
@@ -197,6 +224,9 @@ func (s *Server) listIssues(w http.ResponseWriter, r *http.Request) {
 	for _, n := range nums {
 		it := s.Issues[n]
 		if st, _ := it["state"].(string); state != "all" && state != cmp.Or(st, "open") {
+			continue
+		}
+		if label != "" && !slices.Contains(labelNames(it["labels"]), label) {
 			continue
 		}
 		if milestone != "" {
@@ -378,6 +408,11 @@ func (s *Server) permission(w http.ResponseWriter, r *http.Request) {
 // page serves one page of items as GitHub does: per_page (default 30, at most 100) and page
 // from the query, and a Link rel="next" while more items follow.
 func (s *Server) page(w http.ResponseWriter, r *http.Request, items []any) {
+	s.pageAs(w, r, items, func(items []any) any { return items })
+}
+
+// pageAs is page with the items of the page wrapped by wrap, as search results are.
+func (s *Server) pageAs(w http.ResponseWriter, r *http.Request, items []any, wrap func([]any) any) {
 	q := r.URL.Query()
 	per, err := strconv.Atoi(q.Get("per_page"))
 	if err != nil || per <= 0 {
@@ -395,7 +430,7 @@ func (s *Server) page(w http.ResponseWriter, r *http.Request, items []any) {
 		next := url.URL{Path: r.URL.Path, RawQuery: q.Encode()}
 		w.Header().Set("Link", fmt.Sprintf(`<%s%s>; rel="next"`, s.srv.URL, next.String()))
 	}
-	writeJSON(w, http.StatusOK, append([]any{}, items[start:end]...))
+	writeJSON(w, http.StatusOK, wrap(append([]any{}, items[start:end]...)))
 }
 
 func (s *Server) graphql(w http.ResponseWriter, r *http.Request) {

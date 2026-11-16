@@ -186,6 +186,7 @@ type glIssue struct {
 	Notes     int        `json:"user_notes_count"`
 	State     string     `json:"state"`
 	Desc      string     `json:"description"`
+	CreatedAt time.Time  `json:"created_at"`
 	UpdatedAt time.Time  `json:"updated_at"`
 	ClosedAt  *time.Time `json:"closed_at"`
 	Author    *struct {
@@ -202,7 +203,7 @@ type glIssue struct {
 
 func (it glIssue) issue() Issue {
 	out := Issue{Number: it.IID, Title: it.Title, URL: it.WebURL, Comments: it.Notes, Body: it.Desc,
-		Labels: it.Labels, UpdatedAt: it.UpdatedAt, State: it.State}
+		Labels: it.Labels, CreatedAt: it.CreatedAt, UpdatedAt: it.UpdatedAt, State: it.State}
 	if it.State == "opened" {
 		out.State = "open"
 	}

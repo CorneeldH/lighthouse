@@ -23,6 +23,7 @@ type glMR struct {
 	TargetProjectID     int64      `json:"target_project_id"`
 	HasConflicts        bool       `json:"has_conflicts"`
 	DetailedMergeStatus string     `json:"detailed_merge_status"`
+	CreatedAt           time.Time  `json:"created_at"`
 	MergedAt            *time.Time `json:"merged_at"`
 	ClosedAt            *time.Time `json:"closed_at"`
 	HeadPipeline        *struct {
