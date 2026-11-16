@@ -10,9 +10,17 @@ import (
 // interpreters are programs a hook command runs its script with; a word naming one is
 // never the script itself, even when /bin/bash exists.
 var interpreters = map[string]bool{
-	"sh": true, "bash": true, "zsh": true, "dash": true, "env": true,
+	"sh": true, "bash": true, "zsh": true, "dash": true, "ksh": true, "env": true,
 	"node": true, "deno": true, "bun": true, "python": true, "python3": true, "uv": true,
+	"perl": true, "ruby": true,
 }
+
+// shells are the interpreters whose -c code is a command line; the code of any other
+// interpreter (python -c, node -e) is opaque.
+var shells = map[string]bool{"sh": true, "bash": true, "zsh": true, "dash": true, "ksh": true}
+
+// assignment is a variable assignment before a command, such as FOO=1 in `FOO=1 ./x.sh`.
+var assignment = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*=`)
 
 var unquote = strings.NewReplacer(`"`, "", `'`, "")
 
@@ -163,6 +171,53 @@ func expand(word, root, home string) string {
 	})
 }
 
+// evalFlag reports whether a flag of a non-shell interpreter takes code as its next
+// word: a short flag with c, e or p (python -c, node -e, node -p, perl -e), or --eval
+// and --print.
+func evalFlag(word string) bool {
+	if word == "--eval" || word == "--print" {
+		return true
+	}
+	letters, ok := strings.CutPrefix(word, "-")
+	if !ok || letters == "" || !strings.ContainsAny(letters, "cep") {
+		return false
+	}
+	for _, r := range letters {
+		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') {
+			return false
+		}
+	}
+	return true
+}
+
+// How the word after an interpreter flag is read: shellCode is a command line of its
+// own, opaqueCode is code in another language and never a path.
+const (
+	noCode = iota
+	shellCode
+	opaqueCode
+)
+
+// flagCode is how the word after an interpreter flag is read.
+func flagCode(word string, shell bool) int {
+	switch {
+	case shell && codeFlag(word):
+		return shellCode
+	case !shell && evalFlag(word):
+		return opaqueCode
+	default:
+		return noCode
+	}
+}
+
+// candidate reports whether word can be a script path: it holds a "/", is no flag, URL
+// or unexpanded $VAR, and has no = or ( before its first "/" (FOO=a/b, f(a/b)).
+func candidate(word string) bool {
+	head, _, hasSlash := strings.Cut(word, "/")
+	return hasSlash && !strings.HasPrefix(word, "-") && !strings.Contains(word, "$") &&
+		!strings.Contains(word, "://") && !strings.ContainsAny(head, "=(")
+}
+
 // separators end one simple command and start the next.
 var separators = map[string]bool{"&&": true, "||": true, ";": true, "|": true, "&": true, "|&": true, ";;": true}
 
@@ -175,8 +230,10 @@ var separators = map[string]bool{"&&": true, "||": true, ";": true, "|": true, "
 // script and stands in command position (first word, after a separator or `cd <dir> &&`,
 // or right after an interpreter): that one is returned for missing-script, so an
 // argument such as `> /tmp/out.log` never counts. An existing file wins over a missing one.
-// The code after an interpreter's -c is a command line of its own: it is read the same
-// way, from the directory of a `cd` before it, and never taken as a path itself.
+// The code after a shell's -c is a command line of its own: it is read the same way,
+// from the directory of a `cd` before it, and never taken as a path itself. The code
+// after -c or -e of another interpreter (python, node, perl) is skipped. An assignment
+// before a command (FOO=1) keeps the script position.
 func scriptPath(command, root, home string) string {
 	found, missing := scan(command, root, root, home)
 	if found != "" {
@@ -189,12 +246,18 @@ func scriptPath(command, root, home string) string {
 // script, and else the first missing one in command position.
 func scan(command, base, root, home string) (found, missing string) {
 	cd := false
-	code := false   // the previous word was the -c of an interpreter
+	code := noCode  // the previous word was the -c or -e of an interpreter
+	shell := false  // the last interpreter is a shell
 	target := false // the previous word was a redirection without its target
 	cmdPos := true
 	for _, raw := range words(command) {
-		if code {
-			code = false
+		if code == opaqueCode {
+			code = noCode
+			cmdPos = false
+			continue
+		}
+		if code == shellCode {
+			code = noCode
 			cmdPos = false
 			f, m := scan(raw, base, root, home)
 			if f != "" {
@@ -211,6 +274,7 @@ func scan(command, base, root, home string) (found, missing string) {
 		}
 		if separators[raw] {
 			cmdPos = true
+			shell = false
 			continue
 		}
 		if redirect.MatchString(raw) {
@@ -230,20 +294,23 @@ func scan(command, base, root, home string) (found, missing string) {
 		}
 		isCmd := cmdPos
 		if strings.HasPrefix(word, "-") && cmdPos {
-			code = codeFlag(word)
+			code = flagCode(word, shell)
 			continue // a flag of an interpreter keeps the script position
+		}
+		if cmdPos && assignment.MatchString(word) {
+			continue // FOO=1 before a command keeps the script position
 		}
 		cmdPos = false
 		if isCmd && word == "cd" {
 			cd = true
 			continue
 		}
-		if interpreters[filepath.Base(word)] {
+		if name := filepath.Base(word); interpreters[name] {
 			cmdPos = true
+			shell = shells[name]
 			continue
 		}
-		if word == "" || strings.HasPrefix(word, "-") || strings.Contains(word, "$") ||
-			strings.Contains(word, "://") || !strings.Contains(word, "/") {
+		if !candidate(word) {
 			continue
 		}
 		switch {

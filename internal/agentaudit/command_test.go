@@ -91,6 +91,17 @@ func TestScriptPath(t *testing.T) {
 		{">&2 then semicolon", "echo no >&2; ./gone/z.sh", plain, plain + "/gone/z.sh"},
 		{"redirect glued to a script", "./gone/z.sh>/tmp/log.sh", plain, plain + "/gone/z.sh"},
 		{"&> glued to a word", "jq .x&>/tmp/h.sh", plain, ""},
+		{"python -c code is opaque", `python3 -c "import json,sys; d=json.load(open('/tmp/x.json'))"`, plain, ""},
+		{"python -c code then a script", `python3 -c "import os; os.system('./gone/z.sh')" && ./x/y.sh`, plain, plain + "/x/y.sh"},
+		{"node -e code is opaque", `node -e "require('/tmp/gone.js')"`, plain, ""},
+		{"node --eval code is opaque", `node --eval "require('./gone/z.js')"`, plain, ""},
+		{"perl -e code is opaque", `perl -e 'exec "./gone/z.sh"'`, plain, ""},
+		{"ruby -e code with a plain path is opaque", `ruby -e 'puts "lib/x.rb"'`, plain, ""},
+		{"python -E keeps the script", "python3 -E ./gone/z.py", plain, plain + "/gone/z.py"},
+		{"env bash -c is shell code", `env bash -c './gone/z.sh'`, plain, plain + "/gone/z.sh"},
+		{"assignment with slash is no script", "FOO=bar/baz.sh; echo", plain, ""},
+		{"call with slash is no script", "f(a/b.sh)", plain, ""},
+		{"assignment keeps the script position", "FOO=1 ./gone/z.sh", plain, plain + "/gone/z.sh"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -106,6 +117,18 @@ func TestScriptPathWithoutHome(t *testing.T) {
 	for _, command := range []string{"node ~/.claude/hooks/b.js", "$HOME/.claude/hooks/b.js"} {
 		if got := scriptPath(command, root, ""); got != "" {
 			t.Errorf("scriptPath(%q) = %q, want \"\" without a home directory", command, got)
+		}
+	}
+}
+
+func TestEvalFlag(t *testing.T) {
+	tests := map[string]bool{
+		"-c": true, "-e": true, "-p": true, "-Sc": true, "--eval": true, "--print": true,
+		"-E": false, "-m": false, "-u": false, "--evaluate": false, "-e1": false, "-": false,
+	}
+	for word, want := range tests {
+		if got := evalFlag(word); got != want {
+			t.Errorf("evalFlag(%q) = %v, want %v", word, got, want)
 		}
 	}
 }
