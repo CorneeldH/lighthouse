@@ -1,8 +1,8 @@
 # Releasing
 
 Lighthouse releases itself. A workflow picks the version, writes `CHANGELOG.md`, tags, and
-builds the binaries. Nobody sets a release tag by hand; the one exception is a prerelease tag
-(see [Testing the build](#testing-the-build)).
+builds the binaries. Every tag is made by a workflow: release tags by `release.yml`, prerelease
+tags by `prerelease.yml` (see [Testing the build](#testing-the-build)).
 
 ## Versions
 

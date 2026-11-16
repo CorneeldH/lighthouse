@@ -42,8 +42,9 @@ upgrade, download the new binary the same way and follow the steps in
 
 ## Install with Go
 
-`go install` builds a tagged version from source. Every release tag carries the built web UI, so
-`@<tag>` and `@latest` (the newest tag) serve it:
+`go install` builds a tagged version from source. Every release tag from the next release on
+carries the built web UI, so `@<tag>` and `@latest` serve it. Older tags still serve the
+placeholder page:
 
 ```bash
 go install github.com/CorneeldH/lighthouse/cmd/lighthouse@latest
