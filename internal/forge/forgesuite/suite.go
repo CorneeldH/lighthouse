@@ -69,6 +69,7 @@ var Cases = []Case{
 	{"IssueLifecycleByMarker", issueLifecycleByMarker},
 	{"PRLifecycleByMarker", prLifecycleByMarker},
 	{"FindByMarkerNoMatch", findByMarkerNoMatch},
+	{"FindByMarkerPages", findByMarkerPages},
 }
 
 // Run runs every case as a subtest, each with a fresh fixture.
@@ -588,5 +589,20 @@ func findByMarkerNoMatch(t *testing.T, f Fixture) {
 	}
 	if len(got) != 0 {
 		t.Errorf("FindByMarker without a hit = %+v, want none", got)
+	}
+}
+
+// findByMarkerPages puts the only hit on the second page of the issues list.
+func findByMarkerPages(t *testing.T, f Fixture) {
+	const marker = "<!-- lighthouse:pin paged -->"
+	for n := 1; n <= page; n++ {
+		is := forge.Issue{Number: n, Title: fmt.Sprintf("Issue %d", n), Author: "ann", State: "open"}
+		if n == page {
+			is.Body = marker
+		}
+		f.AddIssue(t, is)
+	}
+	if it := find(t, f, marker); it.Number != page || it.Body != marker {
+		t.Errorf("found %+v; want #%d from the second page", it, page)
 	}
 }
