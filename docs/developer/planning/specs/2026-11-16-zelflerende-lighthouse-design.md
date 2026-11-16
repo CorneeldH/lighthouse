@@ -240,23 +240,25 @@ week gegevens heeft. Issues: het ontwerp (paia #1553) en de multi-harness-slice 
 
 ## Overzettabel
 
-| paia | Kort | Bestemming |
-|---|---|---|
-| #1495 | Lane, model en kosten per run | T1, T2; de vergelijking Native/SDD naar milestone 3 |
-| #1088 | Dashboard | T6 |
-| #1087 | Herhaal review-experimenten | T7 (signaal) en milestone 3 (meting); auto-update vervalt |
-| #1082 | Herstel na merge | T4; de retro-review naar milestone 3 |
-| #993 | Lekken uit plan en spec | T3 (pijplijn); de meting naar milestone 3 |
-| #1395 | Instructies herbeoordelen | Los lighthouse-issue voor het `pack/core`-blok, zonder milestone; paia-deel blijft in paia |
-| #1285 | Canary per regel | K1 |
-| #470 | ruff aansluiten | K2; de bevindingen wegwerken blijft in paia |
-| #590 | Transitieve imports | K3; de vijf dependencies blijven in paia |
-| #1194 | TS-complexiteitslint | K4; de config van `apps/` blijft in paia |
-| #1193, #1286, #1287 | Ontwerpmetingen, importlagen, duplicatie | K5; paia's contracten in `pyproject.toml` blijven in paia |
-| #1205 | Architectuurscan | K6 |
-| #644, #667 | String-duplicatie, coverage `src/web/pages/` | K7; `pending` en de NiceGUI-testaanpak blijven in paia |
-| #1199 | Moduleconfig | Blijft in paia |
-| #1553, #1126 | Explore/exploit, multi-harness | Milestone 3 |
+Uitgevoerd op 2026-11-16: [milestone 12](https://github.com/CorneeldH/lighthouse/milestone/12), [milestone 13](https://github.com/CorneeldH/lighthouse/milestone/13), [milestone 14](https://github.com/CorneeldH/lighthouse/milestone/14); de [voortgangstabel](../plans/2026-11-16-zelflerende-lighthouse-voortgang.md) houdt per artefact de stand bij.
+
+| paia | Kort | Bestemming | Lighthouse |
+|---|---|---|---|
+| #1495 | Lane, model en kosten per run | T1, T2; de vergelijking Native/SDD naar milestone 3 | [#373](https://github.com/CorneeldH/lighthouse/issues/373), [#375](https://github.com/CorneeldH/lighthouse/issues/375), [#388](https://github.com/CorneeldH/lighthouse/issues/388) |
+| #1088 | Dashboard | T6 | [#379](https://github.com/CorneeldH/lighthouse/issues/379) |
+| #1087 | Herhaal review-experimenten | T7 (signaal) en milestone 3 (meting); auto-update vervalt | [#380](https://github.com/CorneeldH/lighthouse/issues/380), [#388](https://github.com/CorneeldH/lighthouse/issues/388) |
+| #1082 | Herstel na merge | T4; de retro-review naar milestone 3 | [#377](https://github.com/CorneeldH/lighthouse/issues/377), [#388](https://github.com/CorneeldH/lighthouse/issues/388) |
+| #993 | Lekken uit plan en spec | T3 (pijplijn); de meting naar milestone 3 | [#376](https://github.com/CorneeldH/lighthouse/issues/376), [#388](https://github.com/CorneeldH/lighthouse/issues/388) |
+| #1395 | Instructies herbeoordelen | Los lighthouse-issue voor het `pack/core`-blok, zonder milestone; paia-deel blijft in paia | [#390](https://github.com/CorneeldH/lighthouse/issues/390) |
+| #1285 | Canary per regel | K1 | [#381](https://github.com/CorneeldH/lighthouse/issues/381) |
+| #470 | ruff aansluiten | K2; de bevindingen wegwerken blijft in paia | [#382](https://github.com/CorneeldH/lighthouse/issues/382) |
+| #590 | Transitieve imports | K3; de vijf dependencies blijven in paia | [#383](https://github.com/CorneeldH/lighthouse/issues/383) |
+| #1194 | TS-complexiteitslint | K4; de config van `apps/` blijft in paia | [#384](https://github.com/CorneeldH/lighthouse/issues/384) |
+| #1193, #1286, #1287 | Ontwerpmetingen, importlagen, duplicatie | K5; paia's contracten in `pyproject.toml` blijven in paia | [#385](https://github.com/CorneeldH/lighthouse/issues/385) |
+| #1205 | Architectuurscan | K6 | [#386](https://github.com/CorneeldH/lighthouse/issues/386) |
+| #644, #667 | String-duplicatie, coverage `src/web/pages/` | K7; `pending` en de NiceGUI-testaanpak blijven in paia | [#387](https://github.com/CorneeldH/lighthouse/issues/387) |
+| #1199 | Moduleconfig | Blijft in paia | — |
+| #1553, #1126 | Explore/exploit, multi-harness | Milestone 3 | [#388](https://github.com/CorneeldH/lighthouse/issues/388), [#389](https://github.com/CorneeldH/lighthouse/issues/389) |
 
 Bestaande lighthouse-issues *(eigen keuze)*:
 
