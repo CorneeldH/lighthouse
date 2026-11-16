@@ -109,3 +109,20 @@ func TestCodeFlag(t *testing.T) {
 		}
 	}
 }
+
+// FuzzScriptPath: no command line crashes scriptPath, and what it returns is "" or an
+// absolute path.
+func FuzzScriptPath(f *testing.F) {
+	for _, seed := range []string{
+		`bash -lc '"$CLAUDE_PROJECT_DIR"/x.sh arg'`, `cd "a b" && sh -c 'cd .. && ./y.sh'`,
+		`a&&./b.sh;|&`, `"unbalanced`, `bash -c`, `-c`, `$HOMEBREW/x.sh`, `cd`, `~/`,
+	} {
+		f.Add(seed)
+	}
+	root := f.TempDir()
+	f.Fuzz(func(t *testing.T, command string) {
+		if got := scriptPath(command, root, "/home/u"); got != "" && !filepath.IsAbs(got) {
+			t.Errorf("scriptPath(%q) = %q, not absolute", command, got)
+		}
+	})
+}
