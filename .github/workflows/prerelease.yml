@@ -1,6 +1,7 @@
 # Pre-release for lighthouse, started by hand: puts the built SPA in a commit that only the tag
 # points at and pushes just that tag, then calls build.yml. build.yml fails on a tag without dist,
-# so a pre-release tag made by hand would fail the build; this workflow is the way to make one. The tag has the form vX.Y.Z-<suffix>; a release tag is made by release.yml only.
+# so a pre-release tag made by hand would fail the build; this workflow is the way to make one.
+# The tag has the form vX.Y.Z-<suffix>; a release tag is made by release.yml only.
 name: prerelease
 
 on:
