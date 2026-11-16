@@ -124,6 +124,12 @@ teksten worden afgekapt met een verwijzing naar de vergelijklink.
 
 Per pin loopt de lane op twee sporen. Elk spoor heeft hoogstens één open item.
 
+De lane herkent haar items aan een marker in de body (`<!-- lighthouse-pin: … -->`). De repository
+is openbaar, dus iedereen kan een issue met zo'n marker openen. Daarom telt alleen een item van
+`[ci] bot_login` uit `lighthouse.toml` als item van de lane; een item met een marker van een
+ander account bestaat voor de lane niet: ze werkt het niet bij, sluit het niet en laat er geen
+release door verstommen. Zonder `bot_login` telt elke auteur.
+
 - **Achterstandspoor**: draft-PR, conflict-issue of behind-issue. Staat er al een open item van
   dezelfde soort, dan werkt de lane het bij als de doelversie veranderd is, en laat het anders
   met rust. Past het open item niet meer (een conflict dat een schone merge werd), dan sluit de

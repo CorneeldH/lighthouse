@@ -102,6 +102,7 @@ func runEnv(root string, up *upstream, f forge.Forge, rels forge.ReleaseReader) 
 		}),
 		Releases: rels,
 		Forge:    f,
+		BotLogin: laneBot,
 	}
 }
 
@@ -345,5 +346,74 @@ func TestRun_pushFailureBecomesErrorIssue(t *testing.T) {
 	}
 	if _, kind, _ := only(t, f, ciFile); kind != KindConflict {
 		t.Fatalf("ci.yml after the failed pins: kind %s, want a conflict issue", kind)
+	}
+}
+
+// forge adds an issue (or, with pr, a pull request) by author to the fake forge, as someone
+// other than the lane would open it, and returns its number.
+func forgeItem(srv *forgetest.Server, author, state, body string, pr bool) int {
+	n := 100 + len(srv.Issues)
+	it := map[string]any{"number": n, "node_id": fmt.Sprintf("I_%d", n), "title": "forged", "body": body,
+		"state": state, "html_url": fmt.Sprintf("https://github.com/o/r/issues/%d", n),
+		"user": map[string]any{"login": author}, "labels": []any{}}
+	if pr {
+		it["pull_request"] = map[string]any{"url": fmt.Sprintf("https://github.com/o/r/pull/%d", n)}
+		srv.Pulls = append(srv.Pulls, map[string]any{"number": n, "state": state, "body": body,
+			"head": map[string]any{"ref": "evil", "sha": "x"}, "user": map[string]any{"login": author}})
+	}
+	if srv.Issues == nil {
+		srv.Issues = map[int]map[string]any{}
+	}
+	srv.Issues[n] = it
+	return n
+}
+
+// Fails when an item with a pin marker that someone other than the lane's bot opened counts as
+// a lane item: an open forged issue would be updated or closed by the lane instead of the lane
+// writing its own PR, and a forged item closed "by a human" would silence a release.
+func TestRun_ignoresMarkersOfOtherAuthors(t *testing.T) {
+	r := newLaneRepo(t)
+	toml, err := os.ReadFile(filepath.Join(r.root, "lighthouse.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeT(t, r.root, "lighthouse.toml", string(toml)+"\n"+toolToml)
+	gitT(t, r.root, "commit", "-qam", "tool pin")
+	gitT(t, r.root, "push", "-q", "origin", "main")
+
+	srv, f := newFake(t)
+	open := forgeItem(srv, "mallory", "open", RenderErrorBody(Marker("core/skills/demo", KindConflict, "x"), "core/skills/demo", "forged"), false)
+	closed := forgeItem(srv, "mallory", "closed", "forged\n"+Marker("mytool", KindBehind, "1.1.0"), true)
+	before := map[int]string{open: srv.Issues[open]["body"].(string), closed: srv.Issues[closed]["body"].(string)}
+
+	if err := Run(context.Background(), runEnv(r.root, r.up, f, toolReleases)); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if srv.Issues[open]["state"] != "open" || srv.Issues[closed]["state"] != "closed" {
+		t.Errorf("forged items changed state: #%d %v, #%d %v", open, srv.Issues[open]["state"], closed, srv.Issues[closed]["state"])
+	}
+	for n, body := range before {
+		if srv.Issues[n]["body"] != body {
+			t.Errorf("the lane rewrote the body of forged item #%d: %q", n, srv.Issues[n]["body"])
+		}
+	}
+	for _, p := range srv.Posts {
+		if strings.Contains(p.Path, fmt.Sprintf("/%d/", open)) || strings.Contains(p.Path, fmt.Sprintf("/%d/", closed)) {
+			t.Errorf("the lane posted to a forged item: %s", p.Path)
+		}
+	}
+	var demoPR, toolIssue bool
+	for _, it := range items(t, f, "core/skills/demo") {
+		demoPR = demoPR || (it.IsPR && it.Author == laneBot && it.State == "open")
+	}
+	for _, it := range items(t, f, "mytool") {
+		_, kind, target, _ := ParseMarker(it.Body)
+		toolIssue = toolIssue || (it.Author == laneBot && kind == KindBehind && target == "1.1.0" && it.State == "open")
+	}
+	if !demoPR {
+		t.Errorf("demo: no draft PR by the lane next to the forged issue: %+v", items(t, f, "core/skills/demo"))
+	}
+	if !toolIssue {
+		t.Errorf("mytool: the forged closed item silenced the release: %+v", items(t, f, "mytool"))
 	}
 }

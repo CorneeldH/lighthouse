@@ -73,6 +73,30 @@ func TestPinsLaneCommand_errorPinWritesIssueAndExitsOne(t *testing.T) {
 	}
 }
 
+// Fails when the lane does not take [ci] bot_login from lighthouse.toml as the author of its own
+// items (so forged markers would count), or invents one when the key is not set.
+func TestLaneEnvFrom_botLogin(t *testing.T) {
+	getenv := func(k string) string {
+		if k == "GH_TOKEN" {
+			return "secret"
+		}
+		return ""
+	}
+	for _, tc := range []struct{ toml, want string }{
+		{laneToml + "\n[ci]\nbot_login = \"paia-bot[bot]\"\n", "paia-bot[bot]"},
+		{laneToml, ""},
+	} {
+		root := pinsRepo(t, tc.toml)
+		env, err := laneEnvFrom(getenv, "http://127.0.0.1:1")(root)
+		if err != nil {
+			t.Fatalf("laneEnvFrom: %v", err)
+		}
+		if env.BotLogin != tc.want {
+			t.Errorf("BotLogin %q, want %q", env.BotLogin, tc.want)
+		}
+	}
+}
+
 type workflowStep struct {
 	ID   string            `yaml:"id"`
 	Uses string            `yaml:"uses"`

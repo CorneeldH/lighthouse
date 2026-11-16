@@ -21,6 +21,10 @@ type Env struct {
 	Releases forge.ReleaseReader
 	// Forge is the repository the lane writes its issues and draft PRs to. Run never merges.
 	Forge forge.Forge
+	// BotLogin is the login the lane writes as ([ci] bot_login). Only items it authored count as
+	// lane items: the repository is public, so anyone can open an issue carrying a pin marker.
+	// "" trusts every author.
+	BotLogin string
 	// Log gets one line per pin; nil discards.
 	Log io.Writer
 }
@@ -218,13 +222,23 @@ func (r *runner) defaultBranch(ctx context.Context) (string, error) {
 	return r.base, nil
 }
 
-// find lists the items of key, open and closed.
+// find lists the items of key, open and closed, that the lane itself wrote: with BotLogin set,
+// an item by any other author is a forged marker and does not exist for Decide.
 func (r *runner) find(ctx context.Context, key string) ([]forge.Item, error) {
 	found, err := r.env.Forge.FindByMarker(ctx, markerPrefix+escape(key)+" ")
 	if err != nil {
 		return nil, fmt.Errorf("pin %s: find items: %w", key, err)
 	}
-	return found, nil
+	if r.env.BotLogin == "" {
+		return found, nil
+	}
+	own := found[:0:0]
+	for _, it := range found {
+		if it.Author == r.env.BotLogin {
+			own = append(own, it)
+		}
+	}
+	return own, nil
 }
 
 // apply finds the items of key, decides and applies with content.

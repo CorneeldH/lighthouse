@@ -23,10 +23,14 @@ func (c *countingForge) MergePR(ctx context.Context, n int, sha string) error {
 	return c.Forge.MergePR(ctx, n, sha)
 }
 
+// laneBot is the login of the fake forge's token, so every item the lane creates in a test is
+// authored by it; runEnv passes it as Env.BotLogin.
+const laneBot = "lh-bot"
+
 func newFake(t *testing.T) (*forgetest.Server, *countingForge) {
 	t.Helper()
 	srv := forgetest.New(t)
-	srv.Login = "lh-bot"
+	srv.Login = laneBot
 	c := forge.New("o/r", "secret-token")
 	c.BaseURL = srv.URL()
 	return srv, &countingForge{Forge: c}
