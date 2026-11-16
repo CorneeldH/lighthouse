@@ -72,7 +72,7 @@ def test_never_forces_a_conflict(v):
 def test_evidence_in_order(v):
     t = VARIANTS[v]
     t = t[t.index("## Workflow"):]
-    keys = ["test_gate.command", "check-instructions.sh", "--print-mirror-exceptions", "No changes."]
+    keys = ["test_gate.command", "lighthouse check-instructions", "--print-mirror-exceptions", "No changes."]
     assert [t.index(k) for k in keys] == sorted(t.index(k) for k in keys)
 
 

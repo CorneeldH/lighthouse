@@ -101,8 +101,8 @@ In this order; at the first red, stop, report what it says and do not commit.
 1. The test gate. `lighthouse config test_gate.command` exits 1 when none is set, or prints nothing
    when it is empty: say so and skip it, it is no evidence; never count `bash -c ""` as green. Otherwise run it with the variable the hook would set:
    `LIGHTHOUSE_GATE_TMP=$(mktemp -d) bash -c "$(lighthouse config test_gate.command)"`.
-2. `.lighthouse/scripts/check-instructions.sh`.
-3. If `[paths] mirror_exceptions` is set (the file: `lighthouse config paths.mirror_exceptions`): run `check-instructions.sh --print-mirror-exceptions` and
+2. `lighthouse check-instructions`.
+3. If `[paths] mirror_exceptions` is set (the file: `lighthouse config paths.mirror_exceptions`): run `lighthouse check-instructions --print-mirror-exceptions` and
    write its output to that file.
 4. `lighthouse init --upgrade </dev/null` once more must print exactly `No changes.`.
 

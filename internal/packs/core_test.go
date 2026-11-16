@@ -80,7 +80,6 @@ func TestCorePack(t *testing.T) {
 		".lighthouse/lib/lighthouse_lib/config.py",
 		".lighthouse/lib/lighthouse_lib/datadir.py",
 		".lighthouse/lib/lighthouse_lib/headings.py",
-		".lighthouse/scripts/check-instructions.sh",
 		".lighthouse/scripts/create_labels.py",
 	}
 	if strings.Join(files, "\n") != strings.Join(want, "\n") {

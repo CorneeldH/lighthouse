@@ -295,14 +295,14 @@ def _install_skills(root: Path) -> None:
 
 
 def test_descriptions_pass_the_overlap_check(tmp_path):
-    """Check 4 of check-instructions.sh fails two descriptions that share five trigger words
+    """Check 4 of `lighthouse check-instructions` fails two descriptions that share five trigger words
     unless one carries a bounding clause it recognises ("not for", "instead", …). The core
     skills land together in every repo, and a language package adds its own, so all of them
     together must pass it."""
     import os
     import subprocess
 
-    from tests.pack._testkit import install_core
+    from tests.pack._testkit import install_core, lighthouse_dir
 
     install_core(tmp_path)
     _install_skills(tmp_path)
@@ -312,8 +312,9 @@ def test_descriptions_pass_the_overlap_check(tmp_path):
         "CHECK_INSTRUCTIONS_PERSONAL": str(tmp_path / "no-personal-skills"),
     }
     out = subprocess.run(
-        [str(tmp_path / ".lighthouse/scripts/check-instructions.sh")],
+        [str(lighthouse_dir() / "lighthouse"), "check-instructions"],
         env=env,
+        cwd=tmp_path,
         capture_output=True,
         text=True,
         check=False,
@@ -369,11 +370,12 @@ def test_requires_python_only_where_the_skill_uses_it(skill):
 
 def test_tool_patterns_see_python_and_tomllib():
     """Both directions pass empty when the patterns miss: python3 must hit a real unit. No core
-    skill calls python3 any more (#284, #281), so the python3 pattern meets check-instructions.sh,
-    the last core unit on that row of requires.toml. The tomllib pattern meets a module call as a
-    skill would write it; a skill without one stays unseen."""
-    check = (CORE / "scripts" / "check-instructions.sh").read_text(encoding="utf-8")
-    assert re.search(_TOOL_USES["python3"], check, re.MULTILINE)
+    skill calls python3 any more (#284, #281), and check-instructions is a subcommand (#282), so
+    the python3 pattern meets lib/config.py, a module on that row of requires.toml until step 12.
+    The tomllib pattern meets a module call as a skill would write it; a skill without one stays
+    unseen."""
+    config = (CORE / "lib" / "config.py").read_text(encoding="utf-8")
+    assert re.search(_TOOL_USES["python3"], config, re.MULTILINE)
     assert re.search(_TOOL_USES["tomllib"], "python3 .lighthouse/lib/lighthouse_lib/config.py", re.MULTILINE)
     route = "\n".join(_texts(CORE / "skills" / "route-issue").values())
     assert not re.search(_TOOL_USES["tomllib"], route, re.MULTILINE)

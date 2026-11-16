@@ -47,6 +47,7 @@ One row per file and assumption. The `Where` column links to the file and names 
 | [`secret-scan.md`](secret-scan.md#host-deploy) | a systemd user service and timer for the checkpoint push | Linux-only | Example; use the scheduler of the host | — |
 | [`secret-scan.md:25,91-108`](secret-scan.md#L91) | The secret scan runs `gitleaks` in a `systemd-run` scope with `choom` | Host feature | Without systemd, the user bus or `choom` the scan runs without a ceiling and says so | — |
 | [`install.md`](install.md#L8) (hooks) | Hooks on native Windows | Linux-only | The hooks need WSL; the binary itself runs on Windows | #90 |
+| [`checkinstructions.go`](../internal/cli/checkinstructions.go) | `lighthouse check-instructions` hashes the skill files itself, so it needs neither `sha256sum` nor `shasum`; it still calls `git` (check 11) and `wc` (check 10, via `internal/wordcount`) | Everywhere | Without `git` or `wc` the check says `SKIPPED` and the run still exits 0, never a silent pass | — |
 
 ## Scanned, no host assumption
 
@@ -54,7 +55,6 @@ One row per file and assumption. The `Where` column links to the file and names 
 |---|---|
 | [`serve.go:32`](../internal/cli/serve.go#L32) | `127.0.0.1:8127` is the loopback default of `serve`, valid on every host |
 | [`server/host.go`](../internal/server/host.go#L10) | A comment about the Host header check; it assumes no tool |
-| [`check-instructions.sh`](../pack/core/scripts/check-instructions.sh#L51) | `sha256sum` with a `shasum -a 256` fallback |
 | [`site/install.html`](site/install.html), [`site/agents/install.md`](site/agents/install.md) | `sha256sum` and `shasum` as alternatives, per platform |
 | [`ask.md`](ask.md), [`dispatch/instructions/run.md`](../internal/dispatch/instructions/run.md) | The example installs `ripgrep`; the scan matched `pgrep` inside the word |
 | [`place-instruction/SKILL.md`](../pack/core/skills/place-instruction/SKILL.md#L57) | Names systemd as an example of vendor documentation |
