@@ -42,15 +42,15 @@ upgrade, download the new binary the same way and follow the steps in
 
 ## Install with Go
 
-`go install` builds a tagged version from source. `@latest` resolves to the newest tag:
+`go install` builds a tagged version from source. Every release tag carries the built web UI, so
+`@<tag>` and `@latest` (the newest tag) serve it:
 
 ```bash
 go install github.com/CorneeldH/lighthouse/cmd/lighthouse@latest
 ```
 
-`go install` puts the binary in `~/go/bin`. It serves only a placeholder page, because the web
-UI is not part of the module source. The release binary above is the recommended route without
-a clone.
+`go install` puts the binary in `~/go/bin`. `@main` is not a tag and carries no UI: it serves
+a placeholder page. Install a tag, or use the release binary above, for the UI without a clone.
 
 ## Build from a clone
 
@@ -69,8 +69,9 @@ A build from a clone reports version `dev`, and `lighthouse init` writes that ve
 tag instead.
 
 All routes write `~/go/bin/lighthouse` (or your chosen path), so the last one wins: a release
-binary replaces a build from a clone and still serves the UI. Only a `go install` of a tag
-replaces it with the placeholder page, and the systemd unit then serves that.
+binary or a `go install` of a tag replaces a build from a clone and still serves the UI. Only a
+`go install …@main`, or a build from a clone without `npm run build`, replaces it with the
+placeholder page, and the systemd unit then serves that.
 
 ## Run it as a user service
 
@@ -136,8 +137,8 @@ journalctl --user -u lighthouse
 
 The health endpoint answers `{"version":"…"}`. The page answers with
 `<meta name="lighthouse-ui" content="spa" />`: the binary carries the built web UI.
-`content="placeholder"` means the binary was built without the UI (`go install`, or a clone
-without `npm run build`). The log shows
+`content="placeholder"` means the binary was built without the UI (`go install …@main`, or a
+clone without `npm run build`). The log shows
 `lighthouse: listening on 127.0.0.1:8127`.
 
 The API is read-only. Its routes:
