@@ -100,6 +100,32 @@ func TestWriteInstructionsRejectsSessionPath(t *testing.T) {
 	}
 }
 
+func TestWriteInstructionsContentWritesBytesVerbatim(t *testing.T) {
+	state := t.TempDir()
+	path, err := WriteInstructionsContent(state, freshSession, []byte("instructies van de tick\n"))
+	if err != nil {
+		t.Fatalf("WriteInstructionsContent: %v", err)
+	}
+	if want := filepath.Join(state, "runs", freshSession, "instructions.md"); path != want {
+		t.Errorf("path = %q, want %q", path, want)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "instructies van de tick\n" {
+		t.Errorf("content = %q", got)
+	}
+	if info, err := os.Stat(path); err != nil || info.Mode().Perm() != 0o600 {
+		t.Errorf("file = %v, %v; want mode 0600", info, err)
+	}
+	for _, session := range []string{"", "..", "a/b"} {
+		if _, err := WriteInstructionsContent(t.TempDir(), session, []byte("x")); err == nil {
+			t.Errorf("WriteInstructionsContent(%q): want an error", session)
+		}
+	}
+}
+
 // run.md is the product here: these lines are what a run must read to act right.
 func TestRunInstructionsPinnedText(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join("instructions", "run.md"))

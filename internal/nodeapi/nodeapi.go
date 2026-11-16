@@ -13,11 +13,39 @@ const Prefix = "/api/node/v1"
 // PathInfo is GET info: the binary version, the node-API version and the platform.
 const PathInfo = Prefix + "/info"
 
+// The statemap routes: they touch only the node's state dir and look nothing up at its forge.
+// {id} is the workspace id at the node's forge, {session} the session id of the run.
+const (
+	// PathLaunch is PUT: write the run instructions and the carrier; the body is a
+	// LaunchRequest, the answer the workplace.Carrier written.
+	PathLaunch = Prefix + "/workspaces/{id}/launch"
+	// PathCarrier is DELETE: remove the carrier; a missing one is no error.
+	PathCarrier = Prefix + "/workspaces/{id}/carrier"
+	// PathPermission is GET: the raw permission.json of the run, 404 no_permission without one.
+	PathPermission = Prefix + "/runs/{session}/permission"
+)
+
 // The machine-readable codes of a 404. The tick maps on the code, never on the status alone.
 const (
 	CodeWorkspaceGone = "workspace_gone" // the node's forge no longer knows the workspace
 	CodeNoTranscript  = "no_transcript"  // the session has no transcript on the node
+	CodeNoPermission  = "no_permission"  // the run has no permission note on the node
 )
+
+// LaunchRequest is the body of PUT launch: the fields of a workplace.LaunchSpec, with the
+// content of the run instructions in place of their path. MCPConfig is a path on the node
+// and is passed on unchanged.
+type LaunchRequest struct {
+	Repo         string `json:"repo"`
+	Issue        int    `json:"issue"`
+	SessionID    string `json:"session_id"`
+	Mode         string `json:"mode"` // "start" or "resume"
+	Profile      string `json:"profile,omitempty"`
+	Prompt       string `json:"prompt,omitempty"`
+	Native       bool   `json:"native,omitempty"`
+	MCPConfig    string `json:"mcp_config,omitempty"`
+	Instructions string `json:"instructions"`
+}
 
 // Problem is the body of every error answer of the node-API.
 type Problem struct {

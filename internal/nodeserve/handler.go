@@ -75,6 +75,7 @@ func newHandler(d Deps) *handler {
 			Platform: runtime.GOOS + "/" + runtime.GOARCH,
 		}}, nil
 	}, func(op *huma.Operation) { op.OperationID = "get-node-info" })
+	h.registerStatemap()
 	return h
 }
 
