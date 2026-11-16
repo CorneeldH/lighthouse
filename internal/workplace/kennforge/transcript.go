@@ -50,8 +50,19 @@ const containerScript = `d="$HOME/.claude/projects/$1"; [ -f "$d/$2.jsonl" ] || 
 // devcontainer and keeps its transcripts in a volume the host cannot read (#237): the session's
 // files then come out of the container, and a transcript in no container wraps fs.ErrNotExist.
 // With any other profile they are on this host, under Home. A 404 is workplace.ErrGone. On
-// another node the transcript is not on this host: workplace.ErrNotMeasurable (#327).
+// another node lighthouse serve sends the new bytes and the tick reads its mirror of them
+// (nodeTranscript, #327).
 func (a *Adapter) Transcript(ctx context.Context, workspaceID, sessionID string) (workplace.Transcript, error) {
+	if err := notForge(workspaceID); err != nil {
+		return workplace.Transcript{}, err
+	}
+	n, err := a.serve()
+	if err != nil {
+		return workplace.Transcript{}, err
+	}
+	if n != nil {
+		return a.nodeTranscript(ctx, n, workspaceID, sessionID)
+	}
 	w, err := a.transcriptWorkspace(ctx, workspaceID, sessionID)
 	if err != nil {
 		return workplace.Transcript{}, err

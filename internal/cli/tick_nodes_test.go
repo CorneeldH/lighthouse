@@ -192,7 +192,8 @@ func (n *hubNode) serve(t *testing.T, w http.ResponseWriter, r *http.Request, ro
 
 // serveNode is lighthouse serve on the node, as nodeserve answers the routes the adapter uses:
 // the bearer check, info, launch (the carrier), carrier, follow, sessions (with session_id,
-// working until stopped), stop and kill. Any other route is an error of the adapter.
+// working until stopped), transcript (none yet), stop and kill. Any other route is an error of
+// the adapter.
 func (n *hubNode) serveNode(t *testing.T, w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("Authorization") != "Bearer "+n.serveToken {
 		w.WriteHeader(http.StatusForbidden)
@@ -209,6 +210,11 @@ func (n *hubNode) serveNode(t *testing.T, w http.ResponseWriter, r *http.Request
 		_, _ = fmt.Fprintf(w, `{"version":%d,"binary":"test","platform":"linux/amd64"}`, nodeapi.Version)
 	case len(parts) == 3 && parts[0] == "workspaces":
 		n.serveWorkspace(t, w, r, parts[1], r.Method+" "+parts[2])
+	case r.Method == http.MethodGet && len(parts) == 4 && parts[0] == "workspaces" && parts[2] == "transcript":
+		// No transcript yet on the node: the tick measures the run without one.
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.WriteHeader(http.StatusNotFound)
+		_ = json.NewEncoder(w).Encode(nodeapi.Problem{Status: 404, Code: nodeapi.CodeNoTranscript, Detail: "no transcript"})
 	default:
 		t.Errorf("fake serve: unexpected %s", route)
 		w.WriteHeader(http.StatusNotFound)
