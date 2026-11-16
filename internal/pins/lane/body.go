@@ -145,7 +145,7 @@ const conflictSteps = `Zo hoog je deze pin op (uitleg: docs/pins.md, sectie "Een
 
 1. Neem de wijziging met de hand over in een gewone branch en PR.
 2. Zet upstream-commit (skill) of source_sha (bestand) op de doelcommit hieronder: de nieuwste upstream-commit die het pad raakte, niet de HEAD van upstream.
-3. Werk pack/SOURCES.toml bij als er bestanden bijkwamen of verdwenen, draai init --upgrade en voeg een fragment toe aan changelog.d.
+3. Werk pack/SOURCES.toml bij als er bestanden bijkwamen of verdwenen, draai init --upgrade en voeg een changelog-fragment toe.
 `
 
 // behindSteps is the short version of "Een pin ophogen, plugin of tool" in docs/pins.md.
