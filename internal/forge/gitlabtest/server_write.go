@@ -54,7 +54,7 @@ func (s *Server) writeRoutes(mux *http.ServeMux, p string) {
 	s.route(mux, "POST "+p+"/issues/{iid}/links", s.project(s.createLink))
 	s.route(mux, "GET "+p+"/milestones", s.project(s.listMilestones))
 	s.route(mux, "POST "+p+"/milestones", s.project(s.createMilestone))
-	s.route(mux, "PUT "+p+"/milestones/{iid}", s.project(s.editMilestone))
+	s.route(mux, "PUT "+p+"/milestones/{id}", s.project(s.editMilestone))
 	s.route(mux, "GET "+p+"/labels", s.project(s.listLabels))
 	s.route(mux, "POST "+p+"/merge_requests", s.project(s.createMR))
 	s.route(mux, "POST "+p+"/merge_requests/{iid}/notes", s.project(s.createMRNote))
@@ -267,9 +267,10 @@ func (s *Server) createMilestone(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, m)
 }
 
-// editMilestone edits a project milestone by iid; a group milestone is not reachable here.
+// editMilestone edits a project milestone by its global id, as GitLab's :milestone_id is; a
+// group milestone is not reachable here.
 func (s *Server) editMilestone(w http.ResponseWriter, r *http.Request) {
-	iid, _ := strconv.Atoi(r.PathValue("iid"))
+	id, _ := strconv.Atoi(r.PathValue("id"))
 	body, ok := s.body(w, r, milestoneFields)
 	if !ok {
 		return
@@ -277,7 +278,7 @@ func (s *Server) editMilestone(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, m := range s.milestones {
-		if _, group := m["group_id"]; !group && toInt(m["iid"]) == iid {
+		if _, group := m["group_id"]; !group && toInt(m["id"]) == id {
 			for k, v := range body {
 				m[k] = v
 			}

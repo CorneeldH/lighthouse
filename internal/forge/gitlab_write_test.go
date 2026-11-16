@@ -131,7 +131,7 @@ func TestGitLabEditGroupMilestoneRefused(t *testing.T) {
 	}
 }
 
-func TestGitLabMilestoneCreateAndEditUseIID(t *testing.T) {
+func TestGitLabMilestoneCreateAndEditUseGlobalID(t *testing.T) {
 	srv, g := glClient(t)
 	glMilestones(srv)
 	title, desc := "P1b", "nieuw"
@@ -140,8 +140,8 @@ func TestGitLabMilestoneCreateAndEditUseIID(t *testing.T) {
 		t.Fatal(err)
 	}
 	w := lastWrite(t, srv)
-	if w.Method != "PUT" || w.Path != glBase+"/milestones/1" || !reflect.DeepEqual(w.Body, map[string]any{"title": "P1b", "description": "nieuw"}) {
-		t.Errorf("write = %+v, want PUT …/milestones/1 (the iid) with title and description", w)
+	if w.Method != "PUT" || w.Path != glBase+"/milestones/501" || !reflect.DeepEqual(w.Body, map[string]any{"title": "P1b", "description": "nieuw"}) {
+		t.Errorf("write = %+v, want PUT …/milestones/501 (the global id, not iid 1) with title and description", w)
 	}
 	if got != (Milestone{Number: 501, Title: "P1b", State: "open", Description: "nieuw"}) {
 		t.Errorf("edited = %+v", got)
@@ -392,7 +392,7 @@ func glRawClient(t *testing.T) (*rawAPI, *GitLab) {
 func TestGitLabAPIKeepsToken(t *testing.T) {
 	rec, g := glRawClient(t)
 	out, err := g.API(context.Background(), APIRequest{Path: "projects/1/labels", Fields: []APIField{{Name: "name", Value: "x"}, {Name: "n", Value: "3", Typed: true}}})
-	if err != nil || string(out) != `{"ok":true}`+"\n" && string(out) != `{"ok":true}` {
+	if err != nil || (string(out) != `{"ok":true}`+"\n" && string(out) != `{"ok":true}`) {
 		t.Fatalf("API = %q, %v", out, err)
 	}
 	if rec.method != "POST" || rec.path != "/api/v4/projects/1/labels" || rec.token != "secret-token" {

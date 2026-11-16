@@ -299,7 +299,7 @@ func (g *GitLab) CreateMilestone(ctx context.Context, title, description string)
 }
 
 // EditMilestone changes the title and/or description of a project milestone; a nil one stays
-// as it is. A group milestone is refused with *GroupMilestone: the project API cannot edit it.
+// as it is; the path takes the global id. A group milestone is refused with *GroupMilestone: the project API cannot edit it.
 func (g *GitLab) EditMilestone(ctx context.Context, number int, title, description *string) (Milestone, error) {
 	if err := g.configured(); err != nil {
 		return Milestone{}, err
@@ -319,7 +319,7 @@ func (g *GitLab) EditMilestone(ctx context.Context, number int, title, descripti
 		put["description"] = *description
 	}
 	var m glMilestone
-	if _, err := g.do(ctx, http.MethodPut, g.projectPath("/milestones/"+strconv.Itoa(cur.IID)), nil, put, &m); err != nil {
+	if _, err := g.do(ctx, http.MethodPut, g.projectPath("/milestones/"+strconv.Itoa(cur.ID)), nil, put, &m); err != nil {
 		return Milestone{}, err
 	}
 	return m.milestone(), nil
