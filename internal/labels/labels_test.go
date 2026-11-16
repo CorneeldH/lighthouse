@@ -149,6 +149,41 @@ func TestListsMissingWithoutCreate(t *testing.T) {
 	}
 }
 
+func TestShellJoin(t *testing.T) {
+	cases := []struct{ name, in, want string }{
+		{"space", "good first issue", `'good first issue'`},
+		{"apostrophe", "it's", `'it'"'"'s'`},
+		{"empty", "", `''`},
+		{"safe", "a-b_c.d", "a-b_c.d"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := shellJoin([]string{c.in}); got != c.want {
+				t.Errorf("shellJoin(%q) = %s, want %s", c.in, got, c.want)
+			}
+		})
+	}
+}
+
+func TestListsMissingLabelWithSpaceQuoted(t *testing.T) {
+	f := &fakeGH{remote: append([]string{}, names...)}
+	root := setup(t, f, tomlForge, true)
+	p := filepath.Join(root, projectconfig.DefaultLabelsPath)
+	b, _ := os.ReadFile(p)
+	extra := "\n| Label | Color |\n|---|---|\n| `good first issue` | `7057FF` |\n"
+	if err := os.WriteFile(p, append(b, extra...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r := run(root, false)
+	if r.rc != nil {
+		t.Fatal(r.rc, r.err)
+	}
+	want := "gh label create 'good first issue' --repo Owner/repo --color 7057FF\n"
+	if !strings.Contains(r.out, want) {
+		t.Errorf("no quoted line %q:\n%s", want, r.out)
+	}
+}
+
 func TestCreateMakesOnlyMissing(t *testing.T) {
 	f := &fakeGH{remote: []string{"needs-hands"}}
 	root := setup(t, f, tomlForge, true)
