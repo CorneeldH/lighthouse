@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/protocol"
 )
@@ -83,4 +84,153 @@ func (c *GitHub) MergePR(ctx context.Context, number int, sha string) error {
 		return &MergeRefused{Message: se.Message}
 	}
 	return err
+}
+
+// NewPR is a pull request to open.
+type NewPR struct {
+	Title, Body, Head, Base string
+	Draft                   bool
+}
+
+// Item is an issue or a pull request found by marker, open or closed. Body is complete.
+type Item struct {
+	Number  int
+	IsPR    bool
+	State   string // "open" or "closed", as the issues list names it; a merged PR is "closed"
+	Body    string
+	HeadRef string // of a PR; "" for an issue
+}
+
+// CreateIssue opens an issue and returns it.
+func (c *GitHub) CreateIssue(ctx context.Context, title, body string) (Issue, error) {
+	if err := c.configured(); err != nil {
+		return Issue{}, err
+	}
+	var out issueItem
+	url := fmt.Sprintf("%s/repos/%s/issues", c.BaseURL, c.Repo)
+	if _, err := c.do(ctx, http.MethodPost, url, map[string]string{"title": title, "body": body}, &out); err != nil {
+		return Issue{}, err
+	}
+	c.remember(out)
+	return out.issue(), nil
+}
+
+// UpdateIssueBody replaces the body of issue number.
+func (c *GitHub) UpdateIssueBody(ctx context.Context, number int, body string) error {
+	return c.patch(ctx, "issues", number, map[string]string{"body": body})
+}
+
+// CloseIssue comments on issue number when comment is not empty, then closes it.
+func (c *GitHub) CloseIssue(ctx context.Context, number int, comment string) error {
+	return c.closeWithComment(ctx, "issues", number, comment)
+}
+
+// UpdatePRBody replaces the body of pull request number.
+func (c *GitHub) UpdatePRBody(ctx context.Context, number int, body string) error {
+	return c.patch(ctx, "pulls", number, map[string]string{"body": body})
+}
+
+// ClosePR comments on pull request number when comment is not empty, then closes it unmerged.
+func (c *GitHub) ClosePR(ctx context.Context, number int, comment string) error {
+	return c.closeWithComment(ctx, "pulls", number, comment)
+}
+
+// closeWithComment comments first, so a failed close leaves the reason on the item.
+func (c *GitHub) closeWithComment(ctx context.Context, kind string, number int, comment string) error {
+	if err := c.configured(); err != nil {
+		return err
+	}
+	if comment != "" {
+		if _, err := c.CreateComment(ctx, number, comment); err != nil {
+			return err
+		}
+	}
+	return c.patch(ctx, kind, number, map[string]string{"state": "closed"})
+}
+
+// patch sends PATCH /repos/{repo}/{kind}/{number}; kind is "issues" or "pulls".
+func (c *GitHub) patch(ctx context.Context, kind string, number int, fields map[string]string) error {
+	if err := c.configured(); err != nil {
+		return err
+	}
+	url := fmt.Sprintf("%s/repos/%s/%s/%d", c.BaseURL, c.Repo, kind, number)
+	_, err := c.do(ctx, http.MethodPatch, url, fields, nil)
+	return err
+}
+
+// prItem is a pull request in GitHub's REST shape.
+type prItem struct {
+	Number   int        `json:"number"`
+	State    string     `json:"state"`
+	Draft    bool       `json:"draft"`
+	HTMLURL  string     `json:"html_url"`
+	Body     string     `json:"body"`
+	MergedAt *time.Time `json:"merged_at"`
+	ClosedAt *time.Time `json:"closed_at"`
+	Head     struct {
+		Ref string `json:"ref"`
+		SHA string `json:"sha"`
+	} `json:"head"`
+}
+
+// CreatePR opens a pull request. Checks and Mergeable stay empty: a new PR has neither yet.
+func (c *GitHub) CreatePR(ctx context.Context, pr NewPR) (PR, error) {
+	if err := c.configured(); err != nil {
+		return PR{}, err
+	}
+	var out prItem
+	url := fmt.Sprintf("%s/repos/%s/pulls", c.BaseURL, c.Repo)
+	req := map[string]any{"title": pr.Title, "body": pr.Body, "head": pr.Head, "base": pr.Base, "draft": pr.Draft}
+	if _, err := c.do(ctx, http.MethodPost, url, req, &out); err != nil {
+		return PR{}, err
+	}
+	state := strings.ToUpper(out.State)
+	if out.MergedAt != nil {
+		state = "MERGED"
+	}
+	got := PR{Number: out.Number, State: state, Draft: out.Draft, HeadSHA: out.Head.SHA, HeadRef: out.Head.Ref, URL: out.HTMLURL}
+	if out.MergedAt != nil {
+		got.MergedAt = *out.MergedAt
+	}
+	if out.ClosedAt != nil {
+		got.ClosedAt = *out.ClosedAt
+	}
+	return got, nil
+}
+
+// FindByMarker lists the issues and pull requests, open and closed, whose body contains marker.
+// The issues list does not carry a PR's head, so each PR hit costs one more request.
+func (c *GitHub) FindByMarker(ctx context.Context, marker string) ([]Item, error) {
+	if err := c.configured(); err != nil {
+		return nil, err
+	}
+	if marker == "" {
+		return nil, errors.New("forge: FindByMarker needs a marker")
+	}
+	out := []Item{}
+	url := fmt.Sprintf("%s/repos/%s/issues?state=all&per_page=100", c.BaseURL, c.Repo)
+	for url != "" {
+		var page []issueItem
+		next, err := c.do(ctx, http.MethodGet, url, nil, &page)
+		if err != nil {
+			return nil, err
+		}
+		for _, it := range page {
+			if !strings.Contains(it.Body, marker) {
+				continue
+			}
+			item := Item{Number: it.Number, IsPR: it.PullRequest != nil, State: it.State, Body: it.Body}
+			if item.IsPR {
+				var pr prItem
+				prURL := fmt.Sprintf("%s/repos/%s/pulls/%d", c.BaseURL, c.Repo, it.Number)
+				if _, err := c.do(ctx, http.MethodGet, prURL, nil, &pr); err != nil {
+					return nil, err
+				}
+				item.HeadRef = pr.Head.Ref
+			}
+			out = append(out, item)
+		}
+		url = next
+	}
+	return out, nil
 }

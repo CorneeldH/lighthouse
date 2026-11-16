@@ -66,6 +66,9 @@ var Cases = []Case{
 	{"SetStatusUnknownName", setStatusUnknownName},
 	{"Pagination", pagination},
 	{"PRFields", prFields},
+	{"IssueLifecycleByMarker", issueLifecycleByMarker},
+	{"PRLifecycleByMarker", prLifecycleByMarker},
+	{"FindByMarkerNoMatch", findByMarkerNoMatch},
 }
 
 // Run runs every case as a subtest, each with a fresh fixture.
@@ -484,5 +487,106 @@ func prFields(t *testing.T, f Fixture) {
 	}
 	if len(open) != 1 || open[0] != (forge.OpenPR{Number: 13, Title: "Fix it", Body: "Closes #7", HeadRef: "issue-7-x"}) {
 		t.Errorf("OpenPRs = %+v; want #13 Fix it, body Closes #7, head issue-7-x", open)
+	}
+}
+
+// find returns the one item FindByMarker finds for marker; it fails on none or more.
+func find(t *testing.T, f Fixture, marker string) forge.Item {
+	t.Helper()
+	got, err := f.Forge().FindByMarker(t.Context(), marker)
+	if err != nil {
+		t.Fatalf("FindByMarker(%q): %v", marker, err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("FindByMarker(%q) = %+v, want exactly one item", marker, got)
+	}
+	return got[0]
+}
+
+func issueLifecycleByMarker(t *testing.T, f Fixture) {
+	ctx := t.Context()
+	const marker = "<!-- lighthouse:pin skill-a -->"
+	f.AddIssue(t, forge.Issue{Number: 1, Title: "Other", Body: "no marker", Author: "ann", State: "open"})
+	is, err := f.Forge().CreateIssue(ctx, "Pin behind", marker+"\nfirst body")
+	if err != nil {
+		t.Fatalf("CreateIssue: %v", err)
+	}
+	if is.Number == 0 || is.Number == 1 || is.Title != "Pin behind" || is.State != "open" {
+		t.Fatalf("CreateIssue = %+v; want a new open issue titled Pin behind", is)
+	}
+	it := find(t, f, marker)
+	if it.Number != is.Number || it.IsPR || it.State != "open" || it.Body != marker+"\nfirst body" {
+		t.Errorf("found %+v; want open issue #%d, not a PR, with its full body", it, is.Number)
+	}
+
+	if err := f.Forge().UpdateIssueBody(ctx, is.Number, marker+"\nsecond body"); err != nil {
+		t.Fatalf("UpdateIssueBody: %v", err)
+	}
+	if it := find(t, f, marker); it.Body != marker+"\nsecond body" || it.State != "open" {
+		t.Errorf("after update found %+v; want body %q, still open", it, marker+"\nsecond body")
+	}
+
+	if err := f.Forge().CloseIssue(ctx, is.Number, "Bijgewerkt, dicht"); err != nil {
+		t.Fatalf("CloseIssue: %v", err)
+	}
+	if it := find(t, f, marker); it.Number != is.Number || it.State != "closed" {
+		t.Errorf("after close found %+v; want #%d closed, still findable", it, is.Number)
+	}
+	cs, err := f.Forge().Comments(ctx, is.Number)
+	if err != nil {
+		t.Fatalf("Comments: %v", err)
+	}
+	if len(cs) != 1 || cs[0].Body != "Bijgewerkt, dicht" {
+		t.Errorf("Comments after close = %+v; want the closing comment", cs)
+	}
+}
+
+func prLifecycleByMarker(t *testing.T, f Fixture) {
+	ctx := t.Context()
+	const marker = "<!-- lighthouse:pin pr -->"
+	pr, err := f.Forge().CreatePR(ctx, forge.NewPR{Title: "Pin bump", Body: marker + "\nbody", Head: "pins/x", Base: "main", Draft: true})
+	if err != nil {
+		t.Fatalf("CreatePR: %v", err)
+	}
+	if pr.Number == 0 || !pr.Draft || pr.State != "OPEN" || pr.HeadRef != "pins/x" {
+		t.Fatalf("CreatePR = %+v; want an open draft PR on pins/x", pr)
+	}
+	it := find(t, f, marker)
+	if it.Number != pr.Number || !it.IsPR || it.State != "open" || it.HeadRef != "pins/x" || it.Body != marker+"\nbody" {
+		t.Errorf("found %+v; want open PR #%d on pins/x with its full body", it, pr.Number)
+	}
+
+	if err := f.Forge().UpdatePRBody(ctx, pr.Number, marker+"\nnew"); err != nil {
+		t.Fatalf("UpdatePRBody: %v", err)
+	}
+	if it := find(t, f, marker); it.Body != marker+"\nnew" {
+		t.Errorf("after update body = %q, want %q", it.Body, marker+"\nnew")
+	}
+
+	if err := f.Forge().ClosePR(ctx, pr.Number, "Vervangen"); err != nil {
+		t.Fatalf("ClosePR: %v", err)
+	}
+	it = find(t, f, marker)
+	if it.Number != pr.Number || !it.IsPR || it.State != "closed" || it.HeadRef != "pins/x" {
+		t.Errorf("after close found %+v; want PR #%d closed on pins/x, still findable", it, pr.Number)
+	}
+	cs, err := f.Forge().Comments(ctx, pr.Number)
+	if err != nil {
+		t.Fatalf("Comments: %v", err)
+	}
+	if len(cs) != 1 || cs[0].Body != "Vervangen" {
+		t.Errorf("Comments after ClosePR = %+v; want the closing comment", cs)
+	}
+}
+
+func findByMarkerNoMatch(t *testing.T, f Fixture) {
+	f.AddIssue(t, forge.Issue{Number: 1, Title: "A", Body: "plain", Author: "ann", State: "open"})
+	f.AddIssue(t, forge.Issue{Number: 2, Title: "B", Body: "<!-- other -->", Author: "ann", State: "closed"})
+	got, err := f.Forge().FindByMarker(t.Context(), "<!-- lighthouse:pin none -->")
+	if err != nil {
+		t.Fatalf("FindByMarker: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("FindByMarker without a hit = %+v, want none", got)
 	}
 }
