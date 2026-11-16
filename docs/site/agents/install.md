@@ -193,6 +193,9 @@ In the root of the repository:
    [y/N]`. The dry run never reaches it, so the user has not seen it, and `--yes` would write
    `host.toml` without asking. With one `y`, the second question reads the end of stdin, and that
    counts as no. `host.toml` is for `lighthouse serve` and the test gate's `gate_*` keys; this guide does not write it.
+   After it wrote, this first `init` prints an agent-audit summary (sources, conflicts, overlap
+   candidates) that changes nothing. Put each conflict and candidate under "Still open", with
+   `/lighthouse-audit-agent-config` for a verdict on the candidates.
 5. Write the answers of choices 5a, 5b and 7 into `lighthouse.toml`, under `[project]` and
    `[test_gate]`. Show the user the change. Choice 8 writes nothing here.
 6. If `init` printed

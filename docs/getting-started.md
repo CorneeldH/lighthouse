@@ -91,6 +91,10 @@ and goes on (see [Requirements](#requirements)).
 - `lighthouse init --upgrade` replaces what an earlier `init` installed. A second `init`
   without `--upgrade` refuses. A unit you changed locally makes the whole run refuse, and nothing
   is written, unless you add `--force`.
+- `lighthouse init --upgrade --audit` also shows the agent-audit summary that the first `init`
+  shows after it wrote: conflicts between your hooks and permissions and lighthouse's, and
+  project hooks that may do what a lighthouse hook does. It changes nothing; see
+  [Agent audit](agent-audit.md).
 - `lighthouse init --forge-host <host>` tells `init` that your `origin` remote is on a
   self-hosted GitLab, so it proposes `[forge]` with `kind = "gitlab"` and `host`.
 - `lighthouse init --pack python` adds a package, `lighthouse init --no-pack shell` leaves one
