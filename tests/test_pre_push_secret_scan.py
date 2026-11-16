@@ -83,9 +83,11 @@ exit 0
 
 
 @pytest.fixture(autouse=True)
-def stubs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def stubs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, lighthouse_bin: Path) -> Path:
     """An own host.toml and the bounding stubs first on PATH, for every test; returns
-    the stub directory, where a test can add or replace a stub."""
+    the stub directory, where a test can add or replace a stub. `lighthouse_bin` puts the
+    binary of this checkout on PATH too: the scan reads its limits with `lighthouse config`,
+    and a runner has no `lighthouse` of its own."""
     host = tmp_path / "host.toml"
     host.write_text('[host]\nname = "h"\ntailscale_ip = "100.64.0.1"\n', encoding="utf-8")
     monkeypatch.setenv("LIGHTHOUSE_HOST_TOML", str(host))
