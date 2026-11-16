@@ -149,7 +149,7 @@ func TestRenderPRBody_startsWithNoIssueAndNoCloses(t *testing.T) {
 		{SHA: "abc1234", Subject: "fix: thing, closes #4", Body: "Fixes #123 thanks @naam\n```\nx"},
 		{SHA: "def5678", Subject: "feat: other"},
 	}
-	body := RenderPRBody("<!-- m -->", "core/skills/x", commits, "a | 2 +-\n```", "https://github.com/o/r/compare/a...b")
+	body := RenderPRBody("<!-- m -->", "core/skills/x", "def5678", commits, "a | 2 +-\n```", "https://github.com/o/r/compare/a...b")
 	if !strings.HasPrefix(body, "No issue: ") {
 		t.Fatalf("body starts %q", body[:20])
 	}
@@ -216,9 +216,9 @@ func TestRender_oddValuesStayInertOutsideFences(t *testing.T) {
 	for _, key := range oddKeys {
 		bodies := map[string]string{
 			"behind": RenderBehindBody(Marker(key, KindBehind, "t"), key, key, key, rels, link),
-			"pr":     RenderPRBody(Marker(key, KindPR, "t"), key, []pins.CommitInfo{{SHA: "a", Subject: "s"}}, "d", link),
+			"pr":     RenderPRBody(Marker(key, KindPR, "t"), key, "t", []pins.CommitInfo{{SHA: "a", Subject: "s"}}, "d", link),
 			"error":  RenderErrorBody(Marker(key, KindError, "t"), key, "d"),
-			"conflict": RenderConflictBody(Marker(key, KindConflict, "t"), key, []string{key}, key,
+			"conflict": RenderConflictBody(Marker(key, KindConflict, "t"), key, "t", []string{key}, key,
 				[]pins.CommitInfo{{SHA: "a", Subject: key}}, link),
 		}
 		for name, body := range bodies {
@@ -270,7 +270,7 @@ func TestRenderConflictBody_filesReasonAndCommitsFenced(t *testing.T) {
 	for i := 0; i < 200; i++ {
 		commits = append(commits, pins.CommitInfo{SHA: "abc1234", Subject: "Fixes #12 @mallory", Body: strings.Repeat("x", 3*MaxExcerpt)})
 	}
-	body := RenderConflictBody("<!-- m -->", "core/skills/x",
+	body := RenderConflictBody("<!-- m -->", "core/skills/x", "abc1234",
 		[]string{"pack/core/skills/x/SKILL.md", "pack/core/skills/x/@evil#3.md"}, "merge conflict ``` @x",
 		commits, "https://github.com/o/r/compare/a...b")
 	if !strings.HasPrefix(body, "<!-- m -->") {
@@ -297,10 +297,22 @@ func TestRenderConflictBody_filesReasonAndCommitsFenced(t *testing.T) {
 }
 
 func TestRender_carryRaiseInstructions(t *testing.T) {
-	pr := RenderPRBody("<!-- m -->", "k", []pins.CommitInfo{{SHA: "a", Subject: "s"}}, "d", "u")
-	for _, want := range []string{"docs/pins.md", "ready for review", "merge hem zelf", "upstream-commit", "source_sha"} {
+	const target = "0123456789abcdef0123456789abcdef01234567"
+	pr := RenderPRBody("<!-- m -->", "k", target, []pins.CommitInfo{{SHA: "a", Subject: "s"}}, "d", "u")
+	for _, want := range []string{"docs/pins.md", "ready for review", "merge hem zelf", "upstream-commit", "source_sha", "nieuwste upstream-commit die het pad raakte"} {
 		if !strings.Contains(stripFences(t, pr), want) {
 			t.Errorf("PR body lacks %q outside fences", want)
+		}
+	}
+	conflict := RenderConflictBody("<!-- m -->", "k", target, nil, "r", []pins.CommitInfo{{SHA: "a", Subject: "s"}}, "u")
+	for _, want := range []string{"docs/pins.md", "upstream-commit", "source_sha", "nieuwste upstream-commit die het pad raakte"} {
+		if !strings.Contains(stripFences(t, conflict), want) {
+			t.Errorf("conflict body lacks %q outside fences", want)
+		}
+	}
+	for name, body := range map[string]string{"PR": pr, "conflict": conflict} {
+		if !strings.Contains(body, "Doelcommit: "+target) {
+			t.Errorf("%s body does not name the target commit %s", name, target)
 		}
 	}
 	behind := RenderBehindBody("<!-- m -->", "k", "1", "2", []forge.Release{{Tag: "v2"}}, "u")

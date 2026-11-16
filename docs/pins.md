@@ -112,9 +112,17 @@ nooit een merge aan.
 De draft-PR heeft een body die met `No issue:` begint, heeft geen `Closes`, geen board-item en
 geen milestone. Hij bevat een diffstat, de upstream-commits en een vergelijklink. De branch
 bevat één commit van `github-actions[bot]` die de wijziging overneemt, `upstream-commit` (of
-`source_sha`) ophoogt, `pack/SOURCES.toml` bijwerkt, een fragment in `changelog.d/` schrijft en
-`init --upgrade` draait zodat de geïnstalleerde kopieën volgen. De branch wordt bij elke run
-bijgewerkt, ook na een eerdere half mislukte run; er komt nooit een tweede PR.
+`source_sha`) ophoogt naar de doelcommit, `pack/SOURCES.toml` bijwerkt, een fragment in
+`changelog.d/` schrijft en `init --upgrade` draait zodat de geïnstalleerde kopieën volgen. De
+lane werkt de branch bij zodra de doelcommit verandert, ook na een eerdere half mislukte run; er
+komt nooit een tweede PR.
+
+De **doelcommit** van een skill- of bestandspin is de nieuwste upstream-commit die het gepinde pad
+raakte, niet de HEAD van upstream. De meting vergelijkt de boom van het pad bij de pin met die
+bij HEAD, en die is bij de doelcommit dezelfde; een pin op de doelcommit meet dus `current`. Een
+upstream-commit die het pad niet raakt, verandert de doelcommit niet: de lane werkt dan geen PR
+bij, forceert geen branch en maakt geen item opnieuw. De PR- en issue-body noemen de doelcommit
+(`Doelcommit:`).
 
 Upstream-tekst (releasenotes, commitberichten) staat in een body altijd in een afgeschermd
 codeblok, zodat er geen vermeldingen, issueverwijzingen of sluitwoorden uit werken. Lange
@@ -172,12 +180,14 @@ daarom een conflict-issue, geen PR.
    als er een nieuwe doelversie is.
 4. Zet de PR op *ready for review*, laat CI groen worden en merge hem zelf. De lane merget
    nooit.
-5. Wil je het niet overnemen: sluit de PR. Voor die upstream-commit komt er dan geen nieuwe.
+5. Wil je het niet overnemen: sluit de PR. Voor die doelcommit komt er dan geen nieuwe; pas een
+   nieuwe upstream-commit op het pad geeft weer een PR.
 
 **Bij een conflict** (issue `pins: <sleutel> botst met upstream`): neem de wijziging met de hand
 over in een gewone branch en PR. Zet daarbij `upstream-commit` (skill) of `source_sha` (bestand)
-op de HEAD die het issue noemt, dus de laatste commit uit de lijst met upstream-commits en niet
-op wat je toevallig lokaal hebt. Zonder die stap meet de volgende run dezelfde achterstand
+op de doelcommit die het issue noemt (`Doelcommit:`): de nieuwste upstream-commit die het pad
+raakte, de bovenste in de lijst met upstream-commits. Niet op de HEAD van upstream en niet op wat
+je toevallig lokaal hebt. Zonder die stap meet de volgende run dezelfde achterstand
 opnieuw. Werk `pack/SOURCES.toml` bij als er bestanden bijkwamen of verdwenen, draai
 `go run ./cmd/lighthouse init --upgrade` en voeg een fragment toe aan `changelog.d/`.
 

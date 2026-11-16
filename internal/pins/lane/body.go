@@ -136,7 +136,16 @@ const prSteps = `Zo hoog je deze pin op (uitleg: docs/pins.md, sectie "Een pin o
 1. Lees de diffstat, de upstream-commits en de diff zelf.
 2. Pas zo nodig aan op de branch van deze PR, met nieuwe commits.
 3. Zet de PR op ready for review, laat CI groen worden en merge hem zelf; de lane merget nooit.
-4. Bij een conflict: neem de wijziging met de hand over en zet upstream-commit (skill) of source_sha (bestand) op de laatste upstream-commit uit de lijst.
+4. Bij een conflict: neem de wijziging met de hand over en zet upstream-commit (skill) of source_sha (bestand) op de doelcommit hieronder: de nieuwste upstream-commit die het pad raakte, niet de HEAD van upstream.
+`
+
+// conflictSteps is the short version of the conflict paragraph of "Een pin ophogen" in
+// docs/pins.md.
+const conflictSteps = `Zo hoog je deze pin op (uitleg: docs/pins.md, sectie "Een pin ophogen"):
+
+1. Neem de wijziging met de hand over in een gewone branch en PR.
+2. Zet upstream-commit (skill) of source_sha (bestand) op de doelcommit hieronder: de nieuwste upstream-commit die het pad raakte, niet de HEAD van upstream.
+3. Werk pack/SOURCES.toml bij als er bestanden bijkwamen of verdwenen, draai init --upgrade en voeg een fragment toe aan changelog.d.
 `
 
 // behindSteps is the short version of "Een pin ophogen, plugin of tool" in docs/pins.md.
@@ -176,13 +185,14 @@ func RenderBehindBody(marker string, key string, from, to string, rels []forge.R
 
 // RenderPRBody is the body of the draft pull request that moves a pinned path to upstream. It
 // begins with `No issue:` (the shape pr-create-gate wants) and never carries a closing keyword.
-func RenderPRBody(marker, key string, commits []pins.CommitInfo, statDiff, compareURL string) string {
+// target is the upstream commit the pin is raised to.
+func RenderPRBody(marker, key, target string, commits []pins.CommitInfo, statDiff, compareURL string) string {
 	var b strings.Builder
 	link := safeURL(compareURL)
 	b.WriteString("No issue: automatische upstream-update van een pin, geen issue.\n\n")
 	b.WriteString(marker + "\n\n")
 	b.WriteString(prSteps + "\n")
-	b.WriteString(Fence("Pin: "+cut(key, 200)) + "\n\n")
+	b.WriteString(Fence(pinLines(key, target)) + "\n\n")
 	fmt.Fprintf(&b, "Vergelijk: %s\n\n", link)
 	b.WriteString("Wijzigingen:\n\n")
 	b.WriteString(Fence(cut(statDiff, 10*MaxExcerpt)) + "\n\n")
@@ -192,13 +202,14 @@ func RenderPRBody(marker, key string, commits []pins.CommitInfo, statDiff, compa
 
 // RenderConflictBody is the body of the issue for a pin the lane cannot move itself: a merge
 // that conflicts, or one that reaches .github/workflows/. reason, the conflicting files and the
-// upstream commits appear only inside fences.
-func RenderConflictBody(marker, key string, conflicts []string, reason string, commits []pins.CommitInfo, compareURL string) string {
+// upstream commits appear only inside fences. target is the upstream commit to raise the pin to.
+func RenderConflictBody(marker, key, target string, conflicts []string, reason string, commits []pins.CommitInfo, compareURL string) string {
 	var b strings.Builder
 	link := safeURL(compareURL)
 	b.WriteString(marker + "\n\n")
 	b.WriteString("Een pin staat achter upstream, maar de lane kan de wijziging niet zelf overnemen.\n\n")
-	b.WriteString(Fence("Pin: "+cut(key, 200)) + "\n\n")
+	b.WriteString(conflictSteps + "\n")
+	b.WriteString(Fence(pinLines(key, target)) + "\n\n")
 	b.WriteString("Reden:\n\n")
 	b.WriteString(Fence(excerpt(reason)) + "\n\n")
 	if len(conflicts) > 0 {
@@ -208,6 +219,11 @@ func RenderConflictBody(marker, key string, conflicts []string, reason string, c
 	fmt.Fprintf(&b, "Vergelijk: %s\n\n", link)
 	writeCommits(&b, commits, link)
 	return b.String()
+}
+
+// pinLines names the pin and the upstream commit it is raised to.
+func pinLines(key, target string) string {
+	return "Pin: " + cut(key, 200) + "\nDoelcommit: " + cut(target, 200)
 }
 
 // writeCommits adds the upstream commits, each in its own fence and cut to MaxExcerpt, until

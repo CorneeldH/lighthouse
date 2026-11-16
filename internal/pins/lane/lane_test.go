@@ -417,3 +417,71 @@ func TestRun_ignoresMarkersOfOtherAuthors(t *testing.T) {
 		t.Errorf("mytool: the forged closed item silenced the release: %+v", items(t, f, "mytool"))
 	}
 }
+
+// Fails when the lane targets the upstream HEAD instead of the newest commit that touched the
+// path: an unrelated upstream commit would then update (and force-push) the open PR, recreate a
+// PR a human closed, or raise the pin to a commit that measures anything but current; and when a
+// commit on the path does not give a new target.
+func TestRun_targetIsNewestCommitOnThePath(t *testing.T) {
+	r := newLaneRepo(t)
+	srv, f := newFake(t)
+	env := runEnv(r.root, r.up, f, releaseStub{})
+	if err := Run(context.Background(), env); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	pr, _, target := only(t, f, toolFile)
+	if target != r.head {
+		t.Fatalf("target %s, want %s", target, r.head)
+	}
+	branch := "refs/heads/" + BranchName(toolFile)
+	pushed := gitT(t, r.origin, "rev-parse", branch)
+
+	r.up.commit(map[string]string{"unrelated.txt": "x\n"})
+	posts := len(srv.Posts)
+	if err := Run(context.Background(), env); err != nil {
+		t.Fatalf("second Run: %v", err)
+	}
+	if it, _, got := only(t, f, toolFile); got != r.head || it.Body != pr.Body {
+		t.Errorf("after an unrelated upstream commit: target %s, body changed %v; want %s, unchanged", got, it.Body != pr.Body, r.head)
+	}
+	if got := gitT(t, r.origin, "rev-parse", branch); got != pushed {
+		t.Errorf("an unrelated upstream commit force-pushed %s: %s -> %s", branch, pushed, got)
+	}
+	if len(srv.Posts) != posts {
+		t.Errorf("an unrelated upstream commit posted: %+v", srv.Posts[posts:])
+	}
+	// The pin raised to the target measures current although HEAD moved on.
+	raised := r.toolPin()
+	raised.Commit = target
+	if res := pins.MeasureSource(context.Background(), env.Git, raised); res.Status != pins.StatusCurrent {
+		t.Errorf("pin raised to %s measures %s (%s), want current", target, res.Status, res.Detail)
+	}
+
+	// A human closes the PR; another unrelated commit brings it back neither.
+	if err := f.ClosePR(context.Background(), pr.Number, "niet nu"); err != nil {
+		t.Fatal(err)
+	}
+	r.up.commit(map[string]string{"unrelated.txt": "y\n"})
+	if err := Run(context.Background(), env); err != nil {
+		t.Fatalf("third Run: %v", err)
+	}
+	if got := items(t, f, toolFile); len(got) != 1 || got[0].State != "closed" {
+		t.Fatalf("after a human close and an unrelated commit: %+v, want only the closed PR", got)
+	}
+
+	// A commit on the path is a new target: a new PR.
+	next := r.up.commit(map[string]string{"lib/tool.py": "x = 11\ny = 2\nz = 3\nv = 4\nw = 5\n"})
+	if err := Run(context.Background(), env); err != nil {
+		t.Fatalf("fourth Run: %v", err)
+	}
+	var open []string
+	for _, it := range items(t, f, toolFile) {
+		if it.State == "open" {
+			_, _, tg, _ := ParseMarker(it.Body)
+			open = append(open, tg)
+		}
+	}
+	if len(open) != 1 || open[0] != next {
+		t.Fatalf("after a commit on the path: open targets %v, want [%s]", open, next)
+	}
+}

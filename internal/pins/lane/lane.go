@@ -128,11 +128,11 @@ func (r *runner) source(ctx context.Context, sp pins.SourcePin) error {
 		return r.fail(ctx, sp.Key, err.Error())
 	}
 	defer func() { _ = cl.Close() }()
-	head, err := cl.Head()
+	commits, err := cl.PathLog(sp.Commit, sp.Path)
 	if err != nil {
 		return r.fail(ctx, sp.Key, err.Error())
 	}
-	commits, err := cl.PathLog(sp.Commit, sp.Path)
+	target, err := pathTarget(cl, sp.Path, commits)
 	if err != nil {
 		return r.fail(ctx, sp.Key, err.Error())
 	}
@@ -140,13 +140,13 @@ func (r *runner) source(ctx context.Context, sp pins.SourcePin) error {
 	if err != nil {
 		return r.fail(ctx, sp.Key, err.Error())
 	}
-	compare := fmt.Sprintf("https://github.com/%s/compare/%s...%s", sp.Repo, sp.Commit, head)
+	compare := fmt.Sprintf("https://github.com/%s/compare/%s...%s", sp.Repo, sp.Commit, target)
 	conflict := func(reason string) error {
 		content := ItemContent{
 			Title: "pins: " + sp.Key + " botst met upstream",
-			Body:  RenderConflictBody(Marker(sp.Key, KindConflict, head), sp.Key, mr.Conflicts, reason, commits, compare),
+			Body:  RenderConflictBody(Marker(sp.Key, KindConflict, target), sp.Key, target, mr.Conflicts, reason, commits, compare),
 		}
-		return r.apply(ctx, sp.Key, Outcome{Kind: KindConflict, Target: head, Measurable: true}, content, "conflict")
+		return r.apply(ctx, sp.Key, Outcome{Kind: KindConflict, Target: target, Measurable: true}, content, "conflict")
 	}
 	if !mr.Clean {
 		return conflict("De 3-way-merge met upstream conflicteert.")
@@ -156,12 +156,12 @@ func (r *runner) source(ctx context.Context, sp pins.SourcePin) error {
 	if err != nil {
 		return err
 	}
-	out := Outcome{Kind: KindPR, Target: head, Measurable: true}
+	out := Outcome{Kind: KindPR, Target: target, Measurable: true}
 	actions := Decide(sp.Key, out, found)
 	if !writesPR(actions) {
 		return r.applyActions(ctx, sp.Key, actions, ItemContent{}, "pr")
 	}
-	branch, err := PrepareBranch(ctx, r.env.Root, sp, mr, head)
+	branch, err := PrepareBranch(ctx, r.env.Root, sp, mr, target)
 	switch {
 	case errors.Is(err, ErrTouchesWorkflows): // also when mr.TouchesWorkflows
 		return conflict("De wijziging raakt " + workflowsDir + " en daarheen pusht de lane niet: " + err.Error())
@@ -180,11 +180,33 @@ func (r *runner) source(ctx context.Context, sp pins.SourcePin) error {
 	}
 	content := ItemContent{
 		Title:  "pins: " + sp.Key + " volgt upstream",
-		Body:   RenderPRBody(Marker(sp.Key, KindPR, head), sp.Key, commits, stat, compare),
+		Body:   RenderPRBody(Marker(sp.Key, KindPR, target), sp.Key, target, commits, stat, compare),
 		Branch: branch,
 		Base:   base,
 	}
 	return r.applyActions(ctx, sp.Key, actions, content, "pr")
+}
+
+// pathTarget is the upstream commit a skill or file pin is raised to: the newest commit that
+// touched its path, not the upstream HEAD, so an unrelated upstream commit changes neither the
+// target nor the marker (no weekly force-push, no new item after a human closed one). The path's
+// tree at that commit must equal its tree at HEAD, which MergeSource merges and the measurement
+// compares; when it does not (history with merges), or no commit is listed, the target is HEAD.
+func pathTarget(cl pins.Clone, path string, commits []pins.CommitInfo) (string, error) {
+	head, err := cl.Head()
+	if err != nil {
+		return "", err
+	}
+	if len(commits) == 0 {
+		return head, nil
+	}
+	newest := commits[0].SHA
+	at, errAt := cl.CommitTree(newest, path)
+	now, errNow := cl.HeadTree(path)
+	if errAt != nil || errNow != nil || at != now {
+		return head, nil
+	}
+	return newest, nil
 }
 
 // writesPR reports whether actions create or update a PR, which needs the branch pushed first.

@@ -34,8 +34,9 @@ func BranchName(key string) string {
 var branchUnsafe = regexp.MustCompile(`[^A-Za-z0-9._-]+|\.\.+`)
 
 // PrepareBranch puts a clean merge on the rolling branch pins/<key> on origin and returns its
-// name. In a fresh worktree from origin's default branch it writes mr, raises the pin to headSHA
-// (`upstream-commit` of every variant, or `source_sha`), brings pack/SOURCES.toml along (a new
+// name. In a fresh worktree from origin's default branch it writes mr, raises the pin to headSHA,
+// the target of the lane: the newest upstream commit that touched the path (`upstream-commit` of
+// every variant, or `source_sha`), brings pack/SOURCES.toml along (a new
 // file gets `pin = "<key>"`, a removed one loses its entry), writes a changelog.d/ fragment,
 // runs `init --upgrade --yes` from the worktree's own pack/ so the installed copies follow,
 // commits as github-actions[bot] and force-pushes. The worktree is removed afterwards, so the
@@ -46,7 +47,7 @@ func PrepareBranch(ctx context.Context, root string, p pins.SourcePin, mr MergeR
 	case !mr.Clean:
 		return "", fmt.Errorf("pin %s: merge has conflicts: %s", p.Key, strings.Join(mr.Conflicts, ", "))
 	case !shaRe.MatchString(headSHA):
-		return "", fmt.Errorf("pin %s: upstream HEAD %q is not a 40-hex sha", p.Key, headSHA)
+		return "", fmt.Errorf("pin %s: upstream target %q is not a 40-hex sha", p.Key, headSHA)
 	}
 	base, err := defaultBranchHead(ctx, root)
 	if err != nil {
