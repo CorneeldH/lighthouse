@@ -247,3 +247,10 @@ De bestaande `internal/web/web_test.go` dekt criterium 3 al: zonder `dist/index.
   dat `go install` van een tag alleen een placeholder serveert.
 - [ ] `build.yml` faalt als `internal/web/dist/index.html` niet in de tag staat, of als een
   nieuwe build van `web/` op die tag afwijkt van de `dist` in de tag.
+
+## Open na review
+
+Ronde 3 haalde de rondegrens met deze punten open. Ze zijn aanvaard als `accepted_open`;
+de volgende fase of de PR-review weegt ze opnieuw.
+
+- **r3-f1** (MAJOR, release.yml, job release / retry-lus): The diff claims dist survives the loop's reset, but on a retry HEAD is C2, in which dist is tracked; git reset --hard origin/main deletes every file tracked in HEAD and absent from the target, so the artifact's dist is removed and the second ci/tag-with-ui.sh fails on the missing index.html. Round 2 avoided this because the build ran again inside the loop.
