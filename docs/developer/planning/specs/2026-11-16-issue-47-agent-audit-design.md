@@ -253,8 +253,8 @@ Bronnen
   plugin:superpowers  COULD NOT CHECK — installPath /… bestaat niet
 
 Conflicten (2)
-  [blocking-pair:PreToolUse:Bash:project/.claude/hooks/check-branch.sh|gebruiker/~/.claude/hooks/guard.sh]
-    PreToolUse Bash: project .claude/hooks/check-branch.sh en gebruiker ~/.claude/hooks/guard.sh blokkeren allebei
+  [blocking-pair:PreToolUse:Bash:gebruiker/~/.claude/hooks/guard.sh|project/.claude/hooks/check-branch.sh]
+    PreToolUse Bash: gebruiker ~/.claude/hooks/guard.sh en project .claude/hooks/check-branch.sh blokkeren allebei
   [permission:Bash(lighthouse review-run:*)]
     lighthouse allow Bash(lighthouse review-run:*) tegenover gebruiker deny Bash(lighthouse review-run:*)
 
