@@ -29,17 +29,24 @@ The argument is an absolute path that ends in `.handoff.md`; the usage gate pass
 the usage window is full. This is a pause, not a phase transition. Without a path the skill
 works as described below.
 
-1. Build the block as in *Output format*. Add what is uncommitted (from `git status --short`),
+1. Push the branch, never the default branch, with `dangerouslyDisableSandbox: true`:
+   ```bash
+   B=$(lighthouse config forge.default_branch) || exit 2
+   [ "$(git branch --show-current)" = "$B" ] || git push -u origin HEAD
+   ```
+   The resumed run can land on another node, where commits that were not pushed are missing.
+   A failed push does not block the pause: its error line goes under `Watch out:`.
+2. Build the block as in *Output format*. Add what is uncommitted (from `git status --short`),
    the resume moment (when the session may continue: the reset time the guard names) and, if
    you set a wake-up timer, its job ID.
-2. Write the block to the path with Bash: `mkdir -p` the directory, write a temporary file in
+3. Write the block to the path with Bash: `mkdir -p` the directory, write a temporary file in
    that same directory, then `mv` it onto the path, so a reader never sees half a file. The path
    lies outside the repo, so the write can fall outside the sandbox; ask for the permission
    that needs rather than choosing another path.
-3. Show the same block also in the chat.
+4. Show the same block also in the chat.
 
-The pause form skips every side effect of a phase transition, also when
-`LIGHTHOUSE_CONTROLLER_RUN` is set: `lighthouse post-artefact` is skipped (so no push), the
+The pause form skips every other side effect of a phase transition, also when
+`LIGHTHOUSE_CONTROLLER_RUN` is set: `lighthouse post-artefact` is skipped, the
 *Controller mode* section is skipped (no `🤖` comment, no board status), there is no question
 to the user, and the `/clear` suggestion is skipped. Then stop.
 
@@ -249,7 +256,16 @@ tick starts the next phase itself. Two entries:
    then `worktree:` and `branch:` are the own worktree and branch of the issue. From `main`
    the controller puts an executing handoff on hold and never stacks.
 4. **`when:`** is `now`, unless the user chooses or asks for `night`.
-5. **Post** the block:
+5. **Post** the block, after a push. First push the branch, never the default branch, also when
+   `lighthouse post-artefact` posted nothing (it pushes only as a side effect of a new
+   artefact). The next run can land on another node, and without the push it misses these
+   commits. With `dangerouslyDisableSandbox: true`:
+   ```bash
+   B=$(lighthouse config forge.default_branch) || exit 2
+   [ "$(git branch --show-current)" = "$B" ] || git push -u origin HEAD
+   ```
+   A failed push does not block the post: its error line goes under `Watch out:` in the block.
+   Then post:
    ```bash
    R=$(lighthouse config forge.repo) || exit 2
    H=$(lighthouse headings kind_handoff) || exit 2
