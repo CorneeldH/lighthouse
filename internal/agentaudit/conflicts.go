@@ -163,11 +163,12 @@ func missingScripts(fs findings, hooks []Hook, hookNames []string) {
 }
 
 // unregisteredScripts reports a file under a hooks directory that no hook runs and whose
-// name appears in no hook's script or inline command (a helper is named there).
+// name appears in no hook's script or inline command (a helper is named there). A name
+// without its extension counts after a "/", as in require('./helper').
 func unregisteredScripts(fs findings, inv *Inventory) {
 	for _, entry := range inv.Scripts {
 		source, shown, _ := strings.Cut(entry, "/")
-		named := regexp.MustCompile(`(^|[^\w.-])` + regexp.QuoteMeta(path.Base(shown)) + `($|[^\w-])`)
+		named := regexp.MustCompile(namePattern(path.Base(shown)))
 		used := false
 		for _, h := range inv.Hooks {
 			if (h.Script != "" && h.Shown == shown) || named.Match(h.Content) {
@@ -179,4 +180,14 @@ func unregisteredScripts(fs findings, inv *Inventory) {
 			fs.add(KindUnregistered, KindUnregistered+":"+entry, source+" "+shown+": geen hook noemt dit script", source)
 		}
 	}
+}
+
+// namePattern matches name as a whole word in a script, and its stem (name without its
+// extension) as the last element of a path, not followed by another extension.
+func namePattern(name string) string {
+	pattern := `(^|[^\w.-])` + regexp.QuoteMeta(name) + `($|[^\w-])`
+	if stem := strings.TrimSuffix(name, path.Ext(name)); stem != name && stem != "" {
+		pattern += `|/` + regexp.QuoteMeta(stem) + `($|[^\w.-])`
+	}
+	return pattern
 }

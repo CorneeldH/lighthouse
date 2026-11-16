@@ -339,6 +339,21 @@ func TestHelperIsNotUnregistered(t *testing.T) {
 	})
 }
 
+func TestHelperRequiredWithoutExtension(t *testing.T) {
+	inv, env := collected(t, map[string]string{
+		".claude/settings.json":           registered([3]string{"PreToolUse", "Bash", "node .claude/hooks/main.js"}),
+		".claude/hooks/main.js":           "const cfg = require('./caveman-config');\nconst lib = require(\"./lib/util\")\n",
+		".claude/hooks/caveman-config.js": "module.exports = {};\n",
+		".claude/hooks/lib/util.js":       "module.exports = {};\n",
+		".claude/hooks/caveman.js":        "//\n", // a prefix of caveman-config, named nowhere
+		".claude/hooks/config.js":         "//\n", // a suffix of caveman-config, named nowhere
+	}, nil)
+	assertRows(t, "keys", keys(Conflicts(inv, env)), []string{
+		"unregistered-script:project/.claude/hooks/caveman.js",
+		"unregistered-script:project/.claude/hooks/config.js",
+	})
+}
+
 func TestUnreadableHookIsNotClean(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("root reads every file")
