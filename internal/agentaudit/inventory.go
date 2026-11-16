@@ -32,6 +32,7 @@ type Hook struct {
 	Source, Event, Matcher, Command string
 	File                            string // the settings file that registers it, as shown
 	Script                          string // resolved path, "" for an inline command
+	Shown                           string // Script as the output shows it: under the root, under ~, else absolute
 	Content                         []byte // the script, or the command line
 	Blocking                        bool
 	Unreadable                      string // why the script could not be read, "" when it could

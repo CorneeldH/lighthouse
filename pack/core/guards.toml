@@ -15,8 +15,8 @@ events = ["PreToolUse", "PostToolUse", "PostToolUseFailure"]
 matcher = "Bash"
 does = "Blocks git commit --no-verify and runs the test gate on the files of a commit."
 terms = [
-  ["git commit", "commit"],
-  ["--no-verify", "test gate", "test_gate", "tests"],
+  ["git commit"],
+  ["--no-verify", "test gate", "test_gate", "go test", "npm test", "pytest", "make test", "cargo test", "run tests", "test suite"],
 ]
 
 [pr-create-gate]
@@ -33,8 +33,8 @@ events = ["PreToolUse", "PostToolUse", "PostToolUseFailure"]
 matcher = "Bash"
 does = "Runs the write checks on the files a Bash call wrote."
 terms = [
-  ["bash", "shell"],
-  ["write", "wrote", "redirect", "sed -i", "tee"],
+  ["git status --porcelain", "git diff --name-only", "ls-files", "-newer"],
+  ["write", "wrote", "written", "modified", "changed"],
 ]
 
 [md-link-check]
@@ -43,7 +43,7 @@ matcher = "Edit|Write"
 does = "Blocks a markdown link that is absolute or points nowhere."
 terms = [
   [".md", "markdown"],
-  ["link"],
+  ["link", "lychee"],
 ]
 
 [code-language-check]

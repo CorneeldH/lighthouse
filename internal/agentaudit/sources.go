@@ -314,10 +314,13 @@ func (c *collector) hook(source, event, matcher, command, pluginRoot string) Hoo
 	h.Script = scriptPath(resolved, c.env.Root, c.home)
 	if h.Script == "" {
 		h.Content = []byte(command)
-	} else if data, err := os.ReadFile(h.Script); err != nil {
-		h.Unreadable = err.Error()
 	} else {
-		h.Content = data
+		h.Shown = c.display(h.Script)
+		if data, err := os.ReadFile(h.Script); err != nil {
+			h.Unreadable = err.Error()
+		} else {
+			h.Content = data
+		}
 	}
 	switch {
 	case source == SourceLighthouse:
@@ -331,16 +334,27 @@ func (c *collector) hook(source, event, matcher, command, pluginRoot string) Hoo
 // lighthouseHookName is the hook a command into HookDir runs: the word after run.sh, or
 // the script name without its extension.
 func lighthouseHookName(command string) string {
+	if name, ok := runShName(command); ok {
+		return name
+	}
 	_, rest, _ := strings.Cut(command, packs.HookDir)
 	words := strings.Fields(rest)
 	if len(words) == 0 {
 		return ""
 	}
 	first := unquote.Replace(words[0])
-	if first == "run.sh" && len(words) > 1 {
-		return unquote.Replace(words[1])
-	}
 	return strings.TrimSuffix(first, filepath.Ext(first))
+}
+
+// runShName is the hook name in a command `<HookDir>run.sh <name>`; ok is false for any
+// other command.
+func runShName(command string) (name string, ok bool) {
+	_, rest, found := strings.Cut(command, packs.HookDir)
+	words := strings.Fields(rest)
+	if !found || len(words) < 2 || unquote.Replace(words[0]) != "run.sh" {
+		return "", false
+	}
+	return unquote.Replace(words[1]), true
 }
 
 // readDir lists dir; a missing dir is no entries and no problem.
