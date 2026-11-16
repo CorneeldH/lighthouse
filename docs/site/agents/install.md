@@ -46,14 +46,12 @@ Read, do not change, and do not ask yet. Find out:
 4. Whether lighthouse is already installed here: does `lighthouse.toml` or
    `.lighthouse/manifest.toml` exist? If `.lighthouse/manifest.toml` exists, stop. Tell the user
    lighthouse is already installed; updating it is outside this guide.
-5. Which requirements are missing. Check each tool with `command -v <tool>`, `tomllib` with
-   `python3 -I -c 'import tomllib'`, and `superpowers` in
+5. Which requirements are missing. Check each tool with `command -v <tool>`, and `superpowers` in
    `~/.claude/plugins/installed_plugins.json`.
 6. Which languages the repository uses (`git ls-files`): this decides which packages `init` picks.
 
 | Tool | Package | Without it |
 |---|---|---|
-| `python3`, `tomllib` (Python 3.11+) | all | The hooks report `COULD NOT CHECK`, and the blocking ones block. |
 | `git` | core, expo, go, shell | Nothing works. |
 | `jq` | core, go, python, shell | The hooks cannot read their payload and report `COULD NOT CHECK`. |
 | `gh` | core, python | The issue and PR skills cannot reach GitHub. |
