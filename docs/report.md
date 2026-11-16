@@ -84,7 +84,8 @@ Het verslag staat in `[project] language`: `nl` en `en` zijn er, elke andere taa
 
 - *Gemergde PR's*: de PR's die in de periode zijn gemerged, op tijdstip van mergen.
 - *Gesloten issues*: de issues die in de periode zijn gesloten, op tijdstip van sluiten. Alleen
-  een sluiting als `completed` (of zonder reden) telt als gedaan; `not_planned` valt weg.
+  een sluiting als `completed` (of zonder reden) telt als gedaan; elke andere reden (`not_planned`,
+  `duplicate`) valt weg.
 
 **Gaande**
 
