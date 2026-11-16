@@ -270,5 +270,29 @@
   "rc": 0,
   "stdout": "off\n",
   "stderr": ""
+ },
+ {
+  "args": [
+   "report.enabled"
+  ],
+  "rc": 0,
+  "stdout": "false\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "report.sink"
+  ],
+  "rc": 0,
+  "stdout": "stdout\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "report.dir"
+  ],
+  "rc": 1,
+  "stdout": "",
+  "stderr": "config: report.dir is not set\n"
  }
 ]

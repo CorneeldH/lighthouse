@@ -84,3 +84,7 @@ key_env = "K"
 env_file = ".env"
 [review]
 roborev = "local"
+[report]
+enabled = true
+sink = "file"
+dir = "verslagen"

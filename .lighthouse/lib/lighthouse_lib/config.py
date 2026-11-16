@@ -132,6 +132,9 @@ SCHEMA: Mapping[str, str] = MappingProxyType(
         "code_language_llm.key_env": _STR,
         "code_language_llm.env_file": _STR,
         "review.roborev": _STR,
+        "report.enabled": _BOOL,
+        "report.sink": _STR,
+        "report.dir": _STR,
     }
 )
 
@@ -171,6 +174,8 @@ DEFAULTS: Mapping[str, object] = MappingProxyType(
         "usage_guard.resume": False,
         "usage_guard.controller": False,
         "review.roborev": "off",
+        "report.enabled": False,
+        "report.sink": "stdout",
     }
 )
 
@@ -460,6 +465,9 @@ def load(path: Path) -> Config:
     roborev = data.get("review", {}).get("roborev")
     if roborev is not None and roborev not in ("local", "off"):
         raise ConfigError(f"{path}: key review.roborev must be 'local' or 'off', not {roborev!r}")
+    sink = data.get("report", {}).get("sink")
+    if sink is not None and sink not in ("stdout", "file"):
+        raise ConfigError(f"{path}: key report.sink must be 'stdout' or 'file', not {sink!r}")
 
     return Config(
         kind=kind,

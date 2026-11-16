@@ -130,6 +130,9 @@ var schema = []struct{ key, kind string }{
 	{"code_language_llm.key_env", kStr},
 	{"code_language_llm.env_file", kStr},
 	{"review.roborev", kStr},
+	{"report.enabled", kBool},
+	{"report.sink", kStr},
+	{"report.dir", kStr},
 }
 
 // defaults is the value of an absent key. A key in schema without a default is optional: not
@@ -167,6 +170,8 @@ var defaults = map[string]any{
 	"usage_guard.resume":                     false,
 	"usage_guard.controller":                 false,
 	"review.roborev":                         "off",
+	"report.enabled":                         false,
+	"report.sink":                            "stdout",
 }
 
 // mayBeEmpty are the keys whose empty value is a setting: `[test_gate] command = ""` turns the
@@ -623,6 +628,11 @@ func build(data map[string]any, md toml.MetaData, rawPath string) (*Config, erro
 	if review, ok := data["review"].(map[string]any); ok {
 		if v, ok := review["roborev"]; ok && v != "local" && v != "off" {
 			return nil, errf("%s: key review.roborev must be 'local' or 'off', not %s", path, pyRepr(v))
+		}
+	}
+	if report, ok := data["report"].(map[string]any); ok {
+		if v, ok := report["sink"]; ok && v != "stdout" && v != "file" {
+			return nil, errf("%s: key report.sink must be 'stdout' or 'file', not %s", path, pyRepr(v))
 		}
 	}
 	return c, nil

@@ -1144,3 +1144,29 @@ def test_review_roborev_rejects_other_values(tmp_path, value):
     with pytest.raises(ConfigError) as exc:
         load(path)
     assert "key review.roborev must be 'local' or 'off'" in str(exc.value)
+
+
+# --- [report] ----------------------------------------------------------------
+
+
+def test_report_defaults(tmp_path):
+    cfg = load(_write(tmp_path, VALID))
+    assert lookup(cfg, "report.enabled") is False
+    assert lookup(cfg, "report.sink") == "stdout"
+    with pytest.raises(KeyError):
+        lookup(cfg, "report.dir")
+
+
+@pytest.mark.parametrize("value", ["wiki", "FILE"])
+def test_report_sink_rejects_other_values(tmp_path, value):
+    path = _write(tmp_path, {**VALID, "report": {"sink": value}})
+    with pytest.raises(ConfigError) as exc:
+        load(path)
+    assert "key report.sink must be 'stdout' or 'file'" in str(exc.value)
+
+
+def test_report_enabled_must_be_bool(tmp_path):
+    path = _write(tmp_path, {**VALID, "report": {"enabled": "true"}})
+    with pytest.raises(ConfigError) as exc:
+        load(path)
+    assert "key report.enabled must be of type bool" in str(exc.value)

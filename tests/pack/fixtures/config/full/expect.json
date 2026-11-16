@@ -606,5 +606,29 @@
   "rc": 2,
   "stdout": "",
   "stderr": "config: forge.board is a table, not a value\n"
+ },
+ {
+  "args": [
+   "report.enabled"
+  ],
+  "rc": 0,
+  "stdout": "true\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "report.sink"
+  ],
+  "rc": 0,
+  "stdout": "file\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "report.dir"
+  ],
+  "rc": 0,
+  "stdout": "verslagen\n",
+  "stderr": ""
  }
 ]

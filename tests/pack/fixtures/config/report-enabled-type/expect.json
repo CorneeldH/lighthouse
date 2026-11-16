@@ -1,0 +1,10 @@
+[
+ {
+  "args": [
+   "report.enabled"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "config: lighthouse.toml: key report.enabled must be of type bool\n"
+ }
+]

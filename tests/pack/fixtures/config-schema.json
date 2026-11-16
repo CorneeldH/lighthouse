@@ -215,6 +215,18 @@
   [
    "review.roborev",
    "str"
+  ],
+  [
+   "report.enabled",
+   "bool"
+  ],
+  [
+   "report.sink",
+   "str"
+  ],
+  [
+   "report.dir",
+   "str"
   ]
  ],
  "defaults": {
@@ -258,7 +270,9 @@
   ],
   "usage_guard.resume": false,
   "usage_guard.controller": false,
-  "review.roborev": "off"
+  "review.roborev": "off",
+  "report.enabled": false,
+  "report.sink": "stdout"
  },
  "base_keys": [
   "forge.kind",
