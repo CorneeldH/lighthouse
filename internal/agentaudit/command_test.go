@@ -71,6 +71,10 @@ func TestScriptPath(t *testing.T) {
 		{"background glued starts a command", "true&./gone/z.sh", plain, plain + "/gone/z.sh"},
 		{"background ampersand starts a command", "true & ./gone/z.sh", plain, plain + "/gone/z.sh"},
 		{"quoted semicolon stays in the word", `echo 'a;./gone/z.sh'`, plain, ""},
+		{"var starting with HOME skipped", "$HOMEBREW_PREFIX/bin/guard.sh", plain, ""},
+		{"var starting with project dir skipped", "$CLAUDE_PROJECT_DIRX/.claude/hooks/a.sh", plain, ""},
+		{"var with underscore suffix skipped", "bash $CLAUDE_PROJECT_DIR_OLD/x/y.sh", plain, ""},
+		{"project dir var at end of cd", `cd $CLAUDE_PROJECT_DIR&&./x/y.sh`, plain, plain + "/x/y.sh"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -83,8 +87,10 @@ func TestScriptPath(t *testing.T) {
 
 func TestScriptPathWithoutHome(t *testing.T) {
 	root := tree(t, nil)
-	if got := scriptPath("node ~/.claude/hooks/b.js", root, ""); got != "" {
-		t.Errorf("got %q, want \"\" without a home directory", got)
+	for _, command := range []string{"node ~/.claude/hooks/b.js", "$HOME/.claude/hooks/b.js"} {
+		if got := scriptPath(command, root, ""); got != "" {
+			t.Errorf("scriptPath(%q) = %q, want \"\" without a home directory", command, got)
+		}
 	}
 }
 

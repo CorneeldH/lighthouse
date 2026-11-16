@@ -3,6 +3,7 @@ package agentaudit
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -92,6 +93,24 @@ func codeFlag(word string) bool {
 	return true
 }
 
+// knownVars matches $CLAUDE_PROJECT_DIR and $HOME, braced or followed by a character
+// that cannot continue a variable name, so $HOMEBREW_PREFIX stays a variable of its own.
+var knownVars = regexp.MustCompile(`\$\{(CLAUDE_PROJECT_DIR|HOME)\}|\$(CLAUDE_PROJECT_DIR|HOME)\b`)
+
+// expand replaces $CLAUDE_PROJECT_DIR by root and $HOME by home (when known) in word;
+// every other $VAR stays as it is.
+func expand(word, root, home string) string {
+	return knownVars.ReplaceAllStringFunc(word, func(v string) string {
+		if strings.Contains(v, "CLAUDE_PROJECT_DIR") {
+			return root
+		}
+		if home == "" {
+			return v
+		}
+		return home
+	})
+}
+
 // separators end one simple command and start the next.
 var separators = map[string]bool{"&&": true, "||": true, ";": true, "|": true, "&": true, "|&": true, ";;": true}
 
@@ -107,11 +126,6 @@ var separators = map[string]bool{"&&": true, "||": true, ";": true, "|": true, "
 // The code after an interpreter's -c that holds whitespace is a command line of its own:
 // it is read the same way, and never taken as a path itself.
 func scriptPath(command, root, home string) string {
-	pairs := []string{"${CLAUDE_PROJECT_DIR}", root, "$CLAUDE_PROJECT_DIR", root}
-	if home != "" {
-		pairs = append(pairs, "${HOME}", home, "$HOME", home)
-	}
-	replacer := strings.NewReplacer(pairs...)
 	base := root
 	missing := ""
 	cd := false
@@ -132,7 +146,7 @@ func scriptPath(command, root, home string) string {
 			cmdPos = true
 			continue
 		}
-		word := replacer.Replace(raw)
+		word := expand(raw, root, home)
 		if cd {
 			cd = false
 			if filepath.IsAbs(word) {
