@@ -89,36 +89,66 @@ Een oudercommando met subcommando's, naar het model van `lighthouse evidence`
 | `milestone create --title --description-file`, `milestone edit <nr> [--title] [--description-file]` | schrijven | write-issue |
 | `label list` | labels van de repo | write-issue |
 | `issue blockers <nr>` | open en gesloten blockers (`BlockedBy`) | route-issue, write-issue |
-| `issue block <nr> --by <blocker>` | blocker-relatie zetten | write-issue |
+| `issue block <nr> --by <blocker>` | blocker-relatie zetten (`AddBlocker`, nieuwe interfacemethode) | write-issue |
 | `issue status <nr> <status>` | status op het board (`IssueItem`, `SetStatus`) | write-issue |
-| `api <pad> [-X <methode>] [-f <veld>=<waarde>]…` | rauwe aanroep op de API van de geconfigureerde forge, met diens token en host | de referenties (§2) |
+| `api <pad> [-X <methode>] [-f <veld>=<tekst>]… [-F <veld>=<waarde>]…` | rauwe aanroep op de API van de geconfigureerde forge, met diens token en host | de referenties (§2) |
 
 Afspraken:
 
 - **Eén JSON-vorm** op stdout voor beide forges, met namen van lighthouse zelf: `number`, `title`,
   `body`, `state` (`open`/`closed`), `labels` (lijst van namen), `milestone` (`number`, `title`,
-  `description`, of `null`), `url`, en bij `--comments` een lijst `comments` (`author`, `body`,
-  `created_at`). Een PR en een MR hebben dezelfde vorm. De skills passen hun `jq` hierop aan.
+  `description`, of `null`), `url`, `created_at`, `author`, en bij `--comments` een lijst `comments` (`author`, `body`,
+  `created_at`). `created_at` en `author` zijn nodig voor het herstel na een mislukt `issue create`
+  (zelfde titel en body, aangemaakt na het genoteerde starttijdstip) *(eigen keuze na spec-review, r1-f3)*. Een PR en een MR hebben dezelfde vorm; `state` is voor een PR
+  `open`, `closed` of `merged` *(eigen keuze na spec-review, r1-f12)*. `issue blockers` drukt een
+  lijst af met per blocker `number`, `state` (`open`/`closed`), `repo` en `merged_pr` (de vorm van
+  `forge.Blocker`, [`board.go:41-45`](../../../../internal/forge/board.go)) *(eigen keuze na spec-review, r1-f12)*. De skills passen hun `jq` hierop aan.
 - **`--field <pad>`** op elk leescommando: een pad met punten (`milestone.title`, `labels`) dat
   alleen die waarde afdrukt, een scalar als tekst en de rest als JSON. Zo pint een Evidence-rij een
-  exacte waarde zonder `jq` (*eigen keuze*: geen nieuwe dependency zoals gojq).
+  exacte waarde zonder `jq` (*eigen keuze*: geen nieuwe dependency zoals gojq). `--field` is op
+  `api` geen kiezer: `api` kent alleen `-f` en `-F`, en de lange vorm `--field` bestaat daar niet,
+  zodat de verbodslijst van write-pr (`-f`/`-F`/`--field`/`--raw-field`) ondubbelzinnig blijft
+  *(eigen keuze na spec-review, r1-f13)*.
 - **Milestones op GitLab**: `milestone list` en `milestone view` geven project- én groepsmilestones
-  (`include_ancestors`); `milestone create` maakt er één in het project; `--milestone` op
+  (`include_ancestors`); `milestone create` maakt er één in het project. Het `number` van een milestone in de JSON is op
+  GitLab het globale id (de iid herhaalt zich tussen project en groep, zoals `glIssue.issue` al
+  vastlegt). `milestone view <nr>` zoekt dat id in `include_ancestors`, `milestone edit <nr>` weigert
+  een groepsmilestone met een heldere melding (exit 1; die wijzig je met `api`), en een titel die
+  op twee milestones past is een gebruiksfout (exit 2) die beide noemt
+  *(eigen keuze na spec-review, r1-f5)*; `--milestone` op
   `issue create`, `issue edit` en `pr create` neemt een titel, op beide forges (*eigen keuze*: veel
   GitLab-projecten houden milestones op groepsniveau, en de titel is wat de skills nu al gebruiken).
 - **`api` is de uitwijkweg, geen abstractie.** Het pad en de JSON zijn die van de forge zelf; de
-  wrapper voegt alleen token, host en paginering toe. Zo hoeven de referenties geen `glab` of `curl`
+  wrapper voegt alleen token, host en paginering toe. Veldsemantiek als bij `gh api`: `-f` is een
+  tekstveld, `-F` een getypeerd veld (getal, `true`/`false`, `null`, of `@bestand` voor de inhoud
+  van een bestand), en samen vormen ze de JSON-body. GraphQL loopt door hetzelfde commando met het
+  eigen pad van de forge (`graphql` op GitHub, `api/graphql` op GitLab) en `-F`/`-f query=…`; de
+  evidence-allowlist laat dat niet toe omdat het geen GET is *(eigen keuze na spec-review, r1-f4)*. Zo hoeven de referenties geen `glab` of `curl`
   met een token in de shell te gebruiken (gebruiker, keuze a).
 - **`pr` op beide forges.** Op GitLab maakt `pr create` een MR; de tekst van de uitvoer zegt "MR".
   Geen apart `mr`-commando (*eigen keuze*: één woord in de skills).
-- **Exitcodes** zoals `evidence`: 0 goed, 1 forge-fout (met de API-melding), 2 gebruiksfout of
-  ontbrekende config.
+- **Exitcodes**, eigen reeks (niet die van `evidence`, dat 3 voor een onleesbare config gebruikt):
+  0 goed, 1 forge-fout (met de API-melding), 2 gebruiksfout of ontbrekende config
+  *(eigen keuze na spec-review, r1-f8)*.
 - **Geen merge.** `lighthouse forge` krijgt geen merge-commando (milestone-no-go).
 - **Nieuwe interfacemethodes.** De `Forge`-interface krijgt wat nu ontbreekt (create/edit issue,
-  comment, create PR/MR, milestones, labels, search), voor GitHub en GitLab, met gevallen in
+  comment, create PR/MR, milestones, labels, search, `AddBlocker`). `AddBlocker` zet op GitHub
+  `dependencies/blocked_by` met het gehele database-`id` van de blocker (zoals write-issue nu doet,
+  `SKILL.md:210-211`), op GitLab `POST …/links` met `link_type=is_blocked_by`; een weigering van de
+  API (bijvoorbeeld op Free) komt als forge-fout met de API-melding terug (exit 1)
+  *(eigen keuze na spec-review, r1-f2, r1-f7)*, voor GitHub en GitLab, met gevallen in
   [`internal/forge/forgesuite`](../../../../internal/forge/forgesuite/suite.go) zodat beide
   implementaties dezelfde contracttests draaien.
-- **`board-start`** gebruikt de forge-interface (`IssueItem`, `SetStatus`) in plaats van `gh`.
+- **`board-start`** gebruikt de forge-interface (`IssueItem`, `SetStatus`) in plaats van `gh`, en
+  behoudt zijn huidige contract *(eigen keuze na spec-review, r1-f6)*: de token valt terug op
+  `gh auth token` (de `ghToken`-terugval van `forgeOpener`, nu alleen bij `ask`, wordt ook hier
+  ingehangen); een token- of forgefout blijft exit 0 met een `board: …`-regel; een status die niet
+  in `status_options` staat (bijvoorbeeld "On hold") beslist board-start op de ruwe optienaam: `BoardItem`
+  krijgt een extra veld `StatusName`, gevuld op GitHub door `name` aan `fieldValuesSelection` toe te
+  voegen en op GitLab uit `status.name`; `Status` en de `BoardItems`-query van de dispatcher blijven
+  gelijk in betekenis (het veld is additief) *(eigen keuze na spec-review, r2-f1)*. De 37 gevallen in
+  `tests/pack/fixtures/scripts/board-start/cases.json` die `gh`-argv stubben, worden vervangen door
+  tests op een fake `forge.Forge`; de uitkomsten per geval blijven gelijk.
 
 ### 2. De gedeelde referentie
 
@@ -148,8 +178,8 @@ Wat er in de secties staat:
 
 | Sectie | GitHub | GitLab |
 |---|---|---|
-| §board | Projects v2; statussen uit `[forge.board]`; token met scope `project` | scoped label `status::…` (zoals de client van #259) |
-| §blockers | `dependencies/blocked_by` | issue links `is_blocked_by`; alleen in Premium/Ultimate. Op Free: zie *Aan de bouwer* |
+| §board | Projects v2; statussen uit `[forge.board]`; token met scope `project` | ingebouwde work-item-status (zoals de client van #259, `gitlab_board.go`); namen uit `[forge.board]` `status_options`, gematcht tegen de lifecycle van de topgroep; geen label *(eigen keuze na spec-review, r1-f1)* |
+| §blockers | `dependencies/blocked_by` | issue links `is_blocked_by`; alleen in Premium/Ultimate. Op Free: zie *Aan de bouwer*. `issue block` geeft daar de weigering van de API; `issue blockers` geeft op Free een lege lijst zonder fout, dus de referentie zegt dat route-issue op GitLab ook het label `blocked_issue` en de blocker in de body leest *(eigen keuze na spec-review, r1-f7)* |
 | §sub-issues | `lighthouse forge api` op `repos/<repo>/issues/<nr>/sub_issues` | taken (work item type Task) onder een issue via `lighthouse forge api`; epics vragen Premium |
 | §sluitwoorden | `close[sd]`, `fix(e[sd])`, `resolve[sd]` | daarnaast `closing`, `fixing`, `resolving`, `implement(s/ed/ing)` |
 | §proxy | `gh issue list --json` breekt onder de rtk-proxy; gebruik `lighthouse forge` of `gh api` | n.v.t. |
@@ -159,7 +189,10 @@ Wat er in de secties staat:
 - `start-issue`, `route-issue`, `write-issue`, `write-pr`: elke `gh`-aanroep die in de tabel van §1
   valt, wordt `lighthouse forge …`. Wat in een sectie van §2 valt, wordt een verwijzing naar die
   sectie. De regel over `gh issue list --json` verhuist naar §proxy.
-- Beide tweelingen (`claude/` en `agents/`) gaan mee.
+- Beide tweelingen (`claude/` en `agents/`) gaan mee; `route-issue` en `write-pr` hebben er geen
+  (één bestand). De contracttests in `tests/pack/test_skill_contracts.py` die de `gh`-vorm vastleggen
+  (de #224-test voor `write-pr`, rond regel 404) en de eis dat een skill die `gh` noemt een
+  `requires.toml`-regel heeft, gaan mee *(eigen keuze na spec-review, r1-f11)*.
 - `pack/core/requires.toml`: `gh` blijft bij de ketenskills staan, omdat `github.md` het noemt
   (`gh auth token` als token, `gh project` voor wie het board met de hand bijwerkt). Op een
   GitLab-repo geeft dat een onterechte waarschuwing; een voorwaarde per forge in `requires.toml`
@@ -172,7 +205,10 @@ Wat er in de secties staat:
 
 - `lighthouse forge pr create` (het gewone pad op beide forges);
 - `gh pr create`/`gh pr new` (zoals nu);
-- `glab mr create` (rauw, voor wie buiten de skill om gaat).
+- `glab mr create` (rauw, voor wie buiten de skill om gaat; de body via `-d`/`--description`). De
+  `--repo`-regel geldt voor `glab` met `-R`/`--repo` zoals voor `gh`, en de tweestaps-regel voor een
+  onparseerbaar commando kijkt ook naar `glab`/`mr` (nu laat `prcreategate.go:85` een commando zonder
+  `gh` en `pr` door) *(eigen keuze na spec-review, r1-f10)*.
 
 De twee plekken die nu op `gh pr create` matchen
 ([`find.go:233`](../../../../internal/prbody/find.go),
@@ -185,7 +221,8 @@ wrapper leest `forge.repo` zelf en heeft hem niet nodig.
 `<groep>/<project>#N` met subgroepen en `https://<host>/<pad>/-/issues/N`.
 
 **AC-telling** ([`gate.go:62-72`](../../../../internal/prbody/gate.go)): leest het issue via de
-forge-interface in plaats van `gh api`. Op GitHub valt het token terug op `gh auth token`, dus de
+forge-interface in plaats van `gh api`. Op GitHub valt het token terug op `gh auth token` (de terugval wordt in de bouw van `prbody.Env`
+aan de forge-opener gehangen, met de huidige `Env.GH`-naad als testnaad; r1-f9), dus de
 uitkomst (doorlaten of blokkeren) blijft gelijk. Een meldingstekst mag veranderen (een ontbrekend
 token in plaats van een ontbrekende `gh`); de gate wordt nergens minder streng, en een fout blijft
 een blokkade (*eigen keuze*).
@@ -196,7 +233,10 @@ van `lighthouse forge` toe (`issue view`, `issue list`, `issue search`, `issue b
 `-f`), met `--field`, naast de bestaande `gh`-vormen. Dezelfde verboden als nu gelden (geen `env`,
 geen invoerbestand). Dat zijn de GitLab-varianten
 van AC 4 (*eigen keuze*: geen `glab` in de allowlist, want `glab` is geen afhankelijkheid). De
-bereikbaarheidsprobe (`gh api rate_limit`) wordt een probe op de forge van `forge.kind`.
+bereikbaarheidsprobe (`gh api rate_limit`) wordt een probe op de forge van `forge.kind`; ook rijen
+met `lighthouse forge` tellen mee voor die probe en worden *onmeetbaar* als de forge onbereikbaar
+is, niet *faalt* (nu geldt dat alleen voor `argv[0] == "gh"`, `run.go:402`)
+*(eigen keuze na spec-review, r1-f14)*.
 
 ## Vastgelegd
 
