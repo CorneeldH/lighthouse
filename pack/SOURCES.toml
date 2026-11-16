@@ -45,10 +45,6 @@ path = "pack/core/lib/headings.py"
 new = true
 
 [[file]]
-path = "pack/core/scripts/create_labels.py"
-new = true
-
-[[file]]
 path = "pack/core/workflows/unblock-dependents.yml"
 source_path = ".github/workflows/unblock-dependents.yml"
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"

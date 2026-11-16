@@ -152,7 +152,7 @@
                 "internal/repoconfig/repoconfig.go",
                 "internal/workplace/local/adapter.go",
                 "internal/worktreeaudit/collect.go",
-                "pack/core/scripts/create_labels.py",
+                "internal/labels/labels.go",
                 "pack/core/skills/audit-worktrees",
                 "pack/core/skills/close-issue",
                 "pack/core/skills/fix-pr",
@@ -455,7 +455,7 @@
                 "internal/cli/init.go",
                 "internal/initcmd/initcmd.go",
                 "internal/projectconfig/projectconfig.go",
-                "pack/core/scripts/create_labels.py",
+                "internal/labels/labels.go",
                 "pack/core/skills/write-issue",
                 "pack/core/skills/write-pr"
               ]

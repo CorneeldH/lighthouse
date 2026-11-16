@@ -548,13 +548,6 @@ version = "dev"
 sha256 = "d91b117b414a6c4a9d486c89a914a07d02a6f70351c35b46633996616a590772"
 
 [[unit]]
-kind = "file"
-path = ".lighthouse/scripts/create_labels.py"
-package = "core"
-version = "dev"
-sha256 = "cf79f3adc5339bbb0d1b3a768b270707eefeaebfd177f1e5d6f20cfdd263eb49"
-
-[[unit]]
 kind = "block"
 path = "AGENTS.md"
 id = "core"

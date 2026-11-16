@@ -26,6 +26,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/agentsmd"
 	"github.com/CorneeldH/lighthouse/internal/deps"
 	"github.com/CorneeldH/lighthouse/internal/hostconfig"
+	labelsync "github.com/CorneeldH/lighthouse/internal/labels"
 	"github.com/CorneeldH/lighthouse/internal/manifest"
 	"github.com/CorneeldH/lighthouse/internal/orderedjson"
 	"github.com/CorneeldH/lighthouse/internal/packs"
@@ -50,7 +51,7 @@ type Options struct {
 	Upgrade, Force, Yes bool
 	Labels              bool                                                      // --labels: propose the label taxonomy file, [labels] and [paths] labels
 	CreateLabels        bool                                                      // --create-labels (with --labels): create the missing labels on the remote
-	SyncLabels          func(root string, create bool, out, errw io.Writer) error // nil runs the installed create_labels.py
+	SyncLabels          func(root string, create bool, out, errw io.Writer) error // nil means labels.Sync
 	AddPacks, DropPacks []string                                                  // --pack and --no-pack (plan M0 (c), design choice 6)
 	ForgeHosts          []string                                                  // --forge-host: hosts of self-hosted GitLab instances
 	Version             string                                                    // "" means version.String()
@@ -233,10 +234,10 @@ func execute(o Options) error {
 	if o.Labels {
 		sync := o.SyncLabels
 		if sync == nil {
-			sync = runLabelScript
+			sync = labelsync.Sync
 		}
 		if err := sync(root, o.CreateLabels, o.Out, o.Err); err != nil {
-			_, _ = fmt.Fprintf(o.Err, "warning: labels: %v\n", err)
+			_, _ = fmt.Fprintln(o.Err, "warning: labels: not synchronised")
 		}
 	}
 	return offerHost(o, in)
