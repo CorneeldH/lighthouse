@@ -516,8 +516,8 @@ func issueLifecycleByMarker(t *testing.T, f Fixture) {
 		t.Fatalf("CreateIssue = %+v; want a new open issue titled Pin behind", is)
 	}
 	it := find(t, f, marker)
-	if it.Number != is.Number || it.IsPR || it.State != "open" || it.Body != marker+"\nfirst body" {
-		t.Errorf("found %+v; want open issue #%d, not a PR, with its full body", it, is.Number)
+	if it.Number != is.Number || it.IsPR || it.State != "open" || it.Body != marker+"\nfirst body" || it.Author != f.Login() {
+		t.Errorf("found %+v; want open issue #%d by %s, not a PR, with its full body", it, is.Number, f.Login())
 	}
 
 	if err := f.Forge().UpdateIssueBody(ctx, is.Number, marker+"\nsecond body"); err != nil {
@@ -553,8 +553,8 @@ func prLifecycleByMarker(t *testing.T, f Fixture) {
 		t.Fatalf("CreatePR = %+v; want an open draft PR on pins/x", pr)
 	}
 	it := find(t, f, marker)
-	if it.Number != pr.Number || !it.IsPR || it.State != "open" || it.HeadRef != "pins/x" || it.Body != marker+"\nbody" {
-		t.Errorf("found %+v; want open PR #%d on pins/x with its full body", it, pr.Number)
+	if it.Number != pr.Number || !it.IsPR || it.State != "open" || it.HeadRef != "pins/x" || it.Body != marker+"\nbody" || it.Author != f.Login() {
+		t.Errorf("found %+v; want open PR #%d by %s on pins/x with its full body", it, pr.Number, f.Login())
 	}
 
 	if err := f.Forge().UpdatePRBody(ctx, pr.Number, marker+"\nnew"); err != nil {
@@ -602,7 +602,7 @@ func findByMarkerPages(t *testing.T, f Fixture) {
 		}
 		f.AddIssue(t, is)
 	}
-	if it := find(t, f, marker); it.Number != page || it.Body != marker {
-		t.Errorf("found %+v; want #%d from the second page", it, page)
+	if it := find(t, f, marker); it.Number != page || it.Body != marker || it.Author != "ann" {
+		t.Errorf("found %+v; want #%d by ann from the second page", it, page)
 	}
 }

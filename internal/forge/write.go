@@ -99,6 +99,8 @@ type Item struct {
 	State   string // "open" or "closed", as the issues list names it; a merged PR is "closed"
 	Body    string
 	HeadRef string // of a PR; "" for an issue
+	// Author is the login that opened the issue or pull request; "" when the forge names none.
+	Author string
 }
 
 // CreateIssue opens an issue and returns it.
@@ -220,6 +222,9 @@ func (c *GitHub) FindByMarker(ctx context.Context, marker string) ([]Item, error
 				continue
 			}
 			item := Item{Number: it.Number, IsPR: it.PullRequest != nil, State: it.State, Body: it.Body}
+			if it.User != nil {
+				item.Author = it.User.Login
+			}
 			if item.IsPR {
 				var pr prItem
 				prURL := fmt.Sprintf("%s/repos/%s/pulls/%d", c.BaseURL, c.Repo, it.Number)
