@@ -19,13 +19,16 @@ var unquote = strings.NewReplacer(`"`, "", `'`, "")
 // words splits a command line on whitespace outside quotes and drops the quotes, so
 // `"$CLAUDE_PROJECT_DIR"/x.sh` stays one word. An unbalanced quote runs to the end. A run
 // of ;, | and & outside quotes ends the word before it and is a word of its own, so
-// `x.sh;` and `a&&./b.sh` split as the shell splits them.
+// `x.sh;` and `a&&./b.sh` split as the shell splits them. A redirection (`>`, `2>&1`,
+// `&>>file`, `<in`) starts a word of its own, with its target glued to it when the
+// command glues it: its & is no separator.
 func words(command string) []string {
 	var out []string
 	var cur strings.Builder
 	var quote rune
 	started := false
-	inOp := false // cur holds a run of operator characters
+	inOp := false    // cur holds a run of ;, | and &
+	inRedir := false // cur holds a redirection
 	flush := func() {
 		if started {
 			out = append(out, cur.String())
@@ -33,33 +36,82 @@ func words(command string) []string {
 		cur.Reset()
 		started = false
 		inOp = false
+		inRedir = false
 	}
-	for _, r := range command {
-		isOp := quote == 0 && (r == ';' || r == '|' || r == '&')
-		if quote == 0 && inOp != isOp {
-			flush()
-		}
-		switch {
-		case quote != 0:
+	write := func(r rune) {
+		cur.WriteRune(r)
+		started = true
+	}
+	runes := []rune(command)
+	for i, r := range runes {
+		if quote != 0 {
 			if r == quote {
 				quote = 0
 			} else {
 				cur.WriteRune(r)
 			}
+			continue
+		}
+		prev, next := rune(0), rune(0)
+		if i > 0 {
+			prev = runes[i-1]
+		}
+		if i+1 < len(runes) {
+			next = runes[i+1]
+		}
+		switch {
 		case r == '"' || r == '\'':
+			if inOp {
+				flush()
+			}
 			quote = r
 			started = true
 		case r == ' ' || r == '\t' || r == '\n' || r == '\r':
 			flush()
+		case r == '>' || r == '<':
+			if inOp || (!inRedir && !allDigits(cur.String())) {
+				flush()
+			}
+			write(r)
+			inRedir = true
+		case r == '&' && inRedir && (prev == '>' || prev == '<'):
+			write(r) // >&2, 2>&1
+		case r == '&' && next == '>':
+			flush()
+			write(r) // &>file, &>>file
+			inRedir = true
+		case r == ';' || r == '|' || r == '&':
+			if !inOp {
+				flush()
+			}
+			write(r)
+			inOp = true
 		default:
-			cur.WriteRune(r)
-			started = true
-			inOp = isOp
+			if inOp {
+				flush()
+			}
+			write(r)
 		}
 	}
 	flush()
 	return out
 }
+
+// allDigits reports whether s is a file descriptor number, such as the 2 of 2>.
+func allDigits(s string) bool {
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// redirect matches a redirection word; bareRedirect one whose target is the next word.
+var (
+	redirect     = regexp.MustCompile(`^(\d+|&)?[<>]`)
+	bareRedirect = regexp.MustCompile(`^(\d+|&)?[<>]+&?$`)
+)
 
 // looksLikeScript reports whether a path reads as a script: it has an extension or lies
 // under a .claude directory. A bare binary such as /usr/bin/jq does not.
@@ -137,7 +189,8 @@ func scriptPath(command, root, home string) string {
 // script, and else the first missing one in command position.
 func scan(command, base, root, home string) (found, missing string) {
 	cd := false
-	code := false // the previous word was the -c of an interpreter
+	code := false   // the previous word was the -c of an interpreter
+	target := false // the previous word was a redirection without its target
 	cmdPos := true
 	for _, raw := range words(command) {
 		if code {
@@ -152,8 +205,17 @@ func scan(command, base, root, home string) (found, missing string) {
 			}
 			continue
 		}
+		if target {
+			target = false
+			continue
+		}
 		if separators[raw] {
 			cmdPos = true
+			continue
+		}
+		if redirect.MatchString(raw) {
+			// A redirection and its target are never the script, and keep the position.
+			target = bareRedirect.MatchString(raw)
 			continue
 		}
 		word := expand(raw, root, home)

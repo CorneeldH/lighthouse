@@ -79,6 +79,18 @@ func TestScriptPath(t *testing.T) {
 		{"cd inside -c code from a cd", `cd x && sh -c 'cd .. && ./x/y.sh'`, plain, plain + "/x/y.sh"},
 		{"existing after -c code wins over its missing", `bash -c './gone/z.sh --fast' && ./x/y.sh`, plain, plain + "/x/y.sh"},
 		{"-c code of one quoted word", `bash -c '"$CLAUDE_PROJECT_DIR"/x/y.sh'`, plain, plain + "/x/y.sh"},
+		{"&> redirect target is no script", "jq -r .x &>/tmp/hook.log", plain, ""},
+		{"&>> redirect target is no script", "jq -r .x &>>/tmp/x.log", plain, ""},
+		{"spaced &> redirect target is no script", "jq -r .x &> /tmp/hook.sh", plain, ""},
+		{">& redirect target is no script", "jq -r .x >&/tmp/hook.sh", plain, ""},
+		{"redirect after separator is no script", "true; >/tmp/hook.sh", plain, ""},
+		{"spaced redirect after separator is no script", "true; > /tmp/hook.sh", plain, ""},
+		{"input redirect is no script", "./x/y.sh </tmp/in.sh", plain, plain + "/x/y.sh"},
+		{"2>&1 then pipe to a script", "cmd 2>&1 | ./x/y.sh", plain, plain + "/x/y.sh"},
+		{"2>&1 then pipe to a missing script", "cmd 2>&1 | ./gone/z.sh", plain, plain + "/gone/z.sh"},
+		{">&2 then semicolon", "echo no >&2; ./gone/z.sh", plain, plain + "/gone/z.sh"},
+		{"redirect glued to a script", "./gone/z.sh>/tmp/log.sh", plain, plain + "/gone/z.sh"},
+		{"&> glued to a word", "jq .x&>/tmp/h.sh", plain, ""},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
