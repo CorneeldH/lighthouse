@@ -127,7 +127,7 @@ func (w *report) inventory(inv *Inventory) {
 		if h.Script != "" {
 			script = "script " + h.Shown
 		}
-		rows = append(rows, []string{h.Source, h.Event, matcher, h.Command, script, blockingText(h)})
+		rows = append(rows, []string{h.Source, h.Event, matcher, shortCommand(h.Command), script, blockingText(h)})
 	}
 	w.table("    ", rows)
 
@@ -171,6 +171,19 @@ func (w *report) inventory(inv *Inventory) {
 	for _, s := range inv.Scripts {
 		w.line("    %s", s)
 	}
+}
+
+// maxCommandWidth is the widest a command is shown in the inventory, in characters.
+const maxCommandWidth = 80
+
+// shortCommand is a command as the inventory shows it: on one line, cut to
+// maxCommandWidth characters with "…" as the last one.
+func shortCommand(command string) string {
+	r := []rune(strings.Join(strings.Fields(command), " "))
+	if len(r) <= maxCommandWidth {
+		return string(r)
+	}
+	return string(r[:maxCommandWidth-1]) + "…"
 }
 
 func blockingText(h Hook) string {
