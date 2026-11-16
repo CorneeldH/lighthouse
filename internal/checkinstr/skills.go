@@ -9,10 +9,9 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-)
 
-// blockScalar is the value of a YAML folded (`>`) or literal (`|`) block scalar header.
-var blockScalar = regexp.MustCompile(`^[>|][-+0-9]*[ \t]*$`)
+	"github.com/CorneeldH/lighthouse/internal/frontmatter"
+)
 
 // metadataHeader opens the `metadata:` block of a frontmatter.
 var metadataHeader = regexp.MustCompile(`^metadata:[ \t]*$`)
@@ -28,50 +27,6 @@ func lines(path string) []string {
 		return nil
 	}
 	return strings.Split(strings.TrimSuffix(string(data), "\n"), "\n")
-}
-
-// frontmatterField is a field from the frontmatter of file: "" when the field is missing OR
-// carries no value, so an empty `upstream:` counts as missing. A folded (`>`) or literal (`|`)
-// block scalar is read from its indented continuation lines.
-func frontmatterField(file, field string) string {
-	ls := lines(file)
-	if len(ls) == 0 || ls[0] != "---" {
-		return ""
-	}
-	prefix := field + ": "
-	collecting, fold := false, false
-	var buf strings.Builder
-	for _, l := range ls[1:] {
-		if collecting {
-			if l == "---" || (l != "" && !startsBlank(l)) {
-				return strings.TrimRight(buf.String(), "\n")
-			}
-			line := strings.TrimLeft(l, " \t")
-			text := buf.String()
-			switch {
-			case line == "":
-				buf.WriteString("\n")
-			case text == "" || strings.HasSuffix(text, "\n"):
-				buf.WriteString(line)
-			case fold:
-				buf.WriteString(" " + line)
-			default:
-				buf.WriteString("\n" + line)
-			}
-			continue
-		}
-		if l == "---" {
-			return ""
-		}
-		if value, found := strings.CutPrefix(l, prefix); found {
-			if blockScalar.MatchString(value) {
-				collecting, fold = true, value[0] == '>'
-				continue
-			}
-			return value
-		}
-	}
-	return strings.TrimRight(buf.String(), "\n")
 }
 
 // skillMeta is a key under the `metadata:` block of the SKILL.md in dir, where the Agent Skills
@@ -206,7 +161,7 @@ func checkDuplicateName(rp *repo, r *report) {
 	}
 	var pairs [][2]string
 	for _, dir := range skillDirs(rp.claudeSkills) {
-		if name := frontmatterField(rp.claudeSkills+"/"+dir+"/SKILL.md", "name"); name != "" {
+		if name := frontmatter.Field(rp.claudeSkills+"/"+dir+"/SKILL.md", "name"); name != "" {
 			pairs = append(pairs, [2]string{name, dir})
 		}
 	}

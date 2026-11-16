@@ -32,35 +32,6 @@ func runRepo(t *testing.T, root string) (code int, stdout string) {
 	return code, out.String()
 }
 
-// Red when a frontmatter value is read differently from the awk of the script: a block scalar
-// read as its header, an empty value read as present, a field outside the frontmatter found.
-func TestFrontmatterField(t *testing.T) {
-	cases := []struct {
-		name, text, field, want string
-	}{
-		{"plain", "---\nname: demo\n---\n", "name", "demo"},
-		{"empty value is missing", "---\nupstream: \nname: demo\n---\n", "upstream", ""},
-		{"no space is missing", "---\nupstream:\n---\n", "upstream", ""},
-		{"folded", "---\ndescription: >\n  one\n  two\n\n  three\nname: demo\n---\n", "description", "one two\nthree"},
-		{"folded with chomping", "---\ndescription: >-\n  one\n  two\n---\n", "description", "one two"},
-		{"literal", "---\ndescription: |\n  one\n  two\n---\n", "description", "one\ntwo"},
-		{"block at end of file", "---\ndescription: >\n  one\n  two", "description", "one two"},
-		{"trailing empty lines dropped", "---\ndescription: |\n  one\n\n\n---\n", "description", "one"},
-		{"after the frontmatter", "---\nname: demo\n---\ndescription: body\n", "description", ""},
-		{"no frontmatter", "name: demo\n", "name", ""},
-		{"value kept as written", "---\nname:  two  spaces \n---\n", "name", " two  spaces "},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			path := filepath.Join(t.TempDir(), "SKILL.md")
-			writeFile(t, path, tc.text)
-			if got := frontmatterField(path, tc.field); got != tc.want {
-				t.Errorf("frontmatterField(%q) = %q, want %q", tc.field, got, tc.want)
-			}
-		})
-	}
-}
-
 // Red when a key outside the `metadata:` block counts, or a key after the block ended.
 func TestSkillMeta(t *testing.T) {
 	cases := []struct {

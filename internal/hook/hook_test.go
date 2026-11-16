@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -360,5 +361,24 @@ func TestRunTextWriteFails(t *testing.T) {
 	code := Run(context.Background(), "text", "", strings.NewReader(`{}`), failingWriter{}, &errOut, newEnv(t, "dev", "dev"))
 	if want := "COULD NOT CHECK: hook text: writing output: pipe closed\n"; code != ExitUnknown || errOut.String() != want {
 		t.Errorf("code %d err %q, want %d %q", code, errOut.String(), ExitUnknown, want)
+	}
+}
+
+// Red when Names drops a registered hook, or lists them in registration order.
+func TestNamesListsRegistered(t *testing.T) {
+	noop := func(context.Context, string, string, Payload) Result { return Result{} }
+	register(t, "zz-names-b", noop)
+	register(t, "zz-names-a", noop)
+	var got []string
+	for _, n := range Names() {
+		if strings.HasPrefix(n, "zz-names-") {
+			got = append(got, n)
+		}
+	}
+	if len(got) != 2 || got[0] != "zz-names-a" || got[1] != "zz-names-b" {
+		t.Errorf("Names() test entries = %v, want [zz-names-a zz-names-b]", got)
+	}
+	if !sort.StringsAreSorted(Names()) {
+		t.Errorf("Names() = %v, not sorted", Names())
 	}
 }
