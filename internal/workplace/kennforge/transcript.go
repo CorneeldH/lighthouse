@@ -10,7 +10,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
@@ -30,8 +29,6 @@ const (
 const containerScript = `d="$HOME/.claude/projects/$1"; [ -f "$d/$2.jsonl" ] || exit 3; cd "$d" || exit 4; ` +
 	`if [ -d "$2/subagents" ]; then exec tar -cf - "$2.jsonl" "$2/subagents"; fi; exec tar -cf - "$2.jsonl"`
 
-var safeSession = regexp.MustCompile(`^[A-Za-z0-9-]+$`)
-
 // Transcript reads the transcript of session sessionID in the workspace, as
 // workplace.ReadTranscript does. With the software profile claude runs in the shared
 // devcontainer and keeps its transcripts in a volume the host cannot read (#237): the session's
@@ -45,7 +42,7 @@ func (a *Adapter) Transcript(ctx context.Context, workspaceID, sessionID string)
 	if a.Node != "" {
 		return workplace.Transcript{}, fmt.Errorf("transcript on node %s: %w", a.Node, workplace.ErrNotMeasurable)
 	}
-	if !safeSession.MatchString(sessionID) {
+	if !workplace.SafeSession.MatchString(sessionID) {
 		return workplace.Transcript{}, fmt.Errorf("transcript in workspace %s: unsafe session id %q", workspaceID, sessionID)
 	}
 	w, err := a.readWorkspace(ctx, workspaceID)

@@ -4,13 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"regexp"
 	"strings"
 
 	"github.com/CorneeldH/lighthouse/internal/workplace"
 )
-
-var safeSession = regexp.MustCompile(`^[A-Za-z0-9-]+$`)
 
 // Remove deletes the worktree and every record of the workspace; the local branch stays.
 // A workspace without a record is already removed. A vanished or adopted worktree is never
@@ -133,7 +130,7 @@ func (a *Adapter) Transcript(ctx context.Context, workspaceID, sessionID string)
 	if err := checkLocal(workspaceID); err != nil {
 		return workplace.Transcript{}, err
 	}
-	if !safeSession.MatchString(sessionID) {
+	if !workplace.SafeSession.MatchString(sessionID) {
 		return workplace.Transcript{}, fmt.Errorf("transcript in workspace %s: unsafe session id %q", workspaceID, sessionID)
 	}
 	rec, _, err := a.resolve(ctx, workspaceID)

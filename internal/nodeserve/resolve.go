@@ -6,16 +6,12 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/nodeapi"
 	"github.com/CorneeldH/lighthouse/internal/workplace"
 )
-
-// safeID is the pattern of a workspace id, the same as the carrier key in workplace.
-var safeID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
 const toplevelTimeout = 30 * time.Second
 
@@ -25,8 +21,8 @@ const toplevelTimeout = 30 * time.Second
 // before any call, a forge 404 is 404 workspace_gone, a forge that fails or reports a relative
 // path is 502, and a path that is not a toplevel is 500.
 func (h *handler) resolve(ctx context.Context, id string) (workplace.Workspace, error) {
-	if !safeID.MatchString(id) || strings.HasPrefix(id, workplace.LocalIDPrefix) {
-		return workplace.Workspace{}, &nodeapi.Problem{Status: http.StatusBadRequest, Detail: fmt.Sprintf("workspace id %q is not a kenn-forge id", id)}
+	if err := checkWorkspaceID(id); err != nil {
+		return workplace.Workspace{}, err
 	}
 	ws, err := h.adapter.Lookup(ctx, id)
 	if errors.Is(err, workplace.ErrGone) {
@@ -57,6 +53,18 @@ func (h *handler) resolve(ctx context.Context, id string) (workplace.Workspace, 
 	return ws, nil
 }
 
+// checkWorkspaceID is 400 for an id that is no safe file name or no kenn-forge id.
+func checkWorkspaceID(id string) error {
+	if !workplace.SafeID.MatchString(id) || strings.HasPrefix(id, workplace.LocalIDPrefix) {
+		return badRequest("workspace id %q is not a kenn-forge id", id)
+	}
+	return nil
+}
+
 func internal(format string, args ...any) *nodeapi.Problem {
 	return &nodeapi.Problem{Status: http.StatusInternalServerError, Detail: fmt.Sprintf(format, args...)}
+}
+
+func badRequest(format string, args ...any) *nodeapi.Problem {
+	return &nodeapi.Problem{Status: http.StatusBadRequest, Detail: fmt.Sprintf(format, args...)}
 }

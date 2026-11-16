@@ -23,8 +23,10 @@ const pluginCacheReadRule = "--allowedTools=Read(~/.claude/plugins/cache/**)"
 var (
 	// A lower-case UUID v4, as runs.NewSessionID makes it.
 	uuidPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
-	// A workspace id becomes a file name.
-	safeIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+	// SafeID is a workspace id or node that may become a file name.
+	SafeID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+	// SafeSession is a session id that may become a path element and a pattern argument.
+	SafeSession = regexp.MustCompile(`^[A-Za-z0-9-]+$`)
 )
 
 // Carrier is the file a forge target reads to start the agent. It never holds
@@ -103,10 +105,10 @@ func CarrierPath(stateDir, node, workspaceID string) string {
 
 // checkCarrierKey checks that the workspace id, and a node other than self, are safe file names.
 func checkCarrierKey(node, id string) error {
-	if !safeIDPattern.MatchString(id) {
+	if !SafeID.MatchString(id) {
 		return fmt.Errorf("carrier: workspace id %q is not a safe file name", id)
 	}
-	if node != "" && !safeIDPattern.MatchString(node) {
+	if node != "" && !SafeID.MatchString(node) {
 		return fmt.Errorf("carrier: node %q is not a safe file name", node)
 	}
 	return nil
