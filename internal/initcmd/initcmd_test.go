@@ -1477,3 +1477,41 @@ func TestNoIgnoreWarningInCleanRepo(t *testing.T) {
 		t.Fatalf("rc %d err %q", r.code, r.err)
 	}
 }
+
+func TestRemoveEmptyParents(t *testing.T) {
+	root := t.TempDir()
+	mk := func(rel string, file bool) {
+		t.Helper()
+		if file {
+			write(t, root, rel, "x")
+		} else if err := os.MkdirAll(filepath.Join(root, rel), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The parent of the removed file is empty, its parent holds a project file.
+	mk(".lighthouse/lib/a/b", false)
+	mk(".lighthouse/lib/a/mine.txt", true)
+	if err := removeEmptyParents(root, ".lighthouse/lib/a/b/c.py"); err != nil {
+		t.Fatal(err)
+	}
+	if exists(root, ".lighthouse/lib/a/b") {
+		t.Error("the empty parent survives")
+	}
+	if !exists(root, ".lighthouse/lib/a/mine.txt") {
+		t.Fatal("a directory with a project file was removed")
+	}
+	// Everything empty up to and including the retired root goes; its parent stays.
+	if err := os.Remove(filepath.Join(root, ".lighthouse/lib/a/mine.txt")); err != nil {
+		t.Fatal(err)
+	}
+	mk(".lighthouse/manifest.toml", true)
+	if err := removeEmptyParents(root, ".lighthouse/lib/a/c.py"); err != nil {
+		t.Fatal(err)
+	}
+	if exists(root, ".lighthouse/lib") {
+		t.Error("the empty retired root survives")
+	}
+	if !exists(root, ".lighthouse/manifest.toml") {
+		t.Error(".lighthouse was removed")
+	}
+}
