@@ -760,6 +760,7 @@
                 false
               ],
               "readers": [
+                "internal/cli/report.go",
                 "internal/repoconfig/repoconfig.go"
               ]
             },
