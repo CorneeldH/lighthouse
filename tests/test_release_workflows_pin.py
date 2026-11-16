@@ -79,10 +79,65 @@ def test_release_triggers_and_concurrency():
 
 
 def test_release_pushes_atomically():
-    """Fails when the commit and the tag no longer land in one atomic push, with retries."""
+    """Fails when main and the tag no longer land in one atomic push, with retries."""
     release = _jobs(RELEASE)["release"]
-    assert "git push --atomic origin HEAD:main" in release
+    assert 'git push --atomic origin "$main_sha:refs/heads/main" "refs/tags/$tag"' in release
     assert "for attempt in 1 2 3" in release
+    sha = "main_sha=$(git rev-parse HEAD)"
+    script = 'ci/tag-with-ui.sh "$tag" "$RUNNER_TEMP/ui-dist"'
+    assert release.index("git commit -m") < release.index(sha) < release.index(script)
+    assert release.index(script) < release.index("git push --atomic")
+    assert 'git tag -a "$tag"' not in release
+
+
+def test_ui_job_builds_in_a_read_only_job():
+    """Fails when `ui` gets write rights, drops its pinned checkout or stops uploading ui-dist."""
+    ui = _jobs(RELEASE)["ui"]
+    assert re.search(r"^    needs: macos\s*$", ui, re.MULTILINE)
+    assert "contents: read" in ui and "contents: write" not in ui
+    checkout = next(x for x in _steps(ui) if "actions/checkout@" in x)
+    assert re.search(r"^\s+ref: \$\{\{ github\.sha \}\}\s*$", checkout, re.MULTILINE)
+    assert "persist-credentials: false" in checkout
+    assert "node-version-file: web/.nvmrc" in ui
+    ui_steps = _steps(ui)
+    for command in ("npm ci", "npm run build"):
+        step = next((x for x in ui_steps if re.search(rf"^\s+(?:- )?run: {command}\s*$", x, re.MULTILINE)), None)
+        assert step is not None, f"ui has no own step `run: {command}`"
+        assert re.search(r"^\s+working-directory: web\s*$", step, re.MULTILINE), command
+    upload = next(x for x in ui_steps if "actions/upload-artifact@" in x)
+    for needle in ("name: ui-dist", "path: internal/web/dist", "if-no-files-found: error"):
+        assert re.search(r"^\s+" + re.escape(needle) + r"\s*$", upload, re.MULTILINE), needle
+
+
+def test_ui_job_uploads_hidden_files():
+    """Fails when the ui-dist upload skips dotfiles (upload-artifact drops them by default)."""
+    upload = next(x for x in _steps(_jobs(RELEASE)["ui"]) if "actions/upload-artifact@" in x)
+    assert re.search(r"^\s+include-hidden-files: true\s*$", upload, re.MULTILINE)
+
+
+def test_writing_jobs_run_no_npm():
+    """Fails when a job that can write runs npm or setup-node, or `release` loses the ui-dist download."""
+    targets = [(RELEASE, "release"), (WORKFLOWS / "prerelease.yml", "tag")]
+    for path, name in targets:
+        if not path.exists():  # task 4 adds prerelease.yml
+            continue
+        job = _jobs(path)[name]
+        assert "npm" not in job, (path.name, name)
+        assert "setup-node" not in job, (path.name, name)
+    release = _jobs(RELEASE)["release"]
+    assert re.search(r"^    needs: \[macos, ui\]\s*$", release, re.MULTILINE)
+    download = next(x for x in _steps(release) if "actions/download-artifact@" in x)
+    assert re.search(r"^\s+name: ui-dist\s*$", download, re.MULTILINE)
+    assert re.search(r"^\s+path: \$\{\{ runner\.temp \}\}/ui-dist\s*$", download, re.MULTILINE)
+
+
+def test_release_retry_does_not_rebuild():
+    """Fails when a retry rebuilds the SPA or tags before it has reset to origin/main."""
+    release = _jobs(RELEASE)["release"]
+    loop = release[release.index("for attempt in 1 2 3") :]
+    assert "npm" not in loop
+    script = 'ci/tag-with-ui.sh "$tag" "$RUNNER_TEMP/ui-dist"'
+    assert loop.index("git reset --hard origin/main") < loop.index(script)
 
 
 def test_only_release_job_persists_credentials():
@@ -328,7 +383,9 @@ def test_release_waits_for_macos():
     """Fails when the release can start without a green macOS run (#337)."""
     jobs = _jobs(RELEASE)
     assert "uses: ./.github/workflows/macos.yml" in jobs["macos"]
-    assert re.search(r"^    needs: macos\s*$", jobs["release"], re.MULTILINE)
+    # `release` also needs `ui`: dropping it would race download-artifact with the ui job.
+    assert re.search(r"^    needs: \[macos, ui\]\s*$", jobs["release"], re.MULTILINE)
+    assert re.search(r"^    needs: macos\s*$", jobs["ui"], re.MULTILINE)
 
 
 def _tested_commit_check(release: str) -> str:
