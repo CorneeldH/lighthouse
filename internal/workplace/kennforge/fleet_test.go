@@ -2,15 +2,19 @@ package kennforge
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/CorneeldH/lighthouse/internal/nodeapi"
 	"github.com/CorneeldH/lighthouse/internal/workplace"
 )
 
@@ -31,17 +35,165 @@ func TestFleetPath(t *testing.T) {
 	}
 }
 
-// twoNodes is a fake hub with node-a and node-b, and an adapter on node.
-func twoNodes(t *testing.T, node string) (fa, fb *fakeForge, a *Adapter) {
+// events is the order in which the hub and serve saw the requests of a test.
+type events struct {
+	mu   sync.Mutex
+	list []string
+}
+
+func (e *events) add(s string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.list = append(e.list, s)
+}
+
+func (e *events) all() []string {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return append([]string(nil), e.list...)
+}
+
+// answer is what fakeServe answers on one route: a status and a JSON body (nil: none). Status
+// hang answers nothing until the client gives up.
+type answer struct {
+	status int
+	body   any
+}
+
+const hang = -1
+
+// fakeServe is lighthouse serve on a node, in the shape fakeNode answers (bearer check, info,
+// problem+json), with every route of the node-API the adapter uses. Each route logs
+// "serve <METHOD> <route>" in events, keeps its last request body, and answers what on sets,
+// or its default: a carrier for launch, no sessions, a clean git state, 204 for the rest.
+type fakeServe struct {
+	*fakeNode
+	ev *events
+
+	mu      sync.Mutex
+	answers map[string]answer
+	bodies  map[string]string
+	queries map[string]string
+	release chan struct{}
+}
+
+// The routes of fakeServe, as "<METHOD> <route>".
+var (
+	launchRoute     = "PUT " + nodeapi.PathLaunch
+	carrierRoute    = "DELETE " + nodeapi.PathCarrier
+	followRoute     = "POST " + nodeapi.PathFollow
+	sessionsRoute   = "GET " + nodeapi.PathSessions
+	stopRoute       = "POST " + nodeapi.PathStop
+	killRoute       = "POST " + nodeapi.PathKill
+	gitRoute        = "GET " + nodeapi.PathGit
+	relocateRoute   = "POST " + nodeapi.PathRelocate
+	permissionRoute = "GET " + nodeapi.PathPermission
+)
+
+func newFakeServe(t *testing.T, ev *events) *fakeServe {
+	t.Helper()
+	s := &fakeServe{
+		fakeNode: newFakeNode(t), ev: ev,
+		answers: map[string]answer{
+			launchRoute:   {http.StatusOK, workplace.Carrier{SessionID: testSessionID}},
+			sessionsRoute: {http.StatusOK, []nodeapi.Session{}},
+			gitRoute:      {http.StatusOK, nodeapi.GitState{}},
+		},
+		bodies: map[string]string{}, queries: map[string]string{}, release: make(chan struct{}),
+	}
+	t.Cleanup(func() { close(s.release) })
+	for _, route := range []string{launchRoute, carrierRoute, followRoute, sessionsRoute, stopRoute, killRoute, gitRoute, relocateRoute, permissionRoute} {
+		s.mux.HandleFunc(route, func(w http.ResponseWriter, r *http.Request) { s.serve(w, r, route) })
+	}
+	return s
+}
+
+func (s *fakeServe) serve(w http.ResponseWriter, r *http.Request, route string) {
+	raw, _ := io.ReadAll(r.Body)
+	s.ev.add("serve " + route)
+	s.mu.Lock()
+	s.bodies[route] = string(raw)
+	s.queries[route] = r.URL.RawQuery
+	a, ok := s.answers[route]
+	s.mu.Unlock()
+	switch {
+	case !ok:
+		w.WriteHeader(http.StatusNoContent)
+	case a.status == hang:
+		select {
+		case <-r.Context().Done():
+		case <-s.release:
+		}
+	case a.body == nil:
+		w.WriteHeader(a.status)
+	default:
+		writeNode(w, a.status, a.body)
+	}
+}
+
+// on sets the answer of route.
+func (s *fakeServe) on(route string, status int, body any) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.answers[route] = answer{status, body}
+}
+
+// gone is the 404 of serve for a workspace its forge no longer knows.
+func gone() nodeapi.Problem {
+	return nodeapi.Problem{Status: http.StatusNotFound, Code: nodeapi.CodeWorkspaceGone, Detail: "workspace not found"}
+}
+
+func (s *fakeServe) body(route string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.bodies[route]
+}
+
+func (s *fakeServe) query(route string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.queries[route]
+}
+
+// count is the number of requests on route.
+func (s *fakeServe) count(route string) int {
+	n := 0
+	for _, e := range s.ev.all() {
+		if e == "serve "+route {
+			n++
+		}
+	}
+	return n
+}
+
+// requests counts every request on serve but info.
+func (s *fakeServe) requests() int {
+	n := 0
+	for _, e := range s.ev.all() {
+		if strings.HasPrefix(e, "serve ") {
+			n++
+		}
+	}
+	return n
+}
+
+// twoNodes is a fake hub with node-a and node-b, and an adapter on node with serve sa. Every
+// handoff on node-a or node-b logs "handoff <node>" in the events of sa.
+func twoNodes(t *testing.T, node string) (fa, fb *fakeForge, sa *fakeServe, a *Adapter) {
 	t.Helper()
 	fa, fb = newForgeNode(t), newForgeNode(t)
-	hub := newFakeHub(t, map[string]hubNode{"node-a": fa, "node-b": fb})
+	ev := &events{}
+	fa.onHandoff = func() { ev.add("handoff node-a") }
+	fb.onHandoff = func() { ev.add("handoff node-b") }
+	hub := newFakeHub(t, map[string]*fakeForge{"node-a": fa, "node-b": fb})
 	tok := filepath.Join(t.TempDir(), "token")
 	if err := os.WriteFile(tok, []byte("secret\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	sa = newFakeServe(t, ev)
 	a = &Adapter{
 		Client: New(hub.URL, tok), Kind: "github", Repo: "CorneeldH/lighthouse", Node: node,
+		Serve:    sa.client(t),
 		StateDir: t.TempDir(), Targets: map[string]string{"software": "paia-software"},
 		Profile: "software", UnitPrefix: "paia-forge-",
 		Run: func(_ context.Context, _ time.Duration, name string, args ...string) (string, int, error) {
@@ -50,13 +202,30 @@ func twoNodes(t *testing.T, node string) (fa, fb *fakeForge, a *Adapter) {
 		},
 		Sleep: func(time.Duration) {},
 	}
-	return fa, fb, a
+	return fa, fb, sa, a
 }
 
-const runtimeKey = "GET /api/v1/workspaces/ws1/runtime"
+// nodeSpec is spec with run instructions in a real file: Spawn on a node sends their content.
+func nodeSpec(t *testing.T) workplace.LaunchSpec {
+	t.Helper()
+	l := spec()
+	l.InstructionsFile = filepath.Join(t.TempDir(), "instructions.md")
+	if err := os.WriteFile(l.InstructionsFile, []byte("# instructions of the run\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return l
+}
+
+// noTickCarriers fails when the tick's state dir holds any carrier: on a node it lives there.
+func noTickCarriers(t *testing.T, a *Adapter) {
+	t.Helper()
+	if entries, err := os.ReadDir(filepath.Join(a.StateDir, "carriers")); err == nil && len(entries) > 0 {
+		t.Errorf("carriers in the tick's state dir: %v, want none", entries)
+	}
+}
 
 func TestRemotePrepareCreatesOnItsNode(t *testing.T) {
-	fa, fb, a := twoNodes(t, "node-a")
+	fa, fb, sa, a := twoNodes(t, "node-a")
 	fa.path = "/srv/node-a/ws1"
 	ws, err := a.Prepare(context.Background(), "issue-1-x")
 	if err != nil {
@@ -71,13 +240,16 @@ func TestRemotePrepareCreatesOnItsNode(t *testing.T) {
 	if n := fa.count("GET /api/v1/workspaces"); n != 1 {
 		t.Errorf("list on node-a = %d, want 1", n)
 	}
+	if got := sa.body(followRoute); got != `{"branch":"issue-1-x","created":true}` {
+		t.Errorf("follow body = %s, want the branch of a created workspace", got)
+	}
 	if n := fb.total(); n != 0 {
 		t.Errorf("requests on node-b = %d, want 0", n)
 	}
 }
 
 func TestRemotePrepareFindsOnItsNode(t *testing.T) {
-	fa, fb, a := twoNodes(t, "node-b")
+	fa, fb, sa, a := twoNodes(t, "node-b")
 	fa.listBody = listWith("issue-1-x")
 	fb.path = "/srv/node-b/ws1"
 	ws, err := a.Prepare(context.Background(), "issue-1-x")
@@ -93,11 +265,14 @@ func TestRemotePrepareFindsOnItsNode(t *testing.T) {
 	if n := fa.total(); n != 0 {
 		t.Errorf("requests on node-a = %d, want 0", n)
 	}
+	if n := sa.count(followRoute); n != 1 {
+		t.Errorf("follows on serve = %d, want 1", n)
+	}
 }
 
 func TestRemoteSpawnHandoffOnItsNode(t *testing.T) {
-	fa, fb, a := twoNodes(t, "node-a")
-	s, err := a.Spawn(context.Background(), ws1, spec())
+	fa, fb, sa, a := twoNodes(t, "node-a")
+	s, err := a.Spawn(context.Background(), ws1, nodeSpec(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,88 +286,32 @@ func TestRemoteSpawnHandoffOnItsNode(t *testing.T) {
 		t.Errorf("body = %s", got)
 	}
 	if n := fa.count("GET /api/v1/workspaces/ws1/agent-sessions"); n != 0 {
-		t.Errorf("agent-sessions reads = %d, want 0: the hub has no such route", n)
+		t.Errorf("agent-sessions reads on the hub = %d, want 0: the hub has no such route", n)
+	}
+	if n := sa.count(sessionsRoute); n != 1 {
+		t.Errorf("sessions reads on serve = %d, want 1 (before the handoff)", n)
 	}
 	if n := fb.total(); n != 0 {
 		t.Errorf("requests on node-b = %d, want 0", n)
 	}
-	if _, err := os.Stat(workplace.CarrierPath(a.StateDir, "node-a", "ws1")); err != nil {
-		t.Errorf("carrier of node-a: %v", err)
-	}
-	if _, err := os.Stat(workplace.CarrierPath(a.StateDir, "", "ws1")); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("carrier of self: err = %v, want none", err)
-	}
+	noTickCarriers(t, a)
 }
 
-// The runtime answer of forge v0.7.0 (see wireRuntime): sessions without session_id.
-const runtimeBody = `{"launch_targets":[],"sessions":[` +
-	`{"key":"k1","workspace_id":"ws1","target_key":"paia-software","label":"Claude","kind":"agent","status":"running","display_region":"main","created_at":"2026-11-13T10:00:00Z"},` +
-	`{"key":"k2","workspace_id":"ws1","target_key":"shell","label":"Shell","kind":"shell","status":"running","display_region":"main","created_at":"2026-11-13T10:01:00Z"},` +
-	`{"key":"k3","workspace_id":"ws1","target_key":"paia-software","label":"Claude","kind":"agent","status":"exited","display_region":"main","created_at":"2026-11-13T09:00:00Z","exited_at":"2026-11-13T09:30:00Z","exit_code":0}]}`
-
-func TestRemoteSessionsReadRuntime(t *testing.T) {
-	fa, fb, a := twoNodes(t, "node-a")
-	fa.runtime = []string{runtimeBody}
-	ss, err := a.Sessions(context.Background(), "ws1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := []workplace.Session{
-		{Key: "k1", WorkspaceID: "ws1", State: "running"},
-		{Key: "k3", WorkspaceID: "ws1", State: "done"},
-	}
-	if len(ss) != len(want) {
-		t.Fatalf("sessions = %+v, want %+v", ss, want)
-	}
-	for i := range want {
-		if ss[i] != want[i] {
-			t.Errorf("session %d = %+v, want %+v", i, ss[i], want[i])
-		}
-	}
-	if ss[0].Stand() != workplace.Waiting || ss[1].Stand() != workplace.Done {
-		t.Errorf("stands = %v, %v; want waiting, done", ss[0].Stand(), ss[1].Stand())
-	}
-	if n := fa.count(runtimeKey); n != 1 {
-		t.Errorf("runtime reads on node-a = %d, want 1", n)
-	}
-	if n := fb.total(); n != 0 {
-		t.Errorf("requests on node-b = %d, want 0", n)
-	}
-}
-
-func TestRemoteSessionsWithoutListUncertain(t *testing.T) {
-	fa, _, a := twoNodes(t, "node-a")
-	fa.runtime = []string{`{"launch_targets":[]}`}
-	if _, err := a.Sessions(context.Background(), "ws1"); !errors.Is(err, workplace.ErrUncertain) {
-		t.Errorf("err = %v, want ErrUncertain", err)
-	}
-}
-
-// Forge's /runtime in v0.7.0 has no session_id, so no session carries the id Stop gets: it sends
-// no DELETE, runs no systemctl or podman, and needs no unit_prefix.
-func TestRemoteStopSendsNoDelete(t *testing.T) {
+// Stop and Kill on a node with an empty session id send nothing: serve would refuse it, but
+// the tick refuses first, as on self.
+func TestRemoteStopEmptySessionIDRejected(t *testing.T) {
 	for _, name := range []string{"Stop", "Kill"} {
 		t.Run(name, func(t *testing.T) {
-			fa, fb, a := twoNodes(t, "node-a")
-			a.UnitPrefix = ""
-			fa.runtime = []string{runtimeBody}
+			fa, _, sa, a := twoNodes(t, "node-a")
 			call := a.Stop
 			if name == "Kill" {
 				call = a.Kill
 			}
-			if err := call(context.Background(), "ws1", []string{testSessionID}); err != nil {
-				t.Fatalf("%s: %v", name, err)
+			if err := call(context.Background(), "ws1", []string{testSessionID, ""}); err == nil {
+				t.Errorf("%s: err = nil, want an error for an empty session id", name)
 			}
-			if n := fa.count(runtimeKey); n != 1 {
-				t.Errorf("runtime reads on node-a = %d, want 1", n)
-			}
-			for _, key := range []string{"DELETE /api/v1/workspaces/ws1/runtime/sessions/k1", "GET /api/v1/workspaces/ws1"} {
-				if n := fa.count(key); n != 0 {
-					t.Errorf("%s on node-a = %d, want 0", key, n)
-				}
-			}
-			if n := fb.total(); n != 0 {
-				t.Errorf("requests on node-b = %d, want 0", n)
+			if n := fa.total() + sa.requests(); n != 0 {
+				t.Errorf("requests on node-a = %d, want 0", n)
 			}
 		})
 	}
@@ -201,36 +320,28 @@ func TestRemoteStopSendsNoDelete(t *testing.T) {
 func TestRemoteStopUnmeasurableIsError(t *testing.T) {
 	for _, name := range []string{"Stop", "Kill"} {
 		t.Run(name, func(t *testing.T) {
-			fa, _, a := twoNodes(t, "node-a")
-			fa.runtimeStatus = http.StatusInternalServerError
-			call := a.Stop
+			_, _, sa, a := twoNodes(t, "node-a")
+			call, route := a.Stop, stopRoute
 			if name == "Kill" {
-				call = a.Kill
+				call, route = a.Kill, killRoute
 			}
-			if err := call(context.Background(), "ws1", []string{testSessionID}); err == nil {
-				t.Errorf("%s: err = nil, want an error when the sessions cannot be read", name)
+			sa.on(route, http.StatusInternalServerError, nodeapi.Problem{Status: 500, Detail: "pgrep: cannot read /proc"})
+			err := call(context.Background(), "ws1", []string{testSessionID})
+			if err == nil || errors.Is(err, workplace.ErrGone) {
+				t.Errorf("%s: err = %v, want an error, not ErrGone", name, err)
 			}
 		})
 	}
 }
 
-func TestRemoteStopEmptySessionIDRejected(t *testing.T) {
-	fa, _, a := twoNodes(t, "node-a")
-	if err := a.Stop(context.Background(), "ws1", []string{""}); err == nil {
-		t.Error("Stop: err = nil, want an error for an empty session id")
-	}
-	if n := fa.total(); n != 0 {
-		t.Errorf("requests on node-a = %d, want 0", n)
-	}
-}
-
-// Review focus 2: the hub answers 404 for a spoke it does not reach. That is never "gone".
+// Review focus 2: the hub answers 404 for a spoke it does not reach. That is never "gone", and
+// a 404 workspace_gone of serve is not either while the hub cannot confirm it.
 func TestRemoteNotFoundUnreachableIsUncertain(t *testing.T) {
 	for _, node := range []string{"node-a", "node-c"} { // node-c: not known to the hub at all
 		t.Run(node, func(t *testing.T) {
-			fa, _, a := twoNodes(t, node)
+			fa, _, sa, a := twoNodes(t, node)
 			fa.offline = true
-			writeCarrierOn(t, a, node)
+			sa.on(sessionsRoute, http.StatusNotFound, gone())
 			if _, err := a.Lookup(context.Background(), "ws1"); !errors.Is(err, workplace.ErrUncertain) || errors.Is(err, workplace.ErrGone) {
 				t.Errorf("Lookup: err = %v, want ErrUncertain and not ErrGone", err)
 			}
@@ -240,8 +351,8 @@ func TestRemoteNotFoundUnreachableIsUncertain(t *testing.T) {
 			if err := a.Remove(context.Background(), "ws1"); !errors.Is(err, workplace.ErrUncertain) {
 				t.Errorf("Remove: err = %v, want ErrUncertain", err)
 			}
-			if _, err := os.Stat(workplace.CarrierPath(a.StateDir, node, "ws1")); err != nil {
-				t.Errorf("carrier after an unconfirmed 404: %v, want it kept", err)
+			if n := sa.count(carrierRoute); n != 0 {
+				t.Errorf("carrier deletes = %d after an unconfirmed 404, want 0: the carrier stays", n)
 			}
 			if n := fa.total(); n != 0 {
 				t.Errorf("requests on node-a = %d, want 0: the hub does not reach it", n)
@@ -254,9 +365,9 @@ func TestRemoteNotFoundUnreachableIsUncertain(t *testing.T) {
 // tunnel is back before the snapshot is read. The hub's own 404 is never "gone", whatever the
 // snapshot says.
 func TestRemoteHubNotFoundIsUncertainWhileSnapshotReachable(t *testing.T) {
-	fa, _, a := twoNodes(t, "node-a")
+	fa, _, sa, a := twoNodes(t, "node-a")
 	fa.back = true
-	writeCarrierOn(t, a, "node-a")
+	sa.on(sessionsRoute, http.StatusNotFound, gone())
 	if _, err := a.Lookup(context.Background(), "ws1"); !errors.Is(err, workplace.ErrUncertain) || errors.Is(err, workplace.ErrGone) {
 		t.Errorf("Lookup: err = %v, want ErrUncertain and not ErrGone", err)
 	}
@@ -266,8 +377,8 @@ func TestRemoteHubNotFoundIsUncertainWhileSnapshotReachable(t *testing.T) {
 	if err := a.Remove(context.Background(), "ws1"); !errors.Is(err, workplace.ErrUncertain) {
 		t.Errorf("Remove: err = %v, want ErrUncertain", err)
 	}
-	if _, err := os.Stat(workplace.CarrierPath(a.StateDir, "node-a", "ws1")); err != nil {
-		t.Errorf("carrier after the hub's own 404: %v, want it kept", err)
+	if n := sa.count(carrierRoute); n != 0 {
+		t.Errorf("carrier deletes = %d after the hub's own 404, want 0", n)
 	}
 	if n := fa.total(); n != 0 {
 		t.Errorf("requests on node-a = %d, want 0", n)
@@ -278,7 +389,7 @@ func TestRemoteHubNotFoundIsUncertainWhileSnapshotReachable(t *testing.T) {
 func TestRemoteNodeIDEscaped(t *testing.T) {
 	fn := newForgeNode(t)
 	other := newForgeNode(t)
-	hub := newFakeHub(t, map[string]hubNode{"node a/b": fn, "node a": other})
+	hub := newFakeHub(t, map[string]*fakeForge{"node a/b": fn, "node a": other})
 	tok := filepath.Join(t.TempDir(), "token")
 	if err := os.WriteFile(tok, []byte("secret\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -319,21 +430,24 @@ func TestRemoteNotFoundSnapshotFailsIsUncertain(t *testing.T) {
 	if err := os.WriteFile(tok, []byte("secret\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	a := &Adapter{Client: New(srv.URL, tok), Node: "node-a", StateDir: t.TempDir()}
+	sa := newFakeServe(t, &events{})
+	a := &Adapter{Client: New(srv.URL, tok), Node: "node-a", Serve: sa.client(t), StateDir: t.TempDir()}
 	if _, err := a.Lookup(context.Background(), "ws1"); !errors.Is(err, workplace.ErrUncertain) || errors.Is(err, workplace.ErrGone) {
 		t.Errorf("Lookup: err = %v, want ErrUncertain and not ErrGone", err)
 	}
 	if err := a.Remove(context.Background(), "ws1"); !errors.Is(err, workplace.ErrUncertain) {
 		t.Errorf("Remove: err = %v, want ErrUncertain", err)
 	}
+	if n := sa.requests(); n != 0 {
+		t.Errorf("requests on serve = %d, want 0: the carrier stays", n)
+	}
 }
 
 func TestRemoteNotFoundReachableIsGone(t *testing.T) {
-	fa, _, a := twoNodes(t, "node-a")
+	fa, _, sa, a := twoNodes(t, "node-a")
 	fa.getStatus = http.StatusNotFound
-	fa.runtimeStatus = http.StatusNotFound
 	fa.deleteStatus = http.StatusNotFound
-	writeCarrierOn(t, a, "node-a")
+	sa.on(sessionsRoute, http.StatusNotFound, gone())
 	if _, err := a.Lookup(context.Background(), "ws1"); !errors.Is(err, workplace.ErrGone) {
 		t.Errorf("Lookup: err = %v, want ErrGone", err)
 	}
@@ -343,18 +457,18 @@ func TestRemoteNotFoundReachableIsGone(t *testing.T) {
 	if err := a.Remove(context.Background(), "ws1"); err != nil {
 		t.Errorf("Remove: err = %v, want nil for a workspace that is gone", err)
 	}
-	if _, err := os.Stat(workplace.CarrierPath(a.StateDir, "node-a", "ws1")); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("carrier after Remove: err = %v, want it wiped", err)
+	if n := sa.count(carrierRoute); n != 1 {
+		t.Errorf("carrier deletes on serve = %d, want 1", n)
 	}
 }
 
 func TestRemoteTranscriptNotMeasurable(t *testing.T) {
-	fa, _, a := twoNodes(t, "node-a")
+	fa, _, sa, a := twoNodes(t, "node-a")
 	_, err := a.Transcript(context.Background(), "ws1", testSessionID)
 	if !errors.Is(err, workplace.ErrNotMeasurable) || !strings.Contains(err.Error(), "node-a") {
 		t.Errorf("err = %v, want ErrNotMeasurable naming node-a", err)
 	}
-	if n := fa.total(); n != 0 {
+	if n := fa.total() + sa.requests(); n != 0 {
 		t.Errorf("requests on node-a = %d, want 0", n)
 	}
 }
@@ -398,14 +512,12 @@ func TestNodeReachable(t *testing.T) {
 	}
 }
 
-// writeCarrierOn puts a carrier for ws1 of node in the state dir, as a spawn leaves it.
-func writeCarrierOn(t *testing.T, a *Adapter, node string) {
+// decodeLaunch is the LaunchRequest serve received.
+func decodeLaunch(t *testing.T, sa *fakeServe) nodeapi.LaunchRequest {
 	t.Helper()
-	c, err := workplace.NewCarrier(spec(), a.StateDir, time.Now())
-	if err != nil {
-		t.Fatal(err)
+	var req nodeapi.LaunchRequest
+	if err := json.Unmarshal([]byte(sa.body(launchRoute)), &req); err != nil {
+		t.Fatalf("launch body %q: %v", sa.body(launchRoute), err)
 	}
-	if _, err := workplace.WriteCarrier(a.StateDir, node, "ws1", c); err != nil {
-		t.Fatal(err)
-	}
+	return req
 }

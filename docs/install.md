@@ -365,6 +365,35 @@ line sets it:
 */5 * * * * export XDG_RUNTIME_DIR=/run/user/$(id -u) PATH="$HOME/.local/bin:$HOME/go/bin:/usr/local/bin:/usr/local/go/bin:/usr/bin:/bin"; set -a; . "$HOME/.config/lighthouse/forge.env"; set +a; lighthouse tick
 ```
 
+## A node for another host
+
+A kenn-forge node that runs content for a tick on another host (`[dispatch.nodes.<name>]` with
+`serve_url`, see [tick.md](tick.md#nodes)) runs `lighthouse serve` too. Its `host.toml` needs:
+
+```toml
+[node]
+token_file = "/abs/path/node.token"      # bearer token the tick sends; same content as serve_token_file there
+
+[dispatch.forge]
+url = "http://127.0.0.1:8091"
+token_file = "/abs/path/forge.token"     # the node's own kenn-forge token; serve refuses to start without it
+unit_prefix = "lighthouse-"
+
+[dispatch.profiles.software]             # every profile name the tick uses: mandatory
+```
+
+Without `[node]` the routes under `/api/node/v1/` answer 404. A profile the tick uses but the node does
+not list gets 400 on transcript, stop and kill. `lighthouse ask` must be on the `PATH` of the agent
+(the claude the node's forge starts), not only of the service. The `mcp_config` of a profile with `node`
+in the tick's `host.toml` is a path on that node: the tick sends it unchanged and never reads it.
+The state files of the node (PAUSE, alarm, markers) are mode `0600` in a `0700` directory; when the
+runs live in a container, its uid must match.
+
+On macOS, run `serve` as a launchd agent: [com.lighthouse.serve.plist](../deploy/launchd/com.lighthouse.serve.plist).
+`serve` binds loopback and has no TLS: put `tailscale serve` in front (see *Reach it from your tailnet*
+below) and give the tick that https address as `serve_url`. Use the tailnet name of your own node; never
+`tailscale funnel`.
+
 ## Reach it from your tailnet
 
 [tailscale-serve.sh](../deploy/tailscale-serve.sh) exposes the local server over HTTPS on the

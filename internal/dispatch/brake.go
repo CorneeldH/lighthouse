@@ -14,7 +14,7 @@ const triggerUsage = "usage"
 // Brake is the host-wide state the brake reads, once per tick (spec "De rem"); nil in Input is no brake.
 type Brake struct {
 	Paused            bool     `json:"paused"`
-	Manual            bool     `json:"manual"` // lighthouse run: only pause and usage
+	Manual            bool     `json:"manual"` // lighthouse run: only pause, usage and unreadable node markers
 	UsageMeasured     bool     `json:"usage_measured"`
 	SessionPct        int      `json:"session_pct"`
 	WeekPct           int      `json:"week_pct"`
@@ -36,6 +36,9 @@ type NodeSlots struct {
 	Name  string `json:"name"`
 	Slots int    `json:"slots"`
 	InUse int    `json:"in_use"`
+	// Unmeasured: the markers of the node could not be read this tick, so its parked runs are
+	// not counted; the brake of the node is closed.
+	Unmeasured bool `json:"unmeasured,omitempty"`
 }
 
 // apply walks the starts and resumes of ps in order and lets each through, drops it (pause)
@@ -98,6 +101,9 @@ func (b *Brake) closed(p planned, passed, admitted, admittedSoftware int, admitt
 	if reason := b.UsageClosed(); reason != "" {
 		return reason
 	}
+	if reason := b.blind(p); reason != "" {
+		return reason
+	}
 	if b.Manual {
 		return ""
 	}
@@ -123,13 +129,23 @@ func (b *Brake) closed(p planned, passed, admitted, admittedSoftware int, admitt
 	return ""
 }
 
+// blind is closed for a run on a node whose markers were not readable this tick: an unknown
+// occupancy never lets an extra run in, a parked one included, and not for lighthouse run
+// (Manual) either.
+func (b *Brake) blind(p planned) string {
+	if n, ok := b.Nodes[p.node]; ok && p.node != "" && n.Unmeasured {
+		return "markers not readable"
+	}
+	return ""
+}
+
 // nodeClosed is closed for a run on a node: no memory brake (the memory is not this host's), the
 // slots of the node, then the software limit, which is host-wide.
 func (b *Brake) nodeClosed(p planned, admitted, admittedSoftware int) string {
+	n, ok := b.Nodes[p.node]
 	if p.holdsSlot {
 		return ""
 	}
-	n, ok := b.Nodes[p.node]
 	if !ok {
 		return fmt.Sprintf("slots: node %s not configured", p.node)
 	}

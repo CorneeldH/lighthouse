@@ -18,6 +18,7 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/dispatch"
 	"github.com/CorneeldH/lighthouse/internal/hostconfig"
+	"github.com/CorneeldH/lighthouse/internal/nodeserve"
 	"github.com/CorneeldH/lighthouse/internal/overview"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/server"
@@ -56,7 +57,11 @@ func newServeCommand() *cobra.Command {
 				return err
 			}
 			meta := server.RunsMeta{WorkspaceURL: strings.TrimRight(cfg.Forge.LinkURL(), "/"), Night: cfg.Night}
-			return serve(ctx, addr, dbPath, repos, slugs, meta, overviewInterval, cmd.ErrOrStderr())
+			node, err := nodeRoutes(hostconfig.Path(), cfg, os.Getenv)
+			if err != nil {
+				return err
+			}
+			return serve(ctx, addr, dbPath, repos, slugs, meta, node, overviewInterval, cmd.ErrOrStderr())
 		},
 	}
 	cmd.Flags().StringVar(&addr, "addr", defaultAddr, "address to listen on")
@@ -144,10 +149,39 @@ func forgeReposWith(hostToml, repo string, o *forgeOpener, errOut io.Writer) (so
 	return sources, slugs, nil
 }
 
+// nodeRoutes returns the node-API handler when the host.toml at hostToml has [node], and nil
+// without it. It fails when the forge token of [dispatch.forge] is missing or empty, so a node
+// never starts serving routes it cannot answer. The state dir is where the tick keeps its own,
+// and the profiles are the names of [dispatch.profiles] on this node.
+func nodeRoutes(hostToml string, cfg hostconfig.Dispatch, getenv func(string) string) (http.Handler, error) {
+	n, present, err := hostconfig.LoadNode(hostToml)
+	if err != nil || !present {
+		return nil, err
+	}
+	if err := hostconfig.ValidateNodeForge(cfg); err != nil {
+		return nil, err
+	}
+	stateDir, err := tickEnv{Getenv: getenv}.stateDir()
+	if err != nil {
+		return nil, err
+	}
+	profiles := make(map[string]bool, len(cfg.Profiles))
+	for name := range cfg.Profiles {
+		profiles[name] = true
+	}
+	return nodeserve.New(nodeserve.Deps{
+		StateDir:  stateDir,
+		TokenFile: n.TokenFile,
+		Forge:     cfg.Forge,
+		Profiles:  profiles,
+	}), nil
+}
+
 // serve opens the store, listens on addr and serves until ctx is done, then shuts down
 // within shutdownTimeout. An empty dbPath means the default path. repos feed the forge endpoints,
-// and slugs pick the rows of the tick state that /api/runs shows.
-func serve(ctx context.Context, addr, dbPath string, repos []overview.RepoSource, slugs []string, meta server.RunsMeta,
+// and slugs pick the rows of the tick state that /api/runs shows. node, when not nil, is the
+// node-API under /api/node/.
+func serve(ctx context.Context, addr, dbPath string, repos []overview.RepoSource, slugs []string, meta server.RunsMeta, node http.Handler,
 	interval time.Duration, errOut io.Writer) error {
 	if dbPath == "" {
 		p, err := store.DefaultPath()
@@ -182,6 +216,7 @@ func serve(ctx context.Context, addr, dbPath string, repos []overview.RepoSource
 			return workplace.Leftovers(ctx, st.DB)
 		},
 		RunsMeta: meta,
+		Node:     node,
 		Runs: func(ctx context.Context) ([]dispatch.RunView, []dispatch.DeferredView, error) {
 			return dispatch.LoadView(ctx, st.DB, slugs)
 		},
