@@ -107,6 +107,9 @@ en het token in het tick-proces dat ook runs start).
   doet de hook niets. Kan hij niet meten, dan `COULD NOT CHECK` en blokkeren (zoals de andere
   gates). Hoe de hook een controller-run herkent, laat ik aan de bouwer: er is al een marker
   (`permission-check` schrijft alleen "inside a controller run").
+- **`post-artefact`.** `lighthouse post-artefact` pusht zelf `HEAD` (`internal/postartefact/postartefact.go:322`)
+  en valt dus buiten de hook; het weigert met dezelfde melding als de range `.github/workflows/`
+  raakt. *(own choice after spec review, r1-f11)*
 - **Skills.** `write-handoff` en `write-pr` krijgen één regel: raakt de range
   `.github/workflows/`, dan geen `git push`, maar V2b en de handoff hieronder. Ook de fix-pr-route:
   #285 weigerde daar.
@@ -146,11 +149,23 @@ en het token in het tick-proces dat ook runs start).
 - `apply` claimt een rij in `runs` (command `push-workflows`, zonder sessie, de trigger-sleutel
   van de handoff, 🚀 op de handoff) en start `lighthouse push-workflows --repo <r> --issue <n>
   --worktree <pad> --run-id <id>` losgekoppeld met `setsid`, met een **opgeschoonde omgeving**:
-  `PATH`, `HOME`, `XDG_RUNTIME_DIR`, het forge-token voor comments, en verder niets.
+  `PATH`, `HOME`, `XDG_RUNTIME_DIR`, het forge-token voor comments, en verder niets, behalve het
+  tick-pad naar de state-map en `host.toml`, dat als vlag wordt meegegeven (`--state-dir`,
+  `--host-toml`), zodat de pusher dezelfde database en config opent als tick en zijn rij kan
+  sluiten. *(own choice after spec review, r1-f8)*
+- Een push-rij telt niet mee voor `slots` en `max_software` en houdt geen geheugenreserve vast: er
+  draait geen sessie, ook niet terwijl de rij op de fix-pr-route op CI wacht. *(own choice after
+  spec review, r1-f9)* Een push-rij die met `start_failed` sluit, krijgt geen sessie-retry
+  (`secondAttempt` slaat `KindPush` over): de eerstvolgende tick start de pusher opnieuw, en na
+  een tweede mislukking komt de Vraag (zie 5). *(own choice after spec review, r1-f10)*
 - Een push-rij heeft geen werkplek en geen transcript. De uitkomstregels die daarop meten (8–10,
   14–18) gelden er niet voor; de pusher sluit zijn eigen rij (`done` of `question`). Een push-rij
   die na `[dispatch.workflow_push] timeout` (standaard 30 min) nog open staat, gaat terug
-  (`Teruggegeven`, reden *pusher reageerde niet*). Hoe dit in de regeltabel van `outcome` past
+  (`Teruggegeven`, reden *pusher reageerde niet*). De timeout geldt alleen tot de pusher zijn
+  push-fase heeft afgesloten (een marker op de rij: de gepushte SHA); daarna is de rij op de
+  fix-pr-route eigenaar van de PR (zie 5) en gelden regel 19 (`max_runtime`) en deze timeout niet
+  meer: alleen de regels 6, 7 en 13. Op de bouwroute sluit de rij zelf bij de push. *(own choice
+  after spec review, r1-f1)* Hoe dit in de regeltabel van `outcome` past
   (een vroege uitsplitsing op het commando, of een eigen tabel), laat ik aan de bouwer.
 
 ### 3. `lighthouse push-workflows`: de vloer
@@ -161,14 +176,21 @@ In deze volgorde; de eerste rode stap stopt alles en gaat naar de Vraag.
 (`core.hooksPath`, een `pre-push`-hook, `core.fsmonitor`, `url.*.insteadOf`,
 `credential.helper`) en ook `~/.gitconfig`. Daarom:
 
-- Het pad komt uit de eigen rij van de run in `runs`/workspaces, niet uit de handoff. Wijkt het
-  pad in de handoff af, dan rood.
-- In de worktree van de run draait de pusher precies twee leesbewerkingen: `rev-parse HEAD` en
+- Het pad komt niet uit de handoff maar uit de werkplek van de run die de handoff schreef: de
+  laatste rij op dit issue die met uitkomst `handoff` sloot en vóór de handoff-comment begon, en
+  daarvan de `workspace_id` opgezocht via de Workplace-adapter (`runs` bewaart geen pad). Wijkt
+  het pad in de handoff daarvan af, dan rood. *(own choice after spec review, r1-f7)*
+- In de worktree van de run draait de pusher twee git-leesbewerkingen: `rev-parse HEAD` en
   `status --porcelain`, beide met `-c core.hooksPath=/dev/null -c core.fsmonitor=false`, zonder
   token in de omgeving.
 - Alles daarna gebeurt in een **eigen kloon van de pusher**
   (`$XDG_STATE_HOME/lighthouse/push/<repo>.git`, bare): `git fetch <worktree> <sha>` haalt precies
-  de gelezen SHA op, en alle checks, de policy en de diff voor de review lezen die SHA daar.
+  de gelezen SHA op, en alle checks, de policy en de diff voor de review lezen die SHA daar. Vóór
+  de checks haalt de pusher vers `<default>` en `<branch>` op van de URL uit `forge.repo`, met het
+  forge-token (alleen lezen) voor dat ene commando, op dezelfde wijze als de push zijn token krijgt
+  (`GIT_CONFIG_GLOBAL=/dev/null` verwijdert de credential helper). Mislukt die fetch, dan rood.
+  Twee pushers voor dezelfde repo nemen een `flock` op de kloon; wie hem niet krijgt, wacht tot de
+  timeout. *(own choice after spec review, r1-f4, r1-f14)*
 - Elk git-commando van de pusher draait met `GIT_CONFIG_GLOBAL=/dev/null` en
   `GIT_CONFIG_NOSYSTEM=1`, en pusht naar een expliciete URL uit `forge.repo`, nooit naar een
   remote-naam. De push is `git push <url> <sha>:refs/heads/<branch>`.
@@ -184,10 +206,15 @@ In deze volgorde; de eerste rode stap stopt alles en gaat naar de Vraag.
    update-merge van fix-pr).
 5. Roborev: een record met `uitkomst: done` dekt de SHA. Dat is het branch-record
    (`<git-dir>/lighthouse/roborev/<stem>.json`) of het push-record
-   (`push-<sha>.json`, de fix-pr-route). Dekken betekent: de head van zijn `range` is de SHA, of
-   elke commit na die head staat als `commit` van een `fixed`-beslissing in het record (de
+   (`push-<sha>.json`, de fix-pr-route). Dekken betekent: het veld `sha` van het record (de
+   gereviewde SHA, niet de kop van `range`: een record zonder `--range` krijgt `merge-base..HEAD`
+   van het moment van schrijven) is de SHA, of elke commit na die `sha` staat als `commit` van een `fixed`-beslissing in het record (de
    fix-commits van V2b stap 3). Een `skip`, geen record of een ongedekte commit is rood (AC 2:
-   "zonder roborev-review pusht de pusher niet").
+   "zonder roborev-review pusht de pusher niet"). Het record is een JSON-bestand dat de run zelf
+   schrijft in zijn git-dir: dat is een derde, bewust genoemde leesbewerking op de worktree
+   (naast `rev-parse` en `status`), als bestandslezing zonder git. Het valt onder de bekende
+   grens in 5: de pusher controleert dat het record bestaat en klopt met de SHA, niet dat de run
+   het eerlijk schreef. *(own choice after spec review, r1-f5)*
 6. De rem staat niet op pauze.
 
 **Policy op de workflow-diff** (`git diff merge-base..HEAD -- .github/workflows/`, alleen
@@ -197,7 +224,10 @@ toegevoegde en gewijzigde bestanden; een verwijderd bestand is geen risico)
   `docker://…@sha256:…` mogen).
 - Er is een expliciet `permissions`-blok op workflow-niveau, niet `write-all`.
 - Geen trigger `pull_request_target` of `workflow_run`.
-- `actionlint` exit 0 en `zizmor` exit 0 op de gewijzigde bestanden. Ontbreekt een van beide op
+- `actionlint` en `zizmor` draaien op de gewijzigde bestanden, zowel op de SHA als op de
+  merge-base; rood is een finding die op de merge-base niet bestond (zo blokkeert een bestaande
+  bevinding, zoals `artipacked` in `loop-roadmap.yml`, niet elke wijziging van dat bestand).
+  `zizmor` draait offline. *(own choice after spec review, r1-f3)* Ontbreekt een van beide op
   `PATH`, dan rood (`COULD NOT CHECK`), nooit groen.
 
 **Indeling op trigger**
@@ -218,12 +248,19 @@ toegevoegde en gewijzigde bestanden; een verwijderd bestand is geen risico)
      wie ze kan afvuren;
   3. *injectie*: `${{ github.event.* }}` en andere aanvaller-gestuurde expressies in `run:`,
      `env:` en `with:`.
-- **Insluiting.** Elke reviewer is een eigen proces zonder tools, in een lege tijdelijke map, met
-  een omgeving zonder forge- en workflow-token. De pusher geeft de prompt en de diff op stdin; de
+- **Insluiting.** Elke reviewer is een eigen proces zonder tools en zonder bestandstoegang buiten
+  een lege tijdelijke map (geen leesrechten op `$HOME`, dus ook niet op het tokenbestand), met
+  een omgeving zonder forge- en workflow-token. Een commando dat dat niet kan garanderen (een
+  `codex exec` met een shell-tool in een sandbox die `$HOME` leest) is geen geldige reviewer; de
+  bouwer verifieert de vlaggen met een test. De pusher scrubt de waarden van het forge- en het
+  workflow-token uit alle reviewer-tekst voor die in een comment komt. *(own choice after spec
+  review, r1-f2)* De pusher geeft de prompt en de diff op stdin; de
   diff staat afgebakend als data. De prompts zijn ingebakken in de lighthouse-binary (`embed`),
   dus nooit uit de branch.
 - **Uitvoer.** Eén JSON-object per reviewer:
-  `{"verdict": "approve"|"reject", "findings": [{"file", "line", "issue", "evidence"}]}`. Een
+  `{"verdict": "approve"|"reject", "findings": [{"file", "line", "issue", "evidence"}]}`. De pusher
+  neemt het oordeel uit het laatste bericht of het uitvoerbestand van de reviewer, niet uit een
+  eventstroom (`codex exec --json` volstaat dus niet zonder `--output-last-message`). Een
   `reject` zonder finding met bewijs, ongeldige JSON, een timeout of een exit ≠ 0 telt als
   `reject`.
 - **Besluit.** Alleen als elke geconfigureerde reviewer `approve` geeft, gaat de push door. Een
@@ -250,7 +287,8 @@ toegevoegde en gewijzigde bestanden; een verwijderd bestand is geen risico)
     niets op CI in een sessie. Hoe de push-rij "Klaar" en "eigen PR" meet (de head-branch is
     `branch`), laat ik aan de bouwer.
 - **Rood.** De pusher post een `🤖 Vraag` met: welke stap rood was en waarom, de workflow-diff in
-  een codeblok, het oordeel van de reviewers als die draaiden, en het commando
+  een codeblok met een hek langer dan elke reeks backticks in de diff, afgekapt onder de limiet van
+  een GitHub-comment (65536 tekens) met de rest als bijlage in de worktree, het oordeel van de reviewers als die draaiden, en het commando
   `cd <worktree> && git push -u origin HEAD`. Nooit een advies over token-scopes. De rij sluit als
   `question`.
 - **Een antwoord is toestemming.** Antwoordt de gebruiker `push`, dan start tick de pusher
@@ -279,7 +317,7 @@ timeout    = "30m"
 
 [[dispatch.workflow_push.reviewers]]
 topic   = "supply-chain"            # supply-chain | secrets | injection
-command = ["codex", "exec", "--json", "-"]
+command = ["codex", "exec", "--output-last-message", "{out}", "-"]
 
 [[dispatch.workflow_push.reviewers]]
 topic   = "injection"
@@ -295,7 +333,10 @@ Tick merget via de API met het run-token. Of GitHub die merge weigert voor een P
 `.github/workflows/` wijzigt, is niet geverifieerd. De eerste taak van het plan test het op een
 wegwerp-PR. Weigert GitHub hem, dan merget een apart proces zo'n PR met het workflow-token:
 `lighthouse push-workflows --merge --pr <n> --sha <head>`, door tick gestart zoals de push, en
-alleen als de pusher die head zelf heeft gepusht (de head staat in de push-comment). Tick leest het
+alleen als de gepushte SHA uit de push-comment een voorouder is van de PR-head en `gepusht..head`
+geen pad onder `.github/workflows/` raakt (op de bouwroute volgt na de push nog een
+changelog-fragment van `write-pr`, dus de head is nooit precies de gepushte). *(own choice after
+spec review, r1-f6)* Tick leest het
 token nooit, ook niet in het geheugen. Weigert GitHub de merge niet, dan blijft regel 7
 ongewijzigd.
 
