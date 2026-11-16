@@ -27,6 +27,7 @@ type Adapter struct {
 	Targets    map[string]string // profile -> forge target_key
 	Profile    string            // the profile of the run: Stop, Kill and Transcript pick the container by it
 	Node       string            // forge node_id of the workspace; "": self, the forge at Client
+	Serve      *NodeClient       // lighthouse serve on Node; nil: self
 	UnitPrefix string            // [dispatch.forge] unit_prefix, no default: "" makes Stop fail
 	Run        workplace.Runner
 	Home       string              // where ~/.claude/projects lives; "": os.UserHomeDir
