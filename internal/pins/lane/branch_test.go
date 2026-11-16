@@ -78,17 +78,8 @@ func newLaneRepo(t *testing.T) *laneRepo {
 		"workflows/ci.yml":     "on: pull_request\n",
 	})
 
-	r.origin = filepath.Join(t.TempDir(), "origin.git")
-	gitT(t, t.TempDir(), "init", "-q", "--bare", "-b", "main", r.origin)
-	dir, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	r.root = dir
-	gitT(t, r.root, "init", "-q", "-b", "main")
-	gitT(t, r.root, "remote", "add", "origin", r.origin)
 	r.sources = sourcesTOML(r.pin)
-	for rel, content := range map[string]string{
+	r.root, r.origin = initRepo(t, map[string]string{
 		"pack/SOURCES.toml":                r.sources,
 		"pack/core/hooks/g.sh":             "#!/bin/bash\necho g\n",
 		"pack/core/hooks/hooks.json":       `{"hooks": {}}`,
@@ -97,12 +88,28 @@ func newLaneRepo(t *testing.T) *laneRepo {
 		"pack/core/skills/demo/ref.md":     "a\nb\nc\n",
 		toolFile:                           "x = 1\ny = 2\nz = 3\nv = 4\nw = 5 local\n",
 		ciFile:                             "on: push\n",
-	} {
-		writeT(t, r.root, rel, content)
+	})
+	return r
+}
+
+// initRepo writes files into a new repository, runs `lighthouse init` from its own pack/,
+// commits and pushes the result to a new bare origin on main.
+func initRepo(t *testing.T, files map[string]string) (root, origin string) {
+	t.Helper()
+	origin = filepath.Join(t.TempDir(), "origin.git")
+	gitT(t, t.TempDir(), "init", "-q", "--bare", "-b", "main", origin)
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	gitT(t, root, "init", "-q", "-b", "main")
+	gitT(t, root, "remote", "add", "origin", origin)
+	for rel, content := range files {
+		writeT(t, root, rel, content)
 	}
 	var out, errOut bytes.Buffer
 	code := initcmd.Run(initcmd.Options{
-		Dir: r.root, Yes: true, Version: "dev", Packs: os.DirFS(filepath.Join(r.root, "pack")),
+		Dir: root, Yes: true, Version: "dev", Packs: os.DirFS(filepath.Join(root, "pack")),
 		Deps: deps.Checker{
 			LookPath: func(name string) (string, error) { return "/usr/bin/" + name, nil },
 			Run:      func(string, ...string) error { return nil },
@@ -114,10 +121,10 @@ func newLaneRepo(t *testing.T) *laneRepo {
 	if code != 0 {
 		t.Fatalf("init: rc %d\n%s\n%s", code, out.String(), errOut.String())
 	}
-	gitT(t, r.root, "add", "-A")
-	gitT(t, r.root, "commit", "-q", "-m", "init")
-	gitT(t, r.root, "push", "-q", "origin", "main")
-	return r
+	gitT(t, root, "add", "-A")
+	gitT(t, root, "commit", "-q", "-m", "init")
+	gitT(t, root, "push", "-q", "origin", "main")
+	return root, origin
 }
 
 func (r *laneRepo) demoPin() pins.SourcePin {

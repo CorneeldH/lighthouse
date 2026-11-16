@@ -93,7 +93,7 @@ func NewRoot(in io.Reader, out, errOut io.Writer) *cobra.Command {
 	root.AddCommand(newTurnRootsCommand())
 	root.AddCommand(newPrBodyGateCommand())
 	root.AddCommand(newEvidenceCommand())
-	root.AddCommand(newPinsCommand(defaultPinsEnv))
+	root.AddCommand(newPinsCommand(defaultPinsEnv, laneEnvFrom(os.Getenv, "")))
 	root.AddCommand(&cobra.Command{
 		Use:   "version",
 		Short: "Print the version of this binary",

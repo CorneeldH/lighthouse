@@ -19,13 +19,13 @@ func defaultPinsEnv(root string) pins.Env {
 	return pins.Env{Root: root, Git: pins.NewGitSource(), Releases: forge.New("", token), Run: pins.ExecRunner}
 }
 
-func newPinsCommand(env func(root string) pins.Env) *cobra.Command {
+func newPinsCommand(env func(root string) pins.Env, laneEnv laneSetup) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "pins",
 		Short: "Check what lighthouse took over from other repositories and tools",
 		Args:  cobra.NoArgs,
 	}
-	cmd.AddCommand(newPinsCheckCommand(env))
+	cmd.AddCommand(newPinsCheckCommand(env), newPinsLaneCommand(laneEnv))
 	return cmd
 }
 

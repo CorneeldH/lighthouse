@@ -101,21 +101,27 @@ func PrepareBranch(ctx context.Context, root string, p pins.SourcePin, mr MergeR
 
 var shaRe = regexp.MustCompile(`^[0-9a-f]{40}$`)
 
-// defaultBranchHead fetches origin's default branch (its HEAD, whatever its name) and returns
-// the commit.
-func defaultBranchHead(ctx context.Context, root string) (string, error) {
+// defaultBranch is the name of origin's default branch (its HEAD), whatever it is.
+func defaultBranch(ctx context.Context, root string) (string, error) {
 	out, err := laneGit(ctx, root, "ls-remote", "--symref", "origin", "HEAD")
 	if err != nil {
 		return "", err
 	}
-	var name string
 	for _, line := range strings.Split(string(out), "\n") {
 		if ref, ok := strings.CutPrefix(line, "ref: refs/heads/"); ok {
-			name, _, _ = strings.Cut(ref, "\t")
+			if name, _, _ := strings.Cut(ref, "\t"); name != "" {
+				return name, nil
+			}
 		}
 	}
-	if name == "" {
-		return "", fmt.Errorf("origin names no default branch: %q", out)
+	return "", fmt.Errorf("origin names no default branch: %q", out)
+}
+
+// defaultBranchHead fetches origin's default branch and returns the commit.
+func defaultBranchHead(ctx context.Context, root string) (string, error) {
+	name, err := defaultBranch(ctx, root)
+	if err != nil {
+		return "", err
 	}
 	if _, err := laneGit(ctx, root, "fetch", "--quiet", "--no-tags", "origin", "refs/heads/"+name); err != nil {
 		return "", err

@@ -43,7 +43,7 @@ func runPins(t *testing.T, env func(string) pins.Env, args ...string) (code int,
 	var out, errOut bytes.Buffer
 	root := NewRoot(bytes.NewReader(nil), &out, &errOut)
 	root.ResetCommands()
-	root.AddCommand(newPinsCommand(env))
+	root.AddCommand(newPinsCommand(env, nil))
 	root.SetArgs(append([]string{"pins"}, args...))
 	code = execute(root, &errOut)
 	return code, out.String(), errOut.String()

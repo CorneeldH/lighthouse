@@ -166,6 +166,33 @@ func RenderPRBody(marker, key string, commits []pins.CommitInfo, statDiff, compa
 	fmt.Fprintf(&b, "Vergelijk: %s\n\n", link)
 	b.WriteString("Wijzigingen:\n\n")
 	b.WriteString(Fence(cut(statDiff, 10*MaxExcerpt)) + "\n\n")
+	writeCommits(&b, commits, link)
+	return b.String()
+}
+
+// RenderConflictBody is the body of the issue for a pin the lane cannot move itself: a merge
+// that conflicts, or one that reaches .github/workflows/. reason, the conflicting files and the
+// upstream commits appear only inside fences.
+func RenderConflictBody(marker, key string, conflicts []string, reason string, commits []pins.CommitInfo, compareURL string) string {
+	var b strings.Builder
+	link := safeURL(compareURL)
+	b.WriteString(marker + "\n\n")
+	b.WriteString("Een pin staat achter upstream, maar de lane kan de wijziging niet zelf overnemen.\n\n")
+	b.WriteString(Fence("Pin: "+cut(key, 200)) + "\n\n")
+	b.WriteString("Reden:\n\n")
+	b.WriteString(Fence(excerpt(reason)) + "\n\n")
+	if len(conflicts) > 0 {
+		b.WriteString("Conflicterende bestanden:\n\n")
+		b.WriteString(Fence(cut(strings.Join(conflicts, "\n"), 10*MaxExcerpt)) + "\n\n")
+	}
+	fmt.Fprintf(&b, "Vergelijk: %s\n\n", link)
+	writeCommits(&b, commits, link)
+	return b.String()
+}
+
+// writeCommits adds the upstream commits, each in its own fence and cut to MaxExcerpt, until
+// the body budget is spent; the rest becomes a note that points at link.
+func writeCommits(b *strings.Builder, commits []pins.CommitInfo, link string) {
 	b.WriteString("Upstream-commits:\n\n")
 	shown := 0
 	for _, c := range commits {
@@ -181,9 +208,8 @@ func RenderPRBody(marker, key string, commits []pins.CommitInfo, statDiff, compa
 		shown++
 	}
 	if omitted := len(commits) - shown; omitted > 0 {
-		fmt.Fprintf(&b, "nog %d commits, zie %s\n", omitted, link)
+		fmt.Fprintf(b, "nog %d commits, zie %s\n", omitted, link)
 	}
-	return b.String()
 }
 
 // RenderErrorBody is the body of the issue that reports a pin the lane could not measure.

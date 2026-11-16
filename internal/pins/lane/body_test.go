@@ -218,6 +218,8 @@ func TestRender_oddValuesStayInertOutsideFences(t *testing.T) {
 			"behind": RenderBehindBody(Marker(key, KindBehind, "t"), key, key, key, rels, link),
 			"pr":     RenderPRBody(Marker(key, KindPR, "t"), key, []pins.CommitInfo{{SHA: "a", Subject: "s"}}, "d", link),
 			"error":  RenderErrorBody(Marker(key, KindError, "t"), key, "d"),
+			"conflict": RenderConflictBody(Marker(key, KindConflict, "t"), key, []string{key}, key,
+				[]pins.CommitInfo{{SHA: "a", Subject: key}}, link),
 		}
 		for name, body := range bodies {
 			outside := stripFences(t, body)
@@ -258,5 +260,38 @@ func TestRenderBehindBody_byteBudgetAlone(t *testing.T) {
 	}
 	if !strings.Contains(body, "nog ") {
 		t.Fatalf("no truncation note")
+	}
+}
+
+// Fails when the conflict issue loses the conflicting files or the reason, lets upstream text
+// out of its fence, starts like a PR body, or passes the body budget with many long commits.
+func TestRenderConflictBody_filesReasonAndCommitsFenced(t *testing.T) {
+	var commits []pins.CommitInfo
+	for i := 0; i < 200; i++ {
+		commits = append(commits, pins.CommitInfo{SHA: "abc1234", Subject: "Fixes #12 @mallory", Body: strings.Repeat("x", 3*MaxExcerpt)})
+	}
+	body := RenderConflictBody("<!-- m -->", "core/skills/x",
+		[]string{"pack/core/skills/x/SKILL.md", "pack/core/skills/x/@evil#3.md"}, "merge conflict ``` @x",
+		commits, "https://github.com/o/r/compare/a...b")
+	if !strings.HasPrefix(body, "<!-- m -->") {
+		t.Fatalf("marker not first: %q", body[:30])
+	}
+	if strings.Contains(body, "No issue:") {
+		t.Fatalf("a conflict issue carries the PR's No issue line")
+	}
+	for _, want := range []string{"pack/core/skills/x/SKILL.md", "pack/core/skills/x/@evil#3.md", "merge conflict", "abc1234"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("body lacks %q", want)
+		}
+	}
+	outside := stripFences(t, body)
+	if closingRe.MatchString(outside) || mentionRe.MatchString(outside) {
+		t.Fatalf("unsafe text outside fence: %q", outside)
+	}
+	if len(body) > MaxBody {
+		t.Fatalf("body is %d bytes, over MaxBody", len(body))
+	}
+	if !strings.Contains(body, "nog ") {
+		t.Fatalf("no truncation note for the commits that did not fit")
 	}
 }
