@@ -11,9 +11,9 @@ Paia = `CorneeldH/personal_ai_agent`. `Paia-actie`: `sluiten` (helemaal verhuisd
 
 | Werknaam | Lighthouse | Herkomst paia | Paia-actie | Status |
 |---|---|---|---|---|
-| Milestone 1 Telemetrie | | #63, #67 | sluiten | |
-| Milestone 2 Kwaliteitspoorten | | #52 | hernoemen naar `paia: kwaliteitspoorten toepassen` | |
-| Milestone 3 Explore/exploit | | #68 | sluiten | |
+| Milestone 1 Telemetrie | [#12](https://github.com/CorneeldH/lighthouse/milestone/12) | #63, #67 | sluiten | aangemaakt |
+| Milestone 2 Kwaliteitspoorten | [#13](https://github.com/CorneeldH/lighthouse/milestone/13) | #52 | hernoemen naar `paia: kwaliteitspoorten toepassen` | aangemaakt |
+| Milestone 3 Explore/exploit | [#14](https://github.com/CorneeldH/lighthouse/milestone/14) | #68 | sluiten | aangemaakt |
 
 ## Issues
 
