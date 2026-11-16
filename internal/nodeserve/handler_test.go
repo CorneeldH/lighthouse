@@ -25,11 +25,13 @@ import (
 const nodeToken = "node-secret-7f3a"
 
 // fakeForge is the node's own forge: GET /api/v1/workspaces/{id} answers the worktree_path
-// in paths, and 404 for any other id. It counts every request.
+// in paths, and 404 for any other id; GET /api/v1/workspaces/{id}/agent-sessions answers the
+// raw body in sessions, and 404 for an id without one. It counts every request.
 type fakeForge struct {
-	paths map[string]string
-	fail  atomic.Bool // answer 503 to everything
-	hits  atomic.Int32
+	paths    map[string]string
+	sessions map[string]string
+	fail     atomic.Bool // answer 503 to everything
+	hits     atomic.Int32
 }
 
 func (f *fakeForge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -39,6 +41,16 @@ func (f *fakeForge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, ok := strings.CutPrefix(r.URL.Path, "/api/v1/workspaces/")
+	if wsID, isSessions := strings.CutSuffix(id, "/agent-sessions"); ok && isSessions {
+		body, known := f.sessions[wsID]
+		if r.Method != http.MethodGet || !known {
+			http.Error(w, `{"detail":"workspace not found"}`, http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(body))
+		return
+	}
 	p, known := f.paths[id]
 	if r.Method != http.MethodGet || !ok || !known {
 		http.Error(w, `{"detail":"workspace not found"}`, http.StatusNotFound)
@@ -84,8 +96,13 @@ type fixture struct {
 // file holds nodeTokenContent.
 func newFixture(t *testing.T, paths map[string]string, nodeTokenContent string) fixture {
 	t.Helper()
+	return newForgeFixture(t, &fakeForge{paths: paths}, nodeTokenContent)
+}
+
+// newForgeFixture builds the node handler over the fake forge ff, set up before it serves.
+func newForgeFixture(t *testing.T, ff *fakeForge, nodeTokenContent string) fixture {
+	t.Helper()
 	dir := t.TempDir()
-	ff := &fakeForge{paths: paths}
 	srv := httptest.NewServer(ff)
 	t.Cleanup(srv.Close)
 	cr := &countingRunner{}

@@ -76,6 +76,7 @@ func newHandler(d Deps) *handler {
 		}}, nil
 	}, func(op *huma.Operation) { op.OperationID = "get-node-info" })
 	h.registerStatemap()
+	h.registerGit()
 	return h
 }
 
