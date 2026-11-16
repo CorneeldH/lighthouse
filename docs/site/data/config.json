@@ -29,6 +29,7 @@
                 "internal/dispatch/instructions/run.md",
                 "internal/evidence/run.go",
                 "internal/repoconfig/repoconfig.go",
+                "internal/report/render.go",
                 "internal/review/openpoints.go",
                 "internal/triage/judgment.go",
                 "pack/core/instructions/AGENTS.md",
