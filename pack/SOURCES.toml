@@ -195,6 +195,10 @@ source_path = [".claude/skills/paia-plan-adversarial-review/verifier-prompt.md",
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
 
 [[file]]
+path = "pack/core/skills/audit-agent-config/SKILL.md"
+new = true
+
+[[file]]
 path = "pack/core/skills/audit-worktrees/SKILL.md"
 source_path = [".claude/skills/paia-worktree-audit/SKILL.md", ".agents/skills/paia-worktree-audit/SKILL.md"]
 source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"

@@ -66,6 +66,7 @@ Skills:
 - `/lighthouse-write-handoff`: the start command for the next session.
 - `/lighthouse-review-spec`: a spec reviewed by another model family.
 - `/lighthouse-review-plan`: a plan reviewed by another model family.
+- `/lighthouse-audit-agent-config`: audit the agentic configuration for conflicts and overlap.
 - `/lighthouse-audit-worktrees`: which worktrees and branches can go.
 - `/lighthouse-place-instruction`: on which layer a new instruction belongs.
 - `/lighthouse-test-standard`: tests that fail when behaviour breaks.

@@ -33,6 +33,7 @@
                 "internal/triage/judgment.go",
                 "pack/core/instructions/AGENTS.md",
                 "pack/core/lib/headings.py",
+                "pack/core/skills/audit-agent-config",
                 "pack/core/skills/close-issue",
                 "pack/core/skills/upgrade",
                 "pack/core/skills/write-handoff",
@@ -824,7 +825,8 @@
               "default": [],
               "about": "Keys of conflicts and overlap candidates the audit no longer reports; a key that no longer occurs gets an ignore line.",
               "readers": [
-                "internal/cli/agentaudit.go"
+                "internal/cli/agentaudit.go",
+                "pack/core/skills/audit-agent-config"
               ]
             },
             {

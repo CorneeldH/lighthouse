@@ -28,6 +28,7 @@ func TestCorePack(t *testing.T) {
 	}
 	sort.Strings(files)
 	want := []string{
+		".agents/skills/lighthouse-audit-agent-config/SKILL.md",
 		".agents/skills/lighthouse-audit-worktrees/SKILL.md",
 		".agents/skills/lighthouse-close-issue/SKILL.md",
 		".agents/skills/lighthouse-fix-pr/SKILL.md",
@@ -52,6 +53,7 @@ func TestCorePack(t *testing.T) {
 		".claude/agents/lighthouse-issue-impact-scout.md",
 		".claude/hooks/lighthouse/blocking",
 		".claude/hooks/lighthouse/run.sh",
+		".claude/skills/lighthouse-audit-agent-config/SKILL.md",
 		".claude/skills/lighthouse-audit-worktrees/SKILL.md",
 		".claude/skills/lighthouse-close-issue/SKILL.md",
 		".claude/skills/lighthouse-fix-pr/SKILL.md",

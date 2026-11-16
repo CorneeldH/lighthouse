@@ -5,6 +5,13 @@ packages = ["core", "go", "node"]
 
 [[unit]]
 kind = "file"
+path = ".agents/skills/lighthouse-audit-agent-config/SKILL.md"
+package = "core"
+version = "dev"
+sha256 = "388f690e02f23e17f8943b77abbfd50689892770dfe51efc1913651475f35793"
+
+[[unit]]
+kind = "file"
 path = ".agents/skills/lighthouse-audit-worktrees/SKILL.md"
 package = "core"
 version = "dev"
@@ -354,6 +361,13 @@ sha256 = "d5ab47d5af8dfec5a3c8aa1ef64555bce9bb5fac3cce1ffa8a4d5e72f68e689d"
 
 [[unit]]
 kind = "file"
+path = ".claude/skills/lighthouse-audit-agent-config/SKILL.md"
+package = "core"
+version = "dev"
+sha256 = "388f690e02f23e17f8943b77abbfd50689892770dfe51efc1913651475f35793"
+
+[[unit]]
+kind = "file"
 path = ".claude/skills/lighthouse-audit-worktrees/SKILL.md"
 package = "core"
 version = "dev"
@@ -568,7 +582,7 @@ path = "AGENTS.md"
 id = "core"
 package = "core"
 version = "dev"
-sha256 = "9818fa89b08071897434ee60cd833902e6a9b4d06f778507d29c411ec7887eaf"
+sha256 = "48bdd910cc785f9d820b29cf916518137dc224b7129c0bb52699a5380382ed46"
 
 [[unit]]
 kind = "block"
