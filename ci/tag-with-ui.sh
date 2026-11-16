@@ -23,6 +23,7 @@ mkdir -p "$dist"
 cp -R "$src"/. "$dist"/
 # -f: the dist directory is ignored in the working tree.
 git add -f "$dist"
-git commit -q -m "chore(release): $tag web-UI"
+# Scope the commit to dist: a file staged by something else stays out of the release commit.
+git commit -q -m "chore(release): $tag web-UI" -- "$dist"
 git tag -a "$tag" -m "$tag"
 echo "tag-with-ui: ok ($tag)"

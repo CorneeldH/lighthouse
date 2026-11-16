@@ -126,3 +126,30 @@ def test_script_is_tracked_executable() -> None:
         check=True,
     ).stdout
     assert out.startswith("100755")
+
+
+def test_stale_tracked_dist_file_is_dropped(tmp_path: Path) -> None:
+    """Fails when the script stops clearing dist: a stale file from an earlier run stays in the tag."""
+    repo = _repo(tmp_path)
+    stale = repo / "internal" / "web" / "dist" / "stale.js"
+    stale.parent.mkdir(parents=True)
+    stale.write_text("old\n")
+    _git(repo, "add", "-f", "internal/web/dist/stale.js")
+    _git(repo, "commit", "-q", "-m", "earlier dist")
+    result = _run(repo, _src(tmp_path))
+    assert result.returncode == 0, result.stderr
+    files = _git(repo, "ls-tree", "-r", TAG, "--name-only").splitlines()
+    assert "internal/web/dist/stale.js" not in files
+    _assert_tag_has_dist(repo)
+
+
+def test_prestaged_unrelated_file_stays_out_of_the_tag_commit(tmp_path: Path) -> None:
+    """Fails when the commit takes more than the dist path."""
+    repo = _repo(tmp_path)
+    (repo / "other.txt").write_text("unrelated\n")
+    _git(repo, "add", "other.txt")
+    result = _run(repo, _src(tmp_path))
+    assert result.returncode == 0, result.stderr
+    files = _git(repo, "ls-tree", "-r", TAG, "--name-only").splitlines()
+    assert "other.txt" not in files
+    _assert_tag_has_dist(repo)
