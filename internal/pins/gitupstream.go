@@ -73,7 +73,13 @@ type ghSource struct {
 
 // NewGitSource clones from https://github.com/<repo>.
 func NewGitSource() GitSource {
-	return &ghSource{base: func(repo string) string { return "https://github.com/" + repo }}
+	return NewGitSourceAt(func(repo string) string { return "https://github.com/" + repo })
+}
+
+// NewGitSourceAt clones from the URL base returns for owner/repo, such as a file:// path in a
+// test or a forge other than github.com.
+func NewGitSourceAt(base func(repo string) string) GitSource {
+	return &ghSource{base: base}
 }
 
 type ghClone struct {
