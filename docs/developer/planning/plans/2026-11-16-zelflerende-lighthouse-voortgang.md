@@ -19,13 +19,13 @@ Paia = `CorneeldH/personal_ai_agent`. `Paia-actie`: `sluiten` (helemaal verhuisd
 
 | Werknaam | Lighthouse | Herkomst paia | Paia-actie | Status |
 |---|---|---|---|---|
-| T1 Gegevensmodel | | #1495, #67 | — (via T2) | |
-| T2 Kosten, tokens, model | | #1495 | sluiten | |
-| T3 Reviewbevindingen | | #993 | sluiten | |
-| T4 Herstel na merge | | #1082 | sluiten | |
-| T5 Menswerk | | #67 | — | |
-| T6 Telemetrie-UI | | #1088 | sluiten | |
-| T7 Versiewissel | | #1087 | sluiten | |
+| T1 Gegevensmodel | [#373](https://github.com/CorneeldH/lighthouse/issues/373) | #1495, #67 | — (via T2) | aangemaakt |
+| T2 Kosten, tokens, model | [#375](https://github.com/CorneeldH/lighthouse/issues/375) | #1495 | sluiten | aangemaakt |
+| T3 Reviewbevindingen | [#376](https://github.com/CorneeldH/lighthouse/issues/376) | #993 | sluiten | aangemaakt |
+| T4 Herstel na merge | [#377](https://github.com/CorneeldH/lighthouse/issues/377) | #1082 | sluiten | aangemaakt |
+| T5 Menswerk | [#378](https://github.com/CorneeldH/lighthouse/issues/378) | #67 | — | aangemaakt |
+| T6 Telemetrie-UI | [#379](https://github.com/CorneeldH/lighthouse/issues/379) | #1088 | sluiten | aangemaakt |
+| T7 Versiewissel | [#380](https://github.com/CorneeldH/lighthouse/issues/380) | #1087 | sluiten | aangemaakt |
 | K1 Canaries | | #1285 | sluiten | |
 | K2 Linter aangesloten | | #470 | inkorten | |
 | K3 Directe imports | | #590 | inkorten | |
