@@ -170,7 +170,17 @@ func (r *runner) source(ctx context.Context, sp pins.SourcePin) error {
 		if len(foreign) > 0 {
 			_, _ = fmt.Fprintf(r.env.Log, "%s: pr, #%d left alone: %s holds commits not by the lane (%s)\n",
 				sp.Key, pr.Number, BranchName(sp.Key), strings.Join(foreign, ", "))
-			return nil
+			// Only the PR is left alone: the rest (closing a stale error issue) still applies.
+			var rest []Action
+			for _, a := range actions {
+				if a.Op != Update || a.Item.Number != pr.Number {
+					rest = append(rest, a)
+				}
+			}
+			if len(rest) == 0 {
+				return nil
+			}
+			return r.applyActions(ctx, sp.Key, rest, ItemContent{}, "pr")
 		}
 	}
 	branch, err := PrepareBranch(ctx, r.env.Root, sp, mr, target)

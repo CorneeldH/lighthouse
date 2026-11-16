@@ -499,6 +499,12 @@ func TestRun_leavesBranchWithHumanCommitsAlone(t *testing.T) {
 	}
 	demo, _, _ := only(t, f, "core/skills/demo")
 	tool, _, _ := only(t, f, toolFile)
+	// A stale error issue of the tool pin, by the lane: the next run must still close it.
+	stale, err := f.CreateIssue(context.Background(), "pins: "+toolFile+" is niet te meten",
+		RenderErrorBody(Marker(toolFile, KindError, "old"), toolFile, "old"))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	// A person adds a commit to the tool pin's branch.
 	toolBranch := BranchName(toolFile)
@@ -525,6 +531,9 @@ func TestRun_leavesBranchWithHumanCommitsAlone(t *testing.T) {
 	}
 	if it := srv.Issues[tool.Number]; it["body"] != tool.Body || it["state"] != "open" {
 		t.Errorf("tool PR #%d changed although its branch was left alone: %v", tool.Number, it)
+	}
+	if it := srv.Issues[stale.Number]; it["state"] != "closed" || !strings.Contains(it["body"].(string), LaneClosedMarker) {
+		t.Errorf("stale error issue #%d not closed by the lane while its PR was left alone: %v", stale.Number, it["state"])
 	}
 	if !strings.Contains(log.String(), toolFile+": pr, #") || !strings.Contains(log.String(), "left alone") {
 		t.Errorf("log does not say the tool PR was left alone: %q", log.String())
@@ -578,3 +587,4 @@ func TestRun_shallowCheckoutStillUpdatesOwnPR(t *testing.T) {
 		t.Errorf("tool PR #%d body not updated to the new target; log %q", tool.Number, log.String())
 	}
 }
+
