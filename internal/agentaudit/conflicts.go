@@ -57,7 +57,7 @@ func blockingPairs(fs findings, hooks []Hook) {
 	for i, a := range cands {
 		for _, b := range cands[i+1:] {
 			m := normalizeMatcher(a.Matcher)
-			if a.Event != b.Event || m != normalizeMatcher(b.Matcher) || hookID(a) == hookID(b) {
+			if a.Event != b.Event || m != normalizeMatcher(b.Matcher) || sameHook(a, b) {
 				continue
 			}
 			first, second := a, b
@@ -69,6 +69,12 @@ func blockingPairs(fs findings, hooks []Hook) {
 			fs.add(KindBlockingPair, key, text, first.Source, second.Source)
 		}
 	}
+}
+
+// sameHook reports whether a and b run the same thing: the same script, also when two
+// settings files register it, or the same key.
+func sameHook(a, b Hook) bool {
+	return (a.Script != "" && a.Script == b.Script) || hookID(a) == hookID(b)
 }
 
 // permissionConflicts reports an allow rule in one source against a deny or ask rule in

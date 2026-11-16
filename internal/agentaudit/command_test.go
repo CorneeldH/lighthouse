@@ -55,6 +55,11 @@ func TestScriptPath(t *testing.T) {
 		{"missing after interpreter flag", "bash -e ./gone/z.sh", plain, plain + "/gone/z.sh"},
 		{"cd only in command position", "echo cd x && ./y.sh", plain, plain + "/y.sh"},
 		{"directory is not a script", "ls x/", plain, ""},
+		{"-c code sourcing a script", `bash -c 'source .claude/hooks/a.sh && check'`, plain, plain + "/.claude/hooks/a.sh"},
+		{"-c code sourcing a missing file", `bash -c 'source .claude/hooks/gone.sh && check'`, plain, ""},
+		{"-c code with cd", `sh -c "cd x && ./y.sh"`, plain, plain + "/x/y.sh"},
+		{"-c code running a missing script", `sh -c "./gone/z.sh --fast"`, plain, plain + "/gone/z.sh"},
+		{"-c code without a path", `bash -c 'echo hi && exit 2'`, plain, ""},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

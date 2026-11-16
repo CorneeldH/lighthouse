@@ -382,3 +382,31 @@ func TestUnreadableHookIsNotClean(t *testing.T) {
 		t.Errorf("status %+v; want project/.claude/hooks/locked.sh COULD NOT CHECK with the read error", s)
 	}
 }
+
+func TestNoMissingScriptForInlineCode(t *testing.T) {
+	inv, env := collected(t, map[string]string{
+		".claude/settings.json": registeredMerged(
+			[3]string{"Stop", "", `bash -c 'source .claude/hooks/gone.sh && check'`},
+			[3]string{"Stop", "", `sh -c "cd x && ./y.sh"`},
+		),
+		"x/y.sh": "#!/bin/sh\n",
+	}, nil)
+	if got := Conflicts(inv, env); len(got) != 0 {
+		t.Errorf("conflicts %q; want none for code after -c", keys(got))
+	}
+}
+
+func TestNoBlockingPairWithItself(t *testing.T) {
+	inv, env := collected(t, map[string]string{
+		".claude/settings.json": registeredMerged(
+			[3]string{"PreToolUse", "Bash", ".claude/hooks/guard.sh"},
+			[3]string{"Stop", "", "echo no; exit 2"},
+			[3]string{"Stop", "", "echo no; exit 2"},
+		),
+		".claude/settings.local.json": registered([3]string{"PreToolUse", "Bash", `"$CLAUDE_PROJECT_DIR"/.claude/hooks/guard.sh`}),
+		".claude/hooks/guard.sh":      blockSh,
+	}, nil)
+	if got := Conflicts(inv, env); len(got) != 0 {
+		t.Errorf("conflicts %q; want none for one script registered twice", keys(got))
+	}
+}

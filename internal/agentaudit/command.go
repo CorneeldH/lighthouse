@@ -80,6 +80,8 @@ var separators = map[string]bool{"&&": true, "||": true, ";": true, "|": true}
 // script and stands in command position (first word, after a separator or `cd <dir> &&`,
 // or right after an interpreter): that one is returned for missing-script, so an
 // argument such as `> /tmp/out.log` never counts. An existing file wins over a missing one.
+// The code after an interpreter's -c that holds whitespace is a command line of its own:
+// it is read the same way, and never taken as a path itself.
 func scriptPath(command, root, home string) string {
 	pairs := []string{"${CLAUDE_PROJECT_DIR}", root, "$CLAUDE_PROJECT_DIR", root}
 	if home != "" {
@@ -89,8 +91,19 @@ func scriptPath(command, root, home string) string {
 	base := root
 	missing := ""
 	cd := false
+	code := false // the previous word was the -c of an interpreter
 	cmdPos := true
 	for _, raw := range words(command) {
+		if code {
+			code = false
+			if strings.ContainsAny(raw, " \t\n") {
+				cmdPos = false
+				if p := scriptPath(raw, root, home); p != "" {
+					return p
+				}
+				continue
+			}
+		}
 		if separators[raw] {
 			cmdPos = true
 			continue
@@ -107,6 +120,7 @@ func scriptPath(command, root, home string) string {
 		}
 		isCmd := cmdPos
 		if strings.HasPrefix(word, "-") && cmdPos {
+			code = word == "-c"
 			continue // a flag of an interpreter keeps the script position
 		}
 		cmdPos = false
