@@ -9,7 +9,7 @@ bij `lighthouse init`, de wekelijkse lane en hoe je een pin ophoogt.
 
 | Soort | Wat | Waar de pin staat | Sleutel |
 |---|---|---|---|
-| skill | een skillmap onder `pack/*/skills/` die van elders komt | frontmatter van `SKILL.md`: `metadata.origin` (`extended` of `external`), `upstream`, `upstream-commit` (volledige SHA, tussen aanhalingstekens) en bij `external` `upstream-path` | de skillmap relatief aan `pack/`, bijvoorbeeld `core/skills/test-standard` |
+| skill | een skillmap onder `pack/*/skills/` die van elders komt | frontmatter van `SKILL.md`: `metadata.origin` (`extended` of `external`), `upstream`, `upstream-commit` (volledige SHA, tussen aanhalingstekens) en `upstream-path`, verplicht zodra `upstream` gezet is (ook bij `extended`) | de skillmap relatief aan `pack/`, bijvoorbeeld `core/skills/test-standard` |
 | bestand | een overgenomen bestand in `pack/` | een `[[file]]`-entry in [`pack/SOURCES.toml`](../pack/SOURCES.toml) met `source_repo`, `source_sha` en `source_path` | het `path` uit `SOURCES.toml` |
 | plugin | een Claude Code-plugin waar lighthouse op rekent | `[pins.<naam>]` in [`lighthouse.toml`](../lighthouse.toml) met `kind = "plugin"`, `repo` en `version` | de naam in `[pins.<naam>]` |
 | tool | een commando op het pad, zoals `roborev` of `codex` | `[pins.<naam>]` met `kind = "tool"`, `repo`, `version` en optioneel `command`, `version_args` en `tag_prefix` | de naam in `[pins.<naam>]` |

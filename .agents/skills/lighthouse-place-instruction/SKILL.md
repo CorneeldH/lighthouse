@@ -151,7 +151,7 @@ gets lost:
 | `origin` | `own` \| `extended` \| `external` | Decides whether upstream maintenance and a licence obligation hang on it |
 | `upstream` | source URL; leave the key out when there is none | Required at `extended`/`external`. Without this field an adopted skill cannot be updated or attributed three months on |
 | `upstream-commit` | full SHA, double-quoted | Belongs to `upstream`, no decision of its own: the commit the copy descends from. Quote it — a SHA of only digits otherwise parses as a number |
-| `upstream-path` | path in the upstream repo, without a leading `/` | Belongs to `upstream`; required at `external` |
+| `upstream-path` | path in the upstream repo, without a leading `/` | Belongs to `upstream`; required whenever `upstream` is set (`extended` included): the pin measures this path |
 | `source` | `"#<nr>"` \| commit SHA \| path in the repo \| public URL \| `self` | The answer to the gate of step 2. Without the field that answer evaporates as soon as the conversation is over, and three months on nobody can tell whether a norm rests on anything |
 
 `source` takes five forms; what separates them is who is able to look it up:
