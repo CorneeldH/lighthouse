@@ -1,7 +1,9 @@
 package forge
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -454,7 +456,8 @@ func (c *GitHub) AddBlocker(ctx context.Context, number, blocker int) error {
 	return err
 }
 
-// API makes the raw request and returns the response body as it came.
+// API makes the raw request and returns the response body as it came. A GET that answers a
+// JSON list follows the Link rel="next" pages and returns one list of all of them.
 func (c *GitHub) API(ctx context.Context, r APIRequest) ([]byte, error) {
 	if err := c.configured(); err != nil {
 		return nil, err
@@ -476,10 +479,41 @@ func (c *GitHub) API(ctx context.Context, r APIRequest) ([]byte, error) {
 	if body != nil {
 		reqBody = body
 	}
-	if _, err := c.do(ctx, method, url, reqBody, &out); err != nil {
+	next, err := c.do(ctx, method, url, reqBody, &out)
+	if err != nil {
 		return nil, err
 	}
-	return out, nil
+	if method != http.MethodGet || next == "" || !isJSONList(out) {
+		return out, nil
+	}
+	pages := [][]byte{out}
+	for next != "" {
+		var page []byte
+		if next, err = c.do(ctx, http.MethodGet, next, nil, &page); err != nil {
+			return nil, err
+		}
+		pages = append(pages, page)
+	}
+	return joinLists(pages)
+}
+
+// isJSONList is true when data is a JSON array.
+func isJSONList(data []byte) bool {
+	t := bytes.TrimSpace(data)
+	return len(t) > 0 && t[0] == '['
+}
+
+// joinLists is the JSON lists of pages as one list. A page that is not a list is an error.
+func joinLists(pages [][]byte) ([]byte, error) {
+	all := []json.RawMessage{}
+	for i, p := range pages {
+		var items []json.RawMessage
+		if err := json.Unmarshal(p, &items); err != nil {
+			return nil, fmt.Errorf("forge api: page %d is not a JSON list: %w", i+1, err)
+		}
+		all = append(all, items...)
+	}
+	return json.Marshal(all)
 }
 
 // resolve is the method of the request (an empty one is GET, or POST with fields) and its

@@ -357,7 +357,8 @@ func (g *GitLab) AddBlocker(ctx context.Context, number, blocker int) error {
 // API makes the raw request and returns the response body as it came. Path is relative to the
 // API root, so "projects/1/labels" and "/api/v4/projects/1/labels" are the same request, and
 // "api/graphql" is the GraphQL endpoint of the host. An absolute URL or a path with ".." is
-// refused: the token only goes to the host of BaseURL.
+// refused: the token only goes to the host of BaseURL. A GET that answers a JSON list follows
+// x-next-page and returns one list of all the pages.
 func (g *GitLab) API(ctx context.Context, r APIRequest) ([]byte, error) {
 	if err := g.configured(); err != nil {
 		return nil, err
@@ -387,8 +388,37 @@ func (g *GitLab) API(ctx context.Context, r APIRequest) ([]byte, error) {
 		body = fields
 	}
 	var out []byte
-	if _, err := g.send(ctx, method, url, body, &out); err != nil {
+	next, err := g.send(ctx, method, url, body, &out)
+	if err != nil {
 		return nil, err
 	}
-	return out, nil
+	if method != http.MethodGet || next == "" || !isJSONList(out) {
+		return out, nil
+	}
+	pages := [][]byte{out}
+	for next != "" {
+		pageURL, err := withPage(url, next)
+		if err != nil {
+			return nil, err
+		}
+		var page []byte
+		if next, err = g.send(ctx, http.MethodGet, pageURL, nil, &page); err != nil {
+			return nil, err
+		}
+		pages = append(pages, page)
+	}
+	return joinLists(pages)
+}
+
+// withPage is url with its page parameter set to page. The next page is a number, never a URL,
+// so the token cannot go to another host.
+func withPage(url, page string) (string, error) {
+	u, err := neturl.Parse(url)
+	if err != nil {
+		return "", fmt.Errorf("forge api: %w", err)
+	}
+	q := u.Query()
+	q.Set("page", page)
+	u.RawQuery = q.Encode()
+	return u.String(), nil
 }

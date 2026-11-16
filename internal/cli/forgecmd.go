@@ -121,7 +121,7 @@ func newForgeCommandWith(env *forgeEnv) *cobra.Command {
 		RunE: func(*cobra.Command, []string) error { return nil },
 	}
 	cmd.SetFlagErrorFunc(func(c *cobra.Command, err error) error { return forgeUsage(c, err.Error()) })
-	cmd.AddCommand(newForgeIssueCommand(env), newForgePRCommand(env), newForgeMilestoneCommand(env), newForgeLabelCommand(env))
+	cmd.AddCommand(newForgeIssueCommand(env), newForgePRCommand(env), newForgeMilestoneCommand(env), newForgeLabelCommand(env), newForgeAPICommand(env))
 	return cmd
 }
 

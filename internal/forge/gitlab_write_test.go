@@ -2,6 +2,7 @@ package forge
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -420,5 +421,31 @@ func TestGitLabAPIGraphQLPath(t *testing.T) {
 	}
 	if rec.method != "POST" || rec.path != "/api/graphql" || rec.token != "secret-token" {
 		t.Errorf("request = %+v, want POST /api/graphql with the token (not /api/v4/api/graphql)", rec)
+	}
+}
+
+func TestGitLabAPIFollowsPages(t *testing.T) {
+	var queries []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		queries = append(queries, r.URL.RawQuery)
+		if r.URL.Query().Get("page") == "2" {
+			_, _ = io.WriteString(w, `[{"n":3}]`)
+			return
+		}
+		w.Header().Set("x-next-page", "2")
+		_, _ = io.WriteString(w, `[{"n":1},{"n":2}]`)
+	}))
+	t.Cleanup(srv.Close)
+	g := newGitLab(Config{Kind: "gitlab", Repo: "group/project", Token: "secret-token", BaseURL: srv.URL + "/api/v4"})
+	out, err := g.API(context.Background(), APIRequest{Method: "GET", Path: "projects/1/labels", Fields: []APIField{{Name: "per_page", Value: "2"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []map[string]int
+	if err := json.Unmarshal(out, &got); err != nil || !reflect.DeepEqual(got, []map[string]int{{"n": 1}, {"n": 2}, {"n": 3}}) {
+		t.Errorf("output = %s (%v), want one list of 3", out, err)
+	}
+	if !reflect.DeepEqual(queries, []string{"per_page=2", "page=2&per_page=2"}) {
+		t.Errorf("queries = %q, want the second page asked with the same fields", queries)
 	}
 }

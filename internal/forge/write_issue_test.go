@@ -2,6 +2,7 @@ package forge
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -417,5 +418,47 @@ func TestGitHubAPIRefusalKeepsMessage(t *testing.T) {
 	_, err := c.API(context.Background(), APIRequest{Method: "POST", Path: "repos/o/r/issues"})
 	if err == nil || !strings.Contains(err.Error(), "Validation Failed") {
 		t.Errorf("err = %v, want the API message", err)
+	}
+}
+
+func TestGitHubAPIFollowsPages(t *testing.T) {
+	var srvURL string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Query().Get("page") {
+		case "":
+			w.Header().Set("Link", `<`+srvURL+`/repos/o/r/labels?state=x&page=2>; rel="next"`)
+			_, _ = io.WriteString(w, `[{"n":1},{"n":2}]`)
+		case "2":
+			_, _ = io.WriteString(w, `[{"n":3}]`)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	srvURL = srv.URL
+	c := New("o/r", "secret-token")
+	c.BaseURL = srv.URL
+	out, err := c.API(context.Background(), APIRequest{Method: "GET", Path: "repos/o/r/labels", Fields: []APIField{{Name: "state", Value: "x"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []map[string]int
+	if err := json.Unmarshal(out, &got); err != nil || !reflect.DeepEqual(got, []map[string]int{{"n": 1}, {"n": 2}, {"n": 3}}) {
+		t.Errorf("output = %s (%v), want one list of 3", out, err)
+	}
+}
+
+func TestGitHubAPIDoesNotFollowPagesOnPOST(t *testing.T) {
+	calls := 0
+	var srvURL string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		w.Header().Set("Link", `<`+srvURL+`/x>; rel="next"`)
+		_, _ = io.WriteString(w, `[1]`)
+	}))
+	t.Cleanup(srv.Close)
+	srvURL = srv.URL
+	c := New("o/r", "secret-token")
+	c.BaseURL = srv.URL
+	if _, err := c.API(context.Background(), APIRequest{Method: "POST", Path: "x"}); err != nil || calls != 1 {
+		t.Errorf("err %v, %d calls, want one call and no error", err, calls)
 	}
 }
