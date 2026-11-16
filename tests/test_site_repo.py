@@ -241,8 +241,8 @@ def test_problems_flag_an_anchor_that_does_not_exist():
 
 def test_problems_flag_two_things_in_one_row():
     data = mutated()
-    row(data, "lighthouse-lib")["label"] = "lib/ · scripts/"
-    assert label_problems(data) == ["lighthouse-lib: label lib/ · scripts/ holds two things"]
+    row(data, "lighthouse-scripts")["label"] = "scripts/ · headings.toml"
+    assert label_problems(data) == ["lighthouse-scripts: label scripts/ · headings.toml holds two things"]
 
 
 def entries(mode: str, data: dict | None = None):
@@ -325,7 +325,7 @@ def test_page_has_no_legend_or_panel_and_explains_below():
     assert 'id="detail"' not in html
     assert html.index('id="repo-map"') < html.index('id="repo-notes"')
     notes = html.split('id="repo-notes"', 1)[1].split("</section>", 1)[0]
-    for name in ["lib/", "scripts/", "headings.toml", "manifest.toml", "settings.json", "permissions.allow",
+    for name in ["scripts/", "headings.toml", "manifest.toml", "settings.json", "permissions.allow",
                  "host.toml", "--yes"]:
         assert name in notes, f"the text below the map does not name {name}"
 

@@ -1,6 +1,6 @@
 """Steps 8 (#281) and 9 (#282) of the spec zonder Python: the skill scripts are subcommands of the
 binary, and the scripts and lib modules they replace are gone, from the package and from the copy
-`lighthouse init` installed here. The modules step 12 still needs stay."""
+`lighthouse init` installed here."""
 
 from pathlib import Path
 
@@ -32,7 +32,6 @@ GONE_SKILL_FILES = [
     "review-plan/review.sh",
     "review-plan/verify.sh",
 ]
-KEPT = ["lib/config.py", "lib/datadir.py", "lib/headings.py"]
 
 
 def _installed(rel: str) -> Path:
@@ -56,8 +55,3 @@ def test_removed_skill_file_stays_gone(rel):
     ):
         assert not path.exists(), f"{path.relative_to(ROOT)} is back"
 
-
-@pytest.mark.parametrize("rel", KEPT)
-def test_frozen_module_stays(rel):
-    assert (ROOT / "pack" / "core" / rel).is_file()
-    assert _installed(rel).is_file()

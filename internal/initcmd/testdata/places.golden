@@ -7,7 +7,6 @@
 .github/pull_request_template.md	file	core
 .github/workflows/lighthouse-*.yml	file	core
 .lighthouse/headings.toml	file	core
-.lighthouse/lib/lighthouse_lib/	file	core
 .lighthouse/manifest.toml	init	
 .lighthouse/scripts/	file	python,shell
 AGENTS.md	block	core,go,python,shell

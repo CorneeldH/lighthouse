@@ -1,7 +1,6 @@
-// Package config reads lighthouse.toml and host.toml. It is a faithful port of
-// pack/core/lib/config.py: the same validation, the same messages, the same output. The
-// fixtures under tests/pack/fixtures/config prove it, as pytest runs them against config.py
-// and go test against this package.
+// Package config reads lighthouse.toml and host.toml. It began as a port of the former
+// pack/core/lib/config.py and keeps its validation, messages and output; the fixtures under
+// tests/pack/fixtures/config pin them (parity_test.go).
 //
 // Paths: lighthouse.toml in the repo root (LIGHTHOUSE_REPO_ROOT, else git rev-parse
 // --show-toplevel), overridden by LIGHTHOUSE_TOML; host.toml per hostconfig.Path.
@@ -74,7 +73,7 @@ const (
 )
 
 // schema lists the keys beyond [forge], [forge.board] and [project] language, with their
-// type. The order is config.py's: with two bad keys the first one in this list is reported.
+// type. The order is the former config.py's: with two bad keys the first one in this list is reported.
 var schema = []struct{ key, kind string }{
 	{"forge.default_branch", kStr},
 	{"forge.token_env", kStr},

@@ -32,7 +32,6 @@
                 "internal/review/openpoints.go",
                 "internal/triage/judgment.go",
                 "pack/core/instructions/AGENTS.md",
-                "pack/core/lib/headings.py",
                 "pack/core/skills/close-issue",
                 "pack/core/skills/upgrade",
                 "pack/core/skills/write-handoff",

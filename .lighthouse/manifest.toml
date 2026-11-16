@@ -520,34 +520,6 @@ version = "dev"
 sha256 = "3fd20cc381b75418127fd3a44c39a24a28636af9b1b1875d1f54465b0783e9ad"
 
 [[unit]]
-kind = "file"
-path = ".lighthouse/lib/lighthouse_lib/__init__.py"
-package = "core"
-version = "dev"
-sha256 = "842568101ac2cacf5f427e064d78c33fb42d75de75d9ccca8dd48184df72e944"
-
-[[unit]]
-kind = "file"
-path = ".lighthouse/lib/lighthouse_lib/config.py"
-package = "core"
-version = "dev"
-sha256 = "49afe0fea248c693e04933b043c5335dd8d70418ed274b0f7abacd19e9932794"
-
-[[unit]]
-kind = "file"
-path = ".lighthouse/lib/lighthouse_lib/datadir.py"
-package = "core"
-version = "dev"
-sha256 = "0026a6fdd41692e374daa4233ca50108f9c70a51f6fd4e1f92a66de0593e60a5"
-
-[[unit]]
-kind = "file"
-path = ".lighthouse/lib/lighthouse_lib/headings.py"
-package = "core"
-version = "dev"
-sha256 = "d91b117b414a6c4a9d486c89a914a07d02a6f70351c35b46633996616a590772"
-
-[[unit]]
 kind = "block"
 path = "AGENTS.md"
 id = "core"

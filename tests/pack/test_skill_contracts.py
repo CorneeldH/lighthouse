@@ -57,10 +57,6 @@ PLANNED: set[str] = set()
 # An installed path in a skill -> where it lives in a package directory.
 _PATH_REFS = (
     (re.compile(r"\.lighthouse/scripts/([\w./-]*\w)"), lambda m, pack: pack / "scripts" / m[1]),
-    (
-        re.compile(r"\.lighthouse/lib/lighthouse_lib/(\w+)\.py"),
-        lambda m, pack: pack / "lib" / f"{m[1]}.py",
-    ),
     (re.compile(r"\.claude/hooks/lighthouse/([\w.-]+)"), lambda m, pack: pack / "hooks" / m[1]),
     (
         re.compile(r"\.claude/agents/lighthouse-([\w-]+)\.md"),
@@ -203,7 +199,7 @@ def test_config_re_finds_the_keys():
     keys = {m[1] for m in _CONFIG_RE.finditer(text)}
     assert {"labels.blocked_issue", "labels.needs_shaping", "forge.repo"} <= keys, keys
     assert [m[1] for m in _CONFIG_RE.finditer("x `lighthouse config --json forge.board` y")] == ["forge.board"]
-    assert not _CONFIG_RE.search("python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo")
+    assert not _CONFIG_RE.search("python3 .lighthouse/scripts/config.py forge.repo")
 
 
 @pytest.mark.parametrize("unit", UNITS)
@@ -332,9 +328,9 @@ _TOOL_USES = {
     "git": r"\bgit (-C|worktree|log|fetch|diff|status|rev-parse|branch|push|commit|grep|show"
     r"|merge-base|checkout|switch|ls-files|add)\b",
     "python3": r"\bpython3\b",
-    # A lighthouse Python module reads lighthouse.toml through tomllib; `lighthouse config`
+    # A lighthouse Python script reads lighthouse.toml through tomllib; `lighthouse config`
     # does not (#274).
-    "tomllib": r"python3 \.lighthouse/(lib/lighthouse_lib|scripts)/|tomllib",
+    "tomllib": r"python3 \.lighthouse/scripts/|tomllib",
 }
 
 
@@ -368,14 +364,12 @@ def test_requires_python_only_where_the_skill_uses_it(skill):
 
 
 def test_tool_patterns_see_python_and_tomllib():
-    """Both directions pass empty when the patterns miss: python3 must hit a real unit. No core
-    skill calls python3 any more (#284, #281), and check-instructions is a subcommand (#282), so
-    the python3 pattern meets lib/config.py, a module on that row of requires.toml until step 12.
-    The tomllib pattern meets a module call as a skill would write it; a skill without one stays
-    unseen."""
-    config = (CORE / "lib" / "config.py").read_text(encoding="utf-8")
-    assert re.search(_TOOL_USES["python3"], config, re.MULTILINE)
-    assert re.search(_TOOL_USES["tomllib"], "python3 .lighthouse/lib/lighthouse_lib/config.py", re.MULTILINE)
+    """Both directions pass empty when the patterns miss: both must hit a real unit. No core unit
+    calls python3 or tomllib any more (#285), so the patterns meet python-standard, which runs
+    the scripts of pack/python; a skill that only calls the binary stays unseen."""
+    standard = "\n".join(_texts(PACKS / "python" / "skills" / "python-standard").values())
+    assert re.search(_TOOL_USES["python3"], standard, re.MULTILINE)
+    assert re.search(_TOOL_USES["tomllib"], standard, re.MULTILINE)
     route = "\n".join(_texts(CORE / "skills" / "route-issue").values())
     assert not re.search(_TOOL_USES["tomllib"], route, re.MULTILINE)
 

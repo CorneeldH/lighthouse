@@ -107,8 +107,9 @@ What `init` writes, all of it on the diff first:
 - `.claude/agents/lighthouse-<name>.md`: the agents the skills dispatch.
 - `.claude/hooks/lighthouse/`: the hooks, registered in `.claude/settings.json` next to your own
   entries, with the permissions they need.
-- `.lighthouse/lib/lighthouse_lib/` and `.lighthouse/scripts/`: the helpers of the hooks and
-  skills; `.lighthouse/headings.toml`: the headings the skills write and read.
+- `.lighthouse/scripts/`: the scripts of a language package (`shell`, `python`) that its
+  skills and the test gate run; `.lighthouse/headings.toml`: the headings the skills write
+  and read.
 - `.lighthouse/manifest.toml`: what was installed, at which version.
 - `AGENTS.md`: a managed block with the chain rules, one per package that has rules. Your own
   text stays. `CLAUDE.md` gets the line `@AGENTS.md` only when neither file exists yet. Claude
