@@ -803,6 +803,43 @@
           ]
         },
         {
+          "table": "agent_audit",
+          "title": "Agent audit",
+          "about": "What lighthouse agent-audit ignores, and how much of the always-loaded surface it lists.",
+          "keys": [
+            {
+              "key": "agent_audit.description_max_chars",
+              "level": "advanced",
+              "required": "no",
+              "default": 1024,
+              "about": "A skill, command or agent description longer than this is reported in the surface.",
+              "readers": [
+                "internal/cli/agentaudit.go"
+              ]
+            },
+            {
+              "key": "agent_audit.ignore",
+              "level": "advanced",
+              "required": "no",
+              "default": [],
+              "about": "Keys of conflicts and overlap candidates the audit no longer reports; a key that no longer occurs gets an ignore line.",
+              "readers": [
+                "internal/cli/agentaudit.go"
+              ]
+            },
+            {
+              "key": "agent_audit.top",
+              "level": "advanced",
+              "required": "no",
+              "default": 10,
+              "about": "How many of the largest skills, commands and agents the surface lists.",
+              "readers": [
+                "internal/cli/agentaudit.go"
+              ]
+            }
+          ]
+        },
+        {
           "table": "worktree_audit",
           "title": "Worktree audit",
           "about": "Worktrees and branches that the worktree audit never proposes to remove.",
