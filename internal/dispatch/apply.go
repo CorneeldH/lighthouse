@@ -267,6 +267,11 @@ func (ap applier) start(ctx context.Context, a Action, res *Result) error {
 	var own *workplace.OwnWorkError
 	if errors.As(err, &own) {
 		ws, err = own.Workspace, nil
+		// A resume continues the session that made this work in this workspace: it is never
+		// handed back for it, whatever origin did meanwhile (#356).
+		if a.Kind == KindResume {
+			own = nil
+		}
 	}
 	if err != nil {
 		return ap.returnFixPR(ctx, a, fmt.Errorf("prepare: %w", err))

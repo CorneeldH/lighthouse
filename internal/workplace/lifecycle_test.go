@@ -219,6 +219,26 @@ func TestLaunchPrepareFails(t *testing.T) {
 	}
 }
 
+// Own work fails the launch of a start, but a resume runs in the workspace the OwnWorkError
+// names: its session made that work (#356).
+func TestLaunchOwnWorkOnlyResumes(t *testing.T) {
+	own := &OwnWorkError{Workspace: Workspace{ID: "w9", Path: "/w9", Branch: "issue-7"}, Commits: 2}
+	for mode, want := range map[string]Outcome{"start": NotAccepted, "resume": Accepted} {
+		db := openLeftoverDB(t)
+		run, _ := takeRun(t, db, 7, lcNow)
+		w := &fakeWP{prepareErr: own, spawned: Session{Key: "k1"}}
+		out, _, err := Launch(context.Background(), db, w, run.ID, "issue-7", LaunchSpec{Mode: mode}, lcNow)
+		if err != nil || out != want {
+			t.Errorf("%s: Launch = %v, %v; want %v, nil", mode, out, err, want)
+		}
+		if mode == "resume" {
+			if got := rowOf(t, db, run.ID); got.workspace != "w9" || w.spawns != 1 {
+				t.Errorf("resume: row = %+v, spawns = %d; want workspace w9, one spawn", got, w.spawns)
+			}
+		}
+	}
+}
+
 // openRunWithWorkspace takes a run and records its workspace, as Launch would.
 func openRunWithWorkspace(t *testing.T, db *sql.DB, issue int, started time.Time, session string) (runs.Run, string) {
 	t.Helper()
