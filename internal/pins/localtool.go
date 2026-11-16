@@ -11,9 +11,17 @@ import (
 // Runner runs a command and returns its combined stdout and stderr.
 type Runner func(ctx context.Context, name string, args ...string) (string, error)
 
-// ExecRunner is the real Runner: exec.CommandContext, no shell, stdout and stderr combined.
+// execWaitDelay is how long ExecRunner waits for the output pipe to close after the command
+// exited or its context ended: a child the command leaves behind (a daemon it starts) can hold
+// the pipe open far longer.
+const execWaitDelay = 2 * time.Second
+
+// ExecRunner is the real Runner: exec.CommandContext, no shell, stdout and stderr combined. It
+// returns at most execWaitDelay after the command exits, even when a child keeps its output open.
 func ExecRunner(ctx context.Context, name string, args ...string) (string, error) {
-	out, err := exec.CommandContext(ctx, name, args...).CombinedOutput()
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.WaitDelay = execWaitDelay
+	out, err := cmd.CombinedOutput()
 	return string(out), err
 }
 

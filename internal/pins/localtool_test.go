@@ -122,3 +122,24 @@ func TestMeasureTool_realScriptOnPath(t *testing.T) {
 		t.Fatalf("missing command: %s (%s), want error naming PATH", got.Status, got.Detail)
 	}
 }
+
+// Fails when a tool whose version command leaves a child holding stdout open (a daemon it
+// starts) makes MeasureTool, and so `lighthouse init`, wait for that child instead of ending
+// as an error shortly after the time-out.
+func TestMeasureTool_childHoldingStdoutDoesNotHang(t *testing.T) {
+	dir := t.TempDir()
+	script := "#!/bin/sh\nsleep 30 &\necho 'holder 1.0.0'\n"
+	if err := os.WriteFile(filepath.Join(dir, "holder"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	p := Pin{Name: "holder", Kind: KindTool, Version: "1.0.0", Command: "holder"}
+	start := time.Now()
+	got := MeasureTool(context.Background(), ExecRunner, p, time.Second)
+	if took := time.Since(start); took > 10*time.Second {
+		t.Fatalf("MeasureTool took %s: it waited for the child holding stdout", took)
+	}
+	if got.Status == "" {
+		t.Fatalf("no status")
+	}
+}
