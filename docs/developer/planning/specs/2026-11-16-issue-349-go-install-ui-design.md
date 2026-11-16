@@ -71,12 +71,13 @@ van `main` is.
 
 ## Werking
 
-### Eén script: `ci/tag-with-ui.sh <tag>`
+### Eén script: `ci/tag-with-ui.sh <tag> <dist-bron>`
 
-Bouwt zelf niet. De gebouwde SPA staat al in `internal/web/dist` (de workflow heeft het artifact van
-job `ui` daar neergezet). Het script voegt die map geforceerd toe (`git add -f`), commit dat als `chore(release): <tag> web-UI` en zet een geannoteerde tag
+Bouwt zelf niet. `<dist-bron>` is een map buiten de worktree (`$RUNNER_TEMP/ui-dist`, waar de
+workflow het artifact van job `ui` neerzet). Het script kopieert die map naar `internal/web/dist`,
+voegt hem geforceerd toe (`git add -f`), commit dat als `chore(release): <tag> web-UI` en zet een geannoteerde tag
 `<tag>` op die commit. Het script pusht niet. Het faalt (exit ≠ 0) als
-`internal/web/dist/index.html` ontbreekt.
+`<dist-bron>/index.html` ontbreekt.
 
 Twee gebruikers, allebei een workflow: `release.yml` en `prerelease.yml`. Zo wordt elke tag die
 `build.yml` bouwt op een runner gemaakt, met dezelfde Node-versie als de controle. Er bestaat
@@ -128,8 +129,10 @@ geen ruleset.)*
 - De controle "is onze tag op de remote?" na een mislukte push blijft zoals hij is.
 - De build staat buiten de retry-lus (in job `ui`), dus `timeout-minutes: 10` van `release`
   blijft genoeg *(own choice after spec review, r1-f5)*.
-- Bij een nieuwe poging reset de lus naar `origin/main`. `dist` is daar genegeerd en overleeft de
-  reset; `ci/tag-with-ui.sh` voegt het opnieuw toe.
+- Bij een nieuwe poging reset de lus naar `origin/main`. Na een mislukte
+  poging is HEAD C2 en volgt `git reset --hard origin/main` het gevolgde `dist` weg. Daarom leeft
+  het artifact buiten de worktree en kopieert `ci/tag-with-ui.sh` het bij elke poging opnieuw
+  *(own choice after spec review, r3-f1)*.
 
 De macOS-poort test nog steeds `TESTED` (= C1's ouder). C1 voegt alleen changelog toe, C2 alleen
 `dist`.
@@ -186,7 +189,7 @@ blijft de SPA zelf bouwen.
 - Geen npm-code met schrijftoken (zie hierboven) is vastgelegd in de pin-test.
 
 `ci/tag-with-ui.sh` krijgt een test die het script in een tijdelijke git-repo draait (met een
-neergezette `dist`) en controleert: de tag wijst naar een commit met `internal/web/dist/index.html`,
+`<dist-bron>`; en een tweede aanroep na `git reset --hard` van de eerste) en controleert: de tag wijst naar een commit met `internal/web/dist/index.html`,
 de ouder van die commit bevat `dist` niet, en het script faalt zonder `index.html`.
 
 De bestaande `internal/web/web_test.go` dekt criterium 3 al: zonder `dist/index.html` kiest
