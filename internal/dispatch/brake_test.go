@@ -127,6 +127,50 @@ func TestBrakeFreedNeverBelowZero(t *testing.T) {
 	}
 }
 
+// The same for the software count and a node's count: a software close at software_in_use 0 lets
+// max_software software starts through, a close on a node at its in_use 0 lets that node's slots
+// through, not one more. Removing the clamp on SoftwareInUse or on the node's InUse fails this.
+func TestBrakeFreedNeverBelowZeroSoftwareAndNode(t *testing.T) {
+	closing := planned{Action: Action{Kind: KindClose, Repo: "o/a", Issue: 1, RunID: 9}, frees: true}
+	cases := []struct {
+		name   string
+		brake  func(*Brake)
+		close  func(*planned)
+		start  func(*planned)
+		pass   int
+		reason string
+	}{
+		{"software", func(*Brake) {}, func(p *planned) { p.software = true }, func(p *planned) { p.software = true },
+			2, "software: 2 of 2 in use"},
+		{"node", func(b *Brake) { b.Nodes = map[string]NodeSlots{"node-a": {Name: "a", Slots: 2}} },
+			func(p *planned) { p.node = "node-a" }, func(p *planned) { p.node = "node-a" },
+			2, "slots: 2 of 2 in use on a"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			b := openBrake()
+			c.brake(b)
+			cl := closing
+			c.close(&cl)
+			ps := []planned{cl}
+			for i := 2; i <= 2+c.pass; i++ {
+				s := planned{Action: Action{Kind: KindStart, Repo: "o/b", Issue: i}}
+				c.start(&s)
+				ps = append(ps, s)
+			}
+			got := b.apply(ps)
+			for i := 1; i <= c.pass; i++ {
+				if got[i].Kind != KindStart {
+					t.Errorf("start %d must pass: %+v", i, got[i].Action)
+				}
+			}
+			if last := got[c.pass+1]; last.Kind != KindDefer || last.Reason != c.reason {
+				t.Errorf("start %d must defer with %q, got %+v", c.pass+1, c.reason, last.Action)
+			}
+		})
+	}
+}
+
 // freed works on a copy: b stays the measurement of this tick, its Nodes map included. Copying
 // the Brake without its own Nodes map fails this test.
 func TestBrakeFreedKeepsMeasurement(t *testing.T) {

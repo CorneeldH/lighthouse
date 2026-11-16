@@ -118,3 +118,31 @@ func TestFixPRCloseFreesNothing(t *testing.T) {
 		t.Fatalf("summary = %q, want %q", got, want)
 	}
 }
+
+// A parked close and a merge free nothing in decide (#359): the next tick still counts a parked
+// run through its marker, and a merge GitHub refuses leaves the run open. A waiting start of
+// another repo defers on full slots. Setting frees without freesSlot in decideIssue fails this.
+func TestCloseWithoutFreedSlotDefers(t *testing.T) {
+	cases := []struct {
+		base string
+		kind Kind
+	}{
+		{"settle-parked", KindClose},
+		{"settle-green-pr-done", KindMerge},
+	}
+	for _, c := range cases {
+		t.Run(c.base, func(t *testing.T) {
+			in := loadInput(t, c.base)
+			in.Brake = openBrake()
+			in.Brake.InUse = 4
+			withWaitingRepo(t, &in)
+			got := Decide(in)
+			if k := kinds(got); !reflect.DeepEqual(k, []Kind{c.kind, KindDefer}) {
+				t.Fatalf("kinds = %v, want [%s defer]: %+v", k, c.kind, got)
+			}
+			if got[1].Repo != "o/t" || got[1].Reason != "slots: 4 of 4 in use" {
+				t.Errorf("o/t#7 must defer on full slots: %+v", got[1])
+			}
+		})
+	}
+}
