@@ -41,6 +41,10 @@ path = "pack/core/headings.toml"
 new = true
 
 [[file]]
+path = "pack/core/guards.toml"
+new = true
+
+[[file]]
 path = "pack/core/lib/headings.py"
 new = true
 
@@ -368,6 +372,10 @@ new = true
 
 [[file]]
 path = "pack/go/detect.toml"
+new = true
+
+[[file]]
+path = "pack/go/guards.toml"
 new = true
 
 [[file]]
