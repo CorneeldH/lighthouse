@@ -130,6 +130,9 @@ var schema = []struct{ key, kind string }{
 	{"code_language_llm.key_env", kStr},
 	{"code_language_llm.env_file", kStr},
 	{"review.roborev", kStr},
+	{"agent_audit.ignore", kStrs},
+	{"agent_audit.top", kInt},
+	{"agent_audit.description_max_chars", kInt},
 }
 
 // defaults is the value of an absent key. A key in schema without a default is optional: not
@@ -167,6 +170,9 @@ var defaults = map[string]any{
 	"usage_guard.resume":                     false,
 	"usage_guard.controller":                 false,
 	"review.roborev":                         "off",
+	"agent_audit.ignore":                     []any{},
+	"agent_audit.top":                        int64(10),
+	"agent_audit.description_max_chars":      int64(1024),
 }
 
 // mayBeEmpty are the keys whose empty value is a setting: `[test_gate] command = ""` turns the
