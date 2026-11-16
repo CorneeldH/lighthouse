@@ -2007,6 +2007,25 @@ func TestApplyRelocatesOnNode(t *testing.T) {
 	})
 }
 
+// On self the start command is relocated on this host, also when the workplace is a Relocator:
+// every kenn-forge adapter is one, and on self it cannot answer. A start on self whose workplace
+// would refuse to relocate still launches once.
+func TestApplyOnSelfIgnoresRelocator(t *testing.T) {
+	h := newHarness(t)
+	a := startAction()
+	r := &relocWP{fakeWorkplace: h.wp, t: t, command: a.Command, err: errors.New("relocate: not measurable on self")}
+	h.env.Workplace = func(string, string, string) workplace.Workplace { return r }
+	if _, err := Apply(context.Background(), h.env, []Action{a}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if len(h.wp.spawned) != 1 || h.wp.spawned[0].Prompt != a.Prompt {
+		t.Errorf("spawned %+v, want one with prompt %q", h.wp.spawned, a.Prompt)
+	}
+	if rows := h.history(t); len(rows) != 1 || !rows[0].Open || rows[0].Command != a.Command {
+		t.Errorf("rows = %+v, want one open run with command %q", rows, a.Command)
+	}
+}
+
 // A drop_marker carries no node: apply hands session and key to Env.RemoveMarker, which knows
 // where the marker came from, and leaves the local marker dir alone.
 func TestDropMarkerCallsRemoveMarkerWithSessionAndKey(t *testing.T) {
