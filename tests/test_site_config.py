@@ -181,16 +181,16 @@ def config_problems(data: dict, root: Path) -> list[str]:
     for key in expected.keys() - on_map.keys():
         problems.append(f"not on the map: {key}")
     for key in on_map.keys() - expected.keys():
-        problems.append(f"not in config.py: {key}")
+        problems.append(f"not in the lighthouse config reader: {key}")
     for key, entry in on_map.items():
         if key not in expected:
             continue
         want = expected[key]
         if want is NO_DEFAULT:
             if "default" in entry:
-                problems.append(f"{key}: default on the map, none in config.py")
+                problems.append(f"{key}: default on the map, none in the lighthouse config reader")
         elif entry.get("default") != want:
-            problems.append(f"{key}: default {entry.get('default')!r}, config.py says {want!r}")
+            problems.append(f"{key}: default {entry.get('default')!r}, the lighthouse config reader says {want!r}")
         if entry["level"] != level_of(key):
             problems.append(f"{key}: level {entry['level']}, expected {level_of(key)}")
         if entry["required"] != REQUIRED.get(key, "no"):
@@ -277,19 +277,19 @@ def test_problems_flag_a_dispatch_key():
     data = copy.deepcopy(load("config.json"))
     data["files"][1]["tables"][0]["keys"].append(
         {"key": "dispatch.slots", "level": "advanced", "required": "no", "about": "x", "readers": []})
-    assert config_problems(data, ROOT) == ["not in config.py: dispatch.slots"]
+    assert config_problems(data, ROOT) == ["not in the lighthouse config reader: dispatch.slots"]
 
 
 def test_problems_flag_another_default():
     data = copy.deepcopy(load("config.json"))
     entry_of(data, "labels.needs_hands")["default"] = "x"
-    assert config_problems(data, ROOT) == ["labels.needs_hands: default 'x', config.py says 'needs-hands'"]
+    assert config_problems(data, ROOT) == ["labels.needs_hands: default 'x', the lighthouse config reader says 'needs-hands'"]
 
 
 def test_problems_flag_a_default_without_one():
     data = copy.deepcopy(load("config.json"))
     entry_of(data, "paths.tenets")["default"] = "x"
-    assert config_problems(data, ROOT) == ["paths.tenets: default on the map, none in config.py"]
+    assert config_problems(data, ROOT) == ["paths.tenets: default on the map, none in the lighthouse config reader"]
 
 
 def test_problems_flag_a_lowered_level():
@@ -400,13 +400,13 @@ def test_config_entries_say_whether_anything_acts_on_the_key():
     entries = config_entries()
     assert entries["test_gate.command"]["status"] == "Status: works"
     assert entries["paths.history"]["status"] == (
-        "Status: not used yet — config.py accepts it, nothing acts on it.")
+        "Status: not used yet — the lighthouse binary accepts it, nothing acts on it.")
 
 
 def test_config_entries_give_the_default_as_toml():
     entries = config_entries()
     assert entries["paths.search_dirs"]["default"] == '["."]'
-    assert entries["usage_guard.resume"]["default"] == "false"  # config.py: False
+    assert entries["usage_guard.resume"]["default"] == "false"  # lighthouse config: false
     assert entries["paths.tenets"]["default"] is None
     assert entries["paths.history"]["readers"] == []
 
@@ -482,8 +482,8 @@ def test_toml_examples_pass_the_config_reader(tmp_path):
     assert _read("host.gate_slice", LIGHTHOUSE_HOST_TOML=str(host)) == "lighthouse-gate.slice\n"
 
 
-def test_options_are_the_values_config_py_accepts():
-    """A key with a fixed set of values lists exactly that set; config.py rejects every other."""
+def test_options_are_the_values_lighthouse_accepts():
+    """A key with a fixed set of values lists exactly that set; the lighthouse binary rejects every other."""
     expected = {
         "project.language": config_schema().LANGUAGES,
         "project.code_language": ["en"],

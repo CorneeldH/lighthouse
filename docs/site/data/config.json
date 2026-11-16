@@ -213,7 +213,7 @@
               "key": "forge.name",
               "level": "advanced",
               "required": "derived",
-              "about": "The name part of forge.repo, derived by config.py.",
+              "about": "The name part of forge.repo, derived by the lighthouse binary.",
               "readers": [
                 "internal/boardstart/boardstart.go",
                 "pack/core/skills/close-issue",
@@ -225,7 +225,7 @@
               "key": "forge.owner",
               "level": "advanced",
               "required": "derived",
-              "about": "The owner part of forge.repo, derived by config.py.",
+              "about": "The owner part of forge.repo, derived by the lighthouse binary.",
               "readers": [
                 "internal/boardstart/boardstart.go",
                 "pack/core/skills/close-issue",
@@ -440,7 +440,7 @@
               "key": "paths.history",
               "level": "advanced",
               "required": "no",
-              "about": "The file with the project's history; only config.py checks it for now.",
+              "about": "The file with the project's history; only the lighthouse binary checks it for now.",
               "example": "docs/history.md",
               "readers": []
             },
@@ -768,7 +768,7 @@
               "level": "advanced",
               "required": "no",
               "default": 85,
-              "about": "A [codex_usage] threshold that nothing reads yet; only config.py checks its type.",
+              "about": "A [codex_usage] threshold that nothing reads yet; only the lighthouse binary checks its type.",
               "readers": []
             },
             {
@@ -796,7 +796,7 @@
               "level": "advanced",
               "required": "no",
               "default": 80,
-              "about": "A [codex_usage] threshold that nothing reads yet; only config.py checks its type.",
+              "about": "A [codex_usage] threshold that nothing reads yet; only the lighthouse binary checks its type.",
               "readers": []
             }
           ]
