@@ -170,6 +170,25 @@ forge-node dan die van `[dispatch.forge]`. De adapter spreekt dan de hub aan via
 forge-pad `/api/v1/<pad>` wordt `/api/v1/fleet/hosts/<node_id>/<pad>` (het node-id met `url.PathEscape`).
 Voor `self` blijft elk pad zoals het was. Gemeten aan forge v0.7.0.
 
+Dat is het kanaal voor de levenscyclus (workspace, target, status). De inhoud van een run loopt langs
+een tweede kanaal, rechtstreeks naar `lighthouse serve` op de node (hieronder).
+
+**Twee kanalen.**
+
+- *Hub*: workspace en target aanmaken, de stand van een sessie, opruimen.
+- *`lighthouse serve` op de node*: de routes onder `/api/node/v1/` (pakket `internal/nodeapi`; de server
+  is `internal/nodeserve`, de client `kennforge/nodeclient.go`). Elke aanroep draagt een bearer-token:
+  de tick leest het uit `serve_token_file` van de node (`[dispatch.nodes.<naam>]`), de node uit
+  `[node] token_file` van zijn eigen `host.toml`. `serve_url` is https, of http naar loopback. De tick
+  leest per tick eerst `GET /api/node/v1/info`; staat daar een andere `version` dan `1`, dan is de node
+  voor die tick dicht. Zonder `[node]` mount `serve` de routes niet (404).
+
+De routes: `PUT workspaces/{id}/launch` (instructies en drager schrijven) en `DELETE .../carrier`,
+`GET runs/{session}/permission`, `GET workspaces/{id}/transcript/{session}`, `POST .../follow`,
+`POST .../relocate`, `GET .../git`, `GET .../sessions`, `POST .../stop` en `.../kill`, `PUT usage`,
+`GET markers` en `DELETE markers/{session}`. De git-routes zoeken de worktree op bij de eigen forge van
+de node; de statemap-routes raken alleen de state dir van de node.
+
 Wat op een node anders werkt:
 
 - **Bereikbaarheid.** `GET /api/v1/snapshot?include_peers=true` van de hub (niet `/fleet/snapshot`, die
@@ -179,23 +198,32 @@ Wat op een node anders werkt:
   bereikt. Die eigen 404 is altijd onzeker (`workplace.ErrUncertain`): de tunnel kan terug zijn voor de
   snapshot gelezen is, en "weg" zou de run sluiten en een tweede start toelaten. Een andere 404 telt
   alleen als `workplace.ErrGone` als de node bereikbaar is; anders onzeker.
-- **Sessies.** `/runtime` kent geen `session_id`. Lighthouse herkent een eigen agent op een node toch:
-  aan de forge-key die `Spawn` vastlegt (`Own`), en daar steunt `liveOwn` op. Alleen een onzekere spawn
-  blijft vreemd: `AdoptSessions` neemt hem nooit over, want het zoeken vraagt een `session_id`. `Stop`
-  en `Kill` zoeken op `session_id`, sturen daarom geen `DELETE` en beëindigen niets; zij kunnen de
-  claude op een node niet stoppen.
-- **Bezet.** Een sessie van de eigen runs van het issue die niet `exited` is, maakt een start én een
-  hervatting bezet (`liveOwn` in `apply.go`) tot forge haar als `exited` meldt. Echte runs op een andere
-  node wachten dus op #327.
-- **Stand.** Op een node wordt elke status behalve `exited` `Waiting` (nooit `Working`), en `SessionAt`
-  is nul. Een run op een node eindigt dus alleen via `max_runtime`; `liveOwn` houdt de volgende start
-  intussen tegen.
-- **Transcript.** Niet meetbaar op een node (`workplace.ErrNotMeasurable`), en er is geen `FollowRemote`.
-- **Opruimen.** `Cleanup` en de sweep verwijderen nooit een workspace op een andere node; een
-  achterblijver blijft staan.
+- **Sessies.** `/runtime` van de hub kent geen `session_id`; de sessies van een workspace komen daarom
+  van `GET .../sessions` op de node. Een eigen agent wordt herkend aan de forge-key die `Spawn`
+  vastlegt (`Own`). `AdoptSessions` werkt op een node via dat kanaal.
+- **Stop en Kill.** Beide gaan naar `POST .../stop` en `.../kill` op de node, die met het profiel
+  (dezelfde unit en devcontainer-regels als hierboven) de claude stopt. De node moet daarvoor
+  `[dispatch.profiles.<naam>]` kennen met de profielnamen die de tick gebruikt: ontbreekt het profiel
+  in de `host.toml` van de node, dan antwoordt de node 400 op transcript, stop en kill.
+- **Stand.** De stand komt uit het gespiegelde transcript, zoals op `self`.
+- **Transcript.** Gespiegeld naar de tickhost (zie *Transcripten*); `FollowRemote` loopt via `POST
+  .../follow`.
+- **Opruimen.** `Cleanup` en de sweep gaan via de node (`.../git`, `DELETE .../carrier`); de git-metingen
+  gebeuren op de node.
 - **Drager.** Het pad is `<statemap>/carriers/<node>/<workspace-id>.json` (node = het `node_id`), zodat
   twee nodes met hetzelfde workspace-id elkaars drager en achterblijver niet raken. Voor `self` is het
-  pad `<statemap>/carriers/<workspace-id>.json`.
+  pad `<statemap>/carriers/<workspace-id>.json`. De drager van een run op een node schrijft de node zelf
+  (`launch`).
+- **Markers en usage.** De resume-markers staan op de node en worden per tick gelezen
+  (`GET markers`); de rem is per node. Een node waarvan de markers niet leesbaar zijn, is voor die tick
+  dicht met reden `markers not readable`. De tick duwt PAUSE en het alarm elke tick naar de node
+  (`PUT usage`); de bestanden daar zijn `0600` in een `0700`-map, en de uid van de container moet
+  overeenkomen.
+- **Vervallen.** `liveOwn` en de runtime-gebaseerde `remoteStop` bestaan niet meer: een run op een node
+  kent dezelfde bezetmelding en dezelfde afloop als op `self`.
+
+Eisen aan de node: `host.toml` met `[node] token_file`, `[dispatch.forge]` (met token) en
+`[dispatch.profiles]`, en `lighthouse ask` op het `PATH`; zie [install.md](install.md#a-node-for-another-host).
 
 ### Transcripten
 
@@ -216,6 +244,12 @@ Wat op een node anders werkt:
   `<map>` de projectmap uit `workplace.ProjectDir` is.
 - Elk ander profiel: de map op deze host. Staat die er niet, dan is dat `workplace.ErrNotMeasurable`:
   de run is niet meetbaar, en dat is geen fout van de tick.
+
+- Een run op een node: de tick haalt de bestanden op via `GET .../transcript/{session}` (een tar met
+  per bestand de bytes vanaf een offset) en spiegelt ze in de state dir van de tickhost onder
+  `mirror/<node>/<sessie>/`; daar leest `ReadTranscript` ze. Het profiel in de aanvraag moet de node
+  kennen. Voor `software` draait de node daarvoor `mktemp`, `wc`, `tail` en `head` in de devcontainer
+  (ook de self-container heeft die nu nodig, voor het transcript).
 
 `workplace.ReadTranscript(dir, sessionID)` leest `<sessie>.jsonl` en de subagent-transcripten onder
 `<sessie>/subagents` en geeft een `Transcript`: de laatste gebeurtenis over alle draden (`LastEvent`),

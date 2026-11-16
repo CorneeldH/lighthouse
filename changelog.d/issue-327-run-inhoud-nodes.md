@@ -1,4 +1,4 @@
 ---
-type: added
+type: changed
 ---
-`lighthouse serve` zet met `[node] token_file` in `host.toml` de node-routes onder `/api/node/v1/` aan, zodat een andere node de run-inhoud van deze node kan lezen. Zonder `[node]` blijven die routes 404; zonder forge-token start `serve` niet. Voorbeeld voor macOS: `deploy/launchd/com.lighthouse.serve.plist`.
+Breaking: a run on another kenn-forge node now keeps its content (carrier, transcript, markers, usage brake, stop and kill) on that node, reached through `lighthouse serve` with `[node] token_file`; every `[dispatch.nodes.<name>]` in `host.toml` now needs `serve_url` and `serve_token_file`, and the node's own `host.toml` needs `[dispatch.forge]` and `[dispatch.profiles]`. Without `[node]` the routes under `/api/node/v1/` stay 404, and `serve` does not start without a forge token. macOS example: `deploy/launchd/com.lighthouse.serve.plist`.
