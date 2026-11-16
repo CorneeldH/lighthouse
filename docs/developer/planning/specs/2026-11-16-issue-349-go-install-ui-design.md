@@ -73,9 +73,9 @@ van `main` is.
 
 ### Eén script: `ci/tag-with-ui.sh <tag>`
 
-Bouwt de SPA (`npm ci && npm run build` in `web/`), voegt `internal/web/dist` geforceerd toe
-(`git add -f`), commit dat als `chore(release): <tag> web-UI` en zet een geannoteerde tag
-`<tag>` op die commit. Het script pusht niet. Het faalt (exit ≠ 0) als na de build
+Bouwt zelf niet. De gebouwde SPA staat al in `internal/web/dist` (de workflow heeft het artifact van
+job `ui` daar neergezet). Het script voegt die map geforceerd toe (`git add -f`), commit dat als `chore(release): <tag> web-UI` en zet een geannoteerde tag
+`<tag>` op die commit. Het script pusht niet. Het faalt (exit ≠ 0) als
 `internal/web/dist/index.html` ontbreekt.
 
 Twee gebruikers, allebei een workflow: `release.yml` en `prerelease.yml`. Zo wordt elke tag die
@@ -89,8 +89,10 @@ Vervangt het met de hand pushen van een prerelease-tag (gekozen door de gebruike
 
 - `workflow_dispatch` met invoer `tag`. De workflow weigert alles wat geen prerelease-vorm
   `vX.Y.Z-<suffix>` heeft, zodat hij nooit een gewone release-tag zet.
-- Job `tag` (`contents: write`): checkt de ref uit waarvan de dispatch gestart is, zet
-  `setup-node` uit `web/.nvmrc`, draait `ci/tag-with-ui.sh "$tag"` en pusht alleen de tag
+- Job `ui` (`contents: read`): checkt de ref uit waarvan de dispatch gestart is, zet `setup-node`
+  uit `web/.nvmrc`, bouwt de SPA en uploadt `dist` als artifact.
+- Job `tag` (`contents: write`, needs `ui`): checkt dezelfde ref uit, downloadt het artifact, draait
+  `ci/tag-with-ui.sh "$tag"` en pusht alleen de tag
   (`git push origin "refs/tags/$tag"`). Geen branch-push. Zie *Geen npm-code met schrijftoken*
   hieronder voor wanneer het token bereikbaar is.
 - Job `build` (`contents: write`: `build.yml`-job `publish` vraagt dat, en een aangeroepen
@@ -100,31 +102,34 @@ Vervangt het met de hand pushen van een prerelease-tag (gekozen door de gebruike
 
 ### Geen npm-code met schrijftoken
 
-`npm ci` en `npm run build` (install-scripts, Vite-plugins) draaien nu in `release.yml`-job
-`release` en `prerelease.yml`-job `tag`, die `contents: write` hebben. Tot nu toe draaide npm
-alleen in `build.yml`-job `web` met `contents: read` en `persist-credentials: false`. Eis: terwijl
-`npm ci` of `npm run build` draait, staat het schrijftoken niet in `.git/config` en niet in de
-omgeving van die stap. Elke gepushte ref gaat via één push-stap die het token alleen daar
-meekrijgt (bijvoorbeeld `persist-credentials: false` plus `git -c http.extraheader=…` bij de
-push), of via een aparte job met `contents: read` die `dist` bouwt en als artifact doorgeeft aan
-de job die het commit en tagt. De bouwer kiest; de pin-test legt de eis vast.
-*(r1-f3: een gecompromitteerde npm-dependency kon anders naar `main` en tags pushen; `main` heeft
+`npm ci` en `npm run build` (install-scripts, Vite-plugins) mogen niet verhuizen naar de
+schrijvende jobs `release` (`release.yml`) en `tag` (`prerelease.yml`). Tot nu toe draaide npm
+alleen in `build.yml`-job `web` met `contents: read` en `persist-credentials: false`. Eis: `npm ci` en `npm run build` draaien nooit in een job die later een schrijftoken
+vasthoudt (een stap in dezelfde job kan via een geplante git-hook of `$GITHUB_ENV` code laten
+draaien in de latere push-stap). Een aparte job met `contents: read` en
+`persist-credentials: false` bouwt `internal/web/dist` en geeft het als artifact door aan de job die
+het met `git add -f` commit, tagt en pusht. `ci/tag-with-ui.sh` krijgt de gebouwde `dist` dus als
+invoer en bouwt zelf niet; de schrijvende job draait geen npm en geen `setup-node`. Een bron voor de
+UI blijft de tag-commit: binaries en `go install` embedden wat C2 bevat. De pin-test legt vast dat
+de schrijvende jobs geen `npm` en geen `setup-node` bevatten.
+*(own choice after spec review, r2-f1)* *(r1-f3: een gecompromitteerde npm-dependency kon anders naar `main` en tags pushen; `main` heeft
 geen ruleset.)*
 
 ### `release.yml`, job `release`
 
-- Krijgt `actions/setup-node` met `node-version-file: web/.nvmrc` en npm-cache, zoals de
-  `web`-job van `build.yml`.
+- Een nieuwe job `ui` (`contents: read`, `persist-credentials: false`, `actions/setup-node` met
+  `node-version-file: web/.nvmrc` en npm-cache, zoals de `web`-job van `build.yml`) bouwt `dist` op
+  `TESTED` en geeft het als artifact door. Job `release` krijgt geen `setup-node`, hangt van `ui` af
+  en downloadt het artifact. Geen npm in een schrijvende job: zie boven.
 - Na `git commit -m "chore(release): $tag"` (C1): onthoud `main_sha=$(git rev-parse HEAD)`,
   draai `ci/tag-with-ui.sh "$tag"` (C2 plus tag).
 - De push wordt `git push --atomic origin "$main_sha:refs/heads/main" "refs/tags/$tag"`.
   Commit en tag landen nog steeds samen of niet.
 - De controle "is onze tag op de remote?" na een mislukte push blijft zoals hij is.
-- `timeout-minutes: 10` van de job wordt zo verhoogd, of `npm ci` en de build draaien één keer
-  buiten de lus, dat setup-node, `npm ci` en de Vite-build bij drie pogingen passen
-  *(own choice after spec review, r1-f5)*.
-- Bij een nieuwe poging reset de lus naar `origin/main`. De bestanden in `dist` zijn daar
-  genegeerd; de volgende `npm run build` overschrijft ze (`emptyOutDir`).
+- De build staat buiten de retry-lus (in job `ui`), dus `timeout-minutes: 10` van `release`
+  blijft genoeg *(own choice after spec review, r1-f5)*.
+- Bij een nieuwe poging reset de lus naar `origin/main`. `dist` is daar genegeerd en overleeft de
+  reset; `ci/tag-with-ui.sh` voegt het opnieuw toe.
 
 De macOS-poort test nog steeds `TESTED` (= C1's ouder). C1 voegt alleen changelog toe, C2 alleen
 `dist`.
@@ -134,7 +139,7 @@ De macOS-poort test nog steeds `TESTED` (= C1's ouder). C1 voegt alleen changelo
 - Job `web` bouwt niet meer voor een artifact, maar controleert de tag:
   1. `git ls-files --error-unmatch internal/web/dist/index.html` — faalt als de tag geen UI
      draagt.
-  2. `npm ci && npm run build` in `web/`.
+  2. `npm ci && npm run build` in `web/` (`contents: read`, geen schrijftoken).
   3. `test -z "$(git status --porcelain --ignored -- internal/web/dist)"` — faalt als de
      opnieuw gebouwde UI afwijkt van de UI in de tag. `--ignored` is nodig: een nieuw bestand
      in `dist` is genegeerd en zou anders onzichtbaar blijven.
@@ -181,7 +186,7 @@ blijft de SPA zelf bouwen.
 - Geen npm-code met schrijftoken (zie hierboven) is vastgelegd in de pin-test.
 
 `ci/tag-with-ui.sh` krijgt een test die het script in een tijdelijke git-repo draait (met een
-gestubde `npm`) en controleert: de tag wijst naar een commit met `internal/web/dist/index.html`,
+neergezette `dist`) en controleert: de tag wijst naar een commit met `internal/web/dist/index.html`,
 de ouder van die commit bevat `dist` niet, en het script faalt zonder `index.html`.
 
 De bestaande `internal/web/web_test.go` dekt criterium 3 al: zonder `dist/index.html` kiest
@@ -223,8 +228,6 @@ De bestaande `internal/web/web_test.go` dekt criterium 3 al: zonder `dist/index.
 
 - De exacte vorm van `ci/tag-with-ui.sh` (shell volgens de shell-standaard van de repo, als die
   er is) en de commitboodschap van C2.
-- Of `npm ci` in `release.yml` binnen of buiten de retry-lus staat. `web/` verandert niet tussen
-  pogingen: de lus stopt als `main` voorbij `TESTED` is.
 - Of `go-install` een prerelease-tag ook controleert (ja, tenzij dat in de praktijk faalt).
 - Een fragment in `changelog.d/`.
 
