@@ -75,6 +75,10 @@ func TestScriptPath(t *testing.T) {
 		{"var starting with project dir skipped", "$CLAUDE_PROJECT_DIRX/.claude/hooks/a.sh", plain, ""},
 		{"var with underscore suffix skipped", "bash $CLAUDE_PROJECT_DIR_OLD/x/y.sh", plain, ""},
 		{"project dir var at end of cd", `cd $CLAUDE_PROJECT_DIR&&./x/y.sh`, plain, plain + "/x/y.sh"},
+		{"cd carried into -c code", `cd x && bash -c './y.sh arg'`, plain, plain + "/x/y.sh"},
+		{"cd inside -c code from a cd", `cd x && sh -c 'cd .. && ./x/y.sh'`, plain, plain + "/x/y.sh"},
+		{"existing after -c code wins over its missing", `bash -c './gone/z.sh --fast' && ./x/y.sh`, plain, plain + "/x/y.sh"},
+		{"-c code of one quoted word", `bash -c '"$CLAUDE_PROJECT_DIR"/x/y.sh'`, plain, plain + "/x/y.sh"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

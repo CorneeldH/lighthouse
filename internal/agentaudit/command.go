@@ -123,24 +123,34 @@ var separators = map[string]bool{"&&": true, "||": true, ";": true, "|": true, "
 // script and stands in command position (first word, after a separator or `cd <dir> &&`,
 // or right after an interpreter): that one is returned for missing-script, so an
 // argument such as `> /tmp/out.log` never counts. An existing file wins over a missing one.
-// The code after an interpreter's -c that holds whitespace is a command line of its own:
-// it is read the same way, and never taken as a path itself.
+// The code after an interpreter's -c is a command line of its own: it is read the same
+// way, from the directory of a `cd` before it, and never taken as a path itself.
 func scriptPath(command, root, home string) string {
-	base := root
-	missing := ""
+	found, missing := scan(command, root, root, home)
+	if found != "" {
+		return found
+	}
+	return missing
+}
+
+// scan is scriptPath on command with relative paths against base: the first existing
+// script, and else the first missing one in command position.
+func scan(command, base, root, home string) (found, missing string) {
 	cd := false
 	code := false // the previous word was the -c of an interpreter
 	cmdPos := true
 	for _, raw := range words(command) {
 		if code {
 			code = false
-			if strings.ContainsAny(raw, " \t\n") {
-				cmdPos = false
-				if p := scriptPath(raw, root, home); p != "" {
-					return p
-				}
-				continue
+			cmdPos = false
+			f, m := scan(raw, base, root, home)
+			if f != "" {
+				return f, ""
 			}
+			if missing == "" {
+				missing = m
+			}
+			continue
 		}
 		if separators[raw] {
 			cmdPos = true
@@ -187,11 +197,11 @@ func scriptPath(command, root, home string) string {
 		switch {
 		case err == nil && info.Mode().IsRegular():
 			if looksLikeScript(word) || within(word, root) || within(word, home) {
-				return word
+				return word, ""
 			}
 		case err != nil && isCmd && missing == "" && looksLikeScript(word):
 			missing = word
 		}
 	}
-	return missing
+	return "", missing
 }
