@@ -70,9 +70,9 @@ A build from a clone reports version `dev`, and `lighthouse init` writes that ve
 tag instead.
 
 All routes write `~/go/bin/lighthouse` (or your chosen path), so the last one wins: a release
-binary or a `go install` of a tag replaces a build from a clone and still serves the UI. Only a
-`go install …@main`, or a build from a clone without `npm run build`, replaces it with the
-placeholder page, and the systemd unit then serves that.
+binary or a `go install` of a tag (from the next release on) replaces a build from a clone and
+still serves the UI. Only a `go install …@main`, an older tag, or a build from a clone without
+`npm run build`, replaces it with the placeholder page, and the systemd unit then serves that.
 
 ## Run it as a user service
 
