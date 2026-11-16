@@ -85,19 +85,26 @@ De sleutels komen op elke plek waar een sleutel nu staat, zodat de pariteitstest
 - `docs/site/data/config.json`, als nieuwe tabel `report`;
 - de fixtures onder `tests/pack/fixtures/config/` en `tests/pack/fixtures/config-schema.json`.
 
-Validatie op twee plekken, elk met één regel:
+Validatie:
 
-- **De waarde van `report.sink`** (`stdout` of `file`) controleren `internal/config` en de mirror
-  in `config.py`, net als `review.roborev`. Er komt een parity-fixture bij voor een foute waarde.
-  Zo weigert `lighthouse config` dezelfde file die `lighthouse report` weigert.
-- **`file` zonder `dir`** is een regel over twee sleutels. Die controleert alleen
-  `internal/repoconfig`.
+- **Type en waarde van elke sleutel** controleren `internal/config` en de mirror in `config.py`,
+  net als `review.roborev`: `enabled` een bool, `sink` `stdout` of `file`, en `dir` een string.
+  Er komt een parity-fixture bij voor een foute waarde.
+- **`internal/repoconfig`** controleert alles opnieuw voor `lighthouse report`, want
+  `repoconfig.Load` roept `config.Load` niet aan. Het controleert:
+  - het type van elke sleutel;
+  - de waarde van `sink`;
+  - `file` zonder `dir`;
+  - een `dir` die absoluut is of na `filepath.Clean` buiten de repo valt (`..`)
+    *(eigen keuze na spec-review, r1-f6, r1-f8)*.
 
 `internal/repoconfig` krijgt in `Repo` een veld `Report` (`Enabled`, `Sink`, `Dir`) en een veld
-`ReportErr`, beide gevuld in `Load`. Net als `TriageErr` laat een fout in `[report]` `Load` niet
-falen: `tick`, `serve`, `run` en `triage` delen `Load`, en een tikfout in `report.sink` mag een
-repo daar niet uit halen. Alleen `lighthouse report` stopt op `ReportErr`, met de sleutelnaam in
-de melding.
+`ReportErr`, beide gevuld in `Load`. Een fout in `[report]` laat `Load` niet falen: `tick`,
+`serve`, `run` en `triage` delen `Load`, en een tikfout in `[report]` mag een repo daar niet uit
+halen. `rawFile` decodeert `[report]` daarom als `toml.Primitive`. Pas daarna decodeert
+`md.PrimitiveDecode` het in een getypte struct. Een typefout (`enabled = "true"`) wordt zo
+`ReportErr` en geen fout van `DecodeFile` *(eigen keuze na spec-review, r1-f9)*. Alleen
+`lighthouse report` stopt op `ReportErr`, met de sleutelnaam in de melding.
 
 Omdat `pack/core/lib/config.py` onder `pack/` staat, vraagt dat de dogfood-stap:
 `go run ./cmd/lighthouse init --upgrade` en de geïnstalleerde kopie committen.
@@ -111,11 +118,21 @@ lighthouse report day|week|month [--date JJJJ-MM-DD] [--repo <pad>]
 - Het eerste argument is verplicht en kiest de periode.
 - `--date` kiest de periode waar die datum in valt. Zonder `--date` geldt de lopende periode
   (vandaag, deze week, deze maand).
-- `--repo` is het pad van de repo. Zonder `--repo` geldt de top van de werkmap
-  (`config.RepoRoot()`, `git rev-parse --show-toplevel`). In een worktree is dat dus de worktree,
-  niet de main-checkout. De `lighthouse.toml` en de map van `sink = "file"` komen van daar.
-- Staat `[report] enabled` niet op `true`, dan meldt het commando één regel op stderr (in het
-  Engels, het is een hook- of toolmelding) dat het verslag uit staat en hoe je het aanzet. Exit 0.
+- `--repo` is het pad van de repo. Zonder `--repo` geldt `config.RepoRoot()`, net als bij de
+  andere commando's die het aanroepen: eerst `LIGHTHOUSE_REPO_ROOT`, anders
+  `git rev-parse --show-toplevel`. In een worktree zonder override is dat de worktree, niet de
+  main-checkout. De `lighthouse.toml` en de map van `sink = "file"` komen van daar
+  *(eigen keuze na spec-review, r1-f1)*.
+- **Eerst aan of uit.** Het commando leest `report.enabled` vóór `repoconfig.Load`. Het gebruikt
+  daarvoor `internal/config` (de lezer van `lighthouse config`), die geen `[forge] repo` eist.
+  `init` kan namelijk een `lighthouse.toml` zonder `[forge]` schrijven
+  (`internal/initcmd/initcmd.go:598`) *(eigen keuze na spec-review, r1-f5)*. Staat `enabled` niet
+  op `true`, dan meldt het commando één regel op stderr dat het verslag uit staat en hoe je het
+  aanzet. Die regel is Engels: het is een toolmelding. Exit 0, en er volgt geen `repoconfig.Load`
+  en geen forge-call.
+- Het token komt uit `forgeOpener` met de terugval op `gh auth token`, net als bij `ask`
+  (`internal/cli/ask.go:47`). De data leest het commando alleen via de `Forge`-interface
+  *(eigen keuze na spec-review, r1-f11)*.
 - Een fout van de forge of de config: melding op stderr en exit ≠ 0, volgens het
   `exitError`-patroon in `internal/cli`.
 
@@ -172,17 +189,34 @@ snapshot van het board, en `OpenPRs` heeft andere afnemers.
 Invulling voor GitHub, het startpunt voor de bouwer:
 
 - **`MergedPRs`:** de search-API, `repo:<slug> is:pr is:merged merged:<since>..<until>`, met
-  tijdstippen in ISO 8601 met offset. Alle pagina's volgen. De search-API geeft maximaal 1000
-  resultaten. Komt `total_count` daarboven, dan is dat een fout, geen stille afkapping.
-- **`ClosedIssues`:** dezelfde route, `is:issue is:closed closed:<since>..<until>`. Alleen issues
-  met `state_reason` `completed` (of zonder `state_reason`) tellen als gedaan. `not_planned` valt
-  weg.
-- **`MilestonedIssues`:** de repo-brede issue-events (`GET /repos/{slug}/issues/events`),
-  nieuwste eerst. Bladeren stopt zodra een event ouder is dan `since`. Een issue telt als het
-  event `milestoned` in `[since, until)` ligt, het issue nu nog in díe milestone zit, en het issue
-  nu open is (het `issue`-object in het event, of één extra issue-read). Een issue dat intussen
-  dicht is, staat daardoor nooit onder "Gaande". Was het in de periode gesloten, dan staat het al
-  onder "Gedaan". Eén regel per issue en milestone, en pull requests vallen weg.
+  tijdstippen in ISO 8601 met offset, URL-gecodeerd (`+` als `%2B`). Alle pagina's volgen.
+  - Een search-bereik is aan beide kanten inclusief. Daarom filtert de methode het resultaat
+    daarna opnieuw op `[since, until)` met `MergedAt`. Een PR die precies om 00:00 mergt, staat zo
+    in één periode *(eigen keuze na spec-review, r1-f2)*.
+  - De search-API geeft maximaal 1000 resultaten. Is `total_count` groter, of
+    `incomplete_results` `true`, dan is dat een fout, geen stille afkapping
+    *(eigen keuze na spec-review, r1-f3)*.
+- **`ClosedIssues`:** dezelfde route en dezelfde regels, met `is:issue is:closed
+  closed:<since>..<until>` en de filter op `ClosedAt`. Alleen issues met `state_reason`
+  `completed` (of zonder `state_reason`) tellen als gedaan. `not_planned` valt weg.
+- **`MilestonedIssues`:** niet via de repo-brede issue-events. Die hebben geen gedocumenteerde
+  volgorde en geen gedocumenteerde diepte. De methode werkt zo *(eigen keuze na spec-review,
+  r1-f4, r1-f7)*:
+  1. De kandidaten zijn de open issues met een milestone die sinds `since` zijn bijgewerkt:
+     `GET /repos/{slug}/issues?state=open&milestone=*&since=<since>`, met alle pagina's en zonder
+     pull requests. Een milestone hangen werkt `updated_at` bij, dus elk issue dat in de periode
+     een milestone kreeg, staat in deze lijst.
+  2. Per kandidaat leest de methode de events van dat issue
+     (`GET /repos/{slug}/issues/{n}/events`, alle pagina's). Die lijst is per issue volledig.
+  3. Een issue telt als er een event `milestoned` in `[since, until)` ligt waarvan
+     `milestone.title` gelijk is aan de titel van de huidige milestone van het issue. Het event
+     draagt alleen de titel, geen nummer. `MilestonedIssue.Milestone` komt daarom uit het issue,
+     niet uit het event.
+  4. Bij meerdere zulke events telt het laatste als `At`. Een milestone die in de periode van naam
+     veranderde, matcht niet. Dat is een bekende rand en geen fout.
+
+  Een issue dat intussen dicht is, valt al bij stap 1 weg en staat dus nooit onder "Gaande". Was
+  het in de periode gesloten, dan staat het onder "Gedaan".
 - **`OpenPRsWithStatus`:** GraphQL `pullRequests(states: OPEN)` met titel, url, draft, mergeable
   en `statusCheckRollup.state`, met alle pagina's. Dat lijkt op `prFields` in
   `internal/forge/board.go`.
@@ -260,18 +294,29 @@ Volgens `/lighthouse-test-standard` en `/lighthouse-go-standard`:
   van `Build` en geen half verslag, en de statusvolgorde van open PR's.
 - **Render:** `nl` en `en` als golden, de val terug op `en`, en "Geen." bij een lege sectie.
 - **Contract van de forge.** De vier methodes komen in de forge-neutrale suite
-  `internal/forge/forgesuite`, met nieuwe `Fixture`-methodes om een gemergde PR, een gesloten
-  issue en een `milestoned`-event te zaaien. Ook krijgt de nep-GitHub `internal/forge/forgetest`
-  routes voor search, `issues/events` en GraphQL `pullRequests`. Zo draait een tweede forge later
-  dezelfde gevallen.
-- **GitHub-specifieke gevallen tegen een `httptest`-server** met opgenomen antwoorden:
-  - de query-string van de search-API (repo, datumbereik met offset);
-  - bladeren, en de fout bij `total_count` > 1000;
-  - het stoppen bij een event ouder dan `since`;
+  `internal/forge/forgesuite`, met nieuwe `Fixture`-methodes om te zaaien:
+  - een gemergde PR;
+  - een gesloten issue;
+  - een `milestoned`-event;
+  - een open PR met draft, mergeable en checks. Het bestaande `AddOpenPR` neemt een
+    `forge.OpenPR` zonder die velden *(eigen keuze na spec-review, r1-f10)*.
+
+  De nep-GitHub `internal/forge/forgetest` krijgt routes voor search, de issue-lijst met
+  `milestone`/`since`, `issues/{n}/events` en GraphQL `pullRequests`. Zo draait een tweede forge
+  later dezelfde gevallen.
+- **GitHub-specifieke gevallen tegen een `httptest`-server** met opgenomen antwoorden in GitHubs
+  echte vorm (een `milestoned`-event met alleen `milestone.title`):
+  - de gedecodeerde query van de search-API (repo, datumbereik met `+`-offset);
+  - een resultaat precies op `until` dat wegvalt;
+  - bladeren, en de fout bij `total_count` > 1000 en bij `incomplete_results`;
   - de filter op `not_planned`;
-  - een issue dat intussen uit de milestone is gehaald.
-- **CLI met de injecteerbare omgeving:** het verslag dat uit staat (exit 0, melding), `file` zonder
-  `dir` (fout), het pad en label per periode, en `--date`.
+  - een `milestoned`-event buiten de periode;
+  - een issue dat intussen in een andere milestone hangt.
+- **CLI met de injecteerbare omgeving:**
+  - het verslag dat uit staat: exit 0 en de melding, ook zonder `[forge]`, en zonder forge-call;
+  - elke `ReportErr`-soort (fout type, onbekende `sink`, `file` zonder `dir`, `dir` buiten de
+    repo), waarbij `Load` zelf slaagt;
+  - het pad en label per periode, en `--date`.
 - **Config:** de pariteitstest Go en Python, en de test van de site-config, met de nieuwe sleutels.
 
 ### 8. Bijwerken
@@ -311,7 +356,4 @@ Volgens `/lighthouse-test-standard` en `/lighthouse-go-standard`:
 - De naam van het pakket en de types, en of `PRSummary` een eigen bestand krijgt.
 - Of `OpenPRsWithStatus` GraphQL of REST plus de status-API gebruikt. Het verschil is het aantal
   calls bij veel open PR's.
-- **Verifiëren:** hoe ver `GET /repos/{slug}/issues/events` teruggaat. Is dat beperkt, dan geeft
-  een `--date` voorbij die grens geen stil leeg "Nieuw op de roadmap", maar een fout of een regel
-  in het verslag dat de bron niet zo ver teruggaat.
 - Waar de documentatie van het commando komt, naast die van `worktree-audit` of een eigen pagina.
