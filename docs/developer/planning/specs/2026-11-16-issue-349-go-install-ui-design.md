@@ -89,11 +89,27 @@ Vervangt het met de hand pushen van een prerelease-tag (gekozen door de gebruike
 
 - `workflow_dispatch` met invoer `tag`. De workflow weigert alles wat geen prerelease-vorm
   `vX.Y.Z-<suffix>` heeft, zodat hij nooit een gewone release-tag zet.
-- Job `tag` (`contents: write`, `persist-credentials: true`): checkt de ref uit waarvan de
-  dispatch gestart is, zet `setup-node` uit `web/.nvmrc`, draait `ci/tag-with-ui.sh "$tag"` en
-  pusht alleen de tag (`git push origin "refs/tags/$tag"`). Geen branch-push.
-- Job `build`: roept `build.yml` aan met de tag, zoals `release.yml` dat doet. Een tag die met
+- Job `tag` (`contents: write`): checkt de ref uit waarvan de dispatch gestart is, zet
+  `setup-node` uit `web/.nvmrc`, draait `ci/tag-with-ui.sh "$tag"` en pusht alleen de tag
+  (`git push origin "refs/tags/$tag"`). Geen branch-push. Zie *Geen npm-code met schrijftoken*
+  hieronder voor wanneer het token bereikbaar is.
+- Job `build` (`contents: write`: `build.yml`-job `publish` vraagt dat, en een aangeroepen
+  workflow krijgt nooit meer rechten dan de aanroeper geeft; zoals in `release.yml`):
+  roept `build.yml` aan met de tag, zoals `release.yml` dat doet. Een tag die met
   `GITHUB_TOKEN` gepusht is, start namelijk geen push-workflow.
+
+### Geen npm-code met schrijftoken
+
+`npm ci` en `npm run build` (install-scripts, Vite-plugins) draaien nu in `release.yml`-job
+`release` en `prerelease.yml`-job `tag`, die `contents: write` hebben. Tot nu toe draaide npm
+alleen in `build.yml`-job `web` met `contents: read` en `persist-credentials: false`. Eis: terwijl
+`npm ci` of `npm run build` draait, staat het schrijftoken niet in `.git/config` en niet in de
+omgeving van die stap. Elke gepushte ref gaat via één push-stap die het token alleen daar
+meekrijgt (bijvoorbeeld `persist-credentials: false` plus `git -c http.extraheader=…` bij de
+push), of via een aparte job met `contents: read` die `dist` bouwt en als artifact doorgeeft aan
+de job die het commit en tagt. De bouwer kiest; de pin-test legt de eis vast.
+*(r1-f3: een gecompromitteerde npm-dependency kon anders naar `main` en tags pushen; `main` heeft
+geen ruleset.)*
 
 ### `release.yml`, job `release`
 
@@ -104,6 +120,9 @@ Vervangt het met de hand pushen van een prerelease-tag (gekozen door de gebruike
 - De push wordt `git push --atomic origin "$main_sha:refs/heads/main" "refs/tags/$tag"`.
   Commit en tag landen nog steeds samen of niet.
 - De controle "is onze tag op de remote?" na een mislukte push blijft zoals hij is.
+- `timeout-minutes: 10` van de job wordt zo verhoogd, of `npm ci` en de build draaien één keer
+  buiten de lus, dat setup-node, `npm ci` en de Vite-build bij drie pogingen passen
+  *(own choice after spec review, r1-f5)*.
 - Bij een nieuwe poging reset de lus naar `origin/main`. De bestanden in `dist` zijn daar
   genegeerd; de volgende `npm run build` overschrijft ze (`emptyOutDir`).
 
@@ -125,11 +144,17 @@ De macOS-poort test nog steeds `TESTED` (= C1's ouder). C1 voegt alleen changelo
   waar `dist` getrackt is. De controle op een schone tree blijft vóór de build staan en dekt nu
   ook `dist`. `ci/spa-smoke.sh` blijft. `build` hangt nog af van `web`, zodat een tag zonder
   passende UI geen binaries oplevert.
-- Nieuwe job `go-install` (needs `resolve` en `web`, `contents: read`): installeert met
-  `GOPROXY=direct GONOSUMDB=github.com/CorneeldH/lighthouse GOBIN="$RUNNER_TEMP/bin" go install github.com/CorneeldH/lighthouse/cmd/lighthouse@$TAG`
+- Nieuwe job `go-install` (needs `resolve` en `web`, `contents: read`): checkt de tag uit
+  (`ref: refs/tags/${{ needs.resolve.outputs.tag }}`, `persist-credentials: false`; nodig voor
+  `ci/spa-smoke.sh` en `go.mod`), zet `actions/setup-go` met `go-version-file: go.mod` en
+  installeert met
+  `GOPRIVATE=github.com/CorneeldH/lighthouse GOBIN="$RUNNER_TEMP/bin" go install github.com/CorneeldH/lighthouse/cmd/lighthouse@$TAG`
   en draait `ci/spa-smoke.sh` op die binary. Dat bewijst criterium 1 bij elke release.
-  `GOPROXY=direct` haalt de tag rechtstreeks van GitHub, zonder te wachten op de proxy.
-  `GONOSUMDB` voorkomt dat de check een prerelease-tag in de checksum-database vastlegt.
+  `GOPRIVATE` impliceert `GONOPROXY` en `GONOSUMDB` voor alleen onze module: de tag komt
+  rechtstreeks van GitHub, zonder te wachten op de proxy, en een prerelease-tag komt niet in de
+  checksum-database. Geen globale `GOPROXY=direct`: dependencies (o.a. `modernc.org/*`) en de
+  Go-toolchain komen dan nog via de proxy, niet via volledige VCS-clones.
+  *(own choice after spec review, r1-f1)*
 - `publish` hangt ook af van `go-install`: geen GitHub-release als `go install` geen UI levert.
 
 ### `.gitignore`, Vite en `ci.yml`
@@ -148,8 +173,12 @@ blijft de SPA zelf bouwen.
   `download-artifact` voor `spa-dist` meer.
 - `build.yml` heeft een job `go-install` met `ci/spa-smoke.sh`, en `publish` hangt ervan af.
 - `prerelease.yml` weigert een tag zonder prerelease-suffix, roept `ci/tag-with-ui.sh` aan,
-  pusht alleen `refs/tags/$tag` en roept `build.yml` aan. Zijn job `tag` komt op de allow-list van
-  jobs met schrijfrechten in de pin-test.
+  pusht alleen `refs/tags/$tag` en roept `build.yml` aan. Zijn jobs `tag` en `build` komen op de
+  allow-list van jobs met schrijfrechten in de pin-test; `prerelease.yml` komt in de lussen van de
+  pin-, schrijfrecht- en credential-tests (nu alleen `release.yml`, `build.yml`, `macos.yml`), en
+  de credential-pin telt `persist-credentials` volgens *Geen npm-code met schrijftoken*.
+- `test_build_checkouts_pin_the_tag` telt vier checkouts (de nieuwe `go-install` pint de tag ook).
+- Geen npm-code met schrijftoken (zie hierboven) is vastgelegd in de pin-test.
 
 `ci/tag-with-ui.sh` krijgt een test die het script in een tijdelijke git-repo draait (met een
 gestubde `npm`) en controleert: de tag wijst naar een commit met `internal/web/dist/index.html`,
