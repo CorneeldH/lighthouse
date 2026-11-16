@@ -41,7 +41,7 @@ blokkades regelt. Een voortgangstabel in deze repo maakt het werk hervatbaar.
 
 ---
 
-### Taak 1: Voortgangstabel
+### Task 1: Voortgangstabel
 
 **Bestanden:**
 - Aanmaken: `docs/developer/planning/plans/2026-11-16-zelflerende-lighthouse-voortgang.md`
@@ -59,7 +59,7 @@ blokkades regelt. Een voortgangstabel in deze repo maakt het werk hervatbaar.
   #1553, #1126) en dat #1199 de actie `—` heeft (blijft in paia).
 - [ ] **Stap 3: Commit** — `docs(plan): voortgangstabel zelflerende lighthouse`.
 
-### Taak 2: De drie milestones
+### Task 2: De drie milestones
 
 **Interfaces:**
 - Gebruikt: de secties *Milestone 1*, *Milestone 2* en *Milestone 3* van de spec.
@@ -84,7 +84,7 @@ blokkades regelt. Een voortgangstabel in deze repo maakt het werk hervatbaar.
 - [ ] **Stap 3: Werk de voortgangstabel bij en commit** —
   `docs(plan): milestones zelflerende lighthouse aangemaakt`.
 
-### Taak 3: Issues van milestone 1 (T1–T7)
+### Task 3: Issues van milestone 1 (T1–T7)
 
 **Interfaces:**
 - Gebruikt: het milestonenummer van taak 2; de T-tabel en de begrippen uit de spec.
@@ -119,7 +119,7 @@ blokkades regelt. Een voortgangstabel in deze repo maakt het werk hervatbaar.
   Verwacht: T1, en bij T7 ook `325`.
 - [ ] **Stap 5: Werk de voortgangstabel bij en commit.**
 
-### Taak 4: Issues van milestone 2 (K1–K7)
+### Task 4: Issues van milestone 2 (K1–K7)
 
 **Interfaces:**
 - Gebruikt: het milestonenummer van taak 2; de K-tabel en het onderscheid poort/meting uit de spec.
@@ -134,7 +134,7 @@ blokkades regelt. Een voortgangstabel in deze repo maakt het werk hervatbaar.
   in `blocked_by`. Gebruik dezelfde commando's als in taak 3.
 - [ ] **Stap 4: Werk de voortgangstabel bij en commit.**
 
-### Taak 5: Milestone 3, het losse issue en de verhuizingen
+### Task 5: Milestone 3, het losse issue en de verhuizingen
 
 **Interfaces:**
 - Gebruikt: het milestonenummer van milestone 3.
@@ -156,7 +156,7 @@ blokkades regelt. Een voortgangstabel in deze repo maakt het werk hervatbaar.
 - [ ] **Stap 5: Controleer.** Milestone 3 heeft 4 open issues: de twee nieuwe, #103 en #168.
 - [ ] **Stap 6: Werk de voortgangstabel bij en commit.**
 
-### Taak 6: Paia opruimen
+### Task 6: Paia opruimen
 
 **Interfaces:**
 - Gebruikt: de kolommen `Lighthouse` en `Paia-actie` van de voortgangstabel. Elke rij met een
@@ -195,7 +195,7 @@ blokkades regelt. Een voortgangstabel in deze repo maakt het werk hervatbaar.
   Verwacht: precies #470, #590, #644, #667, #1194, #1199, #1286, #1287 en #1395.
 - [ ] **Stap 5: Werk de voortgangstabel bij en commit.**
 
-### Taak 7: Spec bijwerken en PR
+### Task 7: Spec bijwerken en PR
 
 **Bestanden:**
 - Wijzigen: `docs/developer/planning/specs/2026-11-16-zelflerende-lighthouse-design.md`. In de
