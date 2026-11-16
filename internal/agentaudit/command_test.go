@@ -64,6 +64,13 @@ func TestScriptPath(t *testing.T) {
 		{"combined -ec with cd", `bash -ec 'cd "$CLAUDE_PROJECT_DIR" && ./.claude/hooks/a.sh'`, plain, plain + "/.claude/hooks/a.sh"},
 		{"combined -euc missing script", `bash -euc './gone/z.sh --fast'`, plain, plain + "/gone/z.sh"},
 		{"combined -xc code sourcing a missing file", `sh -xc 'source .claude/hooks/gone.sh && check'`, plain, ""},
+		{"semicolon glued to script", `"$CLAUDE_PROJECT_DIR"/.claude/hooks/a.sh; echo done`, plain, plain + "/.claude/hooks/a.sh"},
+		{"and glued on both sides", "true&&./x/y.sh", plain, plain + "/x/y.sh"},
+		{"or glued to script", "./x/y.sh||exit 0", plain, plain + "/x/y.sh"},
+		{"pipe glued starts a command", "echo a|./gone/z.sh", plain, plain + "/gone/z.sh"},
+		{"background glued starts a command", "true&./gone/z.sh", plain, plain + "/gone/z.sh"},
+		{"background ampersand starts a command", "true & ./gone/z.sh", plain, plain + "/gone/z.sh"},
+		{"quoted semicolon stays in the word", `echo 'a;./gone/z.sh'`, plain, ""},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

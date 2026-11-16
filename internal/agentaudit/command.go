@@ -16,20 +16,28 @@ var interpreters = map[string]bool{
 var unquote = strings.NewReplacer(`"`, "", `'`, "")
 
 // words splits a command line on whitespace outside quotes and drops the quotes, so
-// `"$CLAUDE_PROJECT_DIR"/x.sh` stays one word. An unbalanced quote runs to the end.
+// `"$CLAUDE_PROJECT_DIR"/x.sh` stays one word. An unbalanced quote runs to the end. A run
+// of ;, | and & outside quotes ends the word before it and is a word of its own, so
+// `x.sh;` and `a&&./b.sh` split as the shell splits them.
 func words(command string) []string {
 	var out []string
 	var cur strings.Builder
 	var quote rune
 	started := false
+	inOp := false // cur holds a run of operator characters
 	flush := func() {
 		if started {
 			out = append(out, cur.String())
 		}
 		cur.Reset()
 		started = false
+		inOp = false
 	}
 	for _, r := range command {
+		isOp := quote == 0 && (r == ';' || r == '|' || r == '&')
+		if quote == 0 && inOp != isOp {
+			flush()
+		}
 		switch {
 		case quote != 0:
 			if r == quote {
@@ -45,6 +53,7 @@ func words(command string) []string {
 		default:
 			cur.WriteRune(r)
 			started = true
+			inOp = isOp
 		}
 	}
 	flush()
@@ -84,7 +93,7 @@ func codeFlag(word string) bool {
 }
 
 // separators end one simple command and start the next.
-var separators = map[string]bool{"&&": true, "||": true, ";": true, "|": true}
+var separators = map[string]bool{"&&": true, "||": true, ";": true, "|": true, "&": true, "|&": true, ";;": true}
 
 // scriptPath is the script a hook command runs, "" for an inline command. Words are
 // read with quotes dropped, $CLAUDE_PROJECT_DIR replaced by root, $HOME and ~ by home,
