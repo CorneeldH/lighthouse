@@ -51,8 +51,8 @@ report read) and counted as scanned in full. The key covers the config, the
 gitleaks version and SCAN_METHOD, so a change to any of them starts a new ledger
 and a full rescan.
 
-Runs on the host's python3 with `-I`: stdlib only, and `config.py` is found relative
-to this file, never through the cwd.
+Runs on the host's python3 with `-I`: stdlib only. The limits come from
+`lighthouse config`, found on PATH; without it the scan cannot be bounded and exits 2.
 """
 
 from __future__ import annotations
@@ -70,8 +70,6 @@ from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / ".lighthouse" / "lib"))
 
 PREFIX = "secret-scan"
 DEFAULT_MEMORY_MAX = "2G"
@@ -136,28 +134,34 @@ class CouldNotCheck(Exception):
     """
 
 
+def _host_value(binary: str, key: str) -> str | None:
+    """One `[host]` key through `lighthouse config`; None when it is not set."""
+    try:
+        result = subprocess.run(
+            [binary, "config", key], capture_output=True, text=True, timeout=30, check=False
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise CouldNotCheck(f"lighthouse config {key}: {exc}") from exc
+    if result.returncode == 1 and "unknown command" not in result.stderr:
+        return None
+    if result.returncode != 0:
+        raise CouldNotCheck(result.stderr.strip() or f"lighthouse config {key} exited {result.returncode}")
+    return result.stdout.strip() or None
+
+
 def load_limits() -> Limits:
     """The scan limits from `host.toml`; defaults for a missing key or file.
 
     A `host.toml` that does not validate exits 2: a scan with limits nobody chose
-    is not a bounded scan.
+    is not a bounded scan. So does a missing `lighthouse`, which reads it.
     """
-    # Imported here, not at the top: a module without `.lighthouse/lib` next to it
-    # then fails inside `main`, as COULD NOT CHECK (exit 2), not with a traceback
-    # (exit 1, which the hook reads as findings).
-    from lighthouse_lib.config import ConfigError, host_path, load_host
-
-    path = host_path()
-    if not path.exists():
-        return Limits(DEFAULT_MEMORY_MAX, DEFAULT_CPU_QUOTA, None)
-    try:
-        host = load_host(path)
-    except ConfigError as exc:
-        raise CouldNotCheck(str(exc)) from exc
+    binary = shutil.which("lighthouse")
+    if binary is None:
+        raise CouldNotCheck("lighthouse is not on PATH; it reads the scan limits from host.toml")
     return Limits(
-        memory_max=host.scan_memory_max or DEFAULT_MEMORY_MAX,
-        cpu_quota=host.scan_cpu_quota or DEFAULT_CPU_QUOTA,
-        slice=host.gate_slice,
+        memory_max=_host_value(binary, "host.scan_memory_max") or DEFAULT_MEMORY_MAX,
+        cpu_quota=_host_value(binary, "host.scan_cpu_quota") or DEFAULT_CPU_QUOTA,
+        slice=_host_value(binary, "host.gate_slice"),
     )
 
 

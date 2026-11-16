@@ -3,5 +3,5 @@
 jq = ["ruff-format-check", "ty-gate"]
 uv = ["ruff-format-check", "ty-gate", "quality/ratchet.py", "commit-test-gate ([test_gate] command)", "gate_python"]
 gh = ["quality/ratchet.py nightly"]
-python3 = ["ty-gate", "python-standard", "gate_python"]
+python3 = ["python-standard", "gate_python"]
 tomllib = ["python-standard"]

@@ -1,7 +1,9 @@
-# Where each file in pack/core came from (spec, Opdeling (b) and (d)). Every file has
-# exactly one entry (tests/test_sources.py). A file taken over has source_path (the
-# path in the source repository; a list when it merges several) and source_sha (the
-# commit it was taken from). A file written for lighthouse has new = true.
+# Provenance of every file in pack/ (spec, Opdeling (b) and (d)). Every file has exactly
+# one entry (tests/test_sources.py), with exactly one of:
+#   new = true       written for lighthouse
+#   pin = "<key>"    the file follows a pin in lighthouse.toml
+#   source_repo (owner/repo), source_sha (40 hex), source_path (one string)
+#                    taken over from another repository at that commit
 
 [[file]]
 path = "pack/core/hooks/hooks.json"
@@ -20,21 +22,8 @@ path = "pack/core/instructions/AGENTS.md"
 new = true
 
 [[file]]
-path = "pack/core/lib/__init__.py"
-new = true
-
-[[file]]
-path = "pack/core/lib/config.py"
-new = true
-
-[[file]]
 path = "pack/core/requires.toml"
 new = true
-
-[[file]]
-path = "pack/core/lib/datadir.py"
-source_path = "experiments/lekmeting-keten/lk_common.py"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
 
 [[file]]
 path = "pack/core/headings.toml"
@@ -45,17 +34,8 @@ path = "pack/core/guards.toml"
 new = true
 
 [[file]]
-path = "pack/core/lib/headings.py"
-new = true
-
-[[file]]
-path = "pack/core/scripts/create_labels.py"
-new = true
-
-[[file]]
 path = "pack/core/workflows/unblock-dependents.yml"
-source_path = ".github/workflows/unblock-dependents.yml"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
+new = true
 
 [[file]]
 path = "pack/core/templates/labels.md"
@@ -63,18 +43,15 @@ new = true
 
 [[file]]
 path = "pack/core/templates/pull_request_template.md"
-source_path = ".github/pull_request_template.md"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
+new = true
 
 [[file]]
 path = "pack/core/agents/issue-impact-scout.md"
-source_path = ".claude/agents/issue-impact-scout.md"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
+new = true
 
 [[file]]
 path = "pack/expo/skills/refresh-expo-lockfiles/SKILL.md"
-source_path = [".claude/skills/paia-refresh-expo-lockfiles/SKILL.md", ".agents/skills/paia-refresh-expo-lockfiles/SKILL.md"]
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
+new = true
 
 [[file]]
 path = "pack/expo/detect.toml"
@@ -86,113 +63,91 @@ new = true
 
 [[file]]
 path = "pack/core/skills/route-issue/SKILL.md"
-source_path = [".claude/skills/paia-route-issue/SKILL.md", ".agents/skills/paia-route-issue/SKILL.md"]
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
+new = true
 
 [[file]]
 path = "pack/core/skills/start-issue/claude/SKILL.md"
-source_path = ".claude/skills/paia-start-issue/SKILL.md"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
+new = true
 
 [[file]]
 path = "pack/core/skills/start-issue/agents/SKILL.md"
-source_path = ".agents/skills/paia-start-issue/SKILL.md"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
+new = true
 
 [[file]]
 path = "pack/core/skills/write-handoff/SKILL.md"
-source_path = [".claude/skills/paia-handoff/SKILL.md", ".agents/skills/paia-handoff/SKILL.md"]
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
+new = true
 
 [[file]]
 path = "pack/core/skills/write-pr/SKILL.md"
-source_path = [".claude/skills/paia-verify-pr/SKILL.md", ".agents/skills/paia-verify-pr/SKILL.md"]
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
+new = true
 
 [[file]]
 path = "pack/core/skills/fix-pr/claude/SKILL.md"
-source_path = ".claude/skills/paia-fix-pr/SKILL.md"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
+new = true
 
 [[file]]
 path = "pack/core/skills/fix-pr/agents/SKILL.md"
-source_path = ".agents/skills/paia-fix-pr/SKILL.md"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
+new = true
 
 [[file]]
 path = "pack/core/skills/close-issue/claude/SKILL.md"
-source_path = ".claude/skills/paia-close-issue/SKILL.md"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
+new = true
 
 [[file]]
 path = "pack/core/skills/close-issue/agents/SKILL.md"
-source_path = ".agents/skills/paia-close-issue/SKILL.md"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
+new = true
 
 [[file]]
 path = "pack/core/skills/review-spec/claude/SKILL.md"
-source_path = ".claude/skills/paia-spec-adversarial-review/SKILL.md"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
+new = true
 
 [[file]]
 path = "pack/core/skills/review-spec/agents/SKILL.md"
-source_path = ".agents/skills/paia-spec-adversarial-review/SKILL.md"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
+new = true
 
 [[file]]
 path = "pack/core/skills/review-spec/findings.schema.json"
-source_path = [".claude/skills/paia-spec-adversarial-review/findings.schema.json", ".agents/skills/paia-spec-adversarial-review/findings.schema.json"]
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
+new = true
 
 [[file]]
 path = "pack/core/skills/review-spec/verification.schema.json"
-source_path = [".claude/skills/paia-spec-adversarial-review/verification.schema.json", ".agents/skills/paia-spec-adversarial-review/verification.schema.json"]
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
+new = true
 
 [[file]]
 path = "pack/core/skills/review-spec/reviewer-prompt.md"
-source_path = [".claude/skills/paia-spec-adversarial-review/reviewer-prompt.md", ".agents/skills/paia-spec-adversarial-review/reviewer-prompt.md"]
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
+new = true
 
 [[file]]
 path = "pack/core/skills/review-spec/verifier-prompt.md"
-source_path = [".claude/skills/paia-spec-adversarial-review/verifier-prompt.md", ".agents/skills/paia-spec-adversarial-review/verifier-prompt.md"]
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
+new = true
 
 [[file]]
 path = "pack/core/permissions.json"
-source_path = ".claude/settings.json"
-source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
+new = true
 
 [[file]]
 path = "pack/core/skills/review-plan/claude/SKILL.md"
-source_path = ".claude/skills/paia-plan-adversarial-review/SKILL.md"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
+new = true
 
 [[file]]
 path = "pack/core/skills/review-plan/agents/SKILL.md"
-source_path = ".agents/skills/paia-plan-adversarial-review/SKILL.md"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
+new = true
 
 [[file]]
 path = "pack/core/skills/review-plan/findings.schema.json"
-source_path = [".claude/skills/paia-plan-adversarial-review/findings.schema.json", ".agents/skills/paia-plan-adversarial-review/findings.schema.json"]
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
+new = true
 
 [[file]]
 path = "pack/core/skills/review-plan/verification.schema.json"
-source_path = [".claude/skills/paia-plan-adversarial-review/verification.schema.json", ".agents/skills/paia-plan-adversarial-review/verification.schema.json"]
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
+new = true
 
 [[file]]
 path = "pack/core/skills/review-plan/reviewer-prompt.md"
-source_path = [".claude/skills/paia-plan-adversarial-review/reviewer-prompt.md", ".agents/skills/paia-plan-adversarial-review/reviewer-prompt.md"]
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
+new = true
 
 [[file]]
 path = "pack/core/skills/review-plan/verifier-prompt.md"
-source_path = [".claude/skills/paia-plan-adversarial-review/verifier-prompt.md", ".agents/skills/paia-plan-adversarial-review/verifier-prompt.md"]
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
+new = true
 
 [[file]]
 path = "pack/core/skills/audit-agent-config/SKILL.md"
@@ -200,13 +155,11 @@ new = true
 
 [[file]]
 path = "pack/core/skills/audit-worktrees/SKILL.md"
-source_path = [".claude/skills/paia-worktree-audit/SKILL.md", ".agents/skills/paia-worktree-audit/SKILL.md"]
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
+new = true
 
 [[file]]
 path = "pack/core/skills/place-instruction/SKILL.md"
-source_path = [".claude/skills/paia-instrumenteren/SKILL.md", ".agents/skills/paia-instrumenteren/SKILL.md"]
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
+new = true
 
 [[file]]
 path = "pack/core/skills/test-standard/SKILL.md"
@@ -222,33 +175,27 @@ new = true
 
 [[file]]
 path = "pack/core/skills/write-issue/claude/SKILL.md"
-source_path = ".claude/skills/paia-write-issue/SKILL.md"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
+new = true
 
 [[file]]
 path = "pack/core/skills/write-issue/agents/SKILL.md"
-source_path = ".agents/skills/paia-write-issue/SKILL.md"
-source_sha = "1448c831cc8aa755a45cae2fb2af304eda2d3cfc"
+new = true
 
 [[file]]
 path = "pack/python/skills/python-standard/claude/SKILL.md"
-source_path = ".claude/skills/paia-python-schrijven/SKILL.md"
-source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
+new = true
 
 [[file]]
 path = "pack/python/skills/python-standard/agents/SKILL.md"
-source_path = ".agents/skills/paia-python-schrijven/SKILL.md"
-source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
+new = true
 
 [[file]]
 path = "pack/python/hooks/ruff-format-check.sh"
-source_path = ".claude/hooks/ruff-format.sh"
-source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
+new = true
 
 [[file]]
 path = "pack/python/hooks/ty-gate.sh"
-source_path = ".claude/hooks/ty-check.sh"
-source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
+new = true
 
 [[file]]
 path = "pack/python/hooks/hooks.json"
@@ -264,33 +211,27 @@ new = true
 
 [[file]]
 path = "pack/python/scripts/quality/__init__.py"
-source_path = "scripts/quality/__init__.py"
-source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
+new = true
 
 [[file]]
 path = "pack/python/scripts/quality/baseline.py"
-source_path = "scripts/quality/baseline.py"
-source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
+new = true
 
 [[file]]
 path = "pack/python/scripts/quality/diffcov.py"
-source_path = "scripts/quality/diffcov.py"
-source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
+new = true
 
 [[file]]
 path = "pack/python/scripts/quality/gitenv.py"
-source_path = "scripts/quality/gitenv.py"
-source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
+new = true
 
 [[file]]
 path = "pack/python/scripts/quality/prcov.py"
-source_path = "scripts/quality/prcov.py"
-source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
+new = true
 
 [[file]]
 path = "pack/python/scripts/quality/prcov_issues.py"
-source_path = "scripts/quality/prcov_issues.py"
-source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
+new = true
 
 [[file]]
 path = "pack/python/detect.toml"
@@ -306,13 +247,11 @@ new = true
 
 [[file]]
 path = "pack/python/scripts/quality/ratchet.py"
-source_path = "scripts/quality/ratchet.py"
-source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
+new = true
 
 [[file]]
 path = "pack/shell/hooks/shell-lint-check.sh"
-source_path = ".claude/hooks/shellcheck.sh"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+new = true
 
 [[file]]
 path = "pack/shell/hooks/hooks.json"
@@ -320,13 +259,11 @@ new = true
 
 [[file]]
 path = "pack/shell/scripts/shellcheck-repo.sh"
-source_path = "scripts/hooks/shellcheck-repo.sh"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+new = true
 
 [[file]]
 path = "pack/shell/scripts/lib/shellcheck-bin.sh"
-source_path = "scripts/hooks/lib/shellcheck-bin.sh"
-source_sha = "33833601349a8b79a1d1b2ac9077cc495a0d2b37"
+new = true
 
 [[file]]
 path = "pack/shell/requires.toml"
@@ -334,13 +271,11 @@ new = true
 
 [[file]]
 path = "pack/shell/skills/shell-standard/claude/SKILL.md"
-source_path = ".claude/skills/paia-shell-gates/SKILL.md"
-source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
+new = true
 
 [[file]]
 path = "pack/shell/skills/shell-standard/agents/SKILL.md"
-source_path = ".agents/skills/paia-shell-gates/SKILL.md"
-source_sha = "8a3eaf9fdc001ef7af4fd56b39fa4f4b226af664"
+new = true
 
 [[file]]
 path = "pack/shell/detect.toml"

@@ -1,6 +1,8 @@
 ---
 name: lighthouse-refresh-expo-lockfiles
 description: Refresh the dependencies of the Expo apps in this repository so the CI check on them goes green again. Use when `npx expo-doctor` fails with "Check that packages match versions required by installed Expo SDK", or when patch-level Expo drift blocks an unrelated PR. Stays on the pinned SDK; never upgrades it.
+metadata:
+  origin: own
 ---
 
 # Refresh Expo lockfiles

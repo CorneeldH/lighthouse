@@ -93,6 +93,7 @@ func NewRoot(in io.Reader, out, errOut io.Writer) *cobra.Command {
 	root.AddCommand(newTurnRootsCommand())
 	root.AddCommand(newPrBodyGateCommand())
 	root.AddCommand(newEvidenceCommand())
+	root.AddCommand(newPinsCommand(defaultPinsEnv, laneEnvFrom(os.Getenv, "")))
 	root.AddCommand(newBoardStartCommand())
 	root.AddCommand(newUnblockDependentsCommand())
 	root.AddCommand(newPostArtefactCommand(defaultPostArtefactEnv()))

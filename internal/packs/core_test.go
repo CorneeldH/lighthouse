@@ -78,11 +78,6 @@ func TestCorePack(t *testing.T) {
 		".github/pull_request_template.md",
 		".github/workflows/lighthouse-unblock-dependents.yml",
 		".lighthouse/headings.toml",
-		".lighthouse/lib/lighthouse_lib/__init__.py",
-		".lighthouse/lib/lighthouse_lib/config.py",
-		".lighthouse/lib/lighthouse_lib/datadir.py",
-		".lighthouse/lib/lighthouse_lib/headings.py",
-		".lighthouse/scripts/create_labels.py",
 	}
 	if strings.Join(files, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("files:\n%s", strings.Join(files, "\n"))
@@ -94,7 +89,7 @@ func TestCorePack(t *testing.T) {
 	for _, r := range p.Requires {
 		tools = append(tools, r.Tool)
 	}
-	if strings.Join(tools, ",") != "codex,gh,git,jq,python3,superpowers,tomllib" {
+	if strings.Join(tools, ",") != "codex,gh,git,jq,superpowers" {
 		t.Fatalf("tools = %v", tools)
 	}
 }

@@ -32,6 +32,7 @@ type Deps struct {
 	Leftovers func(context.Context) ([]workplace.Leftover, error)
 	Runs      func(context.Context) ([]dispatch.RunView, []dispatch.DeferredView, error)
 	RunsMeta  RunsMeta
+	Node      http.Handler // the node-API under /api/node/; nil without [node] in host.toml
 }
 
 // New returns the handler: the JSON API under /api/ and site as SPA elsewhere, behind the Host check.
@@ -59,6 +60,9 @@ func New(site fs.FS, d Deps) http.Handler {
 	registerCleanup(api, d.Leftovers)
 	registerRuns(api, d.Runs, d.RunsMeta)
 
+	if d.Node != nil {
+		mux.Handle("/api/node/", d.Node)
+	}
 	mux.Handle("/api/", http.NotFoundHandler())
 	mux.Handle("/", spa(site))
 	return hostGuard(mux)

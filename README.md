@@ -18,6 +18,10 @@ The scope and roadmap: [lighthouse-scope-design](https://github.com/CorneeldH/pe
 
 `lighthouse tick` is one dispatcher pass, started by a timer: it takes `tick.lock`, checks the GitHub token and the `[dispatch]` repos of `host.toml`, and skips loudly each repo that cannot be served. It does not start runs yet: [tick](docs/tick.md) (in Dutch).
 
+## Upstream pins
+
+`lighthouse pins check` measures what lighthouse took over (skills, files, plugins, tools) against upstream and against what is installed, and a weekly lane turns each lag into a draft PR or an issue: [pins](docs/pins.md) (in Dutch).
+
 ## Running the server
 
 `lighthouse serve` starts the API and web UI on `127.0.0.1:8127`. Install it as a systemd user service: [install](docs/install.md).

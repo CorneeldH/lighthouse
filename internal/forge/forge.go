@@ -45,6 +45,19 @@ type Forge interface {
 	IssueItem(ctx context.Context, number int) (item BoardItem, ok bool, err error)
 	AddToBoard(ctx context.Context, number int) (BoardItem, error)
 	SetStatus(ctx context.Context, item BoardItem, status string) error
+	// CreateIssue opens an issue and returns it as the forge stored it.
+	CreateIssue(ctx context.Context, title, body string) (Issue, error)
+	UpdateIssueBody(ctx context.Context, number int, body string) error
+	// CloseIssue posts comment (when not empty) and then closes the issue.
+	CloseIssue(ctx context.Context, number int, comment string) error
+	// CreatePR opens a pull request; with NewPR.Draft it is a draft.
+	CreatePR(ctx context.Context, pr NewPR) (PR, error)
+	UpdatePRBody(ctx context.Context, number int, body string) error
+	// ClosePR posts comment (when not empty) and then closes the pull request unmerged.
+	ClosePR(ctx context.Context, number int, comment string) error
+	// FindByMarker lists the issues and pull requests, open and closed, whose body contains
+	// marker. No hit is an empty list, not an error; an empty marker is an error.
+	FindByMarker(ctx context.Context, marker string) ([]Item, error)
 }
 
 var _ Forge = (*GitHub)(nil)

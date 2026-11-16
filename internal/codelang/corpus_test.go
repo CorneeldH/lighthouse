@@ -100,16 +100,6 @@ func TestCorpusGoEnglish(t *testing.T) {
 	}
 }
 
-func TestCorpusConfigPyEnglish(t *testing.T) {
-	path := filepath.Join(repoRoot, "pack", "core", "lib", "config.py")
-	if _, err := os.Stat(path); err != nil {
-		t.Skipf("%s is gone (removed in step 12): %v", path, err)
-	}
-	if found := scanFiles(t, "python", []string{path}); len(found) != 0 {
-		t.Errorf("findings:\n%s", strings.Join(found, "\n"))
-	}
-}
-
 func TestCorpusHooksEnglish(t *testing.T) {
 	files, err := filepath.Glob(filepath.Join(repoRoot, "pack", "core", "hooks", "*.sh"))
 	if err != nil {

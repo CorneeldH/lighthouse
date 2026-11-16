@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -176,5 +177,113 @@ func TestMergePR(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// recorder answers by "METHOD path" and logs every request as "METHOD path body".
+func recorder(t *testing.T, answers map[string]string) (*GitHub, *[]string) {
+	t.Helper()
+	var log []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		log = append(log, strings.TrimSpace(r.Method+" "+r.URL.RequestURI()+" "+string(raw)))
+		resp, ok := answers[r.Method+" "+r.URL.Path]
+		if !ok {
+			t.Errorf("unexpected request %s %s", r.Method, r.URL)
+			w.WriteHeader(404)
+			return
+		}
+		_, _ = io.WriteString(w, resp)
+	}))
+	t.Cleanup(srv.Close)
+	c := New("o/r", "secret-token")
+	c.BaseURL = srv.URL
+	return c, &log
+}
+
+func TestCreatePRSendsDraftAndReadsResult(t *testing.T) {
+	c, log := recorder(t, map[string]string{"POST /repos/o/r/pulls": `{"number":9,"state":"open","draft":true,
+		"html_url":"u","head":{"ref":"pins/x","sha":"abc"}}`})
+	got, err := c.CreatePR(context.Background(), NewPR{Title: "T", Body: "B", Head: "pins/x", Base: "main", Draft: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `POST /repos/o/r/pulls {"base":"main","body":"B","draft":true,"head":"pins/x","title":"T"}`
+	if len(*log) != 1 || (*log)[0] != want {
+		t.Errorf("requests = %q, want %q", *log, want)
+	}
+	if got.Number != 9 || got.State != "OPEN" || !got.Draft || got.HeadRef != "pins/x" || got.HeadSHA != "abc" || got.URL != "u" {
+		t.Errorf("got %+v", got)
+	}
+}
+
+func TestCloseCommentsBeforeClosing(t *testing.T) {
+	for _, tt := range []struct {
+		name, kind string
+		close      func(*GitHub) error
+	}{
+		{"issue", "issues", func(c *GitHub) error { return c.CloseIssue(context.Background(), 4, "reden") }},
+		{"pr", "pulls", func(c *GitHub) error { return c.ClosePR(context.Background(), 4, "reden") }},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			c, log := recorder(t, map[string]string{
+				"POST /repos/o/r/issues/4/comments":  `{"id":1,"user":{"login":"b"}}`,
+				"PATCH /repos/o/r/" + tt.kind + "/4": `{}`,
+			})
+			if err := tt.close(c); err != nil {
+				t.Fatal(err)
+			}
+			want := []string{`POST /repos/o/r/issues/4/comments {"body":"reden"}`, `PATCH /repos/o/r/` + tt.kind + `/4 {"state":"closed"}`}
+			if !slices.Equal(*log, want) {
+				t.Errorf("requests = %q, want %q", *log, want)
+			}
+		})
+	}
+	t.Run("no comment", func(t *testing.T) {
+		c, log := recorder(t, map[string]string{"PATCH /repos/o/r/issues/4": `{}`})
+		if err := c.CloseIssue(context.Background(), 4, ""); err != nil {
+			t.Fatal(err)
+		}
+		if len(*log) != 1 {
+			t.Errorf("requests = %q, want only the PATCH", *log)
+		}
+	})
+}
+
+func TestUpdateBodyPatches(t *testing.T) {
+	c, log := recorder(t, map[string]string{"PATCH /repos/o/r/issues/4": `{}`, "PATCH /repos/o/r/pulls/5": `{}`})
+	if err := c.UpdateIssueBody(context.Background(), 4, "i"); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.UpdatePRBody(context.Background(), 5, "p"); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{`PATCH /repos/o/r/issues/4 {"body":"i"}`, `PATCH /repos/o/r/pulls/5 {"body":"p"}`}
+	if !slices.Equal(*log, want) {
+		t.Errorf("requests = %q, want %q", *log, want)
+	}
+}
+
+func TestFindByMarkerFiltersAndReadsHead(t *testing.T) {
+	c, log := recorder(t, map[string]string{
+		"GET /repos/o/r/issues": `[{"number":1,"state":"open","body":"x <!-- m -->"},
+			{"number":2,"state":"closed","body":"other"},
+			{"number":3,"state":"closed","body":null},
+			{"number":4,"state":"closed","body":"<!-- m -->","pull_request":{}}]`,
+		"GET /repos/o/r/pulls/4": `{"head":{"ref":"pins/y"}}`,
+	})
+	got, err := c.FindByMarker(context.Background(), "<!-- m -->")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Item{{Number: 1, State: "open", Body: "x <!-- m -->"}, {Number: 4, IsPR: true, State: "closed", Body: "<!-- m -->", HeadRef: "pins/y"}}
+	if !slices.Equal(got, want) {
+		t.Errorf("got %+v, want %+v", got, want)
+	}
+	if (*log)[0] != "GET /repos/o/r/issues?state=all&per_page=100" || len(*log) != 2 {
+		t.Errorf("requests = %q; want the state=all list and one pulls read", *log)
+	}
+	if _, err := c.FindByMarker(context.Background(), ""); err == nil {
+		t.Error("an empty marker would match everything; want an error")
 	}
 }

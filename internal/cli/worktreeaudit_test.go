@@ -24,7 +24,13 @@ func TestWorktreeAuditCases(t *testing.T) {
 				t.Skip("not a Go case")
 			}
 			// The Python runner's root is <tmp>/root: the main checkout's row shows that name.
-			root := filepath.Join(t.TempDir(), "root")
+			// git reports the resolved path, so resolve the temp dir too: on macOS t.TempDir()
+			// lies under /var, a symlink to /private/var.
+			tmp, err := filepath.EvalSymlinks(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			root := filepath.Join(tmp, "root")
 			if err := os.Mkdir(root, 0o755); err != nil {
 				t.Fatal(err)
 			}

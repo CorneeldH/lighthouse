@@ -114,3 +114,30 @@ func TestConfigJSON(t *testing.T) {
 		}
 	})
 }
+
+// TestConfigKind fails when --kind stops printing one `<key>\t<kind>` line per argument, or
+// starts reading lighthouse.toml (the file here is invalid on purpose).
+func TestConfigKind(t *testing.T) {
+	code, out, errOut := runConfig(t, "this is not toml [", "--kind", "ci.runs_on", "no.such_key")
+	if code != 0 || out != "ci.runs_on\tstr\nno.such_key\tunknown\n" || errOut != "" {
+		t.Fatalf("code %d, stdout %q, stderr %q", code, out, errOut)
+	}
+}
+
+// TestConfigSchema fails when --schema stops printing the schema as JSON or reads lighthouse.toml.
+func TestConfigSchema(t *testing.T) {
+	code, out, errOut := runConfig(t, "this is not toml [", "--schema")
+	if code != 0 || errOut != "" {
+		t.Fatalf("code %d, stderr %q", code, errOut)
+	}
+	var got struct {
+		Languages []string          `json:"languages"`
+		Schema    map[string]string `json:"schema"`
+	}
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Languages) != 2 || got.Languages[0] != "nl" || got.Languages[1] != "en" || got.Schema["ci.runs_on"] != "str" {
+		t.Errorf("got %+v", got)
+	}
+}

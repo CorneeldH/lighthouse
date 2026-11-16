@@ -1,6 +1,9 @@
 package dispatch
 
-import "fmt"
+import (
+	"fmt"
+	"maps"
+)
 
 // ProfileSoftware is the repo profile the software limit counts.
 const ProfileSoftware = "software"
@@ -11,7 +14,7 @@ const triggerUsage = "usage"
 // Brake is the host-wide state the brake reads, once per tick (spec "De rem"); nil in Input is no brake.
 type Brake struct {
 	Paused            bool     `json:"paused"`
-	Manual            bool     `json:"manual"` // lighthouse run: only pause and usage
+	Manual            bool     `json:"manual"` // lighthouse run: only pause, usage and unreadable node markers
 	UsageMeasured     bool     `json:"usage_measured"`
 	SessionPct        int      `json:"session_pct"`
 	WeekPct           int      `json:"week_pct"`
@@ -33,15 +36,20 @@ type NodeSlots struct {
 	Name  string `json:"name"`
 	Slots int    `json:"slots"`
 	InUse int    `json:"in_use"`
+	// Unmeasured: the markers of the node could not be read this tick, so its parked runs are
+	// not counted; the brake of the node is closed.
+	Unmeasured bool `json:"unmeasured,omitempty"`
 }
 
 // apply walks the starts and resumes of ps in order and lets each through, drops it (pause)
 // or turns it into a defer with the text of the first closed brake: pause, usage, memory,
 // slots, software. Other actions pass untouched. A start or resume whose run already holds a
 // slot (planned.holdsSlot) skips slots and software and does not count in their totals, but
-// counts for memory.
+// counts for memory. The starts are tested against the brake after subtracting the slots the
+// closes in ps free (freed); b itself stays the measurement.
 func (b *Brake) apply(ps []planned) []planned {
 	out := make([]planned, 0, len(ps))
+	eff := b.freed(ps)
 	passed, admitted, admittedSoftware := 0, 0, 0
 	admittedOn := map[string]int{}
 	for _, p := range ps {
@@ -52,7 +60,7 @@ func (b *Brake) apply(ps []planned) []planned {
 		if b.Paused {
 			continue
 		}
-		if reason := b.closed(p, passed, admitted, admittedSoftware, admittedOn); reason != "" {
+		if reason := eff.closed(p, passed, admitted, admittedSoftware, admittedOn); reason != "" {
 			out = append(out, planned{Action: Action{
 				Kind: KindDefer, Repo: p.Repo, Issue: p.Issue, Language: p.Language, Reason: reason,
 			}})
@@ -93,6 +101,9 @@ func (b *Brake) closed(p planned, passed, admitted, admittedSoftware int, admitt
 	if reason := b.UsageClosed(); reason != "" {
 		return reason
 	}
+	if reason := b.blind(p); reason != "" {
+		return reason
+	}
 	if b.Manual {
 		return ""
 	}
@@ -118,13 +129,23 @@ func (b *Brake) closed(p planned, passed, admitted, admittedSoftware int, admitt
 	return ""
 }
 
+// blind is closed for a run on a node whose markers were not readable this tick: an unknown
+// occupancy never lets an extra run in, a parked one included, and not for lighthouse run
+// (Manual) either.
+func (b *Brake) blind(p planned) string {
+	if n, ok := b.Nodes[p.node]; ok && p.node != "" && n.Unmeasured {
+		return "markers not readable"
+	}
+	return ""
+}
+
 // nodeClosed is closed for a run on a node: no memory brake (the memory is not this host's), the
 // slots of the node, then the software limit, which is host-wide.
 func (b *Brake) nodeClosed(p planned, admitted, admittedSoftware int) string {
+	n, ok := b.Nodes[p.node]
 	if p.holdsSlot {
 		return ""
 	}
-	n, ok := b.Nodes[p.node]
 	if !ok {
 		return fmt.Sprintf("slots: node %s not configured", p.node)
 	}
@@ -150,4 +171,28 @@ func (b *Brake) CountRun(node, profile string) {
 	if profile == ProfileSoftware {
 		b.SoftwareInUse++
 	}
+}
+
+// freed returns a copy of b, with its own Nodes, in which every close in ps that frees a slot
+// (planned.frees) is subtracted the way CountRun counted its run: one of InUse for a run on this
+// host, one of its node's InUse for a run on a node in Nodes, nothing for a node outside Nodes,
+// and one of SoftwareInUse for a software run. No count drops below zero.
+func (b *Brake) freed(ps []planned) *Brake {
+	f := *b
+	f.Nodes = maps.Clone(b.Nodes)
+	for _, p := range ps {
+		if !p.frees {
+			continue
+		}
+		if p.node == "" {
+			f.InUse = max(f.InUse-1, 0)
+		} else if n, ok := f.Nodes[p.node]; ok {
+			n.InUse = max(n.InUse-1, 0)
+			f.Nodes[p.node] = n
+		}
+		if p.software {
+			f.SoftwareInUse = max(f.SoftwareInUse-1, 0)
+		}
+	}
+	return &f
 }

@@ -25,7 +25,7 @@ const (
 // placeOf maps a path init wrote to the place a user sees: a directory that lighthouse
 // owns in whole, a glob for files with lighthouse's prefix, or the path itself.
 func placeOf(rel string) string {
-	for _, dir := range []string{packs.HookDir, ".lighthouse/lib/lighthouse_lib/", ".lighthouse/scripts/"} {
+	for _, dir := range []string{packs.HookDir, ".lighthouse/scripts/"} {
 		if strings.HasPrefix(rel, dir) {
 			return dir
 		}
@@ -49,7 +49,6 @@ func TestPlaceOf(t *testing.T) {
 		".claude/skills/lighthouse-go-standard/SKILL.md":      ".claude/skills/lighthouse-*/",
 		".agents/skills/lighthouse-close-issue/refs/a.md":     ".agents/skills/lighthouse-*/",
 		".claude/hooks/lighthouse/usage-gate/resume.py":       ".claude/hooks/lighthouse/",
-		".lighthouse/lib/lighthouse_lib/config.py":            ".lighthouse/lib/lighthouse_lib/",
 		".lighthouse/scripts/quality/ratchet.py":              ".lighthouse/scripts/",
 		".claude/agents/lighthouse-issue-impact-scout.md":     ".claude/agents/lighthouse-*.md",
 		".github/workflows/lighthouse-unblock-dependents.yml": ".github/workflows/lighthouse-*.yml",

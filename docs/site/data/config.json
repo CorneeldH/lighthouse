@@ -32,7 +32,6 @@
                 "internal/review/openpoints.go",
                 "internal/triage/judgment.go",
                 "pack/core/instructions/AGENTS.md",
-                "pack/core/lib/headings.py",
                 "pack/core/skills/audit-agent-config",
                 "pack/core/skills/close-issue",
                 "pack/core/skills/upgrade",
@@ -153,7 +152,7 @@
                 "internal/repoconfig/repoconfig.go",
                 "internal/workplace/local/adapter.go",
                 "internal/worktreeaudit/collect.go",
-                "pack/core/scripts/create_labels.py",
+                "internal/labels/labels.go",
                 "pack/core/skills/audit-worktrees",
                 "pack/core/skills/close-issue",
                 "pack/core/skills/fix-pr",
@@ -215,7 +214,7 @@
               "key": "forge.name",
               "level": "advanced",
               "required": "derived",
-              "about": "The name part of forge.repo, derived by config.py.",
+              "about": "The name part of forge.repo, derived by the lighthouse binary.",
               "readers": [
                 "internal/boardstart/boardstart.go",
                 "pack/core/skills/close-issue",
@@ -227,7 +226,7 @@
               "key": "forge.owner",
               "level": "advanced",
               "required": "derived",
-              "about": "The owner part of forge.repo, derived by config.py.",
+              "about": "The owner part of forge.repo, derived by the lighthouse binary.",
               "readers": [
                 "internal/boardstart/boardstart.go",
                 "pack/core/skills/close-issue",
@@ -442,7 +441,7 @@
               "key": "paths.history",
               "level": "advanced",
               "required": "no",
-              "about": "The file with the project's history; only config.py checks it for now.",
+              "about": "The file with the project's history; only the lighthouse binary checks it for now.",
               "example": "docs/history.md",
               "readers": []
             },
@@ -456,7 +455,7 @@
                 "internal/cli/init.go",
                 "internal/initcmd/initcmd.go",
                 "internal/projectconfig/projectconfig.go",
-                "pack/core/scripts/create_labels.py",
+                "internal/labels/labels.go",
                 "pack/core/skills/write-issue",
                 "pack/core/skills/write-pr"
               ]
@@ -661,9 +660,11 @@
               "key": "ci.bot_login",
               "level": "advanced",
               "required": "no",
-              "about": "The login of the bot the unblock lane runs as, to unblock dependent issues.",
+              "about": "The login of the bot the unblock lane runs as, to unblock dependent issues. The pins lane counts only items by this login as its own.",
               "example": "my-bot[bot]",
               "readers": [
+                "internal/cli/pinslane.go",
+                "internal/pins/lane/lane.go",
                 "pack/core/skills/close-issue"
               ]
             },
@@ -770,7 +771,7 @@
               "level": "advanced",
               "required": "no",
               "default": 85,
-              "about": "A [codex_usage] threshold that nothing reads yet; only config.py checks its type.",
+              "about": "A [codex_usage] threshold that nothing reads yet; only the lighthouse binary checks its type.",
               "readers": []
             },
             {
@@ -798,7 +799,7 @@
               "level": "advanced",
               "required": "no",
               "default": 80,
-              "about": "A [codex_usage] threshold that nothing reads yet; only config.py checks its type.",
+              "about": "A [codex_usage] threshold that nothing reads yet; only the lighthouse binary checks its type.",
               "readers": []
             }
           ]

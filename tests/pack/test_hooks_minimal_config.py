@@ -7,7 +7,6 @@ a feature-branch worktree: no block, no `Traceback`.
 
 import json
 import os
-import shutil
 import subprocess
 from pathlib import Path
 
@@ -182,48 +181,6 @@ GUARDED = {
     "run.sh commit-test-gate pre": "git commit -m x",
     "run.sh pr-create-gate": "gh pr create --repo Acme/widgets --body x",
 }
-
-
-def _without_lib(
-    tmp_path: Path, script: str, cmd: str, branch: str = "feature"
-) -> subprocess.CompletedProcess:
-    """The hook from an installation whose `.lighthouse/lib` is missing."""
-    root = tmp_path / "lighthouse"
-    install_core(root, toml=MINIMAL_TOML)
-    shutil.rmtree(root / ".lighthouse" / "lib")
-    project = tmp_path / "project"
-    init_repo(project, branch=branch)
-    name, *args = script.split()
-    return subprocess.run(
-        [str(root / ".claude" / "hooks" / "lighthouse" / name), *args],
-        input=json.dumps(bash_payload(cmd, project)),
-        capture_output=True,
-        text=True,
-        cwd=str(project),
-        env=dict(os.environ, LIGHTHOUSE_REPO_ROOT=str(root), CLAUDE_PROJECT_DIR=str(project)),
-        check=False,
-    )
-
-
-@pytest.mark.usefixtures("lighthouse_bin")
-@pytest.mark.parametrize("script", PRE_BASH)
-def test_without_lib_a_plain_command_passes(tmp_path: Path, script: str) -> None:
-    # A gitignore with `lib/` leaves `.lighthouse/lib/` out of a clone: that
-    # must not lock up every Bash command.
-    result = _without_lib(tmp_path, script, "ls")
-
-    assert result.returncode == 0, (result.stdout, result.stderr)
-
-
-@pytest.mark.usefixtures("lighthouse_bin")
-def test_without_lib_the_go_gate_still_blocks_a_commit_on_main(tmp_path: Path) -> None:
-    # The Go main-commit-gate needs no `.lighthouse/lib`: a missing one changes nothing.
-    script = "run.sh main-commit-gate"
-    result = _without_lib(tmp_path, script, GUARDED[script], branch="main")
-
-    assert result.returncode == 2, (result.stdout, result.stderr)
-    assert "Main-commit gate: blocked" in result.stderr
-    assert "COULD NOT CHECK" not in result.stderr
 
 
 def test_guarded_covers_every_blocking_bash_hook() -> None:

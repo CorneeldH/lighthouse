@@ -14,7 +14,7 @@ commit, PR bodies with evidence and, with `codex`, adversarial reviews.
 | Requirement | Package | Needed for | Without it |
 |---|---|---|---|
 | Claude Code | all | running the skills and the hooks | The hooks do not run. Codex and OpenCode read `AGENTS.md`, but nothing enforces it: run the test gate yourself. |
-| Python 3.11+ (`python3`, `tomllib`) | all | the helper scripts of the skills, reading `lighthouse.toml` from them | Those skill steps fail. Every hook runs in the `lighthouse` binary and needs no Python. |
+| Python 3.11+ (`python3`, `tomllib`) | python | `ty-gate`, `gate_python` and the `python-standard` skill | Those hooks and that skill cannot run. The other packages need no Python. |
 | `git` | core, expo, go, shell | worktrees, the commit gates, every skill | Nothing works: the hooks report `COULD NOT CHECK`; the blocking ones block, `worktree-check` only warns. |
 | `jq` | core, go, python, shell | the helper commands of the skills | Those skill steps fail. Every hook runs in the `lighthouse` binary and needs no `jq`. |
 | `gh` | core, python | reading and writing issues and PRs | The issue and PR skills cannot reach GitHub. `pr-create-gate` passes without counting the acceptance criteria, and says so. |
@@ -111,8 +111,9 @@ What `init` writes, all of it on the diff first:
 - `.claude/agents/lighthouse-<name>.md`: the agents the skills dispatch.
 - `.claude/hooks/lighthouse/`: the hooks, registered in `.claude/settings.json` next to your own
   entries, with the permissions they need.
-- `.lighthouse/lib/lighthouse_lib/` and `.lighthouse/scripts/`: the helpers of the hooks and
-  skills; `.lighthouse/headings.toml`: the headings the skills write and read.
+- `.lighthouse/scripts/`: the scripts of a language package (`shell`, `python`) that its
+  skills and the test gate run; `.lighthouse/headings.toml`: the headings the skills write
+  and read.
 - `.lighthouse/manifest.toml`: what was installed, at which version.
 - `AGENTS.md`: a managed block with the chain rules, one per package that has rules. Your own
   text stays. `CLAUDE.md` gets the line `@AGENTS.md` only when neither file exists yet. Claude

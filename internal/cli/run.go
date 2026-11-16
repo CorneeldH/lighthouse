@@ -88,7 +88,8 @@ func runIssue(ctx context.Context, env tickEnv, target, dbPath string, errOut io
 	}
 	defer func() { _ = st.Close() }()
 
-	facts, err := readHostFacts(ctx, env, st.DB, cfg)
+	env = env.withServes(cfg, errOut)
+	facts, err := readHostFacts(ctx, env, st.DB, cfg, errOut)
 	if err != nil {
 		return fmt.Errorf("run: the brake cannot check: %w", err)
 	}
@@ -116,7 +117,7 @@ func runIssue(ctx context.Context, env tickEnv, target, dbPath string, errOut io
 			actions = append(actions, a)
 		}
 	}
-	res, err := applyActions(ctx, env, st.DB, cfg, map[string]forge.Forge{repo.Slug: rf.Forge},
+	res, err := applyActions(ctx, env, st.DB, cfg, facts.MarkerNode, map[string]forge.Forge{repo.Slug: rf.Forge},
 		map[string]repoconfig.Repo{repo.Slug: repo}, actions, errOut)
 	if err != nil {
 		return fmt.Errorf("run: %w", err)

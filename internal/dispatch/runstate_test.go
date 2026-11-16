@@ -147,3 +147,25 @@ func TestBoundariesActivity(t *testing.T) {
 		t.Errorf("boundaries = %d (%v), want 9: 2 per run, 3 measured, no night window", n, got)
 	}
 }
+
+// ParsePermission reads the bytes of a note as ReadPermission reads the file: the same
+// permission, and an error for a note ReadPermission refuses.
+func TestParsePermissionSameAsReadPermission(t *testing.T) {
+	const good = `{"version": 1, "at": "2026-10-24T09:05:01Z", "tool": "Write", "path": "/tmp/x", "thread": "agent-a"}`
+	got, err := ParsePermission([]byte(good))
+	want := Permission{At: time.Date(2026, 10, 24, 9, 5, 1, 0, time.UTC), Tool: "Write", Path: "/tmp/x", Thread: "agent-a"}
+	if err != nil || got == nil || *got != want {
+		t.Errorf("ParsePermission = %+v, %v; want %+v", got, err, want)
+	}
+	for name, body := range map[string]string{
+		"broken json":     `{"version": 1, "at": `,
+		"unknown version": `{"version": 2, "at": "2026-10-24T09:05:01Z", "tool": "Write"}`,
+		"no at":           `{"version": 1, "tool": "Write"}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got, err := ParsePermission([]byte(body)); err == nil {
+				t.Errorf("ParsePermission = %+v, nil; want an error", got)
+			}
+		})
+	}
+}

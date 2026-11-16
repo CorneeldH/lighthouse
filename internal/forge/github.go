@@ -203,7 +203,9 @@ func (c *GitHub) do(ctx context.Context, method, url string, body, into any) (st
 	if err != nil {
 		return "", fmt.Errorf("forge request %s: %w", url, err)
 	}
-	req.Header.Set("Authorization", "Bearer "+c.Token)
+	if c.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.Token)
+	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 	if body != nil {
