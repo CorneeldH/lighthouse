@@ -41,8 +41,12 @@ Daarna volgt de workspace `origin/<branch>`, als die branch bestaat. Dat doet
   `checkout -B <branch> --track origin/<branch>`.
 - Een gevonden workspace kan werk van een eerdere run bevatten, dus nooit `checkout -B` over eigen werk.
   Staat de workspace op de issue-branch, dan volgt een fast-forward (`merge --ff-only`), en alleen
-  als `HEAD` een voorouder is van `origin/<branch>`. Is `HEAD` geen voorouder, bijvoorbeeld na een
-  rebase en force-push van de branch, dan geldt de regel voor eigen werk hieronder.
+  als `HEAD` een voorouder is van `origin/<branch>`. Loopt de workspace alleen vóór
+  (`origin/<branch>` is een voorouder van `HEAD`), dan start de run op `HEAD` zoals die staat, vuil
+  of niet, net als bij `HEAD` gelijk aan `origin/<branch>`. Dat zijn commits van een eerdere run die
+  nog niet gepusht zijn, bijvoorbeeld na een usage-pauze of een handoff zonder push; er gaat niets
+  verloren (#356). Is `HEAD` geen voorouder en ook geen nazaat, bijvoorbeeld na een rebase en
+  force-push van de branch, dan geldt de regel voor eigen werk hieronder.
 - Staat de workspace op een andere branch (bijvoorbeeld `main`), dan geldt ook de regel voor eigen
   werk. Een fast-forward zou daar die andere branch verplaatsen; lokale `main` gaat dus nooit mee.
 
@@ -61,6 +65,9 @@ Een vuile werkboom (`status --porcelain`, ongevolgde bestanden inbegrepen, net a
   `reason_own_work`, de workspace en het aantal commits. Zo start de run nooit stil op een
   verouderde `HEAD`, en geen latere tick start dezelfde trigger opnieuw. Lukt de post niet, dan
   sluit de run als `start_failed` en probeert `retry` het nog één keer.
+- Een `resume` gaat nooit terug om eigen werk. Hij zet dezelfde sessie voort, en die maakte het werk
+  in deze workspace. De dispatcher en `workplace.Launch` starten hem in de workspace die de
+  `OwnWorkError` noemt, op `HEAD` zoals die staat (#356).
 
 ### Het dragercontract (paia#1661)
 
