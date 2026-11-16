@@ -214,7 +214,7 @@ func (c *NodeClient) Info(ctx context.Context) (nodeapi.Info, error) {
 		return nodeapi.Info{}, c.notSent("info: %v", err)
 	}
 	if !ok(status) {
-		return nodeapi.Info{}, fmt.Errorf("%w: %w", c.nodeError(status, data), workplace.ErrNotAccepted)
+		return nodeapi.Info{}, fmt.Errorf("%w: %w: %w", c.nodeError(status, data), workplace.ErrNotAccepted, workplace.ErrNotMeasurable)
 	}
 	var info nodeapi.Info
 	if err := json.Unmarshal(data, &info); err != nil {
@@ -324,7 +324,7 @@ func (c *NodeClient) Transcript(ctx context.Context, id, session, profile string
 		}
 		return nil, e
 	}
-	deltas, err := untarDeltas(data)
+	deltas, err := untarDeltas(data, session)
 	if err != nil {
 		return nil, fmt.Errorf("node %s: transcript of %s: %v: %w", c.URL, session, err, workplace.ErrNotMeasurable)
 	}
@@ -332,13 +332,18 @@ func (c *NodeClient) Transcript(ctx context.Context, id, session, profile string
 }
 
 // untarDeltas reads the tar of the transcript route: one delta per member, with the size and
-// offset from its PAX records.
-func untarDeltas(data []byte) ([]workplace.FileDelta, error) {
+// offset from its PAX records. The node is not trusted: every member must be a file of the
+// session, its bytes must run from its offset to its size, and the main transcript must be
+// there and come first, as ReadDelta answers it.
+func untarDeltas(data []byte, sessionID string) ([]workplace.FileDelta, error) {
 	var out []workplace.FileDelta
 	tr := tar.NewReader(bytes.NewReader(data))
 	for {
 		hdr, err := tr.Next()
 		if errors.Is(err, io.EOF) {
+			if len(out) == 0 {
+				return nil, fmt.Errorf("no main transcript %s.jsonl", sessionID)
+			}
 			return out, nil
 		}
 		if err != nil {
@@ -355,6 +360,15 @@ func untarDeltas(data []byte) ([]workplace.FileDelta, error) {
 		body, err := io.ReadAll(tr)
 		if err != nil {
 			return nil, err
+		}
+		if !workplace.SessionFile(hdr.Name, sessionID) {
+			return nil, fmt.Errorf("member %q is no transcript file of session %s", hdr.Name, sessionID)
+		}
+		if len(out) == 0 && hdr.Name != sessionID+".jsonl" {
+			return nil, fmt.Errorf("first member %s is not the main transcript %s.jsonl", hdr.Name, sessionID)
+		}
+		if from > size || int64(len(body)) != size-from {
+			return nil, fmt.Errorf("member %s: %d bytes from offset %d do not end at size %d", hdr.Name, len(body), from, size)
 		}
 		out = append(out, workplace.FileDelta{Name: hdr.Name, Size: size, From: from, Data: body})
 	}
@@ -383,7 +397,8 @@ func (c *NodeClient) Relocate(ctx context.Context, id, command string) (string, 
 	return out.Command, err
 }
 
-// Permission is GET permission: the raw permission.json of the run, nil, nil without one (404).
+// Permission is GET permission: the raw permission.json of the run, nil, nil without one (404
+// no_permission). Any other 404 is an error: the node did not say the note is missing.
 func (c *NodeClient) Permission(ctx context.Context, session string) ([]byte, error) {
 	if _, err := c.Info(ctx); err != nil {
 		return nil, err
@@ -392,11 +407,12 @@ func (c *NodeClient) Permission(ctx context.Context, session string) ([]byte, er
 	if err != nil {
 		return nil, err
 	}
-	if status == http.StatusNotFound {
-		return nil, nil
-	}
 	if !ok(status) {
-		return nil, c.nodeError(status, data)
+		e := c.nodeError(status, data)
+		if e.Status == http.StatusNotFound && e.Code == nodeapi.CodeNoPermission {
+			return nil, nil
+		}
+		return nil, e
 	}
 	return data, nil
 }

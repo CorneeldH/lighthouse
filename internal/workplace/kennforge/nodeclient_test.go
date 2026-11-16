@@ -477,3 +477,86 @@ func TestRelocate422IsError(t *testing.T) {
 		t.Errorf("Relocate on 422: %v, want an error with the detail", err)
 	}
 }
+
+// tarMember is one member of a fake transcript answer, with its PAX records as written.
+type tarMember struct {
+	name, data, size, from string
+}
+
+// transcriptNode is a node whose transcript route answers the given members as a tar.
+func transcriptNode(t *testing.T, members []tarMember) *fakeNode {
+	t.Helper()
+	n := newFakeNode(t)
+	n.mux.HandleFunc("GET "+nodeapi.PathTranscript, func(w http.ResponseWriter, _ *http.Request) {
+		var buf bytes.Buffer
+		tw := tar.NewWriter(&buf)
+		for _, m := range members {
+			_ = tw.WriteHeader(&tar.Header{
+				Name: m.name, Mode: 0o600, Size: int64(len(m.data)), Typeflag: tar.TypeReg, Format: tar.FormatPAX,
+				PAXRecords: map[string]string{nodeapi.PAXSize: m.size, nodeapi.PAXFrom: m.from},
+			})
+			_, _ = tw.Write([]byte(m.data))
+		}
+		_ = tw.Close()
+		w.Header().Set("Content-Type", "application/x-tar")
+		_, _ = w.Write(buf.Bytes())
+	})
+	return n
+}
+
+func TestTranscriptRejectsInvalidDeltas(t *testing.T) {
+	sess := randomID(t)
+	main := tarMember{sess + ".jsonl", "abc\n", "4", "0"}
+	for name, members := range map[string][]tarMember{
+		"dot-dot name":     {main, {sess + "/subagents/../../x.jsonl", "x\n", "2", "0"}},
+		"absolute name":    {main, {"/etc/" + sess + ".jsonl", "x\n", "2", "0"}},
+		"other session":    {main, {randomID(t) + ".jsonl", "x\n", "2", "0"}},
+		"from above size":  {{sess + ".jsonl", "", "4", "9"}},
+		"length too short": {{sess + ".jsonl", "ab", "10", "4"}},
+		"length too long":  {{sess + ".jsonl", "abcdef", "10", "6"}},
+		"main missing":     {{sess + "/subagents/a.jsonl", "x\n", "2", "0"}},
+		"main not first":   {{sess + "/subagents/a.jsonl", "x\n", "2", "0"}, main},
+		"no members":       {},
+	} {
+		t.Run(name, func(t *testing.T) {
+			n := transcriptNode(t, members)
+			got, err := n.client(t).Transcript(context.Background(), randomID(t), sess, "default", nil)
+			if !errors.Is(err, workplace.ErrNotMeasurable) {
+				t.Errorf("Transcript: %+v %v, want ErrNotMeasurable", got, err)
+			}
+			if got != nil {
+				t.Errorf("Transcript returned deltas %+v with the error", got)
+			}
+		})
+	}
+}
+
+func TestInfoNotFoundIsNotMeasurable(t *testing.T) {
+	n := newFakeNode(t)
+	// A node without [node] in host.toml: serve mounts no node-API, every route is 404.
+	n.mux = http.NewServeMux()
+	n.mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
+		writeNode(w, http.StatusNotFound, nodeapi.Problem{Status: 404, Detail: "Not Found"})
+	})
+	c := n.client(t)
+	_, err := c.Info(context.Background())
+	if !errors.Is(err, workplace.ErrNotMeasurable) {
+		t.Errorf("info 404: %v, want ErrNotMeasurable", err)
+	}
+	_, err = c.Sessions(context.Background(), randomID(t))
+	if !errors.Is(err, workplace.ErrNotMeasurable) || errors.Is(err, workplace.ErrGone) {
+		t.Errorf("Sessions behind an info 404: %v, want ErrNotMeasurable and never ErrGone", err)
+	}
+}
+
+func TestPermission404WithoutCodeIsError(t *testing.T) {
+	n := newFakeNode(t)
+	n.mux.HandleFunc("GET "+nodeapi.PathPermission, func(w http.ResponseWriter, _ *http.Request) {
+		writeNode(w, http.StatusNotFound, nodeapi.Problem{Status: 404, Detail: "Not Found"})
+	})
+	data, err := n.client(t).Permission(context.Background(), randomID(t))
+	var ne *NodeError
+	if !errors.As(err, &ne) || ne.Status != http.StatusNotFound {
+		t.Errorf("Permission on a 404 without no_permission: %q %v, want a *NodeError 404", data, err)
+	}
+}
