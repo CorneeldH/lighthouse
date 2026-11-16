@@ -1,6 +1,6 @@
 # Ontwerp: de repo zonder Python
 
-Milestone: nog aan te maken · Datum: 2026-11-16 · Bouwt op
+Milestone: [De repo zonder Python](https://github.com/CorneeldH/lighthouse/milestone/11) (#360–#370) · Datum: 2026-11-16 · Bouwt op
 [Lighthouse zonder Python](2026-11-07-zonder-python-design.md) (#274–#285), die de Python uit
 wat `init` installeert haalt. Deze spec doet de rest van de repo: `ci/`, `tools/` en `tests/`.
 
@@ -193,19 +193,19 @@ Na #285: dat haalt Python-modules weg, en hun tests met de triage **weg — onde
 
 ## Opdeling in issues
 
-1. `ci/changelog` naar Go, met zijn tests na triage. Ook: `workflow_dispatch` met alle domeinen in
+1. #360 — `ci/changelog` naar Go, met zijn tests na triage. Ook: `workflow_dispatch` met alle domeinen in
    `ci.yml`, en de nulmeting (§7).
-2. `ci/domains` en `ci/loop_roadmap` naar Go.
-3. `tools/check_cla` naar Go, en `checkpoint_scan` als `lighthouse checkpoint-scan` (§4), met
+2. #361 — `ci/domains` en `ci/loop_roadmap` naar Go.
+3. #362 — `tools/check_cla` naar Go, en `checkpoint_scan` als `lighthouse checkpoint-scan` (§4), met
    `docs/secret-scan.md` en de systemd-unit.
-4. `tools/gen_code_language_freq`: port of weg, op besluit van de gebruiker.
-5. De shellscripts zonder `python3` (§6).
-6. Triage en port: de root-tests van `tests/` (pins, instructiebestanden, dogfood).
-7. Triage en port: `tests/pack/` hooks en scripts als black box (§3).
-8. Triage en port: `tests/pack/` skillcontracten (§2).
-9. Triage en port: `tests/pack/go`, `shell`, `node`, `expo`.
-10. Site-tests naar `node --test`, en het commando om de site te bekijken (§5).
-11. Afronden: CI zonder pytest-shards, `pyproject.toml` en `uv.lock` ingekort, de meting (§7) en
+4. #363 — `tools/gen_code_language_freq`: port of weg, op besluit van de gebruiker.
+5. #364 — De shellscripts zonder `python3` (§6).
+6. #365 — Triage en port: de root-tests van `tests/` (pins, instructiebestanden, dogfood).
+7. #366 — Triage en port: `tests/pack/` hooks en scripts als black box (§3).
+8. #367 — Triage en port: `tests/pack/` skillcontracten (§2).
+9. #368 — Triage en port: `tests/pack/go`, `shell`, `node`, `expo`.
+10. #369 — Site-tests naar `node --test`, en het commando om de site te bekijken (§5).
+11. #370 — Afronden: CI zonder pytest-shards, `pyproject.toml` en `uv.lock` ingekort, de meting (§7) en
     de totalen van de triage.
 
 ## Bewijs
