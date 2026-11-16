@@ -14,6 +14,7 @@ commit, PR bodies with evidence and, with `codex`, adversarial reviews.
 | Requirement | Package | Needed for | Without it |
 |---|---|---|---|
 | Claude Code | all | running the skills and the hooks | The hooks do not run. Codex and OpenCode read `AGENTS.md`, but nothing enforces it: run the test gate yourself. |
+| Python 3.11+ (`python3`, `tomllib`) | python | `ty-gate`, `gate_python` and the `python-standard` skill | Those hooks and that skill cannot run. The other packages need no Python. |
 | `git` | core, expo, go, shell | worktrees, the commit gates, every skill | Nothing works: the hooks report `COULD NOT CHECK`; the blocking ones block, `worktree-check` only warns. |
 | `jq` | core, go, python, shell | the helper commands of the skills | Those skill steps fail. Every hook runs in the `lighthouse` binary and needs no `jq`. |
 | `gh` | core, python | reading and writing issues and PRs | The issue and PR skills cannot reach GitHub. `pr-create-gate` passes without counting the acceptance criteria, and says so. |
