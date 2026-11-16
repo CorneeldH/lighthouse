@@ -5,9 +5,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -124,6 +126,11 @@ func defaultBranchHead(ctx context.Context, root string) (string, error) {
 
 // applyChange writes the merge, the raised pin, SOURCES.toml and the changelog fragment into wt.
 func applyChange(wt string, p pins.SourcePin, mr MergeResult, headSHA string) error {
+	for _, rel := range append(slices.Collect(maps.Keys(mr.Files)), mr.Removed...) {
+		if !filepath.IsLocal(filepath.FromSlash(rel)) {
+			return fmt.Errorf("path %q leaves the repository", rel)
+		}
+	}
 	var added []string
 	for rel, data := range mr.Files {
 		abs := filepath.Join(wt, filepath.FromSlash(rel))

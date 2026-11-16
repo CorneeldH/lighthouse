@@ -8,7 +8,6 @@ import (
 	"io/fs"
 	"os"
 	"os/exec"
-	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -41,25 +40,31 @@ type MergeResult struct {
 // the upstream HEAD. For a skill the upstream SKILL.md goes to every variant SKILL.md and every
 // other file to the same relative path in the skill directory; an `upstream-path` that is a
 // directory is merged per file in it. A file new upstream is taken over, a file that vanished
-// upstream is a conflict, and so is binary content or a merge-file that does not exit 0.
-// Nothing is written; PrepareBranch writes the result.
+// upstream is a conflict, and so is binary content, a symlink or submodule, or a merge-file that
+// does not exit 0. An upstream path that would leave the skill directory (an empty, `.` or `..`
+// component) fails the whole pin.
+//
+// ours is read from root, while PrepareBranch writes the result into a worktree of origin's
+// default branch: root must be a checkout of that branch's head (the lane's CI checkout), or
+// the merge silently undoes what root lacks. Nothing is written here.
 func MergeSource(ctx context.Context, root string, p pins.SourcePin, c pins.Clone) (MergeResult, error) {
 	head, err := c.Head()
 	if err != nil {
 		return MergeResult{}, err
 	}
-	baseFiles, err := c.ListTree(p.Commit, p.Path)
+	baseList, err := c.ListTree(p.Commit, p.Path)
 	if err != nil {
 		return MergeResult{}, err
 	}
-	headFiles, err := c.ListTree(head, p.Path)
+	headList, err := c.ListTree(head, p.Path)
 	if err != nil {
 		return MergeResult{}, err
 	}
-	targets, err := targetMap(p, baseFiles, headFiles)
+	targets, err := targetMap(p, baseList, headList)
 	if err != nil {
 		return MergeResult{}, err
 	}
+	baseEntries, headEntries := byPath(baseList), byPath(headList)
 	m := merger{ctx: ctx, root: root, res: MergeResult{Files: map[string][]byte{}}}
 	ups := make([]string, 0, len(targets))
 	for up := range targets {
@@ -67,13 +72,28 @@ func MergeSource(ctx context.Context, root string, p pins.SourcePin, c pins.Clon
 	}
 	sort.Strings(ups)
 	for _, up := range ups {
-		base, err := readUpstream(c, p.Commit, up, baseFiles)
-		if err != nil {
-			return MergeResult{}, err
+		b, inBase := baseEntries[up]
+		h, inHead := headEntries[up]
+		if inBase && inHead && b == h {
+			continue
 		}
-		theirs, err := readUpstream(c, head, up, headFiles)
-		if err != nil {
-			return MergeResult{}, err
+		if (inBase && !b.Regular()) || (inHead && !h.Regular()) {
+			// A symlink's target or a submodule commit is no file content to merge.
+			for _, local := range targets[up] {
+				m.conflict(local)
+			}
+			continue
+		}
+		var base, theirs []byte
+		if inBase {
+			if base, err = c.ReadFile(p.Commit, up); err != nil {
+				return MergeResult{}, err
+			}
+		}
+		if inHead {
+			if theirs, err = c.ReadFile(head, up); err != nil {
+				return MergeResult{}, err
+			}
 		}
 		for _, local := range targets[up] {
 			if err := m.mergeOne(local, base, theirs); err != nil {
@@ -93,13 +113,22 @@ func MergeSource(ctx context.Context, root string, p pins.SourcePin, c pins.Clon
 	return m.res, nil
 }
 
+func byPath(entries []pins.TreeEntry) map[string]pins.TreeEntry {
+	out := make(map[string]pins.TreeEntry, len(entries))
+	for _, e := range entries {
+		out[e.Path] = e
+	}
+	return out
+}
+
 // isFilePin tells a file of SOURCES.toml (key = its path) from a skill directory.
 func isFilePin(p pins.SourcePin) bool { return len(p.Files) == 1 && p.Files[0] == p.Key }
 
 // targetMap maps every upstream file at the pin or at HEAD to the local files it is merged
-// into.
-func targetMap(p pins.SourcePin, baseFiles, headFiles []string) (map[string][]string, error) {
-	isFile := len(baseFiles) == 1 && baseFiles[0] == p.Path
+// into. A path in a directory must stay inside it: upstream trees are not checked by fsck on
+// fetch and may hold a `..` entry.
+func targetMap(p pins.SourcePin, baseList, headList []pins.TreeEntry) (map[string][]string, error) {
+	isFile := len(baseList) == 1 && baseList[0].Path == p.Path
 	out := map[string][]string{}
 	if isFilePin(p) {
 		if !isFile {
@@ -113,24 +142,28 @@ func targetMap(p pins.SourcePin, baseFiles, headFiles []string) (map[string][]st
 		return out, nil
 	}
 	skillDir := "pack/" + p.Key
-	for _, up := range append(append([]string{}, baseFiles...), headFiles...) {
-		rel := strings.TrimPrefix(up, p.Path+"/")
+	for _, e := range append(append([]pins.TreeEntry{}, baseList...), headList...) {
+		rel, ok := strings.CutPrefix(e.Path, p.Path+"/")
+		if !ok || !plainRel(rel) {
+			return nil, fmt.Errorf("pin %s: upstream path %q is not a plain path under %s", p.Key, e.Path, p.Path)
+		}
 		if rel == "SKILL.md" {
-			out[up] = p.Files
+			out[e.Path] = p.Files
 		} else {
-			out[up] = []string{path.Join(skillDir, rel)}
+			out[e.Path] = []string{skillDir + "/" + rel}
 		}
 	}
 	return out, nil
 }
 
-// readUpstream returns the file at sha, or nil when it is not in listed.
-func readUpstream(c pins.Clone, sha, file string, listed []string) ([]byte, error) {
-	i := sort.SearchStrings(listed, file)
-	if i == len(listed) || listed[i] != file {
-		return nil, nil
+// plainRel reports whether rel is a relative slash path without empty, `.` or `..` components.
+func plainRel(rel string) bool {
+	for _, c := range strings.Split(rel, "/") {
+		if c == "" || c == "." || c == ".." {
+			return false
+		}
 	}
-	return c.ReadFile(sha, file)
+	return filepath.IsLocal(filepath.FromSlash(rel))
 }
 
 type merger struct {
@@ -208,6 +241,10 @@ func mergeFile(ctx context.Context, ours, base, theirs []byte) (merged []byte, c
 		}
 	}
 	out, err := laneGit(ctx, dir, "merge-file", "-p", "ours", "base", "theirs")
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		// A killed merge-file also exits non-zero; that is no conflict.
+		return nil, false, ctxErr
+	}
 	var ee *exec.ExitError
 	if errors.As(err, &ee) {
 		return nil, false, nil

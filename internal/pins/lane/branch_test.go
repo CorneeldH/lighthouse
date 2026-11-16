@@ -383,3 +383,31 @@ func sameSet(got, want []string) bool {
 	}
 	return true
 }
+
+// Fails when PrepareBranch writes or removes a path of mr outside its worktree.
+func TestPrepareBranch_refusesPathOutsideRepo(t *testing.T) {
+	r := newLaneRepo(t)
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp) // the worktree is <tmp>/lighthouse-pins-wt-*/wt
+	victim := filepath.Join(tmp, "victim")
+	writeT(t, tmp, "victim", "keep\n")
+	for name, mr := range map[string]MergeResult{
+		"write":  {Clean: true, Files: map[string][]byte{"../../escape": []byte("pwned\n")}},
+		"remove": {Clean: true, Files: map[string][]byte{}, Removed: []string{"../../victim"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := PrepareBranch(context.Background(), r.root, r.demoPin(), mr, r.head); err == nil || !strings.Contains(err.Error(), "leaves the repository") {
+				t.Errorf("err %v, want a refusal", err)
+			}
+		})
+	}
+	if _, err := os.Stat(filepath.Join(tmp, "escape")); err == nil {
+		t.Error("escape written outside the worktree")
+	}
+	if b, err := os.ReadFile(victim); err != nil || string(b) != "keep\n" {
+		t.Errorf("victim %q, %v", b, err)
+	}
+	if got := r.pinBranches(t); len(got) != 0 {
+		t.Errorf("pushed %v", got)
+	}
+}

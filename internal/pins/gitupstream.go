@@ -62,8 +62,8 @@ type Clone interface {
 	PathLog(sha, path string) ([]CommitInfo, error)
 	// ReadFile returns the content of path at sha.
 	ReadFile(sha, path string) ([]byte, error)
-	// ListTree returns the file paths under path at sha, relative to the repo root, sorted.
-	ListTree(sha, path string) ([]string, error)
+	// ListTree returns the entries under path at sha, recursively, sorted by Path.
+	ListTree(sha, path string) ([]TreeEntry, error)
 	Close() error
 }
 
@@ -201,25 +201,41 @@ func (c *ghClone) ReadFile(sha, path string) ([]byte, error) {
 	return out, nil
 }
 
-func (c *ghClone) ListTree(sha, path string) ([]string, error) {
+// TreeEntry is one leaf of a tree: Path relative to the repo root, Mode as git prints it
+// (100644 and 100755 a regular file, 120000 a symlink, 160000 a submodule) and the Object id.
+type TreeEntry struct {
+	Path, Mode, Object string
+}
+
+// Regular reports whether the entry is a plain file, not a symlink or a submodule.
+func (e TreeEntry) Regular() bool { return e.Mode == "100644" || e.Mode == "100755" }
+
+func (c *ghClone) ListTree(sha, path string) ([]TreeEntry, error) {
 	if !shaRe.MatchString(sha) {
 		return nil, fmt.Errorf("%w: %q", ErrUnknownCommit, sha)
 	}
 	if _, err := c.tree(sha, path); err != nil {
 		return nil, err
 	}
-	out, err := c.git("ls-tree", "-r", "--name-only", "-z", sha, "--", path)
+	out, err := c.git("ls-tree", "-r", "-z", sha, "--", path)
 	if err != nil {
 		return nil, err
 	}
-	var files []string
-	for _, f := range strings.Split(string(out), "\x00") {
-		if f != "" {
-			files = append(files, f)
+	var entries []TreeEntry
+	for _, rec := range strings.Split(string(out), "\x00") {
+		if rec == "" {
+			continue
 		}
+		// <mode> SP <type> SP <object> TAB <path>
+		meta, file, ok := strings.Cut(rec, "\t")
+		f := strings.Fields(meta)
+		if !ok || len(f) != 3 {
+			return nil, fmt.Errorf("unexpected git ls-tree record %q", rec)
+		}
+		entries = append(entries, TreeEntry{Path: file, Mode: f[0], Object: f[2]})
 	}
-	sort.Strings(files)
-	return files, nil
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Path < entries[j].Path })
+	return entries, nil
 }
 
 func (c *ghClone) Close() error { return os.RemoveAll(c.dir) }

@@ -330,3 +330,103 @@ func TestMergeSource_workflowsPathIsFlagged(t *testing.T) {
 		t.Errorf("TouchesWorkflows false for %v", strs(got.Files))
 	}
 }
+
+// commitTree commits a tree built with git mktree on top of the upstream main and moves main
+// there; tree maps an entry name to "<mode> <type> <object>" or, for a subtree, to another map.
+func (u *upstream) commitTree(t *testing.T, tree map[string]any) string {
+	t.Helper()
+	bare := filepath.Join(u.root, "o", "r")
+	var mk func(m map[string]any) string
+	mk = func(m map[string]any) string {
+		var lines []string
+		for name, v := range m {
+			switch v := v.(type) {
+			case string:
+				lines = append(lines, v+"\t"+name)
+			case map[string]any:
+				lines = append(lines, "040000 tree "+mk(v)+"\t"+name)
+			}
+		}
+		cmd := exec.Command("git", "mktree")
+		cmd.Dir = bare
+		cmd.Stdin = strings.NewReader(strings.Join(lines, "\n") + "\n")
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("mktree %v: %v", lines, err)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	sha := gitT(t, bare, "commit-tree", mk(tree), "-p", "main", "-m", "crafted")
+	gitT(t, bare, "update-ref", "refs/heads/main", sha)
+	return sha
+}
+
+func (u *upstream) blob(t *testing.T, content string) string {
+	t.Helper()
+	cmd := exec.Command("git", "hash-object", "-w", "--stdin")
+	cmd.Dir = filepath.Join(u.root, "o", "r")
+	cmd.Stdin = strings.NewReader(content)
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return "100644 blob " + strings.TrimSpace(string(out))
+}
+
+// Fails when an upstream tree entry named `..` maps to a local path outside the skill
+// directory instead of failing the pin.
+func TestMergeSource_dotDotTreeEntryFailsPin(t *testing.T) {
+	isolateGit(t)
+	u := newUpstream(t)
+	pin := u.commit(map[string]string{"skills/demo/SKILL.md": upSkillBase})
+	// skills/demo/../../../../../evil: path.Join of it under pack/core/skills/demo leaves the repo.
+	escape := map[string]any{"evil": u.blob(t, "pwned\n")}
+	for range 5 {
+		escape = map[string]any{"..": escape}
+	}
+	demo := map[string]any{"SKILL.md": u.blob(t, upSkillHead), "..": escape[".."]}
+	u.commitTree(t, map[string]any{"skills": map[string]any{"demo": demo}})
+	root := t.TempDir()
+	writeT(t, root, "pack/core/skills/demo/SKILL.md", localSkill(pin, bodyBase))
+
+	got, err := MergeSource(context.Background(), root, skillPin("core/skills/demo", pin, "skills/demo", "pack/core/skills/demo/SKILL.md"), u.clone(t))
+	if err == nil || !strings.Contains(err.Error(), "not a plain path") {
+		t.Fatalf("err %v, files %v; want the pin to fail on the .. entry", err, strs(got.Files))
+	}
+}
+
+// Fails when a changed symlink's target is merged as file content, an unchanged one conflicts,
+// or a submodule fails the whole pin.
+func TestMergeSource_symlinkAndSubmoduleAreConflicts(t *testing.T) {
+	isolateGit(t)
+	u := newUpstream(t)
+	// An unchanged symlink is left alone.
+	if err := os.MkdirAll(filepath.Join(u.work, "skills", "demo"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("SKILL.md", filepath.Join(u.work, "skills", "demo", "same")); err != nil {
+		t.Fatal(err)
+	}
+	pin := u.commit(map[string]string{"skills/demo/SKILL.md": upSkillBase})
+	link := u.blob(t, "../../etc/passwd")
+	u.commitTree(t, map[string]any{"skills": map[string]any{"demo": map[string]any{
+		"same":     "120000 blob " + gitT(t, u.work, "rev-parse", pin+":skills/demo/same"),
+		"SKILL.md": u.blob(t, upSkillHead),
+		"link":     "120000 blob " + strings.Fields(link)[2],
+		"sub":      "160000 commit " + pin,
+	}}})
+	root := t.TempDir()
+	skillMD := "pack/core/skills/demo/SKILL.md"
+	writeT(t, root, skillMD, localSkill(pin, bodyBase))
+
+	got, err := MergeSource(context.Background(), root, skillPin("core/skills/demo", pin, "skills/demo", skillMD), u.clone(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"pack/core/skills/demo/link", "pack/core/skills/demo/sub"}; got.Clean || !reflect.DeepEqual(got.Conflicts, want) {
+		t.Errorf("clean %v conflicts %v, want %v", got.Clean, got.Conflicts, want)
+	}
+	if w := map[string]string{skillMD: localSkill(pin, "\nintro\none\ntwo\nthree\nfour\nfive upstream\n")}; !reflect.DeepEqual(strs(got.Files), w) {
+		t.Errorf("files %q, want %q", strs(got.Files), w)
+	}
+}

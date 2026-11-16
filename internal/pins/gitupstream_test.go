@@ -3,6 +3,7 @@ package pins
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -243,6 +244,9 @@ func TestGhClone_readFileAndListTree(t *testing.T) {
 	// Class: behaviour. At risk: content or listing taken from HEAD instead of the sha.
 	u := newUpstream(t, "main")
 	old := u.commit("add", map[string]string{"x/b.txt": "old\n", "x/sub/a.txt": "a\n", "y/c.txt": "c\n"})
+	if err := os.Symlink("b.txt", filepath.Join(u.work, "x", "link")); err != nil {
+		t.Fatal(err)
+	}
 	u.commit("change", map[string]string{"x/b.txt": "new\n", "x/z.txt": "z\n"})
 
 	cl, err := u.source().Clone(context.Background(), u.repo)
@@ -262,7 +266,7 @@ func TestGhClone_readFileAndListTree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := []string{"x/b.txt", "x/sub/a.txt"}; !reflect.DeepEqual(got, want) {
+	if want := []string{"x/b.txt 100644 true", "x/sub/a.txt 100644 true"}; !reflect.DeepEqual(entryStrings(got), want) {
 		t.Errorf("ListTree(old) = %v, want %v", got, want)
 	}
 	head, err := cl.Head()
@@ -273,12 +277,20 @@ func TestGhClone_readFileAndListTree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := []string{"x/b.txt", "x/sub/a.txt", "x/z.txt"}; !reflect.DeepEqual(got, want) {
+	if want := []string{"x/b.txt 100644 true", "x/link 120000 false", "x/sub/a.txt 100644 true", "x/z.txt 100644 true"}; !reflect.DeepEqual(entryStrings(got), want) {
 		t.Errorf("ListTree(head) = %v, want %v", got, want)
 	}
 	if _, err := cl.ListTree(old, "nope"); err == nil {
 		t.Error("ListTree of a missing path returned no error")
 	}
+}
+
+func entryStrings(es []TreeEntry) []string {
+	var out []string
+	for _, e := range es {
+		out = append(out, fmt.Sprintf("%s %s %v", e.Path, e.Mode, e.Regular()))
+	}
+	return out
 }
 
 func TestGhClone_closeRemovesDir(t *testing.T) {
