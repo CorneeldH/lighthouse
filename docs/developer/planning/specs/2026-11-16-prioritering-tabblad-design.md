@@ -288,3 +288,10 @@ Eén rij per open milestone:
 - **Stap 3**: slepen naar een milestone en een milestone maken. Het eerste schrijfpad van de SPA,
   met CSRF-bescherming en een uitbreiding van de forge-interface (milestone zetten en maken).
 - **Later**: shaping vragen of afleiden in plaats van de markering `Status: shaping`.
+
+## Open na review
+
+Ronde 3 haalde de rondegrens met deze punten open. Ze zijn aanvaard als `accepted_open`;
+de volgende fase of de PR-review weegt ze opnieuw.
+
+- **r3-f1** (MAJOR, Server — 'Geen tweede bordlezing' (interval 300 s bullet)): The spec takes board status from the overview build's snapshot, but that snapshot (overview.Overview) holds no board status. ControllerIssues throws away every status except Controller membership, and repos whose board has no Controller status option get no BoardItems read at all. How the board data is exposed, what happens for those repos, and what happens when the overview build fails are all left to the builder. 'Aan de bouwer' and the r1-f8 bullet still describe a BoardItems call of the priorities build itself.
