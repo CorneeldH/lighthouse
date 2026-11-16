@@ -24,6 +24,10 @@ GONE = [
     "scripts/roborev_gate.py",
     "scripts/roborev_comment.py",
     "scripts/check-instructions.sh",
+    "scripts/create_labels.py",
+    "lib/config.py",
+    "lib/datadir.py",
+    "lib/headings.py",
 ]
 # Step 9: the review runners of review-spec and review-plan became `lighthouse review-run`.
 GONE_SKILL_FILES = [
