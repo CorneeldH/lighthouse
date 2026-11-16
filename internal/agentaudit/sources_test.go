@@ -302,6 +302,50 @@ func TestCollectInvalidClaudeJSON(t *testing.T) {
 	assertRows(t, "mcp", mcpRows(inv), []string{"project m .mcp.json"})
 }
 
+func TestCollectScriptsOnlyScripts(t *testing.T) {
+	home, configDir := hostless(t)
+	root := tree(t, map[string]string{
+		".claude/hooks/hook.sh":                           "#!/bin/sh\n",
+		".claude/hooks/guard.py":                          "",
+		".claude/hooks/check.ts":                          "",
+		".claude/hooks/lib.mjs":                           "",
+		".claude/hooks/old.cjs":                           "",
+		".claude/hooks/helper.js":                         "",
+		".claude/hooks/run-me":                            "#!/bin/sh\n", // executable below
+		".claude/hooks/notes":                             "plain text\n",
+		".claude/hooks/README.md":                         "# hooks\n",
+		".claude/hooks/package.json":                      "{}\n",
+		".claude/hooks/package-lock.json":                 "{}\n",
+		".claude/hooks/yarn.lock":                         "\n",
+		".claude/hooks/todo.txt":                          "\n",
+		".claude/hooks/node_modules/dep/index.js":         "",
+		".claude/hooks/__pycache__/guard.cpython-312.pyc": "",
+		".claude/hooks/stray.pyc":                         "",
+		".claude/hooks/.cache/x.sh":                       "#!/bin/sh\n",
+		".claude/hooks/sub/deeper.sh":                     "#!/bin/sh\n",
+	})
+	// An executable file counts; an executable README.md stays a data file.
+	for _, name := range []string{"run-me", "README.md"} {
+		if err := os.Chmod(filepath.Join(root, ".claude", "hooks", name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	inv, err := Collect(Env{Root: root, MainRoot: root, ConfigDir: configDir, ClaudeJSON: filepath.Join(home, ".claude.json"), Home: home, RepoOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertRows(t, "scripts", inv.Scripts, []string{
+		"project/.claude/hooks/check.ts",
+		"project/.claude/hooks/guard.py",
+		"project/.claude/hooks/helper.js",
+		"project/.claude/hooks/hook.sh",
+		"project/.claude/hooks/lib.mjs",
+		"project/.claude/hooks/old.cjs",
+		"project/.claude/hooks/run-me",
+		"project/.claude/hooks/sub/deeper.sh",
+	})
+}
+
 func TestCollectRepoOnly(t *testing.T) {
 	home, configDir := hostless(t)
 	root := tree(t, map[string]string{

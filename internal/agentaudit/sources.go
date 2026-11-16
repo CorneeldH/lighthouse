@@ -418,18 +418,47 @@ func (c *collector) rules(source, dir string) {
 	})
 }
 
-// scripts lists every file under dir, outside lighthouse's own hook directory.
+// scriptExts are the extensions of a hook script; dataExts never are one, also when the
+// file is executable.
+var (
+	scriptExts = map[string]bool{".sh": true, ".bash": true, ".js": true, ".mjs": true, ".cjs": true, ".ts": true, ".py": true}
+	dataExts   = map[string]bool{".md": true, ".json": true, ".lock": true, ".pyc": true, ".txt": true}
+)
+
+// skippedDirs hold dependencies or caches, never a hook script of the project's own.
+var skippedDirs = map[string]bool{"node_modules": true, "__pycache__": true}
+
+// scripts lists every script under dir: a file with a script extension, or an executable
+// one without a data extension. It skips lighthouse's own hook directory, dot-directories,
+// node_modules and __pycache__.
 func (c *collector) scripts(source, dir string) {
 	own := filepath.Join(c.env.Root, filepath.FromSlash(strings.TrimSuffix(packs.HookDir, "/")))
 	c.walk(source, dir, func(p string, d fs.DirEntry) error {
-		if d.IsDir() && p == own {
-			return fs.SkipDir
+		if d.IsDir() {
+			if p == own || skippedDirs[d.Name()] || strings.HasPrefix(d.Name(), ".") {
+				return fs.SkipDir
+			}
+			return nil
 		}
-		if !d.IsDir() {
+		if isScript(d) {
 			c.inv.Scripts = append(c.inv.Scripts, source+"/"+c.display(p))
 		}
 		return nil
 	})
+}
+
+// isScript reports whether a file reads as a hook script. A file whose mode cannot be
+// read counts, so it is reported rather than passed over.
+func isScript(d fs.DirEntry) bool {
+	ext := strings.ToLower(filepath.Ext(d.Name()))
+	if scriptExts[ext] {
+		return true
+	}
+	if dataExts[ext] {
+		return false
+	}
+	info, err := d.Info()
+	return err != nil || info.Mode()&0o111 != 0
 }
 
 // walk visits every entry under dir in lexical order; a missing dir is no problem, an

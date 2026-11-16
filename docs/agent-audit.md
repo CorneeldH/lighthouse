@@ -64,8 +64,11 @@ Text, in this order. `Bronnen` is always there, also with `--only`.
      same rule or one covering the other (`Bash(git push:*)` covers `Bash(git push origin main)`).
    - `missing-script:<source>/<command>`: a registered hook whose script does not exist; for
      `run.sh <name>` also a `run.sh` that is missing or a hook name the binary does not know.
-   - `unregistered-script:<source>/<path>`: a file under `.claude/hooks/` or `~/.claude/hooks/`
-     that no hook command names and no registered script mentions.
+   - `unregistered-script:<source>/<path>`: a script under `.claude/hooks/` or `~/.claude/hooks/`
+     that no hook command names and no registered script mentions, also not without its
+     extension at the end of a path (`require('./helper')`). A script has a script extension
+     (`.sh`, `.js`, `.py`, …) or is executable; dot-directories, `node_modules` and
+     `__pycache__` are skipped.
 3. **`Overlap, kandidaten`**: `overlap:<guard>|<source>/<path>`, a hook of another source on the
    same event and tool as a lighthouse hook whose script matches the terms of that hook's
    signature. Each candidate shows what the lighthouse hook does and the terms that matched. A
