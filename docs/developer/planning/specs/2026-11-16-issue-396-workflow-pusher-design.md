@@ -397,3 +397,10 @@ repo met een bare remote; reviewers zijn fake commando's op `PATH`, zoals
 - [Code Review — Claude Code docs](https://code.claude.com/docs/en/code-review.md)
 - [anthropics/claude-code-security-review](https://github.com/anthropics/claude-code-security-review)
 - [How Anthropic secures its AI-native software development lifecycle](https://claude.com/blog/how-anthropic-secures-its-ai-native-software-development-lifecycle)
+
+## Open na review
+
+Ronde 3 haalde de rondegrens met deze punten open. Ze zijn aanvaard als `accepted_open`;
+de volgende fase of de PR-review weegt ze opnieuw.
+
+- **r3-f1** (MAJOR, 4 Security-review (Insluiting) / 6 Configuratie): The bwrap sandbox that the r2-f1 fix adds binds only an empty writable temp dir and the reviewer binary plus its libraries (read-only), with no $HOME. The spec does not say how a reviewer gets its model credentials or config. The shipped example reviewers (codex exec, claude -p) authenticate from files under $HOME, and claude also needs a node runtime and its install tree, which go beyond 'binary en bibliotheken'.
