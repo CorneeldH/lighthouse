@@ -517,6 +517,27 @@ func TestUpgradeRemovesCoreLib(t *testing.T) {
 	}
 }
 
+// With --force a locally changed file under the retired lib still stays, and is still reported.
+func TestUpgradeForceKeepsModifiedCoreLib(t *testing.T) {
+	root := newRepo(t)
+	if r := run(t, root, "", all(yes, realPacks)); r.code != 0 {
+		t.Fatalf("init: rc %d\n%s", r.code, r.err)
+	}
+	seedCoreLib(t, root, oldCoreLib)
+	config := ".lighthouse/lib/lighthouse_lib/config.py"
+	write(t, root, config, oldCoreLib["config.py"]+"MINE = 1\n")
+	r := run(t, root, "", func(o *Options) { upgrade(o); yes(o); realPacks(o); o.Force = true })
+	if r.code != 0 {
+		t.Fatalf("upgrade --force: rc %d\n%s%s", r.code, r.out, r.err)
+	}
+	if got := read(t, root, config); got != oldCoreLib["config.py"]+"MINE = 1\n" {
+		t.Fatalf("config.py = %q", got)
+	}
+	if !strings.Contains(r.err, "warning: "+config+" is changed locally;") {
+		t.Fatalf("stderr does not report config.py:\n%s", r.err)
+	}
+}
+
 func TestUpgradeKeepsModifiedCoreLib(t *testing.T) {
 	root := newRepo(t)
 	if r := run(t, root, "", all(yes, realPacks)); r.code != 0 {
@@ -546,16 +567,27 @@ func TestUpgradeKeepsModifiedCoreLib(t *testing.T) {
 	}
 }
 
-func TestUpgradeKeepsShellScripts(t *testing.T) {
+// The cleanup of the retired lib removes what lighthouse installed and the directories that
+// leaves empty, nothing else: a file of the project in the same tree keeps its directories,
+// and the scripts next to the lib are untouched.
+func TestUpgradeCleanupKeepsProjectFiles(t *testing.T) {
 	root := newRepo(t)
-	write(t, root, "x.sh", "#!/bin/sh\necho x\n")
+	write(t, root, "x.sh", "#!/bin/sh\necho x\n") // a shell script makes the pack install shellcheck-repo.sh
 	if r := run(t, root, "", all(yes, realPacks)); r.code != 0 {
 		t.Fatalf("init: rc %d\n%s", r.code, r.err)
 	}
 	seedCoreLib(t, root, oldCoreLib)
+	mine := ".lighthouse/lib/lighthouse_lib/notes.txt"
+	write(t, root, mine, "mine\n")
 	r := run(t, root, "", all(upgrade, yes, realPacks))
 	if r.code != 0 {
 		t.Fatalf("upgrade: rc %d\n%s%s", r.code, r.out, r.err)
+	}
+	if got := read(t, root, mine); got != "mine\n" {
+		t.Fatalf("the project file under the retired lib = %q", got)
+	}
+	if exists(root, ".lighthouse/lib/lighthouse_lib/config.py") {
+		t.Fatal("config.py survives the upgrade")
 	}
 	if !exists(root, ".lighthouse/scripts/shellcheck-repo.sh") {
 		t.Fatal("shellcheck-repo.sh removed with the core lib")
