@@ -36,14 +36,24 @@ type Server struct {
 	// its number: a test can change the forge or the database between two requests.
 	BeforeComments func(number int)
 	// Issues are the issues per number in GitHub's REST shape, served by GET
-	// /repos/{owner}/{name}/issues/{number}; a missing number answers 404.
+	// /repos/{owner}/{name}/issues/{number}; a missing number answers 404. A POSTed issue or
+	// pull request lands here with the next free number, shared with Pulls.
 	Issues map[int]map[string]any
-	// Pulls are the open pull requests in REST shape (number, title, body, head.ref), served by
-	// GET /repos/{owner}/{name}/pulls in the order given.
+	// Pulls are the pull requests in REST shape (number, title, body, head.ref, optional state,
+	// draft), served by GET /repos/{owner}/{name}/pulls in the order given, filtered on state
+	// (default open; an item without state is open), and one by GET .../pulls/{number}. A
+	// POSTed pull request lands here and, with a "pull_request" key, in Issues.
 	Pulls []map[string]any
 	// BlockedBy are the blockers per issue number in REST issue shape (number, state,
 	// repository_url), served by GET .../issues/{number}/dependencies/blocked_by.
 	BlockedBy map[int][]map[string]any
+	// Releases are the releases per repo ("owner/name") in REST shape (tag_name, name, body,
+	// html_url, draft, prerelease), served by GET /repos/{owner}/{name}/releases in the order
+	// given, in pages.
+	Releases map[string][]map[string]any
+	// FailFirst maps "METHOD path" to the status only the first such request answers; the next
+	// ones are served as usual. Fail wins over FailFirst.
+	FailFirst map[string]int
 	// Fail maps "METHOD path", such as "POST /repos/o/r/issues/7/comments", to the status that
 	// request answers instead. A failed POST is still in Posts, but changes nothing.
 	Fail map[string]int
@@ -106,6 +116,12 @@ func New(t *testing.T) *Server {
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues/{number}", s.issue)
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues/{number}/dependencies/blocked_by", s.blockedBy)
 	mux.HandleFunc("GET /repos/{owner}/{name}/pulls", s.pulls)
+	mux.HandleFunc("GET /repos/{owner}/{name}/pulls/{number}", s.pull)
+	mux.HandleFunc("POST /repos/{owner}/{name}/issues", s.createIssue)
+	mux.HandleFunc("PATCH /repos/{owner}/{name}/issues/{number}", s.patchIssue)
+	mux.HandleFunc("POST /repos/{owner}/{name}/pulls", s.createPull)
+	mux.HandleFunc("PATCH /repos/{owner}/{name}/pulls/{number}", s.patchPull)
+	mux.HandleFunc("GET /repos/{owner}/{name}/releases", s.releases)
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues/{number}/comments", s.comments)
 	mux.HandleFunc("POST /repos/{owner}/{name}/issues/{number}/comments", s.createComment)
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues/comments/{id}/reactions", s.reactions)
@@ -162,8 +178,29 @@ func (s *Server) record(next http.Handler) http.Handler {
 			writeJSON(w, status, map[string]any{"message": http.StatusText(status)})
 			return
 		}
+		if status := s.failFirst(r.Method + " " + r.URL.Path); status != 0 {
+			writeJSON(w, status, map[string]any{"message": http.StatusText(status)})
+			return
+		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// failFirst returns the FailFirst status for key once and then forgets it.
+func (s *Server) failFirst(key string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	status := s.FailFirst[key]
+	delete(s.FailFirst, key)
+	return status
+}
+
+func (s *Server) releases(w http.ResponseWriter, r *http.Request) {
+	var out []any
+	for _, rel := range s.Releases[r.PathValue("owner")+"/"+r.PathValue("name")] {
+		out = append(out, rel)
+	}
+	s.page(w, r, out)
 }
 
 func (s *Server) user(w http.ResponseWriter, _ *http.Request) {
@@ -171,6 +208,8 @@ func (s *Server) user(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) issue(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	n, err := strconv.Atoi(r.PathValue("number"))
 	issue, ok := s.Issues[n]
 	if err != nil || !ok {
@@ -183,6 +222,8 @@ func (s *Server) issue(w http.ResponseWriter, r *http.Request) {
 // listIssues serves Issues by number, filtered on state (default open; an item without state
 // is open) and milestone (the milestone.number), in pages.
 func (s *Server) listIssues(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	state := r.URL.Query().Get("state")
 	if state == "" {
 		state = "open"
@@ -224,11 +265,144 @@ func (s *Server) blockedBy(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) pulls(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	state := cmp.Or(r.URL.Query().Get("state"), "open")
 	var out []any
 	for _, p := range s.Pulls {
+		if st, _ := p["state"].(string); state != "all" && state != cmp.Or(st, "open") {
+			continue
+		}
 		out = append(out, p)
 	}
 	s.page(w, r, out)
+}
+
+func (s *Server) pull(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n, _ := strconv.Atoi(r.PathValue("number"))
+	if i := s.pullIndex(n); i >= 0 {
+		writeJSON(w, http.StatusOK, s.Pulls[i])
+		return
+	}
+	writeJSON(w, http.StatusNotFound, map[string]any{"message": "Not Found"})
+}
+
+// pullIndex is the index of pull request n in Pulls, or -1. Call it with s.mu held.
+func (s *Server) pullIndex(n int) int {
+	return slices.IndexFunc(s.Pulls, func(p map[string]any) bool { return commentID(p["number"]) == int64(n) })
+}
+
+// nextNumber is the next free issue or pull request number. Call it with s.mu held.
+func (s *Server) nextNumber() int {
+	next := 0
+	for n := range s.Issues {
+		next = max(next, n)
+	}
+	for _, p := range s.Pulls {
+		next = max(next, int(commentID(p["number"])))
+	}
+	return next + 1
+}
+
+// decode reads the JSON object of the request; it answers 422 and returns false when it is none.
+func decode(w http.ResponseWriter, r *http.Request) (map[string]any, bool) {
+	var req map[string]any
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{"message": "Validation Failed"})
+		return nil, false
+	}
+	return req, true
+}
+
+// createIssue stores a new open issue by Login and answers 201 with it.
+func (s *Server) createIssue(w http.ResponseWriter, r *http.Request) {
+	req, ok := decode(w, r)
+	if !ok {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n := s.nextNumber()
+	it := map[string]any{"number": n, "node_id": fmt.Sprintf("I_%d", n), "title": req["title"], "body": req["body"],
+		"state": "open", "html_url": fmt.Sprintf("https://github.com/%s/%s/issues/%d", r.PathValue("owner"), r.PathValue("name"), n),
+		"user": map[string]any{"login": s.Login}, "labels": []any{}}
+	if s.Issues == nil {
+		s.Issues = map[int]map[string]any{}
+	}
+	s.Issues[n] = it
+	writeJSON(w, http.StatusCreated, it)
+}
+
+// createPull stores a new open pull request by Login, in Pulls and in Issues, and answers 201.
+func (s *Server) createPull(w http.ResponseWriter, r *http.Request) {
+	req, ok := decode(w, r)
+	if !ok {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n := s.nextNumber()
+	draft, _ := req["draft"].(bool)
+	url := fmt.Sprintf("https://github.com/%s/%s/pull/%d", r.PathValue("owner"), r.PathValue("name"), n)
+	pr := map[string]any{"number": n, "title": req["title"], "body": req["body"], "state": "open", "draft": draft,
+		"html_url": url, "head": map[string]any{"ref": req["head"], "sha": fmt.Sprintf("sha-%d", n)},
+		"base": map[string]any{"ref": req["base"]}, "user": map[string]any{"login": s.Login}}
+	s.Pulls = append(s.Pulls, pr)
+	if s.Issues == nil {
+		s.Issues = map[int]map[string]any{}
+	}
+	s.Issues[n] = map[string]any{"number": n, "node_id": fmt.Sprintf("PR_%d", n), "title": req["title"], "body": req["body"],
+		"state": "open", "html_url": url, "pull_request": map[string]any{"url": url},
+		"user": map[string]any{"login": s.Login}, "labels": []any{}}
+	writeJSON(w, http.StatusCreated, pr)
+}
+
+// patchIssue changes the body and state of an issue, or of a pull request through its number.
+func (s *Server) patchIssue(w http.ResponseWriter, r *http.Request) {
+	s.patch(w, r, false)
+}
+
+// patchPull changes the body and state of a pull request, which GitHub also shows as an issue.
+func (s *Server) patchPull(w http.ResponseWriter, r *http.Request) {
+	s.patch(w, r, true)
+}
+
+func (s *Server) patch(w http.ResponseWriter, r *http.Request, pull bool) {
+	req, ok := decode(w, r)
+	if !ok {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n, _ := strconv.Atoi(r.PathValue("number"))
+	it, found := s.Issues[n]
+	pi := s.pullIndex(n)
+	if pull {
+		found = pi >= 0
+	}
+	if !found {
+		writeJSON(w, http.StatusNotFound, map[string]any{"message": "Not Found"})
+		return
+	}
+	for _, field := range []string{"body", "state"} {
+		v, set := req[field]
+		if !set {
+			continue
+		}
+		if it != nil {
+			it[field] = v
+		}
+		if pi >= 0 {
+			s.Pulls[pi][field] = v
+		}
+	}
+	if pull {
+		writeJSON(w, http.StatusOK, s.Pulls[pi])
+		return
+	}
+	writeJSON(w, http.StatusOK, it)
 }
 
 func (s *Server) comments(w http.ResponseWriter, r *http.Request) {

@@ -155,7 +155,7 @@ def test_points_to_the_testing_skill():
         assert "lighthouse-test-standard" in text, path
         assert "Classify first" in text, path
         assert (
-            "This is a <class> change; the likely regression surface is <observable behaviour>."
+            "Class: <class>. At risk: <the observable behaviour that could change>."
             in text
         ), f"{path}: the classification sentence"
         assert "`pure-logic`" not in text, f"{path}: a class table of its own"

@@ -119,6 +119,11 @@ func (g *gitlabFixture) AddOpenPR(_ *testing.T, pr forge.OpenPR) {
 // ChecksOnClosedPRs: BranchPRs reads head_pipeline only for an open merge request.
 func (g *gitlabFixture) ChecksOnClosedPRs() bool { return false }
 
+// PRCommentBodies reads the notes of the merge request: the issue with that iid is another item.
+func (g *gitlabFixture) PRCommentBodies(_ *testing.T, number int) []string {
+	return g.srv.MRNotes(number)
+}
+
 // ListsClosedIssues: every issue is on the board, closed ones within the closed window.
 func (g *gitlabFixture) ListsClosedIssues() bool { return true }
 

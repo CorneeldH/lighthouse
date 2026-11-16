@@ -659,9 +659,11 @@
               "key": "ci.bot_login",
               "level": "advanced",
               "required": "no",
-              "about": "The login of the bot the unblock lane runs as, to unblock dependent issues.",
+              "about": "The login of the bot the unblock lane runs as, to unblock dependent issues. The pins lane counts only items by this login as its own.",
               "example": "my-bot[bot]",
               "readers": [
+                "internal/cli/pinslane.go",
+                "internal/pins/lane/lane.go",
                 "pack/core/skills/close-issue"
               ]
             },

@@ -9,6 +9,7 @@ package initcmd
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -31,6 +32,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/manifest"
 	"github.com/CorneeldH/lighthouse/internal/orderedjson"
 	"github.com/CorneeldH/lighthouse/internal/packs"
+	"github.com/CorneeldH/lighthouse/internal/pins"
 	"github.com/CorneeldH/lighthouse/internal/projectconfig"
 	"github.com/CorneeldH/lighthouse/internal/reconcile"
 	"github.com/CorneeldH/lighthouse/internal/settings"
@@ -57,6 +59,7 @@ type Options struct {
 	ForgeHosts          []string                                                  // --forge-host: hosts of self-hosted GitLab instances
 	Version             string                                                    // "" means version.String()
 	Packs               fs.FS                                                     // holds <name>/...; nil means pack.Files
+	PinEnv              func(root string) pins.Env                                // nil measures with real commands and the real installed_plugins.json
 	Deps                deps.Checker                                              // nil fields mean deps.Default()
 	Lookup              packs.Lookup                                              // config values for workflow placeholders; nil reads the proposed lighthouse.toml with internal/config
 	CountWords          func([]byte) (int, error)                                 // nil means wordcount.Count
@@ -232,6 +235,7 @@ func execute(o Options) error {
 	}
 	warnMissingScripts(o.Err, root)
 	warnIgnored(o.Err, root, desired, plan)
+	reportPins(o, root)
 	if o.Labels {
 		sync := o.SyncLabels
 		if sync == nil {
@@ -242,6 +246,23 @@ func execute(o Options) error {
 		}
 	}
 	return offerHost(o, in)
+}
+
+// reportPins measures the plugin and tool pins of lighthouse.toml against what is installed here
+// and reports every deviation and error on stderr, like a missing dependency: report, never stop,
+// and nothing on stdout or in the exit code. It makes no network call.
+func reportPins(o Options, root string) {
+	env := pins.Env{Root: root}
+	if o.PinEnv != nil {
+		env = o.PinEnv(root)
+	}
+	env.Git, env.Releases = nil, nil
+	drift := pins.Drift(pins.Check(context.Background(), env, pins.CheckOptions{Local: true}))
+	if len(drift) == 0 {
+		return
+	}
+	_, _ = fmt.Fprintln(o.Err, "pins: local installation differs from lighthouse.toml:")
+	pins.RenderText(o.Err, drift)
 }
 
 // reportPacks says which packages this run installs (plan M0 (c), design choice 7): on
