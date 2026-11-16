@@ -254,7 +254,10 @@ toegevoegde en gewijzigde bestanden; een verwijderd bestand is geen risico)
   een omgeving zonder forge- en workflow-token. De pusher dwingt dat zelf af en vertrouwt de
   vlaggen van het commando niet: elke reviewer draait onder `bwrap` (of gelijkwaardig) met een
   lege tijdelijke map als enige schrijfbare bind, de binary en zijn bibliotheken alleen-lezen, en
-  geen bind van `$HOME`. Ontbreekt `bwrap` op `PATH`, dan rood (`COULD NOT CHECK`), nooit een
+  geen bind van `$HOME`, behalve wat het reviewer-blok in `host.toml` expliciet toestaat: `binds`
+  (alleen-lezen paden, bijvoorbeeld het ene authenticatiebestand van de CLI en zijn installatiemap,
+  nooit `~/.config/lighthouse`) en `env` (namen van variabelen die doorgaan, bijvoorbeeld een
+  API-sleutel; nooit het forge- of workflow-token). *(own choice after spec review, r3-f1)* Ontbreekt `bwrap` op `PATH`, dan rood (`COULD NOT CHECK`), nooit een
   reviewer zonder sandbox. Een test laat een fake reviewer het tokenbestand proberen te lezen. De
   pusher scrubt de waarden van het forge- en het
   workflow-token uit alle reviewer-tekst voor die in een comment komt. *(own choice after spec
@@ -324,6 +327,7 @@ timeout    = "30m"
 [[dispatch.workflow_push.reviewers]]
 topic   = "supply-chain"            # supply-chain | secrets | injection
 command = ["codex", "exec", "--sandbox", "read-only", "--output-last-message", "{out}", "-"]
+binds   = ["~/.codex/auth.json"]
 
 [[dispatch.workflow_push.reviewers]]
 topic   = "injection"
