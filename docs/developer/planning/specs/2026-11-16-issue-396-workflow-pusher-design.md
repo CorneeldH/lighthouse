@@ -212,9 +212,10 @@ In deze volgorde; de eerste rode stap stopt alles en gaat naar de Vraag.
    fix-commits van V2b stap 3). Een `skip`, geen record of een ongedekte commit is rood (AC 2:
    "zonder roborev-review pusht de pusher niet"). Het record is een JSON-bestand dat de run zelf
    schrijft in zijn git-dir: dat is een derde, bewust genoemde leesbewerking op de worktree
-   (naast `rev-parse` en `status`), als bestandslezing zonder git. Het valt onder de bekende
-   grens in 5: de pusher controleert dat het record bestaat en klopt met de SHA, niet dat de run
-   het eerlijk schreef. *(own choice after spec review, r1-f5)*
+   (naast `rev-parse` en `status`), als bestandslezing zonder git. Check 5 is daarom
+   geen vloer tegen een gemanipuleerde run (die kan een record vervalsen), alleen tegen
+   ongelukken: een vergeten of verouderde review. Dat hoort bij de bekende grens in 5; AC 2 geldt
+   dus voor ongelukken, niet voor een run die bewust liegt. *(own choice after spec review, r1-f5)*
 6. De rem staat niet op pauze.
 
 **Policy op de workflow-diff** (`git diff merge-base..HEAD -- .github/workflows/`, alleen
@@ -250,9 +251,12 @@ toegevoegde en gewijzigde bestanden; een verwijderd bestand is geen risico)
      `env:` en `with:`.
 - **Insluiting.** Elke reviewer is een eigen proces zonder tools en zonder bestandstoegang buiten
   een lege tijdelijke map (geen leesrechten op `$HOME`, dus ook niet op het tokenbestand), met
-  een omgeving zonder forge- en workflow-token. Een commando dat dat niet kan garanderen (een
-  `codex exec` met een shell-tool in een sandbox die `$HOME` leest) is geen geldige reviewer; de
-  bouwer verifieert de vlaggen met een test. De pusher scrubt de waarden van het forge- en het
+  een omgeving zonder forge- en workflow-token. De pusher dwingt dat zelf af en vertrouwt de
+  vlaggen van het commando niet: elke reviewer draait onder `bwrap` (of gelijkwaardig) met een
+  lege tijdelijke map als enige schrijfbare bind, de binary en zijn bibliotheken alleen-lezen, en
+  geen bind van `$HOME`. Ontbreekt `bwrap` op `PATH`, dan rood (`COULD NOT CHECK`), nooit een
+  reviewer zonder sandbox. Een test laat een fake reviewer het tokenbestand proberen te lezen. De
+  pusher scrubt de waarden van het forge- en het
   workflow-token uit alle reviewer-tekst voor die in een comment komt. *(own choice after spec
   review, r1-f2)* De pusher geeft de prompt en de diff op stdin; de
   diff staat afgebakend als data. De prompts zijn ingebakken in de lighthouse-binary (`embed`),
@@ -300,7 +304,9 @@ toegevoegde en gewijzigde bestanden; een verwijderd bestand is geen risico)
   hervat niets: er is geen sessie. Hoe dat in de antwoord-regel van `decide` past, laat ik aan de
   bouwer.
 - **Bekende grens.** Een run post comments met hetzelfde account als de gebruiker, dus een
-  gemanipuleerde run kan `push` antwoorden. De vloer blijft dan staan, alleen de review valt weg.
+  gemanipuleerde run kan `push` antwoorden. De rest van de vloer blijft dan staan (git-checks, policy,
+  `actionlint`, `zizmor`), alleen de review valt weg; check 5 (roborev) valt voor een
+  gemanipuleerde run ook weg, zie 3.
   Dit hoort bij de harde grens (een eigen issue): een antwoordkanaal dat een run niet kan
   gebruiken.
 - **Token.** `[dispatch.workflow_push] token_file` in `host.toml`, naar het patroon van
@@ -317,7 +323,7 @@ timeout    = "30m"
 
 [[dispatch.workflow_push.reviewers]]
 topic   = "supply-chain"            # supply-chain | secrets | injection
-command = ["codex", "exec", "--output-last-message", "{out}", "-"]
+command = ["codex", "exec", "--sandbox", "read-only", "--output-last-message", "{out}", "-"]
 
 [[dispatch.workflow_push.reviewers]]
 topic   = "injection"
