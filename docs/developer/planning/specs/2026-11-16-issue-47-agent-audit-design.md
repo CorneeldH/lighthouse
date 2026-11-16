@@ -106,6 +106,10 @@ lighthouse agent-audit [--repo-only] [--only <deel>]... [--strict]
 - `--only` beperkt de uitvoer tot `inventory`, `conflicts`, `overlap` of `surface` (herhaalbaar).
   `lighthouse agent-audit --only surface` vervangt de regel `measure-skill-surface` in de
   zonder-python-spec (§9).
+  `Bronnen` staat er altijd, ook met `--only`, zodat een `COULD NOT CHECK` nooit stil is. Met
+  `--strict` telt voor exit 1 alleen een melding in een deel dat `--only` toont; een
+  `ignore`-regel die niet meer voorkomt, staat alleen bij het deel van zijn melding.
+  *(eigen keuze)*
 - `--strict` geeft exit 2 als een bron of hook `COULD NOT CHECK` gaf, anders exit 1 als er een
   conflict of overlapkandidaat is die niet in `ignore` staat, anders 0. Niet kunnen kijken gaat
   voor een melding: in CI mag een onleesbare bron nooit als groen eindigen. Zonder `--strict` is
