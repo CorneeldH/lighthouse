@@ -34,13 +34,11 @@
 
 ---
 
-### Task 1: Config-sleutels `report.*` (Go, mirror, site, fixtures)
+### Task 1: Config-sleutels `report.*` (Go, mirror, fixtures)
 
 **Files:**
 - Modify: `internal/config/config.go` (schema ~r.110–133, defaults ~r.157–170, validatie na `review.roborev` ~r.623)
 - Modify: `pack/core/lib/config.py` (SCHEMA ~r.133, DEFAULTS ~r.172, validatie ~r.459)
-- Modify: `docs/site/data/config.json` (nieuwe tabel `report`, na `review`)
-- Modify: `tests/test_site_config.py` (`SET`, `options`-verwachting ~r.480)
 - Modify: `tests/pack/fixtures/config-schema.json`, `tests/pack/fixtures/config/defaults/expect.json`, `.../full/{lighthouse.toml,expect.json}`
 - Create: `tests/pack/fixtures/config/report-sink-bad/`, `report-enabled-type/` (naar model van `roborev-bad`, `roborev-type`)
 - Test: `internal/config/config_test.go`, `tests/pack/test_config.py`
@@ -49,11 +47,10 @@
 - Produces: sleutels `report.enabled` (kBool, `false`), `report.sink` (kStr, `"stdout"`), `report.dir` (kStr, geen default); foutmelding `key report.sink must be 'stdout' or 'file', not <repr>` in Go en Python identiek.
 
 - [ ] **Step 1: Schrijf de falende tests.** Go (`config_test.go`): `TestReportDefaults` (`Default("report.enabled")==false`, `Default("report.sink")=="stdout"`, `report.dir` heeft geen default); `TestReportSinkRejectsOtherValues` (`sink = "wiki"` → fout met `key report.sink must be 'stdout' or 'file', not 'wiki'`); `TestReportEnabledMustBeBool` (`enabled = "true"` → `key report.enabled must be of type bool`). Python (`tests/pack/test_config.py`, blok `# --- [report]`): dezelfde drie, naar model van de `review.roborev`-tests r.1129–1146. Maak de fixtures `report-sink-bad` en `report-enabled-type` met `lighthouse.toml` en `expect.json` (rc 2, de exacte stderr van Go én Python).
-- [ ] **Step 2: Run rood.** `go test ./internal/config/ -run Report` en `python -m pytest tests/pack/test_config.py -k report -q`. Verwacht: FAIL (sleutels onbekend).
+- [ ] **Step 2: Run rood.** `go test ./internal/config/ -run Report` en `uv run pytest tests/pack/test_config.py -k report -q`. Verwacht: FAIL (sleutels onbekend).
 - [ ] **Step 3: Implementeer** de drie sleutels in `schema` en `defaults` van `config.go` en de waardecontrole van `sink` direct na die van `review.roborev`; spiegel exact in `config.py`. Voeg de sleutels toe aan `tests/pack/fixtures/config-schema.json` (lijst en defaults) en `defaults/expect.json`; zet `[report]` met alle drie in `full/lighthouse.toml` en `full/expect.json`.
-- [ ] **Step 4: Site-config.** Voeg tabel `report` toe aan `docs/site/data/config.json` met drie sleutels (`level: "set"`, `required: "no"`, `default`, `about`, `example`, `readers`: `internal/repoconfig/repoconfig.go` en `internal/cli/report.go`; `options: ["stdout","file"]` bij `sink`; `report.dir` `required: "with sink = file"`). Voeg `report.sink` toe aan `SET` en de `options`-verwachting in `tests/test_site_config.py`. De `readers`-paden moeten bestaan: in deze taak alleen `internal/repoconfig/repoconfig.go` (bestaat al); Task 9 voegt `internal/cli/report.go` toe aan de `readers` zodra dat bestand er is.
-- [ ] **Step 5: Run groen + pariteit.** `go test ./internal/config/... ./tests/... 2>&1 | tail`; `python -m pytest tests/pack/test_config.py tests/test_site_config.py -q`. Verwacht: PASS.
-- [ ] **Step 6: Dogfood + commit.** `go run ./cmd/lighthouse init --upgrade` (twee keer; tweede print `No changes.`), commit config, mirror, fixtures, site-data en de installed kopie: `feat(config): [report]-sleutels enabled, sink en dir (#44)`.
+- [ ] **Step 4: Run groen + pariteit.** `go test ./internal/config/... ./tests/... 2>&1 | tail`; `uv run pytest tests/pack/test_config.py tests/pack/test_config_fixtures.py -q`. Verwacht: PASS. (`docs/site/data/config.json` en `tests/test_site_config.py` komen pas in Task 2, zodra `internal/repoconfig/repoconfig.go` de sleutels noemt: die test herkent een lezer aan de sleuteltekst.)
+- [ ] **Step 5: Dogfood + commit.** `go run ./cmd/lighthouse init --upgrade` (twee keer; tweede print `No changes.`), commit config, mirror, fixtures en de installed kopie: `feat(config): [report]-sleutels enabled, sink en dir (#44)`.
 
 ---
 
@@ -61,6 +58,8 @@
 
 **Files:**
 - Modify: `internal/repoconfig/repoconfig.go` (`Repo`, `rawFile`, `Load`)
+- Modify: `docs/site/data/config.json` (nieuwe tabel `report`, na `review`)
+- Modify: `tests/test_site_config.py` (`SET`, `REQUIRED`)
 - Test: `internal/repoconfig/repoconfig_test.go`
 
 **Interfaces:**
@@ -74,8 +73,10 @@
 - [ ] **Step 1: Falende tests** (tabeltest `TestLoadReport`): geldig (`enabled=true, sink="file", dir="docs/verslagen"`) vult `Report`, `ReportErr == nil`; default zonder tabel: `Enabled=false, Sink="stdout"`; elk van deze geeft `Load` zonder fout én `ReportErr != nil` waarvan de tekst de sleutelnaam bevat: `enabled = "true"` (`report.enabled`), `sink = "wiki"` (`report.sink`), `sink = "file"` zonder `dir` (`report.dir`), `dir = "/abs"`, `dir = "../buiten"`, `dir = "a/../../b"` (`report.dir`), `dir = 5` (`report.dir`). Een tweede test: een repo met `enabled = "true"` laadt nog steeds met `Slug` gevuld (`Triageable`/`Dispatchable` blijven werken).
 - [ ] **Step 2: Run rood.** `go test ./internal/repoconfig/ -run Report`. Verwacht: FAIL (veld ontbreekt).
 - [ ] **Step 3: Implementeer.** `rawFile.Report toml.Primitive` met `toml:"report"` (en een `bool` via `md.IsDefined("report")` om "afwezig" te onderscheiden); `func reportFrom(prim toml.Primitive, md toml.MetaData) (Report, error)` die met `md.PrimitiveDecode` in een struct met `*bool`/`*string`/`any`-velden decodeert zodat een typefout `ReportErr` wordt, en daarna `sink` en `dir` controleert (`filepath.IsAbs`, `filepath.Clean` begint met `..`). `Load` zet `r.Report, r.ReportErr`.
-- [ ] **Step 4: Run groen.** `go test ./internal/repoconfig/...`. Verwacht: PASS.
-- [ ] **Step 5: Commit** `feat(repoconfig): [report] met eigen fout die Load niet breekt (#44)`.
+- [ ] **Step 4: Run groen.** `go test ./internal/repoconfig/...`. Verwacht: PASS. Laat `repoconfig.go` de drie sleutels letterlijk noemen (`report.enabled`, `report.sink`, `report.dir` in de foutteksten): `tests/test_site_config.py` herkent een lezer aan die tekst.
+- [ ] **Step 5: Site-config.** Voeg tabel `report` toe aan `docs/site/data/config.json` met drie sleutels (`required: "no"`, `default`, `about`, `example`). `readers`: bij alle drie `internal/repoconfig/repoconfig.go`; `internal/cli/report.go` komt in Task 9 alleen bij `report.enabled` (daar staat de sleutelnaam in de melding; `sink` en `dir` leest het bestand via `Repo.Report`, zonder de tekst). `options`: `[true, false]` bij `enabled`, `["stdout","file"]` bij `sink`. In `tests/test_site_config.py`: zet `report.enabled`, `report.sink` en `report.dir` in `SET` (`level: "set"`) en `"report.dir": "with sink = file"` in `REQUIRED`; de `options`-verwachting pakt `report.enabled` zelf op (bool-sleutels), `report.sink` voeg je toe aan `expected` met `["stdout", "file"]`. Een afwijkende `readers`-lijst leest de test zelf uit: neem wat `uv run pytest tests/test_site_config.py` meldt.
+- [ ] **Step 6: Run groen.** `uv run pytest tests/test_site_config.py -q`. Verwacht: PASS.
+- [ ] **Step 7: Commit** `feat(repoconfig): [report] met eigen fout die Load niet breekt (#44)`; neem de site-config en `tests/test_site_config.py` mee.
 
 ---
 
@@ -96,10 +97,10 @@
   ```
   Fixture-methodes: `AddMergedPR(t, pr forge.PRSummary)`; `AddIssue` bestaat al en krijgt voor `ClosedIssues` een `StateReason`-veld op `forge.Issue` (`"completed"`, `"not_planned"`, `""`).
 
-- [ ] **Step 1: Falende `httptest`-tests** (`report_test.go`, eigen server met opgenomen search-antwoorden in GitHubs vorm): `TestMergedPRsQuery` (gedecodeerde `q` is `repo:o/r is:pr is:merged merged:2026-11-16T00:00:00+01:00..2026-11-17T00:00:00+01:00`, geen letterlijke `+` in de ruwe query); `TestMergedPRsDropsResultAtUntil` (item met `closed_at`/`pull_request.merged_at` precies op `until` valt weg, item op `since` blijft); `TestMergedPRsPaginates` (twee pagina's via `Link`); `TestMergedPRsErrorsAbove1000` (`total_count: 1001` → fout met "1000"); `TestMergedPRsErrorsOnIncomplete` (`incomplete_results: true` → fout); `TestClosedIssuesSkipsNotPlanned` (`state_reason: "not_planned"` valt weg, `"completed"` en ontbrekend blijven); `TestClosedIssuesDropsResultAtUntil`.
+- [ ] **Step 1: Falende `httptest`-tests** (`report_test.go`, eigen server met opgenomen search-antwoorden in GitHubs vorm): `TestMergedPRsQuery` (gedecodeerde `q` is `repo:o/r is:pr is:merged merged:2026-11-16T00:00:00+01:00..2026-11-17T00:00:00+01:00`, de ruwe query bevat `%2B01%3A00` en geen `+01:00`: de spaties tussen de kwalificaties mogen wel als `+` komen); `TestMergedPRsDropsResultAtUntil` (item met `closed_at`/`pull_request.merged_at` precies op `until` valt weg, item op `since` blijft); `TestMergedPRsPaginates` (twee pagina's via `Link`); `TestMergedPRsErrorsAbove1000` (`total_count: 1001` → fout met "1000"); `TestMergedPRsErrorsOnIncomplete` (`incomplete_results: true` → fout); `TestClosedIssuesSkipsNotPlanned` (`state_reason: "not_planned"` valt weg, `"completed"` en ontbrekend blijven); `TestClosedIssuesDropsResultAtUntil`.
 - [ ] **Step 2: Falende contractcases** in `forgesuite`: `{"MergedPRs", mergedPRs}` (twee gemergde PR's in en één buiten de periode → twee, op `MergedAt` oplopend, `Title`/`URL`/`Number` gevuld, `Mergeable == ""`) en `{"ClosedIssues", closedIssues}` (een `completed`, een `not_planned`, een buiten de periode → alleen de eerste). Bouw `AddMergedPR` en de search-route in `forgetest` (leest `q`, filtert op `[since,until]` inclusief zoals GitHub, pagineert met `page()`).
 - [ ] **Step 3: Run rood.** `go test ./internal/forge/... -run 'MergedPRs|ClosedIssues'`. Verwacht: FAIL (methodes ontbreken).
-- [ ] **Step 4: Implementeer** `func (c *GitHub) searchPeriod(ctx, kind, qualifier string, since, until time.Time) ([]searchItem, error)`: bouwt `q` met `url.Values` (zo wordt `+` `%2B`), volgt `Link` via `nextPage`, faalt op `total_count > 1000` of `incomplete_results`; `MergedPRs` en `ClosedIssues` filteren daarna zelf op `[since, until)` met `MergedAt`/`ClosedAt` en sorteren. `state_reason` komt in `issueItem`/`Issue` (`StateReason string`).
+- [ ] **Step 4: Implementeer** `func (c *GitHub) searchPeriod(ctx, kind, qualifier string, since, until time.Time) ([]searchItem, error)`: bouwt `q` met `url.Values` (`Encode` maakt van `+` `%2B` en van een spatie `+`), volgt `Link` via `nextPage`, faalt op `total_count > 1000` of `incomplete_results`; `MergedPRs` en `ClosedIssues` filteren daarna zelf op `[since, until)` met `MergedAt`/`ClosedAt` en sorteren. `state_reason` komt in `issueItem`/`Issue` (`StateReason string`).
 - [ ] **Step 5: Run groen.** `go test ./internal/forge/...`. Verwacht: PASS, ook de bestaande suites.
 - [ ] **Step 6: Commit** `feat(forge): MergedPRs en ClosedIssues per periode (#44)`.
 
@@ -133,7 +134,7 @@
 
 **Files:**
 - Modify: `internal/forge/report.go`, `internal/forge/forge.go`
-- Modify: `internal/forge/forgetest/server.go` (GraphQL-operatie `pullRequests`), `forgesuite/suite.go`, `github_contract_test.go`
+- Modify: `internal/forge/forgetest/server.go` (GraphQL-operatie `OpenPRsWithStatus`: geef de query die naam, `query OpenPRsWithStatus(...)`, en gebruik dezelfde naam als `case` in de `switch op`; `operationName` leest de naam na `query `), `forgesuite/suite.go`, `github_contract_test.go`
 - Test: `internal/forge/report_test.go`
 
 **Interfaces:**
@@ -201,13 +202,13 @@
 ### Task 8: `internal/report` — `Render`
 
 **Files:**
-- Create: `internal/report/render.go`, `internal/report/render_test.go`, `internal/report/testdata/{nl,en}.golden.md`
+- Create: `internal/report/render.go`, `internal/report/render_test.go`, `internal/report/testdata/{nl,en}.golden` (bewust zonder `.md`: `internal/**` valt onder `code_language_paths` en `code-language-check` leest Markdown daar als proza en blokkeert Nederlands)
 
 **Interfaces:**
 - Consumes: `Report`, `PRStatus` uit Task 7.
 - Produces: `func Render(r Report, language string) string`. Teksten per taal in een `map[string]text` naar het patroon van `openText` in `internal/review/openpoints.go`; onbekende taal valt terug op `en`. Statuswoorden `nl`: `concept`, `conflict`, `rood`, `bezig`, `groen`, `geen checks`.
 
-- [ ] **Step 1: Falende tests.** `TestRenderGoldenNL` en `TestRenderGoldenEN` (vul een `Report` zoals de schets in spec §5; vergelijk met `testdata/*.golden.md`; schrijf de golden met de hand uit de schets, niet door de output te kopiëren); `TestRenderUnknownLanguageFallsBackToEN` (`"fr"` geeft gelijk aan `en`); `TestRenderEmptySectionSaysGeen` (elke lege sectie heeft `Geen.`, ook de roadmap); `TestRenderTitleOnOneLine` (titel `"fix: a\nb] [c |d #12"` geeft één lijstregel waarin de link `[#N](url)` heel blijft); `TestRenderOpenPRsStampHeader` (de kop noemt het tijdstip `At` bij een periode in het verleden); `TestRenderWeekRangeInHeader` (`16–22 november 2026`).
+- [ ] **Step 1: Falende tests.** `TestRenderGoldenNL` en `TestRenderGoldenEN` (vul een `Report` zoals de schets in spec §5; vergelijk met `testdata/*.golden`; schrijf de golden met de hand uit de schets, niet door de output te kopiëren); `TestRenderUnknownLanguageFallsBackToEN` (`"fr"` geeft gelijk aan `en`); `TestRenderEmptySectionSaysGeen` (elke lege sectie heeft `Geen.`, ook de roadmap); `TestRenderTitleOnOneLine` (titel `"fix: a\nb] [c |d #12"` geeft één lijstregel waarin de link `[#N](url)` heel blijft); `TestRenderOpenPRsStampHeader` (de kop noemt het tijdstip `At` bij een periode in het verleden); `TestRenderWeekRangeInHeader` (`16–22 november 2026`).
 - [ ] **Step 2: Run rood.** `go test ./internal/report/ -run Render`. Verwacht: FAIL.
 - [ ] **Step 3: Implementeer** `Render`; collapse whitespace in titels tot één spatie en laat `[`/`]` in de titel staan buiten de linktekst (alleen het `#N` zit in de link).
 - [ ] **Step 4: Run groen.** `go test ./internal/report/ && golangci-lint run ./internal/report/...`. Verwacht: PASS.
@@ -220,6 +221,7 @@
 **Files:**
 - Create: `internal/cli/report.go`, `internal/cli/report_test.go`
 - Modify: `internal/cli/root.go` (`root.AddCommand(newReportCommand(defaultReportEnv()))` naast `worktree-audit`)
+- Modify: `docs/site/data/config.json` (`readers` van `report.enabled`)
 
 **Interfaces:**
 - Consumes: `report.NewPeriod/ParseKind/Build/Render`, `repoconfig.Load`, `forgeOpener.forRepo`, `config.RepoRoot`, `config.Load`.
@@ -237,10 +239,10 @@
   func newReportCommand(env reportEnv) *cobra.Command // report day|week|month [--date JJJJ-MM-DD] [--repo <pad>]
   ```
 
-- [ ] **Step 1: Falende tests** (injecteer klok, repo-root in `t.TempDir()`, fake forge die elke call telt; stdout/stderr/exitcode asserten): `TestReportDisabledPrintsOneLineAndExits0` (tabel: geen `[report]`, `enabled=false`, en een `lighthouse.toml` zonder `[forge]`: stderr is één Engelse regel die `[report] enabled = true` noemt, exit 0, 0 forge-calls, stdout leeg); `TestReportErrKinds` (typefout, `sink="wiki"`, `file` zonder `dir`, `dir` buiten de repo: exit ≠ 0, stderr noemt de sleutel, 0 forge-calls); `TestReportStdout` (aan, sink stdout: markdown op stdout, taal uit `[project] language`); `TestReportFileSink` (pad `<repo>/<dir>/week/2026-W47.md`, map aangemaakt, tweede run overschrijft; `day` → `.../day/2026-11-16.md`, `month` → `.../month/2026-11.md`); `TestReportDateFlag` (`--date 2025-12-30 week` → label `2025-W01`); `TestReportBadDateAndKind` (`--date 2026-13-40`, `--date morgen`, `year`, geen argument: exit 2, 0 forge-calls); `TestReportForgeErrorWritesNothing` (bron faalt: exit ≠ 0, stdout leeg, bestand niet aangemaakt); `TestReportRepoFlagAndRootOverride` (`--repo` wint van `RepoRoot`); `TestReportMissingToml` (geen `lighthouse.toml`: exit ≠ 0, duidelijke melding); `TestReportTokenFallsBackToGh` (geen `GH_TOKEN`, `GhToken` geeft een token → opent).
+- [ ] **Step 1: Falende tests** (injecteer klok, repo-root in `t.TempDir()`, fake forge die elke call telt; stdout/stderr/exitcode asserten): `TestReportDisabledPrintsOneLineAndExits0` (tabel: geen `[report]`, `enabled=false`, en een `lighthouse.toml` zonder `[forge]`: stderr is één Engelse regel die `[report] enabled = true` noemt, exit 0, 0 forge-calls, stdout leeg); `TestReportErrKinds` (typefout, `sink="wiki"`, `file` zonder `dir`, `dir` buiten de repo: exit ≠ 0, stderr noemt de sleutel, 0 forge-calls); `TestReportStdout` (aan, sink stdout: markdown op stdout, taal uit `[project] language`); `TestReportFileSink` (pad `<repo>/<dir>/week/2026-W47.md`, map aangemaakt, tweede run overschrijft; `day` → `.../day/2026-11-16.md`, `month` → `.../month/2026-11.md`); `TestReportDateFlag` (`--date 2025-12-30 week` → label `2025-W01`); `TestReportBadDateAndKind` (`--date 2026-13-40`, `--date morgen`, `year`, geen argument: exit 2, 0 forge-calls); `TestReportForgeErrorWritesNothing` (bron faalt: exit ≠ 0, stdout leeg, bestand niet aangemaakt); `TestReportRepoFlagAndRootOverride` (`--repo` wint van `RepoRoot`); `TestReportDisabledWithBadSink` (`enabled = false` met `sink = "wiki"`: `config.Load` weigert de waarde, dus exit ≠ 0 met de sleutel in stderr; dit pint dat een typefout ook bij een uitgezet verslag een fout blijft); `TestReportMissingToml` (geen `lighthouse.toml`: exit ≠ 0, duidelijke melding); `TestReportTokenFallsBackToGh` (geen `GH_TOKEN`, `GhToken` geeft een token → opent).
 - [ ] **Step 2: Run rood.** `go test ./internal/cli/ -run Report`. Verwacht: FAIL.
 - [ ] **Step 3: Implementeer.** Volgorde: periodeargument en `--date` (usage-fout via `usageErr`) → repo-root → `config.Load(<root>/lighthouse.toml)` en lees `report.enabled`; niet `true` → stderr-regel, `return nil` → `repoconfig.Load` → `Repo.ReportErr` → `forgeOpener.forRepo` (naar model `askOpener`) → `Build` → `Render` → sink. Bestand: schrijf pas na een geslaagde `Build`, via tijdelijk bestand en `os.Rename`. Een fout is `&exitError{code: 1, err: …}`.
-- [ ] **Step 4: Run groen.** `go test ./internal/cli/ && go vet ./... && golangci-lint run ./...`. Verwacht: PASS. Controleer ook dat `docs/site/data/config.json` `readers` `internal/cli/report.go` kent (`python -m pytest tests/test_site_config.py -q`).
+- [ ] **Step 4: Run groen.** `go test ./internal/cli/ && go vet ./... && golangci-lint run ./...`. Verwacht: PASS. Voeg `internal/cli/report.go` toe aan de `readers` van `report.enabled` in `docs/site/data/config.json` en draai `uv run pytest tests/test_site_config.py -q` (PASS).
 - [ ] **Step 5: Commit** `feat(cli): lighthouse report day|week|month (#44)`.
 
 ---
@@ -255,7 +257,7 @@
 
 - [ ] **Step 1: Schrijf `docs/report.md`** (Nederlands): doel, de drie `[report]`-sleutels met de defaults, de commando-aanroep, de periodes en labels, het bestandspad, wat "Gedaan" en "Gaande" tellen (`not_planned` niet; open PR's als momentopname; "Nieuw op de roadmap" alleen nog open issues), en de bekende rand (een hernoemde milestone matcht niet). Relatieve links alleen naar bestaande doelen; link vanuit de plek die andere subcommando's beschrijft.
 - [ ] **Step 2: Fragment** `changelog.d/issue-44-verslag.md` met frontmatter `type: added` en één Engelse zin: `lighthouse report day|week|month makes a report of merged PRs, closed issues, open PRs and new roadmap issues, enabled per repo with [report] enabled = true.` (formaat volgens de bestaande fragmenten).
-- [ ] **Step 3: Controleer** `go run ./cmd/lighthouse init --upgrade` (print `No changes.`), `go test ./...`, `python -m pytest tests -q`, en de `md-link-check` (geen fout bij het schrijven).
+- [ ] **Step 3: Controleer** `go run ./cmd/lighthouse init --upgrade` (print `No changes.`), `go test ./...`, `uv run pytest tests -q`, en de `md-link-check` (geen fout bij het schrijven).
 - [ ] **Step 4: Commit** `docs(report): lighthouse report en de [report]-sleutels (#44)`.
 - [ ] **Step 5: Vervolgissues en #44-body.** Maak geen issue namens de gebruiker aan zonder instructie van het plan; noteer in de handoff dat §8 van de spec nog vraagt om: de body van #44 bijwerken (AC 2 naar "nieuw op de roadmap", week en maand erbij) en vervolgissues voor sinks `wiki`/`discussion`, over repo's heen, een timer en de UI, via `/lighthouse-write-issue`.
 
