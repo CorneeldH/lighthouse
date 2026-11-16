@@ -3,6 +3,7 @@ package lane
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/CorneeldH/lighthouse/internal/forge"
@@ -39,10 +40,23 @@ const (
 	markerSuffix = " -->"
 )
 
-// Marker is the hidden line that lets the lane find its own item again. Key, kind and target
-// must not contain whitespace.
+// escape makes a marker field safe: it holds no space, no '>' (so " -->" cannot occur), no '@'
+// or '#', and decodes back with unescape. Slashes stay readable.
+func escape(s string) string {
+	e := url.PathEscape(s)
+	e = strings.ReplaceAll(e, "%2F", "/")
+	return strings.ReplaceAll(e, "@", "%40")
+}
+
+func unescape(s string) (string, bool) {
+	v, err := url.PathUnescape(s)
+	return v, err == nil
+}
+
+// Marker is the hidden line that lets the lane find its own item again. Key and target are
+// percent-encoded, so any value (spaces, "-->", unicode, empty) round-trips through ParseMarker.
 func Marker(key string, kind ItemKind, target string) string {
-	return markerPrefix + key + " " + string(kind) + " " + target + markerSuffix
+	return markerPrefix + escape(key) + " " + string(kind) + " " + escape(target) + markerSuffix
 }
 
 // ParseMarker finds a marker in body. ok is false without a marker, with a malformed one or
@@ -57,15 +71,29 @@ func ParseMarker(body string) (key string, kind ItemKind, target string, ok bool
 	if end < 0 {
 		return "", "", "", false
 	}
-	fields := strings.Fields(rest[:end])
+	fields := strings.Split(rest[:end], " ")
 	if len(fields) != 3 {
 		return "", "", "", false
 	}
-	switch k := ItemKind(fields[1]); k {
+	k := ItemKind(fields[1])
+	switch k {
 	case KindPR, KindConflict, KindBehind, KindError:
-		return fields[0], k, fields[2], true
+	default:
+		return "", "", "", false
 	}
-	return "", "", "", false
+	key, ok1 := unescape(fields[0])
+	target, ok2 := unescape(fields[2])
+	if !ok1 || !ok2 {
+		return "", "", "", false
+	}
+	return key, k, target, true
+}
+
+// safeURL makes a link harmless outside a fence: no mention, issue reference, backtick, markup
+// or whitespace survives, each becomes a percent escape.
+func safeURL(u string) string {
+	return strings.NewReplacer("@", "%40", "#", "%23", "`", "%60", "<", "%3C", ">", "%3E",
+		" ", "%20", "\t", "%09", "\n", "%0A", "\r", "%0D").Replace(u)
 }
 
 // Fence puts text in a fenced code block whose fence is longer than any backtick run in text
@@ -107,10 +135,13 @@ func cut(s string, n int) string {
 func RenderBehindBody(marker string, key string, from, to string, rels []forge.Release, compareURL string) string {
 	var b strings.Builder
 	b.WriteString(marker + "\n\n")
-	fmt.Fprintf(&b, "De pin `%s` staat op `%s`; upstream is `%s`. Vergelijk: %s\n\n", key, from, to, compareURL)
+	link := safeURL(compareURL)
+	b.WriteString("Een pin staat achter upstream.\n\n")
+	b.WriteString(Fence(fmt.Sprintf("Pin: %s\nHuidig: %s\nUpstream: %s", cut(key, 200), cut(from, 200), cut(to, 200))) + "\n\n")
+	fmt.Fprintf(&b, "Vergelijk: %s\n\n", link)
 	shown := 0
 	for _, r := range rels {
-		text := fmt.Sprintf("Tag: %s\nNaam: %s\nURL: %s\n\n%s", r.Tag, r.Name, r.URL, excerpt(r.Body))
+		text := fmt.Sprintf("Tag: %s\nNaam: %s\nURL: %s\n\n%s", cut(r.Tag, 200), cut(r.Name, 200), cut(r.URL, 200), excerpt(r.Body))
 		block := Fence(text) + "\n\n"
 		if shown >= maxReleases || b.Len()+len(block) > MaxBody-reserve {
 			break
@@ -119,7 +150,7 @@ func RenderBehindBody(marker string, key string, from, to string, rels []forge.R
 		shown++
 	}
 	if omitted := len(rels) - shown; omitted > 0 {
-		fmt.Fprintf(&b, "nog %d releases, zie %s\n", omitted, compareURL)
+		fmt.Fprintf(&b, "nog %d releases, zie %s\n", omitted, link)
 	}
 	return b.String()
 }
@@ -128,9 +159,11 @@ func RenderBehindBody(marker string, key string, from, to string, rels []forge.R
 // begins with `No issue:` (the shape pr-create-gate wants) and never carries a closing keyword.
 func RenderPRBody(marker, key string, commits []pins.CommitInfo, statDiff, compareURL string) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "No issue: automatische upstream-update van pin `%s`, geen issue.\n\n", key)
+	link := safeURL(compareURL)
+	b.WriteString("No issue: automatische upstream-update van een pin, geen issue.\n\n")
 	b.WriteString(marker + "\n\n")
-	fmt.Fprintf(&b, "Vergelijk: %s\n\n", compareURL)
+	b.WriteString(Fence("Pin: "+cut(key, 200)) + "\n\n")
+	fmt.Fprintf(&b, "Vergelijk: %s\n\n", link)
 	b.WriteString("Wijzigingen:\n\n")
 	b.WriteString(Fence(cut(statDiff, 10*MaxExcerpt)) + "\n\n")
 	b.WriteString("Upstream-commits:\n\n")
@@ -148,7 +181,7 @@ func RenderPRBody(marker, key string, commits []pins.CommitInfo, statDiff, compa
 		shown++
 	}
 	if omitted := len(commits) - shown; omitted > 0 {
-		fmt.Fprintf(&b, "nog %d commits, zie %s\n", omitted, compareURL)
+		fmt.Fprintf(&b, "nog %d commits, zie %s\n", omitted, link)
 	}
 	return b.String()
 }
@@ -156,6 +189,7 @@ func RenderPRBody(marker, key string, commits []pins.CommitInfo, statDiff, compa
 // RenderErrorBody is the body of the issue that reports a pin the lane could not measure.
 func RenderErrorBody(marker, key, detail string) string {
 	return marker + "\n\n" +
-		fmt.Sprintf("De pin `%s` is niet te meten:\n\n", key) +
+		"Een pin is niet te meten.\n\n" +
+		Fence("Pin: "+cut(key, 200)) + "\n\n" +
 		Fence(excerpt(detail)) + "\n"
 }

@@ -205,3 +205,58 @@ func atoi(t *testing.T, s string) int {
 	}
 	return n
 }
+
+var oddKeys = []string{
+	"node_modules/@scope/pkg", "a#12", "with`tick", "two words", "x --> y", "ünï/çode", "100%", "",
+}
+
+func TestRender_oddValuesStayInertOutsideFences(t *testing.T) {
+	link := "https://github.com/o/r/compare/a@b...c#12`x y"
+	rels := []forge.Release{{Tag: "v1", Body: "b"}}
+	for _, key := range oddKeys {
+		bodies := map[string]string{
+			"behind": RenderBehindBody(Marker(key, KindBehind, "t"), key, key, key, rels, link),
+			"pr":     RenderPRBody(Marker(key, KindPR, "t"), key, []pins.CommitInfo{{SHA: "a", Subject: "s"}}, "d", link),
+			"error":  RenderErrorBody(Marker(key, KindError, "t"), key, "d"),
+		}
+		for name, body := range bodies {
+			outside := stripFences(t, body)
+			if mentionRe.MatchString(outside) || closingRe.MatchString(outside) || strings.Contains(outside, "`") {
+				t.Errorf("%s key %q: unsafe outside fence: %q", name, key, outside)
+			}
+			k, _, _, ok := ParseMarker(body)
+			if !ok || k != key {
+				t.Errorf("%s key %q: marker parsed %q %v", name, key, k, ok)
+			}
+		}
+	}
+}
+
+func TestMarkerRoundTrip_oddValues(t *testing.T) {
+	for _, key := range oddKeys {
+		for _, target := range []string{"", "a b", "-->", "@x#1", "é"} {
+			m := Marker(key, KindPR, target)
+			if strings.Contains(m[len(markerPrefix):len(m)-len(markerSuffix)], "-->") || strings.ContainsAny(m, "@") {
+				t.Fatalf("marker %q holds a hazard", m)
+			}
+			k, kind, tg, ok := ParseMarker("x\n" + m + "\ny")
+			if !ok || k != key || kind != KindPR || tg != target {
+				t.Fatalf("key %q target %q: got %q %q %q %v", key, target, k, kind, tg, ok)
+			}
+		}
+	}
+}
+
+func TestRenderBehindBody_byteBudgetAlone(t *testing.T) {
+	var rels []forge.Release
+	for i := 0; i < maxReleases; i++ {
+		rels = append(rels, forge.Release{Tag: "v", Body: strings.Repeat("😀", MaxExcerpt)})
+	}
+	body := RenderBehindBody("<!-- m -->", "k", "1", "2", rels, "u")
+	if len(body) > MaxBody {
+		t.Fatalf("body is %d bytes, over MaxBody", len(body))
+	}
+	if !strings.Contains(body, "nog ") {
+		t.Fatalf("no truncation note")
+	}
+}
