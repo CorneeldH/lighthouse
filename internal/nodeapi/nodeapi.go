@@ -44,6 +44,22 @@ const (
 	PathSessions = Prefix + "/workspaces/{id}/sessions"
 )
 
+// PathTranscript is GET with the queries profile (a profile the node knows) and from
+// ("<file>:<offset>,…", files relative to the transcript dir with slashes): a tar
+// (application/x-tar) with one member per transcript file of {session}, holding its bytes from
+// the offset. Each member header carries the PAX records PAXSize and PAXFrom. Without the main
+// transcript it is 404 no_transcript.
+const PathTranscript = Prefix + "/workspaces/{id}/transcript/{session}"
+
+// The PAX records of a member of PathTranscript.
+const (
+	// PAXSize is the length of the file on the node when it was read; the member ends there.
+	PAXSize = "LIGHTHOUSE.size"
+	// PAXFrom is the offset the member starts at: the offset asked for, or 0 when the file on
+	// the node is shorter than that and the member holds the whole file.
+	PAXFrom = "LIGHTHOUSE.from"
+)
+
 // The machine-readable codes of a 404. The tick maps on the code, never on the status alone.
 const (
 	CodeWorkspaceGone = "workspace_gone" // the node's forge no longer knows the workspace
