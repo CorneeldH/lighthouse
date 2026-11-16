@@ -22,7 +22,7 @@ type Fixture interface {
 	Repo() string
 	Login() string // the token's user
 	// AddIssue adds is with its Number, Title, Body, Author, State ("open"/"closed"), Labels,
-	// Milestone and ClosedAt.
+	// Milestone, ClosedAt and StateReason.
 	AddIssue(t *testing.T, is forge.Issue)
 	// AddComment adds a comment by author on issue number and returns its ID.
 	AddComment(t *testing.T, number int, author, body string) int64
@@ -33,6 +33,8 @@ type Fixture interface {
 	// AddBlocker makes b block issue number.
 	AddBlocker(t *testing.T, number int, b forge.Blocker)
 	AddOpenPR(t *testing.T, pr forge.OpenPR)
+	// AddMergedPR adds a merged pull request with its Number, Title, URL and MergedAt.
+	AddMergedPR(t *testing.T, pr forge.PRSummary)
 	AddBranchPR(t *testing.T, branch string, pr forge.PR)
 	// PutOnBoard puts issue number on the board with a lighthouse status and priority; "" none.
 	PutOnBoard(t *testing.T, number int, status, priority string)
@@ -66,6 +68,8 @@ var Cases = []Case{
 	{"SetStatusUnknownName", setStatusUnknownName},
 	{"Pagination", pagination},
 	{"PRFields", prFields},
+	{"MergedPRs", mergedPRs},
+	{"ClosedIssues", closedIssues},
 }
 
 // Run runs every case as a subtest, each with a fresh fixture.
@@ -484,5 +488,44 @@ func prFields(t *testing.T, f Fixture) {
 	}
 	if len(open) != 1 || open[0] != (forge.OpenPR{Number: 13, Title: "Fix it", Body: "Closes #7", HeadRef: "issue-7-x"}) {
 		t.Errorf("OpenPRs = %+v; want #13 Fix it, body Closes #7, head issue-7-x", open)
+	}
+}
+
+func mergedPRs(t *testing.T, f Fixture) {
+	since := time.Date(2026, 11, 16, 0, 0, 0, 0, time.UTC)
+	until := since.Add(24 * time.Hour)
+	f.AddMergedPR(t, forge.PRSummary{Number: 21, Title: "Later", URL: "https://example.test/pull/21", MergedAt: since.Add(15 * time.Hour)})
+	f.AddMergedPR(t, forge.PRSummary{Number: 20, Title: "Earlier", URL: "https://example.test/pull/20", MergedAt: since.Add(2 * time.Hour)})
+	f.AddMergedPR(t, forge.PRSummary{Number: 19, Title: "Outside", URL: "https://example.test/pull/19", MergedAt: since.Add(-time.Hour)})
+	got, err := f.Forge().MergedPRs(t.Context(), since, until)
+	if err != nil {
+		t.Fatalf("MergedPRs: %v", err)
+	}
+	if len(got) != 2 || got[0].Number != 20 || got[1].Number != 21 {
+		t.Fatalf("MergedPRs = %+v; want #20 then #21", got)
+	}
+	if got[0].Title != "Earlier" || got[0].URL == "" || got[0].Mergeable != "" || !got[0].MergedAt.Equal(since.Add(2*time.Hour)) {
+		t.Errorf("MergedPRs[0] = %+v; want title, URL, MergedAt and no Mergeable", got[0])
+	}
+}
+
+func closedIssues(t *testing.T, f Fixture) {
+	since := time.Date(2026, 11, 16, 0, 0, 0, 0, time.UTC)
+	until := since.Add(24 * time.Hour)
+	done := closedIssue(30, nil, since.Add(3*time.Hour))
+	done.StateReason = "completed"
+	dropped := closedIssue(31, nil, since.Add(4*time.Hour))
+	dropped.StateReason = "not_planned"
+	outside := closedIssue(32, nil, since.Add(-2*time.Hour))
+	outside.StateReason = "completed"
+	f.AddIssue(t, done)
+	f.AddIssue(t, dropped)
+	f.AddIssue(t, outside)
+	got, err := f.Forge().ClosedIssues(t.Context(), since, until)
+	if err != nil {
+		t.Fatalf("ClosedIssues: %v", err)
+	}
+	if len(got) != 1 || got[0].Number != 30 || got[0].StateReason != "completed" {
+		t.Errorf("ClosedIssues = %+v; want only #30", got)
 	}
 }

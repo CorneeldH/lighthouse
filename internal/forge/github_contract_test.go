@@ -66,6 +66,9 @@ func (g *githubFixture) AddIssue(_ *testing.T, is forge.Issue) {
 	if !is.ClosedAt.IsZero() {
 		it["closed_at"] = is.ClosedAt.UTC().Format(time.RFC3339)
 	}
+	if is.StateReason != "" {
+		it["state_reason"] = is.StateReason
+	}
 	if g.srv.Issues == nil {
 		g.srv.Issues = map[int]map[string]any{}
 	}
@@ -111,6 +114,17 @@ func (g *githubFixture) AddOpenPR(_ *testing.T, pr forge.OpenPR) {
 	g.srv.Pulls = append(g.srv.Pulls, map[string]any{
 		"number": pr.Number, "title": pr.Title, "body": pr.Body, "head": map[string]any{"ref": pr.HeadRef},
 	})
+}
+
+func (g *githubFixture) AddMergedPR(_ *testing.T, pr forge.PRSummary) {
+	merged := pr.MergedAt.UTC().Format(time.RFC3339)
+	if g.srv.MergedPRs == nil {
+		g.srv.MergedPRs = map[int]map[string]any{}
+	}
+	g.srv.MergedPRs[pr.Number] = map[string]any{
+		"number": pr.Number, "title": pr.Title, "html_url": pr.URL, "draft": pr.Draft, "state": "closed",
+		"closed_at": merged, "pull_request": map[string]any{"merged_at": merged},
+	}
 }
 
 func (g *githubFixture) AddBranchPR(_ *testing.T, branch string, pr forge.PR) {

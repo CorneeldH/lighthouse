@@ -41,6 +41,9 @@ type Server struct {
 	// Pulls are the open pull requests in REST shape (number, title, body, head.ref), served by
 	// GET /repos/{owner}/{name}/pulls in the order given.
 	Pulls []map[string]any
+	// MergedPRs are the merged pull requests per number in search-result shape (number, title,
+	// html_url, draft, state, closed_at, pull_request.merged_at), served only by GET /search/issues.
+	MergedPRs map[int]map[string]any
 	// BlockedBy are the blockers per issue number in REST issue shape (number, state,
 	// repository_url), served by GET .../issues/{number}/dependencies/blocked_by.
 	BlockedBy map[int][]map[string]any
@@ -105,6 +108,7 @@ func New(t *testing.T) *Server {
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues", s.listIssues)
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues/{number}", s.issue)
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues/{number}/dependencies/blocked_by", s.blockedBy)
+	mux.HandleFunc("GET /search/issues", s.search)
 	mux.HandleFunc("GET /repos/{owner}/{name}/pulls", s.pulls)
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues/{number}/comments", s.comments)
 	mux.HandleFunc("POST /repos/{owner}/{name}/issues/{number}/comments", s.createComment)
@@ -208,6 +212,57 @@ func (s *Server) listIssues(w http.ResponseWriter, r *http.Request) {
 		out = append(out, it)
 	}
 	s.page(w, r, out)
+}
+
+// search serves GET /search/issues for the qualifiers "is:pr is:merged merged:A..B" (MergedPRs)
+// and "is:issue is:closed closed:A..B" (closed Issues), the range inclusive as GitHub's is, in
+// pages with total_count. Any other query is a test error.
+func (s *Server) search(w http.ResponseWriter, r *http.Request) {
+	var kind, field string
+	var rng [2]time.Time
+	for _, f := range strings.Fields(r.URL.Query().Get("q")) {
+		switch {
+		case f == "is:pr" || f == "is:issue":
+			kind = strings.TrimPrefix(f, "is:")
+		case strings.HasPrefix(f, "merged:") || strings.HasPrefix(f, "closed:"):
+			field = f[:6]
+			lo, hi, ok := strings.Cut(f[7:], "..")
+			var err1, err2 error
+			rng[0], err1 = time.Parse(time.RFC3339, lo)
+			rng[1], err2 = time.Parse(time.RFC3339, hi)
+			if !ok || err1 != nil || err2 != nil {
+				s.t.Errorf("forgetest: search range %q is no RFC 3339 pair", f)
+			}
+		}
+	}
+	if kind == "" || field == "" {
+		s.t.Errorf("forgetest: search q = %q; only is:pr/is:issue with merged:/closed: is served", r.URL.Query().Get("q"))
+	}
+	source := s.Issues
+	if kind == "pr" {
+		source = s.MergedPRs
+	}
+	var nums []int
+	for n := range source {
+		nums = append(nums, n)
+	}
+	slices.Sort(nums)
+	var out []any
+	for _, n := range nums {
+		it := source[n]
+		at, _ := it["closed_at"].(string)
+		if pr, ok := it["pull_request"].(map[string]any); ok && field == "merged" {
+			at, _ = pr["merged_at"].(string)
+		}
+		when, err := time.Parse(time.RFC3339, at)
+		if err != nil || when.Before(rng[0]) || when.After(rng[1]) {
+			continue
+		}
+		out = append(out, it)
+	}
+	s.pageWith(w, r, out, func(p []any) any {
+		return map[string]any{"total_count": len(out), "incomplete_results": false, "items": p}
+	})
 }
 
 func (s *Server) blockedBy(w http.ResponseWriter, r *http.Request) {
@@ -378,6 +433,11 @@ func (s *Server) permission(w http.ResponseWriter, r *http.Request) {
 // page serves one page of items as GitHub does: per_page (default 30, at most 100) and page
 // from the query, and a Link rel="next" while more items follow.
 func (s *Server) page(w http.ResponseWriter, r *http.Request, items []any) {
+	s.pageWith(w, r, items, func(p []any) any { return p })
+}
+
+// pageWith is page with wrap shaping the body from the items of the page.
+func (s *Server) pageWith(w http.ResponseWriter, r *http.Request, items []any, wrap func([]any) any) {
 	q := r.URL.Query()
 	per, err := strconv.Atoi(q.Get("per_page"))
 	if err != nil || per <= 0 {
@@ -395,7 +455,7 @@ func (s *Server) page(w http.ResponseWriter, r *http.Request, items []any) {
 		next := url.URL{Path: r.URL.Path, RawQuery: q.Encode()}
 		w.Header().Set("Link", fmt.Sprintf(`<%s%s>; rel="next"`, s.srv.URL, next.String()))
 	}
-	writeJSON(w, http.StatusOK, append([]any{}, items[start:end]...))
+	writeJSON(w, http.StatusOK, wrap(append([]any{}, items[start:end]...)))
 }
 
 func (s *Server) graphql(w http.ResponseWriter, r *http.Request) {

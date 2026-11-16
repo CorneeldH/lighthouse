@@ -34,6 +34,11 @@ type Forge interface {
 	// with ErrHeadMoved when the head moved, and with *MergeRefused when the forge declines.
 	MergePR(ctx context.Context, number int, sha string) error
 	OpenPRs(ctx context.Context) ([]OpenPR, error)
+	// MergedPRs lists the pull requests that merged in [since, until), oldest merge first.
+	MergedPRs(ctx context.Context, since, until time.Time) ([]PRSummary, error)
+	// ClosedIssues lists the issues closed as done in [since, until), oldest close first;
+	// an issue closed as not planned is left out.
+	ClosedIssues(ctx context.Context, since, until time.Time) ([]Issue, error)
 	BranchPRs(ctx context.Context, branch string) ([]PR, error)
 	BoardItems(ctx context.Context) ([]BoardItem, error)
 	IssueItem(ctx context.Context, number int) (item BoardItem, ok bool, err error)
