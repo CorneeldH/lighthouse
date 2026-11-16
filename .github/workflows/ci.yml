@@ -111,6 +111,11 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+      # checkpoint_scan.py reads its limits through `lighthouse config`, found on PATH (#285).
+      - name: build lighthouse
+        run: |
+          go build -o "$RUNNER_TEMP/bin/lighthouse" ./cmd/lighthouse
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       - run: uv sync --locked
       # `-n auto` (pytest-xdist): one worker per vCPU the runner has, 4 on ubuntu-latest for a
