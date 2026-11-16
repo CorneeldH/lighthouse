@@ -44,7 +44,7 @@
 
 - [ ] **Step 1: Schrijf de falende tests in `tests/test_tag_with_ui.py`**
 
-Helper `_repo(tmp_path)`: `git init`, user.name/email ingesteld, één commit met een bestand, zonder `internal/web/dist`; helper `_src(tmp_path)`: map met `index.html` en `assets/app.js`. Draai het script met `subprocess.run([str(SCRIPT), tag, str(src)], cwd=repo)`.
+Helper `_repo(tmp_path)`: `git init`, user.name/email ingesteld, één commit met een bestand, zonder `internal/web/dist`; helper `_src(tmp_path)`: map met `index.html` en `assets/app.js`. Draai het script met `subprocess.run([str(SCRIPT), tag, str(src)], cwd=repo, env={**os.environ, "HOME": str(repo), "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null"})`, zoals `tests/test_check_cla.py:177`, zodat een globale `commit.gpgsign` de test niet stuurt.
 
 - `test_tag_points_to_commit_with_dist`: na het script bevat `git ls-tree -r <tag> --name-only` `internal/web/dist/index.html` en `internal/web/dist/assets/app.js`; `git cat-file -t <tag>` is `tag` (geannoteerd); het onderwerp van `<tag>^{commit}` is `chore(release): v1.2.3 web-UI`.
 - `test_parent_has_no_dist`: `git ls-tree -r <tag>^ --name-only` bevat geen pad met `internal/web/dist`.
@@ -91,7 +91,7 @@ git commit -m "feat(ci): tag-with-ui.sh zet dist in de tag-commit (#349)"
 In `tests/test_release_workflows_pin.py`:
 - Verwijder `test_build_embeds_real_spa`; vervang door `test_web_job_checks_dist_of_the_tag`: job `web` bevat in deze volgorde `git ls-files --error-unmatch internal/web/dist/index.html`, `npm ci`, `npm run build` (elk als eigen `run:`-stap, de npm-stappen met `working-directory: web`), en `test -z "$(git status --porcelain --ignored -- internal/web/dist)"`; `contents: read`, geen `contents: write`, geen `upload-artifact`.
 - `test_build_has_no_spa_artifact`: job `build` bevat geen `download-artifact` en niet `spa-dist`; `needs: [resolve, web]` blijft; de stap `git status --porcelain` staat vóór `go build`.
-- `test_go_install_job_proves_spa`: `jobs["go-install"]` heeft `needs: [resolve, web]`, `contents: read`, checkout met `ref: refs/tags/${{ needs.resolve.outputs.tag }}` en `persist-credentials: false`, `actions/setup-go@`, `go-version-file: go.mod`, en een `run:` die `GOPRIVATE=github.com/CorneeldH/lighthouse`, `GOBIN="$RUNNER_TEMP/bin"` en `go install github.com/CorneeldH/lighthouse/cmd/lighthouse@$TAG` bevat, daarna `ci/spa-smoke.sh "$RUNNER_TEMP/bin/lighthouse"`; `GOPROXY` komt in geen enkel workflowbestand voor.
+- `test_go_install_job_proves_spa`: `jobs["go-install"]` heeft `needs: [resolve, web]`, `contents: read`, checkout met `ref: refs/tags/${{ needs.resolve.outputs.tag }}` en `persist-credentials: false`, `actions/setup-go@`, `go-version-file: go.mod`, en een `run:` die `GOPRIVATE=github.com/CorneeldH/lighthouse`, `GOBIN="$RUNNER_TEMP/bin"` en `go install github.com/CorneeldH/lighthouse/cmd/lighthouse@"$TAG"` bevat (met aanhalingstekens, zoals in stap 3), daarna `ci/spa-smoke.sh "$RUNNER_TEMP/bin/lighthouse"`; `GOPROXY` komt in geen enkel workflowbestand voor.
 - `test_publish_needs_go_install`: `publish` heeft `needs: [resolve, build, go-install]`.
 - `test_build_checkouts_pin_the_tag`: `found == 4`.
 - `test_build_runs_spa_smoke` blijft.
@@ -136,6 +136,7 @@ git commit -m "feat(ci): build controleert dist van de tag en bewijst go install
 - `test_ui_job_uploads_hidden_files`: de upload-stap van `ui` bevat `include-hidden-files: true`.
 - `test_writing_jobs_run_no_npm`: voor `release.yml` job `release` en `prerelease.yml` job `tag` (laatste nog niet aanwezig: sla over als het bestand ontbreekt, taak 4 schakelt het in) geldt: geen `npm`, geen `setup-node`; `release` heeft `needs: [macos, ui]` en een `download-artifact` van `ui-dist` naar `${{ runner.temp }}/ui-dist`.
 - `test_release_retry_does_not_rebuild`: `npm` komt niet binnen de `for attempt`-lus voor (volgt uit de vorige, maar pint dat de lus het artifact gebruikt: het script wordt binnen de lus aangeroepen, na `git reset --hard origin/main`).
+- Bestaande `test_release_waits_for_macos` wijzigt: job `release` eist `needs: [macos, ui]` (de regex `^    needs: macos\s*$` past er niet meer op) en job `ui` eist `needs: macos`; laat `ui` nooit uit `release.needs` vallen, anders racet `download-artifact` met job `ui`.
 - Bestaande `test_write_permission_only_where_needed`, `test_only_release_job_persists_credentials` en `test_every_step_job_has_a_runner` blijven gelden; `ui` heeft `runs-on` en `timeout-minutes`, en de telling van `persist-credentials: false` klopt met één extra checkout.
 
 - [ ] **Step 2: Draai, verwacht FAIL**
