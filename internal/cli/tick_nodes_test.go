@@ -207,10 +207,14 @@ unit_prefix = "lh-"
 [dispatch.nodes.a]
 node_id = "node-a"
 slots = 1
+serve_url = "https://a.test"
+serve_token_file = "/tok/a"
 
 [dispatch.nodes.b]
 node_id = "node-b"
 slots = 1
+serve_url = "https://b.test"
+serve_token_file = "/tok/b"
 
 [dispatch.profiles.software]
 target_key = "t-software"
