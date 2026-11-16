@@ -321,7 +321,9 @@ unit_prefix = "lighthouse-"
 ```
 
 Without `[node]` the routes under `/api/node/v1/` answer 404. A profile the tick uses but the node does
-not list gets 400 on transcript, stop and kill. `lighthouse ask` must be on the `PATH` of the service.
+not list gets 400 on transcript, stop and kill. `lighthouse ask` must be on the `PATH` of the agent
+(the claude the node's forge starts), not only of the service. The `mcp_config` of a profile with `node`
+in the tick's `host.toml` is a path on that node: the tick sends it unchanged and never reads it.
 The state files of the node (PAUSE, alarm, markers) are mode `0600` in a `0700` directory; when the
 runs live in a container, its uid must match.
 

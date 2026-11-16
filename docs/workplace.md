@@ -180,8 +180,9 @@ een tweede kanaal, rechtstreeks naar `lighthouse serve` op de node (hieronder).
   is `internal/nodeserve`, de client `kennforge/nodeclient.go`). Elke aanroep draagt een bearer-token:
   de tick leest het uit `serve_token_file` van de node (`[dispatch.nodes.<naam>]`), de node uit
   `[node] token_file` van zijn eigen `host.toml`. `serve_url` is https, of http naar loopback. De tick
-  leest per tick eerst `GET /api/node/v1/info`; staat daar een andere `version` dan `1`, dan is de node
-  voor die tick dicht. Zonder `[node]` mount `serve` de routes niet (404).
+  leest per tick eerst `GET /api/node/v1/info`; staat daar een andere `version` dan `1`, of antwoordt
+  de node niet, dan is elke aanroep naar die node voor die tick niet meetbaar (eenmaal gevraagd per
+  tick). Zonder `[node]` mount `serve` de routes niet (404).
 
 De routes: `PUT workspaces/{id}/launch` (instructies en drager schrijven) en `DELETE .../carrier`,
 `GET runs/{session}/permission`, `GET workspaces/{id}/transcript/{session}`, `POST .../follow`,
@@ -205,6 +206,8 @@ Wat op een node anders werkt:
   (dezelfde unit en devcontainer-regels als hierboven) de claude stopt. De node moet daarvoor
   `[dispatch.profiles.<naam>]` kennen met de profielnamen die de tick gebruikt: ontbreekt het profiel
   in de `host.toml` van de node, dan antwoordt de node 400 op transcript, stop en kill.
+- **MCP-config.** `mcp_config` van een profiel met `node` is een pad op die node; de tick stuurt het
+  ongewijzigd mee en leest het niet.
 - **Stand.** De stand komt uit het gespiegelde transcript, zoals op `self`.
 - **Transcript.** Gespiegeld naar de tickhost (zie *Transcripten*); `FollowRemote` loopt via `POST
   .../follow`.
@@ -216,7 +219,7 @@ Wat op een node anders werkt:
   (`launch`).
 - **Markers en usage.** De resume-markers staan op de node en worden per tick gelezen
   (`GET markers`); de rem is per node. Een node waarvan de markers niet leesbaar zijn, is voor die tick
-  dicht met reden `markers not readable`. De tick duwt PAUSE en het alarm elke tick naar de node
+  dicht met reden `markers not readable`. De tick stuurt PAUSE en het alarm elke tick naar de node
   (`PUT usage`); de bestanden daar zijn `0600` in een `0700`-map, en de uid van de container moet
   overeenkomen.
 - **Vervallen.** `liveOwn` en de runtime-gebaseerde `remoteStop` bestaan niet meer: een run op een node
@@ -244,12 +247,14 @@ Eisen aan de node: `host.toml` met `[node] token_file`, `[dispatch.forge]` (met 
   `<map>` de projectmap uit `workplace.ProjectDir` is.
 - Elk ander profiel: de map op deze host. Staat die er niet, dan is dat `workplace.ErrNotMeasurable`:
   de run is niet meetbaar, en dat is geen fout van de tick.
-
 - Een run op een node: de tick haalt de bestanden op via `GET .../transcript/{session}` (een tar met
   per bestand de bytes vanaf een offset) en spiegelt ze in de state dir van de tickhost onder
   `mirror/<node>/<sessie>/`; daar leest `ReadTranscript` ze. Het profiel in de aanvraag moet de node
   kennen. Voor `software` draait de node daarvoor `mktemp`, `wc`, `tail` en `head` in de devcontainer
-  (ook de self-container heeft die nu nodig, voor het transcript).
+  (ook de self-container heeft die nu nodig, voor het transcript). Levert `serve` het transcript niet
+  (onbereikbaar, 5xx, 401/403, een antwoord dat niet op de spiegel past), dan is dat
+  `workplace.ErrUnanswered`: de hele run is die tick niet meetbaar en nooit stil. Alleen geen transcript
+  (404 `no_transcript`) of een transcript zonder tijdstempel is een run zonder transcript, zoals op `self`.
 
 `workplace.ReadTranscript(dir, sessionID)` leest `<sessie>.jsonl` en de subagent-transcripten onder
 `<sessie>/subagents` en geeft een `Transcript`: de laatste gebeurtenis over alle draden (`LastEvent`),

@@ -487,10 +487,11 @@ node = "mac"         # naam van een [dispatch.nodes]-tabel; leeg: self
 **Brekende wijziging (#327).** `serve_url` (https, of http naar loopback) en `serve_token_file`
 (absoluut pad) zijn verplicht per node; zonder een van beide laadt `host.toml` niet. De node draait
 `lighthouse serve` met `[node] token_file` (zie [install.md](install.md#a-node-for-another-host)). Per
-tick vraagt de tick eerst `GET /api/node/v1/info`; een andere `version` dan `1` of een onbereikbare
-`serve` sluit de node voor die tick. De rem is per node: de markers van de node worden gelezen en
-onleesbare markers sluiten de node met reden `markers not readable`; de pauze en het usage-alarm duwt de
-tick elke tick naar de node.
+tick vraagt de tick eerst `GET /api/node/v1/info`; bij een andere `version` dan `1` of een onbereikbare
+`serve` is elke aanroep naar die node die tick niet meetbaar. De rem is per node: de markers van de node
+worden gelezen, en alleen onleesbare markers sluiten de node, met reden `markers not readable`. De tick
+stuurt de pauze en het usage-alarm elke tick naar de node. `mcp_config` van een profiel met `node` is
+een pad op die node; de tick stuurt het ongewijzigd mee.
 
 Zonder `[dispatch.nodes]` is er niets anders dan voorheen. Een `node` die geen tabel heeft, is een
 fout bij het laden van `host.toml`. De hub (forge v0.7.0 of later) bereikt de node via de fleet-routes
