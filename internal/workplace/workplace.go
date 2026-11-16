@@ -126,6 +126,10 @@ var (
 	ErrDirty = errors.New("workplace: workspace is dirty")
 	// ErrGone: the forge no longer knows the workspace (a 404).
 	ErrGone = errors.New("workplace: workspace is gone")
+	// ErrUnanswered: a measurement on another node failed this tick (serve unreachable, 5xx,
+	// 401 or 403, or an answer that does not fit). It comes with ErrNotMeasurable, but unlike a
+	// host that holds no transcript, the run is not measurable at all this tick: never silent.
+	ErrUnanswered = errors.New("workplace: the node did not answer")
 )
 
 // OwnWorkError: Prepare found a workspace that holds work origin does not have, so it left

@@ -56,7 +56,9 @@ func (a *Adapter) mirrorDir(sessionID string) string {
 // mirror with workplace.ReadTranscript, as on self. A lock on the mirror dir spans the lengths,
 // the write and the read: lighthouse run measures without tick.lock, and two fetches must never
 // append the same delta. A session without a transcript on the node wraps fs.ErrNotExist; an
-// unreachable node, a 5xx or an answer that does not fit the mirror is ErrNotMeasurable.
+// unreachable node, a 5xx, a 401 or 403, or an answer that does not fit the mirror is
+// ErrNotMeasurable and ErrUnanswered: the run is not measurable this tick, never silent. A
+// transcript without a timestamp is ErrNotMeasurable alone, as on self.
 func (a *Adapter) nodeTranscript(ctx context.Context, n *NodeClient, workspaceID, sessionID string) (workplace.Transcript, error) {
 	if err := checkMirror(a.Node, sessionID); err != nil {
 		return workplace.Transcript{}, fmt.Errorf("transcript in workspace %s: %w", workspaceID, err)
@@ -79,9 +81,12 @@ func (a *Adapter) nodeTranscript(ctx context.Context, n *NodeClient, workspaceID
 		if errors.Is(err, fs.ErrNotExist) {
 			return workplace.Transcript{}, fmt.Errorf("transcript of %s on node %s: %w", sessionID, a.Node, err)
 		}
-		return workplace.Transcript{}, fmt.Errorf("transcript of %s on node %s: %w", sessionID, a.Node, notMeasurable(err))
+		return workplace.Transcript{}, fmt.Errorf("transcript of %s on node %s: %w: %w", sessionID, a.Node, notMeasurable(err), workplace.ErrUnanswered)
 	}
 	if err := applyDeltas(dir, have, deltas); err != nil {
+		if errors.Is(err, workplace.ErrNotMeasurable) { // an answer that does not fit the mirror
+			err = fmt.Errorf("%w: %w", err, workplace.ErrUnanswered)
+		}
 		return workplace.Transcript{}, fmt.Errorf("transcript of %s on node %s: mirror: %w", sessionID, a.Node, err)
 	}
 	return workplace.ReadTranscript(dir, sessionID)

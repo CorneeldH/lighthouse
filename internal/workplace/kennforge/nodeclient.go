@@ -27,10 +27,13 @@ import (
 // The deadlines of a node request. serve sets none on its git routes, so the client's deadline
 // is the only one: follow runs several git commands of up to 60s each on the node.
 const (
-	nodeTimeout       = 30 * time.Second
-	nodeGitTimeout    = 5 * time.Minute // follow, git, relocate
-	nodeProcTimeout   = 2 * time.Minute // stop, kill
-	nodeHTTPHardLimit = nodeGitTimeout + 30*time.Second
+	nodeTimeout     = 30 * time.Second
+	nodeGitTimeout  = 5 * time.Minute // follow, git, relocate
+	nodeProcTimeout = 2 * time.Minute // stop, kill
+	// transcript: serve resolves the workspace (up to 15s), may ask git (30s) and reads in the
+	// container (30s); the client must wait at least as long.
+	nodeTranscriptTimeout = 2 * time.Minute
+	nodeHTTPHardLimit     = nodeGitTimeout + 30*time.Second
 )
 
 // NodeClient talks to lighthouse serve on a kenn-forge node: the node-API of nodeapi. The token
@@ -312,7 +315,8 @@ func (c *NodeClient) Transcript(ctx context.Context, id, session, profile string
 	if len(parts) > 0 {
 		q.Set("from", strings.Join(parts, ","))
 	}
-	r := request{method: http.MethodGet, path: nodePath(nodeapi.PathTranscript, "id", id, "session", session), query: q}
+	r := request{method: http.MethodGet, path: nodePath(nodeapi.PathTranscript, "id", id, "session", session), query: q,
+		timeout: nodeTranscriptTimeout}
 	status, data, err := c.send(ctx, r)
 	if err != nil {
 		return nil, err

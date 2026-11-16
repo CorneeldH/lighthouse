@@ -61,6 +61,10 @@ type hubNode struct {
 	// markersStatus, usageStatus and authStatus, when set, answer GET markers, PUT usage and
 	// every request (a bad token) with that status.
 	markersStatus, usageStatus, authStatus int
+	// sessionState and sessionUpdated, when set, are the state and updated_at of every session
+	// that was not stopped; transcriptStatus, when set, answers GET transcript.
+	sessionState, sessionUpdated string
+	transcriptStatus             int
 }
 
 // fleetHub is a kenn-forge hub as v0.7.0 serves it: /api/v1/fleet/hosts/{id}/... goes to
@@ -263,6 +267,9 @@ func (n *hubNode) serveNode(t *testing.T, w http.ResponseWriter, r *http.Request
 		_, _ = w.Write(data)
 	case len(parts) == 3 && parts[0] == "workspaces":
 		n.serveWorkspace(t, w, r, parts[1], r.Method+" "+parts[2])
+	case r.Method == http.MethodGet && len(parts) == 4 && parts[0] == "workspaces" && parts[2] == "transcript" && n.transcriptStatus != 0:
+		w.WriteHeader(n.transcriptStatus)
+		_ = json.NewEncoder(w).Encode(nodeapi.Problem{Status: n.transcriptStatus, Detail: "transcript failed"})
 	case r.Method == http.MethodGet && len(parts) == 4 && parts[0] == "workspaces" && parts[2] == "transcript":
 		// No transcript yet on the node: the tick measures the run without one.
 		w.Header().Set("Content-Type", "application/problem+json")
@@ -308,10 +315,13 @@ func (n *hubNode) serveWorkspace(t *testing.T, w http.ResponseWriter, r *http.Re
 		out := []nodeapi.Session{}
 		for _, k := range n.sessions[id] {
 			state := "working"
+			if n.sessionState != "" {
+				state = n.sessionState
+			}
 			if n.stopped[n.sids[k]] {
 				state = "done"
 			}
-			out = append(out, nodeapi.Session{Key: k, State: state, SessionID: n.sids[k]})
+			out = append(out, nodeapi.Session{Key: k, State: state, SessionID: n.sids[k], UpdatedAt: n.sessionUpdated})
 		}
 		_ = json.NewEncoder(w).Encode(out)
 	case "POST stop", "POST kill":
@@ -1162,5 +1172,61 @@ func TestSweepRemovesStaleTickSideCarriersAndMirrors(t *testing.T) {
 		if _, err := os.Stat(p); !os.IsNotExist(err) {
 			t.Errorf("after a tick %s: stat = %v, want it removed", p, err)
 		}
+	}
+}
+
+// A run on a node that waits, with a forge time older than max_wait, while serve fails its
+// transcript (5xx, unreachable) is not measured this tick: never stopped as silent, and no tick
+// error. With no transcript at all (404 no_transcript) the forge time still decides.
+func TestNodeTranscriptFailureIsNotSilent(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		status  int
+		stopped bool
+	}{
+		{"5xx", http.StatusBadGateway, false},
+		{"401", http.StatusUnauthorized, false},
+		{"no transcript", 0, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			env, db, hub, _ := nodeTick(t, macIssue(7))
+			host, err := os.ReadFile(env.HostToml)
+			if err != nil {
+				t.Fatal(err)
+			}
+			waits := strings.Replace(string(host), "max_runtime = \"1h\"\n", "max_runtime = \"1h\"\nmax_wait = \"30m\"\n", 1)
+			if err := os.WriteFile(env.HostToml, []byte(waits), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			id := hub.ids[0]
+			a := hub.nodes[id]
+			var errOut bytes.Buffer
+			if err := tick(context.Background(), env, db, &errOut); err != nil {
+				t.Fatalf("tick 1 = %v\n%s", err, errOut.String())
+			}
+			conn := openStore(t, db)
+			rows := history(t, conn, "o/r")
+			if len(rows) != 1 || !rows[0].Open || rows[0].Node != id {
+				t.Fatalf("runs after tick 1 = %+v, want one open on %s", rows, id)
+			}
+			a.set(func(n *hubNode) {
+				n.sessionState, n.sessionUpdated, n.transcriptStatus = "waiting", t0.Format(time.RFC3339), tc.status
+			})
+			env.Now = func() time.Time { return t0.Add(45 * time.Minute) } // past max_wait (30m), within max_runtime (1h)
+			errOut.Reset()
+			if err := tick(context.Background(), env, db, &errOut); err != nil {
+				t.Fatalf("tick 2 = %v, want no tick error\n%s", err, errOut.String())
+			}
+			rows = history(t, conn, "o/r")
+			if got := !rows[0].Open; got != tc.stopped {
+				t.Errorf("run closed = %t (%+v), want %t\n%s", got, rows[0], tc.stopped, errOut.String())
+			}
+			if a.wasStopped(rows[0].SessionID) != tc.stopped {
+				t.Errorf("session stopped on %s = %t, want %t", id, a.wasStopped(rows[0].SessionID), tc.stopped)
+			}
+			if !tc.stopped && !strings.Contains(errOut.String(), "lighthouse: measure o/r: run ") {
+				t.Errorf("errOut = %q, want a measure line: the run is not measurable", errOut.String())
+			}
+		})
 	}
 }

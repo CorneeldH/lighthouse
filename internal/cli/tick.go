@@ -734,12 +734,17 @@ func (m *runProbe) permission(ctx context.Context, r runs.OpenRun) (*dispatch.Pe
 // transcript is the transcript of the run's session, or nil when it is not measurable: a
 // workplace without transcripts, no transcript directory on this host, no transcript file yet
 // (an uncertain start whose agent never ran), or a transcript without a timestamp.
+// A node that did not answer (workplace.ErrUnanswered) is an error: the run is not measured
+// this tick, so a nil transcript never makes it silent.
 func (m *runProbe) transcript(ctx context.Context, r runs.OpenRun) (*workplace.Transcript, error) {
 	tr, ok := m.w.(workplace.Transcripts)
 	if !ok {
 		return nil, nil
 	}
 	t, err := tr.Transcript(ctx, r.WorkspaceID, r.SessionID)
+	if errors.Is(err, workplace.ErrUnanswered) {
+		return nil, err // the node did not answer: the run is not measurable, never silent
+	}
 	if errors.Is(err, workplace.ErrNotMeasurable) || errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
 	}

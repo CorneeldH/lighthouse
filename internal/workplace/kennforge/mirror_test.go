@@ -310,26 +310,51 @@ func TestNoTranscriptIsNotExist(t *testing.T) {
 	}
 }
 
+// A serve that does not answer the transcript (unreachable, 5xx, 401, 403, an answer that does not
+// fit the mirror) is not measurable and unanswered: the tick must not read the run as silent.
+// No transcript yet, and a transcript without a timestamp, are no failure of the node.
 func TestServeUnreachableIsNotMeasurableNotError(t *testing.T) {
 	down := newFakeNode(t)
 	c := down.client(t)
 	down.srv.Close()
-	broken := newFakeNode(t)
-	broken.mux.HandleFunc("GET "+nodeapi.PathTranscript, func(w http.ResponseWriter, _ *http.Request) {
-		writeNode(w, http.StatusBadGateway, nodeapi.Problem{Status: 502, Detail: "forge down"})
-	})
-	for name, client := range map[string]*NodeClient{"unreachable": c, "5xx": broken.client(t)} {
+	answering := func(status int) *NodeClient {
+		n := newFakeNode(t)
+		n.mux.HandleFunc("GET "+nodeapi.PathTranscript, func(w http.ResponseWriter, _ *http.Request) {
+			writeNode(w, status, nodeapi.Problem{Status: status, Detail: "no"})
+		})
+		return n.client(t)
+	}
+	sess := randomID(t)
+	gap := transcriptNode(t, []tarMember{{sess + ".jsonl", "def\n", "7", "3"}})
+	for name, client := range map[string]*NodeClient{
+		"unreachable": c, "5xx": answering(http.StatusBadGateway), "401": answering(http.StatusUnauthorized),
+		"403": answering(http.StatusForbidden), "gap": gap.client(t),
+	} {
 		t.Run(name, func(t *testing.T) {
 			a := nodeAdapter(t, client, t.TempDir())
-			_, err := a.Transcript(context.Background(), randomID(t), randomID(t))
-			if !errors.Is(err, workplace.ErrNotMeasurable) {
-				t.Fatalf("err = %v, want ErrNotMeasurable", err)
+			_, err := a.Transcript(context.Background(), randomID(t), sess)
+			if !errors.Is(err, workplace.ErrNotMeasurable) || !errors.Is(err, workplace.ErrUnanswered) {
+				t.Fatalf("err = %v, want ErrNotMeasurable and ErrUnanswered", err)
 			}
 			if errors.Is(err, workplace.ErrGone) || errors.Is(err, fs.ErrNotExist) {
 				t.Errorf("err = %v, must be neither gone nor no transcript", err)
 			}
 		})
 	}
+	t.Run("no transcript", func(t *testing.T) {
+		a := nodeAdapter(t, newSourceNode(t).client(t), t.TempDir())
+		if _, err := a.Transcript(context.Background(), randomID(t), randomID(t)); errors.Is(err, workplace.ErrUnanswered) {
+			t.Errorf("err = %v, want no ErrUnanswered: the node answered", err)
+		}
+	})
+	t.Run("no timestamp", func(t *testing.T) {
+		s := randomID(t)
+		n := transcriptNode(t, []tarMember{{s + ".jsonl", "{}\n", "3", "0"}})
+		_, err := nodeAdapter(t, n.client(t), t.TempDir()).Transcript(context.Background(), randomID(t), s)
+		if !errors.Is(err, workplace.ErrNotMeasurable) || errors.Is(err, workplace.ErrUnanswered) {
+			t.Errorf("err = %v, want ErrNotMeasurable without ErrUnanswered: the node answered", err)
+		}
+	})
 }
 
 func TestMirrorRejectsDeltaWithGap(t *testing.T) {

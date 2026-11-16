@@ -58,7 +58,7 @@ func (a *Adapter) Transcript(ctx context.Context, workspaceID, sessionID string)
 	}
 	n, err := a.serve()
 	if err != nil {
-		return workplace.Transcript{}, err
+		return workplace.Transcript{}, fmt.Errorf("%w: %w", err, workplace.ErrUnanswered)
 	}
 	if n != nil {
 		return a.nodeTranscript(ctx, n, workspaceID, sessionID)
