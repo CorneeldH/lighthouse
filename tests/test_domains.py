@@ -95,6 +95,9 @@ def _without_default_paths(rel: str, text: str) -> str:
         # The lane writes a changelog fragment onto its own pins branch; the branch is data
         # for the repository, and Go reads no changelog.d file there.
         return text.replace("changelog.d", "")
+    if rel in ("internal/pins/lane/body.go", "internal/pins/lane/body_test.go"):
+        # docs/pins.md is text in an issue/PR body; Go reads no file there.
+        return text.replace("docs/pins.md", "")
     return text
 
 
