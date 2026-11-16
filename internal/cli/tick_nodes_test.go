@@ -20,6 +20,7 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/dispatch"
 	"github.com/CorneeldH/lighthouse/internal/hostconfig"
+	"github.com/CorneeldH/lighthouse/internal/nodeapi"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/runs"
 	"github.com/CorneeldH/lighthouse/internal/workplace"
@@ -27,8 +28,9 @@ import (
 )
 
 // hubNode is one forge node behind fleetHub, in the shape forge v0.7.0 serves (see
-// internal/workplace/kennforge/fleet.go): workspaces per branch, and /runtime sessions with
-// key, kind and status, without session_id.
+// internal/workplace/kennforge/fleet.go): workspaces per branch and handoffs. Beside it runs
+// lighthouse serve on that node (serveSrv), the fake of nodeserve: the carrier launch puts the
+// session id a handoff starts, and sessions answers it as the node's /agent-sessions would.
 type hubNode struct {
 	mu sync.Mutex
 	// listStatus, when set, answers GET /workspaces: a node that cannot prepare.
@@ -36,9 +38,15 @@ type hubNode struct {
 	// handoff is "" (accept with a new key) or "hang" (no answer until the client gives up).
 	handoff    string
 	workspaces map[string]string   // id -> branch
-	sessions   map[string][]string // workspace id -> session keys, status running
+	sessions   map[string][]string // workspace id -> session keys
+	sids       map[string]string   // session key -> session id of its carrier
+	carriers   map[string]string   // workspace id -> session id of the carrier serve holds
+	stopped    map[string]bool     // session ids serve stopped or killed
 	posts      int                 // handoff POSTs
 	release    chan struct{}       // closed at the end of the test: a hanging handoff returns
+
+	serveSrv   *httptest.Server
+	serveToken string
 }
 
 // fleetHub is a kenn-forge hub as v0.7.0 serves it: /api/v1/fleet/hosts/{id}/... goes to
@@ -56,7 +64,17 @@ func newFleetHub(t *testing.T, ids ...string) *fleetHub {
 	t.Helper()
 	h := &fleetHub{nodes: map[string]*hubNode{}}
 	for _, id := range ids {
-		h.nodes[id] = &hubNode{workspaces: map[string]string{}, sessions: map[string][]string{}, release: make(chan struct{})}
+		n := &hubNode{
+			workspaces: map[string]string{}, sessions: map[string][]string{}, sids: map[string]string{},
+			carriers: map[string]string{}, stopped: map[string]bool{}, release: make(chan struct{}),
+			serveToken: "serve-" + id,
+		}
+		n.serveSrv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			h.add(id + " serve " + r.Method + " " + r.URL.EscapedPath())
+			n.serveNode(t, w, r)
+		}))
+		t.Cleanup(n.serveSrv.Close)
+		h.nodes[id] = n
 	}
 	h.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.EscapedPath()
@@ -153,20 +171,18 @@ func (n *hubNode) serve(t *testing.T, w http.ResponseWriter, r *http.Request, ro
 			return
 		}
 		_, _ = fmt.Fprint(w, n.workspace(parts[1], branch))
-	case r.Method == http.MethodGet && len(parts) == 3 && parts[2] == "runtime":
-		var ss []string
-		for _, k := range n.sessions[parts[1]] {
-			ss = append(ss, fmt.Sprintf(`{"key":%q,"workspace_id":%q,"kind":"agent","status":"running"}`, k, parts[1]))
-		}
-		_, _ = fmt.Fprintf(w, `{"launch_targets":[],"sessions":[%s]}`, strings.Join(ss, ","))
 	case r.Method == http.MethodPost && len(parts) == 4 && parts[3] == "agent-handoffs":
 		n.posts++
+		if n.carriers[parts[1]] == "" {
+			t.Errorf("fake node: handoff in %s without a carrier from serve", parts[1])
+		}
 		if n.handoff == "hang" {
 			hang = true
 			return
 		}
 		key := fmt.Sprintf("k%d", n.posts)
 		n.sessions[parts[1]] = append(n.sessions[parts[1]], key)
+		n.sids[key] = n.carriers[parts[1]]
 		_, _ = fmt.Fprintf(w, `{"session":{"key":%q}}`, key)
 	default:
 		t.Errorf("fake node: unexpected %s", route)
@@ -174,9 +190,106 @@ func (n *hubNode) serve(t *testing.T, w http.ResponseWriter, r *http.Request, ro
 	}
 }
 
+// serveNode is lighthouse serve on the node, as nodeserve answers the routes the adapter uses:
+// the bearer check, info, launch (the carrier), carrier, follow, sessions (with session_id,
+// working until stopped), stop and kill. Any other route is an error of the adapter.
+func (n *hubNode) serveNode(t *testing.T, w http.ResponseWriter, r *http.Request) {
+	if r.Header.Get("Authorization") != "Bearer "+n.serveToken {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	w.Header().Set("Content-Type", "application/json")
+	rest, _ := strings.CutPrefix(r.URL.Path, nodeapi.Prefix+"/")
+	parts := strings.Split(rest, "/")
+	route := r.Method + " " + rest
+	switch {
+	case route == "GET info":
+		_, _ = fmt.Fprintf(w, `{"version":%d,"binary":"test","platform":"linux/amd64"}`, nodeapi.Version)
+	case len(parts) == 3 && parts[0] == "workspaces":
+		n.serveWorkspace(t, w, r, parts[1], r.Method+" "+parts[2])
+	default:
+		t.Errorf("fake serve: unexpected %s", route)
+		w.WriteHeader(http.StatusNotFound)
+	}
+}
+
+func (n *hubNode) serveWorkspace(t *testing.T, w http.ResponseWriter, r *http.Request, id, route string) {
+	switch route {
+	case "PUT launch":
+		var req nodeapi.LaunchRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.SessionID == "" || req.Instructions == "" {
+			t.Errorf("fake serve: launch %+v: %v", req, err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		n.carriers[id] = req.SessionID
+		_ = json.NewEncoder(w).Encode(workplace.Carrier{SessionID: req.SessionID})
+	case "DELETE carrier":
+		delete(n.carriers, id)
+		w.WriteHeader(http.StatusNoContent)
+	case "POST follow":
+		w.WriteHeader(http.StatusNoContent)
+	case "GET sessions":
+		if _, ok := n.workspaces[id]; !ok {
+			w.WriteHeader(http.StatusNotFound)
+			_ = json.NewEncoder(w).Encode(nodeapi.Problem{Status: 404, Code: nodeapi.CodeWorkspaceGone, Detail: "gone"})
+			return
+		}
+		out := []nodeapi.Session{}
+		for _, k := range n.sessions[id] {
+			state := "working"
+			if n.stopped[n.sids[k]] {
+				state = "done"
+			}
+			out = append(out, nodeapi.Session{Key: k, State: state, SessionID: n.sids[k]})
+		}
+		_ = json.NewEncoder(w).Encode(out)
+	case "POST stop", "POST kill":
+		var req nodeapi.StopRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Profile == "" {
+			t.Errorf("fake serve: %s %+v: %v", route, req, err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		for _, sid := range req.SessionIDs {
+			n.stopped[sid] = true
+		}
+		w.WriteHeader(http.StatusNoContent)
+	default:
+		t.Errorf("fake serve: unexpected %s in %s", route, id)
+		w.WriteHeader(http.StatusNotFound)
+	}
+}
+
+// serveClient is a client of serve on the node, with the node's token.
+func (n *hubNode) serveClient(t *testing.T) *kennforge.NodeClient {
+	t.Helper()
+	tok := filepath.Join(t.TempDir(), "serve-token")
+	if err := os.WriteFile(tok, []byte(n.serveToken+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return kennforge.NewNodeClient(n.serveSrv.URL, tok)
+}
+
 func (n *hubNode) workspace(id, branch string) string {
 	return fmt.Sprintf(`{"id":%q,"status":"ready","worktree_path":"/node/work/%s","git_head_ref":"refs/heads/%s","repo":{"provider":"github","repo_path":"o/r"}}`,
 		id, id, branch)
+}
+
+// carrier is the session id of the carrier serve holds for workspace id.
+func (n *hubNode) carrier(id string) string {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.carriers[id]
+}
+
+// wasStopped reports whether serve stopped or killed session sid.
+func (n *hubNode) wasStopped(sid string) bool {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.stopped[sid]
 }
 
 func (n *hubNode) postCount() int {
@@ -237,8 +350,9 @@ func macIssue(n int) map[string]any {
 }
 
 // useNodes gives self the fake workplace w and every other node the real kenn-forge adapter
-// tick builds; client, when set, replaces the adapter's HTTP client.
-func useNodes(t *testing.T, env *tickEnv, w *fakeWorkplace, client *http.Client) {
+// tick builds, with serve on that node in hub; client, when set, replaces the adapter's HTTP
+// client of the hub.
+func useNodes(t *testing.T, env *tickEnv, w *fakeWorkplace, hub *fleetHub, client *http.Client) {
 	t.Helper()
 	real := *env
 	real.Workplace = nil
@@ -251,7 +365,14 @@ func useNodes(t *testing.T, env *tickEnv, w *fakeWorkplace, client *http.Client)
 			t.Fatal(err)
 		}
 		wp := real.workplace(cfg, r, env.StateDir, node, profile)
-		if a, ok := wp.(*kennforge.Adapter); ok && client != nil {
+		a, ok := wp.(*kennforge.Adapter)
+		if !ok {
+			t.Fatalf("workplace on %s = %T, want *kennforge.Adapter", node, wp)
+		}
+		if n, known := hub.nodes[node]; known {
+			a.Serve = n.serveClient(t)
+		}
+		if client != nil {
 			a.Client.HTTP = client
 		}
 		return wp
@@ -259,7 +380,7 @@ func useNodes(t *testing.T, env *tickEnv, w *fakeWorkplace, client *http.Client)
 }
 
 // A run on node-a outlives the tick that started it: after a restart, its timeout stops it
-// through node-a, and nothing goes to node-b or to the hub's own forge. That holds too when
+// through serve on node-a, and nothing goes to node-b or to the hub's own forge. That holds too when
 // profile mac lost its node in host.toml meanwhile: the run row keeps node-a.
 func TestTickRestartStopsOnNode(t *testing.T) {
 	for _, lostNode := range []bool{false, true} {
@@ -273,7 +394,7 @@ func testTickRestartStopsOnNode(t *testing.T, lostNode bool) {
 	nodeHost(t, env, hub.srv.URL)
 	srv, w := startable(t, &env)
 	srv.BoardNodes = []map[string]any{macIssue(7)}
-	useNodes(t, &env, w, nil)
+	useNodes(t, &env, w, hub, nil)
 	var errOut bytes.Buffer
 	if err := tick(context.Background(), env, db, &errOut); err != nil {
 		t.Fatalf("tick 1 = %v\n%s", err, errOut.String())
@@ -285,6 +406,12 @@ func testTickRestartStopsOnNode(t *testing.T, lostNode bool) {
 	}
 	if n := hub.nodes["node-a"].postCount(); n != 1 {
 		t.Fatalf("handoffs on node-a = %d, want 1", n)
+	}
+	if got := hub.nodes["node-a"].carrier("ws1"); got != rows[0].SessionID {
+		t.Fatalf("carrier on node-a = %q, want the run's session %s", got, rows[0].SessionID)
+	}
+	if entries, err := os.ReadDir(filepath.Join(env.StateDir, "carriers")); err == nil && len(entries) > 0 {
+		t.Errorf("carriers on the tick host = %v, want none: the carrier is on node-a", entries)
 	}
 	if len(w.spawned()) != 0 {
 		t.Fatalf("spawns on self = %+v, want none", w.spawned())
@@ -315,12 +442,16 @@ func testTickRestartStopsOnNode(t *testing.T, lostNode bool) {
 		t.Errorf("run after tick 2 = %+v, want closed as returned (timeout)", rows[0])
 	}
 	after := hub.requests("node-a ")[before:]
-	if !slices.Contains(after, "node-a GET /api/v1/workspaces/ws1/runtime") {
-		t.Errorf("node-a requests in tick 2 = %q, want the sessions read of the stop", after)
+	if !slices.Contains(after, "node-a serve POST /api/node/v1/workspaces/ws1/stop") {
+		t.Errorf("node-a requests in tick 2 = %q, want the stop through serve", after)
+	}
+	sid := rows[0].SessionID
+	if !hub.nodes["node-a"].wasStopped(sid) {
+		t.Errorf("session %s not stopped on node-a, want the run's session stopped", sid)
 	}
 	for _, l := range after {
-		if strings.Contains(l, " DELETE ") || strings.Contains(l, " POST ") {
-			t.Errorf("node-a request in tick 2 = %q: /runtime has no session_id, so Stop finds nothing to delete, and nothing restarts", l)
+		if strings.HasPrefix(l, "node-a POST ") || strings.Contains(l, "/launch") {
+			t.Errorf("node-a request in tick 2 = %q: nothing restarts", l)
 		}
 	}
 	if got := append(hub.requests("node-b "), hub.requests("self ")...); len(got) != 0 {
@@ -337,7 +468,7 @@ func TestTickUnreachableNodeDoesNotBlockOther(t *testing.T) {
 	nodeHost(t, env, hub.srv.URL)
 	srv, w := startable(t, &env)
 	srv.BoardNodes = []map[string]any{macIssue(7), boardNode("I8", "c1", issueContent(8, "Issue", nil))}
-	useNodes(t, &env, w, nil)
+	useNodes(t, &env, w, hub, nil)
 	var errOut bytes.Buffer
 	if err := tick(context.Background(), env, db, &errOut); err != errSilent {
 		t.Fatalf("tick = %v, want errSilent\n%s", err, errOut.String())
@@ -367,7 +498,7 @@ func TestTickSpawnTimeoutNoSecondPost(t *testing.T) {
 	nodeHost(t, env, hub.srv.URL)
 	srv, w := startable(t, &env)
 	srv.BoardNodes = []map[string]any{macIssue(7)}
-	useNodes(t, &env, w, &http.Client{Timeout: 300 * time.Millisecond})
+	useNodes(t, &env, w, hub, &http.Client{Timeout: 300 * time.Millisecond})
 	var errOut bytes.Buffer
 	if err := tick(context.Background(), env, db, &errOut); err != nil {
 		t.Fatalf("tick 1 = %v\n%s", err, errOut.String())

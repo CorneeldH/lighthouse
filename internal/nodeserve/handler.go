@@ -31,6 +31,7 @@ type Deps struct {
 	Home      string                   // where ~/.claude/projects lives; "": os.UserHomeDir
 	Run       workplace.Runner         // nil: workplace.ExecRunner()
 	Now       func() time.Time         // nil: time.Now
+	Sleep     func(time.Duration)      // the wait between the checks of a kill; nil: time.Sleep
 	// The usage guard on the node, where its hook reads them. "": from the environment of
 	// serve, as on self (park.PauseFile, usage.DefaultPaths().Mirror, park.MarkerDir).
 	PauseFile   string
@@ -71,6 +72,7 @@ func newHandler(d Deps) *handler {
 			UnitPrefix: d.Forge.UnitPrefix,
 			Run:        d.Run,
 			Home:       d.Home,
+			Sleep:      d.Sleep,
 		},
 	}
 	huma.Get(h.api, nodeapi.PathInfo, func(context.Context, *struct{}) (*infoOutput, error) {

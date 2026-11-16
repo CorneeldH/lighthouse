@@ -95,6 +95,27 @@ type Workplace interface {
 	Discard(ctx context.Context, workspaceID string) error
 }
 
+// The measurements of a run on another node, which on self run on this host (#327). Only the
+// kenn-forge adapter has them, and only on a node (Serve set) does it answer them: on self each
+// method is ErrNotMeasurable, never a clean or empty answer. A caller asks them only for a run
+// whose node is not self, and measures a run on self locally as before.
+type (
+	// GitMeter is workplace.Dirty and workplace.Unpushed on the worktree of the workspace,
+	// measured where it lives.
+	GitMeter interface {
+		Dirty(ctx context.Context, workspaceID string) (bool, error)
+		Unpushed(ctx context.Context, workspaceID, mergedHead string) (bool, error)
+	}
+	// Relocator relocates the start command onto the worktree of the workspace.
+	Relocator interface {
+		Relocate(ctx context.Context, workspaceID, command string) (string, error)
+	}
+	// PermissionReader reads the raw permission note of a run; nil, nil when it has none.
+	PermissionReader interface {
+		Permission(ctx context.Context, sessionID string) ([]byte, error)
+	}
+)
+
 // Sentinels; adapters wrap them with %w.
 var (
 	// ErrNotAccepted: the spawn was refused, so no agent started.
