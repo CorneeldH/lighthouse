@@ -81,6 +81,7 @@ var Cases = []Case{
 	{"BoardStatusAndPriority", boardStatusAndPriority},
 	{"IssueItem", issueItem},
 	{"IssueItemMissingIssue", issueItemMissingIssue},
+	{"IssueItemStatusName", issueItemStatusName},
 	{"AddToBoardThenSetStatus", addToBoardThenSetStatus},
 	{"SetStatusUnknownName", setStatusUnknownName},
 	{"Pagination", pagination},
@@ -291,7 +292,7 @@ func boardStatusAndPriority(t *testing.T, f Fixture) {
 	if err != nil {
 		t.Fatalf("BoardItems: %v", err)
 	}
-	want := map[int][2]string{7: {"Controller", "P1"}, 8: {"", ""}, 9: {forge.UnknownStatusPrefix + raw, ""}}
+	want := map[int][2]string{7: {"Controller", "P1"}, 8: {"", ""}}
 	for n, w := range want {
 		it, ok := itemOf(items, n)
 		if !ok {
@@ -301,6 +302,14 @@ func boardStatusAndPriority(t *testing.T, f Fixture) {
 		if it.Status != w[0] || it.Priority != w[1] || it.Repo != f.Repo() || it.ItemID == "" {
 			t.Errorf("item #%d = %+v; want Status %q, Priority %q, Repo %s and an ItemID", n, it, w[0], w[1], f.Repo())
 		}
+	}
+	// An unmapped status is "unknown:" plus what the forge identifies it by (GitHub an option
+	// ID, GitLab the status name), and its raw name is in StatusName.
+	if it, ok := itemOf(items, 9); !ok {
+		t.Errorf("BoardItems has no item for #9")
+	} else if !strings.HasPrefix(it.Status, forge.UnknownStatusPrefix) || it.Status == forge.UnknownStatusPrefix ||
+		it.StatusName != raw || it.Priority != "" {
+		t.Errorf("item #9 = %+v; want Status unknown:<id>, StatusName %q and no priority", it, raw)
 	}
 }
 
@@ -323,6 +332,26 @@ func issueItemMissingIssue(t *testing.T, f Fixture) {
 	_, ok, err := f.Forge().IssueItem(t.Context(), 99)
 	if ok || !errors.Is(err, forge.ErrIssueNotFound) {
 		t.Errorf("IssueItem(99) = ok %v, err %v; want an error wrapping forge.ErrIssueNotFound", ok, err)
+	}
+}
+
+// StatusName is the raw name of the item's status on the board: the name of a mapped status,
+// the forge's own name of an unmapped one, and "" without a status.
+func issueItemStatusName(t *testing.T, f Fixture) {
+	for n := 7; n <= 9; n++ {
+		f.AddIssue(t, openIssue(n))
+	}
+	f.PutOnBoard(t, 7, "To do", "")
+	raw := f.PutOnBoardUnmapped(t, 8)
+	f.PutOnBoard(t, 9, "", "")
+	for n, want := range map[int]string{7: "To do", 8: raw, 9: ""} {
+		it, ok, err := f.Forge().IssueItem(t.Context(), n)
+		if err != nil || !ok {
+			t.Fatalf("IssueItem(%d) = %+v, %v, %v; want the item", n, it, ok, err)
+		}
+		if it.StatusName != want {
+			t.Errorf("IssueItem(%d).StatusName = %q; want %q", n, it.StatusName, want)
+		}
 	}
 }
 

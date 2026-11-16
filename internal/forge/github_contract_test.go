@@ -165,7 +165,7 @@ func (g *githubFixture) PutOnBoard(t *testing.T, number int, status, priority st
 func (g *githubFixture) PutOnBoardUnmapped(t *testing.T, number int) string {
 	t.Helper()
 	g.putOnBoard(t, number, "opt-unmapped", "")
-	return "opt-unmapped"
+	return "In review"
 }
 
 // option is the option ID of name in options; "" for "".
@@ -181,6 +181,19 @@ func (g *githubFixture) option(t *testing.T, options map[string]string, name str
 	return id
 }
 
+// optionName is the name the board gives option id: the name status_options or
+// priority_options maps to it, and "In review" for opt-unmapped, which neither lists.
+func (g *githubFixture) optionName(id string) string {
+	for _, options := range []map[string]string{g.board.StatusOptions, g.board.PriorityOptions} {
+		for name, oid := range options {
+			if oid == id {
+				return name
+			}
+		}
+	}
+	return "In review"
+}
+
 // putOnBoard adds the board node "item-<number>" of an issue added before, with the single-select
 // values status and priority (option IDs, "" none) and the blockers added so far.
 func (g *githubFixture) putOnBoard(t *testing.T, number int, status, priority string) {
@@ -192,7 +205,7 @@ func (g *githubFixture) putOnBoard(t *testing.T, number int, status, priority st
 	values := []any{}
 	for field, opt := range map[string]string{g.board.StatusFieldID: status, g.board.PriorityFieldID: priority} {
 		if opt != "" {
-			values = append(values, map[string]any{"optionId": opt, "field": map[string]any{"id": field}})
+			values = append(values, map[string]any{"optionId": opt, "name": g.optionName(opt), "field": map[string]any{"id": field}})
 		}
 	}
 	node := map[string]any{
