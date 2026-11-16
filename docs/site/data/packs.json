@@ -13,6 +13,7 @@
       "route-issue",
       "start-issue",
       "test-standard",
+      "upgrade",
       "write-handoff",
       "write-issue",
       "write-pr"

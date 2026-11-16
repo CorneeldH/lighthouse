@@ -80,7 +80,7 @@ func ParseTriageMarker(body string) (TriageMarker, bool) {
 	return m, true
 }
 
-// RenderTriageMarker writes the compact marker line, the form artefacts.py writes. A marker
+// RenderTriageMarker writes the compact marker line. A marker
 // with a stop carries blockers and label, except the invariant, which carries neither.
 func RenderTriageMarker(m TriageMarker) string {
 	type head struct {

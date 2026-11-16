@@ -27,7 +27,7 @@ type laneRepo struct {
 
 const (
 	demoSkill = "pack/core/skills/demo/SKILL.md"
-	toolFile  = "pack/core/lib/tool.py"
+	toolFile  = "pack/core/scripts/tool.py"
 	ciFile    = "pack/core/workflows/ci.yml"
 	localBody = "\nintro local\none\ntwo\nthree\nfour\nfive\n"
 )
@@ -47,7 +47,7 @@ path = "pack/core/skills/demo/ref.md"
 pin = "core/skills/demo"
 
 [[file]]
-path = "pack/core/lib/tool.py"
+path = "pack/core/scripts/tool.py"
 source_repo = "o/r"
 source_sha = "` + pin + `"
 source_path = "lib/tool.py"
@@ -223,8 +223,8 @@ func TestPrepareBranch_bumpsPinAndSourcesToml(t *testing.T) {
 	t.Run("file pin raises its own source_sha only", func(t *testing.T) {
 		branch := r.prepare(t, r.toolPin())
 		want := strings.Replace(r.sources,
-			"path = \"pack/core/lib/tool.py\"\nsource_repo = \"o/r\"\nsource_sha = \""+r.pin,
-			"path = \"pack/core/lib/tool.py\"\nsource_repo = \"o/r\"\nsource_sha = \""+r.head, 1)
+			"path = \"pack/core/scripts/tool.py\"\nsource_repo = \"o/r\"\nsource_sha = \""+r.pin,
+			"path = \"pack/core/scripts/tool.py\"\nsource_repo = \"o/r\"\nsource_sha = \""+r.head, 1)
 		if got := r.show(t, branch, "pack/SOURCES.toml"); got != want {
 			t.Errorf("SOURCES.toml:\n got %q\nwant %q", got, want)
 		}
@@ -328,7 +328,7 @@ func TestPrepareBranch_workflowsPathPushesNothing(t *testing.T) {
 	}
 
 	next := r.prepare(t, r.toolPin())
-	want := []string{"changelog.d/pins-pack-core-lib-tool.py.md", ".lighthouse/lib/lighthouse_lib/tool.py", ".lighthouse/manifest.toml", "pack/SOURCES.toml", toolFile}
+	want := []string{"changelog.d/pins-pack-core-scripts-tool.py.md", ".lighthouse/scripts/tool.py", ".lighthouse/manifest.toml", "pack/SOURCES.toml", toolFile}
 	if got := r.changed(t, next); !sameSet(got, want) {
 		t.Errorf("next pin changed %v, want %v", got, want)
 	}
@@ -346,7 +346,7 @@ func TestPrepareBranch_twoPinsEachBranchHoldsOnlyOwnChanges(t *testing.T) {
 		".lighthouse/manifest.toml", "changelog.d/pins-core-skills-demo.md", "pack/SOURCES.toml",
 		demoSkill, "pack/core/skills/demo/new.md", "pack/core/skills/demo/ref.md",
 	}
-	wantTool := []string{"changelog.d/pins-pack-core-lib-tool.py.md", ".lighthouse/lib/lighthouse_lib/tool.py", ".lighthouse/manifest.toml", "pack/SOURCES.toml", toolFile}
+	wantTool := []string{"changelog.d/pins-pack-core-scripts-tool.py.md", ".lighthouse/scripts/tool.py", ".lighthouse/manifest.toml", "pack/SOURCES.toml", toolFile}
 	if got := r.changed(t, demo); !sameSet(got, wantDemo) {
 		t.Errorf("%s changed\n got %v\nwant %v", demo, got, wantDemo)
 	}

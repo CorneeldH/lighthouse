@@ -3,6 +3,7 @@ package dispatch
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -1464,6 +1465,43 @@ func TestApplyUsageResumePostsNothing(t *testing.T) {
 	}
 }
 
+// A resume continues the session that made the work in its workspace: own work never hands
+// it back (#356), also when origin moved on and HEAD diverged, and the launch runs in the
+// workspace the OwnWorkError names.
+func TestApplyResumeOwnWorkStarts(t *testing.T) {
+	for _, a := range []Action{usageResumeAction(), resumeAction()} {
+		h := newHarness(t)
+		h.seed(t, 7, oldSession, "start:7", runs.Parked)
+		h.wp.prepareErr = &workplace.OwnWorkError{
+			Workspace: workplace.Workspace{ID: "9c5c2b84ce761720", Path: "/forge/issue-7-x", Branch: "issue-7-x"},
+			Commits:   14, Dirty: true,
+		}
+		res, err := Apply(context.Background(), h.env, []Action{a})
+		if err != nil {
+			t.Fatalf("%s: Apply: %v", a.Trigger, err)
+		}
+		if res.Started != 1 || len(h.wp.spawned) != 1 || h.wp.spawned[0].SessionID != oldSession {
+			t.Errorf("%s: Started = %d, spawned %+v; want one resume of %s", a.Trigger, res.Started, h.wp.spawned, oldSession)
+		}
+		for _, body := range h.poster(applyRepo).bodies {
+			if strings.Contains(body, "Teruggegeven") {
+				t.Errorf("%s: posted %q, want no Returned", a.Trigger, body)
+			}
+		}
+		rows := h.history(t)
+		if len(rows) != 2 || !rows[1].Open {
+			t.Fatalf("%s: rows = %+v, want an open resume", a.Trigger, rows)
+		}
+		var wsID string
+		if err := h.db.QueryRow(`SELECT workspace_id FROM runs WHERE id = ?`, rows[1].ID).Scan(&wsID); err != nil {
+			t.Fatal(err)
+		}
+		if wsID != "9c5c2b84ce761720" {
+			t.Errorf("%s: workspace = %q, want 9c5c2b84ce761720", a.Trigger, wsID)
+		}
+	}
+}
+
 // The second attempt of a usage resume posts no header, so a Returned after the first refusal
 // would stay the last header while its agent runs.
 func TestApplyUsageResumeNotAcceptedReturnsOnSecondAttempt(t *testing.T) {
@@ -1902,64 +1940,163 @@ func TestApplyReleaseUsesNodeOfRun(t *testing.T) {
 	}
 }
 
-// On another node Kill cannot end a claude (forge's /runtime has no session id, #327): a live
-// session of the issue's closed run there defers the start, so no second agent joins it.
-// On self the same session is killed and the start goes on.
-func TestApplyStartOnNodeWithLiveEarlierSessionDefers(t *testing.T) {
-	for _, tc := range []struct {
-		name, node, state string
-		wantSpawns        int
-		wantDeferred      []string
-	}{
-		{name: "node, running", node: "node-a", state: "running",
-			wantDeferred: []string{"o/r#7: workplace busy: session key-old, running since unknown"}},
-		{name: "node, exited", node: "node-a", state: "done", wantSpawns: 1},
-		{name: "self, running", node: "", state: "running", wantSpawns: 1},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
+// randomNode is a node id no fixture shares.
+func randomNode() string { return "node-" + strings.ToLower(rand.Text()[:8]) }
+
+// With Kill through serve a node is like self (#327): a live session of the issue's closed run is
+// killed after the claim and the start goes on, and the session of an open run is busy.
+func TestBusyOnNodeLikeSelf(t *testing.T) {
+	for _, node := range []string{"", randomNode()} {
+		t.Run("closed run, live session, node "+node, func(t *testing.T) {
 			h := newHarness(t)
-			id := h.seedOn(t, tc.node, "mac", "ws-issue-7-x", "key-old")
+			id := h.seedOn(t, node, "mac", "ws-issue-7-x", "key-old")
 			if err := runs.Release(context.Background(), h.db, id, runs.Returned, "", applyNow.Add(-time.Minute)); err != nil {
 				t.Fatal(err)
 			}
-			// A session of a node carries no session_id.
-			sid := oldSession
-			if tc.node != "" {
-				sid = ""
-			}
-			h.wp.sessions = []workplace.Session{{Key: "key-old", WorkspaceID: "ws-issue-7-x", State: tc.state, SessionID: sid}}
+			h.wp.sessions = []workplace.Session{{Key: "key-old", WorkspaceID: "ws-issue-7-x", State: "running", SessionID: oldSession}}
 			a := startAction()
-			a.Node, a.Profile = tc.node, "mac"
+			a.Node, a.Profile = node, "mac"
 			res, err := Apply(context.Background(), h.env, []Action{a})
 			if err != nil {
 				t.Fatalf("Apply: %v", err)
 			}
-			if len(h.wp.spawned) != tc.wantSpawns {
-				t.Errorf("spawned %d, want %d", len(h.wp.spawned), tc.wantSpawns)
+			if len(res.Deferred) != 0 || len(h.wp.spawned) != 1 {
+				t.Errorf("Deferred = %q, spawned %d; want no deferral and one spawn", res.Deferred, len(h.wp.spawned))
 			}
-			if !reflect.DeepEqual(res.Deferred, tc.wantDeferred) {
-				t.Errorf("Deferred = %q, want %q", res.Deferred, tc.wantDeferred)
+			if want := []string{"ws-issue-7-x " + oldSession}; !reflect.DeepEqual(h.wp.killed, want) {
+				t.Errorf("killed = %q, want %q", h.wp.killed, want)
+			}
+		})
+		t.Run("open run, node "+node, func(t *testing.T) {
+			h := newHarness(t)
+			h.seedOn(t, node, "mac", "ws-issue-7-x", "key-old")
+			h.wp.sessions = []workplace.Session{{Key: "key-old", WorkspaceID: "ws-issue-7-x", State: "running", SessionID: oldSession}}
+			a := startAction()
+			a.Node, a.Profile = node, "mac"
+			res, err := Apply(context.Background(), h.env, []Action{a})
+			if err != nil {
+				t.Fatalf("Apply: %v", err)
+			}
+			want := []string{"o/r#7: workplace busy: session key-old, running since unknown"}
+			if !reflect.DeepEqual(res.Deferred, want) || len(h.wp.spawned) != 0 {
+				t.Errorf("Deferred = %q, spawned %d; want %q and no spawn", res.Deferred, len(h.wp.spawned), want)
 			}
 		})
 	}
 }
 
-// The worktree of a run on another node is not on this host: apply does not look for the
-// plan there, and launches the command as decided.
-func TestApplyStartOnNodeKeepsCommand(t *testing.T) {
+// relocWP is a workplace on a node that relocates through Relocator: it answers command with
+// to for workspace ws-issue-7-x, or with err.
+type relocWP struct {
+	*fakeWorkplace
+	t       *testing.T
+	command string
+	to      string
+	err     error
+}
+
+func (r *relocWP) Relocate(_ context.Context, workspaceID, command string) (string, error) {
+	if workspaceID != "ws-issue-7-x" || command != r.command {
+		r.t.Errorf("Relocate(%q, %q), want (ws-issue-7-x, %q)", workspaceID, command, r.command)
+	}
+	return r.to, r.err
+}
+
+// On a node the start command is relocated by the node (Relocator), not looked up on this host;
+// a refusal is a relocErr: the run closes start_failed with the cause and nothing launches.
+func TestApplyRelocatesOnNode(t *testing.T) {
+	const from = "/lighthouse-review-plan /home/u/repo/design/plans/p.md"
+	const to = "/lighthouse-review-plan /srv/forge/issue-7-x/design/plans/p.md"
+	t.Run("relocated", func(t *testing.T) {
+		h := newHarness(t)
+		r := &relocWP{fakeWorkplace: h.wp, t: t, command: from, to: to}
+		h.env.Workplace = func(string, string, string) workplace.Workplace { return r }
+		a := startAction()
+		a.Node, a.Profile = randomNode(), "mac"
+		a.Command, a.Prompt = from, from+" (issue #7, controller-run)"
+		if _, err := Apply(context.Background(), h.env, []Action{a}); err != nil {
+			t.Fatalf("Apply: %v", err)
+		}
+		if want := to + " (issue #7, controller-run)"; len(h.wp.spawned) != 1 || h.wp.spawned[0].Prompt != want {
+			t.Fatalf("spawned %+v, want one with prompt %q", h.wp.spawned, want)
+		}
+		if rows := h.history(t); len(rows) != 1 || rows[0].Command != to {
+			t.Errorf("rows = %+v, want one with command %q", rows, to)
+		}
+	})
+	t.Run("refused", func(t *testing.T) {
+		h := newHarness(t)
+		r := &relocWP{fakeWorkplace: h.wp, t: t, command: from, err: errors.New("p.md not in the worktree")}
+		h.env.Workplace = func(string, string, string) workplace.Workplace { return r }
+		a := startAction()
+		a.Node, a.Profile = randomNode(), "mac"
+		a.Command, a.Prompt = from, from+" (issue #7, controller-run)"
+		if _, err := Apply(context.Background(), h.env, []Action{a}); err == nil {
+			t.Fatal("Apply: want an error")
+		}
+		if len(h.wp.spawned) != 0 {
+			t.Errorf("spawned %+v, want none", h.wp.spawned)
+		}
+		rows := h.history(t)
+		if len(rows) != 1 || rows[0].Open || rows[0].Outcome != runs.StartFailed || rows[0].Reason != "handoff path: p.md not in the worktree" {
+			t.Errorf("rows = %+v, want one closed start_failed with reason handoff path: p.md not in the worktree", rows)
+		}
+	})
+}
+
+// On self the start command is relocated on this host, also when the workplace is a Relocator:
+// every kenn-forge adapter is one, and on self it cannot answer. A start on self whose workplace
+// would refuse to relocate still launches once.
+func TestApplyOnSelfIgnoresRelocator(t *testing.T) {
 	h := newHarness(t)
-	h.wp.root = t.TempDir()
 	a := startAction()
-	a.Node, a.Profile = "node-a", "mac"
-	a.Command = "/lighthouse-review-plan /home/u/repo/design/plans/p.md"
-	a.Prompt = a.Command + " (issue #7, controller-run)"
+	r := &relocWP{fakeWorkplace: h.wp, t: t, command: a.Command, err: errors.New("relocate: not measurable on self")}
+	h.env.Workplace = func(string, string, string) workplace.Workplace { return r }
 	if _, err := Apply(context.Background(), h.env, []Action{a}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 	if len(h.wp.spawned) != 1 || h.wp.spawned[0].Prompt != a.Prompt {
-		t.Fatalf("spawned %+v, want one with prompt %q", h.wp.spawned, a.Prompt)
+		t.Errorf("spawned %+v, want one with prompt %q", h.wp.spawned, a.Prompt)
 	}
 	if rows := h.history(t); len(rows) != 1 || !rows[0].Open || rows[0].Command != a.Command {
-		t.Errorf("rows = %+v, want one open with command %q", rows, a.Command)
+		t.Errorf("rows = %+v, want one open run with command %q", rows, a.Command)
+	}
+}
+
+// A drop_marker carries no node: apply hands session and key to Env.RemoveMarker, which knows
+// where the marker came from, and leaves the local marker dir alone.
+func TestDropMarkerCallsRemoveMarkerWithSessionAndKey(t *testing.T) {
+	h := newHarness(t)
+	h.seed(t, 7, oldSession, "start:7", runs.Parked)
+	h.env.MarkerDir = t.TempDir()
+	path := writeMarker(t, h.env.MarkerDir, "2026-10-31T08:00:00Z", "2026-10-31T08:30:00Z")
+	var got []string
+	h.env.RemoveMarker = func(session, key string) error {
+		got = append(got, session+" "+key)
+		return nil
+	}
+	drop := Action{Kind: KindDropMarker, Repo: applyRepo, Issue: 7, SessionID: oldSession, TriggerKey: usageKey, Language: "nl"}
+	if _, err := Apply(context.Background(), h.env, []Action{drop, usageResumeAction()}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if want := []string{oldSession + " " + usageKey, oldSession + " " + usageKey}; !reflect.DeepEqual(got, want) {
+		t.Errorf("RemoveMarker calls = %q, want %q (drop, then the usage resume)", got, want)
+	}
+	if !exists(t, path) {
+		t.Error("local marker removed although Env.RemoveMarker is set")
+	}
+}
+
+// A failing Env.RemoveMarker is one log line, never an action error: the next tick drops it again.
+func TestMarkerRemovalFailureIsLogNotError(t *testing.T) {
+	h := newHarness(t)
+	h.env.RemoveMarker = func(string, string) error { return errors.New("serve: connection refused") }
+	drop := Action{Kind: KindDropMarker, Repo: applyRepo, Issue: 7, SessionID: oldSession, TriggerKey: usageKey, Language: "nl"}
+	res, err := Apply(context.Background(), h.env, []Action{drop})
+	if err != nil || len(res.Failed) != 0 {
+		t.Fatalf("Apply: %v, Failed = %v; want no action error", err, res.Failed)
+	}
+	if want := "o/r#7: remove marker of session " + oldSession + ": serve: connection refused\n"; h.out.String() != want {
+		t.Errorf("log %q, want %q", h.out.String(), want)
 	}
 }

@@ -16,7 +16,8 @@ type headerCase struct {
 	Session *string `json:"session"`
 }
 
-// The fixture is shared with tests/pack/test_protocol.py: both parsers must agree.
+// twin of test_shared_header_fixture: the fixture is the one pack/core/lib/protocol.py parsed
+// before it was removed.
 func TestParseHeaderSharedFixture(t *testing.T) {
 	raw, err := os.ReadFile("../../tests/pack/fixtures/protocol/headers.json")
 	if err != nil {

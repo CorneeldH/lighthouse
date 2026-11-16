@@ -320,9 +320,7 @@ bestaande sleutel zonder node is `self`. *(Keuze van de ontwerper.)*
 ## Vervolg
 
 [#327](https://github.com/CorneeldH/lighthouse/issues/327): **de run-inhoud op een andere node.** Drager (en daarmee `--session-id`), transcript,
-`permission.json`, het volgen van de remote branch bij Prepare, en de git-metingen van de sweep. Eerste kandidaat: de ACP-lane van forge (aanpak C). Tot dat issue klaar is,
-start een run op een andere node wel een workspace en een target, maar zonder de argumenten van
-lighthouse.
+`permission.json`, het volgen van de remote branch bij Prepare, en de git-metingen van de sweep. Eerste kandidaat: de ACP-lane van forge (aanpak C). Dat issue is uitgewerkt in [de spec van #327](2026-11-15-issue-327-run-inhoud-nodes-design.md): de run-inhoud loopt via `lighthouse serve` op de node, naast de hub.
 
 ## Aan de bouwer
 

@@ -1,0 +1,15 @@
+{
+  "session_id": "no-python",
+  "transcript_path": "@TRANSCRIPT@",
+  "cwd": "@REPO@",
+  "hook_event_name": "PostToolUse",
+  "tool_name": "Write",
+  "tool_input": {
+    "file_path": "@REPO@/main.go",
+    "content": "x"
+  },
+  "tool_response": {
+    "type": "update",
+    "filePath": "@REPO@/main.go"
+  }
+}

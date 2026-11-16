@@ -1,0 +1,11 @@
+{
+  "session_id": "no-python",
+  "transcript_path": "@TRANSCRIPT@",
+  "cwd": "@REPO@",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Write",
+  "tool_input": {
+    "file_path": "@REPO@/notes.txt",
+    "content": "x"
+  }
+}

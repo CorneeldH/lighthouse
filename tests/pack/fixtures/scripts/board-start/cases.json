@@ -1,0 +1,1280 @@
+[
+  {
+    "name": "test_pickable_becomes_in_progress[To do]",
+    "argv": [
+      "7"
+    ],
+    "config": "\n[forge]\nkind = \"github\"\nrepo = \"Owner/repo\"\n\n[forge.board]\nproject_number = 1\nproject_id = \"PVT_test\"\nstatus_field_id = \"FIELD_test\"\n\n[forge.board.status_options]\n\"To do\" = \"opt-todo\"\n\"In progress\" = \"opt-progress\"\nDone = \"opt-done\"\n\"On hold\" = \"opt-hold\"\n",
+    "env": {},
+    "calls": [
+      {
+        "argv": [
+          "gh",
+          "api",
+          "graphql",
+          "-f",
+          "query=\nquery($owner: String!, $name: String!, $number: Int!) {\n  repository(owner: $owner, name: $name) {\n    issue(number: $number) {\n      projectItems(first: 20) {\n        nodes {\n          id\n          project { id }\n          fieldValueByName(name: \"Status\") {\n            ... on ProjectV2ItemFieldSingleSelectValue { name }\n          }\n        }\n      }\n    }\n  }\n}\n",
+          "-f",
+          "owner=Owner",
+          "-f",
+          "name=repo",
+          "-F",
+          "number=7"
+        ],
+        "stdin": null,
+        "stdout": "{\"data\": {\"repository\": {\"issue\": {\"projectItems\": {\"nodes\": [{\"id\": \"PVTI_a\", \"project\": {\"id\": \"PVT_test\"}, \"fieldValueByName\": {\"name\": \"To do\"}}]}}}}}",
+        "stderr": "",
+        "code": 0
+      },
+      {
+        "argv": [
+          "gh",
+          "project",
+          "item-edit",
+          "--id",
+          "PVTI_a",
+          "--project-id",
+          "PVT_test",
+          "--field-id",
+          "FIELD_test",
+          "--single-select-option-id",
+          "opt-progress"
+        ],
+        "stdin": null,
+        "stdout": "",
+        "stderr": "",
+        "code": 0
+      }
+    ],
+    "expect": {
+      "code": 0,
+      "stdout": "board: #7 To do → In progress\n",
+      "stderr": ""
+    }
+  },
+  {
+    "name": "test_pickable_becomes_in_progress[On hold]",
+    "argv": [
+      "7"
+    ],
+    "config": "\n[forge]\nkind = \"github\"\nrepo = \"Owner/repo\"\n\n[forge.board]\nproject_number = 1\nproject_id = \"PVT_test\"\nstatus_field_id = \"FIELD_test\"\n\n[forge.board.status_options]\n\"To do\" = \"opt-todo\"\n\"In progress\" = \"opt-progress\"\nDone = \"opt-done\"\n\"On hold\" = \"opt-hold\"\n",
+    "env": {},
+    "calls": [
+      {
+        "argv": [
+          "gh",
+          "api",
+          "graphql",
+          "-f",
+          "query=\nquery($owner: String!, $name: String!, $number: Int!) {\n  repository(owner: $owner, name: $name) {\n    issue(number: $number) {\n      projectItems(first: 20) {\n        nodes {\n          id\n          project { id }\n          fieldValueByName(name: \"Status\") {\n            ... on ProjectV2ItemFieldSingleSelectValue { name }\n          }\n        }\n      }\n    }\n  }\n}\n",
+          "-f",
+          "owner=Owner",
+          "-f",
+          "name=repo",
+          "-F",
+          "number=7"
+        ],
+        "stdin": null,
+        "stdout": "{\"data\": {\"repository\": {\"issue\": {\"projectItems\": {\"nodes\": [{\"id\": \"PVTI_a\", \"project\": {\"id\": \"PVT_test\"}, \"fieldValueByName\": {\"name\": \"On hold\"}}]}}}}}",
+        "stderr": "",
+        "code": 0
+      },
+      {
+        "argv": [
+          "gh",
+          "project",
+          "item-edit",
+          "--id",
+          "PVTI_a",
+          "--project-id",
+          "PVT_test",
+          "--field-id",
+          "FIELD_test",
+          "--single-select-option-id",
+          "opt-progress"
+        ],
+        "stdin": null,
+        "stdout": "",
+        "stderr": "",
+        "code": 0
+      }
+    ],
+    "expect": {
+      "code": 0,
+      "stdout": "board: #7 On hold → In progress\n",
+      "stderr": ""
+    }
+  },
+  {
+    "name": "test_other_status_stays[Controller]",
+    "argv": [
+      "7"
+    ],
+    "config": "\n[forge]\nkind = \"github\"\nrepo = \"Owner/repo\"\n\n[forge.board]\nproject_number = 1\nproject_id = \"PVT_test\"\nstatus_field_id = \"FIELD_test\"\n\n[forge.board.status_options]\n\"To do\" = \"opt-todo\"\n\"In progress\" = \"opt-progress\"\nDone = \"opt-done\"\n\"On hold\" = \"opt-hold\"\n",
+    "env": {},
+    "calls": [
+      {
+        "argv": [
+          "gh",
+          "api",
+          "graphql",
+          "-f",
+          "query=\nquery($owner: String!, $name: String!, $number: Int!) {\n  repository(owner: $owner, name: $name) {\n    issue(number: $number) {\n      projectItems(first: 20) {\n        nodes {\n          id\n          project { id }\n          fieldValueByName(name: \"Status\") {\n            ... on ProjectV2ItemFieldSingleSelectValue { name }\n          }\n        }\n      }\n    }\n  }\n}\n",
+          "-f",
+          "owner=Owner",
+          "-f",
+          "name=repo",
+          "-F",
+          "number=7"
+        ],
+        "stdin": null,
+        "stdout": "{\"data\": {\"repository\": {\"issue\": {\"projectItems\": {\"nodes\": [{\"id\": \"PVTI_a\", \"project\": {\"id\": \"PVT_test\"}, \"fieldValueByName\": {\"name\": \"Controller\"}}]}}}}}",
+        "stderr": "",
+        "code": 0
+      }
+    ],
+    "expect": {
+      "code": 0,
+      "stdout": "board: #7 stays at Controller\n",
+      "stderr": ""
+    }
+  },
+  {
+    "name": "test_other_status_stays[In progress]",
+    "argv": [
+      "7"
+    ],
+    "config": "\n[forge]\nkind = \"github\"\nrepo = \"Owner/repo\"\n\n[forge.board]\nproject_number = 1\nproject_id = \"PVT_test\"\nstatus_field_id = \"FIELD_test\"\n\n[forge.board.status_options]\n\"To do\" = \"opt-todo\"\n\"In progress\" = \"opt-progress\"\nDone = \"opt-done\"\n\"On hold\" = \"opt-hold\"\n",
+    "env": {},
+    "calls": [
+      {
+        "argv": [
+          "gh",
+          "api",
+          "graphql",
+          "-f",
+          "query=\nquery($owner: String!, $name: String!, $number: Int!) {\n  repository(owner: $owner, name: $name) {\n    issue(number: $number) {\n      projectItems(first: 20) {\n        nodes {\n          id\n          project { id }\n          fieldValueByName(name: \"Status\") {\n            ... on ProjectV2ItemFieldSingleSelectValue { name }\n          }\n        }\n      }\n    }\n  }\n}\n",
+          "-f",
+          "owner=Owner",
+          "-f",
+          "name=repo",
+          "-F",
+          "number=7"
+        ],
+        "stdin": null,
+        "stdout": "{\"data\": {\"repository\": {\"issue\": {\"projectItems\": {\"nodes\": [{\"id\": \"PVTI_a\", \"project\": {\"id\": \"PVT_test\"}, \"fieldValueByName\": {\"name\": \"In progress\"}}]}}}}}",
+        "stderr": "",
+        "code": 0
+      }
+    ],
+    "expect": {
+      "code": 0,
+      "stdout": "board: #7 stays at In progress\n",
+      "stderr": ""
+    }
+  },
+  {
+    "name": "test_other_status_stays[Done]",
+    "argv": [
+      "7"
+    ],
+    "config": "\n[forge]\nkind = \"github\"\nrepo = \"Owner/repo\"\n\n[forge.board]\nproject_number = 1\nproject_id = \"PVT_test\"\nstatus_field_id = \"FIELD_test\"\n\n[forge.board.status_options]\n\"To do\" = \"opt-todo\"\n\"In progress\" = \"opt-progress\"\nDone = \"opt-done\"\n\"On hold\" = \"opt-hold\"\n",
+    "env": {},
+    "calls": [
+      {
+        "argv": [
+          "gh",
+          "api",
+          "graphql",
+          "-f",
+          "query=\nquery($owner: String!, $name: String!, $number: Int!) {\n  repository(owner: $owner, name: $name) {\n    issue(number: $number) {\n      projectItems(first: 20) {\n        nodes {\n          id\n          project { id }\n          fieldValueByName(name: \"Status\") {\n            ... on ProjectV2ItemFieldSingleSelectValue { name }\n          }\n        }\n      }\n    }\n  }\n}\n",
+          "-f",
+          "owner=Owner",
+          "-f",
+          "name=repo",
+          "-F",
+          "number=7"
+        ],
+        "stdin": null,
+        "stdout": "{\"data\": {\"repository\": {\"issue\": {\"projectItems\": {\"nodes\": [{\"id\": \"PVTI_a\", \"project\": {\"id\": \"PVT_test\"}, \"fieldValueByName\": {\"name\": \"Done\"}}]}}}}}",
+        "stderr": "",
+        "code": 0
+      }
+    ],
+    "expect": {
+      "code": 0,
+      "stdout": "board: #7 stays at Done\n",
+      "stderr": ""
+    }
+  },
+  {
+    "name": "test_other_status_stays[None]",
+    "argv": [
+      "7"
+    ],
+    "config": "\n[forge]\nkind = \"github\"\nrepo = \"Owner/repo\"\n\n[forge.board]\nproject_number = 1\nproject_id = \"PVT_test\"\nstatus_field_id = \"FIELD_test\"\n\n[forge.board.status_options]\n\"To do\" = \"opt-todo\"\n\"In progress\" = \"opt-progress\"\nDone = \"opt-done\"\n\"On hold\" = \"opt-hold\"\n",
+    "env": {},
+    "calls": [
+      {
+        "argv": [
+          "gh",
+          "api",
+          "graphql",
+          "-f",
+          "query=\nquery($owner: String!, $name: String!, $number: Int!) {\n  repository(owner: $owner, name: $name) {\n    issue(number: $number) {\n      projectItems(first: 20) {\n        nodes {\n          id\n          project { id }\n          fieldValueByName(name: \"Status\") {\n            ... on ProjectV2ItemFieldSingleSelectValue { name }\n          }\n        }\n      }\n    }\n  }\n}\n",
+          "-f",
+          "owner=Owner",
+          "-f",
+          "name=repo",
+          "-F",
+          "number=7"
+        ],
+        "stdin": null,
+        "stdout": "{\"data\": {\"repository\": {\"issue\": {\"projectItems\": {\"nodes\": [{\"id\": \"PVTI_a\", \"project\": {\"id\": \"PVT_test\"}, \"fieldValueByName\": null}]}}}}}",
+        "stderr": "",
+        "code": 0
+      }
+    ],
+    "expect": {
+      "code": 0,
+      "stdout": "board: #7 stays without status\n",
+      "stderr": ""
+    }
+  },
+  {
+    "name": "test_only_item_on_own_board",
+    "argv": [
+      "7"
+    ],
+    "config": "\n[forge]\nkind = \"github\"\nrepo = \"Owner/repo\"\n\n[forge.board]\nproject_number = 1\nproject_id = \"PVT_test\"\nstatus_field_id = \"FIELD_test\"\n\n[forge.board.status_options]\n\"To do\" = \"opt-todo\"\n\"In progress\" = \"opt-progress\"\nDone = \"opt-done\"\n\"On hold\" = \"opt-hold\"\n",
+    "env": {},
+    "calls": [
+      {
+        "argv": [
+          "gh",
+          "api",
+          "graphql",
+          "-f",
+          "query=\nquery($owner: String!, $name: String!, $number: Int!) {\n  repository(owner: $owner, name: $name) {\n    issue(number: $number) {\n      projectItems(first: 20) {\n        nodes {\n          id\n          project { id }\n          fieldValueByName(name: \"Status\") {\n            ... on ProjectV2ItemFieldSingleSelectValue { name }\n          }\n        }\n      }\n    }\n  }\n}\n",
+          "-f",
+          "owner=Owner",
+          "-f",
+          "name=repo",
+          "-F",
+          "number=7"
+        ],
+        "stdin": null,
+        "stdout": "{\"data\": {\"repository\": {\"issue\": {\"projectItems\": {\"nodes\": [{\"id\": \"PVTI_x\", \"project\": {\"id\": \"PVT_ander\"}, \"fieldValueByName\": {\"name\": \"To do\"}}, {\"id\": \"PVTI_a\", \"project\": {\"id\": \"PVT_test\"}, \"fieldValueByName\": {\"name\": \"Controller\"}}]}}}}}",
+        "stderr": "",
+        "code": 0
+      }
+    ],
+    "expect": {
+      "code": 0,
+      "stdout": "board: #7 stays at Controller\n",
+      "stderr": ""
+    }
+  },
+  {
+    "name": "test_not_on_board",
+    "argv": [
+      "7"
+    ],
+    "config": "\n[forge]\nkind = \"github\"\nrepo = \"Owner/repo\"\n\n[forge.board]\nproject_number = 1\nproject_id = \"PVT_test\"\nstatus_field_id = \"FIELD_test\"\n\n[forge.board.status_options]\n\"To do\" = \"opt-todo\"\n\"In progress\" = \"opt-progress\"\nDone = \"opt-done\"\n\"On hold\" = \"opt-hold\"\n",
+    "env": {},
+    "calls": [
+      {
+        "argv": [
+          "gh",
+          "api",
+          "graphql",
+          "-f",
+          "query=\nquery($owner: String!, $name: String!, $number: Int!) {\n  repository(owner: $owner, name: $name) {\n    issue(number: $number) {\n      projectItems(first: 20) {\n        nodes {\n          id\n          project { id }\n          fieldValueByName(name: \"Status\") {\n            ... on ProjectV2ItemFieldSingleSelectValue { name }\n          }\n        }\n      }\n    }\n  }\n}\n",
+          "-f",
+          "owner=Owner",
+          "-f",
+          "name=repo",
+          "-F",
+          "number=7"
+        ],
+        "stdin": null,
+        "stdout": "{\"data\": {\"repository\": {\"issue\": {\"projectItems\": {\"nodes\": []}}}}}",
+        "stderr": "",
+        "code": 0
+      }
+    ],
+    "expect": {
+      "code": 0,
+      "stdout": "board: #7 is not on the board\n",
+      "stderr": ""
+    }
+  },
+  {
+    "name": "test_gh_failure_does_not_block",
+    "argv": [
+      "7"
+    ],
+    "config": "\n[forge]\nkind = \"github\"\nrepo = \"Owner/repo\"\n\n[forge.board]\nproject_number = 1\nproject_id = \"PVT_test\"\nstatus_field_id = \"FIELD_test\"\n\n[forge.board.status_options]\n\"To do\" = \"opt-todo\"\n\"In progress\" = \"opt-progress\"\nDone = \"opt-done\"\n\"On hold\" = \"opt-hold\"\n",
+    "env": {},
+    "calls": [
+      {
+        "argv": [
+          "gh",
+          "api",
+          "graphql",
+          "-f",
+          "query=\nquery($owner: String!, $name: String!, $number: Int!) {\n  repository(owner: $owner, name: $name) {\n    issue(number: $number) {\n      projectItems(first: 20) {\n        nodes {\n          id\n          project { id }\n          fieldValueByName(name: \"Status\") {\n            ... on ProjectV2ItemFieldSingleSelectValue { name }\n          }\n        }\n      }\n    }\n  }\n}\n",
+          "-f",
+          "owner=Owner",
+          "-f",
+          "name=repo",
+          "-F",
+          "number=7"
+        ],
+        "stdin": null,
+        "stdout": "",
+        "stderr": "",
+        "code": 1
+      }
+    ],
+    "expect": {
+      "code": 0,
+      "stdout": "board: skipped (CalledProcessError)\n",
+      "stderr": ""
+    }
+  },
+  {
+    "name": "test_no_argument",
+    "argv": [],
+    "config": "\n[forge]\nkind = \"github\"\nrepo = \"Owner/repo\"\n\n[forge.board]\nproject_number = 1\nproject_id = \"PVT_test\"\nstatus_field_id = \"FIELD_test\"\n\n[forge.board.status_options]\n\"To do\" = \"opt-todo\"\n\"In progress\" = \"opt-progress\"\nDone = \"opt-done\"\n\"On hold\" = \"opt-hold\"\n",
+    "env": {},
+    "calls": [],
+    "expect": {
+      "code": 0,
+      "stdout_contains": [
+        "board: usage: ",
+        " <nr>\n"
+      ]
+    }
+  },
+  {
+    "name": "test_reopen_done_becomes_in_progress",
+    "argv": [
+      "--reopen",
+      "7"
+    ],
+    "config": "\n[forge]\nkind = \"github\"\nrepo = \"Owner/repo\"\n\n[forge.board]\nproject_number = 1\nproject_id = \"PVT_test\"\nstatus_field_id = \"FIELD_test\"\n\n[forge.board.status_options]\n\"To do\" = \"opt-todo\"\n\"In progress\" = \"opt-progress\"\nDone = \"opt-done\"\n\"On hold\" = \"opt-hold\"\n",
+    "env": {},
+    "calls": [
+      {
+        "argv": [
+          "gh",
+          "api",
+          "graphql",
+          "-f",
+          "query=\nquery($owner: String!, $name: String!, $number: Int!) {\n  repository(owner: $owner, name: $name) {\n    issue(number: $number) {\n      projectItems(first: 20) {\n        nodes {\n          id\n          project { id }\n          fieldValueByName(name: \"Status\") {\n            ... on ProjectV2ItemFieldSingleSelectValue { name }\n          }\n        }\n      }\n    }\n  }\n}\n",
+          "-f",
+          "owner=Owner",
+          "-f",
+          "name=repo",
+          "-F",
+          "number=7"
+        ],
+        "stdin": null,
+        "stdout": "{\"data\": {\"repository\": {\"issue\": {\"projectItems\": {\"nodes\": [{\"id\": \"PVTI_a\", \"project\": {\"id\": \"PVT_test\"}, \"fieldValueByName\": {\"name\": \"Done\"}}]}}}}}",
+        "stderr": "",
+        "code": 0
+      },
+      {
+        "argv": [
+          "gh",
+          "project",
+          "item-edit",
+          "--id",
+          "PVTI_a",
+          "--project-id",
+          "PVT_test",
+          "--field-id",
+          "FIELD_test",
+          "--single-select-option-id",
+          "opt-progress"
+        ],
+        "stdin": null,
+        "stdout": "",
+        "stderr": "",
+        "code": 0
+      },
+      {
+        "argv": [
+          "gh",
+          "api",
+          "graphql",
+          "-f",
+          "query=\nquery($owner: String!, $name: String!, $number: Int!) {\n  repository(owner: $owner, name: $name) {\n    issue(number: $number) {\n      projectItems(first: 20) {\n        nodes {\n          id\n          project { id }\n          fieldValueByName(name: \"Status\") {\n            ... on ProjectV2ItemFieldSingleSelectValue { name }\n          }\n        }\n      }\n    }\n  }\n}\n",
+          "-f",
+          "owner=Owner",
+          "-f",
+          "name=repo",
+          "-F",
+          "number=7"
+        ],
+        "stdin": null,
+        "stdout": "{\"data\": {\"repository\": {\"issue\": {\"projectItems\": {\"nodes\": [{\"id\": \"PVTI_a\", \"project\": {\"id\": \"PVT_test\"}, \"fieldValueByName\": {\"name\": \"In progress\"}}]}}}}}",
+        "stderr": "",
+        "code": 0
+      }
+    ],
+    "expect": {
+      "code": 0,
+      "stdout": "board: #7 Done → In progress\n",
+      "stderr": ""
+    }
+  },
+  {
+    "name": "test_reopen_already_in_progress",
+    "argv": [
+      "--reopen",
+      "7"
+    ],
+    "config": "\n[forge]\nkind = \"github\"\nrepo = \"Owner/repo\"\n\n[forge.board]\nproject_number = 1\nproject_id = \"PVT_test\"\nstatus_field_id = \"FIELD_test\"\n\n[forge.board.status_options]\n\"To do\" = \"opt-todo\"\n\"In progress\" = \"opt-progress\"\nDone = \"opt-done\"\n\"On hold\" = \"opt-hold\"\n",
+    "env": {},
+    "calls": [
+      {
+        "argv": [
+          "gh",
+          "api",
+          "graphql",
+          "-f",
+          "query=\nquery($owner: String!, $name: String!, $number: Int!) {\n  repository(owner: $owner, name: $name) {\n    issue(number: $number) {\n      projectItems(first: 20) {\n        nodes {\n          id\n          project { id }\n          fieldValueByName(name: \"Status\") {\n            ... on ProjectV2ItemFieldSingleSelectValue { name }\n          }\n        }\n      }\n    }\n  }\n}\n",
+          "-f",
+          "owner=Owner",
+          "-f",
+          "name=repo",
+          "-F",
+          "number=7"
+        ],
+        "stdin": null,
+        "stdout": "{\"data\": {\"repository\": {\"issue\": {\"projectItems\": {\"nodes\": [{\"id\": \"PVTI_a\", \"project\": {\"id\": \"PVT_test\"}, \"fieldValueByName\": {\"name\": \"In progress\"}}]}}}}}",
+        "stderr": "",
+        "code": 0
+      }
+    ],
+    "expect": {
+      "code": 0,
+      "stdout": "board: #7 is already In progress\n",
+      "stderr": ""
+    }
+  },
+  {
+    "name": "test_reopen_other_status_fails[To do]",
+    "argv": [
+      "--reopen",
+      "7"
+    ],
+    "config": "\n[forge]\nkind = \"github\"\nrepo = \"Owner/repo\"\n\n[forge.board]\nproject_number = 1\nproject_id = \"PVT_test\"\nstatus_field_id = \"FIELD_test\"\n\n[forge.board.status_options]\n\"To do\" = \"opt-todo\"\n\"In progress\" = \"opt-progress\"\nDone = \"opt-done\"\n\"On hold\" = \"opt-hold\"\n",
+    "env": {},
+    "calls": [
+      {
+        "argv": [
+          "gh",
+          "api",
+          "graphql",
+          "-f",
+          "query=\nquery($owner: String!, $name: String!, $number: Int!) {\n  repository(owner: $owner, name: $name) {\n    issue(number: $number) {\n      projectItems(first: 20) {\n        nodes {\n          id\n          project { id }\n          fieldValueByName(name: \"Status\") {\n            ... on ProjectV2ItemFieldSingleSelectValue { name }\n          }\n        }\n      }\n    }\n  }\n}\n",
+          "-f",
+          "owner=Owner",
+          "-f",
+          "name=repo",
+          "-F",
+          "number=7"
+        ],
+        "stdin": null,
+        "stdout": "{\"data\": {\"repository\": {\"issue\": {\"projectItems\": {\"nodes\": [{\"id\": \"PVTI_a\", \"project\": {\"id\": \"PVT_test\"}, \"fieldValueByName\": {\"name\": \"To do\"}}]}}}}}",
+        "stderr": "",
+        "code": 0
+      }
+    ],
+    "expect": {
+      "code": 1,
+      "stdout": "board: ERROR — #7 is at To do, not at Done\n",
+      "stderr": ""
+    }
+  },
+  {
+    "name": "test_reopen_other_status_fails[On hold]",
+    "argv": [
+      "--reopen",
+      "7"
+    ],
+    "config": "\n[forge]\nkind = \"github\"\nrepo = \"Owner/repo\"\n\n[forge.board]\nproject_number = 1\nproject_id = \"PVT_test\"\nstatus_field_id = \"FIELD_test\"\n\n[forge.board.status_options]\n\"To do\" = \"opt-todo\"\n\"In progress\" = \"opt-progress\"\nDone = \"opt-done\"\n\"On hold\" = \"opt-hold\"\n",
+    "env": {},
+    "calls": [
+      {
+        "argv": [
+          "gh",
+          "api",
+          "graphql",
+          "-f",
+          "query=\nquery($owner: String!, $name: String!, $number: Int!) {\n  repository(owner: $owner, name: $name) {\n    issue(number: $number) {\n      projectItems(first: 20) {\n        nodes {\n          id\n          project { id }\n          fieldValueByName(name: \"Status\") {\n            ... on ProjectV2ItemFieldSingleSelectValue { name }\n          }\n        }\n      }\n    }\n  }\n}\n",
+          "-f",
+          "owner=Owner",
+          "-f",
+          "name=repo",
+          "-F",
+          "number=7"
+        ],
+        "stdin": null,
+        "stdout": "{\"data\": {\"repository\": {\"issue\": {\"projectItems\": {\"nodes\": [{\"id\": \"PVTI_a\", \"project\": {\"id\": \"PVT_test\"}, \"fieldValueByName\": {\"name\": \"On hold\"}}]}}}}}",
+        "stderr": "",
+        "code": 0
+      }
+    ],
+    "expect": {
+      "code": 1,
+      "stdout": "board: ERROR — #7 is at On hold, not at Done\n",
+      "stderr": ""
+    }
+  },
+  {
+    "name": "test_reopen_other_status_fails[Controller]",
+    "argv": [
+      "--reopen",
+      "7"
+    ],
+    "config": "\n[forge]\nkind = \"github\"\nrepo = \"Owner/repo\"\n\n[forge.board]\nproject_number = 1\nproject_id = \"PVT_test\"\nstatus_field_id = \"FIELD_test\"\n\n[forge.board.status_options]\n\"To do\" = \"opt-todo\"\n\"In progress\" = \"opt-progress\"\nDone = \"opt-done\"\n\"On hold\" = \"opt-hold\"\n",
+    "env": {},
+    "calls": [
+      {
+        "argv": [
+          "gh",
+          "api",
+          "graphql",
+          "-f",
+          "query=\nquery($owner: String!, $name: String!, $number: Int!) {\n  repository(owner: $owner, name: $name) {\n    issue(number: $number) {\n      projectItems(first: 20) {\n        nodes {\n          id\n          project { id }\n          fieldValueByName(name: \"Status\") {\n            ... on ProjectV2ItemFieldSingleSelectValue { name }\n          }\n        }\n      }\n    }\n  }\n}\n",
+          "-f",
+          "owner=Owner",
+          "-f",
+          "name=repo",
+          "-F",
+          "number=7"
+        ],
+        "stdin": null,
+        "stdout": "{\"data\": {\"repository\": {\"issue\": {\"projectItems\": {\"nodes\": [{\"id\": \"PVTI_a\", \"project\": {\"id\": \"PVT_test\"}, \"fieldValueByName\": {\"name\": \"Controller\"}}]}}}}}",
+        "stderr": "",
+        "code": 0
+      }
+    ],
+    "expect": {
+      "code": 1,
+      "stdout": "board: ERROR — #7 is at Controller, not at Done\n",
+      "stderr": ""
+    }
+  },
+  {
+    "name": "test_reopen_other_status_fails[None]",
+    "argv": [
+      "--reopen",
+      "7"
+    ],
+    "config": "\n[forge]\nkind = \"github\"\nrepo = \"Owner/repo\"\n\n[forge.board]\nproject_number = 1\nproject_id = \"PVT_test\"\nstatus_field_id = \"FIELD_test\"\n\n[forge.board.status_options]\n\"To do\" = \"opt-todo\"\n\"In progress\" = \"opt-progress\"\nDone = \"opt-done\"\n\"On hold\" = \"opt-hold\"\n",
+    "env": {},
+    "calls": [
+      {
+        "argv": [
+          "gh",
+          "api",
+          "graphql",
+          "-f",
+          "query=\nquery($owner: String!, $name: String!, $number: Int!) {\n  repository(owner: $owner, name: $name) {\n    issue(number: $number) {\n      projectItems(first: 20) {\n        nodes {\n          id\n          project { id }\n          fieldValueByName(name: \"Status\") {\n            ... on ProjectV2ItemFieldSingleSelectValue { name }\n          }\n        }\n      }\n    }\n  }\n}\n",
+          "-f",
+          "owner=Owner",
+          "-f",
+          "name=repo",
+          "-F",
+          "number=7"
+        ],
+        "stdin": null,
+        "stdout": "{\"data\": {\"repository\": {\"issue\": {\"projectItems\": {\"nodes\": [{\"id\": \"PVTI_a\", \"project\": {\"id\": \"PVT_test\"}, \"fieldValueByName\": null}]}}}}}",
+        "stderr": "",
+        "code": 0
+      }
+    ],
+    "expect": {
+      "code": 1,
+      "stdout": "board: ERROR — #7 is without status, not at Done\n",
+      "stderr": ""
+    }
+  },
+  {
+    "name": "test_reopen_api_error_fails",
+    "argv": [
+      "--reopen",
+      "7"
+    ],
+    "config": "\n[forge]\nkind = \"github\"\nrepo = \"Owner/repo\"\n\n[forge.board]\nproject_number = 1\nproject_id = \"PVT_test\"\nstatus_field_id = \"FIELD_test\"\n\n[forge.board.status_options]\n\"To do\" = \"opt-todo\"\n\"In progress\" = \"opt-progress\"\nDone = \"opt-done\"\n\"On hold\" = \"opt-hold\"\n",
+    "env": {},
+    "calls": [
+      {
+        "argv": [
+          "gh",
+          "api",
+          "graphql",
+          "-f",
+          "query=\nquery($owner: String!, $name: String!, $number: Int!) {\n  repository(owner: $owner, name: $name) {\n    issue(number: $number) {\n      projectItems(first: 20) {\n        nodes {\n          id\n          project { id }\n          fieldValueByName(name: \"Status\") {\n            ... on ProjectV2ItemFieldSingleSelectValue { name }\n          }\n        }\n      }\n    }\n  }\n}\n",
+          "-f",
+          "owner=Owner",
+          "-f",
+          "name=repo",
+          "-F",
+          "number=7"
+        ],
+        "stdin": null,
+        "stdout": "",
+        "stderr": "",
+        "code": 1
+      }
+    ],
+    "expect": {
+      "code": 1,
+      "stdout": "board: ERROR — CalledProcessError\n",
+      "stderr": ""
+    }
+  },
+  {
+    "name": "test_reopen_edit_error_fails — only go: the Python script waits out its fixed 60 s timeout",
+    "argv": [
+      "--reopen",
+      "7"
+    ],
+    "config": "\n[forge]\nkind = \"github\"\nrepo = \"Owner/repo\"\n\n[forge.board]\nproject_number = 1\nproject_id = \"PVT_test\"\nstatus_field_id = \"FIELD_test\"\n\n[forge.board.status_options]\n\"To do\" = \"opt-todo\"\n\"In progress\" = \"opt-progress\"\nDone = \"opt-done\"\n\"On hold\" = \"opt-hold\"\n",
+    "env": {},
+    "calls": [
+      {
+        "argv": [
+          "gh",
+          "api",
+          "graphql",
+          "-f",
+          "query=\nquery($owner: String!, $name: String!, $number: Int!) {\n  repository(owner: $owner, name: $name) {\n    issue(number: $number) {\n      projectItems(first: 20) {\n        nodes {\n          id\n          project { id }\n          fieldValueByName(name: \"Status\") {\n            ... on ProjectV2ItemFieldSingleSelectValue { name }\n          }\n        }\n      }\n    }\n  }\n}\n",
+          "-f",
+          "owner=Owner",
+          "-f",
+          "name=repo",
+          "-F",
+          "number=7"
+        ],
+        "stdin": null,
+        "stdout": "{\"data\": {\"repository\": {\"issue\": {\"projectItems\": {\"nodes\": [{\"id\": \"PVTI_a\", \"project\": {\"id\": \"PVT_test\"}, \"fieldValueByName\": {\"name\": \"Done\"}}]}}}}}",
+        "stderr": "",
+        "code": 0
+      },
+      {
+        "argv": [
+          "gh",
+          "project",
+          "item-edit",
+          "--id",
+          "PVTI_a",
+          "--project-id",
+          "PVT_test",
+          "--field-id",
+          "FIELD_test",
+          "--single-select-option-id",
+          "opt-progress"
+        ],
+        "stdin": null,
+        "stdout": "",
+        "stderr": "",
+        "code": 0,
+        "timeout": true
+      }
+    ],
+    "expect": {
+      "code": 1,
+      "stdout": "board: ERROR — TimeoutExpired\n",
+      "stderr": ""
+    },
+    "only": "go"
+  },
+  {
+    "name": "test_reopen_read_back_mismatch_fails",
+    "argv": [
+      "--reopen",
+      "7"
+    ],
+    "config": "\n[forge]\nkind = \"github\"\nrepo = \"Owner/repo\"\n\n[forge.board]\nproject_number = 1\nproject_id = \"PVT_test\"\nstatus_field_id = \"FIELD_test\"\n\n[forge.board.status_options]\n\"To do\" = \"opt-todo\"\n\"In progress\" = \"opt-progress\"\nDone = \"opt-done\"\n\"On hold\" = \"opt-hold\"\n",
+    "env": {},
+    "calls": [
+      {
+        "argv": [
+          "gh",
+          "api",
+          "graphql",
+          "-f",
+          "query=\nquery($owner: String!, $name: String!, $number: Int!) {\n  repository(owner: $owner, name: $name) {\n    issue(number: $number) {\n      projectItems(first: 20) {\n        nodes {\n          id\n          project { id }\n          fieldValueByName(name: \"Status\") {\n            ... on ProjectV2ItemFieldSingleSelectValue { name }\n          }\n        }\n      }\n    }\n  }\n}\n",
+          "-f",
+          "owner=Owner",
+          "-f",
+          "name=repo",
+          "-F",
+          "number=7"
+        ],
+        "stdin": null,
+        "stdout": "{\"data\": {\"repository\": {\"issue\": {\"projectItems\": {\"nodes\": [{\"id\": \"PVTI_a\", \"project\": {\"id\": \"PVT_test\"}, \"fieldValueByName\": {\"name\": \"Done\"}}]}}}}}",
+        "stderr": "",
+        "code": 0
+      },
+      {
+        "argv": [
+          "gh",
+          "project",
+          "item-edit",
+          "--id",
+          "PVTI_a",
+          "--project-id",
+          "PVT_test",
+          "--field-id",
+          "FIELD_test",
+          "--single-select-option-id",
+          "opt-progress"
+        ],
+        "stdin": null,
+        "stdout": "",
+        "stderr": "",
+        "code": 0
+      },
+      {
+        "argv": [
+          "gh",
+          "api",
+          "graphql",
+          "-f",
+          "query=\nquery($owner: String!, $name: String!, $number: Int!) {\n  repository(owner: $owner, name: $name) {\n    issue(number: $number) {\n      projectItems(first: 20) {\n        nodes {\n          id\n          project { id }\n          fieldValueByName(name: \"Status\") {\n            ... on ProjectV2ItemFieldSingleSelectValue { name }\n          }\n        }\n      }\n    }\n  }\n}\n",
+          "-f",
+          "owner=Owner",
+          "-f",
+          "name=repo",
+          "-F",
+          "number=7"
+        ],
+        "stdin": null,
+        "stdout": "{\"data\": {\"repository\": {\"issue\": {\"projectItems\": {\"nodes\": [{\"id\": \"PVTI_a\", \"project\": {\"id\": \"PVT_test\"}, \"fieldValueByName\": {\"name\": \"Done\"}}]}}}}}",
+        "stderr": "",
+        "code": 0
+      }
+    ],
+    "expect": {
+      "code": 1,
+      "stdout": "board: ERROR — #7 is at Done after the edit\n",
+      "stderr": ""
+    }
+  },
+  {
+    "name": "test_reopen_not_on_board",
+    "argv": [
+      "--reopen",
+      "7"
+    ],
+    "config": "\n[forge]\nkind = \"github\"\nrepo = \"Owner/repo\"\n\n[forge.board]\nproject_number = 1\nproject_id = \"PVT_test\"\nstatus_field_id = \"FIELD_test\"\n\n[forge.board.status_options]\n\"To do\" = \"opt-todo\"\n\"In progress\" = \"opt-progress\"\nDone = \"opt-done\"\n\"On hold\" = \"opt-hold\"\n",
+    "env": {},
+    "calls": [
+      {
+        "argv": [
+          "gh",
+          "api",
+          "graphql",
+          "-f",
+          "query=\nquery($owner: String!, $name: String!, $number: Int!) {\n  repository(owner: $owner, name: $name) {\n    issue(number: $number) {\n      projectItems(first: 20) {\n        nodes {\n          id\n          project { id }\n          fieldValueByName(name: \"Status\") {\n            ... on ProjectV2ItemFieldSingleSelectValue { name }\n          }\n        }\n      }\n    }\n  }\n}\n",
+          "-f",
+          "owner=Owner",
+          "-f",
+          "name=repo",
+          "-F",
+          "number=7"
+        ],
+        "stdin": null,
+        "stdout": "{\"data\": {\"repository\": {\"issue\": {\"projectItems\": {\"nodes\": []}}}}}",
+        "stderr": "",
+        "code": 0
+      }
+    ],
+    "expect": {
+      "code": 1,
+      "stdout": "board: ERROR — #7 is not on the board\n",
+      "stderr": ""
+    }
+  },
+  {
+    "name": "test_reopen_invalid_argument[--reopen]",
+    "argv": [
+      "--reopen"
+    ],
+    "config": "\n[forge]\nkind = \"github\"\nrepo = \"Owner/repo\"\n\n[forge.board]\nproject_number = 1\nproject_id = \"PVT_test\"\nstatus_field_id = \"FIELD_test\"\n\n[forge.board.status_options]\n\"To do\" = \"opt-todo\"\n\"In progress\" = \"opt-progress\"\nDone = \"opt-done\"\n\"On hold\" = \"opt-hold\"\n",
+    "env": {},
+    "calls": [],
+    "expect": {
+      "code": 1,
+      "stdout_contains": [
+        "board: usage: ",
+        " --reopen <nr>\n"
+      ]
+    }
+  },
+  {
+    "name": "test_reopen_invalid_argument[--reopen-x]",
+    "argv": [
+      "--reopen",
+      "x"
+    ],
+    "config": "\n[forge]\nkind = \"github\"\nrepo = \"Owner/repo\"\n\n[forge.board]\nproject_number = 1\nproject_id = \"PVT_test\"\nstatus_field_id = \"FIELD_test\"\n\n[forge.board.status_options]\n\"To do\" = \"opt-todo\"\n\"In progress\" = \"opt-progress\"\nDone = \"opt-done\"\n\"On hold\" = \"opt-hold\"\n",
+    "env": {},
+    "calls": [],
+    "expect": {
+      "code": 1,
+      "stdout_contains": [
+        "board: usage: ",
+        " --reopen <nr>\n"
+      ]
+    }
+  },
+  {
+    "name": "test_reopen_invalid_argument[--reopen-1-2]",
+    "argv": [
+      "--reopen",
+      "1",
+      "2"
+    ],
+    "config": "\n[forge]\nkind = \"github\"\nrepo = \"Owner/repo\"\n\n[forge.board]\nproject_number = 1\nproject_id = \"PVT_test\"\nstatus_field_id = \"FIELD_test\"\n\n[forge.board.status_options]\n\"To do\" = \"opt-todo\"\n\"In progress\" = \"opt-progress\"\nDone = \"opt-done\"\n\"On hold\" = \"opt-hold\"\n",
+    "env": {},
+    "calls": [],
+    "expect": {
+      "code": 1,
+      "stdout_contains": [
+        "board: usage: ",
+        " --reopen <nr>\n"
+      ]
+    }
+  },
+  {
+    "name": "test_other_repo_sends_own_owner_name_and_board",
+    "argv": [
+      "7"
+    ],
+    "config": "\n[forge]\nkind = \"github\"\nrepo = \"Other/repo\"\n\n[forge.board]\nproject_number = 1\nproject_id = \"PVT_other\"\nstatus_field_id = \"FIELD_other\"\n\n[forge.board.status_options]\n\"To do\" = \"opt-todo\"\n\"In progress\" = \"opt-progress\"\nDone = \"opt-done\"\n\"On hold\" = \"opt-hold\"\n",
+    "env": {},
+    "calls": [
+      {
+        "argv": [
+          "gh",
+          "api",
+          "graphql",
+          "-f",
+          "query=\nquery($owner: String!, $name: String!, $number: Int!) {\n  repository(owner: $owner, name: $name) {\n    issue(number: $number) {\n      projectItems(first: 20) {\n        nodes {\n          id\n          project { id }\n          fieldValueByName(name: \"Status\") {\n            ... on ProjectV2ItemFieldSingleSelectValue { name }\n          }\n        }\n      }\n    }\n  }\n}\n",
+          "-f",
+          "owner=Other",
+          "-f",
+          "name=repo",
+          "-F",
+          "number=7"
+        ],
+        "stdin": null,
+        "stdout": "{\"data\": {\"repository\": {\"issue\": {\"projectItems\": {\"nodes\": [{\"id\": \"PVTI_a\", \"project\": {\"id\": \"PVT_other\"}, \"fieldValueByName\": {\"name\": \"To do\"}}]}}}}}",
+        "stderr": "",
+        "code": 0
+      },
+      {
+        "argv": [
+          "gh",
+          "project",
+          "item-edit",
+          "--id",
+          "PVTI_a",
+          "--project-id",
+          "PVT_other",
+          "--field-id",
+          "FIELD_other",
+          "--single-select-option-id",
+          "opt-progress"
+        ],
+        "stdin": null,
+        "stdout": "",
+        "stderr": "",
+        "code": 0
+      }
+    ],
+    "expect": {
+      "code": 0,
+      "stdout": "board: #7 To do → In progress\n",
+      "stderr": ""
+    }
+  },
+  {
+    "name": "test_broken_config_is_error[7]",
+    "argv": [
+      "7"
+    ],
+    "config": "dit is geen toml [",
+    "env": {},
+    "calls": [],
+    "expect": {
+      "code": 2,
+      "stdout_contains": [
+        "board: ERROR — ConfigError: ",
+        "lighthouse.toml"
+      ]
+    }
+  },
+  {
+    "name": "test_broken_config_is_error[--reopen-7]",
+    "argv": [
+      "--reopen",
+      "7"
+    ],
+    "config": "dit is geen toml [",
+    "env": {},
+    "calls": [],
+    "expect": {
+      "code": 2,
+      "stdout_contains": [
+        "board: ERROR — ConfigError: ",
+        "lighthouse.toml"
+      ]
+    }
+  },
+  {
+    "name": "test_board_without_repo_is_an_error",
+    "argv": [
+      "7"
+    ],
+    "config": "\n[forge]\nkind = \"github\"\n\n[forge.board]\nproject_number = 1\nproject_id = \"PVT_test\"\nstatus_field_id = \"FIELD_test\"\n\n[forge.board.status_options]\n\"To do\" = \"opt-todo\"\n\"In progress\" = \"opt-progress\"\nDone = \"opt-done\"\n\"On hold\" = \"opt-hold\"\n",
+    "env": {},
+    "calls": [],
+    "expect": {
+      "code": 2,
+      "stdout_contains": [
+        "board: ERROR — ",
+        "forge.repo"
+      ]
+    }
+  },
+  {
+    "name": "test_no_board_default_mode",
+    "argv": [
+      "7"
+    ],
+    "config": "[forge]\nrepo = \"Owner/repo\"\n",
+    "env": {},
+    "calls": [],
+    "expect": {
+      "code": 0,
+      "stdout": "board: skipped — no [forge.board] configured\n",
+      "stderr": ""
+    }
+  },
+  {
+    "name": "test_no_board_reopen",
+    "argv": [
+      "--reopen",
+      "7"
+    ],
+    "config": "[project]\nlanguage = \"en\"\n",
+    "env": {},
+    "calls": [],
+    "expect": {
+      "code": 0,
+      "stdout": "board: skipped — no [forge.board] configured\n",
+      "stderr": ""
+    }
+  },
+  {
+    "name": "test_runs_as_installed_file",
+    "argv": [
+      "7"
+    ],
+    "config": "[forge]\nrepo = \"Owner/repo\"\n",
+    "env": {},
+    "calls": [],
+    "expect": {
+      "code": 0,
+      "stdout": "board: skipped — no [forge.board] configured\n",
+      "stderr": ""
+    }
+  },
+  {
+    "name": "test_graphql_reply_with_trailing_newline",
+    "argv": [
+      "7"
+    ],
+    "config": "\n[forge]\nkind = \"github\"\nrepo = \"Owner/repo\"\n\n[forge.board]\nproject_number = 1\nproject_id = \"PVT_test\"\nstatus_field_id = \"FIELD_test\"\n\n[forge.board.status_options]\n\"To do\" = \"opt-todo\"\n\"In progress\" = \"opt-progress\"\nDone = \"opt-done\"\n\"On hold\" = \"opt-hold\"\n",
+    "env": {},
+    "calls": [
+      {
+        "argv": [
+          "gh",
+          "api",
+          "graphql",
+          "-f",
+          "query=\nquery($owner: String!, $name: String!, $number: Int!) {\n  repository(owner: $owner, name: $name) {\n    issue(number: $number) {\n      projectItems(first: 20) {\n        nodes {\n          id\n          project { id }\n          fieldValueByName(name: \"Status\") {\n            ... on ProjectV2ItemFieldSingleSelectValue { name }\n          }\n        }\n      }\n    }\n  }\n}\n",
+          "-f",
+          "owner=Owner",
+          "-f",
+          "name=repo",
+          "-F",
+          "number=7"
+        ],
+        "stdin": null,
+        "stdout": "{\"data\": {\"repository\": {\"issue\": {\"projectItems\": {\"nodes\": [{\"id\": \"PVTI_a\", \"project\": {\"id\": \"PVT_test\"}, \"fieldValueByName\": {\"name\": \"To do\"}}]}}}}}\n",
+        "stderr": "",
+        "code": 0
+      },
+      {
+        "argv": [
+          "gh",
+          "project",
+          "item-edit",
+          "--id",
+          "PVTI_a",
+          "--project-id",
+          "PVT_test",
+          "--field-id",
+          "FIELD_test",
+          "--single-select-option-id",
+          "opt-progress"
+        ],
+        "stdin": null,
+        "stdout": "",
+        "stderr": "",
+        "code": 0
+      }
+    ],
+    "expect": {
+      "code": 0,
+      "stdout": "board: #7 To do → In progress\n",
+      "stderr": ""
+    }
+  },
+  {
+    "name": "test_edit_failure_does_not_block",
+    "argv": [
+      "7"
+    ],
+    "config": "\n[forge]\nkind = \"github\"\nrepo = \"Owner/repo\"\n\n[forge.board]\nproject_number = 1\nproject_id = \"PVT_test\"\nstatus_field_id = \"FIELD_test\"\n\n[forge.board.status_options]\n\"To do\" = \"opt-todo\"\n\"In progress\" = \"opt-progress\"\nDone = \"opt-done\"\n\"On hold\" = \"opt-hold\"\n",
+    "env": {},
+    "calls": [
+      {
+        "argv": [
+          "gh",
+          "api",
+          "graphql",
+          "-f",
+          "query=\nquery($owner: String!, $name: String!, $number: Int!) {\n  repository(owner: $owner, name: $name) {\n    issue(number: $number) {\n      projectItems(first: 20) {\n        nodes {\n          id\n          project { id }\n          fieldValueByName(name: \"Status\") {\n            ... on ProjectV2ItemFieldSingleSelectValue { name }\n          }\n        }\n      }\n    }\n  }\n}\n",
+          "-f",
+          "owner=Owner",
+          "-f",
+          "name=repo",
+          "-F",
+          "number=7"
+        ],
+        "stdin": null,
+        "stdout": "{\"data\": {\"repository\": {\"issue\": {\"projectItems\": {\"nodes\": [{\"id\": \"PVTI_a\", \"project\": {\"id\": \"PVT_test\"}, \"fieldValueByName\": {\"name\": \"To do\"}}]}}}}}",
+        "stderr": "",
+        "code": 0
+      },
+      {
+        "argv": [
+          "gh",
+          "project",
+          "item-edit",
+          "--id",
+          "PVTI_a",
+          "--project-id",
+          "PVT_test",
+          "--field-id",
+          "FIELD_test",
+          "--single-select-option-id",
+          "opt-progress"
+        ],
+        "stdin": null,
+        "stdout": "",
+        "stderr": "",
+        "code": 1
+      }
+    ],
+    "expect": {
+      "code": 0,
+      "stdout": "board: skipped (CalledProcessError)\n",
+      "stderr": ""
+    }
+  },
+  {
+    "name": "test_invalid_json_is_skipped",
+    "argv": [
+      "7"
+    ],
+    "config": "\n[forge]\nkind = \"github\"\nrepo = \"Owner/repo\"\n\n[forge.board]\nproject_number = 1\nproject_id = \"PVT_test\"\nstatus_field_id = \"FIELD_test\"\n\n[forge.board.status_options]\n\"To do\" = \"opt-todo\"\n\"In progress\" = \"opt-progress\"\nDone = \"opt-done\"\n\"On hold\" = \"opt-hold\"\n",
+    "env": {},
+    "calls": [
+      {
+        "argv": [
+          "gh",
+          "api",
+          "graphql",
+          "-f",
+          "query=\nquery($owner: String!, $name: String!, $number: Int!) {\n  repository(owner: $owner, name: $name) {\n    issue(number: $number) {\n      projectItems(first: 20) {\n        nodes {\n          id\n          project { id }\n          fieldValueByName(name: \"Status\") {\n            ... on ProjectV2ItemFieldSingleSelectValue { name }\n          }\n        }\n      }\n    }\n  }\n}\n",
+          "-f",
+          "owner=Owner",
+          "-f",
+          "name=repo",
+          "-F",
+          "number=7"
+        ],
+        "stdin": null,
+        "stdout": "not json",
+        "stderr": "",
+        "code": 0
+      }
+    ],
+    "expect": {
+      "code": 0,
+      "stdout": "board: skipped (JSONDecodeError)\n",
+      "stderr": ""
+    }
+  },
+  {
+    "name": "test_reply_without_data_is_skipped",
+    "argv": [
+      "7"
+    ],
+    "config": "\n[forge]\nkind = \"github\"\nrepo = \"Owner/repo\"\n\n[forge.board]\nproject_number = 1\nproject_id = \"PVT_test\"\nstatus_field_id = \"FIELD_test\"\n\n[forge.board.status_options]\n\"To do\" = \"opt-todo\"\n\"In progress\" = \"opt-progress\"\nDone = \"opt-done\"\n\"On hold\" = \"opt-hold\"\n",
+    "env": {},
+    "calls": [
+      {
+        "argv": [
+          "gh",
+          "api",
+          "graphql",
+          "-f",
+          "query=\nquery($owner: String!, $name: String!, $number: Int!) {\n  repository(owner: $owner, name: $name) {\n    issue(number: $number) {\n      projectItems(first: 20) {\n        nodes {\n          id\n          project { id }\n          fieldValueByName(name: \"Status\") {\n            ... on ProjectV2ItemFieldSingleSelectValue { name }\n          }\n        }\n      }\n    }\n  }\n}\n",
+          "-f",
+          "owner=Owner",
+          "-f",
+          "name=repo",
+          "-F",
+          "number=7"
+        ],
+        "stdin": null,
+        "stdout": "{}",
+        "stderr": "",
+        "code": 0
+      }
+    ],
+    "expect": {
+      "code": 0,
+      "stdout": "board: skipped (KeyError)\n",
+      "stderr": ""
+    }
+  },
+  {
+    "name": "test_reply_with_null_repository_is_skipped",
+    "argv": [
+      "7"
+    ],
+    "config": "\n[forge]\nkind = \"github\"\nrepo = \"Owner/repo\"\n\n[forge.board]\nproject_number = 1\nproject_id = \"PVT_test\"\nstatus_field_id = \"FIELD_test\"\n\n[forge.board.status_options]\n\"To do\" = \"opt-todo\"\n\"In progress\" = \"opt-progress\"\nDone = \"opt-done\"\n\"On hold\" = \"opt-hold\"\n",
+    "env": {},
+    "calls": [
+      {
+        "argv": [
+          "gh",
+          "api",
+          "graphql",
+          "-f",
+          "query=\nquery($owner: String!, $name: String!, $number: Int!) {\n  repository(owner: $owner, name: $name) {\n    issue(number: $number) {\n      projectItems(first: 20) {\n        nodes {\n          id\n          project { id }\n          fieldValueByName(name: \"Status\") {\n            ... on ProjectV2ItemFieldSingleSelectValue { name }\n          }\n        }\n      }\n    }\n  }\n}\n",
+          "-f",
+          "owner=Owner",
+          "-f",
+          "name=repo",
+          "-F",
+          "number=7"
+        ],
+        "stdin": null,
+        "stdout": "{\"data\": {\"repository\": null}}",
+        "stderr": "",
+        "code": 0
+      }
+    ],
+    "expect": {
+      "code": 0,
+      "stdout": "board: skipped (TypeError)\n",
+      "stderr": ""
+    }
+  },
+  {
+    "name": "test_number_is_sent_as_int",
+    "argv": [
+      "007"
+    ],
+    "config": "\n[forge]\nkind = \"github\"\nrepo = \"Owner/repo\"\n\n[forge.board]\nproject_number = 1\nproject_id = \"PVT_test\"\nstatus_field_id = \"FIELD_test\"\n\n[forge.board.status_options]\n\"To do\" = \"opt-todo\"\n\"In progress\" = \"opt-progress\"\nDone = \"opt-done\"\n\"On hold\" = \"opt-hold\"\n",
+    "env": {},
+    "calls": [
+      {
+        "argv": [
+          "gh",
+          "api",
+          "graphql",
+          "-f",
+          "query=\nquery($owner: String!, $name: String!, $number: Int!) {\n  repository(owner: $owner, name: $name) {\n    issue(number: $number) {\n      projectItems(first: 20) {\n        nodes {\n          id\n          project { id }\n          fieldValueByName(name: \"Status\") {\n            ... on ProjectV2ItemFieldSingleSelectValue { name }\n          }\n        }\n      }\n    }\n  }\n}\n",
+          "-f",
+          "owner=Owner",
+          "-f",
+          "name=repo",
+          "-F",
+          "number=7"
+        ],
+        "stdin": null,
+        "stdout": "{\"data\": {\"repository\": {\"issue\": {\"projectItems\": {\"nodes\": [{\"id\": \"PVTI_a\", \"project\": {\"id\": \"PVT_test\"}, \"fieldValueByName\": {\"name\": \"Controller\"}}]}}}}}",
+        "stderr": "",
+        "code": 0
+      }
+    ],
+    "expect": {
+      "code": 0,
+      "stdout": "board: #7 stays at Controller\n",
+      "stderr": ""
+    }
+  },
+  {
+    "name": "test_reopen_without_board_node_status_name_empty",
+    "argv": [
+      "--reopen",
+      "7"
+    ],
+    "config": "\n[forge]\nkind = \"github\"\nrepo = \"Owner/repo\"\n\n[forge.board]\nproject_number = 1\nproject_id = \"PVT_test\"\nstatus_field_id = \"FIELD_test\"\n\n[forge.board.status_options]\n\"To do\" = \"opt-todo\"\n\"In progress\" = \"opt-progress\"\nDone = \"opt-done\"\n\"On hold\" = \"opt-hold\"\n",
+    "env": {},
+    "calls": [
+      {
+        "argv": [
+          "gh",
+          "api",
+          "graphql",
+          "-f",
+          "query=\nquery($owner: String!, $name: String!, $number: Int!) {\n  repository(owner: $owner, name: $name) {\n    issue(number: $number) {\n      projectItems(first: 20) {\n        nodes {\n          id\n          project { id }\n          fieldValueByName(name: \"Status\") {\n            ... on ProjectV2ItemFieldSingleSelectValue { name }\n          }\n        }\n      }\n    }\n  }\n}\n",
+          "-f",
+          "owner=Owner",
+          "-f",
+          "name=repo",
+          "-F",
+          "number=7"
+        ],
+        "stdin": null,
+        "stdout": "{\"data\": {\"repository\": {\"issue\": {\"projectItems\": {\"nodes\": [{\"id\": \"PVTI_a\", \"project\": {\"id\": \"PVT_test\"}, \"fieldValueByName\": {\"name\": \"\"}}]}}}}}",
+        "stderr": "",
+        "code": 0
+      }
+    ],
+    "expect": {
+      "code": 1,
+      "stdout": "board: ERROR — #7 is without status, not at Done\n",
+      "stderr": ""
+    }
+  }
+]

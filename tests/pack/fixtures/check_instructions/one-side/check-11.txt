@@ -1,0 +1,13 @@
+FAIL  mirror-content differs from no recorded exceptions ([paths] mirror_exceptions is not set) (- recorded, + now; < .claude, > .agents):
+      @@ -1 +1,7 @@
+      -
+      +=== demo/empty.md
+      +diff --git a/{root}/.agents/skills/demo/empty.md b/{root}/.agents/skills/demo/empty.md
+      +new file mode 100644
+      +index 000000000000..e69de29bb2d1
+      +=== demo/extra.md
+      +< Only on the left.
+      +< Second line.
+      Bring the other side in line. If the difference is deliberate per harness, record it with
+      [paths] mirror_exceptions = "<file>" in lighthouse.toml, and then
+      lighthouse check-instructions --print-mirror-exceptions > <file>

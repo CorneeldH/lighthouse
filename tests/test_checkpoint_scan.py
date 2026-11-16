@@ -27,13 +27,21 @@ from pathlib import Path
 
 import pytest
 
-from tests.pack._testkit import GIT_ENV, git, init_repo, tool_bin
+from tests.pack._testkit import (
+    GIT_ENV,
+    git,
+    init_repo,
+    lighthouse_dir,
+    path_with_lighthouse,
+    tool_bin,
+)
 from tests.test_pre_push_secret_scan import FAKE_PAT, needs_gitleaks
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE = ROOT / "tools" / "hooks" / "checkpoint_scan.py"
 
-# The real tools the wrapped command line needs besides the stubs.
+# The real tools the wrapped command line needs besides the stubs. `lighthouse`, which reads
+# the limits, comes from `lighthouse_dir()`, after the stubs (see `_tools_path`).
 REAL_TOOLS = ("env", "nice", "python3")
 
 SYSTEMCTL_OK = "#!/bin/sh\nexit 0\n"
@@ -76,14 +84,21 @@ def _host(tmp_path: Path, extra: str = "") -> Path:
     return path
 
 
+def _tools_path(bin_dir: Path, tools: tuple[str, ...], stubs: dict[str, str]) -> str:
+    """`tools` and `stubs` in `bin_dir`, then the `lighthouse` built from this checkout."""
+    return f"{tool_bin(bin_dir, tools, stubs=stubs)}{os.pathsep}{lighthouse_dir()}"
+
+
 def _stub_path(tmp_path: Path, stubs: dict[str, str]) -> str:
-    return str(tool_bin(tmp_path / "bin", REAL_TOOLS, stubs=stubs))
+    return _tools_path(tmp_path / "bin", REAL_TOOLS, stubs)
 
 
 @pytest.fixture
 def isolated(tmp_path, monkeypatch):
-    """In-process tests: an own host.toml, and env changes undone afterwards."""
+    """In-process tests: an own host.toml, the `lighthouse` of this checkout first on PATH,
+    and env changes undone afterwards."""
     monkeypatch.setenv("LIGHTHOUSE_HOST_TOML", str(_host(tmp_path)))
+    monkeypatch.setenv("PATH", path_with_lighthouse())
     monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
     return monkeypatch
 
@@ -458,7 +473,7 @@ class ScanFx:
         stubs = dict(BOUNDED, gitleaks=gitleaks) if gitleaks else BOUNDED
         self.env = dict(
             os.environ,
-            PATH=str(tool_bin(tmp_path / "bin", SCAN_TOOLS, stubs=stubs)),
+            PATH=_tools_path(tmp_path / "bin", SCAN_TOOLS, stubs),
             LIGHTHOUSE_HOST_TOML=str(_host(tmp_path)),
             FAKE_GITLEAKS_LOG=str(self.log),
         )
@@ -699,28 +714,33 @@ def test_ledger_key_covers_the_scan_method(cs, sx, monkeypatch):
 
 
 def test_uncaught_error_is_could_not_check(tmp_path):
-    """A module without `.lighthouse/lib` next to it fails on the import of config.py:
-    exit 2 (could not check), never 1, which the hook reads as findings."""
-    lonely = tmp_path / "tools" / "hooks" / "checkpoint_scan.py"
-    lonely.parent.mkdir(parents=True)
-    shutil.copy(MODULE, lonely)
+    """A CPU quota that is no percentage fails on the int() of `_gomaxprocs`, an error no
+    code path catches: exit 2 (could not check), never 1, which the hook reads as findings."""
     sx = ScanFx(tmp_path)
-    refs = _bulk_checkpoints(sx.repo, 0, 1)
-    argv = [f"{ref}={sha}" for ref, sha in refs.items()]
-
-    result = subprocess.run(
-        [sys.executable, "-I", str(lonely), "scan", "--remote", "ckpt", "--config", str(sx.config), *argv],
-        capture_output=True,
-        text=True,
-        env=sx.env,
-        cwd=sx.repo,
-        timeout=60,
-        check=False,
+    fake = tool_bin(
+        tmp_path / "fake",
+        (),
+        stubs={"lighthouse": '#!/bin/sh\n[ "$2" = host.scan_cpu_quota ] && echo lots && exit 0\nexit 1\n'},
     )
+    refs = _bulk_checkpoints(sx.repo, 0, 1)
+
+    result = sx.scan(refs, PATH=f"{fake}{os.pathsep}{sx.env['PATH']}")
 
     assert result.returncode == 2, result.stderr
-    assert "secret-scan: COULD NOT CHECK — ModuleNotFoundError: " in result.stderr
+    assert "secret-scan: COULD NOT CHECK — ValueError: " in result.stderr
     assert "Traceback" not in result.stderr
+
+
+def test_missing_lighthouse_is_could_not_check(tmp_path):
+    """Without `lighthouse` nothing reads the limits: exit 2, and gitleaks never runs."""
+    marker = tmp_path / "ran"
+    stubs = dict(BOUNDED, gitleaks=f"#!/bin/sh\ntouch {marker}\nexit 0\n")
+
+    result = _cli(tmp_path, str(tool_bin(tmp_path / "bin", REAL_TOOLS, stubs=stubs)), "gitleaks")
+
+    assert result.returncode == 2
+    assert "COULD NOT CHECK — lighthouse is not on PATH" in result.stderr
+    assert not marker.exists()
 
 
 def test_under_the_cap_says_nothing(sx):

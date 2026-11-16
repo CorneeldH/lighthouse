@@ -24,8 +24,7 @@ from pathlib import Path
 
 import pytest
 
-from lighthouse_lib import config
-from tests.pack._testkit import CORE, PACKS
+from tests.pack._testkit import CORE, PACKS, is_known_key
 
 AGENTS = CORE / "agents"
 TEXT_SUFFIXES = {".md", ".sh", ".json", ".txt"}
@@ -58,10 +57,6 @@ PLANNED: set[str] = set()
 # An installed path in a skill -> where it lives in a package directory.
 _PATH_REFS = (
     (re.compile(r"\.lighthouse/scripts/([\w./-]*\w)"), lambda m, pack: pack / "scripts" / m[1]),
-    (
-        re.compile(r"\.lighthouse/lib/lighthouse_lib/(\w+)\.py"),
-        lambda m, pack: pack / "lib" / f"{m[1]}.py",
-    ),
     (re.compile(r"\.claude/hooks/lighthouse/([\w.-]+)"), lambda m, pack: pack / "hooks" / m[1]),
     (
         re.compile(r"\.claude/agents/lighthouse-([\w-]+)\.md"),
@@ -193,7 +188,7 @@ def test_config_keys_known(unit):
             key = m[1].strip("\"'")
             if key == "host-check" or key.startswith(("$", "-")) or "<" in key:
                 continue
-            if not config.is_known_key(key):
+            if not is_known_key(key):
                 unknown.append(f"{rel}: {key}")
     assert not unknown, "\n".join(unknown)
 
@@ -204,7 +199,7 @@ def test_config_re_finds_the_keys():
     keys = {m[1] for m in _CONFIG_RE.finditer(text)}
     assert {"labels.blocked_issue", "labels.needs_shaping", "forge.repo"} <= keys, keys
     assert [m[1] for m in _CONFIG_RE.finditer("x `lighthouse config --json forge.board` y")] == ["forge.board"]
-    assert not _CONFIG_RE.search("python3 .lighthouse/lib/lighthouse_lib/config.py forge.repo")
+    assert not _CONFIG_RE.search("python3 .lighthouse/scripts/config.py forge.repo")
 
 
 @pytest.mark.parametrize("unit", UNITS)
@@ -295,14 +290,14 @@ def _install_skills(root: Path) -> None:
 
 
 def test_descriptions_pass_the_overlap_check(tmp_path):
-    """Check 4 of check-instructions.sh fails two descriptions that share five trigger words
+    """Check 4 of `lighthouse check-instructions` fails two descriptions that share five trigger words
     unless one carries a bounding clause it recognises ("not for", "instead", …). The core
     skills land together in every repo, and a language package adds its own, so all of them
     together must pass it."""
     import os
     import subprocess
 
-    from tests.pack._testkit import install_core
+    from tests.pack._testkit import install_core, lighthouse_dir
 
     install_core(tmp_path)
     _install_skills(tmp_path)
@@ -312,8 +307,9 @@ def test_descriptions_pass_the_overlap_check(tmp_path):
         "CHECK_INSTRUCTIONS_PERSONAL": str(tmp_path / "no-personal-skills"),
     }
     out = subprocess.run(
-        [str(tmp_path / ".lighthouse/scripts/check-instructions.sh")],
+        [str(lighthouse_dir() / "lighthouse"), "check-instructions"],
         env=env,
+        cwd=tmp_path,
         capture_output=True,
         text=True,
         check=False,
@@ -332,9 +328,9 @@ _TOOL_USES = {
     "git": r"\bgit (-C|worktree|log|fetch|diff|status|rev-parse|branch|push|commit|grep|show"
     r"|merge-base|checkout|switch|ls-files|add)\b",
     "python3": r"\bpython3\b",
-    # A lighthouse Python module reads lighthouse.toml through tomllib; `lighthouse config`
+    # A lighthouse Python script reads lighthouse.toml through tomllib; `lighthouse config`
     # does not (#274).
-    "tomllib": r"python3 \.lighthouse/(lib/lighthouse_lib|scripts)/|tomllib",
+    "tomllib": r"python3 \.lighthouse/scripts/|tomllib",
 }
 
 
@@ -368,10 +364,12 @@ def test_requires_python_only_where_the_skill_uses_it(skill):
 
 
 def test_tool_patterns_see_python_and_tomllib():
-    """Both directions pass empty when the patterns miss: they must hit a real skill."""
-    text = "\n".join(_texts(CORE / "skills" / "close-issue").values())
-    assert re.search(_TOOL_USES["tomllib"], text, re.MULTILINE)
-    assert re.search(_TOOL_USES["python3"], text, re.MULTILINE)
+    """Both directions pass empty when the patterns miss: both must hit a real unit. No core unit
+    calls python3 or tomllib any more (#285), so the patterns meet python-standard, which runs
+    the scripts of pack/python; a skill that only calls the binary stays unseen."""
+    standard = "\n".join(_texts(PACKS / "python" / "skills" / "python-standard").values())
+    assert re.search(_TOOL_USES["python3"], standard, re.MULTILINE)
+    assert re.search(_TOOL_USES["tomllib"], standard, re.MULTILINE)
     route = "\n".join(_texts(CORE / "skills" / "route-issue").values())
     assert not re.search(_TOOL_USES["tomllib"], route, re.MULTILINE)
 

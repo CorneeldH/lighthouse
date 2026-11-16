@@ -1,0 +1,200 @@
+package forge_test
+
+import (
+	"fmt"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/CorneeldH/lighthouse/internal/forge"
+	"github.com/CorneeldH/lighthouse/internal/forge/forgesuite"
+	"github.com/CorneeldH/lighthouse/internal/forge/gitlabtest"
+	"github.com/CorneeldH/lighthouse/internal/repoconfig"
+)
+
+func TestGitLabConformance(t *testing.T) { forgesuite.Run(t, newGitLabFixture) }
+
+// gitlabFixture is the GitLab client against gitlabtest.Server, which serves GitLab's shapes.
+type gitlabFixture struct {
+	srv *gitlabtest.Server
+	f   forge.Forge
+}
+
+func newGitLabFixture(t *testing.T) forgesuite.Fixture {
+	srv := gitlabtest.New(t)
+	srv.Login = "lh-bot"
+	srv.Project = "g/sub/p"
+	srv.SetStatuses(gitlabLifecycle...)
+	board := gitlabBoard
+	f, err := forge.Open(forge.Config{Kind: "gitlab", Repo: srv.Project, Token: "secret-token", BaseURL: srv.URL(), Board: &board})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	return &gitlabFixture{srv: srv, f: f}
+}
+
+// gitlabBoard is the [forge.board] of the GitLab fixture: lighthouse names to GitLab status
+// names and priority labels.
+var gitlabBoard = repoconfig.Board{
+	StatusOptions:   map[string]string{"To do": "To do", "Controller": "Controller", "On hold": "On hold"},
+	PriorityOptions: map[string]string{"P1": "priority::P1", "P2": "priority::P2"},
+}
+
+// gitlabLifecycle is the status lifecycle of the fixture's top-level group: GitLab's defaults
+// plus the two lighthouse adds.
+var gitlabLifecycle = []string{"To do", "In progress", "Done", "Won't do", "Duplicate", "On hold", "Controller"}
+
+func (g *gitlabFixture) Forge() forge.Forge { return g.f }
+func (g *gitlabFixture) Repo() string       { return g.srv.Project }
+func (g *gitlabFixture) Login() string      { return g.srv.Login }
+
+// gitlabState is the state word of GitLab's REST shape for a neutral issue state.
+func gitlabState(s string) string {
+	if s == "open" {
+		return "opened"
+	}
+	return s
+}
+
+func (g *gitlabFixture) AddIssue(_ *testing.T, is forge.Issue) {
+	updated := time.Now().UTC()
+	it := map[string]any{
+		"iid": is.Number, "id": 9000 + is.Number, "title": is.Title, "description": is.Body,
+		"state": gitlabState(is.State), "web_url": fmt.Sprintf("https://gitlab.example/%s/-/issues/%d", g.srv.Project, is.Number),
+		"author": map[string]any{"username": is.Author}, "labels": append([]string{}, is.Labels...),
+	}
+	if m := is.Milestone; m != nil {
+		state := m.State
+		if state == "open" {
+			state = "active"
+		}
+		// The milestone ID is the number the client must return; the iid differs on purpose.
+		it["milestone"] = map[string]any{"id": m.Number, "iid": m.Number + 10, "title": m.Title, "state": state}
+	}
+	if !is.ClosedAt.IsZero() {
+		it["closed_at"] = is.ClosedAt.UTC().Format(time.RFC3339)
+		updated = is.ClosedAt
+	}
+	it["updated_at"] = updated.UTC().Format(time.RFC3339)
+	g.srv.AddIssue(it)
+}
+
+func (g *gitlabFixture) AddComment(_ *testing.T, number int, author, body string) int64 {
+	return g.srv.AddNote(number, author, body, false)
+}
+
+// accessLevels are the GitLab access levels of the neutral roles the suite uses.
+var accessLevels = map[string]int{"read": 10, "triage": 20, "write": 30, "maintain": 40, "admin": 50}
+
+func (g *gitlabFixture) SetRole(t *testing.T, user, role string) {
+	t.Helper()
+	level, ok := accessLevels[role]
+	if !ok {
+		t.Fatalf("gitlabFixture: no access level for role %q", role)
+	}
+	g.srv.SetMember(user, level)
+}
+
+func (g *gitlabFixture) AddAcknowledgement(_ *testing.T, number int, commentID int64, login string) {
+	g.srv.AddAward(number, commentID, "rocket", login)
+}
+
+// AddBlocker seeds an is_blocked_by link whose blocker lives in b.Repo, and a merged closing
+// merge request when b.MergedPR.
+func (g *gitlabFixture) AddBlocker(_ *testing.T, number int, b forge.Blocker) {
+	g.srv.AddLink(number, map[string]any{
+		"iid": b.Issue, "state": gitlabState(strings.ToLower(b.State)), "link_type": "is_blocked_by",
+		"references": map[string]any{"full": fmt.Sprintf("%s#%d", b.Repo, b.Issue)},
+	})
+	if b.MergedPR {
+		g.srv.AddClosedBy(b.Repo, b.Issue, map[string]any{"iid": 1, "state": "merged"})
+	}
+}
+
+func (g *gitlabFixture) AddOpenPR(_ *testing.T, pr forge.OpenPR) {
+	g.srv.AddMR(map[string]any{"iid": pr.Number, "state": "opened", "title": pr.Title, "description": pr.Body,
+		"source_branch": pr.HeadRef, "source_project_id": 1, "target_project_id": 1})
+}
+
+// ChecksOnClosedPRs: BranchPRs reads head_pipeline only for an open merge request.
+func (g *gitlabFixture) ChecksOnClosedPRs() bool { return false }
+
+// PRCommentBodies reads the notes of the merge request: the issue with that iid is another item.
+func (g *gitlabFixture) PRCommentBodies(_ *testing.T, number int) []string {
+	return g.srv.MRNotes(number)
+}
+
+// ListsClosedIssues: every issue is on the board, closed ones within the closed window.
+func (g *gitlabFixture) ListsClosedIssues() bool { return true }
+
+// pipelineStatus, mergeStatus and mrState are the GitLab words of the neutral PR values.
+var (
+	pipelineStatus = map[string]string{"SUCCESS": "success", "FAILURE": "failed", "PENDING": "running"}
+	mergeStatus    = map[string]string{"MERGEABLE": "mergeable", "UNKNOWN": "checking"}
+	mrState        = map[string]string{"OPEN": "opened", "CLOSED": "closed", "MERGED": "merged"}
+)
+
+func (g *gitlabFixture) AddBranchPR(_ *testing.T, branch string, pr forge.PR) {
+	m := map[string]any{"iid": pr.Number, "state": mrState[pr.State], "source_branch": branch, "sha": pr.HeadSHA,
+		"draft": pr.Draft, "has_conflicts": pr.Mergeable == "CONFLICTING", "web_url": pr.URL,
+		"source_project_id": 1, "target_project_id": 1}
+	if pr.CrossRepo {
+		m["source_project_id"] = 2
+	}
+	if s, ok := mergeStatus[pr.Mergeable]; ok {
+		m["detailed_merge_status"] = s
+	}
+	if s, ok := pipelineStatus[pr.Checks]; ok {
+		m["head_pipeline"] = map[string]any{"status": s}
+	}
+	if !pr.MergedAt.IsZero() {
+		m["merged_at"] = pr.MergedAt.UTC().Format(time.RFC3339)
+	}
+	if !pr.ClosedAt.IsZero() {
+		m["closed_at"] = pr.ClosedAt.UTC().Format(time.RFC3339)
+	}
+	g.srv.AddMR(m)
+}
+
+// PutOnBoard gives issue number the GitLab status of status and the label of priority. Every
+// issue is on the GitLab board; "" leaves the status or label unset.
+func (g *gitlabFixture) PutOnBoard(t *testing.T, number int, status, priority string) {
+	t.Helper()
+	if status != "" {
+		name, ok := gitlabBoard.StatusOptions[status]
+		if !ok {
+			t.Fatalf("gitlabFixture: status %q is not in the board config", status)
+		}
+		g.srv.SetWorkItemStatus(number, name)
+	}
+	if priority != "" {
+		label, ok := gitlabBoard.PriorityOptions[priority]
+		if !ok {
+			t.Fatalf("gitlabFixture: priority %q is not in the board config", priority)
+		}
+		g.srv.AddLabel(number, label)
+	}
+}
+
+// PutOnBoardUnmapped gives issue number a lifecycle status the board config does not map.
+func (g *gitlabFixture) PutOnBoardUnmapped(_ *testing.T, number int) string {
+	g.srv.SetWorkItemStatus(number, "Won't do")
+	return "Won't do"
+}
+
+// StatusOf names the GitLab status of issue number by its lighthouse name, case-insensitively
+// as GitLab matches it; "" without a status.
+func (g *gitlabFixture) StatusOf(t *testing.T, number int) string {
+	t.Helper()
+	raw := g.srv.WorkItemStatus(number)
+	if raw == "" {
+		return ""
+	}
+	for name, gl := range gitlabBoard.StatusOptions {
+		if strings.EqualFold(gl, raw) {
+			return name
+		}
+	}
+	t.Fatalf("gitlabFixture: status %q of #%d is not in the board config", raw, number)
+	return ""
+}

@@ -4,6 +4,7 @@
 package forgesuite
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -42,6 +43,17 @@ type Fixture interface {
 	// StatusOf is the last status the forge wrote for issue number, as a lighthouse name; ""
 	// when it wrote none.
 	StatusOf(t *testing.T, number int) string
+	// ChecksOnClosedPRs reports whether BranchPRs carries the checks of a closed or merged PR
+	// too. GitHub does; GitLab reads head_pipeline only for an open merge request, the only
+	// PR whose checks the dispatcher reads.
+	ChecksOnClosedPRs() bool
+	// PRCommentBodies lists the comment bodies on pull request number, oldest first. GitHub
+	// keeps them with the issue comments; GitLab keeps a merge request's notes apart.
+	PRCommentBodies(t *testing.T, number int) []string
+	// ListsClosedIssues reports whether BoardItems also lists closed issues no case put on the
+	// board. GitLab does: every issue is on its board, closed ones within a window. GitHub
+	// lists only the items of its project.
+	ListsClosedIssues() bool
 }
 
 // Case is one contract case.
@@ -62,6 +74,7 @@ var Cases = []Case{
 	{"Acknowledge", acknowledge},
 	{"BoardStatusAndPriority", boardStatusAndPriority},
 	{"IssueItem", issueItem},
+	{"IssueItemMissingIssue", issueItemMissingIssue},
 	{"AddToBoardThenSetStatus", addToBoardThenSetStatus},
 	{"SetStatusUnknownName", setStatusUnknownName},
 	{"Pagination", pagination},
@@ -291,6 +304,16 @@ func issueItem(t *testing.T, f Fixture) {
 	}
 }
 
+// A nonexistent issue is an ErrIssueNotFound error, whatever the forge: ok=false is for an
+// issue that exists but is not on the board.
+func issueItemMissingIssue(t *testing.T, f Fixture) {
+	f.AddIssue(t, openIssue(7))
+	_, ok, err := f.Forge().IssueItem(t.Context(), 99)
+	if ok || !errors.Is(err, forge.ErrIssueNotFound) {
+		t.Errorf("IssueItem(99) = ok %v, err %v; want an error wrapping forge.ErrIssueNotFound", ok, err)
+	}
+}
+
 func addToBoardThenSetStatus(t *testing.T, f Fixture) {
 	f.AddIssue(t, openIssue(7))
 	it, err := f.Forge().AddToBoard(t.Context(), 7)
@@ -346,7 +369,7 @@ func once[K comparable](t *testing.T, what string, got []K, want []K) {
 
 // pagination lists 101 records, one more than a page of 100, through each list method. The
 // subtests share one fixture: the parent adds the open issues 1..101 and the closed issue 500
-// that is on no board; each subtest adds only records the others do not list. BranchPRs is
+// that is on no GitHub board; each subtest adds only records the others do not list. BranchPRs is
 // left out: more than 20 PRs on a branch is an error there, not a page.
 func pagination(t *testing.T, f Fixture) {
 	ctx := t.Context()
@@ -456,11 +479,30 @@ func pagination(t *testing.T, f Fixture) {
 		if err != nil {
 			t.Fatalf("BoardItems: %v", err)
 		}
+		// The open issues are listed once each. A forge that lists closed issues too (GitLab:
+		// the closed issues the other subtests add, within its window) lists each once, as
+		// CLOSED; any other forge lists none.
 		var nums []int
+		closed := map[int]int{}
 		for _, it := range got {
-			nums = append(nums, it.Issue)
+			switch it.IssueState {
+			case "OPEN":
+				nums = append(nums, it.Issue)
+			case "CLOSED":
+				closed[it.Issue]++
+			default:
+				t.Errorf("BoardItems lists issue %d as %q, want OPEN or CLOSED", it.Issue, it.IssueState)
+			}
 		}
 		once(t, "BoardItems", nums, open)
+		if len(closed) > 0 && !f.ListsClosedIssues() {
+			t.Errorf("BoardItems lists closed issues %v, want only the open issues on the board", closed)
+		}
+		for n, c := range closed {
+			if c > 1 {
+				t.Errorf("BoardItems lists closed issue %d %d times, want once", n, c)
+			}
+		}
 	})
 }
 
@@ -476,9 +518,13 @@ func prFields(t *testing.T, f Fixture) {
 		t.Fatalf("BranchPRs = %+v, want one PR", prs)
 	}
 	p := prs[0]
+	wantChecks := ""
+	if f.ChecksOnClosedPRs() {
+		wantChecks = "SUCCESS"
+	}
 	if p.Number != 12 || p.State != "MERGED" || p.HeadSHA != "abc123" || p.HeadRef != "issue-7-x" ||
-		p.Checks != "SUCCESS" || p.Mergeable != "MERGEABLE" || !p.MergedAt.Equal(mergedAt) || p.Closes {
-		t.Errorf("BranchPRs[0] = %+v; want #12 MERGED at %s, head abc123 on issue-7-x, checks SUCCESS, MERGEABLE, Closes false", p, mergedAt)
+		p.Checks != wantChecks || p.Mergeable != "MERGEABLE" || !p.MergedAt.Equal(mergedAt) || p.Closes {
+		t.Errorf("BranchPRs[0] = %+v; want #12 MERGED at %s, head abc123 on issue-7-x, checks %q, MERGEABLE, Closes false", p, mergedAt, wantChecks)
 	}
 
 	f.AddOpenPR(t, forge.OpenPR{Number: 13, Title: "Fix it", Body: "Closes #7", HeadRef: "issue-7-x"})
@@ -488,6 +534,17 @@ func prFields(t *testing.T, f Fixture) {
 	}
 	if len(open) != 1 || open[0] != (forge.OpenPR{Number: 13, Title: "Fix it", Body: "Closes #7", HeadRef: "issue-7-x"}) {
 		t.Errorf("OpenPRs = %+v; want #13 Fix it, body Closes #7, head issue-7-x", open)
+	}
+
+	// An open PR carries its checks on every forge.
+	f.AddBranchPR(t, "issue-8-y", forge.PR{Number: 14, State: "OPEN", HeadSHA: "def456", HeadRef: "issue-8-y",
+		Checks: "FAILURE", Mergeable: "CONFLICTING"})
+	prs, err = f.Forge().BranchPRs(t.Context(), "issue-8-y")
+	if err != nil {
+		t.Fatalf("BranchPRs(issue-8-y): %v", err)
+	}
+	if len(prs) != 1 || prs[0].Number != 14 || prs[0].State != "OPEN" || prs[0].Checks != "FAILURE" || prs[0].Mergeable != "CONFLICTING" {
+		t.Errorf("BranchPRs(issue-8-y) = %+v; want #14 OPEN, checks FAILURE, CONFLICTING", prs)
 	}
 }
 
@@ -571,12 +628,8 @@ func prLifecycleByMarker(t *testing.T, f Fixture) {
 	if it.Number != pr.Number || !it.IsPR || it.State != "closed" || it.HeadRef != "pins/x" {
 		t.Errorf("after close found %+v; want PR #%d closed on pins/x, still findable", it, pr.Number)
 	}
-	cs, err := f.Forge().Comments(ctx, pr.Number)
-	if err != nil {
-		t.Fatalf("Comments: %v", err)
-	}
-	if len(cs) != 1 || cs[0].Body != "Vervangen" {
-		t.Errorf("Comments after ClosePR = %+v; want the closing comment", cs)
+	if got := f.PRCommentBodies(t, pr.Number); len(got) != 1 || got[0] != "Vervangen" {
+		t.Errorf("comments after ClosePR = %q; want the closing comment", got)
 	}
 }
 

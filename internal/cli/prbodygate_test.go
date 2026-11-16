@@ -54,6 +54,7 @@ func runCommand(stdin string, args ...string) (code int, stdout, stderr string) 
 const blockedTail = "\n\nWrite the body with /lighthouse-write-pr <nr> and pass it with --body-file <path>.\n" +
 	"Forms: `Closes #N` + `### Evidence #N` (one row per AC), `Refs #N — <reason>`, `No issue: <reason>`.\n"
 
+// twin of test_cli_as_script
 func TestPrBodyGateCommand(t *testing.T) {
 	project := gateProject(t)
 	tests := []struct {

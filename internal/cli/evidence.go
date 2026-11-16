@@ -10,7 +10,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/evidence"
 )
 
-// The usage lines of evidence.py's argparse, under the names of these commands.
+// The usage lines of these commands.
 const (
 	evidenceUsage      = "lighthouse evidence [-h] {check,run} ..."
 	evidenceCheckUsage = "lighthouse evidence check [-h] cell"
@@ -32,7 +32,7 @@ func evidenceExit(code int) error {
 	return &exitError{code: code, err: errSilent}
 }
 
-// newEvidenceCommand is `lighthouse evidence check|run`, the twin of evidence.py's command line.
+// newEvidenceCommand is `lighthouse evidence check|run`.
 func newEvidenceCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "evidence {check,run}",

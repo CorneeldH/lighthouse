@@ -50,6 +50,25 @@ func (g *githubFixture) Forge() forge.Forge { return g.f }
 func (g *githubFixture) Repo() string       { return "o/r" }
 func (g *githubFixture) Login() string      { return g.srv.Login }
 
+// ChecksOnClosedPRs: statusCheckRollup is on every pull request GitHub lists.
+func (g *githubFixture) ChecksOnClosedPRs() bool { return true }
+
+func (g *githubFixture) PRCommentBodies(t *testing.T, number int) []string {
+	t.Helper()
+	cs, err := g.f.Comments(t.Context(), number)
+	if err != nil {
+		t.Fatalf("Comments: %v", err)
+	}
+	var out []string
+	for _, c := range cs {
+		out = append(out, c.Body)
+	}
+	return out
+}
+
+// ListsClosedIssues: BoardItems lists only the items of the project.
+func (g *githubFixture) ListsClosedIssues() bool { return false }
+
 func (g *githubFixture) AddIssue(_ *testing.T, is forge.Issue) {
 	labels := []any{}
 	for _, l := range is.Labels {

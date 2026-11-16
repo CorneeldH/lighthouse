@@ -5,9 +5,9 @@ them.
 Shared helpers for the hook tests (tasks 1 to 5 of #884/#886).
 
 Taken over from `test_instructie_hooks.py` (the private `_run`, `_git`,
-`_init_repo`, `_bash`, `_tool_bin` from before this task) so that
-`test_git_invocations.py` and later tasks (`test_pre_commit_gate.py`,
-`test_md_links.py`, `test_hook_deadline.py`) use the same plumbing instead of
+`_init_repo`, `_bash`, `_tool_bin` from before this task) so that the hook
+tests (`test_pre_commit_gate.py`, `test_md_links.py`, `test_hook_deadline.py`)
+use the same plumbing instead of
 reimplementing it. `test_instructie_hooks.py` itself stays unchanged: this
 file refactors no existing tests, it gives new tests the same building
 blocks.
@@ -15,7 +15,6 @@ blocks.
 
 import atexit
 import functools
-import importlib.util
 import json
 import os
 import pwd
@@ -26,13 +25,13 @@ import subprocess
 import tempfile
 import time
 import types
+from collections.abc import Iterable
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 PACKS = REPO / "pack"
 CORE = PACKS / "core"
-LIB = CORE / "lib"
 
 # The tree git hashes for an empty repository.
 EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
@@ -85,11 +84,12 @@ def init_repo(path: Path, branch: str = "main") -> None:
 def build_fixture_setup(root: Path, steps: list[dict]) -> None:
     """Build the directory tree of a shared-fixture `setup` under `root`.
 
-    The steps are the ones of `fixtures/git_invocations/cases.json` (`repo`,
+    The steps are the ones of the git-invocations fixtures (`repo`,
     `dir`, `file`, `symlink`, `overwrite`), plus `worktree` (`{"worktree":
     "x/wt", "of": "x", "branch": "wt"}`: a linked worktree of repo `x`) and
     `origin` (`{"origin": "x", "url": ...}`: remote `origin` of repo `x`),
     `unborn` (`{"unborn": "x"}`: `git init -b main` without a commit),
+    `bare` (`{"bare": "x"}`: `git init --bare`),
     `commit` (`{"commit": "x", "message": "m"}`: `add -A` and commit; the files
     come in before, through `file`) and `mv` (`{"mv": "x", "from": "a", "to": "b"}`).
     """
@@ -121,6 +121,9 @@ def build_fixture_setup(root: Path, steps: list[dict]) -> None:
         elif "unborn" in step:
             (root / step["unborn"]).mkdir(parents=True, exist_ok=True)
             git(root / step["unborn"], "init", "-q", "-b", "main")
+        elif "bare" in step:
+            (root / step["bare"]).mkdir(parents=True, exist_ok=True)
+            git(root / step["bare"], "init", "-q", "--bare")
         elif "commit" in step:
             git(root / step["commit"], "add", "-A")
             git(root / step["commit"], "commit", "-qm", step["message"])
@@ -130,16 +133,57 @@ def build_fixture_setup(root: Path, steps: list[dict]) -> None:
             raise AssertionError(f"unknown setup step {step}")
 
 
+def fake_gh_bin(tmp_path: Path, calls: list[dict]) -> tuple[Path, Path]:
+    """A fake `gh` on a bin dir that replays `calls` in order.
+
+    Returns `(bin_dir, log)`: put `bin_dir` first on PATH; `log` stays empty
+    unless a call deviated (the fake then exits 97 and writes the expected and
+    the actual argv to it), and the fake leaves a `count` file next to it with
+    the number of calls made. A call has `argv`, `stdin`, `stdout`, `stderr`,
+    `code` and optionally `timeout`.
+    """
+    bin_dir = tmp_path / "fakegh-bin"
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    calls_file = tmp_path / "fakegh-calls.json"
+    count = tmp_path / "fakegh-count"
+    log = tmp_path / "fakegh-log"
+    calls_file.write_text(json.dumps(calls), encoding="utf-8")
+    count.write_text("0", encoding="utf-8")
+    log.write_text("", encoding="utf-8")
+    gh = bin_dir / "gh"
+    gh.write_text(
+        "#!/bin/sh\n"
+        f"FAKE_CALLS={shlex.quote(str(calls_file))} "
+        f"FAKE_COUNT={shlex.quote(str(count))} "
+        f"FAKE_LOG={shlex.quote(str(log))} "
+        f'exec python3 -I {shlex.quote(str(Path(__file__).with_name("_fakegh.py")))} "$@"\n',
+        encoding="utf-8",
+    )
+    gh.chmod(0o755)
+    return bin_dir, log
+
+
 def fill_fixture(value, root: str):
     """Fill the placeholders of a shared fixture, recursively.
 
     `{root}` is the temporary directory (not passed through realpath),
     `{real:<path>}` is the realpath of `{root}/<path>` and `{home:<name>}` is
     the home directory of user `<name>`, `{rev:<path>:<rev>}` the output of
-    `git -C {root}/<path> rev-parse <rev>` and `{empty_tree}` the empty tree.
+    `git -C {root}/<path> rev-parse <rev>`, `{short:<path>:<rev>}` the same with
+    `--short=7` and `{empty_tree}` the empty tree.
     Fill them after the last step of the case. The keys of a dict are filled too.
     """
     if isinstance(value, str):
+        value = re.sub(
+            r"\{short:([^:}]+):([^}]+)\}",
+            lambda m: subprocess.run(
+                ["git", "-C", f"{root}/{m[1]}", "rev-parse", "--short=7", m[2]],
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout.strip(),
+            value,
+        )
         value = re.sub(
             r"\{rev:([^:}]+):([^}]+)\}",
             lambda m: subprocess.run(
@@ -329,16 +373,57 @@ def lighthouse_dir() -> Path:
     return out
 
 
+def _lighthouse(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [str(lighthouse_dir() / "lighthouse"), *args],
+        capture_output=True, text=True, check=False, env=env, cwd=REPO,
+    )
+
+
+def config_kinds(keys: Iterable[str]) -> dict[str, str]:
+    """key -> schema kind ("str", "list[str]", ...), "known" or "unknown", from one call of
+    `lighthouse config --kind`."""
+    keys = list(keys)
+    if not keys:
+        return {}
+    result = _lighthouse("config", "--kind", *keys)
+    assert result.returncode == 0, result.stderr
+    return dict(line.split("\t", 1) for line in result.stdout.splitlines())
+
+
+def is_known_key(key: str) -> bool:
+    return config_kinds([key])[key] != "unknown"
+
+
+@functools.cache
+def _schema_dump() -> str:
+    result = _lighthouse("config", "--schema")
+    assert result.returncode == 0, result.stderr
+    return result.stdout
+
+
+def config_schema() -> types.SimpleNamespace:
+    """The schema of `lighthouse config --schema`: SCHEMA (key -> kind), DEFAULTS, BASE_KEYS,
+    HOST_KEYS, OPTION_PREFIXES and LANGUAGES."""
+    data = json.loads(_schema_dump())
+    return types.SimpleNamespace(
+        SCHEMA=data["schema"], DEFAULTS=data["defaults"], BASE_KEYS=data["base_keys"],
+        HOST_KEYS=data["host_keys"], OPTION_PREFIXES=data["option_prefixes"],
+        LANGUAGES=data["languages"], BOOL="bool",
+    )
+
+
 def path_with_lighthouse() -> str:
     """The current PATH with the built `lighthouse` first."""
     return f"{lighthouse_dir()}{os.pathsep}{os.environ.get('PATH', '')}"
 
 
 def lighthouse_stub(body: str) -> str:
-    """A fake `lighthouse` that runs `body` for every call but `turn-roots`, which goes
-    to the binary built from this checkout: a Stop gate needs that one to find its roots."""
+    """A fake `lighthouse` that runs `body` for every call but `turn-roots` and `config`,
+    which go to the binary built from this checkout: a Stop gate needs them to find its roots
+    and to read its configuration."""
     real = shlex.quote(str(lighthouse_dir() / "lighthouse"))
-    return f'#!/bin/bash\n[ "$1" = turn-roots ] && exec {real} "$@"\n{body}'
+    return f'#!/bin/bash\ncase "$1" in turn-roots|config) exec {real} "$@";; esac\n{body}'
 
 
 def guard_env(tmp_path: Path, **extra: str) -> dict[str, str]:
@@ -475,28 +560,11 @@ def classify(rc: int, output: bytes) -> str:
     return "unchecked" if "COULD NOT CHECK" in first else "finding"
 
 
-def load_hook_lib(name: str) -> types.ModuleType:
-    """Load `pack/core/lib/<name>.py` as a module, without running it.
-
-    `importlib.util.spec_from_file_location` gives the module a name of its
-    own (not `__main__`), so an `if __name__ == "__main__":` block in the
-    loaded file does not run: the module reads no stdin on import and needs
-    no argv.
-    """
-    path = LIB / f"{name}.py"
-    spec = importlib.util.spec_from_file_location(name, path)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
 # Where each directory of `pack/core` lands (`internal/packs`). `skills/`, `agents/`,
 # `templates/`, `workflows/` and the JSON/TOML at the top are not installed here:
 # the hook and script tests do not need them, and `init` itself is tested in Go.
 _INSTALL_DIRS = {
     "hooks": Path(".claude/hooks/lighthouse"),
-    "lib": Path(".lighthouse/lib/lighthouse_lib"),
     "scripts": Path(".lighthouse/scripts"),
 }
 
@@ -576,15 +644,7 @@ def install_pack(name: str, root: Path, toml: str | None = MINIMAL_TOML) -> Path
 INSTALL_ROOT = Path(tempfile.mkdtemp(prefix="lighthouse-core-"))
 atexit.register(shutil.rmtree, INSTALL_ROOT, True)
 GUARD = install_core(INSTALL_ROOT)
-INSTALLED_LIB = INSTALL_ROOT / _INSTALL_DIRS["lib"]
 INSTALLED_HOOKS = INSTALL_ROOT / _INSTALL_DIRS["hooks"]
-
-
-# `lighthouse_lib` as an importable package for in-process tests: a symlink to
-# pack/core/lib in a temporary directory, placed first on sys.path by the conftest.
-IMPORT_ROOT = Path(tempfile.mkdtemp(prefix="lighthouse-lib-"))
-atexit.register(shutil.rmtree, IMPORT_ROOT, True)
-(IMPORT_ROOT / "lighthouse_lib").symlink_to(LIB, target_is_directory=True)
 
 
 DEFAULT_FIXTURE_REPO = "Acme/widgets"
@@ -593,7 +653,7 @@ DEFAULT_FIXTURE_REPO = "Acme/widgets"
 def write_fixture_config(
     root: Path, repo: str | None = DEFAULT_FIXTURE_REPO, test_dir: str | None = None
 ) -> None:
-    """The config of a `pr_body_gate` or `evidence` fixture case, under `root`.
+    """The config of a PR-body-gate or `evidence` fixture case, under `root`.
 
     A `lighthouse.toml` with `forge.repo = repo` (no key when `repo` is None) and,
     with `test_dir`, `[test_gate] evidence_test_dir`; plus the headings table the
@@ -607,3 +667,26 @@ def write_fixture_config(
     (root / "lighthouse.toml").write_text(toml, encoding="utf-8")
     (root / ".lighthouse").mkdir(parents=True, exist_ok=True)
     shutil.copyfile(CORE / "headings.toml", root / ".lighthouse" / "headings.toml")
+
+
+# --- PR bodies for the pr-create-gate tests ---------------------------------------------------
+
+ROWS1 = [("1. een", "`grep -F a f`", "a")]
+ROWS2 = [*ROWS1, ("2. twee", "`ls`", "f")]
+ROWS3 = [*ROWS2, ("3. drie", "`true`", "ok")]
+
+ISSUE_WITH_THREE_AC = (
+    "## Context\n\ntekst\n\n"
+    "### Acceptatiecriteria\n- [ ] a\n- [x] b\n- [X] c\n\n"
+    "### Definition of Done\n- [ ] d\n"
+)
+
+
+def closes_body(nr: int, rows: list[tuple[str, str, str]]) -> str:
+    """A body with `Closes #nr` and an Evidence table with the given rows."""
+    table = "\n".join(f"| {ac} | {cmd} | {res} |" for ac, cmd, res in rows)
+    return (
+        f"## Related issues\n\nCloses #{nr}\n\n"
+        f"### Evidence #{nr}\n\n"
+        f"| AC | Command | Result |\n|---|---|---|\n{table}\n"
+    )

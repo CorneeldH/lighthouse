@@ -67,8 +67,8 @@ Wel legt deze spec de richting vast, zodat M3 niets bouwt dat GitLab later blokk
 
 ### 4. Welke host-aannames moeten uit `pack/core`?
 
-De hooks zijn al bewust draagbaar: bash 3.2, Python-fallbacks voor `realpath -m`, `date -j` naast
-`date -d`. Wat overblijft:
+De hooks zijn al bewust draagbaar: bash 3.2, `date -j` naast
+`date -d`; sinds #285 heeft `pack/core` geen Python-script of -fallback meer. Wat overblijft:
 
 | Aanname | Plek | In M3 |
 |---|---|---|
@@ -77,7 +77,6 @@ De hooks zijn al bewust draagbaar: bash 3.2, Python-fallbacks voor `realpath -m`
 | Een pid leeft als `/proc/<pid>` bestaat | `pack/core/scripts/worktree_audit.py:163-164`, `skills/audit-worktrees/SKILL.md:74` | Draagbaar maken, met de semantiek uit §1 |
 | `journalctl -k` voor een OOM-kill | `pack/core/skills/fix-pr/{claude,agents}/SKILL.md:162` | Als Linux-only markeren, met wat te doen elders (§1) |
 | `systemd-run --user --scope … choom` in de test-gate | `pack/core/hooks/commit-test-gate.sh:518-546` | Blijft; staat al achter `host.gate_slice`. Expliciet maken in de docs (§1) |
-| Python ≥ 3.11 (`tomllib`) | `pack/core/lib/config.py:27` | Blijft; de installatiegids zegt het per OS (§5) |
 | `sha256sum` zonder `shasum`-fallback, geen Intel-Mac- of Windows-shellcheck | `pack/shell/scripts/lib/shellcheck-bin.sh:22-25`, `:67` | Alleen `pack/shell`; een regel in de audit. Een fix-issue alleen als de DoD-run (§6) `pack/shell` gebruikt (*mijn keuze*) |
 
 Er staat geen Beelink-literal in `pack/` (`ci/literal-grep.sh`). Buiten `pack/core` nemen de
@@ -284,7 +283,7 @@ mensen) en `docs/site/agents/install.md` (voor agents), met een sectie per opzet
 
 Daarbij:
 
-- Per OS hoe je aan Python ≥ 3.11, `gh`, `jq` en `uv` komt.
+- Per OS hoe je aan `git`, `gh`, `jq` en de `lighthouse`-binary komt, en aan `uv` voor het pakket `python`.
 - Het hostprofiel uit §2 met voorbeelden.
 - Een link naar `docs/host-assumptions.md` (§1).
 - Eén map voor een gedownloade binary in alle docs: `~/.local/bin` *(eigen keuze na
@@ -319,7 +318,7 @@ zijn:
 
 | Waar Claude Code draait | Wat er met #90 gebeurt |
 |---|---|
-| Native op Windows (Git Bash) | Het Windows-deel van #90 wordt een eigen issue in M3: de hooks onder Git Bash, Python op Windows. Kan Large worden; dan meten, en wat niet past, krijgt een eigen issue |
+| Native op Windows (Git Bash) | Het Windows-deel van #90 wordt een eigen issue in M3: de hooks onder Git Bash. Kan Large worden; dan meten, en wat niet past, krijgt een eigen issue |
 | WSL op de laptop | Geen Windows-issue in M3. De gids (§5) zegt "WSL vereist" |
 | Op de Linux-server | Geen Windows-issue in M3. De gids (§5) beschrijft SSH of VS Code Remote |
 

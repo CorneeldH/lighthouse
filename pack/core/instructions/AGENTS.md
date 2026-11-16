@@ -26,3 +26,4 @@ Skills:
 - `/lighthouse-audit-worktrees`: which worktrees and branches can go.
 - `/lighthouse-place-instruction`: on which layer a new instruction belongs.
 - `/lighthouse-test-standard`: tests that fail when behaviour breaks.
+- `/lighthouse-upgrade`: bring this repo to the installed lighthouse version.

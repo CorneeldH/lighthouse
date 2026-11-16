@@ -16,6 +16,7 @@ import (
 type forgeOpener struct {
 	getenv    func(string) string
 	githubURL string                                  // override for GitHub repos only; "" is the default
+	gitlabURL string                                  // API base URL for GitLab repos; only tests set it, "" is host or gitlab.com
 	ghToken   func() string                           // last resort for a GitHub token (ask); nil is none
 	open      func(forge.Config) (forge.Forge, error) // forge.Open; tests replace it
 	http      *http.Client
@@ -60,8 +61,11 @@ func (o *forgeOpener) forRepo(ctx context.Context, repo repoconfig.Repo) (repoFo
 	}
 	cfg := forge.Config{Kind: repo.Kind, Repo: repo.Slug, Host: repo.Host, Token: token,
 		Board: repo.Board, HTTP: o.http}
-	if cfg.Kind == "" || cfg.Kind == "github" {
+	switch cfg.Kind {
+	case "", "github":
 		cfg.BaseURL = o.githubURL
+	case "gitlab":
+		cfg.BaseURL = o.gitlabURL
 	}
 	f, err := o.open(cfg)
 	if err != nil {

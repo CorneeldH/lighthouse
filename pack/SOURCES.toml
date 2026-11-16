@@ -6,10 +6,6 @@
 #                    taken over from another repository at that commit
 
 [[file]]
-path = "pack/core/lib/git_invocations.py"
-new = true
-
-[[file]]
 path = "pack/core/hooks/hooks.json"
 new = true
 
@@ -26,23 +22,7 @@ path = "pack/core/instructions/AGENTS.md"
 new = true
 
 [[file]]
-path = "pack/core/lib/__init__.py"
-new = true
-
-[[file]]
-path = "pack/core/lib/repo_identity.py"
-new = true
-
-[[file]]
-path = "pack/core/lib/config.py"
-new = true
-
-[[file]]
 path = "pack/core/requires.toml"
-new = true
-
-[[file]]
-path = "pack/core/lib/datadir.py"
 new = true
 
 [[file]]
@@ -50,47 +30,7 @@ path = "pack/core/headings.toml"
 new = true
 
 [[file]]
-path = "pack/core/lib/headings.py"
-new = true
-
-[[file]]
-path = "pack/core/lib/pr_body_gate.py"
-new = true
-
-[[file]]
-path = "pack/core/lib/protocol.py"
-new = true
-
-[[file]]
-path = "pack/core/lib/artefacts.py"
-new = true
-
-[[file]]
-path = "pack/core/scripts/post_artefact.py"
-new = true
-
-[[file]]
-path = "pack/core/scripts/board_start.py"
-new = true
-
-[[file]]
-path = "pack/core/scripts/create_labels.py"
-new = true
-
-[[file]]
-path = "pack/core/scripts/worktree_audit.py"
-new = true
-
-[[file]]
-path = "pack/core/scripts/unblock_dependents.py"
-new = true
-
-[[file]]
 path = "pack/core/workflows/unblock-dependents.yml"
-new = true
-
-[[file]]
-path = "pack/core/scripts/check-instructions.sh"
 new = true
 
 [[file]]
@@ -215,6 +155,14 @@ new = true
 
 [[file]]
 path = "pack/core/skills/test-standard/SKILL.md"
+new = true
+
+[[file]]
+path = "pack/core/skills/upgrade/claude/SKILL.md"
+new = true
+
+[[file]]
+path = "pack/core/skills/upgrade/agents/SKILL.md"
 new = true
 
 [[file]]

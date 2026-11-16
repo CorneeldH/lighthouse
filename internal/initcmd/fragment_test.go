@@ -1,13 +1,9 @@
 package initcmd
 
 import (
-	"io/fs"
-	"os/exec"
 	"strings"
 	"testing"
 	"testing/fstest"
-
-	"github.com/CorneeldH/lighthouse/pack"
 )
 
 func TestFragmentInInitDiff(t *testing.T) {
@@ -58,7 +54,7 @@ func TestFragmentKeyInTwoPacks(t *testing.T) {
 	r := run(t, root, "", all(yes, withPython, func(o *Options) {
 		m := o.Packs.(fstest.MapFS)
 		m["tox/lighthouse.toml.fragment"] = file("[test_gate]\ncommand = \"tox\"\n")
-		m["tox/lib/t.py"] = file("x = 1\n")
+		m["tox/scripts/t.py"] = file("x = 1\n")
 	}, addPack("tox")))
 	if r.code != 1 || !strings.Contains(r.err, "test_gate.command comes from both package python and package tox") {
 		t.Fatalf("rc %d err %q", r.code, r.err)
@@ -88,20 +84,10 @@ func TestUpgradeRestoresFragmentKey(t *testing.T) {
 }
 
 func TestDefaultLookupSeesFragment(t *testing.T) {
-	if _, err := exec.LookPath("python3"); err != nil {
-		t.Skip("python3 not available")
-	}
 	root := newRepo(t)
 	write(t, root, "pyproject.toml", "")
 	r := run(t, root, "", all(yes, withPython, func(o *Options) {
 		m := o.Packs.(fstest.MapFS)
-		for _, f := range []string{"__init__.py", "config.py"} {
-			b, err := fs.ReadFile(pack.Files, "core/lib/"+f)
-			if err != nil {
-				t.Fatal(err)
-			}
-			m["core/lib/"+f] = &fstest.MapFile{Data: b}
-		}
 		m["core/workflows/x.yml"] = file("cmd: @@test_gate.command@@\n")
 	}))
 	if r.code != 0 {

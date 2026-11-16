@@ -23,8 +23,8 @@ func (s releaseStub) Releases(_ context.Context, repo string) ([]forge.Release, 
 }
 
 const (
-	clashFile = "pack/core/lib/clash.py"
-	goneFile  = "pack/core/lib/gone.py"
+	clashFile = "pack/core/scripts/clash.py"
+	goneFile  = "pack/core/scripts/gone.py"
 )
 
 // fixtureSources is the SOURCES.toml of the end-to-end fixture: the demo skill, a file pin
@@ -262,7 +262,7 @@ func TestRun_workflowsTouchingMergeBecomesIssue(t *testing.T) {
 			t.Errorf("%s: %+v kind %s, want a PR", key, it, kind)
 		}
 	}
-	if got := r.pinBranches(t); !slices.Equal(got, []string{"refs/heads/pins/core-skills-demo", "refs/heads/pins/pack-core-lib-tool.py"}) {
+	if got := r.pinBranches(t); !slices.Equal(got, []string{"refs/heads/pins/core-skills-demo", "refs/heads/pins/pack-core-scripts-tool.py"}) {
 		t.Fatalf("pins branches %v: the workflows pin pushed, or another did not", got)
 	}
 }

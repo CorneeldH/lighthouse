@@ -112,7 +112,7 @@ func TestFindSourcePins_sourcesToml(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "pack/SOURCES.toml", `
 [[file]]
-path = "pack/core/lib/a.py"
+path = "pack/core/scripts/a.py"
 new = true
 
 [[file]]
@@ -120,7 +120,7 @@ path = "pack/core/skills/x/SKILL.md"
 pin = "core/skills/x"
 
 [[file]]
-path = "pack/core/lib/b.py"
+path = "pack/core/scripts/b.py"
 source_repo = "o/r"
 source_sha = "`+sha+`"
 source_path = "/src/b.py"
@@ -130,8 +130,8 @@ source_path = "/src/b.py"
 		t.Fatal(err)
 	}
 	want := []SourcePin{{
-		Key: "pack/core/lib/b.py", Repo: "o/r", Commit: sha, Path: "src/b.py",
-		Files: []string{"pack/core/lib/b.py"},
+		Key: "pack/core/scripts/b.py", Repo: "o/r", Commit: sha, Path: "src/b.py",
+		Files: []string{"pack/core/scripts/b.py"},
 	}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %+v, want %+v", got, want)

@@ -12,19 +12,19 @@ One join over `git worktree list`, `git branch` (local + remote), the PR state p
 and the sessions on disk, with a verdict per row. Six views on the same set of rows.
 
 ```bash
-python3 .lighthouse/scripts/worktree_audit.py            # --cleanup (default)
-python3 .lighthouse/scripts/worktree_audit.py --sessions
-python3 .lighthouse/scripts/worktree_audit.py --origin
-python3 .lighthouse/scripts/worktree_audit.py --kpi
-python3 .lighthouse/scripts/worktree_audit.py --only <branch>
-python3 .lighthouse/scripts/worktree_audit.py --issue <nr>
+lighthouse worktree-audit            # --cleanup (default)
+lighthouse worktree-audit --sessions
+lighthouse worktree-audit --origin
+lighthouse worktree-audit --kpi
+lighthouse worktree-audit --only <branch>
+lighthouse worktree-audit --issue <nr>
 ```
 
 `--only` and `--issue` are the views for `lighthouse-close-issue`: one branch, or every branch of
 an issue, each with a line `cleanup: yes` or `cleanup: no — <reason>`. `--only` exits 0 only at
 `yes`; `--issue` exits 2 when the PR lookup fails, and otherwise 0 with the verdict per block.
 That skill runs the delivered lines of every `yes` itself, without a question; this skill and the
-script still change nothing.
+command still change nothing.
 
 The repo and the default branch come from `lighthouse.toml` (`forge.repo`,
 `forge.default_branch`).
@@ -42,11 +42,11 @@ milestone sweep (board-sweep, only if present) is another skill.
 ## Hard rule
 
 **This skill changes nothing.** No `git push origin --delete`, no `git branch -D`, no
-`git worktree remove`, no `unlock`, no `kill`, no writing to a port registry. The script prints
+`git worktree remove`, no `unlock`, no `kill`, no writing to a port registry. The command prints
 copyable commands; the human pastes. The human gate stands once, right before the irreversible
 — `git push origin --delete` cannot be undone from a script.
 
-`run_git` in the script refuses every git verb that does not read, so that norm sits in the
+The git runner of the command refuses every git verb that does not read, so that norm sits in the
 execution path and not only in this text.
 
 ## Four things `git worktree prune` does not catch
@@ -54,7 +54,7 @@ execution path and not only in this text.
 1. **Squash-merge makes `git branch --merged` a lie.** Everything is squash-merged to the
    default branch, so the original commits are not in its history. The PR lookup on the head
    branch is the only reliable test.
-2. **Unpushed commits.** Work that exists nowhere else. The script counts with
+2. **Unpushed commits.** Work that exists nowhere else. The command counts with
    `git rev-list --count <b> --not --remotes` — "exists nowhere else", not "not merged".
    **After a squash-merge that count is by construction the whole branch history**: GitHub
    throws the separate commits away and puts one new commit on the default branch, so the
@@ -74,7 +74,7 @@ execution path and not only in this text.
 | # | Condition | Verdict |
 |---|---|---|
 | 1 | name or directory on the protect list | 🔒 never touch |
-| 2 | worktree `locked` and the lock pid still runs (`os.kill(pid, 0)` succeeds or gives `EPERM`), or the pid is unknown or not measurable (native Windows), or a running session has the worktree as cwd | ⛔ active session / running session |
+| 2 | worktree `locked` and the lock pid still runs (`kill(pid, 0)` succeeds or gives `EPERM`), or the pid is unknown or not measurable (Windows), or a running session has the worktree as cwd | ⛔ active session / running session |
 | 3 | dirty tree, or tree status unreadable | ⛔ write it away first |
 | 4a | unpushed commits, tip without a parent, local, no remote, no PR | ⚠️ orphan commit without parent — likely test leakage |
 | 4b | unpushed commits while the PR is merged and the tip lies before the merge | *no hit* — falls through to rank 6 with the modifier `[squash-merge]` |
@@ -159,7 +159,7 @@ block per worktree name.
 
 ## KPIs
 
-All four come from the same call: `python3 .lighthouse/scripts/worktree_audit.py --kpi`.
+All four come from the same call: `lighthouse worktree-audit --kpi`.
 
 | Metric | Field | Target |
 |---|---|---:|

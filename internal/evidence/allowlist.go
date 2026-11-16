@@ -9,7 +9,7 @@ import (
 	"unicode"
 )
 
-// Allowlist holds the constants of evidence.py:49-79 under their Python names, as
+// Allowlist holds the constants of the former evidence.py under their Python names, as
 // tests/pack/fixtures/evidence/allowlist.json records them: options without a value per command
 // (`…_FLAGS`), options that take one value, separate or with `=` (`…_VAL`), and the git
 // subcommands. Extending it is a change of this code and of the table in /lighthouse-write-pr,

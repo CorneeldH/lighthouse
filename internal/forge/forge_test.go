@@ -33,10 +33,13 @@ func TestOpenGitHubDefaults(t *testing.T) {
 	}
 }
 
-func TestOpenGitLabNotImplemented(t *testing.T) {
-	f, err := Open(Config{Kind: "gitlab", Repo: "o/r", Token: "t"})
-	if err == nil || err.Error() != "forge: GitLab client not implemented yet" || f != nil {
-		t.Fatalf("Open(gitlab) = %v, %v; want the not-implemented error", f, err)
+func TestOpenGitLab(t *testing.T) {
+	f, err := Open(Config{Kind: "gitlab", Repo: "g/p", Token: "t"})
+	if err != nil {
+		t.Fatalf("Open(gitlab) = %v, %v; want a client", f, err)
+	}
+	if _, ok := f.(*GitLab); !ok || f.Kind() != "gitlab" {
+		t.Errorf("Open(gitlab) = %T of kind %q, want *GitLab of kind gitlab", f, f.Kind())
 	}
 }
 

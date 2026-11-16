@@ -2,6 +2,7 @@ package dispatch
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"slices"
@@ -66,6 +67,33 @@ func Prepare(ctx context.Context, f forge.Forge, repo repoconfig.Repo, open []ru
 	board, err := f.BoardItems(ctx)
 	if err != nil {
 		return Pre{}, err
+	}
+	// An open run is closed only through its board item. A forge whose BoardItems lists a window
+	// (GitLab: open issues and recently closed ones) can leave out the issue of an open run, so
+	// that issue is read on its own: one IssueItem call per open run outside the list, none on
+	// GitHub, where every issue of a run is on the board. An issue that does not exist, or
+	// whose item is archived, stays out.
+	onBoard := make(map[int]bool, len(board))
+	for _, bi := range board {
+		if bi.Repo == repo.Slug {
+			onBoard[bi.Issue] = true
+		}
+	}
+	for _, r := range open {
+		if r.Issue <= 0 || onBoard[r.Issue] {
+			continue
+		}
+		bi, ok, err := f.IssueItem(ctx, r.Issue)
+		if errors.Is(err, forge.ErrIssueNotFound) {
+			continue // a deleted or moved issue: its run stays as it was, the tick goes on
+		}
+		if err != nil {
+			return Pre{}, err
+		}
+		if ok && !bi.Archived { // BoardItems lists no archived item, so neither does this
+			board = append(board, bi)
+			onBoard[r.Issue] = true
+		}
 	}
 	// The status of every board item, before the dispatch filter: a blocker is usually not a
 	// dispatch item.
@@ -157,7 +185,7 @@ func mergePRs(closing, onBranch []forge.PR) []forge.PR {
 // set only when tokenLogin put a 🚀 on it. Any failed request fails the whole gather. Every
 // list in the snapshot is non-nil, so its JSON has [] where a list is empty, never null.
 // For an item with an open run, every merge-ready PR gets its roborev state from the PR's
-// comments; the PRs of Pre stay untouched.
+// comments, on GitHub only; the PRs of Pre stay untouched.
 func Complete(ctx context.Context, f forge.Forge, pre Pre, trust *Trust, tokenLogin string, log io.Writer, now time.Time) (Snapshot, error) {
 	items := make([]Item, 0, len(pre.Items))
 	hasRun := make(map[int]bool, len(pre.OpenRuns))
@@ -168,7 +196,10 @@ func Complete(ctx context.Context, f forge.Forge, pre Pre, trust *Trust, tokenLo
 		if hasRun[it.Issue] {
 			it.PRs = slices.Clone(it.PRs)
 			for i, pr := range it.PRs {
-				if !mergeCandidate(pr) {
+				// On GitHub a PR is an issue too, so its comments are those of its number. On
+				// GitLab a merge request has its own numbering, and the number would read the
+				// notes of another issue: the roborev state stays zero there.
+				if !mergeCandidate(pr) || f.Kind() != "github" {
 					continue
 				}
 				prc, err := f.Comments(ctx, pr.Number)

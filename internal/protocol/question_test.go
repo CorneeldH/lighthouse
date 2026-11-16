@@ -17,7 +17,8 @@ type questionCase struct {
 	Parsed   *QuestionFields `json:"parsed"`
 }
 
-// The fixture is shared with tests/pack/test_protocol.py: both twins must agree.
+// twin of test_question_shared_fixture: the fixture is the one pack/core/lib/protocol.py rendered
+// and parsed before it was removed.
 func TestQuestionSharedFixture(t *testing.T) {
 	raw, err := os.ReadFile("../../tests/pack/fixtures/protocol/questions.json")
 	if err != nil {

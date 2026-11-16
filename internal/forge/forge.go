@@ -12,6 +12,10 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 )
 
+// ErrIssueNotFound means an issue does not exist: IssueItem wraps it, on every forge. It is
+// not "the issue is not on the board", which is IssueItem's ok=false.
+var ErrIssueNotFound = errors.New("issue not found")
+
 // Forge is one repository on a forge: its issues, comments, acknowledgements, pull requests
 // and board. A status is an option name of [forge.board] status_options, never an ID.
 type Forge interface {
@@ -36,6 +40,8 @@ type Forge interface {
 	OpenPRs(ctx context.Context) ([]OpenPR, error)
 	BranchPRs(ctx context.Context, branch string) ([]PR, error)
 	BoardItems(ctx context.Context) ([]BoardItem, error)
+	// IssueItem reads the board item of issue number. ok is false for an issue that exists but
+	// is not on the board. An issue that does not exist is an error wrapping ErrIssueNotFound.
 	IssueItem(ctx context.Context, number int) (item BoardItem, ok bool, err error)
 	AddToBoard(ctx context.Context, number int) (BoardItem, error)
 	SetStatus(ctx context.Context, item BoardItem, status string) error
@@ -55,6 +61,7 @@ type Forge interface {
 }
 
 var _ Forge = (*GitHub)(nil)
+var _ Forge = (*GitLab)(nil)
 
 // Config is what Open needs to reach one repository.
 type Config struct {
@@ -81,7 +88,7 @@ func Open(cfg Config) (Forge, error) {
 		c.Board = cfg.Board
 		return c, nil
 	case "gitlab":
-		return nil, errors.New("forge: GitLab client not implemented yet")
+		return newGitLab(cfg), nil
 	default:
 		return nil, fmt.Errorf("forge: kind %q is not github or gitlab", cfg.Kind)
 	}

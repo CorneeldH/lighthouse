@@ -1,0 +1,7 @@
+=== demo/empty.md
+diff --git a/{root}/.agents/skills/demo/empty.md b/{root}/.agents/skills/demo/empty.md
+new file mode 100644
+index 000000000000..e69de29bb2d1
+=== demo/extra.md
+< Only on the left.
+< Second line.

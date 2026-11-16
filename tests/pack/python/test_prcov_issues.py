@@ -3,7 +3,7 @@
 From the source repository's `test_quality_prcov_issues.py`. The identity comes from
 `lighthouse.toml` (the `lighthouse_toml` fixture, with a board) instead of the source
 repository's controller, read through the `lighthouse` binary of this checkout; the handoff is
-checked with `protocol` from `pack/core`, independent of the binary.
+checked with `lighthouse protocol parse-header`, the Go reader of the same comments.
 """
 
 from __future__ import annotations
@@ -16,7 +16,6 @@ from pathlib import Path
 
 import pytest
 
-from lighthouse_lib import protocol
 from tests.pack._testkit import GIT_ENV, git, init_repo
 from tests.pack.python.conftest import BOARD_TOML, PY_SCRIPTS
 
@@ -42,6 +41,14 @@ LEGACY_HANDOFF = (
 def _board(lighthouse_toml, lighthouse_bin, monkeypatch):
     monkeypatch.setenv("LIGHTHOUSE_HANDOFF_WORKTREE", "/srv/checkout")
     return lighthouse_toml
+
+
+def parse_header(body: str) -> dict | None:
+    """What `lighthouse protocol parse-header` reads from a comment body: kind, fields, session."""
+    out = subprocess.run(
+        ["lighthouse", "protocol", "parse-header"], input=body, capture_output=True, text=True, check=True
+    ).stdout
+    return json.loads(out)
 
 
 class FakeGh:
@@ -377,30 +384,31 @@ def test_the_controller_option_is_a_constant():
 
 def test_handoff_parses_with_protocol():
     body = pi.handoff_comment(1234, 1016, 85)
-    handoff = protocol.parse_handoff(protocol.parse_header(body))
-    assert handoff.issue == 1234
-    assert handoff.worktree == "/srv/checkout"
-    assert handoff.branch == "main"
-    assert handoff.anchor == "#1234"
-    assert handoff.next == "/lighthouse-start-issue 1234"
-    assert handoff.when == "now"
+    header = parse_header(body)
+    assert header["kind"] == "handoff"
+    # Every value is the text of its field: `issue` is "#1234", not the number 1234.
+    assert header["fields"]["issue"] == "#1234"
+    assert header["fields"]["worktree"] == "/srv/checkout"
+    assert header["fields"]["branch"] == "main"
+    assert header["fields"]["anchor"] == "#1234"
+    assert header["fields"]["next"] == "/lighthouse-start-issue 1234"
+    assert header["fields"]["when"] == "now"
     for old in ("volgende:", "wanneer:", "anker:"):
         assert old not in body
 
 
 def test_handoff_branch_follows_default_branch(lighthouse_toml):
     lighthouse_toml(BOARD_TOML.replace('repo = "Other/repo"', 'repo = "Other/repo"\ndefault_branch = "trunk"'))
-    handoff = protocol.parse_handoff(protocol.parse_header(pi.handoff_comment(5, 6, 85)))
-    assert handoff.branch == "trunk"
+    assert parse_header(pi.handoff_comment(5, 6, 85))["fields"]["branch"] == "trunk"
 
 
 def test_handoff_heading_follows_language(lighthouse_toml):
     lighthouse_toml(BOARD_TOML.replace('language = "en"', 'language = "nl"'))
     body = pi.handoff_comment(1234, 1016, 85)
     assert body.startswith("🤖 Handoff\n")
-    header = protocol.parse_header(body)
-    assert header.kind == "handoff"
-    assert {"issue", "worktree", "branch", "anchor", "next", "when"} <= set(header.fields)
+    header = parse_header(body)
+    assert header["kind"] == "handoff"
+    assert {"issue", "worktree", "branch", "anchor", "next", "when"} <= set(header["fields"])
 
 
 def test_worktree_from_env_or_main_checkout(tmp_path, monkeypatch):

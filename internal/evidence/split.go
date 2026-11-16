@@ -1,4 +1,4 @@
-// Package evidence is the Go twin of pack/core/lib/evidence.py: the allowlist of an Evidence
+// Package evidence holds the allowlist of an Evidence
 // row (the Command cell of `### Evidence #N`), the runner with its output cap and deadline, and
 // `run` over a whole PR body. A PR body is untrusted text: what falls outside the allowlist never
 // runs, and nothing runs through a shell.

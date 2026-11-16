@@ -68,6 +68,8 @@ def _repo_reads(text: str) -> list[str]:
         (["tests/test_x.py", "README.md"], {"python"}),
         (["tests/pack/fixtures/protocol/headers.json"], {"go", "python"}),
         (["pack/core/README.md"], {"go", "python"}),
+        (["docs/install.md"], {"go", "python"}),
+        (["docs/other.md"], {"python"}),
         (["testsx/a.py"], {"go", "python"}),
         ([], set()),
     ],
@@ -98,6 +100,9 @@ def _without_default_paths(rel: str, text: str) -> str:
     if rel in ("internal/pins/lane/body.go", "internal/pins/lane/body_test.go"):
         # docs/pins.md is text in an issue/PR body; Go reads no file there.
         return text.replace("docs/pins.md", "")
+    if rel == "internal/config/config_test.go":
+        # TestInstallDocGitLabExampleParses reads docs/install.md; ci/domains.py keeps that file in go.
+        return text.replace("docs/install.md", "")
     return text
 
 

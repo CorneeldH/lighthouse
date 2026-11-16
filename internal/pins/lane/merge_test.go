@@ -152,7 +152,7 @@ func TestMergeSource_cleanFileAndDir(t *testing.T) {
 	writeT(t, root, skillMD, localSkill(pin, "\nintro local\none\ntwo\nthree\nfour\nfive\n"))
 	writeT(t, root, "pack/core/skills/demo/ref.md", "a\nb\nc\n")
 	writeT(t, root, "pack/core/skills/demo/same.md", "unchanged\n")
-	writeT(t, root, "pack/core/lib/tool.py", "x = 1\ny = 2\nz = 3\nv = 4\nw = 5 local\n")
+	writeT(t, root, "pack/core/scripts/tool.py", "x = 1\ny = 2\nz = 3\nv = 4\nw = 5 local\n")
 
 	got, err := MergeSource(context.Background(), root, skillPin("core/skills/demo", pin, "skills/demo", skillMD), c)
 	if err != nil {
@@ -169,14 +169,14 @@ func TestMergeSource_cleanFileAndDir(t *testing.T) {
 		t.Errorf("skill files:\n got %q\nwant %q", strs(got.Files), want)
 	}
 
-	got, err = MergeSource(context.Background(), root, filePin("pack/core/lib/tool.py", pin, "lib/tool.py"), c)
+	got, err = MergeSource(context.Background(), root, filePin("pack/core/scripts/tool.py", pin, "lib/tool.py"), c)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !got.Clean {
 		t.Errorf("file: not clean: %v", got.Conflicts)
 	}
-	if w := map[string]string{"pack/core/lib/tool.py": "x = 10\ny = 2\nz = 3\nv = 4\nw = 5 local\n"}; !reflect.DeepEqual(strs(got.Files), w) {
+	if w := map[string]string{"pack/core/scripts/tool.py": "x = 10\ny = 2\nz = 3\nv = 4\nw = 5 local\n"}; !reflect.DeepEqual(strs(got.Files), w) {
 		t.Errorf("file:\n got %q\nwant %q", strs(got.Files), w)
 	}
 }

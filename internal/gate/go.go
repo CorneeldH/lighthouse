@@ -31,16 +31,27 @@ func (p GoPackage) lists() [][]string {
 		p.EmbedFiles, p.TestEmbedFiles, p.XTestEmbedFiles}
 }
 
-// resolve follows symlinks so a worktree under a symlink compares equal to its listing; when
-// that fails the path is made absolute only.
+// resolve makes p absolute and follows symlinks so a worktree under a symlink compares equal to
+// its listing. A path that does not exist (a deleted file or package directory) resolves its
+// longest existing prefix and keeps the rest: on macOS /var is a symlink to /private/var, so a
+// missing path must still get the same prefix as an existing one.
 func resolve(p string) string {
-	if r, err := filepath.EvalSymlinks(p); err == nil {
-		return r
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		abs = filepath.Clean(p)
 	}
-	if a, err := filepath.Abs(p); err == nil {
-		return a
+	var tail []string
+	for dir := abs; ; {
+		if r, err := filepath.EvalSymlinks(dir); err == nil {
+			return filepath.Join(append([]string{r}, tail...)...)
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return abs
+		}
+		tail = append([]string{filepath.Base(dir)}, tail...)
+		dir = parent
 	}
-	return p
 }
 
 // GoPackages returns the import paths of the packages the changed files belong to, sorted and

@@ -94,7 +94,7 @@ func reportGateCommand(w io.Writer, before, after string, stale []string) {
 	}
 	for _, s := range stale {
 		if s == staleLib {
-			_, _ = fmt.Fprintln(w, "warning: lighthouse.toml: [test_gate] command uses lighthouse_lib, which lighthouse is phasing out; move it to a lighthouse command")
+			_, _ = fmt.Fprintln(w, "warning: lighthouse.toml: [test_gate] command uses lighthouse_lib, which lighthouse no longer installs; the test gate breaks until you change it")
 			continue
 		}
 		_, _ = fmt.Fprintf(w, "warning: lighthouse.toml: [test_gate] command calls %s, which lighthouse no longer installs; the test gate breaks until you change it\n", s)

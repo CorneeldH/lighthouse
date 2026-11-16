@@ -17,7 +17,7 @@ In scope: choosing *where* an instruction lives, and putting the file down in th
 
 Not here: the craft of writing a skill — this skill delegates that to
 `superpowers:writing-skills`. And not the guarding afterwards: that is
-`.lighthouse/scripts/check-instructions.sh`.
+`lighthouse check-instructions`.
 
 ## Step 1 — Look outside first. Hold off on writing until you have.
 
@@ -115,7 +115,7 @@ waits for a file read. That is the only case in which an ambient skill beats a r
 real case: the pattern for a new service you must know before you create the first file.
 
 **A rule without `paths:` is `CLAUDE.md` with extra steps.** The gain is entirely in the scoping.
-Check 7 of `.lighthouse/scripts/check-instructions.sh` blocks on this.
+Check 7 of `lighthouse check-instructions` blocks on this.
 
 ## Step 4 — For a hook: refuse without a counterpart
 
@@ -131,7 +131,7 @@ calling a norm "hard" without a hook is a norm with a nice title.
 Concretely: the skill or rule gets `binding: hard` and **names the hook path literally in its
 body** (`.claude/hooks/<name>.sh`, a subdirectory is allowed). Check 8 tests that the path exists
 *and* is registered in `.claude/settings.json` — harness-independent: the check runs through
-`.lighthouse/scripts/check-instructions.sh`, not through Claude Code itself. A hook script that
+`lighthouse check-instructions`, not through Claude Code itself. A hook script that
 is registered nowhere never runs.
 
 `.claude/settings.json` registers the hook. **OpenCode and Codex do not run those hooks** — so
@@ -232,7 +232,7 @@ Demands that come on top:
 ## Step 7 — Validate
 
 ```bash
-.lighthouse/scripts/check-instructions.sh
+lighthouse check-instructions
 ```
 
 Plus the project's own tests on its instruction layer, if it has any.
@@ -241,11 +241,11 @@ Plus the project's own tests on its instruction layer, if it has any.
 
 | Metric | Target | Measurement |
 |---|---:|---|
-| Rules without `paths:` | 0 | `.lighthouse/scripts/check-instructions.sh` (check 7) |
-| Skills with `binding: hard` without a registered hook | 0 | `.lighthouse/scripts/check-instructions.sh` (check 8) |
-| Words in `CLAUDE.md` + `AGENTS.md` | ≤ the ceiling (`lighthouse config project.instructions_word_ceiling`, default 3000) | `.lighthouse/scripts/check-instructions.sh` (check 10); `lighthouse init` and `init --upgrade` report the budget before writing |
-| Mirror break `.claude/skills` ↔ `.agents/skills` | 0 | `.lighthouse/scripts/check-instructions.sh` (check 3) |
-| Personal skills that shadow a project skill | 0 | `.lighthouse/scripts/check-instructions.sh` (check 5) |
+| Rules without `paths:` | 0 | `lighthouse check-instructions` (check 7) |
+| Skills with `binding: hard` without a registered hook | 0 | `lighthouse check-instructions` (check 8) |
+| Words in `CLAUDE.md` + `AGENTS.md` | ≤ the ceiling (`lighthouse config project.instructions_word_ceiling`, default 3000) | `lighthouse check-instructions` (check 10); `lighthouse init` and `init --upgrade` report the budget before writing |
+| Mirror break `.claude/skills` ↔ `.agents/skills` | 0 | `lighthouse check-instructions` (check 3) |
+| Personal skills that shadow a project skill | 0 | `lighthouse check-instructions` (check 5) |
 
 ## Non-negotiable
 
