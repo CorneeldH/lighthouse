@@ -216,7 +216,6 @@
               "required": "derived",
               "about": "The name part of forge.repo, derived by config.py.",
               "readers": [
-                "internal/boardstart/boardstart.go",
                 "pack/core/skills/close-issue",
                 "pack/core/skills/write-handoff",
                 "pack/python/scripts/quality/prcov_issues.py"
@@ -228,7 +227,6 @@
               "required": "derived",
               "about": "The owner part of forge.repo, derived by config.py.",
               "readers": [
-                "internal/boardstart/boardstart.go",
                 "pack/core/skills/close-issue",
                 "pack/core/skills/write-handoff",
                 "pack/core/skills/write-issue",
@@ -275,7 +273,6 @@
               "about": "The node id of the GitHub project board.",
               "example": "PVT_...",
               "readers": [
-                "internal/boardstart/boardstart.go",
                 "internal/cli/triage.go",
                 "internal/forge/board.go",
                 "internal/repoconfig/repoconfig.go",
@@ -306,7 +303,6 @@
               "about": "The id of the board's Status field.",
               "example": "PVTSSF_...",
               "readers": [
-                "internal/boardstart/boardstart.go",
                 "internal/cli/triage.go",
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/close-issue",
@@ -326,7 +322,7 @@
                 "On hold": "..."
               },
               "readers": [
-                "internal/boardstart/boardstart.go",
+                "internal/cli/forgecmd_write.go",
                 "internal/cli/serve.go",
                 "internal/cli/triage.go",
                 "internal/dispatch/gather.go",

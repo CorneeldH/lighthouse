@@ -58,8 +58,14 @@ func newDefaultForgeOpener() *forgeOpener {
 // forgeOpenFrom opens the forge of the repo whose lighthouse.toml is at the git top of cwd.
 // A missing or unreadable configuration, and a missing token, are exit 2.
 func forgeOpenFrom(o *forgeOpener, cwd string) func(context.Context) (forge.Forge, error) {
+	return forgeOpenWith(o, func() (repoconfig.Repo, error) { return repoconfig.Load(askRoot(cwd)) })
+}
+
+// forgeOpenWith opens the forge of the repo that load reads, with its token_env. A load error
+// and a missing token are an *exitError of exit 2 that carries the message.
+func forgeOpenWith(o *forgeOpener, load func() (repoconfig.Repo, error)) func(context.Context) (forge.Forge, error) {
 	return func(ctx context.Context) (forge.Forge, error) {
-		repo, err := repoconfig.Load(askRoot(cwd))
+		repo, err := load()
 		if err != nil {
 			return nil, &exitError{code: forgeExitUsage, err: err}
 		}
