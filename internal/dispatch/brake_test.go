@@ -2,6 +2,7 @@ package dispatch
 
 import (
 	"crypto/rand"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -55,10 +56,17 @@ func TestBrakeParkedResume(t *testing.T) {
 // A node whose markers could not be read this tick takes no start and no resume: its parked runs
 // are not counted, so its occupancy is unknown. Another node with free slots still takes one.
 func TestBrakeClosesNodeWithUnmeasuredMarkers(t *testing.T) {
+	// lighthouse run (Manual) skips memory, slots and software, but not an unknown occupancy.
+	for _, manual := range []bool{false, true} {
+		t.Run(fmt.Sprintf("manual %t", manual), func(t *testing.T) { testBrakeClosesNodeWithUnmeasuredMarkers(t, manual) })
+	}
+}
+
+func testBrakeClosesNodeWithUnmeasuredMarkers(t *testing.T, manual bool) {
 	blind := "node-" + strings.ToLower(rand.Text()[:8])
 	seen := "node-" + strings.ToLower(rand.Text()[:8])
 	b := &Brake{
-		UsageMeasured: true, HaltPctSession: 85, HaltPctWeek: 90, MaxSoftware: 5,
+		UsageMeasured: true, HaltPctSession: 85, HaltPctWeek: 90, MaxSoftware: 5, Manual: manual,
 		Nodes: map[string]NodeSlots{
 			blind: {Name: "blind", Slots: 4, Unmeasured: true},
 			seen:  {Name: "seen", Slots: 4},
