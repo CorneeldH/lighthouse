@@ -114,8 +114,13 @@ te hoog; de vorm klopt wel.
   (`ControllerIssues` leest `BoardItems` per bouw) en de tick; een bordpagina kost ~53 punten
   (`internal/forge/board.go`). Met 90 s komt de nieuwe bouw alleen al op ~40 × 53 punten per repo
   per uur voor het bord, naast de issuesquery. Het tabblad toont feiten die op die schaal
-  veranderen; 300 s is genoeg. De bouwer rekent het uurtotaal na en legt het vast in het plan.
-  *(own choice after spec review, r1-f1)*
+  veranderen; 300 s is genoeg. **Geen tweede bordlezing:** de board-status komt uit de snapshot
+  van de overview-bouw (die leest `BoardItems` al), niet uit een eigen `BoardItems`-call; de server
+  voegt ze in het geheugen samen. De prioriteringsbouw doet zelf alleen de issues-, milestone- en
+  relatiequery's. Raakt het uurbudget van het token toch op (rate-limitfout van de forge), dan
+  faalt die bouw zichtbaar (502, zoals hierboven) en houdt hij de laatste goede snapshot niet
+  vast; de andere refreshers worden daar niet door vertraagd. De bouwer legt het uurtotaal van de
+  query's vast in het plan. *(own choice after spec review, r1-f1 round 2)*
 - Of een repo een board heeft, komt mee in de bron die de bouw krijgt (uit `r.Board` in
   `forgeReposWith`, `internal/cli/serve.go`). `BoardItems` faalt op een repo zonder board en dat
   zou de hele bouw laten falen; zonder board blijft de board-status leeg. *(r1-f8)*
