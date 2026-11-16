@@ -31,6 +31,11 @@ type Deps struct {
 	Home      string                   // where ~/.claude/projects lives; "": os.UserHomeDir
 	Run       workplace.Runner         // nil: workplace.ExecRunner()
 	Now       func() time.Time         // nil: time.Now
+	// The usage guard on the node, where its hook reads them. "": from the environment of
+	// serve, as on self (park.PauseFile, usage.DefaultPaths().Mirror, park.MarkerDir).
+	PauseFile   string
+	AlarmMirror string
+	MarkerDir   string
 }
 
 type handler struct {
@@ -78,6 +83,8 @@ func newHandler(d Deps) *handler {
 	h.registerStatemap()
 	h.registerGit()
 	h.registerTranscript()
+	h.registerProc()
+	h.registerUsage()
 	return h
 }
 

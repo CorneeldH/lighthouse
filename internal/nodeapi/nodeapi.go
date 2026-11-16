@@ -151,3 +151,39 @@ type Session struct {
 	SessionID string `json:"session_id"`
 	UpdatedAt string `json:"updated_at"`
 }
+
+// The process routes: each looks up the worktree of {id} at the node's own forge and runs the
+// kenn-forge adapter of the node (Node "") with the profile of the run; the body is a
+// StopRequest. A profile the node does not know, or an unsafe or empty session id, is 400.
+const (
+	// PathStop is POST: Stop. On a node without unit_prefix (no systemd) it is Kill.
+	PathStop = Prefix + "/workspaces/{id}/stop"
+	// PathKill is POST: Kill, only the claude processes of the given sessions.
+	PathKill = Prefix + "/workspaces/{id}/kill"
+)
+
+// StopRequest is the body of POST stop and POST kill.
+type StopRequest struct {
+	Profile    string   `json:"profile"`
+	SessionIDs []string `json:"session_ids,omitempty"`
+}
+
+// The usage routes: the tick's usage guard on the node. They touch only the directory of the
+// pause flag and the alarm mirror (lighthouse/controller) and the marker directory.
+const (
+	// PathUsage is PUT: write the pause flag and the alarm mirror as the tick has them, or
+	// remove them; the body is a UsageRequest.
+	PathUsage = Prefix + "/usage"
+	// PathMarkers is GET: the resume markers of the node, []park.Marker.
+	PathMarkers = Prefix + "/markers"
+	// PathMarker is DELETE with the query key: park.RemoveMarker of {session}, which leaves a
+	// marker whose key differs. A missing marker is no error.
+	PathMarker = Prefix + "/markers/{session}"
+)
+
+// UsageRequest is the body of PUT usage: the raw content of the tick's PAUSE and alarm mirror.
+// nil removes the file on the node.
+type UsageRequest struct {
+	Pause *string `json:"pause,omitempty"`
+	Alarm *string `json:"alarm,omitempty"`
+}

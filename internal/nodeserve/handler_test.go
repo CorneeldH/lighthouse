@@ -113,9 +113,12 @@ func newForgeFixture(t *testing.T, ff *fakeForge, nodeTokenContent string) fixtu
 			URL:       srv.URL,
 			TokenFile: writeFile(t, dir, "forge.token", "forge-token\n"),
 		},
-		Profiles: map[string]bool{"default": true},
-		Home:     filepath.Join(dir, "home"),
-		Run:      cr.run,
+		Profiles:    map[string]bool{"default": true},
+		Home:        filepath.Join(dir, "home"),
+		PauseFile:   filepath.Join(dir, "controller", "PAUSE"),
+		AlarmMirror: filepath.Join(dir, "controller", "usage-window.alarm"),
+		MarkerDir:   filepath.Join(dir, "resume"),
+		Run:         cr.run,
 	})
 	// A probe route that only resolves, so the tests see resolve's errors as HTTP answers.
 	type probeIn struct {
