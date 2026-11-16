@@ -113,8 +113,9 @@ type workflow struct {
 		CancelInProgress *bool  `yaml:"cancel-in-progress"`
 	} `yaml:"concurrency"`
 	Jobs map[string]struct {
-		Permissions any            `yaml:"permissions"`
-		Steps       []workflowStep `yaml:"steps"`
+		Permissions    any            `yaml:"permissions"`
+		TimeoutMinutes int            `yaml:"timeout-minutes"`
+		Steps          []workflowStep `yaml:"steps"`
 	} `yaml:"jobs"`
 }
 
@@ -139,8 +140,8 @@ func readOnly(p any) bool {
 
 // Fails when pins.yml loses its weekly schedule or manual start, lets two runs overlap, grants
 // GITHUB_TOKEN a write, asks the App for less than contents, pull-requests and issues write,
-// checks out without the App token (so the push to pins/* would not use it), or stops running
-// `pins lane` with that token.
+// checks out without the App token (so the push to pins/* would not use it), stops running
+// `pins lane` with that token, or loses the job time-out that frees the concurrency group.
 func TestPinsWorkflow_shape(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "pins.yml"))
 	if err != nil {
@@ -173,6 +174,9 @@ func TestPinsWorkflow_shape(t *testing.T) {
 	for name, job := range wf.Jobs {
 		if !readOnly(job.Permissions) {
 			t.Errorf("job %s permissions %v grant a write", name, job.Permissions)
+		}
+		if job.TimeoutMinutes <= 0 || job.TimeoutMinutes > 60 {
+			t.Errorf("job %s timeout-minutes %d, want a bound of at most an hour", name, job.TimeoutMinutes)
 		}
 		var app, checkout, lane = -1, -1, -1
 		for i, s := range job.Steps {
