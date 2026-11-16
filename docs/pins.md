@@ -207,6 +207,12 @@ opnieuw. Werk `pack/SOURCES.toml` bij als er bestanden bijkwamen of verdwenen, d
 4. Past de nieuwe versie niet, sluit het issue dan met een reden. De lane maakt voor die versie
    geen nieuw issue.
 
+Let op bij een gedeeltelijke ophoging. Het issue noemt de nieuwste release als doel. Hoog je
+`version` op naar een tussenversie en sluit je het issue, dan geldt dat issue als door jou
+gesloten voor die nieuwste release: de lane meldt de releases tussen jouw versie en die release
+niet opnieuw, pas weer bij een nog nieuwere release. Wil je de rest blijven zien, laat het issue
+dan open: verwijs in die PR met `Refs #<issuenummer>` in plaats van `Closes`.
+
 ### Controle achteraf
 
 ```text
