@@ -191,7 +191,7 @@ func (n *hubNode) serve(t *testing.T, w http.ResponseWriter, r *http.Request, ro
 }
 
 // serveNode is lighthouse serve on the node, as nodeserve answers the routes the adapter uses:
-// the bearer check, info, launch (the carrier), carrier, follow, sessions (with session_id,
+// the bearer check, info, launch (the carrier), carrier, follow, relocate, sessions (with session_id,
 // working until stopped), transcript (none yet), stop and kill. Any other route is an error of
 // the adapter.
 func (n *hubNode) serveNode(t *testing.T, w http.ResponseWriter, r *http.Request) {
@@ -237,6 +237,15 @@ func (n *hubNode) serveWorkspace(t *testing.T, w http.ResponseWriter, r *http.Re
 		w.WriteHeader(http.StatusNoContent)
 	case "POST follow":
 		w.WriteHeader(http.StatusNoContent)
+	case "POST relocate":
+		// The start command names no path in the worktree: serve hands it back unchanged.
+		var req nodeapi.Relocation
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Command == "" {
+			t.Errorf("fake serve: relocate %+v: %v", req, err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(req)
 	case "GET sessions":
 		if _, ok := n.workspaces[id]; !ok {
 			w.WriteHeader(http.StatusNotFound)

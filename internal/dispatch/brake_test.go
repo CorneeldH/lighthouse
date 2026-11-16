@@ -1,6 +1,10 @@
 package dispatch
 
-import "testing"
+import (
+	"crypto/rand"
+	"strings"
+	"testing"
+)
 
 // A non-parked resume (answer, handoff) takes a new slot: its previous run is closed. Counting
 // only starts as admitted fails this test.
@@ -45,5 +49,31 @@ func TestBrakeParkedResume(t *testing.T) {
 	got = b.apply([]planned{parked, parked})
 	if got[1].Kind != KindDefer || got[1].Reason != "memory: MemAvailable 10.0 GiB - 1 x 3 GiB < 8 GiB" {
 		t.Errorf("parked resume must count for memory, got %+v", got[1].Action)
+	}
+}
+
+// A node whose markers could not be read this tick takes no start and no resume: its parked runs
+// are not counted, so its occupancy is unknown. Another node with free slots still takes one.
+func TestBrakeClosesNodeWithUnmeasuredMarkers(t *testing.T) {
+	blind := "node-" + strings.ToLower(rand.Text()[:8])
+	seen := "node-" + strings.ToLower(rand.Text()[:8])
+	b := &Brake{
+		UsageMeasured: true, HaltPctSession: 85, HaltPctWeek: 90, MaxSoftware: 5,
+		Nodes: map[string]NodeSlots{
+			blind: {Name: "blind", Slots: 4, Unmeasured: true},
+			seen:  {Name: "seen", Slots: 4},
+		},
+	}
+	start := planned{Action: Action{Kind: KindStart, Repo: "o/a", Issue: 1}, node: blind}
+	parked := planned{Action: Action{Kind: KindResume, Repo: "o/a", Issue: 2, Trigger: triggerUsage}, node: blind, holdsSlot: true}
+	other := planned{Action: Action{Kind: KindStart, Repo: "o/a", Issue: 3}, node: seen}
+	got := b.apply([]planned{start, parked, other})
+	for i, want := range []string{"markers not readable", "markers not readable"} {
+		if got[i].Kind != KindDefer || got[i].Reason != want {
+			t.Errorf("action %d = %+v, want a defer with %q", i, got[i].Action, want)
+		}
+	}
+	if got[2].Kind != KindStart {
+		t.Errorf("start on the other node = %+v, want it to pass", got[2].Action)
 	}
 }

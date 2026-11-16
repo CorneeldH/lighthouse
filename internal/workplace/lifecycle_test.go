@@ -2,6 +2,7 @@ package workplace
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -1010,23 +1011,131 @@ func only(w Workplace) Place {
 	return func(string, string) Workplace { return w }
 }
 
-func TestCleanupRemoteSkipsGit(t *testing.T) {
+// randomNode is a node id no fixture shares.
+func randomNode() string { return "node-" + strings.ToLower(rand.Text()[:8]) }
+
+// meterWP is a fakeWP on a node that measures git through GitMeter. It answers only for
+// workspace w1 and records the merged head it was asked about.
+type meterWP struct {
+	*fakeWP
+	dirty, unpushed       bool
+	dirtyErr, unpushedErr error
+	mergedHeads           []string
+}
+
+func (m *meterWP) Dirty(_ context.Context, id string) (bool, error) {
+	if id != "w1" {
+		return false, fmt.Errorf("unexpected workspace %q", id)
+	}
+	return m.dirty, m.dirtyErr
+}
+
+func (m *meterWP) Unpushed(_ context.Context, id, mergedHead string) (bool, error) {
+	if id != "w1" {
+		return false, fmt.Errorf("unexpected workspace %q", id)
+	}
+	m.mergedHeads = append(m.mergedHeads, mergedHead)
+	return m.unpushed, m.unpushedErr
+}
+
+// On a node Cleanup takes the steps of self: it stops the own session, then measures git through
+// the GitMeter, never with the local runner.
+func TestCleanupOnNodeRunsSameStepsAsSelf(t *testing.T) {
+	cases := []struct {
+		name            string
+		dirty, unpushed bool
+		mergedHead      string
+		wantRemoved     bool
+		wantReason      string
+	}{
+		{name: "dirty", dirty: true, wantReason: "uncommitted changes"},
+		{name: "unpushed", unpushed: true, wantReason: "unpushed commits"},
+		{name: "merged head", mergedHead: "abc", wantRemoved: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			db := openLeftoverDB(t)
+			sid := closedOwnRun(t, db, "k1")
+			w := &meterWP{fakeWP: &fakeWP{sessions: []Session{{Key: "k1", SessionID: sid, State: "idle"}}}, dirty: tc.dirty, unpushed: tc.unpushed}
+			c := cand(7)
+			c.Node = randomNode()
+			c.MergedHead = tc.mergedHead
+			removed, err := Cleanup(context.Background(), db, w, noRunner(t), c, lcNow)
+			if err != nil || removed != tc.wantRemoved {
+				t.Fatalf("Cleanup = %v, %v; want removed %v", removed, err, tc.wantRemoved)
+			}
+			if want := []string{"w1:" + sid}; !reflect.DeepEqual(w.stopped, want) {
+				t.Errorf("stopped = %v, want %v", w.stopped, want)
+			}
+			if got := leftoverReasons(t, db)["w1"]; got != tc.wantReason {
+				t.Errorf("reason = %q, want %q", got, tc.wantReason)
+			}
+			if tc.wantRemoved != (w.removes == 1) {
+				t.Errorf("removes = %d, want removed %v", w.removes, tc.wantRemoved)
+			}
+			if !tc.dirty && !reflect.DeepEqual(w.mergedHeads, []string{tc.mergedHead}) {
+				t.Errorf("Unpushed asked with merged heads %q, want [%q]", w.mergedHeads, tc.mergedHead)
+			}
+		})
+	}
+}
+
+// Every kenn-forge adapter is a GitMeter, but on self it cannot measure: self measures git on this
+// host, also through a workplace that has a GitMeter.
+func TestCleanupOnSelfIgnoresGitMeter(t *testing.T) {
 	db := openLeftoverDB(t)
-	w := &fakeWP{}
+	w := &meterWP{fakeWP: &fakeWP{}, dirtyErr: ErrNotMeasurable, unpushedErr: ErrNotMeasurable}
+	removed, err := Cleanup(context.Background(), db, w, cleanRunner(), cand(7), lcNow)
+	if err != nil || !removed || w.removes != 1 {
+		t.Fatalf("Cleanup = %v, %v, removes %d; want removed after local git", removed, err, w.removes)
+	}
+}
+
+// A node whose git does not answer keeps the workspace, with the cause in the reason.
+func TestCleanupOnNodeGitUnreachableKeeps(t *testing.T) {
+	cases := []struct {
+		name string
+		w    *meterWP
+	}{
+		{"dirty", &meterWP{fakeWP: &fakeWP{}, dirtyErr: errors.New("serve: connection refused")}},
+		{"unpushed", &meterWP{fakeWP: &fakeWP{}, unpushedErr: errors.New("serve: connection refused")}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			db := openLeftoverDB(t)
+			c := cand(7)
+			c.Node = randomNode()
+			removed, err := Cleanup(context.Background(), db, tc.w, noRunner(t), c, lcNow)
+			if err != nil || removed || tc.w.removes != 0 {
+				t.Fatalf("Cleanup = %v, %v, removes %d; want kept", removed, err, tc.w.removes)
+			}
+			if got := leftoverReasons(t, db)["w1"]; got != "not measurable: serve: connection refused" {
+				t.Errorf("reason = %q", got)
+			}
+		})
+	}
+}
+
+// A workplace on a node that cannot measure git there keeps the workspace untouched: no stop,
+// no local git, no remove.
+func TestCleanupNodeWithoutGitMeterKeeps(t *testing.T) {
+	db := openLeftoverDB(t)
+	sid := closedOwnRun(t, db, "k1")
+	w := &fakeWP{sessions: []Session{{Key: "k1", SessionID: sid, State: "idle"}}}
 	c := cand(7)
-	c.Node = "node-a"
+	c.Node = randomNode()
 	removed, err := Cleanup(context.Background(), db, w, noRunner(t), c, lcNow)
 	if err != nil || removed {
 		t.Fatalf("Cleanup = %v, %v, want kept without error", removed, err)
 	}
-	if w.removes != 0 || w.stops != 0 || len(w.looked) != 0 {
-		t.Errorf("remote candidate touched the workplace: removes %d, stops %d, looked %v", w.removes, w.stops, w.looked)
+	if w.removes != 0 || w.stops != 0 {
+		t.Errorf("removes %d, stops %d; want none", w.removes, w.stops)
 	}
 	ls, err := Leftovers(context.Background(), db)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []Leftover{{Repo: lcRepo, Issue: 7, Node: "node-a", WorkspaceID: "w1", Path: "/p/w1", Reason: "not measurable: node node-a: no local git"}}
+	want := []Leftover{{Repo: lcRepo, Issue: 7, Node: c.Node, WorkspaceID: "w1", Path: "/p/w1", Reason: "not measurable: node " + c.Node + ": no git measurement"}}
 	if !reflect.DeepEqual(ls, want) {
 		t.Errorf("leftovers = %+v, want %+v", ls, want)
 	}

@@ -33,6 +33,9 @@ type NodeSlots struct {
 	Name  string `json:"name"`
 	Slots int    `json:"slots"`
 	InUse int    `json:"in_use"`
+	// Unmeasured: the markers of the node could not be read this tick, so its parked runs are
+	// not counted; the brake of the node is closed.
+	Unmeasured bool `json:"unmeasured,omitempty"`
 }
 
 // apply walks the starts and resumes of ps in order and lets each through, drops it (pause)
@@ -118,13 +121,18 @@ func (b *Brake) closed(p planned, passed, admitted, admittedSoftware int, admitt
 	return ""
 }
 
-// nodeClosed is closed for a run on a node: no memory brake (the memory is not this host's), the
-// slots of the node, then the software limit, which is host-wide.
+// nodeClosed is closed for a run on a node: a node whose markers were not readable, no memory
+// brake (the memory is not this host's), the slots of the node, then the software limit, which is
+// host-wide.
 func (b *Brake) nodeClosed(p planned, admitted, admittedSoftware int) string {
+	n, ok := b.Nodes[p.node]
+	// An unknown occupancy never lets an extra run in, a parked one included.
+	if ok && n.Unmeasured {
+		return "markers not readable"
+	}
 	if p.holdsSlot {
 		return ""
 	}
-	n, ok := b.Nodes[p.node]
 	if !ok {
 		return fmt.Sprintf("slots: node %s not configured", p.node)
 	}

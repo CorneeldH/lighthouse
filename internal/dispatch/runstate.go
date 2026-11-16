@@ -72,18 +72,29 @@ func ReadPermission(stateDir, sessionID string) (*Permission, error) {
 	if err != nil {
 		return nil, fmt.Errorf("dispatch: permission note: %w", err)
 	}
+	p, err := ParsePermission(data)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	return p, nil
+}
+
+// ParsePermission reads the bytes of a permission note, as the permission-check hook writes
+// it, on this host or on a node. A note that does not parse, has another version or no time is
+// an error.
+func ParsePermission(data []byte) (*Permission, error) {
 	var note struct {
 		Version int `json:"version"`
 		Permission
 	}
 	if err := json.Unmarshal(data, &note); err != nil {
-		return nil, fmt.Errorf("dispatch: permission note %s: %w", path, err)
+		return nil, fmt.Errorf("dispatch: permission note: %w", err)
 	}
 	if note.Version != permissionVersion {
-		return nil, fmt.Errorf("dispatch: permission note %s: version %d, want %d", path, note.Version, permissionVersion)
+		return nil, fmt.Errorf("dispatch: permission note: version %d, want %d", note.Version, permissionVersion)
 	}
 	if note.At.IsZero() {
-		return nil, fmt.Errorf("dispatch: permission note %s: no time", path)
+		return nil, errors.New("dispatch: permission note: no time")
 	}
 	return &note.Permission, nil
 }
