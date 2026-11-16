@@ -11,7 +11,7 @@
 # copied into the repo before the python3 grep.
 set -u
 
-if [ "$#" -ne 2 ] || [ ! -x "$1" ] || [ ! -d "$2" ]; then
+if [ "$#" -ne 2 ] || [ ! -x "$1" ] || [ ! -d "$2" ] || [ -n "$(ls -A "$2")" ]; then
   echo "usage: $0 <lighthouse binary> <empty work dir>" >&2
   exit 2
 fi
@@ -39,7 +39,7 @@ JQ=$(command -v jq) || { echo "no-python: jq is missing" >&2; exit 2; }
 TOOLBOX="$WORK/toolbox"
 BIN_DIR="$WORK/bin"
 mkdir -p "$TOOLBOX" "$BIN_DIR"
-ln -s "$BIN" "$BIN_DIR/lighthouse"
+ln -sf "$BIN" "$BIN_DIR/lighthouse"
 IFS=: read -r -a path_dirs <<<"$PATH"
 for dir in "${path_dirs[@]}"; do
   [ -d "$dir" ] || continue
@@ -47,7 +47,7 @@ for dir in "${path_dirs[@]}"; do
     name=${exe##*/}
     case "$name" in python* | lighthouse) continue ;; esac
     [ -f "$exe" ] && [ -x "$exe" ] || continue
-    [ -e "$TOOLBOX/$name" ] || [ -L "$TOOLBOX/$name" ] || ln -s "$exe" "$TOOLBOX/$name"
+    [ -e "$TOOLBOX/$name" ] || [ -L "$TOOLBOX/$name" ] || ln -sf "$exe" "$TOOLBOX/$name"
   done
 done
 export PATH="$BIN_DIR:$TOOLBOX"
@@ -131,9 +131,14 @@ done <<<"$registrations"
 if [ -n "${NO_PYTHON_EXTRA:-}" ]; then
   cp "$NO_PYTHON_EXTRA" "$REPO/" || fail "cannot copy $NO_PYTHON_EXTRA"
 fi
+hits=$(grep -rn python3 --exclude-dir=.git "$REPO")
+grep_rc=$?
+if [ "$grep_rc" -ge 2 ]; then
+  fail "the python3 search failed (grep exit $grep_rc)"
+fi
 while IFS= read -r hit; do
   [ -n "$hit" ] || continue
   fail "python3 in $(printf '%s' "$hit" | cut -d: -f1,2)"
-done < <(grep -rn python3 --exclude-dir=.git "$REPO")
+done <<<"$hits"
 
 exit "$FAILED"
