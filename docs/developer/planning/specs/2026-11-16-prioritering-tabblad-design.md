@@ -77,17 +77,25 @@ Per gelezen repo (de repo's die `lighthouse serve` nu al leest, zie `forgeRepos`
 
 Op GitHub haalt één GraphQL-query per repo de open issues met milestone en `blockedBy` op, met
 paginering. Dus niet één REST-call per issue. Op GitLab komt hetzelfde uit de bestaande
-issue-endpoints plus de `links` van een issue. De forge-interface (`internal/forge/forge.go`)
+issue-endpoints plus de `links` van een issue (één REST-call per open issue, achter elkaar binnen
+`BuildTimeout`). De bouwer legt een call- en tijdbudget vast, of kiest GitLab GraphQL met de
+linked-items-widget; zonder haalbaar budget faalt de bouw voor die repo zichtbaar, niet stil.
+*(r1-f7)* De forge-interface (`internal/forge/forge.go`)
 krijgt hiervoor een methode die GitHub en GitLab allebei implementeren.
 
 **De milestone-telling telt alleen issues, geen pull requests.** De milestones-API van GitHub
 (`open_issues`, `closed_issues`) telt PR's met de milestone mee. Op 16 november was
 `closed_issues=26` bij "Lighthouse zonder Python" in werkelijkheid 12 issues en 14 PR's. Dat
 verdubbelt het percentage ongeveer, en dat is precies wat het anti-doel verbiedt. Op GitHub komt
-de telling daarom uit GraphQL (`milestone.issues(states: …) { totalCount }`, dat geen PR's telt).
-Op GitLab bestaat geen telling in de milestones-API; daar komt hij uit de issues van die milestone
-(merge requests zijn daar geen issues). Alleen tellingen: de server haalt geen gesloten issues per
-milestone op.
+de telling daarom uit GraphQL, per milestone en per soort een `search(type: ISSUE, query: "repo:…
+milestone:\"…\" is:issue is:closed reason:completed") { issueCount }` (en `is:open` voor de open
+issues). `milestone.issues(states: …) { totalCount }` kan niet op `stateReason` filteren, dus
+daarmee is de not-planned-regel hieronder niet te halen. De bouwer controleert de zoekqualifiers
+tegen de live API. *(own choice after spec review, r1-f2)*
+Op GitLab bestaat geen telling in de milestones-API; daar komt hij uit
+`/projects/:id/issues_statistics?milestone=…` (merge requests zijn daar geen issues). Alleen
+tellingen: de server haalt geen gesloten issues per milestone op. *(own choice after spec review,
+r1-f6)*
 
 **Gesloten als "not planned"** (GitHub `stateReason: NOT_PLANNED`, ook duplicaten) telt niet als
 klaar en valt helemaal buiten de balk. Het is geen gedaan werk en ook geen werk dat nog moet.
@@ -98,8 +106,19 @@ te hoog; de vorm klopt wel.
 
 ### Server
 
-- Een eigen `Refresher` (`internal/server/refresher.go`), naast die van de vragen en returned, met
-  hetzelfde interval van 90 s. Een mislukte bouw raakt zo de andere endpoints niet (anti-doel).
+- Een eigen `Refresher`, naast die van de vragen en returned. Een mislukte bouw raakt zo de andere
+  endpoints niet (anti-doel). `Refresher` en `BuildFunc` zijn nu vast getypt op `overview.Overview`
+  (`internal/server/refresher.go`); de bouwer maakt ze generiek of voegt een tweede type toe.
+  *(r1-f5)*
+- **Interval 300 s, niet 90 s.** De bouw deelt het uurbudget van het GitHub-token met de overview
+  (`ControllerIssues` leest `BoardItems` per bouw) en de tick; een bordpagina kost ~53 punten
+  (`internal/forge/board.go`). Met 90 s komt de nieuwe bouw alleen al op ~40 × 53 punten per repo
+  per uur voor het bord, naast de issuesquery. Het tabblad toont feiten die op die schaal
+  veranderen; 300 s is genoeg. De bouwer rekent het uurtotaal na en legt het vast in het plan.
+  *(own choice after spec review, r1-f1)*
+- Of een repo een board heeft, komt mee in de bron die de bouw krijgt (uit `r.Board` in
+  `forgeReposWith`, `internal/cli/serve.go`). `BoardItems` faalt op een repo zonder board en dat
+  zou de hele bouw laten falen; zonder board blijft de board-status leeg. *(r1-f8)*
 - Eén endpoint `GET /api/priorities`, via huma zoals de andere, met een OpenAPI-snapshot en een
   orval-gegenereerde client (`web/src/api/lighthouse.ts`). Het levert de ruwe feiten per repo:
   issues, relaties, milestones, status en actieve runs. Het rekenwerk (diepte, aantal wachtenden,
@@ -119,6 +138,11 @@ te hoog; de vorm klopt wel.
 - **Nog niet opgepakt**: open en niet actief.
 - **Wachtenden van een issue**: het aantal open issues dat er transitief achter wacht, over alle
   gelezen repo's.
+- **Cycli.** Een cyclus in `blocked_by` (ook over repo's, en op GitLab zijn links vrije koppelingen)
+  mag de berekening niet laten hangen. Issues in dezelfde cyclus (sterk samenhangende component)
+  staan in één kolom met een zichtbare markering *cyclus*; wachtenden telt elk issue één keer; de
+  werkvolgorde onder een milestone zet een cyclus bij elkaar, op nummer. *(own choice after spec
+  review, r1-f3)*
 - **Het repo-filter verbergt alleen.** Diepte (de kolom), wachtenden en blockers van buiten worden
   één keer berekend over alle gelezen repo's. Het filter verandert geen getal. Een issue in kolom
   *Kan nu* kan dus echt nu, ook als zijn blocker in een weggefilterde repo ligt. *Mijn keuze.*
@@ -160,7 +184,11 @@ per milestone maakt de legenda onleesbaar. Daarom:
 - Bekend nadeel, geaccepteerd: dezelfde milestone kan een andere kleur krijgen als je het filter
   of de weergave wisselt.
 
-Het palet heeft acht kleuren en bouwt op de `--lh-*`-kleuren. Het moet in licht en donker leesbaar
+Het palet heeft acht kleuren en bouwt op de `--lh-*`-kleuren, maar geel, grijs en navy zijn
+gereserveerd voor status (actief, nog niet opgepakt/geen milestone, opgepakt-rand en wachtenden-pil).
+De acht milestonekleuren zijn andere tinten: afgeleid van blue, purple, green en orange (en
+lichte/donkere varianten daarvan), zodat een klaar-segment nooit op een status-segment lijkt.
+*(r1-f4)* Het moet in licht en donker leesbaar
 zijn; de `dataviz`-skill heeft een validator.
 
 ### Weergave 1 — Afhankelijkheden
@@ -212,7 +240,9 @@ Eén rij per open milestone:
 
 ### Weergave 3 — Zonder milestone
 
-- Een lijst van de open issues zonder milestone. Per issue: nummer, titel, en de relatie als
+- Een lijst van de open issues zonder milestone. Een open issue in een gesloten milestone telt hier
+  ook mee, met de gesloten milestone genoemd, zodat open werk niet uit beeld valt. *(own choice
+  after spec review, r1-f9)* Per issue: nummer, titel, en de relatie als
   blauwe pil (`blokkeert #128`, `wacht op #44`).
 - Geen sleepvakken en geen suggesties in deze stap. De ruimte rechts blijft leeg, of de lijst
   neemt de volle breedte. *Mijn keuze: de volle breedte; stap 2 en 3 maken er twee kolommen van,
