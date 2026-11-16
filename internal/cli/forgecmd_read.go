@@ -44,9 +44,10 @@ func forgeNumber(cmd *cobra.Command, s string) (int, error) {
 }
 
 func newForgeIssueCommand(env *forgeEnv) *cobra.Command {
-	cmd := forgeGroup("issue", "Read issues")
+	cmd := forgeGroup("issue", "Read and write issues")
 	cmd.AddCommand(newForgeIssueViewCommand(env), newForgeIssueListCommand(env),
 		newForgeIssueSearchCommand(env), newForgeIssueBlockersCommand(env))
+	cmd.AddCommand(newForgeIssueWriteCommands(env)...)
 	return cmd
 }
 
@@ -162,7 +163,7 @@ func newForgeIssueBlockersCommand(env *forgeEnv) *cobra.Command {
 }
 
 func newForgePRCommand(env *forgeEnv) *cobra.Command {
-	cmd := forgeGroup("pr", "Read pull requests (merge requests)")
+	cmd := forgeGroup("pr", "Read and write pull requests (merge requests)")
 	var field string
 	view := &cobra.Command{
 		Use: "view <number> [--field PATH]", Short: "Show a pull request as JSON", Args: forgeArgs(1),
@@ -182,11 +183,12 @@ func newForgePRCommand(env *forgeEnv) *cobra.Command {
 	}
 	addFieldFlag(view, &field)
 	cmd.AddCommand(view)
+	cmd.AddCommand(newForgePRWriteCommands(env)...)
 	return cmd
 }
 
 func newForgeMilestoneCommand(env *forgeEnv) *cobra.Command {
-	cmd := forgeGroup("milestone", "Read milestones")
+	cmd := forgeGroup("milestone", "Read and write milestones")
 	var listField, listState, viewField string
 	list := &cobra.Command{
 		Use: "list [--state S] [--field PATH]", Short: "List milestones as JSON", Args: forgeArgs(0),
@@ -225,6 +227,7 @@ func newForgeMilestoneCommand(env *forgeEnv) *cobra.Command {
 	}
 	addFieldFlag(view, &viewField)
 	cmd.AddCommand(list, view)
+	cmd.AddCommand(newForgeMilestoneWriteCommands(env)...)
 	return cmd
 }
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -22,7 +23,11 @@ const (
 // forgeEnv is what `lighthouse forge` takes from its surroundings, so a test can replace it.
 // A nil out or err is the stream of the command.
 type forgeEnv struct {
-	open     func(ctx context.Context) (forge.Forge, error)
+	open func(ctx context.Context) (forge.Forge, error)
+	// branch is the current git branch, the default --head of `pr create`.
+	branch func() (string, error)
+	// repo is the lighthouse.toml of this repo: the default --base and the valid statuses.
+	repo     func() (repoconfig.Repo, error)
 	out, err io.Writer
 }
 
@@ -72,7 +77,14 @@ func forgeOpenFrom(o *forgeOpener, cwd string) func(context.Context) (forge.Forg
 
 func defaultForgeEnv() *forgeEnv {
 	cwd, _ := os.Getwd()
-	return &forgeEnv{open: forgeOpenFrom(newDefaultForgeOpener(), cwd)}
+	return &forgeEnv{
+		open: forgeOpenFrom(newDefaultForgeOpener(), cwd),
+		branch: func() (string, error) {
+			out, err := gitOut(context.Background(), cwd, "rev-parse", "--abbrev-ref", "HEAD")
+			return strings.TrimSpace(out), err
+		},
+		repo: func() (repoconfig.Repo, error) { return repoconfig.Load(askRoot(cwd)) },
+	}
 }
 
 // forgeUsage is a wrong command line: the message on stderr, exit 2.
