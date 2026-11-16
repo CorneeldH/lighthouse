@@ -421,10 +421,11 @@ def path_with_lighthouse() -> str:
 
 
 def lighthouse_stub(body: str) -> str:
-    """A fake `lighthouse` that runs `body` for every call but `turn-roots`, which goes
-    to the binary built from this checkout: a Stop gate needs that one to find its roots."""
+    """A fake `lighthouse` that runs `body` for every call but `turn-roots` and `config`,
+    which go to the binary built from this checkout: a Stop gate needs them to find its roots
+    and to read its configuration."""
     real = shlex.quote(str(lighthouse_dir() / "lighthouse"))
-    return f'#!/bin/bash\n[ "$1" = turn-roots ] && exec {real} "$@"\n{body}'
+    return f'#!/bin/bash\ncase "$1" in turn-roots|config) exec {real} "$@";; esac\n{body}'
 
 
 def guard_env(tmp_path: Path, **extra: str) -> dict[str, str]:
