@@ -1443,12 +1443,12 @@ func TestGitMeterOnNodeAsksServe(t *testing.T) {
 func TestRelocateOnNodeAsksServe(t *testing.T) {
 	_, _, sa, a := twoNodes(t, "node-a")
 	var r workplace.Relocator = a
-	sa.on(relocateRoute, http.StatusOK, nodeapi.Relocation{Command: "/plan docs/plan.md"})
-	got, err := r.Relocate(context.Background(), "ws1", "/plan /old/docs/plan.md")
-	if err != nil || got != "/plan docs/plan.md" {
+	sa.on(relocateRoute, http.StatusOK, nodeapi.Relocation{Command: "/plan work/plan.md"})
+	got, err := r.Relocate(context.Background(), "ws1", "/plan /old/work/plan.md")
+	if err != nil || got != "/plan work/plan.md" {
 		t.Errorf("Relocate = %q, %v; want the node's command", got, err)
 	}
-	if body := sa.body(relocateRoute); body != `{"command":"/plan /old/docs/plan.md"}` {
+	if body := sa.body(relocateRoute); body != `{"command":"/plan /old/work/plan.md"}` {
 		t.Errorf("relocate body = %s", body)
 	}
 	sa.on(relocateRoute, http.StatusUnprocessableEntity, nodeapi.Problem{Status: 422, Detail: "plan.md not in the worktree"})

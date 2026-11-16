@@ -252,13 +252,13 @@ func relocate(f fixture, id, command string) *httptest.ResponseRecorder {
 
 func TestRelocateFindsPathInNodeWorktree(t *testing.T) {
 	repo := gitRepo(t)
-	if err := os.MkdirAll(filepath.Join(repo, "docs", "plans"), 0o750); err != nil {
+	if err := os.MkdirAll(filepath.Join(repo, "plans"), 0o750); err != nil {
 		t.Fatal(err)
 	}
-	writeFile(t, filepath.Join(repo, "docs", "plans"), "p.md", "plan\n")
+	writeFile(t, filepath.Join(repo, "plans"), "p.md", "plan\n")
 	f := newFixture(t, map[string]string{"ws-1": repo}, nodeToken)
 
-	rec := relocate(f, "ws-1", "/lighthouse-x /home/elsewhere/checkout/docs/plans/p.md")
+	rec := relocate(f, "ws-1", "/lighthouse-x /home/elsewhere/checkout/plans/p.md")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
 	}
@@ -270,7 +270,7 @@ func TestRelocateFindsPathInNodeWorktree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := "/lighthouse-x " + root + "/docs/plans/p.md"; got.Command != want {
+	if want := "/lighthouse-x " + root + "/plans/p.md"; got.Command != want {
 		t.Errorf("command = %q, want %q", got.Command, want)
 	}
 }
@@ -279,11 +279,11 @@ func TestRelocateErrorIs4xxWithDetail(t *testing.T) {
 	repo := gitRepo(t)
 	f := newFixture(t, map[string]string{"ws-1": repo}, nodeToken)
 
-	rec := relocate(f, "ws-1", "/lighthouse-x /home/elsewhere/checkout/docs/plans/missing.md")
+	rec := relocate(f, "ws-1", "/lighthouse-x /home/elsewhere/checkout/plans/missing.md")
 	if rec.Code < 400 || rec.Code >= 500 {
 		t.Fatalf("status = %d, want 4xx: %s", rec.Code, rec.Body.String())
 	}
-	if p := problem(t, rec); !strings.Contains(p.Detail, "/home/elsewhere/checkout/docs/plans/missing.md") {
+	if p := problem(t, rec); !strings.Contains(p.Detail, "/home/elsewhere/checkout/plans/missing.md") {
 		t.Errorf("detail = %q, want it to name the path", p.Detail)
 	}
 }
