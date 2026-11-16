@@ -193,8 +193,14 @@ type planned struct {
 	Action
 	priority int
 	at       time.Time
-	software bool   // the run's profile is "software"
-	node     string // the node_id the run goes to; "" is self
+	// software: the run's profile is "software"; of a start or resume the run that comes, of a
+	// close the run that closes.
+	software bool
+	// node is the node_id of the run; "" is self. Of a start or resume the node the run goes to,
+	// of a close the node of the run that closes.
+	node string
+	// frees: the close frees the slot of its run in this tick (Brake.freed).
+	frees bool
 	// fixDeferred marks the defer of a fix-pr start whose placement deferred it: the start was
 	// wanted, so the close of its run stays open.
 	fixDeferred bool

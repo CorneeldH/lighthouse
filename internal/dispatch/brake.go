@@ -1,6 +1,9 @@
 package dispatch
 
-import "fmt"
+import (
+	"fmt"
+	"maps"
+)
 
 // ProfileSoftware is the repo profile the software limit counts.
 const ProfileSoftware = "software"
@@ -39,9 +42,11 @@ type NodeSlots struct {
 // or turns it into a defer with the text of the first closed brake: pause, usage, memory,
 // slots, software. Other actions pass untouched. A start or resume whose run already holds a
 // slot (planned.holdsSlot) skips slots and software and does not count in their totals, but
-// counts for memory.
+// counts for memory. The starts are tested against the brake after subtracting the slots the
+// closes in ps free (freed); b itself stays the measurement.
 func (b *Brake) apply(ps []planned) []planned {
 	out := make([]planned, 0, len(ps))
+	eff := b.freed(ps)
 	passed, admitted, admittedSoftware := 0, 0, 0
 	admittedOn := map[string]int{}
 	for _, p := range ps {
@@ -52,7 +57,7 @@ func (b *Brake) apply(ps []planned) []planned {
 		if b.Paused {
 			continue
 		}
-		if reason := b.closed(p, passed, admitted, admittedSoftware, admittedOn); reason != "" {
+		if reason := eff.closed(p, passed, admitted, admittedSoftware, admittedOn); reason != "" {
 			out = append(out, planned{Action: Action{
 				Kind: KindDefer, Repo: p.Repo, Issue: p.Issue, Language: p.Language, Reason: reason,
 			}})
@@ -150,4 +155,28 @@ func (b *Brake) CountRun(node, profile string) {
 	if profile == ProfileSoftware {
 		b.SoftwareInUse++
 	}
+}
+
+// freed returns a copy of b, with its own Nodes, in which every close in ps that frees a slot
+// (planned.frees) is subtracted the way CountRun counted its run: one of InUse for a run on this
+// host, one of its node's InUse for a run on a node in Nodes, nothing for a node outside Nodes,
+// and one of SoftwareInUse for a software run. No count drops below zero.
+func (b *Brake) freed(ps []planned) *Brake {
+	f := *b
+	f.Nodes = maps.Clone(b.Nodes)
+	for _, p := range ps {
+		if !p.frees {
+			continue
+		}
+		if p.node == "" {
+			f.InUse = max(f.InUse-1, 0)
+		} else if n, ok := f.Nodes[p.node]; ok {
+			n.InUse = max(n.InUse-1, 0)
+			f.Nodes[p.node] = n
+		}
+		if p.software {
+			f.SoftwareInUse = max(f.SoftwareInUse-1, 0)
+		}
+	}
+	return &f
 }
