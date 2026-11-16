@@ -86,9 +86,7 @@ func (r *result) render(o Options, out io.Writer) {
 	if o.shows(PartOverlap) {
 		w.findings("Overlap, kandidaten", r.overlap)
 	}
-	if o.shows(PartConflicts) || o.shows(PartOverlap) {
-		w.stale(r.stale)
-	}
+	w.stale(slices.DeleteFunc(slices.Clone(r.stale), func(key string) bool { return !o.shows(keyPart(key)) }))
 	if o.shows(PartSurface) {
 		w.surface(r.surface, o.MaxDesc)
 	}
@@ -173,6 +171,15 @@ func keySources(key string) []string {
 		out = appendNew(out, m[1])
 	}
 	return out
+}
+
+// keyPart is the part of the output that shows the finding a key names: overlap for an
+// overlap key, conflicts for every other one.
+func keyPart(key string) string {
+	if strings.HasPrefix(key, KindOverlap+":") {
+		return PartOverlap
+	}
+	return PartConflicts
 }
 
 // staleKeys are the ignore keys that match no finding while every source they name was

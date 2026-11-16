@@ -37,7 +37,7 @@ func corePack(t *testing.T) packs.Pack {
 	return p
 }
 
-// run is Run with its output; it fails the test when Run writes to stderr unless wantErr.
+// run is Run with its exit code, stdout and stderr.
 func run(t *testing.T, env Env, o Options) (code int, stdout, stderr string) {
 	t.Helper()
 	var out, errOut bytes.Buffer
@@ -350,5 +350,26 @@ func TestRunCollectFails(t *testing.T) {
 	var sout, serr bytes.Buffer
 	if code := Summary(env, Options{}, &sout, &serr); code != 2 || !strings.HasPrefix(serr.String(), "agent-audit: COULD NOT CHECK — ") {
 		t.Errorf("Summary = %d, stderr %q; want 2 and the COULD NOT CHECK line", code, serr.String())
+	}
+}
+
+// TestRunStaleIgnorePerPart: a stale key shows only with the part that would show its finding.
+func TestRunStaleIgnorePerPart(t *testing.T) {
+	gone := "unregistered-script:project/.claude/hooks/weg.sh"
+	line := "ignore: " + gone + " komt niet meer voor"
+	for _, tt := range []struct {
+		only []string
+		want bool
+	}{
+		{only: []string{"conflicts"}, want: true},
+		{only: []string{"overlap"}, want: false},
+		{only: []string{"surface"}, want: false},
+	} {
+		env := envFor(t, withFinding, nil)
+		env.RepoOnly = true
+		_, out, _ := run(t, env, Options{Only: tt.only, Ignore: []string{gone}, Top: 10, MaxDesc: 1024})
+		if got := strings.Contains(out, line); got != tt.want {
+			t.Errorf("--only %v: ignore line shown = %v, want %v\n%s", tt.only, got, tt.want, out)
+		}
 	}
 }

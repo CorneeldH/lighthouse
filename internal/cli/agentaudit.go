@@ -91,8 +91,16 @@ func agentAuditOptions() (agentaudit.Options, error) {
 	if err != nil {
 		return o, err
 	}
-	for _, k := range ignore.([]any) {
-		o.Ignore = append(o.Ignore, k.(string))
+	list, ok := ignore.([]any)
+	if !ok {
+		return o, fmt.Errorf("agent_audit.ignore is %T, not a list", ignore)
+	}
+	for _, k := range list {
+		key, ok := k.(string)
+		if !ok {
+			return o, fmt.Errorf("agent_audit.ignore holds %T, not a string", k)
+		}
+		o.Ignore = append(o.Ignore, key)
 	}
 	top, err := config.Lookup(cfg, "agent_audit.top")
 	if err != nil {
@@ -102,6 +110,11 @@ func agentAuditOptions() (agentaudit.Options, error) {
 	if err != nil {
 		return o, err
 	}
-	o.Top, o.MaxDesc = int(top.(int64)), int(maxDesc.(int64))
+	t, okTop := top.(int64)
+	m, okMax := maxDesc.(int64)
+	if !okTop || !okMax {
+		return o, fmt.Errorf("agent_audit.top and agent_audit.description_max_chars must be integers, not %T and %T", top, maxDesc)
+	}
+	o.Top, o.MaxDesc = int(t), int(m)
 	return o, nil
 }
