@@ -131,6 +131,13 @@ sha256 = "3e40f0a7cdc887e30a7cea5a4ee16f6ff5fd87c94577123b2a1737123416165f"
 
 [[unit]]
 kind = "file"
+path = ".agents/skills/lighthouse-upgrade/SKILL.md"
+package = "core"
+version = "dev"
+sha256 = "55bfd43a602af5e2a975312b61ee1c7496aa1156e7d86ce6a6ce8d5cc8193ded"
+
+[[unit]]
+kind = "file"
 path = ".agents/skills/lighthouse-write-handoff/SKILL.md"
 package = "core"
 version = "dev"
@@ -465,6 +472,13 @@ sha256 = "3e40f0a7cdc887e30a7cea5a4ee16f6ff5fd87c94577123b2a1737123416165f"
 
 [[unit]]
 kind = "file"
+path = ".claude/skills/lighthouse-upgrade/SKILL.md"
+package = "core"
+version = "dev"
+sha256 = "ddfaa8a02ecb77dd5ab062ffae83e70ac2697f167f95855c3df33e3f3a8fbc6d"
+
+[[unit]]
+kind = "file"
 path = ".claude/skills/lighthouse-write-handoff/SKILL.md"
 package = "core"
 version = "dev"
@@ -546,7 +560,7 @@ path = "AGENTS.md"
 id = "core"
 package = "core"
 version = "dev"
-sha256 = "c0bf39786f2f63c7a435f6f0894788bd30eeb12a63e53e79d4d652eb344e03b6"
+sha256 = "9818fa89b08071897434ee60cd833902e6a9b4d06f778507d29c411ec7887eaf"
 
 [[unit]]
 kind = "block"

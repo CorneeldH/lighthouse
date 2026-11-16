@@ -64,7 +64,7 @@ func newServeCommand() *cobra.Command {
 	cmd.Flags().StringVar(&repo, "repo", os.Getenv("LIGHTHOUSE_FORGE_REPO"),
 		"GitHub repository to read questions and returned issues from, as owner/name (default: $LIGHTHOUSE_FORGE_REPO); the token comes from GH_TOKEN or GITHUB_TOKEN; ignored when host.toml has [dispatch] repos")
 	cmd.Flags().StringVar(&forgeURL, "forge-url", envOr("LIGHTHOUSE_FORGE_URL", ""),
-		"GitHub API base URL for GitHub repos (default: $LIGHTHOUSE_FORGE_URL, else https://api.github.com); the GitHub token is sent there, never a GitLab one")
+		"GitHub API base URL for GitHub repos only (default: $LIGHTHOUSE_FORGE_URL, else https://api.github.com); GitLab repos use their [forge] host, and the GitHub token is sent only to this URL")
 	// Hidden: only the e2e tests shorten it, so Refresh shows a forge change within a second.
 	cmd.Flags().DurationVar(&overviewInterval, "overview-interval", server.RefreshInterval,
 		"time from the start of one forge overview build to the next")
@@ -88,13 +88,18 @@ func envOr(key, def string) string {
 // that does not load is an error; a served repo that does not load, has a duplicate slug or
 // has no forge (no token, an Open error) gets one line on errOut and is skipped.
 func forgeRepos(hostToml, repo, forgeURL string, getenv func(string) string, errOut io.Writer) (sources []overview.RepoSource, slugs []string, err error) {
+	return forgeReposWith(hostToml, repo, newForgeOpener(getenv, forgeURL), errOut)
+}
+
+// forgeReposWith is forgeRepos with the opener given, so a test can point the GitLab repos at
+// a fake through gitlabURL. The GitHub URL is o.githubURL, for GitHub repos only; production leaves gitlabURL empty.
+func forgeReposWith(hostToml, repo string, o *forgeOpener, errOut io.Writer) (sources []overview.RepoSource, slugs []string, err error) {
 	cfg, err := hostconfig.LoadDispatch(hostToml)
 	if err != nil {
 		return nil, nil, err
 	}
 	// serve never asks the token login, so no ctx of a request reaches the opener.
 	ctx := context.Background()
-	o := newForgeOpener(getenv, forgeURL)
 	skip := func(path string, err error) {
 		_, _ = fmt.Fprintf(errOut, "lighthouse: skip %s: %s\n", path, oneLine(err))
 	}

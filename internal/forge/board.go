@@ -2,6 +2,7 @@ package forge
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -475,10 +476,16 @@ func (c *GitHub) IssueItem(ctx context.Context, number int) (item BoardItem, ok 
 	}
 	vars := map[string]any{"owner": owner, "name": name, "number": number}
 	if err := c.graphql(ctx, IssueItemsQuery, vars, &data); err != nil {
+		// GitHub answers a deleted or transferred issue with issue null and a NOT_FOUND error
+		// on repository.issue; any other error stays what it is.
+		var ge graphqlErrors
+		if errors.As(err, &ge) && ge.notFound("repository", "issue") {
+			return BoardItem{}, false, fmt.Errorf("forge: issue %s#%d: %w", c.Repo, number, ErrIssueNotFound)
+		}
 		return BoardItem{}, false, err
 	}
 	if data.Repository == nil || data.Repository.Issue == nil {
-		return BoardItem{}, false, fmt.Errorf("forge: issue %s#%d not found", c.Repo, number)
+		return BoardItem{}, false, fmt.Errorf("forge: issue %s#%d: %w", c.Repo, number, ErrIssueNotFound)
 	}
 	items := data.Repository.Issue.ProjectItems
 	if items.PageInfo.HasNextPage {
