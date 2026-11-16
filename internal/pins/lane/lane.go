@@ -108,7 +108,7 @@ func (r *runner) fail(ctx context.Context, key, detail string) error {
 func (r *runner) release(ctx context.Context, p pins.Pin, res pins.Result) error {
 	compare := fmt.Sprintf("https://github.com/%s/compare/%s%s...%s%s", p.Repo, p.TagPrefix, p.Version, p.TagPrefix, res.Target)
 	content := ItemContent{
-		Title: fmt.Sprintf("pins: %s %s staat achter upstream %s", p.Name, p.Version, res.Target),
+		Title: fmt.Sprintf("pins: %s %s staat achter upstream", p.Name, p.Version),
 		Body:  RenderBehindBody(Marker(p.Name, KindBehind, res.Target), p.Name, p.Version, res.Target, res.Releases, compare),
 	}
 	return r.apply(ctx, p.Name, Outcome{Kind: KindBehind, Target: res.Target, Measurable: true}, content, "behind")
@@ -116,7 +116,8 @@ func (r *runner) release(ctx context.Context, p pins.Pin, res pins.Result) error
 
 // source merges a skill or file pin that is behind. A clean merge becomes a draft PR on
 // pins/<key>, pushed only when Decide asks for a new or updated PR; a conflict, or a result that
-// reaches .github/workflows/, becomes a conflict issue; a merge that cannot run is an error.
+// reaches .github/workflows/, becomes a conflict issue; a merge or branch that cannot be made
+// is an error issue.
 func (r *runner) source(ctx context.Context, sp pins.SourcePin) error {
 	cl, err := r.env.Git.Clone(ctx, sp.Repo)
 	if err != nil {
@@ -138,7 +139,7 @@ func (r *runner) source(ctx context.Context, sp pins.SourcePin) error {
 	compare := fmt.Sprintf("https://github.com/%s/compare/%s...%s", sp.Repo, sp.Commit, head)
 	conflict := func(reason string) error {
 		content := ItemContent{
-			Title: fmt.Sprintf("pins: %s botst met upstream %s", sp.Key, head[:min(7, len(head))]),
+			Title: "pins: " + sp.Key + " botst met upstream",
 			Body:  RenderConflictBody(Marker(sp.Key, KindConflict, head), sp.Key, mr.Conflicts, reason, commits, compare),
 		}
 		return r.apply(ctx, sp.Key, Outcome{Kind: KindConflict, Target: head, Measurable: true}, content, "conflict")
@@ -161,7 +162,9 @@ func (r *runner) source(ctx context.Context, sp pins.SourcePin) error {
 	case errors.Is(err, ErrTouchesWorkflows): // also when mr.TouchesWorkflows
 		return conflict("De wijziging raakt " + workflowsDir + " en daarheen pusht de lane niet: " + err.Error())
 	case err != nil:
-		return fmt.Errorf("pin %s: %w", sp.Key, err)
+		// Most causes recur every week (a frontmatter or SOURCES.toml the lane cannot edit,
+		// init --upgrade, a ruleset that refuses pins/*): a red run alone goes unseen.
+		return r.fail(ctx, sp.Key, err.Error())
 	}
 	stat, err := r.diffStat(ctx, branch)
 	if err != nil {
@@ -172,7 +175,7 @@ func (r *runner) source(ctx context.Context, sp pins.SourcePin) error {
 		return fmt.Errorf("pin %s: %w", sp.Key, err)
 	}
 	content := ItemContent{
-		Title:  fmt.Sprintf("pins: %s volgt upstream tot %s", sp.Key, head[:7]),
+		Title:  "pins: " + sp.Key + " volgt upstream",
 		Body:   RenderPRBody(Marker(sp.Key, KindPR, head), sp.Key, commits, stat, compare),
 		Branch: branch,
 		Base:   base,

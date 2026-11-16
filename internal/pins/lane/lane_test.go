@@ -137,6 +137,15 @@ func pull(t *testing.T, srv *forgetest.Server, number int) map[string]any {
 	return nil
 }
 
+func issueTitle(t *testing.T, srv *forgetest.Server, number int) string {
+	t.Helper()
+	it, ok := srv.Issues[number]
+	if !ok {
+		t.Fatalf("no item %d", number)
+	}
+	return it["title"].(string)
+}
+
 // Fails when a clean merge does not become one draft PR on its pushed branch, a conflict not an
 // issue, a vanished path not an error issue, a tool behind not a behind issue, when a second run
 // duplicates an item, or when the lane merges anything.
@@ -189,6 +198,13 @@ func TestRun_endToEndFixtures(t *testing.T) {
 	}
 	if branches := gitT(t, origin, "for-each-ref", "--format=%(refname)", "refs/heads/pins/"); branches != "refs/heads/pins/core-skills-demo" {
 		t.Fatalf("pins branches on origin: %q, want only the demo branch", branches)
+	}
+	// An Update replaces only the body, so a title must hold nothing that a newer target changes.
+	for _, it := range []forge.Item{pr, clash, tool} {
+		title := issueTitle(t, srv, it.Number)
+		if strings.Contains(title, head[:7]) || strings.Contains(title, "1.1.0") {
+			t.Errorf("title %q of #%d names the target", title, it.Number)
+		}
 	}
 	if !strings.Contains(log.String(), "core/skills/demo") {
 		t.Errorf("log names no pin: %q", log.String())
@@ -307,5 +323,27 @@ func TestRun_measurableAgainClosesErrorIssue(t *testing.T) {
 	}
 	if it, kind, _ := only(t, f, "mytool"); kind != KindError || it.State != "closed" || !strings.Contains(it.Body, LaneClosedMarker) {
 		t.Fatalf("mytool %+v, want the error issue closed by the lane", it)
+	}
+}
+
+// Fails when a pin whose branch cannot be pushed (a deterministic failure that would recur
+// every week) ends only in a red run instead of an error issue, when the run then exits 0, or
+// when the pins after it stop.
+func TestRun_pushFailureBecomesErrorIssue(t *testing.T) {
+	r := newLaneRepo(t)
+	// A branch named "pins" on origin makes every push to refs/heads/pins/<key> fail.
+	gitT(t, r.origin, "update-ref", "refs/heads/pins", gitT(t, r.origin, "rev-parse", "main"))
+	_, f := newFake(t)
+	err := Run(context.Background(), runEnv(r.root, r.up, f, releaseStub{}))
+	if err == nil || !strings.Contains(err.Error(), "core/skills/demo") {
+		t.Fatalf("Run: %v, want an error naming core/skills/demo", err)
+	}
+	for _, key := range []string{"core/skills/demo", toolFile} {
+		if it, kind, _ := only(t, f, key); it.IsPR || kind != KindError || it.State != "open" {
+			t.Errorf("%s: %+v kind %s, want an open error issue", key, it, kind)
+		}
+	}
+	if _, kind, _ := only(t, f, ciFile); kind != KindConflict {
+		t.Fatalf("ci.yml after the failed pins: kind %s, want a conflict issue", kind)
 	}
 }
