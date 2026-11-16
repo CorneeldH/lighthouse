@@ -129,6 +129,25 @@ func cut(s string, n int) string {
 	return string(r[:n]) + "…"
 }
 
+// prSteps is the short version of "Een pin ophogen, skill of bestand" in docs/pins.md; keep them
+// in agreement.
+const prSteps = `Zo hoog je deze pin op (uitleg: docs/pins.md, sectie "Een pin ophogen"):
+
+1. Lees de diffstat, de upstream-commits en de diff zelf.
+2. Pas zo nodig aan op de branch van deze PR, met nieuwe commits.
+3. Zet de PR op ready for review, laat CI groen worden en merge hem zelf; de lane merget nooit.
+4. Bij een conflict: neem de wijziging met de hand over en zet upstream-commit (skill) of source_sha (bestand) op de laatste upstream-commit uit de lijst.
+`
+
+// behindSteps is the short version of "Een pin ophogen, plugin of tool" in docs/pins.md.
+const behindSteps = `Zo hoog je deze pin op (uitleg: docs/pins.md, sectie "Een pin ophogen"):
+
+1. Lees de releasenotes hieronder; de oudste ontbrekende staan achter de vergelijklink.
+2. Probeer de nieuwe versie lokaal uit.
+3. Verhoog version in de pin in lighthouse.toml, in een PR die dit issue sluit met bewijs.
+4. Past de versie niet, sluit dan dit issue met een reden.
+`
+
 // RenderBehindBody is the body of the issue that reports a pin behind its upstream. The releases
 // (newest first) appear only inside fences, each cut to MaxExcerpt; once the body would pass
 // MaxBody or maxReleases, the rest becomes a note that points at compareURL.
@@ -136,7 +155,7 @@ func RenderBehindBody(marker string, key string, from, to string, rels []forge.R
 	var b strings.Builder
 	b.WriteString(marker + "\n\n")
 	link := safeURL(compareURL)
-	b.WriteString("Een pin staat achter upstream.\n\n")
+	b.WriteString("Een pin staat achter upstream.\n\n" + behindSteps + "\n")
 	b.WriteString(Fence(fmt.Sprintf("Pin: %s\nHuidig: %s\nUpstream: %s", cut(key, 200), cut(from, 200), cut(to, 200))) + "\n\n")
 	fmt.Fprintf(&b, "Vergelijk: %s\n\n", link)
 	shown := 0
@@ -162,6 +181,7 @@ func RenderPRBody(marker, key string, commits []pins.CommitInfo, statDiff, compa
 	link := safeURL(compareURL)
 	b.WriteString("No issue: automatische upstream-update van een pin, geen issue.\n\n")
 	b.WriteString(marker + "\n\n")
+	b.WriteString(prSteps + "\n")
 	b.WriteString(Fence("Pin: "+cut(key, 200)) + "\n\n")
 	fmt.Fprintf(&b, "Vergelijk: %s\n\n", link)
 	b.WriteString("Wijzigingen:\n\n")

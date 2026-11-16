@@ -295,3 +295,18 @@ func TestRenderConflictBody_filesReasonAndCommitsFenced(t *testing.T) {
 		t.Fatalf("no truncation note for the commits that did not fit")
 	}
 }
+
+func TestRender_carryRaiseInstructions(t *testing.T) {
+	pr := RenderPRBody("<!-- m -->", "k", []pins.CommitInfo{{SHA: "a", Subject: "s"}}, "d", "u")
+	for _, want := range []string{"docs/pins.md", "ready for review", "merge hem zelf", "upstream-commit", "source_sha"} {
+		if !strings.Contains(stripFences(t, pr), want) {
+			t.Errorf("PR body lacks %q outside fences", want)
+		}
+	}
+	behind := RenderBehindBody("<!-- m -->", "k", "1", "2", []forge.Release{{Tag: "v2"}}, "u")
+	for _, want := range []string{"docs/pins.md", "lighthouse.toml", "lokaal", "sluit"} {
+		if !strings.Contains(stripFences(t, behind), want) {
+			t.Errorf("behind body lacks %q outside fences", want)
+		}
+	}
+}
