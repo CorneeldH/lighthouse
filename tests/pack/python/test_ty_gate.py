@@ -11,6 +11,7 @@ around: an unresolvable ty is a visible COULD NOT CHECK now.
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -268,6 +269,21 @@ def test_ty_skipped_root_needs_no_uvx(tmp_path):
         tmp_path / "bin",
         ("bash", "jq", "git", "python3", "lighthouse", "cat", "sort", "sed", "mktemp", "rm", "tr", "head", "dirname"),
     )
+    message = _message(_run(root, payload, env={"PATH": str(bin_dir)}))
+    assert message == _skip_message(root)
+    assert "COULD NOT CHECK" not in message
+
+
+def test_ty_needs_no_python3(tmp_path):
+    """Hook/gate: the config comes from the binary, so a PATH without python3 still checks."""
+    root = _fake_repo(tmp_path)
+    (root / "README.md").write_text("hi\n")
+    payload = _turn(tmp_path, root, "README.md", committed=True)
+    bin_dir = tool_bin(
+        tmp_path / "bin",
+        ("bash", "jq", "git", "uvx", "lighthouse", "cat", "sort", "sed", "mktemp", "rm", "tr", "head", "dirname"),
+    )
+    assert shutil.which("python3", path=str(bin_dir)) is None
     message = _message(_run(root, payload, env={"PATH": str(bin_dir)}))
     assert message == _skip_message(root)
     assert "COULD NOT CHECK" not in message

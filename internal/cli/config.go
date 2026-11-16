@@ -16,13 +16,22 @@ import (
 // shape. Messages are written here and the exit code is returned silently, so execute adds no
 // `lighthouse: ` prefix.
 func newConfigCommand() *cobra.Command {
-	var asJSON bool
+	var asJSON, kind, schema bool
 	cmd := &cobra.Command{
 		Use:   "config <key>|host-check",
 		Short: "Print one lighthouse.toml or host.toml value",
 		Args:  cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var code int
+			switch {
+			case schema:
+				return writeSchema(cmd.OutOrStdout())
+			case kind:
+				for _, key := range args {
+					_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\n", key, config.KindOf(key))
+				}
+				return nil
+			}
 			if asJSON && len(args) == 1 && args[0] != "host-check" {
 				code = runConfigJSON(args[0], cmd.OutOrStdout(), cmd.ErrOrStderr())
 			} else {
@@ -35,7 +44,21 @@ func newConfigCommand() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&asJSON, "json", false, "print the value as JSON; a table is allowed")
+	cmd.Flags().BoolVar(&kind, "kind", false, "print `<key>\\t<kind>` per argument; reads no lighthouse.toml")
+	cmd.Flags().BoolVar(&schema, "schema", false, "print the config schema as JSON; reads no lighthouse.toml")
+	_ = cmd.Flags().MarkHidden("kind")
+	_ = cmd.Flags().MarkHidden("schema")
 	return cmd
+}
+
+// writeSchema prints config.SchemaDump as one JSON document.
+func writeSchema(out io.Writer) error {
+	data, err := json.Marshal(config.SchemaDump())
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(out, "%s\n", data)
+	return err
 }
 
 // runConfigJSON prints the value of key as one JSON document, with the exit codes of config.Run.

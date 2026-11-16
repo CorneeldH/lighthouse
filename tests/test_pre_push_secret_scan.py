@@ -26,7 +26,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.pack._testkit import GIT_ENV, git, init_repo, tool_bin
+from tests.pack._testkit import GIT_ENV, git, init_repo, path_with_lighthouse, tool_bin
 
 ROOT = Path(__file__).resolve().parents[1]
 SCAN = ROOT / "tools" / "hooks" / "pre-push-secret-scan.sh"
@@ -517,17 +517,13 @@ def test_entire_checkpoints_leave_only_through_the_scan(tmp_path):
     git(repo, "push", "-q", "origin", "work")
     (repo / "tools" / "hooks").mkdir(parents=True)
     shutil.copy(SCAN, repo / "tools" / "hooks" / SCAN.name)
-    # The scan runs gitleaks through the module, which finds config.py next to itself.
+    # The scan runs gitleaks through the module, which reads its limits with `lighthouse config`.
     shutil.copy(MODULE, repo / "tools" / "hooks" / MODULE.name)
-    shutil.copytree(
-        ROOT / ".lighthouse" / "lib", repo / ".lighthouse" / "lib",
-        ignore=shutil.ignore_patterns("__pycache__"),
-    )
     shutil.copy(ROOT / ".gitleaks.toml", repo / ".gitleaks.toml")
-    git(repo, "add", "tools", ".lighthouse", ".gitleaks.toml")
+    git(repo, "add", "tools", ".gitleaks.toml")
     git(repo, "commit", "-qm", "scan")
 
-    env = _env()
+    env = _env(PATH=path_with_lighthouse())
     enable = subprocess.run(
         ["entire", "enable", "--agent", "claude-code", "--telemetry=false", "--checkpoint-push-remote", "ckpt"],
         cwd=repo, capture_output=True, text=True, env=env, stdin=subprocess.DEVNULL,

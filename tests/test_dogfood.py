@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.pack._testkit import RUN_SH_TOOLS, bash_payload, git, init_repo, tool_bin
+from tests.pack._testkit import RUN_SH_TOOLS, bash_payload, git, init_repo, lighthouse_dir, tool_bin
 
 ROOT = Path(__file__).resolve().parents[1]
 SETTINGS = ROOT / ".claude" / "settings.json"
@@ -178,11 +178,10 @@ def test_go_hooks_registered():
 def test_test_gate_uses_selectors():
     """Fails when the gate stops choosing its Go packages, pytest files and web checks from the commit."""
     result = subprocess.run(
-        ["python3", "-m", "lighthouse_lib.config", "test_gate.command"],
+        [str(lighthouse_dir() / "lighthouse"), "config", "test_gate.command"],
         capture_output=True,
         text=True,
         cwd=str(ROOT),
-        env=dict(os.environ, PYTHONPATH=str(ROOT / ".lighthouse" / "lib")),
         check=False,
     )
     assert result.stdout.strip() == (

@@ -250,9 +250,8 @@ host = "gitlab.example.com"
 `project_number`, `project_id`, `status_field_id` and `priority_field_id` are GitHub Projects
 keys and are refused for GitLab. Limits of this first GitLab version:
 
-- The Python scripts of `pack/core` (`lib/config.py` is frozen) require those GitHub keys for
-  every `[forge.board]`, so they fail on a GitLab repository that has one. The board scripts such
-  as `board_start.py` stay GitHub-only; a follow-up issue covers the Python side.
+- No script of `pack/core` is Python any more, so the old Python config reader, which
+  required the GitHub board keys for every `[forge.board]`, is gone, and a host needs no `python3` for the core.
 - The client refuses a redirect to another scheme or host, also a same-host `http` to `https`
   one, so the token is never sent anywhere else. Give `host` the address that answers directly.
 - roborev notes on a GitLab merge request are only read once #260 lands.

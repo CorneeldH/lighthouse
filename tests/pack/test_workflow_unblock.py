@@ -16,9 +16,8 @@ from pathlib import Path
 
 import pytest
 
-from lighthouse_lib import config
 
-from tests.pack._testkit import CORE
+from tests.pack._testkit import CORE, config_kinds
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = CORE / "workflows" / "unblock-dependents.yml"
@@ -249,9 +248,9 @@ def test_every_placeholder_is_a_known_scalar_key() -> None:
         "ci.bot_private_key_secret",
         "forge.default_branch",
     }
+    kinds = config_kinds(keys)
     for key in keys:
-        assert config.is_known_key(key), key
-        assert config.SCHEMA[key] == "str", key
+        assert kinds[key] == "str", key
 
 
 def test_no_project_literals_left() -> None:
