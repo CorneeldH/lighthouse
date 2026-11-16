@@ -280,7 +280,7 @@ func TestMilestonedIssuesNowInOtherMilestone(t *testing.T) {
 
 func TestMilestonedIssuesLastEventWins(t *testing.T) {
 	s := newMilestoneServer(t, "["+candidate(5, "M3", "")+"]", map[int]func(http.ResponseWriter, *http.Request){
-		5: eventsOf(milestonedEvent("2026-11-16T08:00:00Z", "M3"), milestonedEvent("2026-11-16T12:00:00Z", "M3")),
+		5: eventsOf(milestonedEvent("2026-11-16T12:00:00Z", "M3"), milestonedEvent("2026-11-16T08:00:00Z", "M3")),
 	})
 	got, err := s.c.MilestonedIssues(context.Background(), periodSince, periodUntil)
 	if err != nil || len(got) != 1 || !got[0].At.Equal(time.Date(2026, 11, 16, 12, 0, 0, 0, time.UTC)) {
@@ -346,5 +346,33 @@ func TestMilestonedIssuesCandidatesRequest(t *testing.T) {
 	}
 	if !strings.Contains(raw, "since=2026-11-16T00%3A00%3A00%2B01%3A00") {
 		t.Errorf("raw query %q: since must be URL-encoded", raw)
+	}
+}
+
+func TestMilestonedIssuesSortedByMilestoneThenNumber(t *testing.T) {
+	ev := eventsOf(milestonedEvent("2026-11-16T10:00:00Z", "M3"))
+	ev2 := eventsOf(milestonedEvent("2026-11-16T10:00:00Z", "M2"))
+	s := newMilestoneServer(t, "["+candidate(9, "M3", "")+","+candidate(5, "M3", "")+","+candidate(7, "M2", "")+"]",
+		map[int]func(http.ResponseWriter, *http.Request){9: ev, 5: ev, 7: ev2})
+	got, err := s.c.MilestonedIssues(context.Background(), periodSince, periodUntil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var nums []int
+	for _, m := range got {
+		nums = append(nums, m.Issue.Number)
+	}
+	if fmt.Sprint(nums) != "[7 5 9]" {
+		t.Errorf("order = %v, want [7 5 9] (M2 first, then M3 by number)", nums)
+	}
+}
+
+func TestMilestonedIssuesIgnoresDemilestoned(t *testing.T) {
+	s := newMilestoneServer(t, "["+candidate(5, "M3", "")+"]", map[int]func(http.ResponseWriter, *http.Request){
+		5: eventsOf(`{"event":"demilestoned","created_at":"2026-11-16T10:00:00Z","milestone":{"title":"M3"}}`),
+	})
+	got, err := s.c.MilestonedIssues(context.Background(), periodSince, periodUntil)
+	if err != nil || len(got) != 0 {
+		t.Errorf("MilestonedIssues = %+v, %v; want none", got, err)
 	}
 }
