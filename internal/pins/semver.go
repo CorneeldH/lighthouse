@@ -15,16 +15,16 @@ type Version struct {
 }
 
 const (
-	numIdent = `(?:0|[1-9][0-9]*)`
-	preIdent = `(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)`
-	semverRe = numIdent + `\.` + numIdent + `\.` + numIdent +
+	numIdent  = `(?:0|[1-9][0-9]*)`
+	preIdent  = `(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)`
+	versionRe = numIdent + `\.` + numIdent + `\.` + numIdent +
 		`(?:-` + preIdent + `(?:\.` + preIdent + `)*)?` +
 		`(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?`
 )
 
 var (
-	exactRe  = regexp.MustCompile(`^` + semverRe + `$`)
-	searchRe = regexp.MustCompile(semverRe)
+	exactRe  = regexp.MustCompile(`^` + versionRe + `$`)
+	searchRe = regexp.MustCompile(versionRe)
 )
 
 // ParseVersion parses MAJOR.MINOR.PATCH[-pre][+build]. A leading `v` is not accepted.
