@@ -207,47 +207,70 @@ def _step_index(steps: list[str], name: str) -> int:
     raise AssertionError(f"no step named {name!r}")
 
 
-def test_build_embeds_real_spa():
-    """Fails when the binaries stop embedding the real SPA built by the `web` job."""
-    jobs = _jobs(BUILD)
-    assert "web" in jobs, "build.yml has no `web` job"
-    web = jobs["web"]
+def test_web_job_checks_dist_of_the_tag():
+    """Fails when `web` stops proving that the tag's tracked dist matches a fresh build."""
+    web = _jobs(BUILD)["web"]
     assert "node-version-file: web/.nvmrc" in web
-    assert "npm ci" in web
-    assert "npm run build" in web
-    assert web.index("npm ci") < web.index("npm run build")
+    tracked = "git ls-files --error-unmatch internal/web/dist/index.html"
+    clean = 'test -z "$(git status --porcelain --ignored -- internal/web/dist)"'
+    order = [tracked, "npm ci", "npm run build", clean]
+    for needle in order:
+        assert needle in web, needle
+    positions = [web.index(n) for n in order]
+    assert positions == sorted(positions)
     wsteps = _steps(web)
     for command in ("npm ci", "npm run build"):
-        pattern = rf"^      - run: {command}\s*$"
-        step = next((x for x in wsteps if re.match(pattern, x.splitlines()[0])), None)
-        assert step is not None, f"web has no step `run: {command}`"
+        step = next((x for x in wsteps if re.search(rf"^\s+run: {command}\s*$", x, re.MULTILINE)), None)
+        assert step is not None, f"web has no own step `run: {command}`"
         assert re.search(r"^\s+working-directory: web\s*$", step, re.MULTILINE), command
-    upload = next((x for x in wsteps if "actions/upload-artifact@" in x), None)
-    assert upload is not None, "web has no upload-artifact step"
-    assert re.search(r"^\s+if-no-files-found: error\s*$", upload, re.MULTILINE)
-    assert "name: spa-dist" in web
-    assert "internal/web/dist" in web
+    for command in (tracked, clean):
+        assert any(command in _run_text(x) for x in wsteps), command
     assert "contents: read" in web
     assert "contents: write" not in web
+    assert "upload-artifact" not in web
 
-    build = jobs["build"]
+
+def _run_text(step: str) -> str:
+    return "\n".join(_run_blocks(step))
+
+
+def test_build_has_no_spa_artifact():
+    """Fails when `build` downloads a spa artifact again or loses its ordering against `web`."""
+    build = _jobs(BUILD)["build"]
+    assert "download-artifact" not in build
+    assert "spa-dist" not in build
     assert re.search(r"^    needs: \[resolve, web\]\s*$", build, re.MULTILINE)
-    steps = _steps(build)
-    download = next(
-        (
-            i
-            for i, step in enumerate(steps)
-            if "actions/download-artifact@" in step
-            and "name: spa-dist" in step
-            and re.search(r"^\s+path: internal/web/dist\s*$", step, re.MULTILINE)
-        ),
-        None,
+    assert build.index("git status --porcelain") < build.index("go build")
+
+
+def test_go_install_job_proves_spa():
+    """Fails when `go install` of the tag is no longer proven, or goes through a proxy setting."""
+    job = _jobs(BUILD)["go-install"]
+    assert re.search(r"^    needs: \[resolve, web\]\s*$", job, re.MULTILINE)
+    assert "contents: read" in job and "contents: write" not in job
+    checkout = next(x for x in _steps(job) if "actions/checkout@" in x)
+    assert re.search(
+        r"^\s+ref: refs/tags/\$\{\{ needs\.resolve\.outputs\.tag \}\}\s*$", checkout, re.MULTILINE
     )
-    assert download is not None, "build has no download of spa-dist into internal/web/dist"
-    assert download < _step_index(steps, "Build")
-    # checkout runs `git clean -ffdx`, which would delete the git-ignored internal/web/dist.
-    checkout = next(i for i, step in enumerate(steps) if "actions/checkout@" in step)
-    assert checkout < download
+    assert "persist-credentials: false" in checkout
+    assert "actions/setup-go@" in job
+    assert "go-version-file: go.mod" in job
+    run = "\n".join(_run_blocks(job))
+    for needle in (
+        "GOPRIVATE=github.com/CorneeldH/lighthouse",
+        'GOBIN="$RUNNER_TEMP/bin"',
+        'go install github.com/CorneeldH/lighthouse/cmd/lighthouse@"$TAG"',
+    ):
+        assert needle in run, needle
+    assert run.index("go install") < run.index('ci/spa-smoke.sh "$RUNNER_TEMP/bin/lighthouse"')
+    for path in WORKFLOWS.glob("*.yml"):
+        assert "GOPROXY" not in _text(path), path.name
+
+
+def test_publish_needs_go_install():
+    """Fails when a release can be published without the `go install` proof."""
+    publish = _jobs(BUILD)["publish"]
+    assert re.search(r"^    needs: \[resolve, build, go-install\]\s*$", publish, re.MULTILINE)
 
 
 def test_build_runs_spa_smoke():
@@ -271,7 +294,7 @@ def test_build_checkouts_pin_the_tag():
             if "actions/checkout@" in step:
                 found += 1
                 assert re.search(r"^\s+" + re.escape(ref) + r"\s*$", step, re.MULTILINE), name
-    assert found == 3
+    assert found == 4
 
 
 def test_macos_gate_triggers():
