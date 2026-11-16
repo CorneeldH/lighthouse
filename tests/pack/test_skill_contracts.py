@@ -24,8 +24,7 @@ from pathlib import Path
 
 import pytest
 
-from lighthouse_lib import config
-from tests.pack._testkit import CORE, PACKS
+from tests.pack._testkit import CORE, PACKS, is_known_key
 
 AGENTS = CORE / "agents"
 TEXT_SUFFIXES = {".md", ".sh", ".json", ".txt"}
@@ -193,7 +192,7 @@ def test_config_keys_known(unit):
             key = m[1].strip("\"'")
             if key == "host-check" or key.startswith(("$", "-")) or "<" in key:
                 continue
-            if not config.is_known_key(key):
+            if not is_known_key(key):
                 unknown.append(f"{rel}: {key}")
     assert not unknown, "\n".join(unknown)
 

@@ -4,9 +4,12 @@ wrong type or an unknown key would break every hook that reads the config."""
 
 from pathlib import Path
 
+import os
+import subprocess
+
 import pytest
 
-from lighthouse_lib import config as cfgmod
+from tests.pack._testkit import config_kinds, lighthouse_dir
 
 PACK = Path(__file__).resolve().parents[2] / "pack"
 FRAGMENTS = sorted(PACK.glob("*/lighthouse.toml.fragment"))
@@ -29,8 +32,13 @@ def _keys(text: str) -> list[str]:
 def _check(text: str, tmp_path: Path) -> None:
     path = tmp_path / "lighthouse.toml"
     path.write_text(BASE + text)
-    cfgmod.load(path)
-    unknown = [k for k in _keys(text) if not cfgmod.is_known_key(k)]
+    result = subprocess.run(
+        [str(lighthouse_dir() / "lighthouse"), "config", "project.language"],
+        capture_output=True, text=True, check=False, env={**os.environ, "LIGHTHOUSE_TOML": str(path)},
+    )
+    assert result.returncode == 0, result.stderr
+    kinds = config_kinds(_keys(text))
+    unknown = [k for k, kind in kinds.items() if kind == "unknown"]
     assert not unknown, f"unknown keys: {unknown}"
 
 
@@ -44,7 +52,7 @@ def test_fragment_is_valid_config(fragment, tmp_path):
 
 
 def test_check_catches_a_wrong_type(tmp_path):
-    with pytest.raises(cfgmod.ConfigError):
+    with pytest.raises(AssertionError, match="unchecked_exit_codes"):
         _check('[test_gate]\nunchecked_exit_codes = ["3"]\n', tmp_path)
 
 

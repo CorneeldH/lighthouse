@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/CorneeldH/lighthouse/internal/projectconfig"
 )
 
 var names = []string{
@@ -19,7 +21,6 @@ var names = []string{
 const (
 	tomlForge   = "[project]\nlanguage = \"en\"\n\n[forge]\nkind = \"github\"\nrepo = \"Owner/repo\"\n"
 	tomlNoForge = "[project]\nlanguage = \"en\"\n"
-	labelsPath  = "docs/developer/labels.md"
 )
 
 func template(t *testing.T) string {
@@ -80,7 +81,7 @@ func setup(t *testing.T, f *fakeGH, toml string, taxonomy bool) string {
 		t.Fatal(err)
 	}
 	if taxonomy {
-		p := filepath.Join(root, labelsPath)
+		p := filepath.Join(root, projectconfig.DefaultLabelsPath)
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -281,15 +282,15 @@ func TestMissingTaxonomyIsError(t *testing.T) {
 	if r.rc == nil {
 		t.Fatal("no error")
 	}
-	if !strings.Contains(r.err, labelsPath) {
-		t.Errorf("stderr %q lacks %s", r.err, labelsPath)
+	if !strings.Contains(r.err, projectconfig.DefaultLabelsPath) {
+		t.Errorf("stderr %q lacks %s", r.err, projectconfig.DefaultLabelsPath)
 	}
 }
 
 func TestRemoteLabelWithSpace(t *testing.T) {
 	f := &fakeGH{remote: append([]string{"good first issue"}, names...)}
 	root := setup(t, f, tomlForge, true)
-	p := filepath.Join(root, labelsPath)
+	p := filepath.Join(root, projectconfig.DefaultLabelsPath)
 	b, _ := os.ReadFile(p)
 	extra := "\n| Label | Color |\n|---|---|\n| `good first issue` | `7057FF` |\n"
 	if err := os.WriteFile(p, append(b, extra...), 0o644); err != nil {

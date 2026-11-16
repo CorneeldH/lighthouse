@@ -1,7 +1,7 @@
 // Package labels creates the labels of the taxonomy file on the remote, or prints the
 // commands that would.
 //
-// The taxonomy file is `[paths] labels` (default docs/developer/labels.md). Every Markdown
+// The taxonomy file is `[paths] labels` (default projectconfig.DefaultLabelsPath). Every Markdown
 // table with a label column (`Label` or `Area`) and a colour column (`Color`, `Colour` or
 // `Kleur`, case does not matter) counts. A label is between backticks, a colour is six hex
 // characters, also between backticks. Lines that do not start with `|` are skipped, so an
@@ -26,9 +26,8 @@ import (
 	"strings"
 
 	"github.com/CorneeldH/lighthouse/internal/config"
+	"github.com/CorneeldH/lighthouse/internal/projectconfig"
 )
-
-const defaultPath = "docs/developer/labels.md"
 
 // Label is one row of the taxonomy: a name and an upper-case six-hex colour.
 type Label struct{ Name, Color string }
@@ -170,7 +169,7 @@ func Sync(root string, create bool, out, errw io.Writer) error {
 	if err != nil {
 		return fail("%v", err)
 	}
-	rel := defaultPath
+	rel := projectconfig.DefaultLabelsPath
 	if v, err := config.Lookup(cfg, "paths.labels"); err == nil {
 		if s, ok := v.(string); ok {
 			rel = s

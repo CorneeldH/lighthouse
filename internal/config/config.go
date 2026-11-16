@@ -218,6 +218,37 @@ func IsKnownKey(key string) bool {
 	return false
 }
 
+// KindOf is the schema kind of key ("str", "list[str]", ...), "known" for another key
+// IsKnownKey accepts, and "unknown" for the rest.
+func KindOf(key string) string {
+	for _, s := range schema {
+		if s.key == key {
+			return s.kind
+		}
+	}
+	if IsKnownKey(key) {
+		return "known"
+	}
+	return "unknown"
+}
+
+// SchemaDump is the schema, the defaults and the key lists as one JSON-ready map, from the
+// same variables KindOf and IsKnownKey read.
+func SchemaDump() map[string]any {
+	kinds := make(map[string]string, len(schema))
+	for _, s := range schema {
+		kinds[s.key] = s.kind
+	}
+	return map[string]any{
+		"schema":          kinds,
+		"defaults":        defaults,
+		"base_keys":       baseKeys,
+		"host_keys":       hostKeys,
+		"option_prefixes": optionPrefixes,
+		"languages":       languages,
+	}
+}
+
 func contains(list []string, s string) bool {
 	for _, e := range list {
 		if e == s {

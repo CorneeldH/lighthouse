@@ -438,3 +438,41 @@ func TestParseBoardPerKind(t *testing.T) {
 		})
 	}
 }
+
+// TestKindOf fails when KindOf stops answering from schema (kind), from the known-key lists
+// ("known") or for a key nobody knows ("unknown").
+func TestKindOf(t *testing.T) {
+	tests := map[string]string{
+		"forge.default_branch":             "str",
+		"paths.search_dirs":                "list[str]",
+		"test_gate.deadline_seconds":       "int",
+		"usage_guard.resume":               "bool",
+		"forge.repo":                       "known",
+		"forge.board.status_options.To do": "known",
+		"no.such_key":                      "unknown",
+		"forge.board.status_options.":      "unknown",
+	}
+	for key, want := range tests {
+		if got := KindOf(key); got != want {
+			t.Errorf("KindOf(%q) = %q, want %q", key, got, want)
+		}
+	}
+}
+
+// TestSchemaDump fails when a part of the dump goes missing or comes from another list than
+// KindOf reads.
+func TestSchemaDump(t *testing.T) {
+	d := SchemaDump()
+	schemaMap, ok := d["schema"].(map[string]string)
+	if !ok || schemaMap["ci.runs_on"] != "str" || len(schemaMap) != len(schema) {
+		t.Errorf("schema = %v", d["schema"])
+	}
+	if !reflect.DeepEqual(d["languages"], []string{"nl", "en"}) {
+		t.Errorf("languages = %v", d["languages"])
+	}
+	for _, k := range []string{"defaults", "base_keys", "host_keys", "option_prefixes"} {
+		if d[k] == nil {
+			t.Errorf("missing %s", k)
+		}
+	}
+}

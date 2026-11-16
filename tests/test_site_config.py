@@ -12,6 +12,7 @@ import tomllib
 from pathlib import Path
 
 from tests._site_node import run_map
+from tests.pack._testkit import config_schema
 from tests.test_site_loop import REPO_BLOB, REPO_TREE, ROOT, load
 
 _spec = importlib.util.spec_from_file_location("lighthouse_site_config", ROOT / "pack/core/lib/config.py")
@@ -95,16 +96,17 @@ def expected_keys() -> dict[str, object]:
     """key -> default (or NO_DEFAULT) for every key on the map."""
     go = (ROOT / "internal/usage/config.go").read_text(encoding="utf-8")
     usage = usage_defaults(go)
-    keys = {*config.SCHEMA, *config.DEFAULTS, *config._BASE_KEYS, *config.HOST_KEYS, *usage}
-    keys |= {p.rstrip(".") for p in config._OPTION_PREFIXES}
+    schema = config_schema()
+    keys = {*schema.SCHEMA, *schema.DEFAULTS, *schema.BASE_KEYS, *schema.HOST_KEYS, *usage}
+    keys |= {p.rstrip(".") for p in schema.OPTION_PREFIXES}
     found: dict[str, object] = {}
     for key in keys:
         if key in usage:
             found[key] = usage[key]
         elif key == "project.language":
             found[key] = "en"
-        elif key in config.DEFAULTS:
-            value = config.DEFAULTS[key]
+        elif key in schema.DEFAULTS:
+            value = schema.DEFAULTS[key]
             found[key] = list(value) if isinstance(value, tuple) else value
         else:
             found[key] = NO_DEFAULT
@@ -474,11 +476,11 @@ def test_toml_examples_pass_config_py(tmp_path):
 def test_options_are_the_values_config_py_accepts():
     """A key with a fixed set of values lists exactly that set; config.py rejects every other."""
     expected = {
-        "project.language": list(config.LANGUAGES),
+        "project.language": config_schema().LANGUAGES,
         "project.code_language": ["en"],
         "forge.kind": ["github", "gitlab"],
         "review.roborev": ["local", "off"],
-        **{key: [True, False] for key, kind in config.SCHEMA.items() if kind == config._BOOL},
+        **{key: [True, False] for key, kind in config_schema().SCHEMA.items() if kind == "bool"},
     }
     on_map = {k["key"]: k["options"] for k in all_keys(load("config.json")) if "options" in k}
     assert on_map == expected

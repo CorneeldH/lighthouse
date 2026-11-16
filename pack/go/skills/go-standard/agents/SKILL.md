@@ -36,7 +36,7 @@ Every row is a command that runs in this repository.
 | Vet clean | `go vet ./...` | rc 0 |
 | Lints at zero | `golangci-lint run ./...` | rc 0 |
 | Tests green, shuffled and race-free | `go test -race -shuffle=on ./...` | rc 0, naming `-race` |
-| The test gate is green | `bash -c "$(lighthouse config test_gate.command)"` | rc 0 |
+| The test gate is green | `bash -c "$(lighthouse config forge.nope)"` | rc 0 |
 
 Row 1 runs over `git ls-files` and not over `.`: from the main checkout, `gofmt -l .` also walks
 into `.claude/worktrees/`. The `-r` keeps `xargs` from starting `gofmt` without files, where it

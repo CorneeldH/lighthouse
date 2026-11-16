@@ -26,6 +26,7 @@ import subprocess
 import tempfile
 import time
 import types
+from collections.abc import Iterable
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -372,6 +373,46 @@ def lighthouse_dir() -> Path:
         check=True,
     )
     return out
+
+
+def _lighthouse(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [str(lighthouse_dir() / "lighthouse"), *args],
+        capture_output=True, text=True, check=False, env=env, cwd=REPO,
+    )
+
+
+def config_kinds(keys: Iterable[str]) -> dict[str, str]:
+    """key -> schema kind ("str", "list[str]", ...), "known" or "unknown", from one call of
+    `lighthouse config --kind`."""
+    keys = list(keys)
+    if not keys:
+        return {}
+    result = _lighthouse("config", "--kind", *keys)
+    assert result.returncode == 0, result.stderr
+    return dict(line.split("\t", 1) for line in result.stdout.splitlines())
+
+
+def is_known_key(key: str) -> bool:
+    return config_kinds([key])[key] != "unknown"
+
+
+@functools.cache
+def _schema_dump() -> str:
+    result = _lighthouse("config", "--schema")
+    assert result.returncode == 0, result.stderr
+    return result.stdout
+
+
+def config_schema() -> types.SimpleNamespace:
+    """The schema of `lighthouse config --schema`: SCHEMA (key -> kind), DEFAULTS, BASE_KEYS,
+    HOST_KEYS, OPTION_PREFIXES and LANGUAGES."""
+    data = json.loads(_schema_dump())
+    return types.SimpleNamespace(
+        SCHEMA=data["schema"], DEFAULTS=data["defaults"], BASE_KEYS=data["base_keys"],
+        HOST_KEYS=data["host_keys"], OPTION_PREFIXES=data["option_prefixes"],
+        LANGUAGES=data["languages"], BOOL="bool",
+    )
 
 
 def path_with_lighthouse() -> str:
