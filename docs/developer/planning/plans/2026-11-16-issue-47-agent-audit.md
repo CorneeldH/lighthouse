@@ -297,6 +297,10 @@ de audit aan via een functie in `initcmd.Options`.
 - Wijzig: `internal/config/config.go` (drie sleutels), `internal/config/config_test.go`
 - Wijzig: `tests/pack/fixtures/config-schema.json` (schema en defaults van de drie sleutels; de
   test `TestSchemaMatchesSnapshot` vergelijkt daarmee)
+- Wijzig: `tests/pack/fixtures/config/defaults/expect.json` (één entry per nieuwe sleutel met de
+  default-uitvoer, ook `lighthouse config` van een lijst; `test_fixtures_cover_every_key` eist elke
+  sleutel van `SCHEMA` en `DEFAULTS` in een fixture) en, voor de niet-default waarden,
+  `tests/pack/fixtures/config/full/lighthouse.toml` + `expect.json`
 - Wijzig: `pack/core/lib/config.py` en de geïnstalleerde kopie `.lighthouse/lib/lighthouse_lib/config.py`
   (alleen de tabellen `SCHEMA` en `DEFAULTS`: `tests/pack/test_config_fixtures.py` eist dat ze
   gelijk zijn aan `config-schema.json`; dit is bestaande Python, geen nieuwe)
