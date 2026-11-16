@@ -536,3 +536,45 @@ func TestRun_leavesBranchWithHumanCommitsAlone(t *testing.T) {
 		t.Errorf("demo PR #%d body not updated to the new target", demo.Number)
 	}
 }
+
+// Fails when the human-commit guard depends on history depth: in the workflow's shallow
+// checkout, after main moved on, the lane's own branch must still count as the lane's and its
+// open PR must still follow a new target.
+func TestRun_shallowCheckoutStillUpdatesOwnPR(t *testing.T) {
+	r := newLaneRepo(t)
+	srv, f := newFake(t)
+	if err := Run(context.Background(), runEnv(r.root, r.up, f, releaseStub{})); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	tool, _, _ := only(t, f, toolFile)
+	toolBranch := "refs/heads/" + BranchName(toolFile)
+	before := gitT(t, r.origin, "rev-parse", toolBranch)
+
+	// Main moves on after the lane's push, by someone else.
+	writeT(t, r.root, "README.md", "moved on\n")
+	gitT(t, r.root, "add", "README.md")
+	gitT(t, r.root, "commit", "-qm", "main moves on")
+	gitT(t, r.root, "push", "-q", "origin", "main")
+
+	shallow, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	gitT(t, shallow, "clone", "-q", "--depth", "1", "file://"+r.origin, ".")
+	if got := gitT(t, shallow, "rev-parse", "--is-shallow-repository"); got != "true" {
+		t.Fatalf("checkout is not shallow: %s", got)
+	}
+	r.up.commit(map[string]string{"lib/tool.py": "x = 12\ny = 2\nz = 3\nv = 4\nw = 5\n"})
+	var log bytes.Buffer
+	env := runEnv(shallow, r.up, f, releaseStub{})
+	env.Log = &log
+	if err := Run(context.Background(), env); err != nil {
+		t.Fatalf("shallow Run: %v", err)
+	}
+	if got := gitT(t, r.origin, "rev-parse", toolBranch); got == before {
+		t.Errorf("the lane left its own branch alone in a shallow checkout; log %q", log.String())
+	}
+	if srv.Issues[tool.Number]["body"] == tool.Body {
+		t.Errorf("tool PR #%d body not updated to the new target; log %q", tool.Number, log.String())
+	}
+}

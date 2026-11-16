@@ -47,6 +47,8 @@ jobs:
         with:
           token: ${{ steps.app.outputs.token }}
           persist-credentials: true
+          # Full history: the lane builds pins/* on origin's default branch and reads its log.
+          fetch-depth: 0
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:

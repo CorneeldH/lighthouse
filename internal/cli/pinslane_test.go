@@ -209,6 +209,9 @@ func TestPinsWorkflow_shape(t *testing.T) {
 		if c.With["token"] != token || c.With["persist-credentials"] != true {
 			t.Errorf("checkout with %v, want token %s and persist-credentials true", c.With, token)
 		}
+		if c.With["fetch-depth"] != 0 {
+			t.Errorf("checkout fetch-depth %v, want 0 (full history)", c.With["fetch-depth"])
+		}
 		if got := job.Steps[lane].Env["GH_TOKEN"]; got != token {
 			t.Errorf("lane GH_TOKEN %q, want %s", got, token)
 		}

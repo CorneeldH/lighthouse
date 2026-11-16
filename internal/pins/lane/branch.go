@@ -101,9 +101,12 @@ func PrepareBranch(ctx context.Context, root string, p pins.SourcePin, mr MergeR
 	return branch, nil
 }
 
-// foreignCommits lists the commits on origin's branch, above origin's default branch, that the
-// lane did not author (author email other than github-actions[bot]'s), as short shas. A branch
-// that is not on origin has none.
+// foreignCommits lists the commits on origin's branch that the lane did not author (author
+// email other than github-actions[bot]'s), as short shas. It walks from the tip down, children
+// before parents, to the first commit of the lane: what lies above it is someone else's work,
+// what lies below is the default branch the lane built on. It needs no history of the default
+// branch, so a shallow checkout gives the same answer. A branch without any lane commit in the
+// history fetched is foreign as a whole (its tip is listed); a branch not on origin has none.
 func foreignCommits(ctx context.Context, root, branch string) ([]string, error) {
 	out, err := laneGit(ctx, root, "ls-remote", "origin", "refs/heads/"+branch)
 	if err != nil {
@@ -112,10 +115,6 @@ func foreignCommits(ctx context.Context, root, branch string) ([]string, error) 
 	if strings.TrimSpace(string(out)) == "" {
 		return nil, nil
 	}
-	base, err := defaultBranchHead(ctx, root)
-	if err != nil {
-		return nil, err
-	}
 	if _, err := laneGit(ctx, root, "fetch", "--quiet", "--no-tags", "origin", "refs/heads/"+branch); err != nil {
 		return nil, err
 	}
@@ -123,16 +122,23 @@ func foreignCommits(ctx context.Context, root, branch string) ([]string, error) 
 	if err != nil {
 		return nil, err
 	}
-	log, err := laneGit(ctx, root, "log", "--format=%H %ae", base+".."+strings.TrimSpace(string(tip)))
+	log, err := laneGit(ctx, root, "log", "--topo-order", "--max-count=1000", "--format=%H %ae", strings.TrimSpace(string(tip)))
 	if err != nil {
 		return nil, err
 	}
 	var foreign []string
 	for _, line := range strings.Split(strings.TrimSpace(string(log)), "\n") {
 		sha, email, ok := strings.Cut(line, " ")
-		if ok && email != botEmail && len(sha) >= 7 {
-			foreign = append(foreign, sha[:7])
+		if !ok || len(sha) < 7 {
+			continue
 		}
+		if email == botEmail {
+			return foreign, nil
+		}
+		foreign = append(foreign, sha[:7])
+	}
+	if len(foreign) > 1 { // no lane commit at all: name the tip, not the whole history
+		foreign = foreign[:1]
 	}
 	return foreign, nil
 }
