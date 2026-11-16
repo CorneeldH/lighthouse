@@ -485,3 +485,54 @@ func TestRun_targetIsNewestCommitOnThePath(t *testing.T) {
 		t.Fatalf("after a commit on the path: open targets %v, want [%s]", open, next)
 	}
 }
+
+// Fails when the lane force-pushes over commits a person added to the branch of its open PR
+// (the steps in the PR body invite them), rewrites that PR's body, or ends the run red for it;
+// and, as the positive control, when the lane stops updating a branch that holds only its own
+// commit.
+func TestRun_leavesBranchWithHumanCommitsAlone(t *testing.T) {
+	r := newLaneRepo(t)
+	srv, f := newFake(t)
+	env := runEnv(r.root, r.up, f, releaseStub{})
+	if err := Run(context.Background(), env); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	demo, _, _ := only(t, f, "core/skills/demo")
+	tool, _, _ := only(t, f, toolFile)
+
+	// A person adds a commit to the tool pin's branch.
+	toolBranch := BranchName(toolFile)
+	work := t.TempDir()
+	gitT(t, work, "clone", "-q", "--branch", toolBranch, r.origin, ".")
+	writeT(t, work, toolFile, "x = 10\ny = 2\nz = 3\nv = 4\nw = 5 local, reviewed\n")
+	gitT(t, work, "commit", "-qam", "review fix")
+	gitT(t, work, "push", "-q", "origin", "HEAD:refs/heads/"+toolBranch)
+	human := gitT(t, r.origin, "rev-parse", "refs/heads/"+toolBranch)
+	demoTip := gitT(t, r.origin, "rev-parse", "refs/heads/"+BranchName("core/skills/demo"))
+
+	// Upstream moves both paths: both pins get a new target.
+	r.up.commit(map[string]string{
+		"lib/tool.py":        "x = 11\ny = 2\nz = 3\nv = 4\nw = 5\n",
+		"skills/demo/ref.md": "a\nb\nc upstream again\n",
+	})
+	var log bytes.Buffer
+	env.Log = &log
+	if err := Run(context.Background(), env); err != nil {
+		t.Fatalf("second Run: %v", err)
+	}
+	if got := gitT(t, r.origin, "rev-parse", "refs/heads/"+toolBranch); got != human {
+		t.Errorf("the lane overwrote the human commit on %s: %s -> %s", toolBranch, human, got)
+	}
+	if it := srv.Issues[tool.Number]; it["body"] != tool.Body || it["state"] != "open" {
+		t.Errorf("tool PR #%d changed although its branch was left alone: %v", tool.Number, it)
+	}
+	if !strings.Contains(log.String(), toolFile+": pr, #") || !strings.Contains(log.String(), "left alone") {
+		t.Errorf("log does not say the tool PR was left alone: %q", log.String())
+	}
+	if got := gitT(t, r.origin, "rev-parse", "refs/heads/"+BranchName("core/skills/demo")); got == demoTip {
+		t.Errorf("the demo branch, with only the lane's commit, was not updated to the new target")
+	}
+	if it := srv.Issues[demo.Number]; it["body"] == demo.Body {
+		t.Errorf("demo PR #%d body not updated to the new target", demo.Number)
+	}
+}

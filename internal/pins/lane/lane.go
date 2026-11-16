@@ -161,6 +161,18 @@ func (r *runner) source(ctx context.Context, sp pins.SourcePin) error {
 	if !writesPR(actions) {
 		return r.applyActions(ctx, sp.Key, actions, ItemContent{}, "pr")
 	}
+	if pr, ok := updatedPR(actions); ok {
+		// Someone added commits to the branch of the open PR: a force-push would wipe them.
+		foreign, err := foreignCommits(ctx, r.env.Root, BranchName(sp.Key))
+		if err != nil {
+			return fmt.Errorf("pin %s: %w", sp.Key, err)
+		}
+		if len(foreign) > 0 {
+			_, _ = fmt.Fprintf(r.env.Log, "%s: pr, #%d left alone: %s holds commits not by the lane (%s)\n",
+				sp.Key, pr.Number, BranchName(sp.Key), strings.Join(foreign, ", "))
+			return nil
+		}
+	}
 	branch, err := PrepareBranch(ctx, r.env.Root, sp, mr, target)
 	switch {
 	case errors.Is(err, ErrTouchesWorkflows): // also when mr.TouchesWorkflows
@@ -207,6 +219,16 @@ func pathTarget(cl pins.Clone, path string, commits []pins.CommitInfo) (string, 
 		return head, nil
 	}
 	return newest, nil
+}
+
+// updatedPR returns the open pull request that actions update, if any.
+func updatedPR(actions []Action) (forge.Item, bool) {
+	for _, a := range actions {
+		if a.Op == Update && a.Kind == KindPR && a.Item.IsPR {
+			return a.Item, true
+		}
+	}
+	return forge.Item{}, false
 }
 
 // writesPR reports whether actions create or update a PR, which needs the branch pushed first.

@@ -134,7 +134,7 @@ func cut(s string, n int) string {
 const prSteps = `Zo hoog je deze pin op (uitleg: docs/pins.md, sectie "Een pin ophogen"):
 
 1. Lees de diffstat, de upstream-commits en de diff zelf.
-2. Pas zo nodig aan op de branch van deze PR, met nieuwe commits.
+2. Pas zo nodig aan op de branch van deze PR, met nieuwe commits. Daarmee stopt de lane met bijwerken: ze laat branch en PR met rust tot jij de PR merget of sluit.
 3. Zet de PR op ready for review, laat CI groen worden en merge hem zelf; de lane merget nooit.
 4. Bij een conflict: neem de wijziging met de hand over en zet upstream-commit (skill) of source_sha (bestand) op de doelcommit hieronder: de nieuwste upstream-commit die het pad raakte, niet de HEAD van upstream.
 `

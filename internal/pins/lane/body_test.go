@@ -299,7 +299,7 @@ func TestRenderConflictBody_filesReasonAndCommitsFenced(t *testing.T) {
 func TestRender_carryRaiseInstructions(t *testing.T) {
 	const target = "0123456789abcdef0123456789abcdef01234567"
 	pr := RenderPRBody("<!-- m -->", "k", target, []pins.CommitInfo{{SHA: "a", Subject: "s"}}, "d", "u")
-	for _, want := range []string{"docs/pins.md", "ready for review", "merge hem zelf", "upstream-commit", "source_sha", "nieuwste upstream-commit die het pad raakte"} {
+	for _, want := range []string{"docs/pins.md", "ready for review", "merge hem zelf", "upstream-commit", "source_sha", "nieuwste upstream-commit die het pad raakte", "stopt de lane met bijwerken"} {
 		if !strings.Contains(stripFences(t, pr), want) {
 			t.Errorf("PR body lacks %q outside fences", want)
 		}

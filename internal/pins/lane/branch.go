@@ -93,11 +93,48 @@ func PrepareBranch(ctx context.Context, root string, p pins.SourcePin, mr MergeR
 		return "", err
 	}
 	branch := BranchName(p.Key)
-	// The branch belongs to the lane, never to a person: a leftover of an earlier run is replaced.
+	// A leftover of an earlier run is replaced. The lane does not get here for a branch with an
+	// open PR that holds commits of someone else: see foreignCommits.
 	if _, err := laneGit(ctx, wt, "push", "--quiet", "--force", "origin", "HEAD:refs/heads/"+branch); err != nil {
 		return "", err
 	}
 	return branch, nil
+}
+
+// foreignCommits lists the commits on origin's branch, above origin's default branch, that the
+// lane did not author (author email other than github-actions[bot]'s), as short shas. A branch
+// that is not on origin has none.
+func foreignCommits(ctx context.Context, root, branch string) ([]string, error) {
+	out, err := laneGit(ctx, root, "ls-remote", "origin", "refs/heads/"+branch)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(string(out)) == "" {
+		return nil, nil
+	}
+	base, err := defaultBranchHead(ctx, root)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := laneGit(ctx, root, "fetch", "--quiet", "--no-tags", "origin", "refs/heads/"+branch); err != nil {
+		return nil, err
+	}
+	tip, err := laneGit(ctx, root, "rev-parse", "--verify", "FETCH_HEAD^{commit}")
+	if err != nil {
+		return nil, err
+	}
+	log, err := laneGit(ctx, root, "log", "--format=%H %ae", base+".."+strings.TrimSpace(string(tip)))
+	if err != nil {
+		return nil, err
+	}
+	var foreign []string
+	for _, line := range strings.Split(strings.TrimSpace(string(log)), "\n") {
+		sha, email, ok := strings.Cut(line, " ")
+		if ok && email != botEmail && len(sha) >= 7 {
+			foreign = append(foreign, sha[:7])
+		}
+	}
+	return foreign, nil
 }
 
 var shaRe = regexp.MustCompile(`^[0-9a-f]{40}$`)

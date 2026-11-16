@@ -148,6 +148,8 @@ release door verstommen. Zonder `bot_login` telt elke auteur.
   dan maakt de lane voor die doelversie geen nieuw item. Pas bij een nieuwere versie komt er
   weer een. Zo is "dit nemen we bewust niet over" een geldig antwoord.
 - Een open item blijft staan als de pin intussen weer `current` is: dat sluit jij.
+- Een open draft-PR waarvan de branch een commit van iemand anders bevat, werkt de lane niet
+  bij: geen push, geen nieuwe body. De run blijft groen en het logboek noemt de PR.
 - Een pin die faalt stopt de andere pins niet. Het commando eindigt met exit 1 en noemt per
   mislukte pin de oorzaak.
 
@@ -176,8 +178,10 @@ daarom een conflict-issue, geen PR.
 2. Lees de diff zelf. De lane heeft de upstream-wijziging 3-way gemerged met onze lokale
    aanpassingen; of die samen nog kloppen, beoordeelt alleen jij.
 3. Pas aan op de branch `pins/<sleutel>` waar nodig, met nieuwe commits. Werk je lokaal, haal
-   dan eerst de branch binnen; de lane forceert de branch pas bij een volgende run, en alleen
-   als er een nieuwe doelversie is.
+   dan eerst de branch binnen. Een commit van iemand anders dan `github-actions[bot]` op de
+   branch stopt de lane: ze werkt branch en PR niet meer bij (ook niet bij een nieuwe
+   doelcommit) en laat ze met rust tot jij de PR merget of sluit. Het logboek van de run meldt
+   dat. Een branch zonder open PR is van de lane en wordt bij een nieuwe PR overschreven.
 4. Zet de PR op *ready for review*, laat CI groen worden en merge hem zelf. De lane merget
    nooit.
 5. Wil je het niet overnemen: sluit de PR. Voor die doelcommit komt er dan geen nieuwe; pas een
