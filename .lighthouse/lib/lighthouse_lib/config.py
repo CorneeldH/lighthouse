@@ -132,6 +132,9 @@ SCHEMA: Mapping[str, str] = MappingProxyType(
         "code_language_llm.key_env": _STR,
         "code_language_llm.env_file": _STR,
         "review.roborev": _STR,
+        "agent_audit.ignore": _STRS,
+        "agent_audit.top": _INT,
+        "agent_audit.description_max_chars": _INT,
     }
 )
 
@@ -171,6 +174,9 @@ DEFAULTS: Mapping[str, object] = MappingProxyType(
         "usage_guard.resume": False,
         "usage_guard.controller": False,
         "review.roborev": "off",
+        "agent_audit.ignore": (),
+        "agent_audit.top": 10,
+        "agent_audit.description_max_chars": 1024,
     }
 )
 
