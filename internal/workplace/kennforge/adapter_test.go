@@ -1133,6 +1133,20 @@ func TestSpawnLaunch5xxDeletesCarrier(t *testing.T) {
 			}
 		})
 	}
+	// The tick's context ran out while launch hung: the delete still goes out, on a context of
+	// its own, so no carrier is left for a handoff that never came.
+	t.Run("caller gives up", func(t *testing.T) {
+		_, _, sa, a := twoNodes(t, "node-a")
+		sa.on(launchRoute, hang, nil)
+		ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+		defer cancel()
+		if _, err := a.Spawn(ctx, ws1, nodeSpec(t)); !errors.Is(err, workplace.ErrNotAccepted) {
+			t.Errorf("err = %v, want ErrNotAccepted", err)
+		}
+		if n := sa.count(carrierRoute); n != 1 {
+			t.Errorf("carrier deletes = %d, want 1 after the caller's context ran out", n)
+		}
+	})
 	t.Run("delete fails", func(t *testing.T) {
 		_, _, sa, a := twoNodes(t, "node-a")
 		sa.on(launchRoute, http.StatusInternalServerError, nodeapi.Problem{Status: 500, Detail: "disk full"})

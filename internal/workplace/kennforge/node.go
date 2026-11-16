@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/nodeapi"
 	"github.com/CorneeldH/lighthouse/internal/workplace"
@@ -66,6 +67,9 @@ func (a *Adapter) serveGone(ctx context.Context, err error, id, what string) err
 	return fmt.Errorf("%s: %v; hub: %v: %w", what, ne, herr, workplace.ErrUncertain)
 }
 
+// launchCleanupTimeout bounds the DELETE carrier after a launch that may have written it.
+const launchCleanupTimeout = 10 * time.Second
+
 // launch sends the carrier and the content of the run instructions to the node, before any
 // handoff. Every failure is ErrNotAccepted (and never ErrUncertain: no handoff went out). A
 // launch that may have written the carrier (5xx, or no answer) has it deleted again.
@@ -84,7 +88,10 @@ func (a *Adapter) launch(ctx context.Context, n *NodeClient, id string, l workpl
 	out := fmt.Errorf("launch on node %s: %v: %w", a.Node, err, workplace.ErrNotAccepted)
 	var ne *NodeError
 	if (errors.As(err, &ne) && ne.Status >= 500) || errors.Is(err, workplace.ErrUncertain) {
-		if rmErr := n.DeleteCarrier(ctx, id); rmErr != nil {
+		// The caller's context may be what ran out: the delete gets a short one of its own.
+		rmCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), launchCleanupTimeout)
+		defer cancel()
+		if rmErr := n.DeleteCarrier(rmCtx, id); rmErr != nil {
 			out = errors.Join(out, fmt.Errorf("remove carrier on node %s: %w", a.Node, rmErr))
 		}
 	}
