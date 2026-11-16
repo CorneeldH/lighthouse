@@ -288,7 +288,7 @@ func (r *runner) find(ctx context.Context, key string) ([]forge.Item, error) {
 	}
 	own := found[:0:0]
 	for _, it := range found {
-		if it.Author == r.env.BotLogin {
+		if strings.EqualFold(it.Author, r.env.BotLogin) { // GitHub logins ignore case
 			own = append(own, it)
 		}
 	}

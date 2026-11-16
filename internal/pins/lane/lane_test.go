@@ -588,3 +588,19 @@ func TestRun_shallowCheckoutStillUpdatesOwnPR(t *testing.T) {
 	}
 }
 
+// Fails when the lane compares its bot login case-sensitively: GitHub logins ignore case, so a
+// bot_login written in another case would make the lane disown its own items and duplicate them.
+func TestRun_botLoginIgnoresCase(t *testing.T) {
+	r := newLaneRepo(t)
+	_, f := newFake(t)
+	env := runEnv(r.root, r.up, f, releaseStub{})
+	env.BotLogin = strings.ToUpper(laneBot)
+	for i := 0; i < 2; i++ {
+		if err := Run(context.Background(), env); err != nil {
+			t.Fatalf("Run %d: %v", i, err)
+		}
+	}
+	for _, key := range []string{"core/skills/demo", toolFile, ciFile} {
+		only(t, f, key)
+	}
+}
