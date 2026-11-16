@@ -8,6 +8,7 @@ import (
 	"net/http"
 	neturl "net/url"
 	"slices"
+	"strings"
 	"time"
 )
 
@@ -209,5 +210,68 @@ func (c *GitHub) MilestonedIssues(ctx context.Context, since, until time.Time) (
 	slices.SortFunc(out, func(a, b MilestonedIssue) int {
 		return cmp.Or(cmp.Compare(a.Milestone.Title, b.Milestone.Title), cmp.Compare(a.Issue.Number, b.Issue.Number))
 	})
+	return out, nil
+}
+
+// openPRNode is one pull request of OpenPRsWithStatusQuery.
+type openPRNode struct {
+	Number            int    `json:"number"`
+	Title             string `json:"title"`
+	URL               string `json:"url"`
+	IsDraft           bool   `json:"isDraft"`
+	Mergeable         string `json:"mergeable"`
+	StatusCheckRollup *struct {
+		State string `json:"state"`
+	} `json:"statusCheckRollup"`
+}
+
+// OpenPRsWithStatus lists the open pull requests with draft, mergeable and checks, by number,
+// following every page. MergedAt is zero.
+func (c *GitHub) OpenPRsWithStatus(ctx context.Context) ([]PRSummary, error) {
+	if err := c.configured(); err != nil {
+		return nil, err
+	}
+	owner, name, ok := strings.Cut(c.Repo, "/")
+	if !ok || owner == "" || name == "" {
+		return nil, fmt.Errorf("forge: repo %q is not owner/name", c.Repo)
+	}
+	var out []PRSummary
+	after := ""
+	for {
+		var data struct {
+			Repository *struct {
+				PullRequests struct {
+					PageInfo pageInfo     `json:"pageInfo"`
+					Nodes    []openPRNode `json:"nodes"`
+				} `json:"pullRequests"`
+			} `json:"repository"`
+		}
+		vars := map[string]any{"owner": owner, "name": name, "after": nil}
+		if after != "" {
+			vars["after"] = after
+		}
+		if err := c.graphql(ctx, OpenPRsWithStatusQuery, vars, &data); err != nil {
+			return nil, err
+		}
+		if data.Repository == nil {
+			return nil, fmt.Errorf("forge: repository %s not found", c.Repo)
+		}
+		prs := data.Repository.PullRequests
+		for _, n := range prs.Nodes {
+			p := PRSummary{Number: n.Number, Title: n.Title, URL: n.URL, Draft: n.IsDraft, Mergeable: n.Mergeable}
+			if n.StatusCheckRollup != nil {
+				p.Checks = n.StatusCheckRollup.State
+			}
+			out = append(out, p)
+		}
+		if !prs.PageInfo.HasNextPage {
+			break
+		}
+		if prs.PageInfo.EndCursor == "" || prs.PageInfo.EndCursor == after {
+			return nil, fmt.Errorf("forge: open pull requests: page %q has a next page but no new cursor", after)
+		}
+		after = prs.PageInfo.EndCursor
+	}
+	slices.SortFunc(out, func(a, b PRSummary) int { return cmp.Compare(a.Number, b.Number) })
 	return out, nil
 }

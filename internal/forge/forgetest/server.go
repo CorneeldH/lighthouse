@@ -63,6 +63,10 @@ type Server struct {
 	// isDraft, mergeable, headRefOid, headRefName, statusCheckRollup). BranchPRs serves the
 	// first 20, like the query asks.
 	Branches map[string][]map[string]any
+	// OpenPRNodes are the open pull requests in GraphQL shape (number, title, url, isDraft,
+	// mergeable, statusCheckRollup), served by OpenPRsWithStatus in pages of 100 in the order
+	// given, after the cursor "cursor-<offset>".
+	OpenPRNodes []map[string]any
 	// BoardNodes are the project items in GraphQL shape, served by Board in pages of 100. A
 	// nested connection carries its own pageInfo when a test sets one. A node with
 	// "isArchived": true is left out of Board, as ProjectV2.items lists no archived item, and
@@ -528,6 +532,8 @@ func (s *Server) graphql(w http.ResponseWriter, r *http.Request) {
 			"pageInfo": map[string]any{"hasNextPage": more},
 			"nodes":    append([]map[string]any{}, nodes...),
 		}}}
+	case "OpenPRsWithStatus":
+		data = s.openPRsWithStatus(req.Variables)
 	case "IssueItems":
 		data = s.issueItems(req.Query, req.Variables)
 	case "AddToBoard":
@@ -571,6 +577,23 @@ func (s *Server) board(vars map[string]any) any {
 	return map[string]any{"node": map[string]any{"items": map[string]any{
 		"pageInfo": map[string]any{"hasNextPage": more, "endCursor": cursor},
 		"nodes":    append([]map[string]any{}, live[start:end]...),
+	}}}
+}
+
+// openPRsWithStatus serves one page of 100 OpenPRNodes after the cursor "cursor-<offset>".
+func (s *Server) openPRsWithStatus(vars map[string]any) any {
+	start := 0
+	if after, _ := vars["after"].(string); after != "" {
+		n, err := strconv.Atoi(strings.TrimPrefix(after, "cursor-"))
+		if err != nil {
+			s.t.Errorf("forgetest: OpenPRsWithStatus after = %q, not a cursor this server gave", after)
+		}
+		start = min(n, len(s.OpenPRNodes))
+	}
+	end := min(start+100, len(s.OpenPRNodes))
+	return map[string]any{"repository": map[string]any{"pullRequests": map[string]any{
+		"pageInfo": map[string]any{"hasNextPage": end < len(s.OpenPRNodes), "endCursor": fmt.Sprintf("cursor-%d", end)},
+		"nodes":    append([]map[string]any{}, s.OpenPRNodes[start:end]...),
 	}}}
 }
 

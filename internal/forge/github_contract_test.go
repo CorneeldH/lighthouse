@@ -116,6 +116,16 @@ func (g *githubFixture) AddOpenPR(_ *testing.T, pr forge.OpenPR) {
 	})
 }
 
+func (g *githubFixture) AddOpenPRWithStatus(_ *testing.T, pr forge.PRSummary) {
+	node := map[string]any{
+		"number": pr.Number, "title": pr.Title, "url": pr.URL, "isDraft": pr.Draft, "mergeable": pr.Mergeable,
+	}
+	if pr.Checks != "" {
+		node["statusCheckRollup"] = map[string]any{"state": pr.Checks}
+	}
+	g.srv.OpenPRNodes = append(g.srv.OpenPRNodes, node)
+}
+
 func (g *githubFixture) AddMergedPR(_ *testing.T, pr forge.PRSummary) {
 	merged := pr.MergedAt.UTC().Format(time.RFC3339)
 	if g.srv.MergedPRs == nil {

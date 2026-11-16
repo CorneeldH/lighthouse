@@ -33,6 +33,9 @@ type Fixture interface {
 	// AddBlocker makes b block issue number.
 	AddBlocker(t *testing.T, number int, b forge.Blocker)
 	AddOpenPR(t *testing.T, pr forge.OpenPR)
+	// AddOpenPRWithStatus adds an open pull request with its Number, Title, URL, Draft, Mergeable
+	// and Checks.
+	AddOpenPRWithStatus(t *testing.T, pr forge.PRSummary)
 	// AddMergedPR adds a merged pull request with its Number, Title, URL and MergedAt.
 	AddMergedPR(t *testing.T, pr forge.PRSummary)
 	AddBranchPR(t *testing.T, branch string, pr forge.PR)
@@ -71,6 +74,7 @@ var Cases = []Case{
 	{"SetStatusUnknownName", setStatusUnknownName},
 	{"Pagination", pagination},
 	{"PRFields", prFields},
+	{"OpenPRsWithStatus", openPRsWithStatus},
 	{"MergedPRs", mergedPRs},
 	{"ClosedIssues", closedIssues},
 	{"MilestonedIssues", milestonedIssues},
@@ -492,6 +496,24 @@ func prFields(t *testing.T, f Fixture) {
 	}
 	if len(open) != 1 || open[0] != (forge.OpenPR{Number: 13, Title: "Fix it", Body: "Closes #7", HeadRef: "issue-7-x"}) {
 		t.Errorf("OpenPRs = %+v; want #13 Fix it, body Closes #7, head issue-7-x", open)
+	}
+}
+
+func openPRsWithStatus(t *testing.T, f Fixture) {
+	f.AddOpenPRWithStatus(t, forge.PRSummary{Number: 52, Title: "Red", URL: "https://example.test/pull/52", Mergeable: "MERGEABLE", Checks: "FAILURE"})
+	f.AddOpenPRWithStatus(t, forge.PRSummary{Number: 51, Title: "Conflict", URL: "https://example.test/pull/51", Mergeable: "CONFLICTING", Checks: "SUCCESS"})
+	f.AddOpenPRWithStatus(t, forge.PRSummary{Number: 50, Title: "Draft", URL: "https://example.test/pull/50", Draft: true, Mergeable: "UNKNOWN"})
+	got, err := f.Forge().OpenPRsWithStatus(t.Context())
+	if err != nil {
+		t.Fatalf("OpenPRsWithStatus: %v", err)
+	}
+	want := []forge.PRSummary{
+		{Number: 50, Title: "Draft", URL: "https://example.test/pull/50", Draft: true, Mergeable: "UNKNOWN"},
+		{Number: 51, Title: "Conflict", URL: "https://example.test/pull/51", Mergeable: "CONFLICTING", Checks: "SUCCESS"},
+		{Number: 52, Title: "Red", URL: "https://example.test/pull/52", Mergeable: "MERGEABLE", Checks: "FAILURE"},
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("OpenPRsWithStatus = %+v; want %+v", got, want)
 	}
 }
 

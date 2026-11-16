@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -374,5 +375,70 @@ func TestMilestonedIssuesIgnoresDemilestoned(t *testing.T) {
 	got, err := s.c.MilestonedIssues(context.Background(), periodSince, periodUntil)
 	if err != nil || len(got) != 0 {
 		t.Errorf("MilestonedIssues = %+v, %v; want none", got, err)
+	}
+}
+
+func statusNode(n int, draft bool, mergeable string, checks string) map[string]any {
+	node := map[string]any{
+		"number": n, "title": fmt.Sprintf("PR %d", n), "url": fmt.Sprintf("https://github.com/o/r/pull/%d", n),
+		"isDraft": draft, "mergeable": mergeable,
+	}
+	if checks != "" {
+		node["statusCheckRollup"] = map[string]any{"state": checks}
+	}
+	return node
+}
+
+func TestOpenPRsWithStatusFields(t *testing.T) {
+	srv, c := boardClient(t)
+	srv.OpenPRNodes = []map[string]any{
+		statusNode(9, true, "UNKNOWN", ""),
+		statusNode(7, false, "CONFLICTING", "FAILURE"),
+	}
+	got, err := c.OpenPRsWithStatus(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []PRSummary{
+		{Number: 7, Title: "PR 7", URL: "https://github.com/o/r/pull/7", Mergeable: "CONFLICTING", Checks: "FAILURE"},
+		{Number: 9, Title: "PR 9", URL: "https://github.com/o/r/pull/9", Draft: true, Mergeable: "UNKNOWN", Checks: ""},
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("OpenPRsWithStatus = %+v, want %+v", got, want)
+	}
+}
+
+func TestOpenPRsWithStatusPaginates(t *testing.T) {
+	srv, c := boardClient(t)
+	for n := 101; n >= 1; n-- { // newest first, as GitHub lists them
+		srv.OpenPRNodes = append(srv.OpenPRNodes, statusNode(n, false, "MERGEABLE", "SUCCESS"))
+	}
+	got, err := c.OpenPRsWithStatus(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 101 {
+		t.Fatalf("OpenPRsWithStatus = %d PRs, want 101 over two pages", len(got))
+	}
+	for i, p := range got {
+		if p.Number != i+1 {
+			t.Fatalf("got[%d].Number = %d, want %d: not sorted by number", i, p.Number, i+1)
+		}
+	}
+	if n := srv.Count("OpenPRsWithStatus"); n != 2 {
+		t.Errorf("OpenPRsWithStatus requests = %d, want 2", n)
+	}
+}
+
+func TestOpenPRsWithStatusGraphQLError(t *testing.T) {
+	srv, c := boardClient(t)
+	srv.OpenPRNodes = []map[string]any{statusNode(1, false, "MERGEABLE", "")}
+	srv.GraphQLErrors = []string{"Resource limit exceeded"}
+	got, err := c.OpenPRsWithStatus(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "Resource limit exceeded") {
+		t.Fatalf("err = %v, want the GraphQL message", err)
+	}
+	if got != nil {
+		t.Errorf("got = %+v, want nil", got)
 	}
 }
