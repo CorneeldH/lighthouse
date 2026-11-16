@@ -26,13 +26,13 @@ Paia = `CorneeldH/personal_ai_agent`. `Paia-actie`: `sluiten` (helemaal verhuisd
 | T5 Menswerk | [#378](https://github.com/CorneeldH/lighthouse/issues/378) | #67 | — | aangemaakt |
 | T6 Telemetrie-UI | [#379](https://github.com/CorneeldH/lighthouse/issues/379) | #1088 | sluiten | aangemaakt |
 | T7 Versiewissel | [#380](https://github.com/CorneeldH/lighthouse/issues/380) | #1087 | sluiten | aangemaakt |
-| K1 Canaries | | #1285 | sluiten | |
-| K2 Linter aangesloten | | #470 | inkorten | |
-| K3 Directe imports | | #590 | inkorten | |
-| K4 Complexiteitsgrens | | #1194 | inkorten | |
-| K5 Ontwerpmetingen | | #1193, #1286, #1287 | #1193 sluiten; #1286, #1287 inkorten | |
-| K6 Architectuurscan | | #1205 | sluiten | |
-| K7 Coverage en string-duplicatie | | #644, #667 | inkorten | |
+| K1 Canaries | [#381](https://github.com/CorneeldH/lighthouse/issues/381) | #1285 | sluiten | aangemaakt |
+| K2 Linter aangesloten | [#382](https://github.com/CorneeldH/lighthouse/issues/382) | #470 | inkorten | aangemaakt |
+| K3 Directe imports | [#383](https://github.com/CorneeldH/lighthouse/issues/383) | #590 | inkorten | aangemaakt |
+| K4 Complexiteitsgrens | [#384](https://github.com/CorneeldH/lighthouse/issues/384) | #1194 | inkorten | aangemaakt |
+| K5 Ontwerpmetingen | [#385](https://github.com/CorneeldH/lighthouse/issues/385) | #1193, #1286, #1287 | #1193 sluiten; #1286, #1287 inkorten | aangemaakt |
+| K6 Architectuurscan | [#386](https://github.com/CorneeldH/lighthouse/issues/386) | #1205 | sluiten | aangemaakt |
+| K7 Coverage en string-duplicatie | [#387](https://github.com/CorneeldH/lighthouse/issues/387) | #644, #667 | inkorten | aangemaakt |
 | Instructies pack/core | | #1395 | inkorten, naar milestone #52 | |
 | Ontwerp explore/exploit | | #1553 | sluiten | |
 | Multi-harness-slice | | #1126 | sluiten | |
