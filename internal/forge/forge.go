@@ -39,6 +39,9 @@ type Forge interface {
 	// ClosedIssues lists the issues closed as done in [since, until), oldest close first;
 	// an issue closed as not planned is left out.
 	ClosedIssues(ctx context.Context, since, until time.Time) ([]Issue, error)
+	// MilestonedIssues lists the open issues put in their current milestone in [since, until),
+	// by milestone title and then number; At is the last such moment.
+	MilestonedIssues(ctx context.Context, since, until time.Time) ([]MilestonedIssue, error)
 	BranchPRs(ctx context.Context, branch string) ([]PR, error)
 	BoardItems(ctx context.Context) ([]BoardItem, error)
 	IssueItem(ctx context.Context, number int) (item BoardItem, ok bool, err error)

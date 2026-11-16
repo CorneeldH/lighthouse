@@ -127,6 +127,26 @@ func (g *githubFixture) AddMergedPR(_ *testing.T, pr forge.PRSummary) {
 	}
 }
 
+// AddMilestonedEvent adds a milestoned event, which names the milestone by title only, and
+// moves the issue's updated_at to it when that is later, as GitHub does.
+func (g *githubFixture) AddMilestonedEvent(t *testing.T, number int, milestoneTitle string, at time.Time) {
+	t.Helper()
+	if g.srv.Events == nil {
+		g.srv.Events = map[int][]map[string]any{}
+	}
+	stamp := at.UTC().Format(time.RFC3339)
+	g.srv.Events[number] = append(g.srv.Events[number], map[string]any{
+		"event": "milestoned", "created_at": stamp, "milestone": map[string]any{"title": milestoneTitle},
+	})
+	it, ok := g.srv.Issues[number]
+	if !ok {
+		t.Fatalf("AddMilestonedEvent: issue %d is not added", number)
+	}
+	if cur, _ := it["updated_at"].(string); cur < stamp {
+		it["updated_at"] = stamp
+	}
+}
+
 func (g *githubFixture) AddBranchPR(_ *testing.T, branch string, pr forge.PR) {
 	node := map[string]any{
 		"number": pr.Number, "state": pr.State, "isDraft": pr.Draft, "mergeable": pr.Mergeable,

@@ -190,3 +190,161 @@ func TestClosedIssuesDropsResultAtUntil(t *testing.T) {
 		t.Errorf("ClosedIssues = %+v, want #1 then #2", got)
 	}
 }
+
+// milestoneServer answers the candidate list and the events of each issue, and keeps every
+// request it got as "path?rawquery".
+type milestoneServer struct {
+	mu       sync.Mutex
+	requests []string
+	c        *GitHub
+}
+
+func newMilestoneServer(t *testing.T, list string, events map[int]func(w http.ResponseWriter, r *http.Request)) *milestoneServer {
+	t.Helper()
+	s := &milestoneServer{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s.mu.Lock()
+		s.requests = append(s.requests, r.URL.Path+"?"+r.URL.RawQuery)
+		s.mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/repos/o/r/issues" {
+			_, _ = fmt.Fprint(w, list)
+			return
+		}
+		var n int
+		if _, err := fmt.Sscanf(r.URL.Path, "/repos/o/r/issues/%d/events", &n); err == nil && events[n] != nil {
+			events[n](w, r)
+			return
+		}
+		t.Errorf("unexpected request %s", r.URL)
+		http.NotFound(w, r)
+	}))
+	t.Cleanup(srv.Close)
+	s.c = New("o/r", "tok")
+	s.c.BaseURL = srv.URL
+	return s
+}
+
+func candidate(n int, milestone string, extra string) string {
+	return fmt.Sprintf(`{"number":%d,"title":"Issue %d","state":"open","milestone":{"number":3,"title":%q,"state":"open"}%s}`, n, n, milestone, extra)
+}
+
+func eventsOf(evs ...string) func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, _ *http.Request) { _, _ = fmt.Fprintf(w, "[%s]", strings.Join(evs, ",")) }
+}
+
+func milestonedEvent(at, title string) string {
+	return fmt.Sprintf(`{"event":"milestoned","created_at":%q,"milestone":{"title":%q}}`, at, title)
+}
+
+func TestMilestonedIssuesInPeriod(t *testing.T) {
+	s := newMilestoneServer(t, "["+candidate(5, "M3", "")+"]", map[int]func(http.ResponseWriter, *http.Request){
+		5: eventsOf(`{"event":"labeled","created_at":"2026-11-16T09:00:00Z"}`, milestonedEvent("2026-11-16T10:00:00Z", "M3")),
+	})
+	got, err := s.c.MilestonedIssues(context.Background(), periodSince, periodUntil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Issue.Number != 5 || got[0].Milestone.Number != 3 || got[0].Milestone.Title != "M3" ||
+		!got[0].At.Equal(time.Date(2026, 11, 16, 10, 0, 0, 0, time.UTC)) {
+		t.Errorf("MilestonedIssues = %+v, want #5 in M3 (number 3) at 10:00Z", got)
+	}
+}
+
+func TestMilestonedIssuesEventOutsidePeriod(t *testing.T) {
+	for name, at := range map[string]string{
+		"before since": "2026-11-15T22:59:59Z",
+		"at until":     "2026-11-16T23:00:00Z",
+	} {
+		t.Run(name, func(t *testing.T) {
+			s := newMilestoneServer(t, "["+candidate(5, "M3", "")+"]", map[int]func(http.ResponseWriter, *http.Request){
+				5: eventsOf(milestonedEvent(at, "M3")),
+			})
+			got, err := s.c.MilestonedIssues(context.Background(), periodSince, periodUntil)
+			if err != nil || len(got) != 0 {
+				t.Errorf("MilestonedIssues = %+v, %v; want none", got, err)
+			}
+		})
+	}
+}
+
+func TestMilestonedIssuesNowInOtherMilestone(t *testing.T) {
+	s := newMilestoneServer(t, "["+candidate(5, "M3", "")+"]", map[int]func(http.ResponseWriter, *http.Request){
+		5: eventsOf(milestonedEvent("2026-11-16T10:00:00Z", "M2")),
+	})
+	got, err := s.c.MilestonedIssues(context.Background(), periodSince, periodUntil)
+	if err != nil || len(got) != 0 {
+		t.Errorf("MilestonedIssues = %+v, %v; want none", got, err)
+	}
+}
+
+func TestMilestonedIssuesLastEventWins(t *testing.T) {
+	s := newMilestoneServer(t, "["+candidate(5, "M3", "")+"]", map[int]func(http.ResponseWriter, *http.Request){
+		5: eventsOf(milestonedEvent("2026-11-16T08:00:00Z", "M3"), milestonedEvent("2026-11-16T12:00:00Z", "M3")),
+	})
+	got, err := s.c.MilestonedIssues(context.Background(), periodSince, periodUntil)
+	if err != nil || len(got) != 1 || !got[0].At.Equal(time.Date(2026, 11, 16, 12, 0, 0, 0, time.UTC)) {
+		t.Errorf("MilestonedIssues = %+v, %v; want #5 at 12:00Z", got, err)
+	}
+}
+
+func TestMilestonedIssuesSkipsPullRequests(t *testing.T) {
+	// No events route for 6: a request for it is an unexpected request and fails the test.
+	s := newMilestoneServer(t, "["+candidate(6, "M3", `,"pull_request":{}`)+","+candidate(5, "M3", "")+"]", map[int]func(http.ResponseWriter, *http.Request){
+		5: eventsOf(milestonedEvent("2026-11-16T10:00:00Z", "M3")),
+	})
+	got, err := s.c.MilestonedIssues(context.Background(), periodSince, periodUntil)
+	if err != nil || len(got) != 1 || got[0].Issue.Number != 5 {
+		t.Errorf("MilestonedIssues = %+v, %v; want only #5", got, err)
+	}
+}
+
+func TestMilestonedIssuesPaginatesEvents(t *testing.T) {
+	var base string
+	s := newMilestoneServer(t, "["+candidate(5, "M3", "")+"]", map[int]func(http.ResponseWriter, *http.Request){
+		5: func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Query().Get("page") == "2" {
+				_, _ = fmt.Fprintf(w, "[%s]", milestonedEvent("2026-11-16T10:00:00Z", "M3"))
+				return
+			}
+			w.Header().Set("Link", fmt.Sprintf(`<%s/repos/o/r/issues/5/events?per_page=100&page=2>; rel="next"`, base))
+			_, _ = fmt.Fprint(w, `[{"event":"labeled","created_at":"2026-11-16T09:00:00Z"}]`)
+		},
+	})
+	base = s.c.BaseURL
+	got, err := s.c.MilestonedIssues(context.Background(), periodSince, periodUntil)
+	if err != nil || len(got) != 1 || got[0].Issue.Number != 5 {
+		t.Errorf("MilestonedIssues = %+v, %v; want #5 from the event on page 2", got, err)
+	}
+}
+
+func TestMilestonedIssuesEventsErrorFailsMethod(t *testing.T) {
+	s := newMilestoneServer(t, "["+candidate(5, "M3", "")+","+candidate(7, "M3", "")+"]", map[int]func(http.ResponseWriter, *http.Request){
+		5: eventsOf(milestonedEvent("2026-11-16T10:00:00Z", "M3")),
+		7: func(w http.ResponseWriter, _ *http.Request) {
+			http.Error(w, `{"message":"boom"}`, http.StatusInternalServerError)
+		},
+	})
+	got, err := s.c.MilestonedIssues(context.Background(), periodSince, periodUntil)
+	if err == nil || got != nil {
+		t.Errorf("MilestonedIssues = %+v, %v; want an error and no list", got, err)
+	}
+}
+
+func TestMilestonedIssuesCandidatesRequest(t *testing.T) {
+	s := newMilestoneServer(t, "[]", nil)
+	if _, err := s.c.MilestonedIssues(context.Background(), periodSince, periodUntil); err != nil {
+		t.Fatal(err)
+	}
+	if len(s.requests) != 1 {
+		t.Fatalf("requests = %v, want one", s.requests)
+	}
+	path, raw, _ := strings.Cut(s.requests[0], "?")
+	q := httptest.NewRequest(http.MethodGet, "/x?"+raw, nil).URL.Query()
+	if path != "/repos/o/r/issues" || q.Get("state") != "open" || q.Get("milestone") != "*" || q.Get("since") != "2026-11-16T00:00:00+01:00" {
+		t.Errorf("request %q: want /repos/o/r/issues with state=open, milestone=*, since=2026-11-16T00:00:00+01:00", s.requests[0])
+	}
+	if !strings.Contains(raw, "since=2026-11-16T00%3A00%3A00%2B01%3A00") {
+		t.Errorf("raw query %q: since must be URL-encoded", raw)
+	}
+}

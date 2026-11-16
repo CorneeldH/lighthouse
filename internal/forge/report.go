@@ -126,3 +126,88 @@ func (c *GitHub) ClosedIssues(ctx context.Context, since, until time.Time) ([]Is
 	})
 	return out, nil
 }
+
+// MilestonedIssue is an issue that was put in a milestone inside a period.
+type MilestonedIssue struct {
+	Issue     Issue
+	Milestone Milestone
+	At        time.Time
+}
+
+// issueEvent is one entry of GET .../issues/{n}/events; a milestoned event names the milestone
+// by title only.
+type issueEvent struct {
+	Event     string    `json:"event"`
+	CreatedAt time.Time `json:"created_at"`
+	Milestone *struct {
+		Title string `json:"title"`
+	} `json:"milestone"`
+}
+
+// milestonedAt is the time of the last milestoned event in [since, until) that names title, or
+// the zero time when there is none.
+func milestonedAt(events []issueEvent, title string, since, until time.Time) time.Time {
+	var at time.Time
+	for _, ev := range events {
+		if ev.Event == "milestoned" && ev.Milestone != nil && ev.Milestone.Title == title &&
+			inPeriod(ev.CreatedAt, since, until) && ev.CreatedAt.After(at) {
+			at = ev.CreatedAt
+		}
+	}
+	return at
+}
+
+// issueEvents lists the events of one issue, following every page.
+func (c *GitHub) issueEvents(ctx context.Context, number int) ([]issueEvent, error) {
+	var out []issueEvent
+	url := fmt.Sprintf("%s/repos/%s/issues/%d/events?per_page=100", c.BaseURL, c.Repo, number)
+	for url != "" {
+		var page []issueEvent
+		next, err := c.do(ctx, http.MethodGet, url, nil, &page)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, page...)
+		url = next
+	}
+	return out, nil
+}
+
+// MilestonedIssues lists the open issues that were put in their current milestone in
+// [since, until), by milestone title and then number. The candidates are the open issues with a
+// milestone updated since since; the events of each decide. A failed events call fails the method.
+func (c *GitHub) MilestonedIssues(ctx context.Context, since, until time.Time) ([]MilestonedIssue, error) {
+	if err := c.configured(); err != nil {
+		return nil, err
+	}
+	var candidates []Issue
+	vals := neturl.Values{"state": {"open"}, "milestone": {"*"}, "since": {since.Format(time.RFC3339)}, "per_page": {"100"}}
+	url := fmt.Sprintf("%s/repos/%s/issues?%s", c.BaseURL, c.Repo, vals.Encode())
+	for url != "" {
+		var page []issueItem
+		next, err := c.do(ctx, http.MethodGet, url, nil, &page)
+		if err != nil {
+			return nil, err
+		}
+		for _, it := range page {
+			if it.PullRequest == nil && it.Milestone != nil {
+				candidates = append(candidates, it.issue())
+			}
+		}
+		url = next
+	}
+	var out []MilestonedIssue
+	for _, is := range candidates {
+		events, err := c.issueEvents(ctx, is.Number)
+		if err != nil {
+			return nil, err
+		}
+		if at := milestonedAt(events, is.Milestone.Title, since, until); !at.IsZero() {
+			out = append(out, MilestonedIssue{Issue: is, Milestone: *is.Milestone, At: at})
+		}
+	}
+	slices.SortFunc(out, func(a, b MilestonedIssue) int {
+		return cmp.Or(cmp.Compare(a.Milestone.Title, b.Milestone.Title), cmp.Compare(a.Issue.Number, b.Issue.Number))
+	})
+	return out, nil
+}

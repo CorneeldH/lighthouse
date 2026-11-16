@@ -44,6 +44,9 @@ type Server struct {
 	// MergedPRs are the merged pull requests per number in search-result shape (number, title,
 	// html_url, draft, state, closed_at, pull_request.merged_at), served only by GET /search/issues.
 	MergedPRs map[int]map[string]any
+	// Events are the issue events per issue number in REST shape (event, created_at, milestone
+	// with its title), served by GET .../issues/{number}/events in the order given.
+	Events map[int][]map[string]any
 	// BlockedBy are the blockers per issue number in REST issue shape (number, state,
 	// repository_url), served by GET .../issues/{number}/dependencies/blocked_by.
 	BlockedBy map[int][]map[string]any
@@ -108,6 +111,7 @@ func New(t *testing.T) *Server {
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues", s.listIssues)
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues/{number}", s.issue)
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues/{number}/dependencies/blocked_by", s.blockedBy)
+	mux.HandleFunc("GET /repos/{owner}/{name}/issues/{number}/events", s.events)
 	mux.HandleFunc("GET /search/issues", s.search)
 	mux.HandleFunc("GET /repos/{owner}/{name}/pulls", s.pulls)
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues/{number}/comments", s.comments)
@@ -185,13 +189,21 @@ func (s *Server) issue(w http.ResponseWriter, r *http.Request) {
 }
 
 // listIssues serves Issues by number, filtered on state (default open; an item without state
-// is open) and milestone (the milestone.number), in pages.
+// is open), milestone (the milestone.number, or "*" for any milestone) and since (an item with
+// an updated_at before it is left out; one without updated_at stays), in pages.
 func (s *Server) listIssues(w http.ResponseWriter, r *http.Request) {
 	state := r.URL.Query().Get("state")
 	if state == "" {
 		state = "open"
 	}
 	milestone := r.URL.Query().Get("milestone")
+	var since time.Time
+	if raw := r.URL.Query().Get("since"); raw != "" {
+		var err error
+		if since, err = time.Parse(time.RFC3339, raw); err != nil {
+			s.t.Errorf("forgetest: issues since %q is no RFC 3339 time", raw)
+		}
+	}
 	var nums []int
 	for n := range s.Issues {
 		nums = append(nums, n)
@@ -205,9 +217,12 @@ func (s *Server) listIssues(w http.ResponseWriter, r *http.Request) {
 		}
 		if milestone != "" {
 			m, _ := it["milestone"].(map[string]any)
-			if m == nil || fmt.Sprint(m["number"]) != milestone {
+			if m == nil || (milestone != "*" && fmt.Sprint(m["number"]) != milestone) {
 				continue
 			}
+		}
+		if upd, err := time.Parse(time.RFC3339, fmt.Sprint(it["updated_at"])); err == nil && upd.Before(since) {
+			continue
 		}
 		out = append(out, it)
 	}
@@ -263,6 +278,20 @@ func (s *Server) search(w http.ResponseWriter, r *http.Request) {
 	s.pageWith(w, r, out, func(p []any) any {
 		return map[string]any{"total_count": len(out), "incomplete_results": false, "items": p}
 	})
+}
+
+// events serves the Events of one issue.
+func (s *Server) events(w http.ResponseWriter, r *http.Request) {
+	n, err := strconv.Atoi(r.PathValue("number"))
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]any{"message": "Not Found"})
+		return
+	}
+	var out []any
+	for _, e := range s.Events[n] {
+		out = append(out, e)
+	}
+	s.page(w, r, out)
 }
 
 func (s *Server) blockedBy(w http.ResponseWriter, r *http.Request) {

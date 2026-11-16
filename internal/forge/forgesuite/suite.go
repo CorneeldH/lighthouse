@@ -36,6 +36,9 @@ type Fixture interface {
 	// AddMergedPR adds a merged pull request with its Number, Title, URL and MergedAt.
 	AddMergedPR(t *testing.T, pr forge.PRSummary)
 	AddBranchPR(t *testing.T, branch string, pr forge.PR)
+	// AddMilestonedEvent records that issue number was put in the milestone titled milestoneTitle
+	// at at. The event names the milestone by title only; the issue is added with AddIssue.
+	AddMilestonedEvent(t *testing.T, number int, milestoneTitle string, at time.Time)
 	// PutOnBoard puts issue number on the board with a lighthouse status and priority; "" none.
 	PutOnBoard(t *testing.T, number int, status, priority string)
 	// PutOnBoardUnmapped puts issue number on the board with a status the board config does not
@@ -70,6 +73,7 @@ var Cases = []Case{
 	{"PRFields", prFields},
 	{"MergedPRs", mergedPRs},
 	{"ClosedIssues", closedIssues},
+	{"MilestonedIssues", milestonedIssues},
 }
 
 // Run runs every case as a subtest, each with a fresh fixture.
@@ -528,4 +532,27 @@ func closedIssues(t *testing.T, f Fixture) {
 	if len(got) != 1 || got[0].Number != 30 || got[0].StateReason != "completed" {
 		t.Errorf("ClosedIssues = %+v; want only #30", got)
 	}
+}
+
+func milestonedIssues(t *testing.T, f Fixture) {
+	since := time.Date(2026, 11, 16, 0, 0, 0, 0, time.UTC)
+	until := since.Add(24 * time.Hour)
+	f.AddIssue(t, withMilestone(openIssue(40), &milestone))
+	f.AddMilestonedEvent(t, 40, "M3", since.Add(5*time.Hour))
+	f.AddIssue(t, withMilestone(openIssue(41), &milestone))
+	f.AddMilestonedEvent(t, 41, "M3", since.Add(-48*time.Hour))
+	f.AddIssue(t, closedIssue(42, &milestone, since.Add(6*time.Hour)))
+	f.AddMilestonedEvent(t, 42, "M3", since.Add(2*time.Hour))
+	got, err := f.Forge().MilestonedIssues(t.Context(), since, until)
+	if err != nil {
+		t.Fatalf("MilestonedIssues: %v", err)
+	}
+	if len(got) != 1 || got[0].Issue.Number != 40 || got[0].Milestone != milestone || !got[0].At.Equal(since.Add(5*time.Hour)) {
+		t.Errorf("MilestonedIssues = %+v; want only #40 in M3 at 05:00", got)
+	}
+}
+
+func withMilestone(is forge.Issue, m *forge.Milestone) forge.Issue {
+	is.Milestone = m
+	return is
 }
