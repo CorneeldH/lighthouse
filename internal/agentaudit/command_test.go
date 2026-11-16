@@ -60,6 +60,10 @@ func TestScriptPath(t *testing.T) {
 		{"-c code with cd", `sh -c "cd x && ./y.sh"`, plain, plain + "/x/y.sh"},
 		{"-c code running a missing script", `sh -c "./gone/z.sh --fast"`, plain, plain + "/gone/z.sh"},
 		{"-c code without a path", `bash -c 'echo hi && exit 2'`, plain, ""},
+		{"combined -lc with quoted var", `bash -lc '"$CLAUDE_PROJECT_DIR"/.claude/hooks/a.sh arg'`, plain, plain + "/.claude/hooks/a.sh"},
+		{"combined -ec with cd", `bash -ec 'cd "$CLAUDE_PROJECT_DIR" && ./.claude/hooks/a.sh'`, plain, plain + "/.claude/hooks/a.sh"},
+		{"combined -euc missing script", `bash -euc './gone/z.sh --fast'`, plain, plain + "/gone/z.sh"},
+		{"combined -xc code sourcing a missing file", `sh -xc 'source .claude/hooks/gone.sh && check'`, plain, ""},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -74,5 +78,17 @@ func TestScriptPathWithoutHome(t *testing.T) {
 	root := tree(t, nil)
 	if got := scriptPath("node ~/.claude/hooks/b.js", root, ""); got != "" {
 		t.Errorf("got %q, want \"\" without a home directory", got)
+	}
+}
+
+func TestCodeFlag(t *testing.T) {
+	tests := map[string]bool{
+		"-c": true, "-lc": true, "-ec": true, "-euc": true, "-xc": true, "-cl": true,
+		"-e": false, "-l": false, "-": false, "--rcfile": false, "--c": false, "-c1": false, "c": false,
+	}
+	for word, want := range tests {
+		if got := codeFlag(word); got != want {
+			t.Errorf("codeFlag(%q) = %v, want %v", word, got, want)
+		}
 	}
 }

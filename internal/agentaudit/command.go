@@ -68,6 +68,21 @@ func within(path, dir string) bool {
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
+// codeFlag reports whether an interpreter flag takes the code to run as its next word:
+// -c alone, or short flags combined with it, such as -lc, -ec or -euc.
+func codeFlag(word string) bool {
+	letters, ok := strings.CutPrefix(word, "-")
+	if !ok || letters == "" || !strings.Contains(letters, "c") {
+		return false
+	}
+	for _, r := range letters {
+		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') {
+			return false
+		}
+	}
+	return true
+}
+
 // separators end one simple command and start the next.
 var separators = map[string]bool{"&&": true, "||": true, ";": true, "|": true}
 
@@ -120,7 +135,7 @@ func scriptPath(command, root, home string) string {
 		}
 		isCmd := cmdPos
 		if strings.HasPrefix(word, "-") && cmdPos {
-			code = word == "-c"
+			code = codeFlag(word)
 			continue // a flag of an interpreter keeps the script position
 		}
 		cmdPos = false
