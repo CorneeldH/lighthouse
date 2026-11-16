@@ -49,10 +49,9 @@ func Collect(env Env) (*Inventory, error) {
 	if !info.IsDir() {
 		return nil, fmt.Errorf("%s is not a directory", env.Root)
 	}
-	home, _ := os.UserHomeDir()
 	c := &collector{
 		env:       env,
-		home:      home,
+		home:      env.Home,
 		inv:       &Inventory{},
 		installed: map[string]bool{},
 		lhRules:   map[string]bool{},
@@ -65,15 +64,16 @@ func Collect(env Env) (*Inventory, error) {
 	claude := filepath.Join(env.Root, ".claude")
 	c.settings(SourceProject, filepath.Join(claude, "settings.json"))
 	c.settings(SourceLocal, filepath.Join(claude, "settings.local.json"))
-	c.skills(SourceProject, filepath.Join(claude, "skills"))
+	c.skills(SourceProject, "claude", filepath.Join(claude, "skills"))
 	c.agents(SourceProject, filepath.Join(claude, "agents"))
+	c.skills(SourceProject, "codex", filepath.Join(env.Root, ".agents", "skills"))
 	c.rules(SourceProject, filepath.Join(claude, "rules"))
 	c.mcpFile(SourceProject, filepath.Join(env.Root, ".mcp.json"))
 	c.scripts(SourceProject, filepath.Join(claude, "hooks"))
 
 	if !env.RepoOnly {
 		c.settings(SourceUser, filepath.Join(env.ConfigDir, "settings.json"))
-		c.skills(SourceUser, filepath.Join(env.ConfigDir, "skills"))
+		c.skills(SourceUser, "claude", filepath.Join(env.ConfigDir, "skills"))
 		c.agents(SourceUser, filepath.Join(env.ConfigDir, "agents"))
 		c.rules(SourceUser, filepath.Join(env.ConfigDir, "rules"))
 		c.claudeJSON()
@@ -225,7 +225,9 @@ func (c *collector) settings(source, path string) {
 			if command == "" {
 				continue // not a command hook
 			}
-			c.inv.Hooks = append(c.inv.Hooks, c.hook(source, r.Event, r.Matcher, command))
+			h := c.hook(source, r.Event, r.Matcher, command)
+			h.File = shown
+			c.inv.Hooks = append(c.inv.Hooks, h)
 		}
 	}
 	c.permissions(source, shown, doc)
@@ -280,7 +282,8 @@ func stringList(v any) ([]string, bool) {
 }
 
 func (c *collector) hook(source, event, matcher, command string) Hook {
-	if source == SourceProject && packs.IsLighthouseCommand(command) {
+	// A command into HookDir is lighthouse's, whichever settings file registers it.
+	if packs.IsLighthouseCommand(command) {
 		source = SourceLighthouse
 	}
 	h := Hook{Source: source, Event: event, Matcher: matcher, Command: command}
@@ -330,13 +333,15 @@ func (c *collector) readDir(source, dir string) []os.DirEntry {
 	return entries
 }
 
-func (c *collector) skills(source, dir string) {
+func (c *collector) skills(source, harness, dir string) {
 	for _, e := range c.readDir(source, dir) {
 		p := filepath.Join(dir, e.Name(), "SKILL.md")
 		if info, err := os.Stat(p); err != nil || !info.Mode().IsRegular() {
 			continue
 		}
-		c.inv.Skills = append(c.inv.Skills, c.skill(c.owner(source, p), "skill", e.Name(), p))
+		s := c.skill(c.owner(source, p), "skill", e.Name(), p)
+		s.Harness = harness
+		c.inv.Skills = append(c.inv.Skills, s)
 	}
 }
 
@@ -359,7 +364,7 @@ func (c *collector) skill(source, kind, fallback, path string) Skill {
 	}
 	desc := frontmatter.Field(path, "description")
 	return Skill{
-		Source: source, Name: name, Kind: kind, Path: c.display(path),
+		Source: source, Name: name, Kind: kind, Path: c.display(path), Harness: "claude",
 		NameChars: len([]rune(name)), DescChars: len([]rune(desc)),
 	}
 }

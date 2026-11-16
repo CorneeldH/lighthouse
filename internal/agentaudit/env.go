@@ -19,6 +19,7 @@ import (
 type Env struct {
 	Root       string       // repository or worktree root
 	MainRoot   string       // main checkout (the directory above --git-common-dir); == Root outside a worktree
+	Home       string       // the user's home directory; "" when unknown
 	ConfigDir  string       // $CLAUDE_CONFIG_DIR, else ~/.claude
 	ClaudeJSON string       // $CLAUDE_CONFIG_DIR/.claude.json when that variable is set, else ~/.claude.json
 	RepoOnly   bool         // read only the repository: no user config, no plugins
@@ -30,13 +31,14 @@ type Env struct {
 // manifest leaves Packs empty; Collect reports it as the status of source lighthouse.
 func DefaultEnv(root string) (Env, error) {
 	env := Env{Root: root, MainRoot: mainRoot(root), HookNames: hook.Names()}
+	home, homeErr := os.UserHomeDir()
+	env.Home = home
 	if dir := os.Getenv("CLAUDE_CONFIG_DIR"); dir != "" {
 		env.ConfigDir = dir
 		env.ClaudeJSON = filepath.Join(dir, ".claude.json")
 	} else {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return Env{}, err
+		if homeErr != nil {
+			return Env{}, homeErr
 		}
 		env.ConfigDir = filepath.Join(home, ".claude")
 		env.ClaudeJSON = filepath.Join(home, ".claude.json")

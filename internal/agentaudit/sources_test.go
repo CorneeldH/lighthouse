@@ -35,7 +35,7 @@ func hookRows(inv *Inventory) []string {
 func skillRows(inv *Inventory) []string {
 	var rows []string
 	for _, s := range inv.Skills {
-		rows = append(rows, fmt.Sprintf("%s %s %s %s name=%d desc=%d", s.Source, s.Kind, s.Name, s.Path, s.NameChars, s.DescChars))
+		rows = append(rows, fmt.Sprintf("%s %s %s %s %s name=%d desc=%d", s.Harness, s.Source, s.Kind, s.Name, s.Path, s.NameChars, s.DescChars))
 	}
 	return rows
 }
@@ -97,6 +97,9 @@ func TestClaudeJSONHonoursConfigDir(t *testing.T) {
 		if env.ConfigDir != filepath.Join(home, ".claude") || env.ClaudeJSON != filepath.Join(home, ".claude.json") {
 			t.Errorf("ConfigDir %q, ClaudeJSON %q; want %q and %q", env.ConfigDir, env.ClaudeJSON, filepath.Join(home, ".claude"), filepath.Join(home, ".claude.json"))
 		}
+		if env.Home != home {
+			t.Errorf("Home %q; want %q", env.Home, home)
+		}
 		if env.MainRoot != root || env.Root != root {
 			t.Errorf("outside git: Root %q, MainRoot %q; want both %q", env.Root, env.MainRoot, root)
 		}
@@ -132,7 +135,7 @@ func TestCollectAttributesSources(t *testing.T) {
 	home, configDir := hostless(t)
 	mainRoot := t.TempDir()
 	root := tree(t, map[string]string{
-		".lighthouse/manifest.toml": manifestWith(".claude/skills/lighthouse-a/SKILL.md"),
+		".lighthouse/manifest.toml": manifestWith(".claude/skills/lighthouse-a/SKILL.md", ".agents/skills/lighthouse-a/SKILL.md"),
 		".claude/settings.json": `{
   "permissions": {
     "allow": ["Bash(lighthouse review-run:*)", "Bash(make:*)"],
@@ -143,8 +146,11 @@ func TestCollectAttributesSources(t *testing.T) {
     {"type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/check.sh"}
   ]}]}
 }`,
-		".claude/settings.local.json":          `{"permissions": {"deny": ["Bash(rm:*)"]}}`,
-		".claude/hooks/lighthouse/run.sh":      "#!/bin/sh\n",
+		".claude/settings.local.json": `{"permissions": {"deny": ["Bash(rm:*)"]},
+  "hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/run.sh main-commit-gate"}]}]}}`,
+		".claude/hooks/lighthouse/run.sh":      "#!/bin/sh\nexit 2\n",
+		".agents/skills/lighthouse-a/SKILL.md": "---\nname: lighthouse-a\ndescription: abcd\n---\n",
+		".agents/skills/d/SKILL.md":            "---\nname: dee\ndescription: abcde\n---\n",
 		".claude/hooks/check.sh":               "#!/bin/sh\necho check\n",
 		".claude/hooks/old.sh":                 "#!/bin/sh\n",
 		".claude/skills/lighthouse-a/SKILL.md": "---\nname: lighthouse-a\ndescription: abcd\n---\n",
@@ -155,13 +161,14 @@ func TestCollectAttributesSources(t *testing.T) {
 		".mcp.json":                            `{"mcpServers": {"m": {"command": "m"}}}`,
 	})
 	writeFiles(t, home, map[string]string{
-		".claude/settings.json":     `{"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "~/.claude/hooks/u.sh"}]}]}}`,
+		".claude/settings.json":     `{"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "~/.claude/hooks/u.sh"}, {"type": "command", "command": ".claude/hooks/lighthouse/run.sh main-commit-gate"}]}]}}`,
 		".claude/hooks/u.sh":        "#!/bin/sh\n",
 		".claude/skills/c/SKILL.md": "---\ndescription: c-désc\n---\n",
 		".claude.json":              `{"mcpServers": {"u": {}}, "projects": {"` + mainRoot + `": {"mcpServers": {"l": {}}}}}`,
 	})
-	env := Env{Root: root, MainRoot: mainRoot, ConfigDir: configDir, ClaudeJSON: filepath.Join(home, ".claude.json")}
+	env := Env{Root: root, MainRoot: mainRoot, ConfigDir: configDir, ClaudeJSON: filepath.Join(home, ".claude.json"), Home: home}
 	before := treeHash(t, root, home)
+	t.Setenv("HOME", t.TempDir()) // Collect takes home from Env.Home, not from the process
 
 	inv, err := Collect(env)
 	if err != nil {
@@ -175,18 +182,32 @@ func TestCollectAttributesSources(t *testing.T) {
 	assertRows(t, "hooks", hookRows(inv), []string{
 		`lighthouse PreToolUse "Bash" "$CLAUDE_PROJECT_DIR"/.claude/hooks/lighthouse/run.sh main-commit-gate`,
 		`project PreToolUse "Bash" "$CLAUDE_PROJECT_DIR"/.claude/hooks/check.sh`,
+		`lighthouse PreToolUse "Bash" "$CLAUDE_PROJECT_DIR"/.claude/hooks/lighthouse/run.sh main-commit-gate`,
 		`gebruiker Stop "" ~/.claude/hooks/u.sh`,
+		`lighthouse Stop "" .claude/hooks/lighthouse/run.sh main-commit-gate`,
 	})
-	if len(inv.Hooks) != 3 {
-		t.Fatalf("want 3 hooks, got %d", len(inv.Hooks))
+	if len(inv.Hooks) != 5 {
+		t.Fatalf("want 5 hooks, got %d", len(inv.Hooks))
 	}
+	var files []string
+	for _, h := range inv.Hooks {
+		files = append(files, fmt.Sprintf("%s %t", h.File, h.Blocking))
+	}
+	// run.sh holds exit 2, but a lighthouse hook blocks only by name: no Packs, so none does.
+	assertRows(t, "registering files", files, []string{
+		".claude/settings.json false",
+		".claude/settings.json false",
+		".claude/settings.local.json false",
+		"~/.claude/settings.json false",
+		"~/.claude/settings.json false",
+	})
 	if got := inv.Hooks[1].Script; got != filepath.Join(root, ".claude", "hooks", "check.sh") {
 		t.Errorf("project hook script %q", got)
 	}
 	if got := string(inv.Hooks[1].Content); got != "#!/bin/sh\necho check\n" {
 		t.Errorf("project hook content %q", got)
 	}
-	if got := inv.Hooks[2].Script; got != filepath.Join(home, ".claude", "hooks", "u.sh") {
+	if got := inv.Hooks[3].Script; got != filepath.Join(home, ".claude", "hooks", "u.sh") {
 		t.Errorf("user hook script %q", got)
 	}
 	assertRows(t, "permissions", permRows(inv), []string{
@@ -196,10 +217,12 @@ func TestCollectAttributesSources(t *testing.T) {
 		"lokaal deny Bash(rm:*)",
 	})
 	assertRows(t, "skills", skillRows(inv), []string{
-		"project skill bee .claude/skills/b/SKILL.md name=3 desc=2",
-		"lighthouse skill lighthouse-a .claude/skills/lighthouse-a/SKILL.md name=12 desc=4",
-		"project agent agent-x .claude/agents/ag.md name=7 desc=3",
-		"gebruiker skill c ~/.claude/skills/c/SKILL.md name=1 desc=6",
+		"claude project skill bee .claude/skills/b/SKILL.md name=3 desc=2",
+		"claude lighthouse skill lighthouse-a .claude/skills/lighthouse-a/SKILL.md name=12 desc=4",
+		"claude project agent agent-x .claude/agents/ag.md name=7 desc=3",
+		"codex project skill dee .agents/skills/d/SKILL.md name=3 desc=5",
+		"codex lighthouse skill lighthouse-a .agents/skills/lighthouse-a/SKILL.md name=12 desc=4",
+		"claude gebruiker skill c ~/.claude/skills/c/SKILL.md name=1 desc=6",
 	})
 	assertRows(t, "rules", ruleRows(inv), []string{"project .claude/rules/plain.md false", "project .claude/rules/r.md true"})
 	assertRows(t, "mcp", mcpRows(inv), []string{"project m .mcp.json", "lokaal l ~/.claude.json", "gebruiker u ~/.claude.json"})
@@ -229,7 +252,7 @@ func ruleRows(inv *Inventory) []string {
 func TestCollectAbsentSources(t *testing.T) {
 	home, configDir := hostless(t)
 	root := tree(t, map[string]string{"README.md": "x\n"})
-	inv, err := Collect(Env{Root: root, MainRoot: root, ConfigDir: configDir, ClaudeJSON: filepath.Join(home, ".claude.json")})
+	inv, err := Collect(Env{Root: root, MainRoot: root, ConfigDir: configDir, ClaudeJSON: filepath.Join(home, ".claude.json"), Home: home})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -249,7 +272,7 @@ func TestCollectInvalidUserSettings(t *testing.T) {
 		".claude/settings.json": `{"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "echo project"}]}]}}`,
 	})
 	writeFiles(t, home, map[string]string{".claude/settings.json": "{not json"})
-	inv, err := Collect(Env{Root: root, MainRoot: root, ConfigDir: configDir, ClaudeJSON: filepath.Join(home, ".claude.json")})
+	inv, err := Collect(Env{Root: root, MainRoot: root, ConfigDir: configDir, ClaudeJSON: filepath.Join(home, ".claude.json"), Home: home})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -267,7 +290,7 @@ func TestCollectInvalidClaudeJSON(t *testing.T) {
 	home, configDir := hostless(t)
 	root := tree(t, map[string]string{".mcp.json": `{"mcpServers": {"m": {}}}`})
 	writeFiles(t, home, map[string]string{".claude.json": "[1,"})
-	inv, err := Collect(Env{Root: root, MainRoot: root, ConfigDir: configDir, ClaudeJSON: filepath.Join(home, ".claude.json")})
+	inv, err := Collect(Env{Root: root, MainRoot: root, ConfigDir: configDir, ClaudeJSON: filepath.Join(home, ".claude.json"), Home: home})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -290,7 +313,7 @@ func TestCollectRepoOnly(t *testing.T) {
 		".claude/hooks/u.sh":        "#!/bin/sh\n",
 		".claude.json":              `{"mcpServers": {"u": {}}, "projects": {"` + root + `": {"mcpServers": {"l": {}}}}}`,
 	})
-	inv, err := Collect(Env{Root: root, MainRoot: root, ConfigDir: configDir, ClaudeJSON: filepath.Join(home, ".claude.json"), RepoOnly: true})
+	inv, err := Collect(Env{Root: root, MainRoot: root, ConfigDir: configDir, ClaudeJSON: filepath.Join(home, ".claude.json"), Home: home, RepoOnly: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -341,7 +364,7 @@ func TestCollectPermissionsWrongShape(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			home, configDir := hostless(t)
 			root := tree(t, map[string]string{".claude/settings.json": c.settings})
-			inv, err := Collect(Env{Root: root, MainRoot: root, ConfigDir: configDir, ClaudeJSON: filepath.Join(home, ".claude.json")})
+			inv, err := Collect(Env{Root: root, MainRoot: root, ConfigDir: configDir, ClaudeJSON: filepath.Join(home, ".claude.json"), Home: home})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -375,7 +398,7 @@ func TestCollectBlocking(t *testing.T) {
 		".claude/hooks/lighthouse/script-gate.sh": "#!/bin/sh\n",
 	})
 	env := Env{
-		Root: root, MainRoot: root, ConfigDir: configDir, ClaudeJSON: filepath.Join(home, ".claude.json"),
+		Root: root, MainRoot: root, ConfigDir: configDir, ClaudeJSON: filepath.Join(home, ".claude.json"), Home: home,
 		Packs: []packs.Pack{{
 			Name:   "core",
 			Units:  []packs.Unit{{Kind: packs.KindFile, Path: packs.HookDir + "blocking", Content: []byte("listed-gate\nscript-gate\n")}},
@@ -417,7 +440,7 @@ func TestCollectUnreadableScript(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chmod(locked, 0o644) })
-	inv, err := Collect(Env{Root: root, MainRoot: root, ConfigDir: configDir, ClaudeJSON: filepath.Join(home, ".claude.json")})
+	inv, err := Collect(Env{Root: root, MainRoot: root, ConfigDir: configDir, ClaudeJSON: filepath.Join(home, ".claude.json"), Home: home})
 	if err != nil {
 		t.Fatal(err)
 	}

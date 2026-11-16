@@ -25,6 +25,7 @@ type Status struct{ Source, State, Reason string }
 // Hook is one registered command hook.
 type Hook struct {
 	Source, Event, Matcher, Command string
+	File                            string // the settings file that registers it, as shown
 	Script                          string // resolved path, "" for an inline command
 	Content                         []byte // the script, or the command line
 	Blocking                        bool
@@ -32,9 +33,11 @@ type Hook struct {
 }
 
 // Skill is a skill, command or agent whose name and description are always loaded.
-// Kind is "skill", "command" or "agent".
+// Kind is "skill", "command" or "agent". Harness is "claude" for what Claude Code loads,
+// "codex" for .agents/skills/: inventoried, but not part of the Claude Code surface.
 type Skill struct {
 	Source, Name, Kind, Path string
+	Harness                  string
 	DescChars, NameChars     int
 }
 
