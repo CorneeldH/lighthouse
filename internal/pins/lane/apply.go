@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/CorneeldH/lighthouse/internal/forge"
 )
@@ -34,9 +35,13 @@ func (a Applier) Apply(ctx context.Context, key string, actions []Action, conten
 		var err error
 		switch act.Op {
 		case Create:
-			err = a.create(ctx, act, content)
+			if err = checkMarker(key, content); err == nil {
+				err = a.create(ctx, act, content)
+			}
 		case Update:
-			err = a.update(ctx, act, content)
+			if err = checkMarker(key, content); err == nil {
+				err = a.update(ctx, act, content)
+			}
 		case CloseByLane:
 			err = a.closeByLane(ctx, act.Item)
 		default:
@@ -47,6 +52,15 @@ func (a Applier) Apply(ctx context.Context, key string, actions []Action, conten
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// checkMarker refuses a body that does not carry the pin marker of key: writing it would wipe
+// the marker and orphan the item.
+func checkMarker(key string, c ItemContent) error {
+	if k, _, _, ok := ParseMarker(c.Body); !ok || k != key {
+		return errors.New("body lacks the pin marker of this pin")
+	}
+	return nil
 }
 
 func (a Applier) create(ctx context.Context, act Action, c ItemContent) error {
@@ -68,7 +82,10 @@ func (a Applier) update(ctx context.Context, act Action, c ItemContent) error {
 // closeByLane writes LaneClosedMarker into the body first, because FindByMarker and Decide only
 // see the body, and then closes with a comment. A failed marker write leaves the item open.
 func (a Applier) closeByLane(ctx context.Context, it forge.Item) error {
-	body := it.Body + "\n" + LaneClosedMarker + "\n"
+	body := it.Body
+	if !strings.Contains(body, LaneClosedMarker) {
+		body += "\n" + LaneClosedMarker + "\n"
+	}
 	if it.IsPR {
 		if err := a.F.UpdatePRBody(ctx, it.Number, body); err != nil {
 			return err

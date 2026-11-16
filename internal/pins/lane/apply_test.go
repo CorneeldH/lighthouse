@@ -2,6 +2,7 @@ package lane
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync/atomic"
@@ -208,6 +209,11 @@ func TestApply_failedActionDoesNotSkipTheRestOfOnePin(t *testing.T) {
 	if conflicts != 1 {
 		t.Errorf("conflict issues = %d, want 1 despite the failed close", conflicts)
 	}
+	for _, it := range find(t, a, testKey) {
+		if it.IsPR && it.State != "open" {
+			t.Error("the PR was closed although its body write failed")
+		}
+	}
 }
 
 func TestApply_neverCallsMergePR(t *testing.T) {
@@ -266,12 +272,80 @@ func TestApply_laneItemsHaveNoMilestoneNoBoardNoCloses(t *testing.T) {
 			t.Errorf("unexpected board/milestone request %s", p.Path)
 		}
 	}
-	for _, op := range []string{"AddToBoard", "SetStatus"} {
-		if srv.Count(op) != 0 {
-			t.Errorf("%s was called", op)
-		}
-	}
 	if srv.Count("/graphql") != 0 {
 		t.Error("the lane used GraphQL, which only the board needs")
+	}
+}
+
+// bodyFailForge fails every body write, so a close that writes the marker first cannot proceed.
+type bodyFailForge struct{ forge.Forge }
+
+func (bodyFailForge) UpdateIssueBody(context.Context, int, string) error {
+	return errors.New("body write failed")
+}
+func (bodyFailForge) UpdatePRBody(context.Context, int, string) error {
+	return errors.New("body write failed")
+}
+
+func TestApply_closeLeavesItemOpenWhenMarkerWriteFails(t *testing.T) {
+	for kind, next := range map[ItemKind]ItemKind{KindPR: KindConflict, KindBehind: KindPR} {
+		t.Run(string(kind), func(t *testing.T) {
+			_, f := newFake(t)
+			a := Applier{F: f}
+			if err := run(t, a, testKey, Outcome{Kind: kind, Target: "x", Measurable: true}, content(testKey, kind, "x")); err != nil {
+				t.Fatal(err)
+			}
+			broken := Applier{F: bodyFailForge{f}}
+			err := run(t, broken, testKey, Outcome{Kind: next, Target: "x", Measurable: true}, content(testKey, next, "x"))
+			if err == nil {
+				t.Fatal("want the failed marker write reported")
+			}
+			for _, it := range find(t, a, testKey) {
+				if _, k, _, _ := ParseMarker(it.Body); k == kind && it.State != "open" {
+					t.Errorf("%s item closed without the lane marker in its body", kind)
+				}
+			}
+		})
+	}
+}
+
+func TestApply_closeKeepsOneLaneMarker(t *testing.T) {
+	_, f := newFake(t)
+	a := Applier{F: f}
+	if err := run(t, a, testKey, errOut, content(testKey, KindError, "e")); err != nil {
+		t.Fatal(err)
+	}
+	items := find(t, a, testKey)
+	items[0].Body += "\n" + LaneClosedMarker
+	if err := a.Apply(context.Background(), testKey, []Action{{Op: CloseByLane, Item: items[0]}}, ItemContent{}); err != nil {
+		t.Fatal(err)
+	}
+	got := find(t, a, testKey)[0].Body
+	if n := strings.Count(got, LaneClosedMarker); n != 1 {
+		t.Errorf("lane marker count = %d, want 1", n)
+	}
+}
+
+func TestApply_refusesBodyWithoutPinMarker(t *testing.T) {
+	_, f := newFake(t)
+	a := Applier{F: f}
+	if err := run(t, a, testKey, errOut, content(testKey, KindError, "e")); err != nil {
+		t.Fatal(err)
+	}
+	item := find(t, a, testKey)[0]
+	cases := map[string]Action{
+		"update": {Op: Update, Item: item, Kind: KindError, Target: "e2"},
+		"create": {Op: Create, Kind: KindBehind, Target: "1"},
+	}
+	for name, act := range cases {
+		for _, body := range []string{"no marker here", Marker("other/key", KindError, "e")} {
+			err := a.Apply(context.Background(), testKey, []Action{act}, ItemContent{Title: "t", Body: body})
+			if err == nil {
+				t.Errorf("%s with body %q: want an error", name, body)
+			}
+		}
+	}
+	if got := find(t, a, testKey); len(got) != 1 || !strings.Contains(got[0].Body, Marker(testKey, KindError, "e")) {
+		t.Errorf("items = %+v, want the original untouched", got)
 	}
 }
