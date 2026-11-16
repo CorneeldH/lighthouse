@@ -41,8 +41,8 @@ count, because otherwise a licence name that happens to occur in a path
 (`github.com/apache/airflow`, `foo/mit-tools`) matches too.
 
 Adopted material also carries `upstream-commit`: the full SHA (40 hex, double-quoted) of the
-commit the copy **descends from** — not today's HEAD. With `origin: external` comes
-`upstream-path`: the path inside the upstream repo to the skill directory or the source file,
+commit the copy **descends from** — not today's HEAD. Whenever `upstream` is set
+(`extended` included) comes `upstream-path`: the path inside the upstream repo to the skill directory or the source file,
 without a leading `/`. Without a pin, falling behind is invisible and an update is no reviewable
 diff.
 
