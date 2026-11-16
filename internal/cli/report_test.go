@@ -179,13 +179,13 @@ func firstLine(s string) string {
 	return line
 }
 
-const reportFileSink = reportOn + "sink = \"file\"\ndir = \"docs/verslagen\"\n"
+const reportFileSink = reportOn + "sink = \"file\"\ndir = \"verslagen\"\n"
 
 func TestReportFileSink(t *testing.T) {
 	for _, tc := range []struct{ kind, path, title string }{
-		{"week", "docs/verslagen/week/2026-W47.md", "# Report week 2026-W47 · o/r\n"},
-		{"day", "docs/verslagen/day/2026-11-16.md", "# Report day 2026-11-16 · o/r\n"},
-		{"month", "docs/verslagen/month/2026-11.md", "# Report month 2026-11 · o/r\n"},
+		{"week", "verslagen/week/2026-W47.md", "# Report week 2026-W47 · o/r\n"},
+		{"day", "verslagen/day/2026-11-16.md", "# Report day 2026-11-16 · o/r\n"},
+		{"month", "verslagen/month/2026-11.md", "# Report month 2026-11 · o/r\n"},
 	} {
 		t.Run(tc.kind, func(t *testing.T) {
 			root := repoDir(t, reportFileSink)
@@ -273,8 +273,8 @@ func TestReportForgeErrorWritesNothing(t *testing.T) {
 			if !strings.Contains(errOut, "rate limited") {
 				t.Errorf("stderr = %q, want the forge error", errOut)
 			}
-			if _, err := os.Stat(filepath.Join(root, "docs")); !errors.Is(err, os.ErrNotExist) {
-				t.Errorf("docs/ exists (%v), want nothing written", err)
+			if _, err := os.Stat(filepath.Join(root, "verslagen")); !errors.Is(err, os.ErrNotExist) {
+				t.Errorf("verslagen/ exists (%v), want nothing written", err)
 			}
 		})
 	}

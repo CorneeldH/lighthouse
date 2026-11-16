@@ -486,8 +486,8 @@ func TestLoadReport(t *testing.T) {
 		want    Report
 		wantErr string // "" means ReportErr must be nil
 	}{
-		{"geldig", "[report]\nenabled = true\nsink = \"file\"\ndir = \"docs/verslagen\"\n",
-			Report{Enabled: true, Sink: "file", Dir: "docs/verslagen"}, ""},
+		{"geldig", "[report]\nenabled = true\nsink = \"file\"\ndir = \"verslagen\"\n",
+			Report{Enabled: true, Sink: "file", Dir: "verslagen"}, ""},
 		{"zonder tabel", "", Report{Sink: "stdout"}, ""},
 		{"enabled als string", "[report]\nenabled = \"true\"\n", Report{Sink: "stdout"}, "report.enabled"},
 		{"onbekende sink", "[report]\nsink = \"wiki\"\n", Report{Sink: "stdout"}, "report.sink"},
