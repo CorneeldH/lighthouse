@@ -51,7 +51,7 @@ type NodeClient struct {
 
 	mu   sync.Mutex
 	info *nodeapi.Info // the Info of a node that speaks nodeapi.Version, once asked
-	bad  error         // a version mismatch, once seen
+	bad  error         // the failure of Info, once seen: kept for the life of the client
 }
 
 // NewNodeClient returns a client without proxy and without redirect following, with a hard
@@ -199,9 +199,10 @@ func (c *NodeClient) decode(r request, data []byte, out any) error {
 }
 
 // Info is GET info, asked once per client. A node of another node-API version is an error
-// with both versions, for this call and every later one of the client; a failure to ask is
-// retried by the next call. Every error of Info is ErrNotAccepted and ErrNotMeasurable: the
-// route it guards was not sent.
+// with both versions; that and every other failure (unreachable, no token, an answer outside
+// 2xx or not JSON) is kept for every later call of the client, so a node that is down costs one
+// timeout per tick, not one per route. Every error of Info is ErrNotAccepted and
+// ErrNotMeasurable: the route it guards was not sent.
 func (c *NodeClient) Info(ctx context.Context) (nodeapi.Info, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -214,14 +215,17 @@ func (c *NodeClient) Info(ctx context.Context) (nodeapi.Info, error) {
 	r := request{method: http.MethodGet, path: nodeapi.PathInfo}
 	status, data, err := c.send(ctx, r)
 	if err != nil {
-		return nodeapi.Info{}, c.notSent("info: %v", err)
+		c.bad = c.notSent("info: %v", err)
+		return nodeapi.Info{}, c.bad
 	}
 	if !ok(status) {
-		return nodeapi.Info{}, fmt.Errorf("%w: %w: %w", c.nodeError(status, data), workplace.ErrNotAccepted, workplace.ErrNotMeasurable)
+		c.bad = fmt.Errorf("%w: %w: %w", c.nodeError(status, data), workplace.ErrNotAccepted, workplace.ErrNotMeasurable)
+		return nodeapi.Info{}, c.bad
 	}
 	var info nodeapi.Info
 	if err := json.Unmarshal(data, &info); err != nil {
-		return nodeapi.Info{}, c.notSent("info is not JSON: %v", err)
+		c.bad = c.notSent("info is not JSON: %v", err)
+		return nodeapi.Info{}, c.bad
 	}
 	if info.Version != nodeapi.Version {
 		c.bad = c.notSent("node-API version %d, this lighthouse speaks version %d", info.Version, nodeapi.Version)

@@ -14,6 +14,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -558,5 +559,40 @@ func TestPermission404WithoutCodeIsError(t *testing.T) {
 	var ne *NodeError
 	if !errors.As(err, &ne) || ne.Status != http.StatusNotFound {
 		t.Errorf("Permission on a 404 without no_permission: %q %v, want a *NodeError 404", data, err)
+	}
+}
+
+// A node whose GET info fails (5xx, 401, 403, a broken answer) is asked once per client, that is
+// once per tick: every later call of the client fails at once with the same not-sent error, so an
+// offline node costs one failure per tick, not one per route. The next client asks again.
+func TestInfoFailureAskedOncePerClient(t *testing.T) {
+	for _, status := range []int{http.StatusServiceUnavailable, http.StatusUnauthorized, http.StatusForbidden} {
+		t.Run(strconv.Itoa(status), func(t *testing.T) {
+			n := newFakeNode(t)
+			n.mux = http.NewServeMux()
+			n.mux.HandleFunc("GET "+nodeapi.PathInfo, func(w http.ResponseWriter, _ *http.Request) {
+				n.infoCalls.Add(1)
+				writeNode(w, status, nodeapi.Problem{Status: status, Detail: "down"})
+			})
+			c := n.client(t)
+			ctx := context.Background()
+			_, infoErr := c.Info(ctx)
+			_, sessErr := c.Sessions(ctx, randomID(t))
+			_, markErr := c.Markers(ctx)
+			for name, err := range map[string]error{"info": infoErr, "sessions": sessErr, "markers": markErr} {
+				if !errors.Is(err, workplace.ErrNotAccepted) || !errors.Is(err, workplace.ErrNotMeasurable) {
+					t.Errorf("%s: %v, want ErrNotAccepted and ErrNotMeasurable", name, err)
+				}
+			}
+			if got := n.infoCalls.Load(); got != 1 {
+				t.Errorf("info asked %d times by one client, want 1", got)
+			}
+			if _, err := n.client(t).Info(ctx); err == nil {
+				t.Error("info of a new client succeeded, want the failure again")
+			}
+			if got := n.infoCalls.Load(); got != 2 {
+				t.Errorf("info asked %d times by two clients, want 2", got)
+			}
+		})
 	}
 }
