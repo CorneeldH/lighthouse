@@ -43,6 +43,17 @@ func TestScriptPath(t *testing.T) {
 		{"first missing wins", "./a/one.sh && ./b/two.sh", plain, plain + "/a/one.sh"},
 		{"flag with path is not a script", "jq --config=/etc/jq/conf.json .", plain, ""},
 		{"url is not a script", "curl https://example.com/a/b.html", plain, ""},
+		{"home var", "$HOME/.claude/hooks/b.js", plain, home + "/.claude/hooks/b.js"},
+		{"braced home var quoted", `"${HOME}/.claude/hooks/b.js"`, plain, home + "/.claude/hooks/b.js"},
+		{"plugin root var skipped", `"$CLAUDE_PLUGIN_ROOT/hooks/x.sh"`, plain, ""},
+		{"braced plugin root skipped", "bash ${CLAUDE_PLUGIN_ROOT}/hooks/x.sh", plain, ""},
+		{"redirect target is no script", "echo x > /tmp/out.log", plain, ""},
+		{"argument file is no script", "jq . /tmp/in.json", plain, ""},
+		{"mkdir argument is no script", "mkdir -p $CLAUDE_PROJECT_DIR/out/x.d", plain, ""},
+		{"missing after semicolon", "echo a ; ./gone/z.sh", plain, plain + "/gone/z.sh"},
+		{"missing after pipe", "echo a | ./gone/z.sh", plain, plain + "/gone/z.sh"},
+		{"missing after interpreter flag", "bash -e ./gone/z.sh", plain, plain + "/gone/z.sh"},
+		{"cd only in command position", "echo cd x && ./y.sh", plain, plain + "/y.sh"},
 		{"directory is not a script", "ls x/", plain, ""},
 	}
 	for _, tc := range tests {

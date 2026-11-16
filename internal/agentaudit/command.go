@@ -68,20 +68,34 @@ func within(path, dir string) bool {
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
+// separators end one simple command and start the next.
+var separators = map[string]bool{"&&": true, "||": true, ";": true, "|": true}
+
 // scriptPath is the script a hook command runs, "" for an inline command. Words are
-// read with quotes dropped, $CLAUDE_PROJECT_DIR replaced by root, ~ by home, and a
-// relative path against root (or the directory of a preceding `cd`). A word counts only
-// when it contains a "/", is no flag or URL, and either names an existing regular file
-// that looks like a script or lies under root or home, or does not exist but looks like
-// a script (returned anyway, for missing-script). An existing file wins over a missing
-// one.
+// read with quotes dropped, $CLAUDE_PROJECT_DIR replaced by root, $HOME and ~ by home,
+// and a relative path against root (or the directory of a `cd` in command position).
+// A word still holding an unexpanded $VAR is skipped. A word counts only when it
+// contains a "/", is no flag or URL, and either names an existing regular file that
+// looks like a script or lies under root or home, or does not exist, looks like a
+// script and stands in command position (first word, after a separator or `cd <dir> &&`,
+// or right after an interpreter): that one is returned for missing-script, so an
+// argument such as `> /tmp/out.log` never counts. An existing file wins over a missing one.
 func scriptPath(command, root, home string) string {
-	replacer := strings.NewReplacer("${CLAUDE_PROJECT_DIR}", root, "$CLAUDE_PROJECT_DIR", root)
+	pairs := []string{"${CLAUDE_PROJECT_DIR}", root, "$CLAUDE_PROJECT_DIR", root}
+	if home != "" {
+		pairs = append(pairs, "${HOME}", home, "$HOME", home)
+	}
+	replacer := strings.NewReplacer(pairs...)
 	base := root
 	missing := ""
 	cd := false
-	for _, word := range words(command) {
-		word = replacer.Replace(word)
+	cmdPos := true
+	for _, raw := range words(command) {
+		if separators[raw] {
+			cmdPos = true
+			continue
+		}
+		word := replacer.Replace(raw)
 		if cd {
 			cd = false
 			if filepath.IsAbs(word) {
@@ -91,12 +105,21 @@ func scriptPath(command, root, home string) string {
 			}
 			continue
 		}
-		if word == "cd" {
+		isCmd := cmdPos
+		if strings.HasPrefix(word, "-") && cmdPos {
+			continue // a flag of an interpreter keeps the script position
+		}
+		cmdPos = false
+		if isCmd && word == "cd" {
 			cd = true
 			continue
 		}
-		if word == "" || strings.HasPrefix(word, "-") || strings.Contains(word, "://") ||
-			!strings.Contains(word, "/") || interpreters[filepath.Base(word)] {
+		if interpreters[filepath.Base(word)] {
+			cmdPos = true
+			continue
+		}
+		if word == "" || strings.HasPrefix(word, "-") || strings.Contains(word, "$") ||
+			strings.Contains(word, "://") || !strings.Contains(word, "/") {
 			continue
 		}
 		switch {
@@ -114,7 +137,7 @@ func scriptPath(command, root, home string) string {
 			if looksLikeScript(word) || within(word, root) || within(word, home) {
 				return word
 			}
-		case err != nil && missing == "" && looksLikeScript(word):
+		case err != nil && isCmd && missing == "" && looksLikeScript(word):
 			missing = word
 		}
 	}
