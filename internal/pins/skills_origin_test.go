@@ -1,4 +1,4 @@
-package pack_test
+package pins_test
 
 import (
 	"io/fs"
