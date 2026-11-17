@@ -473,7 +473,8 @@ func TestPushRowTimesOutWithoutMarker(t *testing.T) {
 	}
 }
 
-// Once the pusher pushed, the push row owns the PR of its branch: a green PR merges, a red one
+// Once the pusher pushed, the push row owns the PR of its branch: a green PR merges through the
+// merge pusher (the row's PushedSHA routes it there, with or without a push note), a red one
 // gets a fix-pr start, a merged one closes the row as done. max_runtime, max_wait and the push
 // timeout no longer hold, so a pending PR keeps the row open however old it is.
 func TestPushRowAfterPushOwnsPR(t *testing.T) {
@@ -482,7 +483,7 @@ func TestPushRowAfterPushOwnsPR(t *testing.T) {
 		mutate func(*Input)
 		want   []string
 	}{
-		{"green merges", func(*Input) {}, []string{"merge::"}},
+		{"green merges through the merge pusher", func(*Input) {}, []string{"close::merge:12:abc123", "push::"}},
 		{"red starts fix-pr", red, []string{fixClose12, "start:reason_pr_red:"}},
 		{"merged closes done", func(in *Input) {
 			pr12(in).State, pr12(in).MergedAt = "MERGED", in.Now.Add(-time.Minute)
@@ -515,7 +516,7 @@ func TestPushRowAfterPushOwnsPR(t *testing.T) {
 				t.Fatalf("summary = %q, want %q", s, tt.want)
 			}
 			for _, a := range got {
-				if a.Kind == KindStart || a.Kind == KindDefer {
+				if a.Kind == KindStart || a.Kind == KindDefer || a.Kind == KindPush {
 					continue
 				}
 				if a.RunID != 5 || a.Stop || a.End || a.Discard {

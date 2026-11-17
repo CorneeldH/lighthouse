@@ -523,8 +523,9 @@ func (c runCtx) outcome() (Action, bool, *fixPRStart) {
 // green, fixPR), plus pushedAlone for a pushed row without any PR. No action touches a session.
 //
 // Deliberate deviation from spec §2 (only rules 6, 7 and 13), by controller ruling in
-// task 5: an issue closed by hand (closedIssue) and a PR closed unmerged (prClosed) also close
-// the pushed row, as for any run. Without them nothing ever closes it, and an issue with an open
+// tasks 5 and 9: an issue closed by hand (closedIssue) and a PR closed unmerged (prClosed) also
+// close the pushed row, as for any run, and a pushed row without any PR of its branch goes back at
+// the push timeout (pushedAlone). Without them nothing ever closes it, and an issue with an open
 // run is never dispatched again.
 func (c runCtx) pushOutcome() (Action, bool, *fixPRStart) {
 	if c.row.PushedSHA == "" {
@@ -673,8 +674,9 @@ func (c runCtx) closedIssue() (Action, bool) {
 // mergeReady merges the run's own open PR when it is ready: the run is Done; the PR is no
 // draft, mergeable, green, without an open roborev review, and not refused before on this
 // head; the item is in Controller, the brake is not paused, and no blocker is active. The merge
-// ends the run as done; apply does the merge. A PR the workflow pusher pushed to (PushedSHA)
-// merges through the merge pusher instead (mergeByPusher), whichever run owns it.
+// ends the run as done; apply does the merge. A PR the workflow pusher pushed to (PushedSHA of
+// the PR, or of the push row that owns it) merges through the merge pusher instead
+// (mergeByPusher), whichever run owns it.
 func (c runCtx) mergeReady() (Action, bool, *fixPRStart) {
 	pr, ok := c.ownOpenPR()
 	if !ok || !c.done() || pr.Draft || pr.Mergeable != "MERGEABLE" || pr.Checks != "SUCCESS" ||
@@ -682,7 +684,9 @@ func (c runCtx) mergeReady() (Action, bool, *fixPRStart) {
 		c.in.Brake != nil && c.in.Brake.Paused || len(activeBlockers(c.it)) > 0 {
 		return Action{}, false, nil
 	}
-	if pr.PushedSHA != "" {
+	// A push row that recorded its push routes there too when its push note never reached the
+	// issue: the comment is then missing, the row's PushedSHA is not.
+	if pr.PushedSHA != "" || isPush(c.row) && c.row.PushedSHA != "" {
 		return c.mergeByPusher(pr)
 	}
 	a := c.base

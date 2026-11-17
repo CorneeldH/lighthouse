@@ -419,27 +419,34 @@ func TestDecideMergeStartsPusherForBuildRoutePR(t *testing.T) {
 	wantMergePush(t, got)
 }
 
-// Without a pushed SHA the green PR merges as before, with the run token, also with the pusher on.
+// Without a pushed SHA the green PR of a session run merges as before, with the run token, also
+// with the pusher on.
 func TestDecideMergeUsesRunTokenWithoutPushedSHA(t *testing.T) {
-	for name, mutate := range map[string]func(*Input){
-		"session run": func(in *Input) { in.Repos[0].WorkflowPush = true },
-		"push row":    func(*Input) {},
-	} {
-		t.Run(name, func(t *testing.T) {
-			in := loadInput(t, "settle-green-pr-done")
-			if name == "push row" {
-				in = pushRow(t, pushSHA, 2*time.Hour)
-			}
-			mutate(&in)
-			got := Decide(in)
-			if s := summary(got); !reflect.DeepEqual(s, []string{"merge::"}) {
-				t.Fatalf("summary = %q, want the merge with the run token", s)
-			}
-			if got[0].PR != 12 || got[0].HeadSHA != "abc123" {
-				t.Errorf("merge = %+v", got[0])
-			}
-		})
+	in := loadInput(t, "settle-green-pr-done")
+	in.Repos[0].WorkflowPush = true
+	got := Decide(in)
+	if s := summary(got); !reflect.DeepEqual(s, []string{"merge::"}) {
+		t.Fatalf("summary = %q, want the merge with the run token", s)
 	}
+	if got[0].PR != 12 || got[0].HeadSHA != "abc123" {
+		t.Errorf("merge = %+v", got[0])
+	}
+}
+
+// A push row that recorded its push but whose push note never reached the issue (the post failed)
+// gives its PR no pushed SHA from a comment. The row's own PushedSHA still routes the merge to the
+// merge pusher: the run token cannot merge a workflow change, and a push row has no session to
+// merge for.
+func TestDecideMergeByPusherForPushRowWithoutNote(t *testing.T) {
+	in := pushRow(t, pushSHA, 2*time.Hour)
+	got := Decide(in)
+	if s := summary(got); !reflect.DeepEqual(s, []string{"close::" + mergeKey12, "push::"}) {
+		t.Fatalf("summary = %q, want the close of run 5 and the merge pusher", s)
+	}
+	if c := got[0]; c.RunID != 5 || c.Outcome != runs.Handoff || c.Stop || c.End {
+		t.Errorf("close = %+v, want run 5 closed as handoff without a session action", c)
+	}
+	wantMergePush(t, got)
 }
 
 // End to end from the comments: a pusher comment of branch A gives a green PR on branch B no
