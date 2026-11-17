@@ -58,6 +58,9 @@ type Fixture interface {
 	// SupportsPlanning reports whether the forge implements Planning; the Planning case is
 	// skipped for one that does not yet.
 	SupportsPlanning() bool
+	// NotPlannedCountsAsDone reports whether Planning counts an issue closed as not planned in
+	// Done. GitHub does not; GitLab has no such close reason, so every closed issue is done.
+	NotPlannedCountsAsDone() bool
 }
 
 // Case is one contract case.
@@ -241,8 +244,12 @@ func planning(t *testing.T, f Fixture) {
 		t.Fatalf("Planning.Milestones = %+v, want M3 and the empty M9", got.Milestones)
 	}
 	slices.SortFunc(got.Milestones, func(a, b forge.MilestoneCount) int { return strings.Compare(a.Title, b.Title) })
-	if c := got.Milestones[0]; c.Title != "M3" || c.Open != 1 || c.Done != 2 {
-		t.Errorf("M3 = %+v, want 1 open and 2 done (not-planned #6 counts in neither)", c)
+	wantDone := 2
+	if f.NotPlannedCountsAsDone() {
+		wantDone = 3
+	}
+	if c := got.Milestones[0]; c.Title != "M3" || c.Open != 1 || c.Done != wantDone {
+		t.Errorf("M3 = %+v, want 1 open and %d done (not-planned #6 counts only where the forge cannot tell)", c, wantDone)
 	}
 	if c := got.Milestones[1]; c.Title != "M9" || c.Open != 0 || c.Done != 0 {
 		t.Errorf("M9 = %+v, want 0 open and 0 done", c)

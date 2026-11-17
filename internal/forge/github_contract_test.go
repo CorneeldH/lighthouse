@@ -96,6 +96,9 @@ func (g *githubFixture) AddMilestone(_ *testing.T, m forge.Milestone) {
 // SupportsPlanning: Planning reads GraphQL issues and search counts.
 func (g *githubFixture) SupportsPlanning() bool { return true }
 
+// NotPlannedCountsAsDone: the search asks reason:completed.
+func (g *githubFixture) NotPlannedCountsAsDone() bool { return false }
+
 func (g *githubFixture) AddComment(_ *testing.T, number int, author, body string) int64 {
 	c := g.srv.AddComment(number, author, body)
 	return c["id"].(int64)

@@ -119,12 +119,22 @@ func (g *gitlabFixture) AddOpenPR(_ *testing.T, pr forge.OpenPR) {
 // ChecksOnClosedPRs: BranchPRs reads head_pipeline only for an open merge request.
 func (g *gitlabFixture) ChecksOnClosedPRs() bool { return false }
 
-// SupportsPlanning: GitLab's Planning is a stub until the GitLab task.
-func (g *gitlabFixture) SupportsPlanning() bool { return false }
+// SupportsPlanning: Planning reads REST issues, links and issues_statistics.
+func (g *gitlabFixture) SupportsPlanning() bool { return true }
 
+// NotPlannedCountsAsDone: GitLab has no close reason, so every closed issue is done.
+func (g *gitlabFixture) NotPlannedCountsAsDone() bool { return true }
+
+// SetCloseReason does nothing: GitLab keeps no close reason, only the closed state.
 func (g *gitlabFixture) SetCloseReason(*testing.T, int, string) {}
 
-func (g *gitlabFixture) AddMilestone(*testing.T, forge.Milestone) {}
+func (g *gitlabFixture) AddMilestone(_ *testing.T, m forge.Milestone) {
+	state := m.State
+	if state == "open" {
+		state = "active"
+	}
+	g.srv.AddMilestone(map[string]any{"id": m.Number, "iid": m.Number + 10, "title": m.Title, "state": state, "description": m.Description})
+}
 
 // ListsClosedIssues: every issue is on the board, closed ones within the closed window.
 func (g *gitlabFixture) ListsClosedIssues() bool { return true }

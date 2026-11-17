@@ -394,8 +394,3 @@ func (g *GitLab) CreateComment(ctx context.Context, number int, body string) (pr
 	}
 	return g.comment(n, number, 0), nil
 }
-
-// Planning is not built for GitLab yet.
-func (c *GitLab) Planning(context.Context) (Planning, error) {
-	return Planning{}, errors.New("forge: Planning is not supported on gitlab yet")
-}

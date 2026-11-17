@@ -42,16 +42,17 @@ type Server struct {
 	reqs   []string
 	nextID int64
 
-	issues   map[int]map[string]any
-	notes    map[int][]map[string]any
-	awards   map[int64][]map[string]any
-	links    map[int][]map[string]any
-	mrs      []map[string]any
-	closedBy map[string][]map[string]any // "project#iid" to the merge requests that close it
-	users    map[string]int64            // username to user ID
-	members  map[string]int              // username to access level
-	statuses []string
-	status   map[int]string
+	issues     map[int]map[string]any
+	notes      map[int][]map[string]any
+	awards     map[int64][]map[string]any
+	links      map[int][]map[string]any
+	mrs        []map[string]any
+	milestones []map[string]any
+	closedBy   map[string][]map[string]any // "project#iid" to the merge requests that close it
+	users      map[string]int64            // username to user ID
+	members    map[string]int              // username to access level
+	statuses   []string
+	status     map[int]string
 }
 
 // New starts a server that closes when the test ends.
@@ -73,6 +74,8 @@ func newServer(t reporter) *Server {
 	s.route(mux, "GET "+p+"/members/all/{uid}", s.project(s.member))
 	s.route(mux, "GET "+p+"/issues", s.project(s.listIssues))
 	s.route(mux, "GET "+p+"/issues/{iid}", s.project(s.issue))
+	s.route(mux, "GET "+p+"/issues_statistics", s.project(s.issuesStatistics))
+	s.route(mux, "GET "+p+"/milestones", s.project(s.listMilestones))
 	s.route(mux, "GET "+p+"/issues/{iid}/notes", s.project(s.listNotes))
 	s.route(mux, "POST "+p+"/issues/{iid}/notes", s.project(s.createNote))
 	s.route(mux, "GET "+p+"/issues/{iid}/notes/{nid}/award_emoji", s.project(s.listAwards))
@@ -213,6 +216,42 @@ func (s *Server) listIssues(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		out = append(out, it)
+	}
+	s.mu.Unlock()
+	paginate(w, r, out)
+}
+
+// issuesStatistics serves GET …/issues_statistics for the milestone title in the milestone
+// query parameter, counted over the seeded issues, as GitLab does: any closed issue is closed.
+func (s *Server) issuesStatistics(w http.ResponseWriter, r *http.Request) {
+	title := r.URL.Query().Get("milestone")
+	s.mu.Lock()
+	var opened, closed int
+	for _, it := range s.issues {
+		if m, _ := it["milestone"].(map[string]any); m == nil || m["title"] != title {
+			continue
+		}
+		if it["state"] == "closed" {
+			closed++
+		} else {
+			opened++
+		}
+	}
+	s.mu.Unlock()
+	writeJSON(w, http.StatusOK, map[string]any{"statistics": map[string]any{
+		"counts": map[string]any{"all": opened + closed, "opened": opened, "closed": closed},
+	}})
+}
+
+// listMilestones serves the milestones, filtered on state (active, closed; default all).
+func (s *Server) listMilestones(w http.ResponseWriter, r *http.Request) {
+	state := r.URL.Query().Get("state")
+	s.mu.Lock()
+	var out []any
+	for _, m := range s.milestones {
+		if state == "" || m["state"] == state {
+			out = append(out, m)
+		}
 	}
 	s.mu.Unlock()
 	paginate(w, r, out)
@@ -406,6 +445,14 @@ func (s *Server) AddIssue(m map[string]any) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.issues[toInt(m["iid"])] = m
+}
+
+// AddMilestone seeds a milestone in GitLab's REST shape: id, iid, title, state ("active" or
+// "closed") and description. Issues refer to it by title.
+func (s *Server) AddMilestone(m map[string]any) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.milestones = append(s.milestones, m)
 }
 
 // AddNote seeds a note on issue iid and returns its ID.
