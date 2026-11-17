@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
@@ -214,7 +215,7 @@ func TestRun_endToEndFixtures(t *testing.T) {
 	// Without the branch, a second run that pushed anyway would bring it back: an open PR for
 	// the same target asks for nothing, so nothing is pushed.
 	gitT(t, origin, "update-ref", "-d", "refs/heads/pins/core-skills-demo")
-	posts := len(srv.Posts)
+	posts := len(onlyPosts(srv))
 	if err := Run(context.Background(), env); err == nil {
 		t.Fatalf("second run: no error for the vanished pin")
 	}
@@ -223,8 +224,9 @@ func TestRun_endToEndFixtures(t *testing.T) {
 			t.Errorf("after two runs pin %s has %d items, want 1", key, n)
 		}
 	}
-	if len(srv.Posts) != posts {
-		t.Errorf("second run posted %d times: %+v", len(srv.Posts)-posts, srv.Posts[posts:])
+	// The open error issue of the vanished pin gets its body rewritten (a PATCH); nothing is created.
+	if got := onlyPosts(srv); len(got) != posts {
+		t.Errorf("second run posted %d times: %+v", len(got)-posts, got[posts:])
 	}
 	for _, it := range []forge.Item{clash, tool} { // same kind, same target: not even a body update
 		if n := srv.Count(fmt.Sprintf("/repos/o/r/issues/%d", it.Number)); n != 0 {
@@ -603,4 +605,15 @@ func TestRun_botLoginIgnoresCase(t *testing.T) {
 	for _, key := range []string{"core/skills/demo", toolFile, ciFile} {
 		only(t, f, key)
 	}
+}
+
+// onlyPosts are the POST requests the fake recorded; its Posts also hold PATCH and DELETE.
+func onlyPosts(srv *forgetest.Server) []forgetest.Post {
+	var out []forgetest.Post
+	for _, p := range srv.Posts {
+		if p.Method == http.MethodPost {
+			out = append(out, p)
+		}
+	}
+	return out
 }
