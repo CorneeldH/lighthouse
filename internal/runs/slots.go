@@ -9,11 +9,12 @@ import (
 
 // SlotSettled reports whether slot of schedule is handled according to history, the runs of
 // one repo: a run of its trigger key ended done or failed, or the key has two runs (attempts).
+// The trigger key names trigger, schedule and slot, so it alone picks the runs.
 func SlotSettled(history []Row, schedule, slot string) bool {
 	key := TriggerScheduled + ":" + schedule + ":" + slot
 	n := 0
 	for _, r := range history {
-		if r.Trigger != TriggerScheduled || r.Schedule != schedule || r.TriggerKey != key {
+		if r.TriggerKey != key {
 			continue
 		}
 		if r.Outcome == Done || r.Outcome == Failed {
