@@ -177,12 +177,12 @@ func serve(ctx context.Context, addr, dbPath string, repos []overview.RepoSource
 	for _, r := range repos {
 		prioSrcs = append(prioSrcs, priorities.Source{Slug: r.Slug, Src: r.Src})
 	}
-	// The read of the prioritisation is wired to its endpoint in a later change.
-	_, prioStopped := startPriorities(refreshCtx, prioSrcs, read, prioInterval)
+	prioRead, prioStopped := startPriorities(refreshCtx, prioSrcs, read, prioInterval)
 	srv := &http.Server{Handler: server.New(web.FS(), server.Deps{
-		Report:   rep.Report,
-		Forge:    repos,
-		Overview: read,
+		Report:     rep.Report,
+		Forge:      repos,
+		Overview:   read,
+		Priorities: prioRead,
 		Leftovers: func(ctx context.Context) ([]workplace.Leftover, error) {
 			return workplace.Leftovers(ctx, st.DB)
 		},
@@ -224,7 +224,7 @@ func serve(ctx context.Context, addr, dbPath string, repos []overview.RepoSource
 // returned.
 func startOverview(ctx context.Context, repos []overview.RepoSource, interval time.Duration) (read func(context.Context) (overview.Overview, error), stopped func()) {
 	build := func(ctx context.Context) (overview.Overview, error) { return overview.BuildAll(ctx, repos) }
-	return startRefresher(ctx, len(repos) > 0, build, interval)
+	return startRefresher(ctx, len(repos) > 0, build, interval, server.RefreshRetry)
 }
 
 // startPriorities returns the reader of the prioritisation lists, built by its own Refresher
@@ -244,17 +244,18 @@ func startPriorities(ctx context.Context, srcs []priorities.Source, overviewRead
 		}
 		return priorities.Build(ctx, srcs, ov.Statuses)
 	}
-	return startRefresher(ctx, len(srcs) > 0, build, interval)
+	// A failed planning read costs API points, so it retries at PrioritiesRetry, not RefreshRetry.
+	return startRefresher(ctx, len(srcs) > 0, build, interval, server.PrioritiesRetry)
 }
 
 // startRefresher starts a Refresher of build on ctx when enabled, and returns its reader and
 // a stopped that blocks until its goroutine has returned. Disabled, the reader builds on every
 // read and stopped is a no-op.
-func startRefresher[T any](ctx context.Context, enabled bool, build server.BuildFunc[T], interval time.Duration) (read func(context.Context) (T, error), stopped func()) {
+func startRefresher[T any](ctx context.Context, enabled bool, build server.BuildFunc[T], interval, retry time.Duration) (read func(context.Context) (T, error), stopped func()) {
 	if !enabled {
 		return build, func() {}
 	}
-	r := server.NewRefresher(build, interval, min(server.RefreshRetry, interval), server.BuildTimeout)
+	r := server.NewRefresher(build, interval, min(retry, interval), server.BuildTimeout)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)

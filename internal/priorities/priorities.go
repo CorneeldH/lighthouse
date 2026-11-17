@@ -18,53 +18,56 @@ type Source struct {
 
 // MilestoneRef is the milestone an issue belongs to. State is "open" or "closed".
 type MilestoneRef struct {
-	Number       int
-	Title, State string
+	Number int    `json:"number"`
+	Title  string `json:"title"`
+	State  string `json:"state"`
 }
 
 // Blocker is an open issue that blocks another; Repo is the repo of the blocker, which can
 // differ from the repo of the blocked issue.
 type Blocker struct {
-	Repo  string
-	Issue int
+	Repo  string `json:"repo"`
+	Issue int    `json:"issue"`
 }
 
 // Issue is one open issue. Status is its board Status, "" when it has none.
 type Issue struct {
-	Number    int
-	Title     string
-	URL       string
-	Milestone *MilestoneRef
-	BlockedBy []Blocker
-	Status    string
+	Number    int           `json:"number"`
+	Title     string        `json:"title"`
+	URL       string        `json:"url"`
+	Milestone *MilestoneRef `json:"milestone,omitempty"`
+	BlockedBy []Blocker     `json:"blocked_by"`
+	Status    string        `json:"status"`
 }
 
 // Milestone is an open milestone with the size of its work.
 type Milestone struct {
-	Number      int
-	Title       string
-	Description string
-	Open, Done  int
+	Number      int    `json:"number"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Open        int    `json:"open"`
+	Done        int    `json:"done"`
 }
 
 // Repo is the planning of one repository; neither list is ever nil.
 type Repo struct {
-	Slug       string
-	Issues     []Issue
-	Milestones []Milestone
+	Slug       string      `json:"slug"`
+	Issues     []Issue     `json:"issues"`
+	Milestones []Milestone `json:"milestones"`
 }
 
 // Run is a dispatch run as the view shows it next to an issue.
 type Run struct {
-	Repo         string
-	Issue        int
-	State, Phase string
+	Repo  string `json:"repo"`
+	Issue int    `json:"issue"`
+	State string `json:"state"`
+	Phase string `json:"phase"`
 }
 
 // Result is what the prioritisation endpoint returns; neither list is ever nil.
 type Result struct {
-	Repos []Repo
-	Runs  []Run
+	Repos []Repo `json:"repos"`
+	Runs  []Run  `json:"runs"`
 }
 
 // Build reads Planning of every source, one after the other, and joins the board Status from
