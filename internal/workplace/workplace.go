@@ -75,6 +75,19 @@ type LaunchSpec struct {
 	InstructionsFile string
 	// MCPConfig is absolute or empty; it comes from the profile.
 	MCPConfig string
+	// Tools, when not empty, is the list of built-in tools the agent has available
+	// (--tools). Empty means the default tool set.
+	Tools []string
+	// Unset names environment variables the agent must not inherit, such as the forge token of
+	// a scheduled run. Empty leaves the environment as it was.
+	Unset []string
+}
+
+// RemoveOptions tunes Remove.
+type RemoveOptions struct {
+	// Force removes a workspace with uncommitted or unpushed work too. Only the workspace of
+	// a scheduled run without an open row is removed this way: nothing in it must be kept.
+	Force bool
 }
 
 // Workplace is the forge side of a run.
@@ -86,7 +99,9 @@ type Workplace interface {
 	// Kill ends only the agent processes of the given sessions, never the rest of the
 	// workspace: a foreign session in it runs on. A session without a process is no error.
 	Kill(ctx context.Context, workspaceID string, sessionIDs []string) error
-	Remove(ctx context.Context, workspaceID string) error
+	// Remove deletes the workspace. Without o.Force a workspace with uncommitted work is
+	// ErrDirty; with it, that work is thrown away.
+	Remove(ctx context.Context, workspaceID string, o RemoveOptions) error
 	// Lookup reads a workspace by id: its path and branch. A workspace the forge no
 	// longer knows is ErrGone; one without a path is an error.
 	Lookup(ctx context.Context, workspaceID string) (Workspace, error)

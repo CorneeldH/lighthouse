@@ -566,6 +566,51 @@ func TestCompleteReadsPRCommentsOnlyWhenMergeReady(t *testing.T) {
 	}
 }
 
+// Classification: io (fake forge server). Fails if the gather stops reading the PRs of the branch
+// of an open scheduled run, which has no board item: Decide would never see its PR, and the run
+// would only end at pr_timeout. A scheduled run without a branch costs no request.
+func TestPrepareReadsThePRsOfScheduledRuns(t *testing.T) {
+	srv, c := client(t)
+	srv.BoardNodes = []map[string]any{node("I1", map[string]string{"F_status": "opt-ctrl"}, issue("o/r", 1, nil))}
+	branch := "scheduled/codebase-map-20261031T0400-1"
+	srv.Branches = map[string][]map[string]any{branch: {prNode(31, branch, nil)}}
+	open := []runs.OpenRun{{ID: 1, Schedule: "codebase-map", Branch: branch}, {ID: 2, Schedule: "reflect"}}
+	pre, err := Prepare(context.Background(), c, testRepo, open, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string][]forge.PR{branch: {{Number: 31, State: "OPEN", Mergeable: "MERGEABLE", HeadSHA: "sha" + branch, HeadRef: branch}}}
+	if !reflect.DeepEqual(pre.ScheduledPRs, want) {
+		t.Errorf("ScheduledPRs = %+v\nwant %+v", pre.ScheduledPRs, want)
+	}
+	if n := srv.Count("BranchPRs"); n != 1 {
+		t.Errorf("BranchPRs requests = %d, want 1", n)
+	}
+	if len(pre.Items) != 1 || len(pre.Items[0].PRs) != 0 {
+		t.Errorf("items = %+v, want issue 1 without the scheduled PR", pre.Items)
+	}
+}
+
+// Fails if Complete leaves the scheduled PRs out of the snapshot, or does not measure the roborev
+// state of a merge-ready one: the merge rule must not merge over an open review.
+func TestCompleteCarriesScheduledPRsWithRoborev(t *testing.T) {
+	srv, c := client(t)
+	srv.Roles = map[string]string{"owner": "admin"}
+	srv.Comments = map[int][]map[string]any{12: {comment(1, "github-actions[bot]", review("abc1234def", "Changes require fixes"))}}
+	pre := pre7()
+	pre.ScheduledPRs = map[string][]forge.PR{"scheduled/x-1": {readyPR(12)}}
+	snap, err := Complete(context.Background(), c, pre, NewTrust(c, defaultAllowed), "lh-bot", &bytes.Buffer{}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prs := snap.ScheduledPRs["scheduled/x-1"]; len(prs) != 1 || prs[0].Roborev != forge.RoborevOpen {
+		t.Errorf("scheduled PRs = %+v, want #12 with an open roborev review", snap.ScheduledPRs)
+	}
+	if pre.ScheduledPRs["scheduled/x-1"][0].Roborev != "" {
+		t.Error("Complete changed the PRs of Pre")
+	}
+}
+
 // prCommentsFail is a forge of the given kind whose Comments fails for any number but the issue.
 type prCommentsFail struct {
 	forge.Forge

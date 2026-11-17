@@ -448,6 +448,18 @@ func (g *GitLab) CloseIssue(ctx context.Context, number int, comment string) err
 
 // CreatePR opens a merge request. GitLab marks a draft by the "Draft: " prefix of the title.
 func (g *GitLab) CreatePR(ctx context.Context, pr NewPR) (PR, error) {
+	if pr.Base == "" {
+		var proj struct {
+			DefaultBranch string `json:"default_branch"`
+		}
+		if _, err := g.get(ctx, g.projectPath(""), nil, &proj); err != nil {
+			return PR{}, err
+		}
+		if proj.DefaultBranch == "" {
+			return PR{}, fmt.Errorf("forge: project %s has no default branch", g.Repo)
+		}
+		pr.Base = proj.DefaultBranch
+	}
 	title := pr.Title
 	if pr.Draft && !strings.HasPrefix(title, "Draft:") {
 		title = "Draft: " + title
@@ -532,4 +544,17 @@ func (g *GitLab) FindByMarker(ctx context.Context, marker string) ([]Item, error
 		out = append(out, item)
 	}
 	return out, nil
+}
+
+// DeleteBranch deletes branch of the project. A branch that is already gone (404) is not an error.
+func (g *GitLab) DeleteBranch(ctx context.Context, branch string) error {
+	if err := g.configured(); err != nil {
+		return err
+	}
+	_, err := g.do(ctx, http.MethodDelete, g.projectPath("/repository/branches/"+neturl.PathEscape(branch)), nil, nil, nil)
+	var se *httpStatusError
+	if errors.As(err, &se) && se.Code == http.StatusNotFound {
+		return nil
+	}
+	return err
 }

@@ -15,6 +15,7 @@ export interface Leftover {
   path: string;
   reason: string;
   repo: string;
+  schedule?: string;
   workspace_id: string;
 }
 
@@ -28,6 +29,7 @@ export interface DeferredView {
   issue: number;
   reason: string;
   repo: string;
+  schedule?: string;
   title: string;
 }
 
@@ -170,8 +172,10 @@ export interface RunView {
   command: string;
   issue: number;
   phase: string;
+  pr_at?: string;
   profile: string;
   repo: string;
+  schedule?: string;
   stand: string;
   started_at: string;
   state: string;

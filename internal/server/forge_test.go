@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -289,6 +290,60 @@ func TestRunsList(t *testing.T) {
 	const wantDeferred = `[{"repo":"o/r","issue":8,"title":"acht","reason":"no slot","at":"2026-11-01T09:00:00Z"}]`
 	if got := string(body["deferred"]); got != wantDeferred {
 		t.Errorf("deferred = %s, want %s", got, wantDeferred)
+	}
+}
+
+// AC 4 (#121): GET /api/runs lists two open scheduled runs of one repo in the same list as an
+// issue run, each with its schedule, and a scheduled deferral in the deferred list.
+func TestRunsListScheduled(t *testing.T) {
+	at := time.Date(2026, 11, 16, 5, 0, 0, 0, time.UTC)
+	prAt := time.Date(2026, 11, 16, 4, 40, 0, 0, time.UTC)
+	d := testDeps(stubSource{}, nil)
+	d.Runs = func(context.Context) ([]dispatch.RunView, []dispatch.DeferredView, error) {
+		return []dispatch.RunView{
+				{Repo: "o/r", Schedule: "codebase-map", State: "open", Trigger: "scheduled", StartedAt: at, PRAt: prAt, At: at},
+				{Repo: "o/r", Schedule: "reflect", State: "open", Trigger: "scheduled", StartedAt: at, At: at},
+				{Repo: "o/r", Issue: 7, Title: "zeven", State: "open", Trigger: "board", StartedAt: at, At: at},
+			},
+			[]dispatch.DeferredView{{Repo: "o/r", Schedule: "nightly", Reason: "usage", At: at}}, nil
+	}
+	rec := get(New(testSite(), d), "/api/runs")
+	if rec.Code != 200 {
+		t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
+	}
+	var body struct {
+		Runs []struct {
+			Issue    int     `json:"issue"`
+			Schedule *string `json:"schedule"`
+			PRAt     *string `json:"pr_at"`
+		} `json:"runs"`
+		Deferred []struct {
+			Issue    int    `json:"issue"`
+			Schedule string `json:"schedule"`
+		} `json:"deferred"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Runs) != 3 {
+		t.Fatalf("runs = %s, want 3", rec.Body)
+	}
+	str := func(p *string) string {
+		if p == nil {
+			return "<absent>"
+		}
+		return *p
+	}
+	got := []string{}
+	for _, r := range body.Runs {
+		got = append(got, fmt.Sprintf("%d %s %s", r.Issue, str(r.Schedule), str(r.PRAt)))
+	}
+	want := []string{"0 codebase-map 2026-11-16T04:40:00Z", "0 reflect <absent>", "7 <absent> <absent>"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("runs = %q, want %q", got, want)
+	}
+	if len(body.Deferred) != 1 || body.Deferred[0].Schedule != "nightly" || body.Deferred[0].Issue != 0 {
+		t.Errorf("deferred = %s, want the deferral of nightly", rec.Body)
 	}
 }
 

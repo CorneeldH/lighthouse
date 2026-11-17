@@ -79,9 +79,14 @@ func (a *Adapter) Spawn(ctx context.Context, ws workplace.Workspace, l workplace
 		return workplace.Session{}, fmt.Errorf("%w: %w", workplace.ErrNotAccepted, err)
 	}
 
-	// The environment of the run is the carrier's, sorted by key so the argv is stable; its
-	// markVar is the mark Marked and Kill find the processes by.
+	// The environment of the run is the inherited one without the carrier's Unset (env adds to
+	// what it inherits, so a forge token of the tick would reach the agent), plus the carrier's
+	// Env, sorted by key so the argv is stable; its markVar is the mark Marked and Kill find the
+	// processes by. NewCarrier checked every Unset name, so none reads as an option.
 	argv := []string{"-c", launchScript, "sh", ws.Path, s.logPath(key), s.pidPath(ws.ID, key), "env"}
+	for _, name := range carrier.Unset {
+		argv = append(argv, "-u", name)
+	}
 	for _, k := range slices.Sorted(maps.Keys(carrier.Env)) {
 		argv = append(argv, k+"="+carrier.Env[k])
 	}

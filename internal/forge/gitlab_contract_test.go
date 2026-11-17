@@ -176,7 +176,7 @@ var (
 func (g *gitlabFixture) AddBranchPR(_ *testing.T, branch string, pr forge.PR) {
 	m := map[string]any{"iid": pr.Number, "state": mrState[pr.State], "source_branch": branch, "sha": pr.HeadSHA,
 		"draft": pr.Draft, "has_conflicts": pr.Mergeable == "CONFLICTING", "web_url": pr.URL,
-		"source_project_id": 1, "target_project_id": 1}
+		"source_project_id": 1, "target_project_id": 1, "target_branch": pr.BaseRef}
 	if pr.CrossRepo {
 		m["source_project_id"] = 2
 	}

@@ -23,6 +23,9 @@ type Snapshot struct {
 	GatheredAt time.Time      `json:"gathered_at"`
 	Items      []Item         `json:"items"` // sorted by issue
 	OpenRuns   []runs.OpenRun `json:"open_runs"`
+	// ScheduledPRs are the PRs of the branch of each open scheduled run, by branch: a scheduled
+	// run has no board item to carry them.
+	ScheduledPRs map[string][]forge.PR `json:"scheduled_prs,omitempty"`
 }
 
 // Item is one board item of the repo with Status Controller or On hold.

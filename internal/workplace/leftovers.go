@@ -17,7 +17,8 @@ const leftoverKind = "cleanup"
 // on self (node ""), else node + "/" + workspace id.
 type Leftover struct {
 	Repo        string `json:"repo"`
-	Issue       int    `json:"issue"`
+	Issue       int    `json:"issue"`              // 0 for the workspace of a scheduled run
+	Schedule    string `json:"schedule,omitempty"` // "" for the workspace of an issue run
 	Node        string `json:"node,omitempty"`
 	WorkspaceID string `json:"workspace_id"`
 	Path        string `json:"path"`
@@ -25,9 +26,10 @@ type Leftover struct {
 }
 
 type leftoverValue struct {
-	Issue  int    `json:"issue"`
-	Path   string `json:"path"`
-	Reason string `json:"reason"`
+	Issue    int    `json:"issue"`
+	Schedule string `json:"schedule,omitempty"`
+	Path     string `json:"path"`
+	Reason   string `json:"reason"`
 }
 
 // leftoverKey is the tick_state key of a workspace on node.
@@ -48,7 +50,7 @@ func splitLeftoverKey(key string) (node, workspaceID string) {
 
 // RecordLeftover stores l, replacing an earlier record of the same workspace.
 func RecordLeftover(ctx context.Context, db *sql.DB, l Leftover, now time.Time) error {
-	value, err := json.Marshal(leftoverValue{Issue: l.Issue, Path: l.Path, Reason: l.Reason})
+	value, err := json.Marshal(leftoverValue{Issue: l.Issue, Schedule: l.Schedule, Path: l.Path, Reason: l.Reason})
 	if err != nil {
 		return fmt.Errorf("encode leftover %s: %w", l.WorkspaceID, err)
 	}
@@ -72,7 +74,7 @@ func ClearLeftover(ctx context.Context, db *sql.DB, repo, node, workspaceID stri
 	return nil
 }
 
-// Leftovers lists the records of all repos, sorted by repo, issue and
+// Leftovers lists the records of all repos, sorted by repo, issue, schedule and
 // workspace id. The slice is never nil.
 func Leftovers(ctx context.Context, db *sql.DB) ([]Leftover, error) {
 	rows, err := db.QueryContext(ctx, `SELECT repo, key, value FROM tick_state WHERE kind = ?`, leftoverKind)
@@ -93,7 +95,7 @@ func Leftovers(ctx context.Context, db *sql.DB) ([]Leftover, error) {
 		if err := json.Unmarshal([]byte(raw), &v); err != nil {
 			return nil, fmt.Errorf("decode leftover %s: %w", l.WorkspaceID, err)
 		}
-		l.Issue, l.Path, l.Reason = v.Issue, v.Path, v.Reason
+		l.Issue, l.Schedule, l.Path, l.Reason = v.Issue, v.Schedule, v.Path, v.Reason
 		list = append(list, l)
 	}
 	if err := rows.Err(); err != nil {
@@ -106,6 +108,9 @@ func Leftovers(ctx context.Context, db *sql.DB) ([]Leftover, error) {
 		}
 		if a.Issue != b.Issue {
 			return a.Issue < b.Issue
+		}
+		if a.Schedule != b.Schedule {
+			return a.Schedule < b.Schedule
 		}
 		if a.WorkspaceID != b.WorkspaceID {
 			return a.WorkspaceID < b.WorkspaceID

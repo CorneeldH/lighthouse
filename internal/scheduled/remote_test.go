@@ -1,0 +1,357 @@
+package scheduled_test
+
+import (
+	"context"
+	"net/http"
+	"net/http/cgi"
+	"net/http/httptest"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/CorneeldH/lighthouse/internal/scheduled"
+	"github.com/CorneeldH/lighthouse/internal/scheduled/scheduledtest"
+	"github.com/CorneeldH/lighthouse/internal/workplace"
+)
+
+// Classification: io/network (a real git repository, git http-backend behind a local HTTP server
+// that asks for basic auth). The regression surface is how the push of a scheduled run
+// authenticates: with the forge token through GIT_ASKPASS, never in an argument, a URL or an
+// error, and without the machine's or the workplace's credential helpers.
+
+const remoteToken = "ghp_" + "remotetokenremotetokenremotetoken1234"
+
+// gitServer serves the bare repositories under root over smart HTTP and lets a request through
+// only with user and token as basic auth. It returns the server URL of repo.
+type gitServer struct {
+	root  string
+	srv   *httptest.Server
+	auths int // requests that carried the right credentials
+}
+
+func newGitServer(t *testing.T, user, token string) *gitServer {
+	t.Helper()
+	execPath, err := exec.Command("git", "--exec-path").Output()
+	if err != nil {
+		t.Fatalf("git --exec-path: %v", err)
+	}
+	backend := filepath.Join(strings.TrimSpace(string(execPath)), "git-http-backend")
+	if _, err := os.Stat(backend); err != nil {
+		t.Skipf("no git-http-backend: %v", err)
+	}
+	g := &gitServer{root: t.TempDir()}
+	h := &cgi.Handler{Path: backend, Env: []string{"GIT_PROJECT_ROOT=" + g.root, "GIT_HTTP_EXPORT_ALL=1"}}
+	g.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		u, p, ok := r.BasicAuth()
+		if !ok || u != user || p != token {
+			w.Header().Set("WWW-Authenticate", `Basic realm="test"`)
+			http.Error(w, "auth", http.StatusUnauthorized)
+			return
+		}
+		g.auths++
+		h.ServeHTTP(w, r)
+	}))
+	t.Cleanup(g.srv.Close)
+	runGit(t, g.root, "init", "-q", "--bare", "o/r.git")
+	runGit(t, filepath.Join(g.root, "o/r.git"), "config", "http.receivepack", "true")
+	return g
+}
+
+func (g *gitServer) url() string { return g.srv.URL + "/o/r.git" }
+
+// branch is the sha of branch on the server, "" when it is not there.
+func (g *gitServer) branch(t *testing.T, branch string) string {
+	t.Helper()
+	out := runGit(t, g.root, "-C", "o/r.git", "for-each-ref", "--format=%(objectname)", "refs/heads/"+branch)
+	return strings.TrimSpace(out)
+}
+
+// remoteEnv is the tick's environment: PATH, a HOME whose global git config has a credential
+// helper that leaves a marker and sends every http URL elsewhere, and the token under GH_TOKEN.
+func remoteEnv(t *testing.T, marker string) func(string) string {
+	t.Helper()
+	home := t.TempDir()
+	cfg := "[credential]\n\thelper = \"!touch " + marker + "-global; echo password=wrong #\"\n" +
+		"[url \"" + filepath.Join(home, "nowhere.git") + "/\"]\n\tinsteadOf = http://\n"
+	if err := os.WriteFile(filepath.Join(home, ".gitconfig"), []byte(cfg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	env := map[string]string{"PATH": os.Getenv("PATH"), "HOME": home, "GH_TOKEN": remoteToken}
+	return func(k string) string { return env[k] }
+}
+
+// gitSpy puts a git first in PATH that logs its arguments to the returned file and runs the real
+// git.
+func gitSpy(t *testing.T) string {
+	t.Helper()
+	real, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	log := filepath.Join(dir, "args.log")
+	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> " + log + "\nexec " + real + " \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(dir, "git"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return log
+}
+
+// The happy path, and every way the token could leak or a helper could run. Fails if the push
+// sends no token (the server refuses), takes a credential helper or a URL rewrite of the global
+// config, or a helper of the workplace's config (the marker appears, or the helper's wrong
+// password is sent), puts the token in an argument, the URL or the askpass script, or goes to
+// the workplace's origin.
+func TestHTTPSRemotePushesWithTheToken(t *testing.T) {
+	f := newFixture(t)
+	args := gitSpy(t)
+	srv := newGitServer(t, "x-access-token", remoteToken)
+	marker := filepath.Join(t.TempDir(), "helper-ran")
+	f.git("config", "credential.helper", "!touch "+marker+"-local; echo password=wrong #")
+	// The workplace's own origin points nowhere: the push must not use it.
+	f.git("remote", "set-url", "origin", filepath.Join(t.TempDir(), "elsewhere.git"))
+	scripts := t.TempDir()
+	r := scheduled.HTTPSRemote{URL: srv.url(), User: "x-access-token", TokenVar: "GH_TOKEN", TempDir: scripts,
+		Getenv: remoteEnv(t, marker)}
+	ctx := context.Background()
+
+	if sha, err := r.Head(ctx, f.work, testBranch); err != nil || sha != "" {
+		t.Fatalf("Head before the push = %q, %v; want \"\", nil", sha, err)
+	}
+	if err := r.Push(ctx, f.work, f.start, testBranch); err != nil {
+		t.Fatalf("Push: %v", err)
+	}
+	if got := srv.branch(t, testBranch); got != f.start {
+		t.Errorf("branch on the server = %q, want %q", got, f.start)
+	}
+	if sha, err := r.Head(ctx, f.work, testBranch); err != nil || sha != f.start {
+		t.Errorf("Head after the push = %q, %v; want %q", sha, err, f.start)
+	}
+	if srv.auths == 0 {
+		t.Error("no request carried the token")
+	}
+	for _, m := range []string{marker + "-global", marker + "-local"} {
+		if _, err := os.Stat(m); err == nil {
+			t.Errorf("credential helper ran: %s", filepath.Base(m))
+		}
+	}
+	// No file of the push outlives it: no script and no temporary repository.
+	if entries, err := os.ReadDir(scripts); err != nil || len(entries) != 0 {
+		t.Errorf("temp dir after the push = %v, %v; want it empty", entries, err)
+	}
+	if strings.Contains(f.git("config", "--get-regexp", "."), remoteToken) {
+		t.Error("the token is in the workplace's git config")
+	}
+	logged, err := os.ReadFile(args)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(logged), "push") || strings.Contains(string(logged), remoteToken) {
+		t.Errorf("git arguments = %q, want a push without the token", logged)
+	}
+	// The credential helper answers only for the remote's own scheme and host.
+	if !strings.Contains(string(logged), "credential."+srv.srv.URL+".helper=") {
+		t.Errorf("git arguments = %q, want a helper scoped to %s", logged, srv.srv.URL)
+	}
+}
+
+// Review round 2, IMPORTANT 2. Another live agent of the same repository can write the shared
+// config after the git-state comparison. Fails if ls-remote or the push read the workplace's
+// config: a URL rewrite there would send the push (and the token) elsewhere, a hook path would
+// run a pre-push hook, a credential helper would run.
+func TestHTTPSRemoteIgnoresTheWorkplaceConfig(t *testing.T) {
+	f := newFixture(t)
+	srv := newGitServer(t, "x-access-token", remoteToken)
+	evil := filepath.Join(t.TempDir(), "evil.git")
+	runGit(t, filepath.Dir(evil), "init", "-q", "--bare", evil)
+	marker := filepath.Join(t.TempDir(), "ran")
+	hooks := filepath.Join(t.TempDir(), "hooks")
+	if err := os.MkdirAll(hooks, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(hooks, "pre-push"), []byte("#!/bin/sh\ntouch "+marker+"-hook\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	f.git("config", "url."+evil+"/.insteadOf", "http://")
+	f.git("config", "core.hooksPath", hooks)
+	f.git("config", "credential.helper", "!touch "+marker+"-helper; echo password=wrong #")
+	f.git("config", "protocol.allow", "always")
+	r := scheduled.HTTPSRemote{URL: srv.url(), User: "x-access-token", TokenVar: "GH_TOKEN", TempDir: t.TempDir(),
+		Getenv: remoteEnv(t, marker)}
+	ctx := context.Background()
+	if sha, err := r.Head(ctx, f.work, testBranch); err != nil || sha != "" {
+		t.Fatalf("Head = %q, %v", sha, err)
+	}
+	if err := r.Push(ctx, f.work, f.start, testBranch); err != nil {
+		t.Fatalf("Push: %v", err)
+	}
+	if got := srv.branch(t, testBranch); got != f.start {
+		t.Errorf("branch on the remote = %q, want %q", got, f.start)
+	}
+	if got := runGit(t, filepath.Dir(evil), "-C", "evil.git", "for-each-ref"); got != "" {
+		t.Errorf("the rewritten URL got refs: %q", got)
+	}
+	for _, m := range []string{marker + "-hook", marker + "-helper"} {
+		if _, err := os.Stat(m); err == nil {
+			t.Errorf("%s ran", filepath.Base(m))
+		}
+	}
+}
+
+// Fails if an error of the remote carries the token, or if a missing token variable runs git
+// anyway.
+func TestHTTPSRemoteErrorsWithholdTheToken(t *testing.T) {
+	f := newFixture(t)
+	srv := newGitServer(t, "x-access-token", "another-token")
+	r := scheduled.HTTPSRemote{URL: srv.url(), User: "x-access-token", TokenVar: "GH_TOKEN", TempDir: t.TempDir(),
+		Getenv: remoteEnv(t, filepath.Join(t.TempDir(), "m"))}
+	err := r.Push(context.Background(), f.work, f.start, testBranch)
+	if err == nil {
+		t.Fatal("Push with a refused token succeeded")
+	}
+	if strings.Contains(err.Error(), remoteToken) {
+		t.Errorf("error = %q, holds the token", err)
+	}
+
+	r.Getenv = func(k string) string {
+		if k == "GH_TOKEN" {
+			return ""
+		}
+		return os.Getenv(k)
+	}
+	if _, err := r.Head(context.Background(), f.work, testBranch); err == nil || !strings.Contains(err.Error(), "token variable GH_TOKEN is not set") {
+		t.Errorf("Head without a token = %v, want the variable named", err)
+	}
+	for _, bad := range []string{"GH TOKEN", "X;rm", ""} {
+		r.TokenVar = bad
+		if _, err := r.Head(context.Background(), f.work, testBranch); err == nil || !strings.Contains(err.Error(), "no environment variable name") {
+			t.Errorf("Head with token variable %q = %v", bad, err)
+		}
+	}
+	r.TokenVar = "GH_TOKEN"
+	r.Getenv = remoteEnv(t, filepath.Join(t.TempDir(), "m"))
+	for _, bad := range []string{"x;touch y", "a b", "", "$(id)"} {
+		r.User = bad
+		if _, err := r.Head(context.Background(), f.work, testBranch); err == nil || !strings.Contains(err.Error(), "no user name") {
+			t.Errorf("Head with user %q = %v, want a refusal", bad, err)
+		}
+	}
+	r.User = "x-access-token"
+	r.URL = "https://x-access-token:" + remoteToken + "@example.com/o/r.git"
+	if _, err := r.Head(context.Background(), f.work, testBranch); err == nil || strings.Contains(err.Error(), remoteToken) ||
+		!strings.Contains(err.Error(), "without credentials") {
+		t.Errorf("Head with credentials in the URL = %v, want a refusal without the token", err)
+	}
+}
+
+// Fails if text the server sends back reaches the error with the token in it: here a hook on the
+// server refuses the push and prints the token.
+func TestHTTPSRemoteWithholdsTheTokenInServerText(t *testing.T) {
+	f := newFixture(t)
+	srv := newGitServer(t, "x-access-token", remoteToken)
+	hook := filepath.Join(srv.root, "o/r.git", "hooks", "pre-receive")
+	if err := os.WriteFile(hook, []byte("#!/bin/sh\necho 'refused for "+remoteToken+"' >&2\nexit 1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	r := scheduled.HTTPSRemote{URL: srv.url(), User: "x-access-token", TokenVar: "GH_TOKEN", TempDir: t.TempDir(),
+		Getenv: remoteEnv(t, filepath.Join(t.TempDir(), "m"))}
+	err := r.Push(context.Background(), f.work, f.start, testBranch)
+	if err == nil || strings.Contains(err.Error(), remoteToken) || !strings.Contains(err.Error(), "refused for (withheld)") {
+		t.Errorf("Push = %v, want the server's text with the token withheld", err)
+	}
+}
+
+// Fails if Postcheck reads or pushes the branch through the workplace's origin instead of the
+// remote it was given: the origin points nowhere, and the commit must still reach the remote.
+func TestPostcheckUsesTheGivenRemoteNotOrigin(t *testing.T) {
+	f := newFixture(t)
+	f.git("remote", "set-url", "origin", filepath.Join(t.TempDir(), "elsewhere.git"))
+	f.write("out/a.md", "new\n")
+	env := scheduled.Env{Dir: f.work, Run: workplace.ExecRunner()}
+	res, err := scheduled.Postcheck(context.Background(), env.Run, &scheduledtest.Job{AllowedPre: []string{"out/"}}, env,
+		scheduled.Verdict{}, f.start, testBranch, f.remote())
+	if err != nil || !res.Changed || res.Failure != "" {
+		t.Fatalf("Postcheck = %+v, %v; want Changed", res, err)
+	}
+	if got, _ := f.remote().Head(context.Background(), f.work, testBranch); got == "" || got != f.git("rev-parse", "HEAD") {
+		t.Errorf("remote branch = %q, want HEAD %q", got, f.git("rev-parse", "HEAD"))
+	}
+}
+
+// Fails if GitState depends on HEAD: the agent's own commits must not look like tampering; the
+// tick compares only the config the run could change. It must change with config.worktree too.
+func TestGitStateIgnoresHeadAndSeesConfigWorktree(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	run := workplace.ExecRunner()
+	_, start, err := scheduled.StartState(ctx, run, f.work)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.write("out/a.md", "agent\n")
+	f.git("add", "-A")
+	f.git("commit", "-q", "-m", "agent commit")
+	if now, err := scheduled.GitState(ctx, run, f.work); err != nil || now != start {
+		t.Errorf("GitState after a commit = %q, %v; want the start state %q", now, err, start)
+	}
+	if err := os.WriteFile(filepath.Join(f.work, ".git", "config.worktree"), []byte("[core]\n\tsshCommand = x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if now, err := scheduled.GitState(ctx, run, f.work); err != nil || now == start {
+		t.Errorf("GitState after config.worktree = %q, %v; want a change", now, err)
+	}
+}
+
+// Fails if a tracking branch another run sets up in the shared common config (local workplace:
+// `git worktree add -b <b> --track`) counts as tampering, so that every scheduled run fails while
+// an issue starts; or if a key that runs code, or a config git cannot read, does not count.
+func TestGitStateIgnoresBranchEntriesOnly(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	run := workplace.ExecRunner()
+	start, err := scheduled.GitState(ctx, run, f.work)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.git("worktree", "add", "-q", "-b", "issue-7-x", "--track", filepath.Join(t.TempDir(), "wt"), "origin/main")
+	f.git("config", "branch.other.remote", "origin")
+	if now, err := scheduled.GitState(ctx, run, f.work); err != nil || now != start {
+		t.Fatalf("GitState after tracking branches = %q, %v; want the start state", now, err)
+	}
+	f.git("config", "core.sshCommand", "touch /tmp/x")
+	changed, err := scheduled.GitState(ctx, run, f.work)
+	if err != nil || changed == start {
+		t.Errorf("GitState after core.sshCommand = %q, %v; want a change", changed, err)
+	}
+	// A config.worktree git cannot parse (git reads it only with extensions.worktreeConfig, so
+	// rev-parse still works) is a state of its own.
+	worktreeCfg := filepath.Join(f.work, ".git", "config.worktree")
+	if err := os.WriteFile(worktreeCfg, []byte("# nothing\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	empty, err := scheduled.GitState(ctx, run, f.work)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(worktreeCfg, []byte("[broken\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if broken, err := scheduled.GitState(ctx, run, f.work); err != nil || broken == empty || broken == changed {
+		t.Errorf("GitState of an unreadable config.worktree = %q, %v; want another state", broken, err)
+	}
+	// A repository config git cannot parse at all is an error: no state to compare.
+	cfg := filepath.Join(f.work, ".git", "config")
+	b, err := os.ReadFile(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cfg, append(b, []byte("\n[broken\n")...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if broken, err := scheduled.GitState(ctx, run, f.work); err == nil {
+		t.Errorf("GitState of an unreadable config = %q, want an error", broken)
+	}
+}

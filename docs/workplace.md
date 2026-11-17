@@ -13,7 +13,8 @@ De code staat in `internal/workplace` (interface, regels, levenscyclus), `intern
 `workplace.Workplace` heeft acht methoden: `Prepare(branch)` geeft een klare workspace,
 `Spawn(ws, launch)` start de agent en geeft zijn sessie, `Sessions(workspaceID)` leest de
 agentsessies, `Stop(workspaceID, sessionIDs)` beëindigt de processen, `Kill(workspaceID, sessionIDs)`
-beëindigt alleen de claude van die sessies, `Remove(workspaceID)` verwijdert de workspace,
+beëindigt alleen de claude van die sessies, `Remove(workspaceID, options)` verwijdert de workspace
+(met `Force` ook als hij vuil of niet gepusht is, zie *Geforceerd opruimen*),
 `Lookup(workspaceID)` leest het pad (`worktree_path`) en de branch (`git_head_ref`) van een workspace, en
 `Discard(workspaceID)` vergeet een start waarvan de agent nooit verscheen (de adapter wist dan de
 drager). Een workspace die forge niet meer kent (een 404 op de sessielijst of op `Lookup`) is
@@ -78,8 +79,9 @@ starten. Het contract:
   moet een veilige bestandsnaam zijn (`[A-Za-z0-9][A-Za-z0-9._-]*`); anders weigert `Spawn`.
 - **Rechten:** mode `0600`, de map `0700`, ook als de map al bestond met ruimere rechten. Het bestand
   wordt atomair geschreven (tempbestand en rename).
-- **Velden:** `version` (nu `1`), `repo`, `issue`, `session_id` (een UUID v4 in kleine letters), `mode`
-  (`start` of `resume`), `profile`, `args`, `env`, `created_at` (RFC 3339, UTC).
+- **Velden:** `version` (`1`, of `2` als er een `unset` in staat), `repo`, `issue`, `session_id` (een UUID v4 in kleine letters), `mode`
+  (`start` of `resume`), `profile`, `args`, `env`, `unset` (alleen als er iets in staat), `created_at`
+  (RFC 3339, UTC).
 - **`args`**, in deze volgorde:
   1. `--permission-mode auto`
   2. `--strict-mcp-config` (staat in elke run)
@@ -96,6 +98,20 @@ starten. Het contract:
 - **`env`:** precies `LIGHTHOUSE_CONTROLLER_RUN` (de session-id van de run) en `LIGHTHOUSE_STATE_DIR`. Met die twee schrijft de hook
   `permission-check` een permissie-prompt van de sessie naar `<statemap>/runs/<sessie>/permission.json`;
   de tick leest dat bestand (zie *Afloop* in [tick.md](tick.md)).
+- **`unset`:** namen van omgevingsvariabelen (`[A-Za-z_][A-Za-z0-9_]*`, gesorteerd) die het target
+  uit de omgeving van de agent haalt voordat hij start. Een geplande run zet hier elke variabele die
+  een forge-token kan bevatten (`GH_TOKEN`, `GITHUB_TOKEN`, `GITLAB_TOKEN` en `token_env`): de agent mag
+  het token niet erven. De lokale werkplek doet dit zelf met `env -u <naam>`. Een issue-run zet niets,
+  en het veld ontbreekt dan.
+- **Onbekende versie: weigeren.** Een target dat een `version` niet kent, start niets. Zo faalt een
+  target dat `unset` niet kent dicht: een drager met `unset` heeft versie `2`, en een target dat alleen
+  versie `1` kent, weigert hem in plaats van de agent met het token in zijn omgeving te starten.
+  Lighthouse kan bij kenn-forge niet vragen welke versies een target kent (er is geen endpoint voor);
+  een target dat de versie niet controleert, start een geplande agent met zijn eigen omgeving. Dat
+  restrisico ligt bij het target.
+- **Geen isolatie van credentials op de lokale werkplek.** `env -u` haalt alleen de variabelen weg. De
+  agent draait als dezelfde gebruiker als de tick: wat die gebruiker kan lezen (de `hosts.yml` van
+  `gh`, git-credentials, `/proc` van andere processen) kan de agent ook lezen.
 - **Nooit een token.** De drager heeft er geen veld voor en `env` bevat er geen. Het forge-token blijft
   in `[dispatch.forge] token_file` en wordt per verzoek gelezen.
 - **Het target verbruikt de drager** en voert precies `args` uit, niets toevoegen of weglaten.
@@ -459,7 +475,9 @@ van de tick staan.
   worktree met zijn werk wissen. Bij een adopted of verdwenen worktree beëindigt `Remove` alleen de
   processen en wist de records, zonder `Dirty`-check en zonder `git worktree remove`. `Cleanup` slaat een
   sessie over die `done` is, terwijl een klare claude een dev-server kan achterlaten; het merk vindt die
-  nog. De lokale branch blijft staan.
+  nog. De lokale branch blijft staan. Met `Force` slaat `Remove` de `Dirty`-check over en draait het
+  `git worktree remove --force`; een geneste worktree blijft `ErrDirty`, en een adopted worktree gaat
+  ook dan nooit van schijf.
 - `Lookup(workspaceID)`: het pad uit het record en de branch uit `git worktree list`, zodat een branch die
   met de hand is gewisseld zichtbaar is. Alleen bij een verdwenen worktree met nog gemerkte processen
   komt de branch uit het record.
@@ -546,3 +564,28 @@ de controller verliet en wordt niets verwijderd. De kandidaten komen uit de runr
 
 Een verwijderde workspace (ook een 404) krijgt `workspace_removed_at` op al zijn runrijen en wordt
 daarna niet meer getoetst. De fout van één kandidaat houdt de andere niet tegen.
+
+### Geforceerd opruimen (#121)
+
+De workspace van een geplande run (zie [tick.md](tick.md#geplande-runs)) volgt andere regels. Wat
+telt, is gecommit en gepusht, of mislukt met een reden in de database; het transcript blijft bestaan.
+Er staat dus niets in wat bewaard moet worden, en de belofte "er gaat niets verloren" geldt alleen voor
+issue-workspaces.
+
+- Een open run houdt alleen de workspace vast waarop hij zelf staat (zelfde node en workspace-id).
+  Een open run van schema A houdt de workspace van schema B niet vast, en ook niet die van een eerdere
+  poging van A: elke poging heeft een eigen branch en workspace. `Controller` en `MergedHead` spelen
+  geen rol.
+- Zonder open run erop gaat `Cleanup` door tot en met het stoppen van de eigen sessies. Eigen zijn de
+  sessies van de runs van hetzelfde schema (`runs.ScheduleSessionKeys`; ook `AdoptSessions` zoekt
+  daarop). Een levende vreemde sessie houdt de workspace ook hier vast.
+- Daarna slaat `Cleanup` de checks op vuil en niet gepusht over en roept `Remove` aan met `Force`.
+  De lokale adapter verwijdert de worktree met `git worktree remove --force`. kenn-forge weigert een
+  vuile workspace met 409 en kent geen force-parameter; de adapter zet de worktree daarom eerst met
+  lokale git terug: `git reset --hard` en `git clean -ffdx`, met `core.fsmonitor=false` en
+  `core.hooksPath=/dev/null`, want de config van de worktree kan van de agent komen. Op een andere
+  node is er geen lokale git, en dan weigert een geforceerde `Remove` vóór er iets verandert.
+- Weigert de adapter toch (een geneste worktree, of nog een 409), dan blijft de workspace een
+  achterblijver met `forced remove refused: <fout>`.
+- Een workspace die geen runrij noemt, ziet de sweep niet. Dat gebeurt als een tick sterft tussen
+  `Prepare` en `SetWorkplace` van een geplande start; zo'n workspace ruim je met de hand op.

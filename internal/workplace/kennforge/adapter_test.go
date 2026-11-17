@@ -592,6 +592,29 @@ func TestSpawnAccepted(t *testing.T) {
 	}
 }
 
+// Finding B of the task 9 review. The forge target starts the agent from its own environment,
+// not the tick's; the carrier tells it which variables to remove. Fails if Unset does not reach
+// the carrier the target reads.
+func TestSpawnCarrierCarriesUnset(t *testing.T) {
+	_, a := newFakeForge(t)
+	l := spec()
+	l.Unset = []string{"GH_TOKEN"}
+	if _, err := a.Spawn(context.Background(), ws1, l); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(workplace.CarrierPath(a.StateDir, "", "ws1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var c workplace.Carrier
+	if err := json.Unmarshal(raw, &c); err != nil {
+		t.Fatal(err)
+	}
+	if len(c.Unset) != 1 || c.Unset[0] != "GH_TOKEN" || c.Version != workplace.CarrierVersionUnset {
+		t.Errorf("carrier = version %d, unset %q; want version %d with [GH_TOKEN]", c.Version, c.Unset, workplace.CarrierVersionUnset)
+	}
+}
+
 func TestSpawn5xxNoSessionStartFailed(t *testing.T) {
 	f, a := newFakeForge(t)
 	f.handoffStatus = 503
@@ -827,7 +850,7 @@ func TestRemoveWipesCarrier(t *testing.T) {
 		f, a := newFakeForge(t)
 		f.deleteStatus = status
 		writeCarrier(t, a)
-		if err := a.Remove(context.Background(), "ws1"); err != nil {
+		if err := a.Remove(context.Background(), "ws1", workplace.RemoveOptions{}); err != nil {
 			t.Fatalf("%d: err = %v", status, err)
 		}
 		if carrierExists(a) {
@@ -841,7 +864,7 @@ func TestRemoveRefusedKeepsCarrier(t *testing.T) {
 		f, a := newFakeForge(t)
 		f.deleteStatus = status
 		writeCarrier(t, a)
-		if err := a.Remove(context.Background(), "ws1"); err == nil {
+		if err := a.Remove(context.Background(), "ws1", workplace.RemoveOptions{}); err == nil {
 			t.Fatalf("%d: err = nil, want an error", status)
 		}
 		if !carrierExists(a) {
@@ -861,7 +884,7 @@ func TestRemoveReportsFailedCarrierWipe(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
-	if err := a.Remove(context.Background(), "ws1"); !errors.Is(err, os.ErrPermission) {
+	if err := a.Remove(context.Background(), "ws1", workplace.RemoveOptions{}); !errors.Is(err, os.ErrPermission) {
 		t.Fatalf("err = %v, want the wipe error", err)
 	}
 }
@@ -883,7 +906,7 @@ func TestDiscardWipesCarrier(t *testing.T) {
 func TestRemoveOtherErrorPassedOn(t *testing.T) {
 	f, a := newFakeForge(t)
 	f.deleteStatus = 500
-	if err := a.Remove(context.Background(), "ws1"); err == nil || errors.Is(err, workplace.ErrDirty) {
+	if err := a.Remove(context.Background(), "ws1", workplace.RemoveOptions{}); err == nil || errors.Is(err, workplace.ErrDirty) {
 		t.Fatalf("err = %v, want a non-dirty error", err)
 	}
 }
@@ -1053,7 +1076,7 @@ func TestLocalIDIsNoForgeWorkspace(t *testing.T) {
 		"Sessions":   func(a *Adapter) error { _, err := a.Sessions(context.Background(), id); return err },
 		"Stop":       func(a *Adapter) error { return a.Stop(context.Background(), id, []string{testSessionID}) },
 		"Kill":       func(a *Adapter) error { return a.Kill(context.Background(), id, []string{testSessionID}) },
-		"Remove":     func(a *Adapter) error { return a.Remove(context.Background(), id) },
+		"Remove":     func(a *Adapter) error { return a.Remove(context.Background(), id, workplace.RemoveOptions{}) },
 		"Lookup":     func(a *Adapter) error { _, err := a.Lookup(context.Background(), id); return err },
 		"Discard":    func(a *Adapter) error { return a.Discard(context.Background(), id) },
 		"Transcript": func(a *Adapter) error { _, err := a.Transcript(context.Background(), id, testSessionID); return err },
@@ -1352,7 +1375,7 @@ func TestDiscardAndRemoveDeleteNodeCarrier(t *testing.T) {
 	if n := sa.count(carrierRoute); n != 1 {
 		t.Errorf("carrier deletes after Discard = %d, want 1", n)
 	}
-	if err := a.Remove(context.Background(), "ws1"); err != nil {
+	if err := a.Remove(context.Background(), "ws1", workplace.RemoveOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	if n := sa.count(carrierRoute); n != 2 {

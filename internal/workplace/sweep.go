@@ -26,8 +26,9 @@ type SweepInput struct {
 // the others.
 //
 // A workspace of an issue the controller still holds, or that has an open run, is left
-// alone and loses its leftover record. A removed workspace is marked in the runs, so a
-// later sweep no longer asks the forge about it.
+// alone and loses its leftover record. The workspace of a scheduled run is held only by an open
+// run on it; without one it is removed forcibly (Candidate.Schedule). A removed workspace is
+// marked in the runs, so a later sweep no longer asks the forge about it.
 func Sweep(ctx context.Context, db *sql.DB, place Place, run Runner, in SweepInput, now time.Time) (removed []Leftover, err error) {
 	refs, err := runs.Workspaces(ctx, db, in.Repo)
 	if err != nil {
@@ -37,6 +38,8 @@ func Sweep(ctx context.Context, db *sql.DB, place Place, run Runner, in SweepInp
 	if err != nil {
 		return nil, err
 	}
+	// running holds the issues with an open run. A scheduled ref skips it: a scheduled run holds
+	// only its own workspace, which Cleanup checks.
 	running := map[int]bool{}
 	for _, r := range open {
 		running[r.Issue] = true
@@ -44,16 +47,17 @@ func Sweep(ctx context.Context, db *sql.DB, place Place, run Runner, in SweepInp
 	var errs []error
 	for _, ref := range refs {
 		fail := func(err error) {
-			errs = append(errs, fmt.Errorf("workspace %s of #%d: %w", ref.WorkspaceID, ref.Issue, err))
+			errs = append(errs, fmt.Errorf("workspace %s of %s: %w", ref.WorkspaceID, owner(ref.Issue, ref.Schedule), err))
 		}
-		if in.InController(ref.Issue) || running[ref.Issue] {
+		if ref.Schedule == "" && (in.InController(ref.Issue) || running[ref.Issue]) {
 			if err := ClearLeftover(ctx, db, in.Repo, ref.Node, ref.WorkspaceID); err != nil {
 				fail(err)
 			}
 			continue
 		}
+		// A scheduled workspace goes forcibly: no merged head is needed.
 		var head string
-		if ref.Branch != "" {
+		if ref.Branch != "" && ref.Schedule == "" {
 			h, err := in.MergedHead(ctx, ref.Branch)
 			if err != nil {
 				l := Leftover{Repo: in.Repo, Issue: ref.Issue, Node: ref.Node, WorkspaceID: ref.WorkspaceID, Reason: "not measurable: merged PR: " + err.Error()}
@@ -65,7 +69,7 @@ func Sweep(ctx context.Context, db *sql.DB, place Place, run Runner, in SweepInp
 			head = h
 		}
 		c := Candidate{
-			Repo: in.Repo, Issue: ref.Issue, Node: ref.Node, MergedHead: head,
+			Repo: in.Repo, Issue: ref.Issue, Schedule: ref.Schedule, Node: ref.Node, MergedHead: head,
 			Workspace: Workspace{ID: ref.WorkspaceID, Branch: ref.Branch},
 		}
 		gone, err := Cleanup(ctx, db, place(ref.Node, ref.Profile), run, c, now)
@@ -79,7 +83,15 @@ func Sweep(ctx context.Context, db *sql.DB, place Place, run Runner, in SweepInp
 		if err := runs.MarkWorkspaceRemoved(ctx, db, in.Repo, ref.Node, ref.WorkspaceID, now); err != nil {
 			fail(err)
 		}
-		removed = append(removed, Leftover{Repo: in.Repo, Issue: ref.Issue, Node: ref.Node, WorkspaceID: ref.WorkspaceID})
+		removed = append(removed, Leftover{Repo: in.Repo, Issue: ref.Issue, Schedule: ref.Schedule, Node: ref.Node, WorkspaceID: ref.WorkspaceID})
 	}
 	return removed, errors.Join(errs...)
+}
+
+// owner names the issue or the schedule of a workspace in an error: "#7" or "scheduled:nightly".
+func owner(issue int, schedule string) string {
+	if schedule != "" {
+		return "scheduled:" + schedule
+	}
+	return fmt.Sprintf("#%d", issue)
 }

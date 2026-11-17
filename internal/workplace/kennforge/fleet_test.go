@@ -348,7 +348,7 @@ func TestRemoteNotFoundUnreachableIsUncertain(t *testing.T) {
 			if _, err := a.Sessions(context.Background(), "ws1"); !errors.Is(err, workplace.ErrUncertain) || errors.Is(err, workplace.ErrGone) {
 				t.Errorf("Sessions: err = %v, want ErrUncertain and not ErrGone", err)
 			}
-			if err := a.Remove(context.Background(), "ws1"); !errors.Is(err, workplace.ErrUncertain) {
+			if err := a.Remove(context.Background(), "ws1", workplace.RemoveOptions{}); !errors.Is(err, workplace.ErrUncertain) {
 				t.Errorf("Remove: err = %v, want ErrUncertain", err)
 			}
 			if n := sa.count(carrierRoute); n != 0 {
@@ -374,7 +374,7 @@ func TestRemoteHubNotFoundIsUncertainWhileSnapshotReachable(t *testing.T) {
 	if _, err := a.Sessions(context.Background(), "ws1"); !errors.Is(err, workplace.ErrUncertain) || errors.Is(err, workplace.ErrGone) {
 		t.Errorf("Sessions: err = %v, want ErrUncertain and not ErrGone", err)
 	}
-	if err := a.Remove(context.Background(), "ws1"); !errors.Is(err, workplace.ErrUncertain) {
+	if err := a.Remove(context.Background(), "ws1", workplace.RemoveOptions{}); !errors.Is(err, workplace.ErrUncertain) {
 		t.Errorf("Remove: err = %v, want ErrUncertain", err)
 	}
 	if n := sa.count(carrierRoute); n != 0 {
@@ -435,7 +435,7 @@ func TestRemoteNotFoundSnapshotFailsIsUncertain(t *testing.T) {
 	if _, err := a.Lookup(context.Background(), "ws1"); !errors.Is(err, workplace.ErrUncertain) || errors.Is(err, workplace.ErrGone) {
 		t.Errorf("Lookup: err = %v, want ErrUncertain and not ErrGone", err)
 	}
-	if err := a.Remove(context.Background(), "ws1"); !errors.Is(err, workplace.ErrUncertain) {
+	if err := a.Remove(context.Background(), "ws1", workplace.RemoveOptions{}); !errors.Is(err, workplace.ErrUncertain) {
 		t.Errorf("Remove: err = %v, want ErrUncertain", err)
 	}
 	if n := sa.requests(); n != 0 {
@@ -454,7 +454,7 @@ func TestRemoteNotFoundReachableIsGone(t *testing.T) {
 	if _, err := a.Sessions(context.Background(), "ws1"); !errors.Is(err, workplace.ErrGone) {
 		t.Errorf("Sessions: err = %v, want ErrGone", err)
 	}
-	if err := a.Remove(context.Background(), "ws1"); err != nil {
+	if err := a.Remove(context.Background(), "ws1", workplace.RemoveOptions{}); err != nil {
 		t.Errorf("Remove: err = %v, want nil for a workspace that is gone", err)
 	}
 	if n := sa.count(carrierRoute); n != 1 {

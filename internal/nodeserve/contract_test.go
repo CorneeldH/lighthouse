@@ -27,7 +27,16 @@ import (
 // TestContractOnNode runs the suite against the kenn-forge adapter on another node: hub routes
 // through the fake hub, everything else through a real serve on that node, above its own forge
 // and a git repository in a temp dir. Nothing runs on the tick host.
-func TestContractOnNode(t *testing.T) { workplacetest.Run(t, newNodeFixture) }
+func TestContractOnNode(t *testing.T) {
+	for _, c := range workplacetest.Cases {
+		t.Run(c.Name, func(t *testing.T) {
+			if c.Name == "RemoveForceDropsDirty" {
+				t.Skip("a forced Remove cleans the worktree with local git; a node has none (kennforge TestRemoveForceOnNodeRefuses)")
+			}
+			c.Run(t, newNodeFixture(t))
+		})
+	}
+}
 
 // nodeFixture is one node behind the hub, with serve on it, and the tick's adapter for it.
 type nodeFixture struct {
