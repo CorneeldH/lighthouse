@@ -128,13 +128,10 @@ func forgeReposWith(hostToml, repo string, o *forgeOpener, errOut io.Writer) (so
 			skip(path, err)
 			continue
 		}
-		src := overview.RepoSource{Slug: r.Slug, Src: rf.Forge}
-		switch {
-		case r.Board == nil:
-		case r.Board.StatusOptions["Controller"] == "":
+		src := overview.RepoSource{Slug: r.Slug, Src: rf.Forge, Board: r.Board != nil,
+			Controller: r.Board != nil && r.Board.StatusOptions["Controller"] != ""}
+		if src.Board && !src.Controller {
 			_, _ = fmt.Fprintf(errOut, "lighthouse: %s: missing forge.board.status_options.Controller: overview shows every open issue\n", path)
-		default:
-			src.InController = overview.ControllerIssues(rf.Forge, r.Slug)
 		}
 		sources = append(sources, src)
 	}

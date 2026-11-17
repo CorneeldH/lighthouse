@@ -316,8 +316,8 @@ func TestForgeReposFromHostToml(t *testing.T) {
 			if s := slugs(got); s != tt.wantSlugs {
 				t.Fatalf("slugs = %q, want %q", s, tt.wantSlugs)
 			}
-			if (got[0].InController != nil) != tt.wantFilter {
-				t.Errorf("filter != nil is %v, want %v", got[0].InController != nil, tt.wantFilter)
+			if got[0].Controller != tt.wantFilter {
+				t.Errorf("filter != nil is %v, want %v", got[0].Controller, tt.wantFilter)
 			}
 			want := tt.wantErrOut
 			if strings.Contains(want, "%s") {
@@ -366,8 +366,8 @@ func TestForgeReposDispatchClientPerRepo(t *testing.T) {
 		if !ok || c.Repo != g.Slug {
 			t.Errorf("source %s: Src = %+v, want the forge client of %s", g.Slug, g.Src, g.Slug)
 		}
-		if (g.InController != nil) != wantFilter[i] {
-			t.Errorf("source %s: filter != nil is %v, want %v", g.Slug, g.InController != nil, wantFilter[i])
+		if g.Controller != wantFilter[i] {
+			t.Errorf("source %s: filter != nil is %v, want %v", g.Slug, g.Controller, wantFilter[i])
 		}
 	}
 	if errOut.Len() != 0 {
@@ -405,7 +405,7 @@ func TestForgeReposWithoutDispatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("forgeRepos: %v", err)
 	}
-	if len(got) != 1 || got[0].Slug != "o/r" || got[0].InController != nil {
+	if len(got) != 1 || got[0].Slug != "o/r" || got[0].Controller || got[0].Board {
 		t.Fatalf("forgeRepos = %+v, want one source o/r without filter", got)
 	}
 	c, ok := got[0].Src.(*forge.GitHub)

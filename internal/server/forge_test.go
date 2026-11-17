@@ -23,9 +23,15 @@ func noRuns(context.Context) ([]dispatch.RunView, []dispatch.DeferredView, error
 	return nil, nil, nil
 }
 
-// testDeps serves src as the one repo o/r, narrowed by inController, with no leftovers and no runs.
-func testDeps(src forge.Forge, inController overview.Filter) Deps {
-	repos := []overview.RepoSource{{Slug: "o/r", Src: src, InController: inController}}
+// testDeps serves src as the one repo o/r, with no leftovers and no runs. A non-nil board
+// puts the repo on a board and narrows it to the issues in Status Controller.
+func testDeps(src forge.Forge, board *fakeBoard) Deps {
+	repo := overview.RepoSource{Slug: "o/r", Src: src}
+	if board != nil {
+		repo.Src = boardedSource{src, board}
+		repo.Board, repo.Controller = true, true
+	}
+	repos := []overview.RepoSource{repo}
 	return Deps{
 		Report:    fakeReport,
 		Forge:     repos,
@@ -197,15 +203,24 @@ func TestCleanupEndpointError(t *testing.T) {
 	}
 }
 
-// only is a filter that keeps the given issue numbers.
-func only(numbers ...int) func(context.Context) (map[int]bool, error) {
-	return func(context.Context) (map[int]bool, error) {
-		m := map[int]bool{}
-		for _, n := range numbers {
-			m[n] = true
-		}
-		return m, nil
+// fakeBoard serves the given issue numbers as o/r issues in Status Controller.
+type fakeBoard struct{ controller []int }
+
+// only is a board with just the given issues in Status Controller.
+func only(numbers ...int) *fakeBoard { return &fakeBoard{controller: numbers} }
+
+// boardedSource is src with the board of b.
+type boardedSource struct {
+	forge.Forge
+	b *fakeBoard
+}
+
+func (s boardedSource) BoardItems(context.Context) ([]forge.BoardItem, error) {
+	items := []forge.BoardItem{}
+	for _, n := range s.b.controller {
+		items = append(items, forge.BoardItem{Repo: "o/r", Issue: n, Status: "Controller"})
 	}
+	return items, nil
 }
 
 // listLen returns the length of the JSON list under key in an endpoint body.
