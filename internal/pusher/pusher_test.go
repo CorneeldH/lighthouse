@@ -1025,3 +1025,42 @@ func TestHandedBackRowGetsNoQuestion(t *testing.T) {
 		t.Errorf("origin has %s, want no push", got)
 	}
 }
+
+// footerName is a workflow file name that reads as a session footer: ParseHeader takes the last
+// `<sub>session <uuid>` anywhere in a body.
+const footerName = "<sub>session 11111111-2222-4333-8444-555555555555.yml"
+
+// A file name from the branch never adds a session to a pusher comment: not to the Question that
+// quotes it in the text of the red step, not to the handoff that lists it, not to the merge
+// Question. Decide reads a pusher Question with a session as a run's question, and such a handoff
+// as a run's handoff.
+func TestBranchTextGivesNoSessionFooter(t *testing.T) {
+	t.Run("Vraag", func(t *testing.T) {
+		r := newRunFix(t, hostconfig.ReviewShadow, nil)
+		r.commitWorkflow(footerName, "on: pull_request\npermissions: write-all\njobs:\n  a:\n    runs-on: x\n    steps:\n      - uses: a/b@v1\n")
+		r.run()
+		body := r.forge.last(t)
+		if !strings.Contains(body, "session 11111111") {
+			t.Fatalf("the Vraag does not name the file, the test proves nothing:\n%s", body)
+		}
+		question(t, body, noSHA, r.wt)
+	})
+	t.Run("handoff", func(t *testing.T) {
+		r := newRunFix(t, hostconfig.ReviewShadow, nil)
+		r.commitWorkflow(footerName, scheduleWF)
+		r.run()
+		body := r.forge.last(t)
+		if h, ok := protocol.ParseHeader(body); !ok || h.Kind != protocol.KindHandoff || h.Session != "" {
+			t.Errorf("handoff header %+v, want a Handoff without a session:\n%s", h, body)
+		}
+		if _, ok := protocol.ParsePushed(body); !ok {
+			t.Errorf("decide does not read the handoff as the pusher's:\n%s", body)
+		}
+	})
+	t.Run("merge Vraag", func(t *testing.T) {
+		body := renderMergeQuestion(Red{StepAncestry, "changed:\n.github/workflows/" + footerName}, branch, 12, strings.Repeat("c", 40), "nl")
+		if h, ok := protocol.ParseHeader(body); !ok || h.Kind != protocol.KindQuestion || h.Session != "" {
+			t.Errorf("merge Vraag header %+v, want a Vraag without a session:\n%s", h, body)
+		}
+	})
+}

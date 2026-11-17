@@ -210,14 +210,14 @@ func renderQuestion(q questionInput, language string) string {
 	}
 	lines = append(lines, "step: "+headerValue(q.red.Step), "",
 		"**"+h("question_push_step")+":** "+prose(q.red.Step, maxProse))
-	lines = append(lines, fenced("text", capRunes(strings.TrimSpace(q.red.Why), maxWhy))...)
+	lines = append(lines, fenced("text", noFooter(capRunes(strings.TrimSpace(q.red.Why), maxWhy)))...)
 	if q.verdict != nil {
 		lines = append(lines, "", "**"+h("question_push_verdict")+":**")
 		lines = append(lines, verdictLines(*q.verdict)...)
 	}
 	if q.diff != "" {
 		lines = append(lines, "", "**"+h("question_push_diff")+":**")
-		lines = append(lines, fenced("diff", strings.ReplaceAll(q.diff, "<sub>", "&lt;sub&gt;"))...)
+		lines = append(lines, fenced("diff", noFooter(q.diff))...)
 	}
 	if q.attachment != "" {
 		lines = append(lines, "", h("question_push_attachment")+" `"+q.attachment+"`.")
@@ -226,7 +226,7 @@ func renderQuestion(q questionInput, language string) string {
 		lines = append(lines, "", h(key))
 	}
 	lines = append(lines, "", "**"+h("question_push_command")+":**")
-	lines = append(lines, fenced("bash", "cd "+shellWord(q.worktree)+" && git push -u origin HEAD")...)
+	lines = append(lines, fenced("bash", noFooter("cd "+shellWord(q.worktree)+" && git push -u origin HEAD"))...)
 	return strings.Join(lines, "\n")
 }
 
@@ -270,12 +270,19 @@ func fenced(info, text string) []string {
 }
 
 // headerValue is a header value on one line: a value with a control character, such as a file name
-// with a newline, is quoted, so it can never add a field.
+// with a newline, is quoted, so it can never add a field, and it never reads as a footer (noFooter).
 func headerValue(v string) string {
 	if strings.ContainsFunc(v, unicode.IsControl) {
-		return strconv.Quote(v)
+		v = strconv.Quote(v)
 	}
-	return v
+	return noFooter(v)
+}
+
+// noFooter neutralises `<sub>` in text the branch controls (file names, tool output, git's stderr),
+// so it never reads as a session footer: ParseHeader takes the last `<sub>session <uuid>` anywhere
+// in a body, and a pusher comment has none.
+func noFooter(s string) string {
+	return strings.ReplaceAll(s, "<sub>", "&lt;sub&gt;")
 }
 
 // prose is reviewer or step text inside a list line: on one line, without a code fence or a
@@ -283,8 +290,7 @@ func headerValue(v string) string {
 func prose(s string, n int) string {
 	s = strings.Join(strings.FieldsFunc(s, func(r rune) bool { return r == '\n' || r == '\r' }), " ")
 	s = strings.ReplaceAll(s, "```", "'''")
-	s = strings.ReplaceAll(s, "<sub>", "&lt;sub&gt;")
-	return capRunes(strings.TrimSpace(s), n)
+	return capRunes(strings.TrimSpace(noFooter(s)), n)
 }
 
 func capRunes(s string, n int) string {

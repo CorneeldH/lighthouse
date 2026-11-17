@@ -282,7 +282,7 @@ func renderMergeQuestion(red Red, branch string, pr int, head, language string) 
 		"step: " + headerValue(red.Step), "",
 		"**" + h("question_push_step") + ":** " + prose(red.Step, maxProse),
 	}
-	lines = append(lines, fenced("text", capRunes(strings.TrimSpace(red.Why), maxWhy))...)
+	lines = append(lines, fenced("text", noFooter(capRunes(strings.TrimSpace(red.Why), maxWhy)))...)
 	lines = append(lines, "", h("question_merge_manual"), "", "**"+h("question_merge_command")+":**")
 	lines = append(lines, fenced("bash", "gh pr merge "+strconv.Itoa(pr)+" --squash --match-head-commit "+shellWord(head))...)
 	return strings.Join(lines, "\n")
