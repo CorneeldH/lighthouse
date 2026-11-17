@@ -65,6 +65,14 @@
         "when": "before every shell command"
       },
       {
+        "name": "workflow-push-gate",
+        "source": "internal/hooks/workflowpushgate.go",
+        "events": [
+          "PreToolUse"
+        ],
+        "when": "before every shell command"
+      },
+      {
         "name": "worktree-check",
         "source": "internal/hooks/worktreecheck.go",
         "events": [

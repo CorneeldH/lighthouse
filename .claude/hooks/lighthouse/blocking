@@ -1,6 +1,7 @@
 main-commit-gate
 commit-test-gate
 pr-create-gate
+workflow-push-gate
 bash-write-check
 md-link-check
 code-language-check

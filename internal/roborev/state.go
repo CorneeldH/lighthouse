@@ -73,6 +73,16 @@ func StatePaths(root string) (state, raw string, err error) {
 	return filepath.Join(dir, stem+".json"), filepath.Join(dir, stem+".md"), nil
 }
 
+// PushPaths are the push record and its raw review for head: `push-<head>.json` and
+// `push-<head>.md` in StateDir. The workflow pusher reads the newest push record.
+func PushPaths(root, head string) (state, raw string, err error) {
+	dir, err := StateDir(root)
+	if err != nil {
+		return "", "", err
+	}
+	return filepath.Join(dir, "push-"+head+".json"), filepath.Join(dir, "push-"+head+".md"), nil
+}
+
 func isFile(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && info.Mode().IsRegular()

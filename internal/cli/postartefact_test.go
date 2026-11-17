@@ -30,6 +30,8 @@ func TestPostArtefactCases(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Setenv("LIGHTHOUSE_TOML", toml)
+			// The cases predate workflow-push-gate: a controller run that runs this test adds its git calls.
+			t.Setenv("LIGHTHOUSE_CONTROLLER_RUN", "")
 			for k, v := range c.Env {
 				t.Setenv(k, fixturesetup.Fill(t, v, root))
 			}

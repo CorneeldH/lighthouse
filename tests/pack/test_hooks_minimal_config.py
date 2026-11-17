@@ -95,6 +95,11 @@ def _payload(event: str, script: str, worktree: Path, project: Path) -> dict:
         cmd = "git commit -m x"
     elif name == "commit-test-gate":
         cmd = "git commit -m x"
+    elif name == "workflow-push-gate":
+        # Only a controller run (set in the test) reads the config; origin/main gives the
+        # range a start, so the push of a branch without workflows passes.
+        git(worktree, "update-ref", "refs/remotes/origin/main", "HEAD")
+        cmd = "git push -u origin HEAD"
     elif name == "pr-create-gate":
         cmd = "gh pr create --repo Acme/widgets --body 'Refs #5 — waiting for the deploy'"
     elif name == "bash-write-check":
@@ -140,6 +145,9 @@ def test_hooks_with_minimal_config(
         # guard_env keeps the real `lighthouse` off the PATH; run.sh needs the one of this checkout.
         env["PATH"] = f"{lighthouse_bin.parent}{os.pathsep}{env['PATH']}"
 
+    if _name(script) == "workflow-push-gate":
+        env["LIGHTHOUSE_CONTROLLER_RUN"] = "0f8e2c1a-1b2c-4d5e-8f90-123456789abc"
+
     # `run.sh` and the gates of `bash-write-check` need `lighthouse`: the shim of `_testkit`
     # runs the binary of this checkout and never starts a real `lighthouse usage refresh`.
     env["PATH"] = f"{shim_dir()}{os.pathsep}{env['PATH']}"
@@ -165,6 +173,7 @@ def test_every_registration_has_a_payload() -> None:
         "commit-test-gate",
         "bash-write-check",
         "pr-create-gate",
+        "workflow-push-gate",
         "worktree-check",
         "md-link-check",
         "code-language-check",
@@ -181,6 +190,7 @@ GUARDED = {
     "run.sh main-commit-gate": "git commit -m x",
     "run.sh commit-test-gate pre": "git commit -m x",
     "run.sh pr-create-gate": "gh pr create --repo Acme/widgets --body x",
+    "run.sh workflow-push-gate": "git push",
 }
 
 

@@ -58,6 +58,8 @@ def _run(command: str, case: dict, tmp_path: Path):
         LIGHTHOUSE_TOML=str(config),
         PATH=f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
     )
+    # A controller run that runs these cases would add the git calls of workflow-push-gate.
+    env.pop("LIGHTHOUSE_CONTROLLER_RUN", None)
     env.update(fill(case.get("env", {})))
     proc = subprocess.run(
         [*COMMANDS[command], *fill(case["argv"])],

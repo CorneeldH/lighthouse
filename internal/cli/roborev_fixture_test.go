@@ -645,3 +645,26 @@ func TestRoborevGateProductionBudgetNotMeasurable(t *testing.T) {
 		t.Errorf("gate = %#v, want a not_measurable skip", got)
 	}
 }
+
+// `gate --push` reaches the push gate: 100 code lines on a branch not on origin is a run without
+// it as well, so a removed .roborev.toml shows where the skip lands: the push record of HEAD.
+func TestRoborevGatePushFlag(t *testing.T) {
+	r := newGateRun(t, gateCase{})
+	r.setup([]map[string]any{{"do": "remove", "path": ".roborev.toml"}})
+	head := gateGit(t, r.repo, "rev-parse", "HEAD")
+	t.Chdir(r.repo)
+	var out, errOut bytes.Buffer
+	cmd := &cobra.Command{Use: "lighthouse", SilenceUsage: true, SilenceErrors: true}
+	cmd.SetOut(&out)
+	cmd.SetErr(&errOut)
+	cmd.AddCommand(newRoborevGateCommand(func() (int, string) { return 0, "" }))
+	cmd.SetArgs([]string{"roborev-gate", "gate", "--push"})
+	if code := execute(cmd, &errOut); code != 0 {
+		t.Fatalf("exit %d: %s", code, errOut.String())
+	}
+	want := `{"verdict": "skip", "reason": "geen .roborev.toml", "state": "` + r.stateDir() + `/push-` + head +
+		`.json", "raw": "` + r.stateDir() + `/push-` + head + `.md"}` + "\n"
+	if out.String() != want {
+		t.Errorf("stdout = %q, want %q", out.String(), want)
+	}
+}
