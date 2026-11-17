@@ -215,7 +215,7 @@ func (m *merging) fetchHead(ctx context.Context) *Red {
 }
 
 // merge asks the forge, through a client of its own with the workflow token, to squash-merge the
-// PR on head. A refusal of the token for a workflow change is said in the pusher's own neutral
+// PR on head, a second time after a moved head or base when the PR is still on head. A refusal of the token for a workflow change is said in the pusher's own neutral
 // words; GitHub's line, which advises on the token, is left out.
 func (m *merging) merge(ctx context.Context, token string) *Red {
 	if m.deps.Merger == nil {
@@ -224,7 +224,15 @@ func (m *merging) merge(ctx context.Context, token string) *Red {
 	if m.handedBack(ctx) {
 		return &Red{StepMerge, fmt.Sprintf("run %d was handed back before the merge: nothing merged", m.req.RunID)}
 	}
-	err := m.deps.Merger(token).MergePR(ctx, m.pr, m.head)
+	client := m.deps.Merger(token)
+	err := client.MergePR(ctx, m.pr, m.head)
+	if errors.Is(err, forge.ErrHeadMoved) {
+		// GitHub says "Base branch was modified" when another merge landed first. While the PR is
+		// still on head, that is no reason to ask: one more try, and only one.
+		if _, red := m.openPR(ctx); red == nil {
+			err = client.MergePR(ctx, m.pr, m.head)
+		}
+	}
 	var refused *forge.MergeRefused
 	switch {
 	case err == nil:

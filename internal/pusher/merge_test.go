@@ -22,11 +22,13 @@ import (
 
 const prURL = "https://github.com/o/r/pull/12"
 
-// fakeMerger records the merges it is asked for and the token of the client that asks.
+// fakeMerger records the merges it is asked for and the token of the client that asks. It answers
+// with errs in turn, then with err.
 type fakeMerger struct {
 	mu     sync.Mutex
 	tokens []string
 	calls  []string // "<pr>@<sha>"
+	errs   []error
 	err    error
 }
 
@@ -34,6 +36,11 @@ func (m *fakeMerger) MergePR(_ context.Context, n int, sha string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.calls = append(m.calls, strconv.Itoa(n)+"@"+sha)
+	if len(m.errs) > 0 {
+		err := m.errs[0]
+		m.errs = m.errs[1:]
+		return err
+	}
 	return m.err
 }
 
@@ -287,16 +294,18 @@ func TestMergeRefusesAMovedOrForeignHead(t *testing.T) {
 // advice about the token is dropped, the token never appears, and the row closes as question.
 func TestMergeRefusedByForgeAsksNeutrally(t *testing.T) {
 	tests := []struct {
-		name string
-		err  error
-		want string
+		name  string
+		err   error
+		want  string
+		tries int
 	}{
 		{"workflow refusal", &forge.MergeRefused{Message: "refusing to allow a Personal Access Token to create or update workflow `.github/workflows/ci.yml` without `workflow` scope"},
-			protocol.Heading("question_push_token_refused", "nl")},
+			protocol.Heading("question_push_token_refused", "nl"), 1},
 		{"other refusal", &forge.MergeRefused{Message: "Required status check \"ci\" is expected. token " + workflowTok},
-			"Required status check"},
-		{"head moved", forge.ErrHeadMoved, "moved"},
-		{"transport", errors.New("dial tcp: i/o timeout"), "i/o timeout"},
+			"Required status check", 1},
+		// The PR on the forge is still on head: one more try, then the Vraag.
+		{"head moved", forge.ErrHeadMoved, "moved", 2},
+		{"transport", errors.New("dial tcp: i/o timeout"), "i/o timeout", 1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -308,8 +317,8 @@ func TestMergeRefusedByForgeAsksNeutrally(t *testing.T) {
 			m.originAt(head)
 			m.startMerge(head)
 			m.merge(head)
-			if len(m.merger.calls) != 1 {
-				t.Fatalf("merges = %v, want one attempt", m.merger.calls)
+			if len(m.merger.calls) != tt.tries {
+				t.Fatalf("merges = %v, want %d attempts", m.merger.calls, tt.tries)
 			}
 			body := m.forge.last(t)
 			h, _ := protocol.ParseHeader(body)
@@ -444,4 +453,57 @@ func TestMergeHandedBackOrLateDoesNotMerge(t *testing.T) {
 			t.Errorf("merges %v, posted %q, row open %v; want neither and the row open", m.merger.calls, m.forge.posted, m.row().Open)
 		}
 	})
+}
+
+// A forge that says the head or base moved (GitHub's "Base branch was modified" when another merge
+// landed first) while the PR is still on head gets one more try: the second merges. A PR whose head
+// really moved gets none.
+func TestMergeRetriesOnceWhileStillOnHead(t *testing.T) {
+	setup := func(t *testing.T) (*mergeFix, string) {
+		m := newMergeFix(t)
+		pushed := m.commitWorkflow("ci.yml", preMergeWF)
+		m.recordPush(pushed)
+		head := m.commit("fragments/396.md", "- fragment\n")
+		m.originAt(head)
+		m.startMerge(head)
+		return m, head
+	}
+	t.Run("second try merges", func(t *testing.T) {
+		m, head := setup(t)
+		m.merger.errs = []error{forge.ErrHeadMoved}
+		m.merge(head)
+		if want := "12@" + head + ",12@" + head; strings.Join(m.merger.calls, ",") != want {
+			t.Fatalf("merges = %v, want two on %s", m.merger.calls, head)
+		}
+		wantClosed(t, m.row(), runs.Done)
+	})
+	t.Run("head really moved", func(t *testing.T) {
+		m, head := setup(t)
+		m.merger.errs = []error{forge.ErrHeadMoved}
+		m.forge.prs[0].HeadSHA = strings.Repeat("d", 40) // the forge's PR moves after the check
+		m.deps.Forge = movingForge{fakeForge: m.forge, head: head}
+		m.merge(head)
+		if len(m.merger.calls) != 1 {
+			t.Fatalf("merges = %v, want one attempt", m.merger.calls)
+		}
+		wantClosed(t, m.row(), runs.Question)
+	})
+}
+
+// movingForge shows the PR on head at the first read and on its moved head after that.
+type movingForge struct {
+	*fakeForge
+	head string
+}
+
+func (f movingForge) BranchPRs(ctx context.Context, b string) ([]forge.PR, error) {
+	prs, err := f.fakeForge.BranchPRs(ctx, b)
+	f.fakeForge.mu.Lock()
+	defer f.fakeForge.mu.Unlock()
+	if f.fakeForge.reads++; f.fakeForge.reads == 1 && len(prs) > 0 {
+		first := append([]forge.PR{}, prs...)
+		first[0].HeadSHA = f.head
+		return first, err
+	}
+	return prs, err
 }

@@ -31,6 +31,8 @@ type fakeForge struct {
 	posted   []string
 	// refuse makes CreateComment fail for a body it matches.
 	refuse func(body string) bool
+	// reads counts the BranchPRs reads of a wrapper that changes its answer.
+	reads int
 }
 
 func (f *fakeForge) Comments(_ context.Context, n int) ([]protocol.Comment, error) {
