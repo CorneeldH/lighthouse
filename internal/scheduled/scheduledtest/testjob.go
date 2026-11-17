@@ -22,8 +22,10 @@ type Job struct {
 	CheckErr   error    // returned by Check
 	AllowedPre []string // Allowed is true for a path with one of these prefixes
 
-	StageFn  func(ctx context.Context, env scheduled.Env, v scheduled.Verdict) error
-	FinishFn func(ctx context.Context, env scheduled.Env, dir string, v scheduled.Verdict) error
+	StageFn   func(ctx context.Context, env scheduled.Env, v scheduled.Verdict) error
+	CleanupFn func(ctx context.Context, env scheduled.Env, dir string) error
+	CheckFn   func(ctx context.Context, env scheduled.Env, dir string) error // runs before CheckErr
+	FinishFn  func(ctx context.Context, env scheduled.Env, dir string, v scheduled.Verdict) error
 
 	mu    sync.Mutex
 	calls []string
@@ -69,8 +71,11 @@ func (j *Job) Stage(ctx context.Context, env scheduled.Env, v scheduled.Verdict)
 	return nil
 }
 
-func (j *Job) Cleanup(context.Context, scheduled.Env, string) error {
+func (j *Job) Cleanup(ctx context.Context, env scheduled.Env, dir string) error {
 	j.record("Cleanup")
+	if j.CleanupFn != nil {
+		return j.CleanupFn(ctx, env, dir)
+	}
 	return nil
 }
 
@@ -83,8 +88,13 @@ func (j *Job) Allowed(path string) bool {
 	return false
 }
 
-func (j *Job) Check(context.Context, scheduled.Env, string) error {
+func (j *Job) Check(ctx context.Context, env scheduled.Env, dir string) error {
 	j.record("Check")
+	if j.CheckFn != nil {
+		if err := j.CheckFn(ctx, env, dir); err != nil {
+			return err
+		}
+	}
 	return j.CheckErr
 }
 
