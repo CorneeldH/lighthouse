@@ -41,7 +41,9 @@ type reviewEnv struct {
 }
 
 // setupReview puts a pass-through bwrap and the given reviewer scripts in a fresh directory in
-// front of the system directories on PATH. withBwrap false leaves bwrap out.
+// front of the system directories on PATH. withBwrap false leaves bwrap out: PATH then holds
+// only that directory and links to the tools the fake reviewers use, since a host with bwrap
+// in /usr/bin would otherwise still find the real one.
 func setupReview(t *testing.T, withBwrap bool, scripts map[string]string) reviewEnv {
 	t.Helper()
 	bin := t.TempDir()
@@ -54,6 +56,20 @@ func setupReview(t *testing.T, withBwrap bool, scripts map[string]string) review
 		if err := os.WriteFile(filepath.Join(bin, name), []byte(text), 0o755); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if !withBwrap {
+		tools := t.TempDir()
+		for _, name := range []string{"cat", "touch"} {
+			path, err := exec.LookPath(name)
+			if err != nil {
+				t.Fatalf("%s for the fake reviewers: %v", name, err)
+			}
+			if err := os.Symlink(path, filepath.Join(tools, name)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		t.Setenv("PATH", bin+string(os.PathListSeparator)+tools)
+		return e
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+"/usr/bin"+string(os.PathListSeparator)+"/bin")
 	return e
