@@ -193,8 +193,16 @@ func pushSpecs(args []string, literal []bool) (specs []pushSpec, configured bool
 	options := true
 	for k := 0; k < len(args); k++ {
 		arg := args[k]
-		if strings.HasPrefix(arg, "<") || strings.HasPrefix(arg, ">") || strings.HasPrefix(arg, "2>") {
-			break
+		// The lexer keeps a redirection operator as a word of its own and splits the file
+		// descriptor off as a digit word in front of it (`2>&1` is "2", ">"; a `&>` or `>&N`
+		// target lands in a later segment). Neither the operator, its target nor the descriptor
+		// is an argument of the push.
+		if isRedirectOp(arg) {
+			k++ // the target word, if this segment has one
+			continue
+		}
+		if isDigits(arg) && k+1 < len(args) && isRedirectOp(args[k+1]) {
+			continue
 		}
 		if options && arg == "--" {
 			options = false
@@ -241,4 +249,14 @@ func pushSpecs(args []string, literal []bool) (specs []pushSpec, configured bool
 
 func pushUncheckable(reason string) hook.Result {
 	return blocked(pushGatePrefix + workflowguard.Uncheckable(reason))
+}
+
+// isRedirectOp reports whether a lexed word is a redirection operator: a run of `<` and `>`.
+func isRedirectOp(w string) bool {
+	return w != "" && strings.Trim(w, "<>") == ""
+}
+
+// isDigits reports whether w is only digits, the file descriptor in front of a redirection.
+func isDigits(w string) bool {
+	return w != "" && strings.Trim(w, "0123456789") == ""
 }

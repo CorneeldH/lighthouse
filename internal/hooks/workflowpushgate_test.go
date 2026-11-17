@@ -358,3 +358,56 @@ func TestWorkflowPushGateConfiguredPushIsNotMeasured(t *testing.T) {
 		wantPushPass(t, pushGate(t, testRun, "git push", r.dir))
 	})
 }
+
+// Redirections and pipes are no refspec: agents append them to a push all the time.
+var pushRedirects = []string{
+	"git push -u origin HEAD 2>&1 | tail -4",
+	"git push origin issue-1-x >/dev/null 2>&1",
+	"git push origin issue-1-x > out.log",
+	"git push origin issue-1-x >> out.log 2>&1",
+	"git push origin issue-1-x 1>out 2>err",
+	"git push origin issue-1-x 2> err",
+	"git push origin issue-1-x >&2",
+	"git push origin issue-1-x &>out",
+	"git push origin issue-1-x &>> out",
+	"git push 2>/dev/null",
+	"git push &>out",
+	"git push <in",
+	"git push origin issue-1-x <<< input",
+	"git push origin issue-1-x 2>&1 | cat; echo done",
+}
+
+func TestWorkflowPushGateRedirectsPassOnNonWorkflowRange(t *testing.T) {
+	r := newPushRepo(t)
+	wfCommit(r)
+	r.push()
+	r.commit("notes.md", "notes\n")
+	for _, command := range pushRedirects {
+		t.Run(command, func(t *testing.T) { wantPushPass(t, pushGate(t, testRun, command, r.dir)) })
+	}
+}
+
+// The redirect must not hide the push: a range with a workflow commit is still blocked.
+func TestWorkflowPushGateRedirectsDoNotHideAWorkflowPush(t *testing.T) {
+	r := newPushRepo(t)
+	r.commit("a.txt", "a\n")
+	r.push()
+	wfCommit(r)
+	for _, command := range pushRedirects {
+		t.Run(command, func(t *testing.T) {
+			wantPushBlocked(t, pushGate(t, testRun, command, r.dir), "Workflow-push gate: blocked", ".github/workflows/ci.yml")
+		})
+	}
+}
+
+// A refspec next to a redirect is still measured, before or after it.
+func TestWorkflowPushGateRefspecBesideARedirectIsMeasured(t *testing.T) {
+	r := newPushRepo(t)
+	r.commit("a.txt", "a\n")
+	r.push()
+	wfCommit(r)
+	r.git(r.dir, "branch", "other", "HEAD~1")
+	wantPushBlocked(t, pushGate(t, testRun, "git push origin issue-1-x 2>&1", r.dir), "ci.yml")
+	wantPushPass(t, pushGate(t, testRun, "git push origin other 2>&1 | tail -1", r.dir))
+	wantPushBlocked(t, pushGate(t, testRun, "git push origin nonexistent-ref 2>&1", r.dir), "COULD NOT CHECK", "'nonexistent-ref'")
+}
