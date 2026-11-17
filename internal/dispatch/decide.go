@@ -501,15 +501,22 @@ func (c runCtx) outcome() (Action, bool, *fixPRStart) {
 // (PushedSHA), only the push timeout holds: the row goes back as "pusher did not respond". After
 // it, the row owns the PR of its branch and only rules 6, 7 and 13 hold (merged, mergeReady,
 // green, fixPR); max_runtime and the push timeout no longer do. No action touches a session.
+//
+// Deliberate deviation from spec §2 (only rules 6, 7 and 13), by controller ruling in
+// task 5: an issue closed by hand (closedIssue) and a PR closed unmerged (prClosed) also close
+// the pushed row, as for any run. Without them nothing ever closes it, and an issue with an open
+// run is never dispatched again.
 func (c runCtx) pushOutcome() (Action, bool, *fixPRStart) {
 	if c.row.PushedSHA == "" {
+		// PushTimeout already fills in the default for tick; a RepoInput built by hand (a test, a
+		// fixture) can still carry zero.
 		if c.age() < cmp.Or(c.pushTimeout, hostconfig.DefaultPushTimeout) {
 			return Action{}, false, nil
 		}
 		return c.returned("reason_pusher_silent", ""), true, nil
 	}
 	for _, rule := range []func() (Action, bool, *fixPRStart){
-		noStart(c.merged), noStart(c.mergeReady), noStart(c.green), c.fixPR,
+		noStart(c.merged), noStart(c.closedIssue), noStart(c.mergeReady), noStart(c.green), noStart(c.prClosed), c.fixPR,
 	} {
 		if a, ok, fix := rule(); ok {
 			a.Stop, a.End = false, false
@@ -1174,13 +1181,16 @@ func (c issueCtx) pushTargetOf(key string) (pushTarget, bool) {
 		t.trigger, t.worktree, t.branch = triggerPush, ho.Worktree, ho.Branch
 		return t, true
 	}
+	// The answer has no protocol header, so it is not in c.hs: the walk goes over the thread and
+	// stops at the answer. A pusher Vraag after it is not the one the user answered, and its SHA
+	// must never get the permit.
 	var q *protocol.Header
-	for _, p := range c.hs {
-		if p.Comment.ID == id {
+	for _, com := range c.it.Comments {
+		if com.ID == id {
 			break
 		}
-		if pusherQuestion(p.Header) {
-			q = &p.Header
+		if h, ok := protocol.ParseHeader(com.Body); ok && pusherQuestion(h) {
+			q = &h
 		}
 	}
 	if q == nil || !shaField.MatchString(q.Fields["sha"]) || q.Fields["worktree"] == "" || !validBranch(q.Fields["branch"]) {

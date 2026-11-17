@@ -488,6 +488,13 @@ func TestPushRowAfterPushOwnsPR(t *testing.T) {
 			pr12(in).State, pr12(in).MergedAt = "MERGED", in.Now.Add(-time.Minute)
 		}, []string{"close::"}},
 		{"pending stays open", func(in *Input) { pr12(in).Checks = "PENDING" }, []string{}},
+		{"PR closed unmerged goes back", func(in *Input) {
+			pr12(in).State, pr12(in).ClosedAt = "CLOSED", in.Now.Add(-time.Minute)
+		}, []string{"return:reason_pr_closed:"}},
+		{"issue closed by hand closes done", func(in *Input) {
+			pr12(in).Checks = "PENDING"
+			item7(in).State = "CLOSED"
+		}, []string{"close::"}},
 		{"red with full slots defers the fix-pr start", func(in *Input) {
 			red(in)
 			in.Brake = openBrake()
@@ -560,6 +567,19 @@ func TestPushStartFailedGetsOneRetryThenQuestion(t *testing.T) {
 			addRows(in, failedPush(9, "push:63", t1), failedPush(10, "push:63", t2))
 			item7(in).Comments = append(item7(in).Comments, returned(80, "2026-10-31T11:11:00Z"))
 		}, []string{}},
+		{"one failure without the pusher goes back", func(in *Input) {
+			addRows(in, failedPush(9, "push:63", t1))
+			in.Repos[0].WorkflowPush = false
+		}, []string{"return:reason_pusher_off:cd " + pushWorktree + " && git push -u origin HEAD"}},
+		{"one failure on an unreadable handoff goes back", func(in *Input) {
+			addRows(in, failedPush(9, "push:63", t1))
+			item7(in).Comments[1].Body = "🤖 Handoff\nkapot"
+		}, []string{"return:reason_start_failed:exec: lighthouse: not found"}},
+		{"a Returned after one failure stands", func(in *Input) {
+			addRows(in, failedPush(9, "push:63", t1))
+			in.Repos[0].WorkflowPush = false
+			item7(in).Comments = append(item7(in).Comments, returned(80, "2026-10-31T11:06:00Z"))
+		}, []string{}},
 		{"an older Returned does not count", func(in *Input) {
 			addRows(in, failedPush(9, "push:63", t1), failedPush(10, "push:63", t2))
 			item7(in).Comments = append(item7(in).Comments, returned(80, "2026-10-31T11:06:00Z"))
@@ -586,18 +606,36 @@ func TestPushStartFailedGetsOneRetryThenQuestion(t *testing.T) {
 }
 
 // The second attempt of an answer `push` takes the worktree, the branch and the permitted SHA
-// from the pusher's Vraag the answer replies to: the answer itself carries none of them.
+// from the pusher's Vraag the answer replies to: the answer itself carries none of them. A later
+// pusher Vraag, on another SHA, is not the one the user answered: the permit waives the review,
+// so it must never move to a SHA the user did not see.
 func TestPushAnswerRowRetryKeepsWorktreeAndPermit(t *testing.T) {
-	in := pushQuestion(t, "push")
-	item7(&in).Comments[2].Rocket = true
-	row := failedPush(9, "pushanswer:71", time.Date(2026, 10, 31, 11, 31, 0, 0, time.UTC))
-	row.Trigger, row.Branch = "answer", ""
-	addRows(&in, row)
-	got := Decide(in)
-	want := []Action{{Kind: KindPush, Repo: "o/r", Issue: 7, Trigger: "pushanswer", TriggerKey: "pushanswer:71", Attempt: 2,
-		Command: "push-workflows", Worktree: pushWorktree, Branch: "issue-7-bouw-de-keten", CommentID: 71,
-		PermitSHA: pushSHA, Language: "nl"}}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("got  %+v\nwant %+v", got, want)
+	const laterSHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	tests := []struct {
+		name   string
+		mutate func(*Input)
+	}{
+		{"the Vraag before the answer", func(*Input) {}},
+		{"a later Vraag does not count", func(in *Input) {
+			item7(in).Comments = append(item7(in).Comments, Comment{ID: 72, Author: "lh-bot", CreatedAt: "2026-10-31T11:40:00Z",
+				Body: "🤖 Vraag\nsha: " + laterSHA + "\nworktree: /elders\nbranch: issue-7-ander\n\nRode stap: zizmor"})
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			in := pushQuestion(t, "push")
+			item7(&in).Comments[2].Rocket = true
+			row := failedPush(9, "pushanswer:71", time.Date(2026, 10, 31, 11, 31, 0, 0, time.UTC))
+			row.Trigger, row.Branch = "answer", ""
+			addRows(&in, row)
+			tt.mutate(&in)
+			got := Decide(in)
+			want := []Action{{Kind: KindPush, Repo: "o/r", Issue: 7, Trigger: "pushanswer", TriggerKey: "pushanswer:71",
+				Attempt: 2, Command: "push-workflows", Worktree: pushWorktree, Branch: "issue-7-bouw-de-keten", CommentID: 71,
+				PermitSHA: pushSHA, Language: "nl"}}
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("got  %+v\nwant %+v", got, want)
+			}
+		})
 	}
 }
