@@ -57,6 +57,8 @@ type Options struct {
 	SyncLabels          func(root string, create bool, out, errw io.Writer) error // nil means labels.Sync
 	AddPacks, DropPacks []string                                                  // --pack and --no-pack (plan M0 (c), design choice 6)
 	ForgeHosts          []string                                                  // --forge-host: hosts of self-hosted GitLab instances
+	Audit               func(root string, out, errOut io.Writer)                  // read-only agent audit, run after the files are written; nil means none
+	AuditOnUpgrade      bool                                                      // --audit: also run Audit after --upgrade, not only after the first init
 	Version             string                                                    // "" means version.String()
 	Packs               fs.FS                                                     // holds <name>/...; nil means pack.Files
 	PinEnv              func(root string) pins.Env                                // nil measures with real commands and the real installed_plugins.json
@@ -118,6 +120,9 @@ var errDeclined = errors.New("nothing written")
 func execute(o Options) error {
 	if o.CreateLabels && !o.Labels {
 		return errors.New("--create-labels needs --labels")
+	}
+	if o.AuditOnUpgrade && !o.Upgrade {
+		return errors.New("--audit needs --upgrade")
 	}
 	root, err := repoRoot(o.Dir)
 	if err != nil {
@@ -236,6 +241,10 @@ func execute(o Options) error {
 	warnMissingScripts(o.Err, root)
 	warnIgnored(o.Err, root, desired, plan)
 	reportPins(o, root)
+	if o.Audit != nil && (!initialized && len(paths) > 0 || o.Upgrade && o.AuditOnUpgrade) {
+		_, _ = fmt.Fprintln(o.Out)
+		o.Audit(root, o.Out, o.Err)
+	}
 	if o.Labels {
 		sync := o.SyncLabels
 		if sync == nil {

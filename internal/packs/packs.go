@@ -21,6 +21,7 @@
 //	permissions.json        {"allow": [...]}: one permission unit per rule, merged into
 //	                        permissions.allow of .claude/settings.json
 //	detect.toml             when init proposes the package (see Detect); not copied
+//	guards.toml             what each lighthouse hook guards (see Guard); not copied
 //	lighthouse.toml.fragment
 //	                        keys init adds to lighthouse.toml (see
 //	                        projectconfig.ParseFragment); not copied
@@ -110,6 +111,7 @@ type Pack struct {
 	Units          []Unit
 	Requires       []Requirement
 	Detect         *Detect
+	Guards         []Guard
 	Config         []projectconfig.Table
 	LabelsTemplate []byte
 }
@@ -282,6 +284,14 @@ func Load(fsys fs.FS, name, version string) (Pack, error) {
 					return fmt.Errorf("package %s: detect.toml: %w", name, err)
 				}
 				p.Detect = d
+				return nil
+			}
+			if rel == "guards.toml" {
+				guards, err := parseGuards(name, data)
+				if err != nil {
+					return err
+				}
+				p.Guards = guards
 				return nil
 			}
 			if rel == "lighthouse.toml.fragment" {

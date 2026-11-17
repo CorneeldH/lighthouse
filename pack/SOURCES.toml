@@ -30,6 +30,10 @@ path = "pack/core/headings.toml"
 new = true
 
 [[file]]
+path = "pack/core/guards.toml"
+new = true
+
+[[file]]
 path = "pack/core/workflows/unblock-dependents.yml"
 new = true
 
@@ -143,6 +147,10 @@ new = true
 
 [[file]]
 path = "pack/core/skills/review-plan/verifier-prompt.md"
+new = true
+
+[[file]]
+path = "pack/core/skills/audit-agent-config/SKILL.md"
 new = true
 
 [[file]]
@@ -303,6 +311,10 @@ new = true
 
 [[file]]
 path = "pack/go/detect.toml"
+new = true
+
+[[file]]
+path = "pack/go/guards.toml"
 new = true
 
 [[file]]

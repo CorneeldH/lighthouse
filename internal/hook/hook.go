@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 )
@@ -76,6 +77,18 @@ func Register(name string, f Func) {
 		panic("hook: duplicate hook " + name)
 	}
 	registry[name] = f
+}
+
+// Names are the registered hook names, sorted.
+func Names() []string {
+	mu.Lock()
+	defer mu.Unlock()
+	names := make([]string, 0, len(registry))
+	for name := range registry {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 // Run runs hook name and returns the exit code. A result with code 0 gets the version and
