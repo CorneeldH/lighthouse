@@ -233,13 +233,13 @@ het Nederlands.
 ### Taak 12: Merge door de pusher (alleen als taak 1 weigering toonde)
 
 **Files:**
-- Modify: `internal/cli/pushworkflows.go` (`--merge --pr <n> --sha <head>`), `internal/dispatch/gather.go` (nieuw invoerveld `IssueInput.PushedSHA`: de SHA uit de nieuwste pusher-comment, `RenderPushed`/`RenderPushNote`, op het issue), `internal/dispatch/decide.go` (`mergeReady`: heeft het issue een `PushedSHA`, dan start een groene PR `push-workflows --merge` in plaats van `KindMerge`, ongeacht welke rij de PR bezit, ook de write-pr-run op de bouwroute; `decide` kijkt niet naar bestanden of voorouderschap, dat doet `Merge` zelf en weigert anders), `internal/dispatch/apply.go`
+- Modify: `internal/cli/pushworkflows.go` (`--merge --pr <n> --sha <head>`), `internal/dispatch/gather.go` (nieuw invoerveld per PR, `PR.PushedSHA`: de SHA uit de nieuwste pusher-comment, `RenderPushed`/`RenderPushNote`, waarvan het `branch`-veld de head-ref van die PR is; `RenderPushNote` krijgt daarvoor een `branch`-parameter), `internal/dispatch/decide.go` (`mergeReady`: heeft de PR een `PushedSHA`, dan start een groene PR `push-workflows --merge` in plaats van `KindMerge`, ongeacht welke rij de PR bezit, ook de write-pr-run op de bouwroute; `decide` kijkt niet naar bestanden of voorouderschap, dat doet `Merge` zelf en weigert anders), `internal/dispatch/apply.go`
 - Test: `internal/pusher/pusher_test.go`, `internal/dispatch/decide_merge_test.go`
 
 **Interfaces:**
 - `func Merge(ctx, deps Deps, req Request, pr int, head string) error`: merget met het workflow-token alleen als de gepushte SHA (uit de push-comment) voorouder is van `head` en `gepusht..head` geen pad onder `.github/workflows/` raakt. Tick leest het token nooit.
 
-- [ ] **Step 1:** Is de uitkomst van taak 1 "GitHub merget zonder bezwaar", sla deze taak over en zeg dat in de handoff; anders **Tests** `TestMergeRefusesNonAncestor`, `TestMergeRefusesWorkflowChangeAfterPush`, `TestMergeAllowsChangelogFragmentAfterPush`, `TestDecideMergeStartsPusherForPushRow`, `TestDecideMergeStartsPusherForBuildRoutePR` (invoer: `PushedSHA` gezet, groene PR van een write-pr-rij), `TestDecideMergeUsesRunTokenWithoutPushedSHA`, `TestGatherPushedSHAFromPusherComment`.
+- [ ] **Step 1:** Is de uitkomst van taak 1 "GitHub merget zonder bezwaar", sla deze taak over en zeg dat in de handoff; anders **Tests** `TestMergeRefusesNonAncestor`, `TestMergeRefusesWorkflowChangeAfterPush`, `TestMergeAllowsChangelogFragmentAfterPush`, `TestDecideMergeStartsPusherForPushRow`, `TestDecideMergeStartsPusherForBuildRoutePR` (invoer: `PushedSHA` gezet, groene PR van een write-pr-rij), `TestDecideMergeUsesRunTokenWithoutPushedSHA`, `TestDecideMergeIgnoresPushedSHAOfOtherBranch` (pusher-comment van branch A, groene PR op branch B ⇒ `KindMerge`), `TestGatherPushedSHAFromPusherComment`.
 - [ ] **Step 2:** FAIL. **Step 3:** Implementeer. **Step 4:** PASS. **Step 5: Commit** `feat(pusher): merge met workflow-token (#396)`.
 
 ---
