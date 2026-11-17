@@ -78,8 +78,8 @@ func TestMigrateTwice(t *testing.T) {
 	if !reflect.DeepEqual(schema1, schema2) || v1 != v2 {
 		t.Errorf("schema changed on second open:\n%v (v%d)\n%v (v%d)", schema1, v1, schema2, v2)
 	}
-	if v2 != 7 {
-		t.Errorf("user_version = %d, want 7", v2)
+	if v2 != 8 {
+		t.Errorf("user_version = %d, want 8", v2)
 	}
 	rows, err := s.DB.Query(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name`)
 	if err != nil {
@@ -94,7 +94,7 @@ func TestMigrateTwice(t *testing.T) {
 		tables = append(tables, name)
 	}
 	_ = rows.Close()
-	if want := []string{"action_failures", "meta", "runs", "tick_state"}; !reflect.DeepEqual(tables, want) {
+	if want := []string{"action_failures", "meta", "runs", "schedule_slots", "tick_state"}; !reflect.DeepEqual(tables, want) {
 		t.Errorf("tables = %v, want %v", tables, want)
 	}
 	// column -> primary key position (0 = not part of the key)
@@ -102,6 +102,7 @@ func TestMigrateTwice(t *testing.T) {
 		"runs":            {"repo": 0, "issue": 0, "trigger_key": 0, "attempt": 0, "ended_at": 0, "outcome": 0},
 		"action_failures": {"action_key": 1},
 		"tick_state":      {"repo": 1, "kind": 2, "key": 3},
+		"schedule_slots":  {"repo": 1, "schedule": 2, "slot": 3, "outcome": 0, "reason": 0, "at": 0},
 	}
 	for table, want := range wantCols {
 		cols := map[string]int{}
@@ -493,5 +494,123 @@ func TestMigrationNodeDefault(t *testing.T) {
 	}
 	if node != "" {
 		t.Errorf("node = %q, want the empty string (self)", node)
+	}
+}
+
+// upTo7 is the embedded migration set before 0008.
+var upTo7 = []string{"0001_meta.sql", "0002_runs.sql", "0003_cleanup.sql", "0004_runs_fixpr.sql",
+	"0005_workspace_removed.sql", "0006_runs_merge.sql", "0007_runs_node.sql"}
+
+// 0008 rebuilds runs for scheduled runs: every row from before keeps its id and all its columns
+// (those of 0005-0007 included), has no schedule and empty scheduled columns, and the open
+// issue run still holds its claim.
+func TestMigrate0008KeepsRuns(t *testing.T) {
+	ctx := context.Background()
+	db := bareDB(t)
+	if err := migrate(ctx, db, embeddedUpTo(t, upTo7...)); err != nil {
+		t.Fatalf("migrate to 7: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO runs (id, repo, issue, session_id, mode, trigger, trigger_key, attempt, command, prompt,
+		branch, workspace_id, workplace_session, profile, started_at, ended_at, outcome, reason,
+		workspace_removed_at, merge_sha, merge_error, node)
+		VALUES (41, 'o/r', 7, 's1', 'start', 'handoff', 'start:7', 2, 'c', 'p', 'b', 'w', 'k', 'software',
+		't0', 't1', 'done', 'why', 't2', 'abc', 'refused', 'n1')`); err != nil {
+		t.Fatalf("insert closed row at v7: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO runs (id, repo, issue, session_id, mode, trigger, trigger_key, attempt, command, started_at)
+		VALUES (42, 'o/r', 8, 's2', 'resume', 'fixpr', 'fixpr:8:def', 1, 'c2', 't3')`); err != nil {
+		t.Fatalf("insert open row at v7: %v", err)
+	}
+	if err := migrate(ctx, db, embeddedUpTo(t, append(upTo7, "0008_runs_schedule.sql")...)); err != nil {
+		t.Fatalf("migrate to 8: %v", err)
+	}
+	if v := userVersion(t, db); v != 8 {
+		t.Errorf("user_version = %d, want 8", v)
+	}
+	rows, err := db.Query(`SELECT id, repo, issue, session_id, mode, trigger, trigger_key, attempt, command, prompt,
+		branch, workspace_id, workplace_session, profile, started_at, coalesce(ended_at, '-'), coalesce(outcome, '-'), reason,
+		coalesce(workspace_removed_at, '-'), merge_sha, merge_error, node,
+		coalesce(schedule, '-'), start_sha, verdict, coalesce(pr_at, '-') FROM runs ORDER BY id`)
+	if err != nil {
+		t.Fatalf("query runs: %v", err)
+	}
+	var got [][]string
+	for rows.Next() {
+		r := make([]string, 26)
+		dest := make([]any, len(r))
+		for i := range r {
+			dest[i] = &r[i]
+		}
+		if err := rows.Scan(dest...); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		got = append(got, r)
+	}
+	_ = rows.Close()
+	want := [][]string{
+		{"41", "o/r", "7", "s1", "start", "handoff", "start:7", "2", "c", "p", "b", "w", "k", "software",
+			"t0", "t1", "done", "why", "t2", "abc", "refused", "n1", "-", "", "", "-"},
+		{"42", "o/r", "8", "s2", "resume", "fixpr", "fixpr:8:def", "1", "c2", "", "", "", "", "",
+			"t3", "-", "-", "", "-", "", "", "", "-", "", "", "-"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("runs after migration =\n%q\nwant\n%q", got, want)
+	}
+	if _, err := db.Exec(`INSERT INTO runs (repo, issue, session_id, mode, trigger, trigger_key, attempt, command, started_at)
+		VALUES ('o/r', 8, 's3', 'start', 'handoff', 'handoff:1', 1, 'c', 't4')`); err == nil {
+		t.Error("second open run of issue 8 accepted: runs_open_issue is gone")
+	}
+	var n int
+	if err := db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type = 'index' AND name = 'runs_trigger'`).Scan(&n); err != nil || n != 1 {
+		t.Errorf("runs_trigger index count = %d, %v; want 1", n, err)
+	}
+}
+
+// After 0008, a run names exactly one of issue and schedule, a schedule has at most one open run,
+// and only the new trigger and outcomes are added.
+func TestMigrate0008Checks(t *testing.T) {
+	ctx := context.Background()
+	db := bareDB(t)
+	if err := migrate(ctx, db, embeddedUpTo(t, append(upTo7, "0008_runs_schedule.sql")...)); err != nil {
+		t.Fatalf("migrate to 8: %v", err)
+	}
+	insert := `INSERT INTO runs (repo, issue, schedule, session_id, mode, trigger, trigger_key, attempt, command, started_at,
+		ended_at, outcome) VALUES ('o/r', ?, ?, 's', 'start', ?, ?, 1, 'c', 't0', ?, ?)`
+	tests := []struct {
+		name     string
+		issue    any
+		schedule any
+		trigger  string
+		key      string
+		ended    any
+		outcome  any
+		ok       bool
+	}{
+		{"scheduled open", nil, "reflect", "scheduled", "scheduled:reflect:a", nil, nil, true},
+		{"second open of the schedule", nil, "reflect", "scheduled", "scheduled:reflect:b", nil, nil, false},
+		{"open of another schedule", nil, "map-refresh", "scheduled", "scheduled:map-refresh:a", nil, nil, true},
+		{"closed of the schedule", nil, "reflect", "scheduled", "scheduled:reflect:c", "t1", "retry", true},
+		{"outcome failed", nil, "reflect", "scheduled", "scheduled:reflect:d", "t1", "failed", true},
+		{"neither issue nor schedule", nil, nil, "scheduled", "scheduled:x:a", "t1", "done", false},
+		{"both issue and schedule", 7, "reflect", "scheduled", "scheduled:reflect:e", "t1", "done", false},
+		{"issue run", 7, nil, "handoff", "start:7", nil, nil, true},
+		{"unknown outcome", nil, "reflect", "scheduled", "scheduled:reflect:f", "t1", "bogus", false},
+		{"unknown trigger", 9, nil, "bogus", "x:9", nil, nil, false},
+	}
+	for _, tc := range tests {
+		_, err := db.Exec(insert, tc.issue, tc.schedule, tc.trigger, tc.key, tc.ended, tc.outcome)
+		if (err == nil) != tc.ok {
+			t.Errorf("%s: insert error = %v, want accepted: %v", tc.name, err, tc.ok)
+		}
+	}
+	slot := `INSERT INTO schedule_slots (repo, schedule, slot, outcome, reason, at) VALUES ('o/r', 'reflect', ?, ?, 'r', 't0')`
+	if _, err := db.Exec(slot, "20261116T0300", "skipped"); err != nil {
+		t.Errorf("skipped slot rejected: %v", err)
+	}
+	if _, err := db.Exec(slot, "20261116T0300", "skipped"); err == nil {
+		t.Error("same slot accepted twice: no primary key")
+	}
+	if _, err := db.Exec(slot, "20261117T0300", "done"); err == nil {
+		t.Error("slot outcome done accepted")
 	}
 }
