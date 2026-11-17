@@ -62,6 +62,14 @@ type spawnFailWorkplace struct {
 	mu       sync.Mutex
 	spawnErr error
 	tried    []workplace.LaunchSpec
+	prepared []string // the branch per Prepare
+}
+
+func (w *spawnFailWorkplace) Prepare(ctx context.Context, branch string) (workplace.Workspace, error) {
+	w.mu.Lock()
+	w.prepared = append(w.prepared, branch)
+	w.mu.Unlock()
+	return w.fakeWorkplace.Prepare(ctx, branch)
 }
 
 func (w *spawnFailWorkplace) Spawn(ctx context.Context, ws workplace.Workspace, l workplace.LaunchSpec) (workplace.Session, error) {
@@ -201,10 +209,17 @@ func TestTickScheduledSpawnHasToolsAndNoMCP(t *testing.T) {
 		t.Errorf("spawn = %+v, want tools Read, Glob, Write and no MCP config", *spawn)
 	}
 	// The issue start next to it keeps the profile's MCP config: only the scheduled run drops it.
+	issueSpawns := 0
 	for _, l := range s.w.spawned() {
-		if l.Issue == 7 && l.MCPConfig != "/etc/lh/mcp.json" {
-			t.Errorf("issue spawn = %+v, want the profile's MCP config", l)
+		if l.Issue == 7 {
+			issueSpawns++
+			if l.MCPConfig != "/etc/lh/mcp.json" {
+				t.Errorf("issue spawn = %+v, want the profile's MCP config", l)
+			}
 		}
+	}
+	if issueSpawns != 1 {
+		t.Errorf("issue 7 spawns = %d, want 1", issueSpawns)
 	}
 }
 
@@ -401,14 +416,16 @@ func TestTickScheduledStartFailureRetriesOnce(t *testing.T) {
 		rows[1].Outcome != runs.Failed {
 		t.Fatalf("after tick 2: runs = %+v, want attempt 2 on its own branch, closed failed", rows)
 	}
-	var branches []string
-	for _, l := range s.w.attempts() {
-		if l.Prompt == "/gsd-map-codebase" {
-			branches = append(branches, l.SessionID)
+	var scheduledPrepares []string
+	s.w.mu.Lock()
+	for _, b := range s.w.prepared {
+		if strings.HasPrefix(b, "scheduled/") {
+			scheduledPrepares = append(scheduledPrepares, b)
 		}
 	}
-	if len(branches) != 2 {
-		t.Errorf("scheduled spawn attempts = %d, want 2", len(branches))
+	s.w.mu.Unlock()
+	if want := []string{"scheduled/codebase-map-" + tickSlot + "-1", "scheduled/codebase-map-" + tickSlot + "-2"}; !slices.Equal(scheduledPrepares, want) {
+		t.Errorf("prepared %q, want %q: attempt 2 gets its own workplace", scheduledPrepares, want)
 	}
 
 	s.w.spawnErr = nil

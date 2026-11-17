@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
+	"path/filepath"
+	"strings"
 
 	"github.com/CorneeldH/lighthouse/internal/runs"
 	"github.com/CorneeldH/lighthouse/internal/scheduled"
@@ -20,8 +23,8 @@ import (
 // that fails after the claim closes the run as retry with "<step>: <cause>", so the slot stays
 // open for its second attempt, and returns that error. A claim another process holds (an open
 // run of the schedule, also one a dead tick left behind) or a spent trigger is no error: nothing
-// is prepared or spawned. An uncertain spawn may have started an agent: its claude is ended and
-// the launch forgotten before the run closes as retry; if either fails the run stays open, as an
+// is prepared or spawned. An uncertain spawn may have started an agent: its launch is forgotten
+// and then its claude ended before the run closes as retry; if either fails the run stays open, as an
 // uncertain issue start does, and the error is returned.
 func (ap applier) startScheduled(ctx context.Context, a Action, res *Result) error {
 	env := ap.env
@@ -98,11 +101,13 @@ func (ap applier) startScheduled(ctx context.Context, a Action, res *Result) err
 	case errors.Is(err, workplace.ErrNotAccepted):
 		return retry("launch not accepted", err)
 	case err != nil:
-		if kerr := w.Kill(ctx, ws.ID, []string{session}); kerr != nil {
-			return fmt.Errorf("launch uncertain: %w; end claude of run %d: %w", err, run.ID, kerr)
-		}
+		// Forget the launch first, so a target that has not started yet finds nothing to start
+		// (kenn-forge removes the carrier); then end whatever already started.
 		if derr := w.Discard(ctx, ws.ID); derr != nil {
 			return fmt.Errorf("launch uncertain: %w; discard run %d: %w", err, run.ID, derr)
+		}
+		if kerr := w.Kill(ctx, ws.ID, []string{session}); kerr != nil {
+			return fmt.Errorf("launch uncertain: %w; end claude of run %d: %w", err, run.ID, kerr)
 		}
 		return retry("launch uncertain", err)
 	}
@@ -121,10 +126,21 @@ func (ap applier) startScheduled(ctx context.Context, a Action, res *Result) err
 func (ap applier) retryScheduled(ctx context.Context, run runs.Run, step string, cause error) error {
 	err := fmt.Errorf("%s: %w", step, cause)
 	o := retryOutcome(run.Attempt)
-	if rerr := runs.Release(context.WithoutCancel(ctx), ap.env.DB, run.ID, o, oneLine(err.Error()), ap.env.Now()); rerr != nil {
+	if rerr := runs.Release(context.WithoutCancel(ctx), ap.env.DB, run.ID, o, oneLine(withoutPath(err)), ap.env.Now()); rerr != nil {
 		return errors.Join(err, fmt.Errorf("release run %d: %w", run.ID, rerr))
 	}
 	return err
+}
+
+// withoutPath is the text of err with the path of a file error in it cut to its base name: a run
+// reason must not carry a raw path.
+func withoutPath(err error) string {
+	text := err.Error()
+	var pe *fs.PathError
+	if errors.As(err, &pe) && pe.Path != "" {
+		text = strings.ReplaceAll(text, pe.Path, filepath.Base(pe.Path))
+	}
+	return text
 }
 
 // retryOutcome is how a scheduled run that failed for a passing reason ends: retry, which

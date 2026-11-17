@@ -221,7 +221,7 @@ func TestApplyScheduledStartFailuresRetry(t *testing.T) {
 	}
 }
 
-// An uncertain spawn may have started an agent: apply ends its claude and forgets the launch
+// An uncertain spawn may have started an agent: apply forgets the launch, then ends its claude,
 // before it closes the run as retry, so a second attempt never runs beside it.
 func TestApplyScheduledUncertainEndsAndRetries(t *testing.T) {
 	h, _, _ := scheduledHarness(t)
@@ -230,7 +230,7 @@ func TestApplyScheduledUncertainEndsAndRetries(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "launch uncertain: timeout") {
 		t.Errorf("Apply error = %v, want the uncertain launch", err)
 	}
-	if got, want := h.log.all(), []string{"Prepare", "Spawn", "Kill", "Discard"}; !reflect.DeepEqual(got, want) {
+	if got, want := h.log.all(), []string{"Prepare", "Spawn", "Discard", "Kill"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("calls = %q, want %q", got, want)
 	}
 	if want := []string{"ws-" + schedBranch + " " + freshSession}; !reflect.DeepEqual(h.wp.killed, want) {
@@ -238,6 +238,43 @@ func TestApplyScheduledUncertainEndsAndRetries(t *testing.T) {
 	}
 	if r := retried(t, h); !strings.HasPrefix(r.Reason, "launch uncertain: timeout") {
 		t.Errorf("reason = %q, want the uncertain launch", r.Reason)
+	}
+}
+
+// A target that has not started yet when Kill looks finds nothing to end, and starts later from
+// the launch it still has (kenn-forge reads the carrier). Forgetting the launch before the Kill
+// leaves it nothing to start; with Kill first, an agent runs beside a run closed as retry.
+func TestApplyScheduledUncertainLateStartFindsNoLaunch(t *testing.T) {
+	h, _, _ := scheduledHarness(t)
+	h.wp.spawnErr = fmt.Errorf("timeout: %w", workplace.ErrUncertain)
+	live := false
+	h.wp.onKill = func() {
+		// Kill finds nothing running; the target then starts if its launch is still there.
+		live = len(h.wp.forgot) == 0
+	}
+	if _, err := Apply(context.Background(), h.env, []Action{scheduledStart()}); err == nil {
+		t.Fatal("Apply: no error for an uncertain launch")
+	}
+	if live {
+		t.Error("an agent started late from a launch that was not yet forgotten, beside a run closed as retry")
+	}
+	retried(t, h)
+}
+
+// A failed step names a file by its base name only: a reason must not carry a raw path.
+func TestApplyScheduledReasonHasNoPath(t *testing.T) {
+	h, _, _ := scheduledHarness(t)
+	file := filepath.Join(t.TempDir(), "state-is-a-file")
+	if err := os.WriteFile(file, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h.env.StateDir = file // the instructions directory cannot be made under a file
+	if _, err := Apply(context.Background(), h.env, []Action{scheduledStart()}); err == nil {
+		t.Fatal("Apply: no error for unwritable instructions")
+	}
+	r := retried(t, h)
+	if !strings.HasPrefix(r.Reason, "instructions: ") || strings.Contains(r.Reason, file) || strings.Contains(r.Reason, "/") {
+		t.Errorf("reason = %q, want the instructions step without a path", r.Reason)
 	}
 }
 

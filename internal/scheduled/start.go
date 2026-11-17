@@ -84,7 +84,14 @@ func StartState(ctx context.Context, run workplace.Runner, dir string) (sha, sta
 		case errors.Is(err, fs.ErrNotExist):
 			_, _ = fmt.Fprintf(h, "%s\x00absent\x00", p)
 		case err != nil:
-			return "", "", fmt.Errorf("scheduled: git state: %w", err)
+			// The base name and the cause only: the error becomes a run reason, which never
+			// carries a raw path.
+			cause := err
+			var pe *fs.PathError
+			if errors.As(err, &pe) {
+				cause = pe.Err
+			}
+			return "", "", fmt.Errorf("scheduled: git state: read %s: %w", filepath.Base(p), cause)
 		default:
 			_, _ = fmt.Fprintf(h, "%s\x00%d\x00", p, len(b))
 			_, _ = h.Write(b) // a hash.Hash never fails a Write

@@ -63,6 +63,19 @@ func TestStartStateRecordsHeadAndGitConfig(t *testing.T) {
 	}
 }
 
+// A git-state file that cannot be read fails the start state with its base name, never the
+// workplace path: the error becomes the run's reason.
+func TestStartStateUnreadableFileNamesNoPath(t *testing.T) {
+	f := newFixture(t)
+	if err := os.MkdirAll(filepath.Join(f.work, ".git", "info", "attributes"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err := scheduled.StartState(context.Background(), workplace.ExecRunner(), f.work)
+	if err == nil || !strings.Contains(err.Error(), "read attributes: is a directory") || strings.Contains(err.Error(), f.work) {
+		t.Errorf("StartState error = %v, want the base name and cause without the path", err)
+	}
+}
+
 func TestStartStateOutsideARepository(t *testing.T) {
 	t.Setenv("GIT_CEILING_DIRECTORIES", os.TempDir())
 	dir := t.TempDir()

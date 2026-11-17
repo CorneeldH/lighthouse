@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/CorneeldH/lighthouse/internal/cron"
 	"github.com/CorneeldH/lighthouse/internal/dispatch"
@@ -85,7 +86,7 @@ func planRepo(ctx context.Context, env tickEnv, db *sql.DB, repo repoconfig.Repo
 				fail("record skip: %s", oneLine(err))
 				continue
 			}
-			_, _ = fmt.Fprintf(errOut, "lighthouse: %s: skipped: %s\n", name, oneLine(errors.New(v.Skip)))
+			_, _ = fmt.Fprintf(errOut, "lighthouse: %s: skipped: %s\n", name, strings.ReplaceAll(strings.TrimSpace(v.Skip), "\n", "; "))
 			continue
 		}
 		lp, err := job.Launch(v, jenv)
