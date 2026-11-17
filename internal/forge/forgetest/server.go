@@ -137,6 +137,7 @@ func New(t *testing.T) *Server {
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues", s.listIssues)
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues/{number}", s.issue)
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues/{number}/dependencies/blocked_by", s.blockedBy)
+	mux.HandleFunc("GET /repos/{owner}/{name}", s.repo)
 	mux.HandleFunc("GET /repos/{owner}/{name}/pulls", s.pulls)
 	mux.HandleFunc("GET /repos/{owner}/{name}/pulls/{number}", s.pull)
 	mux.HandleFunc("POST /repos/{owner}/{name}/pulls", s.createPull)
@@ -218,6 +219,11 @@ func (s *Server) record(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// repo answers the repository with default branch main.
+func (s *Server) repo(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"default_branch": "main"})
 }
 
 // failFirst returns the FailFirst status for key once and then forgets it.

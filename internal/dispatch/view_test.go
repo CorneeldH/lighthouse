@@ -2,7 +2,9 @@ package dispatch
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -196,5 +198,111 @@ func TestLoadViewBadValue(t *testing.T) {
 	_, _, err := LoadView(ctx, st.DB, []string{"o/a"})
 	if err == nil || !strings.Contains(err.Error(), "o/a") || !strings.Contains(err.Error(), "12") {
 		t.Errorf("err = %v, want one naming o/a and key 12", err)
+	}
+}
+
+// AC 4 (#121): two open scheduled runs of one repo are two views, each with its schedule and no
+// issue or title, before the issue runs; a parked issue run still yields to its open one.
+func TestRunViewsScheduledRuns(t *testing.T) {
+	prAt := time.Date(2026, 11, 16, 4, 40, 0, 0, time.UTC)
+	pre := Pre{Items: []Item{{Issue: 3, Title: "Drie"}}, Stands: map[int64]workplace.Stand{21: workplace.Working}}
+	open := []runs.Brief{
+		{ID: 20, Issue: 3, Trigger: "board"},
+		{ID: 21, Schedule: "reflect", Trigger: runs.TriggerScheduled, WorkspaceID: "ws-r"},
+		{ID: 22, Schedule: "codebase-map", Trigger: runs.TriggerScheduled, WorkspaceID: "ws-c", PRAt: prAt},
+	}
+	got := RunViews(pre, open, []runs.Brief{{ID: 5, Issue: 3}})
+	if len(got) != 3 {
+		t.Fatalf("RunViews = %+v, want 3 views", got)
+	}
+	if v := got[0]; v.Schedule != "codebase-map" || v.Issue != 0 || v.Title != "" || v.State != "open" || !v.PRAt.Equal(prAt) || v.WorkspaceID != "ws-c" {
+		t.Errorf("view 0 = %+v, want codebase-map with its pr_at", v)
+	}
+	if v := got[1]; v.Schedule != "reflect" || v.Issue != 0 || v.Stand != "working" || !v.PRAt.IsZero() {
+		t.Errorf("view 1 = %+v, want reflect, working, no pr_at", v)
+	}
+	if v := got[2]; v.Issue != 3 || v.Schedule != "" || v.State != "open" || v.Title != "Drie" {
+		t.Errorf("view 2 = %+v, want issue 3 open", v)
+	}
+}
+
+// AC 4 (#121): SaveRunView keeps both open scheduled runs of one repo, under scheduled:<name>,
+// and LoadView returns them, the scheduled runs first and by name.
+func TestSaveRunViewScheduledRuns(t *testing.T) {
+	ctx := context.Background()
+	st := openViewStore(t)
+	now := time.Date(2026, 11, 16, 5, 0, 0, 0, time.UTC)
+	prAt := time.Date(2026, 11, 16, 4, 40, 0, 0, time.UTC)
+	views := []RunView{{Issue: 3, State: "open"}, {Schedule: "reflect", State: "open"}, {Schedule: "codebase-map", State: "open", PRAt: prAt}}
+	if err := SaveRunView(ctx, st.DB, "o/a", views, now); err != nil {
+		t.Fatal(err)
+	}
+	var keys []string
+	rows, err := st.DB.QueryContext(ctx, `SELECT key FROM tick_state WHERE repo = 'o/a' AND kind = 'run' ORDER BY key`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var k string
+		if err := rows.Scan(&k); err != nil {
+			t.Fatal(err)
+		}
+		keys = append(keys, k)
+	}
+	_ = rows.Close()
+	if want := []string{"3", "scheduled:codebase-map", "scheduled:reflect"}; !slices.Equal(keys, want) {
+		t.Errorf("run keys = %q, want %q", keys, want)
+	}
+	got, _, err := LoadView(ctx, st.DB, []string{"o/a"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, v := range got {
+		names = append(names, fmt.Sprintf("%s#%d", v.Schedule, v.Issue))
+	}
+	if want := []string{"codebase-map#0", "reflect#0", "#3"}; !slices.Equal(names, want) {
+		t.Errorf("LoadView = %q, want %q", names, want)
+	}
+	if len(got) == 3 && !got[0].PRAt.Equal(prAt) {
+		t.Errorf("pr_at did not round-trip: %+v", got[0])
+	}
+}
+
+// A brake defer of a scheduled run is saved under scheduled:<name> and read back with its schedule.
+func TestLoadViewDeferredScheduled(t *testing.T) {
+	ctx := context.Background()
+	st := openViewStore(t)
+	now := time.Date(2026, 11, 16, 4, 0, 0, 0, time.UTC)
+	acts := []Action{
+		{Kind: KindDefer, Repo: "o/a", Issue: 4, Reason: "slots full"},
+		{Kind: KindDefer, Repo: "o/a", Schedule: "nightly", Slot: "20261116T0400", Reason: "usage: 95% of 5h"},
+	}
+	if err := SaveDeferred(ctx, st.DB, "o/a", acts, map[int]string{4: "Vier"}, now); err != nil {
+		t.Fatal(err)
+	}
+	var n int
+	if err := st.DB.QueryRowContext(ctx, `SELECT count(*) FROM tick_state WHERE repo = 'o/a' AND kind = 'deferred' AND key = 'scheduled:nightly'`).Scan(&n); err != nil || n != 1 {
+		t.Errorf("deferred rows keyed scheduled:nightly = %d, %v; want 1", n, err)
+	}
+	_, d, err := LoadView(ctx, st.DB, []string{"o/a"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []DeferredView{
+		{Repo: "o/a", Schedule: "nightly", Reason: "usage: 95% of 5h", At: now},
+		{Repo: "o/a", Issue: 4, Title: "Vier", Reason: "slots full", At: now},
+	}
+	if !slices.Equal(d, want) {
+		t.Errorf("deferred = %+v, want %+v", d, want)
+	}
+}
+
+// RunViews folds only issue runs: a parked scheduled run beside an open one of another schedule
+// stays a view of its own.
+func TestRunViewsFoldsOnlyIssueRuns(t *testing.T) {
+	got := RunViews(Pre{}, []runs.Brief{{ID: 1, Schedule: "a"}}, []runs.Brief{{ID: 2, Schedule: "b"}})
+	if len(got) != 2 || got[0].Schedule != "a" || got[0].State != "open" || got[1].Schedule != "b" || got[1].State != "parked" {
+		t.Errorf("RunViews = %+v, want a open and b parked", got)
 	}
 }

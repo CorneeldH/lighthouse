@@ -40,6 +40,8 @@ type Forge interface {
 	// MergePR squash-merges pull request number, only while its head is still sha. It fails
 	// with ErrHeadMoved when the head moved, and with *MergeRefused when the forge declines.
 	MergePR(ctx context.Context, number int, sha string) error
+	// DeleteBranch deletes branch; a branch that is already gone is not an error.
+	DeleteBranch(ctx context.Context, branch string) error
 	OpenPRs(ctx context.Context) ([]OpenPR, error)
 	BranchPRs(ctx context.Context, branch string) ([]PR, error)
 	BoardItems(ctx context.Context) ([]BoardItem, error)

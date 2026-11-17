@@ -17,9 +17,10 @@ import (
 // RunView is the tick_state row of one open or parked run, as the UI reads it.
 type RunView struct {
 	Repo        string    `json:"repo"`
-	Issue       int       `json:"issue"`
-	Title       string    `json:"title"`
-	State       string    `json:"state"` // "open" or "parked"
+	Issue       int       `json:"issue"`              // 0 for a scheduled run
+	Schedule    string    `json:"schedule,omitempty"` // the schedule of a scheduled run; "" for an issue run
+	Title       string    `json:"title"`              // "" for a scheduled run
+	State       string    `json:"state"`              // "open" or "parked"
 	Command     string    `json:"command"`
 	Phase       string    `json:"phase"` // see Phase; "" for an empty command
 	Task        int       `json:"task"`  // current plan task of a subagent-driven run; 0 without progress
@@ -29,21 +30,24 @@ type RunView struct {
 	Profile     string    `json:"profile"`
 	WorkspaceID string    `json:"workspace_id"`
 	StartedAt   time.Time `json:"started_at"`
-	Stand       string    `json:"stand"` // "working", "waiting", "done"; "" not measured
-	At          time.Time `json:"at"`    // the tick that wrote it
+	Stand       string    `json:"stand"`          // "working", "waiting", "done"; "" not measured
+	PRAt        time.Time `json:"pr_at,omitzero"` // scheduled run: when its PR was opened; absent without one
+	At          time.Time `json:"at"`             // the tick that wrote it
 }
 
 // DeferredView is the tick_state row of one deferred start, as the UI reads it.
 type DeferredView struct {
-	Repo   string    `json:"repo"`
-	Issue  int       `json:"issue"`
-	Title  string    `json:"title"`
-	Reason string    `json:"reason"`
-	At     time.Time `json:"at"`
+	Repo     string    `json:"repo"`
+	Issue    int       `json:"issue"`              // 0 for a scheduled run
+	Schedule string    `json:"schedule,omitempty"` // the schedule of a scheduled run; "" for an issue
+	Title    string    `json:"title"`
+	Reason   string    `json:"reason"`
+	At       time.Time `json:"at"`
 }
 
-// RunViews turns the open and parked runs of one repo into views, sorted by issue. An issue in
-// both lists is shown once, as open. The phase comes from the command and the task progress from
+// RunViews turns the open and parked runs of one repo into views, sorted by issue (a scheduled
+// run, issue 0, first) and then by schedule. An issue in both lists is shown once, as open; a
+// scheduled run is never folded into another, so two open scheduled runs are two views. The phase comes from the command and the task progress from
 // the plan and ledger of an sdd run, left zero when they cannot be read. The stand of an open run
 // comes from pre.Stands and stays "" when the run was not measured; a parked run has none, also
 // when apply parked it after the precheck measured it. A done with work after the Stop in pre.Runs
@@ -57,9 +61,9 @@ func RunViews(pre Pre, open, parked []runs.Brief) []RunView {
 	seen := make(map[int]bool, len(open))
 	add := func(b runs.Brief, state string) {
 		v := RunView{
-			Repo: b.Repo, Issue: b.Issue, Title: titles[b.Issue], State: state,
+			Repo: b.Repo, Issue: b.Issue, Schedule: b.Schedule, Title: titles[b.Issue], State: state,
 			Command: b.Command, Trigger: b.Trigger, Profile: b.Profile,
-			WorkspaceID: b.WorkspaceID, StartedAt: b.StartedAt, Phase: Phase(b.Command),
+			WorkspaceID: b.WorkspaceID, StartedAt: b.StartedAt, PRAt: b.PRAt, Phase: Phase(b.Command),
 		}
 		if p, ok := ReadProgress(b.Command); ok {
 			v.Task, v.Tasks, v.Step = p.Task, p.Tasks, p.Step
@@ -77,16 +81,34 @@ func RunViews(pre Pre, open, parked []runs.Brief) []RunView {
 		add(b, "open")
 	}
 	for _, b := range parked {
-		if !seen[b.Issue] {
+		if b.Schedule != "" || !seen[b.Issue] {
 			add(b, "parked")
 		}
 	}
-	slices.SortStableFunc(out, func(a, b RunView) int { return a.Issue - b.Issue })
+	slices.SortStableFunc(out, compareRunViews)
 	return out
 }
 
+// compareRunViews orders by issue, a scheduled run (issue 0) first, and then by schedule.
+func compareRunViews(a, b RunView) int {
+	if a.Issue != b.Issue {
+		return a.Issue - b.Issue
+	}
+	return strings.Compare(a.Schedule, b.Schedule)
+}
+
+// viewKey is the tick_state key of a run or deferred row: the issue number, or
+// scheduled:<name> for a scheduled run.
+func viewKey(issue int, schedule string) string {
+	if schedule != "" {
+		return "scheduled:" + schedule
+	}
+	return strconv.Itoa(issue)
+}
+
 // SaveRunView replaces the run rows of repo in tick_state with views, in one transaction: key is
-// the issue number, value is the view as JSON with At set to now in UTC.
+// the issue number, or scheduled:<name> for a scheduled run, value is the view as JSON with At set
+// to now in UTC.
 func SaveRunView(ctx context.Context, db *sql.DB, repo string, views []RunView, now time.Time) (err error) {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
@@ -110,7 +132,7 @@ func SaveRunView(ctx context.Context, db *sql.DB, repo string, views []RunView, 
 		}
 		if _, err = tx.ExecContext(ctx, `INSERT INTO tick_state (repo, kind, key, value, updated_at) VALUES (?, 'run', ?, ?, ?)
 			ON CONFLICT (repo, kind, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
-			repo, strconv.Itoa(v.Issue), string(value), stamp); err != nil {
+			repo, viewKey(v.Issue, v.Schedule), string(value), stamp); err != nil {
 			return fmt.Errorf("dispatch: save run view %s: %w", repo, err)
 		}
 	}
@@ -121,7 +143,7 @@ func SaveRunView(ctx context.Context, db *sql.DB, repo string, views []RunView, 
 }
 
 // LoadView reads the run and deferred rows of repos, in the order of repos and then by issue
-// number. Both slices are non-nil. A value that does not parse gives an error naming repo and key.
+// number, a scheduled run (issue 0) first and by schedule. Both slices are non-nil. A value that does not parse gives an error naming repo and key.
 func LoadView(ctx context.Context, db *sql.DB, repos []string) ([]RunView, []DeferredView, error) {
 	runViews := []RunView{}
 	deferred := []DeferredView{}
@@ -163,8 +185,13 @@ func LoadView(ctx context.Context, db *sql.DB, repos []string) ([]RunView, []Def
 		if err != nil {
 			return nil, nil, fmt.Errorf("dispatch: load view %s: %w", repo, err)
 		}
-		slices.SortFunc(rv, func(a, b RunView) int { return a.Issue - b.Issue })
-		slices.SortFunc(dv, func(a, b DeferredView) int { return a.Issue - b.Issue })
+		slices.SortFunc(rv, compareRunViews)
+		slices.SortFunc(dv, func(a, b DeferredView) int {
+			if a.Issue != b.Issue {
+				return a.Issue - b.Issue
+			}
+			return strings.Compare(a.Schedule, b.Schedule)
+		})
 		runViews = append(runViews, rv...)
 		deferred = append(deferred, dv...)
 	}

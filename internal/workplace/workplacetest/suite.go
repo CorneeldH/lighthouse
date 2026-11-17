@@ -49,6 +49,7 @@ var Cases = []Case{
 	{"KillLeavesOtherSession", killLeavesOtherSession},
 	{"KillEndsAgentOnNodeAdapter", killEndsAgent},
 	{"RemoveDirtyKeeps", removeDirtyKeeps},
+	{"RemoveForceDropsDirty", removeForceDropsDirty},
 	{"RemoveForgottenAndTwice", removeForgottenAndTwice},
 	{"DiscardIdempotent", discardIdempotent},
 	{"EndedSessionIsDone", endedSessionIsDone},
@@ -257,7 +258,7 @@ func killEndsAgent(t *testing.T, f Fixture) {
 func removeDirtyKeeps(t *testing.T, f Fixture) {
 	ws := f.Workspace(t, "issue-12-x")
 	f.MakeDirty(t, ws)
-	if err := f.Workplace().Remove(t.Context(), ws.ID); !errors.Is(err, workplace.ErrDirty) {
+	if err := f.Workplace().Remove(t.Context(), ws.ID, workplace.RemoveOptions{}); !errors.Is(err, workplace.ErrDirty) {
 		t.Errorf("Remove: err = %v, want ErrDirty", err)
 	}
 	got, err := f.Workplace().Lookup(t.Context(), ws.ID)
@@ -269,15 +270,28 @@ func removeDirtyKeeps(t *testing.T, f Fixture) {
 	}
 }
 
+// removeForceDropsDirty: with Force a dirty workspace goes, as the sweep removes the workspace of
+// a scheduled run without an open row.
+func removeForceDropsDirty(t *testing.T, f Fixture) {
+	ws := f.Workspace(t, "scheduled/nightly-20261116T0400-1")
+	f.MakeDirty(t, ws)
+	if err := f.Workplace().Remove(t.Context(), ws.ID, workplace.RemoveOptions{Force: true}); err != nil {
+		t.Fatalf("forced Remove of a dirty workspace: %v", err)
+	}
+	if _, err := f.Workplace().Lookup(t.Context(), ws.ID); !errors.Is(err, workplace.ErrGone) {
+		t.Errorf("Lookup after a forced Remove: err = %v, want ErrGone", err)
+	}
+}
+
 func removeForgottenAndTwice(t *testing.T, f Fixture) {
 	forgotten := f.Workspace(t, "issue-13-a")
 	f.Forget(t, forgotten)
-	if err := f.Workplace().Remove(t.Context(), forgotten.ID); err != nil {
+	if err := f.Workplace().Remove(t.Context(), forgotten.ID, workplace.RemoveOptions{}); err != nil {
 		t.Errorf("Remove of a forgotten workspace: err = %v, want nil", err)
 	}
 	ws := f.Workspace(t, "issue-13-b")
 	for i := 1; i <= 2; i++ {
-		if err := f.Workplace().Remove(t.Context(), ws.ID); err != nil {
+		if err := f.Workplace().Remove(t.Context(), ws.ID, workplace.RemoveOptions{}); err != nil {
 			t.Errorf("Remove %d: err = %v, want nil", i, err)
 		}
 	}

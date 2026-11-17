@@ -3,8 +3,9 @@ import type { JSX } from 'react'
 import type { DeferredView } from '@/api/lighthouse'
 import { ApiError } from '@/lib/api'
 import { splitDeferred } from '@/lib/deferred'
+import { subjectKey } from '@/lib/subject'
 import { useRuns } from '@/lib/queries'
-import { IssueLink } from './IssueLink'
+import { RunSubject } from './RunSubject'
 import { Panel } from './Panel'
 import { RunRow } from './RunRow'
 
@@ -54,7 +55,7 @@ function RunsBlock({
       {runs && runs.length > 0 && (
         <ul className="space-y-4">
           {runs.map((r) => (
-            <RunRow key={`${r.repo}#${r.issue}`} run={r} workspaceUrl={data?.workspaceUrl ?? ''} />
+            <RunRow key={subjectKey(r.repo, r.issue, r.schedule)} run={r} workspaceUrl={data?.workspaceUrl ?? ''} />
           ))}
         </ul>
       )}
@@ -117,9 +118,9 @@ function DeferredBlock({
       {items && items.length > 0 && (
         <ul className="space-y-4">
           {items.map((d) => (
-            <li key={`${d.repo}#${d.issue}`} className="space-y-1">
+            <li key={subjectKey(d.repo, d.issue, d.schedule)} className="space-y-1">
               <p>
-                <IssueLink repo={d.repo} issue={d.issue} /> <span>{d.title}</span>
+                <RunSubject repo={d.repo} issue={d.issue} schedule={d.schedule} /> {d.title !== '' && <span>{d.title}</span>}
               </p>
               {badges && (
                 <p>

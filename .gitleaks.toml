@@ -95,3 +95,18 @@ description = "chain_key placeholder 2026-09-25-voorbeeld in plan-review-record 
 targetRules = ["generic-api-key"]
 regexTarget = "match"
 regexes = ['''chain_key"\s*:\s*"2026-09-25-voorbeeld(?:-design)?"?$''']
+
+# internal/scheduled/secrets_test.go feeds the secret scanner fake credentials of each
+# shape (#121): an AWS-shaped key and a Stripe-shaped symlink target. Scoped to each rule
+# and to that exact value, so any other key of that shape stays red.
+[[allowlists]]
+description = "fake AWS-shaped key in internal/scheduled/secrets_test.go, not a secret"
+targetRules = ["aws-access-token"]
+regexTarget = "match"
+regexes = ['''^AKIAABCDEFGHIJKLMNOP$''']
+
+[[allowlists]]
+description = "fake Stripe-shaped symlink target in internal/scheduled/secrets_test.go, not a secret"
+targetRules = ["stripe-access-token"]
+regexTarget = "match"
+regexes = ['''^sk_live_inthetarget"?$''']

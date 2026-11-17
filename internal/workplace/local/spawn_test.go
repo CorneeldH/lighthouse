@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"slices"
 	"testing"
 
 	"github.com/CorneeldH/lighthouse/internal/workplace"
@@ -210,5 +211,26 @@ func TestSessionsUnmeasurableIsError(t *testing.T) {
 	ss, err := a.Sessions(t.Context(), ws.ID)
 	if err == nil || errors.Is(err, workplace.ErrGone) || len(ss) != 0 {
 		t.Errorf("Sessions = %v, %v; want a plain error", ss, err)
+	}
+}
+
+// Finding B of the task 9 review. Fails if Unset does not reach `env` as -u flags before the
+// assignments: `env` adds to the inherited environment, so without them the agent inherits the
+// tick's forge token.
+func TestSpawnLaunchCommandUnsets(t *testing.T) {
+	a, h, _, ws, _ := spawnSetup(t)
+	spec := testSpec(testSID)
+	spec.Unset = []string{"GITHUB_TOKEN", "GH_TOKEN"}
+	if _, err := a.Spawn(t.Context(), ws, spec); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.argvs) != 1 {
+		t.Fatalf("launches = %q", h.argvs)
+	}
+	argv := h.argvs[0]
+	i := slices.Index(argv, "env")
+	want := []string{"env", "-u", "GH_TOKEN", "-u", "GITHUB_TOKEN", "LIGHTHOUSE_CONTROLLER_RUN=" + testSID}
+	if i < 0 || len(argv) < i+len(want) || !reflect.DeepEqual(argv[i:i+len(want)], want) {
+		t.Errorf("launch argv = %q, want %q in it", argv, want)
 	}
 }

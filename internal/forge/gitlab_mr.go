@@ -48,7 +48,7 @@ var pipelineChecks = map[string]string{
 // mrToPR translates a merge request to a PR by the table of the forge spec. Closes stays
 // false: only the board knows which issue a merge request closes (closingMergeRequests).
 func mrToPR(m glMR) PR {
-	p := PR{Number: m.IID, Draft: m.Draft, HeadSHA: m.SHA, HeadRef: m.SourceBranch, URL: m.WebURL,
+	p := PR{Number: m.IID, Draft: m.Draft, HeadSHA: m.SHA, HeadRef: m.SourceBranch, BaseRef: m.TargetBranch, URL: m.WebURL,
 		CrossRepo: m.SourceProjectID != m.TargetProjectID}
 	switch m.State {
 	case "merged":

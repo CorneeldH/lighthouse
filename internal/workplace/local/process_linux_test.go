@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -245,5 +246,56 @@ func TestRealRunKillReachesGrandchild(t *testing.T) {
 		return !ok || st == "Z"
 	}) {
 		t.Errorf("grandchild %d after Kill: state %q, want gone or Z within 5 s", grandchild, st)
+	}
+}
+
+// envClaude writes its environment, NUL-separated, to $LH_TEST_ENV.
+const envClaude = `#!/bin/sh
+env -0 >"$LH_TEST_ENV.tmp" && mv "$LH_TEST_ENV.tmp" "$LH_TEST_ENV"
+`
+
+// Finding B of the task 9 review, in a real shell. Fails if the agent of a launch with Unset
+// still inherits the variable from the tick, while the tick has it and the carrier's own
+// variables still arrive.
+func TestRealRunUnsetsTheToken(t *testing.T) {
+	if _, err := exec.LookPath("setsid"); err != nil {
+		t.Skip("no setsid")
+	}
+	repo, _ := newRepo(t)
+	bin, out := t.TempDir(), t.TempDir()
+	if err := os.WriteFile(filepath.Join(bin, "claude"), []byte(envClaude), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	envFile := filepath.Join(out, "env")
+	t.Setenv("LH_TEST_ENV", envFile)
+	t.Setenv("GH_TOKEN", "ghp_inherited_by_the_tick")
+	t.Setenv("KEEP_ME", "kept")
+
+	a := &Adapter{RepoDir: repo, DefaultBranch: "main", Repo: "o/r", StateDir: t.TempDir(), Home: t.TempDir(),
+		Run: workplace.ExecRunner()}
+	ws := prepare(t, a, "issue-1-x")
+	sid := randomUUID(t)
+	spec := workplace.LaunchSpec{Profile: "infra", Mode: "start", Prompt: "p", InstructionsFile: "/abs/instr.md",
+		SessionID: sid, Unset: []string{"GH_TOKEN"}}
+	if _, err := a.Spawn(t.Context(), ws, spec); err != nil {
+		t.Fatalf("Spawn = %v", err)
+	}
+	var raw []byte
+	if !waitFor(10*time.Second, func() bool {
+		var err error
+		raw, err = os.ReadFile(envFile)
+		return err == nil
+	}) {
+		t.Fatal("the fake claude wrote no environment in 10 s")
+	}
+	env := strings.Split(string(raw), "\x00")
+	if slices.ContainsFunc(env, func(e string) bool { return strings.HasPrefix(e, "GH_TOKEN=") }) {
+		t.Error("the agent inherited GH_TOKEN")
+	}
+	for _, want := range []string{"KEEP_ME=kept", "LIGHTHOUSE_CONTROLLER_RUN=" + sid} {
+		if !slices.Contains(env, want) {
+			t.Errorf("agent environment lacks %s", want)
+		}
 	}
 }

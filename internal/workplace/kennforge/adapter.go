@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -358,9 +359,19 @@ func (a *Adapter) readWorkspace(ctx context.Context, workspaceID string) (wireWo
 // no error; one with work in it is workplace.ErrDirty. A carrier it cannot wipe is an error.
 // On another node a 404 is "already gone" only as confirmGone allows; otherwise the carrier
 // stays and the error wraps workplace.ErrUncertain.
-func (a *Adapter) Remove(ctx context.Context, workspaceID string) error {
+//
+// kenn-forge refuses (409) to delete a dirty worktree and has no force parameter, so with
+// o.Force the worktree is first reset to HEAD and cleaned of every untracked and ignored file,
+// with local git. That needs the worktree on this host: on another node a forced Remove is an
+// error, before anything is changed.
+func (a *Adapter) Remove(ctx context.Context, workspaceID string, o workplace.RemoveOptions) error {
 	if err := notForge(workspaceID); err != nil {
 		return err
+	}
+	if o.Force {
+		if err := a.discardWork(ctx, workspaceID); err != nil {
+			return fmt.Errorf("remove workspace %s: %w", workspaceID, err)
+		}
 	}
 	err := a.Client.do(ctx, http.MethodDelete, a.path(wsPath(workspaceID)), nil, 0, nil)
 	var se *StatusError
@@ -376,6 +387,40 @@ func (a *Adapter) Remove(ctx context.Context, workspaceID string) error {
 		}
 	}
 	return a.Discard(ctx, workspaceID)
+}
+
+// forceGit are the git options of discardWork: the worktree's own config may come from an agent,
+// so it starts no fsmonitor and no hook.
+var forceGit = []string{"-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null"}
+
+// discardWork throws away the uncommitted work in the worktree of a workspace: reset --hard to
+// HEAD, then clean -ffdx (nested repositories and ignored files too). A workspace that is already
+// gone leaves nothing to discard: the DELETE that follows finds it gone as well.
+func (a *Adapter) discardWork(ctx context.Context, workspaceID string) error {
+	if a.Node != "" {
+		return fmt.Errorf("forced remove needs local git, and the workspace is on node %s", a.Node)
+	}
+	w, err := a.readWorkspace(ctx, workspaceID)
+	if errors.Is(err, workplace.ErrGone) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !filepath.IsAbs(w.WorktreeDir) {
+		return fmt.Errorf("worktree_path %q is not absolute", w.WorktreeDir)
+	}
+	for _, args := range [][]string{{"reset", "--hard", "--quiet"}, {"clean", "-ffdxq"}} {
+		argv := append(append(append([]string{}, forceGit...), "-C", w.WorktreeDir), args...)
+		_, code, err := a.Run(ctx, gitTimeout, "git", argv...)
+		if err != nil {
+			return fmt.Errorf("git %s: %w", args[0], err)
+		}
+		if code != 0 {
+			return fmt.Errorf("git %s: exit code %d", args[0], code)
+		}
+	}
+	return nil
 }
 
 // Discard wipes the carrier of the workspace, on another node through serve; a missing carrier

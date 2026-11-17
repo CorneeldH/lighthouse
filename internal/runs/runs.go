@@ -1,5 +1,5 @@
-// Package runs keeps the run state of the dispatcher: which issue has an
-// open run, and how often a trigger has been tried.
+// Package runs keeps the run state of the dispatcher: which issue or schedule
+// has an open run, and how often a trigger has been tried.
 package runs
 
 import (
@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"modernc.org/sqlite"
@@ -25,30 +26,43 @@ const (
 	Parked      Outcome = "parked"
 	Done        Outcome = "done"
 	Returned    Outcome = "returned"
+	// Failed and Retry end only a scheduled run: Failed is a real outcome that
+	// settles the slot, Retry a temporary failure that leaves it open.
+	Failed Outcome = "failed"
+	Retry  Outcome = "retry"
 )
 
+// TriggerScheduled is the trigger of a scheduled run; its trigger key is
+// "scheduled:<schedule>:<slot>".
+const TriggerScheduled = "scheduled"
+
 var (
-	// ErrClaimed: the issue already has an open run.
-	ErrClaimed = errors.New("runs: issue already has an open run")
+	// ErrClaimed: the issue or schedule already has an open run.
+	ErrClaimed = errors.New("runs: issue or schedule already has an open run")
 	// ErrTriggerSpent: the trigger already started a run, or failed twice.
 	ErrTriggerSpent = errors.New("runs: trigger already spent")
 	// ErrNotOpen: the run is already closed, or does not exist.
 	ErrNotOpen = errors.New("runs: run is not open")
 )
 
-// Claim describes the run to start. Mode is "start" or "resume".
+// Claim describes the run to start. Mode is "start" or "resume". Exactly one
+// of Issue and Schedule is set: Schedule with trigger scheduled, Issue with
+// every other trigger.
 type Claim struct {
 	Repo       string
-	Issue      int
+	Issue      int    // 0 for a scheduled run
+	Schedule   string // "" for an issue run
 	SessionID  string
 	Mode       string
-	Trigger    string // handoff, answer, usage, closecheck, manual or fixpr
+	Trigger    string // handoff, answer, usage, closecheck, manual, fixpr or scheduled
 	TriggerKey string // unique per repo, e.g. "start:<issue>"
 	Command    string
 	Prompt     string
 	Profile    string
 	Node       string // "" is self
 	Branch     string // written at claim time, so a run that closes before launch still has it
+	StartSHA   string // scheduled run: the commit the run started from
+	Verdict    string // scheduled run: the job's verdict as opaque JSON
 	Now        time.Time
 }
 
@@ -60,32 +74,61 @@ type Run struct {
 
 func stamp(t time.Time) string { return t.UTC().Format(time.RFC3339) }
 
-// Take claims (repo, issue) in one immediate transaction. A trigger that
-// ran before is spent, except after a start_failed: that gets one more
-// attempt.
+// Take claims (repo, issue) or (repo, schedule) in one immediate
+// transaction. For an issue run a trigger that ran before is spent, except
+// after a start_failed: that gets one more attempt. For a scheduled run every
+// earlier run of the trigger key is an attempt: the key is spent after a done
+// or failed, or after two attempts.
 func Take(ctx context.Context, db *sql.DB, c Claim) (Run, error) {
+	scheduled := c.Trigger == TriggerScheduled
+	if scheduled != (c.Schedule != "") || scheduled == (c.Issue != 0) {
+		return Run{}, fmt.Errorf("runs: claim needs a schedule with trigger %s and an issue otherwise; got issue %d, schedule %q, trigger %q",
+			TriggerScheduled, c.Issue, c.Schedule, c.Trigger)
+	}
+	if scheduled {
+		prefix := TriggerScheduled + ":" + c.Schedule + ":"
+		if !strings.HasPrefix(c.TriggerKey, prefix) || len(c.TriggerKey) == len(prefix) {
+			return Run{}, fmt.Errorf("runs: scheduled claim of %q needs trigger key %s<slot>; got %q", c.Schedule, prefix, c.TriggerKey)
+		}
+	}
 	tx, err := db.BeginTx(ctx, nil) // _txlock=immediate: BEGIN IMMEDIATE
 	if err != nil {
 		return Run{}, fmt.Errorf("runs: begin: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	var total, failed int
-	err = tx.QueryRowContext(ctx, `SELECT count(*), coalesce(sum(outcome = 'start_failed'), 0)
-		FROM runs WHERE repo = ? AND trigger_key = ?`, c.Repo, c.TriggerKey).Scan(&total, &failed)
+	var total, failed, settled int
+	err = tx.QueryRowContext(ctx, `SELECT count(*), coalesce(sum(outcome = 'start_failed'), 0),
+		coalesce(sum(outcome IN ('done', 'failed')), 0)
+		FROM runs WHERE repo = ? AND trigger_key = ?`, c.Repo, c.TriggerKey).Scan(&total, &failed, &settled)
 	if err != nil {
 		return Run{}, fmt.Errorf("runs: count trigger: %w", err)
+	}
+	if scheduled {
+		// Every earlier run is an attempt; an open one is left to the
+		// runs_open_schedule index, which reports ErrClaimed.
+		failed = total
+		if settled > 0 {
+			return Run{}, ErrTriggerSpent
+		}
 	}
 	if total != failed || failed >= 2 {
 		return Run{}, ErrTriggerSpent
 	}
 	attempt := failed + 1
 
+	var issue, schedule any
+	if scheduled {
+		schedule = c.Schedule
+	} else {
+		issue = c.Issue
+	}
 	res, err := tx.ExecContext(ctx, `INSERT INTO runs
-		(repo, issue, session_id, mode, trigger, trigger_key, attempt, command, prompt, profile, node, branch, started_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		c.Repo, c.Issue, c.SessionID, c.Mode, c.Trigger, c.TriggerKey, attempt,
-		c.Command, c.Prompt, c.Profile, c.Node, c.Branch, stamp(c.Now))
+		(repo, issue, schedule, session_id, mode, trigger, trigger_key, attempt, command, prompt, profile, node, branch,
+		start_sha, verdict, started_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		c.Repo, issue, schedule, c.SessionID, c.Mode, c.Trigger, c.TriggerKey, attempt,
+		c.Command, c.Prompt, c.Profile, c.Node, c.Branch, c.StartSHA, c.Verdict, stamp(c.Now))
 	if err != nil {
 		var se *sqlite.Error
 		if errors.As(err, &se) && se.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE {
@@ -103,15 +146,23 @@ func Take(ctx context.Context, db *sql.DB, c Claim) (Run, error) {
 	return Run{ID: id, Attempt: attempt}, nil
 }
 
-// Release closes an open run with an outcome.
+// Release closes an open run with an outcome. A scheduled run ends only as done, failed or
+// retry: failed and retry are only for a scheduled run, and start_failed, handoff, question,
+// parked and returned only for an issue run. An outcome of the other kind is an error and the
+// run stays open.
 func Release(ctx context.Context, db *sql.DB, id int64, o Outcome, reason string, now time.Time) error {
+	var kind, want string // kind narrows the UPDATE; want names the run kind the outcome is for
 	switch o {
-	case StartFailed, Handoff, Question, Parked, Done, Returned:
+	case Done:
+	case StartFailed, Handoff, Question, Parked, Returned:
+		kind, want = " AND schedule IS NULL", "an issue run"
+	case Failed, Retry:
+		kind, want = " AND schedule IS NOT NULL", "a scheduled run"
 	default:
 		return fmt.Errorf("runs: unknown outcome %q", o)
 	}
 	res, err := db.ExecContext(ctx, `UPDATE runs SET outcome = ?, reason = ?, ended_at = ?
-		WHERE id = ? AND ended_at IS NULL`, string(o), reason, stamp(now), id)
+		WHERE id = ? AND ended_at IS NULL`+kind, string(o), reason, stamp(now), id)
 	if err != nil {
 		return fmt.Errorf("runs: release: %w", err)
 	}
@@ -119,10 +170,20 @@ func Release(ctx context.Context, db *sql.DB, id int64, o Outcome, reason string
 	if err != nil {
 		return fmt.Errorf("runs: release rows: %w", err)
 	}
-	if n == 0 {
-		return ErrNotOpen
+	if n > 0 {
+		return nil
 	}
-	return nil
+	if want != "" {
+		var open bool
+		err := db.QueryRowContext(ctx, `SELECT count(*) > 0 FROM runs WHERE id = ? AND ended_at IS NULL`, id).Scan(&open)
+		if err != nil {
+			return fmt.Errorf("runs: release run %d: %w", id, err)
+		}
+		if open {
+			return fmt.Errorf("runs: outcome %q is only for %s; run %d is not one", o, want, id)
+		}
+	}
+	return ErrNotOpen
 }
 
 // SetWorkplace records the workspace and branch of an open run.
@@ -153,6 +214,21 @@ func setOpen(ctx context.Context, db *sql.DB, id int64, query string, args ...an
 	return nil
 }
 
+// SetStartSHA records the commit an open scheduled run started from.
+func SetStartSHA(ctx context.Context, db *sql.DB, id int64, sha string) error {
+	return setOpen(ctx, db, id, `UPDATE runs SET start_sha = ? WHERE id = ? AND ended_at IS NULL`, sha, id)
+}
+
+// SetVerdict records the opaque verdict JSON of an open scheduled run.
+func SetVerdict(ctx context.Context, db *sql.DB, id int64, verdict string) error {
+	return setOpen(ctx, db, id, `UPDATE runs SET verdict = ? WHERE id = ? AND ended_at IS NULL`, verdict, id)
+}
+
+// SetPRAt records when the PR of an open scheduled run was opened.
+func SetPRAt(ctx context.Context, db *sql.DB, id int64, at time.Time) error {
+	return setOpen(ctx, db, id, `UPDATE runs SET pr_at = ? WHERE id = ? AND ended_at IS NULL`, stamp(at), id)
+}
+
 // NoteMergeFailed records on an open run the head sha whose merge GitHub
 // refused, and GitHub's message. It returns ErrNotOpen for a closed or unknown run.
 func NoteMergeFailed(ctx context.Context, db *sql.DB, id int64, sha, message string) error {
@@ -170,7 +246,8 @@ func SetPushed(ctx context.Context, db *sql.DB, id int64, sha string) error {
 // OpenRun is an open run with its workplace columns.
 type OpenRun struct {
 	ID               int64     `json:"id"`
-	Issue            int       `json:"issue"`
+	Issue            int       `json:"issue"`              // 0 for a scheduled run
+	Schedule         string    `json:"schedule,omitempty"` // "" for an issue run
 	SessionID        string    `json:"session_id"`
 	TriggerKey       string    `json:"trigger_key"`
 	Command          string    `json:"command,omitempty"`
@@ -183,6 +260,9 @@ type OpenRun struct {
 	MergeSHA         string    `json:"merge_sha,omitempty"`
 	MergeError       string    `json:"merge_error,omitempty"`
 	PushedSHA        string    `json:"pushed_sha,omitempty"` // push row: the SHA the pusher pushed
+	StartSHA         string    `json:"start_sha,omitempty"`
+	Verdict          string    `json:"verdict,omitempty"` // opaque JSON of the scheduled job's verdict
+	PRAt             time.Time `json:"pr_at,omitzero"`    // zero: no PR yet
 }
 
 // Open returns the open runs of repo, ordered by id.
@@ -208,25 +288,40 @@ func Open(ctx context.Context, db *sql.DB, repo string) ([]OpenRun, error) {
 }
 
 // openColumns are the runs columns scanOpen reads, in order.
-const openColumns = `id, issue, session_id, trigger_key, command, profile, node, branch,
-	workspace_id, workplace_session, started_at, merge_sha, merge_error, pushed_sha`
+const openColumns = `id, coalesce(issue, 0), coalesce(schedule, ''), session_id, trigger_key, command, profile, node, branch,
+	workspace_id, workplace_session, started_at, merge_sha, merge_error, pushed_sha, start_sha, verdict, coalesce(pr_at, '')`
 
 // scanOpen reads a row selected with openColumns, after any lead destinations
 // for columns selected before them.
 func scanOpen(rows interface{ Scan(...any) error }, lead ...any) (OpenRun, error) {
 	var r OpenRun
-	var started string
-	dest := append(lead, &r.ID, &r.Issue, &r.SessionID, &r.TriggerKey, &r.Command, &r.Profile, &r.Node, &r.Branch,
-		&r.WorkspaceID, &r.WorkplaceSession, &started, &r.MergeSHA, &r.MergeError, &r.PushedSHA)
+	var started, prAt string
+	dest := append(lead, &r.ID, &r.Issue, &r.Schedule, &r.SessionID, &r.TriggerKey, &r.Command, &r.Profile, &r.Node, &r.Branch,
+		&r.WorkspaceID, &r.WorkplaceSession, &started, &r.MergeSHA, &r.MergeError, &r.PushedSHA, &r.StartSHA, &r.Verdict, &prAt)
 	if err := rows.Scan(dest...); err != nil {
 		return OpenRun{}, fmt.Errorf("runs: scan open run: %w", err)
 	}
 	var err error
-	r.StartedAt, err = time.Parse(time.RFC3339, started)
-	if err != nil {
-		return OpenRun{}, fmt.Errorf("runs: run %d started_at %q: %w", r.ID, started, err)
+	if r.StartedAt, r.PRAt, err = parseTimes(r.ID, started, prAt); err != nil {
+		return OpenRun{}, err
 	}
 	return r, nil
+}
+
+// parseTimes parses the started_at and the optional pr_at ("" is none) of run id.
+func parseTimes(id int64, started, prAt string) (time.Time, time.Time, error) {
+	s, err := time.Parse(time.RFC3339, started)
+	if err != nil {
+		return time.Time{}, time.Time{}, fmt.Errorf("runs: run %d started_at %q: %w", id, started, err)
+	}
+	if prAt == "" {
+		return s, time.Time{}, nil
+	}
+	p, err := time.Parse(time.RFC3339, prAt)
+	if err != nil {
+		return time.Time{}, time.Time{}, fmt.Errorf("runs: run %d pr_at %q: %w", id, prAt, err)
+	}
+	return s, p, nil
 }
 
 // SessionKeys maps the workplace session key of every run of the issue, open
@@ -238,8 +333,18 @@ func scanOpen(rows interface{ Scan(...any) error }, lead ...any) (OpenRun, error
 // agent's. A run without a key (never accepted, or returned as uncertain)
 // adds nothing, so its late agent counts as foreign.
 func SessionKeys(ctx context.Context, db *sql.DB, repo string, issue int) (map[string]string, error) {
-	rows, err := db.QueryContext(ctx, `SELECT workplace_session, session_id FROM runs
+	return sessionKeys(ctx, db, `SELECT workplace_session, session_id FROM runs
 		WHERE repo = ? AND issue = ? AND workplace_session != ''`, repo, issue)
+}
+
+// ScheduleSessionKeys is SessionKeys for the runs of schedule in repo.
+func ScheduleSessionKeys(ctx context.Context, db *sql.DB, repo, schedule string) (map[string]string, error) {
+	return sessionKeys(ctx, db, `SELECT workplace_session, session_id FROM runs
+		WHERE repo = ? AND schedule = ? AND workplace_session != ''`, repo, schedule)
+}
+
+func sessionKeys(ctx context.Context, db *sql.DB, query string, args ...any) (map[string]string, error) {
+	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("runs: session keys: %w", err)
 	}

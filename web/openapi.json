@@ -53,6 +53,9 @@
           "repo": {
             "type": "string"
           },
+          "schedule": {
+            "type": "string"
+          },
           "title": {
             "type": "string"
           }
@@ -205,6 +208,9 @@
             "type": "string"
           },
           "repo": {
+            "type": "string"
+          },
+          "schedule": {
             "type": "string"
           },
           "workspace_id": {
@@ -488,10 +494,17 @@
           "phase": {
             "type": "string"
           },
+          "pr_at": {
+            "format": "date-time",
+            "type": "string"
+          },
           "profile": {
             "type": "string"
           },
           "repo": {
+            "type": "string"
+          },
+          "schedule": {
             "type": "string"
           },
           "stand": {
