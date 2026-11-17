@@ -178,6 +178,7 @@ export function buildGraph(repos: Repo[], runs: Run[]): Graph {
   }
 
   // Waiting: distinct nodes in downstream components, own component excluded.
+  // O(C*(C+E)), computed once per fetch.
   const members: number[][] = Array.from({ length: count }, () => [])
   comp.forEach((c, v) => members[c].push(v))
   const waiting = new Array<number>(count).fill(0)

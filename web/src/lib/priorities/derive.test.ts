@@ -66,6 +66,20 @@ describe('buildGraph', () => {
     expect(n(g, `${R}#3`).depth).toBe(a.depth + 1)
   })
 
+  it('counts every member of a downstream cycle component', () => {
+    const g = buildGraph(
+      [repo(R, [iss(1), iss(2, [[R, 1], [R, 3]]), iss(3, [[R, 2]])])],
+      [],
+    )
+    expect(n(g, `${R}#1`).waiting).toBe(2)
+  })
+
+  it('self-loop is a cycle, terminates, and counts nobody extra', () => {
+    const g = buildGraph([repo(R, [iss(1, [[R, 1]]), iss(2, [[R, 1]])])], [])
+    expect(n(g, `${R}#1`)).toMatchObject({ cycle: true, depth: 0, waiting: 1 })
+    expect(n(g, `${R}#2`)).toMatchObject({ cycle: false, depth: 1, waiting: 0 })
+  })
+
   it('cross-repo cycle behaves the same', () => {
     const g = buildGraph(
       [repo('a/x', [iss(1, [['b/y', 1]])]), repo('b/y', [iss(1, [['a/x', 1]])])],
