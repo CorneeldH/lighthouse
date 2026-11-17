@@ -403,15 +403,17 @@ func (ap applier) start(ctx context.Context, a Action, res *Result) error {
 }
 
 // pusherEnv is the environment of the pusher: PATH, HOME, XDG_RUNTIME_DIR and the forge token
-// under its own name, each only when tick has it. The workflow token and every other variable
-// of tick stay behind.
+// under its own name, each only when tick has it and each once (a token_env may name one of the
+// others). The workflow token and every other variable of tick stay behind.
 func (ap applier) pusherEnv(repo string) []string {
 	if ap.env.Getenv == nil {
 		return nil
 	}
 	names := []string{"PATH", "HOME", "XDG_RUNTIME_DIR"}
 	if ap.env.TokenEnv != nil {
-		names = append(names, ap.env.TokenEnv(repo))
+		if k := ap.env.TokenEnv(repo); !slices.Contains(names, k) {
+			names = append(names, k)
+		}
 	}
 	var out []string
 	for _, k := range names {

@@ -2149,6 +2149,25 @@ func TestApplyMergePushStartsPusherWithScrubbedEnv(t *testing.T) {
 	}
 }
 
+// A token_env that names a variable the pusher gets anyway (PATH, HOME, XDG_RUNTIME_DIR) does not
+// put it in the pusher's environment twice.
+func TestApplyPushEnvNamesEachVariableOnce(t *testing.T) {
+	for _, name := range []string{"PATH", "HOME", "XDG_RUNTIME_DIR"} {
+		h, specs := pushHarness(t)
+		h.env.TokenEnv = func(string) string { return name }
+		if _, err := Apply(context.Background(), h.env, []Action{pushAction()}); err != nil {
+			t.Fatalf("Apply: %v", err)
+		}
+		if len(*specs) != 1 {
+			t.Fatalf("specs = %+v, want one pusher start", *specs)
+		}
+		want := []string{"PATH=/usr/bin", "HOME=/home/u", "XDG_RUNTIME_DIR=/run/user/1"}
+		if got := (*specs)[0].Env; !reflect.DeepEqual(got, want) {
+			t.Errorf("token_env %s: pusher env = %q, want %q", name, got, want)
+		}
+	}
+}
+
 // A merge key a row already spent starts no second merge pusher for the same head.
 func TestApplyMergePushSpentKeyStartsNothing(t *testing.T) {
 	h, specs := pushHarness(t)
