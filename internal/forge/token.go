@@ -2,6 +2,7 @@ package forge
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -18,6 +19,27 @@ func (e *TokenError) Error() string {
 		label = "GitLab"
 	}
 	return "no " + label + " token: set " + strings.Join(e.Vars, " or ")
+}
+
+// defaultTokenVars are the variables Token reads per forge kind without token_env, in order.
+var defaultTokenVars = map[string][]string{
+	"github": {"GH_TOKEN", "GITHUB_TOKEN"},
+	"gitlab": {"GITLAB_TOKEN"},
+}
+
+// TokenVarNames are the names of every variable that may hold a forge token in this process:
+// the default variables of every kind, plus tokenEnv when set, sorted and each once. A process
+// that must not see a token (the agent of a scheduled run) gets all of them removed.
+func TokenVarNames(tokenEnv string) []string {
+	var out []string
+	for _, vars := range defaultTokenVars {
+		out = append(out, vars...)
+	}
+	if tokenEnv != "" {
+		out = append(out, tokenEnv)
+	}
+	slices.Sort(out)
+	return slices.Compact(out)
 }
 
 // Token returns the token for a forge of the given kind ("" is github). With tokenEnv set only
@@ -38,13 +60,8 @@ func TokenVar(kind, tokenEnv string, getenv func(string) string) (string, error)
 	if kind == "" {
 		kind = "github"
 	}
-	var vars []string
-	switch kind {
-	case "github":
-		vars = []string{"GH_TOKEN", "GITHUB_TOKEN"}
-	case "gitlab":
-		vars = []string{"GITLAB_TOKEN"}
-	default:
+	vars, ok := defaultTokenVars[kind]
+	if !ok {
 		return "", fmt.Errorf("unknown forge kind %q", kind)
 	}
 	if tokenEnv != "" {

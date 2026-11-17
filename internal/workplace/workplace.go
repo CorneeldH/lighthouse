@@ -78,6 +78,9 @@ type LaunchSpec struct {
 	// Tools, when not empty, is the list of built-in tools the agent has available
 	// (--tools). Empty means the default tool set.
 	Tools []string
+	// Unset names environment variables the agent must not inherit, such as the forge token of
+	// a scheduled run. Empty leaves the environment as it was.
+	Unset []string
 }
 
 // Workplace is the forge side of a run.

@@ -72,7 +72,8 @@ starten. Het contract:
 - **Rechten:** mode `0600`, de map `0700`, ook als de map al bestond met ruimere rechten. Het bestand
   wordt atomair geschreven (tempbestand en rename).
 - **Velden:** `version` (nu `1`), `repo`, `issue`, `session_id` (een UUID v4 in kleine letters), `mode`
-  (`start` of `resume`), `profile`, `args`, `env`, `created_at` (RFC 3339, UTC).
+  (`start` of `resume`), `profile`, `args`, `env`, `unset` (alleen als er iets in staat), `created_at`
+  (RFC 3339, UTC).
 - **`args`**, in deze volgorde:
   1. `--permission-mode auto`
   2. `--strict-mcp-config` (staat in elke run)
@@ -89,6 +90,11 @@ starten. Het contract:
 - **`env`:** precies `LIGHTHOUSE_CONTROLLER_RUN` (de session-id van de run) en `LIGHTHOUSE_STATE_DIR`. Met die twee schrijft de hook
   `permission-check` een permissie-prompt van de sessie naar `<statemap>/runs/<sessie>/permission.json`;
   de tick leest dat bestand (zie *Afloop* in [tick.md](tick.md)).
+- **`unset`:** namen van omgevingsvariabelen (`[A-Za-z_][A-Za-z0-9_]*`, gesorteerd) die het target
+  uit de omgeving van de agent haalt voordat hij start. Een geplande run zet hier elke variabele die
+  een forge-token kan bevatten (`GH_TOKEN`, `GITHUB_TOKEN`, `GITLAB_TOKEN` en `token_env`): de agent mag
+  het token niet erven. De lokale werkplek doet dit zelf met `env -u <naam>`. Een issue-run zet niets,
+  en het veld ontbreekt dan.
 - **Nooit een token.** De drager heeft er geen veld voor en `env` bevat er geen. Het forge-token blijft
   in `[dispatch.forge] token_file` en wordt per verzoek gelezen.
 - **Het target verbruikt de drager** en voert precies `args` uit, niets toevoegen of weglaten.

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/runs"
 	"github.com/CorneeldH/lighthouse/internal/scheduled"
 	"github.com/CorneeldH/lighthouse/internal/workplace"
@@ -92,6 +93,9 @@ func (ap applier) startScheduled(ctx context.Context, a Action, res *Result) err
 	spec := workplace.LaunchSpec{
 		Repo: a.Repo, SessionID: session, Mode: a.Mode, Profile: a.Profile, Prompt: a.Prompt,
 		InstructionsFile: file, Tools: a.Tools,
+		// The agent inherits no forge token: with it, a Read of /proc/self/environ could carry
+		// the token into a file the run commits. The tick's push names it through askpass only.
+		Unset: forge.TokenVarNames(jenv.Repo.TokenEnv),
 		// No MCP server, whatever the profile has (spec §4): an MCP tool acts outside the
 		// workplace, where the check after the run does not look.
 		MCPConfig: "",

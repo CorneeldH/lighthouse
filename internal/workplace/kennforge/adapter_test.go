@@ -549,6 +549,29 @@ func TestSpawnAccepted(t *testing.T) {
 	}
 }
 
+// Finding B of the task 9 review. The forge target starts the agent from its own environment,
+// not the tick's; the carrier tells it which variables to remove. Fails if Unset does not reach
+// the carrier the target reads.
+func TestSpawnCarrierCarriesUnset(t *testing.T) {
+	_, a := newFakeForge(t)
+	l := spec()
+	l.Unset = []string{"GH_TOKEN"}
+	if _, err := a.Spawn(context.Background(), ws1, l); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(workplace.CarrierPath(a.StateDir, "", "ws1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var c workplace.Carrier
+	if err := json.Unmarshal(raw, &c); err != nil {
+		t.Fatal(err)
+	}
+	if len(c.Unset) != 1 || c.Unset[0] != "GH_TOKEN" {
+		t.Errorf("carrier unset = %q, want [GH_TOKEN]", c.Unset)
+	}
+}
+
 func TestSpawn5xxNoSessionStartFailed(t *testing.T) {
 	f, a := newFakeForge(t)
 	f.handoffStatus = 503

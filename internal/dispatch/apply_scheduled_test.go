@@ -63,7 +63,7 @@ func scheduledHarness(t *testing.T) (*harness, *scheduledtest.Job, *gitFake) {
 			return nil, scheduled.Env{}, fmt.Errorf("no schedule %s in %s", schedule, repo)
 		}
 		return job, scheduled.Env{
-			Repo:     repoconfig.Repo{Slug: applyRepo},
+			Repo:     repoconfig.Repo{Slug: applyRepo, TokenEnv: "WORK_TOKEN"},
 			Schedule: repoconfig.Schedule{Name: "codebase-map", Job: "map-refresh"},
 			Now:      applyNow, Run: git.run,
 		}, nil
@@ -144,6 +144,8 @@ func TestApplyScheduledStart(t *testing.T) {
 		Repo: applyRepo, SessionID: freshSession, Mode: "start", Profile: "software",
 		Prompt: "/gsd-map-codebase", InstructionsFile: instructions, MCPConfig: "",
 		Tools: []string{"Read", "Glob", "Write"},
+		// Finding B: no forge token reaches the agent, whatever variable holds it.
+		Unset: []string{"GH_TOKEN", "GITHUB_TOKEN", "GITLAB_TOKEN", "WORK_TOKEN"},
 	}
 	if !reflect.DeepEqual(h.wp.spawned, []workplace.LaunchSpec{wantSpec}) {
 		t.Errorf("spawned %+v\nwant    %+v", h.wp.spawned, wantSpec)

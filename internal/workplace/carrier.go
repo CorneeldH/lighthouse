@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 )
@@ -25,6 +26,8 @@ var (
 	uuidPattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
 	// A workspace id becomes a file name.
 	safeIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+	// An environment variable name; it reaches an argv as `env -u <name>`.
+	envNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 )
 
 // Carrier is the file a forge target reads to start the agent. It never holds
@@ -38,7 +41,10 @@ type Carrier struct {
 	Profile   string            `json:"profile"`
 	Args      []string          `json:"args"`
 	Env       map[string]string `json:"env"`
-	CreatedAt string            `json:"created_at"`
+	// Unset are the variables the target removes from the agent's environment before it starts
+	// it, sorted; absent for a run that removes none.
+	Unset     []string `json:"unset,omitempty"`
+	CreatedAt string   `json:"created_at"`
 }
 
 // NewCarrier validates l and builds the carrier for it.
@@ -65,6 +71,15 @@ func NewCarrier(l LaunchSpec, stateDir string, now time.Time) (Carrier, error) {
 	if !filepath.IsAbs(stateDir) {
 		return Carrier{}, fmt.Errorf("carrier: state dir %q is not absolute", stateDir)
 	}
+	var unset []string
+	for _, name := range l.Unset {
+		if !envNamePattern.MatchString(name) {
+			return Carrier{}, fmt.Errorf("carrier: unset %q is no environment variable name", name)
+		}
+		unset = append(unset, name)
+	}
+	slices.Sort(unset)
+	unset = slices.Compact(unset)
 	args := []string{"--permission-mode", "auto", "--strict-mcp-config", pluginCacheReadRule}
 	if len(l.Tools) > 0 {
 		// Evidence, claude 2.1.316: the CLI accepts --tools (`claude --tools=Read --help` runs, an
@@ -99,6 +114,7 @@ func NewCarrier(l LaunchSpec, stateDir string, now time.Time) (Carrier, error) {
 			"LIGHTHOUSE_CONTROLLER_RUN": l.SessionID,
 			"LIGHTHOUSE_STATE_DIR":      stateDir,
 		},
+		Unset:     unset,
 		CreatedAt: now.UTC().Format(time.RFC3339),
 	}, nil
 }

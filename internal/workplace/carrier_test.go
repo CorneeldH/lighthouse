@@ -331,3 +331,51 @@ func TestNewCarrierToolsWithoutMCPConfigIsStrictAndHasNoMCPConfig(t *testing.T) 
 		t.Errorf("--strict-mcp-config count %d, want 1: %q", strict, c.Args)
 	}
 }
+
+// Finding B of the task 9 review. Fails if the carrier of a run without Unset gains an "unset"
+// key (the contract the forge target reads stays as it was), if Unset does not reach the carrier
+// sorted and once each, or if a name that is no environment variable name passes: it ends up in
+// an argv (`env -u <name>`).
+func TestNewCarrierUnset(t *testing.T) {
+	dir := t.TempDir()
+	c, err := NewCarrier(baseSpec(), dir, testNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path, err := WriteCarrier(dir, "", "ws-1", c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if raw, _ := os.ReadFile(path); bytes.Contains(raw, []byte("unset")) {
+		t.Errorf("carrier without Unset = %s, want no unset key", raw)
+	}
+
+	l := baseSpec()
+	l.Unset = []string{"GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"}
+	c, err = NewCarrier(l, dir, testNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"GH_TOKEN", "GITHUB_TOKEN"}; !reflect.DeepEqual(c.Unset, want) {
+		t.Errorf("Unset = %q, want %q", c.Unset, want)
+	}
+	path, err = WriteCarrier(dir, "", "ws-2", c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var back map[string]any
+	raw, _ := os.ReadFile(path)
+	if err := json.Unmarshal(raw, &back); err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := back["unset"].([]any); !ok || len(got) != 2 {
+		t.Errorf("carrier unset = %v, want both names", back["unset"])
+	}
+
+	for _, bad := range []string{"-i", "A=B", "GH TOKEN", "", "1X", "X;rm"} {
+		l.Unset = []string{bad}
+		if _, err := NewCarrier(l, dir, testNow); err == nil || !strings.Contains(err.Error(), "unset") {
+			t.Errorf("Unset %q: err = %v, want a refusal", bad, err)
+		}
+	}
+}
