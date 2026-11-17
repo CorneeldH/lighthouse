@@ -56,7 +56,7 @@ lighthouse forge api -X POST repos/{owner}/{repo}/issues/<parent-nr>/sub_issues 
 
 Verify with `lighthouse forge api repos/{owner}/{repo}/issues/<parent-nr>/sub_issues | jq '.[].number'`.
 
-## §sluitwoorden <!-- lighthouse: allow-language — the section name chain skills cite (spec #260 §2) -->
+## §sluitwoorden <!-- lighthouse: allow-language — the section name chain skills cite -->
 
 The closing keywords: a PR body closes an issue on merge with `close`, `closes`, `closed`, `fix`,
 `fixes`, `fixed`, `resolve`, `resolves` or `resolved`, followed by `#N`, `<owner>/<repo>#N` or

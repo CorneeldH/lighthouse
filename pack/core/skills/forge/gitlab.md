@@ -55,8 +55,7 @@ issue. Epics, the level above an issue, need Premium. The hierarchy has no REST 
 through GraphQL: write each query with your write tool to a file, then
 `lighthouse forge api api/graphql -F query=@<file>`, and check `.errors` and the mutation's own
 `errors` in the answer. These queries follow GitLab's GraphQL reference but have not yet run
-against a live GitLab (lighthouse's issue #358 tracks that run): on an error, trust the message
-over the query below.
+against a live GitLab: on an error, trust the message over the query below.
 
 The global ids of the parent and a child, and the id of the Task type:
 
@@ -104,7 +103,7 @@ query {
 }
 ```
 
-## §sluitwoorden <!-- lighthouse: allow-language — the section name chain skills cite (spec #260 §2) -->
+## §sluitwoorden <!-- lighthouse: allow-language — the section name chain skills cite -->
 
 The closing keywords: an MR body closes an issue when the MR merges into the default branch. The
 words are the GitHub ones plus GitLab's own: `close`, `closes`, `closed`, `closing`, `fix`,

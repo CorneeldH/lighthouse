@@ -519,6 +519,17 @@ def test_forge_reference_mentions_no_glab_command():
     assert not bad, "\n".join(bad)
 
 
+@pytest.mark.parametrize("name", ["forge", "start-issue"])
+def test_forge_skills_name_no_source_issue_number(name):
+    """An installed skill lands in other repos, where `#358` resolves against their own forge:
+    no issue number of this repo, also not in a comment. (route-issue and write-pr carry
+    deliberate example numbers in their output formats.)"""
+    texts = _texts(CORE / "skills" / name)
+    assert texts
+    bad = [f"{rel}: {m[0]}" for rel, text in texts.items() for m in re.finditer(r"#\d{3,}", text)]
+    assert not bad, bad
+
+
 @pytest.mark.parametrize("name", ["review-spec", "review-plan"])
 def test_review_skills_call_the_binary_not_python_or_a_wrapper(name):
     """#282: the spec and plan reviews run through `lighthouse review-run`, `plan-review-record`
