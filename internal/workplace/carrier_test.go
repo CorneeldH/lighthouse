@@ -287,6 +287,9 @@ func TestNewCarrierToolsRestrictsAvailableTools(t *testing.T) {
 		}
 	}
 	// The plugin cache read rule stays: it only pre-approves, the tool set is --tools.
+	if len(c.Args) < 5 {
+		t.Fatalf("args too short: %q", c.Args)
+	}
 	if !reflect.DeepEqual(c.Args[:5], []string{
 		"--permission-mode", "auto", "--strict-mcp-config",
 		"--allowedTools=Read(~/.claude/plugins/cache/**)", "--tools=Read,Glob,Grep,Write",

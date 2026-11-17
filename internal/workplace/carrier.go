@@ -67,11 +67,13 @@ func NewCarrier(l LaunchSpec, stateDir string, now time.Time) (Carrier, error) {
 	}
 	args := []string{"--permission-mode", "auto", "--strict-mcp-config", pluginCacheReadRule}
 	if len(l.Tools) > 0 {
-		// Evidence (claude --help, installed claude at /usr/bin/claude): "--tools <tools...>
-		// Specify the list of available tools from the built-in set." That removes the other
-		// tools; the help text is the evidence, no authenticated run was made. --allowedTools
-		// is "tools to allow" (pre-approval) and leaves Bash available, so it does not restrict
-		// (spec section 4). The flag is variadic, so the value is joined with "=" and commas.
+		// Evidence, claude 2.1.316: the CLI accepts --tools (`claude --tools=Read --help` runs, an
+		// unknown flag fails with "unknown option"), and `claude --help` printed "--tools <tools...>
+		// Specify the list of available tools from the built-in set" when this was written, which
+		// another run of 2.1.316 did not show. That Bash is really unavailable under --tools is NOT
+		// proven by a run: an authenticated check was not allowed here. --allowedTools is only
+		// pre-approval and leaves Bash available (spec section 4), so it is no restriction. The flag is
+		// variadic, so the value is joined with "=" and commas.
 		// pluginCacheReadRule stays: it only pre-approves a read, so it grants nothing when Read
 		// is not in Tools, and --tools stays the one thing that decides what exists.
 		args = append(args, "--tools="+strings.Join(l.Tools, ","))
