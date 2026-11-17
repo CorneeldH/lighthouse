@@ -51,6 +51,10 @@ type PusherSpec struct {
 	RunID    int64
 	Permit   string
 	Env      []string
+	// Merge starts the merge pusher of PR on HeadSHA instead of a push; it has no Worktree.
+	Merge   bool
+	PR      int
+	HeadSHA string
 }
 
 // Result is what one Apply did.
@@ -420,7 +424,9 @@ func (ap applier) pusherEnv(repo string) []string {
 
 // push claims the push row of a KindPush, puts the 🚀 on the comment that asked and starts the pusher. The
 // row has no session and carries the branch, so the PR of that branch settles it. A start that
-// fails closes the row start_failed; a trigger key another run spent starts nothing.
+// fails closes the row start_failed; a trigger key another run spent starts nothing. The merge
+// pusher (trigger merge) is started the same way, with the PR and head instead of a worktree;
+// runs knows no trigger merge, so its row takes handoff, and its key merge:<pr>:<head> tells it.
 func (ap applier) push(ctx context.Context, a Action, res *Result) error {
 	env := ap.env
 	trigger := "handoff"
@@ -446,10 +452,14 @@ func (ap applier) push(ctx context.Context, a Action, res *Result) error {
 	if env.StartPusher == nil {
 		return ap.startFailed(ctx, run.ID, "start pusher", errors.New("no way to start the pusher"))
 	}
-	err = env.StartPusher(ctx, PusherSpec{
+	spec := PusherSpec{
 		Repo: a.Repo, Issue: a.Issue, Worktree: a.Worktree, RunID: run.ID, Permit: a.PermitSHA,
 		Env: ap.pusherEnv(a.Repo),
-	})
+	}
+	if a.Trigger == triggerMerge {
+		spec.Merge, spec.PR, spec.HeadSHA = true, a.PR, a.HeadSHA
+	}
+	err = env.StartPusher(ctx, spec)
 	if err != nil {
 		return ap.startFailed(ctx, run.ID, "start pusher", err)
 	}

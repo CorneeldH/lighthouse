@@ -3,6 +3,8 @@ package cli
 import (
 	"bytes"
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -11,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/CorneeldH/lighthouse/internal/dispatch"
 	"github.com/CorneeldH/lighthouse/internal/park"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
@@ -275,4 +278,91 @@ func TestSpawnHelperProcess(t *testing.T) {
 		t.Fatal(err)
 	}
 	time.Sleep(3 * time.Second)
+}
+
+// The merge pusher's flags round trip: --merge with --pr and --sha and no worktree; check
+// refuses a merge without either, with a permit, or with a SHA that is not a full one, and a push
+// without a worktree.
+func TestPushWorkflowsMergeFlags(t *testing.T) {
+	head := strings.Repeat("c", 40)
+	sent := pushOptions{repo: "o/r", issue: 7, runID: 3, db: "/d/l.db", pauseFile: "/s/PAUSE",
+		cloneDir: "/s/push/o/r.git", stateDir: "/s", hostToml: "/h/host.toml", merge: true, pr: 12, sha: head}
+	args := pushWorkflowsArgs(sent)
+	var got pushOptions
+	env := pushEnv{Getenv: os.Getenv, Run: func(_ context.Context, _ pushEnv, o pushOptions) error { got = o; return nil }}
+	if err := runPushWorkflows(env, args); err != nil {
+		t.Fatalf("push-workflows %v: %v", args, err)
+	}
+	if !reflect.DeepEqual(got, sent) {
+		t.Errorf("flags round trip to %+v, want %+v", got, sent)
+	}
+	for name, o := range map[string]pushOptions{
+		"no pr":      func() pushOptions { o := sent; o.pr = 0; return o }(),
+		"short sha":  func() pushOptions { o := sent; o.sha = "abc123"; return o }(),
+		"permit":     func() pushOptions { o := sent; o.permit = head; return o }(),
+		"worktree":   func() pushOptions { o := sent; o.worktree = "/w/x"; return o }(),
+		"push no wt": func() pushOptions { o := sent; o.merge, o.pr, o.sha = false, 0, ""; return o }(),
+		"pr no merge": func() pushOptions {
+			o := sent
+			o.merge, o.worktree = false, "/w/x"
+			return o
+		}(),
+	} {
+		ran := false
+		env.Run = func(context.Context, pushEnv, pushOptions) error { ran = true; return nil }
+		if err := runPushWorkflows(env, pushWorkflowsArgs(o)); err == nil || ran {
+			t.Errorf("%s: err %v, ran %v; want a refusal", name, err, ran)
+		}
+	}
+}
+
+// Tick starts the merge pusher with --merge, the PR and the head, through the same paths and the
+// exact environment apply gave, which holds no workflow token.
+func TestTickStartsMergePusher(t *testing.T) {
+	home := t.TempDir()
+	vars := map[string]string{"HOME": home, "PATH": "/usr/bin"}
+	var gotArgs, gotEnv []string
+	te := tickEnv{Getenv: func(k string) string { return vars[k] }, HostToml: "/h/host.toml", DBPath: "/d/l.db",
+		Spawn: func(_ context.Context, args, e []string) error { gotArgs, gotEnv = args, e; return nil }}
+	head := strings.Repeat("c", 40)
+	spec := dispatch.PusherSpec{Repo: "o/r", Issue: 7, RunID: 3, Merge: true, PR: 12, HeadSHA: head,
+		Env: []string{"PATH=/usr/bin", "HOME=" + home, "GH_TOKEN=tok"}}
+	if err := te.startPusher("/s")(context.Background(), spec); err != nil {
+		t.Fatalf("startPusher: %v", err)
+	}
+	if !reflect.DeepEqual(gotEnv, spec.Env) {
+		t.Errorf("env = %q, want exactly %q", gotEnv, spec.Env)
+	}
+	var got pushOptions
+	pe := pushEnv{Getenv: func(string) string { return "" },
+		Run: func(_ context.Context, _ pushEnv, o pushOptions) error { got = o; return nil }}
+	if err := runPushWorkflows(pe, gotArgs); err != nil {
+		t.Fatalf("push-workflows %v: %v", gotArgs, err)
+	}
+	if !got.merge || got.pr != 12 || got.sha != head || got.worktree != "" || got.runID != 3 || got.db != "/d/l.db" {
+		t.Errorf("pusher resolves %+v, want the merge of PR 12 on %s for run 3", got, head)
+	}
+}
+
+// The merge client is its own forge client with the workflow token it is given: the merge request
+// carries that token, never the forge token of the process environment.
+func TestMergeClientUsesOnlyTheWorkflowToken(t *testing.T) {
+	t.Setenv("GH_TOKEN", "forge-tok")
+	var auth []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth = append(auth, r.Header.Get("Authorization"))
+		if r.Method != http.MethodPut || r.URL.Path != "/repos/o/r/pulls/12/merge" {
+			http.Error(w, "unexpected "+r.Method+" "+r.URL.Path, http.StatusNotFound)
+			return
+		}
+		_, _ = w.Write([]byte(`{"merged": true}`))
+	}))
+	defer srv.Close()
+	m := mergeClient(repoconfig.Repo{Kind: "github", Slug: "o/r"}, srv.URL)("workflow-tok")
+	if err := m.MergePR(context.Background(), 12, strings.Repeat("c", 40)); err != nil {
+		t.Fatalf("MergePR: %v", err)
+	}
+	if !reflect.DeepEqual(auth, []string{"Bearer workflow-tok"}) {
+		t.Errorf("Authorization = %q, want only the workflow token", auth)
+	}
 }

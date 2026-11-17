@@ -44,6 +44,13 @@ type Deps struct {
 	Now       func() time.Time
 	// ReadToken reads the workflow token file; ReadTokenFile in production.
 	ReadToken func(path string) (string, error)
+	// Merger is a forge client of its own with the workflow token, for Merge only.
+	Merger func(token string) Merger
+}
+
+// Merger squash-merges a PR on its head, as forge.Forge.MergePR does.
+type Merger interface {
+	MergePR(ctx context.Context, number int, sha string) error
 }
 
 // Run is one push: it reads the push row req.RunID and the comment that started it, runs the

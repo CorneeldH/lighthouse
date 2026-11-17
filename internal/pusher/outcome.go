@@ -99,7 +99,7 @@ func (p *push) pushed(ctx context.Context, fixPR bool, rangeText string, workflo
 		return err
 	}
 	if fixPR {
-		if _, err := p.deps.Forge.CreateComment(ctx, p.req.Issue, protocol.RenderPushNote(headerValue(rangeText), list, p.req.Language)); err != nil {
+		if _, err := p.deps.Forge.CreateComment(ctx, p.req.Issue, protocol.RenderPushNote(headerValue(p.req.Branch), headerValue(rangeText), list, p.req.Language)); err != nil {
 			return fmt.Errorf("pusher: post the push note on #%d: %w", p.req.Issue, err)
 		}
 		return nil

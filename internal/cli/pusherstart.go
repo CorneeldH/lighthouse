@@ -26,6 +26,7 @@ func (e tickEnv) startPusher(stateDir string) func(context.Context, dispatch.Pus
 		args := pushWorkflowsArgs(pushOptions{
 			repo: spec.Repo, issue: spec.Issue, worktree: spec.Worktree, permit: spec.Permit,
 			runID: spec.RunID, db: db, pauseFile: pause, cloneDir: clone, stateDir: stateDir, hostToml: host,
+			merge: spec.Merge, pr: spec.PR, sha: spec.HeadSHA,
 		})
 		spawn := e.Spawn
 		if spawn == nil {

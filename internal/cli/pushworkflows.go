@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -40,6 +41,10 @@ type pushOptions struct {
 	issue                                       int
 	runID                                       int64
 	db, pauseFile, cloneDir, stateDir, hostToml string
+	// merge runs the merge pusher of PR pr on head sha instead of a push.
+	merge bool
+	pr    int
+	sha   string
 }
 
 func newPushWorkflowsCommand() *cobra.Command {
@@ -56,7 +61,10 @@ func pushWorkflowsCommand(env pushEnv) *cobra.Command {
 			"reads the run's worktree as untrusted input and checks the SHA in its own clone: the floor\n" +
 			"(branch, clean, fast-forward, own commits, roborev, pause), the policy and actionlint and\n" +
 			"zizmor, and for a pre-merge change the security review. Only then does it read the workflow\n" +
-			"token and push exactly that SHA. A red step posts a question and closes the push row.",
+			"token and push exactly that SHA. A red step posts a question and closes the push row.\n\n" +
+			"With --merge --pr <n> --sha <head> it merges that PR with the workflow token instead, only\n" +
+			"when the SHA it pushed last on the PR's branch is an ancestor of the head and nothing under\n" +
+			".github/workflows/ changed after it. Tick starts it for a green PR the pusher pushed to.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := o.check(); err != nil {
@@ -80,17 +88,28 @@ func pushWorkflowsCommand(env pushEnv) *cobra.Command {
 	f.StringVar(&o.stateDir, "state-dir", "", "tick's state directory")
 	f.StringVar(&o.hostToml, "host-toml", "", "path of the host.toml tick read")
 	f.StringVar(&o.permit, "permit", "", "SHA the user permitted with the answer push: the review is skipped for it")
+	f.BoolVar(&o.merge, "merge", false, "merge the PR --pr on head --sha with the workflow token instead of pushing")
+	f.IntVar(&o.pr, "pr", 0, "with --merge: the PR to merge")
+	f.StringVar(&o.sha, "sha", "", "with --merge: the head SHA the PR must still have")
 	return cmd
 }
 
 // check refuses a missing flag or a relative path: a default would be resolved in the pusher's
-// own environment, which is not tick's.
+// own environment, which is not tick's. A push needs --worktree; a merge needs --pr and a full
+// --sha instead, and takes no worktree and no permit.
 func (o pushOptions) check() error {
+	if err := o.checkMode(); err != nil {
+		return err
+	}
 	var missing []string
-	for _, f := range []struct{ name, value string }{
-		{"repo", o.repo}, {"worktree", o.worktree}, {"db", o.db}, {"pause-file", o.pauseFile},
+	paths := []struct{ name, value string }{
+		{"repo", o.repo}, {"db", o.db}, {"pause-file", o.pauseFile},
 		{"clone-dir", o.cloneDir}, {"state-dir", o.stateDir}, {"host-toml", o.hostToml},
-	} {
+	}
+	if !o.merge {
+		paths = append(paths, struct{ name, value string }{"worktree", o.worktree})
+	}
+	for _, f := range paths {
 		if f.value == "" {
 			missing = append(missing, "--"+f.name)
 		} else if f.name != "repo" && !filepath.IsAbs(f.value) {
@@ -109,14 +128,46 @@ func (o pushOptions) check() error {
 	return nil
 }
 
+// checkMode refuses flags of the other mode: --pr or --sha without --merge, and --worktree,
+// --permit, a missing --pr or a SHA that is not a full one with it.
+func (o pushOptions) checkMode() error {
+	switch {
+	case !o.merge && (o.pr != 0 || o.sha != ""):
+		return errors.New("push-workflows: --pr and --sha go only with --merge")
+	case !o.merge:
+		return nil
+	case o.worktree != "" || o.permit != "":
+		return errors.New("push-workflows: --merge takes no --worktree and no --permit")
+	case o.pr <= 0:
+		return errors.New("push-workflows: --merge needs --pr")
+	case !fullSHA.MatchString(o.sha):
+		return fmt.Errorf("push-workflows: --sha %q is not a full SHA", o.sha)
+	}
+	return nil
+}
+
+var fullSHA = regexp.MustCompile(`^[0-9a-f]{40}$`)
+
 // pushWorkflowsArgs is the command line tick starts the pusher with.
 func pushWorkflowsArgs(o pushOptions) []string {
 	args := []string{"push-workflows",
-		"--repo", o.repo, "--issue", strconv.Itoa(o.issue), "--worktree", o.worktree,
+		"--repo", o.repo, "--issue", strconv.Itoa(o.issue),
 		"--run-id", strconv.FormatInt(o.runID, 10), "--db", o.db, "--pause-file", o.pauseFile,
 		"--clone-dir", o.cloneDir, "--state-dir", o.stateDir, "--host-toml", o.hostToml}
+	if o.worktree != "" {
+		args = append(args, "--worktree", o.worktree)
+	}
 	if o.permit != "" {
 		args = append(args, "--permit", o.permit)
+	}
+	if o.merge {
+		args = append(args, "--merge")
+	}
+	if o.pr != 0 {
+		args = append(args, "--pr", strconv.Itoa(o.pr))
+	}
+	if o.sha != "" {
+		args = append(args, "--sha", o.sha)
 	}
 	return args
 }
@@ -211,10 +262,13 @@ func pushWorkflows(ctx context.Context, env pushEnv, o pushOptions) error {
 	if req.URL, err = pusher.RemoteURL(repo); err != nil {
 		req.Off = err.Error()
 	}
-	return pusher.Run(ctx, pusher.Deps{
-		DB: st.DB, Forge: rf.Forge, Workplace: te.workplace(cfg, repo, o.stateDir, "", ""),
-		Now: time.Now, ReadToken: pusher.ReadTokenFile,
-	}, req)
+	deps := pusher.Deps{DB: st.DB, Forge: rf.Forge, Now: time.Now, ReadToken: pusher.ReadTokenFile}
+	if o.merge {
+		deps.Merger = mergeClient(repo, env.ForgeURL)
+		return pusher.Merge(ctx, deps, req, o.pr, o.sha)
+	}
+	deps.Workplace = te.workplace(cfg, repo, o.stateDir, "", "")
+	return pusher.Run(ctx, deps, req)
 }
 
 // dispatchRepo is the repo of [dispatch] repos whose forge.repo is slug.
@@ -225,4 +279,16 @@ func dispatchRepo(cfg hostconfig.Dispatch, slug string) (repoconfig.Repo, error)
 		}
 	}
 	return repoconfig.Repo{}, fmt.Errorf("push-workflows: no repo %s in [dispatch] repos", slug)
+}
+
+// mergeClient builds the merge pusher's own GitHub client of repo with the workflow token it is
+// given: apiURL "" is forge.DefaultBaseURL.
+func mergeClient(repo repoconfig.Repo, apiURL string) func(token string) pusher.Merger {
+	return func(token string) pusher.Merger {
+		c := forge.New(repo.Slug, token)
+		if apiURL != "" {
+			c.BaseURL = strings.TrimRight(apiURL, "/")
+		}
+		return c
+	}
 }

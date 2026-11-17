@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -707,5 +708,41 @@ func TestPrepareGitHubIssueOffBoard(t *testing.T) {
 				t.Errorf("Count(IssueItems) = %d, want 1", n)
 			}
 		})
+	}
+}
+
+// Every PR gets the SHA of the newest pusher comment (the build route's handoff or the fix-pr
+// route's note) whose branch is that PR's head: a push of another branch never counts, and a
+// comment of an untrusted author or a run's own handoff (with a session footer) is no push.
+func TestGatherPushedSHAFromPusherComment(t *testing.T) {
+	sha := func(c string) string { return strings.Repeat(c, 40) }
+	base := sha("0")
+	srv, c := client(t)
+	srv.Roles = map[string]string{"owner": "admin", "stranger": "read"}
+	srv.Comments = map[int][]map[string]any{7: {
+		comment(1, "owner", protocol.RenderPushed(7, "/w/a", "issue-7-a", base+".."+sha("1"), "w", "/lighthouse-write-pr 7", "nl")),
+		comment(2, "owner", protocol.RenderPushNote("issue-7-a", sha("1")+".."+sha("2"), "w", "nl")),
+		comment(3, "owner", protocol.RenderPushNote("issue-7-b", base+".."+sha("3"), "w", "en")),
+		comment(4, "stranger", protocol.RenderPushNote("issue-7-a", base+".."+sha("4"), "w", "nl")),
+		comment(5, "owner", protocol.RenderPushed(7, "/w/a", "issue-7-a", base+".."+sha("5"), "w", "/lighthouse-write-pr 7", "nl")+
+			"\n\n"+protocol.Footer("11111111-2222-4333-8444-555555555555")),
+	}}
+	a, b, other := readyPR(12), readyPR(13), readyPR(14)
+	a.HeadRef, b.HeadRef, other.HeadRef = "issue-7-a", "issue-7-b", "issue-7-c"
+	pre := preWithRun(a, b, other)
+	snap, err := Complete(context.Background(), c, pre, NewTrust(c, defaultAllowed), "lh-bot", &bytes.Buffer{}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[int]string{}
+	for _, pr := range snap.Items[0].PRs {
+		got[pr.Number] = pr.PushedSHA
+	}
+	want := map[int]string{12: sha("2"), 13: sha("3"), 14: ""}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("PushedSHA per PR = %v, want %v", got, want)
+	}
+	if pre.Items[0].PRs[0].PushedSHA != "" {
+		t.Error("Complete changed the PRs of Pre")
 	}
 }

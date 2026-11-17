@@ -2105,3 +2105,59 @@ func TestApplyPushSpentTriggerStartsNothing(t *testing.T) {
 			*specs, res.Started, len(h.history(t)), h.poster(applyRepo).rockets)
 	}
 }
+
+func mergePushAction() Action {
+	return Action{
+		Kind: KindPush, Repo: applyRepo, Issue: 7, Trigger: triggerMerge, TriggerKey: "merge:12:" + strings.Repeat("c", 40),
+		Attempt: 1, Command: cmdPush, Branch: "issue-7-x", PR: 12, HeadSHA: strings.Repeat("c", 40), Language: "nl",
+	}
+}
+
+// The merge pusher is started like the pusher: a sessionless push-workflows row on the PR's
+// branch, trigger handoff (the only trigger runs allows besides answer), keyed per PR and head,
+// and a process that gets PATH, HOME, XDG_RUNTIME_DIR and the forge token, never the workflow
+// token or any other variable of tick. It carries the PR and head instead of a worktree.
+func TestApplyMergePushStartsPusherWithScrubbedEnv(t *testing.T) {
+	h, specs := pushHarness(t)
+	a := mergePushAction()
+	res, err := Apply(context.Background(), h.env, []Action{a})
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	rows := h.history(t)
+	if len(rows) != 1 {
+		t.Fatalf("rows = %+v, want one merge row", rows)
+	}
+	r := rows[0]
+	if r.Command != cmdPush || r.SessionID != "" || r.Trigger != "handoff" || r.TriggerKey != a.TriggerKey ||
+		r.Branch != "issue-7-x" || !r.Open {
+		t.Errorf("row = %+v, want an open sessionless push-workflows row keyed %s", r, a.TriggerKey)
+	}
+	if len(*specs) != 1 {
+		t.Fatalf("specs = %+v, want one pusher start", *specs)
+	}
+	s := (*specs)[0]
+	if !s.Merge || s.PR != 12 || s.HeadSHA != a.HeadSHA || s.Worktree != "" || s.Permit != "" || s.RunID != r.ID {
+		t.Errorf("spec = %+v, want the merge of PR 12 on its head for row %d", s, r.ID)
+	}
+	want := []string{"PATH=/usr/bin", "HOME=/home/u", "XDG_RUNTIME_DIR=/run/user/1", "GH_TOKEN=forge-tok"}
+	if !reflect.DeepEqual(s.Env, want) {
+		t.Errorf("pusher env = %q, want exactly %q", s.Env, want)
+	}
+	if res.Started != 1 || len(h.poster(applyRepo).rockets) != 0 {
+		t.Errorf("Started = %d, rockets = %v; want 1 start and no rocket", res.Started, h.poster(applyRepo).rockets)
+	}
+}
+
+// A merge key a row already spent starts no second merge pusher for the same head.
+func TestApplyMergePushSpentKeyStartsNothing(t *testing.T) {
+	h, specs := pushHarness(t)
+	a := mergePushAction()
+	h.seed(t, 7, "", a.TriggerKey, runs.Question)
+	if _, err := Apply(context.Background(), h.env, []Action{a}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if len(*specs) != 0 || len(h.history(t)) != 1 {
+		t.Errorf("specs = %v, rows = %d; want nothing started", *specs, len(h.history(t)))
+	}
+}
