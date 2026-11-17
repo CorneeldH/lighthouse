@@ -8,17 +8,23 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 )
 
-// secretPatterns is SECRET_PATTERN from the paia scripts, one alternative per entry so a finding
-// can name its kind. Origin: CorneeldH/personal_ai_agent, scripts/codebase_map_refresh.py
+type secretPattern struct {
+	kind string
+	re   *regexp.Regexp
+}
+
+// secretPatterns starts with SECRET_PATTERN from the paia scripts, one alternative per entry so a
+// finding can name its kind. Origin: CorneeldH/personal_ai_agent, scripts/codebase_map_refresh.py
 // (line 142, commit c742152f1d267cf256fcc89749603a8a50dac3c4). Python's re.search on the
 // alternation matches a line when any alternative matches it, which is what scanning these in
 // turn does; every alternative is valid RE2 with the same meaning (`.` does not cross a newline).
-var secretPatterns = []struct {
-	kind string
-	re   *regexp.Regexp
-}{
+// The entries after the paia set are additions of lighthouse's own: token shapes the paia set
+// misses (an Anthropic key has hyphens after sk-, fine-grained and app tokens of GitHub).
+var secretPatterns = []secretPattern{
+	// paia SECRET_PATTERN
 	{"secret key (sk-)", regexp.MustCompile(`sk-[a-zA-Z0-9]{20,}`)},
 	{"Stripe live key", regexp.MustCompile(`sk_live_[a-zA-Z0-9]+`)},
 	{"Stripe test key", regexp.MustCompile(`sk_test_[a-zA-Z0-9]+`)},
@@ -29,33 +35,66 @@ var secretPatterns = []struct {
 	{"Slack token", regexp.MustCompile(`xox[baprs]-[a-zA-Z0-9-]+`)},
 	{"private key", regexp.MustCompile(`-----BEGIN.*PRIVATE KEY`)},
 	{"JSON web token", regexp.MustCompile(`eyJ[a-zA-Z0-9_-]+\.eyJ[a-zA-Z0-9_-]+\.`)},
+	// lighthouse additions
+	{"Anthropic key", regexp.MustCompile(`sk-ant-[A-Za-z0-9_-]{20,}`)},
+	{"GitHub fine-grained token", regexp.MustCompile(`github_pat_[A-Za-z0-9_]{20,}`)},
+	{"GitHub token", regexp.MustCompile(`gh[osur]_[A-Za-z0-9]{36,}`)},
 }
 
-// ScanSecrets scans files (relative to dir) for credentials and returns one finding per
-// matching line as "<file>:<line>: <kind>". A finding never contains the matched value, so it
-// can go into a log or a run reason. A file that no longer exists (a deletion) is skipped; a
-// symlink is scanned on its target text, which is what git commits for it; a file that cannot
-// be read is a finding of its own ("<file>: cannot read"), never a silent pass. Unlike the paia
-// script, a file that is not UTF-8 is scanned too.
+// secretKind is the kind of the first pattern that matches b, "" when none does.
+func secretKind(b []byte) string {
+	for _, p := range secretPatterns {
+		if p.re.Match(b) {
+			return p.kind
+		}
+	}
+	return ""
+}
+
+// showPath renders a path for a finding or a run reason: quoted (so a newline cannot forge a log
+// line), or withheld when the name itself matches a secret pattern.
+func showPath(p string) string {
+	if kind := secretKind([]byte(p)); kind != "" {
+		return "(file name withheld: " + kind + ")"
+	}
+	return strconv.Quote(p)
+}
+
+// scanBody returns the findings for one file: one for a name that matches a pattern (without the
+// name), one per matching line of body as "<path>:<line>: <kind>".
+func scanBody(name string, body []byte) []string {
+	var findings []string
+	if kind := secretKind([]byte(name)); kind != "" {
+		findings = append(findings, "file name contains a "+kind)
+	}
+	for i, line := range bytes.Split(body, []byte("\n")) {
+		if kind := secretKind(line); kind != "" {
+			findings = append(findings, fmt.Sprintf("%s:%d: %s", showPath(name), i+1, kind))
+		}
+	}
+	return findings
+}
+
+// ScanSecrets scans files (relative to dir), their names included, for credentials. A finding
+// never contains the matched value, so it can go into a log or a run reason: a content finding
+// is "<quoted file>:<line>: <kind>", a name that matches is reported without the name. A file
+// that no longer exists (a deletion) has only its name scanned; a symlink is scanned on its
+// target text, which is what git commits for it; a file that cannot be read is a finding of its
+// own ("<quoted file>: cannot read"), never a silent pass. Unlike the paia script, a file that
+// is not UTF-8 is scanned too.
 func ScanSecrets(dir string, files []string) []string {
 	var findings []string
 	for _, f := range files {
 		body, err := committedContent(filepath.Join(dir, f))
-		if errors.Is(err, fs.ErrNotExist) {
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+			body = nil
+		case err != nil:
+			findings = append(findings, scanBody(f, nil)...)
+			findings = append(findings, showPath(f)+": cannot read")
 			continue
 		}
-		if err != nil {
-			findings = append(findings, f+": cannot read")
-			continue
-		}
-		for i, line := range bytes.Split(body, []byte("\n")) {
-			for _, p := range secretPatterns {
-				if p.re.Match(line) {
-					findings = append(findings, fmt.Sprintf("%s:%d: %s", f, i+1, p.kind))
-					break
-				}
-			}
-		}
+		findings = append(findings, scanBody(f, body)...)
 	}
 	return findings
 }

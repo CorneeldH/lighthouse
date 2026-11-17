@@ -25,7 +25,10 @@ func TestScanSecrets(t *testing.T) {
 		"pem.txt":    "-----BEGIN OPENSSH PRIVATE KEY-----",
 		"jwt.txt":    "eyJhbGciOi.eyJzdWIiOi.sig",
 		"second.txt": "harmless\nalso harmless\nsk_live_zz",
-		"clean.txt":  "sk-tooshort ghp_" + strings.Repeat("a", 35) + " AKIAlower000000000000 xoxq-1",
+		"ant.txt":    "ANTHROPIC_API_KEY=sk-ant-api03-abcdefghij_KLMNOPQRST",
+		"pat.txt":    "github_pat_11ABCDEFG0123456789_abcdef",
+		"ghs.txt":    "ghs_" + strings.Repeat("c", 36),
+		"clean.txt":  "sk-ant-short github_pat_short ghs_" + strings.Repeat("c", 35) + " sk-tooshort ghp_" + strings.Repeat("a", 35) + " AKIAlower000000000000 xoxq-1",
 	}
 	dir := t.TempDir()
 	var files []string
@@ -42,17 +45,20 @@ func TestScanSecrets(t *testing.T) {
 		got[f] = true
 	}
 	want := map[string]bool{
-		"sk.txt:1: secret key (sk-)":       true,
-		"live.txt:1: Stripe live key":      true,
-		"test.txt:1: Stripe test key":      true,
-		"ghp.txt:1: GitHub personal token": true,
-		"gho.txt:1: GitHub OAuth token":    true,
-		"glpat.txt:1: GitLab token":        true,
-		"aws.txt:1: AWS access key":        true,
-		"slack.txt:1: Slack token":         true,
-		"pem.txt:1: private key":           true,
-		"jwt.txt:1: JSON web token":        true,
-		"second.txt:3: Stripe live key":    true,
+		`"sk.txt":1: secret key (sk-)`:           true,
+		`"live.txt":1: Stripe live key`:          true,
+		`"test.txt":1: Stripe test key`:          true,
+		`"ghp.txt":1: GitHub personal token`:     true,
+		`"gho.txt":1: GitHub OAuth token`:        true,
+		`"glpat.txt":1: GitLab token`:            true,
+		`"aws.txt":1: AWS access key`:            true,
+		`"slack.txt":1: Slack token`:             true,
+		`"pem.txt":1: private key`:               true,
+		`"jwt.txt":1: JSON web token`:            true,
+		`"second.txt":3: Stripe live key`:        true,
+		`"ant.txt":1: Anthropic key`:             true,
+		`"pat.txt":1: GitHub fine-grained token`: true,
+		`"ghs.txt":1: GitHub token`:              true,
 	}
 	// Exact equality also proves no finding echoes a secret value.
 	if !reflect.DeepEqual(got, want) {
@@ -71,8 +77,34 @@ func TestScanSecretsSymlinkAndUnreadable(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := ScanSecrets(dir, []string{"link", "adir"})
-	want := []string{"link:1: Stripe live key", "adir: cannot read"}
+	want := []string{`"link":1: Stripe live key`, `"adir": cannot read`}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("ScanSecrets = %q, want %q", got, want)
+	}
+}
+
+// Classification: pure-logic. Fails if a token in a file name is not reported, if a finding
+// echoes such a name (in the name finding or in a content finding of that file), or if a path
+// with a newline reaches a finding unquoted.
+func TestScanSecretsFileNames(t *testing.T) {
+	dir := t.TempDir()
+	tokenName := "out/ghp_" + strings.Repeat("a", 36) + ".md"
+	if err := os.MkdirAll(filepath.Join(dir, "out"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range map[string]string{tokenName: "x\nsk_live_abc\n", "out/a\nb.md": "sk_live_abc"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got := ScanSecrets(dir, []string{tokenName, "out/a\nb.md", "out/gho_" + strings.Repeat("b", 36) + ".md"})
+	want := []string{
+		"file name contains a GitHub personal token",
+		"(file name withheld: GitHub personal token):2: Stripe live key",
+		`"out/a\nb.md":1: Stripe live key`,
+		"file name contains a GitHub OAuth token",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("ScanSecrets =\n%q\nwant\n%q", got, want)
 	}
 }
