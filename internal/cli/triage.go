@@ -330,12 +330,13 @@ func (r *round) prepare(ctx context.Context, path string, repo repoconfig.Repo, 
 // To do option.
 func boardReady(repo repoconfig.Repo) error {
 	b := repo.Board
+	github := repo.Kind != "gitlab" // a GitLab board has no project or field IDs
 	switch {
 	case b == nil:
 		return errors.New("missing [forge.board]")
-	case b.ProjectID == "":
+	case github && b.ProjectID == "":
 		return errors.New("forge.board.project_id is empty")
-	case b.StatusFieldID == "":
+	case github && b.StatusFieldID == "":
 		return errors.New("forge.board.status_field_id is empty")
 	case b.StatusOptions["To do"] == "":
 		return errors.New("missing forge.board.status_options.To do")

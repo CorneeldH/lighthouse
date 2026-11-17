@@ -18,6 +18,7 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/dispatch"
 	"github.com/CorneeldH/lighthouse/internal/hostconfig"
+	"github.com/CorneeldH/lighthouse/internal/nodeserve"
 	"github.com/CorneeldH/lighthouse/internal/overview"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/server"
@@ -56,7 +57,11 @@ func newServeCommand() *cobra.Command {
 				return err
 			}
 			meta := server.RunsMeta{WorkspaceURL: strings.TrimRight(cfg.Forge.LinkURL(), "/"), Night: cfg.Night}
-			return serve(ctx, addr, dbPath, repos, slugs, meta, overviewInterval, cmd.ErrOrStderr())
+			node, err := nodeRoutes(hostconfig.Path(), cfg, os.Getenv)
+			if err != nil {
+				return err
+			}
+			return serve(ctx, addr, dbPath, repos, slugs, meta, node, overviewInterval, cmd.ErrOrStderr())
 		},
 	}
 	cmd.Flags().StringVar(&addr, "addr", defaultAddr, "address to listen on")
@@ -64,7 +69,7 @@ func newServeCommand() *cobra.Command {
 	cmd.Flags().StringVar(&repo, "repo", os.Getenv("LIGHTHOUSE_FORGE_REPO"),
 		"GitHub repository to read questions and returned issues from, as owner/name (default: $LIGHTHOUSE_FORGE_REPO); the token comes from GH_TOKEN or GITHUB_TOKEN; ignored when host.toml has [dispatch] repos")
 	cmd.Flags().StringVar(&forgeURL, "forge-url", envOr("LIGHTHOUSE_FORGE_URL", ""),
-		"GitHub API base URL for GitHub repos (default: $LIGHTHOUSE_FORGE_URL, else https://api.github.com); the GitHub token is sent there, never a GitLab one")
+		"GitHub API base URL for GitHub repos only (default: $LIGHTHOUSE_FORGE_URL, else https://api.github.com); GitLab repos use their [forge] host, and the GitHub token is sent only to this URL")
 	// Hidden: only the e2e tests shorten it, so Refresh shows a forge change within a second.
 	cmd.Flags().DurationVar(&overviewInterval, "overview-interval", server.RefreshInterval,
 		"time from the start of one forge overview build to the next")
@@ -88,13 +93,18 @@ func envOr(key, def string) string {
 // that does not load is an error; a served repo that does not load, has a duplicate slug or
 // has no forge (no token, an Open error) gets one line on errOut and is skipped.
 func forgeRepos(hostToml, repo, forgeURL string, getenv func(string) string, errOut io.Writer) (sources []overview.RepoSource, slugs []string, err error) {
+	return forgeReposWith(hostToml, repo, newForgeOpener(getenv, forgeURL), errOut)
+}
+
+// forgeReposWith is forgeRepos with the opener given, so a test can point the GitLab repos at
+// a fake through gitlabURL. The GitHub URL is o.githubURL, for GitHub repos only; production leaves gitlabURL empty.
+func forgeReposWith(hostToml, repo string, o *forgeOpener, errOut io.Writer) (sources []overview.RepoSource, slugs []string, err error) {
 	cfg, err := hostconfig.LoadDispatch(hostToml)
 	if err != nil {
 		return nil, nil, err
 	}
 	// serve never asks the token login, so no ctx of a request reaches the opener.
 	ctx := context.Background()
-	o := newForgeOpener(getenv, forgeURL)
 	skip := func(path string, err error) {
 		_, _ = fmt.Fprintf(errOut, "lighthouse: skip %s: %s\n", path, oneLine(err))
 	}
@@ -139,10 +149,39 @@ func forgeRepos(hostToml, repo, forgeURL string, getenv func(string) string, err
 	return sources, slugs, nil
 }
 
+// nodeRoutes returns the node-API handler when the host.toml at hostToml has [node], and nil
+// without it. It fails when the forge token of [dispatch.forge] is missing or empty, so a node
+// never starts serving routes it cannot answer. The state dir is where the tick keeps its own,
+// and the profiles are the names of [dispatch.profiles] on this node.
+func nodeRoutes(hostToml string, cfg hostconfig.Dispatch, getenv func(string) string) (http.Handler, error) {
+	n, present, err := hostconfig.LoadNode(hostToml)
+	if err != nil || !present {
+		return nil, err
+	}
+	if err := hostconfig.ValidateNodeForge(cfg); err != nil {
+		return nil, err
+	}
+	stateDir, err := tickEnv{Getenv: getenv}.stateDir()
+	if err != nil {
+		return nil, err
+	}
+	profiles := make(map[string]bool, len(cfg.Profiles))
+	for name := range cfg.Profiles {
+		profiles[name] = true
+	}
+	return nodeserve.New(nodeserve.Deps{
+		StateDir:  stateDir,
+		TokenFile: n.TokenFile,
+		Forge:     cfg.Forge,
+		Profiles:  profiles,
+	}), nil
+}
+
 // serve opens the store, listens on addr and serves until ctx is done, then shuts down
 // within shutdownTimeout. An empty dbPath means the default path. repos feed the forge endpoints,
-// and slugs pick the rows of the tick state that /api/runs shows.
-func serve(ctx context.Context, addr, dbPath string, repos []overview.RepoSource, slugs []string, meta server.RunsMeta,
+// and slugs pick the rows of the tick state that /api/runs shows. node, when not nil, is the
+// node-API under /api/node/.
+func serve(ctx context.Context, addr, dbPath string, repos []overview.RepoSource, slugs []string, meta server.RunsMeta, node http.Handler,
 	interval time.Duration, errOut io.Writer) error {
 	if dbPath == "" {
 		p, err := store.DefaultPath()
@@ -177,6 +216,7 @@ func serve(ctx context.Context, addr, dbPath string, repos []overview.RepoSource
 			return workplace.Leftovers(ctx, st.DB)
 		},
 		RunsMeta: meta,
+		Node:     node,
 		Runs: func(ctx context.Context) ([]dispatch.RunView, []dispatch.DeferredView, error) {
 			return dispatch.LoadView(ctx, st.DB, slugs)
 		},

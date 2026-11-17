@@ -5,7 +5,6 @@
 //
 //	hooks/hooks.json        hook registrations (plugin format); not copied
 //	hooks/<rel>             .claude/hooks/lighthouse/<rel>
-//	lib/<rel>               .lighthouse/lib/lighthouse_lib/<rel>
 //	scripts/<rel>           .lighthouse/scripts/<rel>
 //	agents/<name>.md        .claude/agents/lighthouse-<name>.md
 //	skills/<name>/<rel>     .claude/skills/lighthouse-<name>/<rel> and
@@ -156,7 +155,9 @@ func IsLighthouseRule(rule string) bool {
 var binaryRule = regexp.MustCompile(`^Bash\(lighthouse [a-z-]+(:\*)?\)$`)
 
 // installDirs are the directories a file unit may live in; agents are files named
-// .claude/agents/lighthouse-<name>.md directly.
+// .claude/agents/lighthouse-<name>.md directly. No package installs into
+// .lighthouse/lib/lighthouse_lib/ any more: it stays only so an older manifest that names
+// a file there still reads, and init --upgrade can remove that file.
 var installDirs = []string{HookDir, ".lighthouse/lib/lighthouse_lib/", ".lighthouse/scripts/"}
 
 // skillDirs are the two harness directories a skill lands in (spec, Indeling). // lighthouse: allow-language — title of a Dutch spec section
@@ -248,7 +249,7 @@ func Load(fsys fs.FS, name, version string) (Pack, error) {
 		top, rest, nested := strings.Cut(rel, "/")
 		if d.IsDir() {
 			switch top {
-			case "hooks", "lib", "scripts", "agents", "instructions", "skills", "templates", "workflows":
+			case "hooks", "scripts", "agents", "instructions", "skills", "templates", "workflows":
 				return nil
 			default:
 				return fmt.Errorf("package %s: unknown directory %s/", name, rel)
@@ -312,8 +313,6 @@ func Load(fsys fs.FS, name, version string) (Pack, error) {
 			}
 			scripts[rest] = true
 			target = HookDir + rest
-		case "lib":
-			target = ".lighthouse/lib/lighthouse_lib/" + rest
 		case "templates":
 			if rest == "labels.md" {
 				p.LabelsTemplate = data

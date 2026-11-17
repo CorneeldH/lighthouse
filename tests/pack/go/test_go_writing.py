@@ -8,7 +8,7 @@ Modelled on `tests/pack/python/test_python_writing.py`; the content is fixed by 
 import re
 from pathlib import Path
 
-from lighthouse_lib import config
+from tests.pack._testkit import config_kinds
 
 SKILL_DIR = Path(__file__).resolve().parents[3] / "pack" / "go" / "skills" / "go-standard"
 CLAUDE = SKILL_DIR / "claude" / "SKILL.md"
@@ -143,8 +143,9 @@ def test_config_keys_are_known():
     for path in VARIANTS:
         keys = re.findall(r"lighthouse config ([a-z_][a-z_.]*)", path.read_text(encoding="utf-8"))
         assert keys, path
+        kinds = config_kinds(keys)
         for key in keys:
-            assert config.is_known_key(key), f"{path}: unknown config key {key}"
+            assert kinds[key] != "unknown", f"{path}: unknown config key {key}"
 
 
 def test_points_to_the_testing_skill():
@@ -154,7 +155,7 @@ def test_points_to_the_testing_skill():
         assert "lighthouse-test-standard" in text, path
         assert "Classify first" in text, path
         assert (
-            "This is a <class> change; the likely regression surface is <observable behaviour>."
+            "Class: <class>. At risk: <the observable behaviour that could change>."
             in text
         ), f"{path}: the classification sentence"
         assert "`pure-logic`" not in text, f"{path}: a class table of its own"

@@ -22,6 +22,10 @@ The scope and roadmap: [lighthouse-scope-design](https://github.com/CorneeldH/pe
 
 `lighthouse report day|week|month` makes the report of a repo over one period: merged PRs, closed issues, open PRs and issues new on the roadmap. A repo turns it on with `[report] enabled = true`: [report](docs/report.md) (in Dutch).
 
+## Upstream pins
+
+`lighthouse pins check` measures what lighthouse took over (skills, files, plugins, tools) against upstream and against what is installed, and a weekly lane turns each lag into a draft PR or an issue: [pins](docs/pins.md) (in Dutch).
+
 ## Running the server
 
 `lighthouse serve` starts the API and web UI on `127.0.0.1:8127`. Install it as a systemd user service: [install](docs/install.md).

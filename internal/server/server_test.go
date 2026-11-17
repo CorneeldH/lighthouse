@@ -213,3 +213,19 @@ func TestEmbeddedSiteHasIndex(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestNodeRoutesAbsentWithoutNode: without [node], /api/node/ is a 404 like any unknown API
+// path; with a node handler the request reaches it.
+func TestNodeRoutesAbsentWithoutNode(t *testing.T) {
+	if rec := get(New(testSite(), testDeps(stubSource{}, nil)), "/api/node/v1/info"); rec.Code != http.StatusNotFound {
+		t.Fatalf("without node: status = %d, want 404", rec.Code)
+	}
+	d := testDeps(stubSource{}, nil)
+	d.Node = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("node:" + r.URL.Path))
+	})
+	rec := get(New(testSite(), d), "/api/node/v1/info")
+	if rec.Code != http.StatusOK || rec.Body.String() != "node:/api/node/v1/info" {
+		t.Fatalf("with node: %d %q, want 200 \"node:/api/node/v1/info\"", rec.Code, rec.Body.String())
+	}
+}

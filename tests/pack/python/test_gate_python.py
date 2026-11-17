@@ -47,8 +47,8 @@ def test_hook_maps_to_test_with_underscores(tree):
     assert select(tree, files) == ["tests/pack/test_commit_test_gate.py"]
 
 
-def test_lib_module_maps_to_test(tree):
-    files = [".lighthouse/lib/lighthouse_lib/deadline.py"]
+def test_installed_script_maps_to_test(tree):
+    files = [".lighthouse/scripts/deadline.py"]
     assert select(tree, files) == ["tests/pack/test_deadline.py"]
 
 

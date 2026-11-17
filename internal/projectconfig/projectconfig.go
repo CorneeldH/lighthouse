@@ -207,7 +207,7 @@ func CoreTables(f Forge, haveRepo bool) []Table {
 var DefaultLabelsPath = path.Join("docs", "developer", "labels.md")
 
 // LabelTables are the tables `init --labels` proposes: [paths] labels and [labels]
-// with the defaults of pack/core/lib/config.py plus the area prefix.
+// with the defaults of the config reader (internal/config) plus the area prefix.
 func LabelTables(path string) []Table {
 	return []Table{
 		{Name: "paths", Keys: []KV{{Key: "labels", Value: strconv.Quote(path)}}},

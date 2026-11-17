@@ -90,14 +90,6 @@
       "href": "reference.html#skills"
     },
     {
-      "id": "lighthouse-lib",
-      "place": ".lighthouse/lib/lighthouse_lib/",
-      "label": "lib/",
-      "dir": ".lighthouse",
-      "kind": "config",
-      "act": "adds"
-    },
-    {
       "id": "lighthouse-scripts",
       "place": ".lighthouse/scripts/",
       "label": "scripts/",

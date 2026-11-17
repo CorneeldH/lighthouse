@@ -1,7 +1,6 @@
-// Package config reads lighthouse.toml and host.toml. It is a faithful port of
-// pack/core/lib/config.py: the same validation, the same messages, the same output. The
-// fixtures under tests/pack/fixtures/config prove it, as pytest runs them against config.py
-// and go test against this package.
+// Package config reads lighthouse.toml and host.toml. It began as a port of the former
+// pack/core/lib/config.py and keeps its validation, messages and output; the fixtures under
+// tests/pack/fixtures/config pin them (parity_test.go).
 //
 // Paths: lighthouse.toml in the repo root (LIGHTHOUSE_REPO_ROOT, else git rev-parse
 // --show-toplevel), overridden by LIGHTHOUSE_TOML; host.toml per hostconfig.Path.
@@ -74,7 +73,7 @@ const (
 )
 
 // schema lists the keys beyond [forge], [forge.board] and [project] language, with their
-// type. The order is config.py's: with two bad keys the first one in this list is reported.
+// type. The order is the former config.py's: with two bad keys the first one in this list is reported.
 var schema = []struct{ key, kind string }{
 	{"forge.default_branch", kStr},
 	{"forge.token_env", kStr},
@@ -221,6 +220,37 @@ func IsKnownKey(key string) bool {
 		}
 	}
 	return false
+}
+
+// KindOf is the schema kind of key ("str", "list[str]", ...), "known" for another key
+// IsKnownKey accepts, and "unknown" for the rest.
+func KindOf(key string) string {
+	for _, s := range schema {
+		if s.key == key {
+			return s.kind
+		}
+	}
+	if IsKnownKey(key) {
+		return "known"
+	}
+	return "unknown"
+}
+
+// SchemaDump is the schema, the defaults and the key lists as one JSON-ready map, from the
+// same variables KindOf and IsKnownKey read.
+func SchemaDump() map[string]any {
+	kinds := make(map[string]string, len(schema))
+	for _, s := range schema {
+		kinds[s.key] = s.kind
+	}
+	return map[string]any{
+		"schema":          kinds,
+		"defaults":        defaults,
+		"base_keys":       baseKeys,
+		"host_keys":       hostKeys,
+		"option_prefixes": optionPrefixes,
+		"languages":       languages,
+	}
 }
 
 func contains(list []string, s string) bool {
@@ -416,9 +446,41 @@ func (c *Config) options(table map[string]any, tablePath []string, where, path s
 	return out, nil
 }
 
+// SharedOption returns the first two names, in sorted order, of options whose values are the
+// same, compared case-insensitively when fold; ok is false when every value is its own. On
+// GitLab such a pair would read back as either name, at random.
+func SharedOption(options map[string]string, fold bool) (first, second string, ok bool) {
+	names := make([]string, 0, len(options))
+	for name := range options {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	seen := make(map[string]string, len(names))
+	for _, name := range names {
+		v := options[name]
+		if fold {
+			v = strings.ToLower(v)
+		}
+		if prev, dup := seen[v]; dup {
+			return prev, name, true
+		}
+		seen[v] = name
+	}
+	return "", "", false
+}
+
 func (c *Config) board(board map[string]any, needsController bool, path string) (*Board, error) {
 	const where = "forge.board."
 	boardPath := []string{"forge", "board"}
+	gitlab := c.Kind == "gitlab"
+	if gitlab {
+		// GitLab's built-in status and scoped labels need no project or field IDs.
+		for _, key := range []string{"project_number", "project_id", "status_field_id", "priority_field_id"} {
+			if _, ok := board[key]; ok {
+				return nil, errf("%s: key %s%s is only valid with kind = 'github'", path, where, key)
+			}
+		}
+	}
 	rawStatus, err := getTable(board, "status_options", where, path)
 	if err != nil {
 		return nil, err
@@ -436,8 +498,11 @@ func (c *Config) board(board map[string]any, needsController bool, path string) 
 			return nil, errf("%s: missing status option %s in forge.board.status_options", path, pyStrRepr(name))
 		}
 	}
+	if a, b, dup := SharedOption(status, true); dup && gitlab {
+		return nil, errf("%s: options %sstatus_options.%s and %sstatus_options.%s map to the same GitLab status %s", path, where, a, where, b, pyStrRepr(status[a]))
+	}
 	b := &Board{StatusOptions: status}
-	if _, ok := board["priority_field_id"]; ok {
+	if _, ok := board["priority_field_id"]; ok && !gitlab {
 		if b.PriorityFieldID, err = getString(board, "priority_field_id", where, path); err != nil {
 			return nil, err
 		}
@@ -448,18 +513,23 @@ func (c *Config) board(board map[string]any, needsController bool, path string) 
 			return nil, errf("%s: key forge.board.priority_options must be a table", path)
 		}
 	}
-	if b.ProjectNumber, err = getInt(board, "project_number", where, path); err != nil {
-		return nil, err
-	}
-	if b.ProjectID, err = getString(board, "project_id", where, path); err != nil {
-		return nil, err
-	}
-	if b.StatusFieldID, err = getString(board, "status_field_id", where, path); err != nil {
-		return nil, err
+	if !gitlab {
+		if b.ProjectNumber, err = getInt(board, "project_number", where, path); err != nil {
+			return nil, err
+		}
+		if b.ProjectID, err = getString(board, "project_id", where, path); err != nil {
+			return nil, err
+		}
+		if b.StatusFieldID, err = getString(board, "status_field_id", where, path); err != nil {
+			return nil, err
+		}
 	}
 	b.PriorityOptions, err = c.options(priority, append(boardPath, "priority_options"), where+"priority_options.", path)
 	if err != nil {
 		return nil, err
+	}
+	if p1, p2, dup := SharedOption(b.PriorityOptions, false); dup && gitlab {
+		return nil, errf("%s: options %spriority_options.%s and %spriority_options.%s map to the same label %s", path, where, p1, where, p2, pyStrRepr(b.PriorityOptions[p1]))
 	}
 	return b, nil
 }

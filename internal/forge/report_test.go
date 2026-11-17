@@ -46,7 +46,7 @@ func answer(total int, incomplete bool, items ...string) func(http.ResponseWrite
 	}
 }
 
-func prItem(n int, mergedAt string) string {
+func reportPRItem(n int, mergedAt string) string {
 	return fmt.Sprintf(`{"number":%d,"title":"PR %d","html_url":"https://github.com/o/r/pull/%d","draft":false,"state":"closed","closed_at":%q,"pull_request":{"merged_at":%q}}`, n, n, n, mergedAt, mergedAt)
 }
 
@@ -96,9 +96,9 @@ func TestClosedIssuesQuery(t *testing.T) {
 
 func TestMergedPRsDropsResultAtUntil(t *testing.T) {
 	s := newSearchServer(t, answer(3, false,
-		prItem(3, "2026-11-16T23:00:00Z"), // exactly until
-		prItem(2, "2026-11-16T10:00:00Z"),
-		prItem(1, "2026-11-15T23:00:00Z"), // exactly since
+		reportPRItem(3, "2026-11-16T23:00:00Z"), // exactly until
+		reportPRItem(2, "2026-11-16T10:00:00Z"),
+		reportPRItem(1, "2026-11-15T23:00:00Z"), // exactly since
 	))
 	got, err := s.c.MergedPRs(context.Background(), periodSince, periodUntil)
 	if err != nil {
@@ -117,11 +117,11 @@ func TestMergedPRsPaginates(t *testing.T) {
 	var srvURL string
 	s := newSearchServer(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("page") == "2" {
-			answer(2, false, prItem(2, "2026-11-16T09:00:00Z"))(w, r)
+			answer(2, false, reportPRItem(2, "2026-11-16T09:00:00Z"))(w, r)
 			return
 		}
 		w.Header().Set("Link", fmt.Sprintf(`<%s/search/issues?q=x&page=2>; rel="next"`, srvURL))
-		answer(2, false, prItem(1, "2026-11-16T08:00:00Z"))(w, r)
+		answer(2, false, reportPRItem(1, "2026-11-16T08:00:00Z"))(w, r)
 	})
 	srvURL = s.c.BaseURL
 	got, err := s.c.MergedPRs(context.Background(), periodSince, periodUntil)
@@ -134,7 +134,7 @@ func TestMergedPRsPaginates(t *testing.T) {
 }
 
 func TestMergedPRsErrorsAbove1000(t *testing.T) {
-	s := newSearchServer(t, answer(1001, false, prItem(1, "2026-11-16T08:00:00Z")))
+	s := newSearchServer(t, answer(1001, false, reportPRItem(1, "2026-11-16T08:00:00Z")))
 	got, err := s.c.MergedPRs(context.Background(), periodSince, periodUntil)
 	if err == nil || !strings.Contains(err.Error(), "1000") || got != nil {
 		t.Errorf("MergedPRs = %+v, %v; want nil and an error naming 1000", got, err)
@@ -142,7 +142,7 @@ func TestMergedPRsErrorsAbove1000(t *testing.T) {
 }
 
 func TestMergedPRsErrorsOnIncomplete(t *testing.T) {
-	s := newSearchServer(t, answer(1, true, prItem(1, "2026-11-16T08:00:00Z")))
+	s := newSearchServer(t, answer(1, true, reportPRItem(1, "2026-11-16T08:00:00Z")))
 	got, err := s.c.MergedPRs(context.Background(), periodSince, periodUntil)
 	if err == nil || !strings.Contains(err.Error(), "incomplete") || got != nil {
 		t.Errorf("MergedPRs = %+v, %v; want nil and an incomplete error", got, err)

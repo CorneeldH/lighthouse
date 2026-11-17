@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -13,6 +15,8 @@ import (
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/forge"
+	"github.com/CorneeldH/lighthouse/internal/forge/forgetest"
+	"github.com/CorneeldH/lighthouse/internal/forge/gitlabtest"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/runs"
@@ -557,6 +561,150 @@ func TestCompleteReadsPRCommentsOnlyWhenMergeReady(t *testing.T) {
 			}
 			if n := srv.Count("/repos/o/r/issues/12/comments"); n != 0 {
 				t.Errorf("PR comment requests = %d, want 0", n)
+			}
+		})
+	}
+}
+
+// prCommentsFail is a forge of the given kind whose Comments fails for any number but the issue.
+type prCommentsFail struct {
+	forge.Forge
+	kind  string
+	issue int
+}
+
+func (f prCommentsFail) Kind() string { return f.kind }
+
+func (f prCommentsFail) Comments(_ context.Context, number int) ([]protocol.Comment, error) {
+	if number != f.issue {
+		return nil, errors.New("comments of a merge request number read the notes of another issue")
+	}
+	return nil, nil
+}
+
+// On GitLab a merge request is no issue, so its number must not be read as an issue's comments.
+func TestCompleteSkipsPRCommentsOnGitLab(t *testing.T) {
+	pre := preWithRun(readyPR(12))
+	f := prCommentsFail{kind: "gitlab", issue: 7}
+	snap, err := Complete(context.Background(), f, pre, NewTrust(f, defaultAllowed), "lh-bot", &bytes.Buffer{}, time.Now())
+	if err != nil {
+		t.Fatalf("Complete on gitlab: %v; want the PR comments skipped", err)
+	}
+	if got := snap.Items[0].PRs[0].Roborev; got != "" {
+		t.Errorf("Roborev = %q, want the zero value", got)
+	}
+	// The same merge-ready PR on GitHub does read them, so the test fails on a dropped Kind check.
+	f.kind = "github"
+	if _, err := Complete(context.Background(), f, pre, NewTrust(f, defaultAllowed), "lh-bot", &bytes.Buffer{}, time.Now()); err == nil {
+		t.Error("Complete on github skipped the PR comments, want them read")
+	}
+}
+
+// gitlabPrepare opens a GitLab client on a fake of project g/p, whose lifecycle holds the
+// statuses of the board, and returns it with the repo that carries that board.
+func gitlabPrepare(t *testing.T) (*gitlabtest.Server, forge.Forge, repoconfig.Repo) {
+	t.Helper()
+	srv := gitlabtest.New(t)
+	srv.Login = "lh-bot"
+	srv.Project = "g/p"
+	srv.SetStatuses("To do", "Done")
+	board := &repoconfig.Board{StatusOptions: map[string]string{"Controller": "To do", "Done": "Done"}}
+	f, err := forge.Open(forge.Config{Kind: "gitlab", Repo: srv.Project, Token: "secret-token", BaseURL: srv.URL(), Board: board})
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	return srv, f, repoconfig.Repo{Slug: "g/p", Kind: "gitlab", Board: board}
+}
+
+func gitlabIssue(n int, state string, updated time.Time) map[string]any {
+	return map[string]any{"iid": n, "id": 9000 + n, "title": "Issue", "state": state,
+		"labels": []string{}, "updated_at": updated.UTC().Format(time.RFC3339)}
+}
+
+// A closed issue whose last update is older than the closed window of BoardItems is not in
+// its list. With an open run it must still reach the tick, as CLOSED, so the run closes.
+func TestPrepareClosesRunOutsideBoardWindow(t *testing.T) {
+	srv, f, repo := gitlabPrepare(t)
+	srv.AddIssue(gitlabIssue(4, "closed", time.Now().Add(-60*24*time.Hour)))
+	srv.AddIssue(gitlabIssue(5, "closed", time.Now().Add(-60*24*time.Hour))) // no open run: stays out
+	open := []runs.OpenRun{{ID: 15, Issue: 4}}
+	pre, err := Prepare(context.Background(), f, repo, open, nil)
+	if err != nil {
+		t.Fatalf("Prepare: %v", err)
+	}
+	if len(pre.Items) != 1 || pre.Items[0].Issue != 4 || pre.Items[0].State != "CLOSED" {
+		t.Fatalf("Items = %+v, want only issue 4, CLOSED", pre.Items)
+	}
+	if _, ok := pre.Statuses[4]; !ok {
+		t.Errorf("Statuses = %v, want issue 4 in it", pre.Statuses)
+	}
+}
+
+// issueItemFake is a forge whose BoardItems is empty and whose IssueItem answers as set.
+type issueItemFake struct {
+	forge.Forge
+	err   error
+	calls int
+}
+
+func (f *issueItemFake) BoardItems(context.Context) ([]forge.BoardItem, error) { return nil, nil }
+
+func (f *issueItemFake) IssueItem(context.Context, int) (forge.BoardItem, bool, error) {
+	f.calls++
+	return forge.BoardItem{}, false, f.err
+}
+
+// An open run on an issue that no longer exists, on any forge, must not fail the tick of the
+// whole repo; any other IssueItem error does.
+func TestPrepareIssueItemErrors(t *testing.T) {
+	open := []runs.OpenRun{{ID: 15, Issue: 99}}
+	f := &issueItemFake{err: fmt.Errorf("forge: issue o/r#99: %w", forge.ErrIssueNotFound)}
+	pre, err := Prepare(context.Background(), f, testRepo, open, nil)
+	if err != nil || len(pre.Items) != 0 || len(pre.OpenRuns) != 1 || f.calls != 1 {
+		t.Errorf("Prepare with a missing issue = %+v, %v, %d calls; want no error, no item and the run kept", pre, err, f.calls)
+	}
+	boom := errors.New("boom")
+	f = &issueItemFake{err: boom}
+	if _, err := Prepare(context.Background(), f, testRepo, open, nil); !errors.Is(err, boom) {
+		t.Errorf("Prepare with a failing IssueItem = %v; want the error", err)
+	}
+}
+
+// On GitHub every issue of a run is on the board, so IssueItem only meets an issue that left
+// it. A deleted or transferred issue (GitHub answers issue null plus NOT_FOUND) and an archived
+// item (BoardItems lists none) both stay out, and the tick goes on, as before IssueItem existed.
+func TestPrepareGitHubIssueOffBoard(t *testing.T) {
+	cases := []struct {
+		name  string
+		setup func(srv *forgetest.Server)
+	}{
+		{"deleted issue", func(*forgetest.Server) {}},
+		{"archived item", func(srv *forgetest.Server) {
+			archived := node("I7", map[string]string{"F_status": "opt-ctrl"}, issue("o/r", 7, nil))
+			archived["isArchived"] = true
+			srv.BoardNodes = append(srv.BoardNodes, archived)
+			srv.Issues = map[int]map[string]any{7: {"number": 7}}
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv, c := client(t)
+			srv.ProjectID = testRepo.Board.ProjectID
+			srv.BoardNodes = []map[string]any{node("I2", map[string]string{"F_status": "opt-ctrl"}, issue("o/r", 2, nil))}
+			tc.setup(srv)
+			open := []runs.OpenRun{{ID: 15, Issue: 7}}
+			pre, err := Prepare(context.Background(), c, testRepo, open, nil)
+			if err != nil {
+				t.Fatalf("Prepare: %v; want the tick to go on", err)
+			}
+			if len(pre.Items) != 1 || pre.Items[0].Issue != 2 {
+				t.Errorf("Items = %+v, want only issue 2", pre.Items)
+			}
+			if _, ok := pre.Statuses[7]; ok {
+				t.Errorf("Statuses = %v, want no issue 7", pre.Statuses)
+			}
+			if n := srv.Count("IssueItems"); n != 1 {
+				t.Errorf("Count(IssueItems) = %d, want 1", n)
 			}
 		})
 	}

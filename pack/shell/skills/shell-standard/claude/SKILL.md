@@ -1,6 +1,8 @@
 ---
 name: lighthouse-shell-standard
 description: Use when writing or changing shell that guards something — hooks in .claude/hooks/, pre-commit, pre-push or CI gate scripts, and the tests that assert on them. Carries the norm "the absence of a signal is treated as a negative result" plus a KPI table with commands that run in this repo. NOTE — for plain Python or pytest this is not the skill; for workflow YAML neither.
+metadata:
+  origin: own
 ---
 
 # Shell that guards something
@@ -21,7 +23,7 @@ What a good test is lives in `lighthouse-test-standard`; this file gives only it
 the classes and their minimal checks are in its section *Classify first*:
 
 ```text
-This is a <class> change; the likely regression surface is <observable behaviour>.
+Class: <class>. At risk: <the observable behaviour that could change>.
 ```
 
 ## The norm

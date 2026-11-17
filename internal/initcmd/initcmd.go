@@ -2,12 +2,14 @@
 // packages, decide per unit against the manifest, show a diff per file, ask, write.
 //
 // Nothing is written without approval or --yes. A locally changed unit refuses the
-// whole run unless --force is given (spec, decision 4).
+// whole run unless --force is given (spec, decision 4); a file under a retired directory
+// stays and is reported instead (see retiredRoots).
 package initcmd
 
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -26,9 +28,11 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/agentsmd"
 	"github.com/CorneeldH/lighthouse/internal/deps"
 	"github.com/CorneeldH/lighthouse/internal/hostconfig"
+	labelsync "github.com/CorneeldH/lighthouse/internal/labels"
 	"github.com/CorneeldH/lighthouse/internal/manifest"
 	"github.com/CorneeldH/lighthouse/internal/orderedjson"
 	"github.com/CorneeldH/lighthouse/internal/packs"
+	"github.com/CorneeldH/lighthouse/internal/pins"
 	"github.com/CorneeldH/lighthouse/internal/projectconfig"
 	"github.com/CorneeldH/lighthouse/internal/reconcile"
 	"github.com/CorneeldH/lighthouse/internal/settings"
@@ -50,11 +54,12 @@ type Options struct {
 	Upgrade, Force, Yes bool
 	Labels              bool                                                      // --labels: propose the label taxonomy file, [labels] and [paths] labels
 	CreateLabels        bool                                                      // --create-labels (with --labels): create the missing labels on the remote
-	SyncLabels          func(root string, create bool, out, errw io.Writer) error // nil runs the installed create_labels.py
+	SyncLabels          func(root string, create bool, out, errw io.Writer) error // nil means labels.Sync
 	AddPacks, DropPacks []string                                                  // --pack and --no-pack (plan M0 (c), design choice 6)
 	ForgeHosts          []string                                                  // --forge-host: hosts of self-hosted GitLab instances
 	Version             string                                                    // "" means version.String()
 	Packs               fs.FS                                                     // holds <name>/...; nil means pack.Files
+	PinEnv              func(root string) pins.Env                                // nil measures with real commands and the real installed_plugins.json
 	Deps                deps.Checker                                              // nil fields mean deps.Default()
 	Lookup              packs.Lookup                                              // config values for workflow placeholders; nil reads the proposed lighthouse.toml with internal/config
 	CountWords          func([]byte) (int, error)                                 // nil means wordcount.Count
@@ -186,7 +191,7 @@ func execute(o Options) error {
 	if !o.Force {
 		var conflicts []reconcile.Change
 		for _, c := range changes {
-			if c.Action == reconcile.Conflict {
+			if c.Action == reconcile.Conflict && !keptRetired(c) {
 				conflicts = append(conflicts, c)
 			}
 		}
@@ -230,16 +235,34 @@ func execute(o Options) error {
 	}
 	warnMissingScripts(o.Err, root)
 	warnIgnored(o.Err, root, desired, plan)
+	reportPins(o, root)
 	if o.Labels {
 		sync := o.SyncLabels
 		if sync == nil {
-			sync = runLabelScript
+			sync = labelsync.Sync
 		}
 		if err := sync(root, o.CreateLabels, o.Out, o.Err); err != nil {
-			_, _ = fmt.Fprintf(o.Err, "warning: labels: %v\n", err)
+			_, _ = fmt.Fprintln(o.Err, "warning: labels: not synchronised")
 		}
 	}
 	return offerHost(o, in)
+}
+
+// reportPins measures the plugin and tool pins of lighthouse.toml against what is installed here
+// and reports every deviation and error on stderr, like a missing dependency: report, never stop,
+// and nothing on stdout or in the exit code. It makes no network call.
+func reportPins(o Options, root string) {
+	env := pins.Env{Root: root}
+	if o.PinEnv != nil {
+		env = o.PinEnv(root)
+	}
+	env.Git, env.Releases = nil, nil
+	drift := pins.Drift(pins.Check(context.Background(), env, pins.CheckOptions{Local: true}))
+	if len(drift) == 0 {
+		return
+	}
+	_, _ = fmt.Fprintln(o.Err, "pins: local installation differs from lighthouse.toml:")
+	pins.RenderText(o.Err, drift)
 }
 
 // reportPacks says which packages this run installs (plan M0 (c), design choice 7): on
@@ -339,6 +362,8 @@ func buildPlan(o Options, root string, names []string, desired []packs.Unit, cha
 			switch {
 			case c.Desired != nil && writes(c.Action, o.Force):
 				p.new, p.mode = c.Desired.Content, c.Desired.Mode
+			case keptRetired(c):
+				_, _ = fmt.Fprintf(o.Err, "warning: %s is changed locally; lighthouse no longer installs it, so it stays as it is and is no longer managed\n", c.Key.Path)
 			case c.Desired == nil && (c.Action == reconcile.Remove || o.Force):
 				p.delete = true
 			case c.Desired != nil && c.Desired.Mode == 0o755 && p.existed:
@@ -692,9 +717,29 @@ func apply(root, rel string, p *planned) error {
 // installRoots are the directories init installs units under. They stay when they empty.
 var installRoots = []string{".claude/skills", ".agents/skills", ".claude/agents", strings.TrimSuffix(packs.HookDir, "/")}
 
+// retiredRoots are directories an older lighthouse installed into and no package installs
+// into now. Removing their last file removes the root too. A locally changed file there
+// is the project's: upgrade leaves it in place and stops tracking it, where elsewhere it
+// refuses the run (spec zonder-python, §8).
+var retiredRoots = []string{".lighthouse/lib"}
+
+// keptRetired says whether c is a locally changed file under a retired root that no
+// package installs any more.
+func keptRetired(c reconcile.Change) bool {
+	if c.Key.Kind != packs.KindFile || c.Desired != nil || c.Action != reconcile.Conflict {
+		return false
+	}
+	for _, r := range retiredRoots {
+		if strings.HasPrefix(c.Key.Path, r+"/") {
+			return true
+		}
+	}
+	return false
+}
+
 // removeEmptyParents removes the directories that removing rel left empty, from its parent
 // upward. It stops at the first directory with an entry in it and at the install root, which
-// stays. A directory whose only entry is a __pycache__ directory counts as empty: Python
+// stays; a retired root goes too. A directory whose only entry is a __pycache__ directory counts as empty: Python
 // writes it next to the hook scripts, and it is no content of ours or the project's. A rel outside every install root is left alone.
 func removeEmptyParents(root, rel string) error {
 	rel = filepath.ToSlash(rel)
@@ -702,6 +747,12 @@ func removeEmptyParents(root, rel string) error {
 	for _, r := range installRoots {
 		if strings.HasPrefix(rel, r+"/") {
 			stop = r
+			break
+		}
+	}
+	for _, r := range retiredRoots {
+		if strings.HasPrefix(rel, r+"/") {
+			stop = path.Dir(r)
 			break
 		}
 	}

@@ -3,6 +3,7 @@ name: lighthouse-audit-worktrees
 description: 'Audits worktrees, local and remote branches, PR state and sessions of this repo in one table with a verdict per row. Use at "which worktrees can go", "clean up the worktrees", "which branches on origin are merged", "was a session still open on a worktree", "where did I leave off on X", "how many worktrees are there", or /lighthouse-audit-worktrees. Reports and delivers commands; changes nothing itself. NOTE — for milestones, labels or the board status this is the wrong skill; for creating a new worktree instead of cleaning one up, use the skill using-git-worktrees.'
 metadata:
   lighthouse: "core@dev"
+  origin: own
 ---
 
 # Audit Worktrees
