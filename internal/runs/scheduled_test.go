@@ -219,7 +219,8 @@ func TestScheduledRunColumns(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenBriefs: %v", err)
 	}
-	if len(briefs) != 2 || briefs[0].Schedule != "reflect" || briefs[0].Issue != 0 || briefs[1].Schedule != "" {
+	if len(briefs) != 2 || briefs[0].Schedule != "reflect" || briefs[0].Issue != 0 || !briefs[0].PRAt.Equal(prAt) ||
+		briefs[1].Schedule != "" || !briefs[1].PRAt.IsZero() {
 		t.Errorf("OpenBriefs = %+v", briefs)
 	}
 

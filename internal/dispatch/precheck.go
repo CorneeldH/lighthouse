@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strconv"
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/hostconfig"
@@ -79,8 +78,9 @@ func SaveTickState(ctx context.Context, db *sql.DB, repo string, s TickState, no
 }
 
 // SaveDeferred replaces the deferred starts of repo in tick_state with defers, in one
-// transaction: key is the issue number, value is {"issue", "title", "reason", "at"}. titles maps
-// an issue number to its title; a missing issue gets an empty one. Without defers it leaves no row.
+// transaction: key is the issue number, or scheduled:<name> for a scheduled run, value is
+// {"issue", "schedule", "title", "reason", "at"} (schedule only for a scheduled run, whose title is
+// empty). titles maps an issue number to its title; a missing issue gets an empty one. Without defers it leaves no row.
 func SaveDeferred(ctx context.Context, db *sql.DB, repo string, defers []Action, titles map[int]string, now time.Time) (err error) {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
@@ -96,18 +96,23 @@ func SaveDeferred(ctx context.Context, db *sql.DB, repo string, defers []Action,
 	}
 	stamp := now.UTC().Format(time.RFC3339)
 	for _, a := range defers {
+		title := titles[a.Issue]
+		if a.Schedule != "" {
+			title = ""
+		}
 		value, merr := json.Marshal(struct {
-			Issue  int    `json:"issue"`
-			Title  string `json:"title"`
-			Reason string `json:"reason"`
-			At     string `json:"at"`
-		}{a.Issue, titles[a.Issue], a.Reason, stamp})
+			Issue    int    `json:"issue"`
+			Schedule string `json:"schedule,omitempty"`
+			Title    string `json:"title"`
+			Reason   string `json:"reason"`
+			At       string `json:"at"`
+		}{a.Issue, a.Schedule, title, a.Reason, stamp})
 		if merr != nil {
 			return fmt.Errorf("dispatch: save deferred %s: %w", repo, merr)
 		}
 		if _, err = tx.ExecContext(ctx, `INSERT INTO tick_state (repo, kind, key, value, updated_at) VALUES (?, 'deferred', ?, ?, ?)
 			ON CONFLICT (repo, kind, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
-			repo, strconv.Itoa(a.Issue), string(value), stamp); err != nil {
+			repo, viewKey(a.Issue, a.Schedule), string(value), stamp); err != nil {
 			return fmt.Errorf("dispatch: save deferred %s: %w", repo, err)
 		}
 	}

@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/CorneeldH/lighthouse/internal/dispatch"
 	"github.com/CorneeldH/lighthouse/internal/forge/forgetest"
 	"github.com/CorneeldH/lighthouse/internal/park"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
@@ -286,6 +287,19 @@ func TestTickScheduledRunWaitsForTheBrake(t *testing.T) {
 			var deferred int
 			if err := conn.QueryRow(`SELECT count(*) FROM tick_state WHERE repo = 'o/r' AND kind = 'deferred' AND key = '0'`).Scan(&deferred); err != nil || deferred != 0 {
 				t.Errorf("deferred rows keyed 0 = %d, %v; want none", deferred, err)
+			}
+			// The queue in /api/runs shows the deferral under the schedule; a pause drops it.
+			_, views, err := dispatch.LoadView(context.Background(), conn, []string{"o/r"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantViews := 1
+			if tc.name == "pause" {
+				wantViews = 0
+			}
+			if len(views) != wantViews || (wantViews == 1 && (views[0].Schedule != "codebase-map" || views[0].Issue != 0 ||
+				!strings.HasPrefix(views[0].Reason, tc.name))) {
+				t.Errorf("deferred views = %+v, want %d of schedule codebase-map deferred on %s", views, wantViews, tc.name)
 			}
 
 			tc.open(t, s)

@@ -152,12 +152,12 @@ func scheduledRemote(env tickEnv, stateDir string, repos map[string]repoconfig.R
 	}
 }
 
-// issueDefers are the defers among actions of repo slug that are about an issue: a scheduled
-// run has no issue number to key a deferred row on.
-func issueDefers(actions []dispatch.Action, slug string) []dispatch.Action {
+// repoDefers are the defers among actions of repo slug, of issues and scheduled runs alike:
+// SaveDeferred keys a scheduled one on its schedule.
+func repoDefers(actions []dispatch.Action, slug string) []dispatch.Action {
 	var out []dispatch.Action
 	for _, a := range actions {
-		if a.Kind == dispatch.KindDefer && a.Repo == slug && a.Schedule == "" {
+		if a.Kind == dispatch.KindDefer && a.Repo == slug {
 			out = append(out, a)
 		}
 	}

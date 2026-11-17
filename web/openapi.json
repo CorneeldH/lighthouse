@@ -36,6 +36,9 @@
           "repo": {
             "type": "string"
           },
+          "schedule": {
+            "type": "string"
+          },
           "title": {
             "type": "string"
           }
@@ -299,10 +302,17 @@
           "phase": {
             "type": "string"
           },
+          "pr_at": {
+            "format": "date-time",
+            "type": "string"
+          },
           "profile": {
             "type": "string"
           },
           "repo": {
+            "type": "string"
+          },
+          "schedule": {
             "type": "string"
           },
           "stand": {

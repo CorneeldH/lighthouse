@@ -20,21 +20,21 @@ type Brief struct {
 	Profile     string
 	WorkspaceID string
 	StartedAt   time.Time
+	PRAt        time.Time // scheduled run: when its PR was opened; zero without one
 }
 
 // briefColumns are the runs columns scanBrief reads, in order.
-const briefColumns = `id, repo, coalesce(issue, 0), coalesce(schedule, ''), command, trigger, profile, workspace_id, started_at`
+const briefColumns = `id, repo, coalesce(issue, 0), coalesce(schedule, ''), command, trigger, profile, workspace_id, started_at, coalesce(pr_at, '')`
 
 func scanBrief(rows interface{ Scan(...any) error }) (Brief, error) {
 	var b Brief
-	var started string
-	if err := rows.Scan(&b.ID, &b.Repo, &b.Issue, &b.Schedule, &b.Command, &b.Trigger, &b.Profile, &b.WorkspaceID, &started); err != nil {
+	var started, prAt string
+	if err := rows.Scan(&b.ID, &b.Repo, &b.Issue, &b.Schedule, &b.Command, &b.Trigger, &b.Profile, &b.WorkspaceID, &started, &prAt); err != nil {
 		return Brief{}, fmt.Errorf("runs: scan brief: %w", err)
 	}
 	var err error
-	b.StartedAt, err = time.Parse(time.RFC3339, started)
-	if err != nil {
-		return Brief{}, fmt.Errorf("runs: run %d started_at %q: %w", b.ID, started, err)
+	if b.StartedAt, b.PRAt, err = parseTimes(b.ID, started, prAt); err != nil {
+		return Brief{}, err
 	}
 	return b, nil
 }

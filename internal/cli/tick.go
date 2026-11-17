@@ -436,7 +436,7 @@ func decideAndApply(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig
 		return false, fmt.Errorf("tick: %w", err)
 	}
 	for _, g := range gathered {
-		defers := issueDefers(actions, g.repo.Slug)
+		defers := repoDefers(actions, g.repo.Slug)
 		titles := make(map[int]string, len(g.in.Snapshot.Items))
 		for _, it := range g.in.Snapshot.Items {
 			titles[it.Issue] = it.Title
