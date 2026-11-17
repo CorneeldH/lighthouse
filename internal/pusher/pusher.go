@@ -82,7 +82,7 @@ func Run(ctx context.Context, deps Deps, req Request) error {
 	if err != nil {
 		return p.ask(ctx, questionInput{red: Red{StepTrigger, err.Error()}})
 	}
-	p.after, p.req.Branch = t.after, t.branch
+	p.after, p.lane, p.req.Branch = t.after, t.lane, t.branch
 	if t.permit != "" {
 		p.sha = t.permit
 	}
@@ -104,6 +104,7 @@ type push struct {
 	deps  Deps
 	req   Request
 	after string
+	lane  string // the lane of the push handoff: the handoff after the push carries it on
 	sha   string // the SHA of the Question: the permitted one, then the one the floor read
 	// tokens are the trimmed token values read so far: scrubbed from every posted text.
 	tokens []string
@@ -316,8 +317,8 @@ func openPushRow(ctx context.Context, db *sql.DB, req Request) (runs.Row, error)
 // target is what the trigger of a push row names: from the handoff for push:<id>, from the
 // pusher Question answered by <id> for pushanswer:<id>.
 type target struct {
-	worktree, branch, after, permit string
-	at                              time.Time // when the handoff or the Question was posted
+	worktree, branch, after, lane, permit string
+	at                                    time.Time // when the handoff or the Question was posted
 }
 
 var shaRe = regexp.MustCompile(`^[0-9a-f]{40}$`)
@@ -343,7 +344,8 @@ func targetOf(comments []protocol.Comment, key string) (target, error) {
 			if ho.Next != Command {
 				return target{}, fmt.Errorf("comment %d hands off to %q, not %s", id, ho.Next, Command)
 			}
-			return checkTarget(target{worktree: ho.Worktree, branch: ho.Branch, after: ho.After, at: parseTime(c.CreatedAt)})
+			return checkTarget(target{worktree: ho.Worktree, branch: ho.Branch, after: ho.After, lane: ho.Lane,
+				at: parseTime(c.CreatedAt)})
 		}
 	case "pushanswer":
 		// The Question the user answered is the last pusher Question before the answer; one after it
@@ -356,7 +358,7 @@ func targetOf(comments []protocol.Comment, key string) (target, error) {
 				}
 				h, _ := protocol.ParseHeader(q.Body)
 				t := target{worktree: h.Fields["worktree"], branch: h.Fields["branch"], after: h.Fields["after"],
-					permit: h.Fields["sha"], at: parseTime(q.CreatedAt)}
+					lane: h.Fields["lane"], permit: h.Fields["sha"], at: parseTime(q.CreatedAt)}
 				if !shaRe.MatchString(t.permit) {
 					return target{}, fmt.Errorf("the answered Question carries no SHA (%q)", t.permit)
 				}

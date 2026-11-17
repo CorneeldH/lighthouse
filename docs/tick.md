@@ -169,13 +169,14 @@ slash-commando's.
   een `reject`, ongeldige JSON, een time-out of een exit ≠ 0 telt als `reject`. Minder dan twee
   reviewers met een eigen onderwerp keurt nooit goed.
 - **De uitkomst.** Op de bouwroute (nog geen PR) post de pusher een 🤖 Handoff zonder sessie met
-  `next: <after>`, `range: <oud>..<nieuw>` en `workflows: <bestanden>`, en de rij sluit als `handoff`:
+  `next: <after>`, de `lane` van de push-handoff (als die er een had), `range: <oud>..<nieuw>` en
+  `workflows: <bestanden>`, en de rij sluit als `handoff`:
   de keten gaat verder met `/lighthouse-write-pr`. Op de fix-pr-route (de PR bestaat) post hij een
   🤖-comment met `branch`, `range` en `workflows`, en de rij blijft open als eigenaar van de PR (zie
   *Afloop van een push-rij*). Rood is een 🤖 Vraag, en de rij sluit als `question`.
 - **De Vraag.** De kop is `🤖 Vraag · push-workflows`, met de velden `sha` (de SHA waarvoor een antwoord
-  toestemming geeft, `none` zolang geen review die SHA liet zien), `worktree`, `branch`, `after` en
-  `step`, en geen sessie-voet. De tekst heeft de rode stap met zijn reden, het oordeel per reviewer,
+  toestemming geeft, `none` zolang geen review die SHA liet zien), `worktree`, `branch`, `after`,
+  `lane` (als de push-handoff er een had) en `step`, en geen sessie-voet. De tekst heeft de rode stap met zijn reden, het oordeel per reviewer,
   de workflow-diff in een codeblok (een hek langer dan elke reeks backticks in de diff) en
   `cd <worktree> && git push -u origin HEAD`. Is de diff te lang voor een comment (65535 tekens),
   dan staat de volledige diff als bijlage in `<state>/push/<owner>/<name>/<sha>-<run>.diff` (mode

@@ -45,14 +45,14 @@ var hintHeadings = map[hint]string{
 	hintMoved: "question_push_moved", hintManual: "question_push_manual",
 }
 
-// questionInput is what a pusher Question says: the red step, the SHA, worktree, branch and after
-// decide reads back for the answer push, the workflow diff and the reviewers' verdict when they
-// exist, and what an answer push does with it. An empty sha is the push's own (push.sha).
+// questionInput is what a pusher Question says: the red step, the SHA, worktree, branch, after and
+// lane decide and the answer push read back, the workflow diff and the reviewers' verdict when
+// they exist, and what an answer push does with it. An empty sha is the push's own (push.sha).
 type questionInput struct {
-	red                                            Red
-	sha, worktree, branch, after, diff, attachment string
-	verdict                                        *Verdict
-	hint                                           hint
+	red                                                  Red
+	sha, worktree, branch, after, lane, diff, attachment string
+	verdict                                              *Verdict
+	hint                                                 hint
 }
 
 // postTimeout bounds posting a comment and closing the row, after the work's deadline
@@ -71,7 +71,7 @@ func (p *push) ask(ctx context.Context, q questionInput) error {
 	if q.sha == "" {
 		q.sha = p.sha
 	}
-	q.worktree, q.branch, q.after = p.req.Worktree, p.req.Branch, p.after
+	q.worktree, q.branch, q.after, q.lane = p.req.Worktree, p.req.Branch, p.after, p.lane
 	if q.hint == hintAuto {
 		q.hint = hintManual
 		if shaRe.MatchString(q.sha) {
@@ -109,7 +109,8 @@ func (p *push) pushed(ctx context.Context, fixPR bool, rangeText string, workflo
 		}
 		return nil
 	}
-	body := protocol.RenderPushed(p.req.Issue, headerValue(p.req.Worktree), headerValue(p.req.Branch), headerValue(rangeText), list, headerValue(p.after), p.req.Language)
+	body := protocol.RenderPushed(p.req.Issue, headerValue(p.req.Worktree), headerValue(p.req.Branch), headerValue(rangeText), list,
+		headerValue(p.after), headerValue(p.lane), p.req.Language)
 	if _, err := p.deps.Forge.CreateComment(ctx, p.req.Issue, body); err != nil {
 		return fmt.Errorf("pusher: post the handoff on #%d: %w", p.req.Issue, err)
 	}
@@ -195,8 +196,8 @@ func cutAtLine(s string, n int) string {
 	return s[:i+1]
 }
 
-// renderQuestion renders the pusher's 🤖 Question. The header holds sha, worktree, branch and after
-// for decide, and has no session footer: that is how decide tells it from a run's question.
+// renderQuestion renders the pusher's 🤖 Question. The header holds sha, worktree, branch, after
+// and lane for decide and the answer push, and has no session footer: that is how decide tells it from a run's question.
 func renderQuestion(q questionInput, language string) string {
 	h := func(key string) string { return protocol.Heading(key, language) }
 	lines := []string{
@@ -207,6 +208,9 @@ func renderQuestion(q questionInput, language string) string {
 	}
 	if q.after != "" {
 		lines = append(lines, "after: "+headerValue(q.after))
+	}
+	if q.lane != "" {
+		lines = append(lines, "lane: "+headerValue(q.lane))
 	}
 	lines = append(lines, "step: "+headerValue(q.red.Step), "",
 		"**"+h("question_push_step")+":** "+prose(q.red.Step, maxProse))

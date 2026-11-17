@@ -1064,3 +1064,51 @@ func TestBranchTextGivesNoSessionFooter(t *testing.T) {
 		}
 	})
 }
+
+// The lane of the push handoff reaches the handoff the pusher hands the chain on with, on the
+// direct push and through a Vraag and its answer push: tick judges the after on that lane, and an
+// after that needs the native lane is no start on another.
+func TestLaneReachesThePushedHandoff(t *testing.T) {
+	laneHandoff := func(r *runFix) {
+		// The fixture's own push row gives way to the one of the handoff with a lane.
+		if err := runs.Release(context.Background(), r.db, r.rowID, runs.StartFailed, "", time.Now()); err != nil {
+			t.Fatal(err)
+		}
+		r.forge.mu.Lock()
+		c := r.forge.add(handoffBody(r.wt, after)+"\nlane: native", time.Now())
+		r.forge.mu.Unlock()
+		r.claim("handoff", "push:"+strconv.FormatInt(c.ID, 10), time.Now())
+	}
+	wantLane := func(t *testing.T, body string) {
+		t.Helper()
+		h, _ := protocol.ParseHeader(body)
+		ho, err := protocol.ParseHandoff(h)
+		if err != nil {
+			t.Fatalf("ParseHandoff: %v\n%s", err, body)
+		}
+		if ho.Lane != "native" || ho.Next != after || ho.When != "now" {
+			t.Errorf("handoff %+v, want lane native, next %q, when now", ho, after)
+		}
+	}
+	t.Run("direct", func(t *testing.T) {
+		r := newRunFix(t, hostconfig.ReviewShadow, nil)
+		laneHandoff(r)
+		r.commitWorkflow("nightly.yml", scheduleWF)
+		r.run()
+		wantLane(t, r.forge.last(t))
+	})
+	t.Run("through the Vraag", func(t *testing.T) {
+		r := newRunFix(t, hostconfig.ReviewShadow, nil)
+		laneHandoff(r)
+		head := r.commitWorkflow("ci.yml", preMergeWF)
+		r.run()
+		h := question(t, r.forge.last(t), head, r.wt)
+		if h.Fields["lane"] != "native" {
+			t.Errorf("Vraag fields %v, want lane native", h.Fields)
+		}
+		r.answerPush()
+		r.req.Permit = head
+		r.run()
+		wantLane(t, r.forge.last(t))
+	})
+}

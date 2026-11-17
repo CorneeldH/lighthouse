@@ -720,11 +720,11 @@ func TestGatherPushedSHAFromPusherComment(t *testing.T) {
 	srv, c := client(t)
 	srv.Roles = map[string]string{"owner": "admin", "stranger": "read"}
 	srv.Comments = map[int][]map[string]any{7: {
-		comment(1, "owner", protocol.RenderPushed(7, "/w/a", "issue-7-a", base+".."+sha("1"), "w", "/lighthouse-write-pr 7", "nl")),
+		comment(1, "owner", protocol.RenderPushed(7, "/w/a", "issue-7-a", base+".."+sha("1"), "w", "/lighthouse-write-pr 7", "", "nl")),
 		comment(2, "owner", protocol.RenderPushNote("issue-7-a", sha("1")+".."+sha("2"), "w", "nl")),
 		comment(3, "owner", protocol.RenderPushNote("issue-7-b", base+".."+sha("3"), "w", "en")),
 		comment(4, "stranger", protocol.RenderPushNote("issue-7-a", base+".."+sha("4"), "w", "nl")),
-		comment(5, "owner", protocol.RenderPushed(7, "/w/a", "issue-7-a", base+".."+sha("5"), "w", "/lighthouse-write-pr 7", "nl")+
+		comment(5, "owner", protocol.RenderPushed(7, "/w/a", "issue-7-a", base+".."+sha("5"), "w", "/lighthouse-write-pr 7", "", "nl")+
 			"\n\n"+protocol.Footer("11111111-2222-4333-8444-555555555555")),
 	}}
 	a, b, other := readyPR(12), readyPR(13), readyPR(14)

@@ -93,9 +93,11 @@ func TestParseHandoffAfterAndRoborev(t *testing.T) {
 	}
 }
 
+// The pushed handoff parses with the lane it carries on, none or native.
 func TestPushedHandoffParses(t *testing.T) {
-	for _, language := range []string{"nl", "en"} {
-		body := RenderPushed(396, "/w/x", "issue-396-x", "aaa..bbb", ".github/workflows/ci.yml", "/lighthouse-write-pr 396", language)
+	for _, tc := range []struct{ language, lane string }{{"nl", ""}, {"en", ""}, {"nl", "native"}} {
+		language := tc.language
+		body := RenderPushed(396, "/w/x", "issue-396-x", "aaa..bbb", ".github/workflows/ci.yml", "/lighthouse-write-pr 396", tc.lane, language)
 		h, ok := ParseHeader(body)
 		if !ok {
 			t.Fatalf("%s: no header in %q", language, body)
@@ -104,7 +106,7 @@ func TestPushedHandoffParses(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", language, err)
 		}
-		want := Handoff{Issue: 396, Worktree: "/w/x", Branch: "issue-396-x", Next: "/lighthouse-write-pr 396", When: "now"}
+		want := Handoff{Issue: 396, Worktree: "/w/x", Branch: "issue-396-x", Next: "/lighthouse-write-pr 396", When: "now", Lane: tc.lane}
 		if got != want {
 			t.Errorf("%s: got %+v, want %+v", language, got, want)
 		}
@@ -133,7 +135,7 @@ func TestParsePushed(t *testing.T) {
 	old := strings.Repeat("a", 40)
 	for _, language := range []string{"nl", "en"} {
 		for name, body := range map[string]string{
-			"build route":  RenderPushed(396, "/w/x", "issue-396-x", old+".."+sha, ".github/workflows/ci.yml", "/lighthouse-write-pr 396", language),
+			"build route":  RenderPushed(396, "/w/x", "issue-396-x", old+".."+sha, ".github/workflows/ci.yml", "/lighthouse-write-pr 396", "", language),
 			"fix-pr route": RenderPushNote("issue-396-x", old+".."+sha, ".github/workflows/ci.yml", language),
 		} {
 			got, ok := ParsePushed(body)
@@ -143,7 +145,7 @@ func TestParsePushed(t *testing.T) {
 		}
 	}
 	for name, body := range map[string]string{
-		"a run's handoff": RenderPushed(396, "/w/x", "issue-396-x", old+".."+sha, "w", "/lighthouse-write-pr 396", "nl") +
+		"a run's handoff": RenderPushed(396, "/w/x", "issue-396-x", old+".."+sha, "w", "/lighthouse-write-pr 396", "", "nl") +
 			"\n\n" + Footer("11111111-2222-4333-8444-555555555555"),
 		"short sha":     RenderPushNote("issue-396-x", old+"..bbbbbbb", "w", "nl"),
 		"no range end":  RenderPushNote("issue-396-x", old, "w", "nl"),
