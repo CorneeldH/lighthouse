@@ -66,6 +66,16 @@ func NewCarrier(l LaunchSpec, stateDir string, now time.Time) (Carrier, error) {
 		return Carrier{}, fmt.Errorf("carrier: state dir %q is not absolute", stateDir)
 	}
 	args := []string{"--permission-mode", "auto", "--strict-mcp-config", pluginCacheReadRule}
+	if len(l.Tools) > 0 {
+		// Evidence (claude --help, installed claude at /usr/bin/claude): "--tools <tools...>
+		// Specify the list of available tools from the built-in set." That removes the other
+		// tools; the help text is the evidence, no authenticated run was made. --allowedTools
+		// is "tools to allow" (pre-approval) and leaves Bash available, so it does not restrict
+		// (spec section 4). The flag is variadic, so the value is joined with "=" and commas.
+		// pluginCacheReadRule stays: it only pre-approves a read, so it grants nothing when Read
+		// is not in Tools, and --tools stays the one thing that decides what exists.
+		args = append(args, "--tools="+strings.Join(l.Tools, ","))
+	}
 	if l.MCPConfig != "" {
 		args = append(args, "--mcp-config", l.MCPConfig)
 	}

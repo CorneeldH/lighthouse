@@ -75,6 +75,9 @@ type LaunchSpec struct {
 	InstructionsFile string
 	// MCPConfig is absolute or empty; it comes from the profile.
 	MCPConfig string
+	// Tools, when not empty, is the list of built-in tools the agent has available
+	// (--tools). Empty means the default tool set.
+	Tools []string
 }
 
 // Workplace is the forge side of a run.
