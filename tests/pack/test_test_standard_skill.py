@@ -19,7 +19,7 @@ def test_description_bounds_tdd_and_the_language_skill():
     assert "lighthouse-go-standard" in FRONT
 
 def test_core_question_and_mutation_check():
-    assert "What production change should make this test fail?" in SKILL
+    assert "Which change to the production code turns this test red?" in SKILL
     assert "## Mutation check" in SKILL
 
 def test_contract_tests_are_a_kind_of_their_own():
@@ -27,7 +27,7 @@ def test_contract_tests_are_a_kind_of_their_own():
     assert "lasting invariant" in SKILL
 
 def test_classification_sentence_and_classes():
-    assert "This is a <class> change; the likely regression surface is <observable behaviour>." in SKILL
+    assert "Class: <class>. At risk: <the observable behaviour that could change>." in SKILL
     for c in CLASSES:
         assert f"`{c}`" in SKILL, c
 
@@ -43,10 +43,9 @@ def test_english():
 def _section(heading):
     return " ".join(SKILL.split(heading, 1)[1].split("\n## ", 1)[0].split())
 
-def test_inspiration_says_where_the_classification_sentence_comes_from():
-    inspiration = _section("## Inspiration")
-    assert "classification sentence" in inspiration
-    assert "forge" in inspiration.split("classification sentence", 1)[1]
+def test_no_inspiration_or_source_section():
+    assert "## Inspiration" not in SKILL
+
 
 def test_red_flags_catch_hidden_tautologies():
     flags = _section("## Red flags")

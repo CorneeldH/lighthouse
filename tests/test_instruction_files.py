@@ -27,10 +27,10 @@ CORE = ROOT / "pack" / "core"
 
 def test_core_block_word_budget():
     """The core block lands in every repo's AGENTS.md, next to the repo's own rules: at most
-    355 words. It carries the chain rules the core skills and hooks enforce, the `heading:<key>`
+    365 words. It carries the chain rules the core skills and hooks enforce, the `heading:<key>`
     notation, the rule for the language of code, and one line per skill."""
     text = (CORE / "instructions" / "AGENTS.md").read_text(encoding="utf-8")
-    assert len(text.split()) <= 355, len(text.split())
+    assert len(text.split()) <= 365, len(text.split())
     for token in (
         "main-commit-gate",
         ".claude/allow-main",

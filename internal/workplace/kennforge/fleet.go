@@ -25,7 +25,9 @@ import (
 //     Its body is fleetHostNotFoundProblem through writeProblemResponse:
 //     {"title":"Not Found","status":404,"detail":"fleet host not found","code":"notFound",
 //     "details":{"hostKey":"node-a"}}. See confirmGone.
-//   - There is no /workspaces/{id}/agent-sessions route on the hub: Sessions reads /runtime.
+//   - There is no /workspaces/{id}/agent-sessions route on the hub, and /runtime has no
+//     session_id: Sessions on a node reads /agent-sessions at the node's forge through serve
+//     (node.go, #327).
 
 // path routes p, an /api/v1 path of forge, to a.Node: unchanged for self.
 func (a *Adapter) path(p string) string {
@@ -114,74 +116,4 @@ func (a *Adapter) notFound(ctx context.Context, err error, what string) error {
 		return fmt.Errorf("%s: %v: %w", what, se, cerr)
 	}
 	return fmt.Errorf("%s: %v: %w", what, se, workplace.ErrGone)
-}
-
-// wireRuntime is the answer of GET /workspaces/{id}/runtime in forge v0.7.0:
-// workspaceRuntimeResponse in internal/server/workspaceapi/types.go, with sessions of type
-// localruntime.SessionInfo (internal/workspace/localruntime/manager.go), handler
-// getWorkspaceRuntime in internal/server/workspaceapi/routes_handlers.go. A session has key,
-// workspace_id, target_key, label, kind (agent, acp, shell, plain_shell, command), status
-// (starting, running, exited, error, parked), display_region, created_at, and exited_at and
-// exit_code once it exited.
-//
-// It has NO session_id: forge's runtime does not know claude's --session-id. Sessions on a
-// node therefore gives every session an empty SessionID, and lighthouse sees its own agent
-// there as foreign until #327. Example:
-//
-//	{"launch_targets":[…],"sessions":[
-//	  {"key":"k1","workspace_id":"ws1","target_key":"software","label":"Claude",
-//	   "kind":"agent","status":"running","display_region":"main",
-//	   "created_at":"2026-11-13T10:00:00Z"}]}
-type wireRuntime struct {
-	Sessions *[]struct {
-		Key    string `json:"key"`
-		Kind   string `json:"kind"`
-		Status string `json:"status"`
-	} `json:"sessions"`
-}
-
-// remoteSessions reads the sessions of a workspace on a.Node from /runtime. A shell is no
-// agent session and is left out. State is the runtime status, with "exited" as "done"; every
-// other status is a process that may still work, never done. A 404 is ErrGone only once
-// confirmGone allows it.
-func (a *Adapter) remoteSessions(ctx context.Context, workspaceID string) ([]workplace.Session, error) {
-	var out wireRuntime
-	if err := a.Client.do(ctx, http.MethodGet, a.path(wsPath(workspaceID))+"/runtime", nil, 0, &out); err != nil {
-		if nf := a.notFound(ctx, err, "read sessions of "+workspaceID); nf != nil {
-			return nil, nf
-		}
-		return nil, fmt.Errorf("read sessions of %s: %w", workspaceID, err)
-	}
-	if out.Sessions == nil {
-		return nil, fmt.Errorf("sessions of %s: answer has no sessions list: %w", workspaceID, workplace.ErrUncertain)
-	}
-	res := make([]workplace.Session, 0, len(*out.Sessions))
-	for _, e := range *out.Sessions {
-		if e.Key == "" || e.Kind == "shell" || e.Kind == "plain_shell" {
-			continue
-		}
-		state := e.Status
-		if state == "exited" {
-			state = "done"
-		}
-		res = append(res, workplace.Session{Key: e.Key, WorkspaceID: workspaceID, State: state})
-	}
-	return res, nil
-}
-
-// remoteStop is Stop and Kill on a.Node: no systemctl and no podman, those run on this host.
-// The sessions must be readable; a failed read is an error, never "gone". Since /runtime has no
-// session_id, no session of the node carries one of sessionIDs: each is already gone for
-// lighthouse, and no DELETE .../runtime/sessions/{key} goes out (spec: until #327 Stop finds
-// nothing to stop on another node).
-func (a *Adapter) remoteStop(ctx context.Context, workspaceID string, sessionIDs []string) error {
-	for _, sid := range sessionIDs {
-		if sid == "" {
-			return fmt.Errorf("stop in workspace %s on node %s: empty session id", workspaceID, a.Node)
-		}
-	}
-	if _, err := a.remoteSessions(ctx, workspaceID); err != nil {
-		return fmt.Errorf("stop in workspace %s on node %s: %w", workspaceID, a.Node, err)
-	}
-	return nil
 }

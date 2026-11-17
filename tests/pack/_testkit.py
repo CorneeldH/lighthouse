@@ -15,7 +15,6 @@ blocks.
 
 import atexit
 import functools
-import importlib.util
 import json
 import os
 import pwd
@@ -26,13 +25,13 @@ import subprocess
 import tempfile
 import time
 import types
+from collections.abc import Iterable
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 PACKS = REPO / "pack"
 CORE = PACKS / "core"
-LIB = CORE / "lib"
 
 # The tree git hashes for an empty repository.
 EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
@@ -374,16 +373,57 @@ def lighthouse_dir() -> Path:
     return out
 
 
+def _lighthouse(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [str(lighthouse_dir() / "lighthouse"), *args],
+        capture_output=True, text=True, check=False, env=env, cwd=REPO,
+    )
+
+
+def config_kinds(keys: Iterable[str]) -> dict[str, str]:
+    """key -> schema kind ("str", "list[str]", ...), "known" or "unknown", from one call of
+    `lighthouse config --kind`."""
+    keys = list(keys)
+    if not keys:
+        return {}
+    result = _lighthouse("config", "--kind", *keys)
+    assert result.returncode == 0, result.stderr
+    return dict(line.split("\t", 1) for line in result.stdout.splitlines())
+
+
+def is_known_key(key: str) -> bool:
+    return config_kinds([key])[key] != "unknown"
+
+
+@functools.cache
+def _schema_dump() -> str:
+    result = _lighthouse("config", "--schema")
+    assert result.returncode == 0, result.stderr
+    return result.stdout
+
+
+def config_schema() -> types.SimpleNamespace:
+    """The schema of `lighthouse config --schema`: SCHEMA (key -> kind), DEFAULTS, BASE_KEYS,
+    HOST_KEYS, OPTION_PREFIXES and LANGUAGES."""
+    data = json.loads(_schema_dump())
+    return types.SimpleNamespace(
+        SCHEMA=data["schema"], DEFAULTS=data["defaults"], BASE_KEYS=data["base_keys"],
+        HOST_KEYS=data["host_keys"], OPTION_PREFIXES=data["option_prefixes"],
+        LANGUAGES=data["languages"], BOOL="bool",
+    )
+
+
 def path_with_lighthouse() -> str:
     """The current PATH with the built `lighthouse` first."""
     return f"{lighthouse_dir()}{os.pathsep}{os.environ.get('PATH', '')}"
 
 
 def lighthouse_stub(body: str) -> str:
-    """A fake `lighthouse` that runs `body` for every call but `turn-roots`, which goes
-    to the binary built from this checkout: a Stop gate needs that one to find its roots."""
+    """A fake `lighthouse` that runs `body` for every call but `turn-roots` and `config`,
+    which go to the binary built from this checkout: a Stop gate needs them to find its roots
+    and to read its configuration."""
     real = shlex.quote(str(lighthouse_dir() / "lighthouse"))
-    return f'#!/bin/bash\n[ "$1" = turn-roots ] && exec {real} "$@"\n{body}'
+    return f'#!/bin/bash\ncase "$1" in turn-roots|config) exec {real} "$@";; esac\n{body}'
 
 
 def guard_env(tmp_path: Path, **extra: str) -> dict[str, str]:
@@ -520,28 +560,11 @@ def classify(rc: int, output: bytes) -> str:
     return "unchecked" if "COULD NOT CHECK" in first else "finding"
 
 
-def load_hook_lib(name: str) -> types.ModuleType:
-    """Load `pack/core/lib/<name>.py` as a module, without running it.
-
-    `importlib.util.spec_from_file_location` gives the module a name of its
-    own (not `__main__`), so an `if __name__ == "__main__":` block in the
-    loaded file does not run: the module reads no stdin on import and needs
-    no argv.
-    """
-    path = LIB / f"{name}.py"
-    spec = importlib.util.spec_from_file_location(name, path)
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
 # Where each directory of `pack/core` lands (`internal/packs`). `skills/`, `agents/`,
 # `templates/`, `workflows/` and the JSON/TOML at the top are not installed here:
 # the hook and script tests do not need them, and `init` itself is tested in Go.
 _INSTALL_DIRS = {
     "hooks": Path(".claude/hooks/lighthouse"),
-    "lib": Path(".lighthouse/lib/lighthouse_lib"),
     "scripts": Path(".lighthouse/scripts"),
 }
 
@@ -621,15 +644,7 @@ def install_pack(name: str, root: Path, toml: str | None = MINIMAL_TOML) -> Path
 INSTALL_ROOT = Path(tempfile.mkdtemp(prefix="lighthouse-core-"))
 atexit.register(shutil.rmtree, INSTALL_ROOT, True)
 GUARD = install_core(INSTALL_ROOT)
-INSTALLED_LIB = INSTALL_ROOT / _INSTALL_DIRS["lib"]
 INSTALLED_HOOKS = INSTALL_ROOT / _INSTALL_DIRS["hooks"]
-
-
-# `lighthouse_lib` as an importable package for in-process tests: a symlink to
-# pack/core/lib in a temporary directory, placed first on sys.path by the conftest.
-IMPORT_ROOT = Path(tempfile.mkdtemp(prefix="lighthouse-lib-"))
-atexit.register(shutil.rmtree, IMPORT_ROOT, True)
-(IMPORT_ROOT / "lighthouse_lib").symlink_to(LIB, target_is_directory=True)
 
 
 DEFAULT_FIXTURE_REPO = "Acme/widgets"

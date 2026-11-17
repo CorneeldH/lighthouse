@@ -34,6 +34,7 @@ type Deps struct {
 	Priorities func(context.Context) ([]priorities.Repo, error) // the prioritisation lists, built apart from Overview
 	Runs       func(context.Context) ([]dispatch.RunView, []dispatch.DeferredView, error)
 	RunsMeta   RunsMeta
+	Node       http.Handler // the node-API under /api/node/; nil without [node] in host.toml
 }
 
 // New returns the handler: the JSON API under /api/ and site as SPA elsewhere, behind the Host check.
@@ -62,6 +63,9 @@ func New(site fs.FS, d Deps) http.Handler {
 	registerRuns(api, d.Runs, d.RunsMeta)
 	registerPriorities(api, d.Priorities, d.Runs)
 
+	if d.Node != nil {
+		mux.Handle("/api/node/", d.Node)
+	}
 	mux.Handle("/api/", http.NotFoundHandler())
 	mux.Handle("/", spa(site))
 	return hostGuard(mux)

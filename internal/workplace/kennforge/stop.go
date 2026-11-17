@@ -37,17 +37,11 @@ func UnitName(prefix, profile, worktreePath string) string {
 
 // Stop ends the processes of a workspace: its systemd unit and, for the software
 // profile, the claude processes of the given sessions in the shared devcontainer.
-// Anything it cannot measure is an error, never "gone". On another node see remoteStop.
+// Anything it cannot measure is an error, never "gone". On another node serve stops them there,
+// with the node's own unit_prefix (see nodeProc).
 func (a *Adapter) Stop(ctx context.Context, workspaceID string, sessionIDs []string) error {
 	if err := notForge(workspaceID); err != nil {
 		return err
-	}
-	if a.Node != "" {
-		return a.remoteStop(ctx, workspaceID, sessionIDs)
-	}
-	// No default: a host without the key must fail, not stop a wrong unit.
-	if a.UnitPrefix == "" {
-		return fmt.Errorf("stop workspace %s: dispatch.forge.unit_prefix is not set", workspaceID)
 	}
 	// An empty id would make pgrep -f and pkill -f match every process in the shared
 	// devcontainer, foreign sessions included.
@@ -55,6 +49,17 @@ func (a *Adapter) Stop(ctx context.Context, workspaceID string, sessionIDs []str
 		if sid == "" {
 			return fmt.Errorf("stop workspace %s: empty session id", workspaceID)
 		}
+	}
+	n, err := a.serve()
+	if err != nil {
+		return err
+	}
+	if n != nil {
+		return a.nodeProc(ctx, "stop", workspaceID, sessionIDs, n.Stop)
+	}
+	// No default: a host without the key must fail, not stop a wrong unit.
+	if a.UnitPrefix == "" {
+		return fmt.Errorf("stop workspace %s: dispatch.forge.unit_prefix is not set", workspaceID)
 	}
 	var w wireWorkspace
 	if err := a.Client.do(ctx, http.MethodGet, a.path(wsPath(workspaceID)), nil, 0, &w); err != nil {
@@ -86,19 +91,24 @@ func (a *Adapter) Stop(ctx context.Context, workspaceID string, sessionIDs []str
 // Kill ends only the claude processes of the given sessions, found by session id, and never the
 // systemd unit: a foreign session in the same worktree runs on. With the software profile they
 // run in the shared devcontainer, with any other profile on this host. A session without a
-// process is no error; anything it cannot measure is. On another node see remoteStop.
+// process is no error; anything it cannot measure is. On another node serve kills them there
+// (see nodeProc).
 func (a *Adapter) Kill(ctx context.Context, workspaceID string, sessionIDs []string) error {
 	if err := notForge(workspaceID); err != nil {
 		return err
-	}
-	if a.Node != "" {
-		return a.remoteStop(ctx, workspaceID, sessionIDs)
 	}
 	// An empty id would make pgrep -f and pkill -f match every process, foreign sessions included.
 	for _, sid := range sessionIDs {
 		if sid == "" {
 			return fmt.Errorf("kill in workspace %s: empty session id", workspaceID)
 		}
+	}
+	n, err := a.serve()
+	if err != nil {
+		return err
+	}
+	if n != nil {
+		return a.nodeProc(ctx, "kill", workspaceID, sessionIDs, n.Kill)
 	}
 	if a.Profile == "software" {
 		return a.killInContainers(ctx, sessionIDs)

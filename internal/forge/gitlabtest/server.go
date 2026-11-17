@@ -44,6 +44,7 @@ type Server struct {
 
 	issues     map[int]map[string]any
 	notes      map[int][]map[string]any
+	mrNotes    map[int][]map[string]any // notes of a merge request; its iid is not an issue iid
 	awards     map[int64][]map[string]any
 	links      map[int][]map[string]any
 	mrs        []map[string]any
@@ -62,7 +63,7 @@ func newServer(t reporter) *Server {
 	t.Helper()
 	s := &Server{
 		t: t, Project: "group/project", nextID: 1000,
-		issues: map[int]map[string]any{}, notes: map[int][]map[string]any{},
+		issues: map[int]map[string]any{}, notes: map[int][]map[string]any{}, mrNotes: map[int][]map[string]any{},
 		awards: map[int64][]map[string]any{}, links: map[int][]map[string]any{}, closedBy: map[string][]map[string]any{},
 		users: map[string]int64{}, members: map[string]int{}, status: map[int]string{},
 	}
@@ -73,9 +74,11 @@ func newServer(t reporter) *Server {
 	s.route(mux, "GET /users", s.userByName)
 	s.route(mux, "GET "+p+"/members/all/{uid}", s.project(s.member))
 	s.route(mux, "GET "+p+"/issues", s.project(s.listIssues))
+	s.route(mux, "POST "+p+"/issues", s.project(s.createIssue))
 	s.route(mux, "GET "+p+"/issues/{iid}", s.project(s.issue))
 	s.route(mux, "GET "+p+"/issues_statistics", s.project(s.issuesStatistics))
 	s.route(mux, "GET "+p+"/milestones", s.project(s.listMilestones))
+	s.route(mux, "PUT "+p+"/issues/{iid}", s.project(s.updateIssue))
 	s.route(mux, "GET "+p+"/issues/{iid}/notes", s.project(s.listNotes))
 	s.route(mux, "POST "+p+"/issues/{iid}/notes", s.project(s.createNote))
 	s.route(mux, "GET "+p+"/issues/{iid}/notes/{nid}/award_emoji", s.project(s.listAwards))
@@ -85,6 +88,10 @@ func newServer(t reporter) *Server {
 	s.route(mux, "GET "+p+"/issues/{iid}/closed_by", s.listClosedBy)
 	s.route(mux, "GET "+p+"/merge_requests", s.project(s.listMRs))
 	s.route(mux, "GET "+p+"/merge_requests/{iid}", s.project(s.getMR))
+	s.route(mux, "POST "+p+"/merge_requests", s.project(s.createMR))
+	s.route(mux, "PUT "+p+"/merge_requests/{iid}", s.project(s.updateMR))
+	s.route(mux, "GET "+p+"/merge_requests/{iid}/notes", s.project(s.listMRNotes))
+	s.route(mux, "POST "+p+"/merge_requests/{iid}/notes", s.project(s.createMRNote))
 	s.route(mux, "PUT "+p+"/merge_requests/{iid}/merge", s.project(s.mergeMR))
 	mux.HandleFunc("POST /api/graphql", s.graphql)
 	mux.HandleFunc("/", s.unexpected)
@@ -607,4 +614,160 @@ func toInt(v any) int {
 		return int(n)
 	}
 	return 0
+}
+
+// now is the timestamp the server gives what it writes.
+func now() string { return time.Now().UTC().Format(time.RFC3339) }
+
+// createIssue opens an issue with the next iid, authored by Login, as POST …/issues does.
+func (s *Server) createIssue(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Title       string `json:"title"`
+		Description string `json:"description"`
+	}
+	if !s.decode(w, r, &body) {
+		return
+	}
+	s.mu.Lock()
+	iid := 1
+	for k := range s.issues {
+		iid = max(iid, k+1)
+	}
+	it := map[string]any{
+		"iid": iid, "id": s.newID(), "title": body.Title, "description": body.Description, "state": "opened",
+		"web_url":    fmt.Sprintf("https://gitlab.example/%s/-/issues/%d", s.Project, iid),
+		"author":     map[string]any{"username": s.Login},
+		"labels":     []any{},
+		"updated_at": now(),
+	}
+	s.issues[iid] = it
+	s.mu.Unlock()
+	writeJSON(w, http.StatusCreated, it)
+}
+
+// updateIssue changes description, title and state_event (close or reopen) of an issue.
+func (s *Server) updateIssue(w http.ResponseWriter, r *http.Request) {
+	iid, _ := strconv.Atoi(r.PathValue("iid"))
+	var body map[string]any
+	if !s.decode(w, r, &body) {
+		return
+	}
+	s.mu.Lock()
+	it, ok := s.issues[iid]
+	if ok {
+		applyUpdate(it, body)
+	}
+	s.mu.Unlock()
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]any{"message": "404 Not found"})
+		return
+	}
+	writeJSON(w, http.StatusOK, it)
+}
+
+// applyUpdate applies the fields of a PUT to an issue or merge request; the caller holds mu.
+func applyUpdate(it, body map[string]any) {
+	for _, k := range []string{"title", "description"} {
+		if v, ok := body[k]; ok {
+			it[k] = v
+		}
+	}
+	switch body["state_event"] {
+	case "close":
+		it["state"], it["closed_at"] = "closed", now()
+	case "reopen":
+		it["state"] = "opened"
+		delete(it, "closed_at")
+	}
+	it["updated_at"] = now()
+}
+
+// createMR opens a merge request with the next iid, authored by Login. A title that starts
+// with "Draft:" makes it a draft, as on GitLab.
+func (s *Server) createMR(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Title        string `json:"title"`
+		Description  string `json:"description"`
+		SourceBranch string `json:"source_branch"`
+		TargetBranch string `json:"target_branch"`
+	}
+	if !s.decode(w, r, &body) {
+		return
+	}
+	s.mu.Lock()
+	iid := 1
+	for _, mr := range s.mrs {
+		iid = max(iid, toInt(mr["iid"])+1)
+	}
+	mr := map[string]any{
+		"iid": iid, "id": s.newID(), "title": body.Title, "description": body.Description, "state": "opened",
+		"draft":         strings.HasPrefix(body.Title, "Draft:"),
+		"source_branch": body.SourceBranch, "target_branch": body.TargetBranch,
+		"web_url":           fmt.Sprintf("https://gitlab.example/%s/-/merge_requests/%d", s.Project, iid),
+		"source_project_id": 1, "target_project_id": 1,
+		"author":                map[string]any{"username": s.Login},
+		"detailed_merge_status": "mergeable",
+	}
+	s.mrs = append(s.mrs, mr)
+	cp := maps.Clone(mr)
+	s.mu.Unlock()
+	writeJSON(w, http.StatusCreated, cp)
+}
+
+// updateMR changes description, title and state_event of a merge request.
+func (s *Server) updateMR(w http.ResponseWriter, r *http.Request) {
+	iid, _ := strconv.Atoi(r.PathValue("iid"))
+	var body map[string]any
+	if !s.decode(w, r, &body) {
+		return
+	}
+	s.mu.Lock()
+	var cp map[string]any
+	for _, mr := range s.mrs {
+		if toInt(mr["iid"]) == iid {
+			applyUpdate(mr, body)
+			cp = maps.Clone(mr)
+		}
+	}
+	s.mu.Unlock()
+	if cp == nil {
+		writeJSON(w, http.StatusNotFound, map[string]any{"message": "404 Not found"})
+		return
+	}
+	writeJSON(w, http.StatusOK, cp)
+}
+
+func (s *Server) listMRNotes(w http.ResponseWriter, r *http.Request) {
+	iid, _ := strconv.Atoi(r.PathValue("iid"))
+	s.mu.Lock()
+	out := toAny(s.mrNotes[iid])
+	s.mu.Unlock()
+	paginate(w, r, out)
+}
+
+func (s *Server) createMRNote(w http.ResponseWriter, r *http.Request) {
+	iid, _ := strconv.Atoi(r.PathValue("iid"))
+	var body struct {
+		Body string `json:"body"`
+	}
+	if !s.decode(w, r, &body) {
+		return
+	}
+	s.mu.Lock()
+	n := map[string]any{"id": s.newID(), "body": body.Body, "system": false, "created_at": now(),
+		"author": map[string]any{"username": s.Login}}
+	s.mrNotes[iid] = append(s.mrNotes[iid], n)
+	s.mu.Unlock()
+	writeJSON(w, http.StatusCreated, n)
+}
+
+// MRNotes lists the bodies of the notes on merge request iid, oldest first.
+func (s *Server) MRNotes(iid int) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []string
+	for _, n := range s.mrNotes[iid] {
+		out = append(out, fmt.Sprint(n["body"]))
+	}
+	return out
 }

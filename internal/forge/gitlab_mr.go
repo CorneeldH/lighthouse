@@ -25,7 +25,10 @@ type glMR struct {
 	DetailedMergeStatus string     `json:"detailed_merge_status"`
 	MergedAt            *time.Time `json:"merged_at"`
 	ClosedAt            *time.Time `json:"closed_at"`
-	HeadPipeline        *struct {
+	Author              *struct {
+		Username string `json:"username"`
+	} `json:"author"`
+	HeadPipeline *struct {
 		Status string `json:"status"`
 	} `json:"head_pipeline"`
 }

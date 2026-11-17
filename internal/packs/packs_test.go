@@ -15,7 +15,6 @@ func basePack() fstest.MapFS {
 	return fstest.MapFS{
 		"hooks/g.sh":             file("#!/bin/bash\necho g\n"),
 		"hooks/hooks.json":       file(hooksJSON),
-		"lib/a.py":               file("x = 1\n"),
 		"scripts/s.py":           file("print(1)\n"),
 		"agents/scout.md":        file("---\nname: scout\n---\nbody\n"),
 		"instructions/AGENTS.md": file("## core\n\n- rule"),
@@ -42,7 +41,6 @@ func TestLoadMapsPaths(t *testing.T) {
 	files := byPath(t, p)
 	for _, want := range []string{
 		".claude/hooks/lighthouse/g.sh",
-		".lighthouse/lib/lighthouse_lib/a.py",
 		".lighthouse/scripts/s.py",
 		".claude/agents/lighthouse-scout.md",
 	} {
@@ -50,7 +48,7 @@ func TestLoadMapsPaths(t *testing.T) {
 			t.Errorf("missing %s; have %v", want, keys(files))
 		}
 	}
-	if len(files) != 4 {
+	if len(files) != 3 {
 		t.Errorf("files = %v", keys(files))
 	}
 	var blocks []Unit
@@ -118,6 +116,7 @@ func TestLoadRejects(t *testing.T) {
 		},
 		"invalid hooks.json":      func(m fstest.MapFS) { m["hooks/hooks.json"] = file("{") },
 		"unknown dir":             func(m fstest.MapFS) { m["weird/x"] = file("x") },
+		"retired lib dir":         func(m fstest.MapFS) { m["lib/a.py"] = file("x = 1\n") },
 		"loose top-level file":    func(m fstest.MapFS) { m["notes.txt"] = file("x") },
 		"invalid requires.toml":   func(m fstest.MapFS) { m["requires.toml"] = file("git = 1\n") },
 		"agent outside .md":       func(m fstest.MapFS) { m["agents/x.txt"] = file("x") },
@@ -163,16 +162,16 @@ func TestLoadRejectsOtherTemplate(t *testing.T) {
 
 func TestLoadSkipsJunk(t *testing.T) {
 	m := basePack()
-	m["lib/__pycache__/a.cpython-314.pyc"] = file("x")
-	m["lib/x.pyc"] = file("x")
+	m["scripts/__pycache__/s.cpython-314.pyc"] = file("x")
+	m["scripts/x.pyc"] = file("x")
 	m[".DS_Store"] = file("x")
-	m["lib/.DS_Store"] = file("x")
+	m["scripts/.DS_Store"] = file("x")
 	m[".pytest_cache/v/x"] = file("x")
 	p, err := Load(m, "core", "dev")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if files := byPath(t, p); len(files) != 4 {
+	if files := byPath(t, p); len(files) != 3 {
 		t.Fatalf("files = %v", keys(files))
 	}
 }
@@ -186,8 +185,8 @@ func TestLoadModes(t *testing.T) {
 	if m := files[".claude/hooks/lighthouse/g.sh"].Mode; m != fs.FileMode(0o755) {
 		t.Errorf("g.sh mode %o", m)
 	}
-	if m := files[".lighthouse/lib/lighthouse_lib/a.py"].Mode; m != fs.FileMode(0o644) {
-		t.Errorf("a.py mode %o", m)
+	if m := files[".lighthouse/scripts/s.py"].Mode; m != fs.FileMode(0o644) {
+		t.Errorf("s.py mode %o", m)
 	}
 }
 

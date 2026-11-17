@@ -79,7 +79,7 @@ func (n planMilestoneNode) milestone() Milestone {
 // Planning reads the open issues of the repo with their milestone and open blockers, and per
 // open milestone the number of open and completed issues. GitHub prices it at about one
 // point per query: pages of issues, pages of milestones, and one counts query per 50
-// milestones; docs/priorities.md holds the measurement. Any truncated connection or stuck
+// milestones; the priorities document holds the measurement. Any truncated connection or stuck
 // cursor is an error, never a partial answer.
 func (c *GitHub) Planning(ctx context.Context) (Planning, error) {
 	if err := c.configured(); err != nil {

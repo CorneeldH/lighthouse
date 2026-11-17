@@ -136,6 +136,11 @@ func (g *gitlabFixture) AddMilestone(_ *testing.T, m forge.Milestone) {
 	g.srv.AddMilestone(map[string]any{"id": m.Number, "iid": m.Number + 10, "title": m.Title, "state": state, "description": m.Description})
 }
 
+// PRCommentBodies reads the notes of the merge request: the issue with that iid is another item.
+func (g *gitlabFixture) PRCommentBodies(_ *testing.T, number int) []string {
+	return g.srv.MRNotes(number)
+}
+
 // ListsClosedIssues: every issue is on the board, closed ones within the closed window.
 func (g *gitlabFixture) ListsClosedIssues() bool { return true }
 
