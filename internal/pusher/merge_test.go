@@ -498,9 +498,9 @@ type movingForge struct {
 
 func (f movingForge) BranchPRs(ctx context.Context, b string) ([]forge.PR, error) {
 	prs, err := f.fakeForge.BranchPRs(ctx, b)
-	f.fakeForge.mu.Lock()
-	defer f.fakeForge.mu.Unlock()
-	if f.fakeForge.reads++; f.fakeForge.reads == 1 && len(prs) > 0 {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.reads++; f.reads == 1 && len(prs) > 0 {
 		first := append([]forge.PR{}, prs...)
 		first[0].HeadSHA = f.head
 		return first, err
