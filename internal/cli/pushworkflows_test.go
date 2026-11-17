@@ -158,3 +158,31 @@ func (n noLookup) Lookup(_ context.Context, id string) (workplace.Workspace, err
 	n.t.Errorf("the pusher looked up workspace %s with the route off", id)
 	return workplace.Workspace{}, workplace.ErrGone
 }
+
+// The pusher reads the forge token only under its own name: [forge] token_env, else GH_TOKEN for
+// GitHub and GITLAB_TOKEN for GitLab, and nothing else besides PATH, HOME and XDG_RUNTIME_DIR.
+func TestPushGetenvReadsOnlyTheForgeTokenOfTheRepo(t *testing.T) {
+	all := map[string]string{"PATH": "p", "HOME": "h", "XDG_RUNTIME_DIR": "r", "GH_TOKEN": "gh", "GITHUB_TOKEN": "github",
+		"GITLAB_TOKEN": "gitlab", "MY_TOKEN": "mine", "XDG_STATE_HOME": "s", "LIGHTHOUSE_CONTROLLER_STATE": "c"}
+	getenv := func(k string) string { return all[k] }
+	cases := []struct {
+		repo repoconfig.Repo
+		want map[string]string
+	}{
+		{repoconfig.Repo{Kind: "github"}, map[string]string{"GH_TOKEN": "gh"}},
+		{repoconfig.Repo{Kind: "gitlab"}, map[string]string{"GITLAB_TOKEN": "gitlab"}},
+		{repoconfig.Repo{Kind: "github", TokenEnv: "MY_TOKEN"}, map[string]string{"MY_TOKEN": "mine"}},
+	}
+	for _, c := range cases {
+		got := pushGetenv(getenv, c.repo)
+		for k := range all {
+			want := c.want[k]
+			if k == "PATH" || k == "HOME" || k == "XDG_RUNTIME_DIR" {
+				want = all[k]
+			}
+			if v := got(k); v != want {
+				t.Errorf("%+v: %s = %q, want %q", c.repo, k, v, want)
+			}
+		}
+	}
+}

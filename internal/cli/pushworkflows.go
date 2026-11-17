@@ -149,12 +149,20 @@ func pusherPaths(getenv func(string) string, dbPath, slug string) (db, pause, cl
 	return db, pause, filepath.Join(base, "lighthouse", "push", owner, name+".git"), nil
 }
 
-// pushGetenv reads only PATH, HOME, XDG_RUNTIME_DIR and the forge token variables: the pusher
+// pushGetenv reads only PATH, HOME, XDG_RUNTIME_DIR and the forge token of repo under its own
+// name: [forge] token_env, else GH_TOKEN for GitHub and GITLAB_TOKEN for GitLab. The pusher
 // takes everything else from its flags.
-func pushGetenv(getenv func(string) string) func(string) string {
+func pushGetenv(getenv func(string) string, repo repoconfig.Repo) func(string) string {
+	token := repo.TokenEnv
+	if token == "" {
+		token = "GH_TOKEN"
+		if repo.Kind == "gitlab" {
+			token = "GITLAB_TOKEN"
+		}
+	}
 	return func(k string) string {
 		switch k {
-		case "PATH", "HOME", "XDG_RUNTIME_DIR", "GH_TOKEN", "GITHUB_TOKEN", "GITLAB_TOKEN":
+		case "PATH", "HOME", "XDG_RUNTIME_DIR", token:
 			return getenv(k)
 		}
 		return ""
@@ -173,13 +181,7 @@ func pushWorkflows(ctx context.Context, env pushEnv, o pushOptions) error {
 	if err != nil {
 		return err
 	}
-	base := pushGetenv(env.Getenv)
-	getenv := func(k string) string {
-		if repo.TokenEnv != "" && k == repo.TokenEnv {
-			return env.Getenv(k)
-		}
-		return base(k)
-	}
+	getenv := pushGetenv(env.Getenv, repo)
 	rf, err := newForgeOpener(getenv, env.ForgeURL).forRepo(ctx, repo)
 	if err != nil {
 		return fmt.Errorf("push-workflows: %w", err)

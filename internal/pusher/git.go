@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 )
@@ -62,11 +63,17 @@ func (e *gitError) Error() string {
 	return fmt.Sprintf("git %s: %s", strings.Join(e.args, " "), reason)
 }
 
+// gitWaitDelay bounds the wait for git's pipes after its kill.
+const gitWaitDelay = 2 * time.Second
+
 // runGit runs `git -C dir <hookGuard> args` with gitEnv(extra...) and returns stdout. The error
 // names the args, so a caller never passes a secret in them.
 func runGit(ctx context.Context, dir string, extra []string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "git", append(append([]string{"-C", dir}, hookGuard...), args...)...)
 	cmd.Env = gitEnv(extra...)
+	// After ctx ends git is killed; a child it left holding the pipes (a transport, a hook) must
+	// not keep the pusher waiting.
+	cmd.WaitDelay = gitWaitDelay
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
@@ -104,7 +111,7 @@ func readSmall(path string) ([]byte, error) {
 	if !info.Mode().IsRegular() {
 		return nil, fmt.Errorf("%s is not a regular file", path)
 	}
-	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK|syscall.O_NOFOLLOW, 0)
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK|oNoFollow, 0)
 	if err != nil {
 		return nil, err
 	}

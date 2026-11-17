@@ -2,13 +2,15 @@ package pusher
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
-	"syscall"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
@@ -26,43 +28,77 @@ const (
 	maxFindings = 20
 )
 
+// hint is what an answer push does with a Question, as the Question tells the user.
+type hint int
+
+const (
+	hintAuto   hint = iota // hintRetry when the Question carries a SHA, else hintManual
+	hintPermit             // the review did not approve, or shadow: push lifts the review
+	hintRetry              // push runs everything but the review again for this SHA
+	hintMoved              // the worktree left the permitted SHA: push gives this Question again
+	hintManual             // the Question carries no SHA: push starts nothing
+)
+
+// hintHeadings are the heading keys of the hints.
+var hintHeadings = map[hint]string{
+	hintPermit: "question_push_permit", hintRetry: "question_push_retry",
+	hintMoved: "question_push_moved", hintManual: "question_push_manual",
+}
+
 // questionInput is what a pusher Question says: the red step, the SHA, worktree, branch and after
 // decide reads back for the answer push, the workflow diff and the reviewers' verdict when they
-// exist, and whether the answer push lifts this red (a review that did not approve, or shadow).
+// exist, and what an answer push does with it. An empty sha is the push's own (push.sha).
 type questionInput struct {
 	red                                            Red
 	sha, worktree, branch, after, diff, attachment string
 	verdict                                        *Verdict
-	permit                                         bool
+	hint                                           hint
 }
+
+// postTimeout bounds posting a comment and closing the row, apart from the work's deadline.
+const postTimeout = 2 * time.Minute
 
 // ask posts the Question for q and closes the push row as question. The text is scrubbed of every
 // token the pusher holds, and cut under maxComment with the full diff as an attachment.
 func (p *push) ask(ctx context.Context, q questionInput) error {
-	q.sha, q.worktree, q.branch, q.after = p.sha, p.req.Worktree, p.req.Branch, p.after
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), postTimeout)
+	defer cancel()
+	if q.sha == "" {
+		q.sha = p.sha
+	}
+	q.worktree, q.branch, q.after = p.req.Worktree, p.req.Branch, p.after
+	if q.hint == hintAuto {
+		q.hint = hintManual
+		if shaRe.MatchString(q.sha) {
+			q.hint = hintRetry
+		}
+	}
 	scrub := scrubList(p.scrub())
 	q.red.Why = scrubText(q.red.Why, scrub)
 	q.diff = scrubText(q.diff, scrub)
-	body := fitQuestion(q, p.req.Language, scrub, p.attach)
+	body := fitQuestion(q, p.req.Language, scrub, func(diff string) (string, error) { return p.attach(q.sha, diff) })
 	if _, err := p.deps.Forge.CreateComment(ctx, p.req.Issue, body); err != nil {
 		return fmt.Errorf("pusher: post the Question on #%d: %w", p.req.Issue, err)
 	}
 	return runs.Release(ctx, p.deps.DB, p.req.RunID, runs.Question, "push: "+q.red.Step, p.deps.Now())
 }
 
-// pushed posts the outcome of a push. On the fix-pr route the row records the pushed SHA and
-// stays open as the owner of the PR, and a note names the range and the workflows. On the build
-// route a 🤖 Handoff hands the chain to after and the row closes as handoff.
+// pushed posts the outcome of a push. The row first records the pushed SHA, so a post that fails
+// leaves a row decide knows has pushed. On the fix-pr route the row stays open as the owner of the
+// PR, and a note names the range and the workflows. On the build route a 🤖 Handoff hands the
+// chain to after and the row closes as handoff.
 func (p *push) pushed(ctx context.Context, fixPR bool, rangeText string, workflows []string) error {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), postTimeout)
+	defer cancel()
 	quoted := make([]string, len(workflows))
 	for i, w := range workflows {
 		quoted[i] = headerValue(w)
 	}
 	list := strings.Join(quoted, ", ")
+	if err := runs.SetPushed(ctx, p.deps.DB, p.req.RunID, p.sha); err != nil {
+		return err
+	}
 	if fixPR {
-		if err := runs.SetPushed(ctx, p.deps.DB, p.req.RunID, p.sha); err != nil {
-			return err
-		}
 		if _, err := p.deps.Forge.CreateComment(ctx, p.req.Issue, protocol.RenderPushNote(headerValue(rangeText), list, p.req.Language)); err != nil {
 			return fmt.Errorf("pusher: post the push note on #%d: %w", p.req.Issue, err)
 		}
@@ -75,19 +111,32 @@ func (p *push) pushed(ctx context.Context, fixPR bool, rangeText string, workflo
 	return runs.Release(ctx, p.deps.DB, p.req.RunID, runs.Handoff, "", p.deps.Now())
 }
 
-// attach writes the full diff next to the roborev records in the worktree's git-dir, so the
-// worktree stays clean for the floor of a permit. It never follows a symlink at the file.
-func (p *push) attach(diff string) (string, error) {
-	records, err := recordDir(p.req.Worktree)
-	if err != nil {
+// attach writes the full diff into the pusher's own state dir, at
+// <state>/push/<owner>/<name>/<sha>-<run>.diff: never in the run's worktree or git-dir, whose
+// paths the run controls. No directory below the state dir may be a symlink, and the file is new.
+func (p *push) attach(sha, diff string) (string, error) {
+	owner, name, ok := strings.Cut(p.req.Repo, "/")
+	if !filepath.IsAbs(p.req.StateDir) || !ok || !slugPart(owner) || !slugPart(name) || !shaRe.MatchString(sha) && sha != noSHA {
+		return "", fmt.Errorf("state dir %q, repo %q or sha %q is not usable for an attachment", p.req.StateDir, p.req.Repo, sha)
+	}
+	if err := os.MkdirAll(p.req.StateDir, 0o700); err != nil {
 		return "", err
 	}
-	dir := filepath.Join(filepath.Dir(records), "push")
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return "", err
+	dir := p.req.StateDir
+	for _, part := range []string{"push", owner, name} {
+		dir = filepath.Join(dir, part)
+		if err := os.Mkdir(dir, 0o700); err != nil && !errors.Is(err, fs.ErrExist) {
+			return "", err
+		}
+		if info, err := os.Lstat(dir); err != nil || !info.IsDir() {
+			return "", fmt.Errorf("%s is not a directory of the pusher", dir)
+		}
 	}
-	path := filepath.Join(dir, p.sha+"-"+strconv.FormatInt(p.req.RunID, 10)+".diff")
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC|syscall.O_NOFOLLOW, 0o600)
+	path := filepath.Join(dir, sha+"-"+strconv.FormatInt(p.req.RunID, 10)+".diff")
+	if strings.ContainsRune(path, '`') || strings.ContainsFunc(path, unicode.IsControl) {
+		return "", fmt.Errorf("attachment path %q cannot be named in a comment", path)
+	}
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL|oNoFollow, 0o600)
 	if err != nil {
 		return "", err
 	}
@@ -168,10 +217,8 @@ func renderQuestion(q questionInput, language string) string {
 	if q.attachment != "" {
 		lines = append(lines, "", h("question_push_attachment")+" `"+q.attachment+"`.")
 	}
-	if q.permit {
-		lines = append(lines, "", h("question_push_permit"))
-	} else {
-		lines = append(lines, "", h("question_push_floor"))
+	if key, ok := hintHeadings[q.hint]; ok {
+		lines = append(lines, "", h(key))
 	}
 	lines = append(lines, "", "**"+h("question_push_command")+":**")
 	lines = append(lines, fenced("bash", "cd "+shellWord(q.worktree)+" && git push -u origin HEAD")...)

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/forge"
@@ -131,10 +133,24 @@ func (p *push) route(ctx context.Context) (fixPR bool, red *Red) {
 	return false, nil
 }
 
+// workShare is the part of [dispatch.workflow_push] timeout the work under the clone lock may
+// take: the lock wait, the floor, the review and the push. The rest is for the comment and the
+// close, so the pusher ends before tick hands its row back.
+const workShare = 0.9
+
 // pushUnderLock holds the clone lock from the floor to the push, so no second pusher refreshes
-// the clone in between, and removes this run's ref from the clone before it lets go.
+// the clone in between, and removes this run's ref from the clone before it lets go. All of it
+// runs under one deadline, so a hung fetch or push cannot hold the lock past the budget.
+//
+// The sha of a Question is the SHA an answer push permits, and a permit skips the review. So a
+// Question carries the SHA the floor read only once that SHA needs no review from this run: it
+// is post-merge, permitted, approved, or the Question itself shows the reviewers' verdict. Before
+// that it carries the permit it ran under, or none.
 func (p *push) pushUnderLock(ctx context.Context, fixPR bool) error {
-	lockWait, _ := Budgets(p.req.Config.Timeout)
+	timeout := p.req.Config.Timeout
+	ctx, cancelWork := context.WithTimeout(ctx, time.Duration(float64(timeout)*workShare))
+	defer cancelWork()
+	lockWait, _ := Budgets(timeout)
 	lctx, cancel := context.WithTimeout(ctx, lockWait)
 	lock, red := LockClone(lctx, p.req.CloneDir)
 	cancel()
@@ -148,10 +164,11 @@ func (p *push) pushUnderLock(ctx context.Context, fixPR bool) error {
 	if red != nil {
 		return p.ask(ctx, questionInput{red: *red})
 	}
-	p.sha = c.SHA
 	if p.req.Permit != "" && c.SHA != p.req.Permit {
+		// The Question keeps the permitted SHA: the moved one was never shown to anyone, and an
+		// answer push to this Question must give this Question again, never a permit for it.
 		return p.ask(ctx, questionInput{red: Red{StepPermit,
-			fmt.Sprintf("the worktree moved from the permitted %s to %s", p.req.Permit, c.SHA)}})
+			fmt.Sprintf("the worktree moved from the permitted %s to %s", p.req.Permit, c.SHA)}, hint: hintMoved})
 	}
 	diff, err := workflowDiff(ctx, p.req, c)
 	if err != nil {
@@ -172,11 +189,14 @@ func (p *push) pushUnderLock(ctx context.Context, fixPR bool) error {
 		switch {
 		case p.req.Config.Review != hostconfig.ReviewEnforce:
 			return p.ask(ctx, questionInput{red: Red{StepReview, protocol.Heading("question_push_shadow", p.req.Language)},
-				diff: diff, verdict: &v, permit: true})
+				sha: c.SHA, diff: diff, verdict: &v, hint: hintPermit})
 		case !v.Approve:
-			return p.ask(ctx, questionInput{red: Red{StepReview, "not every reviewer approves"}, diff: diff, verdict: &v, permit: true})
+			return p.ask(ctx, questionInput{red: Red{StepReview, "not every reviewer approves"},
+				sha: c.SHA, diff: diff, verdict: &v, hint: hintPermit})
 		}
 	}
+	// Post-merge, permitted or approved: from here an answer push may permit exactly this SHA.
+	p.sha = c.SHA
 	token, err := p.deps.ReadToken(p.req.Config.TokenFile)
 	if err != nil {
 		return p.ask(ctx, questionInput{red: Red{StepToken, err.Error()}, diff: diff})
@@ -186,8 +206,12 @@ func (p *push) pushUnderLock(ctx context.Context, fixPR bool) error {
 	if err != nil {
 		return p.ask(ctx, questionInput{red: Red{StepPush, "COULD NOT CHECK: " + err.Error()}, diff: diff})
 	}
-	if err := pushSHA(ctx, p.req, c.SHA, token); err != nil {
-		return p.ask(ctx, questionInput{red: Red{StepPush, err.Error()}, diff: diff})
+	if refused, err := pushSHA(ctx, p.req, c.SHA, token); err != nil {
+		why := err.Error()
+		if refused {
+			why = protocol.Heading("question_push_token_refused", p.req.Language) + "\n" + why
+		}
+		return p.ask(ctx, questionInput{red: Red{StepPush, why}, diff: diff})
 	}
 	return p.pushed(ctx, fixPR, old+".."+c.SHA, workflowsOf(c.Files))
 }
@@ -349,41 +373,56 @@ func oldEnd(ctx context.Context, req Request, c Checked) (string, error) {
 
 // pushSHA pushes sha to the branch on the forge URL from the clone. The workflow token goes
 // into the Cmd.Env of this one command, as an http.extraHeader through GIT_CONFIG_COUNT, never
-// into argv. A refusal names git's reason without the lines that talk of a token scope: the
-// pusher never advises widening one.
-func pushSHA(ctx context.Context, req Request, sha, token string) error {
+// into argv. refused reports GitHub's refusal of the token for a workflow change; that line of
+// git's output is left out of the error, because its wording advises a wider token, and the
+// caller says the same thing neutrally. Every other line stays.
+func pushSHA(ctx context.Context, req Request, sha, token string) (refused bool, err error) {
 	if req.URL == "" || strings.HasPrefix(req.URL, "-") || !shaRe.MatchString(sha) || !branchName(req.Branch) {
-		return fmt.Errorf("COULD NOT CHECK: URL %q, SHA %q or branch %q is not usable", req.URL, sha, req.Branch)
+		return false, fmt.Errorf("COULD NOT CHECK: URL %q, SHA %q or branch %q is not usable", req.URL, sha, req.Branch)
 	}
-	_, err := runGit(ctx, req.CloneDir, tokenEnv(token), "push", "-q", "--no-verify", req.URL, sha+":refs/heads/"+req.Branch)
+	_, err = runGit(ctx, req.CloneDir, tokenEnv(token), "push", "-q", "--no-verify", req.URL, sha+":refs/heads/"+req.Branch)
 	var ge *gitError
 	if errors.As(err, &ge) {
-		return fmt.Errorf("git push to %s refused (exit %d): %s", req.URL, ge.code, withoutScope(ge.stderr))
+		rest, refused := withoutRefusal(ge.stderr)
+		return refused, fmt.Errorf("git push to %s refused (exit %d): %s", req.URL, ge.code, rest)
 	}
-	return err
+	if err != nil && ctx.Err() != nil {
+		return false, fmt.Errorf("git push to %s did not end within the budget: %w", req.URL, ctx.Err())
+	}
+	return false, err
 }
 
-var scopeLine = regexp.MustCompile(`(?i)scope`)
+// workflowRefusal is GitHub's refusal of a token that may not change workflows, for a personal
+// access token, an OAuth app or a GitHub app alike.
+var workflowRefusal = regexp.MustCompile(`(?i)refusing to allow .* to create or update workflow`)
 
-// withoutScope drops the lines of a forge message that talk about a token scope.
-func withoutScope(text string) string {
+// withoutRefusal drops the lines of GitHub's workflow refusal from git's output.
+func withoutRefusal(text string) (rest string, refused bool) {
 	var keep []string
 	for _, line := range strings.Split(text, "\n") {
-		if !scopeLine.MatchString(line) {
-			keep = append(keep, line)
+		if workflowRefusal.MatchString(line) {
+			refused = true
+			continue
 		}
+		keep = append(keep, line)
 	}
-	return strings.TrimSpace(strings.Join(keep, "\n"))
+	return strings.TrimSpace(strings.Join(keep, "\n")), refused
 }
 
-// ReadTokenFile reads the workflow token: a regular file, not a symlink, of mode 0600 exactly,
-// holding one token. The error names the file and its mode, never the content.
+// ReadTokenFile reads the workflow token: a regular file of this user, not a symlink, of mode
+// 0600 exactly, holding one token. It checks the open file itself, so a swap after the check
+// changes nothing. The error names the file and its mode, never the content.
 func ReadTokenFile(path string) (string, error) {
-	info, err := os.Lstat(path)
+	f, err := os.OpenFile(path, os.O_RDONLY|oNoFollow|syscall.O_NONBLOCK, 0)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return "", fmt.Errorf("token file %s does not exist", path)
 		}
+		return "", fmt.Errorf("token file %s cannot be opened (a symlink is refused): %w", path, err)
+	}
+	defer func() { _ = f.Close() }()
+	info, err := f.Stat()
+	if err != nil {
 		return "", err
 	}
 	if !info.Mode().IsRegular() {
@@ -392,9 +431,15 @@ func ReadTokenFile(path string) (string, error) {
 	if perm := info.Mode().Perm(); perm != 0o600 {
 		return "", fmt.Errorf("token file %s has mode %#o, it must have mode 0600", path, perm)
 	}
-	text, err := readSmall(path)
+	if !ownedByMe(info) {
+		return "", fmt.Errorf("token file %s is not owned by this user", path)
+	}
+	text, err := io.ReadAll(io.LimitReader(f, maxRead+1))
 	if err != nil {
 		return "", err
+	}
+	if len(text) > maxRead {
+		return "", fmt.Errorf("token file %s is larger than %d bytes", path, maxRead)
 	}
 	token := strings.TrimSpace(string(text))
 	if token == "" || strings.ContainsFunc(token, func(r rune) bool { return r < 0x21 || r == 0x7f }) {

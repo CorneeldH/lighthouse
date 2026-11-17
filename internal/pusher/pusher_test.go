@@ -29,6 +29,8 @@ type fakeForge struct {
 	comments []protocol.Comment
 	prs      []forge.PR
 	posted   []string
+	// refuse makes CreateComment fail for a body it matches.
+	refuse func(body string) bool
 }
 
 func (f *fakeForge) Comments(_ context.Context, n int) ([]protocol.Comment, error) {
@@ -45,6 +47,9 @@ func (f *fakeForge) CreateComment(_ context.Context, n int, body string) (protoc
 	defer f.mu.Unlock()
 	if n != 1 {
 		return protocol.Comment{}, errors.New("fake forge: only issue 1")
+	}
+	if f.refuse != nil && f.refuse(body) {
+		return protocol.Comment{}, errors.New("fake forge: post refused")
 	}
 	c := f.add(body, time.Now())
 	f.posted = append(f.posted, body)
@@ -249,7 +254,7 @@ func wantClosed(t *testing.T, row runs.Row, o runs.Outcome) {
 }
 
 func permitLine() string { return protocol.Heading("question_push_permit", "nl") }
-func floorLine() string  { return protocol.Heading("question_push_floor", "nl") }
+func retryLine() string  { return protocol.Heading("question_push_retry", "nl") }
 
 const preMergeWF = "on: pull_request\npermissions:\n  contents: read\njobs:\n  a:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@" + pin + "\n"
 
@@ -343,8 +348,8 @@ func TestRejectAsks(t *testing.T) {
 			t.Errorf("reject Vraag lacks %q:\n%s", want, body)
 		}
 	}
-	if strings.Contains(body, floorLine()) {
-		t.Errorf("a review reject says the floor is red:\n%s", body)
+	if strings.Contains(body, retryLine()) {
+		t.Errorf("a review reject gives the retry text, not the permit:\n%s", body)
 	}
 	wantClosed(t, r.row(), runs.Question)
 }
@@ -389,9 +394,13 @@ func TestPermitPushesSameSHAOnly(t *testing.T) {
 			t.Fatalf("pushed %s, but the permit was for %s", got, head)
 		}
 		body := r.forge.last(t)
-		question(t, body, moved, r.wt)
-		if !strings.Contains(body, StepPermit) {
-			t.Errorf("Vraag does not name the permit step:\n%s", body)
+		// The Vraag keeps the permitted SHA: the moved one was never shown with a review.
+		question(t, body, head, r.wt)
+		if !strings.Contains(body, StepPermit) || !strings.Contains(body, moved) {
+			t.Errorf("Vraag does not name the permit step and the moved SHA:\n%s", body)
+		}
+		if !strings.Contains(body, protocol.Heading("question_push_moved", "nl")) || strings.Contains(body, permitLine()) {
+			t.Errorf("Vraag does not say an answer push gives it again:\n%s", body)
 		}
 		wantClosed(t, r.row(), runs.Question)
 	})
@@ -415,6 +424,42 @@ func TestPermitPushesSameSHAOnly(t *testing.T) {
 	})
 }
 
+// The full chain of answers on a moved worktree: each answer push permits only the SHA of the
+// Vraag it answers, as decide reads it, and the moved SHA is never pushed nor reviewed.
+func TestAnswerToMovedQuestionDoesNotPush(t *testing.T) {
+	r := newRunFix(t, hostconfig.ReviewShadow, nil)
+	head := r.commitWorkflow("ci.yml", preMergeWF)
+	r.run()
+	r.commitWorkflow("ci.yml", preMergeWF+"# moved, never reviewed\n")
+	r.cfg.Reviewers = []hostconfig.Reviewer{rv("supply-chain", "never"), rv("injection", "never")}
+	for i := 0; i < 3; i++ {
+		h, _ := protocol.ParseHeader(r.forge.last(t))
+		r.answerPush()
+		r.req.Permit = h.Fields["sha"]
+		r.run()
+		if got := r.remoteHead(); got != "" {
+			t.Fatalf("answer %d pushed %s", i+1, got)
+		}
+		question(t, r.forge.last(t), head, r.wt)
+	}
+	if r.reviewerRan() {
+		t.Error("a reviewer ran")
+	}
+}
+
+// A policy red before any review carries no SHA: an answer push must not skip the review that
+// never ran, and the Vraag says the answer starts nothing.
+func TestPolicyRedQuestionCarriesNoPermit(t *testing.T) {
+	r := newRunFix(t, hostconfig.ReviewShadow, nil)
+	r.commitWorkflow("ci.yml", "on: pull_request\npermissions: write-all\njobs:\n  a:\n    runs-on: x\n    steps:\n      - uses: a/b@v1\n")
+	r.run()
+	body := r.forge.last(t)
+	question(t, body, noSHA, r.wt)
+	if !strings.Contains(body, protocol.Heading("question_push_manual", "nl")) {
+		t.Errorf("Vraag does not say an answer push starts nothing:\n%s", body)
+	}
+}
+
 func TestPermitDoesNotLiftRedFloor(t *testing.T) {
 	r := newRunFix(t, hostconfig.ReviewShadow, nil)
 	head := r.commitWorkflow("ci.yml", preMergeWF)
@@ -430,7 +475,7 @@ func TestPermitDoesNotLiftRedFloor(t *testing.T) {
 	}
 	body := r.forge.last(t)
 	question(t, body, head, r.wt)
-	if !strings.Contains(body, StepClean) || !strings.Contains(body, floorLine()) {
+	if !strings.Contains(body, StepClean) || !strings.Contains(body, retryLine()) {
 		t.Errorf("Vraag does not name the red step %s and the floor text:\n%s", StepClean, body)
 	}
 	if strings.Contains(body, permitLine()) {
@@ -530,9 +575,11 @@ func TestQuestionTruncatedUnderLimit(t *testing.T) {
 	if strings.TrimSpace(string(full)) != want {
 		t.Errorf("the attachment is not the full workflow diff (%d bytes, want %d)", len(full), len(want))
 	}
-	gitDir := tgit(t, r.wt, "rev-parse", "--absolute-git-dir")
-	if !strings.HasPrefix(path, gitDir+string(filepath.Separator)) {
-		t.Errorf("attachment %s is not in the worktree's git-dir %s", path, gitDir)
+	if want := filepath.Join(r.req.StateDir, "push", "o", "r", head+"-"+strconv.FormatInt(r.rowID, 10)+".diff"); path != want {
+		t.Errorf("attachment %s, want %s in the pusher's state dir", path, want)
+	}
+	if info, err := os.Stat(path); err != nil || info.Mode().Perm() != 0o600 {
+		t.Errorf("attachment mode %v, %v; want 0600", info, err)
 	}
 	// The attachment leaves the worktree clean: a permit can still pass the floor.
 	if out := tgit(t, r.wt, "status", "--porcelain"); out != "" {
@@ -569,8 +616,16 @@ func TestTokenFileModeMustBe0600(t *testing.T) {
 			t.Errorf("ReadTokenFile(mode %#o) accepted the file", mode)
 		}
 	}
+	// A symlink to a good token file is refused too.
+	target := filepath.Join(t.TempDir(), "tok")
+	if err := os.WriteFile(target, []byte("tok\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := ReadTokenFile(target); err != nil || got != "tok" {
+		t.Fatalf("ReadTokenFile(target) = %q, %v", got, err)
+	}
 	link := filepath.Join(t.TempDir(), "link")
-	if err := os.Symlink(r.cfg.TokenFile, link); err != nil {
+	if err := os.Symlink(target, link); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := ReadTokenFile(link); err == nil {
@@ -700,6 +755,9 @@ func TestBuildRouteClosesHandoffWithAfter(t *testing.T) {
 		t.Errorf("the pusher's handoff carries a session %q", h.Session)
 	}
 	wantClosed(t, r.row(), runs.Handoff)
+	if got := r.row().PushedSHA; got != head2 {
+		t.Errorf("row pushed %q, want %s recorded on the build route too", got, head2)
+	}
 	if out := tgit(t, r.req.CloneDir, "for-each-ref", "refs/pusher/"); out != "" {
 		t.Errorf("the run ref is left in the clone: %s", out)
 	}
@@ -759,5 +817,111 @@ func TestRunRefusesARowThatIsNotAnOpenPushRow(t *testing.T) {
 	}
 	if got := r.remoteHead(); got != "" {
 		t.Fatalf("pushed %s for a closed row", got)
+	}
+}
+
+// A build-route handoff that cannot be posted leaves the row open with the pushed SHA, so decide
+// reports a push without a handoff, not a silent pusher.
+func TestBuildRouteRecordsPushBeforeTheHandoff(t *testing.T) {
+	r := newRunFix(t, hostconfig.ReviewShadow, nil)
+	head := r.commitWorkflow("nightly.yml", scheduleWF)
+	r.forge.refuse = func(body string) bool { return strings.Contains(body, "next: "+after) }
+	if err := Run(context.Background(), r.deps, r.req); err == nil {
+		t.Fatal("Run succeeded although the handoff was not posted")
+	}
+	if got := r.remoteHead(); got != head {
+		t.Fatalf("origin/%s = %q, want %s", branch, got, head)
+	}
+	row := r.row()
+	if !row.Open || row.PushedSHA != head {
+		t.Fatalf("row open %v pushed %q, want open with pushed %s", row.Open, row.PushedSHA, head)
+	}
+}
+
+// GitHub's refusal of the token for a workflow change becomes the neutral sentence; other lines
+// of the forge's answer stay, also when they hold the word scope.
+func TestPushRefusalSaysTokenRefusedAndKeepsOtherLines(t *testing.T) {
+	r := newRunFix(t, hostconfig.ReviewShadow, nil)
+	r.commitWorkflow("nightly.yml", scheduleWF)
+	write(t, filepath.Join(r.remote, "hooks", "pre-receive"), "#!/bin/sh\n"+
+		"echo 'the scope of this check is the whole repo' >&2\n"+
+		"echo 'refusing to allow a Personal Access Token to create or update workflow `.github/workflows/nightly.yml` without `workflow` scope' >&2\n"+
+		"exit 1\n")
+	if err := os.Chmod(filepath.Join(r.remote, "hooks", "pre-receive"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	r.run()
+	if got := r.remoteHead(); got != "" {
+		t.Fatalf("pushed %s", got)
+	}
+	body := r.forge.last(t)
+	for _, want := range []string{protocol.Heading("question_push_token_refused", "nl"), "the scope of this check is the whole repo", retryLine()} {
+		if !strings.Contains(body, want) {
+			t.Errorf("Vraag lacks %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, "refusing to allow") {
+		t.Errorf("Vraag carries GitHub's refusal wording:\n%s", body)
+	}
+	if regexp.MustCompile(`(?i)scope`).MatchString(protocol.Heading("question_push_token_refused", "nl") + protocol.Heading("question_push_token_refused", "en")) {
+		t.Error("the neutral sentence talks of a scope")
+	}
+}
+
+// A push that hangs on the network ends at the deadline of the timeout, with a Vraag, and lets
+// the clone lock go.
+func TestHungPushEndsWithinTimeout(t *testing.T) {
+	r := newRunFix(t, hostconfig.ReviewShadow, nil)
+	r.cfg.Timeout = 4 * time.Second
+	r.commitWorkflow("nightly.yml", scheduleWF)
+	write(t, filepath.Join(r.remote, "hooks", "pre-receive"), "#!/bin/sh\nexec sleep 30\n")
+	if err := os.Chmod(filepath.Join(r.remote, "hooks", "pre-receive"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	r.run()
+	if took := time.Since(start); took > 15*time.Second {
+		t.Errorf("Run took %v with a timeout of %v", took, r.cfg.Timeout)
+	}
+	if body := r.forge.last(t); !strings.Contains(body, "step: "+StepPush) {
+		t.Errorf("Vraag does not name the push step:\n%s", body)
+	}
+	wantClosed(t, r.row(), runs.Question)
+	lock, red := LockClone(context.Background(), r.req.CloneDir)
+	if red != nil {
+		t.Fatalf("the clone lock is still held: %s", red.Why)
+	}
+	lock.Unlock()
+}
+
+// A symlink below the state dir never takes the attachment elsewhere: the diff is cut without one.
+func TestAttachmentRefusesASymlinkedDir(t *testing.T) {
+	r := newRunFix(t, hostconfig.ReviewShadow, nil)
+	elsewhere := filepath.Join(r.dir, "elsewhere")
+	if err := os.MkdirAll(elsewhere, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(r.req.StateDir, "push"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(elsewhere, filepath.Join(r.req.StateDir, "push", "o")); err != nil {
+		t.Fatal(err)
+	}
+	var long strings.Builder
+	long.WriteString(preMergeWF)
+	for i := 0; long.Len() < 100_000; i++ {
+		long.WriteString("# filler line " + strconv.Itoa(i) + "\n")
+	}
+	r.commitWorkflow("ci.yml", long.String())
+	r.run()
+	body := r.forge.last(t)
+	if n := len([]rune(body)); n >= maxComment {
+		t.Fatalf("the Vraag has %d characters", n)
+	}
+	if strings.Contains(body, protocol.Heading("question_push_attachment", "nl")) || !strings.Contains(body, "could not be saved") {
+		t.Errorf("the Vraag names an attachment through a symlink:\n%s", body[:400])
+	}
+	if entries, _ := os.ReadDir(elsewhere); len(entries) != 0 {
+		t.Errorf("the attachment went through the symlink: %v", entries)
 	}
 }
