@@ -4,12 +4,18 @@
  * lighthouse
  * OpenAPI spec version: dev
  */
+export interface Blocker {
+  issue: number;
+  repo: string;
+}
+
 export interface Leftover {
   issue: number;
   node?: string;
   path: string;
   reason: string;
   repo: string;
+  schedule?: string;
   workspace_id: string;
 }
 
@@ -23,6 +29,7 @@ export interface DeferredView {
   issue: number;
   reason: string;
   repo: string;
+  schedule?: string;
   title: string;
 }
 
@@ -57,6 +64,30 @@ export interface HealthOutputBody {
   version: string;
 }
 
+export interface MilestoneRef {
+  number: number;
+  state: string;
+  title: string;
+}
+
+export interface Issue {
+  /** @nullable */
+  blocked_by: Blocker[] | null;
+  milestone?: MilestoneRef;
+  number: number;
+  status: string;
+  title: string;
+  url: string;
+}
+
+export interface Milestone {
+  description: string;
+  done: number;
+  number: number;
+  open: number;
+  title: string;
+}
+
 export interface Question {
   answer_url: string;
   number: number;
@@ -69,6 +100,14 @@ export interface Question {
 export interface QuestionsOutputBody {
   /** @nullable */
   questions: Question[] | null;
+}
+
+export interface Repo {
+  /** @nullable */
+  issues: Issue[] | null;
+  /** @nullable */
+  milestones: Milestone[] | null;
+  slug: string;
 }
 
 export type WindowReportState = typeof WindowReportState[keyof typeof WindowReportState];
@@ -101,6 +140,20 @@ export interface Report {
   codex: SourceReport;
 }
 
+export interface Run {
+  issue: number;
+  phase: string;
+  repo: string;
+  state: string;
+}
+
+export interface Result {
+  /** @nullable */
+  repos: Repo[] | null;
+  /** @nullable */
+  runs: Run[] | null;
+}
+
 export interface Returned {
   number: number;
   reason: string;
@@ -119,8 +172,10 @@ export interface RunView {
   command: string;
   issue: number;
   phase: string;
+  pr_at?: string;
   profile: string;
   repo: string;
+  schedule?: string;
   stand: string;
   started_at: string;
   state: string;
@@ -310,6 +365,56 @@ export const getLatestComment = async (params: GetLatestCommentParams, options?:
 
   const data: getLatestCommentResponse['data'] = body ? JSON.parse(body) : {}
   return { data, status: res.status, headers: res.headers } as getLatestCommentResponse
+}
+
+
+
+export type getPrioritiesResponse200 = {
+  data: Result
+  status: 200
+}
+
+export type getPrioritiesResponseDefault = {
+  data: ErrorModel
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type getPrioritiesResponseSuccess = (getPrioritiesResponse200) & {
+  headers: Headers;
+};
+export type getPrioritiesResponseError = (getPrioritiesResponseDefault) & {
+  headers: Headers;
+};
+
+export type getPrioritiesResponse = (getPrioritiesResponseSuccess | getPrioritiesResponseError)
+
+export const getGetPrioritiesUrl = () => {
+
+
+
+
+  return `/api/priorities`
+}
+
+/**
+ * @summary Get API priorities
+ */
+export const getPriorities = async ( options?: RequestInit): Promise<getPrioritiesResponse> => {
+
+  const res = await fetch(getGetPrioritiesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: getPrioritiesResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as getPrioritiesResponse
 }
 
 

@@ -110,7 +110,13 @@ func (g *GitLab) send(ctx context.Context, method, url string, body, into any) (
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return "", statusError(method, url, resp)
 	}
-	if into != nil {
+	if raw, ok := into.(*[]byte); ok {
+		data, err := io.ReadAll(resp.Body)
+		*raw = data
+		if err != nil {
+			return "", fmt.Errorf("forge %s %s: read: %w", method, url, err)
+		}
+	} else if into != nil {
 		if err := json.NewDecoder(resp.Body).Decode(into); err != nil {
 			return "", fmt.Errorf("forge %s %s: decode: %w", method, url, err)
 		}
@@ -186,23 +192,19 @@ type glIssue struct {
 	Notes     int        `json:"user_notes_count"`
 	State     string     `json:"state"`
 	Desc      string     `json:"description"`
+	CreatedAt time.Time  `json:"created_at"`
 	UpdatedAt time.Time  `json:"updated_at"`
 	ClosedAt  *time.Time `json:"closed_at"`
 	Author    *struct {
 		Username string `json:"username"`
 	} `json:"author"`
-	Labels    []string `json:"labels"`
-	Milestone *struct {
-		ID          int    `json:"id"`
-		Title       string `json:"title"`
-		State       string `json:"state"`
-		Description string `json:"description"`
-	} `json:"milestone"`
+	Labels    []string     `json:"labels"`
+	Milestone *glMilestone `json:"milestone"`
 }
 
 func (it glIssue) issue() Issue {
 	out := Issue{Number: it.IID, Title: it.Title, URL: it.WebURL, Comments: it.Notes, Body: it.Desc,
-		Labels: it.Labels, UpdatedAt: it.UpdatedAt, State: it.State}
+		Labels: it.Labels, CreatedAt: it.CreatedAt, UpdatedAt: it.UpdatedAt, State: it.State}
 	if it.State == "opened" {
 		out.State = "open"
 	}
@@ -212,13 +214,9 @@ func (it glIssue) issue() Issue {
 	if it.Author != nil {
 		out.Author = it.Author.Username
 	}
-	if m := it.Milestone; m != nil {
-		// Milestone.Number is the global ID: the iid repeats across project and group milestones.
-		state := m.State
-		if state == "active" {
-			state = "open"
-		}
-		out.Milestone = &Milestone{Number: m.ID, Title: m.Title, State: state, Description: m.Description}
+	if it.Milestone != nil {
+		m := it.Milestone.milestone()
+		out.Milestone = &m
 	}
 	return out
 }
@@ -344,12 +342,18 @@ type glNote struct {
 // comment turns a note of issue number into a comment with rockets rocket awards. A note has
 // no URL of its own: it is built from the API root, which is <web root>/api/v4.
 func (g *GitLab) comment(n glNote, number, rockets int) protocol.Comment {
+	return g.noteComment(n, "issues", number, rockets)
+}
+
+// noteComment is comment for a note of the issue or merge request number; kind is the path
+// segment, issues or merge_requests.
+func (g *GitLab) noteComment(n glNote, kind string, number, rockets int) protocol.Comment {
 	c := protocol.Comment{ID: n.ID, Body: n.Body, CreatedAt: n.CreatedAt, Rockets: rockets}
 	if n.Author != nil {
 		c.Author = n.Author.Username
 	}
 	if web, ok := strings.CutSuffix(g.BaseURL, "/api/v4"); ok {
-		c.URL = fmt.Sprintf("%s/%s/-/issues/%d#note_%d", web, g.Repo, number, n.ID)
+		c.URL = fmt.Sprintf("%s/%s/-/%s/%d#note_%d", web, g.Repo, kind, number, n.ID)
 	}
 	return c
 }

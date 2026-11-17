@@ -1,0 +1,11 @@
+# What each lighthouse hook guards, for `lighthouse agent-audit`. Not installed.
+# Every terms group must match; one term per group is enough.
+
+[go-lint-gate]
+events = ["Stop"]
+matcher = ""
+does = "Blocks the end of a turn that touched Go when golangci-lint reports a finding."
+terms = [
+  ["golangci-lint", "go vet", "gofmt"],
+  ["go.mod", ".go", "lint"],
+]

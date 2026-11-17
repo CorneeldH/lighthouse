@@ -68,7 +68,7 @@ func (a Applier) create(ctx context.Context, act Action, c ItemContent) error {
 		_, err := a.F.CreatePR(ctx, forge.NewPR{Title: c.Title, Body: c.Body, Head: c.Branch, Base: c.Base, Draft: true})
 		return err
 	}
-	_, err := a.F.CreateIssue(ctx, c.Title, c.Body)
+	_, err := a.F.CreateIssue(ctx, forge.NewIssue{Title: c.Title, Body: c.Body})
 	return err
 }
 

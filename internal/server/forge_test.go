@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -23,9 +24,15 @@ func noRuns(context.Context) ([]dispatch.RunView, []dispatch.DeferredView, error
 	return nil, nil, nil
 }
 
-// testDeps serves src as the one repo o/r, narrowed by inController, with no leftovers and no runs.
-func testDeps(src forge.Forge, inController overview.Filter) Deps {
-	repos := []overview.RepoSource{{Slug: "o/r", Src: src, InController: inController}}
+// testDeps serves src as the one repo o/r, with no leftovers and no runs. A non-nil board
+// puts the repo on a board and narrows it to the issues in Status Controller.
+func testDeps(src forge.Forge, board *fakeBoard) Deps {
+	repo := overview.RepoSource{Slug: "o/r", Src: src}
+	if board != nil {
+		repo.Src = boardedSource{src, board}
+		repo.Board, repo.Controller = true, true
+	}
+	repos := []overview.RepoSource{repo}
 	return Deps{
 		Report:    fakeReport,
 		Forge:     repos,
@@ -197,15 +204,24 @@ func TestCleanupEndpointError(t *testing.T) {
 	}
 }
 
-// only is a filter that keeps the given issue numbers.
-func only(numbers ...int) func(context.Context) (map[int]bool, error) {
-	return func(context.Context) (map[int]bool, error) {
-		m := map[int]bool{}
-		for _, n := range numbers {
-			m[n] = true
-		}
-		return m, nil
+// fakeBoard serves the given issue numbers as o/r issues in Status Controller.
+type fakeBoard struct{ controller []int }
+
+// only is a board with just the given issues in Status Controller.
+func only(numbers ...int) *fakeBoard { return &fakeBoard{controller: numbers} }
+
+// boardedSource is src with the board of b.
+type boardedSource struct {
+	forge.Forge
+	b *fakeBoard
+}
+
+func (s boardedSource) BoardItems(context.Context) ([]forge.BoardItem, error) {
+	items := []forge.BoardItem{}
+	for _, n := range s.b.controller {
+		items = append(items, forge.BoardItem{Repo: "o/r", Issue: n, Status: "Controller"})
 	}
+	return items, nil
 }
 
 // listLen returns the length of the JSON list under key in an endpoint body.
@@ -277,6 +293,60 @@ func TestRunsList(t *testing.T) {
 	}
 }
 
+// AC 4 (#121): GET /api/runs lists two open scheduled runs of one repo in the same list as an
+// issue run, each with its schedule, and a scheduled deferral in the deferred list.
+func TestRunsListScheduled(t *testing.T) {
+	at := time.Date(2026, 11, 16, 5, 0, 0, 0, time.UTC)
+	prAt := time.Date(2026, 11, 16, 4, 40, 0, 0, time.UTC)
+	d := testDeps(stubSource{}, nil)
+	d.Runs = func(context.Context) ([]dispatch.RunView, []dispatch.DeferredView, error) {
+		return []dispatch.RunView{
+				{Repo: "o/r", Schedule: "codebase-map", State: "open", Trigger: "scheduled", StartedAt: at, PRAt: prAt, At: at},
+				{Repo: "o/r", Schedule: "reflect", State: "open", Trigger: "scheduled", StartedAt: at, At: at},
+				{Repo: "o/r", Issue: 7, Title: "zeven", State: "open", Trigger: "board", StartedAt: at, At: at},
+			},
+			[]dispatch.DeferredView{{Repo: "o/r", Schedule: "nightly", Reason: "usage", At: at}}, nil
+	}
+	rec := get(New(testSite(), d), "/api/runs")
+	if rec.Code != 200 {
+		t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
+	}
+	var body struct {
+		Runs []struct {
+			Issue    int     `json:"issue"`
+			Schedule *string `json:"schedule"`
+			PRAt     *string `json:"pr_at"`
+		} `json:"runs"`
+		Deferred []struct {
+			Issue    int    `json:"issue"`
+			Schedule string `json:"schedule"`
+		} `json:"deferred"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Runs) != 3 {
+		t.Fatalf("runs = %s, want 3", rec.Body)
+	}
+	str := func(p *string) string {
+		if p == nil {
+			return "<absent>"
+		}
+		return *p
+	}
+	got := []string{}
+	for _, r := range body.Runs {
+		got = append(got, fmt.Sprintf("%d %s %s", r.Issue, str(r.Schedule), str(r.PRAt)))
+	}
+	want := []string{"0 codebase-map 2026-11-16T04:40:00Z", "0 reflect <absent>", "7 <absent> <absent>"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("runs = %q, want %q", got, want)
+	}
+	if len(body.Deferred) != 1 || body.Deferred[0].Schedule != "nightly" || body.Deferred[0].Issue != 0 {
+		t.Errorf("deferred = %s, want the deferral of nightly", rec.Body)
+	}
+}
+
 func TestRunsMeta(t *testing.T) {
 	d := testDeps(stubSource{}, nil)
 	d.RunsMeta = RunsMeta{WorkspaceURL: "http://127.0.0.1:8091", Night: "21:00-08:00"}
@@ -338,7 +408,7 @@ func TestEndpointsShareOneBuild(t *testing.T) {
 
 	// d.Forge shares the counting source, so a handler that builds per request is counted too.
 	d := testDeps(src, nil)
-	d.Overview = r.Overview
+	d.Overview = r.Latest
 	h := New(testSite(), d)
 	for _, path := range []string{"/api/questions", "/api/returned", "/api/questions", "/api/returned"} {
 		rec := get(h, path)
@@ -368,7 +438,7 @@ func TestEndpointFailureAfterSuccessIs502(t *testing.T) {
 	r.refresh(context.Background())
 
 	d := testDeps(populated(), nil)
-	d.Overview = r.Overview
+	d.Overview = r.Latest
 	h := New(testSite(), d)
 	for _, path := range []string{"/api/questions", "/api/returned"} {
 		rec := get(h, path)

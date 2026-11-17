@@ -3,6 +3,8 @@ package initcmd
 import (
 	"bytes"
 	"errors"
+	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -1475,6 +1477,74 @@ func TestNoIgnoreWarningInCleanRepo(t *testing.T) {
 	r := run(t, root, "", yes)
 	if r.code != 0 || strings.Contains(r.err, "ignored by git") {
 		t.Fatalf("rc %d err %q", r.code, r.err)
+	}
+}
+
+// auditRecorder is an Options.Audit that records the root it was called with and what the
+// repository held at that moment.
+type auditRecorder struct {
+	roots    []string
+	settings []bool // was .claude/settings.json already written at the call
+}
+
+func (a *auditRecorder) hook(o *Options) {
+	o.Audit = func(root string, out, _ io.Writer) {
+		a.roots = append(a.roots, root)
+		a.settings = append(a.settings, exists(root, settingsPath))
+		_, _ = fmt.Fprintln(out, "AUDIT")
+	}
+}
+
+func TestFirstInitRunsAudit(t *testing.T) {
+	root := newRepo(t)
+	var a auditRecorder
+	r := run(t, root, "", func(o *Options) { yes(o); a.hook(o) })
+	if r.code != 0 || len(a.roots) != 1 || a.roots[0] != root {
+		t.Fatalf("rc %d, audit roots %v; want one call with %s", r.code, a.roots, root)
+	}
+	if !a.settings[0] {
+		t.Error("audit ran before init wrote its files")
+	}
+	if !strings.Contains(r.out, "AUDIT") {
+		t.Errorf("stdout lacks the audit output:\n%s", r.out)
+	}
+}
+
+func TestDeclinedInitSkipsAudit(t *testing.T) {
+	root := newRepo(t)
+	var a auditRecorder
+	r := run(t, root, "n\n", a.hook)
+	if r.code == 0 || len(a.roots) != 0 {
+		t.Errorf("rc %d, %d audit calls; want a declined init and none", r.code, len(a.roots))
+	}
+}
+
+func TestUpgradeWithoutAuditFlag(t *testing.T) {
+	root := newRepo(t)
+	initYes(t, root)
+	var a auditRecorder
+	run(t, root, "", func(o *Options) { yes(o); upgrade(o); a.hook(o) })
+	if len(a.roots) != 0 {
+		t.Errorf("%d audit calls without --audit; want none", len(a.roots))
+	}
+}
+
+func TestUpgradeWithAuditFlag(t *testing.T) {
+	root := newRepo(t)
+	initYes(t, root)
+	var a auditRecorder
+	r := run(t, root, "", func(o *Options) { yes(o); upgrade(o); o.AuditOnUpgrade = true; a.hook(o) })
+	if !strings.Contains(r.out, "No changes.") || len(a.roots) != 1 {
+		t.Errorf("out %q, %d audit calls; want No changes. and one call", r.out, len(a.roots))
+	}
+}
+
+func TestAuditNeedsUpgrade(t *testing.T) {
+	root := newRepo(t)
+	var a auditRecorder
+	r := run(t, root, "", func(o *Options) { yes(o); o.AuditOnUpgrade = true; a.hook(o) })
+	if r.code == 0 || !strings.Contains(r.err, "--audit needs --upgrade") || len(a.roots) != 0 || exists(root, settingsPath) {
+		t.Errorf("rc %d, stderr %q, %d audit calls; want a refusal before anything is written", r.code, r.err, len(a.roots))
 	}
 }
 

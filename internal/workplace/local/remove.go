@@ -14,8 +14,9 @@ import (
 // deleted from disk (an adopted one is the user's): only its records go, after the processes
 // of its sessions ended; when that fails, the error is returned and the records stay. A
 // worktree with changes, or with a worktree nested inside it, is ErrDirty; any other refusal
-// of git is a plain error.
-func (a *Adapter) Remove(ctx context.Context, workspaceID string) error {
+// of git is a plain error. With o.Force a worktree with changes goes too (git worktree remove
+// --force); a nested worktree is still ErrDirty, as it may be another checkout's.
+func (a *Adapter) Remove(ctx context.Context, workspaceID string, o workplace.RemoveOptions) error {
 	if err := checkLocal(workspaceID); err != nil {
 		return err
 	}
@@ -42,12 +43,14 @@ func (a *Adapter) Remove(ctx context.Context, workspaceID string) error {
 		}
 		return s.dropWorkspace(workspaceID)
 	}
-	dirty, err := workplace.Dirty(ctx, a.Run, rec.Path)
-	if err != nil {
-		return fmt.Errorf("remove %s: %w", workspaceID, err)
-	}
-	if dirty {
-		return fmt.Errorf("remove %s: worktree %s has changes: %w", workspaceID, rec.Path, workplace.ErrDirty)
+	if !o.Force {
+		dirty, err := workplace.Dirty(ctx, a.Run, rec.Path)
+		if err != nil {
+			return fmt.Errorf("remove %s: %w", workspaceID, err)
+		}
+		if dirty {
+			return fmt.Errorf("remove %s: worktree %s has changes: %w", workspaceID, rec.Path, workplace.ErrDirty)
+		}
 	}
 	// info/exclude hides .claude/worktrees/ in every worktree, so Dirty misses a worktree a run
 	// nested in this one, and git worktree remove deletes it with its uncommitted work.
@@ -61,7 +64,11 @@ func (a *Adapter) Remove(ctx context.Context, workspaceID string) error {
 	if err := a.end(ctx, workspaceID, sids); err != nil {
 		return fmt.Errorf("remove %s: %w", workspaceID, err)
 	}
-	if _, err := a.gitOK(ctx, a.RepoDir, "worktree", "remove", rec.Path); err != nil {
+	args := []string{"worktree", "remove", rec.Path}
+	if o.Force {
+		args = []string{"worktree", "remove", "--force", rec.Path}
+	}
+	if _, err := a.gitOK(ctx, a.RepoDir, args...); err != nil {
 		return fmt.Errorf("remove %s: %w", workspaceID, err)
 	}
 	return s.dropWorkspace(workspaceID)

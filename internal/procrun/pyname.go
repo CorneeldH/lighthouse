@@ -34,9 +34,8 @@ type ConfigError struct{ Msg string }
 
 func (e *ConfigError) Error() string { return e.Msg }
 
-// PyName is the name of the Python exception that err replaces. The scripts print it
-// (`board: skipped (CalledProcessError)`), and the fixtures prove the output stays equal.
-// A ConfigError also gives its message, on one line.
+// PyName is the name of the Python exception that err replaces, as the ported scripts printed
+// it. A ConfigError also gives its message, on one line (`board: ERROR — ConfigError: …`).
 func PyName(err error) string {
 	var (
 		cfg     *ConfigError

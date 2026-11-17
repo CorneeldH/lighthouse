@@ -227,6 +227,18 @@
   [
    "report.dir",
    "str"
+  ],
+  [
+   "agent_audit.ignore",
+   "list[str]"
+  ],
+  [
+   "agent_audit.top",
+   "int"
+  ],
+  [
+   "agent_audit.description_max_chars",
+   "int"
   ]
  ],
  "defaults": {
@@ -272,7 +284,10 @@
   "usage_guard.controller": false,
   "review.roborev": "off",
   "report.enabled": false,
-  "report.sink": "stdout"
+  "report.sink": "stdout",
+  "agent_audit.ignore": [],
+  "agent_audit.top": 10,
+  "agent_audit.description_max_chars": 1024
  },
  "base_keys": [
   "forge.kind",

@@ -22,6 +22,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/park"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/runs"
+	"github.com/CorneeldH/lighthouse/internal/scheduled"
 	"github.com/CorneeldH/lighthouse/internal/store"
 	"github.com/CorneeldH/lighthouse/internal/usage"
 	"github.com/CorneeldH/lighthouse/internal/workplace"
@@ -49,6 +50,11 @@ type tickEnv struct {
 	MemInfo string
 	// Run runs git for the workplace and the sweep; nil is workplace.ExecRunner.
 	Run workplace.Runner
+	// Jobs looks up a scheduled job by name; nil is scheduled.Lookup.
+	Jobs func(name string) (scheduled.Job, bool)
+	// GitBase is the base URL of the git remotes the branch of a scheduled run is pushed to;
+	// "" is https://<the repository host, or github.com>.
+	GitBase string
 
 	// serves are the serve clients of the nodes for this tick or lighthouse run (withServes);
 	// nil builds a client per workplace.
@@ -161,7 +167,7 @@ func newTickCommand() *cobra.Command {
 // tick takes tick.lock, loads the repos of host.toml, opens the forge of each with its own token
 // (openForges) and skips, loudly, each one that does not load, shares its slug, is not
 // dispatchable, has no forge or whose gather fails; the others get gatherRepo, the gathered ones
-// decideAndApply, every repo whose precheck passed saveRunViews, also when its full gather
+// planSchedules (their due schedules, gated) and decideAndApply, every repo whose precheck passed saveRunViews, also when its full gather
 // failed, and every repo that was not skipped sweepRepos, due or not. The run views follow
 // apply, so a run this tick starts or closes shows at once. A busy lock is
 // not an error. At least one skip, failed action, unsaved run view or failed cleanup returns
@@ -252,10 +258,12 @@ func tick(ctx context.Context, env tickEnv, dbPath string, errOut io.Writer) err
 			gathered = append(gathered, gatheredRepo{repo: repo, in: *in, fp: fp})
 		}
 	}
+	planFailed := planSchedules(ctx, env, st.DB, gathered, errOut)
 	failed, err := decideAndApply(ctx, env, st.DB, cfg, facts, ticked, gathered, errOut)
 	if err != nil {
 		return err
 	}
+	failed = failed || planFailed
 	if saveRunViews(ctx, env, st.DB, viewed, errOut) {
 		failed = true
 	}
@@ -309,10 +317,13 @@ func oneLine(err error) string {
 }
 
 // gatheredRepo is a repo whose full gather ran in this tick, with its precheck fingerprint.
+// hold keeps its tick state from being saved: its planner failed, so the next tick must gather
+// again.
 type gatheredRepo struct {
 	repo repoconfig.Repo
 	in   dispatch.RepoInput
 	fp   string
+	hold bool
 }
 
 // checkedRepo is a repo whose precheck passed in this tick, with that precheck.
@@ -369,7 +380,8 @@ func saveRunView(ctx context.Context, env tickEnv, db *sql.DB, cr checkedRepo, p
 }
 
 // sweepRepos runs workplace.Sweep for each repo: the workspaces of issues the controller no
-// longer holds go, when nothing is lost by it (workplace.Cleanup). Each removed
+// longer holds go, when nothing is lost by it (workplace.Cleanup), and the workspace of a
+// scheduled run without an open row goes forcibly. Each removed
 // workspace gets a removed line on errOut, each repo whose sweep failed a cleanup line; a
 // workspace it keeps gets no line: it is in Workspaces to clean up. A repo without a
 // workspace to sweep builds no workplace. failed reports a cleanup line.
@@ -379,7 +391,11 @@ func sweepRepos(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dis
 		slug := sr.repo.Slug
 		removed, err := sweepOne(ctx, env, db, cfg, forges[slug], sr)
 		for _, l := range removed {
-			_, _ = fmt.Fprintf(errOut, "lighthouse: removed workspace %s of %s#%d\n", l.WorkspaceID, slug, l.Issue)
+			of := fmt.Sprintf("%s#%d", slug, l.Issue)
+			if l.Schedule != "" {
+				of = slug + " scheduled:" + l.Schedule
+			}
+			_, _ = fmt.Fprintf(errOut, "lighthouse: removed workspace %s of %s\n", l.WorkspaceID, of)
 		}
 		if err != nil {
 			failed = true
@@ -430,8 +446,8 @@ func sweepOne(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispa
 
 // decideAndApply decides once over the gathered repos and applies the actions. Each deferral
 // gets a deferred line on errOut, each repo with a failed action an apply line. It saves the
-// fingerprint of a repo only when none of its actions was deferred or failed, so the next tick
-// tries again (spec §3 step 2), and replaces the deferred rows of each gathered repo with the
+// fingerprint of a repo only when none of its actions was deferred or failed and its planner did
+// not fail (gatheredRepo.hold), so the next tick tries again (spec §3 step 2), and replaces the deferred rows of each gathered repo with the
 // deferrals of Decide. forges holds the forge of each gathered repo. failed reports an apply
 // line or a state that was not saved.
 func decideAndApply(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispatch, facts hostFacts, forges map[string]forge.Forge,
@@ -451,12 +467,7 @@ func decideAndApply(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig
 		return false, fmt.Errorf("tick: %w", err)
 	}
 	for _, g := range gathered {
-		var defers []dispatch.Action
-		for _, a := range actions {
-			if a.Kind == dispatch.KindDefer && a.Repo == g.repo.Slug {
-				defers = append(defers, a)
-			}
-		}
+		defers := repoDefers(actions, g.repo.Slug)
 		titles := make(map[int]string, len(g.in.Snapshot.Items))
 		for _, it := range g.in.Snapshot.Items {
 			titles[it.Issue] = it.Title
@@ -476,7 +487,10 @@ func decideAndApply(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig
 			_, _ = fmt.Fprintf(errOut, "lighthouse: apply %s: %s\n", slug, oneLine(err))
 			continue
 		}
-		if slices.ContainsFunc(res.Deferred, func(d string) bool { return strings.HasPrefix(d, slug+"#") }) {
+		// A deferral of an issue ("<slug>#<n>: ") or of a scheduled run ("<slug> scheduled:...").
+		if g.hold || slices.ContainsFunc(res.Deferred, func(d string) bool {
+			return strings.HasPrefix(d, slug+"#") || strings.HasPrefix(d, slug+" ")
+		}) {
 			continue
 		}
 		state := dispatch.TickState{Fingerprint: g.fp, FullAt: g.in.Snapshot.GatheredAt}
@@ -510,13 +524,15 @@ func applyActions(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.D
 	// repo: the callers write their apply lines from it, and tick decides which fingerprints
 	// it saves.
 	res, _ := dispatch.Apply(ctx, dispatch.Env{
-		DB:         db,
-		Forge:      func(slug string) forge.Forge { return forges[slug] },
-		Workplace:  func(slug, node, profile string) workplace.Workplace { return places(repos[slug], node, profile) },
-		MCPConfig:  func(profile string) string { return cfg.Profiles[profile].MCPConfig },
-		RoundLimit: func(slug string) string { return repos[slug].Controller.AtRoundLimit },
-		StateDir:   dir,
-		MarkerDir:  markerDir,
+		DB:           db,
+		Forge:        func(slug string) forge.Forge { return forges[slug] },
+		Workplace:    func(slug, node, profile string) workplace.Workplace { return places(repos[slug], node, profile) },
+		MCPConfig:    func(profile string) string { return cfg.Profiles[profile].MCPConfig },
+		ScheduledJob: scheduledJob(env, repos),
+		Remote:       scheduledRemote(env, dir, repos),
+		RoundLimit:   func(slug string) string { return repos[slug].Controller.AtRoundLimit },
+		StateDir:     dir,
+		MarkerDir:    markerDir,
 		RemoveMarker: func(session, key string) error {
 			return env.removeMarker(ctx, cfg, markerDir, markerNode[session], session, key)
 		},
@@ -570,7 +586,9 @@ func gatherRepo(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dis
 		return nil, "", &pre, err
 	}
 	now := env.now()
-	due, reason := dispatch.Due(prev, fp, now, dispatch.Boundaries(cfg, pre.OpenRuns, pre.Runs, pre.Markers, now))
+	boundaries := append(dispatch.Boundaries(cfg, pre.OpenRuns, pre.Runs, pre.Markers, now),
+		dispatch.ScheduleBoundaries(repo.Schedules, now)...)
+	due, reason := dispatch.Due(prev, fp, now, boundaries)
 	if !due {
 		return nil, "", &pre, nil
 	}
@@ -595,7 +613,9 @@ func prepare(ctx context.Context, db *sql.DB, f forge.Forge, repo repoconfig.Rep
 	}
 	branches := map[int]string{}
 	for _, r := range history { // ordered by id: the last run of an issue wins
-		branches[r.Issue] = r.Branch
+		if r.Schedule == "" { // a scheduled run has no issue
+			branches[r.Issue] = r.Branch
+		}
 	}
 	return dispatch.Prepare(ctx, f, repo, open, branches)
 }

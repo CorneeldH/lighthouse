@@ -378,9 +378,10 @@ def test_spec_dir_from_config(variant):
 
 def test_permissions_cover_the_runner():
     """The one runner a skill starts in the background has its allowlist rule (decision 14):
-    without it an unattended round waits on an approval prompt."""
+    without it an unattended round waits on an approval prompt. The agent-audit rule lets
+    /lighthouse-audit-agent-config run the read-only check without a prompt."""
     allow = json.loads((CORE / "permissions.json").read_text())["allow"]
-    assert allow == ["Bash(lighthouse review-run:*)"]
+    assert allow == ["Bash(lighthouse review-run:*)", "Bash(lighthouse agent-audit:*)"]
 
 
 @pytest.mark.parametrize("name", NAMES)

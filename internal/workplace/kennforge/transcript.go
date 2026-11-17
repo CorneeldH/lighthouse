@@ -203,8 +203,15 @@ func untarDelta(stream, sessionID string) ([]workplace.FileDelta, error) {
 	if main < 0 {
 		return nil, fmt.Errorf("transcript of %s: no main transcript in the tar: %w", sessionID, fs.ErrNotExist)
 	}
-	// The main transcript first, as workplace.ReadDelta answers.
-	deltas[0], deltas[main] = deltas[main], deltas[0]
+	// The main transcript first, then the subagents by name, as workplace.ReadDelta answers: tar
+	// walks the directory in the order of the file system, which bsdtar on APFS does not sort.
+	mainName := deltas[main].Name
+	sort.Slice(deltas, func(i, j int) bool {
+		if (deltas[i].Name == mainName) != (deltas[j].Name == mainName) {
+			return deltas[i].Name == mainName
+		}
+		return deltas[i].Name < deltas[j].Name
+	})
 	return deltas, nil
 }
 

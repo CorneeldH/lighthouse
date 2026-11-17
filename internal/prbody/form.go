@@ -39,7 +39,15 @@ const (
 	MinReason = 10
 )
 
-const closeWords = `(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)`
+// closeWords are GitHub's closing words; gitlabCloseWords those of GitLab's default
+// closing pattern, which adds the -ing forms and implement.
+const (
+	closeWords       = `(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)`
+	gitlabCloseWords = `(?:close[sd]?|closing|fix(?:e[sd]|ing)?|resolve[sd]?|resolving|implement(?:s|ed|ing)?)`
+)
+
+// gitlabDefaultHost is the host of a GitLab repo without forge.host.
+const gitlabDefaultHost = "gitlab.com"
 
 // refsSeps are the separators between `Refs #N` and its reason, on the same line.
 var refsSeps = []string{"—", "-", ":"}
@@ -56,6 +64,10 @@ var (
 )
 
 const fallbackNotice = "pr-create-gate: AC count not measurable for #%d (%s) — structure checked only"
+
+// Repo is the forge of `forge.repo` in lighthouse.toml: Kind ("" is github), Slug (forge.repo,
+// "" when not set), Host (forge.host, "" for the default host) and TokenEnv (forge.token_env).
+type Repo struct{ Kind, Slug, Host, TokenEnv string }
 
 // Row is one data row of an Evidence block; Command is the raw cell, with backticks.
 type Row struct{ AC, Command, Result string }
@@ -135,25 +147,56 @@ func StripComments(body string) string {
 }
 
 // closesRe is the closing-word regex without its lookbehind and lookahead. The target is #N,
-// <repo>#N or the full issue URL; without a repo ("") only #N.
-func closesRe(repo string) *regexp.Regexp {
+// <repo>#N or the full issue URL; without a repo (Slug "") only #N. On GitLab a target may follow
+// `issue`/`issues`, and more targets may follow the first: next is then the regex of one more
+// target of that list, anchored at the end of the previous one; nil on GitHub.
+func closesRe(repo Repo) (first, next *regexp.Regexp) {
 	target := `#(\p{Nd}+)`
-	if repo != "" {
-		quoted := regexp.QuoteMeta(repo)
-		target = `(?:https://github\.com/` + quoted + `/issues/|` + quoted + `#|#)(\p{Nd}+)`
+	gitlab := repo.Kind == "gitlab"
+	if repo.Slug != "" {
+		quoted := regexp.QuoteMeta(repo.Slug)
+		url := `https://github\.com/` + quoted + `/issues/`
+		if gitlab {
+			host := repo.Host
+			if host == "" {
+				host = gitlabDefaultHost
+			}
+			url = `https://` + regexp.QuoteMeta(host) + `/` + quoted + `/-/issues/`
+		}
+		target = `(?:` + url + `|` + quoted + `#|#)(\p{Nd}+)`
 	}
-	return regexp.MustCompile(`(?i)` + closeWords + `:?[ \t]+` + target)
+	if !gitlab {
+		return regexp.MustCompile(`(?i)` + closeWords + `:?[ \t]+` + target), nil
+	}
+	target = `(?:issues?[ \t]+)?` + target
+	return regexp.MustCompile(`(?i)` + gitlabCloseWords + `:?[ \t]+` + target),
+		regexp.MustCompile(`(?i)^(?:[ \t]*,?[ \t]+and[ \t]+|[ \t]*,?[ \t]*)` + target)
 }
 
-// ClosesTargets is every issue with a closing word in body, unique, in order of appearance.
-// repo is `forge.repo`, "" when it is not set.
-func ClosesTargets(body, repo string) []int {
+// ClosesTargets is every issue with a closing word in body, unique, in order of appearance. repo
+// is the forge of `forge.repo`: its kind picks the closing words and the targets.
+func ClosesTargets(body string, repo Repo) []int {
 	var seen []int
-	s := StripComments(body)
-	for _, loc := range findBounded(closesRe(repo), s) {
-		nr, ok := pyInt(s[loc[2]:loc[3]])
-		if ok && !slices.Contains(seen, nr) {
+	add := func(digits string) {
+		if nr, ok := pyInt(digits); ok && !slices.Contains(seen, nr) {
 			seen = append(seen, nr)
+		}
+	}
+	s := StripComments(body)
+	first, next := closesRe(repo)
+	for _, loc := range findBounded(first, s) {
+		add(s[loc[2]:loc[3]])
+		// GitLab closes the whole list after one closing word: `Closes #1, #2 and #3`.
+		for pos := loc[1]; next != nil; {
+			m := next.FindStringSubmatchIndex(s[pos:])
+			if m == nil {
+				break
+			}
+			if after, _ := utf8.DecodeRuneInString(s[pos+m[3]:]); pos+m[3] < len(s) && boundary(after) {
+				break
+			}
+			add(s[pos+m[2] : pos+m[3]])
+			pos += m[1]
 		}
 	}
 	return seen
@@ -356,7 +399,7 @@ func CountACs(issueBody string) (int, bool) {
 
 // CheckBody checks the forms of body. acCount gives the AC count of an issue, or false and the
 // cause why it is not measurable; it is asked only for a Closes target with a valid Evidence block.
-func CheckBody(body, repo string, acCount func(nr int) (int, bool, string)) Verdict {
+func CheckBody(body string, repo Repo, acCount func(nr int) (int, bool, string)) Verdict {
 	var v Verdict
 	targets := ClosesTargets(body, repo)
 	for _, nr := range targets {

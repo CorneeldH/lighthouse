@@ -86,3 +86,51 @@ func TestTokenErrorText(t *testing.T) {
 		}
 	}
 }
+
+// Fails if TokenVar names another variable than the one Token reads, or loses its errors.
+func TestTokenVarNamesTheVariableTokenReads(t *testing.T) {
+	tests := []struct {
+		kind, tokenEnv string
+		env            map[string]string
+		want           string
+	}{
+		{"github", "", map[string]string{"GH_TOKEN": "gh", "GITHUB_TOKEN": "github"}, "GH_TOKEN"},
+		{"", "", map[string]string{"GITHUB_TOKEN": "github"}, "GITHUB_TOKEN"},
+		{"gitlab", "", map[string]string{"GITLAB_TOKEN": "gl"}, "GITLAB_TOKEN"},
+		{"github", "WORK", map[string]string{"WORK": "w", "GH_TOKEN": "gh"}, "WORK"},
+	}
+	for _, tt := range tests {
+		got, err := TokenVar(tt.kind, tt.tokenEnv, envOf(tt.env))
+		if err != nil || got != tt.want {
+			t.Errorf("TokenVar(%q, %q) = %q, %v; want %q", tt.kind, tt.tokenEnv, got, err, tt.want)
+		}
+	}
+	_, err := TokenVar("github", "WORK", envOf(map[string]string{"GH_TOKEN": "gh"}))
+	var te *TokenError
+	if !errors.As(err, &te) {
+		t.Errorf("err = %v, want *TokenError", err)
+	}
+}
+
+// Fails if a variable Token may read is missing from TokenVarNames: the agent of a scheduled run
+// would keep that token.
+func TestTokenVarNamesCoversEveryTokenVariable(t *testing.T) {
+	if got, want := TokenVarNames(""), []string{"GH_ENTERPRISE_TOKEN", "GH_TOKEN", "GITHUB_ENTERPRISE_TOKEN", "GITHUB_TOKEN", "GITLAB_TOKEN"}; !slices.Equal(got, want) {
+		t.Errorf("TokenVarNames(\"\") = %q, want %q", got, want)
+	}
+	if got, want := TokenVarNames("WORK"), []string{"GH_ENTERPRISE_TOKEN", "GH_TOKEN", "GITHUB_ENTERPRISE_TOKEN", "GITHUB_TOKEN", "GITLAB_TOKEN", "WORK"}; !slices.Equal(got, want) {
+		t.Errorf("TokenVarNames(WORK) = %q, want %q", got, want)
+	}
+	if got := TokenVarNames("GH_TOKEN"); len(got) != 5 {
+		t.Errorf("TokenVarNames(GH_TOKEN) = %q, want each name once", got)
+	}
+	// Every variable TokenVar can name is in the list.
+	for _, kind := range []string{"github", "gitlab"} {
+		for _, v := range defaultTokenVars[kind] {
+			name, err := TokenVar(kind, "", envOf(map[string]string{v: "x"}))
+			if err != nil || !slices.Contains(TokenVarNames(""), name) {
+				t.Errorf("TokenVar(%s) = %q, %v; not in TokenVarNames", kind, name, err)
+			}
+		}
+	}
+}

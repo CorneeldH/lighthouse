@@ -92,7 +92,7 @@ func AdoptSessions(ctx context.Context, db *sql.DB, place Place, repo string) er
 			errs = append(errs, fmt.Errorf("sessions of run %d: %w", run.ID, err))
 			continue
 		}
-		taken, err := runs.SessionKeys(ctx, db, repo, run.Issue)
+		taken, err := ownKeys(ctx, db, repo, run.Issue, run.Schedule)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("session keys of run %d: %w", run.ID, err))
 			continue
@@ -121,15 +121,27 @@ func findSession(sessions []Session, sessionID string, taken Own) (key string, o
 	return "", false
 }
 
-// hasOpenRun reports whether an open run of c.Repo belongs to the issue of c or uses its workspace
-// (same node and workspace id).
+// ownKeys is runs.SessionKeys of the issue, or of the schedule when schedule is set.
+func ownKeys(ctx context.Context, db *sql.DB, repo string, issue int, schedule string) (map[string]string, error) {
+	if schedule != "" {
+		return runs.ScheduleSessionKeys(ctx, db, repo, schedule)
+	}
+	return runs.SessionKeys(ctx, db, repo, issue)
+}
+
+// hasOpenRun reports whether an open run of c.Repo uses the workspace of c (same node and
+// workspace id) or, for the workspace of an issue, is a run of that issue. The workspace of a
+// scheduled run is held only by a run on it: every attempt has a branch and workspace of its own.
 func hasOpenRun(ctx context.Context, db *sql.DB, c Candidate) (bool, error) {
 	open, err := runs.Open(ctx, db, c.Repo)
 	if err != nil {
 		return false, err
 	}
 	for _, r := range open {
-		if r.Issue == c.Issue || (r.Node == c.Node && r.WorkspaceID == c.Workspace.ID) {
+		if r.Node == c.Node && r.WorkspaceID == c.Workspace.ID {
+			return true, nil
+		}
+		if c.Schedule == "" && r.Schedule == "" && r.Issue == c.Issue {
 			return true, nil
 		}
 	}
@@ -140,7 +152,11 @@ func hasOpenRun(ctx context.Context, db *sql.DB, c Candidate) (bool, error) {
 // come from the board and the PR.
 type Candidate struct {
 	Repo  string
-	Issue int
+	Issue int // 0 for the workspace of a scheduled run
+	// Schedule names the schedule of a scheduled run's workspace; "" for an issue. Such a
+	// workspace is removed with RemoveOptions.Force, without the git checks: nothing in it must
+	// be kept (spec #121 §4).
+	Schedule string
 	// Node is the node of the workspace; "" is self. On a node Cleanup measures git through the
 	// GitMeter of the workplace.
 	Node         string
@@ -157,7 +173,8 @@ type Candidate struct {
 // (nothing), a workspace on a node whose workplace has no GitMeter (keep), the workspace path (looked up when the candidate has none), the
 // sessions (a workspace forge no longer knows counts as removed), a live foreign
 // session (keep), an open run again (nothing), stop the own sessions, dirty,
-// unpushed, an open run again (nothing), remove.
+// unpushed, an open run again (nothing), remove. The workspace of a scheduled run skips dirty and
+// unpushed, and goes with RemoveOptions.Force.
 func Cleanup(ctx context.Context, db *sql.DB, w Workplace, run Runner, c Candidate, now time.Time) (removed bool, err error) {
 	if c.Workspace.ID == "" {
 		return false, errors.New("cleanup: candidate has no workspace id")
@@ -169,7 +186,7 @@ func Cleanup(ctx context.Context, db *sql.DB, w Workplace, run Runner, c Candida
 		return false, err
 	}
 	keep := func(reason string) (bool, error) {
-		l := Leftover{Repo: c.Repo, Issue: c.Issue, Node: c.Node, WorkspaceID: c.Workspace.ID, Path: c.Workspace.Path, Reason: reason}
+		l := Leftover{Repo: c.Repo, Issue: c.Issue, Schedule: c.Schedule, Node: c.Node, WorkspaceID: c.Workspace.ID, Path: c.Workspace.Path, Reason: reason}
 		return false, RecordLeftover(ctx, db, l, now)
 	}
 	// On a node git runs there, through the GitMeter of the workplace; on self on this host.
@@ -208,7 +225,7 @@ func Cleanup(ctx context.Context, db *sql.DB, w Workplace, run Runner, c Candida
 	if err != nil {
 		return keep("not measurable: sessions: " + err.Error())
 	}
-	keys, err := runs.SessionKeys(ctx, db, c.Repo, c.Issue)
+	keys, err := ownKeys(ctx, db, c.Repo, c.Issue, c.Schedule)
 	if err != nil {
 		return keep("not measurable: session keys: " + err.Error())
 	}
@@ -247,20 +264,23 @@ func Cleanup(ctx context.Context, db *sql.DB, w Workplace, run Runner, c Candida
 		}
 	}
 
-	git := gitOf(w, run, c)
-	dirty, err := git.Dirty(ctx, c.Workspace.ID)
-	if err != nil {
-		return keep("not measurable: " + err.Error())
-	}
-	if dirty {
-		return keep("uncommitted changes")
-	}
-	unpushed, err := git.Unpushed(ctx, c.Workspace.ID, c.MergedHead)
-	if err != nil {
-		return keep("not measurable: " + err.Error())
-	}
-	if unpushed {
-		return keep("unpushed commits")
+	force := c.Schedule != ""
+	if !force {
+		git := gitOf(w, run, c)
+		dirty, err := git.Dirty(ctx, c.Workspace.ID)
+		if err != nil {
+			return keep("not measurable: " + err.Error())
+		}
+		if dirty {
+			return keep("uncommitted changes")
+		}
+		unpushed, err := git.Unpushed(ctx, c.Workspace.ID, c.MergedHead)
+		if err != nil {
+			return keep("not measurable: " + err.Error())
+		}
+		if unpushed {
+			return keep("unpushed commits")
+		}
 	}
 	// Again for a run claimed during the git checks. A run that Prepare already found but has
 	// not claimed yet is not seen here.
@@ -269,7 +289,10 @@ func Cleanup(ctx context.Context, db *sql.DB, w Workplace, run Runner, c Candida
 	} else if running {
 		return false, nil
 	}
-	if err := w.Remove(ctx, c.Workspace.ID); err != nil {
+	if err := w.Remove(ctx, c.Workspace.ID, RemoveOptions{Force: force}); err != nil {
+		if errors.Is(err, ErrDirty) && force {
+			return keep("forced remove refused: " + err.Error())
+		}
 		if errors.Is(err, ErrDirty) {
 			return keep("forge refused: dirty worktree (409)")
 		}

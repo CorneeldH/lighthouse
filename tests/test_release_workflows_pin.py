@@ -8,6 +8,7 @@ WORKFLOWS = ROOT / ".github" / "workflows"
 RELEASE = WORKFLOWS / "release.yml"
 BUILD = WORKFLOWS / "build.yml"
 MACOS = WORKFLOWS / "macos.yml"
+PRERELEASE = WORKFLOWS / "prerelease.yml"
 
 
 def _text(path: Path) -> str:
@@ -53,7 +54,7 @@ def _run_blocks(text: str) -> list[str]:
 
 def test_actions_pinned_by_sha():
     """Fails when a `uses:` is not pinned to a 40-hex SHA with a `# vX.Y.Z` comment."""
-    for path in (RELEASE, BUILD, MACOS):
+    for path in (RELEASE, BUILD, MACOS, PRERELEASE):
         uses = re.findall(r"^\s*(?:- )?uses:\s*(.+)$", _text(path), re.MULTILINE)
         assert uses, path.name
         for value in uses:
@@ -79,34 +80,93 @@ def test_release_triggers_and_concurrency():
 
 
 def test_release_pushes_atomically():
-    """Fails when the commit and the tag no longer land in one atomic push, with retries."""
+    """Fails when main and the tag no longer land in one atomic push, with retries."""
     release = _jobs(RELEASE)["release"]
-    assert "git push --atomic origin HEAD:main" in release
+    assert 'git push --atomic origin "$main_sha:refs/heads/main" "refs/tags/$tag"' in release
     assert "for attempt in 1 2 3" in release
+    sha = "main_sha=$(git rev-parse HEAD)"
+    script = 'ci/tag-with-ui.sh "$tag" "$RUNNER_TEMP/ui-dist"'
+    assert release.index("git commit -m") < release.index(sha) < release.index(script)
+    assert release.index(script) < release.index("git push --atomic")
+    assert 'git tag -a "$tag"' not in release
+
+
+def test_ui_job_builds_in_a_read_only_job():
+    """Fails when `ui` gets write rights, drops its pinned checkout or stops uploading ui-dist."""
+    ui = _jobs(RELEASE)["ui"]
+    assert re.search(r"^    needs: macos\s*$", ui, re.MULTILINE)
+    assert "contents: read" in ui and "contents: write" not in ui
+    checkout = next(x for x in _steps(ui) if "actions/checkout@" in x)
+    assert re.search(r"^\s+ref: \$\{\{ github\.sha \}\}\s*$", checkout, re.MULTILINE)
+    assert "persist-credentials: false" in checkout
+    assert "node-version-file: web/.nvmrc" in ui
+    ui_steps = _steps(ui)
+    for command in ("npm ci", "npm run build"):
+        step = next((x for x in ui_steps if re.search(rf"^\s+(?:- )?run: {command}\s*$", x, re.MULTILINE)), None)
+        assert step is not None, f"ui has no own step `run: {command}`"
+        assert re.search(r"^\s+working-directory: web\s*$", step, re.MULTILINE), command
+    upload = next(x for x in ui_steps if "actions/upload-artifact@" in x)
+    for needle in ("name: ui-dist", "path: internal/web/dist", "if-no-files-found: error"):
+        assert re.search(r"^\s+" + re.escape(needle) + r"\s*$", upload, re.MULTILINE), needle
+
+
+def test_ui_job_uploads_hidden_files():
+    """Fails when the ui-dist upload skips dotfiles (upload-artifact drops them by default)."""
+    for path in (RELEASE, PRERELEASE):
+        upload = next(x for x in _steps(_jobs(path)["ui"]) if "actions/upload-artifact@" in x)
+        assert re.search(r"^\s+include-hidden-files: true\s*$", upload, re.MULTILINE), path.name
+
+
+def test_writing_jobs_run_no_npm():
+    """Fails when a job that can write runs npm or setup-node, or `release` loses the ui-dist download."""
+    for path, name in [(RELEASE, "release"), (PRERELEASE, "tag")]:
+        job = _jobs(path)[name]
+        assert "npm" not in job, (path.name, name)
+        assert "setup-node" not in job, (path.name, name)
+    release = _jobs(RELEASE)["release"]
+    assert re.search(r"^    needs: \[macos, ui\]\s*$", release, re.MULTILINE)
+    download = next(x for x in _steps(release) if "actions/download-artifact@" in x)
+    assert re.search(r"^\s+name: ui-dist\s*$", download, re.MULTILINE)
+    assert re.search(r"^\s+path: \$\{\{ runner\.temp \}\}/ui-dist\s*$", download, re.MULTILINE)
+
+
+def test_release_retry_does_not_rebuild():
+    """Fails when a retry rebuilds the SPA or tags before it has reset to origin/main."""
+    release = _jobs(RELEASE)["release"]
+    loop = release[release.index("for attempt in 1 2 3") :]
+    assert "npm" not in loop
+    script = 'ci/tag-with-ui.sh "$tag" "$RUNNER_TEMP/ui-dist"'
+    assert loop.index("git reset --hard origin/main") < loop.index(script)
 
 
 def test_only_release_job_persists_credentials():
     """Fails when a second job keeps the token in .git/config, or a checkout lacks `false`."""
     total = 0
-    for path in (RELEASE, BUILD, MACOS):
+    for path in (RELEASE, BUILD, MACOS, PRERELEASE):
         text = _text(path)
         for name, job in _jobs(path).items():
             count = job.count("persist-credentials: true")
             total += count
             if count:
-                assert (path.name, name) == ("release.yml", "release")
+                assert (path.name, name) in {("release.yml", "release"), ("prerelease.yml", "tag")}
         checkouts = len(re.findall(r"uses:\s*actions/checkout@", text))
-        # release.yml's one pushing checkout is the sole exception.
-        exempt = 1 if path == RELEASE else 0
+        # The one pushing checkout of release.yml and of prerelease.yml is the sole exception.
+        exempt = 1 if path in (RELEASE, PRERELEASE) else 0
         assert text.count("persist-credentials: false") == checkouts - exempt, path.name
-    assert total == 1
+    assert total == 2
 
 
 def test_write_permission_only_where_needed():
     """Fails when `contents: write` appears outside release.release, release.build, build.publish."""
-    allowed = {("release.yml", "release"), ("release.yml", "build"), ("build.yml", "publish")}
+    allowed = {
+        ("release.yml", "release"),
+        ("release.yml", "build"),
+        ("build.yml", "publish"),
+        ("prerelease.yml", "tag"),
+        ("prerelease.yml", "build"),
+    }
     found = set()
-    for path in (RELEASE, BUILD, MACOS):
+    for path in (RELEASE, BUILD, MACOS, PRERELEASE):
         assert "contents: write" not in _text(path).split("\njobs:\n")[0], path.name
         for name, job in _jobs(path).items():
             if "contents: write" in job:
@@ -159,14 +219,14 @@ def test_publish_uses_notes_file_and_clobber():
 
 def test_no_inputs_in_run_scripts():
     """Fails when input or the ref name is interpolated into a run script instead of env."""
-    for path in (RELEASE, BUILD, MACOS):
+    for path in (RELEASE, BUILD, MACOS, PRERELEASE):
         for block in _run_blocks(_text(path)):
             assert "${{" not in block, (path.name, block)
 
 
 def test_every_step_job_has_a_runner():
     """Fails when a job with steps lacks `runs-on: ubuntu-latest`, or a `uses:` job gets one."""
-    for path in (RELEASE, BUILD):
+    for path in (RELEASE, BUILD, PRERELEASE):
         for name, job in _jobs(path).items():
             if "\n    steps:" in job:
                 assert "    runs-on: ubuntu-latest" in job, (path.name, name)
@@ -207,47 +267,70 @@ def _step_index(steps: list[str], name: str) -> int:
     raise AssertionError(f"no step named {name!r}")
 
 
-def test_build_embeds_real_spa():
-    """Fails when the binaries stop embedding the real SPA built by the `web` job."""
-    jobs = _jobs(BUILD)
-    assert "web" in jobs, "build.yml has no `web` job"
-    web = jobs["web"]
+def test_web_job_checks_dist_of_the_tag():
+    """Fails when `web` stops proving that the tag's tracked dist matches a fresh build."""
+    web = _jobs(BUILD)["web"]
     assert "node-version-file: web/.nvmrc" in web
-    assert "npm ci" in web
-    assert "npm run build" in web
-    assert web.index("npm ci") < web.index("npm run build")
+    tracked = "git ls-files --error-unmatch internal/web/dist/index.html"
+    clean = 'test -z "$(git status --porcelain --ignored -- internal/web/dist)"'
+    order = [tracked, "npm ci", "npm run build", clean]
+    for needle in order:
+        assert needle in web, needle
+    positions = [web.index(n) for n in order]
+    assert positions == sorted(positions)
     wsteps = _steps(web)
     for command in ("npm ci", "npm run build"):
-        pattern = rf"^      - run: {command}\s*$"
-        step = next((x for x in wsteps if re.match(pattern, x.splitlines()[0])), None)
-        assert step is not None, f"web has no step `run: {command}`"
+        step = next((x for x in wsteps if re.search(rf"^\s+run: {command}\s*$", x, re.MULTILINE)), None)
+        assert step is not None, f"web has no own step `run: {command}`"
         assert re.search(r"^\s+working-directory: web\s*$", step, re.MULTILINE), command
-    upload = next((x for x in wsteps if "actions/upload-artifact@" in x), None)
-    assert upload is not None, "web has no upload-artifact step"
-    assert re.search(r"^\s+if-no-files-found: error\s*$", upload, re.MULTILINE)
-    assert "name: spa-dist" in web
-    assert "internal/web/dist" in web
+    for command in (tracked, clean):
+        assert any(command in _run_text(x) for x in wsteps), command
     assert "contents: read" in web
     assert "contents: write" not in web
+    assert "upload-artifact" not in web
 
-    build = jobs["build"]
+
+def _run_text(step: str) -> str:
+    return "\n".join(_run_blocks(step))
+
+
+def test_build_has_no_spa_artifact():
+    """Fails when `build` downloads a spa artifact again or loses its ordering against `web`."""
+    build = _jobs(BUILD)["build"]
+    assert "download-artifact" not in build
+    assert "spa-dist" not in build
     assert re.search(r"^    needs: \[resolve, web\]\s*$", build, re.MULTILINE)
-    steps = _steps(build)
-    download = next(
-        (
-            i
-            for i, step in enumerate(steps)
-            if "actions/download-artifact@" in step
-            and "name: spa-dist" in step
-            and re.search(r"^\s+path: internal/web/dist\s*$", step, re.MULTILINE)
-        ),
-        None,
+    assert build.index("git status --porcelain") < build.index("go build")
+
+
+def test_go_install_job_proves_spa():
+    """Fails when `go install` of the tag is no longer proven, or goes through a proxy setting."""
+    job = _jobs(BUILD)["go-install"]
+    assert re.search(r"^    needs: \[resolve, web\]\s*$", job, re.MULTILINE)
+    assert "contents: read" in job and "contents: write" not in job
+    checkout = next(x for x in _steps(job) if "actions/checkout@" in x)
+    assert re.search(
+        r"^\s+ref: refs/tags/\$\{\{ needs\.resolve\.outputs\.tag \}\}\s*$", checkout, re.MULTILINE
     )
-    assert download is not None, "build has no download of spa-dist into internal/web/dist"
-    assert download < _step_index(steps, "Build")
-    # checkout runs `git clean -ffdx`, which would delete the git-ignored internal/web/dist.
-    checkout = next(i for i, step in enumerate(steps) if "actions/checkout@" in step)
-    assert checkout < download
+    assert "persist-credentials: false" in checkout
+    assert "actions/setup-go@" in job
+    assert "go-version-file: go.mod" in job
+    run = "\n".join(_run_blocks(job))
+    for needle in (
+        "GOPRIVATE=github.com/CorneeldH/lighthouse",
+        'GOBIN="$RUNNER_TEMP/bin"',
+        'go install github.com/CorneeldH/lighthouse/cmd/lighthouse@"$TAG"',
+    ):
+        assert needle in run, needle
+    assert run.index("go install") < run.index('ci/spa-smoke.sh "$RUNNER_TEMP/bin/lighthouse"')
+    for path in WORKFLOWS.glob("*.yml"):
+        assert "GOPROXY" not in _text(path), path.name
+
+
+def test_publish_needs_go_install():
+    """Fails when a release can be published without the `go install` proof."""
+    publish = _jobs(BUILD)["publish"]
+    assert re.search(r"^    needs: \[resolve, build, go-install\]\s*$", publish, re.MULTILINE)
 
 
 def test_build_runs_spa_smoke():
@@ -271,7 +354,7 @@ def test_build_checkouts_pin_the_tag():
             if "actions/checkout@" in step:
                 found += 1
                 assert re.search(r"^\s+" + re.escape(ref) + r"\s*$", step, re.MULTILINE), name
-    assert found == 3
+    assert found == 4
 
 
 def test_macos_gate_triggers():
@@ -305,7 +388,9 @@ def test_release_waits_for_macos():
     """Fails when the release can start without a green macOS run (#337)."""
     jobs = _jobs(RELEASE)
     assert "uses: ./.github/workflows/macos.yml" in jobs["macos"]
-    assert re.search(r"^    needs: macos\s*$", jobs["release"], re.MULTILINE)
+    # `release` also needs `ui`: dropping it would race download-artifact with the ui job.
+    assert re.search(r"^    needs: \[macos, ui\]\s*$", jobs["release"], re.MULTILINE)
+    assert re.search(r"^    needs: macos\s*$", jobs["ui"], re.MULTILINE)
 
 
 def _tested_commit_check(release: str) -> str:
@@ -343,3 +428,69 @@ def test_overtaken_dispatch_or_rerun_fails():
     )
     assert line, block
     assert line.start() < block.index("exit 0")
+
+
+PRERELEASE_RE = "^v[0-9]+\\.[0-9]+\\.[0-9]+-[0-9A-Za-z.-]+$"
+
+
+def test_prerelease_trigger_and_input():
+    """Fails when prerelease.yml gets an automatic trigger or loses its `tag` input."""
+    on_block = _text(PRERELEASE).split("\non:\n", 1)[1].split("\npermissions:")[0]
+    assert "workflow_dispatch:" in on_block
+    assert re.search(r"^    inputs:\s*\n      tag:", on_block, re.MULTILINE)
+    for trigger in ("push", "pull_request", "schedule", "workflow_call"):
+        assert not re.search(rf"^  {trigger}\b", on_block, re.MULTILINE), trigger
+
+
+def test_prerelease_rejects_non_prerelease_tags():
+    """Fails when `ui` or `tag` lets a tag that is not vX.Y.Z-<suffix> through, or checks too late."""
+    jobs = _jobs(PRERELEASE)
+    for name in ("ui", "tag"):
+        job = jobs[name]
+        assert 'grep -Eq "' + PRERELEASE_RE + '"' in job or "grep -Eq '" + PRERELEASE_RE + "'" in job, name
+        assert "exit 1" in job, name
+    ui = jobs["ui"]
+    assert ui.index(PRERELEASE_RE) < ui.index("npm ci")
+    tag = jobs["tag"]
+    assert tag.index(PRERELEASE_RE) < tag.index("ci/tag-with-ui.sh")
+
+
+def test_prerelease_tag_job_pushes_only_the_tag():
+    """Fails when `tag` pushes more than refs/tags/<tag>, or may overwrite an existing tag."""
+    tag = _jobs(PRERELEASE)["tag"]
+    assert re.search(r"^    needs: ui\s*$", tag, re.MULTILINE)
+    assert "contents: write" in tag
+    checkout = next(x for x in _steps(tag) if "actions/checkout@" in x)
+    assert "persist-credentials: true" in checkout
+    assert re.search(r"^\s+ref: \$\{\{ github\.sha \}\}\s*$", checkout, re.MULTILINE)
+    run = "\n".join(_run_blocks(tag))
+    assert 'git push origin "refs/tags/$tag"' in run
+    for banned in ("--atomic", "HEAD:", "main", "--force", "-f "):
+        assert banned not in run, banned
+    exists = 'git ls-remote --exit-code --tags origin "refs/tags/$tag"'
+    assert exists in run
+    assert run.index(exists) < run.index("ci/tag-with-ui.sh") < run.index("git push")
+    # ls-remote exit codes: 0 = tag exists (refuse), 2 = no such tag (free), anything else = error.
+    capture = exists + " >/dev/null || status=$?"
+    assert capture in run
+    assert "status=0" in run and run.index("status=0") < run.index(capture)
+    refuse = run.index('if [ "$status" -eq 0 ]; then', run.index(capture))
+    error = run.index('elif [ "$status" -ne 2 ]; then', refuse)
+    assert refuse < error < run.index("ci/tag-with-ui.sh")
+    assert "already exists on the remote" in run[refuse:error]
+    assert "exit 1" in run[refuse:error] and "exit 1" in run[error : run.index("ci/tag-with-ui.sh")]
+    assert 'ci/tag-with-ui.sh "$tag" "$RUNNER_TEMP/ui-dist"' in run
+    assert 'echo "tag=$tag" >> "$GITHUB_OUTPUT"' in run
+    assert re.search(r"^      tag: \$\{\{ steps\.\w+\.outputs\.tag \}\}\s*$", tag, re.MULTILINE)
+    download = next(x for x in _steps(tag) if "actions/download-artifact@" in x)
+    assert re.search(r"^\s+name: ui-dist\s*$", download, re.MULTILINE)
+    assert re.search(r"^\s+path: \$\{\{ runner\.temp \}\}/ui-dist\s*$", download, re.MULTILINE)
+
+
+def test_prerelease_build_calls_build_workflow():
+    """Fails when `build` stops calling build.yml for the tag job's tag."""
+    build = _jobs(PRERELEASE)["build"]
+    assert re.search(r"^    needs: tag\s*$", build, re.MULTILINE)
+    assert "contents: write" in build
+    assert "uses: ./.github/workflows/build.yml" in build
+    assert re.search(r"^      tag: \$\{\{ needs\.tag\.outputs\.tag \}\}\s*$", build, re.MULTILINE)

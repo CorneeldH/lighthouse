@@ -14,21 +14,25 @@ write them in the project language (`lighthouse config project.language`).
 Headings that code or a skill reads are written as `heading:<key>`: write the variant that
 `lighthouse headings <key>` prints.
 
-## Tool: use `gh api`, not `gh issue list --json`
+## Tool: `lighthouse forge`
 
-`gh issue list --json` breaks under some proxies:
+Every read and write of an issue, a label or a milestone goes through `lighthouse forge`, on
+GitHub and GitLab alike, with `dangerouslyDisableSandbox: true` (it needs the network). The JSON is
+the same on both forges: `number`, `title`, `body`, `state`, `labels` (names), `milestone`
+(`number`, `title`, `description`, or `null`), `url`, `created_at`, `author`; `--field <path>`
+prints one value. Exit 0 is done, 1 a forge error with the API's message, 2 a usage error or a
+missing config.
 
-```
-Failed to parse gh issue list output / expected value at line 1 column 1
-```
+What differs per forge (the board, blockers, sub-issues) is a section of
+`../lighthouse-forge/<kind>.md`, with `<kind>` from `lighthouse config forge.kind`. A `gh` read
+is GitHub only and has the proxy quirk of its §proxy.
 
-For everything you have to read, use
-`R=$(lighthouse config forge.repo) && gh api "repos/$R/issues?..."`.
-`gh issue create` and `gh issue edit` do work as usual.
+Text goes in through a file, never as a shell argument: write a body, a comment or a milestone
+description with your write tool to a temporary file and pass it with `--body-file` or
+`--description-file`. Backticks and `$` in a shell argument are executed.
 
-Second trap: **an unknown `--label` filter is silently ignored** instead of failing. You then get
-the full, unfiltered result back and count nonsense. Verify a label name with `gh label list`
-before you filter on it.
+A trap: **an unknown `--label` filter is no error**. You get a list back anyway and count
+nonsense. Verify a label name with `lighthouse forge label list` before you filter on it.
 
 ## Workflow
 
@@ -38,16 +42,13 @@ At `/lighthouse-write-issue [description]`:
 
 Ask this before you choose a template: a duplicate issue costs a closing action later. It is a
 targeted search on *this* topic, no bulk scan. Choose 1-2 key terms from the description
-(function, file, config key, topic) and run this with `dangerouslyDisableSandbox: true` (`gh`
-needs network).
+(function, file, config key, topic) and run this with `dangerouslyDisableSandbox: true`
+(`lighthouse forge` needs network).
 
 Search in issues, open and closed, bounded to five:
 
 ```bash
-R=$(lighthouse config forge.repo) || exit 2
-T='<key term>'
-gh api -X GET search/issues -f q="repo:$R is:issue $T" \
-  --jq '.items[:5][] | "#\(.number) \(.state) \(.title)"'
+lighthouse forge issue search '<key term>' | jq -r '.[:5][] | "#\(.number) \(.state) \(.title)"'
 ```
 
 Then look in the codebase and docs, whether the work is already there:
@@ -67,16 +68,17 @@ hit.
   the codebase look was done on a possibly stale `origin/$B`: then report
   `duplicate? not measurable — fetch failed` instead of `no`, and go on to step 1.
 - A covering hit: report it and let the user choose (`AskUserQuestion` in Claude Code, otherwise
-  a question in chat) from **do not create** · **add to** the existing issue (a comment or a body
-  change through `gh api`) · **create anyway**, with the reason in the body
+  a question in chat) from **do not create** · **add to** the existing issue (a comment through
+  `lighthouse forge issue comment <nr> --body-file <file>`, or a body change as in "An existing
+  issue") · **create anyway**, with the reason in the body
   (`Differs from #<nr>: …`).
 
 This step only reports: it closes nothing and sets no label.
 
 ### 1. Choose the template
 
-Two templates, chosen on content. Do not try to set a GitHub issue type (`issueTypeId`): issue
-types are an organisation feature, and on a personal account `.type` is `null` on every issue.
+Two templates, chosen on content. Do not try to set an issue type of the forge: `lighthouse
+forge` has none, and on GitHub issue types are an organisation feature.
 
 | Input | Template |
 |---|---|
@@ -146,17 +148,15 @@ Not to be confused with a board Status `On hold` (only if a board is configured)
 *parked on purpose*, a blocking label is *something is in the way*. An issue can be parked and
 unshaped at the same time.
 
-`labels.blocked_issue` never goes along in `gh issue create`: it leans on the `blocked_by`
-relation, and that comes first. See 3e.
+`labels.blocked_issue` never goes along in `lighthouse forge issue create`: it leans on the
+`blocked_by` relation, and that comes first. See 3e.
 
 #### 3d. Milestone — does it fit thematically in a running block?
 
 Fetch the open milestones, with description:
 
 ```bash
-R=$(lighthouse config forge.repo) || exit 2
-gh api "repos/$R/milestones?state=open&per_page=100" \
-  --jq '.[] | "\(.title)\t\(.open_issues) open\n\(.description)\n---"'
+lighthouse forge milestone list --state open | jq -r '.[] | "\(.title)\n\(.description)\n---"'
 ```
 
 Start with the milestones whose name matches the area of the issue, but look at the rest too.
@@ -178,10 +178,11 @@ it did not fit.
 
 #### 3e. Set a block
 
-If the issue waits on another issue in this repo, the blocked-issue label leans on the GitHub
-relation `blocked_by`. The relation comes **before** the label, so that a half failure never
-leaves a label without a relation. This runs after step 4; for an existing issue that gets a
-block, step 1 below drops (see "An existing issue").
+If the issue waits on another issue in this repo, the blocked-issue label leans on the forge's
+`blocked_by` relation; what it is per forge, and what to do where the forge has none (GitLab
+Free), is `../lighthouse-forge/<kind>.md §blockers`. The relation comes **before** the label, so
+that a half failure never leaves a label without a relation. This runs after step 4; for an
+existing issue that gets a block, step 1 below drops (see "An existing issue").
 
 The invariant, per open issue (label names from `[labels]`):
 
@@ -195,7 +196,7 @@ The invariant, per open issue (label names from `[labels]`):
 | no label or another one | 0 | **holds**, outside this invariant |
 
 `labels.blocked_external` falls outside it: it waits on something outside the repo. Repair:
-label off is `gh issue edit <nr> --repo "$R" --remove-label "$BLOCKED"`, setting the relation is step 2 below.
+label off is `lighthouse forge issue edit <nr> --remove-label "$BLOCKED"`, setting the relation is step 2 below.
 
 A `blocked_by` relation between two issues the controller runs (only if present) is also their
 stacking order: the controller lets the blocked issue do spec and plan and stacks the execution
@@ -206,20 +207,20 @@ on the green PR of its predecessor. The invariant and the steps below stay the s
    (`START=...`) does not survive a new Bash call, so the search call after a failed create (the
    failure table below) uses that literal text, never `$START`. The number `<nr>` comes from the
    URL.
-2. **Set the relation.** `issue_id` is the numeric id of the blocker, not its issue number:
+2. **Set the relation.** The wrapper looks up the id the forge wants for the blocker:
 
    ```bash
-   R=$(lighthouse config forge.repo) || exit 2
-   ID=$(gh api "repos/$R/issues/<blocker-nr>" --jq .id)
-   gh api -X POST "repos/$R/issues/<nr>/dependencies/blocked_by" -F issue_id="$ID"
+   lighthouse forge issue block <nr> --by <blocker-nr>
    ```
 
-3. **Verify with the list, not from the summary**: `issue_dependencies_summary` runs one write
-   behind and then reports a successful POST as failed. The blocker must be here:
+   Exit 1 with the forge's refusal (GitLab Free has no blocker links): follow
+   `../lighthouse-forge/<kind>.md §blockers` and report it.
+
+3. **Verify with the list, not from the summary**: GitHub's `issue_dependencies_summary` runs one
+   write behind and then reports a successful write as failed. The blocker must be here:
 
    ```bash
-   R=$(lighthouse config forge.repo) || exit 2
-   gh api "repos/$R/issues/<nr>/dependencies/blocked_by" --jq '.[].number'
+   lighthouse forge issue blockers <nr> | jq '.[].number'
    ```
 
 4. **Only then the label.** If `labels.needs_shaping` or `labels.needs_decision` is on already,
@@ -228,12 +229,10 @@ on the green PR of its predecessor. The invariant and the steps below stay the s
 
    ```bash
    BLOCKED=$(lighthouse config labels.blocked_issue) || exit 2
-   R=$(lighthouse config forge.repo) || exit 2
-   gh issue edit <nr> --repo "$R" --add-label "$BLOCKED"
+   lighthouse forge issue edit <nr> --add-label "$BLOCKED"
    ```
 
-5. **Final check**: the list from step 3 and
-   `R=$(lighthouse config forge.repo) && gh api "repos/$R/issues/<nr>" --jq '[.labels[].name]'`.
+5. **Final check**: the list from step 3 and `lighthouse forge issue view <nr> --field labels`.
    Only when relation and winning blocking label stand there together, report success.
 
 At every error you never derive the state from which step failed: you read it and report what
@@ -242,11 +241,11 @@ compensate; a relation without a label is caught by the sweep as **label missing
 
 | Failure point | Read | Report |
 |---|---|---|
-| `gh issue create` fails or gives no URL | `R=$(lighthouse config forge.repo) && T='<title>' && gh api "search/issues?q=repo:$R+in:title+\"$T\""` | exactly one hit with `created_at` after the noted start time (the literal ISO value from step 1, not `$START`) and the same body: go on with that number. No hit: error, stop. More than one, an older one, another body, or the search call fails: **unknown** + the search call, stop before every mutation. Never create again blindly |
-| POST fails | the list from step 3 | the relation stands: on to the label. It does not: one retry, then "#N stands without relation and without label" + the POST command |
+| `lighthouse forge issue create` fails or gives no URL | `lighthouse forge issue search '<title>'` | exactly one hit with the same title, `created_at` after the noted start time (the literal ISO value from step 1, not `$START`) and the same body: go on with that number. No hit: error, stop. More than one, an older one, another body, or the search call fails: **unknown** + the search call, stop before every mutation. Never create again blindly |
+| `issue block` fails | the list from step 3 | the relation stands: on to the label. It does not: one retry, then "#N stands without relation and without label" + the `issue block` command |
 | the verification misses the blocker | the same | as above; the summary does not count |
-| setting the label fails | the label command from step 5 | the label stands: go on. It does not: "relation stands, label missing" + `gh issue edit <nr> --repo "$R" --add-label "$BLOCKED"` |
-| the final check differs, or a GET fails | — | the real state, or **unknown** with the read command. Never success |
+| setting the label fails | the label command from step 5 | the label stands: go on. It does not: "relation stands, label missing" + `lighthouse forge issue edit <nr> --add-label "$BLOCKED"` |
+| the final check differs, or a read fails | — | the real state, or **unknown** with the read command. Never success |
 
 #### 3f. Free labels with a document
 
@@ -260,29 +259,24 @@ this step.
 
 ### 4. Create the issue
 
-`--label` always carries one label per axis the project has (3a, 3b) plus every free label from 3f.
+One `--label` for each axis the project has (3a, 3b) plus every free label from 3f. Write the
+body from step 2 with your write tool to a temporary file first.
 
 ```bash
-R=$(lighthouse config forge.repo) || exit 2
-gh issue create \
-  --repo "$R" \
-  --title "<title>" \
-  --label "<location label>,<area label>[,<free label>]" \
-  --milestone "<milestone>" \
-  --body "$(cat <<'EOF'
-<formatted body>
-EOF
-)"
+lighthouse forge issue create --title '<title>' --body-file <file> \
+  --label '<location label>' --label '<area label>' [--label '<free label>'] \
+  --milestone '<milestone>'
 ```
 
-If the project has a board with auto-add, it fills itself; otherwise add the issue by hand.
+It prints the number and the URL. If the project has a board with auto-add, it fills itself;
+otherwise set the status (see "The board").
 
-If this command fails or gives no URL: go to 3e, the failure table, row `gh issue create fails or
-gives no URL`.
+If this command fails or gives no URL: go to 3e, the failure table, row `lighthouse forge issue
+create fails or gives no URL`.
 
 ### 5. Report the result
 
-Show the issue URL `gh issue create` returns, plus the milestone outcome from step 3d. If the
+Show the issue URL `lighthouse forge issue create` prints, plus the milestone outcome from step 3d. If the
 issue waits on another issue: first run 3e steps 2–5 and report the final check (or
 **unknown**), not only the URL.
 
@@ -291,7 +285,6 @@ issue waits on another issue: first run 3e steps 2–5 and report the final chec
 After bulk work on labels, with the prefixes from 3a and 3b and the blocking labels from 3c:
 
 ```bash
-R=$(lighthouse config forge.repo) || exit 2
 LOC=$(lighthouse config labels.location_prefix)
 AREA=$(lighthouse config labels.area_prefix)
 BLK=$({ lighthouse config labels.needs_shaping
@@ -300,12 +293,12 @@ BLK=$({ lighthouse config labels.needs_shaping
   lighthouse config labels.blocked_external
   lighthouse config labels.needs_hands
   lighthouse config labels.needs_testing; } | jq -R . | jq -sc .)
-gh api "repos/$R/issues?state=open&per_page=100" --paginate |
-  jq -c --arg loc "$LOC" --arg area "$AREA" --argjson blk "$BLK" '.[] | select(.pull_request|not) |
+lighthouse forge issue list --state open |
+  jq -c --arg loc "$LOC" --arg area "$AREA" --argjson blk "$BLK" '.[] |
     {n:.number,
-     loc:[.labels[].name|select($loc != "" and startswith($loc))]|length,
-     area:[.labels[].name|select($area != "" and startswith($area))]|length,
-     blk:[.labels[].name|select(. as $l | $blk | index($l))]|length} |
+     loc:[.labels[]|select($loc != "" and startswith($loc))]|length,
+     area:[.labels[]|select($area != "" and startswith($area))]|length,
+     blk:[.labels[]|select(. as $l | $blk | index($l))]|length} |
     select(($loc != "" and .loc != 1) or ($area != "" and .area != 1) or .blk > 1)'
 ```
 
@@ -320,33 +313,32 @@ workflow above. Do not guess which part:
 |---|---|
 | 0. Does this exist already? | drops: the issue is the one that exists |
 | 1. Choose the template | drops: the template stands |
-| 2. Format the body | drops as a rewrite; a body change goes through the PATCH below |
+| 2. Format the body | drops as a rewrite; a body change goes through the edit below |
 | 3a., 3b. Axes | only when the axis label is missing or wrong |
 | 3c. The block | holds: at most one blocking label, the lowest rank wins |
 | 3d. Milestone | only when the change moves the issue to another theme |
 | 3e. Set a block | holds, without its step 1: the issue exists already |
-| 3f. Free labels with a document | only when the change makes the issue match a `When` column; then `gh issue edit <nr> --repo "$R" --add-label <label>`, since step 4 drops |
-| 4. Create the issue | drops: never `gh issue create` |
+| 3f. Free labels with a document | only when the change makes the issue match a `When` column; then `lighthouse forge issue edit <nr> --add-label <label>`, since step 4 drops |
+| 4. Create the issue | drops: never `lighthouse forge issue create` |
 | 5. Report the result | the final state as read, not the command that was sent |
 
-**Title and body** go through `gh api`. Read the current body first
-(`R=$(lighthouse config forge.repo) && gh api "repos/$R/issues/<nr>" --jq .body`),
-write the *whole* new body with your write tool to a temporary file, and send that file along;
-never the body itself as a shell argument, because backticks and `$` are executed then:
+**Title and body** go through `lighthouse forge issue edit`. Read the current body first
+(`lighthouse forge issue view <nr> --field body`), write the *whole* new body with your write
+tool to a temporary file, and send that file along; never the body itself as a shell argument,
+because backticks and `$` are executed then:
 
 ```bash
-R=$(lighthouse config forge.repo) || exit 2
-gh api -X PATCH "repos/$R/issues/<nr>" -f title='<title>' -F body=@<file>
+lighthouse forge issue edit <nr> --title '<title>' --body-file <file>
 ```
 
-Leave out `-f title=…` or `-F body=…` for the field that does not change.
+Leave out `--title` or `--body-file` for the field that does not change.
 
 **A blocking label that no longer holds.** A blocking label is a state (3c): it comes off as soon
 as what it names is done. Read first what stands: the labels, and for `labels.blocked_issue` the
 `blocked_by` list from 3e step 3. Then one of two paths:
 
 - **Nothing blocks any more**: label off, nothing on.
-  `R=$(lighthouse config forge.repo) && OLD=$(lighthouse config labels.<old key>) && gh issue edit <nr> --repo "$R" --remove-label "$OLD"`.
+  `OLD=$(lighthouse config labels.<old key>) && lighthouse forge issue edit <nr> --remove-label "$OLD"`.
   For `labels.blocked_issue` only when the 3e invariant says **lapsed** or **unlinked**: with an
   open blocker the label holds.
 - **Another label takes over** (a decision is taken, but now the issue waits on another one):
@@ -357,8 +349,7 @@ as what it names is done. Read first what stands: the labels, and for `labels.bl
   ```bash
   OLD=$(lighthouse config labels.<old key>) || exit 2
   NEW=$(lighthouse config labels.<new key>) || exit 2
-  R=$(lighthouse config forge.repo) || exit 2
-  gh issue edit <nr> --repo "$R" --remove-label "$OLD" --add-label "$NEW"
+  lighthouse forge issue edit <nr> --remove-label "$OLD" --add-label "$NEW"
   ```
 
 Close with 3e step 5 as the final check, also when no relation is involved; on a failure the
@@ -391,7 +382,8 @@ the reason and the local workaround are. Post upstream only when the user asks f
 - **On closing**: the title becomes `<title> - DONE` and `state=closed` in the same PATCH.
   See `lighthouse-close-issue`.
 - **Description**: the pitch from "Pitch (Shape Up)" below, with its seven headings in that
-  order. The ID of a milestone is its number in the URL. If the project has tenets
+  order. `lighthouse forge` names a milestone by its title (`milestone view`, `milestone edit`,
+  `--milestone`). If the project has tenets
   (`lighthouse config paths.tenets`, only if present), the pitch
   names the crux of its main area under *Problem / Opportunity*.
 - **Hard rule**: *a milestone without DoD text in its description does not exist.* Without that
@@ -400,38 +392,27 @@ the reason and the local workaround are. Post upstream only when the user asks f
   block on the ground of DoD and no-gos, it goes to the backlog (no milestone) — not into it after
   all.
 
-Creating goes through the REST API; `gh` has no `milestone create`:
+Creating goes through `lighthouse forge milestone create`:
 
 ```bash
-R=$(lighthouse config forge.repo) || exit 2
 MP=$(lighthouse config project.milestone_prefix); rc=$?
 [ "$rc" -eq 1 ] && echo "milestone prefix: none — no [project] milestone_prefix set"
 [ "$rc" -ge 2 ] && exit 2
-gh api --method POST "repos/$R/milestones" \
-  -f title="${MP:+$MP }<name>" -F description=@<file>
+lighthouse forge milestone create --title "${MP:+$MP }<name>" --description-file <file>
 ```
 
 Write the pitch with your write tool to a temporary file first; never the pitch itself as a
 shell argument: backticks and `$` are executed then.
 
 Sub-issues stay, but only where one task naturally falls apart into sub-steps — not as a layer of
-structure above the milestone. Linking goes through the REST API; `sub_issue_id` is the database
-`id` of the child, not the number:
-
-```bash
-R=$(lighthouse config forge.repo) || exit 2
-CHILD_DBID=$(gh api "repos/$R/issues/<child-nr>" --jq '.id')
-gh api --method POST "repos/$R/issues/<parent-nr>/sub_issues" -F sub_issue_id="$CHILD_DBID"
-```
-
-Verify with
-`R=$(lighthouse config forge.repo) && gh api "repos/$R/issues/<parent-nr>/sub_issues" --jq '.[].number'`.
+structure above the milestone. Linking and verifying differ per forge (GitHub sub-issues, a task
+under the issue on GitLab): `../lighthouse-forge/<kind>.md §sub-issues`.
 
 ## The board (only if configured)
 
-A GitHub Projects v2 board exists for this skill only when `lighthouse.toml` has a
-`[forge.board]` table. If one of the `forge.board.*` keys below gives rc 1, there is no board:
-report `board: skipped — no [forge.board] configured` and set nothing. Labels and milestones are
+A board exists for this skill only when `lighthouse.toml` has a `[forge.board]` table. Without
+it there is no board: report `board: skipped — no [forge.board] configured` and set nothing. What the board is per forge (a
+GitHub Projects v2 project, GitLab's work item status) is `../lighthouse-forge/<kind>.md §board`. Labels and milestones are
 the source of truth about *what* an issue is; the board shows them. The Status is the one place
 where the board itself means something; the status names are in `[forge.board.status_options]`.
 A `Controller` status (only if present) hands an issue over to the controller.
@@ -439,22 +420,16 @@ A `Controller` status (only if present) hands an issue over to the controller.
 Call it consistently **"the board"** in documentation and skills, never "project" — otherwise it
 clashes with the everyday use of "project".
 
-The board can also have a field **Priority** (`P0` · `P1` · `P2`, no value = at the back).
-Setting it goes in the board UI, or like this:
+Set a status with `lighthouse forge issue status <nr> "<status>"`, `<status>` a key of
+`[forge.board.status_options]`.
 
-```bash
-P=$(lighthouse config forge.board.project_id) || exit $?
-F=$(lighthouse config forge.board.priority_field_id) || exit $?
-S=$(lighthouse config forge.board.priority_options.<P0|P1|P2>) || exit $?
-gh project item-edit --id <item-id> --project-id "$P" --field-id "$F" --single-select-option-id "$S"
-```
-
-An item id you read with
-`N=$(lighthouse config forge.board.project_number) && O=$(lighthouse config forge.owner) && gh project item-list "$N" --owner "$O" --format json --jq '.items[] | select(.content.number==<nr>) | .id'`.
+The board can also have a **Priority** (`P0` · `P1` · `P2`, no value = at the back), from
+`[forge.board] priority_options`. There is no shared command for it: set it in the board UI, or
+as `../lighthouse-forge/<kind>.md §board` describes.
 
 `On hold` is the place for work parked on purpose; there is no on-hold label. Setting it goes in
-the board UI, or through `gh project item-edit` (requires the `project` scope plus project, item,
-field and option id); there is no `gh issue` flag for it.
+the board UI, or with `lighthouse forge issue status <nr> "On hold"` when `status_options` has
+that key.
 
 ## Acceptance Criteria vs Definition of Done
 
@@ -552,7 +527,7 @@ Write "None.".
   `→ #<nr>`. A bullet without `→ #<nr>` is open. That issue may be the current issue, if its spec
   answered the question. Updating: write the *whole* pitch, only that bullet changed, with your
   write tool (not through `echo` or a heredoc) to a temporary file, and send that file along:
-  `R=$(lighthouse config forge.repo) && gh api -X PATCH "repos/$R/milestones/<n>" -F description=@<file>`.
+  `lighthouse forge milestone edit '<milestone title>' --description-file <file>`.
   Never the pitch itself as a shell argument: backticks and `$` are executed then.
 - **Timebox**: the fog gets no timebox of its own. If the answer does not fit in the appetite, it
   becomes a no-go or a next milestone. No label and no issue above the milestone.

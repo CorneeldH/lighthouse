@@ -1,8 +1,8 @@
 # Releasing
 
 Lighthouse releases itself. A workflow picks the version, writes `CHANGELOG.md`, tags, and
-builds the binaries. Nobody sets a release tag by hand; the one exception is a prerelease tag
-(see [Testing the build](#testing-the-build)).
+builds the binaries. Every tag is made by a workflow: release tags by `release.yml`, prerelease
+tags by `prerelease.yml` (see [Testing the build](#testing-the-build)).
 
 ## Versions
 
@@ -86,10 +86,13 @@ path in the message.
 
 ## The release commit
 
-The workflow commits `CHANGELOG.md` and the removal of the released fragments to `main` as
-`github-actions[bot]`, with message `chore(release): vX.Y.Z`. It tags that commit and pushes
-commit and tag in one atomic push. This is the only exception to "nothing lands on `main`
-directly". If `main` gets a ruleset, give the bot a bypass for it.
+The workflow makes two commits. The first commits `CHANGELOG.md` and the removal of the released
+fragments to `main` as `github-actions[bot]`, with message `chore(release): vX.Y.Z`. The second
+sits on top of it and adds the built web UI (`internal/web/dist`), so that `go install` of the
+tag serves the UI. The tag points at the second commit, which `main` never gets: the tag is not
+an ancestor of `main`. The workflow pushes `main` and the tag in one atomic push. This is the
+only exception to "nothing lands on `main` directly". If `main` gets a ruleset, give the bot a
+bypass for it.
 
 A refused push lands nothing. If someone merged in the meantime, the run ends as in "main moved"
 under [The macOS gate](#the-macos-gate): that newer commit has its own run. Otherwise (a network
@@ -108,12 +111,19 @@ error) the workflow fetches `main` and retries, three times at most.
   files with `--clobber`; otherwise it creates the release. The notes of an existing release
   stay as they are. To change them, edit the release notes on GitHub by hand. The run still
   needs a `CHANGELOG.md` section for the tag, and for a non-prerelease tag it fails without one.
+- The `web` check of `build` fails on a tag that is already pushed (its `dist` is missing or does
+  not match `web/`): fix the cause, then release a new patch version. Never move or re-set the
+  tag, also not when `build` later runs again and its output differs, for instance because of a
+  newer runner image. Running `build` again only works for tags made with the `dist` commit.
 
 ## Testing the build
 
-To test `build.yml` without a release, push a prerelease tag `vX.Y.Z-rc.N`. The build needs no
-`CHANGELOG.md` section for it: the release gets a fixed note and `--prerelease`. Delete it
-afterwards with `gh release delete <tag> --cleanup-tag --yes`.
+To test `build.yml` without a release, run the `prerelease` workflow (`workflow_dispatch`) with
+the tag `vX.Y.Z-rc.N`, from the branch you want to test. It builds the UI, adds the `dist`
+commit and pushes the tag. The build needs no `CHANGELOG.md` section for it: the release gets a
+fixed note and `--prerelease`. Delete it afterwards with
+`gh release delete <tag> --cleanup-tag --yes`. A prerelease tag pushed by hand has no `dist`, so
+`build.yml` fails on it.
 
 ## Upgrading
 

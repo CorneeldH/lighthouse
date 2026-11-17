@@ -344,3 +344,36 @@ func TestTranscriptDeltaOnNodeIsNotMeasurable(t *testing.T) {
 		t.Fatalf("err = %v, want ErrNotMeasurable", err)
 	}
 }
+
+// The deltas come in the order workplace.ReadDelta gives: the main transcript first, then the
+// subagents by name, whatever order tar walked the directory in (bsdtar on APFS does not sort).
+func TestUntarDeltaOrdersLikeReadDelta(t *testing.T) {
+	main := testSessionID + ".jsonl"
+	a1 := testSessionID + "/subagents/agent-a1.jsonl"
+	b2 := testSessionID + "/subagents/agent-b2.jsonl"
+	c3 := testSessionID + "/subagents/agent-c3.jsonl"
+	stream := tarOf(t,
+		[2]string{deltaManifest, "6 0 " + b2 + "\n2 0 " + main + "\n4 0 " + a1 + "\n1 0 " + c3 + "\n"},
+		[2]string{c3, "c"},
+		[2]string{b2, "short\n"},
+		[2]string{main, "m\n"},
+		[2]string{a1, "abc\n"},
+	)
+	got, err := untarDelta(stream, testSessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, d := range got {
+		names = append(names, d.Name)
+	}
+	want := []string{
+		testSessionID + ".jsonl",
+		testSessionID + "/subagents/agent-a1.jsonl",
+		testSessionID + "/subagents/agent-b2.jsonl",
+		testSessionID + "/subagents/agent-c3.jsonl",
+	}
+	if strings.Join(names, " ") != strings.Join(want, " ") {
+		t.Errorf("order = %q, want %q", names, want)
+	}
+}

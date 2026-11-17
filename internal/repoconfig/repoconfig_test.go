@@ -588,3 +588,17 @@ func TestDispatchableGitLab(t *testing.T) {
 		}
 	}
 }
+
+// LoadFile reads a lighthouse.toml under any file name, as LIGHTHOUSE_TOML may name one, with
+// token_env, and its Dir is the file's directory.
+func TestLoadFileAnyName(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "other.toml")
+	if err := os.WriteFile(path, []byte("[forge]\nrepo = \"o/r\"\ntoken_env = \"MY_TOKEN\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	r, err := LoadFile(path)
+	if err != nil || r.Slug != "o/r" || r.TokenEnv != "MY_TOKEN" || r.Dir != dir {
+		t.Errorf("LoadFile = %+v, %v; want Slug o/r, TokenEnv MY_TOKEN, Dir %s", r, err, dir)
+	}
+}

@@ -8,6 +8,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/workplace"
 )
 
@@ -43,6 +44,10 @@ type fpRun struct {
 	StartedAt time.Time        `json:"started_at"`
 	Stand     *workplace.Stand `json:"stand"` // nil: not measurable
 	MergeSHA  string           `json:"merge_sha,omitempty"`
+	// PRAt and PRs are of a scheduled run: its pr_at and the PRs of its branch. Empty for an
+	// issue run, whose PRs are on its item, so its hash is as before they existed.
+	PRAt time.Time `json:"pr_at,omitzero"`
+	PRs  []fpPR    `json:"prs,omitempty"`
 }
 
 type fpMarker struct {
@@ -60,8 +65,13 @@ func Fingerprint(pre Pre) string {
 	hasRun := map[int]bool{}
 	runsIn := make([]fpRun, 0, len(pre.OpenRuns))
 	for _, r := range pre.OpenRuns {
-		hasRun[r.Issue] = true
+		if r.Schedule == "" { // a scheduled run has no issue; it still counts as a run below
+			hasRun[r.Issue] = true
+		}
 		f := fpRun{ID: r.ID, Issue: r.Issue, StartedAt: r.StartedAt.UTC(), MergeSHA: r.MergeSHA}
+		if r.Schedule != "" {
+			f.PRAt, f.PRs = r.PRAt.UTC(), fpPRs(pre.ScheduledPRs[r.Branch])
+		}
 		if stand, ok := pre.Stands[r.ID]; ok {
 			f.Stand = &stand
 		}
@@ -85,10 +95,7 @@ func Fingerprint(pre Pre) string {
 			})
 		}
 		if hasRun[it.Issue] {
-			for _, p := range it.PRs {
-				f.PRs = append(f.PRs, fpPR{p.Number, p.State, p.Draft, p.Mergeable, p.HeadSHA, p.Checks})
-			}
-			slices.SortFunc(f.PRs, func(a, b fpPR) int { return cmp.Compare(a.Number, b.Number) })
+			f.PRs = append(f.PRs, fpPRs(it.PRs)...)
 		}
 		items = append(items, f)
 	}
@@ -112,4 +119,14 @@ func Fingerprint(pre Pre) string {
 	}
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
+}
+
+// fpPRs is prs as the fingerprint keeps them, sorted by number; nil for none.
+func fpPRs(prs []forge.PR) []fpPR {
+	var out []fpPR
+	for _, p := range prs {
+		out = append(out, fpPR{p.Number, p.State, p.Draft, p.Mergeable, p.HeadSHA, p.Checks})
+	}
+	slices.SortFunc(out, func(a, b fpPR) int { return cmp.Compare(a.Number, b.Number) })
+	return out
 }

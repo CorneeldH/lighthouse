@@ -18,6 +18,8 @@ type PR struct {
 	Mergeable string `json:"mergeable"` // MERGEABLE, CONFLICTING, UNKNOWN
 	HeadSHA   string `json:"head_sha"`
 	HeadRef   string `json:"head_ref"`
+	// BaseRef is the branch the PR merges into.
+	BaseRef string `json:"base_ref,omitempty"`
 	// CrossRepo is true for a PR whose head lives in another repository, such as a fork.
 	CrossRepo bool   `json:"cross_repo,omitempty"`
 	Checks    string `json:"checks"` // statusCheckRollup.state, "" without checks
@@ -58,6 +60,9 @@ type BoardItem struct {
 	// Status is the option name of the Status field; "" without a status, and
 	// "unknown:<option ID>" for an option that status_options does not list.
 	Status string
+	// StatusName is the raw name of the item's status on the board, whether status_options
+	// lists it or not: the option name on GitHub, the status name on GitLab; "" without one.
+	StatusName string
 	// Priority is the option name of the Priority field; "" without a priority or for an
 	// option that priority_options does not list.
 	Priority       string
@@ -74,14 +79,14 @@ type BoardItem struct {
 }
 
 // prFields are the pull request fields both queries read into a PR.
-const prFields = `number state isDraft mergeable headRefOid headRefName isCrossRepository mergedAt closedAt url statusCheckRollup { state }`
+const prFields = `number state isDraft mergeable headRefOid headRefName baseRefName isCrossRepository mergedAt closedAt url statusCheckRollup { state }`
 
 // fieldValuesSelection is the single-select values of a project item, shared by the board and
-// the one-issue query so both fill BoardItem.Status and Priority the same way.
+// the one-issue query so both fill BoardItem.Status, StatusName and Priority the same way.
 const fieldValuesSelection = `fieldValues(first: 50) {
             pageInfo { hasNextPage }
             nodes {
-              ... on ProjectV2ItemFieldSingleSelectValue { optionId field { ... on ProjectV2SingleSelectField { id } } }
+              ... on ProjectV2ItemFieldSingleSelectValue { optionId name field { ... on ProjectV2SingleSelectField { id } } }
             }
           }`
 
@@ -188,6 +193,7 @@ type prNode struct {
 	Mergeable         string    `json:"mergeable"`
 	HeadRefOid        string    `json:"headRefOid"`
 	HeadRefName       string    `json:"headRefName"`
+	BaseRefName       string    `json:"baseRefName"`
 	IsCrossRepository bool      `json:"isCrossRepository"`
 	MergedAt          time.Time `json:"mergedAt"`
 	ClosedAt          time.Time `json:"closedAt"`
@@ -199,7 +205,7 @@ type prNode struct {
 
 func (n prNode) pr(closes bool) PR {
 	p := PR{Number: n.Number, State: n.State, Draft: n.IsDraft, Mergeable: n.Mergeable,
-		HeadSHA: n.HeadRefOid, HeadRef: n.HeadRefName, CrossRepo: n.IsCrossRepository, Closes: closes, URL: n.URL, MergedAt: n.MergedAt, ClosedAt: n.ClosedAt}
+		HeadSHA: n.HeadRefOid, HeadRef: n.HeadRefName, BaseRef: n.BaseRefName, CrossRepo: n.IsCrossRepository, Closes: closes, URL: n.URL, MergedAt: n.MergedAt, ClosedAt: n.ClosedAt}
 	if n.StatusCheckRollup != nil {
 		p.Checks = n.StatusCheckRollup.State
 	}
@@ -218,6 +224,7 @@ type itemNode struct {
 		PageInfo pageInfo `json:"pageInfo"`
 		Nodes    []struct {
 			OptionID string `json:"optionId"`
+			Name     string `json:"name"`
 			Field    struct {
 				ID string `json:"id"`
 			} `json:"field"`
@@ -264,15 +271,20 @@ func (c *GitHub) board() (*repoconfig.Board, error) {
 	return c.Board, nil
 }
 
-// named sets Status and Priority of it from its single-select values, by option name of b.
-func named(it BoardItem, values map[string]string, b *repoconfig.Board) BoardItem {
-	if id := values[b.StatusFieldID]; id != "" {
-		it.Status = optionName(b.StatusOptions, id)
+// selectValue is one single-select value of a project item: the option's ID and its name.
+type selectValue struct{ optionID, name string }
+
+// named sets Status, StatusName and Priority of it from its single-select values, by option
+// name of b.
+func named(it BoardItem, values map[string]selectValue, b *repoconfig.Board) BoardItem {
+	if v := values[b.StatusFieldID]; v.optionID != "" {
+		it.Status = optionName(b.StatusOptions, v.optionID)
 		if it.Status == "" {
-			it.Status = UnknownStatusPrefix + id
+			it.Status = UnknownStatusPrefix + v.optionID
 		}
+		it.StatusName = v.name
 	}
-	it.Priority = optionName(b.PriorityOptions, values[b.PriorityFieldID])
+	it.Priority = optionName(b.PriorityOptions, values[b.PriorityFieldID].optionID)
 	return it
 }
 
@@ -343,16 +355,16 @@ func (c *GitHub) boardItems(ctx context.Context, b *repoconfig.Board) ([]BoardIt
 }
 
 // item maps one node, refusing any nested connection with more pages. values are its
-// single-select values, field ID → option ID.
-func (n itemNode) item() (it BoardItem, values map[string]string, err error) {
+// single-select values per field ID.
+func (n itemNode) item() (it BoardItem, values map[string]selectValue, err error) {
 	it = BoardItem{ItemID: n.ID, ItemUpdatedAt: n.UpdatedAt, Archived: n.IsArchived}
 	if n.FieldValues.PageInfo.HasNextPage {
 		return BoardItem{}, nil, truncated("fieldValues", len(n.FieldValues.Nodes))
 	}
-	values = map[string]string{}
+	values = map[string]selectValue{}
 	for _, v := range n.FieldValues.Nodes {
 		if v.OptionID != "" && v.Field.ID != "" {
-			values[v.Field.ID] = v.OptionID
+			values[v.Field.ID] = selectValue{optionID: v.OptionID, name: v.Name}
 		}
 	}
 	ct := n.Content
@@ -456,7 +468,7 @@ func (c *GitHub) setOption(ctx context.Context, projectID, itemID, fieldID, opti
 }
 
 // IssueItem returns the item of issue number on the board of [forge.board]; ok is false when
-// the issue is not on that board. Status and Priority are filled as in BoardItems; a cut list
+// the issue is not on that board. Status, StatusName and Priority are filled as in BoardItems; a cut list
 // is an error. An archived item counts as an item, with Archived set.
 func (c *GitHub) IssueItem(ctx context.Context, number int) (item BoardItem, ok bool, err error) {
 	if err := c.configured(); err != nil {

@@ -33,6 +33,7 @@ type Issue struct {
 	// StateReason is why an issue closed: "completed", "not_planned", "duplicate" or "" (open or unknown).
 	StateReason string
 	Body        string
+	CreatedAt   time.Time
 	Author      string // user.login
 	Labels      []string
 	UpdatedAt   time.Time
@@ -49,6 +50,7 @@ type GitHub struct {
 
 	mu      sync.Mutex
 	nodeIDs map[int]string // issue number → node ID, filled by Issue and OpenIssues
+	base    string         // default branch, filled by CreatePR
 }
 
 // DefaultBaseURL is the GitHub API root.
@@ -191,7 +193,7 @@ func (c *GitHub) Comments(ctx context.Context, number int) ([]protocol.Comment, 
 }
 
 // do is the only place that makes a request. A non-nil body is sent as JSON; a non-nil into
-// receives the decoded JSON response. It returns the URL of the next page, or "" when there is none.
+// receives the decoded JSON response, or the raw response when it is a *[]byte. It returns the URL of the next page, or "" when there is none.
 func (c *GitHub) do(ctx context.Context, method, url string, body, into any) (string, error) {
 	var rd io.Reader
 	if body != nil {
@@ -221,7 +223,13 @@ func (c *GitHub) do(ctx context.Context, method, url string, body, into any) (st
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return "", statusError(method, url, resp)
 	}
-	if into != nil {
+	if raw, ok := into.(*[]byte); ok {
+		data, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return "", fmt.Errorf("forge %s %s: read: %w", method, url, err)
+		}
+		*raw = data
+	} else if into != nil {
 		if err := json.NewDecoder(resp.Body).Decode(into); err != nil {
 			return "", fmt.Errorf("forge %s %s: decode: %w", method, url, err)
 		}

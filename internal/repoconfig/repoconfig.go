@@ -38,6 +38,8 @@ type Repo struct {
 	// or an unusable dir. Load does not fail on it: Slug, Triageable and Dispatchable keep working.
 	Report    Report
 	ReportErr error
+	// Schedules is [[schedule]], validated by Load; empty when the repo has none.
+	Schedules []Schedule
 }
 
 // Report is [report]: whether lighthouse report runs, where it writes and, for sink "file", the
@@ -135,7 +137,8 @@ type rawFile struct {
 	UsageGuard struct {
 		Controller bool `toml:"controller"`
 	} `toml:"usage_guard"`
-	Report toml.Primitive `toml:"report"`
+	Report   toml.Primitive `toml:"report"`
+	Schedule []rawSchedule  `toml:"schedule"`
 }
 
 // defaultString is the default of key from internal/config, the one source of defaults.
@@ -152,7 +155,13 @@ func defaultString(key string) string {
 
 // Load reads <dir>/lighthouse.toml.
 func Load(dir string) (Repo, error) {
-	path := filepath.Join(dir, "lighthouse.toml")
+	return LoadFile(filepath.Join(dir, "lighthouse.toml"))
+}
+
+// LoadFile reads the lighthouse.toml at path, whatever its file name (LIGHTHOUSE_TOML); Dir is
+// the directory it is in.
+func LoadFile(path string) (Repo, error) {
+	dir := filepath.Dir(path)
 	var raw rawFile
 	md, err := toml.DecodeFile(path, &raw)
 	if err != nil {
@@ -213,6 +222,11 @@ func Load(dir string) (Repo, error) {
 	if md.IsDefined("report") {
 		r.Report, r.ReportErr = reportFrom(raw.Report, md)
 	}
+	schedules, err := schedulesFrom(raw.Schedule, md, r.Controller)
+	if err != nil {
+		return Repo{}, fmt.Errorf("%s: %w", path, err)
+	}
+	r.Schedules = schedules
 	return r, nil
 }
 

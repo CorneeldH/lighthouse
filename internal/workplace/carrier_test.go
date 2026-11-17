@@ -261,3 +261,126 @@ func TestRemoveCarrierOtherNodeUntouched(t *testing.T) {
 		t.Errorf("self carrier still there: %v", err)
 	}
 }
+
+func TestNewCarrierToolsRestrictsAvailableTools(t *testing.T) {
+	l := baseSpec()
+	l.Tools = []string{"Read", "Glob", "Grep", "Write"}
+	c, err := NewCarrier(l, "/state", testNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var tools []string
+	for _, a := range c.Args {
+		if strings.HasPrefix(a, "--tools") {
+			tools = append(tools, a)
+		}
+		if a == "--allowedTools" || a == "--disallowedTools" {
+			t.Errorf("tool restriction must not be a permission flag: %q", a)
+		}
+	}
+	if !reflect.DeepEqual(tools, []string{"--tools=Read,Glob,Grep,Write"}) {
+		t.Errorf("tools flags: got %q", tools)
+	}
+	for _, a := range c.Args {
+		if strings.Contains(a, "Bash") {
+			t.Errorf("Bash in args: %q", a)
+		}
+	}
+	// The plugin cache read rule stays: it only pre-approves, the tool set is --tools.
+	if len(c.Args) < 5 {
+		t.Fatalf("args too short: %q", c.Args)
+	}
+	if !reflect.DeepEqual(c.Args[:5], []string{
+		"--permission-mode", "auto", "--strict-mcp-config",
+		"--allowedTools=Read(~/.claude/plugins/cache/**)", "--tools=Read,Glob,Grep,Write",
+	}) {
+		t.Errorf("args head: %q", c.Args[:5])
+	}
+}
+
+func TestNewCarrierNoToolsHasNoToolsFlag(t *testing.T) {
+	c, err := NewCarrier(baseSpec(), "/state", testNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, a := range c.Args {
+		if strings.HasPrefix(a, "--tools") {
+			t.Errorf("unexpected tools flag %q without Tools", a)
+		}
+	}
+}
+
+func TestNewCarrierToolsWithoutMCPConfigIsStrictAndHasNoMCPConfig(t *testing.T) {
+	l := baseSpec() // the profile's MCP config is not passed on: MCPConfig stays empty
+	l.MCPConfig = ""
+	l.Tools = []string{"Read"}
+	c, err := NewCarrier(l, "/state", testNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	strict := 0
+	for _, a := range c.Args {
+		if a == "--strict-mcp-config" {
+			strict++
+		}
+		if a == "--mcp-config" {
+			t.Errorf("--mcp-config present: %q", c.Args)
+		}
+	}
+	if strict != 1 {
+		t.Errorf("--strict-mcp-config count %d, want 1: %q", strict, c.Args)
+	}
+}
+
+// Finding B of the task 9 review. Fails if the carrier of a run without Unset gains an "unset"
+// key (the contract the forge target reads stays as it was), if Unset does not reach the carrier
+// sorted and once each, or if a name that is no environment variable name passes: it ends up in
+// an argv (`env -u <name>`).
+func TestNewCarrierUnset(t *testing.T) {
+	dir := t.TempDir()
+	c, err := NewCarrier(baseSpec(), dir, testNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path, err := WriteCarrier(dir, "", "ws-1", c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if raw, _ := os.ReadFile(path); bytes.Contains(raw, []byte("unset")) || c.Version != 1 {
+		t.Errorf("carrier without Unset = %s, want version 1 and no unset key", raw)
+	}
+
+	l := baseSpec()
+	l.Unset = []string{"GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"}
+	c, err = NewCarrier(l, dir, testNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"GH_TOKEN", "GITHUB_TOKEN"}; !reflect.DeepEqual(c.Unset, want) {
+		t.Errorf("Unset = %q, want %q", c.Unset, want)
+	}
+	// Fail closed: a target that does not know unset must refuse the carrier, not start the agent
+	// with the variables in place, so a carrier with unset has a version a version-1 target rejects.
+	if c.Version != 2 {
+		t.Errorf("Version = %d with Unset, want 2", c.Version)
+	}
+	path, err = WriteCarrier(dir, "", "ws-2", c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var back map[string]any
+	raw, _ := os.ReadFile(path)
+	if err := json.Unmarshal(raw, &back); err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := back["unset"].([]any); !ok || len(got) != 2 {
+		t.Errorf("carrier unset = %v, want both names", back["unset"])
+	}
+
+	for _, bad := range []string{"-i", "A=B", "GH TOKEN", "", "1X", "X;rm"} {
+		l.Unset = []string{bad}
+		if _, err := NewCarrier(l, dir, testNow); err == nil || !strings.Contains(err.Error(), "unset") {
+			t.Errorf("Unset %q: err = %v, want a refusal", bad, err)
+		}
+	}
+}

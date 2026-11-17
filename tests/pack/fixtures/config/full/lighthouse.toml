@@ -88,3 +88,8 @@ roborev = "local"
 enabled = true
 sink = "file"
 dir = "verslagen"
+
+[agent_audit]
+ignore = ["overlap:main-commit-gate|project/.claude/hooks/x.sh", "permission:Bash(git push:*)"]
+top = 3
+description_max_chars = 200

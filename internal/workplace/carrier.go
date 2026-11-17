@@ -6,12 +6,18 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 )
 
-// CarrierVersion is the version field of a written carrier.
+// CarrierVersion is the version field of a written carrier without unset.
 const CarrierVersion = 1
+
+// CarrierVersionUnset is the version of a carrier with unset. A target must refuse a version it
+// does not know; a target that knows only version 1 then refuses to start an agent whose
+// environment it would not clean, instead of starting it with the token in place.
+const CarrierVersionUnset = 2
 
 // pluginCacheReadRule lets a run read the files of its plugins without a prompt. A skill
 // reads its own reference files from that cache, which lies outside the working directory,
@@ -27,6 +33,8 @@ var (
 	SafeID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 	// SafeSession is a session id that may become a path element and a pattern argument.
 	SafeSession = regexp.MustCompile(`^[A-Za-z0-9-]+$`)
+	// An environment variable name; it reaches an argv as `env -u <name>`.
+	envNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 )
 
 // Carrier is the file a forge target reads to start the agent. It never holds
@@ -40,7 +48,10 @@ type Carrier struct {
 	Profile   string            `json:"profile"`
 	Args      []string          `json:"args"`
 	Env       map[string]string `json:"env"`
-	CreatedAt string            `json:"created_at"`
+	// Unset are the variables the target removes from the agent's environment before it starts
+	// it, sorted; absent for a run that removes none.
+	Unset     []string `json:"unset,omitempty"`
+	CreatedAt string   `json:"created_at"`
 }
 
 // NewCarrier validates l and builds the carrier for it.
@@ -67,7 +78,28 @@ func NewCarrier(l LaunchSpec, stateDir string, now time.Time) (Carrier, error) {
 	if !filepath.IsAbs(stateDir) {
 		return Carrier{}, fmt.Errorf("carrier: state dir %q is not absolute", stateDir)
 	}
+	var unset []string
+	for _, name := range l.Unset {
+		if !envNamePattern.MatchString(name) {
+			return Carrier{}, fmt.Errorf("carrier: unset %q is no environment variable name", name)
+		}
+		unset = append(unset, name)
+	}
+	slices.Sort(unset)
+	unset = slices.Compact(unset)
 	args := []string{"--permission-mode", "auto", "--strict-mcp-config", pluginCacheReadRule}
+	if len(l.Tools) > 0 {
+		// Evidence, claude 2.1.316: the CLI accepts --tools (`claude --tools=Read --help` runs, an
+		// unknown flag fails with "unknown option"), and `claude --help` printed "--tools <tools...>
+		// Specify the list of available tools from the built-in set" when this was written, which
+		// another run of 2.1.316 did not show. That Bash is really unavailable under --tools is NOT
+		// proven by a run: an authenticated check was not allowed here. --allowedTools is only
+		// pre-approval and leaves Bash available (spec section 4), so it is no restriction. The flag is
+		// variadic, so the value is joined with "=" and commas.
+		// pluginCacheReadRule stays: it only pre-approves a read, so it grants nothing when Read
+		// is not in Tools, and --tools stays the one thing that decides what exists.
+		args = append(args, "--tools="+strings.Join(l.Tools, ","))
+	}
 	if l.MCPConfig != "" {
 		args = append(args, "--mcp-config", l.MCPConfig)
 	}
@@ -81,14 +113,19 @@ func NewCarrier(l LaunchSpec, stateDir string, now time.Time) (Carrier, error) {
 		args = append(args, "--model", "sonnet")
 	}
 	args = append(args, l.Prompt)
+	version := CarrierVersion
+	if len(unset) > 0 {
+		version = CarrierVersionUnset
+	}
 	return Carrier{
-		Version: CarrierVersion, Repo: l.Repo, Issue: l.Issue,
+		Version: version, Repo: l.Repo, Issue: l.Issue,
 		SessionID: l.SessionID, Mode: l.Mode, Profile: l.Profile,
 		Args: args,
 		Env: map[string]string{
 			"LIGHTHOUSE_CONTROLLER_RUN": l.SessionID,
 			"LIGHTHOUSE_STATE_DIR":      stateDir,
 		},
+		Unset:     unset,
 		CreatedAt: now.UTC().Format(time.RFC3339),
 	}, nil
 }

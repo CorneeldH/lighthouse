@@ -33,7 +33,7 @@ def _between(body: str, start: str, end: str) -> str:
 def test_write_issue_sets_relation_before_label():
     for body in skill():
         section = body[body.index("#### 3e. Set a block") :]
-        assert section.index('dependencies/blocked_by" -F issue_id=') < section.index(
+        assert section.index("lighthouse forge issue block <nr> --by <blocker-nr>") < section.index(
             '--add-label "$BLOCKED"'
         )
         assert "**unknown**" in section  # state not readable -> never success
@@ -66,7 +66,7 @@ def test_write_issue_blocking_invariant():
 def test_write_issue_searches_duplicates_before_the_template():
     for body in skill():
         step0 = _between(body, "### 0. Does this exist already?", "### 1. Choose the template")
-        assert "search/issues" in step0 and ".items[:5]" in step0  # open and closed, bounded
+        assert "lighthouse forge issue search" in step0 and ".[:5]" in step0  # open and closed, bounded
         assert "git grep -l" in step0 and 'origin/$B' in step0
         assert f"B=$({CONFIG} forge.default_branch)" in step0
         assert "duplicate? no — " in step0
@@ -88,9 +88,9 @@ def test_existing_issue_has_its_own_path():
             assert re.search(rf"\| {re.escape(step)} [^|]*\| drops", flat), step
         for step in ("3c.", "3e."):
             assert re.search(rf"\| {re.escape(step)} [^|]*\| holds", flat), step
-        assert 'gh api -X PATCH "repos/$R/issues/<nr>"' in section
-        assert "-F body=@<file>" in section  # never the body as a shell argument
-        assert "gh issue create" in flat  # named as what never runs
+        assert "lighthouse forge issue edit <nr> --title '<title>' --body-file <file>" in section
+        assert "--body-file <file>" in section  # never the body as a shell argument
+        assert "never `lighthouse forge issue create`" in flat  # named as what never runs
 
 
 def test_existing_issue_lapsed_block_path():
@@ -135,10 +135,13 @@ def test_write_issue_taxonomy_from_paths():
 
 
 def test_repo_and_board_from_config():
+    """The repo is the one `lighthouse forge` opens from `forge.repo`; the board's per-forge
+    details (Priority on GitHub, work item status on GitLab) are the reference's §board."""
     for body in skill():
-        assert f"R=$({CONFIG} forge.repo)" in body
+        assert f"{CONFIG} forge.kind" in body
         assert "src.controller.identity" not in body
-        assert f"{CONFIG} forge.board.priority_field_id" in body
+        assert "../lighthouse-forge/<kind>.md §board" in body
+        assert 'lighthouse forge issue status <nr> "<status>"' in body
         assert "board: skipped — no [forge.board] configured" in body
 
 
@@ -179,14 +182,21 @@ def _bash_block(section: str) -> str:
     return re.search(r"```bash\n(.*?)```", section, re.S)[1]
 
 
-# `gh` as it answers flags it does not know: `gh api --jq` takes one expression, no `--arg`.
-_STRICT_GH = """#!/bin/sh
-[ "$1" = api ] && [ "$3" = --paginate ] && [ $# -eq 3 ] || { echo "unknown flag: $3" >&2; exit 1; }
-cat "$GH_PAGE"
+# The forge is the boundary: `lighthouse forge issue list` answers from a page in the JSON shape
+# of the wrapper (labels as names), and refuses any other argv the way the real command refuses
+# an unknown flag. `lighthouse forge` has no API-URL seam for a fake HTTP server (only the AC
+# count of pr-body-gate reads LIGHTHOUSE_GITHUB_API_URL), so the stub stands in for it; every
+# `lighthouse config` call still runs the real binary.
+_STRICT_LIGHTHOUSE = """#!/bin/sh
+if [ "$1" = forge ]; then
+  [ "$*" = "forge issue list --state open" ] || { echo "unknown flag: $*" >&2; exit 2; }
+  exec cat "$FORGE_PAGE"
+fi
+exec "$REAL_LIGHTHOUSE" "$@"
 """
 
 
-def test_invariant_check_runs_against_gh(tmp_path, lighthouse_bin):
+def test_invariant_check_runs_against_the_forge(tmp_path, lighthouse_bin):
     """Step 6 runs as written: two blocking labels on one issue is reported, a clean one not.
     The PATH has the binary and no python3: the step reads the config through `lighthouse`."""
     from tests.pack._testkit import MINIMAL_TOML, install_core, tool_bin
@@ -194,19 +204,23 @@ def test_invariant_check_runs_against_gh(tmp_path, lighthouse_bin):
     install_core(tmp_path, MINIMAL_TOML + '\n[labels]\nlocation_prefix = "loc-"\narea_prefix = "area-"\n')
     page = tmp_path / "page.json"
     page.write_text(
-        '[{"number": 1, "labels": [{"name": "loc-a"}, {"name": "area-b"},'
-        ' {"name": "needs-shaping"}, {"name": "needs-decision"}]},'
-        ' {"number": 2, "labels": [{"name": "loc-a"}, {"name": "area-b"}]}]',
+        '[{"number": 1, "labels": ["loc-a", "area-b", "needs-shaping", "needs-decision"]},'
+        ' {"number": 2, "labels": ["loc-a", "area-b"]}]',
         encoding="utf-8",
     )
-    path = tool_bin(tmp_path / "bin", ("lighthouse", "jq", "sh", "cat"), stubs={"gh": _STRICT_GH})
+    path = tool_bin(tmp_path / "bin", ("jq", "sh", "cat"), stubs={"lighthouse": _STRICT_LIGHTHOUSE})
     script = _bash_block(_between(skill()[0], "### 6. Check the invariants", "## Milestones"))
     import subprocess
 
     out = subprocess.run(
         ["/bin/bash", "-c", script],
         cwd=tmp_path,
-        env={"PATH": str(path), "GH_PAGE": str(page), "LIGHTHOUSE_REPO_ROOT": str(tmp_path)},
+        env={
+            "PATH": str(path),
+            "FORGE_PAGE": str(page),
+            "REAL_LIGHTHOUSE": str(lighthouse_bin),
+            "LIGHTHOUSE_REPO_ROOT": str(tmp_path),
+        },
         capture_output=True,
         text=True,
         check=False,
@@ -221,10 +235,10 @@ def test_milestone_create_reads_its_own_prefix():
     """Shell variables do not survive between tool calls: the create block reads the prefix
     itself, under a name no other block reuses, and reports a missing one."""
     for body in skill():
-        block = _bash_block(body[body.index("Creating goes through the REST API") :])
+        block = _bash_block(body[body.index("Creating goes through `lighthouse forge milestone create`") :])
         assert f"MP=$({CONFIG} project.milestone_prefix)" in block
         assert "milestone prefix: none — no [project] milestone_prefix set" in block
-        assert '-f title="${MP:+$MP }<name>"' in block
+        assert '--title "${MP:+$MP }<name>" --description-file <file>' in block
         assert "${P:+" not in body
 
 
@@ -244,8 +258,8 @@ def test_free_labels_with_a_document():
         existing = " ".join(body.split("## An existing issue", 1)[1].split())
         assert (
             '| 3f. Free labels with a document | only when the change makes the issue match a `When` column; '
-            'then `gh issue edit <nr> --repo "$R" --add-label <label>`, since step 4 drops |'
+            'then `lighthouse forge issue edit <nr> --add-label <label>`, since step 4 drops |'
         ) in existing
         create = _between(body, "### 4. Create the issue", "### 5. Report the result")
         assert "(3a, 3b) plus every free label from 3f" in " ".join(create.split())
-        assert "<location label>,<area label>[,<free label>]" in create
+        assert "--label '<location label>' --label '<area label>' [--label '<free label>']" in create

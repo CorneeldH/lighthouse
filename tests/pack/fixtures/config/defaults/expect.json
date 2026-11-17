@@ -257,6 +257,30 @@
  },
  {
   "args": [
+   "agent_audit.ignore"
+  ],
+  "rc": 0,
+  "stdout": "",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "agent_audit.top"
+  ],
+  "rc": 0,
+  "stdout": "10\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "agent_audit.description_max_chars"
+  ],
+  "rc": 0,
+  "stdout": "1024\n",
+  "stderr": ""
+ },
+ {
+  "args": [
    "paths.tenets"
   ],
   "rc": 1,

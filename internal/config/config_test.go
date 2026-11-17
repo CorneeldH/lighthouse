@@ -467,6 +467,39 @@ func TestParseBoardPerKind(t *testing.T) {
 	}
 }
 
+// TestAgentAuditDefaults pins the three [agent_audit] keys: an absent key gives its default
+// through Lookup, and a set key overrides it.
+func TestAgentAuditDefaults(t *testing.T) {
+	c, err := Parse([]byte("[project]\nlanguage = \"nl\"\n"), "lighthouse.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for key, want := range map[string]any{
+		"agent_audit.ignore":                []any{},
+		"agent_audit.top":                   int64(10),
+		"agent_audit.description_max_chars": int64(1024),
+	} {
+		got, err := Lookup(c, key)
+		if err != nil {
+			t.Errorf("Lookup(%s) error = %v", key, err)
+			continue
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("Lookup(%s) = %#v, want %#v", key, got, want)
+		}
+	}
+	set, err := Parse([]byte("[agent_audit]\nignore = [\"permission:Bash(x)\"]\ntop = 3\n"), "lighthouse.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := Lookup(set, "agent_audit.top"); got != int64(3) {
+		t.Errorf("Lookup(agent_audit.top) = %#v, want int64(3)", got)
+	}
+	if _, err := Parse([]byte("[agent_audit]\ntop = \"ten\"\n"), "lighthouse.toml"); err == nil {
+		t.Error("agent_audit.top = \"ten\" parsed, want a type error")
+	}
+}
+
 // TestKindOf fails when KindOf stops answering from schema (kind), from the known-key lists
 // ("known") or for a key nobody knows ("unknown").
 func TestKindOf(t *testing.T) {

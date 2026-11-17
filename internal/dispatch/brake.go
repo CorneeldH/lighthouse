@@ -62,7 +62,8 @@ func (b *Brake) apply(ps []planned) []planned {
 		}
 		if reason := eff.closed(p, passed, admitted, admittedSoftware, admittedOn); reason != "" {
 			out = append(out, planned{Action: Action{
-				Kind: KindDefer, Repo: p.Repo, Issue: p.Issue, Language: p.Language, Reason: reason,
+				Kind: KindDefer, Repo: p.Repo, Issue: p.Issue, Schedule: p.Schedule, Slot: p.Slot,
+				Language: p.Language, Reason: reason,
 			}})
 			continue
 		}

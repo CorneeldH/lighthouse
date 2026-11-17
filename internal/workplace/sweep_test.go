@@ -234,11 +234,11 @@ type removeFails struct {
 	fail string
 }
 
-func (f *removeFails) Remove(ctx context.Context, id string) error {
+func (f *removeFails) Remove(ctx context.Context, id string, o RemoveOptions) error {
 	if id == f.fail {
 		return fmt.Errorf("delete workspace %s: status 500", id)
 	}
-	return f.fakeWP.Remove(ctx, id)
+	return f.fakeWP.Remove(ctx, id, o)
 }
 
 func TestSweepRemoveErrorKeepsGoing(t *testing.T) {
@@ -329,5 +329,196 @@ func TestSweepUsesNodeOfRef(t *testing.T) {
 	}
 	if len(asked) == 0 || !slices.Contains(asked, [2]string{"node-a", "pr-node-a"}) {
 		t.Errorf("place asked %v, want (node-a, pr-node-a) among them", asked)
+	}
+}
+
+// scheduledRun claims a run of schedule on workspace and branch, with session key key when it
+// is not empty, and closes it as retry unless open.
+func scheduledRun(t *testing.T, db *sql.DB, schedule, slot, workspace, branch, key string, open bool) {
+	t.Helper()
+	ctx := context.Background()
+	r, err := runs.Take(ctx, db, runs.Claim{
+		Repo: lcRepo, Schedule: schedule, SessionID: "sid-" + schedule + "-" + slot, Mode: "start",
+		Trigger: runs.TriggerScheduled, TriggerKey: "scheduled:" + schedule + ":" + slot, Branch: branch, Now: lcNow,
+	})
+	if err != nil {
+		t.Fatalf("Take %s %s: %v", schedule, slot, err)
+	}
+	if err := runs.SetWorkplace(ctx, db, r.ID, workspace, branch); err != nil {
+		t.Fatal(err)
+	}
+	if key != "" {
+		if err := runs.SetSession(ctx, db, r.ID, key); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if open {
+		return
+	}
+	if err := runs.Release(ctx, db, r.ID, runs.Retry, "silent", lcNow); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A scheduled workspace without an open row goes forcibly, without a git check or a merged-PR
+// question: nothing in it must be kept.
+func TestSweepForcesScheduledWithoutOpenRow(t *testing.T) {
+	db := openLeftoverDB(t)
+	scheduledRun(t, db, "nightly", "20261116T0400", "ws-n", "scheduled/nightly-20261116T0400-1", "", false)
+	w := &fakeWP{lookupPath: "/p/n"}
+	var asked []string
+	removed, err := Sweep(context.Background(), db, only(w), noRunner(t), sweepIn(false, "", &asked), lcNow)
+	if err != nil {
+		t.Fatalf("Sweep: %v", err)
+	}
+	if !reflect.DeepEqual(w.forced, []string{"ws-n"}) {
+		t.Errorf("forced removes = %v (all removes %v), want [ws-n]", w.forced, w.removed)
+	}
+	if want := []Leftover{{Repo: lcRepo, Schedule: "nightly", WorkspaceID: "ws-n"}}; !reflect.DeepEqual(removed, want) {
+		t.Errorf("Sweep removed = %+v, want %+v", removed, want)
+	}
+	if len(asked) != 0 {
+		t.Errorf("MergedHead asked for %v, want none for a scheduled workspace", asked)
+	}
+	if got := candidates(t, db); len(got) != 0 {
+		t.Errorf("candidates after Sweep = %+v, want none", got)
+	}
+}
+
+// In one sweep a dirty issue workspace stays and a dirty scheduled one goes.
+func TestSweepDirtyIssueStaysScheduledGoes(t *testing.T) {
+	db := openLeftoverDB(t)
+	fixture945(t, db)
+	scheduledRun(t, db, "nightly", "20261116T0400", "ws-n", "scheduled/nightly-20261116T0400-1", "", false)
+	w := &fakeWP{lookupPath: "/p/x"}
+	var asked []string
+	removed, err := Sweep(context.Background(), db, only(w), gitRunner(" M x.go", "abc", "3"), sweepIn(false, "", &asked), lcNow)
+	if err != nil {
+		t.Fatalf("Sweep: %v", err)
+	}
+	if !reflect.DeepEqual(w.removed, []string{"ws-n"}) || !reflect.DeepEqual(w.forced, []string{"ws-n"}) {
+		t.Errorf("removed %v, forced %v; want only ws-n, forced", w.removed, w.forced)
+	}
+	if want := []Leftover{{Repo: lcRepo, Schedule: "nightly", WorkspaceID: "ws-n"}}; !reflect.DeepEqual(removed, want) {
+		t.Errorf("Sweep removed = %+v, want %+v", removed, want)
+	}
+	if got := leftoverReasons(t, db)[ws945]; got != "uncommitted changes" {
+		t.Errorf("reason of the issue workspace = %q, want uncommitted changes", got)
+	}
+}
+
+// An open scheduled run holds its own workspace and no other: not that of schedule b, and not an
+// issue workspace either.
+func TestSweepOpenScheduledRunHoldsOnlyItsWorkspace(t *testing.T) {
+	db := openLeftoverDB(t)
+	scheduledRun(t, db, "a", "20261116T0400", "ws-a", "scheduled/a-20261116T0400-1", "", true)
+	scheduledRun(t, db, "b", "20261116T0400", "ws-b", "scheduled/b-20261116T0400-1", "", false)
+	doneRuns(t, db, 7, "ws-7", "issue-7", "start:7")
+	w := &fakeWP{lookupPath: "/p/x"}
+	var asked []string
+	removed, err := Sweep(context.Background(), db, only(w), cleanRunner(), sweepIn(false, "", &asked), lcNow)
+	if err != nil {
+		t.Fatalf("Sweep: %v", err)
+	}
+	// runs.Workspaces orders by issue: a scheduled workspace (issue 0) comes first.
+	if !reflect.DeepEqual(w.removed, []string{"ws-b", "ws-7"}) || !reflect.DeepEqual(w.forced, []string{"ws-b"}) {
+		t.Errorf("removed %v, forced %v; want ws-b and ws-7, only ws-b forced", w.removed, w.forced)
+	}
+	want := []Leftover{{Repo: lcRepo, Schedule: "b", WorkspaceID: "ws-b"}, {Repo: lcRepo, Issue: 7, WorkspaceID: "ws-7"}}
+	if !reflect.DeepEqual(removed, want) {
+		t.Errorf("Sweep removed = %+v, want %+v", removed, want)
+	}
+	if got := candidates(t, db); len(got) != 1 || got[0].WorkspaceID != "ws-a" {
+		t.Errorf("candidates = %+v, want only ws-a", got)
+	}
+}
+
+// An open run of schedule a holds the workspace of an earlier, closed attempt of a neither: every
+// attempt has its own branch and workspace.
+func TestSweepOpenScheduledRunLeavesEarlierAttempt(t *testing.T) {
+	db := openLeftoverDB(t)
+	scheduledRun(t, db, "a", "20261116T0400", "ws-a1", "scheduled/a-20261116T0400-1", "", false)
+	scheduledRun(t, db, "a", "20261116T0400", "ws-a2", "scheduled/a-20261116T0400-2", "", true)
+	w := &fakeWP{lookupPath: "/p/x"}
+	var asked []string
+	if _, err := Sweep(context.Background(), db, only(w), noRunner(t), sweepIn(false, "", &asked), lcNow); err != nil {
+		t.Fatalf("Sweep: %v", err)
+	}
+	if !reflect.DeepEqual(w.forced, []string{"ws-a1"}) || len(w.removed) != 1 {
+		t.Errorf("removed %v, forced %v; want only ws-a1, forced", w.removed, w.forced)
+	}
+}
+
+// The agent of a closed scheduled run is the schedule's own: Cleanup stops it and removes the
+// workspace, instead of keeping it for a foreign session.
+func TestSweepStopsOwnScheduledSession(t *testing.T) {
+	db := openLeftoverDB(t)
+	scheduledRun(t, db, "nightly", "20261116T0400", "ws-n", "scheduled/nightly-20261116T0400-1", "k-n", false)
+	w := &fakeWP{lookupPath: "/p/n", sessions: []Session{{Key: "k-n", SessionID: "sid-nightly-20261116T0400", State: "working"}}}
+	var asked []string
+	removed, err := Sweep(context.Background(), db, only(w), noRunner(t), sweepIn(false, "", &asked), lcNow)
+	if err != nil {
+		t.Fatalf("Sweep: %v", err)
+	}
+	if !reflect.DeepEqual(w.stopped, []string{"ws-n:sid-nightly-20261116T0400"}) || len(removed) != 1 {
+		t.Errorf("stopped %v, removed %+v, leftovers %v; want the own session stopped and ws-n removed",
+			w.stopped, removed, leftoverReasons(t, db))
+	}
+}
+
+// A forced Remove the workplace still refuses keeps the workspace with the reason.
+func TestSweepForcedRemoveRefused(t *testing.T) {
+	db := openLeftoverDB(t)
+	scheduledRun(t, db, "nightly", "20261116T0400", "ws-n", "scheduled/nightly-20261116T0400-1", "", false)
+	w := &fakeWP{lookupPath: "/p/n", removeErr: fmt.Errorf("worktree holds a worktree: %w", ErrDirty)}
+	var asked []string
+	removed, err := Sweep(context.Background(), db, only(w), noRunner(t), sweepIn(false, "", &asked), lcNow)
+	if err != nil || len(removed) != 0 {
+		t.Fatalf("Sweep = %+v, %v; want nothing removed and no error", removed, err)
+	}
+	ls, err := Leftovers(context.Background(), db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Leftover{{Repo: lcRepo, Schedule: "nightly", WorkspaceID: "ws-n", Path: "/p/n", Reason: "forced remove refused: worktree holds a worktree: workplace: workspace is dirty"}}
+	if !reflect.DeepEqual(ls, want) {
+		t.Errorf("leftovers = %+v, want %+v", ls, want)
+	}
+}
+
+// AdoptSessions skips the keys of the schedule's own earlier runs, as it does for an issue: a
+// scheduled run shares no issue number to look them up by.
+func TestAdoptSessionsScheduledSkipsKeyOfItsSchedule(t *testing.T) {
+	db := openLeftoverDB(t)
+	ctx := context.Background()
+	var open runs.Run
+	for i, slot := range []string{"20261115T0400", "20261116T0400"} {
+		r, err := runs.Take(ctx, db, runs.Claim{
+			Repo: lcRepo, Schedule: "nightly", SessionID: "sid-x", Mode: "start",
+			Trigger: runs.TriggerScheduled, TriggerKey: "scheduled:nightly:" + slot, Now: lcNow,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := runs.SetWorkplace(ctx, db, r.ID, "ws-n", "scheduled/nightly-"+slot+"-1"); err != nil {
+			t.Fatal(err)
+		}
+		if i == 0 {
+			if err := runs.SetSession(ctx, db, r.ID, "k1"); err != nil {
+				t.Fatal(err)
+			}
+			if err := runs.Release(ctx, db, r.ID, runs.Done, "", lcNow); err != nil {
+				t.Fatal(err)
+			}
+			continue
+		}
+		open = r
+	}
+	w := &fakeWP{sessions: []Session{{Key: "k1", SessionID: "sid-x", State: "done"}, {Key: "k2", SessionID: "sid-x", State: "working"}}}
+	if err := AdoptSessions(ctx, db, only(w), lcRepo); err != nil {
+		t.Fatal(err)
+	}
+	if got := rowOf(t, db, open.ID); got.session != "k2" {
+		t.Errorf("row = %+v, want the open run on k2, not the earlier run's k1", got)
 	}
 }

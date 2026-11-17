@@ -69,13 +69,28 @@ func (g *githubFixture) PRCommentBodies(t *testing.T, number int) []string {
 // ListsClosedIssues: BoardItems lists only the items of the project.
 func (g *githubFixture) ListsClosedIssues() bool { return false }
 
+// UniqueMilestoneTitles: GitHub refuses a second milestone with the title of one that exists.
+func (g *githubFixture) UniqueMilestoneTitles() bool { return true }
+
+func (g *githubFixture) AddNamedMilestone(t *testing.T, title string, group bool) forge.Milestone {
+	t.Helper()
+	if group {
+		t.Fatal("githubFixture: GitHub has no group milestones")
+	}
+	n := len(g.srv.Milestones) + 1
+	g.srv.Milestones = append(g.srv.Milestones, map[string]any{"number": n, "title": title, "state": "open", "description": ""})
+	return forge.Milestone{Number: n, Title: title, State: "open"}
+}
+
+func (g *githubFixture) SetLabels(_ *testing.T, names ...string) { g.srv.Labels = names }
+
 func (g *githubFixture) AddIssue(_ *testing.T, is forge.Issue) {
 	labels := []any{}
 	for _, l := range is.Labels {
 		labels = append(labels, map[string]any{"name": l})
 	}
 	it := map[string]any{
-		"number": is.Number, "node_id": fmt.Sprintf("I_%d", is.Number), "title": is.Title, "body": is.Body,
+		"number": is.Number, "id": 9000 + is.Number, "node_id": fmt.Sprintf("I_%d", is.Number), "title": is.Title, "body": is.Body,
 		"state": is.State, "html_url": fmt.Sprintf("https://github.com/o/r/issues/%d", is.Number),
 		"user": map[string]any{"login": is.Author}, "labels": labels,
 	}
@@ -93,6 +108,27 @@ func (g *githubFixture) AddIssue(_ *testing.T, is forge.Issue) {
 	}
 	g.srv.Issues[is.Number] = it
 }
+
+func (g *githubFixture) SetCloseReason(t *testing.T, number int, reason string) {
+	t.Helper()
+	it, ok := g.srv.Issues[number]
+	if !ok {
+		t.Fatalf("githubFixture: SetCloseReason(%d) before AddIssue", number)
+	}
+	it["state_reason"] = reason
+}
+
+func (g *githubFixture) AddMilestone(_ *testing.T, m forge.Milestone) {
+	g.srv.PlanMilestones = append(g.srv.PlanMilestones, map[string]any{
+		"number": m.Number, "title": m.Title, "state": strings.ToUpper(m.State), "description": m.Description,
+	})
+}
+
+// SupportsPlanning: Planning reads GraphQL issues and search counts.
+func (g *githubFixture) SupportsPlanning() bool { return true }
+
+// NotPlannedCountsAsDone: the search asks reason:completed.
+func (g *githubFixture) NotPlannedCountsAsDone() bool { return false }
 
 func (g *githubFixture) AddComment(_ *testing.T, number int, author, body string) int64 {
 	c := g.srv.AddComment(number, author, body)
@@ -179,7 +215,7 @@ func (g *githubFixture) AddMilestonedEvent(t *testing.T, number int, milestoneTi
 func (g *githubFixture) AddBranchPR(_ *testing.T, branch string, pr forge.PR) {
 	node := map[string]any{
 		"number": pr.Number, "state": pr.State, "isDraft": pr.Draft, "mergeable": pr.Mergeable,
-		"headRefOid": pr.HeadSHA, "headRefName": pr.HeadRef, "isCrossRepository": pr.CrossRepo, "url": pr.URL,
+		"headRefOid": pr.HeadSHA, "headRefName": pr.HeadRef, "baseRefName": pr.BaseRef, "isCrossRepository": pr.CrossRepo, "url": pr.URL,
 		"mergedAt": timeOrNil(pr.MergedAt), "closedAt": timeOrNil(pr.ClosedAt),
 	}
 	if pr.Checks != "" {
@@ -207,7 +243,7 @@ func (g *githubFixture) PutOnBoard(t *testing.T, number int, status, priority st
 func (g *githubFixture) PutOnBoardUnmapped(t *testing.T, number int) string {
 	t.Helper()
 	g.putOnBoard(t, number, "opt-unmapped", "")
-	return "opt-unmapped"
+	return "In review"
 }
 
 // option is the option ID of name in options; "" for "".
@@ -223,6 +259,19 @@ func (g *githubFixture) option(t *testing.T, options map[string]string, name str
 	return id
 }
 
+// optionName is the name the board gives option id: the name status_options or
+// priority_options maps to it, and "In review" for opt-unmapped, which neither lists.
+func (g *githubFixture) optionName(id string) string {
+	for _, options := range []map[string]string{g.board.StatusOptions, g.board.PriorityOptions} {
+		for name, oid := range options {
+			if oid == id {
+				return name
+			}
+		}
+	}
+	return "In review"
+}
+
 // putOnBoard adds the board node "item-<number>" of an issue added before, with the single-select
 // values status and priority (option IDs, "" none) and the blockers added so far.
 func (g *githubFixture) putOnBoard(t *testing.T, number int, status, priority string) {
@@ -234,7 +283,7 @@ func (g *githubFixture) putOnBoard(t *testing.T, number int, status, priority st
 	values := []any{}
 	for field, opt := range map[string]string{g.board.StatusFieldID: status, g.board.PriorityFieldID: priority} {
 		if opt != "" {
-			values = append(values, map[string]any{"optionId": opt, "field": map[string]any{"id": field}})
+			values = append(values, map[string]any{"optionId": opt, "name": g.optionName(opt), "field": map[string]any{"id": field}})
 		}
 	}
 	node := map[string]any{

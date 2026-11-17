@@ -31,6 +31,9 @@ type Forge interface {
 	OpenIssues(ctx context.Context) ([]Issue, error)
 	ClosedInMilestone(ctx context.Context, m Milestone, since time.Time) ([]Issue, error)
 	BlockedBy(ctx context.Context, number int) ([]Blocker, error)
+	// Planning reads the open issues with their milestone and open blockers, and the issue
+	// counts of the open milestones, for the prioritisation view.
+	Planning(ctx context.Context) (Planning, error)
 	Comments(ctx context.Context, number int) ([]protocol.Comment, error)
 	CreateComment(ctx context.Context, number int, body string) (protocol.Comment, error)
 	// Acknowledge marks comment commentID on issue number as seen by the token's user.
@@ -40,6 +43,8 @@ type Forge interface {
 	// MergePR squash-merges pull request number, only while its head is still sha. It fails
 	// with ErrHeadMoved when the head moved, and with *MergeRefused when the forge declines.
 	MergePR(ctx context.Context, number int, sha string) error
+	// DeleteBranch deletes branch; a branch that is already gone is not an error.
+	DeleteBranch(ctx context.Context, branch string) error
 	OpenPRs(ctx context.Context) ([]OpenPR, error)
 	// OpenPRsWithStatus lists the open pull requests with draft, mergeable and checks, by number.
 	OpenPRsWithStatus(ctx context.Context) ([]PRSummary, error)
@@ -58,8 +63,31 @@ type Forge interface {
 	IssueItem(ctx context.Context, number int) (item BoardItem, ok bool, err error)
 	AddToBoard(ctx context.Context, number int) (BoardItem, error)
 	SetStatus(ctx context.Context, item BoardItem, status string) error
+
+	// The methods below are the wrapper (`lighthouse forge`). A milestone is given by title;
+	// Milestone.Number is the number the forge uses in a path (on GitLab the global id).
+
 	// CreateIssue opens an issue and returns it as the forge stored it.
-	CreateIssue(ctx context.Context, title, body string) (Issue, error)
+	CreateIssue(ctx context.Context, in NewIssue) (Issue, error)
+	EditIssue(ctx context.Context, number int, e IssueEdit) (Issue, error)
+	ListIssues(ctx context.Context, f IssueFilter) ([]Issue, error)
+	SearchIssues(ctx context.Context, text string) ([]Issue, error)
+	CreateChange(ctx context.Context, in NewPR) (Change, error)
+	Change(ctx context.Context, number int) (Change, error)
+	CreateChangeComment(ctx context.Context, number int, body string) (protocol.Comment, error)
+	// Milestones lists the milestones in state "open", "closed" or "all"; "" is open.
+	Milestones(ctx context.Context, state string) ([]Milestone, error)
+	MilestoneByNumber(ctx context.Context, number int) (Milestone, error)
+	CreateMilestone(ctx context.Context, title, description string) (Milestone, error)
+	EditMilestone(ctx context.Context, number int, title, description *string) (Milestone, error)
+	Labels(ctx context.Context) ([]string, error)
+	// AddBlocker makes issue blocker block issue number.
+	AddBlocker(ctx context.Context, number, blocker int) error
+	// API sends r to the forge's REST API and returns the raw response body.
+	API(ctx context.Context, r APIRequest) ([]byte, error)
+
+	// The methods below are the writes of the pins lane.
+
 	UpdateIssueBody(ctx context.Context, number int, body string) error
 	// CloseIssue posts comment (when not empty) and then closes the issue.
 	CloseIssue(ctx context.Context, number int, comment string) error

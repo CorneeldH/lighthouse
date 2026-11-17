@@ -45,6 +45,9 @@ type Forge struct {
 	signals    int
 }
 
+// dirtyFile is the untracked file MakeDirty leaves in the clone.
+const dirtyFile = "untracked.txt"
+
 type forgeWorkspace struct {
 	path, branch string
 	dirty, gone  bool
@@ -95,9 +98,15 @@ func (f *Forge) Routable() bool { return true }
 // Reachable is true: see Routable.
 func (f *Forge) Reachable() bool { return true }
 
-// MakeDirty makes the workspace refuse a DELETE.
+// MakeDirty makes the workspace refuse a DELETE, until the untracked file it leaves in the clone
+// is gone (a forced Remove cleans it).
 func (f *Forge) MakeDirty(t testing.TB, id string) {
-	f.change(t, id, func(w *forgeWorkspace) { w.dirty = true })
+	f.change(t, id, func(w *forgeWorkspace) {
+		if err := os.WriteFile(filepath.Join(w.path, dirtyFile), []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		w.dirty = true
+	})
 }
 
 // Forget makes the forge answer 404 for the workspace.
@@ -243,7 +252,7 @@ func (f *Forge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case rest == "" && r.Method == http.MethodGet:
 		writeJSON(w, map[string]string{"id": id, "status": "ready", "worktree_path": ws.path, "git_head_ref": ws.branch})
 	case rest == "" && r.Method == http.MethodDelete:
-		if ws.dirty {
+		if _, err := os.Stat(filepath.Join(ws.path, dirtyFile)); ws.dirty && err == nil {
 			w.WriteHeader(http.StatusConflict)
 			return
 		}

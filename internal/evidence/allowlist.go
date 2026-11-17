@@ -456,6 +456,98 @@ func checkGH(args []string) string {
 	return "gh: only `gh api`, `gh issue view` and `gh pr view`"
 }
 
+// forgeRead lists the read subcommands of `lighthouse forge`: the boolean flags, the flags that
+// take a value, and the number of positional words. A subcommand not listed here (every write
+// form, `merge`, anything new) is refused: the list is the allowlist, not a denylist.
+var forgeRead = map[string]struct {
+	flags, val set
+	pos        int
+}{
+	"issue view":     {set{"--comments": true}, set{"--field": true}, 1},
+	"issue list":     {set{}, set{"--state": true, "--label": true, "--milestone": true, "--field": true}, 0},
+	"issue search":   {set{}, set{"--field": true}, 1},
+	"issue blockers": {set{}, set{"--field": true}, 1},
+	"pr view":        {set{}, set{"--field": true}, 1},
+	"milestone list": {set{}, set{"--state": true, "--field": true}, 0},
+	"milestone view": {set{}, set{"--field": true}, 1},
+	"label list":     {set{}, set{"--field": true}, 0},
+}
+
+// checkForgeAPI allows `api <path>`, with or without an explicit `-X GET`, and nothing else. The
+// api command parses its flags by hand and also reads attached forms (`-XPOST`, `-fa=b`), so
+// every other word that starts with `-` is refused here, never parsed.
+func checkForgeAPI(args []string) string {
+	var paths []string
+	explicitGet := false
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if !strings.HasPrefix(a, "-") || a == "-" {
+			paths = append(paths, a)
+			continue
+		}
+		if a != "-X" || explicitGet || i+1 >= len(args) || args[i+1] != "GET" {
+			return "lighthouse forge api: only `<path>`, with at most one `-X GET`"
+		}
+		explicitGet = true
+		i++
+	}
+	if len(paths) != 1 {
+		return "lighthouse forge api: exactly one path"
+	}
+	target := paths[0]
+	if strings.Contains(target, "://") || strings.HasPrefix(target, "//") {
+		return "lighthouse forge api: a path only, not a URL"
+	}
+	return forgeAPIPathReason(target)
+}
+
+// forgeAPIPathReason refuses a path with a `graphql` segment (any case, before `?` or `#`, with or
+// without an `api/v4/` prefix), a `..` segment, or a percent escape that could hide either.
+func forgeAPIPathReason(target string) string {
+	route, _, _ := strings.Cut(target, "?")
+	route, _, _ = strings.Cut(route, "#")
+	if strings.Contains(route, "%") {
+		return "lighthouse forge api: a percent escape in the path is not allowed"
+	}
+	for _, seg := range strings.Split(route, "/") {
+		switch strings.ToLower(seg) {
+		case "graphql":
+			return "lighthouse forge api: graphql is not allowed"
+		case "..":
+			return "lighthouse forge api: `..` is not allowed in the path"
+		}
+	}
+	return ""
+}
+
+// checkLighthouse allows the read forms of `lighthouse forge` (empty: allowed, otherwise the
+// reason). The words after `forge` must be exactly the group, the subcommand and its allowed
+// flags: unknown shapes are refused, and no input file or `--` is ever allowed.
+func checkLighthouse(args []string) string {
+	const only = "lighthouse: only the read forms of `lighthouse forge`"
+	if len(args) < 2 || args[0] != "forge" {
+		return only
+	}
+	if args[1] == "api" {
+		return checkForgeAPI(args[2:])
+	}
+	if len(args) < 3 {
+		return only
+	}
+	spec, ok := forgeRead[args[1]+" "+args[2]]
+	if !ok {
+		return only + ": `forge " + args[1] + " " + args[2] + "` is not one"
+	}
+	p, reason := parse(args[3:], spec.flags, spec.val, false)
+	if reason != "" {
+		return reason
+	}
+	if len(p.pos) != spec.pos {
+		return "forge " + args[1] + " " + args[2] + ": expects " + fmt.Sprint(spec.pos) + " positional argument(s)"
+	}
+	return ""
+}
+
 func flagsOnly(args []string, flags set) string { return reasonOnly(parse(args, flags, set{}, false)) }
 
 // check is Check with the pytest directory read lazily; an error only from testDir.
@@ -481,6 +573,8 @@ func check(argv []string, testDir testDirFunc) (string, error) {
 		return checkPytest(args, testDir)
 	case "gh":
 		return checkGH(args), nil
+	case "lighthouse":
+		return checkLighthouse(args), nil
 	}
 	return fmt.Sprintf("`%s` is not in the allowlist", name), nil
 }

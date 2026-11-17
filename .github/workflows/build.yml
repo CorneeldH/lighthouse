@@ -1,7 +1,8 @@
 # Build for lighthouse: five binaries from a tag, a version check, and a GitHub release.
 # Binaries go to $RUNNER_TEMP/dist, never into the checkout: the version comes from VCS build
-# info and an untracked file would make the binary report `dev`. The binary embeds the real SPA:
-# job `web` builds it once and every build job downloads it into the git-ignored internal/web/dist.
+# info and an untracked file would make the binary report `dev`. The binary embeds the SPA from
+# the tracked internal/web/dist of the tag; job `web` checks that it matches a fresh build, and
+# job `go-install` proves that `go install` of the tag gives a binary that serves it.
 name: build
 
 on:
@@ -62,15 +63,17 @@ jobs:
           node-version-file: web/.nvmrc
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - run: npm ci
+      - name: Verify dist is tracked
+        run: git ls-files --error-unmatch internal/web/dist/index.html
+      - name: Install web dependencies
+        run: npm ci
         working-directory: web
-      - run: npm run build
+      - name: Build web
+        run: npm run build
         working-directory: web
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: spa-dist
-          path: internal/web/dist
-          if-no-files-found: error
+      # --ignored: a new file in dist is git-ignored and would otherwise stay invisible.
+      - name: Verify dist matches the tag
+        run: test -z "$(git status --porcelain --ignored -- internal/web/dist)"
 
   build:
     needs: [resolve, web]
@@ -103,11 +106,6 @@ jobs:
           go-version-file: go.mod
       # A dirty tree makes the binary report `dev` instead of the tag.
       - run: test -z "$(git status --porcelain)"
-      # After checkout (its clean would delete the ignored dist); the ignored dist keeps the tree clean.
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: spa-dist
-          path: internal/web/dist
       - name: Build
         env:
           GOOS: ${{ matrix.goos }}
@@ -131,8 +129,32 @@ jobs:
           name: bin-${{ matrix.goos }}-${{ matrix.goarch }}
           path: ${{ runner.temp }}/dist/
 
+  go-install:
+    needs: [resolve, web]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      TAG: ${{ needs.resolve.outputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ needs.resolve.outputs.tag }}
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      # Install the way a user does, from the tag, and prove the binary serves the SPA.
+      - name: Install and check SPA
+        run: |
+          set -euo pipefail
+          GOPRIVATE=github.com/CorneeldH/lighthouse GOBIN="$RUNNER_TEMP/bin" \
+            go install github.com/CorneeldH/lighthouse/cmd/lighthouse@"$TAG"
+          ci/spa-smoke.sh "$RUNNER_TEMP/bin/lighthouse"
+
   publish:
-    needs: [resolve, build]
+    needs: [resolve, build, go-install]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
