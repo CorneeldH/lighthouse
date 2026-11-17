@@ -46,6 +46,10 @@ type RepoInput struct {
 	// Markers are the controller markers whose session's last run is in this repo, resumable
 	// or not.
 	Markers []park.Marker `json:"markers"`
+	// WorkflowPush is whether host.toml has [dispatch.workflow_push]; without it a push handoff
+	// goes back as a 🤖 Teruggegeven. PushTimeout is its timeout.
+	WorkflowPush bool          `json:"workflow_push,omitempty"`
+	PushTimeout  time.Duration `json:"push_timeout,omitempty"`
 }
 
 // Kind is what an action does.
@@ -64,6 +68,9 @@ const (
 	// KindMerge squash-merges PR on HeadSHA and ends the run RunID as done.
 	KindMerge  Kind = "merge"
 	KindUnpark Kind = "unpark"
+	// KindPush starts the workflow pusher for Worktree and Branch, which runs no session.
+	// A push after a user's answer carries PermitSHA, the one SHA the user allowed.
+	KindPush Kind = "push"
 	// KindDropMarker removes the resume marker of SessionID while its key is TriggerKey.
 	KindDropMarker Kind = "drop_marker"
 )
@@ -96,11 +103,13 @@ type Action struct {
 	PR         int          `json:"pr,omitempty"`       // merge: the PR number
 	HeadSHA    string       `json:"head_sha,omitempty"` // merge: the head the merge is for
 	Language   string       `json:"language,omitempty"`
-	Stop       bool         `json:"stop,omitempty"`     // stop the session of run RunID
-	End        bool         `json:"end,omitempty"`      // end only the claude of run RunID
-	Discard    bool         `json:"discard,omitempty"`  // forget the launch of run RunID
-	ItemID     string       `json:"item_id,omitempty"`  // park, hold, unpark: the board item
-	Blockers   []string     `json:"blockers,omitempty"` // park: "<repo>#<n> (<status>)" per active blocker
+	Stop       bool         `json:"stop,omitempty"`       // stop the session of run RunID
+	End        bool         `json:"end,omitempty"`        // end only the claude of run RunID
+	Discard    bool         `json:"discard,omitempty"`    // forget the launch of run RunID
+	ItemID     string       `json:"item_id,omitempty"`    // park, hold, unpark: the board item
+	Blockers   []string     `json:"blockers,omitempty"`   // park: "<repo>#<n> (<status>)" per active blocker
+	Worktree   string       `json:"worktree,omitempty"`   // push: the worktree of the run that asked for the push
+	PermitSHA  string       `json:"permit_sha,omitempty"` // push: the SHA a user's answer allowed
 }
 
 // Decide is the pure decision of one tick: per repo, per item, first the orphan rule, then
@@ -217,7 +226,7 @@ type planned struct {
 // too), 1 a defer, 2 a start or resume.
 func (p planned) group() int {
 	switch p.Kind {
-	case KindStart, KindResume:
+	case KindStart, KindResume, KindPush:
 		return 2
 	case KindDefer:
 		return 1
@@ -935,9 +944,10 @@ func repair(history []runs.Row, it Item, base Action) []Action {
 	return out
 }
 
-// triggerComment returns the comment id of a handoff:<id> or answer:<id> trigger key.
+// triggerComment returns the comment id of a handoff:<id>, answer:<id>, push:<id> or
+// pushanswer:<id> trigger key.
 func triggerComment(key string) (int64, bool) {
-	for _, prefix := range []string{"handoff:", "answer:"} {
+	for _, prefix := range []string{"handoff:", "answer:", triggerPush + ":", triggerPushAnswer + ":"} {
 		if rest, ok := strings.CutPrefix(key, prefix); ok {
 			id, err := strconv.ParseInt(rest, 10, 64)
 			return id, err == nil
@@ -947,17 +957,19 @@ func triggerComment(key string) (int64, bool) {
 }
 
 const (
-	statusController = "Controller"
-	statusOnHold     = "On hold"
-	cmdStartIssue    = "/lighthouse-start-issue"
-	modeStart        = "start"
-	modeResume       = "resume"
-	triggerHandoff   = "handoff"
-	triggerAnswer    = "answer"
-	triggerClose     = "closecheck"
-	triggerFixPR     = "fixpr"
-	cmdFixPR         = "/lighthouse-fix-pr"
-	maxFixPRRuns     = 3
+	statusController  = "Controller"
+	statusOnHold      = "On hold"
+	cmdStartIssue     = "/lighthouse-start-issue"
+	modeStart         = "start"
+	modeResume        = "resume"
+	triggerHandoff    = "handoff"
+	triggerAnswer     = "answer"
+	triggerPush       = "push"
+	triggerPushAnswer = "pushanswer"
+	triggerClose      = "closecheck"
+	triggerFixPR      = "fixpr"
+	cmdFixPR          = "/lighthouse-fix-pr"
+	maxFixPRRuns      = 3
 )
 
 // issueCtx is what the start rules of one item read.
@@ -990,7 +1002,9 @@ func (c issueCtx) retry() (planned, bool) {
 	var keys []string
 	byKey := map[string][]runs.Row{}
 	for _, row := range c.repo.History {
-		if row.Issue != c.it.Issue {
+		// A push row has no session to start again: the tick that reads the handoff starts the
+		// pusher afresh, not a second attempt of a session.
+		if row.Issue != c.it.Issue || isPushKey(row.TriggerKey) {
 			continue
 		}
 		if _, seen := byKey[row.TriggerKey]; !seen {
@@ -1109,12 +1123,19 @@ func (c issueCtx) usageResume() (planned, bool) {
 // another issue's session never resumes that run.
 func (c issueCtx) answer() (planned, bool) {
 	q := lastTurn(c.hs)
-	if q == nil || q.Header.Kind != protocol.KindQuestion || q.Header.Session == "" {
+	if q == nil || q.Header.Kind != protocol.KindQuestion {
 		return planned{}, false
 	}
 	ans, ok := c.answerTo(q.Comment.ID)
 	if !ok {
 		return planned{}, false
+	}
+	if q.Header.Session == "" {
+		// A Vraag without a session that carries a sha is the pusher's.
+		if q.Header.Fields["sha"] == "" {
+			return planned{}, false
+		}
+		return c.pushAnswer(q, ans)
 	}
 	key := triggerAnswer + ":" + strconv.FormatInt(ans.ID, 10)
 	if c.spent(key) {
@@ -1201,7 +1222,8 @@ func (c issueCtx) handoff() (planned, bool) {
 		return planned{}, false
 	}
 	key := triggerHandoff + ":" + strconv.FormatInt(p.Comment.ID, 10)
-	if c.spent(key) {
+	pushKey := triggerPush + ":" + strconv.FormatInt(p.Comment.ID, 10)
+	if c.spent(key) || c.spent(pushKey) {
 		return planned{}, false
 	}
 	ho, err := protocol.ParseHandoff(p.Header)
@@ -1220,15 +1242,22 @@ func (c issueCtx) handoff() (planned, bool) {
 	case VerdictInteractive:
 		return c.returned("reason_interactive", ""), true
 	case VerdictRejected:
+		if fields := strings.Fields(ho.Next); len(fields) > 0 && fields[0] == cmdPush {
+			return c.returned("reason_bad_handoff", j.Arg), true
+		}
 		return c.returned("reason_not_allowed", j.Arg), true
 	case VerdictSkillMissing:
 		return c.returned("reason_skill_missing", j.Arg), true
 	case VerdictPush:
-		// The push action arrives with the decide change; until then a push handoff must not
-		// start a session on the literal command.
-		return c.returned("reason_pusher_off", ""), true
+		if reason := c.pushRefused(p.Header.Session); reason != "" {
+			return c.returned(reason, pushCommand(ho.Worktree)), true
+		}
 	}
 	if !validBranch(ho.Branch) {
+		return c.returned("reason_bad_handoff", "branch "+ho.Branch), true
+	}
+	if j.Verdict == VerdictPush && ho.Branch == c.repo.DefaultBranch {
+		// The pusher pushes the branch of the work, never the default branch.
 		return c.returned("reason_bad_handoff", "branch "+ho.Branch), true
 	}
 	if ho.When == "night" && !InNight(c.night, c.now) {
@@ -1242,6 +1271,9 @@ func (c issueCtx) handoff() (planned, bool) {
 		a.Blockers = c.activeBlockers()
 		return planned{Action: a}, true
 	}
+	if j.Verdict == VerdictPush {
+		return c.push(p, ho, pushKey), true
+	}
 	branch := ho.Branch
 	if branch == c.repo.DefaultBranch {
 		branch = c.issueBranch()
@@ -1249,6 +1281,68 @@ func (c issueCtx) handoff() (planned, bool) {
 	a := c.fresh(triggerHandoff, key, j.Command, branch)
 	a.CommentID, a.Native, a.Skip = p.Comment.ID, j.Native, skip
 	return c.planned(a, p.Time), true
+}
+
+// pushCommand is what a user runs to push the worktree by hand: the Teruggegeven of a refused
+// push carries it where the pusher's own 🤖 Vraag would.
+func pushCommand(worktree string) string {
+	return "cd " + worktree + " && git push -u origin HEAD"
+}
+
+// isPushKey reports whether key is the trigger key of a push or of the answer to a pusher Vraag.
+func isPushKey(key string) bool {
+	return strings.HasPrefix(key, triggerPush+":") || strings.HasPrefix(key, triggerPushAnswer+":")
+}
+
+// pushRefused is the heading key of the reason the pusher cannot take the push the handoff of
+// session asks for, "" when it can: [dispatch.workflow_push] is not configured, or the run
+// that wrote the handoff ran on another node, whose worktree this host cannot push. A session
+// without a run of this issue is taken as this host's.
+func (c issueCtx) pushRefused(session string) string {
+	if !c.repo.WorkflowPush {
+		return "reason_pusher_off"
+	}
+	if run, ok := lastRunOf(c.repo.History, c.it.Issue, session); ok && run.Node != "" {
+		return "reason_pusher_node"
+	}
+	return ""
+}
+
+// push is the KindPush of the handoff in p. It starts no session and takes no slot; the brake
+// still holds it back for a pause or a closed usage brake.
+func (c issueCtx) push(p *parsed, ho protocol.Handoff, key string) planned {
+	a := c.base
+	a.Kind, a.Trigger, a.TriggerKey, a.Attempt = KindPush, triggerPush, key, 1
+	a.Command, a.Worktree, a.Branch, a.CommentID = cmdPush, ho.Worktree, ho.Branch, p.Comment.ID
+	return planned{Action: a, priority: priorityRank(c.it.Priority), at: p.Time}
+}
+
+// pushAnswer is the KindPush for the answer `push` to a pusher 🤖 Vraag: a Vraag without a
+// session whose fields name the SHA, the worktree and the branch of the red push. Any other
+// answer resumes nothing, as there is no session; a SHA that is none, or a branch git must not
+// see, gives no action.
+func (c issueCtx) pushAnswer(q *parsed, ans Comment) (planned, bool) {
+	sha, worktree, branch := q.Header.Fields["sha"], q.Header.Fields["worktree"], q.Header.Fields["branch"]
+	key := triggerPushAnswer + ":" + strconv.FormatInt(ans.ID, 10)
+	if c.spent(key) || !permitAnswer(ans.Body) || !shaField.MatchString(sha) || worktree == "" || !validBranch(branch) {
+		return planned{}, false
+	}
+	if !c.repo.WorkflowPush {
+		return c.returned("reason_pusher_off", pushCommand(worktree)), true
+	}
+	a := c.base
+	a.Kind, a.Trigger, a.TriggerKey, a.Attempt = KindPush, triggerPushAnswer, key, 1
+	a.Command, a.Worktree, a.Branch, a.CommentID, a.PermitSHA = cmdPush, worktree, branch, ans.ID, sha
+	return planned{Action: a, priority: priorityRank(c.it.Priority), at: parseTime(ans.CreatedAt)}, true
+}
+
+// shaField is a git object name as the pusher's Vraag carries it.
+var shaField = regexp.MustCompile(`^[0-9a-f]{7,64}$`)
+
+// permitAnswer reports whether body is the answer `push`, in any case and with a closing
+// full stop or exclamation mark.
+func permitAnswer(body string) bool {
+	return strings.EqualFold(strings.TrimRight(strings.TrimSpace(body), ".!"), "push")
 }
 
 // branchName is the shape of a handoff branch: the branch reaches git as an argument.

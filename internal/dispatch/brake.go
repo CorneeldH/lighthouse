@@ -57,6 +57,18 @@ func (b *Brake) apply(ps []planned) []planned {
 		if b.Paused {
 			continue
 		}
+		if p.Kind == KindPush {
+			// A push runs no session: only the pause and the usage brake hold it back, and it
+			// counts for no slot, no software limit and no memory reserve.
+			if reason := b.UsageClosed(); reason != "" {
+				out = append(out, planned{Action: Action{
+					Kind: KindDefer, Repo: p.Repo, Issue: p.Issue, Language: p.Language, Reason: reason,
+				}})
+				continue
+			}
+			out = append(out, p)
+			continue
+		}
 		if reason := eff.closed(p, passed, admitted, admittedSoftware, admittedOn); reason != "" {
 			out = append(out, planned{Action: Action{
 				Kind: KindDefer, Repo: p.Repo, Issue: p.Issue, Language: p.Language, Reason: reason,

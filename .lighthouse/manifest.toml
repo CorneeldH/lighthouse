@@ -517,7 +517,7 @@ kind = "file"
 path = ".lighthouse/headings.toml"
 package = "core"
 version = "dev"
-sha256 = "1c6f17022337ff310339143000ff473bbecaea598d05bb9c260428adeb638be5"
+sha256 = "c4e027fa11f43c98eace50b27846a28ccba1f3a0ab9717be85f9cd60864abcb9"
 
 [[unit]]
 kind = "file"

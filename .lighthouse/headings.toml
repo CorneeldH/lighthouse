@@ -167,6 +167,10 @@ en = "continue"
 nl = "workflow-pusher staat uit: [dispatch.workflow_push] ontbreekt in host.toml"
 en = "workflow pusher is off: [dispatch.workflow_push] is missing from host.toml"
 
+[reason_pusher_node]
+nl = "de run die deze handoff schreef draaide op een andere host dan de pusher"
+en = "the run that wrote this handoff ran on another host than the pusher"
+
 [reason_pusher_silent]
 nl = "pusher reageerde niet"
 en = "pusher did not respond"

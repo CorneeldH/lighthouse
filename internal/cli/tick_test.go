@@ -1905,3 +1905,47 @@ func TestTickOpensGitLabRepoWithoutProjectIDs(t *testing.T) {
 		t.Fatalf("openForges = %+v, want one open forge", out)
 	}
 }
+
+// A push-workflows handoff with [dispatch.workflow_push] in host.toml becomes a KindPush; the
+// unconfigured repo hands it back instead. Apply knows no KindPush yet (the pusher start comes
+// with the apply change), so the push shows as the one apply error of that kind and nothing is
+// posted or spawned.
+func TestTickPushHandoffYieldsKindPush(t *testing.T) {
+	for name, tc := range map[string]struct {
+		configured bool
+		wantErr    string
+		wantPosted string // the kind of the comment tick posts, "" when none
+	}{
+		"configured": {true, "o/r#7 push: unknown action kind", ""},
+		"off":        {false, "", "Returned"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			env, db := tickFixture(t, repoDir(t, completeRepo))
+			srv, w := startable(t, &env)
+			if tc.configured {
+				appendHostToml(t, env, "\n[dispatch.workflow_push]\ntoken_file = \"/run/t\"\n")
+			}
+			srv.Comments = map[int][]map[string]any{7: {handoffComment("push-workflows", "now")}}
+			var errOut bytes.Buffer
+			err := tick(context.Background(), env, db, &errOut)
+			if tc.wantErr == "" {
+				if err != nil {
+					t.Fatalf("tick = %v\n%s", err, errOut.String())
+				}
+			} else if err == nil || !strings.Contains(err.Error()+errOut.String(), tc.wantErr) {
+				t.Fatalf("tick = %v\n%s\nwant an error with %q", err, errOut.String(), tc.wantErr)
+			}
+			posted := bodies(srv, 7)
+			switch {
+			case tc.wantPosted == "" && len(posted) != 1:
+				t.Errorf("comments on #7 = %q, want the handoff only", posted)
+			case tc.wantPosted != "" && (len(posted) != 2 || !strings.HasPrefix(posted[1], "🤖 "+tc.wantPosted+"\n") ||
+				!strings.Contains(posted[1], "cd /work/issue-7-issue && git push -u origin HEAD")):
+				t.Errorf("comments on #7 = %q, want a %s with the push command", posted, tc.wantPosted)
+			}
+			if len(w.spawned()) != 0 {
+				t.Errorf("spawned %v, want no session", w.spawned())
+			}
+		})
+	}
+}
