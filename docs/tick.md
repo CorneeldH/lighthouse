@@ -598,7 +598,7 @@ Zonder deze tabel is de route uit: elke handoff `next: push-workflows` geeft een
 [dispatch.workflow_push]
 token_file = "~/.kenn/workflow-push.token"   # verplicht; mode precies 0600; zie install.md
 review     = "shadow"                         # shadow (standaard) | enforce
-timeout    = "30m"                            # standaard; de pusher gebruikt 0,9 x timeout
+timeout    = "30m"                            # standaard; minimaal 10m; zie Tijdsbudgetten
 
 [[dispatch.workflow_push.reviewers]]
 topic   = "supply-chain"            # supply-chain | secrets | injection; elk onderwerp één keer
@@ -643,8 +643,11 @@ command = ["claude", "-p", "--tools", ""]
 
 **Tijdsbudgetten.** Van `timeout` gaat een kwart naar het wachten op de `flock` van de kloon (7 minuten 30
 bij 30 minuten) en de helft naar elke reviewer (15 minuten; de reviewers draaien parallel). Het laatste
-kwart is de marge voor vloer, policy, lint en push. Het geheel rekent op 0,9 x `timeout`, zodat de
-pusher zijn eigen Vraag post vóór tick de rij teruggeeft met *pusher reageerde niet*.
+kwart is de marge voor vloer, policy, lint en push. Alles valt onder één deadline: de start van de
+push-rij plus `timeout`, min 2 minuten voor de laatste post en 1 minuut marge. Zo post de pusher zijn
+eigen Vraag vóór tick de rij teruggeeft met *pusher reageerde niet*. Een pusher die pas na die
+deadline start, doet en post niets; vlak voor de push kijkt hij of de rij nog open is, en pusht niet
+als tick haar al teruggaf. Een `timeout` onder 10 minuten weigert `host.toml`.
 
 ### Nodes
 

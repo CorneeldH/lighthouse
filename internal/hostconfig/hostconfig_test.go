@@ -408,6 +408,7 @@ func TestLoadDispatchWorkflowPushInvalid(t *testing.T) {
 		{"bind dotdot", head + rev + "topic = \"secrets\"\ncommand = [\"a\"]\nbinds = [\"~/x/../.config/lighthouse\"]\n", "binds"},
 		{"missing token_file", "[dispatch.workflow_push]\nreview = \"shadow\"\n", "token_file"},
 		{"bad timeout", head + "timeout = \"soon\"\n", "timeout"},
+		{"timeout under 10m", head + "timeout = \"9m59s\"\n", "timeout: \"9m59s\" is under the minimum of 10m"},
 		{"unknown key", head + "bogus = 1\n", "bogus"},
 		{"one reviewer", head + rev + "topic = \"secrets\"\ncommand = [\"a\"]\n", "one reviewer"},
 		{"duplicate topic", head + rev + "topic = \"secrets\"\ncommand = [\"a\"]\n" + rev + "topic = \"secrets\"\ncommand = [\"b\"]\n", "has a reviewer already"},

@@ -55,14 +55,19 @@ type questionInput struct {
 	hint                                           hint
 }
 
-// postTimeout bounds posting a comment and closing the row, apart from the work's deadline.
+// postTimeout bounds posting a comment and closing the row, after the work's deadline
+// (workDeadline leaves room for it).
 const postTimeout = 2 * time.Minute
 
 // ask posts the Question for q and closes the push row as question. The text is scrubbed of every
-// token the pusher holds, and cut under maxComment with the full diff as an attachment.
+// token the pusher holds, and cut under maxComment with the full diff as an attachment. A row tick
+// already handed back gets no Question: its Returned stands.
 func (p *push) ask(ctx context.Context, q questionInput) error {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), postTimeout)
 	defer cancel()
+	if p.handedBack(ctx) {
+		return fmt.Errorf("pusher: run %d was handed back: no Question posted for step %s", p.req.RunID, q.red.Step)
+	}
 	if q.sha == "" {
 		q.sha = p.sha
 	}

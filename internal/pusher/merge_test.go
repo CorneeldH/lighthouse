@@ -80,7 +80,7 @@ func (m *mergeFix) originAt(sha string) {
 func (m *mergeFix) startMerge(head string) {
 	m.t.Helper()
 	m.forge.prs = []forge.PR{{Number: 12, State: "OPEN", HeadRef: branch, HeadSHA: head, URL: prURL}}
-	m.claim("handoff", MergeKey(12, head), m.t0.Add(5*time.Minute))
+	m.claim("handoff", MergeKey(12, head), time.Now())
 	m.req.Worktree = ""
 }
 
@@ -404,4 +404,44 @@ func TestMergeTokenOnlyToTheMergeClient(t *testing.T) {
 			t.Errorf("posted text holds the workflow token: %s", body)
 		}
 	}
+}
+
+// A merge row tick hands back while the merge pusher checks (here: when it reads the workflow
+// token) is never merged, and gets no Question under tick's Returned. A merge pusher that starts
+// after its work deadline does nothing at all.
+func TestMergeHandedBackOrLateDoesNotMerge(t *testing.T) {
+	setup := func(t *testing.T) (*mergeFix, string) {
+		m := newMergeFix(t)
+		pushed := m.commitWorkflow("ci.yml", preMergeWF)
+		m.recordPush(pushed)
+		head := m.commit("fragments/396.md", "- fragment\n")
+		m.originAt(head)
+		m.startMerge(head)
+		return m, head
+	}
+	t.Run("handed back", func(t *testing.T) {
+		m, head := setup(t)
+		m.deps.ReadToken = func(path string) (string, error) {
+			if err := runs.Release(context.Background(), m.db, m.rowID, runs.Returned, "reason_pusher_silent", time.Now()); err != nil {
+				t.Fatal(err)
+			}
+			return ReadTokenFile(path)
+		}
+		if err := Merge(context.Background(), m.deps, m.req, 12, head); err == nil || !strings.Contains(err.Error(), "handed back") {
+			t.Errorf("Merge = %v, want the handed-back row", err)
+		}
+		if len(m.merger.calls) != 0 || len(m.forge.posted) != 0 {
+			t.Errorf("merges %v, posted %q; want neither", m.merger.calls, m.forge.posted)
+		}
+	})
+	t.Run("late", func(t *testing.T) {
+		m, head := setup(t)
+		m.lateBy(m.cfg.Timeout)
+		if err := Merge(context.Background(), m.deps, m.req, 12, head); err == nil || !strings.Contains(err.Error(), "work deadline") {
+			t.Errorf("Merge = %v, want the passed work deadline", err)
+		}
+		if len(m.merger.calls) != 0 || len(m.forge.posted) != 0 || !m.row().Open {
+			t.Errorf("merges %v, posted %q, row open %v; want neither and the row open", m.merger.calls, m.forge.posted, m.row().Open)
+		}
+	})
 }

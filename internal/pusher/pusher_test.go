@@ -164,11 +164,12 @@ func newRunFix(t *testing.T, review string, scripts map[string]string) *runFix {
 	return r
 }
 
-// handoff posts the handoff of the run and claims the push row for it.
+// handoff posts the handoff of the run and claims the push row for it now, as tick does when it
+// starts the pusher: the work deadline counts from the claim.
 func (r *runFix) handoff(after string) {
 	r.t.Helper()
 	c := r.forge.add(handoffBody(r.wt, after), r.t0.Add(2*time.Minute))
-	r.claim("handoff", "push:"+strconv.FormatInt(c.ID, 10), r.t0.Add(3*time.Minute))
+	r.claim("handoff", "push:"+strconv.FormatInt(c.ID, 10), time.Now())
 }
 
 func (r *runFix) claim(trigger, key string, at time.Time) {
@@ -868,11 +869,17 @@ func TestPushRefusalSaysTokenRefusedAndKeepsOtherLines(t *testing.T) {
 	}
 }
 
-// A push that hangs on the network ends at the deadline of the timeout, with a Vraag, and lets
-// the clone lock go.
+// lateBy moves the pusher's clock on by d from the claim of its row.
+func (r *runFix) lateBy(d time.Duration) {
+	r.deps.Now = func() time.Time { return time.Now().Add(d) }
+}
+
+// A push that hangs on the network ends at the work deadline of the row, with a Vraag, and lets
+// the clone lock go. The clock stands 4s before that deadline: timeout minus the post window and
+// the margin after the claim.
 func TestHungPushEndsWithinTimeout(t *testing.T) {
 	r := newRunFix(t, hostconfig.ReviewShadow, nil)
-	r.cfg.Timeout = 4 * time.Second
+	r.lateBy(r.cfg.Timeout - postTimeout - deadlineMargin - 4*time.Second)
 	r.commitWorkflow("nightly.yml", scheduleWF)
 	write(t, filepath.Join(r.remote, "hooks", "pre-receive"), "#!/bin/sh\nexec sleep 30\n")
 	if err := os.Chmod(filepath.Join(r.remote, "hooks", "pre-receive"), 0o755); err != nil {
@@ -881,7 +888,7 @@ func TestHungPushEndsWithinTimeout(t *testing.T) {
 	start := time.Now()
 	r.run()
 	if took := time.Since(start); took > 15*time.Second {
-		t.Errorf("Run took %v with a timeout of %v", took, r.cfg.Timeout)
+		t.Errorf("Run took %v with 4s left before its work deadline", took)
 	}
 	if body := r.forge.last(t); !strings.Contains(body, "step: "+StepPush) {
 		t.Errorf("Vraag does not name the push step:\n%s", body)
@@ -923,5 +930,98 @@ func TestAttachmentRefusesASymlinkedDir(t *testing.T) {
 	}
 	if entries, _ := os.ReadDir(elsewhere); len(entries) != 0 {
 		t.Errorf("the attachment went through the symlink: %v", entries)
+	}
+}
+
+// A pusher that starts after the work deadline of its row (timeout minus the post window and the
+// margin, from the claim) pushes nothing and posts nothing: whatever it posted could come after
+// tick handed the row back. The row stays open for tick.
+func TestLateStartDoesNotPush(t *testing.T) {
+	r := newRunFix(t, hostconfig.ReviewShadow, nil)
+	r.lateBy(r.cfg.Timeout - postTimeout - deadlineMargin + time.Second)
+	r.commitWorkflow("nightly.yml", scheduleWF)
+	err := Run(context.Background(), r.deps, r.req)
+	if err == nil || !strings.Contains(err.Error(), "work deadline") {
+		t.Errorf("Run = %v, want the passed work deadline", err)
+	}
+	if got := r.remoteHead(); got != "" {
+		t.Errorf("origin has %s, want no push", got)
+	}
+	if len(r.forge.posted) != 0 {
+		t.Errorf("posted %q, want nothing", r.forge.posted)
+	}
+	if !r.row().Open {
+		t.Error("the row closed, want it left open for tick")
+	}
+}
+
+// A row tick hands back while the pusher works (here: right when it reads the workflow token, after
+// the review) is never pushed for: the push would land on origin unrecorded. Nothing is posted
+// under tick's Returned either.
+func TestHandedBackRowIsNotPushed(t *testing.T) {
+	r := newRunFix(t, hostconfig.ReviewShadow, nil)
+	r.deps.ReadToken = func(path string) (string, error) {
+		if err := runs.Release(context.Background(), r.db, r.rowID, runs.Returned, "reason_pusher_silent", time.Now()); err != nil {
+			t.Fatal(err)
+		}
+		return ReadTokenFile(path)
+	}
+	r.commitWorkflow("nightly.yml", scheduleWF)
+	err := Run(context.Background(), r.deps, r.req)
+	if err == nil || !strings.Contains(err.Error(), "handed back") {
+		t.Errorf("Run = %v, want the handed-back row", err)
+	}
+	if got := r.remoteHead(); got != "" {
+		t.Errorf("origin has %s, want no push", got)
+	}
+	if len(r.forge.posted) != 0 {
+		t.Errorf("posted %q, want nothing under tick's Returned", r.forge.posted)
+	}
+	if row := r.row(); row.PushedSHA != "" || row.Outcome != runs.Returned {
+		t.Errorf("row = %+v, want tick's Returned without a pushed SHA", row)
+	}
+}
+
+func TestWorkDeadline(t *testing.T) {
+	started := time.Date(2026, 11, 17, 10, 0, 0, 0, time.UTC)
+	now := started.Add(time.Hour)
+	if got, want := workDeadline(started, now, 30*time.Minute), started.Add(27*time.Minute); !got.Equal(want) {
+		t.Errorf("deadline = %s, want %s: the timeout from the claim, less the post window and the margin", got, want)
+	}
+	if got, want := workDeadline(time.Time{}, now, 30*time.Minute), now.Add(27*time.Minute); !got.Equal(want) {
+		t.Errorf("deadline without a start = %s, want %s from now", got, want)
+	}
+}
+
+// closingForge closes the push row, as tick does at its timeout, when the pusher reads the PRs.
+type closingForge struct {
+	*fakeForge
+	close func()
+}
+
+func (f closingForge) BranchPRs(ctx context.Context, b string) ([]forge.PR, error) {
+	f.close()
+	return f.fakeForge.BranchPRs(ctx, b)
+}
+
+// A row tick hands back before the pusher's Question is ready gets no Question: tick's Returned
+// stands alone on the issue.
+func TestHandedBackRowGetsNoQuestion(t *testing.T) {
+	r := newRunFix(t, hostconfig.ReviewShadow, nil)
+	r.deps.Forge = closingForge{fakeForge: r.forge, close: func() {
+		if err := runs.Release(context.Background(), r.db, r.rowID, runs.Returned, "reason_pusher_silent", time.Now()); err != nil {
+			t.Fatal(err)
+		}
+	}}
+	r.commitWorkflow("ci.yml", preMergeWF)
+	err := Run(context.Background(), r.deps, r.req)
+	if err == nil || !strings.Contains(err.Error(), "handed back") {
+		t.Errorf("Run = %v, want the handed-back row", err)
+	}
+	if len(r.forge.posted) != 0 {
+		t.Errorf("posted %q, want nothing under tick's Returned", r.forge.posted)
+	}
+	if got := r.remoteHead(); got != "" {
+		t.Errorf("origin has %s, want no push", got)
 	}
 }

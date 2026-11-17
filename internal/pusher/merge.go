@@ -43,6 +43,11 @@ func Merge(ctx context.Context, deps Deps, req Request, pr int, head string) err
 	if err != nil {
 		return err
 	}
+	ctx, cancel, err := withWorkDeadline(ctx, deps, req, row)
+	if err != nil {
+		return err
+	}
+	defer cancel()
 	req.Branch, req.Worktree, req.Permit = row.Branch, "", ""
 	m := &merging{push: push{deps: deps, req: req, sha: noSHA}, pr: pr, head: head}
 	if red := m.start(row); red != nil {
@@ -138,14 +143,11 @@ func lastPushed(ctx context.Context, db *sql.DB, repo string, issue int, branch 
 }
 
 // checkUnderLock fetches the branch from the forge into the clone, under the clone lock and the
-// work deadline, and checks there that origin is still on head, that pushed is an ancestor of
+// work deadline of Merge, and checks there that origin is still on head, that pushed is an ancestor of
 // head, and that pushed..head touches no path under .github/workflows/: added, changed, deleted
 // or renamed, any of it counts.
 func (m *merging) checkUnderLock(ctx context.Context, pushed string) *Red {
-	timeout := m.req.Config.Timeout
-	ctx, cancelWork := context.WithTimeout(ctx, time.Duration(float64(timeout)*workShare))
-	defer cancelWork()
-	lockWait, _ := Budgets(timeout)
+	lockWait, _ := Budgets(m.req.Config.Timeout)
 	lctx, cancel := context.WithTimeout(ctx, lockWait)
 	lock, red := LockClone(lctx, m.req.CloneDir)
 	cancel()
@@ -219,6 +221,9 @@ func (m *merging) merge(ctx context.Context, token string) *Red {
 	if m.deps.Merger == nil {
 		return &Red{StepMerge, "COULD NOT CHECK: no merge client"}
 	}
+	if m.handedBack(ctx) {
+		return &Red{StepMerge, fmt.Sprintf("run %d was handed back before the merge: nothing merged", m.req.RunID)}
+	}
 	err := m.deps.Merger(token).MergePR(ctx, m.pr, m.head)
 	var refused *forge.MergeRefused
 	switch {
@@ -252,6 +257,9 @@ func (m *merging) merged(ctx context.Context, url string) error {
 func (m *merging) ask(ctx context.Context, red Red) error {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), postTimeout)
 	defer cancel()
+	if m.handedBack(ctx) {
+		return fmt.Errorf("pusher: run %d was handed back: no Question posted for step %s", m.req.RunID, red.Step)
+	}
 	scrub := scrubList(m.scrub())
 	red.Why = scrubText(red.Why, scrub)
 	body := scrubText(renderMergeQuestion(red, m.req.Branch, m.pr, m.head, m.req.Language), scrub)

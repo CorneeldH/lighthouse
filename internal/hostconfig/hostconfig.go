@@ -62,6 +62,10 @@ const (
 // DefaultPushTimeout is [dispatch.workflow_push] timeout when host.toml sets none.
 const DefaultPushTimeout = 30 * time.Minute
 
+// MinPushTimeout is the smallest [dispatch.workflow_push] timeout: the pusher keeps a post window
+// and a margin before it (pusher.workDeadline), and needs time left for the floor and the review.
+const MinPushTimeout = 10 * time.Minute
+
 // WorkflowPush is [dispatch.workflow_push]: the token and the reviewers of the workflow pusher.
 // TokenFile and the Binds of a reviewer have a leading ~ expanded.
 type WorkflowPush struct {
@@ -355,6 +359,9 @@ func buildWorkflowPush(tokenFile, review, timeout *string, n int, reviewer func(
 	}
 	if err := setDuration(key+".timeout", timeout, &wp.Timeout); err != nil {
 		return nil, err
+	}
+	if wp.Timeout < MinPushTimeout {
+		return nil, fmt.Errorf("%s.timeout: %q is under the minimum of %s", key, *timeout, "10m")
 	}
 	protected := filepath.Join(home, ".config", "lighthouse")
 	for i := range n {

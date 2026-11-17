@@ -56,8 +56,10 @@ type Merger interface {
 // Run is one push: it reads the push row req.RunID and the comment that started it, runs the
 // floor, the policy and the lint, the review for a pre-merge change, then reads the workflow
 // token and pushes exactly the SHA the floor read. Every red step posts a 🤖 Question and closes
-// the row as question; a push posts the outcome of its route. Run returns an error only when it
-// cannot read its row or cannot post or close: then tick's timeout hands the issue back.
+// the row as question; a push posts the outcome of its route. All of it runs before the work
+// deadline of the row (workDeadline), and nothing is pushed once tick handed the row back. Run
+// returns an error only when it cannot read its row, its deadline has passed, or it cannot post
+// or close: then tick's timeout hands the issue back.
 func Run(ctx context.Context, deps Deps, req Request) error {
 	if deps.Now == nil {
 		deps.Now = time.Now
@@ -66,6 +68,11 @@ func Run(ctx context.Context, deps Deps, req Request) error {
 	if err != nil {
 		return err
 	}
+	ctx, cancel, err := withWorkDeadline(ctx, deps, req, row)
+	if err != nil {
+		return err
+	}
+	defer cancel()
 	comments, err := deps.Forge.Comments(ctx, req.Issue)
 	if err != nil {
 		return fmt.Errorf("pusher: read the comments of #%d: %w", req.Issue, err)
@@ -140,24 +147,60 @@ func (p *push) route(ctx context.Context) (fixPR bool, red *Red) {
 	return false, nil
 }
 
-// workShare is the part of [dispatch.workflow_push] timeout the work under the clone lock may
-// take: the lock wait, the floor, the review and the push. The rest is for the comment and the
-// close, so the pusher ends before tick hands its row back.
-const workShare = 0.9
+// deadlineMargin is what the pusher leaves between the end of its last post and the moment tick
+// hands its row back.
+const deadlineMargin = time.Minute
+
+// workDeadline is when the work of a push row must end: tick hands the row back at started plus
+// timeout, and the posts after the work take up to postTimeout. A row without a start time counts
+// from now.
+func workDeadline(started, now time.Time, timeout time.Duration) time.Time {
+	if started.IsZero() {
+		started = now
+	}
+	return started.Add(timeout - postTimeout - deadlineMargin)
+}
+
+// timeoutOf is the push timeout tick holds the row to (dispatch.PushTimeout).
+func timeoutOf(req Request) time.Duration {
+	if req.Config == nil || req.Config.Timeout <= 0 {
+		return hostconfig.DefaultPushTimeout
+	}
+	return req.Config.Timeout
+}
+
+// withWorkDeadline is ctx ending at the work deadline of row, measured on deps.Now. A deadline
+// that has already passed is an error: the pusher then does nothing and posts nothing, and tick
+// hands the row back at its timeout.
+func withWorkDeadline(ctx context.Context, deps Deps, req Request, row runs.Row) (context.Context, context.CancelFunc, error) {
+	now := deps.Now()
+	deadline := workDeadline(row.StartedAt, now, timeoutOf(req))
+	left := deadline.Sub(now)
+	if left <= 0 {
+		return nil, nil, fmt.Errorf("pusher: run %d started at %s: its work deadline %s has passed, tick hands it back",
+			req.RunID, row.StartedAt.Format(time.RFC3339), deadline.Format(time.RFC3339))
+	}
+	ctx, cancel := context.WithTimeout(ctx, left)
+	return ctx, cancel, nil
+}
+
+// handedBack reports whether the push row is no longer open: tick handed it back, or it closed
+// otherwise. A row that cannot be read is not reported as handed back.
+func (p *push) handedBack(ctx context.Context) bool {
+	_, err := openPushRow(ctx, p.deps.DB, p.req)
+	return errors.Is(err, errNotOpen)
+}
 
 // pushUnderLock holds the clone lock from the floor to the push, so no second pusher refreshes
 // the clone in between, and removes this run's ref from the clone before it lets go. All of it
-// runs under one deadline, so a hung fetch or push cannot hold the lock past the budget.
+// runs under the work deadline of Run, so a hung fetch or push cannot hold the lock past it.
 //
 // The sha of a Question is the SHA an answer push permits, and a permit skips the review. So a
 // Question carries the SHA the floor read only once that SHA needs no review from this run: it
 // is post-merge, permitted, approved, or the Question itself shows the reviewers' verdict. Before
 // that it carries the permit it ran under, or none.
 func (p *push) pushUnderLock(ctx context.Context, fixPR bool) error {
-	timeout := p.req.Config.Timeout
-	ctx, cancelWork := context.WithTimeout(ctx, time.Duration(float64(timeout)*workShare))
-	defer cancelWork()
-	lockWait, _ := Budgets(timeout)
+	lockWait, _ := Budgets(p.req.Config.Timeout)
 	lctx, cancel := context.WithTimeout(ctx, lockWait)
 	lock, red := LockClone(lctx, p.req.CloneDir)
 	cancel()
@@ -213,6 +256,11 @@ func (p *push) pushUnderLock(ctx context.Context, fixPR bool) error {
 	if err != nil {
 		return p.ask(ctx, questionInput{red: Red{StepPush, "COULD NOT CHECK: " + err.Error()}, diff: diff})
 	}
+	// Tick may have handed the row back while the review ran: a push now would land on origin
+	// unrecorded, under an issue tick already gave back. ask then posts nothing either.
+	if p.handedBack(ctx) {
+		return fmt.Errorf("pusher: run %d was handed back before the push: nothing pushed", p.req.RunID)
+	}
 	if refused, err := pushSHA(ctx, p.req, c.SHA, token); err != nil {
 		why := err.Error()
 		if refused {
@@ -244,6 +292,9 @@ func (p *push) dropRunRef(ctx context.Context) {
 	_, _ = runGit(cctx, p.req.CloneDir, nil, "update-ref", "-d", runRef(p.req))
 }
 
+// errNotOpen is the run of a request that is not, or no longer, an open push row.
+var errNotOpen = errors.New("is not an open push row")
+
 // openPushRow is the open push row req.RunID of req.Repo and req.Issue.
 func openPushRow(ctx context.Context, db *sql.DB, req Request) (runs.Row, error) {
 	rows, err := runs.History(ctx, db, req.Repo)
@@ -255,7 +306,7 @@ func openPushRow(ctx context.Context, db *sql.DB, req Request) (runs.Row, error)
 			continue
 		}
 		if !r.Open || r.Command != Command || r.Issue != req.Issue || r.SessionID != "" {
-			return runs.Row{}, fmt.Errorf("pusher: run %d is not an open push row of %s#%d", req.RunID, req.Repo, req.Issue)
+			return runs.Row{}, fmt.Errorf("pusher: run %d %w of %s#%d", req.RunID, errNotOpen, req.Repo, req.Issue)
 		}
 		return r, nil
 	}
