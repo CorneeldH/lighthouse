@@ -409,6 +409,62 @@ def test_write_pr_creates_the_pr_with_the_forge_repo():
     assert all(line.startswith("gh pr create --repo <forge.repo> ") for line in creates), creates
 
 
+FORGE = CORE / "skills" / "forge"
+# The sections a chain skill names (`../lighthouse-forge/<kind>.md §blockers`), in this order in
+# every reference (#260, spec §2).
+FORGE_SECTIONS = ["## §board", "## §blockers", "## §sub-issues", "## §sluitwoorden", "## §proxy"]
+
+
+def _h2_outside_fences(text: str) -> list[str]:
+    headings, in_fence = [], False
+    for line in text.splitlines():
+        if line.lstrip().startswith("```"):
+            in_fence = not in_fence
+        elif not in_fence and line.startswith("## "):
+            # A trailing comment carries the language marker; the heading is the text before it.
+            headings.append(re.sub(r"<!--.*?-->", "", line).rstrip())
+    return headings
+
+
+def test_forge_skill_has_both_references():
+    """#260: a chain skill names one section and the forge only picks the file, so both
+    references carry the same sections in the same order."""
+    for kind in ("github", "gitlab"):
+        path = FORGE / f"{kind}.md"
+        assert path.is_file(), f"{path} missing"
+        assert _h2_outside_fences(path.read_text(encoding="utf-8")) == FORGE_SECTIONS, kind
+
+
+def test_forge_skill_description_not_self_triggering():
+    """#260: lighthouse-forge is a reference other skills point at, never a starting point."""
+    text = (FORGE / "SKILL.md").read_text(encoding="utf-8")
+    front = re.match(r"^---\n(.*?)\n---\n", text, re.DOTALL)
+    assert front, "SKILL.md has no frontmatter"
+    desc = next((line for line in front[1].splitlines() if line.startswith("description:")), "")
+    assert "via another skill" in desc, desc
+    assert re.search(r"\b(only|alleen)\b", desc), desc
+
+
+def test_forge_reference_mentions_no_glab_command():
+    """#260: the wrapper talks to the API, `glab` is no dependency. Only gitlab.md may name it,
+    as text; never as a command in a code block or an inline code span."""
+    texts = _texts(FORGE)
+    assert "gitlab.md" in texts, "forge/gitlab.md missing"
+    bad = []
+    for rel, text in texts.items():
+        if rel != "gitlab.md":
+            bad += [f"{rel}: {line.strip()}" for line in text.splitlines() if re.search(r"\bglab\b", line)]
+            continue
+        in_fence = False
+        for line in text.splitlines():
+            if line.lstrip().startswith("```"):
+                in_fence = not in_fence
+                continue
+            spans = [line] if in_fence else re.findall(r"`([^`]*)`", line)
+            bad += [f"{rel}: {s.strip()}" for s in spans if re.search(r"(^|[\s;&|$(])glab\s", s)]
+    assert not bad, "\n".join(bad)
+
+
 @pytest.mark.parametrize("name", ["review-spec", "review-plan"])
 def test_review_skills_call_the_binary_not_python_or_a_wrapper(name):
     """#282: the spec and plan reviews run through `lighthouse review-run`, `plan-review-record`
