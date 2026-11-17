@@ -17,26 +17,38 @@ export function PrioritiesTab(): JSX.Element {
   const slugs = useMemo(() => repos.map((r) => r.slug), [repos])
   // null = every repo on; a stored slug that no longer exists is ignored.
   const selected = useMemo(
-    () => new Set(prefs.repos === null ? slugs : slugs.filter((s) => prefs.repos?.includes(s))),
+    () => {
+      const valid = prefs.repos === null ? [] : slugs.filter((s) => prefs.repos?.includes(s))
+      return new Set(valid.length === 0 && prefs.repos?.length !== 0 ? slugs : valid)
+    },
     [prefs.repos, slugs],
   )
   const graph = useMemo(() => buildGraph(repos, data?.runs ?? []), [repos, data])
   const derived = useMemo(() => {
     const inView = repos.filter((r) => selected.has(r.slug))
     const rows = milestoneRows(inView, graph)
+    const unassigned = withoutMilestone(inView, graph).filter((r) => selected.has(r.node.repo))
+    const nodes = [...graph.nodes.values()].filter((n) => selected.has(n.repo))
     return {
       counts: {
-        deps: [...graph.nodes.values()].filter((n) => selected.has(n.repo)).length,
+        deps: nodes.length,
         milestones: rows.length,
-        unassigned: withoutMilestone(inView, graph).filter((r) => selected.has(r.node.repo)).length,
+        unassigned: unassigned.length,
       } satisfies Record<ViewId, number>,
-      milestones: rows,
+      // Milestones that get a colour, per view: nodes shown in the graph, the rows shown, the
+      // closed milestones named on the rows without an open milestone.
+      inViewMilestones: {
+        deps: nodes.flatMap((n) => (n.milestone ? [{ repo: n.repo, number: n.milestone.number, title: n.milestone.title }] : [])),
+        milestones: rows.map((m) => ({ repo: m.repo, number: m.number, title: m.title })),
+        unassigned: unassigned.flatMap((r) =>
+          r.node.milestone ? [{ repo: r.node.repo, number: r.node.milestone.number, title: r.node.milestone.title }] : [],
+        ),
+      } satisfies Record<ViewId, Array<{ repo: string; number: number; title: string }>>,
     }
   }, [repos, graph, selected])
-  const colors = useMemo(
-    () => assignColors(repos.flatMap((r) => r.milestones.map((m) => ({ repo: r.slug, number: m.number })))),
-    [repos],
-  )
+  const prefix = selected.size > 1
+  const shown = derived.inViewMilestones[prefs.view]
+  const colors = useMemo(() => assignColors(shown), [shown])
 
   const update = (next: typeof prefs) => {
     setPrefs(next)
@@ -49,12 +61,10 @@ export function PrioritiesTab(): JSX.Element {
     update({ ...prefs, repos: slugs.filter((s) => set.has(s)) })
   }
 
-  const prefix = selected.size > 1
-  const legend: LegendItem[] = derived.milestones.map((m) => ({
-    key: `${m.repo}#m${m.number}`,
-    label: prefix ? `${m.repo} · ${m.title}` : m.title,
-    color: colors.get(`${m.repo}#m${m.number}`) ?? 'var(--lh-grey)',
-  }))
+  const legend: LegendItem[] = [...colors.keys()].map((key) => {
+    const m = shown.find((x) => `${x.repo}#m${x.number}` === key) as (typeof shown)[number]
+    return { key, label: prefix ? `${m.repo} · ${m.title}` : m.title, color: colors.get(key) as string }
+  })
 
   const props = { graph, repos, selected, colors }
   const empty = data !== undefined && repos.length === 0
