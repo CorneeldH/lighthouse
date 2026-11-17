@@ -28,11 +28,13 @@ gh project item-edit --id <item-id> --project-id "$P" --field-id "$F" --single-s
 ```
 
 The item id:
-`N=$(lighthouse config forge.board.project_number) && O=$(lighthouse config forge.owner) && gh project item-list "$N" --owner "$O" --format json --jq '.items[] | select(.content.number==<nr>) | .id'`.
+`N=$(lighthouse config forge.board.project_number) && O=$(lighthouse config forge.owner) && gh project item-list "$N" --owner "$O" --limit 1000 --format json --jq '.items[] | select(.content.number==<nr>) | .id'`.
+`--limit` matters: without it `gh` reads only the first 30 items, and on a bigger board the item is
+missing.
 
 ## §blockers
 
-GitHub's issue dependencies (`dependencies/blocked_by`), on every plan.
+GitHub's issue dependencies (`dependencies/blocked_by`).
 
 - `lighthouse forge issue block <nr> --by <blocker>` sets the relation; the wrapper looks up the
   database `id` of the blocker that GitHub wants.

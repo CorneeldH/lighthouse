@@ -36,7 +36,9 @@ Issue links of type `is_blocked_by`, available on Premium and Ultimate only.
 - `lighthouse forge issue block <nr> --by <blocker>` sets the link. On Free GitLab refuses it: exit
   1 with GitLab's message. Then mark the block by hand instead: add `labels.blocked_issue` with
   `lighthouse forge issue edit <nr> --add-label <labels.blocked_issue>`, and put a line
-  `Blocked by #<blocker>` in the body (`lighthouse forge issue edit <nr> --body-file <file>`).
+  `Blocked by #<blocker>` in the body. `--body-file` replaces the whole body: read the current one
+  (`lighthouse forge issue view <nr> --field body`), write it with that line added to the file,
+  then `lighthouse forge issue edit <nr> --body-file <file>`.
 - `lighthouse forge issue blockers <nr>` lists every blocker, open and closed, with `number`,
   `state`, `repo` (also another project) and `merged_pr`. On Free it gives an empty list without
   an error, so an empty list does not prove there is no blocker.
@@ -52,7 +54,9 @@ A sub-issue is a task (work item type Task) under an issue; an issue cannot be t
 issue. Epics, the level above an issue, need Premium. The hierarchy has no REST call, so it goes
 through GraphQL: write each query with your write tool to a file, then
 `lighthouse forge api api/graphql -F query=@<file>`, and check `.errors` and the mutation's own
-`errors` in the answer.
+`errors` in the answer. These queries follow GitLab's GraphQL reference but have not yet run
+against a live GitLab (lighthouse's issue #358 tracks that run): on an error, trust the message
+over the query below.
 
 The global ids of the parent and a child, and the id of the Task type:
 
