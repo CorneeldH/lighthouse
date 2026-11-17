@@ -119,6 +119,23 @@ func (g *gitlabFixture) AddOpenPR(_ *testing.T, pr forge.OpenPR) {
 // ChecksOnClosedPRs: BranchPRs reads head_pipeline only for an open merge request.
 func (g *gitlabFixture) ChecksOnClosedPRs() bool { return false }
 
+// SupportsPlanning: Planning reads REST issues, links and issues_statistics.
+func (g *gitlabFixture) SupportsPlanning() bool { return true }
+
+// NotPlannedCountsAsDone: GitLab has no close reason, so every closed issue is done.
+func (g *gitlabFixture) NotPlannedCountsAsDone() bool { return true }
+
+// SetCloseReason does nothing: GitLab keeps no close reason, only the closed state.
+func (g *gitlabFixture) SetCloseReason(*testing.T, int, string) {}
+
+func (g *gitlabFixture) AddMilestone(_ *testing.T, m forge.Milestone) {
+	state := m.State
+	if state == "open" {
+		state = "active"
+	}
+	g.srv.AddMilestone(map[string]any{"id": m.Number, "iid": m.Number + 10, "title": m.Title, "state": state, "description": m.Description})
+}
+
 // PRCommentBodies reads the notes of the merge request: the issue with that iid is another item.
 func (g *gitlabFixture) PRCommentBodies(_ *testing.T, number int) []string {
 	return g.srv.MRNotes(number)

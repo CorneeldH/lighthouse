@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, fetchQuestions, fetchRuns, forgeErrorText } from './api'
+import { ApiError, fetchPriorities, fetchQuestions, fetchRuns, forgeErrorText } from './api'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -62,6 +62,36 @@ describe('fetchRuns', () => {
   it('passes the workspace url and the night window on', async () => {
     stubResponse('{"runs":[],"deferred":[],"workspace_url":"http://h","night":"21:00-08:00"}', 200, 'application/json')
     expect(await fetchRuns()).toMatchObject({ workspaceUrl: 'http://h', night: '21:00-08:00' })
+  })
+})
+
+describe('fetchPriorities', () => {
+  it('returns the repos and runs on 200', async () => {
+    stubResponse(
+      '{"repos":[{"slug":"o/r","issues":[{"number":1,"title":"t","url":"u","status":"","blocked_by":null}],"milestones":null}],"runs":[{"repo":"o/r","issue":1,"state":"open","phase":"build"}]}',
+      200,
+      'application/json',
+    )
+    expect(await fetchPriorities()).toEqual({
+      repos: [
+        {
+          slug: 'o/r',
+          issues: [{ number: 1, title: 't', url: 'u', status: '', blocked_by: [] }],
+          milestones: [],
+        },
+      ],
+      runs: [{ repo: 'o/r', issue: 1, state: 'open', phase: 'build' }],
+    })
+  })
+
+  it('returns empty lists when the API sends null', async () => {
+    stubResponse('{"repos":null,"runs":null}', 200, 'application/json')
+    expect(await fetchPriorities()).toEqual({ repos: [], runs: [] })
+  })
+
+  it('throws an ApiError with status and detail on 502', async () => {
+    stubResponse('{"detail":"github: 500"}', 502, 'application/problem+json')
+    await expect(fetchPriorities()).rejects.toMatchObject({ status: 502, detail: 'github: 500' })
   })
 })
 

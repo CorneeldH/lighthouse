@@ -3,13 +3,18 @@ import {
   type Leftover,
   getCleanup,
   getHealth,
+  getPriorities,
   getQuestions,
   getReturned,
   getRuns,
   getUsage,
+  type Issue,
+  type Milestone,
   type Question,
+  type Repo,
   type Report,
   type Returned,
+  type Run,
   type RunView,
 } from '@/api/lighthouse'
 
@@ -98,6 +103,30 @@ export async function fetchUsage(signal?: AbortSignal): Promise<Report> {
 export async function fetchVersion(signal?: AbortSignal): Promise<string> {
   const res = await call(() => getHealth({ signal }))
   return (res.data as { version: string }).version
+}
+
+export interface PriorityRepo {
+  slug: string
+  issues: Issue[]
+  milestones: Milestone[]
+}
+
+export interface PrioritiesData {
+  repos: PriorityRepo[]
+  runs: Run[]
+}
+
+export async function fetchPriorities(signal?: AbortSignal): Promise<PrioritiesData> {
+  const res = await call(() => getPriorities({ signal }))
+  const body = res.data as { repos: Repo[] | null; runs: Run[] | null }
+  return {
+    repos: (body.repos ?? []).map((r) => ({
+      slug: r.slug,
+      issues: (r.issues ?? []).map((i) => ({ ...i, blocked_by: i.blocked_by ?? [] })),
+      milestones: r.milestones ?? [],
+    })),
+    runs: body.runs ?? [],
+  }
 }
 
 export function forgeErrorText(err: unknown): string {

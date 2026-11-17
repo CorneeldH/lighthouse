@@ -92,7 +92,7 @@ func TestNewCommentOnPageWithinTickInterval(t *testing.T) {
 		posted.Store(true)
 
 		for {
-			ov, err := r.Overview(ctx)
+			ov, err := r.Latest(ctx)
 			if err != nil {
 				t.Fatalf("Overview: %v", err)
 			}

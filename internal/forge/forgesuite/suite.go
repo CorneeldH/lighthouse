@@ -25,6 +25,10 @@ type Fixture interface {
 	// AddIssue adds is with its Number, Title, Body, Author, State ("open"/"closed"), Labels,
 	// Milestone and ClosedAt.
 	AddIssue(t *testing.T, is forge.Issue)
+	// SetCloseReason sets why the closed issue number was closed: "completed" or "not_planned".
+	SetCloseReason(t *testing.T, number int, reason string)
+	// AddMilestone adds m to the repo, also one without issues; State is "open" or "closed".
+	AddMilestone(t *testing.T, m forge.Milestone)
 	// AddComment adds a comment by author on issue number and returns its ID.
 	AddComment(t *testing.T, number int, author, body string) int64
 	// AddAcknowledgement records that login acknowledged comment commentID on issue number.
@@ -54,6 +58,12 @@ type Fixture interface {
 	// board. GitLab does: every issue is on its board, closed ones within a window. GitHub
 	// lists only the items of its project.
 	ListsClosedIssues() bool
+	// SupportsPlanning reports whether the forge implements Planning; the Planning case is
+	// skipped for one that does not yet.
+	SupportsPlanning() bool
+	// NotPlannedCountsAsDone reports whether Planning counts an issue closed as not planned in
+	// Done. GitHub does not; GitLab has no such close reason, so every closed issue is done.
+	NotPlannedCountsAsDone() bool
 }
 
 // Case is one contract case.
@@ -70,6 +80,7 @@ var Cases = []Case{
 	{"OpenIssuesPages", openIssuesPages},
 	{"ClosedInMilestone", closedInMilestone},
 	{"BlockedBy", blockedBy},
+	{"Planning", planning},
 	{"Comments", comments},
 	{"Acknowledge", acknowledge},
 	{"BoardStatusAndPriority", boardStatusAndPriority},
@@ -199,6 +210,56 @@ func blockedBy(t *testing.T, f Fixture) {
 		if g := got[i]; g.Repo != w.Repo || g.Issue != w.Issue || g.State != w.State {
 			t.Errorf("BlockedBy(7)[%d] = %+v, want repo %s, issue %d, state %s", i, g, w.Repo, w.Issue, w.State)
 		}
+	}
+}
+
+func planning(t *testing.T, f Fixture) {
+	if !f.SupportsPlanning() {
+		t.Skip("this forge does not implement Planning yet")
+	}
+	m := milestone
+	f.AddMilestone(t, m)
+	f.AddMilestone(t, forge.Milestone{Number: 9, Title: "M9", State: "open"})
+	f.AddIssue(t, forge.Issue{Number: 1, Title: "One", Author: "ann", State: "open", Milestone: &m})
+	f.AddIssue(t, openIssue(2))
+	f.AddIssue(t, closedIssue(3, nil, time.Now().Add(-time.Hour)))
+	f.AddIssue(t, closedIssue(4, &m, time.Now().Add(-time.Hour)))
+	f.AddIssue(t, closedIssue(5, &m, time.Now().Add(-time.Hour)))
+	f.AddIssue(t, closedIssue(6, &m, time.Now().Add(-time.Hour)))
+	f.SetCloseReason(t, 4, "completed")
+	f.SetCloseReason(t, 5, "completed")
+	f.SetCloseReason(t, 6, "not_planned")
+	f.AddBlocker(t, 2, forge.Blocker{Repo: f.Repo(), Issue: 1, State: "OPEN"})
+	f.AddBlocker(t, 2, forge.Blocker{Repo: "other/repo", Issue: 9, State: "OPEN"})
+	f.AddBlocker(t, 2, forge.Blocker{Repo: f.Repo(), Issue: 3, State: "CLOSED"})
+	got, err := f.Forge().Planning(t.Context())
+	if err != nil {
+		t.Fatalf("Planning: %v", err)
+	}
+	if len(got.Issues) != 2 || got.Issues[0].Number != 1 || got.Issues[1].Number != 2 {
+		t.Fatalf("Planning.Issues = %+v, want the open #1 and #2", got.Issues)
+	}
+	want := []forge.Blocker{{Repo: f.Repo(), Issue: 1, State: "OPEN"}, {Repo: "other/repo", Issue: 9, State: "OPEN"}}
+	if b := got.Issues[1].BlockedBy; len(b) != 2 || b[0].Repo != want[0].Repo || b[0].Issue != 1 ||
+		b[1].Repo != want[1].Repo || b[1].Issue != 9 || b[0].State != "OPEN" || b[1].State != "OPEN" {
+		t.Errorf("Issues[1].BlockedBy = %+v, want %+v (closed #3 left out)", b, want)
+	}
+	if ms := got.Issues[0].Milestone; ms == nil || ms.Title != "M3" || ms.State != "open" {
+		t.Errorf("Issues[0].Milestone = %+v, want M3 open", ms)
+	}
+	if len(got.Milestones) != 2 {
+		t.Fatalf("Planning.Milestones = %+v, want M3 and the empty M9", got.Milestones)
+	}
+	slices.SortFunc(got.Milestones, func(a, b forge.MilestoneCount) int { return strings.Compare(a.Title, b.Title) })
+	wantDone := 2
+	if f.NotPlannedCountsAsDone() {
+		wantDone = 3
+	}
+	if c := got.Milestones[0]; c.Title != "M3" || c.Open != 1 || c.Done != wantDone {
+		t.Errorf("M3 = %+v, want 1 open and %d done (not-planned #6 counts only where the forge cannot tell)", c, wantDone)
+	}
+	if c := got.Milestones[1]; c.Title != "M9" || c.Open != 0 || c.Done != 0 {
+		t.Errorf("M9 = %+v, want 0 open and 0 done", c)
 	}
 }
 

@@ -23,6 +23,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/forge/gitlabtest"
 	"github.com/CorneeldH/lighthouse/internal/hostconfig"
 	"github.com/CorneeldH/lighthouse/internal/overview"
+	"github.com/CorneeldH/lighthouse/internal/priorities"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
 	"github.com/CorneeldH/lighthouse/internal/server"
 	"github.com/CorneeldH/lighthouse/internal/store"
@@ -97,7 +98,7 @@ func startServe(t *testing.T) (addr string, stop func() error) {
 	errOut := &syncBuf{}
 	done := make(chan error, 1)
 	go func() {
-		done <- serve(ctx, "127.0.0.1:0", filepath.Join(t.TempDir(), "l.db"), nil, nil, server.RunsMeta{}, nil, server.RefreshInterval, errOut)
+		done <- serve(ctx, "127.0.0.1:0", filepath.Join(t.TempDir(), "l.db"), nil, nil, server.RunsMeta{}, nil, server.RefreshInterval, server.PrioritiesInterval, errOut)
 	}()
 
 	addr = waitListening(t, errOut, done)
@@ -316,8 +317,8 @@ func TestForgeReposFromHostToml(t *testing.T) {
 			if s := slugs(got); s != tt.wantSlugs {
 				t.Fatalf("slugs = %q, want %q", s, tt.wantSlugs)
 			}
-			if (got[0].InController != nil) != tt.wantFilter {
-				t.Errorf("filter != nil is %v, want %v", got[0].InController != nil, tt.wantFilter)
+			if got[0].Controller != tt.wantFilter {
+				t.Errorf("filter != nil is %v, want %v", got[0].Controller, tt.wantFilter)
 			}
 			want := tt.wantErrOut
 			if strings.Contains(want, "%s") {
@@ -366,8 +367,8 @@ func TestForgeReposDispatchClientPerRepo(t *testing.T) {
 		if !ok || c.Repo != g.Slug {
 			t.Errorf("source %s: Src = %+v, want the forge client of %s", g.Slug, g.Src, g.Slug)
 		}
-		if (g.InController != nil) != wantFilter[i] {
-			t.Errorf("source %s: filter != nil is %v, want %v", g.Slug, g.InController != nil, wantFilter[i])
+		if g.Controller != wantFilter[i] {
+			t.Errorf("source %s: filter != nil is %v, want %v", g.Slug, g.Controller, wantFilter[i])
 		}
 	}
 	if errOut.Len() != 0 {
@@ -405,7 +406,7 @@ func TestForgeReposWithoutDispatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("forgeRepos: %v", err)
 	}
-	if len(got) != 1 || got[0].Slug != "o/r" || got[0].InController != nil {
+	if len(got) != 1 || got[0].Slug != "o/r" || got[0].Controller || got[0].Board {
 		t.Fatalf("forgeRepos = %+v, want one source o/r without filter", got)
 	}
 	c, ok := got[0].Src.(*forge.GitHub)
@@ -925,5 +926,34 @@ repo = "g/sub/p"
 	if len(ov.Questions) != 1 || ov.Questions[0].Number != 7 || ov.Questions[0].Repo != "g/sub/p" ||
 		!strings.Contains(ov.Questions[0].Question, "Welke kleur?") {
 		t.Errorf("Questions = %+v, want the question on g/sub/p#7", ov.Questions)
+	}
+}
+
+func TestStartPrioritiesWithoutReposReportsNotConfigured(t *testing.T) {
+	overviewRead := func(context.Context) (overview.Overview, error) {
+		t.Error("overview read without sources")
+		return overview.Overview{}, nil
+	}
+	read, stopped := startPriorities(context.Background(), nil, overviewRead, server.PrioritiesInterval)
+	if _, err := read(context.Background()); !errors.Is(err, forge.ErrNotConfigured) {
+		t.Fatalf("err = %v, want forge.ErrNotConfigured", err)
+	}
+	done := make(chan struct{})
+	go func() { stopped(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("stopped() blocked without sources")
+	}
+}
+
+func TestStartPrioritiesFailedOverviewFailsBuild(t *testing.T) {
+	boom := errors.New("overview down")
+	overviewRead := func(context.Context) (overview.Overview, error) { return overview.Overview{}, boom }
+	ctx, cancel := context.WithCancel(context.Background())
+	read, stopped := startPriorities(ctx, []priorities.Source{{Slug: "o/r", Src: &countingSource{}}}, overviewRead, server.PrioritiesInterval)
+	defer func() { cancel(); stopped() }()
+	if _, err := read(ctx); !errors.Is(err, boom) {
+		t.Fatalf("err = %v, want the overview error", err)
 	}
 }
