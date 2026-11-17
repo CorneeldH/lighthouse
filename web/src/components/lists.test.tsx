@@ -492,3 +492,63 @@ describe('Summary', () => {
     expect(clean.getAttribute('aria-label')).toBe('To clean up: unavailable')
   })
 })
+
+describe('scheduled runs', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-11-01T11:05:00Z'))
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  const scheduled = (schedule: string, over: Record<string, unknown> = {}) => ({
+    ...run,
+    issue: 0,
+    title: '',
+    schedule,
+    trigger: 'scheduled',
+    command: '',
+    phase: '',
+    task: 0,
+    tasks: 0,
+    step: '',
+    workspace_id: `ws-${schedule}`,
+    ...over,
+  })
+
+  it('shows two open scheduled runs by schedule name and no issue number', async () => {
+    const region = await renderRunning(
+      body({ runs: [scheduled('codebase-map', { pr_at: '2026-11-01T10:40:00Z' }), scheduled('reflect'), run] }),
+    )
+    expect(within(region).getAllByRole('listitem')).toHaveLength(3)
+    expect(within(region).getByText('o/a · scheduled codebase-map')).toBeTruthy()
+    expect(within(region).getByText('o/a · scheduled reflect')).toBeTruthy()
+    expect(within(region).queryByText(/#0/)).toBeNull()
+    const links = within(region).getAllByRole('link').map((a) => a.getAttribute('href'))
+    expect(links.filter((h) => h?.includes('issue=0'))).toEqual([])
+    expect(within(region).getByRole('link', { name: 'o/a#3' })).toBeTruthy()
+    expect(within(region).getByText(/^PR open since \d\d:\d\d$/)).toBeTruthy()
+    expect(within(region).getAllByText(/^PR open since/)).toHaveLength(1)
+  })
+
+  it('shows a deferred scheduled run in the queue by schedule name', async () => {
+    stubFetch(() =>
+      json(body({ deferred: [{ repo: 'o/a', issue: 0, schedule: 'nightly', title: '', reason: 'usage: 95%', at: '2026-11-01T09:05:00Z' }] })),
+    )
+    renderWithClient(<QueueBlock />)
+    const queue = screen.getByRole('region', { name: 'Queue' })
+    expect(await within(queue).findByText('o/a · scheduled nightly')).toBeTruthy()
+    expect(within(queue).queryByRole('link')).toBeNull()
+    expect(within(queue).getByText('usage: 95%')).toBeTruthy()
+  })
+
+  it('shows a scheduled leftover by schedule name', async () => {
+    stubFetch(() =>
+      json({ cleanup: [{ repo: 'o/r', issue: 0, schedule: 'nightly', workspace_id: 'ws-n', path: '/w/ws-n', reason: 'forced remove refused' }] }),
+    )
+    renderWithClient(<CleanupList />)
+    expect(await screen.findByText('o/r · scheduled nightly')).toBeTruthy()
+    expect(screen.queryByText(/#0/)).toBeNull()
+  })
+})

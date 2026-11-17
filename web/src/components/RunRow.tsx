@@ -3,7 +3,7 @@ import { type JSX, useId } from 'react'
 import type { RunView } from '@/api/lighthouse'
 import { formatClock, formatDuration } from '@/lib/format'
 import { useNow } from '@/lib/now'
-import { IssueLink } from './IssueLink'
+import { RunSubject } from './RunSubject'
 import { WorkspaceLink } from './WorkspaceLink'
 
 const DONE_TITLE = 'Claude finished its turn; the next tick decides: handoff, done, question or returned'
@@ -89,7 +89,7 @@ export function RunRow({ run, workspaceUrl }: { run: RunView; workspaceUrl: stri
   return (
     <li className="relative space-y-1">
       <p>
-        <IssueLink repo={run.repo} issue={run.issue} /> <span>{run.title}</span>
+        <RunSubject repo={run.repo} issue={run.issue} schedule={run.schedule} /> {run.title !== '' && <span>{run.title}</span>}
       </p>
       <p className="flex flex-wrap items-center gap-x-4 gap-y-1">
         <StandBadge stand={run.stand} />
@@ -98,6 +98,7 @@ export function RunRow({ run, workspaceUrl }: { run: RunView; workspaceUrl: stri
           <Clock aria-hidden className="size-3.5" />
           {formatDuration(Math.max(0, (now - Date.parse(run.started_at)) / 1000))}
         </span>
+        {run.pr_at && <span>PR open since {formatClock(run.pr_at)}</span>}
         <WorkspaceLink id={run.workspace_id} forgeUrl={workspaceUrl} />
         <span className="group inline-flex">
           <button type="button" aria-label="Run details" aria-describedby={tipId} className="rounded-full">
