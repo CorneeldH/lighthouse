@@ -309,3 +309,21 @@ func TestGitStateIgnoresBranchEntriesOnly(t *testing.T) {
 		t.Errorf("GitState of an unreadable config = %q, want an error", broken)
 	}
 }
+
+// Fails if the askpass script is written to a directory others can write, where it could be
+// swapped before git runs it.
+func TestHTTPSRemoteRefusesAnOpenScriptDir(t *testing.T) {
+	f := newFixture(t)
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	r := scheduled.HTTPSRemote{URL: "http://127.0.0.1:1/o/r.git", User: "x-access-token", TokenVar: "GH_TOKEN",
+		ScriptDir: dir, Getenv: remoteEnv(t, filepath.Join(t.TempDir(), "m"))}
+	if _, err := r.Head(context.Background(), f.work, testBranch); err == nil || !strings.Contains(err.Error(), "only its owner can write") {
+		t.Errorf("Head = %v, want a refusal of the script directory", err)
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
+		t.Errorf("wrote %d files into the open directory", len(entries))
+	}
+}

@@ -159,6 +159,11 @@ func (r HTTPSRemote) writeAskpass() (string, error) {
 	if err := os.MkdirAll(r.ScriptDir, 0o700); err != nil {
 		return "", fmt.Errorf("remote: askpass: %w", err)
 	}
+	// Someone else who can write the directory could swap the script between its rename and
+	// git running it.
+	if fi, err := os.Lstat(r.ScriptDir); err != nil || !fi.IsDir() || fi.Mode().Perm()&0o022 != 0 {
+		return "", errors.New("remote: askpass: the script directory is not a directory only its owner can write")
+	}
 	tmp, err := os.CreateTemp(r.ScriptDir, ".askpass-*")
 	if err != nil {
 		return "", fmt.Errorf("remote: askpass: %w", err)
