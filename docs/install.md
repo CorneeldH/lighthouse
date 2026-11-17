@@ -246,8 +246,11 @@ the blocks refresh every 30 seconds. Per run: `repo`, `issue`, `title`, `state` 
 `tasks` and `step` (the current plan task, the number of tasks and `build`, `review` or
 `final-review` for a subagent-driven run; `0`, `0` and empty without progress), `trigger`,
 `profile`, `workspace_id`, `started_at`, `stand` (`working`, `waiting` or `done`; empty when the
-tick could not measure the session, shown as *not measured*) and `at`, the tick that wrote it. Per
-deferred start: `repo`, `issue`, `title`, `reason` and `at`. The rows do not show `at`; the Controller
+tick could not measure the session, shown as *not measured*) and `at`, the tick that wrote it. A
+scheduled run (see *Scheduled runs*) also has `schedule`, its schedule name, with `issue` 0 and an
+empty `title`, and `pr_at` once its pull request is open; the page shows it as
+`<repo> · scheduled <name>`, without an issue link. Per deferred start: `repo`, `issue`, `title`,
+`reason` and `at`, and `schedule` for a scheduled run. The rows do not show `at`; the Controller
 section heading shows the age of the newest tick as *tick … ago*, so a row is at most one tick behind.
 Without a tick both lists are empty. Next to `runs` and `deferred` the body carries two settings
 of host.toml: `workspace_url`, the kenn-forge address a browser opens, without a trailing slash.
@@ -291,7 +294,9 @@ Two choices in the unit are on purpose:
   test gate.
 
 Put `GH_TOKEN` in `~/.config/lighthouse/forge.env` (mode `0600`), the file `lighthouse.service` also
-reads (see *Connect the forge*). The runs inherit the token, so a run has the rights of the dispatcher.
+reads (see *Connect the forge*). Issue runs inherit the token, so a run has the rights of the
+dispatcher. A scheduled run starts without the token variables in its environment, but it still runs
+as your user and can read what you can read, such as `gh`'s `hosts.yml`.
 `claude` must be on the unit's `PATH`; the unit adds `%h/.local/bin`, where the claude installer puts it.
 It also adds `/usr/local/go/bin`, where the official Go distribution puts `go`, which runs and the test
 gate need.
@@ -302,6 +307,41 @@ line sets it:
 ```text
 */5 * * * * export XDG_RUNTIME_DIR=/run/user/$(id -u) PATH="$HOME/.local/bin:$HOME/go/bin:/usr/local/bin:/usr/local/go/bin:/usr/bin:/bin"; set -a; . "$HOME/.config/lighthouse/forge.env"; set +a; lighthouse tick
 ```
+
+### Scheduled runs
+
+A repository can have runs on a fixed schedule, without an issue (#121, see
+[tick.md](tick.md#geplande-runs)). Each `[[schedule]]` block in its `lighthouse.toml` is one schedule:
+
+```toml
+[[schedule]]
+name = "codebase-map"   # required; [a-z0-9-]+, unique per repository: it goes into a branch name
+job  = "map-refresh"    # required; map-refresh or reflect
+cron = "0 4 1 * *"      # required; five fields, in the local time of the host
+# profile = "software"  # the profile of the run; default [controller] profile
+
+[schedule.params]       # per job; every parameter has a default
+publish_dir = "docs/developer/codebase"
+
+[[schedule]]
+name   = "reflect"
+job    = "reflect"
+cron   = "0 1 * * MON"
+weeks  = 2              # weeks and anchor go together: only the week of anchor and every
+anchor = "2026-10-12"   # weeks-th week after it count (a week runs Monday to Sunday)
+```
+
+An invalid block makes the repository's config invalid, like any other config error. This release
+validates the block but registers no job yet; until `map-refresh` and `reflect` arrive, a schedule
+makes every tick report `lighthouse: <repo> scheduled:<name>:<slot>: no job <job>` and exit 1, so
+leave the block out for now.
+
+A scheduled run ends in a pull request that the tick merges itself once it is green. The target
+repository's CI must be able to get that PR green with only the paths the job may write: a
+repository whose CI demands, say, a changelog fragment in every PR needs a configuration that lets
+these PRs through. Otherwise every period closes a red PR as `failed`. The token needs *Contents:
+write* and *Pull requests: write* to push the branch, open, merge and close the PR and delete the
+branch.
 
 ## Reach it from your tailnet
 

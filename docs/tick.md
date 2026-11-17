@@ -66,7 +66,7 @@ Het is een korte run, geen daemon. Wie issues vooraf routeert en naar `Controlle
    tick kijken als hun `max_wait` verloopt.
    Vingerafdruk en tijd van de laatste volledige gather staan in de tabel `tick_state` van de database.
    Na apply schrijft tick per repo waarvan de precheck slaagde ook de stand van zijn runs in `tick_state`
-   (soort `run`, sleutel het issuenummer), elke tick, ook als de gather niet aan de beurt is. Een
+   (soort `run`, sleutel het issuenummer, of `scheduled:<naam>` voor een geplande run), elke tick, ook als de gather niet aan de beurt is. Een
    run die apply in deze tick start of afsluit, staat er dus na deze tick al in of al niet meer in. Per
    open run en per geparkeerde run (met een marker die hem nog hervat) de titel van het issue van
    het board, `open` of `parked`, het commando, de fase (afgeleid uit het commando, bijvoorbeeld `sdd` of `spec-review`), voor een
@@ -111,7 +111,9 @@ Het is een korte run, geen daemon. Wie issues vooraf routeert en naar `Controlle
 10. **Opruimen.** Na apply ruimt tick de forge-workspaces op van issues die niet meer op `Controller`
     of `On hold` staan, zonder open run, zonder levende vreemde sessie, schoon en gepusht. Dat gebeurt
     elke tick, ook voor een repo die niet *due* was, maar alleen voor een repo waarvan de precheck
-    slaagde. Een verwijderde workspace geeft `lighthouse: removed workspace <id> of <repo>#<n>`. Een
+    slaagde. De werkplek van een geplande run zonder open run erop gaat geforceerd weg (zie *Geplande
+    runs*). Een verwijderde workspace geeft `lighthouse: removed workspace <id> of <repo>#<n>`, of
+    `… of <repo> scheduled:<naam>` voor een geplande run. Een
     workspace die moet blijven, geeft geen regel: hij staat onder *Workspaces to clean up*. Een fout
     (een `Remove` die geen 409 is, een record dat niet weg te schrijven is) geeft
     `lighthouse: cleanup <repo>: <fouten>`, en tick eindigt met exitcode 1. De regels staan in
@@ -261,6 +263,91 @@ Decide verandert niet, maar `claude -p` loopt anders dan een interactieve claude
 Stoppen en opruimen gaan op het merk `LIGHTHOUSE_CONTROLLER_RUN` van de run, niet op de unit: `Remove`
 beëindigt ook wat een klare claude achterliet, zoals een dev-server (zie [workplace.md](workplace.md#lokaal)).
 
+## Geplande runs
+
+Naast issue-runs start de tick runs op een vast schema, zonder issue: een *geplande run* (#121). Het
+ontwerp staat in [de spec](developer/planning/specs/2026-11-16-issue-121-geplande-runs-design.md).
+Deze release legt het run-model, de planner en de afloop neer; de jobs zelf (`map-refresh` en
+`reflect`) komen in een volgende release. Tot dan geeft een `[[schedule]]`-blok elke tick
+`lighthouse: <repo> scheduled:<naam>:<slot>: no job <job>` en exitcode 1.
+
+**Configuratie.** Per repo een lijst `[[schedule]]` in `lighthouse.toml`, met `name`, `job`, `cron`
+(vijf velden, lokale tijd van de host), optioneel `weeks` met `anchor` en `profile`, en `params` per
+job. Het blok en de eis aan de CI van de doelrepo staan in
+[install.md](install.md#scheduled-runs). Een fout in het blok maakt de repo-config ongeldig.
+
+**De planner.** Per gegatherde repo en per schema, na de gather en vóór decide:
+
+1. Aan de beurt is het laatste cron-slot op of vóór nu (door het `weeks`-filter), als dat later is dan
+   het laatste afgehandelde slot. Afgehandeld is een slot met `skipped` in `schedule_slots`, of met
+   een run `done` of `failed`, of met twee pogingen. Liggen er meer slots open (de host stond uit),
+   dan draait er één run, voor het laatste.
+2. Heeft het schema een open run, dan niets.
+3. De poort van de job draait. Zegt die `skip`, dan noteert tick het slot als `skipped` met één regel
+   `lighthouse: <repo> scheduled:<naam>:<slot>: skipped: <reden>`. Een fout van de poort geeft
+   `…: gate: <fout>`, laat het slot open en geeft exitcode 1; een poort die blijft falen (bijvoorbeeld
+   een onbereikbare remote) maakt zo elke tick rood, tot hij weer lukt.
+4. Dan de rem, zoals voor een issue-start (zie *De rem*). Een geplande run telt als plek, en met
+   profiel `software` ook tegen `max_software`. Houdt de rem hem tegen, dan blijft het slot open en
+   schrijft tick `lighthouse: deferred <repo> scheduled:<naam>:<slot>: <reden>`; een pauze laat de
+   start zonder uitstelregel wegvallen.
+5. De start: tick claimt een run-rij met trigger `scheduled` en sleutel `scheduled:<naam>:<slot>`,
+   maakt de werkplek op branch `scheduled/<naam>-<slot>-<poging>` (het slot als `YYYYMMDDTHHMM`), en
+   start de agent met het commando van de job, een instructiebestand met de onbemand-regels, de
+   toolset van de job (`--tools`) en geen MCP-config, ook als het profiel er een heeft. Een geplande
+   run draait altijd op deze host (node `self`) en post nooit een 🤖-comment: er is geen issue.
+
+Een geplande start sorteert vóór elke andere start in dezelfde tick, ook vóór hervattingen en
+fix-pr-starts. Dat wijkt af van de spec (die laat die twee voorgaan): zo'n run komt hooguit eens per
+periode, en een hervatting of fix-pr-start wacht hooguit één tick.
+
+Mislukt de start na de claim, of eindigt de run zonder echte uitkomst, dan sluit hij als `retry` en
+probeert een volgende tick het slot opnieuw, met een verse start op branch `…-2`. De tweede poging
+die mislukt, sluit als `failed`: dan wacht het schema op zijn volgende slot. Een geplande run wordt
+nooit hervat. Het volgende slot, de `max_runtime` uit het verdict van de job en `pr_at` plus 60
+minuten zijn tijdgrenzen van de precheck.
+
+**De afloop.** Decide heeft een eigen tak voor geplande runs, met dezelfde metingen. Per open rij
+geldt de eerste regel die past:
+
+| Situatie | Uitkomst |
+|---|---|
+| Usage-parkering, werkplek verdwenen, een claim zonder werkplek ouder dan `max_wait`, regels 9, 10 en 15-19 (`max_runtime` uit het verdict) | `retry` (de laatste poging `failed`); een PR van de run wordt gesloten en de branch verwijderd |
+| Sessie klaar, nog geen PR | de claude stoppen, de git-toestand van de werkplek vergelijken met die bij de start, dan de nacontrole; geslaagd: commit, push, PR; niets veranderd: `done` zonder PR; mislukt: `failed` met reden |
+| Eigen PR gemerged | `done` |
+| Eigen PR op een andere head dan de gepushte commit | PR sluiten, `failed` (*branch changed after push*) |
+| Eigen PR rood of met een merge-conflict | PR sluiten, branch verwijderen, `failed`; geen fix-pr-run |
+| Eigen PR groen en geen pauze | squash-merge op de gemeten head, branch verwijderen, `done` |
+| Merge geweigerd (bijvoorbeeld een verplichte review) | PR sluiten, branch verwijderen, `failed` met de reden van de forge |
+| Head verschoven bij de merge | niets; de volgende tick meet opnieuw |
+| Eigen PR gesloten zonder merge | branch verwijderen, `failed` |
+| 60 minuten na `pr_at` niet gemerged | PR sluiten, `failed` |
+
+Alleen een pauze houdt de merge tegen; een dichte usage-, geheugen- of plekkenrem niet, want de merge
+kost geen agent. Pauze en rem tellen mee in de 60 minuten. De PR heet
+`chore: geplande run <naam> (<slot>)`, met als body `No issue: geplande run <naam> (<slot>)`, en
+gaat naar de standaardbranch. Elke afsluiting schrijft één regel
+`lighthouse: <repo> scheduled:<naam>:<slot>: run <id> <uitkomst>[: <reden>]`.
+
+**Het token.** De push gebruikt het forge-token van de repo als HTTPS-credential, nooit de `origin`
+of de config van de werkplek. Git draait in een tijdelijke bare repository onder de statemap, met de
+objecten van de werkplek als alternates, en pusht precies de gecontroleerde commit naar
+`refs/heads/<branch>` op een expliciete URL, zonder `--force`. Het wachtwoord komt uit een inline
+credential-helper die alleen voor die host geldt en de tokenvariabele uit de omgeving leest: argv
+bevat alleen haar naam. De omgeving is schoon (geen systeem- of globale git-config, geen prompt), en
+een foutmelding toont het token nooit. Het token heeft voor de PR, de merge en het verwijderen van
+de branch *Contents: write* en *Pull requests: write* nodig.
+
+De agent zelf erft het token niet. Lokaal start hij met `env -u` voor elke tokenvariabele. Onder
+kenn-forge staat die lijst als `unset` in de drager, die dan versie 2 heeft; een target dat alleen
+versie 1 kent, weigert de start (zie [workplace.md](workplace.md)). Een target dat de versie
+negeert, start de agent met zijn eigen omgeving, ook met een token daarin. Verder isoleert de lokale
+werkplek geen credentials: de agent draait als de gebruiker van de tick en kan lezen wat die mag
+lezen, zoals `gh`-`hosts.yml` en git-credentials.
+
+**Opruimen.** Een geplande werkplek zonder open run erop gaat in stap 10 geforceerd weg, ook als hij
+vuil of niet gepusht is; zie *Geforceerd opruimen* in [workplace.md](workplace.md#geforceerd-opruimen-121).
+
 ## Exitcodes
 
 | Code | Wanneer |
@@ -383,7 +470,7 @@ host. Per kandidaat, in deze volgorde; de eerste dichte rem geeft de uitstelteks
   issue is gesloten of uit Controller en On hold) ruimt tick op, anders bleef hij in
   `in_use` tellen. Een marker van een repo die deze tick niet gathert, blijft staan.
 - De uitgestelde starts staan met hun titel en reden in de tickstand (`tick_state`, soort
-  `deferred`); de blokken *Queue* (elke reden behalve `night`) en *Night* tonen ze. Bij een
+  `deferred`, sleutel het issuenummer of `scheduled:<naam>`); de blokken *Queue* (elke reden behalve `night`) en *Night* tonen ze. Bij een
   pauze valt de start weg zonder defer, zodat tick zijn vingerafdruk bewaart; de pauzevlag zit zelf
   in de vingerafdruk.
 - [`lighthouse run`](#lighthouse-run) toetst alleen Pauze en Usage. Geheugen, Plekken en Software
@@ -535,3 +622,14 @@ label bindend: een onbekende waarde of twee labels stellen de start dan uit.
 Wat de tick gestart heeft, zie je terug in `GET /api/runs` en in de blokken *Running runs*, *Parked runs*, *Queue* en *Night* van
 `lighthouse serve`: de open en geparkeerde runs en de uitgestelde starts, uit de tickstand. Zie
 [install.md](install.md#running-runs) voor het gebruik.
+
+Een geplande run staat in dezelfde lijsten:
+
+| Waar | Een geplande run |
+|---|---|
+| `runs` in `GET /api/runs` | `schedule` is de schemanaam, `issue` 0 en `title` leeg; `pr_at` zodra zijn PR openstaat. Twee open geplande runs van één repo staan er allebei |
+| `deferred` in `GET /api/runs` | een uitgestelde geplande start, met `schedule` |
+| `GET /api/cleanup` | een geplande werkplek die niet weg kon, met `schedule` |
+| De pagina | `<repo> · scheduled <naam>` in plaats van een issuenummer, zonder link; bij een open PR *PR open since HH:MM* |
+
+De uitkomst en de reden van een gesloten geplande run staan in de runrij (`outcome`, `reason`).

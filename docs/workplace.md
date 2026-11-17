@@ -13,7 +13,8 @@ De code staat in `internal/workplace` (interface, regels, levenscyclus), `intern
 `workplace.Workplace` heeft acht methoden: `Prepare(branch)` geeft een klare workspace,
 `Spawn(ws, launch)` start de agent en geeft zijn sessie, `Sessions(workspaceID)` leest de
 agentsessies, `Stop(workspaceID, sessionIDs)` beëindigt de processen, `Kill(workspaceID, sessionIDs)`
-beëindigt alleen de claude van die sessies, `Remove(workspaceID)` verwijdert de workspace,
+beëindigt alleen de claude van die sessies, `Remove(workspaceID, options)` verwijdert de workspace
+(met `Force` ook als hij vuil of niet gepusht is, zie *Geforceerd opruimen*),
 `Lookup(workspaceID)` leest het pad (`worktree_path`) en de branch (`git_head_ref`) van een workspace, en
 `Discard(workspaceID)` vergeet een start waarvan de agent nooit verscheen (de adapter wist dan de
 drager). Een workspace die forge niet meer kent (een 404 op de sessielijst of op `Lookup`) is
@@ -428,7 +429,9 @@ van de tick staan.
   worktree met zijn werk wissen. Bij een adopted of verdwenen worktree beëindigt `Remove` alleen de
   processen en wist de records, zonder `Dirty`-check en zonder `git worktree remove`. `Cleanup` slaat een
   sessie over die `done` is, terwijl een klare claude een dev-server kan achterlaten; het merk vindt die
-  nog. De lokale branch blijft staan.
+  nog. De lokale branch blijft staan. Met `Force` slaat `Remove` de `Dirty`-check over en draait het
+  `git worktree remove --force`; een geneste worktree blijft `ErrDirty`, en een adopted worktree gaat
+  ook dan nooit van schijf.
 - `Lookup(workspaceID)`: het pad uit het record en de branch uit `git worktree list`, zodat een branch die
   met de hand is gewisseld zichtbaar is. Alleen bij een verdwenen worktree met nog gemerkte processen
   komt de branch uit het record.
@@ -515,3 +518,28 @@ de controller verliet en wordt niets verwijderd. De kandidaten komen uit de runr
 
 Een verwijderde workspace (ook een 404) krijgt `workspace_removed_at` op al zijn runrijen en wordt
 daarna niet meer getoetst. De fout van één kandidaat houdt de andere niet tegen.
+
+### Geforceerd opruimen (#121)
+
+De workspace van een geplande run (zie [tick.md](tick.md#geplande-runs)) volgt andere regels. Wat
+telt, is gecommit en gepusht, of mislukt met een reden in de database; het transcript blijft bestaan.
+Er staat dus niets in wat bewaard moet worden, en de belofte "er gaat niets verloren" geldt alleen voor
+issue-workspaces.
+
+- Een open run houdt alleen de workspace vast waarop hij zelf staat (zelfde node en workspace-id).
+  Een open run van schema A houdt de workspace van schema B niet vast, en ook niet die van een eerdere
+  poging van A: elke poging heeft een eigen branch en workspace. `Controller` en `MergedHead` spelen
+  geen rol.
+- Zonder open run erop gaat `Cleanup` door tot en met het stoppen van de eigen sessies. Eigen zijn de
+  sessies van de runs van hetzelfde schema (`runs.ScheduleSessionKeys`; ook `AdoptSessions` zoekt
+  daarop). Een levende vreemde sessie houdt de workspace ook hier vast.
+- Daarna slaat `Cleanup` de checks op vuil en niet gepusht over en roept `Remove` aan met `Force`.
+  De lokale adapter verwijdert de worktree met `git worktree remove --force`. kenn-forge weigert een
+  vuile workspace met 409 en kent geen force-parameter; de adapter zet de worktree daarom eerst met
+  lokale git terug: `git reset --hard` en `git clean -ffdx`, met `core.fsmonitor=false` en
+  `core.hooksPath=/dev/null`, want de config van de worktree kan van de agent komen. Op een andere
+  node is er geen lokale git, en dan weigert een geforceerde `Remove` vóór er iets verandert.
+- Weigert de adapter toch (een geneste worktree, of nog een 409), dan blijft de workspace een
+  achterblijver met `forced remove refused: <fout>`.
+- Een workspace die geen runrij noemt, ziet de sweep niet. Dat gebeurt als een tick sterft tussen
+  `Prepare` en `SetWorkplace` van een geplande start; zo'n workspace ruim je met de hand op.
