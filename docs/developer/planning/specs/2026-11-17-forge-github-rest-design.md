@@ -411,3 +411,10 @@ uitkomsten komen als comment op #395.
   8. de GraphQL-queries weg
 - De documentatie: `docs/tick.md` noemt GraphQL waar het board gelezen wordt; zet dat bij. Voeg
   een fragment toe aan `changelog.d/`.
+
+## Open na review
+
+Ronde 3 haalde de rondegrens met deze punten open. Ze zijn aanvaard als `accepted_open`;
+de volgende fase of de PR-review weegt ze opnieuw.
+
+- **r3-f1** (MAJOR, Doel, nieuwe alinea 'Er is één mogelijke uitzondering' (r.28-31) vs Succes 'Een tick doet geen enkel GraphQL-request' (r.35)): De fix rechtvaardigt de GraphQL-tak met 'De tick op GitHub roept `IssueItem` in de praktijk niet aan, dus het hoofddoel blijft gelden'. Dat klopt niet voor een open run waarvan het item gearchiveerd of van het board gehaald is: `BoardItems` laat gearchiveerde items altijd weg (§3), dus de tick roept voor die run elke tick `IssueItem` aan, op GitHub ook. In de GraphQL-tak is dat een GraphQL-request in de tick, terwijl het succescriterium absoluut blijft.
