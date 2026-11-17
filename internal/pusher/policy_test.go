@@ -224,7 +224,7 @@ func TestPolicyIgnoresOtherFilesAndDeletedWorkflow(t *testing.T) {
 	tgit(t, f.wt, "merge", "-q", "--no-edit", "main")
 	tgit(t, f.wt, "rm", "-q", ".github/workflows/old.yml")
 	tgit(t, f.wt, "commit", "-q", "-m", "rm old")
-	f.commit("docs/x.yml", "on: pull_request_target\n")
+	f.commit("other/x.yml", "on: pull_request_target\n")
 	f.commit(".github/workflows/sub/y.yml", "on: pull_request_target\n")
 	f.branchRecord(done(f.head()))
 	c, red := floor(t, f.req)
