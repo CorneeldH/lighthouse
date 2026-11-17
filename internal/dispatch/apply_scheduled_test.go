@@ -77,7 +77,7 @@ func scheduledStart() Action {
 		Mode: "start", Trigger: runs.TriggerScheduled, TriggerKey: schedKey, Attempt: 1,
 		Profile: "software", Command: "/gsd-map-codebase", Prompt: "/gsd-map-codebase",
 		Branch: schedBranch, Language: "nl", Tools: []string{"Read", "Glob", "Write"},
-		Instructions: "Ask nothing. Write only under docs/.\n",
+		Instructions: "Ask nothing. Write only under out/.\n",
 		Verdict:      scheduled.Record{Verdict: scheduled.Verdict{Mode: "full"}, MaxRuntime: time.Hour}.Encode(),
 	}
 }
@@ -150,7 +150,7 @@ func TestApplyScheduledStart(t *testing.T) {
 	if !reflect.DeepEqual(h.wp.spawned, []workplace.LaunchSpec{wantSpec}) {
 		t.Errorf("spawned %+v\nwant    %+v", h.wp.spawned, wantSpec)
 	}
-	if text, err := os.ReadFile(instructions); err != nil || string(text) != "Ask nothing. Write only under docs/.\n" {
+	if text, err := os.ReadFile(instructions); err != nil || string(text) != "Ask nothing. Write only under out/.\n" {
 		t.Errorf("instructions = %q, %v; want the job's text", text, err)
 	}
 	if p := h.posters[applyRepo]; p != nil && len(p.bodies) > 0 {

@@ -12,7 +12,7 @@ import (
 // matching Allowed by prefix, or stops recording calls in order.
 func TestJob(t *testing.T) {
 	boom := errors.New("boom")
-	j := &Job{Verdict: scheduled.Verdict{Skip: "no"}, CheckErr: boom, AllowedPre: []string{"docs/"}}
+	j := &Job{Verdict: scheduled.Verdict{Skip: "no"}, CheckErr: boom, AllowedPre: []string{"out/"}}
 	ctx := context.Background()
 	if v, _ := j.Gate(ctx, scheduled.Env{}); v.Skip != "no" {
 		t.Errorf("Gate verdict = %+v", v)
@@ -20,7 +20,7 @@ func TestJob(t *testing.T) {
 	if err := j.Check(ctx, scheduled.Env{}, ""); !errors.Is(err, boom) {
 		t.Errorf("Check = %v", err)
 	}
-	if !j.Allowed("docs/a.md") || j.Allowed("src/a.go") {
+	if !j.Allowed("out/a.md") || j.Allowed("src/a.go") {
 		t.Error("Allowed does not follow the prefixes")
 	}
 	_ = j.Stage(ctx, scheduled.Env{}, scheduled.Verdict{})

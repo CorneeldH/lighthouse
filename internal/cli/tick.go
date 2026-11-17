@@ -53,7 +53,7 @@ type tickEnv struct {
 	// Jobs looks up a scheduled job by name; nil is scheduled.Lookup.
 	Jobs func(name string) (scheduled.Job, bool)
 	// GitBase is the base URL of the git remotes the branch of a scheduled run is pushed to;
-	// "" is https://<[forge] host, or github.com>.
+	// "" is https://<the repository host, or github.com>.
 	GitBase string
 
 	// serves are the serve clients of the nodes for this tick or lighthouse run (withServes);
