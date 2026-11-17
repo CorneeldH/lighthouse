@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	neturl "net/url"
 	"strings"
 
 	"github.com/CorneeldH/lighthouse/internal/protocol"
@@ -81,6 +82,84 @@ func (c *GitHub) MergePR(ctx context.Context, number int, sha string) error {
 		return &MergeRefused{Message: se.Message}
 	case se.Code == http.StatusForbidden && !se.RateLimited:
 		return &MergeRefused{Message: se.Message}
+	}
+	return err
+}
+
+// defaultBranch is the default branch of the repository, fetched once per client.
+func (c *GitHub) defaultBranch(ctx context.Context) (string, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.base != "" {
+		return c.base, nil
+	}
+	var out struct {
+		DefaultBranch string `json:"default_branch"`
+	}
+	if _, err := c.do(ctx, http.MethodGet, fmt.Sprintf("%s/repos/%s", c.BaseURL, c.Repo), nil, &out); err != nil {
+		return "", err
+	}
+	if out.DefaultBranch == "" {
+		return "", fmt.Errorf("forge: repo %s has no default branch", c.Repo)
+	}
+	c.base = out.DefaultBranch
+	return c.base, nil
+}
+
+// CreatePR opens a pull request from branch into the default branch of the repository.
+func (c *GitHub) CreatePR(ctx context.Context, branch, title, body string) (PR, error) {
+	if err := c.configured(); err != nil {
+		return PR{}, err
+	}
+	base, err := c.defaultBranch(ctx)
+	if err != nil {
+		return PR{}, err
+	}
+	var out struct {
+		Number  int    `json:"number"`
+		HTMLURL string `json:"html_url"`
+		Draft   bool   `json:"draft"`
+		Head    struct {
+			Ref string `json:"ref"`
+			SHA string `json:"sha"`
+		} `json:"head"`
+	}
+	url := fmt.Sprintf("%s/repos/%s/pulls", c.BaseURL, c.Repo)
+	req := map[string]string{"head": branch, "base": base, "title": title, "body": body}
+	if _, err := c.do(ctx, http.MethodPost, url, req, &out); err != nil {
+		return PR{}, err
+	}
+	return PR{Number: out.Number, State: "OPEN", Draft: out.Draft, HeadSHA: out.Head.SHA, HeadRef: out.Head.Ref, URL: out.HTMLURL}, nil
+}
+
+// ClosePR closes pull request number without merging it.
+func (c *GitHub) ClosePR(ctx context.Context, number int) error {
+	if err := c.configured(); err != nil {
+		return err
+	}
+	url := fmt.Sprintf("%s/repos/%s/pulls/%d", c.BaseURL, c.Repo, number)
+	_, err := c.do(ctx, http.MethodPatch, url, map[string]string{"state": "closed"}, nil)
+	return err
+}
+
+// DeleteBranch deletes branch from the repository. A branch that is already gone (404, or 422
+// "Reference does not exist") is not an error.
+func (c *GitHub) DeleteBranch(ctx context.Context, branch string) error {
+	if err := c.configured(); err != nil {
+		return err
+	}
+	segs := strings.Split(branch, "/")
+	for i, s := range segs {
+		segs[i] = neturl.PathEscape(s)
+	}
+	url := fmt.Sprintf("%s/repos/%s/git/refs/heads/%s", c.BaseURL, c.Repo, strings.Join(segs, "/"))
+	_, err := c.do(ctx, http.MethodDelete, url, nil, nil)
+	var se *httpStatusError
+	if errors.As(err, &se) {
+		if se.Code == http.StatusNotFound ||
+			se.Code == http.StatusUnprocessableEntity && strings.Contains(se.Message, "Reference does not exist") {
+			return nil
+		}
 	}
 	return err
 }

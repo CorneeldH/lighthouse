@@ -59,6 +59,9 @@ type fakeForge struct {
 	rocketErr error
 	mergeErr  error
 	merges    []string // "<pr> <sha>" per MergePR
+	created   []string // "<branch> <title>" per CreatePR
+	closed    []int    // the number per ClosePR
+	deleted   []string // the branch per DeleteBranch
 	onPost    func()   // runs at the start of CreateComment
 	nextID    int64
 	issues    []int
@@ -92,6 +95,24 @@ func (p *fakeForge) MergePR(_ context.Context, number int, sha string) error {
 	p.log.add("MergePR")
 	p.merges = append(p.merges, fmt.Sprintf("%d %s", number, sha))
 	return p.mergeErr
+}
+
+func (p *fakeForge) CreatePR(_ context.Context, branch, title, _ string) (forge.PR, error) {
+	p.log.add("CreatePR")
+	p.created = append(p.created, branch+" "+title)
+	return forge.PR{Number: 900 + len(p.created), HeadRef: branch, State: "OPEN"}, nil
+}
+
+func (p *fakeForge) ClosePR(_ context.Context, number int) error {
+	p.log.add("ClosePR")
+	p.closed = append(p.closed, number)
+	return nil
+}
+
+func (p *fakeForge) DeleteBranch(_ context.Context, branch string) error {
+	p.log.add("DeleteBranch")
+	p.deleted = append(p.deleted, branch)
+	return nil
 }
 
 func (p *fakeForge) SetStatus(_ context.Context, item forge.BoardItem, status string) error {
