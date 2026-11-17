@@ -34,6 +34,8 @@ type Repo struct {
 	// TriageErr is an unknown key, a value below 1 or an invalid regex in [controller.triage]. Load
 	// does not fail on it: it is shared with the tick, which must keep serving the repo.
 	TriageErr error
+	// Schedules is [[schedule]], validated by Load; empty when the repo has none.
+	Schedules []Schedule
 }
 
 // Labels is [labels]: the label names, defaults filled by Load. The two prefixes have no
@@ -124,6 +126,7 @@ type rawFile struct {
 	UsageGuard struct {
 		Controller bool `toml:"controller"`
 	} `toml:"usage_guard"`
+	Schedule []rawSchedule `toml:"schedule"`
 }
 
 // defaultString is the default of key from internal/config, the one source of defaults.
@@ -197,6 +200,11 @@ func Load(dir string) (Repo, error) {
 	if t := raw.Controller; t != nil && t.Triage != nil {
 		r.Triage, r.TriageErr = triageFrom(t.Triage, md)
 	}
+	schedules, err := schedulesFrom(raw.Schedule, md, r.Controller)
+	if err != nil {
+		return Repo{}, fmt.Errorf("%s: %w", path, err)
+	}
+	r.Schedules = schedules
 	return r, nil
 }
 
