@@ -78,7 +78,7 @@ func Floor(ctx context.Context, req Request, lock *CloneLock) (Checked, *Red) {
 	if red != nil {
 		return Checked{}, red
 	}
-	if lock == nil || lock.dir != req.CloneDir {
+	if lock == nil || lock.f == nil || lock.dir != req.CloneDir {
 		return Checked{}, &Red{StepClone, "COULD NOT CHECK: the caller does not hold the lock on " + req.CloneDir}
 	}
 	if red := fetchSHA(ctx, req, sha); red != nil {

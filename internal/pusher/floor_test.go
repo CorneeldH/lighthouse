@@ -437,7 +437,7 @@ func TestFlockWaitEndsAtTimeout(t *testing.T) {
 	wantStep(t, red, StepClone)
 }
 
-// Floor runs only under the lock on its own clone.
+// Floor runs only under the lock on its own clone, and a lock let go is no lock.
 func TestFloorRefusesWithoutTheCloneLock(t *testing.T) {
 	f := newFixture(t)
 	f.branchRecord(done(f.head()))
@@ -449,6 +449,13 @@ func TestFloorRefusesWithoutTheCloneLock(t *testing.T) {
 	}
 	defer other.Unlock()
 	_, red = Floor(context.Background(), f.req, other)
+	wantStep(t, red, StepClone)
+	released, red := LockClone(context.Background(), f.req.CloneDir)
+	if red != nil {
+		t.Fatal(red.Why)
+	}
+	released.Unlock()
+	_, red = Floor(context.Background(), f.req, released)
 	wantStep(t, red, StepClone)
 }
 
