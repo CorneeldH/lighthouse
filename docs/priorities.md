@@ -58,3 +58,34 @@ Gemeten met `rateLimit { cost }` op 2026-11-17, `CorneeldH/lighthouse` (57 open 
 milestones, 22 search-aliassen): elke van de drie query's kostte **1 punt**, dus **3 punten per
 bouw**, ruim onder de berekende ongeveer 21 punten voor de issuespagina. De berekende getallen
 zijn dus een bovengrens; de meting op een repo met meer dan 100 issues is niet gedaan.
+
+## Wat het tabblad toont
+
+`lighthouse serve` toont naast de overview een tabblad Prioritering (`#prioritering`) met drie
+weergaven: een afhankelijkhedengraaf van open issues, een milestone-weergave met voortgang
+(`Done` van `Done + Open`) en een weergave van issues zonder milestone. De server bouwt de
+gegevens in een eigen refresher, los van de overview, elke **300 s** (`PrioritiesInterval`) en
+levert ze op `/api/priorities`. De pagina leest alleen; ze schrijft niets terug naar GitHub.
+
+## Afgeleide begrippen
+
+De SPA leidt deze begrippen af in `web/src/lib/priorities/derive.ts`; de server levert ze niet.
+
+- **Actief.** Een issue is actief als er een open of geparkeerde run op staat, of als de
+  bordstatus `In progress` is.
+- **Bergop / bergaf.** Een actief issue is bergop als de fase van zijn run een van
+  `brainstorming`, `start-issue`, `spec-review`, `writing-plans` of `plan-review` is: het
+  denkwerk vóór de uitvoering. Elke andere fase, of een issue dat alleen op het bord actief is,
+  is bergaf.
+- **Wachtenden.** Per issue het aantal open issues dat er (direct of via ketens) op wacht. Een
+  blokkade in een cyclus telt als cyclus en krijgt geen diepte; zo blijft de graaf eindig.
+- **Shaping.** Een milestone is in shaping als hij geen open of gesloten issues heeft, of als een
+  regel van de milestonebeschrijving (zonder hoofdletters en omringende spaties) `Status:
+  shaping` is. Shaping-milestones staan apart van de lopende.
+
+## Palet en controle
+
+Het kleurpalet van de milestones is **niet gevalideerd** met de dataviz-validator. De
+gebruikersinterface is **niet visueel gecontroleerd in een browser**: alleen de unit- en
+componenttests en de build zijn gedraaid. Er is geen e2e-test: `web/e2e/fake-github.ts` kent geen
+GraphQL-route die zonder wijziging van de bestaande tests uit te breiden is.
