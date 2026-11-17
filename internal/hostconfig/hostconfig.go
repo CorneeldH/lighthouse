@@ -337,8 +337,11 @@ func buildWorkflowPush(tokenFile, review, timeout *string, n int, reviewer func(
 		return nil, fmt.Errorf("%s.token_file: missing", key)
 	}
 	home, homeErr := os.UserHomeDir()
-	if homeErr != nil || home == "" {
-		return nil, fmt.Errorf("%s: home directory unknown, cannot expand ~ or check binds: %v", key, homeErr)
+	if homeErr == nil && home == "" {
+		homeErr = errors.New("empty")
+	}
+	if homeErr != nil {
+		return nil, fmt.Errorf("%s: home directory unknown, cannot expand ~ or check binds: %w", key, homeErr)
 	}
 	wp.TokenFile = expandHome(*tokenFile, home)
 	if review != nil {

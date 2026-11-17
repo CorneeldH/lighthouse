@@ -428,3 +428,25 @@ func TestLoadDispatchWorkflowPushNoHome(t *testing.T) {
 		t.Errorf("err = %v, want a home directory error", err)
 	}
 }
+
+func TestLoadDispatchWorkflowPushAbsoluteBindUnderConfig(t *testing.T) {
+	home := t.TempDir()
+	protected := filepath.Join(home, ".config", "lighthouse")
+	for name, bind := range map[string]string{
+		"exact":     protected,
+		"slash":     protected + "/",
+		"dot":       protected + "/.",
+		"dotdot":    home + "/x/../.config/lighthouse",
+		"file":      protected + "/host.toml",
+		"dotdotsub": protected + "/a/../host.toml",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("HOME", home)
+			body := "[dispatch.workflow_push]\ntoken_file = \"/run/t\"\n[[dispatch.workflow_push.reviewers]]\n" +
+				"topic = \"secrets\"\ncommand = [\"a\"]\nbinds = [\"" + bind + "\"]\n"
+			if _, err := LoadDispatch(writeHost(t, body)); err == nil || !strings.Contains(err.Error(), "binds") {
+				t.Errorf("err = %v, want a binds error", err)
+			}
+		})
+	}
+}
