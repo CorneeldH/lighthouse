@@ -162,6 +162,35 @@ en = "Checks green, squashed and merged by the controller. If the issue is still
 nl = "ga verder"
 en = "continue"
 
+# The workflow pusher
+[reason_pusher_off]
+nl = "workflow-pusher staat uit: [dispatch.workflow_push] ontbreekt in host.toml"
+en = "workflow pusher is off: [dispatch.workflow_push] is missing from host.toml"
+
+[reason_pusher_silent]
+nl = "pusher reageerde niet"
+en = "pusher did not respond"
+
+[question_push_step]
+nl = "Rode stap"
+en = "Red step"
+
+[question_push_diff]
+nl = "Workflow-diff"
+en = "Workflow diff"
+
+[question_push_verdict]
+nl = "Oordeel van de reviewers"
+en = "Reviewers' verdict"
+
+[question_push_command]
+nl = "Zelf pushen"
+en = "Push it yourself"
+
+[note_pushed]
+nl = "Workflow-bestanden gepusht door de pusher"
+en = "Workflow files pushed by the pusher"
+
 # The fields of a question
 [question_where]
 nl = "Waar het staat"

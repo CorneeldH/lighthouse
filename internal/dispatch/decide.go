@@ -897,7 +897,7 @@ func endsChain(repo RepoInput, issue int, h protocol.Header) bool {
 // The second result is the skip key, "" when nothing is skipped.
 func judgeHandoff(repo RepoInput, issue int, ho protocol.Handoff) (Judgement, string) {
 	command, skip := ReviewSkip(ho.Next, repo.Controller)
-	return Judge(command, issue, ho.Lane, repo.Installed), skip
+	return Judge(command, issue, ho.Lane, ho.After, repo.Installed), skip
 }
 
 // greenPR returns the first PR that is open, not a draft, mergeable and with green checks.
@@ -1223,6 +1223,10 @@ func (c issueCtx) handoff() (planned, bool) {
 		return c.returned("reason_not_allowed", j.Arg), true
 	case VerdictSkillMissing:
 		return c.returned("reason_skill_missing", j.Arg), true
+	case VerdictPush:
+		// The push action arrives with the decide change; until then a push handoff must not
+		// start a session on the literal command.
+		return c.returned("reason_pusher_off", ""), true
 	}
 	if !validBranch(ho.Branch) {
 		return c.returned("reason_bad_handoff", "branch "+ho.Branch), true

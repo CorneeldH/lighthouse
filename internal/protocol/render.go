@@ -105,3 +105,29 @@ func RenderReturned(reason, session, detail, language string) string {
 func RenderParked(blockers []string, language string) string {
 	return Robot + " " + Heading("kind_parked", language) + "\nblocked_by: " + strings.Join(blockers, ", ")
 }
+
+// RenderPushed renders the `🤖 Handoff` the pusher posts on the build route (no PR yet): the
+// five fields ParseHandoff demands, plus the pushed range and the workflow files. next is
+// the after command of the push handoff.
+func RenderPushed(issue int, worktree, branch, repoRange, workflows, next, language string) string {
+	return strings.Join([]string{
+		Robot + " " + Heading("kind_handoff", language),
+		"issue: #" + strconv.Itoa(issue),
+		"worktree: " + worktree,
+		"branch: " + branch,
+		"next: " + next,
+		"when: now",
+		"range: " + repoRange,
+		"workflows: " + workflows,
+	}, "\n")
+}
+
+// RenderPushNote renders the comment the pusher posts on the fix-pr route, where the PR
+// already exists: the pushed range and the workflow files, no handoff.
+func RenderPushNote(rangeStr, workflows, language string) string {
+	return strings.Join([]string{
+		Robot + " " + Heading("note_pushed", language),
+		"range: " + rangeStr,
+		"workflows: " + workflows,
+	}, "\n")
+}
