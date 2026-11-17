@@ -3,13 +3,14 @@ package cron
 import (
 	"testing"
 	"time"
+	_ "time/tzdata" // DST tests must never skip for lack of zoneinfo
 )
 
 func ams(t *testing.T) *time.Location {
 	t.Helper()
 	loc, err := time.LoadLocation("Europe/Amsterdam")
 	if err != nil {
-		t.Skipf("tzdata unavailable: %v", err)
+		t.Fatalf("load location: %v", err)
 	}
 	return loc
 }
@@ -44,6 +45,11 @@ func TestLast(t *testing.T) {
 		{"vixie OR matches dow only", "0 0 14 * FRI", Filter{}, d(2026, 11, 13, 12, 0), d(2026, 11, 13, 0, 0), true},
 		{"vixie OR matches dom only", "0 0 14 * FRI", Filter{}, d(2026, 11, 15, 12, 0), d(2026, 11, 14, 0, 0), true},
 		{"dow only restricts", "0 0 * * 1-5", Filter{}, d(2026, 11, 15, 12, 0), d(2026, 11, 13, 0, 0), true},
+		{"range ending in SUN", "0 0 * * FRI-SUN", Filter{}, d(2026, 11, 16, 12, 0), d(2026, 11, 15, 0, 0), true},
+		{"range MON-SUN covers saturday", "0 0 * * MON-SUN", Filter{}, d(2026, 11, 14, 12, 0), d(2026, 11, 14, 0, 0), true},
+		{"sunday as 0", "0 0 * * 0", Filter{}, d(2026, 11, 16, 12, 0), d(2026, 11, 15, 0, 0), true},
+		{"before anchor week, odd negative index skipped", "0 1 * * MON", biweekly, d(2026, 10, 7, 12, 0), d(2026, 9, 28, 1, 0), true},
+		{"before anchor week, even negative index counts", "0 1 * * MON", biweekly, d(2026, 10, 1, 12, 0), d(2026, 9, 28, 1, 0), true},
 		{"sunday as 7", "0 0 * * 7", Filter{}, d(2026, 11, 16, 12, 0), d(2026, 11, 15, 0, 0), true},
 		{"step", "*/15 * * * *", Filter{}, d(2026, 11, 16, 12, 44), d(2026, 11, 16, 12, 30), true},
 		{"list", "0 0 1,15 * *", Filter{}, d(2026, 11, 16, 12, 0), d(2026, 11, 15, 0, 0), true},

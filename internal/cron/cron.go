@@ -93,7 +93,9 @@ func parseField(s string, lo, hi int, names map[string]int) (uint64, error) {
 			}
 			b = a
 			if isRange {
-				if b, err = parseValue(to, names); err != nil {
+				if hi == 7 && strings.EqualFold(to, "SUN") {
+					b = 7 // a weekday range may end in Sunday: MON-SUN
+				} else if b, err = parseValue(to, names); err != nil {
 					return 0, err
 				}
 			} else if hasStep {
@@ -153,11 +155,7 @@ func (f Filter) allows(w time.Time) bool {
 	if f.Weeks <= 0 {
 		return true
 	}
-	diff := mondayIndex(w) - mondayIndex(f.Anchor)
-	weeks := diff / 7
-	if diff < 0 && diff%7 != 0 {
-		weeks--
-	}
+	weeks := (mondayIndex(w) - mondayIndex(f.Anchor)) / 7 // both are Mondays: exact
 	return ((weeks%f.Weeks)+f.Weeks)%f.Weeks == 0
 }
 
