@@ -29,7 +29,9 @@ type issueItem struct {
 	Comments    int             `json:"comments"`
 	State       string          `json:"state"`
 	Body        string          `json:"body"`
+	ID          int64           `json:"id"`
 	NodeID      string          `json:"node_id"`
+	CreatedAt   time.Time       `json:"created_at"`
 	UpdatedAt   time.Time       `json:"updated_at"`
 	ClosedAt    *time.Time      `json:"closed_at"`
 	PullRequest json.RawMessage `json:"pull_request"`
@@ -49,7 +51,7 @@ type issueItem struct {
 
 func (it issueItem) issue() Issue {
 	out := Issue{Number: it.Number, Title: it.Title, URL: it.HTMLURL, Comments: it.Comments, State: it.State,
-		Body: it.Body, UpdatedAt: it.UpdatedAt}
+		Body: it.Body, CreatedAt: it.CreatedAt, UpdatedAt: it.UpdatedAt}
 	if it.ClosedAt != nil {
 		out.ClosedAt = *it.ClosedAt
 	}

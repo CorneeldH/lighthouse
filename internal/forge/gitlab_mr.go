@@ -11,21 +11,28 @@ import (
 
 // glMR is a merge request in GitLab's REST shape.
 type glMR struct {
-	IID                 int        `json:"iid"`
-	Title               string     `json:"title"`
-	Description         string     `json:"description"`
-	State               string     `json:"state"`
-	Draft               bool       `json:"draft"`
-	SourceBranch        string     `json:"source_branch"`
-	SHA                 string     `json:"sha"`
-	WebURL              string     `json:"web_url"`
-	SourceProjectID     int64      `json:"source_project_id"`
-	TargetProjectID     int64      `json:"target_project_id"`
-	HasConflicts        bool       `json:"has_conflicts"`
-	DetailedMergeStatus string     `json:"detailed_merge_status"`
-	MergedAt            *time.Time `json:"merged_at"`
-	ClosedAt            *time.Time `json:"closed_at"`
-	HeadPipeline        *struct {
+	IID                 int          `json:"iid"`
+	Title               string       `json:"title"`
+	Description         string       `json:"description"`
+	State               string       `json:"state"`
+	Draft               bool         `json:"draft"`
+	SourceBranch        string       `json:"source_branch"`
+	SHA                 string       `json:"sha"`
+	WebURL              string       `json:"web_url"`
+	SourceProjectID     int64        `json:"source_project_id"`
+	TargetProjectID     int64        `json:"target_project_id"`
+	HasConflicts        bool         `json:"has_conflicts"`
+	DetailedMergeStatus string       `json:"detailed_merge_status"`
+	CreatedAt           time.Time    `json:"created_at"`
+	MergedAt            *time.Time   `json:"merged_at"`
+	ClosedAt            *time.Time   `json:"closed_at"`
+	TargetBranch        string       `json:"target_branch"`
+	Labels              []string     `json:"labels"`
+	Milestone           *glMilestone `json:"milestone"`
+	Author              *struct {
+		Username string `json:"username"`
+	} `json:"author"`
+	HeadPipeline *struct {
 		Status string `json:"status"`
 	} `json:"head_pipeline"`
 }

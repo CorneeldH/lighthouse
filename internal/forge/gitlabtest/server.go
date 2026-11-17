@@ -4,6 +4,7 @@
 package gitlabtest
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -35,11 +36,15 @@ type Server struct {
 	// Project is the project path ("group/sub/project") the server knows. The default is
 	// "group/project". A request for another project is unexpected.
 	Project string
+	// Free makes the server a GitLab Free plan: a blocking link is refused with 403 on write and
+	// left out of the links on read.
+	Free bool
 
 	t      reporter
 	srv    *httptest.Server
 	mu     sync.Mutex
 	reqs   []string
+	writes []Write
 	nextID int64
 
 	issues   map[int]map[string]any
@@ -52,6 +57,10 @@ type Server struct {
 	members  map[string]int              // username to access level
 	statuses []string
 	status   map[int]string
+
+	milestones []map[string]any
+	labels     []string
+	mrNotes    map[int][]map[string]any // notes of a merge request; its iid is not an issue iid
 }
 
 // New starts a server that closes when the test ends.
@@ -61,7 +70,7 @@ func newServer(t reporter) *Server {
 	t.Helper()
 	s := &Server{
 		t: t, Project: "group/project", nextID: 1000,
-		issues: map[int]map[string]any{}, notes: map[int][]map[string]any{},
+		issues: map[int]map[string]any{}, notes: map[int][]map[string]any{}, mrNotes: map[int][]map[string]any{},
 		awards: map[int64][]map[string]any{}, links: map[int][]map[string]any{}, closedBy: map[string][]map[string]any{},
 		users: map[string]int64{}, members: map[string]int{}, status: map[int]string{},
 	}
@@ -73,6 +82,7 @@ func newServer(t reporter) *Server {
 	s.route(mux, "GET "+p+"/members/all/{uid}", s.project(s.member))
 	s.route(mux, "GET "+p+"/issues", s.project(s.listIssues))
 	s.route(mux, "GET "+p+"/issues/{iid}", s.project(s.issue))
+	s.route(mux, "GET "+p+"/issues_statistics", s.project(s.issuesStatistics))
 	s.route(mux, "GET "+p+"/issues/{iid}/notes", s.project(s.listNotes))
 	s.route(mux, "POST "+p+"/issues/{iid}/notes", s.project(s.createNote))
 	s.route(mux, "GET "+p+"/issues/{iid}/notes/{nid}/award_emoji", s.project(s.listAwards))
@@ -82,7 +92,10 @@ func newServer(t reporter) *Server {
 	s.route(mux, "GET "+p+"/issues/{iid}/closed_by", s.listClosedBy)
 	s.route(mux, "GET "+p+"/merge_requests", s.project(s.listMRs))
 	s.route(mux, "GET "+p+"/merge_requests/{iid}", s.project(s.getMR))
+	s.route(mux, "PUT "+p+"/merge_requests/{iid}", s.project(s.updateMR))
+	s.route(mux, "GET "+p+"/merge_requests/{iid}/notes", s.project(s.listMRNotes))
 	s.route(mux, "PUT "+p+"/merge_requests/{iid}/merge", s.project(s.mergeMR))
+	s.writeRoutes(mux, p)
 	mux.HandleFunc("POST /api/graphql", s.graphql)
 	mux.HandleFunc("/", s.unexpected)
 	s.srv = httptest.NewServer(s.record(mux))
@@ -108,8 +121,15 @@ func (s *Server) Requests() []string {
 // record logs the request and refuses one without a PRIVATE-TOKEN.
 func (s *Server) record(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		r.Body = io.NopCloser(bytes.NewReader(raw))
 		s.mu.Lock()
 		s.reqs = append(s.reqs, r.Method+" "+r.URL.RequestURI())
+		if r.Method != http.MethodGet {
+			var body map[string]any
+			_ = json.Unmarshal(raw, &body)
+			s.writes = append(s.writes, Write{Method: r.Method, Path: r.URL.EscapedPath(), Body: body})
+		}
 		s.mu.Unlock()
 		if r.Header.Get("PRIVATE-TOKEN") == "" {
 			writeJSON(w, http.StatusUnauthorized, map[string]any{"message": "401 Unauthorized"})
@@ -189,11 +209,13 @@ func (s *Server) member(w http.ResponseWriter, r *http.Request) {
 }
 
 // listIssues serves the issues by iid, filtered on state (opened, closed, all; default all),
-// on milestone (the milestone title) and on updated_after (an RFC 3339 time; an issue updated
+// on milestone (the milestone title), on labels (a comma list, all must be on the issue), on
+// search (a case-insensitive part of the title or description) and on updated_after (an RFC 3339 time; an issue updated
 // earlier is left out).
 func (s *Server) listIssues(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	state, milestone := q.Get("state"), q.Get("milestone")
+	label, search := q.Get("labels"), strings.ToLower(q.Get("search"))
 	after, _ := time.Parse(time.RFC3339, q.Get("updated_after"))
 	s.mu.Lock()
 	var out []any
@@ -207,6 +229,12 @@ func (s *Server) listIssues(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 		}
+		if label != "" && !hasLabels(it, label) {
+			continue
+		}
+		if search != "" && !strings.Contains(strings.ToLower(fmt.Sprint(it["title"], " ", it["description"])), search) {
+			continue
+		}
 		if !after.IsZero() {
 			if at, _ := time.Parse(time.RFC3339, fmt.Sprint(it["updated_at"])); at.Before(after) {
 				continue
@@ -216,6 +244,28 @@ func (s *Server) listIssues(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Unlock()
 	paginate(w, r, out)
+}
+
+// issuesStatistics serves GET …/issues_statistics for the milestone title in the milestone
+// query parameter, counted over the seeded issues, as GitLab does: any closed issue is closed.
+func (s *Server) issuesStatistics(w http.ResponseWriter, r *http.Request) {
+	title := r.URL.Query().Get("milestone")
+	s.mu.Lock()
+	var opened, closed int
+	for _, it := range s.issues {
+		if m, _ := it["milestone"].(map[string]any); m == nil || m["title"] != title {
+			continue
+		}
+		if it["state"] == "closed" {
+			closed++
+		} else {
+			opened++
+		}
+	}
+	s.mu.Unlock()
+	writeJSON(w, http.StatusOK, map[string]any{"statistics": map[string]any{
+		"counts": map[string]any{"all": opened + closed, "opened": opened, "closed": closed},
+	}})
 }
 
 func (s *Server) issue(w http.ResponseWriter, r *http.Request) {
@@ -293,9 +343,14 @@ func (s *Server) listClosedBy(w http.ResponseWriter, r *http.Request) {
 func (s *Server) listLinks(w http.ResponseWriter, r *http.Request) {
 	iid, _ := strconv.Atoi(r.PathValue("iid"))
 	s.mu.Lock()
-	out := toAny(s.links[iid])
+	var links []map[string]any
+	for _, l := range s.links[iid] {
+		if !s.Free || l["link_type"] != "is_blocked_by" {
+			links = append(links, l)
+		}
+	}
 	s.mu.Unlock()
-	paginate(w, r, out)
+	paginate(w, r, toAny(links))
 }
 
 // listMRs serves the merge requests, filtered on state (opened, closed, merged; default all)
@@ -560,4 +615,63 @@ func toInt(v any) int {
 		return int(n)
 	}
 	return 0
+}
+
+// applyUpdate applies the fields of a PUT to an issue or merge request; the caller holds mu.
+func applyUpdate(it, body map[string]any) {
+	for _, k := range []string{"title", "description"} {
+		if v, ok := body[k]; ok {
+			it[k] = v
+		}
+	}
+	switch body["state_event"] {
+	case "close":
+		it["state"], it["closed_at"] = "closed", now()
+	case "reopen":
+		it["state"] = "opened"
+		delete(it, "closed_at")
+	}
+	it["updated_at"] = now()
+}
+
+// updateMR changes description, title and state_event of a merge request.
+func (s *Server) updateMR(w http.ResponseWriter, r *http.Request) {
+	iid, _ := strconv.Atoi(r.PathValue("iid"))
+	var body map[string]any
+	if !s.decode(w, r, &body) {
+		return
+	}
+	s.mu.Lock()
+	var cp map[string]any
+	for _, mr := range s.mrs {
+		if toInt(mr["iid"]) == iid {
+			applyUpdate(mr, body)
+			cp = maps.Clone(mr)
+		}
+	}
+	s.mu.Unlock()
+	if cp == nil {
+		writeJSON(w, http.StatusNotFound, map[string]any{"message": "404 Not found"})
+		return
+	}
+	writeJSON(w, http.StatusOK, cp)
+}
+
+func (s *Server) listMRNotes(w http.ResponseWriter, r *http.Request) {
+	iid, _ := strconv.Atoi(r.PathValue("iid"))
+	s.mu.Lock()
+	out := toAny(s.mrNotes[iid])
+	s.mu.Unlock()
+	paginate(w, r, out)
+}
+
+// MRNotes lists the bodies of the notes on merge request iid, oldest first.
+func (s *Server) MRNotes(iid int) []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var out []string
+	for _, n := range s.mrNotes[iid] {
+		out = append(out, fmt.Sprint(n["body"]))
+	}
+	return out
 }

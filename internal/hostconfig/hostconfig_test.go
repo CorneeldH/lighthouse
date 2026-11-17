@@ -256,9 +256,13 @@ func TestLoadDispatchNodes(t *testing.T) {
 	d, err := LoadDispatch(writeHost(t, `[dispatch.nodes.a]
 node_id = "node-a"
 slots = 1
+serve_url = "https://a.test"
+serve_token_file = "/tok/a"
 [dispatch.nodes.b]
 node_id = "node-b"
 slots = 2
+serve_url = "http://127.0.0.1:9"
+serve_token_file = "/tok/b"
 [dispatch.profiles.p]
 node = "a"
 [dispatch.profiles.software]
@@ -267,10 +271,10 @@ target_key = "x"
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := d.Nodes["a"]; got != (Node{"node-a", 1}) {
+	if got := d.Nodes["a"]; got != (Node{"node-a", 1, "https://a.test", "/tok/a"}) {
 		t.Errorf("Nodes[a] = %+v", got)
 	}
-	if got := d.Nodes["b"]; got != (Node{"node-b", 2}) {
+	if got := d.Nodes["b"]; got != (Node{"node-b", 2, "http://127.0.0.1:9", "/tok/b"}) {
 		t.Errorf("Nodes[b] = %+v", got)
 	}
 	if got := d.NodeID("p"); got != "node-a" {
@@ -302,12 +306,12 @@ func TestLoadDispatchWithoutNodes(t *testing.T) {
 
 func TestLoadDispatchNodeErrors(t *testing.T) {
 	cases := []struct{ name, body, key string }{
-		{"missing node_id", "[dispatch.nodes.a]\nslots = 1\n", "dispatch.nodes.a.node_id"},
+		{"missing node_id", "[dispatch.nodes.a]\nslots = 1\nserve_url = \"https://x\"\nserve_token_file = \"/t\"\n", "dispatch.nodes.a.node_id"},
 		{"zero slots", "[dispatch.nodes.a]\nnode_id = \"node-a\"\nslots = 0\n", "dispatch.nodes.a.slots"},
-		{"duplicate node_id", "[dispatch.nodes.a]\nnode_id = \"node-a\"\nslots = 1\n[dispatch.nodes.b]\nnode_id = \"node-a\"\nslots = 1\n", "node_id"},
-		{"reserved name", "[dispatch.nodes.self]\nnode_id = \"node-a\"\nslots = 1\n", "dispatch.nodes.self"},
-		{"node_id self", "[dispatch.nodes.a]\nnode_id = \"self\"\nslots = 1\n", "dispatch.nodes.a.node_id"},
-		{"unknown key", "[dispatch.nodes.a]\nnode_id = \"node-a\"\nslots = 1\nhost = \"h\"\n", "dispatch.nodes.a.host"},
+		{"duplicate node_id", "[dispatch.nodes.a]\nnode_id = \"node-a\"\nslots = 1\nserve_url = \"https://x\"\nserve_token_file = \"/t\"\n[dispatch.nodes.b]\nnode_id = \"node-a\"\nslots = 1\nserve_url = \"https://x\"\nserve_token_file = \"/t\"\n", "node_id"},
+		{"reserved name", "[dispatch.nodes.self]\nnode_id = \"node-a\"\nslots = 1\nserve_url = \"https://x\"\nserve_token_file = \"/t\"\n", "dispatch.nodes.self"},
+		{"node_id self", "[dispatch.nodes.a]\nnode_id = \"self\"\nslots = 1\nserve_url = \"https://x\"\nserve_token_file = \"/t\"\n", "dispatch.nodes.a.node_id"},
+		{"unknown key", "[dispatch.nodes.a]\nnode_id = \"node-a\"\nslots = 1\nserve_url = \"https://x\"\nserve_token_file = \"/t\"\nhost = \"h\"\n", "dispatch.nodes.a.host"},
 		{"unknown node of profile", "[dispatch.profiles.p]\nnode = \"x\"\n", "dispatch.profiles.p.node"},
 	}
 	for _, c := range cases {
@@ -424,6 +428,56 @@ func TestLoadDispatchWorkflowPushInvalid(t *testing.T) {
 	}
 }
 
+func nodeBody(extra string) string {
+	return "[dispatch.nodes.a]\nnode_id = \"node-a\"\nslots = 1\n" + extra
+}
+
+func TestNodeRequiresServeKeys(t *testing.T) {
+	cases := []struct{ name, body, key string }{
+		{"no serve_url", nodeBody("serve_token_file = \"/t\"\n"), "dispatch.nodes.a.serve_url"},
+		{"no serve_token_file", nodeBody("serve_url = \"https://x\"\n"), "dispatch.nodes.a.serve_token_file"},
+		{"empty serve_url", nodeBody("serve_url = \"\"\nserve_token_file = \"/t\"\n"), "dispatch.nodes.a.serve_url"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, err := LoadDispatch(writeHost(t, c.body))
+			if err == nil {
+				t.Fatal("want error")
+			}
+			if !strings.Contains(err.Error(), c.key) || !strings.Contains(err.Error(), "add") {
+				t.Errorf("error %q lacks %q or the step add", err, c.key)
+			}
+		})
+	}
+}
+
+func TestServeURLScheme(t *testing.T) {
+	cases := []struct {
+		url string
+		ok  bool
+	}{
+		{"https://x", true},
+		{"http://127.0.0.1:1", true},
+		{"http://[::1]:1", true},
+		{"http://localhost:1", true},
+		{"http://example.test", false},
+		{"ftp://127.0.0.1", false},
+		{"https://", false},
+		{"x", false},
+	}
+	for _, c := range cases {
+		t.Run(c.url, func(t *testing.T) {
+			_, err := LoadDispatch(writeHost(t, nodeBody("serve_url = \""+c.url+"\"\nserve_token_file = \"/t\"\n")))
+			if c.ok && err != nil {
+				t.Fatalf("err = %v", err)
+			}
+			if !c.ok && (err == nil || !strings.Contains(err.Error(), "dispatch.nodes.a.serve_url")) {
+				t.Fatalf("err = %v, want one naming serve_url", err)
+			}
+		})
+	}
+}
+
 func TestLoadDispatchWorkflowPushNoHome(t *testing.T) {
 	t.Setenv("HOME", "")
 	body := "[dispatch.workflow_push]\ntoken_file = \"~/t\"\n"
@@ -451,5 +505,12 @@ func TestLoadDispatchWorkflowPushAbsoluteBindUnderConfig(t *testing.T) {
 				t.Errorf("err = %v, want a binds error", err)
 			}
 		})
+	}
+}
+
+func TestServeTokenFileMustBeAbsolute(t *testing.T) {
+	_, err := LoadDispatch(writeHost(t, nodeBody("serve_url = \"https://x\"\nserve_token_file = \"rel/tok\"\n")))
+	if err == nil || !strings.Contains(err.Error(), "dispatch.nodes.a.serve_token_file") {
+		t.Fatalf("err = %v, want one naming serve_token_file", err)
 	}
 }

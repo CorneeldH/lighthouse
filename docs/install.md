@@ -250,9 +250,8 @@ host = "gitlab.example.com"
 `project_number`, `project_id`, `status_field_id` and `priority_field_id` are GitHub Projects
 keys and are refused for GitLab. Limits of this first GitLab version:
 
-- The Python scripts of `pack/core` (`lib/config.py` is frozen) require those GitHub keys for
-  every `[forge.board]`, so they fail on a GitLab repository that has one. The board scripts such
-  as `board_start.py` stay GitHub-only; a follow-up issue covers the Python side.
+- No script of `pack/core` is Python any more, so the old Python config reader, which
+  required the GitHub board keys for every `[forge.board]`, is gone, and a host needs no `python3` for the core.
 - The client refuses a redirect to another scheme or host, also a same-host `http` to `https`
   one, so the token is never sent anywhere else. Give `host` the address that answers directly.
 - roborev notes on a GitLab merge request are only read once #260 lands.
@@ -392,6 +391,35 @@ tools on the tick host. Without `[dispatch.workflow_push]` in `host.toml` the ro
 - **The merge.** Whether GitHub refuses an API merge of a workflow-touching PR for a token without
   `workflow` scope has not been verified. The merge by the pusher is therefore built, and the tick uses
   it only for a PR whose branch has a pusher comment; any other PR is merged by the tick as before.
+
+## A node for another host
+
+A kenn-forge node that runs content for a tick on another host (`[dispatch.nodes.<name>]` with
+`serve_url`, see [tick.md](tick.md#nodes)) runs `lighthouse serve` too. Its `host.toml` needs:
+
+```toml
+[node]
+token_file = "/abs/path/node.token"      # bearer token the tick sends; same content as serve_token_file there
+
+[dispatch.forge]
+url = "http://127.0.0.1:8091"
+token_file = "/abs/path/forge.token"     # the node's own kenn-forge token; serve refuses to start without it
+unit_prefix = "lighthouse-"
+
+[dispatch.profiles.software]             # every profile name the tick uses: mandatory
+```
+
+Without `[node]` the routes under `/api/node/v1/` answer 404. A profile the tick uses but the node does
+not list gets 400 on transcript, stop and kill. `lighthouse ask` must be on the `PATH` of the agent
+(the claude the node's forge starts), not only of the service. The `mcp_config` of a profile with `node`
+in the tick's `host.toml` is a path on that node: the tick sends it unchanged and never reads it.
+The state files of the node (PAUSE, alarm, markers) are mode `0600` in a `0700` directory; when the
+runs live in a container, its uid must match.
+
+On macOS, run `serve` as a launchd agent: [com.lighthouse.serve.plist](../deploy/launchd/com.lighthouse.serve.plist).
+`serve` binds loopback and has no TLS: put `tailscale serve` in front (see *Reach it from your tailnet*
+below) and give the tick that https address as `serve_url`. Use the tailnet name of your own node; never
+`tailscale funnel`.
 
 ## Reach it from your tailnet
 

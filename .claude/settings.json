@@ -222,7 +222,8 @@
   },
   "permissions": {
     "allow": [
-      "Bash(lighthouse review-run:*)"
+      "Bash(lighthouse review-run:*)",
+      "Bash(lighthouse agent-audit:*)"
     ]
   },
   "enabledPlugins": {

@@ -93,6 +93,13 @@ def _without_default_paths(rel: str, text: str) -> str:
         # The size rule of roborev-gate classifies a changed path as code or not (docs/ is not);
         # it reads no file there.
         return text.replace("docs/", "")
+    if rel in ("internal/pins/lane/branch.go", "internal/pins/lane/branch_test.go"):
+        # The lane writes a changelog fragment onto its own pins branch; the branch is data
+        # for the repository, and Go reads no changelog.d file there.
+        return text.replace("changelog.d", "")
+    if rel in ("internal/pins/lane/body.go", "internal/pins/lane/body_test.go"):
+        # docs/pins.md is text in an issue/PR body; Go reads no file there.
+        return text.replace("docs/pins.md", "")
     if rel == "internal/config/config_test.go":
         # TestInstallDocGitLabExampleParses reads docs/install.md; ci/domains.py keeps that file in go.
         return text.replace("docs/install.md", "")

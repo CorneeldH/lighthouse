@@ -215,6 +215,18 @@
   [
    "review.roborev",
    "str"
+  ],
+  [
+   "agent_audit.ignore",
+   "list[str]"
+  ],
+  [
+   "agent_audit.top",
+   "int"
+  ],
+  [
+   "agent_audit.description_max_chars",
+   "int"
   ]
  ],
  "defaults": {
@@ -258,7 +270,10 @@
   ],
   "usage_guard.resume": false,
   "usage_guard.controller": false,
-  "review.roborev": "off"
+  "review.roborev": "off",
+  "agent_audit.ignore": [],
+  "agent_audit.top": 10,
+  "agent_audit.description_max_chars": 1024
  },
  "base_keys": [
   "forge.kind",

@@ -140,7 +140,13 @@ func defaultString(key string) string {
 
 // Load reads <dir>/lighthouse.toml.
 func Load(dir string) (Repo, error) {
-	path := filepath.Join(dir, "lighthouse.toml")
+	return LoadFile(filepath.Join(dir, "lighthouse.toml"))
+}
+
+// LoadFile reads the lighthouse.toml at path, whatever its file name (LIGHTHOUSE_TOML); Dir is
+// the directory it is in.
+func LoadFile(path string) (Repo, error) {
+	dir := filepath.Dir(path)
 	var raw rawFile
 	md, err := toml.DecodeFile(path, &raw)
 	if err != nil {

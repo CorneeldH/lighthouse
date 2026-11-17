@@ -1,16 +1,16 @@
 package initcmd
 
 import (
+	"errors"
 	"io"
 	"io/fs"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/BurntSushi/toml"
 
+	labelsync "github.com/CorneeldH/lighthouse/internal/labels"
 	"github.com/CorneeldH/lighthouse/internal/packs"
 	"github.com/CorneeldH/lighthouse/internal/projectconfig"
 	"github.com/CorneeldH/lighthouse/pack"
@@ -20,7 +20,7 @@ func labels(o *Options) { o.Labels = true }
 
 func createLabels(o *Options) { o.CreateLabels = true }
 
-// noSync keeps the tests that are not about the label step from starting python3.
+// noSync keeps the tests that are not about the label step from calling gh.
 func noSync(o *Options) {
 	o.SyncLabels = func(string, bool, io.Writer, io.Writer) error { return nil }
 }
@@ -257,23 +257,22 @@ func TestLabelsSyncRunsOnUpgradeWithoutChanges(t *testing.T) {
 	}
 }
 
-// ghStub puts a `gh` shell script first on PATH; skips without python3.
-func ghStub(t *testing.T, script string) {
+// fakeGH replaces labels' gh call for one test and records the calls; the real gh never runs.
+func fakeGH(t *testing.T, fn func(args []string) (string, error)) *[][]string {
 	t.Helper()
-	if _, err := exec.LookPath("python3"); err != nil {
-		t.Skip("python3 not on PATH")
-	}
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte("#!/bin/sh\n"+script), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	var calls [][]string
+	restore := labelsync.SetRunGH(func(args []string) (string, error) {
+		calls = append(calls, args)
+		return fn(args)
+	})
+	t.Cleanup(restore)
+	return &calls
 }
 
 func realCore(o *Options) { o.Packs = nil }
 
-func TestLabelsDefaultSyncRunsInstalledScript(t *testing.T) {
-	ghStub(t, "exit 1\n")
+func TestLabelsDefaultSyncUsesLabelsPackage(t *testing.T) {
+	fakeGH(t, func([]string) (string, error) { return "", errors.New("gh exited 1") })
 	root := newRepo(t)
 	r := run(t, root, "", all(realCore, labels, yes))
 	if r.code != 0 || !strings.Contains(r.out, "gh label create blocked-issue") {
@@ -285,32 +284,29 @@ func TestLabelsDefaultSyncRunsInstalledScript(t *testing.T) {
 	}
 }
 
-func TestCreateLabelsRunsInstalledScriptWithCreate(t *testing.T) {
-	logFile := filepath.Join(t.TempDir(), "gh.log")
-	ghStub(t, `case "$1" in
-api) echo needs-hands; exit 0 ;;
-label) echo "$@" >> `+logFile+`; exit 0 ;;
-esac
-exit 1
-`)
-	// A caller's shell must not point the script at another repository.
-	t.Setenv("LIGHTHOUSE_TOML", "/nonexistent/lighthouse.toml")
-	t.Setenv("LIGHTHOUSE_REPO_ROOT", "/nonexistent")
+func TestCreateLabelsDefaultSyncCreates(t *testing.T) {
+	calls := fakeGH(t, func(args []string) (string, error) {
+		if args[0] == "api" {
+			return "needs-hands\n", nil
+		}
+		return "", nil
+	})
 	root := newRepo(t)
 	write(t, root, "lighthouse.toml", "[forge]\nrepo = \"Owner/repo\"\n")
 	r := run(t, root, "", all(realCore, labels, createLabels, yes))
 	if r.code != 0 {
 		t.Fatalf("rc %d\n%s\n%s", r.code, r.out, r.err)
 	}
-	b, err := os.ReadFile(logFile)
-	if err != nil {
-		t.Fatalf("no gh label create calls\n%s\n%s", r.out, r.err)
+	var creates []string
+	for _, c := range *calls {
+		if c[0] == "label" {
+			creates = append(creates, strings.Join(c, " "))
+		}
 	}
-	lines := strings.Split(strings.TrimSpace(string(b)), "\n")
-	if len(lines) != 5 {
-		t.Fatalf("%d create calls, want 5:\n%s", len(lines), b)
+	if len(creates) != 5 {
+		t.Fatalf("%d create calls, want 5: %v", len(creates), creates)
 	}
-	for _, l := range lines {
+	for _, l := range creates {
 		if !strings.Contains(l, "label create") || !strings.Contains(l, "--repo Owner/repo") || strings.Contains(l, "needs-hands") {
 			t.Errorf("bad call: %s", l)
 		}

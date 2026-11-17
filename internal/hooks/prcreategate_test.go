@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"reflect"
 	"testing"
 
@@ -13,7 +14,7 @@ import (
 )
 
 const prGateTail = "\n" +
-	"This command may contain a 'gh pr create'. 'Could not check' is\n" +
+	"This command may contain a PR or MR create. 'Could not check' is\n" +
 	"not a green light, so this does not pass silently.\n"
 
 // fakeGate replaces runGate with one that writes stdout and stderr and returns code; the command
@@ -83,9 +84,10 @@ func TestPrCreateGateMapsTheExitCodes(t *testing.T) {
 	}
 }
 
-// Two-step rule at exit 3: without both `gh` and `pr` in the raw text it passes silently.
-func TestPrCreateGateOpenQuoteWithoutGhAndPrPasses(t *testing.T) {
-	for _, command := range []string{"echo 'x", "gh issue list 'x", "echo pr 'x"} {
+// Two-step rule at exit 3: without a forge tool (`gh`, `glab`, `forge`) and `pr` or `mr` in the
+// raw text it passes silently.
+func TestHookPassesUnrelatedCommand(t *testing.T) {
+	for _, command := range []string{"echo 'x", "gh issue list 'x", "echo pr 'x", "git commit -m \"pr 'x", "glab issue list 'x", "echo mr 'x", "lighthouse forge issue view 'x"} {
 		t.Run(command, func(t *testing.T) {
 			fakeGate(t, 3, "", "", nil)
 
@@ -200,9 +202,60 @@ func TestPrCreateGateWithoutGitBlocks(t *testing.T) {
 
 	want := hook.Result{Code: 2, Stderr: "pr-create-gate: COULD NOT CHECK — missing tooling: git\n" +
 		"\n" +
-		"This hook checks the body of every 'gh pr create'.\n" +
+		"This hook checks the body of every PR or MR create.\n" +
 		"Without that tooling nothing was checked; that is not a green light.\n"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %#v\nwant %#v", got, want)
+	}
+}
+
+// The real body check on the three tools; no forge config, so the scope is "check".
+func TestHookBlocksForgePrCreateWithoutClosesLine(t *testing.T) {
+	t.Setenv("CLAUDE_PROJECT_DIR", t.TempDir())
+
+	got := prGate(t, bashCommand(`lighthouse forge pr create --title t --body "no reference here"`))
+
+	if got.Code != 2 {
+		t.Errorf("got %#v, want a block", got)
+	}
+}
+
+func TestHookBlocksGlabMrCreateBody(t *testing.T) {
+	t.Setenv("CLAUDE_PROJECT_DIR", t.TempDir())
+
+	got := prGate(t, bashCommand(`glab mr create --title t --description "no reference here"`))
+
+	if got.Code != 2 {
+		t.Errorf("got %#v, want a block", got)
+	}
+}
+
+func TestHookAllowsForgePrCreateValidBody(t *testing.T) {
+	dir := t.TempDir()
+	if out, err := exec.Command("git", "-C", dir, "init", "-q").CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, out)
+	}
+	t.Setenv("CLAUDE_PROJECT_DIR", dir)
+
+	got := prGate(t, bashCommand(`lighthouse forge pr create --title t --body "No issue: kleine opruiming"`))
+
+	if got.Code != 0 {
+		t.Errorf("got %#v, want a pass", got)
+	}
+}
+
+// Not weaker than for gh: an open quote with glab mr or lighthouse forge pr blocks.
+func TestHookUnparseableGlabBlocks(t *testing.T) {
+	t.Setenv("CLAUDE_PROJECT_DIR", t.TempDir())
+	for _, command := range []string{"glab mr create --description 'x", "lighthouse forge pr create --body 'x"} {
+		t.Run(command, func(t *testing.T) {
+			got := prGate(t, bashCommand(command))
+
+			want := hook.Result{Code: 2,
+				Stderr: "pr-create-gate: COULD NOT CHECK — the command cannot be parsed (open quote). Split the command.\n" + prGateTail}
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("got %#v\nwant %#v", got, want)
+			}
+		})
 	}
 }

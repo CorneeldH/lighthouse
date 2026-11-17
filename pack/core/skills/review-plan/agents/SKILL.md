@@ -1,6 +1,8 @@
 ---
 name: lighthouse-review-plan
 description: 'Has an implementation plan reviewed adversarially by an agent from a different model family (Codex, read-only, clean context) against the spec and the repo — round 1 an executability review, after that only scoped verification of the fixes. Use after committing a plan and before subagent-driven-development. Triggers - /lighthouse-review-plan, "review this plan", "second pair of eyes on the plan". NOTE — not for a spec (use lighthouse-review-spec instead) or a diff (code-review).'
+metadata:
+  origin: own
 ---
 
 # Review Plan

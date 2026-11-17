@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prioritering — mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#ffffff; --fg:#171717; --muted:#737373; --border:#e5e5e5; --soft:#f5f5f5;
+    --navy:#14213d; --yellow:#f4d74b; --link:#1f4fd1;
+    --m-lzp:#087a5b; --m-rzp:#7b3fc4; --m-prod:#e07b4c; --m-m3:#2f5bd8; --m-werk:#c2417a; --m-gl:#b8901a; --m-none:#9ca3af;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font-family:'Geist', system-ui, sans-serif; font-size:14px; }
+  .wrap { max-width:1180px; margin:0 auto; padding:24px; }
+  header.top { background:var(--navy); color:#fff; border-bottom:4px solid var(--yellow); padding:14px 16px; display:flex; align-items:center; justify-content:space-between; }
+  header.top .brand { font-size:20px; font-weight:600; display:flex; align-items:center; gap:10px; }
+  .ver { background:var(--yellow); color:var(--navy); font-size:12px; font-weight:600; padding:2px 8px; border-radius:999px; }
+  .refresh { background:var(--yellow); color:var(--navy); font-weight:600; border:0; border-radius:6px; padding:6px 12px; font-size:14px; }
+  nav.tabs { display:flex; gap:24px; border-bottom:2px solid var(--navy); margin:24px 0 20px; }
+  nav.tabs a { padding:8px 0; font-size:17px; font-weight:600; color:var(--muted); text-decoration:none; margin-bottom:-2px; border-bottom:3px solid transparent; }
+  nav.tabs a.on { color:var(--navy); border-bottom-color:var(--yellow); }
+  .toolbar { display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between; margin-bottom:12px; }
+  .seg { display:inline-flex; background:var(--soft); border:1px solid var(--border); border-radius:10px; padding:3px; gap:2px; }
+  .seg button { border:0; background:transparent; font:inherit; font-weight:500; padding:6px 14px; border-radius:7px; color:var(--muted); cursor:pointer; display:flex; gap:8px; align-items:center; }
+  .seg button.on { background:#fff; color:var(--fg); box-shadow:0 1px 2px #0002; }
+  .count { background:var(--navy); color:#fff; font-size:11px; font-weight:600; border-radius:999px; padding:1px 7px; }
+  .seg button:not(.on) .count { background:#d4d4d4; color:#404040; }
+  .repos { display:flex; gap:6px; align-items:center; font-size:13px; color:var(--muted); }
+  .chip { border:1px solid var(--border); border-radius:999px; padding:4px 12px; font-size:13px; cursor:pointer; background:#fff; color:var(--fg); }
+  .chip.on { background:var(--navy); color:#fff; border-color:var(--navy); }
+  .legend { display:flex; flex-wrap:wrap; gap:6px 16px; font-size:12.5px; color:#404040; margin:4px 0 16px; }
+  .legend span { display:inline-flex; align-items:center; gap:6px; }
+  .sw { width:12px; height:12px; border-radius:3px; display:inline-block; }
+  .legend .act { width:14px; height:12px; border:2px dashed var(--navy); border-radius:3px; }
+  .card { border:1px solid var(--border); border-radius:14px; background:#fff; }
+  .card-h { padding:16px 20px 4px; display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  .card-h h3 { margin:0; font-size:16px; font-weight:600; }
+  .card-h p { margin:2px 0 0; color:var(--muted); font-size:13px; }
+  .hint { font-size:12.5px; color:var(--muted); }
+
+  /* graph */
+  .graph-scroll { overflow-x:auto; padding:8px 20px 20px; }
+  .graph { position:relative; }
+  .graph svg { position:absolute; inset:0; overflow:visible; pointer-events:none; }
+  .graph path { fill:none; stroke:#c4c4c4; stroke-width:1.6; transition:stroke .15s, opacity .15s; }
+  .graph path.hl { stroke:var(--navy); stroke-width:2.2; }
+  .graph path.dim { opacity:.15; }
+  .colhead { position:absolute; top:0; font-size:11px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+  .node { position:absolute; width:210px; height:38px; border-radius:8px; border:1px solid var(--border); background:#fff; display:flex; align-items:center; gap:8px; padding:0 10px 0 0; overflow:hidden; cursor:pointer; transition:opacity .15s, box-shadow .15s, transform .15s; box-shadow:0 1px 2px #0000000d; }
+  .node .bar { align-self:stretch; width:6px; flex:none; }
+  .node .num { font-weight:600; font-size:13px; flex:none; }
+  .node .t { font-size:12px; color:#525252; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1; }
+  .node .hub { flex:none; font-size:11px; font-weight:600; background:var(--navy); color:#fff; border-radius:999px; padding:1px 7px; }
+  .node.active { border:2px dashed var(--navy); }
+  .node .tag { flex:none; font-size:10.5px; font-weight:600; background:var(--yellow); color:var(--navy); border-radius:999px; padding:1px 7px; }
+  .node.dim { opacity:.25; }
+  .node.hl { box-shadow:0 0 0 2px var(--navy), 0 4px 10px #0002; }
+  .node.me { transform:scale(1.03); }
+  .isol { border-top:1px solid var(--border); padding:14px 20px 18px; }
+  .isol h4 { margin:0 0 8px; font-size:13px; font-weight:600; }
+  .pills { display:flex; flex-wrap:wrap; gap:6px; }
+  .pill { display:inline-flex; align-items:center; gap:6px; font-size:12px; border:1px solid var(--border); border-radius:6px; padding:3px 8px 3px 0; overflow:hidden; background:#fff; }
+  .pill .bar { width:5px; align-self:stretch; }
+  .pill b { font-weight:600; }
+
+  /* milestones */
+  .ms-list { padding:8px 20px 20px; display:grid; gap:10px; }
+  .ms { border:1px solid var(--border); border-radius:10px; padding:12px 14px; display:grid; grid-template-columns: 230px 1fr auto; gap:14px; align-items:center; }
+  .ms .name { display:flex; align-items:center; gap:10px; font-weight:600; }
+  .ms .name small { display:block; font-weight:400; color:var(--muted); font-size:12px; }
+  .ms .path { display:flex; flex-wrap:wrap; align-items:center; gap:4px; font-size:12px; }
+  .ms .path .arrow { color:var(--muted); }
+  .ms .path .pill.out { border-style:dashed; }
+  .ms .big { text-align:right; }
+  .ms .big b { font-size:22px; font-weight:700; }
+  .ms .big small { display:block; color:var(--muted); font-size:11.5px; }
+  .meter { display:flex; gap:2px; margin-top:6px; }
+  .meter i { width:10px; height:6px; border-radius:2px; display:block; }
+
+  /* milestones v2 */
+  .ms2 { border:1px solid var(--border); border-radius:10px; padding:14px 16px; display:grid; grid-template-columns: 240px 1fr 110px; gap:16px; align-items:center; }
+  .ms2 .name { display:flex; gap:10px; align-items:flex-start; font-weight:600; }
+  .ms2 .name small { display:block; font-weight:400; color:var(--muted); font-size:12px; margin-top:2px; }
+  .barrow { display:flex; align-items:center; gap:8px; }
+  .ext { display:flex; gap:3px; align-items:center; }
+  .ext i { width:26px; height:18px; border:1.5px dashed; border-radius:4px; display:flex; align-items:center; justify-content:center; font-style:normal; font-size:9.5px; font-weight:700; }
+  .ext span { color:var(--muted); font-size:14px; margin:0 2px; }
+  .bar2 { flex:1; display:flex; gap:2px; height:18px; }
+  .bar2 i { flex:1; border-radius:3px; display:block; min-width:3px; position:relative; }
+  .s-done { }
+  .s-down { background:var(--yellow); }
+  .s-up { background:repeating-linear-gradient(135deg, var(--yellow) 0 4px, #fff6c9 4px 8px); outline:1px solid #e3c63a; outline-offset:-1px; }
+  .s-todo { background:#ececec; }
+  .bar2 i:hover { outline:2px solid var(--navy); outline-offset:1px; z-index:1; }
+  .unshaped { flex:1; height:18px; border-radius:4px; background:repeating-linear-gradient(135deg, #e5e5e5 0 6px, #f7f7f7 6px 12px); display:flex; align-items:center; justify-content:center; font-size:11.5px; font-weight:600; color:#737373; letter-spacing:.02em; }
+  .open-row { display:flex; flex-wrap:wrap; gap:4px; margin-top:8px; font-size:12px; color:var(--muted); align-items:center; }
+  .ms2 .pct { text-align:right; }
+  .ms2 .pct b { font-size:22px; font-weight:700; }
+  .ms2 .pct small { display:block; color:var(--muted); font-size:11.5px; }
+  .key { display:flex; flex-wrap:wrap; gap:6px 16px; font-size:12px; color:#404040; padding:4px 20px 0; }
+  .key span { display:inline-flex; align-items:center; gap:6px; }
+  .key i { width:18px; height:10px; border-radius:2px; display:inline-block; }
+
+  .bar2.shaping { position:relative; }
+  .bar2.shaping em { position:absolute; inset:-3px; border-radius:5px; background:repeating-linear-gradient(135deg,#ffffffc8 0 6px,#ffffff30 6px 12px); border:1.5px dashed #a3a3a3; display:flex; align-items:center; justify-content:center; font-style:normal; font-size:11.5px; font-weight:600; color:#525252; }
+  .sugg { display:grid; gap:10px; }
+  .sg { border:1px solid var(--border); border-radius:10px; padding:12px 14px; }
+  .sg h5 { margin:0; font-size:13.5px; font-weight:600; display:flex; align-items:center; gap:8px; }
+  .sg p { margin:4px 0 8px; font-size:12.5px; color:#525252; }
+  .sg .to { font-size:12px; color:var(--muted); margin-top:8px; display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+  .tagk { font-size:10.5px; font-weight:600; border-radius:999px; padding:1px 8px; }
+  .k-new { background:#ede9fe; color:#5b21b6; } .k-fit { background:#dcfce7; color:#166534; } .k-close { background:#fee2e2; color:#991b1b; }
+  .ai { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:10px 14px; border-radius:10px; background:var(--soft); font-size:12.5px; color:#404040; margin-bottom:10px; }
+  .ai button { font:inherit; font-weight:600; border:1px solid var(--border); background:#fff; border-radius:6px; padding:5px 10px; }
+  .overlap { font-size:11px; color:#b45309; font-weight:600; }
+  /* bak */
+  .bak { padding:8px 20px 20px; display:grid; grid-template-columns: 1fr 260px; gap:16px; }
+  .bak-list { display:grid; gap:6px; }
+  .row { display:flex; align-items:center; gap:10px; border:1px solid var(--border); border-radius:8px; padding:8px 10px; font-size:13px; }
+  .row .grip { color:#bdbdbd; cursor:grab; font-size:14px; }
+  .row .num { font-weight:600; min-width:40px; }
+  .row .t { flex:1; color:#404040; }
+  .row .rel { font-size:11.5px; background:#eef2ff; color:var(--link); border-radius:999px; padding:2px 8px; white-space:nowrap; }
+  .drops { display:grid; gap:6px; align-content:start; }
+  .drop { border:1.5px dashed var(--border); border-radius:8px; padding:9px 10px; font-size:12.5px; display:flex; align-items:center; gap:8px; color:#525252; }
+  .drop.new { color:var(--muted); justify-content:center; }
+  .soon { font-size:11px; font-weight:600; background:var(--soft); color:var(--muted); border-radius:999px; padding:2px 8px; margin-left:auto; }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">lighthouse <span class="ver">v0.15.0</span></div>
+    <div style="display:flex;gap:14px;align-items:center;font-size:14px">bijgewerkt &lt; 1 min geleden <button class="refresh">↻ Refresh</button></div>
+  </header>
+
+  <nav class="tabs"><a href="#">Controller</a><a href="#" class="on">Prioritering</a></nav>
+
+  <div class="toolbar">
+    <div class="seg" id="seg">
+      <button data-v="graph">Afhankelijkheden <span class="count">19</span></button>
+      <button data-v="ms">Milestones <span class="count">7</span></button>
+      <button data-v="bak" class="on">Zonder milestone <span class="count">17</span></button>
+    </div>
+    <div class="repos">Repo's <span class="chip on">lighthouse</span><span class="chip">andere-repo</span></div>
+  </div>
+
+  <div class="legend">
+    <span><i class="sw" style="background:var(--m-lzp)"></i>Lighthouse zonder Python</span>
+    <span><i class="sw" style="background:var(--m-rzp)"></i>De repo zonder Python</span>
+    <span><i class="sw" style="background:var(--m-prod)"></i>Product: eerste versie</span>
+    <span><i class="sw" style="background:var(--m-m3)"></i>M3 — Tweede omgeving</span>
+    <span><i class="sw" style="background:var(--m-werk)"></i>Werkplek zonder kenn-forge</span>
+    <span><i class="sw" style="background:var(--m-gl)"></i>GitLab-forge</span>
+    <span><i class="sw" style="background:var(--m-none)"></i>geen milestone</span>
+    <span><i class="act"></i>opgepakt</span>
+  </div>
+
+  <!-- VIEW 1 -->
+  <section class="card" id="v-graph" hidden>
+    <div class="card-h">
+      <div><h3>Waar zit de meeste afhankelijkheid?</h3><p>Pijl van blocker naar geblokkeerd issue. Het getal is hoeveel issues erachter wachten. Wijs een issue aan om zijn keten te zien.</p></div>
+    </div>
+    <div class="graph-scroll"><div class="graph" id="graph"><svg id="edges"></svg></div></div>
+    <div class="isol">
+      <h4>Geen open afhankelijkheden <span class="hint">(15) — kunnen direct, los van elkaar</span></h4>
+      <div class="pills" id="isol"></div>
+    </div>
+  </section>
+
+  <!-- VIEW 2 -->
+  <section class="card" id="v-ms" hidden>
+    <div class="card-h">
+      <div><h3>Welke milestone is het snelst af?</h3><p>Eén segment per issue van de milestone, samen 100%. Gesorteerd op wat er nog te doen is. Blockers van buiten staan ervoor en tellen niet mee. Wijs een segment aan voor het issue.</p></div>
+    </div>
+    <div class="key">
+      <span><i style="background:var(--m-m3)"></i>klaar (kleur milestone)</span>
+      <span><i class="s-down"></i>actief, bergaf (uitvoeren)</span>
+      <span><i class="s-up"></i>actief, bergop (uitzoeken)</span>
+      <span><i class="s-todo"></i>nog niet opgepakt</span>
+      <span><i style="border:1.5px dashed #888;height:12px"></i>blocker van buiten</span>
+    </div>
+    <div class="ms-list" id="mslist"></div>
+  </section>
+
+  <!-- VIEW 3 -->
+  <section class="card" id="v-bak">
+    <div class="card-h">
+      <div><h3>Open issues zonder milestone</h3><p>Links de issues, rechts wat het model voorstelt. Een issue kan in meer dan één groep vallen.</p></div>
+    </div>
+    <div class="bak" style="grid-template-columns:1fr 1fr">
+      <div class="bak-list" id="baklist"></div>
+      <div>
+        <div class="ai"><span><b>Suggesties</b> · model las 17 issues, 7 milestones en de scope-spec · 12 min geleden</span><button>↻ Opnieuw</button></div>
+        <div class="sugg">
+          <div class="sg"><h5>Verslaglegging <span class="tagk k-new">nieuwe milestone</span></h5><p>#44 en #128 vormen al een keten: eerst de functie, dan het eigen dagverslag. Samen een afgerond geheel.</p><div class="pills"><span class="pill"><span class="bar" style="background:var(--m-none)"></span><b>#44</b></span><span class="pill"><span class="bar" style="background:var(--m-none)"></span><b>#128</b></span></div></div>
+          <div class="sg"><h5>Controller-runs op meer plekken <span class="tagk k-fit">past bij milestone</span></h5><p>Gaan over waar en met welke rechten runs draaien. Passen bij <b>Werkplek zonder kenn-forge</b>.</p><div class="pills"><span class="pill"><span class="bar" style="background:var(--m-none)"></span><b>#181</b></span><span class="pill"><span class="bar" style="background:var(--m-none)"></span><b>#327</b> <span class="overlap">ook hieronder</span></span><span class="pill"><span class="bar" style="background:var(--m-none)"></span><b>#121</b></span><span class="pill"><span class="bar" style="background:var(--m-none)"></span><b>#158</b></span></div><div class="to">→ <span class="sw" style="background:var(--m-werk)"></span> Werkplek zonder kenn-forge</div></div>
+          <div class="sg"><h5>kenn-forge, upstream <span class="tagk k-new">nieuwe milestone</span></h5><p>Defecten in een extern hulpmiddel die op een upstream-melding wachten. Eén bundel houdt ze uit de rest.</p><div class="pills"><span class="pill"><span class="bar" style="background:var(--m-none)"></span><b>#316</b></span><span class="pill"><span class="bar" style="background:var(--m-none)"></span><b>#77</b></span><span class="pill"><span class="bar" style="background:var(--m-none)"></span><b>#73</b></span><span class="pill"><span class="bar" style="background:var(--m-none)"></span><b>#327</b> <span class="overlap">ook hierboven</span></span></div></div>
+          <div class="sg"><h5>Mogelijk achterhaald <span class="tagk k-close">nakijken</span></h5><p>#347 noemt "een milestone is geen release meer"; de releaseworkflow tagt nu zelf. Mogelijk al opgelost.</p><div class="pills"><span class="pill"><span class="bar" style="background:var(--m-none)"></span><b>#347</b></span></div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+const M = { lzp:'var(--m-lzp)', rzp:'var(--m-rzp)', prod:'var(--m-prod)', m3:'var(--m-m3)', werk:'var(--m-werk)', gl:'var(--m-gl)', none:'var(--m-none)' };
+const I = {
+  285:['lzp','Afronden zonder Python: opruimen, deps en het bewijs in CI'],
+  360:['rzp','ci/changelog naar Go, met workflow_dispatch en de nulmeting'],
+  361:['rzp','ci/domains en ci/loop_roadmap naar Go'],
+  362:['rzp','tools/check_cla naar Go en checkpoint_scan'],
+  363:['rzp','tools/gen_code_language_freq: port naar Go of weg'],
+  364:['rzp','De shellscripts in ci/ en tools/ zonder python3'],
+  365:['rzp','Triage van de root-tests in tests/'],
+  366:['rzp','Triage van de black-box-tests van hooks en scripts'],
+  367:['rzp','Triage van de skillcontracten in tests/pack'],
+  368:['rzp','Triage van de tests van de taalpakketten'],
+  369:['rzp','Site-tests naar node --test'],
+  370:['rzp','Afronden: CI zonder pytest-shards, en de meting'],
+  90:['prod','lighthouse init en de hooks testen op macOS en Windows'],
+  91:['prod','Lighthouse schoon verwijderen uit een repo'],
+  252:['m3','Installatiegids voor de opzet van de tweede gebruiker'],
+  19:['m3','Instapniveaus licht, standaard en streng'],
+  255:['werk','Controller-knoppen in de instapniveaus'],
+  260:['gl','GitLab-forge: forge-wrapper voor skills en hooks'],
+  358:['gl','GitLab-forge: verificatie op een echte GitLab-repo'],
+  44:['none','Verslag per dag, week of maand als functie'],
+  128:['none','Procesverslag van lighthouse zelf: het dagverslag'],
+};
+const ACTIVE = new Set([285]);
+const E = [[285,360],[285,90],[285,252],[90,91],[360,361],[360,362],[360,363],[360,364],[360,365],[360,366],[360,367],[360,368],[360,369],[361,370],[362,370],[363,370],[364,370],[365,370],[19,255],[260,358],[44,128]];
+// column, row
+const P = {285:[0,7],19:[0,12],260:[0,13.2],44:[0,14.4],
+  360:[1,4],90:[1,9.6],252:[1,10.8],255:[1,12],358:[1,13.2],128:[1,14.4],
+  361:[2,0],362:[2,1],363:[2,2],364:[2,3],365:[2,4],366:[2,5],367:[2,6],368:[2,7],369:[2,8],91:[2,9.6],
+  370:[3,2]};
+const W=210,H=38,CX=290,RY=46,TOP=26;
+const down={},up={};E.forEach(([a,b])=>{(down[a]=down[a]||[]).push(b);(up[b]=up[b]||[]).push(a);});
+function reach(n,g,s=new Set()){(g[n]||[]).forEach(m=>{if(!s.has(m)){s.add(m);reach(m,g,s);}});return s;}
+const g=document.getElementById('graph'), svg=document.getElementById('edges');
+const cols=['Kan nu','Wacht op 1 stap','Wacht op 2 stappen','Wacht op 3 stappen'];
+cols.forEach((c,i)=>{const d=document.createElement('div');d.className='colhead';d.style.left=(i*CX)+'px';d.textContent=c;g.appendChild(d);});
+let maxY=0;
+for(const [n,[c,r]] of Object.entries(P)){
+  const [m,t]=I[n]; const x=c*CX, y=TOP+r*RY; maxY=Math.max(maxY,y+H);
+  const d=document.createElement('div'); d.className='node'+(ACTIVE.has(+n)?' active':''); d.dataset.n=n;
+  d.style.left=x+'px'; d.style.top=y+'px'; d.style.background=`color-mix(in srgb, ${M[m]} 7%, white)`;
+  const k=reach(+n,down).size;
+  d.innerHTML=`<span class="bar" style="background:${M[m]}"></span><span class="num">#${n}</span><span class="t" title="${t}">${t}</span>`+
+    (ACTIVE.has(+n)?'<span class="tag">opgepakt</span>':'')+(k>=2?`<span class="hub" title="${k} issues wachten hierop">${k}</span>`:'');
+  g.appendChild(d);
+}
+g.style.width=(3*CX+W)+'px'; g.style.height=(maxY+4)+'px';
+svg.setAttribute('width',3*CX+W); svg.setAttribute('height',maxY+4);
+svg.innerHTML='<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,1L9,5L0,9z" fill="#a3a3a3" stroke="none"/></marker><marker id="ahh" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,1L9,5L0,9z" fill="#14213d" stroke="none"/></marker></defs>';
+E.forEach(([a,b])=>{const [ca,ra]=P[a],[cb,rb]=P[b];
+  const x1=ca*CX+W, y1=TOP+ra*RY+H/2, x2=cb*CX-2, y2=TOP+rb*RY+H/2, mx=(x1+x2)/2;
+  const p=document.createElementNS('http://www.w3.org/2000/svg','path');
+  p.setAttribute('d',`M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`); p.setAttribute('marker-end','url(#ah)');
+  p.dataset.a=a; p.dataset.b=b; svg.appendChild(p);});
+const nodes=[...g.querySelectorAll('.node')], paths=[...svg.querySelectorAll('path[data-a]')];
+nodes.forEach(el=>{
+  el.addEventListener('mouseenter',()=>{const n=+el.dataset.n; const on=new Set([n,...reach(n,down),...reach(n,up)]);
+    nodes.forEach(x=>{const v=+x.dataset.n;x.classList.toggle('dim',!on.has(v));x.classList.toggle('hl',on.has(v)&&v!==n);x.classList.toggle('me',v===n);});
+    paths.forEach(p=>{const h=on.has(+p.dataset.a)&&on.has(+p.dataset.b);p.classList.toggle('hl',h);p.classList.toggle('dim',!h);p.setAttribute('marker-end',h?'url(#ahh)':'url(#ah)');});});
+  el.addEventListener('mouseleave',()=>{nodes.forEach(x=>x.classList.remove('dim','hl','me'));paths.forEach(p=>{p.classList.remove('hl','dim');p.setAttribute('marker-end','url(#ah)');});});
+});
+const ISO=[[359,'Een plek die een tick vrijmaakt, telt al in die tick'],[349,'go install van een tag levert een binary met de web-UI'],[347,'lighthouse-close-issue stap 4'],[327,'Run-inhoud op een andere kenn-forge-node'],[325,'Pins voor overgenomen skills'],[316,'kenn-forge: forge_auth is een sessiecookie'],[192,'Repokaart: wat init --upgrade doet'],[181,'Rechtenprofielen van controller-runs'],[168,'auto_aanbevolen naar lighthouse'],[158,'Usage-guard: per worktree afwijken'],[121,'Geplande runs in lighthouse'],[103,'Kaart per harness'],[77,'kenn-forge: MCP-instructies'],[73,'kenn-forge: verplaatst issue'],[47,'Check op alle agentische configuratie']];
+document.getElementById('isol').innerHTML=ISO.map(([n,t])=>`<span class="pill" title="${t}"><span class="bar" style="background:var(--m-none)"></span><b>#${n}</b></span>`).join('');
+
+// milestones v2: [key, name, closed, open issues with state, external blockers, unshaped]
+const ST={};
+const MS2=[
+  ['lzp','Lighthouse zonder Python',26,[285],[],false],
+  ['werk','Werkplek zonder kenn-forge',6,[255],[19],false],
+  ['gl','GitLab-forge',6,[260,358],[],false],
+  ['m3','M3 — Tweede omgeving',8,[19,252],[285],false],
+  ['prod','Product: eerste versie voor anderen',23,[90,91],[285],false],
+  ['rzp','De repo zonder Python',0,[360,361,362,363,364,365,366,367,368,369,370],[285],'partial'],
+  ['none','M4 — SURF Research Cloud als werkplek',0,[],[],true],
+];
+document.getElementById('mslist').innerHTML=MS2.map(([m,name,closed,open,ext,unshaped])=>{
+  const tot=closed+open.length, pct=tot?Math.round(100*closed/tot):0;
+  const act=open.filter(n=>ST[n]).length;
+  const extHtml=ext.length?`<div class="ext" style="width:64px;justify-content:flex-end">${ext.map(n=>`<i title="#${n} (${I[n][1]}) blokkeert van buiten" style="border-color:${M[I[n][0]]};color:${M[I[n][0]]};${ST[n]?'background:var(--yellow);':''}">${n}</i>`).join('')}<span>›</span></div>`:`<div class="ext" style="width:64px"></div>`;
+  const segs=[...Array(closed)].map((_,i)=>`<i class="s-done" style="background:${M[m]}" title="klaar"></i>`).join('')+
+    open.map(n=>`<i class="${ST[n]==='down'?'s-down':ST[n]==='up'?'s-up':'s-todo'}" title="#${n} ${I[n][1]}"></i>`).join('');
+  const bar=unshaped==='partial'?`<div class="bar2 shaping">${segs}<em>nog in shaping — lijst kan nog groeien</em></div>`:unshaped?`<div class="unshaped">nog niet geshaped — percentage zegt nog niets</div>`:`<div class="bar2">${segs}</div>`;
+  const meta=unshaped===true?'shaping · 0 issues':`${closed} klaar · ${act} actief · ${open.length-act} nog niet${ext.length?` · ${ext.length} blocker van buiten`:''}`;
+  const right=unshaped==='partial'?`<div class="pct"><b style="color:var(--muted)">${pct}%</b><small>voorlopig · ${open.length} te doen</small></div>`:unshaped?`<div class="pct"><b style="font-size:16px;color:var(--muted)">—</b><small>eerst shapen</small></div>`:`<div class="pct"><b>${pct}%</b><small>${open.length} te doen</small></div>`;
+  const openRow=(unshaped!==true&&open.length)?`<div class="open-row">te doen: ${open.map(n=>`<span class="pill${ext.includes(n)?' out':''}" style="${ext.includes(n)?'border-style:dashed':''}"><span class="bar" style="background:${M[I[n][0]]}"></span><b>#${n}</b></span>`).join('')}</div>`:'';
+  return `<div class="ms2"><div class="name"><i class="sw" style="background:${M[m]};width:14px;height:14px;margin-top:2px;flex:none"></i><div>${name}<small>${meta}</small></div></div><div><div class="barrow">${extHtml}${bar}</div>${openRow}</div>${right}</div>`;}).join('');
+const MS=[
+  ['lzp','Lighthouse zonder Python',1,[[285,0]]],
+  ['werk','Werkplek zonder kenn-forge',1,[[19,1],[255,0]]],
+  ['gl','GitLab-forge',2,[[260,0],[358,0]]],
+  ['prod','Product: eerste versie voor anderen',2,[[285,1],[90,0],[91,0]]],
+  ['m3','M3 — Tweede omgeving',2,[[285,1],[19,0],[252,0]]],
+  ['rzp','De repo zonder Python',11,[[285,1],[360,0],[361,0],[362,0],[363,0],[364,0],[365,0],[366,0],[367,0],[368,0],[369,0],[370,0]]],
+];
+void MS.map(([m,name,own,path])=>{
+  const ext=path.filter(p=>p[1]).length, tot=path.length;
+  const pp=path.map(([n,o],i)=>`${i?'<span class="arrow">›</span>':''}<span class="pill${o?' out':''}"><span class="bar" style="background:${M[I[n][0]]}"></span><b>#${n}</b>${ACTIVE.has(n)?' <span class="tag" style="font-size:10px;padding:0 6px;border-radius:999px;background:var(--yellow);color:var(--navy);font-weight:600">opgepakt</span>':''}</span>`).join('');
+  const meter=path.map(([n,o])=>`<i style="background:${o?'transparent':M[m]};border:1px ${o?'dashed':'solid'} ${M[I[n][0]]}"></i>`).join('');
+  return `<div class="ms"><div class="name"><i class="sw" style="background:${M[m]};width:14px;height:14px"></i><div>${name}<small>${own} open in milestone${ext?` · ${ext} van buiten`:''}</small></div></div><div><div class="path">${pp}</div><div class="meter">${meter}</div></div><div class="big"><b>${tot}</b><small>issues tot af</small></div></div>`;}).join('');
+
+// bak
+const BAK=[[44,'Verslag per dag, week of maand als functie van lighthouse','blokkeert #128'],[128,'Procesverslag van lighthouse zelf: het dagverslag aan','wacht op #44'],[359,'Een plek die een tick vrijmaakt, telt al in die tick voor de starts'],[349,'go install van een tag levert een binary met de ingebouwde web-UI'],[347,'lighthouse-close-issue stap 4: een milestone is geen release meer'],[327,'Run-inhoud op een andere kenn-forge-node'],[325,'Pins voor overgenomen skills, de Superpowers-plugin en geïntegreerde tools'],[316,'kenn-forge: forge_auth is een sessiecookie, upstream melden'],[192,'Repokaart: wat init --upgrade met elk gebied doet'],[181,'Rechtenprofielen van controller-runs in lighthouse'],[168,'auto_aanbevolen naar lighthouse, zodra de telemetrie het draagt'],[158,'Usage-guard: per worktree afwijken van de sessiedrempel'],[121,'Geplande runs in lighthouse: codebase-map-refresh en reflect'],[103,'Kaart per harness: Claude Code, Codex en OpenCode'],[77,'kenn-forge: MCP-instructies vragen om werkruimte-registratie'],[73,'kenn-forge: verplaatst issue zet een volle refresh-lus aan'],[47,'Check op alle agentische configuratie in een projectrepo']];
+document.getElementById('baklist').innerHTML=BAK.map(([n,t,r])=>`<div class="row"><span class="grip">⋮⋮</span><span class="num">#${n}</span><span class="t">${t}</span>${r?`<span class="rel">${r}</span>`:''}</div>`).join('');
+
+document.querySelectorAll('#seg button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('#seg button').forEach(x=>x.classList.toggle('on',x===b));
+  ['graph','ms','bak'].forEach(v=>document.getElementById('v-'+v).hidden=v!==b.dataset.v);
+});
+</script>
+</body>
+</html>

@@ -1,6 +1,8 @@
 ---
 name: lighthouse-review-spec
 description: 'Has a spec reviewed adversarially by an agent from a different model family (Codex, read-only, clean context) against the repo — round 1 a review, after that only scoped verification of the fixes. Use after writing a spec and before writing-plans. Triggers - /lighthouse-review-spec, "review this spec", "second pair of eyes on the spec", "adversarial review". NOTE — not for a plan (use lighthouse-review-plan instead) or a diff (code-review).'
+metadata:
+  origin: own
 ---
 
 # Review Spec

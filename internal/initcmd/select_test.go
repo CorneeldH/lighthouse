@@ -310,7 +310,7 @@ func TestBrokenUnchosenPackFails(t *testing.T) {
 
 func withExpo(o *Options) {
 	o.Packs.(fstest.MapFS)["expo/detect.toml"] = file("[[contains]]\nfiles = [\"**/package.json\"]\ntext = '\"expo\"'\n")
-	o.Packs.(fstest.MapFS)["expo/lib/e.py"] = file("x = 1\n")
+	o.Packs.(fstest.MapFS)["expo/scripts/e.py"] = file("x = 1\n")
 }
 
 // A tracked file whose directory became a file is gone, like a deleted one.

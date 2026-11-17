@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -89,8 +91,10 @@ type Reviewer struct {
 // the number of concurrent runs it takes. The node of [dispatch.forge] itself is "self", the
 // empty node id, and is not listed here.
 type Node struct {
-	NodeID string
-	Slots  int
+	NodeID         string
+	Slots          int
+	ServeURL       string // base URL of lighthouse serve on the node
+	ServeTokenFile string // absolute path of the bearer token file for ServeURL
 }
 
 // SelfNode is the reserved name of the node of [dispatch.forge].
@@ -197,6 +201,9 @@ func LoadDispatch(path string) (Dispatch, error) {
 			Nodes    map[string]struct {
 				NodeID *string `toml:"node_id"`
 				Slots  *int    `toml:"slots"`
+
+				ServeURL       *string `toml:"serve_url"`
+				ServeTokenFile *string `toml:"serve_token_file"`
 			} `toml:"nodes"`
 			WorkflowPush *struct {
 				TokenFile *string `toml:"token_file"`
@@ -306,10 +313,22 @@ func LoadDispatch(path string) (Dispatch, error) {
 		if err := setMin1(key+".slots", n.Slots, new(int)); err != nil {
 			return DefaultDispatch(), err
 		}
+		if n.ServeURL == nil || *n.ServeURL == "" {
+			return DefaultDispatch(), fmt.Errorf("%s.serve_url: missing; add serve_url = \"https://<node>:<port>\" to [%s]", key, key)
+		}
+		if err := checkServeURL(key+".serve_url", *n.ServeURL); err != nil {
+			return DefaultDispatch(), err
+		}
+		if n.ServeTokenFile == nil || *n.ServeTokenFile == "" {
+			return DefaultDispatch(), fmt.Errorf("%s.serve_token_file: missing; add serve_token_file = \"/absolute/path\" to [%s]", key, key)
+		}
+		if !filepath.IsAbs(*n.ServeTokenFile) {
+			return DefaultDispatch(), fmt.Errorf("%s.serve_token_file: %q is not an absolute path", key, *n.ServeTokenFile)
+		}
 		if d.Nodes == nil {
 			d.Nodes = map[string]Node{}
 		}
-		d.Nodes[name] = Node{NodeID: *n.NodeID, Slots: *n.Slots}
+		d.Nodes[name] = Node{NodeID: *n.NodeID, Slots: *n.Slots, ServeURL: *n.ServeURL, ServeTokenFile: *n.ServeTokenFile}
 	}
 	profiles := make([]string, 0, len(d.Profiles))
 	for name := range d.Profiles {
@@ -414,6 +433,28 @@ func expandHome(p, home string) string {
 		return p
 	}
 	return filepath.Join(home, p[1:])
+}
+
+// checkServeURL accepts https, or http to a loopback host.
+func checkServeURL(key, raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return fmt.Errorf("%s: %q is not a URL with a host", key, raw)
+	}
+	switch u.Scheme {
+	case "https":
+		return nil
+	case "http":
+		host := u.Hostname()
+		if host == "localhost" {
+			return nil
+		}
+		if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+			return nil
+		}
+		return fmt.Errorf("%s: %q uses http to a host that is not loopback; use https", key, raw)
+	}
+	return fmt.Errorf("%s: %q must use https (or http to loopback)", key, raw)
 }
 
 func setMin1(key string, v *int, dst *int) error {

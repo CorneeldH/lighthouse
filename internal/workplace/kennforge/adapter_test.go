@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/CorneeldH/lighthouse/internal/nodeapi"
 	"github.com/CorneeldH/lighthouse/internal/workplace"
 )
 
@@ -51,10 +52,6 @@ type fakeForge struct {
 	release      chan struct{}
 	// onHandoff runs when the handoff POST arrives.
 	onHandoff func()
-	// runtime answers GET /workspaces/ws1/runtime, one entry per call; the last repeats.
-	runtime []string
-	// runtimeStatus, when set, answers the runtime reads instead.
-	runtimeStatus int
 	// offline makes the fake hub answer this node as a spoke without a tunnel.
 	offline bool
 	// back: the hub answers this node as offline, but the next snapshot already reports it
@@ -69,7 +66,6 @@ func newForgeNode(t *testing.T) *fakeForge {
 		t: t, counts: map[string]int{}, bodies: map[string]string{},
 		listBody: `{"workspaces":[]}`, createBody: `{"id":"ws1"}`,
 		statuses: []string{"ready"}, sessions: []string{`{"sessions":[]}`},
-		runtime:       []string{`{"launch_targets":[],"sessions":[]}`},
 		handoffStatus: 200, handoffBody: `{"session":{"key":"k-new"}}`,
 		deleteStatus: 204, release: make(chan struct{}),
 	}
@@ -162,12 +158,6 @@ func (f *fakeForge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		w.WriteHeader(f.handoffStatus)
 		_, _ = w.Write([]byte(f.handoffBody))
-	case "GET /api/v1/workspaces/ws1/runtime":
-		if f.runtimeStatus != 0 {
-			w.WriteHeader(f.runtimeStatus)
-			return
-		}
-		_, _ = w.Write([]byte(next(f.runtime, n)))
 	case "DELETE /api/v1/workspaces/ws1":
 		w.WriteHeader(f.deleteStatus)
 	default:
@@ -1094,4 +1084,432 @@ func TestLocalIDIsNoForgeWorkspace(t *testing.T) {
 	if _, statErr := os.Stat(workplace.CarrierPath(a.StateDir, "", id)); !errors.Is(statErr, os.ErrNotExist) {
 		t.Errorf("Spawn: carrier for %s exists (stat err = %v)", id, statErr)
 	}
+}
+
+// --- On another node: through serve (#327) ----------------------------------
+
+// AC 1: the carrier goes to the node with the run's session id and the content of the run
+// instructions, before the hub sees the handoff; the tick keeps no carrier of its own.
+func TestSpawnOnNodeWritesCarrierBeforeHandoff(t *testing.T) {
+	_, _, sa, a := twoNodes(t, "node-a")
+	l := nodeSpec(t)
+	l.MCPConfig = "/node/mcp.json"
+	if _, err := a.Spawn(context.Background(), ws1, l); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"serve " + launchRoute, "serve " + sessionsRoute, "handoff node-a"}
+	if got := sa.ev.all(); strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Errorf("order = %q, want %q", got, want)
+	}
+	req := decodeLaunch(t, sa)
+	wantReq := nodeapi.LaunchRequest{
+		Repo: "lighthouse", Issue: 7, SessionID: testSessionID, Mode: "start", Profile: "software",
+		Prompt: "do the thing", MCPConfig: "/node/mcp.json", Instructions: "# instructions of the run\n",
+	}
+	if req != wantReq {
+		t.Errorf("launch = %+v, want %+v", req, wantReq)
+	}
+	if strings.Contains(sa.body(launchRoute), l.InstructionsFile) {
+		t.Errorf("launch body %s names the tick's instructions path", sa.body(launchRoute))
+	}
+	noTickCarriers(t, a)
+}
+
+// A launch that fails sends no handoff: no agent can start without its carrier.
+func TestSpawnLaunchFailureSendsNoHandoff(t *testing.T) {
+	cases := map[string]answer{
+		"refused":      {http.StatusBadRequest, nodeapi.Problem{Status: 400, Detail: "prompt starts with -"}},
+		"server error": {http.StatusInternalServerError, nodeapi.Problem{Status: 500, Detail: "disk full"}},
+		"auth":         {http.StatusForbidden, nodeapi.Problem{Status: 403, Detail: "wrong bearer token"}},
+	}
+	for name, ans := range cases {
+		t.Run(name, func(t *testing.T) {
+			fa, _, sa, a := twoNodes(t, "node-a")
+			sa.on(launchRoute, ans.status, ans.body)
+			_, err := a.Spawn(context.Background(), ws1, nodeSpec(t))
+			if !errors.Is(err, workplace.ErrNotAccepted) || errors.Is(err, workplace.ErrUncertain) {
+				t.Errorf("err = %v, want ErrNotAccepted and not ErrUncertain", err)
+			}
+			if n := fa.count(handoffKey); n != 0 {
+				t.Errorf("handoffs = %d, want 0", n)
+			}
+		})
+	}
+	t.Run("unreachable", func(t *testing.T) {
+		fa, _, _, a := twoNodes(t, "node-a")
+		dead := newFakeServe(t, &events{})
+		a.Serve = dead.client(t)
+		dead.srv.Close()
+		if _, err := a.Spawn(context.Background(), ws1, nodeSpec(t)); !errors.Is(err, workplace.ErrNotAccepted) {
+			t.Errorf("err = %v, want ErrNotAccepted", err)
+		}
+		if n := fa.count(handoffKey); n != 0 {
+			t.Errorf("handoffs = %d, want 0", n)
+		}
+	})
+	t.Run("no instructions", func(t *testing.T) {
+		fa, _, sa, a := twoNodes(t, "node-a")
+		l := spec() // its instructions file does not exist
+		if _, err := a.Spawn(context.Background(), ws1, l); !errors.Is(err, workplace.ErrNotAccepted) {
+			t.Errorf("err = %v, want ErrNotAccepted", err)
+		}
+		if n := fa.count(handoffKey) + sa.requests(); n != 0 {
+			t.Errorf("requests = %d, want 0", n)
+		}
+	})
+}
+
+// A launch that may have written the carrier (5xx, or no answer) has it deleted; a launch the
+// node refused (4xx) wrote nothing to delete.
+func TestSpawnLaunch5xxDeletesCarrier(t *testing.T) {
+	cases := []struct {
+		name    string
+		ans     answer
+		deletes int
+	}{
+		{"server error", answer{http.StatusBadGateway, nodeapi.Problem{Status: 502, Detail: "forge down"}}, 1},
+		{"no answer", answer{hang, nil}, 1},
+		{"refused", answer{http.StatusBadRequest, nodeapi.Problem{Status: 400, Detail: "bad session"}}, 0},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			_, _, sa, a := twoNodes(t, "node-a")
+			sa.on(launchRoute, c.ans.status, c.ans.body)
+			if c.ans.status == hang {
+				a.Serve.HTTP.Timeout = 300 * time.Millisecond
+			}
+			if _, err := a.Spawn(context.Background(), ws1, nodeSpec(t)); !errors.Is(err, workplace.ErrNotAccepted) {
+				t.Errorf("err = %v, want ErrNotAccepted", err)
+			}
+			if n := sa.count(carrierRoute); n != c.deletes {
+				t.Errorf("carrier deletes = %d, want %d", n, c.deletes)
+			}
+		})
+	}
+	// The tick's context ran out while launch hung: the delete still goes out, on a context of
+	// its own, so no carrier is left for a handoff that never came.
+	t.Run("caller gives up", func(t *testing.T) {
+		_, _, sa, a := twoNodes(t, "node-a")
+		sa.on(launchRoute, hang, nil)
+		ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+		defer cancel()
+		if _, err := a.Spawn(ctx, ws1, nodeSpec(t)); !errors.Is(err, workplace.ErrNotAccepted) {
+			t.Errorf("err = %v, want ErrNotAccepted", err)
+		}
+		if n := sa.count(carrierRoute); n != 1 {
+			t.Errorf("carrier deletes = %d, want 1 after the caller's context ran out", n)
+		}
+	})
+	t.Run("delete fails", func(t *testing.T) {
+		_, _, sa, a := twoNodes(t, "node-a")
+		sa.on(launchRoute, http.StatusInternalServerError, nodeapi.Problem{Status: 500, Detail: "disk full"})
+		sa.on(carrierRoute, http.StatusInternalServerError, nodeapi.Problem{Status: 500, Detail: "carrier stuck"})
+		_, err := a.Spawn(context.Background(), ws1, nodeSpec(t))
+		if !errors.Is(err, workplace.ErrNotAccepted) || !strings.Contains(err.Error(), "carrier stuck") {
+			t.Errorf("err = %v, want ErrNotAccepted with the failed delete", err)
+		}
+	})
+}
+
+// A handoff without an answer may have started an agent: the carrier on the node stays, and no
+// second handoff goes out. A refused handoff deletes it.
+func TestSpawnUncertainKeepsCarrier(t *testing.T) {
+	fa, _, sa, a := twoNodes(t, "node-a")
+	fa.handoffBlock = true
+	a.spawnTimeout = 100 * time.Millisecond
+	if _, err := a.Spawn(context.Background(), ws1, nodeSpec(t)); !errors.Is(err, workplace.ErrUncertain) {
+		t.Fatalf("err = %v, want ErrUncertain", err)
+	}
+	if n := sa.count(carrierRoute); n != 0 {
+		t.Errorf("carrier deletes = %d, want 0: an agent may read it", n)
+	}
+	if n := fa.count(handoffKey); n != 1 {
+		t.Errorf("handoffs = %d, want 1", n)
+	}
+
+	fa, _, sa, a = twoNodes(t, "node-a")
+	fa.handoffStatus = http.StatusUnprocessableEntity
+	if _, err := a.Spawn(context.Background(), ws1, nodeSpec(t)); !errors.Is(err, workplace.ErrNotAccepted) {
+		t.Fatalf("refused handoff: err = %v, want ErrNotAccepted", err)
+	}
+	if n := sa.count(carrierRoute); n != 1 {
+		t.Errorf("carrier deletes after a refused handoff = %d, want 1", n)
+	}
+}
+
+// AC 1: Sessions on a node carry the session id, the state and updated_at, so the rules of
+// self apply: the run's own key is recognised, and an open run's working session is busy.
+func TestSessionsOnNodeCarrySessionID(t *testing.T) {
+	fa, _, sa, a := twoNodes(t, "node-a")
+	sa.on(sessionsRoute, http.StatusOK, []nodeapi.Session{
+		{Key: "k1", State: "working", SessionID: testSessionID, UpdatedAt: "2026-11-15T10:00:00Z"},
+		{Key: "k2", State: "done", SessionID: "22222222-2222-4222-8222-222222222222"},
+	})
+	ss, err := a.Sessions(context.Background(), "ws1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []workplace.Session{
+		{Key: "k1", WorkspaceID: "ws1", State: "working", SessionID: testSessionID, UpdatedAt: time.Date(2026, 11, 15, 10, 0, 0, 0, time.UTC)},
+		{Key: "k2", WorkspaceID: "ws1", State: "done", SessionID: "22222222-2222-4222-8222-222222222222"},
+	}
+	if len(ss) != 2 || !ss[0].UpdatedAt.Equal(want[0].UpdatedAt) || ss[0].Key != want[0].Key || ss[0].SessionID != want[0].SessionID || ss[0].State != want[0].State || ss[1] != want[1] {
+		t.Fatalf("sessions = %+v, want %+v", ss, want)
+	}
+	own := workplace.Own{"k1": testSessionID}
+	if !own.Has(ss[0]) {
+		t.Errorf("Own.Has(%+v) = false, want the run's own session", ss[0])
+	}
+	if s, busy := workplace.Busy(ss, own, map[string]bool{testSessionID: true}, nil, time.Now(), time.Hour); !busy || s.Key != "k1" {
+		t.Errorf("Busy = %+v, %v; want k1 busy", s, busy)
+	}
+	if n := fa.total(); n != 0 {
+		t.Errorf("requests on the hub's node-a = %d, want 0: sessions come from serve", n)
+	}
+}
+
+// AC 3: Prepare on a node finds the workspace through the hub and then follows the remote
+// branch through serve, never with git on this host.
+func TestPrepareOnNodeFollowsRemote(t *testing.T) {
+	fa, _, sa, a := twoNodes(t, "node-a")
+	fa.listBody = listWith("issue-1-x")
+	fa.path = "/node/ws1"
+	ws, err := a.Prepare(context.Background(), "issue-1-x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ws != (workplace.Workspace{ID: "ws1", Path: "/node/ws1", Branch: "issue-1-x"}) {
+		t.Errorf("ws = %+v", ws)
+	}
+	if got := sa.body(followRoute); got != `{"branch":"issue-1-x","created":false}` {
+		t.Errorf("follow body = %s, want the branch of a found workspace", got)
+	}
+}
+
+// AC 3: own work on the node comes back as the *workplace.OwnWorkError serve sent, with the
+// same fields as on self.
+func TestPrepareOnNodeOwnWorkReturnsOwnWorkError(t *testing.T) {
+	fa, _, sa, a := twoNodes(t, "node-a")
+	fa.listBody = listWith("issue-1-x")
+	fa.path = "/node/ws1"
+	sent := workplace.Workspace{ID: "ws1", Path: "/node/ws1", Branch: "issue-1-x"}
+	sa.on(followRoute, http.StatusConflict, nodeapi.OwnWork{
+		Status: 409, Code: nodeapi.CodeOwnWork, Detail: "own work", Workspace: sent, Commits: 2, Dirty: true,
+	})
+	_, err := a.Prepare(context.Background(), "issue-1-x")
+	var own *workplace.OwnWorkError
+	if !errors.As(err, &own) {
+		t.Fatalf("err = %v, want *workplace.OwnWorkError", err)
+	}
+	if *own != (workplace.OwnWorkError{Workspace: sent, Commits: 2, Dirty: true}) {
+		t.Errorf("own work = %+v", *own)
+	}
+}
+
+// A serve that does not answer the follow fails Prepare, as an unreachable node does.
+func TestPrepareFollowUnreachableFails(t *testing.T) {
+	fa, _, sa, a := twoNodes(t, "node-a")
+	fa.listBody = listWith("issue-1-x")
+	fa.path = "/node/ws1"
+	sa.srv.Close()
+	_, err := a.Prepare(context.Background(), "issue-1-x")
+	var own *workplace.OwnWorkError
+	if err == nil || errors.As(err, &own) || !strings.Contains(err.Error(), "follow") {
+		t.Errorf("err = %v, want a follow error", err)
+	}
+}
+
+// Stop and Kill on a node end claude through serve, with the run's profile and session ids.
+func TestStopOnNodeEndsClaude(t *testing.T) {
+	for _, name := range []string{"Stop", "Kill"} {
+		t.Run(name, func(t *testing.T) {
+			fa, _, sa, a := twoNodes(t, "node-a")
+			a.UnitPrefix = "" // the tick's own unit_prefix plays no part on a node
+			call, route := a.Stop, stopRoute
+			if name == "Kill" {
+				call, route = a.Kill, killRoute
+			}
+			if err := call(context.Background(), "ws1", []string{testSessionID}); err != nil {
+				t.Fatalf("%s: %v", name, err)
+			}
+			want := `{"profile":"software","session_ids":["` + testSessionID + `"]}`
+			if got := sa.body(route); got != want {
+				t.Errorf("%s body = %s, want %s", name, got, want)
+			}
+			if n := fa.total(); n != 0 {
+				t.Errorf("requests on the hub's node-a = %d, want 0", n)
+			}
+		})
+	}
+}
+
+// Discard and Remove on a node delete the carrier on the node, never one on this host.
+func TestDiscardAndRemoveDeleteNodeCarrier(t *testing.T) {
+	_, _, sa, a := twoNodes(t, "node-a")
+	if err := a.Discard(context.Background(), "ws1"); err != nil {
+		t.Fatal(err)
+	}
+	if n := sa.count(carrierRoute); n != 1 {
+		t.Errorf("carrier deletes after Discard = %d, want 1", n)
+	}
+	if err := a.Remove(context.Background(), "ws1"); err != nil {
+		t.Fatal(err)
+	}
+	if n := sa.count(carrierRoute); n != 2 {
+		t.Errorf("carrier deletes after Remove = %d, want 2", n)
+	}
+	sa.on(carrierRoute, http.StatusInternalServerError, nodeapi.Problem{Status: 500, Detail: "carrier stuck"})
+	if err := a.Discard(context.Background(), "ws1"); err == nil || !strings.Contains(err.Error(), "carrier stuck") {
+		t.Errorf("Discard with a failing delete: err = %v, want it", err)
+	}
+}
+
+// A 404 workspace_gone of serve is "gone" only while the hub does not know the workspace either
+// and reports the node reachable; otherwise uncertain. For Stop and Kill a confirmed gone
+// workspace leaves nothing serve can stop: no error.
+func TestRemoveGoneNeedsHubConfirmation(t *testing.T) {
+	cases := []struct {
+		name      string
+		hub       func(fa *fakeForge)
+		confirmed bool
+	}{
+		{"hub knows it", func(*fakeForge) {}, false},
+		{"hub 404, node reachable", func(fa *fakeForge) { fa.getStatus = http.StatusNotFound }, true},
+		{"hub does not reach the node", func(fa *fakeForge) { fa.offline = true }, false},
+		{"hub fails", func(fa *fakeForge) { fa.getStatus = http.StatusInternalServerError }, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			fa, _, sa, a := twoNodes(t, "node-a")
+			fa.path = "/node/ws1"
+			c.hub(fa)
+			for _, route := range []string{sessionsRoute, stopRoute, killRoute} {
+				sa.on(route, http.StatusNotFound, gone())
+			}
+			_, err := a.Sessions(context.Background(), "ws1")
+			if c.confirmed != errors.Is(err, workplace.ErrGone) || c.confirmed == errors.Is(err, workplace.ErrUncertain) {
+				t.Errorf("Sessions: err = %v, want gone %v, else uncertain", err, c.confirmed)
+			}
+			for name, call := range map[string]func(context.Context, string, []string) error{"Stop": a.Stop, "Kill": a.Kill} {
+				err := call(context.Background(), "ws1", []string{testSessionID})
+				if c.confirmed && err != nil {
+					t.Errorf("%s: err = %v, want nil for a workspace that is gone", name, err)
+				}
+				if !c.confirmed && !errors.Is(err, workplace.ErrUncertain) {
+					t.Errorf("%s: err = %v, want ErrUncertain", name, err)
+				}
+			}
+		})
+	}
+}
+
+// A token serve refuses is a configuration error: not measurable, never gone.
+func TestAuthFailureIsNotMeasurable(t *testing.T) {
+	_, _, sa, a := twoNodes(t, "node-a")
+	sa.token = "another-token"
+	_, err := a.Sessions(context.Background(), "ws1")
+	if !errors.Is(err, workplace.ErrNotMeasurable) || errors.Is(err, workplace.ErrGone) || !strings.Contains(err.Error(), "configuration error") {
+		t.Errorf("Sessions: err = %v, want a configuration error that is not measurable", err)
+	}
+	if _, err := a.Dirty(context.Background(), "ws1"); !errors.Is(err, workplace.ErrNotMeasurable) {
+		t.Errorf("Dirty: err = %v, want not measurable", err)
+	}
+}
+
+// The git measurements of the sweep on a node come from serve, with the merged head as asked.
+func TestGitMeterOnNodeAsksServe(t *testing.T) {
+	const head = "0123456789abcdef0123456789abcdef01234567"
+	_, _, sa, a := twoNodes(t, "node-a")
+	var m workplace.GitMeter = a
+	sa.on(gitRoute, http.StatusOK, nodeapi.GitState{Dirty: true, Unpushed: false})
+	dirty, err := m.Dirty(context.Background(), "ws1")
+	if err != nil || !dirty {
+		t.Errorf("Dirty = %v, %v; want true", dirty, err)
+	}
+	sa.on(gitRoute, http.StatusOK, nodeapi.GitState{Dirty: false, Unpushed: true})
+	unpushed, err := m.Unpushed(context.Background(), "ws1", head)
+	if err != nil || !unpushed {
+		t.Errorf("Unpushed = %v, %v; want true", unpushed, err)
+	}
+	if got := sa.query(gitRoute); got != "merged_head="+head {
+		t.Errorf("git query = %q, want the merged head", got)
+	}
+	sa.on(gitRoute, http.StatusInternalServerError, nodeapi.Problem{Status: 500, Detail: "git status failed"})
+	if _, err := m.Dirty(context.Background(), "ws1"); !errors.Is(err, workplace.ErrNotMeasurable) {
+		t.Errorf("Dirty with a failing git: err = %v, want not measurable", err)
+	}
+}
+
+func TestRelocateOnNodeAsksServe(t *testing.T) {
+	_, _, sa, a := twoNodes(t, "node-a")
+	var r workplace.Relocator = a
+	sa.on(relocateRoute, http.StatusOK, nodeapi.Relocation{Command: "/plan work/plan.md"})
+	got, err := r.Relocate(context.Background(), "ws1", "/plan /old/work/plan.md")
+	if err != nil || got != "/plan work/plan.md" {
+		t.Errorf("Relocate = %q, %v; want the node's command", got, err)
+	}
+	if body := sa.body(relocateRoute); body != `{"command":"/plan /old/work/plan.md"}` {
+		t.Errorf("relocate body = %s", body)
+	}
+	sa.on(relocateRoute, http.StatusUnprocessableEntity, nodeapi.Problem{Status: 422, Detail: "plan.md not in the worktree"})
+	if _, err := r.Relocate(context.Background(), "ws1", "/plan x.md"); err == nil || !strings.Contains(err.Error(), "plan.md not in the worktree") {
+		t.Errorf("Relocate refused: err = %v, want the node's reason", err)
+	}
+}
+
+func TestPermissionOnNodeAsksServe(t *testing.T) {
+	_, _, sa, a := twoNodes(t, "node-a")
+	var p workplace.PermissionReader = a
+	sa.on(permissionRoute, http.StatusOK, map[string]string{"tool": "Bash"})
+	got, err := p.Permission(context.Background(), testSessionID)
+	if err != nil || strings.TrimSpace(string(got)) != `{"tool":"Bash"}` {
+		t.Errorf("Permission = %q, %v; want the raw note", got, err)
+	}
+	sa.on(permissionRoute, http.StatusNotFound, nodeapi.Problem{Status: 404, Code: nodeapi.CodeNoPermission, Detail: "none"})
+	if got, err := p.Permission(context.Background(), testSessionID); got != nil || err != nil {
+		t.Errorf("Permission without a note = %q, %v; want nil, nil", got, err)
+	}
+}
+
+// The adapter on self has no serve: the node measurements are not measurable there, so a caller
+// that asks them of self by mistake never reads a clean or empty answer.
+func TestNodeMeasurementsOnSelfNotMeasurable(t *testing.T) {
+	f, a := newFakeForge(t)
+	calls := map[string]func() error{
+		"Dirty":      func() error { _, err := a.Dirty(context.Background(), "ws1"); return err },
+		"Unpushed":   func() error { _, err := a.Unpushed(context.Background(), "ws1", ""); return err },
+		"Relocate":   func() error { _, err := a.Relocate(context.Background(), "ws1", "/plan x.md"); return err },
+		"Permission": func() error { _, err := a.Permission(context.Background(), testSessionID); return err },
+	}
+	for name, call := range calls {
+		if err := call(); !errors.Is(err, workplace.ErrNotMeasurable) {
+			t.Errorf("%s on self: err = %v, want not measurable", name, err)
+		}
+	}
+	if n := f.total(); n != 0 {
+		t.Errorf("requests = %d, want 0", n)
+	}
+}
+
+// An adapter on a node without a serve client cannot reach the node: every route that needs
+// serve fails, and none falls back to this host.
+func TestNodeWithoutServeFails(t *testing.T) {
+	fa, _, _, a := twoNodes(t, "node-a")
+	a.Serve = nil
+	if _, err := a.Spawn(context.Background(), ws1, nodeSpec(t)); !errors.Is(err, workplace.ErrNotAccepted) {
+		t.Errorf("Spawn: err = %v, want ErrNotAccepted", err)
+	}
+	if _, err := a.Sessions(context.Background(), "ws1"); !errors.Is(err, workplace.ErrNotMeasurable) {
+		t.Errorf("Sessions: err = %v, want not measurable", err)
+	}
+	if err := a.Kill(context.Background(), "ws1", []string{testSessionID}); err == nil {
+		t.Error("Kill: err = nil, want an error")
+	}
+	if err := a.Discard(context.Background(), "ws1"); err == nil {
+		t.Error("Discard: err = nil, want an error")
+	}
+	if n := fa.count(handoffKey); n != 0 {
+		t.Errorf("handoffs = %d, want 0", n)
+	}
+	noTickCarriers(t, a)
 }

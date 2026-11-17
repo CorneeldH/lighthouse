@@ -51,6 +51,12 @@ func (d *Duration) UnmarshalText(b []byte) error {
 // permissionVersion is the version of the note the permission-check hook writes.
 const permissionVersion = 1
 
+// PermissionPath is <stateDir>/runs/<sessionID>/permission.json, the note ReadPermission
+// reads. It checks nothing.
+func PermissionPath(stateDir, sessionID string) string {
+	return filepath.Join(stateDir, "runs", sessionID, "permission.json")
+}
+
 // ReadPermission reads <stateDir>/runs/<sessionID>/permission.json: the note the
 // permission-check hook writes for the run whose LIGHTHOUSE_CONTROLLER_RUN is sessionID. No
 // note is nil, nil; a note that does not parse, has another version or no time is an error.
@@ -58,7 +64,7 @@ func ReadPermission(stateDir, sessionID string) (*Permission, error) {
 	if err := checkFileName(sessionID); err != nil {
 		return nil, err
 	}
-	path := filepath.Join(stateDir, "runs", sessionID, "permission.json")
+	path := PermissionPath(stateDir, sessionID)
 	data, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
@@ -66,18 +72,29 @@ func ReadPermission(stateDir, sessionID string) (*Permission, error) {
 	if err != nil {
 		return nil, fmt.Errorf("dispatch: permission note: %w", err)
 	}
+	p, err := ParsePermission(data)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	return p, nil
+}
+
+// ParsePermission reads the bytes of a permission note, as the permission-check hook writes
+// it, on this host or on a node. A note that does not parse, has another version or no time is
+// an error.
+func ParsePermission(data []byte) (*Permission, error) {
 	var note struct {
 		Version int `json:"version"`
 		Permission
 	}
 	if err := json.Unmarshal(data, &note); err != nil {
-		return nil, fmt.Errorf("dispatch: permission note %s: %w", path, err)
+		return nil, fmt.Errorf("dispatch: permission note: %w", err)
 	}
 	if note.Version != permissionVersion {
-		return nil, fmt.Errorf("dispatch: permission note %s: version %d, want %d", path, note.Version, permissionVersion)
+		return nil, fmt.Errorf("dispatch: permission note: version %d, want %d", note.Version, permissionVersion)
 	}
 	if note.At.IsZero() {
-		return nil, fmt.Errorf("dispatch: permission note %s: no time", path)
+		return nil, errors.New("dispatch: permission note: no time")
 	}
 	return &note.Permission, nil
 }

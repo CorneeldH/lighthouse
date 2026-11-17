@@ -25,7 +25,7 @@
           "form": "you",
           "kind": "you",
           "label": "You bring",
-          "note": "Claude Code, git, gh, jq, python3",
+          "note": "Claude Code, git, gh, jq",
           "href": "#bring"
         }
       ]
@@ -118,7 +118,7 @@
         "A tool per language matters only with the pack for that language, which init proposes when it recognises your repository. codex is optional: it runs the reviews by another model family."
       ],
       "groups": [
-        { "label": "Needed", "tools": ["Claude Code", "git", "python3 3.11+", "jq", "superpowers"] },
+        { "label": "Needed", "tools": ["Claude Code", "git", "jq", "superpowers"] },
         { "label": "For GitHub", "tools": ["gh"] },
         {
           "label": "Per language",

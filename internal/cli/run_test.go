@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -459,5 +460,26 @@ func TestRunSettlesParked(t *testing.T) {
 	rows := history(t, conn, "o/r")
 	if len(rows) == 0 || rows[0].Open || rows[0].Outcome != runs.Parked {
 		t.Errorf("runs = %+v, want the first closed as parked\n%s", rows, errOut.String())
+	}
+}
+
+// lighthouse run refuses a start on a node whose markers do not read, as the tick does: it skips
+// memory, slots and software, not an unknown occupancy.
+func TestRunNodeMarkersUnreadableNoStart(t *testing.T) {
+	env, db, hub, _ := nodeTick(t, macIssue(7))
+	a := hub.nodes[hub.ids[0]]
+	a.set(func(n *hubNode) { n.markersStatus = http.StatusBadGateway })
+	var errOut bytes.Buffer
+	if err := runIssue(context.Background(), env, "o/r#7", db, &errOut); err != nil {
+		t.Fatalf("run = %v\n%s", err, errOut.String())
+	}
+	if !strings.Contains(errOut.String(), "lighthouse: deferred o/r#7") || !strings.Contains(errOut.String(), "markers not readable") {
+		t.Errorf("errOut = %q, want #7 deferred for markers not readable", errOut.String())
+	}
+	if n := a.postCount(); n != 0 {
+		t.Errorf("handoffs on node a = %d, want none", n)
+	}
+	if got := hub.requests(hub.ids[0] + " serve PUT /api/node/v1/workspaces/"); len(got) != 0 {
+		t.Errorf("launches on node a = %q, want none", got)
 	}
 }

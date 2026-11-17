@@ -1,6 +1,6 @@
 ---
 name: lighthouse-write-pr
-description: 'Use before every `gh pr create` in this repo — "make a PR", the push + PR choice in finishing-a-development-branch, or when pr-create-gate blocks. Verifies each acceptance criterion of the issue on the branch and writes the PR body itself — `Refs #N — <reason>` with an Evidence table of the proven criteria, or `No issue: <reason>` — without asking a question, interactive and headless alike. NOTE — not for closing an issue or checking after the merge: use lighthouse-close-issue instead; repairing a red PR is lighthouse-fix-pr.'
+description: 'Use before every `lighthouse forge pr create` in this repo (a PR, an MR on GitLab; the gate also stops `gh pr create` and `glab mr create`) — "make a PR", the push + PR choice in finishing-a-development-branch, or when pr-create-gate blocks. Verifies each acceptance criterion of the issue on the branch and writes the PR body itself — `Refs #N — <reason>` with an Evidence table of the proven criteria, or `No issue: <reason>` — without asking a question, interactive and headless alike. NOTE — not for closing an issue or checking after the merge: use lighthouse-close-issue instead; repairing a red PR is lighthouse-fix-pr.'
 metadata:
   binding: hard
   origin: own
@@ -15,9 +15,9 @@ question: interactive and headless (controller run, if present) the outcome is t
 
 ## When
 
-- Before every `gh pr create`, also "make a PR" and the choice push + PR in
+- Before every `lighthouse forge pr create`, also "make a PR" and the choice push + PR in
   `finishing-a-development-branch`.
-- When `.claude/hooks/lighthouse/run.sh pr-create-gate` blocks a `gh pr create`.
+- When `.claude/hooks/lighthouse/run.sh pr-create-gate` blocks a PR or MR create.
 - `/lighthouse-write-pr <nr>`. Without an argument the number comes from the branch
   `issue-<nr>-…` (`git branch --show-current`). No issue: the body gets `No issue: <reason>`
   (≥10 characters) and no milestone; skip V1–V3 (V2b still runs).
@@ -25,14 +25,12 @@ question: interactive and headless (controller run, if present) the outcome is t
 ## V1. Read the issue
 
 ```bash
-R=$(lighthouse config forge.repo) || exit 2
-gh api "repos/$R/issues/<nr>" \
-  --jq '{title, milestone: .milestone.title, body}'
+lighthouse forge issue view <nr>
 ```
 
-Every checkbox under `### heading:acceptance_criteria` (any language variant) is one AC, and each
-gets a verdict. Also note the DoD and the milestone title. `gh` runs outside the sandbox
-(`dangerouslyDisableSandbox: true`).
+Every checkbox under `### heading:acceptance_criteria` (any language variant) of `body` is one AC,
+and each gets a verdict. Also note the DoD and `milestone.title`. `lighthouse forge` runs outside
+the sandbox (`dangerouslyDisableSandbox: true`).
 
 ## V2. Evidence per AC
 
@@ -42,7 +40,7 @@ open files. What counts as evidence and what does *not*: B2–B4 of
 
 ## V2b. Roborev review (only with `[review] roborev = "local"`)
 
-The session that did the work reviews it before `gh pr create`, so CI runs once, on code where
+The session that did the work reviews it before `lighthouse forge pr create`, so CI runs once, on code where
 the findings are already processed. In a controller run the **build session** reviews, in V2b,
 before its push and its handoff; the write-pr run never reviews: the run that starts with
 `/lighthouse-write-pr <nr>` finds `done` at step 0 and changes no code. If the gate says `run` or
@@ -158,7 +156,9 @@ not exist: `lighthouse evidence run --before-pr` fails on a row that does not ho
 no table.
 
 `Closes` stays valid for a PR a person opens without this skill. This skill never writes it: the
-merge would close the issue before the check after the merge.
+merge would close the issue before the check after the merge. Nor any other closing keyword: which
+words close an issue on each forge (GitLab also closes on `implements`) is
+`../lighthouse-forge/<kind>.md §sluitwoorden`, with `<kind>` from `lighthouse config forge.kind`. <!-- lighthouse: allow-language — the section name of the forge reference -->
 
 ## Documents of the linked issues
 
@@ -168,14 +168,14 @@ section, with no note in the body. The same when the file has no label with a `D
 entry. rc 2: the configuration is broken; stop and report it, no PR.
 
 For every `Closes #N` and every `Refs #N` of the body, read the labels:
-`gh issue view N --json labels`. For each label that has a `Document` in the taxonomy file, ask:
+`lighthouse forge issue view N --field labels`. For each label that has a `Document` in the taxonomy file, ask:
 does the branch deliver what the issue changes?
 
 - With `Closes #N`: yes.
 - With `Refs #N`: judge from the diff and the AC of the issue.
 
 Yes: update the document the way the taxonomy file describes, commit it and push it before
-`gh pr create`. No: do nothing, and leave no note in the body.
+`lighthouse forge pr create`. No: do nothing, and leave no note in the body.
 
 A re-run writes nothing twice: when the update the taxonomy file describes is already in the
 document on this branch (the branch diff touches it for #N), the step is done.
@@ -189,8 +189,8 @@ a user can notice adds one. First look at what the branch already adds:
 that already has a fragment there gets no new one; a re-run of the skill (after a `pr-create-gate`
 block, say) writes nothing twice.
 
-For each change without a fragment, write one before `gh pr create`, commit it on the branch and
-push. The file is `changelog.d/<branch>.md`, a `/` in the branch name becoming `-`. For the
+For each change without a fragment, write one before `lighthouse forge pr create`, commit it on
+the branch and push. The file is `changelog.d/<branch>.md`, a `/` in the branch name becoming `-`. For the
 branch's next fragment, or a name held by an open fragment of another branch, take the first free
 `-<n>` from 2 (`<branch>-2.md`, `<branch>-3.md`). The format is front matter with exactly one
 `type:` line between two `---` lines, then one to three sentences:
@@ -243,6 +243,9 @@ option not on the list is refused, an option with `=` and an empty value too.
 | `gh api <path>` | GET with `--jq`/`-q`; a path, not a URL | `-X`/`--method`, `-f`/`-F`/`--field`/`--raw-field`, `--input`, `-H`/`--header` |
 | `gh api graphql` | exactly one `-f query=…` without `mutation`, plus `--jq` | any other field flag |
 | `gh issue view`, `gh pr view` | exactly one number or github.com URL, `--json`, `--jq`/`-q`, `--repo`/`-R`, `--comments`/`-c` | `--web`/`-w` (starts a browser); no number (gh then falls back on the branch of the cwd) |
+| `lighthouse forge issue view`, `lighthouse forge issue search`, `lighthouse forge issue blockers`, `lighthouse forge pr view`, `lighthouse forge milestone view` | exactly one argument (a number; the text for `issue search`, the title for `milestone view`), plus `--field`; `issue view` also `--comments` | every write form (`create`, `edit`, `comment`, `block`, `status`), `--`, any other option |
+| `lighthouse forge issue list`, `lighthouse forge milestone list`, `lighthouse forge label list` | no argument, `--field`; `issue list` also `--state`, `--label`, `--milestone`; `milestone list` also `--state` | any other option |
+| `lighthouse forge api <path>` | a GET: one path, at most one `-X GET` | `-f`/`-F` (a write, never in Evidence), any other `-X`, a URL, a `graphql` segment, a `..` segment, a `%` in the path |
 
 The test directory is `lighthouse config test_gate.evidence_test_dir`.
 A `--jq` expression may not contain `env`, `$ENV` or `input`/`inputs`. Extending the list is a
@@ -257,7 +260,8 @@ lighthouse evidence check '<Command cell>'
 Exit 0 (silent) = allowed; exit 1 + reason = choose another command.
 
 Before the PR, only if the body has a table, run all rows together, outside the sandbox
-(`dangerouslyDisableSandbox: true`, otherwise every `gh` row is `heading:evidence_unmeasurable`):
+(`dangerouslyDisableSandbox: true`, otherwise every `gh` or `lighthouse forge` row is
+`heading:evidence_unmeasurable`):
 
 ```bash
 lighthouse evidence run --issue <nr> --body-file <path> --cwd . --before-pr
@@ -294,8 +298,8 @@ configured; say so in `## Verification`).
 ## V4. Body file and command
 
 Write the body from `.github/pull_request_template.md` to the scratchpad or `$TMPDIR`, in a
-separate step (the Write tool), not in the same Bash call as `gh pr create`: the PreToolUse hook
-reads the file before the command runs.
+separate step (the Write tool), not in the same Bash call as `lighthouse forge pr create`: the
+PreToolUse hook reads the file before the command runs.
 
 Open review points: give the spec and plan documents the branch touches
 (`git diff --name-only origin/<default branch>...HEAD -- '<paths.specs>/*.md' '<paths.plans>/*.md'`)
@@ -311,26 +315,22 @@ to the body as a line of its own, outside the Evidence block. It is the marker
 `<!-- roborev-lokaal: <sha> -->` after a review, `Roborev overgeslagen: <reason>` after a skip, and
 empty with `off` (then no line).
 
-Then read the repo:
+Then give the command. The branch is on origin first (`git push -u origin HEAD`):
+`lighthouse forge pr create` pushes nothing, and opens the PR (an MR on GitLab) from the current
+branch into the default branch.
 
 ```bash
-lighthouse config forge.repo
+lighthouse forge pr create --title '<title>' --body-file <path> --milestone '<milestone>'
 ```
 
-Then give the command, with that output spelled out literally as `<forge.repo>`:
-
-```bash
-gh pr create --repo <forge.repo> --title '<title>' --body-file <path> --milestone "<milestone>"
-```
-
-`--repo` always, spelled out: in a clone of a fork gh otherwise opens the PR in the upstream repo,
-and `pr-create-gate` blocks a `gh pr create` without it, and one with `--repo "$R"` too (it cannot
-read a variable). `--title` always: without it gh asks for it, and headless it refuses. Single quotes, so the shell
-executes nothing in the title. `--milestone` only if the issue has one; with `No issue:` never.
-Never `--body "$(…)"`, `--fill` or `--web`: the hook blocks them.
+No `--repo`: the wrapper always opens the PR in `forge.repo`, also in a clone of a fork, where a
+bare `gh` would pick the upstream repo. `--title` always: the command refuses to run without it.
+Single quotes, so the shell executes nothing in the title. `--milestone` (a title) only if the
+issue has one; with `No issue:` never. The body comes only from `--body-file`, which the hook
+reads.
 
 Roborev comment, only after a `done` outcome of V2b (also when every finding was refuted). Right
-after `gh pr create`, with `<nr>` the number at the end of the URL it printed, and `<state>` and
+after `lighthouse forge pr create`, with `<nr>` the number it printed, and `<state>` and
 `<raw>` literally from the output of `lighthouse roborev-gate gate` (after a restart, run `gate` again;
 never build a path yourself):
 
@@ -339,15 +339,15 @@ lighthouse roborev-comment render --pr <nr> --bron lokaal --state <state> --raw 
 ```
 
 ```bash
-R=$(lighthouse config forge.repo) && gh pr comment <nr> --repo "$R" --body-file <file>
+lighthouse forge pr comment <nr> --body-file <file>
 ```
 
-`gh` outside the sandbox. If `gh pr comment` fails, report it: the state and the raw output stay
+`lighthouse forge` outside the sandbox. If `lighthouse forge pr comment` fails, report it: the state and the raw output stay
 on disk, so a second try needs only these two commands.
 
 ## V5. After the PR
 
-Only if `gh pr create` opened a PR for an issue (`Refs #N`); with `No issue:` V5 is skipped. The issue stays open until the check after the merge.
+Only if `lighthouse forge pr create` opened a PR for an issue (`Refs #N`); with `No issue:` V5 is skipped. The issue stays open until the check after the merge.
 
 - Interactive: `/lighthouse-write-handoff` with as first step `/lighthouse-close-issue <nr>`, to run
   after the merge (the row "work done, issue can be closed").
@@ -377,18 +377,19 @@ Refs #1091 — /lighthouse-close-issue runs these rows after the merge and close
 ## Counterpart
 
 `.claude/hooks/lighthouse/run.sh pr-create-gate` (PreToolUse on `Bash`) enforces the form at every
-`gh pr create`/`gh pr new`: no valid form, or a body that does not come from a literal value or
-`--body-file` → block. Under `Closes #N` the hook counts the rows against the criteria; under
-`Refs #N` it checks a table on form and does not count. If it cannot count the ACs of a `Closes`
-body (no `gh`, no network), it lets through loudly with `AC count not measurable` — that is no
-pass, name it in `## Verification`.
+PR or MR create. It recognises `lighthouse forge pr create`, and also `gh pr create` and `glab mr create`
+(and their `new`). No valid form, or a body that does not come from a literal value or a body file → block. Under
+`Closes #N` the hook counts the rows against the criteria; under `Refs #N` it checks a table on
+form and does not count. If it cannot count the ACs of a `Closes` body (no forge token, a forge
+error, no network), it lets through loudly with `AC count not measurable` — that is no pass, name
+it in `## Verification`.
 
 ## Outside Claude Code
 
 OpenCode and Codex do not run the hook. Check the body yourself then:
 
 ```bash
-printf '%s' "gh pr create --repo <forge.repo> --body-file <path>" | lighthouse pr-body-gate "$PWD"
+printf '%s' "lighthouse forge pr create --title '<title>' --body-file <path>" | lighthouse pr-body-gate "$PWD"
 ```
 
 Exit 0 = fine (read the messages on stdout); 2 = blocked (reason on stderr); 3 = open quote; any

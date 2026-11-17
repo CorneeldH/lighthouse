@@ -159,3 +159,25 @@ func TestIssue(t *testing.T) {
 		t.Fatalf("GET issue 8 = %d; want 404", code)
 	}
 }
+
+// POST pulls has no milestone field; the fake must refuse it, as GitHub does not apply it.
+func TestPostPullsRefusesMilestone(t *testing.T) {
+	srv := forgetest.New(t)
+	req, err := http.NewRequest(http.MethodPost, srv.URL()+"/repos/o/r/pulls",
+		strings.NewReader(`{"title":"t","head":"h","base":"main","milestone":3}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Authorization", "Bearer x")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("status = %d, want 422", resp.StatusCode)
+	}
+	if len(srv.Pulls) != 0 {
+		t.Errorf("pulls = %d, want none stored", len(srv.Pulls))
+	}
+}

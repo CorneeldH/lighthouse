@@ -3,9 +3,11 @@ import { renderHook } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  FORGE_INTERVAL_MS,
   newQueryClient,
   QUESTIONS_INTERVAL_MS,
   USAGE_INTERVAL_MS,
+  usePriorities,
   useQuestions,
   useReturned,
   useUsage,
@@ -148,5 +150,31 @@ describe('forge page staleTime', () => {
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
     late.unmount()
     client.clear()
+  })
+})
+
+describe('usePriorities', () => {
+  it('polls /api/priorities on the forge interval', async () => {
+    const fetchMock = vi.fn().mockImplementation(() =>
+      Promise.resolve(
+        new Response('{"repos":[],"runs":[]}', {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    const client = newQueryClient()
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    )
+
+    renderHook(() => usePriorities(), { wrapper })
+
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/priorities')
+    expect(client.getQueryCache().find({ queryKey: ['priorities'] })?.observers[0].options.refetchInterval).toBe(
+      FORGE_INTERVAL_MS,
+    )
   })
 })

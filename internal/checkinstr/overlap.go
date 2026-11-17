@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/CorneeldH/lighthouse/internal/frontmatter"
 )
 
 // overlapThreshold is the number of shared trigger words from which two descriptions overlap.
@@ -95,7 +97,7 @@ func checkOverlap(rp *repo, r *report) {
 	descs := make([]string, len(names))
 	tokens := make([]map[string]bool, len(names))
 	for i, name := range names {
-		descs[i] = frontmatterField(rp.claudeSkills+"/"+name+"/SKILL.md", "description")
+		descs[i] = frontmatter.Field(rp.claudeSkills+"/"+name+"/SKILL.md", "description")
 		tokens[i] = triggerTokens(descs[i])
 	}
 	found := false

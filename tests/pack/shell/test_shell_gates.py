@@ -8,8 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from lighthouse_lib import config
-from tests.pack._testkit import GIT_ENV, PACKS, git, init_repo, install_pack
+from tests.pack._testkit import GIT_ENV, PACKS, git, init_repo, install_pack, is_known_key
 
 SHELL = PACKS / "shell"
 SKILL_DIR = SHELL / "skills" / "shell-standard"
@@ -36,7 +35,7 @@ def test_frontmatter_name(variant):
 def test_strict_dirs_from_config(variant):
     text = _text(variant)
     assert STRICT_LOOKUP in text
-    assert config.is_known_key("shell.strict_dirs")
+    assert is_known_key("shell.strict_dirs")
     for paia_dir in ("scripts/hooks", "tests/integration"):
         assert paia_dir not in text, paia_dir
 
@@ -230,7 +229,7 @@ def test_root_advice_matches_the_hook(variant):
     assert "path you received" in para
 
 
-CLASSIFICATION = "This is a <class> change; the likely regression surface is <observable behaviour>."
+CLASSIFICATION = "Class: <class>. At risk: <the observable behaviour that could change>."
 
 
 @pytest.mark.parametrize("variant", VARIANTS)

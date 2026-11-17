@@ -24,7 +24,6 @@ from tests.pack._testkit import build_fixture_setup, fake_gh_bin, fill_fixture, 
 FIXTURES = Path(__file__).parent / "fixtures" / "scripts"
 COMMANDS: dict[str, list[str]] = {
     "_self": [],
-    "board-start": [str(lighthouse_dir() / "lighthouse"), "board-start"],
     "unblock-dependents": [str(lighthouse_dir() / "lighthouse"), "unblock-dependents"],
     "post-artefact": [str(lighthouse_dir() / "lighthouse"), "post-artefact"],
     "worktree-audit": [str(lighthouse_dir() / "lighthouse"), "worktree-audit"],

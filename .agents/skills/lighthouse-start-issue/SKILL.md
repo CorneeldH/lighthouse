@@ -29,19 +29,17 @@ The order *is* the design: the worktree stands before the first write, not after
 ### 1. One read call
 
 ```bash
-R=$(lighthouse config forge.repo) || exit 2
-gh api "repos/$R/issues/<nr>"
+lighthouse forge issue view <nr> --comments; lighthouse forge issue blockers <nr>
 ```
 
-Delivers `title`, `body`, `labels`, `milestone` and `comments` (the *count*) in one answer. Only if
-that count is > 0 does a second call follow:
+One Bash call, one answer: `title`, `body`, `labels`, `milestone` (with its `description`),
+`comments`, and the blockers of the issue (`number`, `state`), open and closed. Route-issue reads
+gate 0 from that list, without a call of its own. What a blocker list means per forge (on GitLab
+Free it is empty without an error) is in `../lighthouse-forge/<kind>.md §blockers`, with `<kind>`
+from `lighthouse config forge.kind`. Exit 2 is a missing or broken config: stop and report it.
 
-```bash
-R=$(lighthouse config forge.repo) || exit 2
-gh api "repos/$R/issues/<nr>/comments"
-```
-
-Never `gh issue list --json` — that breaks under the rtk proxy. Always with
+Read through `lighthouse forge`, never through a `gh` read: that ties the step to GitHub, and
+there it has the proxy quirk of `../lighthouse-forge/<kind>.md §proxy`. Always with
 `dangerouslyDisableSandbox: true`; Go's TLS is blocked otherwise.
 
 ### 2. Read and report the three axes
@@ -63,7 +61,7 @@ the issue is not right, and that is information in itself.
 
 If the issue has a milestone, read the `### heading:milestone_dod`, the
 `### heading:milestone_no_gos` and the `### heading:milestone_not_yet_decided` sections from the
-milestone description as well. If the issue does not fit according to the first two, say so before
+milestone description as well (`milestone.description` in the answer of step 1, no extra call). If the issue does not fit according to the first two, say so before
 you start. If the issue demonstrably touches an open question from the third (a bullet without
 `→ #<nr>`), report one line `fog: <question>`; in `lighthouse-route-issue` it then falls under c
 at gate 4. Only a question that demonstrably concerns the work of this issue counts. If the
@@ -188,7 +186,7 @@ One Agent call, `subagent_type: lighthouse-issue-impact-scout`. In the assignmen
 body with the acceptance criteria, the `heading:milestone_dod`, `heading:milestone_no_gos` and
 `heading:milestone_not_yet_decided` sections of the milestone if there is one, the chosen route
 (`4b` or `4c`), the absolute worktree path, and the instruction layer plus accompanying skill if
-gate 3 established them. The agent makes no GitHub call itself.
+gate 3 established them. The agent makes no forge call itself.
 
 Report the trigger on its own line:
 
@@ -264,7 +262,7 @@ plugin's own folder.
 ## Non-negotiable
 
 - ✅ Worktree before the first write · ❌ first change some files and then think of the branch
-- ✅ `gh api …/issues/<nr>` · ❌ `gh issue list --json` (breaks under the rtk proxy)
+- ✅ `lighthouse forge issue view <nr> --comments` · ❌ a `gh` read (GitHub only, and the proxy quirk of `../lighthouse-forge/<kind>.md §proxy`)
 - ✅ Report all three axes · ❌ name only the axis that decided the route
 - ✅ Get the route from `lighthouse-route-issue` and copy its line literally before the next
   `Skill` call · ❌ route yourself, summarise the line, or name it only after handing on
@@ -286,8 +284,8 @@ plugin's own folder.
 | Pickups at gate 4b/4c with a scout call or a concrete skip reason | 100% | `lighthouse measure-start-issue-kpi scout` |
 
 The "Already done?" call from step 2 raises the lead-in by 1 on purpose: one Bash call, before the
-first route call. Target ≤ 2 stays, but is reachable only for an issue without comments (read +
-already done = 2); with comments it is 3.
+first route call. Target ≤ 2 stays: the read of step 1 carries the comments and the blockers in
+the same call (read + already done = 2).
 
 Row 3 is the bill for the ambient choice. Without that row "a sharp negative boundary" is a claim;
 with that row it is a number that rises at the next measurement or does not.
@@ -301,9 +299,8 @@ whether gates 1 and 2 fire at all or are dead wood.
 
 ## Known pitfalls
 
-- **`gh issue list --json` breaks** under the rtk proxy (`Failed to parse gh issue list output`).
-  Use `gh api`. An unknown `--label` filter is moreover silently ignored: you get the full,
-  unfiltered result back and count nonsense.
+- **A `gh` read is the wrong tool here**: it works on GitHub only, and its JSON output breaks under
+  the rtk proxy (`../lighthouse-forge/<kind>.md §proxy`). Use `lighthouse forge`, on every forge.
 - **The cwd of the persistent shell drifts** back to the main checkout in the middle of a session.
   Prefix every command with `cd <worktree>` or `git -C <worktree>`, otherwise a `sed -i` hits the
   wrong tree.
