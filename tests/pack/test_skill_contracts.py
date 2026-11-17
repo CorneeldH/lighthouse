@@ -197,7 +197,7 @@ def test_config_re_finds_the_keys():
     """Without hits `test_config_keys_known` passes empty: the regex must see the calls."""
     text = "\n".join(_texts(CORE / "skills" / "route-issue").values())
     keys = {m[1] for m in _CONFIG_RE.finditer(text)}
-    assert {"labels.blocked_issue", "labels.needs_shaping", "forge.repo"} <= keys, keys
+    assert {"labels.blocked_issue", "labels.needs_shaping", "forge.kind"} <= keys, keys
     assert [m[1] for m in _CONFIG_RE.finditer("x `lighthouse config --json forge.board` y")] == ["forge.board"]
     assert not _CONFIG_RE.search("python3 .lighthouse/scripts/config.py forge.repo")
 
@@ -394,12 +394,133 @@ def test_every_writing_gh_command_in_the_skills_names_the_repo():
     assert not bad, "\n".join(bad)
 
 
-def test_write_pr_creates_the_pr_with_the_forge_repo():
-    """#224: write-pr names the repo from lighthouse.toml, never `"$R"`, which the gate blocks."""
+def test_write_pr_creates_the_pr_through_lighthouse_forge():
+    """#224, #260: write-pr opens the PR with `lighthouse forge pr create`, which always targets
+    `forge.repo` (no `--repo` to spell out, so no fork pitfall), with a literal title and a body
+    file the gate reads."""
     text = (CORE / "skills" / "write-pr" / "SKILL.md").read_text(encoding="utf-8")
-    creates = [line for line in text.splitlines() if line.startswith("gh pr create ")]
-    assert creates, "write-pr has no fenced `gh pr create` command"
-    assert all(line.startswith("gh pr create --repo <forge.repo> ") for line in creates), creates
+    lines = text.splitlines()
+    creates = [line for line in lines if line.startswith("lighthouse forge pr create ")]
+    assert creates, "write-pr has no fenced `lighthouse forge pr create` command"
+    assert all(
+        line.startswith("lighthouse forge pr create --title '<title>' --body-file <path>") for line in creates
+    ), creates
+    assert not [line for line in lines if line.startswith("gh pr create ")]
+
+
+# The chain skills of #260 and their twins: forge operations go through `lighthouse forge`.
+CHAIN_SKILLS = ["start-issue", "route-issue", "write-issue", "write-pr"]
+_GH_FORGE_CALL = re.compile(r"\bgh (api|issue|pr|label|project)\b")
+# (skill, fragment of the line) that may still name a `gh` forge form, each for a reason: the
+# evidence allowlist table of write-pr names what `lighthouse evidence` accepts (the `gh` rows
+# stay next to the `lighthouse forge` rows), and write-pr cites what pr-create-gate recognises.
+_GH_EXCEPTIONS = [
+    ("write-pr", "| `gh api <path>` |"),
+    ("write-pr", "| `gh api graphql` |"),
+    ("write-pr", "| `gh issue view`, `gh pr view` |"),
+    ("write-pr", "`gh pr create` and `glab mr create`"),
+]
+
+
+@pytest.mark.parametrize("name", CHAIN_SKILLS)
+def test_chain_skills_do_not_call_gh_for_forge_operations(name):
+    """#260: a chain skill reads and writes the forge through `lighthouse forge`, so it runs on
+    GitHub and GitLab alike. `gh auth token` is no forge operation and falls outside the pattern."""
+    texts = _texts(CORE / "skills" / name)
+    assert texts
+    allowed = [frag for skill, frag in _GH_EXCEPTIONS if skill == name]
+    bad, used = [], set()
+    for rel, text in texts.items():
+        for line in text.splitlines():
+            if not _GH_FORGE_CALL.search(line):
+                continue
+            hit = [frag for frag in allowed if frag in line]
+            used.update(hit)
+            if not hit:
+                bad.append(f"{name}/{rel}: {line.strip()[:100]}")
+    assert not bad, "\n".join(bad)
+    assert used == set(allowed), f"stale exceptions: {set(allowed) - used}"
+
+
+@pytest.mark.parametrize("name", CHAIN_SKILLS)
+def test_chain_skills_point_at_forge_reference(name):
+    """#260: what differs per forge is a section of `lighthouse-forge`, reached by a relative
+    path from the skill's own directory; the file comes from `forge.kind`."""
+    for rel, text in _texts(CORE / "skills" / name).items():
+        if not rel.endswith("SKILL.md"):
+            continue
+        refs = re.findall(r"\.\./lighthouse-forge/<kind>\.md §([\w-]+)", text)
+        assert refs, f"{name}/{rel} names no `../lighthouse-forge/<kind>.md §<section>`"
+        sections = {s.removeprefix("## §") for s in FORGE_SECTIONS}
+        assert set(refs) <= sections, set(refs) - sections
+        assert "lighthouse config forge.kind" in text, f"{name}/{rel}"
+
+
+FORGE = CORE / "skills" / "forge"
+# The sections a chain skill names (`../lighthouse-forge/<kind>.md §blockers`), in this order in
+# every reference (#260, spec §2).
+FORGE_SECTIONS = ["## §board", "## §blockers", "## §sub-issues", "## §sluitwoorden", "## §proxy"]
+
+
+def _h2_outside_fences(text: str) -> list[str]:
+    headings, in_fence = [], False
+    for line in text.splitlines():
+        if line.lstrip().startswith("```"):
+            in_fence = not in_fence
+        elif not in_fence and line.startswith("## "):
+            # A trailing comment carries the language marker; the heading is the text before it.
+            headings.append(re.sub(r"<!--.*?-->", "", line).rstrip())
+    return headings
+
+
+def test_forge_skill_has_both_references():
+    """#260: a chain skill names one section and the forge only picks the file, so both
+    references carry the same sections in the same order."""
+    for kind in ("github", "gitlab"):
+        path = FORGE / f"{kind}.md"
+        assert path.is_file(), f"{path} missing"
+        assert _h2_outside_fences(path.read_text(encoding="utf-8")) == FORGE_SECTIONS, kind
+
+
+def test_forge_skill_description_not_self_triggering():
+    """#260: lighthouse-forge is a reference other skills point at, never a starting point."""
+    text = (FORGE / "SKILL.md").read_text(encoding="utf-8")
+    front = re.match(r"^---\n(.*?)\n---\n", text, re.DOTALL)
+    assert front, "SKILL.md has no frontmatter"
+    desc = next((line for line in front[1].splitlines() if line.startswith("description:")), "")
+    assert "via another skill" in desc, desc
+    assert re.search(r"\b(only|alleen)\b", desc), desc
+
+
+def test_forge_reference_mentions_no_glab_command():
+    """#260: the wrapper talks to the API, `glab` is no dependency. Only gitlab.md may name it,
+    as text; never as a command in a code block or an inline code span."""
+    texts = _texts(FORGE)
+    assert "gitlab.md" in texts, "forge/gitlab.md missing"
+    bad = []
+    for rel, text in texts.items():
+        if rel != "gitlab.md":
+            bad += [f"{rel}: {line.strip()}" for line in text.splitlines() if re.search(r"\bglab\b", line)]
+            continue
+        in_fence = False
+        for line in text.splitlines():
+            if line.lstrip().startswith("```"):
+                in_fence = not in_fence
+                continue
+            spans = [line] if in_fence else re.findall(r"`([^`]*)`", line)
+            bad += [f"{rel}: {s.strip()}" for s in spans if re.search(r"(^|[\s;&|$(])glab\b", s)]
+    assert not bad, "\n".join(bad)
+
+
+@pytest.mark.parametrize("name", ["forge", "start-issue"])
+def test_forge_skills_name_no_source_issue_number(name):
+    """An installed skill lands in other repos, where `#358` resolves against their own forge:
+    no issue number of this repo, also not in a comment. (route-issue and write-pr carry
+    deliberate example numbers in their output formats.)"""
+    texts = _texts(CORE / "skills" / name)
+    assert texts
+    bad = [f"{rel}: {m[0]}" for rel, text in texts.items() for m in re.finditer(r"#\d{3,}", text)]
+    assert not bad, bad
 
 
 @pytest.mark.parametrize("name", ["review-spec", "review-plan"])

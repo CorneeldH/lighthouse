@@ -130,9 +130,15 @@
               ],
               "example": "github",
               "readers": [
+                "internal/evidence/run.go",
                 "internal/initcmd/initcmd.go",
                 "internal/repoconfig/repoconfig.go",
-                "internal/workplace/kennforge/adapter.go"
+                "internal/workplace/kennforge/adapter.go",
+                "pack/core/skills/forge",
+                "pack/core/skills/route-issue",
+                "pack/core/skills/start-issue",
+                "pack/core/skills/write-issue",
+                "pack/core/skills/write-pr"
               ]
             },
             {
@@ -144,7 +150,9 @@
               "readers": [
                 "internal/boardstart/boardstart.go",
                 "internal/cli/worktreeaudit.go",
+                "internal/labels/labels.go",
                 "internal/postartefact/postartefact.go",
+                "internal/prbody/find.go",
                 "internal/prbody/form.go",
                 "internal/prbody/gate.go",
                 "internal/prbody/scope.go",
@@ -152,15 +160,14 @@
                 "internal/repoconfig/repoconfig.go",
                 "internal/workplace/local/adapter.go",
                 "internal/worktreeaudit/collect.go",
-                "internal/labels/labels.go",
                 "pack/core/skills/audit-worktrees",
                 "pack/core/skills/close-issue",
                 "pack/core/skills/fix-pr",
+                "pack/core/skills/forge",
                 "pack/core/skills/review-plan",
                 "pack/core/skills/route-issue",
                 "pack/core/skills/start-issue",
                 "pack/core/skills/write-handoff",
-                "pack/core/skills/write-issue",
                 "pack/core/skills/write-pr",
                 "pack/python/scripts/quality/prcov_issues.py"
               ]
@@ -171,7 +178,14 @@
               "required": "no",
               "about": "The host name of a self-hosted GitLab, without scheme, port or path. Valid only with kind gitlab.",
               "example": "git.example.org",
-              "readers": ["internal/cli/serve.go", "internal/forge/gitlab.go", "internal/initcmd/initcmd.go", "internal/repoconfig/repoconfig.go"]
+              "readers": [
+                "internal/cli/serve.go",
+                "internal/forge/gitlab.go",
+                "internal/initcmd/initcmd.go",
+                "internal/prbody/form.go",
+                "internal/repoconfig/repoconfig.go",
+                "pack/core/skills/forge"
+              ]
             },
             {
               "key": "forge.token_env",
@@ -179,7 +193,12 @@
               "required": "no",
               "about": "The name of the environment variable that holds the forge token, instead of GH_TOKEN and GITHUB_TOKEN (github) or GITLAB_TOKEN (gitlab). The token itself never goes in lighthouse.toml.",
               "example": "WORK_GITLAB_TOKEN",
-              "readers": ["internal/repoconfig/repoconfig.go"]
+              "readers": [
+                "internal/prbody/form.go",
+                "internal/prbody/gate.go",
+                "internal/repoconfig/repoconfig.go",
+                "pack/core/skills/forge"
+              ]
             },
             {
               "key": "forge.default_branch",
@@ -216,7 +235,6 @@
               "required": "derived",
               "about": "The name part of forge.repo, derived by the lighthouse binary.",
               "readers": [
-                "internal/boardstart/boardstart.go",
                 "pack/core/skills/close-issue",
                 "pack/core/skills/write-handoff",
                 "pack/python/scripts/quality/prcov_issues.py"
@@ -228,10 +246,9 @@
               "required": "derived",
               "about": "The owner part of forge.repo, derived by the lighthouse binary.",
               "readers": [
-                "internal/boardstart/boardstart.go",
                 "pack/core/skills/close-issue",
+                "pack/core/skills/forge",
                 "pack/core/skills/write-handoff",
-                "pack/core/skills/write-issue",
                 "pack/python/scripts/quality/prcov_issues.py"
               ]
             }
@@ -250,7 +267,7 @@
               "example": "PVTSSF_...",
               "readers": [
                 "internal/repoconfig/repoconfig.go",
-                "pack/core/skills/write-issue"
+                "pack/core/skills/forge"
               ]
             },
             {
@@ -265,6 +282,7 @@
               },
               "readers": [
                 "internal/repoconfig/repoconfig.go",
+                "pack/core/skills/forge",
                 "pack/core/skills/write-issue"
               ]
             },
@@ -275,13 +293,12 @@
               "about": "The node id of the GitHub project board.",
               "example": "PVT_...",
               "readers": [
-                "internal/boardstart/boardstart.go",
                 "internal/cli/triage.go",
                 "internal/forge/board.go",
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/close-issue",
+                "pack/core/skills/forge",
                 "pack/core/skills/write-handoff",
-                "pack/core/skills/write-issue",
                 "pack/python/scripts/quality/prcov_issues.py"
               ]
             },
@@ -293,9 +310,9 @@
               "example": 1,
               "readers": [
                 "internal/repoconfig/repoconfig.go",
+                "pack/core/skills/forge",
                 "pack/core/skills/start-issue",
                 "pack/core/skills/write-handoff",
-                "pack/core/skills/write-issue",
                 "pack/python/scripts/quality/prcov_issues.py"
               ]
             },
@@ -306,7 +323,6 @@
               "about": "The id of the board's Status field.",
               "example": "PVTSSF_...",
               "readers": [
-                "internal/boardstart/boardstart.go",
                 "internal/cli/triage.go",
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/close-issue",
@@ -326,7 +342,7 @@
                 "On hold": "..."
               },
               "readers": [
-                "internal/boardstart/boardstart.go",
+                "internal/cli/forgecmd_write.go",
                 "internal/cli/serve.go",
                 "internal/cli/triage.go",
                 "internal/dispatch/gather.go",
@@ -334,6 +350,7 @@
                 "internal/forge/forge.go",
                 "internal/forge/gitlab_board.go",
                 "internal/repoconfig/repoconfig.go",
+                "pack/core/skills/forge",
                 "pack/core/skills/write-handoff",
                 "pack/core/skills/write-issue",
                 "pack/python/scripts/quality/prcov_issues.py"
@@ -571,6 +588,7 @@
                 "internal/repoconfig/repoconfig.go",
                 "internal/triage/rules.go",
                 "pack/core/skills/close-issue",
+                "pack/core/skills/forge",
                 "pack/core/skills/route-issue",
                 "pack/core/skills/start-issue",
                 "pack/core/skills/write-issue",

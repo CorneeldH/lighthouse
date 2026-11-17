@@ -18,6 +18,8 @@ func TestGitLabConformance(t *testing.T) { forgesuite.Run(t, newGitLabFixture) }
 type gitlabFixture struct {
 	srv *gitlabtest.Server
 	f   forge.Forge
+	// milestones counts the seeded milestones, for their ids.
+	milestones int
 }
 
 func newGitLabFixture(t *testing.T) forgesuite.Fixture {
@@ -55,6 +57,26 @@ func gitlabState(s string) string {
 	}
 	return s
 }
+
+// UniqueMilestoneTitles: GitLab allows the title of a group milestone on a project one too.
+func (g *gitlabFixture) UniqueMilestoneTitles() bool { return false }
+
+// AddNamedMilestone seeds a milestone whose global id is the number the client returns; the iid
+// differs on purpose.
+func (g *gitlabFixture) AddNamedMilestone(_ *testing.T, title string, group bool) forge.Milestone {
+	g.milestones++
+	id := 500 + g.milestones
+	m := map[string]any{"id": id, "iid": g.milestones, "title": title, "state": "active", "description": ""}
+	if group {
+		m["group_id"] = 1
+	} else {
+		m["project_id"] = 1
+	}
+	g.srv.AddMilestone(m)
+	return forge.Milestone{Number: id, Title: title, State: "open"}
+}
+
+func (g *gitlabFixture) SetLabels(_ *testing.T, names ...string) { g.srv.SetLabels(names...) }
 
 func (g *gitlabFixture) AddIssue(_ *testing.T, is forge.Issue) {
 	updated := time.Now().UTC()

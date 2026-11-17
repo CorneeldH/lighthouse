@@ -58,6 +58,15 @@ type Fixture interface {
 	// board. GitLab does: every issue is on its board, closed ones within a window. GitHub
 	// lists only the items of its project.
 	ListsClosedIssues() bool
+	// AddNamedMilestone adds an open milestone with title and returns it with the Number the forge
+	// uses in the Milestone methods. group makes it a group milestone, where the forge has them;
+	// the fixture of a forge without them fails the test.
+	AddNamedMilestone(t *testing.T, title string, group bool) forge.Milestone
+	// SetLabels sets the label names of the repo.
+	SetLabels(t *testing.T, names ...string)
+	// UniqueMilestoneTitles reports whether the forge refuses two milestones with one title.
+	// GitHub does; GitLab does not, and also shows the milestones of the groups above the project.
+	UniqueMilestoneTitles() bool
 	// SupportsPlanning reports whether the forge implements Planning; the Planning case is
 	// skipped for one that does not yet.
 	SupportsPlanning() bool
@@ -86,10 +95,21 @@ var Cases = []Case{
 	{"BoardStatusAndPriority", boardStatusAndPriority},
 	{"IssueItem", issueItem},
 	{"IssueItemMissingIssue", issueItemMissingIssue},
+	{"IssueItemStatusName", issueItemStatusName},
 	{"AddToBoardThenSetStatus", addToBoardThenSetStatus},
 	{"SetStatusUnknownName", setStatusUnknownName},
 	{"Pagination", pagination},
 	{"PRFields", prFields},
+	{"CreateIssueRoundTrip", createIssueRoundTrip},
+	{"EditIssue", editIssue},
+	{"ListIssuesStateAndLabel", listIssuesStateAndLabel},
+	{"SearchIssues", searchIssues},
+	{"CreateAndViewChange", createAndViewChange},
+	{"ChangeComment", changeComment},
+	{"MilestonesAndLookup", milestonesAndLookup},
+	{"MilestoneAmbiguousTitle", milestoneAmbiguousTitle},
+	{"LabelsList", labelsList},
+	{"AddBlockerThenBlockedBy", addBlockerThenBlockedBy},
 	{"IssueLifecycleByMarker", issueLifecycleByMarker},
 	{"PRLifecycleByMarker", prLifecycleByMarker},
 	{"FindByMarkerNoMatch", findByMarkerNoMatch},
@@ -340,7 +360,7 @@ func boardStatusAndPriority(t *testing.T, f Fixture) {
 	if err != nil {
 		t.Fatalf("BoardItems: %v", err)
 	}
-	want := map[int][2]string{7: {"Controller", "P1"}, 8: {"", ""}, 9: {forge.UnknownStatusPrefix + raw, ""}}
+	want := map[int][2]string{7: {"Controller", "P1"}, 8: {"", ""}}
 	for n, w := range want {
 		it, ok := itemOf(items, n)
 		if !ok {
@@ -350,6 +370,14 @@ func boardStatusAndPriority(t *testing.T, f Fixture) {
 		if it.Status != w[0] || it.Priority != w[1] || it.Repo != f.Repo() || it.ItemID == "" {
 			t.Errorf("item #%d = %+v; want Status %q, Priority %q, Repo %s and an ItemID", n, it, w[0], w[1], f.Repo())
 		}
+	}
+	// An unmapped status is "unknown:" plus what the forge identifies it by (GitHub an option
+	// ID, GitLab the status name), and its raw name is in StatusName.
+	if it, ok := itemOf(items, 9); !ok {
+		t.Errorf("BoardItems has no item for #9")
+	} else if !strings.HasPrefix(it.Status, forge.UnknownStatusPrefix) || it.Status == forge.UnknownStatusPrefix ||
+		it.StatusName != raw || it.Priority != "" {
+		t.Errorf("item #9 = %+v; want Status unknown:<id>, StatusName %q and no priority", it, raw)
 	}
 }
 
@@ -372,6 +400,26 @@ func issueItemMissingIssue(t *testing.T, f Fixture) {
 	_, ok, err := f.Forge().IssueItem(t.Context(), 99)
 	if ok || !errors.Is(err, forge.ErrIssueNotFound) {
 		t.Errorf("IssueItem(99) = ok %v, err %v; want an error wrapping forge.ErrIssueNotFound", ok, err)
+	}
+}
+
+// StatusName is the raw name of the item's status on the board: the name of a mapped status,
+// the forge's own name of an unmapped one, and "" without a status.
+func issueItemStatusName(t *testing.T, f Fixture) {
+	for n := 7; n <= 9; n++ {
+		f.AddIssue(t, openIssue(n))
+	}
+	f.PutOnBoard(t, 7, "To do", "")
+	raw := f.PutOnBoardUnmapped(t, 8)
+	f.PutOnBoard(t, 9, "", "")
+	for n, want := range map[int]string{7: "To do", 8: raw, 9: ""} {
+		it, ok, err := f.Forge().IssueItem(t.Context(), n)
+		if err != nil || !ok {
+			t.Fatalf("IssueItem(%d) = %+v, %v, %v; want the item", n, it, ok, err)
+		}
+		if it.StatusName != want {
+			t.Errorf("IssueItem(%d).StatusName = %q; want %q", n, it.StatusName, want)
+		}
 	}
 }
 
@@ -609,6 +657,237 @@ func prFields(t *testing.T, f Fixture) {
 	}
 }
 
+// sorted is a sorted copy of names, so a case compares labels without depending on their order.
+func sorted(names []string) []string {
+	out := slices.Clone(names)
+	slices.Sort(out)
+	return out
+}
+
+// numbers is the sorted issue numbers of issues.
+func numbers(issues []forge.Issue) []int {
+	out := make([]int, 0, len(issues))
+	for _, is := range issues {
+		out = append(out, is.Number)
+	}
+	slices.Sort(out)
+	return out
+}
+
+func createIssueRoundTrip(t *testing.T, f Fixture) {
+	f.AddNamedMilestone(t, "M3", false)
+	created, err := f.Forge().CreateIssue(t.Context(), forge.NewIssue{
+		Title: "New one", Body: "Fresh body.", Labels: []string{"bug"}, Milestone: "M3"})
+	if err != nil {
+		t.Fatalf("CreateIssue: %v", err)
+	}
+	if created.Number <= 0 {
+		t.Fatalf("CreateIssue = %+v; want a number > 0", created)
+	}
+	got, err := f.Forge().Issue(t.Context(), created.Number)
+	if err != nil {
+		t.Fatalf("Issue(%d): %v", created.Number, err)
+	}
+	if got.Title != "New one" || got.Body != "Fresh body." || got.State != "open" || got.Author != f.Login() {
+		t.Errorf("Issue = %+v; want title New one, body Fresh body., state open, author %s", got, f.Login())
+	}
+	if !slices.Equal(got.Labels, []string{"bug"}) {
+		t.Errorf("Labels = %v, want [bug]", got.Labels)
+	}
+	if got.Milestone == nil || got.Milestone.Title != "M3" {
+		t.Errorf("Milestone = %+v, want title M3", got.Milestone)
+	}
+}
+
+func editIssue(t *testing.T, f Fixture) {
+	is := openIssue(7)
+	is.Labels = []string{"a", "b"}
+	f.AddIssue(t, is)
+	title, body := "Renamed", "Rewritten."
+	edited, err := f.Forge().EditIssue(t.Context(), 7, forge.IssueEdit{
+		Title: &title, Body: &body, AddLabels: []string{"c"}, RemoveLabels: []string{"a"}})
+	if err != nil {
+		t.Fatalf("EditIssue: %v", err)
+	}
+	if edited.Title != "Renamed" || edited.Body != "Rewritten." || !slices.Equal(sorted(edited.Labels), []string{"b", "c"}) {
+		t.Errorf("EditIssue = %+v; want title Renamed, body Rewritten., labels [b c]", edited)
+	}
+	got, err := f.Forge().Issue(t.Context(), 7)
+	if err != nil {
+		t.Fatalf("Issue(7): %v", err)
+	}
+	if got.Title != "Renamed" || got.Body != "Rewritten." || !slices.Equal(sorted(got.Labels), []string{"b", "c"}) {
+		t.Errorf("Issue(7) = %+v; want title Renamed, body Rewritten., labels [b c]", got)
+	}
+}
+
+func listIssuesStateAndLabel(t *testing.T, f Fixture) {
+	a := openIssue(1)
+	a.Labels = []string{"bug"}
+	b := closedIssue(2, nil, time.Now())
+	b.Labels = []string{"bug"}
+	c := openIssue(3)
+	c.Labels = []string{"doc"}
+	for _, is := range []forge.Issue{a, b, c} {
+		f.AddIssue(t, is)
+	}
+	cases := []struct {
+		name   string
+		filter forge.IssueFilter
+		want   []int
+	}{
+		{"open", forge.IssueFilter{State: "open"}, []int{1, 3}},
+		{"open and label", forge.IssueFilter{State: "open", Label: "bug"}, []int{1}},
+		{"all and label", forge.IssueFilter{State: "all", Label: "bug"}, []int{1, 2}},
+		{"closed", forge.IssueFilter{State: "closed"}, []int{2}},
+	}
+	for _, c := range cases {
+		got, err := f.Forge().ListIssues(t.Context(), c.filter)
+		if err != nil {
+			t.Errorf("%s: ListIssues: %v", c.name, err)
+			continue
+		}
+		if !slices.Equal(numbers(got), c.want) {
+			t.Errorf("%s: ListIssues = %v, want %v", c.name, numbers(got), c.want)
+		}
+	}
+}
+
+func searchIssues(t *testing.T, f Fixture) {
+	a := openIssue(1)
+	a.Title = "Zebra crossing"
+	b := openIssue(2)
+	b.Title = "Something else"
+	f.AddIssue(t, a)
+	f.AddIssue(t, b)
+	got, err := f.Forge().SearchIssues(t.Context(), "zebra")
+	if err != nil {
+		t.Fatalf("SearchIssues: %v", err)
+	}
+	if !slices.Equal(numbers(got), []int{1}) {
+		t.Errorf("SearchIssues(zebra) = %v, want [1]", numbers(got))
+	}
+}
+
+func createAndViewChange(t *testing.T, f Fixture) {
+	created, err := f.Forge().CreateChange(t.Context(), forge.NewPR{
+		Title: "My change", Body: "Why.", Head: "feature-x", Base: "main"})
+	if err != nil {
+		t.Fatalf("CreateChange: %v", err)
+	}
+	got, err := f.Forge().Change(t.Context(), created.Number)
+	if err != nil {
+		t.Fatalf("Change(%d): %v", created.Number, err)
+	}
+	if got.Number != created.Number || got.Title != "My change" || got.Body != "Why." ||
+		got.State != "open" || got.HeadRef != "feature-x" || got.BaseRef != "main" {
+		t.Errorf("Change = %+v; want title My change, body Why., state open, head feature-x, base main", got)
+	}
+}
+
+func changeComment(t *testing.T, f Fixture) {
+	created, err := f.Forge().CreateChange(t.Context(), forge.NewPR{Title: "C", Head: "feature-x", Base: "main"})
+	if err != nil {
+		t.Fatalf("CreateChange: %v", err)
+	}
+	c, err := f.Forge().CreateChangeComment(t.Context(), created.Number, "Looks good.")
+	if err != nil {
+		t.Fatalf("CreateChangeComment: %v", err)
+	}
+	if c.ID <= 0 || c.Body != "Looks good." || c.Author != f.Login() {
+		t.Errorf("CreateChangeComment = %+v; want an ID > 0, body Looks good., author %s", c, f.Login())
+	}
+}
+
+func milestonesAndLookup(t *testing.T, f Fixture) {
+	m1 := f.AddNamedMilestone(t, "M1", false)
+	f.AddNamedMilestone(t, "M2", false)
+	open, err := f.Forge().Milestones(t.Context(), "open")
+	if err != nil {
+		t.Fatalf("Milestones(open): %v", err)
+	}
+	titles := make([]string, 0, len(open))
+	for _, m := range open {
+		titles = append(titles, m.Title)
+	}
+	if !slices.Equal(sorted(titles), []string{"M1", "M2"}) {
+		t.Errorf("Milestones(open) titles = %v, want [M1 M2]", titles)
+	}
+	if closed, err := f.Forge().Milestones(t.Context(), "closed"); err != nil || len(closed) != 0 {
+		t.Errorf("Milestones(closed) = %+v, %v; want none", closed, err)
+	}
+	got, err := f.Forge().MilestoneByNumber(t.Context(), m1.Number)
+	if err != nil || got.Title != "M1" || got.Number != m1.Number {
+		t.Errorf("MilestoneByNumber(%d) = %+v, %v; want M1", m1.Number, got, err)
+	}
+	created, err := f.Forge().CreateMilestone(t.Context(), "M9", "Nine.")
+	if err != nil {
+		t.Fatalf("CreateMilestone: %v", err)
+	}
+	if created.Number <= 0 || created.Title != "M9" || created.Description != "Nine." || created.State != "open" {
+		t.Errorf("CreateMilestone = %+v; want title M9, description Nine., state open", created)
+	}
+	title, desc := "M9b", "Still nine."
+	edited, err := f.Forge().EditMilestone(t.Context(), created.Number, &title, &desc)
+	if err != nil {
+		t.Fatalf("EditMilestone: %v", err)
+	}
+	if edited.Title != "M9b" || edited.Description != "Still nine." {
+		t.Errorf("EditMilestone = %+v; want title M9b, description Still nine.", edited)
+	}
+	again, err := f.Forge().MilestoneByNumber(t.Context(), created.Number)
+	if err != nil || again.Title != "M9b" || again.Description != "Still nine." {
+		t.Errorf("MilestoneByNumber after edit = %+v, %v; want M9b", again, err)
+	}
+}
+
+// A title that fits two milestones is refused with both numbers, never guessed. Only where the
+// forge allows two milestones with one title.
+func milestoneAmbiguousTitle(t *testing.T, f Fixture) {
+	if f.UniqueMilestoneTitles() {
+		t.Skip("the forge refuses two milestones with one title")
+	}
+	a := f.AddNamedMilestone(t, "Dup", false)
+	b := f.AddNamedMilestone(t, "Dup", true)
+	_, err := f.Forge().CreateIssue(t.Context(), forge.NewIssue{Title: "T", Milestone: "Dup"})
+	var amb *forge.AmbiguousMilestone
+	if !errors.As(err, &amb) {
+		t.Fatalf("CreateIssue error = %v; want *forge.AmbiguousMilestone", err)
+	}
+	if amb.Title != "Dup" || !slices.Equal(sorted2(amb.Numbers), sorted2([]int{a.Number, b.Number})) {
+		t.Errorf("AmbiguousMilestone = %+v; want title Dup and numbers %d, %d", amb, a.Number, b.Number)
+	}
+}
+
+func sorted2(n []int) []int {
+	out := slices.Clone(n)
+	slices.Sort(out)
+	return out
+}
+
+func labelsList(t *testing.T, f Fixture) {
+	f.SetLabels(t, "bug", "area:cli")
+	got, err := f.Forge().Labels(t.Context())
+	if err != nil || !slices.Equal(sorted(got), []string{"area:cli", "bug"}) {
+		t.Errorf("Labels = %v, %v; want [area:cli bug]", got, err)
+	}
+}
+
+func addBlockerThenBlockedBy(t *testing.T, f Fixture) {
+	f.AddIssue(t, openIssue(7))
+	f.AddIssue(t, openIssue(8))
+	if err := f.Forge().AddBlocker(t.Context(), 7, 8); err != nil {
+		t.Fatalf("AddBlocker(7, 8): %v", err)
+	}
+	got, err := f.Forge().BlockedBy(t.Context(), 7)
+	if err != nil {
+		t.Fatalf("BlockedBy(7): %v", err)
+	}
+	if len(got) != 1 || got[0].Issue != 8 || got[0].State != "OPEN" || got[0].Repo != f.Repo() {
+		t.Errorf("BlockedBy(7) = %+v; want one blocker #8, state OPEN, repo %s", got, f.Repo())
+	}
+}
+
 // find returns the one item FindByMarker finds for marker; it fails on none or more.
 func find(t *testing.T, f Fixture, marker string) forge.Item {
 	t.Helper()
@@ -626,7 +905,7 @@ func issueLifecycleByMarker(t *testing.T, f Fixture) {
 	ctx := t.Context()
 	const marker = "<!-- lighthouse:pin skill-a -->"
 	f.AddIssue(t, forge.Issue{Number: 1, Title: "Other", Body: "no marker", Author: "ann", State: "open"})
-	is, err := f.Forge().CreateIssue(ctx, "Pin behind", marker+"\nfirst body")
+	is, err := f.Forge().CreateIssue(ctx, forge.NewIssue{Title: "Pin behind", Body: marker + "\nfirst body"})
 	if err != nil {
 		t.Fatalf("CreateIssue: %v", err)
 	}

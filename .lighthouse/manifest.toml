@@ -33,6 +33,27 @@ sha256 = "db20dbf76dffc695e44207ca7d4c71b8ecab6253e449e1d5d3dd88471ce24112"
 
 [[unit]]
 kind = "file"
+path = ".agents/skills/lighthouse-forge/SKILL.md"
+package = "core"
+version = "dev"
+sha256 = "1270a7cd1f8ccb876491a18a4d96696112f1f9c922153e4203562d2bf01220ab"
+
+[[unit]]
+kind = "file"
+path = ".agents/skills/lighthouse-forge/github.md"
+package = "core"
+version = "dev"
+sha256 = "66186b7837b93471a229a358e128facd1af3cef1e03aa1a2504929e4e24ec20b"
+
+[[unit]]
+kind = "file"
+path = ".agents/skills/lighthouse-forge/gitlab.md"
+package = "core"
+version = "dev"
+sha256 = "760fcce3ad4833d76a18c73e84d57e404e457eee8e491e7b457f58b42ace7eaf"
+
+[[unit]]
+kind = "file"
 path = ".agents/skills/lighthouse-go-standard/SKILL.md"
 package = "go"
 version = "dev"
@@ -120,14 +141,14 @@ kind = "file"
 path = ".agents/skills/lighthouse-route-issue/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "8f3128e99c52c051cfc22f320b7cef3e1cb1bbfdd97bb030dcd7000e0d9e8a30"
+sha256 = "19954f4462876466b27462901157bf74c40bc6c4c752ae87b0caa9f794b1676b"
 
 [[unit]]
 kind = "file"
 path = ".agents/skills/lighthouse-start-issue/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "b2af8fc0ad3221d3dc1fe49001dc1fb40ee9855a741a7794dd07b4ab36afc22c"
+sha256 = "538cf00f21bc01bf6508af17feb00bf04e925309ffe6eb76a5fd103e132aede5"
 
 [[unit]]
 kind = "file"
@@ -155,14 +176,14 @@ kind = "file"
 path = ".agents/skills/lighthouse-write-issue/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "04c572fa85694297bda8e42c2332300f28919ad3ffa98f21a6e31262d6dd6e4d"
+sha256 = "0f9178369d7df08b0b77285185f80d2cd2627493955b77f72a5a449e89a59b4b"
 
 [[unit]]
 kind = "file"
 path = ".agents/skills/lighthouse-write-pr/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "b8179f31e16aa6111d9871863d72a59d8566d067aad67d33867775bda50cc10a"
+sha256 = "abfd08a69b931b9d969035b2968e756a22292b884e02ab3786a54c966866ce7a"
 
 [[unit]]
 kind = "file"
@@ -389,6 +410,27 @@ sha256 = "ab380c5ee1288a94d4bf74967020f027b15929d294e0d84a3c83ba549968965c"
 
 [[unit]]
 kind = "file"
+path = ".claude/skills/lighthouse-forge/SKILL.md"
+package = "core"
+version = "dev"
+sha256 = "1270a7cd1f8ccb876491a18a4d96696112f1f9c922153e4203562d2bf01220ab"
+
+[[unit]]
+kind = "file"
+path = ".claude/skills/lighthouse-forge/github.md"
+package = "core"
+version = "dev"
+sha256 = "66186b7837b93471a229a358e128facd1af3cef1e03aa1a2504929e4e24ec20b"
+
+[[unit]]
+kind = "file"
+path = ".claude/skills/lighthouse-forge/gitlab.md"
+package = "core"
+version = "dev"
+sha256 = "760fcce3ad4833d76a18c73e84d57e404e457eee8e491e7b457f58b42ace7eaf"
+
+[[unit]]
+kind = "file"
 path = ".claude/skills/lighthouse-go-standard/SKILL.md"
 package = "go"
 version = "dev"
@@ -476,14 +518,14 @@ kind = "file"
 path = ".claude/skills/lighthouse-route-issue/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "8f3128e99c52c051cfc22f320b7cef3e1cb1bbfdd97bb030dcd7000e0d9e8a30"
+sha256 = "19954f4462876466b27462901157bf74c40bc6c4c752ae87b0caa9f794b1676b"
 
 [[unit]]
 kind = "file"
 path = ".claude/skills/lighthouse-start-issue/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "ad0fe5797d237c2c7c034dbd973f284f870523f6ef7d27c26725938bb2019c10"
+sha256 = "652d4adb14ae8fc4a9d80070e7b309ecc6efa531d906d566b1f2df5e4b52ad2c"
 
 [[unit]]
 kind = "file"
@@ -511,14 +553,14 @@ kind = "file"
 path = ".claude/skills/lighthouse-write-issue/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "31675403fa9f406c8337515dd1b253c52bd56bd930f800716515225fb2eaee4f"
+sha256 = "f9d8fbbfbbdd75ff617b5432e0de8cbf9314b53352d6bcb6b36c26a83e64c7c1"
 
 [[unit]]
 kind = "file"
 path = ".claude/skills/lighthouse-write-pr/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "b8179f31e16aa6111d9871863d72a59d8566d067aad67d33867775bda50cc10a"
+sha256 = "abfd08a69b931b9d969035b2968e756a22292b884e02ab3786a54c966866ce7a"
 
 [[unit]]
 kind = "file"
@@ -547,7 +589,7 @@ path = "AGENTS.md"
 id = "core"
 package = "core"
 version = "dev"
-sha256 = "48bdd910cc785f9d820b29cf916518137dc224b7129c0bb52699a5380382ed46"
+sha256 = "30e07e5375036160bd4d21d056e2e8496169c8378fd28f2117b9a660addcba67"
 
 [[unit]]
 kind = "block"

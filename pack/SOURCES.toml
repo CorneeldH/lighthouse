@@ -158,6 +158,18 @@ path = "pack/core/skills/audit-worktrees/SKILL.md"
 new = true
 
 [[file]]
+path = "pack/core/skills/forge/SKILL.md"
+new = true
+
+[[file]]
+path = "pack/core/skills/forge/github.md"
+new = true
+
+[[file]]
+path = "pack/core/skills/forge/gitlab.md"
+new = true
+
+[[file]]
 path = "pack/core/skills/place-instruction/SKILL.md"
 new = true
 

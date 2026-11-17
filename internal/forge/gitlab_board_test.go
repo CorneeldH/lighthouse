@@ -113,8 +113,9 @@ func TestGitLabBoardItemsClosingPRs(t *testing.T) {
 	}
 	it := items[0]
 	if it.ItemID != "7" || it.Issue != 7 || it.Repo != "g/p" || it.IssueState != "OPEN" ||
-		it.Status != "unknown:In progress" || it.Priority != "P2" || !slices.Equal(it.Labels, []string{"bug", "priority::P2"}) {
-		t.Errorf("item = %+v; want ItemID 7, Repo g/p, OPEN, Status unknown:In progress, Priority P2, both labels", it)
+		it.Status != "unknown:In progress" || it.StatusName != "In progress" || it.Priority != "P2" ||
+		!slices.Equal(it.Labels, []string{"bug", "priority::P2"}) {
+		t.Errorf("item = %+v; want ItemID 7, Repo g/p, OPEN, Status unknown:In progress, StatusName In progress, Priority P2, both labels", it)
 	}
 	wantPRs := []forge.PR{
 		{Number: 12, State: "OPEN", HeadSHA: "abc123", HeadRef: "issue-7-x", Checks: "FAILURE", Mergeable: "MERGEABLE",

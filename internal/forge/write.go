@@ -86,12 +86,6 @@ func (c *GitHub) MergePR(ctx context.Context, number int, sha string) error {
 	return err
 }
 
-// NewPR is a pull request to open.
-type NewPR struct {
-	Title, Body, Head, Base string
-	Draft                   bool
-}
-
 // Item is an issue or a pull request found by marker, open or closed. Body is complete.
 type Item struct {
 	Number  int
@@ -101,20 +95,6 @@ type Item struct {
 	HeadRef string // of a PR; "" for an issue
 	// Author is the login that opened the issue or pull request; "" when the forge names none.
 	Author string
-}
-
-// CreateIssue opens an issue and returns it.
-func (c *GitHub) CreateIssue(ctx context.Context, title, body string) (Issue, error) {
-	if err := c.configured(); err != nil {
-		return Issue{}, err
-	}
-	var out issueItem
-	url := fmt.Sprintf("%s/repos/%s/issues", c.BaseURL, c.Repo)
-	if _, err := c.do(ctx, http.MethodPost, url, map[string]string{"title": title, "body": body}, &out); err != nil {
-		return Issue{}, err
-	}
-	c.remember(out)
-	return out.issue(), nil
 }
 
 // UpdateIssueBody replaces the body of issue number.

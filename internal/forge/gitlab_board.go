@@ -223,6 +223,7 @@ func (g *GitLab) applyWidget(it *BoardItem, wd gqlWidget, b *repoconfig.Board) e
 	case "STATUS":
 		if wd.Status != nil && wd.Status.Name != "" {
 			it.Status = statusName(b.StatusOptions, wd.Status.Name)
+			it.StatusName = wd.Status.Name
 		}
 	case "LABELS":
 		if wd.Labels == nil {

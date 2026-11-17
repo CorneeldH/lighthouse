@@ -2,7 +2,7 @@ package hooks
 
 // Counterpart: /lighthouse-write-pr
 // The skill carries the norm up front (build the body with Closes evidence); this hook enforces
-// it at the moment of `gh pr create`: a body without `Closes #N` + Evidence table, `Refs #N —
+// it at the moment of a PR or MR create (`gh`, `glab` or `lighthouse forge`): a body without `Closes #N` + Evidence table, `Refs #N —
 // <reason>` or `No issue: <reason>` blocks. The check itself is internal/prbody.
 
 import (
@@ -23,7 +23,7 @@ const prGateName = "pr-create-gate"
 const (
 	prGateMissingGit = prGateName + ": COULD NOT CHECK — missing tooling: git\n" +
 		"\n" +
-		"This hook checks the body of every 'gh pr create'.\n" +
+		"This hook checks the body of every PR or MR create.\n" +
 		"Without that tooling nothing was checked; that is not a green light.\n"
 	prGateInvalidJSON = prGateName + ": COULD NOT CHECK — the payload is not valid JSON.\n" +
 		"\n" +
@@ -33,10 +33,10 @@ const (
 // runGate is the body check; a test replaces it to reach the outcomes prbody never gives.
 var runGate = prbody.Main
 
-// PrCreateGate checks the body of every `gh pr create` in a Bash command. Not fail-open: without
+// PrCreateGate checks the body of every PR or MR create (`gh pr create`, `glab mr create`, `lighthouse forge pr create`) in a Bash command. Not fail-open: without
 // git, with a payload that is not JSON, with a command that cannot be parsed or with a parser
 // that breaks, nothing was checked, and that blocks with COULD NOT CHECK. The only loud pass is
-// the AC count (gh missing or broken): prbody reports it on stdout, and the hook passes the note
+// the AC count (no forge token, or a forge error): prbody reports it on stdout, and the hook passes the note
 // on to user and model. root is the lighthouse root; the config reads it as LIGHTHOUSE_REPO_ROOT.
 //
 // The gate deadline (prbody.DeadlineS) must stay under the hook timeout in hooks.json: a hook
@@ -80,15 +80,22 @@ func PrCreateGate(ctx context.Context, root, _ string, p hook.Payload) hook.Resu
 	case code == 2:
 		return blocked(stderr)
 	case code == 3:
-		// Two-step rule: without `gh` and `pr` in the raw text there is nothing to check, and
-		// one stray apostrophe locks nothing up.
-		if !strings.Contains(command, "gh") || !strings.Contains(command, "pr") {
+		// Two-step rule: without a forge tool (`gh`, `glab`, `forge`) and `pr` or `mr` in the
+		// raw text there is nothing to check, and one stray apostrophe locks nothing up.
+		if !mentionsPrCreate(command) {
 			return hook.Result{Stderr: stderr}
 		}
 		return blocked(stderr + prGateCouldNotCheck("the command cannot be parsed (open quote). Split the command."))
 	default:
 		return blocked(stderr + prGateCouldNotCheck(fmt.Sprintf("the body parser failed (rc %d).", code)))
 	}
+}
+
+// mentionsPrCreate is the loose raw-text test of the two-step rule: a forge tool and a PR or MR
+// word somewhere in the command.
+func mentionsPrCreate(command string) bool {
+	tool := strings.Contains(command, "gh") || strings.Contains(command, "glab") || strings.Contains(command, "forge")
+	return tool && (strings.Contains(command, "pr") || strings.Contains(command, "mr"))
 }
 
 // callGate runs the body check on command and catches a panic in it: unrecovered, the runtime
@@ -108,6 +115,6 @@ func callGate(ctx context.Context, cwd, command string) (code int, stdout, stder
 func prGateCouldNotCheck(reason string) string {
 	return prGateName + ": COULD NOT CHECK — " + reason + "\n" +
 		"\n" +
-		"This command may contain a 'gh pr create'. 'Could not check' is\n" +
+		"This command may contain a PR or MR create. 'Could not check' is\n" +
 		"not a green light, so this does not pass silently.\n"
 }

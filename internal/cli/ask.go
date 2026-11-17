@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -32,8 +33,17 @@ func defaultAskEnv() askEnv {
 }
 
 // ghAuthToken is the output of `gh auth token`, "" when gh is missing or not logged in.
-func ghAuthToken() string {
-	out, err := exec.Command("gh", "auth", "token").Output()
+func ghAuthToken() string { return ghAuthTokenWithin(ghAuthTimeout) }
+
+// ghAuthTimeout bounds `gh auth token`: it also serves board-start, which must never block.
+const ghAuthTimeout = 5 * time.Second
+
+func ghAuthTokenWithin(timeout time.Duration) string {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "gh", "auth", "token")
+	cmd.WaitDelay = time.Second // do not wait on a pipe a killed gh's child still holds
+	out, err := cmd.Output()
 	if err != nil {
 		return ""
 	}

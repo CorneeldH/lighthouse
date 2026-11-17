@@ -60,17 +60,18 @@ Skills:
 - `/lighthouse-start-issue`: pick up an issue.
 - `/lighthouse-route-issue`: read-only triage, one route per issue.
 - `/lighthouse-write-issue`: write or edit issues and milestones.
-- `/lighthouse-write-pr`: check the acceptance criteria, write the PR body.
+- `/lighthouse-write-pr`: check acceptance criteria, write the PR body.
 - `/lighthouse-fix-pr`: make a red or conflicting PR green.
+- `/lighthouse-forge`: per-forge differences, read through another skill.
 - `/lighthouse-close-issue`: close an issue with evidence, or reopen it.
-- `/lighthouse-write-handoff`: the start command for the next session.
+- `/lighthouse-write-handoff`: start command for the next session.
 - `/lighthouse-review-spec`: a spec reviewed by another model family.
 - `/lighthouse-review-plan`: a plan reviewed by another model family.
-- `/lighthouse-audit-agent-config`: audit the agentic configuration for conflicts and overlap.
+- `/lighthouse-audit-agent-config`: audit the agentic configuration.
 - `/lighthouse-audit-worktrees`: which worktrees and branches can go.
 - `/lighthouse-place-instruction`: on which layer a new instruction belongs.
 - `/lighthouse-test-standard`: tests that fail when behaviour breaks.
-- `/lighthouse-upgrade`: bring this repo to the installed lighthouse version.
+- `/lighthouse-upgrade`: move to the installed lighthouse version.
 <!-- lighthouse:end core -->
 
 <!-- lighthouse:begin go -->
