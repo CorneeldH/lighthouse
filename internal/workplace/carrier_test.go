@@ -346,8 +346,8 @@ func TestNewCarrierUnset(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if raw, _ := os.ReadFile(path); bytes.Contains(raw, []byte("unset")) {
-		t.Errorf("carrier without Unset = %s, want no unset key", raw)
+	if raw, _ := os.ReadFile(path); bytes.Contains(raw, []byte("unset")) || c.Version != 1 {
+		t.Errorf("carrier without Unset = %s, want version 1 and no unset key", raw)
 	}
 
 	l := baseSpec()
@@ -358,6 +358,11 @@ func TestNewCarrierUnset(t *testing.T) {
 	}
 	if want := []string{"GH_TOKEN", "GITHUB_TOKEN"}; !reflect.DeepEqual(c.Unset, want) {
 		t.Errorf("Unset = %q, want %q", c.Unset, want)
+	}
+	// Fail closed: a target that does not know unset must refuse the carrier, not start the agent
+	// with the variables in place, so a carrier with unset has a version a version-1 target rejects.
+	if c.Version != 2 {
+		t.Errorf("Version = %d with Unset, want 2", c.Version)
 	}
 	path, err = WriteCarrier(dir, "", "ws-2", c)
 	if err != nil {

@@ -11,8 +11,13 @@ import (
 	"time"
 )
 
-// CarrierVersion is the version field of a written carrier.
+// CarrierVersion is the version field of a written carrier without unset.
 const CarrierVersion = 1
+
+// CarrierVersionUnset is the version of a carrier with unset. A target must refuse a version it
+// does not know; a target that knows only version 1 then refuses to start an agent whose
+// environment it would not clean, instead of starting it with the token in place.
+const CarrierVersionUnset = 2
 
 // pluginCacheReadRule lets a run read the files of its plugins without a prompt. A skill
 // reads its own reference files from that cache, which lies outside the working directory,
@@ -106,8 +111,12 @@ func NewCarrier(l LaunchSpec, stateDir string, now time.Time) (Carrier, error) {
 		args = append(args, "--model", "sonnet")
 	}
 	args = append(args, l.Prompt)
+	version := CarrierVersion
+	if len(unset) > 0 {
+		version = CarrierVersionUnset
+	}
 	return Carrier{
-		Version: CarrierVersion, Repo: l.Repo, Issue: l.Issue,
+		Version: version, Repo: l.Repo, Issue: l.Issue,
 		SessionID: l.SessionID, Mode: l.Mode, Profile: l.Profile,
 		Args: args,
 		Env: map[string]string{

@@ -567,8 +567,8 @@ func TestSpawnCarrierCarriesUnset(t *testing.T) {
 	if err := json.Unmarshal(raw, &c); err != nil {
 		t.Fatal(err)
 	}
-	if len(c.Unset) != 1 || c.Unset[0] != "GH_TOKEN" {
-		t.Errorf("carrier unset = %q, want [GH_TOKEN]", c.Unset)
+	if len(c.Unset) != 1 || c.Unset[0] != "GH_TOKEN" || c.Version != workplace.CarrierVersionUnset {
+		t.Errorf("carrier = version %d, unset %q; want version %d with [GH_TOKEN]", c.Version, c.Unset, workplace.CarrierVersionUnset)
 	}
 }
 
