@@ -88,7 +88,9 @@ func Prepare(ctx context.Context, f forge.Forge, repo repoconfig.Repo, open []ru
 	// and close-issue moves the item to Done before the tick sees the run end.
 	hasRun := make(map[int]bool, len(open))
 	for _, r := range open {
-		hasRun[r.Issue] = true
+		if r.Schedule == "" { // a scheduled run has no issue
+			hasRun[r.Issue] = true
+		}
 	}
 	var items []Item
 	for _, bi := range board {
@@ -162,7 +164,9 @@ func Complete(ctx context.Context, f forge.Forge, pre Pre, trust *Trust, tokenLo
 	items := make([]Item, 0, len(pre.Items))
 	hasRun := make(map[int]bool, len(pre.OpenRuns))
 	for _, r := range pre.OpenRuns {
-		hasRun[r.Issue] = true
+		if r.Schedule == "" { // a scheduled run has no issue
+			hasRun[r.Issue] = true
+		}
 	}
 	for _, it := range pre.Items {
 		if hasRun[it.Issue] {

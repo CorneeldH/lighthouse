@@ -46,6 +46,9 @@ type RepoInput struct {
 	// Markers are the controller markers whose session's last run is in this repo, resumable
 	// or not.
 	Markers []park.Marker `json:"markers"`
+	// Schedules are the schedules whose slot is up and whose gate let it through (the tick
+	// plans and gates them); Decide starts each under the brake.
+	Schedules []ScheduledDue `json:"schedules,omitempty"`
 }
 
 // Kind is what an action does.
@@ -66,6 +69,8 @@ const (
 	KindUnpark Kind = "unpark"
 	// KindDropMarker removes the resume marker of SessionID while its key is TriggerKey.
 	KindDropMarker Kind = "drop_marker"
+	// KindScheduledStart claims and starts the run of Schedule for Slot; it has no issue.
+	KindScheduledStart Kind = "scheduled_start"
 )
 
 // Action is one thing apply does. Reason and Skip are heading keys, never posted text; only a
@@ -101,6 +106,14 @@ type Action struct {
 	Discard    bool         `json:"discard,omitempty"`  // forget the launch of run RunID
 	ItemID     string       `json:"item_id,omitempty"`  // park, hold, unpark: the board item
 	Blockers   []string     `json:"blockers,omitempty"` // park: "<repo>#<n> (<status>)" per active blocker
+	// Schedule and Slot (YYYYMMDDTHHMM) name the scheduled run of a scheduled start, or of its
+	// defer; Issue is 0 then. Tools, Instructions and Verdict (scheduled.Record JSON) are its
+	// launch.
+	Schedule     string   `json:"schedule,omitempty"`
+	Slot         string   `json:"slot,omitempty"`
+	Tools        []string `json:"tools,omitempty"`
+	Instructions string   `json:"instructions,omitempty"`
+	Verdict      string   `json:"verdict,omitempty"`
 }
 
 // Decide is the pure decision of one tick: per repo, per item, first the orphan rule, then
@@ -122,6 +135,7 @@ func Decide(in Input) []Action {
 		for _, a := range dropMarkers(repo) {
 			ps = append(ps, planned{Action: a})
 		}
+		ps = append(ps, decideScheduled(repo)...)
 	}
 	slices.SortStableFunc(ps, comparePlanned)
 	wanted := fixPRStarts(ps)
@@ -208,10 +222,10 @@ type planned struct {
 }
 
 // group places an action in the output: 0 without a start or resume (a park, hold or unpark
-// too), 1 a defer, 2 a start or resume.
+// too), 1 a defer, 2 a start, resume or scheduled start.
 func (p planned) group() int {
 	switch p.Kind {
-	case KindStart, KindResume:
+	case KindStart, KindResume, KindScheduledStart:
 		return 2
 	case KindDefer:
 		return 1
@@ -224,6 +238,11 @@ func comparePlanned(a, b planned) int {
 		return c
 	}
 	if a.group() == 2 {
+		// A scheduled start goes before the issue starts and resumes (spec §2): it comes at most
+		// once a period, and a full queue would otherwise hold it back for good.
+		if c := -cmpBool(a.Kind == KindScheduledStart, b.Kind == KindScheduledStart); c != 0 {
+			return c
+		}
 		if c := cmp.Compare(a.priority, b.priority); c != 0 {
 			return c
 		}
@@ -231,7 +250,18 @@ func comparePlanned(a, b planned) int {
 			return c
 		}
 	}
-	return cmp.Or(strings.Compare(a.Repo, b.Repo), cmp.Compare(a.Issue, b.Issue))
+	return cmp.Or(strings.Compare(a.Repo, b.Repo), cmp.Compare(a.Issue, b.Issue), strings.Compare(a.Schedule, b.Schedule))
+}
+
+// cmpBool orders false before true.
+func cmpBool(a, b bool) int {
+	switch {
+	case a == b:
+		return 0
+	case b:
+		return -1
+	}
+	return 1
 }
 
 // decideIssue gives the actions of one item. The start rules run only for an open issue in

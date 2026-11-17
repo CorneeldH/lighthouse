@@ -19,9 +19,6 @@ const roundLimitQuestion = "vraag"
 // <stateDir>/runs/<sessionID>/instructions.md (file 0600, directory 0700) and returns the
 // path. With atRoundLimit roundLimitQuestion the round-limit appendix follows the instructions.
 func WriteInstructions(stateDir, sessionID, atRoundLimit string) (string, error) {
-	if sessionID == "" || sessionID == "." || sessionID == ".." || filepath.Base(sessionID) != sessionID {
-		return "", fmt.Errorf("session id %q is no single path element", sessionID)
-	}
 	text, err := instructionsFS.ReadFile("instructions/run.md")
 	if err != nil {
 		return "", err
@@ -32,6 +29,15 @@ func WriteInstructions(stateDir, sessionID, atRoundLimit string) (string, error)
 			return "", err
 		}
 		text = append(text, appendix...)
+	}
+	return writeRunInstructions(stateDir, sessionID, text)
+}
+
+// writeRunInstructions writes text to <stateDir>/runs/<sessionID>/instructions.md (file 0600,
+// directory 0700) and returns the path.
+func writeRunInstructions(stateDir, sessionID string, text []byte) (string, error) {
+	if sessionID == "" || sessionID == "." || sessionID == ".." || filepath.Base(sessionID) != sessionID {
+		return "", fmt.Errorf("session id %q is no single path element", sessionID)
 	}
 	dir := filepath.Join(stateDir, "runs", sessionID)
 	if err := os.MkdirAll(dir, 0o700); err != nil {

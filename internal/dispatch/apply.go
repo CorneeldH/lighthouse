@@ -15,6 +15,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/park"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
 	"github.com/CorneeldH/lighthouse/internal/runs"
+	"github.com/CorneeldH/lighthouse/internal/scheduled"
 	"github.com/CorneeldH/lighthouse/internal/workplace"
 )
 
@@ -24,15 +25,18 @@ type Env struct {
 	// Forge is the forge of a repo: its comments, reactions, merges and board.
 	Forge func(repo string) forge.Forge
 	// Workplace is the workplace of a repo on a node ("" is self) for a profile.
-	Workplace  func(repo, node, profile string) workplace.Workplace
-	MCPConfig  func(profile string) string // the mcp_config of a profile; "" is none
-	RoundLimit func(repo string) string    // what a run does at an adversarial round limit
-	StateDir   string
-	MarkerDir  string // the resume markers; "" removes none
-	MaxWait    time.Duration
-	Now        func() time.Time
-	NewSession func() string // runs.NewSessionID
-	Log        io.Writer     // nil discards
+	Workplace func(repo, node, profile string) workplace.Workplace
+	MCPConfig func(profile string) string // the mcp_config of a profile; "" is none
+	// ScheduledJob is the job of schedule in repo with the scheduled.Env it runs in (Dir
+	// empty); a scheduled start needs it. Its Run runs git in the workplace.
+	ScheduledJob func(repo, schedule string) (scheduled.Job, scheduled.Env, error)
+	RoundLimit   func(repo string) string // what a run does at an adversarial round limit
+	StateDir     string
+	MarkerDir    string // the resume markers; "" removes none
+	MaxWait      time.Duration
+	Now          func() time.Time
+	NewSession   func() string // runs.NewSessionID
+	Log          io.Writer     // nil discards
 }
 
 // Result is what one Apply did.
@@ -63,7 +67,7 @@ func Apply(ctx context.Context, env Env, actions []Action) (Result, error) {
 		if err == nil {
 			continue
 		}
-		err = fmt.Errorf("%s#%d %s: %w", a.Repo, a.Issue, a.Kind, err)
+		err = fmt.Errorf("%s %s: %w", subject(a), a.Kind, err)
 		res.Failed[a.Repo] = errors.Join(res.Failed[a.Repo], err)
 		errs = append(errs, err)
 	}
@@ -88,6 +92,8 @@ func (ap applier) apply(ctx context.Context, a Action, res *Result) error {
 	switch a.Kind {
 	case KindStart, KindResume:
 		return ap.start(ctx, a, res)
+	case KindScheduledStart:
+		return ap.startScheduled(ctx, a, res)
 	case KindReturn:
 		body := protocol.RenderReturned(reasonText(a), a.SessionID, "", a.Language)
 		if _, err := ap.env.Forge(a.Repo).CreateComment(ctx, a.Issue, body); err != nil {
@@ -192,7 +198,16 @@ func reasonText(a Action) string {
 }
 
 func deferral(a Action, reason string) string {
-	return fmt.Sprintf("%s#%d: %s", a.Repo, a.Issue, reason)
+	return fmt.Sprintf("%s: %s", subject(a), reason)
+}
+
+// subject names what an action is about in a log line or error: "<repo>#<issue>", or for a
+// scheduled run, which has no issue, "<repo> scheduled:<schedule>:<slot>".
+func subject(a Action) string {
+	if a.Schedule != "" {
+		return a.Repo + " " + scheduled.TriggerKey(a.Schedule, a.Slot)
+	}
+	return fmt.Sprintf("%s#%d", a.Repo, a.Issue)
 }
 
 // closeReason is the reason a KindClose records: the heading text when the action names a

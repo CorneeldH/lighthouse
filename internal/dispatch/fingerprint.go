@@ -60,7 +60,9 @@ func Fingerprint(pre Pre) string {
 	hasRun := map[int]bool{}
 	runsIn := make([]fpRun, 0, len(pre.OpenRuns))
 	for _, r := range pre.OpenRuns {
-		hasRun[r.Issue] = true
+		if r.Schedule == "" { // a scheduled run has no issue; it still counts as a run below
+			hasRun[r.Issue] = true
+		}
 		f := fpRun{ID: r.ID, Issue: r.Issue, StartedAt: r.StartedAt.UTC(), MergeSHA: r.MergeSHA}
 		if stand, ok := pre.Stands[r.ID]; ok {
 			f.Stand = &stand
