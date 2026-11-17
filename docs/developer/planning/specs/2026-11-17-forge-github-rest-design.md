@@ -25,9 +25,17 @@ telt helemaal niet. Gemeten op 2026-11-17: `X-Ratelimit-Used` bleef gelijk na tw
 blokkades via REST, met conditionele requests waar het kan. Een lege GraphQL-limiet laat de
 controller dan doorlopen.
 
+Er is één mogelijke uitzondering: `IssueItem`. Geeft de REST-lijst geen gearchiveerde items
+(§4), dan blijft die methode op GraphQL. Triage, `boardstart` en `lighthouse forge` gebruiken
+`IssueItem`; die blijven dan van GraphQL afhankelijk. De tick roept `IssueItem` alleen aan
+voor een open run waarvan het issue niet in de boardlijst staat: het item is gearchiveerd, van
+het board gehaald of verwijderd. In die GraphQL-tak doet zo'n tick dus één GraphQL-request per
+zulke run. Dat zijn er weinig, en het verschil met nu is een orde van grootte *(r3-f1)*.
+
 Succes:
 
-- Een tick doet geen enkel GraphQL-request.
+- Een tick doet geen enkel GraphQL-request. De enige uitzondering is de GraphQL-tak van
+  `IssueItem` (§4): één request per open run waarvan het issue niet in de boardlijst staat.
 - Een rustige tick, waarin niets veranderde, kost hoogstens een paar `core`-requests: de
   conditionele requests geven 304.
 - De dispatcher beslist hetzelfde als nu: dezelfde `BoardItem`'s en `PR`'s, op de verschillen
@@ -41,14 +49,17 @@ Succes:
   REST.
 - Een persistente cache voor conditionele GET-requests (ETag, `If-None-Match`), die ook werkt
   over de losse `lighthouse tick`-processen heen.
-- De GraphQL-queries van deze vijf methodes verdwijnen.
+- De GraphQL-queries van deze methodes verdwijnen. Die van `IssueItem` alleen als hij naar REST
+  gaat (§4).
 
 **Niet-doelen**
 
 - De `gh`-aanroepen in skills en sessies (`gh issue comment`, `gh pr list`/`create`/`view`),
   `boardstart` en `worktreeaudit`. Die gebruiken ook GraphQL. Ze horen bij de andere criteria
   van #395 (posten via REST, een spoor bij een mislukte post) en bij #260 (`lighthouse forge`
-  als wrapper). Dit ontwerp sluit #395 dus niet; de PR schrijft `Refs #395`.
+  als wrapper). Dit ontwerp sluit #395 dus niet; de PR schrijft `Refs #395`. `boardstart` valt
+  hier niet onder: dat gaat via `forge.Forge` en verhuist dus mee *(eigen keuze na
+  spec-review, r1-f5)*.
 - De GitLab-forge. Die gebruikt zijn eigen GraphQL voor het board en blijft zoals hij is.
 - `Planning` (`internal/forge/planning.go`) voor het tabblad Prioritering. Dat leest via
   GraphQL, maar alleen als iemand het tabblad opent, niet elke tick. *Keuze van de ontwerper:*
@@ -75,7 +86,8 @@ Succes:
   (`decide.Action.ItemID`) en gaat naar `SetStatus` via `apply.go`.
 - `[forge.board]` in `lighthouse.toml` blijft zoals hij is: `project_number`, `project_id`
   (node-ID), `status_field_id`/`priority_field_id` (node-ID's) en de optie-ID's. Er komt geen
-  nieuwe verplichte sleutel bij. De optie-ID's zijn in REST dezelfde strings (`5995ef76`).
+  nieuwe verplichte sleutel bij. Wel komt er één optionele sleutel bij, `project_owner` (§2).
+  De optie-ID's zijn in REST dezelfde strings (`5995ef76`).
 - `lighthouse tick` is een los proces per tick. Een cache die alleen in het geheugen staat,
   levert daar niets op.
 - De fake GitHub-server in `internal/forge/forgetest` en de contracttests in
@@ -91,7 +103,8 @@ geeft per item:
 - `content`: het issue zelf. Daarin zitten `number`, `title`, `state`, `updated_at`, `labels`,
   `repository_url` en `issue_dependencies_summary.blocked_by`. Dat laatste is alleen het aantal.
 - het veld "Linked pull requests": een lijst PR-objecten met `number`, `state`, `draft`,
-  `head.sha`, `head.ref`, `merged_at`, `closed_at`, `html_url` en `head.repo`. Voor alle
+  `head.sha`, `head.ref`, `head.repo`, `base.ref`, `base.repo`, `merged_at`, `closed_at` en
+  `html_url`. Voor alle
   198 items van dit board is die lijst gelijk aan `closedByPullRequestsReferences(includeClosedPrs:
   true)` uit GraphQL.
 
@@ -102,7 +115,8 @@ Verder:
   `node_id`.
 - `GET users/{owner}/projectsV2/{number}` geeft het `node_id` van het project. Daarmee is
   `project_id` te controleren.
-- De lijst geeft een ETag; `If-None-Match` geeft 304 zonder dat het budget daalt.
+- De lijst geeft een ETag; `If-None-Match` geeft 304 zonder dat het budget daalt. **Een 304
+  heeft geen `Link`-header.** De 200 van dezelfde pagina wel (gemeten op 2026-11-17).
 - `q` filtert met de board-syntaxis (`status:Controller` geeft 8 items). Een issuenummer is
   geen filter: `number:254` geeft 0 items.
 - Toevoegen: `POST …/items` met `{"type":"Issue","owner":…,"repo":…,"number":…}`. Daarvoor is
@@ -133,8 +147,16 @@ een item blokkeren. Daarvoor zijn per stuk losse calls nodig:
 
 ### 1. De cache voor conditionele requests
 
-Een `http.RoundTripper` in `internal/forge` legt per GET-URL de `ETag` en de body vast. Bij het
-volgende request stuurt hij `If-None-Match`. Op een 304 geeft hij de bewaarde body terug als 200.
+Een `http.RoundTripper` in `internal/forge` legt per GET-URL de `ETag`, de body en de
+`Link`-header vast. Bij het volgende request stuurt hij `If-None-Match`. Op een 304 geeft hij
+de bewaarde body terug als 200, met de bewaarde `Link`. Zonder die `Link` stopt de paginering
+van `do` na pagina 1, en dan geeft `BoardItems` stil 100 van de 198 items. Een test met een
+304 op pagina 1 van een lijst van twee pagina's legt dat vast *(r1-f1)*.
+
+Hij bewaart alleen een volledig gelezen 200-body. Kan de aanroeper een bewaarde body niet
+decoderen, dan verdwijnt die regel uit de cache. Regels die een tijd niet gebruikt zijn, zoals
+de checks van oude heads, worden opgeruimd; de termijn kiest de bouwer *(eigen keuze na
+spec-review, r1-f10)*.
 De cache sleutelt op URL plus token-identiteit. Gebruik een hash van het token, nooit het token
 zelf: twee tokens kunnen verschillende dingen zien.
 
@@ -142,13 +164,15 @@ De opslag zit achter een kleine interface (`Get(key)` en `Put(key, etag, body)`)
 `forge.Config` krijgt een optioneel veld voor die opslag. Zonder opslag is er geen cache, en het
 gedrag is dan gelijk aan nu.
 
-- Elk proces dat een GitHub-forge opent en een state-dir heeft, krijgt een SQLite-opslag in de
-  state-DB: de tick, `lighthouse run`, triage, `boardstart`, de server en `lighthouse forge`.
-  Het wordt een nieuwe tabel, met een migratie zoals de bestaande. De bouwer zoekt de plekken
-  waar een forge geopend wordt (onder meer `internal/cli/forges.go` en `pinslane.go`).
-  Zonder state-dir is er geen cache; dat werkt nog steeds, alleen duurder.
-- Een cachefout (lezen of schrijven) is nooit fataal. Het request gaat dan gewoon zonder
-  `If-None-Match`, en de fout komt één keer in de log.
+- Elk proces dat een GitHub-forge opent en een state-dir heeft, krijgt een SQLite-opslag: de
+  tick, `lighthouse run`, triage, `boardstart`, de server en `lighthouse forge`. De opslag
+  staat in een **eigen bestand** in de state-dir, buiten de versie-migraties van de state-DB.
+  Een oudere binary weigert de state-DB dan niet na een terugrol (`store.go` `refuseTooNew`)
+  *(eigen keuze na spec-review, r1-f11)*. De bouwer zoekt de plekken waar een forge geopend
+  wordt (onder meer `internal/cli/forges.go` en `pinslane.go`). Zonder state-dir is er geen
+  cache; dat werkt nog steeds, alleen duurder.
+- Een cachefout is nooit fataal: openen, lezen en schrijven. Het request gaat dan gewoon
+  zonder `If-None-Match`, en de fout komt één keer in de log.
 
 Alleen GET gaat door de cache. Een `Link: next` blijft werken, omdat elke pagina een eigen URL
 heeft.
@@ -158,8 +182,11 @@ heeft.
 De client leidt de REST-coördinaten één keer per proces af en bewaart ze. Die afleiding loopt
 via de cache, dus meestal is ze een 304.
 
-- **Eigenaar:** de eigenaar van `Repo` (`owner/name`). Eerst `users/{owner}/projectsV2/{n}`,
-  bij 404 `orgs/{owner}/projectsV2/{n}`.
+- **Eigenaar:** de optionele `[forge.board] project_owner`, en anders de eigenaar van `Repo`
+  (`owner/name`). Een board kan van iemand anders zijn dan de repo; GraphQL vond het via de
+  node-ID, REST heeft de eigenaar nodig *(r1-f4)*. Eerst `users/{owner}/projectsV2/{n}`, bij
+  404 `orgs/{owner}/projectsV2/{n}`. Een 404 op beide geeft een fout die `project_owner`
+  noemt.
 - **Controle:** het `node_id` van het project moet gelijk zijn aan `project_id`. Anders volgt een
   fout die beide noemt. Zo raakt de client nooit stil het verkeerde board.
 - **Velden:** de numerieke ID's van Status en Priority komen uit `…/fields`, door het `node_id`
@@ -178,7 +205,8 @@ Eén gepagineerde lijst met de drie velden. Per item:
   `IssueState` wordt in hoofdletters omgezet (`OPEN`/`CLOSED`), zoals GraphQL het gaf.
 - Een item zonder issue-content (een draft of een PR) krijgt alleen `ItemID` en de velden, zoals
   nu.
-- Een gearchiveerd item komt niet in de lijst, net als nu: GraphQL `items` liet het ook weg.
+- Een item met `archived_at` laat `BoardItems` altijd weg, ongeacht of REST het levert. GraphQL
+  `items` liet het ook weg *(eigen keuze na spec-review, r1-f12)*.
 - `ClosingPRs` uit "Linked pull requests", met `Closes: true`. Zie §5 voor de PR-velden.
 - `BlockedBy`: alleen voor een item met `issue_dependencies_summary.total_blocked_by > 0` volgt
   `GET …/issues/{n}/dependencies/blocked_by`, via de cache. Het is `total_…` omdat GraphQL ook
@@ -208,21 +236,37 @@ item alleen de Status. Voor een item van de eigen repo blijft elke fout een fout
 Er is geen REST-endpoint van "de projectitems van een issue". `IssueItem` zoekt het issue
 daarom in de boardlijst van §3. Die lijst komt uit de cache en kost dus meestal niets.
 
+- Het item matcht op `Repo == c.Repo` én `Issue == n`: het board is gedeeld (§3), en een
+  ander repo kan hetzelfde nummer hebben *(r1-f8)*.
 - Gevonden: `ok = true`, zonder de extra calls van `BlockedBy` en de PR's. Ook nu vult
   `IssueItem` die niet.
 - Niet gevonden, maar het issue bestaat (`GET repos/{repo}/issues/{n}` geeft 200): `ok = false`.
-- Het issue bestaat niet (404, of 410 bij een verwijderd issue): `ErrIssueNotFound`, zoals nu.
+- Het issue bestaat niet: `ErrIssueNotFound`, zoals nu. Dat geldt bij een 404, bij een 410
+  (een verwijderd issue), bij een 200 met `pull_request` (het nummer is een PR) en bij een 200
+  met een andere `repository_url` (een verplaatst issue, via een gevolgde 301). GraphQL gaf in
+  die gevallen ook NOT_FOUND *(r1-f8)*.
+- **Read-after-write.** `boardstart` zet een status en leest hem meteen terug met `IssueItem`
+  (`boardstart.go:116-129`). De bouwer meet of de REST-lijst een `PATCH` meteen toont. Kent de
+  client het numerieke item-ID al (uit de tabel van §6), dan leest `IssueItem` dat ene item
+  met `GET …/items/{id}`, niet de lijst *(eigen keuze na spec-review, r1-f9)*.
 
-**Open punt voor de bouwer: gearchiveerde items.** GraphQL `projectItems` gaf ook
-gearchiveerde items, met `Archived = true`. Triage gebruikt dat (`SkipArchived`), zodat het een
-gearchiveerd issue niet opnieuw toevoegt. Of de REST-lijst gearchiveerde items geeft (met
-`archived_at`), is niet geverifieerd: dit board heeft er nu geen.
+**Gearchiveerde items: eerst verifiëren, vóór de ombouw.** GraphQL `projectItems` gaf ook
+gearchiveerde items, met `Archived = true`. Triage heeft dat nodig: een gearchiveerd item mag
+niet lezen als "niet op het board", anders beoordeelt triage het issue elke ronde opnieuw en
+schrijft het ernaast (`triage_gather.go:74-81`, `SkipArchived` in `triage/facts.go:73-76`).
+Of de REST-lijst gearchiveerde items geeft, met `archived_at`, is niet geverifieerd: dit board
+heeft er nu geen.
 
-- Geeft REST ze wel, dan filtert `BoardItems` ze eruit en vindt `IssueItem` ze met
-  `Archived = true`.
-- Geeft REST ze niet, dan moet de bouwer een andere weg vinden (bijvoorbeeld `q=is:archived`;
-  dat filtert in een eerste test niet) en het terugmelden voordat het gedrag van triage
-  verandert.
+De bouwer verifieert dit als eerste stap, samen met de check-rollup (§5), op een item dat hij
+archiveert en daarna terugzet. De uitkomst bepaalt het pad:
+
+- **REST geeft ze:** `IssueItem` vindt ze in de lijst, met `Archived = true`.
+- **REST geeft ze niet:** `IssueItem` blijft op GraphQL (`IssueItemsQuery`), als enige
+  methode van de vijf. Het is dan het enige pad voor `IssueItem`, geen fallback.
+
+`IssueItem` draait weinig: in de tick alleen voor een open run die niet op het board staat
+(op GitHub nooit), verder in triage en `boardstart`. Op GraphQL blijven kost dus vrijwel
+niets *(r1-f3)*.
 
 ### 5. PR-velden en `BranchPRs`
 
@@ -231,7 +275,11 @@ Een PR uit de REST-lijst wordt op deze manier een `forge.PR`:
 - `State`: `MERGED` als `merged_at` gezet is, anders `OPEN` of `CLOSED`.
 - `Draft`, `HeadSHA` (`head.sha`), `HeadRef`, `BaseRef` (`base.ref`) en `URL` (`html_url`).
   `MergedAt` en `ClosedAt` staan op nul als ze ontbreken.
-- `CrossRepo`: `head.repo.full_name` verschilt van de base-repo, of `head.repo` is null.
+- `CrossRepo`: `head.repo.full_name` verschilt van `base.repo.full_name`, of `head.repo` is
+  null.
+- **De repo van een PR** is `base.repo.full_name`, niet de repo van het item. Een sluitende PR
+  kan in een andere repo staan dan het issue. `pulls/{n}` en de checks gaan naar die repo
+  *(eigen keuze na spec-review, r1-f7)*.
 - **Alleen voor een open PR** worden `Mergeable` en `Checks` opgehaald, via de cache:
   - `Mergeable` uit `GET pulls/{n}`: `true` wordt `MERGEABLE`, `false` wordt `CONFLICTING`,
     `null` wordt `UNKNOWN`.
@@ -241,8 +289,14 @@ Een PR uit de REST-lijst wordt op deze manier een `forge.PR`:
     - een conclusion `failure`, `timed_out`, `cancelled`, `action_required` of
       `startup_failure`, of status `failure`: `FAILURE`
     - status `error`: `ERROR`
-    - iets dat nog loopt of nog moet starten, of status `pending`: `PENDING`
-    - anders (`success`, `neutral`, `skipped`): `SUCCESS`
+    - **`SUCCESS` alleen** als elke check klaar is met `success`, `neutral` of `skipped`, en
+      de combined status `success` is of geen statussen heeft
+    - **al het andere is `PENDING`**: iets dat nog loopt of nog moet starten, status
+      `pending`, `stale`, en elke onbekende waarde. Dat is fail-closed: een nieuwe waarde van
+      GitHub mag nooit tot een merge leiden *(r1-f2)*
+  - Elke lijst van checks wordt volledig gelezen: `per_page=100`, `Link` volgen, en het aantal
+    gelezen runs controleren tegen `total_count`. Een lijst die niet compleet is, geeft een
+    fout *(eigen keuze na spec-review, r1-f6)*.
 - Een gemergede PR krijgt `Mergeable = "MERGEABLE"`; dat volgt uit de merge zelf. Een gesloten,
   niet-gemergede PR krijgt `"UNKNOWN"`. Beide krijgen `Checks = ""`, zonder extra call. Elke
   plek waar de dispatcher `Checks` leest, eist `State == "OPEN"`. De GitHub-fixture van
@@ -287,10 +341,11 @@ gepagineerd, met `Closes = false`. Daarna volgt dezelfde verrijking voor open PR
 
 ### 7. Wat verdwijnt
 
-- `BoardQuery`, `BranchPRsQuery`, `IssueItemsQuery`, `AddToBoardMutation`,
-  `SetStatusMutation`, `prNode` en `itemNode`, en `graphqlErrors.notFound` als niets anders hem
-  nog gebruikt.
-- De GraphQL-routes van `forgetest` voor deze queries. De routes voor `Planning` blijven.
+- `BoardQuery`, `BranchPRsQuery`, `AddToBoardMutation`, `SetStatusMutation` en `prNode`.
+- `IssueItemsQuery`, `itemNode` en `graphqlErrors.notFound` alleen als `IssueItem` naar REST
+  gaat (§4).
+- De GraphQL-routes van `forgetest` voor de queries die verdwijnen. De routes voor `Planning`
+  blijven, en die voor `IssueItemsQuery` ook als `IssueItem` op GraphQL blijft.
 
 `graphql.go` blijft, voor `Planning`. De bouwer zoekt na of iets buiten `internal/forge` de
 geëxporteerde query-constanten gebruikt.
@@ -323,9 +378,12 @@ uitkomsten komen als comment op #395.
   - `pulls?head=`, `pulls/{n}`, check-runs, status en `dependencies/blocked_by`
 - De contracttests in `forgesuite` draaien groen voor GitHub en GitLab. Hun beweringen blijven
   gelijk; alleen `ChecksOnClosedPRs` van de GitHub-fixture gaat naar `false` (§5).
-- Een test bewijst dat `BoardItems`, `IssueItem`, `BranchPRs`, `SetStatus` en `AddToBoard` geen
-  request naar `/graphql` doen. De fake server faalt dan op dat pad, maar `Planning` mag het nog
-  wel gebruiken.
+- Een test bewijst dat `BoardItems`, `BranchPRs`, `SetStatus` en `AddToBoard` geen request naar
+  `/graphql` doen, en `IssueItem` ook niet als die naar REST gaat (§4). De fake server faalt dan
+  op dat pad, maar `Planning` mag het nog wel gebruiken.
+- Een test met een 304 op pagina 1 van een lijst van twee pagina's: `BoardItems` geeft alle
+  items.
+- Tabeltests voor de check-rollup met `stale` en een onbekende waarde: beide geven `PENDING`.
 - Een test met een item van een andere repo waarvan de PR 404 geeft: `BoardItems` slaagt, en
   die PR krijgt `UNKNOWN` en `""`.
 - Een test bewijst dat een tweede tick, zonder wijziging, alleen 304's krijgt en dezelfde
@@ -338,11 +396,12 @@ uitkomsten komen als comment op #395.
 
 ## Voor de bouwer
 
-- De naam en het schema van de cachetabel, en de migratie.
+- De naam van het cachebestand, zijn schema en de termijn voor het opruimen.
 - Hoe het veld "Linked pull requests" herkend wordt als REST geen type geeft. Mogelijk een vaste
   naam als laatste uitweg. Meld het als dat nodig is.
 - De volgorde van de commits. Een voorstel:
-  1. de check-rollup, bewezen op een echte PR (§5); die kan het hele plan stoppen
+  1. de verificaties: de check-rollup op een echte PR (§5), gearchiveerde items in de REST-lijst
+     (§4) en read-after-write (§4). De check-rollup kan het hele plan stoppen
   2. de cache
   3. het project vinden
   4. `BoardItems`
