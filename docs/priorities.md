@@ -59,11 +59,19 @@ milestones, 22 search-aliassen): elke van de drie query's kostte **1 punt**, dus
 bouw**, ruim onder de berekende ongeveer 21 punten voor de issuespagina. De berekende getallen
 zijn dus een bovengrens; de meting op een repo met meer dan 100 issues is niet gedaan.
 
+## Twee kostenwijzigingen
+
+- `BuildAll` leest het bord nu één keer per overview-bouw voor repo's die wel een bord hebben maar
+  geen statusoptie voor de Controller: ongeveer 53 punten, bij ongeveer 40 bouwen per uur per
+  repo. Voorheen werd dat bord daar nooit gelezen.
+- GitLab-budget per bouw: 1 + ceil(open/100) issuepagina's, één links-aanroep per open issue en
+  één `issues_statistics`-aanroep per open milestone.
+
 ## Wat het tabblad toont
 
 `lighthouse serve` toont naast de overview een tabblad Prioritering (`#prioritering`) met drie
 weergaven: een afhankelijkhedengraaf van open issues, een milestone-weergave met voortgang
-(`Done` van `Done + Open`) en een weergave van issues zonder milestone. De server bouwt de
+(`Done` van `Done + Open`, waarbij `Open` hier het aantal open issues is dat `Planning.Issues` per milestone levert; de SPA negeert de `Open` van de zoekopdracht) en een weergave van issues zonder milestone. De server bouwt de
 gegevens in een eigen refresher, los van de overview, elke **300 s** (`PrioritiesInterval`) en
 levert ze op `/api/priorities`. De pagina leest alleen; ze schrijft niets terug naar GitHub.
 
@@ -77,11 +85,14 @@ De SPA leidt deze begrippen af in `web/src/lib/priorities/derive.ts`; de server 
   `brainstorming`, `start-issue`, `spec-review`, `writing-plans` of `plan-review` is: het
   denkwerk vóór de uitvoering. Elke andere fase, of een issue dat alleen op het bord actief is,
   is bergaf.
-- **Wachtenden.** Per issue het aantal open issues dat er (direct of via ketens) op wacht. Een
-  blokkade in een cyclus telt als cyclus en krijgt geen diepte; zo blijft de graaf eindig.
-- **Shaping.** Een milestone is in shaping als hij geen open of gesloten issues heeft, of als een
-  regel van de milestonebeschrijving (zonder hoofdletters en omringende spaties) `Status:
-  shaping` is. Shaping-milestones staan apart van de lopende.
+- **Wachtenden.** Per issue het aantal open issues dat er (direct of via ketens) op wacht. De
+  leden van een cyclus vormen samen één component en krijgen de diepte van dat component, in
+  één kolom; zo blijft de graaf eindig.
+- **Shaping.** Een milestone is in shaping als hij geen open issues heeft en geen issues die als
+  `completed` zijn gesloten (`isShaping`: nul issues), of als een regel van de
+  milestonebeschrijving (zonder hoofdletters en omringende spaties) `Status: shaping` is. Een
+  milestone met nul issues en een lege beschrijving is dus ook shaping. Alleen lege milestones
+  (`empty`) sorteren onderaan; een shaping-milestone mét issues sorteert gewoon mee.
 
 ## Palet en controle
 
@@ -89,3 +100,15 @@ Het kleurpalet van de milestones is **niet gevalideerd** met de dataviz-validato
 gebruikersinterface is **niet visueel gecontroleerd in een browser**: alleen de unit- en
 componenttests en de build zijn gedraaid. Er is geen e2e-test: `web/e2e/fake-github.ts` kent geen
 GraphQL-route die zonder wijziging van de bestaande tests uit te breiden is.
+
+## Bekende beperkingen
+
+- Een `"` of `\` in een milestonetitel laat de hele bouw falen; de refresher probeert het elke
+  60 s opnieuw, op GitHub tegen ongeveer 1 punt per query.
+- GitLab-groepsmilestones worden niet opgesomd (alleen projectmilestones). Zulke issues
+  verdwijnen uit Milestones en uit Zonder milestone.
+- GitLab `issues_statistics` koppelt op milestonetitel.
+- Lange pijlen in de graaf delen één baan per overgeslagen kolom.
+- Het palet is niet gevalideerd met de dataviz-validator.
+- De gebruikersinterface is niet visueel in een browser gecontroleerd.
+- De e2e-test is overgeslagen: `fake-github.ts` heeft geen GraphQL-route.
