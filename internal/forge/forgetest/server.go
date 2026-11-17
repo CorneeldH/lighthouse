@@ -105,7 +105,9 @@ func New(t *testing.T) *Server {
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues", s.listIssues)
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues/{number}", s.issue)
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues/{number}/dependencies/blocked_by", s.blockedBy)
+	mux.HandleFunc("GET /repos/{owner}/{name}", s.repo)
 	mux.HandleFunc("GET /repos/{owner}/{name}/pulls", s.pulls)
+	mux.HandleFunc("POST /repos/{owner}/{name}/pulls", s.createPull)
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues/{number}/comments", s.comments)
 	mux.HandleFunc("POST /repos/{owner}/{name}/issues/{number}/comments", s.createComment)
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues/comments/{id}/reactions", s.reactions)
@@ -164,6 +166,27 @@ func (s *Server) record(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// repo answers the repository with default branch main.
+func (s *Server) repo(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"default_branch": "main"})
+}
+
+// createPull opens a pull request: number 100 plus the count of POSTs to the path so far, on the
+// head the body names. The body is in Posts.
+func (s *Server) createPull(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Head string `json:"head"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{"message": "bad body"})
+		return
+	}
+	n := 100 + s.Count(r.URL.Path)
+	writeJSON(w, http.StatusCreated, map[string]any{"number": n,
+		"html_url": fmt.Sprintf("%s/%s/%s/pull/%d", s.srv.URL, r.PathValue("owner"), r.PathValue("name"), n),
+		"head":     map[string]any{"ref": body.Head, "sha": ""}})
 }
 
 func (s *Server) user(w http.ResponseWriter, _ *http.Request) {

@@ -45,8 +45,10 @@ type Pre struct {
 	// without an item is missing. The fingerprint does not read it.
 	Statuses map[int]string
 	OpenRuns []runs.OpenRun
-	Stands   map[int64]workplace.Stand // per open run id, set by the caller; missing = not measurable
-	Runs     map[int64]RunState        // per open run id, set by the caller; missing = not measured
+	// ScheduledPRs are the PRs of the branch of each open scheduled run, by branch.
+	ScheduledPRs map[string][]forge.PR
+	Stands       map[int64]workplace.Stand // per open run id, set by the caller; missing = not measurable
+	Runs         map[int64]RunState        // per open run id, set by the caller; missing = not measured
 	// Markers are the controller markers whose session's last run is in this repo; the
 	// fingerprint and the boundaries of the precheck read them.
 	Markers []park.Marker
@@ -58,7 +60,8 @@ type Pre struct {
 // Prepare reads the board of repo and keeps the issues of repo.Slug whose Status is
 // Controller or On hold, or that have an open run in open, sorted by issue. branches is per issue the branch of its last run,
 // open or closed: such an item also gets the PRs of that branch, merged with its closing PRs,
-// so a merged PR that does not close the issue stays visible after its run closed.
+// so a merged PR that does not close the issue stays visible after its run closed. Each open
+// scheduled run with a branch gets the PRs of that branch in ScheduledPRs: it has no board item.
 func Prepare(ctx context.Context, f forge.Forge, repo repoconfig.Repo, open []runs.OpenRun, branches map[int]string) (Pre, error) {
 	if repo.Board == nil {
 		return Pre{}, fmt.Errorf("dispatch: %s: missing [forge.board]", repo.Slug)
@@ -117,7 +120,11 @@ func Prepare(ctx context.Context, f forge.Forge, repo repoconfig.Repo, open []ru
 		items = append(items, it)
 	}
 	slices.SortFunc(items, func(x, y Item) int { return x.Issue - y.Issue })
-	return Pre{Repo: repo, Items: items, Statuses: statuses, OpenRuns: open}, nil
+	scheduledPRs, err := scheduledBranchPRs(ctx, f, open)
+	if err != nil {
+		return Pre{}, err
+	}
+	return Pre{Repo: repo, Items: items, Statuses: statuses, OpenRuns: open, ScheduledPRs: scheduledPRs}, nil
 }
 
 // known is status, or "" for a status option that [forge.board] status_options does not list:
@@ -212,13 +219,18 @@ func Complete(ctx context.Context, f forge.Forge, pre Pre, trust *Trust, tokenLo
 		}
 		items = append(items, it)
 	}
+	scheduledPRs, err := withRoborev(ctx, f, pre.ScheduledPRs, trust)
+	if err != nil {
+		return Snapshot{}, err
+	}
 	return Snapshot{
-		Version:    SnapshotVersion,
-		Repo:       pre.Repo.Slug,
-		TokenLogin: tokenLogin,
-		GatheredAt: now.UTC(),
-		Items:      items,
-		OpenRuns:   nonNil(pre.OpenRuns),
+		Version:      SnapshotVersion,
+		Repo:         pre.Repo.Slug,
+		TokenLogin:   tokenLogin,
+		GatheredAt:   now.UTC(),
+		Items:        items,
+		OpenRuns:     nonNil(pre.OpenRuns),
+		ScheduledPRs: scheduledPRs,
 	}, nil
 }
 

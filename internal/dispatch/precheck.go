@@ -118,7 +118,7 @@ func SaveDeferred(ctx context.Context, db *sql.DB, repo string, defers []Action,
 }
 
 // Boundaries are the moments a tick must look again even when nothing on the board changed:
-// per open run the end of MaxRuntime and MaxWait, MaxWait after its last activity (the last
+// per open run the end of its time limit (runLimit) and MaxWait, MaxWait after its last activity (the last
 // transcript event, or without a transcript the forge updated_at of its session) and after
 // its permission prompt, per marker its reset_at, and the start of the night window today and
 // yesterday, in the zone of now. Activity and prompts stay out of the fingerprint; these
@@ -128,7 +128,7 @@ func SaveDeferred(ctx context.Context, db *sql.DB, repo string, defers []Action,
 func Boundaries(d hostconfig.Dispatch, open []runs.OpenRun, states map[int64]RunState, markers []park.Marker, now time.Time) []time.Time {
 	var out []time.Time
 	for _, r := range open {
-		out = append(out, r.StartedAt.Add(d.MaxRuntime), r.StartedAt.Add(d.MaxWait))
+		out = append(out, runLimit(d, r), r.StartedAt.Add(d.MaxWait))
 		s := states[r.ID]
 		switch {
 		case s.Transcript != nil:

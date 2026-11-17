@@ -233,3 +233,30 @@ func TestFingerprintChangesOnMergeSHA(t *testing.T) {
 		t.Error("a different merge sha hashed the same")
 	}
 }
+
+// Fails if the PR of an open scheduled run, or its pr_at, stays out of the fingerprint: a PR that
+// turns green or red without a board change would wait for the stale gather, and so would the
+// first tick after the PR opened.
+func TestFingerprintScheduledRun(t *testing.T) {
+	t0 := time.Date(2026, 10, 31, 10, 0, 0, 0, time.UTC)
+	branch := "scheduled/x-20261031T0400-1"
+	mk := func(checks string, prAt time.Time) Pre {
+		return Pre{
+			OpenRuns:     []runs.OpenRun{{ID: 1, Schedule: "x", Branch: branch, StartedAt: t0, PRAt: prAt}},
+			ScheduledPRs: map[string][]forge.PR{branch: {{Number: 9, State: "OPEN", Checks: checks}}},
+		}
+	}
+	if Fingerprint(mk("PENDING", t0)) == Fingerprint(mk("SUCCESS", t0)) {
+		t.Error("checks of the scheduled run's PR changed, the fingerprint did not")
+	}
+	if Fingerprint(mk("PENDING", time.Time{})) == Fingerprint(mk("PENDING", t0)) {
+		t.Error("pr_at of the scheduled run changed, the fingerprint did not")
+	}
+	// An issue run hashes as before the fields existed.
+	issue := Pre{OpenRuns: []runs.OpenRun{{ID: 1, Issue: 1, StartedAt: t0}}}
+	withNil := issue
+	withNil.ScheduledPRs = map[string][]forge.PR{}
+	if Fingerprint(issue) != Fingerprint(withNil) {
+		t.Error("an empty ScheduledPRs changed the fingerprint")
+	}
+}

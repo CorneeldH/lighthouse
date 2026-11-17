@@ -52,6 +52,9 @@ type tickEnv struct {
 	Run workplace.Runner
 	// Jobs looks up a scheduled job by name; nil is scheduled.Lookup.
 	Jobs func(name string) (scheduled.Job, bool)
+	// GitBase is the base URL of the git remotes the branch of a scheduled run is pushed to;
+	// "" is https://<[forge] host, or github.com>.
+	GitBase string
 }
 
 func (e tickEnv) runner() workplace.Runner {
@@ -489,6 +492,7 @@ func applyActions(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.D
 		Workplace:    func(slug, node, profile string) workplace.Workplace { return places(repos[slug], node, profile) },
 		MCPConfig:    func(profile string) string { return cfg.Profiles[profile].MCPConfig },
 		ScheduledJob: scheduledJob(env, repos),
+		Remote:       scheduledRemote(env, dir, repos),
 		RoundLimit:   func(slug string) string { return repos[slug].Controller.AtRoundLimit },
 		StateDir:     dir,
 		MarkerDir:    markerDir,

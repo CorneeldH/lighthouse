@@ -60,9 +60,13 @@ type fakeForge struct {
 	mergeErr  error
 	merges    []string // "<pr> <sha>" per MergePR
 	created   []string // "<branch> <title>" per CreatePR
-	closed    []int    // the number per ClosePR
+	prBodies  []string // the body per CreatePR
+	createErr error
+	closed    []int // the number per ClosePR
+	closeErr  error
 	deleted   []string // the branch per DeleteBranch
-	onPost    func()   // runs at the start of CreateComment
+	deleteErr error
+	onPost    func() // runs at the start of CreateComment
 	nextID    int64
 	issues    []int
 	bodies    []string
@@ -97,20 +101,30 @@ func (p *fakeForge) MergePR(_ context.Context, number int, sha string) error {
 	return p.mergeErr
 }
 
-func (p *fakeForge) CreatePR(_ context.Context, branch, title, _ string) (forge.PR, error) {
+func (p *fakeForge) CreatePR(_ context.Context, branch, title, body string) (forge.PR, error) {
 	p.log.add("CreatePR")
+	if p.createErr != nil {
+		return forge.PR{}, p.createErr
+	}
 	p.created = append(p.created, branch+" "+title)
+	p.prBodies = append(p.prBodies, body)
 	return forge.PR{Number: 900 + len(p.created), HeadRef: branch, State: "OPEN"}, nil
 }
 
 func (p *fakeForge) ClosePR(_ context.Context, number int) error {
 	p.log.add("ClosePR")
+	if p.closeErr != nil {
+		return p.closeErr
+	}
 	p.closed = append(p.closed, number)
 	return nil
 }
 
 func (p *fakeForge) DeleteBranch(_ context.Context, branch string) error {
 	p.log.add("DeleteBranch")
+	if p.deleteErr != nil {
+		return p.deleteErr
+	}
 	p.deleted = append(p.deleted, branch)
 	return nil
 }
@@ -138,7 +152,10 @@ type fakeWorkplace struct {
 	onKill     func()   // runs at the start of Kill
 	killed     []string // "<workspace> <session ids>" per Kill
 	forgot     []string // workspace per Discard
-	root       string   // prefixed to the workspace path, so a test can give it real files
+	discardErr error
+	onDiscard  func()            // runs at the start of Discard
+	root       string            // prefixed to the workspace path, so a test can give it real files
+	paths      map[string]string // the path Lookup gives a workspace id; missing is /work/<id>
 }
 
 func (w *fakeWorkplace) Prepare(_ context.Context, branch string) (workplace.Workspace, error) {
@@ -188,11 +205,20 @@ func (w *fakeWorkplace) Remove(context.Context, string) error {
 
 func (w *fakeWorkplace) Lookup(_ context.Context, workspaceID string) (workplace.Workspace, error) {
 	w.log.add("Lookup " + workspaceID)
+	if p, ok := w.paths[workspaceID]; ok {
+		return workplace.Workspace{ID: workspaceID, Path: p}, nil
+	}
 	return workplace.Workspace{ID: workspaceID, Path: "/work/" + workspaceID}, nil
 }
 
 func (w *fakeWorkplace) Discard(_ context.Context, workspaceID string) error {
 	w.log.add("Discard")
+	if w.onDiscard != nil {
+		w.onDiscard()
+	}
+	if w.discardErr != nil {
+		return w.discardErr
+	}
 	w.forgot = append(w.forgot, workspaceID)
 	return nil
 }

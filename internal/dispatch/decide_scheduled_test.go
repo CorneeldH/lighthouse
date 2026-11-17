@@ -5,9 +5,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/CorneeldH/lighthouse/internal/forge"
+	"github.com/CorneeldH/lighthouse/internal/park"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/runs"
 	"github.com/CorneeldH/lighthouse/internal/scheduled"
+	"github.com/CorneeldH/lighthouse/internal/workplace"
 )
 
 // Classification: pure logic. These tests fail if Decide stops turning a ScheduledDue into one
@@ -186,5 +189,304 @@ func TestDecideScheduledNoStartWhenOpenOrSpent(t *testing.T) {
 		if got := Decide(in); len(got) != 0 {
 			t.Errorf("%s: Decide = %+v, want nothing", name, got)
 		}
+	}
+}
+
+// The end of an open scheduled run (spec §4). Classification: pure logic. Each case is one row of
+// the spec's table; it fails if Decide gives another action, outcome, reason or release for it.
+
+const (
+	finRunID   = 5
+	finSession = "33333333-3333-4333-8333-333333333333"
+	finBranch  = "scheduled/codebase-map-" + scheduledSlot + "-1"
+	finSHA     = "fedcba9876543210fedcba9876543210fedcba98"
+)
+
+// finishInput is o/r with one open scheduled run (attempt 1, branch finBranch) that started
+// age ago with a record of maxRuntime, working, with a recent transcript event; host max_wait 10m
+// and max_runtime 8h, under an open brake. No schedule is due and no item is on the board.
+func finishInput(age, maxRuntime time.Duration) Input {
+	started := scheduledNow.Add(-age)
+	rec := scheduled.Record{Verdict: scheduled.Verdict{Mode: "full"}, MaxRuntime: maxRuntime, GitState: "state"}.Encode()
+	row := runs.Row{ID: finRunID, Schedule: "codebase-map", SessionID: finSession, Mode: "start",
+		Trigger: runs.TriggerScheduled, TriggerKey: "scheduled:codebase-map:" + scheduledSlot, Attempt: 1,
+		Branch: finBranch, Profile: ProfileSoftware, StartedAt: started, Open: true, StartSHA: finSHA, Verdict: rec}
+	open := runs.OpenRun{ID: finRunID, Schedule: "codebase-map", SessionID: finSession, TriggerKey: row.TriggerKey,
+		Profile: ProfileSoftware, Branch: finBranch, WorkspaceID: "ws-5", WorkplaceSession: "key-5", StartedAt: started,
+		StartSHA: finSHA, Verdict: rec}
+	return Input{Now: scheduledNow, Brake: openBrakeWith(4, 4), MaxWait: Duration(10 * time.Minute),
+		MaxRuntime: Duration(8 * time.Hour), Repos: []RepoInput{{
+			Snapshot: Snapshot{Version: SnapshotVersion, Repo: "o/r", GatheredAt: scheduledNow,
+				OpenRuns: []runs.OpenRun{open}},
+			Language: "nl", DefaultBranch: "main",
+			History: []runs.Row{row},
+			Stands:  map[int64]workplace.Stand{finRunID: workplace.Working},
+			Runs: map[int64]RunState{finRunID: {Transcript: &workplace.Transcript{
+				LastEvent: scheduledNow.Add(-time.Minute), AssistantTurn: true}}},
+		}}}
+}
+
+// finishRepo is the one repo of in, to change.
+func finishRepo(in *Input) *RepoInput { return &in.Repos[0] }
+
+// done makes the run's session Done.
+func done(in *Input) { finishRepo(in).Stands[finRunID] = workplace.Done }
+
+// inPRPhase sets pr_at on the run, at, and gives its branch pr.
+func inPRPhase(in *Input, at time.Time, pr forge.PR) {
+	r := finishRepo(in)
+	r.History[0].PRAt = at
+	r.Snapshot.OpenRuns[0].PRAt = at
+	r.Snapshot.ScheduledPRs = map[string][]forge.PR{finBranch: {pr}}
+}
+
+// ownPR is the run's own PR #41 on finBranch.
+func ownPR(state, mergeable, checks string) forge.PR {
+	return forge.PR{Number: 41, State: state, Mergeable: mergeable, Checks: checks, HeadRef: finBranch,
+		HeadSHA: "abc1234abc1234abc1234abc1234abc1234abc12", URL: "https://example.com/o/r/pull/41"}
+}
+
+// closeAction is the close of the run with outcome and reason; the branch goes too.
+func closeAction(o runs.Outcome, reason string, pr int, end, discard bool) Action {
+	return Action{Kind: KindScheduledClose, Repo: "o/r", RunID: finRunID, Schedule: "codebase-map",
+		Slot: scheduledSlot, Branch: finBranch, Language: "nl", Outcome: o, ReasonArg: reason, PR: pr,
+		End: end, Discard: discard}
+}
+
+func TestDecideScheduledFinishTable(t *testing.T) {
+	green := ownPR("OPEN", "MERGEABLE", "SUCCESS")
+	merged := ownPR("MERGED", "", "SUCCESS")
+	merged.MergedAt = scheduledNow.Add(-time.Minute)
+	closed := ownPR("CLOSED", "", "SUCCESS")
+	closed.ClosedAt = scheduledNow.Add(-time.Minute)
+	finish := Action{Kind: KindScheduledFinish, Repo: "o/r", RunID: finRunID, Schedule: "codebase-map",
+		Slot: scheduledSlot, Branch: finBranch, Language: "nl"}
+	marker := park.Marker{SessionID: finSession, CreatedAt: scheduledNow.Add(-5 * time.Minute).Format(time.RFC3339),
+		ResetAt: scheduledNow.Add(time.Hour).Format(time.RFC3339), Controller: true}
+
+	tests := []struct {
+		name  string
+		age   time.Duration // since the start
+		max   time.Duration // the record's max_runtime
+		setup func(in *Input)
+		want  []Action
+	}{
+		{name: "working agent: nothing", age: 30 * time.Minute, max: 90 * time.Minute, setup: func(*Input) {}},
+
+		// Row 1: session done, no PR yet.
+		{name: "done without a PR: finish", age: 30 * time.Minute, max: 90 * time.Minute, setup: done,
+			want: []Action{finish}},
+		{name: "done with its own open PR and no pr_at: finish on that PR", age: 30 * time.Minute, max: 90 * time.Minute,
+			setup: func(in *Input) {
+				done(in)
+				finishRepo(in).Snapshot.ScheduledPRs = map[string][]forge.PR{finBranch: {ownPR("OPEN", "UNKNOWN", "PENDING")}}
+			},
+			want: []Action{func() Action { a := finish; a.PR = 41; return a }()}},
+
+		// Row 2: own PR green, brake open.
+		{name: "green PR, brake open: merge on its head", age: 40 * time.Minute, max: 90 * time.Minute,
+			setup: func(in *Input) { inPRPhase(in, scheduledNow.Add(-10*time.Minute), green) },
+			want: []Action{{Kind: KindScheduledMerge, Repo: "o/r", RunID: finRunID, Schedule: "codebase-map",
+				Slot: scheduledSlot, Branch: finBranch, Language: "nl", PR: 41, HeadSHA: green.HeadSHA, PRURL: green.URL}}},
+		{name: "green PR, closed usage brake: merge all the same", age: 40 * time.Minute, max: 90 * time.Minute,
+			setup: func(in *Input) {
+				inPRPhase(in, scheduledNow.Add(-10*time.Minute), green)
+				in.Brake.SessionPct = 99
+			},
+			want: []Action{{Kind: KindScheduledMerge, Repo: "o/r", RunID: finRunID, Schedule: "codebase-map",
+				Slot: scheduledSlot, Branch: finBranch, Language: "nl", PR: 41, HeadSHA: green.HeadSHA, PRURL: green.URL}}},
+		{name: "green PR, paused: wait", age: 40 * time.Minute, max: 90 * time.Minute,
+			setup: func(in *Input) {
+				inPRPhase(in, scheduledNow.Add(-10*time.Minute), green)
+				in.Brake.Paused = true
+			}},
+		{name: "green PR with an open roborev review: wait", age: 40 * time.Minute, max: 90 * time.Minute,
+			setup: func(in *Input) {
+				pr := green
+				pr.Roborev = forge.RoborevOpen
+				inPRPhase(in, scheduledNow.Add(-10*time.Minute), pr)
+			}},
+		{name: "draft PR: wait", age: 40 * time.Minute, max: 90 * time.Minute,
+			setup: func(in *Input) {
+				pr := green
+				pr.Draft = true
+				inPRPhase(in, scheduledNow.Add(-10*time.Minute), pr)
+			}},
+
+		// Row 5: own PR red or with a conflict.
+		{name: "red PR: close, failed", age: 40 * time.Minute, max: 90 * time.Minute,
+			setup: func(in *Input) {
+				inPRPhase(in, scheduledNow.Add(-10*time.Minute), ownPR("OPEN", "MERGEABLE", "FAILURE"))
+			},
+			want: []Action{closeAction(runs.Failed, "PR #41 red", 41, false, false)}},
+		{name: "conflicting PR: close, failed", age: 40 * time.Minute, max: 90 * time.Minute,
+			setup: func(in *Input) {
+				inPRPhase(in, scheduledNow.Add(-10*time.Minute), ownPR("OPEN", "CONFLICTING", "SUCCESS"))
+			},
+			want: []Action{closeAction(runs.Failed, "PR #41 has a merge conflict", 41, false, false)}},
+
+		// Row 6: own PR closed without a merge.
+		{name: "PR closed without a merge: failed", age: 40 * time.Minute, max: 90 * time.Minute,
+			setup: func(in *Input) { inPRPhase(in, scheduledNow.Add(-10*time.Minute), closed) },
+			want:  []Action{closeAction(runs.Failed, "PR #41 closed without a merge", 0, false, false)}},
+		// A merged PR (a merge whose close failed): done, branch removed.
+		{name: "PR merged: done", age: 40 * time.Minute, max: 90 * time.Minute,
+			setup: func(in *Input) { inPRPhase(in, scheduledNow.Add(-10*time.Minute), merged) },
+			want:  []Action{closeAction(runs.Done, "", 0, false, false)}},
+
+		// pr_timeout: 60 minutes from pr_at, a pause or a closed brake counting (extra a).
+		{name: "pending PR past pr_timeout: close, failed", age: 2 * time.Hour, max: 90 * time.Minute,
+			setup: func(in *Input) {
+				inPRPhase(in, scheduledNow.Add(-61*time.Minute), ownPR("OPEN", "MERGEABLE", "PENDING"))
+			},
+			want: []Action{closeAction(runs.Failed, "PR #41 not merged within pr_timeout 1h0m0s", 41, false, false)}},
+		{name: "(a) green PR past pr_timeout while paused: close, failed", age: 2 * time.Hour, max: 90 * time.Minute,
+			setup: func(in *Input) {
+				inPRPhase(in, scheduledNow.Add(-61*time.Minute), green)
+				in.Brake.Paused = true
+			},
+			want: []Action{closeAction(runs.Failed, "PR #41 not merged within pr_timeout 1h0m0s", 41, false, false)}},
+		{name: "(a) pending PR past pr_timeout under a closed usage brake: close, failed", age: 2 * time.Hour, max: 90 * time.Minute,
+			setup: func(in *Input) {
+				inPRPhase(in, scheduledNow.Add(-61*time.Minute), ownPR("OPEN", "MERGEABLE", "PENDING"))
+				in.Brake.SessionPct = 99
+			},
+			want: []Action{closeAction(runs.Failed, "PR #41 not merged within pr_timeout 1h0m0s", 41, false, false)}},
+		{name: "no PR on the branch past pr_timeout: failed", age: 2 * time.Hour, max: 90 * time.Minute,
+			setup: func(in *Input) {
+				inPRPhase(in, scheduledNow.Add(-61*time.Minute), forge.PR{Number: 50, State: "OPEN", HeadRef: "other"})
+			},
+			want: []Action{closeAction(runs.Failed, "no PR merged within pr_timeout 1h0m0s", 0, false, false)}},
+		// (b) In the PR phase max_runtime no longer counts, the host's neither.
+		{name: "(b) pr_at set, past max_runtime, PR pending: wait", age: 3 * time.Hour, max: 90 * time.Minute,
+			setup: func(in *Input) {
+				inPRPhase(in, scheduledNow.Add(-20*time.Minute), ownPR("OPEN", "MERGEABLE", "PENDING"))
+				in.MaxRuntime = Duration(time.Hour)
+			}},
+
+		// Row 7: rules 9, 10, 15-19 and the usage park: retry, the agent ended first.
+		{name: "parked by the usage guard: retry", age: 30 * time.Minute, max: 90 * time.Minute,
+			setup: func(in *Input) { finishRepo(in).Markers = []park.Marker{marker} },
+			want:  []Action{closeAction(runs.Retry, "parked by the usage guard", 0, true, false)}},
+		{name: "workplace gone: retry", age: 30 * time.Minute, max: 90 * time.Minute,
+			setup: func(in *Input) { finishRepo(in).Runs[finRunID] = RunState{Gone: true} },
+			want:  []Action{closeAction(runs.Retry, "workplace gone", 0, false, false)}},
+		{name: "rule 9 unknown command: retry", age: 30 * time.Minute, max: 90 * time.Minute,
+			setup: func(in *Input) {
+				finishRepo(in).Runs[finRunID] = RunState{Transcript: &workplace.Transcript{LastEvent: scheduledNow, UnknownCommand: "/gsd-map"}}
+			},
+			want: []Action{closeAction(runs.Retry, "unknown command `/gsd-map`", 0, true, false)}},
+		{name: "rule 10 done without an assistant turn: retry", age: 30 * time.Minute, max: 90 * time.Minute,
+			setup: func(in *Input) {
+				done(in)
+				finishRepo(in).Runs[finRunID] = RunState{Transcript: &workplace.Transcript{LastEvent: scheduledNow}}
+			},
+			want: []Action{closeAction(runs.Retry, "session did nothing", 0, true, false)}},
+		{name: "rule 15 start uncertain: forget the launch, end the agent, retry", age: 30 * time.Minute, max: 90 * time.Minute,
+			setup: func(in *Input) {
+				finishRepo(in).Snapshot.OpenRuns[0].WorkplaceSession = ""
+				delete(finishRepo(in).Stands, finRunID)
+				finishRepo(in).Runs[finRunID] = RunState{}
+			},
+			want: []Action{closeAction(runs.Retry, "start uncertain: no session found", 0, true, true)}},
+		{name: "rule 16 permission prompt: retry", age: 30 * time.Minute, max: 90 * time.Minute,
+			setup: func(in *Input) {
+				st := finishRepo(in).Runs[finRunID]
+				st.Permission = &Permission{At: scheduledNow.Add(-11 * time.Minute), Tool: "Bash", Path: "/home/x/secret"}
+				st.Transcript.LastEvent = scheduledNow.Add(-11 * time.Minute)
+				finishRepo(in).Runs[finRunID] = st
+			},
+			want: []Action{closeAction(runs.Retry, "waiting on a permission for `Bash`", 0, true, false)}},
+		{name: "rule 17 silent: retry", age: 30 * time.Minute, max: 90 * time.Minute,
+			setup: func(in *Input) {
+				finishRepo(in).Runs[finRunID] = RunState{Transcript: &workplace.Transcript{LastEvent: scheduledNow.Add(-11 * time.Minute), AssistantTurn: true}}
+			},
+			want: []Action{closeAction(runs.Retry, "no activity in max_wait", 0, true, false)}},
+		{name: "rule 18 silent by the forge stand: retry", age: 30 * time.Minute, max: 90 * time.Minute,
+			setup: func(in *Input) {
+				finishRepo(in).Stands[finRunID] = workplace.Waiting
+				finishRepo(in).Runs[finRunID] = RunState{SessionAt: scheduledNow.Add(-11 * time.Minute)}
+			},
+			want: []Action{closeAction(runs.Retry, "no activity in max_wait (forge stand)", 0, true, false)}},
+		{name: "rule 19 (b) max_runtime of the record: retry, not failed", age: 91 * time.Minute, max: 90 * time.Minute,
+			setup: func(*Input) {},
+			want:  []Action{closeAction(runs.Retry, "timeout (max_runtime 1h30m0s)", 0, true, false)}},
+		{name: "rule 19 on the last attempt: failed", age: 91 * time.Minute, max: 90 * time.Minute,
+			setup: func(in *Input) { finishRepo(in).History[0].Attempt = 2 },
+			want:  []Action{closeAction(runs.Failed, "timeout (max_runtime 1h30m0s)", 0, true, false)}},
+		{name: "rule 19 also over a done session: max_runtime holds up to the check", age: 91 * time.Minute, max: 90 * time.Minute,
+			setup: done,
+			want:  []Action{closeAction(runs.Retry, "timeout (max_runtime 1h30m0s)", 0, true, false)}},
+		{name: "(b) a full verdict's 120m, not the host's 60m: wait", age: 90 * time.Minute, max: 120 * time.Minute,
+			setup: func(in *Input) { in.MaxRuntime = Duration(time.Hour) }},
+		{name: "(b) a fast verdict's 45m on a host of 120m: retry", age: 50 * time.Minute, max: 45 * time.Minute,
+			setup: func(in *Input) { in.MaxRuntime = Duration(2 * time.Hour) },
+			want:  []Action{closeAction(runs.Retry, "timeout (max_runtime 45m0s)", 0, true, false)}},
+		{name: "a record without max_runtime: the host's", age: 61 * time.Minute, max: 0,
+			setup: func(in *Input) { in.MaxRuntime = Duration(time.Hour) },
+			want:  []Action{closeAction(runs.Retry, "timeout (max_runtime 1h0m0s)", 0, true, false)}},
+		{name: "a retry closes the run's own open PR", age: 30 * time.Minute, max: 90 * time.Minute,
+			setup: func(in *Input) {
+				finishRepo(in).Runs[finRunID] = RunState{Transcript: &workplace.Transcript{LastEvent: scheduledNow.Add(-11 * time.Minute), AssistantTurn: true}}
+				finishRepo(in).Snapshot.ScheduledPRs = map[string][]forge.PR{finBranch: {ownPR("OPEN", "MERGEABLE", "PENDING")}}
+			},
+			want: []Action{closeAction(runs.Retry, "no activity in max_wait", 41, true, false)}},
+
+		// Finding 1: a claim a dead tick left without a workplace.
+		{name: "claim without a workplace past max_wait: retry", age: 11 * time.Minute, max: 90 * time.Minute,
+			setup: func(in *Input) {
+				r := finishRepo(in)
+				r.Snapshot.OpenRuns[0].WorkspaceID, r.Snapshot.OpenRuns[0].WorkplaceSession = "", ""
+				delete(r.Stands, finRunID)
+				delete(r.Runs, finRunID)
+			},
+			want: []Action{closeAction(runs.Retry, "claimed without a workplace", 0, false, false)}},
+		{name: "claim without a workplace within max_wait: wait", age: 5 * time.Minute, max: 90 * time.Minute,
+			setup: func(in *Input) {
+				r := finishRepo(in)
+				r.Snapshot.OpenRuns[0].WorkspaceID, r.Snapshot.OpenRuns[0].WorkplaceSession = "", ""
+				delete(r.Stands, finRunID)
+				delete(r.Runs, finRunID)
+			}},
+		{name: "a row the snapshot's open runs lack: wait", age: 11 * time.Minute, max: 90 * time.Minute,
+			setup: func(in *Input) {
+				r := finishRepo(in)
+				r.Snapshot.OpenRuns = nil
+				delete(r.Stands, finRunID)
+				delete(r.Runs, finRunID)
+			}},
+		{name: "a PR of another branch or a fork is not the run's", age: 40 * time.Minute, max: 90 * time.Minute,
+			setup: func(in *Input) {
+				fork := green
+				fork.CrossRepo = true
+				inPRPhase(in, scheduledNow.Add(-10*time.Minute), fork)
+			}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			in := finishInput(tc.age, tc.max)
+			tc.setup(&in)
+			got := Decide(in)
+			if !reflect.DeepEqual(got, tc.want) && (len(got) != 0 || len(tc.want) != 0) {
+				t.Errorf("Decide = %+v\nwant %+v", got, tc.want)
+			}
+			// (c) A scheduled run has no issue: nothing that posts.
+			for _, a := range got {
+				if a.Kind == KindReturn || a.Kind == KindDone || a.Kind == KindRocket || a.Kind == KindMerge {
+					t.Errorf("action %s for a scheduled run would post on issue %d", a.Kind, a.Issue)
+				}
+			}
+		})
+	}
+}
+
+// The end of a scheduled run takes no slot: a closing or finishing run goes through any brake,
+// a pause included, and is no start the brake counts.
+func TestDecideScheduledFinishPassesTheBrake(t *testing.T) {
+	in := finishInput(30*time.Minute, 90*time.Minute)
+	done(&in)
+	in.Brake = &Brake{Paused: true, Slots: 0}
+	if got := Decide(in); len(got) != 1 || got[0].Kind != KindScheduledFinish {
+		t.Errorf("Decide = %+v, want the finish under a pause and without slots", got)
 	}
 }

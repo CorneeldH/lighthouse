@@ -71,6 +71,15 @@ const (
 	KindDropMarker Kind = "drop_marker"
 	// KindScheduledStart claims and starts the run of Schedule for Slot; it has no issue.
 	KindScheduledStart Kind = "scheduled_start"
+	// KindScheduledFinish ends the agent of scheduled run RunID, checks and commits its result,
+	// pushes Branch and opens its PR (or takes PR, already open).
+	KindScheduledFinish Kind = "scheduled_finish"
+	// KindScheduledMerge squash-merges PR of scheduled run RunID on HeadSHA, deletes Branch and
+	// ends the run as done.
+	KindScheduledMerge Kind = "scheduled_merge"
+	// KindScheduledClose closes scheduled run RunID with Outcome and the literal ReasonArg, after
+	// forgetting its launch (Discard), ending its agent (End), closing PR and deleting Branch.
+	KindScheduledClose Kind = "scheduled_close"
 )
 
 // Action is one thing apply does. Reason and Skip are heading keys, never posted text; only a
@@ -135,7 +144,7 @@ func Decide(in Input) []Action {
 		for _, a := range dropMarkers(repo) {
 			ps = append(ps, planned{Action: a})
 		}
-		ps = append(ps, decideScheduled(repo)...)
+		ps = append(ps, decideScheduled(in, repo)...)
 	}
 	slices.SortStableFunc(ps, comparePlanned)
 	wanted := fixPRStarts(ps)

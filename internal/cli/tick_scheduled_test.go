@@ -376,7 +376,8 @@ func TestTickScheduledGateErrorLeavesSlotOpen(t *testing.T) {
 func TestTickScheduledOpenRunBlocksSecondClaim(t *testing.T) {
 	s := newScheduledTick(t, "")
 	s.tick(t)
-	s.at(t0.Add(time.Hour)) // stale: a full gather
+	// Stale: a full gather. Within the run's max_runtime of an hour, which would end it.
+	s.at(t0.Add(45 * time.Minute))
 	out := s.tick(t)
 	if !strings.Contains(out, "gathered o/r") {
 		t.Fatalf("errOut = %q, want a second gather", out)

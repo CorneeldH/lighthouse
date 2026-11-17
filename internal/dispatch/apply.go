@@ -30,13 +30,16 @@ type Env struct {
 	// ScheduledJob is the job of schedule in repo with the scheduled.Env it runs in (Dir
 	// empty); a scheduled start needs it. Its Run runs git in the workplace.
 	ScheduledJob func(repo, schedule string) (scheduled.Job, scheduled.Env, error)
-	RoundLimit   func(repo string) string // what a run does at an adversarial round limit
-	StateDir     string
-	MarkerDir    string // the resume markers; "" removes none
-	MaxWait      time.Duration
-	Now          func() time.Time
-	NewSession   func() string // runs.NewSessionID
-	Log          io.Writer     // nil discards
+	// Remote is where the branch of a scheduled run of repo goes: the forge by an explicit,
+	// authenticated URL, never the workplace's origin. Finishing a scheduled run needs it.
+	Remote     func(repo string) (scheduled.Remote, error)
+	RoundLimit func(repo string) string // what a run does at an adversarial round limit
+	StateDir   string
+	MarkerDir  string // the resume markers; "" removes none
+	MaxWait    time.Duration
+	Now        func() time.Time
+	NewSession func() string // runs.NewSessionID
+	Log        io.Writer     // nil discards
 }
 
 // Result is what one Apply did.
@@ -94,6 +97,12 @@ func (ap applier) apply(ctx context.Context, a Action, res *Result) error {
 		return ap.start(ctx, a, res)
 	case KindScheduledStart:
 		return ap.startScheduled(ctx, a, res)
+	case KindScheduledFinish:
+		return ap.finishScheduled(ctx, a)
+	case KindScheduledMerge:
+		return ap.mergeScheduled(ctx, a, res)
+	case KindScheduledClose:
+		return ap.closeScheduled(ctx, a)
 	case KindReturn:
 		body := protocol.RenderReturned(reasonText(a), a.SessionID, "", a.Language)
 		if _, err := ap.env.Forge(a.Repo).CreateComment(ctx, a.Issue, body); err != nil {
