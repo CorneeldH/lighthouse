@@ -263,3 +263,10 @@ het Nederlands.
 - **Typeconsistentie:** `Checked`, `Red`, `Request`, `Verdict` (pusher) en `hostconfig.WorkflowPush` worden in taken 6–9 met dezelfde namen gebruikt; `Action.PermitSHA` (taak 4) ⇒ `PusherSpec.Permit` (taak 10) ⇒ `--permit` (taak 9).
 - **Open voor de bouwer (spec):** hoe de hook een controller-run herkent (`LIGHTHOUSE_CONTROLLER_RUN` is de marker die `permission-check` al gebruikt), exacte reviewer-vlaggen, reviewer-prompts.
 - **Open na review r3-f1:** `binds`/`env` per reviewer zijn in taak 2 en 8 opgenomen; de PR-review weegt of de voorbeeldreviewers (`claude -p`) daarmee werken.
+
+## Open na review
+
+Ronde 3 haalde de rondegrens met deze punten open. Ze zijn aanvaard als `accepted_open`;
+de volgende fase of de PR-review weegt ze opnieuw.
+
+- **r3-f1** (MAJOR, Taak 12 (Files: gather.go PushedSHA / decide.go mergeReady)): The fix keys the merge path on an issue-level PushedSHA, taken from the newest pusher comment on the issue. It does not scope that SHA to the PR's branch or head. Once an issue has a pusher comment, every later green PR on that issue goes to `push-workflows --merge`, including a PR on another branch with no workflow change. Merge then refuses it (non-ancestor). decide never falls back to KindMerge, because the plan says that 'decide kijkt niet naar bestanden of voorouderschap, dat doet Merge zelf en weigert anders'.
