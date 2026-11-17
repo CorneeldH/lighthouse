@@ -1,0 +1,141 @@
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { afterEach, describe, expect, it } from 'vitest'
+import type { Issue, Repo, Run } from '@/api/lighthouse'
+import { buildGraph } from '@/lib/priorities/derive'
+import { assignColors } from '@/lib/priorities/palette'
+import { DepsView } from './DepsView'
+
+afterEach(cleanup)
+
+const iss = (number: number, by: Array<[string, number]> = [], extra: Partial<Issue> = {}): Issue => ({
+  number,
+  title: `title-${number}`,
+  url: `https://forge/${number}`,
+  status: 'To do',
+  blocked_by: by.length ? by.map(([repo, issue]) => ({ repo, issue })) : null,
+  ...extra,
+})
+const repo = (slug: string, issues: Issue[]): Repo => ({ slug, issues, milestones: [] })
+
+function view(repos: Repo[], selected: string[], runs: Run[] = []) {
+  const graph = buildGraph(repos, runs)
+  const nodes = [...graph.nodes.values()].filter((n) => selected.includes(n.repo))
+  const colors = assignColors(
+    nodes.flatMap((n) => (n.milestone ? [{ repo: n.repo, number: n.milestone.number }] : [])),
+  )
+  return render(<DepsView graph={graph} repos={repos} selected={new Set(selected)} colors={colors} />)
+}
+const node = (key: string) => screen.getByTestId(`node-${key}`)
+
+const A = 'a/x'
+const CHAIN = [repo(A, [iss(1), iss(2, [[A, 1]]), iss(3, [[A, 1]]), iss(4, [[A, 2], [A, 3]]), iss(5)])]
+
+describe('DepsView', () => {
+  it('names the columns after how many steps a node waits', () => {
+    view([repo(A, [iss(1), iss(2, [[A, 1]]), iss(3, [[A, 2]]), iss(4, [[A, 1]])])], [A])
+    expect(screen.getByText('Can start now')).toBeTruthy()
+    expect(screen.getByText('Waits on 1 step')).toBeTruthy()
+    expect(screen.getByText('Waits on 2 steps')).toBeTruthy()
+  })
+
+  it('shows the number bold with the title, and prefixes the repo over more than one repo', () => {
+    view([repo(A, [iss(1), iss(2, [[A, 1]])]), repo('a/y', [])], [A])
+    expect(within(node(`${A}#1`)).getByText('#1').className).toContain('font-semibold')
+    expect(within(node(`${A}#1`)).getByText('title-1')).toBeTruthy()
+    cleanup()
+    view([repo(A, [iss(1), iss(2, [[A, 1]])]), repo('a/y', [])], [A, 'a/y'])
+    expect(within(node(`${A}#1`)).getByText(`${A}#1`)).toBeTruthy()
+  })
+
+  it('marks an active issue picked up with a dashed border, and only that one', () => {
+    view([repo(A, [iss(1, [], { status: 'In progress' }), iss(2, [[A, 1]])])], [A])
+    expect(within(node(`${A}#1`)).getByText('picked up')).toBeTruthy()
+    expect(node(`${A}#1`).className).toContain('border-dashed')
+    expect(within(node(`${A}#2`)).queryByText('picked up')).toBeNull()
+    expect(node(`${A}#2`).className).not.toContain('border-dashed')
+  })
+
+  it('shows the waiting pill only from two waiting issues', () => {
+    view([repo(A, [iss(1), iss(2, [[A, 1]]), iss(3, [[A, 1]]), iss(4, [[A, 3]])])], [A])
+    // #1 has 3 waiting, #3 has 1, #2 has 0.
+    expect(within(node(`${A}#1`)).getByText('3')).toBeTruthy()
+    expect(within(node(`${A}#3`)).queryByTestId('waiting-pill')).toBeNull()
+    expect(within(node(`${A}#2`)).queryByTestId('waiting-pill')).toBeNull()
+  })
+
+  it('keeps a blocker in a filtered-out repo as a grey dashed node, and the column of its dependent', () => {
+    const other = repo('a/y', [iss(9)])
+    view([repo(A, [iss(2, [['a/y', 9]]), iss(3, [[A, 2]])]), other], [A])
+    const blocker = node('a/y#9')
+    expect(blocker.getAttribute('data-external')).toBe('true')
+    expect(blocker.className).toContain('border-dashed')
+    expect(blocker.className).toContain('border-lh-grey')
+    // the dependent waits 1 step in the full computation, so the heading exists and "can start" holds #9 only
+    expect(screen.getByText('Waits on 1 step')).toBeTruthy()
+    expect(screen.getByText('Waits on 2 steps')).toBeTruthy()
+    expect(node(`${A}#2`).getAttribute('data-depth')).toBe('1')
+    expect(node('a/y#9').getAttribute('data-depth')).toBe('0')
+  })
+
+  it('does not show a dependent that lives in a filtered-out repo', () => {
+    view([repo(A, [iss(1)]), repo('a/y', [iss(5, [[A, 1]])])], [A])
+    expect(screen.queryByTestId('node-a/y#5')).toBeNull()
+  })
+
+  it('dims every node outside the chain on hover, and undims on leave', () => {
+    view(CHAIN, [A])
+    // chain of #2: 1 -> 2 -> 4 and 1 -> 3 -> 4; #3 is not on the chain of #2 stream? it is not: #3 is a sibling.
+    fireEvent.mouseEnter(node(`${A}#2`))
+    expect(node(`${A}#3`).getAttribute('data-dimmed')).toBe('true')
+    for (const k of [1, 2, 4]) expect(node(`${A}#${k}`).getAttribute('data-dimmed')).toBe('false')
+    fireEvent.mouseLeave(node(`${A}#2`))
+    expect(node(`${A}#3`).getAttribute('data-dimmed')).toBe('false')
+  })
+
+  it('opens the issue through a link to node.url', () => {
+    view(CHAIN, [A])
+    expect(node(`${A}#1`).closest('a')?.getAttribute('href') ?? node(`${A}#1`).getAttribute('href')).toBe('https://forge/1')
+  })
+
+  it('on touch the first tap lights the chain, the second opens the issue', () => {
+    view(CHAIN, [A])
+    const a = node(`${A}#2`)
+    fireEvent.pointerDown(a, { pointerType: 'touch' })
+    expect(fireEvent.click(a)).toBe(false) // default prevented: no navigation
+    expect(node(`${A}#3`).getAttribute('data-dimmed')).toBe('true')
+    fireEvent.pointerDown(a, { pointerType: 'touch' })
+    expect(fireEvent.click(a)).toBe(true)
+  })
+
+  it('lists the issues without relations under the graph, with the title as tooltip', () => {
+    view(CHAIN, [A])
+    expect(screen.getByText('No open dependencies (1)')).toBeTruthy()
+    const pill = screen.getByTestId('loose-5')
+    expect(pill.getAttribute('title')).toBe('title-5')
+    expect(pill.textContent).toContain('#5')
+  })
+
+  it('says so in one sentence and draws no svg without any relation', () => {
+    const { container } = view([repo(A, [iss(1), iss(2)])], [A])
+    expect(screen.getByText('No open dependencies between these issues.')).toBeTruthy()
+    expect(container.querySelector('svg')).toBeNull()
+    expect(screen.getByText('No open dependencies (2)')).toBeTruthy()
+  })
+
+  it('scrolls the graph horizontally in its own container', () => {
+    view(CHAIN, [A])
+    expect(screen.getByTestId('graph-scroll').className).toContain('overflow-x-auto')
+  })
+
+  it('marks the members of a cycle', () => {
+    view([repo(A, [iss(1, [[A, 2]]), iss(2, [[A, 1]]), iss(3)])], [A])
+    expect(node(`${A}#1`).getAttribute('data-cycle')).toBe('true')
+    expect(within(node(`${A}#1`)).getByText('cycle')).toBeTruthy()
+  })
+
+  it('draws one arrow with an arrowhead per visible relation', () => {
+    const { container } = view(CHAIN, [A])
+    expect(container.querySelectorAll('path[data-from]')).toHaveLength(4)
+    expect(container.querySelector('path[data-from]')?.getAttribute('marker-end')).toContain('url(#')
+  })
+})
