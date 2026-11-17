@@ -297,13 +297,16 @@ func newForgePRCreateCommand(env *forgeEnv) *cobra.Command {
 				in.Base = r.DefaultBranch
 			}
 			return env.write(cmd, func(f forge.Forge) error {
-				c, err := f.CreateChange(cmd.Context(), in)
-				if err != nil {
+				c, createErr := f.CreateChange(cmd.Context(), in)
+				if createErr != nil && c.Number == 0 {
+					return createErr
+				}
+				// A change that exists is reported even when a later step failed.
+				_, _ = fmt.Fprintf(env.stderr(cmd), "created %s #%d: %s -> %s\n", changeWord(f), c.Number, in.Head, in.Base)
+				if _, err := fmt.Fprintf(env.stdout(cmd), "%d\n%s\n", c.Number, c.URL); err != nil {
 					return err
 				}
-				_, _ = fmt.Fprintf(env.stderr(cmd), "created %s #%d: %s -> %s\n", changeWord(f), c.Number, in.Head, in.Base)
-				_, err = fmt.Fprintf(env.stdout(cmd), "%d\n%s\n", c.Number, c.URL)
-				return err
+				return createErr
 			})
 		},
 	}

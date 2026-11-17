@@ -332,6 +332,19 @@ func TestGitHubCreateChangeSetsMilestoneViaIssuePatch(t *testing.T) {
 	}
 }
 
+func TestGitHubCreateChangeKeepsPRWhenMilestonePatchFails(t *testing.T) {
+	srv, c := boardClient(t)
+	srv.Milestones = []map[string]any{milestoneFixture(3, "M3")}
+	srv.Fail = map[string]int{"PATCH /repos/o/r/issues/1": http.StatusForbidden}
+	got, err := c.CreateChange(context.Background(), NewPR{Title: "PR", Head: "feat", Base: "main", Milestone: "M3"})
+	if err == nil || !strings.Contains(err.Error(), "PR #1 created") || !strings.Contains(err.Error(), "milestone") {
+		t.Fatalf("err = %v, want it to say PR #1 was created and the milestone failed", err)
+	}
+	if got.Number != 1 || got.URL != "https://github.com/o/r/pull/1" {
+		t.Errorf("change = %+v, want number 1 and its URL next to the error", got)
+	}
+}
+
 func TestGitHubCreateChangeWithoutMilestoneOnlyPosts(t *testing.T) {
 	srv, c := boardClient(t)
 	if _, err := c.CreateChange(context.Background(), NewPR{Title: "PR", Head: "feat", Base: "main"}); err != nil {

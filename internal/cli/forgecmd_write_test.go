@@ -19,8 +19,9 @@ import (
 // method panics on the nil embedded interface.
 type writeForge struct {
 	forge.Forge
-	kind string
-	err  error // returned by every write
+	kind      string
+	err       error // returned by every write
+	changeErr error // returned by CreateChange next to a created change
 
 	created   []forge.NewIssue
 	edits     map[int]forge.IssueEdit
@@ -86,6 +87,9 @@ func (w *writeForge) SetStatus(_ context.Context, it forge.BoardItem, status str
 }
 func (w *writeForge) CreateChange(_ context.Context, in forge.NewPR) (forge.Change, error) {
 	w.changes = append(w.changes, in)
+	if w.changeErr != nil {
+		return forge.Change{Number: 12, URL: "https://x/pull/12"}, w.changeErr
+	}
 	return forge.Change{Number: 12, URL: "https://x/pull/12"}, w.err
 }
 func (w *writeForge) Milestones(context.Context, string) ([]forge.Milestone, error) {
@@ -258,6 +262,20 @@ func TestPRCreateDefaultsHeadAndBase(t *testing.T) {
 	runForgeEnv(writeEnv(w), "pr", "create", "--title", "T", "--body-file", bodyFile(t, "pb"), "--head", "h", "--base", "b")
 	if got := w.changes[0]; got.Head != "h" || got.Base != "b" {
 		t.Errorf("explicit head/base lost: %+v", got)
+	}
+}
+
+func TestPRCreatePrintsChangeBeforeFailing(t *testing.T) {
+	w := &writeForge{changeErr: errors.New("PR #12 created (https://x/pull/12), but setting the milestone failed: boom")}
+	code, out, errOut := runForgeEnv(writeEnv(w), "pr", "create", "--title", "T", "--body-file", bodyFile(t, "pb"))
+	if code != 1 {
+		t.Errorf("code = %d, want 1", code)
+	}
+	if out != "12\nhttps://x/pull/12\n" {
+		t.Errorf("stdout = %q, want number and URL", out)
+	}
+	if !strings.Contains(errOut, "PR #12 created") {
+		t.Errorf("stderr = %q, want the wrapped error", errOut)
 	}
 }
 

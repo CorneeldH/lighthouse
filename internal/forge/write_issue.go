@@ -305,7 +305,8 @@ func (p ghPull) change() Change {
 }
 
 // CreateChange opens a pull request. POST pulls takes no milestone, so a milestone is set by a
-// second request on the issue side of the pull request.
+// second request on the issue side of the pull request. When that second step fails, the pull
+// request exists: the change known from the POST comes back together with the error.
 func (c *GitHub) CreateChange(ctx context.Context, in NewPR) (Change, error) {
 	if err := c.configured(); err != nil {
 		return Change{}, err
@@ -328,9 +329,13 @@ func (c *GitHub) CreateChange(ctx context.Context, in NewPR) (Change, error) {
 	}
 	url := c.repoURL("/issues/" + strconv.Itoa(p.Number))
 	if _, err := c.do(ctx, http.MethodPatch, url, map[string]any{"milestone": ms}, nil); err != nil {
-		return Change{}, err
+		return p.change(), fmt.Errorf("PR #%d created (%s), but setting the milestone failed: %w", p.Number, p.HTMLURL, err)
 	}
-	return c.Change(ctx, p.Number)
+	got, err := c.Change(ctx, p.Number)
+	if err != nil {
+		return p.change(), fmt.Errorf("PR #%d created (%s) with its milestone, but reading it back failed: %w", p.Number, p.HTMLURL, err)
+	}
+	return got, nil
 }
 
 // Change reads one pull request by number; State is merged for a closed one that was merged.
