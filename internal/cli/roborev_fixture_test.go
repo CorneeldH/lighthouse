@@ -668,3 +668,29 @@ func TestRoborevGatePushFlag(t *testing.T) {
 		t.Errorf("stdout = %q, want %q", out.String(), want)
 	}
 }
+
+// `body-line --push` reads the push record of HEAD, not the branch record.
+func TestRoborevBodyLinePushFlag(t *testing.T) {
+	r := newGateRun(t, gateCase{})
+	head := gateGit(t, r.repo, "rev-parse", "HEAD")
+	gateWrite(t, filepath.Join(r.stateDir(), "feat.json"), `{"range": "a..b", "uitkomst": "skip", "reden": "branch"}`)
+	gateWrite(t, filepath.Join(r.stateDir(), "push-"+head+".json"), `{"range": "a..b", "uitkomst": "done", "sha": "`+head+`", "bevindingen": []}`)
+	t.Chdir(r.repo)
+	for args, want := range map[string]string{
+		"body-line":        "Roborev overgeslagen: branch\n",
+		"body-line --push": "<!-- roborev-lokaal: " + head + " -->\n",
+	} {
+		var out, errOut bytes.Buffer
+		cmd := &cobra.Command{Use: "lighthouse", SilenceUsage: true, SilenceErrors: true}
+		cmd.SetOut(&out)
+		cmd.SetErr(&errOut)
+		cmd.AddCommand(newRoborevGateCommand(func() (int, string) { return 0, "" }))
+		cmd.SetArgs(append([]string{"roborev-gate"}, strings.Fields(args)...))
+		if code := execute(cmd, &errOut); code != 0 {
+			t.Fatalf("%s: exit %d: %s", args, code, errOut.String())
+		}
+		if out.String() != want {
+			t.Errorf("%s: stdout = %q, want %q", args, out.String(), want)
+		}
+	}
+}

@@ -36,8 +36,7 @@ func newRoborevGateCommand(budget roborev.Budget) *cobra.Command {
 				}
 				return compactJSON(roborev.FixedJSON(fixed), nil)
 			}),
-		roborevSub("body-line", "Print the line the PR body carries",
-			func(_ *cobra.Command, root string, _ []string) (string, error) { return roborev.BodyLine(root) }),
+		newRoborevBodyLine(),
 		newRoborevClassify(),
 		newRoborevRecord(),
 	)
@@ -97,6 +96,21 @@ func newRoborevGate(budget roborev.Budget) *cobra.Command {
 		})
 	cmd.Flags().BoolVar(&push, "push", false,
 		"review the unpushed range for the workflow pusher: no line threshold, record push-<head>.json")
+	return cmd
+}
+
+// newRoborevBodyLine is `roborev-gate body-line [--push]`. With --push it reads the push records of
+// the workflow route instead of the branch record.
+func newRoborevBodyLine() *cobra.Command {
+	var push bool
+	cmd := roborevSub("body-line", "Print the line the PR body carries",
+		func(_ *cobra.Command, root string, _ []string) (string, error) {
+			if push {
+				return roborev.BodyLinePush(root)
+			}
+			return roborev.BodyLine(root)
+		})
+	cmd.Flags().BoolVar(&push, "push", false, "read the push record that covers HEAD (the workflow route)")
 	return cmd
 }
 

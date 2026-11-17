@@ -236,3 +236,83 @@ func TestRoborevGateKeepsThreshold(t *testing.T) {
 		t.Fatalf("verdict %v, want skip", v)
 	}
 }
+
+func doneRecord(sha string, fixed ...string) string {
+	decisions := []string{`{"path": "a", "line": 1, "severity": "low", "uitkomst": "refuted", "commit": null, "reden": "no"}`}
+	for _, c := range fixed {
+		decisions = append(decisions, `{"path": "a", "line": 2, "severity": "high", "uitkomst": "fixed", "commit": "`+c+`", "reden": null}`)
+	}
+	return `{"range": "a..b", "uitkomst": "done", "sha": "` + sha + `", "bevindingen": [` + strings.Join(decisions, ", ") + `]}`
+}
+
+func TestRoborevBodyLinePush(t *testing.T) {
+	const skipped = "Roborev overgeslagen: geen reviewuitkomst vastgelegd"
+	cases := []struct {
+		name  string
+		setup func(r *pushGateRepo) (want string)
+	}{
+		{"no push record", func(*pushGateRepo) string { return skipped }},
+		{"only a branch record", func(r *pushGateRepo) string {
+			r.writeAbs(filepath.Join(r.stateDir(), "feat.json"), doneRecord(r.git(r.root, "rev-parse", "HEAD")))
+			return skipped
+		}},
+		{"push record of HEAD", func(r *pushGateRepo) string {
+			head := r.git(r.root, "rev-parse", "HEAD")
+			r.writeAbs(filepath.Join(r.stateDir(), "push-"+head+".json"), doneRecord(head))
+			return "<!-- roborev-lokaal: " + head + " -->"
+		}},
+		{"skip in the push record of HEAD", func(r *pushGateRepo) string {
+			head := r.git(r.root, "rev-parse", "HEAD")
+			r.writeAbs(filepath.Join(r.stateDir(), "push-"+head+".json"), `{"range": "a..b", "uitkomst": "skip", "reden": "geen .roborev.toml"}`)
+			return "Roborev overgeslagen: geen .roborev.toml"
+		}},
+		{"fix commit listed in an older push record", func(r *pushGateRepo) string {
+			old := r.git(r.root, "rev-parse", "HEAD")
+			r.commitLines("fix2.go", 2)
+			fix := r.git(r.root, "rev-parse", "HEAD")
+			r.writeAbs(filepath.Join(r.stateDir(), "push-"+old+".json"), doneRecord(old, fix[:10]))
+			return "<!-- roborev-lokaal: " + old + " -->"
+		}},
+		{"unlisted commit after an older push record", func(r *pushGateRepo) string {
+			old := r.git(r.root, "rev-parse", "HEAD")
+			r.commitLines("more.go", 2)
+			r.writeAbs(filepath.Join(r.stateDir(), "push-"+old+".json"), doneRecord(old))
+			return skipped
+		}},
+		{"record off the branch, every later commit listed", func(r *pushGateRepo) string {
+			r.git(r.root, "checkout", "-q", "-b", "side", "main")
+			r.commitLines("side.go", 2)
+			side := r.git(r.root, "rev-parse", "HEAD")
+			r.git(r.root, "checkout", "-q", "feat")
+			listed := strings.Fields(r.git(r.root, "rev-list", side+"..HEAD"))
+			r.writeAbs(filepath.Join(r.stateDir(), "push-"+side+".json"), doneRecord(side, listed...))
+			return skipped
+		}},
+		{"push record of another history", func(r *pushGateRepo) string {
+			r.writeAbs(filepath.Join(r.stateDir(), "push-0123456789abcdef0123456789abcdef01234567.json"),
+				doneRecord("0123456789abcdef0123456789abcdef01234567"))
+			return skipped
+		}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			r := newPushGateRepo(t)
+			want := c.setup(r)
+			got, err := BodyLinePush(r.root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != want {
+				t.Errorf("BodyLinePush = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
+func TestRoborevBodyLinePushOff(t *testing.T) {
+	r := newPushGateRepo(t)
+	r.write("lighthouse.toml", "[project]\nlanguage = \"nl\"\n")
+	if got, err := BodyLinePush(r.root); err != nil || got != "" {
+		t.Errorf("BodyLinePush = %q, %v; want empty when roborev is off", got, err)
+	}
+}

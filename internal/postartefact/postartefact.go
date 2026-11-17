@@ -336,6 +336,9 @@ func (p *poster) ensureCommitOnGitHub(top, sha string) *Error {
 
 // refuseWorkflows refuses, in a controller run, the push of a range that touches
 // .github/workflows/: the push below falls outside workflow-push-gate, so it says the same.
+// Only in a controller run, like the hook: the refusal points at V2b and `next: push-workflows`,
+// a route only the dispatcher runs; a person outside it pushes with their own credentials, and
+// GitHub's check on those decides.
 func (p *poster) refuseWorkflows(top, branch, defaultBranch string) *Error {
 	if !park.ControllerRun(p.getenv) {
 		return nil

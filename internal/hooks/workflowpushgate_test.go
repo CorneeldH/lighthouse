@@ -284,3 +284,77 @@ func TestWorkflowPushGatePassesWhatPushesNoWorkflow(t *testing.T) {
 		t.Run(command, func(t *testing.T) { wantPushPass(t, pushGate(t, testRun, command, r.dir)) })
 	}
 }
+
+// stageWorkflow writes a workflow and stages it, without committing: the command under test does.
+func stageWorkflow(r *pushRepo) {
+	r.t.Helper()
+	writeFile(r.t, filepath.Join(r.dir, ".github/workflows/ci.yml"), "on: push\n")
+	r.git(r.dir, "add", "--", ".github/workflows/ci.yml")
+}
+
+// The hook runs before the whole command: a commit earlier in it moves HEAD after the
+// measurement, so a push behind a step that may move refs is not measurable.
+func TestWorkflowPushGateBlocksPushAfterACommitInTheSameCommand(t *testing.T) {
+	for _, command := range []string{
+		"git commit -qm wf && git push origin issue-1-x",
+		"git commit -qm wf; git push",
+		"git commit -qam wf && git push -u origin HEAD",
+		"git add . && git commit -qm wf && git push",
+		"git -C . merge --ff-only main && git push",
+		"git reset --soft HEAD && git push",
+	} {
+		t.Run(command, func(t *testing.T) {
+			r := newPushRepo(t)
+			r.commit("a.txt", "a\n")
+			r.push()
+			stageWorkflow(r)
+			wantPushBlocked(t, pushGate(t, testRun, command, r.dir), "COULD NOT CHECK", "as its own command",
+				"next: push-workflows")
+		})
+	}
+}
+
+func TestWorkflowPushGateReadOnlyStepsBeforeAPushPass(t *testing.T) {
+	for _, command := range []string{
+		"git status && git push",
+		"git fetch origin && git push",
+		"git log --oneline -1; git diff --stat && git push origin HEAD",
+		"git add -- notes.md && git push",
+	} {
+		t.Run(command, func(t *testing.T) {
+			r := newPushRepo(t)
+			r.commit("a.txt", "a\n")
+			r.push()
+			r.commit("b.txt", "b\n")
+			wantPushPass(t, pushGate(t, testRun, command, r.dir))
+		})
+	}
+}
+
+// Without a refspec git pushes what the configuration says: a configured refspec or
+// push.default=matching can send other branches, which the hook does not measure.
+func TestWorkflowPushGateConfiguredPushIsNotMeasured(t *testing.T) {
+	for name, config := range map[string][]string{
+		"remote push refspec":   {"remote.origin.push", "refs/heads/*:refs/heads/*"},
+		"push.default matching": {"push.default", "matching"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := newPushRepo(t)
+			r.commit("a.txt", "a\n")
+			r.push()
+			r.git(r.dir, "config", config[0], config[1])
+			for _, command := range []string{"git push", "git push origin"} {
+				wantPushBlocked(t, pushGate(t, testRun, command, r.dir), "COULD NOT CHECK")
+			}
+			// An explicit refspec says what is pushed: the configuration does not matter then.
+			wantPushPass(t, pushGate(t, testRun, "git push origin HEAD", r.dir))
+		})
+	}
+	t.Run("push.default simple", func(t *testing.T) {
+		r := newPushRepo(t)
+		r.commit("a.txt", "a\n")
+		r.push()
+		r.git(r.dir, "config", "push.default", "simple")
+		wantPushPass(t, pushGate(t, testRun, "git push", r.dir))
+	})
+}

@@ -93,3 +93,32 @@ func TestRoborevPushSkipRecordIsRed(t *testing.T) {
 	red := reviewed(context.Background(), req, head)
 	wantStep(t, red, StepRoborev)
 }
+
+// `roborev-gate body-line --push`, the handoff's roborev line, says done exactly when check 5
+// accepts the push records.
+func TestRoborevBodyLinePushAgreesWithCheck5(t *testing.T) {
+	for _, listed := range []bool{true, false} {
+		t.Run(map[bool]string{true: "fix listed", false: "fix unlisted"}[listed], func(t *testing.T) {
+			f := pushReviewFixture(t)
+			old := f.head()
+			fix := f.commit("fix2.txt", "fix\n")
+			record := done(old)
+			if listed {
+				record = done(old, fix[:9])
+			}
+			f.record("push-"+old+".json", record)
+
+			line, err := roborev.BodyLinePush(f.wt)
+			if err != nil {
+				t.Fatal(err)
+			}
+			req := f.req
+			req.CloneDir = f.wt
+			red := reviewed(context.Background(), req, fix)
+			marker := line == "<!-- roborev-lokaal: "+old+" -->"
+			if marker != (red == nil) || marker != listed {
+				t.Errorf("body-line %q, check 5 red %v; want both to accept only a listed fix", line, red)
+			}
+		})
+	}
+}

@@ -20,12 +20,28 @@ var pushValueOptions = map[string]bool{"-o": true, "--push-option": true, "--rep
 // pushManyOptions push refs the gate cannot list from the command: it does not guess them.
 var pushManyOptions = map[string]bool{"--all": true, "--branches": true, "--mirror": true, "--tags": true, "--follow-tags": true}
 
+// readOnlyGit are the git subcommands that move neither HEAD nor a ref, so a push after them in
+// the same command is still measured right. `add` stages only; a later commit is what moves.
+var readOnlyGit = map[string]bool{
+	"status": true, "log": true, "diff": true, "show": true, "fetch": true, "rev-parse": true,
+	"ls-files": true, "ls-remote": true, "ls-tree": true, "cat-file": true, "describe": true,
+	"blame": true, "grep": true, "shortlog": true, "merge-base": true, "for-each-ref": true,
+	"show-ref": true, "rev-list": true, "diff-tree": true, "diff-index": true, "diff-files": true,
+	"add": true, "push": true, "help": true, "version": true,
+}
+
 // WorkflowPushGate blocks, only in a controller run, a `git push` whose range touches
 // .github/workflows/: the workflow pusher pushes that, after V2b and a handoff with
 // `next: push-workflows`. The range is origin/<branch>..<tip>, or from the merge-base with
 // origin/<default branch> when the branch is not on origin. It reads `git -C <path>`, a
-// preceding `cd`, refspecs and shell wrappers; an alias it cannot see. What it cannot measure
-// blocks with COULD NOT CHECK. Outside a controller run it does nothing.
+// preceding `cd`, refspecs and shell wrappers. What it cannot measure blocks with COULD NOT
+// CHECK: a push after a git step in the same command that may move HEAD or a ref (the hook runs
+// before the whole command), a push without refspec under a configured push refspec or
+// push.default=matching. Outside a controller run it does nothing.
+//
+// It stops mistakes, not evasion, which is a declared non-goal: a git alias, `eval git push`,
+// `G=git; $G push`, a script that pushes, or a locally rewritten refs/remotes/origin/<branch> (which
+// shrinks the range) get past it. GitHub's own check on the token stays the barrier there.
 func WorkflowPushGate(ctx context.Context, _, _ string, p hook.Payload) hook.Result {
 	if !uuidShape.MatchString(os.Getenv("LIGHTHOUSE_CONTROLLER_RUN")) {
 		return hook.Result{}
@@ -50,14 +66,24 @@ func WorkflowPushGate(ctx context.Context, _, _ string, p hook.Payload) hook.Res
 	if err != nil {
 		return pushUncheckable("the command parser failed: " + err.Error())
 	}
-	var defaultBr string
+	var defaultBr, moved string
 	for _, step := range steps {
 		if gitinvocations.Basename(step.Words[step.Idx]) != "git" {
 			continue
 		}
 		target, known, raw, _, idx := gitinvocations.GitTarget(step)
-		if idx >= len(step.Words) || step.Words[idx] != "push" {
+		if idx >= len(step.Words) {
 			continue
+		}
+		if action := step.Words[idx]; action != "push" {
+			if !readOnlyGit[action] && moved == "" {
+				moved = action
+			}
+			continue
+		}
+		if moved != "" {
+			return pushUncheckable("'git " + moved + "' earlier in this command may move HEAD or a ref after the " +
+				"hook measured the range: run the push as its own command.")
 		}
 		if !known {
 			return pushUncheckable("the path '" + raw + "' of this push cannot be resolved.")
@@ -94,7 +120,7 @@ func checkPush(ctx context.Context, dir string, args []string, literal []bool, d
 		}
 		return pushUncheckable("git could not read '" + dir + "': " + orNoMessage(gitMessage) + "."), true
 	}
-	specs, why := pushSpecs(args, literal)
+	specs, configured, why := pushSpecs(args, literal)
 	if why != "" {
 		return pushUncheckable(why), true
 	}
@@ -104,6 +130,11 @@ func checkPush(ctx context.Context, dir string, args []string, literal []bool, d
 			return "", errors.New(orNoMessage(msg))
 		}
 		return out, nil
+	}
+	if configured {
+		if why := configuredPush(ctx, root); why != "" {
+			return pushUncheckable(why), true
+		}
 	}
 	for _, s := range specs {
 		if s.src == "" {
@@ -131,10 +162,33 @@ func checkPush(ctx context.Context, dir string, args []string, literal []bool, d
 	return hook.Result{}, false
 }
 
+// configuredPush is why a push without refspec cannot be measured in root: a configured
+// remote.<name>.push refspec or push.default=matching sends refs the command does not name.
+// "" when neither is set.
+func configuredPush(ctx context.Context, root string) string {
+	// Exit 1 with no output is "not set"; a git that breaks says something on stderr.
+	refspecs, msg, err := runGit(ctx, root, true, "config", "--get-regexp", `^remote\..*\.push$`)
+	if err != nil && msg != "" {
+		return "the push configuration cannot be read: " + msg
+	}
+	if refspecs != "" {
+		return "a configured push refspec (" + strings.Fields(refspecs)[0] + ") decides what this push sends: name the refspec."
+	}
+	mode, msg, err := runGit(ctx, root, true, "config", "--get", "push.default")
+	if err != nil && msg != "" {
+		return "the push configuration cannot be read: " + msg
+	}
+	if mode == "matching" {
+		return "push.default=matching pushes every matching branch: name the refspec."
+	}
+	return ""
+}
+
 // pushSpecs are the refs the push arguments send. why is set when they cannot be known: a
 // non-literal refspec, or an option that pushes refs the command does not name. A push of
-// deletions only gives no specs.
-func pushSpecs(args []string, literal []bool) (specs []pushSpec, why string) {
+// deletions only gives no specs. configured is true without a refspec: then the configuration
+// decides, and the spec is the current branch.
+func pushSpecs(args []string, literal []bool) (specs []pushSpec, configured bool, why string) {
 	var positional []string
 	options := true
 	for k := 0; k < len(args); k++ {
@@ -150,9 +204,9 @@ func pushSpecs(args []string, literal []bool) (specs []pushSpec, why string) {
 			name, _, inline := strings.Cut(arg, "=")
 			switch {
 			case pushManyOptions[name]:
-				return nil, "'" + arg + "' pushes refs this command does not name."
+				return nil, false, "'" + arg + "' pushes refs this command does not name."
 			case name == "--delete" || name == "-d":
-				return nil, ""
+				return nil, false, ""
 			case pushValueOptions[name] && !inline:
 				k++
 			}
@@ -160,12 +214,12 @@ func pushSpecs(args []string, literal []bool) (specs []pushSpec, why string) {
 		}
 		// The first positional word is the remote: where it points does not change the range.
 		if len(positional) > 0 && !literal[k] {
-			return nil, "the refspec '" + arg + "' is not literal."
+			return nil, false, "the refspec '" + arg + "' is not literal."
 		}
 		positional = append(positional, arg)
 	}
 	if len(positional) <= 1 {
-		return []pushSpec{{"HEAD", "HEAD"}}, ""
+		return []pushSpec{{"HEAD", "HEAD"}}, true, ""
 	}
 	for _, ref := range positional[1:] {
 		ref = strings.TrimPrefix(ref, "+")
@@ -182,7 +236,7 @@ func pushSpecs(args []string, literal []bool) (specs []pushSpec, why string) {
 		}
 		specs = append(specs, pushSpec{src, dest})
 	}
-	return specs, ""
+	return specs, false, ""
 }
 
 func pushUncheckable(reason string) hook.Result {
