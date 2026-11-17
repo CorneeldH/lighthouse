@@ -122,7 +122,7 @@ func TestGlabRepoFlagScope(t *testing.T) {
 		{"git@gitlab.example:g/p.git", "check", ""},
 		{"other/p", "skip", "skipped — other repo other/p"},
 		{"g/p/sub", "skip", "skipped — other repo g/p/sub"},
-		{"p", "block", "--repo 'p' does not have the form [HOST/]OWNER/REPO"},
+		{"p", "block", "--repo 'p' does not have the form OWNER/REPO, GROUP/NAMESPACE/REPO or a URL"},
 	}
 	for _, c := range cases {
 		value := c.value

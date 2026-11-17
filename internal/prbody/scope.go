@@ -259,7 +259,11 @@ func command(pc PrCreate) string {
 func scopeRepo(pc PrCreate, value string, repo repoFunc) (string, string, error) {
 	normalized, ok := NormalizeRepo(value, cliKind(pc))
 	if !ok {
-		return decisionBlock, "--repo " + pyStrRepr(value) + " does not have the form [HOST/]OWNER/REPO", nil
+		form := "[HOST/]OWNER/REPO"
+		if pc.Tool == "glab" {
+			form = "OWNER/REPO, GROUP/NAMESPACE/REPO or a URL"
+		}
+		return decisionBlock, "--repo " + pyStrRepr(value) + " does not have the form " + form, nil
 	}
 	own, err := repo()
 	if err != nil {
@@ -295,7 +299,7 @@ func withoutRepo(pc PrCreate, repo repoFunc) (string, string, error) {
 }
 
 // InScope decides for pc whether to check it, skip it or block it, with the reason. projectDir is
-// the project's checkout; repo is forge.repo ("" when not set). A git call that cannot answer
+// the project's checkout; repo is the forge's Repo (an empty Slug when forge.repo is not set). A git call that cannot answer
 // blocks: it is no proof of "inside" or "outside".
 func InScope(ctx context.Context, pc PrCreate, projectDir string, repo Repo) (decision, reason string) {
 	decision, reason, _ = inScope(ctx, pc, projectDir, func() (Repo, error) { return repo, nil })
