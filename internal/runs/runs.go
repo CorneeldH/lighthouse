@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"modernc.org/sqlite"
@@ -84,6 +85,12 @@ func Take(ctx context.Context, db *sql.DB, c Claim) (Run, error) {
 		return Run{}, fmt.Errorf("runs: claim needs a schedule with trigger %s and an issue otherwise; got issue %d, schedule %q, trigger %q",
 			TriggerScheduled, c.Issue, c.Schedule, c.Trigger)
 	}
+	if scheduled {
+		prefix := TriggerScheduled + ":" + c.Schedule + ":"
+		if !strings.HasPrefix(c.TriggerKey, prefix) || len(c.TriggerKey) == len(prefix) {
+			return Run{}, fmt.Errorf("runs: scheduled claim of %q needs trigger key %s<slot>; got %q", c.Schedule, prefix, c.TriggerKey)
+		}
+	}
 	tx, err := db.BeginTx(ctx, nil) // _txlock=immediate: BEGIN IMMEDIATE
 	if err != nil {
 		return Run{}, fmt.Errorf("runs: begin: %w", err)
@@ -139,20 +146,23 @@ func Take(ctx context.Context, db *sql.DB, c Claim) (Run, error) {
 	return Run{ID: id, Attempt: attempt}, nil
 }
 
-// Release closes an open run with an outcome. Failed and Retry close only a
-// scheduled run; for an open issue run they are an error and the run stays open.
+// Release closes an open run with an outcome. A scheduled run ends only as done, failed or
+// retry: failed and retry are only for a scheduled run, and start_failed, handoff, question,
+// parked and returned only for an issue run. An outcome of the other kind is an error and the
+// run stays open.
 func Release(ctx context.Context, db *sql.DB, id int64, o Outcome, reason string, now time.Time) error {
-	scheduledOnly := false
+	var kind, want string // kind narrows the UPDATE; want names the run kind the outcome is for
 	switch o {
-	case StartFailed, Handoff, Question, Parked, Done, Returned:
+	case Done:
+	case StartFailed, Handoff, Question, Parked, Returned:
+		kind, want = " AND schedule IS NULL", "an issue run"
 	case Failed, Retry:
-		scheduledOnly = true
+		kind, want = " AND schedule IS NOT NULL", "a scheduled run"
 	default:
 		return fmt.Errorf("runs: unknown outcome %q", o)
 	}
 	res, err := db.ExecContext(ctx, `UPDATE runs SET outcome = ?, reason = ?, ended_at = ?
-		WHERE id = ? AND ended_at IS NULL AND (? = 0 OR schedule IS NOT NULL)`,
-		string(o), reason, stamp(now), id, scheduledOnly)
+		WHERE id = ? AND ended_at IS NULL`+kind, string(o), reason, stamp(now), id)
 	if err != nil {
 		return fmt.Errorf("runs: release: %w", err)
 	}
@@ -163,14 +173,14 @@ func Release(ctx context.Context, db *sql.DB, id int64, o Outcome, reason string
 	if n > 0 {
 		return nil
 	}
-	if scheduledOnly {
+	if want != "" {
 		var open bool
 		err := db.QueryRowContext(ctx, `SELECT count(*) > 0 FROM runs WHERE id = ? AND ended_at IS NULL`, id).Scan(&open)
 		if err != nil {
 			return fmt.Errorf("runs: release run %d: %w", id, err)
 		}
 		if open {
-			return fmt.Errorf("runs: outcome %q is only for a scheduled run; run %d is an issue run", o, id)
+			return fmt.Errorf("runs: outcome %q is only for %s; run %d is not one", o, want, id)
 		}
 	}
 	return ErrNotOpen
@@ -207,6 +217,11 @@ func setOpen(ctx context.Context, db *sql.DB, id int64, query string, args ...an
 // SetStartSHA records the commit an open scheduled run started from.
 func SetStartSHA(ctx context.Context, db *sql.DB, id int64, sha string) error {
 	return setOpen(ctx, db, id, `UPDATE runs SET start_sha = ? WHERE id = ? AND ended_at IS NULL`, sha, id)
+}
+
+// SetVerdict records the opaque verdict JSON of an open scheduled run.
+func SetVerdict(ctx context.Context, db *sql.DB, id int64, verdict string) error {
+	return setOpen(ctx, db, id, `UPDATE runs SET verdict = ? WHERE id = ? AND ended_at IS NULL`, verdict, id)
 }
 
 // SetPRAt records when the PR of an open scheduled run was opened.

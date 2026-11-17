@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -94,7 +95,6 @@ func TestTakeScheduledCountsEveryRow(t *testing.T) {
 	}{
 		{"fresh slot", nil, 1, nil},
 		{"after one retry", []Outcome{Retry}, 2, nil},
-		{"after one start_failed", []Outcome{StartFailed}, 2, nil},
 		{"after done", []Outcome{Done}, 0, ErrTriggerSpent},
 		{"after failed", []Outcome{Failed}, 0, ErrTriggerSpent},
 		{"after two retries", []Outcome{Retry, Retry}, 0, ErrTriggerSpent},
@@ -322,5 +322,82 @@ func TestSkipSlot(t *testing.T) {
 	}
 	if reason != "no new sessions" || at != "2026-11-16T03:00:00Z" {
 		t.Errorf("slot row = %q at %q; want the first reason at 2026-11-16T03:00:00Z", reason, at)
+	}
+}
+
+// A scheduled claim must carry the trigger key of its own schedule, with a slot: a key of another
+// schedule would let the open-run index and SlotSettled disagree on which slot the run is for.
+func TestTakeScheduledKeyNamesItsSchedule(t *testing.T) {
+	ctx := context.Background()
+	db := openDB(t)
+	for _, key := range []string{
+		"scheduled:map-refresh:20261116T0300", // another schedule
+		"scheduled:reflect:",                  // no slot
+		"scheduled:reflect",                   // no slot separator
+		"start:7",                             // an issue key
+		"scheduled:reflectx:20261116T0300",    // a schedule that merely starts with the name
+	} {
+		c := scheduledClaim("o/a", "reflect", "20261116T0300")
+		c.TriggerKey = key
+		_, err := Take(ctx, db, c)
+		if err == nil || !strings.Contains(err.Error(), "trigger key") || errors.Is(err, ErrClaimed) {
+			t.Errorf("Take with trigger key %q: error = %v, want the trigger-key error", key, err)
+		}
+	}
+	var n int
+	if err := db.QueryRow(`SELECT count(*) FROM runs`).Scan(&n); err != nil || n != 0 {
+		t.Errorf("rows after rejected claims = %d, %v; want 0", n, err)
+	}
+}
+
+// A scheduled run ends only as done, failed or retry: the issue outcomes (start_failed, handoff,
+// question, parked, returned) would leave its slot with a row SlotSettled does not read as settled
+// yet that counts as an attempt, without the run ever being retried on purpose.
+func TestReleaseRefusesIssueOutcomesOnScheduledRun(t *testing.T) {
+	ctx := context.Background()
+	db := openDB(t)
+	for i, o := range []Outcome{StartFailed, Handoff, Question, Parked, Returned} {
+		slot := fmt.Sprintf("2026111%dT0300", i)
+		r, err := Take(ctx, db, scheduledClaim("o/a", "reflect", slot))
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = Release(ctx, db, r.ID, o, "", time.Now())
+		if err == nil || errors.Is(err, ErrNotOpen) || !strings.Contains(err.Error(), "only for an issue run") {
+			t.Errorf("Release scheduled run as %s: error = %v, want the issue-only error", o, err)
+		}
+		if err := Release(ctx, db, r.ID, Retry, "", time.Now()); err != nil {
+			t.Errorf("scheduled run not open after the refused %s: %v", o, err)
+		}
+	}
+	// Done stays allowed for both kinds.
+	r, err := Take(ctx, db, scheduledClaim("o/a", "reflect", "20261120T0300"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Release(ctx, db, r.ID, Done, "", time.Now()); err != nil {
+		t.Errorf("Release scheduled run as done: %v", err)
+	}
+}
+
+func TestSetVerdict(t *testing.T) {
+	ctx := context.Background()
+	db := openDB(t)
+	r, err := Take(ctx, db, scheduledClaim("o/a", "reflect", "20261116T0300"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := SetVerdict(ctx, db, r.ID, `{"v":2}`); err != nil {
+		t.Fatalf("SetVerdict: %v", err)
+	}
+	open, err := Open(ctx, db, "o/a")
+	if err != nil || len(open) != 1 || open[0].Verdict != `{"v":2}` {
+		t.Errorf("Open = %+v, %v; want the verdict set", open, err)
+	}
+	if err := Release(ctx, db, r.ID, Retry, "", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := SetVerdict(ctx, db, r.ID, `{}`); !errors.Is(err, ErrNotOpen) {
+		t.Errorf("SetVerdict on closed run: error = %v, want ErrNotOpen", err)
 	}
 }
