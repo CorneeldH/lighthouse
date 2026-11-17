@@ -107,7 +107,7 @@ func TestPrioritiesRunsComeFromRunsDep(t *testing.T) {
 	}
 }
 
-func TestPrioritiesRunsErrorStillServesRepos(t *testing.T) {
+func TestPrioritiesRunsErrorIs500(t *testing.T) {
 	runs := func(context.Context) ([]dispatch.RunView, []dispatch.DeferredView, error) {
 		return nil, nil, errors.New("db closed")
 	}

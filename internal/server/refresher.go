@@ -19,10 +19,10 @@ const (
 	BuildTimeout = 60 * time.Second
 	// PrioritiesInterval is the time from the start of one prioritisation build to the next:
 	// slower than the overview, as the planning reads are heavier and change less often.
+	PrioritiesInterval = 300 * time.Second
 	// PrioritiesRetry is the wait after a failed prioritisation build: longer than RefreshRetry,
 	// as every retry repeats the planning reads, which cost API points.
-	PrioritiesRetry    = 60 * time.Second
-	PrioritiesInterval = 300 * time.Second
+	PrioritiesRetry = 60 * time.Second
 )
 
 // BuildFunc builds one value of type T once.
