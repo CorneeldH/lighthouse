@@ -31,7 +31,7 @@ function Row({ row }: { row: UnassignedRow }): JSX.Element {
       {relation !== null && (
         <span
           className="shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold"
-          style={{ background: 'var(--lh-yellow)', color: 'var(--lh-navy)' }}
+          style={{ background: 'var(--lh-blue)', color: '#fff' }}
         >
           {relation}
         </span>

@@ -44,6 +44,15 @@ describe('UnassignedView', () => {
     const byNr = (n: number) => rows().find((r) => within(r).queryByText(`title-${n}`))!
     expect(within(byNr(1)).getByText('blocks #2')).toBeTruthy()
     expect(within(byNr(2)).getByText('waits on #1')).toBeTruthy()
+    expect(within(byNr(3)).getByText('waits on #44')).toBeTruthy()
+    expect(within(byNr(44)).getByText('blocks #3')).toBeTruthy()
+  })
+
+  it('draws the relation pill blue, not yellow', () => {
+    view([repo(A, [iss(1), iss(2, [[A, 1]])])])
+    const pill = screen.getByText('waits on #1')
+    expect(pill.getAttribute('style')).toContain('--lh-blue')
+    expect(pill.getAttribute('style')).not.toContain('--lh-yellow')
   })
 
   it('lists issues with a relation first, then number descending', () => {

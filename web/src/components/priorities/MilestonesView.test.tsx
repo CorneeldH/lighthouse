@@ -115,6 +115,37 @@ describe('MilestonesView', () => {
     expect(within(row(`${A}#m2`)).queryAllByTestId('outside')).toHaveLength(0)
   })
 
+  it('caps outside blockers and folds the rest into +N in the same column', () => {
+    const blockers = [1, 2, 3, 4, 5, 6, 7]
+    const r = repo(
+      A,
+      [...blockers.map((n) => iss(n, null)), iss(10, 1, blockers.map((n) => [A, n] as [string, number])), iss(11, 2)],
+      [ms(1, 0, 1), ms(2, 0, 1)],
+    )
+    view([r])
+    const col = within(row(`${A}#m1`)).getByTestId('outside-col')
+    expect(col.querySelectorAll('[data-testid="outside"]')).toHaveLength(2)
+    const more = within(col).getByTestId('outside-more')
+    expect(more.textContent).toBe('+5')
+    expect(more.getAttribute('title')).toContain('#3 title-3')
+    expect(more.getAttribute('title')).toContain('#7 title-7')
+    expect(within(row(`${A}#m2`)).getByTestId('outside-col').className).toBe(col.className)
+  })
+
+  it('draws active segments and active outside blockers with the --lh-yellow token', () => {
+    const r = repo(
+      A,
+      [iss(1, null, [], { status: 'In progress' }), iss(2, 1, [[A, 1]], { status: 'In progress' })],
+      [ms(1, 0, 1)],
+    )
+    view([r])
+    const style = (e: HTMLElement) => e.getAttribute('style') ?? ''
+    const active = within(row(`${A}#m1`)).getAllByTestId('seg').find((s) => s.getAttribute('data-state') === 'active')!
+    expect(style(active)).toContain('var(--lh-yellow)')
+    expect(style(active)).not.toMatch(/#[0-9a-f]{3,6}/i)
+    expect(style(within(row(`${A}#m1`)).getByTestId('outside'))).toContain('var(--lh-yellow)')
+  })
+
   it('lists the open issues after "to do:" in order, without outside blockers', () => {
     const r = repo(
       A,
@@ -150,7 +181,10 @@ describe('MilestonesView', () => {
     const r = within(row(`${A}#m1`))
     expect(r.getByText('50%').className).toContain('text-muted')
     expect(r.getByText('provisional · 1 to do')).toBeTruthy()
-    expect(r.getByTestId('shaping-layer').className).toContain('border-dashed')
+    const layer = r.getByTestId('shaping-layer')
+    expect(layer.className).toContain('border-dashed')
+    expect(layer.className).toContain('pointer-events-none')
+    expect(layer.getAttribute('title')).toBe('still in shaping — the list can still grow')
     expect(r.getAllByTestId('seg')).toHaveLength(2)
   })
 

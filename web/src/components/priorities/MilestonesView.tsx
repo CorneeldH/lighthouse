@@ -3,10 +3,15 @@ import { milestoneRows, sortMilestoneRows, type GNode, type MilestoneRow } from 
 import { NO_MILESTONE_COLOR } from '@/lib/priorities/palette'
 import type { ViewProps } from './types'
 
-const HATCH = 'repeating-linear-gradient(135deg, #e5e5e5 0 6px, #f7f7f7 6px 12px)'
-const YELLOW_HATCH = 'repeating-linear-gradient(135deg, #facc15 0 4px, #fef9c3 4px 8px)'
-// One fixed width for every outside-blocker column, so all bars start at the same x.
-const OUTSIDE_COL = 'w-16 shrink-0 flex justify-end items-center gap-0.5'
+const HATCH = 'repeating-linear-gradient(135deg, var(--lh-hatch-a) 0 6px, var(--lh-hatch-b) 6px 12px)'
+const YELLOW = 'var(--lh-yellow)'
+const YELLOW_HATCH = `repeating-linear-gradient(135deg, ${YELLOW} 0 4px, var(--lh-yellow-pale) 4px 8px)`
+const SHAPING_LAYER =
+  'repeating-linear-gradient(135deg, var(--lh-shaping-a) 0 6px, var(--lh-shaping-b) 6px 12px)'
+// One fixed width for every outside-blocker column, so all bars start at the same x. The column
+// holds at most MAX_OUTSIDE blocks; the rest collapse into one "+N" block.
+const OUTSIDE_COL = 'w-24 shrink-0 flex justify-end items-center gap-0.5'
+const MAX_OUTSIDE = 3
 
 const colorOf = (colors: Map<string, string>, n: GNode): string =>
   n.milestone ? (colors.get(`${n.repo}#m${n.milestone.number}`) ?? NO_MILESTONE_COLOR) : NO_MILESTONE_COLOR
@@ -40,7 +45,7 @@ function Row({ row, colors }: { row: MilestoneRow; colors: Map<string, string> }
       <div>
         <div className="flex items-center gap-2">
           <div data-testid="outside-col" className={OUTSIDE_COL}>
-            {row.outside.map((n) => {
+            {(row.outside.length > MAX_OUTSIDE ? row.outside.slice(0, MAX_OUTSIDE - 1) : row.outside).map((n) => {
               const c = colorOf(colors, n)
               return (
                 <span
@@ -48,12 +53,24 @@ function Row({ row, colors }: { row: MilestoneRow; colors: Map<string, string> }
                   data-testid="outside"
                   title={`#${n.number} ${n.title} blocks from outside`}
                   className="flex h-[18px] min-w-[26px] items-center justify-center rounded border-[1.5px] border-dashed px-0.5 text-[9.5px] font-bold"
-                  style={{ borderColor: c, color: c, background: n.active ? '#facc15' : undefined }}
+                  style={{ borderColor: c, color: c, background: n.active ? YELLOW : undefined }}
                 >
                   {n.number}
                 </span>
               )
             })}
+            {row.outside.length > MAX_OUTSIDE && (
+              <span
+                data-testid="outside-more"
+                title={row.outside
+                  .slice(MAX_OUTSIDE - 1)
+                  .map((n) => `#${n.number} ${n.title}`)
+                  .join('\n')}
+                className="flex h-[18px] min-w-[26px] items-center justify-center rounded border-[1.5px] border-dashed border-lh-grey px-0.5 text-[9.5px] font-bold text-lh-grey"
+              >
+                +{row.outside.length - (MAX_OUTSIDE - 1)}
+              </span>
+            )}
           </div>
           {unshaped ? (
             <div
@@ -84,7 +101,7 @@ function Row({ row, colors }: { row: MilestoneRow; colors: Map<string, string> }
                   data-hatched={n.uphill ? 'true' : 'false'}
                   title={`#${n.number} ${n.title}`}
                   className="block min-w-[3px] flex-1 rounded-sm"
-                  style={{ background: n.uphill ? YELLOW_HATCH : '#facc15' }}
+                  style={{ background: n.uphill ? YELLOW_HATCH : YELLOW }}
                 />
               ))}
               {row.todo.map((n) => (
@@ -93,16 +110,15 @@ function Row({ row, colors }: { row: MilestoneRow; colors: Map<string, string> }
                   data-testid="seg"
                   data-state="todo"
                   title={`#${n.number} ${n.title}`}
-                  className="block min-w-[3px] flex-1 rounded-sm bg-[#ececec]"
+                  className="block min-w-[3px] flex-1 rounded-sm bg-[var(--lh-seg-todo)]"
                 />
               ))}
               {provisional && (
                 <em
                   data-testid="shaping-layer"
-                  className="pointer-events-none absolute -inset-[3px] rounded-[5px] border-[1.5px] border-dashed border-[#a3a3a3]"
-                  style={{
-                    background: 'repeating-linear-gradient(135deg,#ffffffc8 0 6px,#ffffff30 6px 12px)',
-                  }}
+                  title="still in shaping — the list can still grow"
+                  className="pointer-events-none absolute -inset-[3px] rounded-[5px] border-[1.5px] border-dashed border-[var(--lh-shaping-border)]"
+                  style={{ background: SHAPING_LAYER }}
                 />
               )}
             </div>
