@@ -141,6 +141,17 @@ const BranchPRsQuery = `query BranchPRs($owner: String!, $name: String!, $branch
   }
 }`
 
+// OpenPRsWithStatusQuery reads one page of 100 open pull requests with draft, mergeable and
+// the state of their checks.
+const OpenPRsWithStatusQuery = `query OpenPRsWithStatus($owner: String!, $name: String!, $after: String) {
+  repository(owner: $owner, name: $name) {
+    pullRequests(first: 100, after: $after, states: [OPEN]) {
+      pageInfo { hasNextPage endCursor }
+      nodes { number title url isDraft mergeable statusCheckRollup { state } }
+    }
+  }
+}`
+
 // IssueItemsQuery reads the project items of one issue, with their single-select values.
 // projectItems includes archived items, so it selects isArchived.
 const IssueItemsQuery = `query IssueItems($owner: String!, $name: String!, $number: Int!) {

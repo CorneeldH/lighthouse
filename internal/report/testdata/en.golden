@@ -1,0 +1,31 @@
+# Report week 2026-W47 · CorneeldH/lighthouse
+
+16–22 November 2026. Open PRs: state at 2026-11-20 17:04.
+
+## Done
+
+### Merged PRs (2)
+
+- [#352](https://github.com/CorneeldH/lighthouse/pull/352) fix(gitleaks): proza-allowlist
+- [#351](https://github.com/CorneeldH/lighthouse/pull/351) fix(gate): resolve volgt symlinks
+
+### Closed issues (1)
+
+- [#228](https://github.com/CorneeldH/lighthouse/issues/228) Gitleaks vangt checkpoints
+
+## In progress
+
+### Open PRs (6)
+
+- [#353](https://github.com/CorneeldH/lighthouse/pull/353) feat(report): Render — green
+- [#354](https://github.com/CorneeldH/lighthouse/pull/354) docs: uitleg — conflict
+- [#355](https://github.com/CorneeldH/lighthouse/pull/355) wip: een — draft
+- [#356](https://github.com/CorneeldH/lighthouse/pull/356) fix: twee — red
+- [#357](https://github.com/CorneeldH/lighthouse/pull/357) fix: drie — busy
+- [#358](https://github.com/CorneeldH/lighthouse/pull/358) chore: vier — no checks
+
+### New on the roadmap (1)
+
+#### Lighthouse zonder Python
+
+- [#285](https://github.com/CorneeldH/lighthouse/issues/285) Python eruit

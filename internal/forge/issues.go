@@ -28,6 +28,8 @@ type issueItem struct {
 	HTMLURL     string          `json:"html_url"`
 	Comments    int             `json:"comments"`
 	State       string          `json:"state"`
+	StateReason string          `json:"state_reason"`
+	Draft       bool            `json:"draft"`
 	Body        string          `json:"body"`
 	ID          int64           `json:"id"`
 	NodeID      string          `json:"node_id"`
@@ -50,7 +52,7 @@ type issueItem struct {
 }
 
 func (it issueItem) issue() Issue {
-	out := Issue{Number: it.Number, Title: it.Title, URL: it.HTMLURL, Comments: it.Comments, State: it.State,
+	out := Issue{Number: it.Number, Title: it.Title, URL: it.HTMLURL, Comments: it.Comments, State: it.State, StateReason: it.StateReason,
 		Body: it.Body, CreatedAt: it.CreatedAt, UpdatedAt: it.UpdatedAt}
 	if it.ClosedAt != nil {
 		out.ClosedAt = *it.ClosedAt

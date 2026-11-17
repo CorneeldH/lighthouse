@@ -479,6 +479,57 @@ func TestControllerLocations(t *testing.T) {
 	})
 }
 
+func TestLoadReport(t *testing.T) {
+	tests := []struct {
+		name    string
+		table   string
+		want    Report
+		wantErr string // "" means ReportErr must be nil
+	}{
+		{"geldig", "[report]\nenabled = true\nsink = \"file\"\ndir = \"verslagen\"\n",
+			Report{Enabled: true, Sink: "file", Dir: "verslagen"}, ""},
+		{"zonder tabel", "", Report{Sink: "stdout"}, ""},
+		{"enabled als string", "[report]\nenabled = \"true\"\n", Report{Sink: "stdout"}, "report.enabled"},
+		{"onbekende sink", "[report]\nsink = \"wiki\"\n", Report{Sink: "stdout"}, "report.sink"},
+		{"file zonder dir", "[report]\nsink = \"file\"\n", Report{Sink: "file"}, "report.dir"},
+		{"absolute dir", "[report]\nsink = \"file\"\ndir = \"/abs\"\n", Report{Sink: "file"}, "report.dir"},
+		{"dir buiten repo", "[report]\nsink = \"file\"\ndir = \"../buiten\"\n", Report{Sink: "file"}, "report.dir"},
+		{"dir ontsnapt via ..", "[report]\nsink = \"file\"\ndir = \"a/../../b\"\n", Report{Sink: "file"}, "report.dir"},
+		{"dir geen string", "[report]\nsink = \"file\"\ndir = 5\n", Report{Sink: "file"}, "report.dir"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r, err := Load(write(t, full+tt.table))
+			if err != nil {
+				t.Fatalf("Load failed: %v", err)
+			}
+			if tt.wantErr == "" {
+				if r.ReportErr != nil {
+					t.Fatalf("ReportErr = %v, want nil", r.ReportErr)
+				}
+			} else if r.ReportErr == nil || !strings.Contains(r.ReportErr.Error(), tt.wantErr) {
+				t.Fatalf("ReportErr = %v, want text with %q", r.ReportErr, tt.wantErr)
+			}
+			if tt.wantErr == "" && r.Report != tt.want {
+				t.Errorf("Report = %+v, want %+v", r.Report, tt.want)
+			}
+		})
+	}
+}
+
+func TestLoadReportErrKeepsRepoServable(t *testing.T) {
+	r, err := Load(write(t, full+"[report]\nenabled = \"true\"\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Slug != "o/r" {
+		t.Errorf("Slug = %q, want o/r", r.Slug)
+	}
+	if err := Dispatchable(r); err != nil {
+		t.Errorf("Dispatchable: %v", err)
+	}
+}
+
 const gitlabFull = `[forge]
 kind = "gitlab"
 repo = "g/sub/p"

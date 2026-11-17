@@ -100,6 +100,9 @@ func (g *githubFixture) AddIssue(_ *testing.T, is forge.Issue) {
 	if !is.ClosedAt.IsZero() {
 		it["closed_at"] = is.ClosedAt.UTC().Format(time.RFC3339)
 	}
+	if is.StateReason != "" {
+		it["state_reason"] = is.StateReason
+	}
 	if g.srv.Issues == nil {
 		g.srv.Issues = map[int]map[string]any{}
 	}
@@ -166,6 +169,47 @@ func (g *githubFixture) AddOpenPR(_ *testing.T, pr forge.OpenPR) {
 	g.srv.Pulls = append(g.srv.Pulls, map[string]any{
 		"number": pr.Number, "title": pr.Title, "body": pr.Body, "head": map[string]any{"ref": pr.HeadRef},
 	})
+}
+
+func (g *githubFixture) AddOpenPRWithStatus(_ *testing.T, pr forge.PRSummary) {
+	node := map[string]any{
+		"number": pr.Number, "title": pr.Title, "url": pr.URL, "isDraft": pr.Draft, "mergeable": pr.Mergeable,
+	}
+	if pr.Checks != "" {
+		node["statusCheckRollup"] = map[string]any{"state": pr.Checks}
+	}
+	g.srv.OpenPRNodes = append(g.srv.OpenPRNodes, node)
+}
+
+func (g *githubFixture) AddMergedPR(_ *testing.T, pr forge.PRSummary) {
+	merged := pr.MergedAt.UTC().Format(time.RFC3339)
+	if g.srv.MergedPRs == nil {
+		g.srv.MergedPRs = map[int]map[string]any{}
+	}
+	g.srv.MergedPRs[pr.Number] = map[string]any{
+		"number": pr.Number, "title": pr.Title, "html_url": pr.URL, "draft": pr.Draft, "state": "closed",
+		"closed_at": merged, "pull_request": map[string]any{"merged_at": merged},
+	}
+}
+
+// AddMilestonedEvent adds a milestoned event, which names the milestone by title only, and
+// moves the issue's updated_at to it when that is later, as GitHub does.
+func (g *githubFixture) AddMilestonedEvent(t *testing.T, number int, milestoneTitle string, at time.Time) {
+	t.Helper()
+	if g.srv.Events == nil {
+		g.srv.Events = map[int][]map[string]any{}
+	}
+	stamp := at.UTC().Format(time.RFC3339)
+	g.srv.Events[number] = append(g.srv.Events[number], map[string]any{
+		"event": "milestoned", "created_at": stamp, "milestone": map[string]any{"title": milestoneTitle},
+	})
+	it, ok := g.srv.Issues[number]
+	if !ok {
+		t.Fatalf("AddMilestonedEvent: issue %d is not added", number)
+	}
+	if cur, _ := it["updated_at"].(string); cur < stamp {
+		it["updated_at"] = stamp
+	}
 }
 
 func (g *githubFixture) AddBranchPR(_ *testing.T, branch string, pr forge.PR) {
@@ -277,3 +321,6 @@ func (g *githubFixture) StatusOf(t *testing.T, number int) string {
 	}
 	return ""
 }
+
+// SupportsReport: GitHub reads the period lists.
+func (g *githubFixture) SupportsReport() bool { return true }

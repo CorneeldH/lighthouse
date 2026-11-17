@@ -25,18 +25,20 @@ var ErrNotConfigured = errors.New("forge not configured")
 
 // Issue is an issue as the forge returns it; OpenIssues lists only open ones. Pull requests are not issues here.
 type Issue struct {
-	Number    int
-	Title     string
-	URL       string // html_url
-	Comments  int    // comment count from the list
-	State     string // open, closed
-	Body      string
-	Author    string // user.login
-	Labels    []string
-	CreatedAt time.Time
-	UpdatedAt time.Time
-	ClosedAt  time.Time  // zero while open
-	Milestone *Milestone // nil: none
+	Number   int
+	Title    string
+	URL      string // html_url
+	Comments int    // comment count from the list
+	State    string // open, closed
+	// StateReason is why an issue closed: "completed", "not_planned", "duplicate" or "" (open or unknown).
+	StateReason string
+	Body        string
+	CreatedAt   time.Time
+	Author      string // user.login
+	Labels      []string
+	UpdatedAt   time.Time
+	ClosedAt    time.Time  // zero while open
+	Milestone   *Milestone // nil: none
 }
 
 // GitHub is a GitHub REST and GraphQL client for one repository.

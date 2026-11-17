@@ -84,6 +84,11 @@ key_env = "K"
 env_file = ".env"
 [review]
 roborev = "local"
+[report]
+enabled = true
+sink = "file"
+dir = "verslagen"
+
 [agent_audit]
 ignore = ["overlap:main-commit-gate|project/.claude/hooks/x.sh", "permission:Bash(git push:*)"]
 top = 3

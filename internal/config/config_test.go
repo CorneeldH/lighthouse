@@ -315,6 +315,34 @@ func TestRunWithoutKey(t *testing.T) {
 	}
 }
 
+func TestReportDefaults(t *testing.T) {
+	if v, ok := Default("report.enabled"); !ok || v != false {
+		t.Errorf("Default(report.enabled) = %#v, %v, want false", v, ok)
+	}
+	if v, ok := Default("report.sink"); !ok || v != "stdout" {
+		t.Errorf("Default(report.sink) = %#v, %v, want \"stdout\"", v, ok)
+	}
+	if v, ok := Default("report.dir"); ok {
+		t.Errorf("Default(report.dir) = %#v, want no default", v)
+	}
+}
+
+func TestReportSinkRejectsOtherValues(t *testing.T) {
+	_, err := Parse([]byte("[report]\nsink = \"wiki\"\n"), "lighthouse.toml")
+	want := "lighthouse.toml: key report.sink must be 'stdout' or 'file', not 'wiki'"
+	if err == nil || !strings.Contains(err.Error(), want) {
+		t.Errorf("err = %v, want it to contain %q", err, want)
+	}
+}
+
+func TestReportEnabledMustBeBool(t *testing.T) {
+	_, err := Parse([]byte("[report]\nenabled = \"true\"\n"), "lighthouse.toml")
+	want := "key report.enabled must be of type bool"
+	if err == nil || !strings.Contains(err.Error(), want) {
+		t.Errorf("err = %v, want it to contain %q", err, want)
+	}
+}
+
 const gitlabBoard = `[forge]
 kind = "gitlab"
 repo = "g/sub/p"

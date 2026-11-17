@@ -29,6 +29,7 @@
                 "internal/dispatch/instructions/run.md",
                 "internal/evidence/run.go",
                 "internal/repoconfig/repoconfig.go",
+                "internal/report/render.go",
                 "internal/review/openpoints.go",
                 "internal/triage/judgment.go",
                 "pack/core/instructions/AGENTS.md",
@@ -764,6 +765,54 @@
               "readers": [
                 "internal/roborev/gate.go",
                 "pack/core/skills/write-pr"
+              ]
+            }
+          ]
+        },
+        {
+          "table": "report",
+          "title": "Report",
+          "about": "The per-day, week or month report of lighthouse report: whether it runs and where it writes.",
+          "keys": [
+            {
+              "key": "report.enabled",
+              "level": "set",
+              "required": "no",
+              "default": false,
+              "about": "Turns lighthouse report on for this repo.",
+              "example": true,
+              "options": [
+                true,
+                false
+              ],
+              "readers": [
+                "internal/cli/report.go",
+                "internal/repoconfig/repoconfig.go"
+              ]
+            },
+            {
+              "key": "report.sink",
+              "level": "set",
+              "required": "no",
+              "default": "stdout",
+              "about": "Where the report goes: stdout or a file in report.dir.",
+              "example": "file",
+              "options": [
+                "stdout",
+                "file"
+              ],
+              "readers": [
+                "internal/repoconfig/repoconfig.go"
+              ]
+            },
+            {
+              "key": "report.dir",
+              "level": "set",
+              "required": "with sink = file",
+              "about": "Directory, relative to the repo, where the report file is written.",
+              "example": "docs/verslagen",
+              "readers": [
+                "internal/repoconfig/repoconfig.go"
               ]
             }
           ]

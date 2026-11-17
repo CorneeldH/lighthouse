@@ -99,6 +99,7 @@ func NewRoot(in io.Reader, out, errOut io.Writer) *cobra.Command {
 	root.AddCommand(newUnblockDependentsCommand())
 	root.AddCommand(newPostArtefactCommand(defaultPostArtefactEnv()))
 	root.AddCommand(newWorktreeAuditCommand(defaultWorktreeAuditEnv()))
+	root.AddCommand(newReportCommand(defaultReportEnv()))
 	root.AddCommand(newCheckInstructionsCommand())
 	root.AddCommand(newAgentAuditCommand())
 	root.AddCommand(&cobra.Command{

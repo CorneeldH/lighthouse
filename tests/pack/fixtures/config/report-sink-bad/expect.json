@@ -1,0 +1,10 @@
+[
+ {
+  "args": [
+   "report.sink"
+  ],
+  "rc": 2,
+  "stdout": "",
+  "stderr": "config: lighthouse.toml: key report.sink must be 'stdout' or 'file', not 'wiki'\n"
+ }
+]
