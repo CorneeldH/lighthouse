@@ -35,8 +35,9 @@ const (
 // dir of its workplace, so nothing from there may execute in the tick: no hook
 // (core.hooksPath=/dev/null; a hook-based check of the target repo is skipped on purpose, its CI
 // on the PR is the gate), no fsmonitor command, no signing program. --literal-pathspecs makes a
-// file named like a glob or `:(magic)` mean only itself. Residual risk: filter drivers and other
-// config the agent might plant in .git/config are not disabled; see the task report.
+// file named like a glob or `:(magic)` mean only itself. Filter drivers and other config the
+// agent might plant in .git/config are not disabled here: the caller compares GitState with the
+// state recorded at the start before it calls Postcheck, and calls it only when they match.
 var hardening = []string{
 	"-c", "core.hooksPath=" + os.DevNull,
 	"-c", "core.fsmonitor=false",
@@ -48,7 +49,7 @@ var hardening = []string{
 var shaPattern = regexp.MustCompile(`^(?:[0-9a-f]{40}|[0-9a-f]{64})$`)
 
 // Postcheck contains, verifies and commits the result of a scheduled run in its workplace
-// (env.Dir), then pushes it with push. The order is the spec's (§4): resume when branch is
+// (env.Dir), then pushes it to remote. The order is the spec's (§4): resume when branch is
 // already on origin at HEAD; the HEAD-guard (git reset --mixed startSHA, so commits of the agent
 // become working-tree changes and are never trusted as such); job.Cleanup; the containment
 // (every changed path, deletions and both sides of a rename included, is clean, satisfies
@@ -63,8 +64,11 @@ var shaPattern = regexp.MustCompile(`^(?:[0-9a-f]{40}|[0-9a-f]{64})$`)
 //
 // Every Failure and error text leaves Postcheck redacted (secret patterns withheld, line breaks
 // escaped), whatever a job, git or the push function put in it; the error still wraps its cause.
-func Postcheck(ctx context.Context, run workplace.Runner, job Job, env Env, v Verdict, startSHA, branch string, push func(context.Context) error) (PostcheckResult, error) {
-	res, err := postcheck(ctx, run, job, env, v, startSHA, branch, push)
+//
+// remote is the only way Postcheck reaches the branch on the forge: it never reads or pushes to
+// the workplace's origin, whose URL the agent could have changed.
+func Postcheck(ctx context.Context, run workplace.Runner, job Job, env Env, v Verdict, startSHA, branch string, remote Remote) (PostcheckResult, error) {
+	res, err := postcheck(ctx, run, job, env, v, startSHA, branch, remote)
 	res.Failure = redact(res.Failure)
 	if err != nil {
 		err = redactedError{err}
@@ -77,7 +81,7 @@ type redactedError struct{ err error }
 func (e redactedError) Error() string { return redact(e.err.Error()) }
 func (e redactedError) Unwrap() error { return e.err }
 
-func postcheck(ctx context.Context, run workplace.Runner, job Job, env Env, v Verdict, startSHA, branch string, push func(context.Context) error) (PostcheckResult, error) {
+func postcheck(ctx context.Context, run workplace.Runner, job Job, env Env, v Verdict, startSHA, branch string, remote Remote) (PostcheckResult, error) {
 	if !shaPattern.MatchString(startSHA) {
 		return failed("invalid start SHA %q", startSHA), nil
 	}
@@ -87,9 +91,9 @@ func postcheck(ctx context.Context, run workplace.Runner, job Job, env Env, v Ve
 	} else if code != 0 {
 		return failed("invalid branch %q", branch), nil
 	}
-	pushed, err := g.remoteBranch(ctx, branch)
+	pushed, err := remote.Head(ctx, env.Dir, branch)
 	if err != nil {
-		return PostcheckResult{}, err
+		return PostcheckResult{}, fmt.Errorf("ls-remote %s: %w", branch, err)
 	}
 	if pushed != "" {
 		return resume(ctx, g, job, env, startSHA, branch, pushed)
@@ -140,10 +144,11 @@ func postcheck(ctx context.Context, run workplace.Runner, job Job, env Env, v Ve
 	if reason, err := g.verifyObjects(ctx, job, changes); err != nil || reason != "" {
 		return PostcheckResult{Failure: reason}, err
 	}
-	if err := g.commit(ctx, branch, tree, startSHA, commitMessage(job, env)); err != nil {
+	commit, err := g.commit(ctx, branch, tree, startSHA, commitMessage(job, env))
+	if err != nil {
 		return PostcheckResult{}, err
 	}
-	if err := push(ctx); err != nil {
+	if err := remote.Push(ctx, env.Dir, commit, branch); err != nil {
 		return PostcheckResult{}, fmt.Errorf("push %s: %w", branch, err)
 	}
 	return PostcheckResult{Changed: true}, nil
@@ -290,21 +295,6 @@ func subcommand(args []string) string {
 	return "git"
 }
 
-// remoteBranch is the SHA of refs/heads/<branch> on origin, "" when origin lacks it.
-func (g gitIn) remoteBranch(ctx context.Context, branch string) (string, error) {
-	ref := "refs/heads/" + branch
-	out, err := g.ok(ctx, "ls-remote", "origin", ref)
-	if err != nil {
-		return "", err
-	}
-	for _, line := range strings.Split(out, "\n") {
-		if sha, name, ok := strings.Cut(line, "\t"); ok && name == ref {
-			return sha, nil
-		}
-	}
-	return "", nil
-}
-
 // status lists every changed path of the work tree against the index, untracked files one by
 // one, deletions and both sides of a rename included.
 func (g gitIn) status(ctx context.Context) ([]string, error) {
@@ -325,20 +315,26 @@ func (g gitIn) contained(ctx context.Context, job Job, dir string) (paths []stri
 }
 
 // commit makes a commit of tree with parent start and moves branch onto it, only when branch is
-// still at start. The commit holds tree and nothing else, whatever the index holds by then.
-func (g gitIn) commit(ctx context.Context, branch, tree, start, message string) error {
+// still at start, and returns the commit. The commit holds tree and nothing else, whatever the
+// index holds by then.
+func (g gitIn) commit(ctx context.Context, branch, tree, start, message string) (string, error) {
 	args := []string{"commit-tree", tree, "-p", start, "-m", message}
 	if code, err := g.code(ctx, "config", "--get", "user.email"); err != nil {
-		return err
+		return "", err
 	} else if code != 0 {
 		args = append([]string{"-c", "user.name=" + fallbackName, "-c", "user.email=" + fallbackEmail}, args...)
 	}
 	commit, err := g.ok(ctx, args...)
 	if err != nil {
-		return err
+		return "", err
 	}
-	_, err = g.ok(ctx, "update-ref", "-m", "lighthouse postcheck", "refs/heads/"+branch, commit, start)
-	return err
+	if !shaPattern.MatchString(commit) {
+		return "", fmt.Errorf("git commit-tree: %q is no commit sha", commit)
+	}
+	if _, err := g.ok(ctx, "update-ref", "-m", "lighthouse postcheck", "refs/heads/"+branch, commit, start); err != nil {
+		return "", err
+	}
+	return commit, nil
 }
 
 // difference lists the entries of a that b lacks and of b that a lacks, each once.

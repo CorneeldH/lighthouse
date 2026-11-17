@@ -55,11 +55,9 @@ func gitStateFiles(gitDir, commonDir string) []string {
 	}
 }
 
-// StartState returns the commit HEAD of the workplace dir is on and a digest of its git state:
-// the git dir and common dir, and the content of the files that decide what git runs there
-// (gitStateFiles; a missing file counts as missing). The tick records both at the start of a
-// scheduled run, before the agent runs; the check after the run compares them. Git runs with the
-// same hardening as Postcheck.
+// StartState returns the commit HEAD of the workplace dir is on and its GitState. The tick
+// records both at the start of a scheduled run, before the agent runs; the check after the run
+// compares them. Git runs with the same hardening as Postcheck.
 func StartState(ctx context.Context, run workplace.Runner, dir string) (sha, state string, err error) {
 	g := gitIn{run: run, dir: dir}
 	if sha, err = g.ok(ctx, "rev-parse", "--verify", "HEAD^{commit}"); err != nil {
@@ -68,13 +66,27 @@ func StartState(ctx context.Context, run workplace.Runner, dir string) (sha, sta
 	if !shaPattern.MatchString(sha) {
 		return "", "", fmt.Errorf("scheduled: HEAD %q is no commit sha", sha)
 	}
+	if state, err = GitState(ctx, run, dir); err != nil {
+		return "", "", err
+	}
+	return sha, state, nil
+}
+
+// GitState is a digest of the git state of the workplace dir: its git dir and common dir, and the
+// content of the files that decide what git runs there (gitStateFiles; a missing file counts as
+// missing). It runs only `git rev-parse` for the two dirs, which runs no filter, hook or helper,
+// so it is safe in a workplace whose config the agent may have changed. Before the check after a
+// run, the tick compares it with the state recorded at the start: a change means the agent wrote
+// config that the commit, the push or a checkout would run.
+func GitState(ctx context.Context, run workplace.Runner, dir string) (string, error) {
+	g := gitIn{run: run, dir: dir}
 	gitDir, err := g.ok(ctx, "rev-parse", "--absolute-git-dir")
 	if err != nil {
-		return "", "", err
+		return "", err
 	}
 	commonDir, err := g.ok(ctx, "rev-parse", "--path-format=absolute", "--git-common-dir")
 	if err != nil {
-		return "", "", err
+		return "", err
 	}
 	h := sha256.New()
 	_, _ = fmt.Fprintf(h, "git-dir\x00%s\x00common-dir\x00%s\x00", gitDir, commonDir)
@@ -91,11 +103,11 @@ func StartState(ctx context.Context, run workplace.Runner, dir string) (sha, sta
 			if errors.As(err, &pe) {
 				cause = pe.Err
 			}
-			return "", "", fmt.Errorf("scheduled: git state: read %s: %w", filepath.Base(p), cause)
+			return "", fmt.Errorf("scheduled: git state: read %s: %w", filepath.Base(p), cause)
 		default:
 			_, _ = fmt.Fprintf(h, "%s\x00%d\x00", p, len(b))
 			_, _ = h.Write(b) // a hash.Hash never fails a Write
 		}
 	}
-	return sha, hex.EncodeToString(h.Sum(nil)), nil
+	return hex.EncodeToString(h.Sum(nil)), nil
 }

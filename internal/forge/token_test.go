@@ -86,3 +86,28 @@ func TestTokenErrorText(t *testing.T) {
 		}
 	}
 }
+
+// Fails if TokenVar names another variable than the one Token reads, or loses its errors.
+func TestTokenVarNamesTheVariableTokenReads(t *testing.T) {
+	tests := []struct {
+		kind, tokenEnv string
+		env            map[string]string
+		want           string
+	}{
+		{"github", "", map[string]string{"GH_TOKEN": "gh", "GITHUB_TOKEN": "github"}, "GH_TOKEN"},
+		{"", "", map[string]string{"GITHUB_TOKEN": "github"}, "GITHUB_TOKEN"},
+		{"gitlab", "", map[string]string{"GITLAB_TOKEN": "gl"}, "GITLAB_TOKEN"},
+		{"github", "WORK", map[string]string{"WORK": "w", "GH_TOKEN": "gh"}, "WORK"},
+	}
+	for _, tt := range tests {
+		got, err := TokenVar(tt.kind, tt.tokenEnv, envOf(tt.env))
+		if err != nil || got != tt.want {
+			t.Errorf("TokenVar(%q, %q) = %q, %v; want %q", tt.kind, tt.tokenEnv, got, err, tt.want)
+		}
+	}
+	_, err := TokenVar("github", "WORK", envOf(map[string]string{"GH_TOKEN": "gh"}))
+	var te *TokenError
+	if !errors.As(err, &te) {
+		t.Errorf("err = %v, want *TokenError", err)
+	}
+}

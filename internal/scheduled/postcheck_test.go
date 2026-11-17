@@ -27,8 +27,11 @@ const testBranch = "scheduled/nightly-20261117T0400-1"
 type fixture struct {
 	t      *testing.T
 	work   string
+	origin string // the bare remote, by path
 	start  string
 	pushes int
+	// pushErr, when set, is what Push returns instead of pushing.
+	pushErr error
 }
 
 func newFixture(t *testing.T) *fixture {
@@ -42,6 +45,7 @@ func newFixture(t *testing.T) *fixture {
 	root := t.TempDir()
 	f := &fixture{t: t, work: filepath.Join(root, "work")}
 	origin := filepath.Join(root, "origin.git")
+	f.origin = origin
 	runGit(t, root, "init", "-q", "--bare", origin)
 	runGit(t, root, "init", "-q", "-b", "main", f.work)
 	f.git("config", "user.name", "Test")
@@ -83,9 +87,29 @@ func (f *fixture) write(rel, body string) {
 	}
 }
 
-func (f *fixture) push(ctx context.Context) error {
-	f.pushes++
-	out, err := exec.CommandContext(ctx, "git", "-C", f.work, "push", "-q", "origin", "HEAD:refs/heads/"+testBranch).CombinedOutput()
+// remote is the fixture's scheduled.Remote: the bare origin by its path, never the
+// workplace's origin remote.
+func (f *fixture) remote() scheduled.Remote { return fixtureRemote{f} }
+
+type fixtureRemote struct{ f *fixture }
+
+func (r fixtureRemote) Head(ctx context.Context, _, branch string) (string, error) {
+	out, err := exec.CommandContext(ctx, "git", "ls-remote", r.f.origin, "refs/heads/"+branch).CombinedOutput()
+	if err != nil {
+		return "", errors.New(string(out))
+	}
+	if fields := strings.Fields(string(out)); len(fields) > 0 {
+		return fields[0], nil
+	}
+	return "", nil
+}
+
+func (r fixtureRemote) Push(ctx context.Context, dir, commit, branch string) error {
+	r.f.pushes++
+	if r.f.pushErr != nil {
+		return r.f.pushErr
+	}
+	out, err := exec.CommandContext(ctx, "git", "-C", dir, "push", "-q", r.f.origin, commit+":refs/heads/"+branch).CombinedOutput()
 	if err != nil {
 		return errors.New(string(out))
 	}
@@ -99,7 +123,7 @@ func (f *fixture) postcheck(job *scheduledtest.Job) (scheduled.PostcheckResult, 
 		Dir:      f.work,
 		Run:      workplace.ExecRunner(),
 	}
-	return scheduled.Postcheck(context.Background(), env.Run, job, env, scheduled.Verdict{}, f.start, testBranch, f.push)
+	return scheduled.Postcheck(context.Background(), env.Run, job, env, scheduled.Verdict{}, f.start, testBranch, f.remote())
 }
 
 // originBranch is the SHA of the branch on origin, "" when it is not there.
@@ -568,7 +592,7 @@ func TestPostcheckRejectsMalformedArguments(t *testing.T) {
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			res, err := scheduled.Postcheck(context.Background(), env.Run, job, env, scheduled.Verdict{}, tc.start, tc.branch, f.push)
+			res, err := scheduled.Postcheck(context.Background(), env.Run, job, env, scheduled.Verdict{}, tc.start, tc.branch, f.remote())
 			if err != nil || !strings.Contains(res.Failure, tc.want) {
 				t.Errorf("Postcheck = %+v, %v; want Failure %q", res, err, tc.want)
 			}
@@ -603,7 +627,7 @@ func TestPostcheckCommitsOnlyTheCheckedSet(t *testing.T) {
 	f := newFixture(t)
 	f.write("out/a.md", "new\n")
 	env := scheduled.Env{Dir: f.work, Run: spyRunner(t, f.work, "out/extra.md")}
-	res, err := scheduled.Postcheck(context.Background(), env.Run, &scheduledtest.Job{AllowedPre: []string{"out/"}}, env, scheduled.Verdict{}, f.start, testBranch, f.push)
+	res, err := scheduled.Postcheck(context.Background(), env.Run, &scheduledtest.Job{AllowedPre: []string{"out/"}}, env, scheduled.Verdict{}, f.start, testBranch, f.remote())
 	f.assertNothingLanded(res, err, `staged paths differ from the checked set: "out/extra.md"`)
 }
 
@@ -841,9 +865,10 @@ func TestPostcheckRedactsJobAndPushText(t *testing.T) {
 		f := newFixture(t)
 		f.write("out/a.md", "x\n")
 		sentinel := errors.New("rejected " + token)
+		f.pushErr = sentinel
 		env := scheduled.Env{Dir: f.work, Run: workplace.ExecRunner()}
 		_, err := scheduled.Postcheck(context.Background(), env.Run, &scheduledtest.Job{AllowedPre: []string{"out/"}}, env, scheduled.Verdict{}, f.start, testBranch,
-			func(context.Context) error { return sentinel })
+			f.remote())
 		if err == nil || strings.Contains(err.Error(), token) || !strings.Contains(err.Error(), "rejected (withheld: GitHub personal token)") {
 			t.Errorf("error = %v", err)
 		}

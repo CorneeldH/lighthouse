@@ -24,6 +24,17 @@ func (e *TokenError) Error() string {
 // that variable is read; otherwise the default variables of the kind, first non-empty wins.
 // None set gives a *TokenError; an unknown kind gives a plain error.
 func Token(kind, tokenEnv string, getenv func(string) string) (string, error) {
+	name, err := TokenVar(kind, tokenEnv, getenv)
+	if err != nil {
+		return "", err
+	}
+	return getenv(name), nil
+}
+
+// TokenVar returns the name of the variable Token reads the token from: the first one that is
+// set, with the same order, errors and *TokenError as Token. A process that hands the token on
+// by its variable (an askpass script) names it without reading it into an argument.
+func TokenVar(kind, tokenEnv string, getenv func(string) string) (string, error) {
 	if kind == "" {
 		kind = "github"
 	}
@@ -40,8 +51,8 @@ func Token(kind, tokenEnv string, getenv func(string) string) (string, error) {
 		vars = []string{tokenEnv}
 	}
 	for _, v := range vars {
-		if t := getenv(v); t != "" {
-			return t, nil
+		if getenv(v) != "" {
+			return v, nil
 		}
 	}
 	return "", &TokenError{Kind: kind, Vars: vars}
