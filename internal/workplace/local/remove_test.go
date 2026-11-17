@@ -60,7 +60,7 @@ func TestRemoveDeletesWorktreeKeepsBranch(t *testing.T) {
 	if err := os.WriteFile(s.logPath(sess.Key), []byte("log"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := a.Remove(t.Context(), ws.ID); err != nil {
+	if err := a.Remove(t.Context(), ws.ID, workplace.RemoveOptions{}); err != nil {
 		t.Fatalf("Remove = %v, want nil", err)
 	}
 	if exists(ws.Path) {
@@ -80,7 +80,7 @@ func TestRemoveThenPrepareFreshID(t *testing.T) {
 	repo, _ := newRepo(t)
 	a, _, _ := newAdapter(t, repo)
 	ws := prepare(t, a, "issue-1-x")
-	if err := a.Remove(t.Context(), ws.ID); err != nil {
+	if err := a.Remove(t.Context(), ws.ID, workplace.RemoveOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	again := prepare(t, a, "issue-1-x")
@@ -91,7 +91,7 @@ func TestRemoveThenPrepareFreshID(t *testing.T) {
 
 func TestRemoveAdoptedLeavesWorktree(t *testing.T) {
 	a, _, _, ws, _ := adopted(t)
-	if err := a.Remove(t.Context(), ws.ID); err != nil {
+	if err := a.Remove(t.Context(), ws.ID, workplace.RemoveOptions{}); err != nil {
 		t.Fatalf("Remove = %v, want nil", err)
 	}
 	if !exists(ws.Path) {
@@ -106,7 +106,7 @@ func TestRemoveAdoptedKillsMarkedFirst(t *testing.T) {
 	a, procs, s, ws, _ := adopted(t)
 	addSession(t, s, ws.ID, "s1", "s1.aa")
 	procs.marked["s1"] = []int{1001}
-	if err := a.Remove(t.Context(), ws.ID); err != nil {
+	if err := a.Remove(t.Context(), ws.ID, workplace.RemoveOptions{}); err != nil {
 		t.Fatalf("Remove = %v, want nil", err)
 	}
 	if len(procs.sent) == 0 || procs.sent[0] != (sentSignal{1001, syscall.SIGTERM}) {
@@ -122,7 +122,7 @@ func TestRemoveAdoptedSurvivorKeepsRecords(t *testing.T) {
 	addSession(t, s, ws.ID, "s1", "s1.aa")
 	procs.marked["s1"] = []int{1001}
 	procs.survivors[1001] = true
-	if err := a.Remove(t.Context(), ws.ID); err == nil {
+	if err := a.Remove(t.Context(), ws.ID, workplace.RemoveOptions{}); err == nil {
 		t.Fatal("Remove = nil, want an error")
 	}
 	if _, err := a.Lookup(t.Context(), ws.ID); err != nil {
@@ -139,7 +139,7 @@ func TestRemoveVanishedDropsRecords(t *testing.T) {
 	if err := os.RemoveAll(ws.Path); err != nil {
 		t.Fatal(err)
 	}
-	if err := a.Remove(t.Context(), ws.ID); err != nil {
+	if err := a.Remove(t.Context(), ws.ID, workplace.RemoveOptions{}); err != nil {
 		t.Fatalf("Remove = %v, want nil", err)
 	}
 	if exists(s.workspacePath(ws.ID)) || exists(s.sessionDir(ws.ID)) || exists(s.logPath("s1.aa")) {
@@ -155,7 +155,7 @@ func TestRemoveVanishedWithProcessesEndsThem(t *testing.T) {
 	if err := os.RemoveAll(ws.Path); err != nil {
 		t.Fatal(err)
 	}
-	if err := a.Remove(t.Context(), ws.ID); err != nil {
+	if err := a.Remove(t.Context(), ws.ID, workplace.RemoveOptions{}); err != nil {
 		t.Fatalf("Remove = %v, want nil", err)
 	}
 	if len(h.procs.sent) == 0 || h.procs.sent[0].pid != 1001 {
@@ -174,7 +174,7 @@ func TestRemoveVanishedSurvivorKeepsRecords(t *testing.T) {
 	if err := os.RemoveAll(ws.Path); err != nil {
 		t.Fatal(err)
 	}
-	if err := a.Remove(t.Context(), ws.ID); err == nil {
+	if err := a.Remove(t.Context(), ws.ID, workplace.RemoveOptions{}); err == nil {
 		t.Fatal("Remove = nil, want an error")
 	}
 	if !exists(s.workspacePath(ws.ID)) || !exists(s.logPath("s1.aa")) {
@@ -187,7 +187,7 @@ func TestRemoveRefusedIsNotDirty(t *testing.T) {
 	a, _, _ := newAdapter(t, repo)
 	ws := prepare(t, a, "issue-1-x")
 	git(t, repo, "worktree", "lock", ws.Path)
-	err := a.Remove(t.Context(), ws.ID)
+	err := a.Remove(t.Context(), ws.ID, workplace.RemoveOptions{})
 	if err == nil || errors.Is(err, workplace.ErrDirty) || !strings.Contains(err.Error(), "exit code") {
 		t.Errorf("Remove = %v, want a plain error with the exit code", err)
 	}
@@ -203,7 +203,7 @@ func TestRemoveDirtyIsErrDirty(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(ws.Path, "x.txt"), []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := a.Remove(t.Context(), ws.ID); !errors.Is(err, workplace.ErrDirty) {
+	if err := a.Remove(t.Context(), ws.ID, workplace.RemoveOptions{}); !errors.Is(err, workplace.ErrDirty) {
 		t.Errorf("Remove = %v, want ErrDirty", err)
 	}
 	if !exists(ws.Path) {
@@ -214,7 +214,7 @@ func TestRemoveDirtyIsErrDirty(t *testing.T) {
 func TestRemoveNoRecordIsNil(t *testing.T) {
 	repo, _ := newRepo(t)
 	a, _, _ := newAdapter(t, repo)
-	if err := a.Remove(t.Context(), "local-nope-abcdef"); err != nil {
+	if err := a.Remove(t.Context(), "local-nope-abcdef", workplace.RemoveOptions{}); err != nil {
 		t.Errorf("Remove = %v, want nil", err)
 	}
 }
@@ -318,7 +318,7 @@ func TestRemoveEndsMarkedProcessesFirst(t *testing.T) {
 	a, h, _, ws, s := spawnSetup(t)
 	addSession(t, s, ws.ID, "s1", "s1.aa")
 	h.procs.marked["s1"] = []int{1001}
-	if err := a.Remove(t.Context(), ws.ID); err != nil {
+	if err := a.Remove(t.Context(), ws.ID, workplace.RemoveOptions{}); err != nil {
 		t.Fatalf("Remove = %v, want nil", err)
 	}
 	if len(h.procs.sent) == 0 || h.procs.sent[0] != (sentSignal{1001, syscall.SIGTERM}) {
@@ -334,7 +334,7 @@ func TestRemoveSurvivorKeepsWorktreeAndRecords(t *testing.T) {
 	addSession(t, s, ws.ID, "s1", "s1.aa")
 	h.procs.marked["s1"] = []int{1001}
 	h.procs.survivors[1001] = true
-	if err := a.Remove(t.Context(), ws.ID); err == nil || errors.Is(err, workplace.ErrDirty) {
+	if err := a.Remove(t.Context(), ws.ID, workplace.RemoveOptions{}); err == nil || errors.Is(err, workplace.ErrDirty) {
 		t.Fatalf("Remove = %v, want a plain error", err)
 	}
 	if !exists(ws.Path) || !exists(s.workspacePath(ws.ID)) || !exists(s.logPath("s1.aa")) {
@@ -350,7 +350,7 @@ func TestRemoveDirtySignalsNothing(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(ws.Path, "x.txt"), []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := a.Remove(t.Context(), ws.ID); !errors.Is(err, workplace.ErrDirty) {
+	if err := a.Remove(t.Context(), ws.ID, workplace.RemoveOptions{}); !errors.Is(err, workplace.ErrDirty) {
 		t.Fatalf("Remove = %v, want ErrDirty", err)
 	}
 	if len(h.procs.sent) != 0 {
@@ -370,7 +370,7 @@ func TestRemoveNestedWorktreeIsErrDirty(t *testing.T) {
 	if err := os.WriteFile(work, []byte("uncommitted"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	err := a.Remove(t.Context(), ws.ID)
+	err := a.Remove(t.Context(), ws.ID, workplace.RemoveOptions{})
 	if !errors.Is(err, workplace.ErrDirty) || !strings.Contains(err.Error(), inner) {
 		t.Fatalf("Remove = %v, want ErrDirty naming %s", err, inner)
 	}

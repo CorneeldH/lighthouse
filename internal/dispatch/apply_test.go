@@ -198,7 +198,7 @@ func (w *fakeWorkplace) Kill(_ context.Context, workspaceID string, sessionIDs [
 	return w.killErr
 }
 
-func (w *fakeWorkplace) Remove(context.Context, string) error {
+func (w *fakeWorkplace) Remove(context.Context, string, workplace.RemoveOptions) error {
 	w.log.add("Remove")
 	return nil
 }

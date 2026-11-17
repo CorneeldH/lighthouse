@@ -152,6 +152,9 @@
           "repo": {
             "type": "string"
           },
+          "schedule": {
+            "type": "string"
+          },
           "workspace_id": {
             "type": "string"
           }

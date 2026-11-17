@@ -324,8 +324,18 @@ func parseTimes(id int64, started, prAt string) (time.Time, time.Time, error) {
 // agent's. A run without a key (never accepted, or returned as uncertain)
 // adds nothing, so its late agent counts as foreign.
 func SessionKeys(ctx context.Context, db *sql.DB, repo string, issue int) (map[string]string, error) {
-	rows, err := db.QueryContext(ctx, `SELECT workplace_session, session_id FROM runs
+	return sessionKeys(ctx, db, `SELECT workplace_session, session_id FROM runs
 		WHERE repo = ? AND issue = ? AND workplace_session != ''`, repo, issue)
+}
+
+// ScheduleSessionKeys is SessionKeys for the runs of schedule in repo.
+func ScheduleSessionKeys(ctx context.Context, db *sql.DB, repo, schedule string) (map[string]string, error) {
+	return sessionKeys(ctx, db, `SELECT workplace_session, session_id FROM runs
+		WHERE repo = ? AND schedule = ? AND workplace_session != ''`, repo, schedule)
+}
+
+func sessionKeys(ctx context.Context, db *sql.DB, query string, args ...any) (map[string]string, error) {
+	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("runs: session keys: %w", err)
 	}

@@ -30,6 +30,7 @@ var onNodeSkips = map[string]string{
 	"KillUnmeasurableIsError":   "#327: no process measurement on a node",
 	"KillLeavesOtherSession":    "#327: stands by session_id; Sessions on a node has none",
 	"EndedSessionIsDone":        "#327: stands by session_id; Sessions on a node has none",
+	"RemoveForceDropsDirty":     "a forced Remove cleans the worktree with local git; a node has none (TestRemoveForceOnNodeRefuses)",
 }
 
 // TestContractOnNode runs the suite against an adapter on node-a behind the fake hub.
@@ -68,7 +69,7 @@ type forgeFixture struct {
 
 type forgeWorkspace struct {
 	path, branch string
-	dirty, gone  bool
+	gone         bool
 	sessions     []forgeSession
 }
 
@@ -141,8 +142,15 @@ func (f *forgeFixture) Spec(*testing.T) workplace.LaunchSpec {
 	return workplace.LaunchSpec{Profile: "infra", Mode: "start", Prompt: "do the thing", InstructionsFile: "/abs/instr.md"}
 }
 
+// MakeDirty leaves an untracked file in the clone: the DELETE of kenn-forge refuses a worktree
+// that git status shows changes in.
 func (f *forgeFixture) MakeDirty(t *testing.T, ws workplace.Workspace) {
-	f.change(t, ws, func(w *forgeWorkspace) { w.dirty = true })
+	t.Helper()
+	f.change(t, ws, func(w *forgeWorkspace) {
+		if err := os.WriteFile(filepath.Join(w.path, "untracked.txt"), []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	})
 }
 
 func (f *forgeFixture) Forget(t *testing.T, ws workplace.Workspace) {
@@ -279,7 +287,14 @@ func (f *forgeFixture) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case rest == "" && r.Method == http.MethodGet:
 		writeJSON(w, map[string]string{"id": id, "status": "ready", "worktree_path": ws.path, "git_head_ref": ws.branch})
 	case rest == "" && r.Method == http.MethodDelete:
-		if ws.dirty {
+		// kenn-forge answers 409 on a dirty worktree and has no force parameter.
+		out, err := exec.Command("git", "-c", "core.fsmonitor=false", "-C", ws.path, "status", "--porcelain").Output()
+		if err != nil {
+			f.t.Errorf("git status in %s: %v", ws.path, err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		if len(out) > 0 {
 			w.WriteHeader(http.StatusConflict)
 			return
 		}

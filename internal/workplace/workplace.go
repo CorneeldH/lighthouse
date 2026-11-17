@@ -83,6 +83,13 @@ type LaunchSpec struct {
 	Unset []string
 }
 
+// RemoveOptions tunes Remove.
+type RemoveOptions struct {
+	// Force removes a workspace with uncommitted or unpushed work too. Only the workspace of
+	// a scheduled run without an open row is removed this way: nothing in it must be kept.
+	Force bool
+}
+
 // Workplace is the forge side of a run.
 type Workplace interface {
 	Prepare(ctx context.Context, branch string) (Workspace, error)
@@ -92,7 +99,9 @@ type Workplace interface {
 	// Kill ends only the agent processes of the given sessions, never the rest of the
 	// workspace: a foreign session in it runs on. A session without a process is no error.
 	Kill(ctx context.Context, workspaceID string, sessionIDs []string) error
-	Remove(ctx context.Context, workspaceID string) error
+	// Remove deletes the workspace. Without o.Force a workspace with uncommitted work is
+	// ErrDirty; with it, that work is thrown away.
+	Remove(ctx context.Context, workspaceID string, o RemoveOptions) error
 	// Lookup reads a workspace by id: its path and branch. A workspace the forge no
 	// longer knows is ErrGone; one without a path is an error.
 	Lookup(ctx context.Context, workspaceID string) (Workspace, error)

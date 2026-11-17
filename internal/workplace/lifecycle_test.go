@@ -25,6 +25,7 @@ type fakeWP struct {
 	spawns, stops, removes                                            int
 	stopped                                                           []string
 	removed                                                           []string
+	forced                                                            []string // the removed ids with RemoveOptions.Force
 	discarded                                                         []string
 	// lookupPath and lookupErr answer Lookup; looked lists the ids it was asked for.
 	lookupPath string
@@ -67,9 +68,12 @@ func (f *fakeWP) Kill(context.Context, string, []string) error {
 	return errors.New("unexpected Kill")
 }
 
-func (f *fakeWP) Remove(_ context.Context, id string) error {
+func (f *fakeWP) Remove(_ context.Context, id string, o RemoveOptions) error {
 	f.removes++
 	f.removed = append(f.removed, id)
+	if o.Force {
+		f.forced = append(f.forced, id)
+	}
 	return f.removeErr
 }
 

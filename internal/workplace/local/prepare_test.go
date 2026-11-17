@@ -413,7 +413,7 @@ func TestForeignIDIsNoLocalWorkspace(t *testing.T) {
 		"Sessions":   sessErr,
 		"Stop":       a.Stop(ctx, id, sids),
 		"Kill":       a.Kill(ctx, id, sids),
-		"Remove":     a.Remove(ctx, id),
+		"Remove":     a.Remove(ctx, id, workplace.RemoveOptions{}),
 		"Lookup":     lookErr,
 		"Discard":    a.Discard(ctx, id),
 		"Transcript": transErr,

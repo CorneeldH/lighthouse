@@ -10,6 +10,7 @@ export interface Leftover {
   path: string;
   reason: string;
   repo: string;
+  schedule?: string;
   workspace_id: string;
 }
 

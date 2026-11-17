@@ -807,7 +807,7 @@ func TestRemoveWipesCarrier(t *testing.T) {
 		f, a := newFakeForge(t)
 		f.deleteStatus = status
 		writeCarrier(t, a)
-		if err := a.Remove(context.Background(), "ws1"); err != nil {
+		if err := a.Remove(context.Background(), "ws1", workplace.RemoveOptions{}); err != nil {
 			t.Fatalf("%d: err = %v", status, err)
 		}
 		if carrierExists(a) {
@@ -821,7 +821,7 @@ func TestRemoveRefusedKeepsCarrier(t *testing.T) {
 		f, a := newFakeForge(t)
 		f.deleteStatus = status
 		writeCarrier(t, a)
-		if err := a.Remove(context.Background(), "ws1"); err == nil {
+		if err := a.Remove(context.Background(), "ws1", workplace.RemoveOptions{}); err == nil {
 			t.Fatalf("%d: err = nil, want an error", status)
 		}
 		if !carrierExists(a) {
@@ -841,7 +841,7 @@ func TestRemoveReportsFailedCarrierWipe(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
-	if err := a.Remove(context.Background(), "ws1"); !errors.Is(err, os.ErrPermission) {
+	if err := a.Remove(context.Background(), "ws1", workplace.RemoveOptions{}); !errors.Is(err, os.ErrPermission) {
 		t.Fatalf("err = %v, want the wipe error", err)
 	}
 }
@@ -863,7 +863,7 @@ func TestDiscardWipesCarrier(t *testing.T) {
 func TestRemoveOtherErrorPassedOn(t *testing.T) {
 	f, a := newFakeForge(t)
 	f.deleteStatus = 500
-	if err := a.Remove(context.Background(), "ws1"); err == nil || errors.Is(err, workplace.ErrDirty) {
+	if err := a.Remove(context.Background(), "ws1", workplace.RemoveOptions{}); err == nil || errors.Is(err, workplace.ErrDirty) {
 		t.Fatalf("err = %v, want a non-dirty error", err)
 	}
 }
@@ -1033,7 +1033,7 @@ func TestLocalIDIsNoForgeWorkspace(t *testing.T) {
 		"Sessions":   func(a *Adapter) error { _, err := a.Sessions(context.Background(), id); return err },
 		"Stop":       func(a *Adapter) error { return a.Stop(context.Background(), id, []string{testSessionID}) },
 		"Kill":       func(a *Adapter) error { return a.Kill(context.Background(), id, []string{testSessionID}) },
-		"Remove":     func(a *Adapter) error { return a.Remove(context.Background(), id) },
+		"Remove":     func(a *Adapter) error { return a.Remove(context.Background(), id, workplace.RemoveOptions{}) },
 		"Lookup":     func(a *Adapter) error { _, err := a.Lookup(context.Background(), id); return err },
 		"Discard":    func(a *Adapter) error { return a.Discard(context.Background(), id) },
 		"Transcript": func(a *Adapter) error { _, err := a.Transcript(context.Background(), id, testSessionID); return err },

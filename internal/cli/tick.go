@@ -363,7 +363,8 @@ func saveRunView(ctx context.Context, env tickEnv, db *sql.DB, cr checkedRepo, p
 }
 
 // sweepRepos runs workplace.Sweep for each repo: the workspaces of issues the controller no
-// longer holds go, when nothing is lost by it (workplace.Cleanup). Each removed
+// longer holds go, when nothing is lost by it (workplace.Cleanup), and the workspace of a
+// scheduled run without an open row goes forcibly. Each removed
 // workspace gets a removed line on errOut, each repo whose sweep failed a cleanup line; a
 // workspace it keeps gets no line: it is in Workspaces to clean up. A repo without a
 // workspace to sweep builds no workplace. failed reports a cleanup line.
@@ -373,7 +374,11 @@ func sweepRepos(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dis
 		slug := sr.repo.Slug
 		removed, err := sweepOne(ctx, env, db, cfg, forges[slug], sr)
 		for _, l := range removed {
-			_, _ = fmt.Fprintf(errOut, "lighthouse: removed workspace %s of %s#%d\n", l.WorkspaceID, slug, l.Issue)
+			of := fmt.Sprintf("%s#%d", slug, l.Issue)
+			if l.Schedule != "" {
+				of = slug + " scheduled:" + l.Schedule
+			}
+			_, _ = fmt.Fprintf(errOut, "lighthouse: removed workspace %s of %s\n", l.WorkspaceID, of)
 		}
 		if err != nil {
 			failed = true

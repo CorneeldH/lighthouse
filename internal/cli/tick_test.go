@@ -583,7 +583,7 @@ func (w *fakeWorkplace) killed() []string {
 	return slices.Clone(w.kills)
 }
 
-func (w *fakeWorkplace) Remove(_ context.Context, workspaceID string) error {
+func (w *fakeWorkplace) Remove(_ context.Context, workspaceID string, _ workplace.RemoveOptions) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.removed = append(w.removed, workspaceID)
@@ -1672,6 +1672,37 @@ func TestTickSweepsWorkspaceOffController(t *testing.T) {
 	looked, asked, removed := w.calls()
 	if len(looked) != 1 || len(asked) != 1 || len(removed) != 1 {
 		t.Errorf("after two ticks: looked %v, asked %v, removed %v; want one of each", looked, asked, removed)
+	}
+}
+
+// #121: the workspace of a closed scheduled run goes forcibly, without git, and its line names
+// the schedule instead of an issue number.
+func TestTickSweepForcesScheduledWorkspace(t *testing.T) {
+	env, db := tickFixture(t, repo945(t))
+	_, w := sweepable(t, &env, "p1", &gitState{status: " M main.go", ahead: "0"})
+	ctx := context.Background()
+	conn := openStore(t, db)
+	r, err := runs.Take(ctx, conn, runs.Claim{Repo: "o/r", Schedule: "nightly", SessionID: runs.NewSessionID(), Mode: "start",
+		Trigger: runs.TriggerScheduled, TriggerKey: "scheduled:nightly:20261116T0400", Now: t0.Add(-time.Hour)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runs.SetWorkplace(ctx, conn, r.ID, "ws-nightly", "scheduled/nightly-20261116T0400-1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := runs.Release(ctx, conn, r.ID, runs.Failed, "postcheck: outside the allowed paths", t0.Add(-time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+
+	var errOut bytes.Buffer
+	if err := tick(ctx, env, db, &errOut); err != nil {
+		t.Fatalf("tick = %v\n%s", err, errOut.String())
+	}
+	if want := "lighthouse: removed workspace ws-nightly of o/r scheduled:nightly\n"; !strings.Contains(errOut.String(), want) {
+		t.Errorf("errOut = %q, want it to contain %q", errOut.String(), want)
+	}
+	if _, _, removed := w.calls(); !reflect.DeepEqual(removed, []string{"ws-nightly"}) {
+		t.Errorf("removed = %v, want [ws-nightly]", removed)
 	}
 }
 
