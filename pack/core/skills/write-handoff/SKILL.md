@@ -243,6 +243,7 @@ tick starts the next phase itself. Two entries:
    | build done, last commit green | `/lighthouse-write-pr <nr>` |
    | PR open | `/lighthouse-close-issue <nr>` — final handoff: the controller does not start it from the handoff, but after the merge of the `Refs` PR, as the close check |
    | PR red | `/lighthouse-fix-pr <pr>` |
+   | the range touches `.github/workflows/` (build done, or a fix-pr run that fixed the PR) | `push-workflows` — no slash command; the step above says how: V2b first, `after:` only while there is no PR. The tick starts the workflow pusher, never a session |
    | issue without spec, design open | `/superpowers:brainstorming` — the controller returns the issue |
    | plan the user has to guide themselves (only controller run) | `/superpowers:executing-plans <absolute plan path>` without `lane:` — the controller never starts this: it returns it, the status stays `Controller` |
    | a plan, native on a decision of the user | `/superpowers:executing-plans <absolute plan path>`, with field `lane: native` — the controller starts it on Sonnet |
