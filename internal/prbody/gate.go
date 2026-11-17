@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -26,7 +27,7 @@ const blockedMessage = "pr-create-gate: BLOCKED — %s\n\n" +
 
 // GitHubAPIURLEnv names the variable that replaces the GitHub API root of the AC count. It is a
 // test seam: the end-to-end tests point it at a fake API on localhost. Only the GitHub forge of
-// the default Issue reads it.
+// the default Issue reads it, and only a loopback host: the token goes along with the request.
 const GitHubAPIURLEnv = "LIGHTHOUSE_GITHUB_API_URL"
 
 // Env is what Main takes from outside the process: the forge, gh, and the GH_REPO that gh itself
@@ -80,7 +81,7 @@ func forgeIssue(gh func(context.Context, ...string) (string, int, error), getenv
 		}
 		cfg := forge.Config{Kind: repo.Kind, Repo: repo.Slug, Host: repo.Host, Token: token}
 		if repo.Kind == "" || repo.Kind == "github" {
-			cfg.BaseURL = getenv(GitHubAPIURLEnv)
+			cfg.BaseURL = loopbackAPIURL(getenv(GitHubAPIURLEnv))
 		}
 		f, err := forge.Open(cfg)
 		if err != nil {
@@ -89,6 +90,20 @@ func forgeIssue(gh func(context.Context, ...string) (string, int, error), getenv
 		issue, err := f.Issue(ctx, nr)
 		return issue.Body, err
 	}
+}
+
+// loopbackAPIURL is v when it is an http(s) URL on a loopback host, "" otherwise: a value that
+// points elsewhere is ignored and the real GitHub API is used, so the token never leaves for it.
+func loopbackAPIURL(v string) string {
+	u, err := url.Parse(v)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+		return ""
+	}
+	switch u.Hostname() {
+	case "127.0.0.1", "::1", "localhost":
+		return v
+	}
+	return ""
 }
 
 // oneLine is s on one line: the line breaks become "; ".

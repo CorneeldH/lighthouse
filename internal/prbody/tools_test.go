@@ -410,3 +410,21 @@ func TestMainGitLabClosingWordNeedsEvidence(t *testing.T) {
 	got := runMain(t, project, "glab mr create -R g/sub/p -d 'Implements #9'", project)
 	eq(t, "main", got, mainResult{2, "", blocked("Closes #9: heading `### Evidence #9` is missing")})
 }
+
+func TestTestSeamURLAcceptsOnlyLoopback(t *testing.T) {
+	for _, c := range []struct{ in, want string }{
+		{"", ""},
+		{"http://127.0.0.1:8080", "http://127.0.0.1:8080"},
+		{"https://localhost:9", "https://localhost:9"},
+		{"http://[::1]:5", "http://[::1]:5"},
+		{"https://api.evil.example", ""},
+		{"http://127.0.0.1.evil.example", ""},
+		{"http://evil.example/127.0.0.1", ""},
+		{"ftp://127.0.0.1", ""},
+		{"not a url", ""},
+	} {
+		if got := loopbackAPIURL(c.in); got != c.want {
+			t.Errorf("loopbackAPIURL(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
