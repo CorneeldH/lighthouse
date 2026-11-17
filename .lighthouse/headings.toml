@@ -191,6 +191,22 @@ en = "Reviewers' verdict"
 nl = "Zelf pushen"
 en = "Push it yourself"
 
+[question_push_shadow]
+nl = "shadow mode: de review beslist niet, jij wel"
+en = "shadow mode: the review does not decide, you do"
+
+[question_push_permit]
+nl = "Antwoord `push` om precies deze SHA te laten pushen: de vloer draait dan opnieuw, de review niet."
+en = "Answer `push` to have exactly this SHA pushed: the floor runs again, the review does not."
+
+[question_push_floor]
+nl = "De vloer is rood en een antwoord `push` heft dat niet op: dat geeft deze Vraag opnieuw. Push met de hand, of laat het werk repareren."
+en = "The floor is red and an answer `push` does not lift it: that gives this Question again. Push by hand, or have the work repaired."
+
+[question_push_attachment]
+nl = "De diff is afgekapt; de volledige diff staat in"
+en = "The diff is cut off; the full diff is in"
+
 [note_pushed]
 nl = "Workflow-bestanden gepusht door de pusher"
 en = "Workflow files pushed by the pusher"

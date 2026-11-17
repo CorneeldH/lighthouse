@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/flock"
+	"github.com/CorneeldH/lighthouse/internal/hostconfig"
 	"github.com/CorneeldH/lighthouse/internal/park"
 	"github.com/CorneeldH/lighthouse/internal/roborev"
 	"github.com/CorneeldH/lighthouse/internal/runs"
@@ -45,6 +46,14 @@ type Request struct {
 	// ForgeToken is read-only and goes only into the env of the fetch from URL.
 	ForgeToken string
 	Permit     string
+	// Config is [dispatch.workflow_push]; nil is the route off.
+	Config *hostconfig.WorkflowPush
+	// Off is why the route is off besides a missing Config, such as a forge other than github.com.
+	Off string
+	// Language is [project] language of the repo: the language of the comments.
+	Language string
+	// Guard are paths no reviewer bind may touch: the forge token file, the state and clone dir.
+	Guard []string
 }
 
 // Checked is what a green floor read in the own clone.
