@@ -42,8 +42,12 @@ def frontmatter_value(body: str, key: str) -> str:
 
 
 def test_gate_0_reads_the_relation():
+    """The blocker comes from the forge's relation, read through the wrapper; what differs per
+    forge (GitLab Free has no relation) is in the reference section."""
     for body in skill("route-issue"):
-        assert "dependencies/blocked_by" in body
+        gate0 = body[body.index("### Gate 0") : body.index("### Gate 1")]
+        assert "lighthouse forge issue blockers <nr>" in gate0
+        assert "../lighthouse-forge/<kind>.md §blockers" in gate0
 
 
 def test_gate_0_stops_without_blocked_label():
@@ -51,7 +55,7 @@ def test_gate_0_stops_without_blocked_label():
     gate 0 unnoticed; otherwise it starts while it waits for another issue."""
     for body in skill("route-issue"):
         gate0 = body[body.index("### Gate 0") : body.index("### Gate 1")]
-        assert "issue_dependencies_summary.blocked_by" in gate0
+        assert "open blocker in the `issue blockers` list" in gate0
         assert "label missing" in gate0
         assert "unknown" in gate0
 
@@ -131,9 +135,10 @@ def test_route_issue_reads_labels_from_config():
         assert "3-blocked" not in body and "3-needs" not in body
 
 
-def test_route_issue_reads_the_repo_from_config():
+def test_route_issue_reads_the_forge_from_config():
+    """`lighthouse forge` opens `forge.repo`; the reference file comes from `forge.kind`."""
     for body in skill("route-issue"):
-        assert "lighthouse config forge.repo" in body
+        assert "lighthouse config forge.kind" in body
         assert "identity" not in body
 
 

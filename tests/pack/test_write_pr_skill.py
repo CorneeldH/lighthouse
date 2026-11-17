@@ -86,8 +86,20 @@ def test_allowlist_table_covers_the_code():
         "`gh api <path>`",
         "`gh api graphql`",
         "`gh pr view`",
+        "`lighthouse forge api <path>`",
     ):
         assert cmd in TEXT
+    # The read forms of `lighthouse forge` that `forgeRead` in internal/evidence/allowlist.go
+    # accepts, each with its value flags; every write form stays off the list.
+    section = TEXT[TEXT.index("## Evidence allowlist") :]
+    section = section[: section.index("```")]
+    for form in ("issue view", "issue list", "issue search", "issue blockers", "pr view",
+                 "milestone list", "milestone view", "label list"):
+        assert f"`lighthouse forge {form}`" in section, form
+    for flag in ("--comments", "--field", "--state", "--label", "--milestone", "-X GET"):
+        assert f"`{flag}`" in section, flag
+    for refused in ("`graphql`", "`%`", "`..`"):
+        assert refused in section, refused
     for refused in ("--web", "--output", "-H", "%G"):
         assert refused in TEXT
     flags = {
@@ -235,8 +247,7 @@ def test_v5_hands_off_to_close_issue():
 
 def test_v4_gives_a_title_and_writes_the_body_separately():
     v4 = _section(TEXT, "## V4.")
-    assert "gh pr create --repo <forge.repo> --title '<title>' --body-file <path>" in v4
-    assert "lighthouse config forge.repo" in v4
+    assert "lighthouse forge pr create --title '<title>' --body-file <path>" in v4
     assert "Write tool" in v4
     assert "lighthouse plan-review-record pr-open-points <path>..." in v4
 
@@ -278,7 +289,7 @@ def test_changelog_fragment_is_opt_in_and_english():
     section = _section(TEXT, "## Changelog fragment")
     for needle in ("if present", "changelog.d/.lighthouse", "changelog.d/<branch>.md", "-<n>",
                    "--diff-filter=A", "writes nothing twice",
-                   "added", "changed", "fixed", "removed", "internal", "English", "before `gh pr create`"):
+                   "added", "changed", "fixed", "removed", "internal", "English", "before `lighthouse forge pr create`"):
         assert needle in section, needle
 
 
@@ -311,7 +322,7 @@ def test_roborev_step_carries_the_contract():
 
 def test_v4_writes_the_marker_and_posts_the_comment():
     v4 = _section(TEXT, "## V4.")
-    for needle in ("lighthouse roborev-gate body-line", "lighthouse roborev-comment render", "--bron lokaal", "gh pr comment"):
+    for needle in ("lighthouse roborev-gate body-line", "lighthouse roborev-comment render", "--bron lokaal", "lighthouse forge pr comment <nr> --body-file <file>"):
         assert needle in v4, needle
 
 
@@ -319,9 +330,9 @@ def test_documents_of_the_linked_issues():
     s = " ".join(_section(TEXT, "## Documents of the linked issues").split())
     assert "lighthouse config paths.labels" in s
     assert "every `Closes #N` and every `Refs #N`" in s
-    assert "gh issue view" in s and "--json labels" in s
+    assert "lighthouse forge issue view N --field labels" in s
     assert "does the branch deliver" in s
-    assert "before `gh pr create`" in s
+    assert "before `lighthouse forge pr create`" in s
     assert "nothing twice" in s  # re-run
     assert "no note in the body" in s
     assert "With `Closes #N`: yes" in s and "With `Refs #N`: judge" in s
