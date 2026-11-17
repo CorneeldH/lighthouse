@@ -1,7 +1,7 @@
 import { type JSX, type MouseEvent, useMemo, useRef, useState } from 'react'
 import type { GNode, NodeKey } from '@/lib/priorities/derive'
 import { NO_MILESTONE_COLOR } from '@/lib/priorities/palette'
-import { COL_GAP, NODE_H, NODE_W, layoutGraph } from './layout'
+import { COL_GAP, NODE_H, NODE_W, edgePath, layoutGraph } from './layout'
 import type { ViewProps } from './types'
 
 const columnName = (depth: number): string =>
@@ -20,16 +20,6 @@ function reach(start: NodeKey, next: Map<NodeKey, NodeKey[]>): Set<NodeKey> {
     }
   }
   return seen
-}
-
-function curve(points: Array<{ x: number; y: number }>): string {
-  const [a, b] = [points[0], points[points.length - 1]]
-  if (a.x === b.x) {
-    const dx = NODE_W / 2 + 20
-    return `M${a.x},${a.y} C${a.x + dx},${a.y} ${b.x + dx},${b.y} ${b.x},${b.y}`
-  }
-  const mx = (a.x + b.x) / 2
-  return `M${a.x},${a.y} C${mx},${a.y} ${mx},${b.y} ${b.x - 2},${b.y}`
 }
 
 export function DepsView({ graph, selected, colors }: ViewProps): JSX.Element {
@@ -122,7 +112,7 @@ export function DepsView({ graph, selected, colors }: ViewProps): JSX.Element {
                     data-from={e.from}
                     data-to={e.to}
                     data-dimmed={on ? 'false' : 'true'}
-                    d={curve(e.points)}
+                    d={edgePath(e.points)}
                     fill="none"
                     stroke={chain !== null && on ? 'var(--lh-navy)' : '#c4c4c4'}
                     strokeWidth={chain !== null && on ? 2.2 : 1.6}
@@ -159,6 +149,10 @@ export function DepsView({ graph, selected, colors }: ViewProps): JSX.Element {
                   style={{ left: p.x, top: p.y, width: NODE_W, height: NODE_H }}
                   onPointerDown={(e) => {
                     pointer.current = e.pointerType
+                  }}
+                  onPointerEnter={(e) => {
+                    // A real mouse takes over from a touch pin, or the pin would shadow the hover.
+                    if (e.pointerType !== 'touch') setPinned(null)
                   }}
                   onMouseEnter={() => setHover(n.key)}
                   onMouseLeave={() => setHover(null)}
@@ -203,7 +197,7 @@ export function DepsView({ graph, selected, colors }: ViewProps): JSX.Element {
                 href={n.url}
                 target="_blank"
                 rel="noreferrer"
-                data-testid={`loose-${n.number}`}
+                data-testid={`loose-${n.key}`}
                 title={n.title}
                 className="inline-flex items-center gap-1.5 overflow-hidden rounded-md border border-border bg-white py-0.5 pr-2 text-xs text-foreground no-underline dark:bg-card"
               >

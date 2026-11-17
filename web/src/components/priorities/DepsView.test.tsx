@@ -84,7 +84,7 @@ describe('DepsView', () => {
 
   it('dims every node outside the chain on hover, and undims on leave', () => {
     view(CHAIN, [A])
-    // chain of #2: 1 -> 2 -> 4 and 1 -> 3 -> 4; #3 is not on the chain of #2 stream? it is not: #3 is a sibling.
+    // The chain of #2 is 1 -> 2 -> 4; #3 is a sibling, on neither side of it.
     fireEvent.mouseEnter(node(`${A}#2`))
     expect(node(`${A}#3`).getAttribute('data-dimmed')).toBe('true')
     for (const k of [1, 2, 4]) expect(node(`${A}#${k}`).getAttribute('data-dimmed')).toBe('false')
@@ -94,7 +94,8 @@ describe('DepsView', () => {
 
   it('opens the issue through a link to node.url', () => {
     view(CHAIN, [A])
-    expect(node(`${A}#1`).closest('a')?.getAttribute('href') ?? node(`${A}#1`).getAttribute('href')).toBe('https://forge/1')
+    expect(node(`${A}#1`).tagName).toBe('A')
+    expect(node(`${A}#1`).getAttribute('href')).toBe('https://forge/1')
   })
 
   it('on touch the first tap lights the chain, the second opens the issue', () => {
@@ -110,7 +111,7 @@ describe('DepsView', () => {
   it('lists the issues without relations under the graph, with the title as tooltip', () => {
     view(CHAIN, [A])
     expect(screen.getByText('No open dependencies (1)')).toBeTruthy()
-    const pill = screen.getByTestId('loose-5')
+    const pill = screen.getByTestId(`loose-${A}#5`)
     expect(pill.getAttribute('title')).toBe('title-5')
     expect(pill.textContent).toContain('#5')
   })
@@ -137,5 +138,27 @@ describe('DepsView', () => {
     const { container } = view(CHAIN, [A])
     expect(container.querySelectorAll('path[data-from]')).toHaveLength(4)
     expect(container.querySelector('path[data-from]')?.getAttribute('marker-end')).toContain('url(#')
+  })
+
+  it('lets a real mouse take over from a touch pin', () => {
+    view(CHAIN, [A])
+    const a = node(`${A}#2`)
+    fireEvent.pointerDown(a, { pointerType: 'touch' })
+    fireEvent.click(a)
+    expect(node(`${A}#3`).getAttribute('data-dimmed')).toBe('true')
+    const other = node(`${A}#3`)
+    fireEvent.pointerEnter(other, { pointerType: 'mouse' })
+    fireEvent.mouseEnter(other)
+    // hover now decides: the chain of #3 is 1 -> 3 -> 4, so #2 is dimmed and #3 is not
+    expect(other.getAttribute('data-dimmed')).toBe('false')
+    expect(a.getAttribute('data-dimmed')).toBe('true')
+  })
+
+  it('draws no arrow for a shown node whose only relation is a dependent in a filtered-out repo', () => {
+    const { container } = view([repo(A, [iss(1)]), repo('a/y', [iss(5, [[A, 1]])])], [A])
+    // #1 has a relation (so it is not "loose") but the dependent is hidden: node, no arrow.
+    expect(screen.getByTestId(`node-${A}#1`)).toBeTruthy()
+    expect(container.querySelectorAll('path[data-from]')).toHaveLength(0)
+    expect(screen.getByText('No open dependencies (0)')).toBeTruthy()
   })
 })

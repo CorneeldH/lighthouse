@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { GNode } from '@/lib/priorities/derive'
-import { layoutGraph } from './layout'
+import { edgeSegments, layoutGraph } from './layout'
 
 const node = (nr: number, depth: number, extra: Partial<GNode> = {}): GNode => ({
   key: `r#${nr}`,
@@ -62,5 +62,28 @@ describe('layoutGraph', () => {
     const [e] = res.edges
     expect(e.points[0].x).toBe(at(res, 1).x + 210)
     expect(e.points[e.points.length - 1].x).toBe(at(res, 2).x)
+  })
+
+  it('routes an edge that skips a column clear of every node in the columns it crosses', () => {
+    // 1 (col 0) -> 4 (col 3); columns 1 and 2 hold nodes on the straight line between them.
+    const ns = [node(1, 0), node(2, 1), node(3, 1), node(5, 2), node(6, 2), node(4, 3)]
+    const es = [edge(1, 2), edge(1, 3), edge(2, 5), edge(3, 6), edge(5, 4), edge(6, 4), edge(1, 4)]
+    const res = layoutGraph(ns, es)
+    const long = res.edges.find((e) => e.from === 'r#1' && e.to === 'r#4')
+    if (!long) throw new Error('missing long edge')
+    const middle = res.nodes.filter((n) => ['r#2', 'r#3', 'r#5', 'r#6'].includes(n.key))
+    for (const [p0, c1, c2, p3] of edgeSegments(long.points)) {
+      for (let i = 0; i <= 200; i++) {
+        const t = i / 200
+        const m = 1 - t
+        const x = m * m * m * p0.x + 3 * m * m * t * c1.x + 3 * m * t * t * c2.x + t * t * t * p3.x
+        const y = m * m * m * p0.y + 3 * m * m * t * c1.y + 3 * m * t * t * c2.y + t * t * t * p3.y
+        for (const n of middle) {
+          const inside = x > n.x && x < n.x + n.w && y > n.y && y < n.y + n.h
+          expect(inside, `edge crosses ${n.key} at ${x.toFixed(0)},${y.toFixed(0)}`).toBe(false)
+        }
+      }
+    }
+    expect(res.height).toBeGreaterThanOrEqual(Math.max(...long.points.map((p) => p.y)))
   })
 })
