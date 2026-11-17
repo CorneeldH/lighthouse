@@ -49,6 +49,11 @@ type tickEnv struct {
 	MemInfo string
 	// Run runs git for the workplace and the sweep; nil is workplace.ExecRunner.
 	Run workplace.Runner
+	// DBPath is the database tick opened: the pusher gets it as --db. tick and run set it.
+	DBPath string
+	// Spawn starts the pusher process with the arguments and the environment; nil is spawnDetached.
+	// Only tests set it.
+	Spawn func(ctx context.Context, args, env []string) error
 }
 
 func (e tickEnv) runner() workplace.Runner {
@@ -202,6 +207,7 @@ func tick(ctx context.Context, env tickEnv, dbPath string, errOut io.Writer) err
 			return err
 		}
 	}
+	env.DBPath = dbPath
 	st, err := store.OpenShared(ctx, dbPath)
 	if err != nil {
 		return err
@@ -478,17 +484,20 @@ func applyActions(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.D
 	// repo: the callers write their apply lines from it, and tick decides which fingerprints
 	// it saves.
 	res, _ := dispatch.Apply(ctx, dispatch.Env{
-		DB:         db,
-		Forge:      func(slug string) forge.Forge { return forges[slug] },
-		Workplace:  func(slug, node, profile string) workplace.Workplace { return places(repos[slug], node, profile) },
-		MCPConfig:  func(profile string) string { return cfg.Profiles[profile].MCPConfig },
-		RoundLimit: func(slug string) string { return repos[slug].Controller.AtRoundLimit },
-		StateDir:   dir,
-		MarkerDir:  markerDir,
-		MaxWait:    cfg.MaxWait,
-		Now:        env.now,
-		NewSession: runs.NewSessionID,
-		Log:        prefixed{errOut},
+		DB:          db,
+		Forge:       func(slug string) forge.Forge { return forges[slug] },
+		Workplace:   func(slug, node, profile string) workplace.Workplace { return places(repos[slug], node, profile) },
+		MCPConfig:   func(profile string) string { return cfg.Profiles[profile].MCPConfig },
+		RoundLimit:  func(slug string) string { return repos[slug].Controller.AtRoundLimit },
+		StateDir:    dir,
+		MarkerDir:   markerDir,
+		MaxWait:     cfg.MaxWait,
+		Now:         env.now,
+		NewSession:  runs.NewSessionID,
+		Log:         prefixed{errOut},
+		Getenv:      env.Getenv,
+		TokenEnv:    func(slug string) string { return tokenEnvName(repos[slug]) },
+		StartPusher: env.startPusher(dir),
 	}, actions)
 	return res, nil
 }

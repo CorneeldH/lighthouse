@@ -1916,7 +1916,7 @@ func TestTickPushHandoffYieldsKindPush(t *testing.T) {
 		wantErr    string
 		wantPosted string // the kind of the comment tick posts, "" when none
 	}{
-		"configured": {true, "o/r#7 push: unknown action kind", ""},
+		"configured": {true, "", ""},
 		"off":        {false, "", "Returned"},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -1926,6 +1926,8 @@ func TestTickPushHandoffYieldsKindPush(t *testing.T) {
 				appendHostToml(t, env, "\n[dispatch.workflow_push]\ntoken_file = \"/run/t\"\n")
 			}
 			srv.Comments = map[int][]map[string]any{7: {handoffComment("push-workflows", "now")}}
+			var started [][]string
+			env.Spawn = func(_ context.Context, args, _ []string) error { started = append(started, args); return nil }
 			var errOut bytes.Buffer
 			err := tick(context.Background(), env, db, &errOut)
 			if tc.wantErr == "" {
@@ -1945,6 +1947,9 @@ func TestTickPushHandoffYieldsKindPush(t *testing.T) {
 			}
 			if len(w.spawned()) != 0 {
 				t.Errorf("spawned %v, want no session", w.spawned())
+			}
+			if (len(started) == 1) != tc.configured || len(started) > 1 {
+				t.Errorf("pusher starts = %v, want one when configured (%v)", started, tc.configured)
 			}
 		})
 	}

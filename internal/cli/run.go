@@ -82,6 +82,7 @@ func runIssue(ctx context.Context, env tickEnv, target, dbPath string, errOut io
 			return err
 		}
 	}
+	env.DBPath = dbPath
 	st, err := store.OpenShared(ctx, dbPath)
 	if err != nil {
 		return err

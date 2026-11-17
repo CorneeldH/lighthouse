@@ -186,3 +186,93 @@ func TestPushGetenvReadsOnlyTheForgeTokenOfTheRepo(t *testing.T) {
 		}
 	}
 }
+
+// The argv tick builds for a real push handoff, through the real tick wiring and a stubbed
+// process starter, is what the pusher resolves from its flags in its cleaned environment: the
+// database tick opened, tick's pause flag, the clone under tick's state home and its host.toml.
+func TestTickStartsPusherThatResolvesTicksPaths(t *testing.T) {
+	env, db := tickFixture(t, repoDir(t, completeRepo))
+	srv, _ := startable(t, &env)
+	appendHostToml(t, env, "\n[dispatch.workflow_push]\ntoken_file = \"/run/t\"\n")
+	srv.Comments = map[int][]map[string]any{7: {handoffComment("push-workflows", "now")}}
+	var gotArgs, gotEnv []string
+	env.Spawn = func(_ context.Context, args, e []string) error { gotArgs, gotEnv = args, e; return nil }
+	if err := tick(context.Background(), env, db, &bytes.Buffer{}); err != nil {
+		t.Fatalf("tick: %v", err)
+	}
+	if gotArgs == nil {
+		t.Fatal("tick started no pusher")
+	}
+	rows := history(t, openStore(t, db), "o/r")
+	if len(rows) != 1 || rows[0].Command != "push-workflows" {
+		t.Fatalf("rows = %+v; want one push row", rows)
+	}
+	wantPause, err := park.PauseFile(env.Getenv)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The pusher's cleaned environment: only what Spawn was given, none of tick's paths.
+	vars := map[string]string{}
+	for _, kv := range gotEnv {
+		k, v, _ := strings.Cut(kv, "=")
+		vars[k] = v
+	}
+	var got pushOptions
+	pe := pushEnv{Getenv: func(k string) string { return vars[k] },
+		Run: func(_ context.Context, _ pushEnv, o pushOptions) error { got = o; return nil }}
+	if err := runPushWorkflows(pe, gotArgs); err != nil {
+		t.Fatalf("push-workflows %v: %v", gotArgs, err)
+	}
+	if got.db != db || got.pauseFile != wantPause || got.hostToml != env.HostToml || got.stateDir != env.StateDir ||
+		got.runID != rows[0].ID || got.repo != "o/r" || got.issue != 7 {
+		t.Errorf("pusher resolves %+v, want db %s pause %s host %s state %s run %d", got, db, wantPause, env.HostToml, env.StateDir, rows[0].ID)
+	}
+	if want := filepath.Join(env.Getenv("XDG_STATE_HOME"), "lighthouse", "push", "o", "r.git"); got.cloneDir != want {
+		t.Errorf("clone %s, want %s", got.cloneDir, want)
+	}
+	for _, kv := range gotEnv {
+		if k, _, _ := strings.Cut(kv, "="); k != "GH_TOKEN" && k != "PATH" && k != "HOME" && k != "XDG_RUNTIME_DIR" {
+			t.Errorf("pusher env has %s", k)
+		}
+	}
+	if vars["GH_TOKEN"] != "tok" {
+		t.Errorf("pusher env GH_TOKEN = %q, want tick's forge token", vars["GH_TOKEN"])
+	}
+}
+
+// The real starter runs the binary detached with exactly the given environment, no stdin of
+// tick's, and returns without waiting for it.
+func TestSpawnDetachedDoesNotWaitAndUsesGivenEnv(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "env")
+	t.Setenv("LH_TEST_SECRET", "must-not-reach-the-child")
+	start := time.Now()
+	err := spawnDetached(context.Background(), []string{"-test.run=TestSpawnHelperProcess", "--", out},
+		[]string{"LH_SPAWN_HELPER=1", "LH_SPAWN_OUT=" + out})
+	if err != nil {
+		t.Fatalf("spawnDetached: %v", err)
+	}
+	if time.Since(start) > time.Second { // the child lives for 3s
+		t.Errorf("spawnDetached waited for the child")
+	}
+	var body []byte
+	for i := 0; i < 100 && len(body) == 0; i++ {
+		time.Sleep(50 * time.Millisecond)
+		body, _ = os.ReadFile(out)
+	}
+	if strings.Contains(string(body), "LH_TEST_SECRET") || !strings.Contains(string(body), "LH_SPAWN_HELPER=1") {
+		t.Errorf("child env = %q, want only the given variables", body)
+	}
+}
+
+// TestSpawnHelperProcess is the child of TestSpawnDetachedDoesNotWaitAndUsesGivenEnv.
+func TestSpawnHelperProcess(t *testing.T) {
+	out := os.Getenv("LH_SPAWN_OUT")
+	if os.Getenv("LH_SPAWN_HELPER") != "1" || out == "" {
+		t.Skip("child of the spawn test")
+	}
+	if err := os.WriteFile(out, []byte(strings.Join(os.Environ(), "\n")), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(3 * time.Second)
+}

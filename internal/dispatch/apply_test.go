@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -1998,5 +1999,109 @@ func TestApplyStartOnNodeKeepsCommand(t *testing.T) {
 	}
 	if rows := h.history(t); len(rows) != 1 || !rows[0].Open || rows[0].Command != a.Command {
 		t.Errorf("rows = %+v, want one open with command %q", rows, a.Command)
+	}
+}
+
+func pushAction() Action {
+	return Action{
+		Kind: KindPush, Repo: applyRepo, Issue: 7, Trigger: triggerPush, TriggerKey: "push:55", Attempt: 1,
+		Command: cmdPush, Worktree: "/work/issue-7-x", Branch: "issue-7-x", CommentID: 55, Language: "nl",
+	}
+}
+
+// pushHarness gives h a polluted tick environment and a pusher starter that records its specs.
+func pushHarness(t *testing.T) (*harness, *[]PusherSpec) {
+	t.Helper()
+	h := newHarness(t)
+	tick := map[string]string{
+		"PATH": "/usr/bin", "HOME": "/home/u", "XDG_RUNTIME_DIR": "/run/user/1", "GH_TOKEN": "forge-tok",
+		"GITHUB_TOKEN": "other-tok", "WORKFLOW_PUSH_TOKEN": "workflow-tok", "XDG_STATE_HOME": "/s",
+		"LIGHTHOUSE_CONTROLLER_STATE": "/c", "AWS_SECRET_ACCESS_KEY": "aws",
+	}
+	h.env.Getenv = func(k string) string { return tick[k] }
+	h.env.TokenEnv = func(string) string { return "GH_TOKEN" }
+	var specs []PusherSpec
+	h.env.StartPusher = func(_ context.Context, s PusherSpec) error { specs = append(specs, s); return nil }
+	return h, &specs
+}
+
+func TestApplyPushClaimsRowAndStartsPusher(t *testing.T) {
+	h, specs := pushHarness(t)
+	res, err := Apply(context.Background(), h.env, []Action{pushAction()})
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	rows := h.history(t)
+	if len(rows) != 1 {
+		t.Fatalf("rows = %+v, want one push row", rows)
+	}
+	r := rows[0]
+	if r.Command != cmdPush || r.SessionID != "" || r.Mode != "start" || r.Trigger != "handoff" ||
+		r.TriggerKey != "push:55" || r.Branch != "issue-7-x" || !r.Open {
+		t.Errorf("row = %+v, want an open sessionless push-workflows row on issue-7-x, trigger handoff, key push:55", r)
+	}
+	if len(*specs) != 1 {
+		t.Fatalf("specs = %+v, want one pusher start", *specs)
+	}
+	s := (*specs)[0]
+	if s.Repo != applyRepo || s.Issue != 7 || s.Worktree != "/work/issue-7-x" || s.RunID != r.ID || s.Permit != "" {
+		t.Errorf("spec = %+v", s)
+	}
+	want := []string{"PATH=/usr/bin", "HOME=/home/u", "XDG_RUNTIME_DIR=/run/user/1", "GH_TOKEN=forge-tok"}
+	if !reflect.DeepEqual(s.Env, want) {
+		t.Errorf("pusher env = %q, want exactly %q", s.Env, want)
+	}
+	if res.Started != 1 {
+		t.Errorf("Started = %d, want 1", res.Started)
+	}
+	if got := h.poster(applyRepo).rockets; !reflect.DeepEqual(got, []int64{55}) {
+		t.Errorf("rockets = %v, want the handoff", got)
+	}
+	if got := h.log.all(); slices.ContainsFunc(got, func(c string) bool { return strings.HasPrefix(c, "Spawn") || strings.HasPrefix(c, "Prepare") }) {
+		t.Errorf("workplace calls = %q, want none: a pusher is no session", got)
+	}
+}
+
+func TestApplyPushAnswerCarriesPermitAndTrigger(t *testing.T) {
+	h, specs := pushHarness(t)
+	a := pushAction()
+	a.Trigger, a.TriggerKey, a.PermitSHA = triggerPushAnswer, "pushanswer:88", strings.Repeat("a", 40)
+	if _, err := Apply(context.Background(), h.env, []Action{a}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if r := h.history(t)[0]; r.Trigger != "answer" || r.TriggerKey != "pushanswer:88" {
+		t.Errorf("row = %+v, want trigger answer and key pushanswer:88", r)
+	}
+	if s := (*specs)[0]; s.Permit != a.PermitSHA {
+		t.Errorf("permit = %q, want %q", s.Permit, a.PermitSHA)
+	}
+}
+
+func TestApplyPushStartFailureClosesStartFailed(t *testing.T) {
+	h, _ := pushHarness(t)
+	h.env.StartPusher = func(context.Context, PusherSpec) error { return errors.New("no such file") }
+	res, err := Apply(context.Background(), h.env, []Action{pushAction()})
+	if err == nil || !strings.Contains(err.Error(), "no such file") {
+		t.Fatalf("Apply error = %v, want the start error", err)
+	}
+	rows := h.history(t)
+	if len(rows) != 1 || rows[0].Open || rows[0].Outcome != runs.StartFailed || !strings.Contains(rows[0].Reason, "no such file") {
+		t.Errorf("rows = %+v, want one start_failed row with the cause", rows)
+	}
+	if res.Started != 0 {
+		t.Errorf("Started = %d, want 0", res.Started)
+	}
+}
+
+func TestApplyPushSpentTriggerStartsNothing(t *testing.T) {
+	h, specs := pushHarness(t)
+	h.seed(t, 7, "", "push:55", runs.Handoff)
+	res, err := Apply(context.Background(), h.env, []Action{pushAction()})
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if len(*specs) != 0 || res.Started != 0 || len(h.history(t)) != 1 || len(h.poster(applyRepo).rockets) != 0 {
+		t.Errorf("specs = %v, Started = %d, rows = %d, rockets = %v; want nothing started or posted",
+			*specs, res.Started, len(h.history(t)), h.poster(applyRepo).rockets)
 	}
 }

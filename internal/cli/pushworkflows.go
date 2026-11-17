@@ -149,17 +149,23 @@ func pusherPaths(getenv func(string) string, dbPath, slug string) (db, pause, cl
 	return db, pause, filepath.Join(base, "lighthouse", "push", owner, name+".git"), nil
 }
 
+// tokenEnvName is the variable that holds the forge token of repo: [forge] token_env, else
+// GH_TOKEN for GitHub and GITLAB_TOKEN for GitLab.
+func tokenEnvName(repo repoconfig.Repo) string {
+	if repo.TokenEnv != "" {
+		return repo.TokenEnv
+	}
+	if repo.Kind == "gitlab" {
+		return "GITLAB_TOKEN"
+	}
+	return "GH_TOKEN"
+}
+
 // pushGetenv reads only PATH, HOME, XDG_RUNTIME_DIR and the forge token of repo under its own
 // name: [forge] token_env, else GH_TOKEN for GitHub and GITLAB_TOKEN for GitLab. The pusher
 // takes everything else from its flags.
 func pushGetenv(getenv func(string) string, repo repoconfig.Repo) func(string) string {
-	token := repo.TokenEnv
-	if token == "" {
-		token = "GH_TOKEN"
-		if repo.Kind == "gitlab" {
-			token = "GITLAB_TOKEN"
-		}
-	}
+	token := tokenEnvName(repo)
 	return func(k string) string {
 		switch k {
 		case "PATH", "HOME", "XDG_RUNTIME_DIR", token:

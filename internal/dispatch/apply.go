@@ -33,6 +33,24 @@ type Env struct {
 	Now        func() time.Time
 	NewSession func() string // runs.NewSessionID
 	Log        io.Writer     // nil discards
+	// Getenv is tick's environment, and TokenEnv the name of the forge token of a repo in it:
+	// the pusher gets PATH, HOME, XDG_RUNTIME_DIR and that one token, nothing else.
+	Getenv   func(string) string
+	TokenEnv func(repo string) string
+	// StartPusher starts the workflow pusher detached and returns at once; it does not wait for it.
+	StartPusher func(ctx context.Context, spec PusherSpec) error
+}
+
+// PusherSpec is what StartPusher starts: the push row RunID of issue Issue in Repo, for the
+// run's Worktree. Permit is the SHA a user's answer allowed, "" for a handoff. Env is the whole
+// environment of the pusher process.
+type PusherSpec struct {
+	Repo     string
+	Issue    int
+	Worktree string
+	RunID    int64
+	Permit   string
+	Env      []string
 }
 
 // Result is what one Apply did.
@@ -110,6 +128,8 @@ func (ap applier) apply(ctx context.Context, a Action, res *Result) error {
 			return err
 		}
 		return ap.closeRun(ctx, a.RunID, runs.Done, "")
+	case KindPush:
+		return ap.push(ctx, a, res)
 	case KindMerge:
 		return ap.merge(ctx, a, res)
 	case KindClose:
@@ -375,6 +395,65 @@ func (ap applier) start(ctx context.Context, a Action, res *Result) error {
 		}
 		res.NotAccepted = append(res.NotAccepted, fmt.Sprintf("%s#%d", a.Repo, a.Issue))
 	}
+	return nil
+}
+
+// pusherEnv is the environment of the pusher: PATH, HOME, XDG_RUNTIME_DIR and the forge token
+// under its own name, each only when tick has it. The workflow token and every other variable
+// of tick stay behind.
+func (ap applier) pusherEnv(repo string) []string {
+	if ap.env.Getenv == nil {
+		return nil
+	}
+	names := []string{"PATH", "HOME", "XDG_RUNTIME_DIR"}
+	if ap.env.TokenEnv != nil {
+		names = append(names, ap.env.TokenEnv(repo))
+	}
+	var out []string
+	for _, k := range names {
+		if v := ap.env.Getenv(k); k != "" && v != "" {
+			out = append(out, k+"="+v)
+		}
+	}
+	return out
+}
+
+// push claims the push row of a KindPush, puts the 🚀 on the comment that asked and starts the pusher. The
+// row has no session and carries the branch, so the PR of that branch settles it. A start that
+// fails closes the row start_failed; a trigger key another run spent starts nothing.
+func (ap applier) push(ctx context.Context, a Action, res *Result) error {
+	env := ap.env
+	trigger := "handoff"
+	if a.Trigger == triggerPushAnswer {
+		trigger = "answer"
+	}
+	run, err := runs.Take(ctx, env.DB, runs.Claim{
+		Repo: a.Repo, Issue: a.Issue, Mode: "start", Trigger: trigger, TriggerKey: a.TriggerKey,
+		Command: cmdPush, Branch: a.Branch, Now: env.Now(),
+	})
+	if errors.Is(err, runs.ErrClaimed) || errors.Is(err, runs.ErrTriggerSpent) {
+		ap.logf("%s#%d: %s not claimed: %v", a.Repo, a.Issue, a.TriggerKey, err)
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if a.CommentID > 0 {
+		if err := env.Forge(a.Repo).Acknowledge(ctx, a.Issue, a.CommentID); err != nil {
+			ap.logf("%s#%d: rocket on comment %d: %v", a.Repo, a.Issue, a.CommentID, err)
+		}
+	}
+	if env.StartPusher == nil {
+		return ap.startFailed(ctx, run.ID, "start pusher", errors.New("no way to start the pusher"))
+	}
+	err = env.StartPusher(ctx, PusherSpec{
+		Repo: a.Repo, Issue: a.Issue, Worktree: a.Worktree, RunID: run.ID, Permit: a.PermitSHA,
+		Env: ap.pusherEnv(a.Repo),
+	})
+	if err != nil {
+		return ap.startFailed(ctx, run.ID, "start pusher", err)
+	}
+	res.Started++
 	return nil
 }
 
