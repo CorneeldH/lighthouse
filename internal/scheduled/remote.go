@@ -23,28 +23,35 @@ type Remote interface {
 	Push(ctx context.Context, dir, commit, branch string) error
 }
 
-// remoteTimeout bounds one ls-remote or push.
+// remoteTimeout bounds one git call of the remote.
 const remoteTimeout = 5 * time.Minute
 
-// tokenVarName is the shape of an environment variable name the askpass script may read.
-var tokenVarName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+var (
+	// tokenVarName is the shape of an environment variable name the credential helper reads.
+	tokenVarName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+	// userName is the shape of the user name the credential helper prints.
+	userName = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+)
 
-// HTTPSRemote is a Remote over HTTP(S) that authenticates with a forge token. Git runs with
-// nothing of the machine's git config: no system or global config, no credential helper, no
-// extra header, no hook, only the URL's own protocol. The token reaches git only through
-// GIT_ASKPASS: a script, written fresh to ScriptDir before each call, prints the variable
-// TokenVar, which the child gets from Getenv. So the token is never in an argument, a URL, a
-// file or an error.
+// HTTPSRemote is a Remote over HTTP(S) that authenticates with a forge token.
 //
-// Git still reads the config of the repository in dir (the workplace). The caller compares the
-// workplace's GitState with the one recorded at the start before it calls Head or Push: a config
-// the agent changed is refused before it can redirect the URL or run a helper.
+// Git never reads the workplace's config, nor the machine's: every call runs in a temporary bare
+// repository made for it under TempDir (git init with no template), removed afterwards, with no
+// system or global config. For a push its objects/info/alternates points at the object
+// directory of the workplace, so it holds the commit without a fetch. A config another agent of
+// the same repository writes after the caller's GitState check (a URL rewrite, a hook path, a
+// helper) therefore cannot reach the push.
+//
+// The token reaches git only as the environment variable TokenVar of the git child, which an
+// inline credential helper prints; argv holds only the variable's name, and the helper answers
+// only for the URL's own scheme and host. So the token is never in an argument, a URL, a file or
+// an error, and no file of it exists for anyone to swap.
 type HTTPSRemote struct {
-	URL       string              // http(s)://<host>/<owner>/<repo>.git, without credentials
-	User      string              // the user name the forge takes with a token
-	TokenVar  string              // the environment variable that holds the token
-	ScriptDir string              // where the askpass script goes (the state dir)
-	Getenv    func(string) string // the tick's environment
+	URL      string              // http(s)://<host>/<owner>/<repo>.git, without credentials
+	User     string              // the user name the forge takes with a token
+	TokenVar string              // the environment variable that holds the token
+	TempDir  string              // where the temporary repositories go (the state dir)
+	Getenv   func(string) string // the tick's environment
 }
 
 var _ Remote = HTTPSRemote{}
@@ -52,7 +59,7 @@ var _ Remote = HTTPSRemote{}
 // Head implements Remote.
 func (r HTTPSRemote) Head(ctx context.Context, dir, branch string) (string, error) {
 	ref := "refs/heads/" + branch
-	out, err := r.git(ctx, dir, "ls-remote", "--refs", "--", "{url}", ref)
+	out, err := r.git(ctx, "", "ls-remote", "--refs", "--", "{url}", ref)
 	if err != nil {
 		return "", err
 	}
@@ -73,13 +80,34 @@ func (r HTTPSRemote) Push(ctx context.Context, dir, commit, branch string) error
 	if !shaPattern.MatchString(commit) {
 		return fmt.Errorf("push: %q is no commit sha", commit)
 	}
-	_, err := r.git(ctx, dir, "push", "--quiet", "--no-verify", "--", "{url}", commit+":refs/heads/"+branch)
+	objects, err := r.objectDir(ctx, dir)
+	if err != nil {
+		return err
+	}
+	_, err = r.git(ctx, objects, "push", "--quiet", "--no-verify", "--", "{url}", commit+":refs/heads/"+branch)
 	return err
 }
 
-// git runs git in dir against r.URL ("{url}" in args) under a clean environment. An error carries
-// at most the head of git's stderr, with the token withheld should it ever appear there.
-func (r HTTPSRemote) git(ctx context.Context, dir string, args ...string) (string, error) {
+// objectDir is the object directory of the repository in dir: <common dir>/objects. git rev-parse
+// runs nothing the repository's config could name.
+func (r HTTPSRemote) objectDir(ctx context.Context, dir string) (string, error) {
+	cmd := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	cmd.Env = r.environ("")
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("push: common dir of the workplace: %w", err)
+	}
+	common := strings.TrimSuffix(string(out), "\n")
+	if !filepath.IsAbs(common) || strings.ContainsAny(common, "\n\r") {
+		return "", errors.New("push: the workplace has no usable common dir")
+	}
+	return filepath.Join(common, "objects"), nil
+}
+
+// git runs git against r.URL ("{url}" in args) in a fresh temporary bare repository whose
+// alternates is objects ("" for none). An error carries at most the head of git's stderr, with
+// the token withheld should it ever appear there.
+func (r HTTPSRemote) git(ctx context.Context, objects string, args ...string) (string, error) {
 	u, err := url.Parse(r.URL)
 	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.User != nil {
 		return "", errors.New("remote: the URL must be http(s)://<host>/<path>, without credentials")
@@ -87,34 +115,39 @@ func (r HTTPSRemote) git(ctx context.Context, dir string, args ...string) (strin
 	if !tokenVarName.MatchString(r.TokenVar) {
 		return "", fmt.Errorf("remote: %q is no environment variable name", r.TokenVar)
 	}
+	if !userName.MatchString(r.User) {
+		return "", fmt.Errorf("remote: %q is no user name", r.User)
+	}
 	token := r.Getenv(r.TokenVar)
 	if token == "" {
 		return "", fmt.Errorf("remote: token variable %s is not set", r.TokenVar)
 	}
-	askpass, err := r.writeAskpass()
+	ctx, cancel := context.WithTimeout(ctx, remoteTimeout)
+	defer cancel()
+	repo, err := r.scratch(ctx, objects)
 	if err != nil {
 		return "", err
 	}
-	withUser := *u
-	withUser.User = url.User(r.User)
+	defer func() { _ = os.RemoveAll(repo) }()
+
 	for i, a := range args {
 		if a == "{url}" {
-			args[i] = withUser.String()
+			args[i] = u.String()
 		}
 	}
-	full := append([]string{"-C", dir,
+	origin := u.Scheme + "://" + u.Host
+	helper := "!f() { test \"$1\" = get || exit 0; echo username=" + r.User + "; echo \"password=$" + r.TokenVar + "\"; }; f"
+	full := append([]string{"--git-dir=" + repo,
 		"-c", "core.hooksPath=" + os.DevNull,
-		"-c", "core.fsmonitor=false",
 		"-c", "credential.helper=",
+		"-c", "credential." + origin + ".helper=" + helper,
 		"-c", "http.extraHeader=",
 		"-c", "protocol.allow=never",
 		"-c", "protocol." + u.Scheme + ".allow=always",
 	}, args...)
-	ctx, cancel := context.WithTimeout(ctx, remoteTimeout)
-	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", full...)
-	cmd.Env = r.environ(askpass, token)
-	cmd.Dir = r.ScriptDir
+	cmd.Env = r.environ(token)
+	cmd.Dir = repo
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	cmd.WaitDelay = 2 * time.Second
@@ -132,17 +165,48 @@ func (r HTTPSRemote) git(ctx context.Context, dir string, args ...string) (strin
 	return stdout.String(), nil
 }
 
-// environ is the whole environment of the git child: nothing of the tick's GIT_* variables,
-// no system or global config, no terminal prompt, the askpass script and the token variable.
-func (r HTTPSRemote) environ(askpass, token string) []string {
+// scratch makes an empty bare repository under TempDir (0700, git's defaults, no template) and,
+// with objects set, points its alternates at objects. The caller removes it.
+func (r HTTPSRemote) scratch(ctx context.Context, objects string) (string, error) {
+	if err := os.MkdirAll(r.TempDir, 0o700); err != nil {
+		return "", fmt.Errorf("remote: temporary repository: %w", err)
+	}
+	repo, err := os.MkdirTemp(r.TempDir, "push-")
+	if err != nil {
+		return "", fmt.Errorf("remote: temporary repository: %w", err)
+	}
+	cmd := exec.CommandContext(ctx, "git", "init", "--quiet", "--bare", "--template=", repo)
+	cmd.Env = r.environ("")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		_ = os.RemoveAll(repo)
+		return "", fmt.Errorf("remote: temporary repository: %w (%s)", err, strings.TrimSpace(string(out)))
+	}
+	if objects != "" {
+		info := filepath.Join(repo, "objects", "info")
+		if err := os.MkdirAll(info, 0o700); err != nil {
+			_ = os.RemoveAll(repo)
+			return "", fmt.Errorf("remote: temporary repository: %w", err)
+		}
+		if err := os.WriteFile(filepath.Join(info, "alternates"), []byte(objects+"\n"), 0o600); err != nil {
+			_ = os.RemoveAll(repo)
+			return "", fmt.Errorf("remote: temporary repository: %w", err)
+		}
+	}
+	return repo, nil
+}
+
+// environ is the whole environment of a git child: nothing of the tick's GIT_* variables, no
+// system or global config, no terminal prompt, and with token the token variable.
+func (r HTTPSRemote) environ(token string) []string {
 	env := []string{
 		"GIT_CONFIG_NOSYSTEM=1",
 		"GIT_CONFIG_SYSTEM=" + os.DevNull,
 		"GIT_CONFIG_GLOBAL=" + os.DevNull,
 		"GIT_TERMINAL_PROMPT=0",
-		"GIT_ASKPASS=" + askpass,
 		"LC_ALL=C",
-		r.TokenVar + "=" + token,
+	}
+	if token != "" {
+		env = append(env, r.TokenVar+"="+token)
 	}
 	for _, k := range []string{"PATH", "HOME", "https_proxy", "HTTPS_PROXY", "http_proxy", "HTTP_PROXY", "no_proxy", "NO_PROXY", "SSL_CERT_FILE", "SSL_CERT_DIR"} {
 		if v := r.Getenv(k); v != "" {
@@ -150,39 +214,4 @@ func (r HTTPSRemote) environ(askpass, token string) []string {
 		}
 	}
 	return env
-}
-
-// writeAskpass writes the askpass script for r.TokenVar to ScriptDir, fresh on every call so a
-// script someone else changed is never run, and returns its path. The script holds the name of
-// the variable, never the token.
-func (r HTTPSRemote) writeAskpass() (string, error) {
-	if err := os.MkdirAll(r.ScriptDir, 0o700); err != nil {
-		return "", fmt.Errorf("remote: askpass: %w", err)
-	}
-	// Someone else who can write the directory could swap the script between its rename and
-	// git running it.
-	if fi, err := os.Lstat(r.ScriptDir); err != nil || !fi.IsDir() || fi.Mode().Perm()&0o022 != 0 {
-		return "", errors.New("remote: askpass: the script directory is not a directory only its owner can write")
-	}
-	tmp, err := os.CreateTemp(r.ScriptDir, ".askpass-*")
-	if err != nil {
-		return "", fmt.Errorf("remote: askpass: %w", err)
-	}
-	defer func() { _ = os.Remove(tmp.Name()) }()
-	script := "#!/bin/sh\nprintf '%s\\n' \"$" + r.TokenVar + "\"\n"
-	if _, err := tmp.WriteString(script); err != nil {
-		_ = tmp.Close()
-		return "", fmt.Errorf("remote: askpass: %w", err)
-	}
-	if err := tmp.Close(); err != nil {
-		return "", fmt.Errorf("remote: askpass: %w", err)
-	}
-	if err := os.Chmod(tmp.Name(), 0o700); err != nil {
-		return "", fmt.Errorf("remote: askpass: %w", err)
-	}
-	path := filepath.Join(r.ScriptDir, "askpass-"+r.TokenVar)
-	if err := os.Rename(tmp.Name(), path); err != nil {
-		return "", fmt.Errorf("remote: askpass: %w", err)
-	}
-	return path, nil
 }

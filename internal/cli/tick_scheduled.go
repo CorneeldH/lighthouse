@@ -127,7 +127,8 @@ func scheduledJob(env tickEnv, repos map[string]repoconfig.Repo) func(repo, sche
 // scheduledRemote returns the Remote the branch of a scheduled run of a repo goes to: the repo on
 // its forge host over HTTPS (GitBase in tests), with the forge token as credential. Only the name
 // of the variable that holds the token goes to the remote (forge.TokenVar), which hands it to git
-// through an askpass script in stateDir; the token itself is in no argument, URL or file.
+// through an inline credential helper; the push runs from a temporary repository in stateDir.
+// The token itself is in no argument, URL or file.
 func scheduledRemote(env tickEnv, stateDir string, repos map[string]repoconfig.Repo) func(string) (scheduled.Remote, error) {
 	return func(slug string) (scheduled.Remote, error) {
 		repo, ok := repos[slug]
@@ -147,7 +148,7 @@ func scheduledRemote(env tickEnv, stateDir string, repos map[string]repoconfig.R
 			user = "oauth2"
 		}
 		return scheduled.HTTPSRemote{URL: base + "/" + repo.Slug + ".git", User: user, TokenVar: name,
-			ScriptDir: stateDir, Getenv: env.Getenv}, nil
+			TempDir: stateDir, Getenv: env.Getenv}, nil
 	}
 }
 

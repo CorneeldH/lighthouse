@@ -221,9 +221,9 @@ func TestScheduledRemoteOfARepo(t *testing.T) {
 	}
 	remote := scheduledRemote(env, "/state", repos)
 	want := map[string]scheduled.HTTPSRemote{
-		"o/r": {URL: "https://github.com/o/r.git", User: "x-access-token", TokenVar: "GITHUB_TOKEN", ScriptDir: "/state"},
-		"o/e": {URL: "https://ghe.example.com/o/e.git", User: "x-access-token", TokenVar: "WORK_TOKEN", ScriptDir: "/state"},
-		"g/l": {URL: "https://gitlab.example.com/g/l.git", User: "oauth2", TokenVar: "GITLAB_TOKEN", ScriptDir: "/state"},
+		"o/r": {URL: "https://github.com/o/r.git", User: "x-access-token", TokenVar: "GITHUB_TOKEN", TempDir: "/state"},
+		"o/e": {URL: "https://ghe.example.com/o/e.git", User: "x-access-token", TokenVar: "WORK_TOKEN", TempDir: "/state"},
+		"g/l": {URL: "https://gitlab.example.com/g/l.git", User: "oauth2", TokenVar: "GITLAB_TOKEN", TempDir: "/state"},
 	}
 	for slug, w := range want {
 		r, err := remote(slug)

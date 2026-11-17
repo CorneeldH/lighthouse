@@ -114,7 +114,7 @@ func TestHTTPSRemotePushesWithTheToken(t *testing.T) {
 	// The workplace's own origin points nowhere: the push must not use it.
 	f.git("remote", "set-url", "origin", filepath.Join(t.TempDir(), "elsewhere.git"))
 	scripts := t.TempDir()
-	r := scheduled.HTTPSRemote{URL: srv.url(), User: "x-access-token", TokenVar: "GH_TOKEN", ScriptDir: scripts,
+	r := scheduled.HTTPSRemote{URL: srv.url(), User: "x-access-token", TokenVar: "GH_TOKEN", TempDir: scripts,
 		Getenv: remoteEnv(t, marker)}
 	ctx := context.Background()
 
@@ -138,18 +138,9 @@ func TestHTTPSRemotePushesWithTheToken(t *testing.T) {
 			t.Errorf("credential helper ran: %s", filepath.Base(m))
 		}
 	}
-	entries, err := os.ReadDir(scripts)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, e := range entries {
-		b, err := os.ReadFile(filepath.Join(scripts, e.Name()))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if strings.Contains(string(b), remoteToken) {
-			t.Errorf("script %s holds the token", e.Name())
-		}
+	// No file of the push outlives it: no script and no temporary repository.
+	if entries, err := os.ReadDir(scripts); err != nil || len(entries) != 0 {
+		t.Errorf("temp dir after the push = %v, %v; want it empty", entries, err)
 	}
 	if strings.Contains(f.git("config", "--get-regexp", "."), remoteToken) {
 		t.Error("the token is in the workplace's git config")
@@ -161,6 +152,53 @@ func TestHTTPSRemotePushesWithTheToken(t *testing.T) {
 	if !strings.Contains(string(logged), "push") || strings.Contains(string(logged), remoteToken) {
 		t.Errorf("git arguments = %q, want a push without the token", logged)
 	}
+	// The credential helper answers only for the remote's own scheme and host.
+	if !strings.Contains(string(logged), "credential."+srv.srv.URL+".helper=") {
+		t.Errorf("git arguments = %q, want a helper scoped to %s", logged, srv.srv.URL)
+	}
+}
+
+// Review round 2, IMPORTANT 2. Another live agent of the same repository can write the shared
+// config after the git-state comparison. Fails if ls-remote or the push read the workplace's
+// config: a URL rewrite there would send the push (and the token) elsewhere, a hook path would
+// run a pre-push hook, a credential helper would run.
+func TestHTTPSRemoteIgnoresTheWorkplaceConfig(t *testing.T) {
+	f := newFixture(t)
+	srv := newGitServer(t, "x-access-token", remoteToken)
+	evil := filepath.Join(t.TempDir(), "evil.git")
+	runGit(t, filepath.Dir(evil), "init", "-q", "--bare", evil)
+	marker := filepath.Join(t.TempDir(), "ran")
+	hooks := filepath.Join(t.TempDir(), "hooks")
+	if err := os.MkdirAll(hooks, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(hooks, "pre-push"), []byte("#!/bin/sh\ntouch "+marker+"-hook\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	f.git("config", "url."+evil+"/.insteadOf", "http://")
+	f.git("config", "core.hooksPath", hooks)
+	f.git("config", "credential.helper", "!touch "+marker+"-helper; echo password=wrong #")
+	f.git("config", "protocol.allow", "always")
+	r := scheduled.HTTPSRemote{URL: srv.url(), User: "x-access-token", TokenVar: "GH_TOKEN", TempDir: t.TempDir(),
+		Getenv: remoteEnv(t, marker)}
+	ctx := context.Background()
+	if sha, err := r.Head(ctx, f.work, testBranch); err != nil || sha != "" {
+		t.Fatalf("Head = %q, %v", sha, err)
+	}
+	if err := r.Push(ctx, f.work, f.start, testBranch); err != nil {
+		t.Fatalf("Push: %v", err)
+	}
+	if got := srv.branch(t, testBranch); got != f.start {
+		t.Errorf("branch on the remote = %q, want %q", got, f.start)
+	}
+	if got := runGit(t, filepath.Dir(evil), "-C", "evil.git", "for-each-ref"); got != "" {
+		t.Errorf("the rewritten URL got refs: %q", got)
+	}
+	for _, m := range []string{marker + "-hook", marker + "-helper"} {
+		if _, err := os.Stat(m); err == nil {
+			t.Errorf("%s ran", filepath.Base(m))
+		}
+	}
 }
 
 // Fails if an error of the remote carries the token, or if a missing token variable runs git
@@ -168,7 +206,7 @@ func TestHTTPSRemotePushesWithTheToken(t *testing.T) {
 func TestHTTPSRemoteErrorsWithholdTheToken(t *testing.T) {
 	f := newFixture(t)
 	srv := newGitServer(t, "x-access-token", "another-token")
-	r := scheduled.HTTPSRemote{URL: srv.url(), User: "x-access-token", TokenVar: "GH_TOKEN", ScriptDir: t.TempDir(),
+	r := scheduled.HTTPSRemote{URL: srv.url(), User: "x-access-token", TokenVar: "GH_TOKEN", TempDir: t.TempDir(),
 		Getenv: remoteEnv(t, filepath.Join(t.TempDir(), "m"))}
 	err := r.Push(context.Background(), f.work, f.start, testBranch)
 	if err == nil {
@@ -194,6 +232,14 @@ func TestHTTPSRemoteErrorsWithholdTheToken(t *testing.T) {
 		}
 	}
 	r.TokenVar = "GH_TOKEN"
+	r.Getenv = remoteEnv(t, filepath.Join(t.TempDir(), "m"))
+	for _, bad := range []string{"x;touch y", "a b", "", "$(id)"} {
+		r.User = bad
+		if _, err := r.Head(context.Background(), f.work, testBranch); err == nil || !strings.Contains(err.Error(), "no user name") {
+			t.Errorf("Head with user %q = %v, want a refusal", bad, err)
+		}
+	}
+	r.User = "x-access-token"
 	r.URL = "https://x-access-token:" + remoteToken + "@example.com/o/r.git"
 	if _, err := r.Head(context.Background(), f.work, testBranch); err == nil || strings.Contains(err.Error(), remoteToken) ||
 		!strings.Contains(err.Error(), "without credentials") {
@@ -210,7 +256,7 @@ func TestHTTPSRemoteWithholdsTheTokenInServerText(t *testing.T) {
 	if err := os.WriteFile(hook, []byte("#!/bin/sh\necho 'refused for "+remoteToken+"' >&2\nexit 1\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	r := scheduled.HTTPSRemote{URL: srv.url(), User: "x-access-token", TokenVar: "GH_TOKEN", ScriptDir: t.TempDir(),
+	r := scheduled.HTTPSRemote{URL: srv.url(), User: "x-access-token", TokenVar: "GH_TOKEN", TempDir: t.TempDir(),
 		Getenv: remoteEnv(t, filepath.Join(t.TempDir(), "m"))}
 	err := r.Push(context.Background(), f.work, f.start, testBranch)
 	if err == nil || strings.Contains(err.Error(), remoteToken) || !strings.Contains(err.Error(), "refused for (withheld)") {
@@ -307,23 +353,5 @@ func TestGitStateIgnoresBranchEntriesOnly(t *testing.T) {
 	}
 	if broken, err := scheduled.GitState(ctx, run, f.work); err == nil {
 		t.Errorf("GitState of an unreadable config = %q, want an error", broken)
-	}
-}
-
-// Fails if the askpass script is written to a directory others can write, where it could be
-// swapped before git runs it.
-func TestHTTPSRemoteRefusesAnOpenScriptDir(t *testing.T) {
-	f := newFixture(t)
-	dir := t.TempDir()
-	if err := os.Chmod(dir, 0o777); err != nil {
-		t.Fatal(err)
-	}
-	r := scheduled.HTTPSRemote{URL: "http://127.0.0.1:1/o/r.git", User: "x-access-token", TokenVar: "GH_TOKEN",
-		ScriptDir: dir, Getenv: remoteEnv(t, filepath.Join(t.TempDir(), "m"))}
-	if _, err := r.Head(context.Background(), f.work, testBranch); err == nil || !strings.Contains(err.Error(), "only its owner can write") {
-		t.Errorf("Head = %v, want a refusal of the script directory", err)
-	}
-	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
-		t.Errorf("wrote %d files into the open directory", len(entries))
 	}
 }
