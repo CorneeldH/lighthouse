@@ -42,7 +42,7 @@ var scheduleJobs = []string{"map-refresh", "reflect"}
 var scheduleName = regexp.MustCompile(`^[a-z0-9-]+$`)
 
 // schedulesFrom validates the [[schedule]] blocks and fills Profile. It reports every problem,
-// naming the block by its position.
+// naming the block by its position and, when it has one, its name.
 func schedulesFrom(raws []rawSchedule, md toml.MetaData, c *Controller) ([]Schedule, error) {
 	var errs []error
 	for _, k := range md.Undecoded() {
@@ -58,6 +58,9 @@ func schedulesFrom(raws []rawSchedule, md toml.MetaData, c *Controller) ([]Sched
 	seen := map[string]bool{}
 	for i, r := range raws {
 		at := fmt.Sprintf("schedule[%d]", i)
+		if r.Name != "" {
+			at = fmt.Sprintf("schedule[%d] %q", i, r.Name)
+		}
 		fail := func(format string, a ...any) { errs = append(errs, fmt.Errorf(at+": "+format, a...)) }
 		switch {
 		case r.Name == "":

@@ -79,22 +79,24 @@ func TestLoadScheduleInvalid(t *testing.T) {
 	block := func(body string) string {
 		return "[[schedule]]\nname = \"a\"\njob = \"reflect\"\ncron = \"0 1 * * MON\"\n" + body
 	}
+	// want is a fragment of the message after the path, so the subtest name (which ends up in
+	// the temp dir inside the path) cannot satisfy it.
 	tests := []struct {
 		name, toml, want string
 	}{
-		{"missing name", "[[schedule]]\njob = \"reflect\"\ncron = \"0 1 * * *\"\n", "name"},
-		{"uppercase name", strings.Replace(block(""), `"a"`, `"Map_Refresh"`, 1), "name"},
-		{"duplicate name", block("") + block(""), "duplicate"},
-		{"unknown job", strings.Replace(block(""), `"reflect"`, `"shell"`, 1), "job"},
-		{"missing job", "[[schedule]]\nname = \"a\"\ncron = \"0 1 * * *\"\n", "job"},
-		{"four fields", strings.Replace(block(""), "0 1 * * MON", "0 1 * *", 1), "cron"},
-		{"missing cron", "[[schedule]]\nname = \"a\"\njob = \"reflect\"\n", "cron"},
-		{"weeks without anchor", block("weeks = 2\n"), "anchor"},
-		{"anchor without weeks", block("anchor = \"2026-10-12\"\n"), "weeks"},
-		{"weeks zero", block("weeks = 0\nanchor = \"2026-10-12\"\n"), "weeks"},
-		{"weeks negative", block("weeks = -1\nanchor = \"2026-10-12\"\n"), "weeks"},
-		{"bad anchor", block("weeks = 2\nanchor = \"morgen\"\n"), "anchor"},
-		{"unknown key", block("wekes = 2\n"), "wekes"},
+		{"missing name", "[[schedule]]\njob = \"reflect\"\ncron = \"0 1 * * *\"\n", "schedule[0]: name is required"},
+		{"uppercase name", strings.Replace(block(""), `"a"`, `"Map_Refresh"`, 1), `schedule[0] "Map_Refresh": name "Map_Refresh" must match`},
+		{"duplicate name", block("") + block(""), `schedule[1] "a": duplicate name "a"`},
+		{"unknown job", strings.Replace(block(""), `"reflect"`, `"shell"`, 1), `schedule[0] "a": job "shell" is not one of`},
+		{"missing job", "[[schedule]]\nname = \"a\"\ncron = \"0 1 * * *\"\n", `schedule[0] "a": job "" is not one of`},
+		{"four fields", strings.Replace(block(""), "0 1 * * MON", "0 1 * *", 1), `schedule[0] "a": cron "0 1 * *":`},
+		{"missing cron", "[[schedule]]\nname = \"a\"\njob = \"reflect\"\n", `schedule[0] "a": cron "":`},
+		{"weeks without anchor", block("weeks = 2\n"), `schedule[0] "a": weeks needs anchor`},
+		{"anchor without weeks", block("anchor = \"2026-10-12\"\n"), `schedule[0] "a": anchor needs weeks`},
+		{"weeks zero", block("weeks = 0\nanchor = \"2026-10-12\"\n"), `schedule[0] "a": weeks must be at least 1`},
+		{"weeks negative", block("weeks = -1\nanchor = \"2026-10-12\"\n"), `schedule[0] "a": weeks must be at least 1`},
+		{"bad anchor", block("weeks = 2\nanchor = \"morgen\"\n"), `schedule[0] "a": anchor "morgen" is not a date`},
+		{"unknown key", block("wekes = 2\n"), "unknown key schedule.wekes"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
