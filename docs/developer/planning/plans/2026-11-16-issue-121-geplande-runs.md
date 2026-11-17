@@ -239,3 +239,15 @@ Eigen sessie in personal_ai_agent, na merge van PR 1–3 en een binary-update op
 - **Spec-dekking:** §1 → Task 1–2; §2 → Task 6, 8 (inhalen, open run, poort, rem, start, node `""`, tijdelijk mislukt); §3 → Task 3, 10; §4 → Task 5, 7, 9; §5 → Task 11; §6 → Task 12; §7 → Task 13; §8 → Task 10–12. AC 1: Task 2; AC 2: Task 3 (index), 6, 8; AC 3: Task 13; AC 4: Task 10.
 - **Bewust aan de bouwer:** vorm van `schedule_slots` en de migratie-details (Task 3), de vlag voor `Tools` (Task 5), de bron van de push-credential (Task 9), de exacte hulpfuncties in `internal/scheduled`.
 - **Risico:** Task 8–9 raken `decide.go` (1367 regels) en `apply.go`; houd de geplande tak in eigen bestanden (`decide_scheduled.go`, `apply_scheduled.go`) zodat de issue-tak ongewijzigd blijft.
+
+## Voor PR 2 en verder (uit de eindreview van PR 1)
+
+PR 1 registreert geen job, dus het levenscyclus- en beveiligingspad is daar nog niet bereikbaar. Dit moet vóór of met PR 2 (Task 11) klaar zijn:
+
+1. **Token-unset over alle repo's.** `internal/dispatch/apply_scheduled.go` geeft alleen `token_env` van de eigen repo mee aan `forge.TokenVarNames`; geef de unie over alle repo's (docs/workplace.md belooft dat).
+2. **kenn-forge `discardWork`** (`internal/workplace/kennforge/adapter.go`): controleer vóór `reset --hard` en `clean -ffdx` dat `worktree_path` een gekoppelde worktree is, niet de hoofdcheckout, en dat de tak de `scheduled/…`-tak van de run is.
+3. **`objectDir`** (`internal/scheduled/remote.go`) draait vóór de timeout van 5 minuten; zet er een eigen `context.WithTimeout` omheen. Voeg ook `-c http.sslVerify=true -c http.proxy= -c http.sslCAInfo= -c http.sslCAPath=` en de eigenaarcontrole van de statusmap toe.
+4. **Eén doorlopende levenscyclustest** met de echte lokale adapter: plan, `startScheduled`, open run, afronden, PR-fase, merge of sluiten, sweep. Bewijst dat de `GitState` bij de start gelijk is aan die bij het afronden en dat de `Record` heen en weer klopt.
+5. **Documentatie**: een repo zonder CI-checks merget nooit (`Checks == "SUCCESS"` is vereist); een onbekende job laat elke tick met exitcode 1 eindigen en slaat `SaveTickState` over (volledige gather per tick): laat PR 2 de `hold` bij "no job" laten vallen, of documenteer het. Fragment van PR 2 krijgt type `added`.
+6. **Jobs (Task 11/12)**: `Cleanup` mag nooit symlinks volgen; foutteksten van jobs gaan door `showPath`.
+7. **Uitgesteld, geen blokkade**: containment kijkt alleen naar gewijzigde paden (een bestaande dangling link in de startcommit); `GitState` dekt `~/.gitconfig`, include-inhoud en submodule-config niet; zachte formulering van de smudge-filtertekst in `docs/workplace.md`; `printf '%s\n'` in de credential-helper.
