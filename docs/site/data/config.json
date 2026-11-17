@@ -130,9 +130,15 @@
               ],
               "example": "github",
               "readers": [
+                "internal/evidence/run.go",
                 "internal/initcmd/initcmd.go",
                 "internal/repoconfig/repoconfig.go",
-                "internal/workplace/kennforge/adapter.go"
+                "internal/workplace/kennforge/adapter.go",
+                "pack/core/skills/forge",
+                "pack/core/skills/route-issue",
+                "pack/core/skills/start-issue",
+                "pack/core/skills/write-issue",
+                "pack/core/skills/write-pr"
               ]
             },
             {
@@ -144,6 +150,7 @@
               "readers": [
                 "internal/boardstart/boardstart.go",
                 "internal/cli/worktreeaudit.go",
+                "internal/labels/labels.go",
                 "internal/postartefact/postartefact.go",
                 "internal/prbody/find.go",
                 "internal/prbody/form.go",
@@ -153,15 +160,14 @@
                 "internal/repoconfig/repoconfig.go",
                 "internal/workplace/local/adapter.go",
                 "internal/worktreeaudit/collect.go",
-                "internal/labels/labels.go",
                 "pack/core/skills/audit-worktrees",
                 "pack/core/skills/close-issue",
                 "pack/core/skills/fix-pr",
+                "pack/core/skills/forge",
                 "pack/core/skills/review-plan",
                 "pack/core/skills/route-issue",
                 "pack/core/skills/start-issue",
                 "pack/core/skills/write-handoff",
-                "pack/core/skills/write-issue",
                 "pack/core/skills/write-pr",
                 "pack/python/scripts/quality/prcov_issues.py"
               ]
@@ -177,7 +183,8 @@
                 "internal/forge/gitlab.go",
                 "internal/initcmd/initcmd.go",
                 "internal/prbody/form.go",
-                "internal/repoconfig/repoconfig.go"
+                "internal/repoconfig/repoconfig.go",
+                "pack/core/skills/forge"
               ]
             },
             {
@@ -189,7 +196,8 @@
               "readers": [
                 "internal/prbody/form.go",
                 "internal/prbody/gate.go",
-                "internal/repoconfig/repoconfig.go"
+                "internal/repoconfig/repoconfig.go",
+                "pack/core/skills/forge"
               ]
             },
             {
@@ -239,8 +247,8 @@
               "about": "The owner part of forge.repo, derived by the lighthouse binary.",
               "readers": [
                 "pack/core/skills/close-issue",
+                "pack/core/skills/forge",
                 "pack/core/skills/write-handoff",
-                "pack/core/skills/write-issue",
                 "pack/python/scripts/quality/prcov_issues.py"
               ]
             }
@@ -259,7 +267,7 @@
               "example": "PVTSSF_...",
               "readers": [
                 "internal/repoconfig/repoconfig.go",
-                "pack/core/skills/write-issue"
+                "pack/core/skills/forge"
               ]
             },
             {
@@ -274,6 +282,7 @@
               },
               "readers": [
                 "internal/repoconfig/repoconfig.go",
+                "pack/core/skills/forge",
                 "pack/core/skills/write-issue"
               ]
             },
@@ -288,8 +297,8 @@
                 "internal/forge/board.go",
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/close-issue",
+                "pack/core/skills/forge",
                 "pack/core/skills/write-handoff",
-                "pack/core/skills/write-issue",
                 "pack/python/scripts/quality/prcov_issues.py"
               ]
             },
@@ -301,9 +310,9 @@
               "example": 1,
               "readers": [
                 "internal/repoconfig/repoconfig.go",
+                "pack/core/skills/forge",
                 "pack/core/skills/start-issue",
                 "pack/core/skills/write-handoff",
-                "pack/core/skills/write-issue",
                 "pack/python/scripts/quality/prcov_issues.py"
               ]
             },
@@ -341,6 +350,7 @@
                 "internal/forge/forge.go",
                 "internal/forge/gitlab_board.go",
                 "internal/repoconfig/repoconfig.go",
+                "pack/core/skills/forge",
                 "pack/core/skills/write-handoff",
                 "pack/core/skills/write-issue",
                 "pack/python/scripts/quality/prcov_issues.py"
@@ -578,6 +588,7 @@
                 "internal/repoconfig/repoconfig.go",
                 "internal/triage/rules.go",
                 "pack/core/skills/close-issue",
+                "pack/core/skills/forge",
                 "pack/core/skills/route-issue",
                 "pack/core/skills/start-issue",
                 "pack/core/skills/write-issue",
