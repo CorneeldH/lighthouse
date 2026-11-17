@@ -78,8 +78,8 @@ func TestMigrateTwice(t *testing.T) {
 	if !reflect.DeepEqual(schema1, schema2) || v1 != v2 {
 		t.Errorf("schema changed on second open:\n%v (v%d)\n%v (v%d)", schema1, v1, schema2, v2)
 	}
-	if v2 != 7 {
-		t.Errorf("user_version = %d, want 7", v2)
+	if v2 != 8 {
+		t.Errorf("user_version = %d, want 8", v2)
 	}
 	rows, err := s.DB.Query(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name`)
 	if err != nil {
@@ -493,5 +493,33 @@ func TestMigrationNodeDefault(t *testing.T) {
 	}
 	if node != "" {
 		t.Errorf("node = %q, want the empty string (self)", node)
+	}
+}
+
+// A run from before 0008 reads pushed_sha "": the push phase of no run is over.
+func TestMigrationPushedDefault(t *testing.T) {
+	ctx := context.Background()
+	db := bareDB(t)
+	upTo7 := []string{"0001_meta.sql", "0002_runs.sql", "0003_cleanup.sql", "0004_runs_fixpr.sql",
+		"0005_workspace_removed.sql", "0006_runs_merge.sql", "0007_runs_node.sql"}
+	if err := migrate(ctx, db, embeddedUpTo(t, upTo7...)); err != nil {
+		t.Fatalf("migrate to 7: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO runs (repo, issue, session_id, mode, trigger, trigger_key, attempt, command, started_at)
+		VALUES ('o/r', 7, 's', 'start', 'handoff', 'start:7', 1, 'c', 't0')`); err != nil {
+		t.Fatalf("insert at v7: %v", err)
+	}
+	if err := migrate(ctx, db, embeddedUpTo(t, append(upTo7, "0008_runs_pushed.sql")...)); err != nil {
+		t.Fatalf("migrate to 8: %v", err)
+	}
+	if v := userVersion(t, db); v != 8 {
+		t.Errorf("user_version = %d, want 8", v)
+	}
+	var pushed string
+	if err := db.QueryRow(`SELECT pushed_sha FROM runs WHERE issue = 7`).Scan(&pushed); err != nil {
+		t.Fatalf("read pushed_sha: %v", err)
+	}
+	if pushed != "" {
+		t.Errorf("pushed_sha = %q, want the empty string", pushed)
 	}
 }

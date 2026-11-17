@@ -737,14 +737,6 @@ func repoInput(ctx context.Context, db *sql.DB, cfg hostconfig.Dispatch, f forge
 		LocationPrefix: pre.Repo.Labels.LocationPrefix,
 		DefaultBranch:  pre.Repo.DefaultBranch, Installed: installed, History: history, Stands: pre.Stands, Runs: pre.Runs,
 		Markers:      pre.Markers,
-		WorkflowPush: cfg.WorkflowPush != nil, PushTimeout: pushTimeout(cfg),
+		WorkflowPush: cfg.WorkflowPush != nil, PushTimeout: dispatch.PushTimeout(cfg),
 	}, nil
-}
-
-// pushTimeout is [dispatch.workflow_push] timeout, 0 when the route is off.
-func pushTimeout(cfg hostconfig.Dispatch) time.Duration {
-	if cfg.WorkflowPush == nil {
-		return 0
-	}
-	return cfg.WorkflowPush.Timeout
 }

@@ -59,6 +59,9 @@ const (
 	ReviewEnforce = "enforce"
 )
 
+// DefaultPushTimeout is [dispatch.workflow_push] timeout when host.toml sets none.
+const DefaultPushTimeout = 30 * time.Minute
+
 // WorkflowPush is [dispatch.workflow_push]: the token and the reviewers of the workflow pusher.
 // TokenFile and the Binds of a reviewer have a leading ~ expanded.
 type WorkflowPush struct {
@@ -332,7 +335,7 @@ func LoadDispatch(path string) (Dispatch, error) {
 // buildWorkflowPush validates the raw [dispatch.workflow_push] values and expands the paths.
 func buildWorkflowPush(tokenFile, review, timeout *string, n int, reviewer func(int) Reviewer) (*WorkflowPush, error) {
 	const key = "dispatch.workflow_push"
-	wp := &WorkflowPush{Review: ReviewShadow, Timeout: 30 * time.Minute}
+	wp := &WorkflowPush{Review: ReviewShadow, Timeout: DefaultPushTimeout}
 	if tokenFile == nil || *tokenFile == "" {
 		return nil, fmt.Errorf("%s.token_file: missing", key)
 	}

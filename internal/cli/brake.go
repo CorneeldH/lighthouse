@@ -84,7 +84,7 @@ func readHostFacts(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.
 	}
 	b.Nodes = nodeSlots(cfg)
 	for _, r := range open {
-		b.CountRun(r.Node, r.Profile)
+		b.CountRun(r.Node, r.Profile, r.Command)
 	}
 	markers, parked, err := controllerMarkers(ctx, db, f.MarkerDir)
 	if err != nil {
@@ -93,7 +93,7 @@ func readHostFacts(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.
 	f.Markers = markers
 	for _, rows := range parked {
 		for _, last := range rows {
-			b.CountRun(last.Node, last.Profile)
+			b.CountRun(last.Node, last.Profile, last.Command)
 		}
 	}
 	f.Brake = b

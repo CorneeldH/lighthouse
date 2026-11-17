@@ -418,3 +418,41 @@ func TestTakeStoresNode(t *testing.T) {
 		t.Errorf("History = %+v, %v; want one row on node-a", hist, err)
 	}
 }
+
+// SetPushed marks an open push row with the SHA the pusher pushed; History and Open read it
+// back, with the row's command, and a closed or unknown row is ErrNotOpen and keeps its mark.
+func TestSetPushedRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	db := openDB(t)
+	c := claim("o/r", 7, "push:63")
+	c.SessionID, c.Command = "", "push-workflows"
+	r, err := Take(ctx, db, c)
+	if err != nil {
+		t.Fatalf("Take: %v", err)
+	}
+	const sha = "3f2a1bcd4e5f60718293a4b5c6d7e8f901234567"
+	if err := SetPushed(ctx, db, r.ID, sha); err != nil {
+		t.Fatalf("SetPushed: %v", err)
+	}
+	open, err := Open(ctx, db, "o/r")
+	if err != nil || len(open) != 1 || open[0].PushedSHA != sha || open[0].Command != "push-workflows" {
+		t.Fatalf("Open = %+v, %v; want one push-workflows run pushed at %s", open, err, sha)
+	}
+	all, err := OpenAll(ctx, db)
+	if err != nil || len(all) != 1 || all[0].PushedSHA != sha || all[0].Command != "push-workflows" {
+		t.Fatalf("OpenAll = %+v, %v; want one push-workflows run pushed at %s", all, err, sha)
+	}
+	if err := Release(ctx, db, r.ID, Done, "", time.Now()); err != nil {
+		t.Fatalf("Release: %v", err)
+	}
+	if err := SetPushed(ctx, db, r.ID, "def5678"); !errors.Is(err, ErrNotOpen) {
+		t.Errorf("SetPushed on closed run = %v, want ErrNotOpen", err)
+	}
+	if err := SetPushed(ctx, db, r.ID+99, "def5678"); !errors.Is(err, ErrNotOpen) {
+		t.Errorf("SetPushed on unknown run = %v, want ErrNotOpen", err)
+	}
+	hist, err := History(ctx, db, "o/r")
+	if err != nil || len(hist) != 1 || hist[0].PushedSHA != sha {
+		t.Errorf("History = %+v, %v; want the row still pushed at %s", hist, err, sha)
+	}
+}

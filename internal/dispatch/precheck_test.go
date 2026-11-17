@@ -198,3 +198,26 @@ func TestSaveDeferredReplacesRowsOfRepo(t *testing.T) {
 		t.Errorf("rows after an empty save = %v, want none", got)
 	}
 }
+
+// An open push row wakes the tick at its start plus the push timeout, the configured one or
+// the default of 30 minutes, until the pusher marked the push; then no time rule holds for it.
+func TestPushRowBoundaryAtTimeout(t *testing.T) {
+	started := time.Date(2026, 10, 31, 10, 0, 0, 0, time.UTC)
+	now := started.Add(time.Minute)
+	d := hostconfig.Dispatch{MaxRuntime: 8 * time.Hour, MaxWait: time.Hour,
+		WorkflowPush: &hostconfig.WorkflowPush{Timeout: 20 * time.Minute}}
+	push := runs.OpenRun{ID: 1, Issue: 1, Command: "push-workflows", StartedAt: started}
+
+	got := Boundaries(d, []runs.OpenRun{push}, nil, nil, now)
+	if !containsTime(got, started.Add(20*time.Minute)) {
+		t.Errorf("missing the push timeout %v in %v", started.Add(20*time.Minute), got)
+	}
+	d.WorkflowPush = nil
+	if got := Boundaries(d, []runs.OpenRun{push}, nil, nil, now); !containsTime(got, started.Add(30*time.Minute)) {
+		t.Errorf("missing the default push timeout %v in %v", started.Add(30*time.Minute), got)
+	}
+	push.PushedSHA = "3f2a1bc"
+	if got := Boundaries(d, []runs.OpenRun{push}, nil, nil, now); len(got) != 0 {
+		t.Errorf("a pushed push row has no time rule, got boundaries %v", got)
+	}
+}

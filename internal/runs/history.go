@@ -27,6 +27,7 @@ type Row struct {
 	Reason     string
 	MergeSHA   string // head sha of the last refused merge, "" if none
 	MergeError string // GitHub's message for that refusal
+	PushedSHA  string // push row: the SHA the pusher pushed, "" while its push phase runs
 }
 
 // History returns every run of repo, open and closed, ordered by id.
@@ -53,7 +54,7 @@ func History(ctx context.Context, db *sql.DB, repo string) ([]Row, error) {
 // rowColumns are the runs columns scanRow reads, in order.
 const rowColumns = `id, issue, session_id, mode, trigger, trigger_key, attempt,
 	command, prompt, branch, profile, node, started_at, ended_at IS NULL, coalesce(outcome, ''), coalesce(reason, ''),
-	merge_sha, merge_error`
+	merge_sha, merge_error, pushed_sha`
 
 // scanRow reads a row selected with rowColumns, after any lead destinations
 // for columns selected before them.
@@ -61,7 +62,7 @@ func scanRow(rows interface{ Scan(...any) error }, lead ...any) (Row, error) {
 	var r Row
 	var started, outcome string
 	dest := append(lead, &r.ID, &r.Issue, &r.SessionID, &r.Mode, &r.Trigger, &r.TriggerKey, &r.Attempt,
-		&r.Command, &r.Prompt, &r.Branch, &r.Profile, &r.Node, &started, &r.Open, &outcome, &r.Reason, &r.MergeSHA, &r.MergeError)
+		&r.Command, &r.Prompt, &r.Branch, &r.Profile, &r.Node, &started, &r.Open, &outcome, &r.Reason, &r.MergeSHA, &r.MergeError, &r.PushedSHA)
 	if err := rows.Scan(dest...); err != nil {
 		return Row{}, fmt.Errorf("runs: scan history row: %w", err)
 	}

@@ -233,3 +233,18 @@ func TestFingerprintChangesOnMergeSHA(t *testing.T) {
 		t.Error("a different merge sha hashed the same")
 	}
 }
+
+// The pusher marks its row when it pushed; the mark changes the rules of the row, so it must
+// wake the tick.
+func TestFingerprintChangesOnPushedSHA(t *testing.T) {
+	t0 := time.Date(2026, 10, 31, 10, 0, 0, 0, time.UTC)
+	mk := func(sha string) Pre {
+		return Pre{
+			Items:    []Item{{Issue: 1, Status: "Controller"}},
+			OpenRuns: []runs.OpenRun{{ID: 1, Issue: 1, StartedAt: t0, PushedSHA: sha}},
+		}
+	}
+	if Fingerprint(mk("")) == Fingerprint(mk("3f2a1bc")) {
+		t.Error("a pushed mark on the open run did not change the fingerprint")
+	}
+}
