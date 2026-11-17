@@ -426,13 +426,15 @@ een 🚀-herstel laat `run` aan de tick. Hetzelfde geldt voor parkeren, afmaken 
 *Blokkades*): een uitvoerend issue met een actieve voorganger geeft in `run` dus `nothing to start`. `run` bewaart geen vingerafdruk in `tick_state` en ruimt geen workspaces op:
 dat doet alleen de tick.
 
-Het eindigt met één regel op stderr, alle vier met exitcode 0:
+Het eindigt met één regel op stderr, alle vijf met exitcode 0:
 
 - `lighthouse: started <repo>#<n>`;
 - `lighthouse: deferred <repo>#<n>: <reden>` (buiten het `night`-venster, of een bezette werkplek);
 - `lighthouse: not accepted <repo>#<n>`: de werkplek weigerde de launch. Onder de 🤖 Gestart staat
   een Teruggegeven met de reden, de run is gesloten als `start_failed`, en de volgende tick behandelt het als elke mislukte start
   (een tweede poging, na twee mislukte pogingen een Teruggegeven);
+- `lighthouse: the pusher of <repo>#<n> starts at the next tick`: decide plant een pusher, en die
+  start alleen de tick;
 - `lighthouse: nothing to start for <repo>#<n>`, ook als de tick de claim van dezelfde trigger net
   won: dan post `run` niets (zie *De volgorde van een start*).
 
@@ -440,7 +442,9 @@ Een mislukte actie geeft `lighthouse: apply <repo>: <fouten>` en exitcode 1. Wat
 staat ervoor op stderr, zoals bij tick.
 
 `run` start nooit een pusher: ook een handoff `next: push-workflows` laat het aan de tick, net als het
-parkeren en het terugzetten.
+parkeren en het terugzetten. Een groene PR waarop de pusher pushte, merget via de merge-pusher; de
+sluiting van de run die de PR aan die pusher overdraagt laat `run` dan ook liggen. Zonder die pusher
+bleef er geen open run over die de merge opnieuw plant.
 
 ## De rem
 

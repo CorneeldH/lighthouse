@@ -28,9 +28,10 @@ func newRunCommand() *cobra.Command {
 		Short: "Start or resume one issue now",
 		Long: "Start or resume one issue now, as the next tick would. The repo must be in host.toml\n" +
 			"[dispatch] repos. run takes no tick.lock and runs no precheck: it gathers the repo, decides,\n" +
-			"and applies only the close, defer, start or resume of that issue. A Returned, a Done or a 🚀\n" +
-			"stays with the tick. It ends in one line: started, deferred with its reason, not accepted\n" +
-			"(the workplace refused the launch), or nothing to start, each with exit 0.",
+			"and applies only the close, defer, start or resume of that issue. A Returned, a Done, a 🚀\n" +
+			"or a workflow pusher stays with the tick. It ends in one line: started, deferred with its\n" +
+			"reason, not accepted (the workplace refused the launch), the pusher the next tick starts, or\n" +
+			"nothing to start, each with exit 0.",
 		Example: "  lighthouse run CorneeldH/lighthouse#114",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -47,7 +48,8 @@ func newRunCommand() *cobra.Command {
 var runTarget = regexp.MustCompile(`^([A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)+)#([1-9][0-9]*)$`)
 
 // runKinds are the actions run applies for its issue. A close comes along: an open run that
-// closes in this decide would otherwise make the claim of the start or resume fail.
+// closes in this decide would otherwise make the claim of the start or resume fail. A pusher
+// (KindPush) is tick's alone: see runActions.
 var runKinds = map[dispatch.Kind]bool{
 	dispatch.KindClose: true, dispatch.KindDefer: true, dispatch.KindStart: true, dispatch.KindResume: true,
 }
@@ -111,18 +113,30 @@ func runIssue(ctx context.Context, env tickEnv, target, dbPath string, errOut io
 	in.Markers = slices.DeleteFunc(slices.Clone(in.Markers), func(m park.Marker) bool {
 		return lastIssueOfSession(in.History, m.SessionID) != issue
 	})
-	var actions []dispatch.Action
-	for _, a := range dispatch.Decide(decideInput(env, cfg, []dispatch.RepoInput{in}, &facts.Brake)) {
-		if a.Issue == issue && runKinds[a.Kind] {
-			actions = append(actions, a)
-		}
-	}
+	actions, pusher := runActions(dispatch.Decide(decideInput(env, cfg, []dispatch.RepoInput{in}, &facts.Brake)), issue)
 	res, err := applyActions(ctx, env, st.DB, cfg, map[string]forge.Forge{repo.Slug: rf.Forge},
 		map[string]repoconfig.Repo{repo.Slug: repo}, actions, errOut)
 	if err != nil {
 		return fmt.Errorf("run: %w", err)
 	}
-	return runResult(res, repo.Slug, issue, facts.PauseUntil, errOut)
+	return runResult(res, repo.Slug, issue, facts.PauseUntil, pusher, errOut)
+}
+
+// runActions are the runKinds actions of issue in decided. Only tick starts a pusher, so the close
+// that hands a run's PR to the merge pusher stays out as well: applied without its pusher, it
+// would close the last open row of the issue and nothing would plan the merge again. pusher
+// reports whether decide planned a pusher for issue, which the next tick starts.
+func runActions(decided []dispatch.Action, issue int) (actions []dispatch.Action, pusher bool) {
+	for _, a := range decided {
+		switch {
+		case a.Issue != issue:
+		case a.Kind == dispatch.KindPush:
+			pusher = true
+		case runKinds[a.Kind] && !dispatch.HandsToPusher(a):
+			actions = append(actions, a)
+		}
+	}
+	return actions, pusher
 }
 
 // lastIssueOfSession is the issue of the last run of session in history, 0 without one.
@@ -156,9 +170,10 @@ func findRepo(cfg hostconfig.Dispatch, slug, hostToml string) (repoconfig.Repo, 
 
 // runResult writes what apply did for slug#issue to errOut: each deferral, an apply line for
 // a failed action, and then started, not accepted (the workplace refused the launch) or, when
-// nothing started, deferred or failed, paused (pauseUntil is set: the pause drops the start
-// without a deferral) or nothing to start. A failed action returns errSilent.
-func runResult(res dispatch.Result, slug string, issue int, pauseUntil time.Time, errOut io.Writer) error {
+// nothing started, deferred or failed, the pusher the next tick starts (pusher), paused
+// (pauseUntil is set: the pause drops the start without a deferral) or nothing to start. A
+// failed action returns errSilent.
+func runResult(res dispatch.Result, slug string, issue int, pauseUntil time.Time, pusher bool, errOut io.Writer) error {
 	for _, d := range res.Deferred {
 		_, _ = fmt.Fprintf(errOut, "lighthouse: deferred %s\n", d)
 	}
@@ -172,6 +187,8 @@ func runResult(res dispatch.Result, slug string, issue int, pauseUntil time.Time
 		_, _ = fmt.Fprintf(errOut, "lighthouse: started %s\n", target)
 	case slices.Contains(res.NotAccepted, target):
 		_, _ = fmt.Fprintf(errOut, "lighthouse: not accepted %s\n", target)
+	case len(res.Deferred) == 0 && failed == nil && pusher:
+		_, _ = fmt.Fprintf(errOut, "lighthouse: the pusher of %s starts at the next tick\n", target)
 	case len(res.Deferred) == 0 && failed == nil && !pauseUntil.IsZero():
 		_, _ = fmt.Fprintf(errOut, "lighthouse: paused until %s\n", pauseUntil.Format(time.RFC3339))
 	case len(res.Deferred) == 0 && failed == nil:

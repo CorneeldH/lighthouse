@@ -177,6 +177,12 @@ func handsOver(p planned) bool {
 		(strings.HasPrefix(p.ReasonArg, triggerFixPR+":") || strings.HasPrefix(p.ReasonArg, triggerMerge+":"))
 }
 
+// HandsToPusher reports whether a is the close of a run that hands its PR to the merge pusher
+// planned in the same decide (mergeByPusher): without that KindPush the close must not apply.
+func HandsToPusher(a Action) bool {
+	return a.Kind == KindClose && a.Outcome == runs.Handoff && strings.HasPrefix(a.ReasonArg, triggerMerge+":")
+}
+
 // settleUnstartedFixPR decides every run settle closed for a fix-pr start (a handoff close whose
 // ReasonArg is the fixpr: key) when ps holds no fix-pr start for its issue after the brake.
 // wanted is the set of issues decideIssue planned a start for, before the brake. When the brake
