@@ -246,7 +246,37 @@ per AC that is not `demonstrably done` a line *what is missing*.
 | Verdict over all AC | Outcome |
 |---|---|
 | all criteria `demonstrably done` | steps 4–6 of entry A. For the DoD the merge counts as review; a DoD line that is not measurable from here goes into the close comment as such and does not block. `gh issue close` knows no file flag (only `-c, --comment string`): first post the close comment with the evidence lines through `gh issue comment <nr> --repo "$R" --body-file <file>` (from the `mktemp -d` directory) and then close with `gh issue close <nr> --repo "$R" --reason completed`. If the comment fails, do not close. Before that close comment, run *Clean up the worktree*; its result per branch goes along as evidence lines in the close comment. |
-| otherwise: `partly`, `not`, or an AC `not measurable from here` | do not close, do not shorten through `lighthouse-write-issue`, do not touch the board (the controller sets `In progress`), no question, no `/lighthouse-write-handoff`. End after the comment. |
+| otherwise: `partly`, `not`, or an AC `not measurable from here` | do not close, do not touch the board. After the comment, post one question (*Open criteria*, below) and stop after it, without `/lighthouse-write-handoff` and without any further tool call. |
+
+**Open criteria: one question.** A run that ends without a Handoff or Question is handed back
+with *no handoff or question*, and the open criteria then wait without a choice in front of the
+user. So post one bundle with one question through `lighthouse ask`, its text in
+`[project] language`:
+
+```bash
+lighthouse ask --issue <nr> --phase close-check \
+  --where "After-merge check of #<pr>: <k> of <n> criteria demonstrably done" \
+  --what "<per open AC one line: the AC, its verdict, what is missing>" \
+  --question "What happens with the open criteria?" \
+  --option "new work on this issue: tick the finished criteria, the controller picks up the rest" \
+  --option "split off: the open criteria into a new issue, close this one" \
+  --option "close: I checked the open criteria myself and they hold" \
+  --recommended <a|b|c>
+```
+
+Recommend `a` when the missing work can be built in this repo; `b` when it waits on something
+else (another issue, an external run, a live system); `c` only when every open AC is `not
+measurable from here` and the user measures it in one step. A command the user has to run for
+an AC (for example `gh workflow run pins.yml`) goes with `--command`.
+
+The answer resumes this session:
+
+| Answer | Do |
+|---|---|
+| a | tick the `demonstrably done` criteria in the issue body through `lighthouse-write-issue`, leave the issue open, then `/lighthouse-write-handoff` with `next: /lighthouse-start-issue <nr>` |
+| b | write the new issue through `lighthouse-write-issue`, with the open criteria as its acceptance criteria and a link to this issue; then close this issue as in the first row, the new issue as the evidence line of each open AC |
+| c | close as in the first row, with `checked by the user: <URL of the answer>` as the evidence line of each open AC |
+| anything else | follow the answer; when nothing is left to do, stop without a handoff |
 
 **Reports.** Every report that step 0, 4 or 6 addresses to the user (e.g. "DoD not met → report",
 "report #m is free", "waits for merge") goes into the after-merge comment in B7: there is nobody
