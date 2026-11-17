@@ -36,15 +36,27 @@ func TestParsePorcelain(t *testing.T) {
 	}
 }
 
-// Classification: pure-logic. Fails if a name-status entry is dropped or misread.
-func TestParseNameStatus(t *testing.T) {
-	got, err := parseNameStatus("M\x00out/a.md\x00D\x00out/b.md\x00A\x00src/c.go\x00R100\x00x\x00y\x00")
-	want := []string{"out/a.md", "out/b.md", "src/c.go", "x", "y"}
-	if err != nil || !reflect.DeepEqual(got, want) {
-		t.Errorf("parseNameStatus = %q, %v; want %q", got, err, want)
+// Classification: pure-logic. Fails if a diff-tree entry is dropped, or its path, new mode or
+// new object is read from the wrong column (a deletion must keep mode 000000).
+func TestParseDiffTree(t *testing.T) {
+	z := strings.Repeat("0", 40)
+	a, b := strings.Repeat("a", 40), strings.Repeat("b", 40)
+	in := ":100644 100644 " + a + " " + b + " M\x00out/a.md\x00" +
+		":100644 000000 " + a + " " + z + " D\x00out/gone.md\x00" +
+		":000000 120000 " + z + " " + b + " A\x00out/link\x00"
+	got, err := parseDiffTree(in)
+	want := []treeChange{
+		{path: "out/a.md", mode: "100644", object: b},
+		{path: "out/gone.md", mode: "000000", object: z},
+		{path: "out/link", mode: "120000", object: b},
 	}
-	if _, err := parseNameStatus("M\x00"); err == nil {
-		t.Error("parseNameStatus accepted a status without a path")
+	if err != nil || !reflect.DeepEqual(got, want) {
+		t.Errorf("parseDiffTree = %+v, %v; want %+v", got, err, want)
+	}
+	for _, bad := range []string{":100644 100644 " + a + " " + b + " M\x00", "100644 100644 x y M\x00p\x00", ":100644 x M\x00p\x00"} {
+		if got, err := parseDiffTree(bad); err == nil {
+			t.Errorf("parseDiffTree(%q) = %+v, want an error", bad, got)
+		}
 	}
 }
 

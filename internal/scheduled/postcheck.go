@@ -52,8 +52,12 @@ var shaPattern = regexp.MustCompile(`^(?:[0-9a-f]{40}|[0-9a-f]{64})$`)
 // already on origin at HEAD; the HEAD-guard (git reset --mixed startSHA, so commits of the agent
 // become working-tree changes and are never trusted as such); job.Cleanup; the containment
 // (every changed path, deletions and both sides of a rename included, is clean, satisfies
-// job.Allowed and has no symlink in it that leaves the work tree); job.Check; job.Finish; the
-// containment again on the final set; the secret scan; a commit of exactly that set; push.
+// job.Allowed and has no symlink in it that leaves the work tree or resolves to a path Allowed
+// refuses); job.Check; job.Finish; the containment again on the final set; staging that set
+// into a tree; the object check and secret scan on that tree as git stores it; a commit of that
+// tree on start; push. Checking the written tree, not the work tree, means a conversion on
+// `git add` (a .gitattributes encoding, an eol rule) cannot carry content past the scan, and the
+// commit holds exactly what was checked.
 // An error is transient (git could not run, the push failed): the run stays open and the next
 // tick calls Postcheck again.
 func Postcheck(ctx context.Context, run workplace.Runner, job Job, env Env, v Verdict, startSHA, branch string, push func(context.Context) error) (PostcheckResult, error) {
@@ -102,10 +106,24 @@ func Postcheck(ctx context.Context, run workplace.Runner, job Job, env Env, v Ve
 	if err != nil || reason != "" || len(paths) == 0 {
 		return PostcheckResult{Failure: reason}, err
 	}
-	if findings := ScanSecrets(env.Dir, paths); len(findings) > 0 {
-		return failed("secret scan: %s", strings.Join(findings, "; ")), nil
+	if _, err := g.ok(ctx, append([]string{"add", "--"}, paths...)...); err != nil {
+		return PostcheckResult{}, err
 	}
-	if err := g.commit(ctx, paths, commitMessage(job, env)); err != nil {
+	tree, err := g.ok(ctx, "write-tree")
+	if err != nil {
+		return PostcheckResult{}, err
+	}
+	changes, err := g.diffTree(ctx, startSHA, tree)
+	if err != nil {
+		return PostcheckResult{}, err
+	}
+	if extra := difference(changePaths(changes), paths); len(extra) > 0 {
+		return failed("staged paths differ from the checked set: %s", showPaths(extra)), nil
+	}
+	if reason, err := g.verifyObjects(ctx, job, changes); err != nil || reason != "" {
+		return PostcheckResult{Failure: reason}, err
+	}
+	if err := g.commit(ctx, branch, tree, startSHA, commitMessage(job, env)); err != nil {
 		return PostcheckResult{}, err
 	}
 	if err := push(ctx); err != nil {
@@ -116,8 +134,10 @@ func Postcheck(ctx context.Context, run workplace.Runner, job Job, env Env, v Ve
 
 // resume handles a branch that is already on origin, at pushed. Only the commit Postcheck makes
 // itself should be there, but the agent may have pushed one of its own, so the commit on origin
-// must be HEAD, one commit on top of start, with a clean work tree, and meet the containment,
-// Check and the secret scan. Cleanup and Finish do not run again.
+// must be HEAD, one commit on top of start, no index entry may hide the work tree from git
+// (assume-unchanged, skip-worktree), and the commit itself, read from git's objects and never
+// from the work tree, must meet the object check, the secret scan, and Check on a fresh checkout
+// of it. Cleanup and Finish do not run again.
 func resume(ctx context.Context, g gitIn, job Job, env Env, startSHA, branch, pushed string) (PostcheckResult, error) {
 	head, err := g.ok(ctx, "rev-parse", "--verify", "HEAD^{commit}")
 	if err != nil {
@@ -133,34 +153,62 @@ func resume(ctx context.Context, g gitIn, job Job, env Env, startSHA, branch, pu
 	if f := strings.Fields(parents); len(f) != 2 || f[1] != startSHA {
 		return failed("branch %s on origin is not one commit on start %s", branch, startSHA), nil
 	}
-	dirty, err := g.status(ctx)
+	if hidden, err := g.hiddenEntries(ctx); err != nil {
+		return PostcheckResult{}, err
+	} else if len(hidden) > 0 {
+		return failed("resume: %s marked assume-unchanged or skip-worktree", showPaths(hidden)), nil
+	}
+	changes, err := g.diffTree(ctx, startSHA, head)
 	if err != nil {
 		return PostcheckResult{}, err
 	}
-	if len(dirty) > 0 {
-		return failed("work tree differs from the commit of %s on origin: %s", branch, strings.Join(dirty, ", ")), nil
-	}
-	out, err := g.ok(ctx, "diff", "--name-status", "-z", "--no-renames", "--no-ext-diff", startSHA, head)
-	if err != nil {
-		return PostcheckResult{}, err
-	}
-	paths, err := parseNameStatus(out)
-	if err != nil {
-		return PostcheckResult{}, err
-	}
-	if len(paths) == 0 {
+	if len(changes) == 0 {
 		return failed("commit of %s on origin changes nothing", branch), nil
 	}
-	if reason := containment(job, env.Dir, paths); reason != "" {
-		return PostcheckResult{Failure: reason}, nil
+	if reason, err := g.verifyObjects(ctx, job, changes); err != nil || reason != "" {
+		return PostcheckResult{Failure: reason}, err
 	}
-	if err := job.Check(ctx, env, env.Dir); err != nil {
+	return g.checkCommit(ctx, job, env, head)
+}
+
+// checkCommit runs job.Check on a fresh, detached checkout of commit, so Check sees the commit and
+// not a work tree the agent may have edited after it.
+func (g gitIn) checkCommit(ctx context.Context, job Job, env Env, commit string) (PostcheckResult, error) {
+	tmp, err := os.MkdirTemp("", "lighthouse-postcheck-")
+	if err != nil {
+		return PostcheckResult{}, err
+	}
+	defer func() { _ = os.RemoveAll(tmp) }()
+	tree := filepath.Join(tmp, "tree")
+	if _, err := g.ok(ctx, "worktree", "add", "--detach", "--quiet", tree, commit); err != nil {
+		return PostcheckResult{}, err
+	}
+	defer func() { _, _, _ = g.raw(context.WithoutCancel(ctx), "worktree", "remove", "--force", tree) }()
+	checkEnv := env
+	checkEnv.Dir = tree
+	if err := job.Check(ctx, checkEnv, tree); err != nil {
 		return failed("check: %v", err), nil
 	}
-	if findings := ScanSecrets(env.Dir, paths); len(findings) > 0 {
-		return failed("secret scan: %s", strings.Join(findings, "; ")), nil
-	}
 	return PostcheckResult{Changed: true}, nil
+}
+
+// hiddenEntries lists index entries marked assume-unchanged (a lowercase tag in ls-files -v) or
+// skip-worktree (tag S): git status does not compare those with the work tree.
+func (g gitIn) hiddenEntries(ctx context.Context) ([]string, error) {
+	out, err := g.ok(ctx, "ls-files", "-v", "-z")
+	if err != nil {
+		return nil, err
+	}
+	var hidden []string
+	for _, e := range strings.Split(strings.TrimSuffix(out, "\x00"), "\x00") {
+		if len(e) < 3 {
+			continue
+		}
+		if tag := e[0]; tag == 'S' || (tag >= 'a' && tag <= 'z') {
+			hidden = append(hidden, e[2:])
+		}
+	}
+	return hidden, nil
 }
 
 func failed(format string, args ...any) PostcheckResult {
@@ -242,44 +290,138 @@ func (g gitIn) contained(ctx context.Context, job Job, dir string) (paths []stri
 	return paths, containment(job, dir, paths), nil
 }
 
-// commit stages exactly paths, verifies the index holds exactly those changes, and commits.
-func (g gitIn) commit(ctx context.Context, paths []string, message string) error {
-	if _, err := g.ok(ctx, append([]string{"add", "--"}, paths...)...); err != nil {
-		return err
-	}
-	out, err := g.ok(ctx, "diff", "--cached", "--name-only", "-z", "--no-renames", "--no-ext-diff")
-	if err != nil {
-		return err
-	}
-	staged := strings.Split(strings.TrimSuffix(out, "\x00"), "\x00")
-	if !sameSet(staged, paths) {
-		return fmt.Errorf("staged paths %q differ from the checked paths %q", staged, paths)
-	}
-	args := []string{"commit", "--quiet", "-m", message}
+// commit makes a commit of tree with parent start and moves branch onto it, only when branch is
+// still at start. The commit holds tree and nothing else, whatever the index holds by then.
+func (g gitIn) commit(ctx context.Context, branch, tree, start, message string) error {
+	args := []string{"commit-tree", tree, "-p", start, "-m", message}
 	if code, err := g.code(ctx, "config", "--get", "user.email"); err != nil {
 		return err
 	} else if code != 0 {
 		args = append([]string{"-c", "user.name=" + fallbackName, "-c", "user.email=" + fallbackEmail}, args...)
 	}
-	_, err = g.ok(ctx, args...)
+	commit, err := g.ok(ctx, args...)
+	if err != nil {
+		return err
+	}
+	_, err = g.ok(ctx, "update-ref", "-m", "lighthouse postcheck", "refs/heads/"+branch, commit, start)
 	return err
 }
 
-func sameSet(a, b []string) bool {
-	set := make(map[string]bool, len(a))
+// difference lists the entries of a that b lacks and of b that a lacks, each once.
+func difference(a, b []string) []string {
+	inA, inB := map[string]bool{}, map[string]bool{}
 	for _, s := range a {
-		set[s] = true
-	}
-	if len(set) != len(a) {
-		return false
+		inA[s] = true
 	}
 	for _, s := range b {
-		if !set[s] {
-			return false
-		}
-		delete(set, s)
+		inB[s] = true
 	}
-	return len(set) == 0
+	var diff []string
+	for _, list := range [][]string{a, b} {
+		for _, s := range list {
+			if inA[s] != inB[s] {
+				diff = append(diff, s)
+				inA[s], inB[s] = true, true
+			}
+		}
+	}
+	return diff
+}
+
+func showPaths(paths []string) string {
+	shown := make([]string, len(paths))
+	for i, p := range paths {
+		shown[i] = showPath(p)
+	}
+	return strings.Join(shown, ", ")
+}
+
+// treeChange is one entry of `git diff-tree -r -z --no-renames`: the path, and its new mode and
+// object (mode 000000 for a deletion).
+type treeChange struct {
+	path, mode, object string
+}
+
+func changePaths(changes []treeChange) []string {
+	paths := make([]string, len(changes))
+	for i, c := range changes {
+		paths[i] = c.path
+	}
+	return paths
+}
+
+func (g gitIn) diffTree(ctx context.Context, from, to string) ([]treeChange, error) {
+	out, err := g.ok(ctx, "diff-tree", "-r", "-z", "--no-renames", from, to)
+	if err != nil {
+		return nil, err
+	}
+	return parseDiffTree(out)
+}
+
+// verifyObjects checks changes as git stores them: the path form and job.Allowed; no gitlink
+// (a submodule is content the containment cannot see); a symlink's target text must stay inside
+// the tree, out of .git, and name a path Allowed accepts (resolved lexically: the object has no
+// file system); then the secret scan on the blob content and the path names.
+func (g gitIn) verifyObjects(ctx context.Context, job Job, changes []treeChange) (string, error) {
+	var findings []string
+	for _, c := range changes {
+		if pathEscapes(c.path) {
+			return fmt.Sprintf("containment: path %s escapes the work tree", showPath(c.path)), nil
+		}
+		if !job.Allowed(c.path) {
+			return fmt.Sprintf("containment: path %s is not allowed for job %s", showPath(c.path), job.Name()), nil
+		}
+		var body []byte
+		switch c.mode {
+		case "000000":
+		case "100644", "100755", "120000":
+			out, err := g.blob(ctx, c.object)
+			if err != nil {
+				return "", err
+			}
+			body = []byte(out)
+			if c.mode == "120000" {
+				if reason := symlinkTargetViolation(job, c.path, out); reason != "" {
+					return reason, nil
+				}
+			}
+		case "160000":
+			return fmt.Sprintf("containment: %s is a submodule", showPath(c.path)), nil
+		default:
+			return fmt.Sprintf("containment: %s has unexpected mode %s", showPath(c.path), c.mode), nil
+		}
+		findings = append(findings, scanBody(c.path, body)...)
+	}
+	if len(findings) > 0 {
+		return "secret scan: " + strings.Join(findings, "; "), nil
+	}
+	return "", nil
+}
+
+// blob is the exact content of a blob, without the trimming ok does.
+func (g gitIn) blob(ctx context.Context, object string) (string, error) {
+	out, code, err := g.raw(ctx, "cat-file", "blob", object)
+	if err != nil {
+		return "", err
+	}
+	if code != 0 {
+		return "", fmt.Errorf("git cat-file blob %s: exit code %d", object, code)
+	}
+	return out, nil
+}
+
+// symlinkTargetViolation checks the target text of the symlink at p.
+func symlinkTargetViolation(job Job, p, target string) string {
+	resolved := path.Clean(path.Join(path.Dir(p), target))
+	switch {
+	case path.IsAbs(target) || !filepath.IsLocal(resolved):
+		return fmt.Sprintf("containment: symlink %s targets a path outside the work tree", showPath(p))
+	case resolved == ".git" || strings.HasPrefix(resolved, ".git/"):
+		return fmt.Sprintf("containment: symlink %s targets .git", showPath(p))
+	case !job.Allowed(resolved):
+		return fmt.Sprintf("containment: symlink %s targets %s, which is not allowed", showPath(p), showPath(resolved))
+	}
+	return ""
 }
 
 // containment returns the first violation among paths, "" when there is none: a path that
@@ -292,12 +434,12 @@ func containment(job Job, dir string, paths []string) string {
 	}
 	for _, p := range paths {
 		if pathEscapes(p) {
-			return fmt.Sprintf("containment: path %q escapes the work tree", p)
+			return fmt.Sprintf("containment: path %s escapes the work tree", showPath(p))
 		}
 		if !job.Allowed(p) {
-			return fmt.Sprintf("containment: path %q is not allowed for job %s", p, job.Name())
+			return fmt.Sprintf("containment: path %s is not allowed for job %s", showPath(p), job.Name())
 		}
-		if reason := symlinkViolation(root, dir, p); reason != "" {
+		if reason := symlinkViolation(job, root, dir, p); reason != "" {
 			return reason
 		}
 	}
@@ -310,9 +452,9 @@ func pathEscapes(p string) bool {
 }
 
 // symlinkViolation checks every component of p (relative to dir, whose resolved form is root):
-// a symlink among them must resolve to a target inside root and outside its .git. A component
-// that does not exist ends the walk: a deletion.
-func symlinkViolation(root, dir, p string) string {
+// a symlink among them must resolve to a target inside root, outside its .git, at a path
+// job.Allowed accepts. A component that does not exist ends the walk: a deletion.
+func symlinkViolation(job Job, root, dir, p string) string {
 	parts := strings.Split(p, "/")
 	for i := range parts {
 		rel := strings.Join(parts[:i+1], "/")
@@ -322,21 +464,25 @@ func symlinkViolation(root, dir, p string) string {
 			return ""
 		}
 		if err != nil {
-			return fmt.Sprintf("containment: cannot inspect %q: %v", rel, err)
+			return fmt.Sprintf("containment: cannot inspect %s: %v", showPath(rel), err)
 		}
 		if info.Mode()&fs.ModeSymlink == 0 {
 			continue
 		}
 		target, err := filepath.EvalSymlinks(full)
 		if err != nil {
-			return fmt.Sprintf("containment: symlink %q cannot be resolved", rel)
+			return fmt.Sprintf("containment: symlink %s cannot be resolved", showPath(rel))
 		}
 		inside, err := filepath.Rel(root, target)
 		if err != nil || !filepath.IsLocal(inside) {
-			return fmt.Sprintf("containment: symlink %q points outside the work tree", rel)
+			return fmt.Sprintf("containment: symlink %s points outside the work tree", showPath(rel))
 		}
+		inside = filepath.ToSlash(inside)
 		if inside == ".git" || strings.HasPrefix(inside, ".git/") {
-			return fmt.Sprintf("containment: symlink %q points into .git", rel)
+			return fmt.Sprintf("containment: symlink %s points into .git", showPath(rel))
+		}
+		if !job.Allowed(inside) {
+			return fmt.Sprintf("containment: symlink %s resolves to %s, which is not allowed", showPath(rel), showPath(inside))
 		}
 	}
 	return ""
@@ -370,28 +516,24 @@ func parsePorcelain(out string) ([]string, error) {
 	return paths, nil
 }
 
-// parseNameStatus reads `git diff --name-status -z`: a status field, then one path, or two for
-// a rename or copy.
-func parseNameStatus(out string) ([]string, error) {
+// parseDiffTree reads `git diff-tree -r -z --no-renames`: per change a field
+// ":<old mode> <new mode> <old object> <new object> <status>" and then the path.
+func parseDiffTree(out string) ([]treeChange, error) {
 	out = strings.TrimSuffix(out, "\x00")
 	if out == "" {
 		return nil, nil
 	}
 	fields := strings.Split(out, "\x00")
-	var paths []string
-	for i := 0; i < len(fields); i++ {
-		if fields[i] == "" {
-			return nil, fmt.Errorf("git diff: empty status field")
-		}
-		n := 1
-		if strings.ContainsAny(fields[i][:1], "RC") {
-			n = 2
-		}
-		if i+n >= len(fields) {
-			return nil, fmt.Errorf("git diff: status %q without its path", fields[i])
-		}
-		paths = append(paths, fields[i+1:i+1+n]...)
-		i += n
+	if len(fields)%2 != 0 {
+		return nil, fmt.Errorf("git diff-tree: odd number of fields")
 	}
-	return paths, nil
+	changes := make([]treeChange, 0, len(fields)/2)
+	for i := 0; i < len(fields); i += 2 {
+		meta := strings.Fields(strings.TrimPrefix(fields[i], ":"))
+		if !strings.HasPrefix(fields[i], ":") || len(meta) != 5 || fields[i+1] == "" {
+			return nil, fmt.Errorf("git diff-tree: malformed entry %q", fields[i])
+		}
+		changes = append(changes, treeChange{path: fields[i+1], mode: meta[1], object: meta[3]})
+	}
+	return changes, nil
 }

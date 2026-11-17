@@ -7,8 +7,10 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/scheduled"
@@ -295,9 +297,9 @@ func TestPostcheckRejectsASecret(t *testing.T) {
 				}
 			}
 			res, err := f.postcheck(job)
-			want := "out/a.md:2: Stripe live key"
+			want := `"out/a.md":2: Stripe live key`
 			if tc.finish != "" {
-				want = "out/index.md:1: Stripe live key"
+				want = `"out/index.md":1: Stripe live key`
 			}
 			f.assertNothingLanded(res, err, "secret scan", want)
 			if strings.Contains(res.Failure, "abc123") {
@@ -363,6 +365,10 @@ func TestPostcheckSymlinks(t *testing.T) {
 		"link into .git": {
 			setup: func(f *fixture) { f.symlink("../.git/config", "out/x.md") },
 			want:  []string{"out/x.md", "into .git"},
+		},
+		"link to an inside path Allowed refuses": {
+			setup: func(f *fixture) { f.symlink("../src/main.go", "out/x.md") },
+			want:  []string{`symlink "out/x.md" resolves to "src/main.go", which is not allowed`},
 		},
 		"link inside the work tree": {
 			setup: func(f *fixture) { f.symlink("keep.md", "out/x.md") },
@@ -462,7 +468,7 @@ func TestPostcheckResumeVerifiesTheAgentsPushedCommit(t *testing.T) {
 		want       []string
 	}{
 		"disallowed path": {path: "src/evil.go", body: "package main\n", want: []string{"src/evil.go", "not allowed"}},
-		"secret":          {path: "out/a.md", body: "sk_live_abc123\n", want: []string{"secret scan", "out/a.md:1: Stripe live key"}},
+		"secret":          {path: "out/a.md", body: "sk_live_abc123\n", want: []string{"secret scan", `"out/a.md":1: Stripe live key`}},
 		"check fails":     {path: "out/a.md", body: "x\n", checkErr: errors.New("too short"), want: []string{"check", "too short"}},
 	}
 	for name, tc := range cases {
@@ -570,5 +576,194 @@ func TestPostcheckRejectsMalformedArguments(t *testing.T) {
 	}
 	if f.pushes != 0 || len(job.Calls()) != 0 {
 		t.Errorf("pushes = %d, calls = %v", f.pushes, job.Calls())
+	}
+}
+
+// spyRunner runs git for real and, right after `git add`, also stages extra: a stand-in for
+// anything that changes the index between the checks and the commit.
+func spyRunner(t *testing.T, dir, extra string) workplace.Runner {
+	real := workplace.ExecRunner()
+	return func(ctx context.Context, timeout time.Duration, name string, args ...string) (string, int, error) {
+		out, code, err := real(ctx, timeout, name, args...)
+		if slices.Contains(args, "add") {
+			p := filepath.Join(dir, extra)
+			if werr := os.WriteFile(p, []byte("extra\n"), 0o644); werr != nil {
+				t.Error(werr)
+			}
+			runGit(t, dir, "add", extra)
+		}
+		return out, code, err
+	}
+}
+
+// Fails if the commit is made from whatever the index holds instead of exactly the checked set,
+// or if such a mismatch is a transient error instead of a Failure. The extra path is Allowed and
+// clean, so only the set comparison can catch it.
+func TestPostcheckCommitsOnlyTheCheckedSet(t *testing.T) {
+	f := newFixture(t)
+	f.write("out/a.md", "new\n")
+	env := scheduled.Env{Dir: f.work, Run: spyRunner(t, f.work, "out/extra.md")}
+	res, err := scheduled.Postcheck(context.Background(), env.Run, &scheduledtest.Job{AllowedPre: []string{"out/"}}, env, scheduled.Verdict{}, f.start, testBranch, f.push)
+	f.assertNothingLanded(res, err, `staged paths differ from the checked set: "out/extra.md"`)
+}
+
+// Fails if the secret scan reads the work tree instead of the blobs git stores: a
+// working-tree-encoding attribute makes git convert UTF-16 on disk to UTF-8 in the commit.
+func TestPostcheckScansWhatGitStores(t *testing.T) {
+	f := newFixture(t)
+	f.write("out/.gitattributes", "*.md working-tree-encoding=UTF-16LE\n")
+	var utf16 []byte
+	for _, r := range "token sk_live_abc123\n" {
+		utf16 = append(utf16, byte(r), 0)
+	}
+	f.write("out/a.md", string(utf16))
+	res, err := f.postcheck(&scheduledtest.Job{AllowedPre: []string{"out/"}})
+	f.assertNothingLanded(res, err, "secret scan", `"out/a.md":1: Stripe live key`)
+}
+
+// Fails if a token in a file name is not caught, or if it reaches the Failure: an Allowed name
+// fails on the scan, a refused name on the containment, and neither echoes the token.
+func TestPostcheckTokenInAFileName(t *testing.T) {
+	token := "ghp_" + strings.Repeat("a", 36)
+	cases := map[string]struct{ path, want string }{
+		"allowed name":     {path: "out/" + token + ".md", want: "secret scan: file name contains a GitHub personal token"},
+		"not allowed name": {path: "src/" + token + ".go", want: "containment: path (file name withheld: GitHub personal token) is not allowed"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			f := newFixture(t)
+			f.write(tc.path, "harmless\n")
+			res, err := f.postcheck(&scheduledtest.Job{AllowedPre: []string{"out/"}})
+			f.assertNothingLanded(res, err, tc.want)
+			if strings.Contains(res.Failure, token) {
+				t.Errorf("Failure echoes the token: %q", res.Failure)
+			}
+		})
+	}
+}
+
+// pushAgentCommit commits what change does as the agent and pushes it to the run branch.
+func (f *fixture) pushAgentCommit(change func()) {
+	f.t.Helper()
+	change()
+	f.git("add", "-A")
+	f.git("commit", "-q", "-m", "agent commit")
+	f.git("push", "-q", "origin", "HEAD:refs/heads/"+testBranch)
+}
+
+// Fails if resuming reads the work tree instead of the pushed commit: after the push the agent
+// hides the commit's content behind a harmless work tree, with an index flag that silences git
+// status (assume-unchanged, skip-worktree) or without one.
+func TestPostcheckResumeChecksThePushedCommit(t *testing.T) {
+	secret := func(f *fixture) { f.write("out/a.md", "sk_live_abc123\n") }
+	link := func(f *fixture) { f.symlink("/etc/hostname", "out/a.md") }
+	harmless := func(f *fixture) {
+		if err := os.Remove(filepath.Join(f.work, "out/a.md")); err != nil {
+			f.t.Fatal(err)
+		}
+		f.write("out/a.md", "harmless\n")
+	}
+	const hiddenMsg = `resume: "out/a.md" marked assume-unchanged or skip-worktree`
+	cases := map[string]struct {
+		commit func(f *fixture)
+		flag   string
+		want   string
+	}{
+		"secret, assume-unchanged":  {commit: secret, flag: "--assume-unchanged", want: hiddenMsg},
+		"secret, skip-worktree":     {commit: secret, flag: "--skip-worktree", want: hiddenMsg},
+		"symlink, assume-unchanged": {commit: link, flag: "--assume-unchanged", want: hiddenMsg},
+		"symlink, skip-worktree":    {commit: link, flag: "--skip-worktree", want: hiddenMsg},
+		"secret, no flag":           {commit: secret, want: `secret scan: "out/a.md":1: Stripe live key`},
+		"symlink, no flag":          {commit: link, want: `symlink "out/a.md" targets a path outside the work tree`},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			f := newFixture(t)
+			f.pushAgentCommit(func() { tc.commit(f) })
+			if tc.flag != "" {
+				f.git("update-index", tc.flag, "out/a.md")
+			}
+			harmless(f)
+			if tc.flag != "" {
+				if st := f.git("status", "--porcelain"); st != "" {
+					t.Fatalf("setup: git status not silenced: %q", st)
+				}
+			}
+			res, err := f.postcheck(&scheduledtest.Job{AllowedPre: []string{"out/"}})
+			if err != nil || !strings.Contains(res.Failure, tc.want) || res.Changed || f.pushes != 0 {
+				t.Errorf("Postcheck = %+v, %v (pushes %d); want Failure %q", res, err, f.pushes, tc.want)
+			}
+		})
+	}
+}
+
+// Fails if a resumed commit's symlink may target an inside path Allowed refuses, or if a gitlink
+// (submodule) in the commit passes.
+func TestPostcheckResumeObjectRules(t *testing.T) {
+	cases := map[string]struct {
+		commit func(f *fixture)
+		want   string
+	}{
+		"symlink to a refused path": {
+			commit: func(f *fixture) { f.symlink("../src/main.go", "out/x.md") },
+			want:   `symlink "out/x.md" targets "src/main.go", which is not allowed`,
+		},
+		"symlink into .git": {
+			commit: func(f *fixture) { f.symlink("../.git/config", "out/x.md") },
+			want:   `symlink "out/x.md" targets .git`,
+		},
+		"submodule": {
+			commit: func(f *fixture) {
+				// An empty directory keeps `git add -A` from staging the gitlink's removal.
+				if err := os.MkdirAll(filepath.Join(f.work, "out/mod"), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				f.git("update-index", "--add", "--cacheinfo", "160000,"+f.start+",out/mod")
+			},
+			want: `"out/mod" is a submodule`,
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			f := newFixture(t)
+			f.pushAgentCommit(func() { tc.commit(f) })
+			res, err := f.postcheck(&scheduledtest.Job{AllowedPre: []string{"out/"}})
+			if err != nil || !strings.Contains(res.Failure, tc.want) || f.pushes != 0 {
+				t.Errorf("Postcheck = %+v, %v (pushes %d); want Failure %q", res, err, f.pushes, tc.want)
+			}
+		})
+	}
+}
+
+// Fails if Check on resume runs on the work tree instead of a checkout of the pushed commit: the
+// commit deletes a required document that the work tree still has.
+func TestPostcheckResumeChecksTheCommitNotTheWorkTree(t *testing.T) {
+	f := newFixture(t)
+	f.pushAgentCommit(func() {
+		if err := os.Remove(filepath.Join(f.work, "out/keep.md")); err != nil {
+			t.Fatal(err)
+		}
+	})
+	f.write("out/keep.md", "keep\n")
+	var checked string
+	job := &scheduledtest.Job{
+		AllowedPre: []string{"out/"},
+		CheckFn: func(_ context.Context, env scheduled.Env, dir string) error {
+			checked = env.Dir
+			if _, err := os.Stat(filepath.Join(dir, "out/keep.md")); err != nil {
+				return errors.New("required document keep.md is missing")
+			}
+			return nil
+		},
+	}
+	res, err := f.postcheck(job)
+	if err != nil || !strings.Contains(res.Failure, "check: required document keep.md is missing") {
+		t.Errorf("Postcheck = %+v, %v; want the Check Failure", res, err)
+	}
+	if checked == f.work {
+		t.Error("Check got the workplace as env.Dir, want the checkout of the commit")
+	}
+	if out := f.git("worktree", "list", "--porcelain"); strings.Count(out, "worktree ") != 1 {
+		t.Errorf("temporary checkout left registered:\n%s", out)
 	}
 }
