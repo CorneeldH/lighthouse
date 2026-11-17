@@ -4,8 +4,6 @@ import (
 	"context"
 	"sync"
 	"time"
-
-	"github.com/CorneeldH/lighthouse/internal/overview"
 )
 
 const (
@@ -19,15 +17,18 @@ const (
 	// BuildTimeout bounds a single build: three times the 16–20 s of a live build, for a slow
 	// GitHub. Builds read repositories one after the other, so more repositories need more.
 	BuildTimeout = 60 * time.Second
+	// PrioritiesInterval is the time from the start of one prioritisation build to the next:
+	// slower than the overview, as the planning reads are heavier and change less often.
+	PrioritiesInterval = 300 * time.Second
 )
 
-// BuildFunc builds the forge overview once.
-type BuildFunc func(ctx context.Context) (overview.Overview, error)
+// BuildFunc builds one value of type T once.
+type BuildFunc[T any] func(ctx context.Context) (T, error)
 
-// Refresher keeps the last forge overview in memory and rebuilds it in the background.
+// Refresher keeps the last built value in memory and rebuilds it in the background.
 // Builds never overlap: Run builds, waits, builds again.
-type Refresher struct {
-	build    BuildFunc
+type Refresher[T any] struct {
+	build    BuildFunc[T]
 	interval time.Duration
 	retry    time.Duration
 	timeout  time.Duration
@@ -36,13 +37,13 @@ type Refresher struct {
 	readyOnce sync.Once
 
 	mu  sync.RWMutex
-	ov  overview.Overview
+	val T
 	err error
 }
 
 // NewRefresher returns a Refresher that has not built anything yet.
-func NewRefresher(build BuildFunc, interval, retry, timeout time.Duration) *Refresher {
-	return &Refresher{
+func NewRefresher[T any](build BuildFunc[T], interval, retry, timeout time.Duration) *Refresher[T] {
+	return &Refresher[T]{
 		build:    build,
 		interval: interval,
 		retry:    retry,
@@ -51,21 +52,22 @@ func NewRefresher(build BuildFunc, interval, retry, timeout time.Duration) *Refr
 	}
 }
 
-// Overview returns the result of the last build, waiting for the first one. A failed last
-// build returns its error, not an older overview.
-func (r *Refresher) Overview(ctx context.Context) (overview.Overview, error) {
+// Latest returns the result of the last build, waiting for the first one. A failed last
+// build returns its error, not an older value.
+func (r *Refresher[T]) Latest(ctx context.Context) (T, error) {
 	select {
 	case <-r.ready:
 	case <-ctx.Done():
-		return overview.Overview{}, ctx.Err()
+		var zero T
+		return zero, ctx.Err()
 	}
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	return r.ov, r.err
+	return r.val, r.err
 }
 
 // Run builds now and then on the interval (sooner after a failure) until ctx is done.
-func (r *Refresher) Run(ctx context.Context) {
+func (r *Refresher[T]) Run(ctx context.Context) {
 	for {
 		start := time.Now()
 		wait := r.interval
@@ -87,15 +89,15 @@ func (r *Refresher) Run(ctx context.Context) {
 
 // refresh does exactly one build and stores its result. It reports whether the build
 // succeeded. A build cut short because ctx ended stores nothing.
-func (r *Refresher) refresh(ctx context.Context) bool {
+func (r *Refresher[T]) refresh(ctx context.Context) bool {
 	bctx, cancel := context.WithTimeout(ctx, r.timeout)
 	defer cancel()
-	ov, err := r.build(bctx)
+	val, err := r.build(bctx)
 	if ctx.Err() != nil {
 		return false
 	}
 	r.mu.Lock()
-	r.ov, r.err = ov, err
+	r.val, r.err = val, err
 	r.mu.Unlock()
 	r.readyOnce.Do(func() { close(r.ready) })
 	return err == nil

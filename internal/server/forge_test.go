@@ -353,7 +353,7 @@ func TestEndpointsShareOneBuild(t *testing.T) {
 
 	// d.Forge shares the counting source, so a handler that builds per request is counted too.
 	d := testDeps(src, nil)
-	d.Overview = r.Overview
+	d.Overview = r.Latest
 	h := New(testSite(), d)
 	for _, path := range []string{"/api/questions", "/api/returned", "/api/questions", "/api/returned"} {
 		rec := get(h, path)
@@ -383,7 +383,7 @@ func TestEndpointFailureAfterSuccessIs502(t *testing.T) {
 	r.refresh(context.Background())
 
 	d := testDeps(populated(), nil)
-	d.Overview = r.Overview
+	d.Overview = r.Latest
 	h := New(testSite(), d)
 	for _, path := range []string{"/api/questions", "/api/returned"} {
 		rec := get(h, path)

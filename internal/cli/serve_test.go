@@ -23,6 +23,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/forge/gitlabtest"
 	"github.com/CorneeldH/lighthouse/internal/hostconfig"
 	"github.com/CorneeldH/lighthouse/internal/overview"
+	"github.com/CorneeldH/lighthouse/internal/priorities"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
 	"github.com/CorneeldH/lighthouse/internal/server"
 	"github.com/CorneeldH/lighthouse/internal/store"
@@ -97,7 +98,7 @@ func startServe(t *testing.T) (addr string, stop func() error) {
 	errOut := &syncBuf{}
 	done := make(chan error, 1)
 	go func() {
-		done <- serve(ctx, "127.0.0.1:0", filepath.Join(t.TempDir(), "l.db"), nil, nil, server.RunsMeta{}, server.RefreshInterval, errOut)
+		done <- serve(ctx, "127.0.0.1:0", filepath.Join(t.TempDir(), "l.db"), nil, nil, server.RunsMeta{}, server.RefreshInterval, server.PrioritiesInterval, errOut)
 	}()
 
 	addr = waitListening(t, errOut, done)
@@ -789,5 +790,34 @@ repo = "g/sub/p"
 	if len(ov.Questions) != 1 || ov.Questions[0].Number != 7 || ov.Questions[0].Repo != "g/sub/p" ||
 		!strings.Contains(ov.Questions[0].Question, "Welke kleur?") {
 		t.Errorf("Questions = %+v, want the question on g/sub/p#7", ov.Questions)
+	}
+}
+
+func TestStartPrioritiesWithoutReposReportsNotConfigured(t *testing.T) {
+	overviewRead := func(context.Context) (overview.Overview, error) {
+		t.Error("overview read without sources")
+		return overview.Overview{}, nil
+	}
+	read, stopped := startPriorities(context.Background(), nil, overviewRead, server.PrioritiesInterval)
+	if _, err := read(context.Background()); !errors.Is(err, forge.ErrNotConfigured) {
+		t.Fatalf("err = %v, want forge.ErrNotConfigured", err)
+	}
+	done := make(chan struct{})
+	go func() { stopped(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("stopped() blocked without sources")
+	}
+}
+
+func TestStartPrioritiesFailedOverviewFailsBuild(t *testing.T) {
+	boom := errors.New("overview down")
+	overviewRead := func(context.Context) (overview.Overview, error) { return overview.Overview{}, boom }
+	ctx, cancel := context.WithCancel(context.Background())
+	read, stopped := startPriorities(ctx, []priorities.Source{{Slug: "o/r", Src: &countingSource{}}}, overviewRead, server.PrioritiesInterval)
+	defer func() { cancel(); stopped() }()
+	if _, err := read(ctx); !errors.Is(err, boom) {
+		t.Fatalf("err = %v, want the overview error", err)
 	}
 }
