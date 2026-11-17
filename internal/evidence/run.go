@@ -402,6 +402,9 @@ func runRow(row prbody.Row, cwd string, ghOK bool, timeout time.Duration) (strin
 	if argv[0] == "gh" && !ghOK {
 		return Unmeasurable, "gh not reachable", nil
 	}
+	if argv[0] == "lighthouse" && !ghOK {
+		return Unmeasurable, "forge not reachable", nil
+	}
 	got := runCapped(argv, cwd, timeout)
 	if got.reason != "" {
 		return Unmeasurable, got.reason, nil
@@ -433,11 +436,25 @@ func RunRow(row prbody.Row, cwd string, ghOK bool, timeout time.Duration) (outco
 	return outcome, detail
 }
 
-// ghReachable is `gh api rate_limit` answering with exit 0 within GHProbeTimeoutS.
+// probeArgv is the reachability probe of the forge: `gh api rate_limit` on GitHub (also when
+// forge.kind cannot be read), `lighthouse forge api user` on GitLab.
+func probeArgv() []string {
+	if path, err := config.Path(); err == nil {
+		if c, err := config.Load(path); err == nil {
+			if kind, err := config.Lookup(c, "forge.kind"); err == nil && fmt.Sprint(kind) == "gitlab" {
+				return []string{"lighthouse", "forge", "api", "user"}
+			}
+		}
+	}
+	return []string{"gh", "api", "rate_limit", "--jq", ".rate.remaining"}
+}
+
+// ghReachable is the probe of probeArgv answering with exit 0 within GHProbeTimeoutS.
 func ghReachable() bool {
 	ctx, cancel := context.WithTimeout(context.Background(), GHProbeTimeoutS*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "gh", "api", "rate_limit", "--jq", ".rate.remaining")
+	argv := probeArgv()
+	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Env = append(os.Environ(), subEnv...)
 	deadline.InOwnGroup(cmd)
 	cmd.Cancel = func() error { deadline.KillGroup(cmd); return nil }
@@ -450,10 +467,11 @@ func cell(text string) string {
 	return strings.ReplaceAll(strings.Join(strings.FieldsFunc(text, pyIsSpace), " "), "|", `\|`)
 }
 
-// runsGH is a row that counts for the gh probe: valid, a gh row, and not skipped.
+// runsGH is a row that counts for the forge probe: valid, a gh or `lighthouse forge` row, and
+// not skipped.
 func runsGH(row prbody.Row, beforePR bool) (bool, error) {
 	argv, reason, err := rowArgv(row)
-	if err != nil || reason != "" || argv[0] != "gh" {
+	if err != nil || reason != "" || (argv[0] != "gh" && argv[0] != "lighthouse") {
 		return false, err
 	}
 	_, afterPR, err := expected(row.Result)
