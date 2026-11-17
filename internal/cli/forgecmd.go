@@ -99,7 +99,7 @@ func forgeUsage(cmd *cobra.Command, msg string) error {
 	return &exitError{code: forgeExitUsage, err: errSilent}
 }
 
-// forgeFail prints err on stderr and picks the exit code: an *exitError keeps its code, any
+// fail prints err on stderr and picks the exit code: an *exitError keeps its code, any
 // other error is a forge error, exit 1.
 func (e *forgeEnv) fail(cmd *cobra.Command, err error) error {
 	code := forgeExitForge
@@ -131,7 +131,7 @@ func newForgeCommandWith(env *forgeEnv) *cobra.Command {
 	return cmd
 }
 
-// group is a parent command that only holds subcommands; with no or an unknown one it is
+// forgeGroup is a parent command that only holds subcommands; with no or an unknown one it is
 // exit 2.
 func forgeGroup(use, short string) *cobra.Command {
 	return &cobra.Command{

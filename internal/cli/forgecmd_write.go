@@ -82,7 +82,6 @@ func newForgeIssueWriteCommands(env *forgeEnv) []*cobra.Command {
 
 func newForgeIssueCreateCommand(env *forgeEnv) *cobra.Command {
 	var in forge.NewIssue
-	var bodyFile string
 	cmd := &cobra.Command{
 		Use: "create --title T --body-file F [--label L]... [--milestone TITLE]", Short: "Create an issue; prints its number and URL",
 		Args: forgeArgs(0),
@@ -106,14 +105,14 @@ func newForgeIssueCreateCommand(env *forgeEnv) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&in.Title, "title", "", "the title (required)")
-	cmd.Flags().StringVar(&bodyFile, "body-file", "", "file with the body (required)")
+	cmd.Flags().String("body-file", "", "file with the body (required)")
 	cmd.Flags().StringArrayVar(&in.Labels, "label", nil, "a label; repeatable")
 	cmd.Flags().StringVar(&in.Milestone, "milestone", "", "the title of the milestone")
 	return cmd
 }
 
 func newForgeIssueEditCommand(env *forgeEnv) *cobra.Command {
-	var title, bodyFile, milestone string
+	var title, milestone string
 	var addLabels, removeLabels []string
 	cmd := &cobra.Command{
 		Use:   "edit <number> [--title T] [--body-file F] [--milestone TITLE] [--add-label L]... [--remove-label L]...",
@@ -152,7 +151,7 @@ func newForgeIssueEditCommand(env *forgeEnv) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&title, "title", "", "the new title")
-	cmd.Flags().StringVar(&bodyFile, "body-file", "", "file with the new body")
+	cmd.Flags().String("body-file", "", "file with the new body")
 	cmd.Flags().StringVar(&milestone, "milestone", "", "the title of the milestone; empty removes it")
 	cmd.Flags().StringArrayVar(&addLabels, "add-label", nil, "a label to add; repeatable")
 	cmd.Flags().StringArrayVar(&removeLabels, "remove-label", nil, "a label to remove; repeatable")
@@ -161,7 +160,6 @@ func newForgeIssueEditCommand(env *forgeEnv) *cobra.Command {
 
 // newForgeCommentCommand is `comment <number> --body-file F`; post sends it (issue or change).
 func newForgeCommentCommand(env *forgeEnv, short string, post func(f forge.Forge, cmd *cobra.Command, n int, body string) (string, error)) *cobra.Command {
-	var bodyFile string
 	cmd := &cobra.Command{
 		Use: "comment <number> --body-file F", Short: short, Args: forgeArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -183,7 +181,7 @@ func newForgeCommentCommand(env *forgeEnv, short string, post func(f forge.Forge
 			})
 		},
 	}
-	cmd.Flags().StringVar(&bodyFile, "body-file", "", "file with the comment (required)")
+	cmd.Flags().String("body-file", "", "file with the comment (required)")
 	return cmd
 }
 
@@ -271,7 +269,6 @@ func newForgePRWriteCommands(env *forgeEnv) []*cobra.Command {
 
 func newForgePRCreateCommand(env *forgeEnv) *cobra.Command {
 	var in forge.NewPR
-	var bodyFile string
 	cmd := &cobra.Command{
 		Use: "create --title T --body-file F [--head BRANCH] [--base BRANCH] [--milestone TITLE]", Short: "Create a pull request (merge request); prints its number and URL",
 		Args: forgeArgs(0),
@@ -311,7 +308,7 @@ func newForgePRCreateCommand(env *forgeEnv) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&in.Title, "title", "", "the title (required)")
-	cmd.Flags().StringVar(&bodyFile, "body-file", "", "file with the body (required)")
+	cmd.Flags().String("body-file", "", "file with the body (required)")
 	cmd.Flags().StringVar(&in.Head, "head", "", "the source branch (default: the current branch)")
 	cmd.Flags().StringVar(&in.Base, "base", "", "the target branch (default: the forge's default branch)")
 	cmd.Flags().StringVar(&in.Milestone, "milestone", "", "the title of the milestone")
@@ -343,7 +340,7 @@ func (e *forgeEnv) loadRepo(cmd *cobra.Command) (repoconfig.Repo, error) {
 }
 
 func newForgeMilestoneWriteCommands(env *forgeEnv) []*cobra.Command {
-	var createTitle, createDesc string
+	var createTitle string
 	create := &cobra.Command{
 		Use: "create --title T [--description-file F]", Short: "Create a milestone; prints its number", Args: forgeArgs(0),
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -368,9 +365,9 @@ func newForgeMilestoneWriteCommands(env *forgeEnv) []*cobra.Command {
 		},
 	}
 	create.Flags().StringVar(&createTitle, "title", "", "the title (required)")
-	create.Flags().StringVar(&createDesc, "description-file", "", "file with the description")
+	create.Flags().String("description-file", "", "file with the description")
 
-	var newTitle, editDesc string
+	var newTitle string
 	edit := &cobra.Command{
 		Use: "edit <title> [--title T] [--description-file F]", Short: "Edit the milestone with this title", Args: forgeArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -402,6 +399,6 @@ func newForgeMilestoneWriteCommands(env *forgeEnv) []*cobra.Command {
 		},
 	}
 	edit.Flags().StringVar(&newTitle, "title", "", "the new title")
-	edit.Flags().StringVar(&editDesc, "description-file", "", "file with the new description")
+	edit.Flags().String("description-file", "", "file with the new description")
 	return []*cobra.Command{create, edit}
 }

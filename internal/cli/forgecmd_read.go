@@ -11,7 +11,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/forge"
 )
 
-// forgeRead is one read command: it opens the forge, runs get and prints the result, filtered
+// read is one read command: it opens the forge, runs get and prints the result, filtered
 // by --field. The result is rendered first and filtered after, so --field sees the JSON shape.
 func (e *forgeEnv) read(cmd *cobra.Command, field string, get func(f forge.Forge) (any, error)) error {
 	f, err := e.open(cmd.Context())
