@@ -119,6 +119,13 @@ func (g *gitlabFixture) AddOpenPR(_ *testing.T, pr forge.OpenPR) {
 // ChecksOnClosedPRs: BranchPRs reads head_pipeline only for an open merge request.
 func (g *gitlabFixture) ChecksOnClosedPRs() bool { return false }
 
+// SupportsPlanning: GitLab's Planning is a stub until the GitLab task.
+func (g *gitlabFixture) SupportsPlanning() bool { return false }
+
+func (g *gitlabFixture) SetCloseReason(*testing.T, int, string) {}
+
+func (g *gitlabFixture) AddMilestone(*testing.T, forge.Milestone) {}
+
 // ListsClosedIssues: every issue is on the board, closed ones within the closed window.
 func (g *gitlabFixture) ListsClosedIssues() bool { return true }
 

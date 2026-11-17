@@ -78,6 +78,24 @@ func (g *githubFixture) AddIssue(_ *testing.T, is forge.Issue) {
 	g.srv.Issues[is.Number] = it
 }
 
+func (g *githubFixture) SetCloseReason(t *testing.T, number int, reason string) {
+	t.Helper()
+	it, ok := g.srv.Issues[number]
+	if !ok {
+		t.Fatalf("githubFixture: SetCloseReason(%d) before AddIssue", number)
+	}
+	it["state_reason"] = reason
+}
+
+func (g *githubFixture) AddMilestone(_ *testing.T, m forge.Milestone) {
+	g.srv.PlanMilestones = append(g.srv.PlanMilestones, map[string]any{
+		"number": m.Number, "title": m.Title, "state": strings.ToUpper(m.State), "description": m.Description,
+	})
+}
+
+// SupportsPlanning: Planning reads GraphQL issues and search counts.
+func (g *githubFixture) SupportsPlanning() bool { return true }
+
 func (g *githubFixture) AddComment(_ *testing.T, number int, author, body string) int64 {
 	c := g.srv.AddComment(number, author, body)
 	return c["id"].(int64)
