@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/workplace"
@@ -74,10 +75,13 @@ func StartState(ctx context.Context, run workplace.Runner, dir string) (sha, sta
 
 // GitState is a digest of the git state of the workplace dir: its git dir and common dir, and the
 // content of the files that decide what git runs there (gitStateFiles; a missing file counts as
-// missing). It runs only `git rev-parse` for the two dirs, which runs no filter, hook or helper,
-// so it is safe in a workplace whose config the agent may have changed. Before the check after a
-// run, the tick compares it with the state recorded at the start: a change means the agent wrote
-// config that the commit, the push or a checkout would run.
+// missing). Of the two config files it hashes the entries (configEntries) without the branch.*
+// ones: tracking branches of other runs land in the common config of a shared repository, and
+// none of those keys makes git run anything. It runs only `git rev-parse` for the two dirs and
+// `git config --file`, which run no filter, hook or helper, so it is safe in a workplace whose
+// config the agent may have changed. Before the check after a run, the tick compares it with the
+// state recorded at the start: a change means the agent wrote config that the commit, the push or
+// a checkout would run.
 func GitState(ctx context.Context, run workplace.Runner, dir string) (string, error) {
 	g := gitIn{run: run, dir: dir}
 	gitDir, err := g.ok(ctx, "rev-parse", "--absolute-git-dir")
@@ -104,10 +108,38 @@ func GitState(ctx context.Context, run workplace.Runner, dir string) (string, er
 				cause = pe.Err
 			}
 			return "", fmt.Errorf("scheduled: git state: read %s: %w", filepath.Base(p), cause)
+		case filepath.Base(p) != "attributes":
+			entries, err := g.configEntries(ctx, p, b)
+			if err != nil {
+				return "", err
+			}
+			_, _ = fmt.Fprintf(h, "%s\x00%d\x00", p, len(entries))
+			_, _ = h.Write([]byte(entries)) // a hash.Hash never fails a Write
 		default:
 			_, _ = fmt.Fprintf(h, "%s\x00%d\x00", p, len(b))
-			_, _ = h.Write(b) // a hash.Hash never fails a Write
+			_, _ = h.Write(b)
 		}
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+// configEntries is the config file p (content b) as git reads it, one key\nvalue\x00 per
+// entry in file order, without the entries of a branch.* section and without following
+// includes (an include stays an entry of its own). A file git cannot read is its raw content,
+// marked as such: it then differs from any readable file.
+func (g gitIn) configEntries(ctx context.Context, p string, b []byte) (string, error) {
+	out, code, err := g.raw(ctx, "config", "--file", p, "--no-includes", "--list", "-z")
+	if err != nil {
+		return "", err
+	}
+	if code != 0 {
+		return "unreadable\x00" + string(b), nil
+	}
+	var kept strings.Builder
+	for _, e := range strings.SplitAfter(out, "\x00") {
+		if e != "" && !strings.HasPrefix(e, "branch.") {
+			kept.WriteString(e)
+		}
+	}
+	return kept.String(), nil
 }

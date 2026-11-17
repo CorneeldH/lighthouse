@@ -258,3 +258,54 @@ func TestGitStateIgnoresHeadAndSeesConfigWorktree(t *testing.T) {
 		t.Errorf("GitState after config.worktree = %q, %v; want a change", now, err)
 	}
 }
+
+// Fails if a tracking branch another run sets up in the shared common config (local workplace:
+// `git worktree add -b <b> --track`) counts as tampering, so that every scheduled run fails while
+// an issue starts; or if a key that runs code, or a config git cannot read, does not count.
+func TestGitStateIgnoresBranchEntriesOnly(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	run := workplace.ExecRunner()
+	start, err := scheduled.GitState(ctx, run, f.work)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.git("worktree", "add", "-q", "-b", "issue-7-x", "--track", filepath.Join(t.TempDir(), "wt"), "origin/main")
+	f.git("config", "branch.other.remote", "origin")
+	if now, err := scheduled.GitState(ctx, run, f.work); err != nil || now != start {
+		t.Fatalf("GitState after tracking branches = %q, %v; want the start state", now, err)
+	}
+	f.git("config", "core.sshCommand", "touch /tmp/x")
+	changed, err := scheduled.GitState(ctx, run, f.work)
+	if err != nil || changed == start {
+		t.Errorf("GitState after core.sshCommand = %q, %v; want a change", changed, err)
+	}
+	// A config.worktree git cannot parse (git reads it only with extensions.worktreeConfig, so
+	// rev-parse still works) is a state of its own.
+	worktreeCfg := filepath.Join(f.work, ".git", "config.worktree")
+	if err := os.WriteFile(worktreeCfg, []byte("# nothing\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	empty, err := scheduled.GitState(ctx, run, f.work)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(worktreeCfg, []byte("[broken\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if broken, err := scheduled.GitState(ctx, run, f.work); err != nil || broken == empty || broken == changed {
+		t.Errorf("GitState of an unreadable config.worktree = %q, %v; want another state", broken, err)
+	}
+	// A repository config git cannot parse at all is an error: no state to compare.
+	cfg := filepath.Join(f.work, ".git", "config")
+	b, err := os.ReadFile(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cfg, append(b, []byte("\n[broken\n")...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if broken, err := scheduled.GitState(ctx, run, f.work); err == nil {
+		t.Errorf("GitState of an unreadable config = %q, want an error", broken)
+	}
+}
