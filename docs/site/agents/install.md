@@ -56,7 +56,7 @@ Read, do not change, and do not ask yet. Find out:
 | `python3`, `tomllib` (Python 3.11+) | all | The hooks report `COULD NOT CHECK`, and the blocking ones block. |
 | `git` | core, expo, go, shell | Nothing works. |
 | `jq` | core, go, python, shell | The hooks cannot read their payload and report `COULD NOT CHECK`. |
-| `gh` | core, python | The issue and PR skills cannot reach GitHub. |
+| `gh` | core, python | The skills that do not yet use `lighthouse forge` cannot reach GitHub. The chain skills need `gh` only for the fallback `gh auth token`. |
 | `superpowers` | core, expo | The skills cannot hand off worktrees, specs, plans and debugging. |
 | `codex` (optional) | core | The two adversarial reviews stop with `CODEX_MISSING`. |
 | `uv` | python | The test gate `uv run pytest -q` and `ty-gate` cannot start. |
