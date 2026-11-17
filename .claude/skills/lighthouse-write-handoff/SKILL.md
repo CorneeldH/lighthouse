@@ -246,6 +246,7 @@ tick starts the next phase itself. Two entries:
    | build done, last commit green | `/lighthouse-write-pr <nr>` |
    | PR open | `/lighthouse-close-issue <nr>` — final handoff: the controller does not start it from the handoff, but after the merge of the `Refs` PR, as the close check |
    | PR red | `/lighthouse-fix-pr <pr>` |
+   | the range touches `.github/workflows/` (build done, or a fix-pr run that fixed the PR) | `push-workflows` — no slash command; the step above says how: V2b first, `after:` only while there is no PR. The tick starts the workflow pusher, never a session |
    | issue without spec, design open | `/superpowers:brainstorming` — the controller returns the issue |
    | plan the user has to guide themselves (only controller run) | `/superpowers:executing-plans <absolute plan path>` without `lane:` — the controller never starts this: it returns it, the status stays `Controller` |
    | a plan, native on a decision of the user | `/superpowers:executing-plans <absolute plan path>`, with field `lane: native` — the controller starts it on Sonnet |
@@ -266,6 +267,7 @@ tick starts the next phase itself. Two entries:
    [ "$(git branch --show-current)" = "$B" ] || git push -u origin HEAD
    ```
    A failed push does not block the post: its error line goes under `Watch out:` in the block.
+   Exception on the workflow route (a controller run, if present): when the unpushed range (`origin/<branch>..HEAD`, or from the merge-base with `origin/<default branch>` when the branch is not on origin) touches `.github/workflows/`, never push (`workflow-push-gate` blocks it): run V2b of `/lighthouse-write-pr` with `lighthouse roborev-gate gate --push` first, then post the block with `next: push-workflows`, `after: /lighthouse-write-pr <nr>` (only while there is no PR) and `roborev: <the output of lighthouse roborev-gate body-line --push>`; the workflow pusher pushes.
    Then post:
    ```bash
    R=$(lighthouse config forge.repo) || exit 2

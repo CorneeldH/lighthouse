@@ -235,8 +235,8 @@ func TestTickNoRepos(t *testing.T) {
 	if err := conn.QueryRow(`PRAGMA user_version`).Scan(&v); err != nil {
 		t.Fatal(err)
 	}
-	if v != 8 {
-		t.Errorf("user_version = %d, want 8", v)
+	if v != 9 {
+		t.Errorf("user_version = %d, want 9", v)
 	}
 }
 
@@ -1934,5 +1934,54 @@ func TestTickOpensGitLabRepoWithoutProjectIDs(t *testing.T) {
 	}
 	if len(out) != 1 || out[0].err != nil {
 		t.Fatalf("openForges = %+v, want one open forge", out)
+	}
+}
+
+// A push-workflows handoff with [dispatch.workflow_push] in host.toml becomes a KindPush; the
+// unconfigured repo hands it back instead. Apply knows no KindPush yet (the pusher start comes
+// with the apply change), so the push shows as the one apply error of that kind and nothing is
+// posted or spawned.
+func TestTickPushHandoffYieldsKindPush(t *testing.T) {
+	for name, tc := range map[string]struct {
+		configured bool
+		wantErr    string
+		wantPosted string // the kind of the comment tick posts, "" when none
+	}{
+		"configured": {true, "", ""},
+		"off":        {false, "", "Returned"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			env, db := tickFixture(t, repoDir(t, completeRepo))
+			srv, w := startable(t, &env)
+			if tc.configured {
+				appendHostToml(t, env, "\n[dispatch.workflow_push]\ntoken_file = \"/run/t\"\n")
+			}
+			srv.Comments = map[int][]map[string]any{7: {handoffComment("push-workflows", "now")}}
+			var started [][]string
+			env.Spawn = func(_ context.Context, args, _ []string) error { started = append(started, args); return nil }
+			var errOut bytes.Buffer
+			err := tick(context.Background(), env, db, &errOut)
+			if tc.wantErr == "" {
+				if err != nil {
+					t.Fatalf("tick = %v\n%s", err, errOut.String())
+				}
+			} else if err == nil || !strings.Contains(err.Error()+errOut.String(), tc.wantErr) {
+				t.Fatalf("tick = %v\n%s\nwant an error with %q", err, errOut.String(), tc.wantErr)
+			}
+			posted := bodies(srv, 7)
+			switch {
+			case tc.wantPosted == "" && len(posted) != 1:
+				t.Errorf("comments on #7 = %q, want the handoff only", posted)
+			case tc.wantPosted != "" && (len(posted) != 2 || !strings.HasPrefix(posted[1], "🤖 "+tc.wantPosted+"\n") ||
+				!strings.Contains(posted[1], "cd /work/issue-7-issue && git push -u origin HEAD")):
+				t.Errorf("comments on #7 = %q, want a %s with the push command", posted, tc.wantPosted)
+			}
+			if len(w.spawned()) != 0 {
+				t.Errorf("spawned %v, want no session", w.spawned())
+			}
+			if (len(started) == 1) != tc.configured || len(started) > 1 {
+				t.Errorf("pusher starts = %v, want one when configured (%v)", started, tc.configured)
+			}
+		})
 	}
 }

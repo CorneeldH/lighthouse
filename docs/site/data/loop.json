@@ -623,6 +623,26 @@
       "status": "works"
     },
     {
+      "id": "push-workflows",
+      "phase": "pr",
+      "row": 6,
+      "kind": "lighthouse",
+      "form": "dispatcher",
+      "trigger": "event",
+      "label": "push-workflows",
+      "what": "A deterministic step of the dispatcher that pushes a branch which touches .github/workflows/, because a run never gets a token with workflow scope.",
+      "how": [
+        "A run whose branch touches .github/workflows/ does not push: workflow-push-gate blocks it, and the run posts a handoff with next: push-workflows after a roborev review of the range.",
+        "The tick starts lighthouse push-workflows as its own process. It checks the worktree, the fast-forward, the roborev record, a policy on the workflow diff, actionlint and zizmor, and sends a pre-merge workflow past two or three sandboxed reviewers that must agree.",
+        "Only after that it reads the workflow token, held in a file with mode 0600, and runs the one git push. In shadow mode the review decides nothing and a question with the diff asks you; the answer push permits exactly that commit.",
+        "On the build route it hands over to write-pr, on the fix-pr route it keeps the PR and the tick merges or repairs it, and a PR that touches workflows is merged by the pusher itself once it has pushed that branch."
+      ],
+      "when": "When a controller run changes a workflow file and hands off with next: push-workflows.",
+      "without": "A workflow change ends on an improvised question that advises widening a token scope.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/pusher"
+    },
+    {
       "id": "close-issue",
       "phase": "close",
       "row": 0,
@@ -707,6 +727,26 @@
     {
       "from": "pr-and-ci",
       "to": "close-issue",
+      "status": "works"
+    },
+    {
+      "from": "commit-test-gate",
+      "to": "push-workflows",
+      "status": "works"
+    },
+    {
+      "from": "fix-pr",
+      "to": "push-workflows",
+      "status": "works"
+    },
+    {
+      "from": "push-workflows",
+      "to": "write-pr",
+      "status": "works"
+    },
+    {
+      "from": "push-workflows",
+      "to": "fix-pr",
       "status": "works"
     }
   ],
@@ -865,11 +905,29 @@
       ]
     },
     {
+      "id": "workflow-push",
+      "label": "Workflow change",
+      "note": "A branch that touches .github/workflows/ is not pushed by the run: the workflow pusher of the dispatcher pushes it, then write-pr or fix-pr carries on.",
+      "chips": [
+        "start-issue",
+        "using-git-worktrees",
+        "route-issue",
+        "commit-test-gate",
+        "push-workflows",
+        "write-pr",
+        "pr-create-gate",
+        "pr-and-ci",
+        "fix-pr",
+        "close-issue"
+      ]
+    },
+    {
       "id": "red-pr",
       "label": "Red PR",
       "chips": [
         "pr-and-ci",
         "fix-pr",
+        "push-workflows",
         "receiving-code-review",
         "pr-and-ci"
       ]

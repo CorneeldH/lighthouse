@@ -23,12 +23,15 @@ const (
 	VerdictInteractive
 	VerdictRejected
 	VerdictSkillMissing
+	// VerdictPush is `next: push-workflows`: the pusher, not a session, takes the next step.
+	VerdictPush
 )
 
 const (
 	cmdClose       = "/lighthouse-close-issue"
 	cmdBrainstorm  = "/superpowers:brainstorming"
 	cmdInteractive = "/superpowers:executing-plans"
+	cmdPush        = "push-workflows"
 	laneNative     = "native"
 	maxSlug        = 40
 )
@@ -77,8 +80,9 @@ func rewrite(command string) string {
 	return command
 }
 
-// Judge decides what the dispatcher does with the next command of a handoff.
-func Judge(next string, issue int, lane string, installed map[string]bool) Judgement {
+// Judge decides what the dispatcher does with the next command of a handoff. after is the
+// `after` field of the handoff; only push-workflows reads it.
+func Judge(next string, issue int, lane, after string, installed map[string]bool) Judgement {
 	fields := strings.Fields(next)
 	if len(fields) == 0 {
 		return Judgement{Verdict: VerdictRejected, Arg: "(empty)"}
@@ -87,6 +91,8 @@ func Judge(next string, issue int, lane string, installed map[string]bool) Judge
 	full := strings.Join(append([]string{command}, args...), " ")
 	j := Judgement{Command: full}
 	switch command {
+	case cmdPush:
+		return judgePush(args, full, after, issue, lane, installed)
 	case cmdClose:
 		j.Verdict = VerdictEnd
 		return j
@@ -115,6 +121,24 @@ func Judge(next string, issue int, lane string, installed map[string]bool) Judge
 	}
 	j.Verdict, j.Native = VerdictStart, native
 	return j
+}
+
+// judgePush judges `push-workflows`: no arguments, and an after that is empty or that Judge
+// itself would start (so a push never chains into another push or into a rejected command).
+// The Arg of a push is the after command.
+func judgePush(args []string, full, after string, issue int, lane string, installed map[string]bool) Judgement {
+	reject := Judgement{Verdict: VerdictRejected, Command: full, Arg: full}
+	if len(args) != 0 {
+		return reject
+	}
+	after = strings.TrimSpace(after)
+	if after != "" {
+		if next := Judge(after, issue, lane, "", installed); next.Verdict != VerdictStart {
+			reject.Arg = after
+			return reject
+		}
+	}
+	return Judgement{Verdict: VerdictPush, Command: cmdPush, Arg: after}
 }
 
 func argFits(command string, args []string, issue int) bool {

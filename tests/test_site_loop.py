@@ -285,6 +285,8 @@ def test_coverage_flags_a_removed_skill():
 
 # Handoffs the dispatcher starts itself, not through a handoff block.
 DISPATCHED = {("pr-and-ci", "fix-pr")}
+# Handoffs into the workflow pusher: `next: push-workflows`, no slash command.
+PUSHER = {("commit-test-gate", "push-workflows"), ("fix-pr", "push-workflows")}
 
 
 def test_works_handoffs_follow_the_handoff_table():
@@ -299,6 +301,10 @@ def test_works_handoffs_follow_the_handoff_table():
         ("commit-test-gate", "write-pr"),
         ("pr-and-ci", "close-issue"),
         ("pr-and-ci", "fix-pr"),
+        ("commit-test-gate", "push-workflows"),
+        ("fix-pr", "push-workflows"),
+        ("push-workflows", "write-pr"),
+        ("push-workflows", "fix-pr"),
     }
     # A works handoff is built: it carries no tracking issue.
     assert not [h for h in chain["handoffs"] if h["status"] == "works" and "issue" in h]
@@ -310,6 +316,9 @@ def test_works_handoffs_follow_the_handoff_table():
         if (source, target) in DISPATCHED:
             assert f'case "/lighthouse-{target}":' in judge, target
             continue
+        if (source, target) in PUSHER:
+            assert "`push-workflows`" in table, target
+            continue
         prefix = "lighthouse-" if chips[target]["kind"] == "lighthouse" else "superpowers:"
         assert f"`/{prefix}{target}" in table, target
     assert all(h["status"] in ("works", "planned") for h in chain["handoffs"])
@@ -317,7 +326,7 @@ def test_works_handoffs_follow_the_handoff_table():
 
 def test_chain_routes_are_the_known_ones():
     routes = {r["id"]: r for r in load("loop.json")["routes"]}
-    assert set(routes) == {"1", "2", "4a", "4b", "4c", "no-issue", "red-pr"}
+    assert set(routes) == {"1", "2", "4a", "4b", "4c", "no-issue", "red-pr", "workflow-push"}
     assert routes["1"]["examples"] == ["refresh-expo-lockfiles"]
     assert routes["no-issue"]["chips"][0] == "worktree-check"
 

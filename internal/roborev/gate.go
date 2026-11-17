@@ -12,6 +12,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/config"
 	"github.com/CorneeldH/lighthouse/internal/orderedjson"
 	"github.com/CorneeldH/lighthouse/internal/usage"
+	"github.com/CorneeldH/lighthouse/internal/workflowguard"
 )
 
 // Budget is the Codex budget check: the exit code (6 means `fallback`) and the JSON on stdout of
@@ -90,6 +91,19 @@ func base(root string) (string, error) {
 // A skip is written to the state file at once, so a restart repeats the reason instead of
 // deciding again on a budget that may have moved.
 func Gate(root string, budget Budget) (*orderedjson.Object, error) {
+	return gate(root, budget, false)
+}
+
+// GatePush is Gate for a branch whose workflow changes the workflow pusher pushes: it reviews the
+// unpushed range (origin/<branch>..HEAD, or from the merge-base when the branch is not on origin,
+// as workflow-push-gate measures it) without the code-line threshold, and reads and writes only
+// the push record `push-<head>.json` (raw review `push-<head>.md`). Every other skip reason stays
+// a skip, which the pusher counts red.
+func GatePush(root string, budget Budget) (*orderedjson.Object, error) {
+	return gate(root, budget, true)
+}
+
+func gate(root string, budget Budget, push bool) (*orderedjson.Object, error) {
 	setting, defaultBranch, err := settings(root)
 	if err != nil {
 		return nil, err
@@ -99,7 +113,15 @@ func Gate(root string, budget Budget) (*orderedjson.Object, error) {
 		out.Set("verdict", "off")
 		return out, nil
 	}
-	state, raw, err := StatePaths(root)
+	var head, state, raw string
+	if push {
+		if head, err = git(root, true, "rev-parse", "HEAD"); err != nil {
+			return nil, err
+		}
+		state, raw, err = PushPaths(root, head)
+	} else {
+		state, raw, err = StatePaths(root)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -125,20 +147,26 @@ func Gate(root string, budget Budget) (*orderedjson.Object, error) {
 		return withPaths(out), nil
 	}
 
-	head, err := git(root, true, "rev-parse", "HEAD")
+	if !push {
+		if head, err = git(root, true, "rev-parse", "HEAD"); err != nil {
+			return nil, err
+		}
+	}
+	var start string
+	if push {
+		start, err = pushBase(root, head, defaultBranch)
+	} else {
+		start, err = git(root, true, "merge-base", "origin/"+defaultBranch, "HEAD")
+	}
 	if err != nil {
 		return nil, err
 	}
-	mergeBase, err := git(root, true, "merge-base", "origin/"+defaultBranch, "HEAD")
-	if err != nil {
-		return nil, err
-	}
-	numstat, err := git(root, false, "diff", "--numstat", "--no-renames", "-z", mergeBase, "HEAD")
+	numstat, err := git(root, false, "diff", "--numstat", "--no-renames", "-z", start, "HEAD")
 	if err != nil {
 		return nil, err
 	}
 	lines := CountCodeLines(numstat)
-	rng := mergeBase + ".." + head
+	rng := start + ".." + head
 
 	var reason string
 	_, noRoborev := exec.LookPath("roborev")
@@ -148,7 +176,7 @@ func Gate(root string, budget Budget) (*orderedjson.Object, error) {
 		reason = "geen .roborev.toml"
 	case noRoborev != nil || noCodex != nil:
 		reason = "geen roborev of codex op PATH"
-	case lines < Threshold:
+	case !push && lines < Threshold:
 		reason = fmt.Sprintf("%d coderegels (drempel %d)", lines, Threshold)
 	default:
 		reason = budgetSkip(budget)
@@ -169,4 +197,21 @@ func Gate(root string, budget Budget) (*orderedjson.Object, error) {
 	out.Set("range", rng)
 	out.Set("lines", lines)
 	return withPaths(out), nil
+}
+
+// pushBase is the start of the unpushed range of head, measured as workflow-push-gate does.
+func pushBase(root, head, defaultBranch string) (string, error) {
+	branch, err := git(root, true, "rev-parse", "--abbrev-ref", "HEAD")
+	if err != nil {
+		return "", err
+	}
+	if branch == "HEAD" {
+		branch = ""
+	}
+	start, err := workflowguard.Base(func(args ...string) (string, error) { return git(root, true, args...) },
+		head, branch, defaultBranch)
+	if err != nil {
+		return "", checkf("unpushed range: %v", err)
+	}
+	return start, nil
 }

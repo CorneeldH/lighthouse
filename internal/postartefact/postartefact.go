@@ -7,7 +7,8 @@
 //     (`paths.specs` or `paths.plans`)
 //  2. the file must be committed and clean
 //  3. the commit must be on GitHub (push if needed, except on `forge.default_branch`, a
-//     detached HEAD or with an open PR)
+//     detached HEAD or with an open PR; in a controller run never a range that touches
+//     .github/workflows/, as workflow-push-gate)
 //  4. read the existing comments and find the current complete version
 //  5. same hash and a commit that is still reachable: unchanged, post nothing
 //  6. split, render all parts, then post them in order
@@ -30,9 +31,11 @@ import (
 	"unicode/utf8"
 
 	"github.com/CorneeldH/lighthouse/internal/config"
+	"github.com/CorneeldH/lighthouse/internal/park"
 	"github.com/CorneeldH/lighthouse/internal/procrun"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
 	"github.com/CorneeldH/lighthouse/internal/pytext"
+	"github.com/CorneeldH/lighthouse/internal/workflowguard"
 )
 
 // RunTimeout is the timeout of every `git` and `gh` call: 300 s, not 60, because `git push` runs
@@ -47,6 +50,8 @@ const stderrTail = 300
 type Env struct {
 	Run    procrun.Func
 	Config func() (*config.Config, error)
+	// Getenv reads LIGHTHOUSE_CONTROLLER_RUN; nil is os.Getenv.
+	Getenv func(string) string
 }
 
 // Error is a failure of post-artefact; Error() is the full `artefact:` line.
@@ -70,10 +75,11 @@ type runError struct{ msg string }
 func (e *runError) Error() string { return e.msg }
 
 type poster struct {
-	ctx  context.Context
-	run  procrun.Func
-	repo string
-	cfg  *config.Config
+	ctx    context.Context
+	run    procrun.Func
+	repo   string
+	cfg    *config.Config
+	getenv func(string) string
 }
 
 // tail is the last n characters (code points) of s.
@@ -319,8 +325,41 @@ func (p *poster) ensureCommitOnGitHub(top, sha string) *Error {
 	if branch == defaultBranch || branch == "HEAD" || hasPR {
 		return fail("commit %s not on GitHub", runeHead(sha, 7))
 	}
+	if err := p.refuseWorkflows(top, branch, defaultBranch); err != nil {
+		return err
+	}
 	if _, runErr := p.git(top, "push", "-u", "--force-with-lease", "origin", "HEAD"); runErr != nil {
 		return fail("push of %s failed: %s", branch, runErr.msg)
+	}
+	return nil
+}
+
+// refuseWorkflows refuses, in a controller run, the push of a range that touches
+// .github/workflows/: the push below falls outside workflow-push-gate, so it says the same.
+// Only in a controller run, like the hook: the refusal points at V2b and `next: push-workflows`,
+// a route only the dispatcher runs; a person outside it pushes with their own credentials, and
+// GitHub's check on those decides.
+func (p *poster) refuseWorkflows(top, branch, defaultBranch string) *Error {
+	if !park.ControllerRun(p.getenv) {
+		return nil
+	}
+	git := func(args ...string) (string, error) {
+		out, err := p.git(top, args...)
+		if err != nil {
+			return "", errors.New(err.msg)
+		}
+		return out, nil
+	}
+	head, err := git("rev-parse", "--verify", "HEAD^{commit}")
+	if err != nil {
+		return fail("%s", workflowguard.Uncheckable("HEAD cannot be read: "+err.Error()))
+	}
+	rng, paths, err := workflowguard.Check(git, head, branch, defaultBranch)
+	if err != nil {
+		return fail("%s", workflowguard.Uncheckable(err.Error()))
+	}
+	if len(paths) > 0 {
+		return fail("push of %s refused — %s", branch, workflowguard.Refusal(rng, paths))
 	}
 	return nil
 }
@@ -376,7 +415,11 @@ func run(ctx context.Context, env Env, nr int, pathArg string) (string, *Error) 
 	if cfg.Repo == "" {
 		return "", fail("forge.repo is not set in %s", cfg.Path)
 	}
-	p := &poster{ctx: ctx, run: env.Run, repo: cfg.Repo, cfg: cfg}
+	getenv := env.Getenv
+	if getenv == nil {
+		getenv = os.Getenv
+	}
+	p := &poster{ctx: ctx, run: env.Run, repo: cfg.Repo, cfg: cfg, getenv: getenv}
 	top, file, kind, err := p.resolveFile(pathArg)
 	if err != nil {
 		return "", err

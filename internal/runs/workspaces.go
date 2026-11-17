@@ -3,6 +3,7 @@ package runs
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 )
@@ -52,4 +53,19 @@ func MarkWorkspaceRemoved(ctx context.Context, db *sql.DB, repo, node, workspace
 		return fmt.Errorf("runs: mark workspace %s removed: %w", workspaceID, err)
 	}
 	return nil
+}
+
+// LastHandoffWorkspace is the workspace id of the last run of (repo, issue) on this host that
+// closed with outcome handoff and started before before; ok is false when there is none.
+func LastHandoffWorkspace(ctx context.Context, db *sql.DB, repo string, issue int, before time.Time) (id string, ok bool, err error) {
+	err = db.QueryRowContext(ctx, `SELECT workspace_id FROM runs
+		WHERE repo = ? AND issue = ? AND node = '' AND outcome = 'handoff' AND started_at < ?
+		ORDER BY started_at DESC, id DESC LIMIT 1`, repo, issue, stamp(before)).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, fmt.Errorf("runs: last handoff of %s#%d: %w", repo, issue, err)
+	}
+	return id, true, nil
 }

@@ -385,6 +385,53 @@ func TestRunIgnoresSlots(t *testing.T) {
 	})
 }
 
+// A green PR the pusher pushed to merges through the merge pusher, which only tick starts: run
+// must not close the open row as a hand-over to a pusher it never starts, or no open row is left
+// to plan that merge again and the issue stalls. The row stays open and run says tick takes it.
+func TestRunLeavesMergePusherToTick(t *testing.T) {
+	env, db := tickFixture(t, repoDir(t, completeRepo))
+	srv, w := startable(t, &env)
+	appendHostToml(t, env, "\n[dispatch.workflow_push]\ntoken_file = \"/run/t\"\n")
+	const branch = "issue-7-issue"
+	head, old := strings.Repeat("c", 40), strings.Repeat("a", 40)
+	pr := map[string]any{"number": 30, "state": "OPEN", "isDraft": false, "mergeable": "MERGEABLE",
+		"headRefOid": head, "headRefName": branch, "statusCheckRollup": map[string]any{"state": "SUCCESS"},
+		"url": "https://github.com/o/r/pull/30"}
+	srv.BoardNodes = []map[string]any{boardNode("I7", "c1", issueContent(7, "Issue", map[string]any{
+		"closedByPullRequestsReferences": map[string]any{"nodes": []any{pr}},
+	}))}
+	srv.Branches = map[string][]map[string]any{branch: {pr}}
+	srv.Comments = map[int][]map[string]any{7: {{"id": int64(71), "created_at": "2026-10-31T11:00:00Z",
+		"body": protocol.RenderPushNote(branch, old+".."+head, ".github/workflows/ci.yml", "en"),
+		"user": map[string]any{"login": "lh-bot"}, "html_url": "https://github.com/o/r/issues/7#issuecomment-71"}}}
+	conn := openStore(t, db)
+	row, err := runs.Take(context.Background(), conn, runs.Claim{Repo: "o/r", Issue: 7, Mode: "start",
+		Trigger: "handoff", TriggerKey: "push:70", Command: "push-workflows", Branch: branch, Now: t0.Add(-time.Hour)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runs.SetPushed(context.Background(), conn, row.ID, head); err != nil {
+		t.Fatal(err)
+	}
+	env.Spawn = func(context.Context, []string, []string) error {
+		t.Error("run started a pusher")
+		return nil
+	}
+	var errOut bytes.Buffer
+	if err := runIssue(context.Background(), env, "o/r#7", db, &errOut); err != nil {
+		t.Fatalf("run = %v\n%s", err, errOut.String())
+	}
+	if want := "lighthouse: the pusher of o/r#7 starts at the next tick\n"; errOut.String() != want {
+		t.Errorf("errOut = %q, want %q", errOut.String(), want)
+	}
+	if rows := history(t, conn, "o/r"); len(rows) != 1 || !rows[0].Open {
+		t.Errorf("runs = %+v, want the push row still open", rows)
+	}
+	if p := writes(srv); len(p) != 0 || len(w.spawned()) != 0 {
+		t.Errorf("writes %v, spawns %v; want none", p, w.spawned())
+	}
+}
+
 // run passes the markers of its issue to Decide, so the run the guard parked closes as parked
 // and the usage resume can claim it.
 func TestRunSettlesParked(t *testing.T) {

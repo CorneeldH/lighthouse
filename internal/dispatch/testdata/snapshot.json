@@ -110,6 +110,7 @@
       "issue": 9,
       "session_id": "0b9a3c1e-0000-4000-8000-000000000009",
       "trigger_key": "start:9",
+      "command": "/lighthouse-start-issue 9",
       "profile": "software",
       "branch": "issue-9-y",
       "workspace_id": "",

@@ -79,3 +79,83 @@ func TestParseHandoffWrongKind(t *testing.T) {
 		t.Fatalf("err = %v, want ErrHandoff", err)
 	}
 }
+
+func TestParseHandoffAfterAndRoborev(t *testing.T) {
+	got, err := ParseHandoff(Header{Kind: KindHandoff, Fields: map[string]string{
+		"issue": "#396", "worktree": "/w", "branch": "issue-396-x", "next": "push-workflows",
+		"when": "now", "after": "/lighthouse-write-pr 396", "roborev": "done abc123",
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.After != "/lighthouse-write-pr 396" || got.Roborev != "done abc123" {
+		t.Errorf("After, Roborev = %q, %q", got.After, got.Roborev)
+	}
+}
+
+// The pushed handoff parses with the lane it carries on, none or native.
+func TestPushedHandoffParses(t *testing.T) {
+	for _, tc := range []struct{ language, lane string }{{"nl", ""}, {"en", ""}, {"nl", "native"}} {
+		language := tc.language
+		body := RenderPushed(396, "/w/x", "issue-396-x", "aaa..bbb", ".github/workflows/ci.yml", "/lighthouse-write-pr 396", tc.lane, language)
+		h, ok := ParseHeader(body)
+		if !ok {
+			t.Fatalf("%s: no header in %q", language, body)
+		}
+		got, err := ParseHandoff(h)
+		if err != nil {
+			t.Fatalf("%s: %v", language, err)
+		}
+		want := Handoff{Issue: 396, Worktree: "/w/x", Branch: "issue-396-x", Next: "/lighthouse-write-pr 396", When: "now", Lane: tc.lane}
+		if got != want {
+			t.Errorf("%s: got %+v, want %+v", language, got, want)
+		}
+		if h.Fields["range"] != "aaa..bbb" || h.Fields["workflows"] != ".github/workflows/ci.yml" {
+			t.Errorf("%s: fields = %v", language, h.Fields)
+		}
+	}
+}
+
+func TestRenderPushNote(t *testing.T) {
+	got := RenderPushNote("issue-396-x", "aaa..bbb", ".github/workflows/ci.yml", "nl")
+	want := "🤖 Workflow-bestanden gepusht door de pusher\nbranch: issue-396-x\nrange: aaa..bbb\nworkflows: .github/workflows/ci.yml"
+	if got != want {
+		t.Errorf("got %q want %q", got, want)
+	}
+	if _, ok := ParseHeader(got); ok {
+		t.Error("a push note must not parse as a protocol kind")
+	}
+}
+
+// ParsePushed reads the branch and the pushed SHA (the end of range) of both pusher comments, in
+// either language, and nothing else: a run's handoff carries a session footer, a range that does
+// not end in a full SHA names no push, and a comment without a branch scopes to no PR.
+func TestParsePushed(t *testing.T) {
+	sha := strings.Repeat("b", 40)
+	old := strings.Repeat("a", 40)
+	for _, language := range []string{"nl", "en"} {
+		for name, body := range map[string]string{
+			"build route":  RenderPushed(396, "/w/x", "issue-396-x", old+".."+sha, ".github/workflows/ci.yml", "/lighthouse-write-pr 396", "", language),
+			"fix-pr route": RenderPushNote("issue-396-x", old+".."+sha, ".github/workflows/ci.yml", language),
+		} {
+			got, ok := ParsePushed(body)
+			if !ok || got.Branch != "issue-396-x" || got.SHA != sha {
+				t.Errorf("%s/%s: ParsePushed = %+v, %v; want branch issue-396-x, sha %s", language, name, got, ok, sha)
+			}
+		}
+	}
+	for name, body := range map[string]string{
+		"a run's handoff": RenderPushed(396, "/w/x", "issue-396-x", old+".."+sha, "w", "/lighthouse-write-pr 396", "", "nl") +
+			"\n\n" + Footer("11111111-2222-4333-8444-555555555555"),
+		"short sha":     RenderPushNote("issue-396-x", old+"..bbbbbbb", "w", "nl"),
+		"no range end":  RenderPushNote("issue-396-x", old, "w", "nl"),
+		"no branch":     RenderPushNote("", old+".."+sha, "w", "nl"),
+		"plain handoff": "🤖 Handoff\nissue: #396\nworktree: /w/x\nbranch: issue-396-x\nnext: /lighthouse-write-pr 396\nwhen: now",
+		"other kind":    "🤖 Vraag\nbranch: issue-396-x\nrange: " + old + ".." + sha,
+		"no robot":      "Workflow-bestanden gepusht door de pusher\nbranch: issue-396-x\nrange: " + old + ".." + sha,
+	} {
+		if got, ok := ParsePushed(body); ok {
+			t.Errorf("%s: ParsePushed = %+v, want no pusher comment", name, got)
+		}
+	}
+}

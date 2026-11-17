@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/forge"
+	"github.com/CorneeldH/lighthouse/internal/hostconfig"
 	"github.com/CorneeldH/lighthouse/internal/park"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
@@ -46,6 +47,10 @@ type RepoInput struct {
 	// Markers are the controller markers whose session's last run is in this repo, resumable
 	// or not.
 	Markers []park.Marker `json:"markers"`
+	// WorkflowPush is whether host.toml has [dispatch.workflow_push]; without it a push handoff
+	// goes back as a 🤖 Teruggegeven. PushTimeout is its timeout.
+	WorkflowPush bool          `json:"workflow_push,omitempty"`
+	PushTimeout  time.Duration `json:"push_timeout,omitempty"`
 	// Schedules are the schedules whose slot is up and whose gate let it through (the tick
 	// plans and gates them); Decide starts each under the brake.
 	Schedules []ScheduledDue `json:"schedules,omitempty"`
@@ -67,6 +72,9 @@ const (
 	// KindMerge squash-merges PR on HeadSHA and ends the run RunID as done.
 	KindMerge  Kind = "merge"
 	KindUnpark Kind = "unpark"
+	// KindPush starts the workflow pusher for Worktree and Branch, which runs no session.
+	// A push after a user's answer carries PermitSHA, the one SHA the user allowed.
+	KindPush Kind = "push"
 	// KindDropMarker removes the resume marker of SessionID while its key is TriggerKey.
 	KindDropMarker Kind = "drop_marker"
 	// KindScheduledStart claims and starts the run of Schedule for Slot; it has no issue.
@@ -110,11 +118,13 @@ type Action struct {
 	PR         int          `json:"pr,omitempty"`       // merge: the PR number
 	HeadSHA    string       `json:"head_sha,omitempty"` // merge: the head the merge is for
 	Language   string       `json:"language,omitempty"`
-	Stop       bool         `json:"stop,omitempty"`     // stop the session of run RunID
-	End        bool         `json:"end,omitempty"`      // end only the claude of run RunID
-	Discard    bool         `json:"discard,omitempty"`  // forget the launch of run RunID
-	ItemID     string       `json:"item_id,omitempty"`  // park, hold, unpark: the board item
-	Blockers   []string     `json:"blockers,omitempty"` // park: "<repo>#<n> (<status>)" per active blocker
+	Stop       bool         `json:"stop,omitempty"`       // stop the session of run RunID
+	End        bool         `json:"end,omitempty"`        // end only the claude of run RunID
+	Discard    bool         `json:"discard,omitempty"`    // forget the launch of run RunID
+	ItemID     string       `json:"item_id,omitempty"`    // park, hold, unpark: the board item
+	Blockers   []string     `json:"blockers,omitempty"`   // park: "<repo>#<n> (<status>)" per active blocker
+	Worktree   string       `json:"worktree,omitempty"`   // push: the worktree of the run that asked for the push
+	PermitSHA  string       `json:"permit_sha,omitempty"` // push: the SHA a user's answer allowed
 	// Schedule and Slot (YYYYMMDDTHHMM) name the scheduled run of a scheduled start, or of its
 	// defer; Issue is 0 then. Tools, Instructions and Verdict (scheduled.Record JSON) are its
 	// launch.
@@ -171,15 +181,29 @@ type issueKey struct {
 	issue int
 }
 
-// fixPRStarts is the set of issues ps holds a fix-pr start for.
+// fixPRStarts is the set of issues ps holds a start for that replaces a run settle closed: a
+// fix-pr start, or the merge pusher of a PR with a pushed SHA.
 func fixPRStarts(ps []planned) map[issueKey]bool {
 	started := map[issueKey]bool{}
 	for _, p := range ps {
-		if p.Kind == KindStart && p.Trigger == triggerFixPR {
+		if p.Kind == KindStart && p.Trigger == triggerFixPR || p.Kind == KindPush && p.Trigger == triggerMerge {
 			started[issueKey{p.Repo, p.Issue}] = true
 		}
 	}
 	return started
+}
+
+// handsOver reports whether the close in p is a handoff to a start in the same tick: a fix-pr
+// start (fixpr: key) or the merge pusher (merge: key).
+func handsOver(p planned) bool {
+	return p.Kind == KindClose && p.Outcome == runs.Handoff &&
+		(strings.HasPrefix(p.ReasonArg, triggerFixPR+":") || strings.HasPrefix(p.ReasonArg, triggerMerge+":"))
+}
+
+// HandsToPusher reports whether a is the close of a run that hands its PR to the merge pusher
+// planned in the same decide (mergeByPusher): without that KindPush the close must not apply.
+func HandsToPusher(a Action) bool {
+	return a.Kind == KindClose && a.Outcome == runs.Handoff && strings.HasPrefix(a.ReasonArg, triggerMerge+":")
 }
 
 // settleUnstartedFixPR decides every run settle closed for a fix-pr start (a handoff close whose
@@ -196,8 +220,7 @@ func settleUnstartedFixPR(ps []planned, wanted map[issueKey]bool) []planned {
 	out := ps[:0:0]
 	for _, p := range ps {
 		key := issueKey{p.Repo, p.Issue}
-		if p.Kind != KindClose || p.Outcome != runs.Handoff || !strings.HasPrefix(p.ReasonArg, triggerFixPR+":") ||
-			started[key] {
+		if !handsOver(p) || started[key] {
 			out = append(out, p)
 			continue
 		}
@@ -240,7 +263,7 @@ type planned struct {
 // too), 1 a defer, 2 a start, resume or scheduled start.
 func (p planned) group() int {
 	switch p.Kind {
-	case KindStart, KindResume, KindScheduledStart:
+	case KindStart, KindResume, KindPush, KindScheduledStart:
 		return 2
 	case KindDefer:
 		return 1
@@ -319,9 +342,10 @@ func decideIssue(in Input, repo RepoInput, it Item) []planned {
 		a, closes, f := settle(in, repo, it, row, hs, base)
 		if closes {
 			// The close carries its run's node and profile, and frees its slot unless it is the
-			// fix-pr close of rule 13, whose start inherits that slot (holdsSlot).
+			// fix-pr close of rule 13, whose start inherits that slot (holdsSlot), or the close
+			// of a push row, which CountRun never counted.
 			p := planned{Action: a, node: row.Node, software: row.Profile == ProfileSoftware}
-			p.frees = f == nil && freesSlot(a)
+			p.frees = f == nil && !isPush(row) && freesSlot(a)
 			if f != nil {
 				fix, fixRow = f, row
 				p.fixReason, p.fixReasonArg = f.reason, f.arg
@@ -339,13 +363,17 @@ func decideIssue(in Input, repo RepoInput, it Item) []planned {
 	c := issueCtx{repo: repo, it: it, hs: hs, base: base, now: in.Now, night: in.Night, profileNodes: in.ProfileNodes}
 	switch it.Status {
 	case statusController:
-		if fix != nil && !c.active() {
+		if fix != nil && fix.merge {
+			// mergeReady already held the merge back for an active blocker.
+			out = append(out, c.mergePush(fix.pr, 1, c.now))
+		} else if fix != nil && !c.active() {
 			a := c.fresh(triggerFixPR, fix.key, cmdFixPR+" "+strconv.Itoa(fix.pr.Number), fix.pr.HeadRef)
 			a.Reason, a.ReasonArg = fix.reason, fix.arg
 			p := c.planned(a, c.now)
 			// The start replaces fixRow, which closes in this tick and still counts in the
-			// brake: on its node and its profile the start takes no new slot.
-			p.holdsSlot = p.Kind == KindStart && p.node == fixRow.Node &&
+			// brake: on its node and its profile the start takes no new slot. A push row
+			// counts for no slot, so its fix-pr start takes a new one.
+			p.holdsSlot = p.Kind == KindStart && !isPush(fixRow) && p.node == fixRow.Node &&
 				p.software == (fixRow.Profile == ProfileSoftware)
 			out = append(out, p)
 		} else if p, ok := c.next(); ok {
@@ -414,7 +442,8 @@ func orphan(history []runs.Row, hs []parsed, base Action) (Action, bool) {
 
 // settle decides whether the open run row ends in this tick: the first rule of the run-outcome
 // table that holds wins. Only comments from row's start on count; a Done, Question or Returned
-// also needs row's session, a Handoff carries none. A Done closes, then a Handoff that does
+// also needs row's session, a Handoff carries none. A push row has no session: the pusher's Vraag
+// (pusherQuestion) is its Question. A Done closes, then a Handoff that does
 // not end the chain, then a Question, then the run's own Returned (posted by an earlier tick
 // whose stop failed); after those the measurement rules of runCtx.outcome. Every action it
 // returns closes row. The third result, only from fixPR, is the fix-pr start the close stands
@@ -431,7 +460,8 @@ func settle(in Input, repo RepoInput, it Item, row runs.Row, hs []parsed, base A
 		case protocol.KindDone:
 			done = done || ofRun
 		case protocol.KindQuestion:
-			question = question || ofRun
+			// A push row has no session; the pusher's own Vraag carries none and a sha.
+			question = question || ofRun || isPush(row) && pusherQuestion(p.Header)
 		case protocol.KindReturned:
 			returned = returned || ofRun
 		case protocol.KindHandoff:
@@ -465,6 +495,8 @@ func settle(in Input, repo RepoInput, it Item, row runs.Row, hs []parsed, base A
 type fixPRStart struct {
 	pr               forge.PR
 	key, reason, arg string
+	// merge marks the start of the merge pusher for pr instead of a fix-pr start.
+	merge bool
 }
 
 // runCtx is what the measurement rules of one open run read.
@@ -482,11 +514,15 @@ type runCtx struct {
 	markers  []park.Marker // the repo's resume markers
 	history  []runs.Row    // the repo's runs, open and closed
 	trunk    string        // the repo's default branch
+	// pushTimeout is RepoInput.PushTimeout: how long a push row may stay open before it pushed.
+	pushTimeout time.Duration
+	// workflowPush is RepoInput.WorkflowPush: the pusher, also the merge pusher, is configured.
+	workflowPush bool
 }
 
 func newRunCtx(in Input, repo RepoInput, it Item, row runs.Row, base Action) runCtx {
 	c := runCtx{in: in, it: it, row: row, base: base, markers: repo.Markers, history: repo.History,
-		trunk: repo.DefaultBranch}
+		trunk: repo.DefaultBranch, pushTimeout: repo.PushTimeout, workflowPush: repo.WorkflowPush}
 	for _, o := range repo.Snapshot.OpenRuns {
 		if o.ID == row.ID {
 			c.open = o
@@ -502,8 +538,11 @@ func newRunCtx(in Input, repo RepoInput, it Item, row runs.Row, base Action) run
 // (mergeReady) before green, which only settles a run without an open own PR; an own PR that
 // mergeReady holds back stays open, or reaches fixPR when it has a cause.
 func (c runCtx) outcome() (Action, bool, *fixPRStart) {
+	if isPush(c.row) {
+		return c.pushOutcome()
+	}
 	rules := []func() (Action, bool, *fixPRStart){
-		noStart(c.parked), noStart(c.merged), noStart(c.closedIssue), noStart(c.mergeReady), noStart(c.green),
+		noStart(c.parked), noStart(c.merged), noStart(c.closedIssue), c.mergeReady, noStart(c.green),
 		noStart(c.gone), noStart(c.unknownCommand), noStart(c.didNothing), noStart(c.prClosed), noStart(c.prDraft),
 		c.fixPR, noStart(c.noHandoff), noStart(c.uncertain), noStart(c.permission), noStart(c.silent),
 		noStart(c.silentForge), noStart(c.timeout),
@@ -514,6 +553,65 @@ func (c runCtx) outcome() (Action, bool, *fixPRStart) {
 		}
 	}
 	return Action{}, false, nil
+}
+
+// pushOutcome is outcome for a push row, which runs no session and has no workplace or
+// transcript: none of the rules that measure those hold for it. Before the pusher marked its push
+// (PushedSHA), only the push timeout holds: the row goes back as "pusher did not respond". After
+// it, the row owns the PR of its branch and only rules 6, 7 and 13 hold (merged, mergeReady,
+// green, fixPR), plus pushedAlone for a pushed row without any PR. No action touches a session.
+//
+// Deliberate deviation from spec §2 (only rules 6, 7 and 13), by controller ruling in
+// tasks 5 and 9: an issue closed by hand (closedIssue) and a PR closed unmerged (prClosed) also
+// close the pushed row, as for any run, and a pushed row without any PR of its branch goes back at
+// the push timeout (pushedAlone). Without them nothing ever closes it, and an issue with an open
+// run is never dispatched again.
+func (c runCtx) pushOutcome() (Action, bool, *fixPRStart) {
+	if c.row.PushedSHA == "" {
+		if strings.HasPrefix(c.row.TriggerKey, triggerMerge+":") {
+			// The merge pusher's row: a PR merged from its start on is its merge, also when the
+			// pusher died before it closed the row.
+			if a, ok := c.merged(); ok {
+				return a, true, nil
+			}
+		}
+		// PushTimeout already fills in the default for tick; a RepoInput built by hand (a test, a
+		// fixture) can still carry zero.
+		if c.age() < cmp.Or(c.pushTimeout, hostconfig.DefaultPushTimeout) {
+			return Action{}, false, nil
+		}
+		return c.returned("reason_pusher_silent", ""), true, nil
+	}
+	for _, rule := range []func() (Action, bool, *fixPRStart){
+		noStart(c.merged), noStart(c.closedIssue), c.mergeReady, noStart(c.green), noStart(c.prClosed), c.fixPR,
+		noStart(c.pushedAlone),
+	} {
+		if a, ok, fix := rule(); ok {
+			a.Stop, a.End = false, false
+			return a, true, fix
+		}
+	}
+	return Action{}, false, nil
+}
+
+// pushedAlone hands back a push row that pushed but has no PR of its branch in any state at the
+// push timeout: on the build route the pusher records the push before it posts the handoff, so
+// this row is a handoff that never came (a failed post, a killed pusher). Without the rule it
+// would stay open forever. On the fix-pr route the PR exists, so the rule never holds there.
+func (c runCtx) pushedAlone() (Action, bool) {
+	if slices.ContainsFunc(c.it.PRs, c.ownPR) {
+		return Action{}, false
+	}
+	return c.returned("reason_pusher_no_handoff", c.row.PushedSHA),
+		c.age() >= cmp.Or(c.pushTimeout, hostconfig.DefaultPushTimeout)
+}
+
+// isPush reports whether row is a push row: the workflow pusher, without a session.
+func isPush(row runs.Row) bool { return row.Command == cmdPush }
+
+// pusherQuestion reports whether h is a 🤖 Vraag of the pusher: without a session, with a sha.
+func pusherQuestion(h protocol.Header) bool {
+	return h.Kind == protocol.KindQuestion && h.Session == "" && h.Fields["sha"] != ""
 }
 
 // noStart lifts a measurement rule that never starts fix-pr into outcome's rule shape.
@@ -529,6 +627,11 @@ func noStart(rule func() (Action, bool)) func() (Action, bool, *fixPRStart) {
 // which claude ended its turn, or a turn claude took on the notification of such work (#270).
 // The silence and runtime rules still hold for such a run.
 func (c runCtx) done() bool {
+	if isPush(c.row) {
+		// A push row runs no session; pushOutcome reaches the rules that ask only after the
+		// pusher pushed, when the row is done.
+		return true
+	}
 	return c.hasStand && c.stand == workplace.Done && !workAfterStop(c.state.Transcript)
 }
 
@@ -541,11 +644,11 @@ func workAfterStop(t *workplace.Transcript) bool {
 
 // closed closes row with o. A run that ends as done, handoff or question is over, but its
 // claude lives on in the workplace, also with a forge stand done: closed ends it, or a resume
-// of its session fails at forge.
+// of its session fails at forge. A push row has no claude to end.
 func (c runCtx) closed(o runs.Outcome) Action {
 	a := c.base
 	a.Kind, a.RunID, a.Outcome = KindClose, c.row.ID, o
-	a.End = o == runs.Done || o == runs.Handoff || o == runs.Question
+	a.End = !isPush(c.row) && (o == runs.Done || o == runs.Handoff || o == runs.Question)
 	return a
 }
 
@@ -610,18 +713,49 @@ func (c runCtx) closedIssue() (Action, bool) {
 // mergeReady merges the run's own open PR when it is ready: the run is Done; the PR is no
 // draft, mergeable, green, without an open roborev review, and not refused before on this
 // head; the item is in Controller, the brake is not paused, and no blocker is active. The merge
-// ends the run as done; apply does the merge.
-func (c runCtx) mergeReady() (Action, bool) {
+// ends the run as done; apply does the merge. A PR the workflow pusher pushed to (PushedSHA of
+// the PR, or of the push row that owns it) merges through the merge pusher instead
+// (mergeByPusher), whichever run owns it.
+func (c runCtx) mergeReady() (Action, bool, *fixPRStart) {
 	pr, ok := c.ownOpenPR()
 	if !ok || !c.done() || pr.Draft || pr.Mergeable != "MERGEABLE" || pr.Checks != "SUCCESS" ||
 		pr.Roborev == forge.RoborevOpen || c.row.MergeSHA == pr.HeadSHA || c.it.Status != statusController ||
 		c.in.Brake != nil && c.in.Brake.Paused || len(activeBlockers(c.it)) > 0 {
-		return Action{}, false
+		return Action{}, false, nil
+	}
+	// A push row that recorded its push routes there too when its push note never reached the
+	// issue: the comment is then missing, the row's PushedSHA is not.
+	if pr.PushedSHA != "" || isPush(c.row) && c.row.PushedSHA != "" {
+		return c.mergeByPusher(pr)
 	}
 	a := c.base
 	a.Kind, a.RunID, a.SessionID, a.PR, a.HeadSHA, a.PRURL, a.End =
 		KindMerge, c.row.ID, c.row.SessionID, pr.Number, pr.HeadSHA, pr.URL, true
-	return a, true
+	return a, true, nil
+}
+
+// mergeByPusher hands the merge of pr to the merge pusher, which merges with the workflow token
+// after its own checks; tick never reads that token, and decide looks at no file or ancestry. The
+// run closes as a handoff to the merge key, as for a fix-pr start: the pusher's row then owns the
+// PR. A merge key a run already spent (the pusher refused this head) hands the issue back, and so
+// does a pusher that is off: the run token cannot merge a workflow change.
+func (c runCtx) mergeByPusher(pr forge.PR) (Action, bool, *fixPRStart) {
+	key := mergeKey(pr.Number, pr.HeadSHA)
+	switch {
+	case !c.workflowPush:
+		return c.returned("reason_pusher_off", ""), true, nil
+	case spentKey(c.history, key):
+		return c.returned("reason_merge_failed", key), true, nil
+	}
+	a := c.closed(runs.Handoff)
+	a.ReasonArg, a.SessionID = key, c.row.SessionID
+	return a, true, &fixPRStart{pr: pr, key: key, merge: true}
+}
+
+// mergeKey is the trigger key of the merge pusher: one per PR and head, so a head the pusher
+// refused never starts it twice. pusher.MergeKey is the same.
+func mergeKey(pr int, head string) string {
+	return triggerMerge + ":" + strconv.Itoa(pr) + ":" + head
 }
 
 // ownOpenPR returns the first open PR, by number, that is the run's own (ownPR).
@@ -936,7 +1070,7 @@ func endsChain(repo RepoInput, issue int, h protocol.Header) bool {
 // The second result is the skip key, "" when nothing is skipped.
 func judgeHandoff(repo RepoInput, issue int, ho protocol.Handoff) (Judgement, string) {
 	command, skip := ReviewSkip(ho.Next, repo.Controller)
-	return Judge(command, issue, ho.Lane, repo.Installed), skip
+	return Judge(command, issue, ho.Lane, ho.After, repo.Installed), skip
 }
 
 // greenPR returns the first PR that is open, not a draft, mergeable and with green checks.
@@ -974,9 +1108,10 @@ func repair(history []runs.Row, it Item, base Action) []Action {
 	return out
 }
 
-// triggerComment returns the comment id of a handoff:<id> or answer:<id> trigger key.
+// triggerComment returns the comment id of a handoff:<id>, answer:<id>, push:<id> or
+// pushanswer:<id> trigger key.
 func triggerComment(key string) (int64, bool) {
-	for _, prefix := range []string{"handoff:", "answer:"} {
+	for _, prefix := range []string{"handoff:", "answer:", triggerPush + ":", triggerPushAnswer + ":"} {
 		if rest, ok := strings.CutPrefix(key, prefix); ok {
 			id, err := strconv.ParseInt(rest, 10, 64)
 			return id, err == nil
@@ -986,17 +1121,21 @@ func triggerComment(key string) (int64, bool) {
 }
 
 const (
-	statusController = "Controller"
-	statusOnHold     = "On hold"
-	cmdStartIssue    = "/lighthouse-start-issue"
-	modeStart        = "start"
-	modeResume       = "resume"
-	triggerHandoff   = "handoff"
-	triggerAnswer    = "answer"
-	triggerClose     = "closecheck"
-	triggerFixPR     = "fixpr"
-	cmdFixPR         = "/lighthouse-fix-pr"
-	maxFixPRRuns     = 3
+	statusController  = "Controller"
+	statusOnHold      = "On hold"
+	cmdStartIssue     = "/lighthouse-start-issue"
+	modeStart         = "start"
+	modeResume        = "resume"
+	triggerHandoff    = "handoff"
+	triggerAnswer     = "answer"
+	triggerPush       = "push"
+	triggerPushAnswer = "pushanswer"
+	// triggerMerge is the merge pusher of a PR with a pushed SHA; its row's key is merge:<pr>:<head>.
+	triggerMerge = "merge"
+	triggerClose = "closecheck"
+	triggerFixPR = "fixpr"
+	cmdFixPR     = "/lighthouse-fix-pr"
+	maxFixPRRuns = 3
 )
 
 // issueCtx is what the start rules of one item read.
@@ -1024,7 +1163,8 @@ func (c issueCtx) next() (planned, bool) {
 
 // retry is the second attempt of a trigger key of the issue whose runs all failed to start,
 // whatever 🚀 or Started the issue shows. After one failure the trigger starts again from
-// its row; after two the issue goes back, once per session of the second row.
+// its row (a push row starts the pusher again, pushAgain); after two the issue goes back, once
+// per session of the second row, or for a push row once from its start on.
 func (c issueCtx) retry() (planned, bool) {
 	var keys []string
 	byKey := map[string][]runs.Row{}
@@ -1040,6 +1180,12 @@ func (c issueCtx) retry() (planned, bool) {
 	for _, key := range keys {
 		rows := byKey[key]
 		if !allStartFailed(rows) {
+			continue
+		}
+		if len(rows) == 1 && isPush(rows[0]) {
+			if p, ok := c.pushAgain(rows[0]); ok {
+				return p, true
+			}
 			continue
 		}
 		if len(rows) == 1 {
@@ -1105,6 +1251,9 @@ func (c issueCtx) handoffSkip(com Comment) string {
 // startFailed hands the issue back after the second failed start, unless a Returned of that
 // run's session already stands.
 func (c issueCtx) startFailed(row runs.Row) (Action, bool) {
+	if isPush(row) {
+		return c.pushStartFailed(row)
+	}
 	for _, p := range c.hs {
 		if p.Header.Kind == protocol.KindReturned && p.Header.Session == row.SessionID {
 			return Action{}, false
@@ -1113,6 +1262,119 @@ func (c issueCtx) startFailed(row runs.Row) (Action, bool) {
 	a := c.base
 	a.Kind, a.Reason, a.ReasonArg, a.SessionID = KindReturn, "reason_start_failed", row.Reason, row.SessionID
 	return a, true
+}
+
+// pushTarget is what a push trigger names: the worktree and branch to push, the SHA a user's
+// answer permitted, the trigger comment and its time.
+type pushTarget struct {
+	trigger, worktree, branch, permit string
+	comment                           int64
+	at                                time.Time
+}
+
+// pushTargetOf reads the target of a push trigger key from its comment: for push:<id> the
+// handoff, for pushanswer:<id> the last pusher Vraag before the answer, as the answer itself
+// carries none of it. false when the comment is gone or does not read.
+func (c issueCtx) pushTargetOf(key string) (pushTarget, bool) {
+	id, ok := triggerComment(key)
+	if !ok {
+		return pushTarget{}, false
+	}
+	com, ok := c.comment(id)
+	if !ok {
+		return pushTarget{}, false
+	}
+	t := pushTarget{comment: id, at: parseTime(com.CreatedAt)}
+	if strings.HasPrefix(key, triggerPush+":") {
+		h, _ := protocol.ParseHeader(com.Body)
+		ho, err := protocol.ParseHandoff(h)
+		if err != nil || !validBranch(ho.Branch) || ho.Branch == c.repo.DefaultBranch || ho.Worktree == "" {
+			return pushTarget{}, false
+		}
+		t.trigger, t.worktree, t.branch = triggerPush, ho.Worktree, ho.Branch
+		return t, true
+	}
+	// The answer has no protocol header, so it is not in c.hs: the walk goes over the thread and
+	// stops at the answer. A pusher Vraag after it is not the one the user answered, and its SHA
+	// must never get the permit.
+	var q *protocol.Header
+	for _, com := range c.it.Comments {
+		if com.ID == id {
+			break
+		}
+		if h, ok := protocol.ParseHeader(com.Body); ok && pusherQuestion(h) {
+			q = &h
+		}
+	}
+	if q == nil || !shaField.MatchString(q.Fields["sha"]) || q.Fields["worktree"] == "" || !validBranch(q.Fields["branch"]) {
+		return pushTarget{}, false
+	}
+	t.trigger, t.worktree, t.branch, t.permit = triggerPushAnswer, q.Fields["worktree"], q.Fields["branch"], q.Fields["sha"]
+	return t, true
+}
+
+// pushAgain is the second attempt of a push row that failed to start: a KindPush on the target
+// of its trigger. Without the pusher configured, or with a target that no longer reads, the issue
+// goes back instead, once from the row's start on (pushReturned).
+func (c issueCtx) pushAgain(row runs.Row) (planned, bool) {
+	if pr, head, ok := parseMergeKey(row.TriggerKey); ok {
+		switch {
+		case c.repo.WorkflowPush && validBranch(row.Branch):
+			return c.mergePush(forge.PR{Number: pr, HeadSHA: head, HeadRef: row.Branch}, 2, row.StartedAt), true
+		case c.pushReturned(row):
+			return planned{}, false
+		case !c.repo.WorkflowPush:
+			return c.returned("reason_pusher_off", ""), true
+		}
+		return c.returned("reason_start_failed", row.Reason), true
+	}
+	t, ok := c.pushTargetOf(row.TriggerKey)
+	switch {
+	case ok && c.repo.WorkflowPush:
+		a := c.base
+		a.Kind, a.Trigger, a.TriggerKey, a.Attempt = KindPush, t.trigger, row.TriggerKey, 2
+		a.Command, a.Worktree, a.Branch, a.CommentID, a.PermitSHA = cmdPush, t.worktree, t.branch, t.comment, t.permit
+		return planned{Action: a, priority: priorityRank(c.it.Priority), at: t.at}, true
+	case c.pushReturned(row):
+		return planned{}, false
+	case ok:
+		return c.returned("reason_pusher_off", pushCommand(t.worktree)), true
+	}
+	return c.returned("reason_start_failed", row.Reason), true
+}
+
+// parseMergeKey reads the PR and head of a merge:<pr>:<head> key.
+func parseMergeKey(key string) (int, string, bool) {
+	rest, ok := strings.CutPrefix(key, triggerMerge+":")
+	if !ok {
+		return 0, "", false
+	}
+	n, head, ok := strings.Cut(rest, ":")
+	pr, err := strconv.Atoi(n)
+	return pr, head, ok && err == nil && pr > 0 && head != ""
+}
+
+// pushStartFailed hands the issue back after the second failed start of a push row, with the
+// command that pushes by hand, unless a Returned stands from that row's start on.
+func (c issueCtx) pushStartFailed(row runs.Row) (Action, bool) {
+	if c.pushReturned(row) {
+		return Action{}, false
+	}
+	arg := row.Reason
+	if t, ok := c.pushTargetOf(row.TriggerKey); ok {
+		arg = strings.TrimPrefix(arg+"; "+pushCommand(t.worktree), "; ")
+	}
+	a := c.base
+	a.Kind, a.Reason, a.ReasonArg = KindReturn, "reason_start_failed", arg
+	return a, true
+}
+
+// pushReturned reports whether a Returned without a session stands from row's start on: a push
+// row has no session to tell its own Returned by.
+func (c issueCtx) pushReturned(row runs.Row) bool {
+	return slices.ContainsFunc(c.hs, func(p parsed) bool {
+		return p.Header.Kind == protocol.KindReturned && p.Header.Session == "" && !p.Time.Before(row.StartedAt)
+	})
 }
 
 // usageResume resumes a run the usage guard parked, once per parking: a marker whose
@@ -1148,12 +1410,19 @@ func (c issueCtx) usageResume() (planned, bool) {
 // another issue's session never resumes that run.
 func (c issueCtx) answer() (planned, bool) {
 	q := lastTurn(c.hs)
-	if q == nil || q.Header.Kind != protocol.KindQuestion || q.Header.Session == "" {
+	if q == nil || q.Header.Kind != protocol.KindQuestion {
 		return planned{}, false
 	}
 	ans, ok := c.answerTo(q.Comment.ID)
 	if !ok {
 		return planned{}, false
+	}
+	if q.Header.Session == "" {
+		// A Vraag without a session that carries a sha is the pusher's.
+		if !pusherQuestion(q.Header) {
+			return planned{}, false
+		}
+		return c.pushAnswer(q, ans)
 	}
 	key := triggerAnswer + ":" + strconv.FormatInt(ans.ID, 10)
 	if c.spent(key) {
@@ -1240,7 +1509,8 @@ func (c issueCtx) handoff() (planned, bool) {
 		return planned{}, false
 	}
 	key := triggerHandoff + ":" + strconv.FormatInt(p.Comment.ID, 10)
-	if c.spent(key) {
+	pushKey := triggerPush + ":" + strconv.FormatInt(p.Comment.ID, 10)
+	if c.spent(key) || c.spent(pushKey) {
 		return planned{}, false
 	}
 	ho, err := protocol.ParseHandoff(p.Header)
@@ -1259,11 +1529,22 @@ func (c issueCtx) handoff() (planned, bool) {
 	case VerdictInteractive:
 		return c.returned("reason_interactive", ""), true
 	case VerdictRejected:
+		if fields := strings.Fields(ho.Next); len(fields) > 0 && fields[0] == cmdPush {
+			return c.returned("reason_bad_handoff", j.Arg), true
+		}
 		return c.returned("reason_not_allowed", j.Arg), true
 	case VerdictSkillMissing:
 		return c.returned("reason_skill_missing", j.Arg), true
+	case VerdictPush:
+		if reason := c.pushRefused(p.Header.Session); reason != "" {
+			return c.returned(reason, pushCommand(ho.Worktree)), true
+		}
 	}
 	if !validBranch(ho.Branch) {
+		return c.returned("reason_bad_handoff", "branch "+ho.Branch), true
+	}
+	if j.Verdict == VerdictPush && ho.Branch == c.repo.DefaultBranch {
+		// The pusher pushes the branch of the work, never the default branch.
 		return c.returned("reason_bad_handoff", "branch "+ho.Branch), true
 	}
 	if ho.When == "night" && !InNight(c.night, c.now) {
@@ -1277,6 +1558,9 @@ func (c issueCtx) handoff() (planned, bool) {
 		a.Blockers = c.activeBlockers()
 		return planned{Action: a}, true
 	}
+	if j.Verdict == VerdictPush {
+		return c.push(p, ho, pushKey), true
+	}
 	branch := ho.Branch
 	if branch == c.repo.DefaultBranch {
 		branch = c.issueBranch()
@@ -1284,6 +1568,72 @@ func (c issueCtx) handoff() (planned, bool) {
 	a := c.fresh(triggerHandoff, key, j.Command, branch)
 	a.CommentID, a.Native, a.Skip = p.Comment.ID, j.Native, skip
 	return c.planned(a, p.Time), true
+}
+
+// pushCommand is what a user runs to push the worktree by hand: the Teruggegeven of a refused
+// push carries it where the pusher's own 🤖 Vraag would.
+func pushCommand(worktree string) string {
+	return "cd " + worktree + " && git push -u origin HEAD"
+}
+
+// pushRefused is the heading key of the reason the pusher cannot take the push the handoff of
+// session asks for, "" when it can: [dispatch.workflow_push] is not configured, or the run
+// that wrote the handoff ran on another node, whose worktree this host cannot push. A session
+// without a run of this issue is taken as this host's.
+func (c issueCtx) pushRefused(session string) string {
+	if !c.repo.WorkflowPush {
+		return "reason_pusher_off"
+	}
+	if run, ok := lastRunOf(c.repo.History, c.it.Issue, session); ok && run.Node != "" {
+		return "reason_pusher_node"
+	}
+	return ""
+}
+
+// push is the KindPush of the handoff in p. It starts no session and takes no slot; the brake
+// still holds it back for a pause or a closed usage brake.
+func (c issueCtx) push(p *parsed, ho protocol.Handoff, key string) planned {
+	a := c.base
+	a.Kind, a.Trigger, a.TriggerKey, a.Attempt = KindPush, triggerPush, key, 1
+	a.Command, a.Worktree, a.Branch, a.CommentID = cmdPush, ho.Worktree, ho.Branch, p.Comment.ID
+	return planned{Action: a, priority: priorityRank(c.it.Priority), at: p.Time}
+}
+
+// mergePush is the KindPush of the merge pusher for pr on its head: no worktree, no permit, the
+// PR's branch as the row's branch so the row owns the PR. The brake treats it as a push.
+func (c issueCtx) mergePush(pr forge.PR, attempt int, at time.Time) planned {
+	a := c.base
+	a.Kind, a.Trigger, a.TriggerKey, a.Attempt = KindPush, triggerMerge, mergeKey(pr.Number, pr.HeadSHA), attempt
+	a.Command, a.Branch, a.PR, a.HeadSHA, a.PRURL = cmdPush, pr.HeadRef, pr.Number, pr.HeadSHA, pr.URL
+	return planned{Action: a, priority: priorityRank(c.it.Priority), at: at}
+}
+
+// pushAnswer is the KindPush for the answer `push` to a pusher 🤖 Vraag: a Vraag without a
+// session whose fields name the SHA, the worktree and the branch of the red push. Any other
+// answer resumes nothing, as there is no session; a SHA that is none, or a branch git must not
+// see, gives no action.
+func (c issueCtx) pushAnswer(q *parsed, ans Comment) (planned, bool) {
+	sha, worktree, branch := q.Header.Fields["sha"], q.Header.Fields["worktree"], q.Header.Fields["branch"]
+	key := triggerPushAnswer + ":" + strconv.FormatInt(ans.ID, 10)
+	if c.spent(key) || !permitAnswer(ans.Body) || !shaField.MatchString(sha) || worktree == "" || !validBranch(branch) {
+		return planned{}, false
+	}
+	if !c.repo.WorkflowPush {
+		return c.returned("reason_pusher_off", pushCommand(worktree)), true
+	}
+	a := c.base
+	a.Kind, a.Trigger, a.TriggerKey, a.Attempt = KindPush, triggerPushAnswer, key, 1
+	a.Command, a.Worktree, a.Branch, a.CommentID, a.PermitSHA = cmdPush, worktree, branch, ans.ID, sha
+	return planned{Action: a, priority: priorityRank(c.it.Priority), at: parseTime(ans.CreatedAt)}, true
+}
+
+// shaField is a git object name as the pusher's Vraag carries it.
+var shaField = regexp.MustCompile(`^[0-9a-f]{7,64}$`)
+
+// permitAnswer reports whether body is the answer `push`, in any case and with a closing
+// full stop or exclamation mark.
+func permitAnswer(body string) bool {
+	return strings.EqualFold(strings.TrimRight(strings.TrimSpace(body), ".!"), "push")
 }
 
 // branchName is the shape of a handoff branch: the branch reaches git as an argument.

@@ -50,6 +50,11 @@ type tickEnv struct {
 	MemInfo string
 	// Run runs git for the workplace and the sweep; nil is workplace.ExecRunner.
 	Run workplace.Runner
+	// DBPath is the database tick opened: the pusher gets it as --db. tick and run set it.
+	DBPath string
+	// Spawn starts the pusher process with the arguments and the environment; nil is spawnDetached.
+	// Only tests set it.
+	Spawn func(ctx context.Context, args, env []string) error
 	// Jobs looks up a scheduled job by name; nil is scheduled.Lookup.
 	Jobs func(name string) (scheduled.Job, bool)
 	// GitBase is the base URL of the git remotes the branch of a scheduled run is pushed to;
@@ -215,6 +220,7 @@ func tick(ctx context.Context, env tickEnv, dbPath string, errOut io.Writer) err
 			return err
 		}
 	}
+	env.DBPath = dbPath
 	st, err := store.OpenShared(ctx, dbPath)
 	if err != nil {
 		return err
@@ -536,10 +542,13 @@ func applyActions(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.D
 		RemoveMarker: func(session, key string) error {
 			return env.removeMarker(ctx, cfg, markerDir, markerNode[session], session, key)
 		},
-		MaxWait:    cfg.MaxWait,
-		Now:        env.now,
-		NewSession: runs.NewSessionID,
-		Log:        prefixed{errOut},
+		MaxWait:     cfg.MaxWait,
+		Now:         env.now,
+		NewSession:  runs.NewSessionID,
+		Log:         prefixed{errOut},
+		Getenv:      env.Getenv,
+		TokenEnv:    func(slug string) string { return tokenEnvName(repos[slug]) },
+		StartPusher: env.startPusher(dir),
 	}, actions)
 	return res, nil
 }
@@ -826,6 +835,7 @@ func repoInput(ctx context.Context, db *sql.DB, cfg hostconfig.Dispatch, f forge
 		Snapshot: snap, Controller: *pre.Repo.Controller, Language: pre.Repo.Language,
 		LocationPrefix: pre.Repo.Labels.LocationPrefix,
 		DefaultBranch:  pre.Repo.DefaultBranch, Installed: installed, History: history, Stands: pre.Stands, Runs: pre.Runs,
-		Markers: pre.Markers,
+		Markers:      pre.Markers,
+		WorkflowPush: cfg.WorkflowPush != nil, PushTimeout: dispatch.PushTimeout(cfg),
 	}, nil
 }

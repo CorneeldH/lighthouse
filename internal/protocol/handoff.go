@@ -16,6 +16,10 @@ var ErrHandoff = errors.New("protocol: handoff")
 type Handoff struct {
 	Issue                                      int
 	Worktree, Branch, Anchor, Next, When, Lane string
+	// After is the command the chain continues with once `next: push-workflows` has pushed;
+	// Roborev is the roborev outcome line the run reports for the pushed range. Both are
+	// optional and only read for a push handoff.
+	After, Roborev string
 }
 
 var issueField = regexp.MustCompile(`^#?([0-9]+)$`)
@@ -53,5 +57,7 @@ func ParseHandoff(h Header) (Handoff, error) {
 		Next:     h.Fields["next"],
 		When:     h.Fields["when"],
 		Lane:     h.Fields["lane"],
+		After:    h.Fields["after"],
+		Roborev:  h.Fields["roborev"],
 	}, nil
 }

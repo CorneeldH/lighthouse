@@ -196,7 +196,7 @@ func TestParseHandoffLaneAndAutoLines(t *testing.T) {
 // twin of test_reads_legacy_handoff, test_reads_legacy_now
 func TestParseHandoffReadsLegacyValues(t *testing.T) {
 	h, err := ParseHandoff(mustHeader(t, "🤖 Handoff\nissue: #12\nworktree: /w/x/\nbranch: b\nvolgende: /x\nwanneer: nacht\nanker: a\n"))
-	if want := (Handoff{12, "/w/x", "b", "a", "/x", "night", ""}); err != nil || h != want {
+	if want := (Handoff{12, "/w/x", "b", "a", "/x", "night", "", "", ""}); err != nil || h != want {
 		t.Errorf("legacy handoff = %+v, %v; want %+v", h, err, want)
 	}
 	h, err = ParseHandoff(mustHeader(t, "🤖 Handoff\nissue: 1\nworktree: w\nbranch: b\nvolgende: /x\nwanneer: nu\n"))

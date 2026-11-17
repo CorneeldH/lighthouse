@@ -83,6 +83,7 @@ func NewRoot(in io.Reader, out, errOut io.Writer) *cobra.Command {
 	root.AddCommand(newReviewPairCommand(review.DefaultPairDeps()))
 	root.AddCommand(newServeCommand())
 	root.AddCommand(newTickCommand())
+	root.AddCommand(newPushWorkflowsCommand())
 	root.AddCommand(newGatherCommand())
 	root.AddCommand(newRunCommand())
 	root.AddCommand(newTriageCommand(defaultTriageEnv))

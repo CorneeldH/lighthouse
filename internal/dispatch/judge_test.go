@@ -49,7 +49,7 @@ func TestJudgeVerdicts(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := Judge(tt.next, 7, tt.lane, allInstalled)
+			got := Judge(tt.next, 7, tt.lane, "", allInstalled)
 			if got.Verdict != tt.want || got.Native != tt.native || got.Arg != tt.arg {
 				t.Fatalf("Judge = %+v, want verdict %v native %v arg %q", got, tt.want, tt.native, tt.arg)
 			}
@@ -61,16 +61,16 @@ func TestJudgeVerdicts(t *testing.T) {
 }
 
 func TestJudgeSkillMissing(t *testing.T) {
-	got := Judge("/paia-fix-pr 3", 7, "", map[string]bool{})
+	got := Judge("/paia-fix-pr 3", 7, "", "", map[string]bool{})
 	if got.Verdict != VerdictSkillMissing || got.Arg != "lighthouse-fix-pr" {
 		t.Fatalf("Judge = %+v", got)
 	}
-	got = Judge("/lighthouse-write-pr 7", 7, "", map[string]bool{})
+	got = Judge("/lighthouse-write-pr 7", 7, "", "", map[string]bool{})
 	if got.Verdict != VerdictSkillMissing || got.Arg != "lighthouse-write-pr" {
 		t.Fatalf("Judge = %+v", got)
 	}
 	// superpowers skills are not checked against the worktree.
-	got = Judge("/superpowers:writing-plans /a/b.md", 7, "", map[string]bool{})
+	got = Judge("/superpowers:writing-plans /a/b.md", 7, "", "", map[string]bool{})
 	if got.Verdict != VerdictStart {
 		t.Fatalf("Judge = %+v", got)
 	}
@@ -94,7 +94,7 @@ func TestJudgeArgumentShapes(t *testing.T) {
 		{"/superpowers:writing-plans", VerdictRejected},
 	}
 	for _, tt := range tests {
-		if got := Judge(tt.next, 7, "", allInstalled); got.Verdict != tt.want {
+		if got := Judge(tt.next, 7, "", "", allInstalled); got.Verdict != tt.want {
 			t.Errorf("Judge(%q) = %+v, want %v", tt.next, got, tt.want)
 		}
 	}
@@ -199,5 +199,32 @@ func TestInstalled(t *testing.T) {
 	empty, err := Installed(t.TempDir())
 	if err != nil || len(empty) != 0 {
 		t.Fatalf("no skills dir: %v %v", empty, err)
+	}
+}
+
+func TestJudgePush(t *testing.T) {
+	tests := []struct {
+		name, next, after string
+		issue             int
+		want              Verdict
+		arg               string
+	}{
+		{"without after", "push-workflows", "", 396, VerdictPush, ""},
+		{"with after", "push-workflows", "/lighthouse-write-pr 396", 396, VerdictPush, "/lighthouse-write-pr 396"},
+		{"after for another issue", "push-workflows", "/lighthouse-write-pr 7", 396, VerdictRejected, "/lighthouse-write-pr 7"},
+		{"after outside the allowlist", "push-workflows", "/bin/sh -c x", 396, VerdictRejected, "/bin/sh -c x"},
+		{"after is a push", "push-workflows", "push-workflows", 396, VerdictRejected, "push-workflows"},
+		{"extra argument", "push-workflows extra", "", 396, VerdictRejected, "push-workflows extra"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := Judge(tt.next, tt.issue, "", tt.after, allInstalled)
+			if got.Verdict != tt.want || got.Arg != tt.arg {
+				t.Fatalf("Judge(%q, after %q) = %+v, want verdict %v arg %q", tt.next, tt.after, got, tt.want, tt.arg)
+			}
+			if tt.want == VerdictPush && got.Command != "push-workflows" {
+				t.Errorf("Command = %q", got.Command)
+			}
+		})
 	}
 }

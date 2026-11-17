@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -80,6 +81,16 @@ func RenderDone(session, prURL, note, language string) string {
 	return text + "\n\n" + Footer(session)
 }
 
+// RenderPusherDone renders the `🤖 Done` of the merge pusher after its merge of the PR at prURL:
+// no session, since no session ran.
+func RenderPusherDone(prURL, note, language string) string {
+	text := Robot + " " + Heading("kind_done", language) + "\npr: " + prURL
+	if strings.TrimSpace(note) != "" {
+		text += "\n\n" + strings.TrimSpace(note)
+	}
+	return text
+}
+
 // RenderReturned renders a `🤖 Returned`. An empty session leaves out the session line and
 // the footer; an empty detail leaves out the code block.
 func RenderReturned(reason, session, detail, language string) string {
@@ -104,4 +115,81 @@ func RenderReturned(reason, session, detail, language string) string {
 // predecessors. It has no session and no footer. Only the tick posts one.
 func RenderParked(blockers []string, language string) string {
 	return Robot + " " + Heading("kind_parked", language) + "\nblocked_by: " + strings.Join(blockers, ", ")
+}
+
+// RenderPushed renders the `🤖 Handoff` the pusher posts on the build route (no PR yet): the
+// five fields ParseHandoff demands, the lane of the push handoff when it has one, plus the pushed
+// range and the workflow files. next is the after command of the push handoff; tick judges it on
+// lane.
+func RenderPushed(issue int, worktree, branch, repoRange, workflows, next, lane, language string) string {
+	lines := []string{
+		Robot + " " + Heading("kind_handoff", language),
+		"issue: #" + strconv.Itoa(issue),
+		"worktree: " + worktree,
+		"branch: " + branch,
+		"next: " + next,
+		"when: now",
+	}
+	if lane != "" {
+		lines = append(lines, "lane: "+lane)
+	}
+	return strings.Join(append(lines, "range: "+repoRange, "workflows: "+workflows), "\n")
+}
+
+// RenderPushNote renders the comment the pusher posts on the fix-pr route, where the PR
+// already exists: the pushed branch, range and workflow files, no handoff. The branch scopes the
+// push to the PR of that head (ParsePushed).
+func RenderPushNote(branch, rangeStr, workflows, language string) string {
+	return strings.Join([]string{
+		Robot + " " + Heading("note_pushed", language),
+		"branch: " + branch,
+		"range: " + rangeStr,
+		"workflows: " + workflows,
+	}, "\n")
+}
+
+// Pushed is what a pusher comment says about one push: the branch and the SHA it pushed.
+type Pushed struct{ Branch, SHA string }
+
+// ParsePushed reads a comment of the pusher after a push: the handoff of the build route
+// (RenderPushed, a Handoff with range and workflows and no session footer) or the note of the
+// fix-pr route (RenderPushNote). The SHA is the end of range and must be a full SHA; the branch
+// must be set. false for any other comment.
+func ParsePushed(body string) (Pushed, bool) {
+	var fields map[string]string
+	if h, ok := ParseHeader(body); ok {
+		if h.Kind != KindHandoff || h.Session != "" || h.Fields["workflows"] == "" {
+			return Pushed{}, false
+		}
+		fields = h.Fields
+	} else if fields, ok = pushNoteFields(body); !ok {
+		return Pushed{}, false
+	}
+	_, sha, ok := strings.Cut(fields["range"], "..")
+	if !ok || !fullSHA.MatchString(sha) || fields["branch"] == "" {
+		return Pushed{}, false
+	}
+	return Pushed{Branch: fields["branch"], SHA: sha}, true
+}
+
+var fullSHA = regexp.MustCompile(`^[0-9a-f]{40}$`)
+
+// pushNoteFields reads the fields of a RenderPushNote in any language, false for another body.
+func pushNoteFields(body string) (map[string]string, bool) {
+	lines := strings.Split(strings.ReplaceAll(strings.TrimSpace(body), "\r\n", "\n"), "\n")
+	title, ok := strings.CutPrefix(lines[0], Robot+" ")
+	if !ok || !slices.Contains(Variants("note_pushed"), strings.TrimSpace(title)) {
+		return nil, false
+	}
+	fields := map[string]string{}
+	for _, line := range lines[1:] {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			break
+		}
+		if m := fieldLine.FindStringSubmatch(line); m != nil {
+			fields[m[1]] = strings.TrimSpace(m[2])
+		}
+	}
+	return fields, true
 }

@@ -44,6 +44,7 @@ type fpRun struct {
 	StartedAt time.Time        `json:"started_at"`
 	Stand     *workplace.Stand `json:"stand"` // nil: not measurable
 	MergeSHA  string           `json:"merge_sha,omitempty"`
+	PushedSHA string           `json:"pushed_sha,omitempty"`
 	// PRAt and PRs are of a scheduled run: its pr_at and the PRs of its branch. Empty for an
 	// issue run, whose PRs are on its item, so its hash is as before they existed.
 	PRAt time.Time `json:"pr_at,omitzero"`
@@ -68,7 +69,8 @@ func Fingerprint(pre Pre) string {
 		if r.Schedule == "" { // a scheduled run has no issue; it still counts as a run below
 			hasRun[r.Issue] = true
 		}
-		f := fpRun{ID: r.ID, Issue: r.Issue, StartedAt: r.StartedAt.UTC(), MergeSHA: r.MergeSHA}
+		f := fpRun{ID: r.ID, Issue: r.Issue, StartedAt: r.StartedAt.UTC(), MergeSHA: r.MergeSHA,
+			PushedSHA: r.PushedSHA}
 		if r.Schedule != "" {
 			f.PRAt, f.PRs = r.PRAt.UTC(), fpPRs(pre.ScheduledPRs[r.Branch])
 		}

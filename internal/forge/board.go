@@ -27,6 +27,9 @@ type PR struct {
 	URL       string `json:"url"`
 	// Roborev is "" without a roborev review, RoborevProcessed or RoborevOpen.
 	Roborev string `json:"roborev,omitempty"`
+	// PushedSHA is the SHA of the newest pusher comment on the issue whose branch is HeadRef:
+	// the workflow pusher pushed it, so the merge of this PR goes to the pusher (dispatch sets it).
+	PushedSHA string `json:"pushed_sha,omitempty"`
 	// MergedAt is the zero time for a PR that is not merged.
 	MergedAt time.Time `json:"merged_at"`
 	// ClosedAt is the zero time for an open PR; a merged PR has one too.
