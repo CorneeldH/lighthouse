@@ -498,8 +498,24 @@ func checkForgeAPI(args []string) string {
 	if strings.Contains(target, "://") || strings.HasPrefix(target, "//") {
 		return "lighthouse forge api: a path only, not a URL"
 	}
-	if strings.Trim(target, "/") == "graphql" {
-		return "lighthouse forge api: graphql is not allowed"
+	return forgeAPIPathReason(target)
+}
+
+// forgeAPIPathReason refuses a path with a `graphql` segment (any case, before `?` or `#`, with or
+// without an `api/v4/` prefix), a `..` segment, or a percent escape that could hide either.
+func forgeAPIPathReason(target string) string {
+	route, _, _ := strings.Cut(target, "?")
+	route, _, _ = strings.Cut(route, "#")
+	if strings.Contains(route, "%") {
+		return "lighthouse forge api: a percent escape in the path is not allowed"
+	}
+	for _, seg := range strings.Split(route, "/") {
+		switch strings.ToLower(seg) {
+		case "graphql":
+			return "lighthouse forge api: graphql is not allowed"
+		case "..":
+			return "lighthouse forge api: `..` is not allowed in the path"
+		}
 	}
 	return ""
 }
