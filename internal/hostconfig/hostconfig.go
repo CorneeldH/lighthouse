@@ -386,7 +386,17 @@ func buildWorkflowPush(tokenFile, review, timeout *string, n int, reviewer func(
 		if len(binds) > 0 {
 			rv.Binds = binds
 		}
+		for _, prev := range wp.Reviewers {
+			if prev.Topic == rv.Topic {
+				return nil, fmt.Errorf("%s.topic: %s has a reviewer already; each reviewer needs its own topic", rkey, rv.Topic)
+			}
+		}
 		wp.Reviewers = append(wp.Reviewers, rv)
+	}
+	// Zero reviewers is a pusher without review: a post-merge change pushes, a pre-merge one
+	// always asks. One reviewer alone is never a review (spec §4: two or three).
+	if len(wp.Reviewers) == 1 {
+		return nil, fmt.Errorf("%s.reviewers: one reviewer; the review needs two or three with distinct topics", key)
 	}
 	return wp, nil
 }

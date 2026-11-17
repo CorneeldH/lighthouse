@@ -29,7 +29,7 @@ const (
 // passBwrap is a fake bwrap: it logs its argv, one per line, and runs what follows `--`, so the
 // review runs end to end without a sandbox. LOG is replaced with the log path.
 const passBwrap = `#!/bin/sh
-printf '%s\n' "$@" > LOG
+printf '%s\n' "$@" > "LOG.$$"
 while [ $# -gt 0 ]; do
   if [ "$1" = "--" ]; then shift; break; fi
   shift
@@ -50,6 +50,7 @@ func setupReview(t *testing.T, withBwrap bool, scripts map[string]string) review
 	if withBwrap {
 		scripts = withEntry(scripts, "bwrap", strings.ReplaceAll(passBwrap, "LOG", e.log))
 	}
+	scripts = withEntry(scripts, "ok", answer(approveJSON))
 	for name, text := range scripts {
 		if err := os.WriteFile(filepath.Join(bin, name), []byte(text), 0o755); err != nil {
 			t.Fatal(err)
@@ -76,6 +77,35 @@ func rv(topic, name string) hostconfig.Reviewer {
 	return hostconfig.Reviewer{Topic: topic, Command: []string{name, "{out}", "-"}}
 }
 
+// solo is r with an approving peer on another topic: the review needs two distinct topics.
+func solo(timeout time.Duration, r hostconfig.Reviewer) hostconfig.WorkflowPush {
+	topic := "supply-chain"
+	if r.Topic == topic {
+		topic = "secrets"
+	}
+	return cfgOf(timeout, r, rv(topic, "ok"))
+}
+
+// bwrapLog is the argv the fake bwrap logged for the reviewer command name.
+func bwrapLog(t *testing.T, e reviewEnv, name string) []string {
+	t.Helper()
+	logs, _ := filepath.Glob(e.log + ".*")
+	for _, l := range logs {
+		text, err := os.ReadFile(l)
+		if err != nil {
+			t.Fatal(err)
+		}
+		args := strings.Split(strings.TrimSpace(string(text)), "\n")
+		for i, a := range args {
+			if a == "--" && i+1 < len(args) && filepath.Base(args[i+1]) == name {
+				return args
+			}
+		}
+	}
+	t.Fatalf("no bwrap log for %s", name)
+	return nil
+}
+
 func cfgOf(timeout time.Duration, rs ...hostconfig.Reviewer) hostconfig.WorkflowPush {
 	return hostconfig.WorkflowPush{TokenFile: "/nonexistent/workflow.token", Review: hostconfig.ReviewEnforce, Timeout: timeout, Reviewers: rs}
 }
@@ -84,7 +114,7 @@ const sampleDiff = "diff --git a/.github/workflows/ci.yml b/.github/workflows/ci
 
 func TestReviewUnanimousApprove(t *testing.T) {
 	setupReview(t, true, map[string]string{"r1": answer(approveJSON), "r2": answer(approveJSON), "r3": answer(approveJSON)})
-	v := Review(context.Background(), cfgOf(time.Minute, rv("supply-chain", "r1"), rv("secrets", "r2"), rv("injection", "r3")), sampleDiff, nil)
+	v := Review(context.Background(), cfgOf(time.Minute, rv("supply-chain", "r1"), rv("secrets", "r2"), rv("injection", "r3")), sampleDiff, nil, nil)
 	if !v.Approve {
 		t.Fatalf("want approve, got %+v", v)
 	}
@@ -100,7 +130,7 @@ func TestReviewUnanimousApprove(t *testing.T) {
 
 func TestReviewOneRejectBlocks(t *testing.T) {
 	setupReview(t, true, map[string]string{"r1": answer(approveJSON), "r2": answer(rejectJSON)})
-	v := Review(context.Background(), cfgOf(time.Minute, rv("supply-chain", "r1"), rv("injection", "r2")), sampleDiff, nil)
+	v := Review(context.Background(), cfgOf(time.Minute, rv("supply-chain", "r1"), rv("injection", "r2")), sampleDiff, nil, nil)
 	if v.Approve {
 		t.Fatalf("one reject must block: %+v", v)
 	}
@@ -115,7 +145,7 @@ func TestReviewOneRejectBlocks(t *testing.T) {
 
 func TestReviewNoReviewersIsNotApprove(t *testing.T) {
 	setupReview(t, true, nil)
-	if v := Review(context.Background(), cfgOf(time.Minute), sampleDiff, nil); v.Approve {
+	if v := Review(context.Background(), cfgOf(time.Minute), sampleDiff, nil, nil); v.Approve {
 		t.Fatalf("zero reviewers must not approve: %+v", v)
 	}
 }
@@ -128,7 +158,7 @@ func TestReviewRejectWithoutEvidenceIsReject(t *testing.T) {
 	for name, text := range cases {
 		t.Run(name, func(t *testing.T) {
 			setupReview(t, true, map[string]string{"r1": answer(text), "r2": answer(approveJSON)})
-			v := Review(context.Background(), cfgOf(time.Minute, rv("secrets", "r1"), rv("injection", "r2")), sampleDiff, nil)
+			v := Review(context.Background(), cfgOf(time.Minute, rv("secrets", "r1"), rv("injection", "r2")), sampleDiff, nil, nil)
 			if v.Approve || v.Results[0].Approve {
 				t.Fatalf("reject without evidence must stay reject: %+v", v)
 			}
@@ -154,6 +184,14 @@ func TestParseVerdict(t *testing.T) {
 		{"two objects", approveJSON + approveJSON, false, "invalid JSON: more than one value"},
 		{"prose", "I approve this change.", false, "invalid JSON: "},
 		{"empty", "", false, "invalid JSON: "},
+		{"unknown key", `{"verdict":"approve","findings":[],"note":"x"}`, false, `invalid JSON: unknown key "note"`},
+		{"unknown finding key", `{"verdict":"reject","findings":[{"file":"a","line":1,"issue":"x","evidence":"y","sev":"hi"}]}`, false, `invalid JSON: unknown key "sev"`},
+		{"key in other case", `{"Verdict":"approve","findings":[]}`, false, `invalid JSON: unknown key "Verdict"`},
+		{"duplicate verdict", `{"verdict":"reject","verdict":"approve","findings":[]}`, false, `invalid JSON: key "verdict" twice`},
+		{"duplicate evidence", `{"verdict":"reject","findings":[{"file":"a","line":1,"issue":"x","evidence":"y","evidence":""}]}`, false, `invalid JSON: key "evidence" twice`},
+		{"findings null", `{"verdict":"approve","findings":null}`, false, "invalid JSON: "},
+		{"verdict as object", `{"verdict":{"v":"approve"},"findings":[]}`, false, "invalid JSON: "},
+		{"approve with findings", `{"verdict":"approve","findings":[{"file":"a","line":1,"issue":"x","evidence":"y"}]}`, false, "approve with 1 finding(s) is contradictory"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -167,7 +205,7 @@ func TestParseVerdict(t *testing.T) {
 
 func TestReviewInvalidJSONIsReject(t *testing.T) {
 	setupReview(t, true, map[string]string{"r1": answer(`{"verdict":"approve"`), "r2": answer(approveJSON)})
-	v := Review(context.Background(), cfgOf(time.Minute, rv("secrets", "r1"), rv("injection", "r2")), sampleDiff, nil)
+	v := Review(context.Background(), cfgOf(time.Minute, rv("secrets", "r1"), rv("injection", "r2")), sampleDiff, nil, nil)
 	if v.Approve || v.Results[0].Approve || !strings.HasPrefix(v.Results[0].Why, "invalid JSON") {
 		t.Fatalf("invalid JSON must reject: %+v", v)
 	}
@@ -176,7 +214,7 @@ func TestReviewInvalidJSONIsReject(t *testing.T) {
 func TestReviewExitNonZeroIsReject(t *testing.T) {
 	failing := "#!/bin/sh\nprintf '%s' '" + approveJSON + "' > \"$1\"\necho boom >&2\nexit 3\n"
 	setupReview(t, true, map[string]string{"r1": failing, "r2": answer(approveJSON)})
-	v := Review(context.Background(), cfgOf(time.Minute, rv("secrets", "r1"), rv("injection", "r2")), sampleDiff, nil)
+	v := Review(context.Background(), cfgOf(time.Minute, rv("secrets", "r1"), rv("injection", "r2")), sampleDiff, nil, nil)
 	if v.Approve || v.Results[0].Approve || !strings.Contains(v.Results[0].Why, "exit 3") || !strings.Contains(v.Results[0].Why, "boom") {
 		t.Fatalf("exit != 0 must reject, even with an approve file: %+v", v)
 	}
@@ -184,7 +222,7 @@ func TestReviewExitNonZeroIsReject(t *testing.T) {
 
 func TestReviewMissingOutputIsReject(t *testing.T) {
 	setupReview(t, true, map[string]string{"r1": "#!/bin/sh\ncat >/dev/null\nexit 0\n", "r2": answer(approveJSON)})
-	v := Review(context.Background(), cfgOf(time.Minute, rv("secrets", "r1"), rv("injection", "r2")), sampleDiff, nil)
+	v := Review(context.Background(), cfgOf(time.Minute, rv("secrets", "r1"), rv("injection", "r2")), sampleDiff, nil, nil)
 	if v.Approve || v.Results[0].Approve || !strings.Contains(v.Results[0].Why, "no output") {
 		t.Fatalf("missing output must reject: %+v", v)
 	}
@@ -193,7 +231,7 @@ func TestReviewMissingOutputIsReject(t *testing.T) {
 func TestReviewStdoutIsOutputWithoutPlaceholder(t *testing.T) {
 	setupReview(t, true, map[string]string{"r1": "#!/bin/sh\ncat >/dev/null\nprintf '%s' '" + approveJSON + "'\n"})
 	r := hostconfig.Reviewer{Topic: "secrets", Command: []string{"r1", "-p", "--tools", ""}}
-	if v := Review(context.Background(), cfgOf(time.Minute, r), sampleDiff, nil); !v.Approve {
+	if v := Review(context.Background(), solo(time.Minute, r), sampleDiff, nil, nil); !v.Approve {
 		t.Fatalf("stdout is the output file when {out} is absent: %+v", v)
 	}
 }
@@ -203,7 +241,7 @@ func TestReviewTimeoutIsReject(t *testing.T) {
 	slow := "#!/bin/sh\nsleep 60 &\necho $! > " + pidFile + "\nwait\n"
 	setupReview(t, true, map[string]string{"r1": slow, "r2": answer(approveJSON)})
 	start := time.Now()
-	v := Review(context.Background(), cfgOf(2*time.Second, rv("secrets", "r1"), rv("injection", "r2")), sampleDiff, nil)
+	v := Review(context.Background(), cfgOf(2*time.Second, rv("secrets", "r1"), rv("injection", "r2")), sampleDiff, nil, nil)
 	if took := time.Since(start); took > 15*time.Second {
 		t.Fatalf("review took %s, the timeout did not stop it", took)
 	}
@@ -257,7 +295,7 @@ func TestReviewerEnvHasNoToken(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	r := rv("secrets", "r1")
 	r.Env = []string{"API_KEY", "SNEAKY", "GH_TOKEN"}
-	v := Review(context.Background(), cfgOf(time.Minute, r), sampleDiff, []string{forgeTok, workflowTok})
+	v := Review(context.Background(), solo(time.Minute, r), sampleDiff, []string{forgeTok, workflowTok}, nil)
 	if !v.Approve {
 		t.Fatalf("review: %+v", v)
 	}
@@ -290,7 +328,7 @@ func TestReviewerEnvBuild(t *testing.T) {
 }
 
 func TestSandboxArgs(t *testing.T) {
-	got := sandboxArgs("/tmp/lighthouse-review-1", []string{"/home/u/.codex/auth.json", "/opt/codex"}, []string{"codex", "exec", "-"})
+	got := sandboxArgs("/tmp/lighthouse-review-1", []string{"/home/u/.codex/auth.json", "/tmp/tools/bin"}, []string{"codex", "exec", "-"})
 	want := []string{
 		"--unshare-all", "--share-net", "--die-with-parent", "--new-session",
 		"--ro-bind-try", "/usr", "/usr",
@@ -314,31 +352,73 @@ func TestSandboxArgs(t *testing.T) {
 		"--ro-bind-try", "/etc/ca-certificates", "/etc/ca-certificates",
 		"--ro-bind-try", "/etc/crypto-policies", "/etc/crypto-policies",
 		"--proc", "/proc", "--dev", "/dev",
-		"--ro-bind", "/home/u/.codex/auth.json", "/home/u/.codex/auth.json",
-		"--ro-bind", "/opt/codex", "/opt/codex",
 		"--bind", "/tmp/lighthouse-review-1", "/tmp",
 		"--bind", "/tmp/lighthouse-review-1", "/tmp/lighthouse-review-1",
+		"--ro-bind", "/home/u/.codex/auth.json", "/home/u/.codex/auth.json",
+		"--ro-bind", "/tmp/tools/bin", "/tmp/tools/bin",
 		"--chdir", "/tmp/lighthouse-review-1",
 		"--", "codex", "exec", "-",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("sandboxArgs =\n%q\nwant\n%q", got, want)
 	}
+	if bad := shadowed(got); len(bad) > 0 {
+		t.Fatalf("mounts hidden by a later mount: %q", bad)
+	}
+}
+
+// mountDest is the number of arguments of a bwrap mount option and which one is the destination.
+var mountDest = map[string][2]int{
+	"--bind": {2, 1}, "--bind-try": {2, 1}, "--ro-bind": {2, 1}, "--ro-bind-try": {2, 1},
+	"--dev-bind": {2, 1}, "--dev-bind-try": {2, 1}, "--symlink": {2, 1},
+	"--proc": {1, 0}, "--dev": {1, 0}, "--tmpfs": {1, 0}, "--dir": {1, 0}, "--mqueue": {1, 0},
+	"--chdir": {1, -1}, "--setenv": {2, -1}, "--unsetenv": {1, -1},
+}
+
+// shadowed lists every mount destination of a bwrap argv that a later mount covers: equal to, or
+// under, the destination of a mount that comes after it.
+func shadowed(args []string) []string {
+	var dests []string
+	for i := 0; i < len(args) && args[i] != "--"; i++ {
+		spec, ok := mountDest[args[i]]
+		if !ok {
+			continue
+		}
+		if spec[1] >= 0 {
+			dests = append(dests, args[i+1+spec[1]])
+		}
+		i += spec[0]
+	}
+	var bad []string
+	for i, d := range dests {
+		for _, later := range dests[i+1:] {
+			if within(d, later) {
+				bad = append(bad, d+" under "+later)
+			}
+		}
+	}
+	return bad
+}
+
+func TestShadowedFindsAHiddenBind(t *testing.T) {
+	got := shadowed([]string{"--ro-bind", "/tmp/x/bin", "/tmp/x/bin", "--bind", "/tmp/r", "/tmp", "--", "/tmp/x/bin/r"})
+	if want := []string{"/tmp/x/bin under /tmp"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("shadowed = %q, want %q", got, want)
+	}
 }
 
 func TestReviewRunsUnderBwrapWithConfigBinds(t *testing.T) {
 	e := setupReview(t, true, map[string]string{"r1": answer(approveJSON)})
-	authDir := t.TempDir()
+	authDir := t.TempDir() // under /tmp, like an install dir under TMPDIR
 	r := rv("secrets", "r1")
 	r.Binds = []string{authDir}
-	if v := Review(context.Background(), cfgOf(time.Minute, r), sampleDiff, nil); !v.Approve {
+	if v := Review(context.Background(), solo(time.Minute, r), sampleDiff, nil, nil); !v.Approve {
 		t.Fatalf("review: %+v", v)
 	}
-	text, err := os.ReadFile(e.log)
-	if err != nil {
-		t.Fatal(err)
+	args := bwrapLog(t, e, "r1")
+	if bad := shadowed(args); len(bad) > 0 {
+		t.Errorf("a later mount hides: %q", bad)
 	}
-	args := strings.Split(strings.TrimSpace(string(text)), "\n")
 	var binds, writable []string
 	for i, a := range args {
 		switch a {
@@ -365,31 +445,95 @@ func TestReviewRunsUnderBwrapWithConfigBinds(t *testing.T) {
 	}
 }
 
-func TestReviewRefusesBindOverTokenOrConfig(t *testing.T) {
+func TestReviewRefusesGuardedBinds(t *testing.T) {
 	setupReview(t, true, map[string]string{"r1": answer(approveJSON)})
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	tokenDir := filepath.Join(t.TempDir(), "secrets")
-	for _, bind := range []string{home, filepath.Join(home, ".config"), filepath.Join(home, ".config", "lighthouse"), tokenDir, "/"} {
-		cfg := cfgOf(time.Minute, rv("secrets", "r1"))
-		cfg.TokenFile = filepath.Join(tokenDir, "workflow.token")
-		cfg.Reviewers[0].Binds = []string{bind}
-		v := Review(context.Background(), cfg, sampleDiff, nil)
-		if v.Approve || !strings.Contains(v.Results[0].Why, "COULD NOT CHECK") {
-			t.Errorf("bind %s: want a refused reviewer, got %+v", bind, v)
+	mk := func(p string) string {
+		if err := os.MkdirAll(p, 0o700); err != nil {
+			t.Fatal(err)
 		}
+		return p
+	}
+	tokenDir := mk(filepath.Join(t.TempDir(), "secrets"))
+	stateDir := mk(filepath.Join(t.TempDir(), "state"))
+	config := mk(filepath.Join(home, ".config", "lighthouse"))
+	link := filepath.Join(t.TempDir(), "x")
+	if err := os.Symlink(config, link); err != nil {
+		t.Fatal(err)
+	}
+	cases := map[string]string{
+		"home":            home,
+		"config parent":   filepath.Join(home, ".config"),
+		"lighthouse":      config,
+		"gh":              mk(filepath.Join(home, ".config", "gh")),
+		"kenn forge":      mk(filepath.Join(home, ".kenn", "forge", "worktrees")),
+		"token dir":       tokenDir,
+		"state from call": mk(filepath.Join(stateDir, "push")),
+		"symlink":         link,
+		"root":            "/",
+		"tmp":             "/tmp",
+		"missing":         filepath.Join(t.TempDir(), "nope"),
+		"relative":        "rel/dir",
+	}
+	for name, bind := range cases {
+		t.Run(name, func(t *testing.T) {
+			r := rv("secrets", "r1")
+			r.Binds = []string{bind}
+			cfg := solo(time.Minute, r)
+			cfg.TokenFile = filepath.Join(tokenDir, "workflow.token")
+			v := Review(context.Background(), cfg, sampleDiff, nil, []string{stateDir})
+			if v.Approve || !strings.HasPrefix(v.Results[0].Why, "COULD NOT CHECK: bind") {
+				t.Errorf("bind %s: want a refused reviewer, got %+v", bind, v)
+			}
+		})
+	}
+	r := rv("secrets", "r1")
+	r.Binds = []string{mk(filepath.Join(t.TempDir(), "codex"))}
+	if v := Review(context.Background(), solo(time.Minute, r), sampleDiff, nil, []string{stateDir}); !v.Approve {
+		t.Errorf("an unrelated bind is refused: %+v", v)
+	}
+}
+
+func TestReviewNeedsTwoDistinctTopics(t *testing.T) {
+	setupReview(t, true, map[string]string{"r1": answer(approveJSON), "r2": answer(approveJSON)})
+	cases := map[string]hostconfig.WorkflowPush{
+		"one reviewer":    cfgOf(time.Minute, rv("secrets", "r1")),
+		"duplicate topic": cfgOf(time.Minute, rv("secrets", "r1"), rv("secrets", "r2")),
+	}
+	for name, cfg := range cases {
+		t.Run(name, func(t *testing.T) {
+			v := Review(context.Background(), cfg, sampleDiff, nil, nil)
+			if v.Approve || v.Results[0].Approve || !strings.Contains(v.Results[0].Why, "distinct topic") && !strings.Contains(v.Results[0].Why, "its own topic") {
+				t.Fatalf("want no approve, with the reason: %+v", v)
+			}
+		})
 	}
 }
 
 func TestReviewMissingBwrapIsRed(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "ran")
 	setupReview(t, false, map[string]string{"r1": "#!/bin/sh\ntouch " + marker + "\nprintf '%s' '" + approveJSON + "' > \"$1\"\n"})
-	v := Review(context.Background(), cfgOf(time.Minute, rv("secrets", "r1")), sampleDiff, nil)
-	if v.Approve || len(v.Results) != 1 || v.Results[0].Approve || !strings.Contains(v.Results[0].Why, "COULD NOT CHECK: bwrap is not on PATH") {
+	v := Review(context.Background(), solo(time.Minute, rv("secrets", "r1")), sampleDiff, nil, nil)
+	if v.Approve || len(v.Results) != 2 || v.Results[0].Approve || !strings.Contains(v.Results[0].Why, "COULD NOT CHECK: bwrap is not on PATH") {
 		t.Fatalf("missing bwrap must be red: %+v", v)
 	}
 	if _, err := os.Stat(marker); err == nil {
 		t.Fatal("a reviewer ran without a sandbox")
+	}
+}
+
+func TestReviewRemovesALockedTempdir(t *testing.T) {
+	where := filepath.Join(t.TempDir(), "where")
+	locker := "#!/bin/sh\ncat >/dev/null\npwd > " + where + "\nmkdir -p d/e\ntouch d/e/f\nprintf '%s' '" + approveJSON + "' > \"$1\"\nchmod 000 d/e\nchmod 500 d\nchmod 500 .\n"
+	setupReview(t, true, map[string]string{"r1": locker})
+	Review(context.Background(), solo(time.Minute, rv("secrets", "r1")), sampleDiff, nil, nil)
+	text, err := os.ReadFile(where)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(strings.TrimSpace(string(text))); err == nil {
+		t.Fatalf("tempdir %s is left behind", strings.TrimSpace(string(text)))
 	}
 }
 
@@ -400,7 +544,7 @@ func TestReviewScrubsTokens(t *testing.T) {
 	failing := "#!/bin/sh\ncat >/dev/null\necho 'leak " + forgeTok + "' >&2\nexit 1\n"
 	setupReview(t, true, map[string]string{"r1": script, "r2": failing})
 	diff := sampleDiff + "+  TOKEN: " + forgeTok + "\n"
-	v := Review(context.Background(), cfgOf(time.Minute, rv("secrets", "r1"), rv("injection", "r2")), diff, []string{forgeTok, workflowTok, ""})
+	v := Review(context.Background(), cfgOf(time.Minute, rv("secrets", "r1"), rv("injection", "r2")), diff, []string{forgeTok, workflowTok, ""}, nil)
 	all := strings.Join([]string{v.Results[0].Why, v.Results[1].Why, v.Results[0].Findings[0].Issue, v.Results[0].Findings[0].Evidence}, "\n")
 	for _, tok := range []string{forgeTok, workflowTok} {
 		if strings.Contains(all, tok) {
@@ -416,6 +560,38 @@ func TestReviewScrubsTokens(t *testing.T) {
 	}
 	if strings.Contains(string(in), forgeTok) {
 		t.Errorf("the diff on stdin holds the forge token")
+	}
+}
+
+func TestReviewScrubsEnvValues(t *testing.T) {
+	const key = "sk-modelKEY-abcdef123456"
+	leaky := `{"verdict":"reject","findings":[{"file":"a.yml","line":1,"issue":"key ` + key + `","evidence":"x"}]}`
+	setupReview(t, true, map[string]string{"r1": answer(leaky)})
+	t.Setenv("API_KEY", key)
+	t.Setenv("FLAG", "1")
+	r := rv("secrets", "r1")
+	r.Env = []string{"API_KEY", "FLAG"}
+	v := Review(context.Background(), solo(time.Minute, r), sampleDiff+"+line 1\n", nil, nil)
+	if got := v.Results[0].Findings[0].Issue; got != "key [scrubbed]" {
+		t.Fatalf("issue = %q, want the env value scrubbed", got)
+	}
+}
+
+func TestScrubLongestFirst(t *testing.T) {
+	list := scrubList([]string{"abcdefgh", "abcdefghijkl", ""})
+	if got := scrubText("x abcdefghijkl y abcdefgh", list); got != "x [scrubbed] y [scrubbed]" {
+		t.Fatalf("scrubText = %q", got)
+	}
+}
+
+func TestReviewScrubsBeforeCappingStderr(t *testing.T) {
+	pad := strings.Repeat("x", 2030)
+	failing := "#!/bin/sh\ncat >/dev/null\necho " + pad + " >&2\necho " + workflowTok + " >&2\nexit 1\n"
+	setupReview(t, true, map[string]string{"r1": failing})
+	v := Review(context.Background(), solo(time.Minute, rv("secrets", "r1")), sampleDiff, []string{workflowTok}, nil)
+	why := v.Results[0].Why
+	if strings.Contains(why, workflowTok[:12]) || !strings.HasSuffix(why, "[scrubbed]") {
+		t.Fatalf("why keeps part of the token or loses the marker: ...%q", why[max(0, len(why)-60):])
 	}
 }
 
@@ -462,7 +638,7 @@ func TestPromptsEmbedded(t *testing.T) {
 	}
 	stdinCopy := filepath.Join(t.TempDir(), "stdin")
 	setupReview(t, true, map[string]string{"r1": "#!/bin/sh\ncat > " + stdinCopy + "\nprintf '%s' '" + approveJSON + "' > \"$1\"\n"})
-	Review(context.Background(), cfgOf(time.Minute, rv("injection", "r1")), sampleDiff, nil)
+	Review(context.Background(), solo(time.Minute, rv("injection", "r1")), sampleDiff, nil, nil)
 	in, err := os.ReadFile(stdinCopy)
 	if err != nil {
 		t.Fatal(err)
@@ -488,7 +664,17 @@ func realBwrap(t *testing.T) string {
 
 func TestReviewerCannotReadTokenFile(t *testing.T) {
 	bwrap := realBwrap(t)
-	home := t.TempDir()
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Outside /tmp: the sandbox mounts its tempdir on /tmp, which would hide a home there and
+	// make the test pass without proving anything.
+	home, err := os.MkdirTemp(wd, ".review-home-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(home) })
 	token := filepath.Join(home, ".config", "lighthouse", "workflow-push.token")
 	if err := os.MkdirAll(filepath.Dir(token), 0o700); err != nil {
 		t.Fatal(err)
@@ -497,21 +683,23 @@ func TestReviewerCannotReadTokenFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", home)
-	reader := "#!/bin/sh\ncat >/dev/null\nif cat " + token + " >/dev/null 2>&1; then v=approve; else v=reject; fi\n" +
-		`printf '{"verdict":"%s","findings":[{"file":"x","line":1,"issue":"read","evidence":"cat"}]}' "$v" > "$1"` + "\n"
+	reader := "#!/bin/sh\ncat >/dev/null\nread=\n" +
+		"cat " + token + " >/dev/null 2>&1 && read=\"$read token\"\n" +
+		"ls " + home + " >/dev/null 2>&1 && read=\"$read home\"\n" +
+		`if [ -n "$read" ]; then printf '{"verdict":"approve","findings":[]}' > "$1"; ` +
+		`else printf '{"verdict":"reject","findings":[{"file":"x","line":1,"issue":"no read","evidence":"cat"}]}' > "$1"; fi` + "\n"
 	e := setupReview(t, false, map[string]string{"r1": reader})
 	if err := os.Symlink(bwrap, filepath.Join(e.bin, "bwrap")); err != nil {
 		t.Fatal(err)
 	}
 	r := rv("secrets", filepath.Join(e.bin, "r1"))
 	r.Binds = []string{e.bin}
-	cfg := cfgOf(time.Minute, r)
+	cfg := solo(time.Minute, r)
 	cfg.TokenFile = token
-	v := Review(context.Background(), cfg, sampleDiff, nil)
-	if v.Results[0].Approve {
-		t.Fatalf("the reviewer read the token file inside the sandbox: %+v", v)
-	}
-	if strings.Contains(v.Results[0].Why, "exit") {
-		t.Fatalf("the reviewer did not run in the sandbox: %+v", v)
+	v := Review(context.Background(), cfg, sampleDiff, nil, nil)
+	// Exactly this Why proves the reviewer ran in the sandbox and could read neither the token
+	// file nor $HOME: an approve means it read one, anything else means it did not run.
+	if got := v.Results[0].Why; got != "reject with 1 finding(s)" || v.Results[0].Approve {
+		t.Fatalf("reviewer result = %+v, want the reject that says it read neither", v.Results[0])
 	}
 }

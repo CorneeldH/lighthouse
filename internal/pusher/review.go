@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -58,8 +59,10 @@ type Verdict struct {
 const (
 	// outName is the output file in the reviewer's tempdir; {out} in the command names it.
 	outName = "verdict.json"
-	// stderrCap bounds the stderr a reviewer result keeps.
+	// stderrCap bounds the stderr a reviewer result keeps, after scrubbing; stderrRaw bounds what
+	// is read before scrubbing.
 	stderrCap = 2048
+	stderrRaw = 64 << 10
 	// reviewWaitDelay bounds the wait for stderr after the kill of a reviewer.
 	reviewWaitDelay = 2 * time.Second
 	// scrubbed replaces a token value in reviewer text.
@@ -75,20 +78,32 @@ func Budgets(total time.Duration) (lockWait, review time.Duration) {
 }
 
 // Review runs every reviewer of cfg in parallel, each under bwrap, on diff, and decides: only a
-// unanimous approve is an approve. A reviewer that cannot run, times out, exits non-zero, writes
-// no output or invalid JSON, or rejects without a finding with evidence counts as a reject. Each
-// value in scrub (the forge and the workflow token) is removed from the diff before a reviewer
-// sees it and from all reviewer text before it is returned.
-func Review(ctx context.Context, cfg hostconfig.WorkflowPush, diff string, scrub []string) Verdict {
+// unanimous approve of two or three reviewers with distinct topics is an approve. A reviewer that
+// cannot run, times out, exits non-zero, writes no output or invalid JSON, approves with
+// findings, or rejects without a finding with evidence counts as a reject. Each value in scrub
+// (the trimmed forge and workflow token) and the value of every env variable a reviewer gets is
+// removed from the diff before a reviewer sees it and from all reviewer text before it is
+// returned. guard are paths no bind may touch besides guardedPaths' own (the forge token file,
+// the pusher's state and clone dir).
+func Review(ctx context.Context, cfg hostconfig.WorkflowPush, diff string, scrub, guard []string) Verdict {
 	results := make([]ReviewerResult, len(cfg.Reviewers))
-	bwrap, err := exec.LookPath("bwrap")
-	if err != nil {
+	refuse := func(why string) Verdict {
 		for i, rv := range cfg.Reviewers {
-			results[i] = ReviewerResult{Topic: rv.Topic, Why: "COULD NOT CHECK: bwrap is not on PATH; no reviewer runs without a sandbox"}
+			results[i] = ReviewerResult{Topic: rv.Topic, Why: why}
 		}
 		return decide(results)
 	}
+	if why := topicsWrong(cfg.Reviewers); why != "" {
+		return refuse(why)
+	}
+	bwrap, err := exec.LookPath("bwrap")
+	if err != nil {
+		return refuse("COULD NOT CHECK: bwrap is not on PATH; no reviewer runs without a sandbox")
+	}
 	_, budget := Budgets(cfg.Timeout)
+	tokens := scrubList(scrub)
+	scrub = scrubList(append(append([]string{}, scrub...), envValues(cfg.Reviewers)...))
+	guard = guardedPaths(cfg.TokenFile, guard)
 	diff = scrubText(diff, scrub)
 	var wg sync.WaitGroup
 	for i, rv := range cfg.Reviewers {
@@ -97,7 +112,7 @@ func Review(ctx context.Context, cfg hostconfig.WorkflowPush, diff string, scrub
 			defer wg.Done()
 			rctx, cancel := context.WithTimeout(ctx, budget)
 			defer cancel()
-			r := runReviewer(rctx, bwrap, rv, cfg.TokenFile, diff, scrub)
+			r := runReviewer(rctx, bwrap, rv, reviewerRun{guard: guard, diff: diff, scrub: scrub, tokens: tokens})
 			r.Topic = rv.Topic
 			r.Why = scrubText(r.Why, scrub)
 			for j := range r.Findings {
@@ -111,6 +126,39 @@ func Review(ctx context.Context, cfg hostconfig.WorkflowPush, diff string, scrub
 	return decide(results)
 }
 
+// topicsWrong says why the reviewers cannot decide: spec §4 wants two or three, each on its own
+// narrow topic. Empty when they can.
+func topicsWrong(rs []hostconfig.Reviewer) string {
+	seen := map[string]bool{}
+	for _, r := range rs {
+		if seen[r.Topic] {
+			return fmt.Sprintf("COULD NOT CHECK: topic %s has two reviewers; each reviewer needs its own topic", r.Topic)
+		}
+		seen[r.Topic] = true
+	}
+	if len(rs) < 2 {
+		return fmt.Sprintf("COULD NOT CHECK: %d reviewer(s) configured; the review needs two or three with distinct topics", len(rs))
+	}
+	return ""
+}
+
+// minScrubLen is the shortest env value that is scrubbed: shorter values ("1", "true") are
+// flags, not secrets, and would shred the text.
+const minScrubLen = 8
+
+// envValues are the values of the env variables any reviewer gets.
+func envValues(rs []hostconfig.Reviewer) []string {
+	var out []string
+	for _, r := range rs {
+		for _, name := range r.Env {
+			if v, ok := os.LookupEnv(name); ok && len(v) >= minScrubLen {
+				out = append(out, v)
+			}
+		}
+	}
+	return out
+}
+
 // decide is the decision rule: at least one reviewer, and every one approves.
 func decide(results []ReviewerResult) Verdict {
 	approve := len(results) > 0
@@ -122,7 +170,15 @@ func decide(results []ReviewerResult) Verdict {
 
 // runReviewer runs one reviewer in a fresh tempdir under bwrap and reads its verdict from the
 // output file only.
-func runReviewer(ctx context.Context, bwrap string, rv hostconfig.Reviewer, tokenFile, diff string, scrub []string) ReviewerResult {
+// reviewerRun is what every reviewer of one review shares. scrub is the full scrub list (tokens
+// and env values); tokens only the tokens, which no env variable of a reviewer may hold.
+type reviewerRun struct {
+	guard         []string
+	diff          string
+	scrub, tokens []string
+}
+
+func runReviewer(ctx context.Context, bwrap string, rv hostconfig.Reviewer, run reviewerRun) ReviewerResult {
 	prompt, ok := promptFor(rv.Topic)
 	if !ok {
 		return ReviewerResult{Why: fmt.Sprintf("COULD NOT CHECK: no prompt for topic %q", rv.Topic)}
@@ -130,23 +186,23 @@ func runReviewer(ctx context.Context, bwrap string, rv hostconfig.Reviewer, toke
 	if len(rv.Command) == 0 {
 		return ReviewerResult{Why: "COULD NOT CHECK: the reviewer has no command"}
 	}
-	if err := checkBinds(rv.Binds, tokenFile); err != nil {
-		return ReviewerResult{Why: "COULD NOT CHECK: " + err.Error()}
-	}
 	tmp, err := os.MkdirTemp("", "lighthouse-review-")
 	if err != nil {
 		return ReviewerResult{Why: "COULD NOT CHECK: " + err.Error()}
 	}
-	defer func() { _ = os.RemoveAll(tmp) }()
+	defer func() { _ = removeTree(tmp) }()
+	if err := checkBinds(rv.Binds, run.guard, tmp); err != nil {
+		return ReviewerResult{Why: "COULD NOT CHECK: " + err.Error()}
+	}
 	out := filepath.Join(tmp, outName)
 	command, toFile := withOut(rv.Command, out)
 
 	cmd := exec.CommandContext(ctx, bwrap, sandboxArgs(tmp, rv.Binds, command)...)
-	cmd.Env = reviewerEnv(rv.Env, scrub)
+	cmd.Env = reviewerEnv(rv.Env, run.tokens)
 	cmd.Dir = tmp
-	input, _ := reviewInput(prompt, diff)
+	input, _ := reviewInput(prompt, run.diff)
 	cmd.Stdin = strings.NewReader(input)
-	stderr := &capped{max: stderrCap}
+	stderr := &capped{max: stderrRaw}
 	cmd.Stderr = stderr
 	if toFile {
 		cmd.Stdout = io.Discard
@@ -171,7 +227,7 @@ func runReviewer(ctx context.Context, bwrap string, rv hostconfig.Reviewer, toke
 		if errors.As(err, &exit) {
 			why = fmt.Sprintf("exit %d", exit.ExitCode())
 		}
-		if text := strings.TrimSpace(stderr.String()); text != "" {
+		if text := tailOf(stderr, run.scrub); text != "" {
 			why += ": " + text
 		}
 		return ReviewerResult{Why: why}
@@ -228,17 +284,48 @@ func holdsSecret(v string, scrub []string) bool {
 	return false
 }
 
-// scrubText replaces each non-empty scrub value, and the basic-auth form the pusher's git header
-// carries, with scrubbed.
-func scrubText(text string, scrub []string) string {
+// scrubList is every non-empty value of scrub and the basic-auth form the pusher's git header
+// carries for it, longest first, so a value that holds another is replaced whole.
+func scrubList(scrub []string) []string {
+	var out []string
 	for _, s := range scrub {
-		if s == "" {
-			continue
+		if s != "" {
+			out = append(out, s, base64.StdEncoding.EncodeToString([]byte("x-access-token:"+s)))
 		}
-		text = strings.ReplaceAll(text, s, scrubbed)
-		text = strings.ReplaceAll(text, base64.StdEncoding.EncodeToString([]byte("x-access-token:"+s)), scrubbed)
+	}
+	sort.SliceStable(out, func(i, j int) bool { return len(out[i]) > len(out[j]) })
+	return out
+}
+
+// scrubText replaces each value of a scrubList with scrubbed, in its order.
+func scrubText(text string, list []string) string {
+	for _, s := range list {
+		if s != "" {
+			text = strings.ReplaceAll(text, s, scrubbed)
+		}
 	}
 	return text
+}
+
+// tailOf is the captured stderr, scrubbed first and only then cut to whole lines within
+// stderrCap, so a cut never leaves part of a secret. A line cut off by the raw cap is dropped.
+func tailOf(c *capped, scrub []string) string {
+	text := c.String()
+	if c.full() {
+		if nl := strings.LastIndexByte(text, '\n'); nl >= 0 {
+			text = text[:nl]
+		} else {
+			text = ""
+		}
+	}
+	text = strings.TrimSpace(scrubText(text, scrub))
+	if len(text) <= stderrCap {
+		return text
+	}
+	if nl := strings.LastIndexByte(text[:stderrCap], '\n'); nl >= 0 {
+		return text[:nl] + "\n[stderr truncated]"
+	}
+	return "[stderr truncated]"
 }
 
 // promptFor is the embedded prompt of topic.
@@ -295,8 +382,9 @@ type rawVerdict struct {
 	} `json:"findings"`
 }
 
-// parseVerdict reads one verdict object, optionally in a ```json fence. Anything but a
-// well-formed approve is a reject; why says what kind.
+// parseVerdict reads one verdict object, optionally in a ```json fence, strictly: exact-case
+// keys, no unknown or duplicate key, one value. Anything but a well-formed approve without
+// findings is a reject; why says what kind.
 func parseVerdict(text []byte) (approve bool, findings []Finding, why string) {
 	body := strings.TrimSpace(string(text))
 	if strings.HasPrefix(body, "```") {
@@ -304,13 +392,14 @@ func parseVerdict(text []byte) (approve bool, findings []Finding, why string) {
 			body = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(body[nl+1:]), "```"))
 		}
 	}
+	if err := strictShape(body); err != nil {
+		return false, nil, "invalid JSON: " + err.Error()
+	}
 	dec := json.NewDecoder(strings.NewReader(body))
+	dec.DisallowUnknownFields()
 	var raw rawVerdict
 	if err := dec.Decode(&raw); err != nil {
 		return false, nil, "invalid JSON: " + err.Error()
-	}
-	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
-		return false, nil, "invalid JSON: more than one value"
 	}
 	evidence := 0
 	for _, f := range raw.Findings {
@@ -321,7 +410,10 @@ func parseVerdict(text []byte) (approve bool, findings []Finding, why string) {
 	}
 	switch raw.Verdict {
 	case "approve":
-		return true, findings, ""
+		if len(findings) > 0 {
+			return false, findings, fmt.Sprintf("approve with %d finding(s) is contradictory", len(findings))
+		}
+		return true, nil, ""
 	case "reject":
 		if evidence == 0 {
 			return false, findings, "reject without a finding with evidence"
@@ -330,6 +422,93 @@ func parseVerdict(text []byte) (approve bool, findings []Finding, why string) {
 	default:
 		return false, findings, fmt.Sprintf("verdict %q is neither approve nor reject", raw.Verdict)
 	}
+}
+
+// field reads one value of an object key from dec.
+type field func(*json.Decoder) error
+
+var (
+	verdictFields = map[string]field{"verdict": scalar, "findings": arrayOf(objectOf(findingFields))}
+	findingFields = map[string]field{"file": scalar, "line": scalar, "issue": scalar, "evidence": scalar}
+)
+
+// strictShape checks body token by token: one verdict object with exactly the keys of
+// verdictFields, in exact case, none twice, and nothing after it. encoding/json alone matches
+// keys case-insensitively and keeps the last of two equal keys.
+func strictShape(body string) error {
+	dec := json.NewDecoder(strings.NewReader(body))
+	dec.UseNumber()
+	if err := objectOf(verdictFields)(dec); err != nil {
+		return err
+	}
+	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
+		return errors.New("more than one value")
+	}
+	return nil
+}
+
+func objectOf(fields map[string]field) field {
+	return func(dec *json.Decoder) error {
+		if err := delim(dec, '{'); err != nil {
+			return err
+		}
+		seen := map[string]bool{}
+		for dec.More() {
+			tok, err := dec.Token()
+			if err != nil {
+				return err
+			}
+			key, _ := tok.(string)
+			read, ok := fields[key]
+			if !ok {
+				return fmt.Errorf("unknown key %q", key)
+			}
+			if seen[key] {
+				return fmt.Errorf("key %q twice", key)
+			}
+			seen[key] = true
+			if err := read(dec); err != nil {
+				return err
+			}
+		}
+		return delim(dec, '}')
+	}
+}
+
+func arrayOf(elem field) field {
+	return func(dec *json.Decoder) error {
+		if err := delim(dec, '['); err != nil {
+			return err
+		}
+		for dec.More() {
+			if err := elem(dec); err != nil {
+				return err
+			}
+		}
+		return delim(dec, ']')
+	}
+}
+
+func scalar(dec *json.Decoder) error {
+	tok, err := dec.Token()
+	if err != nil {
+		return err
+	}
+	if _, ok := tok.(json.Delim); ok {
+		return fmt.Errorf("%v where a plain value belongs", tok)
+	}
+	return nil
+}
+
+func delim(dec *json.Decoder, want json.Delim) error {
+	tok, err := dec.Token()
+	if err != nil {
+		return err
+	}
+	if tok != want {
+		return fmt.Errorf("%v where %v belongs", tok, want)
+	}
+	return nil
 }
 
 // lineOf is a line number given as a JSON number or string; anything else is 0.
@@ -356,6 +535,13 @@ func (c *capped) Write(p []byte) (int, error) {
 		c.buf.Write(p[:min(room, len(p))])
 	}
 	return len(p), nil
+}
+
+// full reports whether the cap dropped bytes or the buffer is at it.
+func (c *capped) full() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.buf.Len() >= c.max
 }
 
 func (c *capped) String() string {

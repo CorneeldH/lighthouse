@@ -93,8 +93,9 @@ func isAncestor(ctx context.Context, clone, a, b string) (bool, error) {
 // maxRead caps a file the pusher reads from the run's git-dir.
 const maxRead = 1 << 20
 
-// readSmall reads a regular file of at most maxRead bytes. It never follows a symlink, and opens
-// non-blocking, so a FIFO cannot hang the pusher while it holds the clone lock.
+// readSmall reads a regular file of at most maxRead bytes. It never follows a symlink (Lstat,
+// and O_NOFOLLOW against a swap in between), and opens non-blocking, so a FIFO cannot hang the
+// pusher while it holds the clone lock.
 func readSmall(path string) ([]byte, error) {
 	info, err := os.Lstat(path)
 	if err != nil {
@@ -103,7 +104,7 @@ func readSmall(path string) ([]byte, error) {
 	if !info.Mode().IsRegular() {
 		return nil, fmt.Errorf("%s is not a regular file", path)
 	}
-	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK|syscall.O_NOFOLLOW, 0)
 	if err != nil {
 		return nil, err
 	}

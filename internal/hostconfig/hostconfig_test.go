@@ -409,6 +409,8 @@ func TestLoadDispatchWorkflowPushInvalid(t *testing.T) {
 		{"missing token_file", "[dispatch.workflow_push]\nreview = \"shadow\"\n", "token_file"},
 		{"bad timeout", head + "timeout = \"soon\"\n", "timeout"},
 		{"unknown key", head + "bogus = 1\n", "bogus"},
+		{"one reviewer", head + rev + "topic = \"secrets\"\ncommand = [\"a\"]\n", "one reviewer"},
+		{"duplicate topic", head + rev + "topic = \"secrets\"\ncommand = [\"a\"]\n" + rev + "topic = \"secrets\"\ncommand = [\"b\"]\n", "has a reviewer already"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
