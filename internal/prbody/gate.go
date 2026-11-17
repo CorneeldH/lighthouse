@@ -7,7 +7,6 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 	"syscall"
@@ -15,6 +14,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/CorneeldH/lighthouse/internal/config"
+	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/gitinvocations"
 )
 
@@ -24,18 +24,75 @@ const blockedMessage = "pr-create-gate: BLOCKED — %s\n\n" +
 	"Forms: `Closes #N` + `### Evidence #N` (one row per AC), `Refs #N — <reason>`," +
 	" `No issue: <reason>`.\n"
 
-// Env is what Main takes from outside the process: gh, and the GH_REPO that gh itself reads.
+// GitHubAPIURLEnv names the variable that replaces the GitHub API root of the AC count. It is a
+// test seam: the end-to-end tests point it at a fake API on localhost. Only the GitHub forge of
+// the default Issue reads it.
+const GitHubAPIURLEnv = "LIGHTHOUSE_GITHUB_API_URL"
+
+// Env is what Main takes from outside the process: the forge, gh, and the GH_REPO that gh itself
+// reads.
 type Env struct {
 	// GH runs `gh argv…` until ctx ends. err is an exec error when gh did not start (wrapping
 	// exec.ErrNotFound when it is missing), non-nil when ctx ended it, and nil for any exit,
-	// whose code is then code.
+	// whose code is then code. The default Issue runs `gh auth token` with it when no GitHub
+	// token is set; nil is RunGH.
 	GH func(ctx context.Context, argv ...string) (stdout string, code int, err error)
+	// Issue reads the body of issue nr of repo until ctx ends. A missing token is a
+	// *forge.TokenError. nil is the forge of repo (forge.Open), its token from the environment
+	// (forge.Token), for GitHub with `gh auth token` through GH as the last resort.
+	Issue func(ctx context.Context, repo Repo, nr int) (body string, err error)
 	// ProcessGHRepo is GH_REPO of the hook's own environment ("" when not set).
 	ProcessGHRepo string
 }
 
-// DefaultEnv is the production Env: the real gh, and GH_REPO of this process.
-func DefaultEnv() Env { return Env{GH: RunGH, ProcessGHRepo: os.Getenv("GH_REPO")} }
+// DefaultEnv is the production Env: the forge API, the real gh, and GH_REPO of this process.
+func DefaultEnv() Env {
+	return Env{GH: RunGH, Issue: forgeIssue(RunGH, os.Getenv), ProcessGHRepo: os.Getenv("GH_REPO")}
+}
+
+// issue is e.Issue, or the forge read with e.GH as its gh.
+func (e Env) issue() func(ctx context.Context, repo Repo, nr int) (string, error) {
+	if e.Issue != nil {
+		return e.Issue
+	}
+	gh := e.GH
+	if gh == nil {
+		gh = RunGH
+	}
+	return forgeIssue(gh, os.Getenv)
+}
+
+// forgeIssue reads an issue body through the forge of the repo, with the token that forge.Token
+// finds through getenv; for GitHub `gh auth token` (through gh) is the last resort.
+func forgeIssue(gh func(context.Context, ...string) (string, int, error), getenv func(string) string) func(context.Context, Repo, int) (string, error) {
+	return func(ctx context.Context, repo Repo, nr int) (string, error) {
+		token, err := forge.Token(repo.Kind, repo.TokenEnv, getenv)
+		var te *forge.TokenError
+		if errors.As(err, &te) && te.Kind == "github" {
+			if stdout, code, ghErr := gh(ctx, "auth", "token"); ghErr == nil && code == 0 {
+				if t := strings.TrimSpace(stdout); t != "" {
+					token, err = t, nil
+				}
+			}
+		}
+		if err != nil {
+			return "", err
+		}
+		cfg := forge.Config{Kind: repo.Kind, Repo: repo.Slug, Host: repo.Host, Token: token}
+		if repo.Kind == "" || repo.Kind == "github" {
+			cfg.BaseURL = getenv(GitHubAPIURLEnv)
+		}
+		f, err := forge.Open(cfg)
+		if err != nil {
+			return "", err
+		}
+		issue, err := f.Issue(ctx, nr)
+		return issue.Body, err
+	}
+}
+
+// oneLine is s on one line: the line breaks become "; ".
+func oneLine(s string) string { return strings.ReplaceAll(strings.TrimSpace(s), "\n", "; ") }
 
 // RunGH runs the real gh in its own process group, which goes as a whole when ctx ends.
 func RunGH(ctx context.Context, argv ...string) (string, int, error) {
@@ -43,35 +100,34 @@ func RunGH(ctx context.Context, argv ...string) (string, int, error) {
 	return stdout, code, err
 }
 
-// fetchACCount is (count, true, "") or (0, false, cause) for an ordinary failure; err is a failure
-// Python does not catch (a headings table that cannot be read, a gh that cannot start).
-func fetchACCount(ctx context.Context, env Env, repo string, nr int) (int, bool, string, error) {
+// fetchACCount is (count, true, "") or (0, false, cause) for an ordinary failure: a missing
+// token, a forge error or timeout, an issue without an AC heading. err is the failure that blocks:
+// a headings table that cannot be read.
+func fetchACCount(ctx context.Context, env Env, repo Repo, nr int) (int, bool, string, error) {
 	timeout := budget(ctx, acTimeout)
 	if timeout <= 0 {
 		return 0, false, "deadline reached", nil
 	}
-	if repo == "" {
+	if repo.Slug == "" {
 		return 0, false, "no forge.repo in lighthouse.toml", nil
 	}
-	ghCtx, cancel := context.WithTimeout(ctx, timeout)
+	issueCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	stdout, code, err := env.GH(ghCtx, "api", "repos/"+repo+"/issues/"+strconv.Itoa(nr), "--jq", ".body")
+	body, err := env.issue()(issueCtx, repo, nr)
+	var te *forge.TokenError
 	switch {
 	case err == nil:
-	case errors.Is(err, exec.ErrNotFound) || errors.Is(err, fs.ErrNotExist):
-		return 0, false, "gh is missing", nil
-	case ghCtx.Err() != nil:
+	case issueCtx.Err() != nil:
 		if timeout < acTimeout {
 			return 0, false, "deadline reached", nil
 		}
 		return 0, false, "timeout after " + strconv.FormatFloat(acTimeout.Seconds(), 'g', -1, 64) + " s", nil
+	case errors.As(err, &te):
+		return 0, false, te.Error(), nil
 	default:
-		return 0, false, "", err
+		return 0, false, "forge error: " + oneLine(err.Error()), nil
 	}
-	if code != 0 {
-		return 0, false, fmt.Sprintf("gh api failed (rc %d)", code), nil
-	}
-	count, ok, err := countACs(stdout)
+	count, ok, err := countACs(body)
 	if err != nil {
 		return 0, false, "", err
 	}
@@ -83,7 +139,7 @@ func fetchACCount(ctx context.Context, env Env, repo string, nr int) (int, bool,
 
 // forms names the forms of a body that passed, for the line on stdout. counts holds the AC count
 // per Closes target that was fetched; nil is not counted.
-func forms(body, repo string, counts map[int]*int) string {
+func forms(body string, repo Repo, counts map[int]*int) string {
 	var out []string
 	for _, nr := range ClosesTargets(body, repo) {
 		rows, _ := EvidenceRows(body, nr)
@@ -175,7 +231,7 @@ func readBodyFile(path string) (string, string) {
 	return pyDecode(raw), ""
 }
 
-// checkCreate is (blockers, lines for stdout) for one in-scope `gh pr create`.
+// checkCreate is (blockers, lines for stdout) for one in-scope create.
 func checkCreate(ctx context.Context, pc PrCreate, repo repoFunc, env Env) ([]string, []string, error) {
 	if pc.Problem != "" {
 		return []string{pc.Problem}, nil, nil
@@ -221,20 +277,27 @@ func checkCreate(ctx context.Context, pc PrCreate, repo repoFunc, env Env) ([]st
 	return nil, append([]string{"pr-create-gate: body checked — " + forms(body, own, counts)}, verdict.Notices...), nil
 }
 
+// tokenEnv is forge.token_env of cfg, "" when not set.
+func tokenEnv(cfg *config.Config) string {
+	f, _ := cfg.Raw["forge"].(map[string]any)
+	v, _ := f["token_env"].(string)
+	return v
+}
+
 // lazyRepo reads forge.repo on the first call only, as Python reads the config only where it
 // needs the repo: a command without a `gh pr create` passes with a broken lighthouse.toml.
 func lazyRepo() repoFunc {
-	var repo string
+	var repo Repo
 	var err error
 	loaded := false
-	return func() (string, error) {
+	return func() (Repo, error) {
 		if !loaded {
 			loaded = true
 			var path string
 			if path, err = config.Path(); err == nil {
 				var cfg *config.Config
 				if cfg, err = config.Load(path); err == nil {
-					repo = cfg.Repo
+					repo = Repo{Kind: cfg.Kind, Slug: cfg.Repo, Host: cfg.Host, TokenEnv: tokenEnv(cfg)}
 				}
 			}
 		}
@@ -242,16 +305,13 @@ func lazyRepo() repoFunc {
 	}
 }
 
-// Main checks every `gh pr create` in the command on stdin, run from cwd ("" for unknown), with a
+// Main checks every pull or merge request create (FindPrCreates) in the command on stdin, run from cwd ("" for unknown), with a
 // deadline of DeadlineS on ctx. It returns 0 (stdout: the pass lines), 2 (stderr: the blocker),
 // 3 (an open quote) or 1 (a configuration error, one line on stderr). The project is
 // CLAUDE_PROJECT_DIR, else the repo root.
 func Main(ctx context.Context, cwd string, stdin io.Reader, stdout, stderr io.Writer, env Env) int {
 	ctx, cancel := context.WithTimeout(ctx, gateDeadline)
 	defer cancel()
-	if env.GH == nil {
-		env.GH = RunGH
-	}
 	fail := func(err error) int {
 		_, _ = fmt.Fprintf(stderr, "pr-create-gate: %v\n", err)
 		return 1
@@ -279,7 +339,8 @@ func Main(ctx context.Context, cwd string, stdin io.Reader, stdout, stderr io.Wr
 	repo := lazyRepo()
 	var blockers, lines []string
 	for _, pc := range creates {
-		if pc.Repo == nil && pc.RepoProblem == "" && env.ProcessGHRepo != "" {
+		// Only gh reads GH_REPO; glab and `lighthouse forge` do not.
+		if pc.Tool == "gh" && pc.Repo == nil && pc.RepoProblem == "" && env.ProcessGHRepo != "" {
 			value := env.ProcessGHRepo
 			pc.Repo = &value
 		}

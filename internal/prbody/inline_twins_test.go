@@ -22,7 +22,7 @@ func TestRepoComesFromLighthouseToml(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	eq(t, "repo", repo, "Other/repo")
+	eq(t, "repo", repo, Repo{Kind: "github", Slug: "Other/repo"})
 	eq(t, "own repo", ClosesTargets("Closes Other/repo#12", repo), []int{12})
 	eq(t, "other repo", len(ClosesTargets("Closes Acme/widgets#12", repo)), 0)
 }
@@ -34,11 +34,11 @@ func TestWithoutForgeRepo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	eq(t, "repo", repo, "")
+	eq(t, "repo", repo, Repo{Kind: "github"})
 	eq(t, "closes", ClosesTargets("Closes #4 and Closes x/y#5", repo), []int{4})
-	eq(t, "fetch", fetch(t, context.Background(), repo, 4), fetched{0, false, "no forge.repo in lighthouse.toml"})
+	eq(t, "fetch", fetch(t, context.Background(), repo.Slug, 4), fetched{0, false, "no forge.repo in lighthouse.toml"})
 	dir := t.TempDir()
-	eq(t, "scope", decision(t, pcAt(dir, "x/y"), dir, repo), "check")
+	eq(t, "scope", decision(t, pcAt(dir, "x/y"), dir, repo.Slug), "check")
 }
 
 // twin of test_ac_heading_any_language

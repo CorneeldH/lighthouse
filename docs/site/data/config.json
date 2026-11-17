@@ -145,6 +145,7 @@
                 "internal/boardstart/boardstart.go",
                 "internal/cli/worktreeaudit.go",
                 "internal/postartefact/postartefact.go",
+                "internal/prbody/find.go",
                 "internal/prbody/form.go",
                 "internal/prbody/gate.go",
                 "internal/prbody/scope.go",
@@ -171,7 +172,13 @@
               "required": "no",
               "about": "The host name of a self-hosted GitLab, without scheme, port or path. Valid only with kind gitlab.",
               "example": "git.example.org",
-              "readers": ["internal/cli/serve.go", "internal/forge/gitlab.go", "internal/initcmd/initcmd.go", "internal/repoconfig/repoconfig.go"]
+              "readers": [
+                "internal/cli/serve.go",
+                "internal/forge/gitlab.go",
+                "internal/initcmd/initcmd.go",
+                "internal/prbody/form.go",
+                "internal/repoconfig/repoconfig.go"
+              ]
             },
             {
               "key": "forge.token_env",
@@ -179,7 +186,11 @@
               "required": "no",
               "about": "The name of the environment variable that holds the forge token, instead of GH_TOKEN and GITHUB_TOKEN (github) or GITLAB_TOKEN (gitlab). The token itself never goes in lighthouse.toml.",
               "example": "WORK_GITLAB_TOKEN",
-              "readers": ["internal/repoconfig/repoconfig.go"]
+              "readers": [
+                "internal/prbody/form.go",
+                "internal/prbody/gate.go",
+                "internal/repoconfig/repoconfig.go"
+              ]
             },
             {
               "key": "forge.default_branch",

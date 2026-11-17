@@ -92,6 +92,11 @@ func writeFixtureConfig(t *testing.T, root, repo string) {
 	t.Setenv("LIGHTHOUSE_TOML", "")
 	t.Setenv("LIGHTHOUSE_HEADINGS", "")
 	t.Setenv("GH_REPO", "")
+	// No test reaches a real forge: no token, and the GitHub API on a closed port.
+	t.Setenv("GH_TOKEN", "")
+	t.Setenv("GITHUB_TOKEN", "")
+	t.Setenv("GITLAB_TOKEN", "")
+	t.Setenv("LIGHTHOUSE_GITHUB_API_URL", "http://127.0.0.1:1")
 }
 
 func mustJSON(t *testing.T, raw json.RawMessage, v any) {
@@ -174,7 +179,7 @@ func checkBodyCase(t *testing.T, c fixtureCase, repo string) map[string][]string
 		}
 		return int(value[0].(float64)), true, cause
 	}
-	v := CheckBody(body, repo, acCount)
+	v := CheckBody(body, Repo{Kind: "github", Slug: repo}, acCount)
 	return map[string][]string{"blockers": orEmpty(v.Blockers), "notices": orEmpty(v.Notices)}
 }
 
@@ -250,7 +255,7 @@ func TestFixtures(t *testing.T) {
 				var got []int
 				switch c.Kind {
 				case "closes":
-					got = ClosesTargets(c.Body, repo)
+					got = ClosesTargets(c.Body, Repo{Kind: "github", Slug: repo})
 				case "refs":
 					got = RefsIssues(c.Body)
 				default:
@@ -296,13 +301,13 @@ func TestFixtures(t *testing.T) {
 			case "normalize_repo":
 				var want *string
 				mustJSON(t, expect, &want)
-				got, ok := NormalizeRepo(c.Value)
+				got, ok := NormalizeRepo(c.Value, "github")
 				eq(t, "normalized", orNilIf(got, ok), want)
 			case "scope_repo":
 				var want [2]string
 				mustJSON(t, expect, &want)
 				value := c.Value
-				decision, reason := InScope(context.Background(), PrCreate{Repo: &value}, root, repo)
+				decision, reason := InScope(context.Background(), PrCreate{Tool: "gh", Repo: &value}, root, Repo{Kind: "github", Slug: repo})
 				eq(t, "scope", [2]string{decisionNames[decision], reason}, want)
 			default:
 				t.Fatalf("unknown kind %s", c.Kind)
