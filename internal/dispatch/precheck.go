@@ -125,15 +125,13 @@ func SaveDeferred(ctx context.Context, db *sql.DB, repo string, defers []Action,
 // boundaries make the tick look when their MaxWait runs out. Decide counts silence from the
 // later of the last activity and the run's start, so its moment is one of the two MaxWait
 // boundaries; activity or a note from before the start only adds a wake that decides nothing.
-// A push row runs no session: its one boundary is the push timeout (PushTimeout) after its start,
-// and none once the pusher marked the push, when no time rule holds for it.
+// A push row runs no session: its one boundary is the push timeout (PushTimeout) after its start.
+// It stays after the pusher marked the push: a pushed row without a PR goes back at that moment.
 func Boundaries(d hostconfig.Dispatch, open []runs.OpenRun, states map[int64]RunState, markers []park.Marker, now time.Time) []time.Time {
 	var out []time.Time
 	for _, r := range open {
 		if r.Command == cmdPush {
-			if r.PushedSHA == "" {
-				out = append(out, r.StartedAt.Add(PushTimeout(d)))
-			}
+			out = append(out, r.StartedAt.Add(PushTimeout(d)))
 			continue
 		}
 		out = append(out, r.StartedAt.Add(d.MaxRuntime), r.StartedAt.Add(d.MaxWait))

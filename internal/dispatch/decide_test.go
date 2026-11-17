@@ -495,6 +495,10 @@ func TestPushRowAfterPushOwnsPR(t *testing.T) {
 			pr12(in).Checks = "PENDING"
 			item7(in).State = "CLOSED"
 		}, []string{"close::"}},
+		{"no PR of the branch at the timeout goes back", func(in *Input) { item7(in).PRs = nil },
+			[]string{"return:reason_pusher_no_handoff:" + pushSHA}},
+		{"another branch's pending PR does not count", func(in *Input) { pr12(in).HeadRef, pr12(in).Checks = "issue-7-ander", "PENDING" },
+			[]string{"return:reason_pusher_no_handoff:" + pushSHA}},
 		{"red with full slots defers the fix-pr start", func(in *Input) {
 			red(in)
 			in.Brake = openBrake()
@@ -527,6 +531,15 @@ func TestPushRowAfterPushOwnsPR(t *testing.T) {
 
 // The close of a push row frees no slot: the row was never counted (CountRun), so a waiting
 // start of another repo still defers on full slots. Freeing it gives o/t#7 a slot nobody held.
+// A pushed row without a PR waits for the push timeout from its start before it goes back.
+func TestPushedRowWithoutPRWaitsForTheTimeout(t *testing.T) {
+	in := pushRow(t, pushSHA, 29*time.Minute)
+	item7(&in).PRs = nil
+	if got := summary(Decide(in)); len(got) != 0 {
+		t.Fatalf("summary = %q before the timeout, want nothing", got)
+	}
+}
+
 func TestPushRowCloseFreesNoSlot(t *testing.T) {
 	in := pushRow(t, "", 31*time.Minute)
 	in.Brake = openBrake()

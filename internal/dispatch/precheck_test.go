@@ -200,7 +200,8 @@ func TestSaveDeferredReplacesRowsOfRepo(t *testing.T) {
 }
 
 // An open push row wakes the tick at its start plus the push timeout, the configured one or
-// the default of 30 minutes, until the pusher marked the push; then no time rule holds for it.
+// the default of 30 minutes, also after the pusher marked the push: a pushed row without a PR
+// goes back at that moment (pushedAlone).
 func TestPushRowBoundaryAtTimeout(t *testing.T) {
 	started := time.Date(2026, 10, 31, 10, 0, 0, 0, time.UTC)
 	now := started.Add(time.Minute)
@@ -217,7 +218,7 @@ func TestPushRowBoundaryAtTimeout(t *testing.T) {
 		t.Errorf("missing the default push timeout %v in %v", started.Add(30*time.Minute), got)
 	}
 	push.PushedSHA = "3f2a1bc"
-	if got := Boundaries(d, []runs.OpenRun{push}, nil, nil, now); len(got) != 0 {
-		t.Errorf("a pushed push row has no time rule, got boundaries %v", got)
+	if got := Boundaries(d, []runs.OpenRun{push}, nil, nil, now); len(got) != 1 || !got[0].Equal(started.Add(30*time.Minute)) {
+		t.Errorf("a pushed push row wakes the tick at its push timeout only, got boundaries %v", got)
 	}
 }

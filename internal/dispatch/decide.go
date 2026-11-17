@@ -500,7 +500,7 @@ func (c runCtx) outcome() (Action, bool, *fixPRStart) {
 // transcript: none of the rules that measure those hold for it. Before the pusher marked its push
 // (PushedSHA), only the push timeout holds: the row goes back as "pusher did not respond". After
 // it, the row owns the PR of its branch and only rules 6, 7 and 13 hold (merged, mergeReady,
-// green, fixPR); max_runtime and the push timeout no longer do. No action touches a session.
+// green, fixPR), plus pushedAlone for a pushed row without any PR. No action touches a session.
 //
 // Deliberate deviation from spec §2 (only rules 6, 7 and 13), by controller ruling in
 // task 5: an issue closed by hand (closedIssue) and a PR closed unmerged (prClosed) also close
@@ -517,6 +517,7 @@ func (c runCtx) pushOutcome() (Action, bool, *fixPRStart) {
 	}
 	for _, rule := range []func() (Action, bool, *fixPRStart){
 		noStart(c.merged), noStart(c.closedIssue), noStart(c.mergeReady), noStart(c.green), noStart(c.prClosed), c.fixPR,
+		noStart(c.pushedAlone),
 	} {
 		if a, ok, fix := rule(); ok {
 			a.Stop, a.End = false, false
@@ -524,6 +525,18 @@ func (c runCtx) pushOutcome() (Action, bool, *fixPRStart) {
 		}
 	}
 	return Action{}, false, nil
+}
+
+// pushedAlone hands back a push row that pushed but has no PR of its branch in any state at the
+// push timeout: on the build route the pusher records the push before it posts the handoff, so
+// this row is a handoff that never came (a failed post, a killed pusher). Without the rule it
+// would stay open forever. On the fix-pr route the PR exists, so the rule never holds there.
+func (c runCtx) pushedAlone() (Action, bool) {
+	if slices.ContainsFunc(c.it.PRs, c.ownPR) {
+		return Action{}, false
+	}
+	return c.returned("reason_pusher_no_handoff", c.row.PushedSHA),
+		c.age() >= cmp.Or(c.pushTimeout, hostconfig.DefaultPushTimeout)
 }
 
 // isPush reports whether row is a push row: the workflow pusher, without a session.
