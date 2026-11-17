@@ -13,7 +13,8 @@ import (
 type Brief struct {
 	ID          int64
 	Repo        string
-	Issue       int
+	Issue       int    // 0 for a scheduled run
+	Schedule    string // "" for an issue run
 	Command     string
 	Trigger     string
 	Profile     string
@@ -22,12 +23,12 @@ type Brief struct {
 }
 
 // briefColumns are the runs columns scanBrief reads, in order.
-const briefColumns = `id, repo, issue, command, trigger, profile, workspace_id, started_at`
+const briefColumns = `id, repo, coalesce(issue, 0), coalesce(schedule, ''), command, trigger, profile, workspace_id, started_at`
 
 func scanBrief(rows interface{ Scan(...any) error }) (Brief, error) {
 	var b Brief
 	var started string
-	if err := rows.Scan(&b.ID, &b.Repo, &b.Issue, &b.Command, &b.Trigger, &b.Profile, &b.WorkspaceID, &started); err != nil {
+	if err := rows.Scan(&b.ID, &b.Repo, &b.Issue, &b.Schedule, &b.Command, &b.Trigger, &b.Profile, &b.WorkspaceID, &started); err != nil {
 		return Brief{}, fmt.Errorf("runs: scan brief: %w", err)
 	}
 	var err error

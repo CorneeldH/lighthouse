@@ -9,7 +9,8 @@ import (
 
 // WorkspaceRef is a workspace a run of repo used and that is not marked removed.
 type WorkspaceRef struct {
-	Issue       int
+	Issue       int    // 0 for a scheduled run
+	Schedule    string // "" for an issue run
 	Node        string // "" is self
 	WorkspaceID string
 	Branch      string
@@ -17,14 +18,14 @@ type WorkspaceRef struct {
 }
 
 // Workspaces returns one ref per (node, workspace id) of repo that no row marks removed. Issue and Branch
-// come from the row with the highest id. Ordered by issue, then workspace id; never nil.
+// come from the row with the highest id. Ordered by issue (0 for a scheduled run), schedule, node and workspace id; never nil.
 func Workspaces(ctx context.Context, db *sql.DB, repo string) ([]WorkspaceRef, error) {
-	rows, err := db.QueryContext(ctx, `SELECT r.issue, r.node, r.workspace_id, r.branch, r.profile FROM runs r
+	rows, err := db.QueryContext(ctx, `SELECT coalesce(r.issue, 0), coalesce(r.schedule, ''), r.node, r.workspace_id, r.branch, r.profile FROM runs r
 		JOIN (SELECT node, workspace_id, MAX(id) AS id FROM runs
 			WHERE repo = ? AND workspace_id != ''
 			GROUP BY node, workspace_id
 			HAVING count(workspace_removed_at) = 0) last ON last.id = r.id
-		ORDER BY r.issue, r.node, r.workspace_id`, repo)
+		ORDER BY coalesce(r.issue, 0), r.schedule, r.node, r.workspace_id`, repo)
 	if err != nil {
 		return nil, fmt.Errorf("runs: workspaces: %w", err)
 	}
@@ -32,7 +33,7 @@ func Workspaces(ctx context.Context, db *sql.DB, repo string) ([]WorkspaceRef, e
 	out := []WorkspaceRef{}
 	for rows.Next() {
 		var w WorkspaceRef
-		if err := rows.Scan(&w.Issue, &w.Node, &w.WorkspaceID, &w.Branch, &w.Profile); err != nil {
+		if err := rows.Scan(&w.Issue, &w.Schedule, &w.Node, &w.WorkspaceID, &w.Branch, &w.Profile); err != nil {
 			return nil, fmt.Errorf("runs: workspaces: %w", err)
 		}
 		out = append(out, w)
