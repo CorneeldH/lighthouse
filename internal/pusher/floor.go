@@ -59,21 +59,26 @@ type Red struct{ Step, Why string }
 // lockPoll is how often a waiting pusher retries the clone lock.
 const lockPoll = 50 * time.Millisecond
 
-// Floor runs the hard checks 1–6 of spec §3 and stops at the first red one. It reads the
-// worktree only with rev-parse HEAD, rev-parse --abbrev-ref HEAD and status --porcelain, plus
-// the roborev record as a file; everything else reads the SHA in the own bare clone, under a
-// flock on <clone>.lock that a second pusher waits for until ctx ends.
-func Floor(ctx context.Context, req Request) (Checked, *Red) {
+// Floor runs the hard checks 1–6 of spec §3 and stops at the first red one. The caller holds
+// lock on req.CloneDir (LockClone) for the whole push, so no second pusher refreshes the clone
+// in between. In the run's worktree Floor runs only rev-parse HEAD and rev-parse --abbrev-ref
+// HEAD, and reads the roborev record as a file; the cleanliness check uses the own clone as
+// git-dir and the worktree only as work-tree, and every other check reads the SHA in the clone.
+func Floor(ctx context.Context, req Request, lock *CloneLock) (Checked, *Red) {
 	sha, red := readWorktree(ctx, req)
 	if red != nil {
 		return Checked{}, red
 	}
-	unlock, red := lockClone(ctx, req.CloneDir)
-	if red != nil {
+	if lock == nil || lock.dir != req.CloneDir {
+		return Checked{}, &Red{StepClone, "COULD NOT CHECK: the caller does not hold the lock on " + req.CloneDir}
+	}
+	if red := fetchSHA(ctx, req, sha); red != nil {
 		return Checked{}, red
 	}
-	defer unlock()
-	if red := fetch(ctx, req, sha); red != nil {
+	if red := clean(ctx, req); red != nil {
+		return Checked{}, red
+	}
+	if red := fetchOrigin(ctx, req); red != nil {
 		return Checked{}, red
 	}
 	c := Checked{SHA: sha}
@@ -97,7 +102,7 @@ var (
 	recordSHA = regexp.MustCompile(`^[0-9a-f]{7,40}$`)
 )
 
-// readWorktree runs checks 1 and 2 and reads the SHA once.
+// readWorktree runs check 1 and reads the SHA once.
 func readWorktree(ctx context.Context, req Request) (string, *Red) {
 	if !filepath.IsAbs(req.Worktree) {
 		return "", &Red{StepBranch, fmt.Sprintf("worktree %q is not an absolute path", req.Worktree)}
@@ -111,7 +116,7 @@ func readWorktree(ctx context.Context, req Request) (string, *Red) {
 	if req.Branch == req.Default {
 		return "", &Red{StepBranch, fmt.Sprintf("branch %s is the default branch", req.Branch)}
 	}
-	out, err := worktreeGit(ctx, req.Worktree, "rev-parse", "HEAD")
+	out, err := runGit(ctx, req.Worktree, nil, "rev-parse", "HEAD")
 	if err != nil {
 		return "", &Red{StepBranch, err.Error()}
 	}
@@ -119,22 +124,49 @@ func readWorktree(ctx context.Context, req Request) (string, *Red) {
 	if !fullSHA.MatchString(sha) {
 		return "", &Red{StepBranch, fmt.Sprintf("HEAD %q is not a sha", sha)}
 	}
-	out, err = worktreeGit(ctx, req.Worktree, "rev-parse", "--abbrev-ref", "HEAD")
+	out, err = runGit(ctx, req.Worktree, nil, "rev-parse", "--abbrev-ref", "HEAD")
 	if err != nil {
 		return "", &Red{StepBranch, err.Error()}
 	}
 	if got := strings.TrimSpace(out); got != req.Branch {
 		return "", &Red{StepBranch, fmt.Sprintf("the worktree is on %s, the handoff names %s", got, req.Branch)}
 	}
-	out, err = worktreeGit(ctx, req.Worktree, "status", "--porcelain")
-	if err != nil {
-		return "", &Red{StepClean, err.Error()}
-	}
-	if strings.TrimSpace(out) != "" {
-		return "", &Red{StepClean, "the worktree is not clean:\n" + strings.TrimRight(out, "\n")}
-	}
 	return sha, nil
 }
+
+// clean runs check 2 with the clone as git-dir and the worktree only as work-tree, against a
+// fresh index of the SHA: config, filter drivers, info/attributes and index flags (assume-unchanged,
+// skip-worktree) are the pusher's, never the run's. A change to a tracked file or any file that
+// is not ignored is dirt.
+func clean(ctx context.Context, req Request) *Red {
+	tmp, err := os.MkdirTemp("", "lighthouse-push-index-")
+	if err != nil {
+		return &Red{StepClean, "COULD NOT CHECK: " + err.Error()}
+	}
+	defer func() { _ = os.RemoveAll(tmp) }()
+	env := []string{"GIT_INDEX_FILE=" + filepath.Join(tmp, "index")}
+	tree := []string{"--git-dir=" + req.CloneDir, "--work-tree=" + req.Worktree}
+	steps := [][]string{
+		{"read-tree", runRef(req)},
+		{"update-index", "-q", "--refresh"},
+		{"diff-files", "--name-status", "--ignore-submodules=dirty"},
+		{"ls-files", "--others", "--exclude-standard"},
+	}
+	var dirt strings.Builder
+	for _, step := range steps {
+		out, err := runGit(ctx, req.CloneDir, env, append(append([]string{}, tree...), step...)...)
+		if err != nil {
+			return &Red{StepClean, "COULD NOT CHECK: " + err.Error()}
+		}
+		dirt.WriteString(out)
+	}
+	if text := strings.TrimSpace(dirt.String()); text != "" {
+		return &Red{StepClean, "the worktree is not clean:\n" + text}
+	}
+	return nil
+}
+
+func runRef(req Request) string { return "refs/pusher/runs/" + strconv.FormatInt(req.RunID, 10) }
 
 var branchRe = regexp.MustCompile(`^[A-Za-z0-9._/-]+$`)
 
@@ -144,8 +176,22 @@ func branchName(b string) bool {
 		!strings.HasPrefix(b, "/") && !strings.HasSuffix(b, "/") && !strings.HasSuffix(b, ".lock") && !strings.Contains(b, "//")
 }
 
-// lockClone takes the flock on <clone>.lock, waiting for another pusher until ctx ends.
-func lockClone(ctx context.Context, clone string) (func(), *Red) {
+// CloneLock is the flock on <clone>.lock; Floor and the push run under one.
+type CloneLock struct {
+	dir string
+	f   *os.File
+}
+
+// Unlock releases the lock; a second call does nothing.
+func (l *CloneLock) Unlock() {
+	if l != nil && l.f != nil {
+		_ = l.f.Close()
+		l.f = nil
+	}
+}
+
+// LockClone takes the flock on <clone>.lock, waiting for another pusher until ctx ends.
+func LockClone(ctx context.Context, clone string) (*CloneLock, *Red) {
 	if !filepath.IsAbs(clone) {
 		return nil, &Red{StepClone, fmt.Sprintf("clone dir %q is not an absolute path", clone)}
 	}
@@ -155,7 +201,7 @@ func lockClone(ctx context.Context, clone string) (func(), *Red) {
 	for {
 		f, err := flock.TryLock(clone + ".lock")
 		if err == nil {
-			return func() { _ = f.Close() }, nil
+			return &CloneLock{dir: clone, f: f}, nil
 		}
 		if !errors.Is(err, flock.ErrHeld) {
 			return nil, &Red{StepClone, err.Error()}
@@ -168,18 +214,23 @@ func lockClone(ctx context.Context, clone string) (func(), *Red) {
 	}
 }
 
-// fetch makes the bare clone when missing, fetches the SHA from the worktree into a ref of
-// this run, and refreshes origin's default and branch from the forge URL with the token.
-func fetch(ctx context.Context, req Request, sha string) *Red {
+// fetchSHA makes the bare clone when missing and fetches the SHA from the worktree into a ref
+// of this run, checking every object it receives.
+func fetchSHA(ctx context.Context, req Request, sha string) *Red {
 	if _, err := os.Stat(filepath.Join(req.CloneDir, "HEAD")); err != nil {
 		if _, err := runGit(ctx, filepath.Dir(req.CloneDir), nil, "init", "-q", "--bare", req.CloneDir); err != nil {
 			return &Red{StepClone, err.Error()}
 		}
 	}
-	runRef := "refs/pusher/runs/" + strconv.FormatInt(req.RunID, 10)
-	if _, err := runGit(ctx, req.CloneDir, nil, "fetch", "-q", "--no-tags", "--", req.Worktree, "+"+sha+":"+runRef); err != nil {
+	if _, err := runGit(ctx, req.CloneDir, nil, "-c", "transfer.fsckObjects=true",
+		"fetch", "-q", "--no-tags", "--", req.Worktree, "+"+sha+":"+runRef(req)); err != nil {
 		return &Red{StepClone, err.Error()}
 	}
+	return nil
+}
+
+// fetchOrigin refreshes origin's default and branch from the forge URL, with the token.
+func fetchOrigin(ctx context.Context, req Request) *Red {
 	if req.URL == "" || strings.HasPrefix(req.URL, "-") {
 		return &Red{StepClone, fmt.Sprintf("forge URL %q is not usable", req.URL)}
 	}
@@ -314,7 +365,7 @@ func reviewed(ctx context.Context, req Request, sha string) *Red {
 
 // recordCovers reads one record and checks it against sha in the clone.
 func recordCovers(ctx context.Context, clone, path, sha string) (bool, string) {
-	text, err := os.ReadFile(path)
+	text, err := readSmall(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return false, "no record"
 	}
@@ -360,7 +411,7 @@ func recordDir(worktree string) (string, error) {
 	}
 	gitDir := dotGit
 	if info.Mode().IsRegular() {
-		text, err := os.ReadFile(dotGit)
+		text, err := readSmall(dotGit)
 		if err != nil {
 			return "", err
 		}

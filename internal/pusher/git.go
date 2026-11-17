@@ -5,26 +5,32 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"regexp"
 	"strings"
+	"syscall"
 
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 )
 
-// worktreeGuard turns off the two ways a read in the run's worktree can run code from that
-// worktree's config: hooks and the fsmonitor hook.
-var worktreeGuard = []string{"-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"}
+// hookGuard turns off the two ways a git command can run code named in config: hooks and the
+// fsmonitor hook. Every command of the pusher carries it, in the worktree and in the clone.
+var hookGuard = []string{"-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false"}
 
-// gitEnv is the environment of every git command of the pusher: the process environment
-// without any GIT_ variable (a GIT_DIR, GIT_CONFIG_PARAMETERS or GIT_CONFIG_COUNT from outside
-// would steer it), with the global and system config turned off and no prompt, plus extra.
+// envAllow are the only variables of the process environment a git command of the pusher sees:
+// never a GIT_ variable (a GIT_DIR or GIT_CONFIG_COUNT from outside would steer it) and never
+// the forge token.
+var envAllow = []string{"PATH", "HOME", "LANG"}
+
+// gitEnv is the environment of every git command of the pusher: envAllow, the global and system
+// config turned off, no prompt, plus extra.
 func gitEnv(extra ...string) []string {
 	var env []string
-	for _, kv := range os.Environ() {
-		if !strings.HasPrefix(kv, "GIT_") {
-			env = append(env, kv)
+	for _, k := range envAllow {
+		if v, ok := os.LookupEnv(k); ok {
+			env = append(env, k+"="+v)
 		}
 	}
 	env = append(env, "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1", "GIT_TERMINAL_PROMPT=0")
@@ -56,10 +62,10 @@ func (e *gitError) Error() string {
 	return fmt.Sprintf("git %s: %s", strings.Join(e.args, " "), reason)
 }
 
-// runGit runs `git -C dir args` with gitEnv(extra...) and returns stdout. The error names the
-// args, so a caller never passes a secret in them.
+// runGit runs `git -C dir <hookGuard> args` with gitEnv(extra...) and returns stdout. The error
+// names the args, so a caller never passes a secret in them.
 func runGit(ctx context.Context, dir string, extra []string, args ...string) (string, error) {
-	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
+	cmd := exec.CommandContext(ctx, "git", append(append([]string{"-C", dir}, hookGuard...), args...)...)
 	cmd.Env = gitEnv(extra...)
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
@@ -74,12 +80,6 @@ func runGit(ctx context.Context, dir string, extra []string, args ...string) (st
 	return string(out), nil
 }
 
-// worktreeGit runs one of the three reads the pusher does in the run's worktree, with hooks
-// and fsmonitor off and no token in the environment.
-func worktreeGit(ctx context.Context, worktree string, args ...string) (string, error) {
-	return runGit(ctx, worktree, nil, append(append([]string{}, worktreeGuard...), args...)...)
-}
-
 // isAncestor reports whether a is an ancestor of b in the clone; an unknown object is an error.
 func isAncestor(ctx context.Context, clone, a, b string) (bool, error) {
 	_, err := runGit(ctx, clone, nil, "merge-base", "--is-ancestor", a, b)
@@ -88,6 +88,37 @@ func isAncestor(ctx context.Context, clone, a, b string) (bool, error) {
 		return false, nil
 	}
 	return err == nil, err
+}
+
+// maxRead caps a file the pusher reads from the run's git-dir.
+const maxRead = 1 << 20
+
+// readSmall reads a regular file of at most maxRead bytes. It never follows a symlink, and opens
+// non-blocking, so a FIFO cannot hang the pusher while it holds the clone lock.
+func readSmall(path string) ([]byte, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("%s is not a regular file", path)
+	}
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+	if info, err := f.Stat(); err != nil || !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("%s is not a regular file", path)
+	}
+	text, err := io.ReadAll(io.LimitReader(f, maxRead+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(text) > maxRead {
+		return nil, fmt.Errorf("%s is larger than %d bytes", path, maxRead)
+	}
+	return text, nil
 }
 
 // RemoteURL is the https URL of the repository in forge.repo. Only github.com is supported:
