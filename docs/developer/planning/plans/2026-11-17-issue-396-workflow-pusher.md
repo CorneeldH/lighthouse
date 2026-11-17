@@ -56,7 +56,7 @@ het Nederlands.
 
 #### Uitkomst taak 1
 
-*(in te vullen door de uitvoerder)*
+Niet geverifieerd; taak 12 wordt gebouwd. De uitvoerder (controller-run) had geen expliciet benoemd credential met `workflow`-scope, dus is er geen wegwerp-repository aangemaakt (spec §7 gaat dan uit van weigering).
 
 ---
 
