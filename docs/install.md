@@ -366,6 +366,33 @@ line sets it:
 */5 * * * * export XDG_RUNTIME_DIR=/run/user/$(id -u) PATH="$HOME/.local/bin:$HOME/go/bin:/usr/local/bin:/usr/local/go/bin:/usr/bin:/bin"; set -a; . "$HOME/.config/lighthouse/forge.env"; set +a; lighthouse tick
 ```
 
+### The workflow pusher
+
+A run never pushes a commit that touches `.github/workflows/`: GitHub refuses it for a token without
+`workflow` scope, and no run gets such a token. The tick starts the workflow pusher instead
+(`lighthouse push-workflows`, see [tick.md](tick.md#wat-tick-doet)). It needs its own token and a few
+tools on the tick host. Without `[dispatch.workflow_push]` in `host.toml` the route is off and a handoff
+`next: push-workflows` is returned to you.
+
+- **The token.** A fine-grained personal access token for the repositories of the controller only, with
+  repository permissions *Contents* (read and write) and *Workflows* (read and write), and nothing else.
+  It is not the `GH_TOKEN` of `forge.env`: that token stays without workflow rights, and the workflow token
+  never goes into the environment of the tick, a run or a reviewer.
+- **The file.** One token in a regular file, owned by you, with mode exactly `0600`; the pusher refuses
+  `0400`, a symlink, a looser mode and a file with more than one token. Put it outside every worktree and outside every path a reviewer binds. A reviewer can never bind the
+  token file, `~/.config/lighthouse`, `~/.config/gh` or `~/.kenn/forge`. Name it in `[dispatch.workflow_push] token_file`.
+- **The tools.** `bwrap` (bubblewrap), `actionlint` and `zizmor` must be on the `PATH` of the tick; the
+  pusher inherits it. A missing one is a red step with `COULD NOT CHECK`, never a green one: the Vraag on
+  the issue says which tool is missing, and nothing is pushed. The real output formats of `actionlint`
+  and `zizmor` are checked against fakes only: run the pusher once by hand on a real repository before
+  you rely on it.
+- **The reviewers.** Optional, two or three, set in `[[dispatch.workflow_push.reviewers]]`; see
+  [tick.md](tick.md#dispatchworkflow_push). The review starts in `shadow` mode: it runs, but only you
+  decide, by answering `push`.
+- **The merge.** Whether GitHub refuses an API merge of a workflow-touching PR for a token without
+  `workflow` scope has not been verified. The merge by the pusher is therefore built, and the tick uses
+  it only for a PR whose branch has a pusher comment; any other PR is merged by the tick as before.
+
 ## Reach it from your tailnet
 
 [tailscale-serve.sh](../deploy/tailscale-serve.sh) exposes the local server over HTTPS on the
