@@ -330,6 +330,12 @@ func TestAskHelpDescribesEveryFlag(t *testing.T) {
 // top of the git repository, and that top is the worktree in the question.
 func TestAskFromSubdirectoryReadsRepoRoot(t *testing.T) {
 	srv, env, root := askFixture(t)
+	// The body names the root as git reports it, resolved: on macOS t.TempDir() lies under
+	// /var, a symlink to /private/var.
+	root, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatal(err)
+	}
 	git := exec.Command("git", "-C", root, "init", "-q")
 	if out, err := git.CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v\n%s", err, out)

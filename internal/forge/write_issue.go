@@ -36,7 +36,11 @@ type IssueEdit struct {
 type IssueFilter struct{ State, Label, Milestone string }
 
 // NewPR is a pull request (merge request) to create. Milestone is a title; "" sets none.
-type NewPR struct{ Title, Body, Head, Base, Milestone string }
+// Draft opens it as a draft.
+type NewPR struct {
+	Title, Body, Head, Base, Milestone string
+	Draft                              bool
+}
 
 // Change is a pull request or merge request. State is open, closed or merged.
 type Change struct {
@@ -320,6 +324,9 @@ func (c *GitHub) CreateChange(ctx context.Context, in NewPR) (Change, error) {
 		ms = n
 	}
 	body := map[string]any{"title": in.Title, "body": in.Body, "head": in.Head, "base": in.Base}
+	if in.Draft {
+		body["draft"] = true
+	}
 	var p ghPull
 	if _, err := c.do(ctx, http.MethodPost, c.repoURL("/pulls"), body, &p); err != nil {
 		return Change{}, err

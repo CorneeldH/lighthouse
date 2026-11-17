@@ -28,6 +28,9 @@ type Forge interface {
 	OpenIssues(ctx context.Context) ([]Issue, error)
 	ClosedInMilestone(ctx context.Context, m Milestone, since time.Time) ([]Issue, error)
 	BlockedBy(ctx context.Context, number int) ([]Blocker, error)
+	// Planning reads the open issues with their milestone and open blockers, and the issue
+	// counts of the open milestones, for the prioritisation view.
+	Planning(ctx context.Context) (Planning, error)
 	Comments(ctx context.Context, number int) ([]protocol.Comment, error)
 	CreateComment(ctx context.Context, number int, body string) (protocol.Comment, error)
 	// Acknowledge marks comment commentID on issue number as seen by the token's user.
@@ -49,6 +52,7 @@ type Forge interface {
 	// The methods below are the wrapper (`lighthouse forge`). A milestone is given by title;
 	// Milestone.Number is the number the forge uses in a path (on GitLab the global id).
 
+	// CreateIssue opens an issue and returns it as the forge stored it.
 	CreateIssue(ctx context.Context, in NewIssue) (Issue, error)
 	EditIssue(ctx context.Context, number int, e IssueEdit) (Issue, error)
 	ListIssues(ctx context.Context, f IssueFilter) ([]Issue, error)
@@ -66,6 +70,20 @@ type Forge interface {
 	AddBlocker(ctx context.Context, number, blocker int) error
 	// API sends r to the forge's REST API and returns the raw response body.
 	API(ctx context.Context, r APIRequest) ([]byte, error)
+
+	// The methods below are the writes of the pins lane.
+
+	UpdateIssueBody(ctx context.Context, number int, body string) error
+	// CloseIssue posts comment (when not empty) and then closes the issue.
+	CloseIssue(ctx context.Context, number int, comment string) error
+	// CreatePR opens a pull request; with NewPR.Draft it is a draft.
+	CreatePR(ctx context.Context, pr NewPR) (PR, error)
+	UpdatePRBody(ctx context.Context, number int, body string) error
+	// ClosePR posts comment (when not empty) and then closes the pull request unmerged.
+	ClosePR(ctx context.Context, number int, comment string) error
+	// FindByMarker lists the issues and pull requests, open and closed, whose body contains
+	// marker. No hit is an empty list, not an error; an empty marker is an error.
+	FindByMarker(ctx context.Context, marker string) ([]Item, error)
 }
 
 var _ Forge = (*GitHub)(nil)

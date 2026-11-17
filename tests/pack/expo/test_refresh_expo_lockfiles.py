@@ -5,7 +5,7 @@ import re
 import subprocess
 from pathlib import Path
 
-from lighthouse_lib import config
+from tests.pack._testkit import is_known_key
 
 SKILL = (
     Path(__file__).resolve().parents[3]
@@ -52,7 +52,7 @@ def test_write_issue_link():
     text = _text()
     assert "/lighthouse-write-issue" in text
     assert "lighthouse config labels.area_prefix" in text
-    assert config.is_known_key("labels.area_prefix")
+    assert is_known_key("labels.area_prefix")
     assert "2-area:" not in text
 
 

@@ -36,16 +36,70 @@ def test_no_entry_without_file():
     assert not gone, f"entry without a file: {gone}"
 
 
-def test_entry_is_new_or_has_a_source():
-    for e in _entries():
-        if e.get("new") is True:
-            assert "source_sha" not in e and "source_path" not in e, e["path"]
-            continue
-        assert re.fullmatch(r"[0-9a-f]{40}", e.get("source_sha", "")), e["path"]
-        src = e.get("source_path")
-        assert (isinstance(src, str) and src) or (
-            isinstance(src, list) and src and all(isinstance(s, str) and s for s in src)
-        ), e["path"]
+SOURCE_FIELDS = ("source_repo", "source_sha", "source_path")
+
+
+def check_entry(e: dict) -> str | None:
+    """None when the entry has exactly one provenance, else the reason it does not."""
+    path = e.get("path", "?")
+    has_source = [f for f in SOURCE_FIELDS if f in e]
+    kinds = [k for k, on in (("new", "new" in e), ("pin", "pin" in e), ("source", bool(has_source))) if on]
+    if len(kinds) != 1:
+        return f"{path}: exactly one of new, pin or the source fields, got {kinds or 'none'}"
+    if "new" in e:
+        return None if e["new"] is True else f"{path}: new must be true"
+    if "pin" in e:
+        return None if isinstance(e["pin"], str) and e["pin"] else f"{path}: pin must be a non-empty string"
+    if len(has_source) != len(SOURCE_FIELDS):
+        return f"{path}: source fields must come together, got {has_source}"
+    if not (isinstance(e["source_repo"], str) and re.fullmatch(r"[\w.-]+/[\w.-]+", e["source_repo"])):
+        return f"{path}: source_repo must be owner/repo"
+    if not (isinstance(e["source_sha"], str) and re.fullmatch(r"[0-9a-f]{40}", e["source_sha"])):
+        return f"{path}: source_sha must be 40 hex"
+    if not (isinstance(e["source_path"], str) and e["source_path"]):
+        return f"{path}: source_path must be one non-empty string"
+    return None
+
+
+def test_entry_has_exactly_one_provenance():
+    problems = [m for e in _entries() if (m := check_entry(e))]
+    assert not problems, problems
+
+
+SHA = "0" * 40
+
+
+def test_check_entry_accepts_each_kind():
+    assert check_entry({"path": "p", "new": True}) is None
+    assert check_entry({"path": "p", "pin": "core/skills/x"}) is None
+    assert check_entry({"path": "p", "source_repo": "o/r", "source_sha": SHA, "source_path": "a/b"}) is None
+
+
+def test_check_entry_rejects_bad_entries():
+    bad = [
+        {"path": "p"},
+        {"path": "p", "new": True, "pin": "k"},
+        {"path": "p", "new": True, "source_sha": SHA},
+        {"path": "p", "source_sha": SHA, "source_path": "a"},
+        {"path": "p", "source_repo": "o/r", "source_sha": SHA, "source_path": ["a", "b"]},
+        {"path": "p", "source_repo": "o/r", "source_sha": SHA, "source_path": ""},
+        {"path": "p", "source_repo": "o/r", "source_sha": "abc", "source_path": "a"},
+        {"path": "p", "source_repo": "nope", "source_sha": SHA, "source_path": "a"},
+    ]
+    for e in bad:
+        assert check_entry(e), e
+
+
+def test_rejects_new_and_pin_in_a_written_file(tmp_path):
+    f = tmp_path / "SOURCES.toml"
+    f.write_text('[[file]]\npath = "pack/core/a"\nnew = true\npin = "core/skills/a"\n')
+    entries = tomllib.loads(f.read_text())["file"]
+    assert check_entry(entries[0])
+
+
+def test_header_does_not_mention_paia():
+    head = "\n".join(SOURCES.read_text().splitlines()[:10])
+    assert "paia" not in head.lower()
 
 
 def test_walks_every_package(tmp_path):

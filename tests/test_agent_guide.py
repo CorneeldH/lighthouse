@@ -1,11 +1,11 @@
 """docs/site/agents/install.md stays in step with the repo: flags, counts, tools, languages."""
 
-import ast
 import re
 import tomllib
 
 import pytest
 
+from tests.pack._testkit import config_schema
 from tests.test_getting_started import init_flags, required_tools, section
 from tests.test_site_loop import ROOT, SITE
 from tests.test_site_download import DOWNLOAD, INDEX, INSTALL, TABS
@@ -101,13 +101,7 @@ def test_every_required_tool_is_named():
 
 
 def config_languages() -> set[str]:
-    tree = ast.parse((ROOT / "pack/core/lib/config.py").read_text(encoding="utf-8"))
-    for node in tree.body:
-        if isinstance(node, ast.Assign) and any(
-            isinstance(t, ast.Name) and t.id == "LANGUAGES" for t in node.targets
-        ):
-            return set(ast.literal_eval(node.value))
-    raise AssertionError("pack/core/lib/config.py has no LANGUAGES")
+    return set(config_schema().LANGUAGES)
 
 
 def test_languages_are_the_config_languages():

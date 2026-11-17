@@ -2,6 +2,7 @@ package gitlabtest
 
 import (
 	"fmt"
+	"maps"
 	"net/http"
 	"slices"
 	"strconv"
@@ -137,7 +138,7 @@ func (s *Server) createIssue(w http.ResponseWriter, r *http.Request) {
 		iid = max(iid, k)
 	}
 	iid++
-	it := map[string]any{"iid": iid, "title": body["title"], "description": body["description"], "state": "opened",
+	it := map[string]any{"iid": iid, "id": s.newID(), "title": body["title"], "description": body["description"], "state": "opened",
 		"labels": splitCSV(body["labels"]), "created_at": now(), "updated_at": now(),
 		"web_url": fmt.Sprintf("https://gitlab.example/%s/-/issues/%d", s.Project, iid),
 		"author":  map[string]any{"username": s.Login}}
@@ -191,13 +192,7 @@ func (s *Server) editIssue(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	switch body["state_event"] {
-	case "close":
-		it["state"] = "closed"
-	case "reopen":
-		it["state"] = "opened"
-	}
-	it["updated_at"] = now()
+	applyUpdate(it, map[string]any{"state_event": body["state_event"]})
 	writeJSON(w, http.StatusOK, it)
 }
 
@@ -311,7 +306,9 @@ func (s *Server) createMR(w http.ResponseWriter, r *http.Request) {
 		iid = max(iid, toInt(mr["iid"]))
 	}
 	iid++
-	mr := map[string]any{"iid": iid, "title": body["title"], "description": body["description"], "state": "opened",
+	title, _ := body["title"].(string)
+	mr := map[string]any{"iid": iid, "id": s.newID(), "title": body["title"], "description": body["description"], "state": "opened",
+		"draft": strings.HasPrefix(title, "Draft:"), "detailed_merge_status": "mergeable",
 		"source_branch": body["source_branch"], "target_branch": body["target_branch"], "labels": []string{},
 		"web_url": fmt.Sprintf("https://gitlab.example/%s/-/merge_requests/%d", s.Project, iid), "created_at": now(),
 		"author": map[string]any{"username": s.Login}, "sha": "head" + strconv.Itoa(iid),
@@ -325,7 +322,7 @@ func (s *Server) createMR(w http.ResponseWriter, r *http.Request) {
 		mr["milestone"] = m
 	}
 	s.mrs = append(s.mrs, mr)
-	writeJSON(w, http.StatusCreated, mr)
+	writeJSON(w, http.StatusCreated, maps.Clone(mr))
 }
 
 func (s *Server) createMRNote(w http.ResponseWriter, r *http.Request) {

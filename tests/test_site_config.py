@@ -1,26 +1,21 @@
 """The configuration map (docs/site/data/config.json) stays in step with the code: every key that
-pack/core/lib/config.py and internal/usage/config.go accept is on it, with the default and the
+`lighthouse config --schema` and internal/usage/config.go accept is on it, with the default and the
 level they have, and every reader it names really names the key."""
 
 import copy
-import importlib.util
 import json
+import os
 import re
 import subprocess
-import sys
 import tomllib
 from pathlib import Path
 
 from tests._site_node import run_map
+from tests.pack._testkit import config_schema, lighthouse_dir
 from tests.test_site_loop import REPO_BLOB, REPO_TREE, ROOT, load
 
-_spec = importlib.util.spec_from_file_location("lighthouse_site_config", ROOT / "pack/core/lib/config.py")
-config = importlib.util.module_from_spec(_spec)
-sys.modules[_spec.name] = config
-_spec.loader.exec_module(config)
-
 NO_DEFAULT = object()
-# Keys nothing in the repo reads: only config.py checks them (spec section 2).
+# Keys nothing in the repo reads: only the config reader checks them (spec section 2).
 UNREAD = {"paths.history", "codex_usage.vraag_pct_week", "codex_usage.halt_pct_session", "host.name",
           "host.scan_memory_max", "host.scan_cpu_quota"}
 SET = {"project.language", "forge.kind", "forge.repo", "forge.host", "test_gate.command", "host.name", "host.controller", "host.tailscale_ip", "review.roborev"}
@@ -35,8 +30,8 @@ REQUIRED = {
     "forge.owner": "derived",
     "forge.name": "derived",
 }
-# config.py and its Go port (internal/config/config.go, host.go) hold the key lists; they read no key for a purpose.
-SKIPPED_READERS = {"pack/core/lib/config.py", "internal/config/config.go", "internal/config/host.go"}
+# The config reader (internal/config/config.go, host.go) holds the key lists; it reads no key for a purpose.
+SKIPPED_READERS = {"internal/config/config.go", "internal/config/host.go"}
 # found_readers is a text match. These two dicts correct it, each entry with its reason: a file that
 # names a key without reading it, and a file that reads it through the attributes of the loaded
 # Config (cfg.language, repo.board.project_id) so no text names it.
@@ -89,16 +84,17 @@ def expected_keys() -> dict[str, object]:
     """key -> default (or NO_DEFAULT) for every key on the map."""
     go = (ROOT / "internal/usage/config.go").read_text(encoding="utf-8")
     usage = usage_defaults(go)
-    keys = {*config.SCHEMA, *config.DEFAULTS, *config._BASE_KEYS, *config.HOST_KEYS, *usage}
-    keys |= {p.rstrip(".") for p in config._OPTION_PREFIXES}
+    schema = config_schema()
+    keys = {*schema.SCHEMA, *schema.DEFAULTS, *schema.BASE_KEYS, *schema.HOST_KEYS, *usage}
+    keys |= {p.rstrip(".") for p in schema.OPTION_PREFIXES}
     found: dict[str, object] = {}
     for key in keys:
         if key in usage:
             found[key] = usage[key]
         elif key == "project.language":
             found[key] = "en"
-        elif key in config.DEFAULTS:
-            value = config.DEFAULTS[key]
+        elif key in schema.DEFAULTS:
+            value = schema.DEFAULTS[key]
             found[key] = list(value) if isinstance(value, tuple) else value
         else:
             found[key] = NO_DEFAULT
@@ -179,16 +175,16 @@ def config_problems(data: dict, root: Path) -> list[str]:
     for key in expected.keys() - on_map.keys():
         problems.append(f"not on the map: {key}")
     for key in on_map.keys() - expected.keys():
-        problems.append(f"not in config.py: {key}")
+        problems.append(f"not in the lighthouse config reader: {key}")
     for key, entry in on_map.items():
         if key not in expected:
             continue
         want = expected[key]
         if want is NO_DEFAULT:
             if "default" in entry:
-                problems.append(f"{key}: default on the map, none in config.py")
+                problems.append(f"{key}: default on the map, none in the lighthouse config reader")
         elif entry.get("default") != want:
-            problems.append(f"{key}: default {entry.get('default')!r}, config.py says {want!r}")
+            problems.append(f"{key}: default {entry.get('default')!r}, the lighthouse config reader says {want!r}")
         if entry["level"] != level_of(key):
             problems.append(f"{key}: level {entry['level']}, expected {level_of(key)}")
         if entry["required"] != REQUIRED.get(key, "no"):
@@ -275,19 +271,19 @@ def test_problems_flag_a_dispatch_key():
     data = copy.deepcopy(load("config.json"))
     data["files"][1]["tables"][0]["keys"].append(
         {"key": "dispatch.slots", "level": "advanced", "required": "no", "about": "x", "readers": []})
-    assert config_problems(data, ROOT) == ["not in config.py: dispatch.slots"]
+    assert config_problems(data, ROOT) == ["not in the lighthouse config reader: dispatch.slots"]
 
 
 def test_problems_flag_another_default():
     data = copy.deepcopy(load("config.json"))
     entry_of(data, "labels.needs_hands")["default"] = "x"
-    assert config_problems(data, ROOT) == ["labels.needs_hands: default 'x', config.py says 'needs-hands'"]
+    assert config_problems(data, ROOT) == ["labels.needs_hands: default 'x', the lighthouse config reader says 'needs-hands'"]
 
 
 def test_problems_flag_a_default_without_one():
     data = copy.deepcopy(load("config.json"))
     entry_of(data, "paths.tenets")["default"] = "x"
-    assert config_problems(data, ROOT) == ["paths.tenets: default on the map, none in config.py"]
+    assert config_problems(data, ROOT) == ["paths.tenets: default on the map, none in the lighthouse config reader"]
 
 
 def test_problems_flag_a_lowered_level():
@@ -398,13 +394,13 @@ def test_config_entries_say_whether_anything_acts_on_the_key():
     entries = config_entries()
     assert entries["test_gate.command"]["status"] == "Status: works"
     assert entries["paths.history"]["status"] == (
-        "Status: not used yet — config.py accepts it, nothing acts on it.")
+        "Status: not used yet — the lighthouse binary accepts it, nothing acts on it.")
 
 
 def test_config_entries_give_the_default_as_toml():
     entries = config_entries()
     assert entries["paths.search_dirs"]["default"] == '["."]'
-    assert entries["usage_guard.resume"]["default"] == "false"  # config.py: False
+    assert entries["usage_guard.resume"]["default"] == "false"  # lighthouse config: false
     assert entries["paths.tenets"]["default"] is None
     assert entries["paths.history"]["readers"] == []
 
@@ -447,32 +443,47 @@ def test_toml_block_links_every_key_but_the_derived_ones():
         assert keys == [k["key"] for t in f["tables"] for k in t["keys"] if k["required"] != "derived"]
 
 
-def test_toml_examples_pass_config_py(tmp_path):
-    text, _ = config_toml("lighthouse.toml")
-    path = tmp_path / "lighthouse.toml"
-    text = uncommented(text)
+def _read(key: str, **env: str) -> str:
+    """`lighthouse config <key>` of this checkout with `env`; the value it prints."""
+    result = subprocess.run(
+        [str(lighthouse_dir() / "lighthouse"), "config", key],
+        capture_output=True, text=True, check=False, env=dict(os.environ, **env),
+    )  # fmt: skip
+    assert result.returncode == 0, (key, result.stderr)
+    return result.stdout
+
+
+# The [forge.board] table up to the next table. Its example holds the ids of a GitHub board and
+# `...` placeholders, which the reader refuses with kind gitlab.
+_BOARD = re.compile(r"^\[forge\.board\]\n(?:(?!\[).*\n)*", re.MULTILINE)
+
+
+def test_toml_examples_pass_the_config_reader(tmp_path):
+    text = uncommented(config_toml("lighthouse.toml")[0])
     # The published example is `kind = "github"`; `host` is valid only with gitlab.
-    gitlab = text.replace('kind = "github"', 'kind = "gitlab"')
-    assert gitlab != text
-    path.write_text(gitlab, encoding="utf-8")
-    cfg = config.load(path)
-    assert cfg.raw["forge"]["host"] == "git.example.org"
-    assert cfg.board is not None and cfg.repo == "owner/name"
-    assert cfg.raw["code_language_llm"]["models"] == ["model-a", "model-b"]
-    text, _ = config_toml("host.toml")
-    path = tmp_path / "host.toml"
-    path.write_text(uncommented(text), encoding="utf-8")
-    assert config.load_host(path).gate_slice == "lighthouse-gate.slice"
+    github = tmp_path / "github.toml"
+    github.write_text(re.sub(r"^host = .*\n", "", text, flags=re.MULTILINE), encoding="utf-8")
+    assert _read("forge.board.project_number", LIGHTHOUSE_TOML=str(github)) == "1\n"
+    gitlab = tmp_path / "gitlab.toml"
+    gitlab_text = _BOARD.sub("", text.replace('kind = "github"', 'kind = "gitlab"'), count=1)
+    assert gitlab_text != text
+    gitlab.write_text(gitlab_text, encoding="utf-8")
+    assert _read("forge.host", LIGHTHOUSE_TOML=str(gitlab)) == "git.example.org\n"
+    assert _read("forge.repo", LIGHTHOUSE_TOML=str(gitlab)) == "owner/name\n"
+    assert _read("code_language_llm.models", LIGHTHOUSE_TOML=str(gitlab)) == "model-a\nmodel-b\n"
+    host = tmp_path / "host.toml"
+    host.write_text(uncommented(config_toml("host.toml")[0]), encoding="utf-8")
+    assert _read("host.gate_slice", LIGHTHOUSE_HOST_TOML=str(host)) == "lighthouse-gate.slice\n"
 
 
-def test_options_are_the_values_config_py_accepts():
-    """A key with a fixed set of values lists exactly that set; config.py rejects every other."""
+def test_options_are_the_values_lighthouse_accepts():
+    """A key with a fixed set of values lists exactly that set; the lighthouse binary rejects every other."""
     expected = {
-        "project.language": list(config.LANGUAGES),
+        "project.language": config_schema().LANGUAGES,
         "project.code_language": ["en"],
         "forge.kind": ["github", "gitlab"],
         "review.roborev": ["local", "off"],
-        **{key: [True, False] for key, kind in config.SCHEMA.items() if kind == config._BOOL},
+        **{key: [True, False] for key, kind in config_schema().SCHEMA.items() if kind == "bool"},
     }
     on_map = {k["key"]: k["options"] for k in all_keys(load("config.json")) if "options" in k}
     assert on_map == expected

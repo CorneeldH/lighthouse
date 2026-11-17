@@ -40,9 +40,7 @@ func (s *Server) nextNumber() int {
 		n = max(n, k)
 	}
 	for _, p := range s.Pulls {
-		if v, ok := p["number"].(int); ok {
-			n = max(n, v)
-		}
+		n = max(n, int(commentID(p["number"])))
 	}
 	return n + 1
 }
@@ -113,7 +111,7 @@ func (s *Server) createIssue(w http.ResponseWriter, r *http.Request) {
 		s.Issues = map[int]map[string]any{}
 	}
 	repo := r.PathValue("owner") + "/" + r.PathValue("name")
-	it := map[string]any{"number": n, "id": 9000 + n, "title": body["title"], "body": body["body"], "state": "open",
+	it := map[string]any{"number": n, "id": 9000 + n, "node_id": fmt.Sprintf("I_%d", n), "title": body["title"], "body": body["body"], "state": "open",
 		"html_url": fmt.Sprintf("https://github.com/%s/issues/%d", repo, n), "labels": labelObjects(names),
 		"milestone": ms, "created_at": time.Now().UTC().Format(time.RFC3339), "user": map[string]any{"login": s.Login}}
 	s.Issues[n] = it
@@ -151,16 +149,19 @@ func (s *Server) patchIssue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for k, v := range body {
-		if k != "milestone" {
-			it[k] = v
-			continue
+		if k == "milestone" {
+			ms, ok := s.milestoneObject(v)
+			if !ok {
+				writeJSON(w, http.StatusUnprocessableEntity, map[string]any{"message": "Validation Failed: milestone does not exist"})
+				return
+			}
+			v = ms
 		}
-		ms, ok := s.milestoneObject(v)
-		if !ok {
-			writeJSON(w, http.StatusUnprocessableEntity, map[string]any{"message": "Validation Failed: milestone does not exist"})
-			return
+		it[k] = v
+		// A pull request kept apart in Issues and Pulls shows the change on both sides.
+		if pi := s.pullIndex(int(commentID(it["number"]))); pi >= 0 {
+			s.Pulls[pi][k] = v
 		}
-		it[k] = ms
 	}
 	writeJSON(w, http.StatusOK, it)
 }
@@ -266,20 +267,9 @@ func (s *Server) searchIssues(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Server) pull(w http.ResponseWriter, r *http.Request) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	n, _ := strconv.Atoi(r.PathValue("number"))
-	for _, p := range s.Pulls {
-		if p["number"] == n {
-			writeJSON(w, http.StatusOK, p)
-			return
-		}
-	}
-	writeJSON(w, http.StatusNotFound, map[string]any{"message": "Not Found"})
-}
-
-// createPull refuses any field POST pulls does not take, milestone included.
+// createPull refuses any field POST pulls does not take, milestone included. The pull request
+// is also an issue, as on GitHub: Issues holds the same map under its number, so the issue
+// routes change it and the issues list shows it with a pull_request key.
 func (s *Server) createPull(w http.ResponseWriter, r *http.Request) {
 	body, ok := s.decode(w, r, pullFields)
 	if !ok {
@@ -289,13 +279,46 @@ func (s *Server) createPull(w http.ResponseWriter, r *http.Request) {
 	defer s.mu.Unlock()
 	n := s.nextNumber()
 	repo := r.PathValue("owner") + "/" + r.PathValue("name")
-	p := map[string]any{"number": n, "title": body["title"], "body": body["body"], "state": "open", "merged_at": nil,
-		"html_url":   fmt.Sprintf("https://github.com/%s/pull/%d", repo, n),
+	url := fmt.Sprintf("https://github.com/%s/pull/%d", repo, n)
+	draft, _ := body["draft"].(bool)
+	p := map[string]any{"number": n, "node_id": fmt.Sprintf("PR_%d", n), "title": body["title"], "body": body["body"],
+		"state": "open", "draft": draft, "merged_at": nil, "html_url": url,
 		"created_at": time.Now().UTC().Format(time.RFC3339), "user": map[string]any{"login": s.Login},
-		"head": map[string]any{"ref": body["head"]}, "base": map[string]any{"ref": body["base"]},
-		"labels": []any{}, "milestone": nil}
+		"head": map[string]any{"ref": body["head"], "sha": fmt.Sprintf("sha-%d", n)}, "base": map[string]any{"ref": body["base"]},
+		"labels": []any{}, "milestone": nil, "pull_request": map[string]any{"url": url}}
 	s.Pulls = append(s.Pulls, p)
+	if s.Issues == nil {
+		s.Issues = map[int]map[string]any{}
+	}
+	s.Issues[n] = p
 	writeJSON(w, http.StatusCreated, p)
+}
+
+// patchPull changes the title, body, state or base of a pull request, and of its issue side
+// when Issues holds that apart.
+func (s *Server) patchPull(w http.ResponseWriter, r *http.Request) {
+	body, ok := s.decode(w, r, []string{"title", "body", "state", "base", "maintainer_can_modify"})
+	if !ok {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n, _ := strconv.Atoi(r.PathValue("number"))
+	pi := s.pullIndex(n)
+	if pi < 0 {
+		writeJSON(w, http.StatusNotFound, map[string]any{"message": "Not Found"})
+		return
+	}
+	for k, v := range body {
+		if k == "base" {
+			v = map[string]any{"ref": v}
+		}
+		s.Pulls[pi][k] = v
+		if it, ok := s.Issues[n]; ok && k != "base" {
+			it[k] = v
+		}
+	}
+	writeJSON(w, http.StatusOK, s.Pulls[pi])
 }
 
 func (s *Server) listMilestones(w http.ResponseWriter, r *http.Request) {

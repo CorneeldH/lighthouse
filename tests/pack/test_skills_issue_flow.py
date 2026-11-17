@@ -502,13 +502,39 @@ def test_handoff_pause_form_skips_phase_side_effects():
         flat = " ".join(section.split())
         for phrase in (
             "lighthouse post-artefact",
-            "no push",
             "Controller mode",
             "no question to the user",
             "/clear",
             "LIGHTHOUSE_CONTROLLER_RUN",
         ):
             assert phrase in flat, phrase
+
+
+def test_handoff_pause_form_pushes_the_branch():
+    # #356: unpushed commits of a paused run are missing on another node.
+    for body in skill("write-handoff"):
+        section = body[body.index("## Pause form") : body.index("## Workflow")]
+        flat = " ".join(section.split())
+        assert "no push" not in flat
+        for phrase in (
+            "git push -u origin HEAD",
+            "never the default branch",
+            "A failed push does not block the pause",
+            "`Watch out:`",
+        ):
+            assert phrase in flat, phrase
+        assert flat.index("git push -u origin HEAD") < flat.index("Write the block to the path")
+
+
+def test_handoff_controller_mode_pushes_before_the_post():
+    # #356: post-artefact pushes only as a side effect; a handoff without a new artefact
+    # left its commits local.
+    for body in skill("write-handoff"):
+        section = body[body.index("## Controller mode") : body.index("## Output format")]
+        flat = " ".join(section.split())
+        assert "also when `lighthouse post-artefact` posted nothing" in flat
+        assert "never the default branch" in flat
+        assert flat.index("git push -u origin HEAD") < flat.index("gh issue comment <nr>")
 
 
 def test_guard_names_the_pause_form():

@@ -23,6 +23,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/forge/gitlabtest"
 	"github.com/CorneeldH/lighthouse/internal/hostconfig"
 	"github.com/CorneeldH/lighthouse/internal/overview"
+	"github.com/CorneeldH/lighthouse/internal/priorities"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
 	"github.com/CorneeldH/lighthouse/internal/server"
 	"github.com/CorneeldH/lighthouse/internal/store"
@@ -97,7 +98,7 @@ func startServe(t *testing.T) (addr string, stop func() error) {
 	errOut := &syncBuf{}
 	done := make(chan error, 1)
 	go func() {
-		done <- serve(ctx, "127.0.0.1:0", filepath.Join(t.TempDir(), "l.db"), nil, nil, server.RunsMeta{}, server.RefreshInterval, errOut)
+		done <- serve(ctx, "127.0.0.1:0", filepath.Join(t.TempDir(), "l.db"), nil, nil, server.RunsMeta{}, nil, server.RefreshInterval, server.PrioritiesInterval, errOut)
 	}()
 
 	addr = waitListening(t, errOut, done)
@@ -316,8 +317,8 @@ func TestForgeReposFromHostToml(t *testing.T) {
 			if s := slugs(got); s != tt.wantSlugs {
 				t.Fatalf("slugs = %q, want %q", s, tt.wantSlugs)
 			}
-			if (got[0].InController != nil) != tt.wantFilter {
-				t.Errorf("filter != nil is %v, want %v", got[0].InController != nil, tt.wantFilter)
+			if got[0].Controller != tt.wantFilter {
+				t.Errorf("filter != nil is %v, want %v", got[0].Controller, tt.wantFilter)
 			}
 			want := tt.wantErrOut
 			if strings.Contains(want, "%s") {
@@ -366,8 +367,8 @@ func TestForgeReposDispatchClientPerRepo(t *testing.T) {
 		if !ok || c.Repo != g.Slug {
 			t.Errorf("source %s: Src = %+v, want the forge client of %s", g.Slug, g.Src, g.Slug)
 		}
-		if (g.InController != nil) != wantFilter[i] {
-			t.Errorf("source %s: filter != nil is %v, want %v", g.Slug, g.InController != nil, wantFilter[i])
+		if g.Controller != wantFilter[i] {
+			t.Errorf("source %s: filter != nil is %v, want %v", g.Slug, g.Controller, wantFilter[i])
 		}
 	}
 	if errOut.Len() != 0 {
@@ -405,7 +406,7 @@ func TestForgeReposWithoutDispatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("forgeRepos: %v", err)
 	}
-	if len(got) != 1 || got[0].Slug != "o/r" || got[0].InController != nil {
+	if len(got) != 1 || got[0].Slug != "o/r" || got[0].Controller || got[0].Board {
 		t.Fatalf("forgeRepos = %+v, want one source o/r without filter", got)
 	}
 	c, ok := got[0].Src.(*forge.GitHub)
@@ -747,6 +748,142 @@ func TestServeForgeURLDefaultEmpty(t *testing.T) {
 	}
 }
 
+// nodeServeHost writes a host.toml with [node] and [dispatch.forge] (and extra [dispatch] text)
+// and returns the paths of the host.toml, the node token and the forge token. forgeToken ""
+// means no forge token file at all.
+func nodeServeHost(t *testing.T, forgeURL, forgeToken, extra string) (nodeToken string) {
+	t.Helper()
+	dir := t.TempDir()
+	nodeToken = filepath.Join(dir, "node-token")
+	if err := os.WriteFile(nodeToken, []byte("node-secret\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	forgeTokenFile := filepath.Join(dir, "forge-token")
+	if forgeToken != "" {
+		if err := os.WriteFile(forgeTokenFile, []byte(forgeToken), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	body := fmt.Sprintf("[node]\ntoken_file = %q\n\n[dispatch.forge]\nurl = %q\ntoken_file = %q\n\n%s",
+		nodeToken, forgeURL, forgeTokenFile, extra)
+	path := filepath.Join(dir, "host.toml")
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("LIGHTHOUSE_HOST_TOML", path)
+	t.Setenv("LIGHTHOUSE_FORGE_REPO", "")
+	t.Setenv("XDG_STATE_HOME", filepath.Join(dir, "state"))
+	return nodeToken
+}
+
+func nodeGet(t *testing.T, addr, path, token string) (int, string) {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet, "http://"+addr+path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	return resp.StatusCode, string(b)
+}
+
+func TestServeWithoutNodeSectionHasNoNodeRoutes(t *testing.T) {
+	noHostToml(t)
+	t.Setenv("LIGHTHOUSE_FORGE_REPO", "")
+	addr, stop := startServeCommand(t, "--db", filepath.Join(t.TempDir(), "l.db"))
+	if code, body := getBody(t, addr, "/api/node/v1/info"); code != http.StatusNotFound {
+		t.Errorf("node info = %d %s, want 404", code, body)
+	}
+	if err := stop(); err != nil {
+		t.Fatalf("serve = %v, want nil", err)
+	}
+}
+
+func TestServeWithNodeSectionAndNoForgeTokenFails(t *testing.T) {
+	nodeServeHost(t, "http://forge.invalid", "", "")
+	root := NewRoot(strings.NewReader(""), io.Discard, io.Discard)
+	root.SetArgs([]string{"serve", "--addr", "127.0.0.1:0", "--db", filepath.Join(t.TempDir(), "l.db")})
+	err := root.ExecuteContext(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "dispatch.forge.token_file") {
+		t.Fatalf("serve = %v, want an error naming dispatch.forge.token_file", err)
+	}
+}
+
+func TestServeWithNodeSectionMountsRoutes(t *testing.T) {
+	tok := nodeServeHost(t, "http://forge.invalid", "forge-secret\n", "")
+	addr, stop := startServeCommand(t, "--db", filepath.Join(t.TempDir(), "l.db"))
+	if code, body := nodeGet(t, addr, "/api/node/v1/info", ""); code != http.StatusUnauthorized {
+		t.Errorf("info without token = %d %s, want 401", code, body)
+	}
+	if code, body := nodeGet(t, addr, "/api/node/v1/info", "wrong"); code != http.StatusForbidden {
+		t.Errorf("info with wrong token = %d %s, want 403", code, body)
+	}
+	secret, err := os.ReadFile(tok)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code, body := nodeGet(t, addr, "/api/node/v1/info", strings.TrimSpace(string(secret))); code != http.StatusOK {
+		t.Errorf("info with token = %d %s, want 200", code, body)
+	}
+	if err := stop(); err != nil {
+		t.Fatalf("serve = %v, want nil", err)
+	}
+}
+
+func TestServeFailsOnNodeWithoutServeKeys(t *testing.T) {
+	noHostToml(t)
+	path := filepath.Join(t.TempDir(), "host.toml")
+	body := "[dispatch.nodes.a]\nnode_id = \"node-a\"\nslots = 1\n"
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("LIGHTHOUSE_HOST_TOML", path)
+	root := NewRoot(strings.NewReader(""), io.Discard, io.Discard)
+	root.SetArgs([]string{"serve", "--addr", "127.0.0.1:0", "--db", filepath.Join(t.TempDir(), "l.db")})
+	err := root.ExecuteContext(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "dispatch.nodes.a.serve_url") || !strings.Contains(err.Error(), "add serve_url") {
+		t.Fatalf("serve = %v, want an error naming dispatch.nodes.a.serve_url and the step", err)
+	}
+}
+
+func TestServeUnknownProfileIs400(t *testing.T) {
+	tok := nodeServeHost(t, "http://forge.invalid", "forge-secret", "[dispatch.profiles.software]\ntarget_key = \"t-software\"\n")
+	addr, stop := startServeCommand(t, "--db", filepath.Join(t.TempDir(), "l.db"))
+	secret, _ := os.ReadFile(tok)
+	path := "/api/node/v1/workspaces/ws1/transcript/" + "11111111-1111-4111-8111-111111111111" + "?profile=elders"
+	if code, body := nodeGet(t, addr, path, strings.TrimSpace(string(secret))); code != http.StatusBadRequest {
+		t.Errorf("transcript with unknown profile = %d %s, want 400", code, body)
+	}
+	if err := stop(); err != nil {
+		t.Fatalf("serve = %v, want nil", err)
+	}
+}
+
+// TestServeProfileFromNodeHostToml: a profile of [dispatch.profiles] on the node passes the
+// profile check; the request then fails on the forge (workspace gone), not with 400.
+func TestServeProfileFromNodeHostToml(t *testing.T) {
+	forgeSrv := httptest.NewServer(http.NotFoundHandler())
+	t.Cleanup(forgeSrv.Close)
+	tok := nodeServeHost(t, forgeSrv.URL, "forge-secret", "[dispatch.profiles.software]\ntarget_key = \"t-software\"\n")
+	addr, stop := startServeCommand(t, "--db", filepath.Join(t.TempDir(), "l.db"))
+	secret, _ := os.ReadFile(tok)
+	path := "/api/node/v1/workspaces/ws1/transcript/" + "11111111-1111-4111-8111-111111111111" + "?profile=software"
+	code, body := nodeGet(t, addr, path, strings.TrimSpace(string(secret)))
+	if code != http.StatusNotFound || !strings.Contains(body, "workspace_gone") {
+		t.Errorf("transcript with known profile = %d %s, want 404 workspace_gone", code, body)
+	}
+	if err := stop(); err != nil {
+		t.Fatalf("serve = %v, want nil", err)
+	}
+}
+
 // A GitLab repo of [dispatch] repos is served from its own forge: its open issues and their
 // comments reach the overview, and the GitHub URL and token are never part of it.
 func TestServeShowsGitLabRepo(t *testing.T) {
@@ -789,5 +926,34 @@ repo = "g/sub/p"
 	if len(ov.Questions) != 1 || ov.Questions[0].Number != 7 || ov.Questions[0].Repo != "g/sub/p" ||
 		!strings.Contains(ov.Questions[0].Question, "Welke kleur?") {
 		t.Errorf("Questions = %+v, want the question on g/sub/p#7", ov.Questions)
+	}
+}
+
+func TestStartPrioritiesWithoutReposReportsNotConfigured(t *testing.T) {
+	overviewRead := func(context.Context) (overview.Overview, error) {
+		t.Error("overview read without sources")
+		return overview.Overview{}, nil
+	}
+	read, stopped := startPriorities(context.Background(), nil, overviewRead, server.PrioritiesInterval)
+	if _, err := read(context.Background()); !errors.Is(err, forge.ErrNotConfigured) {
+		t.Fatalf("err = %v, want forge.ErrNotConfigured", err)
+	}
+	done := make(chan struct{})
+	go func() { stopped(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("stopped() blocked without sources")
+	}
+}
+
+func TestStartPrioritiesFailedOverviewFailsBuild(t *testing.T) {
+	boom := errors.New("overview down")
+	overviewRead := func(context.Context) (overview.Overview, error) { return overview.Overview{}, boom }
+	ctx, cancel := context.WithCancel(context.Background())
+	read, stopped := startPriorities(ctx, []priorities.Source{{Slug: "o/r", Src: &countingSource{}}}, overviewRead, server.PrioritiesInterval)
+	defer func() { cancel(); stopped() }()
+	if _, err := read(ctx); !errors.Is(err, boom) {
+		t.Fatalf("err = %v, want the overview error", err)
 	}
 }

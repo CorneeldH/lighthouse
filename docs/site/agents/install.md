@@ -46,14 +46,14 @@ Read, do not change, and do not ask yet. Find out:
 4. Whether lighthouse is already installed here: does `lighthouse.toml` or
    `.lighthouse/manifest.toml` exist? If `.lighthouse/manifest.toml` exists, stop. Tell the user
    lighthouse is already installed; updating it is outside this guide.
-5. Which requirements are missing. Check each tool with `command -v <tool>`, `tomllib` with
+5. Which requirements are missing. Check each tool with `command -v <tool>`, `tomllib` (only for the `python` package) with
    `python3 -I -c 'import tomllib'`, and `superpowers` in
    `~/.claude/plugins/installed_plugins.json`.
 6. Which languages the repository uses (`git ls-files`): this decides which packages `init` picks.
 
 | Tool | Package | Without it |
 |---|---|---|
-| `python3`, `tomllib` (Python 3.11+) | all | The hooks report `COULD NOT CHECK`, and the blocking ones block. |
+| `python3`, `tomllib` (Python 3.11+) | python | `ty-gate`, `gate_python` and `python-standard` cannot run. The other packages need no Python. |
 | `git` | core, expo, go, shell | Nothing works. |
 | `jq` | core, go, python, shell | The hooks cannot read their payload and report `COULD NOT CHECK`. |
 | `gh` | core, python | The skills that do not yet use `lighthouse forge` cannot reach GitHub. The chain skills need `gh` only for the fallback `gh auth token`. |
@@ -193,6 +193,9 @@ In the root of the repository:
    [y/N]`. The dry run never reaches it, so the user has not seen it, and `--yes` would write
    `host.toml` without asking. With one `y`, the second question reads the end of stdin, and that
    counts as no. `host.toml` is for `lighthouse serve` and the test gate's `gate_*` keys; this guide does not write it.
+   After it wrote, this first `init` prints an agent-audit summary (sources, conflicts, overlap
+   candidates) that changes nothing. Put each conflict and candidate under "Still open", with
+   `/lighthouse-audit-agent-config` for a verdict on the candidates.
 5. Write the answers of choices 5a, 5b and 7 into `lighthouse.toml`, under `[project]` and
    `[test_gate]`. Show the user the change. Choice 8 writes nothing here.
 6. If `init` printed

@@ -36,6 +36,11 @@ const (
 // is the reason the run was closed with; it is empty for the other outcomes.
 func Launch(ctx context.Context, db *sql.DB, w Workplace, runID int64, branch string, l LaunchSpec, now time.Time) (Outcome, string, error) {
 	ws, err := w.Prepare(ctx, branch)
+	// A resume continues the session that made the own work: it runs on that HEAD (#356).
+	var own *OwnWorkError
+	if l.Mode == "resume" && errors.As(err, &own) {
+		ws, err = own.Workspace, nil
+	}
 	if err != nil {
 		reason := "prepare: " + err.Error()
 		return NotAccepted, reason, releaseFailed(ctx, db, runID, reason, now)
@@ -136,7 +141,8 @@ func hasOpenRun(ctx context.Context, db *sql.DB, c Candidate) (bool, error) {
 type Candidate struct {
 	Repo  string
 	Issue int
-	// Node is the node of the workspace; "" is self. Cleanup measures git only on self.
+	// Node is the node of the workspace; "" is self. On a node Cleanup measures git through the
+	// GitMeter of the workplace.
 	Node         string
 	InController bool
 	MergedHead   string
@@ -148,7 +154,7 @@ type Candidate struct {
 // never removed on an unmeasurable check. A running run is never touched.
 //
 // The order: in the controller or an open run of the issue or on the workspace
-// (nothing), a workspace of another node (keep: no local git), the workspace path (looked up when the candidate has none), the
+// (nothing), a workspace on a node whose workplace has no GitMeter (keep), the workspace path (looked up when the candidate has none), the
 // sessions (a workspace forge no longer knows counts as removed), a live foreign
 // session (keep), an open run again (nothing), stop the own sessions, dirty,
 // unpushed, an open run again (nothing), remove.
@@ -166,9 +172,9 @@ func Cleanup(ctx context.Context, db *sql.DB, w Workplace, run Runner, c Candida
 		l := Leftover{Repo: c.Repo, Issue: c.Issue, Node: c.Node, WorkspaceID: c.Workspace.ID, Path: c.Workspace.Path, Reason: reason}
 		return false, RecordLeftover(ctx, db, l, now)
 	}
-	// Dirty and Unpushed run git on this host: they cannot measure a workspace of another node.
-	if c.Node != "" {
-		return keep("not measurable: node " + c.Node + ": no local git")
+	// On a node git runs there, through the GitMeter of the workplace; on self on this host.
+	if _, ok := w.(GitMeter); !ok && c.Node != "" {
+		return keep("not measurable: node " + c.Node + ": no git measurement")
 	}
 	// Forge no longer knows the workspace: removed, as after a 404 on Remove.
 	gone := func() (bool, error) {
@@ -241,14 +247,15 @@ func Cleanup(ctx context.Context, db *sql.DB, w Workplace, run Runner, c Candida
 		}
 	}
 
-	dirty, err := Dirty(ctx, run, c.Workspace.Path)
+	git := gitOf(w, run, c)
+	dirty, err := git.Dirty(ctx, c.Workspace.ID)
 	if err != nil {
 		return keep("not measurable: " + err.Error())
 	}
 	if dirty {
 		return keep("uncommitted changes")
 	}
-	unpushed, err := Unpushed(ctx, run, c.Workspace.Path, c.MergedHead)
+	unpushed, err := git.Unpushed(ctx, c.Workspace.ID, c.MergedHead)
 	if err != nil {
 		return keep("not measurable: " + err.Error())
 	}
@@ -275,4 +282,29 @@ func Cleanup(ctx context.Context, db *sql.DB, w Workplace, run Runner, c Candida
 		return true, err
 	}
 	return true, nil
+}
+
+// gitOf is how Cleanup measures git for c: on a node the GitMeter of w (Cleanup checked it has
+// one), on self Dirty and Unpushed with run on the path of the workspace. Every kenn-forge adapter
+// is a GitMeter, but on self it is ErrNotMeasurable, so the node decides, not the type.
+func gitOf(w Workplace, run Runner, c Candidate) GitMeter {
+	if g, ok := w.(GitMeter); ok && c.Node != "" {
+		return g
+	}
+	return localGit{run: run, path: c.Workspace.Path}
+}
+
+// localGit is the GitMeter of self: git on this host, on the path the workspace has once Cleanup
+// looked it up.
+type localGit struct {
+	run  Runner
+	path string
+}
+
+func (l localGit) Dirty(ctx context.Context, _ string) (bool, error) {
+	return Dirty(ctx, l.run, l.path)
+}
+
+func (l localGit) Unpushed(ctx context.Context, _, mergedHead string) (bool, error) {
+	return Unpushed(ctx, l.run, l.path, mergedHead)
 }

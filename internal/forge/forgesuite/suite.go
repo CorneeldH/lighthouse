@@ -25,6 +25,10 @@ type Fixture interface {
 	// AddIssue adds is with its Number, Title, Body, Author, State ("open"/"closed"), Labels,
 	// Milestone and ClosedAt.
 	AddIssue(t *testing.T, is forge.Issue)
+	// SetCloseReason sets why the closed issue number was closed: "completed" or "not_planned".
+	SetCloseReason(t *testing.T, number int, reason string)
+	// AddMilestone adds m to the repo, also one without issues; State is "open" or "closed".
+	AddMilestone(t *testing.T, m forge.Milestone)
 	// AddComment adds a comment by author on issue number and returns its ID.
 	AddComment(t *testing.T, number int, author, body string) int64
 	// AddAcknowledgement records that login acknowledged comment commentID on issue number.
@@ -47,19 +51,28 @@ type Fixture interface {
 	// too. GitHub does; GitLab reads head_pipeline only for an open merge request, the only
 	// PR whose checks the dispatcher reads.
 	ChecksOnClosedPRs() bool
+	// PRCommentBodies lists the comment bodies on pull request number, oldest first. GitHub
+	// keeps them with the issue comments; GitLab keeps a merge request's notes apart.
+	PRCommentBodies(t *testing.T, number int) []string
 	// ListsClosedIssues reports whether BoardItems also lists closed issues no case put on the
 	// board. GitLab does: every issue is on its board, closed ones within a window. GitHub
 	// lists only the items of its project.
 	ListsClosedIssues() bool
-	// AddMilestone adds an open milestone with title and returns it with the Number the forge
+	// AddNamedMilestone adds an open milestone with title and returns it with the Number the forge
 	// uses in the Milestone methods. group makes it a group milestone, where the forge has them;
 	// the fixture of a forge without them fails the test.
-	AddMilestone(t *testing.T, title string, group bool) forge.Milestone
+	AddNamedMilestone(t *testing.T, title string, group bool) forge.Milestone
 	// SetLabels sets the label names of the repo.
 	SetLabels(t *testing.T, names ...string)
 	// UniqueMilestoneTitles reports whether the forge refuses two milestones with one title.
 	// GitHub does; GitLab does not, and also shows the milestones of the groups above the project.
 	UniqueMilestoneTitles() bool
+	// SupportsPlanning reports whether the forge implements Planning; the Planning case is
+	// skipped for one that does not yet.
+	SupportsPlanning() bool
+	// NotPlannedCountsAsDone reports whether Planning counts an issue closed as not planned in
+	// Done. GitHub does not; GitLab has no such close reason, so every closed issue is done.
+	NotPlannedCountsAsDone() bool
 }
 
 // Case is one contract case.
@@ -76,6 +89,7 @@ var Cases = []Case{
 	{"OpenIssuesPages", openIssuesPages},
 	{"ClosedInMilestone", closedInMilestone},
 	{"BlockedBy", blockedBy},
+	{"Planning", planning},
 	{"Comments", comments},
 	{"Acknowledge", acknowledge},
 	{"BoardStatusAndPriority", boardStatusAndPriority},
@@ -96,6 +110,10 @@ var Cases = []Case{
 	{"MilestoneAmbiguousTitle", milestoneAmbiguousTitle},
 	{"LabelsList", labelsList},
 	{"AddBlockerThenBlockedBy", addBlockerThenBlockedBy},
+	{"IssueLifecycleByMarker", issueLifecycleByMarker},
+	{"PRLifecycleByMarker", prLifecycleByMarker},
+	{"FindByMarkerNoMatch", findByMarkerNoMatch},
+	{"FindByMarkerPages", findByMarkerPages},
 }
 
 // Run runs every case as a subtest, each with a fresh fixture.
@@ -212,6 +230,56 @@ func blockedBy(t *testing.T, f Fixture) {
 		if g := got[i]; g.Repo != w.Repo || g.Issue != w.Issue || g.State != w.State {
 			t.Errorf("BlockedBy(7)[%d] = %+v, want repo %s, issue %d, state %s", i, g, w.Repo, w.Issue, w.State)
 		}
+	}
+}
+
+func planning(t *testing.T, f Fixture) {
+	if !f.SupportsPlanning() {
+		t.Skip("this forge does not implement Planning yet")
+	}
+	m := milestone
+	f.AddMilestone(t, m)
+	f.AddMilestone(t, forge.Milestone{Number: 9, Title: "M9", State: "open"})
+	f.AddIssue(t, forge.Issue{Number: 1, Title: "One", Author: "ann", State: "open", Milestone: &m})
+	f.AddIssue(t, openIssue(2))
+	f.AddIssue(t, closedIssue(3, nil, time.Now().Add(-time.Hour)))
+	f.AddIssue(t, closedIssue(4, &m, time.Now().Add(-time.Hour)))
+	f.AddIssue(t, closedIssue(5, &m, time.Now().Add(-time.Hour)))
+	f.AddIssue(t, closedIssue(6, &m, time.Now().Add(-time.Hour)))
+	f.SetCloseReason(t, 4, "completed")
+	f.SetCloseReason(t, 5, "completed")
+	f.SetCloseReason(t, 6, "not_planned")
+	f.AddBlocker(t, 2, forge.Blocker{Repo: f.Repo(), Issue: 1, State: "OPEN"})
+	f.AddBlocker(t, 2, forge.Blocker{Repo: "other/repo", Issue: 9, State: "OPEN"})
+	f.AddBlocker(t, 2, forge.Blocker{Repo: f.Repo(), Issue: 3, State: "CLOSED"})
+	got, err := f.Forge().Planning(t.Context())
+	if err != nil {
+		t.Fatalf("Planning: %v", err)
+	}
+	if len(got.Issues) != 2 || got.Issues[0].Number != 1 || got.Issues[1].Number != 2 {
+		t.Fatalf("Planning.Issues = %+v, want the open #1 and #2", got.Issues)
+	}
+	want := []forge.Blocker{{Repo: f.Repo(), Issue: 1, State: "OPEN"}, {Repo: "other/repo", Issue: 9, State: "OPEN"}}
+	if b := got.Issues[1].BlockedBy; len(b) != 2 || b[0].Repo != want[0].Repo || b[0].Issue != 1 ||
+		b[1].Repo != want[1].Repo || b[1].Issue != 9 || b[0].State != "OPEN" || b[1].State != "OPEN" {
+		t.Errorf("Issues[1].BlockedBy = %+v, want %+v (closed #3 left out)", b, want)
+	}
+	if ms := got.Issues[0].Milestone; ms == nil || ms.Title != "M3" || ms.State != "open" {
+		t.Errorf("Issues[0].Milestone = %+v, want M3 open", ms)
+	}
+	if len(got.Milestones) != 2 {
+		t.Fatalf("Planning.Milestones = %+v, want M3 and the empty M9", got.Milestones)
+	}
+	slices.SortFunc(got.Milestones, func(a, b forge.MilestoneCount) int { return strings.Compare(a.Title, b.Title) })
+	wantDone := 2
+	if f.NotPlannedCountsAsDone() {
+		wantDone = 3
+	}
+	if c := got.Milestones[0]; c.Title != "M3" || c.Open != 1 || c.Done != wantDone {
+		t.Errorf("M3 = %+v, want 1 open and %d done (not-planned #6 counts only where the forge cannot tell)", c, wantDone)
+	}
+	if c := got.Milestones[1]; c.Title != "M9" || c.Open != 0 || c.Done != 0 {
+		t.Errorf("M9 = %+v, want 0 open and 0 done", c)
 	}
 }
 
@@ -607,7 +675,7 @@ func numbers(issues []forge.Issue) []int {
 }
 
 func createIssueRoundTrip(t *testing.T, f Fixture) {
-	f.AddMilestone(t, "M3", false)
+	f.AddNamedMilestone(t, "M3", false)
 	created, err := f.Forge().CreateIssue(t.Context(), forge.NewIssue{
 		Title: "New one", Body: "Fresh body.", Labels: []string{"bug"}, Milestone: "M3"})
 	if err != nil {
@@ -732,8 +800,8 @@ func changeComment(t *testing.T, f Fixture) {
 }
 
 func milestonesAndLookup(t *testing.T, f Fixture) {
-	m1 := f.AddMilestone(t, "M1", false)
-	f.AddMilestone(t, "M2", false)
+	m1 := f.AddNamedMilestone(t, "M1", false)
+	f.AddNamedMilestone(t, "M2", false)
 	open, err := f.Forge().Milestones(t.Context(), "open")
 	if err != nil {
 		t.Fatalf("Milestones(open): %v", err)
@@ -779,8 +847,8 @@ func milestoneAmbiguousTitle(t *testing.T, f Fixture) {
 	if f.UniqueMilestoneTitles() {
 		t.Skip("the forge refuses two milestones with one title")
 	}
-	a := f.AddMilestone(t, "Dup", false)
-	b := f.AddMilestone(t, "Dup", true)
+	a := f.AddNamedMilestone(t, "Dup", false)
+	b := f.AddNamedMilestone(t, "Dup", true)
 	_, err := f.Forge().CreateIssue(t.Context(), forge.NewIssue{Title: "T", Milestone: "Dup"})
 	var amb *forge.AmbiguousMilestone
 	if !errors.As(err, &amb) {
@@ -817,5 +885,117 @@ func addBlockerThenBlockedBy(t *testing.T, f Fixture) {
 	}
 	if len(got) != 1 || got[0].Issue != 8 || got[0].State != "OPEN" || got[0].Repo != f.Repo() {
 		t.Errorf("BlockedBy(7) = %+v; want one blocker #8, state OPEN, repo %s", got, f.Repo())
+	}
+}
+
+// find returns the one item FindByMarker finds for marker; it fails on none or more.
+func find(t *testing.T, f Fixture, marker string) forge.Item {
+	t.Helper()
+	got, err := f.Forge().FindByMarker(t.Context(), marker)
+	if err != nil {
+		t.Fatalf("FindByMarker(%q): %v", marker, err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("FindByMarker(%q) = %+v, want exactly one item", marker, got)
+	}
+	return got[0]
+}
+
+func issueLifecycleByMarker(t *testing.T, f Fixture) {
+	ctx := t.Context()
+	const marker = "<!-- lighthouse:pin skill-a -->"
+	f.AddIssue(t, forge.Issue{Number: 1, Title: "Other", Body: "no marker", Author: "ann", State: "open"})
+	is, err := f.Forge().CreateIssue(ctx, forge.NewIssue{Title: "Pin behind", Body: marker + "\nfirst body"})
+	if err != nil {
+		t.Fatalf("CreateIssue: %v", err)
+	}
+	if is.Number == 0 || is.Number == 1 || is.Title != "Pin behind" || is.State != "open" {
+		t.Fatalf("CreateIssue = %+v; want a new open issue titled Pin behind", is)
+	}
+	it := find(t, f, marker)
+	if it.Number != is.Number || it.IsPR || it.State != "open" || it.Body != marker+"\nfirst body" || it.Author != f.Login() {
+		t.Errorf("found %+v; want open issue #%d by %s, not a PR, with its full body", it, is.Number, f.Login())
+	}
+
+	if err := f.Forge().UpdateIssueBody(ctx, is.Number, marker+"\nsecond body"); err != nil {
+		t.Fatalf("UpdateIssueBody: %v", err)
+	}
+	if it := find(t, f, marker); it.Body != marker+"\nsecond body" || it.State != "open" {
+		t.Errorf("after update found %+v; want body %q, still open", it, marker+"\nsecond body")
+	}
+
+	if err := f.Forge().CloseIssue(ctx, is.Number, "Bijgewerkt, dicht"); err != nil {
+		t.Fatalf("CloseIssue: %v", err)
+	}
+	if it := find(t, f, marker); it.Number != is.Number || it.State != "closed" {
+		t.Errorf("after close found %+v; want #%d closed, still findable", it, is.Number)
+	}
+	cs, err := f.Forge().Comments(ctx, is.Number)
+	if err != nil {
+		t.Fatalf("Comments: %v", err)
+	}
+	if len(cs) != 1 || cs[0].Body != "Bijgewerkt, dicht" {
+		t.Errorf("Comments after close = %+v; want the closing comment", cs)
+	}
+}
+
+func prLifecycleByMarker(t *testing.T, f Fixture) {
+	ctx := t.Context()
+	const marker = "<!-- lighthouse:pin pr -->"
+	pr, err := f.Forge().CreatePR(ctx, forge.NewPR{Title: "Pin bump", Body: marker + "\nbody", Head: "pins/x", Base: "main", Draft: true})
+	if err != nil {
+		t.Fatalf("CreatePR: %v", err)
+	}
+	if pr.Number == 0 || !pr.Draft || pr.State != "OPEN" || pr.HeadRef != "pins/x" {
+		t.Fatalf("CreatePR = %+v; want an open draft PR on pins/x", pr)
+	}
+	it := find(t, f, marker)
+	if it.Number != pr.Number || !it.IsPR || it.State != "open" || it.HeadRef != "pins/x" || it.Body != marker+"\nbody" || it.Author != f.Login() {
+		t.Errorf("found %+v; want open PR #%d by %s on pins/x with its full body", it, pr.Number, f.Login())
+	}
+
+	if err := f.Forge().UpdatePRBody(ctx, pr.Number, marker+"\nnew"); err != nil {
+		t.Fatalf("UpdatePRBody: %v", err)
+	}
+	if it := find(t, f, marker); it.Body != marker+"\nnew" {
+		t.Errorf("after update body = %q, want %q", it.Body, marker+"\nnew")
+	}
+
+	if err := f.Forge().ClosePR(ctx, pr.Number, "Vervangen"); err != nil {
+		t.Fatalf("ClosePR: %v", err)
+	}
+	it = find(t, f, marker)
+	if it.Number != pr.Number || !it.IsPR || it.State != "closed" || it.HeadRef != "pins/x" {
+		t.Errorf("after close found %+v; want PR #%d closed on pins/x, still findable", it, pr.Number)
+	}
+	if got := f.PRCommentBodies(t, pr.Number); len(got) != 1 || got[0] != "Vervangen" {
+		t.Errorf("comments after ClosePR = %q; want the closing comment", got)
+	}
+}
+
+func findByMarkerNoMatch(t *testing.T, f Fixture) {
+	f.AddIssue(t, forge.Issue{Number: 1, Title: "A", Body: "plain", Author: "ann", State: "open"})
+	f.AddIssue(t, forge.Issue{Number: 2, Title: "B", Body: "<!-- other -->", Author: "ann", State: "closed"})
+	got, err := f.Forge().FindByMarker(t.Context(), "<!-- lighthouse:pin none -->")
+	if err != nil {
+		t.Fatalf("FindByMarker: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("FindByMarker without a hit = %+v, want none", got)
+	}
+}
+
+// findByMarkerPages puts the only hit on the second page of the issues list.
+func findByMarkerPages(t *testing.T, f Fixture) {
+	const marker = "<!-- lighthouse:pin paged -->"
+	for n := 1; n <= page; n++ {
+		is := forge.Issue{Number: n, Title: fmt.Sprintf("Issue %d", n), Author: "ann", State: "open"}
+		if n == page {
+			is.Body = marker
+		}
+		f.AddIssue(t, is)
+	}
+	if it := find(t, f, marker); it.Number != page || it.Body != marker || it.Author != "ann" {
+		t.Errorf("found %+v; want #%d by ann from the second page", it, page)
 	}
 }

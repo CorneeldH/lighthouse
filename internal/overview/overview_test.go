@@ -4,9 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"maps"
+	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/CorneeldH/lighthouse/internal/forge"
@@ -190,9 +191,7 @@ func TestBuildOnlyController(t *testing.T) {
 			13:  {question("c13", "2026-10-26T12:00:00Z", "Welke poort?")},
 		},
 	}
-	inController := func(context.Context) (map[int]bool, error) { return map[int]bool{12: true, 13: true}, nil }
-
-	got, err := Build(context.Background(), src, inController)
+	got, err := Build(context.Background(), src, map[int]bool{12: true, 13: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -209,53 +208,123 @@ func TestBuildOnlyController(t *testing.T) {
 	}
 }
 
-func TestBuildFilterFails(t *testing.T) {
-	boom := errors.New("board down")
-	src := &fakeSource{
-		issues:   []forge.Issue{issue(1)},
-		comments: map[int][]protocol.Comment{1: {question("c1", "2026-01-01T00:00:00Z", "q")}},
-	}
-	got, err := Build(context.Background(), src, func(context.Context) (map[int]bool, error) { return nil, boom })
-	if !errors.Is(err, boom) {
-		t.Fatalf("err = %v, want board down", err)
-	}
-	if got.Questions != nil || got.Returned != nil {
-		t.Errorf("overview = %+v, want empty", got)
-	}
-}
-
+// fakeBoard is a forge whose board read is counted; items and err are what it returns.
 type fakeBoard struct {
 	forge.Forge
 	items []forge.BoardItem
 	err   error
+	calls atomic.Int32
 }
 
 func (f *fakeBoard) BoardItems(_ context.Context) ([]forge.BoardItem, error) {
+	f.calls.Add(1)
 	return f.items, f.err
 }
 
-func TestControllerIssues(t *testing.T) {
-	board := &fakeBoard{items: []forge.BoardItem{
-		{Repo: "o/r", Issue: 12, Status: "Controller"},
-		{Repo: "o/r", Issue: 945, Status: "In progress"},
-		{Repo: "x/y", Issue: 12, Status: "Controller"},
-		{Repo: "x/y", Issue: 14, Status: "Controller"},
-		{Repo: "o/r", Issue: 20, Status: ""},
-	}}
+// boardSource is a fakeSource that also serves a board.
+type boardSource struct {
+	*fakeSource
+	board *fakeBoard
+}
 
-	got, err := ControllerIssues(board, "o/r")(context.Background())
-	if err != nil {
-		t.Fatal(err)
+func (b boardSource) BoardItems(ctx context.Context) ([]forge.BoardItem, error) {
+	return b.board.BoardItems(ctx)
+}
+
+// threeIssues has an open question on each of 1, 2 and 3.
+func threeIssues() *fakeSource {
+	c := func(n int) []protocol.Comment {
+		return []protocol.Comment{question(fmt.Sprintf("c%d", n), "2026-01-01T10:00:00Z", "q")}
 	}
-	if !maps.Equal(got, map[int]bool{12: true}) {
-		t.Errorf("got %v, want map[12:true]", got)
+	return &fakeSource{
+		issues:   []forge.Issue{issue(1), issue(2), issue(3)},
+		comments: map[int][]protocol.Comment{1: c(1), 2: c(2), 3: c(3)},
 	}
 }
 
-func TestControllerIssuesBoardFails(t *testing.T) {
+func threeItems() []forge.BoardItem {
+	return []forge.BoardItem{
+		{Repo: "o/r", Issue: 1, Status: "Controller"},
+		{Repo: "o/r", Issue: 2, Status: "In progress"},
+		{Repo: "o/r", Issue: 3, Status: ""},
+		{Repo: "x/y", Issue: 1, Status: "Controller"},
+	}
+}
+
+func TestBuildAllReadsBoardOncePerRepo(t *testing.T) {
+	board := &fakeBoard{items: threeItems()}
+	got, err := BuildAll(context.Background(), []RepoSource{
+		{Slug: "o/r", Src: boardSource{threeIssues(), board}, Board: true, Controller: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := board.calls.Load(); n != 1 {
+		t.Errorf("BoardItems calls = %d, want 1", n)
+	}
+	if len(got.Questions) != 1 || got.Questions[0].Number != 1 {
+		t.Errorf("questions = %+v, want only 1", got.Questions)
+	}
+	want := []IssueStatus{{"o/r", 1, "Controller"}, {"o/r", 2, "In progress"}, {"o/r", 3, ""}}
+	if !slices.Equal(got.Statuses, want) {
+		t.Errorf("statuses = %+v, want %+v", got.Statuses, want)
+	}
+}
+
+func TestBuildAllNoBoardNoBoardItemsCall(t *testing.T) {
+	board := &fakeBoard{items: threeItems()}
+	got, err := BuildAll(context.Background(), []RepoSource{
+		{Slug: "o/r", Src: boardSource{threeIssues(), board}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := board.calls.Load(); n != 0 {
+		t.Errorf("BoardItems calls = %d, want 0", n)
+	}
+	if got.Statuses == nil || len(got.Statuses) != 0 {
+		t.Errorf("statuses = %#v, want empty non-nil", got.Statuses)
+	}
+	if len(got.Questions) != 3 {
+		t.Errorf("questions = %+v, want all three", got.Questions)
+	}
+}
+
+func TestBuildAllBoardWithoutControllerOptionShowsEveryIssue(t *testing.T) {
+	board := &fakeBoard{items: threeItems()}
+	got, err := BuildAll(context.Background(), []RepoSource{
+		{Slug: "o/r", Src: boardSource{threeIssues(), board}, Board: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Questions) != 3 {
+		t.Errorf("questions = %+v, want all three", got.Questions)
+	}
+	if len(got.Statuses) != 3 {
+		t.Errorf("statuses = %+v, want three", got.Statuses)
+	}
+}
+
+func TestBuildAllBoardErrorWithoutControllerOptionKeepsOverview(t *testing.T) {
+	board := &fakeBoard{err: errors.New("graphql down")}
+	got, err := BuildAll(context.Background(), []RepoSource{
+		{Slug: "o/r", Src: boardSource{threeIssues(), board}, Board: true}})
+	if err != nil {
+		t.Fatalf("err = %v, want the overview without statuses", err)
+	}
+	if len(got.Questions) != 3 || got.Statuses == nil || len(got.Statuses) != 0 {
+		t.Errorf("overview = %+v, want three questions and empty statuses", got)
+	}
+}
+
+func TestBuildAllBoardErrorWithControllerFails(t *testing.T) {
 	boom := errors.New("graphql down")
-	if _, err := ControllerIssues(&fakeBoard{err: boom}, "o/r")(context.Background()); !errors.Is(err, boom) {
-		t.Fatalf("err = %v, want graphql down", err)
+	board := &fakeBoard{err: boom}
+	got, err := BuildAll(context.Background(), []RepoSource{
+		{Slug: "o/r", Src: boardSource{threeIssues(), board}, Board: true, Controller: true}})
+	if !errors.Is(err, boom) || !strings.Contains(err.Error(), "o/r") {
+		t.Fatalf("err = %v, want o/r: graphql down", err)
+	}
+	if got.Questions != nil || got.Returned != nil {
+		t.Errorf("overview = %+v, want empty", got)
 	}
 }
 

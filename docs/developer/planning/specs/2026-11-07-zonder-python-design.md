@@ -189,7 +189,7 @@ script, de vlaggen en uitvoer blijven gelijk, zodat de skilltekst alleen het com
 | `.claude/skills/lighthouse-review-spec/review.sh` | `lighthouse review-run` (de hele runner, ook de inline Python) |
 | `… \| python3 .lighthouse/lib/lighthouse_lib/pr_body_gate.py "$PWD"` (`write-pr`) | `… \| lighthouse pr-body-gate "$PWD"` |
 | `python3 -c '…realpath…'` (`shell-standard`) | een recept zonder Python (`realpath -m`, anders `lighthouse path realpath`) |
-| `python3 scripts/measure_skill_surface.py` (`place-instruction`) | `lighthouse measure-skill-surface`, of de regel weg als het script alleen in deze repo bestaat |
+| `python3 scripts/measure_skill_surface.py` (`place-instruction`) | `lighthouse agent-audit --only surface` (#47) |
 
 `lighthouse config` geeft dezelfde exitcodes als `config.py`: 0 met waarde, 1 als de sleutel niet
 gezet is, 2 bij een fout. Skills leunen op dat onderscheid.

@@ -53,13 +53,26 @@ func (g *githubFixture) Login() string      { return g.srv.Login }
 // ChecksOnClosedPRs: statusCheckRollup is on every pull request GitHub lists.
 func (g *githubFixture) ChecksOnClosedPRs() bool { return true }
 
+func (g *githubFixture) PRCommentBodies(t *testing.T, number int) []string {
+	t.Helper()
+	cs, err := g.f.Comments(t.Context(), number)
+	if err != nil {
+		t.Fatalf("Comments: %v", err)
+	}
+	var out []string
+	for _, c := range cs {
+		out = append(out, c.Body)
+	}
+	return out
+}
+
 // ListsClosedIssues: BoardItems lists only the items of the project.
 func (g *githubFixture) ListsClosedIssues() bool { return false }
 
 // UniqueMilestoneTitles: GitHub refuses a second milestone with the title of one that exists.
 func (g *githubFixture) UniqueMilestoneTitles() bool { return true }
 
-func (g *githubFixture) AddMilestone(t *testing.T, title string, group bool) forge.Milestone {
+func (g *githubFixture) AddNamedMilestone(t *testing.T, title string, group bool) forge.Milestone {
 	t.Helper()
 	if group {
 		t.Fatal("githubFixture: GitHub has no group milestones")
@@ -92,6 +105,27 @@ func (g *githubFixture) AddIssue(_ *testing.T, is forge.Issue) {
 	}
 	g.srv.Issues[is.Number] = it
 }
+
+func (g *githubFixture) SetCloseReason(t *testing.T, number int, reason string) {
+	t.Helper()
+	it, ok := g.srv.Issues[number]
+	if !ok {
+		t.Fatalf("githubFixture: SetCloseReason(%d) before AddIssue", number)
+	}
+	it["state_reason"] = reason
+}
+
+func (g *githubFixture) AddMilestone(_ *testing.T, m forge.Milestone) {
+	g.srv.PlanMilestones = append(g.srv.PlanMilestones, map[string]any{
+		"number": m.Number, "title": m.Title, "state": strings.ToUpper(m.State), "description": m.Description,
+	})
+}
+
+// SupportsPlanning: Planning reads GraphQL issues and search counts.
+func (g *githubFixture) SupportsPlanning() bool { return true }
+
+// NotPlannedCountsAsDone: the search asks reason:completed.
+func (g *githubFixture) NotPlannedCountsAsDone() bool { return false }
 
 func (g *githubFixture) AddComment(_ *testing.T, number int, author, body string) int64 {
 	c := g.srv.AddComment(number, author, body)

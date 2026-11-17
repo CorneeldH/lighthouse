@@ -61,9 +61,9 @@ func gitlabState(s string) string {
 // UniqueMilestoneTitles: GitLab allows the title of a group milestone on a project one too.
 func (g *gitlabFixture) UniqueMilestoneTitles() bool { return false }
 
-// AddMilestone seeds a milestone whose global id is the number the client returns; the iid
+// AddNamedMilestone seeds a milestone whose global id is the number the client returns; the iid
 // differs on purpose.
-func (g *gitlabFixture) AddMilestone(_ *testing.T, title string, group bool) forge.Milestone {
+func (g *gitlabFixture) AddNamedMilestone(_ *testing.T, title string, group bool) forge.Milestone {
 	g.milestones++
 	id := 500 + g.milestones
 	m := map[string]any{"id": id, "iid": g.milestones, "title": title, "state": "active", "description": ""}
@@ -140,6 +140,28 @@ func (g *gitlabFixture) AddOpenPR(_ *testing.T, pr forge.OpenPR) {
 
 // ChecksOnClosedPRs: BranchPRs reads head_pipeline only for an open merge request.
 func (g *gitlabFixture) ChecksOnClosedPRs() bool { return false }
+
+// SupportsPlanning: Planning reads REST issues, links and issues_statistics.
+func (g *gitlabFixture) SupportsPlanning() bool { return true }
+
+// NotPlannedCountsAsDone: GitLab has no close reason, so every closed issue is done.
+func (g *gitlabFixture) NotPlannedCountsAsDone() bool { return true }
+
+// SetCloseReason does nothing: GitLab keeps no close reason, only the closed state.
+func (g *gitlabFixture) SetCloseReason(*testing.T, int, string) {}
+
+func (g *gitlabFixture) AddMilestone(_ *testing.T, m forge.Milestone) {
+	state := m.State
+	if state == "open" {
+		state = "active"
+	}
+	g.srv.AddMilestone(map[string]any{"id": m.Number, "iid": m.Number + 10, "title": m.Title, "state": state, "description": m.Description})
+}
+
+// PRCommentBodies reads the notes of the merge request: the issue with that iid is another item.
+func (g *gitlabFixture) PRCommentBodies(_ *testing.T, number int) []string {
+	return g.srv.MRNotes(number)
+}
 
 // ListsClosedIssues: every issue is on the board, closed ones within the closed window.
 func (g *gitlabFixture) ListsClosedIssues() bool { return true }
