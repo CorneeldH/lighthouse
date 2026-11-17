@@ -115,13 +115,13 @@ func TestTokenVarNamesTheVariableTokenReads(t *testing.T) {
 // Fails if a variable Token may read is missing from TokenVarNames: the agent of a scheduled run
 // would keep that token.
 func TestTokenVarNamesCoversEveryTokenVariable(t *testing.T) {
-	if got, want := TokenVarNames(""), []string{"GH_TOKEN", "GITHUB_TOKEN", "GITLAB_TOKEN"}; !slices.Equal(got, want) {
+	if got, want := TokenVarNames(""), []string{"GH_ENTERPRISE_TOKEN", "GH_TOKEN", "GITHUB_ENTERPRISE_TOKEN", "GITHUB_TOKEN", "GITLAB_TOKEN"}; !slices.Equal(got, want) {
 		t.Errorf("TokenVarNames(\"\") = %q, want %q", got, want)
 	}
-	if got, want := TokenVarNames("WORK"), []string{"GH_TOKEN", "GITHUB_TOKEN", "GITLAB_TOKEN", "WORK"}; !slices.Equal(got, want) {
+	if got, want := TokenVarNames("WORK"), []string{"GH_ENTERPRISE_TOKEN", "GH_TOKEN", "GITHUB_ENTERPRISE_TOKEN", "GITHUB_TOKEN", "GITLAB_TOKEN", "WORK"}; !slices.Equal(got, want) {
 		t.Errorf("TokenVarNames(WORK) = %q, want %q", got, want)
 	}
-	if got := TokenVarNames("GH_TOKEN"); len(got) != 3 {
+	if got := TokenVarNames("GH_TOKEN"); len(got) != 5 {
 		t.Errorf("TokenVarNames(GH_TOKEN) = %q, want each name once", got)
 	}
 	// Every variable TokenVar can name is in the list.

@@ -27,11 +27,16 @@ var defaultTokenVars = map[string][]string{
 	"gitlab": {"GITLAB_TOKEN"},
 }
 
+// otherTokenVars hold a forge token for tools other than lighthouse (gh on GitHub Enterprise);
+// Token never reads them, but a process that must not see a token must not inherit them either.
+var otherTokenVars = []string{"GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN"}
+
 // TokenVarNames are the names of every variable that may hold a forge token in this process:
-// the default variables of every kind, plus tokenEnv when set, sorted and each once. A process
-// that must not see a token (the agent of a scheduled run) gets all of them removed.
+// the default variables of every kind, the ones of other tools (otherTokenVars), plus tokenEnv
+// when set, sorted and each once. A process that must not see a token (the agent of a scheduled
+// run) gets all of them removed.
 func TokenVarNames(tokenEnv string) []string {
-	var out []string
+	out := slices.Clone(otherTokenVars)
 	for _, vars := range defaultTokenVars {
 		out = append(out, vars...)
 	}
@@ -55,7 +60,7 @@ func Token(kind, tokenEnv string, getenv func(string) string) (string, error) {
 
 // TokenVar returns the name of the variable Token reads the token from: the first one that is
 // set, with the same order, errors and *TokenError as Token. A process that hands the token on
-// by its variable (an askpass script) names it without reading it into an argument.
+// by its variable (a credential helper) names it without reading it into an argument.
 func TokenVar(kind, tokenEnv string, getenv func(string) string) (string, error) {
 	if kind == "" {
 		kind = "github"

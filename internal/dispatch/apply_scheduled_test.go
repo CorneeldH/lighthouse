@@ -145,7 +145,7 @@ func TestApplyScheduledStart(t *testing.T) {
 		Prompt: "/gsd-map-codebase", InstructionsFile: instructions, MCPConfig: "",
 		Tools: []string{"Read", "Glob", "Write"},
 		// Finding B: no forge token reaches the agent, whatever variable holds it.
-		Unset: []string{"GH_TOKEN", "GITHUB_TOKEN", "GITLAB_TOKEN", "WORK_TOKEN"},
+		Unset: []string{"GH_ENTERPRISE_TOKEN", "GH_TOKEN", "GITHUB_ENTERPRISE_TOKEN", "GITHUB_TOKEN", "GITLAB_TOKEN", "WORK_TOKEN"},
 	}
 	if !reflect.DeepEqual(h.wp.spawned, []workplace.LaunchSpec{wantSpec}) {
 		t.Errorf("spawned %+v\nwant    %+v", h.wp.spawned, wantSpec)

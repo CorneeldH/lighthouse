@@ -256,7 +256,7 @@ func setPushed(in *Input, sha string) {
 
 // ownPR is the run's own PR #41 on finBranch.
 func ownPR(state, mergeable, checks string) forge.PR {
-	return forge.PR{Number: 41, State: state, Mergeable: mergeable, Checks: checks, HeadRef: finBranch,
+	return forge.PR{Number: 41, State: state, Mergeable: mergeable, Checks: checks, HeadRef: finBranch, BaseRef: "main",
 		HeadSHA: "abc1234abc1234abc1234abc1234abc1234abc12", URL: "https://example.com/o/r/pull/41"}
 }
 
@@ -494,6 +494,12 @@ func TestDecideScheduledFinishTable(t *testing.T) {
 				r.Snapshot.OpenRuns = nil
 				delete(r.Stands, finRunID)
 				delete(r.Runs, finRunID)
+			}},
+		{name: "a PR into another base than the default branch is not the run's", age: 40 * time.Minute, max: 90 * time.Minute,
+			setup: func(in *Input) {
+				pr := green
+				pr.BaseRef = "release"
+				inPRPhase(in, scheduledNow.Add(-10*time.Minute), pr)
 			}},
 		{name: "a PR of another branch or a fork is not the run's", age: 40 * time.Minute, max: 90 * time.Minute,
 			setup: func(in *Input) {

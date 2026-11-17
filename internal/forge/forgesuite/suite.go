@@ -463,7 +463,7 @@ func pagination(t *testing.T, f Fixture) {
 func prFields(t *testing.T, f Fixture) {
 	mergedAt := time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
 	f.AddBranchPR(t, "issue-7-x", forge.PR{Number: 12, State: "MERGED", HeadSHA: "abc123", HeadRef: "issue-7-x",
-		Checks: "SUCCESS", Mergeable: "MERGEABLE", MergedAt: mergedAt})
+		BaseRef: "main", Checks: "SUCCESS", Mergeable: "MERGEABLE", MergedAt: mergedAt})
 	prs, err := f.Forge().BranchPRs(t.Context(), "issue-7-x")
 	if err != nil {
 		t.Fatalf("BranchPRs: %v", err)
@@ -472,7 +472,7 @@ func prFields(t *testing.T, f Fixture) {
 		t.Fatalf("BranchPRs = %+v, want one PR", prs)
 	}
 	p := prs[0]
-	if p.Number != 12 || p.State != "MERGED" || p.HeadSHA != "abc123" || p.HeadRef != "issue-7-x" ||
+	if p.Number != 12 || p.State != "MERGED" || p.HeadSHA != "abc123" || p.HeadRef != "issue-7-x" || p.BaseRef != "main" ||
 		p.Checks != "SUCCESS" || p.Mergeable != "MERGEABLE" || !p.MergedAt.Equal(mergedAt) || p.Closes {
 		t.Errorf("BranchPRs[0] = %+v; want #12 MERGED at %s, head abc123 on issue-7-x, checks SUCCESS, MERGEABLE, Closes false", p, mergedAt)
 	}

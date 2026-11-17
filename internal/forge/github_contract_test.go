@@ -116,7 +116,7 @@ func (g *githubFixture) AddOpenPR(_ *testing.T, pr forge.OpenPR) {
 func (g *githubFixture) AddBranchPR(_ *testing.T, branch string, pr forge.PR) {
 	node := map[string]any{
 		"number": pr.Number, "state": pr.State, "isDraft": pr.Draft, "mergeable": pr.Mergeable,
-		"headRefOid": pr.HeadSHA, "headRefName": pr.HeadRef, "isCrossRepository": pr.CrossRepo, "url": pr.URL,
+		"headRefOid": pr.HeadSHA, "headRefName": pr.HeadRef, "baseRefName": pr.BaseRef, "isCrossRepository": pr.CrossRepo, "url": pr.URL,
 		"mergedAt": timeOrNil(pr.MergedAt), "closedAt": timeOrNil(pr.ClosedAt),
 	}
 	if pr.Checks != "" {

@@ -17,6 +17,8 @@ type PR struct {
 	Mergeable string `json:"mergeable"` // MERGEABLE, CONFLICTING, UNKNOWN
 	HeadSHA   string `json:"head_sha"`
 	HeadRef   string `json:"head_ref"`
+	// BaseRef is the branch the PR merges into.
+	BaseRef string `json:"base_ref,omitempty"`
 	// CrossRepo is true for a PR whose head lives in another repository, such as a fork.
 	CrossRepo bool   `json:"cross_repo,omitempty"`
 	Checks    string `json:"checks"` // statusCheckRollup.state, "" without checks
@@ -73,7 +75,7 @@ type BoardItem struct {
 }
 
 // prFields are the pull request fields both queries read into a PR.
-const prFields = `number state isDraft mergeable headRefOid headRefName isCrossRepository mergedAt closedAt url statusCheckRollup { state }`
+const prFields = `number state isDraft mergeable headRefOid headRefName baseRefName isCrossRepository mergedAt closedAt url statusCheckRollup { state }`
 
 // fieldValuesSelection is the single-select values of a project item, shared by the board and
 // the one-issue query so both fill BoardItem.Status and Priority the same way.
@@ -176,6 +178,7 @@ type prNode struct {
 	Mergeable         string    `json:"mergeable"`
 	HeadRefOid        string    `json:"headRefOid"`
 	HeadRefName       string    `json:"headRefName"`
+	BaseRefName       string    `json:"baseRefName"`
 	IsCrossRepository bool      `json:"isCrossRepository"`
 	MergedAt          time.Time `json:"mergedAt"`
 	ClosedAt          time.Time `json:"closedAt"`
@@ -187,7 +190,7 @@ type prNode struct {
 
 func (n prNode) pr(closes bool) PR {
 	p := PR{Number: n.Number, State: n.State, Draft: n.IsDraft, Mergeable: n.Mergeable,
-		HeadSHA: n.HeadRefOid, HeadRef: n.HeadRefName, CrossRepo: n.IsCrossRepository, Closes: closes, URL: n.URL, MergedAt: n.MergedAt, ClosedAt: n.ClosedAt}
+		HeadSHA: n.HeadRefOid, HeadRef: n.HeadRefName, BaseRef: n.BaseRefName, CrossRepo: n.IsCrossRepository, Closes: closes, URL: n.URL, MergedAt: n.MergedAt, ClosedAt: n.ClosedAt}
 	if n.StatusCheckRollup != nil {
 		p.Checks = n.StatusCheckRollup.State
 	}

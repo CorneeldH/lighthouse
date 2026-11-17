@@ -197,9 +197,10 @@ func scheduledMaxRuntime(verdict string, host time.Duration) time.Duration {
 	return host
 }
 
-// ownPR reports whether pr is the run's own: its head is the run's branch, in this repository.
+// ownPR reports whether pr is the run's own: its head is the run's branch, in this repository,
+// and it merges into the default branch, as the PR the finish opens does.
 func (c scheduledCtx) ownPR(pr forge.PR) bool {
-	return pr.HeadRef == c.row.Branch && !pr.CrossRepo && validBranch(pr.HeadRef)
+	return pr.HeadRef == c.row.Branch && !pr.CrossRepo && validBranch(pr.HeadRef) && pr.BaseRef == c.trunk
 }
 
 // own returns the first own PR, by number order of the snapshot, that satisfies f.
