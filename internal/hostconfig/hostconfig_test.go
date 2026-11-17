@@ -322,3 +322,97 @@ func TestLoadDispatchNodeErrors(t *testing.T) {
 		})
 	}
 }
+
+const workflowPushFull = `
+[dispatch.workflow_push]
+token_file = "~/.config/lighthouse/workflow-push.token"
+review     = "enforce"
+timeout    = "10m"
+
+[[dispatch.workflow_push.reviewers]]
+topic   = "supply-chain"
+command = ["codex", "exec", "--sandbox", "read-only", "--output-last-message", "{out}", "-"]
+binds   = ["~/.codex/auth.json"]
+env     = ["CODEX_HOME"]
+
+[[dispatch.workflow_push.reviewers]]
+topic   = "injection"
+command = ["claude", "-p", "--tools", ""]
+`
+
+func TestLoadDispatchWorkflowPush(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	d, err := LoadDispatch(writeHost(t, workflowPushFull))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := &WorkflowPush{
+		TokenFile: filepath.Join(home, ".config", "lighthouse", "workflow-push.token"),
+		Review:    "enforce",
+		Timeout:   10 * time.Minute,
+		Reviewers: []Reviewer{
+			{
+				Topic:   "supply-chain",
+				Command: []string{"codex", "exec", "--sandbox", "read-only", "--output-last-message", "{out}", "-"},
+				Binds:   []string{filepath.Join(home, ".codex", "auth.json")},
+				Env:     []string{"CODEX_HOME"},
+			},
+			{Topic: "injection", Command: []string{"claude", "-p", "--tools", ""}},
+		},
+	}
+	if !reflect.DeepEqual(d.WorkflowPush, want) {
+		t.Errorf("WorkflowPush = %+v, want %+v", d.WorkflowPush, want)
+	}
+}
+
+func TestLoadDispatchWorkflowPushDefaults(t *testing.T) {
+	d, err := LoadDispatch(writeHost(t, "[dispatch.workflow_push]\ntoken_file = \"/run/t\"\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.WorkflowPush == nil || d.WorkflowPush.Review != "shadow" || d.WorkflowPush.Timeout != 30*time.Minute {
+		t.Errorf("WorkflowPush = %+v, want review shadow and timeout 30m", d.WorkflowPush)
+	}
+	if d.WorkflowPush.TokenFile != "/run/t" {
+		t.Errorf("TokenFile = %q, want an absolute path unchanged", d.WorkflowPush.TokenFile)
+	}
+}
+
+func TestLoadDispatchWorkflowPushAbsent(t *testing.T) {
+	d, err := LoadDispatch(writeHost(t, "[dispatch]\nslots = 2\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.WorkflowPush != nil {
+		t.Errorf("WorkflowPush = %+v, want nil", d.WorkflowPush)
+	}
+}
+
+func TestLoadDispatchWorkflowPushInvalid(t *testing.T) {
+	const head = "[dispatch.workflow_push]\ntoken_file = \"/run/t\"\n"
+	const rev = "\n[[dispatch.workflow_push.reviewers]]\n"
+	tests := []struct {
+		name, body, want string
+	}{
+		{"review", head + "review = \"x\"\n", "review"},
+		{"topic", head + rev + "topic = \"x\"\ncommand = [\"a\"]\n", "topic"},
+		{"empty command", head + rev + "topic = \"secrets\"\ncommand = []\n", "command"},
+		{"missing command", head + rev + "topic = \"secrets\"\n", "command"},
+		{"GH_TOKEN env", head + rev + "topic = \"secrets\"\ncommand = [\"a\"]\nenv = [\"GH_TOKEN\"]\n", "GH_TOKEN"},
+		{"GITHUB_TOKEN env", head + rev + "topic = \"secrets\"\ncommand = [\"a\"]\nenv = [\"GITHUB_TOKEN\"]\n", "GITHUB_TOKEN"},
+		{"bind under config", head + rev + "topic = \"secrets\"\ncommand = [\"a\"]\nbinds = [\"~/.config/lighthouse/host.toml\"]\n", "binds"},
+		{"missing token_file", "[dispatch.workflow_push]\nreview = \"shadow\"\n", "token_file"},
+		{"bad timeout", head + "timeout = \"soon\"\n", "timeout"},
+		{"unknown key", head + "bogus = 1\n", "bogus"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			_, err := LoadDispatch(writeHost(t, tt.body))
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Errorf("err = %v, want it to mention %q", err, tt.want)
+			}
+		})
+	}
+}

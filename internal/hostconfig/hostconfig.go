@@ -50,6 +50,32 @@ type Dispatch struct {
 	Forge             DispatchForge
 	Profiles          map[string]Profile
 	Nodes             map[string]Node // [dispatch.nodes.<name>]; nil without nodes
+	WorkflowPush      *WorkflowPush   // [dispatch.workflow_push]; nil switches the route off
+}
+
+// Review modes of [dispatch.workflow_push] review.
+const (
+	ReviewShadow  = "shadow"
+	ReviewEnforce = "enforce"
+)
+
+// WorkflowPush is [dispatch.workflow_push]: the token and the reviewers of the workflow pusher.
+// TokenFile and the Binds of a reviewer have a leading ~ expanded.
+type WorkflowPush struct {
+	TokenFile string
+	Review    string // ReviewShadow or ReviewEnforce
+	Timeout   time.Duration
+	Reviewers []Reviewer
+}
+
+// Reviewer is one [[dispatch.workflow_push.reviewers]] entry. Command holds the placeholder
+// {out} (the path of the output file) and "-" for stdin. Env lists names of environment
+// variables the reviewer inherits, never a workflow token.
+type Reviewer struct {
+	Topic   string // supply-chain, secrets or injection
+	Command []string
+	Binds   []string
+	Env     []string
 }
 
 // Node is a kenn-forge node under [dispatch.nodes.<name>]: the node's id on the fleet hub and
@@ -165,6 +191,17 @@ func LoadDispatch(path string) (Dispatch, error) {
 				NodeID *string `toml:"node_id"`
 				Slots  *int    `toml:"slots"`
 			} `toml:"nodes"`
+			WorkflowPush *struct {
+				TokenFile *string `toml:"token_file"`
+				Review    *string `toml:"review"`
+				Timeout   *string `toml:"timeout"`
+				Reviewers []struct {
+					Topic   string   `toml:"topic"`
+					Command []string `toml:"command"`
+					Binds   []string `toml:"binds"`
+					Env     []string `toml:"env"`
+				} `toml:"reviewers"`
+			} `toml:"workflow_push"`
 		} `toml:"dispatch"`
 	}
 	md, err := toml.DecodeFile(path, &raw)
@@ -279,7 +316,78 @@ func LoadDispatch(path string) (Dispatch, error) {
 			}
 		}
 	}
+	if r.WorkflowPush != nil {
+		wp, err := buildWorkflowPush(r.WorkflowPush.TokenFile, r.WorkflowPush.Review, r.WorkflowPush.Timeout, len(r.WorkflowPush.Reviewers), func(i int) Reviewer {
+			rv := r.WorkflowPush.Reviewers[i]
+			return Reviewer{Topic: rv.Topic, Command: rv.Command, Binds: rv.Binds, Env: rv.Env}
+		})
+		if err != nil {
+			return DefaultDispatch(), err
+		}
+		d.WorkflowPush = wp
+	}
 	return d, nil
+}
+
+// buildWorkflowPush validates the raw [dispatch.workflow_push] values and expands the paths.
+func buildWorkflowPush(tokenFile, review, timeout *string, n int, reviewer func(int) Reviewer) (*WorkflowPush, error) {
+	const key = "dispatch.workflow_push"
+	wp := &WorkflowPush{Review: ReviewShadow, Timeout: 30 * time.Minute}
+	if tokenFile == nil || *tokenFile == "" {
+		return nil, fmt.Errorf("%s.token_file: missing", key)
+	}
+	home, _ := os.UserHomeDir()
+	wp.TokenFile = expandHome(*tokenFile, home)
+	if review != nil {
+		if *review != ReviewShadow && *review != ReviewEnforce {
+			return nil, fmt.Errorf("%s.review: %q is neither %q nor %q", key, *review, ReviewShadow, ReviewEnforce)
+		}
+		wp.Review = *review
+	}
+	if err := setDuration(key+".timeout", timeout, &wp.Timeout); err != nil {
+		return nil, err
+	}
+	protected := filepath.Join(home, ".config", "lighthouse")
+	for i := range n {
+		rv := reviewer(i)
+		rkey := fmt.Sprintf("%s.reviewers[%d]", key, i)
+		switch rv.Topic {
+		case "supply-chain", "secrets", "injection":
+		default:
+			return nil, fmt.Errorf("%s.topic: %q is not supply-chain, secrets or injection", rkey, rv.Topic)
+		}
+		if len(rv.Command) == 0 || rv.Command[0] == "" {
+			return nil, fmt.Errorf("%s.command: missing", rkey)
+		}
+		for _, name := range rv.Env {
+			switch name {
+			case "GH_TOKEN", "GITHUB_TOKEN":
+				return nil, fmt.Errorf("%s.env: %s is a token and never reaches a reviewer", rkey, name)
+			}
+		}
+		binds := make([]string, 0, len(rv.Binds))
+		for _, b := range rv.Binds {
+			b = expandHome(b, home)
+			if home != "" && (b == protected || strings.HasPrefix(filepath.Clean(b), protected+string(filepath.Separator))) {
+				return nil, fmt.Errorf("%s.binds: %q is under %s", rkey, b, protected)
+			}
+			binds = append(binds, b)
+		}
+		rv.Binds = nil
+		if len(binds) > 0 {
+			rv.Binds = binds
+		}
+		wp.Reviewers = append(wp.Reviewers, rv)
+	}
+	return wp, nil
+}
+
+// expandHome replaces a leading ~ or ~/ in p with home; other paths stay as they are.
+func expandHome(p, home string) string {
+	if home == "" || (p != "~" && !strings.HasPrefix(p, "~/")) {
+		return p
+	}
+	return filepath.Join(home, p[1:])
 }
 
 func setMin1(key string, v *int, dst *int) error {
