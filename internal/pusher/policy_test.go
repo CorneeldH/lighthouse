@@ -278,6 +278,8 @@ func TestClassPostMergePushDefaultOnly(t *testing.T) {
 	for name, on := range map[string]string{
 		"push":          "{push: {branches: [main]}}",
 		"push+schedule": "{push: {branches: [main]}, schedule: [{cron: '0 3 * * *'}]}",
+		"paths":         "{push: {branches: [main], paths: ['src/**']}}",
+		"paths-ignore":  "{push: {branches: [main], paths-ignore: [docs]}}",
 	} {
 		t.Run(name, func(t *testing.T) {
 			if got := classOf(t, on); got != PostMerge {
@@ -310,7 +312,6 @@ func TestClassPreMergePushNoFilter(t *testing.T) {
 		"glob":            "{push: {branches: ['*']}}",
 		"branch string":   "{push: {branches: main}}",
 		"branches-ignore": "{push: {branches-ignore: [dev]}}",
-		"paths":           "{push: {branches: [main], paths: [a]}}",
 		"pull_request":    "{pull_request: {branches: [main]}}",
 		"no on":           "",
 	} {
@@ -324,8 +325,11 @@ func TestClassPreMergePushNoFilter(t *testing.T) {
 
 func TestClassPostMergePushWithTagsIsPre(t *testing.T) {
 	for name, on := range map[string]string{
-		"tags":        "{push: {branches: [main], tags: ['v*']}}",
-		"tags-ignore": "{push: {branches: [main], tags-ignore: ['x']}}",
+		"tags":            "{push: {branches: [main], tags: ['v*']}}",
+		"tags-ignore":     "{push: {branches: [main], tags-ignore: ['x']}}",
+		"other key":       "{push: {branches: [main], types: [x]}}",
+		"only paths":      "{push: {paths: [a]}}",
+		"branches-ignore": "{push: {branches: [main], branches-ignore: [dev]}}",
 	} {
 		t.Run(name, func(t *testing.T) {
 			if got := classOf(t, on); got != PreMerge {
@@ -343,5 +347,27 @@ func TestClassPreMergeWhenOneOfTwoIs(t *testing.T) {
 	wantRules(t, v)
 	if class != PreMerge {
 		t.Errorf("class %v, want PreMerge", class)
+	}
+}
+
+func TestPolicyNearMatchKeyIsParse(t *testing.T) {
+	for name, text := range map[string]string{
+		"On":                  "On: pull_request_target\non: schedule\npermissions: {}\n",
+		"Jobs":                "on: schedule\npermissions: {}\nJobs:\n  a:\n    steps:\n      - uses: a/b@v1\n",
+		"Permissions":         "on: schedule\npermissions: {}\nPermissions: write-all\n",
+		"job Uses":            "on: schedule\npermissions: {}\njobs:\n  a:\n    Uses: o/r/.github/workflows/w.yml@main\n",
+		"job Steps":           "on: schedule\npermissions: {}\njobs:\n  a:\n    Steps:\n      - uses: a/b@v1\n",
+		"job PERMISSIONS":     "on: schedule\npermissions: {}\njobs:\n  a:\n    PERMISSIONS: write-all\n",
+		"step USES":           "on: schedule\npermissions: {}\njobs:\n  a:\n    steps:\n      - USES: a/b@v1\n",
+		"Pull_request_target": "on: [schedule, Pull_request_target]\npermissions: {}\n",
+		"Workflow_Run map":    "on: {schedule: [], Workflow_Run: {}}\npermissions: {}\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			class, v := policyOf(t, map[string]string{".github/workflows/x.yml": text})
+			wantRules(t, v, RuleParse)
+			if class != PreMerge {
+				t.Errorf("class %v, want PreMerge", class)
+			}
+		})
 	}
 }

@@ -152,12 +152,17 @@ func checkWorkflow(file string, text []byte, defaultBranch string) ([]Violation,
 		return []Violation{{file, RuleParse, err.Error()}}, false
 	}
 	w := &workflowCheck{file: file}
+	w.nearMatch("the top level", top, "on", "jobs", "permissions")
 	evs, ok := triggers(top)
 	if !ok {
 		w.add(RuleParse, "`on` is neither a string, a list of strings nor a map")
 	}
 	for _, ev := range evs {
-		if ev.name == "pull_request_target" || ev.name == "workflow_run" {
+		switch name := strings.ToLower(ev.name); {
+		case name != "pull_request_target" && name != "workflow_run":
+		case name != ev.name:
+			w.add(RuleParse, "trigger "+ev.name+" is a case variant of "+name)
+		default:
 			w.add(RuleTrigger, "trigger "+ev.name+" runs with the secrets of the default branch")
 		}
 	}
@@ -260,8 +265,13 @@ func triggers(top map[string]any) ([]event, bool) {
 	return evs, true
 }
 
-// postMerge: at least one trigger, and every trigger is schedule or a push to exactly the
-// default branch with no other filter (tags, tags-ignore, paths, branches-ignore).
+// pushNarrowing are the push filters a post-merge push may carry besides branches: a paths
+// filter only narrows a push to the default branch, while tags, tags-ignore and branches-ignore
+// (or any other key) widen it to refs that exist before the merge.
+var pushNarrowing = map[string]bool{"branches": true, "paths": true, "paths-ignore": true}
+
+// postMerge: at least one trigger, and every trigger is schedule or a push with branches exactly
+// [default] and otherwise only a paths filter (spec §3: no tags).
 func postMerge(evs []event, defaultBranch string) bool {
 	if len(evs) == 0 {
 		return false
@@ -271,8 +281,13 @@ func postMerge(evs []event, defaultBranch string) bool {
 		case "schedule":
 		case "push":
 			m, ok := asMap(ev.cfg)
-			if !ok || len(m) != 1 {
+			if !ok {
 				return false
+			}
+			for key := range m {
+				if !pushNarrowing[key] {
+					return false
+				}
 			}
 			branches, ok := m["branches"].([]any)
 			if !ok || len(branches) != 1 || branches[0] != defaultBranch {
@@ -305,6 +320,22 @@ type workflowCheck struct {
 	parseFailed bool
 }
 
+// nearMatch flags a key that differs from a key the policy reads only in case, such as Uses or
+// On: the policy would not read it, and a parser that folds case would.
+func (w *workflowCheck) nearMatch(where string, m map[string]any, keys ...string) {
+	for _, k := range sortedKeys(m) {
+		lower := strings.ToLower(k)
+		if lower == k {
+			continue
+		}
+		for _, want := range keys {
+			if lower == want {
+				w.add(RuleParse, fmt.Sprintf("key %q in %s is a case variant of %q", k, where, want))
+			}
+		}
+	}
+}
+
 func (w *workflowCheck) add(rule, why string) {
 	if rule == RuleParse {
 		w.parseFailed = true
@@ -329,6 +360,7 @@ func (w *workflowCheck) jobs(v any) {
 			w.add(RuleParse, "job "+id+" is not a map")
 			continue
 		}
+		w.nearMatch("job "+id, job, "uses", "steps", "permissions")
 		if p, present := job["permissions"]; present && !permissionsOK(p) {
 			w.add(RulePermissions, fmt.Sprintf("job %s permissions %v: want a map or read-all", id, p))
 		}
@@ -354,6 +386,7 @@ func (w *workflowCheck) steps(job string, v any) {
 			w.add(RuleParse, fmt.Sprintf("step %d of job %s is not a map", i, job))
 			continue
 		}
+		w.nearMatch(fmt.Sprintf("step %d of job %s", i, job), step, "uses")
 		if u, present := step["uses"]; present {
 			w.uses(fmt.Sprintf("step %d of job %s", i, job), u)
 		}

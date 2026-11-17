@@ -24,7 +24,9 @@ type findings map[finding]int
 var lintTools = []string{"actionlint", "zizmor"}
 
 // Lint runs actionlint and zizmor --offline on the workflows among files, at c.SHA and at
-// c.MergeBase, and is red for a finding at the SHA that the merge-base did not have. The tools
+// c.MergeBase, and is red for a finding at the SHA that the merge-base did not have. A
+// suppression comment the branch adds (zizmor: ignore, shellcheck disable) counts as a finding
+// of its own: the tools drop the finding it silences, so only its count shows it. The tools
 // see copies of the blobs from the clone under generated names in a directory of the pusher,
 // never a path of the branch. A missing tool or one that fails is red with COULD NOT CHECK.
 func Lint(ctx context.Context, req Request, c Checked, files []string) *Red {
@@ -89,6 +91,7 @@ func lintRev(ctx context.Context, clone, rev string, wanted []string) (findings,
 	}
 	names := map[string]string{} // generated base name → path in the branch
 	var args []string
+	found := findings{}
 	for i, p := range wanted {
 		e, ok := entries[p]
 		if !ok {
@@ -108,8 +111,8 @@ func lintRev(ctx context.Context, clone, rev string, wanted []string) (findings,
 		}
 		names[name] = p
 		args = append(args, rel)
+		countSuppressions(p, text, found)
 	}
-	found := findings{}
 	if len(args) == 0 {
 		return found, nil
 	}
@@ -122,9 +125,23 @@ func lintRev(ctx context.Context, clone, rev string, wanted []string) (findings,
 	return found, nil
 }
 
+// suppressions are the comments that make zizmor or shellcheck (inside actionlint) drop a
+// finding, matched without case.
+var suppressions = []string{"zizmor: ignore", "shellcheck disable"}
+
+// countSuppressions adds each occurrence of a suppression comment in a workflow as a finding.
+func countSuppressions(file string, text []byte, found findings) {
+	lower := strings.ToLower(string(text))
+	for _, s := range suppressions {
+		if n := strings.Count(lower, s); n > 0 {
+			found[finding{"suppression", file, s}] += n
+		}
+	}
+}
+
 // runLinter runs tool in dir with the pusher's minimal environment (no token, no GIT_ variable)
-// and returns stdout when the exit code is one of ok.
-func runLinter(ctx context.Context, dir, tool string, args []string, ok func(code int) bool) ([]byte, *Red) {
+// and returns stdout and the exit code when that code is one of ok.
+func runLinter(ctx context.Context, dir, tool string, args []string, ok func(code int) bool) ([]byte, int, *Red) {
 	cmd := exec.CommandContext(ctx, tool, args...)
 	cmd.Dir = dir
 	cmd.Env = minimalEnv()
@@ -135,14 +152,14 @@ func runLinter(ctx context.Context, dir, tool string, args []string, ok func(cod
 	if err != nil {
 		var exit *exec.ExitError
 		if !errors.As(err, &exit) {
-			return nil, &Red{StepLint, fmt.Sprintf("COULD NOT CHECK: %s did not run: %v", tool, err)}
+			return nil, 0, &Red{StepLint, fmt.Sprintf("COULD NOT CHECK: %s did not run: %v", tool, err)}
 		}
 		code = exit.ExitCode()
 	}
 	if !ok(code) {
-		return nil, &Red{StepLint, fmt.Sprintf("COULD NOT CHECK: %s exited %d: %s", tool, code, strings.TrimSpace(stderr.String()))}
+		return nil, 0, &Red{StepLint, fmt.Sprintf("COULD NOT CHECK: %s exited %d: %s", tool, code, strings.TrimSpace(stderr.String()))}
 	}
-	return out, nil
+	return out, code, nil
 }
 
 func minimalEnv() []string {
@@ -165,7 +182,7 @@ func fileOf(names map[string]string, printed string) string {
 
 // actionlint exits 0 without and 1 with findings, and prints them as a JSON list.
 func actionlint(ctx context.Context, dir string, args []string, names map[string]string, found findings) *Red {
-	out, red := runLinter(ctx, dir, "actionlint", append([]string{"-no-color", "-format", "{{json .}}"}, args...),
+	out, code, red := runLinter(ctx, dir, "actionlint", append([]string{"-no-color", "-format", "{{json .}}"}, args...),
 		func(code int) bool { return code == 0 || code == 1 })
 	if red != nil {
 		return red
@@ -177,6 +194,9 @@ func actionlint(ctx context.Context, dir string, args []string, names map[string
 	}
 	if err := json.Unmarshal(out, &list); err != nil {
 		return &Red{StepLint, "COULD NOT CHECK: actionlint output is not JSON: " + err.Error()}
+	}
+	if red := agree("actionlint", code, len(list)); red != nil {
+		return red
 	}
 	for _, f := range list {
 		found[finding{"actionlint/" + f.Kind, fileOf(names, f.Filepath), f.Message}]++
@@ -204,10 +224,10 @@ type zizmorFinding struct {
 	} `json:"locations"`
 }
 
-// zizmor exits 0 without findings and 10 plus the highest severity with them. An ignored
-// finding counts too: the ignore comment is the branch's.
+// zizmor exits 0 without findings and 10 plus the highest severity with them. It leaves a
+// finding silenced by an ignore comment out of its output; countSuppressions covers that.
 func zizmor(ctx context.Context, dir string, args []string, names map[string]string, found findings) *Red {
-	out, red := runLinter(ctx, dir, "zizmor", append([]string{"--offline", "--format", "json"}, args...),
+	out, code, red := runLinter(ctx, dir, "zizmor", append([]string{"--offline", "--format", "json"}, args...),
 		func(code int) bool { return code == 0 || (code >= 10 && code <= 14) })
 	if red != nil {
 		return red
@@ -215,6 +235,9 @@ func zizmor(ctx context.Context, dir string, args []string, names map[string]str
 	var list []zizmorFinding
 	if err := json.Unmarshal(out, &list); err != nil {
 		return &Red{StepLint, "COULD NOT CHECK: zizmor output is not JSON: " + err.Error()}
+	}
+	if red := agree("zizmor", code, len(list)); red != nil {
+		return red
 	}
 	for _, f := range list {
 		file, text := "?", f.Desc
@@ -231,6 +254,15 @@ func zizmor(ctx context.Context, dir string, args []string, names map[string]str
 			}
 		}
 		found[finding{"zizmor/" + f.Ident, file, text}]++
+	}
+	return nil
+}
+
+// agree fails closed when the exit code and the output disagree: findings with exit 0, or a
+// findings exit code with an empty or null list, means the format is not what Lint reads.
+func agree(tool string, code, n int) *Red {
+	if (code == 0) != (n == 0) {
+		return &Red{StepLint, fmt.Sprintf("COULD NOT CHECK: %s exited %d with %d findings in its output", tool, code, n)}
 	}
 	return nil
 }

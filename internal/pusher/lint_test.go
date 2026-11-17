@@ -8,7 +8,8 @@ import (
 	"testing"
 )
 
-// fakeZizmor reports one artipacked finding per line with FINDING, on that line; it refuses to run without --offline and --format json.
+// fakeZizmor reports one artipacked finding per line with FINDING, on that line, unless the line
+// carries a zizmor ignore comment, as the real zizmor drops a suppressed finding; it refuses to run without --offline and --format json.
 const fakeZizmor = `#!/bin/sh
 case " $* " in *" --offline "*) ;; *) echo "not offline" >&2; exit 1;; esac
 case " $* " in *" --format json "*) ;; *) echo "no json" >&2; exit 1;; esac
@@ -18,7 +19,7 @@ sep=""; found=0
 printf '['
 for f in "$@"; do
   case "$f" in -*|json) continue;; esac
-  for line in $(grep -n FINDING "$f" | cut -d: -f1); do
+  for line in $(grep -n FINDING "$f" | grep -iv 'zizmor: ignore' | cut -d: -f1); do
     found=1
     printf '%s{"ident":"artipacked","desc":"credential persistence","determinations":{"severity":"Medium"},"ignored":false,"locations":[{"symbolic":{"key":{"Local":{"prefix":".","given_path":"%s"}},"annotation":"does not set persist-credentials: false","kind":"Primary"},"concrete":{"location":{"start_point":{"row":%s,"column":1}},"feature":"uses: actions/checkout"}}]}' "$sep" "$f" "$line"
     sep=","
@@ -29,13 +30,15 @@ printf ']\n'
 exit 0
 `
 
-// fakeActionlint reports one expression finding per input file that contains ACTIONLINT.
+// fakeActionlint reports one expression finding per input file that contains ACTIONLINT, unless
+// the file holds a shellcheck disable comment.
 const fakeActionlint = `#!/bin/sh
 case "$*" in *"-format {{json .}}"*) ;; *) echo "no json format" >&2; exit 2;; esac
 sep=""; found=0
 printf '['
 for f in "$@"; do
   case "$f" in -*|"{{json .}}") continue;; esac
+  grep -qi 'shellcheck disable' "$f" && continue
   line=$(grep -n ACTIONLINT "$f" | head -n1 | cut -d: -f1)
   [ -n "$line" ] || continue
   found=1
@@ -195,6 +198,13 @@ func TestLintToolFailureIsRed(t *testing.T) {
 		"actionlint fatal":   {"zizmor": fakeZizmor, "actionlint": "#!/bin/sh\necho '[]'\nexit 3\n"},
 		"zizmor no json":     {"zizmor": "#!/bin/sh\necho nope\nexit 13\n", "actionlint": fakeActionlint},
 		"actionlint 1 no []": {"zizmor": fakeZizmor, "actionlint": "#!/bin/sh\nexit 1\n"},
+		// Exit code and output must agree, so a format drift fails closed.
+		"actionlint 1 with []":      {"zizmor": fakeZizmor, "actionlint": "#!/bin/sh\necho '[]'\nexit 1\n"},
+		"actionlint 1 with null":    {"zizmor": fakeZizmor, "actionlint": "#!/bin/sh\necho null\nexit 1\n"},
+		"actionlint 0 with finding": {"zizmor": fakeZizmor, "actionlint": "#!/bin/sh\necho '[{\"message\":\"m\",\"filepath\":\"x\",\"kind\":\"k\"}]'\nexit 0\n"},
+		"zizmor 13 with []":         {"zizmor": "#!/bin/sh\necho '[]'\nexit 13\n", "actionlint": fakeActionlint},
+		"zizmor 11 with null":       {"zizmor": "#!/bin/sh\necho null\nexit 11\n", "actionlint": fakeActionlint},
+		"zizmor 0 with finding":     {"zizmor": "#!/bin/sh\necho '[{\"ident\":\"x\",\"desc\":\"d\",\"locations\":[]}]'\nexit 0\n", "actionlint": fakeActionlint},
 	} {
 		t.Run(name, func(t *testing.T) {
 			fakeTools(t, tools)
@@ -213,5 +223,50 @@ func TestLintWithoutWorkflowsRunsNothing(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(os.Getenv("HOME"), "zizmor.log")); err == nil {
 		t.Error("zizmor ran without a workflow to lint")
+	}
+}
+
+func TestLintNewSuppressionIsRed(t *testing.T) {
+	cases := map[string]struct {
+		base, head map[string]string
+		want       string
+	}{
+		"zizmor ignore hides a new finding": {
+			base: map[string]string{".github/workflows/a.yml": "on: push\n"},
+			head: map[string]string{".github/workflows/a.yml": "on: push\n# FINDING # zizmor: ignore[artipacked]\n"},
+			want: "zizmor: ignore",
+		},
+		"shellcheck disable hides a new finding": {
+			base: map[string]string{".github/workflows/a.yml": "on: push\n"},
+			head: map[string]string{".github/workflows/a.yml": "on: push\n# ACTIONLINT\n# ShellCheck Disable=SC2086\n"},
+			want: "shellcheck disable",
+		},
+		"suppression in a new file": {
+			head: map[string]string{".github/workflows/new.yml": "on: push\n# Zizmor: Ignore[x]\n"},
+			want: ".github/workflows/new.yml",
+		},
+		"a second suppression": {
+			base: map[string]string{".github/workflows/a.yml": "# zizmor: ignore[a]\n"},
+			head: map[string]string{".github/workflows/a.yml": "# zizmor: ignore[a]\n# zizmor: ignore[b]\n"},
+			want: "(1 new)",
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			fakeTools(t, map[string]string{"zizmor": fakeZizmor, "actionlint": fakeActionlint})
+			red := lintOf(t, tc.base, tc.head)
+			if red == nil || red.Step != StepLint || !strings.Contains(red.Why, tc.want) || strings.Contains(red.Why, "COULD NOT CHECK") {
+				t.Fatalf("red %+v, want a suppression red naming %q", red, tc.want)
+			}
+		})
+	}
+}
+
+func TestLintExistingSuppressionNotRed(t *testing.T) {
+	fakeTools(t, map[string]string{"zizmor": fakeZizmor, "actionlint": fakeActionlint})
+	base := map[string]string{".github/workflows/a.yml": "on: push\n# FINDING # zizmor: ignore[artipacked]\n"}
+	head := map[string]string{".github/workflows/a.yml": "on: push\nname: x\n# FINDING # zizmor: ignore[artipacked]\n"}
+	if red := lintOf(t, base, head); red != nil {
+		t.Fatalf("Lint red: %s", red.Why)
 	}
 }
