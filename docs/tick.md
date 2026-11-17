@@ -192,6 +192,10 @@ slash-commando's.
   review weg en blijft de vloer staan. De roborev-records zijn door de run beheerd: check 5 is hygiëne
   tegen een vergeten of verouderde review, geen vertrouwensgrens. GitHub's eigen scope-controle blijft
   de grens.
+- **Wat de hook niet dekt.** `workflow-push-gate` leest het commando; een alias, `eval git push`,
+  `G=git; $G push`, een script dat pusht of een herschreven remote-tracking-ref ontsnapt eraan. Het is
+  een vangnet tegen ongelukken, geen grens: de grens blijft dat GitHub een push met `.github/workflows/`
+  zonder `workflow`-scope weigert, en dat het token van een run die scope niet heeft.
 - **De merge door de pusher.** Of GitHub een API-merge van een PR die `.github/workflows/` wijzigt weigert
   voor een token zonder `workflow`-scope, is niet geverifieerd (taak 1 van het plan zonder
   workflow-credential overgeslagen). Daarom bestaat de route, en gebruikt tick hem alleen als er een
