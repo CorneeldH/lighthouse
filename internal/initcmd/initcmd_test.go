@@ -3,6 +3,8 @@ package initcmd
 import (
 	"bytes"
 	"errors"
+	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -14,7 +16,6 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/deps"
 	"github.com/CorneeldH/lighthouse/internal/manifest"
 	"github.com/CorneeldH/lighthouse/internal/packs"
-	"github.com/CorneeldH/lighthouse/pack"
 )
 
 const hooksJSON = `{"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/g.sh", "timeout": 15}]}]}}`
@@ -25,7 +26,7 @@ func testPacks() fstest.MapFS {
 	return fstest.MapFS{
 		"core/hooks/g.sh":             file("#!/bin/bash\necho g\n"),
 		"core/hooks/hooks.json":       file(hooksJSON),
-		"core/lib/a.py":               file("x = 1\n"),
+		"core/scripts/a.py":           file("x = 1\n"),
 		"core/instructions/AGENTS.md": file("## core\n\n- rule\n"),
 		"core/templates/labels.md":    file("# Labels\n\n| `blocked-issue` | x |\n"),
 		"core/requires.toml":          file("jq = [\"main-commit-gate\"]\n"),
@@ -331,10 +332,10 @@ func TestUpgradeRemovesDroppedUnit(t *testing.T) {
 		o.Upgrade = true
 		o.Yes = true
 		p := testPacks()
-		delete(p, "core/lib/a.py")
+		delete(p, "core/scripts/a.py")
 		o.Packs = p
 	})
-	if r.code != 0 || exists(root, ".lighthouse/lib/lighthouse_lib/a.py") {
+	if r.code != 0 || exists(root, ".lighthouse/scripts/a.py") {
 		t.Fatalf("rc %d, a.py still there\n%s%s", r.code, r.out, r.err)
 	}
 	m, _ := manifest.Read(root)
@@ -432,8 +433,8 @@ func TestUpgradeRemovesEmptiedDirs(t *testing.T) {
 		},
 		"outside_roots": {
 			check: func(t *testing.T, root string) {
-				if !exists(root, ".lighthouse/lib/lighthouse_lib") {
-					t.Error("lighthouse_lib removed")
+				if !exists(root, ".lighthouse/scripts") {
+					t.Error(".lighthouse/scripts removed")
 				}
 			},
 		},
@@ -452,7 +453,7 @@ func TestUpgradeRemovesEmptiedDirs(t *testing.T) {
 				yes(o)
 				p := testPacks()
 				if name == "outside_roots" {
-					delete(p, "core/lib/a.py")
+					delete(p, "core/scripts/a.py")
 				}
 				o.Packs = p
 			})
@@ -461,6 +462,137 @@ func TestUpgradeRemovesEmptiedDirs(t *testing.T) {
 			}
 			tc.check(t, root)
 		})
+	}
+}
+
+// seedCoreLib puts back what an older core installed under .lighthouse/lib/: each file on
+// disk with seed as its content, and in the manifest with the hash of that content.
+func seedCoreLib(t *testing.T, root string, seed map[string]string) {
+	t.Helper()
+	m, err := manifest.Read(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, content := range seed {
+		rel := ".lighthouse/lib/lighthouse_lib/" + name
+		write(t, root, rel, content)
+		units := m.Units[:0]
+		for _, e := range m.Units {
+			if e.Path != rel {
+				units = append(units, e)
+			}
+		}
+		m.Units = append(units, manifest.Entry{
+			Kind: packs.KindFile, Path: rel, Package: "core", Version: m.Version,
+			SHA256: manifest.Sum([]byte(content)),
+		})
+	}
+	write(t, root, manifest.Path, string(manifest.Encode(m)))
+}
+
+func realPacks(o *Options) { o.Packs = nil }
+
+var oldCoreLib = map[string]string{
+	"config.py":   "# lighthouse: core@v0.1.0\nKEYS = {}\n",
+	"headings.py": "# lighthouse: core@v0.1.0\nHEADINGS = {}\n",
+}
+
+func TestUpgradeRemovesCoreLib(t *testing.T) {
+	root := newRepo(t)
+	if r := run(t, root, "", all(yes, realPacks)); r.code != 0 {
+		t.Fatalf("init: rc %d\n%s", r.code, r.err)
+	}
+	seedCoreLib(t, root, oldCoreLib)
+	write(t, root, ".lighthouse/lib/lighthouse_lib/__pycache__/config.cpython-312.pyc", "x")
+	r := run(t, root, "", all(upgrade, yes, realPacks))
+	if r.code != 0 {
+		t.Fatalf("upgrade: rc %d\n%s%s", r.code, r.out, r.err)
+	}
+	if exists(root, ".lighthouse/lib") {
+		t.Fatal(".lighthouse/lib survives the upgrade")
+	}
+	if !exists(root, ".lighthouse/manifest.toml") {
+		t.Fatal(".lighthouse itself was removed")
+	}
+	if strings.Contains(read(t, root, manifest.Path), "lighthouse_lib") {
+		t.Fatal("the manifest still names lighthouse_lib")
+	}
+}
+
+// With --force a locally changed file under the retired lib still stays, and is still reported.
+func TestUpgradeForceKeepsModifiedCoreLib(t *testing.T) {
+	root := newRepo(t)
+	if r := run(t, root, "", all(yes, realPacks)); r.code != 0 {
+		t.Fatalf("init: rc %d\n%s", r.code, r.err)
+	}
+	seedCoreLib(t, root, oldCoreLib)
+	config := ".lighthouse/lib/lighthouse_lib/config.py"
+	write(t, root, config, oldCoreLib["config.py"]+"MINE = 1\n")
+	r := run(t, root, "", func(o *Options) { upgrade(o); yes(o); realPacks(o); o.Force = true })
+	if r.code != 0 {
+		t.Fatalf("upgrade --force: rc %d\n%s%s", r.code, r.out, r.err)
+	}
+	if got := read(t, root, config); got != oldCoreLib["config.py"]+"MINE = 1\n" {
+		t.Fatalf("config.py = %q", got)
+	}
+	if !strings.Contains(r.err, "warning: "+config+" is changed locally;") {
+		t.Fatalf("stderr does not report config.py:\n%s", r.err)
+	}
+}
+
+func TestUpgradeKeepsModifiedCoreLib(t *testing.T) {
+	root := newRepo(t)
+	if r := run(t, root, "", all(yes, realPacks)); r.code != 0 {
+		t.Fatalf("init: rc %d\n%s", r.code, r.err)
+	}
+	seedCoreLib(t, root, oldCoreLib)
+	config := ".lighthouse/lib/lighthouse_lib/config.py"
+	write(t, root, config, oldCoreLib["config.py"]+"MINE = 1\n")
+	r := run(t, root, "", all(upgrade, yes, realPacks))
+	if r.code != 0 {
+		t.Fatalf("upgrade: rc %d\n%s%s", r.code, r.out, r.err)
+	}
+	if got := read(t, root, config); got != oldCoreLib["config.py"]+"MINE = 1\n" {
+		t.Fatalf("config.py = %q", got)
+	}
+	if !strings.Contains(r.err, "warning: "+config+" is changed locally; lighthouse no longer installs it, so it stays as it is and is no longer managed\n") {
+		t.Fatalf("stderr does not report config.py:\n%s", r.err)
+	}
+	if exists(root, ".lighthouse/lib/lighthouse_lib/headings.py") {
+		t.Fatal("headings.py survives the upgrade")
+	}
+	if strings.Contains(read(t, root, manifest.Path), "lighthouse_lib") {
+		t.Fatal("the manifest still names lighthouse_lib")
+	}
+	if r := run(t, root, "", all(upgrade, yes, realPacks)); r.code != 0 || r.out != "No changes.\n" || !exists(root, config) {
+		t.Fatalf("second upgrade: rc %d out %q err %q", r.code, r.out, r.err)
+	}
+}
+
+// The cleanup of the retired lib removes what lighthouse installed and the directories that
+// leaves empty, nothing else: a file of the project in the same tree keeps its directories,
+// and the scripts next to the lib are untouched.
+func TestUpgradeCleanupKeepsProjectFiles(t *testing.T) {
+	root := newRepo(t)
+	write(t, root, "x.sh", "#!/bin/sh\necho x\n") // a shell script makes the pack install shellcheck-repo.sh
+	if r := run(t, root, "", all(yes, realPacks)); r.code != 0 {
+		t.Fatalf("init: rc %d\n%s", r.code, r.err)
+	}
+	seedCoreLib(t, root, oldCoreLib)
+	mine := ".lighthouse/lib/lighthouse_lib/notes.txt"
+	write(t, root, mine, "mine\n")
+	r := run(t, root, "", all(upgrade, yes, realPacks))
+	if r.code != 0 {
+		t.Fatalf("upgrade: rc %d\n%s%s", r.code, r.out, r.err)
+	}
+	if got := read(t, root, mine); got != "mine\n" {
+		t.Fatalf("the project file under the retired lib = %q", got)
+	}
+	if exists(root, ".lighthouse/lib/lighthouse_lib/config.py") {
+		t.Fatal("config.py survives the upgrade")
+	}
+	if !exists(root, ".lighthouse/scripts/shellcheck-repo.sh") {
+		t.Fatal("shellcheck-repo.sh removed with the core lib")
 	}
 }
 
@@ -787,7 +919,7 @@ func TestRestoresExecBit(t *testing.T) {
 func TestInitInstallsRealCore(t *testing.T) {
 	root := newRepo(t)
 	r := run(t, root, "", func(o *Options) { o.Yes = true; o.Packs = nil })
-	if r.code != 0 || !exists(root, ".lighthouse/lib/lighthouse_lib/config.py") {
+	if r.code != 0 || !exists(root, ".lighthouse/headings.toml") {
 		t.Fatalf("rc %d\n%s", r.code, r.err)
 	}
 }
@@ -1137,33 +1269,6 @@ func TestInitProposesHostTOML(t *testing.T) {
 	}
 }
 
-// The config reader reads the host.toml that init writes: Go and Python share no
-// schema, so only a run across the language boundary keeps them in step.
-func TestConfigReadsProposedHostTOML(t *testing.T) {
-	if _, err := exec.LookPath("python3"); err != nil {
-		t.Skip("python3 not available")
-	}
-	root := newRepo(t)
-	host := hostTOMLFor(t)
-	m := testPacks()
-	for _, f := range []string{"__init__.py", "config.py"} {
-		b, err := fs.ReadFile(pack.Files, "core/lib/"+f)
-		if err != nil {
-			t.Fatal(err)
-		}
-		m["core/lib/"+f] = &fstest.MapFile{Data: b}
-	}
-	if r := run(t, root, "", all(yes, withTailscale("100.64.0.1"), func(o *Options) { o.Packs = m })); r.code != 0 {
-		t.Fatalf("rc %d\n%s", r.code, r.err)
-	}
-	cmd := exec.Command("python3", "-I", filepath.Join(root, ".lighthouse/lib/lighthouse_lib/config.py"), "host.name")
-	cmd.Env = append(os.Environ(), "LIGHTHOUSE_HOST_TOML="+host)
-	out, err := cmd.CombinedOutput()
-	if err != nil || string(out) != "box\n" {
-		t.Fatalf("host.name: %v\n%s", err, out)
-	}
-}
-
 func TestInitDeclinedWritesNoHostTOML(t *testing.T) {
 	root := newRepo(t)
 	if r := run(t, root, "n\n", withTailscale("100.64.0.1")); r.code != 1 {
@@ -1335,9 +1440,9 @@ func TestUpgradeDoesNotProposeHostTOML(t *testing.T) {
 
 func TestWarnsIgnoredByGitignore(t *testing.T) {
 	root := newRepo(t)
-	write(t, root, ".gitignore", "build/\nlib/\n")
+	write(t, root, ".gitignore", "build/\nscripts/\n")
 	r := run(t, root, "", yes)
-	if r.code != 0 || !strings.Contains(r.err, "warning: .lighthouse/lib/lighthouse_lib/a.py is ignored by git (.gitignore:2:lib/)") {
+	if r.code != 0 || !strings.Contains(r.err, "warning: .lighthouse/scripts/a.py is ignored by git (.gitignore:2:scripts/)") {
 		t.Fatalf("rc %d err %q", r.code, r.err)
 	}
 	if n := strings.Count(r.err, "ignored by git"); n != 1 {
@@ -1359,9 +1464,9 @@ func TestWarnsIgnoredOnUpgradeWithoutChanges(t *testing.T) {
 	if r := run(t, root, "", yes); r.code != 0 {
 		t.Fatalf("init: %q", r.err)
 	}
-	write(t, root, ".gitignore", "lib/\n")
+	write(t, root, ".gitignore", "scripts/\n")
 	r := run(t, root, "", func(o *Options) { o.Yes = true; o.Upgrade = true })
-	if r.code != 0 || !strings.Contains(r.out, "No changes.") || !strings.Contains(r.err, ".lighthouse/lib/lighthouse_lib/a.py is ignored by git (.gitignore:1:lib/)") {
+	if r.code != 0 || !strings.Contains(r.out, "No changes.") || !strings.Contains(r.err, ".lighthouse/scripts/a.py is ignored by git (.gitignore:1:scripts/)") {
 		t.Fatalf("rc %d out %q err %q", r.code, r.out, r.err)
 	}
 }
@@ -1372,5 +1477,111 @@ func TestNoIgnoreWarningInCleanRepo(t *testing.T) {
 	r := run(t, root, "", yes)
 	if r.code != 0 || strings.Contains(r.err, "ignored by git") {
 		t.Fatalf("rc %d err %q", r.code, r.err)
+	}
+}
+
+// auditRecorder is an Options.Audit that records the root it was called with and what the
+// repository held at that moment.
+type auditRecorder struct {
+	roots    []string
+	settings []bool // was .claude/settings.json already written at the call
+}
+
+func (a *auditRecorder) hook(o *Options) {
+	o.Audit = func(root string, out, _ io.Writer) {
+		a.roots = append(a.roots, root)
+		a.settings = append(a.settings, exists(root, settingsPath))
+		_, _ = fmt.Fprintln(out, "AUDIT")
+	}
+}
+
+func TestFirstInitRunsAudit(t *testing.T) {
+	root := newRepo(t)
+	var a auditRecorder
+	r := run(t, root, "", func(o *Options) { yes(o); a.hook(o) })
+	if r.code != 0 || len(a.roots) != 1 || a.roots[0] != root {
+		t.Fatalf("rc %d, audit roots %v; want one call with %s", r.code, a.roots, root)
+	}
+	if !a.settings[0] {
+		t.Error("audit ran before init wrote its files")
+	}
+	if !strings.Contains(r.out, "AUDIT") {
+		t.Errorf("stdout lacks the audit output:\n%s", r.out)
+	}
+}
+
+func TestDeclinedInitSkipsAudit(t *testing.T) {
+	root := newRepo(t)
+	var a auditRecorder
+	r := run(t, root, "n\n", a.hook)
+	if r.code == 0 || len(a.roots) != 0 {
+		t.Errorf("rc %d, %d audit calls; want a declined init and none", r.code, len(a.roots))
+	}
+}
+
+func TestUpgradeWithoutAuditFlag(t *testing.T) {
+	root := newRepo(t)
+	initYes(t, root)
+	var a auditRecorder
+	run(t, root, "", func(o *Options) { yes(o); upgrade(o); a.hook(o) })
+	if len(a.roots) != 0 {
+		t.Errorf("%d audit calls without --audit; want none", len(a.roots))
+	}
+}
+
+func TestUpgradeWithAuditFlag(t *testing.T) {
+	root := newRepo(t)
+	initYes(t, root)
+	var a auditRecorder
+	r := run(t, root, "", func(o *Options) { yes(o); upgrade(o); o.AuditOnUpgrade = true; a.hook(o) })
+	if !strings.Contains(r.out, "No changes.") || len(a.roots) != 1 {
+		t.Errorf("out %q, %d audit calls; want No changes. and one call", r.out, len(a.roots))
+	}
+}
+
+func TestAuditNeedsUpgrade(t *testing.T) {
+	root := newRepo(t)
+	var a auditRecorder
+	r := run(t, root, "", func(o *Options) { yes(o); o.AuditOnUpgrade = true; a.hook(o) })
+	if r.code == 0 || !strings.Contains(r.err, "--audit needs --upgrade") || len(a.roots) != 0 || exists(root, settingsPath) {
+		t.Errorf("rc %d, stderr %q, %d audit calls; want a refusal before anything is written", r.code, r.err, len(a.roots))
+	}
+}
+
+func TestRemoveEmptyParents(t *testing.T) {
+	root := t.TempDir()
+	mk := func(rel string, file bool) {
+		t.Helper()
+		if file {
+			write(t, root, rel, "x")
+		} else if err := os.MkdirAll(filepath.Join(root, rel), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The parent of the removed file is empty, its parent holds a project file.
+	mk(".lighthouse/lib/a/b", false)
+	mk(".lighthouse/lib/a/mine.txt", true)
+	if err := removeEmptyParents(root, ".lighthouse/lib/a/b/c.py"); err != nil {
+		t.Fatal(err)
+	}
+	if exists(root, ".lighthouse/lib/a/b") {
+		t.Error("the empty parent survives")
+	}
+	if !exists(root, ".lighthouse/lib/a/mine.txt") {
+		t.Fatal("a directory with a project file was removed")
+	}
+	// Everything empty up to and including the retired root goes; its parent stays.
+	if err := os.Remove(filepath.Join(root, ".lighthouse/lib/a/mine.txt")); err != nil {
+		t.Fatal(err)
+	}
+	mk(".lighthouse/manifest.toml", true)
+	if err := removeEmptyParents(root, ".lighthouse/lib/a/c.py"); err != nil {
+		t.Fatal(err)
+	}
+	if exists(root, ".lighthouse/lib") {
+		t.Error("the empty retired root survives")
+	}
+	if !exists(root, ".lighthouse/manifest.toml") {
+		t.Error(".lighthouse was removed")
 	}
 }

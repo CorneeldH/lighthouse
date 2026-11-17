@@ -85,7 +85,7 @@ func (ap applier) startScheduled(ctx context.Context, a Action, res *Result) err
 	if err := job.Stage(ctx, jenv, rec.Verdict); err != nil {
 		return retry("stage", err)
 	}
-	file, err := writeRunInstructions(env.StateDir, session, []byte(a.Instructions))
+	file, err := WriteInstructionsContent(env.StateDir, session, []byte(a.Instructions))
 	if err != nil {
 		return retry("instructions", err)
 	}

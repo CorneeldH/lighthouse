@@ -26,9 +26,9 @@ present.
 
 Before every test, answer it in one sentence in the chat:
 
-> What production change should make this test fail?
+> Which change to the production code turns this test red?
 
-If you cannot name that change, the test protects nothing. Redesign it before you write it.
+If no such change comes to mind, the test protects nothing. Redesign it before you write it.
 
 ## Required checks
 
@@ -36,19 +36,19 @@ If you cannot name that change, the test protects nothing. Redesign it before yo
   code, a raised error. Never private state: it changes with the implementation, not with the
   behaviour.
 - **Specific fakes.** Where the arguments, the number of calls or the branch taken belong to the
-  contract, the fake checks them. A fake that accepts anything proves only that the code ran.
+  contract, the fake checks them. A permissive fake shows no more than that the code ran.
 - **One double per branch.** Success, failure and malformed input each get their own fake; a
   shared fake hides which branch ran.
 - **Never mock the subject.** Mock boundaries and slow or non-deterministic collaborators (the
   network, the clock, randomness), never the code under test.
 - **Investigate before you change an expectation.** A red test is information. Do not flip the
-  expected value to turn it green; first decide whether the production change was intended.
+  expected value to turn it green; first establish whether the code change behind the red run was deliberate.
 - **No mirror assertions.** Do not compute the expected value with the logic under test. Use
   literal values, fixtures checked by hand, or an invariant.
 - **No upstream behaviour.** Test your own boundary, not that a library does what it promises.
 - **No confirmation of the current code.** No test on a bare assignment, a getter or a
   pass-through, unless it carries validation, a default, a derivation or a side effect.
-- **Run shell scripts, do not read them.** Run the script against controlled input and assert its
+- **Execute shell scripts; never test them by reading.** Run the script against controlled input and assert its
   output, its side effects or its exit code. A test that greps the source passes on a script that
   never runs.
 - **No negative-existence tests after a removal.** The removal proves itself, and whatever
@@ -74,7 +74,7 @@ migration: that is a negative-existence test, in a contract test too.
 Before the first edit, write one sentence in the chat, not in the commit message or the PR body:
 
 ```text
-This is a <class> change; the likely regression surface is <observable behaviour>.
+Class: <class>. At risk: <the observable behaviour that could change>.
 ```
 
 Pick the class from the table, and let its minimal check set the floor for the tests:
@@ -96,9 +96,9 @@ Before you report done, mutate the production code in your head. For every reali
 at least one test must fail:
 
 - a wrong constant, or a branch that takes the other path;
-- a missing state change or side effect;
-- an empty or default return;
-- missing validation on empty, zero or malformed input.
+- a state change or side effect that is skipped;
+- a function that returns nothing, or only its default;
+- input checks that are dropped for empty, zero or malformed values.
 
 If a mutation leaves every test green, the test for it is probably a tautology. Fix the test,
 not the mutation list.
@@ -107,7 +107,7 @@ not the mutation list.
 
 Each of these means: stop and redesign the test.
 
-- You cannot say which production change would make it fail.
+- You cannot say which change to the code would turn it red.
 - It asserts that a mock was called, and nothing about the result, unless the call itself is the
   contract.
 - The expected value comes out of the function under test, or out of a copy of its logic.
@@ -122,12 +122,3 @@ Each of these means: stop and redesign the test.
 - It only fails by crashing: an exception or a missing element, never a wrong value.
 - It restates the code line by line, so any change to the code is a change to the test.
 - It exists only for coverage: it runs the code and asserts nothing that matters.
-
-## Inspiration
-
-Written fresh for lighthouse, with the ideas of these two. One line is shared: the
-classification sentence has the same shape as the template in forge's skill, because the issue
-behind this skill asked for exactly that sentence.
-
-- [agentsview `testing-without-tautologies`](https://github.com/kenn-io/agentsview/blob/main/.agents/skills/testing-without-tautologies/SKILL.md)
-- [forge `small-change-verification`](https://github.com/kenn-io/forge/blob/main/skills/small-change-verification/SKILL.md)

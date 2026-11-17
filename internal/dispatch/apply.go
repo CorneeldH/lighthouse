@@ -36,10 +36,13 @@ type Env struct {
 	RoundLimit func(repo string) string // what a run does at an adversarial round limit
 	StateDir   string
 	MarkerDir  string // the resume markers; "" removes none
-	MaxWait    time.Duration
-	Now        func() time.Time
-	NewSession func() string // runs.NewSessionID
-	Log        io.Writer     // nil discards
+	// RemoveMarker removes the resume marker of session while its key is key, where the marker
+	// came from (self or a node); nil is park.RemoveMarker in MarkerDir.
+	RemoveMarker func(session, key string) error
+	MaxWait      time.Duration
+	Now          func() time.Time
+	NewSession   func() string // runs.NewSessionID
+	Log          io.Writer     // nil discards
 }
 
 // Result is what one Apply did.
@@ -291,6 +294,11 @@ func (ap applier) start(ctx context.Context, a Action, res *Result) error {
 	var own *workplace.OwnWorkError
 	if errors.As(err, &own) {
 		ws, err = own.Workspace, nil
+		// A resume continues the session that made this work in this workspace: it is never
+		// handed back for it, whatever origin did meanwhile (#356).
+		if a.Kind == KindResume {
+			own = nil
+		}
 	}
 	if err != nil {
 		return ap.returnFixPR(ctx, a, fmt.Errorf("prepare: %w", err))
@@ -310,10 +318,9 @@ func (ap applier) start(ctx context.Context, a Action, res *Result) error {
 	if a.Kind == KindStart {
 		session = env.NewSession()
 	}
-	// The worktree of another node is not on this host: Relocate has nothing to look in (#327).
-	if a.Kind == KindStart && a.Node == "" {
+	if a.Kind == KindStart {
 		var command string
-		if command, relocErr = Relocate(a.Command, ws.Path); relocErr == nil && command != a.Command {
+		if command, relocErr = ap.relocate(ctx, w, ws, a); relocErr == nil && command != a.Command {
 			a.Prompt = strings.Replace(a.Prompt, a.Command, command, 1)
 			a.Command = command
 		}
@@ -397,6 +404,20 @@ func (ap applier) start(ctx context.Context, a Action, res *Result) error {
 	return nil
 }
 
+// relocate finds the path of the start command in the worktree of ws. On self it looks on this
+// host; on a node the node looks in its own worktree (workplace.Relocator, #327). A workplace on a
+// node without one keeps the command as decided. Every kenn-forge adapter is a Relocator, but on
+// self it cannot answer, so the node decides, not the type.
+func (ap applier) relocate(ctx context.Context, w workplace.Workplace, ws workplace.Workspace, a Action) (string, error) {
+	if a.Node == "" {
+		return Relocate(a.Command, ws.Path)
+	}
+	if r, ok := w.(workplace.Relocator); ok {
+		return r.Relocate(ctx, ws.ID, a.Command)
+	}
+	return a.Command, nil
+}
+
 // returnFixPR posts a 🤖 Returned without a run for a first fix-pr start that stops before its
 // claim, and returns cause, joined with a failed post. The reason is the one decide gave the
 // start (a.Reason with a.ReasonArg), "PR red" when it gave none. The run that found the PR
@@ -468,20 +489,25 @@ func (ap applier) resumedMarker(a Action) {
 	}
 }
 
-// removeMarker removes the marker of a.SessionID while its key is a.TriggerKey. A failure
-// logs one line and is no action error: the next tick drops the marker again.
+// removeMarker removes the marker of a.SessionID while its key is a.TriggerKey: through
+// Env.RemoveMarker, which knows the node the marker came from, else in MarkerDir. A failure logs
+// one line and is no action error: the next tick drops the marker again.
 func (ap applier) removeMarker(a Action) {
-	if ap.env.MarkerDir == "" {
-		return
+	remove := ap.env.RemoveMarker
+	if remove == nil {
+		if ap.env.MarkerDir == "" {
+			return
+		}
+		remove = func(session, key string) error { return park.RemoveMarker(ap.env.MarkerDir, session, key) }
 	}
-	if err := park.RemoveMarker(ap.env.MarkerDir, a.SessionID, a.TriggerKey); err != nil {
+	if err := remove(a.SessionID, a.TriggerKey); err != nil {
 		ap.logf("%s#%d: remove marker of session %s: %v", a.Repo, a.Issue, a.SessionID, err)
 	}
 }
 
 // busy returns why the workplace cannot take the run, or "" when it can, and the session ids of
-// the claudes of the issue's closed runs in the workspace (workplace.Earlier). On another node a
-// live session of the issue's own runs is busy too (liveOwn).
+// the claudes of the issue's closed runs in the workspace (workplace.Earlier). A node is like
+// self: Kill ends an earlier claude there through serve (#327).
 func (ap applier) busy(ctx context.Context, w workplace.Workplace, ws workplace.Workspace, a Action, now time.Time) (string, []string, error) {
 	sessions, err := w.Sessions(ctx, ws.ID)
 	if err != nil {
@@ -503,25 +529,10 @@ func (ap applier) busy(ctx context.Context, w workplace.Workplace, ws workplace.
 	}
 	own := workplace.Own(keys)
 	s, busy := workplace.Busy(sessions, own, openSessions, nil, now, ap.env.MaxWait)
-	if !busy && a.Node != "" {
-		s, busy = liveOwn(sessions, own)
-	}
 	if !busy {
 		return "", workplace.Earlier(sessions, own, openSessions), nil
 	}
 	return workplace.BusyReason(s), nil, nil
-}
-
-// liveOwn returns the first session of the issue's own runs that has not exited. On another
-// node Kill cannot end its claude (forge's runtime knows no session id, #327), so a start there
-// waits for it instead of joining a second agent to it.
-func liveOwn(sessions []workplace.Session, own workplace.Own) (workplace.Session, bool) {
-	for _, s := range sessions {
-		if own.Has(s) && s.Stand() != workplace.Done {
-			return s, true
-		}
-	}
-	return workplace.Session{}, false
 }
 
 // startFailed closes a claimed run as start_failed with reason "<step>: <cause>". The release

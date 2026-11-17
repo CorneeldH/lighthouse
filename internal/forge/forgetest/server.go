@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -36,17 +37,35 @@ type Server struct {
 	// its number: a test can change the forge or the database between two requests.
 	BeforeComments func(number int)
 	// Issues are the issues per number in GitHub's REST shape, served by GET
-	// /repos/{owner}/{name}/issues/{number}; a missing number answers 404.
+	// /repos/{owner}/{name}/issues/{number}; a missing number answers 404. A POSTed issue or
+	// pull request lands here with the next free number, shared with Pulls.
 	Issues map[int]map[string]any
-	// Pulls are the open pull requests in REST shape (number, title, body, head.ref), served by
-	// GET /repos/{owner}/{name}/pulls in the order given.
+	// Pulls are the pull requests in REST shape (number, title, body, head.ref, optional state,
+	// draft), served by GET /repos/{owner}/{name}/pulls in the order given, filtered on state
+	// (default open; an item without state is open), and one by GET .../pulls/{number}. A
+	// POSTed pull request lands here and, with a "pull_request" key, in Issues.
 	Pulls []map[string]any
 	// BlockedBy are the blockers per issue number in REST issue shape (number, state,
 	// repository_url), served by GET .../issues/{number}/dependencies/blocked_by.
 	BlockedBy map[int][]map[string]any
+	// Releases are the releases per repo ("owner/name") in REST shape (tag_name, name, body,
+	// html_url, draft, prerelease), served by GET /repos/{owner}/{name}/releases in the order
+	// given, in pages.
+	Releases map[string][]map[string]any
+	// FailFirst maps "METHOD path" to the status only the first such request answers; the next
+	// ones are served as usual. Fail wins over FailFirst.
+	FailFirst map[string]int
 	// Fail maps "METHOD path", such as "POST /repos/o/r/issues/7/comments", to the status that
-	// request answers instead. A failed POST is still in Posts, but changes nothing.
+	// request answers instead. A failed write is still in Posts, but changes nothing.
 	Fail map[string]int
+	// FailMessage maps the same key to the "message" of that failure; the default is the
+	// status text.
+	FailMessage map[string]string
+	// Milestones are the milestones in REST shape (number, title, state, description), served by
+	// GET .../milestones and changed by POST and PATCH; an issue's milestone is looked up here.
+	Milestones []map[string]any
+	// Labels are the label names of the repo, served by GET .../labels.
+	Labels []string
 	// Roles maps a login to its role_name on the repo; a login that is missing answers 404.
 	Roles map[string]string
 	// RoleStatus, when not 0, is the status every permission request answers.
@@ -70,6 +89,17 @@ type Server struct {
 	// BoardStuckCursor, when not nil, makes every Board page claim a next page with this
 	// endCursor, whatever the cursor asked.
 	BoardStuckCursor *string
+	// PlanMilestones are the milestones in GraphQL shape (number, title, state "OPEN" or
+	// "CLOSED", description), served by Planning's milestone query in pages of 100; only the
+	// OPEN ones, as the query asks states: OPEN. Planning's issue query and the PlanCounts search
+	// aliases are derived from Issues and BlockedBy: open non-PR issues, their blockers, and a
+	// real evaluation of is:issue, is:open|is:closed, reason:completed and milestone:"<title>".
+	PlanMilestones []map[string]any
+	// PlanBlockedByMore, per issue number, makes the blockedBy of that issue claim a next page.
+	PlanBlockedByMore map[int]bool
+	// PlanStuckCursor, when not nil, makes every page of the Planning and PlanMilestones
+	// queries claim a next page with this endCursor, whatever the cursor asked.
+	PlanStuckCursor *string
 	// GraphQLErrors, when set, makes every GraphQL operation answer 200 with these errors and
 	// null data.
 	GraphQLErrors []string
@@ -90,10 +120,12 @@ type Server struct {
 	counts map[string]int
 }
 
-// Post is one POST request as the server received it.
+// Post is one write request (POST, PATCH, PUT or DELETE) as the server received it. Body is nil
+// for a DELETE.
 type Post struct {
-	Path string
-	Body map[string]any
+	Method string
+	Path   string
+	Body   map[string]any
 }
 
 // New starts a server that closes when the test ends.
@@ -107,7 +139,21 @@ func New(t *testing.T) *Server {
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues/{number}/dependencies/blocked_by", s.blockedBy)
 	mux.HandleFunc("GET /repos/{owner}/{name}", s.repo)
 	mux.HandleFunc("GET /repos/{owner}/{name}/pulls", s.pulls)
+	mux.HandleFunc("GET /repos/{owner}/{name}/pulls/{number}", s.pull)
 	mux.HandleFunc("POST /repos/{owner}/{name}/pulls", s.createPull)
+	mux.HandleFunc("POST /repos/{owner}/{name}/issues", s.createIssue)
+	mux.HandleFunc("PATCH /repos/{owner}/{name}/issues/{number}", s.patchIssue)
+	mux.HandleFunc("POST /repos/{owner}/{name}/issues/{number}/labels", s.addLabels)
+	mux.HandleFunc("DELETE /repos/{owner}/{name}/issues/{number}/labels/{label}", s.removeLabel)
+	mux.HandleFunc("POST /repos/{owner}/{name}/issues/{number}/dependencies/blocked_by", s.addBlockedBy)
+	mux.HandleFunc("GET /search/issues", s.searchIssues)
+	mux.HandleFunc("GET /repos/{owner}/{name}/milestones", s.listMilestones)
+	mux.HandleFunc("GET /repos/{owner}/{name}/milestones/{number}", s.milestone)
+	mux.HandleFunc("POST /repos/{owner}/{name}/milestones", s.createMilestone)
+	mux.HandleFunc("PATCH /repos/{owner}/{name}/milestones/{number}", s.patchMilestone)
+	mux.HandleFunc("GET /repos/{owner}/{name}/labels", s.labels)
+	mux.HandleFunc("PATCH /repos/{owner}/{name}/pulls/{number}", s.patchPull)
+	mux.HandleFunc("GET /repos/{owner}/{name}/releases", s.releases)
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues/{number}/comments", s.comments)
 	mux.HandleFunc("POST /repos/{owner}/{name}/issues/{number}/comments", s.createComment)
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues/comments/{id}/reactions", s.reactions)
@@ -149,18 +195,25 @@ func (s *Server) record(next http.Handler) http.Handler {
 			writeJSON(w, http.StatusUnauthorized, map[string]any{"message": "Requires authentication"})
 			return
 		}
-		if r.Method == http.MethodPost {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			raw, _ := io.ReadAll(r.Body)
 			var body map[string]any
-			if err := json.Unmarshal(raw, &body); err != nil {
-				s.t.Errorf("forgetest: POST %s: body is no JSON object: %v", r.URL.Path, err)
+			if r.Method != http.MethodDelete {
+				if err := json.Unmarshal(raw, &body); err != nil {
+					s.t.Errorf("forgetest: %s %s: body is no JSON object: %v", r.Method, r.URL.Path, err)
+				}
 			}
 			s.mu.Lock()
-			s.Posts = append(s.Posts, Post{Path: r.URL.Path, Body: body})
+			s.Posts = append(s.Posts, Post{Method: r.Method, Path: r.URL.Path, Body: body})
 			s.mu.Unlock()
 			r.Body = io.NopCloser(bytes.NewReader(raw))
 		}
-		if status := s.Fail[r.Method+" "+r.URL.Path]; status != 0 {
+		key := r.Method + " " + r.URL.Path
+		if status := s.Fail[key]; status != 0 {
+			writeJSON(w, status, map[string]any{"message": cmp.Or(s.FailMessage[key], http.StatusText(status))})
+			return
+		}
+		if status := s.failFirst(r.Method + " " + r.URL.Path); status != 0 {
 			writeJSON(w, status, map[string]any{"message": http.StatusText(status)})
 			return
 		}
@@ -173,20 +226,21 @@ func (s *Server) repo(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"default_branch": "main"})
 }
 
-// createPull opens a pull request: number 100 plus the count of POSTs to the path so far, on the
-// head the body names. The body is in Posts.
-func (s *Server) createPull(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Head string `json:"head"`
+// failFirst returns the FailFirst status for key once and then forgets it.
+func (s *Server) failFirst(key string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	status := s.FailFirst[key]
+	delete(s.FailFirst, key)
+	return status
+}
+
+func (s *Server) releases(w http.ResponseWriter, r *http.Request) {
+	var out []any
+	for _, rel := range s.Releases[r.PathValue("owner")+"/"+r.PathValue("name")] {
+		out = append(out, rel)
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{"message": "bad body"})
-		return
-	}
-	n := 100 + s.Count(r.URL.Path)
-	writeJSON(w, http.StatusCreated, map[string]any{"number": n,
-		"html_url": fmt.Sprintf("%s/%s/%s/pull/%d", s.srv.URL, r.PathValue("owner"), r.PathValue("name"), n),
-		"head":     map[string]any{"ref": body.Head, "sha": ""}})
+	s.page(w, r, out)
 }
 
 func (s *Server) user(w http.ResponseWriter, _ *http.Request) {
@@ -194,6 +248,8 @@ func (s *Server) user(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) issue(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	n, err := strconv.Atoi(r.PathValue("number"))
 	issue, ok := s.Issues[n]
 	if err != nil || !ok {
@@ -206,11 +262,14 @@ func (s *Server) issue(w http.ResponseWriter, r *http.Request) {
 // listIssues serves Issues by number, filtered on state (default open; an item without state
 // is open) and milestone (the milestone.number), in pages.
 func (s *Server) listIssues(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	state := r.URL.Query().Get("state")
 	if state == "" {
 		state = "open"
 	}
 	milestone := r.URL.Query().Get("milestone")
+	label := r.URL.Query().Get("labels")
 	var nums []int
 	for n := range s.Issues {
 		nums = append(nums, n)
@@ -220,6 +279,9 @@ func (s *Server) listIssues(w http.ResponseWriter, r *http.Request) {
 	for _, n := range nums {
 		it := s.Issues[n]
 		if st, _ := it["state"].(string); state != "all" && state != cmp.Or(st, "open") {
+			continue
+		}
+		if label != "" && !slices.Contains(labelNames(it["labels"]), label) {
 			continue
 		}
 		if milestone != "" {
@@ -247,11 +309,33 @@ func (s *Server) blockedBy(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) pulls(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	state := cmp.Or(r.URL.Query().Get("state"), "open")
 	var out []any
 	for _, p := range s.Pulls {
+		if st, _ := p["state"].(string); state != "all" && state != cmp.Or(st, "open") {
+			continue
+		}
 		out = append(out, p)
 	}
 	s.page(w, r, out)
+}
+
+func (s *Server) pull(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n, _ := strconv.Atoi(r.PathValue("number"))
+	if i := s.pullIndex(n); i >= 0 {
+		writeJSON(w, http.StatusOK, s.Pulls[i])
+		return
+	}
+	writeJSON(w, http.StatusNotFound, map[string]any{"message": "Not Found"})
+}
+
+// pullIndex is the index of pull request n in Pulls, or -1. Call it with s.mu held.
+func (s *Server) pullIndex(n int) int {
+	return slices.IndexFunc(s.Pulls, func(p map[string]any) bool { return commentID(p["number"]) == int64(n) })
 }
 
 func (s *Server) comments(w http.ResponseWriter, r *http.Request) {
@@ -401,6 +485,11 @@ func (s *Server) permission(w http.ResponseWriter, r *http.Request) {
 // page serves one page of items as GitHub does: per_page (default 30, at most 100) and page
 // from the query, and a Link rel="next" while more items follow.
 func (s *Server) page(w http.ResponseWriter, r *http.Request, items []any) {
+	s.pageAs(w, r, items, func(items []any) any { return items })
+}
+
+// pageAs is page with the items of the page wrapped by wrap, as search results are.
+func (s *Server) pageAs(w http.ResponseWriter, r *http.Request, items []any, wrap func([]any) any) {
 	q := r.URL.Query()
 	per, err := strconv.Atoi(q.Get("per_page"))
 	if err != nil || per <= 0 {
@@ -418,7 +507,7 @@ func (s *Server) page(w http.ResponseWriter, r *http.Request, items []any) {
 		next := url.URL{Path: r.URL.Path, RawQuery: q.Encode()}
 		w.Header().Set("Link", fmt.Sprintf(`<%s%s>; rel="next"`, s.srv.URL, next.String()))
 	}
-	writeJSON(w, http.StatusOK, append([]any{}, items[start:end]...))
+	writeJSON(w, http.StatusOK, wrap(append([]any{}, items[start:end]...)))
 }
 
 func (s *Server) graphql(w http.ResponseWriter, r *http.Request) {
@@ -453,6 +542,16 @@ func (s *Server) graphql(w http.ResponseWriter, r *http.Request) {
 	switch op {
 	case "Board":
 		data = s.board(req.Variables)
+	case "Planning":
+		data = s.planIssues(req.Variables)
+	case "PlanMilestones":
+		data = s.planMilestones(req.Variables)
+	case "PlanCounts":
+		var err error
+		if data, err = s.planCounts(req.Query, req.Variables); err != nil {
+			writeJSON(w, http.StatusOK, map[string]any{"data": nil, "errors": []any{map[string]any{"message": err.Error()}}})
+			return
+		}
 	case "BranchPRs":
 		branch, _ := req.Variables["branch"].(string)
 		nodes := s.Branches[branch]
@@ -463,7 +562,11 @@ func (s *Server) graphql(w http.ResponseWriter, r *http.Request) {
 			"nodes":    append([]map[string]any{}, nodes...),
 		}}}
 	case "IssueItems":
-		data = s.issueItems(req.Query, req.Variables)
+		var errs []any
+		if data, errs = s.issueItems(req.Query, req.Variables); errs != nil {
+			writeJSON(w, http.StatusOK, map[string]any{"data": data, "errors": errs})
+			return
+		}
 	case "AddToBoard":
 		data = s.addToBoard(req.Variables)
 	case "SetStatus":
@@ -508,10 +611,154 @@ func (s *Server) board(vars map[string]any) any {
 	}}}
 }
 
+// planPage cuts items by the cursor "cursor-<offset>" in vars into a page of 100 and the
+// connection around it, with the stuck cursor when PlanStuckCursor is set.
+func (s *Server) planPage(vars map[string]any, items []map[string]any) map[string]any {
+	start := 0
+	if after, _ := vars["after"].(string); after != "" {
+		n, err := strconv.Atoi(strings.TrimPrefix(after, "cursor-"))
+		if err != nil {
+			s.t.Errorf("forgetest: Planning after = %q, not a cursor this server gave", after)
+		}
+		start = min(n, len(items))
+	}
+	end := min(start+100, len(items))
+	more, cursor := end < len(items), fmt.Sprintf("cursor-%d", end)
+	if s.PlanStuckCursor != nil {
+		more, cursor = true, *s.PlanStuckCursor
+	}
+	return map[string]any{
+		"pageInfo": map[string]any{"hasNextPage": more, "endCursor": cursor},
+		"nodes":    append([]map[string]any{}, items[start:end]...),
+	}
+}
+
+// planIssues serves the open issues of Issues, without pull requests, in number order.
+func (s *Server) planIssues(vars map[string]any) any {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var nums []int
+	for n, it := range s.Issues {
+		if _, pr := it["pull_request"]; pr {
+			continue
+		}
+		if st, _ := it["state"].(string); cmp.Or(st, "open") == "open" {
+			nums = append(nums, n)
+		}
+	}
+	slices.Sort(nums)
+	var nodes []map[string]any
+	for _, n := range nums {
+		it := s.Issues[n]
+		node := map[string]any{"number": n, "title": it["title"], "url": it["html_url"], "milestone": nil}
+		if m, ok := it["milestone"].(map[string]any); ok {
+			node["milestone"] = map[string]any{"number": m["number"], "title": m["title"],
+				"state": strings.ToUpper(fmt.Sprint(m["state"])), "description": m["description"]}
+		}
+		var blockers []any
+		for _, b := range s.BlockedBy[n] {
+			_, repo, _ := strings.Cut(fmt.Sprint(b["repository_url"]), "/repos/")
+			blockers = append(blockers, map[string]any{"number": b["number"],
+				"state": strings.ToUpper(fmt.Sprint(b["state"])), "repository": map[string]any{"nameWithOwner": repo}})
+		}
+		node["blockedBy"] = map[string]any{"nodes": append([]any{}, blockers...),
+			"pageInfo": map[string]any{"hasNextPage": s.PlanBlockedByMore[n]}}
+		nodes = append(nodes, node)
+	}
+	return map[string]any{"repository": map[string]any{"issues": s.planPage(vars, nodes)}}
+}
+
+// planMilestones serves the OPEN PlanMilestones.
+func (s *Server) planMilestones(vars map[string]any) any {
+	var open []map[string]any
+	for _, m := range s.PlanMilestones {
+		if m["state"] == "OPEN" {
+			open = append(open, m)
+		}
+	}
+	return map[string]any{"repository": map[string]any{"milestones": s.planPage(vars, open)}}
+}
+
+var (
+	searchAlias     = regexp.MustCompile(`(\w+):\s*search\(query:\s*\$(\w+)`)
+	searchMilestone = regexp.MustCompile(`milestone:"((?:[^"\\]|\\.)*)"`)
+)
+
+// planCounts answers every search alias of the query with the issueCount of its qualifiers
+// over Issues. A query without is:issue, or with a qualifier this fake does not know, is an
+// error: GitHub would count pull requests too, or the fake would count the wrong set.
+func (s *Server) planCounts(query string, vars map[string]any) (any, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := map[string]any{}
+	for _, m := range searchAlias.FindAllStringSubmatch(query, -1) {
+		q, _ := vars[m[2]].(string)
+		n, err := s.searchCount(q)
+		if err != nil {
+			return nil, fmt.Errorf("search %s: %w", m[1], err)
+		}
+		out[m[1]] = map[string]any{"issueCount": n}
+	}
+	return out, nil
+}
+
+func (s *Server) searchCount(q string) (int, error) {
+	title := ""
+	if m := searchMilestone.FindStringSubmatch(q); m != nil {
+		title = m[1]
+		q = strings.Replace(q, m[0], "", 1)
+	}
+	var issue, open, closed bool
+	reason := ""
+	for _, tok := range strings.Fields(q) {
+		switch {
+		case strings.HasPrefix(tok, "repo:"):
+		case tok == "is:issue":
+			issue = true
+		case tok == "is:open":
+			open = true
+		case tok == "is:closed":
+			closed = true
+		case strings.HasPrefix(tok, "reason:"):
+			reason = strings.TrimPrefix(tok, "reason:")
+		default:
+			return 0, fmt.Errorf("qualifier %q is not served by forgetest", tok)
+		}
+	}
+	if !issue {
+		return 0, fmt.Errorf("query %q has no is:issue, so it would count pull requests", q)
+	}
+	count := 0
+	for _, it := range s.Issues {
+		if _, pr := it["pull_request"]; pr {
+			continue
+		}
+		st, _ := it["state"].(string)
+		st = cmp.Or(st, "open")
+		if (open && st != "open") || (closed && st != "closed") {
+			continue
+		}
+		if reason != "" {
+			if r, _ := it["state_reason"].(string); r != reason {
+				continue
+			}
+		}
+		if title != "" {
+			if m, _ := it["milestone"].(map[string]any); m == nil || m["title"] != title {
+				continue
+			}
+		}
+		count++
+	}
+	return count, nil
+}
+
 // issueItems serves the BoardNodes whose content.number is $number, each with project { id }
 // from ProjectID. The content is left out, as the real query does not select it, and so is
-// isArchived when the query does not select it.
-func (s *Server) issueItems(query string, vars map[string]any) any {
+// isArchived when the query does not select it. An issue with neither an Issues entry nor a
+// BoardNodes item does not exist: it answers as GitHub does, issue null plus a NOT_FOUND error
+// on the path repository.issue.
+func (s *Server) issueItems(query string, vars map[string]any) (data any, errs []any) {
 	number, _ := vars["number"].(float64)
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -529,10 +776,18 @@ func (s *Server) issueItems(query string, vars map[string]any) any {
 		}
 		nodes = append(nodes, cp)
 	}
+	if _, known := s.Issues[int(number)]; !known && len(nodes) == 0 {
+		return map[string]any{"repository": map[string]any{"issue": nil}}, []any{map[string]any{
+			"type":      "NOT_FOUND",
+			"path":      []any{"repository", "issue"},
+			"locations": []any{map[string]any{"line": 3, "column": 5}},
+			"message":   fmt.Sprintf("Could not resolve to an Issue with the number of %d.", int(number)),
+		}}
+	}
 	return map[string]any{"repository": map[string]any{"issue": map[string]any{"projectItems": map[string]any{
 		"pageInfo": map[string]any{"hasNextPage": false},
 		"nodes":    nodes,
-	}}}}
+	}}}}, nil
 }
 
 // addToBoard appends a BoardNodes item "item-<content>" for the Issues item whose node_id is

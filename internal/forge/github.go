@@ -33,6 +33,7 @@ type Issue struct {
 	Body      string
 	Author    string // user.login
 	Labels    []string
+	CreatedAt time.Time
 	UpdatedAt time.Time
 	ClosedAt  time.Time  // zero while open
 	Milestone *Milestone // nil: none
@@ -190,7 +191,7 @@ func (c *GitHub) Comments(ctx context.Context, number int) ([]protocol.Comment, 
 }
 
 // do is the only place that makes a request. A non-nil body is sent as JSON; a non-nil into
-// receives the decoded JSON response. It returns the URL of the next page, or "" when there is none.
+// receives the decoded JSON response, or the raw response when it is a *[]byte. It returns the URL of the next page, or "" when there is none.
 func (c *GitHub) do(ctx context.Context, method, url string, body, into any) (string, error) {
 	var rd io.Reader
 	if body != nil {
@@ -204,7 +205,9 @@ func (c *GitHub) do(ctx context.Context, method, url string, body, into any) (st
 	if err != nil {
 		return "", fmt.Errorf("forge request %s: %w", url, err)
 	}
-	req.Header.Set("Authorization", "Bearer "+c.Token)
+	if c.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.Token)
+	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 	if body != nil {
@@ -218,7 +221,13 @@ func (c *GitHub) do(ctx context.Context, method, url string, body, into any) (st
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return "", statusError(method, url, resp)
 	}
-	if into != nil {
+	if raw, ok := into.(*[]byte); ok {
+		data, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return "", fmt.Errorf("forge %s %s: read: %w", method, url, err)
+		}
+		*raw = data
+	} else if into != nil {
 		if err := json.NewDecoder(resp.Body).Decode(into); err != nil {
 			return "", fmt.Errorf("forge %s %s: decode: %w", method, url, err)
 		}

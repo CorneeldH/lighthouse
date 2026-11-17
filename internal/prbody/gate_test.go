@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -21,6 +22,9 @@ import (
 // The twins of tests/pack/test_pr_body_gate.py that are no data: `gh`, git repos and time.
 
 const origin = "https://github.com/Acme/widgets.git"
+
+// acmeRepo is forge.repo Acme/widgets on GitHub.
+var acmeRepo = Repo{Kind: "github", Slug: "Acme/widgets"}
 
 // closesBody is a body with `Closes #nr` and an Evidence table of n rows.
 func closesBody(nr string, n int) string {
@@ -81,7 +85,7 @@ type fetched struct {
 
 func fetch(t *testing.T, ctx context.Context, repo string, nr int) fetched {
 	t.Helper()
-	count, ok, cause, err := fetchACCount(ctx, DefaultEnv(), repo, nr)
+	count, ok, cause, err := fetchACCount(ctx, DefaultEnv(), Repo{Kind: "github", Slug: repo}, nr)
 	if err != nil {
 		t.Fatalf("fetchACCount: %v", err)
 	}
@@ -89,52 +93,6 @@ func fetch(t *testing.T, ctx context.Context, repo string, nr int) fetched {
 }
 
 // --- fetch_ac_count -----------------------------------------------------------
-
-// twin of test_fetch_ac_count_without_gh
-func TestFetchACCountWithoutGH(t *testing.T) {
-	withConfig(t, "Acme/widgets")
-	t.Setenv("PATH", t.TempDir())
-	eq(t, "fetch", fetch(t, context.Background(), "Acme/widgets", 5), fetched{0, false, "gh is missing"})
-}
-
-// twin of test_fetch_ac_count_gh_fails
-func TestFetchACCountGHFails(t *testing.T) {
-	withConfig(t, "Acme/widgets")
-	t.Setenv("PATH", stubBin(t, map[string]string{"gh": "#!/bin/sh\nexit 1\n"}))
-	eq(t, "fetch", fetch(t, context.Background(), "Acme/widgets", 5), fetched{0, false, "gh api failed (rc 1)"})
-}
-
-// twin of test_fetch_ac_count_counts
-func TestFetchACCountCounts(t *testing.T) {
-	withConfig(t, "Acme/widgets")
-	callLog := filepath.Join(t.TempDir(), "aanroep.txt")
-	stub := "#!/bin/sh\necho \"$@\" > \"" + callLog + "\"\n" +
-		"printf '%s\\n' '### Acceptatiecriteria' '- [ ] a' '- [x] b' '- [ ] c' '### Definition of Done' '- [ ] d'\n"
-	t.Setenv("PATH", stubBin(t, map[string]string{"gh": stub}))
-	eq(t, "fetch", fetch(t, context.Background(), "Acme/widgets", 5), fetched{3, true, ""})
-	got, err := os.ReadFile(callLog)
-	if err != nil {
-		t.Fatal(err)
-	}
-	eq(t, "argv", strings.Fields(string(got)), []string{"api", "repos/Acme/widgets/issues/5", "--jq", ".body"})
-}
-
-// twin of test_fetch_ac_count_no_ac_heading
-func TestFetchACCountNoACHeading(t *testing.T) {
-	withConfig(t, "Acme/widgets")
-	t.Setenv("PATH", stubBin(t, map[string]string{"gh": "#!/bin/sh\nprintf 'geen kop hier\\n'\n"}))
-	eq(t, "fetch", fetch(t, context.Background(), "Acme/widgets", 5), fetched{0, false, "no acceptance criteria heading"})
-}
-
-// A gh that hangs, with a grandchild that holds stdout open: the whole group goes at the timeout.
-// twin of test_fetch_ac_count_timeout
-func TestFetchACCountTimeout(t *testing.T) {
-	withConfig(t, "Acme/widgets")
-	setTimeouts(t, 300*time.Millisecond, gateDeadline)
-	pidFile := hangingGH(t)
-	eq(t, "fetch", fetch(t, context.Background(), "Acme/widgets", 5), fetched{0, false, "timeout after 0.3 s"})
-	assertGroupGone(t, pidFile)
-}
 
 // twin of test_fetch_ac_count_deadline_expired
 func TestFetchACCountDeadlineExpired(t *testing.T) {
@@ -163,7 +121,7 @@ func TestFindFromUnknownCwd(t *testing.T) {
 
 func pcAt(cwd string, repo ...string) PrCreate {
 	body := "x"
-	pc := PrCreate{Body: &body}
+	pc := PrCreate{Tool: "gh", Body: &body}
 	if cwd != "" {
 		pc.Cwd = &cwd
 	}
@@ -175,7 +133,7 @@ func pcAt(cwd string, repo ...string) PrCreate {
 
 func decision(t *testing.T, pc PrCreate, project, repo string) string {
 	t.Helper()
-	d, _ := InScope(context.Background(), pc, project, repo)
+	d, _ := InScope(context.Background(), pc, project, Repo{Kind: "github", Slug: repo})
 	return d
 }
 
@@ -194,7 +152,7 @@ func TestScopeOwnRepo(t *testing.T) {
 // twin of test_scope_other_repo_flag
 func TestScopeOtherRepoFlag(t *testing.T) {
 	_, project := newProject(t)
-	d, reason := InScope(context.Background(), pcAt(project, "x/y"), project, "Acme/widgets")
+	d, reason := InScope(context.Background(), pcAt(project, "x/y"), project, acmeRepo)
 	eq(t, "scope", [2]string{d, reason}, [2]string{"skip", "skipped — other repo x/y"})
 }
 
@@ -205,7 +163,7 @@ func TestScopeOutsideRepo(t *testing.T) {
 	if err := os.Mkdir(outside, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	d, reason := InScope(context.Background(), pcAt(outside), project, "Acme/widgets")
+	d, reason := InScope(context.Background(), pcAt(outside), project, acmeRepo)
 	eq(t, "scope", [2]string{d, reason}, [2]string{"skip", "skipped — outside this repo"})
 }
 
@@ -220,7 +178,7 @@ func TestScopeNonLiteralRepoBlocksAlsoOutsideTheRepo(t *testing.T) {
 	if err != nil || len(found) != 1 {
 		t.Fatalf("FindPrCreates: %v, %d found", err, len(found))
 	}
-	d, reason := InScope(context.Background(), found[0], project, "Acme/widgets")
+	d, reason := InScope(context.Background(), found[0], project, acmeRepo)
 	eq(t, "scope", [2]string{d, reason}, [2]string{"block", "non-literal --repo — spell the repo out"})
 }
 
@@ -258,7 +216,7 @@ func TestScopeForgeWorktreeOfTheSameRepo(t *testing.T) {
 	base, project := newProject(t)
 	fixturesetup.Git(t, project, "remote", "add", "origin", origin)
 	work := forgeWorktree(t, project, base, origin)
-	d, reason := InScope(context.Background(), pcAt(work), project, "Acme/widgets")
+	d, reason := InScope(context.Background(), pcAt(work), project, acmeRepo)
 	eq(t, "scope", [2]string{d, reason}, [2]string{"block",
 		"`gh pr create` without --repo: in a clone of a fork gh then opens the PR in the upstream repo. Add `--repo Acme/widgets`."})
 }
@@ -276,7 +234,7 @@ func TestScopeOtherOriginNamesCommonDirsAndRemotes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	d, reason := InScope(context.Background(), pcAt(work), project, "Acme/widgets")
+	d, reason := InScope(context.Background(), pcAt(work), project, acmeRepo)
 	eq(t, "scope", [2]string{d, reason}, [2]string{"skip",
 		"skipped — outside this repo (git-common-dir " + common + " vs " + ref +
 			"; origin https://github.com/Acme/gadgets.git vs " + origin + ")"})
@@ -285,7 +243,7 @@ func TestScopeOtherOriginNamesCommonDirsAndRemotes(t *testing.T) {
 // twin of test_scope_unknown_cwd_blocks
 func TestScopeUnknownCwdBlocks(t *testing.T) {
 	_, project := newProject(t)
-	d, reason := InScope(context.Background(), pcAt(""), project, "Acme/widgets")
+	d, reason := InScope(context.Background(), pcAt(""), project, acmeRepo)
 	eq(t, "scope", [2]string{d, reason}, [2]string{"block", "working directory of `gh pr create` cannot be resolved"})
 }
 
@@ -294,7 +252,7 @@ func TestScopeOtherGitErrorBlocks(t *testing.T) {
 	_, project := newProject(t)
 	// A git that fails without "not a git repository" is no proof of "outside".
 	t.Setenv("PATH", stubBin(t, map[string]string{"git": "#!/bin/sh\necho kapot >&2\nexit 128\n"}))
-	d, reason := InScope(context.Background(), pcAt(project), project, "Acme/widgets")
+	d, reason := InScope(context.Background(), pcAt(project), project, acmeRepo)
 	eq(t, "scope", [2]string{d, reason}, [2]string{"block", "repo of the project cannot be determined (git failed (rc 128): kapot)"})
 }
 
@@ -315,21 +273,21 @@ func TestNotAGitRepositoryUnderOtherLocale(t *testing.T) {
 	t.Setenv("LANG", "de_DE.UTF-8")
 	t.Setenv("LC_ALL", "")
 	t.Setenv("LANGUAGE", "")
-	d, reason := InScope(context.Background(), pcAt(outside), project, "Acme/widgets")
+	d, reason := InScope(context.Background(), pcAt(outside), project, acmeRepo)
 	eq(t, "scope", [2]string{d, reason}, [2]string{"skip", "skipped — outside this repo"})
 }
 
 // twin of test_without_repo_passes_with_repo_flag
 func TestWithoutRepoPassesWithRepoFlag(t *testing.T) {
 	_, project := newProject(t)
-	d, reason := InScope(context.Background(), pcAt(project, "Acme/widgets"), project, "Acme/widgets")
+	d, reason := InScope(context.Background(), pcAt(project, "Acme/widgets"), project, acmeRepo)
 	eq(t, "scope", [2]string{d, reason}, [2]string{"check", ""})
 }
 
 // twin of test_without_repo_not_blocked_without_forge_repo
 func TestWithoutRepoNotBlockedWithoutForgeRepo(t *testing.T) {
 	_, project := newProject(t)
-	d, reason := InScope(context.Background(), pcAt(project), project, "")
+	d, reason := InScope(context.Background(), pcAt(project), project, Repo{Kind: "github"})
 	eq(t, "scope", [2]string{d, reason}, [2]string{"check", ""})
 }
 
@@ -342,9 +300,15 @@ type mainResult struct {
 
 func runMain(t *testing.T, project, command, cwd string) mainResult {
 	t.Helper()
+	return runMainEnv(t, project, command, cwd, DefaultEnv())
+}
+
+// runMainEnv is Main with env, from the project directory project.
+func runMainEnv(t *testing.T, project, command, cwd string, env Env) mainResult {
+	t.Helper()
 	t.Setenv("CLAUDE_PROJECT_DIR", project)
 	var stdout, stderr bytes.Buffer
-	rc := Main(context.Background(), cwd, strings.NewReader(command), &stdout, &stderr, DefaultEnv())
+	rc := Main(context.Background(), cwd, strings.NewReader(command), &stdout, &stderr, env)
 	return mainResult{rc, stdout.String(), stderr.String()}
 }
 
@@ -431,9 +395,9 @@ func TestMainOtherRepoSkipped(t *testing.T) {
 func TestMainClosesPassesWithCount(t *testing.T) {
 	withConfig(t, "Acme/widgets")
 	_, project := newProject(t)
-	prependPath(t, stubBin(t, map[string]string{"gh": "#!/bin/sh\nprintf '%s\\n' '### Acceptatiecriteria' '- [ ] a' '- [ ] b'\n"}))
+	env := Env{Issue: issueFake(t, "Acme/widgets", 9, "### Acceptatiecriteria\n- [ ] a\n- [ ] b\n", nil)}
 	writeFile(t, filepath.Join(project, "body.md"), closesBody("9", 2))
-	got := runMain(t, project, "gh pr create --repo Acme/widgets -F body.md", project)
+	got := runMainEnv(t, project, "gh pr create --repo Acme/widgets -F body.md", project, env)
 	eq(t, "main", got, mainResult{0, "pr-create-gate: body checked — Closes #9 (2 AC, 2 rows)\n", ""})
 }
 
@@ -441,9 +405,9 @@ func TestMainClosesPassesWithCount(t *testing.T) {
 func TestMainClosesACMismatchBlocks(t *testing.T) {
 	withConfig(t, "Acme/widgets")
 	_, project := newProject(t)
-	prependPath(t, stubBin(t, map[string]string{"gh": "#!/bin/sh\nprintf '%s\\n' '### Acceptatiecriteria' '- [ ] a' '- [ ] b' '- [ ] c'\n"}))
+	env := Env{Issue: issueFake(t, "Acme/widgets", 9, "### Acceptatiecriteria\n- [ ] a\n- [ ] b\n- [ ] c\n", nil)}
 	writeFile(t, filepath.Join(project, "body.md"), closesBody("9", 2))
-	got := runMain(t, project, "gh pr create --repo Acme/widgets -F body.md", project)
+	got := runMainEnv(t, project, "gh pr create --repo Acme/widgets -F body.md", project, env)
 	eq(t, "main", got, mainResult{2, "", blocked("Closes #9: the issue has 3 acceptance criteria, the Evidence block 2 rows — one row per AC")})
 }
 
@@ -462,25 +426,6 @@ func TestMainSeveralBlockersJoined(t *testing.T) {
 	eq(t, "main", runMain(t, project, cmd, project), mainResult{2, "", blocked("--fill gives no body to check; no body")})
 }
 
-// twin of test_main_fallback_without_gh_notices_and_passes
-func TestMainFallbackWithoutGHNoticesAndPasses(t *testing.T) {
-	withConfig(t, "Acme/widgets")
-	_, project := newProject(t)
-	gitPath, err := exec.LookPath("git")
-	if err != nil {
-		t.Fatal(err)
-	}
-	bin := t.TempDir()
-	if err := os.Symlink(gitPath, filepath.Join(bin, "git")); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", bin)
-	writeFile(t, filepath.Join(project, "body.md"), closesBody("9", 1))
-	got := runMain(t, project, "gh pr create --repo Acme/widgets -F body.md", project)
-	eq(t, "main", got, mainResult{0, "pr-create-gate: body checked — Closes #9 (AC not counted, 1 rows)\n" +
-		"pr-create-gate: AC count not measurable for #9 (gh is missing) — structure checked only\n", ""})
-}
-
 func threeCloses(withEvidence ...string) string {
 	body := "Closes #5\nCloses #6\nCloses #7\n\n"
 	for _, nr := range withEvidence {
@@ -489,39 +434,27 @@ func threeCloses(withEvidence ...string) string {
 	return body
 }
 
-// slowGH puts a gh first on PATH that logs each start and then hangs for 3 s; it returns the log.
-func slowGH(t *testing.T) string {
-	t.Helper()
-	log := filepath.Join(t.TempDir(), "gh-calls")
-	prependPath(t, stubBin(t, map[string]string{"gh": "#!/bin/sh\necho start >> \"" + log + "\"\nsleep 3\n"}))
-	return log
+// slowIssue is an Env.Issue that counts each start and then hangs until its context ends.
+func slowIssue(starts *atomic.Int32) Env {
+	return Env{Issue: func(ctx context.Context, _ Repo, _ int) (string, error) {
+		starts.Add(1)
+		<-ctx.Done()
+		return "", ctx.Err()
+	}}
 }
 
-// ghStarts counts the starts in the log of slowGH.
-func ghStarts(t *testing.T, log string) int {
-	t.Helper()
-	raw, err := os.ReadFile(log)
-	if os.IsNotExist(err) {
-		return 0
-	}
-	if err != nil {
-		t.Fatal(err)
-	}
-	return strings.Count(string(raw), "start\n")
-}
-
-// Three Closes targets, gh hangs: without a total deadline this costs 3 x the timeout. No
-// wall-clock bound (#338): the deadline is total when the hung gh of the first target is the only
+// Three Closes targets, the forge hangs: without a total deadline this costs 3 x the timeout. No
+// wall-clock bound (#338): the deadline is total when the hung read of the first target is the only
 // one started; the later targets find the budget spent.
 func TestMainDeadlineBoundsSlowGHFallback(t *testing.T) {
 	withConfig(t, "Acme/widgets")
 	_, project := newProject(t)
 	setTimeouts(t, acTimeout, time.Second)
-	log := slowGH(t)
+	var starts atomic.Int32
 	writeFile(t, filepath.Join(project, "body.md"), threeCloses("5", "6", "7"))
-	got := runMain(t, project, "gh pr create --repo Acme/widgets -F body.md", project)
-	if n := ghStarts(t, log); n > 1 {
-		t.Errorf("gh started %d times, want at most 1: the deadline is not total", n)
+	got := runMainEnv(t, project, "gh pr create --repo Acme/widgets -F body.md", project, slowIssue(&starts))
+	if n := starts.Load(); n > 1 {
+		t.Errorf("issue read started %d times, want at most 1: the deadline is not total", n)
 	}
 	notice := func(nr string) string {
 		return "pr-create-gate: AC count not measurable for #" + nr + " (deadline reached) — structure checked only\n"
@@ -536,12 +469,12 @@ func TestMainDeadlineKeepsBlockerOfEarlierTarget(t *testing.T) {
 	withConfig(t, "Acme/widgets")
 	_, project := newProject(t)
 	setTimeouts(t, acTimeout, time.Second)
-	log := slowGH(t)
+	var starts atomic.Int32
 	writeFile(t, filepath.Join(project, "body.md"), threeCloses("6", "7"))
-	got := runMain(t, project, "gh pr create --repo Acme/widgets -F body.md", project)
-	// The total deadline, without a wall-clock bound (#338): one hung gh at most.
-	if n := ghStarts(t, log); n > 1 {
-		t.Errorf("gh started %d times, want at most 1: the deadline is not total", n)
+	got := runMainEnv(t, project, "gh pr create --repo Acme/widgets -F body.md", project, slowIssue(&starts))
+	// The total deadline, without a wall-clock bound (#338): one hung read at most.
+	if n := starts.Load(); n > 1 {
+		t.Errorf("issue read started %d times, want at most 1: the deadline is not total", n)
 	}
 	eq(t, "main", got, mainResult{2, "", blocked("Closes #5: heading `### Evidence #5` is missing")})
 }
@@ -625,9 +558,9 @@ func TestCheckCreateReadsInvalidUTF8(t *testing.T) {
 	got := runMain(t, project, "gh pr create --repo Acme/widgets -F short.md", project)
 	eq(t, "ten invalid bytes", got, mainResult{0, "pr-create-gate: body checked — No issue\n", ""})
 
-	prependPath(t, stubBin(t, map[string]string{"gh": "#!/bin/sh\nprintf '%s\\n' '### Acceptatiecriteria' '- [ ] a'\n"}))
+	env := Env{Issue: issueFake(t, "Acme/widgets", 9, "### Acceptatiecriteria\n- [ ] a\n", nil)}
 	writeFile(t, filepath.Join(project, "body.md"), strings.ReplaceAll(closesBody("9", 1), "| a |", "| a\xff |")+"\r\n")
-	got = runMain(t, project, "gh pr create --repo Acme/widgets -F body.md", project)
+	got = runMainEnv(t, project, "gh pr create --repo Acme/widgets -F body.md", project, env)
 	eq(t, "closes", got, mainResult{0, "pr-create-gate: body checked — Closes #9 (1 AC, 1 rows)\n", ""})
 }
 
@@ -755,7 +688,7 @@ func TestRepoReprInBlocker(t *testing.T) {
 		"a\uFFFDb": "--repo 'a\uFFFDb' does not have the form [HOST/]OWNER/REPO",
 		"a\xffb":   `--repo 'a\udcffb' does not have the form [HOST/]OWNER/REPO`,
 	} {
-		_, reason := InScope(context.Background(), PrCreate{Repo: &value}, t.TempDir(), "Acme/widgets")
+		_, reason := InScope(context.Background(), PrCreate{Tool: "gh", Repo: &value}, t.TempDir(), acmeRepo)
 		eq(t, value, reason, want)
 	}
 }

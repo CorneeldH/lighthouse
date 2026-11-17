@@ -50,7 +50,7 @@ func TestRefresherOverviewWaitsForFirstBuild(t *testing.T) {
 	}
 	got := make(chan res, 1)
 	go func() {
-		ov, err := r.Overview(context.Background())
+		ov, err := r.Latest(context.Background())
 		got <- res{ov, err}
 	}()
 	refreshed := make(chan struct{})
@@ -85,7 +85,7 @@ func TestRefresherOverviewHonoursContextBeforeFirstBuild(t *testing.T) {
 	}, time.Hour, time.Hour, time.Minute)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	ov, err := r.Overview(ctx)
+	ov, err := r.Latest(ctx)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("err = %v, want context.Canceled", err)
 	}
@@ -101,7 +101,7 @@ func TestRefresherServesStoredResultWithoutBuilding(t *testing.T) {
 	r := NewRefresher(fb.build, time.Hour, time.Hour, time.Minute)
 	r.refresh(context.Background())
 	for i := 0; i < 3; i++ {
-		ov, err := r.Overview(context.Background())
+		ov, err := r.Latest(context.Background())
 		if err != nil || ov.Returned[0].Title != "stored" {
 			t.Fatalf("call %d: ov=%+v err=%v", i, ov, err)
 		}
@@ -124,7 +124,7 @@ func TestRefresherFailureWinsOverOlderOverview(t *testing.T) {
 
 	r.refresh(ctx)
 	r.refresh(ctx)
-	ov, err := r.Overview(ctx)
+	ov, err := r.Latest(ctx)
 	if !errors.Is(err, boom) {
 		t.Fatalf("err = %v, want boom", err)
 	}
@@ -133,7 +133,7 @@ func TestRefresherFailureWinsOverOlderOverview(t *testing.T) {
 	}
 
 	r.refresh(ctx)
-	ov, err = r.Overview(ctx)
+	ov, err = r.Latest(ctx)
 	if err != nil || ov.Returned[0].Title != "ok" {
 		t.Fatalf("after recovery: ov=%+v err=%v", ov, err)
 	}
@@ -146,7 +146,7 @@ func TestRefresherBuildTimeout(t *testing.T) {
 	}}
 	r := NewRefresher(fb.build, time.Hour, time.Hour, 20*time.Millisecond)
 	r.refresh(context.Background())
-	_, err := r.Overview(context.Background())
+	_, err := r.Latest(context.Background())
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("err = %v, want DeadlineExceeded", err)
 	}
@@ -204,7 +204,7 @@ func TestRefresherRunRetriesSoonerAfterFailure(t *testing.T) {
 	defer cancelO()
 	// The second build's result is stored just after it returns; poll via Overview until it is ok.
 	for {
-		ov, err := r.Overview(ctxO)
+		ov, err := r.Latest(ctxO)
 		if err == nil {
 			if ov.Returned[0].Title != "recovered" {
 				t.Fatalf("ov = %+v", ov)
@@ -249,7 +249,7 @@ func sleepingBuild(d time.Duration, n int) (*fakeBuild, func() []buildSpan, <-ch
 	return fb, get, enough
 }
 
-func runUntil(t *testing.T, r *Refresher, enough <-chan struct{}) {
+func runUntil(t *testing.T, r *Refresher[overview.Overview], enough <-chan struct{}) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
@@ -297,5 +297,23 @@ func TestRefresherRunStartsNextBuildImmediatelyAfterOverrun(t *testing.T) {
 	}
 	if m := fb.maxSeen.Load(); m != 1 {
 		t.Fatalf("max builds in flight = %d, want 1", m)
+	}
+}
+
+// A failing Refresher[int] must not touch a succeeding Refresher[string]: each keeps its own
+// stored result and error.
+func TestRefresherTwoTypesDoNotShareFailure(t *testing.T) {
+	boom := errors.New("boom")
+	failing := NewRefresher(func(context.Context) (int, error) { return 0, boom }, time.Hour, time.Hour, time.Minute)
+	working := NewRefresher(func(context.Context) (string, error) { return "ok", nil }, time.Hour, time.Hour, time.Minute)
+	failing.refresh(context.Background())
+	working.refresh(context.Background())
+
+	if _, err := failing.Latest(context.Background()); !errors.Is(err, boom) {
+		t.Errorf("failing Latest error = %v, want boom", err)
+	}
+	got, err := working.Latest(context.Background())
+	if err != nil || got != "ok" {
+		t.Errorf("working Latest = %q, %v; want ok, nil", got, err)
 	}
 }

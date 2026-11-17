@@ -3,6 +3,7 @@ name: lighthouse-go-standard
 description: Use when writing or changing Go in this repository — packages, `_test.go` files, and the gofmt/vet/golangci-lint/race checks on them — and when planning a refactor, merging packages or choosing a test strategy, before a file is open. Carries a KPI table whose every row is a command that runs in this repository, plus the measurement rules (a zero without its GOOS, build tags, -race and GOWORK is not a zero). NOT for Python (use lighthouse-python-standard if present), shell that guards something (lighthouse-shell-standard if present), workflow YAML, or files outside the repository. In OpenCode the enforcing hooks do not run — run the KPI commands by hand.
 metadata:
   lighthouse: "go@dev"
+  origin: own
 ---
 
 # Writing Go in this repository
@@ -24,7 +25,7 @@ Before the first edit, write the classification sentence from that skill in the 
 and their minimal checks are in its section *Classify first*:
 
 ```text
-This is a <class> change; the likely regression surface is <observable behaviour>.
+Class: <class>. At risk: <the observable behaviour that could change>.
 ```
 
 ## KPIs

@@ -1901,3 +1901,38 @@ func TestTickWorkplaceFollowsHostToml(t *testing.T) {
 		})
 	}
 }
+
+const gitlabRepo = `[forge]
+kind = "gitlab"
+repo = "g/sub/p"
+
+[forge.board.status_options]
+"Controller" = "Controller"
+"On hold" = "On hold"
+
+[controller]
+
+[usage_guard]
+controller = true
+`
+
+// tick opens the forge of a GitLab repo whose board has only status_options: it is not refused
+// for the project_number, project_id or status_field_id a GitHub board needs.
+func TestTickOpensGitLabRepoWithoutProjectIDs(t *testing.T) {
+	dir := repoDir(t, gitlabRepo)
+	env, _ := tickFixture(t, dir)
+	loaded := repoconfig.LoadAll([]string{dir})
+	env.Getenv = func(k string) string {
+		if k == "GITLAB_TOKEN" {
+			return "tok"
+		}
+		return ""
+	}
+	out, err := openForges(context.Background(), env, loaded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out) != 1 || out[0].err != nil {
+		t.Fatalf("openForges = %+v, want one open forge", out)
+	}
+}

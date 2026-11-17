@@ -192,14 +192,76 @@ has comments, so it weighs most and reaches the budget first. That is a delibera
 risk, with no code to guard it; when the budget runs out both endpoints answer 502 through the
 existing `forgeError`.
 
+A GitLab repository costs more REST calls per build and per tick. Reading the comments of an
+issue is one call for its notes (more for over 100) plus one `award_emoji` call per note that is
+not a system note, because the notes list carries no award emoji. `BlockedBy` costs one call for
+the links plus one per closed blocker, to read whether a merge request that closes it is merged.
+`BranchPRs` costs one call for the list plus one per open merge request on the branch, because
+only a single merge request carries its pipeline. The board is two GraphQL queries of 100 work
+items per page: all open issues, and the closed issues updated in the last 14 days. GitLab.com
+allows about 2000 authenticated requests a minute per user; a self-hosted instance sets its own
+limit.
+
 Give it a token: `GH_TOKEN` (else `GITHUB_TOKEN`) in the environment, or `GITLAB_TOKEN` for a
-GitLab repository (GitLab repositories are supported from #259; until then such a repository is
-skipped with `forge: GitLab client not implemented yet`). `[forge] token_env` in a repository's `lighthouse.toml` names another variable
+GitLab repository. `[forge] token_env` in a repository's `lighthouse.toml` names another variable
 instead. A repository without a token is skipped for questions and returned issues, with a line on
 stderr, but `serve` still shows its runs. `--forge-url` (`LIGHTHOUSE_FORGE_URL`) sets the API base
 URL for GitHub repositories only; the GitHub token is never sent to a GitLab host. Create a fine-grained
 personal access token for those repositories with only the *Issues: read* permission. The
 server only reads. With the Controller filter described below it also needs the `project` scope.
+
+### A GitLab repository
+
+Set `kind = "gitlab"` under `[forge]` in the repository's `lighthouse.toml`, with `repo` as
+`group/name` or `group/subgroup/name`. A self-hosted GitLab adds `host = "gitlab.example.com"`
+(host name only; without `host` it is `gitlab.com`). The client speaks the REST API v4 and
+GraphQL. It is written for GitLab 19.4 and tested against a fake server only; the first run
+against a real GitLab is part of the definition of done of the GitLab milestone (#260). The token (`GITLAB_TOKEN`, or the `token_env` variable) needs the
+`api` scope to write, `read_api` to only read.
+
+GitLab keeps the status of an issue in its built-in issue status (a work item widget), not in a
+label. Add the statuses *On hold* and *Controller* to the top group of the lifecycle, under
+*Settings → Work items → Statuses*. A status the lifecycle lacks stops the write with an error
+that names the status and this place. Names are matched case-insensitively.
+
+The `[forge.board]` of a GitLab repository has two tables only. `status_options` needs *To do*,
+*In progress*, *Done* and *On hold*, and *Controller* as well once the file has a `[controller]`
+table. Each lighthouse name needs a GitLab status of its own, and each priority a label of its
+own: two names on one status or label are refused.
+
+```toml
+[forge]
+kind = "gitlab"
+repo = "group/sub/project"
+host = "gitlab.example.com"
+
+[forge.board.status_options]   # lighthouse name = GitLab status name
+"To do" = "To do"
+"In progress" = "In progress"
+"Done" = "Done"
+"On hold" = "On hold"
+"Controller" = "Controller"
+
+[forge.board.priority_options]  # lighthouse name = scoped label
+"P1" = "priority::P1"
+"P2" = "priority::P2"
+```
+
+`project_number`, `project_id`, `status_field_id` and `priority_field_id` are GitHub Projects
+keys and are refused for GitLab. Limits of this first GitLab version:
+
+- No script of `pack/core` is Python any more, so the old Python config reader, which
+  required the GitHub board keys for every `[forge.board]`, is gone, and a host needs no `python3` for the core.
+- The client refuses a redirect to another scheme or host, also a same-host `http` to `https`
+  one, so the token is never sent anywhere else. Give `host` the address that answers directly.
+- roborev notes on a GitLab merge request are only read once #260 lands.
+- The status write (`workItemUpdate` with `statusWidget: {name}`) is not yet checked against a
+  live GitLab. A real server may want the status ID, read from the lifecycle, instead of the
+  name. How GitLab's GraphQL complexity limit and time-out treat the nested board query is not
+  known either.
+- `BranchPRs` reads each open merge request on the branch once more for its pipeline status:
+  one extra call per open merge request.
+- `--forge-url` does not apply to GitLab; use `host`.
 
 Under systemd, put both in `~/.config/lighthouse/forge.env`, which the unit loads through
 `EnvironmentFile=`. The token is a secret, so keep the file private:
@@ -342,6 +404,35 @@ repository whose CI demands, say, a changelog fragment in every PR needs a confi
 these PRs through. Otherwise every period closes a red PR as `failed`. The token needs *Contents:
 write* and *Pull requests: write* to push the branch, open, merge and close the PR and delete the
 branch.
+
+## A node for another host
+
+A kenn-forge node that runs content for a tick on another host (`[dispatch.nodes.<name>]` with
+`serve_url`, see [tick.md](tick.md#nodes)) runs `lighthouse serve` too. Its `host.toml` needs:
+
+```toml
+[node]
+token_file = "/abs/path/node.token"      # bearer token the tick sends; same content as serve_token_file there
+
+[dispatch.forge]
+url = "http://127.0.0.1:8091"
+token_file = "/abs/path/forge.token"     # the node's own kenn-forge token; serve refuses to start without it
+unit_prefix = "lighthouse-"
+
+[dispatch.profiles.software]             # every profile name the tick uses: mandatory
+```
+
+Without `[node]` the routes under `/api/node/v1/` answer 404. A profile the tick uses but the node does
+not list gets 400 on transcript, stop and kill. `lighthouse ask` must be on the `PATH` of the agent
+(the claude the node's forge starts), not only of the service. The `mcp_config` of a profile with `node`
+in the tick's `host.toml` is a path on that node: the tick sends it unchanged and never reads it.
+The state files of the node (PAUSE, alarm, markers) are mode `0600` in a `0700` directory; when the
+runs live in a container, its uid must match.
+
+On macOS, run `serve` as a launchd agent: [com.lighthouse.serve.plist](../deploy/launchd/com.lighthouse.serve.plist).
+`serve` binds loopback and has no TLS: put `tailscale serve` in front (see *Reach it from your tailnet*
+below) and give the tick that https address as `serve_url`. Use the tailnet name of your own node; never
+`tailscale funnel`.
 
 ## Reach it from your tailnet
 

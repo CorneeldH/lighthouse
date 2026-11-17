@@ -44,16 +44,17 @@ One or more issue numbers. Per number:
 
 - **The issue is already in context** — read in step 1 of `lighthouse-start-issue`, or in the list
   call of the backlog-stand skill, if present — then no new call.
-- Otherwise one read call, with `dangerouslyDisableSandbox: true`:
+- Otherwise one read call, with `dangerouslyDisableSandbox: true`, the same as step 1 of
+  `lighthouse-start-issue`:
 
   ```bash
-  R=$(lighthouse config forge.repo) || exit 2
-  gh api "repos/$R/issues/<nr>"
+  lighthouse forge issue view <nr> --comments; lighthouse forge issue blockers <nr>
   ```
 
-  Only if `comments` > 0 follows
-  `R=$(lighthouse config forge.repo) && gh api "repos/$R/issues/<nr>/comments"`.
-  Never `gh issue list --json` — that breaks under the rtk proxy.
+  The issue with its comments and milestone description, and its blockers (`number`, `state`),
+  open and closed. Exit 2 is a missing or broken config: stop and report it. Never a `gh` read:
+  GitHub only, with the proxy quirk of `../lighthouse-forge/<kind>.md §proxy` (`<kind>` from
+  `lighthouse config forge.kind`).
 
 ## Output
 
@@ -95,27 +96,31 @@ a wrongly chosen gate findable afterwards.
 Two entries: the label, or a blocker without a label.
 
 **With `labels.blocked_issue` or `labels.blocked_external`** the blocker comes from the relation,
-not from the body:
+not from a mention in the body: the blocker list of the read call (Input), or, when the issue came from
+context without it, one call:
 
 ```bash
-R=$(lighthouse config forge.repo) || exit 2
-gh api "repos/$R/issues/<nr>/dependencies/blocked_by" \
-  --jq '.[] | "#\(.number) \(.state)"'
+lighthouse forge issue blockers <nr>
 ```
+
+Each entry carries `number` and `state` (`open`/`closed`). How a block is read per forge is in
+`../lighthouse-forge/<kind>.md §blockers` (`<kind>` from `lighthouse config forge.kind`): on
+GitLab Free the list is empty without an error, and the blocker stands as a `Blocked by #<n>` line
+in the body.
 
 If there is no open blocker, the reason reports the verdict — **lapsed** (only closed relations)
 or **unlinked** (no relation) — with the repair command from `lighthouse-write-issue` 3e. The
-route stays stop: removing the label or laying the relation is up to the user. If this GET fails,
-or the output is unreadable, the verdict is **unknown**, with the read command added — the route
-stays stop, and a failed or empty GET is never **unlinked** (that puts the user on the wrong
-track of a `--remove-label`).
+route stays stop: removing the label or laying the relation is up to the user. If this call fails
+(exit 1 or 2), or the output is unreadable, the verdict is **unknown**, with the read command
+added — the route stays stop, and a failed read, or one without output, is never **unlinked**
+(that puts the user on the wrong track of a `--remove-label`).
 
-**Without that label, but with `issue_dependencies_summary.blocked_by > 0`** (already in the
-payload of step 1, no extra call): if the issue carries none of `labels.needs_shaping`,
-`labels.needs_decision` or `labels.blocked_issue`, this also stops at gate 0. Confirm with the same
-list GET above and report **label missing** with the repair command from `lighthouse-write-issue`
-3e (`gh issue edit <nr> --repo <forge.repo> --add-label <labels.blocked_issue>`). If that GET fails, report **unknown**
-and stop — an unreadable blocker never falls silently through to gate 4.
+**Without that label, but with an open blocker in the `issue blockers` list** (already in the
+answer of the read call; an issue from context without that list costs the one call above): if the issue carries none of `labels.needs_shaping`,
+`labels.needs_decision` or `labels.blocked_issue`, this also stops at gate 0. Report
+**label missing** with the repair command from `lighthouse-write-issue` 3e
+(`lighthouse forge issue edit <nr> --add-label <labels.blocked_issue>`). If the list could not be
+read, report **unknown** and stop — an unreadable blocker never falls silently through to gate 4.
 
 If the issue does carry `labels.needs_shaping` or `labels.needs_decision` with an open
 `blocked_by`, that is **not** a gate-0 stop: the lower label wins (invariant
@@ -199,7 +204,7 @@ issue gets.
 | `labels.needs_decision` | **gate 4, c**, narrow: put the open decision as the first question |
 | `labels.needs_hands` | **gate 4, b/a**, execute up to the hand movement, with an explicit instruction *where* human hands are needed |
 | `labels.needs_testing` | **gate 4, b/a**, execute and let the human judge whether it does what was meant |
-| `labels.blocked_issue` | **gate 0** — stop, report the blocker from the `blocked_by` relation, not from the body; in a controller run (if present): route on, see Gate 0 |
+| `labels.blocked_issue` | **gate 0** — stop, report the blocker from the relation (`issue blockers`), not from a mention in the body; in a controller run (if present): route on, see Gate 0 |
 | `labels.blocked_external` | **gate 0** — stop, report what it waits for |
 
 Only the two blocked labels are a hard stop (except `labels.blocked_issue` in a controller run,

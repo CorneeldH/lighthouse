@@ -29,9 +29,10 @@ func remoteGitOK(ctx context.Context, run Runner, timeout time.Duration, dir str
 }
 
 // FollowRemote moves the workspace onto origin/<branch> when that branch exists, without
-// ever dropping commits of its own. A found workspace with own work (commits origin lacks,
-// or a dirty work tree) stays where it is and gives an *OwnWorkError. timeout applies to
-// every git command.
+// ever dropping commits of its own. A found workspace on the branch whose HEAD holds
+// origin/<branch> starts on HEAD as is. Any other found workspace with own work (commits
+// origin lacks, or a dirty work tree) stays where it is and gives an *OwnWorkError. timeout
+// applies to every git command.
 func FollowRemote(ctx context.Context, run Runner, timeout time.Duration, ws Workspace, created bool) error {
 	gitOK := func(args ...string) (string, error) {
 		return remoteGitOK(ctx, run, timeout, ws.Path, args...)
@@ -78,6 +79,19 @@ func FollowRemote(ctx context.Context, run Runner, timeout time.Duration, ws Wor
 		case 0:
 			_, err := gitOK("merge", "--ff-only", remote)
 			return err
+		case 1:
+		default:
+			return fmt.Errorf("git merge-base --is-ancestor: exit code %d", code)
+		}
+		// HEAD already holds origin/<branch>: no stale HEAD but work of an earlier run that was
+		// not pushed yet (#356). Start on it as is, as with head == want, dirty or not.
+		_, code, err = remoteGit(ctx, run, timeout, ws.Path, "merge-base", "--is-ancestor", remote, "HEAD")
+		if err != nil {
+			return err
+		}
+		switch code {
+		case 0:
+			return nil
 		case 1:
 		default:
 			return fmt.Errorf("git merge-base --is-ancestor: exit code %d", code)

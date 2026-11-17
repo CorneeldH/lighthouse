@@ -123,5 +123,6 @@ afterwards with `gh release delete <tag> --cleanup-tag --yes`.
 2. If you run lighthouse as a user service, restart it: `systemctl --user restart lighthouse`.
    The timer restarts it after a replacement (see
    [Upgrade automatically](install.md#upgrade-automatically)).
-3. In every repository that uses lighthouse, run `lighthouse init --upgrade`.
-4. Commit the installed copy and send it as a PR; it contains only what `--upgrade` changed.
+3. In every repository that uses lighthouse, run `/lighthouse-upgrade`: it runs
+   `lighthouse init --upgrade` in a worktree, checks it, and commits only what it changed. By hand:
+   `lighthouse init --upgrade`, then commit the installed copy and send it as a PR.

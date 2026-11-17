@@ -1,7 +1,7 @@
 """Contract test for the skill `lighthouse-place-instruction` (from paia's `paia-instrumenteren`).
 
 The skill decides on which layer a new instruction belongs and validates with
-`.lighthouse/scripts/check-instructions.sh`. That script carries only the generic checks of
+`lighthouse check-instructions`. That command carries only the generic checks of
 the source (1, 2, 3, 4, 5, 7, 8, 10, 11, 14); the skill names no project-own check (6, 9, 12, 13).
 The skill prefix and the word ceiling come from `[project]`; the skill names no `python3` and no
 project-specific measurement.
@@ -14,7 +14,12 @@ import re
 from tests.pack._testkit import CORE
 
 SKILL = (CORE / "skills" / "place-instruction" / "SKILL.md").read_text(encoding="utf-8")
-SCRIPT = (CORE / "scripts" / "check-instructions.sh").read_text(encoding="utf-8")
+# The checks live in the Go package behind `lighthouse check-instructions`.
+CHECKS = "\n".join(
+    f.read_text(encoding="utf-8")
+    for f in sorted((CORE.parents[1] / "internal" / "checkinstr").glob("*.go"))
+    if not f.name.endswith("_test.go")
+)
 GENERIC = {3, 4, 5, 7, 8, 10, 11, 14}
 
 
@@ -23,11 +28,12 @@ def test_instrument_lists_generic_checks_only():
     assert named, "the skill names no check"
     assert named <= GENERIC, sorted(named - GENERIC)
     for n in named:
-        assert f"# --- Check {n}:" in SCRIPT, n
+        assert f"// Check {n}:" in CHECKS, n
 
 
-def test_validates_with_the_installed_script():
-    assert ".lighthouse/scripts/check-instructions.sh" in SKILL
+def test_validates_with_the_lighthouse_command():
+    assert "lighthouse check-instructions" in SKILL
+    assert "check-instructions.sh" not in SKILL
     assert "scripts/hooks/check-instructies.sh" not in SKILL
 
 
@@ -45,7 +51,7 @@ def test_bounding_clause_matches_check_4():
     """The form the skill prescribes must be one check 4 (`has_exclusion_clause`) accepts."""
     clause = re.search(r"Form: `([^`]+)`", SKILL)
     assert clause, "no Form: line for the bounding clause"
-    words = re.search(r'for word in (.*?); do', SCRIPT, re.DOTALL).group(1)
+    words = re.search(r"scopeWords = .*?range \[\]string\{(.*?)\}", CHECKS, re.DOTALL).group(1)
     accepted = re.findall(r'"([^"]+)"', words)
     assert any(w in clause.group(1).lower() for w in accepted), (clause.group(1), accepted)
 

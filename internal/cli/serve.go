@@ -17,8 +17,11 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/CorneeldH/lighthouse/internal/dispatch"
+	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/hostconfig"
+	"github.com/CorneeldH/lighthouse/internal/nodeserve"
 	"github.com/CorneeldH/lighthouse/internal/overview"
+	"github.com/CorneeldH/lighthouse/internal/priorities"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/server"
 	"github.com/CorneeldH/lighthouse/internal/store"
@@ -56,7 +59,11 @@ func newServeCommand() *cobra.Command {
 				return err
 			}
 			meta := server.RunsMeta{WorkspaceURL: strings.TrimRight(cfg.Forge.LinkURL(), "/"), Night: cfg.Night}
-			return serve(ctx, addr, dbPath, repos, slugs, meta, overviewInterval, cmd.ErrOrStderr())
+			node, err := nodeRoutes(hostconfig.Path(), cfg, os.Getenv)
+			if err != nil {
+				return err
+			}
+			return serve(ctx, addr, dbPath, repos, slugs, meta, node, overviewInterval, server.PrioritiesInterval, cmd.ErrOrStderr())
 		},
 	}
 	cmd.Flags().StringVar(&addr, "addr", defaultAddr, "address to listen on")
@@ -64,7 +71,7 @@ func newServeCommand() *cobra.Command {
 	cmd.Flags().StringVar(&repo, "repo", os.Getenv("LIGHTHOUSE_FORGE_REPO"),
 		"GitHub repository to read questions and returned issues from, as owner/name (default: $LIGHTHOUSE_FORGE_REPO); the token comes from GH_TOKEN or GITHUB_TOKEN; ignored when host.toml has [dispatch] repos")
 	cmd.Flags().StringVar(&forgeURL, "forge-url", envOr("LIGHTHOUSE_FORGE_URL", ""),
-		"GitHub API base URL for GitHub repos (default: $LIGHTHOUSE_FORGE_URL, else https://api.github.com); the GitHub token is sent there, never a GitLab one")
+		"GitHub API base URL for GitHub repos only (default: $LIGHTHOUSE_FORGE_URL, else https://api.github.com); GitLab repos use their [forge] host, and the GitHub token is sent only to this URL")
 	// Hidden: only the e2e tests shorten it, so Refresh shows a forge change within a second.
 	cmd.Flags().DurationVar(&overviewInterval, "overview-interval", server.RefreshInterval,
 		"time from the start of one forge overview build to the next")
@@ -88,13 +95,18 @@ func envOr(key, def string) string {
 // that does not load is an error; a served repo that does not load, has a duplicate slug or
 // has no forge (no token, an Open error) gets one line on errOut and is skipped.
 func forgeRepos(hostToml, repo, forgeURL string, getenv func(string) string, errOut io.Writer) (sources []overview.RepoSource, slugs []string, err error) {
+	return forgeReposWith(hostToml, repo, newForgeOpener(getenv, forgeURL), errOut)
+}
+
+// forgeReposWith is forgeRepos with the opener given, so a test can point the GitLab repos at
+// a fake through gitlabURL. The GitHub URL is o.githubURL, for GitHub repos only; production leaves gitlabURL empty.
+func forgeReposWith(hostToml, repo string, o *forgeOpener, errOut io.Writer) (sources []overview.RepoSource, slugs []string, err error) {
 	cfg, err := hostconfig.LoadDispatch(hostToml)
 	if err != nil {
 		return nil, nil, err
 	}
 	// serve never asks the token login, so no ctx of a request reaches the opener.
 	ctx := context.Background()
-	o := newForgeOpener(getenv, forgeURL)
 	skip := func(path string, err error) {
 		_, _ = fmt.Fprintf(errOut, "lighthouse: skip %s: %s\n", path, oneLine(err))
 	}
@@ -123,13 +135,10 @@ func forgeRepos(hostToml, repo, forgeURL string, getenv func(string) string, err
 			skip(path, err)
 			continue
 		}
-		src := overview.RepoSource{Slug: r.Slug, Src: rf.Forge}
-		switch {
-		case r.Board == nil:
-		case r.Board.StatusOptions["Controller"] == "":
+		src := overview.RepoSource{Slug: r.Slug, Src: rf.Forge, Board: r.Board != nil,
+			Controller: r.Board != nil && r.Board.StatusOptions["Controller"] != ""}
+		if src.Board && !src.Controller {
 			_, _ = fmt.Fprintf(errOut, "lighthouse: %s: missing forge.board.status_options.Controller: overview shows every open issue\n", path)
-		default:
-			src.InController = overview.ControllerIssues(rf.Forge, r.Slug)
 		}
 		sources = append(sources, src)
 	}
@@ -139,11 +148,40 @@ func forgeRepos(hostToml, repo, forgeURL string, getenv func(string) string, err
 	return sources, slugs, nil
 }
 
+// nodeRoutes returns the node-API handler when the host.toml at hostToml has [node], and nil
+// without it. It fails when the forge token of [dispatch.forge] is missing or empty, so a node
+// never starts serving routes it cannot answer. The state dir is where the tick keeps its own,
+// and the profiles are the names of [dispatch.profiles] on this node.
+func nodeRoutes(hostToml string, cfg hostconfig.Dispatch, getenv func(string) string) (http.Handler, error) {
+	n, present, err := hostconfig.LoadNode(hostToml)
+	if err != nil || !present {
+		return nil, err
+	}
+	if err := hostconfig.ValidateNodeForge(cfg); err != nil {
+		return nil, err
+	}
+	stateDir, err := tickEnv{Getenv: getenv}.stateDir()
+	if err != nil {
+		return nil, err
+	}
+	profiles := make(map[string]bool, len(cfg.Profiles))
+	for name := range cfg.Profiles {
+		profiles[name] = true
+	}
+	return nodeserve.New(nodeserve.Deps{
+		StateDir:  stateDir,
+		TokenFile: n.TokenFile,
+		Forge:     cfg.Forge,
+		Profiles:  profiles,
+	}), nil
+}
+
 // serve opens the store, listens on addr and serves until ctx is done, then shuts down
 // within shutdownTimeout. An empty dbPath means the default path. repos feed the forge endpoints,
-// and slugs pick the rows of the tick state that /api/runs shows.
-func serve(ctx context.Context, addr, dbPath string, repos []overview.RepoSource, slugs []string, meta server.RunsMeta,
-	interval time.Duration, errOut io.Writer) error {
+// and slugs pick the rows of the tick state that /api/runs shows. node, when not nil, is the
+// node-API under /api/node/.
+func serve(ctx context.Context, addr, dbPath string, repos []overview.RepoSource, slugs []string, meta server.RunsMeta, node http.Handler,
+	interval, prioInterval time.Duration, errOut io.Writer) error {
 	if dbPath == "" {
 		p, err := store.DefaultPath()
 		if err != nil {
@@ -169,14 +207,21 @@ func serve(ctx context.Context, addr, dbPath string, repos []overview.RepoSource
 	refreshCtx, cancelRefresh := context.WithCancel(ctx)
 	defer cancelRefresh()
 	read, stopped := startOverview(refreshCtx, repos, interval)
+	prioSrcs := make([]priorities.Source, 0, len(repos))
+	for _, r := range repos {
+		prioSrcs = append(prioSrcs, priorities.Source{Slug: r.Slug, Src: r.Src})
+	}
+	prioRead, prioStopped := startPriorities(refreshCtx, prioSrcs, read, prioInterval)
 	srv := &http.Server{Handler: server.New(web.FS(), server.Deps{
-		Report:   rep.Report,
-		Forge:    repos,
-		Overview: read,
+		Report:     rep.Report,
+		Forge:      repos,
+		Overview:   read,
+		Priorities: prioRead,
 		Leftovers: func(ctx context.Context) ([]workplace.Leftover, error) {
 			return workplace.Leftovers(ctx, st.DB)
 		},
 		RunsMeta: meta,
+		Node:     node,
 		Runs: func(ctx context.Context) ([]dispatch.RunView, []dispatch.DeferredView, error) {
 			return dispatch.LoadView(ctx, st.DB, slugs)
 		},
@@ -200,6 +245,7 @@ func serve(ctx context.Context, addr, dbPath string, repos []overview.RepoSource
 	// The refresher stops before the store closes, also when serve ended on a serve error.
 	cancelRefresh()
 	stopped()
+	prioStopped()
 	if err := st.Close(); err != nil && runErr == nil {
 		runErr = err
 	}
@@ -213,14 +259,42 @@ func serve(ctx context.Context, addr, dbPath string, repos []overview.RepoSource
 // returned.
 func startOverview(ctx context.Context, repos []overview.RepoSource, interval time.Duration) (read func(context.Context) (overview.Overview, error), stopped func()) {
 	build := func(ctx context.Context) (overview.Overview, error) { return overview.BuildAll(ctx, repos) }
-	if len(repos) == 0 {
+	return startRefresher(ctx, len(repos) > 0, build, interval, server.RefreshRetry)
+}
+
+// startPriorities returns the reader of the prioritisation lists, built by its own Refresher
+// so a slow planning read never delays the overview. Each build reads the overview through
+// overviewRead for the board statuses and passes its error on, and then calls priorities.Build.
+// Without srcs it builds on every read (which reports forge.ErrNotConfigured), starts nothing
+// and stopped is a no-op; otherwise it behaves as startOverview.
+func startPriorities(ctx context.Context, srcs []priorities.Source, overviewRead func(context.Context) (overview.Overview, error),
+	interval time.Duration) (read func(context.Context) ([]priorities.Repo, error), stopped func()) {
+	build := func(ctx context.Context) ([]priorities.Repo, error) {
+		if len(srcs) == 0 {
+			return nil, forge.ErrNotConfigured
+		}
+		ov, err := overviewRead(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return priorities.Build(ctx, srcs, ov.Statuses)
+	}
+	// A failed planning read costs API points, so it retries at PrioritiesRetry, not RefreshRetry.
+	return startRefresher(ctx, len(srcs) > 0, build, interval, server.PrioritiesRetry)
+}
+
+// startRefresher starts a Refresher of build on ctx when enabled, and returns its reader and
+// a stopped that blocks until its goroutine has returned. Disabled, the reader builds on every
+// read and stopped is a no-op.
+func startRefresher[T any](ctx context.Context, enabled bool, build server.BuildFunc[T], interval, retry time.Duration) (read func(context.Context) (T, error), stopped func()) {
+	if !enabled {
 		return build, func() {}
 	}
-	r := server.NewRefresher(build, interval, min(server.RefreshRetry, interval), server.BuildTimeout)
+	r := server.NewRefresher(build, interval, min(retry, interval), server.BuildTimeout)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
 		r.Run(ctx)
 	}()
-	return r.Overview, func() { <-done }
+	return r.Latest, func() { <-done }
 }

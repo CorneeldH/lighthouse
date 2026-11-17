@@ -1,15 +1,19 @@
 """End-to-end tests for pack/core `pr-create-gate` (`run.sh pr-create-gate`), as installed (#1091).
 
 The hook runs as a subprocess with a real project repo in `tmp_path` as
-`CLAUDE_PROJECT_DIR`. No network: a stub `gh` is always first on
-`PATH` (except in `test_gh_missing_passes_loudly`, which needs a PATH
-without `gh`), so no test reaches the real `gh`.
+`CLAUDE_PROJECT_DIR`. No network: the AC count reads the issue from a fake
+GitHub API on localhost (`LIGHTHOUSE_GITHUB_API_URL`) with a fake token, and a
+stub `gh` is always first on `PATH` (except in `test_token_missing_passes_loudly`,
+which needs a PATH without `gh`), so no test reaches the real `gh` or GitHub.
 """
 
 import json
 import os
 import subprocess
+import threading
 import time
+from collections.abc import Iterator
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
@@ -39,25 +43,67 @@ GO_HOOK = CORE.parents[1] / "internal" / "hooks" / "prcreategate.go"
 # `forge.repo` of the lighthouse.toml that install_core leaves behind.
 REPO = "Acme/widgets"
 
-# Fake `gh`: prints $GH_ISSUE_BODY for the issue endpoint, exits 1 with GH_FAIL.
-FAKE_GH = (
-    "#!/bin/sh\n"
-    'if [ -n "$GH_FAIL" ]; then exit 1; fi\n'
-    f'if [ "$1 $2" = "api repos/{REPO}/issues/5" ]; then\n'
-    "  printf '%s\\n' \"$GH_ISSUE_BODY\"\n"
-    "  exit 0\n"
-    "fi\n"
-    "exit 1\n"
-)
+# Fake `gh`: knows no command, so `gh auth token` gives no token.
+FAKE_GH = "#!/bin/sh\nexit 1\n"
 BASE_TOOLS = (*RUN_SH_TOOLS, "git", "bash", "sh", "lighthouse")
+TOKEN = "fake-token"
+
+
+class FakeGitHub:
+    """A GitHub REST API on localhost that knows issue 5 of REPO.
+
+    `mode` is "ok" (the issue, with `issue_body`), "fail" (500) or "slow" (an
+    answer only after `release` is set, at teardown).
+    """
+
+    def __init__(self) -> None:
+        self.mode = "ok"
+        self.issue_body = ISSUE_WITH_THREE_AC
+        self.release = threading.Event()
+        fake = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self) -> None:  # noqa: N802 — the name http.server calls
+                if fake.mode == "slow":
+                    fake.release.wait(120)
+                if fake.mode == "fail":
+                    self._send(500, {"message": "Server Error"})
+                elif self.path != f"/repos/{REPO}/issues/5":
+                    self._send(404, {"message": "Not Found"})
+                elif self.headers.get("Authorization") != f"Bearer {TOKEN}":
+                    self._send(401, {"message": "Bad credentials"})
+                else:
+                    self._send(200, {"number": 5, "title": "t", "state": "open", "body": fake.issue_body})
+
+            def _send(self, code: int, doc: dict) -> None:
+                data = json.dumps(doc).encode()
+                self.send_response(code)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+
+            def log_message(self, *args: object) -> None:
+                pass
+
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.server.daemon_threads = True
+        self.url = f"http://127.0.0.1:{self.server.server_address[1]}"
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    def close(self) -> None:
+        self.release.set()
+        self.server.shutdown()
+        self.server.server_close()
 
 
 class Gate:
-    """A temporary project repo plus a stub directory with a fake `gh`."""
+    """A temporary project repo, a stub directory with a fake `gh` and a fake GitHub API."""
 
-    def __init__(self, tmp_path: Path, project: Path) -> None:
+    def __init__(self, tmp_path: Path, project: Path, api: FakeGitHub) -> None:
         self.tmp = tmp_path
         self.project = project
+        self.api = api
         init_repo(project)
         self.stub = tmp_path / "stub"
         tool_bin(self.stub, (), stubs={"gh": FAKE_GH})
@@ -79,15 +125,21 @@ class Gate:
             # Stub directory always first, unless the test deliberately runs without `gh`.
             "PATH": f"{self.stub}{os.pathsep}{tail}" if stub else tail,
             "CLAUDE_PROJECT_DIR": str(self.project),
-            "GH_ISSUE_BODY": ISSUE_WITH_THREE_AC,
+            "LIGHTHOUSE_GITHUB_API_URL": self.api.url,
+            "GH_TOKEN": TOKEN,
+            "GITHUB_TOKEN": "",
             **env,
         }
         return run_hook(HOOK, bash_payload(cmd, cwd), cwd, full_env, args=HOOK_ARGS)
 
 
 @pytest.fixture
-def gate(tmp_path: Path) -> Gate:
-    return Gate(tmp_path, tmp_path / "X")
+def gate(tmp_path: Path) -> Iterator[Gate]:
+    api = FakeGitHub()
+    try:
+        yield Gate(tmp_path, tmp_path / "X", api)
+    finally:
+        api.close()
 
 
 def _body_with_rows(n: int) -> str:
@@ -175,31 +227,34 @@ def test_ac_count_differs_blocks(gate: Gate) -> None:
     result = gate.run("gh pr create --repo Acme/widgets -F body.md")
 
     assert result.returncode == 2, result.stdout
-    assert "3" in result.stderr and "2" in result.stderr
+    assert "Closes #5: the issue has 3 acceptance criteria, the Evidence block 2 rows" in result.stderr
 
 
-def test_gh_fails_passes_loudly(gate: Gate) -> None:
+def test_forge_fails_passes_loudly(gate: Gate) -> None:
     (gate.project / "body.md").write_text(_body_with_rows(3), encoding="utf-8")
+    gate.api.mode = "fail"
 
-    result = gate.run("gh pr create --repo Acme/widgets -F body.md", GH_FAIL="1")
+    result = gate.run("gh pr create --repo Acme/widgets -F body.md")
 
     assert result.returncode == 0, result.stderr
     out = json.loads(result.stdout)
-    notice = "AC count not measurable for #5"
+    notice = "AC count not measurable for #5 (forge error:"
     assert notice in out["systemMessage"]
+    assert "status 500" in out["systemMessage"]
     assert notice in out["hookSpecificOutput"]["additionalContext"]
 
 
-def test_gh_missing_passes_loudly(gate: Gate, tmp_path: Path) -> None:
+def test_token_missing_passes_loudly(gate: Gate, tmp_path: Path) -> None:
     (gate.project / "body.md").write_text(_body_with_rows(3), encoding="utf-8")
     no_gh = tool_bin(tmp_path / "zonder_gh", BASE_TOOLS)
 
-    result = gate.run("gh pr create --repo Acme/widgets -F body.md", path=str(no_gh), stub=False)
+    result = gate.run("gh pr create --repo Acme/widgets -F body.md", path=str(no_gh), stub=False, GH_TOKEN="")
 
     assert result.returncode == 0, result.stderr
     out = json.loads(result.stdout)
-    assert "gh is missing" in out["systemMessage"]
-    assert "gh is missing" in out["hookSpecificOutput"]["additionalContext"]
+    notice = "AC count not measurable for #5 (no GitHub token: set GH_TOKEN or GITHUB_TOKEN)"
+    assert notice in out["systemMessage"]
+    assert notice in out["hookSpecificOutput"]["additionalContext"]
 
 
 def test_invalid_payload_blocks(gate: Gate) -> None:
@@ -274,12 +329,12 @@ def test_payload_shapes(gate: Gate, shape: str) -> None:
         assert (result.stdout, result.stderr) == ("", "")
 
 
-def test_slow_gh_passes_loudly_within_the_deadline(gate: Gate) -> None:
-    """Review focus 2: a `gh` that hangs at the AC count passes loudly, well before the hook timeout."""
-    # The hook's own message proves the 5 s clip; the bound only that the hook did not wait for gh.
-    # 300 s: a hook that waits for gh is far above the 60 s bound, and 60 s is ten times a slow
-    # run (#338).
-    tool_bin(gate.stub, (), stubs={"gh": "#!/bin/sh\nexec sleep 300\n"})
+def test_slow_forge_passes_loudly_within_the_deadline(gate: Gate) -> None:
+    """Review focus 2: a forge that hangs at the AC count passes loudly, well before the hook timeout."""
+    # The hook's own message proves the 5 s clip; the bound only that the hook did not wait for
+    # the forge. The fake answers only at teardown, 120 s at most: a hook that waits for it is far
+    # above the 60 s bound, and 60 s is ten times a slow run (#338).
+    gate.api.mode = "slow"
     (gate.project / "body.md").write_text(_body_with_rows(3), encoding="utf-8")
 
     start = time.monotonic()

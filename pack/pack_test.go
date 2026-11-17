@@ -36,7 +36,7 @@ func TestEmbedsNoTopLevelFile(t *testing.T) {
 }
 
 func TestEmbedsHiddenAndUnderscoreFiles(t *testing.T) {
-	if _, err := fs.Stat(Files, "core/lib/__init__.py"); err != nil {
+	if _, err := fs.Stat(Files, "python/scripts/quality/__init__.py"); err != nil {
 		t.Fatal(err)
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -329,6 +330,12 @@ func TestAskHelpDescribesEveryFlag(t *testing.T) {
 // top of the git repository, and that top is the worktree in the question.
 func TestAskFromSubdirectoryReadsRepoRoot(t *testing.T) {
 	srv, env, root := askFixture(t)
+	// The body names the root as git reports it, resolved: on macOS t.TempDir() lies under
+	// /var, a symlink to /private/var.
+	root, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatal(err)
+	}
 	git := exec.Command("git", "-C", root, "init", "-q")
 	if out, err := git.CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v\n%s", err, out)
@@ -389,5 +396,33 @@ func TestAskGhTokenOnlyForGitHub(t *testing.T) {
 	}
 	if len(srv.Posts) != 0 {
 		t.Errorf("%d POSTs, want none", len(srv.Posts))
+	}
+}
+
+func TestGhAuthTokenWithinGivesUpOnAHangingGh(t *testing.T) {
+	dir := t.TempDir()
+	stub := "#!/bin/sh\nexec sleep 10\n"
+	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(stub), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	start := time.Now()
+	got := ghAuthTokenWithin(200 * time.Millisecond)
+	if got != "" {
+		t.Errorf("token = %q, want none from a hanging gh", got)
+	}
+	if d := time.Since(start); d > 3*time.Second {
+		t.Errorf("took %v, want it to give up after the timeout", d)
+	}
+}
+
+func TestGhAuthTokenWithinReadsTheToken(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte("#!/bin/sh\necho tok123\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	if got := ghAuthTokenWithin(5 * time.Second); got != "tok123" {
+		t.Errorf("token = %q, want tok123", got)
 	}
 }

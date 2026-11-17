@@ -14,28 +14,6 @@ import (
 // maxConcurrent caps the comment fetches that run at the same time.
 const maxConcurrent = 8
 
-// Filter returns the numbers of the issues the overview may show. A nil Filter shows every
-// open issue, as without [dispatch].
-type Filter func(ctx context.Context) (map[int]bool, error)
-
-// ControllerIssues is the Filter of the issues of slug whose Status on the board of f is
-// Controller.
-func ControllerIssues(f forge.Forge, slug string) Filter {
-	return func(ctx context.Context) (map[int]bool, error) {
-		items, err := f.BoardItems(ctx)
-		if err != nil {
-			return nil, err
-		}
-		in := map[int]bool{}
-		for _, it := range items {
-			if it.Repo == slug && it.Status == "Controller" {
-				in[it.Issue] = true
-			}
-		}
-		return in, nil
-	}
-}
-
 // Question is an open question on an issue.
 type Question struct {
 	// Repo is the slug of the repository the issue belongs to; set by BuildAll.
@@ -59,30 +37,66 @@ type Returned struct {
 	Reason string `json:"reason"`
 }
 
-// Overview holds both lists; neither is ever nil.
+// IssueStatus is the board Status of one issue; "" when it has none.
+type IssueStatus struct {
+	Repo   string `json:"repo"`
+	Issue  int    `json:"issue"`
+	Status string `json:"status"`
+}
+
+// Overview holds the lists; none is ever nil.
 type Overview struct {
 	Questions []Question
 	Returned  []Returned
+	// Statuses is the board Status of every issue of the repos with Board set.
+	Statuses []IssueStatus
 }
 
-// RepoSource is one repository for BuildAll: its slug, where its issues come from and its
-// controller filter (nil shows every open issue).
+// RepoSource is one repository for BuildAll: its slug and where its issues come from. Board
+// reads the board once for the statuses; Controller, which needs Board, also narrows the
+// questions and returned issues to the issues in Status Controller. Without Controller every
+// open issue counts, as without [dispatch].
 type RepoSource struct {
-	Slug         string
-	Src          forge.Forge
-	InController Filter
+	Slug       string
+	Src        forge.Forge
+	Board      bool
+	Controller bool
 }
 
 // BuildAll runs Build per repo, in the order given, and sets Repo on every item. The first
 // failure fails the whole overview and names its repo; with no repos it returns
-// forge.ErrNotConfigured.
+// forge.ErrNotConfigured. The board is read once per repo with Board set. A failing read fails
+// the overview only with Controller set: without it the overview never needed the board, so the
+// repo just has no statuses.
 func BuildAll(ctx context.Context, repos []RepoSource) (Overview, error) {
 	if len(repos) == 0 {
 		return Overview{}, forge.ErrNotConfigured
 	}
-	all := Overview{Questions: []Question{}, Returned: []Returned{}}
+	all := Overview{Questions: []Question{}, Returned: []Returned{}, Statuses: []IssueStatus{}}
 	for _, r := range repos {
-		o, err := Build(ctx, r.Src, r.InController)
+		var statuses []IssueStatus
+		var in map[int]bool
+		if r.Board {
+			items, err := r.Src.BoardItems(ctx)
+			switch {
+			case err != nil && r.Controller:
+				return Overview{}, fmt.Errorf("%s: %w", r.Slug, err)
+			case err == nil:
+				if r.Controller {
+					in = map[int]bool{}
+				}
+				for _, it := range items {
+					if it.Repo != r.Slug {
+						continue
+					}
+					statuses = append(statuses, IssueStatus{Repo: r.Slug, Issue: it.Issue, Status: it.Status})
+					if r.Controller && it.Status == "Controller" {
+						in[it.Issue] = true
+					}
+				}
+			}
+		}
+		o, err := Build(ctx, r.Src, in)
 		if err != nil {
 			return Overview{}, fmt.Errorf("%s: %w", r.Slug, err)
 		}
@@ -94,6 +108,7 @@ func BuildAll(ctx context.Context, repos []RepoSource) (Overview, error) {
 			x.Repo = r.Slug
 			all.Returned = append(all.Returned, x)
 		}
+		all.Statuses = append(all.Statuses, statuses...)
 	}
 	return all, nil
 }
@@ -106,18 +121,14 @@ type entry[T any] struct {
 }
 
 // Build lists the open questions and returned issues, oldest header comment first. With a
-// non-nil inController only the issues it names count, and no comments are read for the
+// non-nil in only the issues it names count, and no comments are read for the
 // others. Any failure fails the whole build: a partial list would hide issues.
-func Build(ctx context.Context, src forge.Forge, inController Filter) (Overview, error) {
+func Build(ctx context.Context, src forge.Forge, in map[int]bool) (Overview, error) {
 	issues, err := src.OpenIssues(ctx)
 	if err != nil {
 		return Overview{}, err
 	}
-	if inController != nil {
-		in, err := inController(ctx)
-		if err != nil {
-			return Overview{}, err
-		}
+	if in != nil {
 		// A new slice: the source may keep the one it returned.
 		kept := make([]forge.Issue, 0, len(issues))
 		for _, issue := range issues {

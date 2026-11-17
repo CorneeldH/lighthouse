@@ -3,7 +3,6 @@ package dispatch
 import (
 	"embed"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 )
@@ -19,6 +18,9 @@ const roundLimitQuestion = "vraag"
 // <stateDir>/runs/<sessionID>/instructions.md (file 0600, directory 0700) and returns the
 // path. With atRoundLimit roundLimitQuestion the round-limit appendix follows the instructions.
 func WriteInstructions(stateDir, sessionID, atRoundLimit string) (string, error) {
+	if err := checkFileName(sessionID); err != nil {
+		return "", err
+	}
 	text, err := instructionsFS.ReadFile("instructions/run.md")
 	if err != nil {
 		return "", err
@@ -30,24 +32,31 @@ func WriteInstructions(stateDir, sessionID, atRoundLimit string) (string, error)
 		}
 		text = append(text, appendix...)
 	}
-	return writeRunInstructions(stateDir, sessionID, text)
+	return WriteInstructionsContent(stateDir, sessionID, text)
 }
 
-// writeRunInstructions writes text to <stateDir>/runs/<sessionID>/instructions.md (file 0600,
-// directory 0700) and returns the path.
-func writeRunInstructions(stateDir, sessionID string, text []byte) (string, error) {
-	if sessionID == "" || sessionID == "." || sessionID == ".." || filepath.Base(sessionID) != sessionID {
-		return "", fmt.Errorf("session id %q is no single path element", sessionID)
+// InstructionsPath is <stateDir>/runs/<sessionID>/instructions.md, where WriteInstructions
+// and WriteInstructionsContent write. It checks nothing.
+func InstructionsPath(stateDir, sessionID string) string {
+	return filepath.Join(stateDir, "runs", sessionID, "instructions.md")
+}
+
+// WriteInstructionsContent writes content as the run instructions of a session to
+// <stateDir>/runs/<sessionID>/instructions.md (file 0600, directory 0700) and returns the
+// path. On a node, serve writes there what the tick sends.
+func WriteInstructionsContent(stateDir, sessionID string, content []byte) (string, error) {
+	if err := checkFileName(sessionID); err != nil {
+		return "", err
 	}
-	dir := filepath.Join(stateDir, "runs", sessionID)
+	path := InstructionsPath(stateDir, sessionID)
+	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
 	}
 	if err := os.Chmod(dir, 0o700); err != nil {
 		return "", err
 	}
-	path := filepath.Join(dir, "instructions.md")
-	if err := writePrivate(path, text); err != nil {
+	if err := writePrivate(path, content); err != nil {
 		return "", err
 	}
 	return path, nil

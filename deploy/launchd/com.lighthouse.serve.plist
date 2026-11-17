@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  lighthouse serve as a launchd agent (macOS), example only.
+
+  A node that other nodes read run content from has [node] token_file in host.toml; serve then
+  mounts /api/node/v1/. serve binds loopback and has no TLS: expose it on the tailnet with
+  `tailscale serve` (see deploy/tailscale-serve.sh), and put that https address in serve_url of
+  [dispatch.nodes.<name>] on the other node.
+
+  Replace USERNAME (your macOS user name) and the paths below, then:
+    cp com.lighthouse.serve.plist ~/Library/LaunchAgents/
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.lighthouse.serve.plist
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.lighthouse.serve</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/USERNAME/go/bin/lighthouse</string>
+    <string>serve</string>
+    <string>--addr</string>
+    <string>127.0.0.1:8127</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>LIGHTHOUSE_HOST_TOML</key>
+    <string>/Users/USERNAME/.config/lighthouse/host.toml</string>
+    <key>HOME</key>
+    <string>/Users/USERNAME</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/Users/USERNAME/Library/Logs/lighthouse-serve.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/USERNAME/Library/Logs/lighthouse-serve.log</string>
+</dict>
+</plist>

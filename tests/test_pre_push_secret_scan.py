@@ -26,7 +26,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.pack._testkit import GIT_ENV, git, init_repo, tool_bin
+from tests.pack._testkit import GIT_ENV, git, init_repo, path_with_lighthouse, tool_bin
 
 ROOT = Path(__file__).resolve().parents[1]
 SCAN = ROOT / "tools" / "hooks" / "pre-push-secret-scan.sh"
@@ -83,9 +83,11 @@ exit 0
 
 
 @pytest.fixture(autouse=True)
-def stubs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+def stubs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, lighthouse_bin: Path) -> Path:
     """An own host.toml and the bounding stubs first on PATH, for every test; returns
-    the stub directory, where a test can add or replace a stub."""
+    the stub directory, where a test can add or replace a stub. `lighthouse_bin` puts the
+    binary of this checkout on PATH too: the scan reads its limits with `lighthouse config`,
+    and a runner has no `lighthouse` of its own."""
     host = tmp_path / "host.toml"
     host.write_text('[host]\nname = "h"\ntailscale_ip = "100.64.0.1"\n', encoding="utf-8")
     monkeypatch.setenv("LIGHTHOUSE_HOST_TOML", str(host))
@@ -517,17 +519,13 @@ def test_entire_checkpoints_leave_only_through_the_scan(tmp_path):
     git(repo, "push", "-q", "origin", "work")
     (repo / "tools" / "hooks").mkdir(parents=True)
     shutil.copy(SCAN, repo / "tools" / "hooks" / SCAN.name)
-    # The scan runs gitleaks through the module, which finds config.py next to itself.
+    # The scan runs gitleaks through the module, which reads its limits with `lighthouse config`.
     shutil.copy(MODULE, repo / "tools" / "hooks" / MODULE.name)
-    shutil.copytree(
-        ROOT / ".lighthouse" / "lib", repo / ".lighthouse" / "lib",
-        ignore=shutil.ignore_patterns("__pycache__"),
-    )
     shutil.copy(ROOT / ".gitleaks.toml", repo / ".gitleaks.toml")
-    git(repo, "add", "tools", ".lighthouse", ".gitleaks.toml")
+    git(repo, "add", "tools", ".gitleaks.toml")
     git(repo, "commit", "-qm", "scan")
 
-    env = _env()
+    env = _env(PATH=path_with_lighthouse())
     enable = subprocess.run(
         ["entire", "enable", "--agent", "claude-code", "--telemetry=false", "--checkpoint-push-remote", "ckpt"],
         cwd=repo, capture_output=True, text=True, env=env, stdin=subprocess.DEVNULL,

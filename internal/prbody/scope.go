@@ -174,10 +174,13 @@ func pyStrRepr(s string) string {
 	return b.String()
 }
 
-// NormalizeRepo is `owner/repo` (case-folded) of a `--repo` value, or false when that form is
-// missing. gh accepts `[HOST/]OWNER/REPO` and URLs (`https://…`, `ssh://git@…`, `git@host:o/r`),
-// with or without `.git` or a trailing `/`.
-func NormalizeRepo(value string) (string, bool) {
+// NormalizeRepo is the project path (case-folded) of a `--repo` value as the CLI of kind reads
+// it, or false when that form is missing. Both take URLs (`https://…`, `ssh://git@…`,
+// `git@host:o/r`), with or without `.git` or a trailing `/`. gh (kind "github" or "") reads
+// `[HOST/]OWNER/REPO`: `owner/repo`. glab (kind "gitlab") reads `OWNER/REPO` or
+// `GROUP/NAMESPACE/REPO`: without a scheme or a user no segment is a host, and the whole path
+// is the project, subgroups included.
+func NormalizeRepo(value, kind string) (string, bool) {
 	rest := queryOrAnchorRe.Split(pyStrip(value), 2)[0] // drop query and anchor
 	hasScheme := strings.Contains(rest, "://")
 	if _, after, found := strings.Cut(rest, "://"); found {
@@ -202,11 +205,21 @@ func NormalizeRepo(value string) (string, bool) {
 			parts = append(parts, d)
 		}
 	}
-	if len(parts) > 2 {
+	if len(parts) > 2 && kind != "gitlab" {
 		hasHost = true
 	}
 	if hasHost && len(parts) > 0 {
 		parts = parts[1:]
+	}
+	if kind == "gitlab" {
+		if len(parts) < 2 {
+			return "", false
+		}
+		parts[len(parts)-1] = strings.TrimSuffix(parts[len(parts)-1], ".git")
+		if parts[len(parts)-1] == "" {
+			return "", false
+		}
+		return pyCasefold(strings.Join(parts, "/")), true
 	}
 	if len(parts) < 2 {
 		return "", false
@@ -218,47 +231,78 @@ func NormalizeRepo(value string) (string, bool) {
 	return pyCasefold(owner + "/" + name), true
 }
 
-// repoFunc gives `forge.repo` ("" when not set), or the error of a lighthouse.toml that cannot be
+// repoFunc gives the forge of `forge.repo` (Slug "" when not set), or the error of a lighthouse.toml that cannot be
 // read. Python reads the config only where it needs the repo; so does Main.
-type repoFunc func() (string, error)
+type repoFunc func() (Repo, error)
 
-// scopeRepo is the scope decision for a literal repo (`--repo`/`-R` or GH_REPO). Without
+// cliKind is the forge kind whose `--repo` form the tool of pc reads.
+func cliKind(pc PrCreate) string {
+	if pc.Tool == "glab" {
+		return "gitlab"
+	}
+	return "github"
+}
+
+// command is the command of pc as the messages name it.
+func command(pc PrCreate) string {
+	switch pc.Tool {
+	case "glab":
+		return "glab mr create"
+	case "lighthouse":
+		return "lighthouse forge pr create"
+	}
+	return "gh pr create"
+}
+
+// scopeRepo is the scope decision for a literal repo (`--repo`/`-R` or GH_REPO) of pc. Without
 // forge.repo there is no telling whether it is another repo: then check.
-func scopeRepo(value string, repo repoFunc) (string, string, error) {
-	normalized, ok := NormalizeRepo(value)
+func scopeRepo(pc PrCreate, value string, repo repoFunc) (string, string, error) {
+	normalized, ok := NormalizeRepo(value, cliKind(pc))
 	if !ok {
-		return decisionBlock, "--repo " + pyStrRepr(value) + " does not have the form [HOST/]OWNER/REPO", nil
+		form := "[HOST/]OWNER/REPO"
+		if pc.Tool == "glab" {
+			form = "OWNER/REPO, GROUP/NAMESPACE/REPO or a URL"
+		}
+		return decisionBlock, "--repo " + pyStrRepr(value) + " does not have the form " + form, nil
 	}
 	own, err := repo()
 	if err != nil {
 		return "", "", err
 	}
-	if own == "" || normalized == pyCasefold(own) {
+	if own.Slug == "" || normalized == pyCasefold(own.Slug) {
 		return decisionCheck, "", nil
 	}
 	return decisionSkip, "skipped — other repo " + value, nil
 }
 
-// withoutRepo is the scope of a `gh pr create` in this repo without --repo, -R or GH_REPO (#224).
-// In a clone of a fork gh then picks the upstream repo as the base, not forge.repo; with forge.repo
-// set the repo has to be spelled out.
-func withoutRepo(repo repoFunc) (string, string, error) {
+// withoutRepo is the scope of a create in this repo without --repo, -R or GH_REPO (#224). In a
+// clone of a fork gh and glab then pick the upstream repo as the base, not forge.repo; with
+// forge.repo set the repo has to be spelled out. `lighthouse forge pr create` always opens the
+// PR in forge.repo: check it.
+func withoutRepo(pc PrCreate, repo repoFunc) (string, string, error) {
+	if pc.Tool == "lighthouse" {
+		return decisionCheck, "", nil
+	}
 	own, err := repo()
 	if err != nil {
 		return "", "", err
 	}
-	if own == "" {
+	if own.Slug == "" {
 		return decisionCheck, "", nil
 	}
+	if pc.Tool == "glab" {
+		return decisionBlock, "`glab mr create` without --repo: in a clone of a fork glab then opens the MR" +
+			" in the upstream repo. Add `--repo " + own.Slug + "`.", nil
+	}
 	return decisionBlock, "`gh pr create` without --repo: in a clone of a fork gh then opens the PR" +
-		" in the upstream repo. Add `--repo " + own + "`.", nil
+		" in the upstream repo. Add `--repo " + own.Slug + "`.", nil
 }
 
 // InScope decides for pc whether to check it, skip it or block it, with the reason. projectDir is
-// the project's checkout; repo is forge.repo ("" when not set). A git call that cannot answer
+// the project's checkout; repo is the forge's Repo (an empty Slug when forge.repo is not set). A git call that cannot answer
 // blocks: it is no proof of "inside" or "outside".
-func InScope(ctx context.Context, pc PrCreate, projectDir, repo string) (decision, reason string) {
-	decision, reason, _ = inScope(ctx, pc, projectDir, func() (string, error) { return repo, nil })
+func InScope(ctx context.Context, pc PrCreate, projectDir string, repo Repo) (decision, reason string) {
+	decision, reason, _ = inScope(ctx, pc, projectDir, func() (Repo, error) { return repo, nil })
 	return decision, reason
 }
 
@@ -267,10 +311,10 @@ func inScope(ctx context.Context, pc PrCreate, projectDir string, repo repoFunc)
 		return decisionBlock, pc.RepoProblem, nil
 	}
 	if pc.Repo != nil {
-		return scopeRepo(*pc.Repo, repo)
+		return scopeRepo(pc, *pc.Repo, repo)
 	}
 	if pc.Cwd == nil {
-		return decisionBlock, "working directory of `gh pr create` cannot be resolved", nil
+		return decisionBlock, "working directory of `" + command(pc) + "` cannot be resolved", nil
 	}
 	// A `cd` to a directory that the command itself still creates: the nearest existing ancestor
 	// determines the repo.
@@ -290,7 +334,7 @@ func inScope(ctx context.Context, pc PrCreate, projectDir string, repo repoFunc)
 		return decisionBlock, "repo of " + path + " cannot be determined (" + why + ")", nil
 	}
 	if dir == ownDir {
-		return withoutRepo(repo)
+		return withoutRepo(pc, repo)
 	}
 	// Another common dir: a worktree of a separate clone (forge) with the same origin is this
 	// repo after all (#36).
@@ -305,7 +349,7 @@ func inScope(ctx context.Context, pc PrCreate, projectDir string, repo repoFunc)
 		return decisionBlock, "origin of " + path + " cannot be determined (" + err.Error() + ")", nil
 	}
 	if same {
-		return withoutRepo(repo)
+		return withoutRepo(pc, repo)
 	}
 	return decisionSkip, "skipped — outside this repo (git-common-dir " + dir + " vs " + ownDir + "; " + why + ")", nil
 }

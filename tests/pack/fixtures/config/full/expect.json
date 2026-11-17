@@ -433,6 +433,30 @@
  },
  {
   "args": [
+   "agent_audit.ignore"
+  ],
+  "rc": 0,
+  "stdout": "overlap:main-commit-gate|project/.claude/hooks/x.sh\npermission:Bash(git push:*)\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "agent_audit.top"
+  ],
+  "rc": 0,
+  "stdout": "3\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "agent_audit.description_max_chars"
+  ],
+  "rc": 0,
+  "stdout": "200\n",
+  "stderr": ""
+ },
+ {
+  "args": [
    "forge.kind"
   ],
   "rc": 0,

@@ -47,6 +47,7 @@ var Cases = []Case{
 	{"KillSurvivorIsError", killSurvivorIsError},
 	{"KillUnmeasurableIsError", killUnmeasurableIsError},
 	{"KillLeavesOtherSession", killLeavesOtherSession},
+	{"KillEndsAgentOnNodeAdapter", killEndsAgent},
 	{"RemoveDirtyKeeps", removeDirtyKeeps},
 	{"RemoveForceDropsDirty", removeForceDropsDirty},
 	{"RemoveForgottenAndTwice", removeForgottenAndTwice},
@@ -232,6 +233,24 @@ func killLeavesOtherSession(t *testing.T, f Fixture) {
 		t.Errorf("stand of the other session = %v (present %v), want working", got, ok)
 	}
 	if got, ok := stands[a]; !ok || got != workplace.Done {
+		t.Errorf("stand of the killed session = %v (present %v), want done", got, ok)
+	}
+}
+
+// killEndsAgent: Kill signals the live agent of a spawned session, which is then done. Named
+// for #327, where Kill on a node adapter signalled nothing; it holds for every adapter.
+func killEndsAgent(t *testing.T, f Fixture) {
+	ws := f.Workspace(t, "issue-16-x")
+	sid := runs.NewSessionID()
+	spawn(t, f, ws, sid)
+	f.Live(t, sid)
+	if err := f.Workplace().Kill(t.Context(), ws.ID, []string{sid}); err != nil {
+		t.Fatalf("Kill: %v", err)
+	}
+	if n := f.Signals(); n == 0 {
+		t.Error("signals = 0, want the agent signalled")
+	}
+	if got, ok := standsBySessionID(t, f, ws)[sid]; !ok || got != workplace.Done {
 		t.Errorf("stand of the killed session = %v (present %v), want done", got, ok)
 	}
 }

@@ -95,7 +95,7 @@ func (ap applier) finishScheduled(ctx context.Context, a Action) error {
 	if pr == 0 {
 		title := fmt.Sprintf("chore: geplande run %s (%s)", a.Schedule, a.Slot)
 		body := fmt.Sprintf("No issue: geplande run %s (%s)", a.Schedule, a.Slot)
-		p, err := env.Forge(a.Repo).CreatePR(ctx, r.Branch, title, body)
+		p, err := env.Forge(a.Repo).CreatePR(ctx, forge.NewPR{Head: r.Branch, Title: title, Body: body})
 		if err != nil {
 			return fmt.Errorf("create PR: %w", err)
 		}
@@ -168,7 +168,7 @@ func (ap applier) closeScheduled(ctx context.Context, a Action) error {
 func (ap applier) endScheduled(ctx context.Context, a Action, r runs.OpenRun, o runs.Outcome, reason string, pr int) error {
 	f := ap.env.Forge(a.Repo)
 	if pr > 0 {
-		if err := f.ClosePR(ctx, pr); err != nil {
+		if err := f.ClosePR(ctx, pr, ""); err != nil {
 			return fmt.Errorf("close PR #%d: %w", pr, err)
 		}
 	}

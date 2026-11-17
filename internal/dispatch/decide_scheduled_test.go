@@ -51,14 +51,6 @@ func openBrakeWith(slots, maxSoftware int) *Brake {
 		MinMemAvailableGB: 8, ReservePerRunGB: 3, Slots: slots, MaxSoftware: maxSoftware}
 }
 
-func kinds(as []Action) []Kind {
-	out := make([]Kind, len(as))
-	for i, a := range as {
-		out[i] = a.Kind
-	}
-	return out
-}
-
 func TestDecideScheduledStartBeforeIssueStart(t *testing.T) {
 	got := Decide(scheduledInput(openBrakeWith(4, 4)))
 	if want := []Kind{KindScheduledStart, KindStart}; !reflect.DeepEqual(kinds(got), want) {

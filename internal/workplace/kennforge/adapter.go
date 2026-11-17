@@ -28,6 +28,7 @@ type Adapter struct {
 	Targets    map[string]string // profile -> forge target_key
 	Profile    string            // the profile of the run: Stop, Kill and Transcript pick the container by it
 	Node       string            // forge node_id of the workspace; "": self, the forge at Client
+	Serve      *NodeClient       // lighthouse serve on Node; nil: self
 	UnitPrefix string            // [dispatch.forge] unit_prefix, no default: "" makes Stop fail
 	Run        workplace.Runner
 	Home       string              // where ~/.claude/projects lives; "": os.UserHomeDir
@@ -58,9 +59,15 @@ type wireWorkspace struct {
 	} `json:"repo"`
 }
 
-// Prepare returns the ready workspace for branch: an existing one, or a new one. On another
-// node it skips FollowRemote: the worktree path is the node's, not this host's (#327).
+// Prepare returns the ready workspace for branch: an existing one, or a new one, and follows the
+// remote branch in it (workplace.FollowRemote). On another node serve follows it there: the
+// worktree path is the node's, not this host's (#327). Own work is a *workplace.OwnWorkError on
+// both.
 func (a *Adapter) Prepare(ctx context.Context, branch string) (workplace.Workspace, error) {
+	n, err := a.serve()
+	if err != nil {
+		return workplace.Workspace{}, err
+	}
 	var list struct {
 		Workspaces []wireWorkspace `json:"workspaces"`
 	}
@@ -94,7 +101,14 @@ func (a *Adapter) Prepare(ctx context.Context, branch string) (workplace.Workspa
 		return workplace.Workspace{}, err
 	}
 	ws := workplace.Workspace{ID: id, Path: w.WorktreeDir, Branch: branch}
-	if a.Node != "" {
+	if n != nil {
+		if err := n.Follow(ctx, id, branch, created); err != nil {
+			var own *workplace.OwnWorkError
+			if errors.As(err, &own) {
+				return workplace.Workspace{}, own
+			}
+			return workplace.Workspace{}, fmt.Errorf("follow %s on node %s: %w", branch, a.Node, err)
+		}
 		return ws, nil
 	}
 	if err := workplace.FollowRemote(ctx, a.Run, gitTimeout, ws, created); err != nil {
@@ -131,6 +145,8 @@ func (a *Adapter) waitReady(ctx context.Context, id string) (wireWorkspace, erro
 // Spawn starts the agent through a forge handoff. It has three outcomes: accepted
 // (a session), workplace.ErrNotAccepted (no agent runs, the carrier is gone) and
 // workplace.ErrUncertain (an agent may run, the carrier stays). It never sends a second POST.
+// On another node serve writes the carrier and the run instructions there before the handoff
+// (see launch); a launch that fails sends no handoff.
 //
 // After a 5xx, a timeout, a broken connection or a 2xx without session.key it reads the
 // sessions once more and takes a new key of this run. After a 5xx, no such key is
@@ -143,18 +159,28 @@ func (a *Adapter) Spawn(ctx context.Context, ws workplace.Workspace, l workplace
 	if !ok {
 		return workplace.Session{}, fmt.Errorf("no forge target for profile %q: %w", l.Profile, workplace.ErrNotAccepted)
 	}
-	c, err := workplace.NewCarrier(l, a.StateDir, time.Now())
+	n, err := a.serve()
 	if err != nil {
-		return workplace.Session{}, fmt.Errorf("%w: %w", err, workplace.ErrNotAccepted)
+		return workplace.Session{}, err
 	}
-	if _, err := workplace.WriteCarrier(a.StateDir, a.Node, ws.ID, c); err != nil {
-		return workplace.Session{}, fmt.Errorf("write carrier: %w: %w", err, workplace.ErrNotAccepted)
+	if n != nil {
+		if err := a.launch(ctx, n, ws.ID, l); err != nil {
+			return workplace.Session{}, err
+		}
+	} else {
+		c, err := workplace.NewCarrier(l, a.StateDir, time.Now())
+		if err != nil {
+			return workplace.Session{}, fmt.Errorf("%w: %w", err, workplace.ErrNotAccepted)
+		}
+		if _, err := workplace.WriteCarrier(a.StateDir, "", ws.ID, c); err != nil {
+			return workplace.Session{}, fmt.Errorf("write carrier: %w: %w", err, workplace.ErrNotAccepted)
+		}
 	}
 	notAccepted := func(err error) (workplace.Session, error) {
 		if !errors.Is(err, workplace.ErrNotAccepted) {
 			err = fmt.Errorf("%v: %w", err, workplace.ErrNotAccepted)
 		}
-		if rmErr := workplace.RemoveCarrier(a.StateDir, a.Node, ws.ID); rmErr != nil {
+		if rmErr := a.removeCarrier(ctx, ws.ID); rmErr != nil {
 			err = errors.Join(err, fmt.Errorf("remove carrier: %w", rmErr))
 		}
 		return workplace.Session{}, err
@@ -252,13 +278,17 @@ func notForge(id string) error {
 }
 
 // Sessions lists the agent sessions of a workspace. A 404 is workplace.ErrGone. On another
-// node they come from /runtime, without session_id (see remoteSessions).
+// node serve reads them at the node's forge, with the same fields (see nodeSessions).
 func (a *Adapter) Sessions(ctx context.Context, workspaceID string) ([]workplace.Session, error) {
 	if err := notForge(workspaceID); err != nil {
 		return nil, err
 	}
-	if a.Node != "" {
-		return a.remoteSessions(ctx, workspaceID)
+	n, err := a.serve()
+	if err != nil {
+		return nil, err
+	}
+	if n != nil {
+		return a.nodeSessions(ctx, n, workspaceID)
 	}
 	var out struct {
 		Sessions *[]struct {
@@ -393,12 +423,13 @@ func (a *Adapter) discardWork(ctx context.Context, workspaceID string) error {
 	return nil
 }
 
-// Discard wipes the carrier of the workspace; a missing carrier is no error.
-func (a *Adapter) Discard(_ context.Context, workspaceID string) error {
+// Discard wipes the carrier of the workspace, on another node through serve; a missing carrier
+// is no error.
+func (a *Adapter) Discard(ctx context.Context, workspaceID string) error {
 	if err := notForge(workspaceID); err != nil {
 		return err
 	}
-	if err := workplace.RemoveCarrier(a.StateDir, a.Node, workspaceID); err != nil {
+	if err := a.removeCarrier(ctx, workspaceID); err != nil {
 		return fmt.Errorf("remove carrier of %s: %w", workspaceID, err)
 	}
 	return nil

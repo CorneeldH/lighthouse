@@ -1,0 +1,17 @@
+{
+  "session_id": "no-python",
+  "transcript_path": "@TRANSCRIPT@",
+  "cwd": "@REPO@",
+  "hook_event_name": "PostToolUse",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "git status",
+    "description": "Show working tree status"
+  },
+  "tool_response": {
+    "stdout": "",
+    "stderr": "",
+    "interrupted": false,
+    "isImage": false
+  }
+}

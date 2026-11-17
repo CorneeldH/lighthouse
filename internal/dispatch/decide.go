@@ -216,8 +216,14 @@ type planned struct {
 	Action
 	priority int
 	at       time.Time
-	software bool   // the run's profile is "software"
-	node     string // the node_id the run goes to; "" is self
+	// software: the run's profile is "software"; of a start or resume the run that comes, of a
+	// close the run that closes.
+	software bool
+	// node is the node_id of the run; "" is self. Of a start or resume the node the run goes to,
+	// of a close the node of the run that closes.
+	node string
+	// frees: the close frees the slot of its run in this tick (Brake.freed).
+	frees bool
 	// fixDeferred marks the defer of a fix-pr start whose placement deferred it: the start was
 	// wanted, so the close of its run stays open.
 	fixDeferred bool
@@ -273,6 +279,22 @@ func cmpBool(a, b bool) int {
 	return 1
 }
 
+// freesSlot reports whether a close frees the slot of its run in this tick: whether the next tick
+// no longer counts the run (spec "Welke sluiting"). A parked run stays counted until its usage
+// resume, a merge GitHub refuses leaves the run open, and a return without a run closes none.
+// The fix-pr close of rule 13 frees nothing either; decideIssue leaves that out.
+func freesSlot(a Action) bool {
+	switch a.Kind {
+	case KindClose:
+		return a.Outcome != runs.Parked
+	case KindReturn:
+		return a.RunID != 0
+	case KindDone:
+		return true
+	}
+	return false
+}
+
 // decideIssue gives the actions of one item. The start rules run only for an open issue in
 // Controller whose open runs all close in this tick, and not when the orphan rule hands the
 // issue back: a start next to that Returned would contradict it. The same holds for the
@@ -296,7 +318,10 @@ func decideIssue(in Input, repo RepoInput, it Item) []planned {
 		}
 		a, closes, f := settle(in, repo, it, row, hs, base)
 		if closes {
-			p := planned{Action: a}
+			// The close carries its run's node and profile, and frees its slot unless it is the
+			// fix-pr close of rule 13, whose start inherits that slot (holdsSlot).
+			p := planned{Action: a, node: row.Node, software: row.Profile == ProfileSoftware}
+			p.frees = f == nil && freesSlot(a)
 			if f != nil {
 				fix, fixRow = f, row
 				p.fixReason, p.fixReasonArg = f.reason, f.arg

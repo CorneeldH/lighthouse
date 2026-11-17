@@ -96,11 +96,11 @@ func TestBudgetSilentWhenInstructionsUnchanged(t *testing.T) {
 	initYes(t, root)
 	changed := func(o *Options) {
 		p := testPacks()
-		p["core/lib/a.py"] = file("x = 2\n")
+		p["core/scripts/a.py"] = file("x = 2\n")
 		o.Packs = p
 	}
 	r := run(t, root, "", all(upgrade, yes, ceiling("3000"), changed))
-	if r.code != 0 || read(t, root, ".lighthouse/lib/lighthouse_lib/a.py") != "# lighthouse: core@dev\nx = 2\n" {
+	if r.code != 0 || read(t, root, ".lighthouse/scripts/a.py") != "# lighthouse: core@dev\nx = 2\n" {
 		t.Fatalf("rc %d\n%s%s", r.code, r.out, r.err)
 	}
 	if strings.Contains(r.out+r.err, "instruction blocks:") {

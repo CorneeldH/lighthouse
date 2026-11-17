@@ -16,7 +16,7 @@
 # pyproject.toml, ty.toml or uv.lock (an edit, a Bash write or a commit in the turn,
 # `lighthouse turn-roots --match`, #80). The rest gets `not checked`.
 #
-# Could not check (no jq, git, python3, lighthouse or uvx, no repository, no venv, a ty that does not
+# Could not check (no jq, git, lighthouse or uvx, no repository, no venv, a ty that does not
 # start, a configuration that cannot be read, a turn whose checkout cannot be
 # determined): exit 0 with a systemMessage `ty-gate: COULD NOT CHECK — <reason>`
 # (design choice 13). Blocking there would keep the session from stopping; staying
@@ -47,7 +47,7 @@ cannot_check() {
 }
 
 # uvx is checked per checkout, after the skip: an untouched root needs none.
-for tool in jq git python3 lighthouse; do
+for tool in jq git lighthouse; do
   command -v "$tool" >/dev/null 2>&1 || cannot_check "$tool is missing."
 done
 
@@ -62,12 +62,16 @@ if [ "$ACTIVE" = "true" ]; then
   exit 0
 fi
 
-# The lib lives in the lighthouse lib of this repo. Found through
-# LIGHTHOUSE_REPO_ROOT or git, never from this file's own path.
+# The repository is found through LIGHTHOUSE_REPO_ROOT or git, never from this file's own path.
 LIB_ROOT="${LIGHTHOUSE_REPO_ROOT:-$(git -C "$(dirname "$0")" rev-parse --show-toplevel 2>/dev/null)}"
-LIB="$LIB_ROOT/.lighthouse/lib/lighthouse_lib"
 
-if ! DIRS_RAW=$(LIGHTHOUSE_REPO_ROOT="$LIB_ROOT" python3 "$LIB/config.py" python.source_dirs 2>&1); then
+# `lighthouse config` exits 1 for a key that is not set (an empty list: the check is off) and 2
+# for a configuration that cannot be read.
+DIRS_RAW=$(LIGHTHOUSE_REPO_ROOT="$LIB_ROOT" lighthouse config python.source_dirs 2>&1)
+CONFIG_RC=$?
+if [ "$CONFIG_RC" -eq 1 ]; then
+  DIRS_RAW=""
+elif [ "$CONFIG_RC" -ne 0 ]; then
   # \134 is the backslash in octal: a literal one at the end of the set reads as an escaped quote.
   cannot_check "the configuration cannot be read (python.source_dirs): $(printf '%s' "$DIRS_RAW" | tr '\n"\134' "   ")."
 fi

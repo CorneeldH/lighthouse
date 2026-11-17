@@ -28,9 +28,13 @@ func TestCorePack(t *testing.T) {
 	}
 	sort.Strings(files)
 	want := []string{
+		".agents/skills/lighthouse-audit-agent-config/SKILL.md",
 		".agents/skills/lighthouse-audit-worktrees/SKILL.md",
 		".agents/skills/lighthouse-close-issue/SKILL.md",
 		".agents/skills/lighthouse-fix-pr/SKILL.md",
+		".agents/skills/lighthouse-forge/SKILL.md",
+		".agents/skills/lighthouse-forge/github.md",
+		".agents/skills/lighthouse-forge/gitlab.md",
 		".agents/skills/lighthouse-place-instruction/SKILL.md",
 		".agents/skills/lighthouse-review-plan/SKILL.md",
 		".agents/skills/lighthouse-review-plan/findings.schema.json",
@@ -45,15 +49,20 @@ func TestCorePack(t *testing.T) {
 		".agents/skills/lighthouse-route-issue/SKILL.md",
 		".agents/skills/lighthouse-start-issue/SKILL.md",
 		".agents/skills/lighthouse-test-standard/SKILL.md",
+		".agents/skills/lighthouse-upgrade/SKILL.md",
 		".agents/skills/lighthouse-write-handoff/SKILL.md",
 		".agents/skills/lighthouse-write-issue/SKILL.md",
 		".agents/skills/lighthouse-write-pr/SKILL.md",
 		".claude/agents/lighthouse-issue-impact-scout.md",
 		".claude/hooks/lighthouse/blocking",
 		".claude/hooks/lighthouse/run.sh",
+		".claude/skills/lighthouse-audit-agent-config/SKILL.md",
 		".claude/skills/lighthouse-audit-worktrees/SKILL.md",
 		".claude/skills/lighthouse-close-issue/SKILL.md",
 		".claude/skills/lighthouse-fix-pr/SKILL.md",
+		".claude/skills/lighthouse-forge/SKILL.md",
+		".claude/skills/lighthouse-forge/github.md",
+		".claude/skills/lighthouse-forge/gitlab.md",
 		".claude/skills/lighthouse-place-instruction/SKILL.md",
 		".claude/skills/lighthouse-review-plan/SKILL.md",
 		".claude/skills/lighthouse-review-plan/findings.schema.json",
@@ -68,18 +77,13 @@ func TestCorePack(t *testing.T) {
 		".claude/skills/lighthouse-route-issue/SKILL.md",
 		".claude/skills/lighthouse-start-issue/SKILL.md",
 		".claude/skills/lighthouse-test-standard/SKILL.md",
+		".claude/skills/lighthouse-upgrade/SKILL.md",
 		".claude/skills/lighthouse-write-handoff/SKILL.md",
 		".claude/skills/lighthouse-write-issue/SKILL.md",
 		".claude/skills/lighthouse-write-pr/SKILL.md",
 		".github/pull_request_template.md",
 		".github/workflows/lighthouse-unblock-dependents.yml",
 		".lighthouse/headings.toml",
-		".lighthouse/lib/lighthouse_lib/__init__.py",
-		".lighthouse/lib/lighthouse_lib/config.py",
-		".lighthouse/lib/lighthouse_lib/datadir.py",
-		".lighthouse/lib/lighthouse_lib/headings.py",
-		".lighthouse/scripts/check-instructions.sh",
-		".lighthouse/scripts/create_labels.py",
 	}
 	if strings.Join(files, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("files:\n%s", strings.Join(files, "\n"))
@@ -91,7 +95,7 @@ func TestCorePack(t *testing.T) {
 	for _, r := range p.Requires {
 		tools = append(tools, r.Tool)
 	}
-	if strings.Join(tools, ",") != "codex,gh,git,jq,python3,superpowers,tomllib" {
+	if strings.Join(tools, ",") != "codex,gh,git,jq,superpowers" {
 		t.Fatalf("tools = %v", tools)
 	}
 }

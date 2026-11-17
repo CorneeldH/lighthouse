@@ -314,3 +314,198 @@ func TestRunWithoutKey(t *testing.T) {
 		t.Errorf("rc = %d, stderr = %q; want 2 and a usage line", rc, errOut.String())
 	}
 }
+
+const gitlabBoard = `[forge]
+kind = "gitlab"
+repo = "g/sub/p"
+[forge.board.status_options]
+"To do" = "To do"
+"In progress" = "In progress"
+Done = "Done"
+"On hold" = "On hold"
+[forge.board.priority_options]
+P1 = "priority::P1"
+`
+
+func TestParseGitLabBoard(t *testing.T) {
+	c, err := Parse([]byte(gitlabBoard), "lighthouse.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := Board{
+		StatusOptions:   map[string]string{"To do": "To do", "In progress": "In progress", "Done": "Done", "On hold": "On hold"},
+		PriorityOptions: map[string]string{"P1": "priority::P1"},
+	}
+	if c.Board == nil || !reflect.DeepEqual(*c.Board, want) {
+		t.Errorf("Board = %+v, want %+v", c.Board, want)
+	}
+}
+
+// On GitHub two names may share an option ID: the reader does not look at it.
+func TestParseGitHubBoardAllowsSharedOption(t *testing.T) {
+	src := strings.NewReplacer(`kind = "gitlab"`, `kind = "github"`, "g/sub/p", "o/r", `"On hold" = "On hold"`, `"On hold" = "To do"`).Replace(gitlabBoard)
+	src = strings.Replace(src, "[forge.board.status_options]", "[forge.board]\nproject_number = 3\nproject_id = \"P\"\nstatus_field_id = \"F\"\n[forge.board.status_options]", 1)
+	if _, err := Parse([]byte(src), "lighthouse.toml"); err != nil {
+		t.Errorf("Parse = %v, want no error", err)
+	}
+}
+
+func TestSharedOption(t *testing.T) {
+	cases := []struct {
+		name          string
+		options       map[string]string
+		fold          bool
+		first, second string
+		ok            bool
+	}{
+		{"empty", map[string]string{}, true, "", "", false},
+		{"distinct", map[string]string{"A": "x", "B": "y"}, true, "", "", false},
+		{"same value", map[string]string{"B": "x", "A": "x", "C": "z"}, false, "A", "B", true},
+		{"case differs, folded", map[string]string{"A": "To do", "B": "TO DO"}, true, "A", "B", true},
+		{"case differs, exact", map[string]string{"A": "To do", "B": "TO DO"}, false, "", "", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			first, second, ok := SharedOption(tc.options, tc.fold)
+			if first != tc.first || second != tc.second || ok != tc.ok {
+				t.Errorf("SharedOption = %q, %q, %v; want %q, %q, %v", first, second, ok, tc.first, tc.second, tc.ok)
+			}
+		})
+	}
+}
+
+// The GitLab example in docs/install.md is a lighthouse.toml a reader may copy: it must load,
+// with and without a [controller] table, and map every status name the reader requires.
+func TestInstallDocGitLabExampleParses(t *testing.T) {
+	doc, err := os.ReadFile("../../docs/install.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var example string
+	for _, block := range strings.Split(string(doc), "```toml\n")[1:] {
+		block, _, _ = strings.Cut(block, "```")
+		if strings.Contains(block, `kind = "gitlab"`) {
+			example = block
+			break
+		}
+	}
+	if example == "" {
+		t.Fatal("docs/install.md has no toml block with kind = \"gitlab\"")
+	}
+	for _, src := range []string{example, example + "\n[controller]\n"} {
+		c, err := Parse([]byte(src), "lighthouse.toml")
+		if err != nil {
+			t.Fatalf("Parse(install.md example) = %v\n%s", err, src)
+		}
+		want := map[string]string{"To do": "To do", "In progress": "In progress", "Done": "Done", "On hold": "On hold", "Controller": "Controller"}
+		if c.Board == nil || !reflect.DeepEqual(c.Board.StatusOptions, want) {
+			t.Errorf("status_options = %v, want %v", c.Board, want)
+		}
+	}
+}
+
+func TestParseBoardPerKind(t *testing.T) {
+	githubBoard := strings.NewReplacer(`kind = "gitlab"`, `kind = "github"`, "g/sub/p", "o/r").Replace(gitlabBoard)
+	githubBoard = strings.Replace(githubBoard, "[forge.board.status_options]", "[forge.board]\nproject_number = 3\n[forge.board.status_options]", 1)
+	rows := []struct {
+		name, src, want string
+	}{
+		{"gitlab project_number", strings.Replace(gitlabBoard, "[forge.board.status_options]", "[forge.board]\nproject_number = 3\n[forge.board.status_options]", 1),
+			"lighthouse.toml: key forge.board.project_number is only valid with kind = 'github'"},
+		{"gitlab project_id", strings.Replace(gitlabBoard, "[forge.board.status_options]", "[forge.board]\nproject_id = \"x\"\n[forge.board.status_options]", 1),
+			"lighthouse.toml: key forge.board.project_id is only valid with kind = 'github'"},
+		{"gitlab status_field_id", strings.Replace(gitlabBoard, "[forge.board.status_options]", "[forge.board]\nstatus_field_id = \"x\"\n[forge.board.status_options]", 1),
+			"lighthouse.toml: key forge.board.status_field_id is only valid with kind = 'github'"},
+		{"gitlab priority_field_id", strings.Replace(gitlabBoard, "[forge.board.status_options]", "[forge.board]\npriority_field_id = \"x\"\n[forge.board.status_options]", 1),
+			"lighthouse.toml: key forge.board.priority_field_id is only valid with kind = 'github'"},
+		{"gitlab empty status name", strings.Replace(gitlabBoard, `Done = "Done"`, `Done = ""`, 1),
+			"must be a non-empty string"},
+		{"gitlab empty priority label", strings.Replace(gitlabBoard, `P1 = "priority::P1"`, `P1 = ""`, 1),
+			"must be a non-empty string"},
+		{"gitlab two statuses on one GitLab status", strings.Replace(gitlabBoard, `"On hold" = "On hold"`, `"On hold" = "to DO"`, 1),
+			`lighthouse.toml: options forge.board.status_options.On hold and forge.board.status_options.To do map to the same GitLab status 'to DO'`},
+		{"gitlab two priorities on one label", strings.Replace(gitlabBoard, `P1 = "priority::P1"`, "P1 = \"priority::P1\"\nP2 = \"priority::P1\"", 1),
+			`lighthouse.toml: options forge.board.priority_options.P1 and forge.board.priority_options.P2 map to the same label 'priority::P1'`},
+		{"github without project_id", githubBoard,
+			"lighthouse.toml: missing key forge.board.project_id"},
+	}
+	for _, tc := range rows {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := Parse([]byte(tc.src), "lighthouse.toml")
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("Parse error = %v, want it to contain %q", err, tc.want)
+			}
+		})
+	}
+}
+
+// TestAgentAuditDefaults pins the three [agent_audit] keys: an absent key gives its default
+// through Lookup, and a set key overrides it.
+func TestAgentAuditDefaults(t *testing.T) {
+	c, err := Parse([]byte("[project]\nlanguage = \"nl\"\n"), "lighthouse.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for key, want := range map[string]any{
+		"agent_audit.ignore":                []any{},
+		"agent_audit.top":                   int64(10),
+		"agent_audit.description_max_chars": int64(1024),
+	} {
+		got, err := Lookup(c, key)
+		if err != nil {
+			t.Errorf("Lookup(%s) error = %v", key, err)
+			continue
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("Lookup(%s) = %#v, want %#v", key, got, want)
+		}
+	}
+	set, err := Parse([]byte("[agent_audit]\nignore = [\"permission:Bash(x)\"]\ntop = 3\n"), "lighthouse.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := Lookup(set, "agent_audit.top"); got != int64(3) {
+		t.Errorf("Lookup(agent_audit.top) = %#v, want int64(3)", got)
+	}
+	if _, err := Parse([]byte("[agent_audit]\ntop = \"ten\"\n"), "lighthouse.toml"); err == nil {
+		t.Error("agent_audit.top = \"ten\" parsed, want a type error")
+	}
+}
+
+// TestKindOf fails when KindOf stops answering from schema (kind), from the known-key lists
+// ("known") or for a key nobody knows ("unknown").
+func TestKindOf(t *testing.T) {
+	tests := map[string]string{
+		"forge.default_branch":             "str",
+		"paths.search_dirs":                "list[str]",
+		"test_gate.deadline_seconds":       "int",
+		"usage_guard.resume":               "bool",
+		"forge.repo":                       "known",
+		"forge.board.status_options.To do": "known",
+		"no.such_key":                      "unknown",
+		"forge.board.status_options.":      "unknown",
+	}
+	for key, want := range tests {
+		if got := KindOf(key); got != want {
+			t.Errorf("KindOf(%q) = %q, want %q", key, got, want)
+		}
+	}
+}
+
+// TestSchemaDump fails when a part of the dump goes missing or comes from another list than
+// KindOf reads.
+func TestSchemaDump(t *testing.T) {
+	d := SchemaDump()
+	schemaMap, ok := d["schema"].(map[string]string)
+	if !ok || schemaMap["ci.runs_on"] != "str" || len(schemaMap) != len(schema) {
+		t.Errorf("schema = %v", d["schema"])
+	}
+	if !reflect.DeepEqual(d["languages"], []string{"nl", "en"}) {
+		t.Errorf("languages = %v", d["languages"])
+	}
+	for _, k := range []string{"defaults", "base_keys", "host_keys", "option_prefixes"} {
+		if d[k] == nil {
+			t.Errorf("missing %s", k)
+		}
+	}
+}

@@ -4,15 +4,18 @@
     "proposed_when": "always",
     "detect": [],
     "skills": [
+      "audit-agent-config",
       "audit-worktrees",
       "close-issue",
       "fix-pr",
+      "forge",
       "place-instruction",
       "review-plan",
       "review-spec",
       "route-issue",
       "start-issue",
       "test-standard",
+      "upgrade",
       "write-handoff",
       "write-issue",
       "write-pr"

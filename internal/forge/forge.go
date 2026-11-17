@@ -12,6 +12,10 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 )
 
+// ErrIssueNotFound means an issue does not exist: IssueItem wraps it, on every forge. It is
+// not "the issue is not on the board", which is IssueItem's ok=false.
+var ErrIssueNotFound = errors.New("issue not found")
+
 // Forge is one repository on a forge: its issues, comments, acknowledgements, pull requests
 // and board. A status is an option name of [forge.board] status_options, never an ID.
 type Forge interface {
@@ -24,6 +28,9 @@ type Forge interface {
 	OpenIssues(ctx context.Context) ([]Issue, error)
 	ClosedInMilestone(ctx context.Context, m Milestone, since time.Time) ([]Issue, error)
 	BlockedBy(ctx context.Context, number int) ([]Blocker, error)
+	// Planning reads the open issues with their milestone and open blockers, and the issue
+	// counts of the open milestones, for the prioritisation view.
+	Planning(ctx context.Context) (Planning, error)
 	Comments(ctx context.Context, number int) ([]protocol.Comment, error)
 	CreateComment(ctx context.Context, number int, body string) (protocol.Comment, error)
 	// Acknowledge marks comment commentID on issue number as seen by the token's user.
@@ -33,21 +40,56 @@ type Forge interface {
 	// MergePR squash-merges pull request number, only while its head is still sha. It fails
 	// with ErrHeadMoved when the head moved, and with *MergeRefused when the forge declines.
 	MergePR(ctx context.Context, number int, sha string) error
-	// CreatePR opens a pull request from branch into the default branch of the repository.
-	CreatePR(ctx context.Context, branch, title, body string) (PR, error)
-	// ClosePR closes pull request number without merging it.
-	ClosePR(ctx context.Context, number int) error
 	// DeleteBranch deletes branch; a branch that is already gone is not an error.
 	DeleteBranch(ctx context.Context, branch string) error
 	OpenPRs(ctx context.Context) ([]OpenPR, error)
 	BranchPRs(ctx context.Context, branch string) ([]PR, error)
 	BoardItems(ctx context.Context) ([]BoardItem, error)
+	// IssueItem reads the board item of issue number. ok is false for an issue that exists but
+	// is not on the board. An issue that does not exist is an error wrapping ErrIssueNotFound.
 	IssueItem(ctx context.Context, number int) (item BoardItem, ok bool, err error)
 	AddToBoard(ctx context.Context, number int) (BoardItem, error)
 	SetStatus(ctx context.Context, item BoardItem, status string) error
+
+	// The methods below are the wrapper (`lighthouse forge`). A milestone is given by title;
+	// Milestone.Number is the number the forge uses in a path (on GitLab the global id).
+
+	// CreateIssue opens an issue and returns it as the forge stored it.
+	CreateIssue(ctx context.Context, in NewIssue) (Issue, error)
+	EditIssue(ctx context.Context, number int, e IssueEdit) (Issue, error)
+	ListIssues(ctx context.Context, f IssueFilter) ([]Issue, error)
+	SearchIssues(ctx context.Context, text string) ([]Issue, error)
+	CreateChange(ctx context.Context, in NewPR) (Change, error)
+	Change(ctx context.Context, number int) (Change, error)
+	CreateChangeComment(ctx context.Context, number int, body string) (protocol.Comment, error)
+	// Milestones lists the milestones in state "open", "closed" or "all"; "" is open.
+	Milestones(ctx context.Context, state string) ([]Milestone, error)
+	MilestoneByNumber(ctx context.Context, number int) (Milestone, error)
+	CreateMilestone(ctx context.Context, title, description string) (Milestone, error)
+	EditMilestone(ctx context.Context, number int, title, description *string) (Milestone, error)
+	Labels(ctx context.Context) ([]string, error)
+	// AddBlocker makes issue blocker block issue number.
+	AddBlocker(ctx context.Context, number, blocker int) error
+	// API sends r to the forge's REST API and returns the raw response body.
+	API(ctx context.Context, r APIRequest) ([]byte, error)
+
+	// The methods below are the writes of the pins lane.
+
+	UpdateIssueBody(ctx context.Context, number int, body string) error
+	// CloseIssue posts comment (when not empty) and then closes the issue.
+	CloseIssue(ctx context.Context, number int, comment string) error
+	// CreatePR opens a pull request; with NewPR.Draft it is a draft.
+	CreatePR(ctx context.Context, pr NewPR) (PR, error)
+	UpdatePRBody(ctx context.Context, number int, body string) error
+	// ClosePR posts comment (when not empty) and then closes the pull request unmerged.
+	ClosePR(ctx context.Context, number int, comment string) error
+	// FindByMarker lists the issues and pull requests, open and closed, whose body contains
+	// marker. No hit is an empty list, not an error; an empty marker is an error.
+	FindByMarker(ctx context.Context, marker string) ([]Item, error)
 }
 
 var _ Forge = (*GitHub)(nil)
+var _ Forge = (*GitLab)(nil)
 
 // Config is what Open needs to reach one repository.
 type Config struct {
@@ -74,7 +116,7 @@ func Open(cfg Config) (Forge, error) {
 		c.Board = cfg.Board
 		return c, nil
 	case "gitlab":
-		return nil, errors.New("forge: GitLab client not implemented yet")
+		return newGitLab(cfg), nil
 	default:
 		return nil, fmt.Errorf("forge: kind %q is not github or gitlab", cfg.Kind)
 	}

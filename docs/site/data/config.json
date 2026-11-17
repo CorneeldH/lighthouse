@@ -32,8 +32,9 @@
                 "internal/review/openpoints.go",
                 "internal/triage/judgment.go",
                 "pack/core/instructions/AGENTS.md",
-                "pack/core/lib/headings.py",
+                "pack/core/skills/audit-agent-config",
                 "pack/core/skills/close-issue",
+                "pack/core/skills/upgrade",
                 "pack/core/skills/write-handoff",
                 "pack/core/skills/write-issue",
                 "pack/core/skills/write-pr",
@@ -85,8 +86,8 @@
               "default": 3000,
               "about": "The word budget for the instruction files; the check fails above it.",
               "readers": [
+                "internal/checkinstr/run.go",
                 "internal/initcmd/budget.go",
-                "pack/core/scripts/check-instructions.sh",
                 "pack/core/skills/place-instruction"
               ]
             },
@@ -129,9 +130,15 @@
               ],
               "example": "github",
               "readers": [
+                "internal/evidence/run.go",
                 "internal/initcmd/initcmd.go",
                 "internal/repoconfig/repoconfig.go",
-                "internal/workplace/kennforge/adapter.go"
+                "internal/workplace/kennforge/adapter.go",
+                "pack/core/skills/forge",
+                "pack/core/skills/route-issue",
+                "pack/core/skills/start-issue",
+                "pack/core/skills/write-issue",
+                "pack/core/skills/write-pr"
               ]
             },
             {
@@ -143,7 +150,9 @@
               "readers": [
                 "internal/boardstart/boardstart.go",
                 "internal/cli/worktreeaudit.go",
+                "internal/labels/labels.go",
                 "internal/postartefact/postartefact.go",
+                "internal/prbody/find.go",
                 "internal/prbody/form.go",
                 "internal/prbody/gate.go",
                 "internal/prbody/scope.go",
@@ -151,15 +160,14 @@
                 "internal/repoconfig/repoconfig.go",
                 "internal/workplace/local/adapter.go",
                 "internal/worktreeaudit/collect.go",
-                "pack/core/scripts/create_labels.py",
                 "pack/core/skills/audit-worktrees",
                 "pack/core/skills/close-issue",
                 "pack/core/skills/fix-pr",
+                "pack/core/skills/forge",
                 "pack/core/skills/review-plan",
                 "pack/core/skills/route-issue",
                 "pack/core/skills/start-issue",
                 "pack/core/skills/write-handoff",
-                "pack/core/skills/write-issue",
                 "pack/core/skills/write-pr",
                 "pack/python/scripts/quality/prcov_issues.py"
               ]
@@ -170,7 +178,14 @@
               "required": "no",
               "about": "The host name of a self-hosted GitLab, without scheme, port or path. Valid only with kind gitlab.",
               "example": "git.example.org",
-              "readers": ["internal/initcmd/initcmd.go", "internal/repoconfig/repoconfig.go"]
+              "readers": [
+                "internal/cli/serve.go",
+                "internal/forge/gitlab.go",
+                "internal/initcmd/initcmd.go",
+                "internal/prbody/form.go",
+                "internal/repoconfig/repoconfig.go",
+                "pack/core/skills/forge"
+              ]
             },
             {
               "key": "forge.token_env",
@@ -178,7 +193,12 @@
               "required": "no",
               "about": "The name of the environment variable that holds the forge token, instead of GH_TOKEN and GITHUB_TOKEN (github) or GITLAB_TOKEN (gitlab). The token itself never goes in lighthouse.toml.",
               "example": "WORK_GITLAB_TOKEN",
-              "readers": ["internal/repoconfig/repoconfig.go"]
+              "readers": [
+                "internal/prbody/form.go",
+                "internal/prbody/gate.go",
+                "internal/repoconfig/repoconfig.go",
+                "pack/core/skills/forge"
+              ]
             },
             {
               "key": "forge.default_branch",
@@ -200,6 +220,7 @@
                 "pack/core/skills/audit-worktrees",
                 "pack/core/skills/close-issue",
                 "pack/core/skills/start-issue",
+                "pack/core/skills/upgrade",
                 "pack/core/skills/write-handoff",
                 "pack/core/skills/write-issue",
                 "pack/core/workflows/unblock-dependents.yml",
@@ -212,9 +233,8 @@
               "key": "forge.name",
               "level": "advanced",
               "required": "derived",
-              "about": "The name part of forge.repo, derived by config.py.",
+              "about": "The name part of forge.repo, derived by the lighthouse binary.",
               "readers": [
-                "internal/boardstart/boardstart.go",
                 "pack/core/skills/close-issue",
                 "pack/core/skills/write-handoff",
                 "pack/python/scripts/quality/prcov_issues.py"
@@ -224,12 +244,11 @@
               "key": "forge.owner",
               "level": "advanced",
               "required": "derived",
-              "about": "The owner part of forge.repo, derived by config.py.",
+              "about": "The owner part of forge.repo, derived by the lighthouse binary.",
               "readers": [
-                "internal/boardstart/boardstart.go",
                 "pack/core/skills/close-issue",
+                "pack/core/skills/forge",
                 "pack/core/skills/write-handoff",
-                "pack/core/skills/write-issue",
                 "pack/python/scripts/quality/prcov_issues.py"
               ]
             }
@@ -248,14 +267,14 @@
               "example": "PVTSSF_...",
               "readers": [
                 "internal/repoconfig/repoconfig.go",
-                "pack/core/skills/write-issue"
+                "pack/core/skills/forge"
               ]
             },
             {
               "key": "forge.board.priority_options",
               "level": "optional",
               "required": "no",
-              "about": "The ids of the Priority options, one entry per option name.",
+              "about": "The ids of the Priority options, one entry per option name. With kind gitlab each value is the scoped label that carries the priority, for example priority::P1; two names on one label are refused.",
               "example": {
                 "P0": "...",
                 "P1": "...",
@@ -263,6 +282,7 @@
               },
               "readers": [
                 "internal/repoconfig/repoconfig.go",
+                "pack/core/skills/forge",
                 "pack/core/skills/write-issue"
               ]
             },
@@ -273,13 +293,12 @@
               "about": "The node id of the GitHub project board.",
               "example": "PVT_...",
               "readers": [
-                "internal/boardstart/boardstart.go",
                 "internal/cli/triage.go",
                 "internal/forge/board.go",
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/close-issue",
+                "pack/core/skills/forge",
                 "pack/core/skills/write-handoff",
-                "pack/core/skills/write-issue",
                 "pack/python/scripts/quality/prcov_issues.py"
               ]
             },
@@ -291,9 +310,9 @@
               "example": 1,
               "readers": [
                 "internal/repoconfig/repoconfig.go",
+                "pack/core/skills/forge",
                 "pack/core/skills/start-issue",
                 "pack/core/skills/write-handoff",
-                "pack/core/skills/write-issue",
                 "pack/python/scripts/quality/prcov_issues.py"
               ]
             },
@@ -304,7 +323,6 @@
               "about": "The id of the board's Status field.",
               "example": "PVTSSF_...",
               "readers": [
-                "internal/boardstart/boardstart.go",
                 "internal/cli/triage.go",
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/close-issue",
@@ -316,7 +334,7 @@
               "key": "forge.board.status_options",
               "level": "optional",
               "required": "with [forge.board]",
-              "about": "The ids of the Status options, one entry per option name.",
+              "about": "The ids of the Status options, one entry per option name. With kind gitlab each value is the name of the issue status, for example To do; two names on one status (case-insensitive) are refused.",
               "example": {
                 "To do": "...",
                 "In progress": "...",
@@ -324,13 +342,15 @@
                 "On hold": "..."
               },
               "readers": [
-                "internal/boardstart/boardstart.go",
+                "internal/cli/forgecmd_write.go",
                 "internal/cli/serve.go",
                 "internal/cli/triage.go",
                 "internal/dispatch/gather.go",
                 "internal/forge/board.go",
                 "internal/forge/forge.go",
+                "internal/forge/gitlab_board.go",
                 "internal/repoconfig/repoconfig.go",
+                "pack/core/skills/forge",
                 "pack/core/skills/write-handoff",
                 "pack/core/skills/write-issue",
                 "pack/python/scripts/quality/prcov_issues.py"
@@ -355,6 +375,7 @@
                 "internal/initcmd/gatecommand.go",
                 "pack/core/instructions/AGENTS.md",
                 "pack/core/skills/fix-pr",
+                "pack/core/skills/upgrade",
                 "pack/core/skills/write-pr",
                 "pack/go/skills/go-standard",
                 "pack/python/skills/python-standard"
@@ -437,7 +458,7 @@
               "key": "paths.history",
               "level": "advanced",
               "required": "no",
-              "about": "The file with the project's history; only config.py checks it for now.",
+              "about": "The file with the project's history; only the lighthouse binary checks it for now.",
               "example": "docs/history.md",
               "readers": []
             },
@@ -451,7 +472,7 @@
                 "internal/cli/init.go",
                 "internal/initcmd/initcmd.go",
                 "internal/projectconfig/projectconfig.go",
-                "pack/core/scripts/create_labels.py",
+                "internal/labels/labels.go",
                 "pack/core/skills/write-issue",
                 "pack/core/skills/write-pr"
               ]
@@ -463,7 +484,9 @@
               "about": "The file that lists instruction files exempt from the mirror check.",
               "example": "docs/mirror-exceptions.md",
               "readers": [
-                "pack/core/scripts/check-instructions.sh"
+                "internal/checkinstr/mirror.go",
+                "internal/checkinstr/run.go",
+                "pack/core/skills/upgrade"
               ]
             },
             {
@@ -565,6 +588,7 @@
                 "internal/repoconfig/repoconfig.go",
                 "internal/triage/rules.go",
                 "pack/core/skills/close-issue",
+                "pack/core/skills/forge",
                 "pack/core/skills/route-issue",
                 "pack/core/skills/start-issue",
                 "pack/core/skills/write-issue",
@@ -654,9 +678,11 @@
               "key": "ci.bot_login",
               "level": "advanced",
               "required": "no",
-              "about": "The login of the bot the unblock lane runs as, to unblock dependent issues.",
+              "about": "The login of the bot the unblock lane runs as, to unblock dependent issues. The pins lane counts only items by this login as its own.",
               "example": "my-bot[bot]",
               "readers": [
+                "internal/cli/pinslane.go",
+                "internal/pins/lane/lane.go",
                 "pack/core/skills/close-issue"
               ]
             },
@@ -763,7 +789,7 @@
               "level": "advanced",
               "required": "no",
               "default": 85,
-              "about": "A [codex_usage] threshold that nothing reads yet; only config.py checks its type.",
+              "about": "A [codex_usage] threshold that nothing reads yet; only the lighthouse binary checks its type.",
               "readers": []
             },
             {
@@ -791,8 +817,46 @@
               "level": "advanced",
               "required": "no",
               "default": 80,
-              "about": "A [codex_usage] threshold that nothing reads yet; only config.py checks its type.",
+              "about": "A [codex_usage] threshold that nothing reads yet; only the lighthouse binary checks its type.",
               "readers": []
+            }
+          ]
+        },
+        {
+          "table": "agent_audit",
+          "title": "Agent audit",
+          "about": "What lighthouse agent-audit ignores, and how much of the always-loaded surface it lists.",
+          "keys": [
+            {
+              "key": "agent_audit.description_max_chars",
+              "level": "advanced",
+              "required": "no",
+              "default": 1024,
+              "about": "A skill, command or agent description longer than this is reported in the surface.",
+              "readers": [
+                "internal/cli/agentaudit.go"
+              ]
+            },
+            {
+              "key": "agent_audit.ignore",
+              "level": "advanced",
+              "required": "no",
+              "default": [],
+              "about": "Keys of conflicts and overlap candidates the audit no longer reports; a key that no longer occurs gets an ignore line.",
+              "readers": [
+                "internal/cli/agentaudit.go",
+                "pack/core/skills/audit-agent-config"
+              ]
+            },
+            {
+              "key": "agent_audit.top",
+              "level": "advanced",
+              "required": "no",
+              "default": 10,
+              "about": "How many of the largest skills, commands and agents the surface lists.",
+              "readers": [
+                "internal/cli/agentaudit.go"
+              ]
             }
           ]
         },

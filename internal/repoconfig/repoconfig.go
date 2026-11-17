@@ -143,7 +143,13 @@ func defaultString(key string) string {
 
 // Load reads <dir>/lighthouse.toml.
 func Load(dir string) (Repo, error) {
-	path := filepath.Join(dir, "lighthouse.toml")
+	return LoadFile(filepath.Join(dir, "lighthouse.toml"))
+}
+
+// LoadFile reads the lighthouse.toml at path, whatever its file name (LIGHTHOUSE_TOML); Dir is
+// the directory it is in.
+func LoadFile(path string) (Repo, error) {
+	dir := filepath.Dir(path)
 	var raw rawFile
 	md, err := toml.DecodeFile(path, &raw)
 	if err != nil {
@@ -318,22 +324,34 @@ func Dispatchable(r Repo) error {
 	if b == nil {
 		add("missing [forge.board]")
 	} else {
-		if b.ProjectNumber <= 0 {
-			add("forge.board.project_number must be positive")
-		}
-		if b.ProjectID == "" {
-			add("forge.board.project_id is empty")
-		}
-		if b.StatusFieldID == "" {
-			add("forge.board.status_field_id is empty")
+		// A GitLab board has no project or field IDs: its status is the built-in one.
+		if r.Kind != "gitlab" {
+			if b.ProjectNumber <= 0 {
+				add("forge.board.project_number must be positive")
+			}
+			if b.ProjectID == "" {
+				add("forge.board.project_id is empty")
+			}
+			if b.StatusFieldID == "" {
+				add("forge.board.status_field_id is empty")
+			}
 		}
 		for _, name := range []string{"Controller", "On hold"} {
 			if b.StatusOptions[name] == "" {
 				add("missing forge.board.status_options.%s", name)
 			}
 		}
-		if b.PriorityFieldID == "" {
+		if r.Kind != "gitlab" && b.PriorityFieldID == "" {
 			add("forge.board.priority_field_id is empty")
+		}
+		// GitLab reads a status or label back to its name: two names on one would flip at random.
+		if r.Kind == "gitlab" {
+			if a, c, dup := config.SharedOption(b.StatusOptions, true); dup {
+				add("forge.board.status_options.%s and forge.board.status_options.%s map to the same GitLab status", a, c)
+			}
+			if a, c, dup := config.SharedOption(b.PriorityOptions, false); dup {
+				add("forge.board.priority_options.%s and forge.board.priority_options.%s map to the same label", a, c)
+			}
 		}
 	}
 	return errors.Join(errs...)

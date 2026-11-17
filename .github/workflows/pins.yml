@@ -1,0 +1,60 @@
+# The upstream-pins lane (#325). Weekly, and by hand, `lighthouse pins lane` measures every pin
+# against its upstream and writes what that asks for: a draft PR on `pins/<key>` for a skill or
+# file whose merge is clean, an issue for a conflict, for a plugin or tool behind its release and
+# for a pin it cannot measure. It never merges. The logic lives in Go (internal/pins/lane); the
+# YAML stays thin.
+#
+# The GitHub App from `[ci]` in lighthouse.toml writes. Its token checks out the repository with
+# persisted credentials, so the lane's `git push` to `pins/*` uses it, and it is the GH_TOKEN for
+# the issues and pull requests. The App needs contents, pull-requests and issues write, and must
+# be allowed to push to `pins/*`. GITHUB_TOKEN gets nothing.
+name: Pins
+
+on:
+  schedule:
+    # Mondays, 05:17 UTC.
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+# Finding and creating an item is not atomic: a scheduled run and a manual start must not
+# overlap, and a running lane is never cancelled halfway through its pins.
+concurrency:
+  group: pins
+  cancel-in-progress: false
+
+jobs:
+  lane:
+    # The lane merges into a checkout of the default branch's head; a dispatch from another
+    # branch would undo what that branch lacks.
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    # A hung push or forge call must not hold the concurrency group for six hours.
+    timeout-minutes: 30
+    steps:
+      - name: App token for contents, pull requests and issues
+        id: app
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.PAIA_BOT_CLIENT_ID }}
+          private-key: ${{ secrets.PAIA_BOT_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-issues: write
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          token: ${{ steps.app.outputs.token }}
+          persist-credentials: true
+          # Full history: the lane builds pins/* on origin's default branch and reads its log.
+          fetch-depth: 0
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Pins lane
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: go run ./cmd/lighthouse pins lane

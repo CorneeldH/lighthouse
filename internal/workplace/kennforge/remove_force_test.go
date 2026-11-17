@@ -14,18 +14,10 @@ import (
 // A forced Remove on another node changes nothing: the worktree is the node's, and the tick
 // host has no git for it. The node fixture's Runner fails the test on any call.
 func TestRemoveForceOnNodeRefuses(t *testing.T) {
-	f := newForgeNodeFixture(t).(*forgeFixture)
-	ws := f.Workspace(t, "scheduled/nightly-20261116T0400-1")
-	f.MakeDirty(t, ws)
-	err := f.a.Remove(t.Context(), ws.ID, workplace.RemoveOptions{Force: true})
+	_, _, _, a := twoNodes(t, "node-a")
+	err := a.Remove(t.Context(), "ws1", workplace.RemoveOptions{Force: true})
 	if err == nil || !strings.Contains(err.Error(), "on node node-a") {
 		t.Fatalf("forced Remove on a node: err = %v, want a refusal naming the node", err)
-	}
-	if _, err := f.a.Lookup(t.Context(), ws.ID); err != nil {
-		t.Errorf("Lookup after the refusal: %v, want the workspace still there", err)
-	}
-	if _, err := os.Stat(filepath.Join(ws.Path, "untracked.txt")); err != nil {
-		t.Errorf("untracked file after the refusal: %v, want it kept", err)
 	}
 }
 

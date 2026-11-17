@@ -2,6 +2,7 @@ package forge
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -79,8 +80,8 @@ func TestBoardItemsMapsFields(t *testing.T) {
 		"id":        "PVTI_1",
 		"updatedAt": "2026-10-30T09:00:00Z",
 		"fieldValues": map[string]any{"nodes": []any{
-			map[string]any{"optionId": "opt-ctrl", "field": map[string]any{"id": "F_status"}},
-			map[string]any{"optionId": "opt-p1", "field": map[string]any{"id": "F_prio"}},
+			map[string]any{"optionId": "opt-ctrl", "name": "Controller", "field": map[string]any{"id": "F_status"}},
+			map[string]any{"optionId": "opt-p1", "name": "P1", "field": map[string]any{"id": "F_prio"}},
 			map[string]any{}, // a text field: no single-select value
 		}},
 		"content": map[string]any{
@@ -113,6 +114,7 @@ func TestBoardItemsMapsFields(t *testing.T) {
 		ItemID:         "PVTI_1",
 		ItemUpdatedAt:  time.Date(2026, 10, 30, 9, 0, 0, 0, time.UTC),
 		Status:         "Controller",
+		StatusName:     "Controller",
 		Priority:       "P1",
 		Repo:           "o/r",
 		Issue:          7,
@@ -400,12 +402,13 @@ func TestBoardItemsPRURLAndMergedAt(t *testing.T) {
 	}
 }
 
-// issueNode is a board node of issue number with Status option opt, as the board serves it.
+// issueNode is a board node of issue number with Status option opt, named "Option <opt>" on
+// the board, as the board serves it.
 func issueNode(id string, number int, opt string) map[string]any {
 	return map[string]any{
 		"id": id, "updatedAt": "2026-10-30T09:00:00Z",
 		"fieldValues": map[string]any{"nodes": []any{
-			map[string]any{"optionId": opt, "field": map[string]any{"id": "F_status"}},
+			map[string]any{"optionId": opt, "name": "Option " + opt, "field": map[string]any{"id": "F_status"}},
 		}},
 		"content": map[string]any{"number": number},
 	}
@@ -415,6 +418,7 @@ func TestIssueItem(t *testing.T) {
 	srv, c := boardClient(t)
 	srv.ProjectID = "P1"
 	srv.BoardNodes = []map[string]any{issueNode("PVTI_7", 7, "s1"), issueNode("PVTI_9", 9, "s2")}
+	srv.Issues = map[int]map[string]any{8: {"number": 8}} // exists, on no board
 	ctx := context.Background()
 	c.Board = &repoconfig.Board{ProjectID: "P1", StatusFieldID: "F_status", StatusOptions: map[string]string{"S1": "s1"}}
 
@@ -422,8 +426,13 @@ func TestIssueItem(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("IssueItem(P1, 7) = %v, %v, %v; want the item", got, ok, err)
 	}
-	if got.ItemID != "PVTI_7" || got.Status != "S1" || got.Issue != 7 || got.Repo != "o/r" {
-		t.Errorf("item = %+v; want PVTI_7, Status S1, issue 7 of o/r", got)
+	if got.ItemID != "PVTI_7" || got.Status != "S1" || got.StatusName != "Option s1" || got.Issue != 7 || got.Repo != "o/r" {
+		t.Errorf("item = %+v; want PVTI_7, Status S1, StatusName Option s1, issue 7 of o/r", got)
+	}
+	// s2 is no option of status_options: Status says unknown by its ID, StatusName has its name.
+	got, ok, err = c.IssueItem(ctx, 9)
+	if err != nil || !ok || got.Status != "unknown:s2" || got.StatusName != "Option s2" {
+		t.Errorf("IssueItem(P1, 9) = %+v, %v, %v; want Status unknown:s2, StatusName Option s2", got, ok, err)
 	}
 	if _, ok, err := c.IssueItem(ctx, 8); ok || err != nil {
 		t.Errorf("IssueItem(P1, 8) ok=%v err=%v; want not on the board and no error", ok, err)
@@ -436,8 +445,8 @@ func TestIssueItem(t *testing.T) {
 	if vars["owner"] != "o" || vars["name"] != "r" || vars["number"] != float64(7) {
 		t.Errorf("variables = %v, want owner o, name r, number 7", vars)
 	}
-	if n := srv.Count("IssueItems"); n != 3 {
-		t.Errorf("Count(IssueItems) = %d, want 3", n)
+	if n := srv.Count("IssueItems"); n != 4 {
+		t.Errorf("Count(IssueItems) = %d, want 4", n)
 	}
 }
 
@@ -458,6 +467,45 @@ func TestIssueItemArchived(t *testing.T) {
 	got, ok, err = c.IssueItem(ctx, 9)
 	if err != nil || !ok || got.ItemID != "PVTI_9" || got.Archived {
 		t.Errorf("IssueItem(P1, 9) = %+v, %v, %v; want PVTI_9, not archived", got, ok, err)
+	}
+}
+
+// Only GitHub's answer for a missing issue, a NOT_FOUND on repository.issue, is
+// ErrIssueNotFound; any other GraphQL error on IssueItems stays a plain error.
+func TestIssueItemGraphQLErrors(t *testing.T) {
+	srv, c := boardClient(t)
+	srv.ProjectID = "P1"
+	c.Board = &repoconfig.Board{ProjectID: "P1"}
+	ctx := context.Background()
+	_, ok, err := c.IssueItem(ctx, 99)
+	if ok || !errors.Is(err, ErrIssueNotFound) || !strings.Contains(err.Error(), "o/r#99") {
+		t.Errorf("IssueItem(99) ok=%v err=%v; want an error wrapping ErrIssueNotFound naming o/r#99", ok, err)
+	}
+	srv.FailOps = map[string]string{"IssueItems": "Something went wrong"}
+	_, ok, err = c.IssueItem(ctx, 99)
+	if ok || err == nil || errors.Is(err, ErrIssueNotFound) || !strings.Contains(err.Error(), "Something went wrong") {
+		t.Errorf("IssueItem with another GraphQL error ok=%v err=%v; want that error, not ErrIssueNotFound", ok, err)
+	}
+}
+
+func TestGraphQLErrorsNotFound(t *testing.T) {
+	cases := []struct {
+		name string
+		errs graphqlErrors
+		want bool
+	}{
+		{"not found on the path", graphqlErrors{{Type: "NOT_FOUND", Path: []any{"repository", "issue"}}}, true},
+		{"second error matches", graphqlErrors{{Type: "FORBIDDEN"}, {Type: "NOT_FOUND", Path: []any{"repository", "issue"}}}, true},
+		{"not found on the repository", graphqlErrors{{Type: "NOT_FOUND", Path: []any{"repository"}}}, false},
+		{"other type on the path", graphqlErrors{{Type: "FORBIDDEN", Path: []any{"repository", "issue"}}}, false},
+		{"no type", graphqlErrors{{Message: "boom", Path: []any{"repository", "issue"}}}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.errs.notFound("repository", "issue"); got != tc.want {
+				t.Errorf("notFound = %v, want %v", got, tc.want)
+			}
+		})
 	}
 }
 

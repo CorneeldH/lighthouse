@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -179,165 +180,110 @@ func TestMergePR(t *testing.T) {
 	}
 }
 
-// scheduleServer records every request and answers by "METHOD path" from replies; an unknown
-// request fails the test. It returns the client and a pointer to the recorded requests.
-type recorded struct{ method, path, body, auth string }
-
-func scheduleServer(t *testing.T, replies map[string]struct {
-	status int
-	resp   string
-}) (*GitHub, *[]recorded) {
+// recorder answers by "METHOD path" and logs every request as "METHOD path body".
+func recorder(t *testing.T, answers map[string]string) (*GitHub, *[]string) {
 	t.Helper()
-	var reqs []recorded
+	var log []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		raw, _ := io.ReadAll(r.Body)
-		reqs = append(reqs, recorded{r.Method, r.URL.EscapedPath(), strings.TrimSpace(string(raw)), r.Header.Get("Authorization")})
-		rep, ok := replies[r.Method+" "+r.URL.EscapedPath()]
+		log = append(log, strings.TrimSpace(r.Method+" "+r.URL.RequestURI()+" "+string(raw)))
+		resp, ok := answers[r.Method+" "+r.URL.Path]
 		if !ok {
-			t.Errorf("unexpected request %s %s", r.Method, r.URL.EscapedPath())
-			w.WriteHeader(500)
+			t.Errorf("unexpected request %s %s", r.Method, r.URL)
+			w.WriteHeader(404)
 			return
 		}
-		w.WriteHeader(rep.status)
-		_, _ = io.WriteString(w, rep.resp)
+		_, _ = io.WriteString(w, resp)
 	}))
 	t.Cleanup(srv.Close)
 	c := New("o/r", "secret-token")
 	c.BaseURL = srv.URL
-	return c, &reqs
+	return c, &log
 }
 
-type reply = struct {
-	status int
-	resp   string
-}
-
-func TestCreatePR(t *testing.T) {
-	c, reqs := scheduleServer(t, map[string]reply{
-		"GET /repos/o/r":        {200, `{"default_branch":"trunk"}`},
-		"POST /repos/o/r/pulls": {201, `{"number":77,"html_url":"https://github.com/o/r/pull/77","state":"open","head":{"ref":"lh/run","sha":"abc"}}`},
-	})
-	pr, err := c.CreatePR(context.Background(), "lh/run", "Titel", "Tekst")
+func TestCreatePRSendsDraftAndReadsResult(t *testing.T) {
+	c, log := recorder(t, map[string]string{"POST /repos/o/r/pulls": `{"number":9,"state":"open","draft":true,
+		"html_url":"u","head":{"ref":"pins/x","sha":"abc"}}`})
+	got, err := c.CreatePR(context.Background(), NewPR{Title: "T", Body: "B", Head: "pins/x", Base: "main", Draft: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if pr.Number != 77 || pr.URL != "https://github.com/o/r/pull/77" || pr.HeadRef != "lh/run" || pr.State != "OPEN" || pr.HeadSHA != "abc" {
-		t.Fatalf("pr = %+v", pr)
+	want := `POST /repos/o/r/pulls {"base":"main","body":"B","draft":true,"head":"pins/x","title":"T"}`
+	if len(*log) != 1 || (*log)[0] != want {
+		t.Errorf("requests = %q, want %q", *log, want)
 	}
-	var post *recorded
-	for i := range *reqs {
-		if (*reqs)[i].method == "POST" {
-			post = &(*reqs)[i]
-		}
-	}
-	if post == nil {
-		t.Fatal("no POST")
-	}
-	var got map[string]string
-	if err := json.Unmarshal([]byte(post.body), &got); err != nil {
-		t.Fatal(err)
-	}
-	want := map[string]string{"head": "lh/run", "base": "trunk", "title": "Titel", "body": "Tekst"}
-	if len(got) != len(want) {
-		t.Fatalf("body = %v, want %v", got, want)
-	}
-	for k, v := range want {
-		if got[k] != v {
-			t.Errorf("body[%s] = %q, want %q", k, got[k], v)
-		}
-	}
-	if post.auth != "Bearer secret-token" {
-		t.Errorf("auth = %q", post.auth)
-	}
-	// the default branch is fetched once per client
-	if _, err := c.CreatePR(context.Background(), "lh/run2", "T", "B"); err != nil {
-		t.Fatal(err)
-	}
-	gets := 0
-	for _, r := range *reqs {
-		if r.method == "GET" {
-			gets++
-		}
-	}
-	if gets != 1 {
-		t.Errorf("GET repo count = %d, want 1", gets)
+	if got.Number != 9 || got.State != "OPEN" || !got.Draft || got.HeadRef != "pins/x" || got.HeadSHA != "abc" || got.URL != "u" {
+		t.Errorf("got %+v", got)
 	}
 }
 
-func TestCreatePRErrors(t *testing.T) {
-	t.Run("no default branch", func(t *testing.T) {
-		c, reqs := scheduleServer(t, map[string]reply{"GET /repos/o/r": {200, `{}`}})
-		_, err := c.CreatePR(context.Background(), "b", "t", "x")
-		if err == nil || !strings.Contains(err.Error(), "default branch") {
-			t.Fatalf("err = %v, want default branch error", err)
-		}
-		for _, r := range *reqs {
-			if r.method == "POST" {
-				t.Fatal("must not POST without a base")
-			}
-		}
-	})
-	t.Run("422", func(t *testing.T) {
-		c, _ := scheduleServer(t, map[string]reply{
-			"GET /repos/o/r":        {200, `{"default_branch":"main"}`},
-			"POST /repos/o/r/pulls": {422, `{"message":"No commits between main and b"}`},
-		})
-		_, err := c.CreatePR(context.Background(), "b", "t", "x")
-		if err == nil || !strings.Contains(err.Error(), "No commits between main and b") || !strings.Contains(err.Error(), "422") {
-			t.Fatalf("err = %v", err)
-		}
-	})
-}
-
-func TestClosePR(t *testing.T) {
-	c, reqs := scheduleServer(t, map[string]reply{"PATCH /repos/o/r/pulls/12": {200, `{"number":12,"state":"closed"}`}})
-	if err := c.ClosePR(context.Background(), 12); err != nil {
-		t.Fatal(err)
-	}
-	if len(*reqs) != 1 || (*reqs)[0].body != `{"state":"closed"}` {
-		t.Fatalf("requests = %+v", *reqs)
-	}
-	c, _ = scheduleServer(t, map[string]reply{"PATCH /repos/o/r/pulls/12": {404, `{"message":"Not Found"}`}})
-	if err := c.ClosePR(context.Background(), 12); err == nil || !strings.Contains(err.Error(), "404") {
-		t.Fatalf("err = %v, want 404 error", err)
-	}
-}
-
-func TestDeleteBranch(t *testing.T) {
-	const path = "DELETE /repos/o/r/git/refs/heads/lh/run-1"
-	tests := []struct {
-		name    string
-		status  int
-		resp    string
-		wantErr []string // nil: no error
+func TestCloseCommentsBeforeClosing(t *testing.T) {
+	for _, tt := range []struct {
+		name, kind string
+		close      func(*GitHub) error
 	}{
-		{"deleted", 204, "", nil},
-		{"gone 404", 404, `{"message":"Not Found"}`, nil},
-		{"gone 422", 422, `{"message":"Reference does not exist"}`, nil},
-		{"other 422", 422, `{"message":"Validation failed"}`, []string{"422", "Validation failed"}},
-		{"forbidden", 403, `{"message":"Resource not accessible by integration"}`, []string{"403", "Resource not accessible by integration"}},
-	}
-	for _, tt := range tests {
+		{"issue", "issues", func(c *GitHub) error { return c.CloseIssue(context.Background(), 4, "reden") }},
+		{"pr", "pulls", func(c *GitHub) error { return c.ClosePR(context.Background(), 4, "reden") }},
+	} {
 		t.Run(tt.name, func(t *testing.T) {
-			c, reqs := scheduleServer(t, map[string]reply{path: {tt.status, tt.resp}})
-			err := c.DeleteBranch(context.Background(), "lh/run-1")
-			if len(*reqs) != 1 {
-				t.Fatalf("requests = %+v", *reqs)
+			c, log := recorder(t, map[string]string{
+				"POST /repos/o/r/issues/4/comments":  `{"id":1,"user":{"login":"b"}}`,
+				"PATCH /repos/o/r/" + tt.kind + "/4": `{}`,
+			})
+			if err := tt.close(c); err != nil {
+				t.Fatal(err)
 			}
-			if tt.wantErr == nil {
-				if err != nil {
-					t.Fatalf("err = %v, want nil", err)
-				}
-				return
-			}
-			if err == nil {
-				t.Fatal("want error")
-			}
-			for _, w := range tt.wantErr {
-				if !strings.Contains(err.Error(), w) {
-					t.Errorf("error %q lacks %q", err, w)
-				}
+			want := []string{`POST /repos/o/r/issues/4/comments {"body":"reden"}`, `PATCH /repos/o/r/` + tt.kind + `/4 {"state":"closed"}`}
+			if !slices.Equal(*log, want) {
+				t.Errorf("requests = %q, want %q", *log, want)
 			}
 		})
+	}
+	t.Run("no comment", func(t *testing.T) {
+		c, log := recorder(t, map[string]string{"PATCH /repos/o/r/issues/4": `{}`})
+		if err := c.CloseIssue(context.Background(), 4, ""); err != nil {
+			t.Fatal(err)
+		}
+		if len(*log) != 1 {
+			t.Errorf("requests = %q, want only the PATCH", *log)
+		}
+	})
+}
+
+func TestUpdateBodyPatches(t *testing.T) {
+	c, log := recorder(t, map[string]string{"PATCH /repos/o/r/issues/4": `{}`, "PATCH /repos/o/r/pulls/5": `{}`})
+	if err := c.UpdateIssueBody(context.Background(), 4, "i"); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.UpdatePRBody(context.Background(), 5, "p"); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{`PATCH /repos/o/r/issues/4 {"body":"i"}`, `PATCH /repos/o/r/pulls/5 {"body":"p"}`}
+	if !slices.Equal(*log, want) {
+		t.Errorf("requests = %q, want %q", *log, want)
+	}
+}
+
+func TestFindByMarkerFiltersAndReadsHead(t *testing.T) {
+	c, log := recorder(t, map[string]string{
+		"GET /repos/o/r/issues": `[{"number":1,"state":"open","body":"x <!-- m -->"},
+			{"number":2,"state":"closed","body":"other"},
+			{"number":3,"state":"closed","body":null},
+			{"number":4,"state":"closed","body":"<!-- m -->","pull_request":{}}]`,
+		"GET /repos/o/r/pulls/4": `{"head":{"ref":"pins/y"}}`,
+	})
+	got, err := c.FindByMarker(context.Background(), "<!-- m -->")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Item{{Number: 1, State: "open", Body: "x <!-- m -->"}, {Number: 4, IsPR: true, State: "closed", Body: "<!-- m -->", HeadRef: "pins/y"}}
+	if !slices.Equal(got, want) {
+		t.Errorf("got %+v, want %+v", got, want)
+	}
+	if (*log)[0] != "GET /repos/o/r/issues?state=all&per_page=100" || len(*log) != 2 {
+		t.Errorf("requests = %q; want the state=all list and one pulls read", *log)
+	}
+	if _, err := c.FindByMarker(context.Background(), ""); err == nil {
+		t.Error("an empty marker would match everything; want an error")
 	}
 }

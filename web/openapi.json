@@ -1,6 +1,23 @@
 {
   "components": {
     "schemas": {
+      "Blocker": {
+        "additionalProperties": false,
+        "properties": {
+          "issue": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "repo": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "repo",
+          "issue"
+        ],
+        "type": "object"
+      },
       "CleanupOutputBody": {
         "additionalProperties": false,
         "properties": {
@@ -136,6 +153,44 @@
         ],
         "type": "object"
       },
+      "Issue": {
+        "additionalProperties": false,
+        "properties": {
+          "blocked_by": {
+            "items": {
+              "$ref": "#/components/schemas/Blocker"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "milestone": {
+            "$ref": "#/components/schemas/MilestoneRef"
+          },
+          "number": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "status": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "number",
+          "title",
+          "url",
+          "blocked_by",
+          "status"
+        ],
+        "type": "object"
+      },
       "Leftover": {
         "additionalProperties": false,
         "properties": {
@@ -168,6 +223,58 @@
           "workspace_id",
           "path",
           "reason"
+        ],
+        "type": "object"
+      },
+      "Milestone": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "done": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "number": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "open": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "number",
+          "title",
+          "description",
+          "open",
+          "done"
+        ],
+        "type": "object"
+      },
+      "MilestoneRef": {
+        "additionalProperties": false,
+        "properties": {
+          "number": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "state": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "number",
+          "title",
+          "state"
         ],
         "type": "object"
       },
@@ -222,6 +329,38 @@
         ],
         "type": "object"
       },
+      "Repo": {
+        "additionalProperties": false,
+        "properties": {
+          "issues": {
+            "items": {
+              "$ref": "#/components/schemas/Issue"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "milestones": {
+            "items": {
+              "$ref": "#/components/schemas/Milestone"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "slug": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "issues",
+          "milestones"
+        ],
+        "type": "object"
+      },
       "Report": {
         "additionalProperties": false,
         "properties": {
@@ -235,6 +374,34 @@
         "required": [
           "claude",
           "codex"
+        ],
+        "type": "object"
+      },
+      "Result": {
+        "additionalProperties": false,
+        "properties": {
+          "repos": {
+            "items": {
+              "$ref": "#/components/schemas/Repo"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/Run"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "repos",
+          "runs"
         ],
         "type": "object"
       },
@@ -282,6 +449,31 @@
         },
         "required": [
           "returned"
+        ],
+        "type": "object"
+      },
+      "Run": {
+        "additionalProperties": false,
+        "properties": {
+          "issue": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "repo",
+          "issue",
+          "state",
+          "phase"
         ],
         "type": "object"
       },
@@ -575,6 +767,34 @@
           }
         },
         "summary": "Get API latest comment"
+      }
+    },
+    "/api/priorities": {
+      "get": {
+        "operationId": "get-priorities",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Result"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorModel"
+                }
+              }
+            },
+            "description": "Error"
+          }
+        },
+        "summary": "Get API priorities"
       }
     },
     "/api/questions": {

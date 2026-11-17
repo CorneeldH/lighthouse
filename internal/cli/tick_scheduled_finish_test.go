@@ -163,7 +163,7 @@ func TestTickScheduledFinishPushesWithTheToken(t *testing.T) {
 	if strings.Contains(out, finishTickToken) {
 		t.Errorf("errOut holds the token: %q", out)
 	}
-	if !strings.Contains(out, "lighthouse: o/r "+tickKey+": run 1: PR #101\n") {
+	if !strings.Contains(out, "lighthouse: o/r "+tickKey+": run 1: PR #1\n") {
 		t.Errorf("errOut = %q, want the PR line", out)
 	}
 	if got := tickGitCmd(t, bare, "for-each-ref", "--format=%(objectname)", "refs/heads/"+branch); got == "" {
