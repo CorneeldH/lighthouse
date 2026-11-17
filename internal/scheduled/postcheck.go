@@ -60,7 +60,24 @@ var shaPattern = regexp.MustCompile(`^(?:[0-9a-f]{40}|[0-9a-f]{64})$`)
 // commit holds exactly what was checked.
 // An error is transient (git could not run, the push failed): the run stays open and the next
 // tick calls Postcheck again.
+//
+// Every Failure and error text leaves Postcheck redacted (secret patterns withheld, line breaks
+// escaped), whatever a job, git or the push function put in it; the error still wraps its cause.
 func Postcheck(ctx context.Context, run workplace.Runner, job Job, env Env, v Verdict, startSHA, branch string, push func(context.Context) error) (PostcheckResult, error) {
+	res, err := postcheck(ctx, run, job, env, v, startSHA, branch, push)
+	res.Failure = redact(res.Failure)
+	if err != nil {
+		err = redactedError{err}
+	}
+	return res, err
+}
+
+type redactedError struct{ err error }
+
+func (e redactedError) Error() string { return redact(e.err.Error()) }
+func (e redactedError) Unwrap() error { return e.err }
+
+func postcheck(ctx context.Context, run workplace.Runner, job Job, env Env, v Verdict, startSHA, branch string, push func(context.Context) error) (PostcheckResult, error) {
 	if !shaPattern.MatchString(startSHA) {
 		return failed("invalid start SHA %q", startSHA), nil
 	}
@@ -168,12 +185,14 @@ func resume(ctx context.Context, g gitIn, job Job, env Env, startSHA, branch, pu
 	if reason, err := g.verifyObjects(ctx, job, changes); err != nil || reason != "" {
 		return PostcheckResult{Failure: reason}, err
 	}
-	return g.checkCommit(ctx, job, env, head)
+	return g.checkCommit(ctx, job, env, head, changePaths(changes))
 }
 
-// checkCommit runs job.Check on a fresh, detached checkout of commit, so Check sees the commit and
-// not a work tree the agent may have edited after it.
-func (g gitIn) checkCommit(ctx context.Context, job Job, env Env, commit string) (PostcheckResult, error) {
+// checkCommit runs the containment on paths and then job.Check on a fresh, detached checkout of
+// commit, so both see the commit and not a work tree the agent may have edited after it. The
+// containment there resolves symlinks on disk: a chain of links (a `..` after a link, a link
+// through one that existed at start) can resolve elsewhere than its text says.
+func (g gitIn) checkCommit(ctx context.Context, job Job, env Env, commit string, paths []string) (PostcheckResult, error) {
 	tmp, err := os.MkdirTemp("", "lighthouse-postcheck-")
 	if err != nil {
 		return PostcheckResult{}, err
@@ -184,6 +203,9 @@ func (g gitIn) checkCommit(ctx context.Context, job Job, env Env, commit string)
 		return PostcheckResult{}, err
 	}
 	defer func() { _, _, _ = g.raw(context.WithoutCancel(ctx), "worktree", "remove", "--force", tree) }()
+	if reason := containment(job, tree, paths); reason != "" {
+		return PostcheckResult{Failure: reason}, nil
+	}
 	checkEnv := env
 	checkEnv.Dir = tree
 	if err := job.Check(ctx, checkEnv, tree); err != nil {
@@ -238,7 +260,7 @@ func (g gitIn) raw(ctx context.Context, args ...string) (string, int, error) {
 	full := append(append([]string{"-C", g.dir}, hardening...), args...)
 	out, code, err := g.run(ctx, postcheckGitTimeout, "git", full...)
 	if err != nil {
-		return "", code, fmt.Errorf("git %s: %w", args[0], err)
+		return "", code, fmt.Errorf("git %s: %w", subcommand(args), err)
 	}
 	return out, code, nil
 }
@@ -251,9 +273,21 @@ func (g gitIn) ok(ctx context.Context, args ...string) (string, error) {
 		return "", err
 	}
 	if code != 0 {
-		return "", fmt.Errorf("git %s: exit code %d", args[0], code)
+		return "", fmt.Errorf("git %s: exit code %d", subcommand(args), code)
 	}
 	return strings.TrimSuffix(out, "\n"), nil
+}
+
+// subcommand is the git subcommand in args, past any `-c <config>` pairs.
+func subcommand(args []string) string {
+	for i := 0; i < len(args); i++ {
+		if args[i] == "-c" {
+			i++
+			continue
+		}
+		return args[i]
+	}
+	return "git"
 }
 
 // remoteBranch is the SHA of refs/heads/<branch> on origin, "" when origin lacks it.
@@ -464,6 +498,11 @@ func symlinkViolation(job Job, root, dir, p string) string {
 			return ""
 		}
 		if err != nil {
+			// Only the cause: a *fs.PathError carries the raw absolute path.
+			var pe *fs.PathError
+			if errors.As(err, &pe) {
+				err = pe.Err
+			}
 			return fmt.Sprintf("containment: cannot inspect %s: %v", showPath(rel), err)
 		}
 		if info.Mode()&fs.ModeSymlink == 0 {
@@ -502,13 +541,13 @@ func parsePorcelain(out string) ([]string, error) {
 	for i := 0; i < len(fields); i++ {
 		e := fields[i]
 		if len(e) < 4 || e[2] != ' ' {
-			return nil, fmt.Errorf("git status: malformed entry %q", e)
+			return nil, fmt.Errorf("git status: malformed entry %s", showPath(e))
 		}
 		paths = append(paths, e[3:])
 		if strings.ContainsAny(e[:2], "RC") {
 			i++
 			if i == len(fields) {
-				return nil, fmt.Errorf("git status: rename %q without its original path", e)
+				return nil, fmt.Errorf("git status: rename %s without its original path", showPath(e))
 			}
 			paths = append(paths, fields[i])
 		}

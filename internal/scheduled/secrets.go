@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 )
 
 type secretPattern struct {
@@ -58,6 +59,15 @@ func showPath(p string) string {
 		return "(file name withheld: " + kind + ")"
 	}
 	return strconv.Quote(p)
+}
+
+// redact withholds every secret-pattern match in s and escapes line breaks, for text that goes
+// into a run reason or a log.
+func redact(s string) string {
+	for _, p := range secretPatterns {
+		s = p.re.ReplaceAllLiteralString(s, "(withheld: "+p.kind+")")
+	}
+	return strings.NewReplacer("\n", `\n`, "\r", `\r`).Replace(s)
 }
 
 // scanBody returns the findings for one file: one for a name that matches a pattern (without the

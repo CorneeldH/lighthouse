@@ -767,3 +767,88 @@ func TestPostcheckResumeChecksTheCommitNotTheWorkTree(t *testing.T) {
 		t.Errorf("temporary checkout left registered:\n%s", out)
 	}
 }
+
+// Review round 2, A. Fails if resuming judges symlinks only by their text: a chain whose `..`
+// follows another symlink resolves lexically inside out/ but on disk outside the tree, and must
+// be refused on the checkout before Check follows it.
+func TestPostcheckResumeSymlinkChain(t *testing.T) {
+	f := newFixture(t)
+	f.pushAgentCommit(func() {
+		f.write("out/a/b/real.md", "x\n")
+		f.symlink("..", "out/a/b/d")           // lexically out/a
+		f.symlink("d/../../../x", "out/a/b/l") // lexically out/x; on disk outside the tree
+	})
+	job := &scheduledtest.Job{AllowedPre: []string{"out/"}}
+	res, err := f.postcheck(job)
+	if err != nil || !strings.Contains(res.Failure, `containment: symlink "out/a/b/l"`) || res.Changed {
+		t.Errorf("Postcheck = %+v, %v; want a containment Failure on out/a/b/l", res, err)
+	}
+	if slices.Contains(job.Calls(), "Check") {
+		t.Error("Check ran on a checkout with an escaping symlink")
+	}
+}
+
+// Review round 2, A. Fails if resuming trusts a symlink that already existed at start: a new
+// link through it leaves the tree although its text stays under out/.
+func TestPostcheckResumeLinkThroughAStartSymlink(t *testing.T) {
+	f := newFixture(t)
+	f.symlink("/etc", "out/ext")
+	f.git("add", "out/ext")
+	f.git("commit", "-q", "-m", "base link")
+	f.start = f.git("rev-parse", "HEAD")
+	f.pushAgentCommit(func() { f.symlink("ext/hostname", "out/x.md") })
+	res, err := f.postcheck(&scheduledtest.Job{AllowedPre: []string{"out/"}})
+	if err != nil || !strings.Contains(res.Failure, `containment: symlink "out/x.md" points outside the work tree`) {
+		t.Errorf("Postcheck = %+v, %v; want the outside Failure", res, err)
+	}
+}
+
+// Review round 2, B. Fails if a file system error carries the raw path (with a token in a
+// directory name, or the absolute workplace path) into the Failure.
+func TestPostcheckWithholdsAPathInAnInspectError(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores the directory permission this test needs")
+	}
+	f := newFixture(t)
+	token := "ghp_" + strings.Repeat("a", 36)
+	f.write("out/"+token+"/f.md", "x\n")
+	dir := filepath.Join(f.work, "out", token)
+	if err := os.Chmod(dir, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+	res, err := f.postcheck(&scheduledtest.Job{AllowedPre: []string{"out/"}})
+	f.assertNothingLanded(res, err, "containment: cannot inspect (file name withheld: GitHub personal token): permission denied")
+	if strings.Contains(res.Failure, token) || strings.Contains(res.Failure, f.work) {
+		t.Errorf("Failure echoes the raw path: %q", res.Failure)
+	}
+}
+
+// Review round 2, B. Fails if text from a job or the push function reaches the Failure or the
+// error with a secret or a line break in it, or if the error loses what it wraps.
+func TestPostcheckRedactsJobAndPushText(t *testing.T) {
+	token := "ghp_" + strings.Repeat("a", 36)
+	t.Run("check error", func(t *testing.T) {
+		f := newFixture(t)
+		f.write("out/a.md", "x\n")
+		res, err := f.postcheck(&scheduledtest.Job{AllowedPre: []string{"out/"}, CheckErr: errors.New("bad " + token + "\nforged line")})
+		f.assertNothingLanded(res, err, `check: bad (withheld: GitHub personal token)\nforged line`)
+		if strings.Contains(res.Failure, token) || strings.Contains(res.Failure, "\n") {
+			t.Errorf("Failure = %q", res.Failure)
+		}
+	})
+	t.Run("push error", func(t *testing.T) {
+		f := newFixture(t)
+		f.write("out/a.md", "x\n")
+		sentinel := errors.New("rejected " + token)
+		env := scheduled.Env{Dir: f.work, Run: workplace.ExecRunner()}
+		_, err := scheduled.Postcheck(context.Background(), env.Run, &scheduledtest.Job{AllowedPre: []string{"out/"}}, env, scheduled.Verdict{}, f.start, testBranch,
+			func(context.Context) error { return sentinel })
+		if err == nil || strings.Contains(err.Error(), token) || !strings.Contains(err.Error(), "rejected (withheld: GitHub personal token)") {
+			t.Errorf("error = %v", err)
+		}
+		if !errors.Is(err, sentinel) {
+			t.Error("error no longer wraps the push error")
+		}
+	})
+}

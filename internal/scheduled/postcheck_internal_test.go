@@ -1,9 +1,12 @@
 package scheduled
 
 import (
+	"context"
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 // Classification: pure-logic. Fails if a porcelain entry is dropped (a deletion, the original
@@ -72,5 +75,55 @@ func TestPathEscapes(t *testing.T) {
 		if pathEscapes(p) {
 			t.Errorf("pathEscapes(%q) = true", p)
 		}
+	}
+}
+
+// Classification: pure-logic. Fails if a parse error echoes a file name that holds a token.
+func TestParsePorcelainWithholdsNames(t *testing.T) {
+	token := "ghp_" + strings.Repeat("a", 36)
+	for _, bad := range []string{"R  out/" + token + ".md\x00", "XYZout/" + token + ".md\x00"} {
+		_, err := parsePorcelain(bad)
+		if err == nil || strings.Contains(err.Error(), token) || !strings.Contains(err.Error(), "(file name withheld: GitHub personal token)") {
+			t.Errorf("parsePorcelain(%q) error = %v", bad, err)
+		}
+	}
+}
+
+// Classification: pure-logic. Fails if a git error is labelled with a global option instead of
+// the subcommand.
+func TestSubcommand(t *testing.T) {
+	cases := map[string][]string{
+		"commit-tree": {"-c", "user.name=x", "-c", "user.email=y", "commit-tree", "t"},
+		"status":      {"status", "-z"},
+		"git":         {"-c", "a=b"},
+	}
+	for want, args := range cases {
+		if got := subcommand(args); got != want {
+			t.Errorf("subcommand(%q) = %q, want %q", args, got, want)
+		}
+	}
+}
+
+// Classification: pure-logic. Fails if a git failure (could not run, or a non-zero exit) is
+// labelled with a global option instead of the subcommand.
+func TestGitErrorLabel(t *testing.T) {
+	cases := map[string]struct {
+		code int
+		err  error
+		want string
+	}{
+		"could not run": {code: -1, err: errors.New("boom"), want: "git commit-tree: boom"},
+		"exit code":     {code: 128, want: "git commit-tree: exit code 128"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			g := gitIn{dir: "/w", run: func(context.Context, time.Duration, string, ...string) (string, int, error) {
+				return "", tc.code, tc.err
+			}}
+			_, err := g.ok(context.Background(), "-c", "user.name=x", "commit-tree", "t")
+			if err == nil || err.Error() != tc.want {
+				t.Errorf("error = %v, want %q", err, tc.want)
+			}
+		})
 	}
 }
