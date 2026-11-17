@@ -402,6 +402,10 @@ func TestLoadDispatchWorkflowPushInvalid(t *testing.T) {
 		{"GH_TOKEN env", head + rev + "topic = \"secrets\"\ncommand = [\"a\"]\nenv = [\"GH_TOKEN\"]\n", "GH_TOKEN"},
 		{"GITHUB_TOKEN env", head + rev + "topic = \"secrets\"\ncommand = [\"a\"]\nenv = [\"GITHUB_TOKEN\"]\n", "GITHUB_TOKEN"},
 		{"bind under config", head + rev + "topic = \"secrets\"\ncommand = [\"a\"]\nbinds = [\"~/.config/lighthouse/host.toml\"]\n", "binds"},
+		{"bind bare dir", head + rev + "topic = \"secrets\"\ncommand = [\"a\"]\nbinds = [\"~/.config/lighthouse\"]\n", "binds"},
+		{"bind dir slash", head + rev + "topic = \"secrets\"\ncommand = [\"a\"]\nbinds = [\"~/.config/lighthouse/\"]\n", "binds"},
+		{"bind dir dot", head + rev + "topic = \"secrets\"\ncommand = [\"a\"]\nbinds = [\"~/.config/lighthouse/.\"]\n", "binds"},
+		{"bind dotdot", head + rev + "topic = \"secrets\"\ncommand = [\"a\"]\nbinds = [\"~/x/../.config/lighthouse\"]\n", "binds"},
 		{"missing token_file", "[dispatch.workflow_push]\nreview = \"shadow\"\n", "token_file"},
 		{"bad timeout", head + "timeout = \"soon\"\n", "timeout"},
 		{"unknown key", head + "bogus = 1\n", "bogus"},
@@ -414,5 +418,13 @@ func TestLoadDispatchWorkflowPushInvalid(t *testing.T) {
 				t.Errorf("err = %v, want it to mention %q", err, tt.want)
 			}
 		})
+	}
+}
+
+func TestLoadDispatchWorkflowPushNoHome(t *testing.T) {
+	t.Setenv("HOME", "")
+	body := "[dispatch.workflow_push]\ntoken_file = \"~/t\"\n"
+	if _, err := LoadDispatch(writeHost(t, body)); err == nil || !strings.Contains(err.Error(), "home") {
+		t.Errorf("err = %v, want a home directory error", err)
 	}
 }

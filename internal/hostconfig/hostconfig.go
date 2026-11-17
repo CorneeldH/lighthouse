@@ -336,7 +336,10 @@ func buildWorkflowPush(tokenFile, review, timeout *string, n int, reviewer func(
 	if tokenFile == nil || *tokenFile == "" {
 		return nil, fmt.Errorf("%s.token_file: missing", key)
 	}
-	home, _ := os.UserHomeDir()
+	home, homeErr := os.UserHomeDir()
+	if homeErr != nil || home == "" {
+		return nil, fmt.Errorf("%s: home directory unknown, cannot expand ~ or check binds: %v", key, homeErr)
+	}
 	wp.TokenFile = expandHome(*tokenFile, home)
 	if review != nil {
 		if *review != ReviewShadow && *review != ReviewEnforce {
@@ -368,7 +371,7 @@ func buildWorkflowPush(tokenFile, review, timeout *string, n int, reviewer func(
 		binds := make([]string, 0, len(rv.Binds))
 		for _, b := range rv.Binds {
 			b = expandHome(b, home)
-			if home != "" && (b == protected || strings.HasPrefix(filepath.Clean(b), protected+string(filepath.Separator))) {
+			if cb := filepath.Clean(b); cb == protected || strings.HasPrefix(cb, protected+string(filepath.Separator)) {
 				return nil, fmt.Errorf("%s.binds: %q is under %s", rkey, b, protected)
 			}
 			binds = append(binds, b)
