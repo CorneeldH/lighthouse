@@ -877,3 +877,29 @@ func TestPostcheckRedactsJobAndPushText(t *testing.T) {
 		}
 	})
 }
+
+// Finding F of the task 9 review. Fails if Postcheck does not report the commit it pushed, or
+// on resume the commit already on the remote: the tick binds the merge to that commit, so a later
+// foreign push to the branch is never merged.
+func TestPostcheckReportsThePushedCommit(t *testing.T) {
+	f := newFixture(t)
+	f.write("out/a.md", "new\n")
+	job := &scheduledtest.Job{AllowedPre: []string{"out/"}}
+	res, err := f.postcheck(job)
+	if err != nil || !res.Changed {
+		t.Fatalf("Postcheck = %+v, %v", res, err)
+	}
+	if res.Commit == "" || res.Commit != f.originBranch() {
+		t.Errorf("Commit = %q, want the pushed %q", res.Commit, f.originBranch())
+	}
+	again, err := f.postcheck(job)
+	if err != nil || !again.Changed || again.Commit != res.Commit {
+		t.Errorf("resumed Postcheck = %+v, %v; want Commit %q", again, err, res.Commit)
+	}
+	f.write("out/b.md", "x\n")
+	none, _ := scheduled.Postcheck(context.Background(), workplace.ExecRunner(), job,
+		scheduled.Env{Dir: f.work, Run: workplace.ExecRunner()}, scheduled.Verdict{}, f.start, "a..b", f.remote())
+	if none.Commit != "" {
+		t.Errorf("a Failure carries Commit %q", none.Commit)
+	}
+}

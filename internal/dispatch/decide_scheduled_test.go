@@ -232,12 +232,26 @@ func finishRepo(in *Input) *RepoInput { return &in.Repos[0] }
 // done makes the run's session Done.
 func done(in *Input) { finishRepo(in).Stands[finRunID] = workplace.Done }
 
-// inPRPhase sets pr_at on the run, at, and gives its branch pr.
+// inPRPhase sets pr_at on the run, at, records pr's head as the commit the check pushed, and
+// gives its branch pr.
 func inPRPhase(in *Input, at time.Time, pr forge.PR) {
 	r := finishRepo(in)
 	r.History[0].PRAt = at
 	r.Snapshot.OpenRuns[0].PRAt = at
 	r.Snapshot.ScheduledPRs = map[string][]forge.PR{finBranch: {pr}}
+	setPushed(in, pr.HeadSHA)
+}
+
+// setPushed records sha as the commit the run's check pushed.
+func setPushed(in *Input, sha string) {
+	r := finishRepo(in)
+	rec, err := scheduled.DecodeRecord(r.History[0].Verdict)
+	if err != nil {
+		panic(err)
+	}
+	rec.Pushed = sha
+	r.History[0].Verdict = rec.Encode()
+	r.Snapshot.OpenRuns[0].Verdict = rec.Encode()
 }
 
 // ownPR is the run's own PR #41 on finBranch.
@@ -281,7 +295,7 @@ func TestDecideScheduledFinishTable(t *testing.T) {
 				done(in)
 				finishRepo(in).Snapshot.ScheduledPRs = map[string][]forge.PR{finBranch: {ownPR("OPEN", "UNKNOWN", "PENDING")}}
 			},
-			want: []Action{func() Action { a := finish; a.PR = 41; return a }()}},
+			want: []Action{func() Action { a := finish; a.PR, a.HeadSHA = 41, ownPR("", "", "").HeadSHA; return a }()}},
 
 		// Row 2: own PR green, brake open.
 		{name: "green PR, brake open: merge on its head", age: 40 * time.Minute, max: 90 * time.Minute,
@@ -295,6 +309,32 @@ func TestDecideScheduledFinishTable(t *testing.T) {
 			},
 			want: []Action{{Kind: KindScheduledMerge, Repo: "o/r", RunID: finRunID, Schedule: "codebase-map",
 				Slot: scheduledSlot, Branch: finBranch, Language: "nl", PR: 41, HeadSHA: green.HeadSHA, PRURL: green.URL}}},
+		// Finding F: the merge is bound to the commit the check pushed.
+		{name: "green PR whose head moved off the pushed commit: close, failed", age: 40 * time.Minute, max: 90 * time.Minute,
+			setup: func(in *Input) {
+				inPRPhase(in, scheduledNow.Add(-10*time.Minute), green)
+				setPushed(in, finSHA)
+			},
+			want: []Action{closeAction(runs.Failed, "branch changed after push", 41, false, false)}},
+		{name: "pending PR whose head moved off the pushed commit: close, failed", age: 40 * time.Minute, max: 90 * time.Minute,
+			setup: func(in *Input) {
+				inPRPhase(in, scheduledNow.Add(-10*time.Minute), ownPR("OPEN", "MERGEABLE", "PENDING"))
+				setPushed(in, finSHA)
+			},
+			want: []Action{closeAction(runs.Failed, "branch changed after push", 41, false, false)}},
+		{name: "green PR without a recorded pushed commit: close, failed", age: 40 * time.Minute, max: 90 * time.Minute,
+			setup: func(in *Input) {
+				inPRPhase(in, scheduledNow.Add(-10*time.Minute), green)
+				setPushed(in, "")
+			},
+			want: []Action{closeAction(runs.Failed, "branch changed after push", 41, false, false)}},
+		{name: "PR without a head and no recorded pushed commit: close, failed", age: 40 * time.Minute, max: 90 * time.Minute,
+			setup: func(in *Input) {
+				pr := green
+				pr.HeadSHA = ""
+				inPRPhase(in, scheduledNow.Add(-10*time.Minute), pr)
+			},
+			want: []Action{closeAction(runs.Failed, "branch changed after push", 41, false, false)}},
 		{name: "green PR, paused: wait", age: 40 * time.Minute, max: 90 * time.Minute,
 			setup: func(in *Input) {
 				inPRPhase(in, scheduledNow.Add(-10*time.Minute), green)

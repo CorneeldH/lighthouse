@@ -24,7 +24,8 @@ const ScheduledPRTimeout = 60 * time.Minute
 // max_runtime, 16, 17, 18) close the run as retry (failed on the last attempt) after its agent
 // is ended; a done session gets KindScheduledFinish. max_runtime holds up to and including the
 // check, so it goes before the finish. After pr_at only the run's own PR and pr_timeout count:
-// merged is done, red or conflicting is failed, closed without a merge is failed, green under a
+// merged is done, an open PR whose head is not the commit the check pushed is failed, red or
+// conflicting is failed, closed without a merge is failed, green under a
 // brake that is not paused merges, and past pr_timeout the run is failed.
 func settleScheduled(in Input, repo RepoInput) []planned {
 	var out []planned
@@ -107,7 +108,8 @@ func (c scheduledCtx) agentPhase() (Action, bool) {
 		a := c.base
 		a.Kind = KindScheduledFinish
 		if pr, ok := c.ownOpen(); ok {
-			a.PR = pr.Number
+			// Apply takes this PR only when its head is the commit the check finds on the branch.
+			a.PR, a.HeadSHA = pr.Number, pr.HeadSHA
 		}
 		return a, true
 	}
@@ -130,6 +132,12 @@ func (c scheduledCtx) prPhase() (Action, bool) {
 	}
 	pr, open := c.ownOpen()
 	switch {
+	case open && (c.pushed() == "" || pr.HeadSHA != c.pushed()):
+		// Someone pushed to the run's branch after the check, or the run never recorded what it
+		// pushed: what would merge is not what was checked.
+		a := c.closed(runs.Failed, "branch changed after push")
+		a.PR = pr.Number
+		return a, true
 	case open && redChecks(pr):
 		a := c.closed(runs.Failed, fmt.Sprintf("PR #%d red", pr.Number))
 		a.PR = pr.Number
@@ -163,6 +171,16 @@ func (c scheduledCtx) closed(o runs.Outcome, reason string) Action {
 	a := c.base
 	a.Kind, a.Outcome, a.ReasonArg = KindScheduledClose, o, reason
 	return a
+}
+
+// pushed is the commit the run's check pushed, from its record; "" when none is recorded, which
+// no PR head equals.
+func (c scheduledCtx) pushed() string {
+	rec, err := scheduled.DecodeRecord(c.row.Verdict)
+	if err != nil {
+		return ""
+	}
+	return rec.Pushed
 }
 
 // maxRuntime is the limit of the agent phase: the max_runtime of the run's record, the host's

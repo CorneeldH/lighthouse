@@ -21,6 +21,9 @@ import (
 type PostcheckResult struct {
 	Changed bool
 	Failure string
+	// Commit is the commit on the remote branch when Changed: the one Postcheck pushed, or on
+	// resume the one it found there and checked. The merge is bound to it.
+	Commit string
 }
 
 const postcheckGitTimeout = 2 * time.Minute
@@ -151,7 +154,7 @@ func postcheck(ctx context.Context, run workplace.Runner, job Job, env Env, v Ve
 	if err := remote.Push(ctx, env.Dir, commit, branch); err != nil {
 		return PostcheckResult{}, fmt.Errorf("push %s: %w", branch, err)
 	}
-	return PostcheckResult{Changed: true}, nil
+	return PostcheckResult{Changed: true, Commit: commit}, nil
 }
 
 // resume handles a branch that is already on origin, at pushed. Only the commit Postcheck makes
@@ -190,7 +193,11 @@ func resume(ctx context.Context, g gitIn, job Job, env Env, startSHA, branch, pu
 	if reason, err := g.verifyObjects(ctx, job, changes); err != nil || reason != "" {
 		return PostcheckResult{Failure: reason}, err
 	}
-	return g.checkCommit(ctx, job, env, head, changePaths(changes))
+	res, err := g.checkCommit(ctx, job, env, head, changePaths(changes))
+	if res.Changed {
+		res.Commit = head
+	}
+	return res, err
 }
 
 // checkCommit runs the containment on paths and then job.Check on a fresh, detached checkout of

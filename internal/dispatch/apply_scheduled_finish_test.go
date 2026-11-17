@@ -161,6 +161,20 @@ func (r *finishRig) write(t *testing.T, rel, body string) {
 	}
 }
 
+// pushed records sha as the commit the run's check pushed.
+func (r *finishRig) pushed(t *testing.T, sha string) {
+	t.Helper()
+	row := r.row(t)
+	rec, err := scheduled.DecodeRecord(row.Verdict)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec.Pushed = sha
+	if err := runs.SetVerdict(context.Background(), r.db, r.runID, rec.Encode()); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // action is a scheduled action of kind on the rig's run.
 func (r *finishRig) action(kind Kind) Action {
 	return Action{Kind: kind, Repo: applyRepo, RunID: r.runID, Schedule: "codebase-map", Slot: finSlot,
@@ -237,6 +251,10 @@ func TestApplyScheduledFinishOpensThePR(t *testing.T) {
 	row := r.row(t)
 	if !row.Open || !row.PRAt.Equal(applyNow) {
 		t.Errorf("row = open %v, pr_at %v; want open with pr_at %v", row.Open, row.PRAt, applyNow)
+	}
+	// Finding F: the merge is bound to this commit.
+	if rec, err := scheduled.DecodeRecord(row.Verdict); err != nil || rec.Pushed != head || rec.GitState == "" {
+		t.Errorf("record = %+v, %v; want pushed %s and the git state kept", rec, err, head)
 	}
 	r.noComment(t)
 }
@@ -360,22 +378,54 @@ func TestApplyScheduledFinishTransientErrorIsRedacted(t *testing.T) {
 	}
 }
 
-// A PR the run already has (pr_at was not recorded) is taken, not opened again; pr_at follows.
-// A CreatePR that fails leaves pr_at empty and the run open.
+// A PR the run already has (pr_at was not recorded) is taken, not opened again, but only when its
+// head is the commit on the branch (finding F); pr_at follows. A PR on another head is foreign:
+// it is closed, the branch deleted, the run failed. A CreatePR that fails leaves pr_at empty and
+// the run open.
 func TestApplyScheduledFinishPRAt(t *testing.T) {
-	t.Run("existing PR", func(t *testing.T) {
-		r := newFinishRig(t)
+	// pushedByAnEarlierTick puts the run's checked commit on the remote, as a finish whose
+	// CreatePR or pr_at failed leaves it, and returns that commit.
+	pushedByAnEarlierTick := func(t *testing.T, r *finishRig) string {
+		t.Helper()
 		r.write(t, "out/map.md", "the map\n")
+		rigGit(t, r.work, "add", "-A")
+		rigGit(t, r.work, "commit", "-q", "-m", "map")
+		rigGit(t, r.work, "push", "-q", r.bare, "HEAD:refs/heads/"+schedBranch)
+		return rigGit(t, r.work, "rev-parse", "HEAD")
+	}
+	t.Run("existing PR on the checked commit", func(t *testing.T) {
+		r := newFinishRig(t)
+		head := pushedByAnEarlierTick(t, r)
 		a := r.action(KindScheduledFinish)
-		a.PR = 41
+		a.PR, a.HeadSHA = 41, head
 		if _, err := Apply(context.Background(), r.env, []Action{a}); err != nil {
 			t.Fatal(err)
 		}
 		if p := r.poster(applyRepo); slices.Contains(r.log.all(), "CreatePR") || len(p.closed) != 0 {
 			t.Errorf("calls = %q, want no new PR", r.log.all())
 		}
-		if row := r.row(t); !row.Open || !row.PRAt.Equal(applyNow) {
+		row := r.row(t)
+		if !row.Open || !row.PRAt.Equal(applyNow) {
 			t.Errorf("row pr_at = %v, want %v", row.PRAt, applyNow)
+		}
+		if rec, err := scheduled.DecodeRecord(row.Verdict); err != nil || rec.Pushed != head {
+			t.Errorf("record = %+v, %v; want pushed %s", rec, err, head)
+		}
+	})
+	t.Run("existing PR on another head", func(t *testing.T) {
+		r := newFinishRig(t)
+		pushedByAnEarlierTick(t, r)
+		a := r.action(KindScheduledFinish)
+		a.PR, a.HeadSHA = 41, finPRHead
+		if _, err := Apply(context.Background(), r.env, []Action{a}); err != nil {
+			t.Fatalf("Apply = %v, want a failed run and no error", err)
+		}
+		p := r.poster(applyRepo)
+		if slices.Contains(r.log.all(), "CreatePR") || !reflect.DeepEqual(p.closed, []int{41}) || !reflect.DeepEqual(p.deleted, []string{schedBranch}) {
+			t.Errorf("calls = %q, closed %v, deleted %q; want the foreign PR closed and the branch deleted", r.log.all(), p.closed, p.deleted)
+		}
+		if row := r.row(t); row.Open || row.Outcome != runs.Failed || row.Reason != "PR #41 is not on the checked commit" || !row.PRAt.IsZero() {
+			t.Errorf("row = open %v, %s %q, pr_at %v", row.Open, row.Outcome, row.Reason, row.PRAt)
 		}
 	})
 	t.Run("CreatePR fails", func(t *testing.T) {
@@ -395,6 +445,7 @@ func TestApplyScheduledFinishPRAt(t *testing.T) {
 // the run does not end done.
 func TestApplyScheduledMerge(t *testing.T) {
 	r := newFinishRig(t)
+	r.pushed(t, finPRHead)
 	a := r.action(KindScheduledMerge)
 	a.PR, a.HeadSHA = 41, finPRHead
 	if _, err := Apply(context.Background(), r.env, []Action{a}); err != nil {
@@ -417,6 +468,7 @@ func TestApplyScheduledMerge(t *testing.T) {
 func TestApplyScheduledMergeRefusedOrMoved(t *testing.T) {
 	t.Run("refused", func(t *testing.T) {
 		r := newFinishRig(t)
+		r.pushed(t, finPRHead)
 		r.poster(applyRepo).mergeErr = &forge.MergeRefused{Message: "Review required"}
 		a := r.action(KindScheduledMerge)
 		a.PR, a.HeadSHA = 41, finPRHead
@@ -433,6 +485,7 @@ func TestApplyScheduledMergeRefusedOrMoved(t *testing.T) {
 	})
 	t.Run("head moved", func(t *testing.T) {
 		r := newFinishRig(t)
+		r.pushed(t, finPRHead)
 		r.poster(applyRepo).mergeErr = fmt.Errorf("409: %w", forge.ErrHeadMoved)
 		a := r.action(KindScheduledMerge)
 		a.PR, a.HeadSHA = 41, finPRHead
@@ -452,6 +505,7 @@ func TestApplyScheduledMergeRefusedOrMoved(t *testing.T) {
 	})
 	t.Run("other error", func(t *testing.T) {
 		r := newFinishRig(t)
+		r.pushed(t, finPRHead)
 		r.poster(applyRepo).mergeErr = errors.New("502")
 		a := r.action(KindScheduledMerge)
 		a.PR, a.HeadSHA = 41, finPRHead
@@ -462,6 +516,34 @@ func TestApplyScheduledMergeRefusedOrMoved(t *testing.T) {
 			t.Errorf("row open %v, deleted %q; want the run open and the branch kept", row.Open, r.poster(applyRepo).deleted)
 		}
 	})
+}
+
+// Finding F, in apply as well as in decide. Fails if a merge goes ahead on a head that is not the
+// commit the check pushed (a foreign push after it), or without a recorded one: no MergePR, the
+// PR is closed, the branch deleted, the run failed.
+func TestApplyScheduledMergeOnlyThePushedCommit(t *testing.T) {
+	for name, tc := range map[string]struct{ pushed, head string }{
+		"foreign head":              {"0123456789012345678901234567890123456789", finPRHead},
+		"nothing recorded":          {"", finPRHead},
+		"nothing recorded, no head": {"", ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := newFinishRig(t)
+			r.pushed(t, tc.pushed)
+			a := r.action(KindScheduledMerge)
+			a.PR, a.HeadSHA = 41, tc.head
+			if _, err := Apply(context.Background(), r.env, []Action{a}); err != nil {
+				t.Fatalf("Apply = %v, want a failed run and no error", err)
+			}
+			p := r.poster(applyRepo)
+			if len(p.merges) != 0 || !reflect.DeepEqual(p.closed, []int{41}) || !reflect.DeepEqual(p.deleted, []string{schedBranch}) {
+				t.Errorf("merges %q, closed %v, deleted %q; want no merge, PR 41 closed, the branch deleted", p.merges, p.closed, p.deleted)
+			}
+			if row := r.row(t); row.Open || row.Outcome != runs.Failed || row.Reason != "branch changed after push" {
+				t.Errorf("row = open %v, %s %q", row.Open, row.Outcome, row.Reason)
+			}
+		})
+	}
 }
 
 // Rows 5-7. A close ends the agent first, then closes the PR and deletes the branch, then closes

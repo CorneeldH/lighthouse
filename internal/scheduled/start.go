@@ -17,12 +17,15 @@ import (
 )
 
 // Record is what the row of a scheduled run keeps of its start (runs.verdict), as JSON: the
-// gate's verdict, the limit of the agent phase, and the git state of the workplace before the
-// agent ran (GitState, "" until the workplace is prepared).
+// gate's verdict, the limit of the agent phase, the git state of the workplace before the
+// agent ran (GitState, "" until the workplace is prepared), and the commit the check pushed.
 type Record struct {
 	Verdict    Verdict       `json:"verdict"`
 	MaxRuntime time.Duration `json:"max_runtime"`
 	GitState   string        `json:"git_state,omitempty"`
+	// Pushed is the commit the check after the run put on the branch ("" until then): its PR
+	// merges only while its head is this commit.
+	Pushed string `json:"pushed,omitempty"`
 }
 
 // Encode is the JSON of r.

@@ -26,8 +26,11 @@ const scheduledBranchPrefix = "scheduled/"
 //   - scheduled.Postcheck with the Remote of the repo: an explicit, authenticated URL, never the
 //     workplace's origin. Its error is transient and only its redacted text goes on; a Failure
 //     fails the run; nothing changed is done without a PR.
-//   - CreatePR with body "No issue: geplande run <name> (<slot>)", or the run's PR a.PR when it
-//     already has one, then pr_at at once: from then on only pr_timeout counts.
+//   - Record the commit on the branch (Record.Pushed): its PR merges only while its head is
+//     that commit. A PR the run already has (a.PR) is taken only when its head (a.HeadSHA) is
+//     that commit; any other is foreign and fails the run.
+//   - CreatePR with body "No issue: geplande run <name> (<slot>)", or the taken PR, then pr_at
+//     at once: from then on only pr_timeout counts.
 //
 // A failed run closes its PR and deletes its branch (endScheduled). It posts nothing.
 func (ap applier) finishScheduled(ctx context.Context, a Action) error {
@@ -79,6 +82,14 @@ func (ap applier) finishScheduled(ctx context.Context, a Action) error {
 		return ap.endScheduled(ctx, a, r, runs.Failed, "postcheck: "+res.Failure, a.PR)
 	case !res.Changed:
 		return ap.endScheduled(ctx, a, r, runs.Done, "nothing changed", a.PR)
+	case a.PR > 0 && a.HeadSHA != res.Commit:
+		// A PR on the run's branch whose head is not the checked commit: someone else's.
+		return ap.endScheduled(ctx, a, r, runs.Failed, fmt.Sprintf("PR #%d is not on the checked commit", a.PR), a.PR)
+	}
+	// The merge is bound to the commit on the branch now; recorded before the PR is opened.
+	rec.Pushed = res.Commit
+	if err := runs.SetVerdict(ctx, env.DB, r.ID, rec.Encode()); err != nil {
+		return fmt.Errorf("record pushed commit of run %d: %w", r.ID, err)
 	}
 	pr := a.PR
 	if pr == 0 {
@@ -97,7 +108,8 @@ func (ap applier) finishScheduled(ctx context.Context, a Action) error {
 	return nil
 }
 
-// mergeScheduled squash-merges the run's PR on the measured head, deletes its branch and ends the
+// mergeScheduled squash-merges the run's PR on the measured head, which must be the commit the
+// check pushed (else the run fails, "branch changed after push"), deletes its branch and ends the
 // run as done (row 2): the merge itself deletes no branch. A moved head only defers, so the next
 // tick measures again (row 4); a merge the forge refuses closes the PR, deletes the branch and
 // fails the run with the forge's reason (row 3).
@@ -105,6 +117,11 @@ func (ap applier) mergeScheduled(ctx context.Context, a Action, res *Result) err
 	r, ok, err := ap.openScheduled(ctx, a)
 	if err != nil || !ok {
 		return err
+	}
+	// Decide merges only the commit the check pushed; this holds apart from it. MergePR then
+	// refuses a head that moved since.
+	if rec, err := scheduled.DecodeRecord(r.Verdict); err != nil || rec.Pushed == "" || rec.Pushed != a.HeadSHA {
+		return ap.endScheduled(ctx, a, r, runs.Failed, "branch changed after push", a.PR)
 	}
 	err = ap.env.Forge(a.Repo).MergePR(ctx, a.PR, a.HeadSHA)
 	var refused *forge.MergeRefused
