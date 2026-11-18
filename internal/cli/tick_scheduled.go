@@ -15,6 +15,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/runs"
 	"github.com/CorneeldH/lighthouse/internal/scheduled"
+	_ "github.com/CorneeldH/lighthouse/internal/scheduled/maprefresh" // registers job map-refresh
 )
 
 // job returns the scheduled job called name: from Jobs when a test set it, else the registry.
@@ -81,6 +82,11 @@ func planRepo(ctx context.Context, env tickEnv, db *sql.DB, repo repoconfig.Repo
 			_, _ = fmt.Fprintf(errOut, "lighthouse: %s: no job %s\n", name, d.Schedule.Job)
 			continue
 		}
+		job, err := scheduled.Bind(job, d.Schedule)
+		if err != nil {
+			fail("config: %s", oneLine(err))
+			continue
+		}
 		jenv := scheduled.Env{Repo: repo, Schedule: d.Schedule, Now: now, Run: env.runner()}
 		v, err := job.Gate(ctx, jenv)
 		if err != nil {
@@ -122,6 +128,10 @@ func scheduledJob(env tickEnv, repos map[string]repoconfig.Repo) func(repo, sche
 			job, ok := env.job(s.Job)
 			if !ok {
 				return nil, scheduled.Env{}, fmt.Errorf("no job %s", s.Job)
+			}
+			job, err := scheduled.Bind(job, s)
+			if err != nil {
+				return nil, scheduled.Env{}, fmt.Errorf("params of %s: %w", s.Name, err)
 			}
 			return job, scheduled.Env{Repo: repo, Schedule: s, Now: env.now(), Run: env.runner()}, nil
 		}
