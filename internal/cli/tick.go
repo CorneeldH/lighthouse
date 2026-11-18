@@ -846,8 +846,12 @@ func repoInput(ctx context.Context, db *sql.DB, cfg hostconfig.Dispatch, f forge
 func tokenEnvs(cfg hostconfig.Dispatch) []string {
 	var out []string
 	for _, l := range repoconfig.LoadAll(cfg.Repos) {
-		if l.Err == nil && l.Repo.TokenEnv != "" {
-			out = append(out, l.Repo.TokenEnv)
+		name := l.Repo.TokenEnv
+		if l.Err != nil { // a repo that does not load still has a token the agent must not see
+			name = repoconfig.LenientTokenEnv(l.Path)
+		}
+		if name != "" {
+			out = append(out, name)
 		}
 	}
 	return out

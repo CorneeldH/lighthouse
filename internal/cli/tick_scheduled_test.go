@@ -15,6 +15,7 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/dispatch"
 	"github.com/CorneeldH/lighthouse/internal/forge/forgetest"
+	"github.com/CorneeldH/lighthouse/internal/hostconfig"
 	"github.com/CorneeldH/lighthouse/internal/park"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/runs"
@@ -544,4 +545,19 @@ func TestTickScheduledAgentLosesTheTokenOfEveryRepo(t *testing.T) {
 		}
 	}
 	t.Fatalf("spawns = %+v, want the scheduled one", s.w.spawned())
+}
+
+// Fails if the token variable of a repo whose config is invalid drops out of the unset list.
+func TestTokenEnvsKeepsTheTokenOfAnInvalidRepo(t *testing.T) {
+	bad := strings.Replace(completeRepo, `repo = "o/r"`, "repo = \"o/bad\"\ntoken_env = \"BAD_TOKEN\"", 1) +
+		"\n[[schedule]]\nname = \"x\"\njob = \"j\"\ncron = \"not a cron\"\n"
+	dir := repoDir(t, bad)
+	if _, err := repoconfig.Load(dir); err == nil {
+		t.Fatal("precondition: the repo config must be invalid")
+	}
+	good := repoDir(t, strings.Replace(completeRepo, `repo = "o/r"`, "repo = \"o/good\"\ntoken_env = \"GOOD_TOKEN\"", 1))
+	got := tokenEnvs(hostconfig.Dispatch{Repos: []string{dir, good}})
+	if !slices.Equal(got, []string{"BAD_TOKEN", "GOOD_TOKEN"}) {
+		t.Errorf("tokenEnvs = %q, want BAD_TOKEN and GOOD_TOKEN", got)
+	}
 }
