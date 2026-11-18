@@ -100,9 +100,13 @@ type scheduledTick struct {
 	job *scheduledtest.Job
 }
 
-func newScheduledTick(t *testing.T, hostExtra string) *scheduledTick {
+func newScheduledTick(t *testing.T, hostExtra string, others ...string) *scheduledTick {
 	t.Helper()
-	env, db := tickFixture(t, repoDir(t, scheduledToml))
+	repos := []string{repoDir(t, scheduledToml)}
+	for _, body := range others {
+		repos = append(repos, repoDir(t, body))
+	}
+	env, db := tickFixture(t, repos...)
 	if hostExtra != "" {
 		appendHostToml(t, env, hostExtra)
 	}
@@ -520,4 +524,24 @@ func TestTickScheduledUnknownJob(t *testing.T) {
 	if rows := scheduledRows(t, openStore(t, s.db)); len(rows) != 0 {
 		t.Errorf("scheduled runs = %+v, want none", rows)
 	}
+}
+
+// Fails if the agent of a scheduled run keeps the token variable of a repo the tick did not
+// gather: here o/other names OTHER_TOKEN, which is unset, so its forge does not open.
+func TestTickScheduledAgentLosesTheTokenOfEveryRepo(t *testing.T) {
+	other := strings.Replace(completeRepo, `repo = "o/r"`, "repo = \"o/other\"\ntoken_env = \"OTHER_TOKEN\"", 1)
+	s := newScheduledTick(t, "", other)
+	out := s.tick(t)
+	if !strings.Contains(out, "skip ") {
+		t.Fatalf("errOut = %q, want the second repo skipped (precondition)", out)
+	}
+	for _, l := range s.w.spawned() {
+		if l.Prompt == "/gsd-map-codebase" {
+			if !slices.Contains(l.Unset, "OTHER_TOKEN") {
+				t.Errorf("Unset = %q, want OTHER_TOKEN of the repo that was not gathered", l.Unset)
+			}
+			return
+		}
+	}
+	t.Fatalf("spawns = %+v, want the scheduled one", s.w.spawned())
 }

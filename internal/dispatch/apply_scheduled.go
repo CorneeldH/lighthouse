@@ -162,11 +162,9 @@ func retryOutcome(attempt int) runs.Outcome {
 // the token_env of every repo of the process (docs/workplace.md), sorted, each once.
 func (ap applier) tokenVarNames(own string) []string {
 	names := forge.TokenVarNames(own)
-	if ap.env.TokenEnvs != nil {
-		for _, k := range ap.env.TokenEnvs() {
-			if k != "" {
-				names = append(names, k)
-			}
+	for _, k := range ap.env.TokenEnvs {
+		if k != "" {
+			names = append(names, k)
 		}
 	}
 	slices.Sort(names)

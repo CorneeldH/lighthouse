@@ -542,19 +542,13 @@ func applyActions(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.D
 		RemoveMarker: func(session, key string) error {
 			return env.removeMarker(ctx, cfg, markerDir, markerNode[session], session, key)
 		},
-		MaxWait:    cfg.MaxWait,
-		Now:        env.now,
-		NewSession: runs.NewSessionID,
-		Log:        prefixed{errOut},
-		Getenv:     env.Getenv,
-		TokenEnv:   func(slug string) string { return tokenEnvName(repos[slug]) },
-		TokenEnvs: func() []string {
-			var out []string
-			for _, r := range repos {
-				out = append(out, r.TokenEnv)
-			}
-			return out
-		},
+		MaxWait:     cfg.MaxWait,
+		Now:         env.now,
+		NewSession:  runs.NewSessionID,
+		Log:         prefixed{errOut},
+		Getenv:      env.Getenv,
+		TokenEnv:    func(slug string) string { return tokenEnvName(repos[slug]) },
+		TokenEnvs:   tokenEnvs(cfg),
 		StartPusher: env.startPusher(dir),
 	}, actions)
 	return res, nil
@@ -845,4 +839,16 @@ func repoInput(ctx context.Context, db *sql.DB, cfg hostconfig.Dispatch, f forge
 		Markers:      pre.Markers,
 		WorkflowPush: cfg.WorkflowPush != nil, PushTimeout: dispatch.PushTimeout(cfg),
 	}, nil
+}
+
+// tokenEnvs are the token_env names of every repo in host.toml, gathered this tick or not: the
+// agent of a scheduled run must not inherit any of them.
+func tokenEnvs(cfg hostconfig.Dispatch) []string {
+	var out []string
+	for _, l := range repoconfig.LoadAll(cfg.Repos) {
+		if l.Err == nil && l.Repo.TokenEnv != "" {
+			out = append(out, l.Repo.TokenEnv)
+		}
+	}
+	return out
 }

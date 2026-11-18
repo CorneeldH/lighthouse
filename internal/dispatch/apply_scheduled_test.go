@@ -356,7 +356,7 @@ func TestApplyScheduledDeferral(t *testing.T) {
 // is the union over every repo, not only the run's own.
 func TestApplyScheduledStartUnsetsTokenEnvOfEveryRepo(t *testing.T) {
 	h, _, _ := scheduledHarness(t)
-	h.env.TokenEnvs = func() []string { return []string{"OTHER_REPO_TOKEN", "", "WORK_TOKEN"} }
+	h.env.TokenEnvs = []string{"OTHER_REPO_TOKEN", "", "WORK_TOKEN"}
 	if _, err := Apply(context.Background(), h.env, []Action{scheduledStart()}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
