@@ -59,22 +59,31 @@ func TestRemoveForceRefusesWhatIsNotAScheduledWorktree(t *testing.T) {
 	cases := []struct {
 		name    string
 		headRef string
-		main    bool // worktree_path is the main checkout instead of a linked worktree
+		main    bool   // worktree_path is the main checkout instead of a linked worktree
+		onGit   string // the branch the linked worktree really has; "" is headRef
 		want    string
 	}{
-		{"main checkout", "scheduled/nightly-20261116T0400-1", true, "main checkout"},
-		{"branch of other work", "issue-7-x", false, "not a scheduled run's"},
-		{"no branch", "", false, "not a scheduled run's"},
+		{"main checkout", "scheduled/nightly-20261116T0400-1", true, "", "main checkout"},
+		{"branch of other work", "issue-7-x", false, "", "not a scheduled run's"},
+		{"no branch", "", false, "wt", "not a scheduled run's"},
+		{"forge lies about the branch", "scheduled/x", false, "issue-7", "not \"scheduled/x\" as the forge says"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			f, a := newFakeForge(t)
 			a.Run = workplace.ExecRunner()
 			main := filepath.Join(t.TempDir(), "main")
+			branch := c.onGit
+			if branch == "" {
+				branch = strings.TrimPrefix(c.headRef, "refs/heads/")
+			}
+			if c.main {
+				branch = "wt" // the main checkout itself is on the scheduled branch, made below
+			}
 			for _, args := range [][]string{
 				{"init", "--quiet", main},
 				{"-C", main, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "--quiet", "--allow-empty", "-m", "init"},
-				{"-C", main, "worktree", "add", "--quiet", "-b", "wt", filepath.Join(filepath.Dir(main), "wt")},
+				{"-C", main, "worktree", "add", "--quiet", "-b", branch, filepath.Join(filepath.Dir(main), "wt")},
 			} {
 				if out, err := exec.Command("git", args...).CombinedOutput(); err != nil {
 					t.Fatalf("git %v: %v\n%s", args, err, out)
@@ -82,6 +91,9 @@ func TestRemoveForceRefusesWhatIsNotAScheduledWorktree(t *testing.T) {
 			}
 			f.path, f.headRef = filepath.Join(filepath.Dir(main), "wt"), c.headRef
 			if c.main {
+				if out, err := exec.Command("git", "-C", main, "checkout", "-q", "-b", c.headRef).CombinedOutput(); err != nil {
+					t.Fatalf("git checkout: %v\n%s", err, out)
+				}
 				f.path = main
 			}
 			keep := filepath.Join(f.path, "untracked.txt")
