@@ -23,7 +23,7 @@ type Fixture interface {
 	Repo() string
 	Login() string // the token's user
 	// AddIssue adds is with its Number, Title, Body, Author, State ("open"/"closed"), Labels,
-	// Milestone and ClosedAt.
+	// Milestone, ClosedAt and StateReason.
 	AddIssue(t *testing.T, is forge.Issue)
 	// SetCloseReason sets why the closed issue number was closed: "completed" or "not_planned".
 	SetCloseReason(t *testing.T, number int, reason string)
@@ -38,7 +38,15 @@ type Fixture interface {
 	// AddBlocker makes b block issue number.
 	AddBlocker(t *testing.T, number int, b forge.Blocker)
 	AddOpenPR(t *testing.T, pr forge.OpenPR)
+	// AddOpenPRWithStatus adds an open pull request with its Number, Title, URL, Draft, Mergeable
+	// and Checks.
+	AddOpenPRWithStatus(t *testing.T, pr forge.PRSummary)
+	// AddMergedPR adds a merged pull request with its Number, Title, URL and MergedAt.
+	AddMergedPR(t *testing.T, pr forge.PRSummary)
 	AddBranchPR(t *testing.T, branch string, pr forge.PR)
+	// AddMilestonedEvent records that issue number was put in the milestone titled milestoneTitle
+	// at at. The event names the milestone by title only; the issue is added with AddIssue.
+	AddMilestonedEvent(t *testing.T, number int, milestoneTitle string, at time.Time)
 	// PutOnBoard puts issue number on the board with a lighthouse status and priority; "" none.
 	PutOnBoard(t *testing.T, number int, status, priority string)
 	// PutOnBoardUnmapped puts issue number on the board with a status the board config does not
@@ -58,6 +66,10 @@ type Fixture interface {
 	// board. GitLab does: every issue is on its board, closed ones within a window. GitHub
 	// lists only the items of its project.
 	ListsClosedIssues() bool
+	// SupportsReport reports whether the forge reads the period lists of lighthouse report
+	// (OpenPRsWithStatus, MergedPRs, ClosedIssues, MilestonedIssues). GitHub does; GitLab
+	// answers ErrReportUnsupported.
+	SupportsReport() bool
 	// AddNamedMilestone adds an open milestone with title and returns it with the Number the forge
 	// uses in the Milestone methods. group makes it a group milestone, where the forge has them;
 	// the fixture of a forge without them fails the test.
@@ -100,6 +112,10 @@ var Cases = []Case{
 	{"SetStatusUnknownName", setStatusUnknownName},
 	{"Pagination", pagination},
 	{"PRFields", prFields},
+	{"OpenPRsWithStatus", openPRsWithStatus},
+	{"MergedPRs", mergedPRs},
+	{"ClosedIssues", closedIssues},
+	{"MilestonedIssues", milestonedIssues},
 	{"CreateIssueRoundTrip", createIssueRoundTrip},
 	{"EditIssue", editIssue},
 	{"ListIssuesStateAndLabel", listIssuesStateAndLabel},
@@ -998,4 +1014,96 @@ func findByMarkerPages(t *testing.T, f Fixture) {
 	if it := find(t, f, marker); it.Number != page || it.Body != marker || it.Author != "ann" {
 		t.Errorf("found %+v; want #%d by ann from the second page", it, page)
 	}
+}
+
+func openPRsWithStatus(t *testing.T, f Fixture) {
+	if !f.SupportsReport() {
+		t.Skip("forge has no period report")
+	}
+	f.AddOpenPRWithStatus(t, forge.PRSummary{Number: 52, Title: "Red", URL: "https://example.test/pull/52", Mergeable: "MERGEABLE", Checks: "FAILURE"})
+	f.AddOpenPRWithStatus(t, forge.PRSummary{Number: 51, Title: "Conflict", URL: "https://example.test/pull/51", Mergeable: "CONFLICTING", Checks: "SUCCESS"})
+	f.AddOpenPRWithStatus(t, forge.PRSummary{Number: 50, Title: "Draft", URL: "https://example.test/pull/50", Draft: true, Mergeable: "UNKNOWN"})
+	got, err := f.Forge().OpenPRsWithStatus(t.Context())
+	if err != nil {
+		t.Fatalf("OpenPRsWithStatus: %v", err)
+	}
+	want := []forge.PRSummary{
+		{Number: 50, Title: "Draft", URL: "https://example.test/pull/50", Draft: true, Mergeable: "UNKNOWN"},
+		{Number: 51, Title: "Conflict", URL: "https://example.test/pull/51", Mergeable: "CONFLICTING", Checks: "SUCCESS"},
+		{Number: 52, Title: "Red", URL: "https://example.test/pull/52", Mergeable: "MERGEABLE", Checks: "FAILURE"},
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("OpenPRsWithStatus = %+v; want %+v", got, want)
+	}
+}
+
+func mergedPRs(t *testing.T, f Fixture) {
+	if !f.SupportsReport() {
+		t.Skip("forge has no period report")
+	}
+	since := time.Date(2026, 11, 16, 0, 0, 0, 0, time.UTC)
+	until := since.Add(24 * time.Hour)
+	f.AddMergedPR(t, forge.PRSummary{Number: 21, Title: "Later", URL: "https://example.test/pull/21", MergedAt: since.Add(15 * time.Hour)})
+	f.AddMergedPR(t, forge.PRSummary{Number: 20, Title: "Earlier", URL: "https://example.test/pull/20", MergedAt: since.Add(2 * time.Hour)})
+	f.AddMergedPR(t, forge.PRSummary{Number: 19, Title: "Outside", URL: "https://example.test/pull/19", MergedAt: since.Add(-time.Hour)})
+	got, err := f.Forge().MergedPRs(t.Context(), since, until)
+	if err != nil {
+		t.Fatalf("MergedPRs: %v", err)
+	}
+	if len(got) != 2 || got[0].Number != 20 || got[1].Number != 21 {
+		t.Fatalf("MergedPRs = %+v; want #20 then #21", got)
+	}
+	if got[0].Title != "Earlier" || got[0].URL == "" || got[0].Mergeable != "" || !got[0].MergedAt.Equal(since.Add(2*time.Hour)) {
+		t.Errorf("MergedPRs[0] = %+v; want title, URL, MergedAt and no Mergeable", got[0])
+	}
+}
+
+func closedIssues(t *testing.T, f Fixture) {
+	if !f.SupportsReport() {
+		t.Skip("forge has no period report")
+	}
+	since := time.Date(2026, 11, 16, 0, 0, 0, 0, time.UTC)
+	until := since.Add(24 * time.Hour)
+	done := closedIssue(30, nil, since.Add(3*time.Hour))
+	done.StateReason = "completed"
+	dropped := closedIssue(31, nil, since.Add(4*time.Hour))
+	dropped.StateReason = "not_planned"
+	outside := closedIssue(32, nil, since.Add(-2*time.Hour))
+	outside.StateReason = "completed"
+	f.AddIssue(t, done)
+	f.AddIssue(t, dropped)
+	f.AddIssue(t, outside)
+	got, err := f.Forge().ClosedIssues(t.Context(), since, until)
+	if err != nil {
+		t.Fatalf("ClosedIssues: %v", err)
+	}
+	if len(got) != 1 || got[0].Number != 30 || got[0].StateReason != "completed" {
+		t.Errorf("ClosedIssues = %+v; want only #30", got)
+	}
+}
+
+func milestonedIssues(t *testing.T, f Fixture) {
+	if !f.SupportsReport() {
+		t.Skip("forge has no period report")
+	}
+	since := time.Date(2026, 11, 16, 0, 0, 0, 0, time.UTC)
+	until := since.Add(24 * time.Hour)
+	f.AddIssue(t, withMilestone(openIssue(40), &milestone))
+	f.AddMilestonedEvent(t, 40, "M3", since.Add(5*time.Hour))
+	f.AddIssue(t, withMilestone(openIssue(41), &milestone))
+	f.AddMilestonedEvent(t, 41, "M3", since.Add(-48*time.Hour))
+	f.AddIssue(t, closedIssue(42, &milestone, since.Add(6*time.Hour)))
+	f.AddMilestonedEvent(t, 42, "M3", since.Add(2*time.Hour))
+	got, err := f.Forge().MilestonedIssues(t.Context(), since, until)
+	if err != nil {
+		t.Fatalf("MilestonedIssues: %v", err)
+	}
+	if len(got) != 1 || got[0].Issue.Number != 40 || got[0].Milestone != milestone || !got[0].At.Equal(since.Add(5*time.Hour)) {
+		t.Errorf("MilestonedIssues = %+v; want only #40 in M3 at 05:00", got)
+	}
+}
+
+func withMilestone(is forge.Issue, m *forge.Milestone) forge.Issue {
+	is.Milestone = m
+	return is
 }

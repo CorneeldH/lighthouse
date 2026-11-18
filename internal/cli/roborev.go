@@ -27,11 +27,7 @@ func newRoborevGateCommand(budget roborev.Budget) *cobra.Command {
 		},
 	})
 	cmd.AddCommand(
-		roborevSub("gate", "Print the verdict as JSON: off, done, skip, classify or run",
-			func(_ *cobra.Command, root string, _ []string) (string, error) {
-				out, err := roborev.Gate(root, budget)
-				return compactJSON(out, err)
-			}),
+		newRoborevGate(budget),
 		roborevSub("fixed", "Print the findings that fix commits of this branch name, as JSON",
 			func(_ *cobra.Command, root string, _ []string) (string, error) {
 				fixed, err := roborev.FixedFindings(root)
@@ -40,8 +36,7 @@ func newRoborevGateCommand(budget roborev.Budget) *cobra.Command {
 				}
 				return compactJSON(roborev.FixedJSON(fixed), nil)
 			}),
-		roborevSub("body-line", "Print the line the PR body carries",
-			func(_ *cobra.Command, root string, _ []string) (string, error) { return roborev.BodyLine(root) }),
+		newRoborevBodyLine(),
 		newRoborevClassify(),
 		newRoborevRecord(),
 	)
@@ -84,6 +79,39 @@ func roborevFail(cmd *cobra.Command, err error) error {
 		return &exitError{code: 2, err: errSilent}
 	}
 	return err
+}
+
+// newRoborevGate is `roborev-gate gate [--push]`. With --push it reviews the unpushed range for
+// the workflow pusher: no code-line threshold, only the push record of HEAD.
+func newRoborevGate(budget roborev.Budget) *cobra.Command {
+	var push bool
+	cmd := roborevSub("gate", "Print the verdict as JSON: off, done, skip, classify or run",
+		func(_ *cobra.Command, root string, _ []string) (string, error) {
+			gate := roborev.Gate
+			if push {
+				gate = roborev.GatePush
+			}
+			out, err := gate(root, budget)
+			return compactJSON(out, err)
+		})
+	cmd.Flags().BoolVar(&push, "push", false,
+		"review the unpushed range for the workflow pusher: no line threshold, record push-<head>.json")
+	return cmd
+}
+
+// newRoborevBodyLine is `roborev-gate body-line [--push]`. With --push it reads the push records of
+// the workflow route instead of the branch record.
+func newRoborevBodyLine() *cobra.Command {
+	var push bool
+	cmd := roborevSub("body-line", "Print the line the PR body carries",
+		func(_ *cobra.Command, root string, _ []string) (string, error) {
+			if push {
+				return roborev.BodyLinePush(root)
+			}
+			return roborev.BodyLine(root)
+		})
+	cmd.Flags().BoolVar(&push, "push", false, "read the push record that covers HEAD (the workflow route)")
+	return cmd
 }
 
 func newRoborevClassify() *cobra.Command {

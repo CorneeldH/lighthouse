@@ -28,7 +28,9 @@
                 "internal/config/headings.go",
                 "internal/dispatch/instructions/run.md",
                 "internal/evidence/run.go",
+                "internal/pusher/floor.go",
                 "internal/repoconfig/repoconfig.go",
+                "internal/report/render.go",
                 "internal/review/openpoints.go",
                 "internal/triage/judgment.go",
                 "pack/core/instructions/AGENTS.md",
@@ -149,6 +151,7 @@
               "example": "owner/name",
               "readers": [
                 "internal/boardstart/boardstart.go",
+                "internal/cli/pushworkflows.go",
                 "internal/cli/worktreeaudit.go",
                 "internal/labels/labels.go",
                 "internal/postartefact/postartefact.go",
@@ -157,6 +160,7 @@
                 "internal/prbody/gate.go",
                 "internal/prbody/scope.go",
                 "internal/protocol/artefact.go",
+                "internal/pusher/git.go",
                 "internal/repoconfig/repoconfig.go",
                 "internal/workplace/local/adapter.go",
                 "internal/worktreeaudit/collect.go",
@@ -194,6 +198,7 @@
               "about": "The name of the environment variable that holds the forge token, instead of GH_TOKEN and GITHUB_TOKEN (github) or GITLAB_TOKEN (gitlab). The token itself never goes in lighthouse.toml.",
               "example": "WORK_GITLAB_TOKEN",
               "readers": [
+                "internal/cli/pushworkflows.go",
                 "internal/prbody/form.go",
                 "internal/prbody/gate.go",
                 "internal/repoconfig/repoconfig.go",
@@ -764,6 +769,54 @@
               "readers": [
                 "internal/roborev/gate.go",
                 "pack/core/skills/write-pr"
+              ]
+            }
+          ]
+        },
+        {
+          "table": "report",
+          "title": "Report",
+          "about": "The per-day, week or month report of lighthouse report: whether it runs and where it writes.",
+          "keys": [
+            {
+              "key": "report.enabled",
+              "level": "set",
+              "required": "no",
+              "default": false,
+              "about": "Turns lighthouse report on for this repo.",
+              "example": true,
+              "options": [
+                true,
+                false
+              ],
+              "readers": [
+                "internal/cli/report.go",
+                "internal/repoconfig/repoconfig.go"
+              ]
+            },
+            {
+              "key": "report.sink",
+              "level": "set",
+              "required": "no",
+              "default": "stdout",
+              "about": "Where the report goes: stdout or a file in report.dir.",
+              "example": "file",
+              "options": [
+                "stdout",
+                "file"
+              ],
+              "readers": [
+                "internal/repoconfig/repoconfig.go"
+              ]
+            },
+            {
+              "key": "report.dir",
+              "level": "set",
+              "required": "with sink = file",
+              "about": "Directory, relative to the repo, where the report file is written.",
+              "example": "docs/verslagen",
+              "readers": [
+                "internal/repoconfig/repoconfig.go"
               ]
             }
           ]

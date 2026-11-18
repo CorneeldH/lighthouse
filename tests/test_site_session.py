@@ -196,6 +196,7 @@ def test_routes_are_the_situations():
         "dead-link": "I write a dead link", "write-gates": "I write code a gate rejects",
         "agent": "I send an agent to scout",
         "permission-prompt": "A controller run waits on a permission",
+        "workflow-push": "A controller run pushes a workflow change",
     }
 
 

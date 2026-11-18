@@ -1,8 +1,10 @@
 package roborev
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -15,6 +17,7 @@ var (
 	rangeRe  = regexp.MustCompile(`^[0-9a-f]{7,64}\.\.[0-9a-f]{7,64}$`)
 	fixedRe  = regexp.MustCompile(`(?m)^roborev: (\S+?):(\d+) \((\w+)\)\s*$`)
 	outcomes = []string{"fixed", "refuted", "left"}
+	shaRe    = regexp.MustCompile(`^[0-9a-f]{40,64}$`)
 )
 
 // Fixed is a finding named by a `roborev: <path>:<line> (<severity>)` line in a commit body.
@@ -292,4 +295,121 @@ func BodyLine(root string) (string, error) {
 	}
 	reason, _ := recorded.Get("reason")
 	return "Roborev overgeslagen: " + pyStr(reason), nil
+}
+
+// BodyLinePush is BodyLine for the workflow route: it reads the push records, never the branch
+// record. The marker names the sha of the push record that covers HEAD the way the workflow
+// pusher's check 5 counts it: push-<head>.json, or the newest done push record whose sha is an
+// ancestor of HEAD with every commit after it the commit of a fixed finding. A skip in
+// push-<head>.json repeats its reason; no covering record is a skip.
+func BodyLinePush(root string) (string, error) {
+	setting, _, err := settings(root)
+	if err != nil {
+		return "", err
+	}
+	if setting != "local" {
+		return "", nil
+	}
+	head, err := git(root, true, "rev-parse", "HEAD")
+	if err != nil {
+		return "", err
+	}
+	own, _, err := PushPaths(root, head)
+	if err != nil {
+		return "", err
+	}
+	recorded, err := readState(own)
+	if err != nil {
+		return "", err
+	}
+	if recorded != nil {
+		if verdict, _ := recorded.Get("verdict"); verdict == "done" {
+			sha, _ := recorded.Get("sha")
+			return fmt.Sprintf("<!-- roborev-lokaal: %s -->", pyStr(sha)), nil
+		}
+		reason, _ := recorded.Get("reason")
+		return "Roborev overgeslagen: " + pyStr(reason), nil
+	}
+	if sha := coveringPushRecord(root, filepath.Dir(own), head); sha != "" {
+		return fmt.Sprintf("<!-- roborev-lokaal: %s -->", sha), nil
+	}
+	return "Roborev overgeslagen: geen reviewuitkomst vastgelegd", nil
+}
+
+// pushRecord is the part of a push record that decides whether it covers HEAD.
+type pushRecord struct {
+	Outcome   string `json:"uitkomst"`
+	SHA       string `json:"sha"`
+	Decisions []struct {
+		Outcome string `json:"uitkomst"`
+		Commit  string `json:"commit"`
+	} `json:"bevindingen"`
+}
+
+// minFixPrefix is the shortest abbreviation of a fix commit that counts, as for the pusher.
+const minFixPrefix = 7
+
+// coveringPushRecord is the sha of the newest done push-*.json in dir that covers head, or "".
+func coveringPushRecord(root, dir, head string) string {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return ""
+	}
+	type candidate struct {
+		path string
+		mod  int64
+	}
+	var found []candidate
+	for _, e := range entries {
+		name := e.Name()
+		if !e.Type().IsRegular() || !strings.HasPrefix(name, "push-") || !strings.HasSuffix(name, ".json") {
+			continue
+		}
+		if info, err := e.Info(); err == nil {
+			found = append(found, candidate{filepath.Join(dir, name), info.ModTime().UnixNano()})
+		}
+	}
+	sort.Slice(found, func(i, j int) bool { return found[i].mod > found[j].mod })
+	for _, c := range found {
+		text, err := os.ReadFile(c.path)
+		if err != nil {
+			continue
+		}
+		var rec pushRecord
+		if json.Unmarshal(text, &rec) != nil || rec.Outcome != "done" || !shaRe.MatchString(rec.SHA) {
+			continue
+		}
+		if covers(root, rec, head) {
+			return rec.SHA
+		}
+	}
+	return ""
+}
+
+// covers reports whether rec reviewed an ancestor of head after which every commit is a fix.
+func covers(root string, rec pushRecord, head string) bool {
+	if _, err := git(root, true, "merge-base", "--is-ancestor", rec.SHA, head); err != nil {
+		return false
+	}
+	out, err := git(root, true, "rev-list", rec.SHA+".."+head)
+	if err != nil {
+		return false
+	}
+	after := strings.Fields(out)
+	if len(after) == 0 {
+		return true
+	}
+	for _, c := range after {
+		fixed := false
+		for _, d := range rec.Decisions {
+			if d.Outcome == "fixed" && len(d.Commit) >= minFixPrefix && strings.HasPrefix(c, d.Commit) {
+				fixed = true
+				break
+			}
+		}
+		if !fixed {
+			return false
+		}
+	}
+	return true
 }

@@ -54,3 +54,12 @@ terms = [
   ["code_language", "english", "language"],
   ["comment", "identifier", "file name", "docstring"],
 ]
+
+[workflow-push-gate]
+events = ["PreToolUse"]
+matcher = "Bash"
+does = "Blocks a git push of a controller run whose range touches .github/workflows."
+terms = [
+  ["git push"],
+  [".github/workflows", "workflow"],
+]

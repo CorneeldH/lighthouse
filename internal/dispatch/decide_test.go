@@ -8,7 +8,9 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
 	"github.com/CorneeldH/lighthouse/internal/runs"
 )
@@ -236,5 +238,418 @@ func TestSettleUnstartedFixPRKeepsRunOpenWhenBraked(t *testing.T) {
 	want := []Action{deferred, {Kind: KindReturn, Repo: "o/r", Issue: 8, RunID: 6, Reason: "reason_pr_red"}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got  %+v\nwant %+v", got, want)
+	}
+}
+
+const (
+	pushWorktree = "/home/u/r/.claude/worktrees/issue-7-bouw-de-keten"
+	pushSession  = "11111111-2222-4333-8444-555555555555"
+	pushSHA      = "3f2a1bcd4e5f60718293a4b5c6d7e8f901234567"
+)
+
+// pushHandoff is the base of the push tests: handoff-start with comment 63 replaced by a
+// `next: push-workflows` handoff of run 5, and the pusher configured.
+func pushHandoff(t *testing.T, fields string) Input {
+	t.Helper()
+	in := loadInput(t, "handoff-start")
+	item7(&in).Comments[1].Body = "🤖 Handoff\nissue: #7\nworktree: " + pushWorktree +
+		"\nbranch: issue-7-bouw-de-keten\nnext: push-workflows\n" + fields +
+		"\n\n<sub>session " + pushSession + "</sub>"
+	in.Repos[0].WorkflowPush = true
+	in.Repos[0].Installed["lighthouse-write-pr"] = true
+	in.Repos[0].PushTimeout = 30 * time.Minute
+	return in
+}
+
+// pushQuestion is a pusher 🤖 Vraag (no session, a sha field) followed by the answer.
+func pushQuestion(t *testing.T, answer string) Input {
+	t.Helper()
+	in := pushHandoff(t, "when: now")
+	item7(&in).Comments = append(item7(&in).Comments[:1],
+		Comment{ID: 70, Author: "lh-bot", CreatedAt: "2026-10-31T11:10:00Z",
+			Body: "🤖 Vraag\nsha: " + pushSHA + "\nworktree: " + pushWorktree + "\nbranch: issue-7-bouw-de-keten\n\n" +
+				"Rode stap: actionlint\n\ncd " + pushWorktree + " && git push -u origin HEAD"},
+		Comment{ID: 71, Author: "owner", CreatedAt: "2026-10-31T11:30:00Z", Body: answer})
+	return in
+}
+
+func TestDecidePushHandoff(t *testing.T) {
+	const pushCommand = "cd " + pushWorktree + " && git push -u origin HEAD"
+	tests := []struct {
+		name   string
+		mutate func(*Input)
+		fields string
+		want   []string
+	}{
+		{"configured", func(*Input) {}, "when: now", []string{"push::"}},
+		{"no config", func(in *Input) { in.Repos[0].WorkflowPush = false }, "when: now",
+			[]string{"return:reason_pusher_off:" + pushCommand}},
+		{"run on another node", func(in *Input) { row5(in).Node = "n1" }, "when: now",
+			[]string{"return:reason_pusher_node:" + pushCommand}},
+		{"run of an unknown session", func(in *Input) { in.Repos[0].History = nil }, "when: now", []string{"push::"}},
+		{"after that starts", func(*Input) {}, "after: /lighthouse-write-pr 7\nwhen: now", []string{"push::"}},
+		{"after that is rejected", func(*Input) {}, "after: rm -rf /\nwhen: now", []string{"return:reason_bad_handoff:rm -rf /"}},
+		{"after that is a push", func(*Input) {}, "after: push-workflows\nwhen: now",
+			[]string{"return:reason_bad_handoff:push-workflows"}},
+		{"push to the default branch", func(in *Input) {
+			item7(in).Comments[1].Body = strings.Replace(item7(in).Comments[1].Body, "branch: issue-7-bouw-de-keten", "branch: main", 1)
+		}, "when: now", []string{"return:reason_bad_handoff:branch main"}},
+		{"night outside the window", func(in *Input) { in.Night = "22:00-06:00" }, "when: night", []string{"defer:night:"}},
+		{"active blocker parks", func(in *Input) {
+			item7(in).BlockedBy = []forge.Blocker{{Repo: "o/r", Issue: 3, State: "OPEN"}}
+		}, "when: now", []string{"park::"}},
+		{"trigger spent", func(in *Input) {
+			item7(in).Comments[1].Rocket = true
+			addRows(in, runs.Row{ID: 9, Issue: 7, TriggerKey: "push:63", Command: "push-workflows", Outcome: runs.Handoff})
+		}, "when: now", []string{}},
+		{"handoff trigger spent", func(in *Input) {
+			item7(in).Comments[1].Rocket = true
+			addRows(in, runs.Row{ID: 9, Issue: 7, TriggerKey: "handoff:63", Command: "push-workflows", Outcome: runs.Handoff})
+		}, "when: now", []string{}},
+		{"paused brake", func(in *Input) { in.Brake = &Brake{Paused: true} }, "when: now", []string{}},
+		{"usage brake closed", func(in *Input) { in.Brake = &Brake{} }, "when: now", []string{"defer:usage: not measured:"}},
+		{"slots full does not close a push", func(in *Input) {
+			in.Brake = &Brake{UsageMeasured: true, HaltPctSession: 100, HaltPctWeek: 100, Slots: 1, InUse: 1}
+		}, "when: now", []string{"push::"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			in := pushHandoff(t, tt.fields)
+			tt.mutate(&in)
+			got := Decide(in)
+			if s := summary(got); !reflect.DeepEqual(s, tt.want) {
+				t.Fatalf("summary = %q, want %q", s, tt.want)
+			}
+		})
+	}
+}
+
+func TestDecidePushActionFields(t *testing.T) {
+	got := Decide(pushHandoff(t, "when: now"))
+	if len(got) != 1 {
+		t.Fatalf("got %d actions, want 1: %+v", len(got), got)
+	}
+	want := Action{Kind: KindPush, Repo: "o/r", Issue: 7, Trigger: "push", TriggerKey: "push:63", Attempt: 1,
+		Command: "push-workflows", Worktree: pushWorktree, Branch: "issue-7-bouw-de-keten", CommentID: 63, Language: "nl"}
+	if !reflect.DeepEqual(got[0], want) {
+		t.Errorf("got  %+v\nwant %+v", got[0], want)
+	}
+}
+
+// A push row whose handoff lost its 🚀 gets it back, like any handoff trigger.
+func TestDecidePushRocketRepair(t *testing.T) {
+	in := pushHandoff(t, "when: now")
+	addRows(&in, runs.Row{ID: 9, Issue: 7, TriggerKey: "push:63", Command: "push-workflows", Outcome: runs.Handoff})
+	got := Decide(in)
+	if s := summary(got); !reflect.DeepEqual(s, []string{"rocket::"}) || got[0].CommentID != 63 {
+		t.Errorf("got %+v, want a rocket on 63", got)
+	}
+}
+
+// A push row that failed to start has no session to retry: retry must not start the literal
+// push-workflows command.
+func TestDecidePushRowIsNoSessionRetry(t *testing.T) {
+	in := pushHandoff(t, "when: now")
+	addRows(&in, runs.Row{ID: 9, Issue: 7, TriggerKey: "push:63", Command: "push-workflows", Outcome: runs.StartFailed})
+	for _, a := range Decide(in) {
+		if a.Kind == KindStart || a.Kind == KindResume {
+			t.Errorf("got %+v, want no session start for a push row", a)
+		}
+	}
+}
+
+func TestDecidePushAnswer(t *testing.T) {
+	tests := []struct {
+		name   string
+		answer string
+		mutate func(*Input)
+		want   []string
+	}{
+		{"push", "push", func(*Input) {}, []string{"push::"}},
+		{"push with case and a full stop", " Push. ", func(*Input) {}, []string{"push::"}},
+		{"other answer", "nee, laat maar", func(*Input) {}, []string{}},
+		{"no config", "push", func(in *Input) { in.Repos[0].WorkflowPush = false },
+			[]string{"return:reason_pusher_off:cd " + pushWorktree + " && git push -u origin HEAD"}},
+		{"answer spent", "push", func(in *Input) {
+			item7(in).Comments[2].Rocket = true
+			addRows(in, runs.Row{ID: 9, Issue: 7, TriggerKey: "pushanswer:71", Command: "push-workflows", Outcome: runs.Handoff})
+		}, []string{}},
+		{"unreadable sha", "push", func(in *Input) {
+			c := &item7(in).Comments[1]
+			c.Body = strings.Replace(c.Body, pushSHA, "not-a-sha", 1)
+		}, []string{}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			in := pushQuestion(t, tt.answer)
+			tt.mutate(&in)
+			// The mutation of "unreadable sha" targets the Vraag, which is Comments[1] here.
+			got := Decide(in)
+			if s := summary(got); !reflect.DeepEqual(s, tt.want) {
+				t.Fatalf("summary = %q, want %q", s, tt.want)
+			}
+		})
+	}
+}
+
+func TestDecidePushAnswerFields(t *testing.T) {
+	got := Decide(pushQuestion(t, "push"))
+	if len(got) != 1 {
+		t.Fatalf("got %d actions, want 1: %+v", len(got), got)
+	}
+	want := Action{Kind: KindPush, Repo: "o/r", Issue: 7, Trigger: "pushanswer", TriggerKey: "pushanswer:71", Attempt: 1,
+		Command: "push-workflows", Worktree: pushWorktree, Branch: "issue-7-bouw-de-keten", CommentID: 71,
+		PermitSHA: pushSHA, Language: "nl"}
+	if !reflect.DeepEqual(got[0], want) {
+		t.Errorf("got  %+v\nwant %+v", got[0], want)
+	}
+}
+
+// pushRow is the base of the push-row tests: settle-green-pr-done with run 5 turned into an
+// open push row on the branch of PR #12, started age before now, without a session or a stand,
+// pushed at pushed ("" while the push phase runs); run 4 is the closed run of the Gestart that
+// handed over to it. PR #12 is green; the pusher is configured.
+func pushRow(t *testing.T, pushed string, age time.Duration) Input {
+	t.Helper()
+	in := loadInput(t, "settle-green-pr-done")
+	prev := *row5(&in)
+	prev.ID, prev.Open, prev.Outcome = 4, false, runs.Handoff
+	r := row5(&in)
+	r.SessionID, r.Command, r.Prompt, r.TriggerKey, r.PushedSHA = "", "push-workflows", "", "push:63", pushed
+	r.StartedAt = in.Now.Add(-age)
+	in.Repos[0].Stands = nil
+	in.Repos[0].WorkflowPush, in.Repos[0].PushTimeout = true, 30*time.Minute
+	addRows(&in, prev)
+	return in
+}
+
+// measuredNoSession makes the session rules ready to fire on run 5 if they were asked: max_wait
+// and max_runtime long past, and the run measured without a workplace session.
+func measuredNoSession(in *Input) {
+	in.MaxWait, in.MaxRuntime = Duration(5*time.Minute), Duration(10*time.Minute)
+	in.Repos[0].Runs = map[int64]RunState{5: {}}
+}
+
+// An open push row without a pushed SHA goes back at the push timeout as "pusher did not
+// respond", and before it nothing closes it: no merge of the green PR, no rule on a session,
+// transcript or workplace. A timeout of zero is the default of 30 minutes.
+func TestPushRowTimesOutWithoutMarker(t *testing.T) {
+	tests := []struct {
+		name   string
+		age    time.Duration
+		mutate func(*Input)
+		want   []string
+	}{
+		{"past the timeout", 31 * time.Minute, func(*Input) {}, []string{"return:reason_pusher_silent:"}},
+		{"before the timeout", 29 * time.Minute, func(*Input) {}, []string{}},
+		{"session rules do not hold", 29 * time.Minute, measuredNoSession, []string{}},
+		{"zero timeout is the default, before", 29 * time.Minute, func(in *Input) { in.Repos[0].PushTimeout = 0 }, []string{}},
+		{"zero timeout is the default, past", 31 * time.Minute, func(in *Input) { in.Repos[0].PushTimeout = 0 },
+			[]string{"return:reason_pusher_silent:"}},
+		{"own timeout", 11 * time.Minute, func(in *Input) { in.Repos[0].PushTimeout = 10 * time.Minute },
+			[]string{"return:reason_pusher_silent:"}},
+		{"the pusher's Vraag closes it", 31 * time.Minute, func(in *Input) {
+			item7(in).Comments = append(item7(in).Comments, Comment{ID: 70, Author: "lh-bot", CreatedAt: "2026-10-31T11:50:00Z",
+				Body: "🤖 Vraag\nsha: " + pushSHA + "\nworktree: " + pushWorktree + "\nbranch: issue-7-bouw-de-keten\n\nRode stap: actionlint"})
+		}, []string{"close::"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			in := pushRow(t, "", tt.age)
+			tt.mutate(&in)
+			got := Decide(in)
+			if s := summary(got); !reflect.DeepEqual(s, tt.want) {
+				t.Fatalf("summary = %q, want %q", s, tt.want)
+			}
+			for _, a := range got {
+				if a.RunID != 5 || a.Stop || a.End || a.Discard || a.SessionID != "" {
+					t.Errorf("action %+v must close run 5 without touching a session", a)
+				}
+				if a.Kind == KindClose && a.Outcome != runs.Question {
+					t.Errorf("close outcome = %q, want question", a.Outcome)
+				}
+			}
+		})
+	}
+}
+
+// Once the pusher pushed, the push row owns the PR of its branch: a green PR merges through the
+// merge pusher (the row's PushedSHA routes it there, with or without a push note), a red one
+// gets a fix-pr start, a merged one closes the row as done. max_runtime, max_wait and the push
+// timeout no longer hold, so a pending PR keeps the row open however old it is.
+func TestPushRowAfterPushOwnsPR(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*Input)
+		want   []string
+	}{
+		{"green merges through the merge pusher", func(*Input) {}, []string{"close::merge:12:abc123", "push::"}},
+		{"red starts fix-pr", red, []string{fixClose12, "start:reason_pr_red:"}},
+		{"merged closes done", func(in *Input) {
+			pr12(in).State, pr12(in).MergedAt = "MERGED", in.Now.Add(-time.Minute)
+		}, []string{"close::"}},
+		{"pending stays open", func(in *Input) { pr12(in).Checks = "PENDING" }, []string{}},
+		{"PR closed unmerged goes back", func(in *Input) {
+			pr12(in).State, pr12(in).ClosedAt = "CLOSED", in.Now.Add(-time.Minute)
+		}, []string{"return:reason_pr_closed:"}},
+		{"issue closed by hand closes done", func(in *Input) {
+			pr12(in).Checks = "PENDING"
+			item7(in).State = "CLOSED"
+		}, []string{"close::"}},
+		{"no PR of the branch at the timeout goes back", func(in *Input) { item7(in).PRs = nil },
+			[]string{"return:reason_pusher_no_handoff:" + pushSHA}},
+		{"another branch's pending PR does not count", func(in *Input) { pr12(in).HeadRef, pr12(in).Checks = "issue-7-ander", "PENDING" },
+			[]string{"return:reason_pusher_no_handoff:" + pushSHA}},
+		{"red with full slots defers the fix-pr start", func(in *Input) {
+			red(in)
+			in.Brake = openBrake()
+			in.Brake.InUse = 4
+		}, []string{"defer:slots: 4 of 4 in use:"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			in := pushRow(t, pushSHA, 2*time.Hour)
+			measuredNoSession(&in)
+			tt.mutate(&in)
+			got := Decide(in)
+			if s := summary(got); !reflect.DeepEqual(s, tt.want) {
+				t.Fatalf("summary = %q, want %q", s, tt.want)
+			}
+			for _, a := range got {
+				if a.Kind == KindStart || a.Kind == KindDefer || a.Kind == KindPush {
+					continue
+				}
+				if a.RunID != 5 || a.Stop || a.End || a.Discard {
+					t.Errorf("action %+v must close run 5 without touching a session", a)
+				}
+				if a.Kind == KindClose && a.ReasonArg == "" && a.Outcome != runs.Done {
+					t.Errorf("close outcome = %q, want done", a.Outcome)
+				}
+			}
+		})
+	}
+}
+
+// The close of a push row frees no slot: the row was never counted (CountRun), so a waiting
+// start of another repo still defers on full slots. Freeing it gives o/t#7 a slot nobody held.
+// A pushed row without a PR waits for the push timeout from its start before it goes back.
+func TestPushedRowWithoutPRWaitsForTheTimeout(t *testing.T) {
+	in := pushRow(t, pushSHA, 29*time.Minute)
+	item7(&in).PRs = nil
+	if got := summary(Decide(in)); len(got) != 0 {
+		t.Fatalf("summary = %q before the timeout, want nothing", got)
+	}
+}
+
+func TestPushRowCloseFreesNoSlot(t *testing.T) {
+	in := pushRow(t, "", 31*time.Minute)
+	in.Brake = openBrake()
+	in.Brake.InUse = 4
+	withWaitingRepo(t, &in)
+	want := []string{"return:reason_pusher_silent:", "defer:slots: 4 of 4 in use:"}
+	if got := summary(Decide(in)); !reflect.DeepEqual(got, want) {
+		t.Fatalf("summary = %q, want %q", got, want)
+	}
+}
+
+// failedPush is a push row of trigger key that failed to start at started.
+func failedPush(id int64, key string, started time.Time) runs.Row {
+	return runs.Row{ID: id, Issue: 7, Trigger: "handoff", TriggerKey: key, Attempt: 1, Command: "push-workflows",
+		Mode: "start", Branch: "issue-7-bouw-de-keten", StartedAt: started, Outcome: runs.StartFailed,
+		Reason: "exec: lighthouse: not found"}
+}
+
+// A push that failed to start starts the pusher once more with the worktree and branch of its
+// handoff; after the second failure the issue goes back with the push command, once.
+func TestPushStartFailedGetsOneRetryThenQuestion(t *testing.T) {
+	const back = "return:reason_start_failed:exec: lighthouse: not found; cd " + pushWorktree + " && git push -u origin HEAD"
+	t1 := time.Date(2026, 10, 31, 11, 5, 0, 0, time.UTC)
+	t2 := time.Date(2026, 10, 31, 11, 10, 0, 0, time.UTC)
+	returned := func(id int64, at string) Comment {
+		return Comment{ID: id, Author: "lh-bot", CreatedAt: at, Body: "🤖 Teruggegeven\n\nstart mislukt"}
+	}
+	tests := []struct {
+		name   string
+		mutate func(*Input)
+		want   []string
+	}{
+		{"one failure retries", func(in *Input) { addRows(in, failedPush(9, "push:63", t1)) }, []string{"push::"}},
+		{"two failures go back", func(in *Input) {
+			addRows(in, failedPush(9, "push:63", t1), failedPush(10, "push:63", t2))
+		}, []string{back}},
+		{"a Returned after the second failure stands", func(in *Input) {
+			addRows(in, failedPush(9, "push:63", t1), failedPush(10, "push:63", t2))
+			item7(in).Comments = append(item7(in).Comments, returned(80, "2026-10-31T11:11:00Z"))
+		}, []string{}},
+		{"one failure without the pusher goes back", func(in *Input) {
+			addRows(in, failedPush(9, "push:63", t1))
+			in.Repos[0].WorkflowPush = false
+		}, []string{"return:reason_pusher_off:cd " + pushWorktree + " && git push -u origin HEAD"}},
+		{"one failure on an unreadable handoff goes back", func(in *Input) {
+			addRows(in, failedPush(9, "push:63", t1))
+			item7(in).Comments[1].Body = "🤖 Handoff\nkapot"
+		}, []string{"return:reason_start_failed:exec: lighthouse: not found"}},
+		{"a Returned after one failure stands", func(in *Input) {
+			addRows(in, failedPush(9, "push:63", t1))
+			in.Repos[0].WorkflowPush = false
+			item7(in).Comments = append(item7(in).Comments, returned(80, "2026-10-31T11:06:00Z"))
+		}, []string{}},
+		{"an older Returned does not count", func(in *Input) {
+			addRows(in, failedPush(9, "push:63", t1), failedPush(10, "push:63", t2))
+			item7(in).Comments = append(item7(in).Comments, returned(80, "2026-10-31T11:06:00Z"))
+		}, []string{back}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			in := pushHandoff(t, "when: now")
+			item7(&in).Comments[1].Rocket = true
+			tt.mutate(&in)
+			got := Decide(in)
+			if s := summary(got); !reflect.DeepEqual(s, tt.want) {
+				t.Fatalf("summary = %q, want %q", s, tt.want)
+			}
+			if len(got) == 1 && got[0].Kind == KindPush {
+				want := Action{Kind: KindPush, Repo: "o/r", Issue: 7, Trigger: "push", TriggerKey: "push:63", Attempt: 2,
+					Command: "push-workflows", Worktree: pushWorktree, Branch: "issue-7-bouw-de-keten", CommentID: 63, Language: "nl"}
+				if !reflect.DeepEqual(got[0], want) {
+					t.Errorf("got  %+v\nwant %+v", got[0], want)
+				}
+			}
+		})
+	}
+}
+
+// The second attempt of an answer `push` takes the worktree, the branch and the permitted SHA
+// from the pusher's Vraag the answer replies to: the answer itself carries none of them. A later
+// pusher Vraag, on another SHA, is not the one the user answered: the permit waives the review,
+// so it must never move to a SHA the user did not see.
+func TestPushAnswerRowRetryKeepsWorktreeAndPermit(t *testing.T) {
+	const laterSHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	tests := []struct {
+		name   string
+		mutate func(*Input)
+	}{
+		{"the Vraag before the answer", func(*Input) {}},
+		{"a later Vraag does not count", func(in *Input) {
+			item7(in).Comments = append(item7(in).Comments, Comment{ID: 72, Author: "lh-bot", CreatedAt: "2026-10-31T11:40:00Z",
+				Body: "🤖 Vraag\nsha: " + laterSHA + "\nworktree: /elders\nbranch: issue-7-ander\n\nRode stap: zizmor"})
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			in := pushQuestion(t, "push")
+			item7(&in).Comments[2].Rocket = true
+			row := failedPush(9, "pushanswer:71", time.Date(2026, 10, 31, 11, 31, 0, 0, time.UTC))
+			row.Trigger, row.Branch = "answer", ""
+			addRows(&in, row)
+			tt.mutate(&in)
+			got := Decide(in)
+			want := []Action{{Kind: KindPush, Repo: "o/r", Issue: 7, Trigger: "pushanswer", TriggerKey: "pushanswer:71",
+				Attempt: 2, Command: "push-workflows", Worktree: pushWorktree, Branch: "issue-7-bouw-de-keten", CommentID: 71,
+				PermitSHA: pushSHA, Language: "nl"}}
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("got  %+v\nwant %+v", got, want)
+			}
+		})
 	}
 }

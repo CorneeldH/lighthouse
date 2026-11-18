@@ -236,6 +236,13 @@ func NoteMergeFailed(ctx context.Context, db *sql.DB, id int64, sha, message str
 		WHERE id = ? AND ended_at IS NULL`, sha, message, id)
 }
 
+// SetPushed marks an open push row with the SHA the pusher pushed: its push phase is over. It
+// returns ErrNotOpen for a closed or unknown run.
+func SetPushed(ctx context.Context, db *sql.DB, id int64, sha string) error {
+	return setOpen(ctx, db, id, `UPDATE runs SET pushed_sha = ?
+		WHERE id = ? AND ended_at IS NULL`, sha, id)
+}
+
 // OpenRun is an open run with its workplace columns.
 type OpenRun struct {
 	ID               int64     `json:"id"`
@@ -243,6 +250,7 @@ type OpenRun struct {
 	Schedule         string    `json:"schedule,omitempty"` // "" for an issue run
 	SessionID        string    `json:"session_id"`
 	TriggerKey       string    `json:"trigger_key"`
+	Command          string    `json:"command,omitempty"`
 	Profile          string    `json:"profile"`
 	Node             string    `json:"node,omitempty"`
 	Branch           string    `json:"branch"`
@@ -251,6 +259,7 @@ type OpenRun struct {
 	StartedAt        time.Time `json:"started_at"`
 	MergeSHA         string    `json:"merge_sha,omitempty"`
 	MergeError       string    `json:"merge_error,omitempty"`
+	PushedSHA        string    `json:"pushed_sha,omitempty"` // push row: the SHA the pusher pushed
 	StartSHA         string    `json:"start_sha,omitempty"`
 	Verdict          string    `json:"verdict,omitempty"` // opaque JSON of the scheduled job's verdict
 	PRAt             time.Time `json:"pr_at,omitzero"`    // zero: no PR yet
@@ -279,16 +288,16 @@ func Open(ctx context.Context, db *sql.DB, repo string) ([]OpenRun, error) {
 }
 
 // openColumns are the runs columns scanOpen reads, in order.
-const openColumns = `id, coalesce(issue, 0), coalesce(schedule, ''), session_id, trigger_key, profile, node, branch,
-	workspace_id, workplace_session, started_at, merge_sha, merge_error, start_sha, verdict, coalesce(pr_at, '')`
+const openColumns = `id, coalesce(issue, 0), coalesce(schedule, ''), session_id, trigger_key, command, profile, node, branch,
+	workspace_id, workplace_session, started_at, merge_sha, merge_error, pushed_sha, start_sha, verdict, coalesce(pr_at, '')`
 
 // scanOpen reads a row selected with openColumns, after any lead destinations
 // for columns selected before them.
 func scanOpen(rows interface{ Scan(...any) error }, lead ...any) (OpenRun, error) {
 	var r OpenRun
 	var started, prAt string
-	dest := append(lead, &r.ID, &r.Issue, &r.Schedule, &r.SessionID, &r.TriggerKey, &r.Profile, &r.Node, &r.Branch,
-		&r.WorkspaceID, &r.WorkplaceSession, &started, &r.MergeSHA, &r.MergeError, &r.StartSHA, &r.Verdict, &prAt)
+	dest := append(lead, &r.ID, &r.Issue, &r.Schedule, &r.SessionID, &r.TriggerKey, &r.Command, &r.Profile, &r.Node, &r.Branch,
+		&r.WorkspaceID, &r.WorkplaceSession, &started, &r.MergeSHA, &r.MergeError, &r.PushedSHA, &r.StartSHA, &r.Verdict, &prAt)
 	if err := rows.Scan(dest...); err != nil {
 		return OpenRun{}, fmt.Errorf("runs: scan open run: %w", err)
 	}

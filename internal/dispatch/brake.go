@@ -60,6 +60,18 @@ func (b *Brake) apply(ps []planned) []planned {
 		if b.Paused {
 			continue
 		}
+		if p.Kind == KindPush {
+			// A push runs no session: only the pause and the usage brake hold it back, and it
+			// counts for no slot, no software limit and no memory reserve.
+			if reason := b.UsageClosed(); reason != "" {
+				out = append(out, planned{Action: Action{
+					Kind: KindDefer, Repo: p.Repo, Issue: p.Issue, Language: p.Language, Reason: reason,
+				}})
+				continue
+			}
+			out = append(out, p)
+			continue
+		}
 		if reason := eff.closed(p, passed, admitted, admittedSoftware, admittedOn); reason != "" {
 			out = append(out, planned{Action: Action{
 				Kind: KindDefer, Repo: p.Repo, Issue: p.Issue, Schedule: p.Schedule, Slot: p.Slot,
@@ -159,10 +171,14 @@ func (b *Brake) nodeClosed(p planned, admitted, admittedSoftware int) string {
 	return ""
 }
 
-// CountRun counts one open or parked run on node ("" is this host) of profile: a run on this host
-// takes one of its slots, a run on a node one of that node's, and a software run counts toward the
-// host-wide software limit either way. A run on a node that is not in Nodes is not counted there.
-func (b *Brake) CountRun(node, profile string) {
+// CountRun counts one open or parked run on node ("" is this host) of profile with command: a run
+// on this host takes one of its slots, a run on a node one of that node's, and a software run
+// counts toward the host-wide software limit either way. A run on a node that is not in Nodes is
+// not counted there. A push row (command push-workflows) runs no session and counts for nothing.
+func (b *Brake) CountRun(node, profile, command string) {
+	if command == cmdPush {
+		return
+	}
 	if node == "" {
 		b.InUse++
 	} else if n, ok := b.Nodes[node]; ok {

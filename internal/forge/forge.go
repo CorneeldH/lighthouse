@@ -16,6 +16,9 @@ import (
 // not "the issue is not on the board", which is IssueItem's ok=false.
 var ErrIssueNotFound = errors.New("issue not found")
 
+// ErrReportUnsupported is the answer of a forge that cannot yet list the periods of lighthouse report.
+var ErrReportUnsupported = errors.New("lighthouse report is not supported on this forge yet")
+
 // Forge is one repository on a forge: its issues, comments, acknowledgements, pull requests
 // and board. A status is an option name of [forge.board] status_options, never an ID.
 type Forge interface {
@@ -43,6 +46,16 @@ type Forge interface {
 	// DeleteBranch deletes branch; a branch that is already gone is not an error.
 	DeleteBranch(ctx context.Context, branch string) error
 	OpenPRs(ctx context.Context) ([]OpenPR, error)
+	// OpenPRsWithStatus lists the open pull requests with draft, mergeable and checks, by number.
+	OpenPRsWithStatus(ctx context.Context) ([]PRSummary, error)
+	// MergedPRs lists the pull requests that merged in [since, until), oldest merge first.
+	MergedPRs(ctx context.Context, since, until time.Time) ([]PRSummary, error)
+	// ClosedIssues lists the issues closed as done in [since, until), oldest close first;
+	// an issue closed for another reason than completed (not planned, duplicate) is left out.
+	ClosedIssues(ctx context.Context, since, until time.Time) ([]Issue, error)
+	// MilestonedIssues lists the open issues put in their current milestone in [since, until),
+	// by milestone title and then number; At is the last such moment.
+	MilestonedIssues(ctx context.Context, since, until time.Time) ([]MilestonedIssue, error)
 	BranchPRs(ctx context.Context, branch string) ([]PR, error)
 	BoardItems(ctx context.Context) ([]BoardItem, error)
 	// IssueItem reads the board item of issue number. ok is false for an issue that exists but

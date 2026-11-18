@@ -52,6 +52,39 @@ type Dispatch struct {
 	Forge             DispatchForge
 	Profiles          map[string]Profile
 	Nodes             map[string]Node // [dispatch.nodes.<name>]; nil without nodes
+	WorkflowPush      *WorkflowPush   // [dispatch.workflow_push]; nil switches the route off
+}
+
+// Review modes of [dispatch.workflow_push] review.
+const (
+	ReviewShadow  = "shadow"
+	ReviewEnforce = "enforce"
+)
+
+// DefaultPushTimeout is [dispatch.workflow_push] timeout when host.toml sets none.
+const DefaultPushTimeout = 30 * time.Minute
+
+// MinPushTimeout is the smallest [dispatch.workflow_push] timeout: the pusher keeps a post window
+// and a margin before it (pusher.workDeadline), and needs time left for the floor and the review.
+const MinPushTimeout = 10 * time.Minute
+
+// WorkflowPush is [dispatch.workflow_push]: the token and the reviewers of the workflow pusher.
+// TokenFile and the Binds of a reviewer have a leading ~ expanded.
+type WorkflowPush struct {
+	TokenFile string
+	Review    string // ReviewShadow or ReviewEnforce
+	Timeout   time.Duration
+	Reviewers []Reviewer
+}
+
+// Reviewer is one [[dispatch.workflow_push.reviewers]] entry. Command holds the placeholder
+// {out} (the path of the output file) and "-" for stdin. Env lists names of environment
+// variables the reviewer inherits, never a workflow token.
+type Reviewer struct {
+	Topic   string // supply-chain, secrets or injection
+	Command []string
+	Binds   []string
+	Env     []string
 }
 
 // Node is a kenn-forge node under [dispatch.nodes.<name>]: the node's id on the fleet hub and
@@ -172,6 +205,17 @@ func LoadDispatch(path string) (Dispatch, error) {
 				ServeURL       *string `toml:"serve_url"`
 				ServeTokenFile *string `toml:"serve_token_file"`
 			} `toml:"nodes"`
+			WorkflowPush *struct {
+				TokenFile *string `toml:"token_file"`
+				Review    *string `toml:"review"`
+				Timeout   *string `toml:"timeout"`
+				Reviewers []struct {
+					Topic   string   `toml:"topic"`
+					Command []string `toml:"command"`
+					Binds   []string `toml:"binds"`
+					Env     []string `toml:"env"`
+				} `toml:"reviewers"`
+			} `toml:"workflow_push"`
 		} `toml:"dispatch"`
 	}
 	md, err := toml.DecodeFile(path, &raw)
@@ -298,7 +342,97 @@ func LoadDispatch(path string) (Dispatch, error) {
 			}
 		}
 	}
+	if r.WorkflowPush != nil {
+		wp, err := buildWorkflowPush(r.WorkflowPush.TokenFile, r.WorkflowPush.Review, r.WorkflowPush.Timeout, len(r.WorkflowPush.Reviewers), func(i int) Reviewer {
+			rv := r.WorkflowPush.Reviewers[i]
+			return Reviewer{Topic: rv.Topic, Command: rv.Command, Binds: rv.Binds, Env: rv.Env}
+		})
+		if err != nil {
+			return DefaultDispatch(), err
+		}
+		d.WorkflowPush = wp
+	}
 	return d, nil
+}
+
+// buildWorkflowPush validates the raw [dispatch.workflow_push] values and expands the paths.
+func buildWorkflowPush(tokenFile, review, timeout *string, n int, reviewer func(int) Reviewer) (*WorkflowPush, error) {
+	const key = "dispatch.workflow_push"
+	wp := &WorkflowPush{Review: ReviewShadow, Timeout: DefaultPushTimeout}
+	if tokenFile == nil || *tokenFile == "" {
+		return nil, fmt.Errorf("%s.token_file: missing", key)
+	}
+	home, homeErr := os.UserHomeDir()
+	if homeErr == nil && home == "" {
+		homeErr = errors.New("empty")
+	}
+	if homeErr != nil {
+		return nil, fmt.Errorf("%s: home directory unknown, cannot expand ~ or check binds: %w", key, homeErr)
+	}
+	wp.TokenFile = expandHome(*tokenFile, home)
+	if review != nil {
+		if *review != ReviewShadow && *review != ReviewEnforce {
+			return nil, fmt.Errorf("%s.review: %q is neither %q nor %q", key, *review, ReviewShadow, ReviewEnforce)
+		}
+		wp.Review = *review
+	}
+	if err := setDuration(key+".timeout", timeout, &wp.Timeout); err != nil {
+		return nil, err
+	}
+	if wp.Timeout < MinPushTimeout {
+		return nil, fmt.Errorf("%s.timeout: %q is under the minimum of %s", key, *timeout, "10m")
+	}
+	protected := filepath.Join(home, ".config", "lighthouse")
+	for i := range n {
+		rv := reviewer(i)
+		rkey := fmt.Sprintf("%s.reviewers[%d]", key, i)
+		switch rv.Topic {
+		case "supply-chain", "secrets", "injection":
+		default:
+			return nil, fmt.Errorf("%s.topic: %q is not supply-chain, secrets or injection", rkey, rv.Topic)
+		}
+		if len(rv.Command) == 0 || rv.Command[0] == "" {
+			return nil, fmt.Errorf("%s.command: missing", rkey)
+		}
+		for _, name := range rv.Env {
+			switch name {
+			case "GH_TOKEN", "GITHUB_TOKEN":
+				return nil, fmt.Errorf("%s.env: %s is a token and never reaches a reviewer", rkey, name)
+			}
+		}
+		binds := make([]string, 0, len(rv.Binds))
+		for _, b := range rv.Binds {
+			b = expandHome(b, home)
+			if cb := filepath.Clean(b); cb == protected || strings.HasPrefix(cb, protected+string(filepath.Separator)) {
+				return nil, fmt.Errorf("%s.binds: %q is under %s", rkey, b, protected)
+			}
+			binds = append(binds, b)
+		}
+		rv.Binds = nil
+		if len(binds) > 0 {
+			rv.Binds = binds
+		}
+		for _, prev := range wp.Reviewers {
+			if prev.Topic == rv.Topic {
+				return nil, fmt.Errorf("%s.topic: %s has a reviewer already; each reviewer needs its own topic", rkey, rv.Topic)
+			}
+		}
+		wp.Reviewers = append(wp.Reviewers, rv)
+	}
+	// Zero reviewers is a pusher without review: a post-merge change pushes, a pre-merge one
+	// always asks. One reviewer alone is never a review (spec §4: two or three).
+	if len(wp.Reviewers) == 1 {
+		return nil, fmt.Errorf("%s.reviewers: one reviewer; the review needs two or three with distinct topics", key)
+	}
+	return wp, nil
+}
+
+// expandHome replaces a leading ~ or ~/ in p with home; other paths stay as they are.
+func expandHome(p, home string) string {
+	if home == "" || (p != "~" && !strings.HasPrefix(p, "~/")) {
+		return p
+	}
+	return filepath.Join(home, p[1:])
 }
 
 // checkServeURL accepts https, or http to a loopback host.

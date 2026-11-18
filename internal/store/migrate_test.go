@@ -78,8 +78,8 @@ func TestMigrateTwice(t *testing.T) {
 	if !reflect.DeepEqual(schema1, schema2) || v1 != v2 {
 		t.Errorf("schema changed on second open:\n%v (v%d)\n%v (v%d)", schema1, v1, schema2, v2)
 	}
-	if v2 != 8 {
-		t.Errorf("user_version = %d, want 8", v2)
+	if v2 != 9 {
+		t.Errorf("user_version = %d, want 9", v2)
 	}
 	rows, err := s.DB.Query(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name`)
 	if err != nil {
@@ -612,5 +612,32 @@ func TestMigrate0008Checks(t *testing.T) {
 	}
 	if _, err := db.Exec(slot, "20261117T0300", "done"); err == nil {
 		t.Error("slot outcome done accepted")
+	}
+}
+
+// A run from before 0009 reads pushed_sha "": the push phase of no run is over.
+func TestMigrationPushedDefault(t *testing.T) {
+	ctx := context.Background()
+	db := bareDB(t)
+	upTo8 := append(append([]string{}, upTo7...), "0008_runs_schedule.sql")
+	if err := migrate(ctx, db, embeddedUpTo(t, upTo8...)); err != nil {
+		t.Fatalf("migrate to 8: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO runs (repo, issue, session_id, mode, trigger, trigger_key, attempt, command, started_at)
+		VALUES ('o/r', 7, 's', 'start', 'handoff', 'start:7', 1, 'c', 't0')`); err != nil {
+		t.Fatalf("insert at v8: %v", err)
+	}
+	if err := migrate(ctx, db, embeddedUpTo(t, append(upTo8, "0009_runs_pushed.sql")...)); err != nil {
+		t.Fatalf("migrate to 9: %v", err)
+	}
+	if v := userVersion(t, db); v != 9 {
+		t.Fatalf("user_version = %d, want 9", v)
+	}
+	var pushed string
+	if err := db.QueryRow(`SELECT pushed_sha FROM runs WHERE issue = 7`).Scan(&pushed); err != nil {
+		t.Fatalf("read pushed_sha: %v", err)
+	}
+	if pushed != "" {
+		t.Errorf("pushed_sha = %q, want the empty string", pushed)
 	}
 }

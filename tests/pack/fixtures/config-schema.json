@@ -217,6 +217,18 @@
    "str"
   ],
   [
+   "report.enabled",
+   "bool"
+  ],
+  [
+   "report.sink",
+   "str"
+  ],
+  [
+   "report.dir",
+   "str"
+  ],
+  [
    "agent_audit.ignore",
    "list[str]"
   ],
@@ -271,6 +283,8 @@
   "usage_guard.resume": false,
   "usage_guard.controller": false,
   "review.roborev": "off",
+  "report.enabled": false,
+  "report.sink": "stdout",
   "agent_audit.ignore": [],
   "agent_audit.top": 10,
   "agent_audit.description_max_chars": 1024

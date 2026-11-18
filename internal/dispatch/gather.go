@@ -248,6 +248,7 @@ func Complete(ctx context.Context, f forge.Forge, pre Pre, trust *Trust, tokenLo
 			it.Comments = append(it.Comments, Comment{ID: pc.ID, Author: pc.Author, Body: pc.Body,
 				CreatedAt: pc.CreatedAt, URL: pc.URL, Rocket: rocket})
 		}
+		it.PRs = withPushedSHA(it.PRs, it.Comments)
 		items = append(items, it)
 	}
 	scheduledPRs, err := withRoborev(ctx, f, pre.ScheduledPRs, trust)
@@ -263,6 +264,24 @@ func Complete(ctx context.Context, f forge.Forge, pre Pre, trust *Trust, tokenLo
 		OpenRuns:     nonNil(pre.OpenRuns),
 		ScheduledPRs: scheduledPRs,
 	}, nil
+}
+
+// withPushedSHA returns a copy of prs where each PR carries the SHA of the newest pusher comment
+// in comments (trusted ones only) whose branch is that PR's head ref. A push of another branch
+// never counts: it says nothing about this PR's workflows. The SHA only routes the merge to the
+// pusher; the pusher's merge takes the SHA it checks from its own push rows, never from a comment.
+func withPushedSHA(prs []forge.PR, comments []Comment) []forge.PR {
+	latest := map[string]string{}
+	for _, c := range comments {
+		if p, ok := protocol.ParsePushed(c.Body); ok {
+			latest[p.Branch] = p.SHA
+		}
+	}
+	out := slices.Clone(prs)
+	for i := range out {
+		out[i].PushedSHA = latest[out[i].HeadRef]
+	}
+	return out
 }
 
 // nonNil returns s, or an empty slice when s is nil.

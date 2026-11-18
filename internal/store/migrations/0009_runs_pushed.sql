@@ -1,0 +1,1 @@
+ALTER TABLE runs ADD COLUMN pushed_sha TEXT NOT NULL DEFAULT '';

@@ -3,6 +3,7 @@ package dispatch
 import (
 	"crypto/rand"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -221,5 +222,61 @@ func TestBrakeFreedKeepsMeasurement(t *testing.T) {
 	})
 	if b.InUse != 2 || b.Nodes["node-a"].InUse != 1 {
 		t.Errorf("apply changed the measurement: InUse %d, node-a %d", b.InUse, b.Nodes["node-a"].InUse)
+	}
+}
+
+// A push row runs no session: CountRun counts it for no slot, no node slot and no software
+// limit, while an ordinary run of the same node and profile still counts. Counting by node and
+// profile alone fails this test.
+func TestPushRowNotCounted(t *testing.T) {
+	b := &Brake{Nodes: map[string]NodeSlots{"node-a": {Name: "a", Slots: 1}}}
+	b.CountRun("", ProfileSoftware, "push-workflows")
+	b.CountRun("node-a", ProfileSoftware, "push-workflows")
+	if b.InUse != 0 || b.SoftwareInUse != 0 || b.Nodes["node-a"].InUse != 0 {
+		t.Fatalf("push rows counted: in_use %d, software %d, node-a %d", b.InUse, b.SoftwareInUse, b.Nodes["node-a"].InUse)
+	}
+	b.CountRun("", ProfileSoftware, "/lighthouse-start-issue 7")
+	if b.InUse != 1 || b.SoftwareInUse != 1 {
+		t.Errorf("ordinary run not counted: in_use %d, software %d", b.InUse, b.SoftwareInUse)
+	}
+}
+
+// A push passes full slots, a full software limit and too little memory, but a pause drops it
+// and a closed usage brake defers it, as for an ordinary handoff start (spec §2). A start next
+// to it still meets every brake.
+func TestPushBrakeGroupIgnoresSlotsButHonoursPause(t *testing.T) {
+	push := planned{Action: Action{Kind: KindPush, Repo: "o/a", Issue: 1}, software: true}
+	start := planned{Action: Action{Kind: KindStart, Repo: "o/b", Issue: 2}}
+	low, reserve := 2.0, 10.0
+	cases := []struct {
+		name  string
+		brake func(*Brake)
+		want  []string
+	}{
+		{"full slots", func(b *Brake) { b.InUse = 4 }, []string{"push::", "defer:slots: 4 of 4 in use:"}},
+		{"full software", func(b *Brake) { b.SoftwareInUse = 2 }, []string{"push::", "start::"}},
+		{"low memory", func(b *Brake) { b.MemAvailableGiB = &low },
+			[]string{"push::", "defer:memory: MemAvailable 2.0 GiB - 0 x 3 GiB < 8 GiB:"}},
+		{"no memory reserve", func(b *Brake) { b.MemAvailableGiB = &reserve }, []string{"push::", "start::"}},
+		{"memory not measured", func(b *Brake) { b.MemAvailableGiB = nil },
+			[]string{"push::", "defer:memory: MemAvailable not measured:"}},
+		{"paused", func(b *Brake) { b.Paused = true }, []string{}},
+		{"usage closed", func(b *Brake) { b.SessionPct = 90 },
+			[]string{"defer:usage: session 90%, week 10%:", "defer:usage: session 90%, week 10%:"}},
+		{"usage not measured", func(b *Brake) { b.UsageMeasured = false },
+			[]string{"defer:usage: not measured:", "defer:usage: not measured:"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			b := openBrake()
+			c.brake(b)
+			var got []Action
+			for _, p := range b.apply([]planned{push, start}) {
+				got = append(got, p.Action)
+			}
+			if s := summary(got); !reflect.DeepEqual(s, c.want) {
+				t.Errorf("summary = %q, want %q", s, c.want)
+			}
+		})
 	}
 }

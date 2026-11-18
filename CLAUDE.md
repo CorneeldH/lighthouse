@@ -21,6 +21,9 @@ hook cannot check, it blocks with `COULD NOT CHECK`, or says so where it never b
   write checks on what a Bash call wrote.
 - `pr-create-gate` (`run.sh pr-create-gate`) — PreToolUse `Bash`. Blocks a `gh pr create` whose body lacks
   `Closes #N` with evidence, `Refs #N — <reason>` or `No issue: <reason>`.
+- `workflow-push-gate` (`run.sh workflow-push-gate`) — PreToolUse `Bash`. Only in a controller run: blocks
+  a `git push` whose range (`origin/<branch>..HEAD`, or from the merge-base when the branch is not on
+  origin) touches `.github/workflows/`; the workflow pusher pushes that (`next: push-workflows`).
 - `worktree-check` (`run.sh worktree-check`) — PreToolUse `Edit|Write`. Warns (never blocks) at a
   write into the main checkout on `main`.
 - `md-link-check` (`run.sh md-link-check`) — PostToolUse `Edit|Write`. Blocks a markdown link that is absolute

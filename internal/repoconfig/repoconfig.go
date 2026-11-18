@@ -34,8 +34,19 @@ type Repo struct {
 	// TriageErr is an unknown key, a value below 1 or an invalid regex in [controller.triage]. Load
 	// does not fail on it: it is shared with the tick, which must keep serving the repo.
 	TriageErr error
+	// Report is [report]; Sink is "stdout" when unset. ReportErr is a wrong type, an unknown sink
+	// or an unusable dir. Load does not fail on it: Slug, Triageable and Dispatchable keep working.
+	Report    Report
+	ReportErr error
 	// Schedules is [[schedule]], validated by Load; empty when the repo has none.
 	Schedules []Schedule
+}
+
+// Report is [report]: whether lighthouse report runs, where it writes and, for sink "file", the
+// directory relative to the repo.
+type Report struct {
+	Enabled   bool
+	Sink, Dir string
 }
 
 // Labels is [labels]: the label names, defaults filled by Load. The two prefixes have no
@@ -126,7 +137,8 @@ type rawFile struct {
 	UsageGuard struct {
 		Controller bool `toml:"controller"`
 	} `toml:"usage_guard"`
-	Schedule []rawSchedule `toml:"schedule"`
+	Report   toml.Primitive `toml:"report"`
+	Schedule []rawSchedule  `toml:"schedule"`
 }
 
 // defaultString is the default of key from internal/config, the one source of defaults.
@@ -205,6 +217,10 @@ func LoadFile(path string) (Repo, error) {
 	}
 	if t := raw.Controller; t != nil && t.Triage != nil {
 		r.Triage, r.TriageErr = triageFrom(t.Triage, md)
+	}
+	r.Report, r.ReportErr = Report{Sink: "stdout"}, nil
+	if md.IsDefined("report") {
+		r.Report, r.ReportErr = reportFrom(raw.Report, md)
 	}
 	schedules, err := schedulesFrom(raw.Schedule, md, r.Controller)
 	if err != nil {
@@ -355,4 +371,57 @@ func Dispatchable(r Repo) error {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// reportFrom decodes [report]. Every key decodes as any so a wrong type becomes an error naming
+// the key instead of failing Load. On error the Report keeps the values that were valid.
+func reportFrom(prim toml.Primitive, md toml.MetaData) (Report, error) {
+	var in struct {
+		Enabled any `toml:"enabled"`
+		Sink    any `toml:"sink"`
+		Dir     any `toml:"dir"`
+	}
+	out := Report{Sink: "stdout"}
+	if err := md.PrimitiveDecode(prim, &in); err != nil {
+		return out, fmt.Errorf("report: %w", err)
+	}
+	var errs []error
+	switch v := in.Enabled.(type) {
+	case nil:
+	case bool:
+		out.Enabled = v
+	default:
+		errs = append(errs, errors.New("report.enabled must be true or false"))
+	}
+	switch v := in.Sink.(type) {
+	case nil:
+	case string:
+		if v != "stdout" && v != "file" {
+			errs = append(errs, fmt.Errorf("report.sink %q is not stdout or file", v))
+		} else {
+			out.Sink = v
+		}
+	default:
+		errs = append(errs, errors.New("report.sink must be a string"))
+	}
+	switch v := in.Dir.(type) {
+	case nil:
+	case string:
+		clean := filepath.Clean(v)
+		if v == "" || filepath.IsAbs(v) || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+			errs = append(errs, fmt.Errorf("report.dir %q must be a relative path inside the repo", v))
+		} else {
+			out.Dir = v
+		}
+	default:
+		errs = append(errs, errors.New("report.dir must be a string"))
+	}
+	if out.Sink == "file" && out.Dir == "" && !hasErrAbout(errs, "report.dir") {
+		errs = append(errs, errors.New("report.dir is required with report.sink = file"))
+	}
+	return out, errors.Join(errs...)
+}
+
+func hasErrAbout(errs []error, key string) bool {
+	return slices.ContainsFunc(errs, func(e error) bool { return strings.Contains(e.Error(), key) })
 }

@@ -45,6 +45,12 @@ type Server struct {
 	// (default open; an item without state is open), and one by GET .../pulls/{number}. A
 	// POSTed pull request lands here and, with a "pull_request" key, in Issues.
 	Pulls []map[string]any
+	// MergedPRs are the merged pull requests per number in search-result shape (number, title,
+	// html_url, draft, state, closed_at, pull_request.merged_at), served only by GET /search/issues.
+	MergedPRs map[int]map[string]any
+	// Events are the issue events per issue number in REST shape (event, created_at, milestone
+	// with its title), served by GET .../issues/{number}/events in the order given.
+	Events map[int][]map[string]any
 	// BlockedBy are the blockers per issue number in REST issue shape (number, state,
 	// repository_url), served by GET .../issues/{number}/dependencies/blocked_by.
 	BlockedBy map[int][]map[string]any
@@ -76,6 +82,10 @@ type Server struct {
 	// isDraft, mergeable, headRefOid, headRefName, statusCheckRollup). BranchPRs serves the
 	// first 20, like the query asks.
 	Branches map[string][]map[string]any
+	// OpenPRNodes are the open pull requests in GraphQL shape (number, title, url, isDraft,
+	// mergeable, statusCheckRollup), served by OpenPRsWithStatus in pages of 100 in the order
+	// given, after the cursor "cursor-<offset>".
+	OpenPRNodes []map[string]any
 	// BoardNodes are the project items in GraphQL shape, served by Board in pages of 100. A
 	// nested connection carries its own pageInfo when a test sets one. A node with
 	// "isArchived": true is left out of Board, as ProjectV2.items lists no archived item, and
@@ -137,6 +147,7 @@ func New(t *testing.T) *Server {
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues", s.listIssues)
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues/{number}", s.issue)
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues/{number}/dependencies/blocked_by", s.blockedBy)
+	mux.HandleFunc("GET /repos/{owner}/{name}/issues/{number}/events", s.events)
 	mux.HandleFunc("GET /repos/{owner}/{name}", s.repo)
 	mux.HandleFunc("GET /repos/{owner}/{name}/pulls", s.pulls)
 	mux.HandleFunc("GET /repos/{owner}/{name}/pulls/{number}", s.pull)
@@ -146,7 +157,7 @@ func New(t *testing.T) *Server {
 	mux.HandleFunc("POST /repos/{owner}/{name}/issues/{number}/labels", s.addLabels)
 	mux.HandleFunc("DELETE /repos/{owner}/{name}/issues/{number}/labels/{label}", s.removeLabel)
 	mux.HandleFunc("POST /repos/{owner}/{name}/issues/{number}/dependencies/blocked_by", s.addBlockedBy)
-	mux.HandleFunc("GET /search/issues", s.searchIssues)
+	mux.HandleFunc("GET /search/issues", s.searchRoute)
 	mux.HandleFunc("GET /repos/{owner}/{name}/milestones", s.listMilestones)
 	mux.HandleFunc("GET /repos/{owner}/{name}/milestones/{number}", s.milestone)
 	mux.HandleFunc("POST /repos/{owner}/{name}/milestones", s.createMilestone)
@@ -260,7 +271,8 @@ func (s *Server) issue(w http.ResponseWriter, r *http.Request) {
 }
 
 // listIssues serves Issues by number, filtered on state (default open; an item without state
-// is open) and milestone (the milestone.number), in pages.
+// is open), milestone (the milestone.number, or "*" for any milestone) and since (an item with
+// an updated_at before it is left out; one without updated_at stays), in pages.
 func (s *Server) listIssues(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -269,6 +281,13 @@ func (s *Server) listIssues(w http.ResponseWriter, r *http.Request) {
 		state = "open"
 	}
 	milestone := r.URL.Query().Get("milestone")
+	var since time.Time
+	if raw := r.URL.Query().Get("since"); raw != "" {
+		var err error
+		if since, err = time.Parse(time.RFC3339, raw); err != nil {
+			s.t.Errorf("forgetest: issues since %q is no RFC 3339 time", raw)
+		}
+	}
 	label := r.URL.Query().Get("labels")
 	var nums []int
 	for n := range s.Issues {
@@ -286,11 +305,90 @@ func (s *Server) listIssues(w http.ResponseWriter, r *http.Request) {
 		}
 		if milestone != "" {
 			m, _ := it["milestone"].(map[string]any)
-			if m == nil || fmt.Sprint(m["number"]) != milestone {
+			if m == nil || (milestone != "*" && fmt.Sprint(m["number"]) != milestone) {
 				continue
 			}
 		}
+		if upd, err := time.Parse(time.RFC3339, fmt.Sprint(it["updated_at"])); err == nil && upd.Before(since) {
+			continue
+		}
 		out = append(out, it)
+	}
+	s.page(w, r, out)
+}
+
+// searchRoute serves GET /search/issues: a query with a merged: or closed: range (the period
+// lists of lighthouse report) goes to search, any other to searchIssues.
+func (s *Server) searchRoute(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query().Get("q")
+	if strings.Contains(q, "merged:") || strings.Contains(q, "closed:") {
+		s.search(w, r)
+		return
+	}
+	s.searchIssues(w, r)
+}
+
+// search serves GET /search/issues for the qualifiers "is:pr is:merged merged:A..B" (MergedPRs)
+// and "is:issue is:closed closed:A..B" (closed Issues), the range inclusive as GitHub's is, in
+// pages with total_count. Any other query is a test error.
+func (s *Server) search(w http.ResponseWriter, r *http.Request) {
+	var kind, field string
+	var rng [2]time.Time
+	for _, f := range strings.Fields(r.URL.Query().Get("q")) {
+		switch {
+		case f == "is:pr" || f == "is:issue":
+			kind = strings.TrimPrefix(f, "is:")
+		case strings.HasPrefix(f, "merged:") || strings.HasPrefix(f, "closed:"):
+			field = f[:6]
+			lo, hi, ok := strings.Cut(f[7:], "..")
+			var err1, err2 error
+			rng[0], err1 = time.Parse(time.RFC3339, lo)
+			rng[1], err2 = time.Parse(time.RFC3339, hi)
+			if !ok || err1 != nil || err2 != nil {
+				s.t.Errorf("forgetest: search range %q is no RFC 3339 pair", f)
+			}
+		}
+	}
+	if kind == "" || field == "" {
+		s.t.Errorf("forgetest: search q = %q; only is:pr/is:issue with merged:/closed: is served", r.URL.Query().Get("q"))
+	}
+	source := s.Issues
+	if kind == "pr" {
+		source = s.MergedPRs
+	}
+	var nums []int
+	for n := range source {
+		nums = append(nums, n)
+	}
+	slices.Sort(nums)
+	var out []any
+	for _, n := range nums {
+		it := source[n]
+		at, _ := it["closed_at"].(string)
+		if pr, ok := it["pull_request"].(map[string]any); ok && field == "merged" {
+			at, _ = pr["merged_at"].(string)
+		}
+		when, err := time.Parse(time.RFC3339, at)
+		if err != nil || when.Before(rng[0]) || when.After(rng[1]) {
+			continue
+		}
+		out = append(out, it)
+	}
+	s.pageAs(w, r, out, func(p []any) any {
+		return map[string]any{"total_count": len(out), "incomplete_results": false, "items": p}
+	})
+}
+
+// events serves the Events of one issue.
+func (s *Server) events(w http.ResponseWriter, r *http.Request) {
+	n, err := strconv.Atoi(r.PathValue("number"))
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]any{"message": "Not Found"})
+		return
+	}
+	var out []any
+	for _, e := range s.Events[n] {
+		out = append(out, e)
 	}
 	s.page(w, r, out)
 }
@@ -561,6 +659,8 @@ func (s *Server) graphql(w http.ResponseWriter, r *http.Request) {
 			"pageInfo": map[string]any{"hasNextPage": more},
 			"nodes":    append([]map[string]any{}, nodes...),
 		}}}
+	case "OpenPRsWithStatus":
+		data = s.openPRsWithStatus(req.Variables)
 	case "IssueItems":
 		var errs []any
 		if data, errs = s.issueItems(req.Query, req.Variables); errs != nil {
@@ -841,4 +941,21 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+// openPRsWithStatus serves one page of 100 OpenPRNodes after the cursor "cursor-<offset>".
+func (s *Server) openPRsWithStatus(vars map[string]any) any {
+	start := 0
+	if after, _ := vars["after"].(string); after != "" {
+		n, err := strconv.Atoi(strings.TrimPrefix(after, "cursor-"))
+		if err != nil {
+			s.t.Errorf("forgetest: OpenPRsWithStatus after = %q, not a cursor this server gave", after)
+		}
+		start = min(n, len(s.OpenPRNodes))
+	}
+	end := min(start+100, len(s.OpenPRNodes))
+	return map[string]any{"repository": map[string]any{"pullRequests": map[string]any{
+		"pageInfo": map[string]any{"hasNextPage": end < len(s.OpenPRNodes), "endCursor": fmt.Sprintf("cursor-%d", end)},
+		"nodes":    append([]map[string]any{}, s.OpenPRNodes[start:end]...),
+	}}}
 }

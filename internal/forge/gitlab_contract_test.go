@@ -237,3 +237,16 @@ func (g *gitlabFixture) StatusOf(t *testing.T, number int) string {
 	t.Fatalf("gitlabFixture: status %q of #%d is not in the board config", raw, number)
 	return ""
 }
+
+// SupportsReport: GitLab has no period report yet.
+func (g *gitlabFixture) SupportsReport() bool { return false }
+
+func (g *gitlabFixture) AddOpenPRWithStatus(t *testing.T, _ forge.PRSummary) {
+	t.Skip("GitLab has no period report")
+}
+func (g *gitlabFixture) AddMergedPR(t *testing.T, _ forge.PRSummary) {
+	t.Skip("GitLab has no period report")
+}
+func (g *gitlabFixture) AddMilestonedEvent(t *testing.T, _ int, _ string, _ time.Time) {
+	t.Skip("GitLab has no period report")
+}

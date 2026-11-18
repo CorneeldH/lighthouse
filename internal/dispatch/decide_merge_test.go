@@ -2,14 +2,17 @@ package dispatch
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/forge"
+	"github.com/CorneeldH/lighthouse/internal/protocol"
 	"github.com/CorneeldH/lighthouse/internal/runs"
 	"github.com/CorneeldH/lighthouse/internal/workplace"
 )
@@ -353,4 +356,244 @@ func TestFixPRStartsInTickAfterBrakeOpens(t *testing.T) {
 			})
 		}
 	}
+}
+
+const mergeKey12 = "merge:12:abc123"
+
+// pushedPR gives PR #12 the SHA of a pusher comment of its branch and turns the pusher on.
+func pushedPR(in *Input) {
+	pr12(in).PushedSHA = pushSHA
+	in.Repos[0].WorkflowPush, in.Repos[0].PushTimeout = true, 30*time.Minute
+}
+
+// wantMergePush checks that got holds exactly one KindPush: the merge pusher of PR #12 on
+// abc123, with no worktree and no permit.
+func wantMergePush(t *testing.T, got []Action) {
+	t.Helper()
+	var pushes []Action
+	for _, a := range got {
+		if a.Kind == KindPush {
+			pushes = append(pushes, a)
+		}
+	}
+	if len(pushes) != 1 {
+		t.Fatalf("pushes = %+v, want one merge pusher", pushes)
+	}
+	a := pushes[0]
+	if a.Trigger != triggerMerge || a.TriggerKey != mergeKey12 || a.PR != 12 || a.HeadSHA != "abc123" ||
+		a.Branch != "issue-7-bouw-de-keten" || a.Command != cmdPush || a.Worktree != "" || a.PermitSHA != "" ||
+		a.Attempt != 1 || a.RunID != 0 {
+		t.Errorf("push = %+v, want the merge pusher of PR 12 on abc123", a)
+	}
+}
+
+// A pushed push row that owns a green PR with a pushed SHA hands the merge to the pusher: its
+// row closes as a handoff to the merge key, without touching a session, and the merge pusher
+// starts. No KindMerge with the run token.
+func TestDecideMergeStartsPusherForPushRow(t *testing.T) {
+	in := pushRow(t, pushSHA, 2*time.Hour)
+	pr12(&in).PushedSHA = pushSHA
+	got := Decide(in)
+	if s := summary(got); !reflect.DeepEqual(s, []string{"close::" + mergeKey12, "push::"}) {
+		t.Fatalf("summary = %q, want the close of run 5 and the merge pusher", s)
+	}
+	if c := got[0]; c.RunID != 5 || c.Outcome != runs.Handoff || c.Stop || c.End {
+		t.Errorf("close = %+v, want run 5 closed as handoff without a session action", c)
+	}
+	wantMergePush(t, got)
+}
+
+// On the build route the write-pr run owns the PR; the pusher's handoff of its branch still sets
+// PushedSHA, so that Done run's green PR goes to the merge pusher too, and its claude ends.
+func TestDecideMergeStartsPusherForBuildRoutePR(t *testing.T) {
+	in := loadInput(t, "settle-green-pr-done")
+	row5(&in).Command, row5(&in).TriggerKey = "/lighthouse-write-pr 7", "handoff:64"
+	pushedPR(&in)
+	got := Decide(in)
+	if s := summary(got); !reflect.DeepEqual(s, []string{"close::" + mergeKey12, "push::"}) {
+		t.Fatalf("summary = %q, want the close of run 5 and the merge pusher", s)
+	}
+	if c := got[0]; c.RunID != 5 || c.Outcome != runs.Handoff || !c.End || c.SessionID != row5(&in).SessionID {
+		t.Errorf("close = %+v, want run 5 closed as handoff, its claude ended", c)
+	}
+	wantMergePush(t, got)
+}
+
+// Without a pushed SHA the green PR of a session run merges as before, with the run token, also
+// with the pusher on.
+func TestDecideMergeUsesRunTokenWithoutPushedSHA(t *testing.T) {
+	in := loadInput(t, "settle-green-pr-done")
+	in.Repos[0].WorkflowPush = true
+	got := Decide(in)
+	if s := summary(got); !reflect.DeepEqual(s, []string{"merge::"}) {
+		t.Fatalf("summary = %q, want the merge with the run token", s)
+	}
+	if got[0].PR != 12 || got[0].HeadSHA != "abc123" {
+		t.Errorf("merge = %+v", got[0])
+	}
+}
+
+// A push row that recorded its push but whose push note never reached the issue (the post failed)
+// gives its PR no pushed SHA from a comment. The row's own PushedSHA still routes the merge to the
+// merge pusher: the run token cannot merge a workflow change, and a push row has no session to
+// merge for.
+func TestDecideMergeByPusherForPushRowWithoutNote(t *testing.T) {
+	in := pushRow(t, pushSHA, 2*time.Hour)
+	got := Decide(in)
+	if s := summary(got); !reflect.DeepEqual(s, []string{"close::" + mergeKey12, "push::"}) {
+		t.Fatalf("summary = %q, want the close of run 5 and the merge pusher", s)
+	}
+	if c := got[0]; c.RunID != 5 || c.Outcome != runs.Handoff || c.Stop || c.End {
+		t.Errorf("close = %+v, want run 5 closed as handoff without a session action", c)
+	}
+	wantMergePush(t, got)
+}
+
+// End to end from the comments: a pusher comment of branch A gives a green PR on branch B no
+// pushed SHA, so B merges with the run token; the same comment for B's branch starts the pusher.
+func TestDecideMergeIgnoresPushedSHAOfOtherBranch(t *testing.T) {
+	for _, tc := range []struct {
+		branch string
+		want   []string
+	}{
+		{"issue-7-ander", []string{"merge::"}},
+		{"issue-7-bouw-de-keten", []string{"close::" + mergeKey12, "push::"}},
+	} {
+		t.Run(tc.branch, func(t *testing.T) {
+			in := loadInput(t, "settle-green-pr-done")
+			in.Repos[0].WorkflowPush = true
+			note := protocol.RenderPushNote(tc.branch, strings.Repeat("0", 40)+".."+pushSHA, ".github/workflows/ci.yml", "nl")
+			srv, c := client(t)
+			srv.Roles = map[string]string{"owner": "admin"}
+			srv.Comments = map[int][]map[string]any{7: {comment(70, "owner", note)}}
+			pre := Pre{Repo: testRepo, Items: []Item{{Issue: 7, Title: "Bouw de keten", State: "OPEN", ItemID: "I7",
+				Status: "Controller", PRs: item7(&in).PRs}}, OpenRuns: []runs.OpenRun{{ID: 5, Issue: 7}}}
+			snap, err := Complete(context.Background(), c, pre, NewTrust(c, defaultAllowed), "lh-bot", &bytes.Buffer{}, in.Now)
+			if err != nil {
+				t.Fatal(err)
+			}
+			item7(&in).PRs = snap.Items[0].PRs
+			if s := summary(Decide(in)); !reflect.DeepEqual(s, tc.want) {
+				t.Fatalf("summary = %q, want %q", s, tc.want)
+			}
+		})
+	}
+}
+
+// The merge pusher waits like a push: a closed usage brake defers it and run 5 stays open (its
+// close is dropped), a pause holds the merge back altogether. A merge key a run already spent
+// (the pusher refused this head) hands the issue back once; without the pusher the issue goes back.
+func TestDecideMergeByPusherGates(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*Input)
+		want   []string
+	}{
+		{"usage closed defers and keeps the run", func(in *Input) {
+			in.Brake = openBrake()
+			in.Brake.SessionPct = 90
+		}, []string{"defer:usage: session 90%, week 10%:"}},
+		{"paused merges nothing", func(in *Input) {
+			in.Brake = openBrake()
+			in.Brake.Paused = true
+		}, []string{}},
+		{"full slots do not hold it", func(in *Input) {
+			in.Brake = openBrake()
+			in.Brake.InUse = 4
+		}, []string{"close::" + mergeKey12, "push::"}},
+		{"spent merge key goes back", func(in *Input) {
+			addRows(in, runs.Row{ID: 1, Issue: 7, Outcome: runs.Question, Command: cmdPush, TriggerKey: mergeKey12,
+				Branch: "issue-7-bouw-de-keten", StartedAt: in.Now.Add(-3 * time.Hour)})
+		}, []string{"return:reason_merge_failed:" + mergeKey12}},
+		{"pusher off goes back", func(in *Input) { in.Repos[0].WorkflowPush = false },
+			[]string{"return:reason_pusher_off:"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			in := loadInput(t, "settle-green-pr-done")
+			pushedPR(&in)
+			tt.mutate(&in)
+			if s := summary(Decide(in)); !reflect.DeepEqual(s, tt.want) {
+				t.Fatalf("summary = %q, want %q", s, tt.want)
+			}
+		})
+	}
+}
+
+// mergeRow is the merge pusher's row of PR #12 on abc123, started at age ago.
+func mergeRow(t *testing.T, age time.Duration) Input {
+	t.Helper()
+	in := pushRow(t, "", age)
+	for i := range in.Repos[0].History {
+		if r := &in.Repos[0].History[i]; r.ID == 5 {
+			r.TriggerKey = mergeKey12
+		}
+	}
+	pushedPR(&in)
+	return in
+}
+
+// The merge pusher's own row is a push row without a pushed SHA: the green PR does not start a
+// second merge, the timeout hands it back, and a PR merged meanwhile closes it as done, also when
+// the pusher died before it closed its row.
+func TestMergeRowOutcome(t *testing.T) {
+	tests := []struct {
+		name   string
+		age    time.Duration
+		mutate func(*Input)
+		want   []string
+	}{
+		{"green PR waits for the pusher", 5 * time.Minute, func(*Input) {}, []string{}},
+		{"merged closes done", 5 * time.Minute, func(in *Input) {
+			pr12(in).State, pr12(in).MergedAt = "MERGED", in.Now.Add(-time.Minute)
+		}, []string{"close::"}},
+		{"silent at the timeout", 31 * time.Minute, func(*Input) {}, []string{"return:reason_pusher_silent:"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			in := mergeRow(t, tt.age)
+			tt.mutate(&in)
+			got := Decide(in)
+			if s := summary(got); !reflect.DeepEqual(s, tt.want) {
+				t.Fatalf("summary = %q, want %q", s, tt.want)
+			}
+			for _, a := range got {
+				if a.Kind == KindClose && a.Outcome != runs.Done {
+					t.Errorf("close outcome = %q, want done", a.Outcome)
+				}
+			}
+		})
+	}
+}
+
+// A merge pusher that failed to start gets one more start on the same key, PR and head; after
+// a second failure the issue goes back once with the cause.
+func TestMergePusherRetry(t *testing.T) {
+	failed := func(id int64, at time.Time) runs.Row { return failedPush(id, mergeKey12, at) }
+	// Run 5 closed as a handoff to the merge key, as apply leaves it.
+	closed := func(in *Input) runs.Row {
+		r := *row5(in)
+		r.Open, r.Outcome, r.Reason = false, runs.Handoff, mergeKey12
+		return r
+	}
+	t.Run("one failure starts again", func(t *testing.T) {
+		in := loadInput(t, "settle-green-pr-done")
+		pushedPR(&in)
+		in.Repos[0].History = []runs.Row{closed(&in), failed(6, in.Now.Add(-time.Minute))}
+		got := Decide(in)
+		if len(got) != 1 || got[0].Kind != KindPush || got[0].Attempt != 2 || got[0].Trigger != triggerMerge ||
+			got[0].TriggerKey != mergeKey12 || got[0].PR != 12 || got[0].HeadSHA != "abc123" ||
+			got[0].Branch != "issue-7-bouw-de-keten" || got[0].Worktree != "" {
+			t.Fatalf("got %+v, want the second start of the merge pusher", got)
+		}
+	})
+	t.Run("two failures go back", func(t *testing.T) {
+		in := loadInput(t, "settle-green-pr-done")
+		pushedPR(&in)
+		in.Repos[0].History = []runs.Row{closed(&in), failed(6, in.Now.Add(-2*time.Minute)), failed(7, in.Now.Add(-time.Minute))}
+		want := []string{"return:reason_start_failed:exec: lighthouse: not found"}
+		if s := summary(Decide(in)); !reflect.DeepEqual(s, want) {
+			t.Fatalf("summary = %q, want %q", s, want)
+		}
+	})
 }

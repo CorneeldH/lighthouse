@@ -266,6 +266,34 @@
       "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/hooks/prcreategate.go"
     },
     {
+      "id": "workflow-push-gate",
+      "phase": "pre-tool",
+      "row": 6,
+      "kind": "hook",
+      "trigger": "tool",
+      "events": [
+        "PreToolUse"
+      ],
+      "matcher": "Bash",
+      "command": "run.sh workflow-push-gate",
+      "effects": [
+        "blocks"
+      ],
+      "label": "workflow-push-gate",
+      "what": "Blocks, in a controller run, a git push whose range touches .github/workflows/.",
+      "how": [
+        "It runs only when LIGHTHOUSE_CONTROLLER_RUN marks a controller run; elsewhere it does nothing.",
+        "The range is origin/<branch>..HEAD, or from the merge-base with origin/<default branch> when the branch is not on origin.",
+        "It sees a push after `cd`, `;`, `|`, `&&`, with `git -C <path>` and with refspecs; an alias it cannot see.",
+        "A touched workflow blocks with exit 2: the run reviews with V2b and posts the handoff with `next: push-workflows`.",
+        "When it cannot measure the range, it blocks with COULD NOT CHECK."
+      ],
+      "when": "Before each Bash call that runs git push.",
+      "without": "A run pushes a workflow change past the workflow pusher and its checks.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/hooks/workflowpushgate.go"
+    },
+    {
       "id": "bash-write-check-pre",
       "phase": "pre-tool",
       "row": 4,
@@ -721,6 +749,13 @@
       "label": "I open a PR without evidence",
       "chips": [
         "pr-create-gate"
+      ]
+    },
+    {
+      "id": "workflow-push",
+      "label": "A controller run pushes a workflow change",
+      "chips": [
+        "workflow-push-gate"
       ]
     },
     {

@@ -52,6 +52,8 @@ reads the Codex budget, the review needs the network. Any other non-zero exit of
 of `record` (step 3), such as `gate` exit 1 or a failing `classify`, `fixed` or `record`: report
 it in the answer and skip the rest of V2b; V4 still adds the `body-line` output.
 
+**Workflow route** (a controller run, if present, whose unpushed range — `origin/<branch>..HEAD`, or from the merge-base with `origin/<default branch>` when the branch is not on origin — touches `.github/workflows/`): every step runs on the push record — `gate --push` (no line threshold; a skip blocks the workflow pusher), `classify <raw>`, and every `record` with `--out <state>` (with `--done` also `--raw <raw>`) from that gate output — and no `git push` follows: post the handoff with `next: push-workflows` (`/lighthouse-write-handoff`), the workflow pusher pushes. The write-pr run after that push reviews nothing: when `lighthouse roborev-gate body-line --push` prints a `roborev-lokaal` marker, skip V2b, and V4 takes that line instead of `body-line`.
+
 0. **Gate.**
 
    ```bash

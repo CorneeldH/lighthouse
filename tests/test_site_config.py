@@ -18,7 +18,7 @@ NO_DEFAULT = object()
 # Keys nothing in the repo reads: only the config reader checks them (spec section 2).
 UNREAD = {"paths.history", "codex_usage.vraag_pct_week", "codex_usage.halt_pct_session", "host.name",
           "host.scan_memory_max", "host.scan_cpu_quota"}
-SET = {"project.language", "forge.kind", "forge.repo", "forge.host", "test_gate.command", "host.name", "host.controller", "host.tailscale_ip", "review.roborev"}
+SET = {"project.language", "forge.kind", "forge.repo", "forge.host", "test_gate.command", "host.name", "host.controller", "host.tailscale_ip", "review.roborev", "report.enabled", "report.sink", "report.dir"}
 REQUIRED = {
     "forge.board.project_number": "with [forge.board]",
     "forge.board.project_id": "with [forge.board]",
@@ -26,6 +26,7 @@ REQUIRED = {
     "forge.board.status_options": "with [forge.board]",
     "code_language_llm.url": "with [code_language_llm]",
     "code_language_llm.models": "with [code_language_llm]",
+    "report.dir": "with sink = file",
     "host.name": "yes",
     "forge.owner": "derived",
     "forge.name": "derived",
@@ -483,6 +484,7 @@ def test_options_are_the_values_lighthouse_accepts():
         "project.code_language": ["en"],
         "forge.kind": ["github", "gitlab"],
         "review.roborev": ["local", "off"],
+        "report.sink": ["stdout", "file"],
         **{key: [True, False] for key, kind in config_schema().SCHEMA.items() if kind == "bool"},
     }
     on_map = {k["key"]: k["options"] for k in all_keys(load("config.json")) if "options" in k}

@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -2146,5 +2147,184 @@ func TestMarkerRemovalFailureIsLogNotError(t *testing.T) {
 	}
 	if want := "o/r#7: remove marker of session " + oldSession + ": serve: connection refused\n"; h.out.String() != want {
 		t.Errorf("log %q, want %q", h.out.String(), want)
+	}
+}
+
+func pushAction() Action {
+	return Action{
+		Kind: KindPush, Repo: applyRepo, Issue: 7, Trigger: triggerPush, TriggerKey: "push:55", Attempt: 1,
+		Command: cmdPush, Worktree: "/work/issue-7-x", Branch: "issue-7-x", CommentID: 55, Language: "nl",
+	}
+}
+
+// pushHarness gives h a polluted tick environment and a pusher starter that records its specs.
+func pushHarness(t *testing.T) (*harness, *[]PusherSpec) {
+	t.Helper()
+	h := newHarness(t)
+	tick := map[string]string{
+		"PATH": "/usr/bin", "HOME": "/home/u", "XDG_RUNTIME_DIR": "/run/user/1", "GH_TOKEN": "forge-tok",
+		"GITHUB_TOKEN": "other-tok", "WORKFLOW_PUSH_TOKEN": "workflow-tok", "XDG_STATE_HOME": "/s",
+		"LIGHTHOUSE_CONTROLLER_STATE": "/c", "AWS_SECRET_ACCESS_KEY": "aws",
+	}
+	h.env.Getenv = func(k string) string { return tick[k] }
+	h.env.TokenEnv = func(string) string { return "GH_TOKEN" }
+	var specs []PusherSpec
+	h.env.StartPusher = func(_ context.Context, s PusherSpec) error { specs = append(specs, s); return nil }
+	return h, &specs
+}
+
+func TestApplyPushClaimsRowAndStartsPusher(t *testing.T) {
+	h, specs := pushHarness(t)
+	res, err := Apply(context.Background(), h.env, []Action{pushAction()})
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	rows := h.history(t)
+	if len(rows) != 1 {
+		t.Fatalf("rows = %+v, want one push row", rows)
+	}
+	r := rows[0]
+	if r.Command != cmdPush || r.SessionID != "" || r.Mode != "start" || r.Trigger != "handoff" ||
+		r.TriggerKey != "push:55" || r.Branch != "issue-7-x" || !r.Open {
+		t.Errorf("row = %+v, want an open sessionless push-workflows row on issue-7-x, trigger handoff, key push:55", r)
+	}
+	if len(*specs) != 1 {
+		t.Fatalf("specs = %+v, want one pusher start", *specs)
+	}
+	s := (*specs)[0]
+	if s.Repo != applyRepo || s.Issue != 7 || s.Worktree != "/work/issue-7-x" || s.RunID != r.ID || s.Permit != "" {
+		t.Errorf("spec = %+v", s)
+	}
+	want := []string{"PATH=/usr/bin", "HOME=/home/u", "XDG_RUNTIME_DIR=/run/user/1", "GH_TOKEN=forge-tok"}
+	if !reflect.DeepEqual(s.Env, want) {
+		t.Errorf("pusher env = %q, want exactly %q", s.Env, want)
+	}
+	if res.Started != 1 {
+		t.Errorf("Started = %d, want 1", res.Started)
+	}
+	if got := h.poster(applyRepo).rockets; !reflect.DeepEqual(got, []int64{55}) {
+		t.Errorf("rockets = %v, want the handoff", got)
+	}
+	if got := h.log.all(); slices.ContainsFunc(got, func(c string) bool { return strings.HasPrefix(c, "Spawn") || strings.HasPrefix(c, "Prepare") }) {
+		t.Errorf("workplace calls = %q, want none: a pusher is no session", got)
+	}
+}
+
+func TestApplyPushAnswerCarriesPermitAndTrigger(t *testing.T) {
+	h, specs := pushHarness(t)
+	a := pushAction()
+	a.Trigger, a.TriggerKey, a.PermitSHA = triggerPushAnswer, "pushanswer:88", strings.Repeat("a", 40)
+	if _, err := Apply(context.Background(), h.env, []Action{a}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if r := h.history(t)[0]; r.Trigger != "answer" || r.TriggerKey != "pushanswer:88" {
+		t.Errorf("row = %+v, want trigger answer and key pushanswer:88", r)
+	}
+	if s := (*specs)[0]; s.Permit != a.PermitSHA {
+		t.Errorf("permit = %q, want %q", s.Permit, a.PermitSHA)
+	}
+}
+
+func TestApplyPushStartFailureClosesStartFailed(t *testing.T) {
+	h, _ := pushHarness(t)
+	h.env.StartPusher = func(context.Context, PusherSpec) error { return errors.New("no such file") }
+	res, err := Apply(context.Background(), h.env, []Action{pushAction()})
+	if err == nil || !strings.Contains(err.Error(), "no such file") {
+		t.Fatalf("Apply error = %v, want the start error", err)
+	}
+	rows := h.history(t)
+	if len(rows) != 1 || rows[0].Open || rows[0].Outcome != runs.StartFailed || !strings.Contains(rows[0].Reason, "no such file") {
+		t.Errorf("rows = %+v, want one start_failed row with the cause", rows)
+	}
+	if res.Started != 0 {
+		t.Errorf("Started = %d, want 0", res.Started)
+	}
+}
+
+func TestApplyPushSpentTriggerStartsNothing(t *testing.T) {
+	h, specs := pushHarness(t)
+	h.seed(t, 7, "", "push:55", runs.Handoff)
+	res, err := Apply(context.Background(), h.env, []Action{pushAction()})
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if len(*specs) != 0 || res.Started != 0 || len(h.history(t)) != 1 || len(h.poster(applyRepo).rockets) != 0 {
+		t.Errorf("specs = %v, Started = %d, rows = %d, rockets = %v; want nothing started or posted",
+			*specs, res.Started, len(h.history(t)), h.poster(applyRepo).rockets)
+	}
+}
+
+func mergePushAction() Action {
+	return Action{
+		Kind: KindPush, Repo: applyRepo, Issue: 7, Trigger: triggerMerge, TriggerKey: "merge:12:" + strings.Repeat("c", 40),
+		Attempt: 1, Command: cmdPush, Branch: "issue-7-x", PR: 12, HeadSHA: strings.Repeat("c", 40), Language: "nl",
+	}
+}
+
+// The merge pusher is started like the pusher: a sessionless push-workflows row on the PR's
+// branch, trigger handoff (the only trigger runs allows besides answer), keyed per PR and head,
+// and a process that gets PATH, HOME, XDG_RUNTIME_DIR and the forge token, never the workflow
+// token or any other variable of tick. It carries the PR and head instead of a worktree.
+func TestApplyMergePushStartsPusherWithScrubbedEnv(t *testing.T) {
+	h, specs := pushHarness(t)
+	a := mergePushAction()
+	res, err := Apply(context.Background(), h.env, []Action{a})
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	rows := h.history(t)
+	if len(rows) != 1 {
+		t.Fatalf("rows = %+v, want one merge row", rows)
+	}
+	r := rows[0]
+	if r.Command != cmdPush || r.SessionID != "" || r.Trigger != "handoff" || r.TriggerKey != a.TriggerKey ||
+		r.Branch != "issue-7-x" || !r.Open {
+		t.Errorf("row = %+v, want an open sessionless push-workflows row keyed %s", r, a.TriggerKey)
+	}
+	if len(*specs) != 1 {
+		t.Fatalf("specs = %+v, want one pusher start", *specs)
+	}
+	s := (*specs)[0]
+	if !s.Merge || s.PR != 12 || s.HeadSHA != a.HeadSHA || s.Worktree != "" || s.Permit != "" || s.RunID != r.ID {
+		t.Errorf("spec = %+v, want the merge of PR 12 on its head for row %d", s, r.ID)
+	}
+	want := []string{"PATH=/usr/bin", "HOME=/home/u", "XDG_RUNTIME_DIR=/run/user/1", "GH_TOKEN=forge-tok"}
+	if !reflect.DeepEqual(s.Env, want) {
+		t.Errorf("pusher env = %q, want exactly %q", s.Env, want)
+	}
+	if res.Started != 1 || len(h.poster(applyRepo).rockets) != 0 {
+		t.Errorf("Started = %d, rockets = %v; want 1 start and no rocket", res.Started, h.poster(applyRepo).rockets)
+	}
+}
+
+// A token_env that names a variable the pusher gets anyway (PATH, HOME, XDG_RUNTIME_DIR) does not
+// put it in the pusher's environment twice.
+func TestApplyPushEnvNamesEachVariableOnce(t *testing.T) {
+	for _, name := range []string{"PATH", "HOME", "XDG_RUNTIME_DIR"} {
+		h, specs := pushHarness(t)
+		h.env.TokenEnv = func(string) string { return name }
+		if _, err := Apply(context.Background(), h.env, []Action{pushAction()}); err != nil {
+			t.Fatalf("Apply: %v", err)
+		}
+		if len(*specs) != 1 {
+			t.Fatalf("specs = %+v, want one pusher start", *specs)
+		}
+		want := []string{"PATH=/usr/bin", "HOME=/home/u", "XDG_RUNTIME_DIR=/run/user/1"}
+		if got := (*specs)[0].Env; !reflect.DeepEqual(got, want) {
+			t.Errorf("token_env %s: pusher env = %q, want %q", name, got, want)
+		}
+	}
+}
+
+// A merge key a row already spent starts no second merge pusher for the same head.
+func TestApplyMergePushSpentKeyStartsNothing(t *testing.T) {
+	h, specs := pushHarness(t)
+	a := mergePushAction()
+	h.seed(t, 7, "", a.TriggerKey, runs.Question)
+	if _, err := Apply(context.Background(), h.env, []Action{a}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if len(*specs) != 0 || len(h.history(t)) != 1 {
+		t.Errorf("specs = %v, rows = %d; want nothing started", *specs, len(h.history(t)))
 	}
 }
