@@ -28,9 +28,9 @@ func (e tickEnv) job(name string) (scheduled.Job, bool) {
 // planSchedules plans the schedules of every gathered repo, after the gather and before Decide
 // (spec §2): scheduled.Plan on the repo's own history, then per due schedule its job's gate and
 // launch plan. A gate that says skip marks the slot skipped with one line on errOut; a gate or
-// launch plan that fails, an unknown job or an unreadable or unwritable slot leaves the slot open
+// launch plan that fails or an unreadable or unwritable slot leaves the slot open
 // with one line on errOut, holds the repo's tick state back so the next tick gathers and gates
-// again, and reports failed. The schedules that are left go to Decide in the repo's input.
+// again, and reports failed. An unknown job only gets its line: it holds and fails nothing. The schedules that are left go to Decide in the repo's input.
 func planSchedules(ctx context.Context, env tickEnv, db *sql.DB, gathered []gatheredRepo, errOut io.Writer) (failed bool) {
 	for i := range gathered {
 		g := &gathered[i]
@@ -73,7 +73,10 @@ func planRepo(ctx context.Context, env tickEnv, db *sql.DB, repo repoconfig.Repo
 		}
 		job, ok := env.job(d.Schedule.Job)
 		if !ok {
-			fail("no job %s", d.Schedule.Job)
+			// No hold and no failure: a schedule whose job is not registered would else make
+			// every tick exit 1 and skip the tick state, a full gather each tick. The slot stays
+			// unsettled, so the line returns each tick until the job exists or the block goes.
+			_, _ = fmt.Fprintf(errOut, "lighthouse: %s: no job %s\n", name, d.Schedule.Job)
 			continue
 		}
 		jenv := scheduled.Env{Repo: repo, Schedule: d.Schedule, Now: now, Run: env.runner()}

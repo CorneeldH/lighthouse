@@ -373,7 +373,8 @@ Naast issue-runs start de tick runs op een vast schema, zonder issue: een *gepla
 ontwerp staat in [de spec](developer/planning/specs/2026-11-16-issue-121-geplande-runs-design.md).
 Deze release legt het run-model, de planner en de afloop neer; de jobs zelf (`map-refresh` en
 `reflect`) komen in een volgende release. Tot dan geeft een `[[schedule]]`-blok elke tick
-`lighthouse: <repo> scheduled:<naam>:<slot>: no job <job>` en exitcode 1.
+`lighthouse: <repo> scheduled:<naam>:<slot>: no job <job>`. Dat is een regel, geen fout: de tick
+eindigt met exitcode 0, bewaart zijn tick-state en start niets.
 
 **Configuratie.** Per repo een lijst `[[schedule]]` in `lighthouse.toml`, met `name`, `job`, `cron`
 (vijf velden, lokale tijd van de host), optioneel `weeks` met `anchor` en `profile`, en `params` per
@@ -421,7 +422,7 @@ geldt de eerste regel die past:
 | Eigen PR gemerged | `done` |
 | Eigen PR op een andere head dan de gepushte commit | PR sluiten, `failed` (*branch changed after push*) |
 | Eigen PR rood of met een merge-conflict | PR sluiten, branch verwijderen, `failed`; geen fix-pr-run |
-| Eigen PR groen en geen pauze | squash-merge op de gemeten head, branch verwijderen, `done` |
+| Eigen PR groen en geen pauze (`checks` is `SUCCESS`: een repo zonder CI-checks merget nooit en de PR sluit na 60 minuten) | squash-merge op de gemeten head, branch verwijderen, `done` |
 | Merge geweigerd (bijvoorbeeld een verplichte review) | PR sluiten, branch verwijderen, `failed` met de reden van de forge |
 | Head verschoven bij de merge | niets; de volgende tick meet opnieuw |
 | Eigen PR gesloten zonder merge | branch verwijderen, `failed` |

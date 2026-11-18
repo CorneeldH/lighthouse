@@ -502,16 +502,20 @@ func TestTickSlotBoundaryRegathers(t *testing.T) {
 	}
 }
 
-// A schedule naming a job no one registered starts nothing, loudly.
+// A schedule naming a job no one registered starts nothing, with a line per tick, but does not
+// fail the tick or hold its state: else every tick would exit 1 and gather in full.
 func TestTickScheduledUnknownJob(t *testing.T) {
 	s := newScheduledTick(t, "")
 	s.env.Jobs = func(string) (scheduled.Job, bool) { return nil, false }
 	var errOut bytes.Buffer
-	if err := tick(context.Background(), s.env, s.db, &errOut); !errors.Is(err, errSilent) {
-		t.Errorf("tick = %v, want errSilent", err)
+	if err := tick(context.Background(), s.env, s.db, &errOut); err != nil {
+		t.Errorf("tick = %v, want nil: an unknown job is no failure", err)
 	}
 	if want := "lighthouse: o/r " + tickKey + ": no job map-refresh\n"; !strings.Contains(errOut.String(), want) {
 		t.Errorf("errOut = %q, want %q", errOut.String(), want)
+	}
+	if st := tickState(t, openStore(t, s.db), "o/r"); st.Fingerprint == "" {
+		t.Errorf("tick state = %+v, want it saved: no hold on an unknown job", st)
 	}
 	if rows := scheduledRows(t, openStore(t, s.db)); len(rows) != 0 {
 		t.Errorf("scheduled runs = %+v, want none", rows)
