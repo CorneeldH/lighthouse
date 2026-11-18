@@ -369,8 +369,8 @@ func TestPostcheckSymlinks(t *testing.T) {
 		setup func(f *fixture)
 		want  []string // Failure fragments; nil means the run must pass
 	}{
-		"file link to /etc/hostname": {
-			setup: func(f *fixture) { f.symlink("/etc/hostname", "out/x.md") },
+		"file link to an existing file outside": {
+			setup: func(f *fixture) { f.symlink(outsideFile(t, outside, "hostname"), "out/x.md") },
 			want:  []string{"out/x.md", "outside the work tree"},
 		},
 		"dangling link": {
@@ -412,6 +412,17 @@ func TestPostcheckSymlinks(t *testing.T) {
 			f.assertNothingLanded(res, err, tc.want...)
 		})
 	}
+}
+
+// outsideFile writes a file name in dir, a directory outside the work tree, and returns its
+// path: a link target that exists on every OS, unlike /etc/hostname, which macOS lacks.
+func outsideFile(t *testing.T, dir, name string) string {
+	t.Helper()
+	p := filepath.Join(dir, name)
+	if err := os.WriteFile(p, []byte("outside\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return p
 }
 
 func (f *fixture) symlink(target, rel string) {
@@ -816,7 +827,9 @@ func TestPostcheckResumeSymlinkChain(t *testing.T) {
 // link through it leaves the tree although its text stays under out/.
 func TestPostcheckResumeLinkThroughAStartSymlink(t *testing.T) {
 	f := newFixture(t)
-	f.symlink("/etc", "out/ext")
+	ext := t.TempDir()
+	outsideFile(t, ext, "hostname")
+	f.symlink(ext, "out/ext")
 	f.git("add", "out/ext")
 	f.git("commit", "-q", "-m", "base link")
 	f.start = f.git("rev-parse", "HEAD")
