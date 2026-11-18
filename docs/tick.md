@@ -483,6 +483,11 @@ Onder `drift_low` is het `skip`; tot en met `drift_high` is het de snelle modus 
 `map_dir` nog nooit gecommit, dan is het altijd de volledige modus. Een poortfout noemt het
 git-subcommando en de exitcode, nooit een pad van deze host.
 
+**Waar `map_dir` niet mag staan.** Staat `map_dir` in `.gitignore`, dan is hij voor git nooit gecommit: de
+poort ziet altijd "nog nooit gemapt" (volledige modus) en `Finish` ziet geen verschil met HEAD, dus
+er komt nooit een PR. Dat is een dure run die stil niets oplevert. Een gecommitte symlink als
+bovenliggende map van `map_dir` laat `Cleanup` en de insluiting bij elke run mislukken.
+
 **Insluiting.** De run schrijft alleen onder `map_dir/` en `publish_dir/`. Voor de controle haalt
 `Cleanup` elke symlink in die mappen (en in hun bovenliggende mappen) weg met `Lstat` en `Remove`:
 een link wordt losgemaakt, nooit gevolgd, en `Check` en `Finish` lezen en schrijven nooit door een
