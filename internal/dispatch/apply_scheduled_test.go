@@ -351,3 +351,20 @@ func TestApplyScheduledDeferral(t *testing.T) {
 		t.Errorf("Deferred = %q, want %q", res.Deferred, want)
 	}
 }
+
+// Fails if the agent of a scheduled run keeps the token variable of another repo: the unset list
+// is the union over every repo, not only the run's own.
+func TestApplyScheduledStartUnsetsTokenEnvOfEveryRepo(t *testing.T) {
+	h, _, _ := scheduledHarness(t)
+	h.env.TokenEnvs = func() []string { return []string{"OTHER_REPO_TOKEN", "", "WORK_TOKEN"} }
+	if _, err := Apply(context.Background(), h.env, []Action{scheduledStart()}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if len(h.wp.spawned) != 1 {
+		t.Fatalf("spawned %d, want 1", len(h.wp.spawned))
+	}
+	want := []string{"GH_ENTERPRISE_TOKEN", "GH_TOKEN", "GITHUB_ENTERPRISE_TOKEN", "GITHUB_TOKEN", "GITLAB_TOKEN", "OTHER_REPO_TOKEN", "WORK_TOKEN"}
+	if got := h.wp.spawned[0].Unset; !slices.Equal(got, want) {
+		t.Errorf("Unset = %q, want %q", got, want)
+	}
+}

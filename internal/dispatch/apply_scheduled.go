@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/CorneeldH/lighthouse/internal/forge"
@@ -95,7 +96,7 @@ func (ap applier) startScheduled(ctx context.Context, a Action, res *Result) err
 		InstructionsFile: file, Tools: a.Tools,
 		// The agent inherits no forge token: with it, a Read of /proc/self/environ could carry
 		// the token into a file the run commits. The tick's push names it by its variable only.
-		Unset: forge.TokenVarNames(jenv.Repo.TokenEnv),
+		Unset: ap.tokenVarNames(jenv.Repo.TokenEnv),
 		// No MCP server, whatever the profile has (spec §4): an MCP tool acts outside the
 		// workplace, where the check after the run does not look.
 		MCPConfig: "",
@@ -155,4 +156,19 @@ func retryOutcome(attempt int) runs.Outcome {
 		return runs.Failed
 	}
 	return runs.Retry
+}
+
+// tokenVarNames are the variables the agent of a scheduled run gets unset: the defaults, own and
+// the token_env of every repo of the process (docs/workplace.md), sorted, each once.
+func (ap applier) tokenVarNames(own string) []string {
+	names := forge.TokenVarNames(own)
+	if ap.env.TokenEnvs != nil {
+		for _, k := range ap.env.TokenEnvs() {
+			if k != "" {
+				names = append(names, k)
+			}
+		}
+	}
+	slices.Sort(names)
+	return slices.Compact(names)
 }

@@ -542,12 +542,19 @@ func applyActions(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.D
 		RemoveMarker: func(session, key string) error {
 			return env.removeMarker(ctx, cfg, markerDir, markerNode[session], session, key)
 		},
-		MaxWait:     cfg.MaxWait,
-		Now:         env.now,
-		NewSession:  runs.NewSessionID,
-		Log:         prefixed{errOut},
-		Getenv:      env.Getenv,
-		TokenEnv:    func(slug string) string { return tokenEnvName(repos[slug]) },
+		MaxWait:    cfg.MaxWait,
+		Now:        env.now,
+		NewSession: runs.NewSessionID,
+		Log:        prefixed{errOut},
+		Getenv:     env.Getenv,
+		TokenEnv:   func(slug string) string { return tokenEnvName(repos[slug]) },
+		TokenEnvs: func() []string {
+			var out []string
+			for _, r := range repos {
+				out = append(out, r.TokenEnv)
+			}
+			return out
+		},
 		StartPusher: env.startPusher(dir),
 	}, actions)
 	return res, nil
