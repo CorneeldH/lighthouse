@@ -103,6 +103,12 @@ def _without_default_paths(rel: str, text: str) -> str:
     if rel == "internal/config/config_test.go":
         # TestInstallDocGitLabExampleParses reads docs/install.md; ci/domains.py keeps that file in go.
         return text.replace("docs/install.md", "")
+    if rel == "internal/dispatch/apply_scheduled.go":
+        # A doc-comment points at docs/workplace.md; Go reads no file there.
+        return text.replace("docs/workplace.md", "")
+    if rel in ("internal/scheduled/maprefresh/e2e_test.go", "internal/scheduled/maprefresh/maprefresh_test.go"):
+        # docs/map is the publish_dir of the map-refresh job: a path inside a temp repo, never this repo's docs.
+        return text.replace("docs/", "")
     return text
 
 
