@@ -24,7 +24,13 @@ type Remote interface {
 }
 
 // remoteTimeout bounds one git call of the remote.
-const remoteTimeout = 5 * time.Minute
+var remoteTimeout = 5 * time.Minute
+
+// gitHardening are the config options every git call of the remote starts with: no setting of the
+// machine may turn off certificate checks or point at a proxy or CA of its own.
+var gitHardening = []string{
+	"-c", "http.sslVerify=true", "-c", "http.proxy=", "-c", "http.sslCAInfo=", "-c", "http.sslCAPath=",
+}
 
 var (
 	// tokenVarName is the shape of an environment variable name the credential helper reads.
@@ -91,8 +97,12 @@ func (r HTTPSRemote) Push(ctx context.Context, dir, commit, branch string) error
 // objectDir is the object directory of the repository in dir: <common dir>/objects. git rev-parse
 // runs nothing the repository's config could name.
 func (r HTTPSRemote) objectDir(ctx context.Context, dir string) (string, error) {
-	cmd := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	ctx, cancel := context.WithTimeout(ctx, remoteTimeout)
+	defer cancel()
+	args := append(append([]string{}, gitHardening...), "-C", dir, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Env = r.environ("")
+	cmd.WaitDelay = 2 * time.Second
 	out, err := cmd.Output()
 	if err != nil {
 		return "", fmt.Errorf("push: common dir of the workplace: %w", err)
@@ -137,14 +147,15 @@ func (r HTTPSRemote) git(ctx context.Context, objects string, args ...string) (s
 	}
 	origin := u.Scheme + "://" + u.Host
 	helper := "!f() { test \"$1\" = get || exit 0; echo username=" + r.User + "; echo \"password=$" + r.TokenVar + "\"; }; f"
-	full := append([]string{"--git-dir=" + repo,
+	full := append(append([]string{"--git-dir=" + repo}, gitHardening...), []string{
 		"-c", "core.hooksPath=" + os.DevNull,
 		"-c", "credential.helper=",
 		"-c", "credential." + origin + ".helper=" + helper,
 		"-c", "http.extraHeader=",
 		"-c", "protocol.allow=never",
 		"-c", "protocol." + u.Scheme + ".allow=always",
-	}, args...)
+	}...)
+	full = append(full, args...)
 	cmd := exec.CommandContext(ctx, "git", full...)
 	cmd.Env = r.environ(token)
 	cmd.Dir = repo
@@ -171,11 +182,14 @@ func (r HTTPSRemote) scratch(ctx context.Context, objects string) (string, error
 	if err := os.MkdirAll(r.TempDir, 0o700); err != nil {
 		return "", fmt.Errorf("remote: temporary repository: %w", err)
 	}
+	if err := checkStateDir(r.TempDir); err != nil {
+		return "", err
+	}
 	repo, err := os.MkdirTemp(r.TempDir, "push-")
 	if err != nil {
 		return "", fmt.Errorf("remote: temporary repository: %w", err)
 	}
-	cmd := exec.CommandContext(ctx, "git", "init", "--quiet", "--bare", "--template=", repo)
+	cmd := exec.CommandContext(ctx, "git", append(append([]string{}, gitHardening...), "init", "--quiet", "--bare", "--template=", repo)...)
 	cmd.Env = r.environ("")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		_ = os.RemoveAll(repo)
@@ -214,4 +228,17 @@ func (r HTTPSRemote) environ(token string) []string {
 		}
 	}
 	return env
+}
+
+// checkStateDir refuses a state directory that is a symlink, is not ours or can be written by
+// anyone else: another user could swap a temporary repository under it for their own.
+func checkStateDir(dir string) error {
+	fi, err := os.Lstat(dir)
+	if err != nil {
+		return fmt.Errorf("remote: state directory: %w", err)
+	}
+	if !fi.IsDir() {
+		return errors.New("remote: the state directory is not a plain directory")
+	}
+	return checkOwner(fi, os.Getuid())
 }
