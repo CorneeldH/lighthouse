@@ -51,3 +51,53 @@ func TestRemoveForceRunsNoPlantedFsmonitor(t *testing.T) {
 		t.Errorf("planted fsmonitor ran (stat %v), want it never started", err)
 	}
 }
+
+// A forced Remove throws work away only from a linked worktree on a scheduled branch. Fails if
+// discardWork resets and cleans the main checkout, or a worktree of a branch of someone's work,
+// that the forge names as a workspace's worktree_path.
+func TestRemoveForceRefusesWhatIsNotAScheduledWorktree(t *testing.T) {
+	cases := []struct {
+		name    string
+		headRef string
+		main    bool // worktree_path is the main checkout instead of a linked worktree
+		want    string
+	}{
+		{"main checkout", "scheduled/nightly-20261116T0400-1", true, "main checkout"},
+		{"branch of other work", "issue-7-x", false, "not a scheduled run's"},
+		{"no branch", "", false, "not a scheduled run's"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			f, a := newFakeForge(t)
+			a.Run = workplace.ExecRunner()
+			main := filepath.Join(t.TempDir(), "main")
+			for _, args := range [][]string{
+				{"init", "--quiet", main},
+				{"-C", main, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "--quiet", "--allow-empty", "-m", "init"},
+				{"-C", main, "worktree", "add", "--quiet", "-b", "wt", filepath.Join(filepath.Dir(main), "wt")},
+			} {
+				if out, err := exec.Command("git", args...).CombinedOutput(); err != nil {
+					t.Fatalf("git %v: %v\n%s", args, err, out)
+				}
+			}
+			f.path, f.headRef = filepath.Join(filepath.Dir(main), "wt"), c.headRef
+			if c.main {
+				f.path = main
+			}
+			keep := filepath.Join(f.path, "untracked.txt")
+			if err := os.WriteFile(keep, []byte("work"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			err := a.Remove(t.Context(), "ws1", workplace.RemoveOptions{Force: true})
+			if err == nil || !strings.Contains(err.Error(), c.want) {
+				t.Fatalf("forced Remove: err = %v, want a refusal containing %q", err, c.want)
+			}
+			if _, serr := os.Stat(keep); serr != nil {
+				t.Errorf("untracked file after the refusal: %v, want it kept", serr)
+			}
+			if n := f.count("DELETE /api/v1/workspaces/ws1"); n != 0 {
+				t.Errorf("DELETE sent %d times, want none after the refusal", n)
+			}
+		})
+	}
+}

@@ -410,6 +410,9 @@ func (a *Adapter) discardWork(ctx context.Context, workspaceID string) error {
 	if !filepath.IsAbs(w.WorktreeDir) {
 		return fmt.Errorf("worktree_path %q is not absolute", w.WorktreeDir)
 	}
+	if err := a.checkDiscardable(ctx, w); err != nil {
+		return err
+	}
 	for _, args := range [][]string{{"reset", "--hard", "--quiet"}, {"clean", "-ffdxq"}} {
 		argv := append(append(append([]string{}, forceGit...), "-C", w.WorktreeDir), args...)
 		_, code, err := a.Run(ctx, gitTimeout, "git", argv...)
@@ -419,6 +422,37 @@ func (a *Adapter) discardWork(ctx context.Context, workspaceID string) error {
 		if code != 0 {
 			return fmt.Errorf("git %s: exit code %d", args[0], code)
 		}
+	}
+	return nil
+}
+
+// scheduledBranchPrefix is the prefix of the branch of a scheduled run, the only workspace a forced
+// remove may throw work away from.
+const scheduledBranchPrefix = "scheduled/"
+
+// checkDiscardable refuses a discard unless w is a scheduled run's branch checked out in a linked
+// worktree: reset --hard and clean -ffdx in the main checkout, or in a worktree of a branch of
+// someone's work, would destroy what is not the run's. A bad worktree_path from the forge must
+// not become that.
+func (a *Adapter) checkDiscardable(ctx context.Context, w wireWorkspace) error {
+	branch := strings.TrimPrefix(w.GitHeadRef, "refs/heads/")
+	if !strings.HasPrefix(branch, scheduledBranchPrefix) {
+		return fmt.Errorf("worktree %q is on branch %q, not a scheduled run's: nothing discarded", w.WorktreeDir, branch)
+	}
+	dirs := make([]string, 0, 2)
+	for _, flag := range []string{"--git-dir", "--git-common-dir"} {
+		argv := append(append([]string{}, forceGit...), "-C", w.WorktreeDir, "rev-parse", "--path-format=absolute", flag)
+		out, code, err := a.Run(ctx, gitTimeout, "git", argv...)
+		if err != nil {
+			return fmt.Errorf("git rev-parse: %w", err)
+		}
+		if code != 0 {
+			return fmt.Errorf("git rev-parse %s: exit code %d", flag, code)
+		}
+		dirs = append(dirs, filepath.Clean(strings.TrimSpace(out)))
+	}
+	if dirs[0] == dirs[1] {
+		return fmt.Errorf("worktree %q is the main checkout, not a linked worktree: nothing discarded", w.WorktreeDir)
 	}
 	return nil
 }
