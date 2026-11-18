@@ -27,11 +27,11 @@ type Remote interface {
 // nothing else assigns it.
 var remoteTimeout = 5 * time.Minute
 
-// gitHardening are the config options every git call of the remote starts with: no setting of the
-// machine may turn off certificate checks or point at a proxy or CA of its own.
-var gitHardening = []string{
-	"-c", "http.sslVerify=true", "-c", "http.proxy=", "-c", "http.sslCAInfo=", "-c", "http.sslCAPath=",
-}
+// gitHardening are the config options every git call of the remote starts with: certificate
+// checks stay on whatever a config says. No empty http.sslCAInfo, http.sslCAPath or http.proxy:
+// git hands "" to curl, which then has no CA bundle or no proxy. environ already cuts the system
+// and global config, and the temporary repository is fresh.
+var gitHardening = []string{"-c", "http.sslVerify=true"}
 
 var (
 	// tokenVarName is the shape of an environment variable name the credential helper reads.
@@ -223,7 +223,7 @@ func (r HTTPSRemote) environ(token string) []string {
 	if token != "" {
 		env = append(env, r.TokenVar+"="+token)
 	}
-	for _, k := range []string{"PATH", "HOME", "https_proxy", "HTTPS_PROXY", "http_proxy", "HTTP_PROXY", "no_proxy", "NO_PROXY", "SSL_CERT_FILE", "SSL_CERT_DIR"} {
+	for _, k := range []string{"PATH", "HOME", "https_proxy", "HTTPS_PROXY", "http_proxy", "HTTP_PROXY", "no_proxy", "NO_PROXY", "SSL_CERT_FILE", "SSL_CERT_DIR", "GIT_SSL_CAINFO"} {
 		if v := r.Getenv(k); v != "" {
 			env = append(env, k+"="+v)
 		}

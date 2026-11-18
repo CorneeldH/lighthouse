@@ -2,6 +2,7 @@ package scheduled_test
 
 import (
 	"context"
+	"encoding/pem"
 	"net/http"
 	"net/http/cgi"
 	"net/http/httptest"
@@ -33,6 +34,12 @@ type gitServer struct {
 
 func newGitServer(t *testing.T, user, token string) *gitServer {
 	t.Helper()
+	return newGitServerTLS(t, user, token, false)
+}
+
+// newGitServerTLS is newGitServer over HTTPS when useTLS is set.
+func newGitServerTLS(t *testing.T, user, token string, useTLS bool) *gitServer {
+	t.Helper()
 	execPath, err := exec.Command("git", "--exec-path").Output()
 	if err != nil {
 		t.Fatalf("git --exec-path: %v", err)
@@ -43,7 +50,7 @@ func newGitServer(t *testing.T, user, token string) *gitServer {
 	}
 	g := &gitServer{root: t.TempDir()}
 	h := &cgi.Handler{Path: backend, Env: []string{"GIT_PROJECT_ROOT=" + g.root, "GIT_HTTP_EXPORT_ALL=1"}}
-	g.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		u, p, ok := r.BasicAuth()
 		if !ok || u != user || p != token {
 			w.Header().Set("WWW-Authenticate", `Basic realm="test"`)
@@ -52,7 +59,12 @@ func newGitServer(t *testing.T, user, token string) *gitServer {
 		}
 		g.auths++
 		h.ServeHTTP(w, r)
-	}))
+	})
+	if useTLS {
+		g.srv = httptest.NewTLSServer(handler)
+	} else {
+		g.srv = httptest.NewServer(handler)
+	}
 	t.Cleanup(g.srv.Close)
 	runGit(t, g.root, "init", "-q", "--bare", "o/r.git")
 	runGit(t, filepath.Join(g.root, "o/r.git"), "config", "http.receivepack", "true")
@@ -353,5 +365,33 @@ func TestGitStateIgnoresBranchEntriesOnly(t *testing.T) {
 	}
 	if broken, err := scheduled.GitState(ctx, run, f.work); err == nil {
 		t.Errorf("GitState of an unreadable config = %q, want an error", broken)
+	}
+}
+
+// Fails if the options every git call starts with break HTTPS: an empty http.sslCAInfo leaves curl
+// without any CA bundle, so no real forge (always https) could be reached. The server's own
+// certificate is trusted through GIT_SSL_CAINFO, which the remote forwards.
+func TestHTTPSRemoteReachesAnHTTPSServer(t *testing.T) {
+	f := newFixture(t)
+	srv := newGitServerTLS(t, "x-access-token", remoteToken, true)
+	cert := filepath.Join(t.TempDir(), "ca.pem")
+	pemBytes := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: srv.srv.Certificate().Raw})
+	if err := os.WriteFile(cert, pemBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	get := remoteEnv(t, filepath.Join(t.TempDir(), "helper-ran"))
+	r := scheduled.HTTPSRemote{URL: srv.url(), User: "x-access-token", TokenVar: "GH_TOKEN", TempDir: t.TempDir(),
+		Getenv: func(k string) string {
+			if k == "GIT_SSL_CAINFO" {
+				return cert
+			}
+			return get(k)
+		}}
+	ctx := context.Background()
+	if err := r.Push(ctx, f.work, f.start, testBranch); err != nil {
+		t.Fatalf("Push over https: %v", err)
+	}
+	if sha, err := r.Head(ctx, f.work, testBranch); err != nil || sha != f.start {
+		t.Errorf("Head over https = %q, %v; want %q", sha, err, f.start)
 	}
 }

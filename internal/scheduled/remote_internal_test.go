@@ -60,9 +60,13 @@ func TestObjectDirPassesTheHardeningOptions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"http.sslVerify=true", "http.proxy=", "http.sslCAInfo=", "http.sslCAPath="} {
-		if !strings.Contains("\n"+string(got), "\n"+want+"\n") {
-			t.Errorf("git args %q lack -c %s", got, want)
+	if !strings.Contains("\n"+string(got), "\nhttp.sslVerify=true\n") {
+		t.Errorf("git args %q lack -c http.sslVerify=true", got)
+	}
+	// An empty value reaches curl as "": no CA bundle, no proxy.
+	for _, bad := range []string{"http.sslCAInfo=", "http.sslCAPath=", "http.proxy="} {
+		if strings.Contains("\n"+string(got), "\n"+bad+"\n") {
+			t.Errorf("git args %q carry the empty option %s", got, bad)
 		}
 	}
 }
