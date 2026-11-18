@@ -41,4 +41,9 @@ func TestTickScheduledInvalidParamsAreAConfigErrorEachTick(t *testing.T) {
 	if rows := scheduledRows(t, openStore(t, db)); len(rows) != 0 {
 		t.Errorf("scheduled runs = %+v, want none", rows)
 	}
+	// The reverse of an unknown job: a config error holds the tick state back, so the next tick
+	// gathers and names the error again.
+	if st := tickState(t, openStore(t, db), "o/r"); st.Fingerprint != "" {
+		t.Errorf("tick state = %+v, want none saved while the config error stands", st)
+	}
 }

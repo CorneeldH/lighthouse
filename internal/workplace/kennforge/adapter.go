@@ -431,9 +431,9 @@ func (a *Adapter) discardWork(ctx context.Context, workspaceID string) error {
 const scheduledBranchPrefix = "scheduled/"
 
 // checkDiscardable refuses a discard unless w is a scheduled run's branch checked out in a linked
-// worktree whose real HEAD is that branch: reset --hard and clean -ffdx in the main checkout, or in a worktree of a branch of
-// someone's work, would destroy what is not the run's. A bad worktree_path from the forge must
-// not become that.
+// worktree whose real HEAD is that branch. reset --hard and clean -ffdx in the main checkout, or
+// in a worktree of someone's work, would destroy what is not the run's; a bad worktree_path from
+// the forge must not become that.
 func (a *Adapter) checkDiscardable(ctx context.Context, w wireWorkspace) error {
 	branch := strings.TrimPrefix(w.GitHeadRef, "refs/heads/")
 	if !strings.HasPrefix(branch, scheduledBranchPrefix) {
