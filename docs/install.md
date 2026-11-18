@@ -422,15 +422,17 @@ weeks  = 2              # weeks and anchor go together: only the week of anchor 
 anchor = "2026-10-12"   # weeks-th week after it count (a week runs Monday to Sunday)
 ```
 
-An invalid block makes the repository's config invalid, like any other config error. This release
-validates the block but registers no job yet; until `map-refresh` and `reflect` arrive, a schedule
-makes every tick report `lighthouse: <repo> scheduled:<name>:<slot>: no job <job>` and exit 1, so
-leave the block out for now.
+An invalid block makes the repository's config invalid, like any other config error. Job `map-refresh`
+is available (its params are in [tick.md](tick.md#job-map-refresh)); `reflect` is not registered yet, so a schedule
+that names it makes the tick report, at each gather of the repo, `lighthouse: <repo> scheduled:<name>:<slot>: no job <job>` (a line, not an
+error: the tick still exits 0 and saves its state) and start nothing, so leave such a block out for now.
 
 A scheduled run ends in a pull request that the tick merges itself once it is green. The target
 repository's CI must be able to get that PR green with only the paths the job may write: a
 repository whose CI demands, say, a changelog fragment in every PR needs a configuration that lets
-these PRs through. Otherwise every period closes a red PR as `failed`. The token needs *Contents:
+these PRs through. Otherwise every period closes a red PR as `failed`. A repository with no CI
+checks at all never merges either: the tick requires the checks to be `SUCCESS`, so such a PR is
+closed as `failed` after 60 minutes. The token needs *Contents:
 write* and *Pull requests: write* to push the branch, open, merge and close the PR and delete the
 branch.
 

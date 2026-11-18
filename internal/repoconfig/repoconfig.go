@@ -158,6 +158,21 @@ func Load(dir string) (Repo, error) {
 	return LoadFile(filepath.Join(dir, "lighthouse.toml"))
 }
 
+// LenientTokenEnv is [forge] token_env of the lighthouse.toml in dir, read without validating
+// anything else: a repo whose config is invalid (a bad [[schedule]] block, say) still names its
+// token variable. "" when the file is unreadable or has none.
+func LenientTokenEnv(dir string) string {
+	var raw struct {
+		Forge struct {
+			TokenEnv string `toml:"token_env"`
+		} `toml:"forge"`
+	}
+	if _, err := toml.DecodeFile(filepath.Join(dir, "lighthouse.toml"), &raw); err != nil {
+		return ""
+	}
+	return raw.Forge.TokenEnv
+}
+
 // LoadFile reads the lighthouse.toml at path, whatever its file name (LIGHTHOUSE_TOML); Dir is
 // the directory it is in.
 func LoadFile(path string) (Repo, error) {

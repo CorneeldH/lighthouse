@@ -548,6 +548,7 @@ func applyActions(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.D
 		Log:         prefixed{errOut},
 		Getenv:      env.Getenv,
 		TokenEnv:    func(slug string) string { return tokenEnvName(repos[slug]) },
+		TokenEnvs:   tokenEnvs(cfg),
 		StartPusher: env.startPusher(dir),
 	}, actions)
 	return res, nil
@@ -838,4 +839,20 @@ func repoInput(ctx context.Context, db *sql.DB, cfg hostconfig.Dispatch, f forge
 		Markers:      pre.Markers,
 		WorkflowPush: cfg.WorkflowPush != nil, PushTimeout: dispatch.PushTimeout(cfg),
 	}, nil
+}
+
+// tokenEnvs are the token_env names of every repo in host.toml, gathered this tick or not: the
+// agent of a scheduled run must not inherit any of them.
+func tokenEnvs(cfg hostconfig.Dispatch) []string {
+	var out []string
+	for _, l := range repoconfig.LoadAll(cfg.Repos) {
+		name := l.Repo.TokenEnv
+		if l.Err != nil { // a repo that does not load still has a token the agent must not see
+			name = repoconfig.LenientTokenEnv(l.Path)
+		}
+		if name != "" {
+			out = append(out, name)
+		}
+	}
+	return out
 }

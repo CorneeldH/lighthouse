@@ -587,5 +587,9 @@ issue-workspaces.
   node is er geen lokale git, en dan weigert een geforceerde `Remove` vóór er iets verandert.
 - Weigert de adapter toch (een geneste worktree, of nog een 409), dan blijft de workspace een
   achterblijver met `forced remove refused: <fout>`.
+- Vóór `reset` en `clean` controleert de adapter dat `worktree_path` een gekoppelde worktree is (niet
+  de hoofdcheckout) en dat de echte HEAD de `scheduled/…`-tak is die de forge noemt. Een agent die
+  `git checkout -b x` doet, laat een worktree achter die de geforceerde sweep voortaan altijd
+  weigert (`not "scheduled/…" as the forge says`): zo'n workspace ruim je met de hand op.
 - Een workspace die geen runrij noemt, ziet de sweep niet. Dat gebeurt als een tick sterft tussen
   `Prepare` en `SetWorkplace` van een geplande start; zo'n workspace ruim je met de hand op.

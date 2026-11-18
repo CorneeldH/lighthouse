@@ -47,6 +47,9 @@ type Env struct {
 	// the pusher gets PATH, HOME, XDG_RUNTIME_DIR and that one token, nothing else.
 	Getenv   func(string) string
 	TokenEnv func(repo string) string
+	// TokenEnvs are the token_env names of every repo the process knows, not only the run's own:
+	// the agent of a scheduled run gets all of them unset. nil is none.
+	TokenEnvs []string
 	// StartPusher starts the workflow pusher detached and returns at once; it does not wait for it.
 	StartPusher func(ctx context.Context, spec PusherSpec) error
 }
