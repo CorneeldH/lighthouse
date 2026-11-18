@@ -85,7 +85,7 @@ func TestScheduledRunLifecycleOnTheLocalAdapter(t *testing.T) {
 		}},
 	}
 	planned := decideScheduled(Input{Now: applyNow}, repo)
-	if len(planned) != 1 || planned[0].Action.Kind != KindScheduledStart {
+	if len(planned) != 1 || planned[0].Kind != KindScheduledStart {
 		t.Fatalf("planned = %+v, want one scheduled start", planned)
 	}
 	start := planned[0].Action
@@ -153,7 +153,7 @@ func TestScheduledRunLifecycleOnTheLocalAdapter(t *testing.T) {
 		}}}},
 		Language: "nl", History: h.history(t),
 	})
-	if len(merged) != 1 || merged[0].Action.Kind != KindScheduledMerge || merged[0].Action.HeadSHA != rec.Pushed {
+	if len(merged) != 1 || merged[0].Kind != KindScheduledMerge || merged[0].HeadSHA != rec.Pushed {
 		t.Fatalf("settled = %+v, want a merge of the pushed commit", merged)
 	}
 	if _, err := Apply(ctx, h.env, []Action{merged[0].Action}); err != nil {
