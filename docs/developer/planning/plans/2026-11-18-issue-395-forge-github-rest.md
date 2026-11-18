@@ -22,7 +22,15 @@
 - Code, namen, commentaar en foutmeldingen Engels; plan, commits, PR en comments Nederlands.
 - Elke commit groen (`[test_gate] command`), nooit `--no-verify`. `/lighthouse-go-standard` en `/lighthouse-test-standard` gelden.
 - De PR schrijft `Refs #395 — <reden>`, niet `Closes`. Eén fragment in `changelog.d/`: het `changelog.d/issue-395-forge-rest.md` dat `/lighthouse-write-pr` in Task 1 schrijft; Task 10 past dat bestand aan.
-- Alles wat Task 1 en Task 11 tegen GitHub meten, draait met het token van de controller, niet met de credential van `gh`: zet het in elke shell vooraf met `set -a; . "$HOME/.config/lighthouse/forge.env"; set +a` (dan gebruikt `gh` `GH_TOKEN`). Geeft een probe met dat token 401/403, dan **STOP en meld het**: de controller kan dat endpoint dan niet.
+- Alles wat Task 1 en Task 11 tegen GitHub meten, draait met het token van de controller, niet met de credential van `gh`: neem het uit de `EnvironmentFile` van de tick-unit, niet uit een vast pad (op deze host is dat `~/.config/paia-controller/env`, niet `forge.env`). Zet het in elke shell vooraf:
+
+  ```bash
+  ENVF=$(systemctl --user show -p EnvironmentFiles --value lighthouse-tick.service | awk '{print $1}')
+  set -a; . "$ENVF"; set +a
+  [ -n "$GH_TOKEN" ] || { echo "STOP: no GH_TOKEN from $ENVF"; exit 1; }
+  ```
+
+  Onder cron is het bestand het `forge.env` dat de cronregel leest. Dan gebruikt `gh` `GH_TOKEN`. Is `GH_TOKEN` na het inlezen leeg, of geeft een probe met dat token 401/403, dan **STOP en meld het**: zonder dat token meet je de credential van `gh`, niet die van de controller.
 
 ## Besluiten van dit plan (de spec laat ze aan de bouwer)
 
