@@ -223,6 +223,10 @@ func (j *Job) Finish(ctx context.Context, env scheduled.Env, dir string, v sched
 	if err != nil {
 		return err
 	}
+	// Look before creating: MkdirAll would follow a symlink among the existing parents.
+	if _, err := stat(dir, j.cfg.publishDir); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
 	if err := os.MkdirAll(filepath.Join(dir, filepath.FromSlash(j.cfg.publishDir)), 0o755); err != nil {
 		return fileErr(j.cfg.publishDir, err)
 	}

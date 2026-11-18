@@ -342,6 +342,15 @@ func TestAnUnboundJobRefusesToRun(t *testing.T) {
 	if j.Allowed(".planning/codebase/STACK.md") {
 		t.Error("unbound Allowed accepted a path")
 	}
+	if err := j.Cleanup(context.Background(), scheduled.Env{}, t.TempDir()); err == nil {
+		t.Error("unbound Cleanup succeeded")
+	}
+	if err := j.Check(context.Background(), scheduled.Env{}, t.TempDir()); err == nil {
+		t.Error("unbound Check succeeded")
+	}
+	if err := j.Finish(context.Background(), scheduled.Env{}, t.TempDir(), scheduled.Verdict{}); err == nil {
+		t.Error("unbound Finish succeeded")
+	}
 	if got, ok := scheduled.Lookup(Name); !ok || got.Name() != Name {
 		t.Errorf("Lookup(%q) = %v, %v; want the registered job", Name, got, ok)
 	}
@@ -626,4 +635,30 @@ func TestRoute(t *testing.T) {
 			t.Errorf("route(%d) = %q, want %q", tc.score, got, tc.want)
 		}
 	}
+}
+
+func TestFinishRefusesASymlinkedParentOfPublishDir(t *testing.T) {
+	// Guards Finish without Cleanup: a link among the existing parents of publish_dir is
+	// refused before anything is created, and nothing is written behind it.
+	r := newRig(t)
+	r.mapIt()
+	dir, _ := r.workplace()
+	for _, n := range testDocs {
+		put(t, dir, ".planning/codebase/"+n+".md", doc(n)+"refreshed\n")
+	}
+	outside := t.TempDir()
+	must(t, os.Symlink(outside, filepath.Join(dir, "docs")))
+	j := bind(t, map[string]any{"publish_dir": "docs/deep/map"})
+	wantErr(t, j.Finish(context.Background(), r.env(), dir, scheduled.Verdict{Mode: "full"}), "is a symlink")
+	if entries, _ := os.ReadDir(outside); len(entries) != 0 {
+		t.Errorf("%d entries created behind the link", len(entries))
+	}
+}
+
+func TestGitErrorsNameTheSubcommandNotTheOptions(t *testing.T) {
+	// Guards the error label of Finish's hardened git calls: `git status`, not `git -c`.
+	failing := func(context.Context, time.Duration, string, ...string) (string, int, error) { return "", 7, nil }
+	env := scheduled.Env{Run: failing}
+	err := bind(t, small).Finish(context.Background(), env, t.TempDir(), scheduled.Verdict{})
+	wantErr(t, err, "git status: exit code 7")
 }

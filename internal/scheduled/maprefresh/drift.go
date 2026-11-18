@@ -42,14 +42,23 @@ const gitTimeout = 2 * time.Minute
 // subcommand and the exit code, never stderr or a path of this host.
 func git(ctx context.Context, run workplace.Runner, dir string, timeout time.Duration, args ...string) (string, error) {
 	full := append([]string{"-C", dir, "--literal-pathspecs", "--no-optional-locks"}, args...)
+	sub := subcommand(args)
 	out, code, err := run(ctx, timeout, "git", full...)
 	if err != nil {
-		return "", fmt.Errorf("git %s: %s", args[0], strings.ReplaceAll(cause(err).Error(), dir, "<repo>"))
+		return "", fmt.Errorf("git %s: %s", sub, strings.ReplaceAll(cause(err).Error(), dir, "<repo>"))
 	}
 	if code != 0 {
-		return "", fmt.Errorf("git %s: exit code %d", args[0], code)
+		return "", fmt.Errorf("git %s: exit code %d", sub, code)
 	}
 	return out, nil
+}
+
+// subcommand is the git subcommand of args, after any leading `-c <key=value>` pairs.
+func subcommand(args []string) string {
+	for len(args) > 2 && args[0] == "-c" {
+		args = args[2:]
+	}
+	return args[0]
 }
 
 // nul splits the -z output of git into its non-empty fields.
