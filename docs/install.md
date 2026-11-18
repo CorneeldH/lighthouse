@@ -424,7 +424,7 @@ anchor = "2026-10-12"   # weeks-th week after it count (a week runs Monday to Su
 
 An invalid block makes the repository's config invalid, like any other config error. This release
 validates the block but registers no job yet; until `map-refresh` and `reflect` arrive, a schedule
-makes every tick report `lighthouse: <repo> scheduled:<name>:<slot>: no job <job>` (a line, not an
+makes the tick report, at each gather of the repo, `lighthouse: <repo> scheduled:<name>:<slot>: no job <job>` (a line, not an
 error: the tick still exits 0 and saves its state) and start nothing, so leave the block out for now.
 
 A scheduled run ends in a pull request that the tick merges itself once it is green. The target

@@ -23,7 +23,8 @@ type Remote interface {
 	Push(ctx context.Context, dir, commit, branch string) error
 }
 
-// remoteTimeout bounds one git call of the remote.
+// remoteTimeout bounds one git call of the remote. It is a var only so a test can shorten it;
+// nothing else assigns it.
 var remoteTimeout = 5 * time.Minute
 
 // gitHardening are the config options every git call of the remote starts with: no setting of the

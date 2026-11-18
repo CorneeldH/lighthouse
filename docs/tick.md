@@ -372,7 +372,7 @@ beëindigt ook wat een klare claude achterliet, zoals een dev-server (zie [workp
 Naast issue-runs start de tick runs op een vast schema, zonder issue: een *geplande run* (#121). Het
 ontwerp staat in [de spec](developer/planning/specs/2026-11-16-issue-121-geplande-runs-design.md).
 Deze release legt het run-model, de planner en de afloop neer; de jobs zelf (`map-refresh` en
-`reflect`) komen in een volgende release. Tot dan geeft een `[[schedule]]`-blok elke tick
+`reflect`) komen in een volgende release. Tot dan geeft een `[[schedule]]`-blok bij elke gather van de repo
 `lighthouse: <repo> scheduled:<naam>:<slot>: no job <job>`. Dat is een regel, geen fout: de tick
 eindigt met exitcode 0, bewaart zijn tick-state en start niets.
 
