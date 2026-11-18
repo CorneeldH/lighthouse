@@ -21,7 +21,8 @@
 - Een cachefout is nooit fataal; één regel in de log per proces.
 - Code, namen, commentaar en foutmeldingen Engels; plan, commits, PR en comments Nederlands.
 - Elke commit groen (`[test_gate] command`), nooit `--no-verify`. `/lighthouse-go-standard` en `/lighthouse-test-standard` gelden.
-- De PR schrijft `Refs #395 — <reden>`, niet `Closes`. Eén fragment in `changelog.d/`.
+- De PR schrijft `Refs #395 — <reden>`, niet `Closes`. Eén fragment in `changelog.d/`: het `changelog.d/issue-395-forge-rest.md` dat `/lighthouse-write-pr` in Task 1 schrijft; Task 10 past dat bestand aan.
+- Alles wat Task 1 en Task 11 tegen GitHub meten, draait met het token van de controller, niet met de credential van `gh`: zet het in elke shell vooraf met `set -a; . "$HOME/.config/lighthouse/forge.env"; set +a` (dan gebruikt `gh` `GH_TOKEN`). Geeft een probe met dat token 401/403, dan **STOP en meld het**: de controller kan dat endpoint dan niet.
 
 ## Besluiten van dit plan (de spec laat ze aan de bouwer)
 
@@ -64,22 +65,22 @@ gh api "users/CorneeldH/projectsV2/2/items?per_page=100&q=is:archived" --paginat
 
 Zet het item terug (`gh project item-archive 2 --owner CorneeldH --id <PVTI_…> --undo`) en controleer dat het weer in de gewone lijst staat. Noteer: pad **A** (gewone lijst geeft het, met `archived_at`), **A′** (alleen `q=is:archived`) of **B** (geen van beide).
 
-- [ ] **Step 3: Read-after-write.** Op hetzelfde Done-item: lees de lijst met ETag (`gh api -i …/items?per_page=100&fields=428493778`), zet Priority via `gh api -X PATCH users/CorneeldH/projectsV2/2/items/<numeriek id> --input -` met `{"fields":[{"id":428493778,"value":"321d79fc"}]}`, lees direct daarna de lijst met `-H 'If-None-Match: <oude etag>'` en `GET …/items/<id>?fields=428493778`. Zet Priority terug. Noteer per lezing: status (200/304) en of de nieuwe waarde zichtbaar is.
+- [ ] **Step 3: Read-after-write.** Op een Done-item dat op **pagina 1** van de lijst staat (controleer met `--jq '.[].node_id'` op de URL hieronder; kies anders een ander item): lees de lijst met ETag (`gh api -i …/items?per_page=100&fields=428493778`), zet Priority via `gh api -X PATCH users/CorneeldH/projectsV2/2/items/<numeriek id> --input -` met `{"fields":[{"id":428493778,"value":"321d79fc"}]}`, lees direct daarna de lijst met `-H 'If-None-Match: <oude etag>'` en `GET …/items/<id>?fields=428493778`. Zet Priority terug. Noteer per lezing: status (200/304) en of de nieuwe waarde zichtbaar is.
 
 - [ ] **Step 4: Blokkades.** Zoek een issue met `issue_dependencies_summary.total_blocked_by > blocked_by` (dus met een gesloten blokkade) in de lijst. Lees `repos/CorneeldH/lighthouse/issues/<n>/dependencies/blocked_by`. Noteer of gesloten blokkades erin staan.
 
-- [ ] **Step 5: Check-rollup op een echte PR.** Push deze branch, open een draft-PR via `/lighthouse-write-pr` (`Refs #395 — …`), en push daarna een lege commit (`git commit --allow-empty`). Sample vanaf de push elke 10 s, tot alle checks klaar zijn, voor de nieuwe `head.sha`:
+- [ ] **Step 5: Check-rollup op een echte PR.** CI draait alleen op `pull_request` (`.github/workflows/ci.yml`), dus de meting vraagt een PR. Controleer eerst dat de controller geen open run op #395 heeft (`GET /api/runs` van de server, zie `docs/install.md`); is er een, **STOP en meld het**: de dispatcher neemt de PR van deze branch dan mee in zijn beslissingen. Push deze branch en open een **gewone** PR (geen draft: `lighthouse forge pr create` kent geen `--draft`) via `/lighthouse-write-pr`, met `Refs #395 — werk in uitvoering, zie het plan`. Die skill schrijft ook `changelog.d/issue-395-forge-rest.md`; Task 10 werkt dat bestand bij. Noteer het PR-nummer in het notitiebestand. Push daarna een lege commit (`git commit --allow-empty`). Sample vanaf de push elke 10 s, tot alle checks klaar zijn, voor de nieuwe `head.sha`:
 
 ```bash
 gh api graphql -f query='query{repository(owner:"CorneeldH",name:"lighthouse"){pullRequest(number:<n>){commits(last:1){nodes{commit{statusCheckRollup{state}}}}}}}' --jq '..|.state?|strings'
 gh api "repos/CorneeldH/lighthouse/commits/<sha>/check-runs?per_page=100" --jq '[.check_runs[]|{name,status,conclusion}]'
-gh api "repos/CorneeldH/lighthouse/commits/<sha>/status" --jq '{state,total_count}'
+gh api "repos/CorneeldH/lighthouse/commits/<sha>/status" --jq '{total_count,statuses:[.statuses[].state]}'
 gh api "repos/CorneeldH/lighthouse/commits/<sha>/check-suites?per_page=100" --jq '[.check_suites[]|{app:.app.slug,status,conclusion,latest_check_runs_count}]'
 ```
 
-Pas de kandidaatregel (Besluiten) met de hand toe op elk sample en zet hem naast `statusCheckRollup.state`. Let vooral op de samples waarin `changes`, `changelog` en `secret-scan` al klaar zijn en de jobs met `needs: changes` nog geen run hebben.
+Pas de kandidaatregel (Besluiten) met de hand toe op elk sample en zet hem naast `statusCheckRollup.state`. De regel leest de losse `statuses[]`, nooit de bovenste `state` van `…/status`: zonder enige status geeft GitHub daar `"pending"` met `total_count: 0` (gezien op de heads van #410–#412). Let vooral op de samples waarin `changes`, `changelog` en `secret-scan` al klaar zijn en de jobs met `needs: changes` nog geen run hebben.
 
-- [ ] **Step 6: Beslis.** Schrijf in het notitiebestand: de tabel van Step 5, de gekozen regel (de kandidaat of een aangepaste), en het pad van Step 2. **STOP en meld het aan de gebruiker** als de regel in één sample `SUCCESS` geeft waar GraphQL `PENDING`/`EXPECTED` gaf: dan gaat de controller niet op REST. Wijkt de regel alleen op een andere manier af (bijvoorbeeld `PENDING` waar GraphQL `SUCCESS` al gaf), dan is dat fail-closed en mag het, met die afwijking in het notitiebestand.
+- [ ] **Step 6: Beslis.** Schrijf in het notitiebestand: de tabel van Step 5, de gekozen regel (de kandidaat of een aangepaste), en het pad van Step 2. **STOP en meld het aan de gebruiker** als de regel in één sample `SUCCESS` geeft waar GraphQL `PENDING`/`EXPECTED` gaf: dan gaat de controller niet op REST. **STOP en meld het** ook als de regel in de laatste samples, nadat alle checks klaar zijn, iets anders geeft dan `statusCheckRollup.state` (bijvoorbeeld `PENDING` waar GraphQL `SUCCESS` geeft): dan merget de controller nooit meer. Alleen in samples waarin nog een check loopt of moet starten, mag de regel `PENDING` geven waar GraphQL al `SUCCESS` gaf; dat is fail-closed en gaat met die afwijking in het notitiebestand.
 
 - [ ] **Step 7: Post de nulmeting** als comment op #395, via REST: `gh api repos/CorneeldH/lighthouse/issues/395/comments -F body=@<bestand>`.
 
@@ -153,11 +154,11 @@ git commit -m "docs(plan): verificaties en nulmeting van de REST-forge (#395)"
   - `TestStoreGetTouches`: `Get` zet `used_at` op nu.
   - `TestStoreWrongSchemaRecreates`: een bestand met een tabel `entries(x)` wordt bij `Open` vervangen; `Put`/`Get` werken daarna.
   - `TestDefaultPath`: tabel — absolute `XDG_STATE_HOME` → `<xdg>/lighthouse/forge-cache.db`; relatieve `XDG_STATE_HOME` en absolute `HOME` → `<home>/.local/state/lighthouse/forge-cache.db`; beide leeg → `""`.
-  - In `internal/cli/forges_test.go`: `TestForgeOpenerPassesCache` — een opener met `XDG_STATE_HOME` op `t.TempDir()` geeft `forge.Config.Cache != nil` aan `open` door; zonder absolute `HOME`/`XDG_STATE_HOME` is het nil.
+  - In `internal/cli/forges_test.go`: `TestForgeOpenerPassesCache` — een opener met `XDG_STATE_HOME` op `t.TempDir()` geeft `forge.Config.Cache != nil` aan `open` door; zonder absolute `HOME`/`XDG_STATE_HOME` is het nil. `TestForgeOpenerOpensCacheLazily` — `newForgeOpener` zelf maakt geen bestand onder `XDG_STATE_HOME`; pas de eerste `forRepo` voor github doet dat.
 
 - [ ] **Step 2: Run** `go test ./internal/forgecache ./internal/cli -run 'TestStore|TestDefaultPath|TestForgeOpenerPassesCache' -race`. Expected: FAIL.
 
-- [ ] **Step 3: Implement.** DSN zoals `internal/store` (`busy_timeout(5000)`, WAL), maar zonder migraties en zonder `refuseTooNew`. `newForgeOpener` roept `forgecache.OpenDefault(getenv, os.Stderr)` één keer aan; `forRepo` zet `cfg.Cache` en `cfg.CacheLog = os.Stderr` alleen voor kind `""`/`"github"`.
+- [ ] **Step 3: Implement.** DSN zoals `internal/store` (`busy_timeout(5000)`, WAL), maar zonder migraties en zonder `refuseTooNew`. `forgeOpener` opent de opslag lui: de eerste `forRepo` voor github roept `forgecache.OpenDefault(getenv, os.Stderr)` aan, onder een `sync.Once`, zodat een opener die een test met `os.Getenv` bouwt (`newDefaultForgeOpener`, `forgecmd.go:53`) niets in de echte state-dir schrijft; `forRepo` zet `cfg.Cache` en `cfg.CacheLog = os.Stderr` alleen voor kind `""`/`"github"`.
 
 - [ ] **Step 4: Run** `go test ./internal/forgecache ./internal/cli ./internal/prbody -race`. Expected: PASS.
 
@@ -177,7 +178,7 @@ git commit -m "docs(plan): verificaties en nulmeting van de REST-forge (#395)"
 - [ ] **Step 1: Write the failing tests:** `TestLoadProjectOwner` (repoconfig: `project_owner = "acme"` geeft `Board.ProjectOwner == "acme"`; zonder sleutel `""`); in config: `project_owner` bij kind gitlab geeft een fout met `forge.board.project_owner`; een niet-string geeft een fout met de sleutelnaam; `IsKnownKey("forge.board.project_owner")` is waar.
 - [ ] **Step 2: Run** `go test ./internal/config ./internal/repoconfig -race`. Expected: FAIL.
 - [ ] **Step 3: Implement** zoals `priority_field_id` (optioneel) gelezen wordt.
-- [ ] **Step 4: Run** `go test ./internal/config ./internal/repoconfig -race` en de pytest-snapshot als die nog bestaat (`uv run pytest -q tests/pack -k config`). Expected: PASS.
+- [ ] **Step 4:** Voeg een configfixture onder `tests/pack/fixtures/config/` toe die `forge.board.project_owner` vraagt (`tests/pack/test_config_fixtures.py::test_fixtures_cover_every_key` eist dat). **Run** `go test ./internal/config ./internal/repoconfig -race` en `uv run pytest -q tests/pack -k config tests/test_site_config.py`. Expected: PASS.
 - [ ] **Step 5: Commit** `feat(config): optionele [forge.board] project_owner (#395)`
 
 ---
@@ -240,7 +241,7 @@ git commit -m "docs(plan): verificaties en nulmeting van de REST-forge (#395)"
   - `type checkRun struct{ Status, Conclusion string }`, `type commitStatus struct{ State string }`, `type checkSuite struct{ Status string; Runs int; App string }`
   - `func rollup(runs []checkRun, statuses []commitStatus, suites []checkSuite) string`
   - `func (c *GitHub) checks(ctx context.Context, repo, sha string) (string, error)` — leest de drie lijsten volledig (`per_page=100`, `Link` volgen, aantal tegen `total_count`; te weinig is een fout)
-- Fake: `pulls?head=o:<branch>&state=all` serveert `Branches[<branch>]` vertaald, en telt ook `Count("/repos/{o}/{n}/pulls?head=<branch>")`. `pulls/{n}` zoekt eerst in `Pulls`, dan in de PR-nodes van `Branches` en `BoardNodes`. `statusCheckRollup.state` per `headRefOid` wordt: geen → geen runs, geen statussen, geen suites; `SUCCESS` → één run `completed/success` + suite `completed`; `FAILURE` → run `completed/failure`; `ERROR` → status `error`; `PENDING`/`EXPECTED` → run `in_progress` + suite `in_progress` met 1 run.
+- Fake: `pulls?head=o:<branch>&state=all` serveert `Branches[<branch>]` vertaald, en telt ook `Count("/repos/{o}/{n}/pulls?head=<branch>")`. `pulls/{n}` zoekt eerst in `Pulls`, dan in de PR-nodes van `Branches` en `BoardNodes`. `statusCheckRollup.state` per `headRefOid` wordt: geen → geen runs, geen statussen, geen suites; `SUCCESS` → één run `completed/success` + suite `completed`; `FAILURE` → run `completed/failure`; `ERROR` → status `error`; `PENDING`/`EXPECTED` → run `in_progress` + suite `in_progress` met 1 run. `GET …/commits/{sha}/status` zonder statussen geeft, zoals GitHub, `{"state":"pending","total_count":0,"statuses":[]}`; `checks` leest alleen `statuses[]` en `total_count`, nooit de bovenste `state`.
 
 - [ ] **Step 1: Write the failing tests** in `pr_test.go`:
 
@@ -280,13 +281,15 @@ func TestRollup(t *testing.T) {
   Pas de tabel aan als Task 1 een andere regel koos; de rijen `stale`, `unknown conclusion` en `actions suite in_progress, runs all success` blijven `PENDING`.
   - `TestRestPullToPR`: tabel over open, gesloten, gemerged, draft, head.repo null (`CrossRepo`), head.repo andere naam (`CrossRepo`); `MergedAt`/`ClosedAt` nul als null.
   - `TestMergeable`: `true`/`false`/nil.
-  - `TestChecksIncompleteListFails`: de fake geeft `total_count: 3` met 2 runs → fout.
+  - `TestChecksIncompleteListFails`: tabel over de drie lijsten — check-runs, statussen en suites — elk met `total_count: 3` en 2 regels, waarbij de ontbrekende regel een `failure` (run, status) of een `in_progress` Actions-suite is → fout, nooit `SUCCESS`.
+  - `TestChecksFollowPages`: per lijst 150 regels over twee pagina's, één `failure` op pagina 2 → `FAILURE`.
+  - `TestChecksNoStatusesIsSuccess`: groene runs, een `completed` suite en `/status` met `state: "pending"`, `total_count: 0` → `SUCCESS`.
   - `TestBranchPRsREST`: één open (`statusCheckRollup SUCCESS`, `mergeable CONFLICTING`) en één gemergede PR op een branch → twee PR's, `Closes == false`; open: `Checks == "SUCCESS"`, `Mergeable == "CONFLICTING"`; gemerged: `Checks == ""`, `Mergeable == "MERGEABLE"`, zonder request naar zijn checks (`Count("/repos/o/r/commits/<sha>/check-runs") == 0`).
   - `TestBranchPRsEscapesBranch`: branch `fix/a b` → de fake krijgt `head=o:fix/a b` gedecodeerd.
   - `TestBranchPRsFollowsPages`: 150 PR's op één branch → 150 PR's.
 - [ ] **Step 2: Run** `go test ./internal/forge/... -run 'TestRollup|TestRestPull|TestMergeable|TestChecks|TestBranchPRs' -race`. Expected: FAIL.
 - [ ] **Step 3: Implement.** Faalconclusies: `failure`, `timed_out`, `cancelled`, `action_required`, `startup_failure`. Succesconclusies: `success`, `neutral`, `skipped`. Oude `TestBranchPRs*` in `board_test.go` en de GraphQL-route `BranchPRs` van de fake gaan weg.
-- [ ] **Step 4: Run** `go test ./internal/forge/... ./internal/dispatch/... ./internal/cli/... -race`. Expected: PASS (de forgesuite-case `PRFields` slaagt met `ChecksOnClosedPRs() == false`).
+- [ ] **Step 4: Run** `go test ./internal/forge/... ./internal/dispatch/... ./internal/cli/... -race`. Expected: PASS (de forgesuite-case `PRFields` slaagt met `ChecksOnClosedPRs() == false`). Eén verwachte, door de spec (§5) bedoelde verandering in de beweringen: de gesloten PR 29 van `internal/cli/gather_test.go:56-59` krijgt `Checks ""` en `Mergeable "UNKNOWN"`. Pas daarom `internal/dispatch/testdata/snapshot.json` aan met `go test ./internal/cli -run TestGatherCommandMatchesFixture -update`, en controleer dat de diff alleen die twee velden van PR 29 raakt. Elke andere diff is een fout in de code, geen fixture om bij te werken.
 - [ ] **Step 5: Commit** `feat(forge): BranchPRs en PR-checks via REST (#395)`
 
 ---
@@ -298,8 +301,10 @@ func TestRollup(t *testing.T) {
 - Modify: `internal/forge/project.go` (`restItem`, `listItems`, de tabel)
 - Modify: `internal/forge/forgetest/server_project.go` (`GET …/items`, `…/items/{id}`; `dependencies/blocked_by` afgeleid uit `BoardNodes`)
 - Modify: `internal/forge/board_test.go`, `internal/forge/forge_test.go` (GraphQL-tests van `BoardItems` herschrijven naar REST)
-- Modify: de testboards zonder `ProjectNumber` (`ProjectNumber: 1`) in `internal/forge`, `internal/dispatch`, `internal/cli`, `internal/boardstart`
-- Modify: `internal/cli/tick_test.go:331,345,461,1784`, `internal/cli/run_test.go:168` (`Count("Board")` → `Count("/users/o/projectsV2/1/items")`; `GraphQLErrors`/`FailOps["Board"]` → `Fail["GET /users/o/projectsV2/1/items"] = 502`)
+- Modify: de testboards zonder `ProjectNumber` (`ProjectNumber: 1`) in `internal/forge`, `internal/dispatch`, `internal/cli`, `internal/boardstart`; en `srv.ProjectID` gelijk aan de `project_id` van het testboard waar een test dat nog niet zet (de controle van Task 5)
+- Modify: `internal/cli/tick_test.go:331,345,461,1784`, `internal/cli/run_test.go:168` (`Count("Board")` → `Count("/users/o/projectsV2/<n>/items")`; `GraphQLErrors`/`FailOps["Board"]` → `Fail["GET /users/o/projectsV2/<n>/items"] = 502`). `<n>` is het `project_number` van het testboard: `3` in `tick_test.go` (`completeRepo`), anders `1`
+- Modify: `internal/forge/forgetest/server.go`: `FailPage map[string]int` (sleutel `"GET <pad>?page=<p>"`), omdat `Fail`/`FailFirst` op pad zonder query sleutelen en pagina 2 dus niet raken
+- Modify (door de spec bedoeld, §3): `internal/dispatch/gather_test.go:147-176` (`TestPrepareFiltersBoard`) en `internal/cli/gather_test.go:45-49` + `internal/dispatch/testdata/snapshot.json:51`: de blokkade #5 staat niet op het board, dus `MergedPR`/`merged_pr` wordt `false`
 
 **Interfaces:**
 - Consumes: `project`, `itemsURL` (Task 5); `restPull.pr`, `enrich` (Task 6)
@@ -317,14 +322,14 @@ func TestRollup(t *testing.T) {
   - `TestBoardItemsNonIssueContent`: draft-item zonder content → alleen `ItemID` en velden.
   - `TestBoardItemsSkipsArchived`: een node met `isArchived: true` (fake zet `archived_at`) staat niet in het resultaat.
   - `TestBoardItemsFollowsPages`: 150 nodes → 150 items, `Count("/users/o/projectsV2/1/items") == 2`.
-  - `TestBoardItemsLaterPageFails`: `FailFirst` op pagina 2 → fout en nil.
+  - `TestBoardItemsLaterPageFails`: `FailPage["GET /users/o/projectsV2/1/items?page=2"] = 502` → fout en nil, en pagina 1 is wel gelezen (`Count` van de lijst is 2).
   - `TestBoardItemsBlockers`: item met twee blokkades, één op het board met een gemergede linked PR (`MergedPR == true`), één buiten het board (`MergedPR == false`); `State` in hoofdletters; een item met `total_blocked_by == 0` doet geen request naar `…/dependencies/blocked_by`.
   - `TestBoardItemsOtherRepoNotVisible`: een item van `x/y` waarvan `pulls/{n}` en `blocked_by` 404 geven → `BoardItems` slaagt, dat item heeft lege `BlockedBy` en PR `Mergeable "UNKNOWN"`, `Checks ""`. Zelfde opzet met het item in `o/r` → fout.
   - `TestBoardItems304FirstOfTwoPages`: `Config.Cache = forge.NewMemoryCache()`, 150 nodes; twee keer `BoardItems` → beide keren 150 items; de tweede doorloop kreeg op beide pagina's 304 (fake telt 304's: `Server.NotModified(key)`).
   - `TestBoardItemsSecondClientSameStore`: twee clients met dezelfde `MemoryCache`, geen wijziging → de tweede krijgt alleen 304's en `reflect.DeepEqual` op de items.
 - [ ] **Step 2: Run** `go test ./internal/forge/... -run TestBoardItems -race`. Expected: FAIL.
 - [ ] **Step 3: Implement.** `BoardItems` = `project` → `listItems` → index `issueKey → linked PR's` over alle items (ook archived) voor `MergedPR` → per niet-archived item `boardItem`, `blockedBy` (alleen bij `total_blocked_by > 0`), `pr(true)` + `enrich` per linked PR. Een 403/404 op een extra call wordt alleen genegeerd als het item een andere repo dan `c.Repo` heeft. De fake vertaalt een node naar een REST-item: `id = 5000 + index`, `node_id = node["id"]`, velden met `{"id", "name": {"raw", "html"}}`, het linked-PR-veld uit `closedByPullRequestsReferences.nodes`, `repository_url = <srv>/repos/<nameWithOwner>`, `issue_dependencies_summary` uit `blockedBy.nodes`. `GET …/dependencies/blocked_by` serveert `BlockedBy[n]` als die gezet is, anders de vertaalde `blockedBy.nodes` van de node met dat nummer in die repo.
-- [ ] **Step 4: Run** `go test ./... -race`. Expected: PASS. Faalt een test in `dispatch`/`cli`/`boardstart`, pas dan alleen de fixture-mechaniek aan (pad, `Fail`, `ProjectNumber`), nooit een bewering over het gedrag van de dispatcher.
+- [ ] **Step 4: Run** `go test ./... -race`. Expected: PASS. Faalt een test in `dispatch`/`cli`/`boardstart`, pas dan alleen de fixture-mechaniek aan (pad, `Fail`, `ProjectNumber`, `srv.ProjectID`), nooit een bewering over het gedrag van de dispatcher. De enige uitzondering is de `MergedPR` van de blokkade buiten het board (Files); werk `snapshot.json` bij met `go test ./internal/cli -run TestGatherCommandMatchesFixture -update` en controleer dat de diff alleen `merged_pr` van #5 raakt.
 - [ ] **Step 5: Commit** `feat(forge): BoardItems via REST met ETag-cache (#395)`
 
 ---
@@ -351,7 +356,7 @@ Het pad komt uit het notitiebestand van Task 1.
   - `TestIssueItemNotFound`: tabel — 404, 410, een 200 met `pull_request`, een 200 met een andere `repository_url` → `errors.Is(err, ErrIssueNotFound)`.
   - `TestIssueItemUsesKnownItemID`: na `BoardItems` leest `IssueItem(7)` alleen `GET …/items/<id>` (`Count` van de lijst blijft gelijk).
 - [ ] **Step 2: Run** `go test ./internal/forge/... -run TestIssueItem -race`. Expected: FAIL.
-- [ ] **Step 3: Implement.** Volgorde: tabel kent `(c.Repo, n)` → `issueItemByID`; anders `listItems` (A′: daarna de lijst met `q=is:archived`), zoek op `Repo == c.Repo && Issue == n`; niet gevonden → `GET repos/{repo}/issues/{n}` voor de vier niet-bestaan-gevallen. Een 404 op `issueItemByID` (item weg van het board) valt terug op de lijst. Verwijder `IssueItemsQuery`, `itemNode`, `fieldValuesSelection` en `graphqlErrors.notFound` en de fake-route `IssueItems`.
+- [ ] **Step 3: Implement.** Volgorde: tabel kent `(c.Repo, n)` → `issueItemByID`; anders `listItems` (A′: daarna de lijst met `q=is:archived`), zoek op `Repo == c.Repo && Issue == n`; niet gevonden → `GET repos/{repo}/issues/{n}` voor de vier niet-bestaan-gevallen. Een 404 op `issueItemByID` (item weg van het board) valt terug op de lijst. Verwijder `IssueItemsQuery`, `graphqlErrors.notFound` en de fake-route `IssueItems`. `itemNode` en `fieldValuesSelection` blijven tot Task 10: `BoardQuery` gebruikt ze nog.
 - [ ] **Step 4: Run** `go test ./... -race`. Expected: PASS.
 - [ ] **Step 5: Commit** `feat(forge): IssueItem via de REST-boardlijst (#395)`
 
@@ -369,7 +374,7 @@ Het pad komt uit het notitiebestand van Task 1.
 - Modify: `internal/forge/board.go` (`SetStatus`, `AddToBoard`; `setOption`, `addToBoard` weg)
 - Modify: `internal/forge/github.go`, `internal/forge/write_issue.go` (`nodeIDs`, `remember`, `nodeID` weg)
 - Modify: `internal/forge/forgetest/server_project.go` (`POST …/items`, `PATCH …/items/{id}`), `internal/forge/forgetest/server_write.go` indien de schrijfroutes daar horen
-- Modify: `internal/forge/forge_test.go` (de drie `TestAddToBoard…NodeID`-tests weg; nieuwe tests hieronder), `internal/cli/tick_test.go:1258-1281` (`FailOps["SetStatus"]` → `Fail["PATCH /users/o/projectsV2/1/items/<id>"]`)
+- Modify: `internal/forge/forge_test.go` (de drie `TestAddToBoard…NodeID`-tests weg; nieuwe tests hieronder), `internal/cli/tick_test.go:1258-1281` (`FailOps["SetStatus"]` → `Fail["PATCH /users/o/projectsV2/3/items/<id>"]`: `completeRepo` heeft `project_number = 3`)
 
 **Interfaces:**
 - Consumes: `project`, de tabel, `listItems` (Task 7)
@@ -393,16 +398,18 @@ Het pad komt uit het notitiebestand van Task 1.
 ### Task 10: GraphQL weg van de controllerpaden, docs en changelog
 
 **Files:**
-- Modify: `internal/forge/board.go` (`BoardQuery`, `BranchPRsQuery`, `AddToBoardMutation`, `SetStatusMutation`, `prNode`, `prFields`, `itemNode` (pad A), `repoRef` als ongebruikt)
-- Modify: `internal/forge/forgetest/server.go` (GraphQL-routes `Board`, `BranchPRs`, `AddToBoard`, `SetStatus`, en `IssueItems` in pad A; velden `BoardNotAProject`, `BoardStuckCursor`, `FailOps` als ongebruikt; documentatie van `BoardNodes`/`Branches`: "invoer in GraphQL-vorm, geserveerd als REST")
+- Modify: `internal/forge/board.go` (`BoardQuery`, `BranchPRsQuery`, `AddToBoardMutation`, `SetStatusMutation`, `prFields`; in pad A ook `itemNode`, `fieldValuesSelection`, `prNode` en `repoRef`)
+- Modify: `internal/forge/forgetest/server.go` (GraphQL-routes `Board`, `BranchPRs`, `AddToBoard`, `SetStatus`; velden `BoardNotAProject`, `BoardStuckCursor`; in pad A ook `FailOps`; documentatie van `BoardNodes`/`Branches`: "invoer in GraphQL-vorm, geserveerd als REST")
 - Modify: `docs/tick.md` (de plekken die GraphQL noemen bij het lezen van het board)
-- Create: `changelog.d/feat-forge-rest.md`
+- Modify: `changelog.d/issue-395-forge-rest.md` (het fragment dat `/lighthouse-write-pr` in Task 1 schreef; geen tweede fragment)
+
+**Pad B:** `IssueItem` blijft op GraphQL. Dan blijven `IssueItemsQuery`, `itemNode`, `fieldValuesSelection`, `prNode`, `repoRef` (`itemNode` gebruikt ze, `board.go:241-265`), de fake-route `IssueItems` en `FailOps` (de foutentests van `IssueItem` gebruiken het) staan. `golangci-lint` beslist wat verder ongebruikt is.
 - Test: `internal/forge/board_test.go`
 
 - [ ] **Step 1: Write the failing test** `TestControllerPathsUseNoGraphQL`: één client tegen `forgetest` met een item, een open PR en een branch-PR; roep `BoardItems`, `BranchPRs`, `SetStatus`, `AddToBoard` (en in pad A `IssueItem`) aan; daarna `srv.Count("/graphql") == 0`. Daarna `Planning` → `Count("/graphql") > 0` (Planning mag het nog).
 - [ ] **Step 2: Run** `go test ./internal/forge -run TestControllerPathsUseNoGraphQL -race`. Expected: PASS al na Task 9; bevestig dat hij faalt als je in `BranchPRs` tijdelijk `c.graphql` aanroept (mutatiecheck van `/lighthouse-test-standard`), en draai die wijziging terug.
 - [ ] **Step 3: Verwijder** de queries, types en fake-routes hierboven. Zoek eerst `grep -rn "forge\.\(BoardQuery\|BranchPRsQuery\|IssueItemsQuery\|AddToBoardMutation\|SetStatusMutation\)" .` (was leeg op 2026-11-18). `golangci-lint run ./...` wijst wat verder ongebruikt is.
-- [ ] **Step 4:** `docs/tick.md` bijwerken: het board, de PR's en de blokkades komen via REST met conditionele requests; alleen `Planning` (tabblad Prioritering) en, in pad B, `IssueItem` gebruiken nog GraphQL. Changelog-fragment:
+- [ ] **Step 4:** `docs/tick.md` bijwerken: het board, de PR's en de blokkades komen via REST met conditionele requests; alleen `Planning` (tabblad Prioritering) en, in pad B, `IssueItem` gebruiken nog GraphQL. Vervang de inhoud van `changelog.d/issue-395-forge-rest.md` door:
 
 ```markdown
 ---
@@ -418,9 +425,9 @@ The controller reads and writes the GitHub board, pull requests and blockers thr
 
 ### Task 11: Meting na de ombouw en de PR
 
-- [ ] **Step 1:** Installeer de binary van deze branch op de controllerhost (`go install ./cmd/lighthouse`) en laat twee ticks lopen. Meet `X-RateLimit-Used` van `core` (`gh api rate_limit --jq .resources.core.used`) vóór en na een **volle** tick (eerste tick, lege cache: verwijder `forge-cache.db` vooraf) en een **rustige** tick (de tick erna, zonder wijziging). Meet ook de duur van beide ticks en `graphql.used` over dezelfde periode (verwacht: 0, behalve pad B of het Prioritering-tabblad).
+- [ ] **Step 1:** De geïnstalleerde `lighthouse` (`~/go/bin`) blijft onaangeroerd; nooit `go install` van deze branch. Bouw de branch naar een eigen pad: `go build -o "$HOME/.cache/lighthouse-395/lighthouse" ./cmd/lighthouse`. Stop de geplande tick (`systemctl --user stop lighthouse-tick.timer`; onder cron: zet de regel uit), zet het token van de controller (Global Constraints) en `XDG_RUNTIME_DIR` zoals de unit, en draai twee ticks met de hand met dat pad. Meet `core.used` (`gh api rate_limit --jq .resources.core.used`) vóór en na een **volle** tick (eerste tick, lege cache: verwijder `forge-cache.db` vooraf) en een **rustige** tick (de tick erna, zonder wijziging). Meet ook de duur van beide ticks en `graphql.used` over dezelfde periode (verwacht: 0, behalve pad B of het Prioritering-tabblad). Start daarna de timer weer (`systemctl --user start lighthouse-tick.timer`), controleer met `systemctl --user is-active lighthouse-tick.timer` dat hij loopt, en verwijder `$HOME/.cache/lighthouse-395/`.
 - [ ] **Step 2:** Post de meting als comment op #395 via `gh api repos/CorneeldH/lighthouse/issues/395/comments -F body=@<bestand>`. Duurt een volle tick langer dan 10 s, schrijf dan met `/lighthouse-write-issue` een issue voor concurrency.
-- [ ] **Step 3:** Zet de draft-PR van Task 1 klaar met `/lighthouse-write-pr` (`Refs #395 — <reden>`, met de rollup-tabel van Task 1 en de metingen) en haal hem uit draft.
+- [ ] **Step 3:** De PR uit Task 1 bestaat al; maak geen tweede. Schrijf de body volgens `/lighthouse-write-pr` (`Refs #395 — <reden>`, met de Evidence-tabel, de rollup-tabel van Task 1 en de metingen) naar een bestand, maar sla de stap `lighthouse forge pr create` van die skill over. Zet de body via REST: `gh api -X PATCH repos/CorneeldH/lighthouse/pulls/<n> -F body=@<bestand>`, en controleer met `gh api repos/CorneeldH/lighthouse/pulls/<n> --jq .body | head -3` dat de `Refs #395`-regel erin staat.
 
 ---
 
