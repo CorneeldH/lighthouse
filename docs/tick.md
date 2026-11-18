@@ -1,9 +1,3 @@
-Het run-model, de planner en de afloop zijn er; van de jobs is `map-refresh` er (zie
-[Job `map-refresh`](#job-map-refresh)), `reflect` komt in een volgende release. Een `[[schedule]]`-blok
-met een job zonder registratie geeft bij elke gather van de repo
-`lighthouse: <repo> scheduled:<naam>:<slot>: no job <job>`. Dat is een regel, geen fout: de tick
-eindigt met exitcode 0, bewaart zijn tick-state en start niets.
-
 # Tick
 
 `lighthouse tick` is de dispatcher-tick: een eigen proces dat een timer of cron periodiek start.
@@ -377,8 +371,9 @@ beëindigt ook wat een klare claude achterliet, zoals een dev-server (zie [workp
 
 Naast issue-runs start de tick runs op een vast schema, zonder issue: een *geplande run* (#121). Het
 ontwerp staat in [de spec](developer/planning/specs/2026-11-16-issue-121-geplande-runs-design.md).
-Deze release legt het run-model, de planner en de afloop neer; de jobs zelf (`map-refresh` en
-`reflect`) komen in een volgende release. Tot dan geeft een `[[schedule]]`-blok bij elke gather van de repo
+Het run-model, de planner en de afloop zijn er; van de jobs is `map-refresh` er (zie
+[Job `map-refresh`](#job-map-refresh)), `reflect` komt in een volgende release. Een `[[schedule]]`-blok
+met een job zonder registratie geeft bij elke gather van de repo
 `lighthouse: <repo> scheduled:<naam>:<slot>: no job <job>`. Dat is een regel, geen fout: de tick
 eindigt met exitcode 0, bewaart zijn tick-state en start niets.
 
