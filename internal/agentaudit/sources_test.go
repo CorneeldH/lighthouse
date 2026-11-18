@@ -111,8 +111,9 @@ func TestDefaultEnvMainRootFromWorktree(t *testing.T) {
 		t.Skip("no git")
 	}
 	hostless(t)
-	main := t.TempDir()
-	wt := filepath.Join(t.TempDir(), "wt")
+	// Resolved, as git prints them: on macOS the temp dir is /var/..., a link to /private/var/...
+	main := resolvedTempDir(t)
+	wt := filepath.Join(resolvedTempDir(t), "wt")
 	for _, args := range [][]string{
 		{"init", "-q", main},
 		{"-C", main, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "x"},
@@ -129,6 +130,16 @@ func TestDefaultEnvMainRootFromWorktree(t *testing.T) {
 	if env.Root != wt || env.MainRoot != main {
 		t.Errorf("Root %q, MainRoot %q; want %q and %q", env.Root, env.MainRoot, wt, main)
 	}
+}
+
+// resolvedTempDir is t.TempDir with its symlinks resolved.
+func resolvedTempDir(t *testing.T) string {
+	t.Helper()
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return dir
 }
 
 func TestCollectAttributesSources(t *testing.T) {
