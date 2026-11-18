@@ -1,3 +1,9 @@
+Het run-model, de planner en de afloop zijn er; van de jobs is `map-refresh` er (zie
+[Job `map-refresh`](#job-map-refresh)), `reflect` komt in een volgende release. Een `[[schedule]]`-blok
+met een job zonder registratie geeft bij elke gather van de repo
+`lighthouse: <repo> scheduled:<naam>:<slot>: no job <job>`. Dat is een regel, geen fout: de tick
+eindigt met exitcode 0, bewaart zijn tick-state en start niets.
+
 # Tick
 
 `lighthouse tick` is de dispatcher-tick: een eigen proces dat een timer of cron periodiek start.
@@ -452,6 +458,47 @@ lezen, zoals `gh`-`hosts.yml` en git-credentials.
 
 **Opruimen.** Een geplande werkplek zonder open run erop gaat in stap 10 geforceerd weg, ook als hij
 vuil of niet gepusht is; zie *Geforceerd opruimen* in [workplace.md](workplace.md#geforceerd-opruimen-121).
+
+## Job `map-refresh`
+
+De job ververst de codebase-kaart (de documenten die een map-commando als `/gsd-map-codebase`
+schrijft), alleen als de code genoeg bewogen is. Gedrag: `scripts/codebase_map_refresh.py` in
+personal_ai_agent. Het `[[schedule]]`-blok noemt `job = "map-refresh"`; alle `params` zijn optioneel.
+Een ongeldige waarde, een onbekende sleutel of een lege `documents` is een configfout:
+`lighthouse: <repo> scheduled:<naam>:<slot>: config: <fout>` bij elke tick, exitcode 1, geen run.
+
+| Param | Standaard |
+|---|---|
+| `command` | `/gsd-map-codebase` |
+| `fast_args` | `--fast --focus tech+arch` |
+| `map_dir` | `.planning/codebase` |
+| `publish_dir` | leeg (geen spiegel) |
+| `documents` | `STACK`, `INTEGRATIONS`, `ARCHITECTURE`, `STRUCTURE`, `CONVENTIONS`, `TESTING`, `CONCERNS` (bestand `<naam>.md`) |
+| `min_lines` | `20` |
+| `drift_paths` | `["src", "apps", "scripts", "deploy", "tests"]` |
+| `drift_low`, `drift_high`, `new_dir_weight` | `25`, `150`, `10` |
+| `tools` | `Read Write Glob Grep Bash Agent` (een string of een lijst) |
+| `max_runtime_fast`, `max_runtime_full` | `45m`, `120m` |
+
+**De poort.** Na een `git fetch origin <standaardbranch>` meet de poort op `origin/<standaardbranch>`:
+de basis is de laatste commit die `map_dir` raakte, de score is het aantal gewijzigde bestanden onder
+`drift_paths` sinds de basis plus `new_dir_weight` keer het aantal nieuwe mappen onder `drift_paths`.
+Onder `drift_low` is het `skip`; tot en met `drift_high` is het de snelle modus (`command` met
+`fast_args`, limiet `max_runtime_fast`); daarboven de volledige (limiet `max_runtime_full`). Is
+`map_dir` nog nooit gecommit, dan is het altijd de volledige modus. Een poortfout noemt het
+git-subcommando en de exitcode, nooit een pad van deze host.
+
+**Insluiting.** De run schrijft alleen onder `map_dir/` en `publish_dir/`. Voor de controle haalt
+`Cleanup` elke symlink in die mappen (en in hun bovenliggende mappen) weg met `Lstat` en `Remove`:
+een link wordt losgemaakt, nooit gevolgd, en `Check` en `Finish` lezen en schrijven nooit door een
+link.
+
+**Volledigheid en afronden.** `Check`: elk document uit `documents` bestaat onder `map_dir` als gewoon
+bestand met minstens `min_lines` regels; een ontbrekend, een te kort en een verwijderd document laten
+de run `failed` eindigen. `Finish`: is `map_dir` byte-gelijk aan HEAD, dan wordt `publish_dir` terug
+gezet en volgt geen PR (`done` zonder PR). Anders worden de documenten gekopieerd (geen symlink) naar
+`publish_dir`, met een `index.md` met modus, score, basiscommit en datum. Daarna volgen de
+secret-scan, de commit, de push en de PR zoals bij elke geplande run.
 
 ## Exitcodes
 
