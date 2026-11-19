@@ -202,7 +202,8 @@
                 "internal/prbody/form.go",
                 "internal/prbody/gate.go",
                 "internal/repoconfig/repoconfig.go",
-                "pack/core/skills/forge"
+                "pack/core/skills/forge",
+                "pack/core/workflows/unblock-dependents.yml"
               ]
             },
             {
