@@ -95,7 +95,7 @@ git commit -m "feat(store): migratie 0010 met gegevensmodel voor telemetrie (#37
 - [ ] **Step 1: Falende tests**
   - `TestTakeLinksTrajectory`: twee `Take`s voor `("owner/a", 7)` (`start:7` mode `start`, na `Release` met `handoff` `resume:7` mode `resume`, `Trigger: "handoff"`/`"answer"` volgens bestaande `claim`-helper) geven één rij in `trajectories` met `(owner/a, 7)` en beide runs dezelfde `trajectory_id`; `assignment = 'standard'`.
   - `TestTakeScheduledHasNoTrajectory`: geplande claim (zie `scheduled_test.go`) geeft `trajectory_id IS NULL` en een lege `trajectories`.
-  - `TestTakeRefusedLeavesNoTrajectory`: een geweigerde claim (`ErrClaimed`: tweede `Take` voor een issue met een open run, met een andere `TriggerKey`) laat geen extra rij in `trajectories` achter en de bestaande run houdt zijn `trajectory_id`.
+  - `TestTakeRefusedLeavesNoTrajectory`: een geweigerde claim (`ErrClaimed`: tweede `Take` voor een issue met een open run, met een andere `TriggerKey`) laat geen extra rij in `trajectories` achter en de bestaande run houdt zijn `trajectory_id`. Zaai de open run met directe SQL met `trajectory_id` NULL en een lege `trajectories`-tabel: dan faalt de test als de trajectory-insert buiten de transactie ontsnapt.
 
 - [ ] **Step 2: Draai en zie falen**
 
@@ -212,12 +212,12 @@ git commit -m "feat(telemetry): idempotente schrijffuncties voor sessie, inzet, 
 
 ```markdown
 ---
-type: feature
+type: added
 ---
-Gegevensmodel voor telemetrie in `lighthouse.db`: trajecten, sessies, inzet, verbruik en bevindingen, met idempotente schrijffuncties en een koppelregel voor interactieve sessies.
+The `lighthouse.db` database now holds a telemetry data model: trajectories, sessions, assignments, usage and findings, with idempotent writers and a linking rule for interactive sessions.
 ```
 
-Controleer het `type`-veld tegen `docs/releasing.md`; kies daar de geldige waarde.
+Het fragment is Engels (`docs/releasing.md`); `type` is een van added/changed/fixed/removed/internal.
 
 - [ ] **Step 3: Verifieer** — Run: `go test -race ./internal/store/... ./internal/runs/... ./internal/telemetry/... ./internal/cli/... ./internal/dispatch/...` en `go run ./cmd/lighthouse init --upgrade` (geen `pack/`-wijziging: verwacht `No changes.`). Expected: PASS en `No changes.`
 
