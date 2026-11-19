@@ -43,8 +43,8 @@ the issue by its head branch or by `Refs #<nr>` in its body?
 lighthouse forge issue changes <nr>
 ```
 
-It prints one object: the issue `state` (`open` or `closed`), `closer` (the number of the PR that
-closed it the last time, or `null`) and `changes`, the PRs around the issue, each with `number`,
+It prints one object: the issue `state` (`open` or `closed`), `closer` (the number of the PR of
+this repository that closed it the last time, else `null`) and `changes`, the PRs around the issue, each with `number`,
 `state` (`open`, `closed`, `merged`), `head_ref`, `cross_repo` (the head comes from a fork),
 `repo`, `body` and `closes` (`true` when it closes the issue with a closing keyword).
 
@@ -301,17 +301,13 @@ What counts is what **actually** closed the issue: `closer` from `lighthouse for
 Not the `changes` with `closes` `true`: those keep every merged PR with a closing keyword, also an
 earlier one that already led to a reopening, and also after a manual close.
 
-`closer` is a bare number. A PR in another repository that closed the issue would read as a PR
-of this repository, so check it before you trust it:
-
-```bash
-lighthouse forge pr view <pr> --field state
-```
+`closer` is only ever a PR of this repository: a PR in another repository that closed the issue
+reads as `null`, as a commit or a manual close does.
 
 | `closer` | What now |
 |---|---|
-| a number `<pr>`, and `pr view` prints `merged` | `<pr>` is the closing PR: on to C2 |
-| `null`, or `pr view` fails or prints anything but `merged` (a closer in another repository, a commit, a manual close) | report `closed without a closing PR — no after-merge check`, then step 6 (released issues) and *Close the milestone* |
+| a number `<pr>` | `<pr>` is the closing PR: on to C2 |
+| `null` (a closer in another repository, a commit, a manual close) | report `closed without a closing PR — no after-merge check`, then step 6 (released issues) and *Close the milestone* |
 
 ### C2. Measure the Evidence table again on a fresh default branch
 

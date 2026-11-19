@@ -82,7 +82,6 @@ deliberate non-closing form.
 - **Release flow (only if present).** Only when the repo has `scripts/release.py`; it uses `gh workflow run`,
   `gh run list` and `gh release view <version> --repo <forge.repo>`.
 - **`closer`** in `lighthouse forge issue changes` comes from the last closed event of the issue:
-  the pull request that closed it, else `null` (a commit, a manual close). It is a bare number;
-  a pull request in another repository would read as one in this repository, so check it with
-  `lighthouse forge pr view <pr> --field state`.
+  the pull request of this repository that closed it, else `null` (a commit, a manual close, a
+  pull request in another repository).
 - **Commit URL:** `https://github.com/<forge.repo>/commit/<sha>`, with the full hash.

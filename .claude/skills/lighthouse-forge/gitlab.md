@@ -127,9 +127,8 @@ Not applicable: the rtk proxy breaks only the `gh` CLI's JSON output, and no ste
   human.
 - **No release flow:** report `release: skipped — no release flow on GitLab`.
 - **`closer`** in `lighthouse forge issue changes` comes from the issue's
-  `resource_state_events`: the merge request of the last close, else `null` (a manual close, a
-  commit). It is a bare number; a merge request in another project would read as one in this
-  project, so check it with `lighthouse forge pr view <pr> --field state`.
+  `resource_state_events`: the merge request of this project behind the last close, else `null`
+  (a manual close, a commit, a merge request in another project).
 - **Commit URL:** `https://<forge.host, else gitlab.com>/<forge.repo>/-/commit/<sha>`, with the
   full hash.
 - **Group milestone.** `lighthouse forge milestone edit` refuses a group milestone (exit 1): close

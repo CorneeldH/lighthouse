@@ -262,16 +262,22 @@ def test_entry_c_measures_the_pr_that_actually_closed_the_issue():
         assert "closed without a closing PR — no after-merge check" in c1
 
 
-def test_entry_c_verifies_the_closer_in_this_repo():
-    """`closer` is a bare number: a closer in another repository would read as a PR here. C1
-    checks it with `pr view` before C2 measures it."""
+def test_entry_c_closer_is_only_a_pr_of_this_repo():
+    """`lighthouse forge issue changes` gives `closer` only for a PR of this repository (the forge
+    adapters return 0 for one elsewhere): a number goes straight to C2, and a closer in another
+    repository is in the `null` row. The forge reference says the same per forge."""
     for body in skill():
         c = _entry_c(body)
         c1 = c[c.index("### C1") : c.index("### C2")]
-        flat = " ".join(c1.split())
-        assert "lighthouse forge pr view <pr> --field state" in c1
-        assert "`merged`" in c1
-        assert "another repository" in flat
+        assert "| a number `<pr>` | `<pr>` is the closing PR: on to C2 |" in c1
+        null_row = next(line for line in c1.splitlines() if line.startswith("| `null`"))
+        assert "a closer in another repository" in null_row
+        assert "closed without a closing PR — no after-merge check" in null_row
+    forge = CORE / "skills" / "forge"
+    for name, other in (("github.md", "a pull request in another repository"), ("gitlab.md", "a merge request in another project")):
+        section = _section((forge / name).read_text(encoding="utf-8") + "\n## end", "## §close-issue")
+        closer = " ".join(next(p for p in section.split("\n- ") if p.startswith("**`closer`**")).split())
+        assert "else `null`" in closer and other in closer, name
 
 
 def test_entry_c_scratch_is_fresh_and_chained():
