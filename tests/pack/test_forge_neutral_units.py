@@ -13,7 +13,7 @@ import pytest
 from tests.pack._testkit import CORE, PACKS
 
 FORGE_OP = re.compile(r"\bgh\s+(issue|pr|api|label|project|release|run)\b")
-UNITS = ["review-plan", "upgrade", "audit-worktrees", "write-handoff"]
+UNITS = ["review-plan", "upgrade", "audit-worktrees", "write-handoff", "fix-pr"]
 
 
 @pytest.mark.parametrize("unit", UNITS)
@@ -32,3 +32,9 @@ def test_gh_is_required_only_on_github() -> None:
         data = tomllib.loads(path.read_text(encoding="utf-8"))
         assert "gh" not in data, path
         assert set(data.get("forge", {})) <= {"github", "gitlab"}, path
+
+
+@pytest.mark.parametrize("kind", ["github", "gitlab"])
+def test_forge_reference_has_ci_section(kind: str) -> None:
+    text = (CORE / "skills" / "forge" / f"{kind}.md").read_text(encoding="utf-8")
+    assert "\n## §ci\n" in text

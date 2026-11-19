@@ -29,28 +29,28 @@ kind = "file"
 path = ".agents/skills/lighthouse-fix-pr/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "af78d9be06b2bf350c49543d2137523495feae2fb5a44d795d060ac0cec2a5e2"
+sha256 = "a01d9936b37c1e2370920613cebca9be62e6ada0c0ab56a9d4a0950a456d1c9c"
 
 [[unit]]
 kind = "file"
 path = ".agents/skills/lighthouse-forge/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "1270a7cd1f8ccb876491a18a4d96696112f1f9c922153e4203562d2bf01220ab"
+sha256 = "fd6f4368bc73ff4f9c5b24641c8798f2d40bc04828ac244992005f7edaf938ca"
 
 [[unit]]
 kind = "file"
 path = ".agents/skills/lighthouse-forge/github.md"
 package = "core"
 version = "dev"
-sha256 = "66186b7837b93471a229a358e128facd1af3cef1e03aa1a2504929e4e24ec20b"
+sha256 = "583926c4a9e62d2a3464755d782cb4517fb47f7f504b8d45cd2a37ed3d0d3a93"
 
 [[unit]]
 kind = "file"
 path = ".agents/skills/lighthouse-forge/gitlab.md"
 package = "core"
 version = "dev"
-sha256 = "760fcce3ad4833d76a18c73e84d57e404e457eee8e491e7b457f58b42ace7eaf"
+sha256 = "b7f6b6c7b5491846c7b21c6698a10970ab16c1b19d15e71723e43719236dd3f3"
 
 [[unit]]
 kind = "file"
@@ -414,28 +414,28 @@ kind = "file"
 path = ".claude/skills/lighthouse-fix-pr/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "069692cead6b2f41ec9c529471fc89b3b620439e40af4107e1200565a8951dfd"
+sha256 = "de1c58f3af4962211bb2c0dd9a0165800b652110c0d2ffa7cf97f010d9e5cc90"
 
 [[unit]]
 kind = "file"
 path = ".claude/skills/lighthouse-forge/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "1270a7cd1f8ccb876491a18a4d96696112f1f9c922153e4203562d2bf01220ab"
+sha256 = "fd6f4368bc73ff4f9c5b24641c8798f2d40bc04828ac244992005f7edaf938ca"
 
 [[unit]]
 kind = "file"
 path = ".claude/skills/lighthouse-forge/github.md"
 package = "core"
 version = "dev"
-sha256 = "66186b7837b93471a229a358e128facd1af3cef1e03aa1a2504929e4e24ec20b"
+sha256 = "583926c4a9e62d2a3464755d782cb4517fb47f7f504b8d45cd2a37ed3d0d3a93"
 
 [[unit]]
 kind = "file"
 path = ".claude/skills/lighthouse-forge/gitlab.md"
 package = "core"
 version = "dev"
-sha256 = "760fcce3ad4833d76a18c73e84d57e404e457eee8e491e7b457f58b42ace7eaf"
+sha256 = "b7f6b6c7b5491846c7b21c6698a10970ab16c1b19d15e71723e43719236dd3f3"
 
 [[unit]]
 kind = "file"
