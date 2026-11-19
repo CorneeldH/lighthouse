@@ -290,7 +290,7 @@ the "otherwise" branch: do not close, reason in the comment.
 
 ## Entry C — check after the merge
 
-**Triggers.** Step 0 gave `CLOSED`; "was 1091 closed correctly?", "does the evidence of that PR
+**Triggers.** Step 0 gave `closed`; "was 1091 closed correctly?", "does the evidence of that PR
 still hold?". The issue is closed; the question is whether the evidence in the PR also stands on
 the default branch.
 
