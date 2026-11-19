@@ -67,12 +67,16 @@ Zonder lane draait de sessie het commando in elke tak waarin het issue gesloten 
 blijft: na het sluiten (entry A/B), in entry C na `heading:evidence_holds`,
 `heading:evidence_unmeasurable`, C1 "gesloten zonder sluitende PR" en C3 `COULD NOT CHECK`, en in
 B7. Niet na een heropening. Een issue dat sluit door een MR-merge of met de hand komt zo vrij
-zodra close-issue erop draait. Het commando is idempotent: een afhankelijke die het label niet
-meer draagt, valt onder "al" en krijgt niets.
+zodra close-issue erop draait. Een afhankelijke die het label niet
+meer draagt, valt onder "al" en krijgt niets; een die nog wacht, wordt bij elke run opnieuw in de
+reply-comment genoemd (zoals nu), dus een tweede run kan een tweede reply plaatsen
+*(eigen keuze na spec-review, r1-f9)*.
 
 Sluitreden: GitLab kent geen `state_reason`. Op GitLab telt elke close als `completed`; de sessie
 draait het commando immers pas na een geverifieerde close. Op GitHub blijft "alleen `completed`
-geeft vrij".
+geeft vrij". De regel woont in `internal/unblock`: een lege `StateReason` op een GitLab-forge
+(`Kind()` is `gitlab`) telt als `completed`; `glIssue.issue()` zet hem niet. Een test op de
+GitLab-fake-server dekt het *(eigen keuze na spec-review, r1-f8)*.
 
 ### 2. Nieuwe methodes op `forge.Forge`
 
@@ -91,9 +95,14 @@ gemerged).
 Uitbreidingen op bestaande typen:
 
 - `Milestone` krijgt `OpenIssues` en `ClosedIssues` (GitHub: `open_issues`/`closed_issues`;
-  GitLab: tellen via `issues?milestone_id=…&state=…`, of via `issues_statistics`).
+  GitLab: tellen via `issues?milestone=<titel>&state=…`, zoals `ClosedInMilestone`, of via
+`issues_statistics?milestone=<titel>`; nooit via een numeriek `milestone_id`, dat het
+issues-endpoint niet accepteert *(eigen keuze na spec-review, r1-f10)*).
 - `EditMilestone` krijgt een optionele state (`open`/`closed`): close-issue sluit en hernoemt de
-  milestone in één keer.
+  milestone in één keer. Een GitLab-groepsmilestone weigert `EditMilestone` (`*GroupMilestone`);
+  *Close the milestone* meldt dan dat de milestone met de hand dicht moet en gaat door, zonder
+  sluiten en zonder hernoemen (`§close-issue` in `gitlab.md`) *(eigen keuze na spec-review,
+  r1-f11)*.
 - `CloseIssue` blijft zoals hij is (comment, dan sluiten als `completed`).
 
 Elke nieuwe methode krijgt een case in `internal/forge/forgesuite` en een route in beide
@@ -108,11 +117,23 @@ fake-servers (`forgetest`, `gitlabtest`).
 | `issue blocking <nr>` | `Blocking` | stap 6 |
 | `issue changes <nr>` | `IssueChanges` + `Closer` | step 0, C1 |
 | `pr list [--state open\|merged\|closed\|all]` | `ListChanges` | step 0 (tweede query), B2, B2a |
-| `milestone edit <nr> --state closed` | `EditMilestone` | *Close the milestone* stap 3 |
+| `milestone edit <titel> --state closed [--title T]` | `EditMilestone` | *Close the milestone* stap 3 |
 
 `issue changes` geeft één object: `{"state": …, "closer": <nr of null>, "changes": [ … ]}`. Zo
-beantwoordt één aanroep step 0 en C1, zoals de huidige GraphQL-query. `milestone view` toont
-voortaan `open_issues` en `closed_issues`.
+beantwoordt één aanroep step 0 en C1, zoals de huidige GraphQL-query. `milestone view <titel>` toont
+voortaan `open_issues` en `closed_issues`. Milestones gaan op titel, zoals de bestaande
+`milestone edit`/`view` (`milestoneByTitle`); close-issue neemt de titel uit
+`issue view --field milestone.title`, want `Milestone.Number` is op GitLab de globale id.
+
+`issue view` krijgt twee velden erbij: `closed_at` en `state_reason` (leeg als de forge er geen
+kent), met een CLI-test; stap 6 leest `closed_at` daaruit. `pr list` geeft per element
+`number,title,body,state,labels,milestone,url,created_at,author` zoals `renderChange`, plus
+`head_ref` en `merged_at` (null zolang niet gemerged); `state` is kleine letters (`open`,
+`merged`, `closed`). `issue changes` geeft per element van `changes` `number,state,head_ref,
+cross_repo,repo,body,closes`, met `state` in kleine letters zoals de rest van de CLI-JSON; de
+skill-tekst vergelijkt dus op `open`/`closed`/`merged`, niet op `OPEN`/`CLOSED`/`MERGED`. De
+`jq`-filters in de skill werken op deze veldnamen (`head_ref` waar de `gh`-versie
+`headRefName` had, `merged_at` voor `mergedAt`) *(eigen keuze na spec-review, r1-f1, r1-f3)*.
 
 De rest bestaat al sinds #260: `issue view [--comments] [--field]`, `issue comment`,
 `issue edit --remove-label`, `issue status` (vervangt `gh project item-edit`), `pr view --field
@@ -169,14 +190,18 @@ In `github.md` en `gitlab.md`, als zesde sectie. `FORGE_SECTIONS` in
 | `DELETE issues/{m}/labels/{label}` | `EditIssue(m, remove label)` |
 
 De drie fasen, de volgorde (lezen, reply-comment, dan de afhankelijken), de summary-regels en de
-comment-teksten blijven. Foutregels mogen anders luiden: ze kwamen uit `gh`-stderr en de
+comment-teksten blijven. Een label dat er al niet meer is
+(404 op het weghalen) is geen fout: `EditIssue` met een te verwijderen label behandelt een
+afwezig label als gelukt, zodat de 404-case uit `cases.json` blijft gelden. Foutregels mogen anders luiden: ze kwamen uit `gh`-stderr en de
 Python-nabootsing (`pyRepr`, `KeyError`); voortaan uit de forge-fout. Op GitHub blijft de
 summary verder byte-gelijk.
 
 De comment-tekst `the release lane removes` klopt niet als de sessie vrijgeeft. Die tekst wordt
 neutraal: `` `<label>` comes off``. Dat is de enige wijziging in wat GitHub met lane ziet.
 
-Een afhankelijke in een andere repo of ander project (`Blocker.Repo` is niet `forge.repo`) wordt
+Een afhankelijke in een andere repo of ander project (`Blocker.Repo` verschilt van `forge.repo`; vergelijk
+hoofdletterongevoelig met `strings.EqualFold`, want de forge geeft de canonieke schrijfwijze en
+`lighthouse.toml` wat de gebruiker typte; een test met afwijkende hoofdletters dekt het) wordt
 niet gelezen of bewerkt: de summary krijgt `- <repo>#<m>: in another repository, not released`,
 en de reply-comment noemt hem niet (mijn keuze). Nu zou de lane het nummer in de eigen repo
 gebruiken; dat is een fout, geen gedrag om te bewaren.
@@ -184,7 +209,11 @@ gebruiken; dat is een fout, geen gedrag om te bewaren.
 De lane-workflow: de repo komt uit `lighthouse.toml` in de checkout, en `GH_TOKEN` is het token
 van `forge.Open` ([`token.go`](../../../../internal/forge/token.go)), maar alleen zolang
 `[forge] token_env` niet gezet is. Met `token_env` geeft de workflow het App-token ook onder die
-naam door, zodat de lane niet op de fallback `gh auth token` leunt (mijn keuze); een test in
+naam door, zodat de lane niet op de fallback `gh auth token` leunt (mijn keuze). De workflow is
+statisch: geen `@@forge.token_env@@`, want een niet-gezette sleutel laat `init` de workflow
+weigeren (`internal/initcmd/workflows.go`). Een shell-stap leest
+`lighthouse config forge.token_env` en exporteert het token onder die naam via `$GITHUB_ENV` als
+de sleutel gezet is, anders niets *(eigen keuze na spec-review, r1-f5)*; een test in
 [`test_workflow_unblock.py`](../../../../tests/pack/test_workflow_unblock.py) dekt beide. `GH_REPO`
 mag blijven staan. `$GITHUB_STEP_SUMMARY` blijft: buiten Actions is hij leeg en wordt er niets
 geschreven.
@@ -202,7 +231,10 @@ geschreven.
 mislukte lees, geeft zoals nu "PR-status onbekend", nooit "geen PR".
 
 De skill `audit-worktrees` noemt `gh` alleen in een valkuil (regel 148, "`gh api`, never
-`gh pr list --json`"); die regel vervalt. `requires.toml`: `audit-worktrees` en `close-issue`
+`gh pr list --json`"); de `gh`-kant van die regel vervalt, maar de
+aanwijzing om buiten de sandbox te draaien blijft, nu op netwerktoegang gebaseerd, en dat geldt
+ook voor de zin in close-issue die `worktree-audit` buiten de sandbox zet omdat hij `gh` aanroept
+*(eigen keuze na spec-review, r1-f12)*. `requires.toml`: `audit-worktrees` en `close-issue`
 houden `gh` alleen als de tekst het nog noemt (close-issue: ja, voor run en release).
 
 ### 8. Tests
@@ -213,7 +245,11 @@ houden `gh` alleen als de tekst het nog noemt (close-issue: ja, voor run en rele
   [`cases.json`](../../../../tests/pack/fixtures/scripts/unblock-dependents/cases.json) worden
   Go-tests op een fake `forge.Forge` (GitHub- en GitLab-server), zoals `board-start` in #260. De
   `gh`-replay-cases verdwijnen; `test_script_cases.py` verliest die map.
-- `internal/worktreeaudit`: `twins_test.go` vervangt de `gh`-argv door fake-forge-antwoorden.
+- `internal/worktreeaudit`: `twins_test.go` vervangt de `gh`-argv door fake-forge-antwoorden. De
+  18 `gh`-replay-cases van
+  [`cases.json`](../../../../tests/pack/fixtures/scripts/worktree-audit/cases.json) worden
+  Go-tests op de fake-servers, met het exitcode-contract (`exit=$?` in close-issue) intact;
+  `test_script_cases.py` verliest ook die map.
 - `tests/pack/test_close_issue_skill.py`: de pins op `gh`-tekst worden pins op de
   `lighthouse forge`-tekst; die op `gh run`/`gh workflow` blijven.
 - `tests/pack/test_skill_contracts.py`: `FORGE_SECTIONS` met `§close-issue`; een test dat
