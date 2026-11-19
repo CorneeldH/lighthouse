@@ -471,7 +471,7 @@ func (c *GitHub) itemNumber(ctx context.Context, p project, nodeID string) (int6
 // is an error. An archived item counts as an item, with Archived set.
 //
 // This stays on GraphQL: the REST project-items list never returns archived items (measured in
-// issue #395; see docs/developer/planning/plans/2026-11-18-issue-395-verificaties.md).
+// issue #395; see the verification notes of that issue).
 func (c *GitHub) IssueItem(ctx context.Context, number int) (item BoardItem, ok bool, err error) {
 	if err := c.configured(); err != nil {
 		return BoardItem{}, false, err
