@@ -341,6 +341,19 @@ func TestMilestoneAmbiguousExit2(t *testing.T) {
 	}
 }
 
+func TestForgeIssueStatusReadFailsOnBrokenConfig(t *testing.T) {
+	w := &writeForge{}
+	e := writeEnv(w)
+	e.repo = func() (repoconfig.Repo, error) { return repoconfig.Repo{}, errors.New("bad lighthouse.toml") }
+	code, out, errOut := runForgeEnv(e, "issue", "status", "7")
+	if code != forgeExitUsage || out != "" || !strings.Contains(errOut, "bad lighthouse.toml") {
+		t.Errorf("code %d out %q err %q", code, out, errOut)
+	}
+	if len(w.calls) != 0 {
+		t.Errorf("calls %v, want none", w.calls)
+	}
+}
+
 func TestForgeIssueStatusReads(t *testing.T) {
 	noBoard := func(f forge.Forge) *forgeEnv {
 		e := writeEnv(f)

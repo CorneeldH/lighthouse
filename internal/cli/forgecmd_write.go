@@ -264,7 +264,15 @@ func newForgeIssueStatusCommand(env *forgeEnv) *cobra.Command {
 // readIssueStatus prints {"board", "on_board", "status"}. Without [forge.board] there is no
 // board to read: it says so without opening the forge.
 func (e *forgeEnv) readIssueStatus(cmd *cobra.Command, n int) error {
-	if e.statusNames() == nil {
+	noBoard := e.repo == nil
+	if !noBoard {
+		r, err := e.loadRepo(cmd)
+		if err != nil {
+			return err
+		}
+		noBoard = r.Board == nil
+	}
+	if noBoard {
 		return e.printStatus(cmd, map[string]any{"board": false, "on_board": false, "status": nil})
 	}
 	return e.read(cmd, "", func(f forge.Forge) (any, error) {
