@@ -148,6 +148,16 @@ func forgeGroup(use, short string) *cobra.Command {
 }
 
 // forgeArgs checks the positional arguments of a leaf command: exactly n.
+// forgeArgsRange is forgeArgs for a number of arguments between lo and hi.
+func forgeArgsRange(lo, hi int) cobra.PositionalArgs {
+	return func(cmd *cobra.Command, args []string) error {
+		if len(args) < lo || len(args) > hi {
+			return forgeUsage(cmd, fmt.Sprintf("accepts %d to %d argument(s), received %d", lo, hi, len(args)))
+		}
+		return nil
+	}
+}
+
 func forgeArgs(n int) cobra.PositionalArgs {
 	return func(cmd *cobra.Command, args []string) error {
 		if len(args) != n {
