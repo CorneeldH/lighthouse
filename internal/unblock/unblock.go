@@ -65,7 +65,7 @@ func readDependents(ctx context.Context, f forge.Forge, nr int) (string, []forge
 		reason = "completed" // GitLab has no close reason
 	}
 	if reason != "completed" {
-		return fmt.Sprintf("#%d closed as `%s`: blocks stay.", nr, cmp.Or(reason, "none")), nil, nil
+		return fmt.Sprintf("#%d closed as `%s`: blocks stay.", nr, cmp.Or(reason, "None")), nil, nil
 	}
 	blocking, err := f.Blocking(ctx, nr)
 	if err != nil {

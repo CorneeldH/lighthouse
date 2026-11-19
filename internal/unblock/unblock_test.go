@@ -440,7 +440,7 @@ func TestEmptyStateReason(t *testing.T) {
 		closedWithDependent(w, label)
 		w.addIssue(1, "closed", "")
 		code, out := run(t, w, 1, label, false)
-		check(t, w, code, out, 0, "## Release lane for #1\n\n#1 closed as `none`: blocks stay.\n")
+		check(t, w, code, out, 0, "## Release lane for #1\n\n#1 closed as `None`: blocks stay.\n")
 	})
 }
 
