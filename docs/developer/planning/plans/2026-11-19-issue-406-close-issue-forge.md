@@ -72,14 +72,14 @@
 
 **Files:**
 - Modify: `internal/forge/forge.go`, `internal/forge/write_issue.go` (types), GitHub (waar `Planning`/GraphQL-helpers staan, `graphql.go`), GitLab (`gitlab_mr.go`), beide fakes
-- Test: `internal/forge/forgesuite/suite.go`
+- Test: `internal/forge/forgesuite/suite.go`, `internal/forge/github_contract_test.go`, `internal/forge/gitlab_contract_test.go` (de Fixture-arrangers voor sluit-referenties, gesloten-events en een fout op pagina twee)
 
 **Interfaces:**
 - Produces: `IssueChange{Number int; State string; HeadRef string; CrossRepo bool; Repo string; Body string; Closes bool}` (`State` `OPEN`/`CLOSED`/`MERGED`); `IssueChanges(ctx, number int) ([]IssueChange, error)`; `Closer(ctx, number int) (int, error)` (0 = geen sluitende PR/MR, ook voor een met de hand gesloten issue).
 
-- [ ] **Step 1: Test** in `forgesuite`: (a) issue gesloten door gemergede PR 12 → `IssueChanges` bevat `{12, MERGED, "issue-5-x", false, repo, body, Closes: true}` en `Closer` is 12; (b) PR 13 noemt `Refs #5` → `Closes` false, aanwezig; (c) PR uit andere repo → `CrossRepo` true, `Repo` gevuld; (d) met de hand gesloten → `Closer` 0; (e) heropend en daarna door PR 14 gesloten → `Closer` 14 (laatste sluiting wint).
+- [ ] **Step 1: Test** in `forgesuite`: (a) issue gesloten door gemergede PR 12 → `IssueChanges` bevat `{12, MERGED, "issue-5-x", false, repo, body, Closes: true}` en `Closer` is 12; (b) PR 13 noemt `Refs #5` → `Closes` false, aanwezig; (c) PR uit andere repo → `CrossRepo` true, `Repo` gevuld; (d) met de hand gesloten → `Closer` 0; (e) heropend en daarna door PR 14 gesloten → `Closer` 14 (laatste sluiting wint); (f) meer verwijzingen dan één pagina → alle pagina's gevolgd, of een `truncated()`-fout; een falende tweede pagina is een fout.
 - [ ] **Step 2:** run → FAIL.
-- [ ] **Step 3: GitHub.** Dezelfde GraphQL-query als `IssuePRHeads` nu stuurt (`closedByPullRequestsReferences` + `CROSS_REFERENCED_EVENT`) voor `IssueChanges`; `timelineItems(itemTypes: CLOSED_EVENT, last: 1)` met `closer { ... on PullRequest { number } }` voor `Closer`. Gebruik de bestaande GraphQL-client van `GitHub`.
+- [ ] **Step 3: GitHub.** Dezelfde GraphQL-query als `IssuePRHeads` nu stuurt (`issuePRsQuery`, `collect.go:303`), uitgebreid met `number`, `state` en `body` op beide verbindingen, en met paginering of een `truncated()`-fout bij `hasNextPage` (zoals `board.go`/`planning.go`) (`closedByPullRequestsReferences` + `CROSS_REFERENCED_EVENT`) voor `IssueChanges`; `timelineItems(itemTypes: CLOSED_EVENT, last: 1)` met `closer { ... on PullRequest { number } }` voor `Closer`. Gebruik de bestaande GraphQL-client van `GitHub`.
 - [ ] **Step 4: GitLab.** `IssueChanges`: `GET issues/:iid/closed_by` (`Closes` true) plus `GET issues/:iid/related_merge_requests` (`Closes` false, dedupe op nummer); `CrossRepo` bij een MR met ander `project_id`. `Closer`: `GET issues/:iid/resource_state_events`, laatste event met `state == "closed"`; zijn `source_merge_request.iid` of 0.
 - [ ] **Step 5: Fakes.** Fixturevelden voor de sluit-referenties per issue in `forgetest` (GraphQL-antwoord) en `gitlabtest` (de drie routes).
 - [ ] **Step 6:** run → PASS.
@@ -104,7 +104,7 @@
 ### Task 5: Milestone-tellers en `EditMilestone` met state
 
 **Files:**
-- Modify: `internal/forge/issues.go` (`Milestone.OpenIssues, ClosedIssues int`), `forge.go` (`EditMilestone`-signatuur), GitHub- en GitLab-milestonecode, de aanroepers van `EditMilestone` (`internal/cli/forgecmd_read.go`/`forgecmd_write.go`, `writeForge` in `forgecmd_write_test.go`), beide fakes
+- Modify: `internal/forge/issues.go` (`Milestone.OpenIssues, ClosedIssues int`), `forge.go` (`EditMilestone`-signatuur), GitHub- en GitLab-milestonecode, de aanroepers van `EditMilestone` (`internal/cli/forgecmd_read.go`/`forgecmd_write.go`, `writeForge` in `forgecmd_write_test.go`, `forgesuite/suite.go:847`, `gitlab_write_test.go:125/139`, `write_issue_test.go:167`), beide fakes
 - Test: `internal/forge/forgesuite/suite.go`
 
 **Interfaces:**
@@ -143,8 +143,8 @@
 ### Task 7: `internal/unblock` op `forge.Forge`
 
 **Files:**
-- Modify: `internal/unblock/unblock.go`, `internal/cli/unblockdependents.go`
-- Replace: `internal/unblock/unblock_test.go` (Go-tests uit `tests/pack/fixtures/scripts/unblock-dependents/cases.json`)
+- Modify: `internal/unblock/unblock.go`, `internal/cli/unblockdependents.go`, `internal/forge/write_issue.go`, `internal/forge/gitlab_write.go` (404-tolerantie van `EditIssue`), `internal/forge/forgesuite/suite.go` (case: `EditIssue` met `RemoveLabels` van een afwezig label → geen fout, op beide forges)
+- Replace: `internal/unblock/unblock_test.go` en `internal/cli/unblockdependents_test.go` (die laadt `cases.json` en roept `newUnblockCommand(scriptcase.Replay(...))` aan, waarvan de signatuur verandert); porteer de cases van `tests/pack/fixtures/scripts/unblock-dependents/cases.json` naar Go-tests
 - Modify: `tests/pack/test_script_cases.py` (verliest de `unblock-dependents`-map), verwijder `tests/pack/fixtures/scripts/unblock-dependents/`
 
 **Interfaces:**
@@ -154,7 +154,7 @@
 - [ ] **Step 1: Tests** (fake `forge.Forge` op de GitHub- en GitLab-server): elke case uit `cases.json` als Go-test (volgorde: reply-comment vóór de afhankelijken; comment vóór label), plus:
   - een lege `StateReason` op `Kind() == "gitlab"` telt als `completed` → vrijgegeven; op GitHub niet;
   - `not_planned` geeft niets vrij;
-  - afhankelijke zonder label wordt niet gelezen, niet bewerkt, niet genoemd;
+  - afhankelijke zonder label: zijn blockers worden niet gelezen, hij wordt niet bewerkt en komt niet in de reply-comment; de summary-regel `- #N: does not carry `blocked-issue`, nothing to do` blijft;
   - `Blocker.Repo` `corneeldh/Lighthouse` tegenover `forge.repo` `CorneeldH/lighthouse` telt als dezelfde repo; een andere repo geeft `- other/repo#9: in another repository, not released` en komt niet in de reply-comment;
   - label al weg (404 op bewerken) is geen fout;
   - een leesfout op de blockers van één afhankelijke: label blijft, exit 1;
@@ -182,14 +182,15 @@
 
 **Files:**
 - Modify: `internal/worktreeaudit/collect.go` (`pulls`, `IssuePRHeads`, `Env`), `parse.go` (`ParsePulls`, `ParseIssuePRHeads`), `internal/cli/worktreeaudit.go`
-- Replace: `internal/worktreeaudit/twins_test.go` en de `gh`-argv in `fixtures_test.go`
+- Replace: `internal/worktreeaudit/twins_test.go`; `fixtures_test.go` (de `parse_pulls`- en `parse_issue_pr_heads`-dispatcher voedt nu ruwe JSON) en `tests/pack/fixtures/worktree_audit/parse.json` (8 `parse_pulls`- plus 15 `parse_issue_pr_heads`-cases): zet elke case om naar typed `forge.Change` / `forge.IssueChange`-invoer met dezelfde verwachte uitvoer; geen case vervalt
+- Modify: `internal/cli/worktreeaudit_test.go` (laadt de te verwijderen `cases.json`)
 - Modify: `tests/pack/test_script_cases.py` (verliest de `worktree-audit`-map), verwijder `tests/pack/fixtures/scripts/worktree-audit/`
 
 **Interfaces:**
 - Consumes: `ListChanges(ctx, "all")`, `IssueChanges(ctx, nr)`.
 - Produces: `Env` krijgt `Forge func(ctx context.Context) (forge.Forge, error)` in plaats van de `gh`-runner; `IssuePRHeads(ctx, env, nr) ([]string, bool)` (geen `repo`-parameter meer). `ParsePulls` en `ParseIssuePRHeads` nemen typed `[]forge.Change` / `[]forge.IssueChange` in plaats van `any`/JSON. `git` blijft via `Env.Run`; de read-only-controle `assertReadonly` blijft voor `git`.
 
-- [ ] **Step 1: Tests**: de 18 replay-cases van `cases.json` als Go-tests op de fake-servers, met het exitcode-contract (`exit=$?`) intact; plus:
+- [ ] **Step 1: Tests**: alle 24 cases van `cases.json` als Go-tests (ook de 6 zonder gh-aanroep: draaien als installed file, view-vlaggen sluiten elkaar uit, `--issue` is een int, `worktree list` faalt, kapotte config is exit 2, zonder `forge.repo` vervalt de PR-lookup; zij houden hun verwachtingen) op de fake-servers, met het exitcode-contract (`exit=$?`) intact; plus:
   - forge niet te openen (geen token) → rij met "PR-status onbekend", nooit "geen PR";
   - `ListChanges` faalt → idem;
   - `IssuePRHeads` filtert op gemerged, niet cross-repo, en voor een kruisverwijzing alleen een PR met sluitwoord of `Refs`;
@@ -203,9 +204,9 @@
 ### Task 10: Skills, forge-referentie, tests, dogfood en changelog
 
 **Files:**
-- Modify: `pack/core/skills/close-issue/agents/SKILL.md`, `pack/core/skills/close-issue/claude/SKILL.md` (beide tweelingen identiek in aanpak), `pack/core/skills/forge/github.md`, `pack/core/skills/forge/gitlab.md` (zesde sectie `## §close-issue`), `pack/core/skills/audit-worktrees/*/SKILL.md` (valkuil regel ~148), `pack/core/requires.toml`
+- Modify: `pack/core/skills/close-issue/agents/SKILL.md`, `pack/core/skills/close-issue/claude/SKILL.md` (beide tweelingen identiek in aanpak), `pack/core/skills/forge/github.md`, `pack/core/skills/forge/gitlab.md` (zesde sectie `## §close-issue`), `pack/core/skills/audit-worktrees/SKILL.md` (valkuil regel ~148), `pack/core/skills/forge/SKILL.md` (gedeelde subcommando's en sectienamen), `pack/core/requires.toml`
 - Test: `tests/pack/test_close_issue_skill.py`, `tests/pack/test_skill_contracts.py`
-- Create: `changelog.d/issue-406-close-issue-forge.md` (naam en format volgens een bestaand fragment in `changelog.d/`)
+- Create: `changelog.d/issue-406-close-issue-forge.md` (`changelog.d/` heeft geen voorbeeld: volg `docs/releasing.md`, een `type: changed`-regel tussen twee `---`-regels)
 
 - [ ] **Step 1: Tests.**
   - `test_skill_contracts.py`: `FORGE_SECTIONS` krijgt `"## §close-issue"` als zesde; een test dat geen enkele close-issue-tweeling `gh (issue|pr|api|label|project)` noemt; de tekst noemt `lighthouse forge issue close|reopen|blocking|changes` en `pr list`; de `§close-issue`-verwijzing bestaat in beide tweelingen.
@@ -215,7 +216,7 @@
 - [ ] **Step 4: forge-referentie.** `## §close-issue` als zesde sectie in `github.md` (lane met bot, zonder bot de sessie; `gh run`/`gh workflow`; release-flow alleen als `scripts/release.py` bestaat; `closer` uit de laatste `ClosedEvent`; commit-URL) en `gitlab.md` (geen lane; elke close is `completed`; blockers alleen uit links (Premium); `release: skipped — no release flow on GitLab`; `closer` uit `resource_state_events`; commit-URL; groepsmilestone).
 - [ ] **Step 5: audit-worktrees en requires.** Haal de `gh`-kant van de valkuil weg, behoud "buiten de sandbox" op netwerkbasis. `requires.toml`: `gh` houdt `close-issue` (run/release); `audit-worktrees` verlaat de `gh`-lijst als de tekst `gh` niet meer noemt.
 - [ ] **Step 6: dogfood.** `go run ./cmd/lighthouse init --upgrade`; tweede run geeft `No changes.`; commit de geïnstalleerde kopieën (`.claude/skills/`, `.agents/` of waar `init` ze schrijft).
-- [ ] **Step 7: fragment** in `changelog.d/` (Nederlands, één alinea: close-issue, unblock-dependents en worktree-audit op de forge; zonder bot geeft de sessie zelf vrij).
+- [ ] **Step 7: fragment** in `changelog.d/` (Engels, 1-3 zinnen, volgens `docs/releasing.md`: close-issue, unblock-dependents en worktree-audit op de forge; zonder bot geeft de sessie zelf vrij).
 - [ ] **Step 8: volledige run.** `go build ./... && go test ./... && golangci-lint run && pytest tests/pack` → PASS; `go run ./cmd/lighthouse init --upgrade` → `No changes.`
 - [ ] **Step 9: Commit** `docs(skills): close-issue op lighthouse forge, §close-issue per forge (#406)`.
 
