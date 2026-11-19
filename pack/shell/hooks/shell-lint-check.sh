@@ -139,6 +139,8 @@ case "$rc" in
     done <<EOF
 $missing
 EOF
+    # The notice of a divergent shellcheck, as in the lint run below.
+    [ ! -s "$ERR_FILE" ] || cat "$ERR_FILE" >&2
     echo "Switch the check back on and fix the code. Existing debt goes behind '# shellcheck disable=SCxxxx <reason>' on the line above it, not behind a check that is off." >&2
     rm -f "$ERR_FILE"
     exit 2

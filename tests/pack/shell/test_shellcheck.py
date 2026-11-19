@@ -360,6 +360,21 @@ def test_divergent_version_notice_reaches_the_session(tmp_path, pinned_shellchec
     assert "differs from the pin" in message
 
 
+def test_floor_block_carries_the_divergent_version_notice(tmp_path, pinned_shellcheck):
+    """A blocked floor is no reason to drop the notice of a divergent shellcheck: the
+    block names the version difference too, as the lint run does."""
+    target = _repo_file(tmp_path, "clean.sh", CLEAN_SH)
+    stub_dir = tmp_path / "bin"
+    stub_dir.mkdir()
+    _fake_shellcheck(stub_dir / "shellcheck", "0.9.0", delegate=pinned_shellcheck)
+    _failing_curl(stub_dir)
+    path = f"{stub_dir}{os.pathsep}{os.environ['PATH']}"
+    result = _run_shellcheck_hook(target, PATH=path, SHELLCHECK_OPTS="--exclude=SC2164")
+    assert result.returncode == 2, (result.stdout, result.stderr)
+    assert "[shell-lint-check/SC2164]" in result.stderr
+    assert "differs from the pin" in result.stderr
+
+
 def _shim_path(tmp_path: Path, names: list[str]) -> Path:
     """A PATH of symlinks only: cutting a directory from PATH would remove bash too."""
     shim = tmp_path / "bin"
