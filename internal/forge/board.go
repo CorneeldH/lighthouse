@@ -84,9 +84,6 @@ type BoardItem struct {
 	Archived bool
 }
 
-// prFields are the pull request fields both queries read into a PR.
-const prFields = `number state isDraft mergeable headRefOid headRefName baseRefName isCrossRepository mergedAt closedAt url statusCheckRollup { state }`
-
 // fieldValuesSelection is the single-select values of a project item, shared by the board and
 // the one-issue query so both fill BoardItem.Status, StatusName and Priority the same way.
 const fieldValuesSelection = `fieldValues(first: 50) {
@@ -95,57 +92,6 @@ const fieldValuesSelection = `fieldValues(first: 50) {
               ... on ProjectV2ItemFieldSingleSelectValue { optionId name field { ... on ProjectV2SingleSelectField { id } } }
             }
           }`
-
-// BoardQuery reads one page of 100 project items. Every nested connection asks pageInfo, so a
-// list longer than its first: n is an error instead of a silent cut. GitHub prices a page by
-// the product of the nested limits; blockedBy and the closing PRs of a blocker dominate it,
-// so their limits stay small (measured: first: 50 × 10 cost 53 points per page).
-const BoardQuery = `query Board($project: ID!, $after: String) {
-  node(id: $project) {
-    ... on ProjectV2 {
-      items(first: 100, after: $after) {
-        pageInfo { hasNextPage endCursor }
-        nodes {
-          id
-          updatedAt
-          ` + fieldValuesSelection + `
-          content {
-            ... on Issue {
-              number title state updatedAt
-              repository { nameWithOwner }
-              labels(first: 20) { nodes { name } pageInfo { hasNextPage } }
-              blockedBy(first: 10) {
-                pageInfo { hasNextPage }
-                nodes {
-                  number state
-                  repository { nameWithOwner }
-                  closedByPullRequestsReferences(first: 5, includeClosedPrs: true) {
-                    pageInfo { hasNextPage }
-                    nodes { merged }
-                  }
-                }
-              }
-              closedByPullRequestsReferences(first: 20, includeClosedPrs: true) {
-                pageInfo { hasNextPage }
-                nodes { ` + prFields + ` }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-}`
-
-// BranchPRsQuery reads the pull requests whose head is one branch, in every state.
-const BranchPRsQuery = `query BranchPRs($owner: String!, $name: String!, $branch: String!) {
-  repository(owner: $owner, name: $name) {
-    pullRequests(headRefName: $branch, first: 20, states: [OPEN, CLOSED, MERGED]) {
-      pageInfo { hasNextPage }
-      nodes { ` + prFields + ` }
-    }
-  }
-}`
 
 // OpenPRsWithStatusQuery reads one page of 100 open pull requests with draft, mergeable and
 // the state of their checks.

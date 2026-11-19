@@ -96,21 +96,15 @@ type Server struct {
 	// mergeable, statusCheckRollup), served by OpenPRsWithStatus in pages of 100 in the order
 	// given, after the cursor "cursor-<offset>".
 	OpenPRNodes []map[string]any
-	// BoardNodes are the project items in GraphQL shape, served by Board in pages of 100 and
-	// translated to REST by GET .../projectsV2/{number}/items and .../items/{id} (the id of
-	// node i is 5000+i). A nested connection carries its own pageInfo when a test sets one. A
-	// node with "isArchived": true is left out of Board, as ProjectV2.items lists no archived
-	// item, served by IssueItems, as Issue.projectItems includes them, and listed by the REST
-	// items with archived_at set.
+	// BoardNodes are the project items in GraphQL shape, as input only: the fake serves them as
+	// REST by GET .../projectsV2/{number}/items and .../items/{id} (the id of node i is
+	// 5000+i), and as GraphQL by IssueItems. A nested connection carries its own pageInfo when
+	// a test sets one. A node with "isArchived": true is listed by the REST items with
+	// archived_at set and served by IssueItems, as Issue.projectItems includes archived items.
 	BoardNodes []map[string]any
 	// ProjectID is the project every BoardNodes item belongs to, as IssueItems serves it in
 	// project { id }.
 	ProjectID string
-	// BoardNotAProject makes Board answer {"node": {}}, as GitHub does for an ID of another type.
-	BoardNotAProject bool
-	// BoardStuckCursor, when not nil, makes every Board page claim a next page with this
-	// endCursor, whatever the cursor asked.
-	BoardStuckCursor *string
 	// PlanMilestones are the milestones in GraphQL shape (number, title, state "OPEN" or
 	// "CLOSED", description), served by Planning's milestone query in pages of 100; only the
 	// OPEN ones, as the query asks states: OPEN. Planning's issue query and the PlanCounts search
@@ -208,7 +202,7 @@ func New(t *testing.T) *Server {
 func (s *Server) URL() string { return s.srv.URL }
 
 // Count returns how many requests hit key: a REST path such as "/user" or
-// "/repos/o/r/issues/7/comments", or a GraphQL operation name such as "Board".
+// "/repos/o/r/issues/7/comments", or a GraphQL operation name such as "Planning".
 func (s *Server) Count(key string) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -723,8 +717,6 @@ func (s *Server) graphql(w http.ResponseWriter, r *http.Request) {
 	}
 	var data any
 	switch op {
-	case "Board":
-		data = s.board(req.Variables)
 	case "Planning":
 		data = s.planIssues(req.Variables)
 	case "PlanMilestones":
@@ -749,36 +741,6 @@ func (s *Server) graphql(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"data": data})
-}
-
-// board serves one page of 100 BoardNodes after the cursor "cursor-<offset>".
-func (s *Server) board(vars map[string]any) any {
-	if s.BoardNotAProject {
-		return map[string]any{"node": map[string]any{}}
-	}
-	var live []map[string]any
-	for _, n := range s.BoardNodes {
-		if archived, _ := n["isArchived"].(bool); !archived {
-			live = append(live, n)
-		}
-	}
-	start := 0
-	if after, _ := vars["after"].(string); after != "" {
-		n, err := strconv.Atoi(strings.TrimPrefix(after, "cursor-"))
-		if err != nil {
-			s.t.Errorf("forgetest: Board after = %q, not a cursor this server gave", after)
-		}
-		start = min(n, len(live))
-	}
-	end := min(start+100, len(live))
-	more, cursor := end < len(live), fmt.Sprintf("cursor-%d", end)
-	if s.BoardStuckCursor != nil {
-		more, cursor = true, *s.BoardStuckCursor
-	}
-	return map[string]any{"node": map[string]any{"items": map[string]any{
-		"pageInfo": map[string]any{"hasNextPage": more, "endCursor": cursor},
-		"nodes":    append([]map[string]any{}, live[start:end]...),
-	}}}
 }
 
 // planPage cuts items by the cursor "cursor-<offset>" in vars into a page of 100 and the

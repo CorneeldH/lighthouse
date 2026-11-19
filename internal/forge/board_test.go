@@ -547,3 +547,44 @@ func TestAddToBoardThenIssueItem(t *testing.T) {
 		t.Fatalf("IssueItem after AddToBoard = %+v, %v, %v; want %s", got, ok, err, item.ItemID)
 	}
 }
+
+// Class: io. At risk: a controller path (the board read, the branch PRs, SetStatus, AddToBoard)
+// falls back to GraphQL, so an exhausted GraphQL limit stops a tick again.
+func TestControllerPathsUseNoGraphQL(t *testing.T) {
+	srv, c := projectServer(t)
+	c.Board = restBoard()
+	srv.Issues = map[int]map[string]any{7: {"number": 7, "node_id": "I_kw7"}}
+	srv.BoardNodes = []map[string]any{restIssue("PVTI_a", 6, "o/r", []any{
+		map[string]any{"number": 11, "state": "OPEN", "isDraft": false, "mergeable": "MERGEABLE", "headRefOid": "sha-open",
+			"headRefName": "issue-6-x", "baseRefName": "main", "url": "https://github.com/o/r/pull/11",
+			"statusCheckRollup": map[string]any{"state": "SUCCESS"}},
+	}, nil)}
+	srv.Branches = map[string][]map[string]any{"issue-6-x": {
+		{"number": 11, "state": "OPEN", "isDraft": false, "mergeable": "MERGEABLE", "headRefOid": "sha-open",
+			"headRefName": "issue-6-x", "baseRefName": "main", "url": "https://github.com/o/r/pull/11",
+			"statusCheckRollup": map[string]any{"state": "SUCCESS"}},
+	}}
+	ctx := context.Background()
+	items, err := c.BoardItems(ctx)
+	if err != nil || len(items) != 1 {
+		t.Fatalf("BoardItems = %+v, %v; want one item", items, err)
+	}
+	if prs, err := c.BranchPRs(ctx, "issue-6-x"); err != nil || len(prs) != 1 {
+		t.Fatalf("BranchPRs = %+v, %v; want one PR", prs, err)
+	}
+	if err := c.SetStatus(ctx, items[0], "Controller"); err != nil {
+		t.Fatalf("SetStatus: %v", err)
+	}
+	if _, err := c.AddToBoard(ctx, 7); err != nil {
+		t.Fatalf("AddToBoard: %v", err)
+	}
+	if n := srv.Count("/graphql"); n != 0 {
+		t.Fatalf("controller paths made %d GraphQL requests, want 0", n)
+	}
+	if _, err := c.Planning(ctx); err != nil {
+		t.Fatalf("Planning: %v", err)
+	}
+	if srv.Count("/graphql") == 0 {
+		t.Error("Planning made no GraphQL request; the test no longer tells REST from GraphQL")
+	}
+}
