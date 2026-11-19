@@ -534,7 +534,7 @@ func applyActions(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.D
 		Forge:        func(slug string) forge.Forge { return forges[slug] },
 		Workplace:    func(slug, node, profile string) workplace.Workplace { return places(repos[slug], node, profile) },
 		MCPConfig:    func(profile string) string { return cfg.Profiles[profile].MCPConfig },
-		ScheduledJob: scheduledJob(env, repos),
+		ScheduledJob: scheduledJob(env, db, repos),
 		Remote:       scheduledRemote(env, dir, repos),
 		RoundLimit:   func(slug string) string { return repos[slug].Controller.AtRoundLimit },
 		StateDir:     dir,

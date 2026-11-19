@@ -109,6 +109,10 @@ def _without_default_paths(rel: str, text: str) -> str:
     if rel in ("internal/scheduled/maprefresh/e2e_test.go", "internal/scheduled/maprefresh/maprefresh_test.go"):
         # docs/map is the publish_dir of the map-refresh job: a path inside a temp repo, never this repo's docs.
         return text.replace("docs/", "")
+    if rel.startswith("internal/scheduled/reflect/"):
+        # docs/developer/reflect is the output_dir of the reflect job: a path inside the target
+        # repo of the job (a temp repo in tests), never this repo's docs.
+        return text.replace("docs/", "")
     return text
 
 

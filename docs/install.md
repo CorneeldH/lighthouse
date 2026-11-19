@@ -422,10 +422,11 @@ weeks  = 2              # weeks and anchor go together: only the week of anchor 
 anchor = "2026-10-12"   # weeks-th week after it count (a week runs Monday to Sunday)
 ```
 
-An invalid block makes the repository's config invalid, like any other config error. Job `map-refresh`
-is available (its params are in [tick.md](tick.md#job-map-refresh)); `reflect` is not registered yet, so a schedule
-that names it makes the tick report, at each gather of the repo, `lighthouse: <repo> scheduled:<name>:<slot>: no job <job>` (a line, not an
-error: the tick still exits 0 and saves its state) and start nothing, so leave such a block out for now.
+An invalid block makes the repository's config invalid, like any other config error. Jobs `map-refresh`
+and `reflect` are available (their params are in [tick.md](tick.md#job-map-refresh) and [tick.md](tick.md#job-reflect)). A schedule
+that names a job the binary does not know makes the tick report, at each gather of the repo,
+`lighthouse: <repo> scheduled:<name>:<slot>: no job <job>` (a line, not an error: the tick still exits 0 and
+saves its state) and start nothing.
 
 A scheduled run ends in a pull request that the tick merges itself once it is green. The target
 repository's CI must be able to get that PR green with only the paths the job may write: a

@@ -1536,3 +1536,14 @@ func TestNodeWithoutServeFails(t *testing.T) {
 	}
 	noTickCarriers(t, a)
 }
+
+func TestWorktreeRootIsWhereKennForgeMakesWorktrees(t *testing.T) {
+	// The layout is the one a kenn-forge worktree path has: .../.kenn/forge/worktrees/github/github.com/<owner>/<repo>/work-…
+	got := WorktreeRoot("/home/u", "", "", "CorneeldH/Lighthouse")
+	if want := "/home/u/.kenn/forge/worktrees/github/github.com/corneeldh/lighthouse"; got != want {
+		t.Errorf("WorktreeRoot = %q, want %q", got, want)
+	}
+	if got := WorktreeRoot("/h", "gitlab", "git.example.com", "a/b"); got != "/h/.kenn/forge/worktrees/gitlab/git.example.com/a/b" {
+		t.Errorf("WorktreeRoot (gitlab) = %q", got)
+	}
+}
