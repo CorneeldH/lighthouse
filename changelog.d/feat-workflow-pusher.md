@@ -1,4 +1,0 @@
----
-type: added
----
-A workflow change now reaches origin without a run ever holding a token with `workflow` scope: a run whose branch touches `.github/workflows/` no longer pushes (`workflow-push-gate`) but hands off with `next: push-workflows`, and the tick starts `lighthouse push-workflows`. That process checks the worktree, roborev, a policy, `actionlint` and `zizmor`, has two or three reviewers in a `bwrap` sandbox judge a pre-merge workflow (in `shadow` mode by default: the answer `push` permits the commit), and then pushes with the workflow token from `[dispatch.workflow_push] token_file`. Without that table the route is off. The pusher also has a merge path, but the assumption that GitHub refuses such a merge with the run token is not verified. See `docs/tick.md` and `docs/install.md`.

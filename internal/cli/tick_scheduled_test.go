@@ -561,3 +561,32 @@ func TestTokenEnvsKeepsTheTokenOfAnInvalidRepo(t *testing.T) {
 		t.Errorf("tokenEnvs = %q, want BAD_TOKEN and GOOD_TOKEN", got)
 	}
 }
+
+// Classification: wiring. Fails if the real registry lacks the job reflect (the tick then logs
+// `no job reflect`) or if the env a job gets in Stage lacks the run history and the home
+// directory it needs to tell the kinds of session apart.
+func TestScheduledJobGivesReflectItsHistoryAndHome(t *testing.T) {
+	if _, ok := scheduled.Lookup("reflect"); !ok {
+		t.Fatal("job reflect is not registered")
+	}
+	s := newScheduledTick(t, "")
+	s.env.Getenv = func(k string) string {
+		if k == "HOME" {
+			return "/home/x"
+		}
+		return ""
+	}
+	s.env.Jobs = nil // the real registry
+	repo := repoconfig.Repo{Slug: "o/r", Schedules: []repoconfig.Schedule{{Name: "reflect", Job: "reflect"}}}
+	if _, err := runs.Take(context.Background(), openStore(t, s.db), runs.Claim{Repo: "o/r", Schedule: "reflect", Mode: "start", Trigger: runs.TriggerScheduled,
+		TriggerKey: scheduled.TriggerKey("reflect", "20261118T0100"), SessionID: "sess-1"}); err != nil {
+		t.Fatal(err)
+	}
+	job, jenv, err := scheduledJob(s.env, openStore(t, s.db), map[string]repoconfig.Repo{"o/r": repo})("o/r", "reflect")
+	if err != nil || job.Name() != "reflect" {
+		t.Fatalf("scheduledJob = %v, %v", job, err)
+	}
+	if jenv.Home != "/home/x" || len(jenv.History) != 1 || jenv.History[0].SessionID != "sess-1" {
+		t.Errorf("env = home %q, history %+v; want the home and the run history", jenv.Home, jenv.History)
+	}
+}

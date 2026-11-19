@@ -117,5 +117,29 @@
     "max_wait": "1h",
     "max_runtime": "8h"
   },
-  "want": []
+  "want": [
+    {
+      "kind": "close",
+      "repo": "o/r",
+      "issue": 7,
+      "run_id": 5,
+      "outcome": "handoff",
+      "language": "nl",
+      "end": true
+    },
+    {
+      "kind": "start",
+      "repo": "o/r",
+      "issue": 7,
+      "trigger": "handoff",
+      "trigger_key": "handoff:63",
+      "attempt": 1,
+      "mode": "start",
+      "command": "/lighthouse-close-issue 7",
+      "prompt": "/lighthouse-close-issue 7 (issue #7, controller-run)",
+      "branch": "issue-7-bouw-de-keten",
+      "comment_id": 63,
+      "language": "nl"
+    }
+  ]
 }
