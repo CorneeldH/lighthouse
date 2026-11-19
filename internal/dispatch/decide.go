@@ -544,7 +544,7 @@ func (c runCtx) outcome() (Action, bool, *fixPRStart) {
 	rules := []func() (Action, bool, *fixPRStart){
 		noStart(c.parked), noStart(c.merged), noStart(c.closedIssue), c.mergeReady, noStart(c.green),
 		noStart(c.gone), noStart(c.unknownCommand), noStart(c.didNothing), noStart(c.prClosed), noStart(c.prDraft),
-		c.fixPR, noStart(c.noHandoff), noStart(c.uncertain), noStart(c.permission), noStart(c.silent),
+		c.fixPR, noStart(c.endNoPR), noStart(c.noHandoff), noStart(c.uncertain), noStart(c.permission), noStart(c.silent),
 		noStart(c.silentForge), noStart(c.timeout),
 	}
 	for _, rule := range rules {
@@ -912,6 +912,14 @@ func fixPRRuns(history []runs.Row, issue, pr int) int {
 func (c runCtx) noHandoff() (Action, bool) {
 	anyPR := c.anyPR(func(forge.PR) bool { return true })
 	return c.returned("reason_no_handoff", ""), c.done() && !c.handoff && !anyPR
+}
+
+// endNoPR closes a run that is Done with a Handoff that ends the chain but without any PR that
+// counts for the run: no PR comes to wait for, so the run is over. Without it the run stayed
+// open until max_runtime. The handoff start rule then starts the end command itself.
+func (c runCtx) endNoPR() (Action, bool) {
+	anyPR := c.anyPR(func(forge.PR) bool { return true })
+	return c.closed(runs.Handoff), c.done() && c.handoff && !anyPR
 }
 
 // The time rules. Each is off while its limit is zero.
@@ -1549,7 +1557,11 @@ func (c issueCtx) handoff() (planned, bool) {
 	j, skip := judgeHandoff(c.repo, c.it.Issue, ho)
 	switch j.Verdict {
 	case VerdictEnd:
-		return planned{}, false
+		if c.awaitsPR(p.Time) {
+			return planned{}, false
+		}
+		// The end command closes this issue; its argument never comes from the comment.
+		j.Command = cmdClose + " " + strconv.Itoa(c.it.Issue)
 	case VerdictBrainstorm:
 		return c.returned("reason_needs_brainstorm", ""), true
 	case VerdictInteractive:
@@ -1594,6 +1606,16 @@ func (c issueCtx) handoff() (planned, bool) {
 	a := c.fresh(triggerHandoff, key, j.Command, branch)
 	a.CommentID, a.Native, a.Skip = p.Comment.ID, j.Native, skip
 	return c.planned(a, p.Time), true
+}
+
+// awaitsPR reports whether an end-of-chain handoff posted at t leaves the end to a PR: an open
+// PR waits for green and its merge, and a PR that merged or closed from t on already went to
+// the close-check or the PR rules. Without either, nothing would ever start the end command,
+// so the handoff starts it.
+func (c issueCtx) awaitsPR(t time.Time) bool {
+	return slices.ContainsFunc(c.it.PRs, func(pr forge.PR) bool {
+		return pr.State == "OPEN" || !pr.ClosedAt.IsZero() && !pr.ClosedAt.Before(t)
+	})
 }
 
 // pushCommand is what a user runs to push the worktree by hand: the Teruggegeven of a refused
