@@ -372,7 +372,7 @@ beëindigt ook wat een klare claude achterliet, zoals een dev-server (zie [workp
 Naast issue-runs start de tick runs op een vast schema, zonder issue: een *geplande run* (#121). Het
 ontwerp staat in [de spec](developer/planning/specs/2026-11-16-issue-121-geplande-runs-design.md).
 Het run-model, de planner en de afloop zijn er; van de jobs is `map-refresh` er (zie
-[Job `map-refresh`](#job-map-refresh)), `reflect` komt in een volgende release. Een `[[schedule]]`-blok
+[Job `map-refresh`](#job-map-refresh)), `reflect` ook (zie [Job `reflect`](#job-reflect)). Een `[[schedule]]`-blok
 met een job zonder registratie geeft bij elke gather van de repo
 `lighthouse: <repo> scheduled:<naam>:<slot>: no job <job>`. Dat is een regel, geen fout: de tick
 eindigt met exitcode 0, bewaart zijn tick-state en start niets.
@@ -499,6 +499,52 @@ de run `failed` eindigen. `Finish`: is `map_dir` byte-gelijk aan HEAD, dan wordt
 gezet en volgt geen PR (`done` zonder PR). Anders worden de documenten gekopieerd (geen symlink) naar
 `publish_dir`, met een `index.md` met modus, score, basiscommit en datum. Daarna volgen de
 secret-scan, de commit, de push en de PR zoals bij elke geplande run.
+
+## Job `reflect`
+
+De job laat een skill (standaard `/paia-reflect-skills`) lezen wat er in de sessies van de repo aan
+Claude gevraagd is, en één document met skill-kandidaten schrijven. Gedrag: `scripts/reflect_skills_run.py`
+in personal_ai_agent. Alle `params` zijn optioneel; een ongeldige waarde of een onbekende sleutel is een
+configfout, zoals bij `map-refresh`.
+
+| Param | Standaard |
+|---|---|
+| `command` | `/paia-reflect-skills` |
+| `output_dir` | `docs/developer/reflect` |
+| `min_sessions` | `20` |
+| `window_min_days`, `window_max_days` | `14`, `90` |
+| `min_lines` | `20` |
+| `max_corpus_bytes`, `max_prompt_chars` | `400000`, `400` |
+| `tools` | `Read Glob Grep Write` (geen Bash; een string of een lijst) |
+| `max_runtime` | `60m` |
+
+**Welke sessies.** Sessiebestanden onder `~/.claude/projects` van de repo-map, van haar
+`--claude-worktrees-`-mappen en van de kenn-forge-werkplekken van de repo
+(`<home>/.kenn/forge/worktrees/<kind>/<host>/<repo>/…`, afgeleid van de kenn-forge-adapter). Een map van een
+andere kloon met een langere naam telt niet mee. Een sessie is **controller** als haar sessie-id in
+`runs.session_id` staat (elke trigger behalve `scheduled`), anders **interactief**: de database is de bron,
+niet het pad. Sessies van geplande runs, ook de eerdere reflect-rondes, tellen niet mee.
+
+**De poort.** Het venster loopt vanaf de datum van het jongste `<datum>-skill-kandidaten.md` op
+`origin/<standaardbranch>` tot nu, met een vloer `window_min_days` en een plafond `window_max_days`;
+zonder document is het de vloer. Het aantal sessiebestanden van beide soorten in dat venster, onder
+`min_sessions`, geeft `skip`; de regel in de log noemt beide aantallen
+(`N new sessions in the last D days (interactive I, controller C), below M`).
+
+**Het corpus.** Go haalt de gebruikersprompts uit de sessies (de extractie en de `SKIP_PATTERNS` van
+paia, afgeleid van claude-reflect, MIT) en schrijft één bestand, `.lighthouse/run/reflect-corpus.md`, met
+twee secties, *Interactief* en *Controller*. Een regel die niet te lezen is of groter dan
+`max_corpus_bytes`, wordt overgeslagen; een prompt wordt op `max_prompt_chars` tekens afgekapt. Binnen
+*Controller* staat een prompt die vaker voorkomt één keer, met `×N`. `max_corpus_bytes` gaat half om half over
+de twee secties; wat de ene niet gebruikt, gaat naar de andere. Het commando krijgt
+`--corpus <pad> --out <output_dir>/<datum>-skill-kandidaten.md`. `Cleanup` haalt het corpus weg vóór de
+insluiting, zodat het nooit op de branch komt.
+
+**Insluiting en afronden.** De run schrijft alleen één document met een datumnaam en `index.md` onder
+`output_dir`; elk ander bestand, ook daaronder, is een overtreding. Welke datum het document heeft, weet de
+insluiting niet; `Check` eist daarom dat precies één document nieuw of gewijzigd is, als gewoon bestand
+met minstens `min_lines` regels. `Finish` schrijft `output_dir/index.md` met de lijst van rondes. Schrijft de
+agent niets, dan eindigt de run als `done` zonder PR en ziet de volgende poort dezelfde sessies opnieuw.
 
 ## Exitcodes
 
