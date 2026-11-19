@@ -242,12 +242,12 @@ houden `gh` alleen als de tekst het nog noemt (close-issue: ja, voor run en rele
 - `internal/forge/forgesuite`: elke nieuwe methode, op beide fake-servers.
 - `internal/cli`: de nieuwe subcommando's, op de fake-servers, zoals de #260-tests.
 - `internal/unblock`: de cases uit
-  [`cases.json`](../../../../tests/pack/fixtures/scripts/unblock-dependents/cases.json) worden
+  `tests/pack/fixtures/scripts/unblock-dependents/cases.json` worden
   Go-tests op een fake `forge.Forge` (GitHub- en GitLab-server), zoals `board-start` in #260. De
   `gh`-replay-cases verdwijnen; `test_script_cases.py` verliest die map.
 - `internal/worktreeaudit`: `twins_test.go` vervangt de `gh`-argv door fake-forge-antwoorden. De
   18 `gh`-replay-cases van
-  [`cases.json`](../../../../tests/pack/fixtures/scripts/worktree-audit/cases.json) worden
+  `tests/pack/fixtures/scripts/worktree-audit/cases.json` worden
   Go-tests op de fake-servers, met het exitcode-contract (`exit=$?` in close-issue) intact;
   `test_script_cases.py` verliest ook die map.
 - `tests/pack/test_close_issue_skill.py`: de pins op `gh`-tekst worden pins op de
