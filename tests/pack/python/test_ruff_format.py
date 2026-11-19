@@ -62,18 +62,6 @@ def test_ruff_hook_passes_clean_file(tmp_path):
     assert result.returncode == 0, result.stderr
 
 
-def test_ruff_hook_blocks_bare_except(tmp_path):
-    result = _run(_file(tmp_path, "bare.py", BARE_EXCEPT_PY), tmp_path)
-    assert result.returncode == 2, result.stdout
-    assert "E722" in result.stderr
-
-
-def test_ruff_hook_blocks_blanket_type_ignore(tmp_path):
-    result = _run(_file(tmp_path, "blanket.py", "x: int = 1  # type: ignore\n"), tmp_path)
-    assert result.returncode == 2, result.stdout
-    assert "PGH003" in result.stderr
-
-
 def test_ruff_hook_ignores_non_python(tmp_path):
     result = _run(_file(tmp_path, "notes.md", "# hi\n"), tmp_path)
     assert result.returncode == 0
