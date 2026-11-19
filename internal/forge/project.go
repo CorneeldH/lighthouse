@@ -133,14 +133,15 @@ func (c *GitHub) projectFields(ctx context.Context, base string, b *repoconfig.B
 type restItem struct {
 	ID         int64        `json:"id"`
 	NodeID     string       `json:"node_id"`
+	Type       string       `json:"content_type"` // Issue, PullRequest or DraftIssue
 	UpdatedAt  time.Time    `json:"updated_at"`
 	ArchivedAt *time.Time   `json:"archived_at"`
 	Content    *restContent `json:"content"`
 	Fields     []restField  `json:"fields"`
 }
 
-// restContent is the content of a project item: an issue, a pull request (PullRequest set) or
-// a draft (no Number).
+// restContent is the content of a project item: an issue, a pull request or a draft (no
+// Number); the item's content_type tells which.
 type restContent struct {
 	Number        int       `json:"number"`
 	Title         string    `json:"title"`
@@ -150,16 +151,15 @@ type restContent struct {
 	Labels        []struct {
 		Name string `json:"name"`
 	} `json:"labels"`
-	PullRequest json.RawMessage `json:"pull_request"`
-	Summary     struct {
+	Summary struct {
 		BlockedBy      int `json:"blocked_by"`
 		TotalBlockedBy int `json:"total_blocked_by"`
 	} `json:"issue_dependencies_summary"`
 }
 
-// issue reports whether the content is an issue.
-func (c *restContent) issue() bool {
-	return c != nil && c.Number != 0 && (len(c.PullRequest) == 0 || string(c.PullRequest) == "null")
+// issue reports whether the item holds an issue: its content_type is Issue and it has content.
+func (r restItem) issue() bool {
+	return r.Type == "Issue" && r.Content != nil && r.Content.Number != 0
 }
 
 // restField is one field value of a project item. Option is the value of a single-select
@@ -225,7 +225,7 @@ func (c *GitHub) listItems(ctx context.Context, p project) ([]restItem, error) {
 	itemIDs, issueItems := map[string]int64{}, map[issueKey]int64{}
 	for _, r := range all {
 		itemIDs[r.NodeID] = r.ID
-		if r.Content.issue() {
+		if r.issue() {
 			issueItems[issueKey{repoFromURL(r.Content.RepositoryURL), r.Content.Number}] = r.ID
 		}
 	}
@@ -254,7 +254,7 @@ func (r restItem) boardItem(p project, b *repoconfig.Board) (BoardItem, []restPu
 		}
 	}
 	ct := r.Content
-	if !ct.issue() {
+	if !r.issue() {
 		return named(it, values, b), nil
 	}
 	it.Repo, it.Issue, it.Title = repoFromURL(ct.RepositoryURL), ct.Number, ct.Title

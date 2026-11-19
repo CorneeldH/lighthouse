@@ -162,20 +162,27 @@ func TestBoardItemsNonIssueContent(t *testing.T) {
 	}
 }
 
-// Classification: pure-logic. Fails when a pull request on the board, whose content has a
-// number, is read as an issue.
-func TestRestItemPullRequestContent(t *testing.T) {
-	var r restItem
-	raw := `{"id": 1, "node_id": "PVTI_pr", "updated_at": "2026-10-30T09:00:00Z",
-		"content": {"number": 12, "title": "a PR", "state": "open", "repository_url": "https://api.github.com/repos/o/r",
-			"pull_request": {"url": "https://api.github.com/repos/o/r/pulls/12"}}}`
-	if err := json.Unmarshal([]byte(raw), &r); err != nil {
-		t.Fatal(err)
-	}
-	it, pulls := r.boardItem(project{status: 100}, restBoard())
-	want := BoardItem{ItemID: "PVTI_pr", ItemUpdatedAt: time.Date(2026, 10, 30, 9, 0, 0, 0, time.UTC)}
-	if !reflect.DeepEqual(it, want) || pulls != nil {
-		t.Fatalf("boardItem = %+v, %v; want %+v and no pulls", it, pulls, want)
+// Classification: pure-logic. Fails when content of a project item whose content_type is not
+// "Issue" is read as an issue, with or without a pull_request key on the content.
+func TestRestItemNonIssueContent(t *testing.T) {
+	const content = `"content": {"number": 12, "title": "a PR", "state": "open", "repository_url": "https://api.github.com/repos/o/r"`
+	for name, raw := range map[string]string{
+		"pull request with pull_request key": `{"id": 1, "node_id": "PVTI_pr", "updated_at": "2026-10-30T09:00:00Z", "content_type": "PullRequest",
+			` + content + `, "pull_request": {"url": "https://api.github.com/repos/o/r/pulls/12"}}}`,
+		"pull request content_type only": `{"id": 1, "node_id": "PVTI_pr", "updated_at": "2026-10-30T09:00:00Z", "content_type": "PullRequest",
+			` + content + `}}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			var r restItem
+			if err := json.Unmarshal([]byte(raw), &r); err != nil {
+				t.Fatal(err)
+			}
+			it, pulls := r.boardItem(project{status: 100}, restBoard())
+			want := BoardItem{ItemID: "PVTI_pr", ItemUpdatedAt: time.Date(2026, 10, 30, 9, 0, 0, 0, time.UTC)}
+			if !reflect.DeepEqual(it, want) || pulls != nil {
+				t.Fatalf("boardItem = %+v, %v; want %+v and no pulls", it, pulls, want)
+			}
+		})
 	}
 }
 

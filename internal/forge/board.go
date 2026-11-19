@@ -270,7 +270,7 @@ func (c *GitHub) BoardItems(ctx context.Context) ([]BoardItem, error) {
 		}
 		it, pulls := r.boardItem(p, b)
 		total := 0
-		if r.Content.issue() {
+		if r.issue() {
 			total = r.Content.Summary.TotalBlockedBy
 		}
 		if err := c.complete(ctx, &it, total, pulls, merged); err != nil {
