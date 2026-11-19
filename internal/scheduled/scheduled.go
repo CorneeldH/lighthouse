@@ -61,6 +61,22 @@ type Job interface {
 	Finish(ctx context.Context, env Env, dir string, v Verdict) error
 }
 
+// Configurable is implemented by a job whose behaviour depends on the params of its schedule.
+// The registry holds one instance per job name; Configure returns the instance for one schedule,
+// or an error when the params are invalid (a configuration error, reported at each tick).
+type Configurable interface {
+	Configure(s repoconfig.Schedule) (Job, error)
+}
+
+// Bind returns the job to use for schedule s: j configured for s when j is Configurable, else j.
+// Every caller that gets a job from Lookup for a schedule goes through Bind.
+func Bind(j Job, s repoconfig.Schedule) (Job, error) {
+	if c, ok := j.(Configurable); ok {
+		return c.Configure(s)
+	}
+	return j, nil
+}
+
 // TriggerKey is the trigger key of the run row of schedule name for slot (YYYYMMDDTHHMM):
 // scheduled:<name>:<slot>. It is the only key runs.SlotSettled and runs.Take look at.
 func TriggerKey(name, slot string) string {

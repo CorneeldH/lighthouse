@@ -122,3 +122,7 @@ func committedContent(path string) ([]byte, error) {
 	}
 	return os.ReadFile(path)
 }
+
+// ShowPath is showPath for the jobs in the subpackages: a path in a run reason or an error text
+// goes through it, so a newline cannot forge a log line and a secret-looking name is withheld.
+func ShowPath(p string) string { return showPath(p) }

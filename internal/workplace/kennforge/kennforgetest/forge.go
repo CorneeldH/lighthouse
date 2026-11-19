@@ -274,7 +274,7 @@ func (f *Forge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// create clones origin into a fresh directory: the new workspace is ready at once.
+// create clones origin and adds a worktree in a fresh directory: the new workspace is ready at once.
 func (f *Forge) create(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Branch string `json:"branch"`
@@ -289,8 +289,15 @@ func (f *Forge) create(w http.ResponseWriter, r *http.Request) {
 	id := fmt.Sprintf("ws%d", f.created)
 	f.mu.Unlock()
 	dir := filepath.Join(f.root, id)
-	if out, err := exec.Command("git", "clone", "--quiet", f.origin, dir).CombinedOutput(); err != nil {
+	// Like kenn-forge, the workspace is a linked worktree of a main checkout, on its branch.
+	main := dir + "-main"
+	if out, err := exec.Command("git", "clone", "--quiet", f.origin, main).CombinedOutput(); err != nil {
 		f.t.Errorf("clone origin: %v\n%s", err, out)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	if out, err := exec.Command("git", "-C", main, "worktree", "add", "--quiet", "-b", body.Branch, dir).CombinedOutput(); err != nil {
+		f.t.Errorf("worktree add: %v\n%s", err, out)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
