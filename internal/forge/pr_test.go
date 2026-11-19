@@ -153,9 +153,9 @@ type checkList struct {
 	pageTotals []int
 }
 
-// checksServer serves the check-runs, the combined status and the check-suites of commit abc
+// prChecksServer serves the check-runs, the combined status and the check-suites of commit abc
 // in o/r, per_page items a page with a Link to the next page, and counts the requests per list.
-type checksServer struct {
+type prChecksServer struct {
 	t      *testing.T
 	srv    *httptest.Server
 	lists  map[string]checkList // "check-runs", "status", "check-suites"
@@ -165,9 +165,9 @@ type checksServer struct {
 
 var checkListKeys = map[string]string{"check-runs": "check_runs", "status": "statuses", "check-suites": "check_suites"}
 
-func newChecksServer(t *testing.T, lists map[string]checkList) (*checksServer, *GitHub) {
+func newChecksServer(t *testing.T, lists map[string]checkList) (*prChecksServer, *GitHub) {
 	t.Helper()
-	cs := &checksServer{t: t, lists: lists, counts: map[string]int{}}
+	cs := &prChecksServer{t: t, lists: lists, counts: map[string]int{}}
 	cs.srv = httptest.NewServer(http.HandlerFunc(cs.serve))
 	t.Cleanup(cs.srv.Close)
 	c := New("o/r", "secret-token")
@@ -175,7 +175,7 @@ func newChecksServer(t *testing.T, lists map[string]checkList) (*checksServer, *
 	return cs, c
 }
 
-func (cs *checksServer) serve(w http.ResponseWriter, r *http.Request) {
+func (cs *prChecksServer) serve(w http.ResponseWriter, r *http.Request) {
 	name, found := strings.CutPrefix(r.URL.Path, "/repos/o/r/commits/abc/")
 	key, ok := checkListKeys[name]
 	if !found || !ok {
@@ -217,7 +217,7 @@ func (cs *checksServer) serve(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(body)
 }
 
-func (cs *checksServer) count(name string) int {
+func (cs *prChecksServer) count(name string) int {
 	cs.mu.Lock()
 	defer cs.mu.Unlock()
 	return cs.counts[name]
