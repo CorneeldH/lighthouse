@@ -105,7 +105,12 @@ func (c *GitHub) UpdateIssueBody(ctx context.Context, number int, body string) e
 
 // CloseIssue comments on issue number when comment is not empty, then closes it.
 func (c *GitHub) CloseIssue(ctx context.Context, number int, comment string) error {
-	return c.closeWithComment(ctx, "issues", number, comment)
+	return c.setStateWithComment(ctx, "issues", number, comment, "closed")
+}
+
+// ReopenIssue comments on issue number when comment is not empty, then reopens it.
+func (c *GitHub) ReopenIssue(ctx context.Context, number int, comment string) error {
+	return c.setStateWithComment(ctx, "issues", number, comment, "open")
 }
 
 // UpdatePRBody replaces the body of pull request number.
@@ -115,11 +120,12 @@ func (c *GitHub) UpdatePRBody(ctx context.Context, number int, body string) erro
 
 // ClosePR comments on pull request number when comment is not empty, then closes it unmerged.
 func (c *GitHub) ClosePR(ctx context.Context, number int, comment string) error {
-	return c.closeWithComment(ctx, "pulls", number, comment)
+	return c.setStateWithComment(ctx, "pulls", number, comment, "closed")
 }
 
-// closeWithComment comments first, so a failed close leaves the reason on the item.
-func (c *GitHub) closeWithComment(ctx context.Context, kind string, number int, comment string) error {
+// setStateWithComment comments first, so a failed state change leaves the reason on the item
+// and a failed comment leaves the state as it was.
+func (c *GitHub) setStateWithComment(ctx context.Context, kind string, number int, comment, state string) error {
 	if err := c.configured(); err != nil {
 		return err
 	}
@@ -128,7 +134,7 @@ func (c *GitHub) closeWithComment(ctx context.Context, kind string, number int, 
 			return err
 		}
 	}
-	return c.patch(ctx, kind, number, map[string]string{"state": "closed"})
+	return c.patch(ctx, kind, number, map[string]string{"state": state})
 }
 
 // patch sends PATCH /repos/{repo}/{kind}/{number}; kind is "issues" or "pulls".

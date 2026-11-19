@@ -60,6 +60,7 @@ type Server struct {
 	// failIssueMRsPage2 holds the iids whose closed_by and related_merge_requests answer a 500
 	// on page two.
 	failIssueMRsPage2 map[int]bool
+	failNotes         map[int]bool     // iids whose note creation answers a 500
 	users             map[string]int64 // username to user ID
 	members           map[string]int   // username to access level
 	statuses          []string
@@ -304,6 +305,13 @@ func (s *Server) createNote(w http.ResponseWriter, r *http.Request) {
 		Body string `json:"body"`
 	}
 	if !s.decode(w, r, &body) {
+		return
+	}
+	s.mu.Lock()
+	failed := s.failNotes[iid]
+	s.mu.Unlock()
+	if failed {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"message": "500 Internal Server Error"})
 		return
 	}
 	id := s.AddNote(iid, s.Login, body.Body, false)
@@ -615,6 +623,16 @@ func (s *Server) FailIssueMRsPage2(iid int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.failIssueMRsPage2[iid] = true
+}
+
+// FailNotes makes creating a note on issue iid answer a 500.
+func (s *Server) FailNotes(iid int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.failNotes == nil {
+		s.failNotes = map[int]bool{}
+	}
+	s.failNotes[iid] = true
 }
 
 // AddMR seeds a merge request in GitLab's REST shape. A head_pipeline in it is served only by

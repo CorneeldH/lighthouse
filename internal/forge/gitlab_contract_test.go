@@ -164,6 +164,8 @@ func (g *gitlabFixture) FailIssueChangesPage2(_ *testing.T, number int) {
 	g.srv.FailIssueMRsPage2(number)
 }
 
+func (g *gitlabFixture) FailComments(_ *testing.T, number int) { g.srv.FailNotes(number) }
+
 func (g *gitlabFixture) AddStateEvent(_ *testing.T, number int, state string, closer int) {
 	ev := map[string]any{"state": state, "source_merge_request": nil}
 	if closer != 0 {

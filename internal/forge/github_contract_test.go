@@ -2,6 +2,7 @@ package forge_test
 
 import (
 	"fmt"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -199,6 +200,13 @@ func (g *githubFixture) FailIssueChangesPage2(_ *testing.T, number int) {
 		g.srv.IssueChangesPage2Fails = map[int]bool{}
 	}
 	g.srv.IssueChangesPage2Fails[number] = true
+}
+
+func (g *githubFixture) FailComments(_ *testing.T, number int) {
+	if g.srv.Fail == nil {
+		g.srv.Fail = map[string]int{}
+	}
+	g.srv.Fail[fmt.Sprintf("POST /repos/o/r/issues/%d/comments", number)] = http.StatusInternalServerError
 }
 
 // AddStateEvent: GitHub's timeline query reads only the ClosedEvents; a reopen is not in it.

@@ -462,6 +462,16 @@ func (g *GitLab) UpdateIssueBody(ctx context.Context, number int, body string) e
 
 // CloseIssue posts comment on issue number when it is not empty, then closes the issue.
 func (g *GitLab) CloseIssue(ctx context.Context, number int, comment string) error {
+	return g.issueEventWithComment(ctx, number, comment, "close")
+}
+
+// ReopenIssue posts comment on issue number when it is not empty, then reopens the issue.
+func (g *GitLab) ReopenIssue(ctx context.Context, number int, comment string) error {
+	return g.issueEventWithComment(ctx, number, comment, "reopen")
+}
+
+// issueEventWithComment comments first, so a failed comment leaves the state as it was.
+func (g *GitLab) issueEventWithComment(ctx context.Context, number int, comment, event string) error {
 	if err := g.configured(); err != nil {
 		return err
 	}
@@ -470,7 +480,7 @@ func (g *GitLab) CloseIssue(ctx context.Context, number int, comment string) err
 			return err
 		}
 	}
-	return g.put(ctx, "/issues/"+strconv.Itoa(number), map[string]string{"state_event": "close"})
+	return g.put(ctx, "/issues/"+strconv.Itoa(number), map[string]string{"state_event": event})
 }
 
 // CreatePR opens a merge request. GitLab marks a draft by the "Draft: " prefix of the title.

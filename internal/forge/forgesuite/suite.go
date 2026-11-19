@@ -48,6 +48,8 @@ type Fixture interface {
 	// FailIssueChangesPage2 makes every second page of the pull or merge requests around issue
 	// number fail.
 	FailIssueChangesPage2(t *testing.T, number int)
+	// FailComments makes posting a comment on issue number answer a 500.
+	FailComments(t *testing.T, number int)
 	// AddStateEvent records that issue number was "closed" or "reopened", in order; closer is
 	// the pull or merge request that closed it, 0 by hand.
 	AddStateEvent(t *testing.T, number int, state string, closer int)
@@ -149,6 +151,9 @@ var Cases = []Case{
 	{"IssueChangesPages", issueChangesPages},
 	{"IssueChangesSecondPageFails", issueChangesSecondPageFails},
 	{"Closer", closer},
+	{"ReopenIssue", reopenIssue},
+	{"ReopenIssueNoComment", reopenIssueNoComment},
+	{"ReopenIssueCommentFails", reopenIssueCommentFails},
 	{"MilestonesAndLookup", milestonesAndLookup},
 	{"MilestoneAmbiguousTitle", milestoneAmbiguousTitle},
 	{"LabelsList", labelsList},
@@ -1051,6 +1056,61 @@ func issueChangesSecondPageFails(t *testing.T, f Fixture) {
 	got, err := f.Forge().IssueChanges(t.Context(), 5)
 	if err == nil {
 		t.Fatalf("IssueChanges(5) = %d changes, want an error for the failing second page", len(got))
+	}
+}
+
+// reopenIssue: the comment lands, then the closed issue is open again.
+func reopenIssue(t *testing.T, f Fixture) {
+	ctx := t.Context()
+	f.AddIssue(t, forge.Issue{Number: 3, Title: "Dicht", Author: "ann", State: "closed"})
+	if err := f.Forge().ReopenIssue(ctx, 3, "weer open"); err != nil {
+		t.Fatalf("ReopenIssue: %v", err)
+	}
+	is, err := f.Forge().Issue(ctx, 3)
+	if err != nil {
+		t.Fatalf("Issue(3): %v", err)
+	}
+	if is.State != "open" {
+		t.Errorf("state after ReopenIssue = %q, want open", is.State)
+	}
+	cs, err := f.Forge().Comments(ctx, 3)
+	if err != nil {
+		t.Fatalf("Comments: %v", err)
+	}
+	if len(cs) != 1 || cs[0].Body != "weer open" {
+		t.Errorf("Comments = %+v, want the one comment %q", cs, "weer open")
+	}
+}
+
+// reopenIssueNoComment: an empty comment posts nothing.
+func reopenIssueNoComment(t *testing.T, f Fixture) {
+	ctx := t.Context()
+	f.AddIssue(t, forge.Issue{Number: 3, Title: "Dicht", Author: "ann", State: "closed"})
+	if err := f.Forge().ReopenIssue(ctx, 3, ""); err != nil {
+		t.Fatalf("ReopenIssue: %v", err)
+	}
+	if is, err := f.Forge().Issue(ctx, 3); err != nil || is.State != "open" {
+		t.Errorf("Issue(3) = %+v, %v; want open", is, err)
+	}
+	cs, err := f.Forge().Comments(ctx, 3)
+	if err != nil {
+		t.Fatalf("Comments: %v", err)
+	}
+	if len(cs) != 0 {
+		t.Errorf("Comments = %+v, want none for an empty comment", cs)
+	}
+}
+
+// reopenIssueCommentFails: a failing comment is an error and the issue stays closed.
+func reopenIssueCommentFails(t *testing.T, f Fixture) {
+	ctx := t.Context()
+	f.AddIssue(t, forge.Issue{Number: 3, Title: "Dicht", Author: "ann", State: "closed"})
+	f.FailComments(t, 3)
+	if err := f.Forge().ReopenIssue(ctx, 3, "weer open"); err == nil {
+		t.Fatal("ReopenIssue = nil, want the error of the failing comment")
+	}
+	if is, err := f.Forge().Issue(ctx, 3); err != nil || is.State != "closed" {
+		t.Errorf("Issue(3) = %+v, %v; want still closed", is, err)
 	}
 }
 

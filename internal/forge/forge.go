@@ -105,6 +105,9 @@ type Forge interface {
 	UpdateIssueBody(ctx context.Context, number int, body string) error
 	// CloseIssue posts comment (when not empty) and then closes the issue.
 	CloseIssue(ctx context.Context, number int, comment string) error
+	// ReopenIssue posts comment (when not empty) and then reopens the issue. A failing comment
+	// is returned and leaves the issue closed.
+	ReopenIssue(ctx context.Context, number int, comment string) error
 	// CreatePR opens a pull request; with NewPR.Draft it is a draft.
 	CreatePR(ctx context.Context, pr NewPR) (PR, error)
 	UpdatePRBody(ctx context.Context, number int, body string) error
