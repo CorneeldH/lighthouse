@@ -1,12 +1,14 @@
 # Verificaties en nulmeting van de REST-forge (#395)
 
-Status: **concept, niet gecommit**. Taak 1 stopte bij Step 6: de kandidaatregel geeft in de laatste
-samples iets anders dan `statusCheckRollup.state`. Geen regel gekozen; de comment op #395 is niet
-geplaatst. Gemeten op 2026-11-18 met het token van de controller (`EnvironmentFile` van
+Status: **vastgesteld**. De rollup-regel is gekozen (Step 6): de aangepaste regel, met per
+(app, naam) alleen de nieuwste check-run. De eerste meting (op #421, 2026-11-18) verwierp de
+kandidaatregel; de tweede meting (op #423, 2026-11-19) en het bewijs op `9941f44a` bevestigen de
+aangepaste regel. Gemeten met het token van de controller (`EnvironmentFile` van
 `lighthouse-tick.service`: `~/.config/paia-controller/env`, klassieke PAT, scopes `project,
 read:discussion, read:org, repo`).
 
-PR voor de meting: **#421** (`issue-395-forge-rest`, gewone PR, `Refs #395`).
+De PR voor de meting en het werk: **#423** (`issue-395-forge-rest`, gewone PR, `Refs #395`). Hij
+vervangt #421, die met de spec, het plan en het concept van dit bestand gemerged is.
 
 ## Step 1: nulmeting GraphQL
 
@@ -93,7 +95,9 @@ repos/CorneeldH/lighthouse/issues/<n>/dependencies/blocked_by`:
 
 Gesloten blokkades **staan erin**.
 
-## Step 5: check-rollup op PR #421
+## Step 5: check-rollup
+
+### Eerste meting: PR #421 (kandidaatregel, verworpen)
 
 Head `9941f44a70a663647dfa7c90adf1a928aedd1cff` (lege commit), gepusht om 17:42:49. Elke ~12 s
 gesampled tot alle checks klaar waren. Regel = de kandidaatregel uit het plan, met de hand
@@ -133,10 +137,99 @@ Twee bijvangsten:
   `null`.
 
 Op de laatste samples geeft de regel per naam de nieuwste run (hoogste `id`) wel `SUCCESS`:
-14 namen, alle `success`/`skipped`. Dat is niet over de tussenliggende samples bewezen.
+14 namen, alle `success`/`skipped`. Dat was toen niet over de tussenliggende samples bewezen; dat
+doet de tweede meting.
+
+### Tweede meting: PR #423 (aangepaste regel)
+
+PR **#423** geopend om 18:47:16 (2026-11-19, CET) met head `72a9ef72` (het changelog-fragment).
+Sampler gestart om 18:47:21, elke 10 s, in de voorgrond. Lege commit 1 (`6f6f3f60`) gepusht van
+18:48:11 tot 18:48:14; lege commit 2 (`432b4247`) van 18:49:01 tot 18:49:04. Zo komt het patroon
+openen-dan-pushen twee keer voor. De sampler stopte om 18:51:12: de laatste head had alle runs
+klaar, geen wachtende suite, en daarna nog twee samples.
+
+Per sample: de `head.sha` van de PR (REST), GraphQL `commits(last:1){…{oid statusCheckRollup{state}}}`
+(alleen `oid` en `state`), en voor die head `check-runs` (alle pagina's), `statuses[]` van
+`…/status` en `check-suites`. Beide regels door een script toegepast. `statuses[]` was in elk
+sample leeg (`total_count: 0`). Kolom *runs* telt de gehouden runs (na ontdubbelen); in deze meting
+had geen head dubbele namen, dus gehouden = alle runs.
+
+| tijd | head | GraphQL `state` | aangepaste regel | oude regel | runs klaar/totaal | suites wachtend/totaal | opmerking |
+|---|---|---|---|---|---|---|---|
+| 18:47:22 | `72a9ef7` | PENDING | PENDING | PENDING | 0/5 | 3/4 |  |
+| 18:47:32 | `72a9ef7` | PENDING | PENDING | PENDING | 0/5 | 3/4 |  |
+| 18:47:42 | `72a9ef7` | PENDING | PENDING | PENDING | 9/14 | 1/4 |  |
+| 18:47:52 | `72a9ef7` | PENDING | PENDING | PENDING | 9/14 | 1/4 |  |
+| 18:48:02 | `72a9ef7` | PENDING | PENDING | PENDING | 9/14 | 1/4 |  |
+| 18:48:15 | `72a9ef7` | PENDING | PENDING | PENDING | 10/14 | 1/4 |  |
+| 18:48:22 | `6f6f3f6` | "" (null) | PENDING | PENDING | 0/1 | 3/4 | afwijking, fail-closed: 1 run `queued`, Actions-suites `queued` |
+| 18:48:32 | `6f6f3f6` | PENDING | PENDING | PENDING | 0/2 | 2/4 |  |
+| 18:48:42 | `6f6f3f6` | PENDING | PENDING | PENDING | 2/5 | 1/4 |  |
+| 18:48:52 | `6f6f3f6` | PENDING | PENDING | PENDING | 8/14 | 1/4 |  |
+| 18:49:04 | `6f6f3f6` | "" (null) | PENDING | PENDING | 8/14 | 1/4 | GraphQL ziet al `432b424`: telt niet mee |
+| 18:49:12 | `432b424` | PENDING | PENDING | PENDING | 0/2 | 3/4 |  |
+| 18:49:22 | `432b424` | PENDING | PENDING | PENDING | 1/2 | 2/4 |  |
+| 18:49:32 | `432b424` | PENDING | PENDING | PENDING | 2/5 | 1/4 |  |
+| 18:49:42 | `432b424` | PENDING | PENDING | PENDING | 9/14 | 1/4 |  |
+| 18:49:52 | `432b424` | PENDING | PENDING | PENDING | 9/14 | 1/4 |  |
+| 18:50:02 | `432b424` | PENDING | PENDING | PENDING | 9/14 | 1/4 |  |
+| 18:50:12 | `432b424` | PENDING | PENDING | PENDING | 10/14 | 1/4 |  |
+| 18:50:22 | `432b424` | PENDING | PENDING | PENDING | 10/14 | 1/4 |  |
+| 18:50:33 | `432b424` | PENDING | PENDING | PENDING | 11/14 | 1/4 |  |
+| 18:50:42 | `432b424` | PENDING | PENDING | PENDING | 13/14 | 1/4 |  |
+| 18:50:52 | `432b424` | SUCCESS | SUCCESS | SUCCESS | 14/14 | 0/4 |  |
+| 18:51:02 | `432b424` | SUCCESS | SUCCESS | SUCCESS | 14/14 | 0/4 |  |
+| 18:51:12 | `432b424` | SUCCESS | SUCCESS | SUCCESS | 14/14 | 0/4 |  |
+
+Uitkomst:
+
+- Geen sample waarin de aangepaste regel `SUCCESS` geeft terwijl GraphQL iets anders geeft, of
+  terwijl een check nog loopt of moet starten. De samples met `changes`, `changelog` en
+  `secret-scan` klaar en de jobs met `needs: changes` nog zonder run (9/14) geven `PENDING`, via
+  de Actions-suite die nog loopt.
+- De laatste samples (alle checks klaar): regel en GraphQL beide `SUCCESS`.
+- Eén afwijking, fail-closed: om 18:48:22 geeft GraphQL `null` voor de nieuwe head, de regel
+  `PENDING` (er staat al een run `queued`). Beide betekenen: niet mergen.
+- Eén sample telt niet: om 18:49:04 gaf REST nog head `6f6f3f6`, GraphQL al `432b424`.
+- In deze meting kreeg elke head één `ci`-suite; de dubbele suite van #421 kwam niet terug. De
+  oude regel geeft hier dus overal hetzelfde als de aangepaste. Het onderscheid bewijst het
+  sample op `9941f44a` hieronder.
+- De vervangen heads, na afloop gelezen: `72a9ef7` (4 runs `cancelled`) en `6f6f3f6` (5 runs
+  `cancelled`) geven bij beide regels en bij GraphQL `FAILURE`.
+
+### Bewijs op `9941f44a` (dubbele suite)
+
+Op 2026-11-19 om 18:46 opnieuw gelezen: head `9941f44a70a663647dfa7c90adf1a928aedd1cff` van #421,
+GraphQL `repository{object(oid:…){… on Commit{statusCheckRollup{state}}}}`.
+
+| bron | uitkomst |
+|---|---|
+| GraphQL `statusCheckRollup.state` | `SUCCESS` |
+| aangepaste regel | `SUCCESS` (14 gehouden runs van 28, alle `success`/`skipped`; 0 van 7 suites wachtend) |
+| oude regel | `FAILURE` (5 runs `cancelled` in de vervangen suite 120055494192) |
+
+Alle 14 namen (ook `check` en `cla`) staan dubbel; per naam is de run met het hoogste `id` ook die
+met de laatste `started_at`.
 
 ## Step 6: beslissing
 
-**Niet genomen: STOP.** De kandidaatregel geeft in de laatste samples, met alle checks klaar,
-`FAILURE` waar `statusCheckRollup.state` `SUCCESS` geeft. De controller zou deze PR nooit mergen.
-Daarnaast geeft de regel `SUCCESS` vóór er een Actions-suite bestaat.
+**Gekozen: de aangepaste regel.** Invoer voor één head-sha: `check-runs` (alle pagina's), de
+`statuses[]` van `…/commits/<sha>/status` (nooit de bovenste `state`) en `check-suites`.
+
+1. Ontdubbel de check-runs: per (`app.slug`, `name`) alleen de nieuwste run, met het hoogste `id`
+   (`started_at` als controle).
+2. Geen runs over en `statuses[]` leeg: `""`.
+3. Anders `FAILURE` als een gehouden run de conclusie `failure`, `timed_out`, `cancelled`,
+   `action_required` of `startup_failure` heeft, of een status `failure` is.
+4. Anders `ERROR` als een status `error` is.
+5. Anders `SUCCESS` als elke gehouden run `completed` is met conclusie `success`, `neutral` of
+   `skipped`, elke status `success` is, en geen suite *wachtend* is (wachtend = `status !=
+   "completed"` en (`latest_check_runs_count > 0` of `app.slug == "github-actions"`)).
+6. Anders `PENDING` (ook bij elke onbekende waarde, zoals `stale`).
+
+De kandidaatregel van het plan valt af: zonder ontdubbelen geeft hij `FAILURE` op een head met
+een vervangen suite (eerste meting, `9941f44a`), en `SUCCESS` zonder enige run.
+
+**Gearchiveerde items: pad B** (Step 2). Geen van beide lijsten geeft een gearchiveerd item;
+`IssueItem` blijft op GraphQL. Wel geeft `GET …/items/{id}` het item met `archived_at`, als de
+numerieke id bekend is.
