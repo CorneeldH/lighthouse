@@ -1,5 +1,5 @@
 # CI for lighthouse: one job per domain (python, go, web), each run only when ci/domains.py
-# finds a changed path in it. Go runs as three parallel jobs, `go`, `go-test` and `go-e2e`, and
+# finds a changed path in it. Go runs as three parallel jobs, `go`, `go-test` and `go-e2e`, plus `canary`, and
 # Python as a matrix of three parts of the pytest suite (tests/conftest.py). Everything runs on
 # Linux; macOS runs in macos.yml, as the gate before the release (#337). A `binary` job builds the
 # SPA itself, embeds it in the Go binary and smoke-tests it, next to web instead of after it.
@@ -194,6 +194,34 @@ jobs:
       # The e2e tests of pack/python run the default test command, `uv run pytest -q`.
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       - run: go test -race -shuffle=on -tags e2e ./e2e/ -v
+
+  # One canary per blocking rule of every hook: each proves the rule blocks (#381). A missing
+  # tool is a failure, never a skip; shellcheck comes from the pinned lib the test fetches.
+  canary:
+    needs: changes
+    if: needs.changes.outputs.go == 'true' || needs.changes.outputs.python == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      # install-only: `golangci-lint run --version` is an unknown flag in v2, so no lint run here.
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.15.0
+          install-only: true
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - name: build lighthouse
+        run: |
+          go build -o "$RUNNER_TEMP/bin/lighthouse" ./cmd/lighthouse
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - run: uv sync --locked
+      - run: go test -race -tags canary ./internal/canary/ -v
+      - run: uv run pytest -q tests/pack/python/test_canary.py
 
   # A fresh init with every pack, and each hook it registers, on a PATH without python* (#285).
   # No setup-uv: Python is what this job proves is not needed.
