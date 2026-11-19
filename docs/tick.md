@@ -81,7 +81,7 @@ Het is een korte run, geen daemon. Wie issues vooraf routeert en naar `Controlle
 7. **Gather.** Is de repo aan de beurt, dan leest tick de comments van elk item en bouwt de snapshot:
    de items in Controller of On hold, plus elk item met een open run in een andere status, met hun velden, voorgangers en PR's (de PR's die het issue sluiten
    plus de PR's op de branch van de laatste run van het issue, ook als die run al dicht is, met hun
-   checks), hun comments en de open runs. Van een mergeklare PR bij een open run leest tick ook de
+   checks; een nacontrole-run telt daarvoor niet mee, zie *De werkplek van de nacontrole*), hun comments en de open runs. Van een mergeklare PR bij een open run leest tick ook de
    PR-comments, voor de roborev-stand (`""`, `processed` of `open`). Zo blijft een gemergde PR die het issue niet sluit zichtbaar.
    Een item met een open run buiten Controller en On hold doet mee om die run af te sluiten:
    `lighthouse-close-issue` zet het item op Done voordat tick de closecheck-run ziet eindigen. Voor
@@ -233,6 +233,17 @@ worktree van de run, dan vervangt apply het door de langste staart van minstens 
 als bestand bestaat (`dispatch.Relocate`). Dat geldt voor de Gestart, de rij en de prompt. Bestaat
 geen staart, dan sluit apply de run na de claim als `start_failed`, met reden
 `handoff path: <pad> is not in the worktree …`, en start er niets.
+
+**De werkplek van de nacontrole.** Na de merge van een PR die het issue niet sluit, start tick
+`/lighthouse-close-issue <n>` (trigger `closecheck`). Die run draait niet op de issue-branch, maar op
+een eigen branch per PR: `closecheck/issue-<n>-pr-<pr>`. Niemand pusht die branch, dus de werkplek
+maakt hem nieuw vanaf `origin/<standaardbranch>`. Zo leest de nacontrole de skills van de
+standaardbranch. Op de issue-branch zou hij de skills lezen van de laatste commit die die worktree
+kende: een skill-fix die later op de standaardbranch kwam, ontbreekt daar, en is de branch na de
+merge van origin verwijderd, dan werkt de werkplek hem niet meer bij (#416). Elke PR krijgt een nieuwe branch,
+dus ook een worktree die van een eerdere nacontrole bleef staan, houdt geen oude skills vast. Een
+hervatting na een antwoord loopt op dezelfde branch. De PR's van het issue blijven op de branch van
+de run vóór de nacontrole: de gather slaat een `closecheck/`-branch over (`dispatch.IssueBranches`).
 
 **Een geweigerde of onzekere launch.** Weigert de werkplek de launch, dan meldt apply
 `<repo>#<n>: launch of run <id> not accepted: <reden>` op stderr, op één regel. Onder de 🤖 Gestart
