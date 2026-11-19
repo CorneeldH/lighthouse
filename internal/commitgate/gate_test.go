@@ -448,14 +448,14 @@ func TestSummaryLine(t *testing.T) {
 	}
 	h := newHarness(t, "pre", testGate, "").reply(runReply{1, "3 passed\n  \n\n", nil})
 	res := h.g.RunRoots(h.rootRow(), "PreToolUse")
-	blocked(t, res, "commit-test-gate: tests failed. Fix the failing tests before committing.\n"+h.hint()+"\n3 passed\n  \n")
+	blocked(t, res, "[commit-test-gate/tests-red] commit-test-gate: tests failed. Fix the failing tests before committing.\n"+h.hint()+"\n3 passed\n  \n")
 }
 
 // Review-focus 1: bytes that are not UTF-8 reach stderr unchanged, and become U+FFFD in the JSON.
 func TestOutputBytesPassThrough(t *testing.T) {
 	h := newHarness(t, "pre", testGate, "").reply(runReply{1, "bad \xff byte\n", nil})
 	res := h.g.RunRoots(h.rootRow(), "PreToolUse")
-	blocked(t, res, "commit-test-gate: tests failed. Fix the failing tests before committing.\n"+h.hint()+"\nbad \xff byte\n")
+	blocked(t, res, "[commit-test-gate/tests-red] commit-test-gate: tests failed. Fix the failing tests before committing.\n"+h.hint()+"\nbad \xff byte\n")
 
 	h = newHarness(t, "pre", testGate, "").reply(runReply{0, "gate-go: \xff ok\n", nil})
 	res = h.g.RunRoots(h.rootRow(), "PreToolUse")
@@ -477,7 +477,7 @@ func TestOutputBytesPassThrough(t *testing.T) {
 func TestRedRunInPostSaysFixInANewCommit(t *testing.T) {
 	h := newHarness(t, "post", testGate, "").reply(runReply{1, "FAILED x\n\n", nil})
 	res := h.g.RunRoots([]Row{{Root: h.root}}, "PostToolUse")
-	blocked(t, res, "commit-test-gate: tests failed on the commit you just made. Fix them in a new commit.\n"+h.hint()+"\nFAILED x\n")
+	blocked(t, res, "[commit-test-gate/tests-red] commit-test-gate: tests failed on the commit you just made. Fix them in a new commit.\n"+h.hint()+"\nFAILED x\n")
 }
 
 func TestDeadlineBlocks(t *testing.T) {
@@ -514,7 +514,7 @@ func TestUncheckedExitCodeBlocks(t *testing.T) {
 	// 4 is not listed: tests failed.
 	h = newHarness(t, "pre", testGate+"unchecked_exit_codes = [3, 5]\n", "").reply(runReply{4, "x\n", nil})
 	res = h.g.RunRoots(h.rootRow(), "PreToolUse")
-	blocked(t, res, "commit-test-gate: tests failed. Fix the failing tests before committing.\n"+h.hint()+"\nx\n")
+	blocked(t, res, "[commit-test-gate/tests-red] commit-test-gate: tests failed. Fix the failing tests before committing.\n"+h.hint()+"\nx\n")
 }
 
 // brakeHarness has a slice whose brake is available, and memory.events at the given counts.
@@ -615,7 +615,7 @@ func TestOOMDeltaOnlyCountsWithTheBrake(t *testing.T) {
 	h.events("oom_kill 0\n")
 	h.during = func(int, runCall) { h.events("oom_kill 3\n") }
 	res := h.g.RunRoots(h.rootRow(), "PreToolUse")
-	blocked(t, res, "commit-test-gate: tests failed. Fix the failing tests before committing.\n"+h.hint()+"\nx\n")
+	blocked(t, res, "[commit-test-gate/tests-red] commit-test-gate: tests failed. Fix the failing tests before committing.\n"+h.hint()+"\nx\n")
 }
 
 func TestDeadlineUnderMemoryPressure(t *testing.T) {
@@ -643,7 +643,7 @@ func TestSystemdRunThatDidNotStartBlocks(t *testing.T) {
 	// Without the brake the same text is just a red run.
 	h := newHarness(t, "pre", testGate, "").reply(runReply{1, "Failed to connect to bus: x\n", nil})
 	res := h.g.RunRoots(h.rootRow(), "PreToolUse")
-	blocked(t, res, "commit-test-gate: tests failed. Fix the failing tests before committing.\n"+h.hint()+"\nFailed to connect to bus: x\n")
+	blocked(t, res, "[commit-test-gate/tests-red] commit-test-gate: tests failed. Fix the failing tests before committing.\n"+h.hint()+"\nFailed to connect to bus: x\n")
 }
 
 func TestXDGRuntimeDirIsSetOnlyForTheChildren(t *testing.T) {

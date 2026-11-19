@@ -59,7 +59,7 @@ func TestPrCreateGateMapsTheExitCodes(t *testing.T) {
 			},
 		}}},
 		{"pass without lines", 0, "", "", hook.Result{}},
-		{"block passes stderr unchanged", 2, "", "pr-create-gate: BLOCKED — x\n", hook.Result{Code: 2, Stderr: "pr-create-gate: BLOCKED — x\n"}},
+		{"block passes stderr unchanged", 2, "", "pr-create-gate: BLOCKED — x\n", hook.Result{Code: 2, Stderr: "[pr-create-gate/pr-body] pr-create-gate: BLOCKED — x\n"}},
 		{"open quote with gh and pr", 3, "", "", hook.Result{Code: 2,
 			Stderr: "pr-create-gate: COULD NOT CHECK — the command cannot be parsed (open quote). Split the command.\n" + prGateTail}},
 		{"config error", 1, "", "pr-create-gate: no lighthouse.toml\n", hook.Result{Code: 2,

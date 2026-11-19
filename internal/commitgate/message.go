@@ -1,6 +1,10 @@
 package commitgate
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/CorneeldH/lighthouse/internal/hook"
+)
 
 // HookName opens every line the gate writes.
 const HookName = "commit-test-gate"
@@ -43,7 +47,27 @@ func (g *Gate) Emit(event string) Result {
 	}}
 }
 
-func blockResult(b *strings.Builder) Result { return Result{Code: 2, Stderr: b.String()} }
+// reasons of commit-test-gate: --no-verify, and a test run that is red.
+var reasons = hook.Declare(HookName, "no-verify", "tests-red")
+
+var (
+	reasonNoVerify = reasons[0]
+	reasonTestsRed = reasons[1]
+)
+
+// block is the result of a refused commit: the message starts with the tag of r.
+func block(r hook.Reason, b *strings.Builder) Result {
+	res := hook.Block(r, b.String())
+	return Result{Code: res.Code, Stderr: res.Stderr}
+}
+
+// couldNotCheck is the result of a gate that could not test; it carries no reason ID.
+func couldNotCheck(b *strings.Builder) Result { return couldNotCheckText(b.String()) }
+
+func couldNotCheckText(s string) Result {
+	res := hook.CouldNotCheck(s)
+	return Result{Code: res.Code, Stderr: res.Stderr}
+}
 
 // Block ends the gate with COULD NOT CHECK: reason, after the notes so far.
 func (g *Gate) Block(reason string) Result {
@@ -57,7 +81,7 @@ func (g *Gate) Block(reason string) Result {
 		b.WriteString("This command does contain a 'git commit'. 'Could not test' is not a\n")
 		b.WriteString("green light, so this does not pass silently.\n")
 	}
-	return blockResult(&b)
+	return couldNotCheck(&b)
 }
 
 // slotFailed blocks on a slot that could not be taken.
@@ -68,7 +92,7 @@ func (g *Gate) slotFailed(reason string) Result {
 	b.WriteString("Without a slot this run would go unchecked beside the other gates.\n")
 	b.WriteString("Not being able to test is not a green light.\n")
 	g.postUntested(&b)
-	return blockResult(&b)
+	return couldNotCheck(&b)
 }
 
 // postUntested, in post only and under a COULD NOT CHECK: the commit is already there, and
