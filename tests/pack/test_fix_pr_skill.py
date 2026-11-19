@@ -64,6 +64,8 @@ def test_the_diagnosis_runs_on_lighthouse_forge() -> None:
             assert needle in block, needle
         assert "gh " not in block
         assert "|| true" not in block
+        assert 'echo "no fail check' in block
+        assert 'echo "no checks"' in block
         assert "identity" not in text
 
 
@@ -153,7 +155,7 @@ def test_variants_differ_only_in_the_sandbox_wording() -> None:
     assert "dangerouslyDisableSandbox: true" in _section(CLAUDE, DIAGNOSE_HEADING)
     assert "dangerouslyDisableSandbox" not in _section(AGENTS, DIAGNOSE_HEADING)
     claude = [line for line in CLAUDE.splitlines() if line not in AGENTS.splitlines()]
-    # The diagnosis intro, the section 6 forge calls and the non-negotiable gh line.
+    # The diagnosis intro, the section 6 forge calls and the non-negotiable `lighthouse forge` line.
     assert len(claude) == 3, claude
 
 

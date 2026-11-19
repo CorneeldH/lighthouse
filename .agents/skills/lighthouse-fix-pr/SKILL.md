@@ -44,7 +44,9 @@ printf '%s' "$PR" | jq -r '"PR #\(.number) [\(.state)] draft=\(.draft) merge=\(.
 B=$(printf '%s' "$PR" | jq -r .head_ref)
 
 echo "=== checks ==="
-lighthouse forge pr checks "$N" | jq -r '.[] | "\(.bucket)\t\(.name)\t\(.link)"'
+CK=$(lighthouse forge pr checks "$N")
+printf '%s' "$CK" | jq -e 'length > 0' >/dev/null || echo "no checks"
+printf '%s' "$CK" | jq -r '.[] | "\(.bucket)\t\(.name)\t\(.link)"'
 
 if [ -z "$B" ] || [ "$B" = "null" ]; then
   echo "no head_ref in the PR JSON — stop here"
@@ -55,9 +57,13 @@ echo "=== worktree ==="
 git worktree list | grep -F -- "[$B]" || echo "NO worktree on $B"
 
 echo "=== failure log ==="
-lighthouse forge pr checks "$N" --failed-log \
-  | grep -aE '##\[error\]|FAILED | E {2,}|Process completed with exit code|Error: |^--- job ' \
-  | tail -15 || echo "no failure line found — see 'A red job without a failed test'"
+if printf '%s' "$CK" | jq -e 'any(.[]; .bucket == "fail")' >/dev/null; then
+  lighthouse forge pr checks "$N" --failed-log \
+    | grep -aE '##\[error\]|FAILED | E {2,}|Process completed with exit code|Error: |^--- job ' \
+    | tail -15 || echo "no failure line found — see 'A red job without a failed test'"
+else
+  echo "no fail check — red is then a conflict, a pending check or a run that did not start"
+fi
 
 echo "=== roborev ==="
 if test -e .roborev.toml; then
@@ -81,8 +87,8 @@ Four things in this block are measured, not taste (the `=== roborev ===` part fo
 
 - **A guard right after `lighthouse forge pr view`.** If that call fails — `<nr>` was an issue, not a PR — the
   block stops with a message instead of reading on with an empty `$B`: without a guard an empty
-  `grep -F -- ""` afterwards matches every line, and the failure-log part wrongly reports "no fail
-  check".
+  `grep -F -- ""` afterwards matches every line, and the failure-log part the failure-log part
+  wrongly goes on to read a log.
 - **No `|| true` after `lighthouse forge pr checks`.** It prints a JSON list and exits 0 also on
   failing or pending checks, so the block does not break off in exactly the case it is meant for;
   an empty list is "no checks".
@@ -149,7 +155,7 @@ report with which extras you measure.
 
 If a host-wide OOM kills a self-hosted runner, the job fails without a single test failing.
 Recognition: in
-the job list of the run (`../lighthouse-forge/<kind>.md §ci`, with `<kind>` from
+the job list of the run (its id is in the `link` column of `lighthouse forge pr checks`; `../lighthouse-forge/<kind>.md §ci`, with `<kind>` from
 `lighthouse config forge.kind`) the test step is at `"completed_at": null` while the job is `failure`, and the log is empty or 404s.
 
 Linux only (systemd journal). On macOS: `log show --last 1h --predicate 'eventMessage CONTAINS "memorystatus"'`;
@@ -263,7 +269,7 @@ Row 4 sees only a `Skill` call; a review done by hand in the same turn does not 
 - **An issue and a PR do not share the number space.** A "fix 596" can mean
   an issue or a PR; `lighthouse forge pr view` is the test. In the eight measured turns it was always a PR.
 - **The rtk proxy breaks `gh` JSON output.** See `../lighthouse-forge/<kind>.md §proxy`.
-- **A merge conflict gives no fail check.** `mergeable: conflicting` is the signal; the
+- **A merge conflict gives no fail check.** `mergeable: conflicting` is the signal (`mergeable: unknown`: the forge is still computing — read again, it is not a conflict); the
   failure-log part of the diagnosis block stays empty then and that is correct.
   A PR always has a pushed branch, so resolve it with `git merge origin/<default branch>` per the
   update rule in *Lighthouse: core*: resolve the conflicts once, commit the merge, push without force.
