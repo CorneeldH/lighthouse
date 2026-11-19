@@ -16,6 +16,7 @@ func TestGitHubConformance(t *testing.T) { forgesuite.Run(t, newGitHubFixture) }
 
 // githubBoard is the [forge.board] of the GitHub fixture.
 var githubBoard = repoconfig.Board{
+	ProjectNumber:   1,
 	ProjectID:       "PVT_1",
 	StatusFieldID:   "F_status",
 	PriorityFieldID: "F_prio",

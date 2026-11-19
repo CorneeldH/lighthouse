@@ -555,8 +555,9 @@ func TestTriageBoardBlocker(t *testing.T) {
 		t.Fatalf("triage = %v\n%s", err, errOut)
 	}
 	assertWrites(t, fx.srv, `comment 17: <!-- lighthouse: {"kind":"triage","version":1,"gate":"0","blockers":[5],"label":null} -->`)
-	if n := fx.srv.Count("/repos/o/r/issues/17/dependencies/blocked_by"); n != 0 {
-		t.Errorf("blocked_by REST reads = %d, want 0 for an issue on the board", n)
+	// The one read is BoardItems' own; triage adds none for an issue on the board.
+	if n := fx.srv.Count("/repos/o/r/issues/17/dependencies/blocked_by"); n != 1 {
+		t.Errorf("blocked_by REST reads = %d, want 1 (the board's) for an issue on the board", n)
 	}
 }
 
@@ -988,7 +989,7 @@ func TestTriageBrakeAtStart(t *testing.T) {
 	if errOut != "lighthouse: triage skipped: usage: not measured\n" {
 		t.Errorf("errOut = %q", errOut)
 	}
-	for _, key := range []string{"/user", "Board", "/repos/o/r/issues"} {
+	for _, key := range []string{"/user", "/users/o/projectsV2/3/items", "/repos/o/r/issues"} {
 		if n := fx.srv.Count(key); n != 0 {
 			t.Errorf("%s requests = %d, want 0 after a closed brake", key, n)
 		}

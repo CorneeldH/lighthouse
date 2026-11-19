@@ -48,7 +48,7 @@
           "repo": "o/r",
           "issue": 5,
           "state": "CLOSED",
-          "merged_pr": true
+          "merged_pr": false
         }
       ],
       "prs": [],

@@ -54,7 +54,8 @@ type Server struct {
 	// with its title), served by GET .../issues/{number}/events in the order given.
 	Events map[int][]map[string]any
 	// BlockedBy are the blockers per issue number in REST issue shape (number, state,
-	// repository_url), served by GET .../issues/{number}/dependencies/blocked_by.
+	// repository_url), served by GET .../issues/{number}/dependencies/blocked_by. A number
+	// without an entry is served the blockedBy nodes of its BoardNodes item in that repo.
 	BlockedBy map[int][]map[string]any
 	// Releases are the releases per repo ("owner/name") in REST shape (tag_name, name, body,
 	// html_url, draft, prerelease), served by GET /repos/{owner}/{name}/releases in the order
@@ -69,6 +70,10 @@ type Server struct {
 	// FailMessage maps the same key to the "message" of that failure; the default is the
 	// status text.
 	FailMessage map[string]string
+	// FailPage maps "METHOD path?page=<p>", such as "GET /users/o/projectsV2/1/items?page=2",
+	// to the status that page answers instead; a request without page is page 1. Fail and
+	// FailFirst key on the path alone, so they cannot fail one later page.
+	FailPage map[string]int
 	// Milestones are the milestones in REST shape (number, title, state, description), served by
 	// GET .../milestones and changed by POST and PATCH; an issue's milestone is looked up here.
 	Milestones []map[string]any
@@ -91,10 +96,12 @@ type Server struct {
 	// mergeable, statusCheckRollup), served by OpenPRsWithStatus in pages of 100 in the order
 	// given, after the cursor "cursor-<offset>".
 	OpenPRNodes []map[string]any
-	// BoardNodes are the project items in GraphQL shape, served by Board in pages of 100. A
-	// nested connection carries its own pageInfo when a test sets one. A node with
-	// "isArchived": true is left out of Board, as ProjectV2.items lists no archived item, and
-	// served by IssueItems, as Issue.projectItems includes them.
+	// BoardNodes are the project items in GraphQL shape, served by Board in pages of 100 and
+	// translated to REST by GET .../projectsV2/{number}/items and .../items/{id} (the id of
+	// node i is 5000+i). A nested connection carries its own pageInfo when a test sets one. A
+	// node with "isArchived": true is left out of Board, as ProjectV2.items lists no archived
+	// item, served by IssueItems, as Issue.projectItems includes them, and listed by the REST
+	// items with archived_at set.
 	BoardNodes []map[string]any
 	// ProjectID is the project every BoardNodes item belongs to, as IssueItems serves it in
 	// project { id }.
@@ -283,6 +290,10 @@ func (s *Server) record(next http.Handler) http.Handler {
 			writeJSON(w, status, map[string]any{"message": cmp.Or(s.FailMessage[key], http.StatusText(status))})
 			return
 		}
+		if status := s.FailPage[key+"?page="+cmp.Or(r.URL.Query().Get("page"), "1")]; status != 0 {
+			writeJSON(w, status, map[string]any{"message": http.StatusText(status)})
+			return
+		}
 		if status := s.failFirst(r.Method + " " + r.URL.Path); status != 0 {
 			writeJSON(w, status, map[string]any{"message": http.StatusText(status)})
 			return
@@ -452,15 +463,23 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 	s.page(w, r, out)
 }
 
+// blockedBy serves BlockedBy[n], else the blockedBy nodes of the BoardNodes item of issue n in
+// the repo of the path, translated to REST.
 func (s *Server) blockedBy(w http.ResponseWriter, r *http.Request) {
 	n, err := strconv.Atoi(r.PathValue("number"))
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]any{"message": "Not Found"})
 		return
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	var out []any
-	for _, b := range s.BlockedBy[n] {
-		out = append(out, b)
+	if bs, ok := s.BlockedBy[n]; ok {
+		for _, b := range bs {
+			out = append(out, b)
+		}
+	} else {
+		out = s.nodeBlockers(r.PathValue("owner")+"/"+r.PathValue("name"), int64(n))
 	}
 	s.page(w, r, out)
 }
@@ -912,18 +931,23 @@ func (s *Server) searchCount(q string) (int, error) {
 }
 
 // issueItems serves the BoardNodes whose content.number is $number, each with project { id }
-// from ProjectID. The content is left out, as the real query does not select it, and so is
-// isArchived when the query does not select it. An issue with neither an Issues entry nor a
+// from ProjectID; a node whose content names another repository than $owner/$name is not one.
+// The content is left out, as the real query does not select it, and so is isArchived when
+// the query does not select it. An issue with neither an Issues entry nor a
 // BoardNodes item does not exist: it answers as GitHub does, issue null plus a NOT_FOUND error
 // on the path repository.issue.
 func (s *Server) issueItems(query string, vars map[string]any) (data any, errs []any) {
 	number, _ := vars["number"].(float64)
+	repo := fmt.Sprint(vars["owner"], "/", vars["name"])
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	nodes := []map[string]any{}
 	for _, n := range s.BoardNodes {
 		content, _ := n["content"].(map[string]any)
 		if num, ok := content["number"].(int); !ok || float64(num) != number {
+			continue
+		}
+		if other := nameWithOwner(content); other != "" && other != repo {
 			continue
 		}
 		cp := map[string]any{"project": map[string]any{"id": s.ProjectID}}

@@ -307,9 +307,9 @@ func optionName(options map[string]string, id string) string {
 	return ""
 }
 
-// BoardItems lists every item of the board of [forge.board] project_id, following every page.
-// A nested list that GitHub cut off is an error and gives no items: a missing blocker PR or
-// Status value would change what the dispatcher decides.
+// BoardItems lists every item of the board of [forge.board], following every page, without
+// archived items. A list that cannot be read completely is an error and gives no items: a
+// missing blocker or Status value would change what the dispatcher decides.
 func (c *GitHub) BoardItems(ctx context.Context) ([]BoardItem, error) {
 	if err := c.configured(); err != nil {
 		return nil, err
@@ -318,46 +318,81 @@ func (c *GitHub) BoardItems(ctx context.Context) ([]BoardItem, error) {
 	if err != nil {
 		return nil, err
 	}
-	return c.boardItems(ctx, b)
+	p, err := c.project(ctx, b)
+	if err != nil {
+		return nil, err
+	}
+	items, err := c.listItems(ctx, p)
+	if err != nil {
+		return nil, err
+	}
+	merged := mergedIssues(items, p, b)
+	var out []BoardItem
+	for _, r := range items {
+		if r.ArchivedAt != nil {
+			continue
+		}
+		it, pulls := r.boardItem(p, b)
+		total := 0
+		if r.Content.issue() {
+			total = r.Content.Summary.TotalBlockedBy
+		}
+		if err := c.complete(ctx, &it, total, pulls, merged); err != nil {
+			return nil, fmt.Errorf("forge: board item %s: %w", it.ItemID, err)
+		}
+		out = append(out, it)
+	}
+	return out, nil
 }
 
-// boardItems reads the items of project b.ProjectID.
-func (c *GitHub) boardItems(ctx context.Context, b *repoconfig.Board) ([]BoardItem, error) {
-	projectID := b.ProjectID
-	var out []BoardItem
-	var after any // null on the first page
-	for {
-		var data struct {
-			Node *struct {
-				Items *struct {
-					PageInfo pageInfo   `json:"pageInfo"`
-					Nodes    []itemNode `json:"nodes"`
-				} `json:"items"`
-			} `json:"node"`
-		}
-		if err := c.graphql(ctx, BoardQuery, map[string]any{"project": projectID, "after": after}, &data); err != nil {
-			return nil, err
-		}
-		if data.Node == nil || data.Node.Items == nil {
-			return nil, fmt.Errorf("forge: board %s: not a ProjectV2", projectID)
-		}
-		for _, n := range data.Node.Items.Nodes {
-			it, values, err := n.item()
-			if err != nil {
-				return nil, fmt.Errorf("forge: board item %s: %w", n.ID, err)
+// mergedIssues is the set of issues on the board, archived items included, with a linked pull
+// request that is merged.
+func mergedIssues(items []restItem, p project, b *repoconfig.Board) map[issueKey]bool {
+	out := map[issueKey]bool{}
+	for _, r := range items {
+		it, pulls := r.boardItem(p, b)
+		for _, pl := range pulls {
+			if !pl.MergedAt.IsZero() {
+				out[issueKey{it.Repo, it.Issue}] = true
 			}
-			out = append(out, named(it, values, b))
 		}
-		if !data.Node.Items.PageInfo.HasNextPage {
-			return out, nil
-		}
-		// An empty or repeated cursor would ask the same page again, for ever.
-		next := data.Node.Items.PageInfo.EndCursor
-		if next == "" || next == after {
-			return nil, fmt.Errorf("forge: board %s: pagination stuck at endCursor %q", projectID, next)
-		}
-		after = next
 	}
+	return out
+}
+
+// complete reads the blockers of it (only when total, the total_blocked_by, is above 0) and
+// the PR fields of pulls into it. MergedPR of a blocker is true only for one on the board with
+// a merged linked pull request. A 403 or 404 on an item of another repo than c.Repo leaves
+// that part empty, as GraphQL did for content the token cannot see; any other error stays one.
+func (c *GitHub) complete(ctx context.Context, it *BoardItem, total int, pulls []restPull, merged map[issueKey]bool) error {
+	hidden := func(err error) bool { return it.Repo != c.Repo && notVisible(err) }
+	if total > 0 {
+		blockers, err := c.blockedBy(ctx, it.Repo, it.Issue)
+		if err != nil && !hidden(err) {
+			return err
+		}
+		for i := range blockers {
+			blockers[i].MergedPR = merged[issueKey{blockers[i].Repo, blockers[i].Issue}]
+		}
+		it.BlockedBy = blockers
+	}
+	for _, pl := range pulls {
+		pr := pl.pr(true)
+		if err := c.enrich(ctx, cmp.Or(pl.repo(), it.Repo), &pr); err != nil {
+			if !hidden(err) {
+				return err
+			}
+			pr.Mergeable, pr.Checks = "UNKNOWN", ""
+		}
+		it.ClosingPRs = append(it.ClosingPRs, pr)
+	}
+	return nil
+}
+
+// notVisible is a 404, or a 403 that is no rate limit: the token cannot see the resource.
+func notVisible(err error) bool {
+	var se *httpStatusError
+	return errors.As(err, &se) && (se.Code == http.StatusNotFound || se.Code == http.StatusForbidden && !se.RateLimited)
 }
 
 // item maps one node, refusing any nested connection with more pages. values are its

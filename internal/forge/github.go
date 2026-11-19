@@ -55,6 +55,10 @@ type GitHub struct {
 	base    string         // default branch, filled by CreatePR
 	proj    project        // the REST coordinates of the board, valid when projOK
 	projOK  bool
+	// itemIDs and issueItems are the numeric IDs of the board items by node ID and by issue,
+	// filled by listItems.
+	itemIDs    map[string]int64
+	issueItems map[issueKey]int64
 }
 
 // DefaultBaseURL is the GitHub API root.

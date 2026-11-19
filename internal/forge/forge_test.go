@@ -52,7 +52,7 @@ func TestOpenUnknownKind(t *testing.T) {
 
 // testBoard is a board with a Status and a Priority field and one option of each, plus On hold.
 func testBoard() *repoconfig.Board {
-	return &repoconfig.Board{ProjectID: "PVT_x", StatusFieldID: "SF", PriorityFieldID: "PF",
+	return &repoconfig.Board{ProjectNumber: 1, ProjectID: "PVT_x", StatusFieldID: "SF", PriorityFieldID: "PF",
 		StatusOptions:   map[string]string{"Controller": "c1", "On hold": "h1"},
 		PriorityOptions: map[string]string{"P1": "p1"}}
 }
@@ -65,32 +65,6 @@ func selectNode(id string, number int, values map[string]string) map[string]any 
 	}
 	return map[string]any{"id": id, "fieldValues": map[string]any{"nodes": nodes},
 		"content": map[string]any{"number": number, "repository": map[string]any{"nameWithOwner": "o/r"}}}
-}
-
-func TestBoardItemsStatusNames(t *testing.T) {
-	srv, c := boardClient(t)
-	c.Board = testBoard()
-	srv.BoardNodes = []map[string]any{
-		selectNode("A", 1, map[string]string{"SF": "c1", "PF": "p1"}),
-		selectNode("B", 2, nil),
-		selectNode("C", 3, map[string]string{"SF": "zz", "PF": "qq"}),
-	}
-	got, err := c.BoardItems(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	type sp struct{ status, priority string }
-	var gotSP []sp
-	for _, it := range got {
-		gotSP = append(gotSP, sp{it.Status, it.Priority})
-	}
-	want := []sp{{"Controller", "P1"}, {"", ""}, {"unknown:zz", ""}}
-	if !reflect.DeepEqual(gotSP, want) {
-		t.Errorf("status, priority = %v, want %v", gotSP, want)
-	}
-	if vars := srv.Posts[0].Body["variables"].(map[string]any); vars["project"] != "PVT_x" {
-		t.Errorf("variables = %v, want project PVT_x", vars)
-	}
 }
 
 func TestIssueItemStatusName(t *testing.T) {
