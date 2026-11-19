@@ -113,6 +113,8 @@ type Server struct {
 	// BlockingPage2Fails, per issue number, makes the second page of the blocking list of that
 	// issue answer a 500.
 	BlockingPage2Fails map[int]bool
+	// PullsPage2Fails makes the second page of the pull request list answer a 500.
+	PullsPage2Fails bool
 	// BlockingExtra are blocked issues per issue number in REST shape (number, state,
 	// repository_url), served by the blocking list after the ones derived from BlockedBy: an
 	// issue in another repository, or this one under another spelling.
@@ -475,6 +477,10 @@ func (s *Server) blocking(w http.ResponseWriter, r *http.Request) {
 func (s *Server) pulls(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.PullsPage2Fails && r.URL.Query().Get("page") == "2" {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"message": "Server Error"})
+		return
+	}
 	state := cmp.Or(r.URL.Query().Get("state"), "open")
 	var out []any
 	for _, p := range s.Pulls {

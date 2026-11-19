@@ -42,6 +42,8 @@ type Fixture interface {
 	// AddChange adds a pull or merge request with its Number, Title, State (open, closed or
 	// merged), HeadRef and, for a merged one, MergedAt.
 	AddChange(t *testing.T, c forge.Change)
+	// FailListChangesPage2 makes the second page of the pull or merge request list answer a 500.
+	FailListChangesPage2(t *testing.T)
 	// AddIssueChange makes pull or merge request c close issue number (c.Closes) or mention it,
 	// with c's Number, State, HeadRef, CrossRepo, Repo and Body.
 	AddIssueChange(t *testing.T, number int, c forge.IssueChange)
@@ -147,6 +149,7 @@ var Cases = []Case{
 	{"ListChangesDefaultsToOpen", listChangesDefaultsToOpen},
 	{"ListChangesBogusState", listChangesBogusState},
 	{"ListChangesPages", listChangesPages},
+	{"ListChangesPage2Fails", listChangesPage2Fails},
 	{"IssueChanges", issueChanges},
 	{"IssueChangesNone", issueChangesNone},
 	{"IssueChangesPages", issueChangesPages},
@@ -996,6 +999,19 @@ func listChangesPages(t *testing.T, f Fixture) {
 		t.Fatalf("ListChanges(open): %v", err)
 	}
 	once(t, "ListChanges", changeNumbers(got), want)
+}
+
+// listChangesPage2Fails: a failing second page is an error and no list, never the first page
+// alone (which could leave out an open change).
+func listChangesPage2Fails(t *testing.T, f Fixture) {
+	for n := 1; n <= page; n++ {
+		f.AddChange(t, forge.Change{Number: n, Title: "C", State: "open", HeadRef: fmt.Sprintf("fix-%d", n)})
+	}
+	f.FailListChangesPage2(t)
+	got, err := f.Forge().ListChanges(t.Context(), "open")
+	if err == nil || got != nil {
+		t.Errorf("ListChanges(open) = %d changes, %v; want nil and an error", len(got), err)
+	}
 }
 
 // issueChanges: issue 5 is closed by the merged PR 12, mentioned by PR 13 (Refs), by PR 15 from a

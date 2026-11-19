@@ -135,6 +135,8 @@ func (g *gitlabFixture) AddBlocker(_ *testing.T, number int, b forge.Blocker) {
 
 func (g *gitlabFixture) FailBlockingPage2(_ *testing.T, number int) { g.srv.FailLinksPage2(number) }
 
+func (g *gitlabFixture) FailListChangesPage2(*testing.T) { g.srv.FailMRsPage2() }
+
 func (g *gitlabFixture) AddChange(_ *testing.T, c forge.Change) {
 	m := map[string]any{"iid": c.Number, "title": c.Title, "state": mrState[strings.ToUpper(c.State)],
 		"source_branch": c.HeadRef, "source_project_id": 1, "target_project_id": 1}

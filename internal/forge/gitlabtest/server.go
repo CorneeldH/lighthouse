@@ -53,6 +53,8 @@ type Server struct {
 	links  map[int][]map[string]any
 	// failLinksPage2 holds the iids whose links list answers a 500 on page two.
 	failLinksPage2 map[int]bool
+	// failMRsPage2 makes the merge request list answer a 500 on page two.
+	failMRsPage2 bool
 	// failLinks holds the iids whose links list answers a 403 on every page.
 	failLinks   map[int]bool
 	mrs         []map[string]any
@@ -480,8 +482,16 @@ func (s *Server) listMRs(w http.ResponseWriter, r *http.Request) {
 		delete(cp, "head_pipeline")
 		out = append(out, cp)
 	}
+	failPage2 := s.failMRsPage2
 	s.mu.Unlock()
-	paginate(w, r, out)
+	paginateOrFail(w, r, out, failPage2)
+}
+
+// FailMRsPage2 makes the second page of the merge request list answer a 500.
+func (s *Server) FailMRsPage2() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.failMRsPage2 = true
 }
 
 // getMR serves one merge request, head_pipeline included; an unknown iid answers 404.

@@ -173,6 +173,8 @@ func (g *githubFixture) FailBlockingPage2(_ *testing.T, number int) {
 	g.srv.BlockingPage2Fails[number] = true
 }
 
+func (g *githubFixture) FailListChangesPage2(*testing.T) { g.srv.PullsPage2Fails = true }
+
 func (g *githubFixture) AddChange(_ *testing.T, c forge.Change) {
 	p := map[string]any{"number": c.Number, "title": c.Title, "state": c.State, "head": map[string]any{"ref": c.HeadRef}}
 	if c.State == "merged" { // the pulls API has no merged state: closed, with a merged_at
