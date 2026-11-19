@@ -98,7 +98,7 @@ func (w *writeForge) Milestones(context.Context, string) ([]forge.Milestone, err
 func (w *writeForge) CreateMilestone(_ context.Context, title, desc string) (forge.Milestone, error) {
 	return forge.Milestone{Number: 5, Title: title, Description: desc}, w.err
 }
-func (w *writeForge) EditMilestone(_ context.Context, n int, title, desc *string) (forge.Milestone, error) {
+func (w *writeForge) EditMilestone(_ context.Context, n int, title, desc, _ *string) (forge.Milestone, error) {
 	w.msEdits = append(w.msEdits, msEdit{n, title, desc})
 	return forge.Milestone{Number: n}, w.err
 }

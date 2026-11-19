@@ -164,7 +164,7 @@ func TestGitHubMilestoneCreateEditAndRead(t *testing.T) {
 		t.Errorf("created = %+v", m)
 	}
 	desc := "Tweede"
-	m, err = c.EditMilestone(ctx, 1, nil, &desc)
+	m, err = c.EditMilestone(ctx, 1, nil, &desc, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

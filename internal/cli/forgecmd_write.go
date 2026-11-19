@@ -393,7 +393,7 @@ func newForgeMilestoneWriteCommands(env *forgeEnv) []*cobra.Command {
 				if err != nil {
 					return err
 				}
-				_, err = f.EditMilestone(cmd.Context(), m.Number, title, desc)
+				_, err = f.EditMilestone(cmd.Context(), m.Number, title, desc, nil)
 				return err
 			})
 		},

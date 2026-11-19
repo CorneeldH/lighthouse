@@ -155,6 +155,7 @@ var Cases = []Case{
 	{"ReopenIssueNoComment", reopenIssueNoComment},
 	{"ReopenIssueCommentFails", reopenIssueCommentFails},
 	{"MilestonesAndLookup", milestonesAndLookup},
+	{"MilestoneCountsAndState", milestoneCountsAndState},
 	{"MilestoneAmbiguousTitle", milestoneAmbiguousTitle},
 	{"LabelsList", labelsList},
 	{"AddBlockerThenBlockedBy", addBlockerThenBlockedBy},
@@ -1192,7 +1193,7 @@ func milestonesAndLookup(t *testing.T, f Fixture) {
 		t.Errorf("CreateMilestone = %+v; want title M9, description Nine., state open", created)
 	}
 	title, desc := "M9b", "Still nine."
-	edited, err := f.Forge().EditMilestone(t.Context(), created.Number, &title, &desc)
+	edited, err := f.Forge().EditMilestone(t.Context(), created.Number, &title, &desc, nil)
 	if err != nil {
 		t.Fatalf("EditMilestone: %v", err)
 	}
@@ -1202,6 +1203,61 @@ func milestonesAndLookup(t *testing.T, f Fixture) {
 	again, err := f.Forge().MilestoneByNumber(t.Context(), created.Number)
 	if err != nil || again.Title != "M9b" || again.Description != "Still nine." {
 		t.Errorf("MilestoneByNumber after edit = %+v, %v; want M9b", again, err)
+	}
+}
+
+// Milestones and MilestoneByNumber count the open and closed issues of a milestone, and
+// EditMilestone closes it in the same call that renames it; a nil state leaves the state alone and
+// a state other than open or closed is refused.
+func milestoneCountsAndState(t *testing.T, f Fixture) {
+	m := f.AddNamedMilestone(t, "Count", false)
+	f.AddNamedMilestone(t, "Other", false)
+	for n := 1; n <= 5; n++ {
+		is := openIssue(n)
+		if n > 2 {
+			is = closedIssue(n, nil, time.Now().Add(-time.Hour))
+		}
+		is.Milestone = &m
+		f.AddIssue(t, is)
+	}
+	f.AddIssue(t, openIssue(6)) // no milestone: counts for none
+	list, err := f.Forge().Milestones(t.Context(), "open")
+	if err != nil {
+		t.Fatalf("Milestones(open): %v", err)
+	}
+	for _, got := range list {
+		want := [2]int{0, 0}
+		if got.Title == "Count" {
+			want = [2]int{2, 3}
+		}
+		if [2]int{got.OpenIssues, got.ClosedIssues} != want {
+			t.Errorf("Milestones: %s counts = %d open, %d closed; want %v", got.Title, got.OpenIssues, got.ClosedIssues, want)
+		}
+	}
+	one, err := f.Forge().MilestoneByNumber(t.Context(), m.Number)
+	if err != nil || one.OpenIssues != 2 || one.ClosedIssues != 3 {
+		t.Errorf("MilestoneByNumber = %+v, %v; want 2 open, 3 closed", one, err)
+	}
+	title, closed := "Counted", "closed"
+	edited, err := f.Forge().EditMilestone(t.Context(), m.Number, &title, nil, &closed)
+	if err != nil || edited.State != "closed" || edited.Title != "Counted" {
+		t.Fatalf("EditMilestone(title, closed) = %+v, %v; want state closed, title Counted", edited, err)
+	}
+	again, err := f.Forge().MilestoneByNumber(t.Context(), m.Number)
+	if err != nil || again.State != "closed" || again.Title != "Counted" {
+		t.Errorf("MilestoneByNumber after close = %+v, %v; want closed, Counted", again, err)
+	}
+	kept, err := f.Forge().EditMilestone(t.Context(), m.Number, nil, nil, nil)
+	if err != nil || kept.State != "closed" {
+		t.Errorf("EditMilestone(nil state) = %+v, %v; want state closed kept", kept, err)
+	}
+	open := "open"
+	if reopened, err := f.Forge().EditMilestone(t.Context(), m.Number, nil, nil, &open); err != nil || reopened.State != "open" {
+		t.Errorf("EditMilestone(open) = %+v, %v; want state open", reopened, err)
+	}
+	bad := "archived"
+	if _, err := f.Forge().EditMilestone(t.Context(), m.Number, nil, nil, &bad); err == nil {
+		t.Errorf("EditMilestone(state archived) = nil error; want a refusal")
 	}
 }
 

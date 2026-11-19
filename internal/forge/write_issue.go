@@ -139,14 +139,24 @@ func (e *GroupMilestone) Error() string {
 
 // ghMilestone is a milestone in GitHub's REST shape.
 type ghMilestone struct {
-	Number      int    `json:"number"`
-	Title       string `json:"title"`
-	State       string `json:"state"`
-	Description string `json:"description"`
+	Number       int    `json:"number"`
+	Title        string `json:"title"`
+	State        string `json:"state"`
+	Description  string `json:"description"`
+	OpenIssues   int    `json:"open_issues"`
+	ClosedIssues int    `json:"closed_issues"`
 }
 
 func (m ghMilestone) milestone() Milestone {
 	return Milestone(m)
+}
+
+// milestoneState checks the state of an EditMilestone: nil, open or closed.
+func milestoneState(state *string) error {
+	if state != nil && *state != "open" && *state != "closed" {
+		return fmt.Errorf("forge: milestone state %q is not open or closed", *state)
+	}
+	return nil
 }
 
 // resolveMilestone turns a milestone title into its number, over open and closed milestones.
@@ -491,9 +501,13 @@ func (c *GitHub) CreateMilestone(ctx context.Context, title, description string)
 	return m.milestone(), nil
 }
 
-// EditMilestone changes the title and/or description; a nil one stays as it is.
-func (c *GitHub) EditMilestone(ctx context.Context, number int, title, description *string) (Milestone, error) {
+// EditMilestone changes the title, description and/or state (open or closed); a nil one stays
+// as it is.
+func (c *GitHub) EditMilestone(ctx context.Context, number int, title, description, state *string) (Milestone, error) {
 	if err := c.configured(); err != nil {
+		return Milestone{}, err
+	}
+	if err := milestoneState(state); err != nil {
 		return Milestone{}, err
 	}
 	patch := map[string]any{}
@@ -502,6 +516,9 @@ func (c *GitHub) EditMilestone(ctx context.Context, number int, title, descripti
 	}
 	if description != nil {
 		patch["description"] = *description
+	}
+	if state != nil {
+		patch["state"] = *state
 	}
 	var m ghMilestone
 	if _, err := c.do(ctx, http.MethodPatch, c.repoURL("/milestones/"+strconv.Itoa(number)), patch, &m); err != nil {

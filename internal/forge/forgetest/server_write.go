@@ -329,16 +329,38 @@ func (s *Server) listMilestones(w http.ResponseWriter, r *http.Request) {
 	var out []any
 	for _, m := range s.Milestones {
 		if st, _ := m["state"].(string); state == "all" || st == state {
-			out = append(out, m)
+			out = append(out, s.withCounts(m))
 		}
 	}
 	s.page(w, r, out)
 }
 
+// withCounts is milestone m with open_issues and closed_issues counted over the seeded issues,
+// as GitHub does. Caller holds s.mu where the issues can change.
+func (s *Server) withCounts(m map[string]any) map[string]any {
+	out := map[string]any{}
+	for k, v := range m {
+		out[k] = v
+	}
+	var open, closed int
+	for _, it := range s.Issues {
+		if im, _ := it["milestone"].(map[string]any); im == nil || fmt.Sprint(im["number"]) != fmt.Sprint(m["number"]) {
+			continue
+		}
+		if it["state"] == "closed" {
+			closed++
+		} else {
+			open++
+		}
+	}
+	out["open_issues"], out["closed_issues"] = open, closed
+	return out
+}
+
 func (s *Server) milestone(w http.ResponseWriter, r *http.Request) {
 	for _, m := range s.Milestones {
 		if fmt.Sprint(m["number"]) == r.PathValue("number") {
-			writeJSON(w, http.StatusOK, m)
+			writeJSON(w, http.StatusOK, s.withCounts(m))
 			return
 		}
 	}
@@ -370,12 +392,16 @@ func (s *Server) patchMilestone(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if st, set := body["state"]; set && st != "open" && st != "closed" {
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{"message": "Validation Failed: state is invalid"})
+		return
+	}
 	for _, m := range s.Milestones {
 		if fmt.Sprint(m["number"]) == r.PathValue("number") {
 			for k, v := range body {
 				m[k] = v
 			}
-			writeJSON(w, http.StatusOK, m)
+			writeJSON(w, http.StatusOK, s.withCounts(m))
 			return
 		}
 	}

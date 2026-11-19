@@ -93,7 +93,7 @@ type Forge interface {
 	Milestones(ctx context.Context, state string) ([]Milestone, error)
 	MilestoneByNumber(ctx context.Context, number int) (Milestone, error)
 	CreateMilestone(ctx context.Context, title, description string) (Milestone, error)
-	EditMilestone(ctx context.Context, number int, title, description *string) (Milestone, error)
+	EditMilestone(ctx context.Context, number int, title, description, state *string) (Milestone, error)
 	Labels(ctx context.Context) ([]string, error)
 	// AddBlocker makes issue blocker block issue number.
 	AddBlocker(ctx context.Context, number, blocker int) error

@@ -287,7 +287,9 @@ func (g *GitLab) Milestones(ctx context.Context, state string) ([]Milestone, err
 	}
 	out := make([]Milestone, len(all))
 	for i, m := range all {
-		out[i] = m.milestone()
+		if out[i], err = g.countedMilestone(ctx, m); err != nil {
+			return nil, err
+		}
 	}
 	return out, nil
 }
@@ -301,7 +303,26 @@ func (g *GitLab) MilestoneByNumber(ctx context.Context, number int) (Milestone, 
 	if err != nil {
 		return Milestone{}, err
 	}
-	return m.milestone(), nil
+	return g.countedMilestone(ctx, m)
+}
+
+// countedMilestone is m with its issue counts, read from issues_statistics by the milestone
+// title, never by a numeric milestone_id: that endpoint takes the title.
+func (g *GitLab) countedMilestone(ctx context.Context, m glMilestone) (Milestone, error) {
+	var st struct {
+		Statistics struct {
+			Counts struct {
+				Opened int `json:"opened"`
+				Closed int `json:"closed"`
+			} `json:"counts"`
+		} `json:"statistics"`
+	}
+	if _, err := g.get(ctx, g.projectPath("/issues_statistics"), neturl.Values{"milestone": {m.Title}}, &st); err != nil {
+		return Milestone{}, err
+	}
+	out := m.milestone()
+	out.OpenIssues, out.ClosedIssues = st.Statistics.Counts.Opened, st.Statistics.Counts.Closed
+	return out, nil
 }
 
 // findMilestone finds the milestone with global id number among the milestones the project sees.
@@ -330,10 +351,13 @@ func (g *GitLab) CreateMilestone(ctx context.Context, title, description string)
 	return m.milestone(), nil
 }
 
-// EditMilestone changes the title and/or description of a project milestone; a nil one stays
-// as it is; the path takes the global id. A group milestone is refused with *GroupMilestone: the project API cannot edit it.
-func (g *GitLab) EditMilestone(ctx context.Context, number int, title, description *string) (Milestone, error) {
+// EditMilestone changes the title, description and/or state (open or closed) of a project
+// milestone; a nil one stays as it is; the path takes the global id. A group milestone is refused with *GroupMilestone: the project API cannot edit it.
+func (g *GitLab) EditMilestone(ctx context.Context, number int, title, description, state *string) (Milestone, error) {
 	if err := g.configured(); err != nil {
+		return Milestone{}, err
+	}
+	if err := milestoneState(state); err != nil {
 		return Milestone{}, err
 	}
 	cur, err := g.findMilestone(ctx, number)
@@ -349,6 +373,9 @@ func (g *GitLab) EditMilestone(ctx context.Context, number int, title, descripti
 	}
 	if description != nil {
 		put["description"] = *description
+	}
+	if state != nil {
+		put["state_event"] = map[string]string{"open": "activate", "closed": "close"}[*state]
 	}
 	var m glMilestone
 	if _, err := g.do(ctx, http.MethodPut, g.projectPath("/milestones/"+strconv.Itoa(cur.ID)), nil, put, &m); err != nil {

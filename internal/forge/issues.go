@@ -13,6 +13,9 @@ import (
 type Milestone struct {
 	Number                    int
 	Title, State, Description string // State is "open" or "closed"
+	// OpenIssues and ClosedIssues count the issues of the milestone by state; both are zero where
+	// the forge does not say.
+	OpenIssues, ClosedIssues int
 }
 
 // OpenPR is an open pull request as the pulls list returns it.
