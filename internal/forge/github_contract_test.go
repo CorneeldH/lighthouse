@@ -172,6 +172,14 @@ func (g *githubFixture) FailBlockingPage2(_ *testing.T, number int) {
 	g.srv.BlockingPage2Fails[number] = true
 }
 
+func (g *githubFixture) AddChange(_ *testing.T, c forge.Change) {
+	p := map[string]any{"number": c.Number, "title": c.Title, "state": c.State, "head": map[string]any{"ref": c.HeadRef}}
+	if c.State == "merged" { // the pulls API has no merged state: closed, with a merged_at
+		p["state"], p["merged_at"] = "closed", c.MergedAt.UTC().Format(time.RFC3339)
+	}
+	g.srv.Pulls = append(g.srv.Pulls, p)
+}
+
 func (g *githubFixture) AddOpenPR(_ *testing.T, pr forge.OpenPR) {
 	g.srv.Pulls = append(g.srv.Pulls, map[string]any{
 		"number": pr.Number, "title": pr.Title, "body": pr.Body, "head": map[string]any{"ref": pr.HeadRef},

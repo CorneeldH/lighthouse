@@ -50,7 +50,20 @@ type Change struct {
 	Milestone                *Milestone // nil: none
 	URL                      string
 	CreatedAt                time.Time
+	MergedAt                 time.Time // zero while not merged
 	Author, HeadRef, BaseRef string
+}
+
+// changeState checks the state a ListChanges caller asks for: open, merged, closed (closed
+// without a merge) or all; "" is open.
+func changeState(state string) (string, error) {
+	switch state {
+	case "":
+		return "open", nil
+	case "open", "merged", "closed", "all":
+		return state, nil
+	}
+	return "", fmt.Errorf("forge: change state %q is not open, merged, closed or all", state)
 }
 
 // APIRequest is a raw call to the forge API. Path is relative to the API root; on GitHub
@@ -294,6 +307,7 @@ func (p ghPull) change() Change {
 		CreatedAt: p.CreatedAt, HeadRef: p.Head.Ref, BaseRef: p.Base.Ref}
 	if p.MergedAt != nil {
 		out.State = "merged"
+		out.MergedAt = *p.MergedAt
 	}
 	if p.User != nil {
 		out.Author = p.User.Login
@@ -355,6 +369,40 @@ func (c *GitHub) Change(ctx context.Context, number int) (Change, error) {
 		return Change{}, err
 	}
 	return p.change(), nil
+}
+
+// ListChanges lists the pull requests in state open, merged, closed (closed without a merge) or
+// all; "" is open. The pulls list has no merged state, so merged and closed read the closed pulls
+// and keep those with, or without, a merged_at. Every page is followed; a failing page is an error.
+func (c *GitHub) ListChanges(ctx context.Context, state string) ([]Change, error) {
+	if err := c.configured(); err != nil {
+		return nil, err
+	}
+	want, err := changeState(state)
+	if err != nil {
+		return nil, err
+	}
+	api := want
+	if want == "merged" {
+		api = "closed"
+	}
+	var out []Change
+	url := c.repoURL("/pulls?state=" + api + "&per_page=100")
+	for url != "" {
+		var page []ghPull
+		next, err := c.do(ctx, http.MethodGet, url, nil, &page)
+		if err != nil {
+			return nil, err
+		}
+		for _, p := range page {
+			// open and all are filtered by the server; closed pulls split on whether they merged.
+			if ch := p.change(); want == "all" || want == "open" || (want == "merged") == !ch.MergedAt.IsZero() {
+				out = append(out, ch)
+			}
+		}
+		url = next
+	}
+	return out, nil
 }
 
 // CreateChangeComment comments on a pull request; GitHub keeps those as issue comments.

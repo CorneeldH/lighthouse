@@ -42,6 +42,9 @@ func (m glMR) change() Change {
 	case "opened", "locked": // locked while it merges
 		out.State = "open"
 	}
+	if m.MergedAt != nil {
+		out.MergedAt = *m.MergedAt
+	}
 	if m.Author != nil {
 		out.Author = m.Author.Username
 	}
@@ -224,6 +227,30 @@ func (g *GitLab) Change(ctx context.Context, number int) (Change, error) {
 		return Change{}, err
 	}
 	return m.change(), nil
+}
+
+// ListChanges lists the merge requests in state open, merged, closed (closed without a merge) or
+// all; "" is open. Every page is followed; a failing page is an error.
+func (g *GitLab) ListChanges(ctx context.Context, state string) ([]Change, error) {
+	if err := g.configured(); err != nil {
+		return nil, err
+	}
+	state, err := changeState(state)
+	if err != nil {
+		return nil, err
+	}
+	if state == "open" {
+		state = "opened"
+	}
+	mrs, err := getAll[glMR](ctx, g, g.projectPath("/merge_requests"), neturl.Values{"state": {state}})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Change, 0, len(mrs))
+	for _, m := range mrs {
+		out = append(out, m.change())
+	}
+	return out, nil
 }
 
 // CreateChangeComment adds a note to merge request number and returns it.

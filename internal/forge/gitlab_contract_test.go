@@ -135,6 +135,15 @@ func (g *gitlabFixture) AddBlocker(_ *testing.T, number int, b forge.Blocker) {
 
 func (g *gitlabFixture) FailBlockingPage2(_ *testing.T, number int) { g.srv.FailLinksPage2(number) }
 
+func (g *gitlabFixture) AddChange(_ *testing.T, c forge.Change) {
+	m := map[string]any{"iid": c.Number, "title": c.Title, "state": mrState[strings.ToUpper(c.State)],
+		"source_branch": c.HeadRef, "source_project_id": 1, "target_project_id": 1}
+	if !c.MergedAt.IsZero() {
+		m["merged_at"] = c.MergedAt.UTC().Format(time.RFC3339)
+	}
+	g.srv.AddMR(m)
+}
+
 func (g *gitlabFixture) AddOpenPR(_ *testing.T, pr forge.OpenPR) {
 	g.srv.AddMR(map[string]any{"iid": pr.Number, "state": "opened", "title": pr.Title, "description": pr.Body,
 		"source_branch": pr.HeadRef, "source_project_id": 1, "target_project_id": 1})

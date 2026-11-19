@@ -299,7 +299,7 @@ func TestGitHubChangeStateMerged(t *testing.T) {
 	}
 	want := Change{Number: 4, Title: "Gemerged", Body: "b", State: "merged", Labels: []string{"bug"},
 		URL: "https://github.com/o/r/pull/4", CreatedAt: time.Date(2026, 10, 30, 9, 0, 0, 0, time.UTC),
-		Author: "anna", HeadRef: "feat", BaseRef: "main"}
+		MergedAt: time.Date(2026, 11, 1, 10, 0, 0, 0, time.UTC), Author: "anna", HeadRef: "feat", BaseRef: "main"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("Change(4) = %+v, want %+v", got, want)
 	}

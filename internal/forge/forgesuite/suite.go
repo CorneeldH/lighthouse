@@ -39,6 +39,9 @@ type Fixture interface {
 	AddBlocker(t *testing.T, number int, b forge.Blocker)
 	// FailBlockingPage2 makes the second page of the blocking list of issue number answer a 500.
 	FailBlockingPage2(t *testing.T, number int)
+	// AddChange adds a pull or merge request with its Number, Title, State (open, closed or
+	// merged), HeadRef and, for a merged one, MergedAt.
+	AddChange(t *testing.T, c forge.Change)
 	AddOpenPR(t *testing.T, pr forge.OpenPR)
 	// AddOpenPRWithStatus adds an open pull request with its Number, Title, URL, Draft, Mergeable
 	// and Checks.
@@ -128,6 +131,10 @@ var Cases = []Case{
 	{"SearchIssues", searchIssues},
 	{"CreateAndViewChange", createAndViewChange},
 	{"ChangeComment", changeComment},
+	{"ListChangesStates", listChangesStates},
+	{"ListChangesDefaultsToOpen", listChangesDefaultsToOpen},
+	{"ListChangesBogusState", listChangesBogusState},
+	{"ListChangesPages", listChangesPages},
 	{"MilestonesAndLookup", milestonesAndLookup},
 	{"MilestoneAmbiguousTitle", milestoneAmbiguousTitle},
 	{"LabelsList", labelsList},
@@ -873,6 +880,86 @@ func createAndViewChange(t *testing.T, f Fixture) {
 		got.State != "open" || got.HeadRef != "feature-x" || got.BaseRef != "main" {
 		t.Errorf("Change = %+v; want title My change, body Why., state open, head feature-x, base main", got)
 	}
+}
+
+// addThreeChanges adds an open (1), a merged (2) and a closed-not-merged (3) change; 2 merged at
+// mergedAt.
+func addThreeChanges(t *testing.T, f Fixture, mergedAt time.Time) {
+	t.Helper()
+	f.AddChange(t, forge.Change{Number: 1, Title: "Open", State: "open", HeadRef: "issue-1-open"})
+	f.AddChange(t, forge.Change{Number: 2, Title: "Merged", State: "merged", HeadRef: "issue-2-merged", MergedAt: mergedAt})
+	f.AddChange(t, forge.Change{Number: 3, Title: "Closed", State: "closed", HeadRef: "issue-3-closed"})
+}
+
+// changeNumbers lists the numbers of cs, in order.
+func changeNumbers(cs []forge.Change) []int {
+	var nums []int
+	for _, c := range cs {
+		nums = append(nums, c.Number)
+	}
+	slices.Sort(nums)
+	return nums
+}
+
+// listChangesStates: each state names exactly its changes; a closed-not-merged one is not merged;
+// the merged one carries State merged, MergedAt and its head branch.
+func listChangesStates(t *testing.T, f Fixture) {
+	mergedAt := time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
+	addThreeChanges(t, f, mergedAt)
+	for state, want := range map[string][]int{"open": {1}, "merged": {2}, "closed": {3}, "all": {1, 2, 3}} {
+		got, err := f.Forge().ListChanges(t.Context(), state)
+		if err != nil {
+			t.Fatalf("ListChanges(%q): %v", state, err)
+		}
+		if nums := changeNumbers(got); !slices.Equal(nums, want) {
+			t.Errorf("ListChanges(%q) = %v, want %v", state, nums, want)
+		}
+	}
+	merged, err := f.Forge().ListChanges(t.Context(), "merged")
+	if err != nil || len(merged) != 1 {
+		t.Fatalf("ListChanges(merged) = %+v, %v; want one change", merged, err)
+	}
+	if c := merged[0]; c.State != "merged" || !c.MergedAt.Equal(mergedAt) || c.HeadRef != "issue-2-merged" {
+		t.Errorf("merged change = %+v; want state merged at %s on issue-2-merged", c, mergedAt)
+	}
+	closed, err := f.Forge().ListChanges(t.Context(), "closed")
+	if err != nil || len(closed) != 1 || closed[0].State != "closed" || !closed[0].MergedAt.IsZero() {
+		t.Errorf("ListChanges(closed) = %+v, %v; want one closed change with no MergedAt", closed, err)
+	}
+}
+
+// listChangesDefaultsToOpen: an empty state is open.
+func listChangesDefaultsToOpen(t *testing.T, f Fixture) {
+	addThreeChanges(t, f, time.Now().Add(-time.Hour))
+	got, err := f.Forge().ListChanges(t.Context(), "")
+	if err != nil {
+		t.Fatalf("ListChanges(\"\"): %v", err)
+	}
+	if nums := changeNumbers(got); !slices.Equal(nums, []int{1}) {
+		t.Errorf("ListChanges(\"\") = %v, want [1]", nums)
+	}
+}
+
+// listChangesBogusState: an unknown state is an error, never an empty list.
+func listChangesBogusState(t *testing.T, f Fixture) {
+	got, err := f.Forge().ListChanges(t.Context(), "bogus")
+	if err == nil {
+		t.Errorf("ListChanges(bogus) = %+v, want an error", got)
+	}
+}
+
+// listChangesPages: more changes than one page holds are all returned.
+func listChangesPages(t *testing.T, f Fixture) {
+	var want []int
+	for n := 1; n <= page; n++ {
+		f.AddChange(t, forge.Change{Number: n, Title: "C", State: "open", HeadRef: fmt.Sprintf("fix-%d", n)})
+		want = append(want, n)
+	}
+	got, err := f.Forge().ListChanges(t.Context(), "open")
+	if err != nil {
+		t.Fatalf("ListChanges(open): %v", err)
+	}
+	once(t, "ListChanges", changeNumbers(got), want)
 }
 
 func changeComment(t *testing.T, f Fixture) {

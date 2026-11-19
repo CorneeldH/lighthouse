@@ -77,6 +77,10 @@ type Forge interface {
 	SearchIssues(ctx context.Context, text string) ([]Issue, error)
 	CreateChange(ctx context.Context, in NewPR) (Change, error)
 	Change(ctx context.Context, number int) (Change, error)
+	// ListChanges lists the pull or merge requests in state "open", "merged", "closed" (closed
+	// without a merge) or "all"; "" is open, any other value an error. HeadRef is filled and
+	// MergedAt set for a merged one. Every page is followed; a failing page is an error.
+	ListChanges(ctx context.Context, state string) ([]Change, error)
 	CreateChangeComment(ctx context.Context, number int, body string) (protocol.Comment, error)
 	// Milestones lists the milestones in state "open", "closed" or "all"; "" is open.
 	Milestones(ctx context.Context, state string) ([]Milestone, error)
