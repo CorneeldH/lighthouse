@@ -15,9 +15,9 @@
 - Code, namen, commentaar en testdata Engels; `docs/`, changelog-fragment en commitberichten Nederlands (Conventional Commits).
 - Een adopter ziet nooit minder blokkades dan vandaag: geen lint-config versoepelen. Ruff blijft een plafond (alleen de lijst), Go en shell een vloer (alles wat nu blokkeert, plus de lijst).
 - `COULD NOT CHECK`-paden blijven zoals ze zijn en krijgen geen ID; hun bestaande tests blijven.
-- Blokmelding draagt de ID als `[<hook>/<id>]`; de rest van de tekst blijft gelijk. Matchen per tool: ruff `: E722 `, shellcheck `SC2164 (`, golangci `(errcheck)`, de rest `[<hook>/<id>]`; geen losse substring, en de overtreding staat onder een neutrale naam (`canary.<ext>`) in een tijdelijke map zonder de ID in het pad.
+- Blokmelding draagt de ID als `[<hook>/<id>]`; de rest van de tekst blijft gelijk. Matchen per tool: ruff `: E722 ` (pass 2 van `ruff-format-check.sh` krijgt `--output-format concise`, anders print de huidige ruff `E722 Do not …` zonder `: `; gemeten met ruff 0.17.6 en de hook draait `uvx ruff` ongepind), shellcheck `SC2164 (`, golangci `(errcheck)`, de rest `[<hook>/<id>]`; geen losse substring, en de overtreding staat onder een neutrale naam (`canary.<ext>`) in een tijdelijke map zonder de ID in het pad.
 - `--norc` is verboden bij shellcheck; `golangci-lint run --enable-only` is verboden.
-- De Go-vloercheck vereist golangci-lint v2; op v1 meldt de hook `COULD NOT CHECK`, nooit stil.
+- De Go-vloercheck vereist golangci-lint v2; op v1 slaat de hook alleen de vloercheck over en meldt dat (`COULD NOT CHECK` voor de vloer, in de melding), maar draait de lintrun zoals nu: bevindingen blokkeren (exit 2) nog steeds. Nooit stil, nooit minder blokkeren dan vandaag.
 - Blokmelding van go- en shell-vloer noemt `issues.new-from-rev` (go) resp. een `# shellcheck disable=… <reden>` (shell) als route voor schuld.
 - Dogfood: een wijziging onder `pack/` draait `go run ./cmd/lighthouse init --upgrade` en commit de installed copy (`No changes.` in CI). Gereedschap blijft gepind (`.golangci-version`, shellcheck-pin; ruff via `.ruff-version` alleen als dat bestand bestaat: in deze repo ontbreekt het, dan draait de hook `uvx ruff` ongepind).
 - Go-code volgt `/lighthouse-go-standard`, tests `/lighthouse-test-standard` (per test: de productiewijziging die hem rood maakt). Elke PR een fragment in `changelog.d/`.
@@ -40,7 +40,7 @@ Invoerklassen die de spec impliceert maar die geen taak vanzelf raakt; elke rege
 - Nieuw `internal/hook/reason.go` — `Reason`, `Declare`, `Reasons`, `Block`, `CouldNotCheck`.
 - Nieuw `internal/hook/static_test.go` — de statische `Code: 2`-test.
 - Wijzig `internal/hooks/*.go`, `internal/commitgate/{message,gate,pre}.go`, `internal/codelang/hook.go` — declaraties en helperaanroepen.
-- Nieuw `internal/canary/` — `harness_test.go` (build, `init --yes` in een tijdelijke repo, subprocess-runner), `lists_test.go` (untagged: bijecties), `core_test.go`, `go_test.go`, `shell_test.go`, `bashwrite_test.go` (alle tagged `canary`), `testdata/<hook>/<id>.<ext>`.
+- Nieuw `internal/canary/` — `harness_canary_test.go` (tag `canary`: build, `init --yes` in een tijdelijke repo, subprocess-runner), `lists_test.go` (untagged: bijecties en `blockingRules`), `core_test.go`, `go_test.go`, `shell_test.go`, `bashwrite_test.go` (alle tagged `canary`), `testdata/<hook>/<id>.<ext>`.
 - Wijzig `pack/{python,go,shell}/hooks/*.sh`, `pack/shell/scripts/shellcheck-repo.sh`.
 - Nieuw `tests/pack/python/test_canary.py` + `tests/pack/python/testdata/<hook>/<id>.py`.
 - Wijzig `.github/workflows/ci.yml` (job `canary`), verwijder opgegane pytest-tests, `changelog.d/`.
@@ -59,9 +59,9 @@ Invoerklassen die de spec impliceert maar die geen taak vanzelf raakt; elke rege
   - `func Declare(hookName string, ids ...string) []Reason` — registreert en geeft de lijst terug; paniekt op een lege of dubbele ID of op een tweede `Declare` voor dezelfde hook.
   - `func Reasons(hookName string) ([]string, bool)` — de IDs in declaratievolgorde; `false` als de hook niets declareerde. `func DeclaredHooks() []string` — gesorteerd.
   - `func Block(r Reason, stderr string) Result` — `Code: 2`, stderr krijgt `r.Tag()+" "` vóór de eerste regel. `func BlockTagged(stderr string, used ...Reason) Result` — voor een melding met een tag per bevindingsregel; paniekt als een `used`-tag niet in `stderr` staat.
-  - `func CouldNotCheck(stderr string) Result` — `Code: 2`, stderr ongewijzigd (de eerste regel bevat al `COULD NOT CHECK`; paniekt als dat niet zo is).
+  - `func CouldNotCheck(stderr string) Result` — `Code: 2`, stderr ongewijzigd; paniekt alleen als `COULD NOT CHECK` nergens in stderr staat (bestaande meldingen hebben tekst ervoor: prbody-stderr in `prcreategate.go:66,88,90`, de trace-regel in `mdlinkcheck.go:98-103`, `g.pending` in commitgate). Een aanroeper die ook `Output` nodig heeft (`bashwritecheck.go:33-39`, `unknownMode`) zet dat veld op het teruggegeven `Result`. `Block` paniekt als `r` niet via `Declare` is geregistreerd.
 
-- [ ] **Step 1: Tests** `TestBlockPrefixesTheTagOnTheFirstLine`, `TestBlockTaggedRequiresEveryTag`, `TestCouldNotCheckRejectsAMessageWithoutTheToken`, `TestDeclareRejectsDuplicates` (tabel: lege ID, dubbele ID, tweede `Declare` van dezelfde hook), `TestReasonsKeepDeclarationOrder`. Assert o.a. `Block(Reason{"h","x"}, "msg\nmore\n").Stderr == "[h/x] msg\nmore\n"`.
+- [ ] **Step 1: Tests** `TestBlockPrefixesTheTagOnTheFirstLine`, `TestBlockTaggedRequiresEveryTag`, `TestCouldNotCheckRejectsAMessageWithoutTheToken`, `TestBlockRejectsUndeclaredReason`, `TestDeclareRejectsDuplicates` (tabel: lege ID, dubbele ID, tweede `Declare` van dezelfde hook), `TestReasonsKeepDeclarationOrder`. Assert o.a. `Block(Reason{"h","x"}, "msg\nmore\n").Stderr == "[h/x] msg\nmore\n"`.
 - [ ] **Step 2:** `go test ./internal/hook/ -run 'Block|Reason|Declare|CouldNot'` — verwacht FAIL (symbolen ontbreken).
 - [ ] **Step 3: Implementeer** de signaturen hierboven in `internal/hook/reason.go`; registry achter dezelfde `mu` als `Register`.
 - [ ] **Step 4:** zelfde commando — PASS.
@@ -72,7 +72,7 @@ Invoerklassen die de spec impliceert maar die geen taak vanzelf raakt; elke rege
 ### Taak 2: de 7 core-hooks declareren redenen en gebruiken de helpers
 
 **Files:**
-- Modify: `internal/hooks/maincommitgate.go` (`blocked` en de blokkade op `:151`), `internal/hooks/committestgate.go`, `internal/hooks/prcreategate.go`, `internal/hooks/workflowpushgate.go`, `internal/hooks/mdlinkcheck.go`, `internal/hooks/bashwritecheck.go`, `internal/commitgate/{message,gate,pre}.go`, `internal/codelang/hook.go`
+- Modify: `internal/hooks/maincommitgate.go` (`blocked` en de blokkade op `:151`), `internal/hooks/committestgate.go`, `internal/hooks/prcreategate.go`, `internal/hooks/workflowpushgate.go`, `internal/hooks/mdlinkcheck.go`, `internal/hooks/bashwritecheck.go`, `internal/commitgate/{message,gate,pre,post}.go` (`post.go:47` `InvalidPayload`), `internal/codelang/hook.go`
 - Test: `internal/hook/static_test.go`, bestaande `_test.go` van die hooks (verwachte stderr krijgt de tag)
 
 **Interfaces:**
@@ -103,21 +103,21 @@ Invoerklassen die de spec impliceert maar die geen taak vanzelf raakt; elke rege
 ### Taak 3: canary-harnas en de core-canaries
 
 **Files:**
-- Create: `internal/canary/harness_test.go`, `internal/canary/lists_test.go`, `internal/canary/core_test.go` (tag `canary`), `internal/canary/testdata/<hook>/<id>.json` (payload-sjablonen met `{{repo}}`, vullen via `fixturesetup.Fill`)
+- Create: `internal/canary/harness_canary_test.go` (tag `canary`), `internal/canary/lists_test.go` (ongetagd), `internal/canary/core_test.go` (tag `canary`), `internal/canary/testdata/<hook>/<id>.*`: voor command-hooks (main-commit-gate, commit-test-gate, pr-create-gate, workflow-push-gate) `<id>.cmd` met het Bash-commando (`{{repo}}` via `fixturesetup.Fill`), voor bestandshooks het bronbestand zelf (`dead.md`, `absolute.md`, `non-english.go`); de payload-JSON bouwt de test in code. Modify: `.golangci.yml` (`run.build-tags` + `canary`)
 - Modify: `internal/hook` (alleen als `DeclaredHooks` iets mist)
 
 **Interfaces:**
 - Consumes: `hook.Reasons`, `hook.DeclaredHooks` (taak 1–2), `internal/fixturesetup` (`Build`, `Fill`, `Git`).
 - Produces (voor taak 4–7, in package `canary`): 
-  - `func lighthouseBin(t *testing.T) string` — bouwt één keer per testbinary (`sync.Once`) naar een tijdelijke map, zoals `e2e/e2e_test.go:buildLighthouse`.
+  - `func lighthouseBin(t *testing.T) string` — bouwt één keer per testbinary (`sync.Once`) naar een map die `TestMain` met `os.MkdirTemp` maakt en na `m.Run()` opruimt (niet `t.TempDir()`: die verdwijnt na de eerste test, vgl. `e2e/e2e_test.go:65`). `TestMain` lost ook shellcheck één keer op (de gepinde lib) en geeft `SHELLCHECK_BIN` door via `runHook`, zodat niet elke tijdelijke repo opnieuw downloadt.
   - `func installRepo(t *testing.T, packs ...string) string` — tijdelijke git-repo op `main`, `lighthouse init --yes --pack <p>…`, geeft de root terug.
-  - `type run struct{ Code int; Stdout, Stderr string }` en `func runHook(t *testing.T, root, script string, payload string, env ...string) run` — draait `<root>/.claude/hooks/lighthouse/<script>` (of `run.sh <hook> [stand]`) met `payload` op stdin, `PATH` met `lighthouse` voorop, zonder `LIGHTHOUSE_*` uit de omgeving.
+  - `type run struct{ Code int; Stdout, Stderr string }` en `func runHook(t *testing.T, root, script string, payload string, env ...string) run` — draait `<root>/.claude/hooks/lighthouse/<script>` (of `run.sh <hook> [stand]`) met `payload` op stdin, `PATH` met `lighthouse` voorop, zonder `LIGHTHOUSE_*` uit de omgeving. `LIGHTHOUSE_CONTROLLER_RUN` voor `workflow-path` moet uuid-vormig zijn (`internal/hooks/workflowpushgate.go:46`). Tijdelijke repo's staan onder een vast patroon (`os.MkdirTemp` of de ouder-test), niet onder `t.TempDir()` van een subtest die naar de ID heet, anders staat de ID in het pad.
   - `func blockingRules(t *testing.T, hookFile string) []string` — leest de enige `BLOCKING_RULES="…"`-regel uit het hookbestand onder `pack/`; faalt bij nul of meer dan één regel, een lege of dubbele ID.
   - `func requireCanary(t *testing.T, r run, id string, marker string)` — eist `Code == 2` en `marker` in stderr.
 
 - [ ] **Step 1: Bijectietests (untagged, rood)** in `lists_test.go`: `TestCoreReasonsMatchBlockingFile` (de sleutels van `hook.DeclaredHooks()` zijn exact de regels van `pack/core/hooks/blocking`, plus `code-language-check`-check dat de hooks in `blocking` allemaal declareren), `TestEveryReasonHasATestdataFile` en `TestEveryTestdataFileHasAReason` (per hook, `testdata/<hook>/<id>.*`; één generieke helper `assertBijection(t, hook string, ids []string)` die later ook voor de shell-hooks dient). Review-focus 3: `TestBlockingRulesRejectsMissingEmptyOrDuplicate` met drie tijdelijke hookbestanden.
 - [ ] **Step 2:** `go test ./internal/canary/` — verwacht FAIL (geen testdata).
-- [ ] **Step 3:** Schrijf harnas en per core-ID één fixture + één subtest in `core_test.go` (`go:build canary`), tabel `ID → setup`:
+- [ ] **Step 3:** Schrijf harnas en per core-ID één fixture + één subtest in `core_test.go` (`go:build canary`), tabel `ID → setup`. Splits de helpers om `unused` te vermijden (golangci-lint lint met build-tag `e2e` en ziet getagde gebruikers niet): ongetagd `lists_test.go` bevat `blockingRules`, `nonLinterRules`, `assertBijection`; het subprocess-harnas (`lighthouseBin`, `installRepo`, `run`, `runHook`, `requireCanary`) staat in `harness_canary_test.go` met `//go:build canary`. Zet `canary` in `.golangci.yml` `run.build-tags` (naast `e2e`) zodat de getagde bestanden ook gelint worden:
 
 | ID | Hook-aanroep | Opzet van de repo |
 |---|---|---|
@@ -141,15 +141,16 @@ Invoerklassen die de spec impliceert maar die geen taak vanzelf raakt; elke rege
 **Files:**
 - Modify: `pack/python/hooks/ty-gate.sh`, `pack/python/hooks/ruff-format-check.sh` (alleen de commentaarverwijzing; `BLOCKING_RULES` blijft)
 - Create: `tests/pack/python/test_canary.py`, `tests/pack/python/testdata/ruff-format-check/<code>.py` (8 bestanden), `tests/pack/python/testdata/ty-gate/{type-error,unresolved-imports-only}.py`
+- Modify: `tests/pack/python/test_ty_gate.py` (asserts `startswith("ty-gate: ")` op regels 165, 180, 387 krijgen de tag-prefix)
 - Modify: `tests/pack/python/test_ruff_format.py` (de twee losse blokkeertests gaan op in de canary), `pack/python/scripts/quality/baseline.py` niet.
 
 **Interfaces:**
-- Produces: `ty-gate.sh` bevat `BLOCKING_RULES="type-error,unresolved-imports-only"`; de gewone-fouttak print `[ty-gate/type-error] …` als eerste regel, de alleen-imports-tak `[ty-gate/unresolved-imports-only] …`. Ruffmelding blijft de ruff-output (`: E722 `).
+- Produces: `ty-gate.sh` bevat `BLOCKING_RULES="type-error,unresolved-imports-only"`; de gewone-fouttak print `[ty-gate/type-error] …` als eerste regel, de alleen-imports-tak `[ty-gate/unresolved-imports-only] …`. Ruffmelding blijft de ruff-output, maar pass 2 (`$RUFF check --force-exclude --select "$BLOCKING_RULES"`, `ruff-format-check.sh:102`) krijgt `--output-format concise`, zodat de regel `<file>:<l>:<c>: E722 …` is en `: E722 ` onafhankelijk van de ruffversie matcht. `test_ruff_format.py` en de skill-tekst die de uitvoervorm aannemen worden meegenomen.
 
 - [ ] **Step 1: Test** `test_every_ruff_rule_blocks` (parametrize over `BLOCKING_RULES` uit `ruff-format-check.sh`, gelezen met een regex op de enige regel; kopieert `testdata/ruff-format-check/<code>.py` naar `tmp_path/canary.py`; eist `returncode == 2` en `f": {code} "` in stderr), `test_ruff_rules_have_a_file_each` (bijectie), `test_every_ty_reason_blocks` (zelfde patroon; ty via echte `uvx ty@<TY_VERSION>` in een tijdelijke repo met `.venv`, `python.source_dirs`; hergebruik de repo-opzet uit `test_ty_gate.py`), `test_ty_reasons_have_a_file_each`, `test_baseline_py_lists_the_same_ruff_rules` (leest de 8 codes uit `baseline.py:18-25`; mag, spec §5).
 - [ ] **Step 2:** `uv run pytest -q tests/pack/python/test_canary.py` — verwacht FAIL (testdata en `BLOCKING_RULES` in ty-gate ontbreken).
-- [ ] **Step 3:** Voeg de `BLOCKING_RULES`-regel en de tags aan `ty-gate.sh` toe (alle andere exit-2-takken zijn `COULD NOT CHECK`); schrijf de fixtures (minimale overtredingen, één per code: `E722` bare `except:`, `B006` mutable default, `F403` `from x import *`, `F811` herdefinitie, `B023` closure in loop, `PT012` `pytest.raises` met meerdere statements, `PGH003` `# type: ignore`, `PGH004` `# noqa` zonder code; ty: `x: int = "a"`, en een import van een niet bestaande module met verder schone code).
-- [ ] **Step 4:** pytest PASS. Verwijder de twee opgegane tests uit `test_ruff_format.py`.
+- [ ] **Step 3:** Voeg de `BLOCKING_RULES`-regel en de tags aan `ty-gate.sh` toe (alle andere exit-2-takken zijn `COULD NOT CHECK`); schrijf de fixtures (minimale overtredingen, één per code: `E722` bare `except:`, `B006` mutable default, `F403` `from x import *`, `F811` herdefinitie van een functie (geen import: pass 1 `--fix` ruimt een ongebruikte import weg; controleer elke fixture ná pass 1), `B023` closure in loop, `PT012` `pytest.raises` met meerdere statements, `PGH003` `# type: ignore`, `PGH004` `# noqa` zonder code; ty: `x: int = "a"`, en een import van een niet bestaande module met verder schone code).
+- [ ] **Step 4:** `uv run pytest -q tests/pack/python/` PASS (ook `test_ty_gate.py`). Verwijder de twee opgegane tests uit `test_ruff_format.py`.
 - [ ] **Step 5: Commit** `feat(python-pack): canary per ruff-regel en ty-reden (#381)`.
 
 ---
@@ -164,10 +165,10 @@ Invoerklassen die de spec impliceert maar die geen taak vanzelf raakt; elke rege
 **Interfaces:**
 - Produces:
   - `gofmt-check.sh`: `BLOCKING_RULES="parse-error"`; de parse-takmelding wordt `[gofmt-check/parse-error] gofmt-check: <file> does not parse — …`.
-  - `go-lint-gate.sh`: `BLOCKING_RULES="errcheck,govet,ineffassign,staticcheck,unused,typecheck"`. Vóór de lintrun in `check_root`: de effectieve set uit `golangci-lint linters --json | jq -r '.Enabled[].name'` (met de config van de repo, `--no-config` nooit); voor elke ID uit `BLOCKING_RULES` behalve `typecheck` die niet in die set staat: blokkeer (exit 2) met `[go-lint-gate/<id>] <id> is switched off in the golangci-lint configuration of <root>; …` en de `issues.new-from-rev`-route. Op golangci-lint v1 (`version --short` begint niet met `2`): `COULD NOT CHECK`. De lintrun zelf is ongewijzigd; een bevinding print voortaan `[go-lint-gate/<linter>]`-loos zoals golangci (`(errcheck)`), de test matcht daarop.
+  - `go-lint-gate.sh`: `BLOCKING_RULES="errcheck,govet,ineffassign,staticcheck,unused,typecheck"`. Vóór de lintrun in `check_root`: de effectieve set uit `golangci-lint linters --json | jq -r '.Enabled[].name'` (met de config van de repo, `--no-config` nooit); voor elke ID uit `BLOCKING_RULES` behalve `typecheck` die niet in die set staat: blokkeer (exit 2) met `[go-lint-gate/<id>] <id> is switched off in the golangci-lint configuration of <root>; …` en de `issues.new-from-rev`-route. Op golangci-lint v1 (`version --short` begint niet met `2`): sla alleen de vloercheck over, verzamel een melding `COULD NOT CHECK the floor: golangci-lint v1`, en draai de lintrun zoals nu (let op: `cannot_check`/`report` in `go-lint-gate.sh:42-53` doet `exit 0` en mag hier niet worden gebruikt); bij een bevinding exit 2 met die melding erbij, anders de melding als systemMessage. De lintrun zelf is ongewijzigd; een bevinding print voortaan `[go-lint-gate/<linter>]`-loos zoals golangci (`(errcheck)`), de test matcht daarop.
   - In de test: `func blockingRules` (taak 3) leest ook `go-lint-gate.sh`; de IDs behalve `typecheck` zijn de vloerlinters (de test leest dat onderscheid uit de hook: `typecheck` staat in een aparte regel `NON_LINTER_RULES="typecheck"` in het script, door `blockingRules`-hulpfunctie `nonLinterRules` gelezen).
 
-- [ ] **Step 1: Tests.** `TestGoLintGateCanary` (subtest per ID: een tijdelijke module met `go.mod` en `.golangci.yml` `version: "2"` + `linters.default: standard`, overtreding als `canary.go`, Stop-payload + transcript zoals `tests/pack/go/test_go_lint_gate.py`; eist exit 2 en `(<id>)` resp. `(typecheck)` in stderr), `TestGoLintGateFloorHostileConfig` (subtest per vloer-ID behalve `typecheck`: de test schrijft een config `linters.default: standard` + `disable: [<id>]`, draait de hook op een **schone** module en eist exit 2 plus `[go-lint-gate/<id>]` — daarmee faalt hij als de vloercheck verdwijnt), `TestGoLintGateFloorKeepsStricterAdopterConfig` (config met extra linter `gocritic` aan ⇒ de hook blokkeert nog steeds op een `gocritic`-bevinding: geen plafond), `TestGoLintGateV1IsUnchecked` (fake `golangci-lint` op `PATH` met `version --short` = `1.64.8` ⇒ `COULD NOT CHECK`), `TestGofmtParseErrorCanary`, bijecties via `assertBijection`.
+- [ ] **Step 1: Tests.** `TestGoLintGateCanary` (subtest per ID: een tijdelijke module met `go.mod` en `.golangci.yml` `version: "2"` + `linters.default: standard`, overtreding als `canary.go`, Stop-payload + transcript zoals `tests/pack/go/test_go_lint_gate.py`; eist exit 2 en `(<id>)` resp. `(typecheck)` in stderr), `TestGoLintGateFloorHostileConfig` (subtest per vloer-ID behalve `typecheck`: de test schrijft een config `linters.default: standard` + `disable: [<id>]`, draait de hook op een **schone** module en eist exit 2 plus `[go-lint-gate/<id>]` — daarmee faalt hij als de vloercheck verdwijnt), `TestGoLintGateFloorKeepsStricterAdopterConfig` (config met extra linter `gocritic` aan ⇒ de hook blokkeert nog steeds op een `gocritic`-bevinding: geen plafond), `TestGoLintGateV1IsUnchecked` (fake `golangci-lint` op `PATH` met `version --short` = `1.64.8`: zonder bevinding ⇒ de specifieke tekst `COULD NOT CHECK the floor` en exit 0; met een bevinding in de fake `run`-uitvoer ⇒ exit 2 plus diezelfde melding), `TestGofmtParseErrorCanary`, bijecties via `assertBijection`.
 - [ ] **Step 2:** `go test -tags canary -run 'GoLint|Gofmt' ./internal/canary/` — verwacht FAIL.
 - [ ] **Step 3:** Implementeer in de twee scripts; schrijf de fixtures. Probeer eerst met het ongewijzigde script om te zien dat `TestGoLintGateFloorHostileConfig` nu groen zou zijn zonder vloercheck (het script blokkeert niet; de test hoort rood).
 - [ ] **Step 4:** Alle bovenstaande tests PASS; `go run ./cmd/lighthouse init --upgrade` ⇒ commit de installed copy.
@@ -206,8 +207,18 @@ Invoerklassen die de spec impliceert maar die geen taak vanzelf raakt; elke rege
 **Interfaces:**
 - Consumes: `bashwrites.Gates`, `bashwrites.GateLabel`, taak 3 (`installRepo` met `go`, `python`, `shell`), de testdata van taak 3–6.
 
-- [ ] **Step 1: Test** `TestBashWriteCheckCanaryPerGate`: de unieke gates uit `bashwrites.Gates` (waarden, uniek) ⇒ per gate een subtest; extensie = de sleutel waarin de gate voorkomt; overtreding = `testdata/<hook>/<eerste ID>.*` van die gate (hook = naam zonder `.sh`); de test draait `run.sh bash-write-check pre` en daarna `post` met een Bash-payload die het bestand (neutrale naam) schrijft, en eist exit 2 plus de marker van die poort (dezelfde als in zijn eigen canary). `TestBashWriteCheckGateSetHasNoRemainder`: elke gate uit `Gates` heeft testdata (bijectie), zodat een nieuwe poort zonder canary faalt.
-- [ ] **Step 2:** `go test -tags canary -run BashWrite ./internal/canary/` — verwacht FAIL tot taak 3–6 zijn gemerged in de branch; dan PASS.
+- [ ] **Step 1: Test** `TestBashWriteCheckCanaryPerGate`: de unieke gates uit `bashwrites.Gates` (waarden, uniek) ⇒ per gate een subtest; bron en extensie volgens deze tabel (de test kopieert het bronbestand naar `canary<ext>`):
+
+  | Poort | Extensie | Bronbestand | Marker |
+  |---|---|---|---|
+  | `shell-lint-check.sh` | `.sh` | `testdata/shell-lint-check/SC2164.sh` | `SC2164 (` |
+  | `ruff-format-check.sh` | `.py` | `../../tests/pack/python/testdata/ruff-format-check/E722.py` | `: E722 ` |
+  | `gofmt-check.sh` | `.go` | `testdata/gofmt-check/parse-error.go` | `[gofmt-check/parse-error]` |
+  | `md-link-check` | `.md` | `testdata/md-link-check/dead.md` | `[md-link-check/dead]` |
+  | `code-language-check.sh` | `.go` | `testdata/code-language-check/non-english.go` | `[code-language-check/non-english]` |
+
+  De poort-naar-fixture-tabel staat als `map[string]gateCase` in de test; `TestBashWriteCheckGateSetHasNoRemainder` eist dat elke unieke gate uit `bashwrites.Gates` erin staat. De test draait `run.sh bash-write-check pre` en daarna `post` met een Bash-payload die het bestand (neutrale naam) schrijft, en eist exit 2 plus de marker van die poort (dezelfde als in zijn eigen canary). `TestBashWriteCheckGateSetHasNoRemainder`: elke gate uit `Gates` heeft testdata (bijectie), zodat een nieuwe poort zonder canary faalt.
+- [ ] **Step 2:** `go test -tags canary -run BashWrite ./internal/canary/` — maak hem eerst rood door tijdelijk één poort uit `Gates` te halen of één bronfixture te hernoemen (bewaar de uitvoer), herstel, dan PASS.
 - [ ] **Step 3:** Implementeer de test (en `GateNames` alleen indien nodig).
 - [ ] **Step 4:** PASS. Verwijder de pytest-tests die hierin opgaan.
 - [ ] **Step 5: Commit** `test(canary): bash-write-check, een canary per poort (#381)`.
@@ -217,14 +228,15 @@ Invoerklassen die de spec impliceert maar die geen taak vanzelf raakt; elke rege
 ### Taak 8: CI-job, opgeruimde pytest, bewijs, fragment
 
 **Files:**
+- Modify: `tests/test_ci_go_test_pin.py` (verwacht `go test`-runregels: nu `len(runs) == 2` op regel 35, met de canary-job 3)
 - Modify: `.github/workflows/ci.yml` (nieuwe job `canary`; een wijziging onder `.github/workflows/` pusht de controller niet zelf: gebruik de handoff `next: push-workflows`)
 - Delete: de pytest-tests die opgaan (zie stap 2)
-- Create: `changelog.d/<naam>.md`; de PR-body noemt de verwijderde tests
+- Create: `changelog.d/issue-381-canary-per-regel.md` (formaat: `docs/releasing.md:58-80`); de PR-body noemt de verwijderde tests
 
-- [ ] **Step 1: CI-job** `canary` (naast `go-e2e`): `actions/checkout`, `setup-go`, `golangci-lint-action` met `version: v2.15.0` (installeert alleen; draait `golangci-lint run` niet: `args: --version`), `astral-sh/setup-uv`, `go build -o /usr/local/bin/lighthouse ./cmd/lighthouse`, `go test -race -tags canary ./internal/canary/ -v`, en `uv run pytest -q tests/pack/python/test_canary.py`. Shellcheck komt via de gepinde lib en wordt door de test opgehaald; ontbreekt hij, dan faalt de job (de `pinned_shellcheck`-regel: nooit overslaan). Gebruik dezelfde actie-SHA's als de bestaande jobs. Een tool die ontbreekt ⇒ `t.Fatal`, geen `t.Skip` (grep-test `TestCanaryNeverSkips` in `lists_test.go`: geen `t.Skip` in `internal/canary/*.go`).
+- [ ] **Step 1: CI-job** `canary` (naast `go-e2e`): `actions/checkout`, `setup-go`, `golangci-lint-action` met `version: v2.15.0` (`install-only: true`; `args: --version` werkt niet: de actie draait `golangci-lint run <args>` en `run --version` is `unknown flag` in v2), `astral-sh/setup-uv`, `go build -o "$RUNNER_TEMP/bin/lighthouse" ./cmd/lighthouse` met `$RUNNER_TEMP/bin` op `GITHUB_PATH` (patroon van `ci.yml:113-116`), `go test -race -tags canary ./internal/canary/ -v`, en `uv run pytest -q tests/pack/python/test_canary.py`. Shellcheck komt via de gepinde lib en wordt door de test opgehaald; ontbreekt hij, dan faalt de job (de `pinned_shellcheck`-regel: nooit overslaan). Gebruik dezelfde actie-SHA's als de bestaande jobs. Een tool die ontbreekt ⇒ `t.Fatal`, geen `t.Skip` (`TestCanaryNeverSkips` in `lists_test.go` parst de AST en zoekt `SelectorExpr` `Skip`/`Skipf`/`SkipNow`, geen tekst-grep: die vindt zichzelf).
 - [ ] **Step 2: Opgaande pytest** verwijderen, per test aangetoond met de canary die hetzelfde bewijst: `tests/pack/go/test_gofmt.py::test_blocks_a_file_that_does_not_parse`, `tests/pack/shell/test_shellcheck.py::test_shellcheck_hook_blocks_a_deliberately_broken_script`, `tests/pack/go/test_go_lint_gate.py::test_finding_blocks`, de blokkeer-case van `tests/pack/test_md_link_check.py`, de blokkeer-case(s) van `tests/pack/test_bash_write_check.py`, de twee uit `test_ruff_format.py` (taak 4). De overige tests (alle `COULD NOT CHECK`-, pin-, config- en alarmtests) blijven. Noteer de lijst voor de PR-body.
 - [ ] **Step 3: AC 4-bewijs.** Haal lokaal `PGH004` uit `BLOCKING_RULES` van `ruff-format-check.sh`, draai `uv run pytest -q tests/pack/python/test_canary.py`, verwacht rood (bijectietest `test_ruff_rules_have_a_file_each`), bewaar de output voor de PR-body, herstel de regel. Herhaal met één ID uit `go-lint-gate.sh` en `go test -tags canary -run GoLint ./internal/canary/`.
-- [ ] **Step 4: Fragment** in `changelog.d/` (kopieer het formaat van `changelog.d/fix-handoff-einde-zonder-pr.md`): de core-hook-meldingen dragen `[<hook>/<id>]`; go- en shell-hook blokkeren een config die een vloerregel uitzette, met `issues.new-from-rev` (go) of een gemotiveerde `# shellcheck disable` als route voor schuld.
+- [ ] **Step 4: Fragment** in `changelog.d/` (formaat en `type:`-regel in `docs/releasing.md`): de core-hook-meldingen dragen `[<hook>/<id>]`; go- en shell-hook blokkeren een config die een vloerregel uitzette, met `issues.new-from-rev` (go) of een gemotiveerde `# shellcheck disable` als route voor schuld.
 - [ ] **Step 5:** `go run ./cmd/lighthouse init --upgrade` ⇒ `No changes.`; `go test -race -shuffle=on ./...` en `uv run pytest -q tests/` groen.
 - [ ] **Step 6: Commit** `ci(canary): job voor de canary-tests, opgegane pytest weg (#381)`.
 
