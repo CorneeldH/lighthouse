@@ -151,7 +151,7 @@ tick starts the next phase itself. Two entries:
    works: no comment, only the plain block.
 2. **Offer** (only interactive, and only if the Controller column in Workflow step 4
    does not say `no`). At `no` you do not read the board status; if the issue is on `Controller` anyway, it stays there until the user moves it. Read the board status
-   with `lighthouse forge issue status <nr>` (`dangerouslyDisableSandbox: true`, Go TLS). Exit 2: stop.
+   with `lighthouse forge issue status <nr>` (`dangerouslyDisableSandbox: true`, Go TLS). Exit 2: stop. Exit 1 (forge error): report `board: unknown — forge error` and post without a status change.
    `board: false` means no board: report `board: skipped — no [forge.board] configured` and post
    without a status change. No item ID is needed.
 

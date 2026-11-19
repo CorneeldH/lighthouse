@@ -32,8 +32,8 @@ M=$(sed -n 's/^version = "\(.*\)"$/\1/p' .lighthouse/manifest.toml | head -n 1)
 B=$(lighthouse version | awk '{print $NF}')
 # skipped when the releases cannot be fetched: then self-update is not offered
 T=$(mktemp -d)
-lighthouse releases --repo "$L" > "$T/releases.json"
-N=$(jq -r '[.[] | select((.prerelease or .draft) | not)][0].tag // empty' "$T/releases.json")
+lighthouse releases --repo "$L" > "$T/releases.json" || echo "releases: FETCH FAILED"
+N=$(jq -r '.[]|select((.prerelease or .draft)|not)|.tag' "$T/releases.json" | sort -V | tail -1)
 M=${M#v}; B=${B#v}; N=${N#v}
 echo "repo=$M binary=$B newest=$N"
 echo "releases=$T/releases.json"
@@ -58,10 +58,10 @@ If the user declines, or nothing newer exists, compare `B` with `M`:
 
 ### 3. Release notes (a failed fetch is reported, never skipped silently)
 
-The `lighthouse releases` call needs the network: run it with `dangerouslyDisableSandbox: true`. If a fetch fails, tell the user "could not fetch release
+The `lighthouse releases` call needs the network: run it with `dangerouslyDisableSandbox: true`. If step 1 printed `releases: FETCH FAILED` or a fetch fails, tell the user "could not fetch release
 notes" and why; do not go on as if there were none.
 
-For every tag with `M < tag <= B`, show the notes. Fetch at most 200 tags, strip the `v` with
+For every tag with `M < tag <= B`, show the notes. Strip the `v` with
 `${x#v}`, and filter with `sort -V`, never on the order `lighthouse releases` returns them.
 
 ```bash

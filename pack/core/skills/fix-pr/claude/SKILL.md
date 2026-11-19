@@ -43,7 +43,7 @@ printf '%s' "$PR" | jq -r '"PR #\(.number) [\(.state)] draft=\(.draft) merge=\(.
 B=$(printf '%s' "$PR" | jq -r .head_ref)
 
 echo "=== checks ==="
-CK=$(lighthouse forge pr checks "$N")
+CK=$(lighthouse forge pr checks "$N") || { echo "checks: forge error (see above)"; CK='[]'; }
 printf '%s' "$CK" | jq -e 'length > 0' >/dev/null || echo "no checks"
 printf '%s' "$CK" | jq -r '.[] | "\(.bucket)\t\(.name)\t\(.link)"'
 
@@ -92,7 +92,7 @@ Four things in this block are measured, not taste (the `=== roborev ===` part fo
   failing or pending checks, so the block does not break off in exactly the case it is meant for;
   an empty list is "no checks".
 - **`grep` on the error markers, not `tail -60`.** `pr checks --failed-log` prints the failed log of every
-  red job under a `--- job <name>` header. Measured on one run: the log was 8,284 lines,
+  red job under a `--- job <id> <name> ---` header. Measured on one run: the log was 8,284 lines,
   the failed test was on line 2,141, and the last 60 lines were `Post job cleanup`. The grep gave
   four lines on that same log, with the cause in them.
 - **Every searching step has an `|| echo` branch.** A grep that finds nothing gives exit 1, and
@@ -154,8 +154,8 @@ report with which extras you measure.
 
 If a host-wide OOM kills a self-hosted runner, the job fails without a single test failing.
 Recognition: in
-the job list of the run (its id is in the `link` column of `lighthouse forge pr checks`; `../lighthouse-forge/<kind>.md §ci`, with `<kind>` from
-`lighthouse config forge.kind`) the test step is at `"completed_at": null` while the job is `failure`, and the log is empty or 404s.
+the job list of the run (`../lighthouse-forge/<kind>.md §ci`, with `<kind>` from
+`lighthouse config forge.kind`; on GitHub the run id is in the `link` column of `lighthouse forge pr checks`, on GitLab the `link` is the job URL with the job id, and the pipeline id comes from `lighthouse forge api "projects/<project>/merge_requests/<iid>/pipelines"`) the test step is at `"completed_at": null` while the job is `failure`, and the log is empty or 404s.
 
 Linux only (systemd journal). On macOS: `log show --last 1h --predicate 'eventMessage CONTAINS "memorystatus"'`;
 elsewhere, or without access to the runner host, skip the confirmation: a step without `completed_at` plus a
@@ -179,6 +179,7 @@ history unreadable. Exception: a fix on a *red* check — that one does belong o
 On the workflow route (a controller run, if present, whose unpushed commits `origin/<branch>..HEAD` touch `.github/workflows/`) never push (`workflow-push-gate` blocks it): review them with V2b of `/lighthouse-write-pr` on the push record (`lighthouse roborev-gate gate --push`, as described there), then post the handoff with `next: push-workflows` and without `after:` (`/lighthouse-write-handoff`); the workflow pusher pushes.
 
 As soon as `lighthouse forge pr checks <nr>` has no `fail` or `pending` and `mergeable` is `mergeable`: **report and stop**.
+`mergeable: unknown` is not a conflict: re-read after a short wait.
 Do not merge, do not review, do not close the issue. That "stop at green" does not hold while
 section 6 is open: a green PR with an unprocessed roborev review is not done yet.
 A dispatcher start after a failed merge finds the PR green: report that and stop; the failure
