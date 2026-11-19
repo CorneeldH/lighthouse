@@ -4,6 +4,17 @@ All notable changes to lighthouse. The format follows [Keep a Changelog](https:/
 chosen is in [docs/releasing.md](docs/releasing.md). The release workflow writes the sections below from the
 fragments in `changelog.d/`; never edit a released section by hand.
 
+## [v0.19.0] - 2026-11-19
+
+### Added
+
+- Scheduled job `reflect` (#121): a `[[schedule]]` block with `job = "reflect"` has a skill read the prompts of the repo's sessions and write one document of skill candidates. A Go gate counts the sessions since the last round (interactive and controller, told apart by the run history; sessions of scheduled runs do not count) and skips a round below `min_sessions`; Go writes the prompts into one corpus file with the sections Interactief and Controller, within `max_corpus_bytes`, which the run reads instead of raw sessions. The run may write one dated document and `output_dir/index.md`, with no Bash; the corpus never reaches the branch. See `docs/tick.md`.
+
+### Fixed
+
+- A controller run that ends with a handoff to `/lighthouse-close-issue` and no pull request now closes at once and starts the close-check run, instead of waiting for a pull request until `max_runtime` hands the issue back with *time-out*.
+- The close check after a merged `Refs` PR now runs on its own branch `closecheck/issue-<n>-pr-<pr>`, made from `origin/<default branch>`, so it follows the skills of the default branch instead of a stale issue branch.
+
 ## [v0.18.0] - 2026-11-19
 
 ### Added
