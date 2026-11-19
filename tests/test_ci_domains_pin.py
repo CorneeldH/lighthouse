@@ -202,8 +202,11 @@ def test_changelog_job_runs_on_every_pr():
     assert re.findall(r"^\s+if: .*$", job, re.M) == ["    if: github.event_name == 'pull_request'"]
     for needle in ("runs-on: ubuntu-latest", "fetch-depth: 0", "go run ./ci/changelog check --base \"$BASE\" --head \"$HEAD\""):
         assert needle in job, needle
-    # go run needs the toolchain from go.mod, set up before the call.
-    setup = re.search(r"uses: actions/setup-go@[0-9a-f]{40} # v[\d.]+\n\s+with:\n\s+go-version-file: go.mod", job)
+    # go run needs the toolchain from go.mod, set up before the call. Without a build cache: the
+    # fastest Go job would otherwise save the shared setup-go cache key first and lock out the others.
+    setup = re.search(
+        r"uses: actions/setup-go@[0-9a-f]{40} # v[\d.]+\n\s+with:\n\s+go-version-file: go.mod\n\s+cache: false", job
+    )
     assert setup and setup.start() < job.index("go run ./ci/changelog"), job
 
 

@@ -24,8 +24,9 @@
 // The line splitting of CHANGELOG.md breaks only on `\r\n`, `\r` and `\n`; unlike Python's
 // `str.splitlines` it does not break on `\v`, `\f`, `\x1c` to `\x1e`, `\x85`, U+2028 or U+2029.
 //
-// A value in a message is quoted with single quotes, as the Python script did; a value that
-// holds a `'` is not escaped. The OS detail after `cannot read: ` is Go's, not Python's.
+// A value in a message is quoted with single quotes, as the Python script did. For a value with
+// a `'` or a non-printable character (a BOM) this differs from Python's `repr`: Go neither
+// switches to double quotes nor escapes. The OS detail after `cannot read: ` is Go's, not Python's.
 package main
 
 import (

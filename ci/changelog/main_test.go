@@ -118,6 +118,15 @@ func TestRunReleaseError(t *testing.T) {
 	}
 }
 
+func TestRunReleaseFragmentError(t *testing.T) {
+	root := taggedRepo(t, map[string]string{"a.md": "bugfix"})
+	code, stdout, stderr := runCLI("release", "--event", "push", "--root", root)
+	want := filepath.Join(root, "changelog.d", "a.md") + ": unknown type 'bugfix', expected one of added, changed, fixed, removed, internal\n"
+	if code != 1 || stdout != "" || stderr != want {
+		t.Fatalf("code=%d stdout=%q stderr=%q, want 1, empty and %q", code, stdout, stderr, want)
+	}
+}
+
 func TestRunUsageErrors(t *testing.T) {
 	tests := [][]string{
 		nil,
