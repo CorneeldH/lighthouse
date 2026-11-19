@@ -1258,7 +1258,8 @@ func TestTickParksBlockedHandoff(t *testing.T) {
 // its own Geparkeerd, posts nothing new and only sets the board.
 func TestTickParkBoardFailureRetries(t *testing.T) {
 	env, db, srv := parkable(t)
-	srv.FailOps = map[string]string{"SetStatus": "boom"}
+	const patch = "PATCH /users/o/projectsV2/3/items/5000" // item I7, project_number 3 of completeRepo
+	srv.Fail, srv.FailMessage = map[string]int{patch: 500}, map[string]string{patch: "boom"}
 	var errOut bytes.Buffer
 	if err := tick(context.Background(), env, db, &errOut); !errors.Is(err, errSilent) {
 		t.Fatalf("tick = %v, want errSilent\n%s", err, errOut.String())
@@ -1273,7 +1274,7 @@ func TestTickParkBoardFailureRetries(t *testing.T) {
 		t.Errorf("tick state = %+v after the failed board change, want none", s)
 	}
 
-	srv.FailOps = nil
+	srv.Fail = nil
 	errOut.Reset()
 	if err := tick(context.Background(), env, db, &errOut); err != nil {
 		t.Fatalf("second tick = %v\n%s", err, errOut.String())

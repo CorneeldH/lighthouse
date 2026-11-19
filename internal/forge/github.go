@@ -50,13 +50,12 @@ type GitHub struct {
 
 	cache CacheStore // nil: none; do drops an entry whose body does not decode
 
-	mu      sync.Mutex
-	nodeIDs map[int]string // issue number → node ID, filled by Issue and OpenIssues
-	base    string         // default branch, filled by CreatePR
-	proj    project        // the REST coordinates of the board, valid when projOK
-	projOK  bool
+	mu     sync.Mutex
+	base   string  // default branch, filled by CreatePR
+	proj   project // the REST coordinates of the board, valid when projOK
+	projOK bool
 	// itemIDs and issueItems are the numeric IDs of the board items by node ID and by issue,
-	// filled by listItems.
+	// filled by listItems and AddToBoard.
 	itemIDs    map[string]int64
 	issueItems map[issueKey]int64
 }
@@ -76,37 +75,6 @@ func New(repo, token string) *GitHub {
 
 // Kind is "github".
 func (c *GitHub) Kind() string { return "github" }
-
-// remember keeps the node ID of an issue for AddToBoard.
-func (c *GitHub) remember(it issueItem) {
-	if it.NodeID == "" {
-		return
-	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.nodeIDs == nil {
-		c.nodeIDs = map[int]string{}
-	}
-	c.nodeIDs[it.Number] = it.NodeID
-}
-
-// nodeID is the node ID of issue number: from the cache, else from one read of the issue.
-func (c *GitHub) nodeID(ctx context.Context, number int) (string, error) {
-	c.mu.Lock()
-	id := c.nodeIDs[number]
-	c.mu.Unlock()
-	if id != "" {
-		return id, nil
-	}
-	is, err := c.readIssue(ctx, number)
-	if err != nil {
-		return "", err
-	}
-	if is.NodeID == "" {
-		return "", fmt.Errorf("forge: issue %s#%d: no node ID", c.Repo, number)
-	}
-	return is.NodeID, nil
-}
 
 func (c *GitHub) configured() error {
 	if c.Repo == "" || c.Token == "" {
@@ -132,7 +100,6 @@ func (c *GitHub) OpenIssues(ctx context.Context) ([]Issue, error) {
 			if it.PullRequest != nil {
 				continue
 			}
-			c.remember(it)
 			out = append(out, it.issue())
 		}
 		url = next
@@ -149,7 +116,7 @@ func (c *GitHub) Issue(ctx context.Context, number int) (Issue, error) {
 	return it.issue(), nil
 }
 
-// readIssue reads one issue in REST shape and remembers its node ID.
+// readIssue reads one issue in REST shape.
 func (c *GitHub) readIssue(ctx context.Context, number int) (issueItem, error) {
 	if err := c.configured(); err != nil {
 		return issueItem{}, err
@@ -159,7 +126,6 @@ func (c *GitHub) readIssue(ctx context.Context, number int) (issueItem, error) {
 	if _, err := c.do(ctx, http.MethodGet, url, nil, &it); err != nil {
 		return issueItem{}, err
 	}
-	c.remember(it)
 	return it, nil
 }
 

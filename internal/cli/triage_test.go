@@ -304,25 +304,22 @@ func (b *fakeBrake) Check() (string, bool) {
 func triageWrites(srv *forgetest.Server) []string {
 	var out []string
 	for _, p := range srv.Posts {
-		if p.Path == "/graphql" {
-			q, _ := p.Body["query"].(string)
-			vars, _ := p.Body["variables"].(map[string]any)
-			switch {
-			case strings.HasPrefix(q, "mutation SetStatus"):
-				out = append(out, fmt.Sprintf("SetStatus %v %v", vars["item"], vars["option"]))
-			case strings.HasPrefix(q, "mutation AddToBoard"):
-				out = append(out, fmt.Sprintf("AddToBoard %v", vars["content"]))
-			case strings.HasPrefix(q, "mutation"):
-				out = append(out, "mutation "+q)
-			}
-			continue
-		}
 		parts := strings.Split(p.Path, "/") // /repos/o/r/issues/7/comments
-		body, _ := p.Body["body"].(string)
-		first, _, _ := strings.Cut(body, "\n")
-		if len(parts) == 7 && parts[6] == "comments" {
+		switch {
+		case p.Path == "/graphql": // a read
+		case p.Method == "PATCH" && len(parts) == 7 && parts[3] == "projectsV2": // /users/o/projectsV2/3/items/5000
+			id, _ := strconv.Atoi(parts[6])
+			fields, _ := p.Body["fields"].([]any)
+			field, _ := fields[0].(map[string]any)
+			out = append(out, fmt.Sprintf("SetStatus %v %v", srv.BoardNodes[id-5000]["id"], field["value"]))
+		case p.Method == "POST" && len(parts) == 6 && parts[3] == "projectsV2": // /users/o/projectsV2/3/items
+			number := int(p.Body["number"].(float64))
+			out = append(out, fmt.Sprintf("AddToBoard %v", srv.Issues[number]["node_id"]))
+		case len(parts) == 7 && parts[6] == "comments":
+			body, _ := p.Body["body"].(string)
+			first, _, _ := strings.Cut(body, "\n")
 			out = append(out, "comment "+parts[5]+": "+first)
-		} else {
+		default:
 			out = append(out, "POST "+p.Path)
 		}
 	}

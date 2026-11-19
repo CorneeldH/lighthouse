@@ -125,7 +125,7 @@ type Server struct {
 	// GraphQLErrors, when set, makes every GraphQL operation answer 200 with these errors and
 	// null data.
 	GraphQLErrors []string
-	// FailOps maps a GraphQL operation name, such as "SetStatus", to an error message: only
+	// FailOps maps a GraphQL operation name, such as "IssueItems", to an error message: only
 	// that operation answers 200 with that error and null data; the others work as usual.
 	FailOps map[string]string
 
@@ -137,7 +137,8 @@ type Server struct {
 	// sorted list; the field "Linked pull requests" is always 99.
 	FieldIDs []string
 
-	// StatusSets are the variables of every SetStatus, in order; a failed one is in it too, but
+	// StatusSets are the item PATCHes of the project, in order, as {"project": ProjectID, "item":
+	// node ID, "field": field node ID, "option": option ID}; a failed one (Fail) is in it too, but
 	// changes nothing. Read it after the requests returned.
 	StatusSets []map[string]any
 
@@ -283,6 +284,9 @@ func (s *Server) record(next http.Handler) http.Handler {
 			s.mu.Lock()
 			s.Posts = append(s.Posts, Post{Method: r.Method, Path: r.URL.Path, Body: body})
 			s.mu.Unlock()
+			if m := itemPath.FindStringSubmatch(r.URL.Path); m != nil && r.Method == http.MethodPatch {
+				s.recordStatusSet(r.URL.Path, m[1], body)
+			}
 			r.Body = io.NopCloser(bytes.NewReader(raw))
 		}
 		key := r.Method + " " + r.URL.Path
@@ -705,11 +709,6 @@ func (s *Server) graphql(w http.ResponseWriter, r *http.Request) {
 	}
 	op := operationName(req.Query)
 	s.inc(op)
-	if op == "SetStatus" {
-		s.mu.Lock()
-		s.StatusSets = append(s.StatusSets, req.Variables)
-		s.mu.Unlock()
-	}
 	msgs := s.GraphQLErrors
 	if m, ok := s.FailOps[op]; ok {
 		msgs = []string{m}
@@ -744,12 +743,6 @@ func (s *Server) graphql(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusOK, map[string]any{"data": data, "errors": errs})
 			return
 		}
-	case "AddToBoard":
-		data = s.addToBoard(req.Variables)
-	case "SetStatus":
-		data = map[string]any{"updateProjectV2ItemFieldValue": map[string]any{
-			"projectV2Item": map[string]any{"id": req.Variables["item"]},
-		}}
 	default:
 		s.t.Errorf("forgetest: unknown GraphQL operation %q", op)
 		writeJSON(w, http.StatusOK, map[string]any{"errors": []any{map[string]any{"message": "unknown operation " + op}}})
@@ -970,23 +963,6 @@ func (s *Server) issueItems(query string, vars map[string]any) (data any, errs [
 		"pageInfo": map[string]any{"hasNextPage": false},
 		"nodes":    nodes,
 	}}}}, nil
-}
-
-// addToBoard appends a BoardNodes item "item-<content>" for the Issues item whose node_id is
-// $content, and answers its id.
-func (s *Server) addToBoard(vars map[string]any) any {
-	content, _ := vars["content"].(string)
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for n, it := range s.Issues {
-		if id, _ := it["node_id"].(string); id == content {
-			item := "item-" + content
-			s.BoardNodes = append(s.BoardNodes, map[string]any{"id": item, "content": map[string]any{"number": n}})
-			return map[string]any{"addProjectV2ItemById": map[string]any{"item": map[string]any{"id": item}}}
-		}
-	}
-	s.t.Errorf("forgetest: AddToBoard content %q matches no Issues node_id", content)
-	return map[string]any{"addProjectV2ItemById": nil}
 }
 
 // operationName is the name after "query " or "mutation " at the start of a query.

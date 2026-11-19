@@ -412,57 +412,6 @@ func TestBoardItemsSecondClientSameStore(t *testing.T) {
 	}
 }
 
-func TestGraphQLErrorsOn200(t *testing.T) {
-	const msg = "Could not resolve to a node with the global id of 'PVT_1'"
-	calls := []struct {
-		name string
-		call func(c *GitHub) (empty bool, err error)
-	}{
-		{"SetStatus", func(c *GitHub) (bool, error) {
-			c.Board = &repoconfig.Board{ProjectID: "PVT_1", StatusFieldID: "F", StatusOptions: map[string]string{"Controller": "O"}}
-			return true, c.SetStatus(context.Background(), BoardItem{ItemID: "I"}, "Controller")
-		}},
-	}
-	for _, tc := range calls {
-		t.Run(tc.name, func(t *testing.T) {
-			srv, c := boardClient(t)
-			srv.GraphQLErrors = []string{msg}
-			srv.BoardNodes = []map[string]any{{"id": "PVTI_1"}}
-			empty, err := tc.call(c)
-			if err == nil || !strings.Contains(err.Error(), "Could not resolve to a node") {
-				t.Fatalf("err = %v, want the GraphQL message", err)
-			}
-			if !empty {
-				t.Fatal("result is not nil, want nil")
-			}
-		})
-	}
-}
-
-func TestSetStatusPosts(t *testing.T) {
-	srv, c := boardClient(t)
-	c.Board = &repoconfig.Board{ProjectID: "PVT_1", StatusFieldID: "F_status", StatusOptions: map[string]string{"Controller": "opt-ctrl"}}
-	if err := c.SetStatus(context.Background(), BoardItem{ItemID: "PVTI_1"}, "Controller"); err != nil {
-		t.Fatal(err)
-	}
-	if len(srv.Posts) != 1 || srv.Posts[0].Path != "/graphql" {
-		t.Fatalf("posts = %+v, want one POST /graphql", srv.Posts)
-	}
-	body := srv.Posts[0].Body
-	want := map[string]any{"project": "PVT_1", "item": "PVTI_1", "field": "F_status", "option": "opt-ctrl"}
-	if !reflect.DeepEqual(body["variables"], want) {
-		t.Fatalf("variables = %v, want %v", body["variables"], want)
-	}
-	query, _ := body["query"].(string)
-	if !strings.HasPrefix(query, "mutation SetStatus(") || strings.Count(query, "(input:") != 1 ||
-		!strings.Contains(query, "updateProjectV2ItemFieldValue(input:") {
-		t.Fatalf("query = %q, want exactly one mutation, updateProjectV2ItemFieldValue", query)
-	}
-	if srv.Count("SetStatus") != 1 {
-		t.Fatalf("Count(SetStatus) = %d, want 1", srv.Count("SetStatus"))
-	}
-}
-
 // issueNode is a board node of issue number with Status option opt, named "Option <opt>" on
 // the board, as the board serves it.
 func issueNode(id string, number int, opt string) map[string]any {
@@ -583,26 +532,18 @@ func TestIssueItemTruncated(t *testing.T) {
 	}
 }
 
-func TestAddToBoard(t *testing.T) {
-	srv, c := boardClient(t)
-	srv.ProjectID = "P1"
+// Class: io. At risk: the item AddToBoard created is not the item IssueItem finds for the issue.
+func TestAddToBoardThenIssueItem(t *testing.T) {
+	srv, c := projectServer(t)
 	srv.Issues = map[int]map[string]any{7: {"number": 7, "node_id": "I_kw7"}}
 	ctx := context.Background()
-	c.Board = &repoconfig.Board{ProjectID: "P1"}
-
+	c.Board = restBoard()
 	item, err := c.AddToBoard(ctx, 7)
-	if err != nil || item.ItemID != "item-I_kw7" {
-		t.Fatalf("AddToBoard = %+v, %v; want item-I_kw7", item, err)
-	}
-	vars := srv.Posts[0].Body["variables"].(map[string]any)
-	if vars["project"] != "P1" || vars["content"] != "I_kw7" {
-		t.Errorf("variables = %v, want project P1 and content I_kw7", vars)
-	}
-	if srv.Count("AddToBoard") != 1 {
-		t.Errorf("Count(AddToBoard) = %d, want 1", srv.Count("AddToBoard"))
+	if err != nil {
+		t.Fatal(err)
 	}
 	got, ok, err := c.IssueItem(ctx, 7)
-	if err != nil || !ok || got.ItemID != "item-I_kw7" {
-		t.Fatalf("IssueItem after AddToBoard = %+v, %v, %v; want item-I_kw7", got, ok, err)
+	if err != nil || !ok || got.ItemID != item.ItemID {
+		t.Fatalf("IssueItem after AddToBoard = %+v, %v, %v; want %s", got, ok, err, item.ItemID)
 	}
 }

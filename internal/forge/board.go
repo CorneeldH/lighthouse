@@ -177,16 +177,6 @@ const IssueItemsQuery = `query IssueItems($owner: String!, $name: String!, $numb
   }
 }`
 
-// AddToBoardMutation adds an issue, by its node ID, to a project.
-const AddToBoardMutation = `mutation AddToBoard($project: ID!, $content: ID!) { addProjectV2ItemById(input: {projectId: $project, contentId: $content}) { item { id } } }`
-
-// SetStatusMutation sets one single-select field of one project item.
-const SetStatusMutation = `mutation SetStatus($project: ID!, $item: ID!, $field: ID!, $option: String!) {
-  updateProjectV2ItemFieldValue(input: {projectId: $project, itemId: $item, fieldId: $field, value: {singleSelectOptionId: $option}}) {
-    projectV2Item { id }
-  }
-}`
-
 type pageInfo struct {
 	HasNextPage bool   `json:"hasNextPage"`
 	EndCursor   string `json:"endCursor"`
@@ -496,13 +486,38 @@ func (c *GitHub) SetStatus(ctx context.Context, item BoardItem, status string) e
 	if item.ItemID == "" {
 		return fmt.Errorf("forge: %s#%d: no board item to set the status of", item.Repo, item.Issue)
 	}
-	return c.setOption(ctx, b.ProjectID, item.ItemID, b.StatusFieldID, option)
+	p, err := c.project(ctx, b)
+	if err != nil {
+		return err
+	}
+	id, err := c.itemNumber(ctx, p, item.ItemID)
+	if err != nil {
+		return err
+	}
+	body := map[string]any{"fields": []map[string]any{{"id": p.status, "value": option}}}
+	_, err = c.do(ctx, http.MethodPatch, fmt.Sprintf("%s/items/%d", p.base, id), body, nil)
+	return err
 }
 
-// setOption sets the single-select field fieldID of a board item to optionID.
-func (c *GitHub) setOption(ctx context.Context, projectID, itemID, fieldID, optionID string) error {
-	vars := map[string]any{"project": projectID, "item": itemID, "field": fieldID, "option": optionID}
-	return c.graphql(ctx, SetStatusMutation, vars, nil)
+// itemNumber is the numeric ID of the board item with node ID nodeID: from the table, else
+// after one read of the list, else an error naming nodeID.
+func (c *GitHub) itemNumber(ctx context.Context, p project, nodeID string) (int64, error) {
+	lookup := func() (int64, bool) {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		id, ok := c.itemIDs[nodeID]
+		return id, ok
+	}
+	if id, ok := lookup(); ok {
+		return id, nil
+	}
+	if _, err := c.listItems(ctx, p); err != nil {
+		return 0, err
+	}
+	if id, ok := lookup(); ok {
+		return id, nil
+	}
+	return 0, fmt.Errorf("forge: board item %s is not on the board of project %d", nodeID, c.Board.ProjectNumber)
 }
 
 // IssueItem returns the item of issue number on the board of [forge.board]; ok is false when
@@ -570,8 +585,7 @@ func (c *GitHub) IssueItem(ctx context.Context, number int) (item BoardItem, ok 
 }
 
 // AddToBoard adds issue number to the board of [forge.board] and returns the new item, without
-// a status. The issue's node ID comes from the cache Issue and OpenIssues fill, else from one
-// read of the issue.
+// a status. The item stays in the table of numeric IDs until the next complete list.
 func (c *GitHub) AddToBoard(ctx context.Context, number int) (BoardItem, error) {
 	if err := c.configured(); err != nil {
 		return BoardItem{}, err
@@ -580,32 +594,31 @@ func (c *GitHub) AddToBoard(ctx context.Context, number int) (BoardItem, error) 
 	if err != nil {
 		return BoardItem{}, err
 	}
-	contentID, err := c.nodeID(ctx, number)
+	owner, name, ok := strings.Cut(c.Repo, "/")
+	if !ok || owner == "" || name == "" {
+		return BoardItem{}, fmt.Errorf("forge: repo %q is not owner/name", c.Repo)
+	}
+	p, err := c.project(ctx, b)
 	if err != nil {
 		return BoardItem{}, err
 	}
-	itemID, err := c.addToBoard(ctx, b.ProjectID, contentID)
-	if err != nil {
+	var added struct {
+		ID     int64  `json:"id"`
+		NodeID string `json:"node_id"`
+	}
+	body := map[string]any{"type": "Issue", "owner": owner, "repo": name, "number": number}
+	if _, err := c.do(ctx, http.MethodPost, p.base+"/items", body, &added); err != nil {
 		return BoardItem{}, err
 	}
-	return BoardItem{ItemID: itemID, Repo: c.Repo, Issue: number}, nil
-}
-
-// addToBoard adds the issue with node ID contentID to project projectID and returns the ID of
-// the new project item.
-func (c *GitHub) addToBoard(ctx context.Context, projectID, contentID string) (string, error) {
-	var data struct {
-		AddProjectV2ItemByID *struct {
-			Item struct {
-				ID string `json:"id"`
-			} `json:"item"`
-		} `json:"addProjectV2ItemById"`
+	if added.ID == 0 || added.NodeID == "" {
+		return BoardItem{}, fmt.Errorf("forge: add %s#%d to board %s: no item in the answer", c.Repo, number, b.ProjectID)
 	}
-	if err := c.graphql(ctx, AddToBoardMutation, map[string]any{"project": projectID, "content": contentID}, &data); err != nil {
-		return "", err
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.itemIDs == nil {
+		c.itemIDs, c.issueItems = map[string]int64{}, map[issueKey]int64{}
 	}
-	if data.AddProjectV2ItemByID == nil || data.AddProjectV2ItemByID.Item.ID == "" {
-		return "", fmt.Errorf("forge: add %s to board %s: no item in the answer", contentID, projectID)
-	}
-	return data.AddProjectV2ItemByID.Item.ID, nil
+	c.itemIDs[added.NodeID] = added.ID
+	c.issueItems[issueKey{c.Repo, number}] = added.ID
+	return BoardItem{ItemID: added.NodeID, Repo: c.Repo, Issue: number}, nil
 }

@@ -1,8 +1,10 @@
 package forgetest
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -29,6 +31,8 @@ func (s *Server) projectRoutes(mux *http.ServeMux) {
 		mux.HandleFunc("GET /"+kind+"/{owner}/projectsV2/{number}/fields", s.projectRoute(atOrg, s.fields))
 		mux.HandleFunc("GET /"+kind+"/{owner}/projectsV2/{number}/items", s.projectRoute(atOrg, s.items))
 		mux.HandleFunc("GET /"+kind+"/{owner}/projectsV2/{number}/items/{id}", s.projectRoute(atOrg, s.item))
+		mux.HandleFunc("POST /"+kind+"/{owner}/projectsV2/{number}/items", s.projectRoute(atOrg, s.addItem))
+		mux.HandleFunc("PATCH /"+kind+"/{owner}/projectsV2/{number}/items/{id}", s.projectRoute(atOrg, s.patchItem))
 	}
 }
 
@@ -257,4 +261,94 @@ func nodesOf(conn any) []map[string]any {
 		return out
 	}
 	return nil
+}
+
+// itemPath matches the path of one project item, capturing its REST id.
+var itemPath = regexp.MustCompile(`^/(?:users|orgs)/[^/]+/projectsV2/\d+/items/(\d+)$`)
+
+// itemFieldUpdate is the first field of a PATCH body {"fields":[{"id":<field>,"value":"<option>"}]}.
+func (s *Server) itemFieldUpdate(body map[string]any) (field int, option string, ok bool) {
+	fields, _ := body["fields"].([]any)
+	if len(fields) != 1 {
+		return 0, "", false
+	}
+	f, _ := fields[0].(map[string]any)
+	id, isNum := f["id"].(float64)
+	option, isStr := f["value"].(string)
+	return int(id), option, isNum && isStr
+}
+
+// recordStatusSet adds a PATCH of an item to StatusSets, as the middleware sees it before Fail
+// can answer, so a failed one is in it too.
+func (s *Server) recordStatusSet(path, itemID string, body map[string]any) {
+	id, err := strconv.Atoi(itemID)
+	field, option, ok := s.itemFieldUpdate(body)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	i, ids := id-firstItemID, s.fieldNodeIDs()
+	if err != nil || !ok || i < 0 || i >= len(s.BoardNodes) || field-100 < 0 || field-100 >= len(ids) {
+		s.t.Errorf("forgetest: PATCH %s: item or field not served, or body %v malformed", path, body)
+		return
+	}
+	s.StatusSets = append(s.StatusSets, map[string]any{"project": s.ProjectID, "item": s.BoardNodes[i]["id"],
+		"field": ids[field-100], "option": option})
+}
+
+// patchItem sets the single-select value the PATCH body names on the BoardNodes item {id}: the
+// optionId of its fieldValues node for that field, whose name it clears (the fake knows no
+// option names). It answers the item.
+func (s *Server) patchItem(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var body map[string]any
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	field, option, ok := s.itemFieldUpdate(body)
+	id, err := strconv.Atoi(r.PathValue("id"))
+	i, ids := id-firstItemID, s.fieldNodeIDs()
+	if err != nil || !ok || i < 0 || i >= len(s.BoardNodes) || field-100 < 0 || field-100 >= len(ids) {
+		writeJSON(w, http.StatusNotFound, map[string]any{"message": "Not Found"})
+		return
+	}
+	n, fieldID := s.BoardNodes[i], ids[field-100]
+	fv, _ := n["fieldValues"].(map[string]any)
+	if fv == nil {
+		fv = map[string]any{}
+		n["fieldValues"] = fv
+	}
+	var nodes []any
+	found := false
+	for _, v := range nodesOf(fv) {
+		if f, _ := v["field"].(map[string]any); f != nil && f["id"] == fieldID {
+			v = map[string]any{"optionId": option, "name": "", "field": f}
+			found = true
+		}
+		nodes = append(nodes, v)
+	}
+	if !found {
+		nodes = append(nodes, map[string]any{"optionId": option, "name": "", "field": map[string]any{"id": fieldID}})
+	}
+	fv["nodes"] = nodes
+	writeJSON(w, http.StatusOK, s.restItem(i, n, ids, s.wantFields(r)))
+}
+
+// addItem adds a BoardNodes item "item-<node_id>" for the Issues entry the body {"type":
+// "Issue","owner","repo","number"} names, and answers {"id", "node_id"}.
+func (s *Server) addItem(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var body struct {
+		Type, Owner, Repo string
+		Number            int
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	node, _ := s.Issues[body.Number]["node_id"].(string)
+	if body.Type != "Issue" || node == "" {
+		s.t.Errorf("forgetest: POST %s: %+v is no issue of Issues with a node_id", r.URL.Path, body)
+		writeJSON(w, http.StatusNotFound, map[string]any{"message": "Not Found"})
+		return
+	}
+	item := "item-" + node
+	s.BoardNodes = append(s.BoardNodes, map[string]any{"id": item, "content": map[string]any{
+		"number": body.Number, "repository": map[string]any{"nameWithOwner": body.Owner + "/" + body.Repo}}})
+	writeJSON(w, http.StatusCreated, map[string]any{"id": firstItemID + len(s.BoardNodes) - 1, "node_id": item})
 }

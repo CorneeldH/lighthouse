@@ -208,8 +208,9 @@ type issueKey struct {
 	number int
 }
 
-// listItems reads every page of the items of p, archived ones included as REST gives them, and
-// keeps the numeric ID of each item by node ID and by issue.
+// listItems reads every page of the items of p, archived ones included as REST gives them. A
+// complete list replaces the table of numeric IDs by node ID and by issue; a failed one leaves
+// the old table.
 func (c *GitHub) listItems(ctx context.Context, p project) ([]restItem, error) {
 	var all []restItem
 	for url := p.itemsURL(); url != ""; {
@@ -221,17 +222,16 @@ func (c *GitHub) listItems(ctx context.Context, p project) ([]restItem, error) {
 		all = append(all, page...)
 		url = next
 	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.itemIDs == nil {
-		c.itemIDs, c.issueItems = map[string]int64{}, map[issueKey]int64{}
-	}
+	itemIDs, issueItems := map[string]int64{}, map[issueKey]int64{}
 	for _, r := range all {
-		c.itemIDs[r.NodeID] = r.ID
+		itemIDs[r.NodeID] = r.ID
 		if r.Content.issue() {
-			c.issueItems[issueKey{repoFromURL(r.Content.RepositoryURL), r.Content.Number}] = r.ID
+			issueItems[issueKey{repoFromURL(r.Content.RepositoryURL), r.Content.Number}] = r.ID
 		}
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.itemIDs, c.issueItems = itemIDs, issueItems
 	return all, nil
 }
 
