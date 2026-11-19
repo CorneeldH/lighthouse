@@ -109,6 +109,11 @@ def _without_default_paths(rel: str, text: str) -> str:
     if rel in ("internal/scheduled/maprefresh/e2e_test.go", "internal/scheduled/maprefresh/maprefresh_test.go"):
         # docs/map is the publish_dir of the map-refresh job: a path inside a temp repo, never this repo's docs.
         return text.replace("docs/", "")
+    if rel.startswith("ci/changelog/") and rel.endswith(".go"):
+        # ci/changelog reads changelog.d/ of the checkout only during `check` and `release`, in jobs
+        # that run on every PR or release (the message of `check` points at docs/releasing.md); its
+        # tests read only testdata/ and temporary repos.
+        return text.replace("changelog.d", "").replace("docs/releasing.md", "")
     return text
 
 
