@@ -31,6 +31,9 @@ type Forge interface {
 	OpenIssues(ctx context.Context) ([]Issue, error)
 	ClosedInMilestone(ctx context.Context, m Milestone, since time.Time) ([]Issue, error)
 	BlockedBy(ctx context.Context, number int) ([]Blocker, error)
+	// Blocking lists the issues that issue number blocks, with their own state. Every page is
+	// followed; a failing page is an error, never a shorter list. MergedPR stays false.
+	Blocking(ctx context.Context, number int) ([]Blocker, error)
 	// Planning reads the open issues with their milestone and open blockers, and the issue
 	// counts of the open milestones, for the prioritisation view.
 	Planning(ctx context.Context) (Planning, error)

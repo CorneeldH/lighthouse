@@ -122,6 +122,33 @@ func (c *GitHub) BlockedBy(ctx context.Context, number int) ([]Blocker, error) {
 	return out, nil
 }
 
+// Blocking lists the issues that issue number blocks, with their own state. MergedPR stays
+// false. Every page is followed; a failing page is an error.
+func (c *GitHub) Blocking(ctx context.Context, number int) ([]Blocker, error) {
+	if err := c.configured(); err != nil {
+		return nil, err
+	}
+	type item struct {
+		Number        int    `json:"number"`
+		State         string `json:"state"`
+		RepositoryURL string `json:"repository_url"`
+	}
+	var out []Blocker
+	url := fmt.Sprintf("%s/repos/%s/issues/%d/dependencies/blocking?per_page=100", c.BaseURL, c.Repo, number)
+	for url != "" {
+		var page []item
+		next, err := c.do(ctx, http.MethodGet, url, nil, &page)
+		if err != nil {
+			return nil, err
+		}
+		for _, it := range page {
+			out = append(out, Blocker{Repo: repoFromURL(it.RepositoryURL), Issue: it.Number, State: strings.ToUpper(it.State)})
+		}
+		url = next
+	}
+	return out, nil
+}
+
 // repoFromURL turns ".../repos/owner/name" into "owner/name".
 func repoFromURL(u string) string {
 	_, rest, ok := strings.Cut(u, "/repos/")

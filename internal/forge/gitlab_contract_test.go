@@ -133,6 +133,8 @@ func (g *gitlabFixture) AddBlocker(_ *testing.T, number int, b forge.Blocker) {
 	}
 }
 
+func (g *gitlabFixture) FailBlockingPage2(_ *testing.T, number int) { g.srv.FailLinksPage2(number) }
+
 func (g *gitlabFixture) AddOpenPR(_ *testing.T, pr forge.OpenPR) {
 	g.srv.AddMR(map[string]any{"iid": pr.Number, "state": "opened", "title": pr.Title, "description": pr.Body,
 		"source_branch": pr.HeadRef, "source_project_id": 1, "target_project_id": 1})

@@ -107,6 +107,9 @@ type Server struct {
 	PlanMilestones []map[string]any
 	// PlanBlockedByMore, per issue number, makes the blockedBy of that issue claim a next page.
 	PlanBlockedByMore map[int]bool
+	// BlockingPage2Fails, per issue number, makes the second page of the blocking list of that
+	// issue answer a 500.
+	BlockingPage2Fails map[int]bool
 	// PlanStuckCursor, when not nil, makes every page of the Planning and PlanMilestones
 	// queries claim a next page with this endCursor, whatever the cursor asked.
 	PlanStuckCursor *string
@@ -147,6 +150,7 @@ func New(t *testing.T) *Server {
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues", s.listIssues)
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues/{number}", s.issue)
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues/{number}/dependencies/blocked_by", s.blockedBy)
+	mux.HandleFunc("GET /repos/{owner}/{name}/issues/{number}/dependencies/blocking", s.blocking)
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues/{number}/events", s.events)
 	mux.HandleFunc("GET /repos/{owner}/{name}", s.repo)
 	mux.HandleFunc("GET /repos/{owner}/{name}/pulls", s.pulls)
@@ -402,6 +406,40 @@ func (s *Server) blockedBy(w http.ResponseWriter, r *http.Request) {
 	var out []any
 	for _, b := range s.BlockedBy[n] {
 		out = append(out, b)
+	}
+	s.page(w, r, out)
+}
+
+// blocking serves the issues that issue {number} blocks, the reverse of BlockedBy: every issue n
+// whose BlockedBy lists {number} in this repo, in number order, in the shape of Issues[n] with
+// its repository_url. BlockingPage2Fails makes page two a 500.
+func (s *Server) blocking(w http.ResponseWriter, r *http.Request) {
+	n, err := strconv.Atoi(r.PathValue("number"))
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]any{"message": "Not Found"})
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.BlockingPage2Fails[n] && r.URL.Query().Get("page") == "2" {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"message": "Server Error"})
+		return
+	}
+	repoURL := s.URL() + "/repos/" + r.PathValue("owner") + "/" + r.PathValue("name")
+	var blocked []int
+	for m, bs := range s.BlockedBy {
+		for _, b := range bs {
+			if commentID(b["number"]) == int64(n) && b["repository_url"] == repoURL {
+				blocked = append(blocked, m)
+				break
+			}
+		}
+	}
+	slices.Sort(blocked)
+	var out []any
+	for _, m := range blocked {
+		state, _ := s.Issues[m]["state"].(string)
+		out = append(out, map[string]any{"number": m, "state": cmp.Or(state, "open"), "repository_url": repoURL})
 	}
 	s.page(w, r, out)
 }

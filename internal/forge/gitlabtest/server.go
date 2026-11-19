@@ -47,16 +47,18 @@ type Server struct {
 	writes []Write
 	nextID int64
 
-	issues   map[int]map[string]any
-	notes    map[int][]map[string]any
-	awards   map[int64][]map[string]any
-	links    map[int][]map[string]any
-	mrs      []map[string]any
-	closedBy map[string][]map[string]any // "project#iid" to the merge requests that close it
-	users    map[string]int64            // username to user ID
-	members  map[string]int              // username to access level
-	statuses []string
-	status   map[int]string
+	issues map[int]map[string]any
+	notes  map[int][]map[string]any
+	awards map[int64][]map[string]any
+	links  map[int][]map[string]any
+	// failLinksPage2 holds the iids whose links list answers a 500 on page two.
+	failLinksPage2 map[int]bool
+	mrs            []map[string]any
+	closedBy       map[string][]map[string]any // "project#iid" to the merge requests that close it
+	users          map[string]int64            // username to user ID
+	members        map[string]int              // username to access level
+	statuses       []string
+	status         map[int]string
 
 	milestones []map[string]any
 	labels     []string
@@ -343,14 +345,57 @@ func (s *Server) listClosedBy(w http.ResponseWriter, r *http.Request) {
 func (s *Server) listLinks(w http.ResponseWriter, r *http.Request) {
 	iid, _ := strconv.Atoi(r.PathValue("iid"))
 	s.mu.Lock()
+	if s.failLinksPage2[iid] && r.URL.Query().Get("page") == "2" {
+		s.mu.Unlock()
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"message": "500 Internal Server Error"})
+		return
+	}
 	var links []map[string]any
 	for _, l := range s.links[iid] {
 		if !s.Free || l["link_type"] != "is_blocked_by" {
 			links = append(links, l)
 		}
 	}
+	if !s.Free {
+		links = append(links, s.blocksLinksLocked(iid)...)
+	}
 	s.mu.Unlock()
 	paginate(w, r, toAny(links))
+}
+
+// blocksLinksLocked are the links of type blocks that GitLab shows on issue iid for every
+// is_blocked_by link of another issue that names iid of Project, in iid order. The link state is
+// the state of the blocked issue. Call it with s.mu held.
+func (s *Server) blocksLinksLocked(iid int) []map[string]any {
+	var blocked []int
+	for m, ls := range s.links {
+		for _, l := range ls {
+			refs, _ := l["references"].(map[string]any)
+			if l["link_type"] == "is_blocked_by" && toInt(l["iid"]) == iid && fmt.Sprint(refs["full"]) == fmt.Sprintf("%s#%d", s.Project, iid) {
+				blocked = append(blocked, m)
+				break
+			}
+		}
+	}
+	slices.Sort(blocked)
+	var out []map[string]any
+	for _, m := range blocked {
+		out = append(out, map[string]any{
+			"iid": m, "state": s.issues[m]["state"], "link_type": "blocks",
+			"references": map[string]any{"full": fmt.Sprintf("%s#%d", s.Project, m)},
+		})
+	}
+	return out
+}
+
+// FailLinksPage2 makes the second page of the links of issue iid answer a 500.
+func (s *Server) FailLinksPage2(iid int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.failLinksPage2 == nil {
+		s.failLinksPage2 = map[int]bool{}
+	}
+	s.failLinksPage2[iid] = true
 }
 
 // listMRs serves the merge requests, filtered on state (opened, closed, merged; default all)

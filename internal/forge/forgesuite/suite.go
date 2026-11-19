@@ -37,6 +37,8 @@ type Fixture interface {
 	SetRole(t *testing.T, user, role string)
 	// AddBlocker makes b block issue number.
 	AddBlocker(t *testing.T, number int, b forge.Blocker)
+	// FailBlockingPage2 makes the second page of the blocking list of issue number answer a 500.
+	FailBlockingPage2(t *testing.T, number int)
 	AddOpenPR(t *testing.T, pr forge.OpenPR)
 	// AddOpenPRWithStatus adds an open pull request with its Number, Title, URL, Draft, Mergeable
 	// and Checks.
@@ -101,6 +103,10 @@ var Cases = []Case{
 	{"OpenIssuesPages", openIssuesPages},
 	{"ClosedInMilestone", closedInMilestone},
 	{"BlockedBy", blockedBy},
+	{"Blocking", blocking},
+	{"BlockingNone", blockingNone},
+	{"BlockingPages", blockingPages},
+	{"BlockingSecondPageFails", blockingSecondPageFails},
 	{"Planning", planning},
 	{"Comments", comments},
 	{"Acknowledge", acknowledge},
@@ -246,6 +252,74 @@ func blockedBy(t *testing.T, f Fixture) {
 		if g := got[i]; g.Repo != w.Repo || g.Issue != w.Issue || g.State != w.State {
 			t.Errorf("BlockedBy(7)[%d] = %+v, want repo %s, issue %d, state %s", i, g, w.Repo, w.Issue, w.State)
 		}
+	}
+}
+
+// blocking: issue 7 blocks the open issue 8 and the closed issue 9; Blocking(7) names both, with
+// the state of the blocked issue.
+func blocking(t *testing.T, f Fixture) {
+	f.AddIssue(t, openIssue(7))
+	f.AddIssue(t, openIssue(8))
+	f.AddIssue(t, closedIssue(9, nil, time.Now().Add(-time.Hour)))
+	f.AddBlocker(t, 8, forge.Blocker{Repo: f.Repo(), Issue: 7, State: "OPEN"})
+	f.AddBlocker(t, 9, forge.Blocker{Repo: f.Repo(), Issue: 7, State: "OPEN"})
+	got, err := f.Forge().Blocking(t.Context(), 7)
+	if err != nil {
+		t.Fatalf("Blocking(7): %v", err)
+	}
+	want := []forge.Blocker{{Repo: f.Repo(), Issue: 8, State: "OPEN"}, {Repo: f.Repo(), Issue: 9, State: "CLOSED"}}
+	slices.SortFunc(got, func(a, b forge.Blocker) int { return a.Issue - b.Issue })
+	if !slices.Equal(got, want) {
+		t.Errorf("Blocking(7) = %+v, want %+v", got, want)
+	}
+}
+
+// blockingNone: an issue that blocks nothing gives an empty list and no error.
+func blockingNone(t *testing.T, f Fixture) {
+	f.AddIssue(t, openIssue(7))
+	got, err := f.Forge().Blocking(t.Context(), 7)
+	if err != nil {
+		t.Fatalf("Blocking(7): %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("Blocking(7) = %+v, want none", got)
+	}
+}
+
+// addBlocked makes issue 7 block page open issues from 1001 up; page is one more than a REST page.
+func addBlocked(t *testing.T, f Fixture) []int {
+	t.Helper()
+	f.AddIssue(t, openIssue(7))
+	var nums []int
+	for n := 1001; n < 1001+page; n++ {
+		f.AddIssue(t, openIssue(n))
+		f.AddBlocker(t, n, forge.Blocker{Repo: f.Repo(), Issue: 7, State: "OPEN"})
+		nums = append(nums, n)
+	}
+	return nums
+}
+
+// blockingPages: more blocked issues than one page holds are all returned.
+func blockingPages(t *testing.T, f Fixture) {
+	want := addBlocked(t, f)
+	got, err := f.Forge().Blocking(t.Context(), 7)
+	if err != nil {
+		t.Fatalf("Blocking(7): %v", err)
+	}
+	var nums []int
+	for _, b := range got {
+		nums = append(nums, b.Issue)
+	}
+	once(t, "Blocking", nums, want)
+}
+
+// blockingSecondPageFails: a failing second page is an error, never a list cut short.
+func blockingSecondPageFails(t *testing.T, f Fixture) {
+	addBlocked(t, f)
+	f.FailBlockingPage2(t, 7)
+	got, err := f.Forge().Blocking(t.Context(), 7)
+	if err == nil {
+		t.Fatalf("Blocking(7) = %+v, want an error for the failing second page", got)
 	}
 }
 

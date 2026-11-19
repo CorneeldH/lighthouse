@@ -165,6 +165,13 @@ func (g *githubFixture) AddBlocker(_ *testing.T, number int, b forge.Blocker) {
 	}
 }
 
+func (g *githubFixture) FailBlockingPage2(_ *testing.T, number int) {
+	if g.srv.BlockingPage2Fails == nil {
+		g.srv.BlockingPage2Fails = map[int]bool{}
+	}
+	g.srv.BlockingPage2Fails[number] = true
+}
+
 func (g *githubFixture) AddOpenPR(_ *testing.T, pr forge.OpenPR) {
 	g.srv.Pulls = append(g.srv.Pulls, map[string]any{
 		"number": pr.Number, "title": pr.Title, "body": pr.Body, "head": map[string]any{"ref": pr.HeadRef},
