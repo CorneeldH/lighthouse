@@ -87,7 +87,7 @@ Four things in this block are measured, not taste (the `=== roborev ===` part fo
 
 - **A guard right after `lighthouse forge pr view`.** If that call fails — `<nr>` was an issue, not a PR — the
   block stops with a message instead of reading on with an empty `$B`: without a guard an empty
-  `grep -F -- ""` afterwards matches every line, and the failure-log part the failure-log part
+  `grep -F -- ""` afterwards matches every line, and the failure-log part
   wrongly goes on to read a log.
 - **No `|| true` after `lighthouse forge pr checks`.** It prints a JSON list and exits 0 also on
   failing or pending checks, so the block does not break off in exactly the case it is meant for;
