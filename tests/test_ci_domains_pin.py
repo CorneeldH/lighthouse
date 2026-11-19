@@ -189,7 +189,7 @@ def test_no_measurement_step():
 def test_actions_pinned_by_sha():
     """Fails when an action is referenced by tag, or loses its version comment."""
     uses = re.findall(r"^\s*(?:- )?uses: (\S+)(.*)$", _text(), re.MULTILINE)
-    assert len(uses) == 24, uses
+    assert len(uses) == 25, uses
     for ref, rest in uses:
         assert re.search(r"@[0-9a-f]{40}$", ref), ref
         assert re.match(r"\s+# v\d+\.\d+\.\d+\s*$", rest), (ref, rest)
@@ -200,8 +200,11 @@ def test_changelog_job_runs_on_every_pr():
     job = _jobs()["changelog"]
     assert "needs:" not in job and "needs.changes" not in job
     assert re.findall(r"^\s+if: .*$", job, re.M) == ["    if: github.event_name == 'pull_request'"]
-    for needle in ("runs-on: ubuntu-latest", "fetch-depth: 0", "python3 ci/changelog.py check --base \"$BASE\" --head \"$HEAD\""):
+    for needle in ("runs-on: ubuntu-latest", "fetch-depth: 0", "go run ./ci/changelog check --base \"$BASE\" --head \"$HEAD\""):
         assert needle in job, needle
+    # go run needs the toolchain from go.mod, set up before the call.
+    setup = re.search(r"uses: actions/setup-go@[0-9a-f]{40} # v[\d.]+\n\s+with:\n\s+go-version-file: go.mod", job)
+    assert setup and setup.start() < job.index("go run ./ci/changelog"), job
 
 
 def test_dispatch_turns_on_every_domain():

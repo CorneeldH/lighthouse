@@ -60,10 +60,13 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
       - env:
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.event.pull_request.head.sha }}
-        run: python3 ci/changelog.py check --base "$BASE" --head "$HEAD"
+        run: go run ./ci/changelog check --base "$BASE" --head "$HEAD"
 
   # Every PR, outside the domains too: a secret can land in any file (#194). The scan
   # covers the commits of the PR, base..head, so a secret added and removed again inside
