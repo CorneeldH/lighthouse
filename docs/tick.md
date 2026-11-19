@@ -22,7 +22,9 @@ Het is een korte run, geen daemon. Wie issues vooraf routeert en naar `Controlle
    `project` nodig: lighthouse leest en schrijft er comments, reacties en het board mee. Om een
    groene eigen PR te mergen (regel 7) heeft het token ook *Contents: write* nodig. Gebruik een
    classic token, of een fine-grained token dat elke repo dekt waarvan issues op het board staan:
-   een item dat het token niet mag lezen kan een fout geven, en die slaat de hele repo over. De
+   een issue of PR in een andere repo dan die van de run, die het token niet mag lezen (403 of 404, geen
+   rate limit), blijft stil leeg. Een fout bij een item van de eigen repo, een rate limit of een
+   GraphQL-fout van `IssueItem` slaat de hele repo over. De
    login van het token zelf heeft push-toegang tot de repo nodig (anders is de collaborator-permissie
    niet te lezen) en een rol in `[dispatch] answer_permissions`: zonder die rol vallen ook de eigen
    🤖-comments van lighthouse weg, zoals Gestart en Hervat.
@@ -94,11 +96,15 @@ Het is een korte run, geen daemon. Wie issues vooraf routeert en naar `Controlle
    `lighthouse: gathered <repo>: <n> items (<reden>)` naar stderr; de reden is `first`, `changed`,
    `stale` of `boundary`. Het board, de PR's van een branch en de blokkades leest tick bij GitHub
    via REST met conditionele requests (`ETag`): een ongewijzigde pagina komt als `304` terug en telt
-   niet mee voor de rate limit, en een uitgeputte GraphQL-limiet stopt een tick dus niet. Alleen
-   `Planning` (tabblad Prioritering) en het opzoeken van één issue op het board (`IssueItem`) gebruiken
-   nog GraphQL. Een fout van GitHub slaat de repo luid over met `lighthouse: skip <pad>: <fout>` en bewaart niets, zodat de volgende
-   tick opnieuw kijkt. Een issue met meer dan 10 voorgangers, of een voorganger met meer dan 5
-   sluitende PR's, slaat de repo ook luid over: zo'n lijst leest tick niet half.
+   niet mee voor de rate limit, en een uitgeputte GraphQL-limiet stopt een tick dus normaal gesproken
+   niet. Alleen `Planning` (tabblad Prioritering) en het opzoeken van één issue op het board
+   (`IssueItem`, voor een open run waarvan het item gearchiveerd of van het board gehaald is) gebruiken
+   nog GraphQL. Elke lijst leest tick via de `Link`-header tot het einde: een lange lijst voorgangers
+   of sluitende PR's wordt niet afgekapt.
+   Een 403 of 404 op een extra aanroep (voorgangers, checks of mergebaarheid van een PR) negeert tick
+   alleen bij een item van een andere repo dan die van de run, en nooit bij een 403 van een rate
+   limit. Elke andere fout van GitHub slaat de repo luid over met `lighthouse: skip <pad>: <fout>` en
+   bewaart niets, zodat de volgende tick opnieuw kijkt.
 
 8. **Decide.** Eén keer per tick, over alle gegatherde repo's samen, beslist tick wat er moet
    gebeuren: een run sluiten, een issue teruggeven, een 🚀 herstellen, een issue parkeren of
