@@ -325,6 +325,38 @@ machine; lighthouse itself keeps talking to the forge API on `url`. The page lin
 a run row and in *Workspaces to clean up* to `<workspace_url>/workspaces/<id>`, in a new tab. The other setting is `night`,
 the night window from `[dispatch] night` as `HH:MM-HH:MM`. A `500` means the database could not be read.
 
+## Telemetry data model
+
+The same `lighthouse.db` holds the telemetry of the work, migration `0010`. A *trajectory* is one
+issue of one repository (`trajectories`, unique on `repo` and `issue`, `repo` the configured slug
+exactly as in `runs.repo`). Four more tables and two columns carry the rest: `sessions` (interactive
+sessions only, never dispatcher runs), `setups` (the deployment of one run or session: model, effort,
+harness and tool versions, skills hash), `usage` (tokens and cost per model, with `cost_kind`
+`estimate`, `quota` or `actual`; an unknown cost is `NULL`) and `findings` (review findings with their
+`decision`: `adopted`, `rejected` or `left_open`; the record files stay the source), plus
+`runs.trajectory_id` and `runs.assignment` (`standard`, `shadow:<x>` or `variant:<k>=<v>`). `Take`
+links every issue run to its trajectory when it claims the run.
+
+Every telemetry row has the provenance columns `source`, `source_id` and `recorded_at`, unique on
+`(source, source_id)`. The writers in `internal/telemetry` are idempotent: offering the same record
+again never adds a row. A session and a finding update their derived fields (a session that grows can be
+offered again, a finding gets its decision later); a setup and a usage row keep the first row.
+
+An interactive session is linked to a trajectory in four steps, from the lines of its transcript
+with their branch:
+
+1. Lines on the default branch or with an empty branch do not count.
+2. Of the other lines, the issue number comes from the branch name (`issue-<N>` or `issue-<N>-<slug>`);
+   the issue with the most lines wins, ties go to the last one seen (basis `branch`).
+3. Without an issue branch, the issue number the transcript names most often wins, here every line
+   counts, also on the default branch (basis `transcript`).
+4. Otherwise the session has no trajectory and one reason, each when the transcript also gave no issue
+   number: `main_only` (all lines on the default branch), `no_issue_branch` (other branches, none an
+   issue branch) or `no_issue_number` (no usable branch at all).
+
+Scheduled runs (see *Scheduled runs*) have no issue and so no trajectory: `runs.trajectory_id` stays
+empty for them.
+
 ## Run the tick
 
 `lighthouse tick` is the dispatcher. With `[dispatch] workplace = "local"` in `host.toml` it needs no

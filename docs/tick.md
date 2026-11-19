@@ -36,7 +36,8 @@ Het is een korte run, geen daemon. Wie issues vooraf routeert en naar `Controlle
    (zonder pad: `lighthouse: no host.toml: no repos to check`) naar stderr en eindigt met exitcode 0.
 4. **Database.** Opent de SQLite-database naast `serve`
    (`${XDG_STATE_HOME:-~/.local/state}/lighthouse/lighthouse.db`, of `--db <pad>`). Daar staat de
-   runstaat: claim, pogingen en vrijgeven.
+   runstaat: claim, pogingen en vrijgeven. Ook de telemetrie staat daar (trajecten, sessies, inzet,
+   verbruik en bevindingen, zie [install.md](install.md#telemetry-data-model)).
 5. **Controle per repo.** Leest het `lighthouse.toml` van elke repo in `[dispatch] repos`. Voldoet
    een repo niet, dan slaat tick hem luid over met `lighthouse: skip <pad>: <redenen>` op stderr en
    gaat door met de rest.
