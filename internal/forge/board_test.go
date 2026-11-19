@@ -245,10 +245,6 @@ func TestGraphQLErrorsOn200(t *testing.T) {
 			items, err := c.BoardItems(context.Background())
 			return items == nil, err
 		}},
-		{"BranchPRs", func(c *GitHub) (bool, error) {
-			prs, err := c.BranchPRs(context.Background(), "issue-1-x")
-			return prs == nil, err
-		}},
 		{"SetStatus", func(c *GitHub) (bool, error) {
 			c.Board = &repoconfig.Board{ProjectID: "PVT_1", StatusFieldID: "F", StatusOptions: map[string]string{"Controller": "O"}}
 			return true, c.SetStatus(context.Background(), BoardItem{ItemID: "I"}, "Controller")
@@ -259,7 +255,6 @@ func TestGraphQLErrorsOn200(t *testing.T) {
 			srv, c := boardClient(t)
 			srv.GraphQLErrors = []string{msg}
 			srv.BoardNodes = []map[string]any{{"id": "PVTI_1"}}
-			srv.Branches = map[string][]map[string]any{"issue-1-x": {{"number": 1}}}
 			empty, err := tc.call(c)
 			if err == nil || !strings.Contains(err.Error(), "Could not resolve to a node") {
 				t.Fatalf("err = %v, want the GraphQL message", err)
@@ -268,42 +263,6 @@ func TestGraphQLErrorsOn200(t *testing.T) {
 				t.Fatal("result is not nil, want nil")
 			}
 		})
-	}
-}
-
-func TestBranchPRs(t *testing.T) {
-	srv, c := boardClient(t)
-	srv.Branches = map[string][]map[string]any{"issue-1-x": {{
-		"number": 11, "state": "OPEN", "isDraft": false, "mergeable": "MERGEABLE",
-		"headRefOid": "abc", "headRefName": "issue-1-x", "statusCheckRollup": map[string]any{"state": "PENDING"},
-	}}}
-	got, err := c.BranchPRs(context.Background(), "issue-1-x")
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := []PR{{Number: 11, State: "OPEN", Mergeable: "MERGEABLE", HeadSHA: "abc", HeadRef: "issue-1-x", Checks: "PENDING", Closes: false}}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("got %+v, want %+v", got, want)
-	}
-	vars := srv.Posts[0].Body["variables"]
-	if wantVars := map[string]any{"owner": "o", "name": "r", "branch": "issue-1-x"}; !reflect.DeepEqual(vars, wantVars) {
-		t.Fatalf("variables = %v, want %v", vars, wantVars)
-	}
-}
-
-func TestBranchPRsTruncatedFails(t *testing.T) {
-	srv, c := boardClient(t)
-	nodes := make([]map[string]any, 21) // forgetest serves first: 20, like GitHub
-	for i := range nodes {
-		nodes[i] = map[string]any{"number": i + 1, "state": "CLOSED"}
-	}
-	srv.Branches = map[string][]map[string]any{"issue-1-x": nodes}
-	got, err := c.BranchPRs(context.Background(), "issue-1-x")
-	if err == nil || !strings.Contains(err.Error(), "branch issue-1-x: pullRequests truncated at 20") {
-		t.Fatalf("err = %v, want truncated at 20", err)
-	}
-	if got != nil {
-		t.Fatalf("PRs = %+v, want nil", got)
 	}
 }
 

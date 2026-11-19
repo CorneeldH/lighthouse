@@ -56,8 +56,8 @@ type Fixture interface {
 	// when it wrote none.
 	StatusOf(t *testing.T, number int) string
 	// ChecksOnClosedPRs reports whether BranchPRs carries the checks of a closed or merged PR
-	// too. GitHub does; GitLab reads head_pipeline only for an open merge request, the only
-	// PR whose checks the dispatcher reads.
+	// too. Neither forge does: GitHub reads the checks of the head commit and GitLab its
+	// head_pipeline only for an open pull request, the only PR whose checks the dispatcher reads.
 	ChecksOnClosedPRs() bool
 	// PRCommentBodies lists the comment bodies on pull request number, oldest first. GitHub
 	// keeps them with the issue comments; GitLab keeps a merge request's notes apart.

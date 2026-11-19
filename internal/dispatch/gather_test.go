@@ -312,7 +312,7 @@ func TestPrepareMergesBranchPRs(t *testing.T) {
 	if len(byIssue[6]) != 0 {
 		t.Errorf("issue 6 PRs = %+v, want none", byIssue[6])
 	}
-	if n := srv.Count("BranchPRs"); n != 1 {
+	if n := srv.Count("/repos/o/r/pulls?head=issue-1-x"); n != 1 {
 		t.Errorf("BranchPRs requests = %d, want 1 (issue 4 has no run, issue 6 no branch)", n)
 	}
 	if !reflect.DeepEqual(pre.OpenRuns, open) {
@@ -584,7 +584,7 @@ func TestPrepareReadsThePRsOfScheduledRuns(t *testing.T) {
 	if !reflect.DeepEqual(pre.ScheduledPRs, want) {
 		t.Errorf("ScheduledPRs = %+v\nwant %+v", pre.ScheduledPRs, want)
 	}
-	if n := srv.Count("BranchPRs"); n != 1 {
+	if n := srv.Count("/repos/o/r/pulls?head=" + branch); n != 1 {
 		t.Errorf("BranchPRs requests = %d, want 1", n)
 	}
 	if len(pre.Items) != 1 || len(pre.Items[0].PRs) != 0 {

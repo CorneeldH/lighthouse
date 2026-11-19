@@ -50,8 +50,9 @@ func (g *githubFixture) Forge() forge.Forge { return g.f }
 func (g *githubFixture) Repo() string       { return "o/r" }
 func (g *githubFixture) Login() string      { return g.srv.Login }
 
-// ChecksOnClosedPRs: statusCheckRollup is on every pull request GitHub lists.
-func (g *githubFixture) ChecksOnClosedPRs() bool { return true }
+// ChecksOnClosedPRs: BranchPRs reads the checks of the head commit only for an open pull
+// request, the only PR whose checks the dispatcher reads.
+func (g *githubFixture) ChecksOnClosedPRs() bool { return false }
 
 func (g *githubFixture) PRCommentBodies(t *testing.T, number int) []string {
 	t.Helper()

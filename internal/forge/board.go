@@ -1,9 +1,12 @@
 package forge
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -408,8 +411,10 @@ func truncated(connection string, n int) error {
 	return fmt.Errorf("%s truncated at %d", connection, n)
 }
 
-// BranchPRs lists the pull requests whose head is branch, open, closed and merged. Closes is
-// false on each: the branch says nothing about which issue a PR closes.
+// BranchPRs lists the pull requests whose head is branch in the repo, open, closed and merged,
+// following every page; an open one carries Mergeable and Checks. Closes is false on each: the
+// branch says nothing about which issue a PR closes. A PR from a fork with the same branch name
+// is not listed.
 func (c *GitHub) BranchPRs(ctx context.Context, branch string) ([]PR, error) {
 	if err := c.configured(); err != nil {
 		return nil, err
@@ -418,28 +423,23 @@ func (c *GitHub) BranchPRs(ctx context.Context, branch string) ([]PR, error) {
 	if !ok || owner == "" || name == "" {
 		return nil, fmt.Errorf("forge: repo %q is not owner/name", c.Repo)
 	}
-	var data struct {
-		Repository *struct {
-			PullRequests struct {
-				PageInfo pageInfo `json:"pageInfo"`
-				Nodes    []prNode `json:"nodes"`
-			} `json:"pullRequests"`
-		} `json:"repository"`
+	q := url.Values{"head": {owner + ":" + branch}, "state": {"all"}, "per_page": {"100"}}
+	var pulls []restPull
+	for next := fmt.Sprintf("%s/repos/%s/pulls?%s", c.BaseURL, c.Repo, q.Encode()); next != ""; {
+		var page []restPull
+		var err error
+		if next, err = c.do(ctx, http.MethodGet, next, nil, &page); err != nil {
+			return nil, err
+		}
+		pulls = append(pulls, page...)
 	}
-	vars := map[string]any{"owner": owner, "name": name, "branch": branch}
-	if err := c.graphql(ctx, BranchPRsQuery, vars, &data); err != nil {
-		return nil, err
-	}
-	if data.Repository == nil {
-		return nil, fmt.Errorf("forge: repository %s not found", c.Repo)
-	}
-	prs := data.Repository.PullRequests
-	if prs.PageInfo.HasNextPage {
-		return nil, fmt.Errorf("forge: branch %s: %w", branch, truncated("pullRequests", len(prs.Nodes)))
-	}
-	out := make([]PR, 0, len(prs.Nodes))
-	for _, p := range prs.Nodes {
-		out = append(out, p.pr(false))
+	out := make([]PR, 0, len(pulls))
+	for _, p := range pulls {
+		pr := p.pr(false)
+		if err := c.enrich(ctx, cmp.Or(p.repo(), c.Repo), &pr); err != nil {
+			return nil, fmt.Errorf("forge: branch %s: PR %d: %w", branch, p.Number, err)
+		}
+		out = append(out, pr)
 	}
 	return out, nil
 }

@@ -81,8 +81,11 @@ type Server struct {
 	// Rockets are the logins with a 🚀 per comment ID.
 	Rockets map[int64][]string
 	// Branches are the pull request nodes per head branch, in GraphQL shape (number, state,
-	// isDraft, mergeable, headRefOid, headRefName, statusCheckRollup). BranchPRs serves the
-	// first 20, like the query asks.
+	// isDraft, mergeable, headRefOid, headRefName, baseRefName, isCrossRepository, url,
+	// mergedAt, closedAt, statusCheckRollup). GET .../pulls?head=<owner>:<branch> serves them
+	// translated to REST, in pages; GET .../pulls/{number} serves one with mergeable, when Pulls
+	// has no such number. The statusCheckRollup.state of a node (and of a closing PR in
+	// BoardNodes) becomes the check runs, statuses and suites of its headRefOid.
 	Branches map[string][]map[string]any
 	// OpenPRNodes are the open pull requests in GraphQL shape (number, title, url, isDraft,
 	// mergeable, statusCheckRollup), served by OpenPRsWithStatus in pages of 100 in the order
@@ -182,6 +185,7 @@ func New(t *testing.T) *Server {
 	mux.HandleFunc("POST /repos/{owner}/{name}/issues/comments/{id}/reactions", s.addReaction)
 	mux.HandleFunc("GET /repos/{owner}/{name}/collaborators/{user}/permission", s.permission)
 	s.projectRoutes(mux)
+	s.pullRoutes(mux)
 	mux.HandleFunc("POST /graphql", s.graphql)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		t.Errorf("forgetest: unexpected request %s %s", r.Method, r.URL)
@@ -464,6 +468,10 @@ func (s *Server) blockedBy(w http.ResponseWriter, r *http.Request) {
 func (s *Server) pulls(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if head := r.URL.Query().Get("head"); head != "" {
+		s.branchPulls(w, r, head)
+		return
+	}
 	state := cmp.Or(r.URL.Query().Get("state"), "open")
 	var out []any
 	for _, p := range s.Pulls {
@@ -481,6 +489,10 @@ func (s *Server) pull(w http.ResponseWriter, r *http.Request) {
 	n, _ := strconv.Atoi(r.PathValue("number"))
 	if i := s.pullIndex(n); i >= 0 {
 		writeJSON(w, http.StatusOK, s.Pulls[i])
+		return
+	}
+	if p := s.nodePull(int64(n), r.PathValue("owner")+"/"+r.PathValue("name")); p != nil {
+		writeJSON(w, http.StatusOK, p)
 		return
 	}
 	writeJSON(w, http.StatusNotFound, map[string]any{"message": "Not Found"})
@@ -705,15 +717,6 @@ func (s *Server) graphql(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusOK, map[string]any{"data": nil, "errors": []any{map[string]any{"message": err.Error()}}})
 			return
 		}
-	case "BranchPRs":
-		branch, _ := req.Variables["branch"].(string)
-		nodes := s.Branches[branch]
-		more := len(nodes) > 20
-		nodes = nodes[:min(len(nodes), 20)]
-		data = map[string]any{"repository": map[string]any{"pullRequests": map[string]any{
-			"pageInfo": map[string]any{"hasNextPage": more},
-			"nodes":    append([]map[string]any{}, nodes...),
-		}}}
 	case "OpenPRsWithStatus":
 		data = s.openPRsWithStatus(req.Variables)
 	case "IssueItems":
