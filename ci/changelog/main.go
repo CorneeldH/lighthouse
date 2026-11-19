@@ -87,16 +87,22 @@ func parseFlags(fs *flag.FlagSet, args []string) (positional []string, code int,
 }
 
 func run(args []string, stdout, stderr io.Writer) int {
-	if len(args) == 0 {
-		say(stderr, usageText)
-		return 2
+	name := "changelog"
+	if len(args) > 0 {
+		name += " " + args[0]
 	}
-	fs := flag.NewFlagSet("changelog "+args[0], flag.ContinueOnError)
+	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	root := fs.String("root", ".", "repository root")
+	// usageError prints the message, then the usage, as a flag parse error does; exit 2.
 	usageError := func(msg string) int {
-		sayf(stderr, "changelog %s: %s\n", args[0], msg)
+		sayf(stderr, "%s: %s\n", name, msg)
+		say(stderr, usageText)
+		fs.Usage()
 		return 2
+	}
+	if len(args) == 0 {
+		return usageError("a command is required")
 	}
 	switch args[0] {
 	case "check":
@@ -140,8 +146,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 		return runNotes(*root, pos[0], stdout, stderr)
 	}
-	sayf(stderr, "changelog: unknown command '%s'\n%s\n", args[0], usageText)
-	return 2
+	return usageError("unknown command '" + args[0] + "'")
 }
 
 func runCheck(root, base, head string, stderr io.Writer) int {

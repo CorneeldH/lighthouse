@@ -128,22 +128,33 @@ func TestRunReleaseFragmentError(t *testing.T) {
 }
 
 func TestRunUsageErrors(t *testing.T) {
-	tests := [][]string{
-		nil,
-		{"frobnicate"},
-		{"check", "--head", "x"},
-		{"check", "--base", "x"},
-		{"release"},
-		{"release", "--event", "tuesday"},
-		{"release", "--event", "push", "--bump", "huge"},
-		{"notes"},
-		{"notes", "a", "b"},
-		{"check", "--nope"},
+	root := t.TempDir()
+	tests := []struct {
+		args []string
+		want string
+	}{
+		{nil, "a command is required"},
+		{[]string{"frobnicate"}, "unknown command 'frobnicate'"},
+		{[]string{"check", "--root", root, "--head", "x"}, "--base and --head are required"},
+		{[]string{"check", "--root", root, "--base", "x"}, "--base and --head are required"},
+		{[]string{"check", "--root", root, "--base", "x", "--head", "y", "extra"}, "unexpected argument 'extra'"},
+		{[]string{"release", "--root", root}, "--event is required"},
+		{[]string{"release", "--root", root, "--event", "tuesday"}, "invalid value 'tuesday' for --event"},
+		{[]string{"release", "--root", root, "--event", "push", "--bump", "huge"}, "invalid value 'huge' for --bump"},
+		{[]string{"notes", "--root", root}, "exactly one <tag> is required"},
+		{[]string{"notes", "--root", root, "a", "b"}, "exactly one <tag> is required"},
+		{[]string{"check", "--root", root, "--nope"}, "flag provided but not defined: -nope"},
 	}
-	for _, args := range tests {
-		code, stdout, stderr := runCLI(args...)
-		if code != 2 || stdout != "" || stderr == "" {
-			t.Errorf("run(%v) = %d, stdout %q, stderr %q; want 2, empty, usage", args, code, stdout, stderr)
+	for _, tt := range tests {
+		code, stdout, stderr := runCLI(tt.args...)
+		if code != 2 || stdout != "" {
+			t.Errorf("run(%v) = %d, stdout %q; want 2, empty", tt.args, code, stdout)
+		}
+		if !strings.Contains(stderr, tt.want) {
+			t.Errorf("run(%v) stderr %q lacks %q", tt.args, stderr, tt.want)
+		}
+		if !strings.Contains(stderr, "Usage of changelog") || !strings.Contains(stderr, "-root") {
+			t.Errorf("run(%v) stderr %q lacks the usage text", tt.args, stderr)
 		}
 	}
 }
