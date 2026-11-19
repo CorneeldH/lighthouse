@@ -22,7 +22,7 @@ twee PR's. Dit is plan 1, en de PR krijgt `Refs #407`. Plan 2 zet de Go-pakkette
 ## Global Constraints
 
 - Instructies, skilltekst en commentaar zijn Engels; dit plan, commits, issue en PR zijn Nederlands (`[project] language = nl`).
-- Commits zijn Conventional Commits, één logische wijziging per commit, en worden gemaakt in de worktree `/home/corneel/repositories/lighthouse/.claude/worktrees/issue-407-overige-gh-units`.
+- Commits zijn Conventional Commits, één logische wijziging per commit, en worden gemaakt in de worktree van branch `issue-407-overige-gh-units` (het pad staat in `git worktree list`).
 - Een wijziging onder `pack/` draait `go run ./cmd/lighthouse init --upgrade` en commit de geïnstalleerde kopie; CI eist daarna `No changes.`
 - Beide varianten (`claude/` en `agents/`) van een skill veranderen samen; een skill met één `SKILL.md` heeft er één.
 - `gh auth token` blijft toegestaan (`internal/forge/token.go`, `internal/cli/ask.go`).
@@ -48,6 +48,7 @@ twee PR's. Dit is plan 1, en de PR krijgt `Refs #407`. Plan 2 zet de Go-pakkette
 - Modify: `internal/initcmd/initcmd.go:172`, `:187-188`, `:531-558` (`configTables`)
 - Modify: `internal/initcmd/select.go:213` (naast `mergeRequires`)
 - Modify: `pack/core/requires.toml`, `pack/python/requires.toml`
+- Modify: `tests/pack/test_skill_contracts.py:338-348` (`test_requires_names_the_skill_per_tool` leest `gh` uit `requires['forge']['github']`), `tests/test_getting_started.py:31-35` (`required_tools()` platte de `forge`-tabellen af tot hun toolnamen, zodat `gh` blijft en `forge` niet als tool telt), en zo nodig `docs/getting-started.md:20` en `tests/test_agent_guide.py:97-100` (de gids kent `gh` per forge)
 - Test: `internal/packs/packs_test.go`, `internal/initcmd/initcmd_test.go`
 
 **Interfaces:**
@@ -76,7 +77,7 @@ gh = ["close-issue", "fix-pr", "forge", "write-handoff", "audit-worktrees", "wri
 - [ ] **Step 2: Run, verify FAIL**
 
 Run: `go test ./internal/packs/ ./internal/initcmd/ -run 'TestParseRequires|TestInitReportsGhOnlyOnGitHub'`
-Verwacht: FAIL, de TOML-decode van `[forge.github]` in een `map[string][]string` faalt.
+Verwacht: FAIL, een compileerfout (`Requirement` heeft nog geen veld `Forge`).
 
 - [ ] **Step 3: Implement**
 
@@ -94,6 +95,7 @@ In `pack/python/requires.toml` gaat `gh = ["quality/ratchet.py nightly"]` naar `
 
 Run: `go test -race ./internal/packs/... ./internal/initcmd/...`
 Verwacht: PASS, ook `core_test.go:95,216` die over `p.Requires` lopen.
+Run ook: `uv run pytest -q tests/pack tests/test_getting_started.py tests/test_agent_guide.py`. Verwacht: PASS na de aanpassingen hierboven.
 
 - [ ] **Step 6: Commit**
 
@@ -118,7 +120,7 @@ Verwacht: PASS, ook `core_test.go:95,216` die over `p.Requires` lopen.
 - [ ] **Step 1: Write the failing tests**
 
 - GitHub, tabeltest `TestGitHubChangeMergeable`. Pull-JSON `"mergeable": true` geeft `mergeable`, `false` geeft `conflicting` en `null` geeft `unknown`. `"draft": true` geeft `Draft == true`.
-- GitLab, tabeltest `TestGitLabChangeMergeable`. `has_conflicts: true` geeft `conflicting`. `detailed_merge_status` geeft `unknown` voor elk van `unchecked`, `checking`, `preparing` en `approvals_syncing`. `conflict` geeft `conflicting`. `mergeable` en `not_approved` geven `mergeable`.
+- GitLab, tabeltest `TestGitLabChangeMergeable`. `has_conflicts: true` geeft `conflicting`. Standaard voor een niet-genoemde waarde: `need_rebase` geeft `conflicting`, elke andere niet-genoemde waarde (`ci_must_pass`, `ci_still_running`, `discussions_not_resolved`, `draft_status`, `blocked_status`, `requested_changes`, `external_status_checks`, `not_open`) geeft `mergeable`, want `fix-pr` leest de CI en `draft` apart; voeg een rij toe per waarde. `detailed_merge_status` geeft `unknown` voor elk van `unchecked`, `checking`, `preparing` en `approvals_syncing`. `conflict` geeft `conflicting`. `mergeable` en `not_approved` geven `mergeable`.
 - `TestGitLabChangeCommentsSkipsSystemNotes`: twee notes, één met `"system": true`; alleen de andere komt terug.
 - CLI, `TestForgePRViewRendersMergeFields`: met de fake forge van `forgecmd_test.go` heeft de JSON `draft`, `mergeable`, `head_ref` en `base_ref`, en met `--comments` ook een array `comments`.
 
@@ -147,7 +149,7 @@ Run: `go build ./... && go test -race ./internal/forge/... ./internal/cli/...`
 **Files:**
 - Create: `internal/forge/checks.go` (GitHub), `internal/forge/gitlab_checks.go` (GitLab)
 - Modify: `internal/forge/forge.go` (twee methodes), `internal/cli/forgecmd_read.go` (subcommando onder `pr`)
-- Test: `internal/forge/checks_test.go`, `internal/forge/gitlab_checks_test.go`, `internal/cli/forgecmd_test.go`
+- Test: `internal/forge/checks_test.go`, (CLI-test `TestPrChecksEmptyPrintsEmptyArray`: nul checks print precies `[]`, nooit `null`; initialiseer de slice met `[]Check{}`), `internal/forge/gitlab_checks_test.go`, `internal/cli/forgecmd_test.go`
 
 **Interfaces:**
 - Produces: `type Check struct { Name, Bucket, Link string; Job int64 }`. `Bucket` is een van `pass`, `fail`, `pending`, `skipping` of `cancel`. `Job` is 0 als de check geen joblog heeft.
@@ -226,7 +228,7 @@ Run: `go test -race ./internal/cli/...`
 - Modify: de plek waar `newSelfUpdateCommand` aan de root hangt (zelfde registratiebestand)
 
 **Interfaces:**
-- Consumes: `forge.ReleaseReader` (`internal/forge/releases.go:18`) en `forge.New("", token)` met `token, _ := forge.Token("github", "", os.Getenv)`, zoals in `internal/cli/pins.go:18-19`.
+- Consumes: `forge.ReleaseReader` (`internal/forge/releases.go:18`) en `forge.New("", token)` met de token van `forge.Token("github", "", os.Getenv)` en, als die leeg is, `ghAuthToken()` (`internal/cli/ask.go:36`), zoals `newDefaultForgeOpener` (`internal/cli/forgecmd.go:54`) doet. Anoniem is 60 verzoeken per uur, te weinig voor `upgrade`.
 - Produces: `lighthouse releases [--repo owner/name] [--field PATH]`. Standaard is de repo `CorneeldH/lighthouse`, dezelfde waarde als `selfupdate.Options.Repo`. Het print een JSON-array met de sleutels `tag`, `name`, `body`, `url`, `draft` en `prerelease`, in de volgorde van de forge (nieuwste eerst). `--field` werkt via `render` zoals bij `lighthouse forge`. Een fout geeft exit 1 en een regel op stderr.
 - Produces: `newReleasesCommandWith(rr forge.ReleaseReader) *cobra.Command` voor tests.
 
@@ -259,7 +261,7 @@ Run: `go test -race ./internal/cli/...`
 - Test: `internal/kpi/fixpr_test.go` of `internal/kpi/classify_test.go` (waar de bestaande `isDiagnostic`-gevallen staan)
 
 **Interfaces:**
-- Produces: `diagnosticRe` matcht ook `lighthouse⟨ws⟩+forge⟨ws⟩+pr⟨ws⟩+(view|checks)\b`.
+- Produces: `mutatingRe` (`internal/kpi/classify.go:48-54`) matcht ook `lighthouse forge api -X POST` en `lighthouse forge pr comment`. `diagnosticRe` matcht ook `lighthouse⟨ws⟩+forge⟨ws⟩+pr⟨ws⟩+(view|checks)\b`.
 
 - [ ] **Step 1: Failing test**
 
@@ -267,6 +269,7 @@ Run: `go test -race ./internal/cli/...`
 - `lighthouse forge pr view 12` geeft true.
 - `lighthouse forge pr checks 12 --failed-log` geeft true.
 - `lighthouse forge pr create --title x` geeft false.
+- Een mutatietest: `lighthouse forge api -X POST projects/1/jobs/2/retry` is mutating.
 
 - [ ] **Step 2: Run FAIL**
 
@@ -328,13 +331,14 @@ Verwacht: FAIL op `review-plan`, `upgrade` en `audit-worktrees`. `test_gh_is_req
 
 - [ ] **Step 3: `review-plan` (beide varianten)**
 
-Vervang regel 160 door `lighthouse forge issue view <N> --field body > <ATTEMPT>/issue-<N>.md`. Regel 164 noemt nu `lighthouse forge`, met `dangerouslyDisableSandbox: true`. Regel 207 verwijst naar "the same `lighthouse forge issue view` line as step 4".
+In `agents/SKILL.md` staan dezelfde drie plekken op regels 123, 127 en 159 (regel 127 zegt "outside the sandbox" in plaats van `dangerouslyDisableSandbox`); zoek ze op tekst, niet op regelnummer. In `claude/SKILL.md`: vervang regel 160 door `lighthouse forge issue view <N> --field body > <ATTEMPT>/issue-<N>.md`. Regel 164 noemt nu `lighthouse forge`, met `dangerouslyDisableSandbox: true`. Regel 207 verwijst naar "the same `lighthouse forge issue view` line as step 4".
 
 - [ ] **Step 4: `upgrade` (beide varianten)**
 
-- `N=$(lighthouse releases | jq -r '[.[] | select((.prerelease or .draft) | not)][0].tag // empty')`. Is `N` leeg of faalt de aanroep, dan geldt het bestaande pad "self-update not offered".
-- Lijst van tags: `lighthouse releases | jq -r '.[] | select((.prerelease or .draft) | not) | .tag'`. Sorteer met `sort -V`, zoals nu.
-- Body: `lighthouse releases | jq -r --arg t "<tag>" '.[] | select(.tag == $t) | .body'`.
+- Haal de releases één keer op: `lighthouse releases --repo "$L" > <tmp>/releases.json`, en draai alle `jq`-regels hieronder op dat bestand (niet één aanroep per tag). `L=CorneeldH/lighthouse` blijft precies één keer staan (`tests/pack/test_upgrade_skill.py:56-61`, `ci/literal-allowlist.txt:8-11`).
+- `N=$(jq -r '[.[] | select((.prerelease or .draft) | not)][0].tag // empty' <tmp>/releases.json)`. Was: `N=$(lighthouse releases | jq -r '[.[] | select((.prerelease or .draft) | not)][0].tag // empty')`. Is `N` leeg of faalt de aanroep, dan geldt het bestaande pad "self-update not offered".
+- Lijst van tags: `jq -r '.[] | select((.prerelease or .draft) | not) | .tag' <tmp>/releases.json`. Sorteer met `sort -V`, zoals nu.
+- Body: `jq -r --arg t "<tag>" '.[] | select(.tag == $t) | .body' <tmp>/releases.json`.
 - De netwerkzinnen op regels 26, 33 en 58 noemen `lighthouse releases` in plaats van `gh`.
 
 - [ ] **Step 5: `audit-worktrees`**
@@ -403,6 +407,8 @@ Run: `uv run pytest -q tests/pack/`
 - Consumes: `pr view --comments` met `draft`, `mergeable` en `head_ref` (Task 2), en `pr checks [--failed-log]` (Task 3).
 
 - [ ] **Step 1: Tests eerst**
+
+Bestaande tests die hierdoor veranderen: `tests/pack/test_skill_contracts.py:462,482` (`FORGE_SECTIONS` krijgt `## §ci` achteraan), `tests/pack/test_fix_pr_skill.py:61-65,176-180` (houd `R=$(lighthouse config forge.repo)` in het diagnoseblok, of pas de assert aan als het blok het niet meer gebruikt) en de claude-only-regeltelling in `test_variants_differ_only_in_the_sandbox_wording`. Werk `pack/core/skills/forge/SKILL.md` bij (`:3`, `:28-33`) met `pr checks`, `issue status <nr>`, `pr view --comments` en `§ci`.
 
 Voeg `fix-pr` toe aan `UNITS`, plus:
 
