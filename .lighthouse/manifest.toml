@@ -582,7 +582,7 @@ kind = "file"
 path = ".github/workflows/lighthouse-unblock-dependents.yml"
 package = "core"
 version = "dev"
-sha256 = "287a2b788695248193787a08f6db7da79b3272ec5ec0cea4a12b790eb409ac3d"
+sha256 = "2be89491575ca7c548198530d29c6f5dacc6bf6007c97104d153251199a66992"
 
 [[unit]]
 kind = "file"

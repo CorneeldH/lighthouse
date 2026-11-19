@@ -267,6 +267,45 @@ def test_token_env_is_exported_under_the_configured_name(tmp_path) -> None:
     assert github_env == "FORGEJO_TOKEN=app-token\n"
 
 
+def _failing_config(tmp_path: Path, script: str) -> tuple[subprocess.CompletedProcess[str], str]:
+    fakes = tmp_path / "fakes"
+    fakes.mkdir()
+    _fake_tool(fakes, "lighthouse", script)
+    github_env = tmp_path / "github_env"
+    env = {"PATH": f"{fakes}{os.pathsep}{os.environ['PATH']}", "GITHUB_ENV": str(github_env), "GH_TOKEN": "app-token"}
+    proc = subprocess.run(["bash", "-e", "-c", _step_run("Token name")], env=env, capture_output=True, text=True, timeout=60)
+    return proc, github_env.read_text(encoding="utf-8") if github_env.exists() else ""
+
+
+@pytest.mark.parametrize(
+    ("script", "shown"),
+    [
+        ('echo "unknown command" >&2\nexit 1\n', "unknown command"),
+        ('echo "boom" >&2\nexit 2\n', "boom"),
+    ],
+)
+def test_token_env_config_failure_stops_the_step(tmp_path, script, shown) -> None:
+    proc, github_env = _failing_config(tmp_path, script)
+    assert proc.returncode == 1
+    assert shown in proc.stderr
+    assert github_env == ""
+
+
+def test_token_env_missing_binary_stops_the_step(tmp_path) -> None:
+    github_env = tmp_path / "github_env"
+    env = {"PATH": str(tmp_path / "empty"), "GITHUB_ENV": str(github_env), "GH_TOKEN": "app-token"}
+    proc = subprocess.run([shutil.which("bash"), "-e", "-c", _step_run("Token name")], env=env, capture_output=True, text=True, timeout=60)
+    assert proc.returncode != 0
+    assert not github_env.exists()
+
+
+def test_token_env_invalid_name_stops_the_step(tmp_path) -> None:
+    proc, github_env = _failing_config(tmp_path, "echo 'BAD NAME\nX=1'\n")
+    assert proc.returncode == 1
+    assert "not a valid environment variable name" in proc.stdout
+    assert github_env == ""
+
+
 def test_token_env_unset_exports_nothing_and_does_not_fail(tmp_path) -> None:
     proc, github_env = _token_env_step(tmp_path, config_out=None)
     assert proc.returncode == 0, proc.stderr

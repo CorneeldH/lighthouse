@@ -132,9 +132,23 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
-          name=$(lighthouse config forge.token_env 2>/dev/null || true)
-          if [ -n "$name" ]; then
+          # Only rc 1 with "is not set" means unset; any other failure (old binary: "unknown
+          # command", missing binary, rc >= 2) stops the lane with the diagnostics shown.
+          err=$(mktemp)
+          rc=0
+          name=$(lighthouse config forge.token_env 2>"$err") || rc=$?
+          if [ "$rc" -eq 0 ]; then
+            if ! [[ $name =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+              echo "::error::forge.token_env is not a valid environment variable name: $name"
+              exit 1
+            fi
             echo "$name=$GH_TOKEN" >> "$GITHUB_ENV"
+          elif [ "$rc" -eq 1 ] && grep -q 'is not set' "$err"; then
+            :
+          else
+            cat "$err" >&2
+            echo "::error::lighthouse config forge.token_env failed (exit $rc)"
+            exit 1
           fi
 
       # The issue number goes through env, never as `${{ }}` in `run:`.
