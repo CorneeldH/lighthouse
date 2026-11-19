@@ -10,6 +10,7 @@ import (
 	"testing"
 )
 
+// Only a keyed `Code: 2` literal is caught; a positional literal or a computed code is not.
 // TestNoBareBlockCodeInCoreHooks: a core hook blocks only through hook.Block, hook.BlockTagged or
 // hook.CouldNotCheck (or the commitgate pair block and couldNotCheck), so every block carries its
 // reason tag or the COULD NOT CHECK token. A literal Code: 2 anywhere else is a block that

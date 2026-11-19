@@ -75,16 +75,16 @@ func Pre(ctx context.Context, g *Gate, raw []byte, cwd string) Result {
 		return block(reasonNoVerify, &b)
 	}
 
-	roots, block := g.commitRoots(ctx, commits)
-	if block != nil {
-		return *block
+	roots, blk := g.commitRoots(ctx, commits)
+	if blk != nil {
+		return *blk
 	}
 	if len(roots) == 0 {
 		return Result{}
 	}
-	project, block := g.projectRoots(ctx, roots)
-	if block != nil {
-		return *block
+	project, blk := g.projectRoots(ctx, roots)
+	if blk != nil {
+		return *blk
 	}
 	// No project root (only another project): nothing to test or record, so no configuration,
 	// no slot and no wait.
@@ -196,9 +196,9 @@ func (g *Gate) projectRoots(ctx context.Context, roots []string) ([]string, *Res
 // the commit, every other root gets its HEAD recorded for Post. A detached HEAD is not the
 // default branch.
 func (g *Gate) preProject(ctx context.Context, raw []byte, project []string) Result {
-	branch, set, block := g.readConfig("forge.default_branch")
-	if block != nil {
-		return *block
+	branch, set, blk := g.readConfig("forge.default_branch")
+	if blk != nil {
+		return *blk
 	}
 	if !set || branch == "" {
 		return g.Block("the default branch cannot be read (forge.default_branch is not set).")

@@ -80,6 +80,8 @@ func PrCreateGate(ctx context.Context, root, _ string, p hook.Payload) hook.Resu
 				"additionalContext": message,
 			},
 		}}
+	case code == 2 && strings.Contains(stderr, "COULD NOT CHECK"):
+		return hook.CouldNotCheck(stderr)
 	case code == 2:
 		return hook.Block(reasonPRBody, stderr)
 	case code == 3:
