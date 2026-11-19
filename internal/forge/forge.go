@@ -19,6 +19,9 @@ var ErrIssueNotFound = errors.New("issue not found")
 // ErrReportUnsupported is the answer of a forge that cannot yet list the periods of lighthouse report.
 var ErrReportUnsupported = errors.New("lighthouse report is not supported on this forge yet")
 
+// ErrNoJobLog means a job has no log (any more): JobLog wraps it, on every forge.
+var ErrNoJobLog = errors.New("no log for job")
+
 // Forge is one repository on a forge: its issues, comments, acknowledgements, pull requests
 // and board. A status is an option name of [forge.board] status_options, never an ID.
 type Forge interface {
@@ -77,6 +80,11 @@ type Forge interface {
 	// ChangeComments lists the comments of pull request number: on GitLab the notes of the merge
 	// request without system notes.
 	ChangeComments(ctx context.Context, number int) ([]protocol.Comment, error)
+	// Checks lists the CI checks of pull request number, newest pipeline only on GitLab. No checks
+	// is an empty list, not an error.
+	Checks(ctx context.Context, number int) ([]Check, error)
+	// JobLog is the raw log of a check's job; an error wrapping ErrNoJobLog when there is none.
+	JobLog(ctx context.Context, job int64) (string, error)
 	CreateChangeComment(ctx context.Context, number int, body string) (protocol.Comment, error)
 	// Milestones lists the milestones in state "open", "closed" or "all"; "" is open.
 	Milestones(ctx context.Context, state string) ([]Milestone, error)

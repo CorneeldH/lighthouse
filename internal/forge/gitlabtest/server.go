@@ -61,6 +61,9 @@ type Server struct {
 	milestones []map[string]any
 	labels     []string
 	mrNotes    map[int][]map[string]any // notes of a merge request; its iid is not an issue iid
+	pipelines  map[int][]map[string]any // pipelines of a merge request, by its iid
+	jobs       map[int][]map[string]any // jobs of a pipeline, by pipeline id
+	traces     map[int64]string         // job log, by job id
 }
 
 // New starts a server that closes when the test ends.
@@ -71,6 +74,7 @@ func newServer(t reporter) *Server {
 	s := &Server{
 		t: t, Project: "group/project", nextID: 1000,
 		issues: map[int]map[string]any{}, notes: map[int][]map[string]any{}, mrNotes: map[int][]map[string]any{},
+		pipelines: map[int][]map[string]any{}, jobs: map[int][]map[string]any{}, traces: map[int64]string{},
 		awards: map[int64][]map[string]any{}, links: map[int][]map[string]any{}, closedBy: map[string][]map[string]any{},
 		users: map[string]int64{}, members: map[string]int{}, status: map[int]string{},
 	}
@@ -95,6 +99,9 @@ func newServer(t reporter) *Server {
 	s.route(mux, "PUT "+p+"/merge_requests/{iid}", s.project(s.updateMR))
 	s.route(mux, "GET "+p+"/merge_requests/{iid}/notes", s.project(s.listMRNotes))
 	s.route(mux, "PUT "+p+"/merge_requests/{iid}/merge", s.project(s.mergeMR))
+	s.route(mux, "GET "+p+"/merge_requests/{iid}/pipelines", s.project(s.listMRPipelines))
+	s.route(mux, "GET "+p+"/pipelines/{pid}/jobs", s.project(s.listPipelineJobs))
+	s.route(mux, "GET "+p+"/jobs/{jid}/trace", s.project(s.jobTrace))
 	s.writeRoutes(mux, p)
 	mux.HandleFunc("POST /api/graphql", s.graphql)
 	mux.HandleFunc("/", s.unexpected)
@@ -687,4 +694,56 @@ func (s *Server) MRNotes(iid int) []string {
 		out = append(out, fmt.Sprint(n["body"]))
 	}
 	return out
+}
+
+// AddMRPipeline seeds a pipeline of merge request iid; id is its "id".
+func (s *Server) AddMRPipeline(iid, id int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.pipelines[iid] = append(s.pipelines[iid], map[string]any{"id": id, "iid": id, "status": "success"})
+}
+
+// AddJob seeds a job of pipeline pid in GitLab's REST shape; "id" is required.
+func (s *Server) AddJob(pid int, job map[string]any) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.jobs[pid] = append(s.jobs[pid], job)
+}
+
+// SetTrace seeds the log of job id; a job without one answers 404.
+func (s *Server) SetTrace(id int64, log string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.traces[id] = log
+}
+
+// listMRPipelines serves the pipelines of a merge request, newest (highest id) first.
+func (s *Server) listMRPipelines(w http.ResponseWriter, r *http.Request) {
+	iid, _ := strconv.Atoi(r.PathValue("iid"))
+	s.mu.Lock()
+	ps := slices.Clone(s.pipelines[iid])
+	s.mu.Unlock()
+	slices.SortFunc(ps, func(a, b map[string]any) int { return toInt(b["id"]) - toInt(a["id"]) })
+	paginate(w, r, toAny(ps))
+}
+
+func (s *Server) listPipelineJobs(w http.ResponseWriter, r *http.Request) {
+	pid, _ := strconv.Atoi(r.PathValue("pid"))
+	s.mu.Lock()
+	out := toAny(s.jobs[pid])
+	s.mu.Unlock()
+	paginate(w, r, out)
+}
+
+func (s *Server) jobTrace(w http.ResponseWriter, r *http.Request) {
+	jid, _ := strconv.ParseInt(r.PathValue("jid"), 10, 64)
+	s.mu.Lock()
+	log, ok := s.traces[jid]
+	s.mu.Unlock()
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]any{"message": "404 Not found"})
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain")
+	_, _ = io.WriteString(w, log)
 }
