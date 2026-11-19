@@ -26,11 +26,11 @@ type CacheStore interface {
 	Delete(ctx context.Context, key string) error
 }
 
-// cacheKey identifies a GET by its URL and its credentials, hashed so the token never appears
-// in the store.
+// cacheKey is "GET <full URL> <first 16 hex of sha256(Authorization)>": the URL stays readable
+// for pruning, the token never appears, and another token gets another key.
 func cacheKey(req *http.Request) string {
-	sum := sha256.Sum256([]byte(req.Header.Get("Authorization") + "\n" + req.URL.String()))
-	return hex.EncodeToString(sum[:])
+	sum := sha256.Sum256([]byte(req.Header.Get("Authorization")))
+	return "GET " + req.URL.String() + " " + hex.EncodeToString(sum[:])[:16]
 }
 
 type memoryCache struct {

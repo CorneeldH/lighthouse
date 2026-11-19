@@ -183,6 +183,9 @@ func TestCacheKeyPerToken(t *testing.T) {
 		t.Errorf("second token sent If-None-Match %q, want none", got)
 	}
 	key := cacheKey(mustReq(t, http.MethodGet, a.BaseURL+"/repos/o/r/issues/7", "token-aaa"))
+	if want := "GET " + a.BaseURL + "/repos/o/r/issues/7 1e0b0a2673baaa4b"; key != want {
+		t.Errorf("cacheKey = %q, want %q", key, want)
+	}
 	if strings.Contains(key, "token-aaa") {
 		t.Errorf("cacheKey %q contains the token", key)
 	}
