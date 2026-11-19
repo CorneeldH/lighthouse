@@ -128,11 +128,11 @@ check_root() (
 
   # The pin, when there is one: a golangci-lint of another version lints by other
   # rules. `version --short` prints it without the leading v.
+  HAVE=$(golangci-lint version --short 2>/dev/null | tr -d '[:space:]')
+  HAVE="${HAVE#v}"
   if [ -f "$ROOT/.golangci-version" ]; then
     WANT=$(tr -d '[:space:]' <"$ROOT/.golangci-version")
     WANT="${WANT#v}"
-    HAVE=$(golangci-lint version --short 2>/dev/null | tr -d '[:space:]')
-    HAVE="${HAVE#v}"
     if [ "$HAVE" != "$WANT" ]; then
       cannot_check "golangci-lint $HAVE runs; .golangci-version in $ROOT pins $WANT."
     fi
@@ -151,12 +151,10 @@ check_root() (
   # says (it may add linters, never remove these). golangci-lint v2 lists the effective set;
   # v1 has no such listing, so there the floor goes unchecked, said so, and the lint run goes on.
   FLOOR_NOTE=""
-  HAVE_VERSION=$(golangci-lint version --short 2>/dev/null | tr -d '[:space:]')
-  HAVE_VERSION="${HAVE_VERSION#v}"
-  if [[ "$HAVE_VERSION" != 2* ]]; then
-    FLOOR_NOTE="$HOOK_NAME: COULD NOT CHECK the floor: golangci-lint ${HAVE_VERSION:-of unknown version} is not v2, so it cannot list the linters that are on in $ROOT. The lint run below is unchanged."
+  if [[ "$HAVE" != 2* ]]; then
+    FLOOR_NOTE="$HOOK_NAME: COULD NOT CHECK the floor: golangci-lint ${HAVE:-of unknown version} is not v2, so it cannot list the linters that are on in $ROOT. The lint run below is unchanged."
   else
-    if ! LINTERS_JSON=$(golangci-lint linters --json 2>&1); then
+    if ! LINTERS_JSON=$(golangci-lint linters --json 2>/dev/null); then
       FLOOR_NOTE="$HOOK_NAME: COULD NOT CHECK the floor: golangci-lint linters failed in $ROOT. The lint run below is unchanged."
     elif ! ENABLED=$(printf '%s' "$LINTERS_JSON" | jq -r '.Enabled[].name' 2>/dev/null) || [ -z "$ENABLED" ]; then
       FLOOR_NOTE="$HOOK_NAME: COULD NOT CHECK the floor: the list of enabled linters of $ROOT cannot be read. The lint run below is unchanged."

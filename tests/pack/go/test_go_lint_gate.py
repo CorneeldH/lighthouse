@@ -50,7 +50,10 @@ LINT_STUB = """#!/bin/bash
 echo "$* @ $PWD" >> "$STUB_LOG"
 case "$1" in
   version) echo "${STUB_VERSION:-2.15.0}" ;;
-  linters) echo '{"Enabled":[{"name":"errcheck"},{"name":"govet"},{"name":"ineffassign"},{"name":"staticcheck"},{"name":"unused"}]}' ;;
+  linters)
+    if [ -n "$STUB_LINTERS_RC" ]; then exit "$STUB_LINTERS_RC"; fi
+    DEFAULT='{"Enabled":[{"name":"errcheck"},{"name":"govet"},{"name":"ineffassign"},{"name":"staticcheck"},{"name":"unused"}]}'
+    echo "${STUB_LINTERS_OUT:-$DEFAULT}" ;;
   config) exit ${STUB_VERIFY_RC:-0} ;;
   run)
     if [ -n "$STUB_FAIL_IN" ]; then
@@ -147,6 +150,26 @@ def test_lint_failure_could_not_check(tmp_path):
 def test_invalid_config_could_not_check(tmp_path):
     env = _env(tmp_path, STUB_VERIFY_RC="3")
     assert _message(_run(_repo(tmp_path), env)).startswith(UNCHECKED)
+    assert "run ./..." not in _log(env)
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [{"STUB_LINTERS_RC": "3"}, {"STUB_LINTERS_OUT": "{}"}, {"STUB_LINTERS_OUT": "not json"}],
+    ids=["fails", "empty-set", "not-json"],
+)
+def test_unreadable_linter_list_says_the_floor_is_unchecked(tmp_path, extra):
+    env = _env(tmp_path, **extra)
+    assert "COULD NOT CHECK the floor" in _message(_run(_repo(tmp_path), env))
+    assert "run ./..." in _log(env)
+
+
+def test_linter_off_blocks_on_the_floor(tmp_path):
+    out = '{"Enabled":[{"name":"govet"},{"name":"ineffassign"},{"name":"staticcheck"},{"name":"unused"}]}'
+    env = _env(tmp_path, STUB_LINTERS_OUT=out)
+    result = _run(_repo(tmp_path), env)
+    assert result.returncode == 2, result.stdout
+    assert "[go-lint-gate/errcheck]" in result.stderr
     assert "run ./..." not in _log(env)
 
 

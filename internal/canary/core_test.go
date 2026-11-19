@@ -122,7 +122,10 @@ func TestEveryCoreReasonHasACanaryCase(t *testing.T) {
 		if name == "bash-write-check" {
 			continue
 		}
-		ids, _ := hook.Reasons(name)
+		ids, ok := hook.Reasons(name)
+		if !ok {
+			t.Fatalf("%s is declared but has no reasons entry", name)
+		}
 		for _, id := range ids {
 			declared = append(declared, name+"/"+id)
 		}

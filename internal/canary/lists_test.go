@@ -135,7 +135,10 @@ func TestCoreReasonsMatchBlockingFile(t *testing.T) {
 // Every reason of every core hook has a testdata file.
 func TestEveryReasonHasATestdataFile(t *testing.T) {
 	for _, name := range hook.DeclaredHooks() {
-		ids, _ := hook.Reasons(name)
+		ids, ok := hook.Reasons(name)
+		if !ok {
+			t.Fatalf("%s is declared but has no reasons entry", name)
+		}
 		if name == "bash-write-check" {
 			if len(ids) != 0 {
 				t.Errorf("bash-write-check declares %v, want none", ids)
@@ -188,7 +191,10 @@ func TestEveryTestdataFileHasAReason(t *testing.T) {
 		t.Errorf("testdata directories without a hook that declares reasons: %v", stray)
 	}
 	for _, name := range hook.DeclaredHooks() {
-		ids, _ := hook.Reasons(name)
+		ids, ok := hook.Reasons(name)
+		if !ok {
+			t.Fatalf("%s is declared but has no reasons entry", name)
+		}
 		if len(ids) == 0 {
 			continue
 		}
