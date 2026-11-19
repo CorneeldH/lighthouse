@@ -135,7 +135,7 @@ case "$rc" in
   1)
     [ -n "$missing" ] || { rm -f "$ERR_FILE"; fail "shellcheck-repo.sh --check-floor returned rc=1 without naming a code."; }
     while IFS= read -r code; do
-      echo "[shell-lint-check/$code] $code is switched off for $FILE_PATH (a .shellcheckrc above it or in \$HOME or \$XDG_CONFIG_HOME, SHELLCHECK_OPTS, or a code range in disable=); this hook needs it on." >&2
+      echo "[shell-lint-check/$code] shell-lint-check: $code is switched off for $FILE_PATH (a .shellcheckrc above it or in \$HOME or \$XDG_CONFIG_HOME, SHELLCHECK_OPTS, or a code range in disable=); this hook needs it on." >&2
     done <<EOF
 $missing
 EOF
