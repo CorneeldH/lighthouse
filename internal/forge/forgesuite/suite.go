@@ -53,8 +53,8 @@ type Fixture interface {
 	// FailComments makes posting a comment on issue number answer a 500.
 	FailComments(t *testing.T, number int)
 	// AddStateEvent records that issue number was "closed" or "reopened", in order; closer is
-	// the pull or merge request that closed it, 0 by hand.
-	AddStateEvent(t *testing.T, number int, state string, closer int)
+	// the pull or merge request that closed it, 0 by hand, in repository repo ("" is Repo()).
+	AddStateEvent(t *testing.T, number int, state string, closer int, repo string)
 	AddOpenPR(t *testing.T, pr forge.OpenPR)
 	// AddOpenPRWithStatus adds an open pull request with its Number, Title, URL, Draft, Mergeable
 	// and Checks.
@@ -1149,23 +1149,29 @@ func reopenIssueCommentFails(t *testing.T, f Fixture) {
 
 // closer: the pull request of the last close wins, also when the issue was reopened since; a
 // close by hand is 0, also after an earlier close by a pull request, and so is an issue never
-// closed.
+// closed. A closer in another repository is 0 too: its number would name another change here.
+// The repository compares without regard to case.
 func closer(t *testing.T, f Fixture) {
 	type event struct {
 		state  string
 		closer int
+		repo   string
 	}
+	other, upper := "other/elsewhere", strings.ToUpper(f.Repo())
 	for _, tc := range []struct {
 		issue  int
 		events []event
 		want   int
 	}{
-		{5, []event{{"closed", 12}}, 12},
-		{6, []event{{"closed", 0}}, 0},
-		{7, []event{{"closed", 12}, {"reopened", 0}, {"closed", 14}}, 14},
-		{8, []event{{"closed", 12}, {"reopened", 0}, {"closed", 0}}, 0},
-		{10, []event{{"closed", 12}, {"reopened", 0}}, 12},
+		{5, []event{{"closed", 12, ""}}, 12},
+		{6, []event{{"closed", 0, ""}}, 0},
+		{7, []event{{"closed", 12, ""}, {"reopened", 0, ""}, {"closed", 14, ""}}, 14},
+		{8, []event{{"closed", 12, ""}, {"reopened", 0, ""}, {"closed", 0, ""}}, 0},
+		{10, []event{{"closed", 12, ""}, {"reopened", 0, ""}}, 12},
 		{9, nil, 0},
+		{11, []event{{"closed", 12, other}}, 0},
+		{12, []event{{"closed", 12, ""}, {"reopened", 0, ""}, {"closed", 15, other}}, 0},
+		{13, []event{{"closed", 16, upper}}, 16},
 	} {
 		is := closedIssue(tc.issue, nil, time.Now().Add(-time.Hour))
 		if tc.events == nil {
@@ -1173,7 +1179,7 @@ func closer(t *testing.T, f Fixture) {
 		}
 		f.AddIssue(t, is)
 		for _, e := range tc.events {
-			f.AddStateEvent(t, tc.issue, e.state, e.closer)
+			f.AddStateEvent(t, tc.issue, e.state, e.closer, e.repo)
 		}
 		got, err := f.Forge().Closer(t.Context(), tc.issue)
 		if err != nil || got != tc.want {

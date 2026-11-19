@@ -1,6 +1,7 @@
 package forge_test
 
 import (
+	"cmp"
 	"fmt"
 	"strings"
 	"testing"
@@ -168,10 +169,13 @@ func (g *gitlabFixture) FailIssueChangesPage2(_ *testing.T, number int) {
 
 func (g *gitlabFixture) FailComments(_ *testing.T, number int) { g.srv.FailNotes(number) }
 
-func (g *gitlabFixture) AddStateEvent(_ *testing.T, number int, state string, closer int) {
+// AddStateEvent: the source_merge_request names its project in references.full, as GitLab's
+// merge request entity does.
+func (g *gitlabFixture) AddStateEvent(_ *testing.T, number int, state string, closer int, repo string) {
 	ev := map[string]any{"state": state, "source_merge_request": nil}
 	if closer != 0 {
-		ev["source_merge_request"] = map[string]any{"iid": closer}
+		ev["source_merge_request"] = map[string]any{"iid": closer,
+			"references": map[string]any{"full": fmt.Sprintf("%s!%d", cmp.Or(repo, g.srv.Project), closer)}}
 	}
 	g.srv.AddStateEvent(number, ev)
 }

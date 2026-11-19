@@ -212,14 +212,14 @@ func (g *githubFixture) FailComments(_ *testing.T, number int) {
 }
 
 // AddStateEvent: GitHub's timeline query reads only the ClosedEvents; a reopen is not in it.
-func (g *githubFixture) AddStateEvent(t *testing.T, number int, state string, closer int) {
+func (g *githubFixture) AddStateEvent(t *testing.T, number int, state string, closer int, repo string) {
 	switch state {
 	case "reopened":
 	case "closed":
 		if g.srv.Closers == nil {
-			g.srv.Closers = map[int][]int{}
+			g.srv.Closers = map[int][]forgetest.Closer{}
 		}
-		g.srv.Closers[number] = append(g.srv.Closers[number], closer)
+		g.srv.Closers[number] = append(g.srv.Closers[number], forgetest.Closer{Number: closer, Repo: repo})
 	default:
 		t.Fatalf("AddStateEvent: state %q is not closed or reopened", state)
 	}

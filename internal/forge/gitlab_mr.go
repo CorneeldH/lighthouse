@@ -196,16 +196,16 @@ func (g *GitLab) IssueChanges(ctx context.Context, number int) ([]IssueChange, e
 }
 
 // Closer is the iid of the merge request of the last closed state event of issue number; 0 when
-// that close came by hand or by a commit, or the issue was never closed.
+// that close came by hand or by a commit, the issue was never closed, or the merge request is in
+// another project (references.full; compared without regard to case). A missing reference
+// counts as this project, as in issueChange.
 func (g *GitLab) Closer(ctx context.Context, number int) (int, error) {
 	if err := g.configured(); err != nil {
 		return 0, err
 	}
 	events, err := getAll[struct {
-		State              string `json:"state"`
-		SourceMergeRequest *struct {
-			IID int `json:"iid"`
-		} `json:"source_merge_request"`
+		State              string       `json:"state"`
+		SourceMergeRequest *glRelatedMR `json:"source_merge_request"`
 	}](ctx, g, g.projectPath("/issues/"+strconv.Itoa(number)+"/resource_state_events"), nil)
 	if err != nil {
 		return 0, err
@@ -215,6 +215,9 @@ func (g *GitLab) Closer(ctx context.Context, number int) (int, error) {
 			continue
 		}
 		if mr := events[i].SourceMergeRequest; mr != nil {
+			if ch := mr.issueChange(g.Repo); !strings.EqualFold(ch.Repo, g.Repo) {
+				return 0, nil
+			}
 			return mr.IID, nil
 		}
 		return 0, nil

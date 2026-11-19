@@ -293,14 +293,17 @@ const issueCloserQuery = `query IssueCloser($owner: String!, $name: String!, $nr
   repository(owner: $owner, name: $name) {
     issue(number: $nr) {
       timelineItems(itemTypes: [CLOSED_EVENT], last: 1) {
-        nodes { ... on ClosedEvent { closer { ... on PullRequest { number } } } }
+        nodes { ... on ClosedEvent { closer { ... on PullRequest { number repository { nameWithOwner } } } } }
       }
     }
   }
 }`
 
 // Closer is the number of the pull request that closed issue number the last time, from the
-// closer of its last ClosedEvent; 0 for a close by hand or by a commit, or an issue never closed.
+// closer of its last ClosedEvent; 0 for a close by hand or by a commit, an issue never closed,
+// or a pull request in another repository (its number would name another one here). The
+// repository compares without regard to case: GitHub gives the canonical spelling,
+// lighthouse.toml what the user typed.
 func (c *GitHub) Closer(ctx context.Context, number int) (int, error) {
 	owner, name, err := c.ownerName()
 	if err != nil {
@@ -312,7 +315,10 @@ func (c *GitHub) Closer(ctx context.Context, number int) (int, error) {
 				TimelineItems struct {
 					Nodes []struct {
 						Closer *struct {
-							Number int `json:"number"`
+							Number     int `json:"number"`
+							Repository struct {
+								NameWithOwner string `json:"nameWithOwner"`
+							} `json:"repository"`
 						} `json:"closer"`
 					} `json:"nodes"`
 				} `json:"timelineItems"`
@@ -329,5 +335,9 @@ func (c *GitHub) Closer(ctx context.Context, number int) (int, error) {
 	if len(nodes) == 0 || nodes[len(nodes)-1].Closer == nil {
 		return 0, nil
 	}
-	return nodes[len(nodes)-1].Closer.Number, nil
+	closer := nodes[len(nodes)-1].Closer
+	if !strings.EqualFold(closer.Repository.NameWithOwner, c.Repo) {
+		return 0, nil
+	}
+	return closer.Number, nil
 }

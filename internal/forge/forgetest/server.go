@@ -130,10 +130,10 @@ type Server struct {
 	// IssueChangesPage2Fails, per issue number, makes every IssueChanges page after a cursor
 	// answer a GraphQL error.
 	IssueChangesPage2Fails map[int]bool
-	// Closers are the closes of an issue in order, per issue number: the number of the pull
-	// request that closed it, 0 by hand. IssueCloser serves the last as the closer of the last
+	// Closers are the closes of an issue in order, per issue number: the pull request that
+	// closed it, Number 0 by hand. IssueCloser serves the last as the closer of the last
 	// ClosedEvent.
-	Closers map[int][]int
+	Closers map[int][]Closer
 	// PlanStuckCursor, when not nil, makes every page of the Planning and PlanMilestones
 	// queries claim a next page with this endCursor, whatever the cursor asked.
 	PlanStuckCursor *string
@@ -828,6 +828,13 @@ func (s *Server) issueChanges(vars map[string]any) (any, error) {
 	return map[string]any{"repository": map[string]any{"issue": issue}}, nil
 }
 
+// Closer is the pull request of one close: Number 0 is a close by hand; Repo is its
+// repository as nameWithOwner, "" the repository asked for.
+type Closer struct {
+	Number int
+	Repo   string
+}
+
 // issueCloser serves the last ClosedEvent of issue nr, as timelineItems(last: 1) does: its
 // closer a pull request, or null for a close by hand; no node for an issue never closed.
 func (s *Server) issueCloser(vars map[string]any) any {
@@ -837,8 +844,9 @@ func (s *Server) issueCloser(vars map[string]any) any {
 	nodes := []any{}
 	if cs := s.Closers[nr]; len(cs) > 0 {
 		var closer any
-		if last := cs[len(cs)-1]; last != 0 {
-			closer = map[string]any{"number": last}
+		if last := cs[len(cs)-1]; last.Number != 0 {
+			repo := cmp.Or(last.Repo, fmt.Sprint(vars["owner"], "/", vars["name"]))
+			closer = map[string]any{"number": last.Number, "repository": map[string]any{"nameWithOwner": repo}}
 		}
 		nodes = append(nodes, map[string]any{"closer": closer})
 	}
