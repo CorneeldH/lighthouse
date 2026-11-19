@@ -534,7 +534,7 @@ func applyActions(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.D
 		Forge:        func(slug string) forge.Forge { return forges[slug] },
 		Workplace:    func(slug, node, profile string) workplace.Workplace { return places(repos[slug], node, profile) },
 		MCPConfig:    func(profile string) string { return cfg.Profiles[profile].MCPConfig },
-		ScheduledJob: scheduledJob(env, repos),
+		ScheduledJob: scheduledJob(env, db, repos),
 		Remote:       scheduledRemote(env, dir, repos),
 		RoundLimit:   func(slug string) string { return repos[slug].Controller.AtRoundLimit },
 		StateDir:     dir,
@@ -621,13 +621,7 @@ func prepare(ctx context.Context, db *sql.DB, f forge.Forge, repo repoconfig.Rep
 	if err != nil {
 		return dispatch.Pre{}, err
 	}
-	branches := map[int]string{}
-	for _, r := range history { // ordered by id: the last run of an issue wins
-		if r.Schedule == "" { // a scheduled run has no issue
-			branches[r.Issue] = r.Branch
-		}
-	}
-	return dispatch.Prepare(ctx, f, repo, open, branches)
+	return dispatch.Prepare(ctx, f, repo, open, dispatch.IssueBranches(history))
 }
 
 // measuredPre is the precheck half of a gather that tick and `lighthouse run` share: it

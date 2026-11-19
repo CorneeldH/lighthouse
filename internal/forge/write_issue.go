@@ -148,7 +148,6 @@ func (c *GitHub) CreateIssue(ctx context.Context, in NewIssue) (Issue, error) {
 	if _, err := c.do(ctx, http.MethodPost, c.repoURL("/issues"), body, &it); err != nil {
 		return Issue{}, err
 	}
-	c.remember(it)
 	return it.issue(), nil
 }
 
@@ -260,7 +259,6 @@ func (c *GitHub) issuePages(ctx context.Context, url string) ([]Issue, error) {
 			if it.PullRequest != nil {
 				continue
 			}
-			c.remember(it)
 			out = append(out, it.issue())
 		}
 		url = next

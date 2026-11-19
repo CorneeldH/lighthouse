@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -124,6 +125,10 @@ type Config struct {
 	Board *repoconfig.Board
 	// HTTP is the client for every request; nil is one with a 30 s timeout.
 	HTTP *http.Client
+	// Cache stores the answers of conditional GETs (GitHub only); nil: no cache.
+	Cache CacheStore
+	// CacheLog receives the one line a cache error produces per transport; nil discards it.
+	CacheLog io.Writer
 }
 
 // Open returns the forge of cfg.Kind ("" is github).
@@ -138,6 +143,10 @@ func Open(cfg Config) (Forge, error) {
 			c.HTTP = cfg.HTTP
 		}
 		c.Board = cfg.Board
+		if cfg.Cache != nil {
+			c.cache = cfg.Cache
+			c.HTTP = &http.Client{Timeout: c.HTTP.Timeout, Transport: newCachingTransport(c.HTTP.Transport, cfg.Cache, cfg.CacheLog)}
+		}
 		return c, nil
 	case "gitlab":
 		return newGitLab(cfg), nil

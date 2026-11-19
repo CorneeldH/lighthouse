@@ -521,6 +521,14 @@
  },
  {
   "args": [
+   "forge.board.project_owner"
+  ],
+  "rc": 0,
+  "stdout": "acme\n",
+  "stderr": ""
+ },
+ {
+  "args": [
    "project.language"
   ],
   "rc": 0,
