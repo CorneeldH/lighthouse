@@ -31,7 +31,11 @@ def table_rows(text: str) -> list[list[str]]:
 def required_tools() -> set[str]:
     tools = set()
     for path in sorted((ROOT / "pack").glob("*/requires.toml")):
-        tools |= set(tomllib.loads(path.read_text(encoding="utf-8")))
+        table = tomllib.loads(path.read_text(encoding="utf-8"))
+        # [forge.<kind>] tables hold tools too; `forge` itself is not a tool.
+        for tools_of_kind in table.pop("forge", {}).values():
+            tools |= set(tools_of_kind)
+        tools |= set(table)
     return tools
 
 
