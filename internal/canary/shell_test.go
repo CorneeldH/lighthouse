@@ -221,7 +221,10 @@ func TestShellFloorCodesAreWarningOrError(t *testing.T) {
 	bin := shellcheckBin(t)
 	for _, code := range floorCodes(t) {
 		t.Run(code, func(t *testing.T) {
-			cmd := exec.Command(bin, "-f", "json", "-S", "style", filepath.Join("testdata", "shell-lint-check", code+".sh"))
+			// A measurement of the code's own level: no SHELLCHECK_OPTS and no .shellcheckrc
+			// of this machine may change it (--norc is forbidden in the hook, not here).
+			cmd := exec.Command(bin, "--norc", "-f", "json", "-S", "style", filepath.Join("testdata", "shell-lint-check", code+".sh"))
+			cmd.Env = slices.DeleteFunc(os.Environ(), func(kv string) bool { return strings.HasPrefix(kv, "SHELLCHECK_OPTS=") })
 			out, err := cmd.Output()
 			if ee, ok := err.(*exec.ExitError); err != nil && (!ok || ee.ExitCode() != 1) {
 				t.Fatalf("shellcheck: %v", err)
