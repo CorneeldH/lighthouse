@@ -791,3 +791,20 @@ func TestGatherPushedSHAFromPusherComment(t *testing.T) {
 		t.Error("Complete changed the PRs of Pre")
 	}
 }
+
+// The PRs of an issue stay on its issue branch after a close check: the check's own branch
+// has no PR, so a Refs PR merged on the issue branch must not drop out of the next gather.
+func TestIssueBranchesSkipsCloseCheckAndScheduled(t *testing.T) {
+	history := []runs.Row{
+		{ID: 1, Issue: 7, Branch: "issue-7-eerste"},
+		{ID: 2, Issue: 7, Branch: "issue-7-bouw-de-keten"},
+		{ID: 3, Issue: 7, Trigger: "closecheck", Branch: "closecheck/issue-7-pr-12"},
+		{ID: 4, Issue: 8, Branch: "issue-8-ander"},
+		{ID: 5, Schedule: "map-refresh", Branch: "scheduled/map-refresh-1"},
+	}
+	got := IssueBranches(history)
+	want := map[int]string{7: "issue-7-bouw-de-keten", 8: "issue-8-ander"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("IssueBranches = %v, want %v", got, want)
+	}
+}

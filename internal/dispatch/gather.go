@@ -59,7 +59,7 @@ type Pre struct {
 }
 
 // Prepare reads the board of repo and keeps the issues of repo.Slug whose Status is
-// Controller or On hold, or that have an open run in open, sorted by issue. branches is per issue the branch of its last run,
+// Controller or On hold, or that have an open run in open, sorted by issue. branches is per issue the branch of its last run (IssueBranches),
 // open or closed: such an item also gets the PRs of that branch, merged with its closing PRs,
 // so a merged PR that does not close the issue stays visible after its run closed. Each open
 // scheduled run with a branch gets the PRs of that branch in ScheduledPRs: it has no board item.

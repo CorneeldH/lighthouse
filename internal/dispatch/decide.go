@@ -1474,10 +1474,36 @@ func (c issueCtx) closeCheck() (planned, bool) {
 		if c.spent(key) {
 			continue
 		}
-		a := c.fresh(triggerClose, key, cmdClose+" "+strconv.Itoa(c.it.Issue), pr.HeadRef)
+		a := c.fresh(triggerClose, key, cmdClose+" "+strconv.Itoa(c.it.Issue), closeBranch(c.it.Issue, pr.Number))
 		return c.planned(a, c.it.ItemUpdatedAt), true
 	}
 	return planned{}, false
+}
+
+// closeBranchPrefix starts the branch of a close check (closeBranch).
+const closeBranchPrefix = triggerClose + "/"
+
+// closeBranch is the branch of the close check after PR pr of issue: closecheck/issue-<N>-pr-<pr>.
+// No one pushes it, so the workplace makes it new from origin/<default branch>, and the check
+// reads the skills of the default branch, not those of the issue branch, which lacks a skill fix
+// merged after it and stays on its last commit once origin deleted it (#416). One per PR: a
+// worktree of an earlier check never holds a later one.
+func closeBranch(issue, pr int) string {
+	return closeBranchPrefix + "issue-" + strconv.Itoa(issue) + "-pr-" + strconv.Itoa(pr)
+}
+
+// IssueBranches is per issue the branch of its last run in history (ordered by id), whose PRs
+// gather reads. A scheduled run has no issue, and a close check leaves the branch of the run
+// before it: its own branch has no PR, and the PRs of the issue stay on the issue branch.
+func IssueBranches(history []runs.Row) map[int]string {
+	out := map[int]string{}
+	for _, r := range history {
+		if r.Schedule != "" || strings.HasPrefix(r.Branch, closeBranchPrefix) {
+			continue
+		}
+		out[r.Issue] = r.Branch
+	}
+	return out
 }
 
 func (c issueCtx) startedBefore(t time.Time) bool {
