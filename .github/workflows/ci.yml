@@ -1,6 +1,6 @@
 # CI for lighthouse: one job per domain (python, go, web), each run only when ci/domains.py
-# finds a changed path in it. Go runs as three parallel jobs, `go`, `go-test` and `go-e2e`, plus `canary`, and
-# Python as a matrix of three parts of the pytest suite (tests/conftest.py). Everything runs on
+# finds a changed path in it. Go runs as three parallel jobs, `go`, `go-test` and `go-e2e`; `canary` runs on Go and on
+# python-only changes. Python is a matrix of three parts of the pytest suite (tests/conftest.py). Everything runs on
 # Linux; macOS runs in macos.yml, as the gate before the release (#337). A `binary` job builds the
 # SPA itself, embeds it in the Go binary and smoke-tests it, next to web instead of after it.
 name: ci
