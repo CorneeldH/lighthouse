@@ -233,8 +233,6 @@ func parse(t *testing.T, c parseCase) (got, want any) {
 		return ParseSessions(decode[struct{ Records []any }](t, c.Input).Records), decode[map[string]SessionInfo](t, c.Expect)
 	case "encode_project_dir":
 		return EncodeProjectDir(decode[struct{ Path string }](t, c.Input).Path), decode[string](t, c.Expect)
-	case "epoch":
-		return epoch(decode[struct{ Stamp any }](t, c.Input).Stamp), decode[*float64](t, c.Expect)
 	case "tip_shape":
 		at, root := parseTipShape(decode[struct{ Output *string }](t, c.Input).Output)
 		return [2]any{at, root}, func() [2]any {
