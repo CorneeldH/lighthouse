@@ -524,3 +524,25 @@ func TestSetupAndUsageOneOwner(t *testing.T) {
 		t.Errorf("usage = cost %v, kind %v, input %d; want NULL, NULL, 7", c, kind, in)
 	}
 }
+
+func TestFindingRollsBackTrajectoryOnCheckFailure(t *testing.T) {
+	ctx := context.Background()
+	db := openDB(t)
+	takeRun(t, db, "o/r", 1, "start:1", "start")
+	trajectories := count(t, db, `SELECT count(*) FROM trajectories`)
+	// A new trajectory (issue 2) is inserted before the findings CHECK on
+	// decision refuses the row; the whole call must leave nothing behind.
+	f := FindingRecord{
+		Origin: Origin{Source: "rec", SourceID: "f", RecordedAt: t0}, Repo: "o/r", Issue: 2,
+		Component: "task_review", FindingKey: "k", Decision: "maybe", RecordPath: "p", RecordSum: "s",
+	}
+	if _, _, err := RecordFinding(ctx, db, f); err == nil {
+		t.Fatalf("RecordFinding with decision %q: no error", f.Decision)
+	}
+	if n := count(t, db, `SELECT count(*) FROM trajectories`); n != trajectories {
+		t.Errorf("trajectories = %d, want %d: insert not rolled back", n, trajectories)
+	}
+	if n := count(t, db, `SELECT count(*) FROM findings`); n != 0 {
+		t.Errorf("findings = %d, want 0", n)
+	}
+}

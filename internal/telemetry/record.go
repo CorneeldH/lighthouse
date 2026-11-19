@@ -224,6 +224,8 @@ func byOwner(runID, sessionID int64, extra string, args ...any) lookup {
 // trajectory, basis, reason, ended_at and recorded_at, and reports not new;
 // origin, started_at, transcript path and assignment stay. Moving a session
 // with findings to another trajectory is refused with ErrSessionHasFindings.
+// The find-then-write inside relies on the store's _txlock=immediate: the
+// write lock is taken at BEGIN, so two writers never both find nothing.
 func RecordSession(ctx context.Context, db *sql.DB, s SessionRecord) (int64, bool, error) {
 	if err := s.validate(); err != nil {
 		return 0, false, err
@@ -360,7 +362,9 @@ func checkRetarget(ctx context.Context, tx *sql.Tx, existing storedSession, repo
 
 // RecordSetup records the setup of one run or one session. A second offering
 // (same origin, or same run or session) leaves the first row and reports not
-// new.
+// new. A (source, source_id) already used for a different run or session
+// returns that existing row's id with isNew false, per spec; callers must
+// derive source_id per object.
 func RecordSetup(ctx context.Context, db *sql.DB, s SetupRecord) (int64, bool, error) {
 	if err := s.validate(); err != nil {
 		return 0, false, err
@@ -381,7 +385,9 @@ func RecordSetup(ctx context.Context, db *sql.DB, s SetupRecord) (int64, bool, e
 
 // RecordUsage records the tokens and cost of one model in one run or
 // session. A second offering (same origin, or same owner and model) leaves
-// the first row and reports not new.
+// the first row and reports not new. A (source, source_id) already used for a
+// different owner or model returns that existing row's id with isNew false,
+// per spec; callers must derive source_id per object.
 func RecordUsage(ctx context.Context, db *sql.DB, u UsageRecord) (int64, bool, error) {
 	if err := u.validate(); err != nil {
 		return 0, false, err
