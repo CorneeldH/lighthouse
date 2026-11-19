@@ -48,6 +48,8 @@ type GitHub struct {
 	// Board is the [forge.board] of the repo; nil makes every board method fail.
 	Board *repoconfig.Board
 
+	cache CacheStore // nil: none; do drops an entry whose body does not decode
+
 	mu      sync.Mutex
 	nodeIDs map[int]string // issue number → node ID, filled by Issue and OpenIssues
 	base    string         // default branch, filled by CreatePR
@@ -231,6 +233,9 @@ func (c *GitHub) do(ctx context.Context, method, url string, body, into any) (st
 		*raw = data
 	} else if into != nil {
 		if err := json.NewDecoder(resp.Body).Decode(into); err != nil {
+			if c.cache != nil && resp.Header.Get(cacheHitHeader) != "" {
+				_ = c.cache.Delete(ctx, cacheKey(req))
+			}
 			return "", fmt.Errorf("forge %s %s: decode: %w", method, url, err)
 		}
 	}
