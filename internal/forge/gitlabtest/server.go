@@ -53,10 +53,12 @@ type Server struct {
 	links  map[int][]map[string]any
 	// failLinksPage2 holds the iids whose links list answers a 500 on page two.
 	failLinksPage2 map[int]bool
-	mrs            []map[string]any
-	closedBy       map[string][]map[string]any // "project#iid" to the merge requests that close it
-	related        map[int][]map[string]any    // iid to its related merge requests
-	stateEvents    map[int][]map[string]any    // iid to its resource state events, oldest first
+	// failLinks holds the iids whose links list answers a 403 on every page.
+	failLinks   map[int]bool
+	mrs         []map[string]any
+	closedBy    map[string][]map[string]any // "project#iid" to the merge requests that close it
+	related     map[int][]map[string]any    // iid to its related merge requests
+	stateEvents map[int][]map[string]any    // iid to its resource state events, oldest first
 	// failIssueMRsPage2 holds the iids whose closed_by and related_merge_requests answer a 500
 	// on page two.
 	failIssueMRsPage2 map[int]bool
@@ -392,6 +394,11 @@ func paginateOrFail(w http.ResponseWriter, r *http.Request, items []any, failPag
 func (s *Server) listLinks(w http.ResponseWriter, r *http.Request) {
 	iid, _ := strconv.Atoi(r.PathValue("iid"))
 	s.mu.Lock()
+	if s.failLinks[iid] {
+		s.mu.Unlock()
+		writeJSON(w, http.StatusForbidden, map[string]any{"message": "403 Forbidden"})
+		return
+	}
 	if s.failLinksPage2[iid] && r.URL.Query().Get("page") == "2" {
 		s.mu.Unlock()
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"message": "500 Internal Server Error"})
@@ -433,6 +440,16 @@ func (s *Server) blocksLinksLocked(iid int) []map[string]any {
 		})
 	}
 	return out
+}
+
+// FailLinks makes every page of the links of issue iid answer a 403.
+func (s *Server) FailLinks(iid int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.failLinks == nil {
+		s.failLinks = map[int]bool{}
+	}
+	s.failLinks[iid] = true
 }
 
 // FailLinksPage2 makes the second page of the links of issue iid answer a 500.

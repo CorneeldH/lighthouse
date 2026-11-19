@@ -239,8 +239,12 @@ func (c *GitHub) EditIssue(ctx context.Context, number int, e IssueEdit) (Issue,
 			return Issue{}, err
 		}
 	}
+	// A 404 on removing a label means it is already off; an issue that does not exist fails
+	// on the read below.
 	for _, l := range e.RemoveLabels {
-		if _, err := c.do(ctx, http.MethodDelete, base+"/labels/"+neturl.PathEscape(l), nil, nil); err != nil {
+		_, err := c.do(ctx, http.MethodDelete, base+"/labels/"+neturl.PathEscape(l), nil, nil)
+		var se *httpStatusError
+		if err != nil && (!errors.As(err, &se) || se.Code != http.StatusNotFound) {
 			return Issue{}, err
 		}
 	}

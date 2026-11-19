@@ -138,6 +138,7 @@ var Cases = []Case{
 	{"MilestonedIssues", milestonedIssues},
 	{"CreateIssueRoundTrip", createIssueRoundTrip},
 	{"EditIssue", editIssue},
+	{"EditIssueRemoveAbsentLabel", editIssueRemoveAbsentLabel},
 	{"ListIssuesStateAndLabel", listIssuesStateAndLabel},
 	{"SearchIssues", searchIssues},
 	{"CreateAndViewChange", createAndViewChange},
@@ -835,6 +836,21 @@ func editIssue(t *testing.T, f Fixture) {
 	}
 	if got.Title != "Renamed" || got.Body != "Rewritten." || !slices.Equal(sorted(got.Labels), []string{"b", "c"}) {
 		t.Errorf("Issue(7) = %+v; want title Renamed, body Rewritten., labels [b c]", got)
+	}
+}
+
+// editIssueRemoveAbsentLabel: removing a label the issue does not carry (removed by hand in the
+// meantime) is no error; the other labels stay.
+func editIssueRemoveAbsentLabel(t *testing.T, f Fixture) {
+	is := openIssue(7)
+	is.Labels = []string{"b"}
+	f.AddIssue(t, is)
+	edited, err := f.Forge().EditIssue(t.Context(), 7, forge.IssueEdit{RemoveLabels: []string{"a"}})
+	if err != nil {
+		t.Fatalf("EditIssue(remove absent label): %v", err)
+	}
+	if !slices.Equal(edited.Labels, []string{"b"}) {
+		t.Errorf("EditIssue = labels %v; want [b]", edited.Labels)
 	}
 }
 

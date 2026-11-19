@@ -110,6 +110,10 @@ type Server struct {
 	// BlockingPage2Fails, per issue number, makes the second page of the blocking list of that
 	// issue answer a 500.
 	BlockingPage2Fails map[int]bool
+	// BlockingExtra are blocked issues per issue number in REST shape (number, state,
+	// repository_url), served by the blocking list after the ones derived from BlockedBy: an
+	// issue in another repository, or this one under another spelling.
+	BlockingExtra map[int][]map[string]any
 	// ClosingPRs are the pull requests that close an issue, per issue number, in GraphQL shape
 	// (number, state, headRefName, isCrossRepository, body, repository.nameWithOwner), served
 	// by IssueChanges as closedByPullRequestsReferences in pages of 100.
@@ -455,6 +459,9 @@ func (s *Server) blocking(w http.ResponseWriter, r *http.Request) {
 	for _, m := range blocked {
 		state, _ := s.Issues[m]["state"].(string)
 		out = append(out, map[string]any{"number": m, "state": cmp.Or(state, "open"), "repository_url": repoURL})
+	}
+	for _, b := range s.BlockingExtra[n] {
+		out = append(out, b)
 	}
 	s.page(w, r, out)
 }
