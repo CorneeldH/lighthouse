@@ -70,7 +70,10 @@ check_floor() { # codes [dir]
   for code in "${list[@]}"; do
     # -S warning as in the lint run outside the strict dirs: a severity from
     # SHELLCHECK_OPTS gives way to it there too.
-    out=$(floor_probe "$code" | "$SHELLCHECK" -s bash -x -S warning -f gcc -)
+    # A here-string, not a pipe: under pipefail a shellcheck that never reads stdin would
+    # make the writer die of SIGPIPE and look like rc 141.
+    probe=$(floor_probe "$code")
+    out=$("$SHELLCHECK" -s bash -x -S warning -f gcc - <<<"$probe")
     rc=$?
     case "$rc" in
       0|1) ;;
