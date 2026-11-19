@@ -66,12 +66,14 @@ def _step_run(name: str) -> str:
     body: list[str] = []
     in_run = False
     for line in lines[start + 1 :]:
-        if line.startswith("      - "):
+        if line.startswith(("      - ", "      #")):
             break
         if line.strip() == "run: |":
             in_run = True
         elif in_run:
             body.append(line[10:])
+    while body and not body[-1].strip():
+        body.pop()
     assert body, name
     return "\n".join(body) + "\n"
 
@@ -237,6 +239,45 @@ def test_the_one_literal_is_the_release_download() -> None:
     ]
     assert hits == ["pack/core/workflows/unblock-dependents.yml:              --repo CorneeldH/lighthouse \\"]
     assert hits[0] in allow
+
+
+def _token_env_step(tmp_path: Path, *, config_out: str | None) -> tuple[subprocess.CompletedProcess[str], str]:
+    """Run the `Token name` block with a fake `lighthouse config`; return the run and $GITHUB_ENV."""
+    fakes = tmp_path / "fakes"
+    fakes.mkdir()
+    if config_out is None:
+        _fake_tool(fakes, "lighthouse", 'echo "config: $2 is not set" >&2\nexit 1\n')
+    else:
+        _fake_tool(fakes, "lighthouse", f'[ "$1 $2" = "config forge.token_env" ] || exit 2\necho {config_out}\n')
+    github_env = tmp_path / "github_env"
+    env = {
+        "PATH": f"{fakes}{os.pathsep}{os.environ['PATH']}",
+        "GITHUB_ENV": str(github_env),
+        "GH_TOKEN": "app-token",
+    }
+    proc = subprocess.run(
+        ["bash", "-e", "-c", _step_run("Token name")], env=env, capture_output=True, text=True, timeout=60
+    )
+    return proc, github_env.read_text(encoding="utf-8") if github_env.exists() else ""
+
+
+def test_token_env_is_exported_under_the_configured_name(tmp_path) -> None:
+    proc, github_env = _token_env_step(tmp_path, config_out="FORGEJO_TOKEN")
+    assert proc.returncode == 0, proc.stderr
+    assert github_env == "FORGEJO_TOKEN=app-token\n"
+
+
+def test_token_env_unset_exports_nothing_and_does_not_fail(tmp_path) -> None:
+    proc, github_env = _token_env_step(tmp_path, config_out=None)
+    assert proc.returncode == 0, proc.stderr
+    assert github_env == ""
+
+
+def test_token_name_step_runs_after_the_binary_and_before_the_release() -> None:
+    text = _text()
+    order = [text.index(f"- name: {n}") for n in ("Get lighthouse", "App token for labels and comments", "Token name", "Release dependents")]
+    assert order == sorted(order)
+    assert "GH_REPO: ${{ github.repository }}" in _lines()
 
 
 def test_every_placeholder_is_a_known_scalar_key() -> None:

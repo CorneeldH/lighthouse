@@ -125,6 +125,17 @@ jobs:
           private-key: ${{ secrets.@@ci.bot_private_key_secret@@ }}
           permission-issues: write
 
+      # The forge client reads its token from the env var `forge.token_env` names. The lane
+      # exports the App token under that name only when the key is set; unset is no error.
+      - name: Token name
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          name=$(lighthouse config forge.token_env 2>/dev/null || true)
+          if [ -n "$name" ]; then
+            echo "$name=$GH_TOKEN" >> "$GITHUB_ENV"
+          fi
+
       # The issue number goes through env, never as `${{ }}` in `run:`.
       - name: Release dependents
         env:
