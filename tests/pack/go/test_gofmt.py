@@ -52,7 +52,7 @@ def _stubbed(tmp_path: Path) -> dict:
     return {
         "PATH": f"{bin_dir}:{os.environ['PATH']}",
         "STUB_LOG": str(tmp_path / "stub.log"),
-            }
+    }
 
 
 def _without(tmp_path: Path, tool: str) -> dict:
@@ -64,7 +64,10 @@ def test_formats_a_go_file(tmp_path):
     env = _stubbed(tmp_path)
     result = _run(payload, tmp_path, env)
     assert result.returncode == 0, result.stderr
-    assert Path(env["STUB_LOG"]).read_text().strip() == f"-w {payload['tool_input']['file_path']}"
+    assert (
+        Path(env["STUB_LOG"]).read_text().strip()
+        == f"-w {payload['tool_input']['file_path']}"
+    )
 
 
 def test_other_extension_passes(tmp_path):
@@ -75,7 +78,11 @@ def test_other_extension_passes(tmp_path):
 
 
 def test_missing_file_passes(tmp_path):
-    result = _run({"tool_input": {"file_path": str(tmp_path / "gone.go")}}, tmp_path, _stubbed(tmp_path))
+    result = _run(
+        {"tool_input": {"file_path": str(tmp_path / "gone.go")}},
+        tmp_path,
+        _stubbed(tmp_path),
+    )
     assert result.returncode == 0, result.stderr
 
 
@@ -83,11 +90,15 @@ def test_no_path_passes(tmp_path):
     assert _run({"tool_input": {}}, tmp_path, _stubbed(tmp_path)).returncode == 0
 
 
-@pytest.mark.skipif(shutil.which("gofmt") is None, reason="the Python lane of CI has no setup-go")
+@pytest.mark.skipif(
+    shutil.which("gofmt") is None, reason="the Python lane of CI has no setup-go"
+)
 def test_classify_reads_the_parse_error_as_a_finding(tmp_path):
     result = _run(_file(tmp_path, "x.go", "package m\n\nfunc F( {\n"), tmp_path)
     assert result.returncode == 2, result.stdout
-    assert result.stderr.startswith("[gofmt-check/parse-error] gofmt-check: "), result.stderr
+    assert result.stderr.startswith("[gofmt-check/parse-error] gofmt-check: "), (
+        result.stderr
+    )
     assert classify(2, result.stderr.encode()) == "finding"
 
 
@@ -99,7 +110,9 @@ def test_without_gofmt_could_not_check(tmp_path):
 
 
 def test_without_gofmt_other_extension_passes(tmp_path):
-    result = _run(_file(tmp_path, "a.md", "# hi\n"), tmp_path, _without(tmp_path, "gofmt"))
+    result = _run(
+        _file(tmp_path, "a.md", "# hi\n"), tmp_path, _without(tmp_path, "gofmt")
+    )
     assert result.returncode == 0
     assert result.stderr == ""
 
