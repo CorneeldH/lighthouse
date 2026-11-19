@@ -160,9 +160,13 @@ Per gevolgde `go.mod`, in de map van die module:
     met `go list -json ./...` de pakketten die een pakket uit die module importeren, en met
     `go/parser` bestand en regel. Vindt hij de import niet (bijvoorbeeld alleen in een bestand
     voor een ander platform), dan is de plek de regel in `go.mod`.
-  - een `require` die ontbreekt: `missing-require`, met de plek van de import.
+  - een **directe** `require` die ontbreekt en waarvan de binary de import vindt:
+    `missing-require`, met de plek van die import. Vindt hij geen import, dan is het drift
+    *(eigen keuze na spec-review, r2-f2)*.
 - **Overige drift blokkeert niet**: een overbodige `require` (de omgekeerde richting, een
-  niet-doel), een `go.sum`-hunk, een versie die anders uitkomt. Die laat de check stil liggen.
+  niet-doel), een ontbrekende `// indirect`-require (bijvoorbeeld na `go get -u`), een
+  `go.sum`-hunk, een versie die anders uitkomt. Die laat de check stil liggen, ook als `--files`
+  `go.mod` raakt.
 - In Go is het paia-probleem kleiner: een import uit een module buiten `go.mod` compileert niet, en
   een `// indirect`-module heeft toch een eigen `require`. Deze poort houdt vooral `go.mod` eerlijk.
   Dat is bewust: de milestone eist de check per pack.
@@ -211,9 +215,19 @@ daarvoor een `hooks/`-map met `hooks.json`.
   `*.js|jsx|ts|tsx|mjs|cjs`, `package.json`, de lockfile.
 
 **Commit-gate** (besluit gebruiker na de spec-review, r1-f1). `commit-test-gate`
-(`internal/commitgate`) draait na het testcommando ook `lighthouse imports check --files
-<bestanden van de commit>`, voor de geïnstalleerde packs. Dat staat los van `[test_gate] command`:
-geen fragment, geen migratie, en elke repo krijgt het bij de upgrade.
+(`internal/commitgate`) draait ook `lighthouse imports check --files <bestanden van de commit>`,
+voor de geïnstalleerde packs. Dat staat los van `[test_gate] command`: geen fragment, geen
+migratie, en elke repo krijgt het bij de upgrade.
+
+- **Ook zonder testcommando** *(r2-f1)*. `RunRoots` keert nu vroeg terug als `[test_gate] command`
+  ontbreekt of `""` is (`internal/commitgate/gate.go:372-377`), en de commitbestanden worden pas in
+  `runRow` bepaald (`gate.go:458`). De importstap draait vóór die vroege terugkeer, met een eigen
+  lijst commitbestanden. Een Go- of Node-repo zonder testcommando, de standaard, krijgt de check
+  dus wel. Als er geen testcommando is, blijft de melding "no test command configured" er
+  gewoon naast staan.
+- **Opt-out** *(eigen keuze na spec-review, r2-f1)*: `[imports] check = false` in
+  `lighthouse.toml` zet de check uit, voor de hook en de commit-gate. `[test_gate] command = ""`
+  zet hem **niet** uit: dat is een opt-out van de tests, niet van deze poort.
 
 - Bevindingen: rood, zoals een falende test, met de bevindingen in de melding.
 - Exit 3, of exit 1 zonder bevinding: `COULD NOT CHECK`, blokkerend zoals een code uit
@@ -275,11 +289,25 @@ Plus:
 - Exitcode 3 wint van 0, en 1 wint van 3 met beide meldingen in de uitvoer.
 - Een onbekende vlag geeft 3.
 
-**Canaries per regel-ID** (de vorm van #381): per ID een overtreding onder
-`testdata/<hook>/<id>.<ext>`, en een test die de lijst uit `BLOCKING_RULES` leest en per ID exit 2
-plus de ID in stderr eist; een ID zonder bestand en een bestand zonder ID falen allebei. De
-canary van `imports-gate-python.sh` is pytest in `tests/pack/python/`, zoals #381 de Python-hooks
-laat; die van Go en Node zijn Go-tests.
+**Canaries per regel-ID** (de vorm van #381, aangepast *(r2-f3)*). Geen van deze ID's is met één
+bestand op te roepen: elk heeft een project met manifest en omgeving nodig. De canary per ID is
+daarom een **fixture-map** `testdata/<hook>/<id>/` met het project (bron en manifest). De test
+bouwt de omgeving erbij, offline:
+
+- Python (`DEP001`, `DEP003`): een venv met nep-`.dist-info` (zie boven).
+- Node (`unlisted`): een `node_modules` met nep-pakketten, alleen hun `package.json`.
+- Go (`indirect-import`, `missing-require`): de module van de import staat als `replace` naar een
+  lokale map in de fixture, en de test draait met alleen `GOPROXY=off`. `GOFLAGS` blijft leeg,
+  dus `-mod=readonly`, net als in de hook en de commit-gate: een canary in een andere omgeving
+  bewijst niets over de poort *(r3-f1)*. Het opzoeken van de import (§3) moet daarom ook werken
+  als `go list` de import niet kan oplossen, bijvoorbeeld met `go list -e` of met `go/parser`
+  op de bestanden van het pakket.
+
+De test leest de lijst uit `BLOCKING_RULES` en eist een bijectie tussen ID's en fixture-mappen; per
+ID eist hij exit 2 plus de ID in stderr. De canary van `imports-gate-python.sh` is pytest in
+`tests/pack/python/`, zoals #381 de Python-hooks laat; die van Go en Node zijn Go-tests. Of
+`go mod tidy -diff` de `missing-require`-hunk offline met `replace` geeft, bevestigt de bouwer;
+lukt dat niet, dan is dat een open punt voor de gebruiker.
 
 **Hook en commit-gate**: de hook zegt `not checked` tijdens een usage-alarm, blokkeert op exit 1
 met bevindingen, en zegt `COULD NOT CHECK` op exit 3 en op `unknown command`. De commit-gate wordt
@@ -287,8 +315,11 @@ rood op een bevinding in de commit en `COULD NOT CHECK` op exit 3.
 
 **CI** *(r1-f7)*. Een test die `uv` of `npx` mist, slaat lokaal over met een duidelijke reden,
 maar **faalt** als `CI` gezet is: een overgeslagen canary in CI is de stille poort die #381
-verbiedt. De job in `.github/workflows/ci.yml` die deze Go-tests draait (nu `go-test`, alleen
-`setup-go`) krijgt `setup-uv` en `setup-node`.
+verbiedt. Alle Go-tests die `uv` of `npx` nodig hebben (de check-logica en de canaries) staan
+achter de build tag `canary`, zoals #381 de Go-canaries zet, en draaien in de CI-job `canary`
+met `setup-go`, `setup-uv` en `setup-node`. `go-test` blijft zoals hij is. Bestaat de job
+`canary` nog niet (als #381 later landt), dan maakt deze PR hem *(eigen keuze na spec-review,
+r2-f3)*.
 
 ## Wat aan de bouwer is
 
