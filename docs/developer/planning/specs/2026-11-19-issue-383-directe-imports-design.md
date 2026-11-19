@@ -335,3 +335,10 @@ r2-f3)*.
 - [deptry: usage](https://fpgmaas.github.io/deptry/usage/)
 - [knip vs depcheck](https://www.pkgpulse.com/guides/knip-vs-depcheck-2026)
 - [Snyk: depcheck](https://snyk.io/advisor/npm-package/depcheck)
+
+## Open na review
+
+Ronde 3 haalde de rondegrens met deze punten open. Ze zijn aanvaard als `accepted_open`;
+de volgende fase of de PR-review weegt ze opnieuw.
+
+- **r3-f1** (MAJOR, Tests — Canaries per regel-ID, Go): The Go canary runs with GOFLAGS=-mod=mod, an environment the hook and the commit-gate never get. go mod tidy ignores -mod (GOFLAGS applies a flag only when the command knows it), but go list honours it, so the canary takes a different go list path than production exactly for missing-require.
