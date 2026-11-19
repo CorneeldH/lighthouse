@@ -534,7 +534,7 @@ def test_handoff_controller_mode_pushes_before_the_post():
         flat = " ".join(section.split())
         assert "also when `lighthouse post-artefact` posted nothing" in flat
         assert "never the default branch" in flat
-        assert flat.index("git push -u origin HEAD") < flat.index("gh issue comment <nr>")
+        assert flat.index("git push -u origin HEAD") < flat.index("lighthouse forge issue comment <nr>")
 
 
 def test_guard_names_the_pause_form():
@@ -568,15 +568,13 @@ def test_handoff_writes_new_tokens():
 
 def test_handoff_board_and_host_from_config():
     for body in skill("write-handoff"):
-        for key in (
-            "forge.owner",
-            "forge.name",
-            "forge.board.project_number",
-            "forge.board.project_id",
-            "forge.board.status_field_id",
-            "forge.board.status_options.Controller",
+        # Board and comment go through `lighthouse forge` (#407): no config keys, no item ID.
+        for call in (
+            "lighthouse forge issue status <nr>`",
+            "lighthouse forge issue status <nr> Controller",
+            "lighthouse forge issue comment <nr> --body-file <scratch>/handoff.md",
         ):
-            assert f"lighthouse config {key}" in body, key
+            assert call in body, call
         assert "lighthouse config host-check" in body
         assert "the always-on host (`host.toml`)" in body
         assert "LIGHTHOUSE_CONTROLLER_RUN" in body

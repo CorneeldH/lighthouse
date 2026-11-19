@@ -13,7 +13,7 @@ import pytest
 from tests.pack._testkit import CORE, PACKS
 
 FORGE_OP = re.compile(r"\bgh\s+(issue|pr|api|label|project|release|run)\b")
-UNITS = ["review-plan", "upgrade", "audit-worktrees"]
+UNITS = ["review-plan", "upgrade", "audit-worktrees", "write-handoff"]
 
 
 @pytest.mark.parametrize("unit", UNITS)
