@@ -21,6 +21,9 @@
 // release tag) or a usage error. `go run` turns any nonzero exit into 1 and prints
 // `exit status N` on stderr; no workflow tells 1 from 2.
 //
+// The line splitting of CHANGELOG.md breaks only on `\r\n`, `\r` and `\n`; unlike Python's
+// `str.splitlines` it does not break on `\v`, `\f`, `\x1c` to `\x1e`, `\x85`, U+2028 or U+2029.
+//
 // A value in a message is quoted with single quotes, as the Python script did; a value that
 // holds a `'` is not escaped. The OS detail after `cannot read: ` is Go's, not Python's.
 package main

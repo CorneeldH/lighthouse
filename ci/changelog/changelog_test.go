@@ -167,11 +167,6 @@ func TestCheck(t *testing.T) {
 		{"renamedFragmentCounts", func(t *testing.T, root string) {
 			git(t, root, "mv", "changelog.d/old.md", "changelog.d/new.md")
 		}, 0, ""},
-		{"markerAloneIsNotAFragment", func(t *testing.T, root string) {
-			git(t, root, "rm", "-q", "changelog.d/.lighthouse")
-			commit(t, root, "drop marker")
-			write(t, filepath.Join(root, "changelog.d", ".lighthouse"), "marker\n")
-		}, 1, "no new fragment"},
 		{"brokenFragmentAnywhere", func(t *testing.T, root string) {
 			write(t, filepath.Join(root, "changelog.d", "old.md"), "garbage\n")
 			write(t, filepath.Join(root, "changelog.d", "new.md"), goodFragment)
@@ -202,6 +197,19 @@ func TestCheck(t *testing.T) {
 			}
 		})
 	}
+	t.Run("markerAloneIsNotAFragment", func(t *testing.T) {
+		root := t.TempDir()
+		write(t, filepath.Join(root, "code.go"), "package a\n")
+		git(t, root, "init", "-q", "-b", "main")
+		c1 := commit(t, root, "one")
+		write(t, filepath.Join(root, "changelog.d", ".lighthouse"), "marker\n")
+		c2 := commit(t, root, "two")
+		var stderr bytes.Buffer
+		code := run([]string{"check", "--base", c1, "--head", c2, "--root", root}, new(bytes.Buffer), &stderr)
+		if code != 1 || !strings.HasPrefix(stderr.String(), "no new fragment in changelog.d/") {
+			t.Fatalf("exit = %d, stderr = %q", code, stderr.String())
+		}
+	})
 	t.Run("badBaseCannotCheck", func(t *testing.T) {
 		root, c1 := checkRepo(t)
 		var stderr bytes.Buffer
