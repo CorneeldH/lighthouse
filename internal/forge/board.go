@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
@@ -411,12 +410,9 @@ func truncated(connection string, n int) error {
 // BranchPRs lists the pull requests whose head is branch, open, closed and merged. Closes is
 // false on each: the branch says nothing about which issue a PR closes.
 func (c *GitHub) BranchPRs(ctx context.Context, branch string) ([]PR, error) {
-	if err := c.configured(); err != nil {
+	owner, name, err := c.ownerName()
+	if err != nil {
 		return nil, err
-	}
-	owner, name, ok := strings.Cut(c.Repo, "/")
-	if !ok || owner == "" || name == "" {
-		return nil, fmt.Errorf("forge: repo %q is not owner/name", c.Repo)
 	}
 	var data struct {
 		Repository *struct {
@@ -474,16 +470,13 @@ func (c *GitHub) setOption(ctx context.Context, projectID, itemID, fieldID, opti
 // the issue is not on that board. Status, StatusName and Priority are filled as in BoardItems; a cut list
 // is an error. An archived item counts as an item, with Archived set.
 func (c *GitHub) IssueItem(ctx context.Context, number int) (item BoardItem, ok bool, err error) {
-	if err := c.configured(); err != nil {
+	owner, name, err := c.ownerName()
+	if err != nil {
 		return BoardItem{}, false, err
 	}
 	b, err := c.board()
 	if err != nil {
 		return BoardItem{}, false, err
-	}
-	owner, name, found := strings.Cut(c.Repo, "/")
-	if !found || owner == "" || name == "" {
-		return BoardItem{}, false, fmt.Errorf("forge: repo %q is not owner/name", c.Repo)
 	}
 	var data struct {
 		Repository *struct {
