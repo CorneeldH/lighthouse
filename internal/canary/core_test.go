@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/CorneeldH/lighthouse/internal/fixturesetup"
+	"github.com/CorneeldH/lighthouse/internal/hook"
 )
 
 // controllerRun is a uuid-shaped LIGHTHOUSE_CONTROLLER_RUN: workflow-push-gate does nothing outside one.
@@ -105,6 +107,31 @@ var fileCases = map[string]fileCase{
 	"non-english": {"code-language-check", "run.sh code-language-check", func(t *testing.T, root string) {
 		writeConfig(t, root, "[project]\ncode_language = \"en\"\ncode_language_paths = [\"**\"]")
 	}},
+}
+
+// Every declared reason of a core hook has a canary case, and every case a declared reason.
+func TestEveryCoreReasonHasACanaryCase(t *testing.T) {
+	var cases, declared []string
+	for id, c := range commandCases {
+		cases = append(cases, c.hook+"/"+id)
+	}
+	for id, c := range fileCases {
+		cases = append(cases, c.hook+"/"+id)
+	}
+	for _, name := range hook.DeclaredHooks() {
+		if name == "bash-write-check" {
+			continue
+		}
+		ids, _ := hook.Reasons(name)
+		for _, id := range ids {
+			declared = append(declared, name+"/"+id)
+		}
+	}
+	slices.Sort(cases)
+	slices.Sort(declared)
+	if !slices.Equal(cases, declared) {
+		t.Errorf("canary cases %v, want one per declared reason %v", cases, declared)
+	}
 }
 
 func TestCoreFileCanaries(t *testing.T) {

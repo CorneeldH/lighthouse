@@ -154,14 +154,55 @@ func TestEveryReasonHasATestdataFile(t *testing.T) {
 	}
 }
 
-// Every testdata file of a core hook belongs to a declared reason.
+// ruleListHooks are the hooks outside pack/core that declare their reasons on a BLOCKING_RULES line:
+// the name of their testdata directory and the file of the hook, relative to pack/. A task that adds
+// such a hook adds it here.
+var ruleListHooks = map[string]string{
+	"gofmt-check":  "go/hooks/gofmt-check.sh",
+	"go-lint-gate": "go/hooks/go-lint-gate.sh",
+}
+
+// strayDirs are the directories of testdata that no hook claims: not declared with hook.Reasons and
+// not on the list of rule-list hooks.
+func strayDirs(dirs, declared []string, listed map[string]string) []string {
+	var stray []string
+	for _, dir := range dirs {
+		if _, ok := listed[dir]; !ok && !slices.Contains(declared, dir) {
+			stray = append(stray, dir)
+		}
+	}
+	return stray
+}
+
+// Every testdata file of a hook belongs to a declared reason, and every testdata directory to a hook.
 func TestEveryTestdataFileHasAReason(t *testing.T) {
+	entries, err := os.ReadDir("testdata")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var dirs []string
+	for _, e := range entries {
+		dirs = append(dirs, e.Name())
+	}
+	if stray := strayDirs(dirs, hook.DeclaredHooks(), ruleListHooks); len(stray) > 0 {
+		t.Errorf("testdata directories without a hook that declares reasons: %v", stray)
+	}
 	for _, name := range hook.DeclaredHooks() {
 		ids, _ := hook.Reasons(name)
 		if len(ids) == 0 {
 			continue
 		}
 		assertBijection(t, name, ids)
+	}
+	for name, file := range ruleListHooks {
+		assertBijection(t, name, blockingRules(t, file))
+	}
+}
+
+func TestStrayDirsSeesADirectoryNoHookClaims(t *testing.T) {
+	got := strayDirs([]string{"main-commit-gate", "gofmt-check", "ghost"}, []string{"main-commit-gate"}, ruleListHooks)
+	if !slices.Equal(got, []string{"ghost"}) {
+		t.Errorf("strayDirs = %v, want [ghost]", got)
 	}
 }
 
