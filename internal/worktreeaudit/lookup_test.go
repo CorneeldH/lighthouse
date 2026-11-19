@@ -275,18 +275,32 @@ func lookupEnv(t *testing.T, toml string, open func(context.Context) (forge.Forg
 // onlyFeatX is the cleanup verdict of feat-x after Collect.
 func onlyFeatX(t *testing.T, env Env) string {
 	t.Helper()
+	verdict, _ := featXVerdictAndState(t, env)
+	return verdict
+}
+
+// featXVerdictAndState is the cleanup verdict of feat-x after Collect, and the PR state of its
+// row ("" when not measured).
+func featXVerdictAndState(t *testing.T, env Env) (string, string) {
+	t.Helper()
 	audit, err := Collect(context.Background(), env, "/repo")
 	if err != nil {
 		t.Fatal(err)
 	}
+	state := ""
+	for _, r := range audit.Rows {
+		if r.Name == "feat-x" && r.PRState != nil {
+			state = *r.PRState
+		}
+	}
 	text, _ := View{Policy: audit.Policy, Alive: env.Alive}.Only(audit.Rows, "feat-x", "/elders")
 	for _, line := range strings.Split(text, "\n") {
 		if strings.HasPrefix(line, "cleanup: ") {
-			return line
+			return line, state
 		}
 	}
 	t.Fatalf("Only = %q, no cleanup line", text)
-	return ""
+	return "", ""
 }
 
 func TestCollectReadsThePRStateFromTheForge(t *testing.T) {
@@ -311,36 +325,41 @@ func TestCollectReadsThePRStateFromTheForge(t *testing.T) {
 		name, toml string
 		open       func(t *testing.T) func(context.Context) (forge.Forge, error)
 		want       string
+		state      string // the PR state of the row: the verdict alone does not tell merged from closed
 	}{
 		{"github merged", gh, func(t *testing.T) func(context.Context) (forge.Forge, error) {
 			return github(t, []map[string]any{{"number": 7, "state": "closed", "merged_at": "2026-01-01T00:00:00Z", "head": map[string]any{"ref": "feat-x"}}})
-		}, "cleanup: yes"},
+		}, "cleanup: yes", "merged"},
 		{"github open wins over merged", gh, func(t *testing.T) func(context.Context) (forge.Forge, error) {
 			return github(t, []map[string]any{
 				{"number": 7, "state": "closed", "merged_at": "2026-01-01T00:00:00Z", "head": map[string]any{"ref": "feat-x"}},
 				{"number": 8, "state": "open", "head": map[string]any{"ref": "feat-x"}},
 			})
-		}, "cleanup: no — ⏸️ PR #8 open"},
+		}, "cleanup: no — ⏸️ PR #8 open", "open"},
 		{"github no PR", gh, func(t *testing.T) func(context.Context) (forge.Forge, error) {
 			return github(t, nil)
-		}, "cleanup: yes"},
+		}, "cleanup: yes", ""},
 		{"gitlab merged", gl, func(t *testing.T) func(context.Context) (forge.Forge, error) {
 			return gitlab(t, []map[string]any{{"iid": 7, "state": "merged", "merged_at": "2026-01-01T00:00:00Z", "source_branch": "feat-x"}})
-		}, "cleanup: yes"},
+		}, "cleanup: yes", "merged"},
 		{"gitlab open wins over merged", gl, func(t *testing.T) func(context.Context) (forge.Forge, error) {
 			return gitlab(t, []map[string]any{
 				{"iid": 7, "state": "merged", "merged_at": "2026-01-01T00:00:00Z", "source_branch": "feat-x"},
 				{"iid": 8, "state": "opened", "source_branch": "feat-x"},
 			})
-		}, "cleanup: no — ⏸️ PR #8 open"},
+		}, "cleanup: no — ⏸️ PR #8 open", "open"},
 		{"gitlab closed is not merged", gl, func(t *testing.T) func(context.Context) (forge.Forge, error) {
 			return gitlab(t, []map[string]any{{"iid": 7, "state": "closed", "source_branch": "feat-x"}})
-		}, "cleanup: yes"},
+		}, "cleanup: yes", "closed"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			env, stderr := lookupEnv(t, tt.toml, tt.open(t))
-			if got := onlyFeatX(t, env); got != tt.want {
+			got, state := featXVerdictAndState(t, env)
+			if got != tt.want {
 				t.Errorf("verdict %q, want %q", got, tt.want)
+			}
+			if state != tt.state {
+				t.Errorf("PR state %q, want %q", state, tt.state)
 			}
 			if stderr.String() != "" {
 				t.Errorf("stderr %q, want none", stderr.String())
