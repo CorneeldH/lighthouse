@@ -30,11 +30,15 @@ byte-gelijkheid met wat het Python-script echt in `CHANGELOG.md` schreef.
   (gemeten, go1.26.4); geen workflow onderscheidt 1 van 2. De package-doc zegt dat.
 - Elke stderr-tekst van het Python-script blijft letterlijk gelijk, behalve het detail van een
   OS- of decodeerfout na `cannot read: ` (dat is Go's eigen fouttekst). `{x!r}` wordt `'x'`
-  (enkele quotes), niet `%q`.
+  (enkele quotes), niet `%q`; dat wijkt af van Python's `repr` bij een waarde met `'` (alleen stderr), en de package-doc noemt dat.
 - Geen `.go`-bestand noemt `docs/`, `changelog.d` of `ci/literal-` zonder vrijstelling in
   `tests/test_domains.py` (`_without_default_paths`).
 - Pins in `tests/test_ci_domains_pin.py` en `tests/test_release_workflows_pin.py` krijgen alleen
-  een nieuwe needle; hun triage hoort bij #365.
+  een nieuwe needle, behalve de telling in `test_actions_pinned_by_sha` (24 → 25, Task 5);
+  hun triage hoort bij #365.
+- Een run onder de controller kan een branch die `.github/workflows/` raakt niet zelf pushen:
+  `workflow-push-gate` blokkeert dat. Zo'n push gaat via de handoff `next: push-workflows`
+  (Task 2 Step 1, Task 6 Step 3); de run stopt daar en gaat na de push verder.
 - Oude plannen en specs die `changelog.py` noemen, blijven staan (No-Go).
 
 ## Review Focus
@@ -125,16 +129,21 @@ Ontwerpkeuzes (vast):
 ### Task 2: De nulmeting
 
 Drie runs van `ci.yml` met alle domeinen, op de code van `main` vóór de port: de branch staat
-nu op `origin/main` plus alleen Task 1.
+op `72fafa51` (v0.18.0) plus de plancommit en Task 1; `origin/main` is intussen verder. Noteer
+in de comment van Step 4 de gemeten commit.
 
-- [ ] **Step 1:** `git push -u origin issue-360-changelog-go` (alleen Task 1 erop).
+- [ ] **Step 1:** Push `issue-360-changelog-go` (alleen Task 1 erop). Onder de controller blokkeert
+  `workflow-push-gate` een gewone `git push` (Task 1 raakt `ci.yml`): stop hier met de handoff
+  `next: push-workflows` en ga na de push verder met Step 2. Buiten de controller:
+  `git push -u origin issue-360-changelog-go`.
 - [ ] **Step 2:** Drie keer na elkaar, elke run pas na de vorige (zelfde concurrency-groep,
   `cancel-in-progress`):
 
   ```bash
   gh workflow run ci.yml --ref issue-360-changelog-go -f all-domains=true
-  sleep 5; id=$(gh run list --workflow ci.yml --branch issue-360-changelog-go --event workflow_dispatch -L1 --json databaseId -q '.[0].databaseId')
-  gh run watch "$id" --exit-status
+  # wacht tot er een id is die niet de vorige run is (`prev`; leeg bij de eerste run)
+  until id=$(gh run list --workflow ci.yml --branch issue-360-changelog-go --event workflow_dispatch -L1 --json databaseId -q '.[0].databaseId') && [ "$id" != "$prev" ]; do sleep 3; done
+  gh run watch "$id" --exit-status; prev=$id
   ```
 
   Weigert GitHub de dispatch (`Workflow does not have 'workflow_dispatch' trigger`) omdat `main`
@@ -198,7 +207,7 @@ checkout alleen tijdens `check`/`release`, in jobs die bij elke PR of release dr
 lezen alleen `testdata/` en tijdelijke repo's. Haal `changelog.d` en `docs/releasing.md` (uit de
 melding van `check`) weg, met die reden als comment.
 
-**Triage van `tests/test_changelog.py` (41 gevallen) → Go.** Standaard gaat elk geval mee als
+**Triage van `tests/test_changelog.py` (34 functies, 58 gevallen) → Go.** Standaard gaat elk geval mee als
 tabelgeval; samenvoegen alleen waar twee gevallen op dezelfde mutatie falen:
 
 | Python | Go | Bestemming |
@@ -206,10 +215,11 @@ tabelgeval; samenvoegen alleen waar twee gevallen op dezelfde mutatie falen:
 | `test_parse_fragment_accepts` (2), `_refuses` (8) | `TestParseFragment` (tabel, 10) | naar Go |
 | `test_read_fragments_skips_marker_and_sorts`, `_orders_numbered_suffixes_after_the_base` | `TestReadFragmentsOrder` | naar Go, samengevoegd |
 | `test_read_fragments_missing_directory`, `_refuses_other_files` | `TestReadFragmentsMissingDir`, `TestReadFragmentsRefusesOtherFiles` | naar Go |
-| `test_check_*` (8) | `TestCheck` (tabel, tijdelijke git-repo via `t.TempDir()` + `git`) | naar Go |
+| `test_check_*` (8) | `TestCheck` (tabel, tijdelijke git-repo via `t.TempDir()` + `git`, met `GIT_AUTHOR_*`/`GIT_COMMITTER_*` in de env zoals de andere Go-tests) | naar Go |
+| `test_added_fragments_non_utf8_name_cannot_check` | `TestCheck/nonUTF8Name` | naar Go: `addedFragments` weigert met `utf8.ValidString` een niet-UTF-8-pad (gewone error, exit 2); `t.Skip` bij `errors.Is(err, syscall.EILSEQ)` (APFS, macos.yml draait `go test ./...`) |
 | `test_decide_bump` (tabel), `_refuses` (3) | `TestDecideBump`, `TestDecideBumpRefuses` | naar Go |
 | `test_latest_tag_*`, `test_next_version` | `TestLatestTag`, `TestNextVersion` | naar Go |
-| `test_render_section_*`, `test_insert_section_goes_above_latest`, `test_extract_section_roundtrip` | Task 4-fixture | weg — gedekt door `TestReleaseFixture`, alleen als de fixture een `internal`-fragment en een meerregelig fragment bevat; anders naar Go |
+| `test_render_section_*`, `test_insert_section_goes_above_latest`, `test_extract_section_roundtrip` | Task 4-fixture | weg — gedekt door `TestReleaseFixture`, alleen als de fixture een `internal`-fragment, een `removed`-fragment en een meerregelig fragment bevat; anders naar Go |
 | `test_insert_section_without_release_goes_last` | `TestInsertSectionWithoutRelease` | naar Go |
 | `test_extract_section_missing`, `test_cli_notes_missing_section_exits_1` | `TestRunNotesMissingSection` (exit 1, melding) | naar Go, samengevoegd |
 | `test_release_without_tags_raises_tag_error`, `test_cli_release_without_tags_exits_2` | `TestRunReleaseWithoutTags` (exit 2, `COULD NOT CHECK:`) | naar Go, samengevoegd |
@@ -241,22 +251,23 @@ Vóór Task 5: het Python-script moet nog bestaan.
 
 Per release `<tag>` met release-commit `<c>` (`c3036aed`, `78cde225`, `72fafa51`) en vorige tag `<prev>`:
 - `changelog.d/` = `git archive <c>^ changelog.d` (alle fragmenten, marker incluis);
-- `CHANGELOG.before.md` = `git show <c>^:CHANGELOG.md`; `CHANGELOG.want.md` = `git show <c>:CHANGELOG.md`
+- `CHANGELOG.before` = `git show <c>^:CHANGELOG.md`; `CHANGELOG.want` = `git show <c>:CHANGELOG.md`
+  (zonder `.md`: `md-link-check` blokkeert de relatieve link `docs/releasing.md` in een testdata-map)
   — wat het Python-script werkelijk schreef;
-- `notes.want` = uitvoer van `python3 ci/changelog.py notes <tag> --root <dir met CHANGELOG.want.md>`;
+- `notes.want` = uitvoer van `python3 ci/changelog.py notes <tag> --root <dir waarin CHANGELOG.want als CHANGELOG.md staat>`;
 - `meta` = `<prev>` en de datum uit de kop `## [<tag>] - <datum>`.
 
 - [ ] **Step 1:** Bouw de drie mappen met de commando's hierboven; controleer met de hand dat
-  `notes.want` gelijk is aan het stuk van `CHANGELOG.want.md` onder `## [<tag>]` en dat elke
+  `notes.want` gelijk is aan het stuk van `CHANGELOG.want` onder `## [<tag>]` en dat elke
   release `## [<tag>]` boven `## [<prev>]` heeft.
 - [ ] **Step 2:** `TestReleaseFixture` (tabel over de drie tags): kopieer de map naar
-  `t.TempDir()` (`CHANGELOG.before.md` → `CHANGELOG.md`), roep
+  `t.TempDir()` (`CHANGELOG.before` → `CHANGELOG.md`), roep
   `release(dir, "workflow_dispatch", "auto", datum, []string{prev})` aan en assert: tag == `<tag>`;
-  `CHANGELOG.md` byte-gelijk aan `CHANGELOG.want.md`; geen `*.md` meer in `changelog.d/`. Dan
+  `CHANGELOG.md` byte-gelijk aan `CHANGELOG.want`; geen `*.md` meer in `changelog.d/`. Dan
   `run([]string{"notes", tag, "--root", dir}, …)` → exit 0, stdout byte-gelijk aan `notes.want`.
 - [ ] **Step 3:** `go test -run TestReleaseFixture ./ci/changelog/` → PASS. Mutatie: laat
   `renderSection` de groepen in andere volgorde zetten → rood; terug.
-- [ ] **Step 4:** Bepaal met `grep -l '^type: internal' …/changelog.d/*.md` en een meerregelig
+- [ ] **Step 4:** Bepaal met `grep -l '^type: internal' …/changelog.d/*.md` en een `removed`- en een meerregelig
   fragment of de fixture `render`/`insert`/`extract` dekt (tabel Task 3); zo niet, port die
   tests alsnog.
 - [ ] **Step 5: Commit** `test(ci): changelog-fixture uit drie releases (#360)`.
@@ -272,10 +283,13 @@ Per release `<tag>` met release-commit `<c>` (`c3036aed`, `78cde225`, `72fafa51`
   `go run ./ci/changelog check --base "$BASE" --head "$HEAD"`; `ci/changelog.py notes` →
   `go run ./ci/changelog notes`; `ci/changelog.py release` → `go run ./ci/changelog release`.
   Voeg in beide pinbestanden een check toe dat de job (`changelog`, `release`, `publish`)
-  `actions/setup-go@` met `go-version-file: go.mod` bevat vóór de `go run`.
+  `actions/setup-go@` met `go-version-file: go.mod` bevat vóór de `go run`. Verhoog in
+  `test_actions_pinned_by_sha` (`tests/test_ci_domains_pin.py:192`) de telling 24 naar 25: de
+  `changelog`-job in `ci.yml` krijgt een `uses:`-regel erbij.
 - [ ] **Step 2:** `uv run pytest -q tests/test_ci_domains_pin.py tests/test_release_workflows_pin.py` → FAIL.
 - [ ] **Step 3:** In de drie jobs: `actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0`
-  met `go-version-file: go.mod` na de checkout (in `release` vóór de `release`-stap, buiten de
+  met `go-version-file: go.mod` (in `release` en `publish` ook `cache: false`: geen build-cache in
+  een release-job) na de checkout (in `release` vóór de `release`-stap, buiten de
   retry-lus), en de aanroep naar `go run ./ci/changelog …`, verder letterlijk gelijk.
 - [ ] **Step 4:** `git rm ci/changelog.py tests/test_changelog.py tests/_changelog.py`.
 - [ ] **Step 5:** Verificatie:
@@ -291,4 +305,5 @@ Per release `<tag>` met release-commit `<c>` (`c3036aed`, `78cde225`, `72fafa51`
 - [ ] **Step 2:** `/lighthouse-write-pr`: `Closes #360` alleen als de nulmeting-comment er staat;
   de PR-body bevat de triagetabel van Task 3 (bestand, aantal, bestemming, reden, bij
   **weg — gedekt** de Go-test) en de zin over Review Focus 5.
-- [ ] **Step 3:** Push en PR; wacht op groene CI.
+- [ ] **Step 3:** Push (raakt `.github/workflows/`: onder de controller de handoff
+  `next: push-workflows`) en PR.
