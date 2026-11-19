@@ -508,6 +508,9 @@ func (c *GitHub) setOption(ctx context.Context, projectID, itemID, fieldID, opti
 // IssueItem returns the item of issue number on the board of [forge.board]; ok is false when
 // the issue is not on that board. Status, StatusName and Priority are filled as in BoardItems; a cut list
 // is an error. An archived item counts as an item, with Archived set.
+//
+// This stays on GraphQL: the REST project-items list never returns archived items (measured in
+// issue #395; see docs/developer/planning/plans/2026-11-18-issue-395-verificaties.md).
 func (c *GitHub) IssueItem(ctx context.Context, number int) (item BoardItem, ok bool, err error) {
 	if err := c.configured(); err != nil {
 		return BoardItem{}, false, err
