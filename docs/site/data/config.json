@@ -292,6 +292,16 @@
               ]
             },
             {
+              "key": "forge.board.project_owner",
+              "level": "optional",
+              "required": "no",
+              "about": "The user or organisation that owns the GitHub project board. Needed only when the owner is not the repository owner.",
+              "example": "acme",
+              "readers": [
+                "internal/repoconfig/repoconfig.go"
+              ]
+            },
+            {
               "key": "forge.board.project_id",
               "level": "optional",
               "required": "with [forge.board]",

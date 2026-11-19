@@ -249,8 +249,9 @@ host = "gitlab.example.com"
 "P2" = "priority::P2"
 ```
 
-`project_number`, `project_id`, `status_field_id` and `priority_field_id` are GitHub Projects
-keys and are refused for GitLab. Limits of this first GitLab version:
+`project_number`, `project_id`, `status_field_id`, `priority_field_id` and `project_owner` are
+GitHub Projects keys and are refused for GitLab. `project_owner` is optional: set it when the
+user or organisation that owns the project board differs from the repository owner. Limits of this first GitLab version:
 
 - No script of `pack/core` is Python any more, so the old Python config reader, which
   required the GitHub board keys for every `[forge.board]`, is gone, and a host needs no `python3` for the core.
