@@ -299,7 +299,7 @@ func TestGitHubChangeStateMerged(t *testing.T) {
 	}
 	want := Change{Number: 4, Title: "Gemerged", Body: "b", State: "merged", Labels: []string{"bug"},
 		URL: "https://github.com/o/r/pull/4", CreatedAt: time.Date(2026, 10, 30, 9, 0, 0, 0, time.UTC),
-		Author: "anna", HeadRef: "feat", BaseRef: "main"}
+		Author: "anna", HeadRef: "feat", BaseRef: "main", Mergeable: "unknown"}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("Change(4) = %+v, want %+v", got, want)
 	}
@@ -473,5 +473,33 @@ func TestGitHubAPIDoesNotFollowPagesOnPOST(t *testing.T) {
 	c.BaseURL = srv.URL
 	if _, err := c.API(context.Background(), APIRequest{Method: "POST", Path: "x"}); err != nil || calls != 1 {
 		t.Errorf("err %v, %d calls, want one call and no error", err, calls)
+	}
+}
+
+func TestGitHubChangeMergeable(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		pull  map[string]any
+		want  string
+		draft bool
+	}{
+		{"true", map[string]any{"mergeable": true}, "mergeable", false},
+		{"false", map[string]any{"mergeable": false}, "conflicting", false},
+		{"null", map[string]any{"mergeable": nil}, "unknown", false},
+		{"absent", map[string]any{}, "unknown", false},
+		{"draft", map[string]any{"mergeable": true, "draft": true}, "mergeable", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv, c := boardClient(t)
+			pull := map[string]any{"number": 8, "title": "P", "state": "open"}
+			for k, v := range tc.pull {
+				pull[k] = v
+			}
+			srv.Pulls = []map[string]any{pull}
+			got, err := c.Change(context.Background(), 8)
+			if err != nil || got.Mergeable != tc.want || got.Draft != tc.draft {
+				t.Errorf("Change(8) = mergeable %q draft %v, %v; want %q %v", got.Mergeable, got.Draft, err, tc.want, tc.draft)
+			}
+		})
 	}
 }

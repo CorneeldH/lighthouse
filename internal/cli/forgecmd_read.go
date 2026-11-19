@@ -165,8 +165,9 @@ func newForgeIssueBlockersCommand(env *forgeEnv) *cobra.Command {
 func newForgePRCommand(env *forgeEnv) *cobra.Command {
 	cmd := forgeGroup("pr", "Read and write pull requests (merge requests)")
 	var field string
+	var comments bool
 	view := &cobra.Command{
-		Use: "view <number> [--field PATH]", Short: "Show a pull request as JSON", Args: forgeArgs(1),
+		Use: "view <number> [--comments] [--field PATH]", Short: "Show a pull request as JSON", Args: forgeArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			n, err := forgeNumber(cmd, args[0])
 			if err != nil {
@@ -177,10 +178,19 @@ func newForgePRCommand(env *forgeEnv) *cobra.Command {
 				if err != nil {
 					return nil, err
 				}
-				return renderChange(c), nil
+				out := renderChange(c)
+				if comments {
+					cs, err := f.ChangeComments(cmd.Context(), n)
+					if err != nil {
+						return nil, err
+					}
+					out["comments"] = renderComments(cs)
+				}
+				return out, nil
 			})
 		},
 	}
+	view.Flags().BoolVar(&comments, "comments", false, "add the comments")
 	addFieldFlag(view, &field)
 	cmd.AddCommand(view)
 	cmd.AddCommand(newForgePRWriteCommands(env)...)

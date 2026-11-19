@@ -48,6 +48,9 @@ func (r *readForge) BlockedBy(context.Context, int) ([]forge.Blocker, error) {
 func (r *readForge) Comments(context.Context, int) ([]protocol.Comment, error) {
 	return r.comments, r.err
 }
+func (r *readForge) ChangeComments(context.Context, int) ([]protocol.Comment, error) {
+	return r.comments, r.err
+}
 func (r *readForge) Milestones(context.Context, string) ([]forge.Milestone, error) {
 	return r.milestones, r.err
 }
@@ -152,6 +155,26 @@ func TestPRViewMerged(t *testing.T) {
 	got := decode(t, out)
 	if code != 0 || got["state"] != "merged" || got["number"] != 5.0 || got["milestone"] != nil {
 		t.Errorf("code %d got %v", code, got)
+	}
+}
+
+func TestForgePRViewRendersMergeFields(t *testing.T) {
+	f := &readForge{
+		change:   forge.Change{Number: 5, State: "open", Draft: true, Mergeable: "conflicting", HeadRef: "issue-5-x", BaseRef: "main"},
+		comments: []protocol.Comment{{Author: "ann", Body: "Mooi"}},
+	}
+	code, out, _ := runForge(t, f, "pr", "view", "5")
+	got := decode(t, out)
+	if code != 0 || got["draft"] != true || got["mergeable"] != "conflicting" || got["head_ref"] != "issue-5-x" || got["base_ref"] != "main" {
+		t.Errorf("code %d got %v", code, got)
+	}
+	if _, has := got["comments"]; has {
+		t.Errorf("comments present without --comments: %v", got)
+	}
+	_, out, _ = runForge(t, f, "pr", "view", "5", "--comments")
+	cs, _ := decode(t, out)["comments"].([]any)
+	if len(cs) != 1 || cs[0].(map[string]any)["body"] != "Mooi" {
+		t.Errorf("comments = %v, want one with body Mooi", cs)
 	}
 }
 

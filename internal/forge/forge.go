@@ -74,6 +74,9 @@ type Forge interface {
 	SearchIssues(ctx context.Context, text string) ([]Issue, error)
 	CreateChange(ctx context.Context, in NewPR) (Change, error)
 	Change(ctx context.Context, number int) (Change, error)
+	// ChangeComments lists the comments of pull request number: on GitLab the notes of the merge
+	// request without system notes.
+	ChangeComments(ctx context.Context, number int) ([]protocol.Comment, error)
 	CreateChangeComment(ctx context.Context, number int, body string) (protocol.Comment, error)
 	// Milestones lists the milestones in state "open", "closed" or "all"; "" is open.
 	Milestones(ctx context.Context, state string) ([]Milestone, error)

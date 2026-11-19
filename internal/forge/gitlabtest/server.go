@@ -476,6 +476,19 @@ func (s *Server) AddNote(iid int, author, body string, system bool) int64 {
 	return id
 }
 
+// AddMRNote seeds a note on merge request iid and returns its ID.
+func (s *Server) AddMRNote(iid int, author, body string, system bool) int64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	id := s.newID()
+	s.mrNotes[iid] = append(s.mrNotes[iid], map[string]any{
+		"id": id, "body": body, "system": system,
+		"created_at": time.Now().UTC().Format(time.RFC3339),
+		"author":     map[string]any{"username": author},
+	})
+	return id
+}
+
 // AddAward seeds an award emoji on a note; iid is the issue the note belongs to.
 func (s *Server) AddAward(iid int, noteID int64, name, user string) {
 	s.mu.Lock()
