@@ -6,5 +6,4 @@ jq = ["close-issue", "fix-pr", "forge", "write-handoff", "review-plan", "route-i
 superpowers = ["fix-pr", "write-handoff", "place-instruction", "review-plan", "route-issue", "review-spec", "start-issue", "test-standard", "audit-worktrees", "write-pr"]
 
 [forge.github]
-# review-plan stays until the plan task that removes its `gh api` calls.
-gh = ["close-issue", "fix-pr", "forge", "write-handoff", "review-plan", "audit-worktrees", "write-pr"]
+gh = ["close-issue", "fix-pr", "forge", "write-handoff", "audit-worktrees", "write-pr"]

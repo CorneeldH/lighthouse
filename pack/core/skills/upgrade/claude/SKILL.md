@@ -23,17 +23,20 @@ Not here: replacing the binary on its own (`lighthouse self-update`), the lighth
 
 ### 1. Read the state
 
-One Bash call, read-only, `dangerouslyDisableSandbox: true` (`gh` needs the network).
+One Bash call, read-only, `dangerouslyDisableSandbox: true` (`lighthouse releases` needs the network).
 
 ```bash
 set -uo pipefail
 L=CorneeldH/lighthouse
 M=$(sed -n 's/^version = "\(.*\)"$/\1/p' .lighthouse/manifest.toml | head -n 1)
 B=$(lighthouse version | awk '{print $NF}')
-# skipped when gh cannot reach the repo: then self-update is not offered
-N=$(gh release view --repo "$L" --json tagName --jq .tagName)
+# skipped when the releases cannot be fetched: then self-update is not offered
+T=$(mktemp -d)
+lighthouse releases --repo "$L" > "$T/releases.json"
+N=$(jq -r '[.[] | select((.prerelease or .draft) | not)][0].tag // empty' "$T/releases.json")
 M=${M#v}; B=${B#v}; N=${N#v}
 echo "repo=$M binary=$B newest=$N"
+echo "releases=$T/releases.json"
 ```
 
 - `M` or `B` is empty (the manifest has no version, or `lighthouse version` printed nothing): say so
@@ -55,16 +58,17 @@ If the user declines, or nothing newer exists, compare `B` with `M`:
 
 ### 3. Release notes (a failed fetch is reported, never skipped silently)
 
-The `gh` calls need the network: run it with `dangerouslyDisableSandbox: true`. If a fetch fails, tell the user "could not fetch release
+The `lighthouse releases` call needs the network: run it with `dangerouslyDisableSandbox: true`. If a fetch fails, tell the user "could not fetch release
 notes" and why; do not go on as if there were none.
 
 For every tag with `M < tag <= B`, show the notes. Fetch at most 200 tags, strip the `v` with
-`${x#v}`, and filter with `sort -V`, never on the order `gh` returns them.
+`${x#v}`, and filter with `sort -V`, never on the order `lighthouse releases` returns them.
 
 ```bash
-# $L is the repo from step 1; each Bash call starts fresh, so set it again to that same value
-gh release list --repo "$L" --exclude-pre-releases --limit 200 --json tagName --jq '.[].tagName'
-gh release view <tag> --repo "$L" --json body --jq .body
+# the releases were fetched once in step 1: R is the `releases=` path it printed
+R=<path from step 1>
+jq -r '.[] | select((.prerelease or .draft) | not) | .tag' "$R"
+jq -r --arg t "<tag>" '.[] | select(.tag == $t) | .body' "$R"
 ```
 
 Show lines that ask to update the binary or `lighthouse.toml` first (for example "Update the binary
