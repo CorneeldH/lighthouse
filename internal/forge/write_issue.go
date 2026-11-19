@@ -239,8 +239,8 @@ func (c *GitHub) EditIssue(ctx context.Context, number int, e IssueEdit) (Issue,
 			return Issue{}, err
 		}
 	}
-	// A 404 on removing a label means it is already off; an issue that does not exist fails
-	// on the read below.
+	// A 404 on removing a label means it is already off, but only when the read below agrees: a
+	// label still on the issue is an error. An issue that does not exist fails on that read.
 	for _, l := range e.RemoveLabels {
 		_, err := c.do(ctx, http.MethodDelete, base+"/labels/"+neturl.PathEscape(l), nil, nil)
 		var se *httpStatusError
@@ -248,7 +248,17 @@ func (c *GitHub) EditIssue(ctx context.Context, number int, e IssueEdit) (Issue,
 			return Issue{}, err
 		}
 	}
-	return c.Issue(ctx, number)
+	it, err := c.Issue(ctx, number)
+	if err != nil {
+		return Issue{}, err
+	}
+	for _, l := range e.RemoveLabels {
+		// GitHub compares label names without regard to case.
+		if slices.ContainsFunc(it.Labels, func(have string) bool { return strings.EqualFold(have, l) }) {
+			return Issue{}, fmt.Errorf("forge: label %q is still on #%d after removing it", l, number)
+		}
+	}
+	return it, nil
 }
 
 // ListIssues lists the issues that match the filter, following every page, without pull requests.

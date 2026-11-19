@@ -67,6 +67,9 @@ type Server struct {
 	// FailMessage maps the same key to the "message" of that failure; the default is the
 	// status text.
 	FailMessage map[string]string
+	// OnWrite, when set, runs with "METHOD path" before every write is served, under the lock:
+	// a test changes the stored state there, as someone else would between two requests.
+	OnWrite func(key string)
 	// Milestones are the milestones in REST shape (number, title, state, description), served by
 	// GET .../milestones and changed by POST and PATCH; an issue's milestone is looked up here.
 	Milestones []map[string]any
@@ -239,6 +242,9 @@ func (s *Server) record(next http.Handler) http.Handler {
 			}
 			s.mu.Lock()
 			s.Posts = append(s.Posts, Post{Method: r.Method, Path: r.URL.Path, Body: body})
+			if s.OnWrite != nil {
+				s.OnWrite(r.Method + " " + r.URL.Path)
+			}
 			s.mu.Unlock()
 			r.Body = io.NopCloser(bytes.NewReader(raw))
 		}

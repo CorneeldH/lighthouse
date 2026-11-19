@@ -392,14 +392,27 @@ func TestFailingCommentLeavesTheLabel(t *testing.T) {
 }
 
 // test_label_404_is_already_gone: the label was removed by hand between the read and the
-// write. GitLab has no 404 there: removing an absent label is a no-op.
+// write, so the DELETE answers 404. GitLab has no 404 there: removing an absent label is a no-op.
 func TestLabel404IsAlreadyGone(t *testing.T) {
 	w := newGitHub(t).(*ghWorld)
 	closedWithDependent(w, label)
-	w.srv.Fail["DELETE /repos/Owner/repo/issues/2/labels/blocked-issue"] = 404
-	w.srv.FailMessage["DELETE /repos/Owner/repo/issues/2/labels/blocked-issue"] = "Label does not exist"
+	w.srv.OnWrite = func(key string) {
+		if key == "POST /repos/Owner/repo/issues/2/comments" {
+			w.srv.Issues[2]["labels"] = []any{map[string]any{"name": "2-area:x"}}
+		}
+	}
 	code, out := run(t, w, 1, label, false)
 	check(t, w, code, out, 0, released, "comment #1", "comment #2", "unlabel #2")
+}
+
+// A 404 while the label stays (a name the forge read differently) is no release: red.
+func TestLabel404WhileTheLabelStaysIsRed(t *testing.T) {
+	w := newGitHub(t).(*ghWorld)
+	closedWithDependent(w, label)
+	w.srv.Fail["DELETE /repos/Owner/repo/issues/2/labels/blocked-issue"] = 404
+	code, out := run(t, w, 1, label, false)
+	want := released + "- #2: **Error:** forge: label \"blocked-issue\" is still on #2 after removing it\n"
+	check(t, w, code, out, 1, want, "comment #1", "comment #2", "unlabel #2")
 }
 
 // Only a 404 means "already gone": a label that cannot be removed is red.

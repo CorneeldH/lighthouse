@@ -66,6 +66,23 @@ func TestGitHubEditIssueAddsAndRemovesLabels(t *testing.T) {
 	}
 }
 
+// A 404 on the DELETE counts as "already off" only when the read afterwards agrees: a 404 while
+// the label stays (such as a mismatch in how the name is encoded) is an error, never a release.
+// GitHub compares label names without regard to case, so "Area-X" still on as "area-x" counts too.
+func TestGitHubEditIssueErrorsWhenARemovedLabelStays(t *testing.T) {
+	for _, l := range []string{"area-x", "Area-X"} {
+		t.Run(l, func(t *testing.T) {
+			srv, c := boardClient(t)
+			srv.Issues = map[int]map[string]any{7: fieldIssue(7, "open")}
+			srv.Fail = map[string]int{"DELETE /repos/o/r/issues/7/labels/" + l: http.StatusNotFound}
+			_, err := c.EditIssue(context.Background(), 7, IssueEdit{RemoveLabels: []string{l}})
+			if err == nil || !strings.Contains(err.Error(), `"`+l+`" is still on #7`) {
+				t.Fatalf("EditIssue = %v, want an error that label %q is still on #7", err, l)
+			}
+		})
+	}
+}
+
 func TestGitHubEditIssuePatchesTitleBodyMilestone(t *testing.T) {
 	srv, c := boardClient(t)
 	srv.Issues = map[int]map[string]any{7: fieldIssue(7, "open")}
