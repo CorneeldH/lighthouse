@@ -59,9 +59,14 @@ Succes:
   `runs` gaat daarom met `ALTER TABLE … ADD COLUMN`, niet met een tabelherbouw: een herbouw
   (`DROP TABLE runs`) zou rijen raken die naar `runs` verwijzen. Dat geldt ook voor elke latere
   migratie die `runs` moet herbouwen (zoals 0003, 0004 en 0008 deden, om een `CHECK` te verruimen): de
-  runner draait elk bestand in één transactie, waar `PRAGMA foreign_keys=OFF` niets doet, dus zo'n
-  migratie moet `PRAGMA defer_foreign_keys=ON` zetten. Een test in dit issue herbouwt `runs` met
-  kindrijen erin op die manier en bewijst dat het werkt *(own choice after spec review, r1-f1)*.
+  runner draait elk bestand in één transactie, waar `PRAGMA foreign_keys=OFF` niets doet. `PRAGMA
+  defer_foreign_keys=ON` alleen helpt niet: de impliciete `DELETE` van `DROP TABLE runs` telt per
+  kindrij een uitgestelde schending, en alleen een `INSERT` in een tabel met de naam `runs` trekt die
+  weer af, niet een `RENAME` van `runs_new`. Het recept is daarom: `defer_foreign_keys=ON`; de rijen
+  naar een stagingtabel kopiëren; `DROP TABLE runs`; `runs` opnieuw maken met de nieuwe `CHECK`; de
+  rijen terug-`INSERT`en; de stagingtabel droppen. Een test in dit issue herbouwt `runs` zo met
+  kindrijen erin en bewijst dat `COMMIT` slaagt en `PRAGMA foreign_key_check` leeg is *(own choice
+  after spec review, r1-f1)*.
 - **Taal van de code.** `[project] code_language = en` geldt voor `internal/**`. Tabel- en
   kolomnamen én opgeslagen waarden zijn Engels, net als de bestaande `runs` (`start`, `resume`,
   `handoff`). De Nederlandse begrippen van het issue staan hieronder naast de Engelse naam.
