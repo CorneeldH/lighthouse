@@ -38,7 +38,8 @@ byte-gelijkheid met wat het Python-script echt in `CHANGELOG.md` schreef.
   hun triage hoort bij #365.
 - Een run onder de controller kan een branch die `.github/workflows/` raakt niet zelf pushen:
   `workflow-push-gate` blokkeert dat. Zo'n push gaat via de handoff `next: push-workflows`
-  (Task 2 Step 1, Task 6 Step 3); de run stopt daar en gaat na de push verder.
+  (Task 2 Step 1, Task 6 Step 3); de run stopt daar. `after:` is bij Task 2 de uitvoering van
+  dit plan, bij Task 6 `/lighthouse-write-pr 360`.
 - Oude plannen en specs die `changelog.py` noemen, blijven staan (No-Go).
 
 ## Review Focus
@@ -133,8 +134,11 @@ op `72fafa51` (v0.18.0) plus de plancommit en Task 1; `origin/main` is intussen 
 in de comment van Step 4 de gemeten commit.
 
 - [ ] **Step 1:** Push `issue-360-changelog-go` (alleen Task 1 erop). Onder de controller blokkeert
-  `workflow-push-gate` een gewone `git push` (Task 1 raakt `ci.yml`): stop hier met de handoff
-  `next: push-workflows` en ga na de push verder met Step 2. Buiten de controller:
+  `workflow-push-gate` een gewone `git push` (Task 1 raakt `ci.yml`): draai eerst V2b van
+  `/lighthouse-write-pr` (`lighthouse roborev-gate gate --push`) en post dan de handoff met
+  `next: push-workflows`, `after: /superpowers:subagent-driven-development <absoluut planpad>` en
+  `roborev: <uitvoer van lighthouse roborev-gate body-line --push>`; de run stopt, en de volgende
+  sessie hervat bij Task 2 Step 2. Buiten de controller:
   `git push -u origin issue-360-changelog-go`.
 - [ ] **Step 2:** Drie keer na elkaar, elke run pas na de vorige (zelfde concurrency-groep,
   `cancel-in-progress`):
@@ -305,5 +309,5 @@ Per release `<tag>` met release-commit `<c>` (`c3036aed`, `78cde225`, `72fafa51`
 - [ ] **Step 2:** `/lighthouse-write-pr`: `Closes #360` alleen als de nulmeting-comment er staat;
   de PR-body bevat de triagetabel van Task 3 (bestand, aantal, bestemming, reden, bij
   **weg — gedekt** de Go-test) en de zin over Review Focus 5.
-- [ ] **Step 3:** Push (raakt `.github/workflows/`: onder de controller de handoff
-  `next: push-workflows`) en PR.
+- [ ] **Step 3:** Push (raakt `.github/workflows/`: onder de controller V2b, dan de handoff
+  `next: push-workflows`, `after: /lighthouse-write-pr 360`) en PR.
