@@ -37,6 +37,14 @@
 # go and golangci-lint check, so it never blocks and is never silently green.
 
 HOOK_NAME="go-lint-gate"
+# The reasons this hook blocks on. A finding of the first five linters blocks as golangci-lint prints
+# it (`(errcheck)`); each of them is also a floor: a configuration that switches one off blocks with
+# `[go-lint-gate/<id>]`. `typecheck` is no linter but the build, so it has no floor. A canary test
+# runs the hook once per reason: add a reason here and it needs a fixture there.
+# shellcheck disable=SC2034 # read by the canary test, not by this script
+BLOCKING_RULES="errcheck,govet,ineffassign,staticcheck,unused,typecheck"
+# shellcheck disable=SC2034 # read by the canary test, not by this script
+NON_LINTER_RULES="typecheck"
 
 # A message to the user, without blocking. Without jq the JSON is built by hand:
 # the reasons below hold no quote or backslash.
@@ -140,6 +148,36 @@ check_root() (
     cannot_check "the golangci-lint configuration in $ROOT does not verify (exit $VERIFY_RC): $(printf '%s' "$VERIFY" | head -3 | tr '\n"\134' '   ')"
   fi
 
+  # The floor: the linters of BLOCKING_RULES stay on, whatever the configuration of the repository
+  # says (it may add linters, never remove these). golangci-lint v2 lists the effective set;
+  # v1 has no such listing, so there the floor goes unchecked, said so, and the lint run goes on.
+  FLOOR_NOTE=""
+  HAVE_VERSION=$(golangci-lint version --short 2>/dev/null | tr -d '[:space:]')
+  HAVE_VERSION="${HAVE_VERSION#v}"
+  if [[ "$HAVE_VERSION" != 2* ]]; then
+    FLOOR_NOTE="$HOOK_NAME: COULD NOT CHECK the floor: golangci-lint ${HAVE_VERSION:-of unknown version} is not v2, so it cannot list the linters that are on in $ROOT. The lint run below is unchanged."
+  else
+    if ! LINTERS_JSON=$(golangci-lint linters --json 2>&1); then
+      FLOOR_NOTE="$HOOK_NAME: COULD NOT CHECK the floor: golangci-lint linters failed in $ROOT. The lint run below is unchanged."
+    elif ! ENABLED=$(printf '%s' "$LINTERS_JSON" | jq -r '.Enabled[].name' 2>/dev/null) || [ -z "$ENABLED" ]; then
+      FLOOR_NOTE="$HOOK_NAME: COULD NOT CHECK the floor: the list of enabled linters of $ROOT cannot be read. The lint run below is unchanged."
+    else
+      MISSING=0
+      IFS=, read -ra RULES <<<"$BLOCKING_RULES"
+      for id in "${RULES[@]}"; do
+        case ",$NON_LINTER_RULES," in *",$id,"*) continue ;; esac
+        if ! printf '%s\n' "$ENABLED" | grep -qx -- "$id"; then
+          echo "[$HOOK_NAME/$id] $HOOK_NAME: $id is switched off in the golangci-lint configuration of $ROOT; this hook needs it on." >&2
+          MISSING=1
+        fi
+      done
+      if [ "$MISSING" -eq 1 ]; then
+        echo "Switch the linter back on and fix the code. Existing debt goes behind issues.new-from-rev in the configuration, not behind a linter that is off." >&2
+        exit 2
+      fi
+    fi
+  fi
+
   # `run` exits 1 on findings (a vet finding and a build that fails included); any
   # other non-zero code means it could not lint.
   OUT=$(golangci-lint run ./... 2>&1)
@@ -153,8 +191,10 @@ check_root() (
     echo "Fix them in the code — do not add a //nolint over a finding. If you really want a linter off, ask." >&2
     echo "" >&2
     echo "$OUT" >&2
+    [ -n "$FLOOR_NOTE" ] && printf '\n%s\n' "$FLOOR_NOTE" >&2
     exit 2
   fi
+  [ -n "$FLOOR_NOTE" ] && report "$FLOOR_NOTE"
   exit 0
 )
 

@@ -204,14 +204,14 @@ kind = "file"
 path = ".claude/hooks/lighthouse/go-lint-gate.sh"
 package = "go"
 version = "dev"
-sha256 = "ebb62d8cd3a94bd03dc0f77531f359a6078f409e2488fa2ed8c2569d50ef083d"
+sha256 = "dc7c6dc71e7da41b0defd9ce7536ccc4225652c2de4c1b7a971921859e503d1a"
 
 [[unit]]
 kind = "file"
 path = ".claude/hooks/lighthouse/gofmt-check.sh"
 package = "go"
 version = "dev"
-sha256 = "e3222226e29d29eaa533619afdb59d03a12a315e78174e59b107dfcb75e9cad7"
+sha256 = "1280a3664d47b07023fb86647d8ac5c2b325dc736a8f6e669b9dd35fbb8a5841"
 
 [[unit]]
 kind = "file"

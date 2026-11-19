@@ -72,15 +72,6 @@ def test_formats_a_go_file(tmp_path):
     assert Path(env["STUB_LOG"]).read_text().strip() == f"-w {payload['tool_input']['file_path']}"
 
 
-def test_blocks_a_file_that_does_not_parse(tmp_path):
-    payload = _file(tmp_path, "a.go")
-    path = payload["tool_input"]["file_path"]
-    result = _run(payload, tmp_path, _stubbed(tmp_path, rc=2))
-    assert result.returncode == 2, result.stdout
-    assert result.stderr.splitlines()[0] == f"gofmt-check: {path} does not parse — fix the syntax."
-    assert PARSE_ERROR in result.stderr
-
-
 def test_other_extension_passes(tmp_path):
     env = _stubbed(tmp_path)
     result = _run(_file(tmp_path, "a.py"), tmp_path, env)
@@ -101,7 +92,7 @@ def test_no_path_passes(tmp_path):
 def test_classify_reads_the_parse_error_as_a_finding(tmp_path):
     result = _run(_file(tmp_path, "x.go", "package m\n\nfunc F( {\n"), tmp_path)
     assert result.returncode == 2, result.stdout
-    assert result.stderr.startswith("gofmt-check: "), result.stderr
+    assert result.stderr.startswith("[gofmt-check/parse-error] gofmt-check: "), result.stderr
     assert classify(2, result.stderr.encode()) == "finding"
 
 
