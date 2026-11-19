@@ -1,6 +1,6 @@
 ---
 name: lighthouse-forge
-description: 'Reference of what differs per forge (GitHub, GitLab): board status, blockers, sub-issues, closing keywords and the proxy quirk, one file per forge with the same sections. Read only via another skill that names a section (lighthouse-start-issue, lighthouse-route-issue, lighthouse-write-issue, lighthouse-write-pr); never a starting point of its own. NOTE — not for the operations both forges share: those are `lighthouse forge` subcommands, named in the calling skill.'
+description: 'Reference of what differs per forge (GitHub, GitLab): board status, blockers, sub-issues, closing keywords, the proxy quirk and what closing an issue needs, one file per forge with the same sections. Read only via another skill that names a section (lighthouse-start-issue, lighthouse-route-issue, lighthouse-write-issue, lighthouse-write-pr, lighthouse-close-issue); never a starting point of its own. NOTE — not for the operations both forges share: those are `lighthouse forge` subcommands, named in the calling skill.'
 metadata:
   lighthouse: "core@dev"
   binding: default
@@ -27,13 +27,17 @@ From another installed skill the path is `../lighthouse-forge/<kind>.md`, the sa
 ## What lives where
 
 - **`lighthouse forge`** covers what both forges do the same: `issue view|list|search|create|edit|comment`,
-  `issue blockers`, `issue block <nr> --by <blocker>`, `issue status <nr> <status>`,
-  `pr create|view|comment` (a merge request on GitLab), `milestone list|view|create|edit` (by title),
+  `issue close|reopen <nr> [--body-file F]` (the comment first, then the state), `issue blockers`,
+  `issue blocking` (the issues it blocks), `issue changes` (its state, `closer` and the PRs around
+  it), `issue block <nr> --by <blocker>`, `issue status <nr> <status>`,
+  `pr create|view|comment` and `pr list [--state open|merged|closed|all]` (a merge request on
+  GitLab), `milestone list|view|create|edit` (by title; `edit --state closed` closes one),
   `label list`. One JSON shape on both forges; `--field <path>` prints one value of a read
   command. Exit 0 is done, 1 a forge error with the API's message, 2 a usage error or missing
   config.
 - **The references** carry only what differs: the board's status field, the tier limits of
-  blockers, sub-issues, the closing keywords and the proxy quirk. Where no shared command exists,
+  blockers, sub-issues, the closing keywords, the proxy quirk and what closing an issue needs
+  (§close-issue). Where no shared command exists,
   they use `lighthouse forge api`.
 
 ## `lighthouse forge api`

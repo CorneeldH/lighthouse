@@ -136,6 +136,7 @@
                 "internal/initcmd/initcmd.go",
                 "internal/repoconfig/repoconfig.go",
                 "internal/workplace/kennforge/adapter.go",
+                "pack/core/skills/close-issue",
                 "pack/core/skills/forge",
                 "pack/core/skills/route-issue",
                 "pack/core/skills/start-issue",
@@ -241,7 +242,6 @@
               "required": "derived",
               "about": "The name part of forge.repo, derived by the lighthouse binary.",
               "readers": [
-                "pack/core/skills/close-issue",
                 "pack/core/skills/write-handoff",
                 "pack/python/scripts/quality/prcov_issues.py"
               ]
@@ -252,7 +252,6 @@
               "required": "derived",
               "about": "The owner part of forge.repo, derived by the lighthouse binary.",
               "readers": [
-                "pack/core/skills/close-issue",
                 "pack/core/skills/forge",
                 "pack/core/skills/write-handoff",
                 "pack/python/scripts/quality/prcov_issues.py"
@@ -302,7 +301,6 @@
                 "internal/cli/triage.go",
                 "internal/forge/board.go",
                 "internal/repoconfig/repoconfig.go",
-                "pack/core/skills/close-issue",
                 "pack/core/skills/forge",
                 "pack/core/skills/write-handoff",
                 "pack/python/scripts/quality/prcov_issues.py"
@@ -331,7 +329,6 @@
               "readers": [
                 "internal/cli/triage.go",
                 "internal/repoconfig/repoconfig.go",
-                "pack/core/skills/close-issue",
                 "pack/core/skills/write-handoff",
                 "pack/python/scripts/quality/prcov_issues.py"
               ]

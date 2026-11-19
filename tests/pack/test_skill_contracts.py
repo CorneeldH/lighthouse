@@ -409,7 +409,7 @@ def test_write_pr_creates_the_pr_through_lighthouse_forge():
 
 
 # The chain skills of #260 and their twins: forge operations go through `lighthouse forge`.
-CHAIN_SKILLS = ["start-issue", "route-issue", "write-issue", "write-pr"]
+CHAIN_SKILLS = ["start-issue", "route-issue", "write-issue", "write-pr", "close-issue"]
 _GH_FORGE_CALL = re.compile(r"\bgh (api|issue|pr|label|project)\b")
 # (skill, fragment of the line) that may still name a `gh` forge form, each for a reason: the
 # evidence allowlist table of write-pr names what `lighthouse evidence` accepts (the `gh` rows
@@ -459,7 +459,32 @@ def test_chain_skills_point_at_forge_reference(name):
 FORGE = CORE / "skills" / "forge"
 # The sections a chain skill names (`../lighthouse-forge/<kind>.md §blockers`), in this order in
 # every reference (#260, spec §2).
-FORGE_SECTIONS = ["## §board", "## §blockers", "## §sub-issues", "## §sluitwoorden", "## §proxy"]
+FORGE_SECTIONS = ["## §board", "## §blockers", "## §sub-issues", "## §sluitwoorden", "## §proxy", "## §close-issue"]
+
+
+@pytest.mark.parametrize("variant", ["claude", "agents"])
+def test_close_issue_goes_through_the_forge_subcommands(variant):
+    """#406: close-issue closes, reopens and reads its PRs and dependents through
+    `lighthouse forge`, and names its own section of the forge reference."""
+    text = (CORE / "skills" / "close-issue" / variant / "SKILL.md").read_text(encoding="utf-8")
+    for needle in (
+        "lighthouse forge issue close <number> --body-file",
+        "lighthouse forge issue reopen <nr> --body-file",
+        "lighthouse forge issue blocking <nr>",
+        "lighthouse forge issue changes <nr>",
+        "lighthouse forge pr list --state open",
+        "lighthouse forge pr list --state merged",
+        "../lighthouse-forge/<kind>.md §close-issue",
+    ):
+        assert needle in text, needle
+
+
+def test_forge_skill_names_the_close_issue_subcommands():
+    """The overview of shared subcommands lists what close-issue calls."""
+    text = (FORGE / "SKILL.md").read_text(encoding="utf-8")
+    shared = text[text.index("## What lives where") :]
+    for needle in ("issue close|reopen", "issue blocking", "issue changes", "pr list", "--state closed"):
+        assert needle in shared, needle
 
 
 def _h2_outside_fences(text: str) -> list[str]:

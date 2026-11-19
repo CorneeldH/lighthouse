@@ -146,8 +146,9 @@ block per worktree name.
 ## Non-negotiables
 
 - **Change nothing**, not even "just this one obvious case".
-- **`gh api`, never `gh pr list --json`** — that breaks under a proxy, and an unknown filter is
-  silently ignored there. In Claude Code `gh` runs with `dangerouslyDisableSandbox: true`.
+- **Outside the sandbox.** `lighthouse worktree-audit` reads the PR status from the forge over
+  the network: in Claude Code it runs with `dangerouslyDisableSandbox: true`. A forge it cannot
+  reach gives `PR status unknown — check`, never "no PR".
 - **Never `git branch --merged`** as a merge test.
 - **Never force or unlock a lock.** Report the pid with it.
 - **Port blocks are reported, never killed** (only if present, with a port registry). The skill
