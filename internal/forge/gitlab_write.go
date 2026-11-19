@@ -37,7 +37,17 @@ func (m glMilestone) milestone() Milestone {
 // change translates a merge request to a Change.
 func (m glMR) change() Change {
 	out := Change{Number: m.IID, Title: m.Title, Body: m.Description, State: m.State, Labels: m.Labels, URL: m.WebURL,
-		CreatedAt: m.CreatedAt, HeadRef: m.SourceBranch, BaseRef: m.TargetBranch}
+		CreatedAt: m.CreatedAt, HeadRef: m.SourceBranch, BaseRef: m.TargetBranch, Draft: m.Draft}
+	// Only conflicts and an unsettled check count, as on GitHub: fix-pr reads the CI and the
+	// draft flag apart.
+	switch {
+	case m.HasConflicts, m.DetailedMergeStatus == "conflict", m.DetailedMergeStatus == "need_rebase":
+		out.Mergeable = "conflicting"
+	case slices.Contains([]string{"unchecked", "checking", "preparing", "approvals_syncing"}, m.DetailedMergeStatus):
+		out.Mergeable = "unknown"
+	default:
+		out.Mergeable = "mergeable"
+	}
 	switch m.State {
 	case "opened", "locked": // locked while it merges
 		out.State = "open"
@@ -224,6 +234,25 @@ func (g *GitLab) Change(ctx context.Context, number int) (Change, error) {
 		return Change{}, err
 	}
 	return m.change(), nil
+}
+
+// ChangeComments lists the notes of merge request number, without system notes, over every page.
+func (g *GitLab) ChangeComments(ctx context.Context, number int) ([]protocol.Comment, error) {
+	if err := g.configured(); err != nil {
+		return nil, err
+	}
+	notes, err := getAll[glNote](ctx, g, g.projectPath("/merge_requests/"+strconv.Itoa(number)+"/notes"),
+		neturl.Values{"sort": {"asc"}, "order_by": {"created_at"}})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]protocol.Comment, 0, len(notes))
+	for _, n := range notes {
+		if !n.System {
+			out = append(out, g.noteComment(n, "merge_requests", number, 0))
+		}
+	}
+	return out, nil
 }
 
 // CreateChangeComment adds a note to merge request number and returns it.

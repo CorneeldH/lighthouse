@@ -68,3 +68,14 @@ deliberate non-closing form.
 `gh issue list --json` breaks under the rtk proxy (`Failed to parse gh issue list output`). Use
 `lighthouse forge issue list` or `lighthouse forge issue search`, or `gh api` when you need a
 `gh` call.
+
+## §ci
+
+CI actions that have no shared command. The job list of a run, to see which step never completed:
+
+```bash
+R=$(lighthouse config forge.repo) && gh api "repos/$R/actions/runs/<id>/jobs"
+```
+
+Rerun only the failed jobs of a run: `gh run rerun <id> --failed --repo "$R"`. The roborev review
+comment on a PR comes from `github-actions[bot]`.

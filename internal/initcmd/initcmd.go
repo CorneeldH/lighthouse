@@ -169,7 +169,7 @@ func execute(o Options) error {
 			return err
 		}
 	}
-	tables, haveRepo, err := configTables(root, chosenPacks, labelsPath, o.ForgeHosts)
+	tables, haveRepo, kind, err := configTables(root, chosenPacks, labelsPath, o.ForgeHosts)
 	if err != nil {
 		return err
 	}
@@ -184,7 +184,7 @@ func execute(o Options) error {
 		b, ok, err := readFile(root, rel)
 		return b, ok && err == nil
 	})
-	for _, miss := range o.Deps.Check(mergeRequires(reqs)) {
+	for _, miss := range o.Deps.Check(mergeRequires(forgeRequires(reqs, kind))) {
 		_, _ = fmt.Fprintf(o.Err, "missing dependency: %s (needed by: %s)\n", miss.Tool, strings.Join(miss.NeededBy, ", "))
 	}
 
@@ -527,8 +527,9 @@ type existingForge struct {
 // configTables are the tables lighthouse.toml should have: the core tables, then the
 // fragments of the chosen packages in their order (plan M0 (c), design choice 4). A
 // non-empty labelsPath adds the label tables, with that path in [paths] labels. A GitLab
-// host is known from extraHosts or from forge.host of an existing lighthouse.toml.
-func configTables(root string, chosen []packs.Pack, labelsPath string, extraHosts []string) ([]projectconfig.Table, bool, error) {
+// host is known from extraHosts or from forge.host of an existing lighthouse.toml. kind
+// is the existing [forge] kind, else the kind of the remote, else "".
+func configTables(root string, chosen []packs.Pack, labelsPath string, extraHosts []string) ([]projectconfig.Table, bool, string, error) {
 	var ex existingForge
 	if b, err := os.ReadFile(filepath.Join(root, configPath)); err == nil {
 		if _, err := toml.Decode(string(b), &ex); err != nil {
@@ -554,8 +555,13 @@ func configTables(root string, chosen []packs.Pack, labelsPath string, extraHost
 	if labelsPath != "" {
 		core = append(core, projectconfig.LabelTables(labelsPath)...)
 	}
+	// kind: the kind that lighthouse.toml has or gets; "" when neither is known.
+	kind := ex.Forge.Kind
+	if kind == "" {
+		kind = forge.Kind
+	}
 	tables, err := mergeTables(core, chosen)
-	return tables, haveRepo, err
+	return tables, haveRepo, kind, err
 }
 
 // mergeTables joins core and the fragments of chosen per table name, in order. A key

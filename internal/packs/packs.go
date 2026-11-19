@@ -83,10 +83,12 @@ type Unit struct {
 // Key returns the key of u.
 func (u Unit) Key() Key { return Key{Kind: u.Kind, Path: u.Path, ID: u.ID} }
 
-// Requirement is a tool and the units of a package that need it.
+// Requirement is a tool and the units of a package that need it. An empty Forge
+// holds for every forge; otherwise the tool is needed on that forge kind only.
 type Requirement struct {
 	Tool     string
 	NeededBy []string
+	Forge    string
 }
 
 // Contains matches when a file that one of Files names holds Text.
@@ -578,16 +580,64 @@ func parseDetect(data []byte) (*Detect, error) {
 }
 
 func parseRequires(data []byte) ([]Requirement, error) {
-	var raw map[string][]string
+	var raw map[string]any
 	if _, err := toml.Decode(string(data), &raw); err != nil {
 		return nil, err
 	}
-	reqs := make([]Requirement, 0, len(raw))
-	for tool, by := range raw {
-		reqs = append(reqs, Requirement{Tool: tool, NeededBy: by})
+	var reqs []Requirement
+	for key, v := range raw {
+		if key != "forge" {
+			by, err := toStrings(v)
+			if err != nil {
+				return nil, fmt.Errorf("requires.toml: %s: %w", key, err)
+			}
+			reqs = append(reqs, Requirement{Tool: key, NeededBy: by})
+			continue
+		}
+		kinds, ok := v.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("requires.toml: forge must be a table")
+		}
+		for kind, tv := range kinds {
+			if kind != "github" && kind != "gitlab" {
+				return nil, fmt.Errorf("requires.toml: unknown forge %q", kind)
+			}
+			tools, ok := tv.(map[string]any)
+			if !ok {
+				return nil, fmt.Errorf("requires.toml: forge.%s must be a table", kind)
+			}
+			for tool, tbv := range tools {
+				by, err := toStrings(tbv)
+				if err != nil {
+					return nil, fmt.Errorf("requires.toml: forge.%s.%s: %w", kind, tool, err)
+				}
+				reqs = append(reqs, Requirement{Tool: tool, NeededBy: by, Forge: kind})
+			}
+		}
 	}
-	sort.Slice(reqs, func(i, j int) bool { return reqs[i].Tool < reqs[j].Tool })
+	sort.Slice(reqs, func(i, j int) bool {
+		if reqs[i].Tool != reqs[j].Tool {
+			return reqs[i].Tool < reqs[j].Tool
+		}
+		return reqs[i].Forge < reqs[j].Forge
+	})
 	return reqs, nil
+}
+
+func toStrings(v any) ([]string, error) {
+	list, ok := v.([]any)
+	if !ok {
+		return nil, fmt.Errorf("want a list of strings")
+	}
+	out := make([]string, 0, len(list))
+	for _, e := range list {
+		str, ok := e.(string)
+		if !ok {
+			return nil, fmt.Errorf("want a list of strings")
+		}
+		out = append(out, str)
+	}
+	return out, nil
 }
 
 // parseHooks reads hooks/hooks.json in plugin format and rewrites each command from
