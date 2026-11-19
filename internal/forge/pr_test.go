@@ -25,6 +25,9 @@ func TestRollup(t *testing.T) {
 	done := func(id int64, name, conclusion string) checkRun { return run(id, gha, name, "completed", conclusion) }
 	ok := done(1, "ok", "success")
 	actions := func(status string, runs int) checkSuite { return checkSuite{Status: status, Runs: runs, App: gha} }
+	suiteDone := func(conclusion string) checkSuite {
+		return checkSuite{Status: "completed", Runs: 1, App: gha, Conclusion: conclusion}
+	}
 	cases := []struct {
 		name     string
 		runs     []checkRun
@@ -61,6 +64,19 @@ func TestRollup(t *testing.T) {
 		{"superseded cancelled run listed after the newer one", []checkRun{done(20, "build", "success"), done(10, "build", "cancelled")}, nil, nil, "SUCCESS"},
 		{"older success, newer failure", []checkRun{done(10, "build", "success"), done(20, "build", "failure")}, nil, nil, "FAILURE"},
 		{"older failure, newer run in progress", []checkRun{done(10, "build", "failure"), run(20, gha, "build", "in_progress", "")}, nil, nil, "PENDING"},
+		// Two workflows with a job of the same name share (App, Name): the dedup keeps only the
+		// newer run, but the suite of the older one still carries its failure.
+		{"same job name in two workflows, older failed", []checkRun{done(10, "test", "failure"), done(20, "test", "success")}, nil,
+			[]checkSuite{suiteDone("failure"), suiteDone("success")}, "FAILURE"},
+		// The superseded suite that concurrency cancelled does not count against the newer one.
+		{"superseded cancelled suite, newer success", []checkRun{done(10, "build", "cancelled"), done(20, "build", "success")}, nil,
+			[]checkSuite{suiteDone("cancelled"), suiteDone("success")}, "SUCCESS"},
+		{"suite timed out", []checkRun{ok}, nil, []checkSuite{suiteDone("timed_out")}, "FAILURE"},
+		{"suite action required", []checkRun{ok}, nil, []checkSuite{suiteDone("action_required")}, "FAILURE"},
+		{"suite startup failure", []checkRun{ok}, nil, []checkSuite{suiteDone("startup_failure")}, "FAILURE"},
+		{"suite failure before status error", []checkRun{ok}, []commitStatus{{State: "error"}}, []checkSuite{suiteDone("failure")}, "FAILURE"},
+		{"suite neutral, skipped, stale, no conclusion", []checkRun{ok}, nil,
+			[]checkSuite{suiteDone("neutral"), suiteDone("skipped"), suiteDone("stale"), suiteDone("")}, "SUCCESS"},
 		{"same name, other app failing", []checkRun{done(10, "build", "success"), run(5, "other-ci", "build", "completed", "failure")}, nil, nil, "FAILURE"},
 	}
 	for _, tc := range cases {
@@ -317,6 +333,23 @@ func TestChecksFollowPages(t *testing.T) {
 				t.Errorf("%s requests = %d, want 2 pages", name, n)
 			}
 		})
+	}
+}
+
+// Classification: io (HTTP). Fails when checks drops the conclusion of a check suite: a failed
+// job that shares its name with a job of another workflow shows only there.
+func TestChecksReadsSuiteConclusion(t *testing.T) {
+	lists := greenLists()
+	failed := map[string]any{"status": "completed", "conclusion": "failure", "latest_check_runs_count": 1,
+		"app": map[string]any{"slug": "github-actions"}}
+	lists["check-suites"] = checkList{items: []any{restSuite("completed", 1), failed}, total: -1}
+	_, c := newChecksServer(t, lists)
+	got, err := c.checks(context.Background(), "o/r", "abc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "FAILURE" {
+		t.Errorf("checks = %q, want FAILURE", got)
 	}
 }
 

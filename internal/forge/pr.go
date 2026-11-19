@@ -100,24 +100,32 @@ type checkRun struct {
 // commitStatus is one commit status, from the statuses[] of the combined status.
 type commitStatus struct{ State string }
 
-// checkSuite is one check suite of a commit; Runs is its latest_check_runs_count.
+// checkSuite is one check suite of a commit; Runs is its latest_check_runs_count and
+// Conclusion "" while it has none.
 type checkSuite struct {
-	Status string
-	Runs   int
-	App    string
+	Status     string
+	Runs       int
+	App        string
+	Conclusion string
 }
 
 // Conclusions of a check run.
 var (
 	failedConclusions    = map[string]bool{"failure": true, "timed_out": true, "cancelled": true, "action_required": true, "startup_failure": true}
 	succeededConclusions = map[string]bool{"success": true, "neutral": true, "skipped": true}
+	// failedSuiteConclusions leaves out cancelled: concurrency cancels a superseded suite,
+	// whose runs a newer suite replaces.
+	failedSuiteConclusions = map[string]bool{"failure": true, "timed_out": true, "action_required": true, "startup_failure": true}
 )
 
 // rollup is the state of the checks of one commit, as statusCheckRollup.state named it: ""
 // without runs and statuses, else FAILURE, ERROR, SUCCESS in that order, and PENDING for
 // everything else, every unknown value included. Only the newest run per (App, Name) counts:
-// a run that a newer one superseded (concurrency cancelled it) no longer decides. SUCCESS
-// also needs every suite done that will still make a run: one with runs, or an Actions suite.
+// a run that a newer one superseded (concurrency cancelled it) no longer decides. Because an
+// Actions run is named after its job only, two workflows with a job of the same name share
+// one (App, Name); a completed suite that failed is therefore FAILURE too, a cancelled one not.
+// SUCCESS also needs every suite done that will still make a run: one with runs, or an
+// Actions suite.
 func rollup(runs []checkRun, statuses []commitStatus, suites []checkSuite) string {
 	runs = newestRuns(runs)
 	if len(runs) == 0 && len(statuses) == 0 {
@@ -130,6 +138,11 @@ func rollup(runs []checkRun, statuses []commitStatus, suites []checkSuite) strin
 	}
 	for _, s := range statuses {
 		if s.State == "failure" {
+			return "FAILURE"
+		}
+	}
+	for _, s := range suites {
+		if s.Status == "completed" && failedSuiteConclusions[s.Conclusion] {
 			return "FAILURE"
 		}
 	}
@@ -200,9 +213,10 @@ func (c *GitHub) checks(ctx context.Context, repo, sha string) (string, error) {
 		return "", err
 	}
 	rawSuites, err := counted[struct {
-		Status string `json:"status"`
-		Runs   int    `json:"latest_check_runs_count"`
-		App    *app   `json:"app"`
+		Status     string `json:"status"`
+		Conclusion string `json:"conclusion"`
+		Runs       int    `json:"latest_check_runs_count"`
+		App        *app   `json:"app"`
 	}](ctx, c, base+"/check-suites?per_page=100", "check_suites")
 	if err != nil {
 		return "", err
@@ -223,7 +237,7 @@ func (c *GitHub) checks(ctx context.Context, repo, sha string) (string, error) {
 	}
 	suites := make([]checkSuite, 0, len(rawSuites))
 	for _, s := range rawSuites {
-		suites = append(suites, checkSuite{Status: s.Status, Runs: s.Runs, App: slug(s.App)})
+		suites = append(suites, checkSuite{Status: s.Status, Runs: s.Runs, App: slug(s.App), Conclusion: s.Conclusion})
 	}
 	return rollup(runs, statuses, suites), nil
 }

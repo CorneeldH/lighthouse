@@ -147,26 +147,27 @@ func (s *Server) rollupOf(sha string) string {
 }
 
 // checkLists are the check runs, statuses and suites a statusCheckRollup.state stands for:
-// SUCCESS one successful run in a completed suite, FAILURE one failed run, ERROR one status
-// error, PENDING and EXPECTED one run in progress in a suite in progress.
+// SUCCESS one successful run in a successful suite, FAILURE one failed run in a failed suite,
+// ERROR one status error, PENDING and EXPECTED one run in progress in a suite in progress.
 func (s *Server) checkLists(sha string) (runs, statuses, suites []any) {
 	run := func(status string, conclusion any) any {
 		return map[string]any{"id": 1, "name": "ci", "status": status, "conclusion": conclusion,
 			"app": map[string]any{"slug": "github-actions"}}
 	}
-	suite := func(status string) any {
-		return map[string]any{"status": status, "latest_check_runs_count": 1, "app": map[string]any{"slug": "github-actions"}}
+	suite := func(status string, conclusion any) any {
+		return map[string]any{"status": status, "conclusion": conclusion, "latest_check_runs_count": 1,
+			"app": map[string]any{"slug": "github-actions"}}
 	}
 	switch st := s.rollupOf(sha); st {
 	case "":
 	case "SUCCESS":
-		runs, suites = []any{run("completed", "success")}, []any{suite("completed")}
+		runs, suites = []any{run("completed", "success")}, []any{suite("completed", "success")}
 	case "FAILURE":
-		runs = []any{run("completed", "failure")}
+		runs, suites = []any{run("completed", "failure")}, []any{suite("completed", "failure")}
 	case "ERROR":
 		statuses = []any{map[string]any{"state": "error", "context": "ci"}}
 	case "PENDING", "EXPECTED":
-		runs, suites = []any{run("in_progress", nil)}, []any{suite("in_progress")}
+		runs, suites = []any{run("in_progress", nil)}, []any{suite("in_progress", nil)}
 	default:
 		s.t.Errorf("forgetest: head %s: statusCheckRollup state %q is not served", sha, st)
 	}
