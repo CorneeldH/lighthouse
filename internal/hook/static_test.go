@@ -12,11 +12,10 @@ import (
 
 // Only a keyed `Code: 2` literal is caught; a positional literal or a computed code is not.
 // TestNoBareBlockCodeInCoreHooks: a core hook blocks only through hook.Block, hook.BlockTagged or
-// hook.CouldNotCheck (or the commitgate pair block and couldNotCheck), so every block carries its
+// hook.CouldNotCheck, so every block carries its
 // reason tag or the COULD NOT CHECK token. A literal Code: 2 anywhere else is a block that
 // escapes the declared reasons.
 func TestNoBareBlockCodeInCoreHooks(t *testing.T) {
-	allowed := map[string]bool{"block": true, "couldNotCheck": true}
 	fset := token.NewFileSet()
 	for _, dir := range []string{"../hooks", "../commitgate", "../codelang"} {
 		entries, err := os.ReadDir(dir)
@@ -32,12 +31,12 @@ func TestNoBareBlockCodeInCoreHooks(t *testing.T) {
 			if err != nil {
 				t.Fatalf("parse %s/%s: %v", dir, name, err)
 			}
-			checkBareBlock(t, fset, file, allowed)
+			checkBareBlock(t, fset, file)
 		}
 	}
 }
 
-func checkBareBlock(t *testing.T, fset *token.FileSet, file *ast.File, allowed map[string]bool) {
+func checkBareBlock(t *testing.T, fset *token.FileSet, file *ast.File) {
 	t.Helper()
 	for _, decl := range file.Decls {
 		fn := ""
@@ -51,7 +50,7 @@ func checkBareBlock(t *testing.T, fset *token.FileSet, file *ast.File, allowed m
 			}
 			key, ok := kv.Key.(*ast.Ident)
 			val, isLit := kv.Value.(*ast.BasicLit)
-			if ok && key.Name == "Code" && isLit && val.Kind == token.INT && val.Value == "2" && !allowed[fn] {
+			if ok && key.Name == "Code" && isLit && val.Kind == token.INT && val.Value == "2" {
 				t.Errorf("%s: bare Code: 2 in %q; use hook.Block, hook.BlockTagged or hook.CouldNotCheck", fset.Position(kv.Pos()), fn)
 			}
 			return true

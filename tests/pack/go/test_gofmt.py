@@ -19,13 +19,9 @@ from tests.pack.go.conftest import GO_HOOKS
 
 GOFMT_HOOK = GO_HOOKS / "gofmt-check.sh"
 UNCHECKED = "gofmt-check: COULD NOT CHECK — "
-PARSE_ERROR = "x.go:2:8: expected ')', found 'EOF'"
-STUB = f"""#!/bin/bash
+STUB = """#!/bin/bash
 echo "$@" > "$STUB_LOG"
-if [ "${{STUB_RC:-0}}" -eq 2 ]; then
-  echo "{PARSE_ERROR}" >&2
-fi
-exit ${{STUB_RC:-0}}
+exit 0
 """
 TOOLS = ("bash", "jq", "cat")
 
@@ -50,14 +46,13 @@ def _file(tmp_path: Path, name: str, text: str = "package m\n") -> dict:
     return {"tool_input": {"file_path": str(target)}}
 
 
-def _stubbed(tmp_path: Path, rc: int = 0) -> dict:
+def _stubbed(tmp_path: Path) -> dict:
     """An environment whose `gofmt` is a stub that logs its arguments to STUB_LOG."""
     bin_dir = tool_bin(tmp_path / "bin", TOOLS, stubs={"gofmt": STUB})
     return {
         "PATH": f"{bin_dir}:{os.environ['PATH']}",
         "STUB_LOG": str(tmp_path / "stub.log"),
-        "STUB_RC": str(rc),
-    }
+            }
 
 
 def _without(tmp_path: Path, tool: str) -> dict:

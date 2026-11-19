@@ -107,18 +107,35 @@ func TestGoLintGateCanary(t *testing.T) {
 // so the hook does not rely on the finding for it.
 func TestGoLintGateFloorHostileConfig(t *testing.T) {
 	skipRules := nonLinterRules(t, goLintGateFile)
+	var floor []string
 	for _, id := range blockingRules(t, goLintGateFile) {
-		if slices.Contains(skipRules, id) {
-			continue
+		if !slices.Contains(skipRules, id) {
+			floor = append(floor, id)
 		}
-		t.Run(id, func(t *testing.T) {
-			root := goRepo(t, stdSet+"  disable:\n    - "+id+"\n")
-			r := runGoLintGate(t, root, cleanGo)
-			requireCanary(t, r, id, "[go-lint-gate/"+id+"]")
-			if !strings.Contains(r.Stderr, "issues.new-from-rev") {
-				t.Errorf("the block does not name issues.new-from-rev:\n%s", r.Stderr)
+	}
+	for _, id := range floor {
+		// Two ways to leave the linter off: switched off by name, and never switched on
+		// (`default: none` with only the other linters of the floor enabled).
+		var others strings.Builder
+		for _, other := range floor {
+			if other != id {
+				others.WriteString("    - " + other + "\n")
 			}
-		})
+		}
+		configs := map[string]string{
+			"disabled":     stdSet + "  disable:\n    - " + id + "\n",
+			"default-none": "  default: none\n  enable:\n" + others.String(),
+		}
+		for name, section := range configs {
+			t.Run(id+"/"+name, func(t *testing.T) {
+				root := goRepo(t, section)
+				r := runGoLintGate(t, root, cleanGo)
+				requireCanary(t, r, id, "[go-lint-gate/"+id+"]")
+				if !strings.Contains(r.Stderr, "issues.new-from-rev") {
+					t.Errorf("the block does not name issues.new-from-rev:\n%s", r.Stderr)
+				}
+			})
+		}
 	}
 }
 
@@ -142,10 +159,11 @@ func TestGoLintGateCleanModulePasses(t *testing.T) {
 // runOut and exits runRC.
 func fakeGolangciV1(t *testing.T, runOut string, runRC int) string {
 	t.Helper()
-	dir := filepath.Join(workDir, "fake-v1-"+filepath.Base(t.TempDir()))
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	dir, err := os.MkdirTemp(workDir, "fake-v1-")
+	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 	script := "#!/bin/sh\ncase \"$1\" in\n" +
 		"  version) echo 1.64.8 ;;\n" +
 		"  config) exit 0 ;;\n" +

@@ -2,6 +2,9 @@ package canary
 
 import (
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -256,5 +259,27 @@ func TestRuleReadersReadTheRealHooks(t *testing.T) {
 	}
 	if got, err := parseRuleLine("NON_LINTER_RULES=\"typecheck\"\n", nonLinterLine, "NON_LINTER_RULES", true); err != nil || !slices.Equal(got, []string{"typecheck"}) {
 		t.Errorf("a present line: %v, %v", got, err)
+	}
+}
+
+// A canary that cannot run must fail, never skip: no Skip, Skipf or SkipNow call in this package.
+// It reads the syntax tree, so the build-tagged files count too and this test does not find itself.
+func TestCanaryNeverSkips(t *testing.T) {
+	files, err := filepath.Glob("*.go")
+	if err != nil || len(files) == 0 {
+		t.Fatalf("no .go files in the package: %v", err)
+	}
+	fset := token.NewFileSet()
+	for _, name := range files {
+		f, err := parser.ParseFile(fset, name, nil, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ast.Inspect(f, func(n ast.Node) bool {
+			if sel, ok := n.(*ast.SelectorExpr); ok && slices.Contains([]string{"Skip", "Skipf", "SkipNow"}, sel.Sel.Name) {
+				t.Errorf("%s: %s, a canary fails instead of skipping", fset.Position(sel.Pos()), sel.Sel.Name)
+			}
+			return true
+		})
 	}
 }

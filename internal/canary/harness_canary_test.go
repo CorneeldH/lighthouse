@@ -144,7 +144,11 @@ func runHook(t *testing.T, root, script, payload string, env ...string) run {
 	fields := strings.Fields(script)
 	cmd := exec.Command(filepath.Join(root, ".claude", "hooks", "lighthouse", fields[0]), fields[1:]...)
 	cmd.Dir = root
-	cmd.Env = append(cleanEnv(bin), env...)
+	// An empty HOME and XDG_CONFIG_HOME by default: no rc file of this machine decides a canary.
+	// A test that needs one passes HOME= or XDG_CONFIG_HOME= itself, which comes last and wins.
+	home := t.TempDir()
+	cmd.Env = append(cleanEnv(bin), "HOME="+home, "XDG_CONFIG_HOME="+filepath.Join(home, ".config"))
+	cmd.Env = append(cmd.Env, env...)
 	cmd.Stdin = strings.NewReader(payload)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
