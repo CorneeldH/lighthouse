@@ -227,12 +227,6 @@ func parse(t *testing.T, c parseCase) (got, want any) {
 			got = []string{}
 		}
 		return got, decode[[]string](t, c.Expect)
-	case "parse_pulls":
-		got, err := ParsePulls(decode[struct{ Payload []any }](t, c.Input).Payload)
-		if err != nil {
-			t.Fatalf("ParsePulls: %v", err)
-		}
-		return got, decode[map[string]PullInfo](t, c.Expect)
 	case "parse_port_registry":
 		return ParsePortRegistry(decode[struct{ Text string }](t, c.Input).Text), decode[map[string]string](t, c.Expect)
 	case "parse_sessions":
@@ -247,17 +241,6 @@ func parse(t *testing.T, c parseCase) (got, want any) {
 			w := decode[[2]*json.RawMessage](t, c.Expect)
 			return [2]any{decode[*float64](t, rawOrNull(w[0])), decode[*bool](t, rawOrNull(w[1]))}
 		}()
-	case "parse_issue_pr_heads":
-		in := decode[struct {
-			Payload any
-			Slug    string
-			Nr      int
-		}](t, c.Input)
-		heads, ok := ParseIssuePRHeads(in.Payload, in.Slug, in.Nr)
-		if !ok {
-			heads = nil
-		}
-		return heads, decode[[]string](t, c.Expect)
 	case "issue_branches":
 		in := decode[struct {
 			Rows    []fixtureRow

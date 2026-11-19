@@ -13,27 +13,27 @@ import (
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/config"
+	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/procrun"
 	"github.com/CorneeldH/lighthouse/internal/pytext"
 )
 
-// Timeouts of the Python script: one git call 60 s, one gh call 300 s.
-const (
-	GitTimeout = 60 * time.Second
-	GHTimeout  = 300 * time.Second
-)
+// GitTimeout bounds one git call.
+const GitTimeout = 60 * time.Second
 
 // worktreeDir is where lighthouse puts its worktrees, relative to the main checkout.
 const worktreeDir = ".claude/worktrees"
 
-// Env is what Collect reaches outside itself. Run starts git and gh (a test hands in a replay);
-// a git call gets GitTimeout on top of whatever Run enforces.
+// Env is what Collect reaches outside itself. Run starts git (a test hands in a fake); a git call
+// gets GitTimeout on top of whatever Run enforces. Forge opens the forge of `[forge] repo` for the
+// PR lookups; it is only called when that is set.
 type Env struct {
 	Run    procrun.Func
 	Config func() (*config.Config, error)
+	Forge  func(ctx context.Context) (forge.Forge, error)
 	Alive  Alive
 	Home   string    // the home directory; `.claude/sessions` and `.claude/projects` hang below it
-	Stderr io.Writer // the notice that the PR lookup is skipped
+	Stderr io.Writer // the notice that the PR lookup is skipped or failed
 }
 
 // Failure stops the command: Message goes to stderr, Code is the exit code.
@@ -44,12 +44,10 @@ type Failure struct {
 
 func (f *Failure) Error() string { return f.Message }
 
-// Audit is what Collect found: the rows, the policy the ladder judges them with, and the repo of
-// the PR lookups ("" when `[forge] repo` is not set).
+// Audit is what Collect found: the rows and the policy the ladder judges them with.
 type Audit struct {
 	Rows   []Row
 	Policy Policy
-	Repo   string
 }
 
 // The read-only git allowlist: exactly the verbs this command issues. A verb outside it is a
@@ -115,15 +113,6 @@ func (c *collector) git(dir string, args ...string) *string {
 	ctx, cancel := context.WithTimeout(c.ctx, GitTimeout)
 	defer cancel()
 	res, err := c.env.Run(ctx, dir, nil, "git", args...)
-	if err != nil || res.Code != 0 {
-		return nil
-	}
-	return ptr(pytext.UniversalNewlines(res.Stdout))
-}
-
-// gh runs gh and returns its stdout, or nil when it failed.
-func (c *collector) gh(args ...string) *string {
-	res, err := c.env.Run(c.ctx, "", nil, "gh", args...)
 	if err != nil || res.Code != 0 {
 		return nil
 	}
@@ -215,14 +204,15 @@ func Collect(ctx context.Context, env Env, repoRoot string) (*Audit, error) {
 	if repo == "" {
 		_, _ = fmt.Fprintln(env.Stderr, "worktree-audit: PR lookup skipped — [forge] repo is not set, so every PR state is unknown")
 	}
-	raw, lookupOK := c.pulls(repo)
-	pulls := map[string]PullInfo{}
-	if lookupOK {
+	pulls, lookupOK := map[string]PullInfo{}, false
+	if repo != "" {
 		var perr error
-		if pulls, perr = ParsePulls(raw); perr != nil {
-			// An unreadable PR is no signal, and no signal is no cleanup yes.
+		if pulls, perr = readPulls(ctx, env); perr != nil {
+			// A failed lookup is no signal, and no signal is no cleanup yes: never "no PR".
 			_, _ = fmt.Fprintln(env.Stderr, "worktree-audit: PR lookup failed — "+perr.Error())
-			pulls, lookupOK = map[string]PullInfo{}, false
+			pulls = map[string]PullInfo{}
+		} else {
+			lookupOK = true
 		}
 	}
 
@@ -268,7 +258,7 @@ func Collect(ctx context.Context, env Env, repoRoot string) (*Audit, error) {
 	if c.refused != nil {
 		return nil, &Failure{Code: 1, Message: "worktree-audit: " + c.refused.Error()}
 	}
-	return &Audit{Rows: BuildRows(in, env.Alive), Policy: c.policy, Repo: repo}, nil
+	return &Audit{Rows: BuildRows(in, env.Alive), Policy: c.policy}, nil
 }
 
 func dirtyOf(status *string) *bool {
@@ -278,54 +268,51 @@ func dirtyOf(status *string) *bool {
 	return ptr(pytext.Strip(*status) != "")
 }
 
-// pulls is `gh api --paginate` over every PR of repo. false: the lookup failed or there is no repo
-// — then every PR state is unknown, never "no PR".
-func (c *collector) pulls(repo string) ([]any, bool) {
-	if repo == "" {
-		return nil, false
+// readPulls is the heaviest pull or merge request per head branch, over every one of the forge.
+func readPulls(ctx context.Context, env Env) (map[string]PullInfo, error) {
+	f, err := env.Forge(ctx)
+	if err != nil {
+		return nil, err
 	}
-	out := c.gh("api", "--paginate", "repos/"+repo+"/pulls?state=all&per_page=100",
-		"--jq", ".[] | {number, state, merged_at, head: {ref: .head.ref}}")
-	if out == nil {
-		return nil, false
+	changes, err := f.ListChanges(ctx, "all")
+	if err != nil {
+		return nil, err
 	}
-	payload := []any{}
-	for _, line := range pytext.SplitLines(*out, false) {
-		line = pytext.Strip(line)
-		if line == "" {
-			continue
-		}
-		var v any
-		if json.Unmarshal([]byte(line), &v) == nil {
-			payload = append(payload, v)
-		}
-	}
-	return payload, true
+	return ParsePulls(changes)
 }
 
-// issuePRsQuery is ISSUE_PRS_QUERY of the Python, byte for byte.
-const issuePRsQuery = `query($owner:String!,$name:String!,$nr:Int!){repository(owner:$owner,name:$name){issue(number:$nr){
-  closedByPullRequestsReferences(first:50,includeClosedPrs:true){nodes{headRefName merged isCrossRepository repository{nameWithOwner}}}
-  timelineItems(itemTypes:[CROSS_REFERENCED_EVENT],first:100){nodes{... on CrossReferencedEvent{source{... on PullRequest{headRefName merged isCrossRepository body repository{nameWithOwner}}}}}}}}}`
+// IssuePRHeads asks the forge of `[forge] repo` for the merged PR heads of issue nr; false when
+// the lookup failed or there is no repo, with the reason on Env.Stderr. That is never "no PRs".
+func IssuePRHeads(ctx context.Context, env Env, nr int) ([]string, bool) {
+	heads, err := issuePRHeads(ctx, env, nr)
+	if err != nil {
+		_, _ = fmt.Fprintf(env.Stderr, "worktree-audit: PR lookup for issue #%d failed — %v\n", nr, err)
+		return nil, false
+	}
+	return heads, true
+}
 
-// IssuePRHeads asks GitHub for the merged PR heads of issue nr in repo; false when the lookup
-// failed or there is no repo.
-func IssuePRHeads(ctx context.Context, env Env, repo string, nr int) ([]string, bool) {
-	if repo == "" {
-		return nil, false
+func issuePRHeads(ctx context.Context, env Env, nr int) ([]string, error) {
+	cfg, err := env.Config()
+	if err != nil {
+		return nil, err
 	}
-	owner, name, _ := strings.Cut(repo, "/")
-	c := &collector{ctx: ctx, env: env}
-	out := c.gh("api", "graphql", "-f", "owner="+owner, "-f", "name="+name, "-F", "nr="+itoa(nr),
-		"-f", "query="+issuePRsQuery)
-	if out == nil {
-		return nil, false
+	_, repo, err := policyFrom(cfg)
+	switch {
+	case err != nil:
+		return nil, err
+	case repo == "":
+		return nil, errors.New("[forge] repo is not set")
 	}
-	var payload any
-	if json.Unmarshal([]byte(*out), &payload) != nil {
-		return nil, false
+	f, err := env.Forge(ctx)
+	if err != nil {
+		return nil, err
 	}
-	return ParseIssuePRHeads(payload, repo, nr)
+	changes, err := f.IssueChanges(ctx, nr)
+	if err != nil {
+		return nil, err
+	}
+	return ParseIssuePRHeads(changes, repo, nr), nil
 }
 
 // probeAll measures every branch that no protected ref covers; the ref of a remote-only branch is

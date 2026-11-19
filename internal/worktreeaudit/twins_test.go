@@ -14,7 +14,6 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/config"
 	"github.com/CorneeldH/lighthouse/internal/procrun"
-	"github.com/CorneeldH/lighthouse/internal/scriptcase"
 )
 
 // The twins of the tests of tests/pack/test_worktree_audit.py that are no data: processes, time,
@@ -271,41 +270,13 @@ func TestCollectWithoutForgeRepoSkipsTheLookup(t *testing.T) {
 	if stderr.String() != want {
 		t.Fatalf("stderr %q, want %q", stderr.String(), want)
 	}
-	if audit.Repo != "" {
-		t.Fatalf("repo %q, want none", audit.Repo)
-	}
 	for _, r := range audit.Rows {
 		if r.PRLookupOK {
 			t.Errorf("row %s: PR lookup ok without a lookup", r.Name)
 		}
 	}
-	if _, ok := IssuePRHeads(context.Background(), env, "", 9); ok {
-		t.Error("IssuePRHeads without a repo must fail, not find nothing") // the fake refuses gh
-	}
-}
-
-// twin of test_run_gh_issue_pr_heads_argv
-func TestIssuePRHeadsArgvAndFailures(t *testing.T) {
-	argv := []string{"gh", "api", "graphql", "-f", "owner=o", "-f", "name=r", "-F", "nr=9", "-f", "query=" + issuePRsQuery}
-	empty := `{"data":{"repository":{"issue":{"closedByPullRequestsReferences":{"nodes":[]},"timelineItems":{"nodes":[]}}}}}`
-	for _, tt := range []struct {
-		name  string
-		call  scriptcase.Call
-		heads []string
-		ok    bool
-	}{
-		{"found nothing", scriptcase.Call{Argv: argv, Stdout: empty}, []string{}, true},
-		{"gh fails", scriptcase.Call{Argv: argv, Code: 1}, nil, false},
-		{"no json", scriptcase.Call{Argv: argv, Stdout: "niet-json"}, nil, false},
-		{"timeout", scriptcase.Call{Argv: argv, Timeout: true}, nil, false},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			env := Env{Run: scriptcase.Replay(t, []scriptcase.Call{tt.call})}
-			heads, ok := IssuePRHeads(context.Background(), env, "o/r", 9)
-			if ok != tt.ok || !reflect.DeepEqual(heads, tt.heads) {
-				t.Errorf("IssuePRHeads = %v %v, want %v %v", heads, ok, tt.heads, tt.ok)
-			}
-		})
+	if _, ok := IssuePRHeads(context.Background(), env, 9); ok { // env.Forge is nil: opening it panics
+		t.Error("IssuePRHeads without a repo must fail, not find nothing")
 	}
 }
 
@@ -494,61 +465,6 @@ func TestFnmatchMatchesPython(t *testing.T) {
 		}
 		if !reflect.DeepEqual(got, tt.hits) {
 			t.Errorf("fnmatch %q: got %q, want %q", tt.pattern, got, tt.hits)
-		}
-	}
-}
-
-// Python stopped the whole run on a pull it could not read; skipping an open PR would let a merged
-// one win.
-func TestParsePullsFailsOnAPullItCannotRead(t *testing.T) {
-	for name, pull := range map[string]string{
-		"number is no integer": `{"number":"x","state":"open","merged_at":null,"head":{"ref":"a"}}`,
-		"number is missing":    `{"state":"open","merged_at":null,"head":{"ref":"a"}}`,
-		"head is null":         `{"number":1,"state":"open","merged_at":null,"head":null}`,
-		"state is unknown":     `{"number":1,"state":"draft","merged_at":null,"head":{"ref":"a"}}`,
-	} {
-		t.Run(name, func(t *testing.T) {
-			var item any
-			if err := json.Unmarshal([]byte(pull), &item); err != nil {
-				t.Fatal(err)
-			}
-			if got, err := ParsePulls([]any{item}); err == nil {
-				t.Fatalf("ParsePulls = %v, want an error", got)
-			}
-		})
-	}
-}
-
-// An unreadable PR makes the whole lookup fail: the row says unknown and never cleans up.
-func TestCollectTreatsAnUnreadablePullAsAFailedLookup(t *testing.T) {
-	f := &gitFake{answer: func(args []string) *string {
-		if args[0] == "branch" && len(args) == 2 {
-			return ptr("main\nfeat-x\n")
-		}
-		return mainOnly(args)
-	}}
-	env, stderr := collectEnv(t, f, "[forge]\nrepo = \"o/r\"\n")
-	git := env.Run
-	env.Run = func(ctx context.Context, dir string, in *string, name string, args ...string) (procrun.Result, error) {
-		if name == "gh" {
-			return procrun.Result{Stdout: `{"number":1,"state":"merged","merged_at":"2026-01-01T00:00:00Z","head":{"ref":"feat-x"}}` + "\n" +
-				`{"number":"x","state":"open","merged_at":null,"head":{"ref":"feat-x"}}` + "\n"}, nil
-		}
-		return git(ctx, dir, in, name, args...)
-	}
-	audit, err := Collect(context.Background(), env, "/repo")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(stderr.String(), "PR lookup failed") {
-		t.Errorf("stderr %q does not say the lookup failed", stderr.String())
-	}
-	if len(audit.Rows) == 0 {
-		t.Fatal("no rows to check")
-	}
-	for _, r := range audit.Rows {
-		if r.PRLookupOK || r.PRState != nil {
-			t.Errorf("row %s: lookup ok %v, state %v; want an unknown PR", r.Name, r.PRLookupOK, r.PRState)
 		}
 	}
 }

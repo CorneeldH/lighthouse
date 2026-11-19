@@ -14,8 +14,14 @@ import (
 )
 
 func defaultWorktreeAuditEnv() worktreeaudit.Env {
+	return worktreeAuditEnv(newDefaultForgeOpener())
+}
+
+// worktreeAuditEnv starts git for real and opens the forge of lighthouse.toml (LIGHTHOUSE_TOML,
+// else the repo root) with o.
+func worktreeAuditEnv(o *forgeOpener) worktreeaudit.Env {
 	return worktreeaudit.Env{
-		Run: procrun.Exec(worktreeaudit.GHTimeout),
+		Run: procrun.Exec(worktreeaudit.GitTimeout),
 		Config: func() (*config.Config, error) {
 			path, err := config.Path()
 			if err != nil {
@@ -23,6 +29,7 @@ func defaultWorktreeAuditEnv() worktreeaudit.Env {
 			}
 			return config.Load(path)
 		},
+		Forge: forgeOpenWith(o, loadRepoAtConfigPath),
 		Alive: worktreeaudit.PidAlive,
 	}
 }
@@ -43,7 +50,7 @@ func ownCwd() (string, error) {
 }
 
 // newWorktreeAuditCommand is `lighthouse worktree-audit`, the port of worktree_audit.py. env starts
-// git and gh, reads the config and measures pids; a test hands in a replay.
+// git, opens the forge, reads the config and measures pids.
 func newWorktreeAuditCommand(env worktreeaudit.Env) *cobra.Command {
 	var cleanup, sessions, origin, kpi bool
 	var only, issue, repo string
@@ -108,7 +115,7 @@ func newWorktreeAuditCommand(env worktreeaudit.Env) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				heads, ok := worktreeaudit.IssuePRHeads(cmd.Context(), e, audit.Repo, nr)
+				heads, ok := worktreeaudit.IssuePRHeads(cmd.Context(), e, nr)
 				if _, err := fmt.Fprint(out, view.Issue(audit.Rows, nr, heads, ok, cwd)); err != nil {
 					return err
 				}

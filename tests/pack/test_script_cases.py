@@ -25,7 +25,6 @@ FIXTURES = Path(__file__).parent / "fixtures" / "scripts"
 COMMANDS: dict[str, list[str]] = {
     "_self": [],
     "post-artefact": [str(lighthouse_dir() / "lighthouse"), "post-artefact"],
-    "worktree-audit": [str(lighthouse_dir() / "lighthouse"), "worktree-audit"],
 }
 
 

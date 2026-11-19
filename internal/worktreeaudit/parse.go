@@ -3,11 +3,13 @@ package worktreeaudit
 import (
 	"fmt"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 	"unicode"
 
+	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/prbody"
 	"github.com/CorneeldH/lighthouse/internal/pytext"
 )
@@ -54,8 +56,8 @@ func jsonInt(v any) (int, bool) {
 	return 0, false
 }
 
-// prRank orders the PRs of one head branch: open weighs heaviest, then merged, then closed. A
-// state REST never gives has no rank.
+// prRank orders the PRs of one head branch: open weighs heaviest, then merged, then closed. Any
+// other state has no rank.
 func prRank(state string) (int, bool) {
 	switch state {
 	case "open":
@@ -68,44 +70,29 @@ func prRank(state string) (int, bool) {
 	return 0, false
 }
 
-// ParsePulls keys the REST pulls on their head branch. REST knows only open and closed: merged is
-// a set `merged_at`. Per head the heaviest state wins, then the highest number. A pull without a
-// head, or with a head without a ref, is skipped; a pull whose number is no integer, whose head is
-// null or whose state REST never gives is an error: skipping an open PR could let a merged one win.
-func ParsePulls(payload []any) (map[string]PullInfo, error) {
+// ParsePulls keys the pull or merge requests on their head branch. A set MergedAt is merged,
+// whatever the state says. Per head the heaviest state wins, then the highest number. A change
+// without a head is skipped; a state outside open, merged and closed is an error: skipping an
+// open PR could let a merged one win.
+func ParsePulls(changes []forge.Change) (map[string]PullInfo, error) {
 	best := map[string]PullInfo{}
-	for _, item := range payload {
-		pull := object(item)
-		if pull == nil {
+	for _, ch := range changes {
+		if ch.HeadRef == "" {
 			continue
 		}
-		if head, present := pull["head"]; present && head == nil {
-			return nil, fmt.Errorf("pull %v has a null head", pull["number"])
+		info := PullInfo{Number: ch.Number, State: ch.State}
+		if !ch.MergedAt.IsZero() {
+			info.State = "merged"
+			info.MergedAt = ptr(float64(ch.MergedAt.UnixMicro()) / 1e6)
 		}
-		ref, _ := object(pull["head"])["ref"].(string)
-		if ref == "" {
-			continue
-		}
-		number, ok := jsonInt(pull["number"])
-		if !ok {
-			return nil, fmt.Errorf("pull of %s has a number that is no integer: %v", ref, pull["number"])
-		}
-		state := "closed"
-		switch s, present := pull["state"]; {
-		case truthy(pull["merged_at"]):
-			state = "merged"
-		case present:
-			state = pyStr(s)
-		}
-		rank, known := prRank(state)
+		rank, known := prRank(info.State)
 		if !known {
-			return nil, fmt.Errorf("pull #%d has an unknown state %q", number, state)
+			return nil, fmt.Errorf("change #%d has an unknown state %q", ch.Number, info.State)
 		}
-		info := PullInfo{Number: number, State: state, MergedAt: epoch(pull["merged_at"])}
-		cur, seen := best[ref]
+		cur, seen := best[ch.HeadRef]
 		curRank, _ := prRank(cur.State)
-		if !seen || rank < curRank || (rank == curRank && number > cur.Number) {
-			best[ref] = info
+		if !seen || rank < curRank || (rank == curRank && ch.Number > cur.Number) {
+			best[ch.HeadRef] = info
 		}
 	}
 	return best, nil
@@ -334,66 +321,21 @@ func allDigits(s string) bool {
 	return s != ""
 }
 
-// ParseIssuePRHeads is the head branches of the merged PRs of issue nr in repo slug, in order of
-// arrival: every closing PR, and a cross-referencing PR whose body has `Refs #nr`
-// (prbody.RefsTargets). A fork PR (isCrossRepository) never counts. false: the lookup failed
-// (GraphQL errors, or no issue for that number), which is not "no PRs".
-func ParseIssuePRHeads(payload any, slug string, nr int) ([]string, bool) {
-	doc := object(payload)
-	if doc == nil || truthy(doc["errors"]) {
-		return nil, false
-	}
-	data, ok := doc["data"].(map[string]any)
-	if !ok {
-		return nil, false
-	}
-	repository, ok := data["repository"].(map[string]any)
-	if !ok {
-		return nil, false
-	}
-	issue, ok := repository["issue"].(map[string]any)
-	if !ok {
-		return nil, false
-	}
+// ParseIssuePRHeads is the head branches of the merged pull or merge requests of issue nr in
+// repo slug, each once, in the order of changes: one that closes the issue, and one that mentions
+// it with a `Refs #nr` line in its body (prbody.RefsTargets). One from another repository, or
+// with its head in a fork, never counts. The repository compares without case.
+func ParseIssuePRHeads(changes []forge.IssueChange, slug string, nr int) []string {
 	heads := []string{}
-	take := func(node any, needsRefs bool) {
-		n := object(node)
-		if n == nil || !truthy(n["merged"]) {
-			return
+	for _, c := range changes {
+		switch {
+		case c.State != "MERGED", c.HeadRef == "", c.CrossRepo, !strings.EqualFold(c.Repo, slug):
+			continue
+		case !c.Closes && !slices.Contains(prbody.RefsTargets(c.Body), nr):
+			continue
+		case !slices.Contains(heads, c.HeadRef):
+			heads = append(heads, c.HeadRef)
 		}
-		head, _ := n["headRefName"].(string)
-		repo, _ := object(n["repository"])["nameWithOwner"].(string)
-		if head == "" || repo != slug || truthy(n["isCrossRepository"]) {
-			return
-		}
-		if needsRefs {
-			body, _ := n["body"].(string)
-			found := false
-			for _, target := range prbody.RefsTargets(body) {
-				found = found || target == nr
-			}
-			if !found {
-				return
-			}
-		}
-		for _, h := range heads {
-			if h == head {
-				return
-			}
-		}
-		heads = append(heads, head)
 	}
-	for _, node := range nodes(issue["closedByPullRequestsReferences"]) {
-		take(node, false)
-	}
-	for _, item := range nodes(issue["timelineItems"]) {
-		take(object(item)["source"], true)
-	}
-	return heads, true
-}
-
-// nodes is `(x or {}).get("nodes") or []` for a connection.
-func nodes(connection any) []any {
-	list, _ := object(connection)["nodes"].([]any)
-	return list
+	return heads
 }
