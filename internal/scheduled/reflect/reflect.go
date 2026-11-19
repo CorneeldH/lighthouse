@@ -262,6 +262,19 @@ func (j *Job) changedDocs(ctx context.Context, env scheduled.Env, dir string) ([
 		return nil, err
 	}
 	fields := strings.Split(out, "\x00")
+	if strings.Trim(out, "\x00") == "" {
+		// A clean checkout of an already committed result (a resumed run checks the pushed
+		// commit): the document is what that commit added over its parent.
+		diff, err := git(ctx, env, dir, "diff-tree", "-r", "--no-commit-id", "--no-renames", "--name-status", "-z", "--root", "HEAD", "--", j.cfg.outputDir)
+		if err != nil {
+			return nil, err
+		}
+		fields = nil
+		parts := strings.Split(diff, "\x00")
+		for i := 0; i+1 < len(parts); i += 2 {
+			fields = append(fields, fmt.Sprintf("%-2s %s", parts[i], parts[i+1]))
+		}
+	}
 	var docs []string
 	for i := 0; i < len(fields); i++ {
 		f := fields[i]

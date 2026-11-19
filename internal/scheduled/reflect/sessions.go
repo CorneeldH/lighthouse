@@ -36,7 +36,9 @@ type sessionFile struct {
 // derived from the kenn-forge adapter, not from a pattern of its own.
 func sessionDirs(home string, repo repoconfig.Repo) []string {
 	proj := workplace.ProjectDir(home, repo.Dir)
-	forge := workplace.ProjectDir(home, kennforge.WorktreeRoot(home, repo.Kind, repo.Host, repo.Slug)) + "-"
+	// kenn-forge names every worktree work-<…>; the segment keeps a repo whose name starts with
+	// ours (lighthouse-web next to lighthouse) out.
+	forge := workplace.ProjectDir(home, kennforge.WorktreeRoot(home, repo.Kind, repo.Host, repo.Slug)) + "-work-"
 	parent := filepath.Dir(proj)
 	dirs := []string{proj}
 	entries, err := os.ReadDir(parent)

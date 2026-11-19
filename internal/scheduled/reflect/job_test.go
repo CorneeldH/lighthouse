@@ -383,3 +383,23 @@ func TestCheckNamesAMissingDocument(t *testing.T) {
 		t.Errorf("Check = %v, want an error naming the missing document", err)
 	}
 }
+
+func TestAResumedRoundPassesCheckOnItsPushedCommit(t *testing.T) {
+	// After a push whose result was not recorded, the next tick finds the branch on origin and
+	// checks the pushed commit in a clean checkout, where `git status` shows nothing. Fails if
+	// Check finds the document only through the work tree status: the run would end failed with
+	// a correct commit on origin.
+	r := newRig(t)
+	j := bind(t, three)
+	env, v, startSHA := start(t, r, j)
+	put(t, env.Dir, docPath, "# Candidates\n"+strings.Repeat("line\n", 5))
+	remote := bareRemote{r.origin}
+	first, err := scheduled.Postcheck(context.Background(), env.Run, j, env, v, startSHA, e2eBranch, remote)
+	if err != nil || first.Failure != "" || !first.Changed {
+		t.Fatalf("first Postcheck = %+v, %v", first, err)
+	}
+	again, err := scheduled.Postcheck(context.Background(), env.Run, j, env, v, startSHA, e2eBranch, remote)
+	if err != nil || again.Failure != "" || !again.Changed || again.Commit != first.Commit {
+		t.Fatalf("resume Postcheck = %+v, %v; want the same pushed commit, no failure", again, err)
+	}
+}

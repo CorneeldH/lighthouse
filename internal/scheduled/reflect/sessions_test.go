@@ -35,12 +35,14 @@ func TestFindSessionsCoversRepoWorktreesAndKennForgeDirs(t *testing.T) {
 	now := time.Now()
 	proj := workplace.ProjectDir(home, repo.Dir)
 	forge := workplace.ProjectDir(home, filepath.Join(home, ".kenn", "forge", "worktrees", "github", "github.com", "owner", "my_repo", "work-issue-3-x"))
-	other := workplace.ProjectDir(home, "/srv/code/my_repo-239") // another clone: not ours
+	other := workplace.ProjectDir(home, "/srv/code/my_repo-239")                                                                                                // another clone: not ours
+	sibling := workplace.ProjectDir(home, filepath.Join(home, ".kenn", "forge", "worktrees", "github", "github.com", "owner", "my_repo-web", "work-issue-9-y")) // another repo whose name starts with ours
 	for _, p := range []string{
 		filepath.Join(proj, "a.jsonl"),
 		proj + "--claude-worktrees-feat-x/b.jsonl",
 		forge + "/c.jsonl",
 		filepath.Join(other, "d.jsonl"),
+		filepath.Join(sibling, "e.jsonl"),
 	} {
 		touch(t, p, now)
 	}
@@ -56,7 +58,7 @@ func TestFindSessionsCoversRepoWorktreesAndKennForgeDirs(t *testing.T) {
 	}
 	slices.Sort(ids)
 	if !slices.Equal(ids, []string{"a", "b", "c"}) {
-		t.Errorf("sessions = %v, want a b c (not the other clone, no subagent, no .txt)", ids)
+		t.Errorf("sessions = %v, want a b c (not the other clone, not a sibling repo of the forge, no subagent, no .txt)", ids)
 	}
 }
 
