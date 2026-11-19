@@ -98,33 +98,18 @@ func (c *GitHub) ClosedInMilestone(ctx context.Context, m Milestone, since time.
 
 // BlockedBy lists the issues that block issue number. MergedPR stays false: REST does not say.
 func (c *GitHub) BlockedBy(ctx context.Context, number int) ([]Blocker, error) {
-	if err := c.configured(); err != nil {
-		return nil, err
-	}
-	type item struct {
-		Number        int    `json:"number"`
-		State         string `json:"state"`
-		RepositoryURL string `json:"repository_url"`
-	}
-	var out []Blocker
-	url := fmt.Sprintf("%s/repos/%s/issues/%d/dependencies/blocked_by?per_page=100", c.BaseURL, c.Repo, number)
-	for url != "" {
-		var page []item
-		next, err := c.do(ctx, http.MethodGet, url, nil, &page)
-		if err != nil {
-			return nil, err
-		}
-		for _, it := range page {
-			out = append(out, Blocker{Repo: repoFromURL(it.RepositoryURL), Issue: it.Number, State: strings.ToUpper(it.State)})
-		}
-		url = next
-	}
-	return out, nil
+	return c.dependencies(ctx, number, "blocked_by")
 }
 
 // Blocking lists the issues that issue number blocks, with their own state. MergedPR stays
 // false. Every page is followed; a failing page is an error.
 func (c *GitHub) Blocking(ctx context.Context, number int) ([]Blocker, error) {
+	return c.dependencies(ctx, number, "blocking")
+}
+
+// dependencies reads one dependency list of issue number, "blocked_by" or "blocking", following
+// every page.
+func (c *GitHub) dependencies(ctx context.Context, number int, kind string) ([]Blocker, error) {
 	if err := c.configured(); err != nil {
 		return nil, err
 	}
@@ -134,7 +119,7 @@ func (c *GitHub) Blocking(ctx context.Context, number int) ([]Blocker, error) {
 		RepositoryURL string `json:"repository_url"`
 	}
 	var out []Blocker
-	url := fmt.Sprintf("%s/repos/%s/issues/%d/dependencies/blocking?per_page=100", c.BaseURL, c.Repo, number)
+	url := fmt.Sprintf("%s/repos/%s/issues/%d/dependencies/%s?per_page=100", c.BaseURL, c.Repo, number, kind)
 	for url != "" {
 		var page []item
 		next, err := c.do(ctx, http.MethodGet, url, nil, &page)
