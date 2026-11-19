@@ -6,6 +6,8 @@ package forgetest
 import (
 	"bytes"
 	"cmp"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -117,6 +119,14 @@ type Server struct {
 	// that operation answers 200 with that error and null data; the others work as usual.
 	FailOps map[string]string
 
+	// ProjectAtOrg puts the project under /orgs/{owner}/projectsV2/{number}; /users/{owner}/…
+	// then answers 404. By default it is under /users/.
+	ProjectAtOrg bool
+	// FieldIDs are the node IDs of the single-select fields of the project; nil is every
+	// field.id in BoardNodes plus DefaultFieldIDs. Their REST IDs are 100 plus the index in the
+	// sorted list; the field "Linked pull requests" is always 99.
+	FieldIDs []string
+
 	// StatusSets are the variables of every SetStatus, in order; a failed one is in it too, but
 	// changes nothing. Read it after the requests returned.
 	StatusSets []map[string]any
@@ -128,6 +138,7 @@ type Server struct {
 	srv    *httptest.Server
 	mu     sync.Mutex
 	counts map[string]int
+	notMod map[string]int
 }
 
 // Post is one write request (POST, PATCH, PUT or DELETE) as the server received it. Body is nil
@@ -141,7 +152,7 @@ type Post struct {
 // New starts a server that closes when the test ends.
 func New(t *testing.T) *Server {
 	t.Helper()
-	s := &Server{t: t, counts: map[string]int{}}
+	s := &Server{t: t, counts: map[string]int{}, notMod: map[string]int{}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /user", s.user)
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues", s.listIssues)
@@ -170,12 +181,13 @@ func New(t *testing.T) *Server {
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues/comments/{id}/reactions", s.reactions)
 	mux.HandleFunc("POST /repos/{owner}/{name}/issues/comments/{id}/reactions", s.addReaction)
 	mux.HandleFunc("GET /repos/{owner}/{name}/collaborators/{user}/permission", s.permission)
+	s.projectRoutes(mux)
 	mux.HandleFunc("POST /graphql", s.graphql)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		t.Errorf("forgetest: unexpected request %s %s", r.Method, r.URL)
 		writeJSON(w, http.StatusNotFound, map[string]any{"message": "Not Found"})
 	})
-	s.srv = httptest.NewServer(s.record(mux))
+	s.srv = httptest.NewServer(s.etag(s.record(mux)))
 	t.Cleanup(s.srv.Close)
 	return s
 }
@@ -189,6 +201,49 @@ func (s *Server) Count(key string) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.counts[key]
+}
+
+// NotModified returns how many GET requests to key (a path, as Count takes it) were answered
+// 304 because their If-None-Match matched the ETag of the body.
+func (s *Server) NotModified(key string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.notMod[key]
+}
+
+// etag gives every 200 answer to a GET an ETag (sha256 of the body) and answers a request with
+// that ETag in If-None-Match 304, without a body and without Link, as GitHub does.
+func (s *Server) etag(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			next.ServeHTTP(w, r)
+			return
+		}
+		rec := httptest.NewRecorder()
+		next.ServeHTTP(rec, r)
+		for k, v := range rec.Header() {
+			w.Header()[k] = v
+		}
+		if rec.Code != http.StatusOK {
+			w.WriteHeader(rec.Code)
+			_, _ = w.Write(rec.Body.Bytes())
+			return
+		}
+		sum := sha256.Sum256(rec.Body.Bytes())
+		tag := `"` + hex.EncodeToString(sum[:]) + `"`
+		w.Header().Set("ETag", tag)
+		if r.Header.Get("If-None-Match") == tag {
+			w.Header().Del("Link")
+			w.Header().Del("Content-Type")
+			s.mu.Lock()
+			s.notMod[r.URL.Path]++
+			s.mu.Unlock()
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+		w.WriteHeader(rec.Code)
+		_, _ = w.Write(rec.Body.Bytes())
+	})
 }
 
 func (s *Server) inc(key string) {

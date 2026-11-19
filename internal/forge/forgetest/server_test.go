@@ -181,3 +181,36 @@ func TestPostPullsRefusesMilestone(t *testing.T) {
 		t.Errorf("pulls = %d, want none stored", len(srv.Pulls))
 	}
 }
+
+func TestServerETag304(t *testing.T) {
+	srv := forgetest.New(t)
+	srv.Login = "lh-bot"
+	get := func(etag string) *http.Response {
+		req, _ := http.NewRequest(http.MethodGet, srv.URL()+"/user", nil)
+		req.Header.Set("Authorization", "Bearer x")
+		if etag != "" {
+			req.Header.Set("If-None-Match", etag)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = resp.Body.Close() })
+		return resp
+	}
+	first := get("")
+	etag := first.Header.Get("ETag")
+	if first.StatusCode != 200 || etag == "" {
+		t.Fatalf("first: %d, ETag %q; want 200 with an ETag", first.StatusCode, etag)
+	}
+	second := get(etag)
+	if second.StatusCode != http.StatusNotModified || second.Header.Get("Link") != "" {
+		t.Fatalf("second: %d, Link %q; want 304 without Link", second.StatusCode, second.Header.Get("Link"))
+	}
+	if srv.NotModified("/user") != 1 {
+		t.Fatalf("NotModified(/user) = %d, want 1", srv.NotModified("/user"))
+	}
+	if other := get(`"other"`); other.StatusCode != 200 || srv.NotModified("/user") != 1 {
+		t.Fatalf("a different ETag: %d, 304s %d; want 200 and 1", other.StatusCode, srv.NotModified("/user"))
+	}
+}

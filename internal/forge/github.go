@@ -53,6 +53,8 @@ type GitHub struct {
 	mu      sync.Mutex
 	nodeIDs map[int]string // issue number → node ID, filled by Issue and OpenIssues
 	base    string         // default branch, filled by CreatePR
+	proj    project        // the REST coordinates of the board, valid when projOK
+	projOK  bool
 }
 
 // DefaultBaseURL is the GitHub API root.
