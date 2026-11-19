@@ -16,6 +16,7 @@ func TestGitHubConformance(t *testing.T) { forgesuite.Run(t, newGitHubFixture) }
 
 // githubBoard is the [forge.board] of the GitHub fixture.
 var githubBoard = repoconfig.Board{
+	ProjectNumber:   1,
 	ProjectID:       "PVT_1",
 	StatusFieldID:   "F_status",
 	PriorityFieldID: "F_prio",
@@ -49,9 +50,6 @@ func newGitHubFixture(t *testing.T) forgesuite.Fixture {
 func (g *githubFixture) Forge() forge.Forge { return g.f }
 func (g *githubFixture) Repo() string       { return "o/r" }
 func (g *githubFixture) Login() string      { return g.srv.Login }
-
-// ChecksOnClosedPRs: statusCheckRollup is on every pull request GitHub lists.
-func (g *githubFixture) ChecksOnClosedPRs() bool { return true }
 
 func (g *githubFixture) PRCommentBodies(t *testing.T, number int) []string {
 	t.Helper()

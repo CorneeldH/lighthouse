@@ -16,6 +16,7 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/config"
 	"github.com/CorneeldH/lighthouse/internal/forge"
+	"github.com/CorneeldH/lighthouse/internal/forgecache"
 	"github.com/CorneeldH/lighthouse/internal/gitinvocations"
 )
 
@@ -66,6 +67,7 @@ func (e Env) issue() func(ctx context.Context, repo Repo, nr int) (string, error
 // forgeIssue reads an issue body through the forge of the repo, with the token that forge.Token
 // finds through getenv; for GitHub `gh auth token` (through gh) is the last resort.
 func forgeIssue(gh func(context.Context, ...string) (string, int, error), getenv func(string) string) func(context.Context, Repo, int) (string, error) {
+	cache := forgecache.NewLazy(getenv, os.Stderr)
 	return func(ctx context.Context, repo Repo, nr int) (string, error) {
 		token, err := forge.Token(repo.Kind, repo.TokenEnv, getenv)
 		var te *forge.TokenError
@@ -82,6 +84,7 @@ func forgeIssue(gh func(context.Context, ...string) (string, int, error), getenv
 		cfg := forge.Config{Kind: repo.Kind, Repo: repo.Slug, Host: repo.Host, Token: token}
 		if repo.Kind == "" || repo.Kind == "github" {
 			cfg.BaseURL = loopbackAPIURL(getenv(GitHubAPIURLEnv))
+			cfg.Cache, cfg.CacheLog = cache.Store(), os.Stderr
 		}
 		f, err := forge.Open(cfg)
 		if err != nil {

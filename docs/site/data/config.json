@@ -271,6 +271,7 @@
               "about": "The id of the board's Priority field.",
               "example": "PVTSSF_...",
               "readers": [
+                "internal/forge/project.go",
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/forge"
               ]
@@ -292,6 +293,17 @@
               ]
             },
             {
+              "key": "forge.board.project_owner",
+              "level": "optional",
+              "required": "no",
+              "about": "The user or organisation that owns the GitHub project board. Needed only when the owner is not the repository owner.",
+              "example": "acme",
+              "readers": [
+                "internal/forge/project.go",
+                "internal/repoconfig/repoconfig.go"
+              ]
+            },
+            {
               "key": "forge.board.project_id",
               "level": "optional",
               "required": "with [forge.board]",
@@ -299,7 +311,7 @@
               "example": "PVT_...",
               "readers": [
                 "internal/cli/triage.go",
-                "internal/forge/board.go",
+                "internal/forge/project.go",
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/close-issue",
                 "pack/core/skills/forge",
@@ -314,6 +326,7 @@
               "about": "The number of the GitHub project board.",
               "example": 1,
               "readers": [
+                "internal/forge/project.go",
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/forge",
                 "pack/core/skills/start-issue",
@@ -329,6 +342,7 @@
               "example": "PVTSSF_...",
               "readers": [
                 "internal/cli/triage.go",
+                "internal/forge/project.go",
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/close-issue",
                 "pack/core/skills/write-handoff",

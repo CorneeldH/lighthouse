@@ -55,10 +55,6 @@ type Fixture interface {
 	// StatusOf is the last status the forge wrote for issue number, as a lighthouse name; ""
 	// when it wrote none.
 	StatusOf(t *testing.T, number int) string
-	// ChecksOnClosedPRs reports whether BranchPRs carries the checks of a closed or merged PR
-	// too. GitHub does; GitLab reads head_pipeline only for an open merge request, the only
-	// PR whose checks the dispatcher reads.
-	ChecksOnClosedPRs() bool
 	// PRCommentBodies lists the comment bodies on pull request number, oldest first. GitHub
 	// keeps them with the issue comments; GitLab keeps a merge request's notes apart.
 	PRCommentBodies(t *testing.T, number int) []string
@@ -643,13 +639,9 @@ func prFields(t *testing.T, f Fixture) {
 		t.Fatalf("BranchPRs = %+v, want one PR", prs)
 	}
 	p := prs[0]
-	wantChecks := ""
-	if f.ChecksOnClosedPRs() {
-		wantChecks = "SUCCESS"
-	}
 	if p.Number != 12 || p.State != "MERGED" || p.HeadSHA != "abc123" || p.HeadRef != "issue-7-x" || p.BaseRef != "main" ||
-		p.Checks != wantChecks || p.Mergeable != "MERGEABLE" || !p.MergedAt.Equal(mergedAt) || p.Closes {
-		t.Errorf("BranchPRs[0] = %+v; want #12 MERGED at %s, head abc123 on issue-7-x, checks %q, MERGEABLE, Closes false", p, mergedAt, wantChecks)
+		p.Checks != "" || p.Mergeable != "MERGEABLE" || !p.MergedAt.Equal(mergedAt) || p.Closes {
+		t.Errorf("BranchPRs[0] = %+v; want #12 MERGED at %s, head abc123 on issue-7-x, no checks, MERGEABLE, Closes false", p, mergedAt)
 	}
 
 	f.AddOpenPR(t, forge.OpenPR{Number: 13, Title: "Fix it", Body: "Closes #7", HeadRef: "issue-7-x"})

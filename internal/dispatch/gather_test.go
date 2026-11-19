@@ -24,6 +24,7 @@ import (
 )
 
 var testRepo = repoconfig.Repo{Slug: "o/r", Board: &repoconfig.Board{
+	ProjectNumber:   1,
 	ProjectID:       "PVT_1",
 	StatusFieldID:   "F_status",
 	PriorityFieldID: "F_prio",
@@ -175,7 +176,8 @@ func TestPrepareFiltersBoard(t *testing.T) {
 				HeadRef: "issue-1-x", Checks: "SUCCESS", Closes: true}}},
 		{Issue: 4, Title: "Issue", State: "OPEN", ItemID: "I4", Status: "On hold", Priority: "",
 			ItemUpdatedAt: itemAt, IssueUpdatedAt: issueAt,
-			BlockedBy: []forge.Blocker{{Repo: "o/r", Issue: 5, State: "CLOSED", MergedPR: true}}},
+			// #5 is not on the board: its merged closing PR is not looked up.
+			BlockedBy: []forge.Blocker{{Repo: "o/r", Issue: 5, State: "CLOSED", MergedPR: false}}},
 	}
 	if !reflect.DeepEqual(pre.Items, want) {
 		t.Errorf("Items =\n%+v\nwant\n%+v", pre.Items, want)
@@ -312,7 +314,7 @@ func TestPrepareMergesBranchPRs(t *testing.T) {
 	if len(byIssue[6]) != 0 {
 		t.Errorf("issue 6 PRs = %+v, want none", byIssue[6])
 	}
-	if n := srv.Count("BranchPRs"); n != 1 {
+	if n := srv.Count("/repos/o/r/pulls?head=issue-1-x"); n != 1 {
 		t.Errorf("BranchPRs requests = %d, want 1 (issue 4 has no run, issue 6 no branch)", n)
 	}
 	if !reflect.DeepEqual(pre.OpenRuns, open) {
@@ -584,7 +586,7 @@ func TestPrepareReadsThePRsOfScheduledRuns(t *testing.T) {
 	if !reflect.DeepEqual(pre.ScheduledPRs, want) {
 		t.Errorf("ScheduledPRs = %+v\nwant %+v", pre.ScheduledPRs, want)
 	}
-	if n := srv.Count("BranchPRs"); n != 1 {
+	if n := srv.Count("/repos/o/r/pulls?head=" + branch); n != 1 {
 		t.Errorf("BranchPRs requests = %d, want 1", n)
 	}
 	if len(pre.Items) != 1 || len(pre.Items[0].PRs) != 0 {

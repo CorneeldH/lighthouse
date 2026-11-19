@@ -76,6 +76,7 @@ type Board struct {
 	ProjectNumber   int               `toml:"project_number"`
 	ProjectID       string            `toml:"project_id"`
 	StatusFieldID   string            `toml:"status_field_id"`
+	ProjectOwner    string            `toml:"project_owner"`
 	PriorityFieldID string            `toml:"priority_field_id"`
 	StatusOptions   map[string]string `toml:"status_options"`
 	PriorityOptions map[string]string `toml:"priority_options"`

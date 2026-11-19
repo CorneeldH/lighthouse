@@ -220,7 +220,9 @@ met de laatste `started_at`.
    (`started_at` als controle).
 2. Geen runs over en `statuses[]` leeg: `""`.
 3. Anders `FAILURE` als een gehouden run de conclusie `failure`, `timed_out`, `cancelled`,
-   `action_required` of `startup_failure` heeft, of een status `failure` is.
+   `action_required` of `startup_failure` heeft, een status `failure` is, of een suite
+   `completed` is met conclusie `failure`, `timed_out`, `action_required` of `startup_failure`
+   (niet `cancelled`).
 4. Anders `ERROR` als een status `error` is.
 5. Anders `SUCCESS` als elke gehouden run `completed` is met conclusie `success`, `neutral` of
    `skipped`, elke status `success` is, en geen suite *wachtend* is (wachtend = `status !=
@@ -229,6 +231,13 @@ met de laatste `started_at`.
 
 De kandidaatregel van het plan valt af: zonder ontdubbelen geeft hij `FAILURE` op een head met
 een vervangen suite (eerste meting, `9941f44a`), en `SUCCESS` zonder enige run.
+
+De suitevoorwaarde in punt 3 kwam erbij in de review van Task 6. Een Actions-run heet alleen naar
+zijn job, zonder workflow: twee workflows met een job van dezelfde naam delen één (`app.slug`,
+`name`), en het ontdubbelen houdt dan alleen de nieuwste run. Faalde de oudere, dan zou de regel
+`SUCCESS` geven; de suite van die workflow draagt de fout nog wel. `cancelled` telt niet mee,
+omdat de vervangen suite van `9941f44a` precies zo eindigt. Geen van de gemeten samples heeft een
+suite met een faalconclusie, dus de uitkomsten van de meting veranderen niet.
 
 **Gearchiveerde items: pad B** (Step 2). Geen van beide lijsten geeft een gearchiveerd item;
 `IssueItem` blijft op GraphQL. Wel geeft `GET …/items/{id}` het item met `archived_at`, als de
