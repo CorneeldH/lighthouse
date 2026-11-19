@@ -6,6 +6,8 @@ package forgetest
 import (
 	"bytes"
 	"cmp"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -52,7 +54,8 @@ type Server struct {
 	// with its title), served by GET .../issues/{number}/events in the order given.
 	Events map[int][]map[string]any
 	// BlockedBy are the blockers per issue number in REST issue shape (number, state,
-	// repository_url), served by GET .../issues/{number}/dependencies/blocked_by.
+	// repository_url), served by GET .../issues/{number}/dependencies/blocked_by. A number
+	// without an entry is served the blockedBy nodes of its BoardNodes item in that repo.
 	BlockedBy map[int][]map[string]any
 	// Releases are the releases per repo ("owner/name") in REST shape (tag_name, name, body,
 	// html_url, draft, prerelease), served by GET /repos/{owner}/{name}/releases in the order
@@ -67,6 +70,10 @@ type Server struct {
 	// FailMessage maps the same key to the "message" of that failure; the default is the
 	// status text.
 	FailMessage map[string]string
+	// FailPage maps "METHOD path?page=<p>", such as "GET /users/o/projectsV2/1/items?page=2",
+	// to the status that page answers instead; a request without page is page 1. Fail and
+	// FailFirst key on the path alone, so they cannot fail one later page.
+	FailPage map[string]int
 	// Milestones are the milestones in REST shape (number, title, state, description), served by
 	// GET .../milestones and changed by POST and PATCH; an issue's milestone is looked up here.
 	Milestones []map[string]any
@@ -79,26 +86,25 @@ type Server struct {
 	// Rockets are the logins with a 🚀 per comment ID.
 	Rockets map[int64][]string
 	// Branches are the pull request nodes per head branch, in GraphQL shape (number, state,
-	// isDraft, mergeable, headRefOid, headRefName, statusCheckRollup). BranchPRs serves the
-	// first 20, like the query asks.
+	// isDraft, mergeable, headRefOid, headRefName, baseRefName, isCrossRepository, url,
+	// mergedAt, closedAt, statusCheckRollup). GET .../pulls?head=<owner>:<branch> serves them
+	// translated to REST, in pages; GET .../pulls/{number} serves one with mergeable, when Pulls
+	// has no such number. The statusCheckRollup.state of a node (and of a closing PR in
+	// BoardNodes) becomes the check runs, statuses and suites of its headRefOid.
 	Branches map[string][]map[string]any
 	// OpenPRNodes are the open pull requests in GraphQL shape (number, title, url, isDraft,
 	// mergeable, statusCheckRollup), served by OpenPRsWithStatus in pages of 100 in the order
 	// given, after the cursor "cursor-<offset>".
 	OpenPRNodes []map[string]any
-	// BoardNodes are the project items in GraphQL shape, served by Board in pages of 100. A
-	// nested connection carries its own pageInfo when a test sets one. A node with
-	// "isArchived": true is left out of Board, as ProjectV2.items lists no archived item, and
-	// served by IssueItems, as Issue.projectItems includes them.
+	// BoardNodes are the project items in GraphQL shape, as input only: the fake serves them as
+	// REST by GET .../projectsV2/{number}/items and .../items/{id} (the id of node i is
+	// 5000+i), and as GraphQL by IssueItems. A nested connection carries its own pageInfo when
+	// a test sets one. A node with "isArchived": true is listed by the REST items with
+	// archived_at set and served by IssueItems, as Issue.projectItems includes archived items.
 	BoardNodes []map[string]any
 	// ProjectID is the project every BoardNodes item belongs to, as IssueItems serves it in
 	// project { id }.
 	ProjectID string
-	// BoardNotAProject makes Board answer {"node": {}}, as GitHub does for an ID of another type.
-	BoardNotAProject bool
-	// BoardStuckCursor, when not nil, makes every Board page claim a next page with this
-	// endCursor, whatever the cursor asked.
-	BoardStuckCursor *string
 	// PlanMilestones are the milestones in GraphQL shape (number, title, state "OPEN" or
 	// "CLOSED", description), served by Planning's milestone query in pages of 100; only the
 	// OPEN ones, as the query asks states: OPEN. Planning's issue query and the PlanCounts search
@@ -113,11 +119,20 @@ type Server struct {
 	// GraphQLErrors, when set, makes every GraphQL operation answer 200 with these errors and
 	// null data.
 	GraphQLErrors []string
-	// FailOps maps a GraphQL operation name, such as "SetStatus", to an error message: only
+	// FailOps maps a GraphQL operation name, such as "IssueItems", to an error message: only
 	// that operation answers 200 with that error and null data; the others work as usual.
 	FailOps map[string]string
 
-	// StatusSets are the variables of every SetStatus, in order; a failed one is in it too, but
+	// ProjectAtOrg puts the project under /orgs/{owner}/projectsV2/{number}; /users/{owner}/…
+	// then answers 404. By default it is under /users/.
+	ProjectAtOrg bool
+	// FieldIDs are the node IDs of the single-select fields of the project; nil is every
+	// field.id in BoardNodes plus DefaultFieldIDs. Their REST IDs are 100 plus the index in the
+	// sorted list; the field "Linked pull requests" is always 99.
+	FieldIDs []string
+
+	// StatusSets are the item PATCHes of the project, in order, as {"project": ProjectID, "item":
+	// node ID, "field": field node ID, "option": option ID}; a failed one (Fail) is in it too, but
 	// changes nothing. Read it after the requests returned.
 	StatusSets []map[string]any
 
@@ -128,6 +143,7 @@ type Server struct {
 	srv    *httptest.Server
 	mu     sync.Mutex
 	counts map[string]int
+	notMod map[string]int
 }
 
 // Post is one write request (POST, PATCH, PUT or DELETE) as the server received it. Body is nil
@@ -141,7 +157,7 @@ type Post struct {
 // New starts a server that closes when the test ends.
 func New(t *testing.T) *Server {
 	t.Helper()
-	s := &Server{t: t, counts: map[string]int{}}
+	s := &Server{t: t, counts: map[string]int{}, notMod: map[string]int{}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /user", s.user)
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues", s.listIssues)
@@ -170,12 +186,14 @@ func New(t *testing.T) *Server {
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues/comments/{id}/reactions", s.reactions)
 	mux.HandleFunc("POST /repos/{owner}/{name}/issues/comments/{id}/reactions", s.addReaction)
 	mux.HandleFunc("GET /repos/{owner}/{name}/collaborators/{user}/permission", s.permission)
+	s.projectRoutes(mux)
+	s.pullRoutes(mux)
 	mux.HandleFunc("POST /graphql", s.graphql)
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		t.Errorf("forgetest: unexpected request %s %s", r.Method, r.URL)
 		writeJSON(w, http.StatusNotFound, map[string]any{"message": "Not Found"})
 	})
-	s.srv = httptest.NewServer(s.record(mux))
+	s.srv = httptest.NewServer(s.etag(s.record(mux)))
 	t.Cleanup(s.srv.Close)
 	return s
 }
@@ -184,11 +202,54 @@ func New(t *testing.T) *Server {
 func (s *Server) URL() string { return s.srv.URL }
 
 // Count returns how many requests hit key: a REST path such as "/user" or
-// "/repos/o/r/issues/7/comments", or a GraphQL operation name such as "Board".
+// "/repos/o/r/issues/7/comments", or a GraphQL operation name such as "Planning".
 func (s *Server) Count(key string) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.counts[key]
+}
+
+// NotModified returns how many GET requests to key (a path, as Count takes it) were answered
+// 304 because their If-None-Match matched the ETag of the body.
+func (s *Server) NotModified(key string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.notMod[key]
+}
+
+// etag gives every 200 answer to a GET an ETag (sha256 of the body) and answers a request with
+// that ETag in If-None-Match 304, without a body and without Link, as GitHub does.
+func (s *Server) etag(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			next.ServeHTTP(w, r)
+			return
+		}
+		rec := httptest.NewRecorder()
+		next.ServeHTTP(rec, r)
+		for k, v := range rec.Header() {
+			w.Header()[k] = v
+		}
+		if rec.Code != http.StatusOK {
+			w.WriteHeader(rec.Code)
+			_, _ = w.Write(rec.Body.Bytes())
+			return
+		}
+		sum := sha256.Sum256(rec.Body.Bytes())
+		tag := `"` + hex.EncodeToString(sum[:]) + `"`
+		w.Header().Set("ETag", tag)
+		if r.Header.Get("If-None-Match") == tag {
+			w.Header().Del("Link")
+			w.Header().Del("Content-Type")
+			s.mu.Lock()
+			s.notMod[r.URL.Path]++
+			s.mu.Unlock()
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+		w.WriteHeader(rec.Code)
+		_, _ = w.Write(rec.Body.Bytes())
+	})
 }
 
 func (s *Server) inc(key string) {
@@ -217,11 +278,18 @@ func (s *Server) record(next http.Handler) http.Handler {
 			s.mu.Lock()
 			s.Posts = append(s.Posts, Post{Method: r.Method, Path: r.URL.Path, Body: body})
 			s.mu.Unlock()
+			if m := itemPath.FindStringSubmatch(r.URL.Path); m != nil && r.Method == http.MethodPatch {
+				s.recordStatusSet(r.URL.Path, m[1], body)
+			}
 			r.Body = io.NopCloser(bytes.NewReader(raw))
 		}
 		key := r.Method + " " + r.URL.Path
 		if status := s.Fail[key]; status != 0 {
 			writeJSON(w, status, map[string]any{"message": cmp.Or(s.FailMessage[key], http.StatusText(status))})
+			return
+		}
+		if status := s.FailPage[key+"?page="+cmp.Or(r.URL.Query().Get("page"), "1")]; status != 0 {
+			writeJSON(w, status, map[string]any{"message": http.StatusText(status)})
 			return
 		}
 		if status := s.failFirst(r.Method + " " + r.URL.Path); status != 0 {
@@ -393,15 +461,23 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 	s.page(w, r, out)
 }
 
+// blockedBy serves BlockedBy[n], else the blockedBy nodes of the BoardNodes item of issue n in
+// the repo of the path, translated to REST.
 func (s *Server) blockedBy(w http.ResponseWriter, r *http.Request) {
 	n, err := strconv.Atoi(r.PathValue("number"))
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]any{"message": "Not Found"})
 		return
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	var out []any
-	for _, b := range s.BlockedBy[n] {
-		out = append(out, b)
+	if bs, ok := s.BlockedBy[n]; ok {
+		for _, b := range bs {
+			out = append(out, b)
+		}
+	} else {
+		out = s.nodeBlockers(r.PathValue("owner")+"/"+r.PathValue("name"), int64(n))
 	}
 	s.page(w, r, out)
 }
@@ -409,6 +485,10 @@ func (s *Server) blockedBy(w http.ResponseWriter, r *http.Request) {
 func (s *Server) pulls(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if head := r.URL.Query().Get("head"); head != "" {
+		s.branchPulls(w, r, head)
+		return
+	}
 	state := cmp.Or(r.URL.Query().Get("state"), "open")
 	var out []any
 	for _, p := range s.Pulls {
@@ -426,6 +506,10 @@ func (s *Server) pull(w http.ResponseWriter, r *http.Request) {
 	n, _ := strconv.Atoi(r.PathValue("number"))
 	if i := s.pullIndex(n); i >= 0 {
 		writeJSON(w, http.StatusOK, s.Pulls[i])
+		return
+	}
+	if p := s.nodePull(int64(n), r.PathValue("owner")+"/"+r.PathValue("name")); p != nil {
+		writeJSON(w, http.StatusOK, p)
 		return
 	}
 	writeJSON(w, http.StatusNotFound, map[string]any{"message": "Not Found"})
@@ -619,11 +703,6 @@ func (s *Server) graphql(w http.ResponseWriter, r *http.Request) {
 	}
 	op := operationName(req.Query)
 	s.inc(op)
-	if op == "SetStatus" {
-		s.mu.Lock()
-		s.StatusSets = append(s.StatusSets, req.Variables)
-		s.mu.Unlock()
-	}
 	msgs := s.GraphQLErrors
 	if m, ok := s.FailOps[op]; ok {
 		msgs = []string{m}
@@ -638,8 +717,6 @@ func (s *Server) graphql(w http.ResponseWriter, r *http.Request) {
 	}
 	var data any
 	switch op {
-	case "Board":
-		data = s.board(req.Variables)
 	case "Planning":
 		data = s.planIssues(req.Variables)
 	case "PlanMilestones":
@@ -650,15 +727,6 @@ func (s *Server) graphql(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusOK, map[string]any{"data": nil, "errors": []any{map[string]any{"message": err.Error()}}})
 			return
 		}
-	case "BranchPRs":
-		branch, _ := req.Variables["branch"].(string)
-		nodes := s.Branches[branch]
-		more := len(nodes) > 20
-		nodes = nodes[:min(len(nodes), 20)]
-		data = map[string]any{"repository": map[string]any{"pullRequests": map[string]any{
-			"pageInfo": map[string]any{"hasNextPage": more},
-			"nodes":    append([]map[string]any{}, nodes...),
-		}}}
 	case "OpenPRsWithStatus":
 		data = s.openPRsWithStatus(req.Variables)
 	case "IssueItems":
@@ -667,48 +735,12 @@ func (s *Server) graphql(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusOK, map[string]any{"data": data, "errors": errs})
 			return
 		}
-	case "AddToBoard":
-		data = s.addToBoard(req.Variables)
-	case "SetStatus":
-		data = map[string]any{"updateProjectV2ItemFieldValue": map[string]any{
-			"projectV2Item": map[string]any{"id": req.Variables["item"]},
-		}}
 	default:
 		s.t.Errorf("forgetest: unknown GraphQL operation %q", op)
 		writeJSON(w, http.StatusOK, map[string]any{"errors": []any{map[string]any{"message": "unknown operation " + op}}})
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"data": data})
-}
-
-// board serves one page of 100 BoardNodes after the cursor "cursor-<offset>".
-func (s *Server) board(vars map[string]any) any {
-	if s.BoardNotAProject {
-		return map[string]any{"node": map[string]any{}}
-	}
-	var live []map[string]any
-	for _, n := range s.BoardNodes {
-		if archived, _ := n["isArchived"].(bool); !archived {
-			live = append(live, n)
-		}
-	}
-	start := 0
-	if after, _ := vars["after"].(string); after != "" {
-		n, err := strconv.Atoi(strings.TrimPrefix(after, "cursor-"))
-		if err != nil {
-			s.t.Errorf("forgetest: Board after = %q, not a cursor this server gave", after)
-		}
-		start = min(n, len(live))
-	}
-	end := min(start+100, len(live))
-	more, cursor := end < len(live), fmt.Sprintf("cursor-%d", end)
-	if s.BoardStuckCursor != nil {
-		more, cursor = true, *s.BoardStuckCursor
-	}
-	return map[string]any{"node": map[string]any{"items": map[string]any{
-		"pageInfo": map[string]any{"hasNextPage": more, "endCursor": cursor},
-		"nodes":    append([]map[string]any{}, live[start:end]...),
-	}}}
 }
 
 // planPage cuts items by the cursor "cursor-<offset>" in vars into a page of 100 and the
@@ -854,18 +886,23 @@ func (s *Server) searchCount(q string) (int, error) {
 }
 
 // issueItems serves the BoardNodes whose content.number is $number, each with project { id }
-// from ProjectID. The content is left out, as the real query does not select it, and so is
-// isArchived when the query does not select it. An issue with neither an Issues entry nor a
+// from ProjectID; a node whose content names another repository than $owner/$name is not one.
+// The content is left out, as the real query does not select it, and so is isArchived when
+// the query does not select it. An issue with neither an Issues entry nor a
 // BoardNodes item does not exist: it answers as GitHub does, issue null plus a NOT_FOUND error
 // on the path repository.issue.
 func (s *Server) issueItems(query string, vars map[string]any) (data any, errs []any) {
 	number, _ := vars["number"].(float64)
+	repo := fmt.Sprint(vars["owner"], "/", vars["name"])
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	nodes := []map[string]any{}
 	for _, n := range s.BoardNodes {
 		content, _ := n["content"].(map[string]any)
 		if num, ok := content["number"].(int); !ok || float64(num) != number {
+			continue
+		}
+		if other := nameWithOwner(content); other != "" && other != repo {
 			continue
 		}
 		cp := map[string]any{"project": map[string]any{"id": s.ProjectID}}
@@ -888,23 +925,6 @@ func (s *Server) issueItems(query string, vars map[string]any) (data any, errs [
 		"pageInfo": map[string]any{"hasNextPage": false},
 		"nodes":    nodes,
 	}}}}, nil
-}
-
-// addToBoard appends a BoardNodes item "item-<content>" for the Issues item whose node_id is
-// $content, and answers its id.
-func (s *Server) addToBoard(vars map[string]any) any {
-	content, _ := vars["content"].(string)
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for n, it := range s.Issues {
-		if id, _ := it["node_id"].(string); id == content {
-			item := "item-" + content
-			s.BoardNodes = append(s.BoardNodes, map[string]any{"id": item, "content": map[string]any{"number": n}})
-			return map[string]any{"addProjectV2ItemById": map[string]any{"item": map[string]any{"id": item}}}
-		}
-	}
-	s.t.Errorf("forgetest: AddToBoard content %q matches no Issues node_id", content)
-	return map[string]any{"addProjectV2ItemById": nil}
 }
 
 // operationName is the name after "query " or "mutation " at the start of a query.

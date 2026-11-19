@@ -16,6 +16,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/runs"
 	"github.com/CorneeldH/lighthouse/internal/scheduled"
 	_ "github.com/CorneeldH/lighthouse/internal/scheduled/maprefresh" // registers job map-refresh
+	_ "github.com/CorneeldH/lighthouse/internal/scheduled/reflect"    // registers job reflect
 )
 
 // job returns the scheduled job called name: from Jobs when a test set it, else the registry.
@@ -87,7 +88,7 @@ func planRepo(ctx context.Context, env tickEnv, db *sql.DB, repo repoconfig.Repo
 			fail("config: %s", oneLine(err))
 			continue
 		}
-		jenv := scheduled.Env{Repo: repo, Schedule: d.Schedule, Now: now, Run: env.runner()}
+		jenv := scheduled.Env{Repo: repo, Schedule: d.Schedule, Now: now, Run: env.runner(), Home: env.Getenv("HOME"), History: history}
 		v, err := job.Gate(ctx, jenv)
 		if err != nil {
 			// Review focus 3: a failed gate is no verdict; the slot stays open.
@@ -115,7 +116,7 @@ func planRepo(ctx context.Context, env tickEnv, db *sql.DB, repo repoconfig.Repo
 }
 
 // scheduledJob resolves schedule of repo for apply: its job and the scheduled.Env it runs in.
-func scheduledJob(env tickEnv, repos map[string]repoconfig.Repo) func(repo, schedule string) (scheduled.Job, scheduled.Env, error) {
+func scheduledJob(env tickEnv, db *sql.DB, repos map[string]repoconfig.Repo) func(repo, schedule string) (scheduled.Job, scheduled.Env, error) {
 	return func(slug, name string) (scheduled.Job, scheduled.Env, error) {
 		repo, ok := repos[slug]
 		if !ok {
@@ -133,7 +134,13 @@ func scheduledJob(env tickEnv, repos map[string]repoconfig.Repo) func(repo, sche
 			if err != nil {
 				return nil, scheduled.Env{}, fmt.Errorf("params of %s: %w", s.Name, err)
 			}
-			return job, scheduled.Env{Repo: repo, Schedule: s, Now: env.now(), Run: env.runner()}, nil
+			// The history is what a job that tells kinds of session apart reads in Stage.
+			history, err := runs.History(context.Background(), db, slug)
+			if err != nil {
+				return nil, scheduled.Env{}, fmt.Errorf("history of %s: %w", slug, err)
+			}
+			return job, scheduled.Env{Repo: repo, Schedule: s, Now: env.now(), Run: env.runner(),
+				Home: env.Getenv("HOME"), History: history}, nil
 		}
 		return nil, scheduled.Env{}, fmt.Errorf("no schedule %s in %s", name, slug)
 	}

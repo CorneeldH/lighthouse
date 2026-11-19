@@ -1,6 +1,6 @@
 ---
 name: lighthouse-forge
-description: 'Reference of what differs per forge (GitHub, GitLab): board status, blockers, sub-issues, closing keywords and the proxy quirk, one file per forge with the same sections. Read only via another skill that names a section (lighthouse-start-issue, lighthouse-route-issue, lighthouse-write-issue, lighthouse-write-pr); never a starting point of its own. NOTE — not for the operations both forges share: those are `lighthouse forge` subcommands, named in the calling skill.'
+description: 'Reference of what differs per forge (GitHub, GitLab): board status, blockers, sub-issues, closing keywords, the proxy quirk and CI actions, one file per forge with the same sections. Read only via another skill that names a section (lighthouse-start-issue, lighthouse-route-issue, lighthouse-write-issue, lighthouse-write-pr, lighthouse-fix-pr); never a starting point of its own. NOTE — not for the operations both forges share: those are `lighthouse forge` subcommands, named in the calling skill.'
 metadata:
   lighthouse: "core@dev"
   binding: default
@@ -27,13 +27,13 @@ From another installed skill the path is `../lighthouse-forge/<kind>.md`, the sa
 ## What lives where
 
 - **`lighthouse forge`** covers what both forges do the same: `issue view|list|search|create|edit|comment`,
-  `issue blockers`, `issue block <nr> --by <blocker>`, `issue status <nr> <status>`,
-  `pr create|view|comment` (a merge request on GitLab), `milestone list|view|create|edit` (by title),
+  `issue blockers`, `issue block <nr> --by <blocker>`, `issue status <nr>` (read) and `issue status <nr> <status>`,
+  `pr create|view|comment|checks` (a merge request on GitLab; `pr view --comments` adds the comments, `pr checks --failed-log` the log of the failed jobs), `milestone list|view|create|edit` (by title),
   `label list`. One JSON shape on both forges; `--field <path>` prints one value of a read
   command. Exit 0 is done, 1 a forge error with the API's message, 2 a usage error or missing
   config.
 - **The references** carry only what differs: the board's status field, the tier limits of
-  blockers, sub-issues, the closing keywords and the proxy quirk. Where no shared command exists,
+  blockers, sub-issues, the closing keywords, the proxy quirk and CI actions (`§ci`). Where no shared command exists,
   they use `lighthouse forge api`.
 
 ## `lighthouse forge api`

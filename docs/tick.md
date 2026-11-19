@@ -22,7 +22,9 @@ Het is een korte run, geen daemon. Wie issues vooraf routeert en naar `Controlle
    `project` nodig: lighthouse leest en schrijft er comments, reacties en het board mee. Om een
    groene eigen PR te mergen (regel 7) heeft het token ook *Contents: write* nodig. Gebruik een
    classic token, of een fine-grained token dat elke repo dekt waarvan issues op het board staan:
-   een item dat het token niet mag lezen kan een GraphQL-fout geven, en die slaat de hele repo over. De
+   een issue of PR in een andere repo dan die van de run, die het token niet mag lezen (403 of 404, geen
+   rate limit), blijft stil leeg. Een fout bij een item van de eigen repo, een rate limit of een
+   GraphQL-fout van `IssueItem` slaat de hele repo over. De
    login van het token zelf heeft push-toegang tot de repo nodig (anders is de collaborator-permissie
    niet te lezen) en een rol in `[dispatch] answer_permissions`: zonder die rol vallen ook de eigen
    🤖-comments van lighthouse weg, zoals Gestart en Hervat.
@@ -82,7 +84,7 @@ Het is een korte run, geen daemon. Wie issues vooraf routeert en naar `Controlle
 7. **Gather.** Is de repo aan de beurt, dan leest tick de comments van elk item en bouwt de snapshot:
    de items in Controller of On hold, plus elk item met een open run in een andere status, met hun velden, voorgangers en PR's (de PR's die het issue sluiten
    plus de PR's op de branch van de laatste run van het issue, ook als die run al dicht is, met hun
-   checks), hun comments en de open runs. Van een mergeklare PR bij een open run leest tick ook de
+   checks; een nacontrole-run telt daarvoor niet mee, zie *De werkplek van de nacontrole*), hun comments en de open runs. Van een mergeklare PR bij een open run leest tick ook de
    PR-comments, voor de roborev-stand (`""`, `processed` of `open`). Zo blijft een gemergde PR die het issue niet sluit zichtbaar.
    Een item met een open run buiten Controller en On hold doet mee om die run af te sluiten:
    `lighthouse-close-issue` zet het item op Done voordat tick de closecheck-run ziet eindigen. Voor
@@ -93,10 +95,17 @@ Het is een korte run, geen daemon. Wie issues vooraf routeert en naar `Controlle
    comments leest tick de runhistorie (zie *De volgorde van een start*) en de skills in
    `.claude/skills/` van de main checkout. Na de gather schrijft tick
    `lighthouse: gathered <repo>: <n> items (<reden>)` naar stderr; de reden is `first`, `changed`,
-   `stale` of `boundary`. Een fout van GitHub (ook een GraphQL-fout in een antwoord met status 200)
-   slaat de repo luid over met `lighthouse: skip <pad>: <fout>` en bewaart niets, zodat de volgende
-   tick opnieuw kijkt. Een issue met meer dan 10 voorgangers, of een voorganger met meer dan 5
-   sluitende PR's, slaat de repo ook luid over: zo'n lijst leest tick niet half.
+   `stale` of `boundary`. Het board, de PR's van een branch en de blokkades leest tick bij GitHub
+   via REST met conditionele requests (`ETag`): een ongewijzigde pagina komt als `304` terug en telt
+   niet mee voor de rate limit, en een uitgeputte GraphQL-limiet stopt een tick dus normaal gesproken
+   niet. Alleen `Planning` (tabblad Prioritering) en het opzoeken van één issue op het board
+   (`IssueItem`, voor een open run waarvan het item gearchiveerd of van het board gehaald is) gebruiken
+   nog GraphQL. Elke lijst leest tick via de `Link`-header tot het einde: een lange lijst voorgangers
+   of sluitende PR's wordt niet afgekapt.
+   Een 403 of 404 op een extra aanroep (voorgangers, checks of mergebaarheid van een PR) negeert tick
+   alleen bij een item van een andere repo dan die van de run, en nooit bij een 403 van een rate
+   limit. Elke andere fout van GitHub slaat de repo luid over met `lighthouse: skip <pad>: <fout>` en
+   bewaart niets, zodat de volgende tick opnieuw kijkt.
 
 8. **Decide.** Eén keer per tick, over alle gegatherde repo's samen, beslist tick wat er moet
    gebeuren: een run sluiten, een issue teruggeven, een 🚀 herstellen, een issue parkeren of
@@ -235,6 +244,17 @@ als bestand bestaat (`dispatch.Relocate`). Dat geldt voor de Gestart, de rij en 
 geen staart, dan sluit apply de run na de claim als `start_failed`, met reden
 `handoff path: <pad> is not in the worktree …`, en start er niets.
 
+**De werkplek van de nacontrole.** Na de merge van een PR die het issue niet sluit, start tick
+`/lighthouse-close-issue <n>` (trigger `closecheck`). Die run draait niet op de issue-branch, maar op
+een eigen branch per PR: `closecheck/issue-<n>-pr-<pr>`. Niemand pusht die branch, dus de werkplek
+maakt hem nieuw vanaf `origin/<standaardbranch>`. Zo leest de nacontrole de skills van de
+standaardbranch. Op de issue-branch zou hij de skills lezen van de laatste commit die die worktree
+kende: een skill-fix die later op de standaardbranch kwam, ontbreekt daar, en is de branch na de
+merge van origin verwijderd, dan werkt de werkplek hem niet meer bij (#416). Elke PR krijgt een nieuwe branch,
+dus ook een worktree die van een eerdere nacontrole bleef staan, houdt geen oude skills vast. Een
+hervatting na een antwoord loopt op dezelfde branch. De PR's van het issue blijven op de branch van
+de run vóór de nacontrole: de gather slaat een `closecheck/`-branch over (`dispatch.IssueBranches`).
+
 **Een geweigerde of onzekere launch.** Weigert de werkplek de launch, dan meldt apply
 `<repo>#<n>: launch of run <id> not accepted: <reden>` op stderr, op één regel. Onder de 🤖 Gestart
 post het een 🤖 Teruggegeven *start mislukt: <reden>* met de sessie van de run, en de run is gesloten
@@ -280,6 +300,7 @@ gemergde of gesloten PR van vóór `started_at` niet. `max_wait` en `max_runtime
 | 12 | Open PR is draft | Teruggegeven, sessie stoppen als ze niet klaar is | PR is draft |
 | 13 | Klaar en een eigen PR met een van vier oorzaken: rode checks, een merge-conflict, een onverwerkte roborev-review of een mislukte merge | fix-pr-start (sleutel `fixpr:<pr>:<sha>`, plafond 3 runs per PR); is het plafond bereikt, of is de sleutel al gebruikt, of is er een actieve blokkade, dan Teruggegeven; houdt de rem de start tegen, dan blijft de run open (zie hieronder) | per oorzaak *PR rood*, *PR heeft een merge-conflict*, *PR heeft een onverwerkte roborev-review* of *merge mislukt*; bij het plafond met ` na 3 fix-pr-runs` erachter (*onverwerkte roborev-review na 3 fix-pr-runs*) |
 | 13b | Klaar en alleen een vreemde PR die rood is of een merge-conflict heeft (geen eigen open PR met een oorzaak) | Teruggegeven, sessie stoppen als ze niet klaar is | *PR rood* resp. *PR heeft een merge-conflict* |
+| 13c | Klaar met een Handoff die de keten eindigt (`next: /lighthouse-close-issue`), en geen PR van deze run | rij `handoff`, de claude van de run beëindigen; dezelfde tick start `/lighthouse-close-issue <nr>` op die handoff (sleutel `handoff:<comment-id>`), tenzij er een open PR is of een PR die na de handoff mergede of sloot: dan wacht het einde op die PR (#285) | |
 | 14 | Klaar, geen PR, geen Handoff of Vraag | Teruggegeven | geen handoff of vraag |
 | 15 | `max_wait` > 0, run gemeten maar zonder sessie, ouder dan `max_wait` | Teruggegeven, launch vergeten | start onzeker: geen sessie gevonden |
 | 16 | `max_wait` > 0, permissie-prompt van deze run (niet van vóór `started_at`) waarna zijn draad `max_wait` lang niets deed | Teruggegeven, sessie blijft staan | wacht op permissie (met tool en pad) |
@@ -373,7 +394,7 @@ beëindigt ook wat een klare claude achterliet, zoals een dev-server (zie [workp
 Naast issue-runs start de tick runs op een vast schema, zonder issue: een *geplande run* (#121). Het
 ontwerp staat in [de spec](developer/planning/specs/2026-11-16-issue-121-geplande-runs-design.md).
 Het run-model, de planner en de afloop zijn er; van de jobs is `map-refresh` er (zie
-[Job `map-refresh`](#job-map-refresh)), `reflect` komt in een volgende release. Een `[[schedule]]`-blok
+[Job `map-refresh`](#job-map-refresh)), `reflect` ook (zie [Job `reflect`](#job-reflect)). Een `[[schedule]]`-blok
 met een job zonder registratie geeft bij elke gather van de repo
 `lighthouse: <repo> scheduled:<naam>:<slot>: no job <job>`. Dat is een regel, geen fout: de tick
 eindigt met exitcode 0, bewaart zijn tick-state en start niets.
@@ -500,6 +521,52 @@ de run `failed` eindigen. `Finish`: is `map_dir` byte-gelijk aan HEAD, dan wordt
 gezet en volgt geen PR (`done` zonder PR). Anders worden de documenten gekopieerd (geen symlink) naar
 `publish_dir`, met een `index.md` met modus, score, basiscommit en datum. Daarna volgen de
 secret-scan, de commit, de push en de PR zoals bij elke geplande run.
+
+## Job `reflect`
+
+De job laat een skill (standaard `/paia-reflect-skills`) lezen wat er in de sessies van de repo aan
+Claude gevraagd is, en één document met skill-kandidaten schrijven. Gedrag: `scripts/reflect_skills_run.py`
+in personal_ai_agent. Alle `params` zijn optioneel; een ongeldige waarde of een onbekende sleutel is een
+configfout, zoals bij `map-refresh`.
+
+| Param | Standaard |
+|---|---|
+| `command` | `/paia-reflect-skills` |
+| `output_dir` | `docs/developer/reflect` |
+| `min_sessions` | `20` |
+| `window_min_days`, `window_max_days` | `14`, `90` |
+| `min_lines` | `20` |
+| `max_corpus_bytes`, `max_prompt_chars` | `400000`, `400` |
+| `tools` | `Read Glob Grep Write` (geen Bash; een string of een lijst) |
+| `max_runtime` | `60m` |
+
+**Welke sessies.** Sessiebestanden onder `~/.claude/projects` van de repo-map, van haar
+`--claude-worktrees-`-mappen en van de kenn-forge-werkplekken van de repo
+(`<home>/.kenn/forge/worktrees/<kind>/<host>/<repo>/…`, afgeleid van de kenn-forge-adapter). Een map van een
+andere kloon met een langere naam telt niet mee. Een sessie is **controller** als haar sessie-id in
+`runs.session_id` staat (elke trigger behalve `scheduled`), anders **interactief**: de database is de bron,
+niet het pad. Sessies van geplande runs, ook de eerdere reflect-rondes, tellen niet mee.
+
+**De poort.** Het venster loopt vanaf de datum van het jongste `<datum>-skill-kandidaten.md` op
+`origin/<standaardbranch>` tot nu, met een vloer `window_min_days` en een plafond `window_max_days`;
+zonder document is het de vloer. Het aantal sessiebestanden van beide soorten in dat venster, onder
+`min_sessions`, geeft `skip`; de regel in de log noemt beide aantallen
+(`N new sessions in the last D days (interactive I, controller C), below M`).
+
+**Het corpus.** Go haalt de gebruikersprompts uit de sessies (de extractie en de `SKIP_PATTERNS` van
+paia, afgeleid van claude-reflect, MIT) en schrijft één bestand, `.lighthouse/run/reflect-corpus.md`, met
+twee secties, *Interactief* en *Controller*. Een regel die niet te lezen is of groter dan
+`max_corpus_bytes`, wordt overgeslagen; een prompt wordt op `max_prompt_chars` tekens afgekapt. Binnen
+*Controller* staat een prompt die vaker voorkomt één keer, met `×N`. `max_corpus_bytes` gaat half om half over
+de twee secties; wat de ene niet gebruikt, gaat naar de andere. Het commando krijgt
+`--corpus <pad> --out <output_dir>/<datum>-skill-kandidaten.md`. `Cleanup` haalt het corpus weg vóór de
+insluiting, zodat het nooit op de branch komt.
+
+**Insluiting en afronden.** De run schrijft alleen één document met een datumnaam en `index.md` onder
+`output_dir`; elk ander bestand, ook daaronder, is een overtreding. Welke datum het document heeft, weet de
+insluiting niet; `Check` eist daarom dat precies één document nieuw of gewijzigd is, als gewoon bestand
+met minstens `min_lines` regels. `Finish` schrijft `output_dir/index.md` met de lijst van rondes. Schrijft de
+agent niets, dan eindigt de run als `done` zonder PR en ziet de volgende poort dezelfde sessies opnieuw.
 
 ## Exitcodes
 

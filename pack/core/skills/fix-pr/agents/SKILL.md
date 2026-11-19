@@ -33,22 +33,22 @@ One Bash call, read-only, outside the sandbox. Replace `<nr>`.
 ```bash
 set -uo pipefail
 N=<nr>
-R=$(lighthouse config forge.repo) || exit 2
-
-PR=$(gh pr view "$N" --repo "$R" --json number,title,state,isDraft,mergeable,mergeStateStatus,headRefName,url 2>&1)
+PR=$(lighthouse forge pr view "$N" --comments 2>&1)
 RC=$?
 if [ "$RC" -ne 0 ]; then
-  echo "no PR #$N — is it an issue? gh said: $PR"
+  echo "no PR #$N — is it an issue? forge said: $PR"
   exit 1
 fi
-printf '%s' "$PR" | jq -r '"PR #\(.number) [\(.state)] draft=\(.isDraft) merge=\(.mergeable)/\(.mergeStateStatus)\nbranch \(.headRefName)\n\(.url)\n\(.title)"'
-B=$(printf '%s' "$PR" | jq -r .headRefName)
+printf '%s' "$PR" | jq -r '"PR #\(.number) [\(.state)] draft=\(.draft) merge=\(.mergeable)\nbranch \(.head_ref)\n\(.url)\n\(.title)"'
+B=$(printf '%s' "$PR" | jq -r .head_ref)
 
 echo "=== checks ==="
-gh pr checks "$N" --repo "$R" || true
+CK=$(lighthouse forge pr checks "$N") || { echo "checks: forge error (see above)"; CK='[]'; }
+printf '%s' "$CK" | jq -e 'length > 0' >/dev/null || echo "no checks"
+printf '%s' "$CK" | jq -r '.[] | "\(.bucket)\t\(.name)\t\(.link)"'
 
 if [ -z "$B" ] || [ "$B" = "null" ]; then
-  echo "no headRefName in the PR JSON — stop here"
+  echo "no head_ref in the PR JSON — stop here"
   exit 1
 fi
 
@@ -56,22 +56,19 @@ echo "=== worktree ==="
 git worktree list | grep -F -- "[$B]" || echo "NO worktree on $B"
 
 echo "=== failure log ==="
-RUNS=$(gh pr checks "$N" --repo "$R" --json bucket,link --jq '.[] | select(.bucket=="fail") | .link' 2>/dev/null | grep -oE 'runs/[0-9]+' | cut -d/ -f2 | sort -u)
-if [ -z "$RUNS" ]; then
+if printf '%s' "$CK" | jq -e 'any(.[]; .bucket == "fail")' >/dev/null; then
+  lighthouse forge pr checks "$N" --failed-log \
+    | grep -aE '##\[error\]|FAILED | E {2,}|Process completed with exit code|Error: |^--- job ' \
+    | tail -15 || echo "no failure line found — see 'A red job without a failed test'"
+else
   echo "no fail check — red is then a conflict, a pending check or a run that did not start"
 fi
-for r in $RUNS; do
-  echo "--- run $r ---"
-  gh run view "$r" --repo "$R" --log-failed 2>&1 \
-    | grep -aE '##\[error\]|FAILED | E {2,}|Process completed with exit code|Error: ' \
-    | tail -15 || echo "no failure line found — see 'A red job without a failed test'"
-done
 
 echo "=== roborev ==="
 if test -e .roborev.toml; then
-  RB=$(gh api "repos/$R/issues/$N/comments" --paginate --jq '.[] | select((.user.login == "github-actions[bot]" or .user.login == "github-actions") and (.body | contains("roborev-pr-comment"))) | .body | @json' 2>/dev/null) \
+  RB=$(printf '%s' "$PR" | jq -r '.comments[] | select((.author == "github-actions[bot]" or .author == "github-actions") and (.body | contains("roborev-pr-comment"))) | .body | @json' 2>/dev/null) \
     && RB=$(printf '%s\n' "$RB" | tail -1 | jq -r '. // empty' 2>/dev/null) || RB=""
-  VW=$(gh api "repos/$R/issues/$N/comments" --paginate --jq '.[] | .body | split("\n")[] | select(contains("<!-- roborev-verwerkt:"))' 2>/dev/null) || VW=""
+  VW=$(printf '%s' "$PR" | jq -r '.comments[].body | split("\n")[] | select(contains("<!-- roborev-verwerkt:"))' 2>/dev/null) || VW=""
   [ -n "$RB" ] && printf '%s\n' "$RB" || echo "no roborev comment"
   [ -n "$VW" ] && printf '%s\n' "$VW" || echo "no roborev-verwerkt marker"
 else
@@ -82,18 +79,20 @@ fi
 The `=== roborev ===` part runs only if present (a `.roborev.toml` in the repo root) and shows the
 **full** body of the last roborev comment, not only heading and verdict: section 6 works per
 finding (path, line, severity), and a controller run (if present) gets only the PR number. Every
-comment goes as one `@json` line through `--paginate`, so `tail -1` takes the last one across page
-boundaries.
+comment goes as one `@json` line out of the `comments` list that `lighthouse forge pr view --comments`
+returns whole, so `tail -1` takes the last one.
 
 Four things in this block are measured, not taste (the `=== roborev ===` part follows the same `|| echo` rule):
 
-- **A guard right after `gh pr view`.** If that call fails — `<nr>` was an issue, not a PR — the
+- **A guard right after `lighthouse forge pr view`.** If that call fails — `<nr>` was an issue, not a PR — the
   block stops with a message instead of reading on with an empty `$B`: without a guard an empty
-  `grep -F -- ""` afterwards matches every line, and the failure-log part wrongly reports "no fail
-  check".
-- **`|| true` after `gh pr checks`.** That gives exit 1 on failing and exit 8 on pending checks.
-  Without the guard the block breaks off in exactly the case it is meant for.
-- **`grep` on the error markers, not `tail -60`.** Measured on one run: the log was 8,284 lines,
+  `grep -F -- ""` afterwards matches every line, and the failure-log part
+  wrongly goes on to read a log.
+- **No `|| true` after `lighthouse forge pr checks`.** It prints a JSON list and exits 0 also on
+  failing or pending checks, so the block does not break off in exactly the case it is meant for;
+  an empty list is "no checks".
+- **`grep` on the error markers, not `tail -60`.** `pr checks --failed-log` prints the failed log of every
+  red job under a `--- job <id> <name> ---` header. Measured on one run: the log was 8,284 lines,
   the failed test was on line 2,141, and the last 60 lines were `Post job cleanup`. The grep gave
   four lines on that same log, with the cause in them.
 - **Every searching step has an `|| echo` branch.** A grep that finds nothing gives exit 1, and
@@ -155,8 +154,8 @@ report with which extras you measure.
 
 If a host-wide OOM kills a self-hosted runner, the job fails without a single test failing.
 Recognition: in
-`R=$(lighthouse config forge.repo) && gh api "repos/$R/actions/runs/<id>/jobs"` the
-test step is at `"completed_at": null` while the job is `failure`, and the log is empty or 404s.
+the job list of the run (`../lighthouse-forge/<kind>.md §ci`, with `<kind>` from
+`lighthouse config forge.kind`; on GitHub the run id is in the `link` column of `lighthouse forge pr checks`, on GitLab the `link` is the job URL with the job id, and the pipeline id comes from `lighthouse forge api "projects/<project>/merge_requests/<iid>/pipelines"`) the test step is at `"completed_at": null` while the job is `failure`, and the log is empty or 404s.
 
 Linux only (systemd journal). On macOS: `log show --last 1h --predicate 'eventMessage CONTAINS "memorystatus"'`;
 elsewhere, or without access to the runner host, skip the confirmation: a step without `completed_at` plus a
@@ -170,7 +169,7 @@ journalctl -k --since <time> | grep -i "Killed process"
 
 You look for `Killing process <pid> (Runner.Worker)` and `Out of memory: Killed process <pid> (pytest)`.
 Then run the CI selection locally; green there plus a step without `completed_at` means OOM. The
-fix is `gh run rerun <id> --failed`, not a code change.
+fix is the rerun of the failed jobs (`../lighthouse-forge/<kind>.md §ci`), not a code change.
 
 ## 5. Push once, and stop at green
 
@@ -179,7 +178,8 @@ new round of checks, so "a quick update in between" costs a whole runner cycle a
 history unreadable. Exception: a fix on a *red* check — that one does belong on it right away.
 On the workflow route (a controller run, if present, whose unpushed commits `origin/<branch>..HEAD` touch `.github/workflows/`) never push (`workflow-push-gate` blocks it): review them with V2b of `/lighthouse-write-pr` on the push record (`lighthouse roborev-gate gate --push`, as described there), then post the handoff with `next: push-workflows` and without `after:` (`/lighthouse-write-handoff`); the workflow pusher pushes.
 
-As soon as `gh pr checks <nr>` is green and `mergeable` is `MERGEABLE`: **report and stop**.
+As soon as `lighthouse forge pr checks <nr>` has no `fail` or `pending` and `mergeable` is `mergeable`: **report and stop**.
+`mergeable: unknown` is not a conflict: re-read after a short wait.
 Do not merge, do not review, do not close the issue. That "stop at green" does not hold while
 section 6 is open: a green PR with an unprocessed roborev review is not done yet.
 A dispatcher start after a failed merge finds the PR green: report that and stop; the failure
@@ -203,10 +203,11 @@ Only if the repo has a `.roborev.toml`, the checks are green, the verdict in `==
    review without one keeps the PR from merging and starts this skill, at most three times per PR.
    The comment comes from the renderer `lighthouse-write-pr` uses too, so both routes leave the
    same log. `<scratch>` is the scratchpad or `$TMPDIR`. Save the roborev comment, the same one
-   the diagnosis shows:
+   the diagnosis shows.
+   The forge calls here run outside the sandbox, like the diagnosis:
 
    ```bash
-   R=$(lighthouse config forge.repo) && gh api "repos/$R/issues/<nr>/comments" --paginate --jq '.[] | select((.user.login == "github-actions[bot]" or .user.login == "github-actions") and (.body | contains("roborev-pr-comment"))) | .body | @json' | tail -1 | jq -r . > <scratch>/roborev-ci.md
+   lighthouse forge pr view <nr> --comments | jq -r '.comments[] | select((.author == "github-actions[bot]" or .author == "github-actions") and (.body | contains("roborev-pr-comment"))) | .body | @json' | tail -1 | jq -r . > <scratch>/roborev-ci.md
    lighthouse roborev-gate classify <scratch>/roborev-ci.md
    ```
 
@@ -222,7 +223,7 @@ Only if the repo has a `.roborev.toml`, the checks are green, the verdict in `==
    ```bash
    lighthouse roborev-gate record --done <sha> --decisions <scratch>/decisions.json --out <scratch>/roborev.json --raw <scratch>/roborev-ci.md
    lighthouse roborev-comment render --pr <nr> --bron ci --state <scratch>/roborev.json --raw <scratch>/roborev-ci.md > <scratch>/comment.md
-   R=$(lighthouse config forge.repo) && gh pr comment <nr> --repo "$R" --body-file <scratch>/comment.md
+   lighthouse forge pr comment <nr> --body-file <scratch>/comment.md
    ```
 
    `record` exits 2 when the decisions do not match the findings one to one; the message says
@@ -240,7 +241,7 @@ Only if the repo has a `.roborev.toml`, the checks are green, the verdict in `==
 - ✅ Read-only diagnosis, mutation only after it · ❌ `git rebase` in the same block as the diagnosis
 - ✅ Work in the worktree of the head branch · ❌ in the main checkout, or in a fresh worktree from the default branch
 - ✅ `git worktree add <path> --track -b <b> origin/<b>` · ❌ `EnterWorktree` (makes a new branch from the default branch)
-- ✅ `gh` outside the sandbox · ❌ without — Go's TLS is out then
+- ✅ `lighthouse forge` outside the sandbox · ❌ without — Go's TLS is out then
 - ✅ Grep on the error markers · ❌ `--log-failed | tail -60` (misses the error)
 - ✅ Reproduce the gate locally before you push · ❌ push and see what CI says
 - ✅ Stop as soon as the PR is green · ❌ go on into review, merge or `close-issue`
@@ -252,7 +253,7 @@ Only if the repo has a `.roborev.toml`, the checks are green, the verdict in `==
 | Metric | Target | Measurement |
 |---|---:|---|
 | Tool calls between fix prompt and the first mutating call | ≤ 2 | `lighthouse measure-fix-pr-kpi leadin` |
-| Read-only `gh`/`git` diagnosis calls before that mutation | ≤ 1 | `lighthouse measure-fix-pr-kpi diagnose` |
+| Read-only `lighthouse forge`/`git` diagnosis calls before that mutation | ≤ 1 | `lighthouse measure-fix-pr-kpi diagnose` |
 | Turns in which this skill loaded without a fix request in the prompt | 0 | `lighthouse measure-fix-pr-kpi mistrigger` |
 | Turns in which the skill ran on into `lighthouse-close-issue` or `caveman-review` | 0 | `lighthouse measure-fix-pr-kpi scope` |
 
@@ -265,11 +266,10 @@ Row 4 sees only a `Skill` call; a review done by hand in the same turn does not 
 
 ## Known pitfalls
 
-- **`gh pr checks` gives exit 8 on pending checks**, not 0. A block with `set -e` falls over on it.
-- **`gh issue view <nr>` and `gh pr view <nr>` do not share the number space.** A "fix 596" can mean
-  an issue or a PR; `gh pr view` is the test. In the eight measured turns it was always a PR.
-- **`gh issue list --json` breaks under the rtk proxy.** Use `gh api`.
-- **A merge conflict gives no fail check.** `mergeStateStatus: DIRTY` is the signal; the
+- **An issue and a PR do not share the number space.** A "fix 596" can mean
+  an issue or a PR; `lighthouse forge pr view` is the test. In the eight measured turns it was always a PR.
+- **The rtk proxy breaks `gh` JSON output.** See `../lighthouse-forge/<kind>.md §proxy`.
+- **A merge conflict gives no fail check.** `mergeable: conflicting` is the signal (`mergeable: unknown`: the forge is still computing — read again, it is not a conflict); the
   failure-log part of the diagnosis block stays empty then and that is correct.
   A PR always has a pushed branch, so resolve it with `git merge origin/<default branch>` per the
   update rule in *Lighthouse: core*: resolve the conflicts once, commit the merge, push without force.

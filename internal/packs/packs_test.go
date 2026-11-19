@@ -506,3 +506,29 @@ func TestLoadRejectsFragment(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestParseRequiresReadsForgeTables(t *testing.T) {
+	got, err := parseRequires([]byte("git = [\"a\"]\n[forge.github]\ngh = [\"fix-pr\"]\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Requirement{
+		{Tool: "gh", NeededBy: []string{"fix-pr"}, Forge: "github"},
+		{Tool: "git", NeededBy: []string{"a"}, Forge: ""},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %+v, want %+v", got, want)
+	}
+	for i := range want {
+		if got[i].Tool != want[i].Tool || got[i].Forge != want[i].Forge || strings.Join(got[i].NeededBy, ",") != strings.Join(want[i].NeededBy, ",") {
+			t.Fatalf("got %+v, want %+v", got, want)
+		}
+	}
+}
+
+func TestParseRequiresRefusesUnknownForge(t *testing.T) {
+	_, err := parseRequires([]byte("[forge.gitea]\ngh = [\"x\"]\n"))
+	if err == nil || !strings.Contains(err.Error(), "gitea") {
+		t.Fatalf("err = %v", err)
+	}
+}

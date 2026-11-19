@@ -57,10 +57,15 @@ def test_description_carries_an_explicit_negative_boundary() -> None:
         assert "caveman-review" in lower
 
 
-def test_the_diagnosis_reads_the_repo_from_config() -> None:
+def test_the_diagnosis_runs_on_lighthouse_forge() -> None:
     for text in TEXTS:
         block = _diagnose_block(text)
-        assert "lighthouse config forge.repo" in block
+        for needle in ("lighthouse forge pr view", "--comments", "lighthouse forge pr checks", "--failed-log"):
+            assert needle in block, needle
+        assert "gh " not in block
+        assert "|| true" not in block
+        assert 'echo "no fail check' in block
+        assert 'echo "no checks"' in block
         assert "identity" not in text
 
 
@@ -150,7 +155,8 @@ def test_variants_differ_only_in_the_sandbox_wording() -> None:
     assert "dangerouslyDisableSandbox: true" in _section(CLAUDE, DIAGNOSE_HEADING)
     assert "dangerouslyDisableSandbox" not in _section(AGENTS, DIAGNOSE_HEADING)
     claude = [line for line in CLAUDE.splitlines() if line not in AGENTS.splitlines()]
-    assert len(claude) == 2, claude
+    # The diagnosis intro, the section 6 forge calls and the non-negotiable `lighthouse forge` line.
+    assert len(claude) == 3, claude
 
 
 def test_roborev_section_renders_the_shared_log() -> None:

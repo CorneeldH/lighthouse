@@ -91,6 +91,7 @@ func NewRoot(in io.Reader, out, errOut io.Writer) *cobra.Command {
 	root.AddCommand(newGateCommand())
 	root.AddCommand(newAskCommand(defaultAskEnv()))
 	root.AddCommand(newSelfUpdateCommand())
+	root.AddCommand(newReleasesCommand())
 	root.AddCommand(newTurnRootsCommand())
 	root.AddCommand(newPrBodyGateCommand())
 	root.AddCommand(newEvidenceCommand())

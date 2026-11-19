@@ -138,9 +138,6 @@ func (g *gitlabFixture) AddOpenPR(_ *testing.T, pr forge.OpenPR) {
 		"source_branch": pr.HeadRef, "source_project_id": 1, "target_project_id": 1})
 }
 
-// ChecksOnClosedPRs: BranchPRs reads head_pipeline only for an open merge request.
-func (g *gitlabFixture) ChecksOnClosedPRs() bool { return false }
-
 // SupportsPlanning: Planning reads REST issues, links and issues_statistics.
 func (g *gitlabFixture) SupportsPlanning() bool { return true }
 

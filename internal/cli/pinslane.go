@@ -10,6 +10,7 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/config"
 	"github.com/CorneeldH/lighthouse/internal/forge"
+	"github.com/CorneeldH/lighthouse/internal/forgecache"
 	"github.com/CorneeldH/lighthouse/internal/pins"
 	"github.com/CorneeldH/lighthouse/internal/pins/lane"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
@@ -24,6 +25,7 @@ type laneSetup func(root string) (lane.Env, error)
 // API with the same token, and [ci] bot_login as the only author whose items count as lane
 // items (not set: every author). githubURL overrides the GitHub API root; "" is the default.
 func laneEnvFrom(getenv func(string) string, githubURL string) laneSetup {
+	cache := forgecache.NewLazy(getenv, os.Stderr)
 	return func(root string) (lane.Env, error) {
 		repo, err := repoconfig.Load(root)
 		if err != nil {
@@ -33,7 +35,11 @@ func laneEnvFrom(getenv func(string) string, githubURL string) laneSetup {
 		if err != nil {
 			return lane.Env{}, err
 		}
-		f, err := forge.Open(forge.Config{Kind: repo.Kind, Repo: repo.Slug, Host: repo.Host, Token: token, BaseURL: githubURL})
+		cfg := forge.Config{Kind: repo.Kind, Repo: repo.Slug, Host: repo.Host, Token: token, BaseURL: githubURL}
+		if repo.Kind == "" || repo.Kind == "github" {
+			cfg.Cache, cfg.CacheLog = cache.Store(), os.Stderr
+		}
+		f, err := forge.Open(cfg)
 		if err != nil {
 			return lane.Env{}, err
 		}

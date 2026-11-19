@@ -29,7 +29,17 @@ type readForge struct {
 	blockers   []forge.Blocker
 	comments   []protocol.Comment
 	milestones []forge.Milestone
+	checks     []forge.Check
+	logs       map[int64]string // a job without an entry has no log
 	err        error
+}
+
+func (r *readForge) Checks(context.Context, int) ([]forge.Check, error) { return r.checks, r.err }
+func (r *readForge) JobLog(_ context.Context, job int64) (string, error) {
+	if log, ok := r.logs[job]; ok {
+		return log, nil
+	}
+	return "", forge.ErrNoJobLog
 }
 
 func (r *readForge) Issue(_ context.Context, n int) (forge.Issue, error) {
@@ -46,6 +56,9 @@ func (r *readForge) BlockedBy(context.Context, int) ([]forge.Blocker, error) {
 	return r.blockers, r.err
 }
 func (r *readForge) Comments(context.Context, int) ([]protocol.Comment, error) {
+	return r.comments, r.err
+}
+func (r *readForge) ChangeComments(context.Context, int) ([]protocol.Comment, error) {
 	return r.comments, r.err
 }
 func (r *readForge) Milestones(context.Context, string) ([]forge.Milestone, error) {
@@ -152,6 +165,26 @@ func TestPRViewMerged(t *testing.T) {
 	got := decode(t, out)
 	if code != 0 || got["state"] != "merged" || got["number"] != 5.0 || got["milestone"] != nil {
 		t.Errorf("code %d got %v", code, got)
+	}
+}
+
+func TestForgePRViewRendersMergeFields(t *testing.T) {
+	f := &readForge{
+		change:   forge.Change{Number: 5, State: "open", Draft: true, Mergeable: "conflicting", HeadRef: "issue-5-x", BaseRef: "main"},
+		comments: []protocol.Comment{{Author: "ann", Body: "Mooi"}},
+	}
+	code, out, _ := runForge(t, f, "pr", "view", "5")
+	got := decode(t, out)
+	if code != 0 || got["draft"] != true || got["mergeable"] != "conflicting" || got["head_ref"] != "issue-5-x" || got["base_ref"] != "main" {
+		t.Errorf("code %d got %v", code, got)
+	}
+	if _, has := got["comments"]; has {
+		t.Errorf("comments present without --comments: %v", got)
+	}
+	_, out, _ = runForge(t, f, "pr", "view", "5", "--comments")
+	cs, _ := decode(t, out)["comments"].([]any)
+	if len(cs) != 1 || cs[0].(map[string]any)["body"] != "Mooi" {
+		t.Errorf("comments = %v, want one with body Mooi", cs)
 	}
 }
 
@@ -276,5 +309,59 @@ func TestDefaultForgeOpenerUsesGhAuthToken(t *testing.T) {
 	o := newDefaultForgeOpener()
 	if o.ghToken == nil {
 		t.Fatal("the opener of lighthouse forge has no gh auth token fallback")
+	}
+}
+
+func TestPrChecksEmptyPrintsEmptyArray(t *testing.T) {
+	code, out, errOut := runForge(t, &readForge{}, "pr", "checks", "5")
+	if code != 0 || strings.TrimSpace(out) != "[]" {
+		t.Errorf("code %d stdout %q stderr %q; want exit 0 and exactly []", code, out, errOut)
+	}
+}
+
+func TestForgePRChecksJSONKeys(t *testing.T) {
+	f := &readForge{checks: []forge.Check{{Name: "build", Bucket: "pass", Link: "https://x/1", Job: 7}}}
+	code, out, _ := runForge(t, f, "pr", "checks", "5")
+	var got []map[string]any
+	if err := json.Unmarshal([]byte(out), &got); err != nil || code != 0 || len(got) != 1 {
+		t.Fatalf("code %d out %q err %v", code, out, err)
+	}
+	if got[0]["name"] != "build" || got[0]["bucket"] != "pass" || got[0]["link"] != "https://x/1" || got[0]["job"] != float64(7) {
+		t.Errorf("got %v", got[0])
+	}
+	_, out, _ = runForge(t, f, "pr", "checks", "5", "--field", "bucket")
+	if strings.TrimSpace(out) != "pass" {
+		t.Errorf("--field bucket = %q", out)
+	}
+}
+
+func TestForgePRChecksFailedLog(t *testing.T) {
+	f := &readForge{
+		checks: []forge.Check{
+			{Name: "build", Bucket: "fail", Job: 7},
+			{Name: "status-ci", Bucket: "fail"},
+			{Name: "lint", Bucket: "pass", Job: 8},
+			{Name: "gone", Bucket: "fail", Job: 9},
+		},
+		logs: map[int64]string{7: "compile error\n", 8: "all fine\n"},
+	}
+	code, out, errOut := runForge(t, f, "pr", "checks", "5", "--failed-log")
+	if code != 0 {
+		t.Fatalf("code %d stderr %q", code, errOut)
+	}
+	for _, want := range []string{"--- job 7 build ---\ncompile error\n", "no log for job 0", "no log for job 9"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("stdout lacks %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "all fine") || strings.Contains(out, "lint") {
+		t.Errorf("a passing check leaked into the failed log:\n%s", out)
+	}
+}
+
+func TestForgePRChecksForgeErrorExits1(t *testing.T) {
+	code, _, _ := runForge(t, &readForge{err: errors.New("boom")}, "pr", "checks", "5")
+	if code != 1 {
+		t.Errorf("code = %d, want 1", code)
 	}
 }

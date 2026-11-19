@@ -37,6 +37,11 @@ type Env struct {
 	Dir      string
 	Now      time.Time
 	Run      workplace.Runner
+	// Home is the home directory of the host user, where Claude Code keeps its session files.
+	// History is every run of the repo, open and closed; a job that tells kinds of session apart
+	// reads it. Both are set wherever a job's Gate or Stage runs.
+	Home    string
+	History []runs.Row
 }
 
 // Job is one kind of scheduled run. The controller calls Gate, then Launch; in the workplace

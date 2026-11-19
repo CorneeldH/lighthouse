@@ -119,12 +119,11 @@ From the `**Spec:**` line of the plan:
 Issue as spec — the reviewer has no GitHub, so the body goes along as a file:
 
 ```bash
-R=$(lighthouse config forge.repo) || exit 2
-gh api "repos/$R/issues/<N>" --jq .body > <ATTEMPT>/issue-<N>.md
+lighthouse forge issue view <N> --field body > <ATTEMPT>/issue-<N>.md
 date -u +%Y-%m-%dT%H:%M:%SZ
 ```
 
-`gh` runs outside the sandbox of your harness. Note the time: it goes as
+`lighthouse forge` runs outside the sandbox of your harness. Note the time: it goes as
 `--issue-fetched-at` into the record (step 9).
 
 ### 5. Run a round — directly, in the foreground
@@ -156,7 +155,7 @@ git diff --no-index <ATTEMPT>/round-<n-1>.snapshot.md <plan> > <ATTEMPT>/round-<
 
 `git diff --no-index` exits 1 when there is a difference; that is no error. If a finding got
 `spec` in the previous round, fetch the issue body again to `<ATTEMPT>/issue-<N>.md` before the
-round (the same `gh api` line as step 4). Then run:
+round (the same `lighthouse forge issue view` line as step 4). Then run:
 
 ```bash
 lighthouse review-run --kind plan --verify --skill-dir .agents/skills/lighthouse-review-plan \
