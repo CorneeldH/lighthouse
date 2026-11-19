@@ -109,6 +109,9 @@ def _without_default_paths(rel: str, text: str) -> str:
     if rel in ("internal/scheduled/maprefresh/e2e_test.go", "internal/scheduled/maprefresh/maprefresh_test.go"):
         # docs/map is the publish_dir of the map-refresh job: a path inside a temp repo, never this repo's docs.
         return text.replace("docs/", "")
+    if rel == "internal/telemetry/record_test.go":
+        # docs/… are RecordPath values of a finding in test data: strings stored in a row, never read from this repo.
+        return text.replace("docs/", "")
     return text
 
 
