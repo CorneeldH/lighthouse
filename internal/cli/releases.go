@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"os"
 
@@ -15,12 +16,18 @@ const defaultReleasesRepo = "CorneeldH/lighthouse"
 
 // newReleasesCommand is `lighthouse releases`, with the token of the environment or of
 // `gh auth token`: anonymous requests allow 60 an hour, too few for `upgrade`.
-func newReleasesCommand() *cobra.Command {
+func newReleasesCommand() *cobra.Command { return newReleasesCommandWith(lazyReleaseReader{}) }
+
+// lazyReleaseReader resolves the token only when the command runs, so building the root does
+// not start `gh auth token` for every other command.
+type lazyReleaseReader struct{}
+
+func (lazyReleaseReader) Releases(ctx context.Context, repo string) ([]forge.Release, error) {
 	token, _ := forge.Token("github", "", os.Getenv)
 	if token == "" {
 		token = ghAuthToken()
 	}
-	return newReleasesCommandWith(forge.New("", token))
+	return forge.New("", token).Releases(ctx, repo)
 }
 
 func newReleasesCommandWith(rr forge.ReleaseReader) *cobra.Command {
