@@ -198,9 +198,23 @@ def test_actions_pinned_by_sha():
 def test_changelog_job_runs_on_every_pr():
     """Fails when the fragment check starts depending on the domains of the change."""
     job = _jobs()["changelog"]
-    assert "needs:" not in job and "if:" not in job
+    assert "needs:" not in job and "needs.changes" not in job
+    assert re.findall(r"^\s+if: .*$", job, re.M) == ["    if: github.event_name == 'pull_request'"]
     for needle in ("runs-on: ubuntu-latest", "fetch-depth: 0", "python3 ci/changelog.py check --base \"$BASE\" --head \"$HEAD\""):
         assert needle in job, needle
+
+
+def test_dispatch_turns_on_every_domain():
+    """Fails when a manual run stops enabling web, python and go, or loses the all-domains input."""
+    text = _text()
+    assert "workflow_dispatch:" in text
+    assert "all-domains:" in text
+    block = text[text.index("all-domains:"):]
+    assert "type: boolean" in block.split("permissions:")[0]
+    assert "default: true" in block.split("permissions:")[0]
+    changes = _jobs()["changes"]
+    for needle in ("web=$ALL", "python=$ALL", "go=$ALL"):
+        assert needle in changes, needle
 
 
 def test_binary_runs_playwright():
