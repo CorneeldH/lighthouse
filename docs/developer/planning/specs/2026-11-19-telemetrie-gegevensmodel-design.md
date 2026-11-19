@@ -36,6 +36,8 @@ Succes:
 - Transcripts inlezen, kosten en tokens bepalen (T2). Of kosten uit het resultaatbericht komen of uit
   een prijstabel, is #375.
 - Reviewrecords indexeren (T3), herstel na merge meten (T4), menswerk meten (T5).
+- Doorlooptijd met wachttijd apart: `runs` heeft al `started_at` en `ended_at`; de wachttijd op een
+  mens is T5.
 - De UI (T6) en de versiemarkering (T7).
 - Codex- en OpenCode-sessies als bron (milestone *Explore/exploit*).
 - Bewaartermijn en afscherming van gevoelige transcriptinhoud. Dit model slaat geen
@@ -55,7 +57,11 @@ Succes:
   runner eist een doorlopend nummer (`0010_…`), één transactie per bestand, en zet `user_version`.
 - **`foreign_keys(ON)`** staat op elke verbinding (`internal/store/store.go`). Een nieuwe kolom op
   `runs` gaat daarom met `ALTER TABLE … ADD COLUMN`, niet met een tabelherbouw: een herbouw
-  (`DROP TABLE runs`) zou rijen raken die naar `runs` verwijzen.
+  (`DROP TABLE runs`) zou rijen raken die naar `runs` verwijzen. Dat geldt ook voor elke latere
+  migratie die `runs` moet herbouwen (zoals 0003, 0004 en 0008 deden, om een `CHECK` te verruimen): de
+  runner draait elk bestand in één transactie, waar `PRAGMA foreign_keys=OFF` niets doet, dus zo'n
+  migratie moet `PRAGMA defer_foreign_keys=ON` zetten. Een test in dit issue herbouwt `runs` met
+  kindrijen erin op die manier en bewijst dat het werkt *(own choice after spec review, r1-f1)*.
 - **Taal van de code.** `[project] code_language = en` geldt voor `internal/**`. Tabel- en
   kolomnamen én opgeslagen waarden zijn Engels, net als de bestaande `runs` (`start`, `resume`,
   `handoff`). De Nederlandse begrippen van het issue staan hieronder naast de Engelse naam.
@@ -116,12 +122,12 @@ Elke nieuwe tabel draagt drie kolommen:
 
 Op elke tabel staat `UNIQUE (source, source_id)`. Daarnaast heeft elke tabel waar dat kan een
 sleutel op het object zelf: `sessions` op `(harness, session_key)`, `setups` op `run_id` en op
-`session_id`. Zo telt een tweede schrijver met een andere bron voor dezelfde sessie of run niet
+`session_id`, `usage` op `(run_id, model)` en op `(session_id, model)`. Zo telt een tweede schrijver met een andere bron voor dezelfde sessie of run niet
 dubbel.
 
 Een schrijffunctie doet `INSERT … ON CONFLICT DO NOTHING`, zonder conflictdoel, zodat elke
 uniekheidsbotsing "niet nieuw" oplevert en geen fout. Ze meldt of de rij nieuw was. Een tweede
-aanbieding laat de eerste rij staan, met één uitzondering: `sessions` (zie *Schrijffuncties*).
+aanbieding laat de eerste rij staan, met één uitzondering: `sessions` en `findings` (zie *Schrijffuncties*).
 
 `runs` blijft het eigen record van de dispatcher: zijn bron is impliciet (`dispatcher`, met `id` als
 bronsleutel). `trajectories` is een sleutelrij zonder bron: hij ontstaat bij de eerste run, sessie of
@@ -135,7 +141,7 @@ ontwerp aan de bouwer, de inhoud niet.
 ```sql
 CREATE TABLE trajectories (
   id INTEGER PRIMARY KEY,
-  repo TEXT NOT NULL,            -- dezelfde waarde als runs.repo
+  repo TEXT NOT NULL,            -- de geconfigureerde repo-slug, exact zoals in runs.repo
   issue INTEGER NOT NULL,
   created_at TEXT NOT NULL,
   UNIQUE (repo, issue)
@@ -188,6 +194,7 @@ CREATE TABLE usage (              -- tokens en kosten per model per run of sessi
   cost_kind TEXT CHECK (cost_kind IN ('estimate', 'quota', 'actual')),
   CHECK ((run_id IS NULL) <> (session_id IS NULL)),
   CHECK ((cost IS NULL) = (cost_kind IS NULL)),
+  UNIQUE (run_id, model), UNIQUE (session_id, model),
   UNIQUE (source, source_id)
 );
 
@@ -236,8 +243,9 @@ run. `assignment` krijgt de standaardwaarde; geen enkele code in deze milestone 
 ### De koppelregel voor een interactieve sessie
 
 Een pure functie in een nieuw pakket `internal/telemetry`, zonder bestand- of databasetoegang. Ze
-krijgt per transcriptregel de branch en eventueel een issuenummer dat de schrijver uit die regel
-haalde, en geeft een issue met basis, of een reden.
+krijgt de standaardbranch als parameter (de schrijver leest `forge.default_branch`) en per
+transcriptregel de branch en eventueel een issuenummer dat de schrijver uit die regel haalde. Ze geeft
+een issue met basis en branch, of een reden.
 
 1. Voor de branchtelling telt een regel met branch `main` (de standaardbranch,
    `forge.default_branch`) of een lege branch niet mee.
@@ -245,16 +253,19 @@ haalde, en geeft een issue met basis, of een reden.
    `^issue-(\d+)(-|$)`. Ook een kale `issue-<N>` telt: de dispatcher maakt die zelf als de titel geen
    slug geeft (`dispatch/decide.go`, `issueBranch`). De functie telt per issuenummer, niet per branch:
    twee branches van hetzelfde issue tellen samen. Het issue met de meeste regels wint, basis
-   `branch`. Bij gelijkspel wint het issue dat het laatst voorkomt.
+   `branch`. Bij gelijkspel wint het issue dat het laatst voorkomt. De opgeslagen `branch` is de branch van het
+   laatste voorkomen van het winnende issue; bij basis `transcript` en zonder traject is hij `''`.
 3. Valt er geen issuebranch over, dan wint het issuenummer dat de schrijver het vaakst uit de
    transcript haalde, basis `transcript`. Hier tellen alle regels mee, ook die op `main`: zo krijgt
    een sessie die `/lighthouse-start-issue 373` vanuit de hoofdcheckout draaide en daar bleef, toch
    haar traject. Bij gelijkspel het laatst geziene.
 4. Anders: geen traject, met reden.
-   - `main_only`: elke regel stond op de standaardbranch, en er was geen issuenummer;
+   - `main_only`: elke regel met een branch stond op de standaardbranch (lege branches tellen niet
+     mee, maar er is minstens één regel op de standaardbranch), en er was geen issuenummer;
    - `no_issue_branch`: er waren andere branches, geen ervan een issuebranch (bijvoorbeeld
      `fix-<slug>`), en er was geen issuenummer;
-   - `no_issue_number`: geen bruikbare branch, ook geen issuenummer.
+   - `no_issue_number`: geen bruikbare branch (geen regels, of alleen lege branches), ook geen
+     issuenummer.
 
 Hoe een issuenummer uit een transcriptregel komt (Skill-args, slashcommando), bepaalt T2: de functie
 krijgt het al geëxtraheerd. Het patroon `^issue-(\d+)-` is nu op drie plekken losse stringlogica
@@ -277,21 +288,38 @@ hervatting met dezelfde sessie-id als de start is T2's zorg bij het toerekenen v
 In `internal/telemetry`, één per tabel: `RecordSession`, `RecordSetup`, `RecordUsage` en
 `RecordFinding`. Elke functie:
 
-- neemt een `*sql.DB` (of `*sql.Tx`) en een struct met de velden;
+- neemt een `*sql.DB` (of `*sql.Tx`) en een struct met de velden; elke handeling (traject aanmaken,
+  controles, insert) loopt in één transactie, zodat een geweigerde aanroep niets achterlaat, ook geen
+  traject;
+- krijgt als repo de geconfigureerde slug zoals in `runs.repo` (`repo.Slug`); één gedeelde helper in
+  `internal/telemetry` normaliseert die (hoofdletters ongevoelig vergelijken met de bestaande
+  trajecten en `runs`, de reeds opgeslagen schrijfwijze wint), zodat een schrijver die de repo uit een
+  pad of cwd afleidt niet een tweede traject maakt *(own choice after spec review, r1-f2)*;
 - maakt het traject aan als dat nog niet bestaat (`trajectories`, op repo en issue);
 - doet `INSERT … ON CONFLICT DO NOTHING`;
-- geeft terug of de rij nieuw was, en de id van de rij, ook als die al bestond.
+- geeft terug of de rij nieuw was, en de id van de rij, ook als die al bestond. Een rij die een
+  tweede aanbieding bijwerkte (`sessions`, `findings`) is niet nieuw.
 
 **Uitzondering: `RecordSession`.** Een transcript groeit zolang de sessie loopt. Een eerste aanbieding
 kan dus `main_only` zijn, en een latere, na de worktree, een issuebranch. Bij een tweede aanbieding van
 dezelfde sessie (`harness`, `session_key`) werkt `RecordSession` daarom de afgeleide velden bij:
-`branch`, `trajectory_id`, `link_basis`, `unlinked_reason`, `ended_at` en `recorded_at`. Herkomst
+`branch`, `trajectory_id`, `link_basis`, `unlinked_reason`, `ended_at` en `recorded_at` (die laatste
+komt uit de struct van de aanroeper, niet uit de klok, zodat dezelfde aanbieding dezelfde rij geeft). Herkomst
 (`source`, `source_id`), `started_at`, `transcript_path` en `assignment` blijven staan. Dezelfde
 aanbieding twee keer geeft nog steeds één rij met dezelfde inhoud: de functie is idempotent, ze
 overschrijft alleen wat uit de bron volgt. Een sessie die gekoppeld was, kan zo ook weer ontkoppeld
-raken als de bron dat zegt.
+raken als de bron dat zegt. Heeft de sessie al bevindingen (`findings.session_id`), dan weigert
+`RecordSession` een wijziging van `trajectory_id` met een fout, zodat geen bevinding naar een ander
+traject verwijst dan haar sessie *(own choice after spec review, r1-f5)*. Een traject zonder
+verwijzende run, sessie of bevinding mag bestaan: het is een sleutelrij.
 
-**`RecordFinding`** neemt repo en issue en maakt daar het traject van. Geeft de aanroeper ook een run
+**`RecordFinding`** werkt bij een tweede aanbieding, net als `sessions`, de afgeleide velden bij:
+`severity`, `decision`, `record_path` en `record_sum`; `NULL` bij `decision` betekent "nog geen
+besluit" en wordt zo later gevuld. De tabel houdt dus één rij per bevinding, ook als T3 een record
+indexeert voordat het besluitenbestand er is. Hoe de besluiten in de reviewrecords op de drie
+waarden worden afgebeeld, bepaalt T3 *(own choice after spec review, r1-f4)*.
+
+`RecordFinding` neemt repo en issue en maakt daar het traject van. Geeft de aanroeper ook een run
 of sessie mee, dan moet die naar hetzelfde traject verwijzen; anders weigert de functie met een fout.
 Een bevinding op een ongekoppelde sessie wordt ook geweigerd: de sessie is eerst te koppelen, of de
 bevinding gaat zonder sessie, alleen op het traject.
@@ -306,7 +334,8 @@ Volgens `/lighthouse-test-standard`; elke test faalt als het gedrag breekt.
   versie 9 met een issue-run en een geplande run, dan migreren. Beide runs bestaan nog met dezelfde
   velden. De issue-run heeft een traject met zijn repo en issue. De geplande run heeft
   `trajectory_id IS NULL`, en beide hebben `assignment = 'standard'`.
-- **Teller en tabellen.** `user_version` wordt 10 in `TestMigrate…` en `TestMigrationPushedDefault`.
+- **Teller en tabellen.** `user_version` wordt 10 in `TestMigrateTwice` en de andere tests die op de laatste migratie
+  vergelijken; `TestMigrationPushedDefault` migreert expliciet tot 0009 en blijft op 9.
   De tabellenlijst in `migrate_test.go` krijgt de vijf nieuwe tabellen. `TestMigrateTwice` blijft
   groen.
 - **Één traject (AC 6).** Twee runs via `runs.Take` voor hetzelfde issue (mode `start`, daarna
@@ -317,8 +346,11 @@ Volgens `/lighthouse-test-standard`; elke test faalt als het gedrag breekt.
   (andere `source`, zelfde object) geeft ook "niet nieuw", geen fout.
 - **Sessie groeit.** `RecordSession` eerst met alleen main-regels (`main_only`), daarna dezelfde
   sessie met ook regels op `issue-<n>-x`: één rij, nu gekoppeld aan traject `<n>` met basis `branch`.
+- **Besluit komt later.** `RecordFinding` zonder besluit, daarna dezelfde bevinding met besluit: één
+  rij, nu met dat besluit. `RecordSession` weigert een wijziging van het traject van een sessie met
+  bevindingen. `RecordUsage` met een tweede `source` voor dezelfde `(run, model)` geeft "niet nieuw".
 - **Bevinding past bij haar traject.** `RecordFinding` met een run van een ander issue, of met een
-  ongekoppelde sessie, geeft een fout en schrijft niets.
+  ongekoppelde sessie, geeft een fout en schrijft niets, ook geen traject.
 - **Ongekoppelde sessie.** Een sessie met alleen regels op `main` staat in `sessions` met
   `unlinked_reason = 'main_only'` en zonder traject. De database weigert een sessie met traject én
   reden, en een sessie met geen van beide.
@@ -357,8 +389,8 @@ Eigen keuzes in dit ontwerp, te corrigeren:
 - `issue-<N>` zonder slug is ook een issuebranch.
 - Een issuenummer uit de transcript telt ook op `main`; `main_only` betekent "alleen main en geen
   issuenummer".
-- Een tweede aanbieding overschrijft niet, behalve bij `sessions`: daar werkt ze de afgeleide velden
-  bij, omdat een transcript groeit.
+- Een tweede aanbieding overschrijft niet, behalve bij `sessions` en `findings`: daar werkt ze de
+  afgeleide velden bij, omdat een transcript groeit en een besluit later valt.
 - Een tweede bron voor hetzelfde object telt niet dubbel (`UNIQUE` op het object).
 - Een bevinding moet bij het traject van haar run of sessie horen; anders weigert de schrijver.
 - Handmatig koppelen door een mens zit niet in dit issue.
