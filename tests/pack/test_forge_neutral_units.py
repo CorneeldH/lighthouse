@@ -11,8 +11,10 @@ import tomllib
 import pytest
 
 from tests.pack._testkit import CORE, PACKS
+from tests.pack.test_skill_contracts import _TOOL_USES
 
-FORGE_OP = re.compile(r"\bgh\s+(issue|pr|api|label|project|release|run)\b")
+# The same `gh <command>` alternation requires.toml uses, plus release (see the docstring).
+FORGE_OP = re.compile(_TOOL_USES["gh"].replace("(pr|", "(release|pr|", 1))
 UNITS = ["review-plan", "upgrade", "audit-worktrees", "write-handoff", "fix-pr"]
 
 
