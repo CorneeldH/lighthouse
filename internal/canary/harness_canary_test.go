@@ -4,6 +4,7 @@ package canary
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -53,6 +54,45 @@ func lighthouseBin(t *testing.T) string {
 		t.Fatal("the lighthouse binary was not built")
 	}
 	return builtBin
+}
+
+var (
+	shellcheckOnce sync.Once
+	shellcheckPath string
+	shellcheckErr  string
+)
+
+// shellcheckBin is the pinned shellcheck, resolved once with the lib of pack/shell from this
+// checkout (its tool cache, a pinned copy on PATH, or the pinned download). A missing pin fails the
+// test, never skips it: a canary that did not run says nothing. Hooks get it as SHELLCHECK_BIN.
+func shellcheckBin(t *testing.T) string {
+	t.Helper()
+	shellcheckOnce.Do(func() {
+		lib, err := filepath.Abs(packFile("shell/scripts/lib/shellcheck-bin.sh"))
+		if err != nil {
+			shellcheckErr = err.Error()
+			return
+		}
+		cmd := exec.Command("bash", "-c", `. "$1" && resolve_shellcheck`, "resolve", lib)
+		cmd.Dir = filepath.Dir(lib)
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout, cmd.Stderr = &stdout, &stderr
+		err = cmd.Run()
+		bin := strings.TrimSpace(stdout.String())
+		switch {
+		case err != nil || bin == "":
+			shellcheckErr = "resolve_shellcheck failed (" + fmt.Sprint(err) + "): " + stderr.String()
+		case stderr.Len() > 0:
+			// A notice means a shellcheck other than the pin: the canaries would measure that one.
+			shellcheckErr = "resolve_shellcheck found no pinned shellcheck: " + stderr.String()
+		default:
+			shellcheckPath = bin
+		}
+	})
+	if shellcheckPath == "" {
+		t.Fatalf("no pinned shellcheck for the shell canaries: %s", shellcheckErr)
+	}
+	return shellcheckPath
 }
 
 // cleanEnv is the process environment without LIGHTHOUSE_* and with the directory of bin first on PATH.

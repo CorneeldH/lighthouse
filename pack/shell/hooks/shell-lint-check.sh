@@ -14,6 +14,17 @@
 #   - all other .sh: error + warning. Info and style findings in the rest
 #     of a repo would block every edit on debt that has nothing to do with
 #     the change.
+#
+# The reasons this hook blocks on. A finding blocks as shellcheck prints it
+# (`SC2164 (warning)`). Each SC code is also a floor: when the configuration read
+# by shellcheck for the edited script (a .shellcheckrc above it, in $HOME or
+# $XDG_CONFIG_HOME, SHELLCHECK_OPTS, a code range in `disable=`) switches one off, the
+# hook blocks with `[shell-lint-check/<code>]`, also on a clean script. `strict-style` is
+# no SC code but the threshold of the strict directories: a block there that holds only
+# style and info findings carries `[shell-lint-check/strict-style]`. It has no floor.
+BLOCKING_RULES="SC2164,SC2046,SC2115,SC2155,SC2034,strict-style"
+# The IDs of BLOCKING_RULES that are no shellcheck code.
+NON_LINTER_RULES="strict-style"
 set -uo pipefail
 
 fail() { # reason...
@@ -107,6 +118,38 @@ EOF
 
 # stderr separately: a deviating shellcheck version reports itself there, also at rc 0.
 ERR_FILE="$(mktemp)" || fail "mktemp failed."
+
+# The floor, before the lint run: the SC codes of BLOCKING_RULES are on for a script in
+# FILE_DIR, as shellcheck sees that directory. shellcheck itself is resolved from this
+# directory, as for the lint run.
+floor=""
+IFS=, read -ra RULES <<<"$BLOCKING_RULES"
+for id in "${RULES[@]}"; do
+  case ",$NON_LINTER_RULES," in *",$id,"*) continue ;; esac
+  floor="${floor:+$floor,}$id"
+done
+missing=$("$SCRIPT" --check-floor "$floor" "$FILE_DIR" 2>"$ERR_FILE")
+rc=$?
+case "$rc" in
+  0) ;;
+  1)
+    [ -n "$missing" ] || { rm -f "$ERR_FILE"; fail "shellcheck-repo.sh --check-floor returned rc=1 without naming a code."; }
+    while IFS= read -r code; do
+      echo "[shell-lint-check/$code] $code is switched off for $FILE_PATH (a .shellcheckrc above it or in \$HOME or \$XDG_CONFIG_HOME, SHELLCHECK_OPTS, or a code range in disable=); this hook needs it on." >&2
+    done <<EOF
+$missing
+EOF
+    echo "Switch the check back on and fix the code. Existing debt goes behind '# shellcheck disable=SCxxxx <reason>' on the line above it, not behind a check that is off." >&2
+    rm -f "$ERR_FILE"
+    exit 2
+    ;;
+  *)
+    err="$(cat "$ERR_FILE")"
+    rm -f "$ERR_FILE"
+    fail "shellcheck-repo.sh --check-floor returned rc=$rc, nothing was checked:" "$err" "$missing"
+    ;;
+esac
+
 out=$("$SCRIPT" --severity "$severity" -- "$FILE_PATH" 2>"$ERR_FILE")
 rc=$?
 err="$(cat "$ERR_FILE")"
@@ -122,7 +165,13 @@ case "$rc" in
     exit 0
     ;;
   1)
-    echo "shell-lint-check: fix this in the code. If a rule really has to go, give a reason:" >&2
+    # The strict threshold is the reason when the run went down to style and the same
+    # file is clean at warning: only style and info findings.
+    tag=""
+    if [ "$severity" = style ] && "$SCRIPT" --severity warning -- "$FILE_PATH" >/dev/null 2>&1; then
+      tag="[shell-lint-check/strict-style] "
+    fi
+    echo "${tag}shell-lint-check: fix this in the code. If a rule really has to go, give a reason:" >&2
     echo "'# shellcheck disable=SCxxxx <reason>' on the line above." >&2
     echo "No silent suppression." >&2
     echo "" >&2
