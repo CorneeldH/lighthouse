@@ -110,6 +110,21 @@ type Server struct {
 	// BlockingPage2Fails, per issue number, makes the second page of the blocking list of that
 	// issue answer a 500.
 	BlockingPage2Fails map[int]bool
+	// ClosingPRs are the pull requests that close an issue, per issue number, in GraphQL shape
+	// (number, state, headRefName, isCrossRepository, body, repository.nameWithOwner), served
+	// by IssueChanges as closedByPullRequestsReferences in pages of 100.
+	ClosingPRs map[int][]map[string]any
+	// CrossRefPRs are the pull requests whose cross-reference events an issue's timeline shows,
+	// per issue number, in the same shape, served by IssueChanges as the source of each
+	// CROSS_REFERENCED_EVENT in pages of 100.
+	CrossRefPRs map[int][]map[string]any
+	// IssueChangesPage2Fails, per issue number, makes every IssueChanges page after a cursor
+	// answer a GraphQL error.
+	IssueChangesPage2Fails map[int]bool
+	// Closers are the closes of an issue in order, per issue number: the number of the pull
+	// request that closed it, 0 by hand. IssueCloser serves the last as the closer of the last
+	// ClosedEvent.
+	Closers map[int][]int
 	// PlanStuckCursor, when not nil, makes every page of the Planning and PlanMilestones
 	// queries claim a next page with this endCursor, whatever the cursor asked.
 	PlanStuckCursor *string
@@ -699,6 +714,14 @@ func (s *Server) graphql(w http.ResponseWriter, r *http.Request) {
 		}}}
 	case "OpenPRsWithStatus":
 		data = s.openPRsWithStatus(req.Variables)
+	case "IssueChanges":
+		var err error
+		if data, err = s.issueChanges(req.Variables); err != nil {
+			writeJSON(w, http.StatusOK, map[string]any{"data": nil, "errors": []any{map[string]any{"message": err.Error()}}})
+			return
+		}
+	case "IssueCloser":
+		data = s.issueCloser(req.Variables)
 	case "IssueItems":
 		var errs []any
 		if data, errs = s.issueItems(req.Query, req.Variables); errs != nil {
@@ -719,6 +742,30 @@ func (s *Server) graphql(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"data": data})
 }
 
+// connection cuts items by the cursor "cursor-<offset>" in after (nil or "" for the first page)
+// into a page of 100 and the connection around it. A stuck cursor, when not nil, makes the page
+// claim a next page with that endCursor, whatever the cursor asked. op names the operation in a
+// test error.
+func (s *Server) connection(op string, after any, items []map[string]any, stuck *string) map[string]any {
+	start := 0
+	if a, _ := after.(string); a != "" {
+		n, err := strconv.Atoi(strings.TrimPrefix(a, "cursor-"))
+		if err != nil {
+			s.t.Errorf("forgetest: %s after = %q, not a cursor this server gave", op, a)
+		}
+		start = min(n, len(items))
+	}
+	end := min(start+100, len(items))
+	more, cursor := end < len(items), fmt.Sprintf("cursor-%d", end)
+	if stuck != nil {
+		more, cursor = true, *stuck
+	}
+	return map[string]any{
+		"pageInfo": map[string]any{"hasNextPage": more, "endCursor": cursor},
+		"nodes":    append([]map[string]any{}, items[start:end]...),
+	}
+}
+
 // board serves one page of 100 BoardNodes after the cursor "cursor-<offset>".
 func (s *Server) board(vars map[string]any) any {
 	if s.BoardNotAProject {
@@ -730,45 +777,53 @@ func (s *Server) board(vars map[string]any) any {
 			live = append(live, n)
 		}
 	}
-	start := 0
-	if after, _ := vars["after"].(string); after != "" {
-		n, err := strconv.Atoi(strings.TrimPrefix(after, "cursor-"))
-		if err != nil {
-			s.t.Errorf("forgetest: Board after = %q, not a cursor this server gave", after)
-		}
-		start = min(n, len(live))
-	}
-	end := min(start+100, len(live))
-	more, cursor := end < len(live), fmt.Sprintf("cursor-%d", end)
-	if s.BoardStuckCursor != nil {
-		more, cursor = true, *s.BoardStuckCursor
-	}
-	return map[string]any{"node": map[string]any{"items": map[string]any{
-		"pageInfo": map[string]any{"hasNextPage": more, "endCursor": cursor},
-		"nodes":    append([]map[string]any{}, live[start:end]...),
-	}}}
+	return map[string]any{"node": map[string]any{"items": s.connection("Board", vars["after"], live, s.BoardStuckCursor)}}
 }
 
-// planPage cuts items by the cursor "cursor-<offset>" in vars into a page of 100 and the
-// connection around it, with the stuck cursor when PlanStuckCursor is set.
+// planPage cuts items by the cursor in vars into a page of 100 and the connection around it,
+// with the stuck cursor when PlanStuckCursor is set.
 func (s *Server) planPage(vars map[string]any, items []map[string]any) map[string]any {
-	start := 0
-	if after, _ := vars["after"].(string); after != "" {
-		n, err := strconv.Atoi(strings.TrimPrefix(after, "cursor-"))
-		if err != nil {
-			s.t.Errorf("forgetest: Planning after = %q, not a cursor this server gave", after)
+	return s.connection("Planning", vars["after"], items, s.PlanStuckCursor)
+}
+
+// issueChanges serves ClosingPRs and CrossRefPRs of issue nr, each connection only when its
+// @include variable (closing, refs) is true, after its own cursor (closingAfter, refsAfter).
+func (s *Server) issueChanges(vars map[string]any) (any, error) {
+	nr := int(commentID(vars["nr"]))
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.IssueChangesPage2Fails[nr] && (vars["closingAfter"] != nil || vars["refsAfter"] != nil) {
+		return nil, fmt.Errorf("something went wrong on page two")
+	}
+	issue := map[string]any{}
+	if on, _ := vars["closing"].(bool); on {
+		issue["closedByPullRequestsReferences"] = s.connection("IssueChanges", vars["closingAfter"], s.ClosingPRs[nr], nil)
+	}
+	if on, _ := vars["refs"].(bool); on {
+		var events []map[string]any
+		for _, pr := range s.CrossRefPRs[nr] {
+			events = append(events, map[string]any{"source": pr})
 		}
-		start = min(n, len(items))
+		issue["timelineItems"] = s.connection("IssueChanges", vars["refsAfter"], events, nil)
 	}
-	end := min(start+100, len(items))
-	more, cursor := end < len(items), fmt.Sprintf("cursor-%d", end)
-	if s.PlanStuckCursor != nil {
-		more, cursor = true, *s.PlanStuckCursor
+	return map[string]any{"repository": map[string]any{"issue": issue}}, nil
+}
+
+// issueCloser serves the last ClosedEvent of issue nr, as timelineItems(last: 1) does: its
+// closer a pull request, or null for a close by hand; no node for an issue never closed.
+func (s *Server) issueCloser(vars map[string]any) any {
+	nr := int(commentID(vars["nr"]))
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	nodes := []any{}
+	if cs := s.Closers[nr]; len(cs) > 0 {
+		var closer any
+		if last := cs[len(cs)-1]; last != 0 {
+			closer = map[string]any{"number": last}
+		}
+		nodes = append(nodes, map[string]any{"closer": closer})
 	}
-	return map[string]any{
-		"pageInfo": map[string]any{"hasNextPage": more, "endCursor": cursor},
-		"nodes":    append([]map[string]any{}, items[start:end]...),
-	}
+	return map[string]any{"repository": map[string]any{"issue": map[string]any{"timelineItems": map[string]any{"nodes": nodes}}}}
 }
 
 // planIssues serves the open issues of Issues, without pull requests, in number order.
@@ -983,17 +1038,5 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 // openPRsWithStatus serves one page of 100 OpenPRNodes after the cursor "cursor-<offset>".
 func (s *Server) openPRsWithStatus(vars map[string]any) any {
-	start := 0
-	if after, _ := vars["after"].(string); after != "" {
-		n, err := strconv.Atoi(strings.TrimPrefix(after, "cursor-"))
-		if err != nil {
-			s.t.Errorf("forgetest: OpenPRsWithStatus after = %q, not a cursor this server gave", after)
-		}
-		start = min(n, len(s.OpenPRNodes))
-	}
-	end := min(start+100, len(s.OpenPRNodes))
-	return map[string]any{"repository": map[string]any{"pullRequests": map[string]any{
-		"pageInfo": map[string]any{"hasNextPage": end < len(s.OpenPRNodes), "endCursor": fmt.Sprintf("cursor-%d", end)},
-		"nodes":    append([]map[string]any{}, s.OpenPRNodes[start:end]...),
-	}}}
+	return map[string]any{"repository": map[string]any{"pullRequests": s.connection("OpenPRsWithStatus", vars["after"], s.OpenPRNodes, nil)}}
 }

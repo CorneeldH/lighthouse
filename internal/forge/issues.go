@@ -171,3 +171,160 @@ func (c *GitHub) OpenPRs(ctx context.Context) ([]OpenPR, error) {
 	}
 	return out, nil
 }
+
+// issueChangesQuery reads one page of the pull requests that close issue $nr and of those whose
+// cross-reference events its timeline shows. Each connection pages on its own cursor and is
+// left out (@include) once its last page is read.
+const issueChangesQuery = `query IssueChanges($owner: String!, $name: String!, $nr: Int!,
+  $closing: Boolean!, $closingAfter: String, $refs: Boolean!, $refsAfter: String) {
+  repository(owner: $owner, name: $name) {
+    issue(number: $nr) {
+      closedByPullRequestsReferences(first: 100, after: $closingAfter, includeClosedPrs: true) @include(if: $closing) {
+        pageInfo { hasNextPage endCursor }
+        nodes { number state headRefName isCrossRepository body repository { nameWithOwner } }
+      }
+      timelineItems(itemTypes: [CROSS_REFERENCED_EVENT], first: 100, after: $refsAfter) @include(if: $refs) {
+        pageInfo { hasNextPage endCursor }
+        nodes { ... on CrossReferencedEvent { source { ... on PullRequest {
+          number state headRefName isCrossRepository body repository { nameWithOwner }
+        } } } }
+      }
+    }
+  }
+}`
+
+// ghIssueChange is a pull request node of issueChangesQuery.
+type ghIssueChange struct {
+	Number      int    `json:"number"`
+	State       string `json:"state"`
+	HeadRefName string `json:"headRefName"`
+	CrossRepo   bool   `json:"isCrossRepository"`
+	Body        string `json:"body"`
+	Repository  struct {
+		NameWithOwner string `json:"nameWithOwner"`
+	} `json:"repository"`
+}
+
+func (n ghIssueChange) change() IssueChange {
+	return IssueChange{Number: n.Number, State: n.State, HeadRef: n.HeadRefName, CrossRepo: n.CrossRepo,
+		Repo: n.Repository.NameWithOwner, Body: n.Body}
+}
+
+// IssueChanges lists the pull requests that close issue number (closedByPullRequestsReferences)
+// and those that mention it (CROSS_REFERENCED_EVENT), each once. Both connections are followed
+// to their last page; a failing page is an error.
+func (c *GitHub) IssueChanges(ctx context.Context, number int) ([]IssueChange, error) {
+	owner, name, err := c.ownerName()
+	if err != nil {
+		return nil, err
+	}
+	var closing, mentioning []IssueChange
+	vars := map[string]any{"owner": owner, "name": name, "nr": number,
+		"closing": true, "closingAfter": nil, "refs": true, "refsAfter": nil}
+	what := fmt.Sprintf("pull requests of %s#%d", c.Repo, number)
+	for vars["closing"] == true || vars["refs"] == true {
+		var data struct {
+			Repository *struct {
+				Issue *struct {
+					ClosedBy *struct {
+						PageInfo pageInfo        `json:"pageInfo"`
+						Nodes    []ghIssueChange `json:"nodes"`
+					} `json:"closedByPullRequestsReferences"`
+					Timeline *struct {
+						PageInfo pageInfo `json:"pageInfo"`
+						Nodes    []struct {
+							Source ghIssueChange `json:"source"`
+						} `json:"nodes"`
+					} `json:"timelineItems"`
+				} `json:"issue"`
+			} `json:"repository"`
+		}
+		if err := c.graphql(ctx, issueChangesQuery, vars, &data); err != nil {
+			return nil, err
+		}
+		if data.Repository == nil || data.Repository.Issue == nil {
+			return nil, fmt.Errorf("forge: issue %s#%d not found", c.Repo, number)
+		}
+		is := data.Repository.Issue
+		if vars["closing"] == true {
+			if is.ClosedBy == nil {
+				return nil, fmt.Errorf("forge: %s: closedByPullRequestsReferences missing from the answer", what)
+			}
+			for _, n := range is.ClosedBy.Nodes {
+				closing = append(closing, n.change())
+			}
+			if err := advance(vars, "closing", what, is.ClosedBy.PageInfo); err != nil {
+				return nil, err
+			}
+		}
+		if vars["refs"] == true {
+			if is.Timeline == nil {
+				return nil, fmt.Errorf("forge: %s: timelineItems missing from the answer", what)
+			}
+			for _, n := range is.Timeline.Nodes {
+				if n.Source.Number != 0 { // the source of a cross-reference can be an issue
+					mentioning = append(mentioning, n.Source.change())
+				}
+			}
+			if err := advance(vars, "refs", what, is.Timeline.PageInfo); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return issueChanges(closing, mentioning), nil
+}
+
+// advance moves the connection that vars[key] includes to its next page, at vars[key+"After"],
+// or leaves it out once its last page is read.
+func advance(vars map[string]any, key, what string, p pageInfo) error {
+	next, done, err := nextCursor(what+" ("+key+")", p, vars[key+"After"])
+	if err != nil {
+		return err
+	}
+	vars[key], vars[key+"After"] = !done, next
+	return nil
+}
+
+// issueCloserQuery reads the closer of the last ClosedEvent of issue $nr.
+const issueCloserQuery = `query IssueCloser($owner: String!, $name: String!, $nr: Int!) {
+  repository(owner: $owner, name: $name) {
+    issue(number: $nr) {
+      timelineItems(itemTypes: [CLOSED_EVENT], last: 1) {
+        nodes { ... on ClosedEvent { closer { ... on PullRequest { number } } } }
+      }
+    }
+  }
+}`
+
+// Closer is the number of the pull request that closed issue number the last time, from the
+// closer of its last ClosedEvent; 0 for a close by hand or by a commit, or an issue never closed.
+func (c *GitHub) Closer(ctx context.Context, number int) (int, error) {
+	owner, name, err := c.ownerName()
+	if err != nil {
+		return 0, err
+	}
+	var data struct {
+		Repository *struct {
+			Issue *struct {
+				TimelineItems struct {
+					Nodes []struct {
+						Closer *struct {
+							Number int `json:"number"`
+						} `json:"closer"`
+					} `json:"nodes"`
+				} `json:"timelineItems"`
+			} `json:"issue"`
+		} `json:"repository"`
+	}
+	if err := c.graphql(ctx, issueCloserQuery, map[string]any{"owner": owner, "name": name, "nr": number}, &data); err != nil {
+		return 0, err
+	}
+	if data.Repository == nil || data.Repository.Issue == nil {
+		return 0, fmt.Errorf("forge: issue %s#%d not found", c.Repo, number)
+	}
+	nodes := data.Repository.Issue.TimelineItems.Nodes
+	if len(nodes) == 0 || nodes[len(nodes)-1].Closer == nil {
+		return 0, nil
+	}
+	return nodes[len(nodes)-1].Closer.Number, nil
+}

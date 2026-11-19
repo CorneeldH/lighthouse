@@ -144,6 +144,34 @@ func (g *gitlabFixture) AddChange(_ *testing.T, c forge.Change) {
 	g.srv.AddMR(m)
 }
 
+// AddIssueChange: a closing merge request is in closed_by and, as on GitLab, in
+// related_merge_requests too; a mentioning one only there. A fork has another source project.
+func (g *gitlabFixture) AddIssueChange(_ *testing.T, number int, c forge.IssueChange) {
+	source := 1
+	if c.CrossRepo {
+		source = 2
+	}
+	mr := map[string]any{"iid": c.Number, "state": mrState[c.State], "source_branch": c.HeadRef, "description": c.Body,
+		"project_id": 1, "source_project_id": source, "target_project_id": 1,
+		"references": map[string]any{"full": fmt.Sprintf("%s!%d", c.Repo, c.Number)}}
+	if c.Closes {
+		g.srv.AddClosedBy(g.srv.Project, number, mr)
+	}
+	g.srv.AddRelatedMR(number, mr)
+}
+
+func (g *gitlabFixture) FailIssueChangesPage2(_ *testing.T, number int) {
+	g.srv.FailIssueMRsPage2(number)
+}
+
+func (g *gitlabFixture) AddStateEvent(_ *testing.T, number int, state string, closer int) {
+	ev := map[string]any{"state": state, "source_merge_request": nil}
+	if closer != 0 {
+		ev["source_merge_request"] = map[string]any{"iid": closer}
+	}
+	g.srv.AddStateEvent(number, ev)
+}
+
 func (g *gitlabFixture) AddOpenPR(_ *testing.T, pr forge.OpenPR) {
 	g.srv.AddMR(map[string]any{"iid": pr.Number, "state": "opened", "title": pr.Title, "description": pr.Body,
 		"source_branch": pr.HeadRef, "source_project_id": 1, "target_project_id": 1})

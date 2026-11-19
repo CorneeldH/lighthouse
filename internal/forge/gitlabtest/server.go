@@ -55,10 +55,15 @@ type Server struct {
 	failLinksPage2 map[int]bool
 	mrs            []map[string]any
 	closedBy       map[string][]map[string]any // "project#iid" to the merge requests that close it
-	users          map[string]int64            // username to user ID
-	members        map[string]int              // username to access level
-	statuses       []string
-	status         map[int]string
+	related        map[int][]map[string]any    // iid to its related merge requests
+	stateEvents    map[int][]map[string]any    // iid to its resource state events, oldest first
+	// failIssueMRsPage2 holds the iids whose closed_by and related_merge_requests answer a 500
+	// on page two.
+	failIssueMRsPage2 map[int]bool
+	users             map[string]int64 // username to user ID
+	members           map[string]int   // username to access level
+	statuses          []string
+	status            map[int]string
 
 	milestones []map[string]any
 	labels     []string
@@ -74,6 +79,7 @@ func newServer(t reporter) *Server {
 		t: t, Project: "group/project", nextID: 1000,
 		issues: map[int]map[string]any{}, notes: map[int][]map[string]any{}, mrNotes: map[int][]map[string]any{},
 		awards: map[int64][]map[string]any{}, links: map[int][]map[string]any{}, closedBy: map[string][]map[string]any{},
+		related: map[int][]map[string]any{}, stateEvents: map[int][]map[string]any{}, failIssueMRsPage2: map[int]bool{},
 		users: map[string]int64{}, members: map[string]int{}, status: map[int]string{},
 	}
 	mux := http.NewServeMux()
@@ -92,6 +98,8 @@ func newServer(t reporter) *Server {
 	s.route(mux, "GET "+p+"/issues/{iid}/links", s.project(s.listLinks))
 	// closed_by answers for any project: a blocker can live in another one.
 	s.route(mux, "GET "+p+"/issues/{iid}/closed_by", s.listClosedBy)
+	s.route(mux, "GET "+p+"/issues/{iid}/related_merge_requests", s.project(s.listRelatedMRs))
+	s.route(mux, "GET "+p+"/issues/{iid}/resource_state_events", s.project(s.listStateEvents))
 	s.route(mux, "GET "+p+"/merge_requests", s.project(s.listMRs))
 	s.route(mux, "GET "+p+"/merge_requests/{iid}", s.project(s.getMR))
 	s.route(mux, "PUT "+p+"/merge_requests/{iid}", s.project(s.updateMR))
@@ -336,10 +344,41 @@ func (s *Server) createAward(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) listClosedBy(w http.ResponseWriter, r *http.Request) {
 	key := r.PathValue("project") + "#" + r.PathValue("iid")
+	iid, _ := strconv.Atoi(r.PathValue("iid"))
 	s.mu.Lock()
+	fail := r.PathValue("project") == s.Project && s.failIssueMRsPage2[iid]
 	out := toAny(s.closedBy[key])
 	s.mu.Unlock()
+	paginateOrFail(w, r, out, fail)
+}
+
+// listRelatedMRs serves the merge requests related to issue iid: those that close it and those
+// that mention it, as AddRelatedMR seeded them.
+func (s *Server) listRelatedMRs(w http.ResponseWriter, r *http.Request) {
+	iid, _ := strconv.Atoi(r.PathValue("iid"))
+	s.mu.Lock()
+	fail := s.failIssueMRsPage2[iid]
+	out := toAny(s.related[iid])
+	s.mu.Unlock()
+	paginateOrFail(w, r, out, fail)
+}
+
+// listStateEvents serves the resource state events of issue iid, oldest first.
+func (s *Server) listStateEvents(w http.ResponseWriter, r *http.Request) {
+	iid, _ := strconv.Atoi(r.PathValue("iid"))
+	s.mu.Lock()
+	out := toAny(s.stateEvents[iid])
+	s.mu.Unlock()
 	paginate(w, r, out)
+}
+
+// paginateOrFail is paginate, but answers a 500 for page two when failPage2 is set.
+func paginateOrFail(w http.ResponseWriter, r *http.Request, items []any, failPage2 bool) {
+	if failPage2 && r.URL.Query().Get("page") == "2" {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"message": "500 Internal Server Error"})
+		return
+	}
+	paginate(w, r, items)
 }
 
 func (s *Server) listLinks(w http.ResponseWriter, r *http.Request) {
@@ -552,6 +591,30 @@ func (s *Server) AddClosedBy(project string, iid int, mr map[string]any) {
 	defer s.mu.Unlock()
 	key := fmt.Sprintf("%s#%d", project, iid)
 	s.closedBy[key] = append(s.closedBy[key], mr)
+}
+
+// AddRelatedMR seeds a merge request related to issue iid of Project: GitLab lists one that
+// closes the issue there as well as one that mentions it.
+func (s *Server) AddRelatedMR(iid int, mr map[string]any) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.related[iid] = append(s.related[iid], mr)
+}
+
+// AddStateEvent seeds a resource state event of issue iid (state, source_merge_request), after
+// the ones seeded before.
+func (s *Server) AddStateEvent(iid int, ev map[string]any) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.stateEvents[iid] = append(s.stateEvents[iid], ev)
+}
+
+// FailIssueMRsPage2 makes page two of closed_by and related_merge_requests of issue iid of
+// Project answer a 500.
+func (s *Server) FailIssueMRsPage2(iid int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.failIssueMRsPage2[iid] = true
 }
 
 // AddMR seeds a merge request in GitLab's REST shape. A head_pipeline in it is served only by

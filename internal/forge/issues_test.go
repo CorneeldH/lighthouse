@@ -124,3 +124,20 @@ func TestOpenPRs(t *testing.T) {
 		t.Errorf("last PR = %+v, want %+v", got[100], want)
 	}
 }
+
+// A cross-reference from another issue has a source without a pull request's fields; it is no
+// change of the issue.
+func TestIssueChangesSkipsIssueCrossReference(t *testing.T) {
+	srv, c := boardClient(t)
+	pr := map[string]any{"number": 13, "state": "OPEN", "headRefName": "fix-y", "isCrossRepository": false,
+		"body": "Refs #5", "repository": map[string]any{"nameWithOwner": "o/r"}}
+	srv.CrossRefPRs = map[int][]map[string]any{5: {{}, pr}}
+	got, err := c.IssueChanges(context.Background(), 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []IssueChange{{Number: 13, State: "OPEN", HeadRef: "fix-y", Repo: "o/r", Body: "Refs #5"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("IssueChanges = %+v, want %+v", got, want)
+	}
+}

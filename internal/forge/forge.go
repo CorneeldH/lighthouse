@@ -81,6 +81,13 @@ type Forge interface {
 	// without a merge) or "all"; "" is open, any other value an error. HeadRef is filled and
 	// MergedAt set for a merged one. Every page is followed; a failing page is an error.
 	ListChanges(ctx context.Context, state string) ([]Change, error)
+	// IssueChanges lists the pull or merge requests that close issue number (Closes true) or
+	// mention it, each once, the closing ones first. Every page is followed; a failing page is
+	// an error, never a shorter list.
+	IssueChanges(ctx context.Context, number int) ([]IssueChange, error)
+	// Closer is the number of the pull or merge request that closed issue number the last time;
+	// 0 when none did, also for an issue closed by hand or never closed.
+	Closer(ctx context.Context, number int) (int, error)
 	CreateChangeComment(ctx context.Context, number int, body string) (protocol.Comment, error)
 	// Milestones lists the milestones in state "open", "closed" or "all"; "" is open.
 	Milestones(ctx context.Context, state string) ([]Milestone, error)

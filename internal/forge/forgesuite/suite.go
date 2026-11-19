@@ -42,6 +42,15 @@ type Fixture interface {
 	// AddChange adds a pull or merge request with its Number, Title, State (open, closed or
 	// merged), HeadRef and, for a merged one, MergedAt.
 	AddChange(t *testing.T, c forge.Change)
+	// AddIssueChange makes pull or merge request c close issue number (c.Closes) or mention it,
+	// with c's Number, State, HeadRef, CrossRepo, Repo and Body.
+	AddIssueChange(t *testing.T, number int, c forge.IssueChange)
+	// FailIssueChangesPage2 makes every second page of the pull or merge requests around issue
+	// number fail.
+	FailIssueChangesPage2(t *testing.T, number int)
+	// AddStateEvent records that issue number was "closed" or "reopened", in order; closer is
+	// the pull or merge request that closed it, 0 by hand.
+	AddStateEvent(t *testing.T, number int, state string, closer int)
 	AddOpenPR(t *testing.T, pr forge.OpenPR)
 	// AddOpenPRWithStatus adds an open pull request with its Number, Title, URL, Draft, Mergeable
 	// and Checks.
@@ -135,6 +144,11 @@ var Cases = []Case{
 	{"ListChangesDefaultsToOpen", listChangesDefaultsToOpen},
 	{"ListChangesBogusState", listChangesBogusState},
 	{"ListChangesPages", listChangesPages},
+	{"IssueChanges", issueChanges},
+	{"IssueChangesNone", issueChangesNone},
+	{"IssueChangesPages", issueChangesPages},
+	{"IssueChangesSecondPageFails", issueChangesSecondPageFails},
+	{"Closer", closer},
 	{"MilestonesAndLookup", milestonesAndLookup},
 	{"MilestoneAmbiguousTitle", milestoneAmbiguousTitle},
 	{"LabelsList", labelsList},
@@ -960,6 +974,119 @@ func listChangesPages(t *testing.T, f Fixture) {
 		t.Fatalf("ListChanges(open): %v", err)
 	}
 	once(t, "ListChanges", changeNumbers(got), want)
+}
+
+// issueChanges: issue 5 is closed by the merged PR 12, mentioned by PR 13 (Refs), by PR 15 from a
+// fork and by PR 16 of another repository; each comes back once, with its own fields.
+func issueChanges(t *testing.T, f Fixture) {
+	f.AddIssue(t, closedIssue(5, nil, time.Now().Add(-time.Hour)))
+	want := []forge.IssueChange{
+		{Number: 12, State: "MERGED", HeadRef: "issue-5-x", Repo: f.Repo(), Body: "Closes #5", Closes: true},
+		{Number: 13, State: "OPEN", HeadRef: "fix-y", Repo: f.Repo(), Body: "Refs #5 — part one"},
+		{Number: 15, State: "CLOSED", HeadRef: "patch-1", CrossRepo: true, Repo: f.Repo(), Body: "Refs #5"},
+		{Number: 16, State: "MERGED", HeadRef: "issue-9-z", Repo: "other/repo", Body: "See " + f.Repo() + "#5"},
+	}
+	for _, c := range want {
+		f.AddIssueChange(t, 5, c)
+	}
+	got, err := f.Forge().IssueChanges(t.Context(), 5)
+	if err != nil {
+		t.Fatalf("IssueChanges(5): %v", err)
+	}
+	slices.SortFunc(got, func(a, b forge.IssueChange) int { return a.Number - b.Number })
+	if !slices.Equal(got, want) {
+		t.Errorf("IssueChanges(5) =\n%+v\nwant\n%+v", got, want)
+	}
+}
+
+// issueChangesNone: an issue no pull request names gives an empty list and no error.
+func issueChangesNone(t *testing.T, f Fixture) {
+	f.AddIssue(t, openIssue(5))
+	got, err := f.Forge().IssueChanges(t.Context(), 5)
+	if err != nil {
+		t.Fatalf("IssueChanges(5): %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("IssueChanges(5) = %+v, want none", got)
+	}
+}
+
+// addIssueChanges gives issue 5 page closing pull requests from 1001 up and page mentioning ones
+// from 2001 up, and returns their numbers.
+func addIssueChanges(t *testing.T, f Fixture) []int {
+	t.Helper()
+	f.AddIssue(t, closedIssue(5, nil, time.Now().Add(-time.Hour)))
+	var nums []int
+	for i := range page {
+		for _, c := range []forge.IssueChange{
+			{Number: 1001 + i, State: "MERGED", HeadRef: fmt.Sprintf("c-%d", i), Repo: f.Repo(), Closes: true},
+			{Number: 2001 + i, State: "OPEN", HeadRef: fmt.Sprintf("m-%d", i), Repo: f.Repo()},
+		} {
+			f.AddIssueChange(t, 5, c)
+			nums = append(nums, c.Number)
+		}
+	}
+	return nums
+}
+
+// issueChangesPages: more closing and more mentioning pull requests than one page holds are all
+// returned, each once.
+func issueChangesPages(t *testing.T, f Fixture) {
+	want := addIssueChanges(t, f)
+	got, err := f.Forge().IssueChanges(t.Context(), 5)
+	if err != nil {
+		t.Fatalf("IssueChanges(5): %v", err)
+	}
+	var nums []int
+	for _, c := range got {
+		nums = append(nums, c.Number)
+	}
+	once(t, "IssueChanges", nums, want)
+}
+
+// issueChangesSecondPageFails: a failing second page is an error, never a list cut short.
+func issueChangesSecondPageFails(t *testing.T, f Fixture) {
+	addIssueChanges(t, f)
+	f.FailIssueChangesPage2(t, 5)
+	got, err := f.Forge().IssueChanges(t.Context(), 5)
+	if err == nil {
+		t.Fatalf("IssueChanges(5) = %d changes, want an error for the failing second page", len(got))
+	}
+}
+
+// closer: the pull request of the last close wins, also when the issue was reopened since; a
+// close by hand is 0, also after an earlier close by a pull request, and so is an issue never
+// closed.
+func closer(t *testing.T, f Fixture) {
+	type event struct {
+		state  string
+		closer int
+	}
+	for _, tc := range []struct {
+		issue  int
+		events []event
+		want   int
+	}{
+		{5, []event{{"closed", 12}}, 12},
+		{6, []event{{"closed", 0}}, 0},
+		{7, []event{{"closed", 12}, {"reopened", 0}, {"closed", 14}}, 14},
+		{8, []event{{"closed", 12}, {"reopened", 0}, {"closed", 0}}, 0},
+		{10, []event{{"closed", 12}, {"reopened", 0}}, 12},
+		{9, nil, 0},
+	} {
+		is := closedIssue(tc.issue, nil, time.Now().Add(-time.Hour))
+		if tc.events == nil {
+			is = openIssue(tc.issue)
+		}
+		f.AddIssue(t, is)
+		for _, e := range tc.events {
+			f.AddStateEvent(t, tc.issue, e.state, e.closer)
+		}
+		got, err := f.Forge().Closer(t.Context(), tc.issue)
+		if err != nil || got != tc.want {
+			t.Errorf("Closer(%d) = %d, %v; want %d", tc.issue, got, err, tc.want)
+		}
+	}
 }
 
 func changeComment(t *testing.T, f Fixture) {

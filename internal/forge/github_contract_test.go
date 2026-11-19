@@ -180,6 +180,41 @@ func (g *githubFixture) AddChange(_ *testing.T, c forge.Change) {
 	g.srv.Pulls = append(g.srv.Pulls, p)
 }
 
+// AddIssueChange: a closing pull request is in closedByPullRequestsReferences and, as on
+// GitHub, also cross-references the issue in its timeline; a mentioning one only there.
+func (g *githubFixture) AddIssueChange(_ *testing.T, number int, c forge.IssueChange) {
+	node := map[string]any{"number": c.Number, "state": c.State, "headRefName": c.HeadRef,
+		"isCrossRepository": c.CrossRepo, "body": c.Body, "repository": map[string]any{"nameWithOwner": c.Repo}}
+	if g.srv.ClosingPRs == nil {
+		g.srv.ClosingPRs, g.srv.CrossRefPRs = map[int][]map[string]any{}, map[int][]map[string]any{}
+	}
+	if c.Closes {
+		g.srv.ClosingPRs[number] = append(g.srv.ClosingPRs[number], node)
+	}
+	g.srv.CrossRefPRs[number] = append(g.srv.CrossRefPRs[number], node)
+}
+
+func (g *githubFixture) FailIssueChangesPage2(_ *testing.T, number int) {
+	if g.srv.IssueChangesPage2Fails == nil {
+		g.srv.IssueChangesPage2Fails = map[int]bool{}
+	}
+	g.srv.IssueChangesPage2Fails[number] = true
+}
+
+// AddStateEvent: GitHub's timeline query reads only the ClosedEvents; a reopen is not in it.
+func (g *githubFixture) AddStateEvent(t *testing.T, number int, state string, closer int) {
+	switch state {
+	case "reopened":
+	case "closed":
+		if g.srv.Closers == nil {
+			g.srv.Closers = map[int][]int{}
+		}
+		g.srv.Closers[number] = append(g.srv.Closers[number], closer)
+	default:
+		t.Fatalf("AddStateEvent: state %q is not closed or reopened", state)
+	}
+}
+
 func (g *githubFixture) AddOpenPR(_ *testing.T, pr forge.OpenPR) {
 	g.srv.Pulls = append(g.srv.Pulls, map[string]any{
 		"number": pr.Number, "title": pr.Title, "body": pr.Body, "head": map[string]any{"ref": pr.HeadRef},

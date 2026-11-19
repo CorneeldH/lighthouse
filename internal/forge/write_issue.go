@@ -54,6 +54,38 @@ type Change struct {
 	Author, HeadRef, BaseRef string
 }
 
+// IssueChange is a pull or merge request around an issue: one that closes it (Closes) or one
+// that mentions it. State is OPEN, CLOSED or MERGED. CrossRepo is true when its head lives in
+// another repository (a fork); Repo is the repository the pull or merge request lives in.
+type IssueChange struct {
+	Number    int
+	State     string
+	HeadRef   string
+	CrossRepo bool
+	Repo      string
+	Body      string
+	Closes    bool
+}
+
+// issueChanges joins the pull or merge requests that close an issue and those that mention it:
+// each once, by repository and number, the closing ones first with Closes set.
+func issueChanges(closing, mentioning []IssueChange) []IssueChange {
+	out := []IssueChange{}
+	seen := map[string]bool{}
+	for i, cs := range [][]IssueChange{closing, mentioning} {
+		for _, c := range cs {
+			key := fmt.Sprintf("%s#%d", strings.ToLower(c.Repo), c.Number)
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			c.Closes = i == 0
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
 // changeState checks the state a ListChanges caller asks for: open, merged, closed (closed
 // without a merge) or all; "" is open.
 func changeState(state string) (string, error) {
