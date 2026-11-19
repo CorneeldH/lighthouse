@@ -269,10 +269,11 @@ tick starts the next phase itself. Two entries:
    <the block from Output format>
    ```
    EOF
-   } > <scratch>/handoff.md
-   lighthouse forge issue comment <nr> --body-file <scratch>/handoff.md
+   } > <scratch>/handoff.md && lighthouse forge issue comment <nr> --body-file <scratch>/handoff.md
    ```
-   Run the comment call with `dangerouslyDisableSandbox: true` (Go TLS).
+   `<scratch>` is the session's scratchpad directory, otherwise a `mktemp -d` directory. The post runs
+   only when the write succeeded; stop if it fails. Run the comment call with
+   `dangerouslyDisableSandbox: true` (Go TLS).
    Between the heading and the last field line there is no blank line: the parser stops at the first.
    For native there is an extra line `lane: native` between `next:` and `when:` (without
    a blank line); otherwise leave it out. The field is valid only next to

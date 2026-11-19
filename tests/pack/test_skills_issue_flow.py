@@ -575,6 +575,9 @@ def test_handoff_board_and_host_from_config():
             "lighthouse forge issue comment <nr> --body-file <scratch>/handoff.md",
         ):
             assert call in body, call
+        # <scratch> must be defined, and the post chained to the write.
+        assert "`<scratch>` is the session's scratchpad directory, otherwise a `mktemp -d`" in " ".join(body.split())
+        assert "} > <scratch>/handoff.md && lighthouse forge issue comment" in body
         assert "lighthouse config host-check" in body
         assert "the always-on host (`host.toml`)" in body
         assert "LIGHTHOUSE_CONTROLLER_RUN" in body
