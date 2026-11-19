@@ -2,7 +2,6 @@ package hook
 
 import (
 	"reflect"
-	"strings"
 	"testing"
 )
 
@@ -20,11 +19,17 @@ func isolateReasons(t *testing.T) {
 	})
 }
 
-func mustPanic(t *testing.T, f func()) {
+// mustPanic runs f and requires a panic whose message is exactly want.
+func mustPanic(t *testing.T, want string, f func()) {
 	t.Helper()
 	defer func() {
-		if recover() == nil {
-			t.Error("expected a panic")
+		got := recover()
+		if got == nil {
+			t.Errorf("expected a panic %q", want)
+			return
+		}
+		if got != want {
+			t.Errorf("panic %q, want %q", got, want)
 		}
 	}()
 	f()
@@ -47,7 +52,7 @@ func TestBlockTaggedRequiresEveryTag(t *testing.T) {
 	if got.Code != 2 || got.Stderr != msg {
 		t.Errorf("got code %d stderr %q", got.Code, got.Stderr)
 	}
-	mustPanic(t, func() { BlockTagged("[h/a] one\n", rs...) })
+	mustPanic(t, "hook: message lacks [h/b]", func() { BlockTagged("[h/a] one\n", rs...) })
 }
 
 func TestCouldNotCheckRejectsAMessageWithoutTheToken(t *testing.T) {
@@ -55,14 +60,20 @@ func TestCouldNotCheckRejectsAMessageWithoutTheToken(t *testing.T) {
 	if got.Code != 2 || got.Stderr != "trace: COULD NOT CHECK the thing\n" {
 		t.Errorf("got code %d stderr %q", got.Code, got.Stderr)
 	}
-	mustPanic(t, func() { CouldNotCheck("could not check, lower case\n") })
+	mustPanic(t, "hook: message lacks COULD NOT CHECK", func() { CouldNotCheck("could not check, lower case\n") })
 }
 
 func TestBlockRejectsUndeclaredReason(t *testing.T) {
 	isolateReasons(t)
 	Declare("h", "x")
-	mustPanic(t, func() { Block(Reason{"h", "y"}, "msg\n") })
-	mustPanic(t, func() { Block(Reason{"other", "x"}, "msg\n") })
+	mustPanic(t, "hook: undeclared reason [h/y]", func() { Block(Reason{"h", "y"}, "msg\n") })
+	mustPanic(t, "hook: undeclared reason [other/x]", func() { Block(Reason{"other", "x"}, "msg\n") })
+}
+
+func TestBlockTaggedRejectsUndeclaredReason(t *testing.T) {
+	isolateReasons(t)
+	Declare("h", "x")
+	mustPanic(t, "hook: undeclared reason [h/y]", func() { BlockTagged("[h/y] msg\n", Reason{"h", "y"}) })
 }
 
 func TestDeclareRejectsDuplicates(t *testing.T) {
@@ -70,10 +81,11 @@ func TestDeclareRejectsDuplicates(t *testing.T) {
 		name string
 		ids  []string
 		pre  bool
+		want string
 	}{
-		{"empty id", []string{"a", ""}, false},
-		{"duplicate id", []string{"a", "a"}, false},
-		{"second declare for the same hook", []string{"a"}, true},
+		{"empty id", []string{"a", ""}, false, "hook: empty reason ID for h"},
+		{"duplicate id", []string{"a", "a"}, false, "hook: duplicate reason h/a"},
+		{"second declare for the same hook", []string{"a"}, true, "hook: reasons of h declared twice"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -81,7 +93,7 @@ func TestDeclareRejectsDuplicates(t *testing.T) {
 			if c.pre {
 				Declare("h", "first")
 			}
-			mustPanic(t, func() { Declare("h", c.ids...) })
+			mustPanic(t, c.want, func() { Declare("h", c.ids...) })
 		})
 	}
 }
@@ -100,7 +112,7 @@ func TestReasonsKeepDeclarationOrder(t *testing.T) {
 	if got := DeclaredHooks(); !reflect.DeepEqual(got, []string{"alpha", "zeta"}) {
 		t.Errorf("got %v", got)
 	}
-	if tag := (Reason{"h", "x"}).Tag(); !strings.EqualFold(tag, "[h/x]") {
+	if tag := (Reason{"h", "x"}).Tag(); tag != "[h/x]" {
 		t.Errorf("tag %q", tag)
 	}
 }
