@@ -319,7 +319,10 @@ def test_registered_on_stop():
         for block in registered["hooks"]["Stop"]
         for h in block["hooks"]
     ]
-    assert entries == [("", "${CLAUDE_PLUGIN_ROOT}/hooks/go-lint-gate.sh", 120)]
+    assert entries == [
+        ("", "${CLAUDE_PLUGIN_ROOT}/hooks/go-lint-gate.sh", 120),
+        ("", "${CLAUDE_PLUGIN_ROOT}/hooks/imports-gate-go.sh", 120),
+    ]
 
 
 def _alarm_env(tmp_path: Path, line: str | None = None) -> dict:

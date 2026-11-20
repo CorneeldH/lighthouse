@@ -22,6 +22,16 @@
             "timeout": 120
           }
         ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/imports-gate-go.sh",
+            "timeout": 120
+          }
+        ]
       }
     ]
   }
