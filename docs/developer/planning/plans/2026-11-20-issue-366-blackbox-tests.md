@@ -320,8 +320,8 @@ De black-box-tests van hooks en scripts in `tests/pack/` zijn getrieerd: wat Go 
   - `go test -race -shuffle=on -tags e2e ./e2e/` → rc 0
   - `uv run pytest -q tests/pack/python` → groen
   - `uv run pytest --collect-only -q tests` → geen `ERROR`
-  - `gh workflow run macos.yml --ref issue-366-blackbox-tests`, wacht op groen (de e2e-suite met `setsid`/`nohup` en symlink-PATH draait alleen daar op macOS, en `release.yml` eist het); noteer het run-id
 - [ ] **Step 4: Commit** — `docs(changelog): fragment voor #366`.
+- [ ] **Step 5: macOS** — na de Step 4-commit `git push -u origin HEAD`, dan `gh workflow run macos.yml --ref issue-366-blackbox-tests` (workflow_dispatch draait de ref op origin, niet de lokale HEAD; de e2e-suite met `setsid`/`nohup` en symlink-PATH draait alleen daar op macOS en `release.yml` eist het). Noteer het run-id en controleer met `gh run view <id> --json headSha` dat het gelijk is aan `git rev-parse HEAD`. Niet op het resultaat wachten; meld het run-id als open punt in de PR.
 
 ---
 
