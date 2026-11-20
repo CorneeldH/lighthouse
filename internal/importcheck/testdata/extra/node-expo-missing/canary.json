@@ -1,0 +1,10 @@
+{
+  "hook": "node",
+  "touch": "App.js",
+  "exit": 2,
+  "id": "unlisted",
+  "node_modules": [
+    "expo",
+    "left-pad"
+  ]
+}

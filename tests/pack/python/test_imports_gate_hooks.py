@@ -43,6 +43,7 @@ TOOLS = ("bash", "jq", "git", "cat", "tr", "head", "sed", "grep", "mktemp", "rm"
 # $STUB_RC. Everything is logged.
 STUB = """\
 echo "$*" >> "$STUB_LOG"
+{ printf '<%s>' "$@"; echo; } >> "$STUB_LOG.argv"
 case "$1 $2" in
   "usage alarm") [ -n "$STUB_ALARM" ] && echo "$STUB_ALARM"; exit 0 ;;
   "imports check")
@@ -197,7 +198,21 @@ def test_path_with_a_space_is_passed_whole(tmp_path, pack):
     root = _repo(tmp_path, pack)
     result = _run(root, pack, env, touched=name)
     assert result.returncode == 0, result.stderr
-    assert f"--files {name}" in _log(env) or f"{root}/{name}" in _log(env)
+    # One argument, with the space in it; `$*` in the plain log would hide a split path.
+    argv = Path(env["STUB_LOG"] + ".argv").read_text()
+    assert f"<imports><check><--lang><{pack}><--files><{name}>\n" in argv
+
+
+@pytest.mark.parametrize("pack", PACKS)
+def test_doubt_checks_the_whole_checkout_without_files(tmp_path, pack):
+    """A touched path with a tab cannot be a `file` line of turn-roots: the root is touched
+    without path lines, and the hook must check it whole, not with an empty scope."""
+    env = _env(tmp_path)
+    name = CASES[pack][0].replace("a.", "a\tb.")
+    result = _run(_repo(tmp_path, pack), pack, env, touched=name)
+    assert result.returncode == 0, result.stderr
+    assert _log(env).splitlines().count(f"imports check --lang {pack}") == 1, _log(env)
+    assert "--files" not in _log(env)
 
 
 @pytest.mark.parametrize("pack", PACKS)
