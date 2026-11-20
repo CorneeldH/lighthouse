@@ -342,3 +342,10 @@ AC 5 bewijst de CI-stap van lighthouse zelf.
 - De naam en indeling van het pakket onder `internal/`.
 - Hoe de taalset uit `.lighthouse/manifest.toml` volgt; deel de code (taalset, workspace-roots) met
   `imports check` als die er dan al is.
+
+## Open na review
+
+Ronde 3 haalde de rondegrens met deze punten open. Ze zijn aanvaard als `accepted_open`;
+de volgende fase of de PR-review weegt ze opnieuw.
+
+- **r3-f1** (MAJOR, §3 Rood in CI — Exitstatus: een allowlist, geen denylist, first sub-bullet): The errexit rule reads the shell only from the step's own `shell:` key. "geen `shell:`" counts as `bash -e {0}`, but GitHub takes the shell from `defaults.run.shell` on the job or workflow first, and on a Windows runner the default shell is `pwsh`, not `bash -e`. The spec resolves `working-directory` from `defaults.run` on job or workflow (r1-f11), but it does not do the same for `shell`. So the masking that r2-f1 named still passes when the non-errexit shell comes from defaults or from the runner OS. Job-level `continue-on-error` is restored correctly.
