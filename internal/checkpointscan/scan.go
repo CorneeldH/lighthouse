@@ -256,7 +256,7 @@ func readReport(path string) (items []reportItem, ok bool) {
 		return nil, false
 	}
 	var data []map[string]any
-	if err := json.Unmarshal(raw, &data); err != nil {
+	if err := json.Unmarshal(raw, &data); err != nil || data == nil { // null is not a list
 		return nil, false
 	}
 	items = []reportItem{}

@@ -22,7 +22,7 @@ import (
 //	FAKE_GITLEAKS_KILL_AT=<n>    SIGKILL itself on the n-th call
 //	FAKE_GITLEAKS_RC=<rc>        exit with this rc instead
 //	FAKE_GITLEAKS_SCANNED=none   say nothing about the bytes; short: one byte too few
-//	FAKE_GITLEAKS_REPORT=none    write no report; garbage: write a broken one
+//	FAKE_GITLEAKS_REPORT=none    write no report; garbage: write a broken one; null: a JSON null
 //	FAKE_GITLEAKS_MEMBER=<path>  name the finding as an archive member: `<file>!<path>`
 const fakeGitleaksScript = `#!/bin/sh
 if [ "$1" = version ]; then echo "${FAKE_GITLEAKS_VERSION:-fake 1}"; exit 0; fi
@@ -54,6 +54,7 @@ esac
 case "${FAKE_GITLEAKS_REPORT:-write}" in
   write) echo "[$findings]" > "$report" ;;
   garbage) echo "{not json" > "$report" ;;
+  null) echo "null" > "$report" ;;
 esac
 [ -n "$FAKE_GITLEAKS_RC" ] && exit "$FAKE_GITLEAKS_RC"
 [ -n "$findings" ] && exit 1

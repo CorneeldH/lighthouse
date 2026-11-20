@@ -145,7 +145,7 @@ func TestScanBlobsKillMidRunKeepsEarlierBatches(t *testing.T) {
 }
 
 func TestScanBlobsUnreadableReportIsNotClean(t *testing.T) {
-	for _, tc := range []struct{ report, rc string }{{"none", "0"}, {"none", "1"}, {"garbage", "0"}, {"garbage", "1"}} {
+	for _, tc := range []struct{ report, rc string }{{"none", "0"}, {"none", "1"}, {"garbage", "0"}, {"garbage", "1"}, {"null", "0"}, {"null", "1"}} {
 		t.Run(tc.report+tc.rc, func(t *testing.T) {
 			f := newFixture(t, true)
 			t.Setenv("FAKE_GITLEAKS_REPORT", tc.report)
