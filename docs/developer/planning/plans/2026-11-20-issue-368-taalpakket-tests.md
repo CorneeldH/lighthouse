@@ -42,7 +42,7 @@
 
 ## Triagetabel (concept)
 
-Telling: `def test_`-functies, 123 in totaal. Voorlopig: **95 naar Go, 26 weg, 2 open**. De uitvoerder bevestigt elke *naar Go* met één mutatie (kolom *Mutatie*), en mag een rij naar *weg* verplaatsen als die mutatie al door een andere geporte test valt. De definitieve tabel gaat in de PR-body.
+Telling: `def test_`-functies, 123 in totaal. Voorlopig: **97 naar Go, 26 weg, 0 open**. De uitvoerder bevestigt elke *naar Go* met één mutatie (kolom *Mutatie*), en mag een rij naar *weg* verplaatsen als die mutatie al door een andere geporte test valt. De definitieve tabel gaat in de PR-body.
 
 ### `tests/pack/go/test_go_lint_gate.py` (29) — hook `pack/go/hooks/go-lint-gate.sh`
 
@@ -66,7 +66,7 @@ Geen Go-test draait deze hook (geen hit in `e2e/` of `internal/`). Bestemming: `
 | `test_a_finding_in_an_untouched_worktree_does_not_block` | naar Go | elke worktree gelint |
 | `test_every_checkout_of_the_turn_is_linted` | naar Go | alleen de eerste root gelint |
 | `test_without_a_transcript_could_not_check` | naar Go | ontbrekend `transcript_path` valt terug op `cwd` |
-| `test_registered_on_stop` | naar Go | matcher of timeout 120 in `pack/go/hooks/hooks.json` gewijzigd (via settings.json, taak 3) |
+| `test_registered_on_stop` | naar Go | matcher of timeout 120 in `pack/go/hooks/hooks.json` gewijzigd; geport in taak 3 (`TestGoHooksRegistered`), niet nogmaals in taak 4 |
 | `test_valid_usage_alarm_skips_the_lint` | naar Go | alarmtak weg |
 | `test_no_usage_alarm_still_blocks` | weg — gedekt | door de port van `test_finding_blocks` (zelfde opzet zonder alarm; "altijd skippen" faalt daar) |
 | `test_expired_usage_alarm_still_blocks` | weg — gedekt | verloop beslist de binary: `internal/usage/alarm_test.go` `TestReadAlarmFixtures`; uitvoerder bevestigt met mutatie in `internal/usage` |
@@ -103,13 +103,13 @@ Geen Go-test draait deze hook. Bestemming: `e2e/gofmt_test.go`. Alle 12 naar Go.
 
 | Test | Bestemming | Mutatie / reden |
 |---|---|---|
-| `test_frontmatter_name` | weg — gedekt | generieke frontmatter-check (#367-port van `test_skill_contracts.py::test_frontmatter_name`) |
+| `test_frontmatter_name` | weg — gedekt | `packs.Load` in `TestLanguagePacks` (`internal/packs/packs_test.go`) dwingt de naam af; #367 port deze test niet apart |
 | `test_config_keys_are_known` | weg — gedekt | generiek, `::test_config_keys_known` (#367) |
 | `test_english` | weg — gedekt | `internal/codelang/corpus_test.go` `TestCorpusPackMarkdownEnglish` (scant elke `.md` onder `pack/`) |
 | `test_sections_in_order` | weg — beschermt niets | volgorde van koppen stuurt geen gedrag |
 | `test_go_form_of_the_testing_norms` | weg — beschermt niets | pint een lijst gereedschapsnamen; elke herformulering breekt hem |
 | `test_no_concept_leftovers` | weg — beschermt niets | "staat nog steeds niet in de tekst" na de migratie uit #22 |
-| `test_variants_keep_their_difference` | **open** | dekt check 11 van `lighthouse check-instructions` (`internal/checkinstr/mirror_test.go`) dit voor `pack/go`? Ja: weg — gedekt. Nee: naar Go |
+| `test_variants_keep_their_difference` | naar Go (contract) | check 11 slaat skills met `lighthouse`-metadata over; variant-verschil weg uit de tekst |
 | `test_description_has_a_negative_boundary` | naar Go (contract) | grens naar python-/shell-standard weg uit de description |
 | `test_description_triggers_on_planning` | naar Go (contract) | trigger "before a file is open" weg |
 | `test_kpi_rows_all_carry_a_command` | naar Go (contract) | KPI-rij zonder commando |
@@ -143,7 +143,7 @@ Geen Go-test draait deze hook. Bestemming: `e2e/gofmt_test.go`. Alle 12 naar Go.
 
 | Test | Bestemming | Mutatie / reden |
 |---|---|---|
-| `test_frontmatter_name` | weg — gedekt | generiek (#367) |
+| `test_frontmatter_name` | weg — gedekt | `packs.Load` / `TestLanguagePacks` |
 | `test_skill_links_are_lighthouse_or_external` | weg — gedekt | generiek `::test_skill_links_resolve` (#367) |
 | `test_english` | weg — gedekt | `TestCorpusPackMarkdownEnglish` |
 | `test_finds_apps_itself` | weg — beschermt niets / gedekt | paia-appnamen: negative existence na migratie; de positieve helft is gedekt door de port van `test_app_loop_finds_only_apps_with_a_lockfile` |
@@ -159,14 +159,14 @@ Geen Go-test draait deze hook. Bestemming: `e2e/gofmt_test.go`. Alle 12 naar Go.
 
 | Test | Bestemming | Mutatie / reden |
 |---|---|---|
-| `test_frontmatter_name` | weg — gedekt | generiek (#367) |
+| `test_frontmatter_name` | weg — gedekt | `packs.Load` / `TestLanguagePacks` |
 | `test_paths_are_the_installed_ones` | weg — gedekt | generiek `::test_referenced_files_exist` (#367) |
 | `test_english` | weg — gedekt | `TestCorpusPackMarkdownEnglish` |
 | `test_skill_links_are_lighthouse` | weg — gedekt | generiek `::test_skill_links_resolve` (#367) |
 | `test_no_paia_references` | weg — beschermt niets | negative existence na migratie |
 | `test_shell_form_of_the_testing_norms` | weg — beschermt niets | pint gereedschapsnamen |
 | `test_pairing_names_the_testing_skill` | weg — beschermt niets | pint een vermelding; `test_points_to_the_testing_skill` draagt de regel |
-| `test_variants_keep_their_difference` | **open** | als bij go: check 11 |
+| `test_variants_keep_their_difference` | naar Go (contract) | als bij go: check 11 dekt het niet |
 | `test_strict_dirs_from_config` | naar Go (contract) | skill noemt een vaste map in plaats van `lighthouse config shell.strict_dirs` |
 | `test_instruction_block` | naar Go (contract) | `COULD NOT CHECK` of de skillnaam weg; plafond gedekt (shell 54 < 60) |
 | `test_outcomes_match_the_hook` | naar Go (contract) | skill noemt andere exitcodes dan de hook |
@@ -283,13 +283,13 @@ Verwijder de drie functies en `tests/pack/node/`. Run: `uv run pytest -q tests/p
 - Produces (in `e2e/hookkit_test.go`, build tag `e2e`):
   - `packRepo(t *testing.T, bin string, trigger map[string]string, wantPackages string) string` — `freshRepo`, schrijft de triggerbestanden, `lighthouse init --yes`, faalt als stdout niet met `wantPackages` begint.
   - `registeredHook(t *testing.T, repo, event, matcher, script string) (command string, timeout int)` — leest `.claude/settings.json`, precies één hook onder `event`/`matcher` waarvan het commando eindigt op `script`; anders `t.Fatal`.
-  - `toolDir(t *testing.T, tools []string, drop string, stubs map[string]string) string` — map met symlinks naar de echte tools (min `drop`) plus uitvoerbare stubs; Go-tegenhanger van `_testkit.tool_bin`.
-  - `runHook(t *testing.T, repo, command string, payload any, env []string) (code int, stdout, stderr string)` — `bash -c command`, `CLAUDE_PROJECT_DIR=repo`, payload als JSON op stdin (een `string` gaat ongewijzigd), `env` overschrijft `hookEnv(bin)`.
+  - `toolDir(t *testing.T, bin string, tools []string, drop string, stubs map[string]string) string` — map met symlinks naar de echte tools (min `drop`), een symlink `lighthouse` naar de gebouwde `bin` (de PATH van het testproces bevat die niet; `hookEnv` zet hem alleen in de kindomgeving), plus uitvoerbare stubs; Go-tegenhanger van `_testkit.tool_bin`. Port ook `lighthouse_stub` en `_path_without_lighthouse` uit `tests/pack/_testkit.py:426-510` als helper waar een test ze gebruikt (`test_go_lint_gate.py:41,84,391-413`).
+  - `runPackHook(t *testing.T, bin, repo, command string, payload any, env []string) (code int, stdout, stderr string)` — `bash -c command`, `CLAUDE_PROJECT_DIR=repo`, payload als JSON op stdin (een `string` gaat ongewijzigd), `env` overschrijft `hookEnv(bin)`. Nieuwe naam: `runHook(t, bin, repo, command, bashCmd string) (int, string)` bestaat al in `e2e/e2e_test.go:162`; hergebruik of hernoem die niet. Overal waar dit plan een helper `runHook` noemt voor de pack-hooks, is `runPackHook` bedoeld.
   - `needTool(t *testing.T, name string)` — patroon `needUV`: in CI `t.Fatal`, lokaal `t.Skip` met de reden.
 
 Classificatie: `hook/gate`. Op het spel: wat `gofmt-check.sh` blokkeert of doorlaat.
 
-Als #366 eerder merget en al zulke helpers in `e2e/` heeft, gebruik die en maak geen tweede set; pas alleen de ontbrekende aan.
+Als #366 eerder merget en al zulke helpers in `e2e/` heeft, gebruik die en maak geen tweede set; pas alleen de ontbrekende aan. Na elke merge van `origin/main`: `go vet -tags e2e ./e2e/` en ontdubbel helpers met dezelfde naam.
 
 - [ ] **Step 1: Schrijf `TestGoHooksRegistered`**
 
@@ -325,7 +325,7 @@ Run: `go test -race -tags e2e ./e2e/ -run 'TestGofmtCheck' -v` — Expected: PAS
 
 Classificatie: `hook/gate`. Op het spel: wanneer de Stop-hook blokkeert, niet controleert of zwijgt.
 
-- [ ] **Step 1: Port de 26 tests met bestemming *naar Go***
+- [ ] **Step 1: Port de 25 tests met bestemming *naar Go*** (`test_registered_on_stop` is al geport in taak 3)
 
 Eén `TestGoLintGate` met subtests. Stubs `go` en `golangci-lint` letterlijk uit `test_go_lint_gate.py` (`GO_STUB`, `LINT_STUB`, `VET_FINDING`, `BUILD_FAILURE`, `LINT_FINDING`), meldingen letterlijk (`UNCHECKED`, `NOT_CHECKED`, de twee regels van een finding, de skipmelding, de alarmmelding met `14 30` en `9 15`). `lighthouse` is de gebouwde binary; het alarm gaat via `XDG_CACHE_HOME` in `t.TempDir()`. Tools: `bash jq git cat tr head sed lighthouse mktemp rm`.
 
@@ -387,11 +387,11 @@ Classificatie: `test-only` (contracttests op instructietekst; lezen is hier geen
 
 - [ ] **Step 1: Merge `origin/main`**
 
-`git fetch origin main && git merge origin/main`. Controleer dat de generieke checks waarop de *gedekt*-rijen leunen (frontmatter-naam, verwijzingen, configsleutels, skill-links) in Go bestaan. Ontbreekt er één, dan wordt die rij hier *naar Go*.
+`git fetch origin main && git merge origin/main`. Controleer dat de generieke checks waarop de *gedekt*-rijen leunen (`packs.Load` voor de frontmatter-naam, verwijzingen, configsleutels, skill-links) in Go bestaan. Ontbreekt er één, dan wordt die rij hier *naar Go*.
 
 - [ ] **Step 2: Beslis de twee open rijen**
 
-Breek in `pack/go/skills/go-standard/agents/SKILL.md` één alinea die niet over OpenCode gaat, en draai `go run ./cmd/lighthouse init --upgrade` gevolgd door `go run ./cmd/lighthouse check-instructions`. Rood op check 11: beide `test_variants_keep_their_difference` zijn *weg — gedekt*. Groen: port ze als pin. Terugzetten.
+Beide `test_variants_keep_their_difference` gaan direct *naar Go (contract)*: check 11 slaat skills met `lighthouse`-metadata over (`internal/checkinstr/mirror.go:57`) en `pack/shell` is hier niet geïnstalleerd, dus een experiment zou altijd groen zijn en dekt niets. Geen `init --upgrade`-experiment.
 
 - [ ] **Step 3: Port de pins**
 
@@ -411,13 +411,13 @@ Run: `go test ./<contractpakket>/` twee keer; de tweede keer `(cached)`. Breek �
 
 **Files:**
 - Delete: `tests/pack/{go,shell,expo}/` (`conftest.py`, `__init__.py`, de mappen)
-- Delete, als er geen importer meer is: `tests/pack/conftest.py`, `tests/pack/__init__.py`, `tests/pack/_fake_llm.py`, `tests/pack/_fakegh.py`
+- Delete, als er geen importer meer is: `tests/pack/_fake_llm.py`, `tests/pack/_fakegh.py`. `tests/pack/conftest.py` en `tests/pack/__init__.py` beslis je met de pytest-run uit Step 1, niet met de grep (pytest gebruikt ze impliciet)
 - Create: `changelog.d/issue-368-taalpakket-tests.md`
 
 - [ ] **Step 1: Merge `origin/main` en zoek importers**
 
 `git fetch origin main && git merge origin/main`.
-Run: `git grep -n 'tests.pack.conftest\|tests\.pack\._fake_llm\|tests\.pack\._fakegh\|from tests\.pack import' -- '*.py'`. Verwijder alleen wat geen treffer meer heeft. Een treffer onder `tests/pack/python/`: verhuis het bestand naar `tests/pack/python/` en pas de import aan, zoals #366 met `_testkit.py` deed.
+Run: `git grep -n 'tests.pack.conftest\|tests\.pack\._fake_llm\|tests\.pack\._fakegh\|from tests\.pack import' -- '*.py'`. Verwijder alleen wat geen treffer meer heeft. Voor `tests/pack/conftest.py` en `tests/pack/__init__.py`: draai `uv run pytest -q tests/pack/python` met en zonder beide bestanden; blijft het groen zonder, verwijder ze, anders laat staan (#366 houdt `tests/pack/conftest.py`; bij een dubbele import van `tests/pack/python/conftest.py` laat je `__init__.py` staan). Een treffer onder `tests/pack/python/`: verhuis het bestand naar `tests/pack/python/` en pas de import aan, zoals #366 met `_testkit.py` deed.
 
 - [ ] **Step 2: Schrijf het changelog-fragment**
 
