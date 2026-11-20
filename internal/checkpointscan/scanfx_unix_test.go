@@ -23,12 +23,14 @@ import (
 //	FAKE_GITLEAKS_RC=<rc>        exit with this rc instead
 //	FAKE_GITLEAKS_SCANNED=none   say nothing about the bytes; short: one byte too few
 //	FAKE_GITLEAKS_REPORT=none    write no report; garbage: write a broken one; null: a JSON null
+//	FAKE_GITLEAKS_HOOK=<sh>      run this shell command on every call (a ref moves mid-scan)
 //	FAKE_GITLEAKS_MEMBER=<path>  name the finding as an archive member: `<file>!<path>`
 const fakeGitleaksScript = `#!/bin/sh
 if [ "$1" = version ]; then echo "${FAKE_GITLEAKS_VERSION:-fake 1}"; exit 0; fi
 n=$(cat "$FAKE_GITLEAKS_LOG.calls" 2>/dev/null || echo 0); n=$((n+1)); echo $n > "$FAKE_GITLEAKS_LOG.calls"
 [ "$FAKE_GITLEAKS_KILL_AT" = "$n" ] && kill -9 $$
 echo "$@" > "$FAKE_GITLEAKS_LOG.args"
+[ -n "$FAKE_GITLEAKS_HOOK" ] && sh -c "$FAKE_GITLEAKS_HOOK"
 report=; cfg=; prev=
 for a; do
   [ "$prev" = -r ] && report=$a
