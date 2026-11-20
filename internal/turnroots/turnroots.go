@@ -242,9 +242,15 @@ func Resolve(raw []byte, projectDir string) ([]string, error) {
 }
 
 // Verdict says whether the turn touched a path in Root that matches a pattern.
+//
+// Files are the touched paths that match, relative to Root, slash-separated and sorted. In doubt
+// (a prompt without a readable timestamp, a failing git call, or a matching path with a newline
+// or tab, which the line format of `turn-roots --files` cannot carry) Touched is true and Files
+// is empty: the caller then checks the whole root.
 type Verdict struct {
 	Root    string
 	Touched bool
+	Files   []string
 }
 
 // Classify gives each root of Resolve a verdict: did the turn touch a path in that root that
@@ -294,7 +300,12 @@ func Classify(raw []byte, projectDir string, patterns []string) ([]Verdict, erro
 		for rel := range changed {
 			rels[rel] = true
 		}
-		verdicts = append(verdicts, Verdict{Root: root, Touched: matchesAny(rels, compiled)})
+		files, ok := matchedFiles(rels, compiled)
+		if !ok {
+			verdicts = append(verdicts, Verdict{Root: root, Touched: true})
+			continue
+		}
+		verdicts = append(verdicts, Verdict{Root: root, Touched: len(files) > 0, Files: files})
 	}
 	return verdicts, nil
 }
@@ -309,6 +320,23 @@ func compilePatterns(patterns []string) []*regexp.Regexp {
 		}
 	}
 	return compiled
+}
+
+// matchedFiles are the paths of rels that match one of patterns, slash-separated and sorted. ok is
+// false when a matching path holds a newline or tab: it cannot be written as a line of
+// `turn-roots --files`, so the list would be incomplete.
+func matchedFiles(rels map[string]bool, patterns []*regexp.Regexp) (files []string, ok bool) {
+	for rel := range rels {
+		if !matchesAny(map[string]bool{rel: true}, patterns) {
+			continue
+		}
+		if strings.ContainsAny(rel, "\n\t") {
+			return nil, false
+		}
+		files = append(files, filepath.ToSlash(rel))
+	}
+	sort.Strings(files)
+	return files, true
 }
 
 // matchesAny says whether one of rels matches one of the patterns compiled by compilePatterns.

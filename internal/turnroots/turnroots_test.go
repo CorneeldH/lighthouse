@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -213,7 +214,7 @@ func TestAGitParseErrorIsNotInvalidJSON(t *testing.T) {
 
 	// Without the fake the turn touched nothing: the commit lies before the prompt.
 	got, err := Classify(payload, repo, []string{"*.go"})
-	if err != nil || len(got) != 1 || got[0] != (Verdict{Root: repo, Touched: false}) {
+	if err != nil || len(got) != 1 || !verdictIs(got[0], repo, false) {
 		t.Fatalf("real git: %v, %v; want untouched %s", got, err, repo)
 	}
 
@@ -235,7 +236,104 @@ func TestAGitParseErrorIsNotInvalidJSON(t *testing.T) {
 		}
 		return
 	}
-	if len(got) != 1 || got[0] != (Verdict{Root: repo, Touched: true}) {
+	if len(got) != 1 || !verdictIs(got[0], repo, true) {
 		t.Fatalf("fake reflog: %v, want touched %s", got, repo)
+	}
+}
+
+// verdictIs says whether v is the verdict for root with touched and no files.
+func verdictIs(v Verdict, root string, touched bool) bool {
+	return v.Root == root && v.Touched == touched && len(v.Files) == 0
+}
+
+// editPayload writes a transcript with one prompt (a timestamp only when stamped) and one Edit
+// call per name in rels, and returns the Stop payload.
+func editPayload(t *testing.T, repo string, now time.Time, stamped bool, rels ...string) []byte {
+	t.Helper()
+	prompt := map[string]any{
+		"type": "user", "cwd": repo,
+		"message": map[string]any{"role": "user", "content": "go"},
+	}
+	if stamped {
+		prompt["timestamp"] = now.UTC().Format(time.RFC3339Nano)
+	}
+	var uses []any
+	for _, rel := range rels {
+		uses = append(uses, map[string]any{
+			"type": "tool_use", "name": "Edit", "input": map[string]any{"file_path": filepath.Join(repo, rel)},
+		})
+	}
+	edit := map[string]any{
+		"type": "assistant", "timestamp": now.UTC().Format(time.RFC3339Nano), "cwd": repo,
+		"message": map[string]any{"content": uses},
+	}
+	var lines []string
+	for _, e := range []map[string]any{prompt, edit} {
+		b, err := json.Marshal(e)
+		if err != nil {
+			t.Fatal(err)
+		}
+		lines = append(lines, string(b))
+	}
+	transcript := filepath.Join(t.TempDir(), "s1.jsonl")
+	if err := os.WriteFile(transcript, []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	payload, err := json.Marshal(map[string]any{"cwd": repo, "transcript_path": transcript})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return payload
+}
+
+// Classification: cli-output. The hooks read Files to check only the touched paths. Fails when
+// Files leaves a matching path out, lists one outside the pattern, loses the sort or the
+// root-relative slash form.
+func TestClassifyFilesListsMatchedPaths(t *testing.T) {
+	repo := committedRepo(t)
+	time.Sleep(time.Until(time.Now().Truncate(time.Second).Add(time.Second)))
+	payload := editPayload(t, repo, time.Now(), true, "z.go", "sub/b.go", "m.go", "c.go", "a/x.go", "d.go", "notes.txt")
+
+	got, err := Classify(payload, repo, []string{"*.go"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Root != repo || !got[0].Touched {
+		t.Fatalf("got %+v, want touched %s", got, repo)
+	}
+	if want := []string{"a/x.go", "c.go", "d.go", "m.go", "sub/b.go", "z.go"}; !slices.Equal(got[0].Files, want) {
+		t.Errorf("Files = %v, want %v", got[0].Files, want)
+	}
+}
+
+// Classification: cli-output. In doubt the hook must check the whole root. Fails when a prompt
+// without timestamp, or a matching path the line format cannot carry (newline, tab), still
+// yields Files: the hook would then check too few paths.
+func TestClassifyDoubtHasNoFiles(t *testing.T) {
+	repo := committedRepo(t)
+	time.Sleep(time.Until(time.Now().Truncate(time.Second).Add(time.Second)))
+	tests := []struct {
+		name    string
+		payload []byte
+	}{
+		{"no timestamp", editPayload(t, repo, time.Now(), false, "b.go")},
+		{"newline in a matched path", editPayload(t, repo, time.Now(), true, "b.go", "we\nird.go")},
+		{"tab in a matched path", editPayload(t, repo, time.Now(), true, "b.go", "we\tird.go")},
+	}
+	for _, tt := range tests {
+		got, err := Classify(tt.payload, repo, []string{"*.go"})
+		if err != nil {
+			t.Fatalf("%s: %v", tt.name, err)
+		}
+		if len(got) != 1 || !verdictIs(got[0], repo, true) {
+			t.Errorf("%s: got %+v, want touched without files", tt.name, got)
+		}
+	}
+
+	// A newline path outside the pattern is no doubt.
+	payload := editPayload(t, repo, time.Now(), true, "b.go", "we\nird.txt")
+	got, err := Classify(payload, repo, []string{"*.go"})
+	if err != nil || len(got) != 1 || !slices.Equal(got[0].Files, []string{"b.go"}) {
+		t.Errorf("unmatched newline path: got %+v, %v, want Files [b.go]", got, err)
 	}
 }
