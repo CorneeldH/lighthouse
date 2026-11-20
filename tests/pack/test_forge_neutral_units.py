@@ -7,6 +7,7 @@ longer need them.
 
 import re
 import tomllib
+from pathlib import Path
 
 import pytest
 
@@ -53,3 +54,42 @@ def test_requires_toml_drops_gh_for_converted_units() -> None:
     for unit in ("write-handoff", "audit-worktrees"):
         assert unit not in data["forge"]["github"]["gh"], unit
         assert unit in data["git"], unit
+
+
+# Go sources of the converted units. forge_label.go is the CLI side of internal/labels.
+GO_ROOT = Path(__file__).resolve().parents[2]
+GO_UNIT_SOURCES = [
+    "internal/postartefact",
+    "internal/labels",
+    "internal/worktreeaudit",
+    "internal/cli/postartefact.go",
+    "internal/cli/worktreeaudit.go",
+    "internal/cli/forge_label.go",
+]
+# `gh` stays legitimate only outside the scanned sources: internal/forge/token.go
+# (token lookup) and internal/cli/ask.go. Listed so the exception is explicit.
+GO_GH_ALLOWLIST = {"internal/forge/token.go", "internal/cli/ask.go"}
+# `gh` as a program name (quoted argument) or `gh <forge command>` in prose or strings.
+GO_GH_CALL = re.compile(r'"gh"|\bgh\s+(label|api|pr|issue)\b')
+
+
+def _go_sources() -> list[Path]:
+    files: list[Path] = []
+    for entry in GO_UNIT_SOURCES:
+        path = GO_ROOT / entry
+        found = path.rglob("*.go") if path.is_dir() else [path]
+        files += [f for f in found if not f.name.endswith("_test.go")]
+    return sorted(files)
+
+
+def test_go_units_do_not_call_gh() -> None:
+    sources = _go_sources()
+    assert sources, "no Go sources found: the scan list is stale"
+    assert not {s.relative_to(GO_ROOT).as_posix() for s in sources} & GO_GH_ALLOWLIST
+    hits = [
+        f"{p.relative_to(GO_ROOT)}:{i}: {line.strip()}"
+        for p in sources
+        for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1)
+        if GO_GH_CALL.search(line)
+    ]
+    assert hits == []
