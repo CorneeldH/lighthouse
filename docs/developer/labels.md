@@ -39,12 +39,12 @@ verliest `issue`; een nieuwe stap of handoff komt erbij als `works`, met `source
 (`docs/site/loop.html`). Krijgt het issue een milestone, dan komt het als `planned` item met
 `issue` op de kaart (`milestone` mag erbij staan). Een `planned` item zonder `issue` mag niet.
 
-`ci/loop_roadmap.py` en de workflow `loop-roadmap` (`.github/workflows/loop-roadmap.yml`)
+`go run ./ci/loop_roadmap` en de workflow `loop-roadmap` (`.github/workflows/loop-roadmap.yml`)
 controleren dit in twee standen:
 
 - PR-modus (bij `pull_request`): voor elk issue met `loop` dat de PR met `Closes` sluit, noemt
   geen `planned` item het nog, en de PR raakt `docs/site/data/loop.json`. Raakt een PR
-  `docs/site/data/loop.json` of `ci/loop_roadmap.py`, dan krijgt hij ook de hoofdmodus-controle.
+  `docs/site/data/loop.json` of `ci/loop_roadmap/`, dan krijgt hij ook de hoofdmodus-controle.
   De PR-controle draait niet opnieuw als het label `loop` pas op een issue komt nadat zijn PR al
   open staat (het `issues`-event draait de hoofdmodus op de default branch): push een nieuwe
   commit of bewerk de PR-body om de PR-modus opnieuw te starten.

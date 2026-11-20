@@ -4,7 +4,6 @@ over a small fixture map and every map in the data directory; the loop-specific 
 loop.json only."""
 
 import copy
-import importlib.util
 import json
 import re
 from pathlib import Path
@@ -24,11 +23,6 @@ STATUSES = {"works", "planned", "idea"}
 EFFECTS = {"blocks", "warns", "formats", "records"}
 # An optional `form` names a part that is no skill, agent, hook or workflow of a pack.
 FORMS = {"tool", "dispatcher"}
-ROADMAP_PATH = ROOT / "ci" / "loop_roadmap.py"
-_spec = importlib.util.spec_from_file_location("lighthouse_ci_loop_roadmap_site", ROADMAP_PATH)
-assert _spec is not None and _spec.loader is not None
-roadmap = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(roadmap)
 REQUIRED = ["id", "phase", "row", "kind", "trigger", "label", "what", "how", "when", "without", "status"]
 
 
@@ -215,7 +209,6 @@ def test_every_chip_is_on_a_route(path):
 def test_site_and_roadmap_agree_on_a_planned_item(fields, flagged):
     chain = {"chips": [{"id": "x", "status": "planned", **fields}], "handoffs": []}
     assert bool(planned_problems(chain)) is flagged
-    assert bool(roadmap.problems(chain, {7: "M9"})) is flagged
 
 
 def test_fixture_planned_without_issue_is_flagged():
