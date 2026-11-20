@@ -54,6 +54,22 @@ alleen met `[imports] check = false`. De gate draait de binary waarmee hij zelf 
 - Bestanden zijn bij `pre` de gestagede (`git diff --cached`), bij `post` die van de commit.
   Verwijderingen tellen niet mee; een lege lijst slaat de stap over.
 
+**De hooks.** Dezelfde check draait ook aan het einde van een sessie: `go-imports-gate`,
+`python-imports-gate` en `node-imports-gate` (Stop-hooks van de packs `go`, `python` en `node`)
+roepen `lighthouse imports check` aan op wat de sessie wijzigde. Ze blokkeren op een bevinding en
+melden `COULD NOT CHECK` als de check niet kan draaien; tijdens een usage-alarm zwijgen ze zoals
+`go-lint-gate` (zie [usage-gate](usage-gate.md)). Ook `[imports] check = false` zet ze uit.
+
+**De checkers en hun pins.** Go gebruikt `go mod tidy -diff` (geen extra tool); node gebruikt
+knip via `npx` en python deptry via `uv`. De versies staan op één plek, in
+[`internal/importcheck/pins.go`](../internal/importcheck/pins.go): deptry (licentie MIT) en knip
+(licentie ISC). Een nieuwe versie kies je daar, met een licentiecontrole in de commentaarregel.
+
+**`COULD NOT CHECK`.** Het betekent dat er niets gecontroleerd is, niet dat de check schoon was:
+de tool ontbreekt (`go`, `uv`, `npx`), het netwerk is weg bij de eerste download, of een node-root
+heeft geen `node_modules`. Installeer wat ontbreekt en draai de check opnieuw. Knip vindt in een
+Expo-project zonder `main` of entry niets; zet daar een entry, anders is een schone uitkomst leeg.
+
 **Bekende beperking.** Draait `git commit -a` of `git add -A && git commit` in één Bash-aanroep,
 dan is er bij `pre` nog niets gestaged: de lijst is leeg en de stap meldt
 `commit-test-gate: imports not checked: nothing staged yet`. Er is geen workaround; stage vóór
