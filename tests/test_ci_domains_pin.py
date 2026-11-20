@@ -42,9 +42,9 @@ def test_domain_jobs_wait_for_changes():
 
 
 def test_changes_job_classifies():
-    """Fails when the `changes` job stops classifying the diff with ci/domains.py."""
+    """Fails when the `changes` job stops classifying the diff with ci/domains."""
     changes = _jobs()["changes"]
-    for needle in ("fetch-depth: 0", "--no-renames", " -z ", "ci/domains.py classify"):
+    for needle in ("fetch-depth: 0", "--no-renames", " -z ", "go run ./ci/domains classify"):
         assert needle in changes, needle
     # A step line of its own (not the comment): without it `git diff | classify` has no pipefail.
     assert re.search(r"^        shell: bash\s*$", changes, re.MULTILINE)
@@ -189,7 +189,7 @@ def test_no_measurement_step():
 def test_actions_pinned_by_sha():
     """Fails when an action is referenced by tag, or loses its version comment."""
     uses = re.findall(r"^\s*(?:- )?uses: (\S+)(.*)$", _text(), re.MULTILINE)
-    assert len(uses) == 25, uses
+    assert len(uses) == 26, uses
     for ref, rest in uses:
         assert re.search(r"@[0-9a-f]{40}$", ref), ref
         assert re.match(r"\s+# v\d+\.\d+\.\d+\s*$", rest), (ref, rest)
