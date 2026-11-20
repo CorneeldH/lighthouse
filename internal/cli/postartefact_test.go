@@ -2,6 +2,8 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +12,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/CorneeldH/lighthouse/internal/fixturesetup"
+	"github.com/CorneeldH/lighthouse/internal/forge"
+	"github.com/CorneeldH/lighthouse/internal/prbody"
 	"github.com/CorneeldH/lighthouse/internal/scriptcase"
 )
 
@@ -37,7 +41,13 @@ func TestPostArtefactCases(t *testing.T) {
 			}
 			// The Python runner starts the script in the root of the case.
 			t.Chdir(root)
+			// The forge is the replay server: the binary reaches it as it does in tests/pack, by the
+			// loopback override and a dummy token.
+			t.Setenv("GH_TOKEN", "dummy")
+			t.Setenv("GITHUB_TOKEN", "")
+			t.Setenv(prbody.GitHubAPIURLEnv, scriptcase.ReplayForge(t, fillForgeCalls(t, c.ForgeCalls, root)))
 			env := defaultPostArtefactEnv()
+			// gh is never scripted any more: a call of it fails the case.
 			env.Run = scriptcase.Replay(t, fillCalls(t, c.Calls, root))
 			var out, errOut bytes.Buffer
 			top := &cobra.Command{Use: "lighthouse", SilenceUsage: true, SilenceErrors: true}
@@ -131,4 +141,97 @@ func fillCalls(t *testing.T, calls []scriptcase.Call, root string) []scriptcase.
 		out[i] = c
 	}
 	return out
+}
+
+// fillForgeCalls fills the placeholders of the scripted forge calls, as fillCalls does.
+func fillForgeCalls(t *testing.T, calls []scriptcase.ForgeCall, root string) []scriptcase.ForgeCall {
+	t.Helper()
+	raw, err := json.Marshal(calls)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []scriptcase.ForgeCall
+	if err := json.Unmarshal([]byte(fixturesetup.Fill(t, string(raw), root)), &out); err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+func postArtefactToml(t *testing.T, text string) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "lighthouse.toml")
+	if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("LIGHTHOUSE_TOML", path)
+}
+
+// The token goes with every request, so only a loopback API URL is followed: any other value is
+// ignored and the real GitHub API is used.
+func TestPostArtefactForgeFollowsOnlyALoopbackAPIURL(t *testing.T) {
+	postArtefactToml(t, "[forge]\nrepo = \"o/r\"\n")
+	t.Setenv("GH_TOKEN", "dummy")
+	for _, tc := range []struct{ name, url, want string }{
+		{"loopback", "http://127.0.0.1:9", "http://127.0.0.1:9"},
+		{"elsewhere", "https://evil.example.com/api", "https://api.github.com"},
+		{"unset", "", "https://api.github.com"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(prbody.GitHubAPIURLEnv, tc.url)
+
+			f, err := defaultPostArtefactEnv().Forge("")
+
+			if err != nil {
+				t.Fatal(err)
+			}
+			if gh, ok := f.(*forge.GitHub); !ok || gh.BaseURL != tc.want {
+				t.Errorf("forge = %#v, want a GitHub with BaseURL %q", f, tc.want)
+			}
+		})
+	}
+}
+
+// Someone who is only logged in through `gh auth login` keeps working; without that token too
+// the error is a *forge.TokenError.
+func TestPostArtefactForgeFallsBackToGhAuthToken(t *testing.T) {
+	postArtefactToml(t, "[forge]\nrepo = \"o/r\"\n")
+	none := func(string) string { return "" }
+
+	o := newForgeOpener(none, "")
+	o.ghToken = func() string { return "from-gh" }
+	f, err := postArtefactEnvWith(o).Forge("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gh, ok := f.(*forge.GitHub); !ok || gh.Token != "from-gh" {
+		t.Errorf("forge = %#v, want a GitHub with the token of gh auth token", f)
+	}
+
+	_, err = postArtefactEnvWith(newForgeOpener(none, "")).Forge("")
+	var te *forge.TokenError
+	if !errors.As(err, &te) {
+		t.Errorf("err = %v, want a *forge.TokenError", err)
+	}
+}
+
+// A GitLab repo opens a GitLab forge, with the token of GITLAB_TOKEN and never gh's.
+func TestPostArtefactForgeOpensGitLab(t *testing.T) {
+	postArtefactToml(t, "[forge]\nkind = \"gitlab\"\nhost = \"git.example.org\"\nrepo = \"g/p\"\n")
+	getenv := func(k string) string {
+		if k == "GITLAB_TOKEN" {
+			return "glpat"
+		}
+		return ""
+	}
+	o := newForgeOpener(getenv, "")
+	o.ghToken = func() string { t.Error("gh auth token asked for a GitLab repo"); return "x" }
+
+	f, err := postArtefactEnvWith(o).Forge("")
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.Kind() != "gitlab" {
+		t.Errorf("kind = %q, want gitlab", f.Kind())
+	}
 }

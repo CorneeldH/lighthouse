@@ -423,8 +423,8 @@ func TestTestSeamURLAcceptsOnlyLoopback(t *testing.T) {
 		{"ftp://127.0.0.1", ""},
 		{"not a url", ""},
 	} {
-		if got := loopbackAPIURL(c.in); got != c.want {
-			t.Errorf("loopbackAPIURL(%q) = %q, want %q", c.in, got, c.want)
+		if got := LoopbackAPIURL(c.in); got != c.want {
+			t.Errorf("LoopbackAPIURL(%q) = %q, want %q", c.in, got, c.want)
 		}
 	}
 }
