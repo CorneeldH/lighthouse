@@ -48,8 +48,12 @@ rangtabel staat in [labels.md](../../labels.md).
 2. **`label`/`return` met een sleutel die verliest** (`needs_hands` op een issue met
    `needs_shaping`). Het lagere label blijft staan, er komt geen edit en de uitvoer zegt welk label
    wint (Task 3).
-3. **Een sleutel die de repo niet kent of die leeg is** (`labels.needs_testing = ""`, of een
-   typfout als `needs-hands`). Dat is exit 1 met een usage-regel, zonder forge-call (Task 3, Task 4).
+3. **Een sleutel die de repo niet kent of die leeg is.** Een typfout als `needs-hands` is exit 1
+   met een usage-regel, zonder forge-call (Task 3, Task 4). Een lege waarde
+   (`labels.needs_testing = ""`) komt nooit bij `Name`: `config.Load` weigert hem al als
+   `key labels.needs_testing is empty` (`internal/config/config.go:612-613`), dus exit 2 als
+   config-error, zonder forge-call. `Name` geeft voor een lege naam toch `ok false`, als vangnet
+   voor een `repoconfig.Labels` die buiten de loader om is gebouwd (Task 3).
 4. **`return` op een issue dat niet op het board staat, of in een repo zonder `[forge.board]`.**
   Het label wordt wel gezet en de board-regel zegt `skipped`. Exit 0 (Task 3, Task 4).
 5. **Status `On hold` of een status die `status_options` niet kent** (`unknown:<id>`). Die is
@@ -172,7 +176,7 @@ rangtabel staat in [labels.md](../../labels.md).
   // when current lacks it; Remove = every other blocking label in current, in rank order.
   func SetLabel(current []string, wantKey string, l repoconfig.Labels) (LabelEdit, error) // error: unknown key or empty name
   // Apply reads issue nr, applies SetLabel and sends one EditIssue with Add and Remove, or none
-  // when both are empty.
+  // when both are empty. On an EditIssue error it returns the intended LabelEdit with the error.
   func Apply(ctx context.Context, f forge.Forge, nr int, wantKey string, l repoconfig.Labels) (LabelEdit, error)
   const ToDo = "To do"
   type Returned struct { Label LabelEdit; From string; OnBoard bool } // From: EffectiveStatus before
@@ -200,6 +204,15 @@ rangtabel staat in [labels.md](../../labels.md).
   - Return met `IssueItem` ok=false geeft `OnBoard false` en geen error (Review Focus 4).
   - Return met status `unknown:x` en `StatusName "On hold"` geeft `From "On hold"` (Review Focus 5).
   - Een error van `EditIssue` stopt vóór `SetStatus`.
+  - **Halve schrijf.** De GitHub-forge voegt labels toe vóór hij ze verwijdert
+    (`internal/forge/write_issue.go:184-194`). Faalt de DELETE na een geslaagde POST, dan houdt het
+    issue twee blokkadelabels. Dat herstelt een tweede `Apply` met dezelfde sleutel, omdat
+    `SetLabel` vanuit de huidige labels rekent. Test: de fake geeft het issue eerst
+    `needs_testing`, de eerste `EditIssue` voegt `needs_shaping` toe en geeft dan een error. `Apply`
+    geeft de error terug, met `LabelEdit{needs_shaping, [needs_shaping], [needs_testing]}`. Een
+    tweede `Apply` op het issue met beide labels doet één `EditIssue` met alleen
+    `Remove: [needs_testing]`. De CLI print bij zo'n error `state: ERROR — <oneline>; run it again
+    to finish the label edit`.
 - [ ] **Step 3: Draai** `go test ./internal/issuestate/` en verwacht FAIL.
 - [ ] **Step 4: Implementeer** `Keys`, `Name`, `SetLabel` en `Apply` in `label.go`, `Return` in
   `giveback.go`, en `EffectiveStatus` met de boardstart-aanpassing.
@@ -228,7 +241,8 @@ rangtabel staat in [labels.md](../../labels.md).
                                           or "board: skipped — no [forge.board] configured"
   ```
   Exit 0 bij succes. Exit 1 bij usage (fout nummer of onbekende sleutel, zonder forge-call) of een
-  forge-error (`state: ERROR — <oneline>`). Exit 2 bij een config-error, zoals in `boardstart.Run`.
+  forge-error (`state: ERROR — <oneline>`). Exit 2 bij een config-error, zoals in `boardstart.Run`;
+  daaronder valt een leeg blokkadelabel in `lighthouse.toml` (Review Focus 3).
   `Env` heeft `Config` en `Forge` zoals `boardstart.Env`, plus
   `Runs func(ctx, repo string) ([]dispatch.RunView, error)`.
 
@@ -237,7 +251,12 @@ rangtabel staat in [labels.md](../../labels.md).
   `forgetest.New`, `newForgeOpener` en `execute`. Gevallen:
   - `show 7` met item `In progress` geeft `state: #7 active`.
   - `show 7` met label `3-needs-hands` en een open blocker geeft `state: #7 blocked`.
-  - `label 7 needs_shaping` op een issue met `3-needs-testing` doet één PATCH met beide wijzigingen.
+  - `label 7 needs_shaping` op een issue met `3-needs-testing` doet één POST op
+    `/repos/{owner}/{name}/issues/7/labels` met het `needs_shaping`-label, één DELETE van
+    `/issues/7/labels/3-needs-testing`, en geen PATCH. De GitHub-forge stuurt labels als aparte
+    requests (`internal/forge/write_issue.go:154-195`); toets die requests, niet één PATCH.
+  - `label 7 needs_hands` met `labels.needs_testing = ""` in `lighthouse.toml` geeft exit 2 en 0
+    requests op de server (Review Focus 3).
   - `return 7 needs_hands` op `Controller` geeft twee regels en zet de status naar `opt-todo`.
   - `label 7 needs-hands` geeft exit 1 en 0 requests op de server.
   - `return 7 needs_hands` zonder `[forge.board]` zet het label en print `board: skipped — …`.
@@ -248,7 +267,13 @@ rangtabel staat in [labels.md](../../labels.md).
   - `show` leest `Issue` (labels, state `closed`), `BlockedBy`, `IssueItem` (alleen met board) en
     `Comments`. `OpenQuestion` komt uit `protocol.Classify(comments).State == protocol.StateQuestion`.
   - De run komt uit `dispatch.LoadView(ctx, db, []string{repo})`, het eerste `RunView` met dit
-    issue. De DB komt van `store.Open(ctx, store.DefaultPath())`, zoals in `internal/cli/serve.go:186-192`.
+    issue. De DB komt van `store.OpenShared`, **niet** `store.Open`: `Open` neemt de
+    serve-lock (`internal/store/store.go:95-105`) en faalt naast een draaiende `lighthouse serve`.
+    Volg `internal/cli/triage.go:128-138`: `path, err := store.DefaultPath()`, dan
+    `st, err := store.OpenShared(ctx, path)`, `defer st.Close()`. De standaard-`Runs` krijgt het
+    DB-pad als parameter, zodat een test hem kan aanroepen. Test in `state_test.go`: open
+    `store.Open` op een pad in `t.TempDir()` en houd hem open; de standaard-`Runs` op hetzelfde pad
+    geeft geen error.
   - De labels komen van `repoconfig.LoadFile(config.Path())`. De cobra-wrapper heeft drie
     subcommando's met `cobra.ExactArgs`.
 - [ ] **Step 4: Draai** `go test -race ./internal/cli/ ./internal/issuestate/` en verwacht PASS.
