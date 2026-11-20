@@ -16,7 +16,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from tests.pack._testkit import CORE, init_repo, lighthouse_dir
+from tests.pack.python._testkit import CORE, init_repo, lighthouse_dir
 
 SKILL = (CORE / "skills" / "audit-worktrees" / "SKILL.md").read_text(encoding="utf-8")
 

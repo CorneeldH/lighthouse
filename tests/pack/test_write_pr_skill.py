@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.pack._testkit import CORE, MINIMAL_TOML, init_repo
+from tests.pack.python._testkit import CORE, MINIMAL_TOML, init_repo
 
 ALLOWLIST = json.loads(
     (Path(__file__).parent / "fixtures" / "evidence" / "allowlist.json").read_text(encoding="utf-8")

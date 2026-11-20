@@ -15,11 +15,11 @@ import shutil
 
 import pytest
 
-from tests.pack._testkit import INSTALL_ROOT, RUN_SH_TOOLS, hook_shim
-from tests.pack._testkit import git as _git
-from tests.pack._testkit import init_repo as _init_repo
-from tests.pack._testkit import run_hook as _run
-from tests.pack._testkit import tool_bin
+from tests.pack.python._testkit import INSTALL_ROOT, RUN_SH_TOOLS, hook_shim
+from tests.pack.python._testkit import git as _git
+from tests.pack.python._testkit import init_repo as _init_repo
+from tests.pack.python._testkit import run_hook as _run
+from tests.pack.python._testkit import tool_bin
 
 # The hook runs as `lighthouse hook worktree-check` behind run.sh: the binary of this checkout.
 WORKTREE_GUARD = hook_shim(INSTALL_ROOT, "worktree-check")

@@ -14,7 +14,7 @@ import subprocess
 import pytest
 from pathlib import Path
 
-from tests.pack._testkit import GUARD, RUN_SH_TOOLS, bash_payload, init_repo, install_core
+from tests.pack.python._testkit import GUARD, RUN_SH_TOOLS, bash_payload, init_repo, install_core
 
 # The hook runs as `lighthouse hook main-commit-gate` behind run.sh: the binary of this checkout.
 pytestmark = pytest.mark.usefixtures("lighthouse_bin")

@@ -27,7 +27,7 @@ import sys
 
 import pytest
 
-from tests.pack._testkit import CORE
+from tests.pack.python._testkit import CORE
 
 SKILLS = CORE / "skills"
 NAMES = ("review-spec", "review-plan")

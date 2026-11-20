@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.pack._testkit import GIT_ENV, git, init_repo
+from tests.pack.python._testkit import GIT_ENV, git, init_repo
 from tests.pack.python.conftest import BOARD_TOML, PY_SCRIPTS
 
 _SCRIPTS = Path(__file__).resolve().parents[3] / "pack" / "python" / "scripts"

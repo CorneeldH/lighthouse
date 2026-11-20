@@ -9,7 +9,7 @@ import subprocess
 
 import pytest
 
-from tests.pack._testkit import config_kinds, lighthouse_dir
+from tests.pack.python._testkit import config_kinds, lighthouse_dir
 
 PACK = Path(__file__).resolve().parents[2] / "pack"
 FRAGMENTS = sorted(PACK.glob("*/lighthouse.toml.fragment"))

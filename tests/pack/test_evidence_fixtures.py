@@ -23,7 +23,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.pack._testkit import write_fixture_config
+from tests.pack.python._testkit import write_fixture_config
 
 # The binary of this checkout, first on the PATH.
 pytestmark = pytest.mark.usefixtures("lighthouse_bin")

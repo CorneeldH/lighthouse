@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 
 from tests.pack._fake_llm import FakeEndpoint
-from tests.pack._testkit import GIT_ENV, INSTALLED_HOOKS, MINIMAL_TOML, git
+from tests.pack.python._testkit import GIT_ENV, INSTALLED_HOOKS, MINIMAL_TOML, git
 
 HOOK = INSTALLED_HOOKS / "run.sh"
 ON_TOML = MINIMAL_TOML.replace('language = "en"\n', 'language = "en"\ncode_language = "en"\n')

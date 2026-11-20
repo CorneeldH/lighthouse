@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.pack._testkit import (
+from tests.pack.python._testkit import (
     GIT_ENV,
     INSTALL_ROOT,
     classify,

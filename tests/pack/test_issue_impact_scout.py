@@ -13,7 +13,7 @@ from __future__ import annotations
 import re
 import tomllib
 
-from tests.pack._testkit import CORE
+from tests.pack.python._testkit import CORE
 
 AGENT = CORE / "agents" / "issue-impact-scout.md"
 

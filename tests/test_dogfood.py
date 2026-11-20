@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.pack._testkit import RUN_SH_TOOLS, bash_payload, git, init_repo, lighthouse_dir, tool_bin
+from tests.pack.python._testkit import RUN_SH_TOOLS, bash_payload, git, init_repo, lighthouse_dir, tool_bin
 
 ROOT = Path(__file__).resolve().parents[1]
 SETTINGS = ROOT / ".claude" / "settings.json"

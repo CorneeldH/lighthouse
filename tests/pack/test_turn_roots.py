@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.pack._testkit import (
+from tests.pack.python._testkit import (
     git,
     init_repo,
     past_this_second,

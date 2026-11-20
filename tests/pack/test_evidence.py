@@ -11,7 +11,7 @@ import subprocess
 
 import pytest
 
-from tests.pack._testkit import tool_bin
+from tests.pack.python._testkit import tool_bin
 
 # The binary of this checkout, first on the PATH.
 pytestmark = pytest.mark.usefixtures("lighthouse_bin")

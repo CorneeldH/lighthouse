@@ -11,7 +11,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from tests.pack._testkit import INSTALL_ROOT, RUN_SH_TOOLS, run_sh_hook, tool_bin
+from tests.pack.python._testkit import INSTALL_ROOT, RUN_SH_TOOLS, run_sh_hook, tool_bin
 
 
 def _run(

@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.pack._testkit import (
+from tests.pack.python._testkit import (
     CORE,
     INSTALLED_HOOKS,
     ISSUE_WITH_THREE_AC,

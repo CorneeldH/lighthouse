@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.pack._testkit import lighthouse_dir
+from tests.pack.python._testkit import lighthouse_dir
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 

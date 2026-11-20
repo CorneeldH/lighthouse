@@ -24,7 +24,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.pack._testkit import CORE, PACKS, is_known_key
+from tests.pack.python._testkit import CORE, PACKS, is_known_key
 
 AGENTS = CORE / "agents"
 TEXT_SUFFIXES = {".md", ".sh", ".json", ".txt"}
@@ -297,7 +297,7 @@ def test_descriptions_pass_the_overlap_check(tmp_path):
     import os
     import subprocess
 
-    from tests.pack._testkit import install_core, lighthouse_dir
+    from tests.pack.python._testkit import install_core, lighthouse_dir
 
     install_core(tmp_path)
     _install_skills(tmp_path)

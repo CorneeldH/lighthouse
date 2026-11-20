@@ -22,7 +22,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.pack._testkit import ForgeReplay, build_fixture_setup, fake_gh_bin, fill_fixture, lighthouse_dir
+from tests.pack.python._testkit import ForgeReplay, build_fixture_setup, fake_gh_bin, fill_fixture, lighthouse_dir
 
 FIXTURES = Path(__file__).parent / "fixtures" / "scripts"
 COMMANDS: dict[str, list[str]] = {

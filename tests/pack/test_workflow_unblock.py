@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 
 
-from tests.pack._testkit import CORE, config_kinds
+from tests.pack.python._testkit import CORE, config_kinds
 
 ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW = CORE / "workflows" / "unblock-dependents.yml"

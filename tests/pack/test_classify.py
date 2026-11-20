@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.pack._testkit import classify
+from tests.pack.python._testkit import classify
 
 CASES = json.loads(
     (Path(__file__).parent / "fixtures" / "bash_writes" / "cases.json").read_text(

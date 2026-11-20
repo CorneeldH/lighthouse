@@ -15,7 +15,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from tests.pack._testkit import CORE
+from tests.pack.python._testkit import CORE
 
 SKILLS = CORE / "skills"
 

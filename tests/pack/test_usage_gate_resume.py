@@ -6,7 +6,7 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-from tests.pack._testkit import (
+from tests.pack.python._testkit import (
     MINIMAL_TOML,
     alarm_line,
     guard_env,

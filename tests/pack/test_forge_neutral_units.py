@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.pack._testkit import CORE, PACKS
+from tests.pack.python._testkit import CORE, PACKS
 from tests.pack.test_skill_contracts import _TOOL_USES
 
 # The same `gh <command>` alternation requires.toml uses, plus release (see the docstring).

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import re
 
-from tests.pack._testkit import CORE
+from tests.pack.python._testkit import CORE
 
 SKILL_DIR = CORE / "skills" / "write-issue"
 CONFIG = "lighthouse config"
@@ -199,7 +199,7 @@ exec "$REAL_LIGHTHOUSE" "$@"
 def test_invariant_check_runs_against_the_forge(tmp_path, lighthouse_bin):
     """Step 6 runs as written: two blocking labels on one issue is reported, a clean one not.
     The PATH has the binary and no python3: the step reads the config through `lighthouse`."""
-    from tests.pack._testkit import MINIMAL_TOML, install_core, tool_bin
+    from tests.pack.python._testkit import MINIMAL_TOML, install_core, tool_bin
 
     install_core(tmp_path, MINIMAL_TOML + '\n[labels]\nlocation_prefix = "loc-"\narea_prefix = "area-"\n')
     page = tmp_path / "page.json"

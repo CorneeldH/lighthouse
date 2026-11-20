@@ -4,7 +4,7 @@ import re
 
 import pytest
 
-from tests.pack._testkit import CORE
+from tests.pack.python._testkit import CORE
 
 VARIANTS = {v: (CORE / "skills" / "upgrade" / v / "SKILL.md").read_text(encoding="utf-8")
             for v in ("claude", "agents")}

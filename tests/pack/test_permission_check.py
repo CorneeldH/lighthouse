@@ -11,7 +11,7 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
-from tests.pack._testkit import MINIMAL_TOML, guard_env, install_core, run_sh_hook
+from tests.pack.python._testkit import MINIMAL_TOML, guard_env, install_core, run_sh_hook
 
 RUN = "0b9e2c4a-1f00-4c8e-9d7e-5a1b2c3d4e5f"
 MESSAGE = "Claude needs your permission to use Write"

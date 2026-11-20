@@ -1,4 +1,4 @@
-from tests.pack._testkit import CORE
+from tests.pack.python._testkit import CORE
 
 SKILL = (CORE / "skills" / "test-standard" / "SKILL.md").read_text(encoding="utf-8")
 FRONT = SKILL.split("---\n", 2)[1]

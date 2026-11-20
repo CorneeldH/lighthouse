@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import re
 
-from tests.pack._testkit import CORE
+from tests.pack.python._testkit import CORE
 
 SKILL_DIR = CORE / "skills" / "close-issue"
 _STRIP_COMMENTS = 'gsub("<!--[\\\\s\\\\S]*?-->"; "")'

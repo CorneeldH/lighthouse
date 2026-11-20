@@ -9,7 +9,7 @@ together they ask for every key the reader knows.
 import json
 from pathlib import Path
 
-from tests.pack._testkit import config_schema
+from tests.pack.python._testkit import config_schema
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "config"
 CASES = sorted(p.name for p in FIXTURES.iterdir() if p.is_dir())

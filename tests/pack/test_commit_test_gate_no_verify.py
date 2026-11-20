@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.pack._testkit import INSTALL_ROOT, hook_shim
+from tests.pack.python._testkit import INSTALL_ROOT, hook_shim
 
 pytestmark = pytest.mark.usefixtures("lighthouse_bin")
 

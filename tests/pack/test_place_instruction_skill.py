@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import re
 
-from tests.pack._testkit import CORE
+from tests.pack.python._testkit import CORE
 
 SKILL = (CORE / "skills" / "place-instruction" / "SKILL.md").read_text(encoding="utf-8")
 # The checks live in the Go package behind `lighthouse check-instructions`.
