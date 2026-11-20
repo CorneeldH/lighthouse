@@ -810,6 +810,43 @@ func TestReportsMissingDeps(t *testing.T) {
 	}
 }
 
+func TestInitReportsGhOnlyOnGitHub(t *testing.T) {
+	cases := []struct {
+		name, config string
+		wantGh       bool
+	}{
+		{"github", "[forge]\nkind = \"github\"\nrepo = \"o/r\"\n", true},
+		{"gitlab", "[forge]\nkind = \"gitlab\"\nrepo = \"o/r\"\n", false},
+		{"unknown", "", true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			root := newRepo(t)
+			if c.config != "" {
+				if err := os.WriteFile(filepath.Join(root, "lighthouse.toml"), []byte(c.config), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			packsFS := testPacks()
+			packsFS["core/requires.toml"] = file("git = [\"a\"]\n[forge.github]\ngh = [\"fix-pr\"]\n")
+			r := run(t, root, "", func(o *Options) {
+				o.Yes = true
+				o.Packs = packsFS
+				o.Deps = deps.Checker{
+					LookPath: func(string) (string, error) { return "", errors.New("no") },
+					Run:      func(string, ...string) error { return nil },
+				}
+			})
+			if got := strings.Contains(r.err, "missing dependency: gh"); got != c.wantGh {
+				t.Fatalf("gh reported = %v, want %v; err %q", got, c.wantGh, r.err)
+			}
+			if !strings.Contains(r.err, "missing dependency: git") {
+				t.Fatalf("git not reported: %q", r.err)
+			}
+		})
+	}
+}
+
 func TestNoForgeWithoutGitHubRemote(t *testing.T) {
 	root := newRepo(t)
 	r := run(t, root, "", yes)
@@ -1583,5 +1620,32 @@ func TestRemoveEmptyParents(t *testing.T) {
 	}
 	if !exists(root, ".lighthouse/manifest.toml") {
 		t.Error(".lighthouse was removed")
+	}
+}
+
+// A GitLab repo does not run the GitHub workflows, so init writes none there.
+func TestInitWritesWorkflowsOnlyOnGitHub(t *testing.T) {
+	cases := []struct {
+		name, config string
+		want         bool
+	}{
+		{"github", "[forge]\nkind = \"github\"\nrepo = \"o/r\"\n", true},
+		{"gitlab", "[forge]\nkind = \"gitlab\"\nrepo = \"o/r\"\n", false},
+		{"unknown", "", true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			root := newRepo(t)
+			if c.config != "" {
+				write(t, root, "lighthouse.toml", c.config)
+			}
+			mods := all(withWorkflow("runs-on: @@ci.runs_on@@\n"), stubLookup(map[string]string{"ci.runs_on": "ubuntu-latest"}))
+			if r := run(t, root, "", all(yes, mods)); r.code != 0 {
+				t.Fatalf("rc %d\n%s", r.code, r.err)
+			}
+			if got := exists(root, ".github/workflows/lighthouse-x.yml"); got != c.want {
+				t.Fatalf("workflow written = %v, want %v", got, c.want)
+			}
+		})
 	}
 }

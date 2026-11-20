@@ -3,6 +3,7 @@ package cli
 import (
 	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -393,5 +394,60 @@ func TestMilestoneEditState(t *testing.T) {
 	}
 	if code, _, errOut = runForgeEnv(writeEnv(w), "milestone", "edit", "M4", "--state", "weird"); code != 2 || !strings.Contains(errOut, "weird") || len(w.msEdits) != 1 {
 		t.Errorf("bad state: code %d err %q edits %d", code, errOut, len(w.msEdits))
+	}
+}
+
+func TestForgeIssueStatusReadFailsOnBrokenConfig(t *testing.T) {
+	w := &writeForge{}
+	e := writeEnv(w)
+	e.repo = func() (repoconfig.Repo, error) { return repoconfig.Repo{}, errors.New("bad lighthouse.toml") }
+	code, out, errOut := runForgeEnv(e, "issue", "status", "7")
+	if code != forgeExitUsage || out != "" || !strings.Contains(errOut, "bad lighthouse.toml") {
+		t.Errorf("code %d out %q err %q", code, out, errOut)
+	}
+	if len(w.calls) != 0 {
+		t.Errorf("calls %v, want none", w.calls)
+	}
+}
+
+func TestForgeIssueStatusReads(t *testing.T) {
+	noBoard := func(f forge.Forge) *forgeEnv {
+		e := writeEnv(f)
+		e.repo = func() (repoconfig.Repo, error) { return repoconfig.Repo{DefaultBranch: "trunk"}, nil }
+		return e
+	}
+	tests := []struct {
+		name      string
+		w         *writeForge
+		env       func(forge.Forge) *forgeEnv
+		want      map[string]any
+		wantCalls []string
+	}{
+		{"on the board", &writeForge{onBoard: true, item: forge.BoardItem{Status: "In progress"}}, writeEnv,
+			map[string]any{"board": true, "on_board": true, "status": "In progress"}, []string{"IssueItem"}},
+		{"not on the board", &writeForge{}, writeEnv,
+			map[string]any{"board": true, "on_board": false, "status": nil}, []string{"IssueItem"}},
+		{"on the board without status", &writeForge{onBoard: true}, writeEnv,
+			map[string]any{"board": true, "on_board": true, "status": nil}, []string{"IssueItem"}},
+		{"no board configured", &writeForge{}, noBoard,
+			map[string]any{"board": false, "on_board": false, "status": nil}, nil},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			code, out, errOut := runForgeEnv(tc.env(tc.w), "issue", "status", "7")
+			if code != 0 || errOut != "" {
+				t.Fatalf("code %d err %q", code, errOut)
+			}
+			var got map[string]any
+			if err := json.Unmarshal([]byte(out), &got); err != nil {
+				t.Fatalf("out %q: %v", out, err)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("got %v, want %v", got, tc.want)
+			}
+			if !reflect.DeepEqual(tc.w.calls, tc.wantCalls) {
+				t.Errorf("calls %v, want %v", tc.w.calls, tc.wantCalls)
+			}
+		})
 	}
 }

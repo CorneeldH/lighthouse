@@ -145,9 +145,7 @@ block per worktree name.
 ## Non-negotiables
 
 - **Change nothing**, not even "just this one obvious case".
-- **Outside the sandbox.** `lighthouse worktree-audit` reads the PR status from the forge over
-  the network: in Claude Code it runs with `dangerouslyDisableSandbox: true`. A forge it cannot
-  reach gives `PR status unknown — check`, never "no PR".
+- **`lighthouse worktree-audit` reads the PR state itself; call no forge CLI next to it.**
 - **Never `git branch --merged`** as a merge test.
 - **Never force or unlock a lock.** Report the pid with it.
 - **Port blocks are reported, never killed** (only if present, with a port registry). The skill

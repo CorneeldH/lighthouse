@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"maps"
 	"net/http"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -40,6 +41,31 @@ func (s *Server) SetLabels(names ...string) {
 	s.labels = slices.Clone(names)
 }
 
+// LabelColor is the colour the server stored for the label, as POSTed ("#" and six hex digits);
+// "" for an unknown label.
+func (s *Server) LabelColor(name string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.labelColor[name]
+}
+
+// AddCommit makes GET .../repository/commits/{sha} answer 200 for sha.
+func (s *Server) AddCommit(sha string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.commits = append(s.commits, sha)
+}
+
+// FailCommit makes GET .../repository/commits/{sha} answer 500 for sha.
+func (s *Server) FailCommit(sha string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.failCommit == nil {
+		s.failCommit = map[string]bool{}
+	}
+	s.failCommit[sha] = true
+}
+
 // The write routes refuse a field GitLab would not take, with 400, so a test cannot pass on a
 // field GitLab ignores.
 var (
@@ -57,6 +83,8 @@ func (s *Server) writeRoutes(mux *http.ServeMux, p string) {
 	s.route(mux, "POST "+p+"/milestones", s.project(s.createMilestone))
 	s.route(mux, "PUT "+p+"/milestones/{id}", s.project(s.editMilestone))
 	s.route(mux, "GET "+p+"/labels", s.project(s.listLabels))
+	s.route(mux, "POST "+p+"/labels", s.project(s.createLabel))
+	s.route(mux, "GET "+p+"/repository/commits/{sha}", s.project(s.commit))
 	s.route(mux, "POST "+p+"/merge_requests", s.project(s.createMR))
 	s.route(mux, "POST "+p+"/merge_requests/{iid}/notes", s.project(s.createMRNote))
 }
@@ -346,4 +374,49 @@ func (s *Server) createMRNote(w http.ResponseWriter, r *http.Request) {
 		"author": map[string]any{"username": s.Login}}
 	s.mrNotes[iid] = append(s.mrNotes[iid], n)
 	writeJSON(w, http.StatusCreated, n)
+}
+
+var labelColorRe = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
+
+// createLabel stores a label as GitLab does: the colour is "#" and six hex digits, a name that
+// exists answers 409.
+func (s *Server) createLabel(w http.ResponseWriter, r *http.Request) {
+	body, ok := s.body(w, r, []string{"name", "color", "description"})
+	if !ok {
+		return
+	}
+	name, _ := body["name"].(string)
+	color, _ := body["color"].(string)
+	if name == "" || !labelColorRe.MatchString(color) {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"message": "400 Bad request - name and a color like #rrggbb are required"})
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if slices.Contains(s.labels, name) {
+		writeJSON(w, http.StatusConflict, map[string]any{"message": "Label already exists"})
+		return
+	}
+	s.labels = append(s.labels, name)
+	if s.labelColor == nil {
+		s.labelColor = map[string]string{}
+	}
+	s.labelColor[name] = color
+	writeJSON(w, http.StatusCreated, map[string]any{"name": name, "color": color})
+}
+
+// commit answers 200 for a sha from AddCommit, 500 for one from FailCommit, else 404.
+func (s *Server) commit(w http.ResponseWriter, r *http.Request) {
+	sha := r.PathValue("sha")
+	s.mu.Lock()
+	fail, known := s.failCommit[sha], slices.Contains(s.commits, sha)
+	s.mu.Unlock()
+	switch {
+	case fail:
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"message": "500 Internal Server Error"})
+	case known:
+		writeJSON(w, http.StatusOK, map[string]any{"id": sha})
+	default:
+		notFound(w)
+	}
 }

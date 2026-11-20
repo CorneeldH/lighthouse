@@ -208,8 +208,9 @@ func newForgeIssueChangesCommand(env *forgeEnv) *cobra.Command {
 func newForgePRCommand(env *forgeEnv) *cobra.Command {
 	cmd := forgeGroup("pr", "Read and write pull requests (merge requests)")
 	var field string
+	var comments bool
 	view := &cobra.Command{
-		Use: "view <number> [--field PATH]", Short: "Show a pull request as JSON", Args: forgeArgs(1),
+		Use: "view <number> [--comments] [--field PATH]", Short: "Show a pull request as JSON", Args: forgeArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			n, err := forgeNumber(cmd, args[0])
 			if err != nil {
@@ -220,12 +221,21 @@ func newForgePRCommand(env *forgeEnv) *cobra.Command {
 				if err != nil {
 					return nil, err
 				}
-				return renderChange(c), nil
+				out := renderChange(c)
+				if comments {
+					cs, err := f.ChangeComments(cmd.Context(), n)
+					if err != nil {
+						return nil, err
+					}
+					out["comments"] = renderComments(cs)
+				}
+				return out, nil
 			})
 		},
 	}
+	view.Flags().BoolVar(&comments, "comments", false, "add the comments")
 	addFieldFlag(view, &field)
-	cmd.AddCommand(view, newForgePRListCommand(env))
+	cmd.AddCommand(view, newForgePRListCommand(env), newForgePRChecksCommand(env))
 	cmd.AddCommand(newForgePRWriteCommands(env)...)
 	return cmd
 }
@@ -341,6 +351,74 @@ func newForgeLabelCommand(env *forgeEnv) *cobra.Command {
 		},
 	}
 	addFieldFlag(list, &field)
-	cmd.AddCommand(list)
+	cmd.AddCommand(list, newForgeLabelCreateCommand(env))
 	return cmd
+}
+
+func newForgePRChecksCommand(env *forgeEnv) *cobra.Command {
+	var field string
+	var failedLog bool
+	cmd := &cobra.Command{
+		Use: "checks <number> [--failed-log] [--field PATH]", Short: "Show the CI checks of a pull request as JSON", Args: forgeArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			n, err := forgeNumber(cmd, args[0])
+			if err != nil {
+				return err
+			}
+			if failedLog {
+				return env.printFailedLogs(cmd, n)
+			}
+			return env.read(cmd, field, func(f forge.Forge) (any, error) {
+				cs, err := f.Checks(cmd.Context(), n)
+				if err != nil {
+					return nil, err
+				}
+				out := make([]any, 0, len(cs)) // never nil: no checks prints [], not null
+				for _, c := range cs {
+					out = append(out, map[string]any{"name": c.Name, "bucket": c.Bucket, "link": c.Link, "job": c.Job})
+				}
+				return out, nil
+			})
+		},
+	}
+	cmd.Flags().BoolVar(&failedLog, "failed-log", false, "print the log of every failed check instead of the JSON")
+	addFieldFlag(cmd, &field)
+	return cmd
+}
+
+// printFailedLogs prints, per failed check, a header and the raw log. A check without a log
+// prints "no log for job <id>" and the loop goes on; only a forge error fails.
+func (e *forgeEnv) printFailedLogs(cmd *cobra.Command, number int) error {
+	f, err := e.open(cmd.Context())
+	if err != nil {
+		return e.fail(cmd, err)
+	}
+	cs, err := f.Checks(cmd.Context(), number)
+	if err != nil {
+		return e.fail(cmd, err)
+	}
+	var sb strings.Builder
+	for _, c := range cs {
+		if c.Bucket != "fail" {
+			continue
+		}
+		if c.Job == 0 {
+			sb.WriteString("no log for job 0\n")
+			continue
+		}
+		log, err := f.JobLog(cmd.Context(), c.Job)
+		if errors.Is(err, forge.ErrNoJobLog) {
+			fmt.Fprintf(&sb, "no log for job %d\n", c.Job)
+			continue
+		}
+		if err != nil {
+			return e.fail(cmd, err)
+		}
+		fmt.Fprintf(&sb, "--- job %d %s ---\n%s", c.Job, c.Name, log)
+		if !strings.HasSuffix(log, "\n") {
+			sb.WriteString("\n")
+		}
+	}
+	_, err = fmt.Fprint(e.stdout(cmd), sb.String())
+	return err
 }

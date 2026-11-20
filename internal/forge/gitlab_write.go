@@ -37,7 +37,17 @@ func (m glMilestone) milestone() Milestone {
 // change translates a merge request to a Change.
 func (m glMR) change() Change {
 	out := Change{Number: m.IID, Title: m.Title, Body: m.Description, State: m.State, Labels: m.Labels, URL: m.WebURL,
-		CreatedAt: m.CreatedAt, HeadRef: m.SourceBranch, BaseRef: m.TargetBranch}
+		CreatedAt: m.CreatedAt, HeadRef: m.SourceBranch, BaseRef: m.TargetBranch, Draft: m.Draft}
+	// Only conflicts and an unsettled check count, as on GitHub: fix-pr reads the CI and the
+	// draft flag apart.
+	switch {
+	case m.HasConflicts, m.DetailedMergeStatus == "conflict", m.DetailedMergeStatus == "need_rebase":
+		out.Mergeable = "conflicting"
+	case slices.Contains([]string{"unchecked", "checking", "preparing", "approvals_syncing"}, m.DetailedMergeStatus):
+		out.Mergeable = "unknown"
+	default:
+		out.Mergeable = "mergeable"
+	}
 	switch m.State {
 	case "opened", "locked": // locked while it merges
 		out.State = "open"
@@ -253,6 +263,25 @@ func (g *GitLab) ListChanges(ctx context.Context, state string) ([]Change, error
 	return out, nil
 }
 
+// ChangeComments lists the notes of merge request number, without system notes, over every page.
+func (g *GitLab) ChangeComments(ctx context.Context, number int) ([]protocol.Comment, error) {
+	if err := g.configured(); err != nil {
+		return nil, err
+	}
+	notes, err := getAll[glNote](ctx, g, g.projectPath("/merge_requests/"+strconv.Itoa(number)+"/notes"),
+		neturl.Values{"sort": {"asc"}, "order_by": {"created_at"}})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]protocol.Comment, 0, len(notes))
+	for _, n := range notes {
+		if !n.System {
+			out = append(out, g.noteComment(n, "merge_requests", number, 0))
+		}
+	}
+	return out, nil
+}
+
 // CreateChangeComment adds a note to merge request number and returns it.
 func (g *GitLab) CreateChangeComment(ctx context.Context, number int, body string) (protocol.Comment, error) {
 	if err := g.configured(); err != nil {
@@ -400,6 +429,29 @@ func (g *GitLab) Labels(ctx context.Context) ([]string, error) {
 		out[i] = l.Name
 	}
 	return out, nil
+}
+
+// CreateLabel creates the label name; GitLab wants the colour with a leading "#". A 409 means the
+// label exists already and is no error.
+func (g *GitLab) CreateLabel(ctx context.Context, name, color string) error {
+	if err := g.configured(); err != nil {
+		return err
+	}
+	_, err := g.do(ctx, http.MethodPost, g.projectPath("/labels"), nil, map[string]any{"name": name, "color": "#" + color}, nil)
+	var se *httpStatusError
+	if errors.As(err, &se) && se.Code == http.StatusConflict {
+		return nil
+	}
+	return err
+}
+
+// CommitKnown reports whether GitLab knows the commit sha. A 404 or 422 is false, nil.
+func (g *GitLab) CommitKnown(ctx context.Context, sha string) (bool, error) {
+	if err := g.configured(); err != nil {
+		return false, err
+	}
+	_, err := g.do(ctx, http.MethodGet, g.projectPath("/repository/commits/"+neturl.PathEscape(sha)), nil, nil, nil)
+	return commitKnown(err)
 }
 
 // AddBlocker makes issue blocker block issue number: a link on number of type is_blocked_by.

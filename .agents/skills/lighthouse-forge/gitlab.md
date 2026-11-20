@@ -134,3 +134,22 @@ Not applicable: the rtk proxy breaks only the `gh` CLI's JSON output, and no ste
 - **Group milestone.** `lighthouse forge milestone edit` refuses a group milestone (exit 1): close
   it and add ` - DONE` by hand in the group, or with `lighthouse forge api` on
   `groups/<id>/milestones/<id>`, and report it.
+
+## §ci
+
+CI actions that have no shared command. `<project>` is `forge.repo`, URL-encoded (`/` as `%2F`).
+The jobs of a pipeline:
+
+```bash
+lighthouse forge api "projects/<project>/pipelines/<id>/jobs"
+```
+
+Jobs of a child pipeline (a bridge) are not listed by `pr checks`: when a pipeline is red but no job failed, check `lighthouse forge api "projects/<project>/pipelines/<id>/bridges"`.
+
+Rerun one job: `lighthouse forge api -X POST "projects/<project>/jobs/<job>/retry"`. Roborev does
+not exist on GitLab yet (it first needs a real run), so section 6 of `/lighthouse-fix-pr` does not apply.
+
+## §workflows
+
+No equivalent in this milestone. A GitLab repo does not run the workflows, and `lighthouse init`
+does not write them.

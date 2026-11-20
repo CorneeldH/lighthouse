@@ -249,8 +249,9 @@ host = "gitlab.example.com"
 "P2" = "priority::P2"
 ```
 
-`project_number`, `project_id`, `status_field_id` and `priority_field_id` are GitHub Projects
-keys and are refused for GitLab. Limits of this first GitLab version:
+`project_number`, `project_id`, `status_field_id`, `priority_field_id` and `project_owner` are
+GitHub Projects keys and are refused for GitLab. `project_owner` is optional: set it when the
+user or organisation that owns the project board differs from the repository owner. Limits of this first GitLab version:
 
 - No script of `pack/core` is Python any more, so the old Python config reader, which
   required the GitHub board keys for every `[forge.board]`, is gone, and a host needs no `python3` for the core.
@@ -323,6 +324,38 @@ host.toml). Set `web_url` to the tailscale serve address when you open the page 
 machine; lighthouse itself keeps talking to the forge API on `url`. The page links the workspace id in
 a run row and in *Workspaces to clean up* to `<workspace_url>/workspaces/<id>`, in a new tab. The other setting is `night`,
 the night window from `[dispatch] night` as `HH:MM-HH:MM`. A `500` means the database could not be read.
+
+## Telemetry data model
+
+The same `lighthouse.db` holds the telemetry of the work, migration `0010`. A *trajectory* is one
+issue of one repository (`trajectories`, unique on `repo` and `issue`, `repo` the configured slug
+exactly as in `runs.repo`). Four more tables and two columns carry the rest: `sessions` (interactive
+sessions only, never dispatcher runs), `setups` (the deployment of one run or session: model, effort,
+harness and tool versions, skills hash), `usage` (tokens and cost per model, with `cost_kind`
+`estimate`, `quota` or `actual`; an unknown cost is `NULL`) and `findings` (review findings with their
+`decision`: `adopted`, `rejected` or `left_open`; the record files stay the source), plus
+`runs.trajectory_id` and `runs.assignment` (`standard`, `shadow:<x>` or `variant:<k>=<v>`). `Take`
+links every issue run to its trajectory when it claims the run.
+
+Every telemetry row has the provenance columns `source`, `source_id` and `recorded_at`, unique on
+`(source, source_id)`. The writers in `internal/telemetry` are idempotent: offering the same record
+again never adds a row. A session and a finding update their derived fields (a session that grows can be
+offered again, a finding gets its decision later); a setup and a usage row keep the first row.
+
+An interactive session is linked to a trajectory in four steps, from the lines of its transcript
+with their branch:
+
+1. Lines on the default branch or with an empty branch do not count.
+2. Of the other lines, the issue number comes from the branch name (`issue-<N>` or `issue-<N>-<slug>`);
+   the issue with the most lines wins, ties go to the last one seen (basis `branch`).
+3. Without an issue branch, the issue number the transcript names most often wins, here every line
+   counts, also on the default branch (basis `transcript`).
+4. Otherwise the session has no trajectory and one reason, each when the transcript also gave no issue
+   number: `main_only` (all lines on the default branch), `no_issue_branch` (other branches, none an
+   issue branch) or `no_issue_number` (no usable branch at all).
+
+Scheduled runs (see *Scheduled runs*) have no issue and so no trajectory: `runs.trajectory_id` stays
+empty for them.
 
 ## Run the tick
 
@@ -422,10 +455,11 @@ weeks  = 2              # weeks and anchor go together: only the week of anchor 
 anchor = "2026-10-12"   # weeks-th week after it count (a week runs Monday to Sunday)
 ```
 
-An invalid block makes the repository's config invalid, like any other config error. Job `map-refresh`
-is available (its params are in [tick.md](tick.md#job-map-refresh)); `reflect` is not registered yet, so a schedule
-that names it makes the tick report, at each gather of the repo, `lighthouse: <repo> scheduled:<name>:<slot>: no job <job>` (a line, not an
-error: the tick still exits 0 and saves its state) and start nothing, so leave such a block out for now.
+An invalid block makes the repository's config invalid, like any other config error. Jobs `map-refresh`
+and `reflect` are available (their params are in [tick.md](tick.md#job-map-refresh) and [tick.md](tick.md#job-reflect)). A schedule
+that names a job the binary does not know makes the tick report, at each gather of the repo,
+`lighthouse: <repo> scheduled:<name>:<slot>: no job <job>` (a line, not an error: the tick still exits 0 and
+saves its state) and start nothing.
 
 A scheduled run ends in a pull request that the tick merges itself once it is green. The target
 repository's CI must be able to get that PR green with only the paths the job may write: a

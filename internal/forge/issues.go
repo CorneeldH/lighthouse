@@ -116,13 +116,24 @@ func (c *GitHub) dependencies(ctx context.Context, number int, kind string) ([]B
 	if err := c.configured(); err != nil {
 		return nil, err
 	}
+	return c.dependencyList(ctx, c.Repo, number, kind)
+}
+
+// blockedBy lists the issues, open and closed, that block issue number of repo.
+func (c *GitHub) blockedBy(ctx context.Context, repo string, number int) ([]Blocker, error) {
+	return c.dependencyList(ctx, repo, number, "blocked_by")
+}
+
+// dependencyList reads one dependency list, "blocked_by" or "blocking", of issue number of repo,
+// following every page.
+func (c *GitHub) dependencyList(ctx context.Context, repo string, number int, kind string) ([]Blocker, error) {
 	type item struct {
 		Number        int    `json:"number"`
 		State         string `json:"state"`
 		RepositoryURL string `json:"repository_url"`
 	}
 	var out []Blocker
-	url := fmt.Sprintf("%s/repos/%s/issues/%d/dependencies/%s?per_page=100", c.BaseURL, c.Repo, number, kind)
+	url := fmt.Sprintf("%s/repos/%s/issues/%d/dependencies/%s?per_page=100", c.BaseURL, repo, number, kind)
 	for url != "" {
 		var page []item
 		next, err := c.do(ctx, http.MethodGet, url, nil, &page)

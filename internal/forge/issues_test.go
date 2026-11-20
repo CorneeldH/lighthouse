@@ -131,7 +131,7 @@ func TestIssueChangesSkipsIssueCrossReference(t *testing.T) {
 	srv, c := boardClient(t)
 	pr := map[string]any{"number": 13, "state": "OPEN", "headRefName": "fix-y", "isCrossRepository": false,
 		"body": "Refs #5", "repository": map[string]any{"nameWithOwner": "o/r"}}
-	srv.CrossRefPRs = map[int][]map[string]any{5: {{}, pr}}
+	srv.ChangeRefPRs = map[int][]map[string]any{5: {{}, pr}}
 	got, err := c.IssueChanges(context.Background(), 5)
 	if err != nil {
 		t.Fatal(err)

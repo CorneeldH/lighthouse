@@ -449,3 +449,53 @@ func TestGitLabAPIFollowsPages(t *testing.T) {
 		t.Errorf("queries = %q, want the second page asked with the same fields", queries)
 	}
 }
+
+func TestGitLabChangeMergeable(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		extra map[string]any
+		want  string
+	}{
+		{"has_conflicts", map[string]any{"has_conflicts": true, "detailed_merge_status": "mergeable"}, "conflicting"},
+		{"conflict", map[string]any{"detailed_merge_status": "conflict"}, "conflicting"},
+		{"need_rebase", map[string]any{"detailed_merge_status": "need_rebase"}, "conflicting"},
+		{"unchecked", map[string]any{"detailed_merge_status": "unchecked"}, "unknown"},
+		{"checking", map[string]any{"detailed_merge_status": "checking"}, "unknown"},
+		{"preparing", map[string]any{"detailed_merge_status": "preparing"}, "unknown"},
+		{"approvals_syncing", map[string]any{"detailed_merge_status": "approvals_syncing"}, "unknown"},
+		{"mergeable", map[string]any{"detailed_merge_status": "mergeable"}, "mergeable"},
+		{"not_approved", map[string]any{"detailed_merge_status": "not_approved"}, "mergeable"},
+		{"ci_must_pass", map[string]any{"detailed_merge_status": "ci_must_pass"}, "mergeable"},
+		{"ci_still_running", map[string]any{"detailed_merge_status": "ci_still_running"}, "mergeable"},
+		{"discussions_not_resolved", map[string]any{"detailed_merge_status": "discussions_not_resolved"}, "mergeable"},
+		{"draft_status", map[string]any{"detailed_merge_status": "draft_status"}, "mergeable"},
+		{"blocked_status", map[string]any{"detailed_merge_status": "blocked_status"}, "mergeable"},
+		{"requested_changes", map[string]any{"detailed_merge_status": "requested_changes"}, "mergeable"},
+		{"external_status_checks", map[string]any{"detailed_merge_status": "external_status_checks"}, "mergeable"},
+		{"not_open", map[string]any{"detailed_merge_status": "not_open"}, "mergeable"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv, g := glClient(t)
+			mr := map[string]any{"iid": 3, "state": "opened", "draft": true}
+			for k, v := range tc.extra {
+				mr[k] = v
+			}
+			srv.AddMR(mr)
+			got, err := g.Change(context.Background(), 3)
+			if err != nil || got.Mergeable != tc.want || !got.Draft {
+				t.Errorf("Change(3) = mergeable %q draft %v, %v; want %q draft", got.Mergeable, got.Draft, err, tc.want)
+			}
+		})
+	}
+}
+
+func TestGitLabChangeCommentsSkipsSystemNotes(t *testing.T) {
+	srv, g := glClient(t)
+	srv.AddMR(map[string]any{"iid": 4, "state": "opened"})
+	srv.AddMRNote(4, "kim", "added 1 commit", true)
+	srv.AddMRNote(4, "ann", "Mooi", false)
+	got, err := g.ChangeComments(context.Background(), 4)
+	if err != nil || len(got) != 1 || got[0].Body != "Mooi" || got[0].Author != "ann" {
+		t.Errorf("ChangeComments = %+v, %v; want only ann's note", got, err)
+	}
+}

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/config"
+	"github.com/CorneeldH/lighthouse/internal/forge"
 )
 
 // The data fixtures of tests/pack/fixtures/worktree_audit, which test_worktree_audit_cases.py
@@ -227,18 +228,34 @@ func parse(t *testing.T, c parseCase) (got, want any) {
 			got = []string{}
 		}
 		return got, decode[[]string](t, c.Expect)
+	case "parse_pulls":
+		got, err := ParsePulls(decode[struct{ Payload []any }](t, c.Input).Payload)
+		if err != nil {
+			t.Fatalf("ParsePulls: %v", err)
+		}
+		return got, decode[map[string]PullInfo](t, c.Expect)
 	case "parse_port_registry":
 		return ParsePortRegistry(decode[struct{ Text string }](t, c.Input).Text), decode[map[string]string](t, c.Expect)
 	case "parse_sessions":
 		return ParseSessions(decode[struct{ Records []any }](t, c.Input).Records), decode[map[string]SessionInfo](t, c.Expect)
 	case "encode_project_dir":
 		return EncodeProjectDir(decode[struct{ Path string }](t, c.Input).Path), decode[string](t, c.Expect)
+	case "epoch":
+		return epoch(decode[struct{ Stamp any }](t, c.Input).Stamp), decode[*float64](t, c.Expect)
 	case "tip_shape":
 		at, root := parseTipShape(decode[struct{ Output *string }](t, c.Input).Output)
 		return [2]any{at, root}, func() [2]any {
 			w := decode[[2]*json.RawMessage](t, c.Expect)
 			return [2]any{decode[*float64](t, rawOrNull(w[0])), decode[*bool](t, rawOrNull(w[1]))}
 		}()
+	case "parse_issue_pr_heads":
+		in := decode[struct {
+			Heads []forge.ClosingHead
+			Slug  string
+			Nr    int
+		}](t, c.Input)
+		heads := ParseIssuePRHeads(in.Heads, in.Slug, in.Nr)
+		return heads, decode[[]string](t, c.Expect)
 	case "issue_branches":
 		in := decode[struct {
 			Rows    []fixtureRow

@@ -174,11 +174,15 @@ jobs:
           pattern: bin-*
           merge-multiple: true
           path: ${{ runner.temp }}/dist
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
       - name: Publish
         run: |
           set -euo pipefail
           (cd "$RUNNER_TEMP/dist" && sha256sum lighthouse_* > SHA256SUMS)
-          if ! python3 ci/changelog.py notes "$TAG" > "$RUNNER_TEMP/notes.md"; then
+          if ! go run ./ci/changelog notes "$TAG" > "$RUNNER_TEMP/notes.md"; then
             if [ "$PRERELEASE" = true ]; then
               echo "Pre-release build of $TAG for testing; not a release." > "$RUNNER_TEMP/notes.md"
             else

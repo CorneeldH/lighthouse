@@ -264,23 +264,45 @@ func runeHead(s string, n int) string {
 	return string(r[:min(n, len(r))])
 }
 
-// RenderArtefact is the comment body: metadata line, visible header line, blank line, content.
-// The header line links to the file at its commit on repo (`forge.repo`), in language. An empty
-// repo is an error: an artefact links to its source.
+// Source is the repository an artefact links to: the forge kind ("" is github), the GitLab host
+// ("" is gitlab.com) and the repo slug.
+type Source struct{ Kind, Host, Repo string }
+
+// BlobURL is the web address of path at commit sha: `<host>/<repo>/blob/<sha>/<path>` on
+// GitHub, `<host>/<repo>/-/blob/<sha>/<path>` on GitLab. path is not escaped.
+func (s Source) BlobURL(sha, path string) string {
+	if s.Kind == "gitlab" {
+		host := s.Host
+		if host == "" {
+			host = "gitlab.com"
+		}
+		return fmt.Sprintf("https://%s/%s/-/blob/%s/%s", host, s.Repo, sha, path)
+	}
+	return fmt.Sprintf("https://github.com/%s/blob/%s/%s", s.Repo, sha, path)
+}
+
+// RenderArtefact is RenderArtefactAt for a GitHub repo.
 func RenderArtefact(m ArtefactMeta, content, language, repo string) (string, error) {
+	return RenderArtefactAt(m, content, language, Source{Repo: repo})
+}
+
+// RenderArtefactAt is the comment body: metadata line, visible header line, blank line, content.
+// The header line links to the file at its commit on src, in language. An empty repo is an
+// error: an artefact links to its source.
+func RenderArtefactAt(m ArtefactMeta, content, language string, src Source) (string, error) {
 	jsonText := metaJSON(m)
 	// `--` can close the HTML comment early.
 	if strings.Contains(jsonText, "--") {
 		return "", &MetadataError{Msg: "metadata holds '--'; that closes the HTML comment"}
 	}
-	if repo == "" {
+	if src.Repo == "" {
 		return "", errors.New("forge.repo is not set; an artefact links to its source")
 	}
 	path := pytext.HTMLEscape(m.File)
-	header := fmt.Sprintf("<sub>%s · %s %d · %s %d/%d · %s <a href=\"https://github.com/%s/blob/%s/%s\">%s</a> @ %s</sub>",
+	header := fmt.Sprintf("<sub>%s · %s %d · %s %d/%d · %s <a href=\"%s\">%s</a> @ %s</sub>",
 		m.Kind, Heading("artefact_version", language), m.Version,
 		Heading("artefact_part", language), m.Part, m.Parts,
-		Heading("artefact_source", language), repo, m.Commit, path, path, runeHead(m.Commit, 7))
+		Heading("artefact_source", language), src.BlobURL(m.Commit, path), path, runeHead(m.Commit, 7))
 	return artefactMarker + " " + jsonText + " -->\n" + header + "\n\n" + content, nil
 }
 

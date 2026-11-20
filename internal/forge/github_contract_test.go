@@ -17,6 +17,7 @@ func TestGitHubConformance(t *testing.T) { forgesuite.Run(t, newGitHubFixture) }
 
 // githubBoard is the [forge.board] of the GitHub fixture.
 var githubBoard = repoconfig.Board{
+	ProjectNumber:   1,
 	ProjectID:       "PVT_1",
 	StatusFieldID:   "F_status",
 	PriorityFieldID: "F_prio",
@@ -33,6 +34,7 @@ type githubFixture struct {
 	nodes map[int]map[string]any
 	// blockers are the blockers per issue number in the board's GraphQL shape.
 	blockers map[int][]any
+	nextPR   int // numbers the pull requests of AddClosingPR
 }
 
 func newGitHubFixture(t *testing.T) forgesuite.Fixture {
@@ -50,9 +52,6 @@ func newGitHubFixture(t *testing.T) forgesuite.Fixture {
 func (g *githubFixture) Forge() forge.Forge { return g.f }
 func (g *githubFixture) Repo() string       { return "o/r" }
 func (g *githubFixture) Login() string      { return g.srv.Login }
-
-// ChecksOnClosedPRs: statusCheckRollup is on every pull request GitHub lists.
-func (g *githubFixture) ChecksOnClosedPRs() bool { return true }
 
 func (g *githubFixture) PRCommentBodies(t *testing.T, number int) []string {
 	t.Helper()
@@ -82,6 +81,19 @@ func (g *githubFixture) AddNamedMilestone(t *testing.T, title string, group bool
 	g.srv.Milestones = append(g.srv.Milestones, map[string]any{"number": n, "title": title, "state": "open", "description": ""})
 	return forge.Milestone{Number: n, Title: title, State: "open"}
 }
+
+func (g *githubFixture) AddCommit(_ *testing.T, sha string) {
+	g.srv.Commits = append(g.srv.Commits, sha)
+}
+
+func (g *githubFixture) FailCommit(_ *testing.T, sha string) {
+	if g.srv.Fail == nil {
+		g.srv.Fail = map[string]int{}
+	}
+	g.srv.Fail["GET /repos/o/r/commits/"+sha] = http.StatusInternalServerError
+}
+
+func (g *githubFixture) LabelColor(_ *testing.T, name string) string { return g.srv.LabelColors[name] }
 
 func (g *githubFixture) SetLabels(_ *testing.T, names ...string) { g.srv.Labels = names }
 
@@ -188,13 +200,13 @@ func (g *githubFixture) AddChange(_ *testing.T, c forge.Change) {
 func (g *githubFixture) AddIssueChange(_ *testing.T, number int, c forge.IssueChange) {
 	node := map[string]any{"number": c.Number, "state": c.State, "headRefName": c.HeadRef,
 		"isCrossRepository": c.CrossRepo, "body": c.Body, "repository": map[string]any{"nameWithOwner": c.Repo}}
-	if g.srv.ClosingPRs == nil {
-		g.srv.ClosingPRs, g.srv.CrossRefPRs = map[int][]map[string]any{}, map[int][]map[string]any{}
+	if g.srv.ChangeClosingPRs == nil {
+		g.srv.ChangeClosingPRs, g.srv.ChangeRefPRs = map[int][]map[string]any{}, map[int][]map[string]any{}
 	}
 	if c.Closes {
-		g.srv.ClosingPRs[number] = append(g.srv.ClosingPRs[number], node)
+		g.srv.ChangeClosingPRs[number] = append(g.srv.ChangeClosingPRs[number], node)
 	}
-	g.srv.CrossRefPRs[number] = append(g.srv.CrossRefPRs[number], node)
+	g.srv.ChangeRefPRs[number] = append(g.srv.ChangeRefPRs[number], node)
 }
 
 func (g *githubFixture) FailIssueChangesPage2(_ *testing.T, number int) {
@@ -285,6 +297,32 @@ func (g *githubFixture) AddBranchPR(_ *testing.T, branch string, pr forge.PR) {
 		g.srv.Branches = map[string][]map[string]any{}
 	}
 	g.srv.Branches[branch] = append(g.srv.Branches[branch], node)
+}
+
+func (g *githubFixture) AddPullHead(_ *testing.T, h forge.PullHead) {
+	state := "open"
+	if h.State != "OPEN" {
+		state = "closed"
+	}
+	p := map[string]any{"number": h.Number, "state": state, "head": map[string]any{"ref": h.HeadRef}}
+	if h.MergedAt != "" {
+		p["merged_at"] = h.MergedAt
+	}
+	g.srv.Pulls = append(g.srv.Pulls, p)
+}
+
+func (g *githubFixture) AddClosingPR(_ *testing.T, number int, h forge.ClosingHead) {
+	g.nextPR++
+	node := map[string]any{"number": 900 + g.nextPR, "headRefName": h.HeadRef, "merged": h.Merged,
+		"isCrossRepository": h.CrossRepo, "body": h.Body, "repository": map[string]any{"nameWithOwner": h.Repo}}
+	into := &g.srv.RefPRs
+	if h.Closes {
+		into = &g.srv.ClosingPRs
+	}
+	if *into == nil {
+		*into = map[int][]map[string]any{}
+	}
+	(*into)[number] = append((*into)[number], node)
 }
 
 // timeOrNil is t in GraphQL's DateTime shape, or null for the zero time.

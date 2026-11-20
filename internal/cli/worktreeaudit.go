@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -9,19 +10,40 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/CorneeldH/lighthouse/internal/config"
+	"github.com/CorneeldH/lighthouse/internal/forge"
+	"github.com/CorneeldH/lighthouse/internal/prbody"
 	"github.com/CorneeldH/lighthouse/internal/procrun"
+	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/worktreeaudit"
 )
 
 func defaultWorktreeAuditEnv() worktreeaudit.Env {
-	return worktreeAuditEnv(newDefaultForgeOpener())
+	o := newForgeOpener(os.Getenv, prbody.LoopbackAPIURL(os.Getenv(prbody.GitHubAPIURLEnv)))
+	o.ghToken = ghAuthToken
+	return worktreeAuditEnvWith(o)
 }
 
-// worktreeAuditEnv starts git for real and opens the forge of lighthouse.toml (LIGHTHOUSE_TOML,
-// else the repo root) with o.
-func worktreeAuditEnv(o *forgeOpener) worktreeaudit.Env {
+// worktreeAuditEnvWith is the environment of worktree-audit with o as the opener of the forge.
+// The repo is the one of the lighthouse.toml that config.Path names (LIGHTHOUSE_TOML is honoured);
+// git runs for real.
+func worktreeAuditEnvWith(o *forgeOpener) worktreeaudit.Env {
 	return worktreeaudit.Env{
 		Run: procrun.Exec(worktreeaudit.GitTimeout),
+		Forge: func() (forge.Forge, error) {
+			path, err := config.Path()
+			if err != nil {
+				return nil, err
+			}
+			repo, err := repoconfig.LoadFile(path)
+			if err != nil {
+				return nil, err
+			}
+			rf, err := o.forRepo(context.Background(), repo)
+			if err != nil {
+				return nil, err
+			}
+			return rf.Forge, nil
+		},
 		Config: func() (*config.Config, error) {
 			path, err := config.Path()
 			if err != nil {
@@ -29,7 +51,6 @@ func worktreeAuditEnv(o *forgeOpener) worktreeaudit.Env {
 			}
 			return config.Load(path)
 		},
-		Forge: forgeOpenWith(o, loadRepoAtConfigPath),
 		Alive: worktreeaudit.PidAlive,
 	}
 }
@@ -50,7 +71,7 @@ func ownCwd() (string, error) {
 }
 
 // newWorktreeAuditCommand is `lighthouse worktree-audit`, the port of worktree_audit.py. env starts
-// git, opens the forge, reads the config and measures pids.
+// git, opens the forge, reads the config and measures pids; a test hands in a replay.
 func newWorktreeAuditCommand(env worktreeaudit.Env) *cobra.Command {
 	var cleanup, sessions, origin, kpi bool
 	var only, issue, repo string
@@ -115,7 +136,7 @@ func newWorktreeAuditCommand(env worktreeaudit.Env) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				heads, ok := worktreeaudit.IssuePRHeads(cmd.Context(), e, nr)
+				heads, ok := worktreeaudit.IssuePRHeads(cmd.Context(), e, audit.Repo, nr)
 				if _, err := fmt.Fprint(out, view.Issue(audit.Rows, nr, heads, ok, cwd)); err != nil {
 					return err
 				}

@@ -85,3 +85,21 @@ deliberate non-closing form.
   the pull request of this repository that closed it, else `null` (a commit, a manual close, a
   pull request in another repository).
 - **Commit URL:** `https://github.com/<forge.repo>/commit/<sha>`, with the full hash.
+
+## §ci
+
+CI actions that have no shared command. The job list of a run, to see which step never completed:
+
+```bash
+R=$(lighthouse config forge.repo) && gh api "repos/$R/actions/runs/<id>/jobs"
+```
+
+Rerun only the failed jobs of a run: `gh run rerun <id> --failed --repo "$R"`. The roborev review
+comment on a PR comes from `github-actions[bot]`.
+
+## §workflows
+
+The workflows call `gh` themselves, so they are an exception to the forge-neutral `lighthouse forge`.
+`lighthouse unblock-dependents` calls `gh` and only runs in
+GitHub Actions on `issues: closed`. `gh release download` fetches the lighthouse binary on the
+runner, and `.github/workflows/build.yml` publishes lighthouse's own release with `gh release`; these steps run only in GitHub Actions and are skipped elsewhere.

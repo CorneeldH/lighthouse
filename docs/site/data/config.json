@@ -136,7 +136,7 @@
                 "internal/initcmd/initcmd.go",
                 "internal/repoconfig/repoconfig.go",
                 "internal/workplace/kennforge/adapter.go",
-                "pack/core/skills/close-issue",
+                "pack/core/skills/fix-pr",
                 "pack/core/skills/forge",
                 "pack/core/skills/route-issue",
                 "pack/core/skills/start-issue",
@@ -152,6 +152,7 @@
               "example": "owner/name",
               "readers": [
                 "internal/boardstart/boardstart.go",
+                "internal/cli/forge_label.go",
                 "internal/cli/pushworkflows.go",
                 "internal/cli/worktreeaudit.go",
                 "internal/labels/labels.go",
@@ -169,10 +170,8 @@
                 "pack/core/skills/close-issue",
                 "pack/core/skills/fix-pr",
                 "pack/core/skills/forge",
-                "pack/core/skills/review-plan",
                 "pack/core/skills/route-issue",
                 "pack/core/skills/start-issue",
-                "pack/core/skills/write-handoff",
                 "pack/core/skills/write-pr",
                 "pack/python/scripts/quality/prcov_issues.py"
               ]
@@ -203,8 +202,7 @@
                 "internal/prbody/form.go",
                 "internal/prbody/gate.go",
                 "internal/repoconfig/repoconfig.go",
-                "pack/core/skills/forge",
-                "pack/core/workflows/unblock-dependents.yml"
+                "pack/core/skills/forge"
               ]
             },
             {
@@ -242,7 +240,7 @@
               "required": "derived",
               "about": "The name part of forge.repo, derived by the lighthouse binary.",
               "readers": [
-                "pack/core/skills/write-handoff",
+                "pack/core/skills/close-issue",
                 "pack/python/scripts/quality/prcov_issues.py"
               ]
             },
@@ -252,8 +250,8 @@
               "required": "derived",
               "about": "The owner part of forge.repo, derived by the lighthouse binary.",
               "readers": [
+                "pack/core/skills/close-issue",
                 "pack/core/skills/forge",
-                "pack/core/skills/write-handoff",
                 "pack/python/scripts/quality/prcov_issues.py"
               ]
             }
@@ -271,6 +269,7 @@
               "about": "The id of the board's Priority field.",
               "example": "PVTSSF_...",
               "readers": [
+                "internal/forge/project.go",
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/forge"
               ]
@@ -292,6 +291,17 @@
               ]
             },
             {
+              "key": "forge.board.project_owner",
+              "level": "optional",
+              "required": "no",
+              "about": "The user or organisation that owns the GitHub project board. Needed only when the owner is not the repository owner.",
+              "example": "acme",
+              "readers": [
+                "internal/forge/project.go",
+                "internal/repoconfig/repoconfig.go"
+              ]
+            },
+            {
               "key": "forge.board.project_id",
               "level": "optional",
               "required": "with [forge.board]",
@@ -299,10 +309,10 @@
               "example": "PVT_...",
               "readers": [
                 "internal/cli/triage.go",
-                "internal/forge/board.go",
+                "internal/forge/project.go",
                 "internal/repoconfig/repoconfig.go",
+                "pack/core/skills/close-issue",
                 "pack/core/skills/forge",
-                "pack/core/skills/write-handoff",
                 "pack/python/scripts/quality/prcov_issues.py"
               ]
             },
@@ -313,10 +323,10 @@
               "about": "The number of the GitHub project board.",
               "example": 1,
               "readers": [
+                "internal/forge/project.go",
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/forge",
                 "pack/core/skills/start-issue",
-                "pack/core/skills/write-handoff",
                 "pack/python/scripts/quality/prcov_issues.py"
               ]
             },
@@ -328,8 +338,9 @@
               "example": "PVTSSF_...",
               "readers": [
                 "internal/cli/triage.go",
+                "internal/forge/project.go",
                 "internal/repoconfig/repoconfig.go",
-                "pack/core/skills/write-handoff",
+                "pack/core/skills/close-issue",
                 "pack/python/scripts/quality/prcov_issues.py"
               ]
             },
@@ -354,7 +365,6 @@
                 "internal/forge/gitlab_board.go",
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/forge",
-                "pack/core/skills/write-handoff",
                 "pack/core/skills/write-issue",
                 "pack/python/scripts/quality/prcov_issues.py"
               ]

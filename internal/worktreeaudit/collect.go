@@ -18,22 +18,25 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/pytext"
 )
 
-// GitTimeout bounds one git call.
-const GitTimeout = 60 * time.Second
+// Timeouts: one git call 60 s, one forge lookup 300 s.
+const (
+	GitTimeout   = 60 * time.Second
+	ForgeTimeout = 300 * time.Second
+)
 
 // worktreeDir is where lighthouse puts its worktrees, relative to the main checkout.
 const worktreeDir = ".claude/worktrees"
 
-// Env is what Collect reaches outside itself. Run starts git (a test hands in a fake); a git call
-// gets GitTimeout on top of whatever Run enforces. Forge opens the forge of `[forge] repo` for the
-// PR lookups; it is only called when that is set.
+// Env is what Collect reaches outside itself. Run starts git (a test hands in a replay); a git
+// call gets GitTimeout on top of whatever Run enforces. Forge opens the forge of the repo for the
+// PR lookups; nil, or an error, makes every PR state unknown.
 type Env struct {
 	Run    procrun.Func
+	Forge  func() (forge.Forge, error)
 	Config func() (*config.Config, error)
-	Forge  func(ctx context.Context) (forge.Forge, error)
 	Alive  Alive
 	Home   string    // the home directory; `.claude/sessions` and `.claude/projects` hang below it
-	Stderr io.Writer // the notice that the PR lookup is skipped or failed
+	Stderr io.Writer // the notice that the PR lookup is skipped
 }
 
 // Failure stops the command: Message goes to stderr, Code is the exit code.
@@ -44,10 +47,12 @@ type Failure struct {
 
 func (f *Failure) Error() string { return f.Message }
 
-// Audit is what Collect found: the rows and the policy the ladder judges them with.
+// Audit is what Collect found: the rows, the policy the ladder judges them with, and the repo of
+// the PR lookups ("" when `[forge] repo` is not set).
 type Audit struct {
 	Rows   []Row
 	Policy Policy
+	Repo   string
 }
 
 // The read-only git allowlist: exactly the verbs this command issues. A verb outside it is a
@@ -204,15 +209,14 @@ func Collect(ctx context.Context, env Env, repoRoot string) (*Audit, error) {
 	if repo == "" {
 		_, _ = fmt.Fprintln(env.Stderr, "worktree-audit: PR lookup skipped — [forge] repo is not set, so every PR state is unknown")
 	}
-	pulls, lookupOK := map[string]PullInfo{}, false
-	if repo != "" {
+	raw, lookupOK := c.pulls(repo)
+	pulls := map[string]PullInfo{}
+	if lookupOK {
 		var perr error
-		if pulls, perr = readPulls(ctx, env); perr != nil {
-			// A failed lookup is no signal, and no signal is no cleanup yes: never "no PR".
+		if pulls, perr = ParsePulls(raw); perr != nil {
+			// An unreadable PR is no signal, and no signal is no cleanup yes.
 			_, _ = fmt.Fprintln(env.Stderr, "worktree-audit: PR lookup failed — "+perr.Error())
-			pulls = map[string]PullInfo{}
-		} else {
-			lookupOK = true
+			pulls, lookupOK = map[string]PullInfo{}, false
 		}
 	}
 
@@ -258,7 +262,7 @@ func Collect(ctx context.Context, env Env, repoRoot string) (*Audit, error) {
 	if c.refused != nil {
 		return nil, &Failure{Code: 1, Message: "worktree-audit: " + c.refused.Error()}
 	}
-	return &Audit{Rows: BuildRows(in, env.Alive), Policy: c.policy}, nil
+	return &Audit{Rows: BuildRows(in, env.Alive), Policy: c.policy, Repo: repo}, nil
 }
 
 func dirtyOf(status *string) *bool {
@@ -268,51 +272,64 @@ func dirtyOf(status *string) *bool {
 	return ptr(pytext.Strip(*status) != "")
 }
 
-// readPulls is the heaviest pull or merge request per head branch, over every one of the forge.
-func readPulls(ctx context.Context, env Env) (map[string]PullInfo, error) {
-	f, err := env.Forge(ctx)
-	if err != nil {
-		return nil, err
-	}
-	changes, err := f.ListChanges(ctx, "all")
-	if err != nil {
-		return nil, err
-	}
-	return ParsePulls(changes)
-}
-
-// IssuePRHeads asks the forge of `[forge] repo` for the merged PR heads of issue nr; false when
-// the lookup failed or there is no repo, with the reason on Env.Stderr. That is never "no PRs".
-func IssuePRHeads(ctx context.Context, env Env, nr int) ([]string, bool) {
-	heads, err := issuePRHeads(ctx, env, nr)
-	if err != nil {
-		_, _ = fmt.Fprintf(env.Stderr, "worktree-audit: PR lookup for issue #%d failed — %v\n", nr, err)
+// openForge opens the forge of env; false when there is none or it cannot be opened.
+func (e Env) openForge() (forge.Forge, bool) {
+	if e.Forge == nil {
 		return nil, false
 	}
-	return heads, true
+	f, err := e.Forge()
+	return f, err == nil && f != nil
 }
 
-func issuePRHeads(ctx context.Context, env Env, nr int) ([]string, error) {
-	cfg, err := env.Config()
+// pulls reads every PR of the repo through the forge, as the REST payload ParsePulls reads. false:
+// the lookup failed or there is no repo — then every PR state is unknown, never "no PR".
+func (c *collector) pulls(repo string) ([]any, bool) {
+	if repo == "" {
+		return nil, false
+	}
+	f, ok := c.env.openForge()
+	if !ok {
+		return nil, false
+	}
+	ctx, cancel := context.WithTimeout(c.ctx, ForgeTimeout)
+	defer cancel()
+	heads, err := f.PullHeads(ctx)
 	if err != nil {
-		return nil, err
+		return nil, false
 	}
-	_, repo, err := policyFrom(cfg)
-	switch {
-	case err != nil:
-		return nil, err
-	case repo == "":
-		return nil, errors.New("[forge] repo is not set")
+	payload := make([]any, 0, len(heads))
+	for _, h := range heads {
+		// REST knows open and closed; a merged PR is a closed one with a merge time.
+		state := strings.ToLower(h.State)
+		var mergedAt any
+		if h.MergedAt != "" {
+			state, mergedAt = "closed", h.MergedAt
+		}
+		payload = append(payload, map[string]any{
+			"number": float64(h.Number), "state": state, "merged_at": mergedAt,
+			"head": map[string]any{"ref": h.HeadRef},
+		})
 	}
-	f, err := env.Forge(ctx)
+	return payload, true
+}
+
+// IssuePRHeads asks the forge for the merged PR heads of issue nr in repo; false when the lookup
+// failed, for whatever reason, or there is no repo.
+func IssuePRHeads(ctx context.Context, env Env, repo string, nr int) ([]string, bool) {
+	if repo == "" {
+		return nil, false
+	}
+	f, ok := env.openForge()
+	if !ok {
+		return nil, false
+	}
+	ctx, cancel := context.WithTimeout(ctx, ForgeTimeout)
+	defer cancel()
+	closing, err := f.IssueClosingHeads(ctx, nr)
 	if err != nil {
-		return nil, err
+		return nil, false
 	}
-	changes, err := f.IssueChanges(ctx, nr)
-	if err != nil {
-		return nil, err
-	}
-	return ParseIssuePRHeads(changes, repo, nr), nil
+	return ParseIssuePRHeads(closing, repo, nr), true
 }
 
 // probeAll measures every branch that no protected ref covers; the ref of a remote-only branch is

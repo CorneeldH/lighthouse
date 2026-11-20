@@ -62,6 +62,11 @@ type Fixture interface {
 	// AddMergedPR adds a merged pull request with its Number, Title, URL and MergedAt.
 	AddMergedPR(t *testing.T, pr forge.PRSummary)
 	AddBranchPR(t *testing.T, branch string, pr forge.PR)
+	// AddPullHead adds a pull request in any state with its Number, State, MergedAt and HeadRef.
+	AddPullHead(t *testing.T, h forge.PullHead)
+	// AddClosingPR makes the pull request h close issue number (h.Closes) or only refer to it,
+	// with its HeadRef, Repo, Body, Merged and CrossRepo; Repo is where the pull request lives.
+	AddClosingPR(t *testing.T, number int, h forge.ClosingHead)
 	// AddMilestonedEvent records that issue number was put in the milestone titled milestoneTitle
 	// at at. The event names the milestone by title only; the issue is added with AddIssue.
 	AddMilestonedEvent(t *testing.T, number int, milestoneTitle string, at time.Time)
@@ -73,10 +78,6 @@ type Fixture interface {
 	// StatusOf is the last status the forge wrote for issue number, as a lighthouse name; ""
 	// when it wrote none.
 	StatusOf(t *testing.T, number int) string
-	// ChecksOnClosedPRs reports whether BranchPRs carries the checks of a closed or merged PR
-	// too. GitHub does; GitLab reads head_pipeline only for an open merge request, the only
-	// PR whose checks the dispatcher reads.
-	ChecksOnClosedPRs() bool
 	// PRCommentBodies lists the comment bodies on pull request number, oldest first. GitHub
 	// keeps them with the issue comments; GitLab keeps a merge request's notes apart.
 	PRCommentBodies(t *testing.T, number int) []string
@@ -94,6 +95,13 @@ type Fixture interface {
 	AddNamedMilestone(t *testing.T, title string, group bool) forge.Milestone
 	// SetLabels sets the label names of the repo.
 	SetLabels(t *testing.T, names ...string)
+	// AddCommit makes the forge know the commit with sha.
+	AddCommit(t *testing.T, sha string)
+	// FailCommit makes the lookup of the commit with sha answer a 500.
+	FailCommit(t *testing.T, sha string)
+	// LabelColor is the colour the forge stored for the label, in the shape the forge uses
+	// (GitHub: six hex digits; GitLab: with a leading "#"); "" when the label is unknown.
+	LabelColor(t *testing.T, name string) string
 	// UniqueMilestoneTitles reports whether the forge refuses two milestones with one title.
 	// GitHub does; GitLab does not, and also shows the milestones of the groups above the project.
 	UniqueMilestoneTitles() bool
@@ -162,6 +170,10 @@ var Cases = []Case{
 	{"MilestoneCountsAndState", milestoneCountsAndState},
 	{"MilestoneAmbiguousTitle", milestoneAmbiguousTitle},
 	{"LabelsList", labelsList},
+	{"PullHeads", pullHeads},
+	{"IssueClosingHeads", issueClosingHeads},
+	{"CommitKnown", commitKnown},
+	{"CreateLabel", createLabel},
 	{"AddBlockerThenBlockedBy", addBlockerThenBlockedBy},
 	{"IssueLifecycleByMarker", issueLifecycleByMarker},
 	{"PRLifecycleByMarker", prLifecycleByMarker},
@@ -748,13 +760,9 @@ func prFields(t *testing.T, f Fixture) {
 		t.Fatalf("BranchPRs = %+v, want one PR", prs)
 	}
 	p := prs[0]
-	wantChecks := ""
-	if f.ChecksOnClosedPRs() {
-		wantChecks = "SUCCESS"
-	}
 	if p.Number != 12 || p.State != "MERGED" || p.HeadSHA != "abc123" || p.HeadRef != "issue-7-x" || p.BaseRef != "main" ||
-		p.Checks != wantChecks || p.Mergeable != "MERGEABLE" || !p.MergedAt.Equal(mergedAt) || p.Closes {
-		t.Errorf("BranchPRs[0] = %+v; want #12 MERGED at %s, head abc123 on issue-7-x, checks %q, MERGEABLE, Closes false", p, mergedAt, wantChecks)
+		p.Checks != "" || p.Mergeable != "MERGEABLE" || !p.MergedAt.Equal(mergedAt) || p.Closes {
+		t.Errorf("BranchPRs[0] = %+v; want #12 MERGED at %s, head abc123 on issue-7-x, no checks, MERGEABLE, Closes false", p, mergedAt)
 	}
 
 	f.AddOpenPR(t, forge.OpenPR{Number: 13, Title: "Fix it", Body: "Closes #7", HeadRef: "issue-7-x"})
@@ -1328,6 +1336,89 @@ func labelsList(t *testing.T, f Fixture) {
 	got, err := f.Forge().Labels(t.Context())
 	if err != nil || !slices.Equal(sorted(got), []string{"area:cli", "bug"}) {
 		t.Errorf("Labels = %v, %v; want [area:cli bug]", got, err)
+	}
+}
+
+func pullHeads(t *testing.T, f Fixture) {
+	merged := "2026-11-18T10:00:00Z"
+	f.AddPullHead(t, forge.PullHead{Number: 1, State: "OPEN", HeadRef: "issue-1-open"})
+	f.AddPullHead(t, forge.PullHead{Number: 2, State: "CLOSED", HeadRef: "issue-2-closed"})
+	f.AddPullHead(t, forge.PullHead{Number: 3, State: "MERGED", MergedAt: merged, HeadRef: "issue-3-merged"})
+	want := []forge.PullHead{
+		{Number: 1, State: "OPEN", HeadRef: "issue-1-open"},
+		{Number: 2, State: "CLOSED", HeadRef: "issue-2-closed"},
+		{Number: 3, State: "MERGED", MergedAt: merged, HeadRef: "issue-3-merged"},
+	}
+	for n := 10; n < 10+page; n++ { // more than one page
+		h := forge.PullHead{Number: n, State: "CLOSED", HeadRef: fmt.Sprintf("issue-%d-x", n)}
+		f.AddPullHead(t, h)
+		want = append(want, h)
+	}
+	got, err := f.Forge().PullHeads(t.Context())
+	if err != nil {
+		t.Fatalf("PullHeads: %v", err)
+	}
+	slices.SortFunc(got, func(a, b forge.PullHead) int { return a.Number - b.Number })
+	if !slices.Equal(got, want) {
+		t.Errorf("PullHeads = %d heads, first %+v; want %d heads, first %+v (every state, every page)", len(got), got[:min(3, len(got))], len(want), want[:3])
+	}
+}
+
+func issueClosingHeads(t *testing.T, f Fixture) {
+	closing := forge.ClosingHead{HeadRef: "issue-7-a", Repo: f.Repo(), Body: "Closes #7", Merged: true, Closes: true}
+	fork := forge.ClosingHead{HeadRef: "issue-7-fork", Repo: f.Repo(), Body: "Closes #7", Closes: true, CrossRepo: true}
+	refs := forge.ClosingHead{HeadRef: "issue-7-refs", Repo: f.Repo(), Body: "Refs #7 — deel", Merged: true}
+	bare := forge.ClosingHead{HeadRef: "issue-7-bare", Repo: f.Repo(), Body: "noemt het issue alleen"}
+	other := forge.ClosingHead{HeadRef: "issue-7-other", Repo: "other/repo", Body: "Refs #7", Merged: true}
+	for _, h := range []forge.ClosingHead{closing, fork, refs, bare, other} {
+		f.AddClosingPR(t, 7, h)
+	}
+	got, err := f.Forge().IssueClosingHeads(t.Context(), 7)
+	if err != nil {
+		t.Fatalf("IssueClosingHeads: %v", err)
+	}
+	slices.SortFunc(got, func(a, b forge.ClosingHead) int { return strings.Compare(a.HeadRef, b.HeadRef) })
+	want := []forge.ClosingHead{closing, bare, fork, other, refs}
+	if !slices.Equal(got, want) {
+		t.Errorf("IssueClosingHeads(7) = %+v; want %+v", got, want)
+	}
+	none, err := f.Forge().IssueClosingHeads(t.Context(), 8)
+	if err != nil || len(none) != 0 {
+		t.Errorf("IssueClosingHeads(8) = %+v, %v; want none, nil", none, err)
+	}
+}
+
+func commitKnown(t *testing.T, f Fixture) {
+	f.AddCommit(t, "abc123")
+	f.FailCommit(t, "deadbeef")
+	got, err := f.Forge().CommitKnown(t.Context(), "abc123")
+	if err != nil || !got {
+		t.Errorf("CommitKnown(known) = %v, %v; want true, nil", got, err)
+	}
+	got, err = f.Forge().CommitKnown(t.Context(), "ffffff")
+	if err != nil || got {
+		t.Errorf("CommitKnown(unknown) = %v, %v; want false, nil", got, err)
+	}
+	if got, err = f.Forge().CommitKnown(t.Context(), "deadbeef"); err == nil || got {
+		t.Errorf("CommitKnown(500) = %v, %v; want false and an error", got, err)
+	}
+}
+
+func createLabel(t *testing.T, f Fixture) {
+	f.SetLabels(t, "bug")
+	if err := f.Forge().CreateLabel(t.Context(), "area:new", "0e8a16"); err != nil {
+		t.Fatalf("CreateLabel: %v", err)
+	}
+	got, err := f.Forge().Labels(t.Context())
+	if err != nil || !slices.Equal(sorted(got), []string{"area:new", "bug"}) {
+		t.Errorf("Labels after CreateLabel = %v, %v; want [area:new bug]", got, err)
+	}
+	if err := f.Forge().CreateLabel(t.Context(), "area:new", "0e8a16"); err != nil {
+		t.Errorf("CreateLabel of an existing label = %v, want nil", err)
+	}
+	want := f.LabelColor(t, "area:new")
+	if want != "0e8a16" && want != "#0e8a16" {
+		t.Errorf("stored colour = %q, want 0e8a16 (GitHub) or #0e8a16 (GitLab)", want)
 	}
 }
 

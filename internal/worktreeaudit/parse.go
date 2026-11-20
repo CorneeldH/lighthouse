@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/CorneeldH/lighthouse/internal/forge"
@@ -55,8 +56,8 @@ func jsonInt(v any) (int, bool) {
 	return 0, false
 }
 
-// prRank orders the PRs of one head branch: open weighs heaviest, then merged, then closed. Any
-// other state has no rank.
+// prRank orders the PRs of one head branch: open weighs heaviest, then merged, then closed. A
+// state REST never gives has no rank.
 func prRank(state string) (int, bool) {
 	switch state {
 	case "open":
@@ -69,29 +70,44 @@ func prRank(state string) (int, bool) {
 	return 0, false
 }
 
-// ParsePulls keys the pull or merge requests on their head branch. A set MergedAt is merged,
-// whatever the state says. Per head the heaviest state wins, then the highest number. A change
-// without a head is skipped; a state outside open, merged and closed is an error: skipping an
-// open PR could let a merged one win.
-func ParsePulls(changes []forge.Change) (map[string]PullInfo, error) {
+// ParsePulls keys the REST pulls on their head branch. REST knows only open and closed: merged is
+// a set `merged_at`. Per head the heaviest state wins, then the highest number. A pull without a
+// head, or with a head without a ref, is skipped; a pull whose number is no integer, whose head is
+// null or whose state REST never gives is an error: skipping an open PR could let a merged one win.
+func ParsePulls(payload []any) (map[string]PullInfo, error) {
 	best := map[string]PullInfo{}
-	for _, ch := range changes {
-		if ch.HeadRef == "" {
+	for _, item := range payload {
+		pull := object(item)
+		if pull == nil {
 			continue
 		}
-		info := PullInfo{Number: ch.Number, State: ch.State}
-		if !ch.MergedAt.IsZero() {
-			info.State = "merged"
-			info.MergedAt = ptr(float64(ch.MergedAt.UnixMicro()) / 1e6)
+		if head, present := pull["head"]; present && head == nil {
+			return nil, fmt.Errorf("pull %v has a null head", pull["number"])
 		}
-		rank, known := prRank(info.State)
+		ref, _ := object(pull["head"])["ref"].(string)
+		if ref == "" {
+			continue
+		}
+		number, ok := jsonInt(pull["number"])
+		if !ok {
+			return nil, fmt.Errorf("pull of %s has a number that is no integer: %v", ref, pull["number"])
+		}
+		state := "closed"
+		switch s, present := pull["state"]; {
+		case truthy(pull["merged_at"]):
+			state = "merged"
+		case present:
+			state = pyStr(s)
+		}
+		rank, known := prRank(state)
 		if !known {
-			return nil, fmt.Errorf("change #%d has an unknown state %q", ch.Number, info.State)
+			return nil, fmt.Errorf("pull #%d has an unknown state %q", number, state)
 		}
-		cur, seen := best[ch.HeadRef]
+		info := PullInfo{Number: number, State: state, MergedAt: epoch(pull["merged_at"])}
+		cur, seen := best[ref]
 		curRank, _ := prRank(cur.State)
-		if !seen || rank < curRank || (rank == curRank && ch.Number > cur.Number) {
-			best[ch.HeadRef] = info
+		if !seen || rank < curRank || (rank == curRank && number > cur.Number) {
+			best[ref] = info
 		}
 	}
 	return best, nil
@@ -155,6 +171,143 @@ func ParseSessions(records []any) map[string]SessionInfo {
 	return out
 }
 
+// epoch is datetime.fromisoformat(stamp).timestamp() for the extended ISO forms: a date, a time
+// after any one separator (`HH[:MM[:SS[.f]]]`) and an offset (`Z`, `±HH[:MM[:SS]]`, `±HHMM`). A
+// stamp without an offset is local time. Anything else, and a value that is no string, is nil.
+func epoch(stamp any) *float64 {
+	s, ok := stamp.(string)
+	if !ok || s == "" {
+		return nil
+	}
+	t, ok := parseISO(s)
+	if !ok {
+		return nil
+	}
+	return ptr(float64(t.UnixMicro()) / 1e6) // whole microseconds over 1e6, as timedelta.total_seconds
+}
+
+func fixedDigits(s string, n int) (int, bool) {
+	if len(s) != n {
+		return 0, false
+	}
+	v := 0
+	for i := 0; i < n; i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return 0, false
+		}
+		v = v*10 + int(s[i]-'0')
+	}
+	return v, true
+}
+
+func parseISO(s string) (time.Time, bool) {
+	if len(s) < 10 || s[4] != '-' || s[7] != '-' {
+		return time.Time{}, false
+	}
+	year, ok1 := fixedDigits(s[0:4], 4)
+	month, ok2 := fixedDigits(s[5:7], 2)
+	day, ok3 := fixedDigits(s[8:10], 2)
+	if !ok1 || !ok2 || !ok3 || year < 1 || month < 1 || month > 12 || day < 1 || day > daysIn(year, month) {
+		return time.Time{}, false
+	}
+	loc := time.Local
+	var hour, minute, second, nanos int
+	rest := s[10:]
+	if rest != "" {
+		_, size := firstRune(rest)
+		clock := rest[size:]
+		if i := strings.IndexAny(clock, "Z+-"); i >= 0 {
+			var ok bool
+			if loc, ok = parseOffset(clock[i:]); !ok {
+				return time.Time{}, false
+			}
+			clock = clock[:i]
+		}
+		var ok bool
+		if hour, minute, second, nanos, ok = parseClock(clock); !ok {
+			return time.Time{}, false
+		}
+	}
+	return time.Date(year, time.Month(month), day, hour, minute, second, nanos, loc), true
+}
+
+func firstRune(s string) (rune, int) {
+	for _, r := range s {
+		return r, len(string(r))
+	}
+	return 0, 0
+}
+
+func daysIn(year, month int) int {
+	return time.Date(year, time.Month(month)+1, 0, 0, 0, 0, 0, time.UTC).Day()
+}
+
+// parseClock is `HH[:MM[:SS[.f]]]` (a comma also starts the fraction); the fraction keeps
+// microseconds.
+func parseClock(clock string) (h, m, sec, nanos int, ok bool) {
+	main, frac, hasFrac := strings.Cut(strings.Replace(clock, ",", ".", 1), ".")
+	parts := strings.Split(main, ":")
+	if len(parts) > 3 || (hasFrac && len(parts) != 3) {
+		return 0, 0, 0, 0, false
+	}
+	vals := [3]int{}
+	for i, p := range parts {
+		v, good := fixedDigits(p, 2)
+		if !good {
+			return 0, 0, 0, 0, false
+		}
+		vals[i] = v
+	}
+	if vals[0] > 23 || vals[1] > 59 || vals[2] > 59 {
+		return 0, 0, 0, 0, false
+	}
+	if hasFrac {
+		if frac == "" || len(frac) > 9 {
+			return 0, 0, 0, 0, false
+		}
+		micro := frac + "000000"
+		v, good := fixedDigits(micro[:6], 6)
+		if _, all := fixedDigits(frac, len(frac)); !good || !all {
+			return 0, 0, 0, 0, false
+		}
+		nanos = v * 1000
+	}
+	return vals[0], vals[1], vals[2], nanos, true
+}
+
+func parseOffset(tz string) (*time.Location, bool) {
+	if tz == "Z" {
+		return time.UTC, true
+	}
+	sign := 1
+	if tz[0] == '-' {
+		sign = -1
+	}
+	body := tz[1:]
+	if len(body) == 4 && !strings.Contains(body, ":") {
+		body = body[:2] + ":" + body[2:]
+	}
+	parts := strings.Split(body, ":")
+	if len(parts) > 3 {
+		return nil, false
+	}
+	secs := 0
+	for i, p := range parts {
+		v, ok := fixedDigits(p, 2)
+		if !ok || (i > 0 && v > 59) {
+			return nil, false
+		}
+		secs = secs*60 + v
+	}
+	for i := len(parts); i < 3; i++ {
+		secs *= 60
+	}
+	if secs >= 24*3600 {
+		return nil, false
+	}
+	return time.FixedZone("", sign*secs), true
+}
+
 // parseTipShape reads `git rev-list -1 --timestamp --parents <ref>`: `<epoch> <sha> [<parent>…]`.
 // Two fields is a root commit. A failed call (nil) or another shape measures nothing.
 func parseTipShape(out *string) (*float64, *bool) {
@@ -183,20 +336,20 @@ func allDigits(s string) bool {
 	return s != ""
 }
 
-// ParseIssuePRHeads is the head branches of the merged pull or merge requests of issue nr in
-// repo slug, each once, in the order of changes: one that closes the issue, and one that mentions
-// it with a `Refs #nr` line in its body (prbody.RefsTargets). One from another repository, or
-// with its head in a fork, never counts. The repository compares without case.
-func ParseIssuePRHeads(changes []forge.IssueChange, slug string, nr int) []string {
+// ParseIssuePRHeads is the head branches of the merged PRs of issue nr in repo slug, in order of
+// arrival: every closing PR, and a PR that only refers to the issue when its body has `Refs #nr`
+// (prbody.RefsTargets). A fork PR (CrossRepo) and a PR of another repo never count.
+func ParseIssuePRHeads(closing []forge.ClosingHead, slug string, nr int) []string {
 	heads := []string{}
-	for _, c := range changes {
-		switch {
-		case c.State != "MERGED", c.HeadRef == "", c.CrossRepo, !strings.EqualFold(c.Repo, slug):
+	for _, h := range closing {
+		if !h.Merged || h.HeadRef == "" || h.Repo != slug || h.CrossRepo {
 			continue
-		case !c.Closes && !slices.Contains(prbody.RefsTargets(c.Body), nr):
+		}
+		if !h.Closes && !slices.Contains(prbody.RefsTargets(h.Body), nr) {
 			continue
-		case !slices.Contains(heads, c.HeadRef):
-			heads = append(heads, c.HeadRef)
+		}
+		if !slices.Contains(heads, h.HeadRef) {
+			heads = append(heads, h.HeadRef)
 		}
 	}
 	return heads

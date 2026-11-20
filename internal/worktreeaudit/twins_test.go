@@ -13,8 +13,31 @@ import (
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/config"
+	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/procrun"
 )
+
+// fakeForge answers the two reads of worktree-audit; every other method of the interface panics
+// on the nil embedded Forge, which a test would notice.
+type fakeForge struct {
+	forge.Forge
+	pulls      []forge.PullHead
+	pullsErr   error
+	closing    []forge.ClosingHead
+	closingErr error
+	asked      []int // the issue numbers IssueClosingHeads was asked for
+}
+
+func (f *fakeForge) PullHeads(context.Context) ([]forge.PullHead, error) { return f.pulls, f.pullsErr }
+
+func (f *fakeForge) IssueClosingHeads(_ context.Context, nr int) ([]forge.ClosingHead, error) {
+	f.asked = append(f.asked, nr)
+	return f.closing, f.closingErr
+}
+
+func opens(f forge.Forge) func() (forge.Forge, error) {
+	return func() (forge.Forge, error) { return f, nil }
+}
 
 // The twins of the tests of tests/pack/test_worktree_audit.py that are no data: processes, time,
 // the filesystem and the git calls of the probe and of collect.
@@ -270,13 +293,67 @@ func TestCollectWithoutForgeRepoSkipsTheLookup(t *testing.T) {
 	if stderr.String() != want {
 		t.Fatalf("stderr %q, want %q", stderr.String(), want)
 	}
+	if audit.Repo != "" {
+		t.Fatalf("repo %q, want none", audit.Repo)
+	}
 	for _, r := range audit.Rows {
 		if r.PRLookupOK {
 			t.Errorf("row %s: PR lookup ok without a lookup", r.Name)
 		}
 	}
-	if _, ok := IssuePRHeads(context.Background(), env, 9); ok { // env.Forge is nil: opening it panics
+	env.Forge = func() (forge.Forge, error) {
+		t.Error("the forge was opened without a repo")
+		return nil, errors.New("unexpected")
+	}
+	if _, ok := IssuePRHeads(context.Background(), env, "", 9); ok {
 		t.Error("IssuePRHeads without a repo must fail, not find nothing")
+	}
+}
+
+// twin of test_run_gh_issue_pr_heads_argv: the lookup runs on the forge and fails on every error.
+func TestIssuePRHeadsAsksTheForgeAndFailsOnEveryError(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		env   Env
+		heads []string
+		ok    bool
+	}{
+		{"found nothing", Env{Forge: opens(&fakeForge{})}, []string{}, true},
+		{"forge read fails", Env{Forge: opens(&fakeForge{closingErr: errors.New("boom")})}, nil, false},
+		{"forge cannot be opened", Env{Forge: func() (forge.Forge, error) { return nil, errors.New("no token") }}, nil, false},
+		{"no forge at all", Env{}, nil, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			heads, ok := IssuePRHeads(context.Background(), tt.env, "o/r", 9)
+			if ok != tt.ok || !reflect.DeepEqual(heads, tt.heads) {
+				t.Errorf("IssuePRHeads = %v %v, want %v %v", heads, ok, tt.heads, tt.ok)
+			}
+		})
+	}
+}
+
+// A merged PR from a fork, one from another repo, an unmerged one and one that only mentions the
+// issue are no merged head of it; a closing PR and a `Refs #nr` PR are.
+func TestIssuePRHeadsKeepsOnlyTheMergedHeadsOfTheIssue(t *testing.T) {
+	ff := &fakeForge{closing: []forge.ClosingHead{
+		{HeadRef: "issue-9-a", Repo: "o/r", Merged: true, Closes: true},
+		{HeadRef: "issue-9-fork", Repo: "o/r", Merged: true, Closes: true, CrossRepo: true},
+		{HeadRef: "issue-9-other", Repo: "x/fork", Merged: true, Closes: true},
+		{HeadRef: "issue-9-open", Repo: "o/r", Closes: true},
+		{HeadRef: "issue-9-refs", Repo: "o/r", Merged: true, Body: "Refs #9 — deel 1"},
+		{HeadRef: "issue-9-forkrefs", Repo: "o/r", Merged: true, CrossRepo: true, Body: "Refs #9"},
+		{HeadRef: "issue-9-mention", Repo: "o/r", Merged: true, Body: "zie #9"},
+		{HeadRef: "issue-9-nine3", Repo: "o/r", Merged: true, Body: "Refs #93"},
+		{HeadRef: "issue-9-refs", Repo: "o/r", Merged: true, Body: "Refs #9"},
+	}}
+
+	heads, ok := IssuePRHeads(context.Background(), Env{Forge: opens(ff)}, "o/r", 9)
+
+	if want := []string{"issue-9-a", "issue-9-refs"}; !ok || !reflect.DeepEqual(heads, want) {
+		t.Errorf("IssuePRHeads = %v %v, want %v true", heads, ok, want)
+	}
+	if !reflect.DeepEqual(ff.asked, []int{9}) {
+		t.Errorf("asked the forge for issues %v, want [9]", ff.asked)
 	}
 }
 
@@ -467,4 +544,112 @@ func TestFnmatchMatchesPython(t *testing.T) {
 			t.Errorf("fnmatch %q: got %q, want %q", tt.pattern, got, tt.hits)
 		}
 	}
+}
+
+// Python stopped the whole run on a pull it could not read; skipping an open PR would let a merged
+// one win.
+func TestParsePullsFailsOnAPullItCannotRead(t *testing.T) {
+	for name, pull := range map[string]string{
+		"number is no integer": `{"number":"x","state":"open","merged_at":null,"head":{"ref":"a"}}`,
+		"number is missing":    `{"state":"open","merged_at":null,"head":{"ref":"a"}}`,
+		"head is null":         `{"number":1,"state":"open","merged_at":null,"head":null}`,
+		"state is unknown":     `{"number":1,"state":"draft","merged_at":null,"head":{"ref":"a"}}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			var item any
+			if err := json.Unmarshal([]byte(pull), &item); err != nil {
+				t.Fatal(err)
+			}
+			if got, err := ParsePulls([]any{item}); err == nil {
+				t.Fatalf("ParsePulls = %v, want an error", got)
+			}
+		})
+	}
+}
+
+// A forge that cannot be read makes every PR state unknown, never "no PR": a branch whose PR is
+// merged must not look like one without a PR.
+func TestCollectTreatsAForgeFailureAsAnUnknownPR(t *testing.T) {
+	for name, tt := range map[string]Env{
+		"read fails":       {Forge: opens(&fakeForge{pullsErr: errors.New("500")})},
+		"cannot be opened": {Forge: func() (forge.Forge, error) { return nil, errors.New("no token") }},
+		"no forge":         {},
+	} {
+		t.Run(name, func(t *testing.T) {
+			rows := collectRows(t, tt)
+			for _, r := range rows {
+				if r.PRLookupOK || r.PRState != nil {
+					t.Errorf("row %s: lookup ok %v, state %v; want an unknown PR", r.Name, r.PRLookupOK, r.PRState)
+				}
+			}
+		})
+	}
+}
+
+// A PR the forge reports in a state the audit does not know fails the whole lookup: skipping it
+// could let a merged PR of the same head win.
+func TestCollectTreatsAPullInAnUnknownStateAsAFailedLookup(t *testing.T) {
+	f := &fakeForge{pulls: []forge.PullHead{
+		{Number: 1, State: "MERGED", MergedAt: "2026-01-01T00:00:00Z", HeadRef: "feat-x"},
+		{Number: 2, State: "DRAFT", HeadRef: "feat-x"},
+	}}
+	env := Env{Forge: opens(f)}
+	rows, stderr := collectRowsStderr(t, env)
+	if !strings.Contains(stderr, "PR lookup failed") {
+		t.Errorf("stderr %q does not say the lookup failed", stderr)
+	}
+	for _, r := range rows {
+		if r.PRLookupOK || r.PRState != nil {
+			t.Errorf("row %s: lookup ok %v, state %v; want an unknown PR", r.Name, r.PRLookupOK, r.PRState)
+		}
+	}
+}
+
+// The heaviest state per head wins and a merged PR carries its merge time; open and closed come
+// from the forge as the GitHub REST names them.
+func TestCollectReadsThePullsOfTheForge(t *testing.T) {
+	f := &fakeForge{pulls: []forge.PullHead{
+		{Number: 1, State: "CLOSED", HeadRef: "feat-x"},
+		{Number: 2, State: "OPEN", HeadRef: "feat-y"},
+		{Number: 3, State: "MERGED", MergedAt: "2026-01-01T00:00:00Z", HeadRef: "feat-z"},
+	}}
+	rows, _ := collectRowsStderr(t, Env{Forge: opens(f)})
+	got := map[string]string{}
+	for _, r := range rows {
+		if r.PRState != nil {
+			got[r.Name] = *r.PRState + "#" + itoa(*r.PRNumber)
+		}
+	}
+	want := map[string]string{"feat-x": "closed#1", "feat-y": "open#2", "feat-z": "merged#3"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("PR states %v, want %v", got, want)
+	}
+}
+
+func collectRows(t *testing.T, env Env) []Row {
+	t.Helper()
+	rows, _ := collectRowsStderr(t, env)
+	return rows
+}
+
+// collectRowsStderr collects a repo with the branches main, feat-x, feat-y and feat-z against env's
+// forge.
+func collectRowsStderr(t *testing.T, forgeEnv Env) ([]Row, string) {
+	t.Helper()
+	f := &gitFake{answer: func(args []string) *string {
+		if args[0] == "branch" && len(args) == 2 {
+			return ptr("main\nfeat-x\nfeat-y\nfeat-z\n")
+		}
+		return mainOnly(args)
+	}}
+	env, stderr := collectEnv(t, f, "[forge]\nrepo = \"o/r\"\n")
+	env.Forge = forgeEnv.Forge
+	audit, err := Collect(context.Background(), env, "/repo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(audit.Rows) == 0 {
+		t.Fatal("no rows to check")
+	}
+	return audit.Rows, stderr.String()
 }

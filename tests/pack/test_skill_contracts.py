@@ -334,11 +334,20 @@ _TOOL_USES = {
 }
 
 
+def _requires(path):
+    """tool -> units, with the tools under [forge.<kind>] folded in per tool."""
+    requires = tomllib.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+    for tools in requires.pop("forge", {}).values():
+        for tool, units in tools.items():
+            requires[tool] = [*requires.get(tool, []), *units]
+    return requires
+
+
 @pytest.mark.parametrize("skill", SKILL_PARAMS)
 def test_requires_names_the_skill_per_tool(skill):
     """The skill's own package names it: `init` reports the units of the chosen packages."""
     path = _pack_of(skill) / "requires.toml"
-    requires = tomllib.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+    requires = _requires(path)
     text = "\n".join(_texts(skill).values())
     missing = [
         tool
@@ -353,7 +362,7 @@ def test_requires_python_only_where_the_skill_uses_it(skill):
     """`init` reports a missing python3 or tomllib per unit: a skill that only calls the binary
     is not named there (#274)."""
     path = _pack_of(skill) / "requires.toml"
-    requires = tomllib.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+    requires = _requires(path)
     text = "\n".join(_texts(skill).values())
     stale = [
         tool
@@ -459,7 +468,7 @@ def test_chain_skills_point_at_forge_reference(name):
 FORGE = CORE / "skills" / "forge"
 # The sections a chain skill names (`../lighthouse-forge/<kind>.md §blockers`), in this order in
 # every reference (#260, spec §2).
-FORGE_SECTIONS = ["## §board", "## §blockers", "## §sub-issues", "## §sluitwoorden", "## §proxy", "## §close-issue"]
+FORGE_SECTIONS = ["## §board", "## §blockers", "## §sub-issues", "## §sluitwoorden", "## §proxy", "## §close-issue", "## §ci", "## §workflows"]
 
 
 @pytest.mark.parametrize("variant", ["claude", "agents"])
