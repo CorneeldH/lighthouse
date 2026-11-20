@@ -27,6 +27,7 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/agentsmd"
 	"github.com/CorneeldH/lighthouse/internal/deps"
+	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/hostconfig"
 	labelsync "github.com/CorneeldH/lighthouse/internal/labels"
 	"github.com/CorneeldH/lighthouse/internal/manifest"
@@ -54,7 +55,8 @@ type Options struct {
 	Upgrade, Force, Yes bool
 	Labels              bool                                                      // --labels: propose the label taxonomy file, [labels] and [paths] labels
 	CreateLabels        bool                                                      // --create-labels (with --labels): create the missing labels on the remote
-	SyncLabels          func(root string, create bool, out, errw io.Writer) error // nil means labels.Sync
+	SyncLabels          func(root string, create bool, out, errw io.Writer) error // nil means labels.Sync with the forge of LabelForge
+	LabelForge          func(root string) forge.Forge                             // opens the forge of the labels; nil, or a nil result, means labels are printed, not created
 	AddPacks, DropPacks []string                                                  // --pack and --no-pack (plan M0 (c), design choice 6)
 	ForgeHosts          []string                                                  // --forge-host: hosts of self-hosted GitLab instances
 	Audit               func(root string, out, errOut io.Writer)                  // read-only agent audit, run after the files are written; nil means none
@@ -248,7 +250,13 @@ func execute(o Options) error {
 	if o.Labels {
 		sync := o.SyncLabels
 		if sync == nil {
-			sync = labelsync.Sync
+			var f forge.Forge
+			if o.LabelForge != nil {
+				f = o.LabelForge(root)
+			}
+			sync = func(root string, create bool, out, errw io.Writer) error {
+				return labelsync.Sync(root, create, f, out, errw)
+			}
 		}
 		if err := sync(root, o.CreateLabels, o.Out, o.Err); err != nil {
 			_, _ = fmt.Fprintln(o.Err, "warning: labels: not synchronised")

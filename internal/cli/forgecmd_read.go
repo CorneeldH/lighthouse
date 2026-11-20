@@ -284,7 +284,7 @@ func newForgeLabelCommand(env *forgeEnv) *cobra.Command {
 		},
 	}
 	addFieldFlag(list, &field)
-	cmd.AddCommand(list)
+	cmd.AddCommand(list, newForgeLabelCreateCommand(env))
 	return cmd
 }
 

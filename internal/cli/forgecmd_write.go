@@ -4,7 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -440,4 +442,32 @@ func newForgeMilestoneWriteCommands(env *forgeEnv) []*cobra.Command {
 	edit.Flags().StringVar(&newTitle, "title", "", "the new title")
 	edit.Flags().String("description-file", "", "file with the new description")
 	return []*cobra.Command{create, edit}
+}
+
+var labelColorRE = regexp.MustCompile(`^[0-9a-fA-F]{6}$`)
+
+// newForgeLabelCreateCommand is `label create <name> --color <hex>`: the label is created as
+// written, the colour is six hex digits (a leading "#" is dropped; the forge adds what it needs).
+// A label that exists already is no error. It is also the command `init --labels` prints.
+func newForgeLabelCreateCommand(env *forgeEnv) *cobra.Command {
+	var color string
+	cmd := &cobra.Command{
+		Use: "create <name> --color <hex>", Short: "Create a label; a label that exists already is no error",
+		Args: forgeArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			hex := strings.TrimPrefix(color, "#")
+			if !labelColorRE.MatchString(hex) {
+				return forgeUsage(cmd, "--color must be six hex digits, got "+strconv.Quote(color))
+			}
+			return env.write(cmd, func(f forge.Forge) error {
+				if err := f.CreateLabel(cmd.Context(), args[0], hex); err != nil {
+					return err
+				}
+				_, err := fmt.Fprintf(env.stdout(cmd), "created %s\n", args[0])
+				return err
+			})
+		},
+	}
+	cmd.Flags().StringVar(&color, "color", "", "the colour, six hex digits (required)")
+	return cmd
 }

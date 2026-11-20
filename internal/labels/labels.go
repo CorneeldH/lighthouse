@@ -1,5 +1,5 @@
-// Package labels creates the labels of the taxonomy file on the remote, or prints the
-// commands that would.
+// Package labels creates the labels of the taxonomy file on the forge (GitHub or GitLab), or
+// prints the commands that would.
 //
 // The taxonomy file is `[paths] labels` (default projectconfig.DefaultLabelsPath). Every Markdown
 // table with a label column (`Label` or `Area`) and a colour column (`Color`, `Colour` or
@@ -7,25 +7,25 @@
 // characters, also between backticks. Lines that do not start with `|` are skipped, so an
 // example row in an HTML comment does not count.
 //
-// Norms: gh never prompts (no stdin, GH_PROMPT_DISABLED=1); never --force, a label that
-// exists on the remote stays as it is (name compared without regard to case); every gh
-// outcome (no gh, no rights, no remote, a failed create) returns nil and prints what could
-// not be done as a `gh label create` line. A missing or empty taxonomy file or a broken
+// Norms: never --force, a label that exists on the forge stays as it is (name compared without
+// regard to case, a name is never changed); every forge outcome (no forge, no token, no rights,
+// a failed create) returns nil and prints what could not be done as a
+// `lighthouse forge label create` line, which works on both forges. A missing or empty taxonomy file or a broken
 // config is an error whose text is already on errw.
 package labels
 
 import (
-	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
 
 	"github.com/CorneeldH/lighthouse/internal/config"
+	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/projectconfig"
 )
 
@@ -39,28 +39,6 @@ var (
 	nameHeaders  = []string{"label", "area"}
 	colorHeaders = []string{"color", "colour", "kleur"}
 )
-
-// runGH runs gh with args and returns its stdout; a variable so tests can fake gh. The error
-// text is the reason: the last stderr line, or `gh exited <n>`.
-var runGH = func(args []string) (string, error) {
-	cmd := exec.Command("gh", args...)
-	cmd.Stdin = nil
-	cmd.Env = append(os.Environ(), "GH_PROMPT_DISABLED=1")
-	var stderr strings.Builder
-	cmd.Stderr = &stderr
-	out, err := cmd.Output()
-	if err == nil {
-		return string(out), nil
-	}
-	var exit *exec.ExitError
-	if errors.As(err, &exit) {
-		if lines := strings.Split(strings.TrimSpace(stderr.String()), "\n"); lines[0] != "" {
-			return "", errors.New(lines[len(lines)-1])
-		}
-		return "", fmt.Errorf("gh exited %d", exit.ExitCode())
-	}
-	return "", fmt.Errorf("gh did not run: %v", err)
-}
 
 func cells(line string) []string {
 	parts := strings.Split(strings.Trim(strings.TrimSpace(line), "|"), "|")
@@ -118,27 +96,9 @@ func ParseTaxonomy(text string) []Label {
 	return found
 }
 
-func readRemote(repo string) ([]string, error) {
-	out, err := runGH([]string{"api", "repos/" + repo + "/labels", "--paginate", "--jq", ".[].name"})
-	if err != nil {
-		return nil, err
-	}
-	var names []string
-	sc := bufio.NewScanner(strings.NewReader(out))
-	for sc.Scan() {
-		if strings.TrimSpace(sc.Text()) != "" {
-			names = append(names, sc.Text())
-		}
-	}
-	return names, nil
-}
-
-func createArgs(l Label, repo string) []string {
-	args := []string{"label", "create", l.Name}
-	if repo != "" {
-		args = append(args, "--repo", repo)
-	}
-	return append(args, "--color", l.Color)
+// createArgs is the `lighthouse forge label create` command line of l, without the program name.
+func createArgs(l Label) []string {
+	return []string{"lighthouse", "forge", "label", "create", l.Name, "--color", l.Color}
 }
 
 var safeRE = regexp.MustCompile(`^[A-Za-z0-9@%+=:,./_-]+$`)
@@ -157,9 +117,10 @@ func shellJoin(args []string) string {
 }
 
 // Sync reads the taxonomy file of the repository in root and creates the missing labels on
-// the remote (create), or prints the `gh label create` lines of the missing ones. A returned
-// error has already been written to errw.
-func Sync(root string, create bool, out, errw io.Writer) error {
+// the forge f (create), or prints the `lighthouse forge label create` lines of the missing ones.
+// A nil f means the forge cannot be opened (no token, no forge.repo): every label is then
+// missing and printed. A returned error has already been written to errw.
+func Sync(root string, create bool, f forge.Forge, out, errw io.Writer) error {
 	fail := func(format string, a ...any) error {
 		msg := fmt.Sprintf(format, a...)
 		_, _ = fmt.Fprintf(errw, "labels: ERROR — %s\n", msg)
@@ -190,7 +151,10 @@ func Sync(root string, create bool, out, errw io.Writer) error {
 	remoteKnown := false
 	reason := "no forge.repo configured"
 	if repo != "" {
-		remote, err = readRemote(repo)
+		reason = "no forge to open: is a token set?"
+	}
+	if f != nil {
+		remote, err = f.Labels(context.Background())
 		remoteKnown = err == nil
 		if err != nil {
 			reason = err.Error()
@@ -216,9 +180,9 @@ func Sync(root string, create bool, out, errw io.Writer) error {
 
 	var lines [][]string
 	for _, l := range missing {
-		args := createArgs(l, repo)
+		args := createArgs(l)
 		if create && remoteKnown {
-			if _, err := runGH(args); err == nil {
+			if err := f.CreateLabel(context.Background(), l.Name, l.Color); err == nil {
 				_, _ = fmt.Fprintf(out, "labels: created %s\n", l.Name)
 				continue
 			}
@@ -238,15 +202,7 @@ func Sync(root string, create bool, out, errw io.Writer) error {
 		_, _ = fmt.Fprintf(out, "labels: missing on %s; create them with:\n", repo)
 	}
 	for _, args := range lines {
-		_, _ = fmt.Fprintln(out, shellJoin(append([]string{"gh"}, args...)))
+		_, _ = fmt.Fprintln(out, shellJoin(args))
 	}
 	return nil
-}
-
-// SetRunGH replaces the gh call and returns the function that restores it. It exists for
-// tests of packages that run Sync through their own entry point.
-func SetRunGH(fn func(args []string) (string, error)) (restore func()) {
-	old := runGH
-	runGH = fn
-	return func() { runGH = old }
 }
