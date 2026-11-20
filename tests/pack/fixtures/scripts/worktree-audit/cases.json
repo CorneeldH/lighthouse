@@ -7,7 +7,6 @@
   "config": "",
   "env": {},
   "setup": [],
-  "calls": [],
   "expect": {
    "stdout_contains": [
     "cleanup: yes|no",
@@ -25,7 +24,6 @@
   "config": "",
   "env": {},
   "setup": [],
-  "calls": [],
   "expect": {
    "stderr_contains": [
     "argument --sessions: not allowed with argument --cleanup"
@@ -42,7 +40,6 @@
   "config": "",
   "env": {},
   "setup": [],
-  "calls": [],
   "expect": {
    "stderr_contains": [
     "argument --issue: invalid int value: 'x'"
@@ -58,7 +55,6 @@
   "config": "",
   "env": {},
   "setup": [],
-  "calls": [],
   "expect": {
    "stdout": "",
    "stderr": "git worktree list --porcelain failed — cannot read the repo.\n",
@@ -76,7 +72,6 @@
     "branch": "main"
    }
   ],
-  "calls": [],
   "expect": {
    "stdout_contains": [],
    "stderr_contains": [
@@ -102,7 +97,6 @@
     "branch": "issue-9-x"
    }
   ],
-  "calls": [],
   "expect": {
    "stdout": "| worktree | branch | PR state | unpushed commits | dirty tree | last session | live? | verdict |\n|---|---|---|---|---|---|---|---|\n| root | main | — | ? | ? | — | — | 🔒 never touch |\n| issue-9-x | issue-9-x | — | 1 | no | — | — | ⚠️ orphan commit without parent — likely test leakage |\n\nCommands — read the table first; this script runs nothing.\n\nNothing with verdict ✅ — no commands.\n",
    "stderr": "worktree-audit: PR lookup skipped — [forge] repo is not set, so every PR state is unknown\n",
@@ -126,20 +120,12 @@
     "url": "https://github.com/someone/else.git"
    }
   ],
-  "calls": [
+  "forge_calls": [
    {
-    "argv": [
-     "gh",
-     "api",
-     "--paginate",
-     "repos/Other/repo/pulls?state=all&per_page=100",
-     "--jq",
-     ".[] | {number, state, merged_at, head: {ref: .head.ref}}"
-    ],
-    "stdin": null,
-    "stdout": "",
-    "stderr": "",
-    "code": 0
+    "method": "GET",
+    "path": "/repos/Other/repo/pulls?state=all&per_page=100",
+    "status": 200,
+    "body": []
    }
   ],
   "expect": {
@@ -167,20 +153,21 @@
     "branch": "issue-9-x"
    }
   ],
-  "calls": [
+  "forge_calls": [
    {
-    "argv": [
-     "gh",
-     "api",
-     "--paginate",
-     "repos/o/r/pulls?state=all&per_page=100",
-     "--jq",
-     ".[] | {number, state, merged_at, head: {ref: .head.ref}}"
-    ],
-    "stdin": null,
-    "stdout": "{\"number\": 9, \"state\": \"open\", \"merged_at\": null, \"head\": {\"ref\": \"issue-9-x\"}}\n",
-    "stderr": "",
-    "code": 0
+    "method": "GET",
+    "path": "/repos/o/r/pulls?state=all&per_page=100",
+    "status": 200,
+    "body": [
+     {
+      "number": 9,
+      "state": "open",
+      "merged_at": null,
+      "head": {
+       "ref": "issue-9-x"
+      }
+     }
+    ]
    }
   ],
   "expect": {
@@ -208,20 +195,21 @@
     "branch": "issue-9-x"
    }
   ],
-  "calls": [
+  "forge_calls": [
    {
-    "argv": [
-     "gh",
-     "api",
-     "--paginate",
-     "repos/o/r/pulls?state=all&per_page=100",
-     "--jq",
-     ".[] | {number, state, merged_at, head: {ref: .head.ref}}"
-    ],
-    "stdin": null,
-    "stdout": "{\"number\": 9, \"state\": \"closed\", \"merged_at\": \"2099-01-01T00:00:00Z\", \"head\": {\"ref\": \"issue-9-x\"}}\n",
-    "stderr": "",
-    "code": 0
+    "method": "GET",
+    "path": "/repos/o/r/pulls?state=all&per_page=100",
+    "status": 200,
+    "body": [
+     {
+      "number": 9,
+      "state": "closed",
+      "merged_at": "2099-01-01T00:00:00Z",
+      "head": {
+       "ref": "issue-9-x"
+      }
+     }
+    ]
    }
   ],
   "expect": {
@@ -249,20 +237,21 @@
     "branch": "issue-9-x"
    }
   ],
-  "calls": [
+  "forge_calls": [
    {
-    "argv": [
-     "gh",
-     "api",
-     "--paginate",
-     "repos/o/r/pulls?state=all&per_page=100",
-     "--jq",
-     ".[] | {number, state, merged_at, head: {ref: .head.ref}}"
-    ],
-    "stdin": null,
-    "stdout": "{\"number\": 9, \"state\": \"closed\", \"merged_at\": \"2099-01-01T00:00:00Z\", \"head\": {\"ref\": \"issue-9-x\"}}\n",
-    "stderr": "",
-    "code": 0
+    "method": "GET",
+    "path": "/repos/o/r/pulls?state=all&per_page=100",
+    "status": 200,
+    "body": [
+     {
+      "number": 9,
+      "state": "closed",
+      "merged_at": "2099-01-01T00:00:00Z",
+      "head": {
+       "ref": "issue-9-x"
+      }
+     }
+    ]
    }
   ],
   "expect": {
@@ -285,39 +274,20 @@
     "branch": "main"
    }
   ],
-  "calls": [
+  "forge_calls": [
    {
-    "argv": [
-     "gh",
-     "api",
-     "--paginate",
-     "repos/o/r/pulls?state=all&per_page=100",
-     "--jq",
-     ".[] | {number, state, merged_at, head: {ref: .head.ref}}"
-    ],
-    "stdin": null,
-    "stdout": "",
-    "stderr": "",
-    "code": 0
+    "method": "GET",
+    "path": "/repos/o/r/pulls?state=all&per_page=100",
+    "status": 200,
+    "body": []
    },
    {
-    "argv": [
-     "gh",
-     "api",
-     "graphql",
-     "-f",
-     "owner=o",
-     "-f",
-     "name=r",
-     "-F",
-     "nr=9",
-     "-f",
-     "query=query($owner:String!,$name:String!,$nr:Int!){repository(owner:$owner,name:$name){issue(number:$nr){\n  closedByPullRequestsReferences(first:50,includeClosedPrs:true){nodes{headRefName merged isCrossRepository repository{nameWithOwner}}}\n  timelineItems(itemTypes:[CROSS_REFERENCED_EVENT],first:100){nodes{... on CrossReferencedEvent{source{... on PullRequest{headRefName merged isCrossRepository body repository{nameWithOwner}}}}}}}}}"
-    ],
-    "stdin": null,
-    "stdout": "",
-    "stderr": "",
-    "code": 1
+    "method": "POST",
+    "path": "/graphql",
+    "status": 500,
+    "body": {
+     "message": "boom"
+    }
    }
   ],
   "expect": {
@@ -345,39 +315,46 @@
     "branch": "issue-9-x"
    }
   ],
-  "calls": [
+  "forge_calls": [
    {
-    "argv": [
-     "gh",
-     "api",
-     "--paginate",
-     "repos/o/r/pulls?state=all&per_page=100",
-     "--jq",
-     ".[] | {number, state, merged_at, head: {ref: .head.ref}}"
-    ],
-    "stdin": null,
-    "stdout": "{\"number\": 9, \"state\": \"closed\", \"merged_at\": \"2099-01-01T00:00:00Z\", \"head\": {\"ref\": \"issue-9-x\"}}\n",
-    "stderr": "",
-    "code": 0
+    "method": "GET",
+    "path": "/repos/o/r/pulls?state=all&per_page=100",
+    "status": 200,
+    "body": [
+     {
+      "number": 9,
+      "state": "closed",
+      "merged_at": "2099-01-01T00:00:00Z",
+      "head": {
+       "ref": "issue-9-x"
+      }
+     }
+    ]
    },
    {
-    "argv": [
-     "gh",
-     "api",
-     "graphql",
-     "-f",
-     "owner=o",
-     "-f",
-     "name=r",
-     "-F",
-     "nr=9",
-     "-f",
-     "query=query($owner:String!,$name:String!,$nr:Int!){repository(owner:$owner,name:$name){issue(number:$nr){\n  closedByPullRequestsReferences(first:50,includeClosedPrs:true){nodes{headRefName merged isCrossRepository repository{nameWithOwner}}}\n  timelineItems(itemTypes:[CROSS_REFERENCED_EVENT],first:100){nodes{... on CrossReferencedEvent{source{... on PullRequest{headRefName merged isCrossRepository body repository{nameWithOwner}}}}}}}}}"
-    ],
-    "stdin": null,
-    "stdout": "{\"data\": {\"repository\": {\"issue\": {\"closedByPullRequestsReferences\": {\"nodes\": []}, \"timelineItems\": {\"nodes\": []}}}}}",
-    "stderr": "",
-    "code": 0
+    "method": "POST",
+    "path": "/graphql",
+    "status": 200,
+    "body": {
+     "data": {
+      "repository": {
+       "issue": {
+        "closedByPullRequestsReferences": {
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": []
+        },
+        "timelineItems": {
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": []
+        }
+       }
+      }
+     }
+    }
    }
   ],
   "expect": {
@@ -405,103 +382,29 @@
     "branch": "issue-9-x"
    }
   ],
-  "calls": [
+  "forge_calls": [
    {
-    "argv": [
-     "gh",
-     "api",
-     "--paginate",
-     "repos/o/r/pulls?state=all&per_page=100",
-     "--jq",
-     ".[] | {number, state, merged_at, head: {ref: .head.ref}}"
-    ],
-    "stdin": null,
-    "stdout": "{\"number\": 9, \"state\": \"closed\", \"merged_at\": \"2099-01-01T00:00:00Z\", \"head\": {\"ref\": \"issue-9-x\"}}\n",
-    "stderr": "",
-    "code": 0
+    "method": "GET",
+    "path": "/repos/o/r/pulls?state=all&per_page=100",
+    "status": 200,
+    "body": [
+     {
+      "number": 9,
+      "state": "closed",
+      "merged_at": "2099-01-01T00:00:00Z",
+      "head": {
+       "ref": "issue-9-x"
+      }
+     }
+    ]
    },
    {
-    "argv": [
-     "gh",
-     "api",
-     "graphql",
-     "-f",
-     "owner=o",
-     "-f",
-     "name=r",
-     "-F",
-     "nr=9",
-     "-f",
-     "query=query($owner:String!,$name:String!,$nr:Int!){repository(owner:$owner,name:$name){issue(number:$nr){\n  closedByPullRequestsReferences(first:50,includeClosedPrs:true){nodes{headRefName merged isCrossRepository repository{nameWithOwner}}}\n  timelineItems(itemTypes:[CROSS_REFERENCED_EVENT],first:100){nodes{... on CrossReferencedEvent{source{... on PullRequest{headRefName merged isCrossRepository body repository{nameWithOwner}}}}}}}}}"
-    ],
-    "stdin": null,
-    "stdout": "niet-json",
-    "stderr": "",
-    "code": 0
+    "method": "POST",
+    "path": "/graphql",
+    "status": 200,
+    "body": "niet-json"
    }
   ],
-  "expect": {
-   "stdout": "cleanup: no — PR lookup for issue #9 failed\n",
-   "stderr": "",
-   "code": 2
-  }
- },
- {
-  "name": "test_run_gh_issue_pr_heads_argv[timeout, go only: the Python script has no timeout scale]",
-  "argv": [
-   "--issue",
-   "9"
-  ],
-  "config": "[forge]\nkind = \"github\"\nrepo = \"o/r\"\n",
-  "env": {},
-  "setup": [
-   {
-    "repo": ".",
-    "branch": "main"
-   },
-   {
-    "worktree": ".claude/worktrees/issue-9-x",
-    "of": ".",
-    "branch": "issue-9-x"
-   }
-  ],
-  "calls": [
-   {
-    "argv": [
-     "gh",
-     "api",
-     "--paginate",
-     "repos/o/r/pulls?state=all&per_page=100",
-     "--jq",
-     ".[] | {number, state, merged_at, head: {ref: .head.ref}}"
-    ],
-    "stdin": null,
-    "stdout": "{\"number\": 9, \"state\": \"closed\", \"merged_at\": \"2099-01-01T00:00:00Z\", \"head\": {\"ref\": \"issue-9-x\"}}\n",
-    "stderr": "",
-    "code": 0
-   },
-   {
-    "argv": [
-     "gh",
-     "api",
-     "graphql",
-     "-f",
-     "owner=o",
-     "-f",
-     "name=r",
-     "-F",
-     "nr=9",
-     "-f",
-     "query=query($owner:String!,$name:String!,$nr:Int!){repository(owner:$owner,name:$name){issue(number:$nr){\n  closedByPullRequestsReferences(first:50,includeClosedPrs:true){nodes{headRefName merged isCrossRepository repository{nameWithOwner}}}\n  timelineItems(itemTypes:[CROSS_REFERENCED_EVENT],first:100){nodes{... on CrossReferencedEvent{source{... on PullRequest{headRefName merged isCrossRepository body repository{nameWithOwner}}}}}}}}}"
-    ],
-    "stdin": null,
-    "stdout": "",
-    "stderr": "",
-    "code": 0,
-    "timeout": true
-   }
-  ],
-  "only": "go",
   "expect": {
    "stdout": "cleanup: no — PR lookup for issue #9 failed\n",
    "stderr": "",
@@ -527,110 +430,20 @@
     "branch": "issue-9-x"
    }
   ],
-  "calls": [
+  "forge_calls": [
    {
-    "argv": [
-     "gh",
-     "api",
-     "--paginate",
-     "repos/o/r/pulls?state=all&per_page=100",
-     "--jq",
-     ".[] | {number, state, merged_at, head: {ref: .head.ref}}"
-    ],
-    "stdin": null,
-    "stdout": "",
-    "stderr": "",
-    "code": 1
+    "method": "GET",
+    "path": "/repos/o/r/pulls?state=all&per_page=100",
+    "status": 500,
+    "body": {
+     "message": "boom"
+    }
    }
   ],
   "expect": {
    "stdout": "| worktree | branch | PR state | unpushed commits | dirty tree | last session | live? | verdict |\n|---|---|---|---|---|---|---|---|\n| issue-9-x | issue-9-x | — | 1 | no | — | — | ⚠️ orphan commit without parent — likely test leakage |\n\ncleanup: no — ⚠️ orphan commit without parent — likely test leakage\n",
    "stderr": "",
    "code": 1
-  }
- },
- {
-  "name": "test_pulls_lookup_failure_is_unknown[timeout, go only: the Python script has no timeout scale]",
-  "argv": [
-   "--only",
-   "issue-9-x"
-  ],
-  "config": "[forge]\nkind = \"github\"\nrepo = \"o/r\"\n",
-  "env": {},
-  "setup": [
-   {
-    "repo": ".",
-    "branch": "main"
-   },
-   {
-    "worktree": ".claude/worktrees/issue-9-x",
-    "of": ".",
-    "branch": "issue-9-x"
-   }
-  ],
-  "calls": [
-   {
-    "argv": [
-     "gh",
-     "api",
-     "--paginate",
-     "repos/o/r/pulls?state=all&per_page=100",
-     "--jq",
-     ".[] | {number, state, merged_at, head: {ref: .head.ref}}"
-    ],
-    "stdin": null,
-    "stdout": "",
-    "stderr": "",
-    "code": 0,
-    "timeout": true
-   }
-  ],
-  "only": "go",
-  "expect": {
-   "stdout": "| worktree | branch | PR state | unpushed commits | dirty tree | last session | live? | verdict |\n|---|---|---|---|---|---|---|---|\n| issue-9-x | issue-9-x | — | 1 | no | — | — | ⚠️ orphan commit without parent — likely test leakage |\n\ncleanup: no — ⚠️ orphan commit without parent — likely test leakage\n",
-   "stderr": "",
-   "code": 1
-  }
- },
- {
-  "name": "test_pulls_skip_lines_that_are_no_json",
-  "argv": [
-   "--only",
-   "issue-9-x"
-  ],
-  "config": "[forge]\nkind = \"github\"\nrepo = \"o/r\"\n",
-  "env": {},
-  "setup": [
-   {
-    "repo": ".",
-    "branch": "main"
-   },
-   {
-    "worktree": ".claude/worktrees/issue-9-x",
-    "of": ".",
-    "branch": "issue-9-x"
-   }
-  ],
-  "calls": [
-   {
-    "argv": [
-     "gh",
-     "api",
-     "--paginate",
-     "repos/o/r/pulls?state=all&per_page=100",
-     "--jq",
-     ".[] | {number, state, merged_at, head: {ref: .head.ref}}"
-    ],
-    "stdin": null,
-    "stdout": "niet-json\r\n\n{\"number\": 9, \"state\": \"closed\", \"merged_at\": \"2099-01-01T00:00:00Z\", \"head\": {\"ref\": \"issue-9-x\"}}\r\n",
-    "stderr": "",
-    "code": 0
-   }
-  ],
-  "expect": {
-   "stdout": "| worktree | branch | PR state | unpushed commits | dirty tree | last session | live? | verdict |\n|---|---|---|---|---|---|---|---|\n| issue-9-x | issue-9-x | #9 merged | 1 | no | — | — | ✅ safe to remove [squash-merge] |\n\ncleanup: yes\ngit worktree remove \"{root}/.claude/worktrees/issue-9-x\"\ngit branch -D issue-9-x\n",
-   "stderr": "",
-   "code": 0
   }
  },
  {
@@ -651,20 +464,21 @@
     "branch": "issue-9-x"
    }
   ],
-  "calls": [
+  "forge_calls": [
    {
-    "argv": [
-     "gh",
-     "api",
-     "--paginate",
-     "repos/o/r/pulls?state=all&per_page=100",
-     "--jq",
-     ".[] | {number, state, merged_at, head: {ref: .head.ref}}"
-    ],
-    "stdin": null,
-    "stdout": "{\"number\": 9, \"state\": \"closed\", \"merged_at\": \"2099-01-01T00:00:00Z\", \"head\": {\"ref\": \"issue-9-x\"}}\n",
-    "stderr": "",
-    "code": 0
+    "method": "GET",
+    "path": "/repos/o/r/pulls?state=all&per_page=100",
+    "status": 200,
+    "body": [
+     {
+      "number": 9,
+      "state": "closed",
+      "merged_at": "2099-01-01T00:00:00Z",
+      "head": {
+       "ref": "issue-9-x"
+      }
+     }
+    ]
    }
   ],
   "expect": {
@@ -697,20 +511,21 @@
     "text": "{"
    }
   ],
-  "calls": [
+  "forge_calls": [
    {
-    "argv": [
-     "gh",
-     "api",
-     "--paginate",
-     "repos/o/r/pulls?state=all&per_page=100",
-     "--jq",
-     ".[] | {number, state, merged_at, head: {ref: .head.ref}}"
-    ],
-    "stdin": null,
-    "stdout": "{\"number\": 9, \"state\": \"closed\", \"merged_at\": \"2099-01-01T00:00:00Z\", \"head\": {\"ref\": \"issue-9-x\"}}\n",
-    "stderr": "",
-    "code": 0
+    "method": "GET",
+    "path": "/repos/o/r/pulls?state=all&per_page=100",
+    "status": 200,
+    "body": [
+     {
+      "number": 9,
+      "state": "closed",
+      "merged_at": "2099-01-01T00:00:00Z",
+      "head": {
+       "ref": "issue-9-x"
+      }
+     }
+    ]
    }
   ],
   "expect": {
@@ -752,20 +567,29 @@
     "text": "9=20009\n"
    }
   ],
-  "calls": [
+  "forge_calls": [
    {
-    "argv": [
-     "gh",
-     "api",
-     "--paginate",
-     "repos/o/r/pulls?state=all&per_page=100",
-     "--jq",
-     ".[] | {number, state, merged_at, head: {ref: .head.ref}}"
-    ],
-    "stdin": null,
-    "stdout": "{\"number\": 9, \"state\": \"closed\", \"merged_at\": \"2099-01-01T00:00:00Z\", \"head\": {\"ref\": \"issue-9-x\"}}\n{\"number\": 12, \"state\": \"open\", \"merged_at\": null, \"head\": {\"ref\": \"feat-open\"}}\n",
-    "stderr": "",
-    "code": 0
+    "method": "GET",
+    "path": "/repos/o/r/pulls?state=all&per_page=100",
+    "status": 200,
+    "body": [
+     {
+      "number": 9,
+      "state": "closed",
+      "merged_at": "2099-01-01T00:00:00Z",
+      "head": {
+       "ref": "issue-9-x"
+      }
+     },
+     {
+      "number": 12,
+      "state": "open",
+      "merged_at": null,
+      "head": {
+       "ref": "feat-open"
+      }
+     }
+    ]
    }
   ],
   "expect": {
@@ -792,20 +616,21 @@
     "branch": "issue-9-x"
    }
   ],
-  "calls": [
+  "forge_calls": [
    {
-    "argv": [
-     "gh",
-     "api",
-     "--paginate",
-     "repos/o/r/pulls?state=all&per_page=100",
-     "--jq",
-     ".[] | {number, state, merged_at, head: {ref: .head.ref}}"
-    ],
-    "stdin": null,
-    "stdout": "{\"number\": 9, \"state\": \"closed\", \"merged_at\": \"2099-01-01T00:00:00Z\", \"head\": {\"ref\": \"issue-9-x\"}}\n",
-    "stderr": "",
-    "code": 0
+    "method": "GET",
+    "path": "/repos/o/r/pulls?state=all&per_page=100",
+    "status": 200,
+    "body": [
+     {
+      "number": 9,
+      "state": "closed",
+      "merged_at": "2099-01-01T00:00:00Z",
+      "head": {
+       "ref": "issue-9-x"
+      }
+     }
+    ]
    }
   ],
   "expect": {
@@ -832,20 +657,21 @@
     "branch": "issue-9-x"
    }
   ],
-  "calls": [
+  "forge_calls": [
    {
-    "argv": [
-     "gh",
-     "api",
-     "--paginate",
-     "repos/o/r/pulls?state=all&per_page=100",
-     "--jq",
-     ".[] | {number, state, merged_at, head: {ref: .head.ref}}"
-    ],
-    "stdin": null,
-    "stdout": "{\"number\": 9, \"state\": \"closed\", \"merged_at\": \"2099-01-01T00:00:00Z\", \"head\": {\"ref\": \"issue-9-x\"}}\n",
-    "stderr": "",
-    "code": 0
+    "method": "GET",
+    "path": "/repos/o/r/pulls?state=all&per_page=100",
+    "status": 200,
+    "body": [
+     {
+      "number": 9,
+      "state": "closed",
+      "merged_at": "2099-01-01T00:00:00Z",
+      "head": {
+       "ref": "issue-9-x"
+      }
+     }
+    ]
    }
   ],
   "expect": {
@@ -874,20 +700,21 @@
     "branch": "issue-9-x"
    }
   ],
-  "calls": [
+  "forge_calls": [
    {
-    "argv": [
-     "gh",
-     "api",
-     "--paginate",
-     "repos/o/r/pulls?state=all&per_page=100",
-     "--jq",
-     ".[] | {number, state, merged_at, head: {ref: .head.ref}}"
-    ],
-    "stdin": null,
-    "stdout": "{\"number\": 9, \"state\": \"closed\", \"merged_at\": \"2099-01-01T00:00:00Z\", \"head\": {\"ref\": \"issue-9-x\"}}\n",
-    "stderr": "",
-    "code": 0
+    "method": "GET",
+    "path": "/repos/o/r/pulls?state=all&per_page=100",
+    "status": 200,
+    "body": [
+     {
+      "number": 9,
+      "state": "closed",
+      "merged_at": "2099-01-01T00:00:00Z",
+      "head": {
+       "ref": "issue-9-x"
+      }
+     }
+    ]
    }
   ],
   "expect": {
@@ -915,24 +742,490 @@
     "branch": "issue-9-x"
    }
   ],
-  "calls": [
+  "forge_calls": [
    {
-    "argv": [
-     "gh",
-     "api",
-     "--paginate",
-     "repos/o/r/pulls?state=all&per_page=100",
-     "--jq",
-     ".[] | {number, state, merged_at, head: {ref: .head.ref}}"
-    ],
-    "stdin": null,
-    "stdout": "{\"number\": 9, \"state\": \"open\", \"merged_at\": null, \"head\": {\"ref\": \"issue-9-x\"}}\n",
-    "stderr": "",
-    "code": 0
+    "method": "GET",
+    "path": "/repos/o/r/pulls?state=all&per_page=100",
+    "status": 200,
+    "body": [
+     {
+      "number": 9,
+      "state": "open",
+      "merged_at": null,
+      "head": {
+       "ref": "issue-9-x"
+      }
+     }
+    ]
    }
   ],
   "expect": {
    "stdout": "| worktree | branch | PR state | unpushed commits | dirty tree | last session | live? | verdict |\n|---|---|---|---|---|---|---|---|\n| issue-9-x | issue-9-x | #9 open | 1 | no | — | — | ⚠️ 1 local commits — check |\n\ncleanup: no — ⚠️ 1 local commits — check\n",
+   "stderr": "",
+   "code": 1
+  }
+ },
+ {
+  "name": "a closing PR that is merged counts as a merged head of the issue",
+  "argv": [
+   "--issue",
+   "9"
+  ],
+  "config": "[forge]\nkind = \"github\"\nrepo = \"o/r\"\n",
+  "env": {},
+  "setup": [
+   {
+    "repo": ".",
+    "branch": "main"
+   },
+   {
+    "worktree": ".claude/worktrees/fix-y",
+    "of": ".",
+    "branch": "fix-y"
+   }
+  ],
+  "forge_calls": [
+   {
+    "method": "GET",
+    "path": "/repos/o/r/pulls?state=all&per_page=100",
+    "status": 200,
+    "body": [
+     {
+      "number": 12,
+      "state": "closed",
+      "merged_at": "2099-01-01T00:00:00Z",
+      "head": {
+       "ref": "fix-y"
+      }
+     }
+    ]
+   },
+   {
+    "method": "POST",
+    "path": "/graphql",
+    "status": 200,
+    "body": {
+     "data": {
+      "repository": {
+       "issue": {
+        "closedByPullRequestsReferences": {
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": [
+          {
+           "number": 12,
+           "headRefName": "fix-y",
+           "merged": true,
+           "isCrossRepository": false,
+           "repository": {
+            "nameWithOwner": "o/r"
+           },
+           "body": ""
+          }
+         ]
+        },
+        "timelineItems": {
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": []
+        }
+       }
+      }
+     }
+    }
+   }
+  ],
+  "expect": {
+   "stdout": "branch: fix-y\n| worktree | branch | PR state | unpushed commits | dirty tree | last session | live? | verdict |\n|---|---|---|---|---|---|---|---|\n| fix-y | fix-y | #12 merged | 1 | no | — | — | ✅ safe to remove [squash-merge] |\n\ncleanup: yes\ngit worktree remove \"{root}/.claude/worktrees/fix-y\"\ngit branch -D fix-y\n",
+   "stderr": "",
+   "code": 0
+  }
+ },
+ {
+  "name": "a merged PR that only refers to the issue counts with a Refs line",
+  "argv": [
+   "--issue",
+   "9"
+  ],
+  "config": "[forge]\nkind = \"github\"\nrepo = \"o/r\"\n",
+  "env": {},
+  "setup": [
+   {
+    "repo": ".",
+    "branch": "main"
+   },
+   {
+    "worktree": ".claude/worktrees/fix-y",
+    "of": ".",
+    "branch": "fix-y"
+   }
+  ],
+  "forge_calls": [
+   {
+    "method": "GET",
+    "path": "/repos/o/r/pulls?state=all&per_page=100",
+    "status": 200,
+    "body": [
+     {
+      "number": 12,
+      "state": "closed",
+      "merged_at": "2099-01-01T00:00:00Z",
+      "head": {
+       "ref": "fix-y"
+      }
+     }
+    ]
+   },
+   {
+    "method": "POST",
+    "path": "/graphql",
+    "status": 200,
+    "body": {
+     "data": {
+      "repository": {
+       "issue": {
+        "closedByPullRequestsReferences": {
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": []
+        },
+        "timelineItems": {
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": [
+          {
+           "source": {
+            "number": 12,
+            "headRefName": "fix-y",
+            "merged": true,
+            "isCrossRepository": false,
+            "repository": {
+             "nameWithOwner": "o/r"
+            },
+            "body": "Refs #9 — deel 1"
+           }
+          }
+         ]
+        }
+       }
+      }
+     }
+    }
+   }
+  ],
+  "expect": {
+   "stdout": "branch: fix-y\n| worktree | branch | PR state | unpushed commits | dirty tree | last session | live? | verdict |\n|---|---|---|---|---|---|---|---|\n| fix-y | fix-y | #12 merged | 1 | no | — | — | ✅ safe to remove [squash-merge] |\n\ncleanup: yes\ngit worktree remove \"{root}/.claude/worktrees/fix-y\"\ngit branch -D fix-y\n",
+   "stderr": "",
+   "code": 0
+  }
+ },
+ {
+  "name": "a merged PR from a fork is not a merged head of the issue",
+  "argv": [
+   "--issue",
+   "9"
+  ],
+  "config": "[forge]\nkind = \"github\"\nrepo = \"o/r\"\n",
+  "env": {},
+  "setup": [
+   {
+    "repo": ".",
+    "branch": "main"
+   },
+   {
+    "worktree": ".claude/worktrees/fix-y",
+    "of": ".",
+    "branch": "fix-y"
+   }
+  ],
+  "forge_calls": [
+   {
+    "method": "GET",
+    "path": "/repos/o/r/pulls?state=all&per_page=100",
+    "status": 200,
+    "body": [
+     {
+      "number": 12,
+      "state": "closed",
+      "merged_at": "2099-01-01T00:00:00Z",
+      "head": {
+       "ref": "fix-y"
+      }
+     }
+    ]
+   },
+   {
+    "method": "POST",
+    "path": "/graphql",
+    "status": 200,
+    "body": {
+     "data": {
+      "repository": {
+       "issue": {
+        "closedByPullRequestsReferences": {
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": [
+          {
+           "number": 12,
+           "headRefName": "fix-y",
+           "merged": true,
+           "isCrossRepository": true,
+           "repository": {
+            "nameWithOwner": "o/r"
+           },
+           "body": ""
+          }
+         ]
+        },
+        "timelineItems": {
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": [
+          {
+           "source": {
+            "number": 13,
+            "headRefName": "fix-y",
+            "merged": true,
+            "isCrossRepository": true,
+            "repository": {
+             "nameWithOwner": "o/r"
+            },
+            "body": "Refs #9"
+           }
+          }
+         ]
+        }
+       }
+      }
+     }
+    }
+   }
+  ],
+  "expect": {
+   "stdout": "cleanup: no — no branches found for issue #9\n",
+   "stderr": "",
+   "code": 0
+  }
+ },
+ {
+  "name": "a merged PR that only mentions the issue is not a merged head of it",
+  "argv": [
+   "--issue",
+   "9"
+  ],
+  "config": "[forge]\nkind = \"github\"\nrepo = \"o/r\"\n",
+  "env": {},
+  "setup": [
+   {
+    "repo": ".",
+    "branch": "main"
+   },
+   {
+    "worktree": ".claude/worktrees/fix-y",
+    "of": ".",
+    "branch": "fix-y"
+   }
+  ],
+  "forge_calls": [
+   {
+    "method": "GET",
+    "path": "/repos/o/r/pulls?state=all&per_page=100",
+    "status": 200,
+    "body": [
+     {
+      "number": 12,
+      "state": "closed",
+      "merged_at": "2099-01-01T00:00:00Z",
+      "head": {
+       "ref": "fix-y"
+      }
+     }
+    ]
+   },
+   {
+    "method": "POST",
+    "path": "/graphql",
+    "status": 200,
+    "body": {
+     "data": {
+      "repository": {
+       "issue": {
+        "closedByPullRequestsReferences": {
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": []
+        },
+        "timelineItems": {
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": [
+          {
+           "source": {
+            "number": 12,
+            "headRefName": "fix-y",
+            "merged": true,
+            "isCrossRepository": false,
+            "repository": {
+             "nameWithOwner": "o/r"
+            },
+            "body": "zie #9"
+           }
+          }
+         ]
+        }
+       }
+      }
+     }
+    }
+   }
+  ],
+  "expect": {
+   "stdout": "cleanup: no — no branches found for issue #9\n",
+   "stderr": "",
+   "code": 0
+  }
+ },
+ {
+  "name": "a merged PR of another repo is not a merged head of the issue",
+  "argv": [
+   "--issue",
+   "9"
+  ],
+  "config": "[forge]\nkind = \"github\"\nrepo = \"o/r\"\n",
+  "env": {},
+  "setup": [
+   {
+    "repo": ".",
+    "branch": "main"
+   },
+   {
+    "worktree": ".claude/worktrees/fix-y",
+    "of": ".",
+    "branch": "fix-y"
+   }
+  ],
+  "forge_calls": [
+   {
+    "method": "GET",
+    "path": "/repos/o/r/pulls?state=all&per_page=100",
+    "status": 200,
+    "body": [
+     {
+      "number": 12,
+      "state": "closed",
+      "merged_at": "2099-01-01T00:00:00Z",
+      "head": {
+       "ref": "fix-y"
+      }
+     }
+    ]
+   },
+   {
+    "method": "POST",
+    "path": "/graphql",
+    "status": 200,
+    "body": {
+     "data": {
+      "repository": {
+       "issue": {
+        "closedByPullRequestsReferences": {
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": [
+          {
+           "number": 12,
+           "headRefName": "fix-y",
+           "merged": true,
+           "isCrossRepository": false,
+           "repository": {
+            "nameWithOwner": "x/fork"
+           },
+           "body": ""
+          }
+         ]
+        },
+        "timelineItems": {
+         "pageInfo": {
+          "hasNextPage": false
+         },
+         "nodes": []
+        }
+       }
+      }
+     }
+    }
+   }
+  ],
+  "expect": {
+   "stdout": "cleanup: no — no branches found for issue #9\n",
+   "stderr": "",
+   "code": 0
+  }
+ },
+ {
+  "name": "a forge that cannot be read is never read as a merged PR",
+  "argv": [
+   "--only",
+   "issue-9-x"
+  ],
+  "config": "[forge]\nkind = \"github\"\nrepo = \"o/r\"\n",
+  "env": {},
+  "setup": [
+   {
+    "repo": ".",
+    "branch": "main"
+   },
+   {
+    "file": "a.txt",
+    "text": "a"
+   },
+   {
+    "commit": ".",
+    "message": "init"
+   },
+   {
+    "worktree": ".claude/worktrees/issue-9-x",
+    "of": ".",
+    "branch": "issue-9-x"
+   },
+   {
+    "file": ".claude/worktrees/issue-9-x/work.txt",
+    "text": "x"
+   },
+   {
+    "commit": ".claude/worktrees/issue-9-x",
+    "message": "work"
+   },
+   {
+    "bare": "origin.git"
+   },
+   {
+    "origin": ".",
+    "url": "origin.git"
+   }
+  ],
+  "forge_calls": [
+   {
+    "method": "GET",
+    "path": "/repos/o/r/pulls?state=all&per_page=100",
+    "status": 500,
+    "body": {
+     "message": "boom"
+    }
+   }
+  ],
+  "expect": {
+   "stdout": "| worktree | branch | PR state | unpushed commits | dirty tree | last session | live? | verdict |\n|---|---|---|---|---|---|---|---|\n| issue-9-x | issue-9-x | — | 3 | no | — | — | ⚠️ 3 local commits — check |\n\ncleanup: no — ⚠️ 3 local commits — check\n",
    "stderr": "",
    "code": 1
   }
