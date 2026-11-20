@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 )
@@ -14,8 +15,8 @@ const (
 
 // Chain is the part of the loop map this check reads: the chips and the handoffs.
 type Chain struct {
-	Chips    []chip    `json:"chips"`
-	Handoffs []handoff `json:"handoffs"`
+	Chips    []chip
+	Handoffs []handoff
 }
 
 type chip struct {
@@ -40,10 +41,17 @@ type Item struct {
 // parseChain reads loop.json; a missing id, from, to or status is an error, as the original's
 // KeyError was.
 func parseChain(data []byte) (Chain, error) {
-	var c Chain
-	if err := json.Unmarshal(data, &c); err != nil {
+	var raw struct {
+		Chips    *[]chip    `json:"chips"`
+		Handoffs *[]handoff `json:"handoffs"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
 		return Chain{}, err
 	}
+	if raw.Chips == nil || raw.Handoffs == nil {
+		return Chain{}, errors.New("chips and handoffs are both required")
+	}
+	c := Chain{Chips: *raw.Chips, Handoffs: *raw.Handoffs}
 	for i, ch := range c.Chips {
 		if ch.ID == "" || ch.Status == "" {
 			return Chain{}, fmt.Errorf("chip %d has no id or status", i)

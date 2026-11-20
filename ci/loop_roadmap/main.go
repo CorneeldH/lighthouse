@@ -20,6 +20,8 @@
 // Exit 0 is ok, 1 is a verdict, 2 is COULD NOT CHECK (gh failed or the map does not parse) or a
 // usage error. `go run` turns any nonzero exit into 1 and prints `exit status N` on stderr.
 //
+// `--help` prints the usage and exits 0.
+//
 // Differences from the Python original: a reply without closingIssuesReferences is exit 2 with a
 // message; the script that counts as touched is any `ci/loop_roadmap/*.go`.
 package main

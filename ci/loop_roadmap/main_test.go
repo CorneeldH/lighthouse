@@ -77,6 +77,10 @@ func TestRunMainMode(t *testing.T) {
 			"#9: open issue labelled loop on milestone M2 is not on the map (see docs/developer/labels.md)\n", ""},
 		{"broken map", `{not json`, &fakeGH{}, 2, "", "COULD NOT CHECK:"},
 		{"chip without id", `{"chips":[{"status":"works"}],"handoffs":[]}`, &fakeGH{}, 2, "", "COULD NOT CHECK:"},
+		{"no handoffs key", `{"chips":[]}`, &fakeGH{}, 2, "", "COULD NOT CHECK:"},
+		{"no chips key", `{"handoffs":[]}`, &fakeGH{}, 2, "", "COULD NOT CHECK:"},
+		{"empty object", `{}`, &fakeGH{}, 2, "", "COULD NOT CHECK:"},
+		{"null chips", `{"chips":null,"handoffs":[]}`, &fakeGH{}, 2, "", "COULD NOT CHECK:"},
 		{"gh failure", works, &fakeGH{openErr: errors.New("boom")}, 2, "", "COULD NOT CHECK: boom\n"},
 	}
 	for _, tt := range tests {
