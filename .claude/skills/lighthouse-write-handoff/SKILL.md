@@ -78,11 +78,11 @@ for an external event, such as red CI or a merge. Workflow step 4 applies this r
    **If the anchor is a spec or plan path and the issue number is known** (from the prompt or the
    branch `issue-<nr>-…`), post it on the issue,
    also in controller mode (if present) before the `🤖 heading:kind_handoff`,
-   with `dangerouslyDisableSandbox: true` (Go TLS of `gh`):
+   with `dangerouslyDisableSandbox: true`:
    ```bash
    cd <worktree> && lighthouse post-artefact <nr> <absolute path>
    ```
-   The command is idempotent: without a content change it posts nothing. If GitHub does not know
+   The command is idempotent: without a content change it posts nothing. If the forge does not know
    the commit yet, it pushes the branch itself (only without an open PR, never the default
    branch). Put the `artefact:` line in the block under `State:`.
    An error does not block the handoff: the error line goes under `Watch out:`.
