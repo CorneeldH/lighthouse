@@ -28,7 +28,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/imports-gate-go.sh",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/go-imports-gate.sh",
             "timeout": 120
           }
         ]

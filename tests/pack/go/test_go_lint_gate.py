@@ -321,7 +321,7 @@ def test_registered_on_stop():
     ]
     assert entries == [
         ("", "${CLAUDE_PLUGIN_ROOT}/hooks/go-lint-gate.sh", 120),
-        ("", "${CLAUDE_PLUGIN_ROOT}/hooks/imports-gate-go.sh", 120),
+        ("", "${CLAUDE_PLUGIN_ROOT}/hooks/go-imports-gate.sh", 120),
     ]
 
 

@@ -1,6 +1,6 @@
-"""The canary of `imports-gate-python.sh` (#383): the real hook, the real binary and the real
+"""The canary of `python-imports-gate.sh` (#383): the real hook, the real binary and the real
 deptry against a small repository per blocking rule ID, in a fake environment (a venv with fake
-`.dist-info`s, offline). The same fixtures, `testdata/imports-gate-python/<id>/` and
+`.dist-info`s, offline). The same fixtures, `testdata/python-imports-gate/<id>/` and
 `testdata/extra/<name>/`, are run by the Go canary (internal/importcheck/canary_test.go).
 
 Without `uv` the tests skip locally and fail when `CI` is set: a canary that skips on CI reads
@@ -23,8 +23,8 @@ pytestmark = pytest.mark.usefixtures("lighthouse_bin")
 
 ROOT = Path(__file__).resolve().parents[3]
 DATA = Path(__file__).parent / "testdata"
-HOOK = ROOT / "pack" / "python" / "hooks" / "imports-gate-python.sh"
-RULE_FIXTURES = sorted(p.name for p in (DATA / "imports-gate-python").iterdir() if p.is_dir())
+HOOK = ROOT / "pack" / "python" / "hooks" / "python-imports-gate.sh"
+RULE_FIXTURES = sorted(p.name for p in (DATA / "python-imports-gate").iterdir() if p.is_dir())
 EXTRA_FIXTURES = sorted(
     p.name
     for p in (DATA / "extra").iterdir()
@@ -131,7 +131,7 @@ def _canary(tmp_path: Path, fixture: Path) -> None:
 
 @pytest.mark.parametrize("rule", RULE_FIXTURES)
 def test_blocks_on_each_rule(tmp_path, rule):
-    fixture = DATA / "imports-gate-python" / rule
+    fixture = DATA / "python-imports-gate" / rule
     assert json.loads((fixture / "canary.json").read_text())["id"] == rule
     _canary(tmp_path, fixture)
 

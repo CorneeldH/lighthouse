@@ -20,9 +20,9 @@ def test_imports_gate_hook_and_instructions():
     assert list(hooks) == ["Stop"]
     (entry,) = hooks["Stop"]
     (hook,) = entry["hooks"]
-    assert hook["command"] == "${CLAUDE_PLUGIN_ROOT}/hooks/imports-gate-node.sh"
+    assert hook["command"] == "${CLAUDE_PLUGIN_ROOT}/hooks/node-imports-gate.sh"
     assert hook["timeout"] == 120
-    assert (NODE / "hooks" / "imports-gate-node.sh").exists()
+    assert (NODE / "hooks" / "node-imports-gate.sh").exists()
     assert "lighthouse imports check" in (NODE / "instructions" / "AGENTS.md").read_text()
 
 

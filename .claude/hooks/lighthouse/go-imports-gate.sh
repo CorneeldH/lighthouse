@@ -1,7 +1,7 @@
 #!/bin/bash
-# lighthouse: node@dev
-# Stop hook: run `lighthouse imports check --lang node` at the end of a turn, so an import
-# of a package that no manifest declares is caught while the session still has the
+# lighthouse: go@dev
+# Stop hook: run `lighthouse imports check --lang go` at the end of a turn, so an import
+# of a module that no manifest declares is caught while the session still has the
 # context (#383).
 # Matcher: "" — runs on every Stop.
 # Blocking: exit 2 with the findings on stderr sends them back to the model, which fixes them
@@ -15,15 +15,15 @@
 #
 # Could not check (no jq, git or lighthouse, a lighthouse too old to know `imports`, exit 3,
 # exit 1 without a finding line, a turn whose checkout cannot be determined): exit 0 with a
-# systemMessage `imports-gate-node: COULD NOT CHECK — <reason>`. Blocking there would keep the session
+# systemMessage `go-imports-gate: COULD NOT CHECK — <reason>`. Blocking there would keep the session
 # from stopping; staying silent would read as "all imports declared".
 # While the usage alarm is up (#74) the gate says `not checked` and exits 0: the usage gate has
 # the session wrap up. `[imports] check = false` turns the hook off, without a message.
 
-HOOK_NAME="imports-gate-node"
+HOOK_NAME="go-imports-gate"
 # The rule IDs the gate blocks on; the rest of its findings are advice. Read by the config
 # audit, so keep this one plain assignment line.
-BLOCKING_RULES="unlisted"
+BLOCKING_RULES="indirect-import,missing-require"
 
 # A message to the user, without blocking. Without jq the JSON is built by hand:
 # the reasons below hold no quote or backslash.
@@ -75,11 +75,10 @@ if ALARM_LINE=$(lighthouse usage alarm 2>/dev/null) \
   report "$HOOK_NAME: not checked — the usage alarm is up until ${ALARM_LOCAL//_/ }; the usage gate wraps up this session."
 fi
 
-# What makes a path a Node path (fnmatch on the path relative to the root; `*` also
+# What makes a path a Go path (fnmatch on the path relative to the root; `*` also
 # matches `/`).
 PATTERNS=(
-  '*.js' '*.jsx' '*.ts' '*.tsx' '*.mjs' '*.cjs' package.json
-  package-lock.json pnpm-lock.yaml yarn.lock bun.lock bun.lockb
+  '*.go' go.mod go.sum
 )
 MATCH_ARGS=()
 for pattern in "${PATTERNS[@]}"; do
@@ -105,7 +104,7 @@ check_root() (
   cd "$ROOT" 2>/dev/null || cannot_check "the checkout $ROOT does not exist."
 
   if [ "$VERDICT" = "untouched" ]; then
-    report "$HOOK_NAME: not checked — the turn touched no Node path in $ROOT."
+    report "$HOOK_NAME: not checked — the turn touched no Go path in $ROOT."
   fi
 
   # One --files per touched path; none (doubt) checks the whole checkout. A path is read as
@@ -119,7 +118,7 @@ check_root() (
 $ROOTS
 EOF
 
-  OUT=$(LIGHTHOUSE_REPO_ROOT="$ROOT" lighthouse imports check --lang node "${FILES_ARGS[@]}" 2>"$ERR_FILE")
+  OUT=$(LIGHTHOUSE_REPO_ROOT="$ROOT" lighthouse imports check --lang go "${FILES_ARGS[@]}" 2>"$ERR_FILE")
   RC=$?
   ERR=$(cat "$ERR_FILE")
 

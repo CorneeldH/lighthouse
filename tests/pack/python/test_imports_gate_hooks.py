@@ -1,4 +1,4 @@
-"""The Stop hooks `imports-gate-{python,go,node}.sh` (#383): one per pack, each running
+"""The Stop hooks `{python,go,node}-imports-gate.sh` (#383): one per pack, each running
 `lighthouse imports check --lang <lang>` for the checkouts a turn touched a relevant path in.
 
 The hooks are bash. These tests run each as a subprocess in a real git repository, with a fake
@@ -56,7 +56,7 @@ exit 0
 
 
 def _hook(pack: str, root: Path) -> Path:
-    return root / ".claude" / "hooks" / "lighthouse" / f"imports-gate-{pack}.sh"
+    return root / ".claude" / "hooks" / "lighthouse" / f"{pack}-imports-gate.sh"
 
 
 def _repo(tmp_path: Path, pack: str, toml_extra: str = "") -> Path:
@@ -66,7 +66,7 @@ def _repo(tmp_path: Path, pack: str, toml_extra: str = "") -> Path:
     from tests.pack._testkit import MINIMAL_TOML
 
     hooks = install_pack(pack, root, MINIMAL_TOML + toml_extra)
-    assert (hooks / f"imports-gate-{pack}.sh").exists()
+    assert (hooks / f"{pack}-imports-gate.sh").exists()
     # The installation is committed, so only what the turn writes counts as touched.
     git(root, "add", "-A")
     git(root, "commit", "-q", "-m", "install")
@@ -138,7 +138,7 @@ def test_blocks_on_exit1_with_finding(tmp_path, pack):
 def test_could_not_check_on_exit3(tmp_path, pack):
     env = _env(tmp_path, STUB_RC="3", STUB_ERR="imports: COULD NOT CHECK — no tool")
     result = _run(_repo(tmp_path, pack), pack, env)
-    assert f"imports-gate-{pack}: COULD NOT CHECK — " in _message(result)
+    assert f"{pack}-imports-gate: COULD NOT CHECK — " in _message(result)
 
 
 @pytest.mark.parametrize("pack", PACKS)
@@ -217,6 +217,6 @@ def test_doubt_checks_the_whole_checkout_without_files(tmp_path, pack):
 
 @pytest.mark.parametrize("pack", PACKS)
 def test_blocking_rules_declared(pack):
-    script = Path(__file__).resolve().parents[3] / "pack" / pack / "hooks" / f"imports-gate-{pack}.sh"
+    script = Path(__file__).resolve().parents[3] / "pack" / pack / "hooks" / f"{pack}-imports-gate.sh"
     lines = [l for l in script.read_text().splitlines() if l.startswith("BLOCKING_RULES=")]
     assert lines == [f'BLOCKING_RULES="{CASES[pack][2]}"']

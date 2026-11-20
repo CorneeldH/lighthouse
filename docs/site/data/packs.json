@@ -152,7 +152,7 @@
         "when": "when the session stops"
       },
       {
-        "name": "imports-gate-go",
+        "name": "go-imports-gate",
         "events": [
           "Stop"
         ],
@@ -173,7 +173,7 @@
     "workflows": [],
     "hooks": [
       {
-        "name": "imports-gate-node",
+        "name": "node-imports-gate",
         "events": [
           "Stop"
         ],
@@ -212,7 +212,7 @@
         "when": "when the session stops"
       },
       {
-        "name": "imports-gate-python",
+        "name": "python-imports-gate",
         "events": [
           "Stop"
         ],

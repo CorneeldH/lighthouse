@@ -28,7 +28,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/imports-gate-python.sh",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/python-imports-gate.sh",
             "timeout": 120
           }
         ]

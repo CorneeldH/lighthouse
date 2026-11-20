@@ -1,5 +1,4 @@
 #!/bin/bash
-# lighthouse: go@dev
 # Stop hook: run `lighthouse imports check --lang go` at the end of a turn, so an import
 # of a module that no manifest declares is caught while the session still has the
 # context (#383).
@@ -15,12 +14,12 @@
 #
 # Could not check (no jq, git or lighthouse, a lighthouse too old to know `imports`, exit 3,
 # exit 1 without a finding line, a turn whose checkout cannot be determined): exit 0 with a
-# systemMessage `imports-gate-go: COULD NOT CHECK — <reason>`. Blocking there would keep the session
+# systemMessage `go-imports-gate: COULD NOT CHECK — <reason>`. Blocking there would keep the session
 # from stopping; staying silent would read as "all imports declared".
 # While the usage alarm is up (#74) the gate says `not checked` and exits 0: the usage gate has
 # the session wrap up. `[imports] check = false` turns the hook off, without a message.
 
-HOOK_NAME="imports-gate-go"
+HOOK_NAME="go-imports-gate"
 # The rule IDs the gate blocks on; the rest of its findings are advice. Read by the config
 # audit, so keep this one plain assignment line.
 BLOCKING_RULES="indirect-import,missing-require"

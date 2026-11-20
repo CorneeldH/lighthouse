@@ -125,9 +125,9 @@ func TestLanguagePacks(t *testing.T) {
 			name: "go",
 			files: []string{
 				".agents/skills/lighthouse-go-standard/SKILL.md",
+				".claude/hooks/lighthouse/go-imports-gate.sh",
 				".claude/hooks/lighthouse/go-lint-gate.sh",
 				".claude/hooks/lighthouse/gofmt-check.sh",
-				".claude/hooks/lighthouse/imports-gate-go.sh",
 				".claude/skills/lighthouse-go-standard/SKILL.md",
 			},
 			detect: true,
@@ -138,7 +138,7 @@ func TestLanguagePacks(t *testing.T) {
 		{
 			name: "node",
 			files: []string{
-				".claude/hooks/lighthouse/imports-gate-node.sh",
+				".claude/hooks/lighthouse/node-imports-gate.sh",
 			},
 			detect: true,
 			tools:  "node,npm,npx",
@@ -149,7 +149,7 @@ func TestLanguagePacks(t *testing.T) {
 			name: "python",
 			files: []string{
 				".agents/skills/lighthouse-python-standard/SKILL.md",
-				".claude/hooks/lighthouse/imports-gate-python.sh",
+				".claude/hooks/lighthouse/python-imports-gate.sh",
 				".claude/hooks/lighthouse/ruff-format-check.sh",
 				".claude/hooks/lighthouse/ty-gate.sh",
 				".claude/skills/lighthouse-python-standard/SKILL.md",

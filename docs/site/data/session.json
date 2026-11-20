@@ -681,7 +681,7 @@
       "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/hooks/permissioncheck.go"
     },
     {
-      "id": "imports-gate-python",
+      "id": "python-imports-gate",
       "phase": "stop",
       "row": 9,
       "kind": "hook",
@@ -690,26 +690,26 @@
         "Stop"
       ],
       "matcher": "",
-      "command": "imports-gate-python.sh",
+      "command": "python-imports-gate.sh",
       "effects": [
         "blocks",
         "warns"
       ],
-      "label": "imports-gate-python",
+      "label": "python-imports-gate",
       "what": "Runs `lighthouse imports check --lang python` at the end of a turn that touched Python, to catch an import of a third-party package that no manifest declares.",
       "how": [
         "It checks only a checkout in which the turn touched a .py file, pyproject.toml or uv.lock, and passes the touched paths with `--files`.",
         "A finding (DEP001 or DEP003) blocks with exit 2 and sends it back to the model.",
         "While the usage alarm is up, it says `not checked` and exits 0; `[imports] check = false` turns it off.",
-        "When it cannot check (exit 3, no finding line, a lighthouse too old to know `imports`), it exits 0 with a systemMessage `imports-gate-python: COULD NOT CHECK`."
+        "When it cannot check (exit 3, no finding line, a lighthouse too old to know `imports`), it exits 0 with a systemMessage `python-imports-gate: COULD NOT CHECK`."
       ],
       "when": "At the end of each turn.",
       "without": "An import of a third-party package that no manifest declares is found only later, in CI or on another machine.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/python/hooks/imports-gate-python.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/python/hooks/python-imports-gate.sh"
     },
     {
-      "id": "imports-gate-go",
+      "id": "go-imports-gate",
       "phase": "stop",
       "row": 11,
       "kind": "hook",
@@ -718,26 +718,26 @@
         "Stop"
       ],
       "matcher": "",
-      "command": "imports-gate-go.sh",
+      "command": "go-imports-gate.sh",
       "effects": [
         "blocks",
         "warns"
       ],
-      "label": "imports-gate-go",
+      "label": "go-imports-gate",
       "what": "Runs `lighthouse imports check --lang go` at the end of a turn that touched Go, to catch an import of a module that no manifest declares.",
       "how": [
         "It checks only a checkout in which the turn touched a .go file, go.mod or go.sum, and passes the touched paths with `--files`.",
         "A finding (indirect-import or missing-require) blocks with exit 2 and sends it back to the model.",
         "While the usage alarm is up, it says `not checked` and exits 0; `[imports] check = false` turns it off.",
-        "When it cannot check (exit 3, no finding line, a lighthouse too old to know `imports`), it exits 0 with a systemMessage `imports-gate-go: COULD NOT CHECK`."
+        "When it cannot check (exit 3, no finding line, a lighthouse too old to know `imports`), it exits 0 with a systemMessage `go-imports-gate: COULD NOT CHECK`."
       ],
       "when": "At the end of each turn.",
       "without": "An import of a module that no manifest declares is found only later, in CI or on another machine.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/go/hooks/imports-gate-go.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/go/hooks/go-imports-gate.sh"
     },
     {
-      "id": "imports-gate-node",
+      "id": "node-imports-gate",
       "phase": "stop",
       "row": 13,
       "kind": "hook",
@@ -746,23 +746,23 @@
         "Stop"
       ],
       "matcher": "",
-      "command": "imports-gate-node.sh",
+      "command": "node-imports-gate.sh",
       "effects": [
         "blocks",
         "warns"
       ],
-      "label": "imports-gate-node",
+      "label": "node-imports-gate",
       "what": "Runs `lighthouse imports check --lang node` at the end of a turn that touched Node, to catch an import of a package that no manifest declares.",
       "how": [
         "It checks only a checkout in which the turn touched a JavaScript or TypeScript file, package.json or a lockfile, and passes the touched paths with `--files`.",
         "A finding (unlisted) blocks with exit 2 and sends it back to the model.",
         "While the usage alarm is up, it says `not checked` and exits 0; `[imports] check = false` turns it off.",
-        "When it cannot check (exit 3, no finding line, a lighthouse too old to know `imports`), it exits 0 with a systemMessage `imports-gate-node: COULD NOT CHECK`."
+        "When it cannot check (exit 3, no finding line, a lighthouse too old to know `imports`), it exits 0 with a systemMessage `node-imports-gate: COULD NOT CHECK`."
       ],
       "when": "At the end of each turn.",
       "without": "An import of a package that no manifest declares is found only later, in CI or on another machine.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/node/hooks/imports-gate-node.sh"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/node/hooks/node-imports-gate.sh"
     }
   ],
   "handoffs": [],
@@ -782,9 +782,9 @@
         "bash-write-check-post",
         "go-lint-gate",
         "ty-gate",
-        "imports-gate-python",
-        "imports-gate-go",
-        "imports-gate-node"
+        "python-imports-gate",
+        "go-imports-gate",
+        "node-imports-gate"
       ]
     },
     {

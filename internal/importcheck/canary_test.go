@@ -49,22 +49,22 @@ func runMain(m *testing.M) int {
 
 // hooks are the three gates; the Python fixtures live with the Python tests, the only place.
 var hooks = map[string]string{
-	"python": "tests/pack/python/testdata/imports-gate-python",
-	"go":     "internal/importcheck/testdata/imports-gate-go",
-	"node":   "internal/importcheck/testdata/imports-gate-node",
+	"python": "tests/pack/python/testdata/python-imports-gate",
+	"go":     "internal/importcheck/testdata/go-imports-gate",
+	"node":   "internal/importcheck/testdata/node-imports-gate",
 }
 
 var blockingRulesRe = regexp.MustCompile(`(?m)^BLOCKING_RULES="([^"]*)"$`)
 
 func blockingRules(t *testing.T, hook string) []string {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join(repoRoot, "pack", hook, "hooks", "imports-gate-"+hook+".sh"))
+	data, err := os.ReadFile(filepath.Join(repoRoot, "pack", hook, "hooks", hook+"-imports-gate.sh"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	m := blockingRulesRe.FindSubmatch(data)
 	if m == nil {
-		t.Fatalf("imports-gate-%s.sh has no BLOCKING_RULES line", hook)
+		t.Fatalf("%s-imports-gate.sh has no BLOCKING_RULES line", hook)
 	}
 	ids := strings.Split(string(m[1]), ",")
 	sort.Strings(ids)
@@ -217,7 +217,7 @@ func runHook(t *testing.T, repo string, c canaryCase) (stdout, stderr string, co
 		t.Fatal(err)
 	}
 
-	cmd := exec.Command(filepath.Join(repoRoot, "pack", c.Hook, "hooks", "imports-gate-"+c.Hook+".sh"))
+	cmd := exec.Command(filepath.Join(repoRoot, "pack", c.Hook, "hooks", c.Hook+"-imports-gate.sh"))
 	cmd.Dir = repo
 	cmd.Stdin = strings.NewReader(string(payload))
 	cmd.Env = append(os.Environ(),

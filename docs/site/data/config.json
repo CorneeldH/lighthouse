@@ -934,11 +934,11 @@
               "readers": [
                 "internal/cli/imports.go",
                 "internal/commitgate/imports.go",
-                "pack/go/hooks/imports-gate-go.sh",
+                "pack/go/hooks/go-imports-gate.sh",
                 "pack/go/instructions/AGENTS.md",
-                "pack/node/hooks/imports-gate-node.sh",
+                "pack/node/hooks/node-imports-gate.sh",
                 "pack/node/instructions/AGENTS.md",
-                "pack/python/hooks/imports-gate-python.sh",
+                "pack/python/hooks/python-imports-gate.sh",
                 "pack/python/instructions/AGENTS.md"
               ]
             }

@@ -415,7 +415,7 @@ def test_registered_at_stop():
     ]
     assert entries == [
         ("", "${CLAUDE_PLUGIN_ROOT}/hooks/ty-gate.sh", 60),
-        ("", "${CLAUDE_PLUGIN_ROOT}/hooks/imports-gate-python.sh", 120),
+        ("", "${CLAUDE_PLUGIN_ROOT}/hooks/python-imports-gate.sh", 120),
     ]
 
 
