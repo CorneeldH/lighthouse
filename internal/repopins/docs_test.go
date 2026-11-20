@@ -476,12 +476,27 @@ func TestAgentGuideClaudeMDImportIsAsked(t *testing.T) {
 	}
 }
 
-// A production change that fails this test: renaming a release asset (or SHA256SUMS) in the
-// release build without the download blocks of the agent guide following.
+// A production change that fails this test: changing the goos/goarch matrix or the
+// `lighthouse_${GOOS}_${GOARCH}` asset name in .github/workflows/build.yml without the download
+// blocks of the agent guide following. Windows has no block (the guide sends it to WSL).
 func TestAgentGuideBinaryBlocks(t *testing.T) {
 	const download = "https://github.com/CorneeldH/lighthouse/releases/latest/download/"
+	build := read(t, ".github", "workflows", "build.yml")
+	if !strings.Contains(build, `NAME="lighthouse_${GOOS}_${GOARCH}"`) {
+		t.Fatal("build.yml no longer names its assets lighthouse_${GOOS}_${GOARCH}")
+	}
+	pairs := regexp.MustCompile(`- goos: (\w+)\n\s+goarch: (\w+)`).FindAllStringSubmatch(build, -1)
+	if len(pairs) < 4 {
+		t.Fatalf("build.yml matrix has %d goos/goarch pairs, want at least 4", len(pairs))
+	}
+	assets := []string{"SHA256SUMS"}
+	for _, p := range pairs {
+		if p[1] != "windows" {
+			assets = append(assets, "lighthouse_"+p[1]+"_"+p[2])
+		}
+	}
 	text := agentSection(t, "Install the binary")
-	for _, asset := range []string{"SHA256SUMS", "lighthouse_linux_amd64", "lighthouse_linux_arm64", "lighthouse_darwin_arm64", "lighthouse_darwin_amd64"} {
+	for _, asset := range assets {
 		if !strings.Contains(text, download+asset) {
 			t.Errorf("Install the binary lacks %s%s", download, asset)
 		}
