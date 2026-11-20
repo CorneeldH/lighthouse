@@ -117,13 +117,13 @@ voorbeelden; de uitvoerder bevestigt elk door hem uit te voeren.
 
 | Bestand (defs/gevallen) | Bestemming | Reden | Mutatie (N) |
 |---|---|---|---|
-| `test_site_assets` (4/4) | N: `every_local_asset_carries_the_site_version`, `version_follows_the_assets_not_the_tokens`, `asset_refs_misses_no_local_asset`. Weg — gedekt: `asset_refs_finds_the_map_import_in_loop` (door `asset_refs_misses_no_local_asset`) | Cache-coherentie voor bezoekers | `?v=` weghalen uit één `<script src>` in `loop.html` |
+| `test_site_assets` (4/4) | N: `every_local_asset_carries_the_site_version`, `version_follows_the_assets_not_the_tokens`, `asset_refs_misses_no_local_asset`. Weg — beschermt niets: `asset_refs_finds_the_map_import_in_loop` (zelfde mutatie faalt in `asset_refs_misses_no_local_asset`) | Cache-coherentie voor bezoekers | `?v=` weghalen uit één `<script src>` in `loop.html` |
 | `test_site_pages` (9/19) | N: `site_links_resolve`, `pages_name_the_local_server_command` (6→1), `component_never_writes_html_from_data`, `page_lang_is_english`, `map_pages_link_back_to_index` (6→1), `index_lists_the_six_maps` (alleen links + `id="maps"`). Serve-regel van `guide_links_to_the_maps` gaat in `serve.test.mjs`. Weg — beschermt niets: `guide_links_to_the_maps` (rest), `guide_links_to_the_config_map`, `guide_links_to_the_repo_map`; de issuenummer- en "roadmap"/"chain"-asserts van `index_lists_the_six_maps` | Links die er zijn, controleert `site_links_resolve`; de rest pint woorden of is een "staat er niet meer"-check | `innerHTML` in `map.js`; `hidden` op `#serve-hint`; `lang="nl"` |
 | `test_site_loop` (22/37) | N: de zes kaartcontroles over fixture + datakaarten, `site_and_roadmap_agree_on_a_planned_item` (alleen sitehelft; roadmaphelft is `TestProblems` van #361), de 8 fixture-tests (1 tabel), `works_handoffs_follow_the_handoff_table` (zonder de letterlijke set), `the_old_chain_page_forwards_to_the_loop`. Weg — beschermt niets: `phases_are_the_seven_of_the_chain`, `coverage_flags_a_removed_skill` (test een helper die geen controle gebruikt), `chain_routes_are_the_known_ones`, `the_chain_map_is_called_the_loop`, `route_labels_carry_no_gate_number` | Data-integriteit van de kaart vs `pack/`; de rest pint inhoud | onbekende `status` in `loop.json`; chip van alle routes halen |
 | `test_site_config` (34/34) | N: alles behalve één; de 14 `problems_flag_*` als 1 tabel. Weg — beschermt niets: `every_table_has_a_title_and_what_it_is_for` | Kaart vs Go-schema en lezers; JS van de configuratiepagina | sleutel uit `config.json` halen; default in `config.json` wijzigen; padding in `configToml` |
 | `test_site_download` (13/30) | N: `choose_platform` (13→1), `release_label` (6→1), `site_assets_are_the_built_assets`, `every_platform_has_an_install_block`, `checksum_comes_before_the_binary_is_used`, `bash_blocks_stop_on_the_first_failure`, `windows_block_works_in_windows_powershell`, `install_page_works_without_js`, `install_page_names_the_other_routes`. Weg — beschermt niets: `install_page_title`, `footer_links`, `landing_page_puts_the_why_first`, `old_download_link_redirects_to_the_install_page` (leest de bron) | Platformkeuze en veilige installatieblokken | `MacIntel` → `null` in `choosePlatform`; `&&` weg in een blok |
 | `test_site_packs` (6/6) | N: alle 6 (zonder `len(core["hooks"]) == 10`) | `packs.json` vs `pack/` | hook toevoegen aan `hooks.json` zonder `packs.json` |
-| `test_site_reference` (5/5) | N: 4. Weg — gedekt: `reference_page_has_the_four_anchors` (door de linkcontroles van `repo`/`system`, die `reference.html#skills` enz. volgen) | Referentie vs `pack/` | `referenceEntries` laat agents weg |
+| `test_site_reference` (5/5) | N: 4. Weg — beschermt niets: `reference_page_has_the_four_anchors` (de linkcontroles van `repo`/`system` volgen `reference.html#skills` enz.) | Referentie vs `pack/` | `referenceEntries` laat agents weg |
 | `test_site_repo` (28/28) | N: 5 kaartcontroles, 9 mutatietests (1 tabel), 9 `repoEntries`-tests. Weg — beschermt niets: `links_have_an_accessible_name`, `workstation_heading_is_beside_the_repo_not_under_it` (lezen de bron), `page_has_no_legend_or_panel_and_explains_below`, `notes_say_only_the_first_init_proposes_host_toml`, `notes_count_the_manifest_per_unit_not_per_file` (proza) | Kaart vs `places.golden`; JS van de repopagina | rij uit `repo.json`; `"unknown mode"`-throw weg |
 | `test_site_route_follow` (7/8) | N: 6. Weg — beschermt niets: `commit_test_gate_on_the_session_map_switches_to_red_tests` | `routeWith` | `routeWith` negeert de volgorde |
 | `test_site_sorts` (6/19) | N: 5 (`glyph_follows_the_sort_not_the_trigger` 12→1). Weg — beschermt niets: `how_it_starts_legend_is_gone` (negatief na verwijdering) | Sortentabel, thema's | glyph in `SORTS` wijzigen; token uit één thema in `map.css` |
@@ -131,7 +131,7 @@ voorbeelden; de uitvoerder bevestigt elk door hem uit te voeren.
 | `test_site_system` (19/23) | N: 4 controles (fixture + echt), 12 fixture-tests (1 tabel). Weg — beschermt niets: `init_step_is_the_command_in_the_repo`, `init_step_links_to_the_repo_map`, `bring_groups_in_order` | `system.json` houdt samen | `href` naar niet-bestaande pagina |
 
 Totaal: 168 → naar Node 138 functies, na tabelvorming ongeveer 93 `test()`-aanroepen; weg 30
-(beschermt niets 28, gedekt 2); naar Go 0.
+(beschermt niets 30, gedekt 0); naar Go 0.
 
 ---
 
@@ -197,13 +197,13 @@ Totaal: 168 → naar Node 138 functies, na tabelvorming ongeveer 93 `test()`-aan
 - Wijzigen: `docs/site/test/helpers.mjs` (`lighthouseBin`)
 - Verwijderen: `tests/test_site_config.py`
 
-**Interfaces (produceert):** `lighthouseBin(): string` — `process.env.LIGHTHOUSE_BIN` als die bestaat;
+**Interfaces (produceert):** `lighthouseBin(): string` — `process.env.LIGHTHOUSE_BIN` als die gezet en niet leeg is (een lege waarde telt als niet gezet);
 anders één keer `go build -o <mkdtemp>/lighthouse ./cmd/lighthouse` in `ROOT`; faalt met
 `"lighthouse binary needed: set LIGHTHOUSE_BIN or install Go (no silent skip)"` als dat niet lukt.
 
 - [ ] **Stap 1:** classificatiezin (`config` + `cli-output`).
 - [ ] **Stap 2:** port `config_problems` en zijn helpers. Het schema komt uit `JSON.parse(execFileSync(lighthouseBin(), ["config", "--schema"]))` (velden `schema`, `defaults`, `base_keys`, `host_keys`, `option_prefixes`, `languages`). `usage_defaults` blijft de regex op `internal/usage/config.go` (`tests/test_site_config.py:68-80`), met zijn test op de letterlijke waarden 85/95/300. `repo_files` via `git ls-files pack internal cmd`. `NOT_READERS`, `INDIRECT_READERS`, `UNREAD`, `SET`, `REQUIRED` letterlijk. De twee monkeypatch-tests worden rijen in de tabeltest die een kopie van de uitzonderingsmap doorgeven: `configProblems(data, root, {notReaders, indirectReaders})`.
-- [ ] **Stap 3:** `toml_block_sets_exactly_the_defaults`: geen TOML-bibliotheek. Parse de uitvoer van `m.configToml` met een parser voor precies dit subset: `[a.b]`-koppen, `# …`-commentaar, lege regels, `key = <waarde>` waarin `<waarde>` met `JSON.parse` leest (strings, getallen, booleans, string-arrays zijn geldige JSON). Een andere regel is een fout.
+- [ ] **Stap 3:** `toml_block_sets_exactly_the_defaults`: geen TOML-bibliotheek. Parse de uitvoer van `m.configToml` met een parser voor precies dit subset: `[a.b]`-koppen, `# …`-commentaar, lege regels, `key = <waarde>` waarin `<waarde>` met `JSON.parse` leest (strings, getallen, booleans, string-arrays zijn geldige JSON). Een andere regel is een fout. Precies: trim elke regel; begint hij na het trimmen met `#`, dan is het commentaar (ook de ingesprongen vervolgregels van `configToml`); bij een `key = waarde`-regel haal je eerst een afsluitend `\s+#.*$` weg dat buiten een string valt, daarna `JSON.parse`. Inline tabellen (`{ P0 = … }`) staan alleen op uitgecommentarieerde regels.
 - [ ] **Stap 4:** `toml_examples_pass_the_config_reader`: schrijf de ongecommentarieerde tekst naar `mkdtemp`, draai `lighthouseBin() config <key>` met `LIGHTHOUSE_TOML`/`LIGHTHOUSE_HOST_TOML`; verwachte uitvoer letterlijk uit `tests/test_site_config.py:461-475`.
 - [ ] **Stap 5:** `node --test "docs/site/test/*.test.mjs"`. Verwacht: PASS. Zonder `LIGHTHOUSE_BIN` duurt de eerste run langer (build).
 - [ ] **Stap 6:** mutatiecontrole: `test_gate.slots` uit `config.json`; default van `labels.needs_hands` in `config.json`; een sleutel toevoegen aan `internal/config` zonder de kaart (of de `--schema`-uitvoer in gedachten); padding in `configToml`; `isDefault` omdraaien in `configEntries`. Elk: FAIL; terugzetten.
@@ -261,7 +261,7 @@ anders één keer `go build -o <mkdtemp>/lighthouse ./cmd/lighthouse` in `ROOT`;
 - Aanmaken: `changelog.d/issue-369-site-node-test.md`
 
 - [ ] **Stap 1:** job `site` in `ci.yml`, na `no-python`, in de vorm van die job: `runs-on: ubuntu-latest`, `timeout-minutes: 10`, checkout met `persist-credentials: false`, `actions/setup-go` (`go-version-file: go.mod`) en `actions/setup-node` (`node-version-file: web/.nvmrc`, geen npm-cache), SHA-pins gekopieerd van de bestaande jobs, `go build -o "$RUNNER_TEMP/lighthouse" ./cmd/lighthouse`, dan `node --test "docs/site/test/*.test.mjs"` met `env: LIGHTHOUSE_BIN: ${{ runner.temp }}/lighthouse`. Geen `needs`/`if` (beslissing e); een commentaarregel erboven zegt waarom.
-- [ ] **Stap 2:** `lighthouse.toml`: voeg `&& node --test \"docs/site/test/*.test.mjs\"` toe aan het eind van `[test_gate] command` en één zin aan het commentaar erboven.
+- [ ] **Stap 2:** `lighthouse.toml`: voeg aan het eind van `[test_gate] command` een stap toe die alleen draait als de commit `docs/site/`, `pack/`, `internal/`, `cmd/`, `tools/` of `.github/workflows/build.yml` raakt (lees `$LIGHTHOUSE_GATE_FILES`, `grep -q`), en die bij een ontbrekende `node` met exit 3 stopt (`command -v node >/dev/null || exit 3`, dat `unchecked_exit_codes` dekt), anders `node --test \"docs/site/test/*.test.mjs\"`; één zin aan het commentaar erboven. Werk de verwachte string in `tests/test_dogfood.py:187-193` (`test_test_gate_uses_selectors`) bij naar het nieuwe commando.
 - [ ] **Stap 3:** `tests/test_agent_guide.py`: alleen als hij bestaat, de zeven namen inlinen (beslissing a). `uv run pytest -q tests/test_agent_guide.py` PASS.
 - [ ] **Stap 4:** verwijder de vier resterende Python-bestanden. `internal/initcmd/places_test.go:172`: `(tests/test_site_repo.py)` wordt `(repo.test.mjs of the site tests)`.
 - [ ] **Stap 5:** fragment `changelog.d/issue-369-site-node-test.md`:
@@ -273,9 +273,9 @@ anders één keer `go build -o <mkdtemp>/lighthouse ./cmd/lighthouse` in `ROOT`;
   ```
 - [ ] **Stap 6:** verificatie, alle vier groen:
   - `LIGHTHOUSE_BIN= node --test "docs/site/test/*.test.mjs"`; de `# tests`-regel telt minstens 90.
-  - `uv run pytest -q tests/test_ci_domains_pin.py tests/test_domains.py` (job `site` breekt geen pin: `test_pr_runs_no_macos_job` wil `ubuntu-latest`).
+  - `uv run pytest -q tests/test_ci_domains_pin.py tests/test_domains.py tests/test_dogfood.py` (job `site` breekt geen pin: `test_pr_runs_no_macos_job` wil `ubuntu-latest`).
   - `go test ./internal/initcmd/ ./internal/kpi/ ./tools/servedir/`
-  - `git ls-files 'tests/test_site_*' tests/_site_node.py tests/site_version.py tests/fixtures/site` is leeg; `grep -rn "test_site_\|_site_node\|site_version" --include=*.py --include=*.go --include=*.toml --include=*.yml . | grep -v planning/` is leeg.
+  - `git ls-files 'tests/test_site_*' tests/_site_node.py tests/site_version.py tests/fixtures/site` is leeg; `grep -rn "test_site_\|_site_node\|site_version" --include=*.py --include=*.go --include=*.toml --include=*.yml . | grep -v planning/` is leeg, op `tests/test_domains.py:240` na (een synthetisch pad voor `classify`, geen verwijzing; blijft staan).
 - [ ] **Stap 7:** commit `ci(site): job site draait node --test, pytest-sitetests weg (#369)`.
 
 ## Afhankelijkheden en botsingen
