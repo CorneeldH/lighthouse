@@ -302,3 +302,10 @@ Via `lighthouse forge issue comment 407 --body-file <scratch>/407.md`: AC 1 en 2
 - [ ] **Step 5: PR**
 
 Via `/lighthouse-write-pr` (schrijft ook het fragment in `changelog.d/`), body `Closes #407` met bewijstabel.
+
+## Open na review
+
+Ronde 3 haalde de rondegrens met deze punten open. Ze zijn aanvaard als `accepted_open`;
+de volgende fase of de PR-review weegt ze opnieuw.
+
+- **r3-f1** (MAJOR, Task 3 Step 4, Task 5 Step 4 (new pytest run)): The diff adds `uv run pytest -q tests/pack/test_script_cases.py -k post_artefact` to Task 3 Step 4 and `... -k worktree_audit` to Task 5 Step 4, with 'Verwacht: PASS'. The parametrize ids are `<dir>::<case name>` (test_script_cases.py:39) and the dirs are `post-artefact` and `worktree-audit`, with a hyphen. The underscore filter does not match them. `-k post_artefact` collects only 3 of the 38 post-artefact cases: the few whose case name happens to contain `test_post_artefact_...`. `-k worktree_audit` collects 0 cases.
