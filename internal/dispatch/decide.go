@@ -456,7 +456,8 @@ func orphan(history []runs.Row, hs []parsed, base Action) (Action, bool) {
 // (pusherQuestion) is its Question. A Done closes, then a Handoff that does
 // not end the chain, then a Question, then the run's own Returned (posted by an earlier tick
 // whose stop failed); after those the measurement rules of runCtx.outcome. Every action it
-// returns closes row. The third result, only from fixPR, is the fix-pr start the close stands
+// returns closes row, except a KindRepost (rule 14a): decideIssue keeps the row open for that.
+// The third result, only from fixPR, is the fix-pr start the close stands
 // for; settle starts nothing itself.
 func settle(in Input, repo RepoInput, it Item, row runs.Row, hs []parsed, base Action) (Action, bool, *fixPRStart) {
 	var done, question, returned bool
@@ -926,8 +927,8 @@ func (c runCtx) noHandoff() (Action, bool) {
 
 // postFailed is rule 14a: a session Done without a PR, Handoff or Question whose own post of
 // that Handoff or Question failed, with a note from the run's start on. While the run is younger
-// than max_runtime (or max_runtime is 0), the controller posts the note's body itself and the run
-// stays open: the next tick sees the post and closes the run by the Handoff or Question rule,
+// than max_runtime (or max_runtime is 0) and the note is for the run's own issue, the controller
+// posts the note's body itself and the run stays open: the next tick sees the post and closes the run by the Handoff or Question rule,
 // after which this rule no longer holds. Otherwise the run goes back with the note's error.
 func (c runCtx) postFailed() (Action, bool) {
 	n := c.state.PostFailed
@@ -939,7 +940,7 @@ func (c runCtx) postFailed() (Action, bool) {
 		return c.returned("reason_post_failed_unreadable", ""), true
 	}
 	limit := time.Duration(c.in.MaxRuntime)
-	if repostable(n.Body, c.it.Issue, c.row.SessionID) && (limit <= 0 || c.age() < limit) {
+	if n.Issue == c.it.Issue && repostable(n.Body, c.it.Issue, c.row.SessionID) && (limit <= 0 || c.age() < limit) {
 		a := c.base
 		a.Kind, a.RunID, a.Body = KindRepost, c.row.ID, n.Body
 		return a, true
