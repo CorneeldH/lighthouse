@@ -101,8 +101,6 @@ func unitTexts(t *testing.T, unit string) map[string]string {
 }
 
 // section returns the text from start up to end; it fails when either is missing.
-//
-//nolint:unused // used by the tests of later tasks of #367
 func section(t *testing.T, body, start, end string) string {
 	t.Helper()
 	_, rest, ok := strings.Cut(body, start)
