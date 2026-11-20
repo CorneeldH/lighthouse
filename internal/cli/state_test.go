@@ -11,7 +11,6 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/dispatch"
 	"github.com/CorneeldH/lighthouse/internal/forge/forgetest"
-	"github.com/CorneeldH/lighthouse/internal/issuestate"
 	"github.com/CorneeldH/lighthouse/internal/store"
 )
 
@@ -59,7 +58,14 @@ func runState(t *testing.T, srv *forgetest.Server, runs []dispatch.RunView, args
 	t.Helper()
 	o := newForgeOpener(func(string) string { return "" }, srv.URL())
 	o.ghToken = func() string { return "gh-token" }
-	cmd := newStateCommandWith(o, func(context.Context, string) ([]dispatch.RunView, error) { return runs, nil })
+	cmd := newStateCommandWith(o, func(_ context.Context, repo string, nr int) (string, error) {
+		for _, r := range runs {
+			if r.Repo == repo && r.Issue == nr {
+				return r.State, nil
+			}
+		}
+		return "", nil
+	})
 	cmd.SilenceUsage, cmd.SilenceErrors = true, true // as under the root command
 	var out, errOut bytes.Buffer
 	cmd.SetOut(&out)
@@ -232,7 +238,7 @@ func TestStateRunsOpenNextToAServe(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = st.Close() }()
-	if _, err := issuestate.DBRuns(path)(context.Background(), "Owner/repo"); err != nil {
-		t.Errorf("DBRuns next to an open store: %v", err)
+	if _, err := dbRunState(path)(context.Background(), "Owner/repo", 7); err != nil {
+		t.Errorf("dbRunState next to an open store: %v", err)
 	}
 }

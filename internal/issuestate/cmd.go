@@ -9,12 +9,10 @@ import (
 	"strings"
 
 	"github.com/CorneeldH/lighthouse/internal/config"
-	"github.com/CorneeldH/lighthouse/internal/dispatch"
 	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/procrun"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
-	"github.com/CorneeldH/lighthouse/internal/store"
 )
 
 // usage is the line for a wrong number or key; exit 1, without a forge call.
@@ -24,32 +22,13 @@ const usage = "state: usage: lighthouse state show <nr> | label <nr> <key> | ret
 const boardSkipped = "board: skipped — no [forge.board] configured"
 
 // Env is what the `lighthouse state` commands need from the outside: the config loader (exit 2
-// on its error), the opener of the repo's forge and the reader of the runs of a repo.
+// on its error), the opener of the repo's forge and the run state of an issue. Run gives the
+// state of the run of issue nr in repo ("open", "parked", or "" without a run); it lives outside
+// this package, so the tick in internal/dispatch can import issuestate without a cycle.
 type Env struct {
 	Config func() (*config.Config, error)
 	Forge  func(ctx context.Context) (forge.Forge, error)
-	Runs   func(ctx context.Context, repo string) ([]dispatch.RunView, error)
-}
-
-// DBRuns reads the runs of a repo from the database at path, without the serve lock, so it works
-// next to a running `lighthouse serve`. An empty path is store.DefaultPath.
-func DBRuns(path string) func(ctx context.Context, repo string) ([]dispatch.RunView, error) {
-	return func(ctx context.Context, repo string) ([]dispatch.RunView, error) {
-		p := path
-		if p == "" {
-			var err error
-			if p, err = store.DefaultPath(); err != nil {
-				return nil, err
-			}
-		}
-		st, err := store.OpenShared(ctx, p)
-		if err != nil {
-			return nil, err
-		}
-		defer func() { _ = st.Close() }()
-		runs, _, err := dispatch.LoadView(ctx, st.DB, []string{repo})
-		return runs, err
-	}
+	Run    func(ctx context.Context, repo string, nr int) (string, error)
 }
 
 // target is what every command reads before it calls the forge.
@@ -148,15 +127,8 @@ func (t target) input(ctx context.Context, env Env, nr int) (Input, error) {
 		return Input{}, err
 	}
 	in.OpenQuestion = protocol.Classify(comments).State == protocol.StateQuestion
-	runs, err := env.Runs(ctx, t.cfg.Repo)
-	if err != nil {
+	if in.Run, err = env.Run(ctx, t.cfg.Repo, nr); err != nil {
 		return Input{}, err
-	}
-	for _, r := range runs {
-		if r.Issue == nr {
-			in.Run = r.State
-			break
-		}
 	}
 	return in, nil
 }
