@@ -87,9 +87,10 @@ func withoutExemptions(rel, text string) string {
 		// The classify cases name the paths they classify; no file is read.
 		return strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(text,
 			"docs/", ""), "changelog.d", ""), "ci/literal-", "")
-	case strings.HasPrefix(rel, "ci/loop_roadmap/") && strings.HasSuffix(rel, ".go") && !strings.HasSuffix(rel, "_test.go"):
-		// Production code names docs/site/data/loop.json and docs/developer/labels.md as output
-		// text. loop-roadmap.yml runs on every PR, so the exemption hides no missed CI run.
+	case strings.HasPrefix(rel, "ci/loop_roadmap/") && strings.HasSuffix(rel, ".go"):
+		// The code and its tests name docs/site/data/loop.json and docs/developer/labels.md as
+		// output text; the tests read a temporary map, never the repository's. loop-roadmap.yml
+		// runs on every PR, so the exemption hides no missed CI run.
 		return strings.ReplaceAll(text, "docs/", "")
 	case rel == "internal/telemetry/record_test.go":
 		// docs/... are RecordPath values of a finding in test data: strings stored in a row.
