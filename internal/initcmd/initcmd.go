@@ -179,7 +179,7 @@ func execute(o Options) error {
 	if lookup == nil {
 		lookup = (&goLookup{root: root, tables: tables}).lookup
 	}
-	desired = fillWorkflows(o.Err, desired, lookup, func(rel string) ([]byte, bool) {
+	desired = fillWorkflows(o.Err, dropWorkflows(desired, kind), lookup, func(rel string) ([]byte, bool) {
 		if _, listed := m.Lookup(packs.Key{Kind: packs.KindFile, Path: rel}); !listed {
 			return nil, false
 		}
