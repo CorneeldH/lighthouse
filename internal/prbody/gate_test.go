@@ -199,7 +199,7 @@ func TestScopeOtherGitRepo(t *testing.T) {
 	eq(t, "decision", decision(t, pcAt(filepath.Join(base, "ander")), project, "Acme/widgets"), "skip")
 }
 
-// forgeWorktree is forge_worktree of _testkit.py: a worktree of a separate bare clone of project,
+// forgeWorktree is forge_worktree of tests/pack/python/_testkit.py: a worktree of a separate bare clone of project,
 // with its own git-common-dir; the clone's origin is originURL.
 func forgeWorktree(t *testing.T, project, base, originURL string) string {
 	t.Helper()
