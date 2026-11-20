@@ -137,7 +137,7 @@ Voeg in `internal/scriptcase` en `tests/pack/_testkit.py` (naast `fake_gh_bin`) 
 
 - [ ] **Step 4: Run, verwacht groen**
 
-Run: `go test -race ./internal/postartefact/... ./internal/cli/...` en `uv run pytest -q tests/pack/test_script_cases.py -k post_artefact`
+Run: `go test -race ./internal/postartefact/... ./internal/cli/...` en `uv run pytest -q tests/pack/test_script_cases.py -k post-artefact` (38 cases verzameld, geen gedeselecteerd; minus wat met reden vervalt)
 Verwacht: PASS. Controle: `git grep -n '"gh"' internal/postartefact internal/cli/postartefact.go` geeft geen hit.
 
 - [ ] **Step 5: Commit**
@@ -209,7 +209,7 @@ Verwacht: FAIL.
 
 - [ ] **Step 4: Run, verwacht groen**
 
-Run: `go test -race ./internal/worktreeaudit/... ./internal/cli/...` en `uv run pytest -q tests/pack/test_script_cases.py -k worktree_audit`
+Run: `go test -race ./internal/worktreeaudit/... ./internal/cli/...` en `uv run pytest -q tests/pack/test_script_cases.py -k worktree-audit` (24 cases verzameld; exit 5 "no tests collected" is rood)
 Verwacht: PASS; `git grep -n '"gh"' internal/worktreeaudit` geeft geen hit.
 
 - [ ] **Step 5: Commit**
