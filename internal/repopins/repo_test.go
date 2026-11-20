@@ -110,6 +110,8 @@ func runBlocks(text string) []string {
 	return out
 }
 
+// A production change that fails this test: repoRoot stops returning the directory with go.mod when called from a
+// subdirectory, so every file-reading test reads the wrong tree.
 func TestRepoRootFindsGoMod(t *testing.T) {
 	root := repoRoot(t)
 	if _, err := os.Stat(filepath.Join(root, "go.mod")); err != nil {
@@ -121,6 +123,8 @@ func TestRepoRootFindsGoMod(t *testing.T) {
 	}
 }
 
+// A production change that fails this test: jobs merges two jobs into one or lets a job run on into a top-level key, so a
+// per-job assertion reads another job's lines.
 func TestJobsSplitsAWorkflowPerJob(t *testing.T) {
 	text := "name: x\non: push\njobs:\n  a:\n    runs-on: u\n    steps:\n      - run: one\n\n  b:\n    # note\n    steps:\n      - run: two\nother: 1\n"
 	got := jobs(text)
@@ -135,6 +139,8 @@ func TestJobsSplitsAWorkflowPerJob(t *testing.T) {
 	}
 }
 
+// A production change that fails this test: runBlocks drops the `run: |` block form or an inline `run:` value, so a workflow
+// command assertion passes on text that was never read.
 func TestRunBlocksReturnsInlineAndBlockValues(t *testing.T) {
 	text := "    steps:\n      - run: go build ./...\n      - name: x\n        run: |\n          echo a\n\n          echo b\n      - uses: y\n"
 	got := runBlocks(text)

@@ -169,6 +169,7 @@ func TestUIJobBuildsInAReadOnlyJob(t *testing.T) {
 		for _, s := range steps(ui) {
 			if regexp.MustCompile(`(?m)^\s+(?:- )?run: ` + regexp.QuoteMeta(command) + `\s*$`).MatchString(s) {
 				own = s
+				break
 			}
 		}
 		if own == "" {
@@ -350,6 +351,7 @@ func TestWebJobChecksDistOfTheTag(t *testing.T) {
 		for _, s := range steps(web) {
 			if regexp.MustCompile(`(?m)^\s+run: ` + regexp.QuoteMeta(command) + `\s*$`).MatchString(s) {
 				own = s
+				break
 			}
 		}
 		if own == "" {

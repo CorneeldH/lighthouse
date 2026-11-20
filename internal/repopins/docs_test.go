@@ -476,9 +476,9 @@ func TestAgentGuideClaudeMDImportIsAsked(t *testing.T) {
 	}
 }
 
-// A production change that fails this test: changing the goos/goarch matrix or the
-// `lighthouse_${GOOS}_${GOARCH}` asset name in .github/workflows/build.yml without the download
-// blocks of the agent guide following. Windows has no block (the guide sends it to WSL).
+// A production change that fails this test: adding a goos/goarch matrix entry, or renaming the
+// `lighthouse_${GOOS}_${GOARCH}` asset name, in .github/workflows/build.yml without the download
+// blocks of the agent guide following (removing an entry stays green). Windows has no block (the guide sends it to WSL).
 func TestAgentGuideBinaryBlocks(t *testing.T) {
 	const download = "https://github.com/CorneeldH/lighthouse/releases/latest/download/"
 	build := read(t, ".github", "workflows", "build.yml")

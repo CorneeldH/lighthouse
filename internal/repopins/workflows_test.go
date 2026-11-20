@@ -90,10 +90,14 @@ func TestEveryCIGoTestHasGateFlags(t *testing.T) {
 	assertGateFlags(t, "ci.yml")
 }
 
+// A production change that fails this test: a `go test` step in macos.yml loses one of the gate flags, so macOS runs a
+// weaker test than the commit gate.
 func TestEveryMacOSGoTestHasGateFlags(t *testing.T) {
 	assertGateFlags(t, "macos.yml")
 }
 
+// A production change that fails this test: the `CGO_ENABLED=0 go build ./...` step in ci.yml is removed or loses its
+// `CGO_ENABLED=0` prefix.
 func TestCIBuildsWithoutCGO(t *testing.T) {
 	runs := runBlocks(read(t, ".github", "workflows", "ci.yml"))
 	for _, run := range runs {
@@ -119,12 +123,15 @@ func TestCICrossBuildsReleaseTargets(t *testing.T) {
 	}
 }
 
+// A production change that fails this test: pages.yml publishes another folder than `path: docs/site`.
 func TestPagesPublishesTheSiteFolder(t *testing.T) {
 	if !hasLine(read(t, ".github", "workflows", "pages.yml"), "path: docs/site") {
 		t.Error("pages.yml does not publish `path: docs/site`")
 	}
 }
 
+// A production change that fails this test: pages.yml drops the `main` branch, the `docs/site/**` path filter or
+// `workflow_dispatch`, so a site change no longer reaches Pages.
 func TestPagesRunsOnSiteChangesOnMain(t *testing.T) {
 	text := read(t, ".github", "workflows", "pages.yml")
 	for _, want := range []string{"branches: [main]", `- "docs/site/**"`, "workflow_dispatch:"} {
@@ -134,6 +141,8 @@ func TestPagesRunsOnSiteChangesOnMain(t *testing.T) {
 	}
 }
 
+// A production change that fails this test: pages.yml drops `pages: write`, `id-token: write` or `contents: read`, so the deploy
+// fails at run time.
 func TestPagesPermissions(t *testing.T) {
 	text := read(t, ".github", "workflows", "pages.yml")
 	for _, want := range []string{"pages: write", "id-token: write", "contents: read"} {
