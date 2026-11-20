@@ -19,3 +19,6 @@ web/test-results/
 web/playwright-report/
 /internal/web/dist/*
 !/internal/web/dist/.gitkeep
+
+# Local scratch (copied chats and the like), never in git.
+/tmp/

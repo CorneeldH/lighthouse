@@ -13,6 +13,7 @@ import (
 func client(t *testing.T) (*forgetest.Server, *forge.GitHub) {
 	t.Helper()
 	srv := forgetest.New(t)
+	srv.ProjectID = testRepo.Board.ProjectID
 	c := forge.New("o/r", "secret-token")
 	c.BaseURL = srv.URL()
 	c.Board = testRepo.Board

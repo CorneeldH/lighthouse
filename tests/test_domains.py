@@ -114,6 +114,13 @@ def _without_default_paths(rel: str, text: str) -> str:
         # that run on every PR or release (the message of `check` points at docs/releasing.md); its
         # tests read only testdata/ and temporary repos.
         return text.replace("changelog.d", "").replace("docs/releasing.md", "")
+    if rel == "internal/telemetry/record_test.go":
+        # docs/… are RecordPath values of a finding in test data: strings stored in a row, never read from this repo.
+        return text.replace("docs/", "")
+    if rel.startswith("internal/scheduled/reflect/"):
+        # docs/developer/reflect is the output_dir of the reflect job: a path inside the target
+        # repo of the job (a temp repo in tests), never this repo's docs.
+        return text.replace("docs/", "")
     return text
 
 

@@ -126,7 +126,7 @@
       "mode": "start",
       "command": "/lighthouse-close-issue 7",
       "prompt": "/lighthouse-close-issue 7 (issue #7, controller-run)",
-      "branch": "issue-7-bouw-de-keten",
+      "branch": "closecheck/issue-7-pr-12",
       "language": "nl"
     }
   ]

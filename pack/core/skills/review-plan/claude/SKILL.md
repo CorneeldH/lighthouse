@@ -156,12 +156,11 @@ From the `**Spec:**` line of the plan:
 Issue as spec — the reviewer has no GitHub, so the body goes along as a file:
 
 ```bash
-R=$(lighthouse config forge.repo) || exit 2
-gh api "repos/$R/issues/<N>" --jq .body > <ATTEMPT>/issue-<N>.md
+lighthouse forge issue view <N> --field body > <ATTEMPT>/issue-<N>.md
 date -u +%Y-%m-%dT%H:%M:%SZ
 ```
 
-`gh` always with `dangerouslyDisableSandbox: true`. Note the time: it goes as
+`lighthouse forge` always with `dangerouslyDisableSandbox: true`. Note the time: it goes as
 `--issue-fetched-at` into the record (step 9).
 
 ### 5. Dispatch a round — in the background
@@ -204,7 +203,7 @@ git diff --no-index <ATTEMPT>/round-<n-1>.snapshot.md <plan> > <ATTEMPT>/round-<
 
 `git diff --no-index` exits 1 when there is a difference; that is no error. If a finding got
 `spec` in the previous round, fetch the issue body again to `<ATTEMPT>/issue-<N>.md` before the
-dispatch (the same `gh api` line as step 4) — otherwise the verifier does not see the spec side
+dispatch (the same `lighthouse forge issue view` line as step 4) — otherwise the verifier does not see the spec side
 of the fix.
 
 Then dispatch the verifier: the subagent from *Opus dispatch* (at the bottom), with

@@ -42,7 +42,8 @@ type NewPR struct {
 	Draft                              bool
 }
 
-// Change is a pull request or merge request. State is open, closed or merged.
+// Change is a pull request or merge request. State is open, closed or merged. Mergeable is
+// always mergeable, conflicting or unknown.
 type Change struct {
 	Number                   int
 	Title, Body, State       string
@@ -51,6 +52,8 @@ type Change struct {
 	URL                      string
 	CreatedAt                time.Time
 	Author, HeadRef, BaseRef string
+	Draft                    bool
+	Mergeable                string
 }
 
 // APIRequest is a raw call to the forge API. Path is relative to the API root; on GitHub
@@ -145,7 +148,6 @@ func (c *GitHub) CreateIssue(ctx context.Context, in NewIssue) (Issue, error) {
 	if _, err := c.do(ctx, http.MethodPost, c.repoURL("/issues"), body, &it); err != nil {
 		return Issue{}, err
 	}
-	c.remember(it)
 	return it.issue(), nil
 }
 
@@ -257,7 +259,6 @@ func (c *GitHub) issuePages(ctx context.Context, url string) ([]Issue, error) {
 			if it.PullRequest != nil {
 				continue
 			}
-			c.remember(it)
 			out = append(out, it.issue())
 		}
 		url = next
@@ -271,6 +272,8 @@ type ghPull struct {
 	Title     string       `json:"title"`
 	Body      string       `json:"body"`
 	State     string       `json:"state"`
+	Draft     bool         `json:"draft"`
+	Mergeable *bool        `json:"mergeable"` // null while GitHub computes it
 	HTMLURL   string       `json:"html_url"`
 	CreatedAt time.Time    `json:"created_at"`
 	MergedAt  *time.Time   `json:"merged_at"`
@@ -291,7 +294,10 @@ type ghPull struct {
 
 func (p ghPull) change() Change {
 	out := Change{Number: p.Number, Title: p.Title, Body: p.Body, State: p.State, URL: p.HTMLURL,
-		CreatedAt: p.CreatedAt, HeadRef: p.Head.Ref, BaseRef: p.Base.Ref}
+		CreatedAt: p.CreatedAt, HeadRef: p.Head.Ref, BaseRef: p.Base.Ref, Draft: p.Draft, Mergeable: "unknown"}
+	if p.Mergeable != nil {
+		out.Mergeable = map[bool]string{true: "mergeable", false: "conflicting"}[*p.Mergeable]
+	}
 	if p.MergedAt != nil {
 		out.State = "merged"
 	}
@@ -355,6 +361,11 @@ func (c *GitHub) Change(ctx context.Context, number int) (Change, error) {
 		return Change{}, err
 	}
 	return p.change(), nil
+}
+
+// ChangeComments lists the comments of a pull request; GitHub keeps those as issue comments.
+func (c *GitHub) ChangeComments(ctx context.Context, number int) ([]protocol.Comment, error) {
+	return c.Comments(ctx, number)
 }
 
 // CreateChangeComment comments on a pull request; GitHub keeps those as issue comments.

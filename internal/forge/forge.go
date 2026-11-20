@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -18,6 +19,9 @@ var ErrIssueNotFound = errors.New("issue not found")
 
 // ErrReportUnsupported is the answer of a forge that cannot yet list the periods of lighthouse report.
 var ErrReportUnsupported = errors.New("lighthouse report is not supported on this forge yet")
+
+// ErrNoJobLog means a job has no log (any more): JobLog wraps it, on every forge.
+var ErrNoJobLog = errors.New("no log for job")
 
 // Forge is one repository on a forge: its issues, comments, acknowledgements, pull requests
 // and board. A status is an option name of [forge.board] status_options, never an ID.
@@ -74,6 +78,14 @@ type Forge interface {
 	SearchIssues(ctx context.Context, text string) ([]Issue, error)
 	CreateChange(ctx context.Context, in NewPR) (Change, error)
 	Change(ctx context.Context, number int) (Change, error)
+	// ChangeComments lists the comments of pull request number: on GitLab the notes of the merge
+	// request without system notes.
+	ChangeComments(ctx context.Context, number int) ([]protocol.Comment, error)
+	// Checks lists the CI checks of pull request number, newest pipeline only on GitLab. No checks
+	// is an empty list, not an error.
+	Checks(ctx context.Context, number int) ([]Check, error)
+	// JobLog is the raw log of a check's job; an error wrapping ErrNoJobLog when there is none.
+	JobLog(ctx context.Context, job int64) (string, error)
 	CreateChangeComment(ctx context.Context, number int, body string) (protocol.Comment, error)
 	// Milestones lists the milestones in state "open", "closed" or "all"; "" is open.
 	Milestones(ctx context.Context, state string) ([]Milestone, error)
@@ -113,6 +125,10 @@ type Config struct {
 	Board *repoconfig.Board
 	// HTTP is the client for every request; nil is one with a 30 s timeout.
 	HTTP *http.Client
+	// Cache stores the answers of conditional GETs (GitHub only); nil: no cache.
+	Cache CacheStore
+	// CacheLog receives the one line a cache error produces per transport; nil discards it.
+	CacheLog io.Writer
 }
 
 // Open returns the forge of cfg.Kind ("" is github).
@@ -127,6 +143,10 @@ func Open(cfg Config) (Forge, error) {
 			c.HTTP = cfg.HTTP
 		}
 		c.Board = cfg.Board
+		if cfg.Cache != nil {
+			c.cache = cfg.Cache
+			c.HTTP = &http.Client{Timeout: c.HTTP.Timeout, Transport: newCachingTransport(c.HTTP.Transport, cfg.Cache, cfg.CacheLog)}
+		}
 		return c, nil
 	case "gitlab":
 		return newGitLab(cfg), nil

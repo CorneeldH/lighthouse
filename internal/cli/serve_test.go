@@ -20,6 +20,7 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/dispatch"
 	"github.com/CorneeldH/lighthouse/internal/forge"
+	"github.com/CorneeldH/lighthouse/internal/forge/forgetest"
 	"github.com/CorneeldH/lighthouse/internal/forge/gitlabtest"
 	"github.com/CorneeldH/lighthouse/internal/hostconfig"
 	"github.com/CorneeldH/lighthouse/internal/overview"
@@ -210,35 +211,21 @@ func hostToml(t *testing.T, repos ...string) string {
 }
 
 func TestServeCommandFiltersController(t *testing.T) {
-	question := func(n int) string {
-		return fmt.Sprintf(`[{"body":"🤖 Vraag\n\nVraag op %d?","created_at":"2026-10-27T10:00:00Z","html_url":"https://h/%d#c1","reactions":{"rocket":0}}]`, n, n)
+	question := func(n int) []map[string]any {
+		return []map[string]any{{"body": fmt.Sprintf("🤖 Vraag\n\nVraag op %d?", n), "created_at": "2026-10-27T10:00:00Z",
+			"html_url": fmt.Sprintf("https://h/%d#c1", n), "reactions": map[string]any{"rocket": 0}}}
 	}
-	board, err := json.Marshal(map[string]any{"data": map[string]any{"node": map[string]any{"items": map[string]any{
-		"pageInfo": map[string]any{"hasNextPage": false},
-		"nodes": []any{
-			boardNode("I7", "c1", issueContent(7, "zeven", nil)),
-			boardNode("I8", "h1", issueContent(8, "acht", nil)),
-		},
-	}}}})
-	if err != nil {
-		t.Fatal(err)
+	fake := forgetest.New(t)
+	fake.ProjectID = "PVT_x"
+	fake.BoardNodes = []map[string]any{
+		boardNode("I7", "c1", issueContent(7, "zeven", nil)),
+		boardNode("I8", "h1", issueContent(8, "acht", nil)),
 	}
-	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method + " " + r.URL.Path {
-		case "POST /graphql":
-			_, _ = w.Write(board)
-		case "GET /repos/o/r/issues":
-			_, _ = io.WriteString(w, `[{"number":7,"title":"zeven","html_url":"https://h/7","comments":1},`+
-				`{"number":8,"title":"acht","html_url":"https://h/8","comments":1}]`)
-		case "GET /repos/o/r/issues/7/comments":
-			_, _ = io.WriteString(w, question(7))
-		case "GET /repos/o/r/issues/8/comments":
-			_, _ = io.WriteString(w, question(8))
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer fake.Close()
+	fake.Issues = map[int]map[string]any{
+		7: {"number": 7, "title": "zeven", "html_url": "https://h/7", "comments": 1},
+		8: {"number": 8, "title": "acht", "html_url": "https://h/8", "comments": 1},
+	}
+	fake.Comments = map[int][]map[string]any{7: question(7), 8: question(8)}
 
 	t.Setenv("LIGHTHOUSE_HOST_TOML", hostToml(t, repoDir(t, completeRepo)))
 	t.Setenv("GH_TOKEN", "t")
@@ -247,7 +234,7 @@ func TestServeCommandFiltersController(t *testing.T) {
 	errOut := &syncBuf{}
 	root := NewRoot(strings.NewReader(""), io.Discard, errOut)
 	root.SetArgs([]string{"serve", "--addr", "127.0.0.1:0", "--db", filepath.Join(t.TempDir(), "l.db"),
-		"--repo", "o/r", "--forge-url", fake.URL})
+		"--repo", "o/r", "--forge-url", fake.URL()})
 	done := make(chan error, 1)
 	go func() { done <- root.ExecuteContext(ctx) }()
 

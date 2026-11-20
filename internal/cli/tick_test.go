@@ -127,6 +127,7 @@ func fakeForge(t *testing.T, env *tickEnv) *forgetest.Server {
 	t.Helper()
 	srv := forgetest.New(t)
 	srv.Login = "lh-bot"
+	srv.ProjectID = "PVT_x"
 	env.ForgeURL = srv.URL()
 	return srv
 }
@@ -235,8 +236,8 @@ func TestTickNoRepos(t *testing.T) {
 	if err := conn.QueryRow(`PRAGMA user_version`).Scan(&v); err != nil {
 		t.Fatal(err)
 	}
-	if v != 9 {
-		t.Errorf("user_version = %d, want 9", v)
+	if v != 10 {
+		t.Errorf("user_version = %d, want 10", v)
 	}
 }
 
@@ -328,7 +329,7 @@ func TestTickGathersThenSkipsUnchanged(t *testing.T) {
 		if n := srv.Count(comments); n != step.comments {
 			t.Errorf("tick at +%v: comment requests = %d, want %d", step.after, n, step.comments)
 		}
-		if n := srv.Count("Board"); n != step.boards {
+		if n := srv.Count("/users/o/projectsV2/3/items"); n != step.boards {
 			t.Errorf("tick at +%v: Board requests = %d, want %d", step.after, n, step.boards)
 		}
 	}
@@ -342,8 +343,10 @@ func TestTickForgeErrorSkipsLoudlyAndKeepsState(t *testing.T) {
 		setup func(*forgetest.Server)
 		want  string
 	}{
-		"graphql error": {func(s *forgetest.Server) { s.GraphQLErrors = []string{"Could not resolve to a node"} },
-			"Could not resolve to a node"},
+		"board error": {func(s *forgetest.Server) {
+			s.Fail = map[string]int{"GET /users/o/projectsV2/3/items": 502}
+			s.FailMessage = map[string]string{"GET /users/o/projectsV2/3/items": "Could not resolve to a node"}
+		}, "Could not resolve to a node"},
 		"empty token login": {func(s *forgetest.Server) { s.Login = "" }, "token has no login"},
 		// after login(), inside Complete: the permission read of the comment's author fails
 		"permission 500": {func(s *forgetest.Server) {
@@ -458,7 +461,7 @@ func TestTickSkipsDuplicateSlug(t *testing.T) {
 			t.Errorf("line %d = %q, want a skip line for %s naming both paths and o/r", i, lines[i], self)
 		}
 	}
-	if n := srv.Count("Board"); n != 0 {
+	if n := srv.Count("/users/o/projectsV2/3/items"); n != 0 {
 		t.Errorf("Board requests = %d, want 0: no repo with a duplicate slug is gathered", n)
 	}
 }
@@ -1255,7 +1258,8 @@ func TestTickParksBlockedHandoff(t *testing.T) {
 // its own Geparkeerd, posts nothing new and only sets the board.
 func TestTickParkBoardFailureRetries(t *testing.T) {
 	env, db, srv := parkable(t)
-	srv.FailOps = map[string]string{"SetStatus": "boom"}
+	const patch = "PATCH /users/o/projectsV2/3/items/5000" // item I7, project_number 3 of completeRepo
+	srv.Fail, srv.FailMessage = map[string]int{patch: 500}, map[string]string{patch: "boom"}
 	var errOut bytes.Buffer
 	if err := tick(context.Background(), env, db, &errOut); !errors.Is(err, errSilent) {
 		t.Fatalf("tick = %v, want errSilent\n%s", err, errOut.String())
@@ -1270,7 +1274,7 @@ func TestTickParkBoardFailureRetries(t *testing.T) {
 		t.Errorf("tick state = %+v after the failed board change, want none", s)
 	}
 
-	srv.FailOps = nil
+	srv.Fail = nil
 	errOut.Reset()
 	if err := tick(context.Background(), env, db, &errOut); err != nil {
 		t.Fatalf("second tick = %v\n%s", err, errOut.String())
@@ -1781,7 +1785,7 @@ func TestTickSweepSkipsRepoWithoutBoard(t *testing.T) {
 	path := repo945(t)
 	env, db := tickFixture(t, path)
 	srv, w := sweepable(t, &env, "p1", &gitState{ahead: "0"})
-	srv.FailOps = map[string]string{"Board": "board down"}
+	srv.Fail = map[string]int{"GET /users/o/projectsV2/3/items": 502}
 	doneRuns945(t, db)
 
 	var errOut bytes.Buffer

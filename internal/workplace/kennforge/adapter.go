@@ -478,3 +478,16 @@ func (a *Adapter) Discard(ctx context.Context, workspaceID string) error {
 	}
 	return nil
 }
+
+// WorktreeRoot is the directory under home that holds the worktrees kenn-forge makes for the
+// repository slug of kind on host ("": github.com): <home>/.kenn/forge/worktrees/<kind>/<host>/<slug>,
+// with the slug in lower case. Each worktree is a directory <root>/<name> below it.
+func WorktreeRoot(home, kind, host, slug string) string {
+	if kind == "" {
+		kind = "github"
+	}
+	if host == "" {
+		host = "github.com"
+	}
+	return filepath.Join(home, ".kenn", "forge", "worktrees", kind, host, strings.ToLower(slug))
+}

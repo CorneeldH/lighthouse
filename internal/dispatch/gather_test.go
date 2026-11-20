@@ -24,6 +24,7 @@ import (
 )
 
 var testRepo = repoconfig.Repo{Slug: "o/r", Board: &repoconfig.Board{
+	ProjectNumber:   1,
 	ProjectID:       "PVT_1",
 	StatusFieldID:   "F_status",
 	PriorityFieldID: "F_prio",
@@ -175,7 +176,8 @@ func TestPrepareFiltersBoard(t *testing.T) {
 				HeadRef: "issue-1-x", Checks: "SUCCESS", Closes: true}}},
 		{Issue: 4, Title: "Issue", State: "OPEN", ItemID: "I4", Status: "On hold", Priority: "",
 			ItemUpdatedAt: itemAt, IssueUpdatedAt: issueAt,
-			BlockedBy: []forge.Blocker{{Repo: "o/r", Issue: 5, State: "CLOSED", MergedPR: true}}},
+			// #5 is not on the board: its merged closing PR is not looked up.
+			BlockedBy: []forge.Blocker{{Repo: "o/r", Issue: 5, State: "CLOSED", MergedPR: false}}},
 	}
 	if !reflect.DeepEqual(pre.Items, want) {
 		t.Errorf("Items =\n%+v\nwant\n%+v", pre.Items, want)
@@ -312,7 +314,7 @@ func TestPrepareMergesBranchPRs(t *testing.T) {
 	if len(byIssue[6]) != 0 {
 		t.Errorf("issue 6 PRs = %+v, want none", byIssue[6])
 	}
-	if n := srv.Count("BranchPRs"); n != 1 {
+	if n := srv.Count("/repos/o/r/pulls?head=issue-1-x"); n != 1 {
 		t.Errorf("BranchPRs requests = %d, want 1 (issue 4 has no run, issue 6 no branch)", n)
 	}
 	if !reflect.DeepEqual(pre.OpenRuns, open) {
@@ -584,7 +586,7 @@ func TestPrepareReadsThePRsOfScheduledRuns(t *testing.T) {
 	if !reflect.DeepEqual(pre.ScheduledPRs, want) {
 		t.Errorf("ScheduledPRs = %+v\nwant %+v", pre.ScheduledPRs, want)
 	}
-	if n := srv.Count("BranchPRs"); n != 1 {
+	if n := srv.Count("/repos/o/r/pulls?head=" + branch); n != 1 {
 		t.Errorf("BranchPRs requests = %d, want 1", n)
 	}
 	if len(pre.Items) != 1 || len(pre.Items[0].PRs) != 0 {
@@ -789,5 +791,22 @@ func TestGatherPushedSHAFromPusherComment(t *testing.T) {
 	}
 	if pre.Items[0].PRs[0].PushedSHA != "" {
 		t.Error("Complete changed the PRs of Pre")
+	}
+}
+
+// The PRs of an issue stay on its issue branch after a close check: the check's own branch
+// has no PR, so a Refs PR merged on the issue branch must not drop out of the next gather.
+func TestIssueBranchesSkipsCloseCheckAndScheduled(t *testing.T) {
+	history := []runs.Row{
+		{ID: 1, Issue: 7, Branch: "issue-7-eerste"},
+		{ID: 2, Issue: 7, Branch: "issue-7-bouw-de-keten"},
+		{ID: 3, Issue: 7, Trigger: "closecheck", Branch: "closecheck/issue-7-pr-12"},
+		{ID: 4, Issue: 8, Branch: "issue-8-ander"},
+		{ID: 5, Schedule: "map-refresh", Branch: "scheduled/map-refresh-1"},
+	}
+	got := IssueBranches(history)
+	want := map[int]string{7: "issue-7-bouw-de-keten", 8: "issue-8-ander"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("IssueBranches = %v, want %v", got, want)
 	}
 }

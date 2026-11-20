@@ -117,18 +117,29 @@ func Take(ctx context.Context, db *sql.DB, c Claim) (Run, error) {
 	}
 	attempt := failed + 1
 
-	var issue, schedule any
+	var issue, schedule, trajectory any
 	if scheduled {
 		schedule = c.Schedule
 	} else {
 		issue = c.Issue
+		// Inside the transaction: a refused claim (ErrClaimed) rolls the trajectory back too.
+		var tid int64
+		if _, err := tx.ExecContext(ctx, `INSERT INTO trajectories (repo, issue, created_at) VALUES (?, ?, ?)
+			ON CONFLICT (repo, issue) DO NOTHING`, c.Repo, c.Issue, stamp(c.Now)); err != nil {
+			return Run{}, fmt.Errorf("runs: insert trajectory: %w", err)
+		}
+		if err := tx.QueryRowContext(ctx, `SELECT id FROM trajectories WHERE repo = ? AND issue = ?`,
+			c.Repo, c.Issue).Scan(&tid); err != nil {
+			return Run{}, fmt.Errorf("runs: select trajectory: %w", err)
+		}
+		trajectory = tid
 	}
 	res, err := tx.ExecContext(ctx, `INSERT INTO runs
 		(repo, issue, schedule, session_id, mode, trigger, trigger_key, attempt, command, prompt, profile, node, branch,
-		start_sha, verdict, started_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		start_sha, verdict, started_at, trajectory_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		c.Repo, issue, schedule, c.SessionID, c.Mode, c.Trigger, c.TriggerKey, attempt,
-		c.Command, c.Prompt, c.Profile, c.Node, c.Branch, c.StartSHA, c.Verdict, stamp(c.Now))
+		c.Command, c.Prompt, c.Profile, c.Node, c.Branch, c.StartSHA, c.Verdict, stamp(c.Now), trajectory)
 	if err != nil {
 		var se *sqlite.Error
 		if errors.As(err, &se) && se.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE {
