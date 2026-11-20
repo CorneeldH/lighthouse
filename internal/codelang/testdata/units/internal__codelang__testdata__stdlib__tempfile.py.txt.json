@@ -1,7 +1,7 @@
 {
   "found": [],
   "lang": "python",
-  "source": "tests/pack/fixtures/code_language/stdlib/tempfile.py",
+  "source": "internal/codelang/testdata/stdlib/tempfile.py.txt",
   "units": [
     [
       "name",

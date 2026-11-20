@@ -518,7 +518,7 @@
     ]
   ],
   "lang": "python",
-  "source": "tests/pack/fixtures/code_language/bash_writes_nl.py",
+  "source": "internal/codelang/testdata/bash_writes_nl.py.txt",
   "units": [
     [
       "name",

@@ -222,7 +222,7 @@ func TestChainFrom(t *testing.T) {
 	}
 }
 
-// llmFixture is tests/pack/fixtures/code_language/llm.json.
+// llmFixture is testdata/llm.json.
 type llmFixture struct {
 	Prompt []struct {
 		Items [][2]string `json:"items"`

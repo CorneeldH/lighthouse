@@ -1,7 +1,7 @@
 {
   "found": [],
   "lang": "python",
-  "source": "tests/pack/fixtures/code_language/stdlib/shutil.py",
+  "source": "internal/codelang/testdata/stdlib/shutil.py.txt",
   "units": [
     [
       "name",

@@ -1,7 +1,7 @@
 {
   "found": [],
   "lang": "python",
-  "source": "tests/pack/fixtures/code_language/stdlib/json_decoder.py",
+  "source": "internal/codelang/testdata/stdlib/json_decoder.py.txt",
   "units": [
     [
       "name",

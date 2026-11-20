@@ -1,7 +1,7 @@
 {
   "found": [],
   "lang": "markdown",
-  "source": "tests/pack/fixtures/code_language/corpus/skill.md",
+  "source": "internal/codelang/testdata/corpus/skill.md",
   "units": [
     [
       "text",
