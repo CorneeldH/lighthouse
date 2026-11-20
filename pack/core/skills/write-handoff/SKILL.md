@@ -271,7 +271,7 @@ tick starts the next phase itself. Two entries:
    } > <scratch>/handoff.md && lighthouse forge issue comment <nr> --body-file <scratch>/handoff.md
    ```
    `<scratch>` is the session's scratchpad directory, otherwise a `mktemp -d` directory. The post runs
-   only when the write succeeded; stop if it fails. Run the comment call with
+   only when the write succeeded; stop if it fails. In a controller run, `lighthouse forge issue comment` notes a failed post for the controller itself (`post-failed.json`), which posts it later; stop all the same. Run the comment call with
    `dangerouslyDisableSandbox: true` (Go TLS).
    Between the heading and the last field line there is no blank line: the parser stops at the first.
    For native there is an extra line `lane: native` between `next:` and `when:` (without

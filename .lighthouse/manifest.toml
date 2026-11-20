@@ -169,7 +169,7 @@ kind = "file"
 path = ".agents/skills/lighthouse-write-handoff/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "0002ad79636c17592f2e67b201946e8053f665625bca8afe892235be8395f73d"
+sha256 = "2721d4d03412595307809861552411dfd928fbfd9dbbfa502b02cd364ce94da3"
 
 [[unit]]
 kind = "file"
@@ -554,7 +554,7 @@ kind = "file"
 path = ".claude/skills/lighthouse-write-handoff/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "0002ad79636c17592f2e67b201946e8053f665625bca8afe892235be8395f73d"
+sha256 = "2721d4d03412595307809861552411dfd928fbfd9dbbfa502b02cd364ce94da3"
 
 [[unit]]
 kind = "file"
