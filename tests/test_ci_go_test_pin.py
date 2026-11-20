@@ -18,7 +18,10 @@ def _gate_go_command():
 
 def _go_commands(path: Path) -> list[str]:
     text = path.read_text(encoding="utf-8")
-    return re.findall(r"^\s*- run: (go test .*?)\s*$", text, re.MULTILINE)
+    runs = re.findall(r"^\s*- run: (go test .*?)\s*$", text, re.MULTILINE)
+    # The canary job is another suite (build tag `canary`, tools from the network), pinned in
+    # tests/test_ci_domains_pin.py.
+    return [run for run in runs if "-tags canary" not in run]
 
 
 def test_ci_builds_without_cgo():
