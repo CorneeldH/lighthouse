@@ -389,7 +389,7 @@ Classificatie: `test-only` (contracttests op instructietekst; lezen is hier geen
 
 `git fetch origin main && git merge origin/main`. Controleer dat de generieke checks waarop de *gedekt*-rijen leunen (`packs.Load` voor de frontmatter-naam, verwijzingen, configsleutels, skill-links) in Go bestaan. Ontbreekt er één, dan wordt die rij hier *naar Go*.
 
-- [ ] **Step 2: Beslis de twee open rijen**
+- [ ] **Step 2: Classificeer de twee variant-rijen**
 
 Beide `test_variants_keep_their_difference` gaan direct *naar Go (contract)*: check 11 slaat skills met `lighthouse`-metadata over (`internal/checkinstr/mirror.go:57`) en `pack/shell` is hier niet geïnstalleerd, dus een experiment zou altijd groen zijn en dekt niets. Geen `init --upgrade`-experiment.
 
