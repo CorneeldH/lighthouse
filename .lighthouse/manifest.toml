@@ -43,14 +43,14 @@ kind = "file"
 path = ".agents/skills/lighthouse-forge/github.md"
 package = "core"
 version = "dev"
-sha256 = "583926c4a9e62d2a3464755d782cb4517fb47f7f504b8d45cd2a37ed3d0d3a93"
+sha256 = "6248354c789c0e64904dfe3186ed83477cc4af5d7f3c61a2c48541e2fa71b36b"
 
 [[unit]]
 kind = "file"
 path = ".agents/skills/lighthouse-forge/gitlab.md"
 package = "core"
 version = "dev"
-sha256 = "25dc2c6296a125d86ae45010c01e60b23d43819f49bc1dcdecc67a7c4267cfbe"
+sha256 = "3fc1631d15ceb369e9b7d7c9545764b42841e6b9fb4b5d60dfe54331dc3cc0c2"
 
 [[unit]]
 kind = "file"
@@ -428,14 +428,14 @@ kind = "file"
 path = ".claude/skills/lighthouse-forge/github.md"
 package = "core"
 version = "dev"
-sha256 = "583926c4a9e62d2a3464755d782cb4517fb47f7f504b8d45cd2a37ed3d0d3a93"
+sha256 = "6248354c789c0e64904dfe3186ed83477cc4af5d7f3c61a2c48541e2fa71b36b"
 
 [[unit]]
 kind = "file"
 path = ".claude/skills/lighthouse-forge/gitlab.md"
 package = "core"
 version = "dev"
-sha256 = "25dc2c6296a125d86ae45010c01e60b23d43819f49bc1dcdecc67a7c4267cfbe"
+sha256 = "3fc1631d15ceb369e9b7d7c9545764b42841e6b9fb4b5d60dfe54331dc3cc0c2"
 
 [[unit]]
 kind = "file"
