@@ -20,8 +20,19 @@ _WEB_TOO = frozenset({".github/workflows/ci.yml", "ci/domains.py", "lighthouse.t
 # Inside web/, but read by Go: the API snapshot test and the module that keeps `./...` out of
 # web/node_modules.
 _GO_TOO = frozenset({"web/openapi.json", "web/go.mod"})
-# Inside docs/, but read by Go: internal/config/config_test.go parses the GitLab example in it.
-_GO_DOCS = frozenset({"docs/install.md"})
+# Inside docs/, but read by Go: internal/config/config_test.go parses the GitLab example in it;
+# the tests of internal/repopins and e2e/gettingstarted_test.go read the getting-started guide,
+# the agent install page and the site files.
+_GO_DOCS = frozenset(
+    {
+        "docs/install.md",
+        "docs/getting-started.md",
+        "docs/site/agents/install.md",
+        "docs/site/install.html",
+        "docs/site/index.html",
+        "docs/site/download.js",
+    }
+)
 # Inside tests/, but read by Go: internal/protocol/header_test.go:19 reads the fixtures.
 _GO_FIXTURES = "tests/pack/fixtures/"
 # Outside web/, but read by no Go build or test, so they leave out go (python stays: pytest reads
@@ -30,7 +41,8 @@ _GO_FIXTURES = "tests/pack/fixtures/"
 # placeholder), pack/*/* and internal/store/migrations; no .go file names docs/, changelog.d or
 # ci/literal- (tests/test_domains.py fails when one does, except ci/changelog, exempted in tests/test_domains.py); the Go and e2e tests read outside their
 # own package only tests/pack/fixtures/, internal/usage/testdata/ and temporary repos; the literal
-# lists are read only by ci/literal-grep.sh and tools/gen_code_language_freq.py.
+# lists are read by ci/literal-grep.sh, tools/gen_code_language_freq.py and, as the input of a
+# black-box run, e2e/literalgrep_test.go.
 # Measured again for #151: from tests/ Go reads only tests/pack/fixtures/; the other tests/ and
 # README.md strings in Go are files in temporary repos. Only the loose root .md files (README.md,
 # CHANGELOG.md, CONTRIBUTING.md, SECURITY.md, CLA.md) leave go; AGENTS.md and CLAUDE.md stay, the
@@ -39,9 +51,6 @@ _GO_FIXTURES = "tests/pack/fixtures/"
 _NOT_GO_DIRS = ("docs/", "changelog.d/", "tests/")
 _NOT_GO = frozenset(
     {
-        "ci/literal-denylist.txt",
-        "ci/literal-denylist-go.txt",
-        "ci/literal-allowlist.txt",
         "README.md",
         "CHANGELOG.md",
         "CONTRIBUTING.md",

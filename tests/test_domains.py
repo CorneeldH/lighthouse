@@ -47,9 +47,9 @@ def _repo_reads(text: str) -> list[str]:
         (["web/go.mod"], {"web", "go"}),
         (["docs/x.md"], {"python"}),
         (["changelog.d/x.md"], {"python"}),
-        (["ci/literal-denylist.txt"], {"python"}),
-        (["ci/literal-allowlist.txt"], {"python"}),
-        (["ci/literal-denylist-go.txt"], {"python"}),
+        (["ci/literal-denylist.txt"], {"go", "python"}),
+        (["ci/literal-allowlist.txt"], {"go", "python"}),
+        (["ci/literal-denylist-go.txt"], {"go", "python"}),
         (["ci/x.sh"], {"go", "python"}),
         (["docsx/x.md"], {"go", "python"}),
         (["docs/x.md", "internal/a.go"], {"go", "python"}),
@@ -70,6 +70,12 @@ def _repo_reads(text: str) -> list[str]:
         (["pack/core/README.md"], {"go", "python"}),
         (["docs/install.md"], {"go", "python"}),
         (["docs/other.md"], {"python"}),
+        (["docs/getting-started.md"], {"go", "python"}),
+        (["docs/site/agents/install.md"], {"go", "python"}),
+        (["docs/site/install.html"], {"go", "python"}),
+        (["docs/site/index.html"], {"go", "python"}),
+        (["docs/site/download.js"], {"go", "python"}),
+        (["docs/site/other.html"], {"python"}),
         (["testsx/a.py"], {"go", "python"}),
         ([], set()),
     ],
@@ -103,6 +109,13 @@ def _without_default_paths(rel: str, text: str) -> str:
     if rel == "internal/config/config_test.go":
         # TestInstallDocGitLabExampleParses reads docs/install.md; ci/domains.py keeps that file in go.
         return text.replace("docs/install.md", "")
+    if rel.startswith("internal/repopins/") or rel in (
+        "e2e/literalgrep_test.go",
+        "e2e/gettingstarted_test.go",
+    ):
+        # They read docs/ and ci/literal-* files that ci/domains.py keeps in go (_GO_DOCS, and the
+        # literal lists left out of _NOT_GO), as internal/config/config_test.go does.
+        return text.replace("docs/", "").replace("ci/literal-", "")
     if rel == "internal/dispatch/apply_scheduled.go":
         # A doc-comment points at docs/workplace.md; Go reads no file there.
         return text.replace("docs/workplace.md", "")
@@ -225,10 +238,9 @@ def test_classify_cli_github_output(tmp_path, monkeypatch, capsys):
 
 
 def test_classify_cli_docs_only_pr_skips_go(monkeypatch, capsys):
-    """The paths of #127: docs, a changelog fragment and the denylist."""
+    """The paths of #127: docs and a changelog fragment (the denylist is read by Go since #365)."""
     paths = (
-        b"changelog.d/fix-labels-kleine-punten.md\0ci/literal-denylist.txt\0"
-        b"docs/developer/labels.md\0"
+        b"changelog.d/fix-labels-kleine-punten.md\0docs/developer/labels.md\0"
     )
     monkeypatch.setattr(sys, "stdin", io.TextIOWrapper(io.BytesIO(paths)))
     assert domains.main(["classify"]) == 0
