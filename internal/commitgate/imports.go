@@ -101,7 +101,7 @@ func importsFiles(row Row) ([]string, error) {
 
 // runImports is the import step of the gate: for every row root with installed packs it runs
 // `lighthouse imports check` on the files of the commit. It does not depend on
-// [test_gate] command, and only [imports] check = false turns it off. stop is true when the gate
+// the test command, and only [imports] check = false turns it off. stop is true when the gate
 // ends with res.
 func (g *Gate) runImports(rows []Row) (stop bool, res Result) {
 	enabled, checked := true, false

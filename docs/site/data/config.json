@@ -382,7 +382,10 @@
                 "pack/core/skills/fix-pr",
                 "pack/core/skills/upgrade",
                 "pack/core/skills/write-pr",
+                "pack/go/instructions/AGENTS.md",
                 "pack/go/skills/go-standard",
+                "pack/node/instructions/AGENTS.md",
+                "pack/python/instructions/AGENTS.md",
                 "pack/python/skills/python-standard"
               ]
             },
@@ -930,7 +933,13 @@
               ],
               "readers": [
                 "internal/cli/imports.go",
-                "internal/commitgate/imports.go"
+                "internal/commitgate/imports.go",
+                "pack/go/hooks/imports-gate-go.sh",
+                "pack/go/instructions/AGENTS.md",
+                "pack/node/hooks/imports-gate-node.sh",
+                "pack/node/instructions/AGENTS.md",
+                "pack/python/hooks/imports-gate-python.sh",
+                "pack/python/instructions/AGENTS.md"
               ]
             }
           ]
