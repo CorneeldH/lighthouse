@@ -928,7 +928,9 @@
                 true,
                 false
               ],
-              "readers": []
+              "readers": [
+                "internal/cli/imports.go"
+              ]
             }
           ]
         },

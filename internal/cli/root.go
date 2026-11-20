@@ -89,6 +89,7 @@ func NewRoot(in io.Reader, out, errOut io.Writer) *cobra.Command {
 	root.AddCommand(newTriageCommand(defaultTriageEnv))
 	root.AddCommand(newPauseCommand())
 	root.AddCommand(newGateCommand())
+	root.AddCommand(newImportsCommand())
 	root.AddCommand(newAskCommand(defaultAskEnv()))
 	root.AddCommand(newSelfUpdateCommand())
 	root.AddCommand(newTurnRootsCommand())
