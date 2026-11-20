@@ -102,7 +102,7 @@ lighthouse imports check [--lang python|go|node]... [--files <pad>]...
   `packages`; Expo valt onder `node`, §4).
 - **Projecten.** Alleen bestanden die git volgt, zoals `detect.toml` *(eigen keuze na spec-review,
   r1-f11)*: elke gevolgde `go.mod` is een Go-module, elke gevolgde `pyproject.toml` een
-  Python-project, en Node volgt §4. In lighthouse zelf zijn dat `go.mod` en `web/go.mod`.
+  Python-project, en Node volgt §4. In lighthouse zelf zijn dat `go.mod` en `web/go.mod`. Een pad met een `testdata`- of `node_modules`-segment telt niet, zoals bij het go-gereedschap: de fixtures van de canaries (§Tests) zijn geen project van de repo zelf *(verduidelijking na plan-review r1-f2)*.
 - **Scope.** Met `--files` (de bestanden van de beurt of de commit) draait de check alleen de
   projecten waarin een van die bestanden ligt, en meldt hij alleen bevindingen in die bestanden.
   Raakt `--files` een manifest of lockfile van een project (`pyproject.toml`, `uv.lock`, `go.mod`,

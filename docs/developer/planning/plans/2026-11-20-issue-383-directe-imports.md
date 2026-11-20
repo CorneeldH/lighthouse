@@ -52,6 +52,7 @@ Invoerklassen die de spec impliceert maar geen taak vanzelf raakt; elke regel he
 
 **Files:**
 - Modify: `internal/config/config.go` (schema ~r.96-116, `defaults` ~r.140-170)
+- Modify: `tests/pack/fixtures/config-schema.json` (snapshot van schema en defaults, `TestSchemaMatchesSnapshot`), `tests/pack/fixtures/config/defaults/expect.json` en `tests/pack/fixtures/config/full/` (pariteit, `internal/config/parity_test.go`), `docs/site/data/config.json` (de sleutel met `readers`; `tests/test_site_config.py::test_every_key_is_on_the_map` eist dat elke reader bestaat en de sleutel noemt, dus de readers komen in taak 6 en 8 erbij, hier eerst zonder reader-paden die nog niet bestaan)
 - Test: `internal/config/config_test.go`
 
 **Interfaces:**
@@ -60,7 +61,7 @@ Invoerklassen die de spec impliceert maar geen taak vanzelf raakt; elke regel he
 - [ ] **Step 1: Test** `TestImportsCheckDefaultsToTrue` (leeg `lighthouse.toml` → exit 0, stdout `true`) en `TestImportsCheckFalse` (`[imports]\ncheck = false` → `false`), in de stijl van de bestaande bool-sleutel-tests.
 - [ ] **Step 2:** `go test ./internal/config/ -run ImportsCheck` — FAIL (`unknown key`).
 - [ ] **Step 3:** voeg `{"imports.check", kBool}` aan het schema en `"imports.check": true` aan `defaults` toe.
-- [ ] **Step 4:** zelfde commando — PASS.
+- [ ] **Step 4:** werk de snapshot- en pariteitsfixtures en `docs/site/data/config.json` bij; draai `go test ./internal/config/` (volledig, niet alleen `-run ImportsCheck`) en `uv run pytest -q tests/test_site_config.py` — PASS. Voeg de reader-paden van `imports.check` toe in taak 6 en 8.
 - [ ] **Step 5: Commit** `feat(config): sleutel imports.check (#383)`.
 
 ---
@@ -92,7 +93,7 @@ type Options struct {
     Root string
     Langs []Lang   // empty: the packs of .lighthouse/manifest.toml (expo → node)
     Files []string // empty: everything
-    Checkers map[Lang]Checker // nil entries use the real ones (tasks 3-5)
+    Checkers map[Lang]Checker // the CLI (task 6) builds the map of the real checkers; Run gives UncheckedError for a lang without one, never a silent pass
 }
 func Run(o Options, env Env) int // 0, 1 or 3; writes findings to env.Stdout, COULD NOT CHECK lines to env.Stderr
 func Discover(root string, lang Lang) ([]Project, error) // from `git ls-files -z`
@@ -100,6 +101,7 @@ func InScope(p Project, files []string) (all bool, touched bool) // touched: a f
 func FormatFinding(f Finding) string // "<file>:<line>: <ID> <import> — <reason>"
 func ManifestFiles(lang Lang) []string // pyproject.toml, uv.lock | go.mod, go.sum | package.json, package-lock.json, pnpm-lock.yaml, yarn.lock, bun.lockb, bun.lock
 ```
+- `Discover` slaat elk pad over met een `testdata`- of `node_modules`-segment (zoals het go-gereedschap): fixture-projecten en geïnstalleerde pakketten zijn geen project van de repo zelf (spec §1, verduidelijking).
 - Node projecten: een gevolgde `package.json` die niet in `workspaces` of `pnpm-workspace.yaml` van een `package.json` erboven valt (workspace-root, spec §4). `Discover` leest die twee bronnen.
 
 - [ ] **Step 1: Tests** (`importcheck_test.go`, met fake `Checker`s):
@@ -108,7 +110,7 @@ func ManifestFiles(lang Lang) []string // pyproject.toml, uv.lock | go.mod, go.s
   - `TestRunSkipsProjectsOutsideFiles`: een fake die paniekt als hij voor een niet geraakt project draait (review-focus 1).
   - `TestFormatFinding`: `FormatFinding(Finding{"src/a.py",3,"DEP003","numpy","imported but only a transitive dependency"})` == `src/a.py:3: DEP003 numpy — imported but only a transitive dependency`.
   - `TestRunDefaultLangsFromManifest`: manifest met `packages = ["core","expo"]` → alleen `node`; `core`/onbekend → geen talen → exit 0 zonder uitvoer.
-- [ ] **Step 2: Tests** (`projects_test.go`, `t.TempDir()` + `git init`): `TestDiscoverGoModules` (`go.mod` en `web/go.mod` → twee projecten), `TestDiscoverIgnoresUntracked` (ongevolgde `go.mod` telt niet), `TestDiscoverNodeWorkspaceRoots` (root met `workspaces: ["packages/*"]` en `packages/a/package.json` → één project; `pnpm-workspace.yaml` idem; twee losse `package.json` → twee), `TestDiscoverWeirdFilenames` (spatie en `é` in een pad; review-focus 2).
+- [ ] **Step 2: Tests** (`projects_test.go`, `t.TempDir()` + `git init`): `TestDiscoverGoModules` (`go.mod` en `web/go.mod` → twee projecten), `TestDiscoverIgnoresUntracked` (ongevolgde `go.mod` telt niet), `TestDiscoverNodeWorkspaceRoots` (root met `workspaces: ["packages/*"]` en `packages/a/package.json` → één project; `pnpm-workspace.yaml` idem; twee losse `package.json` → twee), `TestDiscoverWeirdFilenames` (spatie en `é` in een pad; review-focus 2), `TestDiscoverSkipsTestdataAndNodeModules` (gevolgde `go.mod` onder `internal/x/testdata/` en `package.json` onder `node_modules/` → geen project).
 - [ ] **Step 3:** `go test ./internal/importcheck/` — FAIL (pakket ontbreekt).
 - [ ] **Step 4: Implementeer** de signaturen hierboven. `Discover` gebruikt `git ls-files -z`; `Run` zet bevindingen buiten `--files` weg tenzij `InScope` `all` geeft; sorteer bevindingen op bestand, regel voor stabiele uitvoer.
 - [ ] **Step 5:** zelfde commando — PASS.
@@ -127,7 +129,7 @@ func ManifestFiles(lang Lang) []string // pyproject.toml, uv.lock | go.mod, go.s
 - Produces: `type GoChecker struct{}` met `Check`; `func parseTidyDiff(diff string) (shifted []string, missing []string)` — modulepaden die van `// indirect` naar direct gaan, resp. een directe `require` die ontbreekt.
 
 - [ ] **Step 1: Tests**, op vaste diff-teksten en een fake `Exec` (geen echte `go`):
-  - `TestParseTidyDiff`: een hunk `-\tgithub.com/x/y v1.0.0 // indirect` + `+\tgithub.com/x/y v1.0.0` → `shifted=["github.com/x/y"]`; een `+`-require zonder `// indirect` zonder `-`-tegenhanger → `missing`; een overbodige `-require`, een ontbrekende `// indirect`-`+`, een `go.sum`-hunk, een hunk in `replace`/`go`-regel → geen van beide (review-focus 4).
+  - `TestParseTidyDiff`: een hunk `-\tgithub.com/x/y v1.0.0 // indirect` + `+\tgithub.com/x/y v1.0.0` → `shifted=["github.com/x/y"]`; een `+`-require zonder `// indirect` zonder `-`-tegenhanger → `missing`; een overbodige `-require`, een ontbrekende `// indirect`-`+`, een `go.sum`-hunk, een hunk in `replace`/`go`-regel → geen van beide (review-focus 4); een verschoven module waarvan `-` en `+` in aparte hunks staan, ook met een andere versie → `shifted` (koppel op modulepad over de hele diff, niet op aangrenzende regels).
   - `TestGoCheckerUncheckedCases`: Go < 1.23 (`GoVersion` geeft `go1.22.5`), `tidy -diff` exit 1 zonder diff, `tidy` exit 2, `go` niet op PATH → telkens `UncheckedError` met de stderr als reden.
   - `TestGoCheckerCleanIsExit0EmptyStdout`.
 - [ ] **Step 2:** `go test ./internal/importcheck/ -run 'Go|Tidy'` — FAIL.
@@ -197,11 +199,30 @@ func ManifestFiles(lang Lang) []string // pyproject.toml, uv.lock | go.mod, go.s
   - `TestImportsCheckUnknownFlagIsExit3` (`--bogus` → code 3, niet cobra's 1) en `TestImportsCheckUnknownLangIsExit3`.
   - `TestImportsCheckDisabledByConfig`: `[imports] check = false` → exit 0, geen uitvoer.
   - `TestImportsCheckPassesFlagsThrough`: met een fake `Checker` (injecteerbaar via een package-variabele of constructor-parameter, zoals `gate_test.go` doet) komt `--files` bij `Options.Files` en `--lang` bij `Options.Langs` aan.
+  - `TestImportsCheckPythonFallsBackToMainCheckoutVenv`: `CLAUDE_PROJECT_DIR` naar een map met `.venv`, project zonder eigen `.venv` → geen `no .venv`-melding (met de nep-`Exec`).
   - `TestImportsHelpListsSubcommand`: `lighthouse imports` zonder `check` toont help zonder te slagen als poort (exit 3 `unknown`-stijl, zoals `gate` zonder naam).
 - [ ] **Step 2:** `go test ./internal/cli/ -run Imports` — FAIL.
-- [ ] **Step 3: Implementeer** `newImportsCommand` naar het model van `newGateCommand`; `SetFlagErrorFunc` zet elke vlagfout om in exit 3 met `imports: COULD NOT CHECK — <fout>` op stderr. `python.source_dirs` lees je met `config.Run` en geef je aan `PythonChecker`.
+- [ ] **Step 3: Implementeer** `newImportsCommand` naar het model van `newGateCommand`; `SetFlagErrorFunc` zet elke vlagfout om in exit 3 met `imports: COULD NOT CHECK — <fout>` op stderr. `python.source_dirs` lees je met `config.Run`; zet `PythonChecker.SourceDirs` daarmee en `PythonChecker.MainCheckout` uit `CLAUDE_PROJECT_DIR` (leeg buiten Claude Code). Bouw hier ook de `Checkers`-map met de echte checkers. Voeg de reader-paden van `imports.check` (`internal/cli/imports.go`) toe aan `docs/site/data/config.json`.
 - [ ] **Step 4:** zelfde commando — PASS; dan `go build ./cmd/lighthouse && ./lighthouse imports check --bogus; echo $?` → `3`.
 - [ ] **Step 5: Commit** `feat(cli): lighthouse imports check (#383)`.
+
+---
+
+### Taak 6b: `lighthouse turn-roots --files`
+
+**Files:**
+- Modify: `internal/turnroots/turnroots.go` (`Verdict` + `Classify`), `internal/cli/turnroots.go`
+- Test: `internal/turnroots/turnroots_test.go`, `internal/cli/turnroots_test.go`
+
+**Interfaces:**
+- Produces: `Verdict.Files []string` — de paden (relatief aan `Root`, met `/`, gesorteerd) van de beurt die een patroon raken: de `rels` die `Classify` al per root bouwt (`toolPaths` plus `changedSince`). Vlag `lighthouse turn-roots --match <p>... --files`: na de `touched`/`untouched`-regels per geraakt pad een regel `file\t<root>\t<pad>`; zonder `--files` blijft de uitvoer gelijk (`ty-gate.sh` verandert niet).
+- In twijfel (`hasStart` onwaar, of een git-fout voor die root) is `Touched` waar en `Files` leeg: de hook roept dan `imports check` zonder `--files` voor die root aan (spec §1: zonder `--files` alles).
+
+- [ ] **Step 1: Tests:** `TestClassifyFilesListsMatchedPaths` (twee geraakte paden, één buiten het patroon → alleen de twee), `TestClassifyDoubtHasNoFiles`, `TestTurnRootsFilesFlag` (regelvorm `file\t<root>\t<pad>`, ook met spatie in het pad) en `TestTurnRootsWithoutFilesFlagUnchanged` (bestaande uitvoer ongewijzigd).
+- [ ] **Step 2:** `go test ./internal/turnroots/ ./internal/cli/ -run 'Classify|TurnRoots'` — FAIL.
+- [ ] **Step 3: Implementeer** `Verdict.Files` en de vlag. Paden met een newline vallen buiten het formaat: sla ze over en laat de hook dan zonder `--files` draaien.
+- [ ] **Step 4:** zelfde commando plus `go test -race -shuffle=on ./internal/turnroots/ ./internal/cli/` — PASS.
+- [ ] **Step 5: Commit** `feat(turnroots): --files geeft de geraakte paden per checkout (#383)`.
 
 ---
 
@@ -209,11 +230,12 @@ func ManifestFiles(lang Lang) []string // pyproject.toml, uv.lock | go.mod, go.s
 
 **Files:**
 - Create: `pack/python/hooks/imports-gate-python.sh`, `pack/go/hooks/imports-gate-go.sh`, `pack/node/hooks/imports-gate-node.sh`, `pack/node/hooks/hooks.json`, `pack/node/instructions/AGENTS.md`
-- Modify: `pack/python/hooks/hooks.json`, `pack/go/hooks/hooks.json`, `pack/{python,go}/instructions/AGENTS.md`, `pack/node/requires.toml` (`npx = ["lighthouse imports check"]`), `pack/SOURCES.toml` (nieuwe bestanden, `new = true`)
+- Modify: `pack/python/hooks/hooks.json`, `pack/go/hooks/hooks.json`, `pack/{python,go}/instructions/AGENTS.md`, `pack/node/requires.toml` (`npx = ["lighthouse imports check"]`), `pack/SOURCES.toml` (nieuwe bestanden, `new = true`), `docs/site/data/packs.json` en `docs/site/data/session.json` (de drie hooks; `tests/test_site_packs.py::test_hooks_match_hooks_json` en `tests/test_site_session.py::test_every_hook_is_on_its_event`), `tests/pack/node/test_node_pack.py` (het contract `geen hooks/instructions` vervalt voor `pack/node`: houd alleen `lighthouse.toml.fragment` verboden en toets de nieuwe `hooks/` en `instructions/`)
+- Create (fixtures voor `ci/no-python.sh`, dat per registratie een payload eist): `tests/pack/fixtures/hooks/Stop/imports-gate-go.json`, `tests/pack/fixtures/hooks/Stop/imports-gate-node.json` (zelfde vorm als `go-lint-gate.json`; een beurt zonder relevant pad geeft `not checked`, geen `COULD NOT CHECK`; de python-hook valt buiten `no-python`)
 - Test: `tests/pack/python/test_imports_gate_hooks.py` (pytest, naar het model van de bestaande `ty-gate`-tests), `internal/packs/core_test.go`-stijl installatietest voor `pack/node` indien de bestaande tests per pack lopen
 
 **Interfaces:**
-- Consumes: `lighthouse imports check --lang <taal> --files <…>` (taak 6); `lighthouse turn-roots --match <patroon>`.
+- Consumes: `lighthouse imports check --lang <taal> --files <…>` (taak 6); `lighthouse turn-roots --match <patroon> --files` (taak 6b).
 - Produces: elk script declareert `BLOCKING_RULES="…"` (tabel in Globale eisen) — taak 9 leest dat.
 
 - [ ] **Step 1: Tests** (pytest, hook als subprocess met een nep-`lighthouse` op `PATH`):
@@ -222,9 +244,9 @@ func ManifestFiles(lang Lang) []string // pyproject.toml, uv.lock | go.mod, go.s
   - `test_not_checked_during_usage_alarm`; `test_not_checked_when_turn_touched_no_relevant_path`; `test_no_block_when_stop_hook_active`;
   - `test_blocking_rules_declared` (de regel `BLOCKING_RULES=` staat in elk van de drie scripts en noemt de ID's uit de tabel).
 - [ ] **Step 2:** `uv run pytest -q tests/pack/python/test_imports_gate_hooks.py` — FAIL.
-- [ ] **Step 3: Implementeer** de drie scripts naar `ty-gate.sh`/`go-lint-gate.sh` (usage-alarm, `turn-roots --match` met de relevante paden uit spec §5, `COULD NOT CHECK` zonder te blokkeren, exit 2 met bevindingen op stderr). `--files` krijgt de paden van de beurt. Een eigen scriptnaam per pack (alle hooks landen in één map). Registreer in de `hooks.json`'s (Stop, timeout 120); `pack/node` krijgt een nieuwe `hooks.json` met alleen dit Stop-item. Eén regel per pack in de instructies: draai `lighthouse imports check` voor een commit, naast `[test_gate] command`.
+- [ ] **Step 3: Implementeer** de drie scripts naar `ty-gate.sh`/`go-lint-gate.sh` (usage-alarm, `turn-roots --match` met de relevante paden uit spec §5, `COULD NOT CHECK` zonder te blokkeren, exit 2 met bevindingen op stderr). `--files` krijgt de paden uit `lighthouse turn-roots --match … --files` (taak 6b), één `--files` per pad; zonder paden voor een geraakte root (twijfel) draait hij zonder `--files`. Een eigen scriptnaam per pack (alle hooks landen in één map). Registreer in de `hooks.json`'s (Stop, timeout 120); `pack/node` krijgt een nieuwe `hooks.json` met alleen dit Stop-item. Eén regel per pack in de instructies: draai `lighthouse imports check` voor een commit, naast `[test_gate] command`.
 - [ ] **Step 4:** zelfde pytest — PASS; `shellcheck` op de nieuwe scripts (de bestaande shell-pack-gate).
-- [ ] **Step 5:** `go run ./cmd/lighthouse init --upgrade` en `go run ./cmd/lighthouse init --upgrade` nogmaals → `No changes.`; `go test ./internal/packs/ ./tests/...`-equivalent (`uv run pytest -q tests/test_sources.py tests/test_dogfood.py`) — PASS.
+- [ ] **Step 5:** `go run ./cmd/lighthouse init --upgrade` en `go run ./cmd/lighthouse init --upgrade` nogmaals → `No changes.`; `go test ./internal/packs/ ./tests/...`-equivalent (`uv run pytest -q tests/test_sources.py tests/test_dogfood.py tests/pack/node/test_node_pack.py tests/test_site_packs.py tests/test_site_session.py`) — PASS; draai `bash ci/no-python.sh` lokaal als de host dat toelaat.
 - [ ] **Step 6: Commit** `feat(pack): imports-gate Stop-hooks per pack (#383)`; aparte commit voor de geïnstalleerde kopie: `chore(dogfood): installed copy na init --upgrade (#383)`.
 
 ---
@@ -237,7 +259,7 @@ func ManifestFiles(lang Lang) []string // pyproject.toml, uv.lock | go.mod, go.s
 - Test: `internal/commitgate/imports_test.go`
 
 **Interfaces:**
-- Consumes: `Row`; `Gate.readConfig("imports.check")`; `ChangedFiles(root, base, head)` (post); een `Gate`-veld `ImportsCheck func(root string, files []string) (stdout, stderr string, code int, err error)` (default: draait `lighthouse imports check --files …` als subprocess in `root`).
+- Consumes: `Row`; `Gate.readConfig("imports.check")`; `ChangedFiles(root, base, head)` (post); een `Gate`-veld `ImportsCheck func(root string, files []string) (stdout, stderr string, code int, err error)` (default: draait `lighthouse imports check --files …` als subprocess in `root`, met `os.Executable()` als binary en niet `lighthouse` van `PATH`: in een dev-checkout draait `run.sh` de gate met de uit `HEAD` gebouwde binary, terwijl `PATH` een oudere kan hebben zonder `imports`; reader-pad `internal/commitgate/imports.go` komt in `docs/site/data/config.json`).
 - Produces: `func (g *Gate) runImports(rows []Row) (stop bool, res Result)` — pre: de files zijn `git diff --cached --name-only -z` in `row.Root`; post: `ChangedFiles`.
 
 - [ ] **Step 1: Tests** (fake `ImportsCheck`):
@@ -247,6 +269,8 @@ func ManifestFiles(lang Lang) []string // pyproject.toml, uv.lock | go.mod, go.s
   - `TestImportsOptOut`: `[imports] check = false` → de fake wordt niet aangeroepen; `[test_gate] command = ""` zet hem niet uit.
   - `TestImportsEmptyFileListSkips`: lege commit/alleen verwijderingen → niet aanroepen, geen blokkade.
   - `TestImportsPreUsesStagedFiles` en `TestImportsPostUsesChangedFiles`.
+  - `TestImportsDefaultRunnerUsesOwnExecutable`: de default draait `os.Executable()` (geïnjecteerde `Exec`-naad), niet een `PATH`-lookup.
+  - Bekende beperking (pre): `git commit -a` en `git add -A && git commit` in één Bash-aanroep hebben op PreToolUse niets gestaged → lege lijst → overgeslagen; leg het vast in de melding `imports not checked: nothing staged yet` en in de docs, geen workaround.
 - [ ] **Step 2:** `go test ./internal/commitgate/ -run Imports` — FAIL.
 - [ ] **Step 3: Implementeer** `runImports` en roep hem in `RunRoots` aan vóór het lezen van `test_gate.command`; een stop-resultaat eindigt `RunRoots` (via `blockResult`), anders gaat het door naar de testcommando-tak. Alleen draaien voor de geïnstalleerde packs (`manifest.Read(root)`; ontbreekt het manifest: overslaan). Hou de melding Engels en per bevinding de regel zoals de binary hem gaf.
 - [ ] **Step 4:** zelfde commando — PASS; dan `go test -race -shuffle=on ./internal/commitgate/` — PASS.
@@ -257,7 +281,7 @@ func ManifestFiles(lang Lang) []string // pyproject.toml, uv.lock | go.mod, go.s
 ### Taak 9: nep-repo's, canaries en CI-job
 
 **Files:**
-- Create: `internal/importcheck/testdata/imports-gate-{python,go,node}/<id>/` (fixture-mappen: `DEP001`, `DEP003`, `indirect-import`, `missing-require`, `unlisted`), `internal/importcheck/canary_test.go` (tag `canary`), `internal/importcheck/fakeenv_test.go` (hulpfuncties: nep-`.dist-info` in een `uv venv`, nep-`node_modules`, Go-`replace` naar een lokale map), `tests/pack/python/test_imports_gate_canary.py`, `tests/pack/python/testdata/imports-gate-python/<id>/`
+- Create: `internal/importcheck/testdata/imports-gate-{go,node}/<id>/` (fixture-mappen: `indirect-import`, `missing-require`, `unlisted`; de Python-fixtures staan onder `tests/pack/python/testdata/`; `Discover` slaat `testdata` over, taak 2, dus `lighthouse imports check` op deze repo ziet ze niet), `internal/importcheck/canary_test.go` (tag `canary`), `internal/importcheck/fakeenv_test.go` (hulpfuncties: nep-`.dist-info` in een `uv venv`, nep-`node_modules`, Go-`replace` naar een lokale map), `tests/pack/python/test_imports_gate_canary.py`, `tests/pack/python/testdata/imports-gate-python/<id>/`
 - Modify: `.github/workflows/ci.yml` (job `canary`, of aanvullen als #381 hem al maakte)
 
 **Interfaces:**
@@ -266,7 +290,7 @@ func ManifestFiles(lang Lang) []string // pyproject.toml, uv.lock | go.mod, go.s
 
 - [ ] **Step 1: Tests** (`//go:build canary`):
   - `TestCanaryBijection`: parse `BLOCKING_RULES` uit de drie scripts; eist een bijectie tussen ID's en fixture-mappen `testdata/<hook>/<id>/` (ontbrekende of overbodige map = fail).
-  - `TestCanaryPerRule`: per ID bouwt de test de omgeving (Python: `uv venv` + nep-`.dist-info` met `METADATA` waarin `b` `Requires-Dist` van `a` is en `top_level.txt`, offline; Node: `node_modules` met alleen `package.json`'s; Go: `replace` naar lokale map, `GOPROXY=off`, `GOFLAGS` leeg) en draait de echte hook; eist exit 2 én de ID in stderr.
+  - `TestCanaryPerRule`: per ID bouwt de test de omgeving (Python: `uv venv` + nep-`.dist-info` met `METADATA` waarin `b` `Requires-Dist` van `a` is en `top_level.txt`, offline; Node: `node_modules` met alleen `package.json`'s; Go: `replace` naar lokale map, `GOPROXY=off`, `GOFLAGS` leeg) en draait de echte hook; eist exit 2 én de ID in stderr. Zo draai je de hook: bouw de binary één keer naar een tempmap (`go build -o <tmp>/lighthouse ./cmd/lighthouse`), zet die voorop op `PATH`, en geef de hook een Stop-payload met een transcript waarin een `Write` op het fixturebestand staat na de prompt (zodat `turn-roots` de fixture als geraakt ziet; een `untouched`-uitkomst geeft exit 0 om een andere reden dan de regel). De Python-fixtures staan op één plek, `tests/pack/python/testdata/imports-gate-python/<id>/`; de Go-canary leest ze daar (geen kopie in `internal/importcheck/testdata`).
   - Per pack een groene tegenhanger: `numpy` in `[project.dependencies]`, Go-module direct, `lodash` in `dependencies`.
   - Extra's: `try: import httpx except ImportError` met `httpx` in een extra → schoon (AC 3); als deptry dat anders doet: stop en meld een open punt, geen workaround.
   - Node-workspace (hoisted `node_modules` in de root, import in child) faalt zonder declaratie in de child, slaagt met; Expo-nep-repo (`expo` in `package.json`) faalt/slaagt via `pack/node`.
@@ -283,7 +307,7 @@ func ManifestFiles(lang Lang) []string // pyproject.toml, uv.lock | go.mod, go.s
 ### Taak 10: dogfood, docs en changelog
 
 **Files:**
-- Modify: bevindingen in `go.mod`, `web/go.mod`, `web/package.json` (declareren, niet uitzetten); docs die hooks of gates opsommen (zoek `go-lint-gate` onder `docs/`); `CLAUDE.md`-hooklijst alleen als hij hooks per pack noemt (anders niet).
+- Modify: bevindingen in `go.mod`, `web/go.mod`, `web/package.json` (declareren, niet uitzetten); docs die hooks of gates opsommen (zoek `go-lint-gate` onder `docs/`; de site-kaarten `packs.json` en `session.json` zijn al in taak 7 gedaan); `CLAUDE.md`-hooklijst alleen als hij hooks per pack noemt (anders niet).
 - Create: `changelog.d/<fragment>.md` (Nederlands; naam volgens de bestaande fragmenten)
 
 **Interfaces:**
