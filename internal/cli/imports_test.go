@@ -130,7 +130,21 @@ func TestImportsCheckPassesFlagsThrough(t *testing.T) {
 		{"lang only", []string{"--lang", "go"}, []string{"a", "b"}},
 		{"files relative", []string{"--lang", "go", "--files", "a/x.go"}, []string{"a"}},
 		{"files absolute", []string{"--lang", "go", "--files", filepath.Join(repo.root, "b", "y.go")}, []string{"b"}},
-		{"files backslash", []string{"--lang", "go", "--files", `b\y.go`}, []string{"b"}},
+	}
+	// A backslash separates only on Windows; on Linux it is a letter of a file name, so the path
+	// `b\y.go` is a file in the repository root and lies in no project here.
+	if filepath.Separator == '\\' {
+		tests = append(tests, struct {
+			name string
+			args []string
+			want []string
+		}{"files backslash", []string{"--lang", "go", "--files", `b\y.go`}, []string{"b"}})
+	} else {
+		tests = append(tests, struct {
+			name string
+			args []string
+			want []string
+		}{"files backslash is a file name", []string{"--lang", "go", "--files", `b\y.go`}, nil})
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

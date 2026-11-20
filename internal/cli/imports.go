@@ -151,7 +151,7 @@ func importsRelFiles(root string, files []string) ([]string, error) {
 	}
 	var out []string
 	for _, f := range files {
-		rel := filepath.ToSlash(strings.ReplaceAll(f, `\`, "/"))
+		rel := filepath.ToSlash(f)
 		if filepath.IsAbs(f) {
 			rel = ""
 			for _, r := range roots {
