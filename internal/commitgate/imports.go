@@ -27,7 +27,7 @@ var findingLine = regexp.MustCompile(`^.+:\d+: \S+ .+ — .+$`)
 // runImportsDefault runs the check as a subprocess of this very binary, in root: in a dev
 // checkout run.sh runs the gate with the binary built from HEAD, while PATH may hold an older
 // one without `imports`.
-func (g *Gate) runImportsDefault(root string, files []string) (stdout, stderr string, code int, err error) {
+func (g *Gate) runImportsDefault(root string, files []string, limit time.Duration) (stdout, stderr string, code int, err error) {
 	executable := g.Executable
 	if executable == nil {
 		executable = os.Executable
@@ -40,7 +40,7 @@ func (g *Gate) runImportsDefault(root string, files []string) (stdout, stderr st
 	if g.Exec != nil {
 		return g.Exec(root, g.Env, argv)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), importsDeadline)
+	ctx, cancel := context.WithTimeout(context.Background(), limit)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Dir, cmd.Env = root, g.Env
@@ -49,7 +49,7 @@ func (g *Gate) runImportsDefault(root string, files []string) (stdout, stderr st
 	cmd.WaitDelay = time.Second
 	runErr := cmd.Run()
 	if ctx.Err() != nil {
-		return "", "", 0, errors.New("the check ran past its deadline of " + importsDeadline.String())
+		return "", "", 0, errors.New("the check ran past its deadline of " + limit.String())
 	}
 	var exit *exec.ExitError
 	if errors.As(runErr, &exit) {
@@ -102,7 +102,8 @@ func importsFiles(row Row) ([]string, error) {
 // runImports is the import step of the gate: for every row root with installed packs it runs
 // `lighthouse imports check` on the files of the commit. It does not depend on
 // the test command, and only [imports] check = false turns it off. stop is true when the gate
-// ends with res.
+// ends with res. The clock of the gate starts at the first run: a run gets at most what is left of
+// MaxDeadline since then, so the hook timeout never fires first (fail-open).
 func (g *Gate) runImports(rows []Row) (stop bool, res Result) {
 	enabled, checked := true, false
 	for _, row := range rows {
@@ -125,6 +126,7 @@ func (g *Gate) runImports(rows []Row) (stop bool, res Result) {
 		if !enabled {
 			return false, Result{}
 		}
+		g.startUnix()
 		files, err := importsFiles(row)
 		if err != nil {
 			return true, g.Block("could not list the files to check for imports in " + row.Root + ": " + err.Error())
@@ -141,7 +143,11 @@ func (g *Gate) runImports(rows []Row) (stop bool, res Result) {
 		if run == nil {
 			run = g.runImportsDefault
 		}
-		stdout, stderr, code, err := run(row.Root, files)
+		limit := min(importsDeadline, time.Unix(g.startUnix()+MaxDeadline, 0).Sub(g.now()))
+		if limit <= 0 {
+			return true, g.Block("the import check could not run in " + row.Root + ": the deadline of the gate is used up")
+		}
+		stdout, stderr, code, err := run(row.Root, files, limit)
 		if res, stop := g.importsVerdict(row.Root, stdout, stderr, code, err); stop {
 			return true, res
 		}

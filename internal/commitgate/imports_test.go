@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 )
 
 const finding = "pkg/a.py:3: unlisted-dependency requests — not declared in pyproject.toml"
@@ -25,7 +26,7 @@ type importsReply struct {
 // withImports installs a fake ImportsCheck that answers reply and records its calls.
 func withImports(h *harness, reply importsReply) *[]importsCall {
 	var calls []importsCall
-	h.g.ImportsCheck = func(root string, files []string) (string, string, int, error) {
+	h.g.ImportsCheck = func(root string, files []string, _ time.Duration) (string, string, int, error) {
 		calls = append(calls, importsCall{root, files})
 		return reply.stdout, reply.stderr, reply.code, reply.err
 	}
@@ -273,5 +274,69 @@ func TestImportsUnreadableManifestBlocks(t *testing.T) {
 	res := h.g.RunRoots([]Row{{Root: root}}, "PreToolUse")
 	if res.Code != 2 || !strings.Contains(res.Stderr, "COULD NOT CHECK — the pack manifest of "+root+" cannot be read") || len(*calls) != 0 {
 		t.Fatalf("got %d, %d calls\n%s", res.Code, len(*calls), res.Stderr)
+	}
+}
+
+// The import step counts towards the one deadline of the gate: the clock starts before it, the
+// test deadline is measured from that start, and a run gets at most what MaxDeadline leaves.
+func TestImportsCountTowardsTheDeadline(t *testing.T) {
+	h := newHarness(t, "pre", testGate, "").reply(runReply{0, "a\n", nil})
+	root := stagedRepo(t)
+	installPacks(t, root)
+	now := time.Unix(startEpoch, 0)
+	h.g.Now = func() time.Time { return now }
+	var limits []time.Duration
+	h.g.ImportsCheck = func(_ string, _ []string, limit time.Duration) (string, string, int, error) {
+		limits = append(limits, limit)
+		now = now.Add(100 * time.Second) // knip took 100 s
+		return "", "", 0, nil
+	}
+	message(t, h.g.RunRoots([]Row{{Root: root}}, "PreToolUse"), "PreToolUse")
+	if len(limits) != 1 || limits[0] != importsDeadline {
+		t.Fatalf("limits %v, want [%v]", limits, importsDeadline)
+	}
+	if want := time.Unix(startEpoch+270, 0); !h.calls[0].deadline.Equal(want) {
+		t.Fatalf("test deadline %v, want %v: measured from before the import step", h.calls[0].deadline, want)
+	}
+}
+
+func TestImportsRunIsBoundedByWhatIsLeft(t *testing.T) {
+	h := newHarness(t, "pre", testGate, "").reply(runReply{0, "a\n", nil}, runReply{0, "a\n", nil})
+	root := stagedRepo(t)
+	installPacks(t, root)
+	// Two rows: the first leaves 30 s of MaxDeadline for the second.
+	now := time.Unix(startEpoch, 0)
+	h.g.Now = func() time.Time { return now }
+	var limits []time.Duration
+	h.g.ImportsCheck = func(_ string, _ []string, limit time.Duration) (string, string, int, error) {
+		limits = append(limits, limit)
+		now = now.Add(MaxDeadline*time.Second - 30*time.Second)
+		return "", "", 0, nil
+	}
+	h.g.RunRoots([]Row{{Root: root}, {Root: root}}, "PreToolUse")
+	if len(limits) != 2 || limits[0] != importsDeadline || limits[1] != 30*time.Second {
+		t.Fatalf("limits %v, want [%v 30s]", limits, importsDeadline)
+	}
+}
+
+// An exhausted deadline blocks (COULD NOT CHECK), never fail-open, and tests nothing.
+func TestImportsExhaustedDeadlineBlocks(t *testing.T) {
+	h := newHarness(t, "pre", testGate, "").reply(runReply{0, "a\n", nil})
+	root := stagedRepo(t)
+	installPacks(t, root)
+	now := time.Unix(startEpoch, 0)
+	h.g.Now = func() time.Time { return now }
+	calls := 0
+	h.g.ImportsCheck = func(string, []string, time.Duration) (string, string, int, error) {
+		calls++
+		now = now.Add(MaxDeadline * time.Second)
+		return "", "", 0, nil
+	}
+	res := h.g.RunRoots([]Row{{Root: root}, {Root: root}}, "PreToolUse")
+	if res.Code != 2 || !strings.Contains(res.Stderr, "COULD NOT CHECK") || !strings.Contains(res.Stderr, "deadline of the gate is used up") {
+		t.Fatalf("got %d\n%s", res.Code, res.Stderr)
+	}
+	if calls != 1 || len(h.calls) != 0 {
+		t.Fatalf("imports runs %d, test runs %d; want 1 and 0", calls, len(h.calls))
 	}
 }
