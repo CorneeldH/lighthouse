@@ -21,7 +21,9 @@
 - Een skill met `claude/` en `agents/` wordt per variant gecontroleerd, met `t.Run(variant, …)`. Een gedeelde `SKILL.md` telt voor beide.
 - Geen `go:embed` uit `pack/` in het testpakket (embed-paden kennen geen `..`). Geen `_test.go` onder `pack/`.
 - Raak `pack/**`, `.claude/skills`, `.agents/skills`, `tests/pack/python/`, `tests/pack/fixtures/` en bestaande Go-tests niet aan (milestone-no-gos, en het Go-pakket leest fixtures).
-- De andere 24 `tests/pack/test_*.py` zijn van #366, inclusief `test_skill_scripts_gone.py` en de verhuizing van `_testkit.py`. `tests/pack/{go,shell,node,expo}` is #368. `tests/pack/_testkit.py` en `conftest.py` blijven in deze PR staan.
+- De andere 25 `tests/pack/test_*.py` zijn van #366, inclusief `test_skill_scripts_gone.py`, `test_forge_neutral_units.py` en de verhuizing van `_testkit.py`. `tests/pack/{go,shell,node,expo}` is #368. `tests/pack/_testkit.py` en `conftest.py` blijven in deze PR staan.
+  - Enige uitzondering: `test_forge_neutral_units.py` importeert `_TOOL_USES` uit `test_skill_contracts.py`, dat taak 2 verwijdert. Taak 2 vervangt in dat bestand alleen die ene import door een letterlijke kopie van de dict. De 6 tests ervan triagert #366.
+- `tests/test_domains.py::test_no_go_file_names_a_path_outside_go` faalt als een `.go`-bestand `docs/`, `changelog.d` of `ci/literal-` bevat. Geen van die tekenreeksen komt voor in `internal/packcontract`; schrijf `developer/planning/specs/` zonder `docs/`-voorvoegsel. Een pin die `ci/literal-allowlist.txt` leest (domein `not-go`) gaat niet naar Go.
 - Artefacten (PR-body, commitberichten, changelog) in het Nederlands, als Conventional Commits.
 
 ## Review Focus
@@ -105,21 +107,21 @@ Elke taak volgt dezelfde zeven stappen per bronbestand.
 - [ ] **Stap 2: Schrijf de eerste test** in `skills_test.go`, `TestChainSkillsPointAtForgeReference`. Dit is de port van `test_chain_skills_point_at_forge_reference`.
   - Voor elke `name` in `[]string{"start-issue","route-issue","write-issue","write-pr"}` en elke variant: de tekst bevat `lighthouse config forge.kind`.
   - Elke `../lighthouse-forge/<kind>.md §<sectie>` noemt een sectie uit `forgeSections`: `board`, `blockers`, `sub-issues`, `sluitwoorden`, `proxy`, `ci`, `workflows`.
-  - Er is minstens één verwijzing.
+  - Er is minstens één verwijzing, per variant (`t.Run(variant, …)`), zoals `assert refs` per `SKILL.md` in het origineel (`tests/pack/test_skill_contracts.py:459-463`).
 - [ ] **Stap 3:** `go test ./internal/packcontract/ -v` en verwacht PASS.
 - [ ] **Stap 4: Cachebewijs (AC 3).**
   1. Draai `go test ./internal/packcontract/` twee keer. Verwacht op de tweede regel `(cached)`.
   2. Vervang `lighthouse config forge.kind` in `pack/core/skills/route-issue/SKILL.md` (of de variant waarin het staat) door `lighthouse config forge.kinds`.
   3. Draai opnieuw. Verwacht `FAIL`, niet `(cached)`.
   4. `git checkout -- pack/`.
-  5. Maak `pack/core/skills/route-issue/extra.md` aan met `heading:bestaat_niet`, draai opnieuw (na taak 2 vangt `TestHeadingKeysKnown` dit) en verwijder het bestand.
+  (Het bewijs voor een nieuw bestand staat in taak 9 stap 2, want `TestHeadingKeysKnown` bestaat pas na taak 2.)
   Noteer de uitvoer van stappen 1 en 3 voor de PR-body.
 - [ ] **Stap 5:** `golangci-lint run ./internal/packcontract/` en verwacht schone uitvoer.
 - [ ] **Stap 6: Commit:** `test(packcontract): testpakket voor contracten op pack/, eerste pin (#367)`.
 
 ### Taak 2: `test_skill_contracts.py` (22 tests)
 
-**Files:** Modify `internal/packcontract/skills_test.go`, Delete `tests/pack/test_skill_contracts.py`.
+**Files:** Modify `internal/packcontract/skills_test.go`, Modify `tests/pack/test_forge_neutral_units.py` (alleen de import van `_TOOL_USES`, zie Global Constraints), Delete `tests/pack/test_skill_contracts.py`.
 
 **Interfaces:** Consumes de helpers uit taak 1. De Go-tests mogen `config.IsKnownKey`, `config.Variants` en `checkinstr.Run` uit `internal/config` en `internal/checkinstr` aanroepen.
 
@@ -135,7 +137,7 @@ Concept, na lezing:
 | `test_skill_links_resolve` | naar Go | Neem `ALLOWED_EXTERNAL` letterlijk over. |
 | `test_optional_steps_guarded` | naar Go | Invariant: wat in paia blijft, staat er alleen "if present". Neem `_paragraphs` met de omsluitende koppen over. |
 | `test_planned_skills_absent` | weg — beschermt niets | `PLANNED` is leeg, dus de test faalt op geen enkele mutatie. |
-| `test_descriptions_pass_the_overlap_check` | naar Go | Kopieer alle skills naar een tijdelijke `.claude/skills` en `.agents/skills`, zoals `_install_skills`. Roep `checkinstr.Run(root, personal, &out, &errOut)` aan. Assert dat `out` geen `overlap without a bounding clause` bevat. `checkinstr.Run` vraagt mogelijk meer dan skills (bijv. een `AGENTS.md`); neem dan wat `install_core` legt over, minimaal. |
+| `test_descriptions_pass_the_overlap_check` | naar Go | Kopieer alle skills naar een tijdelijke `.claude/skills` en `.agents/skills`, zoals `_install_skills`. Roep `checkinstr.Run(root, personal, &out, &errOut)` aan. `checkinstr.Run` geeft exit 2 met lege uitvoer zonder laadbare `lighthouse.toml` (`internal/checkinstr/run.go:71-75`, `config.Load`). Schrijf dus eerst een minimale `lighthouse.toml` (en `.lighthouse/headings.toml`) in de tijdelijke root, zoals `install_core` met `MINIMAL_TOML` (`tests/pack/_testkit.py:703-709`), en zet `t.Setenv("LIGHTHOUSE_TOML", "")`. Assert `rc != 2`, lege `errOut`, en dat `out` geen `overlap without a bounding clause` bevat. Een test die met een overlappende beschrijving (stap e) niet faalt, port je niet. |
 | `test_requires_names_the_skill_per_tool` + `test_tool_patterns_see_python_and_tomllib` | naar Go, één test | Neem `_TOOL_USES` over. Lees `requires.toml` met BurntSushi/toml en vouw `[forge.<kind>]` in. De pattern-zelftest wordt de assertie dat `python/skills/python-standard` op `python3` en `tomllib` matcht. |
 | `test_requires_python_only_where_the_skill_uses_it` | naar Go | Zelfde lus, omgekeerde richting. |
 | `test_every_writing_gh_command_in_the_skills_names_the_repo` | naar Go | #224: zonder `--repo` kiest gh de upstream in een fork. Dit is een blijvende invariant. |
@@ -148,7 +150,8 @@ Concept, na lezing:
 | `test_forge_skills_name_no_source_issue_number` | naar Go | Blijvend (R3-uitzondering). |
 | `test_review_skills_call_the_binary_not_python_or_a_wrapper` | weg — onderwerp weg | Negative existence na #282. `python3` in een skill vangt de requires-test ook. |
 
-- [ ] Volg stappen a–g. Commit: `test(packcontract): structurele skillcontracten naar Go, test_skill_contracts.py weg (#367)`.
+- [ ] Volg stappen a–g, met deze aanvulling vóór `git rm`: vervang in `tests/pack/test_forge_neutral_units.py:15` de regel `from tests.pack.test_skill_contracts import _TOOL_USES` door een letterlijke kopie van de dict `_TOOL_USES`, en draai `uv run pytest -q tests/pack/test_forge_neutral_units.py` (verwacht PASS). Verder niets in dat bestand.
+- [ ] Commit: `test(packcontract): structurele skillcontracten naar Go, test_skill_contracts.py weg (#367)`.
 
 ### Taak 3: `test_skills_issue_flow.py` (49 tests)
 
@@ -179,7 +182,7 @@ Concept:
   - `test_allowlist_table_covers_the_code` leest `tests/pack/fixtures/evidence/allowlist.json`. Port het naar Go met hetzelfde fixture, of met de constanten uit `internal/evidence` als die geëxporteerd zijn. `TestAllowlistMatchesFixture` bindt fixture en code al aan elkaar.
   - `test_example_row_holds_against_the_template` en `test_example_block_is_a_valid_refs_body` draaien de binary. Port ze in-process via het `internal/evidence`- en `internal/prbody`-pakket (zoek de functie achter `lighthouse evidence run` en `lighthouse pr-body-gate` in `internal/cli`).
     - De `gh`-nep wordt een assertie dat er geen forge-aanroep plaatsvindt, met de seam die `internal/prbody/gate_test.go` al gebruikt.
-    - Lukt in-process niet zonder productiewijziging, zet de test dan in `e2e/` (build-tag `e2e`, `go-e2e`-job).
+    - Lukt in-process niet zonder productiewijziging, zet de test dan in `e2e/` (build-tag `e2e`, `go-e2e`-job). Een e2e-pin draait niet onder `go test ./...`: noem dat in de PR-body bij AC 3, en houd de tekstpin zelf in `packcontract`.
 - **write-issue: naar Go.**
   - `test_invariant_check_runs_against_the_forge` draait de binary met een nep-forge (`REAL_LIGHTHOUSE`). Port het in-process, of naar `e2e/` zoals hierboven.
   - `test_variants_differ_only_in_the_generated_line` gaat naar Go: de diff van de varianten is precies de "Generated with"-regel.
@@ -236,7 +239,8 @@ Concept:
   - In `test_calls_the_binary` vallen `uv` en `unblock_dependents.py` weg (R3).
   - Vergelijk `test_runs_on_from_config`, `test_bot_names_from_config` en `test_default_branch_from_config` eerst met de vultest van `init` (`internal/initcmd`, `packs.Fill`). `packs.Fill` meldt een onbekende placeholder als `missing`.
   - **De vijf `test_get_lighthouse_*`-tests** voeren het shellscript van de stap uit met nep-tools. Volgens test-standard ("Execute shell scripts") blijft dat een uitvoertest. Port ze naar Go: haal de `run:` van de stap uit de YAML, schrijf nep-`uname`/`sha256sum`/`curl` in een `t.TempDir()` op `PATH`, en draai met `exec.Command("bash", "-c", script)`. Het is dezelfde logica als `_get_lighthouse` in het Python-bestand.
-  - `test_go_is_set_up_only_for_a_dev_checkout` en `test_the_one_literal_is_the_release_download`: naar Go.
+  - `test_go_is_set_up_only_for_a_dev_checkout`: naar Go.
+  - `test_the_one_literal_is_the_release_download` leest `ci/literal-allowlist.txt` (`tests/pack/test_workflow_unblock.py:232`), een `not-go`-pad (`tests/test_domains.py:121-137`). Port alleen de assertie op de workflow-YAML; de allowlistkant gaat niet naar Go. Noteer dat in de tabel (*naar Go (ingekort)*).
 
 ### Taak 8: fragmenten, requires, portable shell en shellcheck (4 + 1 + 3 + 1 tests)
 
@@ -252,15 +256,15 @@ Concept:
   - Go RE2 kent geen lookbehind: `(?<![\w-])sha256sum\b` wordt `(^|[^\w-])sha256sum\b`.
   - Mutatie: `sed -i 's/x/y/' f` in een `pack/*/hooks/*.sh` moet de test laten falen.
 - **shellcheck (1 test): naar Go.** De gepinde shellcheck komt uit `pack/shell/scripts/lib/shellcheck-bin.sh` (`resolve_shellcheck`). Een ontbrekende pin is een fout, geen skip.
-  - **Open punt:** draait de `go-test`-job in CI met die shellcheck? Het Python-origineel draaide in de pytest-shards. Controleer met `grep -n shellcheck .github/workflows/ci.yml` en met de log van de shards.
-  - Zonder shellcheck in de Go-job: zet `t.Skip` alleen als `CI` leeg is, en voeg de installatie toe aan de job. Een `.github/workflows/`-wijziging pusht de workflow-pusher in een controller-run.
+  - `resolve_shellcheck` downloadt de gepinde shellcheck zelf (`pack/shell/scripts/lib/shellcheck-bin.sh:31-41,74-75`), dus de `go-test`-job heeft geen installatiestap en geen workflowwijziging nodig. Roep het script aan met `cmd.Dir` op de repo-root (`../..`, nodig voor `git rev-parse`) en faal op exit ≠ 0. Raak `.github/workflows/` niet aan.
 
 ### Taak 9: Afronden
 
 - [ ] **Stap 1:** `grep -rn -E 'test_(skill_contracts|skills_issue_flow|write_pr_skill|write_issue_skill|close_issue_skill|fix_pr_skill|upgrade_skill|test_standard_skill|audit_worktrees_skill|place_instruction_skill|adversarial_review_skills|issue_impact_scout|pr_template|workflow_unblock|fragments|portable_shell|shell_style|requires_without_python)' --include='*.py' --include='*.go' --include='*.yml' --include='*.toml' . | grep -v docs/developer/planning`. Verwacht geen hit.
-  - Een hit in `tests/pack/python/test_gate_python.py` is een string-pad; pas het aan naar een bestaand bestand.
-  - Andere hits: los ze op in deze taak.
+  - Bekende hits die blijven: een commentaarverwijzing in `internal/prbody/inline_twins_test.go:16` (bestaande Go-test, niet aanraken) en `tests/test_pages_workflow.py:3` (buiten deze issue). Verwijzingen in bestanden van #366 laat je staan.
+  - Andere hits: los ze op in deze taak, behalve in bestanden van #366 of bestaande Go-tests.
 - [ ] **Stap 2: Opnieuw het cachebewijs (AC 3)** zoals taak 1 stap 4, nu op een pin uit taak 3: `Scout: lighthouse-issue-impact-scout` in `pack/core/skills/start-issue/claude/SKILL.md`. Verwacht `(cached)`, dan na de mutatie `FAIL`. Zet de bron terug.
+  - Bewijs ook een **nieuw** bestand: maak `pack/core/skills/route-issue/extra.md` aan met `heading:bestaat_niet`, draai `go test ./internal/packcontract/` en verwacht `FAIL` (`TestHeadingKeysKnown`), niet `(cached)`. Verwijder het bestand.
 - [ ] **Stap 3: Changelog-fragment** `changelog.d/issue-367-skillcontracten.md`:
 
   ```markdown
@@ -271,7 +275,7 @@ Concept:
   ```
 
 - [ ] **Stap 4:** `go test -race -shuffle=on ./...` en verwacht PASS. `golangci-lint run ./...` en verwacht schone uitvoer.
-- [ ] **Stap 5:** `uv run pytest -q tests/pack` en verwacht PASS. Dit is de rest: #366, #368 en `tests/pack/python/`.
+- [ ] **Stap 5:** `uv run pytest -q tests/pack tests/test_domains.py` en verwacht PASS. `tests/pack` is de rest: #366, #368 en `tests/pack/python/`; `test_domains.py` bewaakt dat het Go-pakket geen `not-go`-pad noemt.
 - [ ] **Stap 6:** Tel de concepttabel op: tests voor (297), naar Go, weg per soort. Zet de totalen onder de tabel. De PR-body neemt de tabel en de totalen over (AC 2), plus de uitvoer van het cachebewijs (AC 3).
 - [ ] **Stap 7: Commit:** `chore(packcontract): changelog-fragment en triagetotalen (#367)`.
 
@@ -285,7 +289,7 @@ De uitvoerder werkt deze tabel per taak bij. De PR-body neemt hem over. Telling:
 
 | Bestand | Tests | Concept | Taak |
 |---|---:|---|---|
-| `test_skill_contracts.py` | 22 | 15 naar Go (2 samengevoegd met hun zelftest), 2 gedekt, 1 beschermt niets, 1 onderwerp weg | 2 |
+| `test_skill_contracts.py` | 22 | 16 naar Go, 2 zelftests opgegaan in de niet-leeg-assertie, 2 gedekt, 1 beschermt niets, 1 onderwerp weg | 2 |
 | `test_skills_issue_flow.py` | 49 | ~46 naar Go, 1 onderwerp weg, 1 gedekt of naar Go (`speech.json`), 1 ingekort | 3 |
 | `test_write_pr_skill.py` | 25 | ~23 naar Go (2 in-process of e2e), 1 gedekt, negatieven R3 binnen tests | 4 |
 | `test_write_issue_skill.py` | 15 | 15 naar Go (1 in-process of e2e) | 4 |
