@@ -37,6 +37,7 @@ func TestReturn(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			tt.want.Labeled = true
 			tt.want.Label = LabelEdit{Winner: "needs_hands", Add: []string{"needs_hands"}, Remove: []string{"needs_testing"}}
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("Return = %#v, want %#v", got, tt.want)
@@ -54,10 +55,26 @@ func TestReturn(t *testing.T) {
 func TestReturnStopsBeforeTheBoardOnAnEditError(t *testing.T) {
 	f := &fakeForge{labels: []string{"needs_testing"}, editErr: errors.New("boom"), onBoard: true,
 		item: forge.BoardItem{ItemID: "I1", Status: "Controller"}}
-	if _, err := Return(context.Background(), f, 7, "needs_hands", keyLabels, true); err == nil {
+	got, err := Return(context.Background(), f, 7, "needs_hands", keyLabels, true)
+	if err == nil {
 		t.Fatal("Return gave no error")
+	}
+	if got.Labeled {
+		t.Error("Labeled is true after a failed label edit")
 	}
 	if f.itemCalls != 0 || len(f.statuses) != 0 {
 		t.Errorf("IssueItem calls %d, SetStatus calls %v; want none", f.itemCalls, f.statuses)
+	}
+}
+
+func TestReturnReportsTheLabelBeforeABoardError(t *testing.T) {
+	f := &fakeForge{labels: []string{"needs_testing"}, onBoard: true, setErr: errors.New("board down"),
+		item: forge.BoardItem{ItemID: "I1", Status: "Controller"}}
+	got, err := Return(context.Background(), f, 7, "needs_hands", keyLabels, true)
+	if err == nil {
+		t.Fatal("Return gave no error")
+	}
+	if !got.Labeled {
+		t.Error("Labeled is false after a successful label edit")
 	}
 }

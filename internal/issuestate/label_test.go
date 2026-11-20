@@ -72,6 +72,7 @@ type fakeForge struct {
 	item    forge.BoardItem
 	onBoard bool
 	editErr error // returned by EditIssue after it applied AddLabels
+	setErr  error // returned by SetStatus
 
 	edits     []forge.IssueEdit
 	itemCalls int
@@ -111,7 +112,7 @@ func (f *fakeForge) SetStatus(_ context.Context, it forge.BoardItem, status stri
 		return errors.New("unexpected item")
 	}
 	f.statuses = append(f.statuses, status)
-	return nil
+	return f.setErr
 }
 
 func TestApplyWithoutChangeSendsNoEdit(t *testing.T) {
