@@ -41,6 +41,19 @@ func TestSetLabel(t *testing.T) {
 	}
 }
 
+// Two keys may share one label name: the shared label is one label, never removed as its own loser.
+func TestSetLabelWithTwoKeysOnOneName(t *testing.T) {
+	l := keyLabels
+	l.NeedsHands, l.NeedsTesting = "help", "help"
+	got, err := SetLabel([]string{"help"}, "needs_testing", l)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := (LabelEdit{Winner: "help"}); !reflect.DeepEqual(got, want) {
+		t.Errorf("SetLabel = %#v, want %#v", got, want)
+	}
+}
+
 func TestSetLabelRejectsAnUnknownKey(t *testing.T) {
 	if _, err := SetLabel(nil, "needs-hands", keyLabels); err == nil {
 		t.Error("SetLabel(needs-hands) gave no error")

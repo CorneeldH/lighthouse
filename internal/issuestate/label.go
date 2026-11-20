@@ -56,7 +56,7 @@ func SetLabel(current []string, wantKey string, l repoconfig.Labels) (LabelEdit,
 	var present []string // blocking label names, in rank order
 	for _, k := range Keys {
 		n, ok := Name(k, l)
-		if ok && (n == want || slices.Contains(current, n)) {
+		if ok && (n == want || slices.Contains(current, n)) && !slices.Contains(present, n) {
 			present = append(present, n)
 		}
 	}
