@@ -648,16 +648,8 @@
    {
     "argv": [
      "gh",
-     "pr",
-     "list",
-     "--repo",
-     "Owner/repo",
-     "--head",
-     "issue-1094-x",
-     "--state",
-     "open",
-     "--json",
-     "number",
+     "api",
+     "repos/Owner/repo/pulls?head=Owner:issue-1094-x&state=open&per_page=1",
      "--jq",
      "length"
     ],
@@ -747,16 +739,8 @@
    {
     "argv": [
      "gh",
-     "pr",
-     "list",
-     "--repo",
-     "Owner/repo",
-     "--head",
-     "issue-1094-x",
-     "--state",
-     "open",
-     "--json",
-     "number",
+     "api",
+     "repos/Owner/repo/pulls?head=Owner:issue-1094-x&state=open&per_page=1",
      "--jq",
      "length"
     ],
@@ -846,16 +830,8 @@
    {
     "argv": [
      "gh",
-     "pr",
-     "list",
-     "--repo",
-     "Owner/repo",
-     "--head",
-     "issue-1094-x",
-     "--state",
-     "open",
-     "--json",
-     "number",
+     "api",
+     "repos/Owner/repo/pulls?head=Owner:issue-1094-x&state=open&per_page=1",
      "--jq",
      "length"
     ],
@@ -946,16 +922,8 @@
    {
     "argv": [
      "gh",
-     "pr",
-     "list",
-     "--repo",
-     "Owner/repo",
-     "--head",
-     "issue-1094-x",
-     "--state",
-     "open",
-     "--json",
-     "number",
+     "api",
+     "repos/Owner/repo/pulls?head=Owner:issue-1094-x&state=open&per_page=1",
      "--jq",
      "length"
     ],
@@ -1045,16 +1013,8 @@
    {
     "argv": [
      "gh",
-     "pr",
-     "list",
-     "--repo",
-     "Owner/repo",
-     "--head",
-     "issue-1094-x",
-     "--state",
-     "open",
-     "--json",
-     "number",
+     "api",
+     "repos/Owner/repo/pulls?head=Owner:issue-1094-x&state=open&per_page=1",
      "--jq",
      "length"
     ],
@@ -1144,16 +1104,8 @@
    {
     "argv": [
      "gh",
-     "pr",
-     "list",
-     "--repo",
-     "Owner/repo",
-     "--head",
-     "issue-1094-x",
-     "--state",
-     "open",
-     "--json",
-     "number",
+     "api",
+     "repos/Owner/repo/pulls?head=Owner:issue-1094-x&state=open&per_page=1",
      "--jq",
      "length"
     ],
@@ -1215,16 +1167,8 @@
    {
     "argv": [
      "gh",
-     "pr",
-     "list",
-     "--repo",
-     "Owner/repo",
-     "--head",
-     "main",
-     "--state",
-     "open",
-     "--json",
-     "number",
+     "api",
+     "repos/Owner/repo/pulls?head=Owner:main&state=open&per_page=1",
      "--jq",
      "length"
     ],
@@ -1286,16 +1230,8 @@
    {
     "argv": [
      "gh",
-     "pr",
-     "list",
-     "--repo",
-     "Owner/repo",
-     "--head",
-     "trunk",
-     "--state",
-     "open",
-     "--json",
-     "number",
+     "api",
+     "repos/Owner/repo/pulls?head=Owner:trunk&state=open&per_page=1",
      "--jq",
      "length"
     ],
@@ -1861,16 +1797,8 @@
    {
     "argv": [
      "gh",
-     "pr",
-     "list",
-     "--repo",
-     "Owner/repo",
-     "--head",
-     "issue-1094-x",
-     "--state",
-     "open",
-     "--json",
-     "number",
+     "api",
+     "repos/Owner/repo/pulls?head=Owner:issue-1094-x&state=open&per_page=1",
      "--jq",
      "length"
     ],

@@ -95,7 +95,7 @@ func (r *artefactRepo) env(getenv func(string) string) Env {
 			switch {
 			case strings.HasPrefix(joined, "api repos/o/r/commits/"):
 				return procrun.Result{Code: 1, Stderr: "gh: Not Found (HTTP 404)"}, nil
-			case strings.HasPrefix(joined, "pr list"):
+			case strings.HasPrefix(joined, "api repos/o/r/pulls?"):
 				return procrun.Result{Stdout: "0\n"}, nil
 			}
 			return procrun.Result{Code: 1, Stderr: "no comments in this test"}, nil
@@ -180,5 +180,46 @@ func TestPostArtefactCouldNotCheckRefuses(t *testing.T) {
 	}
 	if r.onOrigin("issue-1-x") {
 		t.Error("the branch was pushed")
+	}
+}
+
+// openPR asks the REST pulls endpoint: never `gh pr list` and never GraphQL.
+func TestOpenPRUsesREST(t *testing.T) {
+	type call struct {
+		name string
+		args []string
+	}
+	var calls []call
+	p := &poster{
+		ctx:  context.Background(),
+		repo: "o/r",
+		run: func(ctx context.Context, dir string, stdin *string, name string, args ...string) (procrun.Result, error) {
+			calls = append(calls, call{name, args})
+			return procrun.Result{Stdout: "1\n"}, nil
+		},
+	}
+
+	open, err := p.openPR("issue-7-x")
+
+	if err != nil {
+		t.Fatalf("openPR: %s", err.msg)
+	}
+	if !open {
+		t.Error("openPR = false, want true for an open PR")
+	}
+	want := []string{"api", "repos/o/r/pulls?head=o:issue-7-x&state=open&per_page=1", "--jq", "length"}
+	if len(calls) != 1 {
+		t.Fatalf("calls = %d, want 1: %v", len(calls), calls)
+	}
+	if calls[0].name != "gh" {
+		t.Errorf("command = %q, want gh", calls[0].name)
+	}
+	if strings.Join(calls[0].args, "\x00") != strings.Join(want, "\x00") {
+		t.Errorf("args = %q, want %q", calls[0].args, want)
+	}
+	for _, c := range calls {
+		if strings.HasPrefix(strings.Join(c.args, " "), "pr ") || strings.HasPrefix(strings.Join(c.args, " "), "api graphql") {
+			t.Errorf("call %v uses pr or GraphQL", c.args)
+		}
 	}
 }

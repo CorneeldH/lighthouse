@@ -24,6 +24,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -135,9 +136,13 @@ func (p *poster) commitKnownOrFail(sha string) (bool, *Error) {
 	return known, nil
 }
 
+// openPR reports whether an open PR has branch as its head. It asks the REST pulls endpoint, with
+// the owner of the repository as the head owner.
 func (p *poster) openPR(branch string) (bool, *runError) {
-	out, err := p.gh(nil, "pr", "list", "--repo", p.repo, "--head", branch, "--state", "open",
-		"--json", "number", "--jq", "length")
+	owner, _, _ := strings.Cut(p.repo, "/")
+	out, err := p.gh(nil, "api",
+		fmt.Sprintf("repos/%s/pulls?head=%s:%s&state=open&per_page=1", p.repo, owner, url.QueryEscape(branch)),
+		"--jq", "length")
 	return out != "0", err
 }
 
