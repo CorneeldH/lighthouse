@@ -19,7 +19,7 @@
 - Alleen in een controller-run: `LIGHTHOUSE_CONTROLLER_RUN` in uuid-vorm en `LIGHTHOUSE_STATE_DIR` niet leeg.
 - Het schrijven van de notitie verandert nooit de exitcode of foutmelding van de mislukte post. Lukt het schrijven niet, dan één regel op stderr met `COULD NOT CHECK`.
 - `nodeapi.Version` blijft 1. Een `404` zonder code op de nieuwe route is "geen notitie".
-- Een mislukte `KindRepost` is geen apply-fout: één logregel, de tickstaat wordt bewaard, de run blijft open.
+- Een mislukte `KindRepost` is geen apply-fout: hij komt in `res.Deferred` (één regel `lighthouse: deferred …`), zodat de tick de tickstaat van die repo niet bewaart en de volgende tick opnieuw gathert en herpost. De andere acties lopen door, de run blijft open.
 - Redenen: `reason_post_failed` (nl `post mislukt`, en `post failed`) met de fout als argument; `reason_post_failed_unreadable` (nl `post mislukt: notitie onleesbaar`, en `post failed: note unreadable`) zonder argument.
 - De PR schrijft `Closes #395`. Eén fragment in `changelog.d/`.
 
@@ -102,6 +102,7 @@ git commit -m "fix(postartefact): open PR via REST in plaats van gh pr list (#39
 - [ ] **Step 1: Schrijf de falende tests**
 
 - `TestWritePostFailedFieldOrder`: `WritePostFailed(dir, "11111111-2222-4333-8444-555555555555", PostFailed{At: time.Date(2026, 11, 20, 21, 4, 5, 123e6, time.UTC), Issue: 121, Command: "forge issue comment", Error: "a\nb", Body: "🤖 Handoff\nissue: #121\n"})`; het bestand begint met `{"version":1,"at":"2026-11-20T21:04:05.123Z","issue":121,"command":"forge issue comment","error":"a; b","body":`, en heeft modus `0o600`.
+- `TestWritePostFailedNormalisesTime`: `At` = `time.Date(2026, 11, 20, 22, 4, 5, 123456789, time.FixedZone("CET", 3600))` geeft in het bestand `"at":"2026-11-20T21:04:05.123Z"`.
 - `TestWritePostFailedOverwrites`: twee keer schrijven; `ReadPostFailed` geeft de tweede.
 - `TestReadPostFailedMissing`: geen bestand geeft `nil, nil`.
 - `TestReadPostFailedUnreadable`: inhoud `{`, `{"version":2,"at":"2026-11-20T21:04:05.123Z"}` en `{"version":1}` geven elk `&PostFailed{Unreadable: true}, nil`.
@@ -109,7 +110,7 @@ git commit -m "fix(postartefact): open PR via REST in plaats van gh pr list (#39
 
 - [ ] **Step 2: Draai, verwacht FAIL** — `go test ./internal/dispatch/ -run PostFailed -v`, faalt op ontbrekende symbolen.
 
-- [ ] **Step 3: Implementeer** in `internal/dispatch/postfailed.go`. `WritePostFailed` maakt `runs/<session>` aan met `0o700`, schrijft via een tijdelijk bestand plus `os.Rename`, en zet `error` op één regel met dezelfde vervanging als `oneLine` (`\n` wordt `; `). Een vaste struct met `json`-tags in contractvolgorde (`version` eerst) geeft de veldvolgorde. `ParsePostFailed` geeft `Unreadable` bij een JSON-fout, een `version` anders dan 1, of een nul-`at`.
+- [ ] **Step 3: Implementeer** in `internal/dispatch/postfailed.go`. `WritePostFailed` maakt `runs/<session>` aan met `0o700`, schrijft via een tijdelijk bestand plus `os.Rename`, schrijft `at` als `n.At.UTC().Format("2006-01-02T15:04:05.000Z")` (een string-veld in de schrijfstruct, niet `time.Time`), en zet `error` op één regel met dezelfde vervanging als `oneLine` (`\n` wordt `; `). Een vaste struct met `json`-tags in contractvolgorde (`version` eerst) geeft de veldvolgorde. `ParsePostFailed` geeft `Unreadable` bij een JSON-fout, een `version` anders dan 1, of een nul-`at`.
 
 - [ ] **Step 4: Draai, verwacht PASS** — `go test -race ./internal/dispatch/ -run PostFailed -v`.
 
@@ -136,6 +137,10 @@ git commit -m "feat(dispatch): notitie post-failed.json voor een mislukte post (
   // notePostFailed writes the post-failed note of a controller run; outside one it does nothing.
   func notePostFailed(getenv func(string) string, now time.Time, stderr io.Writer, issue int, command, body string, postErr error)
   ```
+  ```go
+  // writeNoting is write, but onErr gets the raw error of open before fail turns it into errSilent.
+  func (e *forgeEnv) writeNoting(cmd *cobra.Command, onErr func(error), do func(f forge.Forge) error) error
+  ```
   `forgeEnv` krijgt `getenv func(string) string` en `now func() time.Time` (nil is `os.Getenv` en `time.Now`). `askEnv` krijgt `Now func() time.Time` (nil is `time.Now`). `ask` krijgt een parameter `errOut io.Writer` na `out`.
 
 - [ ] **Step 1: Schrijf de falende tests**
@@ -144,17 +149,19 @@ git commit -m "feat(dispatch): notitie post-failed.json voor een mislukte post (
 - `TestNotePostFailedCouldNotCheck`: `LIGHTHOUSE_STATE_DIR` wijst naar een bestand (geen map): stderr bevat `COULD NOT CHECK`.
 - `TestForgeIssueCommentFailureWritesNote`: fake forge waarvan `CreateComment` faalt met `rate limit`; `lighthouse forge issue comment 121 --body-file f` in een controller-run geeft dezelfde exitcode en stderr als zonder notitie (exit 1), en `ReadPostFailed` geeft `Issue 121`, `Command "forge issue comment"`, `Body` gelijk aan de inhoud van `f`, `Error` met `rate limit`.
 - `TestForgeIssueCommentOpenFailureWritesNote`: `env.open` faalt; notitie met de body van `f`.
+- `TestForgeIssueCommentStdoutFailureWritesNothing`: `CreateComment` slaagt, het schrijven van de URL naar stdout faalt (een `forgeEnv.out` die een fout geeft): geen notitie.
 - `TestForgeIssueCommentUsageErrorWritesNothing`: ontbrekend body-bestand of nummer `x`: geen notitie.
 - `TestForgePRCommentFailureWritesNothing`: `forge pr comment` die faalt schrijft niets.
 - `TestAskIssueFailureWritesEmptyBody`: `c.Issue` faalt; notitie met `Command "ask"` en `Body ""`.
 - `TestAskPostFailureWritesBody`: `CreateComment` faalt; `Body` is de gerenderde vraag, en `protocol.ParseQuestion(Body)` lukt.
-- `TestAskInvalidInputWritesNothing`: ongeldige velden of `--issue 0`: geen notitie. `--dry-run`: geen notitie.
+- `TestAskInvalidInputWritesNothing`: ongeldige velden of `--issue 0`: geen notitie.
+- `TestAskDryRunWritesNothing`: `--dry-run` met een fake forge waarvan `GET issue` faalt: geen notitie.
 
 - [ ] **Step 2: Draai, verwacht FAIL** — `go test ./internal/cli/ -run 'PostFailed|ForgeIssueComment|ForgePRComment|Ask' -v`.
 
 - [ ] **Step 3: Implementeer**
 
-`notePostFailed` controleert `LIGHTHOUSE_CONTROLLER_RUN` met `askSessionUUID` en `LIGHTHOUSE_STATE_DIR` niet leeg, en roept `dispatch.WritePostFailed`. Een schrijffout geeft één regel `lighthouse: post-failed note: COULD NOT CHECK — <fout>` op stderr. `newForgeCommentCommand` krijgt een laatste parameter `onFail func(cmd *cobra.Command, n int, body string, err error)`: na een fout van `env.write` roept RunE `onFail` aan (als die niet nil is) en geeft daarna dezelfde fout terug. De issue-variant geeft een `onFail` die `notePostFailed(…, "forge issue comment", body, err)` aanroept; de PR-variant geeft `nil`. In `ask` schrijft elke fout ná de checks op velden, sessie en `--issue` een notitie: config, opener, `c.Issue` (body `""`) en `CreateComment` (de gerenderde body). De read-back-check schrijft niets, en `--dry-run` ook niet. `RunE` geeft `cmd.ErrOrStderr()` mee als `errOut`.
+`notePostFailed` controleert `LIGHTHOUSE_CONTROLLER_RUN` met `askSessionUUID` en `LIGHTHOUSE_STATE_DIR` niet leeg, en roept `dispatch.WritePostFailed`. Een schrijffout geeft één regel `lighthouse: post-failed note: COULD NOT CHECK — <fout>` op stderr. `newForgeCommentCommand` krijgt een laatste parameter `onFail func(cmd *cobra.Command, n int, body string, err error)` (nil voor de PR-variant). Met een `onFail` gebruikt RunE `env.writeNoting`: een fout van `open` gaat rauw naar `onFail`, en in de `do`-closure roept een fout van `post` eerst `onFail` met de rauwe fout aan en geeft die dan terug. Een fout bij het schrijven van de URL naar stdout roept `onFail` nooit aan. `forgeEnv.fail` blijft de foutmelding en exitcode bepalen, zoals nu. De issue-variant geeft een `onFail` die `notePostFailed(…, "forge issue comment", body, err)` aanroept. In `ask` schrijft elke fout ná de checks op velden, sessie en `--issue` een notitie: config, opener, `c.Issue` (body `""`) en `CreateComment` (de gerenderde body). Uitzonderingen: de read-back-check schrijft niets, en bij `--dry-run` schrijft ook een fout van `c.Issue` niets. `RunE` geeft `cmd.ErrOrStderr()` mee als `errOut`.
 
 - [ ] **Step 4: Draai, verwacht PASS** — `go test -race ./internal/cli/ -v -run 'PostFailed|ForgeIssueComment|ForgePRComment|Ask'`, daarna `go test -race ./internal/cli/`.
 
@@ -171,7 +178,7 @@ git commit -m "feat(cli): forge issue comment en ask noteren een mislukte post (
 
 **Files:**
 - Modify: `internal/nodeapi/nodeapi.go:28-29, 66-67`, `internal/nodeserve/statemap.go:48, 96-110`, `internal/workplace/kennforge/nodeclient.go:408-427`, `internal/workplace/kennforge/node.go:188` (naast `Permission`), `internal/workplace/workplace.go:128-131`, `internal/dispatch/runstate.go:17-22`, `internal/cli/tick.go:734-755`
-- Test: `internal/nodeserve/statemap_test.go`, `internal/nodeserve/contract_test.go`, `internal/workplace/kennforge/nodeclient_test.go`, `internal/cli/tick_test.go` (of het bestand waar `runProbe.permission` getest wordt)
+- Test: `internal/nodeserve/statemap_test.go`, `internal/workplace/kennforge/nodeclient_test.go`, `internal/cli/tick_test.go` (of het bestand waar `runProbe.permission` getest wordt), en de fake serve in `internal/cli/tick_nodes_test.go` (~:279), die nu elke onbekende route laat falen: die krijgt een case voor `post-failed` die `404 no_post_failed` geeft
 
 **Interfaces:**
 - Consumes: `dispatch.PostFailedPath`, `dispatch.ReadPostFailed`, `dispatch.ParsePostFailed` (Taak 2).
@@ -193,14 +200,14 @@ git commit -m "feat(cli): forge issue comment en ask noteren een mislukte post (
 
 - [ ] **Step 1: Schrijf de falende tests**
 
-- nodeserve `TestPostFailedRoute`: met een notitie geeft de route de rauwe bytes; zonder notitie `404` met code `no_post_failed`; een onveilige sessie-id `400`. Neem de route op in de contracttest, zoals `get-permission`.
+- nodeserve `TestPostFailedRoute`: met een notitie geeft de route de rauwe bytes; zonder notitie `404` met code `no_post_failed`; een onveilige sessie-id `400`.
 - nodeclient `TestNodeClientPostFailed`: `200` geeft de bytes, `404 no_post_failed` geeft `nil, nil`, `500` geeft een fout.
 - nodeclient `TestNodeClientPostFailedOldNode`: `404` zonder code (een oude node) geeft `nil, nil`.
 - tick: een lokale run met een notitie in de state-dir geeft `RunState.PostFailed` gevuld; een onleesbare notitie geeft `Unreadable: true` en geen fout; een node-run gaat via `PostFailedReader`.
 
 - [ ] **Step 2: Draai, verwacht FAIL** — `go test ./internal/nodeserve/ ./internal/workplace/kennforge/ ./internal/cli/ -run 'PostFailed' -v`.
 
-- [ ] **Step 3: Implementeer** volgens het patroon van `permission`, met twee verschillen: de client accepteert een `404` zonder code als `nil, nil`, en `runProbe.postFailed` parset met `ParsePostFailed` (nooit een fout op onleesbare inhoud). `measureRun` vult `s.PostFailed` direct na `s.Permission`. Een fout van de node (geen antwoord) blijft een fout, zoals bij permission.
+- [ ] **Step 3: Implementeer** volgens het patroon van `permission`, met twee verschillen: de client accepteert een `404` zonder code als `nil, nil`, en `runProbe.postFailed` parset met `ParsePostFailed` (nooit een fout op onleesbare inhoud). `runProbe.measure` (`internal/cli/tick.go`, ~:716) vult `s.PostFailed` direct na `s.Permission`. Een fout van de node (geen antwoord) blijft een fout, zoals bij permission.
 
 - [ ] **Step 4: Draai, verwacht PASS** — `go test -race ./internal/nodeapi/... ./internal/nodeserve/... ./internal/workplace/... ./internal/cli/ ./internal/dispatch/`.
 
@@ -244,7 +251,7 @@ Elk een kopie van `done-no-handoff.json` (run 5, issue 7, sessie `11111111-2222-
 | `postfailed-old-note.json` | `at` 09:00 (vóór `started_at`) | `return`, `reason":"reason_no_handoff"` (gedrag van vandaag) |
 | `postfailed-runtime-reached.json` | geldige Handoff, `now` 8h na `started_at` | `return`, `reason":"reason_post_failed"`, `reason_arg` de `error` |
 
-Plus `postfailed-reposted-handoff-closes.json`: zelfde notitie, maar de geposte Handoff staat in de comments (na `started_at`); `want` is de `close` met `outcome":"handoff"` en `end":true`, zoals een gewone run met een Handoff. En `postfailed-empty-body.json`: `body` `""`: `return` met `reason_post_failed`.
+Plus `postfailed-reposted-handoff-closes.json`: zelfde notitie, maar de geposte Handoff staat in de comments (na `started_at`); `want` is wat `settle-handoff.json` geeft voor een gewone run met een Handoff: de `close` met `outcome":"handoff"` en `end":true` plus de handoff-start (`trigger_key` `handoff:<comment-id>`), en géén `repost`. En `postfailed-empty-body.json`: `body` `""`: `return` met `reason_post_failed`. En twee Vraag-gevallen die `return` met `reason_post_failed` geven: `postfailed-question-other-session.json` (footer van een andere sessie) en `postfailed-question-other-issue.json` (`· #8 `).
 
 - [ ] **Step 2: Draai, verwacht FAIL** — `go test ./internal/dispatch/ -run 'TestDecide' -v` faalt op de nieuwe fixtures (onbekend veld `post_failed` of andere `want`).
 
@@ -280,11 +287,11 @@ git commit -m "feat(dispatch): regel 14a post een gestrande handoff of vraag zel
 - [ ] **Step 1: Schrijf de falende tests**
 
 - `TestApplyRepostPostsBody`: een `KindRepost`-actie post `a.Body` letterlijk op `a.Issue` van `a.Repo`, en sluit geen run (de runs-DB heeft run 5 nog open, zonder uitkomst).
-- `TestApplyRepostFailureIsNoError`: `CreateComment` faalt; `Apply` geeft `nil` terug, `res.Failed` heeft geen sleutel voor de repo, en de log bevat één regel met `repost`, `o/r#7`, `run 5` en de fout.
+- `TestApplyRepostFailureDefers`: `CreateComment` faalt; `Apply` geeft `nil` terug, `res.Failed` heeft geen sleutel voor de repo, en `res.Deferred` bevat precies één regel die begint met `o/r#7: ` en `repost`, `run 5` en de fout bevat. Een tweede actie in dezelfde `Apply`-aanroep wordt nog uitgevoerd.
 
 - [ ] **Step 2: Draai, verwacht FAIL** — `go test ./internal/dispatch/ -run TestApplyRepost -v`.
 
-- [ ] **Step 3: Implementeer** een `case KindRepost` die `ap.env.Forge(a.Repo).CreateComment(ctx, a.Issue, a.Body)` aanroept. Bij een fout volgt `ap.logf("lighthouse: repost %s run %d: %s", subject(a), a.RunID, oneLine(err.Error()))` en dan `return nil`.
+- [ ] **Step 3: Implementeer** een `case KindRepost` die `ap.env.Forge(a.Repo).CreateComment(ctx, a.Issue, a.Body)` aanroept. Bij een fout volgt `res.Deferred = append(res.Deferred, deferral(a, fmt.Sprintf("repost run %d: %s", a.RunID, oneLine(err.Error()))))` en dan `return nil`, zoals de `busy`-deferral in `apply.go` (~:339). `decideAndApply` in `internal/cli/tick.go` bewaart de tickstaat van een repo met een deferral al niet; daar verandert niets.
 
 - [ ] **Step 4: Draai, verwacht PASS** — `go test -race ./internal/dispatch/ ./internal/cli/`.
 
@@ -292,7 +299,7 @@ git commit -m "feat(dispatch): regel 14a post een gestrande handoff of vraag zel
 
 ```bash
 git add internal/dispatch/apply.go internal/dispatch/apply_test.go
-git commit -m "feat(dispatch): apply post de body van een repost, een fout blijft een logregel (#395)"
+git commit -m "feat(dispatch): apply post de body van een repost, een fout wordt een deferral (#395)"
 ```
 
 ---
@@ -301,8 +308,8 @@ git commit -m "feat(dispatch): apply post de body van een repost, een fout blijf
 
 **Files:**
 - Modify: `docs/tick.md` (de regeltabel :287-309, de alinea's erna, en waar `permission.json` beschreven staat), `pack/core/skills/write-handoff/SKILL.md:276-277`
-- Create: `changelog.d/issue-395-mislukte-post.md`
-- Generated: de geïnstalleerde kopie van write-handoff onder `.claude/skills/` via `init --upgrade`
+- Create: `changelog.d/issue-395-post-rest.md` (conventie `changelog.d/<branch>.md`, `docs/releasing.md:77`)
+- Generated via `init --upgrade`: beide geïnstalleerde kopieën, `.claude/skills/lighthouse-write-handoff/SKILL.md` en `.agents/skills/lighthouse-write-handoff/SKILL.md`, en de hashes in `.lighthouse/manifest.toml`
 
 **Interfaces:** geen.
 
@@ -310,7 +317,7 @@ git commit -m "feat(dispatch): apply post de body van een repost, een fout blijf
 
 - Regel 14a in de tabel, tussen 13c en 14: *Klaar, geen PR, geen Handoff of Vraag, wel een `post-failed.json` van op of na `started_at` (of een onleesbare)*, met de vier uitkomsten uit de tabel van de spec en de redenen *post mislukt: <fout>* en *post mislukt: notitie onleesbaar*.
 - Een alinea over `post-failed.json`: wie schrijft (`forge issue comment` en `ask`, alleen in een controller-run), wanneer (elke fout nadat de bedoeling vaststaat), waar, dat alleen de nieuwste telt, de node-route en dat een oude node "geen notitie" geeft.
-- Een alinea over de keuze: A+ boven A (alleen een reden) en B (transcript), met de reden uit *Aanpakken* van de spec. Daarbij: een mislukte repost is een logregel, geen tickfout, en `max_runtime` is de grens.
+- Een alinea over de keuze: A+ boven A (alleen een reden) en B (transcript), met de reden uit *Aanpakken* van de spec. Daarbij: een mislukte repost is een deferral, geen tickfout; de tickstaat van die repo blijft staan, zodat de volgende tick opnieuw gathert en herpost; `max_runtime` is de grens.
 - In de alinea van Apply: `repost` post de body en sluit niets.
 
 - [ ] **Step 2: Skill**
@@ -333,6 +340,7 @@ Run: `go run ./cmd/lighthouse init --upgrade && go run ./cmd/lighthouse init --u
 - [ ] **Step 5: Commit**
 
 ```bash
-git add docs/tick.md pack/core/skills/write-handoff/SKILL.md .claude/ changelog.d/issue-395-mislukte-post.md
+git add docs/tick.md pack/core/skills/write-handoff/SKILL.md .claude/ .agents/ .lighthouse/manifest.toml changelog.d/issue-395-post-rest.md
+git status --porcelain   # expected: empty
 git commit -m "docs(tick): regel 14a en de notitie post-failed.json (#395)"
 ```

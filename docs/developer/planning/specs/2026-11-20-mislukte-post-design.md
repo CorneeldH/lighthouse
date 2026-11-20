@@ -195,8 +195,10 @@ voor de run.
 **Idempotent.** Staat de post eenmaal, dan geldt regel 14a niet meer, want regel 2 of 3 gaat voor.
 
 **Als de post van de controller mislukt.** Dan blijft de run open en probeert de volgende tick het
-opnieuw. Apply logt de fout op één regel (repo, issue, run, fout). Het is **geen fout van de
-tick**: de andere acties en de tickstaat gaan gewoon door. Anders zou een blijvende fout, zoals een
+opnieuw. Apply meldt de fout op één regel (repo, issue, run, fout) als uitstel (deferral). Het is
+**geen fout van de tick**: de andere acties gaan gewoon door. Alleen de tickstaat van die repo
+blijft staan, net als bij elk ander uitstel, zodat de volgende tick opnieuw gathert en het opnieuw
+probeert; anders slaat de precheck de repo tot 30 minuten over. Anders zou een blijvende fout, zoals een
 422 of een 403, elke tick rood maken. `Decide` blijft puur: het telt geen pogingen. De bovengrens
 is de rij met `max_runtime` hierboven. Regel 14a staat vóór regel 19, dus 14a regelt die grens
 zelf, met de fout van de run als reden. Met `max_runtime` op 0 probeert de controller het zonder
