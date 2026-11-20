@@ -4,7 +4,7 @@
 
 **Goal:** `post-artefact`, `labels`, `worktree-audit` en de workflows roepen geen `gh` meer aan voor een forge-bewerking, of de uitzondering staat met reden vast; daarmee zijn AC 1 en 2 van #407 af.
 
-**Architecture:** De drie Go-pakketten (`internal/postartefact`, `internal/labels`, `internal/worktreeaudit`) krijgen een `forge.Forge` in hun `Env`, geopend zoals `laneEnvFrom` in `internal/cli/pinslane.go` dat doet (`repoconfig.Load` → `forge.Token` → `forge.Open`). Wat het interface nog niet kan (commit bekend?, label maken, alle PR-koppen, PR's die een issue sluiten) komt als vier nieuwe methoden op `*GitHub` en `*GitLab`. De workflows blijven op `gh` (alleen GitHub Actions) met een uitzondering met reden in `lighthouse-forge`.
+**Architecture:** De drie Go-pakketten (`internal/postartefact`, `internal/labels`, `internal/worktreeaudit`) krijgen een `forge.Forge` in hun `Env`, geopend via `forgeOpener.forRepo` (`internal/cli/forges.go:56`: `forge.Token` met de `gh auth token`-terugval, dan `forge.Open`), met de repo uit `repoconfig.LoadFile(config.Path())`. Wat het interface nog niet kan (commit bekend?, label maken, alle PR-koppen, PR's die een issue sluiten) komt als vier nieuwe methoden op `*GitHub` en `*GitLab`. De workflows blijven op `gh` (alleen GitHub Actions) met een uitzondering met reden in `lighthouse-forge`.
 
 **Tech Stack:** Go (`internal/forge`, `forgetest`, `gitlabtest` en `forgesuite` voor de fakes en de suite), pytest voor de contracttest in `tests/pack`.
 
@@ -16,7 +16,9 @@
 - Commits zijn Conventional Commits, één logische wijziging per commit, in de worktree van branch `issue-407-gitlab-forge-overige-units-met-gh-op`.
 - Een wijziging onder `pack/` of onder `internal/` die verandert wat `init` schrijft draait `go run ./cmd/lighthouse init --upgrade`; de geïnstalleerde kopie wordt gecommit en CI eist daarna `No changes.`
 - Beide varianten (`claude/` en `agents/`) van een skill veranderen samen.
-- `gh auth token` blijft toegestaan (`internal/forge/token.go`, `internal/cli/ask.go`).
+- `gh auth token` blijft toegestaan (`internal/cli/forges.go`, `internal/cli/ask.go`); `internal/forge/token.go` kent de terugval zelf niet.
+- De drie units openen de forge nooit met `laneEnvFrom` (geen `gh auth token`-terugval, leest alleen `<root>/lighthouse.toml`) maar met `forgeOpener.forRepo`, de repo uit `repoconfig.LoadFile(config.Path())` (dat eert `LIGHTHOUSE_TOML`, net als `Env.Config`). Een gebruiker die alleen via `gh auth login` is ingelogd houdt zo wat nu werkt. Een test dekt die terugval per unit.
+- Een GitHub-forge in deze units neemt `prbody.GitHubAPIURLEnv` (`LIGHTHOUSE_GITHUB_API_URL`) als `BaseURL`, zodat het binary in `tests/pack` tegen een `httptest`-server draait.
 - Een nieuwe methode op `forge.Forge` krijgt een implementatie op `*GitHub` én `*GitLab`, op `forgetest`, `gitlabtest` en elke andere fake die het interface vervult, plus een case in `internal/forge/forgesuite/suite.go` (`go build ./...` en `go vet ./...` vinden de fakes).
 - Een foutpad "404 of 422 = bestaat niet" leest een typed fout van de forge, nooit de stderr-tekst van een proces.
 - Geen derde forge (No-Go van milestone 9). Geen echte GitLab-run: die is #358; tests draaien op fakes en `httptest`.
@@ -39,7 +41,7 @@
 **Files:**
 - Modify: `internal/forge/forge.go` (interface), `internal/forge/github.go` of `write_issue.go` (naast `Labels`, regel ~443), `internal/forge/gitlab_write.go` (naast `Labels`, regel ~363)
 - Modify: `internal/forge/forgetest/server_write.go`, `internal/forge/gitlabtest/server_write.go` (fakes)
-- Test: `internal/forge/forgesuite/suite.go`, `internal/forge/github_contract_test.go`, `internal/forge/gitlab_contract_test.go`
+- Test: `internal/forge/forgesuite/suite.go` (met nieuwe `Fixture`-methoden voor een commit en een bestaand label), `internal/forge/github_contract_test.go`, `internal/forge/gitlab_contract_test.go` (implementeren die methoden)
 
 **Interfaces:**
 - Produces: `CommitKnown(ctx context.Context, sha string) (bool, error)` — `true` als de forge de commit kent; een 404 of 422 is `false, nil`, elke andere fout wordt teruggegeven. GitHub: `GET repos/<repo>/commits/<sha>`; GitLab: `GET projects/<id>/repository/commits/<sha>`.
@@ -47,16 +49,16 @@
 
 - [ ] **Step 1: Schrijf de suite-cases die falen**
 
-In `forgesuite/suite.go` naast de `Labels`-test: `TestCommitKnown` (bekende sha → `true`; onbekende sha → `false, nil`; een 500 → fout) en `TestCreateLabel` (nieuw label verschijnt in `Labels`; tweede keer dezelfde naam → `nil`; kleur komt aan zoals de forge hem verwacht).
+In `forgesuite/suite.go` zijn cases entries in `Cases`, subtests van `TestGitHubConformance` en `TestGitLabConformance` (geen losse `Test…`-functies). Naast de `Labels`-case: `CommitKnown` (bekende sha → `true`; onbekende sha → `false, nil`; een 500 → fout) en `CreateLabel` (nieuw label verschijnt in `Labels`; tweede keer dezelfde naam → `nil`; kleur komt aan zoals de forge hem verwacht).
 
 - [ ] **Step 2: Run, verwacht rood**
 
-Run: `go test ./internal/forge/... -run 'CommitKnown|CreateLabel'`
+Run: `go test ./internal/forge/... -run 'Conformance/(CommitKnown|CreateLabel)'`
 Verwacht: build-fout, de methoden bestaan niet.
 
 - [ ] **Step 3: Implementeer op `*GitHub`, `*GitLab` en beide fakes**
 
-Gebruik de bestaande `c.do`-helper en de statusfout waar `checks.go:123` al `errors.As(err, &se)` op doet; geen nieuwe fouttypes. Voeg de twee routes toe aan de fakes.
+Gebruik de bestaande `c.do`-helper en de statusfout waar `checks.go:123` al `errors.As(err, &se)` op doet. `httpStatusError` (`github.go:235-249`) draagt alleen `Code` en `Message`, niet `errors[].code`: een 422 van `CreateLabel` telt pas als "bestaat al" na een nieuwe `Labels`-aanroep die de naam bevat (hoofdletterongevoelig); anders is het een fout, zodat een geweigerd label nooit als `labels: created` telt. Voeg de twee routes toe aan de fakes.
 
 - [ ] **Step 4: Run, verwacht groen**
 
@@ -73,25 +75,25 @@ git commit -m "feat(forge): CommitKnown en CreateLabel op GitHub en GitLab (#407
 ### Task 2: `PullHeads` en `IssueClosingHeads` op de forge
 
 **Files:**
-- Modify: `internal/forge/forge.go`, `internal/forge/board.go` (naast `BranchPRs`), `internal/forge/gitlab_mr.go`, fakes in `forgetest` en `gitlabtest`
+- Modify: `internal/forge/forge.go`, `internal/forge/board.go` (naast `BranchPRs`), `internal/forge/gitlab_mr.go`, fakes in `forgetest` en `gitlabtest`; `PullHeads`/`IssueClosingHeads`-fixturemethoden in `forgesuite` en beide `*_contract_test.go`
 - Test: `internal/forge/forgesuite/suite.go`
 
 **Interfaces:**
 - Produces: `type PullHead struct{ Number int; State string; MergedAt string; HeadRef string }` en `PullHeads(ctx context.Context) ([]PullHead, error)` — elke PR of MR in elke staat, alle pagina's; `State` is `OPEN`, `CLOSED` of `MERGED` zoals `PR.State`.
-- Produces: `IssueClosingHeads(ctx context.Context, number int) ([]ClosingHead, error)` met `type ClosingHead struct{ HeadRef string; Merged, CrossRepo bool }` — de PR's die issue `number` sluiten of ernaar verwijzen (GitHub: dezelfde `closedByPullRequestsReferences` en `CROSS_REFERENCED_EVENT` als `issuePRsQuery`, via de bestaande GraphQL-helper in `graphql.go`; GitLab: `GET projects/<id>/issues/<iid>/closed_by` samen met `related_merge_requests`).
+- Produces: `IssueClosingHeads(ctx context.Context, number int) ([]ClosingHead, error)` met `type ClosingHead struct{ HeadRef, Repo, Body string; Merged, Closes, CrossRepo bool }` (`Closes`: sluit het issue, anders alleen een verwijzing) — de PR's die issue `number` sluiten of ernaar verwijzen (GitHub: dezelfde `closedByPullRequestsReferences` en `CROSS_REFERENCED_EVENT` als `issuePRsQuery`, via de bestaande GraphQL-helper in `graphql.go`; GitLab: `GET projects/<id>/issues/<iid>/closed_by` samen met `related_merge_requests`).
 
 - [ ] **Step 1: Schrijf de suite-cases**
 
-`TestPullHeads`: open, gesloten en gemergde PR komen alle drie terug met de juiste `State`; meer dan één pagina. `TestIssueClosingHeads`: een gemergde PR, een fork-PR (`CrossRepo` true) en een PR die het issue alleen noemt.
+`TestPullHeads`: open, gesloten en gemergde PR komen alle drie terug met de juiste `State`; meer dan één pagina. `IssueClosingHeads`: een gemergde PR, een fork-PR (`CrossRepo` true), een PR die het issue alleen noemt (met en zonder `Refs #nr` in de body) en een PR uit een andere repo.
 
 - [ ] **Step 2: Run, verwacht rood**
 
-Run: `go test ./internal/forge/... -run 'PullHeads|IssueClosingHeads'`
+Run: `go test ./internal/forge/... -run 'Conformance/(PullHeads|IssueClosingHeads)'`
 Verwacht: build-fout.
 
 - [ ] **Step 3: Implementeer op beide forges en beide fakes**
 
-Eén regel aanpak: GitHub hergebruikt de query-tekst uit `worktreeaudit/collect.go:303` (verplaats hem naar `internal/forge`); GitLab mapt `state: opened|closed|merged` naar `OPEN|CLOSED|MERGED`.
+Eén regel aanpak: GitHub hergebruikt de query-tekst uit `worktreeaudit/collect.go:303` (kopieer hem naar `internal/forge`; `worktreeaudit` houdt zijn kopie tot Task 5 hem weghaalt, anders breekt `go build` in Task 2); GitLab mapt `state: opened|closed|merged` naar `OPEN|CLOSED|MERGED`.
 
 - [ ] **Step 4: Run, verwacht groen**
 
@@ -101,14 +103,14 @@ Verwacht: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add internal/forge internal/worktreeaudit/collect.go
+git add internal/forge
 git commit -m "feat(forge): PullHeads en IssueClosingHeads op GitHub en GitLab (#407)"
 ```
 
 ### Task 3: `post-artefact` op de forge
 
 **Files:**
-- Modify: `internal/postartefact/postartefact.go` (regels 41-209, 319, 436), `internal/cli/postartefact.go` (regels 29-53, Long-tekst)
+- Modify: `internal/postartefact/postartefact.go` (regels 41-209, 319, 436), `internal/cli/postartefact.go` (regels 29-53, Long-tekst), `internal/protocol/artefact.go` (regel ~280, de bronlink)
 - Test: `internal/postartefact/postartefact_test.go` (regels 85-101 herschrijven), `internal/cli/postartefact_test.go`
 
 **Interfaces:**
@@ -117,7 +119,7 @@ git commit -m "feat(forge): PullHeads en IssueClosingHeads op GitHub en GitLab (
 
 - [ ] **Step 1: Herschrijf de test-replay naar een fake forge**
 
-`forgetest` levert de fake. Cases (bestaande namen behouden): commit onbekend → push, daarna post; commit bekend → geen push; branch met open PR → geen push; branch met alleen een gemergde PR → wel push; `CommitKnown`-fout 500 → exit 1 met `forge failed`; hetzelfde scenario op `gitlabtest`.
+`forgetest` levert de fake. Cases (bestaande namen behouden): commit onbekend → push, daarna post; commit bekend → geen push; branch met open PR → geen push; branch met alleen een gemergde PR → wel push; `CommitKnown`-fout 500 → exit 1 met `forge failed`; hetzelfde scenario op `gitlabtest`; header-bronlink wijst op GitLab naar de GitLab-host; `LIGHTHOUSE_TOML` buiten de root wordt gevolgd; zonder `GH_TOKEN` maar met `gh auth token` opent de forge.
 
 - [ ] **Step 2: Run, verwacht rood**
 
@@ -126,7 +128,7 @@ Verwacht: FAIL.
 
 - [ ] **Step 3: Zet `commitKnown`, `openPR`, `readComments` en `postComment` om**
 
-`openPR` filtert `BranchPRs` op `State == "OPEN"`. `postComment` geeft `Comment.URL`. De forge opent `defaultPostArtefactEnv` zoals `laneEnvFrom`; een ontbrekend token geeft `artefact: no token for forge …`. Pas de `Long`-tekst aan: "not on the forge" in plaats van "not on GitHub".
+`openPR` filtert `BranchPRs` op `State == "OPEN"`. `postComment` geeft `Comment.URL`. De forge opent `defaultPostArtefactEnv` via `forgeOpener.forRepo` met `repoconfig.LoadFile(config.Path())` (zie Global Constraints); een ontbrekend token (ook na `gh auth token`) geeft `artefact: no token for forge …`. `protocol.RenderArtefact` zet de bronlink hard op `https://github.com/<repo>/blob/<sha>/<pad>` (`artefact.go:280`): maak hem forge-bewust (GitLab: `<web>/<repo>/-/blob/<sha>/<pad>`, host uit `repoconfig`), met een test voor beide forges. Pas de `Long`-tekst aan: "not on the forge" in plaats van "not on GitHub".
 
 - [ ] **Step 4: Run, verwacht groen**
 
@@ -136,14 +138,14 @@ Verwacht: PASS. Controle: `git grep -n '"gh"' internal/postartefact internal/cli
 - [ ] **Step 5: Commit**
 
 ```bash
-git add internal/postartefact internal/cli/postartefact.go internal/cli/postartefact_test.go
+git add internal/postartefact internal/protocol internal/cli/postartefact.go internal/cli/postartefact_test.go
 git commit -m "feat(post-artefact): leest en schrijft via lighthouse forge, ook op GitLab (#407)"
 ```
 
 ### Task 4: `labels` op de forge, plus `lighthouse forge label create`
 
 **Files:**
-- Modify: `internal/labels/labels.go` (regels 43-63, 162-260), `internal/initcmd/initcmd.go` (regel 251), `internal/cli/forge*.go` (het `forge`-subcommando, naast `issue` en `pr`)
+- Modify: `internal/labels/labels.go` (regels 43-63, 162-260), `internal/initcmd/initcmd.go` (regel 251), `internal/cli/forge*.go` (het `forge`-subcommando, naast `issue` en `pr`), `docs/site/agents/install.md` (regels ~87 en ~190: "needs gh" en de `gh label create`-regels)
 - Test: `internal/labels/labels_test.go`, `internal/initcmd/labels_test.go`, `internal/cli/forge_label_test.go` (nieuw)
 
 **Interfaces:**
@@ -162,7 +164,7 @@ Verwacht: build-fout.
 
 - [ ] **Step 3: Implementeer**
 
-`initcmd` opent de forge voor `Sync` zoals `laneEnvFrom` (geen token → `nil`, nooit een fout). Het `forge label create`-subcommando valt onder dezelfde `dangerouslyDisableSandbox`-regel als de andere forge-commando's.
+`initcmd` opent de forge voor `Sync` via `forgeOpener.forRepo` met `repoconfig.LoadFile(config.Path())` (geen token, ook na `gh auth token` → `nil`, nooit een fout); een test dekt de `gh auth token`-terugval. Het `forge label create`-subcommando valt onder dezelfde `dangerouslyDisableSandbox`-regel als de andere forge-commando's.
 
 - [ ] **Step 4: Run, verwacht groen**
 
@@ -184,11 +186,11 @@ git commit -m "feat(labels): maakt labels via lighthouse forge op beide forges (
 
 **Interfaces:**
 - Consumes: `Forge.PullHeads`, `Forge.IssueClosingHeads` (Task 2).
-- Produces: `worktreeaudit.Env` met `Forge forge.Forge` naast `Run` (alleen nog `git`); `collector.gh` verdwijnt. `IssuePRHeads(ctx, env, repo, nr)` houdt zijn signatuur en `false` bij elke fout; `ParseIssuePRHeads` krijgt `[]forge.ClosingHead` in plaats van het ruwe GraphQL-document en filtert op `Merged && !CrossRepo`.
+- Produces: `worktreeaudit.Env` met `Forge forge.Forge` naast `Run` (alleen nog `git`); `collector.gh` verdwijnt. `IssuePRHeads(ctx, env, repo, nr)` houdt zijn signatuur en `false` bij elke fout; `ParseIssuePRHeads` krijgt `[]forge.ClosingHead` in plaats van het ruwe GraphQL-document en behoudt de filters van `parse.go:337-381`: alleen `Merged`, `!CrossRepo`, `Repo == slug`, en een alleen-verwijzende PR (`!Closes`) telt alleen met `Refs #nr` in `Body` (`prbody.RefsTargets`).
 
 - [ ] **Step 1: Zet de twin-tests om**
 
-De scriptcases met `gh api …` worden fake-forgeantwoorden; verwachte uitvoer blijft byte voor byte gelijk. Voeg toe: forge-fout → PR-status `onbekend` (Review Focus), fork-PR telt niet.
+De scriptcases met `gh api …` worden fake-forgeantwoorden; verwachte uitvoer blijft byte voor byte gelijk. Voeg toe: forge-fout → PR-status `onbekend` (Review Focus), fork-PR telt niet, een gemergde PR die het issue alleen noemt telt niet, een PR uit een andere repo telt niet.
 
 - [ ] **Step 2: Run, verwacht rood**
 
@@ -211,31 +213,51 @@ git add internal/worktreeaudit internal/cli/worktreeaudit.go
 git commit -m "feat(worktree-audit): leest PR's via lighthouse forge, ook op GitLab (#407)"
 ```
 
+### Task 5a: De gh-replay-fixtures naar een fake forge
+
+**Files:**
+- Modify: `tests/pack/fixtures/scripts/post-artefact/cases.json` (29 van 38 cases scripten `gh`), `tests/pack/fixtures/scripts/worktree-audit/cases.json` (18 van 24), `tests/pack/test_script_cases.py` (regels 24-29, 73-76), `tests/pack/_testkit.py`, de Go-twins `internal/cli/postartefact_test.go` (`TestPostArtefactCases`), `internal/cli/worktreeaudit_test.go`, `internal/scriptcase`
+- Test: dezelfde bestanden
+
+**Interfaces:**
+- Produces: een case-formaat waarin de `gh`-calls vervangen zijn door forge-antwoorden (`forge_calls`: method, pad, status, body, in volgorde) die een `httptest`-server afspeelt; het binary bereikt hem via `LIGHTHOUSE_GITHUB_API_URL` plus een dummy-token in `env`. `git` blijft echt. De assert "alle gescripte calls zijn gedaan" blijft, nu op de server. `unblock-dependents` en `_self` houden hun `gh`-replay.
+
+- [ ] **Step 1:** Voeg de `httptest`-replay toe in `internal/scriptcase` en `tests/pack/_testkit.py` (naast `fake_gh_bin`); schrijf de twee fixturebestanden om, per case behoud van `name` en `expect`.
+- [ ] **Step 2:** Run `go test ./internal/cli/... ./internal/worktreeaudit/...` en `uv run pytest -q tests/pack/test_script_cases.py`. Verwacht: PASS; een case die vervalt gebeurt alleen met reden in het commitbericht.
+- [ ] **Step 3: Commit**
+
+```bash
+git add tests/pack internal/scriptcase internal/cli
+git commit -m "test(scripts): post-artefact en worktree-audit spelen tegen een fake forge (#407)"
+```
+
+De replay-twins (`TestPostArtefactCases` en de worktree-audit-twin) staan in Task 3 en 5 tijdelijk rood: daar draaien de run-stappen met `-run` op de eigen suites, en deze task richt de twins recht.
+
 ### Task 6: Workflows als uitzondering met reden
 
 **Files:**
-- Modify: `pack/core/skills/lighthouse-forge/github.md` en `gitlab.md` (nieuwe sectie `## workflows`, zelfde plek in beide), `pack/core/skills/write-handoff/**` en `audit-worktrees/**` (de "blijft tot plan 2"-notities weg; zie plan 1, regel 90)
-- Test: `tests/pack/test_forge_neutral_units.py`
+- Modify: `pack/core/skills/forge/github.md` en `gitlab.md` (nieuwe sectie `## §workflows`, laatste in beide), `pack/core/requires.toml` (haal `write-handoff` en `audit-worktrees` uit `[forge.github] gh`: ze roepen `gh` niet meer aan; zie plan 1, regel 90), `internal/initcmd` (workflow-units niet schrijven bij `forge.kind = "gitlab"`; `fillWorkflows` in `workflows.go:20-49` kent geen kindvoorwaarde)
+- Test: `tests/pack/test_forge_neutral_units.py`, `tests/pack/test_skill_contracts.py` (`FORGE_SECTIONS` krijgt `"## §workflows"` aan het eind), een nieuwe test in `internal/initcmd`
 
 **Interfaces:**
-- Produces: `§workflows` in beide forgebestanden. GitHub: `unblock-dependents.yml` draait alleen in GitHub Actions op `issues: closed`; `gh release download` haalt daar het lighthouse-binary op de runner, en `.github/workflows/build.yml` publiceert de release van lighthouse zelf met `gh release`. GitLab: geen equivalent in deze milestone; een GitLab-repo draait de workflows niet en `lighthouse init` schrijft ze er niet.
+- Produces: `§workflows` in beide forgebestanden. GitHub: `lighthouse unblock-dependents` (`internal/unblock/unblock.go:72-84`) roept zelf `gh` aan en draait alleen in GitHub Actions op `issues: closed`; `gh release download` haalt daar het lighthouse-binary op de runner, en `.github/workflows/build.yml` publiceert de release van lighthouse zelf met `gh release`. GitLab: geen equivalent in deze milestone; een GitLab-repo draait de workflows niet en `lighthouse init` schrijft ze er niet.
 
 - [ ] **Step 1: Test die het ontbreken van de sectie vindt**
 
-In `test_forge_neutral_units.py`: `test_forge_files_have_workflows_section` (beide bestanden bevatten `## workflows`) en `test_no_stays_until_plan_2_notes` (geen "plan 2" meer in de vijf units).
+In `test_forge_neutral_units.py`: `test_forge_files_have_workflows_section` (beide bestanden bevatten `\n## §workflows\n`) en `test_requires_toml_drops_gh_for_converted_units` (`write-handoff` en `audit-worktrees` staan niet meer onder `[forge.github] gh`, wel nog onder `git`); in `internal/initcmd` een test: bij `forge.kind = "gitlab"` schrijft `init` geen `lighthouse-*.yml`, bij GitHub wel.
 
 - [ ] **Step 2: Run, verwacht rood**
 
-Run: `uv run pytest -q tests/pack/test_forge_neutral_units.py`
+Run: `uv run pytest -q tests/pack/test_forge_neutral_units.py tests/pack/test_skill_contracts.py` en `go test ./internal/initcmd/...`
 Verwacht: FAIL.
 
 - [ ] **Step 3: Schrijf de secties en haal de notities weg**
 
-Controleer dat `lighthouse init` voor een GitLab-repo de workflow niet schrijft (lees `pack/core/pack.toml`); is dat niet zo, voeg die voorwaarde toe en een test in `internal/initcmd`.
+Voeg de GitLab-voorwaarde in `internal/initcmd/workflows.go` toe (hij bestaat nog niet) en haal `write-handoff` en `audit-worktrees` uit `requires.toml`. De `initcmd`-wijziging krijgt een eigen eerdere commit `feat(init): schrijft geen GitHub-workflows op GitLab (#407)` met `git add internal/initcmd`.
 
 - [ ] **Step 4: Run, verwacht groen**
 
-Run: `uv run pytest -q tests/pack/test_forge_neutral_units.py`
+Run: `uv run pytest -q tests/pack/test_forge_neutral_units.py tests/pack/test_skill_contracts.py` en `go test ./internal/initcmd/...`
 Verwacht: PASS.
 
 - [ ] **Step 5: Commit**
@@ -284,12 +306,12 @@ Run de `[test_gate] command` uit `lighthouse.toml`. Verwacht: groen; rood wordt 
 
 - [ ] **Step 3: Restscan**
 
-Run: `git grep -nE '\bgh\s+(issue|pr|api|label|project)\b|exec.Command\("gh"' -- pack/core/skills internal ':!internal/**/*_test.go'`
-Verwacht: alleen `gh auth token` en de plekken uit `§workflows`.
+Run: `git grep -nE '\bgh\s+(issue|pr|api|label|project)\b|exec\.Command\("gh"' -- internal/postartefact internal/labels internal/worktreeaudit internal/cli/postartefact.go internal/cli/worktreeaudit.go pack/core/skills/write-handoff pack/core/skills/audit-worktrees pack/core/skills/start-issue pack/core/skills/write-issue pack/core/skills/route-issue pack/core/workflows ':!*_test.go'`
+Verwacht: geen hit buiten `§workflows` en `internal/unblock`. De rest van de repo (`close-issue`, `write-pr`, `internal/evidence`, `internal/prbody`, `internal/hooks`, `forge/github.md §ci` en `§proxy`) valt buiten #407 en houdt zijn `gh`; zeg dat in het commentaar. De vijf skills van deel 1 zijn dezelfde als in [plan 1](2026-11-19-issue-407-forge-neutrale-skills.md); pas de padlijst daarop aan als zij afwijken.
 
 - [ ] **Step 4: Issue-commentaar (Nederlands) op #407**
 
-Via `lighthouse forge issue comment 407 --body-file <scratch>/407.md`: AC 1 en 2 afgevinkt met bewijs (Task 3, 4, 5, 6 en de restscan); uitzondering met reden voor de workflows (`§workflows`); `close-issue` houdt `gh` voor nu en staat niet in de lijst; de echte run op GitLab is #358.
+Via `lighthouse forge issue comment 407 --body-file <scratch>/407.md`: AC 1 en 2 afgevinkt met bewijs (Task 3, 4, 5, 5a, 6 en de restscan); uitzondering met reden voor de workflows (`§workflows`); `close-issue` houdt `gh` voor nu en staat niet in de lijst; de echte run op GitLab is #358.
 
 - [ ] **Step 5: PR**
 
