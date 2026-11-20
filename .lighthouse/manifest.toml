@@ -215,6 +215,20 @@ sha256 = "e3222226e29d29eaa533619afdb59d03a12a315e78174e59b107dfcb75e9cad7"
 
 [[unit]]
 kind = "file"
+path = ".claude/hooks/lighthouse/imports-gate-go.sh"
+package = "go"
+version = "dev"
+sha256 = "c98a5ad3ac1d5f30053c2fdabbd3a0ba23983107f231c7bbf769c92e9cac002b"
+
+[[unit]]
+kind = "file"
+path = ".claude/hooks/lighthouse/imports-gate-node.sh"
+package = "node"
+version = "dev"
+sha256 = "2237cad3b90db79e3c81ed43fa1379abd8f0cbd36a2343360d3143242133c07b"
+
+[[unit]]
+kind = "file"
 path = ".claude/hooks/lighthouse/run.sh"
 package = "core"
 version = "dev"
@@ -363,6 +377,22 @@ id = "Stop||\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/go-lint-gate.sh"
 package = "go"
 version = "dev"
 sha256 = "c1cf2dc8a27d1d896da557fda731bb616c01fd0afe3f31e0d8042a1bf6b6385a"
+
+[[unit]]
+kind = "hook"
+path = ".claude/settings.json"
+id = "Stop||\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/imports-gate-go.sh"
+package = "go"
+version = "dev"
+sha256 = "1a35584f54b69c71bf1e6732b2e3012cd128c67532a5060eab5eac78c14e5cfc"
+
+[[unit]]
+kind = "hook"
+path = ".claude/settings.json"
+id = "Stop||\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/imports-gate-node.sh"
+package = "node"
+version = "dev"
+sha256 = "6c196c7b62f4200ec80ccec073c249a82f1140748062c868ca2c6eda8019e16a"
 
 [[unit]]
 kind = "hook"
@@ -605,4 +635,12 @@ path = "AGENTS.md"
 id = "go"
 package = "go"
 version = "dev"
-sha256 = "1616ce3959bf18a7a934d390a46512542ff2fcadb5c43dc3214a0354180c50d7"
+sha256 = "fce8c7efdafa28f1eca5305a97c3f1d2bf1349336005d1f74793a18eae32e825"
+
+[[unit]]
+kind = "block"
+path = "AGENTS.md"
+id = "node"
+package = "node"
+version = "dev"
+sha256 = "8d6efe27fe76b65b51c427227fad89253a747181a75c43bd4e2de267be21c337"
