@@ -148,12 +148,6 @@ def test_instruction_block():
     assert "lighthouse-shell-standard" in text
 
 
-def test_detect_rule():
-    text = (SHELL / "detect.toml").read_text(encoding="utf-8")
-    assert re.search(r'^files = \["\*\*/\*\.sh", "\*\*/\*\.bash"\]$', text, re.M), text
-
-
-
 def _kpi_fixture(tmp_path: Path) -> tuple[Path, dict]:
     repo = tmp_path / "repo"
     init_repo(repo)

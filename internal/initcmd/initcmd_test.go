@@ -1017,6 +1017,27 @@ func TestEmptyCommandStaysOff(t *testing.T) {
 	}
 }
 
+func TestInitProposesRealGo(t *testing.T) {
+	root := newRepo(t)
+	write(t, root, "go.mod", "module example.com/m\n\ngo 1.26\n")
+	r := run(t, root, "", func(o *Options) { o.Yes = true; o.Packs = nil })
+	if r.code != 0 || !strings.HasPrefix(r.out, "Packages: core, go (found go.mod)\n") {
+		t.Fatalf("rc %d\nout:\n%s\nerr:\n%s", r.code, r.out, r.err)
+	}
+	if !exists(root, ".claude/hooks/lighthouse/go-lint-gate.sh") {
+		t.Fatal("go-lint-gate.sh not installed")
+	}
+}
+
+func TestInitProposesRealShellBash(t *testing.T) {
+	root := newRepo(t)
+	write(t, root, "x.bash", "#!/bin/bash\necho x\n")
+	r := run(t, root, "", func(o *Options) { o.Yes = true; o.Packs = nil })
+	if r.code != 0 || !strings.HasPrefix(r.out, "Packages: core, shell (found x.bash)\n") {
+		t.Fatalf("rc %d\nout:\n%s\nerr:\n%s", r.code, r.out, r.err)
+	}
+}
+
 func TestInitProposesRealShell(t *testing.T) {
 	root := newRepo(t)
 	write(t, root, "x.sh", "#!/bin/sh\necho x\n")
