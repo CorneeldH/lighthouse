@@ -49,7 +49,7 @@ Het script moet terug op `tools/`: het vindt de denylist en de uitvoer via `Path
 
 - [ ] **Step 3: NOTICE.** Regel 15 wordt: `The file was produced by tools/gen_code_language_freq.py, removed after commit c49fd274.` Verder niets.
 
-- [ ] **Step 4: `ci/domains.py:33`.** `the literal lists are read only by ci/literal-grep.sh and tools/gen_code_language_freq.py.` wordt `the literal lists are read only by ci/literal-grep.sh.`
+- [ ] **Step 4: `ci/domains.py:33`.** Regel 33 `# lists are read only by ci/literal-grep.sh and tools/gen_code_language_freq.py.` wordt `# lists are read only by ci/literal-grep.sh.` (de zin loopt over regel 32-33; wijzig alleen regel 33)
 
 - [ ] **Step 5: Changelog-fragment** `changelog.d/issue-363-gen-code-language-freq-weg.md`:
 
@@ -63,7 +63,7 @@ type: internal
 - [ ] **Step 6: Verifieer**
 
 ```bash
-git ls-files 'tools/*.py' 'tests/test_gen_code_language_freq.py'   # alleen tools/check_cla.py
+git ls-files tools/gen_code_language_freq.py tests/test_gen_code_language_freq.py   # leeg
 git grep -n gen_code_language_freq -- ':!docs/developer/planning'  # alleen internal/codelang/data/ en changelog.d/
 git diff --stat origin/main -- internal/codelang/data/freq.tsv.gz internal/codelang/data/jargon.txt  # leeg
 go test ./internal/codelang/...                                     # ok
