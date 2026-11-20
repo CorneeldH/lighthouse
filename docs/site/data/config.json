@@ -914,6 +914,25 @@
           ]
         },
         {
+          "table": "imports",
+          "title": "Imports",
+          "about": "The gate on direct imports that no manifest declares.",
+          "keys": [
+            {
+              "key": "imports.check",
+              "level": "advanced",
+              "required": "no",
+              "default": true,
+              "about": "Whether the gate on undeclared direct imports runs.",
+              "options": [
+                true,
+                false
+              ],
+              "readers": []
+            }
+          ]
+        },
+        {
           "table": "worktree_audit",
           "title": "Worktree audit",
           "about": "Worktrees and branches that the worktree audit never proposes to remove.",

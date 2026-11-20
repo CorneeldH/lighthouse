@@ -343,6 +343,37 @@ func TestReportEnabledMustBeBool(t *testing.T) {
 	}
 }
 
+// runImportsCheck runs `lighthouse config imports.check` against a lighthouse.toml with body.
+func runImportsCheck(t *testing.T, body string) (int, string) {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(dir+"/lighthouse.toml", []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+	t.Setenv("LIGHTHOUSE_REPO_ROOT", "")
+	t.Setenv("LIGHTHOUSE_TOML", "lighthouse.toml")
+	t.Setenv("LIGHTHOUSE_HOST_TOML", "host.toml")
+	var out, errOut bytes.Buffer
+	rc := Run([]string{"imports.check"}, &out, &errOut)
+	if rc != 0 {
+		t.Errorf("rc = %d, want 0 (stderr %q)", rc, errOut.String())
+	}
+	return rc, out.String()
+}
+
+func TestImportsCheckDefaultsToTrue(t *testing.T) {
+	if _, got := runImportsCheck(t, ""); got != "true\n" {
+		t.Errorf("stdout = %q, want %q", got, "true\n")
+	}
+}
+
+func TestImportsCheckFalse(t *testing.T) {
+	if _, got := runImportsCheck(t, "[imports]\ncheck = false\n"); got != "false\n" {
+		t.Errorf("stdout = %q, want %q", got, "false\n")
+	}
+}
+
 const gitlabBoard = `[forge]
 kind = "gitlab"
 repo = "g/sub/p"

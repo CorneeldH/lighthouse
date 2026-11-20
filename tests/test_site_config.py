@@ -17,7 +17,7 @@ from tests.test_site_loop import REPO_BLOB, REPO_TREE, ROOT, load
 NO_DEFAULT = object()
 # Keys nothing in the repo reads: only the config reader checks them (spec section 2).
 UNREAD = {"paths.history", "codex_usage.vraag_pct_week", "codex_usage.halt_pct_session", "host.name",
-          "host.scan_memory_max", "host.scan_cpu_quota"}
+          "host.scan_memory_max", "host.scan_cpu_quota", "imports.check"}
 SET = {"project.language", "forge.kind", "forge.repo", "forge.host", "test_gate.command", "host.name", "host.controller", "host.tailscale_ip", "review.roborev", "report.enabled", "report.sink", "report.dir"}
 REQUIRED = {
     "forge.board.project_number": "with [forge.board]",

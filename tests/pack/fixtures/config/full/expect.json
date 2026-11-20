@@ -654,5 +654,13 @@
   "rc": 0,
   "stdout": "verslagen\n",
   "stderr": ""
+ },
+ {
+  "args": [
+   "imports.check"
+  ],
+  "rc": 0,
+  "stdout": "false\n",
+  "stderr": ""
  }
 ]
