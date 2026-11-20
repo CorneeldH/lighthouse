@@ -83,6 +83,6 @@ comment on a PR comes from `github-actions[bot]`.
 ## §workflows
 
 The workflows call `gh` themselves, so they are an exception to the forge-neutral `lighthouse forge`.
-`lighthouse unblock-dependents` (`internal/unblock/unblock.go:72-84`) calls `gh` and only runs in
+`lighthouse unblock-dependents` calls `gh` and only runs in
 GitHub Actions on `issues: closed`. `gh release download` fetches the lighthouse binary on the
-runner, and `.github/workflows/build.yml` publishes lighthouse's own release with `gh release`; outside GitHub Actions these steps are skipped.
+runner, and `.github/workflows/build.yml` publishes lighthouse's own release with `gh release`; these steps run only in GitHub Actions and are skipped elsewhere.

@@ -11,7 +11,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/prbody"
 )
 
-// labelForge records CreateLabel; any other method panics on the nil embedded interface.
+// labelCreateForge records CreateLabel; any other method panics on the nil embedded interface.
 type labelCreateForge struct {
 	forge.Forge
 	name, color string

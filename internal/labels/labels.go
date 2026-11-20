@@ -96,7 +96,7 @@ func ParseTaxonomy(text string) []Label {
 	return found
 }
 
-// createArgs is the `lighthouse forge label create` command line of l, without the program name.
+// createArgs is the `lighthouse forge label create` command line of l, program name included.
 func createArgs(l Label) []string {
 	return []string{"lighthouse", "forge", "label", "create", l.Name, "--color", l.Color}
 }
