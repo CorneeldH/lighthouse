@@ -48,6 +48,12 @@ type Gate struct {
 	LookPath func(string) (string, error)
 	// Run runs the test command until the deadline (default deadline.RunCapture).
 	Run func(deadline time.Time, argv []string, o deadline.Options) (int, []byte, error)
+	// ImportsCheck runs `lighthouse imports check --files …` in root (default: runImportsDefault).
+	ImportsCheck func(root string, files []string) (stdout, stderr string, code int, err error)
+	// Executable is this binary (default os.Executable); Exec runs argv in dir with env (default
+	// exec.Cmd). Both are seams of the default ImportsCheck.
+	Executable func() (string, error)
+	Exec       func(dir string, env, argv []string) (stdout, stderr string, code int, err error)
 	// Trace, when set, gets one line "deadline" when the deadline is set (LIGHTHOUSE_GATE_TRACE).
 	Trace string
 	// Start, when set, replaces the clock in the deadline (LIGHTHOUSE_GATE_START).
@@ -367,6 +373,11 @@ func (g *Gate) RunRoots(rows []Row, event string) Result {
 	}
 	// Not inherited from an outer gate run: without a row of its own the command tests everything.
 	env := withoutKeys(g.Env, "LIGHTHOUSE_GATE_BASE", "LIGHTHOUSE_GATE_HEAD", "LIGHTHOUSE_GATE_FILES")
+
+	// The import step does not depend on [test_gate] command: it runs before that early return.
+	if stop, res := g.runImports(rows); stop {
+		return res
+	}
 
 	// Not set, or `command = ""` (the opt-out): the same note, nothing was tested.
 	command, set, block := g.readConfig("test_gate.command")

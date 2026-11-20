@@ -929,7 +929,8 @@
                 false
               ],
               "readers": [
-                "internal/cli/imports.go"
+                "internal/cli/imports.go",
+                "internal/commitgate/imports.go"
               ]
             }
           ]

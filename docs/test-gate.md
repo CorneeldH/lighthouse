@@ -38,6 +38,27 @@ ze niet op een host zonder `/proc/meminfo` (macOS): daar blokkeert elke commit m
    (`[test_gate] deadline_seconds`) waar ook de slotwacht al van afging.
 3. Daarna start de run.
 
+## De importcheck
+
+Vóór het testcommando draait de gate `lighthouse imports check --files …` op de bestanden van de
+commit, in elke root met geïnstalleerde packs (een root zonder `.lighthouse/manifest.toml` slaat
+hij over). Deze stap hangt niet af van `[test_gate] command`: ook met `command = ""` draait hij,
+en de melding `no test command configured, nothing was tested` blijft er naast staan. Uit gaat hij
+alleen met `[imports] check = false`. De gate draait de binary waarmee hij zelf draait
+(`os.Executable()`), niet `lighthouse` van de `PATH`.
+
+- Een bevinding (`<bestand>:<regel>: <ID> <import> — <reden>`) blokkeert met
+  `imports not declared in a manifest`, een andere melding dan `tests failed`.
+- Kan de check niet draaien (exit 3, exit 1 zonder bevindingsregel, een binary zonder `imports`),
+  dan blokkeert de gate met `COULD NOT CHECK`.
+- Bestanden zijn bij `pre` de gestagede (`git diff --cached`), bij `post` die van de commit.
+  Verwijderingen tellen niet mee; een lege lijst slaat de stap over.
+
+**Bekende beperking.** Draait `git commit -a` of `git add -A && git commit` in één Bash-aanroep,
+dan is er bij `pre` nog niets gestaged: de lijst is leeg en de stap meldt
+`commit-test-gate: imports not checked: nothing staged yet`. Er is geen workaround; stage vóór
+de commit in een aparte aanroep om de check te krijgen.
+
 ## Meldingen
 
 - `COULD NOT CHECK — host memory below threshold after <n> s (MemAvailable 0.7 GiB < 4 GiB; SwapFree 0.5 GiB < 2 GiB)`:
