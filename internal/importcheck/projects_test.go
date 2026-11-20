@@ -119,6 +119,11 @@ func TestInScope(t *testing.T) {
 		{"sibling prefix", web, []string{"webapp/x.ts"}, false, false},
 		{"root takes any file", root, []string{"x.ts"}, false, true},
 		{"root manifest", root, []string{"yarn.lock"}, true, true},
+		{"workspace child manifest widens root", root, []string{"packages/child/package.json"}, true, true},
+		{"workspace child manifest widens web", web, []string{"web/packages/child/package.json"}, true, true},
+		{"workspace child lockfile does not", root, []string{"packages/child/yarn.lock"}, false, true},
+		{"child package.json of another dir", web, []string{"other/package.json"}, false, false},
+		{"python is not widened", Project{Lang: "python", Dir: "."}, []string{"pkg/package.json"}, false, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

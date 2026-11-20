@@ -28,7 +28,9 @@ func ManifestFiles(l Lang) []string {
 }
 
 // InScope says how files relate to p. touched: a file lies under p.Dir. all: a manifest or
-// lockfile of p is among files, so every import of p is in scope.
+// lockfile of p is among files, so every import of p is in scope. For node, any package.json
+// under p.Dir counts: a workspace child is no project of its own, so its package.json declares
+// dependencies of p. (Run keeps the package.json of a separate nested project out of p's files.)
 func InScope(p Project, files []string) (all bool, touched bool) {
 	manifests := map[string]bool{}
 	for _, m := range ManifestFiles(p.Lang) {
@@ -39,7 +41,7 @@ func InScope(p Project, files []string) (all bool, touched bool) {
 		if p.Dir == "." || f == p.Dir || strings.HasPrefix(f, p.Dir+"/") {
 			touched = true
 		}
-		if manifests[f] {
+		if manifests[f] || (p.Lang == "node" && path.Base(f) == "package.json" && (p.Dir == "." || strings.HasPrefix(f, p.Dir+"/"))) {
 			return true, true
 		}
 	}

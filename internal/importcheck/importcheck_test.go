@@ -188,3 +188,41 @@ func writeUntracked(t *testing.T, root, name string) {
 		t.Fatal(err)
 	}
 }
+
+// A change to the package.json of a workspace child widens the scope of its node project: the
+// child is no project of its own, so its manifest must count for the root. A nested project that
+// is no workspace keeps its own package.json.
+func TestRunWorkspaceChildManifestWidensScope(t *testing.T) {
+	root := gitRepo(t, map[string]string{
+		"package.json":                `{"workspaces": ["packages/*"]}`,
+		"packages/child/package.json": `{}`, "packages/child/index.js": "",
+		"tools/package.json": `{}`, "tools/run.js": "",
+	})
+	var ran []string
+	c := fakeChecker(func(p Project, _ Env) ([]Finding, error) {
+		ran = append(ran, p.Dir)
+		if p.Dir == "tools" {
+			return []Finding{{File: "tools/run.js", Line: 1, ID: "unlisted", Import: "x", Reason: "r"}}, nil
+		}
+		return []Finding{{File: "packages/child/index.js", Line: 1, ID: "unlisted", Import: "lodash", Reason: "r"}}, nil
+	})
+	cs := map[Lang]Checker{"node": c}
+	tests := []struct {
+		name, files, want, wantRan string
+	}{
+		{"child manifest", "packages/child/package.json", "packages/child/index.js:1: unlisted lodash — r\n", "."},
+		{"nested project manifest stays its own", "tools/package.json", "tools/run.js:1: unlisted x — r\n", "tools"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ran = nil
+			_, stdout, _ := run(t, Options{Root: root, Langs: []Lang{"node"}, Files: []string{tt.files}, Checkers: cs})
+			if got := strings.Join(ran, ","); got != tt.wantRan {
+				t.Errorf("ran %q, want %q", got, tt.wantRan)
+			}
+			if stdout != tt.want {
+				t.Errorf("stdout %q, want %q", stdout, tt.want)
+			}
+		})
+	}
+}
