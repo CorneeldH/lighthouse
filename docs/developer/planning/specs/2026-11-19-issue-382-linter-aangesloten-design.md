@@ -78,7 +78,7 @@ Alle keuzes hieronder zijn besluiten van de gebruiker, tenzij gemarkeerd als *(e
 
 **Waar de check draait.** Een eigen subcommand, aangeroepen door `init` als waarschuwing en door CI.
 Geen Stop-hook: de check leest configbestanden, die zelden in een beurt veranderen *(eigen keuze,
-voorgelegd en niet tegengesproken)*. De vorm volgt `lighthouse deps check` uit
+voorgelegd en niet tegengesproken)*. De vorm volgt `lighthouse imports check` (`internal/importcheck`) uit
 de spec van #383 (`2026-11-19-issue-383-directe-imports-design.md`, op branch
 `issue-383-directe-imports-gedeclareerd`), zodat K2 en K3 dezelfde
 conventie hebben.
@@ -123,6 +123,11 @@ conventie hebben.
   versmallen.
 - b) Wat CI effectief draait, configbestand en flags samen.
 
+**Shell zonder `.shellcheckrc`** (besluit gebruiker na de spec-review, r1-f8). Uitzondering op de
+vorige keuze: shellcheck kent geen regelselectie, zonder `.shellcheckrc` staan alle regels aan, en
+de pin van het pack ligt vast, dus de default verschuift niet. Geen `.shellcheckrc` is goed; een
+`.shellcheckrc` die er wel is, mag geen vloercode uitzetten.
+
 **Volgorde met #381.** #382 wacht op #381 (blocked-by staat). Afgewezen: nu bouwen met een
 terugval voor hooks zonder `BLOCKING_RULES` (code die later weg moet), en de regels zelf in de hooks
 zetten (botst met #381).
@@ -136,8 +141,13 @@ lighthouse lint check [--lang python|go|node|shell] [--dir <pad>]...
 ```
 
 - Zonder `--lang` controleert het de taalpacks uit `.lighthouse/manifest.toml`. Met `--lang` alleen
-  die taal. `--dir` wijst bij Node de map met de `package.json` aan; zonder `--dir` elke map met een
-  `package.json` die git volgt, zoals `pack/node/detect.toml`.
+  die taal. `--dir` wijst bij Node de map met de `package.json` aan. Zonder `--dir` controleert de
+  check elke **workspace-root**: een gevolgde `package.json` die zelf geen workspace is van een
+  `package.json` erboven (via `workspaces` in `package.json`, of `pnpm-workspace.yaml`), dezelfde
+  regel als `imports check` in #383. Pin, config en CI-stap van de root dekken zijn workspaces
+  *(eigen keuze na spec-review, r1-f7)*. Een `package.json` met een padsegment `testdata` is geen
+  project maar een fixture, zoals de Go-toolchain `testdata/` overslaat; na #383 staan daar de
+  Node-fixtures van `imports-gate-node` *(eigen keuze na spec-review, r2-f2)*.
 - Expo heeft geen eigen taal: een Expo-repo krijgt ook `pack/node`, en de Node-check dekt hem
   *(eigen keuze, zoals #383)*.
 - Uitvoer: één regel per ontbrekend onderdeel,
@@ -150,10 +160,12 @@ lighthouse lint check [--lang python|go|node|shell] [--dir <pad>]...
 - Bij succes: één regel per linter, `<linter>: wired`, op stdout.
 - Exitcodes: 0 alles aangesloten, 1 iets ontbreekt, 3 kon niet controleren
   (`lint check: COULD NOT CHECK — <reden>` op stderr). 3 is `gate.Unchecked`, net als bij
-  `deps check`. Ontbrekend wint van 3, 3 wint van 0.
-- Exit 3 alleen als er iets niet te lezen is: een CI-bestand dat geen geldige YAML is, een
-  onleesbaar manifest of een hookbestand zonder `BLOCKING_RULES`. Een ontbrekend CI-bestand, een
-  ontbrekende pin of een ontbrekende config is exit 1.
+  `imports check`. Ontbrekend wint van 3, 3 wint van 0. Voor een gebruiksfout volgt de check de
+  conventie van `imports check` *(eigen keuze na spec-review, r1-f9)*.
+- Exit 3 alleen als de check de vloer of de CI niet kan lezen: een CI-bestand dat geen geldige YAML
+  is, een onleesbaar manifest, een ontbrekende geïnstalleerde hook uit de tabel in §2, of zo'n hook
+  zonder `BLOCKING_RULES`. Een ontbrekend CI-bestand, een ontbrekende pin of een ontbrekende config
+  is exit 1 *(r1-f10)*.
 - Het subcommand komt in `internal/cli`, met de logica in een eigen pakket onder `internal/`
   *(eigen keuze)*. `internal/checkinstr` en `internal/cli/checkinstructions.go` zijn het model voor
   vorm en uitvoer; `internal/pusher/policy.go` leest al workflow-YAML met `gopkg.in/yaml.v3`;
@@ -174,6 +186,10 @@ De check leest de vloer uit de **geïnstalleerde** hook in de repo (onder `.clau
 niet uit de pack-kopie in de binary *(eigen keuze: wat in die repo blokkeert, is de geïnstalleerde
 versie)*. Geen hook, of een hook zonder `BLOCKING_RULES`: exit 3.
 
+Alleen de hook uit deze tabel levert de vloer. Andere hooks met `BLOCKING_RULES` (na #381 en #383
+bijvoorbeeld `ty-gate`, `gofmt-check` en de `imports-gate-*`-hooks) tellen niet: hun IDs zijn geen
+linterregels *(eigen keuze na spec-review, r1-f17)*.
+
 Niet elke ID in `BLOCKING_RULES` is een linterregel: de spec van #381 noemt `typecheck` (Go, een
 blokkeerreden van golangci-lint, geen linter) en een eigen ID voor de strikte shell-drempel. De
 check eist alleen IDs die een linterregel zijn in de config. #381 moet dat onderscheid in de hook
@@ -188,8 +204,8 @@ in Go komt er niet: dat is de tweede lijst die de anti-doelen verbieden *(eigen 
 |---|---|---|
 | Python | `.ruff-version` | `uvx ruff@<pin>`, `ruff@"$(cat .ruff-version)"`, `pip install ruff==<pin>`, of `astral-sh/ruff-action` met `version: <pin>` |
 | Go | `.golangci-version` | `golangci/golangci-lint-action` met `version: <pin>`, of een installatie van die versie |
-| Node, Expo | `eslint` in `devDependencies` met een exacte versie (geen `^`, `~`, bereik of tag) | `npm ci` vóór de lintstap: dan volgt CI de lockfile |
-| Shell | `SHELLCHECK_PIN` van het pack | `pack/shell/scripts/shellcheck-repo.sh` (gebruikt de pin zelf), of een installatie van die versie |
+| Node, Expo | `eslint` in `devDependencies` met een exacte versie (geen `^`, `~`, bereik of tag) | een installatie uit de lockfile vóór de lintstap: `npm ci`, `pnpm install --frozen-lockfile`, `yarn install --immutable` (of `--frozen-lockfile`) of `bun install --frozen-lockfile` *(r1-f14)* |
+| Shell | `SHELLCHECK_PIN` uit de geïnstalleerde `.lighthouse/scripts/lib/shellcheck-bin.sh`, net als de vloer uit de geïnstalleerde kopie *(r1-f12)* | `.lighthouse/scripts/shellcheck-repo.sh` (gebruikt de pin zelf), of een installatie van die versie |
 
 Een CI-stap die de linter zonder versie installeert (`pip install ruff`, `apt install shellcheck`),
 meldt: CI-versie niet gepind.
@@ -198,36 +214,64 @@ meldt: CI-versie niet gepind.
 
 | Pack | Config | Telt als de vloer aanstaat |
 |---|---|---|
-| Python | `ruff.toml`, `.ruff.toml` of `[tool.ruff.lint]` in `pyproject.toml` | elke vloercode valt onder `select` of `extend-select` (exact of via prefix, zoals `B` voor `B006`, of `ALL`), en niet onder `ignore` |
-| Go | `.golangci.yml` (of `.yaml`, `.toml`, `.json`) | elke vloerlinter zit in `linters.default` (`standard` of `all`) of `linters.enable`, en niet in `linters.disable` |
-| Shell | `.shellcheckrc`, als die er is | geen `disable=` van een vloercode, en geen `severity=` boven de ernst van een vloercode |
-| Node, Expo | `eslint.config.{js,mjs,cjs,ts}` of `.eslintrc.*` | het bestand bestaat en is niet leeg; de check parseert geen JavaScript *(eigen keuze: flat configs kiezen een preset op te veel manieren, zoals `export default [js.configs.recommended]`, `tseslint.config(…)` of Expo's `defineConfig([expoConfig])`)* |
+| Python | `ruff.toml`, `.ruff.toml` of `[tool.ruff.lint]` in `pyproject.toml` | elke vloercode is effectief aan in ruff's eigen zin: geselecteerd via `select` of `extend-select` (exact of via prefix, zoals `B` voor `B006`, of `ALL`), en niet uitgezet via `ignore` of `extend-ignore`, met ruff's voorrang van de meest specifieke code (`select = ["PT012"]` met `ignore = ["PT"]` laat PT012 aan). Een `extend = "<pad>"` volgt de check naar dat bestand *(r1-f3)* |
+| Go | `.golangci.yml` (of `.yaml`, `.toml`, `.json`) met `version: "2"` | elke vloerlinter zit in `linters.default` (`standard` of `all`) of `linters.enable`, en niet in `linters.disable`. Een config zonder `linters.default` maakt de vloer niet expliciet, ook al draait golangci-lint dan `standard` (besluit 2a); een v1-config meldt `config not version 2` *(eigen keuze na spec-review, r1-f13)* |
+| Shell | `.shellcheckrc`, alleen als die er is: geen `.shellcheckrc` is goed (besluit gebruiker, r1-f8) | geen `disable=` van een vloercode, ook niet via `disable=all` of een codebereik (`SC2000-SC2999`); of `severity=` een geldige rc-sleutel is, bevestigt de bouwer *(r1-f16)* |
+| Node, Expo | `eslint.config.{js,mjs,cjs,ts}` of `.eslintrc.*` | het bestand bevat een tekstueel teken van een keuze: een `rules`-sleutel, een `extends`, of een verwijzing naar een preset (`configs.`, `eslint-config-…`, `eslint-config-expo`). Een config met alleen `ignores` telt niet. De check parseert geen JavaScript: flat configs kiezen een preset op te veel manieren *(eigen keuze na spec-review, r1-f6)* |
 
-Alleen een configbestand telt. Een linterdefault die de vloer toevallig dekt, of een selectie die
-alleen op de opdrachtregel in CI staat, telt niet (besluit gebruiker). Ontbreekt het bestand, dan
-meldt de check `config missing`.
+Alleen een configbestand telt, behalve bij shell (zie boven). Een linterdefault die de vloer
+toevallig dekt, of een selectie die alleen op de opdrachtregel in CI staat, telt niet (besluit
+gebruiker). Ontbreekt het bestand, dan meldt de check `config missing`.
 
-Een CI-stap die de vloer uitzet of versmalt, telt als niet aangesloten: `--disable`, `--ignore`,
-`--exclude`, `-e`, `--severity` boven een vloercode, `--config` naar een ander bestand dat de vloer
-mist, en ook een smallere selectie op de opdrachtregel (`ruff check --select` zonder een vloercode,
-golangci `--enable-only` of `--default none`, shellcheck `--include`/`-i` zonder een vloercode)
-*(eigen keuze, uit de builder-check)*.
+Een CI-stap die de vloer uitzet of versmalt, telt als niet aangesloten. Per linter
+*(r1-f4: paden uitsluiten is bereik, en bereik telt niet, besluit 1b)*:
+
+| Linter | Zet de vloer uit of versmalt | Telt niet mee (bereik) |
+|---|---|---|
+| ruff | `--ignore`, `--extend-ignore`, `--select` zonder een vloercode, `--config` naar een bestand dat de vloer mist | `--exclude`, `--extend-exclude`, paden |
+| golangci-lint | `--disable`, `--enable-only`, `--default none`, `--config` naar een bestand dat de vloer mist | paden, `--skip-dirs`-achtige padfilters |
+| shellcheck | `-e`/`--exclude` of `-i`/`--include` zonder een vloercode, `--severity` boven een vloercode, `SHELLCHECK_OPTS` in `env:` van workflow, job of stap met een van die flags | bestanden |
+| eslint | `--no-eslintrc`/`--no-config-lookup` zonder eigen `--config`, `--config` naar een bestand zonder keuze | paden, `--ignore-pattern` |
+
+Exit-zero-flags (`--exit-zero` bij ruff, `--issues-exit-code=0` bij golangci-lint) maken de stap
+ongeldig via de regel voor exitstatus hieronder.
 
 **Rood in CI**
 
 - CI-bestanden: `.github/workflows/*.yml` en `*.yaml` bij `forge.kind = "github"`, `.gitlab-ci.yml`
-  bij `"gitlab"`.
+  bij `"gitlab"`. Zonder `forge.kind` is de repo een GitHub-repo, zoals
+  `internal/config/config.go:649-650` *(r1-f15)*.
 - De stap draait bij een wijziging: in GitHub Actions een workflow met `push` of `pull_request` als
-  trigger. Een `if:` op job of stap is toegestaan, behalve letterlijk `false`: lintjobs staan vaak
-  achter een padfilter, ook in lighthouse zelf *(eigen keuze)*.
+  trigger. Een herbruikbare workflow (`on: workflow_call`) telt als een lokale workflow met zo'n
+  trigger hem aanroept (`uses: ./.github/workflows/<bestand>`), één niveau diep *(r1-f14)*. Een
+  `if:` op job of stap is toegestaan, behalve letterlijk `false`: lintjobs staan vaak achter een
+  padfilter, ook in lighthouse zelf *(eigen keuze; een voorwaarde verder ontleden valt buiten de
+  check, r1-f1 afgewezen)*.
+- In GitLab CI telt een job niet bij `allow_failure` met een ware waarde (ook de vorm met
+  `exit_codes`), en niet bij `when: manual` of `when: never`, ook niet via `rules:` *(r1-f2)*.
 - Herkende aanroepen: `golangci-lint run` of de golangci-lint-actie; `ruff check` of de ruff-actie;
   `shellcheck` of `shellcheck-repo.sh`; `eslint` of `expo lint`, ook via `npm run <script>` (de
-  check leest dat script in `package.json`, één niveau diep), in de map van de `package.json`
-  (`working-directory`).
+  check leest dat script in `package.json`, één niveau diep), in de map van de `package.json`. Die
+  map volgt uit `working-directory` op de stap, of uit `defaults.run.working-directory` op job of
+  workflow *(r1-f11)*.
 - Welke paden de stap lint, telt niet: een smalle stap (`ruff check src/`, `shellcheck-repo.sh` op
   de strikte set) is aangesloten (besluit gebruiker, CI-CPU is beperkt).
-- Een herkende stap telt niet bij: `continue-on-error: true` op stap of job, `|| true`,
-  `--exit-zero`, `--issues-exit-code=0`, of een vloeruitzetting zoals hierboven.
+- **Exitstatus: een allowlist, geen denylist** *(r1-f5)*. Een herkende aanroep telt alleen als zijn
+  exitstatus aantoonbaar de status van de stap is. Dat is zo als:
+  - de stap draait in een shell die met errexit start. De effectieve shell is `shell:` op de stap,
+    anders `defaults.run.shell` op de job, anders op de workflow, anders de standaard van de
+    runner. Telt: `shell: bash`, `shell: sh`, of geen shell op een Linux- of macOS-runner (GitHub
+    draait dan `bash -e {0}`), en GitLab's standaard-shell. Elke andere waarde, zoals `bash {0}`,
+    `sh {0}` of `pwsh`, een Windows-runner zonder shell, of een `runs-on` die de check niet kan
+    lezen (een expressie), is `step not recognised` *(r2-f1, r3-f1)*;
+  - de aanroep een eigen regel is of met `&&` aan de rest hangt, er na de aanroep geen `|`, `||`
+    of `;`-keten volgt die zijn status kan maskeren (een pipe alleen met `set -o pipefail` of
+    `shell: bash`, die pipefail zet), en er geen `set +e` voor staat;
+  - `continue-on-error` op stap **en** job ontbreekt of letterlijk `false` is *(r2-f1)*.
+
+  Elke andere vorm, ook `continue-on-error: ${{ … }}`, is `step not recognised`, in lijn met keuze
+  a voor niet herkende stappen. Een actie (`uses:`) telt zonder `continue-on-error` op stap of job
+  en zonder exit-zero-input.
 - Geen herkende stap: `no CI step runs <linter>` (exit 1). Een ratel alleen (`ratchet.py`) telt niet
   als lintstap.
 
@@ -263,15 +307,21 @@ Per pack een Go-test met een nep-repo in `t.TempDir()`:
 
 | Pack | Slaagt | Faalt (minstens) |
 |---|---|---|
-| Python | pin, ruff-config met de vloer, CI-stap met `ruff@<pin> check` | zonder CI-stap; met een vloercode in `ignore` |
-| Go | pin, `.golangci.yml` met `default: standard`, golangci-lint-actie met de pin | zonder CI-stap; CI-versie ≠ pin |
-| Node | exacte `eslint`, `eslint.config.js`, `npm ci` en `npm run lint` | zonder CI-stap; `eslint` met `^` |
+| Python | pin, ruff-config met de vloer, CI-stap met `ruff@<pin> check` | zonder CI-stap; met een vloercode in `ignore`; met een vloercode in `extend-ignore` |
+| Go | pin, `.golangci.yml` met `default: standard`, golangci-lint-actie met de pin | zonder CI-stap; CI-versie ≠ pin; config zonder `linters.default` |
+| Node | exacte `eslint`, `eslint.config.js`, `npm ci` en `npm run lint` met `defaults.run.working-directory` | zonder CI-stap; `eslint` met `^`; een config met alleen `ignores` |
+| Node, workspace | root met `workspaces`, eslint en lintstap alleen in de root | — (een child-`package.json` krijgt geen eigen melding) |
+| Node, fixture | een kale `testdata/x/package.json` naast een aangesloten root | — (de fixture krijgt geen melding) |
 | Expo | idem, met `expo` in `package.json` en `"lint": "expo lint"` | zonder CI-stap |
-| Shell | `.shellcheckrc` zonder vloer-disable, CI met `shellcheck-repo.sh` | zonder CI-stap; `.shellcheckrc` met `disable=` van een vloercode |
+| Shell | geen `.shellcheckrc`, CI met `shellcheck-repo.sh`; ook `.shellcheckrc` zonder vloer-disable | zonder CI-stap; `.shellcheckrc` met `disable=` van een vloercode; `SHELLCHECK_OPTS: -e <vloercode>` |
+| GitLab | `.gitlab-ci.yml` met een lintjob | dezelfde job met `allow_failure: true`; met `when: manual` |
 
 Plus:
 
-- `continue-on-error`, `|| true` en `--exit-zero` maken een herkende stap ongeldig.
+- `continue-on-error: true` op stap of job, `|| true`, `| tee` zonder pipefail, `set +e`,
+  `shell: bash {0}` (ook via `defaults.run.shell`), `runs-on: windows-latest` zonder shell en
+  `--exit-zero` maken een herkende stap ongeldig;
+  `ruff check --exclude migrations/` blijft geldig.
 - `make lint` alleen geeft `no CI step runs …` en exit 1.
 - Go zonder `.golangci.yml`, met een verder volledige opzet, geeft `config missing` en exit 1.
 - Een smallere selectie op de opdrachtregel in CI (`ruff check --select E9`) maakt de stap ongeldig.
@@ -290,5 +340,5 @@ AC 5 bewijst de CI-stap van lighthouse zelf.
   ontleedt.
 - Hoe de check bij GitLab "draait bij een wijziging" vaststelt (`rules`, `only`).
 - De naam en indeling van het pakket onder `internal/`.
-- Hoe de taalset uit `.lighthouse/manifest.toml` volgt; deel de code met `deps check` als die er
-  dan al is.
+- Hoe de taalset uit `.lighthouse/manifest.toml` volgt; deel de code (taalset, workspace-roots) met
+  `imports check` als die er dan al is.
