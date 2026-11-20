@@ -468,7 +468,7 @@ def test_chain_skills_point_at_forge_reference(name):
 FORGE = CORE / "skills" / "forge"
 # The sections a chain skill names (`../lighthouse-forge/<kind>.md §blockers`), in this order in
 # every reference (#260, spec §2).
-FORGE_SECTIONS = ["## §board", "## §blockers", "## §sub-issues", "## §sluitwoorden", "## §proxy", "## §ci"]
+FORGE_SECTIONS = ["## §board", "## §blockers", "## §sub-issues", "## §sluitwoorden", "## §proxy", "## §ci", "## §workflows"]
 
 
 def _h2_outside_fences(text: str) -> list[str]:

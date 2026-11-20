@@ -503,3 +503,30 @@ func TestGitHubChangeMergeable(t *testing.T) {
 		})
 	}
 }
+
+// Classification: contract. Fails when CreateLabel treats every 422 as "exists already", or
+// matches the listed names case-sensitively: a refused label must be an error, an existing one
+// under another case must not.
+func TestGitHubCreateLabelUnprocessable(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		listed  string
+		wantErr bool
+	}{
+		{"area:new", `[{"name":"bug"}]`, true},
+		{"Area:New", `[{"name":"area:new"}]`, false},
+	} {
+		c := peopleServer(t, func(w http.ResponseWriter, r *http.Request) {
+			if r.Method == http.MethodPost {
+				w.WriteHeader(http.StatusUnprocessableEntity)
+				_, _ = io.WriteString(w, `{"message":"Validation Failed"}`)
+				return
+			}
+			_, _ = io.WriteString(w, tc.listed)
+		})
+		err := c.CreateLabel(context.Background(), tc.name, "0e8a16")
+		if (err != nil) != tc.wantErr {
+			t.Errorf("CreateLabel(%q) with labels %s: err = %v, want error %v", tc.name, tc.listed, err, tc.wantErr)
+		}
+	}
+}

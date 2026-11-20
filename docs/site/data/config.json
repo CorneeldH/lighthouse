@@ -152,6 +152,7 @@
               "example": "owner/name",
               "readers": [
                 "internal/boardstart/boardstart.go",
+                "internal/cli/forge_label.go",
                 "internal/cli/pushworkflows.go",
                 "internal/cli/worktreeaudit.go",
                 "internal/labels/labels.go",

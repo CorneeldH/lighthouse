@@ -2,6 +2,7 @@ package labels
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -10,6 +11,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/CorneeldH/lighthouse/internal/forge"
+	"github.com/CorneeldH/lighthouse/internal/forge/forgetest"
+	"github.com/CorneeldH/lighthouse/internal/forge/gitlabtest"
 	"github.com/CorneeldH/lighthouse/internal/projectconfig"
 )
 
@@ -32,50 +36,39 @@ func template(t *testing.T) string {
 	return string(b)
 }
 
-type fakeGH struct {
-	calls  [][]string
+// fakeForge is the forge Sync talks to; a method it does not define panics on the nil embedded
+// interface.
+type fakeForge struct {
+	forge.Forge
 	remote []string
-	// createErr is returned for `label create`; listErr for `api`.
+	// createErr is returned by CreateLabel; listErr by Labels.
 	createErr, listErr error
+	listed             int
+	created            []Label
 }
 
-func (f *fakeGH) install(t *testing.T) {
-	t.Helper()
-	old := runGH
-	t.Cleanup(func() { runGH = old })
-	runGH = func(args []string) (string, error) {
-		f.calls = append(f.calls, args)
-		switch {
-		case len(args) > 0 && args[0] == "api":
-			if f.listErr != nil {
-				return "", f.listErr
-			}
-			return strings.Join(f.remote, "\n") + "\n", nil
-		case len(args) > 1 && args[0] == "label" && args[1] == "create":
-			return "", f.createErr
-		}
-		return "", nil
-	}
+func (f *fakeForge) Labels(context.Context) ([]string, error) {
+	f.listed++
+	return f.remote, f.listErr
 }
 
-func (f *fakeGH) creates() [][]string {
-	var out [][]string
-	for _, c := range f.calls {
-		if len(c) > 1 && c[0] == "label" && c[1] == "create" {
-			out = append(out, c)
-		}
+func (f *fakeForge) CreateLabel(_ context.Context, name, color string) error {
+	if f.createErr != nil {
+		return f.createErr
 	}
-	return out
+	f.created = append(f.created, Label{name, color})
+	return nil
 }
+
+func (f *fakeForge) creates() []Label { return f.created }
 
 type result struct {
 	out, err string
 	rc       error
 }
 
-func setup(t *testing.T, f *fakeGH, toml string, taxonomy bool) string {
+func setup(t *testing.T, toml string, taxonomy bool) string {
 	t.Helper()
-	f.install(t)
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "lighthouse.toml"), []byte(toml), 0o644); err != nil {
 		t.Fatal(err)
@@ -92,16 +85,16 @@ func setup(t *testing.T, f *fakeGH, toml string, taxonomy bool) string {
 	return root
 }
 
-func run(root string, create bool) result {
+func run(root string, create bool, f forge.Forge) result {
 	var out, errw bytes.Buffer
-	rc := Sync(root, create, &out, &errw)
+	rc := Sync(root, create, f, &out, &errw)
 	return result{out.String(), errw.String(), rc}
 }
 
 func createLines(out string) []string {
 	var lines []string
 	for _, l := range strings.Split(out, "\n") {
-		if strings.HasPrefix(l, "gh label create ") {
+		if strings.HasPrefix(l, "lighthouse forge label create ") {
 			lines = append(lines, l)
 		}
 	}
@@ -126,9 +119,9 @@ func TestParseTemplate(t *testing.T) {
 }
 
 func TestListsMissingWithoutCreate(t *testing.T) {
-	f := &fakeGH{remote: []string{"needs-hands"}}
-	root := setup(t, f, tomlForge, true)
-	r := run(root, false)
+	f := &fakeForge{remote: []string{"needs-hands"}}
+	root := setup(t, tomlForge, true)
+	r := run(root, false, f)
 	if r.rc != nil {
 		t.Fatal(r.rc, r.err)
 	}
@@ -137,11 +130,11 @@ func TestListsMissingWithoutCreate(t *testing.T) {
 		t.Fatalf("%d lines:\n%s", len(lines), r.out)
 	}
 	for _, l := range lines {
-		if !strings.Contains(l, " --repo Owner/repo --color ") || strings.Contains(l, "needs-hands") {
+		if !strings.Contains(l, " --color ") || strings.Contains(l, "--repo") || strings.Contains(l, "needs-hands") {
 			t.Errorf("bad line %q", l)
 		}
 	}
-	if !strings.Contains(r.out, "gh label create blocked-issue --repo Owner/repo --color D93F0B\n") {
+	if !strings.Contains(r.out, "lighthouse forge label create blocked-issue --color D93F0B\n") {
 		t.Errorf("no blocked-issue line:\n%s", r.out)
 	}
 	if len(f.creates()) != 0 {
@@ -166,28 +159,28 @@ func TestShellJoin(t *testing.T) {
 }
 
 func TestListsMissingLabelWithSpaceQuoted(t *testing.T) {
-	f := &fakeGH{remote: append([]string{}, names...)}
-	root := setup(t, f, tomlForge, true)
+	f := &fakeForge{remote: append([]string{}, names...)}
+	root := setup(t, tomlForge, true)
 	p := filepath.Join(root, projectconfig.DefaultLabelsPath)
 	b, _ := os.ReadFile(p)
 	extra := "\n| Label | Color |\n|---|---|\n| `good first issue` | `7057FF` |\n"
 	if err := os.WriteFile(p, append(b, extra...), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	r := run(root, false)
+	r := run(root, false, f)
 	if r.rc != nil {
 		t.Fatal(r.rc, r.err)
 	}
-	want := "gh label create 'good first issue' --repo Owner/repo --color 7057FF\n"
+	want := "lighthouse forge label create 'good first issue' --color 7057FF\n"
 	if !strings.Contains(r.out, want) {
 		t.Errorf("no quoted line %q:\n%s", want, r.out)
 	}
 }
 
 func TestCreateMakesOnlyMissing(t *testing.T) {
-	f := &fakeGH{remote: []string{"needs-hands"}}
-	root := setup(t, f, tomlForge, true)
-	r := run(root, true)
+	f := &fakeForge{remote: []string{"needs-hands"}}
+	root := setup(t, tomlForge, true)
+	r := run(root, true, f)
 	if r.rc != nil {
 		t.Fatal(r.rc, r.err)
 	}
@@ -196,9 +189,8 @@ func TestCreateMakesOnlyMissing(t *testing.T) {
 		t.Fatalf("%d creates: %v", len(creates), creates)
 	}
 	for _, c := range creates {
-		j := strings.Join(c, " ")
-		if strings.Contains(j, "needs-hands") || !strings.Contains(j, "--color") {
-			t.Errorf("bad create %q", j)
+		if c.Name == "needs-hands" || len(c.Color) != 6 {
+			t.Errorf("bad create %v", c)
 		}
 	}
 	if !strings.Contains(r.out, "labels: created blocked-issue\n") {
@@ -207,13 +199,13 @@ func TestCreateMakesOnlyMissing(t *testing.T) {
 }
 
 func TestExistingLabelCaseInsensitive(t *testing.T) {
-	f := &fakeGH{remote: []string{"Needs-Hands"}}
-	root := setup(t, f, tomlForge, true)
-	if r := run(root, true); r.rc != nil {
+	f := &fakeForge{remote: []string{"Needs-Hands"}}
+	root := setup(t, tomlForge, true)
+	if r := run(root, true, f); r.rc != nil {
 		t.Fatal(r.rc, r.err)
 	}
 	for _, c := range f.creates() {
-		if strings.Contains(strings.Join(c, " "), "needs-hands") {
+		if c.Name == "needs-hands" {
 			t.Errorf("created an existing label: %v", c)
 		}
 	}
@@ -223,9 +215,9 @@ func TestExistingLabelCaseInsensitive(t *testing.T) {
 }
 
 func TestAllPresent(t *testing.T) {
-	f := &fakeGH{remote: names}
-	root := setup(t, f, tomlForge, true)
-	r := run(root, true)
+	f := &fakeForge{remote: names}
+	root := setup(t, tomlForge, true)
+	r := run(root, true, f)
 	if r.rc != nil {
 		t.Fatal(r.rc)
 	}
@@ -237,23 +229,10 @@ func TestAllPresent(t *testing.T) {
 	}
 }
 
-func TestReadsLabelsPaginated(t *testing.T) {
-	f := &fakeGH{}
-	root := setup(t, f, tomlForge, true)
-	run(root, false)
-	if len(f.calls) == 0 {
-		t.Fatal("no gh call")
-	}
-	j := strings.Join(f.calls[0], " ")
-	if f.calls[0][0] != "api" || !strings.Contains(j, "--paginate") || !strings.Contains(j, "repos/Owner/repo/labels") {
-		t.Errorf("first call %q", j)
-	}
-}
-
-func TestGHMissingPrintsAllLines(t *testing.T) {
-	f := &fakeGH{listErr: errors.New("gh did not run: not found")}
-	root := setup(t, f, tomlForge, true)
-	r := run(root, true)
+func TestForgeListErrorPrintsAllLines(t *testing.T) {
+	f := &fakeForge{listErr: errors.New("GET /labels: 401")}
+	root := setup(t, tomlForge, true)
+	r := run(root, true, f)
 	if r.rc != nil {
 		t.Fatal(r.rc, r.err)
 	}
@@ -269,9 +248,9 @@ func TestGHMissingPrintsAllLines(t *testing.T) {
 }
 
 func TestCreateFailurePrintsLine(t *testing.T) {
-	f := &fakeGH{createErr: errors.New("gh exited 1")}
-	root := setup(t, f, tomlForge, true)
-	r := run(root, true)
+	f := &fakeForge{createErr: errors.New("POST /labels: 403")}
+	root := setup(t, tomlForge, true)
+	r := run(root, true, f)
 	if r.rc != nil {
 		t.Fatal(r.rc, r.err)
 	}
@@ -279,7 +258,7 @@ func TestCreateFailurePrintsLine(t *testing.T) {
 	for _, n := range names {
 		found := false
 		for _, l := range lines {
-			if strings.HasPrefix(l, "gh label create "+n+" ") {
+			if strings.HasPrefix(l, "lighthouse forge label create "+n+" ") {
 				found = true
 			}
 		}
@@ -290,9 +269,8 @@ func TestCreateFailurePrintsLine(t *testing.T) {
 }
 
 func TestNoForgeRepoPrintsAllLines(t *testing.T) {
-	f := &fakeGH{}
-	root := setup(t, f, tomlNoForge, true)
-	r := run(root, true)
+	root := setup(t, tomlNoForge, true)
+	r := run(root, true, nil)
 	if r.rc != nil {
 		t.Fatal(r.rc, r.err)
 	}
@@ -301,19 +279,106 @@ func TestNoForgeRepoPrintsAllLines(t *testing.T) {
 		t.Fatalf("%d lines:\n%s", len(lines), r.out)
 	}
 	for _, l := range lines {
-		if strings.Contains(l, "--repo") {
-			t.Errorf("--repo in %q", l)
+		if strings.Contains(l, "--repo") || strings.HasPrefix(l, "gh ") {
+			t.Errorf("--repo or gh in %q", l)
 		}
-	}
-	if len(f.calls) != 0 {
-		t.Errorf("gh called: %v", f.calls)
 	}
 }
 
+// A nil forge (no token, or one that could not be opened) prints every label as a command that
+// works on both forges, and never touches a forge.
+func TestSyncFallbackPrintsForgeCommand(t *testing.T) {
+	root := setup(t, tomlForge, true)
+	r := run(root, true, nil)
+	if r.rc != nil {
+		t.Fatal(r.rc, r.err)
+	}
+	if n := len(createLines(r.out)); n != 6 {
+		t.Errorf("%d lines, want 6:\n%s", n, r.out)
+	}
+	if strings.Contains(r.out, "gh ") || !strings.Contains(r.out, "could not read the labels of Owner/repo") {
+		t.Errorf("out:\n%s", r.out)
+	}
+}
+
+// A name with a colon and capitals goes to the forge as written.
+func TestSyncKeepsNameWithColonAndCapitals(t *testing.T) {
+	f := &fakeForge{}
+	root := setup(t, tomlForge, true)
+	p := filepath.Join(root, projectconfig.DefaultLabelsPath)
+	b, _ := os.ReadFile(p)
+	extra := "\n| Label | Color |\n|---|---|\n| `1-location:local` | `0e8a16` |\n| `Area:Core` | `AABBCC` |\n"
+	if err := os.WriteFile(p, append(b, extra...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if r := run(root, true, f); r.rc != nil {
+		t.Fatal(r.rc, r.err)
+	}
+	got := map[string]string{}
+	for _, c := range f.creates() {
+		got[c.Name] = c.Color
+	}
+	if got["1-location:local"] != "0E8A16" || got["Area:Core"] != "AABBCC" {
+		t.Errorf("created %v", got)
+	}
+	r := run(root, false, nil)
+	if !strings.Contains(r.out, "lighthouse forge label create 1-location:local --color 0E8A16\n") ||
+		!strings.Contains(r.out, "lighthouse forge label create Area:Core --color AABBCC\n") {
+		t.Errorf("out:\n%s", r.out)
+	}
+}
+
+// Both forges: the missing label is created, the existing one (other case) is not, and the
+// colour reaches the server in the forge's own form (GitLab with a "#", GitHub without).
+func TestSyncCreatesMissingOnForge(t *testing.T) {
+	text := "| Label | Color |\n|---|---|\n| `needs-hands` | `d93f0b` |\n| `1-location:local` | `0e8a16` |\n"
+	setupTaxonomy := func(t *testing.T) string {
+		root := setup(t, "[forge]\nrepo = \"group/project\"\n", false)
+		p := filepath.Join(root, projectconfig.DefaultLabelsPath)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return root
+	}
+	t.Run("github", func(t *testing.T) {
+		srv := forgetest.New(t)
+		srv.Labels = []string{"Needs-Hands"}
+		f, err := forge.Open(forge.Config{Kind: "github", Repo: "group/project", Token: "t", BaseURL: srv.URL()})
+		if err != nil {
+			t.Fatal(err)
+		}
+		r := run(setupTaxonomy(t), true, f)
+		if r.rc != nil || !strings.Contains(r.out, "labels: created 1-location:local\n") || strings.Contains(r.out, "created needs-hands") {
+			t.Fatalf("rc %v\n%s\n%s", r.rc, r.out, r.err)
+		}
+		if got := srv.LabelColors["1-location:local"]; got != "0E8A16" {
+			t.Errorf("colour on the server = %q, want 0E8A16", got)
+		}
+	})
+	t.Run("gitlab", func(t *testing.T) {
+		srv := gitlabtest.New(t)
+		srv.SetLabels("Needs-Hands")
+		f, err := forge.Open(forge.Config{Kind: "gitlab", Repo: "group/project", Token: "t", BaseURL: srv.URL()})
+		if err != nil {
+			t.Fatal(err)
+		}
+		r := run(setupTaxonomy(t), true, f)
+		if r.rc != nil || !strings.Contains(r.out, "labels: created 1-location:local\n") || strings.Contains(r.out, "created needs-hands") {
+			t.Fatalf("rc %v\n%s\n%s", r.rc, r.out, r.err)
+		}
+		if got := srv.LabelColor("1-location:local"); got != "#0E8A16" {
+			t.Errorf("colour on the server = %q, want #0E8A16", got)
+		}
+	})
+}
+
 func TestMissingTaxonomyIsError(t *testing.T) {
-	f := &fakeGH{}
-	root := setup(t, f, tomlForge, false)
-	r := run(root, false)
+	f := &fakeForge{}
+	root := setup(t, tomlForge, false)
+	r := run(root, false, f)
 	if r.rc == nil {
 		t.Fatal("no error")
 	}
@@ -323,15 +388,15 @@ func TestMissingTaxonomyIsError(t *testing.T) {
 }
 
 func TestRemoteLabelWithSpace(t *testing.T) {
-	f := &fakeGH{remote: append([]string{"good first issue"}, names...)}
-	root := setup(t, f, tomlForge, true)
+	f := &fakeForge{remote: append([]string{"good first issue"}, names...)}
+	root := setup(t, tomlForge, true)
 	p := filepath.Join(root, projectconfig.DefaultLabelsPath)
 	b, _ := os.ReadFile(p)
 	extra := "\n| Label | Color |\n|---|---|\n| `good first issue` | `7057FF` |\n"
 	if err := os.WriteFile(p, append(b, extra...), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	r := run(root, true)
+	r := run(root, true, f)
 	if r.rc != nil {
 		t.Fatal(r.rc, r.err)
 	}

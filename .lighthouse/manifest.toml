@@ -36,21 +36,21 @@ kind = "file"
 path = ".agents/skills/lighthouse-forge/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "7cd503c17176a7f7dc19815d3de708d173681fe359e7c58d0b0913ece5da5e78"
+sha256 = "b6b1b6b2b53d0a37ab15c17c3a448710bc5036d325120ff6369cd17f78085cca"
 
 [[unit]]
 kind = "file"
 path = ".agents/skills/lighthouse-forge/github.md"
 package = "core"
 version = "dev"
-sha256 = "583926c4a9e62d2a3464755d782cb4517fb47f7f504b8d45cd2a37ed3d0d3a93"
+sha256 = "4d3f05a90fad25e2a6bab84203df029a7298ba6b40688ed736ad145240bcfd35"
 
 [[unit]]
 kind = "file"
 path = ".agents/skills/lighthouse-forge/gitlab.md"
 package = "core"
 version = "dev"
-sha256 = "25dc2c6296a125d86ae45010c01e60b23d43819f49bc1dcdecc67a7c4267cfbe"
+sha256 = "3fc1631d15ceb369e9b7d7c9545764b42841e6b9fb4b5d60dfe54331dc3cc0c2"
 
 [[unit]]
 kind = "file"
@@ -169,7 +169,7 @@ kind = "file"
 path = ".agents/skills/lighthouse-write-handoff/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "0002ad79636c17592f2e67b201946e8053f665625bca8afe892235be8395f73d"
+sha256 = "c99b5cff2e3ea9ee62fde2e81d2eb9de22af4650329ce4c4c07e98e72045d7e6"
 
 [[unit]]
 kind = "file"
@@ -421,21 +421,21 @@ kind = "file"
 path = ".claude/skills/lighthouse-forge/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "7cd503c17176a7f7dc19815d3de708d173681fe359e7c58d0b0913ece5da5e78"
+sha256 = "b6b1b6b2b53d0a37ab15c17c3a448710bc5036d325120ff6369cd17f78085cca"
 
 [[unit]]
 kind = "file"
 path = ".claude/skills/lighthouse-forge/github.md"
 package = "core"
 version = "dev"
-sha256 = "583926c4a9e62d2a3464755d782cb4517fb47f7f504b8d45cd2a37ed3d0d3a93"
+sha256 = "4d3f05a90fad25e2a6bab84203df029a7298ba6b40688ed736ad145240bcfd35"
 
 [[unit]]
 kind = "file"
 path = ".claude/skills/lighthouse-forge/gitlab.md"
 package = "core"
 version = "dev"
-sha256 = "25dc2c6296a125d86ae45010c01e60b23d43819f49bc1dcdecc67a7c4267cfbe"
+sha256 = "3fc1631d15ceb369e9b7d7c9545764b42841e6b9fb4b5d60dfe54331dc3cc0c2"
 
 [[unit]]
 kind = "file"
@@ -554,7 +554,7 @@ kind = "file"
 path = ".claude/skills/lighthouse-write-handoff/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "0002ad79636c17592f2e67b201946e8053f665625bca8afe892235be8395f73d"
+sha256 = "c99b5cff2e3ea9ee62fde2e81d2eb9de22af4650329ce4c4c07e98e72045d7e6"
 
 [[unit]]
 kind = "file"

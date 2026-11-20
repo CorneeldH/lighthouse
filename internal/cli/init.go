@@ -51,7 +51,7 @@ func newInitCommand() *cobra.Command {
 			"  lighthouse init --upgrade --no-pack shell\n\n" +
 			"--labels proposes a label taxonomy, [labels] and [paths] labels in the same diff,\n" +
 			"under the same single approval. --create-labels, only with --labels, then creates\n" +
-			"the missing labels on the GitHub remote and asks nothing: the flag is the approval,\n" +
+			"the missing labels on the forge (GitHub or GitLab) and asks nothing: the flag is the approval,\n" +
 			"also with nothing to apply (No changes.): it still creates the missing labels.\n\n" +
 			"After the first init, and with --upgrade --audit, init shows a short agent-audit summary\n" +
 			"(see `lighthouse agent-audit`). It changes nothing and never fails init.\n\n" +
@@ -67,6 +67,7 @@ func newInitCommand() *cobra.Command {
 			o.Out = cmd.OutOrStdout()
 			o.Err = cmd.ErrOrStderr()
 			o.Audit = auditAfterInit
+			o.LabelForge = defaultLabelForge()
 			if initcmd.Run(o) != 0 {
 				return errSilent
 			}

@@ -706,41 +706,24 @@
   "name": "test_parse_keeps_merged_same_repo_heads",
   "fn": "parse_issue_pr_heads",
   "input": {
-   "payload": {
-    "data": {
-     "repository": {
-      "issue": {
-       "closedByPullRequestsReferences": {
-        "nodes": [
-         {
-          "headRefName": "issue-9-x",
-          "merged": true,
-          "isCrossRepository": false,
-          "repository": {
-           "nameWithOwner": "o/r"
-          }
-         }
-        ]
-       },
-       "timelineItems": {
-        "nodes": [
-         {
-          "source": {
-           "headRefName": "fix-y",
-           "merged": true,
-           "isCrossRepository": false,
-           "repository": {
-            "nameWithOwner": "o/r"
-           },
-           "body": "Refs #9 — deel 1"
-          }
-         }
-        ]
-       }
-      }
-     }
+   "heads": [
+    {
+     "HeadRef": "issue-9-x",
+     "Repo": "o/r",
+     "Body": "",
+     "Merged": true,
+     "Closes": true,
+     "CrossRepo": false
+    },
+    {
+     "HeadRef": "fix-y",
+     "Repo": "o/r",
+     "Body": "Refs #9 — deel 1",
+     "Merged": true,
+     "Closes": false,
+     "CrossRepo": false
     }
-   },
+   ],
    "slug": "o/r",
    "nr": 9
   },
@@ -753,32 +736,16 @@
   "name": "test_parse_cross_ref_needs_refs_line[0]",
   "fn": "parse_issue_pr_heads",
   "input": {
-   "payload": {
-    "data": {
-     "repository": {
-      "issue": {
-       "closedByPullRequestsReferences": {
-        "nodes": []
-       },
-       "timelineItems": {
-        "nodes": [
-         {
-          "source": {
-           "headRefName": "fix-y",
-           "merged": true,
-           "isCrossRepository": false,
-           "repository": {
-            "nameWithOwner": "o/r"
-           },
-           "body": "zie #9"
-          }
-         }
-        ]
-       }
-      }
-     }
+   "heads": [
+    {
+     "HeadRef": "fix-y",
+     "Repo": "o/r",
+     "Body": "zie #9",
+     "Merged": true,
+     "Closes": false,
+     "CrossRepo": false
     }
-   },
+   ],
    "slug": "o/r",
    "nr": 9
   },
@@ -788,32 +755,16 @@
   "name": "test_parse_cross_ref_needs_refs_line[1]",
   "fn": "parse_issue_pr_heads",
   "input": {
-   "payload": {
-    "data": {
-     "repository": {
-      "issue": {
-       "closedByPullRequestsReferences": {
-        "nodes": []
-       },
-       "timelineItems": {
-        "nodes": [
-         {
-          "source": {
-           "headRefName": "fix-y",
-           "merged": true,
-           "isCrossRepository": false,
-           "repository": {
-            "nameWithOwner": "o/r"
-           },
-           "body": "Refs #93"
-          }
-         }
-        ]
-       }
-      }
-     }
+   "heads": [
+    {
+     "HeadRef": "fix-y",
+     "Repo": "o/r",
+     "Body": "Refs #93",
+     "Merged": true,
+     "Closes": false,
+     "CrossRepo": false
     }
-   },
+   ],
    "slug": "o/r",
    "nr": 9
   },
@@ -823,31 +774,16 @@
   "name": "test_parse_cross_ref_needs_refs_line[2]",
   "fn": "parse_issue_pr_heads",
   "input": {
-   "payload": {
-    "data": {
-     "repository": {
-      "issue": {
-       "closedByPullRequestsReferences": {
-        "nodes": []
-       },
-       "timelineItems": {
-        "nodes": [
-         {
-          "source": {
-           "headRefName": "fix-y",
-           "merged": true,
-           "isCrossRepository": false,
-           "repository": {
-            "nameWithOwner": "o/r"
-           }
-          }
-         }
-        ]
-       }
-      }
-     }
+   "heads": [
+    {
+     "HeadRef": "fix-y",
+     "Repo": "o/r",
+     "Body": "",
+     "Merged": true,
+     "Closes": false,
+     "CrossRepo": false
     }
-   },
+   ],
    "slug": "o/r",
    "nr": 9
   },
@@ -857,32 +793,16 @@
   "name": "test_parse_cross_ref_refs_in_comment_does_not_count",
   "fn": "parse_issue_pr_heads",
   "input": {
-   "payload": {
-    "data": {
-     "repository": {
-      "issue": {
-       "closedByPullRequestsReferences": {
-        "nodes": []
-       },
-       "timelineItems": {
-        "nodes": [
-         {
-          "source": {
-           "headRefName": "fix-y",
-           "merged": true,
-           "isCrossRepository": false,
-           "repository": {
-            "nameWithOwner": "o/r"
-           },
-           "body": "<!-- Refs #9 — voorbeeld uit het template -->\nzie #9"
-          }
-         }
-        ]
-       }
-      }
-     }
+   "heads": [
+    {
+     "HeadRef": "fix-y",
+     "Repo": "o/r",
+     "Body": "<!-- Refs #9 — voorbeeld uit het template -->\nzie #9",
+     "Merged": true,
+     "Closes": false,
+     "CrossRepo": false
     }
-   },
+   ],
    "slug": "o/r",
    "nr": 9
   },
@@ -892,32 +812,16 @@
   "name": "test_parse_cross_ref_refs_without_reason_counts",
   "fn": "parse_issue_pr_heads",
   "input": {
-   "payload": {
-    "data": {
-     "repository": {
-      "issue": {
-       "closedByPullRequestsReferences": {
-        "nodes": []
-       },
-       "timelineItems": {
-        "nodes": [
-         {
-          "source": {
-           "headRefName": "fix-y",
-           "merged": true,
-           "isCrossRepository": false,
-           "repository": {
-            "nameWithOwner": "o/r"
-           },
-           "body": "Refs #9"
-          }
-         }
-        ]
-       }
-      }
-     }
+   "heads": [
+    {
+     "HeadRef": "fix-y",
+     "Repo": "o/r",
+     "Body": "Refs #9",
+     "Merged": true,
+     "Closes": false,
+     "CrossRepo": false
     }
-   },
+   ],
    "slug": "o/r",
    "nr": 9
   },
@@ -929,41 +833,24 @@
   "name": "test_parse_skips_cross_repository_prs",
   "fn": "parse_issue_pr_heads",
   "input": {
-   "payload": {
-    "data": {
-     "repository": {
-      "issue": {
-       "closedByPullRequestsReferences": {
-        "nodes": [
-         {
-          "headRefName": "patch-1",
-          "merged": true,
-          "isCrossRepository": true,
-          "repository": {
-           "nameWithOwner": "o/r"
-          }
-         }
-        ]
-       },
-       "timelineItems": {
-        "nodes": [
-         {
-          "source": {
-           "headRefName": "patch-2",
-           "merged": true,
-           "isCrossRepository": true,
-           "repository": {
-            "nameWithOwner": "o/r"
-           },
-           "body": "Refs #9"
-          }
-         }
-        ]
-       }
-      }
-     }
+   "heads": [
+    {
+     "HeadRef": "patch-1",
+     "Repo": "o/r",
+     "Body": "",
+     "Merged": true,
+     "Closes": true,
+     "CrossRepo": true
+    },
+    {
+     "HeadRef": "patch-2",
+     "Repo": "o/r",
+     "Body": "Refs #9",
+     "Merged": true,
+     "Closes": false,
+     "CrossRepo": true
     }
-   },
+   ],
    "slug": "o/r",
    "nr": 9
   },
@@ -973,44 +860,24 @@
   "name": "test_parse_skips_unmerged_and_non_pr",
   "fn": "parse_issue_pr_heads",
   "input": {
-   "payload": {
-    "data": {
-     "repository": {
-      "issue": {
-       "closedByPullRequestsReferences": {
-        "nodes": [
-         {
-          "headRefName": "issue-9-x",
-          "merged": false,
-          "isCrossRepository": false,
-          "repository": {
-           "nameWithOwner": "o/r"
-          }
-         }
-        ]
-       },
-       "timelineItems": {
-        "nodes": [
-         {
-          "source": {}
-         },
-         {
-          "source": {
-           "headRefName": "fix-y",
-           "merged": false,
-           "isCrossRepository": false,
-           "repository": {
-            "nameWithOwner": "o/r"
-           },
-           "body": "Refs #9"
-          }
-         }
-        ]
-       }
-      }
-     }
+   "heads": [
+    {
+     "HeadRef": "issue-9-x",
+     "Repo": "o/r",
+     "Body": "",
+     "Merged": false,
+     "Closes": true,
+     "CrossRepo": false
+    },
+    {
+     "HeadRef": "fix-y",
+     "Repo": "o/r",
+     "Body": "Refs #9",
+     "Merged": false,
+     "Closes": false,
+     "CrossRepo": false
     }
-   },
+   ],
    "slug": "o/r",
    "nr": 9
   },
@@ -1020,171 +887,74 @@
   "name": "test_parse_skips_other_repos",
   "fn": "parse_issue_pr_heads",
   "input": {
-   "payload": {
-    "data": {
-     "repository": {
-      "issue": {
-       "closedByPullRequestsReferences": {
-        "nodes": [
-         {
-          "headRefName": "issue-9-x",
-          "merged": true,
-          "isCrossRepository": false,
-          "repository": {
-           "nameWithOwner": "x/fork"
-          }
-         }
-        ]
-       },
-       "timelineItems": {
-        "nodes": [
-         {
-          "source": {
-           "headRefName": "fix-y",
-           "merged": true,
-           "isCrossRepository": false,
-           "repository": {
-            "nameWithOwner": "x/fork"
-           },
-           "body": "Refs #9"
-          }
-         }
-        ]
-       }
-      }
-     }
+   "heads": [
+    {
+     "HeadRef": "issue-9-x",
+     "Repo": "x/fork",
+     "Body": "",
+     "Merged": true,
+     "Closes": true,
+     "CrossRepo": false
+    },
+    {
+     "HeadRef": "fix-y",
+     "Repo": "x/fork",
+     "Body": "Refs #9",
+     "Merged": true,
+     "Closes": false,
+     "CrossRepo": false
     }
-   },
+   ],
    "slug": "o/r",
    "nr": 9
   },
   "expect": []
- },
- {
-  "name": "test_parse_null_issue_is_failure[null issue]",
-  "fn": "parse_issue_pr_heads",
-  "input": {
-   "payload": {
-    "data": {
-     "repository": {
-      "issue": null
-     }
-    }
-   },
-   "slug": "o/r",
-   "nr": 9
-  },
-  "expect": null
- },
- {
-  "name": "test_parse_null_issue_is_failure[errors]",
-  "fn": "parse_issue_pr_heads",
-  "input": {
-   "payload": {
-    "errors": [
-     {
-      "message": "x"
-     }
-    ]
-   },
-   "slug": "o/r",
-   "nr": 9
-  },
-  "expect": null
- },
- {
-  "name": "test_parse_issue_pr_heads_shapes[no data]",
-  "fn": "parse_issue_pr_heads",
-  "input": {
-   "payload": {
-    "data": null
-   },
-   "slug": "o/r",
-   "nr": 9
-  },
-  "expect": null
- },
- {
-  "name": "test_parse_issue_pr_heads_shapes[list]",
-  "fn": "parse_issue_pr_heads",
-  "input": {
-   "payload": [],
-   "slug": "o/r",
-   "nr": 9
-  },
-  "expect": null
  },
  {
   "name": "test_parse_issue_pr_heads_shapes[empty errors]",
   "fn": "parse_issue_pr_heads",
   "input": {
-   "payload": {
-    "errors": [],
-    "data": {
-     "repository": {
-      "issue": {}
-     }
-    }
-   },
+   "heads": [],
    "slug": "o/r",
    "nr": 9
   },
   "expect": []
  },
  {
-  "name": "test_parse_issue_pr_heads_shapes[null nodes and dedupe]",
+  "name": "test_parse_issue_pr_heads_shapes[dedupe]",
   "fn": "parse_issue_pr_heads",
   "input": {
-   "payload": {
-    "data": {
-     "repository": {
-      "issue": {
-       "closedByPullRequestsReferences": null,
-       "timelineItems": {
-        "nodes": [
-         null,
-         {
-          "source": null
-         },
-         {
-          "headRefName": "a",
-          "merged": true,
-          "isCrossRepository": false,
-          "repository": {
-           "nameWithOwner": "o/r"
-          },
-          "body": "Refs #9"
-         },
-         {
-          "headRefName": "a",
-          "merged": true,
-          "isCrossRepository": false,
-          "repository": {
-           "nameWithOwner": "o/r"
-          },
-          "body": "Refs #9"
-         },
-         {
-          "source": {
-           "headRefName": "b",
-           "merged": true,
-           "isCrossRepository": false,
-           "repository": {
-            "nameWithOwner": "o/r"
-           },
-           "body": "Closes #9\nRefs #9"
-          }
-         }
-        ]
-       }
-      }
-     }
+   "heads": [
+    {
+     "HeadRef": "a",
+     "Repo": "o/r",
+     "Body": "Refs #9",
+     "Merged": true,
+     "Closes": false,
+     "CrossRepo": false
+    },
+    {
+     "HeadRef": "a",
+     "Repo": "o/r",
+     "Body": "Refs #9",
+     "Merged": true,
+     "Closes": false,
+     "CrossRepo": false
+    },
+    {
+     "HeadRef": "b",
+     "Repo": "o/r",
+     "Body": "Closes #9\nRefs #9",
+     "Merged": true,
+     "Closes": false,
+     "CrossRepo": false
     }
-   },
+   ],
    "slug": "o/r",
    "nr": 9
   },
   "expect": [
+   "a",
    "b"
   ]
  },

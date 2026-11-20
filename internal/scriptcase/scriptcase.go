@@ -49,7 +49,10 @@ type Case struct {
 	Env    map[string]string `json:"env"`
 	Setup  []map[string]any  `json:"setup,omitempty"`
 	Calls  []Call            `json:"calls"`
-	Expect Expect            `json:"expect"`
+	// ForgeCalls are the requests to the forge API, served by ReplayForge; a case that has
+	// them scripts no `gh`.
+	ForgeCalls []ForgeCall `json:"forge_calls,omitempty"`
+	Expect     Expect      `json:"expect"`
 	// Only restricts a case to one implementation ("go"); empty runs on both.
 	Only string `json:"only,omitempty"`
 }

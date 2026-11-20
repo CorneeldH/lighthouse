@@ -453,7 +453,7 @@ def test_handoff_post_artefact():
         flat = " ".join(body.split())
         for phrase in (
             "lighthouse post-artefact <nr> <absolute path>",
-            "with `dangerouslyDisableSandbox: true` (Go TLS of `gh`):",
+            "with `dangerouslyDisableSandbox: true`:",
             "also in controller mode (if present) before the `🤖 heading:kind_handoff`",
             "An error does not block the handoff",
             "artefact: <the line from lighthouse post-artefact>",

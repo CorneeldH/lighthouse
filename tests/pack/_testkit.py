@@ -15,6 +15,8 @@ blocks.
 
 import atexit
 import functools
+import http.server
+import threading
 import json
 import os
 import pwd
@@ -161,6 +163,87 @@ def fake_gh_bin(tmp_path: Path, calls: list[dict]) -> tuple[Path, Path]:
     )
     gh.chmod(0o755)
     return bin_dir, log
+
+
+class ForgeReplay:
+    """A forge API on a local port that replays the scripted `forge_calls` in order.
+
+    Generic, not tied to one command: the binary reaches it through
+    `LIGHTHOUSE_GITHUB_API_URL` and a dummy token. A call has `method`, `path` (the
+    request URI, query included), optional `request_body` (JSON the request must
+    carry), `status`, optional `body` (JSON) and `headers`; `{forge_url}` in a body or
+    a header value is this server's base URL. A request that is not the next call, or
+    one after the list ran out, is answered 599 and recorded in `problems`; `made` is
+    the number of calls served. The Go twin is `internal/scriptcase.ReplayForge`.
+    """
+
+    def __init__(self, calls: list[dict]):
+        self.calls = calls
+        self.made = 0
+        self.problems: list[str] = []
+        replay = self
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *_args):
+                pass
+
+            def _serve(self):
+                length = int(self.headers.get("Content-Length") or 0)
+                raw = self.rfile.read(length) if length else b""
+                replay._answer(self, f"{self.command} {self.path}", raw)
+
+            do_GET = do_POST = do_PATCH = do_PUT = do_DELETE = _serve
+
+        self._server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self._lock = threading.Lock()
+
+    @property
+    def url(self) -> str:
+        return f"http://127.0.0.1:{self._server.server_port}"
+
+    def _answer(self, handler, got: str, raw: bytes) -> None:
+        with self._lock:
+            problem, call = self._match(got, raw)
+            if problem:
+                self.problems.append(problem)
+                handler.send_response(599)
+                handler.send_header("Content-Length", "0")
+                handler.end_headers()
+                return
+            self.made += 1
+        body = json.dumps(call["body"]).replace("{forge_url}", self.url).encode() if "body" in call else b""
+        handler.send_response(call["status"])
+        for key, value in call.get("headers", {}).items():
+            handler.send_header(key, value.replace("{forge_url}", self.url))
+        if body:
+            handler.send_header("Content-Type", "application/json")
+        handler.send_header("Content-Length", str(len(body)))
+        handler.end_headers()
+        handler.wfile.write(body)
+
+    def _match(self, got: str, raw: bytes):
+        if self.made >= len(self.calls):
+            return f"unexpected request {got}: all {len(self.calls)} scripted calls were used", None
+        call = self.calls[self.made]
+        want = f"{call['method']} {call['path']}"
+        if want != got:
+            return f"call {self.made + 1}: expected {want}, got {got}", None
+        if "request_body" in call:
+            try:
+                same = json.loads(raw) == call["request_body"]
+            except ValueError:
+                same = False
+            if not same:
+                return f"call {self.made + 1} {got}: expected request body {call['request_body']!r}, got {raw!r}", None
+        return None, call
+
+    def __enter__(self):
+        threading.Thread(target=self._server.serve_forever, daemon=True).start()
+        return self
+
+    def __exit__(self, *_exc):
+        self._server.shutdown()
+        self._server.server_close()
 
 
 def fill_fixture(value, root: str):

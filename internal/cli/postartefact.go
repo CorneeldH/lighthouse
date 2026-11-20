@@ -1,16 +1,21 @@
 package cli
 
 import (
+	"context"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/CorneeldH/lighthouse/internal/config"
+	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/postartefact"
+	"github.com/CorneeldH/lighthouse/internal/prbody"
 	"github.com/CorneeldH/lighthouse/internal/procrun"
 	"github.com/CorneeldH/lighthouse/internal/pytext"
+	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 )
 
 // pyInt is int(text) for the issue number: surrounding whitespace, a sign and single
@@ -27,8 +32,32 @@ func pyInt(text string) (int, bool) {
 }
 
 func defaultPostArtefactEnv() postartefact.Env {
+	o := newForgeOpener(os.Getenv, prbody.LoopbackAPIURL(os.Getenv(prbody.GitHubAPIURLEnv)))
+	o.ghToken = ghAuthToken
+	return postArtefactEnvWith(o)
+}
+
+// postArtefactEnvWith is the environment of post-artefact with o as the opener of the forge.
+// The repo is the one of the lighthouse.toml that config.Path names (LIGHTHOUSE_TOML is honoured),
+// not of the working directory; git runs for real.
+func postArtefactEnvWith(o *forgeOpener) postartefact.Env {
 	return postartefact.Env{
 		Run: procrun.Exec(postartefact.RunTimeout),
+		Forge: func(string) (forge.Forge, error) {
+			path, err := config.Path()
+			if err != nil {
+				return nil, err
+			}
+			repo, err := repoconfig.LoadFile(path)
+			if err != nil {
+				return nil, err
+			}
+			rf, err := o.forRepo(context.Background(), repo)
+			if err != nil {
+				return nil, err
+			}
+			return rf.Forge, nil
+		},
 		Config: func() (*config.Config, error) {
 			path, err := config.Path()
 			if err != nil {
@@ -40,7 +69,7 @@ func defaultPostArtefactEnv() postartefact.Env {
 }
 
 // newPostArtefactCommand is `lighthouse post-artefact <nr> <file>`, the port of post_artefact.py.
-// env starts `git` and `gh` and reads the configuration; a test hands in a replay.
+// env starts `git`, opens the forge and reads the configuration; a test hands in a replay.
 func newPostArtefactCommand(env postartefact.Env) *cobra.Command {
 	cmd := scriptCommand(&cobra.Command{
 		Use:   "post-artefact <nr> <file>",
@@ -48,7 +77,7 @@ func newPostArtefactCommand(env postartefact.Env) *cobra.Command {
 		Long: "Post a committed spec or plan file as a version chain of issue comments.\n\n" +
 			"  nr    issue number\n  file  spec or plan file\n\n" +
 			"The file must be committed and clean, in the spec or plan directory of the config. A commit\n" +
-			"that is not on GitHub is pushed, except from the default branch, a detached HEAD or a branch\n" +
+			"that is not on the forge is pushed, except from the default branch, a detached HEAD or a branch\n" +
 			"with an open PR. Unchanged content posts nothing.\n\n" +
 			"Exit: 0 posted or unchanged | 1 every `artefact:` error (on stderr) | 2 wrong usage.",
 		RunE: func(cmd *cobra.Command, args []string) error {

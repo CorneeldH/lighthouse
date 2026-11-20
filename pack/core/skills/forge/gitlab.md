@@ -130,3 +130,8 @@ Jobs of a child pipeline (a bridge) are not listed by `pr checks`: when a pipeli
 
 Rerun one job: `lighthouse forge api -X POST "projects/<project>/jobs/<job>/retry"`. Roborev does
 not exist on GitLab yet (it first needs a real run), so section 6 of `/lighthouse-fix-pr` does not apply.
+
+## §workflows
+
+No equivalent in this milestone. A GitLab repo does not run the workflows, and `lighthouse init`
+does not write them.
