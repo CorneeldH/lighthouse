@@ -44,6 +44,11 @@ type Fixture interface {
 	// AddMergedPR adds a merged pull request with its Number, Title, URL and MergedAt.
 	AddMergedPR(t *testing.T, pr forge.PRSummary)
 	AddBranchPR(t *testing.T, branch string, pr forge.PR)
+	// AddPullHead adds a pull request in any state with its Number, State, MergedAt and HeadRef.
+	AddPullHead(t *testing.T, h forge.PullHead)
+	// AddClosingPR makes the pull request h close issue number (h.Closes) or only refer to it,
+	// with its HeadRef, Repo, Body, Merged and CrossRepo; Repo is where the pull request lives.
+	AddClosingPR(t *testing.T, number int, h forge.ClosingHead)
 	// AddMilestonedEvent records that issue number was put in the milestone titled milestoneTitle
 	// at at. The event names the milestone by title only; the issue is added with AddIssue.
 	AddMilestonedEvent(t *testing.T, number int, milestoneTitle string, at time.Time)
@@ -128,6 +133,8 @@ var Cases = []Case{
 	{"MilestonesAndLookup", milestonesAndLookup},
 	{"MilestoneAmbiguousTitle", milestoneAmbiguousTitle},
 	{"LabelsList", labelsList},
+	{"PullHeads", pullHeads},
+	{"IssueClosingHeads", issueClosingHeads},
 	{"CommitKnown", commitKnown},
 	{"CreateLabel", createLabel},
 	{"AddBlockerThenBlockedBy", addBlockerThenBlockedBy},
@@ -887,6 +894,55 @@ func labelsList(t *testing.T, f Fixture) {
 	got, err := f.Forge().Labels(t.Context())
 	if err != nil || !slices.Equal(sorted(got), []string{"area:cli", "bug"}) {
 		t.Errorf("Labels = %v, %v; want [area:cli bug]", got, err)
+	}
+}
+
+func pullHeads(t *testing.T, f Fixture) {
+	merged := "2026-11-18T10:00:00Z"
+	f.AddPullHead(t, forge.PullHead{Number: 1, State: "OPEN", HeadRef: "issue-1-open"})
+	f.AddPullHead(t, forge.PullHead{Number: 2, State: "CLOSED", HeadRef: "issue-2-closed"})
+	f.AddPullHead(t, forge.PullHead{Number: 3, State: "MERGED", MergedAt: merged, HeadRef: "issue-3-merged"})
+	want := []forge.PullHead{
+		{Number: 1, State: "OPEN", HeadRef: "issue-1-open"},
+		{Number: 2, State: "CLOSED", HeadRef: "issue-2-closed"},
+		{Number: 3, State: "MERGED", MergedAt: merged, HeadRef: "issue-3-merged"},
+	}
+	for n := 10; n < 10+page; n++ { // more than one page
+		h := forge.PullHead{Number: n, State: "CLOSED", HeadRef: fmt.Sprintf("issue-%d-x", n)}
+		f.AddPullHead(t, h)
+		want = append(want, h)
+	}
+	got, err := f.Forge().PullHeads(t.Context())
+	if err != nil {
+		t.Fatalf("PullHeads: %v", err)
+	}
+	slices.SortFunc(got, func(a, b forge.PullHead) int { return a.Number - b.Number })
+	if !slices.Equal(got, want) {
+		t.Errorf("PullHeads = %d heads, first %+v; want %d heads, first %+v (every state, every page)", len(got), got[:min(3, len(got))], len(want), want[:3])
+	}
+}
+
+func issueClosingHeads(t *testing.T, f Fixture) {
+	closing := forge.ClosingHead{HeadRef: "issue-7-a", Repo: f.Repo(), Body: "Closes #7", Merged: true, Closes: true}
+	fork := forge.ClosingHead{HeadRef: "issue-7-fork", Repo: f.Repo(), Body: "Closes #7", Closes: true, CrossRepo: true}
+	refs := forge.ClosingHead{HeadRef: "issue-7-refs", Repo: f.Repo(), Body: "Refs #7 — deel", Merged: true}
+	bare := forge.ClosingHead{HeadRef: "issue-7-bare", Repo: f.Repo(), Body: "noemt het issue alleen"}
+	other := forge.ClosingHead{HeadRef: "issue-7-other", Repo: "other/repo", Body: "Refs #7", Merged: true}
+	for _, h := range []forge.ClosingHead{closing, fork, refs, bare, other} {
+		f.AddClosingPR(t, 7, h)
+	}
+	got, err := f.Forge().IssueClosingHeads(t.Context(), 7)
+	if err != nil {
+		t.Fatalf("IssueClosingHeads: %v", err)
+	}
+	slices.SortFunc(got, func(a, b forge.ClosingHead) int { return strings.Compare(a.HeadRef, b.HeadRef) })
+	want := []forge.ClosingHead{closing, bare, fork, other, refs}
+	if !slices.Equal(got, want) {
+		t.Errorf("IssueClosingHeads(7) = %+v; want %+v", got, want)
+	}
+	none, err := f.Forge().IssueClosingHeads(t.Context(), 8)
+	if err != nil || len(none) != 0 {
+		t.Errorf("IssueClosingHeads(8) = %+v, %v; want none, nil", none, err)
 	}
 }
 

@@ -53,6 +53,7 @@ type Server struct {
 	links    map[int][]map[string]any
 	mrs      []map[string]any
 	closedBy map[string][]map[string]any // "project#iid" to the merge requests that close it
+	related  map[string][]map[string]any // "project#iid" to the merge requests that only refer to it
 	users    map[string]int64            // username to user ID
 	members  map[string]int              // username to access level
 	statuses []string
@@ -78,7 +79,7 @@ func newServer(t reporter) *Server {
 		t: t, Project: "group/project", nextID: 1000,
 		issues: map[int]map[string]any{}, notes: map[int][]map[string]any{}, mrNotes: map[int][]map[string]any{},
 		pipelines: map[int][]map[string]any{}, jobs: map[int][]map[string]any{}, traces: map[int64]string{},
-		awards: map[int64][]map[string]any{}, links: map[int][]map[string]any{}, closedBy: map[string][]map[string]any{},
+		awards: map[int64][]map[string]any{}, links: map[int][]map[string]any{}, closedBy: map[string][]map[string]any{}, related: map[string][]map[string]any{},
 		users: map[string]int64{}, members: map[string]int{}, status: map[int]string{},
 	}
 	mux := http.NewServeMux()
@@ -97,6 +98,7 @@ func newServer(t reporter) *Server {
 	s.route(mux, "GET "+p+"/issues/{iid}/links", s.project(s.listLinks))
 	// closed_by answers for any project: a blocker can live in another one.
 	s.route(mux, "GET "+p+"/issues/{iid}/closed_by", s.listClosedBy)
+	s.route(mux, "GET "+p+"/issues/{iid}/related_merge_requests", s.listRelatedMRs)
 	s.route(mux, "GET "+p+"/merge_requests", s.project(s.listMRs))
 	s.route(mux, "GET "+p+"/merge_requests/{iid}", s.project(s.getMR))
 	s.route(mux, "PUT "+p+"/merge_requests/{iid}", s.project(s.updateMR))
@@ -350,6 +352,14 @@ func (s *Server) listClosedBy(w http.ResponseWriter, r *http.Request) {
 	paginate(w, r, out)
 }
 
+func (s *Server) listRelatedMRs(w http.ResponseWriter, r *http.Request) {
+	key := r.PathValue("project") + "#" + r.PathValue("iid")
+	s.mu.Lock()
+	out := toAny(s.related[key])
+	s.mu.Unlock()
+	paginate(w, r, out)
+}
+
 func (s *Server) listLinks(w http.ResponseWriter, r *http.Request) {
 	iid, _ := strconv.Atoi(r.PathValue("iid"))
 	s.mu.Lock()
@@ -530,6 +540,15 @@ func (s *Server) AddClosedBy(project string, iid int, mr map[string]any) {
 	defer s.mu.Unlock()
 	key := fmt.Sprintf("%s#%d", project, iid)
 	s.closedBy[key] = append(s.closedBy[key], mr)
+}
+
+// AddRelatedMR seeds a merge request that only refers to issue iid of project, which may be
+// another project than Project; closed_by does not list it.
+func (s *Server) AddRelatedMR(project string, iid int, mr map[string]any) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := fmt.Sprintf("%s#%d", project, iid)
+	s.related[key] = append(s.related[key], mr)
 }
 
 // AddMR seeds a merge request in GitLab's REST shape. A head_pipeline in it is served only by

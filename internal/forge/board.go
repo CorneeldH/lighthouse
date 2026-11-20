@@ -415,6 +415,141 @@ func (c *GitHub) BranchPRs(ctx context.Context, branch string) ([]PR, error) {
 	return out, nil
 }
 
+// PullHead is the head of a pull request or merge request in any state.
+type PullHead struct {
+	Number int
+	State  string // OPEN, CLOSED or MERGED, as PR.State
+	// MergedAt is the merge time in RFC 3339, UTC; "" for a PR that is not merged.
+	MergedAt string
+	HeadRef  string
+}
+
+// ClosingHead is a pull request that closes an issue or refers to it.
+type ClosingHead struct {
+	HeadRef string
+	// Repo is the repository the pull request lives in, owner/name.
+	Repo string
+	Body string
+	// Merged is true for a merged pull request.
+	Merged bool
+	// Closes is true for a pull request that closes the issue; false for one that only refers
+	// to it.
+	Closes bool
+	// CrossRepo is true for a pull request whose head lives in another repository.
+	CrossRepo bool
+}
+
+// rfc3339 is t in RFC 3339, UTC; "" for the zero time.
+func rfc3339(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.UTC().Format(time.RFC3339)
+}
+
+// PullHeads lists every pull request of the repo in any state, following every page.
+func (c *GitHub) PullHeads(ctx context.Context) ([]PullHead, error) {
+	if err := c.configured(); err != nil {
+		return nil, err
+	}
+	var out []PullHead
+	for next := fmt.Sprintf("%s/repos/%s/pulls?state=all&per_page=100", c.BaseURL, c.Repo); next != ""; {
+		var page []restPull
+		var err error
+		if next, err = c.do(ctx, http.MethodGet, next, nil, &page); err != nil {
+			return nil, err
+		}
+		for _, p := range page {
+			pr := p.pr(false)
+			out = append(out, PullHead{Number: p.Number, State: pr.State, MergedAt: rfc3339(p.MergedAt), HeadRef: p.Head.Ref})
+		}
+	}
+	return out, nil
+}
+
+// issueClosingHeadsQuery asks for the pull requests that close an issue and the ones that
+// cross-reference it.
+const issueClosingHeadsQuery = `query IssueClosingHeads($owner:String!,$name:String!,$nr:Int!){repository(owner:$owner,name:$name){issue(number:$nr){
+  closedByPullRequestsReferences(first:50,includeClosedPrs:true){pageInfo{hasNextPage} nodes{number headRefName merged isCrossRepository body repository{nameWithOwner}}}
+  timelineItems(itemTypes:[CROSS_REFERENCED_EVENT],first:100){pageInfo{hasNextPage} nodes{... on CrossReferencedEvent{source{... on PullRequest{number headRefName merged isCrossRepository body repository{nameWithOwner}}}}}}}}}`
+
+type closingNode struct {
+	Number            int    `json:"number"`
+	HeadRefName       string `json:"headRefName"`
+	Merged            bool   `json:"merged"`
+	IsCrossRepository bool   `json:"isCrossRepository"`
+	Body              string `json:"body"`
+	Repository        struct {
+		NameWithOwner string `json:"nameWithOwner"`
+	} `json:"repository"`
+}
+
+// IssueClosingHeads lists the pull requests that close issue number (closedByPullRequestsReferences)
+// and the ones that only refer to it (cross-referenced events). A PR in both counts once, as
+// closing. A connection that does not fit in one page is an error, never a short list.
+func (c *GitHub) IssueClosingHeads(ctx context.Context, number int) ([]ClosingHead, error) {
+	if err := c.configured(); err != nil {
+		return nil, err
+	}
+	owner, name, ok := strings.Cut(c.Repo, "/")
+	if !ok || owner == "" || name == "" {
+		return nil, fmt.Errorf("forge: repo %q is not owner/name", c.Repo)
+	}
+	var data struct {
+		Repository struct {
+			Issue struct {
+				ClosedBy struct {
+					PageInfo struct {
+						HasNextPage bool `json:"hasNextPage"`
+					} `json:"pageInfo"`
+					Nodes []closingNode `json:"nodes"`
+				} `json:"closedByPullRequestsReferences"`
+				Timeline struct {
+					PageInfo struct {
+						HasNextPage bool `json:"hasNextPage"`
+					} `json:"pageInfo"`
+					Nodes []struct {
+						Source *closingNode `json:"source"`
+					} `json:"nodes"`
+				} `json:"timelineItems"`
+			} `json:"issue"`
+		} `json:"repository"`
+	}
+	vars := map[string]any{"owner": owner, "name": name, "nr": number}
+	if err := c.graphql(ctx, issueClosingHeadsQuery, vars, &data); err != nil {
+		return nil, err
+	}
+	issue := data.Repository.Issue
+	if issue.ClosedBy.PageInfo.HasNextPage {
+		return nil, truncated("closedByPullRequestsReferences", len(issue.ClosedBy.Nodes))
+	}
+	if issue.Timeline.PageInfo.HasNextPage {
+		return nil, truncated("timelineItems", len(issue.Timeline.Nodes))
+	}
+	type key struct {
+		repo string
+		nr   int
+	}
+	seen := map[key]bool{}
+	out := []ClosingHead{}
+	add := func(n *closingNode, closes bool) {
+		// A source that is no pull request (an issue) has no head branch.
+		if n == nil || n.HeadRefName == "" || seen[key{n.Repository.NameWithOwner, n.Number}] {
+			return
+		}
+		seen[key{n.Repository.NameWithOwner, n.Number}] = true
+		out = append(out, ClosingHead{HeadRef: n.HeadRefName, Repo: n.Repository.NameWithOwner, Body: n.Body,
+			Merged: n.Merged, Closes: closes, CrossRepo: n.IsCrossRepository})
+	}
+	for i := range issue.ClosedBy.Nodes {
+		add(&issue.ClosedBy.Nodes[i], true)
+	}
+	for _, it := range issue.Timeline.Nodes {
+		add(it.Source, false)
+	}
+	return out, nil
+}
+
 // SetStatus moves item to status, an option name of [forge.board] status_options. A name it
 // does not list, or an item without an ItemID, is an error before any request.
 func (c *GitHub) SetStatus(ctx context.Context, item BoardItem, status string) error {

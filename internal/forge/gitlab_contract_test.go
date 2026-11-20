@@ -20,6 +20,7 @@ type gitlabFixture struct {
 	f   forge.Forge
 	// milestones counts the seeded milestones, for their ids.
 	milestones int
+	nextMR     int // numbers the merge requests of AddClosingPR
 }
 
 func newGitLabFixture(t *testing.T) forgesuite.Fixture {
@@ -196,6 +197,34 @@ func (g *gitlabFixture) AddBranchPR(_ *testing.T, branch string, pr forge.PR) {
 		m["closed_at"] = pr.ClosedAt.UTC().Format(time.RFC3339)
 	}
 	g.srv.AddMR(m)
+}
+
+func (g *gitlabFixture) AddPullHead(_ *testing.T, h forge.PullHead) {
+	m := map[string]any{"iid": h.Number, "state": mrState[h.State], "source_branch": h.HeadRef,
+		"source_project_id": 1, "target_project_id": 1}
+	if h.MergedAt != "" {
+		m["merged_at"] = h.MergedAt
+	}
+	g.srv.AddMR(m)
+}
+
+func (g *gitlabFixture) AddClosingPR(_ *testing.T, number int, h forge.ClosingHead) {
+	g.nextMR++
+	state := "opened"
+	if h.Merged {
+		state = "merged"
+	}
+	m := map[string]any{"iid": 900 + g.nextMR, "state": state, "source_branch": h.HeadRef, "description": h.Body,
+		"source_project_id": 1, "target_project_id": 1,
+		"references": map[string]any{"full": fmt.Sprintf("%s!%d", h.Repo, 900+g.nextMR)}}
+	if h.CrossRepo {
+		m["source_project_id"] = 2
+	}
+	if h.Closes {
+		g.srv.AddClosedBy(g.Repo(), number, m)
+	} else {
+		g.srv.AddRelatedMR(g.Repo(), number, m)
+	}
 }
 
 // PutOnBoard gives issue number the GitLab status of status and the label of priority. Every

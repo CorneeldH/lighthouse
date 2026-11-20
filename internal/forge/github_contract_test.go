@@ -34,6 +34,7 @@ type githubFixture struct {
 	nodes map[int]map[string]any
 	// blockers are the blockers per issue number in the board's GraphQL shape.
 	blockers map[int][]any
+	nextPR   int // numbers the pull requests of AddClosingPR
 }
 
 func newGitHubFixture(t *testing.T) forgesuite.Fixture {
@@ -237,6 +238,32 @@ func (g *githubFixture) AddBranchPR(_ *testing.T, branch string, pr forge.PR) {
 		g.srv.Branches = map[string][]map[string]any{}
 	}
 	g.srv.Branches[branch] = append(g.srv.Branches[branch], node)
+}
+
+func (g *githubFixture) AddPullHead(_ *testing.T, h forge.PullHead) {
+	state := "open"
+	if h.State != "OPEN" {
+		state = "closed"
+	}
+	p := map[string]any{"number": h.Number, "state": state, "head": map[string]any{"ref": h.HeadRef}}
+	if h.MergedAt != "" {
+		p["merged_at"] = h.MergedAt
+	}
+	g.srv.Pulls = append(g.srv.Pulls, p)
+}
+
+func (g *githubFixture) AddClosingPR(_ *testing.T, number int, h forge.ClosingHead) {
+	g.nextPR++
+	node := map[string]any{"number": 900 + g.nextPR, "headRefName": h.HeadRef, "merged": h.Merged,
+		"isCrossRepository": h.CrossRepo, "body": h.Body, "repository": map[string]any{"nameWithOwner": h.Repo}}
+	into := &g.srv.RefPRs
+	if h.Closes {
+		into = &g.srv.ClosingPRs
+	}
+	if *into == nil {
+		*into = map[int][]map[string]any{}
+	}
+	(*into)[number] = append((*into)[number], node)
 }
 
 // timeOrNil is t in GraphQL's DateTime shape, or null for the zero time.

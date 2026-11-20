@@ -61,6 +61,13 @@ type Forge interface {
 	// by milestone title and then number; At is the last such moment.
 	MilestonedIssues(ctx context.Context, since, until time.Time) ([]MilestonedIssue, error)
 	BranchPRs(ctx context.Context, branch string) ([]PR, error)
+	// PullHeads lists every pull request or merge request of the repo, in any state, over all
+	// pages: its number, state, merge time and head branch.
+	PullHeads(ctx context.Context) ([]PullHead, error)
+	// IssueClosingHeads lists the pull requests that close issue number or refer to it, as the
+	// forge reports them. It filters nothing: a PR that is not merged, from a fork, from another
+	// repo or without a mention in its body is returned too, for the caller to judge.
+	IssueClosingHeads(ctx context.Context, number int) ([]ClosingHead, error)
 	BoardItems(ctx context.Context) ([]BoardItem, error)
 	// IssueItem reads the board item of issue number. ok is false for an issue that exists but
 	// is not on the board. An issue that does not exist is an error wrapping ErrIssueNotFound.

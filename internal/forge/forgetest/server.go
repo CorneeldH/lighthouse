@@ -79,6 +79,10 @@ type Server struct {
 	Milestones []map[string]any
 	// Labels are the label names of the repo, served by GET .../labels.
 	Labels []string
+	// ClosingPRs and RefPRs are the PR nodes (number, headRefName, merged, isCrossRepository, body,
+	// repository.nameWithOwner) per issue number that the IssueClosingHeads query serves as
+	// closedByPullRequestsReferences and as the sources of the cross-referenced events.
+	ClosingPRs, RefPRs map[int][]map[string]any
 	// LabelColors are the colours the server stored per label name, as POSTed (six hex digits).
 	LabelColors map[string]string
 	// Commits are the shas GET /repos/{owner}/{name}/commits/{sha} knows; any other answers 404.
@@ -735,6 +739,8 @@ func (s *Server) graphql(w http.ResponseWriter, r *http.Request) {
 		}
 	case "OpenPRsWithStatus":
 		data = s.openPRsWithStatus(req.Variables)
+	case "IssueClosingHeads":
+		data = s.issueClosingHeads(req.Variables)
 	case "IssueItems":
 		var errs []any
 		if data, errs = s.issueItems(req.Query, req.Variables); errs != nil {
@@ -983,5 +989,23 @@ func (s *Server) openPRsWithStatus(vars map[string]any) any {
 	return map[string]any{"repository": map[string]any{"pullRequests": map[string]any{
 		"pageInfo": map[string]any{"hasNextPage": end < len(s.OpenPRNodes), "endCursor": fmt.Sprintf("cursor-%d", end)},
 		"nodes":    append([]map[string]any{}, s.OpenPRNodes[start:end]...),
+	}}}
+}
+
+// issueClosingHeads serves ClosingPRs and RefPRs of the issue in vars as the connections of the
+// IssueClosingHeads query, in one page.
+func (s *Server) issueClosingHeads(vars map[string]any) any {
+	nr, _ := vars["nr"].(float64)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	closing := append([]map[string]any{}, s.ClosingPRs[int(nr)]...)
+	timeline := []map[string]any{}
+	for _, n := range s.RefPRs[int(nr)] {
+		timeline = append(timeline, map[string]any{"source": n})
+	}
+	page := map[string]any{"hasNextPage": false}
+	return map[string]any{"repository": map[string]any{"issue": map[string]any{
+		"closedByPullRequestsReferences": map[string]any{"pageInfo": page, "nodes": closing},
+		"timelineItems":                  map[string]any{"pageInfo": page, "nodes": timeline},
 	}}}
 }
