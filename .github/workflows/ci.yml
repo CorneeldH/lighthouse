@@ -98,7 +98,7 @@ jobs:
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.event.pull_request.head.sha }}
         run: gitleaks git . --log-opts="$BASE..$HEAD" --config .gitleaks.toml --no-banner --redact --exit-code 1
-      # checkpoint_scan.py reads its limits through `lighthouse config`, found on PATH. The tests
+      # The hook runs `lighthouse checkpoint-scan`, found on PATH. The tests
       # build the same checkout again through `lighthouse_dir()` (tests/pack/_testkit.py).
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -109,7 +109,11 @@ jobs:
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       - run: uv sync --locked
-      - run: uv run pytest -q tests/test_pre_push_secret_scan.py tests/test_checkpoint_scan.py
+      - run: uv run pytest -q tests/test_pre_push_secret_scan.py
+        env:
+          LIGHTHOUSE_REQUIRE_GITLEAKS: "1"
+      # The go-test job has no gitleaks: here its tests run hard instead of skipping.
+      - run: go test -race ./internal/checkpointscan/... ./internal/cli/
         env:
           LIGHTHOUSE_REQUIRE_GITLEAKS: "1"
 
@@ -131,7 +135,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      # checkpoint_scan.py reads its limits through `lighthouse config`, found on PATH (#285).
+      # `lighthouse checkpoint-scan` reads its limits through `lighthouse config`, found on PATH (#285).
       - name: build lighthouse
         run: |
           go build -o "$RUNNER_TEMP/bin/lighthouse" ./cmd/lighthouse

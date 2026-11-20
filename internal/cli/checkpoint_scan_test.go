@@ -118,7 +118,7 @@ func TestCheckpointScanIsHiddenFromHelp(t *testing.T) {
 }
 
 func TestEntireRemoteOutputMatchesPython(t *testing.T) {
-	// checkpoint_scan.py:798-805: `yes`/`no` for self-push, then `yes`/`no` for the remote.
+	// The former Python script printed `yes`/`no` for self-push, then `yes`/`no` for the remote.
 	for _, tc := range []struct{ name, settings, url, want string }{
 		{"self push, ckpt url", `{"strategy_options": {"checkpoint_remote": {"provider": "github", "repo": "Acme/ckpt"}}}`, "git@github.com:Acme/ckpt.git", "yes\nyes\n"},
 		{"no self push, other repo", `{"strategy_options": {"push_sessions": false, "checkpoint_remote": {"provider": "github", "repo": "Acme/ckpt"}}}`, "https://github.com/Acme/widgets.git", "no\nno\n"},

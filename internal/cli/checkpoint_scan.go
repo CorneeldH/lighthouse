@@ -74,7 +74,7 @@ func ckCommand(cmd *cobra.Command) *cobra.Command {
 }
 
 // newCheckpointScanCommand is the hidden `lighthouse checkpoint-scan`, the port of
-// tools/hooks/checkpoint_scan.py. Exit 0 clean, 1 findings (or held refs), 2 COULD NOT CHECK.
+// the former Python tools/hooks/checkpoint_scan.py. Exit 0 clean, 1 findings (or held refs), 2 COULD NOT CHECK.
 func newCheckpointScanCommand() *cobra.Command {
 	cmd := ckCommand(&cobra.Command{
 		Use:    "checkpoint-scan",
