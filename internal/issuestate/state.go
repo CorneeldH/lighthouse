@@ -75,6 +75,34 @@ func Of(in Input, l repoconfig.Labels) Result {
 	return Result{State: Ready}
 }
 
+// Stop is the route-issue gate 0 stop.
+type Stop struct {
+	Label    string // labels.blocked_issue or labels.blocked_external when present
+	Blockers []int  // open blocked_by numbers
+}
+
+// GateZero reports the gate 0 stop: a blocked_issue label (before blocked_external) stops with
+// that label; else open blockers without needs_shaping or needs_decision stop. Blockers is
+// OpenBlockers in both cases. Unlike Of, a blocked label wins here over needs_shaping on an
+// issue that carries both.
+func GateZero(labels []string, blockers []forge.Blocker, l repoconfig.Labels) (Stop, bool) {
+	has := func(name string) bool { return name != "" && slices.Contains(labels, name) }
+	s := Stop{Blockers: OpenBlockers(blockers)}
+	switch {
+	case has(l.BlockedIssue):
+		s.Label = l.BlockedIssue
+	case has(l.BlockedExternal):
+		s.Label = l.BlockedExternal
+	}
+	if s.Label != "" {
+		return s, true
+	}
+	if len(s.Blockers) > 0 && !has(l.NeedsShaping) && !has(l.NeedsDecision) {
+		return s, true
+	}
+	return Stop{}, false
+}
+
 // OpenBlockers is the issue numbers of the blockers with state OPEN, in input order; nil for
 // none. A merged PR of a blocker does not make it closed.
 func OpenBlockers(bs []forge.Blocker) []int {

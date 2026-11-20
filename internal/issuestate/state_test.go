@@ -69,6 +69,41 @@ func TestOfIgnoresKeysTheRepoLacks(t *testing.T) {
 	}
 }
 
+func TestGateZero(t *testing.T) {
+	l := repoconfig.Labels{
+		BlockedIssue: "3-blocked-issue", BlockedExternal: "3-blocked-external",
+		NeedsShaping: "3-needs-shaping", NeedsDecision: "3-needs-decision",
+		NeedsHands: "3-needs-hands", NeedsTesting: "3-needs-testing",
+	}
+	open5 := []forge.Blocker{{Issue: 5, State: "OPEN"}}
+	tests := []struct {
+		name     string
+		labels   []string
+		blockers []forge.Blocker
+		want     Stop
+		stop     bool
+	}{
+		{"external label", []string{"3-blocked-external"}, nil, Stop{Label: "3-blocked-external"}, true},
+		{"open blocker no label", nil, open5, Stop{Blockers: []int{5}}, true},
+		{"open blocker with needs-decision", []string{"3-needs-decision"}, open5, Stop{}, false},
+		{"open blocker with needs-shaping", []string{"3-needs-shaping"}, open5, Stop{}, false},
+		{"open blocker with blocked-issue", []string{"3-blocked-issue"}, open5, Stop{Blockers: []int{5}, Label: "3-blocked-issue"}, true},
+		{"closed blockers only", nil, []forge.Blocker{{Issue: 5, State: "CLOSED"}}, Stop{}, false},
+		{"nothing", nil, nil, Stop{}, false},
+		// Two blocking labels break the invariant; the label stops here, while Of says needs_human.
+		{"blocked-issue and needs-shaping", []string{"3-blocked-issue", "3-needs-shaping"}, open5, Stop{Label: "3-blocked-issue", Blockers: []int{5}}, true},
+		{"blocked-issue before blocked-external", []string{"3-blocked-external", "3-blocked-issue"}, nil, Stop{Label: "3-blocked-issue"}, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, stop := GateZero(tt.labels, tt.blockers, l)
+			if stop != tt.stop || !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("GateZero = %+v, %v; want %+v, %v", got, stop, tt.want, tt.stop)
+			}
+		})
+	}
+}
+
 func TestOpenBlockers(t *testing.T) {
 	tests := []struct {
 		name string
