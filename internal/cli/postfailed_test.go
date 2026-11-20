@@ -35,10 +35,14 @@ func TestNotePostFailedOutsideControllerRun(t *testing.T) {
 		})
 	}
 	t.Run("no state dir", func(t *testing.T) {
+		t.Chdir(t.TempDir()) // an empty state dir would make the note path relative to here
 		var errOut strings.Builder
 		notePostFailed(noteEnvOf("", askSession), noteTime, &errOut, 7, "ask", "b", errors.New("x"))
 		if errOut.Len() != 0 {
 			t.Errorf("stderr %q, want empty", errOut.String())
+		}
+		if _, err := os.Stat("runs"); err == nil {
+			t.Error("a runs/ directory was written in the cwd")
 		}
 	})
 }
