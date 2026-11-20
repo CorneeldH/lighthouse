@@ -60,6 +60,8 @@ Succes:
 - De `gh`-aanroepen in `close-issue`. Die liggen niet op het pad van een handoff.
 - Een mislukte `post-artefact` overnemen. Die blokkeert de handoff al niet: de `artefact:`-regel
   komt in de handoff onder `Watch out:`, en dat is het spoor.
+- Het GraphQL-gebruik dat nog over is in de GitHub-forge (`IssueItem`, `Planning`). Dat is
+  [#440](https://github.com/CorneeldH/lighthouse/issues/440).
 - Opnieuw proberen binnen de run (backoff). De run stopt na een mislukte handoffpost, zoals nu.
 
 **Anti-doelen.**
