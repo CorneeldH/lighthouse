@@ -36,8 +36,6 @@ func variants(t *testing.T, skillDir string) map[string]string {
 }
 
 // skillDirs lists every pack/*/skills/* directory relative to packRoot, core first.
-//
-//nolint:unused // used by the tests of later tasks of #367
 func skillDirs(t *testing.T) []string {
 	t.Helper()
 	matches, err := filepath.Glob(filepath.Join(packRoot, "*", "skills", "*"))
@@ -66,8 +64,6 @@ func skillDirs(t *testing.T) []string {
 
 // unitTexts returns every .md, .sh, .json and .txt file of a skill directory (recursively), or
 // the one agent file, keyed by path relative to the unit.
-//
-//nolint:unused // used by the tests of later tasks of #367
 func unitTexts(t *testing.T, unit string) map[string]string {
 	t.Helper()
 	root := filepath.Join(packRoot, unit)
@@ -121,15 +117,11 @@ func section(t *testing.T, body, start, end string) string {
 }
 
 // flat collapses all whitespace runs to single spaces.
-//
-//nolint:unused // used by the tests of later tasks of #367
 func flat(s string) string {
 	return strings.Join(strings.Fields(s), " ")
 }
 
 // frontmatter returns the text between the first two --- lines.
-//
-//nolint:unused // used by the tests of later tasks of #367
 func frontmatter(t *testing.T, body string) string {
 	t.Helper()
 	rest, ok := strings.CutPrefix(body, "---\n")
