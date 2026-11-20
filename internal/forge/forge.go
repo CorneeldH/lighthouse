@@ -93,6 +93,12 @@ type Forge interface {
 	CreateMilestone(ctx context.Context, title, description string) (Milestone, error)
 	EditMilestone(ctx context.Context, number int, title, description *string) (Milestone, error)
 	Labels(ctx context.Context) ([]string, error)
+	// CreateLabel creates the label name with color, six hex digits without a "#". A label that
+	// already exists is no error.
+	CreateLabel(ctx context.Context, name, color string) error
+	// CommitKnown reports whether the forge knows the commit sha; a 404 or 422 is false, nil,
+	// any other failure is returned.
+	CommitKnown(ctx context.Context, sha string) (bool, error)
 	// AddBlocker makes issue blocker block issue number.
 	AddBlocker(ctx context.Context, number, blocker int) error
 	// API sends r to the forge's REST API and returns the raw response body.

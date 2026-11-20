@@ -72,6 +72,13 @@ type Fixture interface {
 	AddNamedMilestone(t *testing.T, title string, group bool) forge.Milestone
 	// SetLabels sets the label names of the repo.
 	SetLabels(t *testing.T, names ...string)
+	// AddCommit makes the forge know the commit with sha.
+	AddCommit(t *testing.T, sha string)
+	// FailCommit makes the lookup of the commit with sha answer a 500.
+	FailCommit(t *testing.T, sha string)
+	// LabelColor is the colour the forge stored for the label, in the shape the forge uses
+	// (GitHub: six hex digits; GitLab: with a leading "#"); "" when the label is unknown.
+	LabelColor(t *testing.T, name string) string
 	// UniqueMilestoneTitles reports whether the forge refuses two milestones with one title.
 	// GitHub does; GitLab does not, and also shows the milestones of the groups above the project.
 	UniqueMilestoneTitles() bool
@@ -121,6 +128,8 @@ var Cases = []Case{
 	{"MilestonesAndLookup", milestonesAndLookup},
 	{"MilestoneAmbiguousTitle", milestoneAmbiguousTitle},
 	{"LabelsList", labelsList},
+	{"CommitKnown", commitKnown},
+	{"CreateLabel", createLabel},
 	{"AddBlockerThenBlockedBy", addBlockerThenBlockedBy},
 	{"IssueLifecycleByMarker", issueLifecycleByMarker},
 	{"PRLifecycleByMarker", prLifecycleByMarker},
@@ -878,6 +887,40 @@ func labelsList(t *testing.T, f Fixture) {
 	got, err := f.Forge().Labels(t.Context())
 	if err != nil || !slices.Equal(sorted(got), []string{"area:cli", "bug"}) {
 		t.Errorf("Labels = %v, %v; want [area:cli bug]", got, err)
+	}
+}
+
+func commitKnown(t *testing.T, f Fixture) {
+	f.AddCommit(t, "abc123")
+	f.FailCommit(t, "deadbeef")
+	got, err := f.Forge().CommitKnown(t.Context(), "abc123")
+	if err != nil || !got {
+		t.Errorf("CommitKnown(known) = %v, %v; want true, nil", got, err)
+	}
+	got, err = f.Forge().CommitKnown(t.Context(), "ffffff")
+	if err != nil || got {
+		t.Errorf("CommitKnown(unknown) = %v, %v; want false, nil", got, err)
+	}
+	if got, err = f.Forge().CommitKnown(t.Context(), "deadbeef"); err == nil || got {
+		t.Errorf("CommitKnown(500) = %v, %v; want false and an error", got, err)
+	}
+}
+
+func createLabel(t *testing.T, f Fixture) {
+	f.SetLabels(t, "bug")
+	if err := f.Forge().CreateLabel(t.Context(), "area:new", "0e8a16"); err != nil {
+		t.Fatalf("CreateLabel: %v", err)
+	}
+	got, err := f.Forge().Labels(t.Context())
+	if err != nil || !slices.Equal(sorted(got), []string{"area:new", "bug"}) {
+		t.Errorf("Labels after CreateLabel = %v, %v; want [area:new bug]", got, err)
+	}
+	if err := f.Forge().CreateLabel(t.Context(), "area:new", "0e8a16"); err != nil {
+		t.Errorf("CreateLabel of an existing label = %v, want nil", err)
+	}
+	want := f.LabelColor(t, "area:new")
+	if want != "0e8a16" && want != "#0e8a16" {
+		t.Errorf("stored colour = %q, want 0e8a16 (GitHub) or #0e8a16 (GitLab)", want)
 	}
 }
 

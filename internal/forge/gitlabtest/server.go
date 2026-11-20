@@ -60,6 +60,9 @@ type Server struct {
 
 	milestones []map[string]any
 	labels     []string
+	labelColor map[string]string
+	commits    []string
+	failCommit map[string]bool
 	mrNotes    map[int][]map[string]any // notes of a merge request; its iid is not an issue iid
 	pipelines  map[int][]map[string]any // pipelines of a merge request, by its iid
 	jobs       map[int][]map[string]any // jobs of a pipeline, by pipeline id

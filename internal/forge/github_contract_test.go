@@ -2,6 +2,7 @@ package forge_test
 
 import (
 	"fmt"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -79,6 +80,19 @@ func (g *githubFixture) AddNamedMilestone(t *testing.T, title string, group bool
 	g.srv.Milestones = append(g.srv.Milestones, map[string]any{"number": n, "title": title, "state": "open", "description": ""})
 	return forge.Milestone{Number: n, Title: title, State: "open"}
 }
+
+func (g *githubFixture) AddCommit(_ *testing.T, sha string) {
+	g.srv.Commits = append(g.srv.Commits, sha)
+}
+
+func (g *githubFixture) FailCommit(_ *testing.T, sha string) {
+	if g.srv.Fail == nil {
+		g.srv.Fail = map[string]int{}
+	}
+	g.srv.Fail["GET /repos/o/r/commits/"+sha] = http.StatusInternalServerError
+}
+
+func (g *githubFixture) LabelColor(_ *testing.T, name string) string { return g.srv.LabelColors[name] }
 
 func (g *githubFixture) SetLabels(_ *testing.T, names ...string) { g.srv.Labels = names }
 

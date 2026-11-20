@@ -76,6 +76,12 @@ func (g *gitlabFixture) AddNamedMilestone(_ *testing.T, title string, group bool
 	return forge.Milestone{Number: id, Title: title, State: "open"}
 }
 
+func (g *gitlabFixture) AddCommit(_ *testing.T, sha string)  { g.srv.AddCommit(sha) }
+func (g *gitlabFixture) FailCommit(_ *testing.T, sha string) { g.srv.FailCommit(sha) }
+func (g *gitlabFixture) LabelColor(_ *testing.T, name string) string {
+	return g.srv.LabelColor(name)
+}
+
 func (g *gitlabFixture) SetLabels(_ *testing.T, names ...string) { g.srv.SetLabels(names...) }
 
 func (g *gitlabFixture) AddIssue(_ *testing.T, is forge.Issue) {

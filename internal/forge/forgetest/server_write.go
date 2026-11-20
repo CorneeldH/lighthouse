@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -388,4 +389,49 @@ func (s *Server) labels(w http.ResponseWriter, r *http.Request) {
 		out = append(out, map[string]any{"name": n})
 	}
 	s.page(w, r, out)
+}
+
+var labelColor = regexp.MustCompile(`^[0-9a-fA-F]{6}$`)
+
+// createLabel stores a label as GitHub does: the colour is six hex digits without a "#", and a
+// name that exists (case-insensitive) answers 422 with errors[].code already_exists.
+func (s *Server) createLabel(w http.ResponseWriter, r *http.Request) {
+	body, ok := s.decode(w, r, []string{"name", "color", "description"})
+	if !ok {
+		return
+	}
+	name, _ := body["name"].(string)
+	color, _ := body["color"].(string)
+	if name == "" || (color != "" && !labelColor.MatchString(color)) {
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{"message": "Validation Failed",
+			"errors": []any{map[string]any{"resource": "Label", "code": "invalid", "field": "color"}}})
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, n := range s.Labels {
+		if strings.EqualFold(n, name) {
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]any{"message": "Validation Failed",
+				"errors": []any{map[string]any{"resource": "Label", "code": "already_exists", "field": "name"}}})
+			return
+		}
+	}
+	s.Labels = append(s.Labels, name)
+	if s.LabelColors == nil {
+		s.LabelColors = map[string]string{}
+	}
+	s.LabelColors[name] = color
+	writeJSON(w, http.StatusCreated, map[string]any{"name": name, "color": color})
+}
+
+// commit answers a sha in Commits with 200 and any other with 404.
+func (s *Server) commit(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	known := slices.Contains(s.Commits, r.PathValue("sha"))
+	s.mu.Unlock()
+	if !known {
+		writeJSON(w, http.StatusNotFound, map[string]any{"message": "Not Found"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"sha": r.PathValue("sha")})
 }

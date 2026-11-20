@@ -79,6 +79,10 @@ type Server struct {
 	Milestones []map[string]any
 	// Labels are the label names of the repo, served by GET .../labels.
 	Labels []string
+	// LabelColors are the colours the server stored per label name, as POSTed (six hex digits).
+	LabelColors map[string]string
+	// Commits are the shas GET /repos/{owner}/{name}/commits/{sha} knows; any other answers 404.
+	Commits []string
 	// Roles maps a login to its role_name on the repo; a login that is missing answers 404.
 	Roles map[string]string
 	// RoleStatus, when not 0, is the status every permission request answers.
@@ -179,6 +183,8 @@ func New(t *testing.T) *Server {
 	mux.HandleFunc("POST /repos/{owner}/{name}/milestones", s.createMilestone)
 	mux.HandleFunc("PATCH /repos/{owner}/{name}/milestones/{number}", s.patchMilestone)
 	mux.HandleFunc("GET /repos/{owner}/{name}/labels", s.labels)
+	mux.HandleFunc("POST /repos/{owner}/{name}/labels", s.createLabel)
+	mux.HandleFunc("GET /repos/{owner}/{name}/commits/{sha}", s.commit)
 	mux.HandleFunc("PATCH /repos/{owner}/{name}/pulls/{number}", s.patchPull)
 	mux.HandleFunc("GET /repos/{owner}/{name}/releases", s.releases)
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues/{number}/comments", s.comments)
