@@ -28,14 +28,14 @@ const goFixtures = "tests/pack/fixtures/"
 // docs/ and tests/, and ci/literal-grep.sh runs in that job, on pack/ and on the Go sources).
 // Every other unknown path still touches go. Measured on main (c72662c, #130): go:embed reads
 // only internal/web (dist, placeholder), pack/*/* and internal/store/migrations; no .go file
-// names docs/, changelog.d or ci/literal- (the Go source scan test fails when one does, except
-// the exemptions listed there); the Go and e2e tests read outside their own package only
+// names docs/, changelog.d or ci/literal- (TestGoSourcesDoNotReadNotGoPaths fails when one does, except
+// the exemptions in withoutExemptions); the Go and e2e tests read outside their own package only
 // tests/pack/fixtures/, internal/usage/testdata/ and temporary repos; the literal lists are read
 // only by ci/literal-grep.sh and tools/gen_code_language_freq.py.
 // Measured again for #151: from tests/ Go reads only tests/pack/fixtures/; the other tests/ and
 // README.md strings in Go are files in temporary repos. Only the loose root .md files (README.md,
 // CHANGELOG.md, CONTRIBUTING.md, SECURITY.md, CLA.md) leave go; AGENTS.md and CLAUDE.md stay, the
-// dogfood check reads them. pack/ is embedded. The source scan test fails when Go starts to read
+// dogfood check reads them. pack/ is embedded. TestGoSourcesDoNotReadTestsOrRootMD fails when Go starts to read
 // one of them. Measured again for #163: no .go file names CONTRIBUTING, SECURITY or CLA.md.
 var notGoDirs = []string{"docs/", "changelog.d/", "tests/"}
 
