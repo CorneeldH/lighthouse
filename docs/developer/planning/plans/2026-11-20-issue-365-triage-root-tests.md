@@ -121,7 +121,7 @@ opnieuw voor de PR-body.
   `ci/literal-*.txt`-bestanden uit `_NOT_GO` (de doc-comment erboven bijwerken: ze worden nu ook
   door `e2e/literalgrep_test.go` gelezen); voeg `test_classify`-gevallen toe in
   `tests/test_domains.py`; en voeg in `_without_default_paths` een uitzondering toe voor
-  `internal/repopins/` en `e2e/literalgrep_test.go` (met uitleg: ze lezen bestanden die
+  `internal/repopins/`, `e2e/literalgrep_test.go` en `e2e/gettingstarted_test.go` (de laatste leest `docs/getting-started.md`; Taak 4 maakt hem, de uitzondering staat hier al; met uitleg: ze lezen bestanden die
   `ci/domains.py` in `go` houdt, zoals bij `internal/config/config_test.go`). Draai
   `uv run pytest -q tests/test_domains.py` na elke taak. Noem dit in de PR-body. Voor
   `docs/site/**` die al door pages-pins wordt genoemd als pad in een workflow-*tekst*: dat is
