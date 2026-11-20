@@ -28,7 +28,7 @@ geïnstalleerde vorm nodig heeft.
 - Geen test die na deze PR zowel in pytest als in Go bestaat (anti-doel).
 - Geen ander gedrag van een hook of script (No-Go): alleen `_test.go`, testhelpers en Python-tests wijzigen.
   Raakt een taak toch productiecode, stop en meld het.
-- `tests/pack/fixtures/` blijft staan en blijft op zijn plek: Go-tests lezen het via `../../tests/pack/fixtures/`.
+- `tests/pack/fixtures/` blijft staan en blijft op zijn plek: Go-tests in `internal/<pkg>/` lezen het via `../../tests/pack/fixtures/`, die in `e2e/` via `../tests/pack/fixtures/`. Commentaren in `_test.go` die `tests/pack/_testkit.py` noemen, werk je in taak 1 bij; die in productiecode (`fixturesetup.go:3`, `scriptcase/forge.go:16`) blijven als open punt.
 - `tests/pack/python/` en `pack/python/` blijven Python (No-Go).
 - Go volgt `/lighthouse-go-standard`: literal `want`, `t.TempDir`, `t.Setenv`, classificatiezin in de chat vóór de eerste edit.
 - Bestanden die bij #367 horen (de overige 18 `tests/pack/test_*.py`) en bij #368
@@ -85,7 +85,7 @@ Plaats van een geporte test:
 - Move: `tests/pack/_testkit.py` → `tests/pack/python/_testkit.py`
 - Move: `tests/pack/_fakegh.py` → `tests/pack/python/_fakegh.py` (`_testkit.py:161` vindt hem via `Path(__file__).with_name`)
 - Create: `tests/pack/python/_bash_session.py` met `heredoc`, `_Session`, `context`, `managed_script` uit `tests/pack/test_bash_write_check.py:175-432`
-- Modify: elke importer van `tests.pack._testkit` (61 bestanden, lijst: `grep -rlE 'tests\.pack(\._testkit| import _testkit)' --include=*.py tests`), `tests/pack/conftest.py`, `tests/pack/python/test_ruff_format.py:181,196`, `tests/pack/test_bash_write_check.py`
+- Modify: elke importer van `tests.pack._testkit` (60 bestanden, lijst: `grep -rlE 'tests\.pack(\._testkit| import _testkit)' --include=*.py tests`), `tests/pack/conftest.py`, `tests/pack/python/test_ruff_format.py:181,196`, `tests/pack/test_bash_write_check.py`
 
 **Interfaces:**
 - Produces: module `tests.pack.python._testkit` (zelfde namen als nu), module `tests.pack.python._bash_session` (`heredoc`, `_Session`, `context`, `managed_script`). Taak 5 verwijdert `test_bash_write_check.py`; `_bash_session.py` blijft voor `test_ruff_format.py`.
@@ -150,7 +150,7 @@ git-toestand zijn kandidaat **naar Go** als `maincommitgate_test.go` (5 tests) z
 **Files:** `tests/pack/test_commit_test_gate.py` (116), `tests/pack/test_commit_test_gate_no_verify.py` (16) weg.
 
 Voorlopig *gedekt*: slots, geheugen, slice/OOM, deadline, meldingen, pre/post-markers —
-`internal/commitgate/{gate,prepost,message,slot,memory,brake,base}_test.go` (82 tests) en
+`internal/commitgate/{gate,prepost,message,slot,memory,brake,base}_test.go` (81 tests) en
 `internal/hooks/committestgate_test.go`; `--no-verify` via `fixtures/no_verify/cases.json` (32 cases) in
 `internal/commitgate/fixtures_test.go` `TestFixtures/no_verify`. Registratie pre+post:
 `e2e` `TestRedTestBlocksCommit` en `TestRedCommitComesBackAfter`.
@@ -159,7 +159,7 @@ Kandidaat **naar Go** (git-interplay zonder tweeling): `gate_tests_the_tree_afte
 `gate_loud_when_common_dir_fails_for_*`, `pre_records_instead_of_testing_on_feature_branch`,
 `pre_tests_on_configured_default_branch`, `pre_detached_head_is_not_the_default_branch`, `post_two_commits_in_one_call`,
 `post_tests_commit_when_call_failed`, `gate_handles_space_in_repo_path`.
-Kandidaat *beschermt niets*: `real_pytest_leaves_nothing_in_tmp` (test pytest, niet de gate), `gate_loud_without_uv` als de gate `uv` niet zelf aanroept.
+Kandidaat *beschermt niets*: ~~`real_pytest_leaves_nothing_in_tmp`~~ is **naar Go**, niet *beschermt niets*: het pint dat de gate zijn eigen `GATE_TMP` ook na een deadline-kill opruimt (#171; `gate.go:409`, geen Go-twin). Commitgate-test met `TMPDIR`=`t.TempDir()`, één groene en één deadline-run, map leeg erna; mutatie: de `RemoveAll`-defer weghalen. Kandidaat *beschermt niets*:, `gate_loud_without_uv` als de gate `uv` niet zelf aanroept.
 
 - [ ] **Step 1:** Classificatiezin; werkwijze per functie; tweelingen in `gate_test.go` hebben vaak een andere naam (bijv. `no_command_is_loud_and_allows` ↔ `TestNoCommandPassesWithANote`).
 - [ ] **Step 2:** Ports in `internal/commitgate/prepost_test.go` (pre/post met echte git) of een nieuw `internal/commitgate/roots_test.go` voor de cd/`-C`/vreemde-repo-gevallen.
@@ -193,8 +193,8 @@ worktree-check: `internal/hooks/worktreecheck_test.go` (5) dekt de kern; kandida
 `silent_for_worktree_branch_literally_named_main`, `warns_when_cwd_is_worktree_but_target_is_main_checkout`,
 `guard_follows_default_branch`, `guard_with_broken_config_speaks`, `guard_silent_outside_git_repo_under_other_locale`.
 pr-create-gate: `internal/prbody` (`fixtures/pr_body_gate/cases.json`, 153 cases), `internal/hooks/prcreategate_test.go` (11),
-`internal/cli/prbodygate_test.go` (7); kandidaat **naar Go** `ac_count_differs_blocks`, `slow_forge_passes_loudly_within_the_deadline`,
-`fork_clone_without_repo_blocks_with_the_exact_flag` (forge via `httptest`); `hook_registered_and_executable` → taak 11.
+`internal/cli/prbodygate_test.go` (3); kandidaat **naar Go** `ac_count_differs_blocks`, `slow_forge_passes_loudly_within_the_deadline`,
+`fork_clone_without_repo_blocks_with_the_exact_flag` (forge via `stubBin`/`prependPath` van `internal/prbody/gate_test.go:606`: de gate draait `gh` als subprocess, geen HTTP; check eerst of daar al een twin staat); `hook_registered_and_executable` → taak 11.
 
 - [ ] **Step 1:** Werkwijze per functie, per bestand een commit.
 - [ ] **Step 2:** `go test -race ./internal/hooks/ ./internal/mdlinks/ ./internal/prbody/ ./internal/cli/` groen; drie bestanden `git rm`.
@@ -248,13 +248,12 @@ Kandidaat *beschermt niets*: varianten die op dezelfde mutatie falen (bijv. `cla
 **Files:** `tests/pack/test_run_sh.py` (35) weg; port naar `e2e/runsh_test.go` (`//go:build e2e`).
 
 `pack/core/hooks/run.sh` is shell: geen Go-test raakt hem buiten e2e. Voorlopig **naar Go** alles behalve:
-`shellcheck_clean` (weg — gedekt door `test_shell_style.py` van #367, dat alle shell onder `pack/` op stijl
-checkt; noem dat in de rij, en meld het als open punt als #367 dat bestand weghaalt) en varianten op dezelfde mutatie.
+`shellcheck_clean` (**naar Go** als e2e-test die `shellcheck` op `run.sh` draait en overslaat als het niet bestaat; of, als dat te veel is, open punt van #367 — niet *gedekt* door een Python-bestand: de spec laat alleen een Go-test als gedekt toe) en varianten op dezelfde mutatie.
 Ook `test_main_commit_gate.py::finds_its_lib_via_git_without_env` en `fails_loud_without_tooling` landen hier.
 
 - [ ] **Step 1:** Classificatiezin: `Class: hook/gate. At risk: welke hook run.sh blokkeert als de binary ontbreekt, en of hij bouwt zonder te wachten.`
-- [ ] **Step 2:** Helper `runShEnv(t)`: een `bin/`-map met symlinks naar `sh dirname grep sed awk cat mktemp rm` (lijst uit `_testkit.RUN_SH_TOOLS`) plus een fake `go` en/of `lighthouse` die hun argv en cwd loggen. Geen host-`go` of -`lighthouse` op PATH.
-- [ ] **Step 3:** Tabeltests voor de groepen: ontbrekende binary (blokkerend vs. niet, `dev` vs. release), onbekende hook (JSON-melding, ook met CR), bouwen (één build bij parallelle aanroepen, stempel, stale lock, 60 s pauze na mislukte build via een klokseam als `run.sh` er een heeft — anders *beschermt niets* voor de tijdsduur en alleen het markerbestand asserten), `LIGHTHOUSE_REPO_ROOT`.
+- [ ] **Step 2:** Helper `runShEnv(t)`: een `bin/`-map met symlinks naar `sh dirname grep sed awk cat mktemp rm head mkdir rmdir find touch date git` plus `setsid` of `nohup` (de lijst van wat `run.sh` aanroept: de tweede `RUN_SH_TOOLS` in `_testkit.py:676` plus `git`, `rmdir`, `setsid`/`nohup`; niet het 8-tool-tupel op `:553`) plus een fake `go` en/of `lighthouse` die hun argv en cwd loggen. Geen host-`go` of -`lighthouse` op PATH.
+- [ ] **Step 3:** Tabeltests voor de groepen: ontbrekende binary (blokkerend vs. niet, `dev` vs. release), onbekende hook (JSON-melding, ook met CR), bouwen (één build bij parallelle aanroepen, stempel, stale lock, 60 s pauze na mislukte build door de mtime van `build.failed` met `os.Chtimes` op nu−30 s (geen build) en nu−90 s (wel build) te zetten; `run.sh:98-103` vergelijkt met `pause.ref`, een klokseam is niet nodig), `LIGHTHOUSE_REPO_ROOT`.
 - [ ] **Step 4:** `go test -race -tags e2e -run RunSh ./e2e/ -v` groen; mutaties: blokkeerlijst-lookup omdraaien, de detach weghalen.
 - [ ] **Step 5:** `git rm tests/pack/test_run_sh.py`. **Commit** — `test(e2e): run.sh-tests naar Go (#366)`.
 
@@ -264,12 +263,16 @@ Ook `test_main_commit_gate.py::finds_its_lib_via_git_without_env` en `fails_loud
 
 - `test_hooks_with_minimal_config` (geparametriseerd over `hooks.json`) **naar Go** als `e2e` `TestEveryRegistrationRunsUnderMinimalConfig(t *testing.T)`: `init --yes` in een
   `freshRepo` met alleen `[project]` en `[forge]`, dan per registratie uit `.claude/settings.json` het
-  commando met de payload uit `tests/pack/fixtures/hooks/<event>/<hook>[-<stand>].json` (dezelfde als
-  `ci/no-python.sh`) op een featurebranch: exit 0. Mutatie: een hook die op een ontbrekende optionele sleutel
+  commando op een featurebranch met een payload die de config-read écht raakt, per hook uit
+  `tests/pack/test_hooks_minimal_config.py::_payload`: een commit op een featurebranch (`main-commit-gate`, `commit-test-gate`),
+  `gh pr create --repo …` (`pr-create-gate`), een push met `LIGHTHOUSE_CONTROLLER_RUN` gezet (`workflow-push-gate`), een Edit in de
+  main checkout (`worktree-check`). De `git status`-payloads uit `tests/pack/fixtures/hooks/` keren vóór de config-read terug en volstaan niet.
+  Na `init --yes` wordt `lighthouse.toml` overschreven met alleen `[project]` en `[forge]` (init voegt anders de core-tabellen toe).
+  Assert exit 0 én geen `COULD NOT CHECK` in stdout+stderr (`run.sh:57-63` laat een niet-blokkerende hook anders stil slagen). Mutatie: een hook die op een ontbrekende optionele sleutel
   exit 2 geeft.
 - `test_every_registration_has_a_payload` **naar Go** in dezelfde test: een registratie zonder payloadbestand faalt.
 - `test_guarded_covers_every_blocking_bash_hook`: werkwijze; vermoedelijk gedekt door de blokkeerlijst in `pack/core/hooks/blocking` en taak 10.
-- De registratietests uit taak 4–6 (`hooks_registered_pre_post_and_failure`, `hook_registered_and_executable`, `hooks_json_registers_pre_and_post`) zijn hier gedekt: noem `e2e` `TestEveryRegistrationRunsUnderMinimalConfig` in hun rij.
+- De registratietests uit taak 4–6 (`hooks_registered_pre_post_and_failure`, `hook_registered_and_executable`, `hooks_json_registers_pre_and_post`) zijn **niet** gedekt door `TestEveryRegistrationRunsUnderMinimalConfig` (die pint geen event, matcher of timeout). **Naar Go** als één tabeltest `TestHookRegistrations` in `e2e/registrations_test.go`: per hook event, matcher, commando en timeout uit `pack/core/hooks/hooks.json` / het geïnstalleerde `settings.json` (`commit-test-gate` pre 300; `pr-create-gate` één Bash-blok, 15, uitvoerbaar; `bash-write-check` Pre 5 / Post 120 / PostToolUseFailure 120). Mutatie: een registratie droppen of een timeout verlagen. De bestaande `eventHookCommand` leest alleen matcher `Bash` en faalt bij ≠1 treffer: schrijf een nieuwe `settings.json`-walker in `registrations_test.go`; fixturepad vanuit `e2e/` is `../tests/pack/fixtures/`.
 - `test_fixtures_cover_every_key` **naar Go**: in `internal/config/parity_test.go` een test die alle sleutels van het schema (`SCHEMA`, `DEFAULTS`, `BASE_KEYS`, `HOST_KEYS`, prefixen) vergelijkt met de eerste `args` van alle `expect.json`. Mutatie: een sleutel aan het schema toevoegen zonder fixture.
 
 - [ ] **Step 1–3:** Schrijf beide tests, toon rood met de mutatie, groen zonder.
@@ -317,6 +320,7 @@ De black-box-tests van hooks en scripts in `tests/pack/` zijn getrieerd: wat Go 
   - `go test -race -shuffle=on -tags e2e ./e2e/` → rc 0
   - `uv run pytest -q tests/pack/python` → groen
   - `uv run pytest --collect-only -q tests` → geen `ERROR`
+  - `gh workflow run macos.yml --ref issue-366-blackbox-tests`, wacht op groen (de e2e-suite met `setsid`/`nohup` en symlink-PATH draait alleen daar op macOS, en `release.yml` eist het); noteer het run-id
 - [ ] **Step 4: Commit** — `docs(changelog): fragment voor #366`.
 
 ---
