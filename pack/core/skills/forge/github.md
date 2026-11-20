@@ -79,3 +79,10 @@ R=$(lighthouse config forge.repo) && gh api "repos/$R/actions/runs/<id>/jobs"
 
 Rerun only the failed jobs of a run: `gh run rerun <id> --failed --repo "$R"`. The roborev review
 comment on a PR comes from `github-actions[bot]`.
+
+## §workflows
+
+The workflows call `gh` themselves, so they are an exception to the forge-neutral `lighthouse forge`.
+`lighthouse unblock-dependents` (`internal/unblock/unblock.go:72-84`) calls `gh` and only runs in
+GitHub Actions on `issues: closed`. `gh release download` fetches the lighthouse binary on the
+runner, and `.github/workflows/build.yml` publishes lighthouse's own release with `gh release`; outside GitHub Actions these steps are skipped.

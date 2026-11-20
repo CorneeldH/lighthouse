@@ -40,3 +40,16 @@ def test_gh_is_required_only_on_github() -> None:
 def test_forge_reference_has_ci_section(kind: str) -> None:
     text = (CORE / "skills" / "forge" / f"{kind}.md").read_text(encoding="utf-8")
     assert "\n## §ci\n" in text
+
+
+@pytest.mark.parametrize("kind", ["github", "gitlab"])
+def test_forge_files_have_workflows_section(kind: str) -> None:
+    text = (CORE / "skills" / "forge" / f"{kind}.md").read_text(encoding="utf-8")
+    assert "\n## §workflows\n" in text
+
+
+def test_requires_toml_drops_gh_for_converted_units() -> None:
+    data = tomllib.loads((CORE / "requires.toml").read_text(encoding="utf-8"))
+    for unit in ("write-handoff", "audit-worktrees"):
+        assert unit not in data["forge"]["github"]["gh"], unit
+        assert unit in data["git"], unit
