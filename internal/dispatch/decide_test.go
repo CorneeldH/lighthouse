@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/BurntSushi/toml"
+
 	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
 	"github.com/CorneeldH/lighthouse/internal/runs"
@@ -568,6 +570,11 @@ func TestPushStartFailedGetsOneRetryThenQuestion(t *testing.T) {
 	returned := func(id int64, at string) Comment {
 		return Comment{ID: id, Author: "lh-bot", CreatedAt: at, Body: "🤖 Teruggegeven\n\nstart mislukt"}
 	}
+	// given is a Returned that stands with its give-back done: the label is on the issue.
+	given := func(in *Input, at string) {
+		item7(in).Comments = append(item7(in).Comments, returned(80, at))
+		item7(in).Labels, in.Repos[0].Labels = []string{"needs_hands"}, testLabels
+	}
 	tests := []struct {
 		name   string
 		mutate func(*Input)
@@ -579,7 +586,7 @@ func TestPushStartFailedGetsOneRetryThenQuestion(t *testing.T) {
 		}, []string{back}},
 		{"a Returned after the second failure stands", func(in *Input) {
 			addRows(in, failedPush(9, "push:63", t1), failedPush(10, "push:63", t2))
-			item7(in).Comments = append(item7(in).Comments, returned(80, "2026-10-31T11:11:00Z"))
+			given(in, "2026-10-31T11:11:00Z")
 		}, []string{}},
 		{"one failure without the pusher goes back", func(in *Input) {
 			addRows(in, failedPush(9, "push:63", t1))
@@ -592,7 +599,7 @@ func TestPushStartFailedGetsOneRetryThenQuestion(t *testing.T) {
 		{"a Returned after one failure stands", func(in *Input) {
 			addRows(in, failedPush(9, "push:63", t1))
 			in.Repos[0].WorkflowPush = false
-			item7(in).Comments = append(item7(in).Comments, returned(80, "2026-10-31T11:06:00Z"))
+			given(in, "2026-10-31T11:06:00Z")
 		}, []string{}},
 		{"an older Returned does not count", func(in *Input) {
 			addRows(in, failedPush(9, "push:63", t1), failedPush(10, "push:63", t2))
@@ -651,5 +658,65 @@ func TestPushAnswerRowRetryKeepsWorktreeAndPermit(t *testing.T) {
 				t.Errorf("got  %+v\nwant %+v", got, want)
 			}
 		})
+	}
+}
+
+// Every reason_* heading has the label of the spec table; a reason added to headings.toml without
+// a row here turns the test red, so its label is a decision. A dynamic key such as a
+// cause+"_ceiling" that no heading names falls to needs_hands.
+func TestReturnLabelKeyTable(t *testing.T) {
+	want := map[string]string{
+		"reason_needs_brainstorm": "needs_shaping", "reason_interactive": "needs_decision",
+		"reason_skill_missing": "needs_hands", "reason_not_allowed": "needs_hands", "reason_bad_handoff": "needs_hands",
+		"reason_state_lost": "needs_hands", "reason_start_failed": "needs_hands", "reason_own_work": "needs_hands",
+		"reason_workplace_gone": "needs_hands", "reason_pr_closed": "needs_hands", "reason_pr_draft": "needs_hands",
+		"reason_pr_red": "needs_hands", "reason_pr_red_ceiling": "needs_hands", "reason_pr_conflict": "needs_hands",
+		"reason_pr_conflict_ceiling": "needs_hands", "reason_pr_roborev": "needs_hands",
+		"reason_pr_roborev_ceiling": "needs_hands", "reason_merge_failed": "needs_hands",
+		"reason_merge_failed_ceiling": "needs_hands", "reason_no_handoff": "needs_hands",
+		"reason_post_failed": "needs_hands", "reason_post_failed_unreadable": "needs_hands",
+		"reason_start_uncertain": "needs_hands", "reason_permission": "needs_hands", "reason_silent": "needs_hands",
+		"reason_silent_forge": "needs_hands", "reason_timeout": "needs_hands", "reason_pusher_off": "needs_hands",
+		"reason_pusher_node": "needs_hands", "reason_pusher_silent": "needs_hands",
+		"reason_pusher_no_handoff": "needs_hands",
+	}
+	var headings map[string]map[string]string
+	if _, err := toml.DecodeFile(filepath.Join("..", "..", "pack", "core", "headings.toml"), &headings); err != nil {
+		t.Fatal(err)
+	}
+	seen := 0
+	for key := range headings {
+		if !strings.HasPrefix(key, "reason_") {
+			continue
+		}
+		seen++
+		label, ok := want[key]
+		if !ok {
+			t.Errorf("%s has no row in the label table", key)
+			continue
+		}
+		if got := ReturnLabelKey(key, false); got != label {
+			t.Errorf("ReturnLabelKey(%q, false) = %q, want %q", key, got, label)
+		}
+	}
+	if seen != len(want) {
+		t.Errorf("headings.toml has %d reason keys, the table %d", seen, len(want))
+	}
+	if got := ReturnLabelKey("reason_pr_red", true); got != "blocked_issue" {
+		t.Errorf("ReturnLabelKey(reason_pr_red, blocked) = %q, want blocked_issue", got)
+	}
+	if got := ReturnLabelKey("", false); got != "needs_hands" {
+		t.Errorf("ReturnLabelKey(\"\", false) = %q, want needs_hands", got)
+	}
+}
+
+// Rule 13 with an active blocker hands the run back as blocked (label blocked_issue); a fix-pr
+// close that started nothing for another cause (the item is On hold) is not.
+func TestSettleUnstartedFixPRMarksBlocked(t *testing.T) {
+	for name, want := range map[string]bool{"fixpr-blocker": true, "fixpr-on-hold": false} {
+		got := Decide(loadInput(t, name))
+		if len(got) != 1 || got[0].Kind != KindReturn || got[0].Blocked != want {
+			t.Errorf("%s: Decide = %+v, want one return with Blocked %v", name, got, want)
+		}
 	}
 }

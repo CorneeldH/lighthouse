@@ -40,11 +40,13 @@ type RepoInput struct {
 	Language      string                `json:"language"`
 	DefaultBranch string                `json:"default_branch"`
 	// LocationPrefix is [labels] location_prefix; "" turns the location label off.
-	LocationPrefix string                    `json:"location_prefix,omitempty"`
-	Installed      map[string]bool           `json:"installed"`
-	History        []runs.Row                `json:"history"`
-	Stands         map[int64]workplace.Stand `json:"stands"`         // per open run id; missing = not measurable
-	Runs           map[int64]RunState        `json:"runs,omitempty"` // per open run id; missing = not measured
+	LocationPrefix string `json:"location_prefix,omitempty"`
+	// Labels are the [labels] names of the repo: which labels block it (needs_*, blocked_*).
+	Labels    repoconfig.Labels         `json:"labels"`
+	Installed map[string]bool           `json:"installed"`
+	History   []runs.Row                `json:"history"`
+	Stands    map[int64]workplace.Stand `json:"stands"`         // per open run id; missing = not measurable
+	Runs      map[int64]RunState        `json:"runs,omitempty"` // per open run id; missing = not measured
 	// Markers are the controller markers whose session's last run is in this repo, resumable
 	// or not.
 	Markers []park.Marker `json:"markers"`
@@ -89,6 +91,10 @@ const (
 	// KindScheduledMerge squash-merges PR of scheduled run RunID on HeadSHA, deletes Branch and
 	// ends the run as done.
 	KindScheduledMerge Kind = "scheduled_merge"
+	// KindFinishReturn finishes the hand-back of an issue whose own 🤖 Returned stands without
+	// its label and board status (a failed label or board write): issuestate.Return with the
+	// label ReturnLabelKey gives Reason, which decide read back from the Returned.
+	KindFinishReturn Kind = "finish_return"
 	// KindScheduledClose closes scheduled run RunID with Outcome and the literal ReasonArg, after
 	// forgetting its launch (Discard), ending its agent (End), closing PR and deleting Branch.
 	KindScheduledClose Kind = "scheduled_close"
@@ -130,6 +136,9 @@ type Action struct {
 	Worktree   string       `json:"worktree,omitempty"`   // push: the worktree of the run that asked for the push
 	PermitSHA  string       `json:"permit_sha,omitempty"` // push: the SHA a user's answer allowed
 	Body       string       `json:"body,omitempty"`       // repost: the comment, literal
+	// Blocked marks the return of rule 13 while a blocker is active (settleUnstartedFixPR): its
+	// label is blocked_issue, whatever Reason says (ReturnLabelKey).
+	Blocked bool `json:"blocked,omitempty"`
 	// Schedule and Slot (YYYYMMDDTHHMM) name the scheduled run of a scheduled start, or of its
 	// defer; Issue is 0 then. Tools, Instructions and Verdict (scheduled.Record JSON) are its
 	// launch.
@@ -234,9 +243,26 @@ func settleUnstartedFixPR(ps []planned, wanted map[issueKey]bool) []planned {
 		}
 		a := p.Action
 		a.Kind, a.Reason, a.Outcome, a.ReasonArg = KindReturn, cmp.Or(p.fixReason, "reason_pr_red"), "", p.fixReasonArg
+		a.Blocked = p.fixBlocked
 		out = append(out, planned{Action: a})
 	}
 	return out
+}
+
+// ReturnLabelKey is the blocking label key a 🤖 Returned with reason (a headings key) sets on
+// the issue it gives back: blocked_issue for the return of rule 13 while a blocker is active
+// (blocked), needs_shaping for a handoff that wants a brainstorm, needs_decision for one that
+// wants an interactive skill, and needs_hands for every other reason, a passing one included.
+func ReturnLabelKey(reason string, blocked bool) string {
+	switch {
+	case blocked:
+		return "blocked_issue"
+	case reason == "reason_needs_brainstorm":
+		return "needs_shaping"
+	case reason == "reason_interactive":
+		return "needs_decision"
+	}
+	return "needs_hands"
 }
 
 // planned is an action with what orders it; priority and at count for a start or resume.
@@ -262,6 +288,9 @@ type planned struct {
 	// fixReason and fixReasonArg are the cause of the fix-pr start a fix-pr close stands for.
 	fixReason    string
 	fixReasonArg string
+	// fixBlocked: a blocker of the item is active, so a fix-pr close without a start goes back
+	// as blocked (Action.Blocked).
+	fixBlocked bool
 }
 
 // group places an action in the output: 0 without a start or resume (a park, hold or unpark
@@ -359,6 +388,7 @@ func decideIssue(in Input, repo RepoInput, it Item) []planned {
 			if f != nil {
 				fix, fixRow = f, row
 				p.fixReason, p.fixReasonArg = f.reason, f.arg
+				p.fixBlocked = len(activeBlockers(it)) > 0
 			}
 			out = append(out, p)
 		}
@@ -1214,10 +1244,11 @@ type issueCtx struct {
 	profileNodes map[string]string
 }
 
-// next returns the one start, resume, return, defer, park or hold the item gets in this tick:
-// the first rule that gives an action wins.
+// next returns the one start, resume, return, finish, defer, park or hold the item gets in this
+// tick: the first rule that gives an action wins. finishReturn comes right after retry: the
+// first refused launch of a trigger posts a Returned but waits for its second attempt.
 func (c issueCtx) next() (planned, bool) {
-	for _, rule := range []func() (planned, bool){c.retry, c.usageResume, c.answer, c.closeCheck, c.newIssue, c.handoff} {
+	for _, rule := range []func() (planned, bool){c.retry, c.finishReturn, c.usageResume, c.answer, c.closeCheck, c.newIssue, c.handoff} {
 		if p, ok := rule(); ok {
 			return p, true
 		}
@@ -1260,6 +1291,32 @@ func (c issueCtx) retry() (planned, bool) {
 		}
 	}
 	return planned{}, false
+}
+
+// finishReturn finishes a hand-back that stopped after its 🤖 Returned: the label or board
+// write failed, or the Returned came from a path that wrote neither. It holds when the last
+// protocol comment (Rebased does not count) is a Returned of the token login, the issue has no
+// open run (settle closes the run of its own Returned first) and no blocking label, and retry
+// planned nothing before it in next: the first refused launch of a trigger keeps its Returned
+// without a label until retry starts the second attempt. The label comes from the reason the
+// Returned names (protocol.ReasonKey); an unreadable one gives needs_hands.
+func (c issueCtx) finishReturn() (planned, bool) {
+	last := lastProtocol(c.hs)
+	if last == nil || last.Header.Kind != protocol.KindReturned || last.Comment.Author != c.repo.Snapshot.TokenLogin {
+		return planned{}, false
+	}
+	if slices.ContainsFunc(c.repo.History, func(row runs.Row) bool { return row.Open && row.Issue == c.it.Issue }) {
+		return planned{}, false
+	}
+	for _, name := range c.repo.Labels.Blocking() {
+		if name != "" && slices.Contains(c.it.Labels, name) {
+			return planned{}, false
+		}
+	}
+	a := c.base
+	a.Kind = KindFinishReturn
+	a.Reason, _ = protocol.ReasonKey(last.Header.Fields["reason"])
+	return planned{Action: a}, true
 }
 
 func allStartFailed(rows []runs.Row) bool {
@@ -1777,14 +1834,18 @@ func activeBlockers(it Item) []string {
 // ownParked reports whether the last protocol comment (Rebased does not count) is a Parked
 // by the token login: the tick parked the item itself.
 func (c issueCtx) ownParked() bool {
-	for i := len(c.hs) - 1; i >= 0; i-- {
-		p := c.hs[i]
-		if p.Header.Kind == protocol.KindRebased {
-			continue
+	p := lastProtocol(c.hs)
+	return p != nil && p.Header.Kind == protocol.KindParked && p.Comment.Author == c.repo.Snapshot.TokenLogin
+}
+
+// lastProtocol returns the last protocol comment that is no Rebased, nil when there is none.
+func lastProtocol(hs []parsed) *parsed {
+	for i := len(hs) - 1; i >= 0; i-- {
+		if hs[i].Header.Kind != protocol.KindRebased {
+			return &hs[i]
 		}
-		return p.Header.Kind == protocol.KindParked && p.Comment.Author == c.repo.Snapshot.TokenLogin
 	}
-	return false
+	return nil
 }
 
 // lastTurn returns the last protocol comment that is a turn: a Rebased or a Parked is a

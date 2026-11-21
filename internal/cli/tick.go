@@ -537,6 +537,7 @@ func applyActions(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.D
 		ScheduledJob: scheduledJob(env, db, repos),
 		Remote:       scheduledRemote(env, dir, repos),
 		RoundLimit:   func(slug string) string { return repos[slug].Controller.AtRoundLimit },
+		Labels:       func(slug string) repoconfig.Labels { return repos[slug].Labels },
 		StateDir:     dir,
 		MarkerDir:    markerDir,
 		RemoveMarker: func(session, key string) error {
@@ -847,8 +848,8 @@ func repoInput(ctx context.Context, db *sql.DB, cfg hostconfig.Dispatch, f forge
 	}
 	return dispatch.RepoInput{
 		Snapshot: snap, Controller: *pre.Repo.Controller, Language: pre.Repo.Language,
-		LocationPrefix: pre.Repo.Labels.LocationPrefix,
-		DefaultBranch:  pre.Repo.DefaultBranch, Installed: installed, History: history, Stands: pre.Stands, Runs: pre.Runs,
+		LocationPrefix: pre.Repo.Labels.LocationPrefix, Labels: pre.Repo.Labels,
+		DefaultBranch: pre.Repo.DefaultBranch, Installed: installed, History: history, Stands: pre.Stands, Runs: pre.Runs,
 		Markers:      pre.Markers,
 		WorkflowPush: cfg.WorkflowPush != nil, PushTimeout: dispatch.PushTimeout(cfg),
 	}, nil

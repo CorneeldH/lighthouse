@@ -43,6 +43,7 @@ priority_field_id = "PF"
 [forge.board.status_options]
 "Controller" = "c1"
 "On hold" = "h1"
+"To do" = "t1"
 
 [controller]
 
@@ -647,6 +648,8 @@ func startable(t *testing.T, env *tickEnv) (*forgetest.Server, *fakeWorkplace) {
 	srv := fakeForge(t, env)
 	srv.Roles = map[string]string{"lh-bot": "admin", "owner": "admin"}
 	srv.BoardNodes = []map[string]any{boardNode("I7", "c1", issueContent(7, "Issue", nil))}
+	// Issue 7 is open: a 🤖 Returned reads it before it labels it and moves it to To do.
+	srv.Issues = map[int]map[string]any{7: {"number": 7, "title": "Issue", "state": "open", "labels": []any{}}}
 	env.Now = func() time.Time { return t0 }
 	srv.Now = env.Now
 	w := newFakeWorkplace(t, "o/r")
