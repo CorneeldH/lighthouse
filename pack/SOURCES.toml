@@ -210,6 +210,10 @@ path = "pack/python/hooks/ty-gate.sh"
 new = true
 
 [[file]]
+path = "pack/python/hooks/python-imports-gate.sh"
+new = true
+
+[[file]]
 path = "pack/python/hooks/hooks.json"
 new = true
 
@@ -302,6 +306,10 @@ path = "pack/go/hooks/go-lint-gate.sh"
 new = true
 
 [[file]]
+path = "pack/go/hooks/go-imports-gate.sh"
+new = true
+
+[[file]]
 path = "pack/go/hooks/gofmt-check.sh"
 new = true
 
@@ -339,4 +347,16 @@ new = true
 
 [[file]]
 path = "pack/node/detect.toml"
+new = true
+
+[[file]]
+path = "pack/node/hooks/node-imports-gate.sh"
+new = true
+
+[[file]]
+path = "pack/node/hooks/hooks.json"
+new = true
+
+[[file]]
+path = "pack/node/instructions/AGENTS.md"
 new = true

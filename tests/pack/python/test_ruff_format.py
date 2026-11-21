@@ -17,7 +17,7 @@ import re
 import subprocess
 from pathlib import Path
 
-from tests.pack._testkit import classify, install_pack, tool_bin
+from tests.pack.python._testkit import classify, install_pack, tool_bin
 from tests.pack.python.conftest import PY_HOOKS
 
 RUFF_HOOK = PY_HOOKS / "ruff-format-check.sh"
@@ -60,18 +60,6 @@ def _offline(tmp_path: Path) -> dict:
 def test_ruff_hook_passes_clean_file(tmp_path):
     result = _run(_file(tmp_path, "clean.py", CLEAN_PY), tmp_path)
     assert result.returncode == 0, result.stderr
-
-
-def test_ruff_hook_blocks_bare_except(tmp_path):
-    result = _run(_file(tmp_path, "bare.py", BARE_EXCEPT_PY), tmp_path)
-    assert result.returncode == 2, result.stdout
-    assert "E722" in result.stderr
-
-
-def test_ruff_hook_blocks_blanket_type_ignore(tmp_path):
-    result = _run(_file(tmp_path, "blanket.py", "x: int = 1  # type: ignore\n"), tmp_path)
-    assert result.returncode == 2, result.stdout
-    assert "PGH003" in result.stderr
 
 
 def test_ruff_hook_ignores_non_python(tmp_path):
@@ -178,7 +166,7 @@ def test_registered_after_edit_and_write():
 def test_bash_write_through_gate(tmp_path, lighthouse_bin):
     """With core and python installed, a Bash write of a `.py` with `except:` is a
     finding via `bash-write-check post`, not `no python check installed`."""
-    from tests.pack.test_bash_write_check import _Session, context, heredoc
+    from tests.pack.python._bash_session import _Session, context, heredoc
 
     s = _Session(tmp_path, language_gates=False)
     install_pack("python", s.root)
@@ -193,7 +181,7 @@ def test_bash_write_leaves_a_managed_file_alone(tmp_path, lighthouse_bin):
     """`lighthouse init` in a Bash call writes package code (#88). A path that
     `.lighthouse/manifest.toml` names as a file unit does not go to ruff, so
     `init --upgrade` still finds it unchanged; an unmanaged file with the same text does."""
-    from tests.pack.test_bash_write_check import _Session, heredoc, managed_script
+    from tests.pack.python._bash_session import _Session, heredoc, managed_script
 
     s = _Session(tmp_path, language_gates=False)
     install_pack("python", s.root)

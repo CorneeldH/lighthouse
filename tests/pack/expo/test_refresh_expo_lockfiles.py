@@ -5,7 +5,7 @@ import re
 import subprocess
 from pathlib import Path
 
-from tests.pack._testkit import is_known_key
+from tests.pack.python._testkit import is_known_key
 
 SKILL = (
     Path(__file__).resolve().parents[3]

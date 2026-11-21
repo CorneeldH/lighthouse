@@ -16,7 +16,7 @@ func planLink(iid int, state, linkType, full string) map[string]any {
 		"references": map[string]any{"full": full}}
 }
 
-func TestGitLabPlanningLinksAndStatistics(t *testing.T) {
+func TestGitLabPlanningLinksAndClosedIssues(t *testing.T) {
 	srv, f := gitlabBoardOn(t, gitlabBoard, gitlabLifecycle...)
 	now := time.Now()
 	srv.AddMilestone(map[string]any{"id": 3, "iid": 13, "title": "M1", "state": "active"})
@@ -60,8 +60,34 @@ func TestGitLabPlanningLinksAndStatistics(t *testing.T) {
 	if c := got.Milestones[1]; c.Title != "M1" || c.Number != 3 || c.State != "open" || c.Open != 2 || c.Done != 3 {
 		t.Errorf("M1 = %+v, want number 3, open, 2 open and 3 done", c)
 	}
+	if nums := closedNumbers(got.Milestones[1].Closed); !slices.Equal(nums, []int{3, 4, 5}) {
+		t.Errorf("M1 Closed = %v, want #3, #4, #5 (every closed issue counts on GitLab)", nums)
+	}
 	if c := got.Milestones[0]; c.Title != "Empty" || c.Open != 0 || c.Done != 0 {
 		t.Errorf("Empty = %+v, want 0 and 0", c)
+	}
+}
+
+func closedNumbers(cs []forge.ClosedIssue) []int {
+	nums := []int{}
+	for _, c := range cs {
+		nums = append(nums, c.Number)
+	}
+	return nums
+}
+
+func TestGitLabPlanningReadsLabels(t *testing.T) {
+	srv, f := gitlabBoardOn(t, gitlabBoard, gitlabLifecycle...)
+	one := boardIssue(1, "opened", time.Now())
+	one["labels"] = []string{"a", "b"}
+	srv.AddIssue(one)
+	srv.AddIssue(boardIssue(2, "opened", time.Now()))
+	got, err := f.Planning(t.Context())
+	if err != nil {
+		t.Fatalf("Planning: %v", err)
+	}
+	if !slices.Equal(got.Issues[0].Labels, []string{"a", "b"}) || got.Issues[1].Labels == nil || len(got.Issues[1].Labels) != 0 {
+		t.Errorf("Labels = %#v and %#v, want [a b] and an empty non-nil list", got.Issues[0].Labels, got.Issues[1].Labels)
 	}
 }
 
@@ -75,7 +101,7 @@ func TestGitLabPlanningBudgetIsOneLinksCallPerOpenIssue(t *testing.T) {
 	if _, err := f.Planning(t.Context()); err != nil {
 		t.Fatalf("Planning: %v", err)
 	}
-	// 1 issues page + 3 links + 1 milestone list + 2 statistics.
+	// 1 issues page + 3 links + 1 milestone list + 2 closed-issue reads (one page each).
 	if n := len(srv.Requests()); n != 7 {
 		t.Errorf("requests = %q, want 7", srv.Requests())
 	}

@@ -6,7 +6,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from tests.pack._testkit import REPO, lighthouse_dir
+from tests.pack.python._testkit import REPO, lighthouse_dir
 
 SCRIPT = REPO / "ci" / "no-python.sh"
 FIXTURES = REPO / "tests" / "pack" / "fixtures" / "hooks"

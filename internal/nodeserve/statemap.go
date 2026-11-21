@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/danielgtaylor/huma/v2"
 
@@ -39,6 +41,14 @@ type permissionOutput struct {
 	Body        []byte
 }
 
+type postFailedInput = permissionInput
+
+type postFailedOutput struct {
+	ContentType string `header:"Content-Type"`
+	ModTime     string `header:"X-Lighthouse-Mod-Time"` // nodeapi.HeaderModTime
+	Body        []byte
+}
+
 func (h *handler) registerStatemap() {
 	huma.Put(h.api, nodeapi.PathLaunch, h.launch, func(op *huma.Operation) { op.OperationID = "put-launch" })
 	huma.Delete(h.api, nodeapi.PathCarrier, h.deleteCarrier, func(op *huma.Operation) {
@@ -46,6 +56,7 @@ func (h *handler) registerStatemap() {
 		op.DefaultStatus = http.StatusNoContent
 	})
 	huma.Get(h.api, nodeapi.PathPermission, h.permission, func(op *huma.Operation) { op.OperationID = "get-permission" })
+	huma.Get(h.api, nodeapi.PathPostFailed, h.postFailed, func(op *huma.Operation) { op.OperationID = "get-post-failed" })
 }
 
 // launch writes the run instructions the tick sent and the carrier that names them, both in the
@@ -107,4 +118,34 @@ func (h *handler) permission(_ context.Context, in *permissionInput) (*permissio
 		return nil, internal("permission note of %s: %v", in.Session, err)
 	}
 	return &permissionOutput{ContentType: "application/json", Body: data}, nil
+}
+
+// postFailed answers the raw post-failed.json of the run, for the same reason as permission,
+// with its modification time in nodeapi.HeaderModTime: the tick dates an unreadable note by it.
+// Without a note it is 404 no_post_failed.
+func (h *handler) postFailed(_ context.Context, in *postFailedInput) (*postFailedOutput, error) {
+	if !workplace.SafeSession.MatchString(in.Session) {
+		return nil, badRequest("session id %q is not safe", in.Session)
+	}
+	f, err := os.Open(dispatch.PostFailedPath(h.d.StateDir, in.Session))
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, &nodeapi.Problem{Status: http.StatusNotFound, Code: nodeapi.CodeNoPostFailed, Detail: fmt.Sprintf("run %s has no post-failed note", in.Session)}
+	}
+	if err != nil {
+		return nil, internal("post-failed note of %s: %v", in.Session, err)
+	}
+	defer func() { _ = f.Close() }()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, internal("post-failed note of %s: %v", in.Session, err)
+	}
+	data, err := io.ReadAll(f)
+	if err != nil {
+		return nil, internal("post-failed note of %s: %v", in.Session, err)
+	}
+	return &postFailedOutput{
+		ContentType: "application/json",
+		ModTime:     info.ModTime().UTC().Format(time.RFC3339Nano),
+		Body:        data,
+	}, nil
 }

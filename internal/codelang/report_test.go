@@ -87,7 +87,7 @@ func TestMainOutput(t *testing.T) {
 	}
 	last, secondLast := out[len(out)-1], out[len(out)-2]
 	switch {
-	case out[0] != "code-language-check: "+path+" is not English":
+	case out[0] != "[code-language-check/non-english] code-language-check: "+path+" is not English":
 		t.Errorf("first line %q", out[0])
 	case !strings.HasPrefix(out[1], path+":1: comment: "):
 		t.Errorf("second line %q", out[1])
@@ -356,7 +356,7 @@ func TestMainNoticeContract(t *testing.T) {
 	path = filepath.Join(root, "b.py")
 	writeFile(t, path, []byte(layer1Line+doubtLine))
 	res = hookOn(t, path)
-	if res.Code != 2 || !strings.HasPrefix(res.Stderr, "code-language-check: "+path+" is not English\n") ||
+	if res.Code != 2 || !strings.HasPrefix(res.Stderr, "[code-language-check/non-english] code-language-check: "+path+" is not English\n") ||
 		!strings.HasSuffix(res.Stderr, "allow-language\".\n\ncode-language-check: NOTICE — layer 2 did not answer "+
 			"(layer 2 skipped under bash-write-check); 1 doubtful units not checked:\n"+
 			path+":2: name: legacy_processed_lijst_weg\n") || res.Text != "" {

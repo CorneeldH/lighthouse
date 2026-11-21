@@ -42,12 +42,12 @@ func goTestCommands(t *testing.T, workflow string) []string {
 	return out
 }
 
-func assertGateFlags(t *testing.T, workflow string) {
+func assertGateFlags(t *testing.T, workflow string, want int) {
 	t.Helper()
 	flags := gateGoFlags(t)
 	runs := goTestCommands(t, workflow)
-	if len(runs) != 2 {
-		t.Fatalf("%s has %d `go test` runs, want 2 (unit and e2e): %q", workflow, len(runs), runs)
+	if len(runs) != want {
+		t.Fatalf("%s has %d `go test` runs, want %d: %q", workflow, len(runs), want, runs)
 	}
 	for _, run := range runs {
 		words := strings.Fields(run)
@@ -76,24 +76,26 @@ func hasLine(text, want string) bool {
 func TestGolangciPinMatchesCI(t *testing.T) {
 	pin := strings.TrimSpace(read(t, ".golangci-version"))
 	ci := read(t, ".github", "workflows", "ci.yml")
-	m := regexp.MustCompile(`(?s)uses: golangci/golangci-lint-action@\S+.*?\n\s+with:\n\s+version: (\S+)`).FindStringSubmatch(ci)
-	if m == nil {
+	all := regexp.MustCompile(`(?s)uses: golangci/golangci-lint-action@\S+.*?\n\s+with:\n\s+version: (\S+)`).FindAllStringSubmatch(ci, -1)
+	if len(all) == 0 {
 		t.Fatal("no golangci-lint-action step with a version in ci.yml")
 	}
-	if m[1] != pin {
-		t.Errorf("ci.yml lints with %s, .golangci-version pins %s", m[1], pin)
+	for _, m := range all {
+		if m[1] != pin {
+			t.Errorf("ci.yml lints with %s, .golangci-version pins %s", m[1], pin)
+		}
 	}
 }
 
 // A `go test` step without a flag of the gate runs a weaker test than the commit gate does.
 func TestEveryCIGoTestHasGateFlags(t *testing.T) {
-	assertGateFlags(t, "ci.yml")
+	assertGateFlags(t, "ci.yml", 4) // unit, e2e and the two canary steps
 }
 
 // A production change that fails this test: a `go test` step in macos.yml loses one of the gate flags, so macOS runs a
 // weaker test than the commit gate.
 func TestEveryMacOSGoTestHasGateFlags(t *testing.T) {
-	assertGateFlags(t, "macos.yml")
+	assertGateFlags(t, "macos.yml", 2) // unit and e2e
 }
 
 // A production change that fails this test: the `CGO_ENABLED=0 go build ./...` step in ci.yml is removed or loses its

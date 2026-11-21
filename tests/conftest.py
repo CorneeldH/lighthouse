@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from tests._shard import ENV, in_shard, parse_shard
-from tests.pack._testkit import lighthouse_dir
+from tests.pack.python._testkit import lighthouse_dir
 
 SHARD = pytest.StashKey[tuple[int, int] | None]()
 

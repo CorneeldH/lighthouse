@@ -18,7 +18,7 @@ _ROOT_MD = r"README\.md|CHANGELOG\.md|CONTRIBUTING\.md|SECURITY\.md|CLA\.md"
 # A string literal that climbs out of its package (`../`, once or more) into tests/ (not the
 # fixtures) or one of the loose root .md files.
 _REPO_READ = re.compile(
-    rf"[\"`]((?:\.\./)+(?:tests/(?!pack/fixtures/)[^\"`]*|{_ROOT_MD}))[\"`]"
+    rf"[\"`]((?:\.\./)+(?:tests/(?!pack/fixtures/|pack/python/testdata/ruff-format-check/)[^\"`]*|{_ROOT_MD}))[\"`]"
 )
 
 # The same read built from parts, filepath.Join-style: one or more `".."` parts, then a part
@@ -27,7 +27,7 @@ _REPO_READ = re.compile(
 _REPO_READ_PARTS = re.compile(
     r'(?:"\.\."\s*,\s*)+"(?:'
     r'tests"(?!\s*,\s*"pack"\s*,\s*"fixtures")'
-    r'|tests/(?!pack/fixtures/)[^"]*"'
+    r'|tests/(?!pack/fixtures/|pack/python/testdata/ruff-format-check/)[^"]*"'
     rf'|(?:{_ROOT_MD})"'
     r")"
 )
@@ -67,6 +67,7 @@ def _repo_reads(text: str) -> list[str]:
         (["AGENTS.md"], {"go", "python"}),
         (["tests/test_x.py", "README.md"], {"python"}),
         (["tests/pack/fixtures/protocol/headers.json"], {"go", "python"}),
+        (["tests/pack/python/testdata/ruff-format-check/E722.py"], {"go", "python"}),
         (["pack/core/README.md"], {"go", "python"}),
         (["docs/install.md"], {"go", "python"}),
         (["docs/other.md"], {"python"}),
@@ -129,6 +130,12 @@ def _without_default_paths(rel: str, text: str) -> str:
         return text.replace("changelog.d", "").replace("docs/releasing.md", "")
     if rel == "internal/telemetry/record_test.go":
         # docs/… are RecordPath values of a finding in test data: strings stored in a row, never read from this repo.
+        return text.replace("docs/", "")
+    if rel in ("internal/review/runner_ports_test.go", "internal/cli/reviewrun_test.go"):
+        # docs/… are context paths of a spec/plan inside a temp repo or in a prompt string, never read from this repo.
+        return text.replace("docs/", "")
+    if rel in ("internal/review/ledger_test.go", "internal/cli/reviewindex_test.go"):
+        # docs/… are plan paths in a ledger header: text stored in a row, never read from this repo.
         return text.replace("docs/", "")
     if rel.startswith("internal/scheduled/reflect/"):
         # docs/developer/reflect is the output_dir of the reflect job: a path inside the target

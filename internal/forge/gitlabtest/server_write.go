@@ -72,7 +72,7 @@ var (
 	issueCreateFields = []string{"title", "description", "labels", "milestone_id"}
 	issueEditFields   = []string{"title", "description", "add_labels", "remove_labels", "milestone_id", "state_event"}
 	mrCreateFields    = []string{"title", "description", "source_branch", "target_branch", "milestone_id"}
-	milestoneFields   = []string{"title", "description"}
+	milestoneFields   = []string{"title", "description", "state_event"}
 )
 
 func (s *Server) writeRoutes(mux *http.ServeMux, p string) {
@@ -302,6 +302,15 @@ func (s *Server) editMilestone(w http.ResponseWriter, r *http.Request) {
 	defer s.mu.Unlock()
 	for _, m := range s.milestones {
 		if _, group := m["group_id"]; !group && toInt(m["id"]) == id {
+			if ev, set := body["state_event"]; set {
+				state, valid := map[any]string{"close": "closed", "activate": "active"}[ev]
+				if !valid {
+					writeJSON(w, http.StatusBadRequest, map[string]any{"message": "400 Bad request - state_event does not have a valid value"})
+					return
+				}
+				m["state"] = state
+				delete(body, "state_event")
+			}
 			for k, v := range body {
 				m[k] = v
 			}

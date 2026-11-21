@@ -41,7 +41,7 @@ func orNoMessage(s string) string {
 func Pre(ctx context.Context, g *Gate, raw []byte, cwd string) Result {
 	command, _, ok := ReadPayload(raw)
 	if !ok {
-		return Result{Code: 2, Stderr: InvalidPayload}
+		return couldNotCheckText(InvalidPayload)
 	}
 	if command == "" {
 		return Result{}
@@ -56,7 +56,7 @@ func Pre(ctx context.Context, g *Gate, raw []byte, cwd string) Result {
 		return g.Block("the command cannot be parsed (open quote). Split the command.")
 	}
 	if err != nil {
-		return Result{Code: 2, Stderr: HookName + ": COULD NOT CHECK — the command parser failed.\n\n" + err.Error() + "\n"}
+		return couldNotCheckText(HookName + ": COULD NOT CHECK — the command parser failed.\n\n" + err.Error() + "\n")
 	}
 	var commits []gitinvocations.Invocation
 	for _, inv := range found {
@@ -70,19 +70,21 @@ func Pre(ctx context.Context, g *Gate, raw []byte, cwd string) Result {
 	// no_verify.py walked the command from its own working directory, not from cwd.
 	here, _ := os.Getwd()
 	if CommandHasNoVerify(command, here) {
-		return Result{Code: 2, Stderr: noVerifyBlock}
+		var b strings.Builder
+		b.WriteString(noVerifyBlock)
+		return block(reasonNoVerify, &b)
 	}
 
-	roots, block := g.commitRoots(ctx, commits)
-	if block != nil {
-		return *block
+	roots, blk := g.commitRoots(ctx, commits)
+	if blk != nil {
+		return *blk
 	}
 	if len(roots) == 0 {
 		return Result{}
 	}
-	project, block := g.projectRoots(ctx, roots)
-	if block != nil {
-		return *block
+	project, blk := g.projectRoots(ctx, roots)
+	if blk != nil {
+		return *blk
 	}
 	// No project root (only another project): nothing to test or record, so no configuration,
 	// no slot and no wait.
@@ -194,9 +196,9 @@ func (g *Gate) projectRoots(ctx context.Context, roots []string) ([]string, *Res
 // the commit, every other root gets its HEAD recorded for Post. A detached HEAD is not the
 // default branch.
 func (g *Gate) preProject(ctx context.Context, raw []byte, project []string) Result {
-	branch, set, block := g.readConfig("forge.default_branch")
-	if block != nil {
-		return *block
+	branch, set, blk := g.readConfig("forge.default_branch")
+	if blk != nil {
+		return *blk
 	}
 	if !set || branch == "" {
 		return g.Block("the default branch cannot be read (forge.default_branch is not set).")

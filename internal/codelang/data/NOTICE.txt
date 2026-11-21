@@ -12,7 +12,7 @@ Changes made to the original data:
 - frequencies are multiplied by 10 and rounded to integers;
 - words that match the literal deny list (ci/literal-denylist.txt) are removed.
 
-The file is produced by tools/gen_code_language_freq.py.
+The file was produced by tools/gen_code_language_freq.py, removed after commit c49fd274.
 
 The data sources, as stated in the README of wordfreq 3.1.1 (verbatim):
 

@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -70,6 +71,9 @@ type Server struct {
 	// FailMessage maps the same key to the "message" of that failure; the default is the
 	// status text.
 	FailMessage map[string]string
+	// OnWrite, when set, runs with "METHOD path" before every write is served, under the lock:
+	// a test changes the stored state there, as someone else would between two requests.
+	OnWrite func(key string)
 	// FailPage maps "METHOD path?page=<p>", such as "GET /users/o/projectsV2/1/items?page=2",
 	// to the status that page answers instead; a request without page is page 1. Fail and
 	// FailFirst key on the path alone, so they cannot fail one later page.
@@ -121,6 +125,35 @@ type Server struct {
 	PlanMilestones []map[string]any
 	// PlanBlockedByMore, per issue number, makes the blockedBy of that issue claim a next page.
 	PlanBlockedByMore map[int]bool
+	// PlanLabelsMore, per issue number, makes the labels of that issue claim a next page.
+	PlanLabelsMore map[int]bool
+	// PlanClosedMore, per milestone number, makes the closed issues of that milestone claim a
+	// next page. The closed issues themselves are derived from Issues by milestone title.
+	PlanClosedMore map[int]bool
+	// BlockingPage2Fails, per issue number, makes the second page of the blocking list of that
+	// issue answer a 500.
+	BlockingPage2Fails map[int]bool
+	// PullsPage2Fails makes the second page of the pull request list answer a 500.
+	PullsPage2Fails bool
+	// BlockingExtra are blocked issues per issue number in REST shape (number, state,
+	// repository_url), served by the blocking list after the ones derived from BlockedBy: an
+	// issue in another repository, or this one under another spelling.
+	BlockingExtra map[int][]map[string]any
+	// ChangeClosingPRs are the pull requests that close an issue, per issue number, in GraphQL shape
+	// (number, state, headRefName, isCrossRepository, body, repository.nameWithOwner), served
+	// by IssueChanges as closedByPullRequestsReferences in pages of 100.
+	ChangeClosingPRs map[int][]map[string]any
+	// ChangeRefPRs are the pull requests whose cross-reference events an issue's timeline shows,
+	// per issue number, in the same shape, served by IssueChanges as the source of each
+	// CROSS_REFERENCED_EVENT in pages of 100.
+	ChangeRefPRs map[int][]map[string]any
+	// IssueChangesPage2Fails, per issue number, makes every IssueChanges page after a cursor
+	// answer a GraphQL error.
+	IssueChangesPage2Fails map[int]bool
+	// Closers are the closes of an issue in order, per issue number: the pull request that
+	// closed it, Number 0 by hand. IssueCloser serves the last as the closer of the last
+	// ClosedEvent.
+	Closers map[int][]Closer
 	// PlanStuckCursor, when not nil, makes every page of the Planning and PlanMilestones
 	// queries claim a next page with this endCursor, whatever the cursor asked.
 	PlanStuckCursor *string
@@ -171,6 +204,7 @@ func New(t *testing.T) *Server {
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues", s.listIssues)
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues/{number}", s.issue)
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues/{number}/dependencies/blocked_by", s.blockedBy)
+	mux.HandleFunc("GET /repos/{owner}/{name}/issues/{number}/dependencies/blocking", s.blocking)
 	mux.HandleFunc("GET /repos/{owner}/{name}/issues/{number}/events", s.events)
 	mux.HandleFunc("GET /repos/{owner}/{name}", s.repo)
 	mux.HandleFunc("GET /repos/{owner}/{name}/pulls", s.pulls)
@@ -287,6 +321,9 @@ func (s *Server) record(next http.Handler) http.Handler {
 			}
 			s.mu.Lock()
 			s.Posts = append(s.Posts, Post{Method: r.Method, Path: r.URL.Path, Body: body})
+			if s.OnWrite != nil {
+				s.OnWrite(r.Method + " " + r.URL.Path)
+			}
 			s.mu.Unlock()
 			if m := itemPath.FindStringSubmatch(r.URL.Path); m != nil && r.Method == http.MethodPatch {
 				s.recordStatusSet(r.URL.Path, m[1], body)
@@ -492,9 +529,50 @@ func (s *Server) blockedBy(w http.ResponseWriter, r *http.Request) {
 	s.page(w, r, out)
 }
 
+// blocking serves the issues that issue {number} blocks, the reverse of BlockedBy: every issue n
+// whose BlockedBy lists {number} in this repo, in number order, in the shape of Issues[n] with
+// its repository_url. BlockingPage2Fails makes page two a 500.
+func (s *Server) blocking(w http.ResponseWriter, r *http.Request) {
+	n, err := strconv.Atoi(r.PathValue("number"))
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]any{"message": "Not Found"})
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.BlockingPage2Fails[n] && r.URL.Query().Get("page") == "2" {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"message": "Server Error"})
+		return
+	}
+	repoURL := s.URL() + "/repos/" + r.PathValue("owner") + "/" + r.PathValue("name")
+	var blocked []int
+	for m, bs := range s.BlockedBy {
+		for _, b := range bs {
+			if commentID(b["number"]) == int64(n) && b["repository_url"] == repoURL {
+				blocked = append(blocked, m)
+				break
+			}
+		}
+	}
+	slices.Sort(blocked)
+	var out []any
+	for _, m := range blocked {
+		state, _ := s.Issues[m]["state"].(string)
+		out = append(out, map[string]any{"number": m, "state": cmp.Or(state, "open"), "repository_url": repoURL})
+	}
+	for _, b := range s.BlockingExtra[n] {
+		out = append(out, b)
+	}
+	s.page(w, r, out)
+}
+
 func (s *Server) pulls(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.PullsPage2Fails && r.URL.Query().Get("page") == "2" {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"message": "Server Error"})
+		return
+	}
 	if head := r.URL.Query().Get("head"); head != "" {
 		s.branchPulls(w, r, head)
 		return
@@ -739,6 +817,14 @@ func (s *Server) graphql(w http.ResponseWriter, r *http.Request) {
 		}
 	case "OpenPRsWithStatus":
 		data = s.openPRsWithStatus(req.Variables)
+	case "IssueChanges":
+		var err error
+		if data, err = s.issueChanges(req.Variables); err != nil {
+			writeJSON(w, http.StatusOK, map[string]any{"data": nil, "errors": []any{map[string]any{"message": err.Error()}}})
+			return
+		}
+	case "IssueCloser":
+		data = s.issueCloser(req.Variables)
 	case "IssueClosingHeads":
 		data = s.issueClosingHeads(req.Variables)
 	case "IssueItems":
@@ -755,26 +841,82 @@ func (s *Server) graphql(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"data": data})
 }
 
-// planPage cuts items by the cursor "cursor-<offset>" in vars into a page of 100 and the
-// connection around it, with the stuck cursor when PlanStuckCursor is set.
-func (s *Server) planPage(vars map[string]any, items []map[string]any) map[string]any {
+// connection cuts items by the cursor "cursor-<offset>" in after (nil or "" for the first page)
+// into a page of 100 and the connection around it. A stuck cursor, when not nil, makes the page
+// claim a next page with that endCursor, whatever the cursor asked. op names the operation in a
+// test error.
+func (s *Server) connection(op string, after any, items []map[string]any, stuck *string) map[string]any {
 	start := 0
-	if after, _ := vars["after"].(string); after != "" {
-		n, err := strconv.Atoi(strings.TrimPrefix(after, "cursor-"))
+	if a, _ := after.(string); a != "" {
+		n, err := strconv.Atoi(strings.TrimPrefix(a, "cursor-"))
 		if err != nil {
-			s.t.Errorf("forgetest: Planning after = %q, not a cursor this server gave", after)
+			s.t.Errorf("forgetest: %s after = %q, not a cursor this server gave", op, a)
 		}
 		start = min(n, len(items))
 	}
 	end := min(start+100, len(items))
 	more, cursor := end < len(items), fmt.Sprintf("cursor-%d", end)
-	if s.PlanStuckCursor != nil {
-		more, cursor = true, *s.PlanStuckCursor
+	if stuck != nil {
+		more, cursor = true, *stuck
 	}
 	return map[string]any{
 		"pageInfo": map[string]any{"hasNextPage": more, "endCursor": cursor},
 		"nodes":    append([]map[string]any{}, items[start:end]...),
 	}
+}
+
+// planPage cuts items by the cursor in vars into a page of 100 and the connection around it,
+// with the stuck cursor when PlanStuckCursor is set.
+func (s *Server) planPage(vars map[string]any, items []map[string]any) map[string]any {
+	return s.connection("Planning", vars["after"], items, s.PlanStuckCursor)
+}
+
+// issueChanges serves ChangeClosingPRs and ChangeRefPRs of issue nr, each connection only when its
+// @include variable (closing, refs) is true, after its own cursor (closingAfter, refsAfter).
+func (s *Server) issueChanges(vars map[string]any) (any, error) {
+	nr := int(commentID(vars["nr"]))
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.IssueChangesPage2Fails[nr] && (vars["closingAfter"] != nil || vars["refsAfter"] != nil) {
+		return nil, fmt.Errorf("something went wrong on page two")
+	}
+	issue := map[string]any{}
+	if on, _ := vars["closing"].(bool); on {
+		issue["closedByPullRequestsReferences"] = s.connection("IssueChanges", vars["closingAfter"], s.ChangeClosingPRs[nr], nil)
+	}
+	if on, _ := vars["refs"].(bool); on {
+		var events []map[string]any
+		for _, pr := range s.ChangeRefPRs[nr] {
+			events = append(events, map[string]any{"source": pr})
+		}
+		issue["timelineItems"] = s.connection("IssueChanges", vars["refsAfter"], events, nil)
+	}
+	return map[string]any{"repository": map[string]any{"issue": issue}}, nil
+}
+
+// Closer is the pull request of one close: Number 0 is a close by hand; Repo is its
+// repository as nameWithOwner, "" the repository asked for.
+type Closer struct {
+	Number int
+	Repo   string
+}
+
+// issueCloser serves the last ClosedEvent of issue nr, as timelineItems(last: 1) does: its
+// closer a pull request, or null for a close by hand; no node for an issue never closed.
+func (s *Server) issueCloser(vars map[string]any) any {
+	nr := int(commentID(vars["nr"]))
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	nodes := []any{}
+	if cs := s.Closers[nr]; len(cs) > 0 {
+		var closer any
+		if last := cs[len(cs)-1]; last.Number != 0 {
+			repo := cmp.Or(last.Repo, fmt.Sprint(vars["owner"], "/", vars["name"]))
+			closer = map[string]any{"number": last.Number, "repository": map[string]any{"nameWithOwner": repo}}
+		}
+		nodes = append(nodes, map[string]any{"closer": closer})
+	}
+	return map[string]any{"repository": map[string]any{"issue": map[string]any{"timelineItems": map[string]any{"nodes": nodes}}}}
 }
 
 // planIssues serves the open issues of Issues, without pull requests, in number order.
@@ -805,6 +947,8 @@ func (s *Server) planIssues(vars map[string]any) any {
 			blockers = append(blockers, map[string]any{"number": b["number"],
 				"state": strings.ToUpper(fmt.Sprint(b["state"])), "repository": map[string]any{"nameWithOwner": repo}})
 		}
+		node["labels"] = map[string]any{"nodes": labelObjects(labelNames(it["labels"])),
+			"pageInfo": map[string]any{"hasNextPage": s.PlanLabelsMore[n]}}
 		node["blockedBy"] = map[string]any{"nodes": append([]any{}, blockers...),
 			"pageInfo": map[string]any{"hasNextPage": s.PlanBlockedByMore[n]}}
 		nodes = append(nodes, node)
@@ -813,12 +957,36 @@ func (s *Server) planIssues(vars map[string]any) any {
 }
 
 // planMilestones serves the OPEN PlanMilestones.
+// Each node carries the closed non-PR issues of Issues with its title, with stateReason in
+// upper case, as GitHub serves them.
 func (s *Server) planMilestones(vars map[string]any) any {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	var open []map[string]any
 	for _, m := range s.PlanMilestones {
-		if m["state"] == "OPEN" {
-			open = append(open, m)
+		if m["state"] != "OPEN" {
+			continue
 		}
+		var nums []int
+		for n, it := range s.Issues {
+			_, pr := it["pull_request"]
+			im, _ := it["milestone"].(map[string]any)
+			if !pr && it["state"] == "closed" && im != nil && im["title"] == m["title"] {
+				nums = append(nums, n)
+			}
+		}
+		slices.Sort(nums)
+		nodes := []any{}
+		for _, n := range nums {
+			it := s.Issues[n]
+			reason, _ := it["state_reason"].(string)
+			nodes = append(nodes, map[string]any{"number": n, "title": it["title"], "url": it["html_url"],
+				"stateReason": strings.ToUpper(reason)})
+		}
+		node := maps.Clone(m)
+		num, _ := m["number"].(int)
+		node["issues"] = map[string]any{"nodes": nodes, "pageInfo": map[string]any{"hasNextPage": s.PlanClosedMore[num]}}
+		open = append(open, node)
 	}
 	return map[string]any{"repository": map[string]any{"milestones": s.planPage(vars, open)}}
 }
@@ -977,19 +1145,7 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 // openPRsWithStatus serves one page of 100 OpenPRNodes after the cursor "cursor-<offset>".
 func (s *Server) openPRsWithStatus(vars map[string]any) any {
-	start := 0
-	if after, _ := vars["after"].(string); after != "" {
-		n, err := strconv.Atoi(strings.TrimPrefix(after, "cursor-"))
-		if err != nil {
-			s.t.Errorf("forgetest: OpenPRsWithStatus after = %q, not a cursor this server gave", after)
-		}
-		start = min(n, len(s.OpenPRNodes))
-	}
-	end := min(start+100, len(s.OpenPRNodes))
-	return map[string]any{"repository": map[string]any{"pullRequests": map[string]any{
-		"pageInfo": map[string]any{"hasNextPage": end < len(s.OpenPRNodes), "endCursor": fmt.Sprintf("cursor-%d", end)},
-		"nodes":    append([]map[string]any{}, s.OpenPRNodes[start:end]...),
-	}}}
+	return map[string]any{"repository": map[string]any{"pullRequests": s.connection("OpenPRsWithStatus", vars["after"], s.OpenPRNodes, nil)}}
 }
 
 // issueClosingHeads serves ClosingPRs and RefPRs of the issue in vars as the connections of the

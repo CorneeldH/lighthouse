@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strconv"
@@ -46,7 +47,8 @@ func forgeNumber(cmd *cobra.Command, s string) (int, error) {
 func newForgeIssueCommand(env *forgeEnv) *cobra.Command {
 	cmd := forgeGroup("issue", "Read and write issues")
 	cmd.AddCommand(newForgeIssueViewCommand(env), newForgeIssueListCommand(env),
-		newForgeIssueSearchCommand(env), newForgeIssueBlockersCommand(env))
+		newForgeIssueSearchCommand(env), newForgeIssueBlockersCommand(env), newForgeIssueBlockingCommand(env),
+		newForgeIssueChangesCommand(env))
 	cmd.AddCommand(newForgeIssueWriteCommands(env)...)
 	return cmd
 }
@@ -137,24 +139,65 @@ func newForgeIssueSearchCommand(env *forgeEnv) *cobra.Command {
 }
 
 func newForgeIssueBlockersCommand(env *forgeEnv) *cobra.Command {
+	return newForgeBlockerListCommand(env, "blockers", "List the issues that block an issue", forge.Forge.BlockedBy)
+}
+
+func newForgeIssueBlockingCommand(env *forgeEnv) *cobra.Command {
+	return newForgeBlockerListCommand(env, "blocking", "List the issues an issue blocks", forge.Forge.Blocking)
+}
+
+// newForgeBlockerListCommand is `<name> <number>`: the list that get returns, as blockers.
+func newForgeBlockerListCommand(env *forgeEnv, name, short string, get func(forge.Forge, context.Context, int) ([]forge.Blocker, error)) *cobra.Command {
 	var field string
 	cmd := &cobra.Command{
-		Use: "blockers <number> [--field PATH]", Short: "List the issues that block an issue", Args: forgeArgs(1),
+		Use: name + " <number> [--field PATH]", Short: short, Args: forgeArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			n, err := forgeNumber(cmd, args[0])
 			if err != nil {
 				return err
 			}
 			return env.read(cmd, field, func(f forge.Forge) (any, error) {
-				bs, err := f.BlockedBy(cmd.Context(), n)
+				bs, err := get(f, cmd.Context(), n)
 				if err != nil {
 					return nil, err
 				}
-				out := make([]any, len(bs))
-				for i, b := range bs {
-					out[i] = renderBlocker(b)
+				return renderList(bs, renderBlocker), nil
+			})
+		},
+	}
+	addFieldFlag(cmd, &field)
+	return cmd
+}
+
+// newForgeIssueChangesCommand is `issue changes <number>`: the pull requests around an issue
+// and the one that closed it, null when none did.
+func newForgeIssueChangesCommand(env *forgeEnv) *cobra.Command {
+	var field string
+	cmd := &cobra.Command{
+		Use: "changes <number> [--field PATH]", Short: "List the pull requests that close or mention an issue", Args: forgeArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			n, err := forgeNumber(cmd, args[0])
+			if err != nil {
+				return err
+			}
+			return env.read(cmd, field, func(f forge.Forge) (any, error) {
+				issue, err := f.Issue(cmd.Context(), n)
+				if err != nil {
+					return nil, err
 				}
-				return out, nil
+				changes, err := f.IssueChanges(cmd.Context(), n)
+				if err != nil {
+					return nil, err
+				}
+				closer, err := f.Closer(cmd.Context(), n)
+				if err != nil {
+					return nil, err
+				}
+				var closerOut any
+				if closer != 0 {
+					closerOut = closer
+				}
+				return map[string]any{"state": issue.State, "closer": closerOut, "changes": renderList(changes, renderIssueChange)}, nil
 			})
 		},
 	}
@@ -192,8 +235,32 @@ func newForgePRCommand(env *forgeEnv) *cobra.Command {
 	}
 	view.Flags().BoolVar(&comments, "comments", false, "add the comments")
 	addFieldFlag(view, &field)
-	cmd.AddCommand(view, newForgePRChecksCommand(env))
+	cmd.AddCommand(view, newForgePRListCommand(env), newForgePRChecksCommand(env))
 	cmd.AddCommand(newForgePRWriteCommands(env)...)
+	return cmd
+}
+
+func newForgePRListCommand(env *forgeEnv) *cobra.Command {
+	var field, state string
+	cmd := &cobra.Command{
+		Use: "list [--state open|merged|closed|all] [--field PATH]", Short: "List pull requests as JSON", Args: forgeArgs(0),
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			switch state {
+			case "", "open", "merged", "closed", "all":
+			default:
+				return forgeUsage(cmd, fmt.Sprintf("--state %q is not open, merged, closed or all", state))
+			}
+			return env.read(cmd, field, func(f forge.Forge) (any, error) {
+				cs, err := f.ListChanges(cmd.Context(), state)
+				if err != nil {
+					return nil, err
+				}
+				return renderList(cs, renderChange), nil
+			})
+		},
+	}
+	cmd.Flags().StringVar(&state, "state", "", "open (default), merged, closed (not merged) or all")
+	addFieldFlag(cmd, &field)
 	return cmd
 }
 

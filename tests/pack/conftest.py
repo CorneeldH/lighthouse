@@ -6,7 +6,7 @@ import sys
 import pytest
 
 from tests.pack._network import network_error, offline
-from tests.pack._testkit import INSTALL_ROOT
+from tests.pack.python._testkit import INSTALL_ROOT
 
 os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
 sys.dont_write_bytecode = True
