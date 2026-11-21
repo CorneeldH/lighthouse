@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -93,6 +94,10 @@ func newReviewIndexCommand() *cobra.Command {
 // indexLedgerFile indexes one ledger. Its trajectory is --issue, else the issue in the plan
 // path on the first line, with the repo from forge.repo (Repo.Slug); a ledger without one is skipped.
 func indexLedgerFile(ctx context.Context, db *sql.DB, path string, issue int) (review.IndexResult, error) {
+	path, err := filepath.Abs(path)
+	if err != nil {
+		return review.IndexResult{}, err
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return review.IndexResult{}, err

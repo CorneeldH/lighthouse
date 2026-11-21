@@ -72,6 +72,24 @@ func countFindings(t *testing.T) int {
 	return n
 }
 
+func firstRecordPath(t *testing.T) string {
+	t.Helper()
+	path, err := store.DefaultPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := store.OpenShared(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = st.Close() }()
+	var p string
+	if err := st.DB.QueryRow(`SELECT record_path FROM findings LIMIT 1`).Scan(&p); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
 func TestReviewIndexIndexesDataRoot(t *testing.T) {
 	s := indexScenario(t)
 	// Write the record on a machine whose database cannot be opened, so only review-index indexes it.
@@ -115,6 +133,9 @@ func TestReviewIndexLedgerFlag(t *testing.T) {
 	}
 	if n := countFindings(t); n != 2 {
 		t.Errorf("findings = %d, want 2", n)
+	}
+	if p := firstRecordPath(t); !filepath.IsAbs(p) {
+		t.Errorf("record_path = %q, want an absolute path", p)
 	}
 
 	// Without --issue the issue comes from the plan path on the first line of the fixture
