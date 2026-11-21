@@ -1424,20 +1424,45 @@ func parkAction() Action {
 		Blockers: []string{"o/r#5 (In progress)"}}
 }
 
-func TestApplyParkPostsThenHolds(t *testing.T) {
+// A park posts the 🤖 Geparkeerd, then labels blocked_issue and moves the item to To do; the run
+// and its workplace stay. Writing On hold, or skipping the label, turns this red.
+func TestApplyParkSetsToDoWithBlockedIssue(t *testing.T) {
 	h := newHarness(t)
+	id := h.seedWorkplace(t, "ws-1", "key-1")
 	if _, err := Apply(context.Background(), h.env, []Action{parkAction()}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
-	if got, want := h.log.all(), []string{"CreateComment", "SetStatus"}; !reflect.DeepEqual(got, want) {
+	if got, want := h.log.all(), []string{"CreateComment", "Issue", "EditIssue", "SetStatus"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("calls = %q, want %q", got, want)
 	}
 	p := h.poster(applyRepo)
 	if len(p.bodies) != 1 || p.issues[0] != 7 || !strings.HasPrefix(p.bodies[0], "🤖 Geparkeerd\nblocked_by: o/r#5 (In progress)") {
 		t.Errorf("posted %q on %v, want one Geparkeerd naming o/r#5 (In progress) on #7", p.bodies, p.issues)
 	}
-	if want := []string{"I7 On hold"}; !reflect.DeepEqual(h.poster(applyRepo).sets, want) {
-		t.Errorf("status sets = %q, want %q", h.poster(applyRepo).sets, want)
+	if want := []string{"I7 To do"}; !reflect.DeepEqual(p.sets, want) {
+		t.Errorf("status sets = %q, want %q", p.sets, want)
+	}
+	if want := []string{"blocked_issue"}; !reflect.DeepEqual(p.labels, want) {
+		t.Errorf("labels = %q, want %q", p.labels, want)
+	}
+	if rows := h.history(t); len(rows) != 1 || rows[0].ID != id || !rows[0].Open {
+		t.Errorf("history = %+v, want run %d still open", rows, id)
+	}
+	if len(h.wp.stopped) != 0 || len(h.wp.forgot) != 0 {
+		t.Errorf("stopped %v, discarded %v; want the workplace untouched", h.wp.stopped, h.wp.forgot)
+	}
+}
+
+// A park whose label edit fails keeps its Geparkeerd and leaves the board as it is: the next
+// tick holds without a second comment.
+func TestApplyParkLabelFailsNoBoard(t *testing.T) {
+	h := newHarness(t)
+	h.poster(applyRepo).editErr = errors.New("label refused")
+	if _, err := Apply(context.Background(), h.env, []Action{parkAction()}); err == nil || !strings.Contains(err.Error(), "label refused") {
+		t.Fatalf("Apply: %v, want the label error", err)
+	}
+	if p := h.poster(applyRepo); len(p.bodies) != 1 || p.sets != nil {
+		t.Errorf("posted %q, board %q; want the Geparkeerd and no board change", p.bodies, p.sets)
 	}
 }
 
@@ -1471,29 +1496,126 @@ func TestApplyParkBoardFails(t *testing.T) {
 	}
 }
 
-func TestApplyHold(t *testing.T) {
-	h := newHarness(t)
-	if _, err := Apply(context.Background(), h.env, []Action{{Kind: KindHold, Repo: applyRepo, Issue: 7, ItemID: "I7"}}); err != nil {
-		t.Fatalf("Apply: %v", err)
-	}
-	if got, want := h.log.all(), []string{"SetStatus"}; !reflect.DeepEqual(got, want) {
-		t.Errorf("calls = %q, want %q", got, want)
-	}
-	if want := []string{"I7 On hold"}; !reflect.DeepEqual(h.poster(applyRepo).sets, want) {
-		t.Errorf("status sets = %q, want %q", h.poster(applyRepo).sets, want)
+// A hold is a park without its comment (the own Geparkeerd stands): blocked_issue and To do.
+// A label already there is not added again.
+func TestApplyHoldSetsToDoWithBlockedIssue(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		labels []string
+		calls  []string
+	}{
+		{"without label", nil, []string{"Issue", "EditIssue", "SetStatus"}},
+		{"label stands", []string{"blocked_issue"}, []string{"Issue", "SetStatus"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHarness(t)
+			p := h.poster(applyRepo)
+			p.labels = tc.labels
+			if _, err := Apply(context.Background(), h.env, []Action{{Kind: KindHold, Repo: applyRepo, Issue: 7, ItemID: "I7"}}); err != nil {
+				t.Fatalf("Apply: %v", err)
+			}
+			if got := h.log.all(); !reflect.DeepEqual(got, tc.calls) {
+				t.Errorf("calls = %q, want %q", got, tc.calls)
+			}
+			if want := []string{"I7 To do"}; !reflect.DeepEqual(p.sets, want) {
+				t.Errorf("status sets = %q, want %q", p.sets, want)
+			}
+			if want := []string{"blocked_issue"}; !reflect.DeepEqual(p.labels, want) || len(p.bodies) != 0 {
+				t.Errorf("labels %q, posts %q; want [blocked_issue] and no comment", p.labels, p.bodies)
+			}
+		})
 	}
 }
 
-func TestApplyUnpark(t *testing.T) {
+// An unpark takes blocked_issue off (only when it is there; other labels stay) and moves the
+// item to Controller. Dropping the removal, or removing without the label, turns this red.
+func TestApplyUnparkRemovesLabelSetsController(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		labels, want []string
+		calls        []string
+	}{
+		{"label on", []string{"blocked_issue", "2-loc:mac"}, []string{"2-loc:mac"}, []string{"Issue", "EditIssue", "SetStatus"}},
+		{"label already off", []string{"2-loc:mac"}, []string{"2-loc:mac"}, []string{"Issue", "SetStatus"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHarness(t)
+			p := h.poster(applyRepo)
+			p.labels, p.status = tc.labels, statusToDo
+			if _, err := Apply(context.Background(), h.env, []Action{{Kind: KindUnpark, Repo: applyRepo, Issue: 7, ItemID: "I7"}}); err != nil {
+				t.Fatalf("Apply: %v", err)
+			}
+			if got := h.log.all(); !reflect.DeepEqual(got, tc.calls) {
+				t.Errorf("calls = %q, want %q", got, tc.calls)
+			}
+			if !reflect.DeepEqual(p.labels, tc.want) {
+				t.Errorf("labels = %q, want %q", p.labels, tc.want)
+			}
+			if want := []string{"I7 Controller"}; !reflect.DeepEqual(p.sets, want) {
+				t.Errorf("status sets = %q, want %q", p.sets, want)
+			}
+		})
+	}
+}
+
+// A label removal that fails leaves the item on To do: the next tick unparks it again.
+func TestApplyUnparkLabelFailsKeepsToDo(t *testing.T) {
 	h := newHarness(t)
-	if _, err := Apply(context.Background(), h.env, []Action{{Kind: KindUnpark, Repo: applyRepo, Issue: 7, ItemID: "I7"}}); err != nil {
-		t.Fatalf("Apply: %v", err)
+	p := h.poster(applyRepo)
+	p.labels, p.editErr = []string{"blocked_issue"}, errors.New("label refused")
+	if _, err := Apply(context.Background(), h.env, []Action{{Kind: KindUnpark, Repo: applyRepo, Issue: 7, ItemID: "I7"}}); err == nil {
+		t.Fatal("Apply: err = nil, want the label error")
 	}
-	if got, want := h.log.all(), []string{"SetStatus"}; !reflect.DeepEqual(got, want) {
-		t.Errorf("calls = %q, want %q", got, want)
+	if p.sets != nil {
+		t.Errorf("status sets = %q, want none", p.sets)
 	}
-	if want := []string{"I7 Controller"}; !reflect.DeepEqual(h.poster(applyRepo).sets, want) {
-		t.Errorf("status sets = %q, want %q", h.poster(applyRepo).sets, want)
+}
+
+// The round trip on the fake forge: a park leaves To do with blocked_issue; while the blocker
+// is open the next ticks do nothing; once it is closed the tick unparks (label off, Controller);
+// the tick after starts the Handoff. No step writes On hold.
+func TestParkThenUnparkRoundTrip(t *testing.T) {
+	h := newHarness(t)
+	p := h.poster(applyRepo)
+	p.bodies = []string{"🤖 Handoff\nissue: #7\nworktree: /w\nbranch: issue-7-x\nanchor: abc\nnext: /superpowers:subagent-driven-development /w/plan.md\nwhen: now"}
+	blocker := forge.Blocker{Repo: "x/y", Issue: 5, State: "OPEN"}
+	decide := func() []Action {
+		in := h.tickInput(t)
+		in.Repos[0].Snapshot.Items[0].BlockedBy = []forge.Blocker{blocker}
+		return Decide(in)
+	}
+	tick := func() []Kind {
+		t.Helper()
+		actions := decide()
+		if _, err := Apply(context.Background(), h.env, actions); err != nil {
+			t.Fatalf("Apply %v: %v", kinds(actions), err)
+		}
+		return kinds(actions)
+	}
+	if got := tick(); !reflect.DeepEqual(got, []Kind{KindPark}) {
+		t.Fatalf("tick 1 = %v, want park", got)
+	}
+	if p.status != statusToDo || !reflect.DeepEqual(p.labels, []string{"blocked_issue"}) {
+		t.Fatalf("after park: status %q, labels %q; want To do with blocked_issue", p.status, p.labels)
+	}
+	if got := tick(); len(got) != 0 {
+		t.Fatalf("tick 2, blocker open = %v, want nothing", got)
+	}
+	blocker.MergedPR = true // the blocker in another repo has a merged PR: no longer active
+	if got := tick(); !reflect.DeepEqual(got, []Kind{KindUnpark}) {
+		t.Fatalf("tick 3 = %v, want unpark", got)
+	}
+	if p.status != statusController || len(p.labels) != 0 {
+		t.Fatalf("after unpark: status %q, labels %q; want Controller without label", p.status, p.labels)
+	}
+	// Decide only: the start itself is not what this test is about.
+	if got := kinds(decide()); !reflect.DeepEqual(got, []Kind{KindStart}) {
+		t.Fatalf("tick 4 = %v, want the start of the Handoff", got)
+	}
+	for _, set := range p.sets {
+		if strings.HasSuffix(set, statusOnHold) {
+			t.Errorf("status set %q: nothing may write On hold", set)
+		}
 	}
 }
 

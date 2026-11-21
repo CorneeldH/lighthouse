@@ -379,7 +379,7 @@ func TestTickForgeErrorSkipsLoudlyAndKeepsState(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if state != (dispatch.TickState{}) {
+			if !reflect.DeepEqual(state, dispatch.TickState{}) {
 				t.Errorf("tick state = %+v after a failed gather, want none", state)
 			}
 		})
@@ -796,7 +796,7 @@ func TestTickDeferredKeepsFingerprint(t *testing.T) {
 	if rows := history(t, conn, "o/r"); len(rows) != 0 {
 		t.Errorf("runs = %+v, want none", rows)
 	}
-	if s := tickState(t, conn, "o/r"); s != (dispatch.TickState{}) {
+	if s := tickState(t, conn, "o/r"); !reflect.DeepEqual(s, dispatch.TickState{}) {
 		t.Errorf("tick state = %+v after a deferral, want none", s)
 	}
 	if s := tickState(t, conn, "o/s"); s.Fingerprint == "" {
@@ -948,7 +948,7 @@ func TestTickFailedRepoKeepsNoFingerprint(t *testing.T) {
 		t.Errorf("errOut = %q, want no apply line for o/s", errOut.String())
 	}
 	conn := openStore(t, db)
-	if s := tickState(t, conn, "o/r"); s != (dispatch.TickState{}) {
+	if s := tickState(t, conn, "o/r"); !reflect.DeepEqual(s, dispatch.TickState{}) {
 		t.Errorf("tick state of o/r = %+v after its failed post, want none", s)
 	}
 	if s := tickState(t, conn, "o/s"); s.Fingerprint == "" {
@@ -1249,8 +1249,12 @@ func TestTickParksBlockedHandoff(t *testing.T) {
 	if len(posted) != 2 || !strings.HasPrefix(posted[1], "🤖 Geparkeerd") {
 		t.Errorf("comments on #7 = %q, want the handoff and then one Geparkeerd", posted)
 	}
-	if got, want := statusSets(srv), []string{"I7 h1"}; !reflect.DeepEqual(got, want) {
+	// Parking is a give-back with blocked_issue: To do (t1), never On hold (h1).
+	if got, want := statusSets(srv), []string{"I7 t1"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("status sets = %q, want %q", got, want)
+	}
+	if got := fmt.Sprint(srv.Issues[7]["labels"]); !strings.Contains(got, "blocked-issue") {
+		t.Errorf("labels of #7 = %s, want blocked-issue", got)
 	}
 	if rows := history(t, openStore(t, db), "o/r"); len(rows) != 0 {
 		t.Errorf("runs = %+v, want none: a parked issue starts nothing", rows)
@@ -1273,7 +1277,7 @@ func TestTickParkBoardFailureRetries(t *testing.T) {
 	if posted := bodies(srv, 7); len(posted) != 2 || !strings.HasPrefix(posted[1], "🤖 Geparkeerd") {
 		t.Fatalf("comments on #7 = %q, want the handoff and then one Geparkeerd", posted)
 	}
-	if s := tickState(t, openStore(t, db), "o/r"); s != (dispatch.TickState{}) {
+	if s := tickState(t, openStore(t, db), "o/r"); !reflect.DeepEqual(s, dispatch.TickState{}) {
 		t.Errorf("tick state = %+v after the failed board change, want none", s)
 	}
 
@@ -1286,7 +1290,7 @@ func TestTickParkBoardFailureRetries(t *testing.T) {
 		t.Errorf("comments on #7 after the second tick = %q, want no new comment", posted)
 	}
 	// The failed SetStatus of the first tick is recorded too: StatusSets keeps every request.
-	if got, want := statusSets(srv), []string{"I7 h1", "I7 h1"}; !reflect.DeepEqual(got, want) {
+	if got, want := statusSets(srv), []string{"I7 t1", "I7 t1"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("status sets = %q, want %q", got, want)
 	}
 }
@@ -1345,7 +1349,7 @@ func TestTickUsageClosedDefers(t *testing.T) {
 		t.Errorf("writes %v, spawns %v; want none for a deferred start", p, w.spawned())
 	}
 	conn := openStore(t, db)
-	if s := tickState(t, conn, "o/r"); s != (dispatch.TickState{}) {
+	if s := tickState(t, conn, "o/r"); !reflect.DeepEqual(s, dispatch.TickState{}) {
 		t.Errorf("tick state = %+v after a deferral, want none", s)
 	}
 	rows := deferredRows(t, conn, "o/r")
@@ -1751,6 +1755,57 @@ func TestTickSweepLeavesControllerIssue(t *testing.T) {
 	looked, _, removed := w.calls()
 	if slices.Contains(looked, ws945) || slices.Contains(removed, ws945) {
 		t.Errorf("looked %v, removed %v; want %s untouched\n%s", looked, removed, ws945, errOut.String())
+	}
+}
+
+// A parked issue now stands on To do (blocked_issue): its workspace stays for the resume as
+// long as its last protocol comment is the tick's own Geparkeerd, and the second tick, on an
+// unchanged board, reads none of its comments (the To do marks in tick_state). A To do issue
+// without that Geparkeerd is swept like any other. Wiring sweepOne to the statuses alone, or
+// dropping the marks, turns this red.
+func TestTickSweepKeepsWorkplaceOfParkedToDo(t *testing.T) {
+	const comments945 = "/repos/o/r/issues/945/comments"
+	for _, tc := range []struct {
+		name   string
+		parked bool
+	}{{"own Geparkeerd", true}, {"no Geparkeerd", false}} {
+		t.Run(tc.name, func(t *testing.T) {
+			env, db := tickFixture(t, repo945(t))
+			srv, w := sweepable(t, &env, "t1", &gitState{ahead: "0"})
+			srv.BoardNodes = []map[string]any{boardNode("I945", "t1", issueContent(945, "Immich smart search", map[string]any{
+				"blockedBy": map[string]any{"nodes": []any{map[string]any{
+					"number": 5, "state": "OPEN", "repository": map[string]any{"nameWithOwner": "o/r"},
+					"closedByPullRequestsReferences": map[string]any{"nodes": []any{}},
+				}}},
+			}))}
+			body := "een notitie"
+			if tc.parked {
+				body = "🤖 Geparkeerd\nblocked_by: o/r#5"
+			}
+			srv.Comments = map[int][]map[string]any{945: {{"id": 1, "body": body, "created_at": "2026-10-30T10:00:00Z",
+				"user": map[string]any{"login": "lh-bot"}}}}
+			doneRuns945(t, db)
+
+			var errOut bytes.Buffer
+			for range 2 {
+				if err := tick(context.Background(), env, db, &errOut); err != nil {
+					t.Fatalf("tick = %v\n%s", err, errOut.String())
+				}
+			}
+			_, _, removed := w.calls()
+			if got := slices.Contains(removed, ws945); got == tc.parked {
+				t.Errorf("removed = %v; parked %v must keep %s\n%s", removed, tc.parked, ws945, errOut.String())
+			}
+			// Tick 1: the precheck reads the comments once, and the full gather once more when the
+			// item is kept. Tick 2 reads none.
+			want := 1
+			if tc.parked {
+				want = 2
+			}
+			if got := srv.Count(comments945); got != want {
+				t.Errorf("comments of #945 read %d times over two ticks, want %d\n%s", got, want, errOut.String())
+			}
+		})
 	}
 }
 

@@ -186,17 +186,17 @@ func (ap applier) apply(ctx context.Context, a Action, res *Result) error {
 		res.Deferred = append(res.Deferred, deferral(a, a.Reason))
 		return nil
 	case KindPark:
-		// The comment first: a failed board change leaves a Parked that the next tick sees,
-		// and holds without posting a second one.
+		// The comment first: a failed label or board change leaves a Parked that the next tick
+		// sees, and holds without posting a second one.
 		body := protocol.RenderParked(a.Blockers, a.Language)
 		if _, err := ap.env.Forge(a.Repo).CreateComment(ctx, a.Issue, body); err != nil {
 			return fmt.Errorf("post: %w", err)
 		}
-		return ap.setStatus(ctx, a, statusOnHold)
+		return ap.hold(ctx, a)
 	case KindHold:
-		return ap.setStatus(ctx, a, statusOnHold)
+		return ap.hold(ctx, a)
 	case KindUnpark:
-		return ap.setStatus(ctx, a, statusController)
+		return ap.unpark(ctx, a)
 	case KindToDo:
 		return ap.setStatus(ctx, a, issuestate.ToDo)
 	case KindDropMarker:
@@ -244,6 +244,35 @@ func (ap applier) setStatus(ctx context.Context, a Action, status string) error 
 		return fmt.Errorf("board: %w", err)
 	}
 	return nil
+}
+
+// hold parks issue a.Issue after its 🤖 Parked: the blocked_issue label, then the board status
+// To do. The run and its workplace stay; the tick unparks the issue once no blocker is active.
+func (ap applier) hold(ctx context.Context, a Action) error {
+	if _, err := issuestate.Apply(ctx, ap.env.Forge(a.Repo), a.Issue, "blocked_issue", ap.env.Labels(a.Repo)); err != nil {
+		return fmt.Errorf("label: %w", err)
+	}
+	return ap.setStatus(ctx, a, issuestate.ToDo)
+}
+
+// unpark takes the blocked_issue label off issue a.Issue when it is there (the unblock lane may
+// have taken it off already), then moves the item to Controller, where the next tick resumes its
+// last Handoff. The label goes first: a failed board change leaves a To do item without the
+// label, which the tick unparks again.
+func (ap applier) unpark(ctx context.Context, a Action) error {
+	f := ap.env.Forge(a.Repo)
+	if name := ap.env.Labels(a.Repo).BlockedIssue; name != "" {
+		is, err := f.Issue(ctx, a.Issue)
+		if err != nil {
+			return fmt.Errorf("label: %w", err)
+		}
+		if slices.Contains(is.Labels, name) {
+			if _, err := f.EditIssue(ctx, a.Issue, forge.IssueEdit{RemoveLabels: []string{name}}); err != nil {
+				return fmt.Errorf("label: %w", err)
+			}
+		}
+	}
+	return ap.setStatus(ctx, a, statusController)
 }
 
 // giveBack gives issue a.Issue back to a human after its 🤖 Returned: the blocking label of key

@@ -11,6 +11,7 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/hostconfig"
+	"github.com/CorneeldH/lighthouse/internal/issuestate"
 	"github.com/CorneeldH/lighthouse/internal/park"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
@@ -359,12 +360,22 @@ func freesSlot(a Action) bool {
 // decideIssue gives the actions of one item. The start rules run only for an open issue in
 // Controller whose open runs all close in this tick, and not when the orphan rule hands the
 // issue back: a start next to that Returned would contradict it. The same holds for the
-// unpark rule of an open issue in On hold. When settle closed a run for a fix-pr start and no
+// unpark rule of an open issue in On hold. A To do item without an open run gets only the unpark
+// rule: a human who picked it up and put it back owns it, so neither orphan nor repair touches
+// it. A To do item with an open run gets the run rules only; its unpark waits for the tick after
+// the run closed. When settle closed a run for a fix-pr start and no
 // blocker is active, that start is the item's one start in this tick and next does not run;
 // with an active blocker Decide hands the run back (settleUnstartedFixPR).
 func decideIssue(in Input, repo RepoInput, it Item) []planned {
 	hs := headers(it)
 	base := Action{Repo: repo.Snapshot.Repo, Issue: it.Issue, Language: repo.Language}
+	c := issueCtx{repo: repo, it: it, hs: hs, base: base, now: in.Now, night: in.Night, profileNodes: in.ProfileNodes}
+	if it.Status == statusToDo && !hasOpenRun(repo.History, it.Issue) {
+		if p, ok := c.unparkToDo(); ok {
+			return []planned{p}
+		}
+		return nil
+	}
 	var out []planned
 	a, orphaned := orphan(repo.History, hs, base)
 	if orphaned {
@@ -404,7 +415,6 @@ func decideIssue(in Input, repo RepoInput, it Item) []planned {
 	if !free || it.State != "OPEN" {
 		return out
 	}
-	c := issueCtx{repo: repo, it: it, hs: hs, base: base, now: in.Now, night: in.Night, profileNodes: in.ProfileNodes}
 	switch it.Status {
 	case statusController:
 		if fix != nil && fix.merge {
@@ -431,11 +441,40 @@ func decideIssue(in Input, repo RepoInput, it Item) []planned {
 			out = append(out, p)
 		}
 	case statusOnHold:
+		// The remnant of the old parking: unparked as before, never set again.
 		if c.ownParked() && !c.active() {
 			out = append(out, planned{Action: c.board(KindUnpark)})
 		}
 	}
 	return out
+}
+
+// unparkToDo is the unpark of an open To do item the tick parked itself (its last protocol
+// comment is its own 🤖 Parked) once no blocker is active, with or without the blocked_issue
+// label (the unblock lane may have taken it off already). An item with a needs_* or
+// blocked_external label stays: a human holds it, and an unpark would flip it back and forth
+// with the todo of a labelled Controller item.
+func (c issueCtx) unparkToDo() (planned, bool) {
+	if c.it.State != "OPEN" || heldByHuman(c.it.Labels, c.repo.Labels) || !c.ownParked() || c.active() {
+		return planned{}, false
+	}
+	return planned{Action: c.board(KindUnpark)}, true
+}
+
+// hasOpenRun reports whether history has an open run of issue.
+func hasOpenRun(history []runs.Row, issue int) bool {
+	return slices.ContainsFunc(history, func(row runs.Row) bool { return row.Open && row.Issue == issue })
+}
+
+// heldByHuman reports whether labels hold a needs_* or the blocked_external label of l: a human
+// owns such an issue, so the tick neither unparks it nor reads it as parked.
+func heldByHuman(labels []string, l repoconfig.Labels) bool {
+	for _, name := range []string{l.NeedsShaping, l.NeedsDecision, l.NeedsHands, l.NeedsTesting, l.BlockedExternal} {
+		if name != "" && slices.Contains(labels, name) {
+			return true
+		}
+	}
+	return false
 }
 
 // needsHuman reports whether the item carries one of the needs_* labels of the repo.
@@ -1237,8 +1276,10 @@ func triggerComment(key string) (int64, bool) {
 }
 
 const (
-	statusController  = "Controller"
+	statusController = "Controller"
+	// statusOnHold is read only: an issue still there is unparked, but no code sets it.
 	statusOnHold      = "On hold"
+	statusToDo        = issuestate.ToDo
 	cmdStartIssue     = "/lighthouse-start-issue"
 	modeStart         = "start"
 	modeResume        = "resume"
@@ -1327,7 +1368,7 @@ func (c issueCtx) finishReturn() (planned, bool) {
 	if last == nil || last.Header.Kind != protocol.KindReturned || last.Comment.Author != c.repo.Snapshot.TokenLogin {
 		return planned{}, false
 	}
-	if slices.ContainsFunc(c.repo.History, func(row runs.Row) bool { return row.Open && row.Issue == c.it.Issue }) {
+	if hasOpenRun(c.repo.History, c.it.Issue) {
 		return planned{}, false
 	}
 	for _, name := range c.repo.Labels.Blocking() {
@@ -1855,9 +1896,13 @@ func activeBlockers(it Item) []string {
 
 // ownParked reports whether the last protocol comment (Rebased does not count) is a Parked
 // by the token login: the tick parked the item itself.
-func (c issueCtx) ownParked() bool {
-	p := lastProtocol(c.hs)
-	return p != nil && p.Header.Kind == protocol.KindParked && p.Comment.Author == c.repo.Snapshot.TokenLogin
+func (c issueCtx) ownParked() bool { return ownParkedBy(c.hs, c.repo.Snapshot.TokenLogin) }
+
+// ownParkedBy reports whether the last protocol comment of hs (Rebased does not count) is a
+// Parked by login. The precheck (readOwnParked) and decide share it.
+func ownParkedBy(hs []parsed, login string) bool {
+	p := lastProtocol(hs)
+	return p != nil && p.Header.Kind == protocol.KindParked && p.Comment.Author == login
 }
 
 // lastProtocol returns the last protocol comment that is no Rebased, nil when there is none.
