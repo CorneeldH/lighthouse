@@ -190,8 +190,8 @@ command = "<your test command>"
 | `forge.board` | Optional: a GitHub Project board the skills move issues on. |
 
 `[forge.board]` is not in the example. When you add it, it needs `project_number`, `project_id`,
-`status_field_id`, and `status_options` with an option ID for each of `To do`, `In progress`,
-`Done` and `On hold`.
+`status_field_id`, and `status_options` with an option ID for each of `To do`, `In progress`
+and `Done`. `On hold` is no longer needed: parking is `To do` plus the `blocked_issue` label.
 
 Every other key, with its type and default, is in `schema` and `defaults` of
 [`internal/config/config.go`](../internal/config/config.go). A key with a wrong type or value is

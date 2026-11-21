@@ -14,7 +14,8 @@ import (
 type SweepInput struct {
 	Repo string
 	// InController reports whether the controller still holds the issue: board Status
-	// Controller or On hold.
+	// Controller or On hold, or To do while the issue is parked by the tick
+	// (dispatch.InController).
 	InController func(issue int) bool
 	// MergedHead is the head SHA of the last merged PR of branch, or "" when none.
 	MergedHead func(ctx context.Context, branch string) (string, error)

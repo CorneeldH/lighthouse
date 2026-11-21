@@ -68,8 +68,8 @@ func TestChooseRows(t *testing.T) {
 		{"4c without label", outcomeFacts(), nil, nil, design, RowDesign, protocol.TriageMarker{Gate: "4c"}},
 		{"headless no", outcomeFacts(), nil, nil, interactive, RowInteractive, protocol.TriageMarker{Gate: "4b"}},
 		{"untrusted author", untrusted, nil, nil, judged(4, "b", "#7 Poort 4b: x — y"), RowUntrusted, protocol.TriageMarker{Gate: "4b"}},
-		{"needs-hands forwards without label", outcomeFacts("3-needs-hands"), nil, nil, judged(4, "b", "#7 Poort 4b: x — y"),
-			RowForward, protocol.TriageMarker{Gate: "4b"}},
+		{"needs-hands is not forwarded", outcomeFacts("3-needs-hands"), nil, nil, judged(4, "b", "#7 Poort 4b: x — y"),
+			RowInteractive, protocol.TriageMarker{Gate: "4b"}},
 		{"gate 2", outcomeFacts(), nil, nil, judged(2, "", "#7 Poort 2: x — y"), RowForward, protocol.TriageMarker{Gate: "2"}},
 		{"4a", outcomeFacts(), nil, nil, judged(4, "a", "#7 Poort 4a: x — y"), RowForward, protocol.TriageMarker{Gate: "4a"}},
 	}
@@ -159,7 +159,7 @@ func TestJudgedRow(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := judgedRow(tt.j, tt.g0, tt.trusted); got != tt.want {
+			if got := judgedRow(tt.j, tt.g0, tt.trusted, nil, outcomeLabels); got != tt.want {
 				t.Errorf("judgedRow = %d, want %d", got, tt.want)
 			}
 		})
@@ -386,5 +386,69 @@ func TestHandoffStartsInNight(t *testing.T) {
 	if len(got) != 1 || got[0].Kind != dispatch.KindStart || got[0].Command != "/lighthouse-start-issue 7" ||
 		!strings.HasPrefix(got[0].Branch, "issue-7-") {
 		t.Fatalf("at 22:00 got %+v, want one start of issue 7", got)
+	}
+}
+
+// Production change that turns it red: judgedRow without the needs_* check returns RowForward
+// (or RowUntrusted) for an issue that carries a needs_* label.
+func TestJudgedRowNeedsLabel(t *testing.T) {
+	g0 := &Gate0{Blockers: []int{5}, Label: "3-blocked-external"}
+	tests := []struct {
+		name    string
+		j       *Judgment
+		g0      *Gate0
+		labels  []string
+		trusted bool
+		want    Row
+	}{
+		{"4b with needs_hands", judged(4, "b", "x"), nil, []string{"3-needs-hands"}, true, RowInteractive},
+		{"4a with needs_testing", judged(4, "a", "x"), nil, []string{"3-needs-testing"}, true, RowInteractive},
+		{"gate 2 with needs_decision", judged(2, "", "x"), nil, []string{"3-needs-decision"}, true, RowInteractive},
+		{"untrusted with needs label is still interactive", judged(4, "b", "x"), nil, []string{"3-needs-hands"}, false, RowInteractive},
+		{"4c keeps design", judged(4, "c", "x"), nil, []string{"3-needs-shaping"}, true, RowDesign},
+		{"gate 1 keeps stop", judged(1, "", "x"), nil, []string{"3-needs-hands"}, true, RowStop},
+		{"gate 0 keeps stop", judged(4, "b", "x"), g0, []string{"3-needs-hands"}, true, RowStop},
+		{"blocked_external is no needs label", judged(4, "b", "x"), nil, []string{"3-blocked-external"}, true, RowForward},
+		{"other label forwards", judged(4, "b", "x"), nil, []string{"area:x"}, true, RowForward},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := judgedRow(tt.j, tt.g0, tt.trusted, tt.labels, outcomeLabels); got != tt.want {
+				t.Errorf("judgedRow = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
+// Production change that turns it red: Choose without the needs_* branch posts the forwarded text.
+func TestChooseNeedsLabelNamesLabel(t *testing.T) {
+	o := Choose(outcomeFacts("3-needs-hands"), nil, nil, judged(4, "b", "#7 Poort 4b: x — y"), outcomeLabels, outcomeTarget)
+	if o.Row != RowInteractive || o.Handoff != "" {
+		t.Fatalf("Row = %d, Handoff = %q, want RowInteractive without handoff", o.Row, o.Handoff)
+	}
+	if !strings.Contains(o.Comment, "3-needs-hands") {
+		t.Errorf("comment does not name the label:\n%s", o.Comment)
+	}
+}
+
+// Production change that turns it red: Choose without Outcome.Label leaves it "".
+func TestChooseDesignSetsNeedsShapingLabel(t *testing.T) {
+	design := judged(4, "c", "#7 Poort 4c: x — y")
+	for _, tc := range []struct {
+		name   string
+		labels []string
+		want   string
+	}{
+		{"none present", nil, "needs_shaping"},
+		{"already present", []string{"3-needs-shaping"}, "needs_shaping"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := Choose(outcomeFacts(tc.labels...), nil, nil, design, outcomeLabels, outcomeTarget).Label; got != tc.want {
+				t.Errorf("Label = %q, want %q", got, tc.want)
+			}
+		})
+	}
+	if got := Choose(outcomeFacts(), nil, nil, judged(4, "b", "#7 Poort 4b: x — y"), outcomeLabels, outcomeTarget).Label; got != "" {
+		t.Errorf("Label of a forward = %q, want empty", got)
 	}
 }

@@ -2,6 +2,9 @@ package cli
 
 import (
 	"context"
+	"errors"
+	"io/fs"
+	"os"
 
 	"github.com/spf13/cobra"
 
@@ -31,7 +34,7 @@ func newStateCommandWith(o *forgeOpener, run func(context.Context, string, int) 
 		Use:   "state",
 		Short: "Show the state of an issue, set its blocking label, or give it back to To do",
 		Long: "Keys: needs_shaping, needs_decision, blocked_issue, blocked_external, needs_hands, needs_testing (rank order).\n" +
-			"Exit 1 on a wrong number or key (no forge call) and on a forge error; exit 2 on a config error.",
+			"Exit 1 on a wrong number or key (no forge call) and on a forge error; exit 2 on a config error or a missing token.",
 	}
 	cmd.AddCommand(
 		&cobra.Command{
@@ -64,8 +67,9 @@ func newStateCommandWith(o *forgeOpener, run func(context.Context, string, int) 
 
 // dbRunState reads the state of the run of an issue from the database at path ("" is
 // store.DefaultPath): "open", "parked", or "" without a run. It opens the database without the
-// serve lock, so it works next to a running `lighthouse serve`; like triage, it creates the
-// database when it is missing.
+// serve lock, so it works next to a running `lighthouse serve`. `state show` only reads: a
+// missing database counts as no run and is neither created nor migrated (store.OpenShared does
+// both), so the file is stat'ed first.
 func dbRunState(path string) func(ctx context.Context, repo string, nr int) (string, error) {
 	return func(ctx context.Context, repo string, nr int) (string, error) {
 		p := path
@@ -74,6 +78,11 @@ func dbRunState(path string) func(ctx context.Context, repo string, nr int) (str
 			if p, err = store.DefaultPath(); err != nil {
 				return "", err
 			}
+		}
+		if _, err := os.Stat(p); errors.Is(err, fs.ErrNotExist) {
+			return "", nil
+		} else if err != nil {
+			return "", err
 		}
 		st, err := store.OpenShared(ctx, p)
 		if err != nil {

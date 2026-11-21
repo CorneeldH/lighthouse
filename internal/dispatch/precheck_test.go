@@ -135,6 +135,36 @@ func TestTickStateRoundTrip(t *testing.T) {
 	}
 }
 
+// The To do marks survive a save and a load next to the fingerprint, and a later
+// SaveTickState leaves them alone: the precheck saves them on its own, also when the tick was
+// not due. Dropping the todo case in LoadTickState turns this red.
+func TestToDoMarksRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.OpenShared(ctx, filepath.Join(t.TempDir(), "l.db"))
+	if err != nil {
+		t.Fatalf("OpenShared: %v", err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	at := time.Date(2026, 10, 31, 12, 0, 0, 0, time.FixedZone("CET", 3600))
+	marks := map[int]ToDoMark{7: {IssueUpdatedAt: at, OwnParked: true}, 8: {IssueUpdatedAt: at.Add(time.Hour)}}
+	if err := SaveToDo(ctx, st.DB, "o/r", marks, at); err != nil {
+		t.Fatalf("SaveToDo: %v", err)
+	}
+	if err := SaveTickState(ctx, st.DB, "o/r", TickState{Fingerprint: "abc", FullAt: at}, at); err != nil {
+		t.Fatalf("SaveTickState: %v", err)
+	}
+	got, err := LoadTickState(ctx, st.DB, "o/r")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got.Fingerprint != "abc" || !SameToDo(got.ToDo, marks) {
+		t.Errorf("Load = %+v, want fingerprint abc and marks %+v", got, marks)
+	}
+	if other, _ := LoadTickState(ctx, st.DB, "o/s"); other.ToDo != nil {
+		t.Errorf("marks of o/s = %+v, want none", other.ToDo)
+	}
+}
+
 func TestBoundariesIncludeMarkerReset(t *testing.T) {
 	d := hostconfig.Dispatch{Night: "21:00-08:00", MaxRuntime: 8 * time.Hour, MaxWait: time.Hour}
 	now := time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC)
