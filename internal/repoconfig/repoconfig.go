@@ -368,7 +368,7 @@ func Dispatchable(r Repo) error {
 				add("forge.board.status_field_id is empty")
 			}
 		}
-		for _, name := range []string{"Controller", "On hold"} {
+		for _, name := range []string{"Controller"} {
 			if b.StatusOptions[name] == "" {
 				add("missing forge.board.status_options.%s", name)
 			}
