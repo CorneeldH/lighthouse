@@ -187,4 +187,82 @@ describe('PrioritiesTab', () => {
       expect((await screen.findByRole('button', { name: 'a/x' })).getAttribute('aria-pressed')).toBe('true')
     })
   })
+
+  describe('priority switch', () => {
+    // Computed order: Beta (0 open) before Alpha (2 open); the ranks put Alpha first.
+    const RANKED = {
+      repos: [
+        {
+          slug: 'a/x',
+          issues: PRIORITIES.repos[0].issues,
+          milestones: [
+            { number: 1, title: 'Alpha', description: 'Priority: 1', done: 0, open: 2 },
+            { number: 2, title: 'Beta', description: 'Priority: 2', done: 1, open: 0 },
+          ],
+        },
+      ],
+      runs: [],
+    }
+    const order = () => screen.getAllByTestId(/^ms-/).map((e) => e.getAttribute('data-testid'))
+
+    it('shows the switch only in the milestones view, Berekend by default', async () => {
+      stub(() => json(RANKED))
+      renderTab()
+      await screen.findByTestId('view-deps')
+      expect(screen.queryByRole('button', { name: 'Prioriteit' })).toBeNull()
+      fireEvent.click(screen.getByRole('button', { name: /^Milestones/ }))
+      expect(screen.getByRole('button', { name: 'Berekend' }).getAttribute('aria-pressed')).toBe('true')
+      expect(screen.getByRole('button', { name: 'Prioriteit' }).getAttribute('aria-pressed')).toBe('false')
+      expect(order()).toEqual(['ms-a/x#m2', 'ms-a/x#m1'])
+    })
+
+    it('Prioriteit reorders the list and survives a remount through the prefs', async () => {
+      stub(() => json(RANKED))
+      renderTab()
+      await screen.findByTestId('view-deps')
+      fireEvent.click(screen.getByRole('button', { name: /^Milestones/ }))
+      fireEvent.click(screen.getByRole('button', { name: 'Prioriteit' }))
+      expect(screen.getByRole('button', { name: 'Prioriteit' }).getAttribute('aria-pressed')).toBe('true')
+      expect(order()).toEqual(['ms-a/x#m1', 'ms-a/x#m2'])
+      expect(JSON.parse(localStorage.getItem('lighthouse.priorities') as string).msOrder).toBe('priority')
+      cleanup()
+      renderTab()
+      expect((await screen.findByRole('button', { name: 'Prioriteit' })).getAttribute('aria-pressed')).toBe('true')
+      expect(order()).toEqual(['ms-a/x#m1', 'ms-a/x#m2'])
+    })
+
+    it('a click posts the planned swap, and a 409 shows the conflict text', async () => {
+      localStorage.setItem('lighthouse.priorities', JSON.stringify({ view: 'milestones', repos: null, msOrder: 'priority' }))
+      const posts: Array<{ body: unknown; resolve: (r: Response) => void }> = []
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+          if (url === '/api/priorities') return json(RANKED)
+          if (url === '/api/priorities/milestone-ranks' && init?.method === 'POST') {
+            return new Promise<Response>((resolve) => posts.push({ body: JSON.parse(init.body as string), resolve }))
+          }
+          return new Promise<Response>(() => {})
+        }),
+      )
+      const client = renderTab()
+      const beta = await screen.findByTestId('ms-a/x#m2')
+      fireEvent.click(within(beta).getByRole('button', { name: 'Omhoog' }))
+      await waitFor(() => expect(posts).toHaveLength(1))
+      expect(posts[0].body).toEqual({
+        repo: 'a/x',
+        changes: [
+          { number: 2, from: 2, to: 1 },
+          { number: 1, from: 1, to: 2 },
+        ],
+      })
+      // Optimistic: Beta is on top while the request runs, and its buttons are off.
+      expect(order()).toEqual(['ms-a/x#m2', 'ms-a/x#m1'])
+      expect((within(screen.getByTestId('ms-a/x#m2')).getByRole('button', { name: 'Omlaag' }) as HTMLButtonElement).disabled).toBe(true)
+      posts[0].resolve(await json({ detail: 'rank changed' }, 409))
+      const alert = await screen.findByRole('alert')
+      expect(alert.textContent).toBe('De volgorde is net ergens anders veranderd; de lijst is ververst.')
+      await waitFor(() => expect(order()).toEqual(['ms-a/x#m1', 'ms-a/x#m2']))
+      client.clear()
+    })
+  })
 })

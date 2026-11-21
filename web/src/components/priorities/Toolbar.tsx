@@ -15,6 +15,8 @@ interface ToolbarProps {
   selected: Set<string>
   onToggleRepo: (slug: string) => void
   legend: LegendItem[]
+  msOrder: 'computed' | 'priority'
+  onMsOrder: (o: 'computed' | 'priority') => void
 }
 
 const VIEWS: Array<{ id: ViewId; label: string }> = [
@@ -23,7 +25,22 @@ const VIEWS: Array<{ id: ViewId; label: string }> = [
   { id: 'unassigned', label: 'Without milestone' },
 ]
 
-export function Toolbar({ view, onView, counts, repos, selected, onToggleRepo, legend }: ToolbarProps): JSX.Element {
+const ORDERS: Array<{ id: 'computed' | 'priority'; label: string }> = [
+  { id: 'computed', label: 'Berekend' },
+  { id: 'priority', label: 'Prioriteit' },
+]
+
+export function Toolbar({
+  view,
+  onView,
+  counts,
+  repos,
+  selected,
+  onToggleRepo,
+  legend,
+  msOrder,
+  onMsOrder,
+}: ToolbarProps): JSX.Element {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-4">
@@ -43,6 +60,24 @@ export function Toolbar({ view, onView, counts, repos, selected, onToggleRepo, l
             )
           })}
         </div>
+        {view === 'milestones' && (
+          <div role="group" aria-label="Volgorde" className="inline-flex overflow-hidden rounded-md border border-lh-navy">
+            {ORDERS.map((o) => {
+              const on = o.id === msOrder
+              return (
+                <button
+                  key={o.id}
+                  type="button"
+                  aria-pressed={on}
+                  className={`px-3 py-1 text-sm font-medium ${on ? 'bg-lh-navy text-white' : 'bg-card text-foreground hover:bg-muted'}`}
+                  onClick={() => onMsOrder(o.id)}
+                >
+                  {o.label}
+                </button>
+              )
+            })}
+          </div>
+        )}
         <div role="group" aria-label="Repos" className="flex flex-wrap gap-2">
           {repos.map((slug) => {
             const on = selected.has(slug)
