@@ -379,7 +379,8 @@ wordt niets geschreven) en meet op die ref.
   `recovered` (minstens een item) of `none`. Een rij die `recovered` of `none` is blijft zo; een
   `open`-rij wordt bij elke run vervangen, ook buiten `--days`, zodat hij sluit zodra zijn venster
   voorbij is.
-- **Traject.** Het issuenummer komt uit de branchnaam `issue-<nr>-...` van de PR; een PR zonder
+- **Traject.** Het issuenummer komt uit de branchnaam `issue-<nr>-...` van de PR (een PR met een
+  bestaande `open`-rij houdt het issue van die rij); een PR zonder
   zo'n branch wordt overgeslagen met reden `no_issue_branch`. Elke overgeslagen PR staat met reden in
   de uitvoer; de exitcode blijft 0. De uitvoer is `#<pr> <status> <n> items, <m> fix-pr rounds` per
   gemeten PR en `#<pr> skipped: <reason>` per overgeslagen PR.
