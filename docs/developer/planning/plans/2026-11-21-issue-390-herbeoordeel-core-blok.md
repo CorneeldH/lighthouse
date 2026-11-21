@@ -37,12 +37,12 @@
 - Create: `docs/developer/planning/specs/2026-11-21-issue-390-beoordelingstabel.md`
 
 **Interfaces:**
-- Produces: een tabel met kolommen `Blok | Regel (eerste woorden) | Uitkomst | Toetssteen (a/b/c/geen) | Nadruk | Reden (één zin) | Bewijs`, één rij per regel van `pack/core/instructions/AGENTS.md:3-13`, de 15 skillregels (mag als één groep met één reden per skill die de catalogus al beschrijft, maar dan expliciet), `pack/go` (3 regels), `pack/python` (4), `pack/shell` (2), `pack/node` (1). Taak 2 en 3 lezen alleen deze tabel.
+- Produces: een tabel met kolommen `Blok | Regel (eerste woorden) | Uitkomst | Toetssteen (a/b/c/geen) | Nadruk | Reden (één zin) | Bewijs`, één rij per regel van `pack/core/instructions/AGENTS.md:3-13` (11 regels), de 15 skillregels (mag als één groep met één reden per skill die de catalogus al beschrijft, maar dan expliciet), `pack/go` (3 regels), `pack/python` (4), `pack/shell` (2), `pack/node` (1). Taak 2 en 3 lezen alleen deze tabel.
 
-- [ ] **Step 1: Bepaal per regel de toetssteen.** Voor (a): open de hook onder `pack/core/hooks/` (`main-commit-gate`, `commit-test-gate`, `pr-create-gate`, `worktree-check`) en `pack/go|python|shell|node/hooks/` en citeer de meldingstekst die de regel al draagt. Voor (b): noem het feit (pad, pin, label, configsleutel). Voor (c): zoek bewijs met `lighthouse forge issue list --state all --search "<term>"` en `git log --oneline --grep '<term>'`; een regel zonder vindbaar bewijs krijgt toetssteen `geen` en dus `schrappen` of `inkorten`.
+- [ ] **Step 1: Bepaal per regel de toetssteen.** Voor (a): open de hookmeldingen in Go, `internal/hooks/<naam>.go` (`maincommitgate.go`, `committestgate.go`, `prcreategate.go`, `worktreecheck.go`; `pack/core/hooks/` heeft alleen `run.sh`, `hooks.json` en `blocking`) voor `main-commit-gate`, `commit-test-gate`, `pr-create-gate`, `worktree-check`) en `pack/go|python|shell|node/hooks/` en citeer de meldingstekst die de regel al draagt. Voor (b): noem het feit (pad, pin, label, configsleutel). Voor (c): zoek bewijs met `lighthouse forge issue list --state all --field …`/JSON lokaal gefilterd met `jq` of `grep` op titel en body (de opdracht kent geen `--search`), met `git log --oneline --grep '<term>'`, en met de docstrings in `tests/test_instruction_files.py` (noemen o.a. #22, #274, ontwerpkeuze 19); een mislukte zoekopdracht is `kon niet controleren`, nooit `geen`; een regel zonder vindbaar bewijs krijgt toetssteen `geen` en dus `schrappen` of `inkorten`.
 - [ ] **Step 2: Vul de kolom `Nadruk`** met elke vette, hoofdletter- of "never/always"-formulering van de regel en of bewijs (c) ze rechtvaardigt; zonder (c) staat de uitkomst op `inkorten` of de nadruk gaat eruit.
 - [ ] **Step 3: Schrijf het document** met bovenaan de voor-meting (`wc -w AGENTS.md CLAUDE.md` en de vijf bronblokken, uitvoer erbij) en onderaan een lege sectie `## Na-meting` die taak 4 vult. Relatieve links naar de bronbestanden; `md-link-check` blokkeert absolute.
-- [ ] **Step 4: Verifieer** — `grep -c '^| ' docs/developer/planning/specs/2026-11-21-issue-390-beoordelingstabel.md` is gelijk aan 1 kopregel + 1 scheiding + het aantal regels (13 core + skillgroep(en) + 3 + 4 + 2 + 1 = ten minste 23 rijen); `grep -E 'houden|inkorten|verplaatsen|schrappen'` geeft op elke rij een uitkomst; geen rij met lege Reden.
+- [ ] **Step 4: Verifieer** — `grep -c '^| ' docs/developer/planning/specs/2026-11-21-issue-390-beoordelingstabel.md` is gelijk aan 1 kopregel + 1 scheiding + het aantal regels (11 core + skillgroep(en) + 3 + 4 + 2 + 1 = ten minste 21 rijen; `grep -c '^| '` telt kopregel en scheiding mee, en de scheidingsrij `|---|` begint ook met `|`, controleer dat met `grep -c '^|-'`); `grep -E 'houden|inkorten|verplaatsen|schrappen'` geeft op elke rij een uitkomst; geen rij met lege Reden.
 - [ ] **Step 5: Commit**
 
 ```bash
@@ -66,26 +66,28 @@ git commit -m "docs(planning): beoordelingstabel core-blok en packinstructies (#
 - [ ] **Step 4: Commit** (één commit per logische groep: core, daarna de packs)
 
 ```bash
-git add pack/core pack/go pack/python pack/shell pack/node
-git commit -m "refactor(pack): core-blok en packinstructies ingekort volgens de beoordelingstabel (#390)"
+git add pack/core
+git commit -m "refactor(pack): core-blok ingekort volgens de beoordelingstabel (#390)"
+git add pack/go pack/python pack/shell pack/node
+git commit -m "refactor(pack): packinstructies ingekort volgens de beoordelingstabel (#390)"
 ```
 
 ### Taak 3: Tests en plafonds bijstellen
 
 **Files:**
-- Modify: `internal/packs/budget_test.go:19,22`; `internal/packcontract/upgrade_test.go:211-212`; `tests/pack/go/test_go_pack.py:18-24`; `tests/pack/python/test_python_pack.py:20-33`; `tests/pack/shell/test_shell_gates.py:143-148`; `tests/pack/node/test_node_pack.py:26`
+- Modify: `internal/packs/budget_test.go:19,22`; `internal/packcontract/upgrade_test.go:211-212`; `tests/pack/go/test_go_pack.py:18-24`; `tests/pack/python/test_python_pack.py:20-33`; `tests/pack/shell/test_shell_gates.py:143-148`; `tests/pack/node/test_node_pack.py:26`; `tests/test_instruction_files.py:28-96` (plafond 365 en de vastgepinde zinnen van core regel 11-13, `.claude/worktrees/` in root-`AGENTS.md`, elke core-skill als `/lighthouse-<skill>`)
 
 **Interfaces:**
 - Consumes: de bronblokken uit taak 2.
 
-- [ ] **Step 1: Draai de pinnende tests** — `go test ./internal/packs/ ./internal/packcontract/ ./internal/initcmd/ ./internal/checkinstr/` en `uv run pytest -q tests/pack/go tests/pack/python tests/pack/shell tests/pack/node`. Verwacht: alleen tests die een nu geschrapte of herschreven woordsoort pinnen zijn rood.
+- [ ] **Step 1: Draai de pinnende tests** — `go test ./internal/packs/ ./internal/packcontract/ ./internal/initcmd/ ./internal/checkinstr/` en `uv run pytest -q tests/pack/go tests/pack/python tests/pack/shell tests/pack/node tests/test_instruction_files.py`. Verwacht: alleen tests die een nu geschrapte of herschreven woordsoort pinnen zijn rood.
 - [ ] **Step 2: Per rode test beslissen** — komt het vastgepinde woord nog voor in een behouden regel, herstel dan de tekst; is de regel bewust weg, pas dan de test aan (verwijder alleen de needle, niet de test) en zeg de reden in de commit. Elke aanpassing volgt `/lighthouse-test-standard`: de test blijft falen als het gedrag breekt dat hij bewaakt.
-- [ ] **Step 3: Zak de plafonds** in `blockCeilings` en `blocksCeiling` naar de nieuwe tellingen (hooguit enkele woorden marge, geen ruime buffer); bij een bewust verlaagd plafond de `#390`-regel in het commentaar bij `internal/packs/budget_test.go:16-18` bijwerken.
+- [ ] **Step 3: Zak de plafonds** in `blockCeilings` en `blocksCeiling`, en de 365 in `test_core_block_word_budget` (`tests/test_instruction_files.py:33`), naar de nieuwe tellingen (hooguit enkele woorden marge, geen ruime buffer); bij een bewust verlaagd plafond de `#390`-regel in het commentaar bij `internal/packs/budget_test.go:16-18` bijwerken.
 - [ ] **Step 4: Verifieer** — dezelfde twee commando's als stap 1 zijn groen; `go test ./internal/packs/ -run TestInstructionBlocksWithinCeiling -v` toont de nieuwe tellingen.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add internal/packs internal/packcontract tests/pack
+git add internal/packs internal/packcontract tests/pack tests/test_instruction_files.py
 git commit -m "test(pack): plafonds en vastgepinde woorden volgen de ingekorte blokken (#390)"
 ```
 
