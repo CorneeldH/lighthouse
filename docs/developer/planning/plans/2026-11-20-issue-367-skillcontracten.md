@@ -203,7 +203,7 @@ Concept:
 - **audit-worktrees: naar Go.** De tabelkop en de KPI-velden komen nu uit een run van de binary. Roep in Go de functie aan die `lighthouse worktree-audit` gebruikt (`internal/worktreeaudit`) op een tijdelijke repo, of lees de kop uit de constante als die geëxporteerd is. De pin blijft: skilltekst gelijk aan de echte uitvoer.
 - **place-instruction: naar Go.**
   - `test_bounding_clause_matches_check_4` roept de check-4-logica aan via `checkinstr.Run` op een tijdelijke boom met twee overlappende beschrijvingen, waarvan één de voorgeschreven vorm draagt.
-  - `test_skill_has_no_python3` is gedekt door de requires-test uit taak 2 (python3 in de tekst vereist een requires-regel). Verifieer met stap f.
+  - `test_skill_has_no_python3`: weg — onderwerp weg (rest gedekt door TestRequiresNamesTheSkillPerTool). Verifieer met stap f.
 
 ### Taak 6: `test_adversarial_review_skills.py` (41 tests)
 
