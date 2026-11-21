@@ -1622,3 +1622,30 @@ func TestRemoveEmptyParents(t *testing.T) {
 		t.Error(".lighthouse was removed")
 	}
 }
+
+// A GitLab repo does not run the GitHub workflows, so init writes none there.
+func TestInitWritesWorkflowsOnlyOnGitHub(t *testing.T) {
+	cases := []struct {
+		name, config string
+		want         bool
+	}{
+		{"github", "[forge]\nkind = \"github\"\nrepo = \"o/r\"\n", true},
+		{"gitlab", "[forge]\nkind = \"gitlab\"\nrepo = \"o/r\"\n", false},
+		{"unknown", "", true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			root := newRepo(t)
+			if c.config != "" {
+				write(t, root, "lighthouse.toml", c.config)
+			}
+			mods := all(withWorkflow("runs-on: @@ci.runs_on@@\n"), stubLookup(map[string]string{"ci.runs_on": "ubuntu-latest"}))
+			if r := run(t, root, "", all(yes, mods)); r.code != 0 {
+				t.Fatalf("rc %d\n%s", r.code, r.err)
+			}
+			if got := exists(root, ".github/workflows/lighthouse-x.yml"); got != c.want {
+				t.Fatalf("workflow written = %v, want %v", got, c.want)
+			}
+		})
+	}
+}

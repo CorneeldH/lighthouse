@@ -464,6 +464,56 @@ func (c *GitHub) Labels(ctx context.Context) ([]string, error) {
 	return out, nil
 }
 
+// CreateLabel creates the label name with color (six hex digits). A label that exists already
+// is no error. A 409, or a 422 after which Labels lists the name (case-insensitive), counts as
+// existing; any other 422 is a refusal and comes back as the error. httpStatusError carries no
+// errors[].code, so the listing is the proof.
+func (c *GitHub) CreateLabel(ctx context.Context, name, color string) error {
+	if err := c.configured(); err != nil {
+		return err
+	}
+	_, err := c.do(ctx, http.MethodPost, c.repoURL("/labels"), map[string]any{"name": name, "color": color}, nil)
+	var se *httpStatusError
+	if err == nil || !errors.As(err, &se) {
+		return err
+	}
+	switch se.Code {
+	case http.StatusConflict:
+		return nil
+	case http.StatusUnprocessableEntity:
+		names, lerr := c.Labels(ctx)
+		if lerr != nil {
+			return err
+		}
+		if slices.ContainsFunc(names, func(n string) bool { return strings.EqualFold(n, name) }) {
+			return nil
+		}
+	}
+	return err
+}
+
+// CommitKnown reports whether GitHub knows the commit sha. A 404 or 422 (an unknown or
+// malformed sha) is false, nil.
+func (c *GitHub) CommitKnown(ctx context.Context, sha string) (bool, error) {
+	if err := c.configured(); err != nil {
+		return false, err
+	}
+	_, err := c.do(ctx, http.MethodGet, c.repoURL("/commits/"+neturl.PathEscape(sha)), nil, nil)
+	return commitKnown(err)
+}
+
+// commitKnown maps the error of a commit lookup: none is true, a 404 or 422 is false, nil.
+func commitKnown(err error) (bool, error) {
+	if err == nil {
+		return true, nil
+	}
+	var se *httpStatusError
+	if errors.As(err, &se) && (se.Code == http.StatusNotFound || se.Code == http.StatusUnprocessableEntity) {
+		return false, nil
+	}
+	return false, err
+}
+
 // AddBlocker makes issue blocker block issue number. GitHub wants the database id of the
 // blocker, not its number, as a JSON number.
 func (c *GitHub) AddBlocker(ctx context.Context, number, blocker int) error {

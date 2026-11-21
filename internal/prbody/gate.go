@@ -83,7 +83,7 @@ func forgeIssue(gh func(context.Context, ...string) (string, int, error), getenv
 		}
 		cfg := forge.Config{Kind: repo.Kind, Repo: repo.Slug, Host: repo.Host, Token: token}
 		if repo.Kind == "" || repo.Kind == "github" {
-			cfg.BaseURL = loopbackAPIURL(getenv(GitHubAPIURLEnv))
+			cfg.BaseURL = LoopbackAPIURL(getenv(GitHubAPIURLEnv))
 			cfg.Cache, cfg.CacheLog = cache.Store(), os.Stderr
 		}
 		f, err := forge.Open(cfg)
@@ -95,9 +95,9 @@ func forgeIssue(gh func(context.Context, ...string) (string, int, error), getenv
 	}
 }
 
-// loopbackAPIURL is v when it is an http(s) URL on a loopback host, "" otherwise: a value that
+// LoopbackAPIURL is v when it is an http(s) URL on a loopback host, "" otherwise: a value that
 // points elsewhere is ignored and the real GitHub API is used, so the token never leaves for it.
-func loopbackAPIURL(v string) string {
+func LoopbackAPIURL(v string) string {
 	u, err := url.Parse(v)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
 		return ""

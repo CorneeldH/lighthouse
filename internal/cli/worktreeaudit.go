@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -9,13 +10,40 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/CorneeldH/lighthouse/internal/config"
+	"github.com/CorneeldH/lighthouse/internal/forge"
+	"github.com/CorneeldH/lighthouse/internal/prbody"
 	"github.com/CorneeldH/lighthouse/internal/procrun"
+	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/worktreeaudit"
 )
 
 func defaultWorktreeAuditEnv() worktreeaudit.Env {
+	o := newForgeOpener(os.Getenv, prbody.LoopbackAPIURL(os.Getenv(prbody.GitHubAPIURLEnv)))
+	o.ghToken = ghAuthToken
+	return worktreeAuditEnvWith(o)
+}
+
+// worktreeAuditEnvWith is the environment of worktree-audit with o as the opener of the forge.
+// The repo is the one of the lighthouse.toml that config.Path names (LIGHTHOUSE_TOML is honoured);
+// git runs for real.
+func worktreeAuditEnvWith(o *forgeOpener) worktreeaudit.Env {
 	return worktreeaudit.Env{
-		Run: procrun.Exec(worktreeaudit.GHTimeout),
+		Run: procrun.Exec(worktreeaudit.GitTimeout),
+		Forge: func() (forge.Forge, error) {
+			path, err := config.Path()
+			if err != nil {
+				return nil, err
+			}
+			repo, err := repoconfig.LoadFile(path)
+			if err != nil {
+				return nil, err
+			}
+			rf, err := o.forRepo(context.Background(), repo)
+			if err != nil {
+				return nil, err
+			}
+			return rf.Forge, nil
+		},
 		Config: func() (*config.Config, error) {
 			path, err := config.Path()
 			if err != nil {
@@ -43,7 +71,7 @@ func ownCwd() (string, error) {
 }
 
 // newWorktreeAuditCommand is `lighthouse worktree-audit`, the port of worktree_audit.py. env starts
-// git and gh, reads the config and measures pids; a test hands in a replay.
+// git, opens the forge, reads the config and measures pids; a test hands in a replay.
 func newWorktreeAuditCommand(env worktreeaudit.Env) *cobra.Command {
 	var cleanup, sessions, origin, kpi bool
 	var only, issue, repo string

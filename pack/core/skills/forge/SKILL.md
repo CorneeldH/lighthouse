@@ -28,7 +28,7 @@ From another installed skill the path is `../lighthouse-forge/<kind>.md`, the sa
 - **`lighthouse forge`** covers what both forges do the same: `issue view|list|search|create|edit|comment`,
   `issue blockers`, `issue block <nr> --by <blocker>`, `issue status <nr>` (read) and `issue status <nr> <status>`,
   `pr create|view|comment|checks` (a merge request on GitLab; `pr view --comments` adds the comments, `pr checks --failed-log` the log of the failed jobs), `milestone list|view|create|edit` (by title),
-  `label list`. One JSON shape on both forges; `--field <path>` prints one value of a read
+  `label list|create <name> --color <hex>`. One JSON shape on both forges; `--field <path>` prints one value of a read
   command. Exit 0 is done, 1 a forge error with the API's message, 2 a usage error or missing
   config.
 - **The references** carry only what differs: the board's status field, the tier limits of

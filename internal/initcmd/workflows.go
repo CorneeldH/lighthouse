@@ -12,6 +12,22 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/projectconfig"
 )
 
+// dropWorkflows leaves the GitHub workflow units out when the forge is GitLab: a GitLab
+// repo does not run them. Any other kind, and an unknown one (""), keeps them.
+func dropWorkflows(desired []packs.Unit, kind string) []packs.Unit {
+	if kind != "gitlab" {
+		return desired
+	}
+	out := desired[:0:0]
+	for _, u := range desired {
+		if u.Kind == packs.KindFile && strings.HasPrefix(u.Path, packs.WorkflowPrefix) {
+			continue
+		}
+		out = append(out, u)
+	}
+	return out
+}
+
 // fillWorkflows fills the @@<key>@@ placeholders of every workflow unit (plan M0 (b),
 // design choice 13). A workflow that cannot be filled (a key not set, a
 // config that cannot be read) is reported, never fatal: a new one is left out, and one

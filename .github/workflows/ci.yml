@@ -3,10 +3,17 @@
 # Python as a matrix of three parts of the pytest suite (tests/conftest.py). Everything runs on
 # Linux; macOS runs in macos.yml, as the gate before the release (#337). A `binary` job builds the
 # SPA itself, embeds it in the Go binary and smoke-tests it, next to web instead of after it.
+# A manual run (workflow_dispatch) turns every domain on, for the baseline measurement (#360).
 name: ci
 
 on:
   pull_request:
+  workflow_dispatch:
+    inputs:
+      all-domains:
+        type: boolean
+        default: true
+        description: Run every domain (web, python, go), not only the changed ones.
 
 permissions:
   contents: read
@@ -34,10 +41,18 @@ jobs:
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.event.pull_request.head.sha }}
-        run: git diff -z --name-only --no-renames "$BASE...$HEAD" | python3 ci/domains.py classify --github-output "$GITHUB_OUTPUT"
+          EVENT: ${{ github.event_name }}
+          ALL: ${{ inputs.all-domains }}
+        run: |
+          if [ "$EVENT" = workflow_dispatch ]; then
+            { echo "web=$ALL"; echo "python=$ALL"; echo "go=$ALL"; } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git diff -z --name-only --no-renames "$BASE...$HEAD" | python3 ci/domains.py classify --github-output "$GITHUB_OUTPUT"
 
   # Every PR carries a changelog fragment, also outside the domains; see docs/releasing.md.
   changelog:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -45,10 +60,14 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
       - env:
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.event.pull_request.head.sha }}
-        run: python3 ci/changelog.py check --base "$BASE" --head "$HEAD"
+        run: go run ./ci/changelog check --base "$BASE" --head "$HEAD"
 
   # Every PR, outside the domains too: a secret can land in any file (#194). The scan
   # covers the commits of the PR, base..head, so a secret added and removed again inside
@@ -74,6 +93,7 @@ jobs:
           tar -xzf "$archive" -C "$RUNNER_TEMP/gitleaks" gitleaks
           echo "$RUNNER_TEMP/gitleaks" >> "$GITHUB_PATH"
       - name: scan the commits of this PR
+        if: github.event_name == 'pull_request'
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.event.pull_request.head.sha }}

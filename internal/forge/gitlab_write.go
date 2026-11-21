@@ -377,6 +377,29 @@ func (g *GitLab) Labels(ctx context.Context) ([]string, error) {
 	return out, nil
 }
 
+// CreateLabel creates the label name; GitLab wants the colour with a leading "#". A 409 means the
+// label exists already and is no error.
+func (g *GitLab) CreateLabel(ctx context.Context, name, color string) error {
+	if err := g.configured(); err != nil {
+		return err
+	}
+	_, err := g.do(ctx, http.MethodPost, g.projectPath("/labels"), nil, map[string]any{"name": name, "color": "#" + color}, nil)
+	var se *httpStatusError
+	if errors.As(err, &se) && se.Code == http.StatusConflict {
+		return nil
+	}
+	return err
+}
+
+// CommitKnown reports whether GitLab knows the commit sha. A 404 or 422 is false, nil.
+func (g *GitLab) CommitKnown(ctx context.Context, sha string) (bool, error) {
+	if err := g.configured(); err != nil {
+		return false, err
+	}
+	_, err := g.do(ctx, http.MethodGet, g.projectPath("/repository/commits/"+neturl.PathEscape(sha)), nil, nil, nil)
+	return commitKnown(err)
+}
+
 // AddBlocker makes issue blocker block issue number: a link on number of type is_blocked_by.
 // A plan without blocking links answers 403, which comes back with GitLab's message.
 func (g *GitLab) AddBlocker(ctx context.Context, number, blocker int) error {

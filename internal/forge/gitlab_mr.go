@@ -6,6 +6,7 @@ import (
 	"net/http"
 	neturl "net/url"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -122,6 +123,71 @@ func (g *GitLab) BranchPRs(ctx context.Context, branch string) ([]PR, error) {
 			m.HeadPipeline = detail.HeadPipeline
 		}
 		out = append(out, mrToPR(m))
+	}
+	return out, nil
+}
+
+// glState is the PR.State of a merge request state.
+func glState(state string) string {
+	switch state {
+	case "merged":
+		return "MERGED"
+	case "closed":
+		return "CLOSED"
+	}
+	return "OPEN" // opened, and locked while it merges
+}
+
+// PullHeads lists every merge request of the project in any state, following every page.
+func (g *GitLab) PullHeads(ctx context.Context) ([]PullHead, error) {
+	mrs, err := g.prs(ctx, neturl.Values{"state": {"all"}})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]PullHead, 0, len(mrs))
+	for _, m := range mrs {
+		h := PullHead{Number: m.IID, State: glState(m.State), HeadRef: m.SourceBranch}
+		if m.MergedAt != nil {
+			h.MergedAt = rfc3339(*m.MergedAt)
+		}
+		out = append(out, h)
+	}
+	return out, nil
+}
+
+// IssueClosingHeads lists the merge requests that close issue number (closed_by) and the ones
+// that only refer to it (related_merge_requests). A merge request in both counts once, as
+// closing. Repo is read from its full reference, group/project!iid.
+func (g *GitLab) IssueClosingHeads(ctx context.Context, number int) ([]ClosingHead, error) {
+	type mr struct {
+		glMR
+		References struct {
+			Full string `json:"full"`
+		} `json:"references"`
+	}
+	type key struct {
+		repo string
+		iid  int
+	}
+	seen := map[key]bool{}
+	out := []ClosingHead{}
+	for _, src := range []struct {
+		path   string
+		closes bool
+	}{{"closed_by", true}, {"related_merge_requests", false}} {
+		mrs, err := getAll[mr](ctx, g, g.projectPath("/issues/"+strconv.Itoa(number)+"/"+src.path), nil)
+		if err != nil {
+			return nil, err
+		}
+		for _, m := range mrs {
+			repo, _, _ := strings.Cut(m.References.Full, "!")
+			if seen[key{repo, m.IID}] {
+				continue
+			}
+			seen[key{repo, m.IID}] = true
+			out = append(out, ClosingHead{HeadRef: m.SourceBranch, Repo: repo, Body: m.Description,
+				Merged: m.State == "merged", Closes: src.closes, CrossRepo: m.SourceProjectID != m.TargetProjectID})
+		}
 	}
 	return out, nil
 }
