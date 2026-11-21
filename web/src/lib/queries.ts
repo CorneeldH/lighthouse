@@ -1,5 +1,5 @@
 import { QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import {
   ApiError,
   fetchCleanup,
@@ -93,6 +93,11 @@ function withRanks(data: PrioritiesData, { repo, changes }: RankVars): Prioritie
   }
 }
 
+// The milestones of the written repo before the optimistic edit, for the rollback on error.
+interface RankSnapshot {
+  milestones: PrioritiesData['repos'][number]['milestones'] | undefined
+}
+
 function rankErrorText(err: unknown): string {
   if (err instanceof ApiError) {
     if (err.status === 409) return RANK_CONFLICT_TEXT
@@ -103,39 +108,65 @@ function rankErrorText(err: unknown): string {
 
 // Writes milestone ranks optimistically. The pending repos are tracked here, not through
 // useMutation().isPending/variables, which only describe the latest call; two repos may be in
-// flight at once. The list is refetched once the last write has settled, so a refetch for one
-// repo never wipes the optimistic ranks of another that is still in flight.
+// flight at once. A repo enters the set synchronously in mutate, so a second click in the same
+// tick is ignored, and leaves it only once its write and the refetch after it have landed.
+// A failed write rolls back its own repo at once from the snapshot; the list is refetched once
+// the last write has settled, so a refetch for one repo never wipes the optimistic ranks of
+// another that is still in flight. A poll that lands in between can still show the old ranks
+// of an in-flight repo for a moment, until the refetch after its write.
 export function useMilestoneRanks() {
   const client = useQueryClient()
+  const pendingRef = useRef(new Set<string>())
   const [pending, setPending] = useState<ReadonlySet<string>>(() => new Set())
   const [error, setError] = useState<string | null>(null)
 
-  const mutation = useMutation({
+  const release = useCallback((repo: string) => {
+    pendingRef.current.delete(repo)
+    setPending(new Set(pendingRef.current))
+  }, [])
+
+  const { mutate: run } = useMutation({
     mutationKey: milestoneRanksKey,
     mutationFn: ({ repo, changes }: RankVars) => saveMilestoneRanks(repo, changes),
-    onMutate: async (vars) => {
-      setPending((s) => new Set(s).add(vars.repo))
+    onMutate: async (vars): Promise<RankSnapshot> => {
       setError(null)
       await client.cancelQueries({ queryKey: queryKeys.priorities })
-      client.setQueryData<PrioritiesData>(queryKeys.priorities, (old) => (old === undefined ? old : withRanks(old, vars)))
+      const before = client.getQueryData<PrioritiesData>(queryKeys.priorities)
+      const milestones = before?.repos.find((r) => r.slug === vars.repo)?.milestones
+      if (before !== undefined) client.setQueryData<PrioritiesData>(queryKeys.priorities, withRanks(before, vars))
+      return { milestones }
     },
-    onError: (err) => {
+    onError: (err, vars, snapshot) => {
       setError(rankErrorText(err))
+      const milestones = snapshot?.milestones
+      if (milestones === undefined) return
+      client.setQueryData<PrioritiesData>(queryKeys.priorities, (old) =>
+        old === undefined
+          ? old
+          : { ...old, repos: old.repos.map((r) => (r.slug === vars.repo ? { ...r, milestones } : r)) },
+      )
     },
     onSettled: async (_data, _err, vars) => {
-      setPending((s) => {
-        const next = new Set(s)
-        next.delete(vars.repo)
-        return next
-      })
-      // This mutation still counts as running here.
-      if (client.isMutating({ mutationKey: milestoneRanksKey }) === 1) {
-        await client.invalidateQueries({ queryKey: queryKeys.priorities })
+      try {
+        // This mutation still counts as running here.
+        if (client.isMutating({ mutationKey: milestoneRanksKey }) === 1) {
+          await client.invalidateQueries({ queryKey: queryKeys.priorities })
+        }
+      } finally {
+        release(vars.repo)
       }
     },
   })
 
-  const { mutate } = mutation
+  const mutate = useCallback(
+    (vars: RankVars) => {
+      if (pendingRef.current.has(vars.repo)) return
+      pendingRef.current.add(vars.repo)
+      setPending(new Set(pendingRef.current))
+      run(vars)
+    },
+    [run],
+  )
   const isPending = useCallback((repo: string) => pending.has(repo), [pending])
   return { mutate, isPending, error }
 }

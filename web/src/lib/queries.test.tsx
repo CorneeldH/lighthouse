@@ -347,4 +347,71 @@ describe('useMilestoneRanks', () => {
     await vi.waitFor(() => expect(gets).toHaveLength(0))
     client.clear()
   })
+  it('rolls back a failed repo at once while another repo is still in flight', async () => {
+    const { gets, posts, fetchMock } = routeFetch()
+    gets.push(() => Promise.resolve(json(prioritiesBody({ 'o/a': 'Priority: 2', 'o/b': 'Priority: 2' }))))
+    const { client, result } = renderRanks()
+    await vi.waitFor(() => expect(result.current.priorities.isSuccess).toBe(true))
+
+    act(() => result.current.ranks.mutate({ repo: 'o/a', changes: [{ number: 6, from: 2, to: 1 }] }))
+    await vi.waitFor(() => expect(posts).toHaveLength(1))
+    act(() => result.current.ranks.mutate({ repo: 'o/b', changes: [{ number: 6, from: 2, to: 1 }] }))
+    await vi.waitFor(() => expect(posts).toHaveLength(2))
+
+    await act(async () => posts[0].resolve(json({ detail: 'rank changed' }, 409)))
+    await vi.waitFor(() => expect(result.current.ranks.error).toBe(RANK_CONFLICT_TEXT))
+
+    // No refetch yet (B still runs), but A is back on the server state and B keeps its edit.
+    expect(fetchMock.mock.calls.filter(([url]) => url === '/api/priorities')).toHaveLength(1)
+    const data = client.getQueryData<PrioritiesData>(queryKeys.priorities)
+    expect(descriptionIn(data, 'o/a')).toBe('Priority: 2')
+    expect(descriptionIn(data, 'o/b')).toBe('Priority: 1')
+    expect(result.current.ranks.isPending('o/b')).toBe(true)
+
+    gets.push(() => Promise.resolve(json(prioritiesBody({ 'o/a': 'Priority: 2', 'o/b': 'Priority: 1' }))))
+    await act(async () => posts[1].resolve(json({ written: [6] })))
+    await vi.waitFor(() => expect(result.current.ranks.isPending('o/b')).toBe(false))
+    client.clear()
+  })
+
+  it('keeps a repo pending until the refetch after its write has landed', async () => {
+    const { gets, posts } = routeFetch()
+    gets.push(() => Promise.resolve(json(prioritiesBody({ 'o/r': 'Priority: 2' }))))
+    const { client, result } = renderRanks()
+    await vi.waitFor(() => expect(result.current.priorities.isSuccess).toBe(true))
+
+    act(() => result.current.ranks.mutate({ repo: 'o/r', changes: [{ number: 6, from: 2, to: 1 }] }))
+    await vi.waitFor(() => expect(posts).toHaveLength(1))
+    let finishRefetch: (r: Response) => void = () => {}
+    gets.push(() => new Promise<Response>((resolve) => (finishRefetch = resolve)))
+    await act(async () => posts[0].resolve(json({ written: [6] })))
+    await vi.waitFor(() => expect(gets).toHaveLength(0))
+    await act(() => new Promise((resolve) => setTimeout(resolve, 20)))
+    expect(result.current.ranks.isPending('o/r')).toBe(true)
+
+    await act(async () => finishRefetch(json(prioritiesBody({ 'o/r': 'Priority: 1' }))))
+    await vi.waitFor(() => expect(result.current.ranks.isPending('o/r')).toBe(false))
+    client.clear()
+  })
+
+  it('ignores a second click on the same repo in the same tick', async () => {
+    const { gets, posts, fetchMock } = routeFetch()
+    gets.push(() => Promise.resolve(json(prioritiesBody({ 'o/r': 'Priority: 2' }))))
+    const { client, result } = renderRanks()
+    await vi.waitFor(() => expect(result.current.priorities.isSuccess).toBe(true))
+
+    act(() => {
+      result.current.ranks.mutate({ repo: 'o/r', changes: [{ number: 6, from: 2, to: 1 }] })
+      result.current.ranks.mutate({ repo: 'o/r', changes: [{ number: 6, from: 2, to: 3 }] })
+    })
+    await vi.waitFor(() => expect(posts).toHaveLength(1))
+    await act(() => new Promise((resolve) => setTimeout(resolve, 20)))
+    expect(fetchMock.mock.calls.filter(([url]) => url === '/api/priorities/milestone-ranks')).toHaveLength(1)
+    expect(descriptionIn(client.getQueryData(queryKeys.priorities), 'o/r')).toBe('Priority: 1')
+
+    gets.push(() => Promise.resolve(json(prioritiesBody({ 'o/r': 'Priority: 1' }))))
+    await act(async () => posts[0].resolve(json({ written: [6] })))
+    await vi.waitFor(() => expect(result.current.ranks.isPending('o/r')).toBe(false))
+    client.clear()
+  })
 })
