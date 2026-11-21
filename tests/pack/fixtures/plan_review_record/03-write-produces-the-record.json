@@ -99,7 +99,7 @@
           "level": "high",
           "rounds": 2,
           "outcome": "converged",
-          "schema_version": 5,
+          "schema_version": 6,
           "round_kinds": [
             "review",
             "verify"
@@ -129,7 +129,8 @@
             }
           ],
           "last_round_open": [],
-          "issue_spec": null
+          "issue_spec": null,
+          "trajectory": null
         }
       }
     }
