@@ -28,7 +28,7 @@ import (
 // runShTools is what run.sh and the fakes call (the dirname, setsid and git of run.sh included).
 var runShTools = []string{
 	"sh", "git", "grep", "sed", "awk", "cat", "mkdir", "rmdir", "rm", "mv", "find", "touch",
-	"date", "mktemp", "sleep", "chmod", "dirname", "head", "env", "tr", "nohup", "setsid",
+	"date", "mktemp", "sleep", "chmod", "dirname", "head", "nohup", "setsid",
 }
 
 const fakeGo = `#!/bin/sh
@@ -529,6 +529,9 @@ func TestRunShBuildsOnceAndNeverWaits(t *testing.T) {
 		{"nohup without setsid", runShOpts{noSetsid: true}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			if _, err := exec.LookPath("setsid"); err != nil && !tc.opts.noSetsid {
+				t.Skip("no setsid on this host: the build would detach with nohup")
+			}
 			r := newRunShRepo(t, tc.opts)
 			if _, err := os.Lstat(filepath.Join(r.pathDir, "setsid")); tc.opts.noSetsid && err == nil {
 				t.Fatal("setsid is on the PATH")
@@ -761,6 +764,7 @@ func TestRunShMissingToolStillBlocksABlockingHook(t *testing.T) {
 		drop string
 	}{
 		{"no grep", runShOpts{version: releaseVersion, noLH: true}, "grep"},
+		// Only protects against a dirname that is needed again and fails open: run.sh itself uses none.
 		{"no dirname", runShOpts{version: releaseVersion, noLH: true}, "dirname"},
 		{"an empty PATH", runShOpts{version: releaseVersion, noLH: true, emptyTools: true}, ""},
 		{"no list of blocking hooks", runShOpts{version: releaseVersion, noLH: true}, "blocking"},
@@ -807,19 +811,27 @@ func TestRunShInstalledFindsItsRootWithoutEnv(t *testing.T) {
 	}
 }
 
-// shellcheck is skipped when it is not installed. A CI run installs it.
+// The pinned shellcheck of the shell package, else the one on the PATH; skipped when neither
+// exists. A CI run installs it.
 func TestRunShShellcheckClean(t *testing.T) {
-	shellcheck, err := exec.LookPath("shellcheck")
-	if err != nil {
-		lib, _ := filepath.Abs(filepath.Join("..", "pack", "shell", "scripts", "lib", "shellcheck-bin.sh"))
-		out, perr := exec.Command("bash", "-c", `. "`+lib+`"`+"\nresolve_shellcheck\n").Output()
-		if perr != nil || strings.TrimSpace(string(out)) == "" {
-			t.Skip("shellcheck not installed")
-		}
+	lib, _ := filepath.Abs(filepath.Join("..", "pack", "shell", "scripts", "lib", "shellcheck-bin.sh"))
+	resolve := exec.Command("bash", "-c", `. "`+lib+`"`+"\nresolve_shellcheck\n")
+	resolve.Env = cleanEnv()
+	shellcheck := ""
+	if out, err := resolve.Output(); err == nil {
 		shellcheck = strings.TrimSpace(string(out))
 	}
+	if shellcheck == "" {
+		found, err := exec.LookPath("shellcheck")
+		if err != nil {
+			t.Skip("shellcheck not installed")
+		}
+		shellcheck = found
+	}
 	runSh, _ := filepath.Abs(filepath.Join("..", "pack", "core", "hooks", "run.sh"))
-	out, err := exec.Command(shellcheck, "-s", "sh", "-S", "style", runSh).CombinedOutput()
+	check := exec.Command(shellcheck, "-s", "sh", "-S", "style", runSh)
+	check.Env = cleanEnv()
+	out, err := check.CombinedOutput()
 	if err != nil {
 		t.Errorf("shellcheck run.sh: %v\n%s", err, out)
 	}
