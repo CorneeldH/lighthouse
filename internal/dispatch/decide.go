@@ -1770,6 +1770,9 @@ func (c issueCtx) handoff() (planned, bool) {
 		a.Blockers = c.activeBlockers()
 		return planned{Action: a}, true
 	}
+	if Executing(j.Command) && c.repeatsHandoff(p) {
+		return c.returned("reason_repeat_handoff", ""), true
+	}
 	if j.Verdict == VerdictPush {
 		return c.push(p, ho, pushKey), true
 	}
@@ -1780,6 +1783,27 @@ func (c issueCtx) handoff() (planned, bool) {
 	a := c.fresh(triggerHandoff, key, j.Command, branch)
 	a.CommentID, a.Native, a.Skip = p.Comment.ID, j.Native, skip
 	return c.planned(a, p.Time), true
+}
+
+// repeatsHandoff reports whether the handoff p is the previous Handoff again, word for word,
+// while that one's run has already ended: a run that waits for something the tick cannot see
+// (a PR of another issue, without a blocked_by relation) writes the same handoff and, started
+// again, writes it once more. A run that made progress writes another State or Context, so the
+// text differs.
+func (c issueCtx) repeatsHandoff(p *parsed) bool {
+	var prev *parsed
+	for i := range c.hs {
+		if c.hs[i].Comment.ID == p.Comment.ID {
+			break
+		}
+		if c.hs[i].Header.Kind == protocol.KindHandoff {
+			prev = &c.hs[i]
+		}
+	}
+	if prev == nil || prev.Comment.Body != p.Comment.Body {
+		return false
+	}
+	return c.spent(triggerHandoff + ":" + strconv.FormatInt(prev.Comment.ID, 10))
 }
 
 // awaitsPR reports whether an end-of-chain handoff posted at t leaves the end to a PR: an open

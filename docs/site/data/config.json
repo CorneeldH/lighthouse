@@ -610,6 +610,7 @@
                 "pack/core/skills/forge",
                 "pack/core/skills/route-issue",
                 "pack/core/skills/start-issue",
+                "pack/core/skills/write-handoff",
                 "pack/core/skills/write-issue",
                 "pack/core/workflows/unblock-dependents.yml"
               ]
