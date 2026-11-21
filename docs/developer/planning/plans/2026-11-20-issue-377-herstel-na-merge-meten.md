@@ -17,11 +17,13 @@ Dit plan beslist wat het issue openlaat:
 - **Toegang: lokale git voor commits en bestanden, forge voor issues.** De `Forge`-interface kent geen commits of bestandslijsten; uitbreiden raakt GitHub, GitLab en alle fakes. De meting draait tegen een clone (`--repo-dir`). De squash-merge-commit is de commit op de default branch met `(#<pr>)` aan het eind van het onderwerp (de repo-conventie). Een PR zonder zo'n commit krijgt geen meting maar staat in `Skipped` met reden.
 - **PR → traject via de branchnaam** `issue-<nr>-…` uit `Forge.PullHeads` (`PullHead.HeadRef`). Een PR zonder issuebranch staat in `Skipped` met reden `no_issue_branch`; niets telt stil niet mee.
 - **Herstelcommit** = commit op de default branch na de merge-commit, tot en met merge + 7 dagen, waarvan het onderwerp met `fix:` of `fix(` begint (herstel) of met `Revert "`, `revert:` of `revert(` (revert), en die minstens één bestand raakt dat ook de merge-commit raakte. De merge-commit zelf telt niet.
-- **Bug-issue** = issue met een label `bug` (hoofdletterongevoelig) waarvan titel of body `#<pr>` bevat, aangemaakt na de merge en binnen het venster. Gevonden met `Forge.SearchIssues("#<pr>")`; de filtering gebeurt in de adapter.
-- **`fix-pr`-rondes vóór de merge** komen uit `runs` (trigger `fixpr`, `trigger_key` `fixpr:<pr>:<sha>`, zie `internal/dispatch/decide.go:894`), gestart vóór de merge. Alleen dispatcher-runs; interactieve rondes hebben geen PR-record en staan als beperking in de documentatie.
+- **Bug-issue** = issue met een label `bug` (hoofdletterongevoelig) waarvan titel of body `#<pr>` bevat, aangemaakt na de merge en binnen het venster. Gevonden met `Forge.SearchIssues("#<pr>")`; de filtering gebeurt in `MeasureRecovery`, de adapter mapt alleen.
+- **`fix-pr`-rondes vóór de merge** komen uit `runs` (trigger `fixpr`, `trigger_key` `fixpr:<pr>:<sha>`, zie `internal/dispatch/decide.go:894`), gestart vóór de merge. Een rij met `outcome = 'start_failed'` telt niet mee (een mislukte start plus zijn herpoging is één ronde, zoals `fixPRRuns` in `internal/dispatch/decide.go`). Alleen dispatcher-runs; interactieve rondes hebben geen PR-record en staan als beperking in de documentatie.
 - **Status:** `open` zolang `now < merged_at + 7d` (ook als er al herstel is: dan staan de items er al bij), daarna `recovered` (≥ 1 item) of `none`. Het venster is `(merged_at, merged_at + 7d]`.
 - **Klok:** `now time.Time` als parameter; geen `time.Now()` in de meetlogica.
-- **Eenmaal gesloten blijft gesloten:** een rij met status `recovered` of `none` wordt bij herhaling niet meer aangepast; een rij met `open` wordt vervangen door de nieuwe meting.
+- **Eenmaal gesloten blijft gesloten:** een rij met status `recovered` of `none` wordt bij herhaling niet meer aangepast; een rij met `open` wordt vervangen door de nieuwe meting. Omdat niets de opdracht automatisch draait, ververst `measure-recovery` ook elke `open`-rij van de repo die buiten `--days` valt (met `merged_at` uit de rij), zodat een `open`-rij altijd sluit zodra zijn venster voorbij is.
+- **Actuele bron:** de opdracht haalt eerst de default branch op (`git fetch origin <default>`) en meet op `origin/<default>`; een mislukte fetch is een fout (exit 1) en er wordt dan niets gesloten. Zo bevriest een verouderde clone nooit een onterecht `none`.
+- **Forge-limiet:** PR's met een reeds gesloten rij gaan niet langs de forge. Bij een `RateLimited`-fout stopt de run met exit 1 nadat de eerder gemeten PR's zijn vastgelegd; een herhaling gaat verder bij de rest.
 
 ## Globale randvoorwaarden
 
@@ -45,7 +47,7 @@ Dit plan beslist wat het issue openlaat:
 
 **Bestanden:**
 - Maak: `internal/store/migrations/0011_recovery.sql`
-- Test: `internal/store/migrate_test.go` (controleer eerst op hardgecodeerde versienummers; pas aan waar nodig)
+- Test: `internal/store/migrate_test.go` en `internal/cli/tick_test.go` (zoek eerst repo-breed op hardgecodeerde versienummers, `want 10` en `user_version`, zoals `tick_test.go:239-241`; pas alle aan)
 
 **Interfaces:**
 - Produceert tabellen:
@@ -56,7 +58,7 @@ Dit plan beslist wat het issue openlaat:
 - [ ] **Stap 1: schrijf de falende test** `TestMigration0011Recovery` in `internal/store/migrate_test.go`: na `Open` bestaan beide tabellen; een `status`-waarde `maybe` wordt geweigerd; een tweede rij met dezelfde `(trajectory_id, pr)` wordt geweigerd; verwijderen van een `recoveries`-rij verwijdert zijn items (foreign keys aan).
 - [ ] **Stap 2:** `go test -race ./internal/store/...` — verwacht FAIL (tabel ontbreekt).
 - [ ] **Stap 3:** schrijf `0011_recovery.sql` met de schema's hierboven.
-- [ ] **Stap 4:** `go test -race ./internal/store/...` — verwacht PASS, ook de bestaande migratietests.
+- [ ] **Stap 4:** `go test -race ./internal/store/... ./internal/cli/...` — verwacht PASS, ook de bestaande migratietests.
 - [ ] **Stap 5: commit** `feat(store): migratie 0011 voor herstel na merge (#377)`.
 
 ### Taak 2: Pure meting
@@ -144,7 +146,7 @@ func MeasureRecovery(ctx context.Context, src RecoverySource, pr int, mergedAt, 
 - Verbruikt: `Commit`, `RecoverySource`, `ErrNoMergeCommit` uit taak 2.
 - Produceert: `type GitSource struct { Dir, Branch string; Issues func(ctx context.Context, pr int) ([]BugIssue, error) }` met alle drie `RecoverySource`-methoden. `MergeCommit` en `CommitsAfter` draaien `git -C Dir log` op `Branch`; `IssuesMentioning` roept `Issues` aan (taak 5 vult die met de forge).
 
-- [ ] **Stap 1: schrijf de falende test** met een nep-repo in `t.TempDir()`, gebouwd met echte `git` (`git init`, vaste `GIT_AUTHOR_DATE`/`GIT_COMMITTER_DATE` per commit, geen globale config nodig: zet `user.name`/`user.email` per commando). Geschiedenis: commit A `feat(a): maak a (#10)` raakt `a.txt`; commit B `fix(a): herstel a` raakt `a.txt` twee dagen later; commit C `feat(b): maak b (#11)` raakt `b.txt`. Asserts: `MergeCommit(10)` → SHA van A met `Files == ["a.txt"]`; `MergeCommit(99)` → `ErrNoMergeCommit`; `CommitsAfter(A.At, A.At+7d)` → `[B]` met `Files == ["a.txt"]`. Gebruik de bestaande git-helper in `internal/fixturesetup/fixturesetup.go` alleen als die zonder omweg herbruikbaar is; anders een eigen `runGit(t, dir, env, args...)` in de testfile.
+- [ ] **Stap 1: schrijf de falende test** met een nep-repo in `t.TempDir()`, gebouwd met echte `git` (`git init`, vaste `GIT_AUTHOR_DATE`/`GIT_COMMITTER_DATE` per commit, geen globale config nodig: zet `user.name`/`user.email` per commando). Geschiedenis: commit A `feat(a): maak a (#10)` raakt `a.txt`; commit B `fix(a): herstel a` raakt `a.txt` twee dagen later; commit C `feat(b): maak b (#11)` raakt `b.txt`, met datum A+8 dagen (zodat `CommitsAfter(A.At, A.At+7d)` C uitsluit). Asserts: `MergeCommit(10)` → SHA van A met `Files == ["a.txt"]`; `MergeCommit(99)` → `ErrNoMergeCommit`; `CommitsAfter(A.At, A.At+7d)` → `[B]` met `Files == ["a.txt"]`. Gebruik de bestaande git-helper in `internal/fixturesetup/fixturesetup.go` alleen als die zonder omweg herbruikbaar is; anders een eigen `runGit(t, dir, env, args...)` in de testfile.
 - [ ] **Stap 2:** `go test -race ./internal/telemetry/ -run GitSource` — FAIL.
 - [ ] **Stap 3:** implementeer. Gebruik `git log --format=%H%x00%s%x00%cI --name-only -z`-achtige uitvoer met een eigen veilige parser; de SHA-lijst blijft stabiel gesorteerd (oud → nieuw). `(#<pr>)` matcht alleen aan het eind van het onderwerp (`regexp` met `\(#<pr>\)$`).
 - [ ] **Stap 4:** PASS.
@@ -178,7 +180,7 @@ func RecordRecovery(ctx context.Context, db *sql.DB, r RecoveryRecord) (id int64
 func CountFixPRRounds(ctx context.Context, db *sql.DB, repo string, pr int, mergedAt time.Time) (int, error)
 ```
 
-- [ ] **Stap 1: schrijf de falende tests**: (a) eerste aanroep maakt traject + rij + items en geeft `isNew == true`; (b) tweede aanroep met `open` en een extra item vervangt de items, `isNew == false`, één rij; (c) na `recovered`/`none` verandert een nieuwe aanroep niets (items en status gelijk); (d) `FixPRRounds` staat in de rij en telt niet mee in `recovery_items`; (e) `CountFixPRRounds` telt alleen runs met `trigger_key` `fixpr:<pr>:%` van dezelfde repo, gestart vóór `mergedAt` (een run erna, of voor een andere PR, telt niet); (f) ongeldige `Origin` of `Issue < 1` geeft een fout en laat geen traject achter (rollback).
+- [ ] **Stap 1: schrijf de falende tests**: (a) eerste aanroep maakt traject + rij + items en geeft `isNew == true`; (b) tweede aanroep met `open` en een extra item vervangt de items, `isNew == false`, één rij; (c) na `recovered`/`none` verandert een nieuwe aanroep niets (items en status gelijk); (d) `FixPRRounds` staat in de rij en telt niet mee in `recovery_items`; (e) `CountFixPRRounds` telt alleen runs met `trigger_key` `fixpr:<pr>:%` van dezelfde repo, gestart vóór `mergedAt` en niet `start_failed` (een run erna, voor een andere PR, of een `start_failed`-rij naast zijn herpoging telt niet dubbel); (f) ongeldige `Origin` of `Issue < 1` geeft een fout en laat geen traject achter (rollback).
 - [ ] **Stap 2:** FAIL.
 - [ ] **Stap 3:** implementeer met `inTx` en `insertOrFind` volgens het patroon van `RecordFinding` (`record.go:423-462`). `window_end` = `MergedAt + RecoveryWindow`.
 - [ ] **Stap 4:** `go test -race ./internal/telemetry/... ./internal/store/...` — PASS.
@@ -195,9 +197,9 @@ func CountFixPRRounds(ctx context.Context, db *sql.DB, repo string, pr int, merg
 
 **Interfaces:**
 - Verbruikt: `GitSource`, `MeasureRecovery`, `RecordRecovery`, `CountFixPRRounds`, `Forge.MergedPRs(since, until)`, `Forge.PullHeads`.
-- Produceert: `lighthouse measure-recovery --repo-dir <pad> [--days N]` (standaard `--days 14`): voor elke PR die in de laatste `N` dagen mergde (`MergedPRs`), `PullHead` zoeken op nummer, issuenummer uit `HeadRef` (`issue-<nr>-…`), meten, `CountFixPRRounds`, `RecordRecovery`. Uitvoer: een regel per PR (`#<pr> <status> <n> items, <m> fix-pr-rondes`) en een regel per overgeslagen PR met reden. Exitcode 0 bij overgeslagen PR's; 2 bij kapotte config.
+- Produceert: `lighthouse measure-recovery --repo-dir <pad> [--days N] [--db <pad>]` (standaard `--days 14`; `--db` standaard `store.DefaultPath()`, zoals `internal/cli/tick.go:218`; repo-slug en default branch uit `repoconfig.Load(--repo-dir)`; een testdatabase komt via `--db`): eerst `git fetch`, dan voor elke PR die in de laatste `N` dagen mergde (`MergedPRs`) en voor elke `open`-rij buiten dat venster, behalve PR's met een gesloten rij, `PullHead` zoeken op nummer, issuenummer uit `HeadRef` (`issue-<nr>-…`), meten, `CountFixPRRounds`, `RecordRecovery`. Uitvoer: een regel per PR (`#<pr> <status> <n> items, <m> fix-pr-rondes`) en een regel per overgeslagen PR met reden. Exitcode 0 bij overgeslagen PR's; 1 bij een config- of forge-fout; 2 bij verkeerd gebruik (zoals `internal/cli/report.go:48`).
 
-- [ ] **Stap 1: schrijf de falende tests**: `ForgeIssues` filtert niet zelf (dat doet `MeasureRecovery`) maar mapt alle velden, labels inbegrepen; de CLI-test gebruikt een fake `Forge`-bron (zoals `fakeSource` in `internal/report/build_test.go:33`, bij voorkeur via een smalle interface in plaats van de hele `Forge`) en de nep-repo uit taak 3, en controleert: PR met issuebranch en fix → regel `recovered 1 items`; PR zonder fix binnen het venster → `open`; PR zonder issuebranch → overgeslagen met reden `no_issue_branch`; tweede run schrijft geen dubbele rijen.
+- [ ] **Stap 1: schrijf de falende tests**: `ForgeIssues` filtert niet zelf (dat doet `MeasureRecovery`) maar mapt alle velden, labels inbegrepen; de CLI-test gebruikt een fake `Forge`-bron (zoals `fakeSource` in `internal/report/build_test.go:33`, bij voorkeur via een smalle interface in plaats van de hele `Forge`) en de nep-repo uit taak 3, en controleert: PR met issuebranch en fix → regel `recovered 1 items`; PR zonder fix binnen het venster → `open`; PR zonder issuebranch → overgeslagen met reden `no_issue_branch`; tweede run schrijft geen dubbele rijen; een `open`-rij buiten `--days` wordt na het venster alsnog gesloten; een gesloten rij roept de forge niet aan.
 - [ ] **Stap 2:** FAIL.
 - [ ] **Stap 3:** implementeer adapter en opdracht; klok `time.Now` alleen in de `main`/cli-laag, doorgegeven als parameter.
 - [ ] **Stap 4:** schrijf documentatie en changelogfragment.
@@ -211,4 +213,4 @@ func CountFixPRRounds(ctx context.Context, db *sql.DB, repo string, pr int, merg
 
 - **Dekking van de AC:** 1 (SHA's, taak 2+3), 2 (bug-issues, taak 2+5), 3 (`fix-pr`-rondes apart, taak 4: aparte kolom), 4 (status `open`, taak 2), 5 (nep-repo, taak 3 stap 5).
 - **DoD:** tests (elke taak), documentatie (taak 5), review (via de eindreview van de uitvoering).
-- **Open punt, bewust niet beslist:** GitLab. `MergedPRs` is daar niet ondersteund (`internal/forge/gitlab_report.go:13-14`); de opdracht meldt dat als fout en laat GitLab buiten dit issue.
+- **Open punt, bewust niet beslist:** GitLab. `MergedPRs` is daar niet ondersteund (`internal/forge/gitlab_report.go:13-14`); de opdracht meldt dat als fout en laat GitLab buiten dit issue; de beperking komt in `docs/install.md` en de PR-body (de issuetekst "elke repo" is hierin ingeperkt).
