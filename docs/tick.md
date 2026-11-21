@@ -51,7 +51,8 @@ Het is een korte run, geen daemon. Wie issues vooraf routeert en naar `Controlle
    kan noch de rem noch de afloop (regel 5) kijken. Per open run met een werkplek meet tick ook de
    afloop: de laatste gebeurtenis in het transcript (subagents meegeteld, per draad), of de sessie
    nog een eerste commando mist (`Unknown command:`) of nooit een assistent-beurt had, en de laatste
-   permissie-prompt (`permission.json`, door de hook `permission-check` geschreven). Bij het
+   permissie-prompt (`permission.json`, door de hook `permission-check` geschreven) en de laatste
+   mislukte post (`post-failed.json`, zie regel 14a). Bij het
    Software-profiel haalt de werkplek het transcript uit de devcontainer, zodat ook daar een
    onbekend commando binnen één tick `start_failed` wordt (#237). Is er (nog) geen transcript, dan
    is de run niet meetbaar: geen fout, en de afloop valt terug op de forge-stand.
@@ -301,6 +302,7 @@ gemergde of gesloten PR van vóór `started_at` niet. `max_wait` en `max_runtime
 | 13 | Klaar en een eigen PR met een van vier oorzaken: rode checks, een merge-conflict, een onverwerkte roborev-review of een mislukte merge | fix-pr-start (sleutel `fixpr:<pr>:<sha>`, plafond 3 runs per PR); is het plafond bereikt, of is de sleutel al gebruikt, of is er een actieve blokkade, dan Teruggegeven; houdt de rem de start tegen, dan blijft de run open (zie hieronder) | per oorzaak *PR rood*, *PR heeft een merge-conflict*, *PR heeft een onverwerkte roborev-review* of *merge mislukt*; bij het plafond met ` na 3 fix-pr-runs` erachter (*onverwerkte roborev-review na 3 fix-pr-runs*) |
 | 13b | Klaar en alleen een vreemde PR die rood is of een merge-conflict heeft (geen eigen open PR met een oorzaak) | Teruggegeven, sessie stoppen als ze niet klaar is | *PR rood* resp. *PR heeft een merge-conflict* |
 | 13c | Klaar met een Handoff die de keten eindigt (`next: /lighthouse-close-issue`), en geen PR van deze run | rij `handoff`, de claude van de run beëindigen; dezelfde tick start `/lighthouse-close-issue <nr>` op die handoff (sleutel `handoff:<comment-id>`), tenzij er een open PR is of een PR die na de handoff mergede of sloot: dan wacht het einde op die PR (#285) | |
+| 14a | Klaar, geen PR, geen Handoff of Vraag, wel een `post-failed.json` van op of na `started_at` (of een onleesbare) | leest de body als een 🤖 Handoff of 🤖 Vraag voor het issue van de run, hoorde de mislukte post bij dat issue (`issue` van de notitie) en is de run jonger dan `max_runtime` (of `max_runtime` is 0): `repost`, de controller post de body letterlijk en de run blijft open. Is de run `max_runtime` of ouder, of is de body leeg, een andere soort comment of van een ander issue, hoorde de mislukte post bij een ander issue, of is de notitie onleesbaar: Teruggegeven, zoals regel 14 | *post mislukt: <fout uit de notitie>*, resp. *post mislukt: notitie onleesbaar* |
 | 14 | Klaar, geen PR, geen Handoff of Vraag | Teruggegeven | geen handoff of vraag |
 | 15 | `max_wait` > 0, run gemeten maar zonder sessie, ouder dan `max_wait` | Teruggegeven, launch vergeten | start onzeker: geen sessie gevonden |
 | 16 | `max_wait` > 0, permissie-prompt van deze run (niet van vóór `started_at`) waarna zijn draad `max_wait` lang niets deed | Teruggegeven, sessie blijft staan | wacht op permissie (met tool en pad) |
@@ -309,6 +311,34 @@ gemergde of gesloten PR van vóór `started_at` niet. `max_wait` en `max_runtime
 | 19 | `max_runtime` > 0, run ouder dan `max_runtime` | Teruggegeven, sessie stoppen | time-out (max_runtime) |
 
 Regel 13: houdt de rem de fix-pr-start tegen (uitstel of weigering), dan vervalt de afsluiting van de run: ze blijft open en de volgende tick vindt dezelfde oorzaak opnieuw. Alleen een actieve blokkade (de issue-blokkade van de start), een al gebruikte sleutel of het plafond geeft Teruggegeven.
+
+Regel 14a (#395): een run die zijn Handoff of Vraag niet gepost kreeg, liet vroeger niets achter en kreeg
+*geen handoff of vraag*; de keten stond stil. Nu schrijft `lighthouse forge issue comment` (niet `pr comment`)
+en `lighthouse ask` bij elke fout nadat de bedoeling vaststaat een notitie `post-failed.json`, alleen in een
+controller-run (`LIGHTHOUSE_CONTROLLER_RUN` in uuid-vorm en `LIGHTHOUSE_STATE_DIR` gezet). Dat is dus ook een fout
+bij het openen van de forge of bij de GET van `ask`, maar niet een onleesbaar body-bestand, een ongeldig nummer,
+een vraag die anders terugleest of `ask --dry-run`. De notitie staat in
+`<LIGHTHOUSE_STATE_DIR>/runs/<run>/post-failed.json`, naast `permission.json`, met de velden `version` (1), `at`
+(milliseconden, UTC), `issue`, `command` (`forge issue comment` of `ask`), `error` (op één regel) en `body`, in die
+volgorde. Een volgende mislukte post in dezelfde run overschrijft ze: alleen de nieuwste telt. Lukt het schrijven
+niet, dan meldt het commando een regel met `COULD NOT CHECK` op stderr; de exitcode en foutmelding van de mislukte
+post veranderen nooit. Tick leest de notitie lokaal uit de runmap, en op een node via
+`GET …/runs/{session}/post-failed` (`404` met code `no_post_failed` is "geen notitie"; een `404` zonder code komt van
+een oude node en telt ook als "geen notitie", zodat die run niet onmeetbaar wordt en terugvalt op regel 14).
+Een notitie van vóór `started_at` hoort bij een eerdere run in dezelfde sessie en telt niet. Een onleesbare notitie
+stopt de tick niet, maar geeft de reden *post mislukt: notitie onleesbaar*.
+
+De keuze voor regel 14a is A+ boven twee alternatieven. A (alleen een reden op de Teruggegeven) laat de keten
+stilstaan tot iemand de handoff met de hand post. B (de mislukte `forge issue comment` herkennen in het transcript)
+is breekbaar, want het leunt op commandotekst en foutmeldingen, en geeft de controller geen body om te posten. A+
+neemt de post over: de notitie bevat de volledige body, de controller post die via REST en probeert het elke tick
+opnieuw. De posts van de run zijn al REST, dus een fout is meestal een limiet, een netwerkfout of een 5xx, en gaat
+over: de winst zit in het opnieuw proberen in de tijd. Een mislukte repost is een deferral
+(`lighthouse: deferred <repo>#<n>: …`), geen tickfout: de andere acties lopen door, de run blijft open en de tickstaat
+van die repo wordt niet bewaard, zodat de volgende tick opnieuw gathert en herpost (anders slaat de precheck de repo
+tot 30 minuten over). Een blijvende fout, zoals een 422 of 403, maakt zo niet elke tick rood. Decide telt geen
+pogingen; `max_runtime` is de grens, en staat die op 0, dan is er geen grens. Staat de post er eenmaal, dan gaan regel
+2 of 3 voor en geldt 14a niet meer.
 
 Verschillen met de spec-tabel, bewust:
 
@@ -329,7 +359,7 @@ Verschillen met de spec-tabel, bewust:
   een Teruggegeven voor een run die misschien draait.
 - Regel 6b: een sessie die klaar is op een gesloten issue laat geen Handoff, Vraag of PR achter.
 
-Apply voert de uitkomst uit. Een Teruggegeven post eerst en sluit de rij dan als `returned`; een
+Apply voert de uitkomst uit. `repost` post de body van de notitie en sluit niets. Een Teruggegeven post eerst en sluit de rij dan als `returned`; een
 `close` met `Stop` stopt de sessie voor elke uitkomst, ook voor `start_failed`. Stoppen gaat op
 de sessie-id van de run, niet op de forge-sleutel: de werkplek zoekt het proces op die id. Een stop
 of vergeet op een rij zonder sessie of werkplek slaat apply over. Mislukt het stoppen na de post, dan

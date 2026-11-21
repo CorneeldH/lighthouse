@@ -735,7 +735,26 @@ func (m *runProbe) measure(ctx context.Context, r runs.OpenRun) (stand workplace
 	if s.Permission, err = m.permission(ctx, r); err != nil {
 		return 0, false, dispatch.RunState{}, err
 	}
+	if s.PostFailed, err = m.postFailed(ctx, r); err != nil {
+		return 0, false, dispatch.RunState{}, err
+	}
 	return stand, measured, s, nil
+}
+
+// postFailed is the post-failed note of the run, nil without one. It reads like permission: on a
+// node through serve (workplace.PostFailedReader), otherwise from the state directory. Content
+// that does not parse is a note with Unreadable set, never an error: the controller must still see
+// that a post failed. A serve that does not answer is an error.
+func (m *runProbe) postFailed(ctx context.Context, r runs.OpenRun) (*dispatch.PostFailed, error) {
+	pr, ok := m.w.(workplace.PostFailedReader)
+	if r.Node == "" || !ok {
+		return dispatch.ReadPostFailed(m.stateDir, r.SessionID)
+	}
+	data, err := pr.PostFailed(ctx, r.SessionID)
+	if err != nil || data == nil {
+		return nil, err
+	}
+	return dispatch.ParsePostFailed(data), nil
 }
 
 // permission is the permission note of the run, nil without one. A run on a node whose
