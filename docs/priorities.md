@@ -97,7 +97,11 @@ de rang.
   de forge anders is dan `from` (niets geschreven; de cache wordt bijgewerkt); 415 bij een
   andere `Content-Type` dan `application/json`; 422 bij een ongeldige body; 502 of 503 bij een
   forgefout of een niet-geconfigureerde forge. Mislukt een schrijfactie halverwege, dan noemt
-  de melding de al geschreven milestones (`written=[...]`).
+  de melding de al geschreven milestones (`written=[...]`). Een onbekend milestonenummer geeft
+  502 (een leesfout van de forge), geen 404. De server controleert alleen de milestones die hij
+  schrijft: geeft iemand intussen een derde milestone een rang, dan kan een gelijke stand
+  ontstaan; de weergaven lossen die deterministisch op (berekende volgorde), de server rekent
+  zelf geen volgorde uit.
 - **`Origin` moet gelijk zijn aan `Host`.** Het endpoint schrijft op de forge met de rechten van
   de server, dus weigert het een verzoek waarvan de host[:poort] van `Origin` niet die van
   `Host` is. Zo kan een andere website in dezelfde browser het niet aanroepen.

@@ -42,12 +42,12 @@ interface Moves {
 const MOVE_BTN =
   'flex size-5 items-center justify-center rounded border border-border text-muted-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40'
 
-function MoveButtons({ moves }: { moves: Moves }): JSX.Element {
+function MoveButtons({ moves, title }: { moves: Moves; title: string }): JSX.Element {
   return (
     <div className="flex shrink-0 flex-col gap-0.5">
       <button
         type="button"
-        aria-label="Omhoog"
+        aria-label={`${title} omhoog`}
         title="Omhoog"
         className={MOVE_BTN}
         disabled={!moves.up}
@@ -57,7 +57,7 @@ function MoveButtons({ moves }: { moves: Moves }): JSX.Element {
       </button>
       <button
         type="button"
-        aria-label="Omlaag"
+        aria-label={`${title} omlaag`}
         title="Omlaag"
         className={MOVE_BTN}
         disabled={!moves.down}
@@ -79,7 +79,7 @@ function Row({ row, colors, moves }: { row: MilestoneRow; colors: Map<string, st
       className="grid grid-cols-[240px_1fr_110px] items-center gap-4 rounded-lg border p-4"
     >
       <div className="flex items-start gap-2.5 font-semibold">
-        {moves && <MoveButtons moves={moves} />}
+        {moves && <MoveButtons moves={moves} title={row.title} />}
         <i
           data-testid="swatch"
           className="mt-0.5 size-3.5 shrink-0 rounded-sm"
@@ -88,13 +88,17 @@ function Row({ row, colors, moves }: { row: MilestoneRow; colors: Map<string, st
         <div>
           {row.title}
           {moves && moves.place !== null && (
-            <small
-              data-testid="place"
-              title="plaats in de repo"
-              className="ml-1.5 align-super text-[10px] font-semibold text-muted-foreground"
-            >
-              {moves.place}
-            </small>
+            <>
+              <small
+                data-testid="place"
+                aria-hidden
+                title="plaats in de repo"
+                className="ml-1.5 align-super text-[10px] font-semibold text-muted-foreground"
+              >
+                {moves.place}
+              </small>
+              <span className="sr-only">{`, plaats ${moves.place}`}</span>
+            </>
           )}
           <small className="block text-xs font-normal text-muted-foreground">{meta(row)}</small>
         </div>

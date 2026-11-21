@@ -246,7 +246,7 @@ describe('PrioritiesTab', () => {
       )
       const client = renderTab()
       const beta = await screen.findByTestId('ms-a/x#m2')
-      fireEvent.click(within(beta).getByRole('button', { name: 'Omhoog' }))
+      fireEvent.click(within(beta).getByRole('button', { name: /omhoog/i }))
       await waitFor(() => expect(posts).toHaveLength(1))
       expect(posts[0].body).toEqual({
         repo: 'a/x',
@@ -257,7 +257,7 @@ describe('PrioritiesTab', () => {
       })
       // Optimistic: Beta is on top while the request runs, and its buttons are off.
       expect(order()).toEqual(['ms-a/x#m2', 'ms-a/x#m1'])
-      expect((within(screen.getByTestId('ms-a/x#m2')).getByRole('button', { name: 'Omlaag' }) as HTMLButtonElement).disabled).toBe(true)
+      expect((within(screen.getByTestId('ms-a/x#m2')).getByRole('button', { name: /omlaag/i }) as HTMLButtonElement).disabled).toBe(true)
       posts[0].resolve(await json({ detail: 'rank changed' }, 409))
       const alert = await screen.findByRole('alert')
       expect(alert.textContent).toBe('De volgorde is net ergens anders veranderd; de lijst is ververst.')

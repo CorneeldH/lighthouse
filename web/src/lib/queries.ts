@@ -148,7 +148,9 @@ export function useMilestoneRanks() {
     },
     onSettled: async (_data, _err, vars) => {
       try {
-        // This mutation still counts as running here.
+        // This mutation still counts as running here. When repo A fails while repo B is still
+        // in flight, A is rolled back and released without a refetch, so a quick second click
+        // on A may plan from stale ranks and get a 409; the refetch after that heals it.
         if (client.isMutating({ mutationKey: milestoneRanksKey }) === 1) {
           await client.invalidateQueries({ queryKey: queryKeys.priorities })
         }

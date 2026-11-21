@@ -255,7 +255,7 @@ describe('MilestonesView', () => {
       )
     }
     const btn = (key: string, name: 'Omhoog' | 'Omlaag') =>
-      within(row(key)).getByRole('button', { name }) as HTMLButtonElement
+      within(row(key)).getByRole('button', { name: new RegExp(`${name}$`, 'i') }) as HTMLButtonElement
     const order = () => screen.getAllByTestId(/^ms-/).map((e) => e.getAttribute('data-testid'))
 
     it('lists ranked milestones first by place, unranked below in computed order', () => {
@@ -266,7 +266,7 @@ describe('MilestonesView', () => {
     it('keeps the computed order in stand Berekend, without buttons or place', () => {
       prio([ranked()], { order: 'computed' })
       expect(order()).toEqual([`ms-${A}#m3`, `ms-${A}#m1`, `ms-${A}#m2`, `ms-${A}#m4`])
-      expect(screen.queryAllByRole('button', { name: /Omhoog|Omlaag/ })).toHaveLength(0)
+      expect(screen.queryAllByRole('button', { name: /omhoog|omlaag/i })).toHaveLength(0)
       expect(screen.queryAllByTestId('place')).toHaveLength(0)
     })
 
@@ -275,6 +275,8 @@ describe('MilestonesView', () => {
       expect(within(row(`${A}#m2`)).getByTestId('place').textContent).toBe('1')
       expect(within(row(`${A}#m1`)).getByTestId('place').textContent).toBe('2')
       expect(within(row(`${A}#m3`)).queryByTestId('place')).toBeNull()
+      // A screen reader hears "plaats 1", not a bare number.
+      expect(within(row(`${A}#m2`)).getByText(/plaats 1/).textContent).toBe(', plaats 1')
     })
 
     it('disables up on place 1, down on the last ranked and down without a rank', () => {
@@ -285,6 +287,12 @@ describe('MilestonesView', () => {
       expect(btn(`${A}#m1`, 'Omlaag').disabled).toBe(true)
       expect(btn(`${A}#m3`, 'Omhoog').disabled).toBe(false)
       expect(btn(`${A}#m3`, 'Omlaag').disabled).toBe(true)
+    })
+
+    it('gives every button a name with its milestone title', () => {
+      prio([ranked()])
+      expect(within(row(`${A}#m1`)).getByRole('button', { name: 'M1 omhoog' })).toBeTruthy()
+      expect(within(row(`${A}#m2`)).getByRole('button', { name: 'M2 omlaag' })).toBeTruthy()
     })
 
     it('calls onMove with the row and the direction of the clicked button', () => {
