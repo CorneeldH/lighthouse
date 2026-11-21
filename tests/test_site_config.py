@@ -11,7 +11,7 @@ import tomllib
 from pathlib import Path
 
 from tests._site_node import run_map
-from tests.pack._testkit import config_schema, lighthouse_dir
+from tests.pack.python._testkit import config_schema, lighthouse_dir
 from tests.test_site_loop import REPO_BLOB, REPO_TREE, ROOT, load
 
 NO_DEFAULT = object()

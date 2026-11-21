@@ -11,7 +11,7 @@ import (
 )
 
 // Shared fixtures: tests/pack/fixtures/<name>/cases.json, read here and by the Python tests
-// (tests/pack/_testkit.py). Each file is a list of cases with a "name", a "kind" and an "expect".
+// (tests/pack/python/_testkit.py). Each file is a list of cases with a "name", a "kind" and an "expect".
 //
 //   - no_verify: {command, expect: bool}. Does the shell command carry --no-verify?
 //   - host_memory, kind "meminfo": {text, expect}. /proc/meminfo text to a map of fields in kB,
@@ -27,7 +27,7 @@ import (
 //     ChangedFiles reports between two revisions.
 //
 // A "setup" (and the "commits" of "moved") is a list of steps that fixturesetup.Build runs under
-// a temporary root, in the format of tests/pack/_testkit.py build_fixture_setup: repo, dir, file,
+// a temporary root, in the format of tests/pack/python/_testkit.py build_fixture_setup: repo, dir, file,
 // symlink, overwrite, worktree, origin, and unborn (git init without a commit), commit (add -A
 // and commit) and mv (git mv). Strings are filled by fixturesetup.Fill: {root} is the temporary
 // directory, {rev:<path>:<rev>} the output of git rev-parse <rev> in {root}/<path>, and

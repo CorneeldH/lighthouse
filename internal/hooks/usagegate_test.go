@@ -163,6 +163,30 @@ func TestUsageGateStopWritesItsKey(t *testing.T) {
 	}
 }
 
+// A broken [usage_guard] option falls back to the base wording and says so as one
+// `usage-gate: config:` line on stderr: the hook passes its warning sink on to ReadOptions.
+func TestUsageGateConfigErrorFallsBackToBase(t *testing.T) {
+	g := gateEnv(t)
+	writeAlarm(t, g)
+	path := writeFile(t, filepath.Join(g.tmp, "bad.toml"), "[usage_guard]\nresume = \"yes\"\n")
+	t.Setenv("LIGHTHOUSE_TOML", path)
+
+	res := call(t, usageGate, "tool", session(nil))
+	got := reason(t, res)
+	handoff := "`/lighthouse-write-handoff " + filepath.Join(g.resume, "s1.handoff.md") + "`"
+	want := "Usage is at 92% of the session window, which resets at 14:30. Before anything else: commit the work in progress, run " +
+		handoff + ", and report where the work stands (worktree, branch, what is still open). Do not start a new step and do not dispatch a subagent."
+	if got != want || res.Code != 0 {
+		t.Errorf("reason %q code %d\nwant   %q", got, res.Code, want)
+	}
+	if !strings.HasPrefix(res.Stderr, "usage-gate: config: ") || strings.Count(res.Stderr, "\n") != 1 {
+		t.Errorf("stderr %q, want one line starting %q", res.Stderr, "usage-gate: config: ")
+	}
+	if _, err := os.Stat(g.resume); !os.IsNotExist(err) {
+		t.Errorf("resume dir exists (%v), want no marker", err)
+	}
+}
+
 func TestUsageGateWarnsOnOneLine(t *testing.T) {
 	g := gateEnv(t)
 	writeAlarm(t, g)

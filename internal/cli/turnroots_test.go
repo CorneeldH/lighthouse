@@ -12,7 +12,7 @@ import (
 )
 
 // Classification: cli-output. Fails when an undetermined turn no longer exits 1 with its reason on
-// stdout, the contract the Stop gates read (the cases with a repo are in test_turn_roots.py).
+// stdout, the contract the Stop gates read (the cases with a repo are in internal/turnroots).
 func TestTurnRootsCommandUndetermined(t *testing.T) {
 	tests := []struct{ in, wantOut string }{
 		{"{not json", "the payload is not valid JSON.\n"},
@@ -33,11 +33,20 @@ func TestTurnRootsCommandUndetermined(t *testing.T) {
 // turnRootsRepo is a repo with one commit and a Stop payload whose turn Edits the given files.
 func turnRootsRepo(t *testing.T, rels ...string) (string, []byte) {
 	t.Helper()
+	for _, name := range []string{"LIGHTHOUSE_CONTROLLER_RUN", "LIGHTHOUSE_REPO_ROOT", "LIGHTHOUSE_TOML"} {
+		t.Setenv(name, "")
+	}
+	for _, name := range []string{"GIT_DIR", "GIT_INDEX_FILE", "GIT_WORK_TREE"} {
+		t.Setenv(name, "") // registers the restore; the Unsetenv below removes the variable itself
+		if err := os.Unsetenv(name); err != nil {
+			t.Fatal(err)
+		}
+	}
 	repo, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, args := range [][]string{{"init", "-q", "-b", "main"}, {"commit", "-q", "--allow-empty", "-m", "a"}} {
+	for _, args := range [][]string{{"init", "-q", "-b", "main"}, {"-c", "commit.gpgsign=false", "commit", "-q", "--allow-empty", "-m", "a"}} {
 		cmd := exec.Command("git", append([]string{"-C", repo}, args...)...)
 		cmd.Env = append(os.Environ(),
 			"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t",
@@ -83,6 +92,27 @@ func runTurnRoots(t *testing.T, payload []byte, args ...string) string {
 		t.Fatalf("exit %d, out %q err %q", code, out.String(), errOut.String())
 	}
 	return out.String()
+}
+
+// Classification: cli-output. Fails when the roots are no longer printed one per line, or the
+// verdicts of --match no longer read `touched<TAB>root` / `untouched<TAB>root`, the lines the Stop
+// gates split on.
+func TestTurnRootsCommandPrintsRootsAndVerdicts(t *testing.T) {
+	repo, payload := turnRootsRepo(t, "a.go")
+	t.Setenv("CLAUDE_PROJECT_DIR", repo)
+	tests := []struct {
+		args    []string
+		wantOut string
+	}{
+		{nil, repo + "\n"},
+		{[]string{"--match", "*.go"}, "touched\t" + repo + "\n"},
+		{[]string{"--match", "*.md"}, "untouched\t" + repo + "\n"},
+	}
+	for _, tt := range tests {
+		if got := runTurnRoots(t, payload, tt.args...); got != tt.wantOut {
+			t.Errorf("%v: output %q, want %q", tt.args, got, tt.wantOut)
+		}
+	}
 }
 
 // Classification: cli-output. The hooks parse `file\t<root>\t<path>` after the verdict lines.

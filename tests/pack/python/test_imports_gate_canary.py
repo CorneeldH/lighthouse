@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.pack._testkit import git, stop_payload
+from tests.pack.python._testkit import git, stop_payload
 
 pytestmark = pytest.mark.usefixtures("lighthouse_bin")
 

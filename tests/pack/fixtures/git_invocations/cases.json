@@ -1364,5 +1364,1073 @@
    "known": false,
    "action_word": "status"
   }
+ },
+ {
+  "name": "commit-after-line-continuation",
+  "setup": [
+   {
+    "repo": "r",
+    "branch": "main"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "git add -A && \\\ngit commit -m x",
+  "cwd": "r",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/r",
+    "no",
+    "{root}/r"
+   ]
+  ]
+ },
+ {
+  "name": "commit-via-absolute-git-path",
+  "setup": [
+   {
+    "repo": "r",
+    "branch": "main"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "/usr/bin/git commit -m x",
+  "cwd": "r",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/r",
+    "no",
+    "{root}/r"
+   ]
+  ]
+ },
+ {
+  "name": "commit-via-env",
+  "setup": [
+   {
+    "repo": "r",
+    "branch": "main"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "env git commit -m x",
+  "cwd": "r",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/r",
+    "no",
+    "{root}/r"
+   ]
+  ]
+ },
+ {
+  "name": "commit-via-usr-bin-env",
+  "setup": [
+   {
+    "repo": "r",
+    "branch": "main"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "/usr/bin/env git commit -m x",
+  "cwd": "r",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/r",
+    "no",
+    "{root}/r"
+   ]
+  ]
+ },
+ {
+  "name": "commit-via-env-assignment",
+  "setup": [
+   {
+    "repo": "r",
+    "branch": "main"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "env GIT_PAGER=cat git commit -m x",
+  "cwd": "r",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/r",
+    "no",
+    "{root}/r"
+   ]
+  ]
+ },
+ {
+  "name": "commit-in-brace-group-with-cd",
+  "setup": [
+   {
+    "repo": "r",
+    "branch": "main"
+   },
+   {
+    "worktree": "r/.claude/worktrees/wt",
+    "of": "r",
+    "branch": "issue-1-x"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "{ cd {root}/r; git commit -m x; }",
+  "cwd": "r/.claude/worktrees/wt",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/r",
+    "no",
+    "{root}/r"
+   ]
+  ]
+ },
+ {
+  "name": "commit-in-command-substitution",
+  "setup": [
+   {
+    "repo": "r",
+    "branch": "main"
+   },
+   {
+    "worktree": "r/.claude/worktrees/wt",
+    "of": "r",
+    "branch": "issue-1-x"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "echo \"$(git -C {root}/r commit -m iets)\"",
+  "cwd": "r/.claude/worktrees/wt",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/r",
+    "no",
+    "{root}/r"
+   ]
+  ]
+ },
+ {
+  "name": "commit-in-backticks",
+  "setup": [
+   {
+    "repo": "r",
+    "branch": "main"
+   },
+   {
+    "worktree": "r/.claude/worktrees/wt",
+    "of": "r",
+    "branch": "issue-1-x"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "echo `git -C {root}/r commit -m iets`",
+  "cwd": "r/.claude/worktrees/wt",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/r",
+    "no",
+    "{root}/r"
+   ]
+  ]
+ },
+ {
+  "name": "push-u-origin-main",
+  "setup": [
+   {
+    "repo": "r",
+    "branch": "issue-1-x"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "git push -u origin main",
+  "cwd": "r",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "push",
+    "{root}/r",
+    "yes",
+    "{root}/r"
+   ]
+  ]
+ },
+ {
+  "name": "push-to-main-prefixed-branch",
+  "setup": [
+   {
+    "repo": "r",
+    "branch": "issue-1-x"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "git push origin HEAD:main-fix",
+  "cwd": "r",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "push",
+    "{root}/r",
+    "no",
+    "{root}/r"
+   ]
+  ]
+ },
+ {
+  "name": "push-unresolved-remote-with-flag",
+  "setup": [
+   {
+    "repo": "r",
+    "branch": "issue-1-x"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "git push -u $REMOTE issue-1-x",
+  "cwd": "r",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "push",
+    "{root}/r",
+    "no",
+    "{root}/r"
+   ]
+  ]
+ },
+ {
+  "name": "push-unresolved-remote-literal-main",
+  "setup": [
+   {
+    "repo": "r",
+    "branch": "issue-1-x"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "git push $REMOTE main",
+  "cwd": "r",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "push",
+    "{root}/r",
+    "yes",
+    "{root}/r"
+   ]
+  ]
+ },
+ {
+  "name": "push-command-substitution-destination",
+  "setup": [
+   {
+    "repo": "r",
+    "branch": "issue-1-x"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "git push origin \"$(echo main)\"",
+  "cwd": "r",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "push",
+    "{root}/r",
+    "unresolved",
+    "{root}/r"
+   ]
+  ]
+ },
+ {
+  "name": "heredoc-shift-in-string-is-no-heredoc",
+  "setup": [
+   {
+    "repo": "r",
+    "branch": "main"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "echo \"a << b\"\ngit commit -m x",
+  "cwd": "r",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/r",
+    "no",
+    "{root}/r"
+   ]
+  ]
+ },
+ {
+  "name": "heredoc-arithmetic-shift-is-no-heredoc",
+  "setup": [
+   {
+    "repo": "r",
+    "branch": "main"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "echo $((1 << 2))\ngit commit -m x",
+  "cwd": "r",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/r",
+    "no",
+    "{root}/r"
+   ]
+  ]
+ },
+ {
+  "name": "heredoc-hyphenated-delimiter",
+  "setup": [
+   {
+    "repo": "r",
+    "branch": "main"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "cat > plan.md <<'EOF-1'\ngit commit -m voorbeeld\nEOF-1\ngit commit -m echt",
+  "cwd": "r",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/r",
+    "no",
+    "{root}/r"
+   ]
+  ]
+ },
+ {
+  "name": "heredoc-tab-stripped-delimiter",
+  "setup": [
+   {
+    "repo": "r",
+    "branch": "main"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "cat > plan.md <<-EOF\n\tgit commit -m \"voorbeeld\"\n\tEOF\ngit commit -m echt",
+  "cwd": "r",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/r",
+    "no",
+    "{root}/r"
+   ]
+  ]
+ },
+ {
+  "name": "heredoc-in-comment-is-not-armed",
+  "setup": [
+   {
+    "repo": "r",
+    "branch": "main"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "echo x # zie << EOF\ngit commit -m x",
+  "cwd": "r",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/r",
+    "no",
+    "{root}/r"
+   ]
+  ]
+ },
+ {
+  "name": "heredoc-after-ansi-c-apostrophe-is-not-armed",
+  "setup": [
+   {
+    "repo": "r",
+    "branch": "main"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "echo $'x\\'<<EOF'\ngit commit -m x",
+  "cwd": "r",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/r",
+    "no",
+    "{root}/r"
+   ]
+  ]
+ },
+ {
+  "name": "comment-with-apostrophe",
+  "setup": [],
+  "env": {},
+  "kind": "find",
+  "command": "ls -la # dat 's genoeg",
+  "cwd": "",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": []
+ },
+ {
+  "name": "comment-with-apostrophe-english",
+  "setup": [],
+  "env": {},
+  "kind": "find",
+  "command": "uv run pytest tests/unit -q  # don't run the slow ones",
+  "cwd": "",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": []
+ },
+ {
+  "name": "comment-with-double-quote",
+  "setup": [],
+  "env": {},
+  "kind": "find",
+  "command": "echo hoi # \" losse dubbele quote",
+  "cwd": "",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": []
+ },
+ {
+  "name": "hash-in-double-quotes-is-no-comment",
+  "setup": [
+   {
+    "repo": "r",
+    "branch": "main"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "echo \"a # b\" && git commit -m x",
+  "cwd": "r",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/r",
+    "no",
+    "{root}/r"
+   ]
+  ]
+ },
+ {
+  "name": "hash-dollar-is-no-comment",
+  "setup": [
+   {
+    "repo": "r",
+    "branch": "main"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "echo $# && git commit -m x",
+  "cwd": "r",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/r",
+    "no",
+    "{root}/r"
+   ]
+  ]
+ },
+ {
+  "name": "hash-in-middle-of-word-is-no-comment",
+  "setup": [
+   {
+    "repo": "r",
+    "branch": "main"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "echo foo#bar && git commit -m x",
+  "cwd": "r",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/r",
+    "no",
+    "{root}/r"
+   ]
+  ]
+ },
+ {
+  "name": "hash-in-url-is-no-comment",
+  "setup": [
+   {
+    "repo": "r",
+    "branch": "main"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "curl https://x.dev/a#b && git commit -m x",
+  "cwd": "r",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/r",
+    "no",
+    "{root}/r"
+   ]
+  ]
+ },
+ {
+  "name": "ansi-c-escaped-apostrophe-is-parseable",
+  "setup": [],
+  "env": {},
+  "kind": "find",
+  "command": "echo $'it\\'s'",
+  "cwd": "",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": []
+ },
+ {
+  "name": "ansi-c-escaped-apostrophe-then-commit",
+  "setup": [
+   {
+    "repo": "r",
+    "branch": "main"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "echo $'don\\'t' && git commit -m x",
+  "cwd": "r",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/r",
+    "no",
+    "{root}/r"
+   ]
+  ]
+ },
+ {
+  "name": "wrapped-subshell-is-no-function",
+  "setup": [
+   {
+    "repo": "r",
+    "branch": "main"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "time (git commit -m x)",
+  "cwd": "r",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/r",
+    "no",
+    "{root}/r"
+   ]
+  ]
+ },
+ {
+  "name": "cd-to-missing-dir-with-semicolon-stays",
+  "setup": [
+   {
+    "repo": "r",
+    "branch": "main"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "cd {root}/missing; git commit -m x",
+  "cwd": "r",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/r",
+    "no",
+    "{root}/r"
+   ]
+  ]
+ },
+ {
+  "name": "cd-unresolvable-variable-then-commit",
+  "setup": [
+   {
+    "repo": "r",
+    "branch": "main"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "cd \"$ELDERS\" && git commit -m x",
+  "cwd": "r",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "<unknown>",
+    "no",
+    "$ELDERS"
+   ]
+  ]
+ },
+ {
+  "name": "relative-new-dir-inside-repo",
+  "setup": [
+   {
+    "repo": "r",
+    "branch": "main"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "mkdir -p sub && cd sub && git commit -m x",
+  "cwd": "r",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/r",
+    "no",
+    "{root}/r/sub"
+   ]
+  ]
+ },
+ {
+  "name": "relative-new-dir-then-cd-up",
+  "setup": [
+   {
+    "repo": "r",
+    "branch": "main"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "mkdir -p q3 && cd q3 && cd .. && git commit -m x",
+  "cwd": "r",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/r",
+    "no",
+    "{root}/r"
+   ]
+  ]
+ },
+ {
+  "name": "relative-new-dir-then-dash-c-up",
+  "setup": [
+   {
+    "repo": "r",
+    "branch": "main"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "mkdir -p q4 && cd q4 && git -C .. commit -m x",
+  "cwd": "r",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/r",
+    "no",
+    "{root}/r"
+   ]
+  ]
+ },
+ {
+  "name": "and-before-cd-is-forgotten-after-its-segment",
+  "setup": [
+   {
+    "repo": "r",
+    "branch": "main"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "echo hoi && cd {root}/outside; git commit -m x",
+  "cwd": "r",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/r",
+    "no",
+    "{root}/r"
+   ]
+  ]
+ },
+ {
+  "name": "second-cd-drops-new-dir-flag",
+  "setup": [
+   {
+    "repo": "r",
+    "branch": "main"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "mkdir -p {root}/outside && cd {root}/outside && cd \"$ELDERS\" && git commit -m x",
+  "cwd": "r",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "<unknown>",
+    "no",
+    "$ELDERS"
+   ]
+  ]
+ },
+ {
+  "name": "function-definition-does-not-move-cwd",
+  "setup": [
+   {
+    "repo": "r",
+    "branch": "main"
+   },
+   {
+    "worktree": "r/.claude/worktrees/wt",
+    "of": "r",
+    "branch": "issue-1-x"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "foo() { cd {root}/r; }; git commit -m x",
+  "cwd": "r/.claude/worktrees/wt",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/r/.claude/worktrees/wt",
+    "no",
+    "{root}/r/.claude/worktrees/wt"
+   ]
+  ]
+ },
+ {
+  "name": "function-body-commit-is-seen",
+  "setup": [
+   {
+    "repo": "r",
+    "branch": "main"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "f() { git commit -m x; }; f",
+  "cwd": "r",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/r",
+    "no",
+    "{root}/r"
+   ]
+  ]
+ },
+ {
+  "name": "cd-dash-goes-back",
+  "setup": [
+   {
+    "repo": "r",
+    "branch": "main"
+   },
+   {
+    "worktree": "r/.claude/worktrees/wt",
+    "of": "r",
+    "branch": "issue-1-x"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "cd {root}/r/.claude/worktrees/wt\ncd -\ngit commit -m x",
+  "cwd": "r",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/r",
+    "no",
+    "{root}/r"
+   ]
+  ]
+ },
+ {
+  "name": "pushd-moves",
+  "setup": [
+   {
+    "repo": "r",
+    "branch": "main"
+   },
+   {
+    "worktree": "r/.claude/worktrees/wt",
+    "of": "r",
+    "branch": "issue-1-x"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "pushd {root}/r && git commit -m x",
+  "cwd": "r/.claude/worktrees/wt",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/r",
+    "no",
+    "{root}/r"
+   ]
+  ]
+ },
+ {
+  "name": "pushd-popd-returns",
+  "setup": [
+   {
+    "repo": "r",
+    "branch": "main"
+   },
+   {
+    "worktree": "r/.claude/worktrees/wt",
+    "of": "r",
+    "branch": "issue-1-x"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "pushd {root}/r && popd && git commit -m x",
+  "cwd": "r/.claude/worktrees/wt",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/r/.claude/worktrees/wt",
+    "no",
+    "{root}/r/.claude/worktrees/wt"
+   ]
+  ]
+ },
+ {
+  "name": "commit-via-wrapper-sh-c-double-quoted",
+  "setup": [
+   {
+    "repo": "r",
+    "branch": "main"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "sh -c \"git commit -m x\"",
+  "cwd": "r",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/r",
+    "no",
+    "{root}/r"
+   ]
+  ]
+ },
+ {
+  "name": "commit-via-wrapper-timeout",
+  "setup": [
+   {
+    "repo": "r",
+    "branch": "main"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "timeout 5 git commit -m x",
+  "cwd": "r",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/r",
+    "no",
+    "{root}/r"
+   ]
+  ]
+ },
+ {
+  "name": "commit-via-wrapper-timeout-kill-after",
+  "setup": [
+   {
+    "repo": "r",
+    "branch": "main"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "timeout -k 5 10 git commit -m x",
+  "cwd": "r",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/r",
+    "no",
+    "{root}/r"
+   ]
+  ]
+ },
+ {
+  "name": "commit-via-wrapper-xargs-pipe",
+  "setup": [
+   {
+    "repo": "r",
+    "branch": "main"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "echo x | xargs git commit -m",
+  "cwd": "r",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/r",
+    "no",
+    "{root}/r"
+   ]
+  ]
+ },
+ {
+  "name": "commit-via-wrapper-xargs-flag",
+  "setup": [
+   {
+    "repo": "r",
+    "branch": "main"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "xargs -n1 git commit -m",
+  "cwd": "r",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/r",
+    "no",
+    "{root}/r"
+   ]
+  ]
+ },
+ {
+  "name": "commit-via-wrapper-nice-adjustment",
+  "setup": [
+   {
+    "repo": "r",
+    "branch": "main"
+   }
+  ],
+  "env": {},
+  "kind": "find",
+  "command": "nice -n 10 git commit -m x",
+  "cwd": "r",
+  "default_branch": "main",
+  "report_new_dirs": false,
+  "expect": [
+   [
+    "commit",
+    "{root}/r",
+    "no",
+    "{root}/r"
+   ]
+  ]
  }
 ]
