@@ -591,7 +591,8 @@ Vul aan per taak. Gaat ongewijzigd naar de PR-body.
 | `test_turn_roots.py` | `test_match_a_commit_in_the_turn_is_touched`, `test_match_a_commit_before_the_turn_is_untouched` | naar Go | `TestClassify` (commitdatums via `GIT_COMMITTER_DATE`); mutaties `len(reflog) == 0` → `true`: rood; `entry.Epoch < since` → `false`: rood | `TestAGitParseErrorIsNotInvalidJSON` dekt het "voor de beurt" met echte git, niet de "in de beurt"-kant |
 | `test_turn_roots.py` | `test_match_a_turn_without_writes_judges_the_cwd` | naar Go | `TestClassify`; mutatie `state.roots = []string{cwdRoot}` → `nil` in `readTurn`: rood (ook de roots-variant) | `len(rels) == 0 \|\| …` in `Classify` laat hem groen: de untracked worktree-map telt als wijziging |
 | `test_turn_roots.py` | `test_match_a_prompt_without_timestamp_is_touched` | naar Go | `TestClassify`; mutatie `if !state.hasStart` → `if false`: rood | |
-| `test_turn_roots.py` | `test_match_an_edit_in_an_unborn_repo_is_touched`, `test_match_an_unborn_repo_without_a_domain_path_is_untouched` | naar Go | `TestClassifyUnbornRepository`; mutatie `head == "unborn"` → `false`: rood (de tweede; de eerste blijft groen omdat een git-fout ook "touched" geeft) | |
+| `test_turn_roots.py` | `test_match_an_edit_in_an_unborn_repo_is_touched` | gedekt | `TestClassify/an_edit_in_the_domain_is_touched`; mutatie `paths[realpath(path)] = true` weggelaten in `toolPaths`: rood | Een eigen Go-geval voor de unborn-repo bleef groen onder elke mutatie (een git-fout geeft ook "touched"): niet geport |
+| `test_turn_roots.py` | `test_match_an_unborn_repo_without_a_domain_path_is_untouched` | naar Go | `TestClassifyUnbornRepository`; mutatie `head == "unborn"` → `false`: rood | |
 | `test_turn_roots.py` | `test_match_judges_each_root`, `test_match_an_edit_in_a_worktree_does_not_touch_the_main_checkout` | naar Go | `TestClassify`; mutatie `owner == root` → `owner == root \|\| strings.HasPrefix(path, root)`: rood (beide); `ok && use.hasWd` → `&& false`: rood (de eerste) | |
 | `test_turn_roots.py` | `test_match_a_root_git_cannot_read_is_touched` | naar Go | `TestClassify` (kapotte index); mutatie `Touched: true` → `false` bij `GitError`: rood (ook `TestAGitParseErrorIsNotInvalidJSON`) | |
 
@@ -607,6 +608,6 @@ Task 6: 53 pytest-functies → naar Go 13 / gedekt 39 / beschermt niets 0 / onde
 
 Task 7: 20 pytest-functies → naar Go 2 / gedekt 18 / beschermt niets 0 / onderwerp weg 0 (0 overgedragen)
 
-Task 8: 29 pytest-functies → naar Go 25 / gedekt 4 / beschermt niets 0 / onderwerp weg 0 (0 overgedragen)
+Task 8: 29 pytest-functies → naar Go 24 / gedekt 5 / beschermt niets 0 / onderwerp weg 0 (0 overgedragen)
 
 **Totalen:** tests voor: 576 · naar Go: … · weg — gedekt: … · weg — beschermt niets: … · weg — onderwerp weg: …

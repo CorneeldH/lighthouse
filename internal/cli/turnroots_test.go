@@ -46,7 +46,11 @@ func TestTurnRootsCommandPrintsRootsAndVerdicts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out, err := exec.Command("git", "-C", repo, "-c", "commit.gpgsign=false", "init", "-q", "-b", "main").CombinedOutput(); err != nil {
+	initCmd := exec.Command("git", "-C", repo, "-c", "commit.gpgsign=false", "init", "-q", "-b", "main")
+	initCmd.Env = append(os.Environ(),
+		"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t",
+		"GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_CONFIG_NOSYSTEM=1")
+	if out, err := initCmd.CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v\n%s", err, out)
 	}
 	entries := []map[string]any{

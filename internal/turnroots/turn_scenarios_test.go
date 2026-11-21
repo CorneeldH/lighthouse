@@ -495,13 +495,12 @@ func TestClassify(t *testing.T) {
 }
 
 // Classification: io/filesystem. At risk: a repository without a commit yet. Fails when an unborn
-// HEAD is read as a git failure (always touched) or its reflog source is not skipped cleanly.
+// HEAD is read as a git failure, which makes every root touched.
 func TestClassifyUnbornRepository(t *testing.T) {
 	tests := []struct {
 		name, file string
 		want       bool
 	}{
-		{"an edit in the domain is touched", "a.go", true},
 		{"an edit outside the domain is untouched", "README.md", false},
 	}
 	for _, tt := range tests {
