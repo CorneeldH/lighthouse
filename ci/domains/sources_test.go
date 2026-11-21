@@ -92,6 +92,9 @@ func withoutExemptions(rel, text string) string {
 		// output text; the tests read a temporary map, never the repository's. loop-roadmap.yml
 		// runs on every PR, so the exemption hides no missed CI run.
 		return strings.ReplaceAll(text, "docs/", "")
+	case rel == "internal/review/ledger_test.go" || rel == "internal/cli/reviewindex_test.go":
+		// docs/... are plan paths in a ledger header: text stored in a row, never read from this repo.
+		return strings.ReplaceAll(text, "docs/", "")
 	case rel == "internal/telemetry/record_test.go":
 		// docs/... are RecordPath values of a finding in test data: strings stored in a row.
 		return strings.ReplaceAll(text, "docs/", "")
@@ -138,6 +141,11 @@ var repoRead = regexp.MustCompile("[\"`]((?:\\.\\./)+(?:tests/[^\"`]*|" + rootMD
 // tests/ or a loose root .md file.
 var repoReadParts = regexp.MustCompile(`(?:"\.\."\s*,\s*)+"(?:tests"(?:\s*,\s*"pack"\s*,\s*"fixtures")?|tests/[^"]*"|(?:` + rootMD + `)")`)
 
+// readsFixtures reports whether a read names one of the test directories Go may read.
+func readsFixtures(s string) bool {
+	return strings.Contains(s, "tests/pack/fixtures/") || strings.Contains(s, "tests/pack/python/testdata/ruff-format-check/")
+}
+
 var fixturePartsPrefix = regexp.MustCompile(`"tests"\s*,\s*"pack"\s*,\s*"fixtures"$`)
 
 // repoReads returns the paths of this repo that Go source text reads from above its package
@@ -145,12 +153,12 @@ var fixturePartsPrefix = regexp.MustCompile(`"tests"\s*,\s*"pack"\s*,\s*"fixture
 func repoReads(text string) []string {
 	var out []string
 	for _, m := range repoRead.FindAllStringSubmatch(text, -1) {
-		if !strings.Contains(m[1], "tests/pack/fixtures/") {
+		if !readsFixtures(m[1]) {
 			out = append(out, m[1])
 		}
 	}
 	for _, m := range repoReadParts.FindAllString(text, -1) {
-		if fixturePartsPrefix.MatchString(m) || strings.Contains(m, "tests/pack/fixtures/") {
+		if fixturePartsPrefix.MatchString(m) || readsFixtures(m) {
 			continue
 		}
 		out = append(out, m)

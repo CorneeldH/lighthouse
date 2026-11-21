@@ -21,8 +21,9 @@ var goToo = map[string]bool{"web/openapi.json": true, "web/go.mod": true}
 // Inside docs/, but read by Go: internal/config/config_test.go parses the GitLab example in it.
 var goDocs = map[string]bool{"docs/install.md": true}
 
-// Inside tests/, but read by Go: internal/protocol/header_test.go reads the fixtures.
-const goFixtures = "tests/pack/fixtures/"
+// Inside tests/, but read by Go: internal/protocol/header_test.go reads the fixtures, and
+// internal/canary/bashwrite_test.go reads the ruff canary file that tests/pack/python shares.
+var goFixtures = []string{"tests/pack/fixtures/", "tests/pack/python/testdata/ruff-format-check/"}
 
 // Outside web/, but read by no Go build or test, so they leave out go (python stays: pytest reads
 // docs/ and tests/, and ci/literal-grep.sh runs in that job, on pack/ and on the Go sources).
@@ -31,7 +32,7 @@ const goFixtures = "tests/pack/fixtures/"
 // names docs/, changelog.d or ci/literal- (TestGoSourcesDoNotReadNotGoPaths fails when one does, except
 // the exemptions in withoutExemptions); the Go and e2e tests read outside their own package only
 // tests/pack/fixtures/, internal/usage/testdata/ and temporary repos; the literal lists are read
-// only by ci/literal-grep.sh and tools/gen_code_language_freq.py.
+// only by ci/literal-grep.sh.
 // Measured again for #151: from tests/ Go reads only tests/pack/fixtures/; the other tests/ and
 // README.md strings in Go are files in temporary repos. Only the loose root .md files (README.md,
 // CHANGELOG.md, CONTRIBUTING.md, SECURITY.md, CLA.md) leave go; AGENTS.md and CLAUDE.md stay, the
@@ -51,8 +52,10 @@ var notGo = map[string]bool{
 }
 
 func isNotGo(path string) bool {
-	if strings.HasPrefix(path, goFixtures) {
-		return false
+	for _, f := range goFixtures {
+		if strings.HasPrefix(path, f) {
+			return false
+		}
 	}
 	for _, d := range notGoDirs {
 		if strings.HasPrefix(path, d) {

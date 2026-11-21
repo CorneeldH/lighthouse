@@ -122,6 +122,14 @@ en = "merge failed after 3 fix-pr runs"
 nl = "geen handoff of vraag"
 en = "no handoff or question"
 
+[reason_post_failed]
+nl = "post mislukt"
+en = "post failed"
+
+[reason_post_failed_unreadable]
+nl = "post mislukt: notitie onleesbaar"
+en = "post failed: note unreadable"
+
 [reason_start_uncertain]
 nl = "start onzeker: geen sessie gevonden"
 en = "start uncertain: no session found"

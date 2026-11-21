@@ -2,6 +2,7 @@ package review
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -36,46 +37,25 @@ func hostToml(t *testing.T, text string) {
 	t.Setenv("LIGHTHOUSE_HOST_TOML", path)
 }
 
-func TestRecordHostRefusalUnknownHost(t *testing.T) {
+func TestReserveWritesWithoutHostToml(t *testing.T) {
+	data := t.TempDir()
+	t.Setenv("LIGHTHOUSE_DATA", data)
+	t.Setenv("XDG_DATA_HOME", "")
+	t.Setenv("HOME", "")
+	t.Setenv("XDG_CONFIG_HOME", "")
 	t.Setenv("LIGHTHOUSE_HOST_TOML", filepath.Join(t.TempDir(), "missing.toml"))
-	got := HostRefusal("plan")
-	if got == nil {
-		t.Fatal("HostRefusal = nil, want a refusal")
-	}
-	for _, want := range []string{"PLAN-REVIEW NOT RECORDED", "host unknown: no host.toml", "falls outside the measurement"} {
-		if !strings.Contains(*got, want) {
-			t.Errorf("refusal = %q, want it to contain %q", *got, want)
-		}
-	}
-}
+	attemptDir := t.TempDir()
+	writeFile(t, filepath.Join(attemptDir, "attempt.json"),
+		`{"kind":"plan","chain_key":"chain","attempt":"att"}`)
 
-func TestRecordHostRefusalOtherHost(t *testing.T) {
-	hostToml(t, "[host]\nname = \"laptop\"\ntailscale_ip = \"192.0.2.1\"\n") // TEST-NET-1: on no interface
-	got := HostRefusal("spec")
-	if got == nil {
-		t.Fatal("HostRefusal = nil, want a refusal")
-	}
-	for _, want := range []string{"SPEC-REVIEW NOT RECORDED", "not on the host from host.toml", "falls outside the measurement"} {
-		if !strings.Contains(*got, want) {
-			t.Errorf("refusal = %q, want it to contain %q", *got, want)
-		}
-	}
-}
+	var stderr strings.Builder
+	Reserve(attemptDir, DefaultDeps(), &stderr)
 
-func TestRecordHostRefusalWithoutTailscaleIP(t *testing.T) {
-	hostToml(t, "[host]\nname = \"server\"\n")
-	got := HostRefusal("spec")
-	if got == nil || !strings.Contains(*got, "not on the host from host.toml") {
-		t.Errorf("HostRefusal = %v, want 'not on the host from host.toml'", got)
+	if _, err := os.Stat(filepath.Join(data, "plan-review", "chain", ".att.tmp", "attempt.json")); err != nil {
+		t.Errorf("reservation not written without host.toml: %v", err)
 	}
-}
-
-func TestRecordHostRefusalRecognizedHost(t *testing.T) {
-	if got := hostRefusalWith("plan", func() (bool, error) { return true, nil }); got != nil {
-		t.Errorf("HostRefusal on the recognised host = %q, want nil", *got)
-	}
-	if got := hostRefusalWith("plan", func() (bool, error) { return false, nil }); got == nil {
-		t.Error("HostRefusal on another host = nil, want a refusal")
+	if stderr.Len() != 0 {
+		t.Errorf("stderr = %q, want empty", stderr.String())
 	}
 }
 
@@ -166,5 +146,64 @@ func TestStartReservesAnAttemptWithTheReviewedCommit(t *testing.T) {
 	var invalid *InvalidError
 	if !errors.As(err, &invalid) || !strings.Contains(err.Error(), "commit first") {
 		t.Errorf("Start on an uncommitted plan: error = %v, want an InvalidError with 'commit first'", err)
+	}
+}
+
+func TestBuildRecordTrajectory(t *testing.T) {
+	repo := t.TempDir()
+	run := func(args ...string) string {
+		out, err := exec.Command("git", append([]string{"-C", repo, "-c", "user.name=t", "-c", "user.email=t@t"}, args...)...).CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	writeFile(t, filepath.Join(repo, "docs", "plan.md"), "# plan\n")
+	skill := filepath.Join(repo, ".claude", "skills", "lighthouse-review-plan")
+	writeFile(t, filepath.Join(skill, "reviewer-prompt.md"), "prompt\n")
+	writeFile(t, filepath.Join(skill, "findings.schema.json"), "{}\n")
+	run("init", "-q")
+	run("add", "-A")
+	run("commit", "-qm", "init")
+	deps := Deps{
+		CodexVersion: func() *string { v := "codex 1"; return &v },
+		Now:          func() time.Time { return time.Date(2026, 11, 8, 12, 30, 45, 0, time.UTC) },
+	}
+	attempt, err := Start(docsDir+"plan.md", repo, t.TempDir(), "plan", deps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(attempt, "round-1.json"), `{"review_markdown":"x","status":"s","findings":[]}`)
+	in := RecordInput{
+		Repo: repo, Outcome: "converged", ReviewMode: "codex", FinalSHA: run("rev-parse", "HEAD"),
+		SkillDir: DefaultSkillDirs["plan"], CodexHome: t.TempDir(),
+	}
+
+	rec, err := BuildRecord(attempt, in, deps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v, ok := rec.Get("trajectory"); !ok || v != nil {
+		t.Errorf("trajectory without input = %v (present %v), want present and nil", v, ok)
+	}
+	if v, _ := rec.Get("schema_version"); fmt.Sprint(v) != "6" {
+		t.Errorf("schema_version = %v, want 6", v)
+	}
+
+	in.Trajectory = &Trajectory{Repo: "CorneeldH/lighthouse", Issue: 376}
+	rec, err = BuildRecord(attempt, in, deps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v, _ := rec.Get("trajectory")
+	o, ok := v.(*orderedjson.Object)
+	if !ok {
+		t.Fatalf("trajectory = %#v, want an object", v)
+	}
+	if r, _ := o.Get("repo"); r != "CorneeldH/lighthouse" {
+		t.Errorf("trajectory.repo = %v", r)
+	}
+	if n, _ := o.Get("issue"); fmt.Sprint(n) != "376" {
+		t.Errorf("trajectory.issue = %v", n)
 	}
 }

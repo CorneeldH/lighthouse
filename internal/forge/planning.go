@@ -82,12 +82,9 @@ func (n planMilestoneNode) milestone() Milestone {
 // milestones; the priorities document holds the measurement. Any truncated connection or stuck
 // cursor is an error, never a partial answer.
 func (c *GitHub) Planning(ctx context.Context) (Planning, error) {
-	if err := c.configured(); err != nil {
+	owner, name, err := c.ownerName()
+	if err != nil {
 		return Planning{}, err
-	}
-	owner, name, ok := strings.Cut(c.Repo, "/")
-	if !ok || owner == "" || name == "" {
-		return Planning{}, fmt.Errorf("forge: repo %q is not owner/name", c.Repo)
 	}
 	issues, err := c.planIssues(ctx, owner, name)
 	if err != nil {

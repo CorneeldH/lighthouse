@@ -49,6 +49,7 @@ func TestClassify(t *testing.T) {
 		{[]string{"AGENTS.md"}, set("go", "python")},
 		{[]string{"tests/test_x.py", "README.md"}, set("python")},
 		{[]string{"tests/pack/fixtures/protocol/headers.json"}, set("go", "python")},
+		{[]string{"tests/pack/python/testdata/ruff-format-check/E722.py"}, set("go", "python")},
 		{[]string{"pack/core/README.md"}, set("go", "python")},
 		{[]string{"docs/install.md"}, set("go", "python")},
 		{[]string{"docs/other.md"}, set("python")},

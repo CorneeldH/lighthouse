@@ -239,6 +239,10 @@
   [
    "agent_audit.description_max_chars",
    "int"
+  ],
+  [
+   "imports.check",
+   "bool"
   ]
  ],
  "defaults": {
@@ -287,7 +291,8 @@
   "report.sink": "stdout",
   "agent_audit.ignore": [],
   "agent_audit.top": 10,
-  "agent_audit.description_max_chars": 1024
+  "agent_audit.description_max_chars": 1024,
+  "imports.check": true
  },
  "base_keys": [
   "forge.kind",

@@ -488,3 +488,39 @@ func checkOwnerFits(ctx context.Context, tx *sql.Tx, f FindingRecord, repo strin
 	}
 	return nil
 }
+
+// FindingSum returns the record_sum stored for the finding with this origin.
+func FindingSum(ctx context.Context, db *sql.DB, source, sourceID string) (string, bool, error) {
+	var sum string
+	err := db.QueryRowContext(ctx, `SELECT record_sum FROM findings WHERE source = ? AND source_id = ?`,
+		source, sourceID).Scan(&sum)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, fmt.Errorf("telemetry: read finding sum: %w", err)
+	}
+	return sum, true, nil
+}
+
+// DeleteFindingsUnder deletes the findings of source whose source_id starts
+// with prefix and not with keep (all of them under prefix when keep is
+// empty), and returns how many. It compares with substr, never LIKE: "_" and
+// "%" in a chain name are no wildcards.
+func DeleteFindingsUnder(ctx context.Context, db *sql.DB, source, prefix, keep string) (int64, error) {
+	n, _, err := inTx(ctx, db, func(tx *sql.Tx) (int64, bool, error) {
+		query := `DELETE FROM findings WHERE source = ? AND substr(source_id, 1, length(?)) = ?`
+		args := []any{source, prefix, prefix}
+		if keep != "" {
+			query += ` AND substr(source_id, 1, length(?)) != ?`
+			args = append(args, keep, keep)
+		}
+		res, err := tx.ExecContext(ctx, query, args...)
+		if err != nil {
+			return 0, false, fmt.Errorf("telemetry: delete findings: %w", err)
+		}
+		n, err := res.RowsAffected()
+		return n, false, err
+	})
+	return n, err
+}

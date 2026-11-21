@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/nodeapi"
 	"github.com/CorneeldH/lighthouse/internal/workplace"
@@ -259,4 +260,48 @@ func TestPermissionUnsafeSessionIs400(t *testing.T) {
 			t.Errorf("%q: status = %d, want 400: %s", session, rec.Code, rec.Body.String())
 		}
 	}
+}
+
+func postFailedPath(session string) string {
+	return nodeapi.Prefix + "/runs/" + session + "/post-failed"
+}
+
+func TestPostFailedRoute(t *testing.T) {
+	f := newFixture(t, map[string]string{}, nodeToken)
+	t.Run("raw bytes", func(t *testing.T) {
+		dir := filepath.Join(f.h.d.StateDir, "runs", launchSession)
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		note := `{"version": 9, "extra": [1]}` + "\n"
+		writeFile(t, dir, "post-failed.json", note)
+		mtime := time.Date(2026, 11, 19, 8, 30, 0, 250_000_000, time.UTC)
+		if err := os.Chtimes(filepath.Join(dir, "post-failed.json"), mtime, mtime); err != nil {
+			t.Fatal(err)
+		}
+		rec := send(f.h, http.MethodGet, postFailedPath(launchSession), nil)
+		if rec.Code != http.StatusOK || rec.Body.String() != note {
+			t.Errorf("status %d body %q, want 200 and %q", rec.Code, rec.Body.String(), note)
+		}
+		if got := rec.Header().Get(nodeapi.HeaderModTime); got != "2026-11-19T08:30:00.25Z" {
+			t.Errorf("%s = %q, want the file's mtime 2026-11-19T08:30:00.25Z", nodeapi.HeaderModTime, got)
+		}
+	})
+	t.Run("missing is 404 no_post_failed", func(t *testing.T) {
+		rec := send(f.h, http.MethodGet, postFailedPath("0b3e1c9a-1111-4222-8333-444455556666"), nil)
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("status = %d, want 404: %s", rec.Code, rec.Body.String())
+		}
+		if p := problem(t, rec); p.Code != nodeapi.CodeNoPostFailed {
+			t.Errorf("code = %q, want %q", p.Code, nodeapi.CodeNoPostFailed)
+		}
+	})
+	t.Run("unsafe session is 400", func(t *testing.T) {
+		for _, session := range []string{"a.b", "a_b", "a%20b", "%2e%2e"} {
+			rec := send(f.h, http.MethodGet, postFailedPath(session), nil)
+			if rec.Code != http.StatusBadRequest {
+				t.Errorf("%q: status = %d, want 400: %s", session, rec.Code, rec.Body.String())
+			}
+		}
+	})
 }
