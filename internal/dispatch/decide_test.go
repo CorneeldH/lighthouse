@@ -680,7 +680,7 @@ func TestReturnLabelKeyTable(t *testing.T) {
 		"reason_start_uncertain": "needs_hands", "reason_permission": "needs_hands", "reason_silent": "needs_hands",
 		"reason_silent_forge": "needs_hands", "reason_timeout": "needs_hands", "reason_pusher_off": "needs_hands",
 		"reason_pusher_node": "needs_hands", "reason_pusher_silent": "needs_hands",
-		"reason_pusher_no_handoff": "needs_hands",
+		"reason_pusher_no_handoff": "needs_hands", "reason_repeat_handoff": "needs_hands",
 	}
 	var headings map[string]map[string]string
 	if _, err := toml.DecodeFile(filepath.Join("..", "..", "pack", "core", "headings.toml"), &headings); err != nil {
