@@ -117,6 +117,15 @@ func TestReviewIndexLedgerFlag(t *testing.T) {
 		t.Errorf("findings = %d, want 2", n)
 	}
 
+	// Without --issue the issue comes from the plan path on the first line of the fixture
+	// (issue-376). A fresh database makes the count visible again.
+	t.Setenv("XDG_STATE_HOME", filepath.Join(s.vars["tmp"], "state2"))
+	code, out, errOut = runReviewIndex(t, "--ledger", ledger)
+	if code != 0 || !strings.HasPrefix(out, "indexed: new=2 ") {
+		t.Fatalf("without --issue: exit %d, stdout %q, stderr %q", code, out, errOut)
+	}
+	t.Setenv("XDG_STATE_HOME", filepath.Join(s.vars["tmp"], "state"))
+
 	// A ledger whose plan path names no issue and without --issue is skipped with a reason.
 	plain := filepath.Join(s.vars["tmp"], "ledger.md")
 	mustWrite(t, plain, "# SDD ledger — plan: docs/plans/zonder-nummer.md\nTask 1: Ruling: iets — waarom\n")
