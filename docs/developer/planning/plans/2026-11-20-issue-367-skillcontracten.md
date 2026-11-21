@@ -304,7 +304,7 @@ De uitvoerder werkt deze tabel per taak bij. De PR-body neemt hem over. Telling:
 | `test_pr_template.py` | 8 | 8 naar Go (1 ingekort: regelnummers; de vormen gebonden aan de parser van `prbody`, het subcommando via `cliFlags`, de kop via `config.Heading`), 0 gedekt (`inline_twins_test` faalt op geen enkele mutatie) | 7 |
 | `test_workflow_unblock.py` | 14 | 14 naar Go (5 als uitvoertest van het stapscript, 1 ingekort: de allowlistkant; de YAML via `packs.Fill` en `yaml.v3`, de sleutels via `config.KindOf`), 0 gedekt (de init-tests vullen een stubworkflow), negatieven R3 binnen 1 test | 7 |
 | `test_fragments.py` | 4 | 1 naar Go, 3 beschermt niets | 8 |
-| `test_requires_without_python.py` | 1 | 1 gedekt (`TestLanguagePacks`) | 8 |
+| `test_requires_without_python.py` | 1 | 1 gedekt (`TestLanguagePacks`, voor go, node, shell en expo elk met `python3` en `tomllib` gemuteerd) | 8 |
 | `test_portable_shell.py` | 3 | 3 naar Go | 8 |
 | `test_shell_style.py` | 1 | 1 naar Go (open: shellcheck in de Go-job) | 8 |
 | **Totaal** | **297** | voorlopig ~265 naar Go, ~32 weg of open | |
@@ -720,3 +720,11 @@ Vervallen negatieven (R3): `uv `, `setup-uv`, `python` en `unblock_dependents.py
 | `test_workflow_unblock.py` | `test_the_one_literal_is_the_release_download` | naar Go (ingekort) | Alleen de YAML-kant: de enige regel met de eigenaar is `--repo <module>`, de repo afgeleid uit het Go-modulepad. De allowlistkant leest een `not-go`-pad en gaat niet naar Go. | `TestUnblockTheOneLiteralIsTheReleaseDownload`. Mutaties: `--repo CorneeldH/lighthouse-releases`, een commentaarregel met de eigenaar: FAIL. |
 | `test_workflow_unblock.py` | `test_every_placeholder_is_a_known_scalar_key` | naar Go | Precies vier placeholders, elk `str` volgens `config.KindOf`. | `TestUnblockEveryPlaceholderIsAKnownScalarKey`. Mutaties: `@@ci.runner@@` (onbekend), `@@labels.area_prefix@@` (andere set): FAIL. |
 | `test_workflow_unblock.py` | `test_no_project_literals_left` | naar Go | Blijvende invariant: geen `self-hosted`, `_bot_`, `refs/heads/main`; opgegaan in de configtest. | `TestUnblockProjectValuesComeFromConfig`. Mutatie: een commentaar "self-hosted runners only": FAIL. |
+
+### `test_requires_without_python.py` (taak 8a, afgerond)
+
+0 naar Go, 1 gedekt (1). `TestLanguagePacks` (`internal/packs/core_test.go`) pint de hele lijst `tools` per taalpakket, uit `pack/<pakket>/requires.toml` zoals de binary die laadt. Elke mutatie is gedraaid: de subtest faalde, daarna `git checkout -- pack/` en een lege `git status --short pack/`.
+
+| Bestand | Test | Bestemming | Reden | Go-test of mutatie |
+|---|---|---|---|---|
+| `test_requires_without_python.py` | `test_language_pack_requires_no_python` | weg — gedekt | De toollijst per pakket is exact gepind; een extra `python3` of `tomllib` verandert die lijst. | `TestLanguagePacks/go`, `/node`, `/shell`, `/expo`. Mutaties: `python3 = ["x"]` en `tomllib = ["x"]` in elk van de vier `requires.toml`: alle acht FAIL. |
