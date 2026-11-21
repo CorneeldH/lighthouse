@@ -2,14 +2,46 @@
 
 import re
 import tomllib
+from html.parser import HTMLParser
+from pathlib import Path
 
 import pytest
 
 from tests.pack._testkit import config_schema
 from tests.test_getting_started import init_flags, required_tools, section
-from tests.test_site_loop import ROOT, SITE
-from tests.test_site_download import DOWNLOAD, INDEX, INSTALL, TABS
-from tests.test_site_pages import ElementById
+
+ROOT = Path(__file__).resolve().parents[1]
+SITE = ROOT / "docs" / "site"
+INDEX = SITE / "index.html"
+INSTALL = SITE / "install.html"
+DOWNLOAD = "https://github.com/CorneeldH/lighthouse/releases/latest/download/"
+TABS = ["linux-amd64", "linux-arm64", "darwin-arm64", "darwin-amd64", "windows-amd64"]
+
+
+class ElementById(HTMLParser):
+    """The start-tag attributes and the text of the first element with a given id."""
+
+    def __init__(self, element_id: str):
+        super().__init__()
+        self.element_id = element_id
+        self.attrs: dict[str, str | None] | None = None
+        self.text = ""
+        self.depth = 0
+
+    def handle_starttag(self, tag, attrs):
+        if self.depth:
+            self.depth += 1
+        elif self.attrs is None and dict(attrs).get("id") == self.element_id:
+            self.attrs = dict(attrs)
+            self.depth = 1
+
+    def handle_endtag(self, tag):
+        if self.depth:
+            self.depth -= 1
+
+    def handle_data(self, data):
+        if self.depth:
+            self.text += data
 
 GUIDE = SITE / "agents" / "install.md"
 PASTE = "Read https://corneeldh.github.io/lighthouse/agents/install.md and install lighthouse in this repo."
