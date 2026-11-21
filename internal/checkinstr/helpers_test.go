@@ -98,10 +98,17 @@ func check(t *testing.T, files tree, opts runOptions) result {
 		}
 		writeFile(t, filepath.Join(root, path), content)
 	}
+	return runIn(t, root, base, personal, opts)
+}
+
+// runIn runs every check on root, with a lighthouse.toml of opts.toml under base (outside the
+// tree) and personal as the personal skills directory.
+func runIn(t *testing.T, root, base, personal string, opts runOptions) result {
+	t.Helper()
 	t.Setenv("LIGHTHOUSE_CONTROLLER_RUN", "")
-	toml := filepath.Join(base, "lighthouse.toml")
-	writeFile(t, toml, opts.toml)
-	t.Setenv("LIGHTHOUSE_TOML", toml)
+	tomlPath := filepath.Join(base, "lighthouse.toml")
+	writeFile(t, tomlPath, opts.toml)
+	t.Setenv("LIGHTHOUSE_TOML", tomlPath)
 	t.Setenv("LIGHTHOUSE_REPO_ROOT", root)
 	keys := make([]string, 0, len(opts.env))
 	for k := range opts.env {
