@@ -17,6 +17,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/flock"
 	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/hostconfig"
+	"github.com/CorneeldH/lighthouse/internal/issuestate"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/store"
 	tri "github.com/CorneeldH/lighthouse/internal/triage"
@@ -480,8 +481,8 @@ func (r *round) issue(ctx context.Context, g *repoGather, f tri.Facts, jc tri.Co
 // errChanged is the recheck finding a change: apply then writes nothing.
 var errChanged = errors.New("changed since gather")
 
-// apply rechecks issue f and writes outcome o: the comment, the handoff, and for a forwarded
-// issue the board item and the Controller status, in that order (spec "Volgorde per issue").
+// apply rechecks issue f and writes outcome o: the comment, the handoff, the label of o (when
+// it has one), and for a forwarded issue the board item and the Controller status, in that order (spec "Volgorde per issue").
 // step names the step that failed; it is "" for errChanged.
 func (r *round) apply(ctx context.Context, g *repoGather, f tri.Facts, o tri.Outcome) (step string, err error) {
 	after, err := g.recheck(ctx, f.Number)
@@ -497,6 +498,11 @@ func (r *round) apply(ctx context.Context, g *repoGather, f tri.Facts, o tri.Out
 	if o.Handoff != "" {
 		if _, err := g.c.CreateComment(ctx, f.Number, o.Handoff); err != nil {
 			return "handoff", err
+		}
+	}
+	if o.Label != "" {
+		if _, err := issuestate.Apply(ctx, g.c, f.Number, o.Label, g.repo.Labels); err != nil {
+			return "label", err
 		}
 	}
 	if o.Row != tri.RowForward {

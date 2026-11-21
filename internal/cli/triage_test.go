@@ -315,6 +315,8 @@ func triageWrites(srv *forgetest.Server) []string {
 		case p.Method == "POST" && len(parts) == 6 && parts[3] == "projectsV2": // /users/o/projectsV2/3/items
 			number := int(p.Body["number"].(float64))
 			out = append(out, fmt.Sprintf("AddToBoard %v", srv.Issues[number]["node_id"]))
+		case p.Method == "POST" && len(parts) == 7 && parts[6] == "labels": // /repos/o/r/issues/7/labels
+			out = append(out, fmt.Sprintf("labels %s: add %v", parts[5], p.Body["labels"]))
 		case len(parts) == 7 && parts[6] == "comments":
 			body, _ := p.Body["body"].(string)
 			first, _, _ := strings.Cut(body, "\n")
@@ -356,7 +358,7 @@ func assertWrites(t *testing.T, srv *forgetest.Server, want ...string) {
 
 func TestTriageForwardsWithNightHandoff(t *testing.T) {
 	fx := triageFixture(t, triageToml)
-	fx.issue(7, "2-area:cli", "3-needs-hands")
+	fx.issue(7, "2-area:cli")
 	fx.onBoard(7, "t1", nil)
 	fx.judge.answers[7] = forward(7)
 
@@ -420,6 +422,7 @@ func TestTriageDesignAndStops(t *testing.T) {
 	}
 	assertWrites(t, fx.srv,
 		`comment 8: <!-- lighthouse: {"kind":"triage","version":1,"gate":"4c"} -->`,
+		"labels 8: add [3-needs-shaping]",
 		`comment 9: <!-- lighthouse: {"kind":"triage","version":1,"gate":"1"} -->`,
 		`comment 10: <!-- lighthouse: {"kind":"triage","version":1,"gate":"4b"} -->`,
 		`comment 11: <!-- lighthouse: {"kind":"triage","version":1,"gate":"4b"} -->`)
@@ -1047,7 +1050,7 @@ func TestTriageJudgesInExport(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeFiles(t, local, map[string]string{"SKILL.md": "---\nname: local-skill\n---\n"})
-	fx.issue(7, "2-area:cli", "3-needs-hands")
+	fx.issue(7, "2-area:cli")
 	fx.onBoard(7, "t1", nil)
 	fx.judge.answers[7] = forward(7)
 
@@ -1498,6 +1501,52 @@ func TestBoardReadyPerKind(t *testing.T) {
 				t.Errorf("boardReady = %v, want nil", err)
 			case tc.want != "" && (err == nil || err.Error() != tc.want):
 				t.Errorf("boardReady = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
+// Production change that turns it red: apply without issuestate.Apply on RowDesign writes no label.
+func TestTriageDesignSetsNeedsShaping(t *testing.T) {
+	fx := triageFixture(t, triageToml)
+	fx.issue(8, "2-area:cli")
+	fx.onBoard(8, "t1", nil)
+	fx.judge.answers[8] = answerWith("#8 Poort 4c: brainstorming — richting open", 4, "c", map[string]any{
+		"design_questions": []any{map[string]any{"question": "Welke kant?", "options": []any{"Links", "Rechts"}, "recommended": 0}}})
+
+	if _, errOut, err := fx.run(triageOpts{}); err != nil {
+		t.Fatalf("triage = %v\n%s", err, errOut)
+	}
+	assertWrites(t, fx.srv,
+		`comment 8: <!-- lighthouse: {"kind":"triage","version":1,"gate":"4c"} -->`,
+		"labels 8: add [3-needs-shaping]")
+}
+
+// Production change that turns it red: judgedRow without the labels check forwards the issue.
+func TestTriageNeedsLabelNotForwarded(t *testing.T) {
+	for _, gate := range []struct {
+		name   string
+		ans    func(n int) string
+		nr     int
+		sub    string
+		marker string
+	}{
+		{"4a", func(n int) string { return fmt.Sprintf("#%d Poort 4a: x — y", n) }, 4, "a", "4a"},
+		{"4b", func(n int) string { return fmt.Sprintf("#%d Poort 4b: x — y", n) }, 4, "b", "4b"},
+		{"2", func(n int) string { return fmt.Sprintf("#%d Poort 2: x — y", n) }, 2, "", "2"},
+	} {
+		t.Run(gate.name, func(t *testing.T) {
+			fx := triageFixture(t, triageToml)
+			fx.issue(7, "2-area:cli", "3-needs-hands")
+			fx.onBoard(7, "t1", nil)
+			fx.judge.answers[7] = answerWith(gate.ans(7), gate.nr, gate.sub, nil)
+
+			if _, errOut, err := fx.run(triageOpts{}); err != nil {
+				t.Fatalf("triage = %v\n%s", err, errOut)
+			}
+			assertWrites(t, fx.srv, `comment 7: <!-- lighthouse: {"kind":"triage","version":1,"gate":"`+gate.marker+`"} -->`)
+			if b := bodies(fx.srv, 7); len(b) != 1 || !strings.Contains(b[0], "3-needs-hands") {
+				t.Errorf("comment = %q, want one naming 3-needs-hands", b)
 			}
 		})
 	}

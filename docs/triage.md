@@ -29,15 +29,17 @@ niets: het heeft alleen `Read`, `Grep` en `Glob`.
    geen actie op dat issue, een foutregel op stderr, en het issue komt de volgende ronde terug.
 3. **Toepassen.** Vlak voor de eerste schrijfactie leest de ronde het issue opnieuw. Is er iets
    veranderd, dan slaat ze het over zonder één schrijfactie. Anders schrijft ze de triage-comment,
-   dan eventueel de `🤖 Handoff`, dan de status.
+   dan eventueel de `🤖 Handoff`, dan het label (poort 4c) of de status.
 
-Een issue op poort 4a, 4b of 2 gaat naar `Controller`, ook met `needs-hands` of `needs-testing`.
-Poort 0 en 1 houden hun status en krijgen alleen de comment. Poort 4c krijgt de comment met
-ontwerpvragen, elk met opties en een aanbevolen optie. Een vermoedelijk dubbel of al afgerond
+Een issue op poort 4a, 4b of 2 gaat naar `Controller`, tenzij het een `needs_*`-label draagt: een
+issue met een `needs_*`-label gaat nooit via triage naar `Controller` (de rij is *interactief*,
+alleen de comment). Poort 0 en 1 houden hun status en krijgen alleen de comment. Poort 4c krijgt de
+comment met ontwerpvragen, elk met opties en een aanbevolen optie, en het label `needs_shaping`.
+`/lighthouse-start-issue` haalt dat label weg zodra de spec goedgekeurd is. Een vermoedelijk dubbel of al afgerond
 issue wordt gemeld, nooit gesloten of doorgezet. Al afgerond is ook werk dat een commit onder een
 ander issuenummer leverde, zonder dit issue te noemen: het model weegt de code die het zelf leest,
-niet alleen de git log van dit nummer. Triage zet geen labels en legt geen
-`blocked_by`-relaties.
+niet alleen de git log van dit nummer. Triage zet alleen `needs_shaping` bij poort 4c, geen andere
+labels, en legt geen `blocked_by`-relaties.
 
 Vrije tekst van het model komt op één regel in de comment, zonder codefence, `<sub>` of `<!--`.
 Dat geldt voor de routeregel na `#<nr> Poort <n>:`, het bewijs bij een dubbel of afgerond issue,

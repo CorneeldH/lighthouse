@@ -21,9 +21,9 @@ func newGatherCommand() *cobra.Command {
 		Use:   "gather <repo-dir>",
 		Short: "Print the snapshot of one repo as JSON",
 		Long: "Gather the snapshot of one repo, as tick would, and print it as JSON: the board items in\n" +
-			"Controller or On hold with their PRs and trusted comments, and the open runs. It reads the\n" +
-			"same token, host.toml and database as tick, but takes no tick.lock, runs no precheck and\n" +
-			"saves no tick state.",
+			"Controller or On hold and the To do items the tick parked, with their PRs and trusted\n" +
+			"comments, and the open runs. It reads the same token, host.toml and database as tick, but\n" +
+			"takes no tick.lock, runs no precheck and saves no tick state.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			env := tickEnv{Getenv: os.Getenv, HostToml: hostconfig.Path()}
@@ -63,7 +63,7 @@ func gather(ctx context.Context, env tickEnv, dir, dbPath string, out, errOut io
 	}
 	defer func() { _ = st.Close() }()
 
-	pre, err := prepare(ctx, st.DB, rf.Forge, repo)
+	pre, err := prepare(ctx, st.DB, cfg, rf, repo, false, env.now())
 	if err != nil {
 		return err
 	}

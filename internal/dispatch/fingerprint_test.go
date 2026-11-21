@@ -275,3 +275,21 @@ func TestFingerprintScheduledRun(t *testing.T) {
 		t.Error("an empty ScheduledPRs changed the fingerprint")
 	}
 }
+
+// A To do item that Prepare kept (the tick parked it) hashes its blockers like the On hold
+// remnant did: a blocker that closes, or gets a merged PR, changes the fingerprint, so the tick
+// gathers and unparks. Hashing the blockers of On hold items only turns this red.
+func TestFingerprintIncludesParkedToDoBlockers(t *testing.T) {
+	mk := func(b forge.Blocker) Pre {
+		return Pre{Items: []Item{{Issue: 1, Status: "To do", BlockedBy: []forge.Blocker{b}}}}
+	}
+	open := forge.Blocker{Repo: "x/y", Issue: 5, State: "OPEN"}
+	closed, merged := open, open
+	closed.State, merged.MergedPR = "CLOSED", true
+	if Fingerprint(mk(closed)) == Fingerprint(mk(open)) {
+		t.Error("fingerprint unchanged after the blocker of a parked To do item closed")
+	}
+	if Fingerprint(mk(merged)) == Fingerprint(mk(open)) {
+		t.Error("fingerprint unchanged after the blocker of a parked To do item got a merged PR")
+	}
+}
