@@ -288,12 +288,13 @@ func runRecordWrite(cmd *cobra.Command, attemptDir string, f *recordFlags, deps 
 }
 
 // indexAfterWrite indexes the data directory, the new record included. The record is the
-// product: a failure is one line on stderr, never an exit code.
+// product: a failure or a skipped record is one line on stderr, never an exit code.
 func indexAfterWrite(cmd *cobra.Command) {
 	ctx := cmd.Context()
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	var res review.IndexResult
 	err := func() error {
 		dbPath, err := store.DefaultPath()
 		if err != nil {
@@ -304,11 +305,15 @@ func indexAfterWrite(cmd *cobra.Command) {
 			return err
 		}
 		defer func() { _ = st.Close() }()
-		_, err = indexDataRoot(ctx, st.DB)
+		res, err = indexDataRoot(ctx, st.DB)
 		return err
 	}()
 	if err != nil {
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "REVIEW-INDEX FAILED: %v\n", err)
+		return
+	}
+	for _, s := range res.Skipped {
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "REVIEW-INDEX SKIPPED: %s: %s\n", s.Path, s.Reason)
 	}
 }
 

@@ -16,12 +16,14 @@ import (
 // indexScenario is a scenario whose plan review wrote one record on the branch issue-12, with
 // findings, under forge.repo CorneeldH/lighthouse. HOME and XDG_STATE_HOME are tempdirs, so
 // store.DefaultPath never reaches the real lighthouse.db.
-func indexScenario(t *testing.T) *scenario {
+func indexScenario(t *testing.T) *scenario { return indexScenarioOn(t, "issue-12") }
+
+func indexScenarioOn(t *testing.T, branch string) *scenario {
 	t.Helper()
 	s := newScenario(t, map[string]any{})
 	mustWrite(t, filepath.Join(s.vars["tmp"], "lighthouse.toml"),
 		"[project]\nlanguage = \"nl\"\n[forge]\nrepo = \"CorneeldH/lighthouse\"\n")
-	s.git("checkout", "-q", "-b", "issue-12")
+	s.git("checkout", "-q", "-b", branch)
 	s.runStep(step{"op": "run", "args": []any{"start", "${PLAN}"}, "bind": "a"})
 	s.roundStep(step{"attempt": "a", "n": float64(1), "severities": []any{"MAJOR"}})
 	return s
@@ -186,5 +188,16 @@ func TestRecordWriteIndexFailureIsWarning(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(strings.TrimSpace(stdout), "record.json")); err != nil {
 		t.Errorf("record.json missing: %v", err)
+	}
+}
+
+func TestRecordWriteReportsSkippedRecord(t *testing.T) {
+	s := indexScenarioOn(t, "fix-zonder-nummer")
+	_, stderr := s.writeRecord()
+	if !strings.Contains(stderr, "REVIEW-INDEX SKIPPED: ") || !strings.Contains(stderr, "record.json: ") {
+		t.Errorf("stderr = %q, want a REVIEW-INDEX SKIPPED line with the path and reason", stderr)
+	}
+	if n := countFindings(t); n != 0 {
+		t.Errorf("findings = %d, want 0", n)
 	}
 }
