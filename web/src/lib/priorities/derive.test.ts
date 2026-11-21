@@ -425,8 +425,8 @@ describe('milestone rank and priority order', () => {
   it('milestoneRows reads the rank from the description', () => {
     const repos = [
       repo(R, [], [
-        { number: 1, title: 'one', open: 0, done: 0, description: 'x\nPriority: 4' },
-        { number: 2, title: 'two', open: 0, done: 0, description: 'none' },
+        { number: 1, title: 'one', open: 0, done: 0, closed: null, description: 'x\nPriority: 4' },
+        { number: 2, title: 'two', open: 0, done: 0, closed: null, description: 'none' },
       ]),
     ]
     const rows = milestoneRows(repos, buildGraph(repos, []))
