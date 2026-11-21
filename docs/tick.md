@@ -103,6 +103,17 @@ Het is een korte run, geen daemon. Wie issues vooraf routeert en naar `Controlle
    (`IssueItem`, voor een open run waarvan het item gearchiveerd of van het board gehaald is) gebruiken
    nog GraphQL. Elke lijst leest tick via de `Link`-header tot het einde: een lange lijst voorgangers
    of sluitende PR's wordt niet afgekapt.
+   De reads van de gather, bij GitHub, per soort:
+   - Het board: de `projectsV2`-pagina's, eenmaal per tick en gedeeld door alle items.
+   - Per board-item: `dependencies/blocked_by` alleen bij een open issue met `total_blocked_by > 0`.
+     Een gesloten issue start of hervat geen run, dus zijn blokkades leest tick niet.
+   - Per PR: `pulls/<n>` plus de checks, hoogstens één keer per (repo, PR, head-sha) per tick. Het
+     geheugen leeft alleen in de GitHub-client van een tick; `serve`, de workflow-pusher en
+     `postartefact` lezen steeds opnieuw. Een mislukte read wordt niet onthouden.
+   - Per run-branch: één `pulls?head=`.
+   - De comments, de reacties, de `user` en de collaborator-permissie zoals hierboven beschreven.
+
+   Een `304` kost nog steeds een round trip: minder requests verkort de tick, de cache doet dat niet.
    Een 403 of 404 op een extra aanroep (voorgangers, checks of mergebaarheid van een PR) negeert tick
    alleen bij een item van een andere repo dan die van de run, en nooit bij een 403 van een rate
    limit. Elke andere fout van GitHub slaat de repo luid over met `lighthouse: skip <pad>: <fout>` en
