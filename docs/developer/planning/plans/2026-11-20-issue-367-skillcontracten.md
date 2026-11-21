@@ -176,7 +176,7 @@ Concept:
 
 Concept:
 - **write-pr: naar Go**, met deze uitzonderingen:
-  - `test_one_shared_skill_file` gaat weg, gedekt door `TestCorePack`: de bestandslijst bevat geen `write-pr/claude/`.
+  - `test_one_shared_skill_file` gaat weg: beschermt niets (R2). `TestCorePack` dekt het niet: een splitsing in twee varianten blijft groen (taak 4a).
   - `test_skill_runs_before_pr` (`--voor-pr`) en `test_after_pr_is_gone` worden alleen positief geport. Hun negatieven vallen weg (R3).
   - `test_outcomes_are_headings`: `klopt` en `KON NIET` vallen weg (R3).
   - `test_allowlist_table_covers_the_code` leest `tests/pack/fixtures/evidence/allowlist.json`. Port het naar Go met hetzelfde fixture, of met de constanten uit `internal/evidence` als die geëxporteerd zijn. `TestAllowlistMatchesFixture` bindt fixture en code al aan elkaar.
@@ -291,7 +291,7 @@ De uitvoerder werkt deze tabel per taak bij. De PR-body neemt hem over. Telling:
 |---|---:|---|---|
 | `test_skill_contracts.py` | 22 | 16 naar Go, 2 zelftests opgegaan in de niet-leeg-assertie, 2 gedekt, 1 beschermt niets, 1 onderwerp weg | 2 |
 | `test_skills_issue_flow.py` | 49 | 45 naar Go (waarvan 1 ingekort: de plan-naad), 3 gedekt, 1 onderwerp weg | 3 |
-| `test_write_pr_skill.py` | 25 | 24 naar Go (2 in-process, geen e2e), 1 gedekt, negatieven R3 binnen 8 tests | 4 |
+| `test_write_pr_skill.py` | 25 | 24 naar Go (2 in-process, geen e2e), 0 gedekt, 1 beschermt niets, negatieven R3 binnen 8 tests | 4 |
 | `test_write_issue_skill.py` | 15 | 15 naar Go (1 in-process of e2e) | 4 |
 | `test_close_issue_skill.py` | 34 | ~32 naar Go, tot 2 gedekt (`unblock`, `prbody`) | 4 |
 | `test_fix_pr_skill.py` | 15 | naar Go, minus wat `TestFixPRDiagnosisBlockIsReadOnly` dekt | 5 |
@@ -398,11 +398,11 @@ Per test (in te vullen): `bestand | test | bestemming | reden | Go-test of mutat
 
 ### `test_write_pr_skill.py` (taak 4a, afgerond)
 
-24 naar Go, 1 gedekt (25). Alle Go-tests staan in `internal/packcontract/writepr_test.go`, per variant met `t.Run` (write-pr heeft één gedeelde `SKILL.md`). De twee tests die de binary draaiden, lopen in-process: `evidence.Run` en `prbody.Main` met een `prbody.Env` waarvan `GH` en `Issue` elke aanroep vastleggen; geen productiewijziging, geen e2e. De allowlist-tests lezen `evidence.Allowlist`, niet het fixture. Elke mutatie is gedraaid: de genoemde test faalde, daarna `git checkout -- pack/` (of `internal/`) en een lege `git status --short pack/`. Vervallen negatieven (R3): `--voor-pr`, `` `after PR` ``/`evidence_after_pr`/`closedByPullRequestsReferences`, `.claude/hooks/lib/`, "Mixing is allowed", "last outcome of the commit gate", "as `grep`", `klopt`/`KON NIET`, en in de documentensectie `planned`/`loop.json`/`` `loop` ``/de site-map. Blijvende verboden (R1): `tests/unit`, `Closes #N` in de description en in het voorbeeld, `--comment` en `run_in_background` in V2b.
+24 naar Go, 1 beschermt niets (25). Alle Go-tests staan in `internal/packcontract/writepr_test.go`, per variant met `t.Run` (write-pr heeft één gedeelde `SKILL.md`). De twee tests die de binary draaiden, lopen in-process: `evidence.Run` en `prbody.Main` met een `prbody.Env` waarvan `GH` en `Issue` elke aanroep vastleggen; geen productiewijziging, geen e2e. De allowlist-tests lezen `evidence.Allowlist`, niet het fixture. Elke mutatie is gedraaid: de genoemde test faalde, daarna `git checkout -- pack/` (of `internal/`) en een lege `git status --short pack/`. Vervallen negatieven (R3): `--voor-pr`, `` `after PR` ``/`evidence_after_pr`/`closedByPullRequestsReferences`, `.claude/hooks/lib/`, "Mixing is allowed", "last outcome of the commit gate", "as `grep`", `klopt`/`KON NIET`, en in de documentensectie `planned`/`loop.json`/`` `loop` ``/de site-map. Blijvende verboden (R1): `tests/unit`, `Closes #N` in de description en in het voorbeeld, `--comment` en `run_in_background` in V2b.
 
 | Bestand | Test | Bestemming | Reden | Go-test of mutatie |
 |---|---|---|---|---|
-| `test_write_pr_skill.py` | `test_one_shared_skill_file` | weg — gedekt | `packs.Load` weigert `SKILL.md` naast `claude/`. | `TestCorePack`. Mutatie: `write-pr/claude/SKILL.md` toegevoegd: FAIL. |
+| `test_write_pr_skill.py` | `test_one_shared_skill_file` | weg — beschermt niets | Eén gedeelde `SKILL.md` of twee varianten is een indelingskeuze die niets leest, en elke write-pr-test pint via `variants` al beide varianten (R2); `packs.Load` weigert alleen `SKILL.md` naast `claude/`, niet een splitsing. | Mutatie: `SKILL.md` gesplitst in `claude/SKILL.md` + `agents/SKILL.md` en de gedeelde weg: `internal/packcontract` en `internal/packs` (incl. `TestCorePack`) blijven groen. |
 | `test_write_pr_skill.py` | `test_binding_hard_under_metadata` | naar Go | Check 8 bindt `binding: hard` aan de hook; nu via `yaml.v3`. | `TestWritePRBindingIsHard`. Mutaties: de regel weg, en `binding` uit `metadata:` naar het hoogste niveau: FAIL. |
 | `test_write_pr_skill.py` | `test_description_not_cut_off` | naar Go | Een ongequote ` #N` maakt van de NOTE-zin YAML-commentaar. | `TestWritePRDescriptionSurvivesTheYAMLParser`. Mutatie: quotes om de description weg: FAIL. |
 | `test_write_pr_skill.py` | `test_skill_runs_before_pr` | naar Go (negatief R3) | Elke `lighthouse evidence run` draagt `--before-pr`, en de binary kent de vlaggen (`cli.NewRoot`). | `TestWritePRRunsEvidenceBeforePR`. Mutaties: `--before-pr` weg uit de V3-zin, `--pre-pr` in het commando, en de vlag hernoemd in `internal/cli/evidence.go`: FAIL. |

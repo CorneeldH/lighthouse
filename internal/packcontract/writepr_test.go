@@ -104,7 +104,10 @@ func TestWritePRDescriptionNamesRefsNotCloses(t *testing.T) {
 	}
 }
 
-var evidenceRunRe = regexp.MustCompile("lighthouse evidence run[^`\n]*")
+var (
+	evidenceRunRe = regexp.MustCompile("lighthouse evidence run[^`\n]*")
+	beforePRRe    = regexp.MustCompile(`--before-pr\b`)
+)
 
 // Classification: fails when a mention of `lighthouse evidence run` drops `--before-pr`, or the
 // binary no longer has the flags the skill passes.
@@ -117,7 +120,7 @@ func TestWritePRRunsEvidenceBeforePR(t *testing.T) {
 				t.Fatalf("%d mentions of lighthouse evidence run, want the V3 one and the command", len(runs))
 			}
 			for _, r := range runs {
-				if !regexp.MustCompile(`--before-pr\b`).MatchString(r) {
+				if !beforePRRe.MatchString(r) {
 					t.Errorf("%q runs without --before-pr", r)
 				}
 			}
