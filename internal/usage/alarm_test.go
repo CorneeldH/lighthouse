@@ -123,8 +123,8 @@ type alarmCase struct {
 	Fields []string `json:"fields"`
 }
 
-// TestReadAlarmFixtures runs the cases that tests/pack/test_usage_gate.py runs
-// against the usage-gate hook. The fixture pct is the text as written ("007"); ReadAlarm
+// TestReadAlarmFixtures runs the cases of
+// tests/pack/fixtures/usage_alarm/cases.json against ReadAlarm. The fixture pct is the text as written ("007"); ReadAlarm
 // returns the integer, so it is compared with strconv.Atoi of that text.
 func TestReadAlarmFixtures(t *testing.T) {
 	raw, err := os.ReadFile(alarmFixturePath)

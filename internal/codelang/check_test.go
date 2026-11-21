@@ -12,7 +12,7 @@ import (
 	"testing"
 )
 
-// minimalTOML is MINIMAL_TOML of tests/pack/_testkit.py.
+// minimalTOML is MINIMAL_TOML of tests/pack/python/_testkit.py.
 const minimalTOML = "[project]\nlanguage = \"en\"\n\n[forge]\nkind = \"github\"\nrepo = \"Acme/widgets\"\n"
 
 // row is one [line, kind, text] of check.json.

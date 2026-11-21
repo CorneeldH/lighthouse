@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.pack._testkit import classify, tool_bin
+from tests.pack.python._testkit import classify, tool_bin
 from tests.pack.go.conftest import GO_HOOKS
 
 GOFMT_HOOK = GO_HOOKS / "gofmt-check.sh"

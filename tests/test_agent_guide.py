@@ -5,7 +5,7 @@ import tomllib
 
 import pytest
 
-from tests.pack._testkit import config_schema
+from tests.pack.python._testkit import config_schema
 from tests.test_getting_started import init_flags, required_tools, section
 from tests.test_site_loop import ROOT, SITE
 from tests.test_site_download import DOWNLOAD, INDEX, INSTALL, TABS

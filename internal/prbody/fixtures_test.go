@@ -66,7 +66,7 @@ func fixtureRepo(t *testing.T, c fixtureCase) string {
 	return *repo
 }
 
-// writeFixtureConfig is write_fixture_config of tests/pack/_testkit.py: a lighthouse.toml with
+// writeFixtureConfig is write_fixture_config of tests/pack/python/_testkit.py: a lighthouse.toml with
 // forge.repo (none for "") and the headings table the AC count reads, under root, which becomes
 // the repo root.
 func writeFixtureConfig(t *testing.T, root, repo string) {

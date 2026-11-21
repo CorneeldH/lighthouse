@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.pack._testkit import (
+from tests.pack.python._testkit import (
     alarm_line,
     git,
     install_pack,
@@ -63,7 +63,7 @@ def _repo(tmp_path: Path, pack: str, toml_extra: str = "") -> Path:
     root = tmp_path / "repo"
     root.mkdir()
     subprocess.run(["git", "init", "-q"], cwd=root, check=True)
-    from tests.pack._testkit import MINIMAL_TOML
+    from tests.pack.python._testkit import MINIMAL_TOML
 
     hooks = install_pack(pack, root, MINIMAL_TOML + toml_extra)
     assert (hooks / f"{pack}-imports-gate.sh").exists()
