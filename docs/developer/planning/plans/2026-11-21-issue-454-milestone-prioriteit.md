@@ -25,7 +25,7 @@
 ## Review Focus
 
 - Beschrijving met `\r\n`-regeleinden: schrijven laat de overige regels byte voor byte staan (test in Task 1 en Task 6).
-- Beschrijving zonder eindregel of met alleen spaties: `SetRank` geeft `…\n\nPriority: N`, nooit een lege dubbele regel te veel (Task 1).
+- Beschrijving zonder regel: `SetRank` hangt letterlijk `\n\nPriority: N` achter de bestaande tekst (spec: alle andere bytes ongewijzigd); dus `"Pitch\n"` → `"Pitch\n\n\nPriority: 2"` en `"  "` → `"  \n\nPriority: 1"`. Go en TS volgen dezelfde tabel (Task 1 en Task 9).
 - Twee klikken vlak na elkaar op dezelfde repo: knoppen van die repo staan uit tijdens het verzoek (Task 9).
 - Een bouw die over een aanpassing heen loopt schrijft de oude waarde niet terug (Task 2).
 - Een mislukte schrijfactie halverwege: antwoord noemt de al geschreven nummers en de cache toont precies die (Task 4).
@@ -36,7 +36,7 @@
 
 - Create `internal/priorities/rank.go`, `rank_test.go`: `ParseRank`, `SetRank`, `WithDescription`.
 - Modify `internal/server/refresher.go`: `Modify`, generatieteller.
-- Create `internal/server/origin.go`, `origin_test.go`: `requireSameOrigin`.
+- Create `internal/server/origin.go`, `origin_test.go`: `sameOrigin`.
 - Create `internal/server/milestone_ranks.go`, `milestone_ranks_test.go`: het endpoint.
 - Modify `internal/server/server.go`: `Deps` + registratie. Modify `internal/cli/serve.go`: wiring.
 - Modify `web/vite.config.ts`, `web/openapi.json`, `web/src/api/*` (gegenereerd).
@@ -53,7 +53,7 @@
 **Interfaces:**
 - Produces: `func ParseRank(description string) (rank int, ok bool)`; `func SetRank(description string, rank int) string`; `func WithDescription(repos []Repo, slug string, number int, description string) []Repo` (kopieert de geraakte `Repo` en `Milestones`-slice, muteert de invoer niet).
 
-- [ ] **Step 1: Write the failing tests** in `rank_test.go`, table-driven, namen `TestParseRank`, `TestSetRank`, `TestWithDescription`. Gevallen `ParseRank` (spiegel in Task 6): `""`→(0,false); `"Priority: 3"`→(3,true); `"  priority:7  "`→(7,true); `"PRIORITY:  12"`→(12,true); `"Priority: high"`, `"Priority: 0"`, `"Priority: 03"`, `"Priority: 2 extra"`, `"- Priority: 2"`→(0,false); `"a\nPriority: 2\nPriority: 5"`→(2,true); `"Priority: high\nPriority: 4"`→(4,true). `SetRank`: `("",1)`→`"Priority: 1"`; `("Pitch",2)`→`"Pitch\n\nPriority: 2"`; `("Pitch\nPriority: 2\nrest",1)`→`"Pitch\nPriority: 1\nrest"`; `("a\r\nPriority: 2\r\nb",9)`→`"a\r\nPriority: 9\r\nb"`; `("Priority: high\nPriority: 4",1)`→`"Priority: high\nPriority: 1"`; `("  Priority: 2  \n",1)` → `"  Priority: 1  \n"` (inspringing en eindspaties blijven staan). `WithDescription`: nieuwe waarde bevat de beschrijving, de invoerslice niet.
+- [ ] **Step 1: Write the failing tests** in `rank_test.go`, table-driven, namen `TestParseRank`, `TestSetRank`, `TestWithDescription`. Gevallen `ParseRank` (spiegel in Task 6): `""`→(0,false); `"Priority: 3"`→(3,true); `"  priority:7  "`→(7,true); `"PRIORITY:  12"`→(12,true); `"Priority: high"`, `"Priority: 0"`, `"Priority: 03"`, `"Priority: 2 extra"`, `"- Priority: 2"`→(0,false); `"a\nPriority: 2\nPriority: 5"`→(2,true); `"Priority: high\nPriority: 4"`→(4,true). `SetRank`: `("",1)`→`"Priority: 1"`; `("Pitch",2)`→`"Pitch\n\nPriority: 2"`; `("Pitch\nPriority: 2\nrest",1)`→`"Pitch\nPriority: 1\nrest"`; `("a\r\nPriority: 2\r\nb",9)`→`"a\r\nPriority: 9\r\nb"`; `("Priority: high\nPriority: 4",1)`→`"Priority: high\nPriority: 1"`; `("  Priority: 2  \n",1)` → `"  Priority: 1  \n"` (inspringing en eindspaties blijven staan); `("Pitch\n",2)` → `"Pitch\n\n\nPriority: 2"`; `("  ",1)` → `"  \n\nPriority: 1"`; `("Pitch\r\n",2)` → `"Pitch\r\n\n\nPriority: 2"` (letterlijk toevoegen, niets trimmen). `WithDescription`: nieuwe waarde bevat de beschrijving, de invoerslice niet.
 - [ ] **Step 2: Run** `go test ./internal/priorities -run 'TestParseRank|TestSetRank|TestWithDescription'` — verwacht FAIL (undefined).
 - [ ] **Step 3: Implement** de drie functies in `rank.go`. Eén gedeelde `regexp` `(?i)^priority:\s*([1-9][0-9]*)$` op de getrimde regel; splits op `\n` (een `\r` aan het eind valt onder trim en blijft in de regel behouden bij vervangen: vervang alleen de getrimde kern, bewaar de omringende spaties/`\r`).
 - [ ] **Step 4: Run** dezelfde tests — PASS.
@@ -98,9 +98,9 @@
 
 **Interfaces:**
 - Consumes: `priorities.ParseRank/SetRank/WithDescription` (Task 1), `sameOrigin` (Task 3), `forgeError` (`forge.go`).
-- Produces: in `Deps`: `PriorityForges map[string]forge.Forge` (slug → forge) en `PatchPriorities func(func([]priorities.Repo) []priorities.Repo) bool`. `func registerMilestoneRanks(api huma.API, forges map[string]forge.Forge, patch func(func([]priorities.Repo) []priorities.Repo) bool)`, operation id `post-milestone-ranks`. Body-types `RankChange{Number int; From *int; To int}`, `RanksRequest{Repo string; Changes []RankChange}`, antwoord `RanksResult{Written []int}` (nooit nil).
+- Produces: in `Deps`: `PriorityForges map[string]forge.Forge` (slug → forge) en `PatchPriorities func(func([]priorities.Repo) []priorities.Repo) bool`. `func registerMilestoneRanks(api huma.API, forges map[string]forge.Forge, patch func(func([]priorities.Repo) []priorities.Repo) bool)`, operation id `post-milestone-ranks`. Body-types `RankChange{Number int; From *int \`minimum:"1"\`; To int \`minimum:"1"\`}`, `RanksRequest{Repo string; Changes []RankChange}`, antwoord `RanksResult{Written []int}` (nooit nil).
 
-- [ ] **Step 1: Write failing tests** met een `fakeMilestones`-forge (embed `forge.Forge`, in-memory beschrijvingen, telt `EditMilestone`-aanroepen, optioneel fout bij de n-de aanroep) en een eigen `Refresher` als `patch`. Tests: `TestMilestoneRanksSwap` (twee milestones wisselen: 200, `written == [6,4]`, beide beschrijvingen op de forge kloppen, pitchregels onaangeroerd, ook met `\r\n`); `TestMilestoneRanksNoOrigin` (403, 0 edits); `TestMilestoneRanksWrongOrigin` (403); `TestMilestoneRanksNotJSON` (`text/plain` → 415, 0 edits); `TestMilestoneRanksUnknownRepo` (404); `TestMilestoneRanksStale409` (`from` klopt niet → 409, 0 edits, cache aangepast met de verse beschrijvingen, en een tweede verzoek met de verse `from` slaagt zonder bouw); `TestMilestoneRanksFromNull` (milestone zonder regel krijgt `\n\nPriority: N`); `TestMilestoneRanksPartialFailure` (tweede `EditMilestone` faalt: 502, de foutbody noemt `written=[eerste]`, de cache bevat de eerste wijziging wel en de tweede niet); `TestMilestoneRanksForgeNotConfigured` (503 via `forge.ErrNotConfigured`); lege `changes` → 422 of 400 (huma validatie, kies `minItems:1`).
+- [ ] **Step 1: Write failing tests** met een `fakeMilestones`-forge (embed `forge.Forge`, in-memory beschrijvingen, telt `EditMilestone`-aanroepen, optioneel fout bij de n-de aanroep) en een eigen `Refresher` als `patch`. Tests: `TestMilestoneRanksSwap` (twee milestones wisselen: 200, `written == [6,4]`, beide beschrijvingen op de forge kloppen, pitchregels onaangeroerd, ook met `\r\n`); `TestMilestoneRanksNoOrigin` (403, 0 edits); `TestMilestoneRanksWrongOrigin` (403); `TestMilestoneRanksNotJSON` (`text/plain` → 415, 0 edits; zonder `Content-Type` → 415, want huma neemt dan JSON aan: weiger dat in een `huma.Resolver` die `ctx.Header("Content-Type")` controleert); `TestMilestoneRanksToBelowOne` (`to: 0` → 422, 0 edits); `TestMilestoneRanksUnknownRepo` (404); `TestMilestoneRanksStale409` (`from` klopt niet → 409, 0 edits, cache aangepast met de verse beschrijvingen, en een tweede verzoek met de verse `from` slaagt zonder bouw); `TestMilestoneRanksFromNull` (milestone zonder regel krijgt `\n\nPriority: N`); `TestMilestoneRanksPartialFailure` (tweede `EditMilestone` faalt: 502, de foutbody noemt `written=[eerste]`, de cache bevat de eerste wijziging wel en de tweede niet); `TestMilestoneRanksForgeNotConfigured` (503 via `forge.ErrNotConfigured`); lege `changes` → 422 of 400 (huma validatie, kies `minItems:1`).
 - [ ] **Step 2: Run** `go test ./internal/server -run TestMilestoneRanks` — FAIL.
 - [ ] **Step 3: Implement** `registerMilestoneRanks` met `huma.Register` (POST, `Content-Type` via huma `application/json`, 415 bij andere). De Origin-controle in de handler via `huma.Context`-vrije weg: lees `Origin` en `Host` met input-header-velden `Origin string \`header:"Origin"\`` en `Host`-waarde uit `ctx`-resolver (`huma.Resolver` op de inputstruct geeft `huma.Context` → `ctx.Host()`). Volgorde van stappen volgt de spec (herkomst, repo, vers lezen + vergelijken, schrijven met cache-patch per schrijfactie via `WithDescription` en de beschrijving die `EditMilestone` teruggeeft). Bij 409 eerst `patch` met de verse beschrijvingen, dan de 409. Foutafhandeling halverwege: `huma.NewError(502, msg)` waarin de al geschreven nummers staan. Registreer in `New` naast `registerPriorities`, alleen als `d.PriorityForges != nil` (anders blijft het endpoint weg, zodat bestaande tests heel blijven). De Origin-controle zit per endpoint (spec laat de keuze), `/api/node/` blijft ongemoeid.
 - [ ] **Step 4: Run** `go test -race ./internal/server` — PASS.
@@ -125,12 +125,12 @@
 ### Task 6: OpenAPI-snapshot, client en Vite-proxy
 
 **Files:**
-- Modify: `web/openapi.json`, `web/src/api/*` (gegenereerd), `web/vite.config.ts`
+- Modify: `internal/server/forge_test.go` (`testDeps`), `web/openapi.json`, `web/src/api/*` (gegenereerd), `web/vite.config.ts`
 
 **Interfaces:**
 - Produces: gegenereerde `postMilestoneRanks(body, options)` en types `RanksRequest`, `RankChange`, `RanksResult` in `@/api/lighthouse`.
 
-- [ ] **Step 1: Run** `go test ./internal/server -run TestOpenAPISnapshot` — verwacht FAIL (`web/openapi.json is stale`). Zorg dat `Deps` van `testDeps` het endpoint registreert (`PriorityForges` gevuld) zodat de snapshot het bevat.
+- [ ] **Step 1: Zet** in `testDeps` (`internal/server/forge_test.go`) `PriorityForges` (een lege map volstaat) en een no-op `PatchPriorities`, zodat de snapshot het endpoint bevat; run dan `go test ./internal/server -run TestOpenAPISnapshot` — verwacht FAIL (`web/openapi.json is stale`).
 - [ ] **Step 2: Run** `go test ./internal/server -run TestOpenAPISnapshot -update`, dan `cd web && npm run gen`.
 - [ ] **Step 3: Zet** in `web/vite.config.ts` `changeOrigin: false` met een commentaarregel waarom (Origin = Host, anders 403).
 - [ ] **Step 4: Run** `go test ./internal/server` en `cd web && npm run typecheck` — PASS.
@@ -174,9 +174,9 @@
 
 **Interfaces:**
 - Consumes: `postMilestoneRanks` (Task 6), `RankChange` (Task 8), `SetRank`-spiegel hieronder.
-- Produces: `setRank(description: string, rank: number): string` in `rank.ts` (zelfde tabel als `TestSetRank`); `postMilestoneRanks(repo: string, changes: RankChange[]): Promise<void>` in `api.ts` (via `call`, 409 → `ApiError`); `useMilestoneRanks()` in `queries.ts` → `{ mutate(vars: {repo; changes}), isPending(repo), error: string | null }` met `onMutate` (query-cache `priorities` aanpassen via `setRank`), `onError` (herladen via `invalidateQueries`, foutmelding; 409 → de vaste tekst uit *Global Constraints*), `onSettled` (herladen).
+- Produces: `setRank(description: string, rank: number): string` in `rank.ts` (zelfde tabel als `TestSetRank`); `saveMilestoneRanks(repo: string, changes: RankChange[]): Promise<void>` in `api.ts` (roept de gegenereerde `postMilestoneRanks` aan via `call`, 409 → `ApiError`; andere naam dan de gegenereerde functie, anders botst de import); `useMilestoneRanks()` in `queries.ts` → `{ mutate(vars: {repo; changes}), isPending(repo), error: string | null }`; `isPending(repo)` houdt zelf een `Set` van repo's met een lopend verzoek bij (vullen in `onMutate`, legen in `onSettled`), niet `useMutation().isPending`/`variables` (alleen de laatste aanroep); `onMutate` roept eerst `cancelQueries({queryKey: queryKeys.priorities})` aan en past dan de query-cache `priorities` aan via `setRank`, `onError` (herladen via `invalidateQueries`, foutmelding; 409 → de vaste tekst uit *Global Constraints*), `onSettled` (herladen).
 
-- [ ] **Step 1: Write failing tests**: `rank.test.ts` voor `setRank` (spiegel van de Go-tabel incl. `\r\n`); `api.test.ts`: `postMilestoneRanks` stuurt `Content-Type: application/json` en gooit `ApiError(409, …)`; `queries.test.tsx`: optimistische cache toont direct de nieuwe beschrijving; bij fout staat de verse data er weer en `error` bevat de 409-tekst; `isPending('o/r')` is true tijdens het verzoek en false voor een andere repo.
+- [ ] **Step 1: Write failing tests**: `rank.test.ts` voor `setRank` (spiegel van de Go-tabel incl. `\r\n`); `api.test.ts`: `saveMilestoneRanks` stuurt `Content-Type: application/json` en gooit `ApiError(409, …)`; `queries.test.tsx`: optimistische cache toont direct de nieuwe beschrijving; bij fout staat de verse data er weer en `error` bevat de 409-tekst; `isPending('o/r')` is true tijdens het verzoek en false voor een andere repo; twee repo's tegelijk in vlucht: A blijft true nadat B klaar is zolang A loopt.
 - [ ] **Step 2: Run** `cd web && npx vitest run src/lib` — FAIL.
 - [ ] **Step 3: Implement** met `useMutation`; geen `Origin` zetten (de browser doet dat).
 - [ ] **Step 4: Run** `npx vitest run src/lib && npm run typecheck` — PASS.
@@ -202,7 +202,9 @@
 
 **Files:**
 - Create: `changelog.d/issue-454-milestone-prioriteit.md`
+- Modify: `docs/priorities.md`
 
+- [ ] **Step 0: Pas** `docs/priorities.md` aan: de regel "De pagina leest alleen; ze schrijft niets terug naar GitHub." klopt niet meer; beschrijf de `Priority: N`-regel, het endpoint, de eis `Origin` = `Host` en `changeOrigin: false` in de devproxy.
 - [ ] **Step 1: Schrijf** het fragment (`type: added`, vorm van `changelog.d/issue-407-forge-neutrale-go-units.md`): de weergave *Milestones* heeft een stand *Prioriteit*; `lighthouse serve` schrijft `Priority: N` in de milestone-beschrijving en eist daarvoor een `Origin` gelijk aan `Host`; de Vite-devproxy staat op `changeOrigin: false`.
 - [ ] **Step 2: Run** `go test -race ./... && cd web && npm run lint && npm run typecheck && npm test` — alles PASS. `go run ./cmd/lighthouse init --upgrade` hoeft niet: niets onder `pack/` of wat `init` schrijft is geraakt; draai hem toch en verwacht `No changes.`
 - [ ] **Step 3: Commit** `docs(changelog): milestone-prioriteit (#454)`.
@@ -211,6 +213,7 @@
 
 ## Self-review
 
+- **Review round 1:** r1-f1 (letterlijk toevoegen, tabel), f2 (eigen `Set`), f3 (`saveMilestoneRanks`), f4 (testDeps eerst), f5/f7 (Content-Type, `minimum`), f8 (`cancelQueries`), f9 (docs), f10 (naam) verwerkt; f6 (Unicode-spaties) bewust niet: spec schrijft `\s` voor.
 - **Spec coverage:** regel lezen/schrijven → T1/T7/T9 (spiegel); volgorde → T7; omhoog/omlaag incl. doornummeren → T8/T10; endpoint, 403/404/409/forge-fouten, partial failure → T4; cache (Modify, generatieteller, 409-patch) → T2/T4/T5; Origin + Vite → T3/T6; optimistisch + knoppen uit → T9/T10; melding 409 → T9/T10; `Deps`-verbreding → T4/T5 (r1-f4).
 - **Types:** `RankChange` (Go `From *int`, TS `from: number | null`), `Modify` (Task 2) is wat `PatchPriorities` (Task 4/5) aanroept; `planMove`/`canMove` uit Task 8 worden in Task 10 gebruikt.
 - **Proportie:** geen codeblokken; signatures en testgevallen beslissen, de implementer schrijft de bodies.
