@@ -153,7 +153,9 @@
               "readers": [
                 "internal/boardstart/boardstart.go",
                 "internal/cli/forge_label.go",
+                "internal/cli/planreviewrecord.go",
                 "internal/cli/pushworkflows.go",
+                "internal/cli/reviewindex.go",
                 "internal/cli/worktreeaudit.go",
                 "internal/labels/labels.go",
                 "internal/postartefact/postartefact.go",
@@ -1113,7 +1115,6 @@
               "about": "true: this machine is the controller host, the address is not measured; false: it is not. Without it, host-check uses tailscale_ip. An older reader ignores it.",
               "example": true,
               "readers": [
-                "internal/review/record.go",
                 "pack/core/skills/write-handoff"
               ]
             },
@@ -1123,9 +1124,7 @@
               "required": "no",
               "about": "The Tailscale address of this workstation; init writes it on a machine with Tailscale. Without it and without host.controller, host-check reports another host.",
               "example": "100.64.0.1",
-              "readers": [
-                "internal/review/record.go"
-              ]
+              "readers": []
             },
             {
               "key": "host.gate_slice",

@@ -341,8 +341,7 @@ No `--spec` or `--issue`: for a spec review that is exit 2. From inside Codex it
 
 | exit | Meaning | You do |
 |---|---|---|
-| 0 | record written; the path is on stdout | report the path |
-| 3 | not on the always-on host (`host.toml`): no record | report loudly that this review falls outside the measurement, on to closing |
+| 0 | record written; the path is on stdout. Stderr may carry `REVIEW-INDEX FAILED: …` or `REVIEW-INDEX SKIPPED: <path>: <reason>` (the indexing of the findings, never a failure of the record) | report the path, and the stderr line literally if there is one |
 | 4 | write or validation error: only the staging directory `.<attempt>.tmp/` stays | pass the message on literally; if it is a missing or wrong decision, repair the sidecar and run `write` again; otherwise on to closing |
 
 The record is measurement material, the review itself is the product: a failed record never
