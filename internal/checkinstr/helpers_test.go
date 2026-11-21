@@ -157,13 +157,3 @@ func assertVerdict(t *testing.T, r result, v verdict) {
 		}
 	}
 }
-
-// noFAIL fails the test when stdout carries a FAIL line.
-func noFAIL(t *testing.T, r result) {
-	t.Helper()
-	for _, l := range strings.Split(r.stdout, "\n") {
-		if strings.HasPrefix(l, "FAIL") {
-			t.Errorf("unexpected %q in stdout:\n%s", l, r.stdout)
-		}
-	}
-}
