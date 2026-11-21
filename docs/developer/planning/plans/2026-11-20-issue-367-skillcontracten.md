@@ -306,7 +306,7 @@ De uitvoerder werkt deze tabel per taak bij. De PR-body neemt hem over. Telling:
 | `test_fragments.py` | 4 | 1 naar Go (`config.Parse` over basis plus fragment, elke sleutel via `config.KindOf`), 3 beschermt niets (zelftests van `_check`), 0 gedekt (de init-tests gebruiken een nepfragment) | 8 |
 | `test_requires_without_python.py` | 1 | 1 gedekt (`TestLanguagePacks`, voor go, node, shell en expo elk met `python3` en `tomllib` gemuteerd) | 8 |
 | `test_portable_shell.py` | 3 | 3 naar Go (de regexen letterlijk, de lookbehind van `sha256sum` als `(^|[^\w-])`; minstens één shellbestand) | 8 |
-| `test_shell_style.py` | 1 | 1 naar Go (open: shellcheck in de Go-job) | 8 |
+| `test_shell_style.py` | 1 | 1 naar Go (de gepinde shellcheck via `resolve_shellcheck`, die zelf downloadt; geen workflowwijziging; een ontbrekende pin faalt) | 8 |
 | **Totaal** | **297** | voorlopig ~265 naar Go, ~32 weg of open | |
 
 Per test (in te vullen): `bestand | test | bestemming | reden | Go-test of mutatie`.
@@ -749,3 +749,11 @@ Vervallen negatieven (R3): `uv `, `setup-uv`, `python` en `unblock_dependents.py
 | `test_portable_shell.py` | `test_pack_shell_has_no_gnu_only_constructs` | naar Go | Blijvende invariant (#90): shell onder `pack/` draait op macOS; een regel met `# portable:` en een `command -v`-probe tellen niet. | `TestPackShellHasNoGNUOnlyConstructs`. Mutaties: `sed -i 's/x/y/' f` en `sha256sum f` in `pack/go/hooks/gofmt-check.sh`, de marker weg op de `sha256sum`-regel van `shellcheck-bin.sh`: FAIL. Een losse `command -v sha256sum` blijft PASS. |
 | `test_portable_shell.py` | `test_pack_shell_has_no_bash4_constructs` | naar Go | Blijvende invariant: bash 3.2 op macOS. | `TestPackShellHasNoBash4Constructs`. Mutaties: `declare -A m` in `gofmt-check.sh`, `${x,,}` in `pack/core/hooks/run.sh`: FAIL. |
 | `test_portable_shell.py` | `test_portable_marker_needs_a_reason` | naar Go | Een uitzondering draagt haar reden. | `TestPortableMarkerNeedsAReason`. Mutatie: `# portable:` zonder reden op drie regels van `shellcheck-bin.sh`: FAIL. |
+
+### `test_shell_style.py` (taak 8d, afgerond)
+
+1 naar Go, 0 gedekt (1). De Go-test staat in `internal/packcontract/packfiles_test.go`. Geen workflow en geen andere Go-test draait shellcheck over `pack/`. De test haalt de gepinde shellcheck op met `resolve_shellcheck` uit `pack/shell/scripts/lib/shellcheck-bin.sh` (`bash`, `cmd.Dir` op de repo-root, `SHELLCHECK_BIN` uit de omgeving). Een exit ≠ 0 of een melding op stderr (een PATH-versie naast de pin) is een fout, geen skip. Alleen zonder `bash` slaat hij over, en met `CI` gezet faalt hij dan. Hij leest elk `.sh`-bestand met `os.ReadFile`, zodat de `go test`-cache vervalt als een script verandert of erbij komt. Het downloadpad is gedraaid in een verse `git init`-map: de pin kwam binnen, exit 0. Elke mutatie is gedraaid: de test faalde, daarna `git checkout -- pack/` en een lege `git status --short pack/`.
+
+| Bestand | Test | Bestemming | Reden | Go-test of mutatie |
+|---|---|---|---|---|
+| `test_shell_style.py` | `test_package_shell_is_clean_at_style_severity` | naar Go | Een consument mag zijn hookmappen op `style` gaten, en een geïnstalleerd bestand kan daar niet gerepareerd worden: elk `.sh` onder `pack/` is schoon op `-S style` onder de pin; minstens één bestand. | `TestPackageShellIsCleanAtStyleSeverity`. Mutaties: `f() { echo $1; }` in `pack/go/hooks/gofmt-check.sh` (met warme cache, en met `SHELLCHECK_BIN=/bin/true`), een nieuw `pack/go/hooks/zz-new.sh` met `echo $1` (warme cache), `SHELLCHECK_PIN=9.9.9` (pin niet te halen, exit 4): FAIL. |

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -17,7 +18,7 @@ import (
 )
 
 // Files of a package outside its skills: the lighthouse.toml fragment init merges into the
-// project config, and the shell every package installs.
+// project config, and the shell every package installs (portable, shellcheck-clean).
 
 // fragmentBase is the project table init writes before a fragment's tables.
 const fragmentBase = "[project]\nlanguage = \"en\"\n\n"
@@ -218,5 +219,80 @@ func TestPortableMarkerNeedsAReason(t *testing.T) {
 	sort.Strings(bare)
 	if len(bare) > 0 {
 		t.Errorf("`# portable:` without a reason: %s", strings.Join(bare, ", "))
+	}
+}
+
+// shellcheckLib provides resolve_shellcheck, the pinned shellcheck the shell pack's hook uses.
+const shellcheckLib = "pack/shell/scripts/lib/shellcheck-bin.sh"
+
+// withoutEnv returns os.Environ() without name, so the test cannot be steered past the pin.
+func withoutEnv(name string) []string {
+	var env []string
+	for _, kv := range os.Environ() {
+		if !strings.HasPrefix(kv, name+"=") {
+			env = append(env, kv)
+		}
+	}
+	return env
+}
+
+// Classification: fails when a .sh file under pack/ has a shellcheck finding at style severity
+// under the pinned version, or when the pinned shellcheck cannot be resolved: a consumer may gate
+// its hook directories at style, and an installed file cannot be fixed there.
+func TestPackageShellIsCleanAtStyleSeverity(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		if os.Getenv("CI") != "" {
+			t.Fatalf("bash not found, so shellcheck cannot be resolved: %v", err)
+		}
+		t.Skipf("bash not found, so shellcheck cannot be resolved: %v", err)
+	}
+	root, err := filepath.Abs(filepath.Dir(packRoot))
+	if err != nil {
+		t.Fatal(err)
+	}
+	env := withoutEnv("SHELLCHECK_BIN")
+
+	// No pin is a failure, not a skip: the test would check nothing. A message on stderr means
+	// resolve_shellcheck fell back to a PATH version other than the pin.
+	resolve := exec.Command("bash", "-c", `. "$1" && resolve_shellcheck`, "bash", shellcheckLib)
+	resolve.Dir = root
+	resolve.Env = env
+	var stderr strings.Builder
+	resolve.Stderr = &stderr
+	out, err := resolve.Output()
+	if err != nil || stderr.Len() > 0 {
+		t.Fatalf("resolve_shellcheck: %v\n%s", err, stderr.String())
+	}
+	bin := strings.TrimSpace(string(out))
+
+	var files []string
+	err = filepath.WalkDir(packRoot, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || filepath.Ext(path) != ".sh" {
+			return err
+		}
+		// Read it, so the go test cache hashes the file shellcheck checks.
+		if _, err := os.ReadFile(path); err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(filepath.Dir(packRoot), path)
+		if err != nil {
+			return err
+		}
+		files = append(files, filepath.ToSlash(rel))
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) == 0 {
+		t.Fatal("no .sh file under pack/")
+	}
+	sort.Strings(files)
+
+	check := exec.Command(bin, append([]string{"-x", "-S", "style"}, files...)...)
+	check.Dir = root
+	check.Env = env
+	if report, err := check.CombinedOutput(); err != nil {
+		t.Fatalf("shellcheck -x -S style on %d files: %v\n%s", len(files), err, report)
 	}
 }
