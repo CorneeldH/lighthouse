@@ -12,6 +12,9 @@ const iss = (number: number, by: Array<[string, number]> = [], extra: Partial<Is
   title: `title-${number}`,
   url: `https://forge/${number}`,
   status: 'To do',
+  label: '',
+  open_question: false,
+  needs_label: false,
   blocked_by: by.length ? by.map(([repo, issue]) => ({ repo, issue })) : null,
   ...extra,
 })
