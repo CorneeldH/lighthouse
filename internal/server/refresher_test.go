@@ -317,3 +317,68 @@ func TestRefresherTwoTypesDoNotShareFailure(t *testing.T) {
 		t.Errorf("working Latest = %q, %v; want ok, nil", got, err)
 	}
 }
+
+func TestRefresherModifyAdjustsLatest(t *testing.T) {
+	r := NewRefresher(func(context.Context) (int, error) { return 1, nil }, time.Hour, time.Hour, time.Minute)
+	r.refresh(context.Background())
+
+	if !r.Modify(func(v int) int { return v + 1 }) {
+		t.Fatal("Modify = false after a successful build, want true")
+	}
+	got, err := r.Latest(context.Background())
+	if err != nil || got != 2 {
+		t.Errorf("Latest = %d, %v; want 2, nil", got, err)
+	}
+}
+
+func TestRefresherModifyIgnoredOnFailedBuild(t *testing.T) {
+	boom := errors.New("boom")
+	r := NewRefresher(func(context.Context) (int, error) { return 7, boom }, time.Hour, time.Hour, time.Minute)
+	r.refresh(context.Background())
+
+	if r.Modify(func(v int) int { return v + 1 }) {
+		t.Error("Modify = true after a failed build, want false")
+	}
+	got, err := r.Latest(context.Background())
+	if !errors.Is(err, boom) || got != 7 {
+		t.Errorf("Latest = %d, %v; want 7, boom", got, err)
+	}
+}
+
+func TestRefresherModifyBeforeFirstBuild(t *testing.T) {
+	r := NewRefresher(func(context.Context) (int, error) { return 1, nil }, time.Hour, time.Hour, time.Minute)
+	if r.Modify(func(v int) int { return v + 1 }) {
+		t.Error("Modify = true before the first build, want false")
+	}
+}
+
+func TestRefresherModifyDuringBuildKeepsModified(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var call atomic.Int32
+	r := NewRefresher(func(context.Context) (int, error) {
+		if call.Add(1) == 1 {
+			return 1, nil
+		}
+		close(started)
+		<-release
+		return 100, nil
+	}, time.Hour, time.Hour, time.Minute)
+	r.refresh(context.Background())
+
+	done := make(chan bool, 1)
+	go func() { done <- r.refresh(context.Background()) }()
+	<-started
+	if !r.Modify(func(v int) int { return v + 1 }) {
+		t.Fatal("Modify = false during a build, want true")
+	}
+	close(release)
+	if ok := <-done; !ok {
+		t.Error("refresh of a discarded build = false, want true")
+	}
+
+	got, err := r.Latest(context.Background())
+	if err != nil || got != 2 {
+		t.Errorf("Latest = %d, %v; want the modified 2, nil", got, err)
+	}
+}
