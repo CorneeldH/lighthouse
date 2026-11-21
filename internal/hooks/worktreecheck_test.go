@@ -166,3 +166,148 @@ func TestCanonMissingKeepsALoopingLinkAsGNUDoes(t *testing.T) {
 		}
 	}
 }
+
+// worktreeUncheckable is the systemMessage of a check that could not be made.
+func worktreeUncheckable(reason string) string {
+	return "Worktree check: COULD NOT CHECK — " + reason + "\n" +
+		"\n" +
+		"Nothing was checked, so this is no sign that the write is in a worktree.\n" +
+		"Convention: work that produces a commit starts in a worktree on its own branch\n" +
+		"(git worktree add .claude/worktrees/<name> -b issue-<nr>-<slug>)."
+}
+
+// mainWarning is the systemMessage of a write to file in the main checkout on branch.
+func mainWarning(branch, file string) string {
+	return "Worktree check: this writes into the main checkout while it is on '" + branch + "'.\n" +
+		"\n" +
+		"  " + file + "\n" +
+		"\n" +
+		"Convention: work that produces a commit starts in a worktree on its own\n" +
+		"branch (git worktree add .claude/worktrees/<name> -b issue-<nr>-<slug>).\n" +
+		"Exception: read-only work, or an explicit 'on main' from the user.\n" +
+		"\n" +
+		"Note: committing on '" + branch + "' is blocked (main-commit-gate). Move\n" +
+		"this work now, not later."
+}
+
+// wantSilence fails unless res is no output at all.
+func wantSilence(t *testing.T, res hook.Result) {
+	t.Helper()
+	if res.Code != 0 || res.Stderr != "" || res.Output != nil {
+		t.Errorf("got %#v, want silence", res)
+	}
+}
+
+// wantMessage fails unless res is exit 0 with exactly this systemMessage.
+func wantMessage(t *testing.T, res hook.Result, want string) {
+	t.Helper()
+	if res.Code != 0 || res.Stderr != "" || res.Output["systemMessage"] != want || len(res.Output) != 1 {
+		t.Errorf("got %#v\nwant systemMessage %q", res, want)
+	}
+}
+
+// shimGit puts a git on PATH, and only that, that runs script (a sh script).
+func shimGit(t *testing.T, script string) {
+	t.Helper()
+	bin := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bin, "git"), []byte("#!/bin/sh\n"+script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+}
+
+func TestWorktreeCheckIsSilentOnAFeatureBranchInTheMainCheckout(t *testing.T) {
+	dir := physical(t, repo(t, "main"))
+	gitIn(t, dir, "checkout", "-q", "-b", "fix-iets")
+
+	wantSilence(t, check(t, dir+"/README.md", dir))
+}
+
+func TestWorktreeCheckWarnsWhenTheCwdIsAWorktreeButTheTargetIsTheMainCheckout(t *testing.T) {
+	dir := physical(t, repo(t, "main"))
+	wt := filepath.Join(dir, ".claude", "worktrees", "issue-1-iets")
+	gitIn(t, dir, "worktree", "add", "-q", "-b", "issue-1-iets", wt)
+
+	wantSilence(t, check(t, wt+"/src/nieuw.py", wt))
+	wantMessage(t, check(t, dir+"/README.md", wt), mainWarning("main", dir+"/README.md"))
+}
+
+func TestWorktreeCheckIsSilentOutsideAGitRepository(t *testing.T) {
+	repo(t, "main") // the config of the test
+	outside := physical(t, t.TempDir())
+	t.Setenv("GIT_CEILING_DIRECTORIES", filepath.Dir(outside))
+
+	wantSilence(t, check(t, outside+"/x.txt", outside))
+}
+
+// git speaks its own language outside the repo: the hook asks for the C locale to recognise the
+// message. The shim answers in German unless it is asked for C.
+func TestWorktreeCheckIsSilentOutsideAGitRepositoryUnderAnotherLocale(t *testing.T) {
+	outside := physical(t, t.TempDir())
+	t.Setenv("LC_ALL", "")
+	t.Setenv("LANG", "de_DE.UTF-8")
+	shimGit(t, `if [ "$LC_ALL" = C ]; then
+  echo "fatal: not a git repository (or any of the parent directories): .git"
+else
+  echo "fatal: kein Git-Repository (oder eines der Elternverzeichnisse): .git"
+fi >&2
+exit 128
+`)
+
+	wantSilence(t, check(t, outside+"/x.txt", outside))
+}
+
+func TestWorktreeCheckWithoutGit(t *testing.T) {
+	dir := physical(t, repo(t, "main"))
+	emptyPath(t)
+
+	wantMessage(t, check(t, dir+"/x.py", dir),
+		"Worktree check: COULD NOT CHECK — missing tooling: git. "+
+			"Nothing was checked, so this is no sign that the write is in a worktree.")
+}
+
+func TestWorktreeCheckSpeaksWhenGitBreaks(t *testing.T) {
+	dir := physical(t, repo(t, "main"))
+	shimGit(t, "echo 'fatal: broken' >&2\nexit 128\n")
+
+	wantMessage(t, check(t, dir+"/src/nieuw.py", dir),
+		worktreeUncheckable("git could not read '"+dir+"': fatal: broken."))
+}
+
+func TestWorktreeCheckSpeaksWhenTheBranchCannotBeRead(t *testing.T) {
+	dir := physical(t, repo(t, "main"))
+	real, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("git is not installed")
+	}
+	shimGit(t, "case \"$*\" in\n  branch*) echo 'fatal: broken' >&2; exit 128;;\nesac\nexec "+real+" \"$@\"\n")
+
+	wantMessage(t, check(t, dir+"/src/nieuw.py", dir),
+		worktreeUncheckable("git could not determine the branch of '"+dir+"': fatal: broken."))
+}
+
+func TestWorktreeCheckFollowsTheDefaultBranch(t *testing.T) {
+	trunk := physical(t, repo(t, "trunk"))
+	onMain := physical(t, repo(t, "main"))
+	toml := filepath.Join(t.TempDir(), "lighthouse.toml")
+	if err := os.WriteFile(toml, []byte("[forge]\ndefault_branch = \"trunk\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("LIGHTHOUSE_TOML", toml)
+
+	wantMessage(t, check(t, trunk+"/src/nieuw.py", trunk), mainWarning("trunk", trunk+"/src/nieuw.py"))
+	wantSilence(t, check(t, onMain+"/src/nieuw.py", onMain))
+}
+
+func TestWorktreeCheckSpeaksWhenTheConfigIsBroken(t *testing.T) {
+	dir := physical(t, repo(t, "main"))
+	toml := filepath.Join(t.TempDir(), "lighthouse.toml")
+	if err := os.WriteFile(toml, []byte("[forge\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("LIGHTHOUSE_TOML", toml)
+
+	wantMessage(t, check(t, dir+"/src/nieuw.py", dir), worktreeUncheckable(
+		"the protected branch could not be read: config: "+toml+": unreadable or not valid TOML: "+
+			"toml: line 2: expected '.' or ']' to end table name, but got '\\n' instead."))
+}
