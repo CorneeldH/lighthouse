@@ -157,6 +157,7 @@
                 "internal/cli/pushworkflows.go",
                 "internal/cli/reviewindex.go",
                 "internal/cli/worktreeaudit.go",
+                "internal/issuestate/cmd.go",
                 "internal/labels/labels.go",
                 "internal/postartefact/postartefact.go",
                 "internal/prbody/find.go",
@@ -586,6 +587,7 @@
               "default": "blocked-external",
               "about": "The label for an issue blocked by something outside the repo.",
               "readers": [
+                "internal/issuestate/state.go",
                 "internal/repoconfig/repoconfig.go",
                 "internal/triage/rules.go",
                 "pack/core/skills/route-issue",
@@ -600,6 +602,7 @@
               "about": "The label for an issue blocked by another issue.",
               "readers": [
                 "internal/cli/unblockdependents.go",
+                "internal/issuestate/state.go",
                 "internal/repoconfig/repoconfig.go",
                 "internal/triage/rules.go",
                 "pack/core/skills/close-issue",
