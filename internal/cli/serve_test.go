@@ -94,12 +94,18 @@ func waitListening(t *testing.T, errOut *syncBuf, done <-chan error) string {
 // cancels and waits for the result.
 func startServe(t *testing.T) (addr string, stop func() error) {
 	t.Helper()
+	return startServeRepos(t, nil)
+}
+
+// startServeRepos is startServe with repos feeding the forge endpoints.
+func startServeRepos(t *testing.T, repos []overview.RepoSource) (addr string, stop func() error) {
+	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	errOut := &syncBuf{}
 	done := make(chan error, 1)
 	go func() {
-		done <- serve(ctx, "127.0.0.1:0", filepath.Join(t.TempDir(), "l.db"), nil, nil, server.RunsMeta{}, nil, server.RefreshInterval, server.PrioritiesInterval, errOut)
+		done <- serve(ctx, "127.0.0.1:0", filepath.Join(t.TempDir(), "l.db"), repos, nil, server.RunsMeta{}, nil, server.RefreshInterval, server.PrioritiesInterval, errOut)
 	}()
 
 	addr = waitListening(t, errOut, done)
@@ -945,14 +951,35 @@ func TestStartPrioritiesFailedOverviewFailsBuild(t *testing.T) {
 	}
 }
 
-// planningSource is a forge.Forge whose Planning holds one milestone.
+// planningSource is a forge.Forge with one milestone whose description it keeps. The embedded
+// forge.Forge is nil: a method not defined here would panic, so a test reaches only these.
 type planningSource struct {
 	forge.Forge
+	mu          sync.Mutex
 	description string
 }
 
 func (p *planningSource) Planning(context.Context) (forge.Planning, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	return forge.Planning{Milestones: []forge.MilestoneCount{{Milestone: forge.Milestone{Number: 3, Title: "M", Description: p.description}}}}, nil
+}
+
+func (p *planningSource) OpenIssues(context.Context) ([]forge.Issue, error) { return nil, nil }
+
+func (p *planningSource) Comments(context.Context, int) ([]protocol.Comment, error) { return nil, nil }
+
+func (p *planningSource) MilestoneByNumber(context.Context, int) (forge.Milestone, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return forge.Milestone{Number: 3, Title: "M", State: "open", Description: p.description}, nil
+}
+
+func (p *planningSource) EditMilestone(_ context.Context, number int, _, description *string) (forge.Milestone, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.description = *description
+	return forge.Milestone{Number: number, Title: "M", State: "open", Description: p.description}, nil
 }
 
 func TestStartPrioritiesPatchChangesTheCachedValue(t *testing.T) {
@@ -987,5 +1014,46 @@ func TestStartPrioritiesWithoutSourcesPatchIsANoOp(t *testing.T) {
 	}
 	if _, err := read(context.Background()); !errors.Is(err, forge.ErrNotConfigured) {
 		t.Errorf("err = %v, want forge.ErrNotConfigured", err)
+	}
+}
+
+// The rank endpoint writes to the forge and the cache shows the new description at once, with
+// no build in between (the refresh interval is far longer than the test).
+func TestServeMilestoneRankEndToEnd(t *testing.T) {
+	src := &planningSource{description: "Priority: 1"}
+	addr, stop := startServeRepos(t, []overview.RepoSource{{Slug: "o/r", Src: src}})
+	get := func() string {
+		resp, err := http.Get("http://" + addr + "/api/priorities")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		b, _ := io.ReadAll(resp.Body)
+		return string(b)
+	}
+	if body := get(); !strings.Contains(body, "Priority: 1") {
+		t.Fatalf("before = %s, want Priority: 1", body)
+	}
+	req, err := http.NewRequest(http.MethodPost, "http://"+addr+"/api/priorities/milestone-ranks",
+		strings.NewReader(`{"repo":"o/r","changes":[{"number":3,"from":1,"to":2}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", "http://"+addr)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("POST = %d %s, want 200", resp.StatusCode, b)
+	}
+	if body := get(); !strings.Contains(body, "Priority: 2") || strings.Contains(body, "Priority: 1") {
+		t.Errorf("after = %s, want Priority: 2 only", body)
+	}
+	if err := stop(); err != nil {
+		t.Fatalf("serve = %v", err)
 	}
 }

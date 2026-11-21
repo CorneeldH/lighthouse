@@ -290,8 +290,8 @@ func startPriorities(ctx context.Context, srcs []priorities.Source, overviewRead
 }
 
 // startRefresher starts a Refresher of build on ctx when enabled, and returns its reader, its
-// patch (Modify; a no-op returning false when disabled) and a stopped that blocks until its goroutine has returned. Disabled, the reader builds on every
-// read and stopped is a no-op.
+// patch (Modify; a no-op returning false when disabled) and a stopped that blocks until its
+// goroutine has returned. Disabled, the reader builds on every read and stopped is a no-op.
 func startRefresher[T any](ctx context.Context, enabled bool, build server.BuildFunc[T], interval, retry time.Duration) (read func(context.Context) (T, error), patch func(func(T) T) bool, stopped func()) {
 	if !enabled {
 		return build, func(func(T) T) bool { return false }, func() {}
