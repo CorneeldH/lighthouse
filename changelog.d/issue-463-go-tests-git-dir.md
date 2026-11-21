@@ -1,4 +1,4 @@
 ---
-type: fix
+type: internal
 ---
-Go-tests committen hun fixture-repo's niet meer in de echte repository als `GIT_DIR` in de omgeving staat (bijvoorbeeld bij `go test` vanuit een git-hook). `internal/gitenvscrub` haalt de git-variabelen weg die een commando naar een andere repository sturen; elk testpakket dat git start importeert het, en een bewakingstest meldt een pakket dat dat vergeet.
+Go tests no longer commit their fixture repositories into the real repository when `GIT_DIR` is set in the environment (for example `go test` run from a git hook). `internal/gitenvscrub` removes the git variables that redirect a command to another repository; every test package that starts git imports it, and a guard test reports a package that forgets to.
