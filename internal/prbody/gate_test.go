@@ -464,6 +464,21 @@ func TestMainDeadlineBoundsSlowGHFallback(t *testing.T) {
 		notice("5") + notice("6") + notice("7"), ""})
 }
 
+// The forge hangs at the AC count: the gate stops waiting after the default ACTimeoutS of 5 s, well
+// inside the total deadline, and passes loudly. It runs the real 5 s: the default is the subject.
+func TestMainSlowForgePassesLoudlyAfterTheACTimeout(t *testing.T) {
+	withConfig(t, "Acme/widgets")
+	_, project := newProject(t)
+	var starts atomic.Int32
+	writeFile(t, filepath.Join(project, "body.md"), closesBody("9", 1))
+	got := runMainEnv(t, project, "gh pr create --repo Acme/widgets -F body.md", project, slowIssue(&starts))
+	if n := starts.Load(); n != 1 {
+		t.Errorf("issue read started %d times, want 1", n)
+	}
+	eq(t, "main", got, mainResult{0, "pr-create-gate: body checked — Closes #9 (AC not counted, 1 rows)\n" +
+		"pr-create-gate: AC count not measurable for #9 (timeout after 5 s) — structure checked only\n", ""})
+}
+
 // twin of test_main_deadline_keeps_blocker_of_earlier_target
 func TestMainDeadlineKeepsBlockerOfEarlierTarget(t *testing.T) {
 	withConfig(t, "Acme/widgets")
