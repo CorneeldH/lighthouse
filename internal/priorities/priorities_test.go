@@ -121,13 +121,18 @@ func TestBuildLabelKeyOpenQuestionAndClosed(t *testing.T) {
 		t.Fatalf("Build: %v", err)
 	}
 	var keys []string
-	var questions []bool
+	var questions, needs []bool
 	for _, i := range got[0].Issues {
 		keys = append(keys, i.Label)
 		questions = append(questions, i.OpenQuestion)
+		needs = append(needs, i.NeedsLabel)
 	}
 	if want := []string{"needs_shaping", "needs_decision", "", "", ""}; !reflect.DeepEqual(keys, want) {
 		t.Errorf("labels = %q, want %q", keys, want)
+	}
+	// Issue 2 carries blocked and needs-decision: Label is the winner, NeedsLabel is true anyway.
+	if want := []bool{true, true, false, false, false}; !reflect.DeepEqual(needs, want) {
+		t.Errorf("needs labels = %v, want %v", needs, want)
 	}
 	if want := []bool{false, false, false, false, true}; !reflect.DeepEqual(questions, want) {
 		t.Errorf("open questions = %v, want %v (only o/a#5; o/other#1 is another repo)", questions, want)

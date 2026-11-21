@@ -192,6 +192,9 @@
           "milestone": {
             "$ref": "#/components/schemas/MilestoneRef"
           },
+          "needs_label": {
+            "type": "boolean"
+          },
           "number": {
             "format": "int64",
             "type": "integer"
@@ -216,7 +219,8 @@
           "blocked_by",
           "status",
           "label",
-          "open_question"
+          "open_question",
+          "needs_label"
         ],
         "type": "object"
       },

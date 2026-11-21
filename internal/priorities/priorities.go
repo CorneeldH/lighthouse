@@ -46,6 +46,9 @@ type Issue struct {
 	Label     string        `json:"label"`
 	// OpenQuestion is true when the overview holds a question for this issue.
 	OpenQuestion bool `json:"open_question"`
+	// NeedsLabel is true when the issue carries any needs_* label, not only the one in Label: the
+	// flag on an active issue follows it.
+	NeedsLabel bool `json:"needs_label"`
 }
 
 // ClosedIssue is an issue of a milestone that counts as done.
@@ -112,7 +115,7 @@ func Build(ctx context.Context, srcs []Source, ov overview.Overview) ([]Repo, er
 		for _, pi := range p.Issues {
 			i := Issue{Number: pi.Number, Title: pi.Title, URL: pi.URL, BlockedBy: make([]Blocker, 0, len(pi.BlockedBy)),
 				Status: status[key(s.Slug, pi.Number)], Label: issuestate.BlockingKey(pi.Labels, s.Labels),
-				OpenQuestion: asked[key(s.Slug, pi.Number)]}
+				OpenQuestion: asked[key(s.Slug, pi.Number)], NeedsLabel: issuestate.HasNeedsLabel(pi.Labels, s.Labels)}
 			if m := pi.Milestone; m != nil {
 				i.Milestone = &MilestoneRef{Number: m.Number, Title: m.Title, State: m.State}
 			}

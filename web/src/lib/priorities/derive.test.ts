@@ -23,6 +23,7 @@ const iss = (
   status: 'To do',
   label: '',
   open_question: false,
+  needs_label: false,
   blocked_by: by.length ? by.map(([repo, issue]) => ({ repo, issue })) : null,
   ...extra,
 })
@@ -144,6 +145,9 @@ const LABEL_RANK = [
   'needs_testing',
 ]
 
+// Any needs_* label on the issue, built from the fixture labels like the server does.
+const NEEDS_LABELS = ['needs_shaping', 'needs_decision', 'needs_hands', 'needs_testing']
+
 describe('issueState follows the shared state fixture', () => {
   const openCases = (cases as StateCase[]).filter((c) => !c.closed)
   it.each(openCases)('$name', (c) => {
@@ -152,6 +156,7 @@ describe('issueState follows the shared state fixture', () => {
     const issue = iss(1, [], {
       status: c.status ?? '',
       label,
+      needs_label: NEEDS_LABELS.some((k) => c.labels?.includes(k)),
       open_question: c.open_question ?? false,
       blocked_by: open.length > 0 ? open.map((b) => ({ repo: R, issue: b.issue })) : null,
     })
@@ -328,9 +333,10 @@ describe('milestoneRows blocks', () => {
     expect(row.blocks.filter((b) => b.state === 'needs_human').map((b) => b.nr)).toEqual([5, 1])
   })
 
-  it('an outside blocker without issue data is a ready block', () => {
+  it('an outside blocker without issue data is in outside, not in blocks', () => {
     const row = mk([iss(1, [['z/q', 7]], { milestone: ref })])
-    expect(row.blocks.find((b) => b.repo === 'z/q')).toMatchObject({ nr: 7, state: 'ready' })
+    expect(row.blocks.filter((b) => b.state !== 'done').map((b) => b.nr)).toEqual([1])
+    expect(row.outside).toMatchObject([{ repo: 'z/q', number: 7, external: true }])
   })
 
   it('no milestone issues and no closed gives shaping with percent 0, not NaN', () => {

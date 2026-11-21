@@ -22,9 +22,6 @@ const MAX_OUTSIDE = 3
 const colorOf = (colors: Map<string, string>, n: GNode): string =>
   n.milestone ? (colors.get(`${n.repo}#m${n.milestone.number}`) ?? NO_MILESTONE_COLOR) : NO_MILESTONE_COLOR
 
-const isOutside = (row: MilestoneRow, b: { repo: string; nr: number }): boolean =>
-  row.outside.some((n) => n.repo === b.repo && n.number === b.nr)
-
 // "needs human" is a ready (or active) block with the dashed flag.
 function shapeOf(state: BlockData['state'], needsHuman: boolean): { state: BlockState; needsHuman: boolean } {
   return state === 'needs_human' ? { state: 'ready', needsHuman: true } : { state, needsHuman }
@@ -56,8 +53,8 @@ function useWidth<T extends HTMLElement>(): [React.RefObject<T | null>, number] 
 function Row({ row, colors }: { row: MilestoneRow; colors: Map<string, string> }): JSX.Element {
   const color = colors.get(`${row.repo}#m${row.number}`) ?? NO_MILESTONE_COLOR
   const [barRef, barWidth] = useWidth<HTMLDivElement>()
-  // Outside blockers have their own column; the bar holds the milestone's own blocks.
-  const own = row.blocks.filter((b) => !isOutside(row, b))
+  // Outside blockers have their own column (row.outside); the bar holds the milestone's own blocks.
+  const own = row.blocks
   const blockWidth = own.length === 0 ? 0 : (barWidth - BAR_GAP * (own.length - 1)) / own.length
   const showLabel = blockWidth >= MIN_LABEL_WIDTH
   const todo = own.filter((b) => b.state !== 'done')

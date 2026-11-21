@@ -81,6 +81,7 @@ export interface Issue {
   blocked_by: Blocker[] | null;
   label: string;
   milestone?: MilestoneRef;
+  needs_label: boolean;
   number: number;
   open_question: boolean;
   status: string;

@@ -54,13 +54,12 @@ export function issueState(
   runs: Run[],
   repo: string,
 ): { state: IssueStateName; needsHuman: boolean } {
-  const needsLabel = NEEDS_FIRST.has(issue.label) || NEEDS_LATER.has(issue.label)
   if (
     liveRun(runs, repo, issue.number) !== undefined ||
     issue.status === 'In progress' ||
     issue.status === 'Controller'
   ) {
-    return { state: 'active', needsHuman: needsLabel || issue.open_question }
+    return { state: 'active', needsHuman: issue.needs_label || issue.open_question }
   }
   if (NEEDS_FIRST.has(issue.label)) return { state: 'needs_human', needsHuman: false }
   if (issue.label.startsWith('blocked_') || (issue.blocked_by?.length ?? 0) > 0) {
@@ -328,8 +327,8 @@ export function milestoneRows(repos: Repo[], graph: Graph): MilestoneRow[] {
           state: 'done',
           needsHuman: false,
         }))
-      // Outside blockers without issue data count as ready; order is stable per group.
-      const workBlocks = [...order, ...outside.filter((n) => n.external)].map(toBlock)
+      // Outside blockers have their own column (row.outside); blocks holds the milestone's own.
+      const workBlocks = order.map(toBlock)
       const blocks = [
         ...doneBlocks,
         ...GROUP_ORDER.filter((g) => g !== 'done').flatMap((g) =>

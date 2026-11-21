@@ -19,6 +19,7 @@ const iss = (
   status: 'To do',
   label: '',
   open_question: false,
+  needs_label: false,
   blocked_by: by.length ? by.map(([r, i]) => ({ repo: r, issue: i })) : null,
   ...(milestone ? { milestone } : {}),
 })
