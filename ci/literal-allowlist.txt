@@ -2,7 +2,7 @@
 # without the line number. Each one has a test that pins why it is needed.
 
 # The install command run.sh names when no binary is found (spec zonder-python §1).
-# Pinned by tests/pack/test_run_sh.py::test_missing_binary_blocks_blocking_hook.
+# Pinned by e2e/runsh_test.go::TestRunShMissingBinary.
 pack/core/hooks/run.sh:  module=github.com/CorneeldH/lighthouse/cmd/lighthouse
 
 # The lighthouse repo, for the release notes the upgrade skill shows (spec #46 § Vastgelegd).
