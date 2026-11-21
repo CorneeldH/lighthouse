@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"reflect"
 	"strings"
 	"testing"
@@ -636,5 +637,101 @@ func TestControllerPathsUseNoGraphQL(t *testing.T) {
 	}
 	if srv.Count("/graphql") == 0 {
 		t.Error("Planning made no GraphQL request; the test no longer tells REST from GraphQL")
+	}
+}
+
+// memoServer is a board with issue 6 of o/r, whose open closing PR #11 is also the PR of the
+// run branch issue-6-x, on a client with EnrichMemo set to memo.
+func memoServer(t *testing.T, memo bool) (*forgetest.Server, *GitHub) {
+	t.Helper()
+	srv, c := projectServer(t)
+	c.Board = restBoard()
+	c.EnrichMemo = memo
+	pr := map[string]any{"number": 11, "state": "OPEN", "isDraft": false, "mergeable": "MERGEABLE", "headRefOid": "sha-open",
+		"headRefName": "issue-6-x", "baseRefName": "main", "url": "https://github.com/o/r/pull/11",
+		"statusCheckRollup": map[string]any{"state": "SUCCESS"}}
+	srv.BoardNodes = []map[string]any{restIssue("PVTI_a", 6, "o/r", []any{pr}, nil)}
+	srv.Branches = map[string][]map[string]any{"issue-6-x": {pr}}
+	return srv, c
+}
+
+// boardThenBranch reads the board and then the PRs of the run branch, and returns the closing
+// PR of the board item and the branch PR.
+func boardThenBranch(t *testing.T, c *GitHub) (PR, PR) {
+	t.Helper()
+	ctx := context.Background()
+	items, err := c.BoardItems(ctx)
+	if err != nil || len(items) != 1 || len(items[0].ClosingPRs) != 1 {
+		t.Fatalf("BoardItems = %+v, %v; want one item with one closing PR", items, err)
+	}
+	prs, err := c.BranchPRs(ctx, "issue-6-x")
+	if err != nil || len(prs) != 1 {
+		t.Fatalf("BranchPRs = %+v, %v; want one PR", prs, err)
+	}
+	return items[0].ClosingPRs[0], prs[0]
+}
+
+// Classification: io. Fails when a client with EnrichMemo asks the pull request or its checks
+// a second time for the same (repo, PR, head) within its life, or when the remembered
+// enrichment differs from the first.
+func TestBoardItemsAndBranchPRsEnrichOnce(t *testing.T) {
+	srv, c := memoServer(t, true)
+	board, branch := boardThenBranch(t, c)
+	for _, p := range []string{"/repos/o/r/pulls/11", "/repos/o/r/commits/sha-open/check-runs"} {
+		if n := srv.Count(p); n != 1 {
+			t.Errorf("%s: %d requests, want 1", p, n)
+		}
+	}
+	if board.Mergeable != "MERGEABLE" || board.Checks != "SUCCESS" ||
+		branch.Mergeable != board.Mergeable || branch.Checks != board.Checks {
+		t.Fatalf("board PR %s/%s, branch PR %s/%s; want MERGEABLE/SUCCESS on both",
+			board.Mergeable, board.Checks, branch.Mergeable, branch.Checks)
+	}
+}
+
+// Classification: io. Fails when a client without EnrichMemo remembers an enrichment, so the
+// pusher would act on a stale mergeable.
+func TestEnrichWithoutMemoRepeats(t *testing.T) {
+	srv, c := memoServer(t, false)
+	boardThenBranch(t, c)
+	if n := srv.Count("/repos/o/r/pulls/11"); n != 2 {
+		t.Fatalf("/repos/o/r/pulls/11: %d requests, want 2", n)
+	}
+}
+
+// Classification: io. Fails when an enrichment that failed (a hidden 404 of another repo) is
+// remembered, so a second read keeps the UNKNOWN without asking again.
+func TestEnrichHiddenErrorNotMemoized(t *testing.T) {
+	srv, c := projectServer(t)
+	c.Board = restBoard()
+	c.EnrichMemo = true
+	pr := map[string]any{"number": 21, "state": "OPEN", "mergeable": "MERGEABLE", "headRefOid": "sha21",
+		"headRefName": "issue-9-x", "statusCheckRollup": map[string]any{"state": "SUCCESS"}}
+	srv.BoardNodes = []map[string]any{restIssue("PVTI_9", 9, "x/y", []any{pr}, nil)}
+	srv.Fail = map[string]int{"GET /repos/x/y/pulls/21": 404}
+	for round := 1; round <= 2; round++ {
+		got, err := c.BoardItems(context.Background())
+		if err != nil || len(got) != 1 || got[0].ClosingPRs[0].Mergeable != "UNKNOWN" {
+			t.Fatalf("round %d: BoardItems = %+v, %v; want the PR with Mergeable UNKNOWN", round, got, err)
+		}
+	}
+	if n := srv.Count("/repos/x/y/pulls/21"); n != 2 {
+		t.Fatalf("/repos/x/y/pulls/21: %d requests, want 2", n)
+	}
+}
+
+// Classification: io. Fails when the memo forgets the head in its key, so checks of an old
+// head are given to a PR that was pushed since.
+func TestEnrichNewHeadAsksAgain(t *testing.T) {
+	srv, c := memoServer(t, true)
+	moved := maps.Clone(srv.Branches["issue-6-x"][0])
+	moved["headRefOid"], moved["statusCheckRollup"] = "sha-new", map[string]any{"state": "PENDING"}
+	srv.Branches["issue-6-x"] = []map[string]any{moved}
+	_, branch := boardThenBranch(t, c)
+	if n := srv.Count("/repos/o/r/pulls/11"); n != 2 {
+		t.Errorf("/repos/o/r/pulls/11: %d requests, want 2", n)
+	}
+	if branch.HeadSHA != "sha-new" || branch.Checks != "PENDING" {
+		t.Fatalf("branch PR head %s checks %s; want sha-new with PENDING", branch.HeadSHA, branch.Checks)
 	}
 }

@@ -58,11 +58,32 @@ func (p restPull) repo() string {
 	return p.Base.Repo.FullName
 }
 
+// prKey is one pull request of repo at one head: its checks belong to that head.
+type prKey struct {
+	repo    string
+	number  int
+	headSHA string
+}
+
+// enrichedPR is what enrich read for one prKey.
+type enrichedPR struct{ mergeable, checks string }
+
 // enrich fills Mergeable and Checks of an open pull request of repo; any other PR is left as
-// it is, without a request.
+// it is, without a request. With EnrichMemo an open PR read before at the same head gets what
+// that read gave, without a request; only a read that succeeded is remembered.
 func (c *GitHub) enrich(ctx context.Context, repo string, pr *PR) error {
 	if pr.State != "OPEN" {
 		return nil
+	}
+	key := prKey{repo: repo, number: pr.Number, headSHA: pr.HeadSHA}
+	if c.EnrichMemo {
+		c.mu.Lock()
+		e, ok := c.enriched[key]
+		c.mu.Unlock()
+		if ok {
+			pr.Mergeable, pr.Checks = e.mergeable, e.checks
+			return nil
+		}
 	}
 	var one struct {
 		Mergeable *bool `json:"mergeable"`
@@ -75,6 +96,14 @@ func (c *GitHub) enrich(ctx context.Context, repo string, pr *PR) error {
 		return err
 	}
 	pr.Mergeable, pr.Checks = mergeable(one.Mergeable), checks
+	if c.EnrichMemo {
+		c.mu.Lock()
+		if c.enriched == nil {
+			c.enriched = map[prKey]enrichedPR{}
+		}
+		c.enriched[key] = enrichedPR{mergeable: pr.Mergeable, checks: pr.Checks}
+		c.mu.Unlock()
+	}
 	return nil
 }
 
