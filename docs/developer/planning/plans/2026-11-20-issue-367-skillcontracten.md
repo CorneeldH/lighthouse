@@ -300,7 +300,7 @@ De uitvoerder werkt deze tabel per taak bij. De PR-body neemt hem over. Telling:
 | `test_audit_worktrees_skill.py` | 9 | 8 naar Go (kop, KPI-velden en `cleanup: no — ` uit een echte run van `worktree-audit`), 1 gedekt (`board-sweep`: `TestOptionalStepsGuarded`), negatieven R3 binnen 2 tests | 5 |
 | `test_place_instruction_skill.py` | 9 | 8 naar Go (check 4 via `checkinstr.Run`), 1 gedekt (`python3`: `TestRequiresNamesTheSkillPerTool`), negatieven R3 binnen 4 tests | 5 |
 | `test_adversarial_review_skills.py` | 41 | 33 naar Go (PR-kop uit `review.PROpenPoints`, exit 6 uit `review.ExitBudgetEmpty`, `bij_rondegrens` uit `repoconfig.LoadFile`), 3 gedekt (`TestBuildPromptByteIdentical`, `TestCorePack` ×2), 1 beschermt niets, 4 onderwerp weg, negatieven R3 binnen 4 tests | 6 |
-| `test_issue_impact_scout.py` | 15 | ~12 naar Go, 2–3 gedekt (`TestCorePack`, `TestScoutNameMatchesPersona`) | 7 |
+| `test_issue_impact_scout.py` | 15 | 13 naar Go (`name` ingekort: gedekt door `TestScoutNameMatchesPersona`; de outputsecties opgegaan in de bloktest; de kop uit `config.Variants`), 2 gedekt (`TestCorePack` ×2) | 7 |
 | `test_pr_template.py` | 8 | naar Go, minus wat `inline_twins_test` dekt | 7 |
 | `test_workflow_unblock.py` | 14 | 14 naar Go (5 als uitvoertest van het stapscript), negatieven R3 | 7 |
 | `test_fragments.py` | 4 | 1 naar Go, 3 beschermt niets | 8 |
@@ -656,3 +656,27 @@ Vervallen negatieven (R3): `open_vraag` (paia-categorie; de besluitenset bewaakt
 | `test_adversarial_review_skills.py` | `test_review_skill_needs_no_python_and_no_wrapper` | weg — onderwerp weg | `python3`, `review.sh`, `verify.sh`, `review_pair.py`, `plan_review_record.py`: de migratie naar Go is af. | R3. |
 | `test_adversarial_review_skills.py` | `test_claude_skill_calls_the_runner_with_kind_and_verify` | naar Go | Claude roept de runner met `--kind` en `--verify`; elke vlag van elke aanroep bestaat (`cliFlags`). | `TestReviewSkillCallsTheRunnerWithKindAndVerify`. Mutatie: `--fast` op een aanroep (spec/claude): FAIL. |
 | `test_adversarial_review_skills.py` | `test_agents_skill_passes_its_own_skill_dir` | naar Go | Agents geeft zijn eigen `--skill-dir`, ook bij `--verify`. | `TestReviewSkillCallsTheRunnerWithKindAndVerify`. Mutatie: `--verify` weg uit de verificatie-aanroep (plan/agents): FAIL. |
+
+### `test_issue_impact_scout.py` (taak 7a, afgerond)
+
+13 naar Go (1 ingekort, 1 opgegaan in de bloktest), 2 gedekt (15). De Go-tests staan in `internal/packcontract/scout_test.go`; de agent heeft geen varianten. De frontmatter gaat door `yaml.v3`, de kop `impact_pack` door `config.Variants` op `pack/core/headings.toml`. Elke mutatie is gedraaid in `pack/core/agents/issue-impact-scout.md` of `pack/core/headings.toml` (de gedekte in `internal/packs` en `internal/kpi`): de genoemde test faalde, daarna `git checkout -- pack/` en een lege `git status --short pack/`.
+
+Geen vervallen negatieven: de bronrepo-paden, `(#N)` en Nederlandse woorden zijn blijvend (R1).
+
+| Bestand | Test | Bestemming | Reden | Go-test of mutatie |
+|---|---|---|---|---|
+| `test_issue_impact_scout.py` | `test_the_agent_file_exists` | weg — gedekt | `TestCorePack` pint `.claude/agents/lighthouse-issue-impact-scout.md` in de bestandslijst. | `TestCorePack`. Mutatie: de agent hernoemd naar `impact-scout.md`: FAIL. |
+| `test_issue_impact_scout.py` | `test_frontmatter_pins_name_and_model` | naar Go (ingekort) | `model: sonnet` en `maxTurns: 12` (D-4, D-6), de turnlimiet gebonden aan de zin in de body; `name` is gedekt. | `TestScoutModelAndTurnLimit`; `name`: `TestScoutNameMatchesPersona`. Mutaties: `model: haiku`, `maxTurns: 20`, `name: lighthouse-impact-scout` (kpi-test): FAIL. |
+| `test_issue_impact_scout.py` | `test_toolallowlist_is_read_only` | naar Go | D-5: precies `Read`, `Grep`, `Glob`; `Bash` is niet te begrenzen. | `TestScoutToolAllowlistIsReadOnly`. Mutatie: `, Bash` erbij: FAIL. |
+| `test_issue_impact_scout.py` | `test_description_bounds_the_use_to_start_issue` | naar Go | Alleen start-issue, gate 4b en 4c; hele zin. | `TestScoutDescriptionBoundsTheUseToStartIssue`. Mutaties: "only" weg, ", or by anyone." erachter: FAIL. |
+| `test_issue_impact_scout.py` | `test_pack_sections_follow_the_contract_order` | naar Go | De koppen van het `text`-blok zijn exact de acht secties in volgorde; een extra of ontbrekende sectie faalt ook. | `TestScoutPackSectionsFollowTheContractOrder`. Mutaties: BEST ANALOGY en APPLICABLE RULES gewisseld, OUT OF SCOPE weg: FAIL. |
+| `test_issue_impact_scout.py` | `test_impact_pack_heading_is_the_headings_value` | naar Go | `impact_pack` heeft in elke taal dezelfde waarde, via `config.Variants`; de persona noemt hem letterlijk. | `TestScoutImpactPackHeadingIsTheHeadingsValue`. Mutatie: `en = "IMPACT REPORT"` in `headings.toml`: FAIL. |
+| `test_issue_impact_scout.py` | `test_prompt_demands_the_caller_search` | naar Go | De zoekplekken (relatieve import, ingangen, `ExecStart=`, tellers), de samenvatting per map en de lege uitkomst met zoekplek, als hele zinnen. | `TestScoutDemandsTheCallerSearch`. Mutaties: de relatieve-importzin weg, `` `ExecStart=` `` weg, "but only when it names the module.", ", unless nothing was found.", "with the count and two examples" weg: FAIL. |
+| `test_issue_impact_scout.py` | `test_the_caller_search_comes_before_the_analogy` | naar Go | De callerzoektocht vóór de analogie, plus de budgetzin die de analogie en regels laat betalen. | `TestScoutCallerSearchComesBeforeTheAnalogy`. Mutaties: ", before the analogy" weg uit stap 3, de budgetzin weg: FAIL. |
+| `test_issue_impact_scout.py` | `test_prompt_carries_every_output_section` | naar Go | Opgegaan in de bloktest: die eist elke sectie als kop in het blok. | `TestScoutPackSectionsFollowTheContractOrder`. Mutatie: OUT OF SCOPE weg uit het blok: FAIL. |
+| `test_issue_impact_scout.py` | `test_prompt_demands_the_pack_is_the_whole_answer` | naar Go | Eerste teken is de `I`, geen inleiding of afsluiting; hele zinnen. | `TestScoutPackIsTheWholeAnswer`. Mutaties: "No preamble, " weg, ", unless the user asks.": FAIL. |
+| `test_issue_impact_scout.py` | `test_prompt_binds_a_line_number_to_what_was_actually_read` | naar Go | Een regelbereik alleen als het gelezen is, anders alleen de bestandsnaam; hele zinnen. | `TestScoutBindsALineNumberToWhatWasActuallyRead`. Mutaties: "allowed if you read", "file name with your best guess": FAIL. |
+| `test_issue_impact_scout.py` | `test_prompt_forbids_designing_and_planning` | naar Go | Geen ontwerp, geen plan, `UNKNOWN` in plaats van gokken; hele zinnen. | `TestScoutForbidsDesigningAndPlanning`. Mutaties: ", unless asked.", "No task order, " weg, "You may guess.": FAIL. |
+| `test_issue_impact_scout.py` | `test_prompt_names_no_source_repo_layout` | naar Go | Blijvende invariant: geen mappen van de bronrepo. | `TestScoutIsDetachedAndEnglish`. Mutatie: "also in src/web/": FAIL. |
+| `test_issue_impact_scout.py` | `test_only_the_scout_is_an_agent` | weg — gedekt | Elke `agents/*.md` wordt een unit in de bestandslijst van `TestCorePack`. | `TestCorePack`. Mutatie: een kopie als `agents/second-scout.md`: FAIL. |
+| `test_issue_impact_scout.py` | `test_agents_are_english_and_carry_no_source_issue_numbers` | naar Go | Blijvende invariant: Engels, geen `(#N)`. | `TestScoutIsDetachedAndEnglish`. Mutaties: "(#412)", "Je bent geen poortwachter.": FAIL. |
