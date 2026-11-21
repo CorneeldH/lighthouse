@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.pack._testkit import CORE, PACKS
+from tests.pack.python._testkit import CORE, PACKS
 
 # A literal copy of `_TOOL_USES` from the removed `test_skill_contracts.py` (#367).
 _TOOL_USES = {

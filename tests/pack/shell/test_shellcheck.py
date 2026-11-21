@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.pack._testkit import (
+from tests.pack.python._testkit import (
     GIT_ENV,
     INSTALL_ROOT,
     classify,
@@ -498,12 +498,11 @@ def test_repo_script_unchecked_is_rc_4(tmp_path):
 def test_bash_write_through_gate(tmp_path, pinned_shellcheck):
     """With core and shell installed, a Bash write of a broken `.sh` is a finding via
     `bash-write-check post`, not `no shell gate installed`."""
-    from tests.pack.test_bash_write_check import BROKEN_SH as GATES_BROKEN_SH
-    from tests.pack.test_bash_write_check import _Session, heredoc
+    from tests.pack.python._bash_session import _Session, heredoc
 
     session = _Session(tmp_path, shellcheck=pinned_shellcheck, language_gates=False)
     install_pack("shell", session.root)
-    out = session.call(heredoc("x.sh", GATES_BROKEN_SH))
+    out = session.call(heredoc("x.sh", BROKEN_SH))
     assert out.returncode == 2, (out.stdout, out.stderr)
     assert "SC2034" in out.stderr
     assert "no shell gate installed" not in out.stderr + out.stdout

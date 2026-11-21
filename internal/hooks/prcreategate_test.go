@@ -118,7 +118,7 @@ func TestPanicBecomesCouldNotCheck(t *testing.T) {
 }
 
 // The payload as `jq -r '.tool_input.command // empty'` reads it; the verdicts are those of the
-// bash hook (tests/pack/test_pr_create_gate.py, test_payload_shapes).
+// bash hook.
 func TestPrCreateGatePayloadShapes(t *testing.T) {
 	invalid := hook.Result{Code: 2, Stderr: "pr-create-gate: COULD NOT CHECK — the payload is not valid JSON.\n" +
 		"\n" +

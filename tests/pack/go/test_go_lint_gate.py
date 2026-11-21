@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.pack._testkit import (
+from tests.pack.python._testkit import (
     alarm_line,
     _path_without_lighthouse,
     git,

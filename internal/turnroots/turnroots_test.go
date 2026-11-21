@@ -139,8 +139,15 @@ func TestPayloadErrors(t *testing.T) {
 
 func git(t *testing.T, dir string, args ...string) {
 	t.Helper()
-	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
-	cmd.Env = append(os.Environ(),
+	cmd := exec.Command("git", append([]string{"-C", dir, "-c", "commit.gpgsign=false"}, args...)...)
+	for _, kv := range os.Environ() {
+		switch strings.SplitN(kv, "=", 2)[0] {
+		case "GIT_DIR", "GIT_INDEX_FILE", "GIT_WORK_TREE":
+		default:
+			cmd.Env = append(cmd.Env, kv)
+		}
+	}
+	cmd.Env = append(cmd.Env,
 		"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t",
 		"GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_CONFIG_NOSYSTEM=1")
 	if out, err := cmd.CombinedOutput(); err != nil {
