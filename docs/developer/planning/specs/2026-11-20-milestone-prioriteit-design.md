@@ -148,8 +148,10 @@ zijn geschreven. Omdat de cache per geslaagde schrijfactie is bijgewerkt, toont 
 precies wat er op de forge staat. Er is geen rollback: de rang op de forge is op dat moment nog
 steeds geldig, alleen mogelijk dubbel, en de volgende klik nummert opnieuw door (zie hierboven).
 
-Foutcodes: herkomst fout 403, onbekende repo 404, rang verouderd 409, groepsmilestone op GitLab
-of een andere forge-fout zoals `forgeError` die nu vertaalt.
+Foutcodes: herkomst fout 403, onbekende repo 404, rang verouderd 409, en elke forge-fout
+(ook een groepsmilestone op GitLab) zoals `forgeError` die nu vertaalt (502/503). Groeps-
+milestones staan niet in de lijst (`internal/forge/gitlab_planning.go` leest alleen
+projectmilestones), dus dat pad komt vanuit de UI niet voor. *(r1-f6.)*
 
 ### Cache
 
@@ -162,6 +164,21 @@ daarom een methode die de huidige waarde onder zijn lock aanpast. Heeft de laats
 dan past hij niets aan. De gewone bouw van elke 300 s blijft de waarheid en overschrijft de
 aanpassing.
 
+Een bouw die al liep toen de aanpassing kwam, las de milestones van vóór de schrijfactie. De
+`Refresher` mag zo'n resultaat niet opslaan: hij houdt een generatieteller bij, die de
+aanpas-methode ophoogt, en `refresh` slaat een bouwresultaat alleen op als de teller sinds de
+start van die bouw gelijk is gebleven (gecontroleerd onder de lock). Een weggegooide bouw
+valt terug op de volgende ronde. Test: een bouw die over een aanpassing heen loopt laat de
+aangepaste waarde staan. *(r1-f2.)*
+
+Bij een 409 heeft de server in stap 2 de actuele beschrijvingen gelezen. Hij past daarmee de
+cache bij (zelfde aanpas-methode) voordat hij 409 antwoordt, zodat de verversing van de UI de
+actuele rangen toont en de volgende klik slaagt zonder op een bouw te wachten. Test: een klik
+na een 409 slaagt. *(r1-f3.)*
+
+De server heeft per bron-slug een forge en de aanpas-methode nodig. Dat verbreedt `server.Deps`
+(naast `Priorities`) en `startPriorities`/`startRefresher` in `internal/cli/serve.go`; de plan
+benoemt die aanpassing. *(r1-f4.)*
 De UI werkt **optimistisch**: na een klik staat de nieuwe volgorde direct op het scherm. Komt er
 een fout terug, dan vervangt de UI die volgorde door verse data en toont hij de melding. Tijdens
 een lopend verzoek staan de knoppen van die repo uit, zodat twee klikken niet tegelijk dezelfde
@@ -177,8 +194,15 @@ Dit is het eerste endpoint dat iets op de forge verandert, met het token van de 
   - Achter `tailscale serve` komt het verzoek als HTTP binnen, terwijl de browser
     `Origin: https://<naam>.ts.net` stuurt. Daarom telt het schema niet mee. `tailscale serve`
     geeft de `Host` ongewijzigd door, dus host en poort komen overeen.
-  - De Vite-devserver (`web/vite.config.ts`) zet `changeOrigin` op `false`. Dan blijft de `Host`
-    `localhost:5173`, gelijk aan de `Origin`; `hostGuard` laat `localhost` al toe.
+  - De Vite-devserver staat nu op `changeOrigin: true` (`web/vite.config.ts:22`), waardoor de
+    proxy de `Host` herschrijft naar `127.0.0.1:8127` terwijl de browser `Origin:
+    http://localhost:5173` stuurt: elke POST zou 403 geven. Deze stap zet `changeOrigin` daarom
+    op `false`. Dan blijft de `Host` `localhost:5173`, gelijk aan de `Origin`; `hostGuard` laat
+    `localhost` al toe. *(Eigen keuze na spec-review, r1-f1.)*
+  - De vergelijking is letterlijk: de `host[:poort]`-tekst van de `Origin` tegen de header
+    `Host`, zonder standaardpoorten (80, 443) in te vullen. `https://x.ts.net` en `x.ts.net`
+    zijn dus gelijk. Tests: tailscale (zonder poort) en localhost met poort.
+    *(Eigen keuze na spec-review, r1-f5.)*
 - De controle geldt voor de schrijf-endpoints van de browser-API, niet voor `/api/node/`. De
   node-API krijgt POSTs van de Go-client van de controller, zonder `Origin`, en blijft zoals hij
   is.
