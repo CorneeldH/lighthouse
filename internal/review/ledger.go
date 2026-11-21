@@ -99,6 +99,10 @@ func IndexLedger(ctx context.Context, db *sql.DB, path string, tr *Trajectory, n
 		return res, err
 	}
 	planPath, findings := ParseLedger(data)
+	if planPath == "" {
+		res.Skipped = append(res.Skipped, Skip{Path: path, Reason: `no plan header "# SDD ledger — plan: <path>" on the first line: the findings cannot be given a stable id`})
+		return res, nil
+	}
 	sum, at := Sum(data), now()
 	perTask := map[int]int{}
 	for _, f := range findings {

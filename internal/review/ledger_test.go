@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -88,6 +89,32 @@ func TestIndexLedgerWithoutTrajectorySkips(t *testing.T) {
 	res, err := IndexLedger(ctx, db, path, nil, fixedNow)
 	if err != nil || res.New != 0 || len(res.Skipped) != 1 || res.Skipped[0].Reason == "" || res.Skipped[0].Path != path {
 		t.Fatalf("result = %+v, %v; want one Skip with reason", res, err)
+	}
+	if n := rows(t, db, `1 = 1`); n != 0 {
+		t.Errorf("rows = %d, want 0", n)
+	}
+}
+
+func TestIndexLedgerWithoutPlanHeaderIsSkipped(t *testing.T) {
+	ctx, db := context.Background(), openIndexDB(t)
+	dir := t.TempDir()
+	var paths []string
+	for _, name := range []string{"a.md", "b.md"} {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte("no header here\nTask 1: Ruling: iets — waarom\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		paths = append(paths, p)
+	}
+	for i, p := range paths {
+		tr := &Trajectory{Repo: "CorneeldH/lighthouse", Issue: 100 * (i + 1)}
+		res, err := IndexLedger(ctx, db, p, tr, fixedNow)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.New != 0 || len(res.Skipped) != 1 || !strings.Contains(res.Skipped[0].Reason, "plan") {
+			t.Errorf("res = %+v, want one skip naming the plan header", res)
+		}
 	}
 	if n := rows(t, db, `1 = 1`); n != 0 {
 		t.Errorf("rows = %d, want 0", n)
