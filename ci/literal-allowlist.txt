@@ -11,5 +11,5 @@ pack/core/skills/upgrade/claude/SKILL.md:L=CorneeldH/lighthouse
 pack/core/skills/upgrade/agents/SKILL.md:L=CorneeldH/lighthouse
 
 # The repository the release lane downloads the lighthouse binary from (spec zonder-python §6).
-# Pinned by tests/pack/test_workflow_unblock.py::test_the_one_literal_is_the_release_download.
+# Pinned by internal/packcontract/workflowunblock_test.go::TestUnblockTheOneLiteralIsTheReleaseDownload.
 pack/core/workflows/unblock-dependents.yml:              --repo CorneeldH/lighthouse \
