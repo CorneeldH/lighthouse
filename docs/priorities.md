@@ -73,7 +73,39 @@ zijn dus een bovengrens; de meting op een repo met meer dan 100 issues is niet g
 weergaven: een afhankelijkhedengraaf van open issues, een milestone-weergave met voortgang
 (`Done` van `Done + Open`, waarbij `Open` hier het aantal open issues is dat `Planning.Issues` per milestone levert; de SPA negeert de `Open` van de zoekopdracht) en een weergave van issues zonder milestone. De server bouwt de
 gegevens in een eigen refresher, los van de overview, elke **300 s** (`PrioritiesInterval`) en
-levert ze op `/api/priorities`. De pagina leest alleen; ze schrijft niets terug naar GitHub.
+levert ze op `/api/priorities`. De pagina leest, op één plek na: de rang van een milestone
+(zie het volgende kopje).
+
+## De rang van een milestone schrijven
+
+De weergave Milestones heeft een schakelaar *Berekend* / *Prioriteit*. In *Berekend* geldt de
+berekende volgorde. In *Prioriteit* staan milestones met een rang bovenaan, op rang, en de
+milestones zonder rang daaronder in de berekende volgorde. De knoppen Omhoog en Omlaag wijzigen
+de rang.
+
+- **De regel.** De rang staat in de beschrijving van de milestone, als een regel
+  `Priority: N` (N een geheel getal vanaf 1, hoofdletters en omringende spaties doen er niet
+  toe). Telt de beschrijving meer geldige regels, dan geldt de eerste. De server schrijft die
+  regel; staat hij er niet, dan komt hij onderaan, na een lege regel. De Go-code
+  (`internal/priorities/rank.go`) en de SPA (`web/src/lib/priorities/rank.ts`) lezen en
+  schrijven hem op dezelfde manier.
+- **Het endpoint.** `POST /api/priorities/milestone-ranks` met `{repo, changes: [{number, from,
+  to}]}`; de SPA berekent welke milestones een nieuwe rang krijgen, de server rekent geen
+  volgorde uit. Hij leest elke milestone vers van de forge en schrijft pas als elke `from`
+  nog klopt, en werkt na elke schrijfactie de cache bij. Antwoorden: 200 met `{written}`; 403
+  bij een ontbrekende of verkeerde `Origin`; 404 voor een onbekende repo; 409 als een rang op
+  de forge anders is dan `from` (niets geschreven; de cache wordt bijgewerkt); 415 bij een
+  andere `Content-Type` dan `application/json`; 422 bij een ongeldige body; 502 of 503 bij een
+  forgefout of een niet-geconfigureerde forge. Mislukt een schrijfactie halverwege, dan noemt
+  de melding de al geschreven milestones (`written=[...]`).
+- **`Origin` moet gelijk zijn aan `Host`.** Het endpoint schrijft op de forge met de rechten van
+  de server, dus weigert het een verzoek waarvan de host[:poort] van `Origin` niet die van
+  `Host` is. Zo kan een andere website in dezelfde browser het niet aanroepen.
+- **Devproxy.** De Vite-devproxy staat daarom op `changeOrigin: false` (`web/vite.config.ts`):
+  met `true` zou de proxy `Host` herschrijven naar de backend en antwoordt het endpoint 403.
+- **Optimistisch.** De pagina toont de nieuwe volgorde meteen, zet de knoppen uit tot het
+  antwoord er is, en draait de wijziging terug bij een fout. Bij een 409 verschijnt een
+  melding en toont de lijst wat de forge nu heeft.
 
 ## Afgeleide begrippen
 
