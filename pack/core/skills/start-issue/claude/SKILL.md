@@ -117,7 +117,7 @@ Then update the board, from the worktree and with `dangerouslyDisableSandbox: tr
 lighthouse board-start <nr>
 ```
 
-Report the one `board:` line the command prints. Only `To do` becomes `In progress`.
+Report the one `board:` line the command prints. Only `To do` (and a legacy `On hold`) becomes `In progress`.
 Without `[forge.board]` (`lighthouse config forge.board.project_number`
 gives rc 1) the command prints `board: skipped — no [forge.board] configured`. A `board: skipped`
 line is not a stop: picking up goes on. A `board: ERROR` line (rc 2, broken config) is reported
@@ -272,7 +272,7 @@ plugin's own folder.
 - ✅ Name the project path when handing on · ❌ let superpowers choose its own default folder
 - ✅ At 4b/4c call the scout or skip it with a concrete reason · ❌ skip it silently
 - ✅ Leave the pack in context and refer to it with `IMPACT PACK: in context, do not repeat` · ❌ summarise, paraphrase or repeat the pack in the Skill args
-- ✅ After the worktree `lighthouse board-start` · ❌ overwrite a status other than `To do`
+- ✅ After the worktree `lighthouse board-start` · ❌ overwrite a status other than `To do` (or a legacy `On hold`)
 
 ## KPIs
 
@@ -312,8 +312,8 @@ whether gates 1 and 2 fire at all or are dead wood.
   `.claude/hooks/lighthouse/run.sh md-link-check` blocks an absolute path there.
 - **A milestone without DoD text does not exist.** If you come across one, report it — hanging
   the issue in it is a guess then.
-- **This skill sets exactly one transition on the board: `To do` → `In progress`.**
+- **This skill sets exactly one transition on the board: `To do` → `In progress`** (a legacy `On hold` item too).
   No other status, and one label change: after an approved spec at gate `4c` it takes off
-  `labels.needs_shaping` (see Gate 4c below). A legacy `On hold` issue is left to the tick.
+  `labels.needs_shaping` (see Gate 4c below).
   `Controller` (if present) stays: a handover to the controller. For the rest
   the same line as the board-sweep skill, if present.
