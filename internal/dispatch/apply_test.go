@@ -2751,6 +2751,22 @@ func TestDecideFinishesOnlyOwnReturn(t *testing.T) {
 	}
 }
 
+// A Controller issue that carries blocked_issue while its own Returned names reason_interactive
+// (the label write failed) is finished with needs_decision: blocked_issue is no input of the
+// label, the rank rule drops it. Assigning a.Blocked in finishReturn from the blocked_issue
+// label turns this red: ReturnLabelKey then gives blocked_issue.
+func TestDecideFinishReturnKeepsReasonOverBlockedIssue(t *testing.T) {
+	h := newHarness(t)
+	p := h.poster(applyRepo)
+	p.bodies = []string{protocol.RenderReturned(protocol.Heading("reason_interactive", "nl"), "", "", "nl")}
+	p.labels = []string{"blocked_issue"}
+	got, err := h.tick(t)
+	if err != nil || !reflect.DeepEqual(kinds(got), []Kind{KindFinishReturn}) {
+		t.Fatalf("tick = %+v, %v; want one finish_return", got, err)
+	}
+	wantGivenBack(t, p, "needs_decision")
+}
+
 // A KindToDo only sets To do on the board item: no comment, no label change, and an open run
 // and its workplace stay as they are. Any extra write in the KindToDo case turns this red.
 func TestApplyToDoOnlySetsStatus(t *testing.T) {

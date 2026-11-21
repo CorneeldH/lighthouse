@@ -1354,7 +1354,7 @@ func (c issueCtx) retry() (planned, bool) {
 // write failed, or the Returned came from a path that wrote neither. It holds when the last
 // protocol comment (Rebased does not count) is a Returned of the token login, the issue has no
 // open run (settle closes the run of its own Returned first) and no blocking label but
-// blocked_issue (a rule-13 Returned stuck on Controller, finished as Blocked), and retry
+// blocked_issue (a rule-13 Returned stuck on Controller; the rank rule keeps that label), and retry
 // planned nothing before it in next: the first refused launch of a trigger keeps its Returned
 // without a label until retry starts the second attempt. The label comes from the reason the
 // Returned names (protocol.ReasonKey); an unreadable one gives needs_hands.
@@ -1366,20 +1366,16 @@ func (c issueCtx) finishReturn() (planned, bool) {
 	if hasOpenRun(c.repo.History, c.it.Issue) {
 		return planned{}, false
 	}
-	// blocked_issue alone is the label of a rule-13 Returned whose board write failed: finish it
-	// as blocked. Any other blocking label is a finished give-back or a human's.
-	blocked := false
+	// blocked_issue alone is the label of a rule-13 Returned whose board write failed: it
+	// stays, the rank rule keeps it over the label of the reason. Any other blocking label is a
+	// finished give-back or a human's.
 	for _, name := range c.repo.Labels.Blocking() {
-		if name == "" || !slices.Contains(c.it.Labels, name) {
-			continue
-		}
-		if name != c.repo.Labels.BlockedIssue {
+		if name != "" && name != c.repo.Labels.BlockedIssue && slices.Contains(c.it.Labels, name) {
 			return planned{}, false
 		}
-		blocked = true
 	}
 	a := c.base
-	a.Kind, a.Blocked = KindFinishReturn, blocked
+	a.Kind = KindFinishReturn
 	a.Reason, _ = protocol.ReasonKey(last.Header.Fields["reason"])
 	return planned{Action: a}, true
 }
