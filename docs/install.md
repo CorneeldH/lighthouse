@@ -222,12 +222,12 @@ against a real GitLab is part of the definition of done of the GitLab milestone 
 `api` scope to write, `read_api` to only read.
 
 GitLab keeps the status of an issue in its built-in issue status (a work item widget), not in a
-label. Add the statuses *On hold* and *Controller* to the top group of the lifecycle, under
+label. Add the status *Controller* to the top group of the lifecycle, under
 *Settings → Work items → Statuses*. A status the lifecycle lacks stops the write with an error
 that names the status and this place. Names are matched case-insensitively.
 
 The `[forge.board]` of a GitLab repository has two tables only. `status_options` needs *To do*,
-*In progress*, *Done* and *On hold*, and *Controller* as well once the file has a `[controller]`
+*In progress* and *Done*, and *Controller* as well once the file has a `[controller]`
 table. Each lighthouse name needs a GitLab status of its own, and each priority a label of its
 own: two names on one status or label are refused.
 
@@ -241,7 +241,6 @@ host = "gitlab.example.com"
 "To do" = "To do"
 "In progress" = "In progress"
 "Done" = "Done"
-"On hold" = "On hold"
 "Controller" = "Controller"
 
 [forge.board.priority_options]  # lighthouse name = scoped label
@@ -290,7 +289,7 @@ curl -s http://127.0.0.1:8127/api/questions
 
 For a repository in `[dispatch] repos` whose `lighthouse.toml` has a `[forge.board]` with a
 `Controller` option, the overview shows only the issues in Controller. Issues the dispatcher
-parked (On hold, see [tick.md](tick.md)) then drop out. Otherwise it shows every open issue of
+parked (To do with the `blocked_issue` label, see [tick.md](tick.md)) then drop out. Otherwise it shows every open issue of
 that repository. With the filter `serve` reads the project board, so the token needs the
 `project` scope as well. A `host.toml` that does not load (an invalid value or an unknown key under
 `[dispatch]`) stops `serve`; a missing one counts as no `[dispatch]`.

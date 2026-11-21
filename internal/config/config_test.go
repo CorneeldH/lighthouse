@@ -483,7 +483,7 @@ func TestInstallDocGitLabExampleParses(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Parse(install.md example) = %v\n%s", err, src)
 		}
-		want := map[string]string{"To do": "To do", "In progress": "In progress", "Done": "Done", "On hold": "On hold", "Controller": "Controller"}
+		want := map[string]string{"To do": "To do", "In progress": "In progress", "Done": "Done", "Controller": "Controller"}
 		if c.Board == nil || !reflect.DeepEqual(c.Board.StatusOptions, want) {
 			t.Errorf("status_options = %v, want %v", c.Board, want)
 		}
