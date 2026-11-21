@@ -94,6 +94,12 @@ func TestMeasureRecovery(t *testing.T) {
 			wantItems:  []RecoveryItem{{Kind: "revert", Ref: "r1", At: day(2)}},
 		},
 		{
+			name:       "revert on a path the merge commit did not touch",
+			commits:    []Commit{commit("r1", `Revert "feat: x"`, day(2), "c/z.go")},
+			now:        day(10),
+			wantStatus: RecoveryNone,
+		},
+		{
 			name:       "fix exactly at +7d counts",
 			commits:    []Commit{commit("f1", "fix: repair", mergedAt.Add(RecoveryWindow), "a/x.go")},
 			now:        day(10),

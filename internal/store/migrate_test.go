@@ -934,6 +934,24 @@ func TestMigration0011Recovery(t *testing.T) {
 			t.Error("second row with the same (trajectory_id, pr) accepted")
 		}
 	})
+	t.Run("duplicate source and source_id rejected", func(t *testing.T) {
+		db := openTelemetryDB(t)
+		if _, err := db.Exec(fmt.Sprintf(rec, "a", 5, "open")); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(fmt.Sprintf(rec, "a", 6, "open")); err == nil {
+			t.Error("second row with the same (source, source_id) accepted")
+		}
+	})
+	t.Run("unknown item kind rejected", func(t *testing.T) {
+		db := openTelemetryDB(t)
+		if _, err := db.Exec(fmt.Sprintf(rec, "a", 5, "open")); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(`INSERT INTO recovery_items (recovery_id, kind, ref, at) VALUES (1, 'other', 'abc', 't0')`); err == nil {
+			t.Error("kind other accepted")
+		}
+	})
 	t.Run("delete cascades to items", func(t *testing.T) {
 		db := openTelemetryDB(t)
 		if _, err := db.Exec(fmt.Sprintf(rec, "a", 5, "open")); err != nil {
