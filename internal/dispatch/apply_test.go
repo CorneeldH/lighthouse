@@ -2791,3 +2791,32 @@ func TestDecideNeedsLabelOwnReturnedNoLoop(t *testing.T) {
 		t.Errorf("board = %q, want one To do", p.sets)
 	}
 }
+
+// A rule-13 Returned with an active blocker whose label landed but whose To do did not stays on
+// Controller with blocked_issue; the next tick finishes it as blocked (label kept, To do), and
+// then nothing is left. Skipping every blocking label in finishReturn turns tick 1 red.
+func TestDecideFinishesBlockedReturnStuckOnController(t *testing.T) {
+	h := newHarness(t)
+	p := h.poster(applyRepo)
+	p.setErr = errors.New("board down")
+	a := Action{Kind: KindReturn, Repo: applyRepo, Issue: 7, Reason: "reason_pr_red", Blocked: true, Language: "nl"}
+	if _, err := Apply(context.Background(), h.env, []Action{a}); err == nil {
+		t.Fatal("Apply: want the board error")
+	}
+	if p.status != "" || !reflect.DeepEqual(p.labels, []string{"blocked_issue"}) {
+		t.Fatalf("after the failed board write: status %q, labels %q; want Controller with blocked_issue", p.status, p.labels)
+	}
+	p.setErr = nil
+	for i, want := range [][]Kind{{KindFinishReturn}, {}} {
+		got, err := h.tick(t)
+		if err != nil || !reflect.DeepEqual(kinds(got), want) {
+			t.Fatalf("tick %d = %+v, %v; want %v", i+1, got, err, want)
+		}
+	}
+	wantGivenBack(t, p, "blocked_issue")
+	// A Controller issue with own Returned and blocked_external is a human's: no finish.
+	p.status, p.labels, p.sets = "", []string{"blocked_external"}, nil
+	if got := Decide(h.tickInput(t)); len(got) != 0 {
+		t.Errorf("blocked_external: Decide = %+v, want nothing", got)
+	}
+}
