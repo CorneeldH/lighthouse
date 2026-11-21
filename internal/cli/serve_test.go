@@ -580,7 +580,7 @@ func (c *countingSource) Comments(context.Context, int) ([]protocol.Comment, err
 }
 
 func TestStartOverviewNoReposIsNotConfigured(t *testing.T) {
-	read, stopped := startOverview(context.Background(), nil, server.RefreshInterval)
+	read, _, stopped := startOverview(context.Background(), nil, server.RefreshInterval)
 	if _, err := read(context.Background()); !errors.Is(err, forge.ErrNotConfigured) {
 		t.Fatalf("err = %v, want forge.ErrNotConfigured", err)
 	}
@@ -596,7 +596,7 @@ func TestStartOverviewNoReposIsNotConfigured(t *testing.T) {
 func TestStartOverviewRebuildsOnTheInterval(t *testing.T) {
 	src := &countingSource{}
 	ctx, cancel := context.WithCancel(context.Background())
-	read, stopped := startOverview(ctx, []overview.RepoSource{{Slug: "o/r", Src: src}}, 20*time.Millisecond)
+	read, _, stopped := startOverview(ctx, []overview.RepoSource{{Slug: "o/r", Src: src}}, 20*time.Millisecond)
 	defer func() { cancel(); stopped() }()
 	if _, err := read(ctx); err != nil {
 		t.Fatalf("read: %v", err)
@@ -626,7 +626,7 @@ func TestStartOverviewBuildsOnceAndStops(t *testing.T) {
 	src := &countingSource{}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	read, stopped := startOverview(ctx, []overview.RepoSource{{Slug: "o/r", Src: src}}, server.RefreshInterval)
+	read, _, stopped := startOverview(ctx, []overview.RepoSource{{Slug: "o/r", Src: src}}, server.RefreshInterval)
 	ov, err := read(ctx)
 	if err != nil {
 		t.Fatalf("read: %v", err)
@@ -921,7 +921,7 @@ func TestStartPrioritiesWithoutReposReportsNotConfigured(t *testing.T) {
 		t.Error("overview read without sources")
 		return overview.Overview{}, nil
 	}
-	read, stopped := startPriorities(context.Background(), nil, overviewRead, server.PrioritiesInterval)
+	read, _, stopped := startPriorities(context.Background(), nil, overviewRead, server.PrioritiesInterval)
 	if _, err := read(context.Background()); !errors.Is(err, forge.ErrNotConfigured) {
 		t.Fatalf("err = %v, want forge.ErrNotConfigured", err)
 	}
@@ -938,9 +938,54 @@ func TestStartPrioritiesFailedOverviewFailsBuild(t *testing.T) {
 	boom := errors.New("overview down")
 	overviewRead := func(context.Context) (overview.Overview, error) { return overview.Overview{}, boom }
 	ctx, cancel := context.WithCancel(context.Background())
-	read, stopped := startPriorities(ctx, []priorities.Source{{Slug: "o/r", Src: &countingSource{}}}, overviewRead, server.PrioritiesInterval)
+	read, _, stopped := startPriorities(ctx, []priorities.Source{{Slug: "o/r", Src: &countingSource{}}}, overviewRead, server.PrioritiesInterval)
 	defer func() { cancel(); stopped() }()
 	if _, err := read(ctx); !errors.Is(err, boom) {
 		t.Fatalf("err = %v, want the overview error", err)
+	}
+}
+
+// planningSource is a forge.Forge whose Planning holds one milestone.
+type planningSource struct {
+	forge.Forge
+	description string
+}
+
+func (p *planningSource) Planning(context.Context) (forge.Planning, error) {
+	return forge.Planning{Milestones: []forge.MilestoneCount{{Milestone: forge.Milestone{Number: 3, Title: "M", Description: p.description}}}}, nil
+}
+
+func TestStartPrioritiesPatchChangesTheCachedValue(t *testing.T) {
+	overviewRead := func(context.Context) (overview.Overview, error) { return overview.Overview{}, nil }
+	ctx, cancel := context.WithCancel(context.Background())
+	src := &planningSource{description: "Priority: 1"}
+	read, patch, stopped := startPriorities(ctx, []priorities.Source{{Slug: "o/r", Src: src}}, overviewRead, server.PrioritiesInterval)
+	defer func() { cancel(); stopped() }()
+	if _, err := read(ctx); err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if !patch(func(repos []priorities.Repo) []priorities.Repo {
+		return priorities.WithDescription(repos, "o/r", 3, "Priority: 2")
+	}) {
+		t.Fatal("patch = false, want true after a successful build")
+	}
+	got, err := read(ctx)
+	if err != nil {
+		t.Fatalf("read after patch: %v", err)
+	}
+	if len(got) != 1 || len(got[0].Milestones) != 1 || got[0].Milestones[0].Description != "Priority: 2" {
+		t.Errorf("read = %+v, want the patched description Priority: 2 without a new build", got)
+	}
+}
+
+func TestStartPrioritiesWithoutSourcesPatchIsANoOp(t *testing.T) {
+	read, patch, stopped := startPriorities(context.Background(), nil, nil, server.PrioritiesInterval)
+	defer stopped()
+	called := false
+	if patch(func(r []priorities.Repo) []priorities.Repo { called = true; return r }) || called {
+		t.Errorf("patch ran or returned true without a refresher (called=%v)", called)
+	}
+	if _, err := read(context.Background()); !errors.Is(err, forge.ErrNotConfigured) {
+		t.Errorf("err = %v, want forge.ErrNotConfigured", err)
 	}
 }
