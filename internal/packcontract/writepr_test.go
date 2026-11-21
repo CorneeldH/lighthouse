@@ -10,7 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/CorneeldH/lighthouse/internal/cli"
 	"github.com/CorneeldH/lighthouse/internal/evidence"
 	"github.com/CorneeldH/lighthouse/internal/prbody"
 	"gopkg.in/yaml.v3"
@@ -43,21 +42,6 @@ func parseWritePRFront(t *testing.T, body string) writePRFront {
 		t.Fatal(err)
 	}
 	return front
-}
-
-// cliFlags fails when `lighthouse <path…>` is not a subcommand of the binary or lacks a flag.
-func cliFlags(t *testing.T, path []string, flags ...string) {
-	t.Helper()
-	root := cli.NewRoot(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
-	cmd, rest, err := root.Find(path)
-	if err != nil || len(rest) > 0 || cmd == root {
-		t.Fatalf("lighthouse %s is no subcommand (rest %v, err %v)", strings.Join(path, " "), rest, err)
-	}
-	for _, f := range flags {
-		if cmd.Flags().Lookup(f) == nil {
-			t.Errorf("lighthouse %s has no --%s", strings.Join(path, " "), f)
-		}
-	}
 }
 
 // exampleBlock is the example under "## Shape of the evidence block"; the example itself

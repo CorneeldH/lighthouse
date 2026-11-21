@@ -219,8 +219,6 @@ func TestCloseIssueEntryCReopensFailClosed(t *testing.T) {
 	}
 }
 
-var blankLineRe = regexp.MustCompile(`\n\s*\n`)
-
 // Classification: fails when a skipped board stops being no error, or its paragraph starts
 // reporting it as a board failure.
 func TestCloseIssueBoardSkipIsNoError(t *testing.T) {
@@ -229,7 +227,7 @@ func TestCloseIssueBoardSkipIsNoError(t *testing.T) {
 			c := closeIssueSection(t, body, "## Entry C")
 			wantAll(t, flat(c), "`board: skipped` (no `[forge.board]`, rc 0) is no error: report the line as it is and go on.")
 			hits := 0
-			for _, p := range blankLineRe.Split(c, -1) {
+			for _, p := range paragraphSplit.Split(c, -1) {
 				if strings.Contains(p, "board: skipped") {
 					hits++
 					wantNone(t, p, "issue reopened, board not updated")

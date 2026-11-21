@@ -492,14 +492,13 @@ func TestReviewPermissionsCoverTheRunner(t *testing.T) {
 
 // Classification: fails when a Dutch sentence enters a review skill or its shared prompts.
 func TestReviewIsEnglish(t *testing.T) {
-	dutch := []string{" je ", " het ", " niet ", " geen ", " een ", " wordt "}
 	forEachReviewVariant(t, func(t *testing.T, _, _, body string) {
-		wantNone(t, strings.ToLower(body), dutch...)
+		wantNone(t, strings.ToLower(body), dutchWords...)
 	})
 	for name, dir := range reviewSkills {
 		for _, f := range []string{"reviewer-prompt.md", "verifier-prompt.md"} {
 			t.Run(name+"/"+f, func(t *testing.T) {
-				wantNone(t, strings.ToLower(readPack(t, filepath.Join(dir, f))), dutch...)
+				wantNone(t, strings.ToLower(readPack(t, filepath.Join(dir, f))), dutchWords...)
 			})
 		}
 	}

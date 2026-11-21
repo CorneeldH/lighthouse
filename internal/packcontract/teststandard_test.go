@@ -179,7 +179,7 @@ func TestTestStandardIsLanguageNeutral(t *testing.T) {
 func TestTestStandardIsEnglish(t *testing.T) {
 	for variant, body := range variants(t, testStandard) {
 		t.Run(variant, func(t *testing.T) {
-			wantNone(t, strings.ToLower(body), " het ", " niet ", " een ", " wordt ", " dat ", " je ")
+			wantNone(t, strings.ToLower(body), append([]string{" dat "}, dutchWords...)...)
 		})
 	}
 }

@@ -150,16 +150,6 @@ func TestRouteIssueNamesTheSubcommand(t *testing.T) {
 
 // --- start-issue -------------------------------------------------------------------
 
-// bashBlock returns the first ```bash block after heading.
-func bashBlock(t *testing.T, body, heading string) string {
-	t.Helper()
-	_, rest, ok := strings.Cut(body, heading)
-	if !ok {
-		t.Fatalf("no %q in the text", heading)
-	}
-	return section(t, rest, "```bash", "```")
-}
-
 // Classification: fails when step 4 stops holding a blocked execution at gates 1, 2 and 4a with
 // a `next: /lighthouse-start-issue` handoff, or forgets that `stack:`/`blocker:` accounts for it.
 func TestStartIssueHoldsABlockedExecution(t *testing.T) {

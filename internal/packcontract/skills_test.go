@@ -101,8 +101,6 @@ func joinedText(t *testing.T, unit string) string {
 	return strings.Join(parts, "\n")
 }
 
-var paragraphSplit = regexp.MustCompile(`\n\s*\n`)
-
 // guarded is a paragraph that names a unit of another package only "if present".
 func guarded(para string) bool {
 	return strings.Contains(strings.ToLower(flat(para)), "if present")
@@ -409,16 +407,6 @@ func installSkills(t *testing.T, root string) {
 	}
 }
 
-func writeFile(t *testing.T, name, text string) {
-	t.Helper()
-	if err := os.MkdirAll(filepath.Dir(name), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(name, []byte(text), 0o644); err != nil {
-		t.Fatal(err)
-	}
-}
-
 // Classification: fails when two skill descriptions share five trigger words and neither carries
 // a bounding clause, so check 4 of `lighthouse check-instructions` fails in every installed repo.
 func TestDescriptionsPassTheOverlapCheck(t *testing.T) {
@@ -526,9 +514,8 @@ func TestRequiresPythonOnlyWhereTheSkillUsesIt(t *testing.T) {
 }
 
 var (
-	ghWriteRe  = regexp.MustCompile(`gh (?:issue|pr) (?:create|edit|comment|reopen|close|merge|ready|review)\b`)
-	codeSpanRe = regexp.MustCompile("`([^`]*)`")
-	flagOrArg  = regexp.MustCompile(`--|<`)
+	ghWriteRe = regexp.MustCompile(`gh (?:issue|pr) (?:create|edit|comment|reopen|close|merge|ready|review)\b`)
+	flagOrArg = regexp.MustCompile(`--|<`)
 )
 
 // Classification: fails when a core skill or the PR template writes through `gh issue|pr <verb>`
@@ -744,8 +731,6 @@ func TestForgeReferenceMentionsNoGlabCommand(t *testing.T) {
 		}
 	}
 }
-
-var issueNumberRe = regexp.MustCompile(`#\d{3,}`)
 
 // Classification: fails when forge or start-issue names an issue number of this repo, which
 // resolves against another repo's forge once installed there.

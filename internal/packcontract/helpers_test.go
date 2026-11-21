@@ -1,6 +1,7 @@
 package packcontract
 
 import (
+	"bytes"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -25,6 +26,19 @@ func TestMain(m *testing.M) {
 	}
 	os.Exit(m.Run())
 }
+
+var (
+	// codeSpanRe matches one inline code span.
+	codeSpanRe = regexp.MustCompile("`([^`]*)`")
+	// issueNumberRe matches a source issue number of this repo, which no skill may name.
+	issueNumberRe = regexp.MustCompile(`#\d{3,}`)
+	// paragraphSplit splits a text on blank lines.
+	paragraphSplit = regexp.MustCompile(`\n\s*\n`)
+)
+
+// dutchWords are the Dutch function words no English skill text may contain, matched on the
+// lowercased text.
+var dutchWords = []string{" je ", " het ", " niet ", " geen ", " een ", " wordt "}
 
 // needTool returns the path of the tool name on PATH. A missing tool fails the test under CI and
 // skips it elsewhere, so a green CI never rests on a skipped test.
@@ -219,4 +233,39 @@ func lineStarting(t *testing.T, text, prefix string) string {
 	}
 	t.Fatalf("no line starts with %q", prefix)
 	return ""
+}
+
+func writeFile(t *testing.T, name, text string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(name), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(name, []byte(text), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// cliFlags fails when `lighthouse <path…>` is not a subcommand of the binary or lacks a flag.
+func cliFlags(t *testing.T, path []string, flags ...string) {
+	t.Helper()
+	root := cli.NewRoot(strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	cmd, rest, err := root.Find(path)
+	if err != nil || len(rest) > 0 || cmd == root {
+		t.Fatalf("lighthouse %s is no subcommand (rest %v, err %v)", strings.Join(path, " "), rest, err)
+	}
+	for _, f := range flags {
+		if cmd.Flags().Lookup(f) == nil {
+			t.Errorf("lighthouse %s has no --%s", strings.Join(path, " "), f)
+		}
+	}
+}
+
+// bashBlock returns the first ```bash block after heading.
+func bashBlock(t *testing.T, body, heading string) string {
+	t.Helper()
+	_, rest, ok := strings.Cut(body, heading)
+	if !ok {
+		t.Fatalf("no %q in the text", heading)
+	}
+	return section(t, rest, "```bash", "```")
 }

@@ -179,5 +179,5 @@ func TestScoutIsDetachedAndEnglish(t *testing.T) {
 	if m := scoutSourceIssueRe.FindString(body); m != "" {
 		t.Errorf("source issue number %s", m)
 	}
-	wantNone(t, strings.ToLower(body), " je ", " het ", " niet ", " geen ", " een ")
+	wantNone(t, strings.ToLower(body), dutchWords...)
 }

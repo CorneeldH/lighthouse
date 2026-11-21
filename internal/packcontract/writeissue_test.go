@@ -196,15 +196,13 @@ func TestWriteIssueVariantsDifferOnlyInTheGeneratedLine(t *testing.T) {
 	}
 }
 
-var sourceIssueRe = regexp.MustCompile(`#\d{3,}`)
-
 // Classification: fails when Dutch, a source issue number, a host name or a lighthouse-repo path
 // enters the skill.
 func TestWriteIssueIsEnglishAndDetached(t *testing.T) {
 	for variant, body := range variants(t, writeIssue) {
 		t.Run(variant, func(t *testing.T) {
-			wantNone(t, strings.ToLower(body), " je ", " het ", " niet ", " geen ", " een ", " wordt ")
-			if m := sourceIssueRe.FindString(body); m != "" {
+			wantNone(t, strings.ToLower(body), dutchWords...)
+			if m := issueNumberRe.FindString(body); m != "" {
 				t.Errorf("names source issue %s", m)
 			}
 			wantNone(t, body, "Beelink", "developer/")

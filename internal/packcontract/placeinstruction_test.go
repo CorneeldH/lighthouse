@@ -164,7 +164,7 @@ func TestPlaceInstructionIsDetachedFromTheSourceRepo(t *testing.T) {
 	for variant, body := range variants(t, placeInstruction) {
 		t.Run(variant, func(t *testing.T) {
 			wantNone(t, body, "Beelink", "tests/unit/", "developer/planning/specs/", "Milestone #58", "applicatie", "vault")
-			if m := regexp.MustCompile(`#\d{3,}`).FindString(body); m != "" {
+			if m := issueNumberRe.FindString(body); m != "" {
 				t.Errorf("names issue number %s", m)
 			}
 		})
@@ -185,7 +185,7 @@ func TestPlaceInstructionIsCalledByNameOnly(t *testing.T) {
 func TestPlaceInstructionIsEnglish(t *testing.T) {
 	for variant, body := range variants(t, placeInstruction) {
 		t.Run(variant, func(t *testing.T) {
-			wantNone(t, strings.ToLower(body), " je ", " het ", " niet ", " geen ", " een ", " wordt ")
+			wantNone(t, strings.ToLower(body), dutchWords...)
 		})
 	}
 }
