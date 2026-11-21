@@ -35,7 +35,6 @@ type world struct {
 	CodexConfig string            `json:"codex_config"`
 	CodexVer    string            `json:"codex_version"`
 	Language    string            `json:"language"`
-	Refusal     string            `json:"refusal"`
 }
 
 func readJSON(t *testing.T, path string, into any) {
@@ -110,18 +109,6 @@ func newScenario(t *testing.T, c map[string]any) *scenario {
 		}
 		s.baseSHA = s.git("rev-parse", "HEAD")
 		t.Setenv("LIGHTHOUSE_REPO_ROOT", repo)
-	}
-	switch host, _ := c["host"].(string); host {
-	case "", "ok":
-		s.deps.HostRefusal = func(string) *string { return nil }
-	case "refuse":
-		s.deps.HostRefusal = func(kind string) *string {
-			msg := strings.ReplaceAll(w.Refusal, "${KIND}", strings.ToUpper(kind))
-			return &msg
-		}
-	default: // unknown: the real refusal, with a host.toml that is not there
-		t.Setenv("LIGHTHOUSE_HOST_TOML", filepath.Join(tmp, "no-host.toml"))
-		s.deps.HostRefusal = review.HostRefusal
 	}
 	return s
 }

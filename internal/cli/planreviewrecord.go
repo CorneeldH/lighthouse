@@ -67,9 +67,9 @@ func newPlanReviewRecordCommand(deps review.Deps) *cobra.Command {
 	cmd := scriptCommand(&cobra.Command{
 		Use:   "plan-review-record",
 		Short: "Attempt directory and measurement record of the adversarial plan and spec review",
-		Long: "Exit: 0 ok | 2 wrong usage | 3 not the host from host.toml, or host unknown/not measurable:\n" +
-			"no record | 4 write or validation error (only the staging directory stays). On 3 and 4 the\n" +
-			"skill carries on with the handoff: the review is the product, the record measurement material.",
+		Long: "Exit: 0 ok | 2 wrong usage | 4 write or validation error (only the staging directory\n" +
+			"stays). On 4 the skill carries on with the handoff: the review is the product, the record\n" +
+			"measurement material.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return usageErr(fmt.Errorf("%s: a subcommand is required: start, write, accept-open or pr-open-points", cmd.CommandPath()))
 		},
@@ -200,8 +200,7 @@ func newRecordWriteCommand(deps review.Deps) *cobra.Command {
 		Short: "Write the round JSONs, their decisions sidecars and one record.json to the data directory",
 		Long: "Writes the round JSONs, their decisions sidecars and one `record.json` to\n" +
 			"`<data-dir>/<kind>-review/<chain-key>/<attempt>/`, through a staging directory and one\n" +
-			"rename. `kind` comes from `attempt.json` (if it is missing, it is `plan`). Only on the host\n" +
-			"from host.toml; elsewhere no record and a loud message (exit 3).",
+			"rename. `kind` comes from `attempt.json` (if it is missing, it is `plan`). On every machine.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runRecordWrite(cmd, args[0], &f, deps)
 		},
@@ -273,10 +272,6 @@ func runRecordWrite(cmd *cobra.Command, attemptDir string, f *recordFlags, deps 
 		_, _ = fmt.Fprintf(stderr, "--spec/--issue do not belong to --kind spec: %s is a spec review, "+
 			"which has no separate specs or issue\n", attemptDir)
 		return planReviewExit(2)
-	}
-	if reason := deps.HostRefusal(kind); reason != nil {
-		_, _ = fmt.Fprintln(stderr, *reason)
-		return planReviewExit(3)
 	}
 	final, err := writeRecord(attemptDir, repo, kind, hasIssue, f, deps)
 	if err != nil {

@@ -19,7 +19,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/CorneeldH/lighthouse/internal/config"
 	"github.com/CorneeldH/lighthouse/internal/datadir"
 	"github.com/CorneeldH/lighthouse/internal/orderedjson"
 )
@@ -62,37 +61,15 @@ type InvalidError struct{ Msg string }
 
 func (e *InvalidError) Error() string { return e.Msg }
 
-// Deps are the seams of the record: the host judgment, the Codex version and the clock.
+// Deps are the seams of the record: the Codex version and the clock.
 type Deps struct {
-	HostRefusal  func(kind string) *string
 	CodexVersion func() *string
 	Now          func() time.Time
 }
 
 // DefaultDeps is the production wiring.
 func DefaultDeps() Deps {
-	return Deps{HostRefusal: HostRefusal, CodexVersion: CodexVersion, Now: time.Now}
-}
-
-// HostRefusal is nil on the controller host: host.controller is true, or without it host.tailscale_ip is on this machine (host.toml), otherwise the stderr line that refuses the
-// measurement.
-func HostRefusal(kind string) *string { return hostRefusalWith(kind, config.Recognize) }
-
-// hostRefusalWith is HostRefusal with the recognition of the host as a parameter.
-func hostRefusalWith(kind string, recognize func() (bool, error)) *string {
-	var cause string
-	local, err := recognize()
-	switch {
-	case err != nil:
-		cause = err.Error()
-	case local:
-		return nil
-	default:
-		cause = "not on the host from host.toml"
-	}
-	msg := fmt.Sprintf("%s-REVIEW NOT RECORDED: %s — this chain falls outside "+
-		"the measurement. The review itself is valid; carry on.", strings.ToUpper(kind), cause)
-	return &msg
+	return Deps{CodexVersion: CodexVersion, Now: time.Now}
 }
 
 // CodexVersion is the output of `codex --version`, or nil when codex is not there or says nothing.
@@ -240,10 +217,6 @@ func Reserve(attemptDir string, deps Deps, stderr io.Writer) {
 		return
 	}
 	kind, _ := meta["kind"].(string)
-	if reason := deps.HostRefusal(kind); reason != nil {
-		_, _ = fmt.Fprintln(stderr, *reason)
-		return
-	}
 	if err := reserve(attemptDir, meta, kind); err != nil {
 		_, _ = fmt.Fprintf(stderr, "%s-REVIEW-RESERVATION FAILED: %v. The review carries on; "+
 			"`write` creates the staging directory after all.\n", strings.ToUpper(kind), err)
