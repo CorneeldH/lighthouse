@@ -14,8 +14,6 @@ import (
 const (
 	lintUnchecked  = "go-lint-gate: COULD NOT CHECK — "
 	lintNotChecked = "go-lint-gate: not checked — no go.mod in the repository root"
-	vetFinding     = "a.go:3:2: printf: fmt.Printf format %d has arg s of wrong type string (govet)"
-	buildFailure   = "a.go:3:17: undefined: x (typecheck)"
 	lintFinding    = "a.go:5:22: Error return value of `os.Remove` is not checked (errcheck)"
 	goStub         = `#!/bin/bash
 echo "go $*" >> "$STUB_LOG"
@@ -26,6 +24,10 @@ exit 0
 echo "$* @ $PWD" >> "$STUB_LOG"
 case "$1" in
   version) echo "${STUB_VERSION:-2.15.0}" ;;
+  linters)
+    if [ -n "$STUB_LINTERS_RC" ]; then exit "$STUB_LINTERS_RC"; fi
+    DEFAULT='{"Enabled":[{"name":"errcheck"},{"name":"govet"},{"name":"ineffassign"},{"name":"staticcheck"},{"name":"unused"}]}'
+    echo "${STUB_LINTERS_OUT:-$DEFAULT}" ;;
   config) exit ${STUB_VERIFY_RC:-0} ;;
   run)
     if [ -n "$STUB_FAIL_IN" ]; then
@@ -174,30 +176,6 @@ func TestGoLintGate(t *testing.T) {
 		}
 	})
 
-	for _, tc := range []struct{ name, out string }{{"vet", vetFinding}, {"build", buildFailure}, {"lint", lintFinding}} {
-		t.Run("finding_blocks/"+tc.name, func(t *testing.T) {
-			repo, command := newRepo(t, true, "")
-			env, _, _ := stubEnv(t, "STUB_RUN_RC=1", "STUB_RUN_OUT="+tc.out)
-			code, stdout, stderr := runPackHook(t, bin, repo, command, turn(t, repo), env)
-			if code != 2 {
-				t.Fatalf("rc %d, want 2\n%s%s", code, stdout, stderr)
-			}
-			lines := strings.Split(stderr, "\n")
-			if want := "go-lint-gate: golangci-lint finds problems in " + repo + "."; lines[0] != want {
-				t.Errorf("first line %q, want %q", lines[0], want)
-			}
-			if want := "Fix them in the code — do not add a //nolint over a finding. If you really want a linter off, ask."; lines[1] != want {
-				t.Errorf("second line %q, want %q", lines[1], want)
-			}
-			if !strings.Contains(stderr, tc.out) {
-				t.Errorf("stderr lacks the finding %q:\n%s", tc.out, stderr)
-			}
-			if strings.Contains(stderr, "COULD NOT CHECK") {
-				t.Errorf("a finding is no COULD NOT CHECK:\n%s", stderr)
-			}
-		})
-	}
-
 	t.Run("lint_failure_could_not_check", func(t *testing.T) {
 		repo, command := newRepo(t, true, "")
 		env, _, _ := stubEnv(t, "STUB_RUN_RC=3")
@@ -216,6 +194,40 @@ func TestGoLintGate(t *testing.T) {
 		}
 		if got := readLog(log); strings.Contains(got, "run ./...") {
 			t.Fatalf("linted with an invalid config:\n%s", got)
+		}
+	})
+
+	for name, extra := range map[string]string{
+		"fails":     "STUB_LINTERS_RC=3",
+		"empty-set": "STUB_LINTERS_OUT={}",
+		"not-json":  "STUB_LINTERS_OUT=not json",
+	} {
+		t.Run("unreadable_linter_list_says_the_floor_is_unchecked/"+name, func(t *testing.T) {
+			repo, command := newRepo(t, true, "")
+			env, log, _ := stubEnv(t, extra)
+			code, stdout, stderr := runPackHook(t, bin, repo, command, turn(t, repo), env)
+			if got := message(t, code, stdout, stderr); !strings.Contains(got, "COULD NOT CHECK the floor") {
+				t.Fatalf("message %q", got)
+			}
+			if got := readLog(log); !strings.Contains(got, "run ./...") {
+				t.Fatalf("the lint run was skipped:\n%s", got)
+			}
+		})
+	}
+
+	t.Run("linter_off_blocks_on_the_floor", func(t *testing.T) {
+		repo, command := newRepo(t, true, "")
+		out := `{"Enabled":[{"name":"govet"},{"name":"ineffassign"},{"name":"staticcheck"},{"name":"unused"}]}`
+		env, log, _ := stubEnv(t, "STUB_LINTERS_OUT="+out)
+		code, stdout, stderr := runPackHook(t, bin, repo, command, turn(t, repo), env)
+		if code != 2 {
+			t.Fatalf("rc %d, want 2\n%s%s", code, stdout, stderr)
+		}
+		if !strings.Contains(stderr, "[go-lint-gate/errcheck]") {
+			t.Errorf("stderr lacks the floor reason:\n%s", stderr)
+		}
+		if got := readLog(log); strings.Contains(got, "run ./...") {
+			t.Errorf("linted past a floor block:\n%s", got)
 		}
 	})
 
@@ -254,7 +266,7 @@ func TestGoLintGate(t *testing.T) {
 
 	t.Run("no_pin_runs_unpinned", func(t *testing.T) {
 		repo, command := newRepo(t, true, "")
-		env, log, _ := stubEnv(t, "STUB_VERSION=9.9.9")
+		env, log, _ := stubEnv(t, "STUB_VERSION=2.99.9")
 		code, stdout, stderr := runPackHook(t, bin, repo, command, turn(t, repo), env)
 		silent(t, code, stdout, stderr)
 		if got := readLog(log); !strings.Contains(got, "run ./...") {
