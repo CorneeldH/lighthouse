@@ -85,13 +85,18 @@ func TestReadPostFailedUnreadable(t *testing.T) {
 		`{"version":1,"at":"0001-01-01T00:00:00Z"}`,
 	} {
 		dir := t.TempDir()
-		writeFile(t, PostFailedPath(dir, postFailedSession), content)
+		path := PostFailedPath(dir, postFailedSession)
+		writeFile(t, path, content)
+		mtime := time.Date(2026, 11, 19, 8, 30, 0, 0, time.UTC)
+		if err := os.Chtimes(path, mtime, mtime); err != nil {
+			t.Fatal(err)
+		}
 		got, err := ReadPostFailed(dir, postFailedSession)
 		if err != nil {
 			t.Fatalf("%s: err = %v", content, err)
 		}
-		if got == nil || *got != (PostFailed{Unreadable: true}) {
-			t.Fatalf("%s: got %+v, want Unreadable", content, got)
+		if got == nil || !got.Unreadable || !got.At.Equal(mtime) || got.Issue != 0 || got.Body != "" {
+			t.Fatalf("%s: got %+v, want Unreadable at the file's mtime %v", content, got, mtime)
 		}
 	}
 }
