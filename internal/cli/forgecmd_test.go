@@ -68,7 +68,7 @@ func (r *readForge) Milestones(context.Context, string) ([]forge.Milestone, erro
 // runForge runs `lighthouse forge args...` against f.
 func runForge(t *testing.T, f forge.Forge, args ...string) (code int, stdout, stderr string) {
 	t.Helper()
-	return runForgeEnv(&forgeEnv{open: func(context.Context) (forge.Forge, error) { return f, nil }}, args...)
+	return runForgeEnv(&forgeEnv{open: func(context.Context) (forge.Forge, error) { return f, nil }, getenv: func(string) string { return "" }}, args...)
 }
 
 func runForgeEnv(env *forgeEnv, args ...string) (code int, stdout, stderr string) {

@@ -153,6 +153,13 @@ func (ap applier) apply(ctx context.Context, a Action, res *Result) error {
 			return err
 		}
 		return ap.closeRun(ctx, a.RunID, runs.Done, "")
+	case KindRepost:
+		// A stranded handoff or question: post the body again and leave the run open. A failed
+		// post is a deferral, so the next tick gathers and reposts; it is no action error.
+		if _, err := ap.env.Forge(a.Repo).CreateComment(ctx, a.Issue, a.Body); err != nil {
+			res.Deferred = append(res.Deferred, deferral(a, fmt.Sprintf("repost run %d: %s", a.RunID, oneLine(err.Error()))))
+		}
+		return nil
 	case KindPush:
 		return ap.push(ctx, a, res)
 	case KindMerge:
