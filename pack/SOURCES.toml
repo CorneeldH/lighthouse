@@ -298,10 +298,6 @@ path = "pack/shell/detect.toml"
 new = true
 
 [[file]]
-path = "pack/shell/instructions/AGENTS.md"
-new = true
-
-[[file]]
 path = "pack/go/hooks/go-lint-gate.sh"
 new = true
 

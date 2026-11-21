@@ -27,13 +27,12 @@ CORE = ROOT / "pack" / "core"
 
 def test_core_block_word_budget():
     """The core block lands in every repo's AGENTS.md, next to the repo's own rules: at most
-    365 words. It carries the chain rules the core skills and hooks enforce, the `heading:<key>`
-    notation, the rule for the language of code, and one line per skill."""
+    190 words. It carries only the chain rules a hook, a fact the model cannot derive or a proven
+    mistake supports, the `heading:<key>` notation and the rule for the language of code."""
     text = (CORE / "instructions" / "AGENTS.md").read_text(encoding="utf-8")
-    assert len(text.split()) <= 365, len(text.split())
+    assert len(text.split()) <= 190, len(text.split())
     for token in (
         "main-commit-gate",
-        ".claude/allow-main",
         "worktree",
         "squash",
         "[project] language",
@@ -41,11 +40,8 @@ def test_core_block_word_budget():
         "code_language_paths",
         "heading:<key>",
         ".lighthouse/headings.toml",
-        "on which layer a new instruction belongs",
     ):
         assert token in text, token
-    for skill in sorted(p.name for p in (CORE / "skills").iterdir() if p.is_dir()):
-        assert f"`/lighthouse-{skill}`" in text, skill
 
 
 def test_core_block_says_how_to_read_a_heading():
@@ -53,7 +49,7 @@ def test_core_block_says_how_to_read_a_heading():
     heading, and that reading accepts every language variant."""
     text = " ".join((CORE / "instructions" / "AGENTS.md").read_text(encoding="utf-8").split())
     assert "lighthouse headings <key>" in text
-    assert "never the literal `heading:<key>`" in text
+    assert "not the literal `heading:<key>`" in text
     assert "reading accepts every language variant" in text
 
 
@@ -71,8 +67,7 @@ def test_core_block_says_finish_what_is_authorised():
     """#22: an agent does not hand back an action it already has permission for."""
     text = " ".join((CORE / "instructions" / "AGENTS.md").read_text(encoding="utf-8").split())
     assert (
-        'Finish what you are already authorised to do; never end on an offer to do it '
-        '("ready to push if you want" is not done).'
+        "Finish what you are already authorised to do; an offer to do it is not done."
     ) in text
 
 
