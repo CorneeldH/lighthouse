@@ -102,7 +102,7 @@ type planMilestoneNode struct {
 	} `json:"issues"`
 }
 
-// closed is the completed issues of the node by ascending number, never nil. A list cut at
+// closed is the completed issues of the node (a missing close reason counts as completed) by ascending number, never nil. A list cut at
 // its first: 100 is an error naming the milestone.
 func (n planMilestoneNode) closed(repo string) ([]ClosedIssue, error) {
 	if n.Issues.PageInfo.HasNextPage {
@@ -110,7 +110,7 @@ func (n planMilestoneNode) closed(repo string) ([]ClosedIssue, error) {
 	}
 	out := []ClosedIssue{}
 	for _, i := range n.Issues.Nodes {
-		if i.StateReason == "COMPLETED" {
+		if i.StateReason == "" || i.StateReason == "COMPLETED" { // old issues carry no reason: done, as in report.go
 			out = append(out, ClosedIssue{Number: i.Number, Title: i.Title, URL: i.URL})
 		}
 	}

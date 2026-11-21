@@ -73,7 +73,7 @@ zijn dus een bovengrens; de meting op een repo met meer dan 100 issues is niet g
   geen statusoptie voor de Controller: ongeveer 53 punten, bij ongeveer 40 bouwen per uur per
   repo. Voorheen werd dat bord daar nooit gelezen.
 - GitLab-budget per bouw: 1 + ceil(open/100) issuepagina's, één links-aanroep per open issue en
-  één `issues_statistics`-aanroep per open milestone.
+  één `/issues?state=closed`-aanroep per pagina gesloten issues per open milestone.
 
 ## Wat het tabblad toont
 
@@ -89,13 +89,14 @@ De SPA leidt deze begrippen af in `web/src/lib/priorities/derive.ts`; de server 
 
 - **Actief.** Een issue is actief als er een open of geparkeerde run op staat, of als de
   bordstatus `In progress` is.
-- **Toestand van een open issue.** `issueState` kiest de eerste passende regel: *actief* (live run,
-  bordstatus `In progress` of `Controller`; met een vlag *wacht op mens* bij een `needs_*`-label of
-  een open vraag), *wacht op mens* (`needs_shaping` of `needs_decision`), *geblokkeerd* (label
-  `blocked_*` of open blockers), *wacht op mens* (`needs_hands` of `needs_testing`), anders *klaar*.
-  Gesloten issues zijn *klaar-af* (`closed`). De milestone-balk tekent die vijf toestanden met één
-  vormentaal en groepeert de blokjes per toestand. De API levert daarvoor per issue `label` en
-  `open_question`, en per milestone de gesloten issues (`closed`).
+- **Toestand van een issue.** `issueState` kiest de eerste passende regel: *actief* (live run,
+  bordstatus `In progress` of `Controller`; met de vlag *mens nodig* bij een `needs_*`-label of
+  een open vraag), *mens nodig* (`needs_shaping` of `needs_decision`), *geblokkeerd* (label
+  `blocked_*` of open blockers), *mens nodig* (`needs_hands` of `needs_testing`), anders
+  *oppakbaar*. Gesloten issues zijn *af* (`closed`). De milestone-balk tekent die vijf toestanden
+  met één vormentaal en groepeert de blokjes per toestand. De API levert daarvoor per issue
+  `label` (het label met de laagste rang), `needs_label` (er staat een `needs_*`-label op, welk
+  ook) en `open_question`, en per milestone de gesloten issues (`closed`).
 - **Bergop / bergaf.** Een actief issue is bergop als de fase van zijn run een van
   `brainstorming`, `start-issue`, `spec-review`, `writing-plans` of `plan-review` is: het
   denkwerk vóór de uitvoering. Elke andere fase, of een issue dat alleen op het bord actief is,
@@ -122,7 +123,7 @@ GraphQL-route die zonder wijziging van de bestaande tests uit te breiden is.
   60 s opnieuw, op GitHub tegen ongeveer 1 punt per query.
 - GitLab-groepsmilestones worden niet opgesomd (alleen projectmilestones). Zulke issues
   verdwijnen uit Milestones en uit Zonder milestone.
-- GitLab `issues_statistics` koppelt op milestonetitel.
+- GitLab leest de gesloten issues van een milestone op milestonetitel (`/issues?state=closed&milestone=<titel>`).
 - Lange pijlen in de graaf delen één baan per overgeslagen kolom.
 - Het palet is niet gevalideerd met de dataviz-validator.
 - De gebruikersinterface is niet visueel in een browser gecontroleerd.

@@ -275,6 +275,7 @@ func TestPlanningClosedIssues(t *testing.T) {
 	add(4, "closed", "completed", false)
 	add(6, "closed", "not_planned", false)
 	add(8, "closed", "completed", true)
+	add(10, "closed", "", false) // an old issue without a close reason: stateReason null
 	got, err := c.Planning(t.Context())
 	if err != nil {
 		t.Fatal(err)
@@ -282,9 +283,10 @@ func TestPlanningClosedIssues(t *testing.T) {
 	want := []ClosedIssue{
 		{Number: 4, Title: "Issue 4", URL: "https://github.com/o/r/issues/4"},
 		{Number: 9, Title: "Issue 9", URL: "https://github.com/o/r/issues/9"},
+		{Number: 10, Title: "Issue 10", URL: "https://github.com/o/r/issues/10"},
 	}
-	if !reflect.DeepEqual(got.Milestones[0].Closed, want) || got.Milestones[0].Done != 2 {
-		t.Errorf("M1 Closed = %+v, Done = %d; want only completed issues #4 and #9 in number order, Done 2", got.Milestones[0].Closed, got.Milestones[0].Done)
+	if !reflect.DeepEqual(got.Milestones[0].Closed, want) || got.Milestones[0].Done != 3 {
+		t.Errorf("M1 Closed = %+v, Done = %d; want completed and reasonless issues #4, #9 and #10 in number order, Done 3", got.Milestones[0].Closed, got.Milestones[0].Done)
 	}
 	if got.Milestones[1].Closed == nil || len(got.Milestones[1].Closed) != 0 {
 		t.Errorf("M2 Closed = %#v, want an empty non-nil list", got.Milestones[1].Closed)

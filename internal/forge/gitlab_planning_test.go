@@ -16,7 +16,7 @@ func planLink(iid int, state, linkType, full string) map[string]any {
 		"references": map[string]any{"full": full}}
 }
 
-func TestGitLabPlanningLinksAndStatistics(t *testing.T) {
+func TestGitLabPlanningLinksAndClosedIssues(t *testing.T) {
 	srv, f := gitlabBoardOn(t, gitlabBoard, gitlabLifecycle...)
 	now := time.Now()
 	srv.AddMilestone(map[string]any{"id": 3, "iid": 13, "title": "M1", "state": "active"})
@@ -101,7 +101,7 @@ func TestGitLabPlanningBudgetIsOneLinksCallPerOpenIssue(t *testing.T) {
 	if _, err := f.Planning(t.Context()); err != nil {
 		t.Fatalf("Planning: %v", err)
 	}
-	// 1 issues page + 3 links + 1 milestone list + 2 statistics.
+	// 1 issues page + 3 links + 1 milestone list + 2 closed-issue reads (one page each).
 	if n := len(srv.Requests()); n != 7 {
 		t.Errorf("requests = %q, want 7", srv.Requests())
 	}
