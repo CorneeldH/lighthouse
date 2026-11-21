@@ -8,21 +8,24 @@ Dit document legt vast wat die lezing opvraagt, wat ze kost en wat live is gecon
 Drie soorten GraphQL-query's per bouw, alle achter elkaar:
 
 1. `Planning`: de **open** issues in pagina's van 100 (`number title url`, `milestone { number
-   title state description }`, `blockedBy(first: 20)`). Alleen **open** blockers komen in
+   title state description }`, `labels(first: 50)`, `blockedBy(first: 20)`). Alleen **open** blockers komen in
    `PlanIssue.BlockedBy`: een gesloten blocker blokkeert niets. `blockedBy` vraagt `pageInfo`;
    een issue met meer dan 20 blockers geeft een fout (`blockedBy truncated at 20`), geen stille
    afkapping. Een open issue in een gesloten milestone houdt `Milestone.State == "closed"`.
 2. `PlanMilestones`: alle **open** milestones (`milestones(states: OPEN)`), pagina's van 100,
-   ook milestones zonder issues.
-3. `PlanCounts`: per open milestone twee `search(type: ISSUE)`-aliassen in één query (maximaal
-   50 milestones per query):
-   - `repo:<r> milestone:"<titel>" is:issue is:open` wordt `MilestoneCount.Open`;
-   - `repo:<r> milestone:"<titel>" is:issue is:closed reason:completed` wordt `MilestoneCount.Done`.
+   ook milestones zonder issues. Elke milestone draagt `issues(first: 100, states: CLOSED)`
+   mee; Go houdt de issues met `stateReason == COMPLETED` over in `MilestoneCount.Closed`, en
+   `Done` is `len(Closed)`. Meer dan 100 gesloten issues (of meer dan 50 labels) is een fout
+   (`closed issues truncated at 100`), geen stille afkapping.
+3. `PlanCounts`: per open milestone één `search(type: ISSUE)`-alias in één query (maximaal
+   50 milestones per query): `repo:<r> milestone:"<titel>" is:issue is:open` wordt
+   `MilestoneCount.Open`.
 
 Een `hasNextPage` met een lege of ongewijzigde `endCursor` is een fout (`pagination stuck`),
 zoals bij `BoardItems`: de bouw faalt zichtbaar in plaats van te blijven lussen.
 
-`Done` telt alleen issues gesloten als `completed`. Pull requests (zonder `is:issue` telt de
+`Done` telt alleen issues gesloten als `completed`; de zoektelling `is:closed reason:completed`
+is vervallen, zodat de blokjes (`Closed`) en het percentage niet uiteen kunnen lopen. Pull requests (zonder `is:issue` telt de
 zoekopdracht ze mee) en issues gesloten als `not planned` tellen in geen van beide.
 
 ## Controle van de zoekqualifiers tegen de live API
@@ -48,6 +51,11 @@ Gemeten op 2026-11-17 met `gh api graphql` tegen `CorneeldH/lighthouse`, milesto
   later live bewezen, dan vervalt die weigering in `planCounts`.
 
 ## Kosten van één bouw
+
+Sinds #437 dragen de issuesquery de labels en de milestonequery de gesloten issues als
+geneste connecties mee, en vervalt een zoekalias per milestone. De geneste connecties verhogen
+de querykosten met het aantal issues en milestones; de meting hieronder dateert van vóór die
+wijziging en is niet opnieuw gedaan.
 
 Berekend (uit het plan): 12 bouwen per uur. Per repo kost een pagina van 100 issues met
 `blockedBy(first: 20)` ongeveer 21 punten, en elke `PlanCounts`-query 1 punt. Voor een repo met
