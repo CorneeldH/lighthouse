@@ -260,13 +260,85 @@ describe('milestoneRows', () => {
   it('empty milestone (also only not-planned) is shaping with null percent', () => {
     const rs = [repo(R, [], [m(1, 0, 0)])]
     const [row] = milestoneRows(rs, buildGraph(rs, []))
-    expect(row).toMatchObject({ empty: true, percent: null, shaping: true })
+    expect(row).toMatchObject({ empty: true, percent: 0, shaping: true })
   })
 
   it('shaping marker on a milestone with issues', () => {
     const rs = [repo(R, [iss(1, [], { milestone: ref(1) })], [m(1, 1, 1, 'Status: shaping')])]
     const [row] = milestoneRows(rs, buildGraph(rs, []))
     expect(row.shaping).toBe(true)
+  })
+})
+
+describe('milestoneRows blocks', () => {
+  const ref = { number: 1, title: 'M1', state: 'open' }
+  const closed = [
+    { number: 30, title: 'c30', url: 'u30' },
+    { number: 20, title: 'c20', url: 'u20' },
+  ]
+  const ms = (extra: Partial<NonNullable<Repo['milestones']>[number]> = {}) => ({
+    number: 1,
+    title: 'M1',
+    done: 2,
+    open: 99,
+    description: '',
+    closed,
+    ...extra,
+  })
+  const mk = (issues: Issue[], milestone = ms()) => {
+    const rs = [repo(R, issues, [milestone])]
+    return milestoneRows(rs, buildGraph(rs, []))[0]
+  }
+
+  it('groups done, active, ready, needs_human, blocked in that order, by work order inside a group', () => {
+    const row = mk([
+      iss(1, [[R, 9]], { milestone: ref }),
+      iss(2, [], { milestone: ref, label: 'needs_decision' }),
+      iss(3, [], { milestone: ref }),
+      iss(4, [], { milestone: ref, status: 'In progress', open_question: true }),
+      iss(5, [[R, 3]], { milestone: ref }),
+      iss(6, [], { milestone: ref, status: 'Controller' }),
+      iss(9, [], { milestone: ref }),
+    ])
+    expect(row.blocks.map((b) => [b.nr, b.state, b.needsHuman])).toEqual([
+      [20, 'done', false],
+      [30, 'done', false],
+      [4, 'active', true],
+      [6, 'active', false],
+      [3, 'ready', false],
+      [9, 'ready', false],
+      [2, 'needs_human', false],
+      [1, 'blocked', false],
+      [5, 'blocked', false],
+    ])
+    expect(row.blocks[0]).toEqual({
+      nr: 20,
+      repo: R,
+      title: 'c20',
+      url: 'u20',
+      state: 'done',
+      needsHuman: false,
+    })
+  })
+
+  it('orders ready issues by dependency depth before number', () => {
+    const row = mk([
+      iss(1, [], { milestone: ref, label: 'needs_hands' }),
+      iss(2, [[R, 3]], { milestone: ref, label: 'x' }),
+      iss(3, [], { milestone: ref }),
+      iss(4, [], { milestone: ref }),
+    ])
+    expect(row.blocks.filter((b) => b.state === 'ready').map((b) => b.nr)).toEqual([3, 4])
+  })
+
+  it('an outside blocker without issue data is a ready block', () => {
+    const row = mk([iss(1, [['z/q', 7]], { milestone: ref })])
+    expect(row.blocks.find((b) => b.repo === 'z/q')).toMatchObject({ nr: 7, state: 'ready' })
+  })
+
+  it('no milestone issues and no closed gives shaping with percent 0, not NaN', () => {
+    const row = mk([], ms({ done: 0, closed: null }))
+    expect(row).toMatchObject({ blocks: [], shaping: true, percent: 0 })
   })
 })
 
@@ -278,7 +350,7 @@ describe('sortMilestoneRows', () => {
       open,
       done,
       empty: open === 0 && done === 0,
-      percent: open + done === 0 ? null : done / (open + done),
+      percent: open + done === 0 ? 0 : done / (open + done),
     }) as Parameters<typeof sortMilestoneRows>[0][number]
 
   it('fewest open first, ties by highest percent, empty last', () => {

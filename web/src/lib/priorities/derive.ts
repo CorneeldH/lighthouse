@@ -11,6 +11,8 @@ export interface GNode {
   milestone: MilestoneRef | null
   external: boolean
   active: boolean
+  state: IssueStateName
+  needsHuman: boolean
   uphill: boolean
   depth: number
   waiting: number
@@ -133,6 +135,8 @@ export function buildGraph(repos: Repo[], runs: Run[]): Graph {
     milestone: null,
     external: true,
     active: false,
+    state: 'ready',
+    needsHuman: false,
     uphill: false,
     depth: 0,
     waiting: 0,
@@ -143,7 +147,8 @@ export function buildGraph(repos: Repo[], runs: Run[]): Graph {
   for (const repo of repos) {
     for (const issue of repo.issues ?? []) {
       const run = liveRun(runs, repo.slug, issue.number)
-      const active = issueState(issue, runs, repo.slug).state === 'active'
+      const { state, needsHuman } = issueState(issue, runs, repo.slug)
+      const active = state === 'active'
       const key = keyOf(repo.slug, issue.number)
       nodes.set(key, {
         ...blank(key, repo.slug, issue.number),
@@ -152,6 +157,8 @@ export function buildGraph(repos: Repo[], runs: Run[]): Graph {
         milestone: issue.milestone ?? null,
         external: false,
         active,
+        state,
+        needsHuman,
         uphill: active && isUphill(run),
       })
     }
@@ -236,7 +243,19 @@ export function isShaping(description: string, issueCount: number): boolean {
   return description.split(/\r?\n/).some((l) => l.trim().toLowerCase() === 'status: shaping')
 }
 
+export interface Block {
+  nr: number
+  repo: string
+  title: string
+  url: string
+  state: IssueStateName
+  needsHuman: boolean
+}
+
+const GROUP_ORDER: IssueStateName[] = ['done', 'active', 'ready', 'needs_human', 'blocked']
+
 export interface MilestoneRow {
+  blocks: Block[]
   repo: string
   number: number
   title: string
@@ -245,7 +264,7 @@ export interface MilestoneRow {
   todo: GNode[]
   open: number
   total: number
-  percent: number | null
+  percent: number
   shaping: boolean
   empty: boolean
   outside: GNode[]
@@ -294,9 +313,36 @@ export function milestoneRows(repos: Repo[], graph: Graph): MilestoneRow[] {
           byRepoNumber(compMin.get(a.component) as GNode, compMin.get(b.component) as GNode) ||
           byRepoNumber(a, b),
       )
+      const toBlock = (n: GNode): Block => ({
+        nr: n.number,
+        repo: n.repo,
+        title: n.title,
+        url: n.url,
+        state: n.state,
+        needsHuman: n.needsHuman,
+      })
+      const doneBlocks: Block[] = [...(m.closed ?? [])]
+        .sort((a, b) => a.number - b.number)
+        .map((c) => ({
+          nr: c.number,
+          repo: repo.slug,
+          title: c.title,
+          url: c.url,
+          state: 'done',
+          needsHuman: false,
+        }))
+      // Outside blockers without issue data count as ready; order is stable per group.
+      const workBlocks = [...order, ...outside.filter((n) => n.external)].map(toBlock)
+      const blocks = [
+        ...doneBlocks,
+        ...GROUP_ORDER.filter((g) => g !== 'done').flatMap((g) =>
+          workBlocks.filter((b) => b.state === g),
+        ),
+      ]
       const open = own.length
       const empty = open === 0 && m.done === 0
       rows.push({
+        blocks,
         repo: repo.slug,
         number: m.number,
         title: m.title,
@@ -305,7 +351,7 @@ export function milestoneRows(repos: Repo[], graph: Graph): MilestoneRow[] {
         todo: order.filter((n) => !n.active),
         open,
         total: m.done + open,
-        percent: empty ? null : m.done / (m.done + open),
+        percent: empty ? 0 : m.done / (m.done + open),
         shaping: isShaping(m.description, m.done + open),
         empty,
         outside,
