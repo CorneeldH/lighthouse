@@ -622,3 +622,23 @@ func TestLoadProjectOwner(t *testing.T) {
 		t.Errorf("ProjectOwner = %q, want empty", r.Board.ProjectOwner)
 	}
 }
+
+// Production change that turns it red: NeedsName without one of the four keys, or with
+// blocked_*, returns the wrong name.
+func TestLabelsNeedsName(t *testing.T) {
+	l := Labels{BlockedIssue: "b-i", BlockedExternal: "b-e", NeedsShaping: "n-s", NeedsDecision: "n-d", NeedsHands: "n-h", NeedsTesting: "n-t"}
+	for _, tc := range []struct {
+		labels []string
+		want   string
+	}{
+		{[]string{"n-s"}, "n-s"}, {[]string{"x", "n-d"}, "n-d"}, {[]string{"n-h"}, "n-h"}, {[]string{"n-t"}, "n-t"},
+		{[]string{"b-i", "b-e", "x"}, ""}, {nil, ""},
+	} {
+		if got := l.NeedsName(tc.labels); got != tc.want {
+			t.Errorf("NeedsName(%v) = %q, want %q", tc.labels, got, tc.want)
+		}
+	}
+	if got := (Labels{}).NeedsName([]string{""}); got != "" {
+		t.Errorf("NeedsName with empty names = %q, want empty", got)
+	}
+}

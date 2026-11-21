@@ -479,13 +479,7 @@ func heldByHuman(labels []string, l repoconfig.Labels) bool {
 
 // needsHuman reports whether the item carries one of the needs_* labels of the repo.
 func (c issueCtx) needsHuman() bool {
-	l := c.repo.Labels
-	for _, name := range []string{l.NeedsShaping, l.NeedsDecision, l.NeedsHands, l.NeedsTesting} {
-		if name != "" && slices.Contains(c.it.Labels, name) {
-			return true
-		}
-	}
-	return false
+	return c.repo.Labels.NeedsName(c.it.Labels) != ""
 }
 
 // parsed is a protocol comment with its header and its time.

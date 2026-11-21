@@ -61,6 +61,16 @@ func (l Labels) Blocking() []string {
 	return []string{l.BlockedIssue, l.BlockedExternal, l.NeedsShaping, l.NeedsDecision, l.NeedsHands, l.NeedsTesting}
 }
 
+// NeedsName returns the first of the four needs_* label names that labels carries, "" when none.
+func (l Labels) NeedsName(labels []string) string {
+	for _, name := range []string{l.NeedsShaping, l.NeedsDecision, l.NeedsHands, l.NeedsTesting} {
+		if name != "" && slices.Contains(labels, name) {
+			return name
+		}
+	}
+	return ""
+}
+
 // Triage is [controller.triage]. Load fills the defaults: MilestonesOnly and WaitForNight
 // true, MaxForwarded 5, MaxJudgments 15.
 type Triage struct {
