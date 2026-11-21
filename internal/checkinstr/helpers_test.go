@@ -54,7 +54,9 @@ func mirrored(dir, text string) tree {
 type runOptions struct {
 	toml     string
 	env      map[string]string // set after the defaults
-	personal string            // "" = an existing, empty personal directory
+	personal string            // "" = an existing personal directory with the skills below
+	// personalSkills are directory names created in the personal directory.
+	personalSkills []string
 }
 
 // result is what one Run printed and returned. Paths are rewritten: {root} for the repo root,
@@ -74,8 +76,15 @@ func check(t *testing.T, files tree, opts runOptions) result {
 	personal := filepath.Join(base, "personal", "skills")
 	if opts.personal != "" {
 		personal = opts.personal
-	} else if err := os.MkdirAll(personal, 0o755); err != nil {
-		t.Fatal(err)
+	} else {
+		if err := os.MkdirAll(personal, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		for _, name := range opts.personalSkills {
+			if err := os.MkdirAll(filepath.Join(personal, name), 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		t.Fatal(err)
