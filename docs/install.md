@@ -327,7 +327,7 @@ the night window from `[dispatch] night` as `HH:MM-HH:MM`. A `500` means the dat
 
 ## Telemetry data model
 
-The same `lighthouse.db` holds the telemetry of the work, migration `0010`. A *trajectory* is one
+The same `lighthouse.db` holds the telemetry of the work, migration `0010`, recovery after merge `0011`. A *trajectory* is one
 issue of one repository (`trajectories`, unique on `repo` and `issue`, `repo` the configured slug
 exactly as in `runs.repo`). Four more tables and two columns carry the rest: `sessions` (interactive
 sessions only, never dispatcher runs), `setups` (the deployment of one run or session: model, effort,

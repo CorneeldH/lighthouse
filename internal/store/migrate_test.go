@@ -78,8 +78,8 @@ func TestMigrateTwice(t *testing.T) {
 	if !reflect.DeepEqual(schema1, schema2) || v1 != v2 {
 		t.Errorf("schema changed on second open:\n%v (v%d)\n%v (v%d)", schema1, v1, schema2, v2)
 	}
-	if v2 != 10 {
-		t.Errorf("user_version = %d, want 10", v2)
+	if v2 != 11 {
+		t.Errorf("user_version = %d, want 11", v2)
 	}
 	rows, err := s.DB.Query(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name`)
 	if err != nil {
@@ -94,7 +94,7 @@ func TestMigrateTwice(t *testing.T) {
 		tables = append(tables, name)
 	}
 	_ = rows.Close()
-	if want := []string{"action_failures", "findings", "meta", "runs", "schedule_slots", "sessions", "setups", "tick_state", "trajectories", "usage"}; !reflect.DeepEqual(tables, want) {
+	if want := []string{"action_failures", "findings", "meta", "recoveries", "recovery_items", "runs", "schedule_slots", "sessions", "setups", "tick_state", "trajectories", "usage"}; !reflect.DeepEqual(tables, want) {
 		t.Errorf("tables = %v, want %v", tables, want)
 	}
 	// column -> primary key position (0 = not part of the key)
@@ -900,4 +900,57 @@ func TestTelemetrySchemaHasNoContentColumns(t *testing.T) {
 			t.Errorf("%s columns = %v, want %v", table, got, cols)
 		}
 	}
+}
+
+func TestMigration0011Recovery(t *testing.T) {
+	const rec = `INSERT INTO recoveries (source, source_id, recorded_at, trajectory_id, pr, merged_at, window_end, status)
+		VALUES ('w', '%s', 'r', 1, %d, 't0', 't1', '%s')`
+	const item = `INSERT INTO recovery_items (recovery_id, kind, ref, at) VALUES (1, 'fix', 'abc', 't0')`
+
+	t.Run("tables exist", func(t *testing.T) {
+		db := openTelemetryDB(t)
+		for _, table := range []string{"recoveries", "recovery_items"} {
+			var n int
+			if err := db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?`, table).Scan(&n); err != nil || n != 1 {
+				t.Errorf("table %s: count %d, %v; want 1", table, n, err)
+			}
+		}
+	})
+	t.Run("status maybe rejected", func(t *testing.T) {
+		db := openTelemetryDB(t)
+		if _, err := db.Exec(fmt.Sprintf(rec, "a", 5, "maybe")); err == nil {
+			t.Error("status maybe accepted")
+		}
+		if _, err := db.Exec(fmt.Sprintf(rec, "a", 5, "open")); err != nil {
+			t.Errorf("status open rejected: %v", err)
+		}
+	})
+	t.Run("duplicate trajectory and pr rejected", func(t *testing.T) {
+		db := openTelemetryDB(t)
+		if _, err := db.Exec(fmt.Sprintf(rec, "a", 5, "open")); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(fmt.Sprintf(rec, "b", 5, "open")); err == nil {
+			t.Error("second row with the same (trajectory_id, pr) accepted")
+		}
+	})
+	t.Run("delete cascades to items", func(t *testing.T) {
+		db := openTelemetryDB(t)
+		if _, err := db.Exec(fmt.Sprintf(rec, "a", 5, "open")); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(item); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(item); err == nil {
+			t.Error("duplicate (recovery_id, kind, ref) accepted")
+		}
+		if _, err := db.Exec(`DELETE FROM recoveries WHERE id = 1`); err != nil {
+			t.Fatal(err)
+		}
+		var n int
+		if err := db.QueryRow(`SELECT count(*) FROM recovery_items`).Scan(&n); err != nil || n != 0 {
+			t.Errorf("items after delete = %d, %v; want 0", n, err)
+		}
+	})
 }
