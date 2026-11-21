@@ -113,7 +113,7 @@ jobs:
         env:
           LIGHTHOUSE_REQUIRE_GITLEAKS: "1"
       # The go-test job has no gitleaks: here its tests run hard instead of skipping.
-      - run: go test -race ./internal/checkpointscan/... ./internal/cli/
+      - run: go test -race -shuffle=on ./internal/checkpointscan/... ./internal/cli/
         env:
           LIGHTHOUSE_REQUIRE_GITLEAKS: "1"
 

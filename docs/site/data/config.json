@@ -1134,6 +1134,7 @@
               "about": "The systemd slice the test gate runs in.",
               "example": "lighthouse-gate.slice",
               "readers": [
+                "internal/checkpointscan/limits.go",
                 "internal/commitgate/gate.go"
               ]
             },
@@ -1143,7 +1144,11 @@
               "required": "no",
               "about": "The memory ceiling of the secret scan of entire checkpoints; the scan is aborted above it. Without the key the scan uses 2G.",
               "example": "2G",
-              "readers": []
+              "readers": [
+                "internal/checkpointscan/limits.go",
+                "internal/checkpointscan/scan.go",
+                "internal/cli/checkpoint_scan.go"
+              ]
             },
             {
               "key": "host.scan_cpu_quota",
@@ -1151,7 +1156,9 @@
               "required": "no",
               "about": "The CPU quota of the secret scan of entire checkpoints, as a percentage of one core. Without the key the scan uses 200%.",
               "example": "200%",
-              "readers": []
+              "readers": [
+                "internal/checkpointscan/limits.go"
+              ]
             },
             {
               "key": "host.gate_slots",
