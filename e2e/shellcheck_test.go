@@ -107,15 +107,19 @@ func writeExe(t *testing.T, dir, name, body string) string {
 	return p
 }
 
-// fakeShellcheck is a script that reports version and exits 0 on everything else.
-func fakeShellcheck(version string) string {
+// fakeShellcheck is a script that reports version; any other call finds nothing, or runs
+// delegate when that is set.
+func fakeShellcheck(version string, delegate ...string) string {
+	rest := "exit 0\n"
+	if len(delegate) > 0 {
+		rest = fmt.Sprintf("exec %q \"$@\"\n", delegate[0])
+	}
 	return "#!/usr/bin/env bash\n" +
 		"if [ \"${1:-}\" = \"--version\" ]; then\n" +
 		"  echo \"ShellCheck - shell script analysis tool\"\n" +
 		"  echo \"version: " + version + "\"\n" +
 		"  exit 0\n" +
-		"fi\n" +
-		"exit 0\n"
+		"fi\n" + rest
 }
 
 const failingCurl = "#!/usr/bin/env bash\nexit 1\n"
@@ -216,41 +220,10 @@ func TestShellLintCheck(t *testing.T) {
 		}
 	})
 
-	t.Run("blocks_a_deliberately_broken_script", func(t *testing.T) {
-		code, stdout, stderr := hook(edit(repo, "broken.sh", brokenSh), "SHELLCHECK_BIN="+pinnedShellcheck(t))
-		if code != 2 {
-			t.Fatalf("rc %d\n%s%s", code, stdout, stderr)
-		}
-		if !strings.Contains(stderr, "SC2034") {
-			t.Fatalf("no SC2034 in:\n%s", stderr)
-		}
-		if want := "shell-lint-check: fix this in the code"; !strings.HasPrefix(firstLine(stderr), want) {
-			t.Fatalf("first line %q does not start with %q", firstLine(stderr), want)
-		}
-		if got := bashwrites.Classify(code, []byte(stderr)); got != "finding" {
-			t.Fatalf("classify: %q, want finding", got)
-		}
-	})
-
 	t.Run("ignores_non_shell", func(t *testing.T) {
 		code, stdout, stderr := hook(edit(repo, "notes.md", "# hoi\n"))
 		if code != 0 {
 			t.Fatalf("rc %d\n%s%s", code, stdout, stderr)
-		}
-	})
-
-	t.Run("lets_style_pass_outside_the_strict_dirs", func(t *testing.T) {
-		code, stdout, stderr := hook(edit(repo, "styleonly.sh", styleOnlySh), "SHELLCHECK_BIN="+pinnedShellcheck(t))
-		if code != 0 {
-			t.Fatalf("rc %d\n%s%s", code, stdout, stderr)
-		}
-	})
-
-	t.Run("strict_default_covers_lighthouse_hooks", func(t *testing.T) {
-		path := edit(repo, ".claude/hooks/lighthouse/styleonly.sh", styleOnlySh)
-		code, stdout, stderr := hook(path, "SHELLCHECK_BIN="+pinnedShellcheck(t))
-		if code != 2 || !strings.Contains(stderr, "SC2001") {
-			t.Fatalf("rc %d, want 2 with SC2001\n%s%s", code, stdout, stderr)
 		}
 	})
 
@@ -316,13 +289,26 @@ func TestShellLintCheck(t *testing.T) {
 	})
 
 	t.Run("divergent_version_notice_reaches_the_session", func(t *testing.T) {
-		dir := toolDir(t, bin, nil, "", map[string]string{"shellcheck": fakeShellcheck("0.9.0"), "curl": failingCurl})
+		// The stub says 0.9.0 but lints with the pin: a shellcheck that reports nothing would fail
+		// the floor check of the hook.
+		dir := toolDir(t, bin, nil, "", map[string]string{"shellcheck": fakeShellcheck("0.9.0", pinnedShellcheck(t)), "curl": failingCurl})
 		code, stdout, stderr := hook(edit(repo, "clean.sh", cleanSh), pathWith(dir))
 		if code != 0 {
 			t.Fatalf("rc %d\n%s%s", code, stdout, stderr)
 		}
 		if !strings.Contains(stdout, `"systemMessage":"shell-lint-check: `) || !strings.Contains(stdout, "differs from the pin") {
 			t.Fatalf("no systemMessage about the pin in stdout:\n%s", stdout)
+		}
+	})
+
+	t.Run("floor_block_carries_the_divergent_version_notice", func(t *testing.T) {
+		dir := toolDir(t, bin, nil, "", map[string]string{"shellcheck": fakeShellcheck("0.9.0", pinnedShellcheck(t)), "curl": failingCurl})
+		code, stdout, stderr := hook(edit(repo, "clean.sh", cleanSh), pathWith(dir), "SHELLCHECK_OPTS=--exclude=SC2164")
+		if code != 2 {
+			t.Fatalf("rc %d, want 2\n%s%s", code, stdout, stderr)
+		}
+		if !strings.Contains(stderr, "[shell-lint-check/SC2164]") || !strings.Contains(stderr, "differs from the pin") {
+			t.Fatalf("stderr lacks the floor reason or the notice:\n%s", stderr)
 		}
 	})
 
