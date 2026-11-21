@@ -42,7 +42,7 @@ func (f *fakeMilestones) MilestoneByNumber(_ context.Context, number int) (forge
 	return forge.Milestone{Number: number, Title: fmt.Sprintf("M%d", number), State: "open", Description: d}, nil
 }
 
-func (f *fakeMilestones) EditMilestone(_ context.Context, number int, title, description *string) (forge.Milestone, error) {
+func (f *fakeMilestones) EditMilestone(_ context.Context, number int, title, description, _ *string) (forge.Milestone, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.edits++

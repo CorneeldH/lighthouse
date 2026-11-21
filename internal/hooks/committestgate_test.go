@@ -74,7 +74,7 @@ func TestInvalidPayloadBlocks(t *testing.T) {
 	}
 }
 
-// Twin of test_post_without_record_reads_no_config: no marker means nothing to test, so a broken
+// No marker means nothing to test, so a broken
 // lighthouse.toml does not block and no slot is taken.
 func TestPostWithoutMarkerIsSilentAndReadsNoConfig(t *testing.T) {
 	dir := t.TempDir()

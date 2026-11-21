@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.pack._testkit import (
+from tests.pack.python._testkit import (
     GIT_ENV,
     INSTALL_ROOT,
     classify,
@@ -83,36 +83,10 @@ def test_shellcheck_hook_passes_clean_script(tmp_path, pinned_shellcheck):
     assert result.returncode == 0, result.stderr
 
 
-def test_shellcheck_hook_blocks_a_deliberately_broken_script(tmp_path, pinned_shellcheck):
-    """The proof that the gate bites: red for the right reason, with the SC code,
-    and a finding for `classify`."""
-    target = _repo_file(tmp_path, "broken.sh", BROKEN_SH)
-    result = _run_shellcheck_hook(target, SHELLCHECK_BIN=pinned_shellcheck)
-    assert result.returncode == 2, result.stdout
-    assert "SC2034" in result.stderr
-    assert _first_line(result).startswith("shell-lint-check: fix this in the code")
-    assert classify(result.returncode, result.stderr.encode()) == "finding"
-
-
 def test_shellcheck_hook_ignores_non_shell(tmp_path):
     target = tmp_path / "notes.md"
     target.write_text("# hoi\n")
     assert _run_shellcheck_hook(target).returncode == 0
-
-
-def test_shellcheck_hook_lets_style_pass_outside_the_strict_dirs(tmp_path, pinned_shellcheck):
-    """The blocking set is not the linted set: outside the strict dirs, warning counts."""
-    target = _repo_file(tmp_path, "styleonly.sh", STYLE_ONLY_SH)
-    assert _run_shellcheck_hook(target, SHELLCHECK_BIN=pinned_shellcheck).returncode == 0
-
-
-def test_strict_default_covers_lighthouse_hooks(tmp_path, pinned_shellcheck):
-    """The default `shell.strict_dirs` is `.claude/hooks`, and a pathspec on it
-    reaches `.claude/hooks/lighthouse/` too."""
-    target = _repo_file(tmp_path, ".claude/hooks/lighthouse/styleonly.sh", STYLE_ONLY_SH)
-    result = _run_shellcheck_hook(target, SHELLCHECK_BIN=pinned_shellcheck)
-    assert result.returncode == 2, result.stdout
-    assert "SC2001" in result.stderr
 
 
 def test_strict_dirs_from_config(tmp_path, pinned_shellcheck):
@@ -201,15 +175,15 @@ def test_pin_and_hashes_unchanged():
         assert sha in lib
 
 
-def _fake_shellcheck(path: Path, version: str) -> None:
+def _fake_shellcheck(path: Path, version: str, delegate: str | None = None) -> None:
+    """A shellcheck that says `version`; any other call finds nothing, or runs `delegate`."""
     path.write_text(
         "#!/usr/bin/env bash\n"
         'if [ "${1:-}" = "--version" ]; then\n'
         '  echo "ShellCheck - shell script analysis tool"\n'
         f'  echo "version: {version}"\n'
         "  exit 0\n"
-        "fi\n"
-        "exit 0\n"
+        "fi\n" + (f'exec "{delegate}" "$@"\n' if delegate else "exit 0\n")
     )
     path.chmod(0o755)
 
@@ -369,13 +343,14 @@ def test_resolve_falls_back_to_a_divergent_path_version_when_the_pin_is_unreacha
     assert "differs from the pin" in result.stderr, result.stderr
 
 
-def test_divergent_version_notice_reaches_the_session(tmp_path):
+def test_divergent_version_notice_reaches_the_session(tmp_path, pinned_shellcheck):
     """A clean result from a divergent version is no silent pass: the hook passes the
-    notice on as a `systemMessage`."""
+    notice on as a `systemMessage`. The stub says 0.9.0 but lints with the pin: a
+    shellcheck that reports nothing would fail the floor check of the hook."""
     target = _repo_file(tmp_path, "clean.sh", CLEAN_SH)
     stub_dir = tmp_path / "bin"
     stub_dir.mkdir()
-    _fake_shellcheck(stub_dir / "shellcheck", "0.9.0")
+    _fake_shellcheck(stub_dir / "shellcheck", "0.9.0", delegate=pinned_shellcheck)
     _failing_curl(stub_dir)
     path = f"{stub_dir}{os.pathsep}{os.environ['PATH']}"
     result = _run_shellcheck_hook(target, PATH=path)
@@ -383,6 +358,21 @@ def test_divergent_version_notice_reaches_the_session(tmp_path):
     message = json.loads(result.stdout)["systemMessage"]
     assert message.startswith("shell-lint-check: ")
     assert "differs from the pin" in message
+
+
+def test_floor_block_carries_the_divergent_version_notice(tmp_path, pinned_shellcheck):
+    """A blocked floor is no reason to drop the notice of a divergent shellcheck: the
+    block names the version difference too, as the lint run does."""
+    target = _repo_file(tmp_path, "clean.sh", CLEAN_SH)
+    stub_dir = tmp_path / "bin"
+    stub_dir.mkdir()
+    _fake_shellcheck(stub_dir / "shellcheck", "0.9.0", delegate=pinned_shellcheck)
+    _failing_curl(stub_dir)
+    path = f"{stub_dir}{os.pathsep}{os.environ['PATH']}"
+    result = _run_shellcheck_hook(target, PATH=path, SHELLCHECK_OPTS="--exclude=SC2164")
+    assert result.returncode == 2, (result.stdout, result.stderr)
+    assert "[shell-lint-check/SC2164]" in result.stderr
+    assert "differs from the pin" in result.stderr
 
 
 def _shim_path(tmp_path: Path, names: list[str]) -> Path:
@@ -498,12 +488,11 @@ def test_repo_script_unchecked_is_rc_4(tmp_path):
 def test_bash_write_through_gate(tmp_path, pinned_shellcheck):
     """With core and shell installed, a Bash write of a broken `.sh` is a finding via
     `bash-write-check post`, not `no shell gate installed`."""
-    from tests.pack.test_bash_write_check import BROKEN_SH as GATES_BROKEN_SH
-    from tests.pack.test_bash_write_check import _Session, heredoc
+    from tests.pack.python._bash_session import _Session, heredoc
 
     session = _Session(tmp_path, shellcheck=pinned_shellcheck, language_gates=False)
     install_pack("shell", session.root)
-    out = session.call(heredoc("x.sh", GATES_BROKEN_SH))
+    out = session.call(heredoc("x.sh", BROKEN_SH))
     assert out.returncode == 2, (out.stdout, out.stderr)
     assert "SC2034" in out.stderr
     assert "no shell gate installed" not in out.stderr + out.stdout

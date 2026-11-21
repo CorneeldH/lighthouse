@@ -1,5 +1,6 @@
 import type { JSX } from 'react'
 import type { ViewId } from '@/lib/priorities/prefs'
+import { Block, type BlockState } from './Block'
 
 export interface LegendItem {
   key: string
@@ -18,6 +19,14 @@ interface ToolbarProps {
   msOrder: 'computed' | 'priority'
   onMsOrder: (o: 'computed' | 'priority') => void
 }
+
+const STATES: Array<{ key: string; label: string; state: BlockState; needsHuman: boolean }> = [
+  { key: 'done', label: 'done', state: 'done', needsHuman: false },
+  { key: 'active', label: 'active', state: 'active', needsHuman: false },
+  { key: 'ready', label: 'ready', state: 'ready', needsHuman: false },
+  { key: 'needs-human', label: 'needs a human', state: 'ready', needsHuman: true },
+  { key: 'blocked', label: 'blocked', state: 'blocked', needsHuman: false },
+]
 
 const VIEWS: Array<{ id: ViewId; label: string }> = [
   { id: 'deps', label: 'Dependencies' },
@@ -104,9 +113,22 @@ export function Toolbar({
             {l.label}
           </li>
         ))}
-        <li className="inline-flex items-center gap-1.5">
-          <i aria-hidden className="inline-block h-3 w-3.5 rounded-sm border-2 border-dashed border-lh-navy" />
-          picked up
+        {STATES.map((st) => (
+          <li key={st.key} data-testid="legend-state" className="inline-flex items-center gap-1.5">
+            <Block
+              testId="legend-block"
+              state={st.state}
+              needsHuman={st.needsHuman}
+              color="var(--lh-grey)"
+              title={st.label}
+              className="size-3.5"
+            />
+            {st.label}
+          </li>
+        ))}
+        <li data-testid="legend-shaping" className="inline-flex items-center gap-1.5">
+          <i aria-hidden className="inline-block h-3 w-3.5 rounded-sm outline-[1.5px] outline-dashed outline-lh-grey" />
+          not shaped yet
         </li>
       </ul>
     </div>

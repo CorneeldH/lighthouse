@@ -975,7 +975,7 @@ func (p *planningSource) MilestoneByNumber(context.Context, int) (forge.Mileston
 	return forge.Milestone{Number: 3, Title: "M", State: "open", Description: p.description}, nil
 }
 
-func (p *planningSource) EditMilestone(_ context.Context, number int, _, description *string) (forge.Milestone, error) {
+func (p *planningSource) EditMilestone(_ context.Context, number int, _, description, _ *string) (forge.Milestone, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.description = *description
@@ -1055,5 +1055,79 @@ func TestServeMilestoneRankEndToEnd(t *testing.T) {
 	}
 	if err := stop(); err != nil {
 		t.Fatalf("serve = %v", err)
+	}
+}
+
+// servePriorities serves the fake with host.toml hostPath and the --repo o/r, and returns the
+// issue label keys of /api/priorities by issue number.
+func servePriorities(t *testing.T, hostPath string, fake *forgetest.Server) map[int]string {
+	t.Helper()
+	t.Setenv("LIGHTHOUSE_HOST_TOML", hostPath)
+	t.Setenv("GH_TOKEN", "t")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	errOut := &syncBuf{}
+	root := NewRoot(strings.NewReader(""), io.Discard, errOut)
+	root.SetArgs([]string{"serve", "--addr", "127.0.0.1:0", "--db", filepath.Join(t.TempDir(), "l.db"),
+		"--repo", "o/r", "--forge-url", fake.URL()})
+	done := make(chan error, 1)
+	go func() { done <- root.ExecuteContext(ctx) }()
+	addr := waitListening(t, errOut, done)
+
+	var body []byte
+	for deadline := time.Now().Add(5 * time.Second); ; {
+		resp, err := http.Get("http://" + addr + "/api/priorities")
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ = io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if resp.StatusCode == http.StatusOK {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("priorities = %d: %s", resp.StatusCode, body)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	var got struct {
+		Repos []struct {
+			Issues []struct {
+				Number int    `json:"number"`
+				Label  string `json:"label"`
+			} `json:"issues"`
+		} `json:"repos"`
+	}
+	if err := json.Unmarshal(body, &got); err != nil || len(got.Repos) != 1 {
+		t.Fatalf("body = %s, err %v", body, err)
+	}
+	keys := map[int]string{}
+	for _, i := range got.Repos[0].Issues {
+		keys[i.Number] = i.Label
+	}
+	return keys
+}
+
+func TestServePrioritiesLabelKeyFromRepoConfig(t *testing.T) {
+	fake := forgetest.New(t)
+	fake.Issues = map[int]map[string]any{
+		1: {"number": 1, "title": "one", "html_url": "https://h/1", "state": "open", "labels": []any{map[string]any{"name": "shape-me"}}},
+		2: {"number": 2, "title": "two", "html_url": "https://h/2", "state": "open", "labels": []any{map[string]any{"name": "needs-shaping"}}},
+	}
+	repo := repoDir(t, "[forge]\nrepo = \"o/r\"\n\n[labels]\nneeds_shaping = \"shape-me\"\n")
+	got := servePriorities(t, hostToml(t, repo), fake)
+	if got[1] != "needs_shaping" || got[2] != "" {
+		t.Errorf("label keys = %v, want #1 needs_shaping through the configured name and #2 none", got)
+	}
+}
+
+func TestServePrioritiesLabelKeyFromRepoFlagUsesDefaults(t *testing.T) {
+	fake := forgetest.New(t)
+	fake.Issues = map[int]map[string]any{
+		1: {"number": 1, "title": "one", "html_url": "https://h/1", "state": "open", "labels": []any{map[string]any{"name": "needs-shaping"}}},
+	}
+	got := servePriorities(t, filepath.Join(t.TempDir(), "host.toml"), fake)
+	if got[1] != "needs_shaping" {
+		t.Errorf("label keys = %v, want #1 needs_shaping through the default name", got)
 	}
 }

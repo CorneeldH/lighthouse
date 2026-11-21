@@ -89,7 +89,7 @@ func registerMilestoneRanks(api huma.API, forges map[string]forge.Forge,
 		written := []int{}
 		for _, c := range req.Changes {
 			desc := priorities.SetRank(fresh[c.Number], c.To)
-			m, err := f.EditMilestone(ctx, c.Number, nil, &desc)
+			m, err := f.EditMilestone(ctx, c.Number, nil, &desc, nil)
 			if err != nil {
 				return nil, writeError(err, c.Number, written)
 			}

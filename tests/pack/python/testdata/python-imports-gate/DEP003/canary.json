@@ -1,0 +1,18 @@
+{
+  "hook": "python",
+  "touch": "src/app/main.py",
+  "exit": 2,
+  "id": "DEP003",
+  "dists": [
+    {
+      "name": "aa",
+      "requires": []
+    },
+    {
+      "name": "bb",
+      "requires": [
+        "aa"
+      ]
+    }
+  ]
+}

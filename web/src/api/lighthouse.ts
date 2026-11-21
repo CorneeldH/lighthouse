@@ -24,6 +24,12 @@ export interface CleanupOutputBody {
   cleanup: Leftover[] | null;
 }
 
+export interface ClosedIssue {
+  number: number;
+  title: string;
+  url: string;
+}
+
 export interface DeferredView {
   at: string;
   issue: number;
@@ -73,14 +79,19 @@ export interface MilestoneRef {
 export interface Issue {
   /** @nullable */
   blocked_by: Blocker[] | null;
+  label: string;
   milestone?: MilestoneRef;
+  needs_label: boolean;
   number: number;
+  open_question: boolean;
   status: string;
   title: string;
   url: string;
 }
 
 export interface Milestone {
+  /** @nullable */
+  closed: ClosedIssue[] | null;
   description: string;
   done: number;
   number: number;

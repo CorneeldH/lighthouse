@@ -12,6 +12,11 @@
 # does not exist leave nothing to check: exit 0, without looking for gofmt.
 
 HOOK_NAME="gofmt-check"
+# The reasons this hook blocks on, each as a `[gofmt-check/<reason>]` tag on the first line of the
+# block message. Every other exit 2 path is `COULD NOT CHECK` and carries no tag. A canary test
+# runs the hook once per reason: add a reason here and it needs a fixture there.
+# shellcheck disable=SC2034 # read by the canary test, not by this script
+BLOCKING_RULES="parse-error"
 
 cannot_check() {
   {
@@ -55,7 +60,7 @@ fi
 # gofmt exits 2 when the file does not parse; the parse error is on its output.
 if ! out=$(gofmt -w "$FILE_PATH" 2>&1); then
   {
-    echo "$HOOK_NAME: $FILE_PATH does not parse — fix the syntax."
+    echo "[$HOOK_NAME/parse-error] $HOOK_NAME: $FILE_PATH does not parse — fix the syntax."
     echo ""
     echo "$out"
   } >&2

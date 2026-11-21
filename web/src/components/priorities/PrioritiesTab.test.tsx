@@ -14,9 +14,9 @@ const PRIORITIES = {
     {
       slug: 'a/x',
       issues: [
-        { number: 1, title: 't1', url: 'u1', status: 'To do', blocked_by: null, milestone: M },
-        { number: 2, title: 't2', url: 'u2', status: 'To do', blocked_by: [{ repo: 'a/x', issue: 1 }], milestone: M },
-        { number: 3, title: 't3', url: 'u3', status: 'To do', blocked_by: null },
+        { number: 1, title: 't1', url: 'u1', status: 'To do', label: '', open_question: false, needs_label: false, blocked_by: null, milestone: M },
+        { number: 2, title: 't2', url: 'u2', status: 'To do', label: '', open_question: false, needs_label: false, blocked_by: [{ repo: 'a/x', issue: 1 }], milestone: M },
+        { number: 3, title: 't3', url: 'u3', status: 'To do', label: '', open_question: false, needs_label: false, blocked_by: null },
       ],
       milestones: [{ number: 1, title: 'Alpha', description: '', done: 0, open: 2 }],
     },
@@ -46,7 +46,11 @@ function renderTab() {
   return client
 }
 
-beforeEach(() => localStorage.clear())
+beforeEach(() => {
+  localStorage.clear()
+  // jsdom has no ResizeObserver; the milestone bar measures itself with one.
+  vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} })
+})
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
@@ -130,7 +134,7 @@ describe('PrioritiesTab', () => {
 
   describe('legend and colours', () => {
     const iss = (n: number, ms: { number: number; title: string } | null) => ({
-      number: n, title: `t${n}`, url: `u${n}`, status: 'To do', blocked_by: null,
+      number: n, title: `t${n}`, url: `u${n}`, status: 'To do', label: '', open_question: false, needs_label: false, blocked_by: null,
       ...(ms ? { milestone: { ...ms, state: 'open' } } : {}),
     })
     const ms = (number: number, title: string) => ({ number, title, description: '', done: 0, open: 1 })
@@ -141,6 +145,7 @@ describe('PrioritiesTab', () => {
       ],
       runs: [],
     }
+    const STATE_LABELS = ['done', 'active', 'ready', 'needs a human', 'blocked', 'not shaped yet']
     const legend = () => within(screen.getByRole('list', { name: 'Legend' }))
     const swatches = () =>
       Array.from(screen.getByRole('list', { name: 'Legend' }).querySelectorAll('li'))
@@ -170,14 +175,29 @@ describe('PrioritiesTab', () => {
       stub(() => json(TWO))
       renderTab()
       fireEvent.click(await screen.findByRole('button', { name: /^Milestones/ }))
-      expect(swatches().map((x) => x[0])).toEqual(['a/x · Alpha', 'a/x · Empty', 'a/y · Beta', 'picked up'])
+      expect(swatches().map((x) => x[0])).toEqual(['a/x · Alpha', 'a/x · Empty', 'a/y · Beta', ...STATE_LABELS])
+    })
+
+    it('the legend shows the five states and the shaping border, and no picked-up pill', async () => {
+      stub(() => json(TWO))
+      renderTab()
+      await screen.findByRole('button', { name: 'a/x' })
+      const states = screen.getAllByTestId('legend-block')
+      expect(states.map((b) => [b.getAttribute('data-state'), b.getAttribute('data-needs-human')])).toEqual([
+        ['done', 'false'],
+        ['active', 'false'],
+        ['ready', 'false'],
+        ['ready', 'true'],
+        ['blocked', 'false'],
+      ])
+      expect(legend().queryByText('picked up')).toBeNull()
     })
 
     it('the without-milestone view has no milestone colours when no closed milestone is named', async () => {
       stub(() => json(TWO))
       renderTab()
       fireEvent.click(await screen.findByRole('button', { name: /Without milestone/ }))
-      expect(swatches().map((x) => x[0])).toEqual(['picked up'])
+      expect(swatches().map((x) => x[0])).toEqual(STATE_LABELS)
     })
 
     it('a stored selection of only stale slugs counts as all on', async () => {

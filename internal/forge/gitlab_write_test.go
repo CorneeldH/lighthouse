@@ -100,11 +100,11 @@ func TestGitLabMilestoneNumberIsGlobalID(t *testing.T) {
 		t.Errorf("MilestoneByNumber(1) err = %v, want ErrMilestoneNotFound (1 is an iid, not an id)", err)
 	}
 	open, err := g.Milestones(context.Background(), "")
-	if err != nil || !reflect.DeepEqual(open, []Milestone{{501, "P1", "open", "dP"}, {777, "G1", "open", "dG"}}) {
+	if err != nil || !reflect.DeepEqual(open, []Milestone{{Number: 501, Title: "P1", State: "open", Description: "dP"}, {Number: 777, Title: "G1", State: "open", Description: "dG"}}) {
 		t.Errorf("Milestones(open) = %+v, %v; want project and group milestone", open, err)
 	}
 	closed, err := g.Milestones(context.Background(), "closed")
-	if err != nil || !reflect.DeepEqual(closed, []Milestone{{888, "Old", "closed", ""}}) {
+	if err != nil || !reflect.DeepEqual(closed, []Milestone{{Number: 888, Title: "Old", State: "closed"}}) {
 		t.Errorf("Milestones(closed) = %+v, %v", closed, err)
 	}
 	all, _ := g.Milestones(context.Background(), "all")
@@ -122,7 +122,7 @@ func TestGitLabEditGroupMilestoneRefused(t *testing.T) {
 	srv, g := glClient(t)
 	glMilestones(srv)
 	title := "Nieuw"
-	_, err := g.EditMilestone(context.Background(), 777, &title, nil)
+	_, err := g.EditMilestone(context.Background(), 777, &title, nil, nil)
 	var gm *GroupMilestone
 	if !errors.As(err, &gm) || gm.Number != 777 {
 		t.Errorf("err = %v, want *GroupMilestone 777", err)
@@ -136,7 +136,7 @@ func TestGitLabMilestoneCreateAndEditUseGlobalID(t *testing.T) {
 	srv, g := glClient(t)
 	glMilestones(srv)
 	title, desc := "P1b", "nieuw"
-	got, err := g.EditMilestone(context.Background(), 501, &title, &desc)
+	got, err := g.EditMilestone(context.Background(), 501, &title, &desc, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

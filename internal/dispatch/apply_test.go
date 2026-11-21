@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -2326,5 +2327,50 @@ func TestApplyMergePushSpentKeyStartsNothing(t *testing.T) {
 	}
 	if len(*specs) != 0 || len(h.history(t)) != 1 {
 		t.Errorf("specs = %v, rows = %d; want nothing started", *specs, len(h.history(t)))
+	}
+}
+
+func TestApplyRepostPostsBody(t *testing.T) {
+	h := newHarness(t)
+	id := h.seed(t, 7, oldSession, "start:7", "")
+	body := "🤖 Klaar\nsession: x\n\nliteral  body"
+	a := Action{Kind: KindRepost, Repo: applyRepo, Issue: 7, RunID: id, Body: body}
+	res, err := Apply(context.Background(), h.env, []Action{a})
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	p := h.poster(applyRepo)
+	if !reflect.DeepEqual(p.bodies, []string{body}) || !reflect.DeepEqual(p.issues, []int{7}) {
+		t.Errorf("posted %q on %v, want the body on issue 7", p.bodies, p.issues)
+	}
+	if len(res.Deferred) != 0 || len(res.Failed) != 0 {
+		t.Errorf("Deferred = %q, Failed = %v, want none", res.Deferred, res.Failed)
+	}
+	if rows := h.history(t); !rows[0].Open || rows[0].Outcome != "" {
+		t.Errorf("row = %+v, want the run still open without an outcome", rows[0])
+	}
+}
+
+func TestApplyRepostFailureDefers(t *testing.T) {
+	h := newHarness(t)
+	id := h.seed(t, 7, oldSession, "start:7", "")
+	h.poster(applyRepo).postErr = errors.New("502\nbad gateway")
+	actions := []Action{
+		{Kind: KindRepost, Repo: applyRepo, Issue: 7, RunID: id, Body: "b"},
+		{Kind: KindDefer, Repo: applyRepo, Issue: 9, Reason: "night"},
+	}
+	res, err := Apply(context.Background(), h.env, actions)
+	if err != nil {
+		t.Fatalf("Apply: %v, want nil", err)
+	}
+	if _, ok := res.Failed[applyRepo]; ok {
+		t.Errorf("Failed = %v, want no key for the repo", res.Failed)
+	}
+	want := []string{"o/r#7: repost run " + strconv.FormatInt(id, 10) + ": 502; bad gateway", "o/r#9: night"}
+	if !reflect.DeepEqual(res.Deferred, want) {
+		t.Errorf("Deferred = %q, want %q", res.Deferred, want)
+	}
+	if rows := h.history(t); !rows[0].Open {
+		t.Errorf("row = %+v, want the run still open", rows[0])
 	}
 }

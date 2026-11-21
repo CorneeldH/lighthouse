@@ -1,22 +1,23 @@
 import { ChevronDown, ChevronUp } from 'lucide-react'
-import type { JSX } from 'react'
+import { useLayoutEffect, useRef, useState, type JSX } from 'react'
 import {
   milestoneRows,
   placeInRepo,
   priorityOrder,
   sortMilestoneRows,
+  type Block as BlockData,
   type GNode,
   type MilestoneRow,
 } from '@/lib/priorities/derive'
 import { canMove } from '@/lib/priorities/moves'
 import { NO_MILESTONE_COLOR } from '@/lib/priorities/palette'
+import { Block, type BlockState } from './Block'
 import type { ViewProps } from './types'
 
-const HATCH = 'repeating-linear-gradient(135deg, var(--lh-hatch-a) 0 6px, var(--lh-hatch-b) 6px 12px)'
-const YELLOW = 'var(--lh-yellow)'
-const YELLOW_HATCH = `repeating-linear-gradient(135deg, ${YELLOW} 0 4px, var(--lh-yellow-pale) 4px 8px)`
-const SHAPING_LAYER =
-  'repeating-linear-gradient(135deg, var(--lh-shaping-a) 0 6px, var(--lh-shaping-b) 6px 12px)'
+// Below this width a block shows no number; the hover title stays.
+export const MIN_LABEL_WIDTH = 28
+const BAR_GAP = 2
+
 // One fixed width for every outside-blocker column, so all bars start at the same x. The column
 // holds at most MAX_OUTSIDE blocks; the rest collapse into one "+N" block.
 const OUTSIDE_COL = 'w-24 shrink-0 flex justify-end items-center gap-0.5'
@@ -25,8 +26,15 @@ const MAX_OUTSIDE = 3
 const colorOf = (colors: Map<string, string>, n: GNode): string =>
   n.milestone ? (colors.get(`${n.repo}#m${n.milestone.number}`) ?? NO_MILESTONE_COLOR) : NO_MILESTONE_COLOR
 
-function meta(row: MilestoneRow): string {
-  const base = `${row.done} done · ${row.active.length} active · ${row.todo.length} not yet`
+// "needs human" is a ready (or active) block with the dashed flag.
+function shapeOf(state: BlockData['state'], needsHuman: boolean): { state: BlockState; needsHuman: boolean } {
+  return state === 'needs_human' ? { state: 'ready', needsHuman: true } : { state, needsHuman }
+}
+
+function meta(row: MilestoneRow, own: BlockData[]): string {
+  const active = own.filter((b) => b.state === 'active').length
+  const notYet = own.filter((b) => b.state !== 'active' && b.state !== 'done').length
+  const base = `${row.done} done · ${active} active · ${notYet} not yet`
   const n = row.outside.length
   return n === 0 ? base : `${base} · ${n} outside blocker${n === 1 ? '' : 's'}`
 }
@@ -69,10 +77,29 @@ function MoveButtons({ moves, title }: { moves: Moves; title: string }): JSX.Ele
   )
 }
 
+function useWidth<T extends HTMLElement>(): [React.RefObject<T | null>, number] {
+  const ref = useRef<T>(null)
+  const [width, setWidth] = useState(0)
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const measure = () => setWidth(el.getBoundingClientRect().width)
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  return [ref, width]
+}
+
 function Row({ row, colors, moves }: { row: MilestoneRow; colors: Map<string, string>; moves?: Moves }): JSX.Element {
   const color = colors.get(`${row.repo}#m${row.number}`) ?? NO_MILESTONE_COLOR
-  const unshaped = row.empty
-  const provisional = row.shaping && !unshaped
+  const [barRef, barWidth] = useWidth<HTMLDivElement>()
+  // Outside blockers have their own column (row.outside); the bar holds the milestone's own blocks.
+  const own = row.blocks
+  const blockWidth = own.length === 0 ? 0 : (barWidth - BAR_GAP * (own.length - 1)) / own.length
+  const showLabel = blockWidth >= MIN_LABEL_WIDTH
+  const todo = own.filter((b) => b.state !== 'done')
   return (
     <div
       data-testid={`ms-${row.repo}#m${row.number}`}
@@ -100,26 +127,25 @@ function Row({ row, colors, moves }: { row: MilestoneRow; colors: Map<string, st
               <span className="sr-only">{`, plaats ${moves.place}`}</span>
             </>
           )}
-          <small className="block text-xs font-normal text-muted-foreground">{meta(row)}</small>
+          <small className="block text-xs font-normal text-muted-foreground">{meta(row, own)}</small>
         </div>
       </div>
       <div>
         <div className="flex items-center gap-2">
           <div data-testid="outside-col" className={OUTSIDE_COL}>
-            {(row.outside.length > MAX_OUTSIDE ? row.outside.slice(0, MAX_OUTSIDE - 1) : row.outside).map((n) => {
-              const c = colorOf(colors, n)
-              return (
-                <span
-                  key={n.key}
-                  data-testid="outside"
-                  title={`#${n.number} ${n.title} blocks from outside`}
-                  className="flex h-[18px] min-w-[26px] items-center justify-center rounded border-[1.5px] border-dashed px-0.5 text-[9.5px] font-bold"
-                  style={{ borderColor: c, color: c, background: n.active ? YELLOW : undefined }}
-                >
-                  {n.number}
-                </span>
-              )
-            })}
+            {(row.outside.length > MAX_OUTSIDE ? row.outside.slice(0, MAX_OUTSIDE - 1) : row.outside).map((n) => (
+              <Block
+                key={n.key}
+                testId="outside"
+                {...shapeOf(n.state, n.needsHuman)}
+                color={colorOf(colors, n)}
+                borderColor={colorOf(colors, n)}
+                title={`#${n.number} ${n.title}`}
+                href={n.url || undefined}
+                label={n.number}
+                className="h-[18px] min-w-[26px] px-0.5"
+              />
+            ))}
             {row.outside.length > MAX_OUTSIDE && (
               <span
                 data-testid="outside-more"
@@ -127,91 +153,57 @@ function Row({ row, colors, moves }: { row: MilestoneRow; colors: Map<string, st
                   .slice(MAX_OUTSIDE - 1)
                   .map((n) => `#${n.number} ${n.title}`)
                   .join('\n')}
-                className="flex h-[18px] min-w-[26px] items-center justify-center rounded border-[1.5px] border-dashed border-lh-grey px-0.5 text-[9.5px] font-bold text-lh-grey"
+                className="flex h-[18px] min-w-[26px] items-center justify-center rounded border-[1.5px] border-lh-grey px-0.5 text-[9.5px] font-bold text-lh-grey"
               >
                 +{row.outside.length - (MAX_OUTSIDE - 1)}
               </span>
             )}
           </div>
-          {unshaped ? (
-            <div
-              data-testid="unshaped"
-              data-hatched="true"
-              className="flex h-[18px] flex-1 items-center justify-center rounded text-[11.5px] font-semibold text-muted-foreground"
-              style={{ background: HATCH }}
-            >
-              Not shaped yet — the percentage says nothing
-            </div>
-          ) : (
-            <div className="relative flex h-[18px] flex-1 gap-0.5">
-              {Array.from({ length: row.done }, (_, i) => (
-                <i
-                  key={`done-${i}`}
-                  data-testid="seg"
-                  data-state="done"
-                  title="done"
-                  className="block min-w-[3px] flex-1 rounded-sm"
-                  style={{ background: color }}
+          <div
+            ref={barRef}
+            data-testid="bar"
+            data-shaping={row.shaping ? 'true' : 'false'}
+            className={`relative flex h-[18px] flex-1 gap-0.5 ${
+              row.shaping ? 'rounded-sm outline-[1.5px] outline-dashed outline-offset-2 outline-lh-grey' : ''
+            }`}
+          >
+            {own.length === 0 ? (
+              <span data-testid="no-issues" className="text-xs text-muted-foreground">
+                nog geen issues
+              </span>
+            ) : (
+              own.map((b) => (
+                <Block
+                  key={`${b.repo}#${b.nr}`}
+                  {...shapeOf(b.state, b.needsHuman)}
+                  color={color}
+                  title={`#${b.nr} ${b.title}`}
+                  href={b.url || undefined}
+                  label={showLabel ? b.nr : undefined}
+                  className="h-full min-w-[3px] flex-1"
                 />
-              ))}
-              {row.active.map((n) => (
-                <i
-                  key={n.key}
-                  data-testid="seg"
-                  data-state="active"
-                  data-hatched={n.uphill ? 'true' : 'false'}
-                  title={`#${n.number} ${n.title}`}
-                  className="block min-w-[3px] flex-1 rounded-sm"
-                  style={{ background: n.uphill ? YELLOW_HATCH : YELLOW }}
-                />
-              ))}
-              {row.todo.map((n) => (
-                <i
-                  key={n.key}
-                  data-testid="seg"
-                  data-state="todo"
-                  title={`#${n.number} ${n.title}`}
-                  className="block min-w-[3px] flex-1 rounded-sm bg-[var(--lh-seg-todo)]"
-                />
-              ))}
-              {provisional && (
-                <em
-                  data-testid="shaping-layer"
-                  title="still in shaping — the list can still grow"
-                  className="pointer-events-none absolute -inset-[3px] rounded-[5px] border-[1.5px] border-dashed border-[var(--lh-shaping-border)]"
-                  style={{ background: SHAPING_LAYER }}
-                />
-              )}
-            </div>
-          )}
+              ))
+            )}
+          </div>
         </div>
-        {!unshaped && row.order.length > 0 && (
+        {todo.length > 0 && (
           <div data-testid="todo-list" className="mt-2 flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
             to do:
-            {row.order.map((n) => (
-              <b key={n.key} className="font-semibold">
-                #{n.number}
+            {todo.map((b) => (
+              <b key={`${b.repo}#${b.nr}`} className="font-semibold">
+                #{b.nr}
               </b>
             ))}
           </div>
         )}
       </div>
       <div className="text-right">
-        {unshaped ? (
-          <>
-            <b className="text-base text-muted-foreground">—</b>
-            <small className="block text-[11.5px] text-muted-foreground">shape first</small>
-          </>
-        ) : (
-          <>
-            <b className={`text-[22px] font-bold ${provisional ? 'text-muted-foreground' : ''}`}>
-              {Math.round((row.percent ?? 0) * 100)}%
-            </b>
-            <small className="block text-[11.5px] text-muted-foreground">
-              {provisional ? `provisional · ${row.open} to do` : `${row.open} to do`}
-            </small>
-          </>
-        )}
+        <b className={`text-[22px] font-bold ${row.shaping ? 'text-muted-foreground' : ''}`}>
+          {Math.round(row.percent * 100)}%
+        </b>
+        <small className="block text-[11.5px] text-muted-foreground">
+          {row.shaping ? 'voorlopig' : `${row.open} to do`}
+        </small>
       </div>
     </div>
   )

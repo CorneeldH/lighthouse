@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.pack._testkit import GIT_ENV, PACKS, git, init_repo, install_pack, is_known_key
+from tests.pack.python._testkit import GIT_ENV, PACKS, git, init_repo, install_pack, is_known_key
 
 SHELL = PACKS / "shell"
 SKILL_DIR = SHELL / "skills" / "shell-standard"
