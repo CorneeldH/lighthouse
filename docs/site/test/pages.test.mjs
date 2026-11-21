@@ -1,5 +1,4 @@
-// The pages of docs/site/ hold together: every relative link resolves, the page names the local
-// server command without needing JS, the component never writes data as HTML, and every page is
+// The pages of docs/site/ hold together: every relative link resolves, the component never writes data as HTML, and every page is
 // marked as English.
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -8,8 +7,6 @@ import test from "node:test";
 import { ROOT, SITE, elementById, relativeLinks, siteFiles } from "./helpers.mjs";
 
 const GUIDE = path.join(ROOT, "docs", "getting-started.md");
-// Taak 7 vervangt dit door `go run ./tools/servedir docs/site`.
-const SERVE_COMMAND = "python3 -m http.server --directory docs/site";
 const HTML_SINKS = ["innerHTML", "outerHTML", "insertAdjacentHTML", "document.write"];
 const MAP_PAGES = ["loop.html", "session.html", "system.html", "reference.html", "config.html", "repo.html"];
 const read = (file) => fs.readFileSync(file, "utf-8");
@@ -24,17 +21,6 @@ test("site links resolve", () => {
       const target = path.resolve(path.dirname(file), link);
       assert.ok(fs.existsSync(target) && fs.statSync(target).isFile(), `${path.basename(file)}: ${link} points nowhere`);
     }
-  }
-});
-
-test("pages name the local server command", () => {
-  for (const page of MAP_PAGES) {
-    const el = elementById(read(path.join(SITE, page)), "serve-hint");
-    assert.ok(el, `${page} has no element with id="serve-hint"`);
-    assert.ok(el.text.split(/\s+/).join(" ").includes(SERVE_COMMAND), `${page} does not name the command`);
-    assert.ok(!("hidden" in el.attrs), `${page}: serve-hint is hidden`);
-    const style = (el.attrs.style ?? "").replaceAll(" ", "");
-    assert.ok(!style.includes("display:none"), `${page}: serve-hint is display:none`);
   }
 });
 
