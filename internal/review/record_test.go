@@ -2,6 +2,7 @@ package review
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -145,5 +146,64 @@ func TestStartReservesAnAttemptWithTheReviewedCommit(t *testing.T) {
 	var invalid *InvalidError
 	if !errors.As(err, &invalid) || !strings.Contains(err.Error(), "commit first") {
 		t.Errorf("Start on an uncommitted plan: error = %v, want an InvalidError with 'commit first'", err)
+	}
+}
+
+func TestBuildRecordTrajectory(t *testing.T) {
+	repo := t.TempDir()
+	run := func(args ...string) string {
+		out, err := exec.Command("git", append([]string{"-C", repo, "-c", "user.name=t", "-c", "user.email=t@t"}, args...)...).CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	writeFile(t, filepath.Join(repo, "docs", "plan.md"), "# plan\n")
+	skill := filepath.Join(repo, ".claude", "skills", "lighthouse-review-plan")
+	writeFile(t, filepath.Join(skill, "reviewer-prompt.md"), "prompt\n")
+	writeFile(t, filepath.Join(skill, "findings.schema.json"), "{}\n")
+	run("init", "-q")
+	run("add", "-A")
+	run("commit", "-qm", "init")
+	deps := Deps{
+		CodexVersion: func() *string { v := "codex 1"; return &v },
+		Now:          func() time.Time { return time.Date(2026, 11, 8, 12, 30, 45, 0, time.UTC) },
+	}
+	attempt, err := Start(docsDir+"plan.md", repo, t.TempDir(), "plan", deps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(attempt, "round-1.json"), `{"review_markdown":"x","status":"s","findings":[]}`)
+	in := RecordInput{
+		Repo: repo, Outcome: "converged", ReviewMode: "codex", FinalSHA: run("rev-parse", "HEAD"),
+		SkillDir: DefaultSkillDirs["plan"], CodexHome: t.TempDir(),
+	}
+
+	rec, err := BuildRecord(attempt, in, deps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v, ok := rec.Get("trajectory"); !ok || v != nil {
+		t.Errorf("trajectory without input = %v (present %v), want present and nil", v, ok)
+	}
+	if v, _ := rec.Get("schema_version"); fmt.Sprint(v) != "6" {
+		t.Errorf("schema_version = %v, want 6", v)
+	}
+
+	in.Trajectory = &Trajectory{Repo: "CorneeldH/lighthouse", Issue: 376}
+	rec, err = BuildRecord(attempt, in, deps)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v, _ := rec.Get("trajectory")
+	o, ok := v.(*orderedjson.Object)
+	if !ok {
+		t.Fatalf("trajectory = %#v, want an object", v)
+	}
+	if r, _ := o.Get("repo"); r != "CorneeldH/lighthouse" {
+		t.Errorf("trajectory.repo = %v", r)
+	}
+	if n, _ := o.Get("issue"); fmt.Sprint(n) != "376" {
+		t.Errorf("trajectory.issue = %v", n)
 	}
 }

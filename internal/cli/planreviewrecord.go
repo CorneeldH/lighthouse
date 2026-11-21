@@ -12,6 +12,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/config"
 	"github.com/CorneeldH/lighthouse/internal/datadir"
 	"github.com/CorneeldH/lighthouse/internal/review"
+	"github.com/CorneeldH/lighthouse/internal/telemetry"
 )
 
 var (
@@ -315,6 +316,7 @@ func writeRecord(attemptDir, repo, kind string, hasIssue bool, f *recordFlags, d
 		}
 		in.CodexHome = filepath.Join(home, ".codex-specreview")
 	}
+	in.Trajectory = recordTrajectory(repo, hasIssue, f.issue)
 	record, err := review.BuildRecord(attemptDir, in, deps)
 	if err != nil {
 		return "", err
@@ -324,4 +326,26 @@ func writeRecord(attemptDir, repo, kind string, hasIssue bool, f *recordFlags, d
 		return "", err
 	}
 	return review.Write(attemptDir, record, root, f.issueBody)
+}
+
+// recordTrajectory is the repo and issue a record belongs to: the issue is --issue, else the
+// number in the current branch name; the repo is forge.repo. Either one missing, or a
+// lighthouse.toml that does not load, gives nil: the record is the product, never an exit 4.
+func recordTrajectory(repo string, hasIssue bool, issue int) *review.Trajectory {
+	if !hasIssue {
+		branch, err := review.Git(repo, "branch", "--show-current")
+		if err != nil {
+			return nil
+		}
+		n, ok := telemetry.IssueFromBranch(strings.TrimSpace(string(branch)))
+		if !ok {
+			return nil
+		}
+		issue = n
+	}
+	cfg, err := loadRepoAtConfigPath()
+	if err != nil || cfg.Slug == "" {
+		return nil
+	}
+	return &review.Trajectory{Repo: cfg.Slug, Issue: issue}
 }

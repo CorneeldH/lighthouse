@@ -24,7 +24,7 @@ import (
 )
 
 // SchemaVersion is the schema_version of the record that Write stores.
-const SchemaVersion = 5
+const SchemaVersion = 6
 
 // DefaultSkillDirs is the skill directory per kind, relative to the repo root.
 var DefaultSkillDirs = map[string]string{
@@ -645,6 +645,12 @@ type Issue struct {
 	Sum       string // sha256 of the issue body
 }
 
+// Trajectory is the repository and issue that a record belongs to.
+type Trajectory struct {
+	Repo  string
+	Issue int
+}
+
 // RecordInput is what BuildRecord needs besides the attempt directory.
 type RecordInput struct {
 	Repo          string
@@ -658,6 +664,7 @@ type RecordInput struct {
 	CodexHome     string
 	Issue         *Issue
 	ShadowModel   string
+	Trajectory    *Trajectory // nil when repo or issue is unknown
 }
 
 func closes(kind, decision string) bool { return slices.Contains(closedByKind[kind], decision) }
@@ -824,6 +831,14 @@ func BuildRecord(attemptDir string, in RecordInput, deps Deps) (*orderedjson.Obj
 		o.Set("sha256", in.Issue.Sum)
 		o.Set("file", fmt.Sprintf("issue-%d.md", in.Issue.Number))
 		rec.Set("issue_spec", o)
+	}
+	if in.Trajectory == nil {
+		rec.Set("trajectory", nil)
+	} else {
+		o := orderedjson.NewObject()
+		o.Set("repo", in.Trajectory.Repo)
+		o.Set("issue", json.Number(strconv.Itoa(in.Trajectory.Issue)))
+		rec.Set("trajectory", o)
 	}
 	for _, f := range []struct {
 		key, file string
