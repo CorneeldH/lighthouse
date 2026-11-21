@@ -190,6 +190,11 @@ def test_test_gate_uses_selectors():
         ' && python3 pack/python/scripts/gate_python.py -- uv run pytest -q --basetemp="$LIGHTHOUSE_GATE_TMP"'
         " && lighthouse gate node --dir web --also .github/workflows/ci.yml"
         " --also lighthouse.toml --drift gen=src/api -- lint typecheck test"
+        # The site tests run when the commit touches what they read; missing node is exit 3.
+        ' && { [ -n "$LIGHTHOUSE_GATE_FILES" ] && ! grep -qE'
+        " '^(docs/site/|pack/|internal/|cmd/|tools/|\\.github/workflows/build\\.yml)'"
+        ' "$LIGHTHOUSE_GATE_FILES" || { command -v node >/dev/null || exit 3;'
+        ' node --test "docs/site/test/*.test.mjs"; }; }'
     ), result.stdout + result.stderr
 
 
