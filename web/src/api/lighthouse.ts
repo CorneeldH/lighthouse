@@ -108,14 +108,19 @@ export interface RankChange {
      * @nullable
      */
   from: number | null;
-  number: number;
   /** @minimum 1 */
+  number: number;
+  /**
+     * @minimum 1
+     * @maximum 1000000
+     */
   to: number;
 }
 
 export interface RanksRequest {
   /**
      * @minItems 1
+     * @maxItems 200
      * @nullable
      */
   changes: RankChange[] | null;

@@ -69,7 +69,7 @@ func New(site fs.FS, d Deps) http.Handler {
 	registerCleanup(api, d.Leftovers)
 	registerRuns(api, d.Runs, d.RunsMeta)
 	registerPriorities(api, d.Priorities, d.Runs)
-	if d.PriorityForges != nil {
+	if d.PriorityForges != nil && d.PatchPriorities != nil {
 		registerMilestoneRanks(api, d.PriorityForges, d.PatchPriorities)
 	}
 

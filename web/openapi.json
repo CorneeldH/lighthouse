@@ -342,10 +342,12 @@
           },
           "number": {
             "format": "int64",
+            "minimum": 1,
             "type": "integer"
           },
           "to": {
             "format": "int64",
+            "maximum": 1000000,
             "minimum": 1,
             "type": "integer"
           }
@@ -364,6 +366,7 @@
             "items": {
               "$ref": "#/components/schemas/RankChange"
             },
+            "maxItems": 200,
             "minItems": 1,
             "type": [
               "array",

@@ -16,15 +16,15 @@ import (
 
 // RankChange moves one milestone from rank From (nil: it has no rank) to rank To.
 type RankChange struct {
-	Number int  `json:"number"`
+	Number int  `json:"number" minimum:"1"`
 	From   *int `json:"from" minimum:"1" nullable:"true"`
-	To     int  `json:"to" minimum:"1"`
+	To     int  `json:"to" minimum:"1" maximum:"1000000"`
 }
 
 // RanksRequest is the list of rank changes in one repo, as the page computed them.
 type RanksRequest struct {
 	Repo    string       `json:"repo"`
-	Changes []RankChange `json:"changes" minItems:"1"`
+	Changes []RankChange `json:"changes" minItems:"1" maxItems:"200"`
 }
 
 // RanksResult names the milestones written, in the order written; never nil.

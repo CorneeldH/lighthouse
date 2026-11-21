@@ -289,6 +289,28 @@ func TestMilestoneRanksToBelowOne(t *testing.T) {
 	}
 }
 
+func TestMilestoneRanksOutOfBounds(t *testing.T) {
+	many := strings.TrimSuffix(strings.Repeat(`{"number":6,"from":2,"to":1},`, 201), ",")
+	tests := []struct{ name, body string }{
+		{"number zero", `{"repo":"o/r","changes":[{"number":0,"from":2,"to":1}]}`},
+		{"to above the safe range", `{"repo":"o/r","changes":[{"number":6,"from":2,"to":1000001}]}`},
+		{"too many changes", `{"repo":"o/r","changes":[` + many + `]}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := swapFake()
+			h, _ := rankSetup(t, f)
+			rec := postRanks(h, tt.body, okHeaders)
+			if rec.Code != 422 {
+				t.Fatalf("status = %d, want 422, body %s", rec.Code, rec.Body)
+			}
+			if n := f.editCount(); n != 0 {
+				t.Errorf("edits = %d, want 0", n)
+			}
+		})
+	}
+}
+
 func TestMilestoneRanksEmptyChanges(t *testing.T) {
 	f := swapFake()
 	h, _ := rankSetup(t, f)
@@ -343,8 +365,11 @@ func TestMilestoneRanksStale409(t *testing.T) {
 	if got := f.description(6); got != "Priority: 1" {
 		t.Errorf("forge 6 = %q, want %q", got, "Priority: 1")
 	}
-	if cache.builds != 1 {
-		t.Errorf("builds = %d, want 1 (no rebuild)", cache.builds)
+	cache.mu.Lock()
+	builds := cache.builds
+	cache.mu.Unlock()
+	if builds != 1 {
+		t.Errorf("builds = %d, want 1 (no rebuild)", builds)
 	}
 }
 
@@ -391,6 +416,27 @@ func TestMilestoneRanksPartialFailure(t *testing.T) {
 	}
 	if got := cache.cached(t, 4); got != "Priority: 1" {
 		t.Errorf("cache 4 = %q, want the unwritten %q", got, "Priority: 1")
+	}
+	if got := f.description(4); got != "Priority: 1" {
+		t.Errorf("forge 4 = %q, want it unchanged %q", got, "Priority: 1")
+	}
+	if n := f.editCount(); n != 2 {
+		t.Errorf("edits = %d, want 2 (one written, one failed)", n)
+	}
+}
+
+func TestMilestoneRanksNotRegisteredWithoutPatch(t *testing.T) {
+	d := testDeps(populated(), nil)
+	f := swapFake()
+	d.PriorityForges = map[string]forge.Forge{"o/r": f}
+	d.PatchPriorities = nil
+	h := New(testSite(), d)
+	rec := postRanks(h, swapBody, okHeaders)
+	if strings.Contains(rec.Body.String(), "written") {
+		t.Fatalf("endpoint answered: %d %s", rec.Code, rec.Body)
+	}
+	if n := f.editCount(); n != 0 {
+		t.Errorf("edits = %d, want 0", n)
 	}
 }
 
