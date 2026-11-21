@@ -100,14 +100,20 @@ start_build() {
   mkdir -p "$bin" 2>/dev/null || return 0
   # A failed build for this HEAD pauses new builds for 60 seconds.
   if [ -f "$bin/build.failed" ] && [ "$(cat "$bin/build.failed" 2>/dev/null)" = "$head" ] &&
-    ref "$bin/pause.ref" 0:01 &&
-    [ -n "$(find "$bin/build.failed" -newer "$bin/pause.ref" 2>/dev/null)" ]; then
+    ref "$bin/pause.ref.$$" 0:01 &&
+    [ -n "$(find "$bin/build.failed" -newer "$bin/pause.ref.$$" 2>/dev/null)" ]; then
+    rm -f "$bin/pause.ref.$$"
     return 0
   fi
+  rm -f "$bin/pause.ref.$$"
   if ! mkdir "$bin/build.lock" 2>/dev/null; then
     # Someone else builds, unless the lock is older than 120 seconds: then it was abandoned.
-    ref "$bin/lock.ref" 0:02 || return 0
-    [ -n "$(find "$bin/build.lock" -prune ! -newer "$bin/lock.ref" 2>/dev/null)" ] || return 0
+    # The reference file is per process: a shared one is created with the mtime of now before
+    # `touch -t` moves it back, and a concurrent call then sees a fresh lock as abandoned.
+    ref "$bin/lock.ref.$$" 0:02 || { rm -f "$bin/lock.ref.$$"; return 0; }
+    stale=$(find "$bin/build.lock" -prune ! -newer "$bin/lock.ref.$$" 2>/dev/null)
+    rm -f "$bin/lock.ref.$$"
+    [ -n "$stale" ] || return 0
     rm -rf "$bin/build.lock"
     mkdir "$bin/build.lock" 2>/dev/null || return 0
   fi
