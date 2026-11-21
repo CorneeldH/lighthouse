@@ -362,8 +362,11 @@ def test_skill_is_detached_from_the_source_repo(name, variant):
 
 
 @pytest.mark.parametrize("name", NAMES)
-def test_claude_skills_name_the_always_on_host(name):
-    assert "the always-on host (`host.toml`)" in skill(name, "claude")
+def test_claude_skills_record_on_every_machine(name):
+    text = skill(name, "claude")
+    assert "NOT RECORDED" not in text
+    assert "not on the always-on host" not in text
+    assert "only on the always-on host" not in text
 
 
 @pytest.mark.parametrize("variant", BOTH)
