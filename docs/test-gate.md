@@ -38,6 +38,43 @@ ze niet op een host zonder `/proc/meminfo` (macOS): daar blokkeert elke commit m
    (`[test_gate] deadline_seconds`) waar ook de slotwacht al van afging.
 3. Daarna start de run.
 
+## De importcheck
+
+Vóór het testcommando draait de gate `lighthouse imports check --files …` op de bestanden van de
+commit, in elke root met geïnstalleerde packs (een root zonder `.lighthouse/manifest.toml` slaat
+hij over). Deze stap hangt niet af van `[test_gate] command`: ook met `command = ""` draait hij,
+en de melding `no test command configured, nothing was tested` blijft er naast staan. Uit gaat hij
+alleen met `[imports] check = false`. De gate draait de binary waarmee hij zelf draait
+(`os.Executable()`), niet `lighthouse` van de `PATH`.
+
+- Een bevinding (`<bestand>:<regel>: <ID> <import> — <reden>`) blokkeert met
+  `imports not declared in a manifest`, een andere melding dan `tests failed`.
+- Kan de check niet draaien (exit 3, exit 1 zonder bevindingsregel, een binary zonder `imports`),
+  dan blokkeert de gate met `COULD NOT CHECK`.
+- Bestanden zijn bij `pre` de gestagede (`git diff --cached`), bij `post` die van de commit.
+  Verwijderingen tellen niet mee; een lege lijst slaat de stap over.
+
+**De hooks.** Dezelfde check draait ook aan het einde van een sessie: `go-imports-gate`,
+`python-imports-gate` en `node-imports-gate` (Stop-hooks van de packs `go`, `python` en `node`)
+roepen `lighthouse imports check` aan op wat de sessie wijzigde. Ze blokkeren op een bevinding en
+melden `COULD NOT CHECK` als de check niet kan draaien; tijdens een usage-alarm zwijgen ze zoals
+`go-lint-gate` (zie [usage-gate](usage-gate.md)). Ook `[imports] check = false` zet ze uit.
+
+**De checkers en hun pins.** Go gebruikt `go mod tidy -diff` (geen extra tool); node gebruikt
+knip via `npx` en python deptry via `uv`. De versies staan op één plek, in
+[`internal/importcheck/pins.go`](../internal/importcheck/pins.go): deptry (licentie MIT) en knip
+(licentie ISC). Een nieuwe versie kies je daar, met een licentiecontrole in de commentaarregel.
+
+**`COULD NOT CHECK`.** Het betekent dat er niets gecontroleerd is, niet dat de check schoon was:
+de tool ontbreekt (`go`, `uv`, `npx`), het netwerk is weg bij de eerste download, of een node-root
+heeft geen `node_modules`. Installeer wat ontbreekt en draai de check opnieuw. Knip vindt in een
+Expo-project zonder `main` of entry niets; zet daar een entry, anders is een schone uitkomst leeg.
+
+**Bekende beperking.** Draait `git commit -a` of `git add -A && git commit` in één Bash-aanroep,
+dan is er bij `pre` nog niets gestaged: de lijst is leeg en de stap meldt
+`commit-test-gate: imports not checked: nothing staged yet`. Er is geen workaround; stage vóór
+de commit in een aparte aanroep om de check te krijgen.
+
 ## Meldingen
 
 - `COULD NOT CHECK — host memory below threshold after <n> s (MemAvailable 0.7 GiB < 4 GiB; SwapFree 0.5 GiB < 2 GiB)`:

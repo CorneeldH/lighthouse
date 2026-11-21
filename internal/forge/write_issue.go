@@ -51,9 +51,54 @@ type Change struct {
 	Milestone                *Milestone // nil: none
 	URL                      string
 	CreatedAt                time.Time
+	MergedAt                 time.Time // zero while not merged
 	Author, HeadRef, BaseRef string
 	Draft                    bool
 	Mergeable                string
+}
+
+// IssueChange is a pull or merge request around an issue: one that closes it (Closes) or one
+// that mentions it. State is OPEN, CLOSED or MERGED. CrossRepo is true when its head lives in
+// another repository (a fork); Repo is the repository the pull or merge request lives in.
+type IssueChange struct {
+	Number    int
+	State     string
+	HeadRef   string
+	CrossRepo bool
+	Repo      string
+	Body      string
+	Closes    bool
+}
+
+// issueChanges joins the pull or merge requests that close an issue and those that mention it:
+// each once, by repository and number, the closing ones first with Closes set.
+func issueChanges(closing, mentioning []IssueChange) []IssueChange {
+	out := []IssueChange{}
+	seen := map[string]bool{}
+	for i, cs := range [][]IssueChange{closing, mentioning} {
+		for _, c := range cs {
+			key := fmt.Sprintf("%s#%d", strings.ToLower(c.Repo), c.Number)
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			c.Closes = i == 0
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// changeState checks the state a ListChanges caller asks for: open, merged, closed (closed
+// without a merge) or all; "" is open.
+func changeState(state string) (string, error) {
+	switch state {
+	case "":
+		return "open", nil
+	case "open", "merged", "closed", "all":
+		return state, nil
+	}
+	return "", fmt.Errorf("forge: change state %q is not open, merged, closed or all", state)
 }
 
 // APIRequest is a raw call to the forge API. Path is relative to the API root; on GitHub
@@ -97,14 +142,24 @@ func (e *GroupMilestone) Error() string {
 
 // ghMilestone is a milestone in GitHub's REST shape.
 type ghMilestone struct {
-	Number      int    `json:"number"`
-	Title       string `json:"title"`
-	State       string `json:"state"`
-	Description string `json:"description"`
+	Number       int    `json:"number"`
+	Title        string `json:"title"`
+	State        string `json:"state"`
+	Description  string `json:"description"`
+	OpenIssues   int    `json:"open_issues"`
+	ClosedIssues int    `json:"closed_issues"`
 }
 
 func (m ghMilestone) milestone() Milestone {
 	return Milestone(m)
+}
+
+// milestoneState checks the state of an EditMilestone: nil, open or closed.
+func milestoneState(state *string) error {
+	if state != nil && *state != "open" && *state != "closed" {
+		return fmt.Errorf("forge: milestone state %q is not open or closed", *state)
+	}
+	return nil
 }
 
 // resolveMilestone turns a milestone title into its number, over open and closed milestones.
@@ -186,12 +241,26 @@ func (c *GitHub) EditIssue(ctx context.Context, number int, e IssueEdit) (Issue,
 			return Issue{}, err
 		}
 	}
+	// A 404 on removing a label means it is already off, but only when the read below agrees: a
+	// label still on the issue is an error. An issue that does not exist fails on that read.
 	for _, l := range e.RemoveLabels {
-		if _, err := c.do(ctx, http.MethodDelete, base+"/labels/"+neturl.PathEscape(l), nil, nil); err != nil {
+		_, err := c.do(ctx, http.MethodDelete, base+"/labels/"+neturl.PathEscape(l), nil, nil)
+		var se *httpStatusError
+		if err != nil && (!errors.As(err, &se) || se.Code != http.StatusNotFound) {
 			return Issue{}, err
 		}
 	}
-	return c.Issue(ctx, number)
+	it, err := c.Issue(ctx, number)
+	if err != nil {
+		return Issue{}, err
+	}
+	for _, l := range e.RemoveLabels {
+		// GitHub compares label names without regard to case.
+		if slices.ContainsFunc(it.Labels, func(have string) bool { return strings.EqualFold(have, l) }) {
+			return Issue{}, fmt.Errorf("forge: label %q is still on #%d after removing it", l, number)
+		}
+	}
+	return it, nil
 }
 
 // ListIssues lists the issues that match the filter, following every page, without pull requests.
@@ -300,6 +369,7 @@ func (p ghPull) change() Change {
 	}
 	if p.MergedAt != nil {
 		out.State = "merged"
+		out.MergedAt = *p.MergedAt
 	}
 	if p.User != nil {
 		out.Author = p.User.Login
@@ -363,6 +433,40 @@ func (c *GitHub) Change(ctx context.Context, number int) (Change, error) {
 	return p.change(), nil
 }
 
+// ListChanges lists the pull requests in state open, merged, closed (closed without a merge) or
+// all; "" is open. The pulls list has no merged state, so merged and closed read the closed pulls
+// and keep those with, or without, a merged_at. Every page is followed; a failing page is an error.
+func (c *GitHub) ListChanges(ctx context.Context, state string) ([]Change, error) {
+	if err := c.configured(); err != nil {
+		return nil, err
+	}
+	want, err := changeState(state)
+	if err != nil {
+		return nil, err
+	}
+	api := want
+	if want == "merged" {
+		api = "closed"
+	}
+	var out []Change
+	url := c.repoURL("/pulls?state=" + api + "&per_page=100")
+	for url != "" {
+		var page []ghPull
+		next, err := c.do(ctx, http.MethodGet, url, nil, &page)
+		if err != nil {
+			return nil, err
+		}
+		for _, p := range page {
+			// open and all are filtered by the server; closed pulls split on whether they merged.
+			if ch := p.change(); want == "all" || want == "open" || (want == "merged") == !ch.MergedAt.IsZero() {
+				out = append(out, ch)
+			}
+		}
+		url = next
+	}
+	return out, nil
+}
+
 // ChangeComments lists the comments of a pull request; GitHub keeps those as issue comments.
 func (c *GitHub) ChangeComments(ctx context.Context, number int) ([]protocol.Comment, error) {
 	return c.Comments(ctx, number)
@@ -422,9 +526,13 @@ func (c *GitHub) CreateMilestone(ctx context.Context, title, description string)
 	return m.milestone(), nil
 }
 
-// EditMilestone changes the title and/or description; a nil one stays as it is.
-func (c *GitHub) EditMilestone(ctx context.Context, number int, title, description *string) (Milestone, error) {
+// EditMilestone changes the title, description and/or state (open or closed); a nil one stays
+// as it is.
+func (c *GitHub) EditMilestone(ctx context.Context, number int, title, description, state *string) (Milestone, error) {
 	if err := c.configured(); err != nil {
+		return Milestone{}, err
+	}
+	if err := milestoneState(state); err != nil {
 		return Milestone{}, err
 	}
 	patch := map[string]any{}
@@ -433,6 +541,9 @@ func (c *GitHub) EditMilestone(ctx context.Context, number int, title, descripti
 	}
 	if description != nil {
 		patch["description"] = *description
+	}
+	if state != nil {
+		patch["state"] = *state
 	}
 	var m ghMilestone
 	if _, err := c.do(ctx, http.MethodPatch, c.repoURL("/milestones/"+strconv.Itoa(number)), patch, &m); err != nil {

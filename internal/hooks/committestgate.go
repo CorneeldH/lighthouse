@@ -21,18 +21,18 @@ const gateUnknownMode = commitgate.HookName + ": COULD NOT CHECK — unknown mod
 // lighthouse root, used when LIGHTHOUSE_REPO_ROOT is not set.
 func CommitTestGate(ctx context.Context, root, stand string, p hook.Payload) hook.Result {
 	if stand != "pre" && stand != "post" {
-		return blocked(gateUnknownMode)
+		return hook.CouldNotCheck(gateUnknownMode)
 	}
 	bash, missing := gateTooling()
 	if missing != "" {
-		return blocked(commitgate.HookName + ": COULD NOT CHECK — missing tooling:" + missing + "\n" +
+		return hook.CouldNotCheck(commitgate.HookName + ": COULD NOT CHECK — missing tooling:" + missing + "\n" +
 			"\n" +
 			"This hook runs the test command of every commit.\n" +
 			"Without that tooling nothing was tested; that is not a green light.\n")
 	}
 	command, cwd, ok := commitgate.ReadPayload(p.Raw)
 	if !ok {
-		return blocked(commitgate.InvalidPayload)
+		return hook.CouldNotCheck(commitgate.InvalidPayload)
 	}
 	if command == "" {
 		return hook.Result{}

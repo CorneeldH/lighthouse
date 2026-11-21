@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/CorneeldH/lighthouse/internal/hook"
@@ -14,6 +15,8 @@ import (
 )
 
 func init() { hook.Register("md-link-check", mdLinkCheck) }
+
+var mdLinkReasons = hook.Declare("md-link-check", "dead", "absolute")
 
 var problemReasons = map[string]string{
 	"dead":     "does not exist, resolved against the directory of the file",
@@ -29,7 +32,7 @@ func cannotCheck(prefix, reason, detail string) hook.Result {
 	if detail != "" {
 		s += "\n" + detail + "\n"
 	}
-	return hook.Result{Code: 2, Stderr: s}
+	return hook.CouldNotCheck(s)
 }
 
 // mdLinkCheck blocks (code 2) a written markdown file with a relative link that points nowhere or
@@ -107,15 +110,21 @@ func mdLinkCheck(_ context.Context, _ string, _ string, p hook.Payload) hook.Res
 	}
 	var b strings.Builder
 	b.WriteString(trace + "Linkcheck: markdown link(s) that are not relative-and-existing.\n\n")
+	var used []hook.Reason
 	for _, pr := range problems {
 		reason, ok := problemReasons[pr.Kind]
 		if !ok {
 			reason = "unknown kind of problem"
 		}
-		b.WriteString("  " + pr.Target + " — " + reason + "\n")
+		tag := ""
+		if i := slices.IndexFunc(mdLinkReasons, func(r hook.Reason) bool { return r.ID == pr.Kind }); i >= 0 {
+			used = append(used, mdLinkReasons[i])
+			tag = mdLinkReasons[i].Tag() + " "
+		}
+		b.WriteString("  " + tag + pr.Target + " — " + reason + "\n")
 	}
 	b.WriteString("In: " + abs + "\n")
-	return hook.Result{Code: 2, Stderr: b.String()}
+	return hook.BlockTagged(b.String(), used...)
 }
 
 // linkTarget reads .tool_input.file_path and .cwd from the payload, as `jq -r '... // empty'`

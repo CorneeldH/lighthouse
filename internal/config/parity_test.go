@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -20,8 +21,8 @@ type expectation struct {
 	StderrPrefix *string  `json:"stderr_prefix"`
 }
 
-// TestParityWithConfigPy runs the fixtures that tests/pack/test_config_fixtures.py runs
-// against config.py. It fails when the Go port prints, exits or words an error differently.
+// TestParityWithConfigPy runs the shared fixtures under tests/pack/fixtures/config
+// against the reader. It fails when the Go port prints, exits or words an error differently.
 func TestParityWithConfigPy(t *testing.T) {
 	entries, err := os.ReadDir(fixtureDir)
 	if err != nil {
@@ -77,6 +78,65 @@ func TestParityWithConfigPy(t *testing.T) {
 	}
 	if cases < 100 {
 		t.Fatalf("only %d fixture cases under %s", cases, fixtureDir)
+	}
+}
+
+// TestFixturesCoverEveryKey fails when a key the reader knows (schema, defaults, base and host
+// keys) is asked for by no fixture, or no fixture asks for a key under an option prefix.
+func TestFixturesCoverEveryKey(t *testing.T) {
+	entries, err := os.ReadDir(fixtureDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	covered := map[string]bool{}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		raw, err := os.ReadFile(filepath.Join(fixtureDir, entry.Name(), "expect.json"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var expects []expectation
+		if err := json.Unmarshal(raw, &expects); err != nil {
+			t.Fatalf("%s: %v", entry.Name(), err)
+		}
+		for _, e := range expects {
+			if len(e.Args) > 0 {
+				covered[e.Args[0]] = true
+			}
+		}
+	}
+	known := map[string]bool{}
+	for _, s := range schema {
+		known[s.key] = true
+	}
+	for key := range defaults {
+		known[key] = true
+	}
+	for _, key := range append(append([]string{}, baseKeys...), hostKeys...) {
+		known[key] = true
+	}
+	var missing []string
+	for key := range known {
+		if !covered[key] {
+			missing = append(missing, key)
+		}
+	}
+	sort.Strings(missing)
+	if len(missing) > 0 {
+		t.Errorf("no fixture under %s asks for %q", fixtureDir, missing)
+	}
+	for _, prefix := range optionPrefixes {
+		found := false
+		for key := range covered {
+			if strings.HasPrefix(key, prefix) {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("no fixture asks for a key under %q", prefix)
+		}
 	}
 }
 

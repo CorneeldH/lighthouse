@@ -452,3 +452,152 @@ func TestUnblockGetLighthouseRefusesDevWithoutASource(t *testing.T) {
 		t.Error("bin/lighthouse exists")
 	}
 }
+
+// tokenName is one run of the `Token name` step.
+type tokenName struct {
+	code      int
+	stdout    string
+	stderr    string
+	githubEnv string
+}
+
+// runTokenName runs the `Token name` step with `bash -e`, as the runner does, with GH_TOKEN set
+// to the App token. lighthouse is a fake with body fakeBody; an empty fakeBody leaves it out of
+// PATH. The rest of PATH is only the real tools the step needs.
+func runTokenName(t *testing.T, fakeBody string) tokenName {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("the step is a bash script")
+	}
+	bash := needTool(t, "bash")
+	tmp := t.TempDir()
+	bin := filepath.Join(tmp, "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, tool := range []string{"mktemp", "grep", "cat"} {
+		if err := os.Symlink(needTool(t, tool), filepath.Join(bin, tool)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	fakes := filepath.Join(tmp, "fakes")
+	if err := os.MkdirAll(fakes, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if fakeBody != "" {
+		path := filepath.Join(fakes, "lighthouse")
+		writeFile(t, path, "#!"+bash+"\n"+fakeBody)
+		if err := os.Chmod(path, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	githubEnv := filepath.Join(tmp, "github_env")
+	c := exec.Command(bash, "-e", "-c", unblockStepNamed(t, "Token name").Run)
+	c.Dir = tmp
+	c.Env = []string{
+		"PATH=" + fakes + string(os.PathListSeparator) + bin,
+		"HOME=" + tmp,
+		"TMPDIR=" + tmp,
+		"GITHUB_ENV=" + githubEnv,
+		"GH_TOKEN=app-token",
+	}
+	var stdout, stderr strings.Builder
+	c.Stdout, c.Stderr = &stdout, &stderr
+	err := c.Run()
+	code := 0
+	if exitErr := (*exec.ExitError)(nil); errors.As(err, &exitErr) {
+		code = exitErr.ExitCode()
+	} else if err != nil {
+		t.Fatal(err)
+	}
+	env, err := os.ReadFile(githubEnv)
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	return tokenName{code, stdout.String(), stderr.String(), string(env)}
+}
+
+// Classification: fails when the step stops exporting the App token under the name
+// `forge.token_env` gives, or stops asking for exactly that key.
+func TestUnblockTokenNameExportsUnderTheConfiguredName(t *testing.T) {
+	got := runTokenName(t, "[ \"$1 $2\" = \"config forge.token_env\" ] || exit 2\necho FORGEJO_TOKEN\n")
+	if got.code != 0 {
+		t.Fatalf("exit %d, stderr %s", got.code, got.stderr)
+	}
+	if got.githubEnv != "FORGEJO_TOKEN=app-token\n" {
+		t.Errorf("GITHUB_ENV = %q", got.githubEnv)
+	}
+}
+
+// Classification: fails when an unset `forge.token_env` (rc 1, "is not set") starts failing the
+// step or exporting a name.
+func TestUnblockTokenNameUnsetExportsNothing(t *testing.T) {
+	got := runTokenName(t, "echo \"config: $2 is not set\" >&2\nexit 1\n")
+	if got.code != 0 {
+		t.Fatalf("exit %d, stderr %s", got.code, got.stderr)
+	}
+	if got.githubEnv != "" {
+		t.Errorf("GITHUB_ENV = %q, want empty", got.githubEnv)
+	}
+}
+
+// Classification: fails when a failing `lighthouse config` other than "is not set" (an old binary
+// with rc 1, any rc 2) is ignored instead of stopping the step with its stderr shown.
+func TestUnblockTokenNameConfigFailureStopsTheStep(t *testing.T) {
+	for _, c := range []struct{ name, body, shown string }{
+		{"old binary", "echo \"unknown command\" >&2\nexit 1\n", "unknown command"},
+		{"rc 2", "echo boom >&2\nexit 2\n", "boom"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			got := runTokenName(t, c.body)
+			if got.code != 1 {
+				t.Errorf("exit %d, want 1", got.code)
+			}
+			wantAll(t, got.stderr, c.shown)
+			if got.githubEnv != "" {
+				t.Errorf("GITHUB_ENV = %q, want empty", got.githubEnv)
+			}
+		})
+	}
+}
+
+// Classification: fails when a missing lighthouse binary lets the step pass.
+func TestUnblockTokenNameMissingBinaryStopsTheStep(t *testing.T) {
+	got := runTokenName(t, "")
+	if got.code == 0 {
+		t.Error("exit 0 without a lighthouse binary")
+	}
+	if got.githubEnv != "" {
+		t.Errorf("GITHUB_ENV = %q, want empty", got.githubEnv)
+	}
+}
+
+// Classification: fails when a value that is no environment variable name (a space, a second
+// line) reaches GITHUB_ENV instead of stopping the step.
+func TestUnblockTokenNameInvalidNameStopsTheStep(t *testing.T) {
+	got := runTokenName(t, "printf 'BAD NAME\\nX=1\\n'\n")
+	if got.code != 1 {
+		t.Errorf("exit %d, want 1", got.code)
+	}
+	wantAll(t, got.stdout, "not a valid environment variable name")
+	if got.githubEnv != "" {
+		t.Errorf("GITHUB_ENV = %q, want empty", got.githubEnv)
+	}
+}
+
+// Classification: fails when `Token name` stops running after the binary and the App token and
+// before the release, stops reading the App token, or the release loses GH_REPO.
+func TestUnblockTokenNameRunsAfterTheBinaryAndBeforeTheRelease(t *testing.T) {
+	var names []string
+	for _, s := range unblockSteps(t) {
+		names = append(names, s.Name)
+	}
+	wantOrder(t, strings.Join(names, "\n"),
+		"Get lighthouse", "App token for labels and comments", "Token name", "Release dependents")
+	if got := unblockStepNamed(t, "Token name").Env["GH_TOKEN"]; got != "${{ steps.app-token.outputs.token }}" {
+		t.Errorf("Token name GH_TOKEN %q", got)
+	}
+	if got := unblockStepNamed(t, "Release dependents").Env["GH_REPO"]; got != "${{ github.repository }}" {
+		t.Errorf("Release dependents GH_REPO %q", got)
+	}
+}

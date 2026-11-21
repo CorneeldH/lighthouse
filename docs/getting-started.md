@@ -20,10 +20,11 @@ commit, PR bodies with evidence and, with `codex`, adversarial reviews.
 | `gh` | core, python | reading and writing issues and PRs in the skills that do not yet use `lighthouse forge` | Those skills cannot reach GitHub. `pr-create-gate` passes without counting the acceptance criteria, and says so. The chain skills `start-issue`, `route-issue`, `write-issue` and `write-pr` go through `lighthouse forge` and need `gh` only for the fallback `gh auth token`. |
 | `superpowers` (Claude Code plugin) | core, expo | the steps the skills hand off: worktrees, brainstorming, plans, debugging | The skills cannot hand off; `/lighthouse-start-issue` loses its worktree, spec and plan steps. |
 | `codex` (optional) | core | adversarial reviews by another model family; `lighthouse usage codex` | `/lighthouse-review-spec` and `/lighthouse-review-plan` stop with `CODEX_MISSING`. |
-| `uv` | python | `ruff-format-check`, `ty-gate`, the test gate `uv run pytest -q` | `ty-gate` reports `COULD NOT CHECK`; `ruff-format-check` falls back to `ruff` on the `PATH`, else blocks with `COULD NOT CHECK`. The test gate `uv run pytest -q` cannot start: `commit-test-gate` reports `COULD NOT CHECK` and blocks the commit. |
-| `go` | go | `go-lint-gate` | `go-lint-gate` reports `COULD NOT CHECK` at Stop; nothing was linted. |
+| `uv` | python | `ruff-format-check`, `ty-gate`, `python-imports-gate` (deptry), the test gate `uv run pytest -q` | `ty-gate` and `python-imports-gate` report `COULD NOT CHECK`; `ruff-format-check` falls back to `ruff` on the `PATH`, else blocks with `COULD NOT CHECK`. The test gate `uv run pytest -q` cannot start: `commit-test-gate` reports `COULD NOT CHECK` and blocks the commit. |
+| `go` | go | `go-lint-gate`, `go-imports-gate` (`go mod tidy -diff`) | `go-lint-gate` and `go-imports-gate` report `COULD NOT CHECK` at Stop; nothing was checked. |
 | `gofmt` | go | `gofmt-check` after every edit | `gofmt-check` blocks with `COULD NOT CHECK`. |
 | `golangci-lint` | go | `go-lint-gate` | `go-lint-gate` reports `COULD NOT CHECK` at Stop; nothing was linted. |
+| `npx` | node | `node-imports-gate` (knip) | `node-imports-gate` reports `COULD NOT CHECK` at Stop; nothing was checked. |
 | `node` | node | the test gate `lighthouse gate node` | `lighthouse gate node` reports `COULD NOT CHECK` (exit 3); with 3 in `unchecked_exit_codes` the gate reports the commit as not tested. |
 | `npm` | node | the web checks of `lighthouse gate node` (`npm run …`) | As for `node`. |
 | `curl` | shell | the first download of the pinned `shellcheck`, verified with sha256sum or shasum | No download. Without a `shellcheck` on your `PATH`, the `shell-lint-check` hook blocks with `COULD NOT CHECK` on every shell script you edit. |
@@ -158,7 +159,7 @@ machine. An older reader ignores `controller` and falls back to `tailscale_ip`.
 
 `init` proposes `[project] language`, and `[forge]` from your `origin` remote when it is on
 GitHub or GitLab. Only the `python` package proposes a test gate. Until you set `[test_gate] command`,
-`commit-test-gate` passes every commit with `no test command configured, nothing was tested`.
+`commit-test-gate` passes every commit with `no test command configured, nothing was tested`. The gate also runs `lighthouse imports check` on the files of the commit, with or without a test command; see [the test gate](test-gate.md#de-importcheck).
 Every key and what reads it is on [the configuration map](site/config.html) (also online:
 [The configuration](https://corneeldh.github.io/lighthouse/config.html)).
 Check the file, and set your test gate:

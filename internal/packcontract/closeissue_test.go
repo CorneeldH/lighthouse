@@ -26,16 +26,54 @@ func closeIssueB2a(t *testing.T, body string) string {
 	return section(t, body, "### B2a.", "\n### ")
 }
 
-// Classification: fails when step 6 stops reading the waiting issues from the blocking list, or
-// the fallback stops removing the blocked-issue label named through its config key.
+// Classification: fails when step 6 stops reading the waiting issues, the close moment, the
+// reply comments or the labels through `lighthouse forge`, or stops naming the blocked-issue
+// label through its config key.
 func TestCloseIssueReportsReleasedIssues(t *testing.T) {
 	for variant, body := range variants(t, closeIssue) {
 		t.Run(variant, func(t *testing.T) {
 			s := section(t, body, "### 6. Released issues", "## Clean up the worktree")
 			wantAll(t, s,
-				`gh api "repos/$R/issues/<nr>/dependencies/blocking"`,
-				`gh issue edit <m> --repo "$R" --remove-label <labels.blocked_issue>`)
+				"lighthouse forge issue blocking <nr>",
+				"lighthouse forge issue view <nr> --field closed_at",
+				"lighthouse forge issue view <nr> --comments",
+				"lighthouse forge issue view <m> --field labels")
 			wantAll(t, flat(s), "loses the label `labels.blocked_issue` (`lighthouse config labels.blocked_issue`)")
+		})
+	}
+}
+
+// Classification: fails when, without a lane, the session stops running `unblock-dependents`
+// itself, stops reporting its summary literally, says "none" on exit 1, releases after a
+// reopening, or a session starts removing the blocked-issue label by hand.
+func TestCloseIssueWithoutALaneTheSessionReleases(t *testing.T) {
+	cliFlags(t, []string{"unblock-dependents"}, "issue")
+	for variant, body := range variants(t, closeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			s := section(t, body, "### 6. Released issues", "## Clean up the worktree")
+			wantAll(t, s, "lighthouse unblock-dependents --issue <nr>; echo \"exit=$?\"")
+			wantAll(t, flat(s),
+				"Then report its summary literally",
+				"Exit 1: report `released issues not read` with the command, never \"none\".",
+				"not after a reopening")
+			wantNone(t, body, "--remove-label")
+		})
+	}
+}
+
+// Classification: fails when a branch in which the issue is and stays closed (C1 without a
+// closing PR, C3 exit 0, 4 and COULD NOT CHECK, B7) stops running step 6, or a reopening starts
+// running it.
+func TestCloseIssueWithoutALaneEveryBranchThatStaysClosedReleases(t *testing.T) {
+	for variant, body := range variants(t, closeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			wantAll(t, section(t, body, "### C1", "### C2"), "step 6")
+			c3 := section(t, body, "### C3", "\n## ")
+			wantAll(t, lineStarting(t, c3, "| `0` |"), "step 6")
+			wantAll(t, lineStarting(t, c3, "| `4` |"), "step 6")
+			wantAll(t, section(t, c3, "**Exit `3`", "\nEntry C closes nothing"), "step 6")
+			wantNone(t, section(t, c3, "**Exit `1` or `2`", "**Exit `3`"), "step 6")
+			wantAll(t, closeIssueSection(t, body, "### B7."), "steps 4–6 of entry A")
 		})
 	}
 }
@@ -70,9 +108,10 @@ func TestCloseIssueBotFromConfig(t *testing.T) {
 	for variant, body := range variants(t, closeIssue) {
 		t.Run(variant, func(t *testing.T) {
 			s := flat(closeIssueSection(t, body, "### 6. Released issues"))
-			wantAll(t, s, "as the bot from `[ci]` (`lighthouse config ci.bot_login`)",
-				"If `ci.bot_login` gives rc 1 or the workflow file is missing",
-				"report `unblock lane: skipped — no bot in [ci]`")
+			wantAll(t, s,
+				"The lane is there when `lighthouse config ci.bot_login` gives rc 0 **and** the workflow exists",
+				"Report `unblock lane: skipped — no bot in [ci]`",
+				"The lane releases, as the bot from `[ci]`, at every close as `completed`.")
 		})
 	}
 }
@@ -91,15 +130,16 @@ func TestCloseIssueStepZeroWaitsForMerge(t *testing.T) {
 }
 
 // Classification: fails when the second query of step 0 stops listing every open PR by head
-// branch, or the gh calls stop running outside the sandbox.
+// branch through `lighthouse forge pr list`, or the forge calls stop running outside the sandbox.
 func TestCloseIssueStepZeroStopsOnAnOpenRefsPR(t *testing.T) {
 	for variant, body := range variants(t, closeIssue) {
 		t.Run(variant, func(t *testing.T) {
 			s0 := closeIssueSection(t, body, "## Step 0")
 			wantAll(t, s0,
-				`gh pr list --repo "$R" --state open --limit 9999 --json number,headRefName,body`,
-				`select((.headRefName | startswith("issue-<nr>-")) or`)
-			wantAll(t, flat(s0), "Both `gh` calls run outside the sandbox (`dangerouslyDisableSandbox: true`).")
+				"lighthouse forge issue changes <nr>",
+				"lighthouse forge pr list --state open |",
+				`select((.head_ref | startswith("issue-<nr>-")) or`)
+			wantAll(t, flat(s0), "Both calls run outside the sandbox (`dangerouslyDisableSandbox: true`)")
 		})
 	}
 }
@@ -111,9 +151,9 @@ func TestCloseIssueStepZeroStopIsScopedToAnOpenIssue(t *testing.T) {
 		t.Run(variant, func(t *testing.T) {
 			s0 := closeIssueSection(t, body, "## Step 0")
 			wantAll(t, s0,
-				"| issue `state` `OPEN` and (a node with `state` `OPEN` **or** a number from the second query) |",
-				"| issue `state` `CLOSED` | **entry C** |",
-				"| otherwise (issue `OPEN`, no open `Closes` PR and no open PR from the second query) | entry A or B |")
+				"| issue `state` `open` and (a change with `closes` `true` and `state` `open` **or** a number from the second query) |",
+				"| issue `state` `closed` | **entry C** |",
+				"| otherwise (issue `open`, no open `Closes` PR and no open PR from the second query) | entry A or B |")
 		})
 	}
 }
@@ -126,14 +166,13 @@ func TestCloseIssueEntryBRunsTheEvidenceOfMergedRefsPRs(t *testing.T) {
 	for variant, body := range variants(t, closeIssue) {
 		t.Run(variant, func(t *testing.T) {
 			b2a := closeIssueB2a(t, body)
-			wantOrder(t, b2a, "R=$(lighthouse config forge.repo) || exit 2", `gh pr list --repo "$R" --state merged`)
 			if n := strings.Count(b2a, "mktemp -d"); n != 1 {
 				t.Errorf("B2a makes %d scratch directories, want 1", n)
 			}
 			wantAll(t, b2a,
-				`gh pr list --repo "$R" --state merged --limit 9999 --json number,headRefName,body,mergedAt`,
-				`select((.headRefName | startswith("issue-<nr>-")) or`,
-				`select($b | test("(?m)^### Evidence #<nr>[ \t\r]*$"))] | sort_by(.mergedAt) | reverse`,
+				"lighthouse forge pr list --state merged |",
+				`select((.head_ref | startswith("issue-<nr>-")) or`,
+				`select($b | test("(?m)^### Evidence #<nr>[ \t\r]*$"))] | sort_by(.merged_at) | reverse`,
 				"B=$(lighthouse config forge.default_branch) &&",
 				`git worktree add --detach "<scratch>/after-merge-<nr>" "origin/$B" &&`,
 				`{ lighthouse evidence run --issue <nr> --body-file "<scratch>/evidence.md" --cwd "<scratch>/after-merge-<nr>"`,
@@ -162,7 +201,7 @@ func TestCloseIssueB2aBodyFetchRunsOutsideTheSandbox(t *testing.T) {
 	for variant, body := range variants(t, closeIssue) {
 		t.Run(variant, func(t *testing.T) {
 			wantAll(t, flat(closeIssueB2a(t, body)),
-				"Per PR fetch the body, outside the sandbox (`dangerouslyDisableSandbox: true`): `gh pr view <pr> --json body --jq .body > <scratch>/body-<pr>.md`")
+				"Per PR fetch the body, outside the sandbox (`dangerouslyDisableSandbox: true`): `lighthouse forge pr view <pr> --field body > <scratch>/body-<pr>.md`")
 		})
 	}
 }
@@ -209,12 +248,14 @@ func TestCloseIssueEntryCReopensFailClosed(t *testing.T) {
 		t.Run(variant, func(t *testing.T) {
 			c := closeIssueSection(t, body, "## Entry C")
 			wantAll(t, c, "**Exit `1` or `2` with recognised output — reopen, fail-closed.** First the issue, then the board:")
-			wantOrder(t, c, `gh issue reopen <nr> --repo "$R"`, "lighthouse board-start --reopen <nr>")
+			wantOrder(t, c, "lighthouse forge issue reopen <nr> --body-file <scratch>/run.txt", "lighthouse board-start --reopen <nr>")
+			wantAll(t, c,
+				`lighthouse forge issue status <nr> "In progress"`,
+				`printf 'after-merge check: %s\n' "$(lighthouse headings evidence_holds)" > <scratch>/comment.md`)
 			wantAll(t, flat(c),
 				"report loudly `issue reopened, board not updated` with the hand command",
 				"At `2` the comment (`run.txt`) starts with `heading:evidence_closes_without_block`",
-				"at `heading:evidence_invalid` rows the table says `Evidence outside the allowlist`",
-				`--body "after-merge check: $(lighthouse headings evidence_holds)"`)
+				"at `heading:evidence_invalid` rows the table says `Evidence outside the allowlist`")
 		})
 	}
 }
@@ -247,7 +288,7 @@ func TestCloseIssueEntryCReportsAnUnmeasurableRunLoudly(t *testing.T) {
 		t.Run(variant, func(t *testing.T) {
 			wantAll(t, flat(closeIssueSection(t, body, "## Entry C")),
 				"**Exit `3`, an unknown exit code, an unrecognised output or no `rc=` line.** Not measurable is no passed check and no proved failure.",
-				"**no** `gh issue reopen`, no board mutation, and report loudly to the user `COULD NOT CHECK` with the full content of `run.txt` and `run.err`.")
+				"**no** reopen, no board mutation, and report loudly to the user `COULD NOT CHECK` with the full content of `run.txt` and `run.err`.")
 		})
 	}
 }
@@ -269,7 +310,7 @@ func TestCloseIssueEntryCDoesNotPasteRunnerOutputInAQuotedLine(t *testing.T) {
 	for variant, body := range variants(t, closeIssue) {
 		t.Run(variant, func(t *testing.T) {
 			c := closeIssueSection(t, body, "## Entry C")
-			wantAll(t, c, `gh issue reopen <nr> --repo "$R" --comment "$(cat <scratch>/run.txt)"`)
+			wantAll(t, c, "lighthouse forge issue reopen <nr> --body-file <scratch>/run.txt")
 			wantAll(t, flat(c), "So never paste runner output or body text into a quoted command line")
 		})
 	}
@@ -302,18 +343,56 @@ func TestCloseIssueEntryCReopensOnlyOnARecognisedOutcome(t *testing.T) {
 	}
 }
 
-// Classification: fails when step 0 stops reading the closer of the last ClosedEvent, or C1 stops
-// taking only a PR closer as the closing PR.
+// Classification: fails when step 0 stops reading the closer through `lighthouse forge issue
+// changes`, C1 stops taking only a PR closer as the closing PR, or C1 stops pointing at the forge
+// reference for where the closer comes from.
 func TestCloseIssueEntryCMeasuresThePRThatActuallyClosedTheIssue(t *testing.T) {
 	for variant, body := range variants(t, closeIssue) {
 		t.Run(variant, func(t *testing.T) {
 			step0 := section(t, body, "## Step 0", "## Three entries")
-			wantAll(t, step0, "timelineItems(itemTypes:[CLOSED_EVENT],last:1){nodes{... on ClosedEvent{closer{__typename ... on PullRequest{number}}}}}")
+			wantAll(t, step0, "lighthouse forge issue changes <nr>")
 			c1 := section(t, body, "### C1", "### C2")
 			wantAll(t, flat(c1),
-				"What counts is what **actually** closed the issue: the `closer` of the last `ClosedEvent`",
-				"| `__typename` `PullRequest`, `number` `<pr>` | `<pr>` is the closing PR: on to C2 |",
+				"What counts is what **actually** closed the issue: `closer` from `lighthouse forge issue changes <nr>` in step 0",
+				"../lighthouse-forge/<kind>.md §close-issue",
 				"report `closed without a closing PR — no after-merge check`")
+		})
+	}
+}
+
+// forgeCloseIssue is the §close-issue section of a forge reference.
+func forgeCloseIssue(t *testing.T, kind string) string {
+	t.Helper()
+	return section(t, readPack(t, "core/skills/forge/"+kind+".md"), "## §close-issue", "\n## ")
+}
+
+// Classification: fails when a number in `closer` stops going straight to C2, a closer in another
+// repository stops landing in the `null` row, or a forge reference stops saying that a closer
+// elsewhere reads as `null`.
+func TestCloseIssueEntryCCloserIsOnlyAPROfThisRepo(t *testing.T) {
+	for variant, body := range variants(t, closeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			c1 := section(t, body, "### C1", "### C2")
+			wantAll(t, c1, "| a number `<pr>` | `<pr>` is the closing PR: on to C2 |")
+			null := lineStarting(t, c1, "| `null`")
+			wantAll(t, null, "a closer in another repository", "closed without a closing PR — no after-merge check")
+		})
+	}
+	for kind, other := range map[string]string{
+		"github": "a pull request in another repository",
+		"gitlab": "a merge request in another project",
+	} {
+		t.Run(kind, func(t *testing.T) {
+			closer := ""
+			for p := range strings.SplitSeq(forgeCloseIssue(t, kind), "\n- ") {
+				if strings.HasPrefix(p, "**`closer`**") {
+					closer = flat(p)
+				}
+			}
+			if closer == "" {
+				t.Fatal("no **`closer`** item in §close-issue")
+			}
+			wantAll(t, closer, "else `null`", other)
 		})
 	}
 }
@@ -338,7 +417,7 @@ func TestCloseIssueEntryCExit4WritesACommentFile(t *testing.T) {
 		t.Run(variant, func(t *testing.T) {
 			c := closeIssueSection(t, body, "## Entry C")
 			wantAll(t, c, "cat <scratch>/run.txt; } > <scratch>/comment.md",
-				`gh issue comment <nr> --repo "$R" --body-file <scratch>/comment.md`)
+				"lighthouse forge issue comment <nr> --body-file <scratch>/comment.md")
 		})
 	}
 }
@@ -422,16 +501,21 @@ func TestCloseIssueCleanupNeverRemovesOwnCwd(t *testing.T) {
 	}
 }
 
-// Classification: fails when the commit URL stops being built from `forge.repo`.
-func TestCloseIssueCommitURLsFromForgeRepo(t *testing.T) {
+// Classification: fails when the commit link stops coming from the forge reference (a fixed
+// github.com comes back), stops being filled from `forge.repo`, or a forge reference loses its
+// commit URL pattern.
+func TestCloseIssueCommitURLsPerForge(t *testing.T) {
 	for variant, body := range variants(t, closeIssue) {
 		t.Run(variant, func(t *testing.T) {
-			wantAll(t, body,
-				"# Repo from lighthouse.toml, never from the git remote of the cwd\nR=$(lighthouse config forge.repo) || exit 2",
-				`printf 'Completed in commit: https://github.com/%s/commit/%s\n\n' "$R"`,
-				"Completed in commit: https://github.com/<forge.repo>/commit/<hash>")
+			wantNone(t, body, "https://github.com/")
+			wantAll(t, body, `printf 'Completed in commit: %s\n\n' "<commit-url>"`)
+			step5 := closeIssueSection(t, body, "### 5. Close with a correct commit link")
+			wantAll(t, flat(step5), "`<commit-url>` is the pattern of `../lighthouse-forge/<kind>.md §close-issue`, filled with `forge.repo` from `lighthouse.toml` (never the git remote of the cwd)")
+			wantAll(t, closeIssueSection(t, body, "## Commit Reference Format"), "`<commit-url>` per forge: `../lighthouse-forge/<kind>.md §close-issue`.")
 		})
 	}
+	wantAll(t, forgeCloseIssue(t, "github"), "https://github.com/<forge.repo>/commit/<sha>")
+	wantAll(t, forgeCloseIssue(t, "gitlab"), "https://<forge.host, else gitlab.com>/<forge.repo>/-/commit/<sha>")
 }
 
 // Classification: fails when the release step stops being conditional on scripts/release.py.
@@ -469,13 +553,15 @@ func TestCloseIssueVariantsDifferOnlyInTheInstructionFile(t *testing.T) {
 }
 
 // Classification: fails when closing a milestone stops copying the title and appending " - DONE"
-// in the same PATCH as the close.
+// in the same `lighthouse forge milestone edit` as the close, or stops reading the title by
+// `milestone.title`.
 func TestCloseIssueMilestoneCloseKeepsTheTitleForm(t *testing.T) {
 	for variant, body := range variants(t, closeIssue) {
 		t.Run(variant, func(t *testing.T) {
 			step := closeIssueSection(t, body, "### Step 3. Close the milestone")
-			wantAll(t, step, "  -f state=closed -f title='<title> - DONE'",
-				`# close + rename (copy the title exactly, then " - DONE" after it)`)
+			wantAll(t, step, "lighthouse forge milestone edit '<title>' --state closed --title '<title> - DONE'")
+			wantAll(t, flat(step), "`<title>` is the title from step 1, copied exactly")
+			wantAll(t, body, "lighthouse forge issue view <number> --field milestone.title")
 		})
 	}
 }

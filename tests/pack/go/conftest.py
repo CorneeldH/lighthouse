@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.pack._testkit import install_pack
+from tests.pack.python._testkit import install_pack
 
 GO_ROOT = Path(tempfile.mkdtemp(prefix="lighthouse-go-"))
 atexit.register(shutil.rmtree, GO_ROOT, True)

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.pack._testkit import install_pack
+from tests.pack.python._testkit import install_pack
 
 SHELL_ROOT = Path(tempfile.mkdtemp(prefix="lighthouse-shell-"))
 atexit.register(shutil.rmtree, SHELL_ROOT, True)

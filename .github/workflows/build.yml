@@ -61,8 +61,6 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: web/.nvmrc
-          cache: npm
-          cache-dependency-path: web/package-lock.json
       - name: Verify dist is tracked
         run: git ls-files --error-unmatch internal/web/dist/index.html
       - name: Install web dependencies
@@ -104,6 +102,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+          cache: false
       # A dirty tree makes the binary report `dev` instead of the tag.
       - run: test -z "$(git status --porcelain)"
       - name: Build
@@ -145,6 +144,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+          cache: false
       # Install the way a user does, from the tag, and prove the binary serves the SPA.
       - name: Install and check SPA
         run: |

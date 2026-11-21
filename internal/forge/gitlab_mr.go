@@ -209,3 +209,83 @@ func (g *GitLab) MergePR(ctx context.Context, number int, sha string) error {
 	}
 	return err
 }
+
+// glRelatedMR is a merge request as closed_by and related_merge_requests list it: the glMR
+// fields plus the reference that names its project.
+type glRelatedMR struct {
+	glMR
+	References struct {
+		Full string `json:"full"` // "group/project!12"
+	} `json:"references"`
+}
+
+// issueChange translates a listed merge request; Repo is the project of its reference, or repo
+// when the reference is missing.
+func (m glRelatedMR) issueChange(repo string) IssueChange {
+	p := mrToPR(m.glMR)
+	if i := strings.LastIndex(m.References.Full, "!"); i > 0 {
+		repo = m.References.Full[:i]
+	}
+	return IssueChange{Number: p.Number, State: p.State, HeadRef: p.HeadRef, CrossRepo: p.CrossRepo, Repo: repo, Body: m.Description}
+}
+
+// issueMRs lists the merge requests of list ("closed_by" or "related_merge_requests") of issue
+// number, every page.
+func (g *GitLab) issueMRs(ctx context.Context, number int, list string) ([]IssueChange, error) {
+	mrs, err := getAll[glRelatedMR](ctx, g, g.projectPath("/issues/"+strconv.Itoa(number)+"/"+list), nil)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]IssueChange, 0, len(mrs))
+	for _, m := range mrs {
+		out = append(out, m.issueChange(g.Repo))
+	}
+	return out, nil
+}
+
+// IssueChanges lists the merge requests that close issue number (closed_by) and the ones related
+// to it (related_merge_requests), each once. Every page is followed; a failing page is an error.
+func (g *GitLab) IssueChanges(ctx context.Context, number int) ([]IssueChange, error) {
+	if err := g.configured(); err != nil {
+		return nil, err
+	}
+	closing, err := g.issueMRs(ctx, number, "closed_by")
+	if err != nil {
+		return nil, err
+	}
+	related, err := g.issueMRs(ctx, number, "related_merge_requests")
+	if err != nil {
+		return nil, err
+	}
+	return issueChanges(closing, related), nil
+}
+
+// Closer is the iid of the merge request of the last closed state event of issue number; 0 when
+// that close came by hand or by a commit, the issue was never closed, or the merge request is in
+// another project (references.full; compared without regard to case). A missing reference
+// counts as this project, as in issueChange.
+func (g *GitLab) Closer(ctx context.Context, number int) (int, error) {
+	if err := g.configured(); err != nil {
+		return 0, err
+	}
+	events, err := getAll[struct {
+		State              string       `json:"state"`
+		SourceMergeRequest *glRelatedMR `json:"source_merge_request"`
+	}](ctx, g, g.projectPath("/issues/"+strconv.Itoa(number)+"/resource_state_events"), nil)
+	if err != nil {
+		return 0, err
+	}
+	for i := len(events) - 1; i >= 0; i-- {
+		if events[i].State != "closed" {
+			continue
+		}
+		if mr := events[i].SourceMergeRequest; mr != nil {
+			if ch := mr.issueChange(g.Repo); !strings.EqualFold(ch.Repo, g.Repo) {
+				return 0, nil
+			}
+			return mr.IID, nil
+		}
+		return 0, nil
+	}
+	return 0, nil
+}

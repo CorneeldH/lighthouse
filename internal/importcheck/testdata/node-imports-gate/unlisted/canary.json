@@ -1,0 +1,9 @@
+{
+  "hook": "node",
+  "touch": "index.js",
+  "exit": 2,
+  "id": "unlisted",
+  "node_modules": [
+    "left-pad"
+  ]
+}
