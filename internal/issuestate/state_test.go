@@ -36,7 +36,7 @@ type stateCase struct {
 }
 
 func TestOfCases(t *testing.T) {
-	raw, err := os.ReadFile("../../tests/fixtures/issue-state/cases.json")
+	raw, err := os.ReadFile("../../tests/pack/fixtures/issue-state/cases.json")
 	if err != nil {
 		t.Fatal(err)
 	}

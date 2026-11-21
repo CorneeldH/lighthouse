@@ -10,8 +10,8 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 )
 
-// Keys are the blocking label keys in rank order: the lowest rank wins. This is the rank of
-// docs/developer/labels.md, not the order of repoconfig.Labels.Blocking.
+// Keys are the blocking label keys in rank order: the lowest rank wins. This is the rank of the
+// developer label taxonomy, not the order of repoconfig.Labels.Blocking.
 var Keys = []string{"needs_shaping", "needs_decision", "blocked_issue", "blocked_external", "needs_hands", "needs_testing"}
 
 // Name is the label name of key in l; ok is false for an unknown key or an empty name.

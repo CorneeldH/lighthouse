@@ -1,9 +1,9 @@
 // Package issuestate holds the deterministic rules of the issue status model: the state of an
 // issue, the rank rule for its blocking label and giving an issue back to `To do`. The rules come
 // from the status model spec of issue 433 (its state table, the give-back by the controller and
-// the one place for the rules); the rank is the one in docs/developer/labels.md.
+// the one place for the rules); the rank is the one in the developer label taxonomy.
 //
-// tests/fixtures/issue-state/cases.json holds the test cases of Of. The web UI (issueState())
+// tests/pack/fixtures/issue-state/cases.json holds the test cases of Of. The web UI (issueState())
 // reads the same file, so both carry one rule.
 package issuestate
 
