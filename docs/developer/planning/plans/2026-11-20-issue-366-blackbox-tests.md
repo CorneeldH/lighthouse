@@ -697,7 +697,7 @@ Task 3: 64 tests → naar Go 41 / gedekt 21 / beschermt niets 0 / onderwerp weg 
 
 Task 4: 132 tests → naar Go 27 / gedekt 102 / beschermt niets 0 / onderwerp weg 0 (3 overgedragen aan taak 10/11)
 
-Task 5: 68 tests → naar Go 45 / gedekt 20 / beschermt niets 1 / onderwerp weg 0 (2 overgedragen aan taak 11)
+Task 5: 68 pytest-functies → naar Go 45 / gedekt 20 / beschermt niets 1 / onderwerp weg 0 (2 overgedragen aan taak 11; herteld uit de rijen in pytest-functies: 45 + 20 + 1 + 2 = 68)
 
 Task 6: 53 pytest-functies → naar Go 13 / gedekt 39 / beschermt niets 0 / onderwerp weg 0 (1 overgedragen aan taak 11)
 
@@ -713,4 +713,6 @@ Task 11: 9 pytest-functies → naar Go 8 / gedekt 0 / beschermt niets 1 / onderw
 
 Task 12: 22 pytest-functies → naar Go 17 / gedekt 5 / beschermt niets 0 / onderwerp weg 0 / overgedragen 0. Gedekt (5): `test_spec_review_prompt_is_byte_identical_without_new_flags`, `test_sidecar_changes_only_the_prior_block`, `test_context_on_a_template_without_the_placeholder_fails`, `test_doc_path_with_space_reaches_codex_verbatim`, `test_budget_fallback_stops_before_codex`. Naar Go (17): `test_plan_kind_sends_plan_prompt_schema_and_context`, `test_agents_skill_dir_reads_its_own_templates`, `test_missing_context_path_is_a_usage_error`, `test_plan_schema_requires_one_of_seven_categories`, `test_plan_prompt_asks_executability_not_improvement`, `test_plan_verify_sends_verifier_prompt_and_schema`, `test_plan_verification_schema_is_scoped`, `test_spec_blocker_needs_a_failure_scenario`, `test_spec_verify_sends_verifier_prompt_and_schema`, `test_runner_is_allowlisted`, `test_broken_budget_check_is_not_measurable_and_codex_runs`, `test_budget_codex_writes_record_and_runs`, `test_production_path_reads_the_budget_without_a_seam`, `test_production_path_below_the_threshold_runs_codex`, `test_repo_root_from_lighthouse_repo_root`, `test_runner_messages_are_english`, `test_paired_round_one_without_python3`
 
-**Totalen:** tests voor: 576 · naar Go: … · weg — gedekt: … · weg — beschermt niets: … · weg — onderwerp weg: …
+**Totalen:** tests voor: 576 · naar Go: 291 · weg — gedekt: 274 · weg — beschermt niets: 10 · weg — onderwerp weg: 1 (291 + 274 + 10 + 1 = 576).
+
+Telregel: een functie telt één keer. De taken 2–12 samen tellen 584 regels; de 8 functies die taak 3 (2), 4 (3), 5 (2) en 6 (1) overdroegen staan in hun eigen telling als "overgedragen" en zijn bij taak 10 (3) en 11 (5) geclassificeerd en meegeteld, dus 584 − 8 = 576. Alle cijfers zijn pytest-functies; een geparametriseerde functie telt als één.
