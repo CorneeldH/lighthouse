@@ -8,9 +8,22 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/CorneeldH/lighthouse/internal/cli"
 )
 
 const packRoot = "../../pack"
+
+// envActAsLighthouse makes the test binary run as `lighthouse` on its arguments (cli.Execute),
+// so a shell block from a skill calls the real subcommands without a separately built binary.
+const envActAsLighthouse = "PACKCONTRACT_ACT_AS_LIGHTHOUSE"
+
+func TestMain(m *testing.M) {
+	if os.Getenv(envActAsLighthouse) == "1" {
+		os.Exit(cli.Execute())
+	}
+	os.Exit(m.Run())
+}
 
 // readPack reads packRoot/rel and fails the test when it cannot.
 func readPack(t *testing.T, rel string) string {
