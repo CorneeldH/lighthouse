@@ -3,6 +3,7 @@ package packcontract
 import (
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -23,6 +24,20 @@ func TestMain(m *testing.M) {
 		os.Exit(cli.Execute())
 	}
 	os.Exit(m.Run())
+}
+
+// needTool returns the path of the tool name on PATH. A missing tool fails the test under CI and
+// skips it elsewhere, so a green CI never rests on a skipped test.
+func needTool(t *testing.T, name string) string {
+	t.Helper()
+	path, err := exec.LookPath(name)
+	if err != nil {
+		if os.Getenv("CI") != "" {
+			t.Fatalf("%s is missing: %v", name, err)
+		}
+		t.Skipf("%s is missing", name)
+	}
+	return path
 }
 
 // readPack reads packRoot/rel and fails the test when it cannot.

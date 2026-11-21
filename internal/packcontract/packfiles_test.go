@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -240,12 +241,10 @@ func withoutEnv(name string) []string {
 // under the pinned version, or when the pinned shellcheck cannot be resolved: a consumer may gate
 // its hook directories at style, and an installed file cannot be fixed there.
 func TestPackageShellIsCleanAtStyleSeverity(t *testing.T) {
-	if _, err := exec.LookPath("bash"); err != nil {
-		if os.Getenv("CI") != "" {
-			t.Fatalf("bash not found, so shellcheck cannot be resolved: %v", err)
-		}
-		t.Skipf("bash not found, so shellcheck cannot be resolved: %v", err)
+	if runtime.GOOS == "windows" {
+		t.Skip("no pinned shellcheck release for Windows")
 	}
+	needTool(t, "bash")
 	root, err := filepath.Abs(filepath.Dir(packRoot))
 	if err != nil {
 		t.Fatal(err)

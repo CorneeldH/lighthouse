@@ -237,10 +237,7 @@ func runGetLighthouse(t *testing.T, version, runnerOS, arch string, cmd, withSha
 	if runtime.GOOS == "windows" {
 		t.Skip("the step is a bash script")
 	}
-	bash, err := exec.LookPath("bash")
-	if err != nil {
-		t.Skip("bash is missing")
-	}
+	bash := needTool(t, "bash")
 	script := unblockStepNamed(t, "Get lighthouse").Run
 	tmp := t.TempDir()
 	checkout := filepath.Join(tmp, "checkout")
@@ -251,10 +248,7 @@ func runGetLighthouse(t *testing.T, version, runnerOS, arch string, cmd, withSha
 	}
 	bin := filepath.Join(tmp, "bin")
 	for _, tool := range []string{"sed", "head", "mkdir", "mv", "chmod"} {
-		path, err := exec.LookPath(tool)
-		if err != nil {
-			t.Skipf("%s is missing", tool)
-		}
+		path := needTool(t, tool)
 		if err := os.MkdirAll(bin, 0o755); err != nil {
 			t.Fatal(err)
 		}

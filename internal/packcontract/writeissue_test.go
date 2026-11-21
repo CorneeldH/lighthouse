@@ -237,16 +237,10 @@ func TestWriteIssueInvariantCheckRunsAgainstTheForge(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the step is a POSIX shell block")
 	}
-	bash, err := exec.LookPath("bash")
-	if err != nil {
-		t.Skip("bash is missing")
-	}
+	bash := needTool(t, "bash")
 	bin := t.TempDir()
 	for _, tool := range []string{"jq", "sh", "cat"} {
-		path, err := exec.LookPath(tool)
-		if err != nil {
-			t.Skipf("%s is missing", tool)
-		}
+		path := needTool(t, tool)
 		if err := os.Symlink(path, filepath.Join(bin, tool)); err != nil {
 			t.Fatal(err)
 		}
