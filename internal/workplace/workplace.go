@@ -129,9 +129,10 @@ type (
 	PermissionReader interface {
 		Permission(ctx context.Context, sessionID string) ([]byte, error)
 	}
-	// PostFailedReader reads the raw post-failed note of a run; nil, nil when it has none.
+	// PostFailedReader reads the raw post-failed note of a run and its file's modification time
+	// (zero: unknown); nil, zero, nil when it has none.
 	PostFailedReader interface {
-		PostFailed(ctx context.Context, sessionID string) ([]byte, error)
+		PostFailed(ctx context.Context, sessionID string) ([]byte, time.Time, error)
 	}
 )
 

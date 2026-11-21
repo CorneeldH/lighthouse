@@ -28,8 +28,14 @@ const (
 	// PathPermission is GET: the raw permission.json of the run, 404 no_permission without one.
 	PathPermission = Prefix + "/runs/{session}/permission"
 	// PathPostFailed is GET: the raw post-failed.json of the run, 404 no_post_failed without one.
+	// The answer carries the file's modification time in HeaderModTime.
 	PathPostFailed = Prefix + "/runs/{session}/post-failed"
 )
+
+// HeaderModTime is the modification time of the file a statemap route answers, in RFC 3339 with
+// nanoseconds, UTC. Last-Modified holds only seconds, too coarse to compare with started_at. A
+// node from before the header sends none: the time is then unknown.
+const HeaderModTime = "X-Lighthouse-Mod-Time"
 
 // The git routes: each looks up the worktree of {id} at the node's own forge and works on
 // that path; the tick never sends one.

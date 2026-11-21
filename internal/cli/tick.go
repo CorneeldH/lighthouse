@@ -750,11 +750,11 @@ func (m *runProbe) postFailed(ctx context.Context, r runs.OpenRun) (*dispatch.Po
 	if r.Node == "" || !ok {
 		return dispatch.ReadPostFailed(m.stateDir, r.SessionID)
 	}
-	data, err := pr.PostFailed(ctx, r.SessionID)
+	data, mod, err := pr.PostFailed(ctx, r.SessionID)
 	if err != nil || data == nil {
 		return nil, err
 	}
-	return dispatch.ParsePostFailed(data), nil
+	return dispatch.ParsePostFailed(data, mod), nil
 }
 
 // permission is the permission note of the run, nil without one. A run on a node whose

@@ -926,14 +926,15 @@ func (c runCtx) noHandoff() (Action, bool) {
 }
 
 // postFailed is rule 14a: a session Done without a PR, Handoff or Question whose own post of
-// that Handoff or Question failed, with a note from the run's start on. While the run is younger
-// than max_runtime (or max_runtime is 0) and the note is for the run's own issue, the controller
+// that Handoff or Question failed, with a note from the run's start on. An unreadable note is
+// dated by its file's modification time; one without a time (from an old node) counts. While the
+// run is younger than max_runtime (or max_runtime is 0) and the note is for the run's own issue, the controller
 // posts the note's body itself and the run stays open: the next tick sees the post and closes the run by the Handoff or Question rule,
 // after which this rule no longer holds. Otherwise the run goes back with the note's error.
 func (c runCtx) postFailed() (Action, bool) {
 	n := c.state.PostFailed
 	anyPR := c.anyPR(func(forge.PR) bool { return true })
-	if !c.done() || c.handoff || anyPR || n == nil || !n.Unreadable && n.At.Before(c.row.StartedAt) {
+	if !c.done() || c.handoff || anyPR || n == nil || !n.At.IsZero() && n.At.Before(c.row.StartedAt) {
 		return Action{}, false
 	}
 	if n.Unreadable {

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -24,7 +25,7 @@ type PostFailed struct {
 	Command    string    `json:"command"`
 	Error      string    `json:"error"`
 	Body       string    `json:"body"`
-	Unreadable bool      `json:"unreadable,omitempty"` // the note did not parse; the other fields are zero
+	Unreadable bool      `json:"unreadable,omitempty"` // the note did not parse; At is the file's mtime (zero: unknown), the other fields are zero
 }
 
 // postFailedFile is the note on disk; the field order is the contract.
@@ -86,31 +87,43 @@ func WritePostFailed(stateDir, sessionID string, n PostFailed) error {
 }
 
 // ReadPostFailed reads the note of a run. No note is nil, nil; a note that does not parse is
-// &PostFailed{Unreadable: true}. Only a real I/O error or an unsafe session id is an error.
+// &PostFailed{Unreadable: true} at the file's modification time. Only a real I/O error or an
+// unsafe session id is an error.
 func ReadPostFailed(stateDir, sessionID string) (*PostFailed, error) {
 	if err := checkFileName(sessionID); err != nil {
 		return nil, err
 	}
-	data, err := os.ReadFile(PostFailedPath(stateDir, sessionID))
+	f, err := os.Open(PostFailedPath(stateDir, sessionID))
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, fmt.Errorf("dispatch: post-failed note: %w", err)
 	}
-	return ParsePostFailed(data), nil
+	defer func() { _ = f.Close() }()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("dispatch: post-failed note: %w", err)
+	}
+	data, err := io.ReadAll(f)
+	if err != nil {
+		return nil, fmt.Errorf("dispatch: post-failed note: %w", err)
+	}
+	return ParsePostFailed(data, info.ModTime()), nil
 }
 
-// ParsePostFailed reads the bytes of a post-failed note. It never returns nil: a note that
-// does not parse, has another version or no time is &PostFailed{Unreadable: true}.
-func ParsePostFailed(data []byte) *PostFailed {
+// ParsePostFailed reads the bytes of a post-failed note whose file was last modified at
+// modTime (zero: unknown). It never returns nil: a note that does not parse, has another version
+// or no time is &PostFailed{Unreadable: true, At: modTime}, so rule 14a can still tell a note of
+// an earlier run in the same session.
+func ParsePostFailed(data []byte, modTime time.Time) *PostFailed {
 	var f postFailedFile
 	if err := json.Unmarshal(data, &f); err != nil || f.Version != postFailedVersion {
-		return &PostFailed{Unreadable: true}
+		return &PostFailed{Unreadable: true, At: modTime}
 	}
 	at, err := time.Parse(time.RFC3339Nano, f.At)
 	if err != nil || at.IsZero() {
-		return &PostFailed{Unreadable: true}
+		return &PostFailed{Unreadable: true, At: modTime}
 	}
 	return &PostFailed{At: at, Issue: f.Issue, Command: f.Command, Error: f.Error, Body: f.Body}
 }
