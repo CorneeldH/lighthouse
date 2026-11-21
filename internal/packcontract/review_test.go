@@ -232,9 +232,15 @@ func TestReviewClaudeRunsThePairInRoundOne(t *testing.T) {
 }
 
 // Classification: fails when the agents variant stops saying the paired round 1 is Claude Code
-// only, starts naming `review-pair blind`, or stops recording with its own skill directory.
+// only, starts naming `review-pair blind`, stops starting the attempt with the kind of the review
+// (`start` defaults to plan), or stops recording with its own skill directory.
 func TestReviewAgentsPairIsClaudeCodeOnly(t *testing.T) {
+	cliFlags(t, []string{"plan-review-record", "start"}, "kind")
 	cliFlags(t, []string{"plan-review-record", "write"}, "skill-dir")
+	start := map[string]string{
+		"review-spec": "\nlighthouse plan-review-record start --kind spec <spec>\n```",
+		"review-plan": "\nlighthouse plan-review-record start <plan>\n```",
+	}
 	record := map[string]string{
 		"review-spec": "lighthouse plan-review-record write <ATTEMPT> \\ --outcome <converged|round_limit|aborted> --review-mode codex [--level max] \\ --skill-dir .agents/skills/lighthouse-review-spec",
 		"review-plan": "lighthouse plan-review-record write <ATTEMPT> \\ --outcome <converged|round_limit|aborted> --review-mode codex \\ --spec <spec path> [--spec <spec path 2>] [--level max] \\ --skill-dir .agents/skills/lighthouse-review-plan",
@@ -246,6 +252,7 @@ func TestReviewAgentsPairIsClaudeCodeOnly(t *testing.T) {
 			wantAll(t, f,
 				"**Paired round 1: Claude Code only.** There Codex and an Opus subagent run side by side in round 1 by default, and Opus verifies rounds 2 and 3. Here that subagent does not exist; every round runs through Codex, as below.",
 				cmd)
+			wantAll(t, body, start[name])
 			wantNone(t, body, "lighthouse review-pair blind")
 		})
 	}
@@ -382,6 +389,7 @@ func TestReviewControllerRunSectionIsGuarded(t *testing.T) {
 			"*Another round* is no option: that clashes with the round limit, and you never reuse an old attempt.",
 			"3. Step 3: you decide the table and the piles yourself, also every MINOR, and report the choices.",
 			"7. Background tasks: the paragraph **Controller run (if present):** in `lighthouse-review-plan`, *Round 1: Codex and Opus*.",
+			"1. No `codex`: *Fallback without Codex* at once, without a question (exit 5 and 6 do that already). 2.",
 		},
 		"review-plan": {
 			"*Adjust the spec*: the resumed run adjusts the spec according to the answer, commits, and posts the handoff `next: /lighthouse-review-spec <absolute spec path>`",
@@ -391,6 +399,7 @@ func TestReviewControllerRunSectionIsGuarded(t *testing.T) {
 			"*On to SDD with the open points* (handoff `next: /superpowers:subagent-driven-development <absolute plan path>`, open points as a note, no second `write`, no `accept-open`)",
 			"a fix with which the plan departs from the spec, a `spec` decision that is more than a clarification, and doubt whether something contradicts the spec.",
 			"No option *another round*.",
+			"1. No `codex`: *Fallback without Codex* at once, without a question. 2.",
 		},
 	}
 	for name, pins := range perSkill {
@@ -402,7 +411,6 @@ func TestReviewControllerRunSectionIsGuarded(t *testing.T) {
 			wantAll(t, s,
 				"It is present when `lighthouse.toml` has a `[controller]` table (`grep -q '^\\[controller\\]' lighthouse.toml`); otherwise this section is skipped.",
 				"Recognition: the prompt ends on `(issue #<nr>, controller-run)`, or `LIGHTHOUSE_CONTROLLER_RUN` is set in the environment;",
-				"1. No `codex`: *Fallback without Codex* at once, without a question",
 				"`🤖 heading:kind_question`",
 				"`controller.bij_rondegrens` in `lighthouse.toml`")
 		})
