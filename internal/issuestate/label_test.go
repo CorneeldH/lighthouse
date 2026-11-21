@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/CorneeldH/lighthouse/internal/forge"
+	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 )
 
 func TestSetLabel(t *testing.T) {
@@ -180,5 +181,25 @@ func TestApplyAfterAHalfWriteFinishesTheEdit(t *testing.T) {
 	wantEdits := []forge.IssueEdit{{RemoveLabels: []string{"needs_testing"}}}
 	if !reflect.DeepEqual(f.edits, wantEdits) {
 		t.Errorf("second edits = %#v, want %#v", f.edits, wantEdits)
+	}
+}
+
+func TestBlockingKeyRankAndEmptyNames(t *testing.T) {
+	l := repoconfig.Labels{NeedsShaping: "shape", NeedsDecision: "decide", BlockedIssue: "blocked"}
+	tests := []struct {
+		name  string
+		names []string
+		want  string
+	}{
+		{"none", nil, ""},
+		{"unrelated", []string{"x"}, ""},
+		{"one", []string{"blocked"}, "blocked_issue"},
+		{"rank wins over order", []string{"blocked", "decide", "shape"}, "needs_shaping"},
+		{"empty never matches", []string{""}, ""},
+	}
+	for _, tt := range tests {
+		if got := BlockingKey(tt.names, l); got != tt.want {
+			t.Errorf("%s: BlockingKey(%q) = %q, want %q", tt.name, tt.names, got, tt.want)
+		}
 	}
 }

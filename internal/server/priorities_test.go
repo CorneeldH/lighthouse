@@ -24,11 +24,14 @@ func TestPrioritiesReturnsReposAndRuns(t *testing.T) {
 	repos := []priorities.Repo{{
 		Slug: "o/r",
 		Issues: []priorities.Issue{{
-			Number: 3, Title: "three", URL: "https://x/3", Status: "Ready",
+			Number: 3, Title: "three", URL: "https://x/3", Status: "Ready", Label: "needs_shaping", OpenQuestion: true,
 			Milestone: &priorities.MilestoneRef{Number: 1, Title: "M1", State: "open"},
 			BlockedBy: []priorities.Blocker{{Repo: "o/s", Issue: 9}},
 		}},
-		Milestones: []priorities.Milestone{{Number: 1, Title: "M1", Description: "d", Open: 2, Done: 1}},
+		Milestones: []priorities.Milestone{
+			{Number: 1, Title: "M1", Description: "d", Open: 2, Done: 1, Closed: []priorities.ClosedIssue{{Number: 4, Title: "four", URL: "https://x/4"}}},
+			{Number: 2, Title: "M2", Closed: []priorities.ClosedIssue{}},
+		},
 	}}
 	rec := get(New(testSite(), prioDeps(
 		func(context.Context) ([]priorities.Repo, error) { return repos, nil }, noRuns)), "/api/priorities")
@@ -50,6 +53,18 @@ func TestPrioritiesReturnsReposAndRuns(t *testing.T) {
 	_ = json.Unmarshal(body["repos"], &raw)
 	if _, ok := raw[0]["milestones"]; !ok {
 		t.Errorf("repo has no snake_case key milestones: %s", body["repos"])
+	}
+	var issues, milestones []map[string]json.RawMessage
+	_ = json.Unmarshal(raw[0]["issues"], &issues)
+	_ = json.Unmarshal(raw[0]["milestones"], &milestones)
+	if string(issues[0]["label"]) != `"needs_shaping"` || string(issues[0]["open_question"]) != "true" {
+		t.Errorf("issue label/open_question = %s / %s, want \"needs_shaping\" / true", issues[0]["label"], issues[0]["open_question"])
+	}
+	if string(milestones[0]["closed"]) != `[{"number":4,"title":"four","url":"https://x/4"}]` {
+		t.Errorf("closed = %s", milestones[0]["closed"])
+	}
+	if string(milestones[1]["closed"]) != "[]" {
+		t.Errorf("empty closed = %s, want [] and never null", milestones[1]["closed"])
 	}
 }
 

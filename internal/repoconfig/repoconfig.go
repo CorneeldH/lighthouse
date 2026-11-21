@@ -142,6 +142,19 @@ type rawFile struct {
 	Schedule []rawSchedule  `toml:"schedule"`
 }
 
+// DefaultLabels are the blocking label names of a repo without a repo config: the defaults of
+// internal/config. The location and area prefixes have no default.
+func DefaultLabels() Labels {
+	return Labels{
+		BlockedIssue:    defaultString("labels.blocked_issue"),
+		BlockedExternal: defaultString("labels.blocked_external"),
+		NeedsShaping:    defaultString("labels.needs_shaping"),
+		NeedsDecision:   defaultString("labels.needs_decision"),
+		NeedsHands:      defaultString("labels.needs_hands"),
+		NeedsTesting:    defaultString("labels.needs_testing"),
+	}
+}
+
 // defaultString is the default of key from internal/config, the one source of defaults.
 // Every key asked for has a string default there; one without is a programming error, so it
 // panics instead of turning into an empty default.

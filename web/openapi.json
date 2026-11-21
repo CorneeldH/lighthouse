@@ -36,6 +36,27 @@
         ],
         "type": "object"
       },
+      "ClosedIssue": {
+        "additionalProperties": false,
+        "properties": {
+          "number": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "title": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "number",
+          "title",
+          "url"
+        ],
+        "type": "object"
+      },
       "DeferredView": {
         "additionalProperties": false,
         "properties": {
@@ -165,12 +186,18 @@
               "null"
             ]
           },
+          "label": {
+            "type": "string"
+          },
           "milestone": {
             "$ref": "#/components/schemas/MilestoneRef"
           },
           "number": {
             "format": "int64",
             "type": "integer"
+          },
+          "open_question": {
+            "type": "boolean"
           },
           "status": {
             "type": "string"
@@ -187,7 +214,9 @@
           "title",
           "url",
           "blocked_by",
-          "status"
+          "status",
+          "label",
+          "open_question"
         ],
         "type": "object"
       },
@@ -229,6 +258,15 @@
       "Milestone": {
         "additionalProperties": false,
         "properties": {
+          "closed": {
+            "items": {
+              "$ref": "#/components/schemas/ClosedIssue"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
           "description": {
             "type": "string"
           },
@@ -253,7 +291,8 @@
           "title",
           "description",
           "open",
-          "done"
+          "done",
+          "closed"
         ],
         "type": "object"
       },
