@@ -95,6 +95,10 @@ func withoutExemptions(rel, text string) string {
 	case rel == "internal/review/ledger_test.go" || rel == "internal/cli/reviewindex_test.go":
 		// docs/... are plan paths in a ledger header: text stored in a row, never read from this repo.
 		return strings.ReplaceAll(text, "docs/", "")
+	case rel == "internal/cli/reviewrun_test.go" || rel == "internal/review/runner_ports_test.go":
+		// docs/doc.md and docs/spec.md are document arguments of a review run in test data: paths in
+		// a temporary repo, never this repo's docs.
+		return strings.ReplaceAll(text, "docs/", "")
 	case rel == "internal/telemetry/record_test.go":
 		// docs/... are RecordPath values of a finding in test data: strings stored in a row.
 		return strings.ReplaceAll(text, "docs/", "")
