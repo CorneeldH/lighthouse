@@ -234,7 +234,7 @@ func TestLinkCheckInvalidUTF8ReadsOn(t *testing.T) {
 func linkedWorktree(t *testing.T, root string) string {
 	t.Helper()
 	for _, k := range []string{"GIT_DIR", "GIT_INDEX_FILE", "GIT_WORK_TREE"} {
-		t.Setenv(k, "")
+		t.Setenv(k, "") // registers the restore; the Unsetenv below removes the variable itself
 		if err := os.Unsetenv(k); err != nil {
 			t.Fatal(err)
 		}
@@ -242,7 +242,7 @@ func linkedWorktree(t *testing.T, root string) string {
 	wt := filepath.Join(root, ".claude", "worktrees", "issue-1-iets")
 	for _, args := range [][]string{
 		{"add", "-A"},
-		{"-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-qm", "init"},
+		{"-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false", "commit", "-qm", "init"},
 		{"worktree", "add", "-q", "-b", "issue-1-iets", wt},
 	} {
 		if out, err := exec.Command("git", append([]string{"-C", root}, args...)...).CombinedOutput(); err != nil {

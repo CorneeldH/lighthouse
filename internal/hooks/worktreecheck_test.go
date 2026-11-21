@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/CorneeldH/lighthouse/internal/hook"
@@ -307,7 +308,13 @@ func TestWorktreeCheckSpeaksWhenTheConfigIsBroken(t *testing.T) {
 	}
 	t.Setenv("LIGHTHOUSE_TOML", toml)
 
-	wantMessage(t, check(t, dir+"/src/nieuw.py", dir), worktreeUncheckable(
-		"the protected branch could not be read: config: "+toml+": unreadable or not valid TOML: "+
-			"toml: line 2: expected '.' or ']' to end table name, but got '\\n' instead."))
+	res := check(t, dir+"/src/nieuw.py", dir)
+
+	// Only our own prefix is pinned: the tail is the TOML parser's wording, which is not ours.
+	head := "Worktree check: COULD NOT CHECK — the protected branch could not be read: config: " + toml +
+		": unreadable or not valid TOML: "
+	msg, _ := res.Output["systemMessage"].(string)
+	if res.Code != 0 || res.Stderr != "" || len(res.Output) != 1 || !strings.HasPrefix(msg, head) {
+		t.Errorf("got %#v\nwant a systemMessage starting with %q", res, head)
+	}
 }
