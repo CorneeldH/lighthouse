@@ -33,8 +33,8 @@ func TestParseLedger(t *testing.T) {
 		t.Errorf("planPath = %q, want %q", plan, want)
 	}
 	want := []LedgerFinding{
-		{Task: 2, Text: "de code blijft staan, het patroon is elders gelijk", Decision: "rejected"},
-		{Task: 3, Text: "finding over cache genegeerd — kost niets als het fout is", Decision: "left_open"},
+		{Task: 2, Text: "the code stays, the pattern is the same elsewhere", Decision: "rejected"},
+		{Task: 3, Text: "finding about cache ignored — costs nothing if wrong", Decision: "left_open"},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("findings = %+v, want %+v", got, want)
