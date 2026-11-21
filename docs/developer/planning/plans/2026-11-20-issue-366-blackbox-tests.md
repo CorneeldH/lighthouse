@@ -556,7 +556,7 @@ Vul aan per taak. Gaat ongewijzigd naar de PR-body.
 | `test_code_language_hook.py` | `test_hook_off_without_key` | gedekt | `TestCheckFixture/off_without_key`; mutatie `ErrNotSet` geeft `on = true` in `readSettings`: rood | |
 | `test_code_language_hook.py` | `test_hook_blocks_dutch_comment` | gedekt | `TestHookCanonicalPath` en `TestHookNoticeWithFindings`; mutatie `"%s:%d: %s: %s"` → `"%s:%d: %s; %s"` in `reportLine`: rood; exitcode 2 → 1 in `runHook`: rood | |
 | `test_code_language_hook.py` | `test_hook_relative_path_from_cwd` | gedekt | `TestHookCanonicalPath` en `TestHookRelativePathFromWorkingDirectory`; mutatie `abs = cwd + "/" + file` → `abs = file`: rood | |
-| `test_code_language_hook.py` | `test_hook_other_repo_without_toml` | gedekt | `TestCheckOffWithoutTOML` + de repo komt uit `gitRoot` van het bestand; mutatie `Check(…, repo, …)` → `repo+"/sub"`: rood in o.a. `TestHookCanonicalPath` | De hook kent geen cwd-repo om mee te verwarren |
+| `test_code_language_hook.py` | `test_hook_other_repo_without_toml` | naar Go | `TestHookRepoIsThatOfTheFileNotTheCwd` (`internal/codelang/hook_test.go`); mutatie `dir := filepath.Dir(path)` gevolgd door `if cwd != "" { dir = cwd }` in `runHook`: rood, geen andere Go-test faalde erop | `TestCheckOffWithoutTOML` dekt alleen `Check`, niet de keuze van de repo |
 | `test_code_language_hook.py` | `test_hook_outside_git` | gedekt | `TestHookNotAGitRepo` en `TestHookGitFailures/not a repository`; mutatie `"not a git repository"` → `"xnot a git repository"`: rood | |
 | `test_code_language_hook.py` | `test_hook_cannot_check_bad_json` | gedekt | `TestHookPayload/not JSON`; mutatie `blocked("the payload is not valid JSON.")` → `hook.Result{}`: rood | |
 | `test_code_language_hook.py` | `test_hook_cannot_check_config_error` | gedekt | `TestCheckFixture/config_error` en `TestHookCheckerCannotCheck`; mutatie `readSettings` geeft bij `config.Load`-fout `nil` terug: rood | |
@@ -585,6 +585,6 @@ Task 5: 68 tests → naar Go 45 / gedekt 20 / beschermt niets 1 / onderwerp weg 
 
 Task 6: 53 pytest-functies → naar Go 13 / gedekt 39 / beschermt niets 0 / onderwerp weg 0 (1 overgedragen aan taak 11)
 
-Task 7: 20 pytest-functies → naar Go 1 / gedekt 19 / beschermt niets 0 / onderwerp weg 0 (0 overgedragen)
+Task 7: 20 pytest-functies → naar Go 2 / gedekt 18 / beschermt niets 0 / onderwerp weg 0 (0 overgedragen)
 
 **Totalen:** tests voor: 576 · naar Go: … · weg — gedekt: … · weg — beschermt niets: … · weg — onderwerp weg: …

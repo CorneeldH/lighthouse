@@ -288,3 +288,25 @@ func TestHookSilentChainEndsAtPerModel(t *testing.T) {
 		t.Errorf("got %+v, want %+v", got, want)
 	}
 }
+
+// The config comes from the git root of the written file, not from the cwd of the payload: a
+// file in a repo without lighthouse.toml is not checked, whatever repo the session sits in.
+func TestHookRepoIsThatOfTheFileNotTheCwd(t *testing.T) {
+	cwdRepo := gitRepo(t, "")
+	other, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command("git", "init", "-q", other).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, out)
+	}
+	path := filepath.Join(other, "a.py")
+	writeFile(t, path, []byte(dutchComment))
+	raw, err := json.Marshal(map[string]any{"cwd": cwdRepo, "tool_input": map[string]any{"file_path": path}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := runPayload(t, string(raw)); !reflect.DeepEqual(got, emptyResult()) {
+		t.Errorf("got %+v, want nothing", got)
+	}
+}
