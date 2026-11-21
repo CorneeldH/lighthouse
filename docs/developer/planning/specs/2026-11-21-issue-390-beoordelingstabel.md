@@ -2,7 +2,7 @@
 
 Elke regel van het core-blok en de packinstructies krijgt een uitkomst (`houden`, `inkorten`, `verplaatsen`, `schrappen`), één zin reden en een toetssteen. Deze tabel is de bron van waarheid voor de taken 2 tot en met 4 van [het plan](../plans/2026-11-21-issue-390-herbeoordeel-core-blok.md): een regel verdwijnt of krimpt pas als de tabel het zegt.
 
-Bronnen: [core](../../../../pack/core/instructions/AGENTS.md), [go](../../../../pack/go/instructions/AGENTS.md), [python](../../../../pack/python/instructions/AGENTS.md), [shell](../../../../pack/shell/instructions/AGENTS.md), [node](../../../../pack/node/instructions/AGENTS.md).
+Bronnen: [core](../../../../pack/core/instructions/AGENTS.md), [go](../../../../pack/go/instructions/AGENTS.md), [python](../../../../pack/python/instructions/AGENTS.md), `pack/shell/instructions/AGENTS.md` (verwijderd), [node](../../../../pack/node/instructions/AGENTS.md).
 
 ## Voor-meting
 
@@ -85,4 +85,15 @@ C7, C8 en C11 blijven letterlijk staan. Verwachting (grof, taak 4 meet echt): co
 
 ## Na-meting
 
-Wordt gevuld door taak 4.
+Telling met `wc -w`. De installatie is `AGENTS.md` + `CLAUDE.md` (check 10, plafond 3000); de bronblokken komen uit `pack/*/instructions/AGENTS.md`, want python en shell staan niet in deze repo geïnstalleerd.
+
+| Meting | Voor | Na |
+|---|---|---|
+| Installatie (`AGENTS.md` + `CLAUDE.md`) | 868 + 339 = 1207 | 618 + 339 = 957 |
+| Bronblok core | 365 | 179 |
+| Bronblok go | 65 | 15 |
+| Bronblok node | 29 | 15 |
+| Bronblok python | 75 | 15 |
+| Bronblok shell | 46 | verwijderd (46 -> 0) |
+
+`lighthouse check-instructions` is groen (957 woorden, plafond 3000) en de tweede `init --upgrade` geeft `No changes.`
