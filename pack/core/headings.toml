@@ -54,6 +54,10 @@ en = "asks for interactive execution"
 nl = "skill niet geïnstalleerd in de worktree"
 en = "skill not installed in the worktree"
 
+[reason_repeat_handoff]
+nl = "dezelfde handoff als de vorige, zonder voortgang"
+en = "same handoff as the previous one, no progress"
+
 [reason_not_allowed]
 nl = "commando niet toegestaan"
 en = "command not allowed"
