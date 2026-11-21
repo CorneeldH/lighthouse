@@ -35,7 +35,6 @@ type world struct {
 	CodexConfig string            `json:"codex_config"`
 	CodexVer    string            `json:"codex_version"`
 	Language    string            `json:"language"`
-	Refusal     string            `json:"refusal"`
 }
 
 func readJSON(t *testing.T, path string, into any) {
@@ -88,6 +87,7 @@ func newScenario(t *testing.T, c map[string]any) *scenario {
 	t.Setenv("LIGHTHOUSE_TOML", filepath.Join(tmp, "lighthouse.toml"))
 	t.Setenv("LIGHTHOUSE_HEADINGS", "../../pack/core/headings.toml")
 	t.Setenv("HOME", s.vars["home"])
+	t.Setenv("XDG_STATE_HOME", filepath.Join(tmp, "state"))
 	t.Setenv("TMPDIR", s.vars["tmpdir"])
 	t.Setenv("LIGHTHOUSE_DATA", s.vars["data"])
 	t.Setenv("XDG_DATA_HOME", "")
@@ -110,18 +110,6 @@ func newScenario(t *testing.T, c map[string]any) *scenario {
 		}
 		s.baseSHA = s.git("rev-parse", "HEAD")
 		t.Setenv("LIGHTHOUSE_REPO_ROOT", repo)
-	}
-	switch host, _ := c["host"].(string); host {
-	case "", "ok":
-		s.deps.HostRefusal = func(string) *string { return nil }
-	case "refuse":
-		s.deps.HostRefusal = func(kind string) *string {
-			msg := strings.ReplaceAll(w.Refusal, "${KIND}", strings.ToUpper(kind))
-			return &msg
-		}
-	default: // unknown: the real refusal, with a host.toml that is not there
-		t.Setenv("LIGHTHOUSE_HOST_TOML", filepath.Join(tmp, "no-host.toml"))
-		s.deps.HostRefusal = review.HostRefusal
 	}
 	return s
 }
@@ -501,5 +489,70 @@ func TestPlanReviewRecordFixtures(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// trajectoryOf runs a one-round plan review write on the given branch and returns the trajectory
+// of the record. repo is the [forge] repo of lighthouse.toml, "" for none.
+func trajectoryOf(t *testing.T, branch, forgeRepo string, extra ...string) any {
+	t.Helper()
+	s := newScenario(t, map[string]any{})
+	if forgeRepo != "" {
+		mustWrite(t, filepath.Join(s.vars["tmp"], "lighthouse.toml"),
+			"[project]\nlanguage = \"nl\"\n[forge]\nrepo = \""+forgeRepo+"\"\n")
+	}
+	s.git("checkout", "-q", "-b", branch)
+	s.runStep(step{"op": "run", "args": []any{"start", "${PLAN}"}, "bind": "a"})
+	s.roundStep(step{"attempt": "a", "n": float64(1), "severities": []any{}})
+	args := append([]any{"write", "${a}", "--outcome", "converged", "--review-mode", "codex", "--spec", "${SPEC}"}, toAny(extra)...)
+	s.runStep(step{"op": "run", "args": args})
+	var record map[string]any
+	readJSON(t, filepath.Join(strings.TrimSpace(s.vars["stdout"]), "record.json"), &record)
+	traj, present := record["trajectory"]
+	if !present {
+		t.Fatal("record has no trajectory key")
+	}
+	return traj
+}
+
+func toAny(in []string) []any {
+	out := make([]any, len(in))
+	for i, v := range in {
+		out[i] = v
+	}
+	return out
+}
+
+func TestRecordWriteTrajectoryFromBranch(t *testing.T) {
+	got := trajectoryOf(t, "issue-12", "CorneeldH/lighthouse")
+	want := map[string]any{"repo": "CorneeldH/lighthouse", "issue": float64(12)}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("trajectory on issue-12 = %#v, want %#v", got, want)
+	}
+	if got := trajectoryOf(t, "fix-iets", "CorneeldH/lighthouse"); got != nil {
+		t.Errorf("trajectory on fix-iets = %#v, want null", got)
+	}
+	if got := trajectoryOf(t, "issue-12", ""); got != nil {
+		t.Errorf("trajectory without forge.repo = %#v, want null", got)
+	}
+}
+
+func TestRecordWriteTrajectoryFromIssueFlag(t *testing.T) {
+	s := newScenario(t, map[string]any{})
+	mustWrite(t, filepath.Join(s.vars["tmp"], "lighthouse.toml"),
+		"[project]\nlanguage = \"nl\"\n[forge]\nrepo = \"CorneeldH/lighthouse\"\n")
+	mustWrite(t, filepath.Join(s.vars["tmp"], "issue-body.md"), "## AC\n")
+	s.git("checkout", "-q", "-b", "fix-iets")
+	s.runStep(step{"op": "run", "args": []any{"start", "${PLAN}"}, "bind": "a"})
+	s.roundStep(step{"attempt": "a", "n": float64(1), "severities": []any{}})
+	s.runStep(step{"op": "run", "args": []any{
+		"write", "${a}", "--outcome", "converged", "--review-mode", "codex", "--issue", "42",
+		"--issue-body", "${tmp}/issue-body.md", "--issue-fetched-at", "2026-09-25T12:00:00Z",
+	}})
+	var record map[string]any
+	readJSON(t, filepath.Join(strings.TrimSpace(s.vars["stdout"]), "record.json"), &record)
+	want := map[string]any{"repo": "CorneeldH/lighthouse", "issue": float64(42)}
+	if !reflect.DeepEqual(record["trajectory"], want) {
+		t.Errorf("trajectory = %#v, want %#v", record["trajectory"], want)
 	}
 }

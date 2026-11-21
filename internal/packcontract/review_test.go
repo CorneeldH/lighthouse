@@ -434,18 +434,16 @@ func TestReviewControllerRunSectionIsGuarded(t *testing.T) {
 }
 
 // Classification: fails when a review skill names the source repo, its host, paths or scripts,
-// or a source issue number, or stops naming the always-on host by its `host.toml`.
+// or a source issue number, or when the claude variant again limits recording to the always-on host.
 func TestReviewIsDetachedFromTheSourceRepo(t *testing.T) {
-	host := map[string]string{
-		"review-spec": "| 3 | not on the always-on host (`host.toml`): no record | report loudly that this review falls outside the measurement, on to closing |",
-		"review-plan": "| 3 | not on the always-on host (`host.toml`): no record | report loudly that this chain falls outside the measurement, on to step 10 |",
-	}
-	forEachReviewVariant(t, func(t *testing.T, name, _, body string) {
+	forEachReviewVariant(t, func(t *testing.T, name, variant, body string) {
 		wantNone(t, body, "Beelink", "experiments/", "scripts/controller_launch.sh", "developer/tenets.md")
 		if m := regexp.MustCompile(`\(#\d+\)|#\d{3,}`).FindString(body); m != "" {
 			t.Errorf("names issue number %s", m)
 		}
-		wantAll(t, body, host[name])
+		if variant == "claude" {
+			wantNone(t, body, "NOT RECORDED", "not on the always-on host", "only on the always-on host")
+		}
 	})
 }
 
