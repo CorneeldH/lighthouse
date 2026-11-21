@@ -1668,7 +1668,7 @@ def test_hooks_json_registers_pre_and_post() -> None:
 
 # --- `post` (#80): test what the commit touched, after the commit ---
 
-FIX_HINT = "commit-test-gate: tests failed on the commit you just made. Fix them in a new commit."
+FIX_HINT = "[commit-test-gate/tests-red] commit-test-gate: tests failed on the commit you just made. Fix them in a new commit."
 
 
 def _head(repo: Path) -> str:

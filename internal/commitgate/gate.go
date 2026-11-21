@@ -309,7 +309,7 @@ func (g *Gate) takeSlot(s *settings) (*os.File, *Result) {
 		b.WriteString("Other gates are running already. Try the commit again shortly.\n")
 		b.WriteString("Not being able to test is not a green light.\n")
 	}
-	res := blockResult(&b)
+	res := couldNotCheck(&b)
 	return nil, &res
 }
 
@@ -353,7 +353,7 @@ func (g *Gate) checkMemory(s *settings, dl time.Time) *Result {
 		}
 		return nil
 	}
-	res := blockResult(&b)
+	res := couldNotCheck(&b)
 	return &res
 }
 
@@ -404,7 +404,7 @@ func (g *Gate) RunRoots(rows []Row, event string) Result {
 		b.WriteString(HookName + ": COULD NOT CHECK — no gate tmp dir: " + err.Error() + "\n\n")
 		b.WriteString("Not being able to test is not a green light.\n")
 		g.postUntested(&b)
-		return blockResult(&b)
+		return couldNotCheck(&b)
 	}
 	defer func() { _ = os.RemoveAll(bt) }()
 
@@ -536,7 +536,7 @@ func (g *Gate) verdict(status int, output, root string, s *settings, brake Brake
 		}
 		g.postUntested(&b)
 		b.WriteString("\n" + output + "\n")
-		res := blockResult(&b)
+		res := couldNotCheck(&b)
 		return &res
 	}
 	notTested := "Root: " + root + ". Not being able to test is not a green light."
@@ -570,7 +570,7 @@ func (g *Gate) verdict(status int, output, root string, s *settings, brake Brake
 		return tail(notTested, s.hint)
 	}
 	b.WriteString(failLine + "\n" + s.hint + "\n\n" + output + "\n")
-	res := blockResult(&b)
+	res := block(reasonTestsRed, &b)
 	return &res
 }
 

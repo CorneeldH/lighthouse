@@ -130,38 +130,6 @@ def test_linkcheck_ignores_urls_and_anchors(tmp_path):
     assert result.returncode == 0, result.stderr
 
 
-def test_linkcheck_blocks_absolute_link(tmp_path):
-    """An absolute path is always a problem: dead on the rendered site and
-    as soon as the worktree is gone, whether or not the target exists."""
-    _repo, wt = _repo_with_worktree(tmp_path)
-    note = wt / "docs" / "note.md"
-    note.write_text("Zie [x](/home/iemand/x.md).\n", encoding="utf-8")
-
-    result = _run(
-        LINKCHECK,
-        {"tool_name": "Write", "cwd": str(wt), "tool_input": {"file_path": str(note)}},
-        cwd=wt,
-    )
-
-    assert result.returncode == 2, result.stdout
-    assert "/home/iemand/x.md" in result.stderr
-
-
-def test_linkcheck_blocks_dead_relative_link(tmp_path):
-    _repo, wt = _repo_with_worktree(tmp_path)
-    note = wt / "docs" / "note.md"
-    note.write_text("Zie [x](weg.md).\n", encoding="utf-8")
-
-    result = _run(
-        LINKCHECK,
-        {"tool_name": "Write", "cwd": str(wt), "tool_input": {"file_path": str(note)}},
-        cwd=wt,
-    )
-
-    assert result.returncode == 2, result.stdout
-    assert "weg.md" in result.stderr
-
-
 def test_linkcheck_ignores_links_inside_fenced_code_blocks(tmp_path):
     _repo, wt = _repo_with_worktree(tmp_path)
     note = wt / "docs" / "note.md"

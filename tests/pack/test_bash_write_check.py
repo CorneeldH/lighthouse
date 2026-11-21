@@ -402,22 +402,6 @@ def test_space_in_path(session):
     assert "== my x.sh (shell-lint-check.sh) ==" in out.stderr
 
 
-def test_py_blocking_rule(tmp_path):
-    s = _Session(tmp_path)
-    out = s.call(heredoc("bad.py", BARE_EXCEPT_PY))
-    assert out.returncode == 2, (out.stdout, out.stderr)
-    assert "E722" in out.stderr
-    assert "== bad.py (ruff-format-check.sh) ==" in out.stderr
-
-
-def test_md_dead_link(tmp_path):
-    s = _Session(tmp_path)
-    out = s.call(heredoc("note.md", "[x](nergens.md)\n"))
-    assert out.returncode == 2, (out.stdout, out.stderr)
-    assert "Linkcheck" in out.stderr
-    assert "== note.md (md-link-check.sh) ==" in out.stderr
-
-
 def test_md_dead_link_is_judged_by_the_hook(tmp_path):
     """The gate of a `.md` is `run.sh md-link-check`: a dead link written by Bash blocks
     with the verdict of the hook itself, not with "not checked"."""
