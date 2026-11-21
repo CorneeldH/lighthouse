@@ -12,6 +12,5 @@
   },
   "codex_config": "model = \"gpt-5.6-sol\"\nmodel_reasoning_effort = \"high\"\n",
   "codex_version": "codex-cli 9.9.9",
-  "language": "nl",
-  "refusal": "${KIND}-REVIEW NOT RECORDED: test"
+  "language": "nl"
 }

@@ -1,6 +1,5 @@
 {
-  "description": "accept-open needs no host: a refused host still exits 0.",
-  "host": "refuse",
+  "description": "accept-open needs no host: exit 0.",
   "steps": [
     {
       "op": "run",

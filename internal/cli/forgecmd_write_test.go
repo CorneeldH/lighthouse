@@ -124,6 +124,7 @@ func (w *writeForge) ReopenIssue(_ context.Context, n int, comment string) error
 func writeEnv(f forge.Forge) *forgeEnv {
 	return &forgeEnv{
 		open:   func(context.Context) (forge.Forge, error) { return f, nil },
+		getenv: func(string) string { return "" }, // never the real controller run of the test gate
 		branch: func() (string, error) { return "issue-9-x", nil },
 		repo: func() (repoconfig.Repo, error) {
 			return repoconfig.Repo{DefaultBranch: "trunk", Board: &repoconfig.Board{

@@ -425,6 +425,27 @@ func (c *NodeClient) Permission(ctx context.Context, session string) ([]byte, er
 	return data, nil
 }
 
+// PostFailed is GET post-failed: the raw post-failed.json of the run, nil, nil without one. Both
+// 404 no_post_failed and a 404 without a code (a node from before the route) mean no note; any
+// other failure is an error.
+func (c *NodeClient) PostFailed(ctx context.Context, session string) ([]byte, error) {
+	if _, err := c.Info(ctx); err != nil {
+		return nil, err
+	}
+	status, data, err := c.send(ctx, request{method: http.MethodGet, path: nodePath(nodeapi.PathPostFailed, "session", session)})
+	if err != nil {
+		return nil, err
+	}
+	if !ok(status) {
+		e := c.nodeError(status, data)
+		if e.Status == http.StatusNotFound && (e.Code == nodeapi.CodeNoPostFailed || e.Code == "") {
+			return nil, nil
+		}
+		return nil, e
+	}
+	return data, nil
+}
+
 // Git is GET git: Dirty and Unpushed of the worktree on the node, with mergedHead empty or a
 // full commit SHA.
 func (c *NodeClient) Git(ctx context.Context, id, mergedHead string) (dirty, unpushed bool, err error) {

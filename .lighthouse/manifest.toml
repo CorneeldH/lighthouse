@@ -71,7 +71,7 @@ kind = "file"
 path = ".agents/skills/lighthouse-review-plan/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "d28d23a4f5bf9a5f539261a82badd46b103f723475e8b0f1c702e1a708372eb3"
+sha256 = "dcfc76e57715df3788c32f6d95f090a5069aa9d9ecd0bcf8e2b15c39ded499bb"
 
 [[unit]]
 kind = "file"
@@ -106,7 +106,7 @@ kind = "file"
 path = ".agents/skills/lighthouse-review-spec/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "7a960c3de4fefa48c86e7cf6ed2b7358318c2a4bd24a998bf2c14c2d19c2e29b"
+sha256 = "5e70d648d91c94b3d2c4ea40469b50c331da26bb6bbdc8b8a8699079b6a6b2b6"
 
 [[unit]]
 kind = "file"
@@ -169,7 +169,7 @@ kind = "file"
 path = ".agents/skills/lighthouse-write-handoff/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "c99b5cff2e3ea9ee62fde2e81d2eb9de22af4650329ce4c4c07e98e72045d7e6"
+sha256 = "d7f4826a53f943460fcbb329b8bcc570b4431a5576825ce038952e4f6cc3a87c"
 
 [[unit]]
 kind = "file"
@@ -204,14 +204,14 @@ kind = "file"
 path = ".claude/hooks/lighthouse/go-lint-gate.sh"
 package = "go"
 version = "dev"
-sha256 = "ebb62d8cd3a94bd03dc0f77531f359a6078f409e2488fa2ed8c2569d50ef083d"
+sha256 = "844f7533e7e72a1c5b4fad51340bd976c227c34c193363b76ef77ad7ce2c3823"
 
 [[unit]]
 kind = "file"
 path = ".claude/hooks/lighthouse/gofmt-check.sh"
 package = "go"
 version = "dev"
-sha256 = "e3222226e29d29eaa533619afdb59d03a12a315e78174e59b107dfcb75e9cad7"
+sha256 = "1280a3664d47b07023fb86647d8ac5c2b325dc736a8f6e669b9dd35fbb8a5841"
 
 [[unit]]
 kind = "file"
@@ -456,7 +456,7 @@ kind = "file"
 path = ".claude/skills/lighthouse-review-plan/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "b90fa894f4860b806744dfb0247e54e17a2b7d2ee614d03b055f920e9fc25941"
+sha256 = "b2f8ebbe7a2e534c73220ea4317fcfc7fd3226c1d41283a83422f96f2986fcec"
 
 [[unit]]
 kind = "file"
@@ -491,7 +491,7 @@ kind = "file"
 path = ".claude/skills/lighthouse-review-spec/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "60d32c2ec72467a4acdf4b2a6d02bd565f6eb035ef2ce2bd749589157b481636"
+sha256 = "9067a9025424da5f86ef7e729eb2fd232078d391b6ee9ca94d4ab99e0331a966"
 
 [[unit]]
 kind = "file"
@@ -554,7 +554,7 @@ kind = "file"
 path = ".claude/skills/lighthouse-write-handoff/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "c99b5cff2e3ea9ee62fde2e81d2eb9de22af4650329ce4c4c07e98e72045d7e6"
+sha256 = "d7f4826a53f943460fcbb329b8bcc570b4431a5576825ce038952e4f6cc3a87c"
 
 [[unit]]
 kind = "file"
@@ -589,7 +589,7 @@ kind = "file"
 path = ".lighthouse/headings.toml"
 package = "core"
 version = "dev"
-sha256 = "44ada4f6a3dd68b16947f604bc7083a54cd7281bd4f565422dfa9ea4c86e9637"
+sha256 = "c20ab0577e2a9e5ec86222fe37303b6494129dcf708915f970797bea131546c6"
 
 [[unit]]
 kind = "block"

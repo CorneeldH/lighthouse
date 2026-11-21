@@ -129,6 +129,10 @@ type (
 	PermissionReader interface {
 		Permission(ctx context.Context, sessionID string) ([]byte, error)
 	}
+	// PostFailedReader reads the raw post-failed note of a run; nil, nil when it has none.
+	PostFailedReader interface {
+		PostFailed(ctx context.Context, sessionID string) ([]byte, error)
+	}
 )
 
 // Sentinels; adapters wrap them with %w.

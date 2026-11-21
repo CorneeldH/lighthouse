@@ -4,6 +4,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/CorneeldH/lighthouse/internal/issuestate"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 )
 
@@ -14,28 +15,14 @@ type Gate0 struct {
 }
 
 // FixedGate0 reports the gate 0 stop: the issue carries a blocked label, or has an open
-// blocked_by without needs_shaping, needs_decision or blocked_issue.
+// blocked_by without needs_shaping, needs_decision or blocked_issue. The rule is
+// issuestate.GateZero.
 func FixedGate0(f Facts, l repoconfig.Labels) (Gate0, bool) {
-	var g Gate0
-	for _, b := range f.Blockers {
-		if b.State == "OPEN" {
-			g.Blockers = append(g.Blockers, b.Issue)
-		}
+	s, ok := issuestate.GateZero(f.Labels, f.Blockers, l)
+	if !ok {
+		return Gate0{}, false
 	}
-	has := func(name string) bool { return name != "" && slices.Contains(f.Labels, name) }
-	switch {
-	case has(l.BlockedIssue):
-		g.Label = l.BlockedIssue
-	case has(l.BlockedExternal):
-		g.Label = l.BlockedExternal
-	}
-	if g.Label != "" {
-		return g, true
-	}
-	if len(g.Blockers) > 0 && !has(l.NeedsShaping) && !has(l.NeedsDecision) {
-		return g, true
-	}
-	return Gate0{}, false
+	return Gate0{Blockers: s.Blockers, Label: s.Label}, true
 }
 
 // Deviation is one way an issue breaks the label invariant.
