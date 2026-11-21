@@ -208,3 +208,29 @@ func TestIndexRecordsSpecIsIssue(t *testing.T) {
 		t.Errorf("linked rows = %d (%v), want 1", n, err)
 	}
 }
+
+func TestIndexRecordsBadChainDoesNotStopTheRest(t *testing.T) {
+	ctx, db, root := context.Background(), openIndexDB(t), t.TempDir()
+	bad := rec(1, [3]string{"r1-f1", "MAJOR", "accept"})
+	bad["written_at"] = "0001-01-01T00:00:00Z"
+	writeChain(t, root, "plan", "a-bad", "A1", bad)
+	unreadable := writeChain(t, root, "plan", "b-unreadable", "A1", rec(2, [3]string{"r1-f1", "MAJOR", "accept"}))
+	if err := os.Chmod(unreadable, 0); err != nil {
+		t.Fatal(err)
+	}
+	writeChain(t, root, "plan", "c-good", "A1", rec(3, [3]string{"r1-f1", "MAJOR", "accept"}))
+	res, err := IndexRecords(ctx, db, root, fixedNow)
+	if err != nil {
+		t.Fatalf("IndexRecords: %v", err)
+	}
+	if res.New != 1 || rows(t, db, `source_id LIKE 'plan/c-good/%'`) != 1 {
+		t.Errorf("res = %+v, want the good chain indexed", res)
+	}
+	want := 1
+	if os.Geteuid() != 0 {
+		want = 2
+	}
+	if len(res.Skipped) != want {
+		t.Errorf("Skipped = %+v, want %d", res.Skipped, want)
+	}
+}

@@ -56,7 +56,8 @@ func IndexRecords(ctx context.Context, db *sql.DB, dataRoot string, _ func() tim
 			continue
 		}
 		if err != nil {
-			return res, err
+			res.Skipped = append(res.Skipped, Skip{Path: filepath.Join(dataRoot, kind+"-review"), Reason: "unreadable directory: " + err.Error()})
+			continue
 		}
 		for _, c := range chains {
 			if !c.IsDir() {
@@ -97,9 +98,12 @@ func newestAttempt(chainDir string) (attempt string, finished bool, err error) {
 
 func indexChain(ctx context.Context, db *sql.DB, dataRoot, kind, chain string, res *IndexResult) error {
 	chainDir := filepath.Join(dataRoot, kind+"-review", chain)
+	// Data and read errors of one chain are skips, so that one bad chain does not
+	// stop the others; only database errors are returned.
 	attempt, finished, err := newestAttempt(chainDir)
 	if err != nil {
-		return err
+		res.Skipped = append(res.Skipped, Skip{Path: chainDir, Reason: "unreadable chain: " + err.Error()})
+		return nil
 	}
 	if attempt == "" {
 		return nil
@@ -112,7 +116,8 @@ func indexChain(ctx context.Context, db *sql.DB, dataRoot, kind, chain string, r
 		if data, err = os.ReadFile(recordPath); err == nil {
 			keep = chainPrefix + attempt + "/"
 		} else if !errors.Is(err, fs.ErrNotExist) {
-			return err
+			res.Skipped = append(res.Skipped, Skip{Path: recordPath, Reason: "unreadable record: " + err.Error()})
+			return nil
 		}
 	}
 	removed, err := telemetry.DeleteFindingsUnder(ctx, db, IndexSource, chainPrefix, keep)
@@ -150,6 +155,10 @@ func indexChain(ctx context.Context, db *sql.DB, dataRoot, kind, chain string, r
 	at, err := time.Parse(time.RFC3339, doc.WrittenAt)
 	if err != nil {
 		skip("bad written_at: " + err.Error())
+		return nil
+	}
+	if at.IsZero() {
+		skip("bad written_at: the zero time " + doc.WrittenAt)
 		return nil
 	}
 	sum := Sum(data)
