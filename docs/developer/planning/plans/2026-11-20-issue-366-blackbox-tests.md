@@ -574,6 +574,26 @@ Vul aan per taak. Gaat ongewijzigd naar de PR-body.
 | `test_code_language_hook.py` | `test_hook_ends_within_deadline` (3 modi) | naar Go | `TestHookSilentChainEndsAtPerModel` (`internal/codelang/hook_test.go`, 4 s echt); mutatie `PerModel` 4 s → 1 s en → 40 s: rood | Geen Go-test pinde de default: `TestAskTotalDeadline` en `TestAskEveryFailureKind` geven eigen deadlines mee. `drip` en de onbereikbare host zelfde code, gedekt door `TestAskEveryFailureKind/drip` en `/refused` |
 | `test_code_language_hook.py` | `test_hook_under_gates` | gedekt | `TestMainNoticeContract` en `TestUnderGatesSkips` (geen requests); mutatie `underGates` → `underGates && false` in `Resolve`: rood; `case os.Getenv(underGatesEnv) != ""` → `case false` in `runHook`: rood | |
 | `_fake_llm.py` | helper | weg | `fakeLLM` in `llm_test.go` is de Go-tweeling; niets anders importeerde hem | |
+| `test_turn_roots.py` | `test_an_edit_in_a_worktree_names_the_worktree_not_the_cwd` (4 tools) | naar Go | `TestResolveRoots` (`internal/turnroots/turn_scenarios_test.go`; vier gevallen: Edit met meta-entry, Write, MultiEdit, NotebookEdit); mutatie `rootOf(path)` → `rootOf(use.cwd)` in `touchedRoots`: rood; `len(kept) > 0` → `&& false`: rood | Geen Go-test las een transcript |
+| `test_turn_roots.py` | `test_a_bash_call_names_its_git_target_and_its_cwd`, `test_a_bash_call_uses_the_cwd_of_its_own_entry` | naar Go | `TestResolveRoots`; mutatie `ok && use.hasWd` → `ok && false`: rood (beide gevallen) | |
+| `test_turn_roots.py` | `test_a_turn_without_writes_falls_back_to_the_cwd` | naar Go | `TestResolveRoots`; mutatie alleen de eerste prompt starten een beurt (`if prompt == nil` in `turnEntries`): rood | |
+| `test_turn_roots.py` | `test_a_path_in_another_repository_does_not_count` | naar Go | `TestResolveRoots`; mutatie `ProjectFilter` overgeslagen in `readTurn`: rood | |
+| `test_turn_roots.py` | `test_a_subagent_edit_since_the_prompt_counts` | naar Go | `TestResolveSubagentEditSinceThePrompt`; mutatie `!m.Before(start)` → `true \|\| …`: rood | |
+| `test_turn_roots.py` | `test_a_compaction_summary_keeps_the_roots_before_it` | naar Go | `TestResolveRoots`; mutatie `isCompactSummary`-test uit `isPrompt`: rood (ook `TestIsPrompt`) | |
+| `test_turn_roots.py` | `test_a_missing_transcript_cannot_tell`, `test_a_transcript_without_a_prompt_cannot_tell`, `test_a_cwd_outside_a_repository_cannot_tell` | naar Go | `TestResolveCannotTell` (drie gevallen, de volledige reden als literal); mutaties: `"the transcript " + transcript` → zonder pad: rood; `"no prompt in the transcript "` → `"no prompt in transcript "`: rood; `(" + cwd + ")` weggelaten in de cwd-terugval van `readTurn`: rood | `TestPayloadErrors` dekte alleen de payloadfouten |
+| `test_turn_roots.py` | `test_without_a_transcript_path_it_cannot_tell`, `test_invalid_json_cannot_tell` | gedekt | `TestPayloadErrors`; mutatie `"the payload has no transcript_path."` → `"…transcript."`: rood; `"the payload is not valid JSON."` → `"…invalid."`: rood | Ook `TestTurnRootsCommandUndetermined` (exit 1, reden op stdout) |
+| `test_turn_roots.py` | `test_match_an_edit_in_the_domain_is_touched`, `test_match_an_edit_outside_the_domain_is_untouched` | naar Go | `TestClassify` (`internal/turnroots/turn_scenarios_test.go`); mutatie `paths[realpath(path)] = true` weggelaten in `toolPaths`: rood | De uitvoerregels `touched\t<root>` staan in `TestTurnRootsCommandPrintsRootsAndVerdicts` (`internal/cli`); mutatie labels omgedraaid in `turnRootsLines`: rood |
+| `test_turn_roots.py` | `test_match_a_compaction_summary_does_not_restart_the_turn` | naar Go | `TestClassify`; zelfde mutatie als de roots-variant: rood | |
+| `test_turn_roots.py` | `test_match_any_of_several_patterns` | gedekt | `TestMatchesAnyCompiled` (`README.md`, `go.sum` tegen `*.go`, `go.sum`); mutatie `break` na het eerste patroon in `matchesAny`: rood | |
+| `test_turn_roots.py` | `test_match_a_pattern_with_a_directory` | gedekt | `TestFnmatchCase` en `TestMatchesAnyCompiled` (`src/*.py`); mutatie `*` → `[^/]*` in `translate`: rood | |
+| `test_turn_roots.py` | `test_match_a_bash_write_since_the_prompt_is_touched`, `test_match_a_dirty_path_from_an_earlier_turn_is_untouched` | naar Go | `TestClassify`; mutatie `info.ModTime().Unix() >= since` → `true \|\| …`: rood (de tweede). Zonder `ModTime`-controle blijft de eerste groen, dus de tweede pint de grens | Geen `time.Sleep`: de prompt ligt 10 s terug, oudere bestanden via `os.Chtimes` |
+| `test_turn_roots.py` | `test_match_a_deleted_path_counts` | naar Go | `TestClassify`; mutatie `paths := removed` → lege map: rood | |
+| `test_turn_roots.py` | `test_match_a_commit_in_the_turn_is_touched`, `test_match_a_commit_before_the_turn_is_untouched` | naar Go | `TestClassify` (commitdatums via `GIT_COMMITTER_DATE`); mutaties `len(reflog) == 0` → `true`: rood; `entry.Epoch < since` → `false`: rood | `TestAGitParseErrorIsNotInvalidJSON` dekt het "voor de beurt" met echte git, niet de "in de beurt"-kant |
+| `test_turn_roots.py` | `test_match_a_turn_without_writes_judges_the_cwd` | naar Go | `TestClassify`; mutatie `state.roots = []string{cwdRoot}` → `nil` in `readTurn`: rood (ook de roots-variant) | `len(rels) == 0 \|\| …` in `Classify` laat hem groen: de untracked worktree-map telt als wijziging |
+| `test_turn_roots.py` | `test_match_a_prompt_without_timestamp_is_touched` | naar Go | `TestClassify`; mutatie `if !state.hasStart` → `if false`: rood | |
+| `test_turn_roots.py` | `test_match_an_edit_in_an_unborn_repo_is_touched`, `test_match_an_unborn_repo_without_a_domain_path_is_untouched` | naar Go | `TestClassifyUnbornRepository`; mutatie `head == "unborn"` → `false`: rood (de tweede; de eerste blijft groen omdat een git-fout ook "touched" geeft) | |
+| `test_turn_roots.py` | `test_match_judges_each_root`, `test_match_an_edit_in_a_worktree_does_not_touch_the_main_checkout` | naar Go | `TestClassify`; mutatie `owner == root` → `owner == root \|\| strings.HasPrefix(path, root)`: rood (beide); `ok && use.hasWd` → `&& false`: rood (de eerste) | |
+| `test_turn_roots.py` | `test_match_a_root_git_cannot_read_is_touched` | naar Go | `TestClassify` (kapotte index); mutatie `Touched: true` → `false` bij `GitError`: rood (ook `TestAGitParseErrorIsNotInvalidJSON`) | |
 
 Task 2: 67 tests → naar Go 2 / gedekt 57 / beschermt niets 7 / onderwerp weg 1
 
@@ -586,5 +606,7 @@ Task 5: 68 tests → naar Go 45 / gedekt 20 / beschermt niets 1 / onderwerp weg 
 Task 6: 53 pytest-functies → naar Go 13 / gedekt 39 / beschermt niets 0 / onderwerp weg 0 (1 overgedragen aan taak 11)
 
 Task 7: 20 pytest-functies → naar Go 2 / gedekt 18 / beschermt niets 0 / onderwerp weg 0 (0 overgedragen)
+
+Task 8: 29 pytest-functies → naar Go 25 / gedekt 4 / beschermt niets 0 / onderwerp weg 0 (0 overgedragen)
 
 **Totalen:** tests voor: 576 · naar Go: … · weg — gedekt: … · weg — beschermt niets: … · weg — onderwerp weg: …
