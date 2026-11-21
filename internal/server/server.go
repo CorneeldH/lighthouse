@@ -10,6 +10,7 @@ import (
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 
 	"github.com/CorneeldH/lighthouse/internal/dispatch"
+	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/overview"
 	"github.com/CorneeldH/lighthouse/internal/priorities"
 	"github.com/CorneeldH/lighthouse/internal/usage"
@@ -32,9 +33,15 @@ type Deps struct {
 	Overview   func(context.Context) (overview.Overview, error) // the forge overview the questions and returned endpoints read
 	Leftovers  func(context.Context) ([]workplace.Leftover, error)
 	Priorities func(context.Context) ([]priorities.Repo, error) // the prioritisation lists, built apart from Overview
-	Runs       func(context.Context) ([]dispatch.RunView, []dispatch.DeferredView, error)
-	RunsMeta   RunsMeta
-	Node       http.Handler // the node-API under /api/node/; nil without [node] in host.toml
+	// PriorityForges is the forge per repo slug the milestone-rank endpoint writes to; nil
+	// leaves that endpoint out.
+	PriorityForges map[string]forge.Forge
+	// PatchPriorities applies a change to the cached prioritisation lists; false when there is
+	// no cached value to change.
+	PatchPriorities func(func([]priorities.Repo) []priorities.Repo) bool
+	Runs            func(context.Context) ([]dispatch.RunView, []dispatch.DeferredView, error)
+	RunsMeta        RunsMeta
+	Node            http.Handler // the node-API under /api/node/; nil without [node] in host.toml
 }
 
 // New returns the handler: the JSON API under /api/ and site as SPA elsewhere, behind the Host check.
@@ -62,6 +69,9 @@ func New(site fs.FS, d Deps) http.Handler {
 	registerCleanup(api, d.Leftovers)
 	registerRuns(api, d.Runs, d.RunsMeta)
 	registerPriorities(api, d.Priorities, d.Runs)
+	if d.PriorityForges != nil {
+		registerMilestoneRanks(api, d.PriorityForges, d.PatchPriorities)
+	}
 
 	if d.Node != nil {
 		mux.Handle("/api/node/", d.Node)
