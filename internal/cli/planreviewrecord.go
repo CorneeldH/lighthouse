@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/config"
 	"github.com/CorneeldH/lighthouse/internal/datadir"
 	"github.com/CorneeldH/lighthouse/internal/review"
+	"github.com/CorneeldH/lighthouse/internal/store"
 	"github.com/CorneeldH/lighthouse/internal/telemetry"
 )
 
@@ -281,7 +283,33 @@ func runRecordWrite(cmd *cobra.Command, attemptDir string, f *recordFlags, deps 
 		return planReviewExit(4)
 	}
 	_, _ = fmt.Fprintln(cmd.OutOrStdout(), final)
+	indexAfterWrite(cmd)
 	return nil
+}
+
+// indexAfterWrite indexes the data directory, the new record included. The record is the
+// product: a failure is one line on stderr, never an exit code.
+func indexAfterWrite(cmd *cobra.Command) {
+	ctx := cmd.Context()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	err := func() error {
+		dbPath, err := store.DefaultPath()
+		if err != nil {
+			return err
+		}
+		st, err := store.OpenShared(ctx, dbPath)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = st.Close() }()
+		_, err = indexDataRoot(ctx, st.DB)
+		return err
+	}()
+	if err != nil {
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "REVIEW-INDEX FAILED: %v\n", err)
+	}
 }
 
 // writeRecord builds the record and writes it to the data directory.

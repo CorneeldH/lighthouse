@@ -87,6 +87,7 @@ func newScenario(t *testing.T, c map[string]any) *scenario {
 	t.Setenv("LIGHTHOUSE_TOML", filepath.Join(tmp, "lighthouse.toml"))
 	t.Setenv("LIGHTHOUSE_HEADINGS", "../../pack/core/headings.toml")
 	t.Setenv("HOME", s.vars["home"])
+	t.Setenv("XDG_STATE_HOME", filepath.Join(tmp, "state"))
 	t.Setenv("TMPDIR", s.vars["tmpdir"])
 	t.Setenv("LIGHTHOUSE_DATA", s.vars["data"])
 	t.Setenv("XDG_DATA_HOME", "")
