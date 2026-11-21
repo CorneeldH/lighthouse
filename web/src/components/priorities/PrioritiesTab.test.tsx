@@ -46,7 +46,11 @@ function renderTab() {
   return client
 }
 
-beforeEach(() => localStorage.clear())
+beforeEach(() => {
+  localStorage.clear()
+  // jsdom has no ResizeObserver; the milestone bar measures itself with one.
+  vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} })
+})
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
@@ -141,6 +145,7 @@ describe('PrioritiesTab', () => {
       ],
       runs: [],
     }
+    const STATE_LABELS = ['done', 'active', 'ready', 'needs a human', 'blocked', 'not shaped yet']
     const legend = () => within(screen.getByRole('list', { name: 'Legend' }))
     const swatches = () =>
       Array.from(screen.getByRole('list', { name: 'Legend' }).querySelectorAll('li'))
@@ -170,14 +175,29 @@ describe('PrioritiesTab', () => {
       stub(() => json(TWO))
       renderTab()
       fireEvent.click(await screen.findByRole('button', { name: /^Milestones/ }))
-      expect(swatches().map((x) => x[0])).toEqual(['a/x · Alpha', 'a/x · Empty', 'a/y · Beta', 'picked up'])
+      expect(swatches().map((x) => x[0])).toEqual(['a/x · Alpha', 'a/x · Empty', 'a/y · Beta', ...STATE_LABELS])
+    })
+
+    it('the legend shows the five states and the shaping border, and no picked-up pill', async () => {
+      stub(() => json(TWO))
+      renderTab()
+      await screen.findByRole('button', { name: 'a/x' })
+      const states = screen.getAllByTestId('legend-block')
+      expect(states.map((b) => [b.getAttribute('data-state'), b.getAttribute('data-needs-human')])).toEqual([
+        ['done', 'false'],
+        ['active', 'false'],
+        ['ready', 'false'],
+        ['ready', 'true'],
+        ['blocked', 'false'],
+      ])
+      expect(legend().queryByText('picked up')).toBeNull()
     })
 
     it('the without-milestone view has no milestone colours when no closed milestone is named', async () => {
       stub(() => json(TWO))
       renderTab()
       fireEvent.click(await screen.findByRole('button', { name: /Without milestone/ }))
-      expect(swatches().map((x) => x[0])).toEqual(['picked up'])
+      expect(swatches().map((x) => x[0])).toEqual(STATE_LABELS)
     })
 
     it('a stored selection of only stale slugs counts as all on', async () => {

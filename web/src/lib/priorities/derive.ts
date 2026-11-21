@@ -260,15 +260,12 @@ export interface MilestoneRow {
   number: number
   title: string
   done: number
-  active: GNode[]
-  todo: GNode[]
   open: number
   total: number
   percent: number
   shaping: boolean
   empty: boolean
   outside: GNode[]
-  order: GNode[]
 }
 
 const byRepoNumber = (a: GNode, b: GNode) =>
@@ -347,15 +344,12 @@ export function milestoneRows(repos: Repo[], graph: Graph): MilestoneRow[] {
         number: m.number,
         title: m.title,
         done: m.done,
-        active: order.filter((n) => n.active),
-        todo: order.filter((n) => !n.active),
         open,
         total: m.done + open,
         percent: empty ? 0 : m.done / (m.done + open),
         shaping: isShaping(m.description, m.done + open),
         empty,
         outside,
-        order,
       })
     }
   }
@@ -367,7 +361,7 @@ export function sortMilestoneRows(rows: MilestoneRow[]): MilestoneRow[] {
     (a, b) =>
       Number(a.empty) - Number(b.empty) ||
       a.open - b.open ||
-      (b.percent ?? 0) - (a.percent ?? 0) ||
+      b.percent - a.percent ||
       (a.repo < b.repo ? -1 : a.repo > b.repo ? 1 : 0) ||
       a.number - b.number,
   )

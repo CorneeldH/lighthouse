@@ -225,10 +225,10 @@ describe('milestoneRows', () => {
     ]
     const [row] = milestoneRows(rs, buildGraph(rs, []))
     expect(row.outside.map((x) => x.key)).toEqual([`${R}#2`, `${R}#3`, 'z/q#9'])
-    expect(row.order.map((x) => x.number)).toEqual([4, 1])
+    expect(row.blocks.filter((b) => b.repo === R).map((b) => b.nr)).toEqual([4, 1])
   })
 
-  it('order is topological and keeps a cycle together by number', () => {
+  it('blocks keep a cycle together by number and put a blocker before what it blocks', () => {
     const rs = [
       repo(
         R,
@@ -242,22 +242,21 @@ describe('milestoneRows', () => {
       ),
     ]
     const [row] = milestoneRows(rs, buildGraph(rs, []))
-    const nums = row.order.map((x) => x.number)
+    const nums = row.blocks.map((b) => b.nr)
     expect(nums.indexOf(6)).toBeLessThan(nums.indexOf(8))
     expect(Math.abs(nums.indexOf(5) - nums.indexOf(7))).toBe(1)
     expect(nums.indexOf(5)).toBeLessThan(nums.indexOf(7))
   })
 
-  it('splits active and todo', () => {
+  it('gives an In progress issue the active state and a plain one ready', () => {
     const rs = [
       repo(R, [iss(1, [], { milestone: ref(1), status: 'In progress' }), iss(2, [], { milestone: ref(1) })], [m(1, 0)]),
     ]
     const [row] = milestoneRows(rs, buildGraph(rs, []))
-    expect(row.active.map((x) => x.number)).toEqual([1])
-    expect(row.todo.map((x) => x.number)).toEqual([2])
+    expect(row.blocks.map((b) => [b.nr, b.state])).toEqual([[1, 'active'], [2, 'ready']])
   })
 
-  it('empty milestone (also only not-planned) is shaping with null percent', () => {
+  it('empty milestone (also only not-planned) is shaping with percent 0', () => {
     const rs = [repo(R, [], [m(1, 0, 0)])]
     const [row] = milestoneRows(rs, buildGraph(rs, []))
     expect(row).toMatchObject({ empty: true, percent: 0, shaping: true })
@@ -321,14 +320,12 @@ describe('milestoneRows blocks', () => {
     })
   })
 
-  it('orders ready issues by dependency depth before number', () => {
+  it('orders a group by dependency depth before number', () => {
     const row = mk([
-      iss(1, [], { milestone: ref, label: 'needs_hands' }),
-      iss(2, [[R, 3]], { milestone: ref, label: 'x' }),
-      iss(3, [], { milestone: ref }),
-      iss(4, [], { milestone: ref }),
+      iss(1, [[R, 5]], { milestone: ref, label: 'needs_decision' }),
+      iss(5, [], { milestone: ref, label: 'needs_decision' }),
     ])
-    expect(row.blocks.filter((b) => b.state === 'ready').map((b) => b.nr)).toEqual([3, 4])
+    expect(row.blocks.filter((b) => b.state === 'needs_human').map((b) => b.nr)).toEqual([5, 1])
   })
 
   it('an outside blocker without issue data is a ready block', () => {
