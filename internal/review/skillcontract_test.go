@@ -44,7 +44,11 @@ func enumOf(t *testing.T, item schemaItem, prop string) []string {
 	}
 	var out []string
 	for _, v := range raw {
-		out = append(out, v.(string))
+		str, ok := v.(string)
+		if !ok {
+			t.Fatalf("%s enum holds %v, not a string", prop, v)
+		}
+		out = append(out, str)
 	}
 	return out
 }
@@ -126,7 +130,7 @@ func TestSpecBlockerNeedsAFailureScenario(t *testing.T) {
 	if _, ok := item.Properties["cat"]; ok {
 		t.Error("the spec schema has a cat")
 	}
-	_, body, _ := strings.Cut(string(readFile(t, skillsDir, "review-spec", "reviewer-prompt.md")), beginMarker)
+	body := promptBody(t, "review-spec")
 	if !strings.Contains(body, noScenarioRule) {
 		t.Errorf("the spec prompt lacks %q", noScenarioRule)
 	}
@@ -136,6 +140,7 @@ func TestSpecBlockerNeedsAFailureScenario(t *testing.T) {
 }
 
 // pytest: test_runner_is_allowlisted
+// It lives here because the runner is the review skills' entry point, and its permission is part of that contract.
 func TestPackAllowsTheRunner(t *testing.T) {
 	var perms struct {
 		Allow []string `json:"allow"`
