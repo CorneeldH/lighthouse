@@ -4,6 +4,20 @@ All notable changes to lighthouse. The format follows [Keep a Changelog](https:/
 chosen is in [docs/releasing.md](docs/releasing.md). The release workflow writes the sections below from the
 fragments in `changelog.d/`; never edit a released section by hand.
 
+## [v0.21.0] - 2026-11-21
+
+### Added
+
+- Een nieuwe poort controleert dat elke directe import in een manifest is gedeclareerd: `lighthouse imports check` draait `go mod tidy -diff` (Go), knip (node) en deptry (Python), per Stop-hook (`go-imports-gate`, `python-imports-gate`, `node-imports-gate`) en in `commit-test-gate`, ook met `[test_gate] command = ""`. Uitzetten kan alleen met `[imports] check = false`. Kan de commit-gate de check niet draaien, dan blokkeert zij met `COULD NOT CHECK`; de Stop-hooks melden dat zonder te blokkeren. Bekende beperking: bij `git commit -a` in één Bash-aanroep is er bij `pre` nog niets gestaged, dus slaat de commit-gate de check over; stage in een aparte aanroep. In een Expo-project zonder `main` of entry vindt knip niets. De CI-job `canary` houdt de checkers zelf in de gaten.
+
+### Changed
+
+- `/lighthouse-close-issue`, `lighthouse unblock-dependents` and `lighthouse worktree-audit` now read and write issues and pull requests through `lighthouse forge` instead of `gh`, so they work on GitLab as well as GitHub; checking workflow runs and the release flow still use `gh`. Without an unblock lane (GitLab, or GitHub without a bot in `[ci]`) the session releases the waiting issues itself with `lighthouse unblock-dependents`, which reports `released issues not read` with exit 1 when it cannot read the forge, and exits 2 with one line on stderr when the token is missing or the configuration is broken. When `worktree-audit` cannot read the PR status from the forge, it now writes one line to stderr instead of staying silent.
+
+### Fixed
+
+- An unreadable `post-failed.json` left by an earlier run in the same session no longer hands a later run back with *post mislukt: notitie onleesbaar*. Such a note is now dated by its file's modification time, which serve sends in the new `X-Lighthouse-Mod-Time` header on a node.
+
 ## [v0.20.0] - 2026-11-21
 
 ### Added
