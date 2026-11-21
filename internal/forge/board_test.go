@@ -305,6 +305,30 @@ func TestBoardItemsBlockers(t *testing.T) {
 	}
 }
 
+// Classification: io. Fails when BoardItems reads the dependencies route of a closed issue
+// (it starts or resumes no run), or stops reading it for an open issue with blockers.
+func TestBoardItemsClosedIssueSkipsBlockedBy(t *testing.T) {
+	srv, c := projectServer(t)
+	blockers := []any{map[string]any{"number": 4, "state": "OPEN", "repository": map[string]any{"nameWithOwner": "o/r"}}}
+	closed := restIssue("PVTI_5", 5, "o/r", nil, blockers)
+	closed["content"].(map[string]any)["state"] = "CLOSED"
+	srv.BoardNodes = []map[string]any{closed, restIssue("PVTI_7", 7, "o/r", nil, blockers)}
+	c.Board = restBoard()
+	got, err := c.BoardItems(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := srv.Count("/repos/o/r/issues/5/dependencies/blocked_by"); n != 0 {
+		t.Errorf("Count(blocked_by of closed 5) = %d, want 0", n)
+	}
+	if n := srv.Count("/repos/o/r/issues/7/dependencies/blocked_by"); n != 1 {
+		t.Errorf("Count(blocked_by of open 7) = %d, want 1", n)
+	}
+	if got[0].Issue != 5 || got[0].BlockedBy != nil {
+		t.Errorf("closed item = %d, BlockedBy %+v, want 5 and nil", got[0].Issue, got[0].BlockedBy)
+	}
+}
+
 // Classification: io. Fails when a 403 or 404 on an extra call of an item in another repo
 // breaks the board, or when one on an item of the repo itself, or another status, is ignored.
 func TestBoardItemsOtherRepoNotVisible(t *testing.T) {
