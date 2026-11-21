@@ -89,6 +89,13 @@ De SPA leidt deze begrippen af in `web/src/lib/priorities/derive.ts`; de server 
 
 - **Actief.** Een issue is actief als er een open of geparkeerde run op staat, of als de
   bordstatus `In progress` is.
+- **Toestand van een open issue.** `issueState` kiest de eerste passende regel: *actief* (live run,
+  bordstatus `In progress` of `Controller`; met een vlag *wacht op mens* bij een `needs_*`-label of
+  een open vraag), *wacht op mens* (`needs_shaping` of `needs_decision`), *geblokkeerd* (label
+  `blocked_*` of open blockers), *wacht op mens* (`needs_hands` of `needs_testing`), anders *klaar*.
+  Gesloten issues zijn *klaar-af* (`closed`). De milestone-balk tekent die vijf toestanden met één
+  vormentaal en groepeert de blokjes per toestand. De API levert daarvoor per issue `label` en
+  `open_question`, en per milestone de gesloten issues (`closed`).
 - **Bergop / bergaf.** Een actief issue is bergop als de fase van zijn run een van
   `brainstorming`, `start-issue`, `spec-review`, `writing-plans` of `plan-review` is: het
   denkwerk vóór de uitvoering. Elke andere fase, of een issue dat alleen op het bord actief is,
