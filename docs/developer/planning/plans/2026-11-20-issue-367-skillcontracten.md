@@ -305,7 +305,7 @@ De uitvoerder werkt deze tabel per taak bij. De PR-body neemt hem over. Telling:
 | `test_workflow_unblock.py` | 14 | 14 naar Go (5 als uitvoertest van het stapscript, 1 ingekort: de allowlistkant; de YAML via `packs.Fill` en `yaml.v3`, de sleutels via `config.KindOf`), 0 gedekt (de init-tests vullen een stubworkflow), negatieven R3 binnen 1 test | 7 |
 | `test_fragments.py` | 4 | 1 naar Go (`config.Parse` over basis plus fragment, elke sleutel via `config.KindOf`), 3 beschermt niets (zelftests van `_check`), 0 gedekt (de init-tests gebruiken een nepfragment) | 8 |
 | `test_requires_without_python.py` | 1 | 1 gedekt (`TestLanguagePacks`, voor go, node, shell en expo elk met `python3` en `tomllib` gemuteerd) | 8 |
-| `test_portable_shell.py` | 3 | 3 naar Go | 8 |
+| `test_portable_shell.py` | 3 | 3 naar Go (de regexen letterlijk, de lookbehind van `sha256sum` als `(^|[^\w-])`; minstens één shellbestand) | 8 |
 | `test_shell_style.py` | 1 | 1 naar Go (open: shellcheck in de Go-job) | 8 |
 | **Totaal** | **297** | voorlopig ~265 naar Go, ~32 weg of open | |
 
@@ -739,3 +739,13 @@ Vervallen negatieven (R3): `uv `, `setup-uv`, `python` en `unblock_dependents.py
 | `test_fragments.py` | `test_check_catches_a_wrong_type` | weg — beschermt niets | Zelftest van de hulpfunctie `_check`; de Go-port roept `config.Parse` direct aan, en de mutatie `["3"]` hierboven bewijst dat die het type weigert. | — |
 | `test_fragments.py` | `test_check_catches_an_unknown_key` | weg — beschermt niets | Zelftest van `_check`; `config.KindOf` is getest in `internal/config` (`TestIsKnownKey`), en de mutatie `nope = 1` hierboven faalt. | — |
 | `test_fragments.py` | `test_check_accepts_the_python_default` | weg — beschermt niets | Zelftest van `_check` op een kopie van het fragment; de Go-test leest het echte fragment. | — |
+
+### `test_portable_shell.py` (taak 8c, afgerond)
+
+3 naar Go, 0 gedekt (3). De Go-tests staan in `internal/packcontract/packfiles_test.go`. `GNU_ONLY`, `BASH4`, `MARKER`, `PROBE` en `TRAILING_COMMENT` staan er letterlijk in, als Go-`regexp`; RE2 kent geen lookbehind, dus `(?<![\w-])sha256sum\b` werd `(^|[^\w-])sha256sum\b`. De bestandskeuze is die van het origineel (elk `.sh` onder `pack/`, of een bestand zonder suffix met een `sh`/`bash`-shebang): 8 bestanden, net als in Python. `shellLines` faalt als het er geen vindt. Elke mutatie is gedraaid: de test faalde, daarna `git checkout -- pack/` en een lege `git status --short pack/`.
+
+| Bestand | Test | Bestemming | Reden | Go-test of mutatie |
+|---|---|---|---|---|
+| `test_portable_shell.py` | `test_pack_shell_has_no_gnu_only_constructs` | naar Go | Blijvende invariant (#90): shell onder `pack/` draait op macOS; een regel met `# portable:` en een `command -v`-probe tellen niet. | `TestPackShellHasNoGNUOnlyConstructs`. Mutaties: `sed -i 's/x/y/' f` en `sha256sum f` in `pack/go/hooks/gofmt-check.sh`, de marker weg op de `sha256sum`-regel van `shellcheck-bin.sh`: FAIL. Een losse `command -v sha256sum` blijft PASS. |
+| `test_portable_shell.py` | `test_pack_shell_has_no_bash4_constructs` | naar Go | Blijvende invariant: bash 3.2 op macOS. | `TestPackShellHasNoBash4Constructs`. Mutaties: `declare -A m` in `gofmt-check.sh`, `${x,,}` in `pack/core/hooks/run.sh`: FAIL. |
+| `test_portable_shell.py` | `test_portable_marker_needs_a_reason` | naar Go | Een uitzondering draagt haar reden. | `TestPortableMarkerNeedsAReason`. Mutatie: `# portable:` zonder reden op drie regels van `shellcheck-bin.sh`: FAIL. |
