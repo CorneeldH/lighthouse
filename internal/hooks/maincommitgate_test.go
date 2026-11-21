@@ -109,7 +109,7 @@ func TestMainCommitGateBlocksACommitOnMain(t *testing.T) {
 
 	res := gate(t, "git commit -m x", dir)
 
-	want := "Main-commit gate: blocked — '" + root + "' is on branch 'main' (commit).\n"
+	want := "[main-commit-gate/commit-to-main] Main-commit gate: blocked — '" + root + "' is on branch 'main' (commit).\n"
 	if res.Code != 2 || !strings.HasPrefix(res.Stderr, want) {
 		t.Fatalf("got code %d, stderr %q; want 2 and a stderr starting with %q", res.Code, res.Stderr, want)
 	}
@@ -203,7 +203,7 @@ func TestMainCommitGateEscapeHatch(t *testing.T) {
 		stderr                string
 	}{
 		{"commit on main without the hatch", "main", "git commit -m x", false, 2,
-			"Main-commit gate: blocked — 'ROOT' is on branch 'main' (commit).\n"},
+			"[main-commit-gate/commit-to-main] Main-commit gate: blocked — 'ROOT' is on branch 'main' (commit).\n"},
 		{"commit on main with the hatch", "main", "git commit -m x", true, 0, ""},
 		{"unresolvable -C path without the hatch", "issue-1-x", `git -C "$HOOFDBOOM" commit -m x`, false, 2,
 			"Main-commit gate: COULD NOT CHECK — the path '$HOOFDBOOM' cannot be resolved.\n"},
@@ -234,19 +234,19 @@ func TestMainCommitGateProtectedBranch(t *testing.T) {
 		stderr                                     string
 	}{
 		{"commit on the configured default branch", trunk, "trunk", "", "git commit -m x", 2,
-			"Main-commit gate: blocked — 'ROOT' is on branch 'trunk' (commit).\n"},
+			"[main-commit-gate/commit-to-main] Main-commit gate: blocked — 'ROOT' is on branch 'trunk' (commit).\n"},
 		{"push to the configured default branch", trunk, "issue-1-x", "", "git push origin HEAD:trunk", 2,
-			"Main-commit gate: blocked — this push explicitly targets 'trunk' (push from branch 'issue-1-x').\n"},
+			"[main-commit-gate/push-to-main] Main-commit gate: blocked — this push explicitly targets 'trunk' (push from branch 'issue-1-x').\n"},
 		{"commit on main when the default is trunk", trunk, "main", "", "git commit -m x", 0, ""},
 		{"push to main when the default is trunk", trunk, "issue-1-x", "", "git push origin HEAD:main", 0, ""},
 		{"push --all with a local default branch trunk", trunk, "issue-1-x", "trunk", "git push --all origin", 2,
-			"Main-commit gate: blocked — this push explicitly targets 'trunk' (push from branch 'issue-1-x').\n"},
+			"[main-commit-gate/push-to-main] Main-commit gate: blocked — this push explicitly targets 'trunk' (push from branch 'issue-1-x').\n"},
 		{"push to main from a feature branch", "", "issue-1-x", "", "git push origin HEAD:main", 2,
-			"Main-commit gate: blocked — this push explicitly targets 'main' (push from branch 'issue-1-x').\n"},
+			"[main-commit-gate/push-to-main] Main-commit gate: blocked — this push explicitly targets 'main' (push from branch 'issue-1-x').\n"},
 		{"push --all with a local main", "", "issue-1-x", "main", "git push --all origin", 2,
-			"Main-commit gate: blocked — this push explicitly targets 'main' (push from branch 'issue-1-x').\n"},
+			"[main-commit-gate/push-to-main] Main-commit gate: blocked — this push explicitly targets 'main' (push from branch 'issue-1-x').\n"},
 		{"push --mirror with a local main", "", "issue-1-x", "main", "git push --mirror origin", 2,
-			"Main-commit gate: blocked — this push explicitly targets 'main' (push from branch 'issue-1-x').\n"},
+			"[main-commit-gate/push-to-main] Main-commit gate: blocked — this push explicitly targets 'main' (push from branch 'issue-1-x').\n"},
 		{"push --all without a local main", "", "issue-1-x", "", "git push --all origin", 0, ""},
 	}
 	for _, c := range cases {
@@ -273,9 +273,9 @@ func TestMainCommitGateFromAWorktree(t *testing.T) {
 		stderr        string
 	}{
 		{"commit through -C into the main checkout", "git -C ROOT commit -m x", 2,
-			"Main-commit gate: blocked — 'ROOT' is on branch 'main' (commit).\n"},
+			"[main-commit-gate/commit-to-main] Main-commit gate: blocked — 'ROOT' is on branch 'main' (commit).\n"},
 		{"commit after a cd into the main checkout", "cd ROOT && git commit -m x", 2,
-			"Main-commit gate: blocked — 'ROOT' is on branch 'main' (commit).\n"},
+			"[main-commit-gate/commit-to-main] Main-commit gate: blocked — 'ROOT' is on branch 'main' (commit).\n"},
 		{"commit in the worktree itself", "git commit -m x", 0, ""},
 	}
 	for _, c := range cases {

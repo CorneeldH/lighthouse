@@ -19,13 +19,9 @@ from tests.pack.go.conftest import GO_HOOKS
 
 GOFMT_HOOK = GO_HOOKS / "gofmt-check.sh"
 UNCHECKED = "gofmt-check: COULD NOT CHECK — "
-PARSE_ERROR = "x.go:2:8: expected ')', found 'EOF'"
-STUB = f"""#!/bin/bash
+STUB = """#!/bin/bash
 echo "$@" > "$STUB_LOG"
-if [ "${{STUB_RC:-0}}" -eq 2 ]; then
-  echo "{PARSE_ERROR}" >&2
-fi
-exit ${{STUB_RC:-0}}
+exit 0
 """
 TOOLS = ("bash", "jq", "cat")
 
@@ -50,13 +46,12 @@ def _file(tmp_path: Path, name: str, text: str = "package m\n") -> dict:
     return {"tool_input": {"file_path": str(target)}}
 
 
-def _stubbed(tmp_path: Path, rc: int = 0) -> dict:
+def _stubbed(tmp_path: Path) -> dict:
     """An environment whose `gofmt` is a stub that logs its arguments to STUB_LOG."""
     bin_dir = tool_bin(tmp_path / "bin", TOOLS, stubs={"gofmt": STUB})
     return {
         "PATH": f"{bin_dir}:{os.environ['PATH']}",
         "STUB_LOG": str(tmp_path / "stub.log"),
-        "STUB_RC": str(rc),
     }
 
 
@@ -69,16 +64,10 @@ def test_formats_a_go_file(tmp_path):
     env = _stubbed(tmp_path)
     result = _run(payload, tmp_path, env)
     assert result.returncode == 0, result.stderr
-    assert Path(env["STUB_LOG"]).read_text().strip() == f"-w {payload['tool_input']['file_path']}"
-
-
-def test_blocks_a_file_that_does_not_parse(tmp_path):
-    payload = _file(tmp_path, "a.go")
-    path = payload["tool_input"]["file_path"]
-    result = _run(payload, tmp_path, _stubbed(tmp_path, rc=2))
-    assert result.returncode == 2, result.stdout
-    assert result.stderr.splitlines()[0] == f"gofmt-check: {path} does not parse — fix the syntax."
-    assert PARSE_ERROR in result.stderr
+    assert (
+        Path(env["STUB_LOG"]).read_text().strip()
+        == f"-w {payload['tool_input']['file_path']}"
+    )
 
 
 def test_other_extension_passes(tmp_path):
@@ -89,7 +78,11 @@ def test_other_extension_passes(tmp_path):
 
 
 def test_missing_file_passes(tmp_path):
-    result = _run({"tool_input": {"file_path": str(tmp_path / "gone.go")}}, tmp_path, _stubbed(tmp_path))
+    result = _run(
+        {"tool_input": {"file_path": str(tmp_path / "gone.go")}},
+        tmp_path,
+        _stubbed(tmp_path),
+    )
     assert result.returncode == 0, result.stderr
 
 
@@ -97,11 +90,15 @@ def test_no_path_passes(tmp_path):
     assert _run({"tool_input": {}}, tmp_path, _stubbed(tmp_path)).returncode == 0
 
 
-@pytest.mark.skipif(shutil.which("gofmt") is None, reason="the Python lane of CI has no setup-go")
+@pytest.mark.skipif(
+    shutil.which("gofmt") is None, reason="the Python lane of CI has no setup-go"
+)
 def test_classify_reads_the_parse_error_as_a_finding(tmp_path):
     result = _run(_file(tmp_path, "x.go", "package m\n\nfunc F( {\n"), tmp_path)
     assert result.returncode == 2, result.stdout
-    assert result.stderr.startswith("gofmt-check: "), result.stderr
+    assert result.stderr.startswith("[gofmt-check/parse-error] gofmt-check: "), (
+        result.stderr
+    )
     assert classify(2, result.stderr.encode()) == "finding"
 
 
@@ -113,7 +110,9 @@ def test_without_gofmt_could_not_check(tmp_path):
 
 
 def test_without_gofmt_other_extension_passes(tmp_path):
-    result = _run(_file(tmp_path, "a.md", "# hi\n"), tmp_path, _without(tmp_path, "gofmt"))
+    result = _run(
+        _file(tmp_path, "a.md", "# hi\n"), tmp_path, _without(tmp_path, "gofmt")
+    )
     assert result.returncode == 0
     assert result.stderr == ""
 

@@ -94,3 +94,6 @@ dir = "verslagen"
 ignore = ["overlap:main-commit-gate|project/.claude/hooks/x.sh", "permission:Bash(git push:*)"]
 top = 3
 description_max_chars = 200
+
+[imports]
+check = false

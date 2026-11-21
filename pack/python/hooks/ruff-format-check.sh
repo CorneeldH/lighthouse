@@ -99,7 +99,9 @@ BLOCKING_RULES="E722,B006,F403,F811,B023,PT012,PGH003,PGH004"
 
 # ruff exits 1 on findings and 2 when it could not lint (a broken [tool.ruff], a
 # bad argument): only 1 is a verdict on the code.
-out=$($RUFF check --force-exclude --select "$BLOCKING_RULES" "$FILE_PATH" 2>&1)
+# `--output-format concise` pins one line per finding, `<file>:<l>:<c>: <code> <message>`, in every
+# ruff version; a canary test matches `: <code> ` in it.
+out=$($RUFF check --force-exclude --output-format concise --select "$BLOCKING_RULES" "$FILE_PATH" 2>&1)
 rc=$?
 if [ "$rc" -eq 1 ]; then
   echo "$HOOK_NAME: fix this in the code — do not relax a rule and do not paste a" >&2

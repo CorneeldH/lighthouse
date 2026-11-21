@@ -519,7 +519,7 @@ func TestClassifyUnbornRepository(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(got) != 1 || got[0] != (Verdict{Root: repo, Touched: tt.want}) {
+			if len(got) != 1 || got[0].Root != repo || got[0].Touched != tt.want {
 				t.Errorf("Classify = %v, want %v for %s", got, tt.want, repo)
 			}
 		})

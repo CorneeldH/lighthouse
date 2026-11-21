@@ -1,0 +1,11 @@
+{
+  "hook": "python",
+  "touch": "src/app/main.py",
+  "exit": 0,
+  "dists": [
+    {
+      "name": "numpy",
+      "requires": []
+    }
+  ]
+}

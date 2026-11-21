@@ -22,8 +22,9 @@ _WEB_TOO = frozenset({".github/workflows/ci.yml", "ci/domains.py", "lighthouse.t
 _GO_TOO = frozenset({"web/openapi.json", "web/go.mod"})
 # Inside docs/, but read by Go: internal/config/config_test.go parses the GitLab example in it.
 _GO_DOCS = frozenset({"docs/install.md"})
-# Inside tests/, but read by Go: internal/protocol/header_test.go:19 reads the fixtures.
-_GO_FIXTURES = "tests/pack/fixtures/"
+# Inside tests/, but read by Go: internal/protocol/header_test.go:19 reads the fixtures, and
+# internal/canary/bashwrite_test.go reads the ruff canary file that tests/pack/python shares.
+_GO_FIXTURES = ("tests/pack/fixtures/", "tests/pack/python/testdata/ruff-format-check/")
 # Outside web/, but read by no Go build or test, so they leave out go (python stays: pytest reads
 # docs/ and tests/, and ci/literal-grep.sh runs in that job, on pack/ and on the Go sources). Every other unknown path still
 # touches go. Measured on main (c72662c, #130): go:embed reads only internal/web (dist,

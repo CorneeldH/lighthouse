@@ -103,7 +103,7 @@ func TestHookCanonicalPath(t *testing.T) {
 	}
 	raw, _ := json.Marshal(map[string]any{"cwd": root, "tool_input": map[string]any{"file_path": "link/a.py"}})
 	res := runPayload(t, string(raw))
-	want := "code-language-check: " + filepath.Join(root, "real", "a.py") + " is not English\n"
+	want := "[code-language-check/non-english] code-language-check: " + filepath.Join(root, "real", "a.py") + " is not English\n"
 	if res.Code != 2 || len(res.Stderr) < len(want) || res.Stderr[:len(want)] != want {
 		t.Errorf("symlinked directory: %+v, want 2 and a report on the real path", res)
 	}
@@ -152,7 +152,7 @@ func TestHookRelativePathFromWorkingDirectory(t *testing.T) {
 	writeFile(t, filepath.Join(root, "a.py"), []byte(dutchComment))
 	t.Chdir(root)
 	res := runPayload(t, `{"tool_input": {"file_path": "a.py"}}`)
-	if want := "code-language-check: " + filepath.Join(root, "a.py") + " is not English\n"; res.Code != 2 ||
+	if want := "[code-language-check/non-english] code-language-check: " + filepath.Join(root, "a.py") + " is not English\n"; res.Code != 2 ||
 		len(res.Stderr) < len(want) || res.Stderr[:len(want)] != want {
 		t.Errorf("%+v, want 2 and a report on %s", res, filepath.Join(root, "a.py"))
 	}
@@ -257,7 +257,7 @@ func TestHookNoticeWithFindings(t *testing.T) {
 	t.Setenv("LIGHTHOUSE_TOML", sessionTOML(t, t.TempDir(), llmTable(fake.url)))
 	path := filepath.Join(root, "a.py")
 	writeFile(t, path, []byte(layer1Line+doubtLine))
-	want := hook.Result{Code: 2, Stderr: "code-language-check: " + path + " is not English\n" +
+	want := hook.Result{Code: 2, Stderr: "[code-language-check/non-english] code-language-check: " + path + " is not English\n" +
 		path + ":1: name: lees_bestand [layer 1]\n" +
 		`The whole file must be English. A line that is deliberately not English gets "lighthouse: allow-language".` + "\n\n" +
 		"code-language-check: layer 2 did not answer (m1: HTTP 500); 1 doubtful units not checked:\n" +
