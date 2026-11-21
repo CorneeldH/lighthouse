@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseRank } from './rank'
+import { parseRank, setRank } from './rank'
 
 describe('parseRank', () => {
   const cases: Array<[string, string, number | null]> = [
@@ -21,5 +21,24 @@ describe('parseRank', () => {
   ]
   it.each(cases)('%s', (_name, input, want) => {
     expect(parseRank(input)).toBe(want)
+  })
+})
+
+// Mirror of TestSetRank in internal/priorities/rank_test.go.
+describe('setRank', () => {
+  const cases: Array<[string, string, number, string]> = [
+    ['empty', '', 1, 'Priority: 1'],
+    ['append', 'Pitch', 2, 'Pitch\n\nPriority: 2'],
+    ['replace', 'Pitch\nPriority: 2\nrest', 1, 'Pitch\nPriority: 1\nrest'],
+    ['crlf', 'a\r\nPriority: 2\r\nb', 9, 'a\r\nPriority: 9\r\nb'],
+    ['first valid line', 'Priority: high\nPriority: 4', 1, 'Priority: high\nPriority: 1'],
+    ['keeps indent and trailing', '  Priority: 2  \n', 1, '  Priority: 1  \n'],
+    ['trailing newline appended literally', 'Pitch\n', 2, 'Pitch\n\n\nPriority: 2'],
+    ['blank description', '  ', 1, '  \n\nPriority: 1'],
+    ['trailing crlf appended literally', 'Pitch\r\n', 2, 'Pitch\r\n\n\nPriority: 2'],
+    ['overflow is plain text', 'Priority: 99999999999999999999', 3, 'Priority: 99999999999999999999\n\nPriority: 3'],
+  ]
+  it.each(cases)('%s', (_name, input, rank, want) => {
+    expect(setRank(input, rank)).toBe(want)
   })
 })
