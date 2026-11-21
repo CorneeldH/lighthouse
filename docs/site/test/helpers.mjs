@@ -1,5 +1,7 @@
 // Shared helpers of the site tests (`node --test "docs/site/test/*.test.mjs"`).
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -116,4 +118,25 @@ export function elementById(html, id) {
   }
   if (found) found.text = decodeEntities(text + html.slice(last));
   return found;
+}
+
+let builtBin = null;
+
+/** The lighthouse binary: `$LIGHTHOUSE_BIN` when set and not empty, otherwise one build of
+ * ./cmd/lighthouse into a temporary directory, removed at exit. Fails, never skips, when there is
+ * neither. */
+export function lighthouseBin() {
+  const given = (process.env.LIGHTHOUSE_BIN ?? "").trim();
+  if (given) return given;
+  if (builtBin) return builtBin;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "lighthouse-bin-"));
+  process.on("exit", () => fs.rmSync(dir, { recursive: true, force: true }));
+  const out = path.join(dir, "lighthouse");
+  try {
+    execFileSync("go", ["build", "-o", out, "./cmd/lighthouse"], { cwd: ROOT, stdio: "pipe" });
+  } catch {
+    throw new Error("lighthouse binary needed: set LIGHTHOUSE_BIN or install Go (no silent skip)");
+  }
+  builtBin = out;
+  return out;
 }
