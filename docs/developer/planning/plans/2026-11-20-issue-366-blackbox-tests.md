@@ -509,6 +509,51 @@ Vul aan per taak. Gaat ongewijzigd naar de PR-body.
 | `test_bash_write_check.py` | `test_removed_worktree_is_named_not_silent` | naar Go | `TestScenarioRemovedWorktreeIsNamedNotSilent` (`internal/bashwrites/scenario_test.go`); mutatie de `gone`-lus in `postInState` leeg; de marker-roots niet meenemen: rood |  |
 | `test_bash_write_check.py` | `test_pre_without_lighthouse_blocks_like_every_gate`, `test_hooks_registered_pre_post_and_failure` | → taak 11 | — | Lopen over `run.sh` zonder binary en over `hooks.json` (timeouts 5/120/120, pre + post + failure); de pytest-tekst staat in `task-5-report.md` |
 
+| `test_md_link_check.py` | `test_linkcheck_allows_link_to_branch_only_spec`, `test_linkcheck_checks_other_project_too`, `test_linkcheck_checks_own_project` | naar Go | `TestLinkCheckInALinkedWorktree` (`internal/hooks/mdlinkcheck_test.go`); mutatie `--show-toplevel` → `--git-common-dir` in `mdLinkCheck` (root = repo van het bestand, niet de hoofdcheckout of `CLAUDE_PROJECT_DIR`): rood | Alleen het linked-worktree-geval ontbrak; de overige tests werkten in een gewone repo |
+| `test_md_link_check.py` | `test_linkcheck_allows_link_to_file_on_main` | gedekt | `TestLinkCheckTrace` (`internal/hooks/mdlinkcheck_test.go`); mutatie trace `checking in ` → `checking at `: rood | |
+| `test_md_link_check.py` | `test_linkcheck_ignores_urls_and_anchors` | gedekt | `TestLinkCheckVerdicts/existing link`; mutatie `schemeRe.MatchString(t)` → `false` in `RelativeLinks`: rood | mailto in `TestFixtures` |
+| `test_md_link_check.py` | `test_linkcheck_blocks_absolute_link` | gedekt | `TestLinkCheckVerdicts/absolute link`; mutatie `range AbsoluteLinks(text)` → lege lijst: rood | |
+| `test_md_link_check.py` | `test_linkcheck_blocks_dead_relative_link` | gedekt | `TestLinkCheckVerdicts/dead link`; mutatie `Problem{"dead", t}` weg: rood | |
+| `test_md_link_check.py` | `test_linkcheck_ignores_links_inside_fenced_code_blocks`, `test_linkcheck_ignores_link_in_tilde_fence` | gedekt | `TestLinkCheckVerdicts/link in a fence` (mutatie ``` uit `fenceRe`: rood), `TestFixtures/strip_code/both fence styles and inline code` (mutatie `~~~` uit `fenceRe`: rood) | |
+| `test_md_link_check.py` | `test_linkcheck_skips_target_outside_repo` | gedekt | `TestLinkCheckVerdicts/target outside the repo`; mutatie `HasPrefix(rel, "..")` → `false`: rood | |
+| `test_md_link_check.py` | `test_linkcheck_checks_main_checkout_too` | gedekt | `TestLinkCheckVerdicts` (gewone repo); mutatie hook slaat een toplevel met `.git`-map over: rood | |
+| `test_md_link_check.py` | `test_linkcheck_ignores_non_markdown` | gedekt | `TestLinkCheckPasses/not markdown`; mutatie suffixcontrole → `false`: rood | |
+| `test_md_link_check.py` | `test_linkcheck_fails_loud_without_tooling`, `test_linkcheck_without_git` | gedekt | `TestLinkCheckCouldNotCheck/no git`; mutatie `missing tooling: git` → `gitx`: rood | |
+| `test_md_link_check.py` | `test_linkcheck_fails_loud_when_parser_crashes` | gedekt | `TestLinkCheckCouldNotCheck/unreadable file`; mutatie `if err != nil` na `FindProblems` → `if false`: rood | |
+| `test_md_link_check.py` | `test_linkcheck_invalid_json_is_unchecked` | gedekt | `TestLinkCheckCouldNotCheck/payload not JSON`; mutatie `linkTarget` geeft `true` bij een parsefout: rood | |
+| `test_md_link_check.py` | `test_linkcheck_git_failure_is_unchecked` | gedekt | `TestLinkCheckCouldNotCheck/git fails`; mutatie `Contains(root, "not a git repository")` → `\|\| true`: rood | |
+| `test_md_link_check.py` | `test_linkcheck_outside_git_stays_silent` | gedekt | `TestLinkCheckPasses/outside git`; mutatie `not a git repository` → `not a gitx repository`: rood | De Duitse locale: `LC_ALL=C` staat in de hook zelf |
+| `test_md_link_check.py` | `test_linkcheck_names_the_problem_in_english` | gedekt | `TestLinkCheckVerdicts/dead then absolute`; mutatie `does not exist` → `bestaat niet`: rood | |
+| `test_worktree_check.py` | `test_worktree_check_warns_on_main_checkout_on_main` | gedekt | `TestWorktreeCheckWarnsOnTheMainCheckoutOnMain`; mutatie `"  " + abs` → `+ "x"`: rood | |
+| `test_worktree_check.py` | `test_worktree_check_silent_inside_worktree`, `test_worktree_check_silent_for_worktree_branch_literally_named_main`, `test_worktree_check_silent_in_worktree_subdir` | gedekt | `TestWorktreeCheckIsSilentInALinkedWorktreeSubdirectory` (worktree-branch `main`, default `trunk`); mutatie `gitDir != gitCommon` → `&& false`: rood | |
+| `test_worktree_check.py` | `test_worktree_check_payload_shapes`, `test_worktree_check_warns_on_invalid_json_payload` | gedekt | `TestWorktreeCheckPayloadShapes` (`[]`, `{"tool_input": "x"}`, `null`, `{}`); mutatie parsefout in `hook.JQFields` geeft `true`: rood | Niet-JSON en een array lopen door dezelfde `Unmarshal`-fout |
+| `test_worktree_check.py` | `test_worktree_check_silent_on_feature_branch_in_main_checkout` | naar Go | `TestWorktreeCheckIsSilentOnAFeatureBranchInTheMainCheckout`; mutatie `branch != protected` → `branch == "\x00"`: rood | |
+| `test_worktree_check.py` | `test_worktree_check_warns_when_cwd_is_worktree_but_target_is_main_checkout` | naar Go | `TestWorktreeCheckWarnsWhenTheCwdIsAWorktreeButTheTargetIsTheMainCheckout`; mutatie `dir := filepath.Dir(abs)` → `dir := cwd`: rood | |
+| `test_worktree_check.py` | `test_worktree_check_silent_outside_git_repo` | naar Go | `TestWorktreeCheckIsSilentOutsideAGitRepository`; mutatie `not a git repository` → `not a gitx repository`: rood | |
+| `test_worktree_check.py` | `test_guard_silent_outside_git_repo_under_other_locale` | naar Go | `TestWorktreeCheckIsSilentOutsideAGitRepositoryUnderAnotherLocale` (git-shim spreekt Duits tenzij `LC_ALL=C`); mutatie `LC_ALL=C` uit `gitCombined`: rood | De pytest-test sloeg over als git hier geen Duits spreekt |
+| `test_worktree_check.py` | `test_worktree_check_warns_without_git` | naar Go | `TestWorktreeCheckWithoutGit`; mutatie `missing tooling: git.` → `gitx.`: rood | |
+| `test_worktree_check.py` | `test_guard_speaks_when_git_breaks` | naar Go | `TestWorktreeCheckSpeaksWhenGitBreaks`; mutatie `not a git repository`-controle `\|\| true`: rood | |
+| `test_worktree_check.py` | `test_guard_speaks_when_branch_fails` | naar Go | `TestWorktreeCheckSpeaksWhenTheBranchCannotBeRead`; mutatie `if err != nil` na `branch --show-current` → `if false`: rood | |
+| `test_worktree_check.py` | `test_guard_follows_default_branch` | naar Go | `TestWorktreeCheckFollowsTheDefaultBranch`; mutatie `branch != protected` → `branch != "main"`: rood | |
+| `test_worktree_check.py` | `test_guard_with_broken_config_speaks` | naar Go | `TestWorktreeCheckSpeaksWhenTheConfigIsBroken`; mutatie `if !ok` na `defaultBranch()` → `if false`: rood | |
+| `test_pr_create_gate.py` | `test_valid_closes_passes` | gedekt | `TestMainClosesPassesWithCount` (mutatie `body checked — ` → `body checked - `: rood) en `TestPrCreateGateMapsTheExitCodes/pass with lines` (mutatie `additionalContext` leeg: rood) | |
+| `test_pr_create_gate.py` | `test_valid_refs_passes` | gedekt | `TestFixtures` (`refs-with-reason`, `refs-separator-emdash`); mutatie `MinReason = 10` → `100`: rood | |
+| `test_pr_create_gate.py` | `test_no_form_blocks` | gedekt | `TestPrBodyGateCommand/blocker on stderr`; mutatie `/lighthouse-write-pr` → `/x` in het blokbericht: rood | |
+| `test_pr_create_gate.py` | `test_cd_prefix_reads_relative` | gedekt | `TestFixtures/find-body-file-relative-after-cd`; mutatie `applyCd` zet `here` niet: rood | |
+| `test_pr_create_gate.py` | `test_gh_pr_new_is_checked` | gedekt | `TestFixtures/find-create-and-new`; mutatie `"create", "new"` → `"create"` in `recognise`: rood | |
+| `test_pr_create_gate.py` | `test_other_repo_skipped` | gedekt | `TestPrBodyGateCommand/other repo skipped`; mutatie `skipped — other repo` → `skipped - other repo`: rood | |
+| `test_pr_create_gate.py` | `test_outside_repo_with_R_is_checked` | gedekt | `TestScopeOutsideRepoWithR`; mutatie `normalized == pyCasefold(own.Slug)` → `== "x"`: rood | |
+| `test_pr_create_gate.py` | `test_unparseable_without_gh_pr_passes` | gedekt | `TestHookPassesUnrelatedCommand`; mutatie `mentionsPrCreate` geeft `true`: rood | |
+| `test_pr_create_gate.py` | `test_unparseable_with_gh_pr_blocks` | gedekt | `TestPrCreateGateWithTheRealBodyCheck/gh pr create --body 'x`; mutatie `open quote` → `open quoteX`: rood | |
+| `test_pr_create_gate.py` | `test_ac_count_differs_blocks` | gedekt | `TestMainClosesACMismatchBlocks`; mutatie `acceptance criteria` → `criteria`: rood | |
+| `test_pr_create_gate.py` | `test_forge_fails_passes_loudly` | gedekt | `TestFetchACCountForgeErrorPassesLoudly` (ook via `httptest` 500); mutatie `forge error: ` → `forge fault: `: rood | |
+| `test_pr_create_gate.py` | `test_token_missing_passes_loudly` | gedekt | `TestFetchACCountTokenMissingPassesLoudly`; mutatie `token: set` → `token; set` in `forge.TokenError`: rood | |
+| `test_pr_create_gate.py` | `test_invalid_payload_blocks`, `test_empty_command_silent`, `test_payload_shapes` | gedekt | `TestPrCreateGatePayloadShapes`; mutatie `JQFields`-fout in `readGatePayload` genegeerd: rood; `command == ""` → `false`: rood | |
+| `test_pr_create_gate.py` | `test_no_gh_pr_create_silent` | gedekt | `TestPrBodyGateCommand/no gh pr create`; mutatie `recognise` geeft altijd `ghTool`: rood | |
+| `test_pr_create_gate.py` | `test_fork_clone_without_repo_blocks_with_the_exact_flag` | gedekt | `TestMainWithoutRepoBlockNamesTheExactRepo`; mutatie `Add --repo ` → `Add --repo X`: rood | De vlag komt uit `forge.repo`, niet uit de remotes |
+| `test_pr_create_gate.py` | `test_slow_forge_passes_loudly_within_the_deadline` | naar Go | `TestMainSlowForgePassesLoudlyAfterTheACTimeout` (`internal/prbody/gate_test.go`, 5 s echt); mutatie `ACTimeoutS` 5 → 1 en → 50: rood | Geen Go-test pinde de default; `TestMainDeadlineBoundsSlowGHFallback` gebruikt een eigen deadline |
+| `test_pr_create_gate.py` | `test_hook_registered_and_executable` | → taak 11 | — | `hooks.json` (PreToolUse/Bash, timeout 15) en `run.sh`; de pytest-tekst staat in `task-6-report.md` |
+
 Task 2: 67 tests → naar Go 2 / gedekt 57 / beschermt niets 7 / onderwerp weg 1
 
 Task 3: 64 tests → naar Go 41 / gedekt 21 / beschermt niets 0 / onderwerp weg 0 (2 overgedragen aan taak 10)
@@ -516,5 +561,7 @@ Task 3: 64 tests → naar Go 41 / gedekt 21 / beschermt niets 0 / onderwerp weg 
 Task 4: 132 tests → naar Go 27 / gedekt 102 / beschermt niets 0 / onderwerp weg 0 (3 overgedragen aan taak 10/11)
 
 Task 5: 68 tests → naar Go 45 / gedekt 20 / beschermt niets 1 / onderwerp weg 0 (2 overgedragen aan taak 11)
+
+Task 6: 53 pytest-functies → naar Go 13 / gedekt 39 / beschermt niets 0 / onderwerp weg 0 (1 overgedragen aan taak 11)
 
 **Totalen:** tests voor: 576 · naar Go: … · weg — gedekt: … · weg — beschermt niets: … · weg — onderwerp weg: …
