@@ -14,9 +14,9 @@ const PRIORITIES = {
     {
       slug: 'a/x',
       issues: [
-        { number: 1, title: 't1', url: 'u1', status: 'To do', blocked_by: null, milestone: M },
-        { number: 2, title: 't2', url: 'u2', status: 'To do', blocked_by: [{ repo: 'a/x', issue: 1 }], milestone: M },
-        { number: 3, title: 't3', url: 'u3', status: 'To do', blocked_by: null },
+        { number: 1, title: 't1', url: 'u1', status: 'To do', label: '', open_question: false, blocked_by: null, milestone: M },
+        { number: 2, title: 't2', url: 'u2', status: 'To do', label: '', open_question: false, blocked_by: [{ repo: 'a/x', issue: 1 }], milestone: M },
+        { number: 3, title: 't3', url: 'u3', status: 'To do', label: '', open_question: false, blocked_by: null },
       ],
       milestones: [{ number: 1, title: 'Alpha', description: '', done: 0, open: 2 }],
     },
@@ -130,7 +130,7 @@ describe('PrioritiesTab', () => {
 
   describe('legend and colours', () => {
     const iss = (n: number, ms: { number: number; title: string } | null) => ({
-      number: n, title: `t${n}`, url: `u${n}`, status: 'To do', blocked_by: null,
+      number: n, title: `t${n}`, url: `u${n}`, status: 'To do', label: '', open_question: false, blocked_by: null,
       ...(ms ? { milestone: { ...ms, state: 'open' } } : {}),
     })
     const ms = (number: number, title: string) => ({ number, title, description: '', done: 0, open: 1 })

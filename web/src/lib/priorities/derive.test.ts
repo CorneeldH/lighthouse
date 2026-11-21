@@ -1,8 +1,9 @@
+import cases from '../../../../tests/pack/fixtures/issue-state/cases.json'
 import { describe, expect, it } from 'vitest'
 import type { Issue, Repo, Run } from '../../api/lighthouse'
 import {
   buildGraph,
-  isActive,
+  issueState,
   isShaping,
   isUphill,
   milestoneRows,
@@ -122,24 +123,59 @@ describe('buildGraph', () => {
   })
 })
 
-describe('isActive / isUphill', () => {
-  const run = (state: string, phase: string): Run => ({ repo: R, issue: 1, state, phase })
-  it('parked run is active and downhill in executing-plans', () => {
-    const r = run('parked', 'executing-plans')
-    expect(isActive(iss(1), [r], R)).toBe(true)
-    expect(isUphill(r)).toBe(false)
+interface StateCase {
+  name: string
+  closed?: boolean
+  labels?: string[]
+  status?: string
+  run?: string
+  blockers?: Array<{ issue: number; state: string }>
+  open_question?: boolean
+  want: { state: string; needs_human?: boolean }
+}
+
+// Rank of the label keys, lowest first, as the API reports the one winning key.
+const LABEL_RANK = [
+  'needs_shaping',
+  'needs_decision',
+  'blocked_issue',
+  'blocked_external',
+  'needs_hands',
+  'needs_testing',
+]
+
+describe('issueState follows the shared state fixture', () => {
+  const openCases = (cases as StateCase[]).filter((c) => !c.closed)
+  it.each(openCases)('$name', (c) => {
+    const label = LABEL_RANK.find((k) => c.labels?.includes(k)) ?? ''
+    const open = (c.blockers ?? []).filter((b) => b.state === 'OPEN')
+    const issue = iss(1, [], {
+      status: c.status ?? '',
+      label,
+      open_question: c.open_question ?? false,
+      blocked_by: open.length > 0 ? open.map((b) => ({ repo: R, issue: b.issue })) : null,
+    })
+    const runs: Run[] = c.run ? [{ repo: R, issue: 1, state: c.run, phase: 'sdd' }] : []
+    expect(issueState(issue, runs, R)).toEqual({
+      state: c.want.state,
+      needsHuman: c.want.needs_human ?? false,
+    })
   })
-  it('In progress without run is active and downhill', () => {
-    expect(isActive(iss(1, [], { status: 'In progress' }), [], R)).toBe(true)
-    expect(isUphill(undefined)).toBe(false)
+})
+
+describe('issueState / isUphill', () => {
+  const run = (state: string, phase: string): Run => ({ repo: R, issue: 1, state, phase })
+  it('a done run does not make an issue active', () => {
+    expect(issueState(iss(1), [run('done', 'sdd')], R).state).toBe('ready')
+  })
+  it('a run of another issue does not make an issue active', () => {
+    const other: Run = { repo: R, issue: 2, state: 'open', phase: 'sdd' }
+    expect(issueState(iss(1), [other], R).state).toBe('ready')
   })
   it('unknown phase is downhill, spec-review is uphill', () => {
+    expect(isUphill(undefined)).toBe(false)
     expect(isUphill(run('open', 'onbekend'))).toBe(false)
     expect(isUphill(run('open', 'spec-review'))).toBe(true)
-  })
-  it('To do without run is not active; a closed run does not count', () => {
-    expect(isActive(iss(1), [], R)).toBe(false)
-    expect(isActive(iss(1), [run('done', 'sdd')], R)).toBe(false)
   })
 })
 

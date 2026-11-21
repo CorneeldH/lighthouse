@@ -40,8 +40,32 @@ function liveRun(runs: Run[], repo: string, nr: number): Run | undefined {
   )
 }
 
-export function isActive(issue: Issue, runs: Run[], repo: string): boolean {
-  return liveRun(runs, repo, issue.number) !== undefined || issue.status === 'In progress'
+export type IssueStateName = 'done' | 'active' | 'needs_human' | 'blocked' | 'ready'
+
+const NEEDS_FIRST = new Set(['needs_shaping', 'needs_decision'])
+const NEEDS_LATER = new Set(['needs_hands', 'needs_testing'])
+
+// The state of an open issue: the first row of the state table that fits (spec Toestanden).
+// `needsHuman` is the flag on an active issue; a done issue is never in `issues`.
+export function issueState(
+  issue: Issue,
+  runs: Run[],
+  repo: string,
+): { state: IssueStateName; needsHuman: boolean } {
+  const needsLabel = NEEDS_FIRST.has(issue.label) || NEEDS_LATER.has(issue.label)
+  if (
+    liveRun(runs, repo, issue.number) !== undefined ||
+    issue.status === 'In progress' ||
+    issue.status === 'Controller'
+  ) {
+    return { state: 'active', needsHuman: needsLabel || issue.open_question }
+  }
+  if (NEEDS_FIRST.has(issue.label)) return { state: 'needs_human', needsHuman: false }
+  if (issue.label.startsWith('blocked_') || (issue.blocked_by?.length ?? 0) > 0) {
+    return { state: 'blocked', needsHuman: false }
+  }
+  if (NEEDS_LATER.has(issue.label)) return { state: 'needs_human', needsHuman: false }
+  return { state: 'ready', needsHuman: false }
 }
 
 export function isUphill(run: Run | undefined): boolean {
@@ -119,7 +143,7 @@ export function buildGraph(repos: Repo[], runs: Run[]): Graph {
   for (const repo of repos) {
     for (const issue of repo.issues ?? []) {
       const run = liveRun(runs, repo.slug, issue.number)
-      const active = isActive(issue, runs, repo.slug)
+      const active = issueState(issue, runs, repo.slug).state === 'active'
       const key = keyOf(repo.slug, issue.number)
       nodes.set(key, {
         ...blank(key, repo.slug, issue.number),
