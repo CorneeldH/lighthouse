@@ -440,7 +440,6 @@ The verification rounds on Opus do not change `--review-mode`. Without a pair no
 | exit | Meaning | You do |
 |---|---|---|
 | 0 | record written; the path is on stdout | report the path |
-| 3 | not on the always-on host (`host.toml`): no record | report loudly that this review falls outside the measurement, on to closing |
 | 4 | write or validation error: only the staging directory `.<attempt>.tmp/` stays | pass the message on literally; if it is a missing or wrong decision, repair the sidecar and run `write` again; otherwise on to closing |
 
 The record is measurement material, the review itself is the product: a failed record never
