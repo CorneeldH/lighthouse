@@ -1,6 +1,7 @@
 package forge_test
 
 import (
+	"cmp"
 	"fmt"
 	"strings"
 	"testing"
@@ -138,6 +139,52 @@ func (g *gitlabFixture) AddBlocker(_ *testing.T, number int, b forge.Blocker) {
 	if b.MergedPR {
 		g.srv.AddClosedBy(b.Repo, b.Issue, map[string]any{"iid": 1, "state": "merged"})
 	}
+}
+
+func (g *gitlabFixture) FailBlockingPage2(_ *testing.T, number int) { g.srv.FailLinksPage2(number) }
+
+func (g *gitlabFixture) FailListChangesPage2(*testing.T) { g.srv.FailMRsPage2() }
+
+func (g *gitlabFixture) AddChange(_ *testing.T, c forge.Change) {
+	m := map[string]any{"iid": c.Number, "title": c.Title, "state": mrState[strings.ToUpper(c.State)],
+		"source_branch": c.HeadRef, "source_project_id": 1, "target_project_id": 1}
+	if !c.MergedAt.IsZero() {
+		m["merged_at"] = c.MergedAt.UTC().Format(time.RFC3339)
+	}
+	g.srv.AddMR(m)
+}
+
+// AddIssueChange: a closing merge request is in closed_by and, as on GitLab, in
+// related_merge_requests too; a mentioning one only there. A fork has another source project.
+func (g *gitlabFixture) AddIssueChange(_ *testing.T, number int, c forge.IssueChange) {
+	source := 1
+	if c.CrossRepo {
+		source = 2
+	}
+	mr := map[string]any{"iid": c.Number, "state": mrState[c.State], "source_branch": c.HeadRef, "description": c.Body,
+		"project_id": 1, "source_project_id": source, "target_project_id": 1,
+		"references": map[string]any{"full": fmt.Sprintf("%s!%d", c.Repo, c.Number)}}
+	if c.Closes {
+		g.srv.AddClosedBy(g.srv.Project, number, mr)
+	}
+	g.srv.AddRelatedMR(g.srv.Project, number, mr)
+}
+
+func (g *gitlabFixture) FailIssueChangesPage2(_ *testing.T, number int) {
+	g.srv.FailIssueMRsPage2(number)
+}
+
+func (g *gitlabFixture) FailComments(_ *testing.T, number int) { g.srv.FailNotes(number) }
+
+// AddStateEvent: the source_merge_request names its project in references.full, as GitLab's
+// merge request entity does.
+func (g *gitlabFixture) AddStateEvent(_ *testing.T, number int, state string, closer int, repo string) {
+	ev := map[string]any{"state": state, "source_merge_request": nil}
+	if closer != 0 {
+		ev["source_merge_request"] = map[string]any{"iid": closer,
+			"references": map[string]any{"full": fmt.Sprintf("%s!%d", cmp.Or(repo, g.srv.Project), closer)}}
+	}
+	g.srv.AddStateEvent(number, ev)
 }
 
 func (g *gitlabFixture) AddOpenPR(_ *testing.T, pr forge.OpenPR) {

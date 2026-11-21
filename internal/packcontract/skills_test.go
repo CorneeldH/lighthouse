@@ -17,7 +17,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/config"
 )
 
-var forgeSections = []string{"board", "blockers", "sub-issues", "sluitwoorden", "proxy", "ci", "workflows"}
+var forgeSections = []string{"board", "blockers", "sub-issues", "sluitwoorden", "proxy", "close-issue", "ci", "workflows"}
 
 var forgeKindRe = regexp.MustCompile(`lighthouse config forge\.kind\b`)
 
@@ -25,7 +25,7 @@ var forgeRefRe = regexp.MustCompile(`\.\./lighthouse-forge/<kind>\.md §([\w-]+)
 
 // chainSkills read and write the forge through `lighthouse forge` and name a lighthouse-forge
 // section for what differs per forge.
-var chainSkills = []string{"start-issue", "route-issue", "write-issue", "write-pr"}
+var chainSkills = []string{"start-issue", "route-issue", "write-issue", "write-pr", "close-issue"}
 
 // Classification: fails when a chain skill loses its pointer to a lighthouse-forge section, names
 // a section that does not exist, or stops reading the forge kind from config.
@@ -668,6 +668,34 @@ func TestForgeSkillHasBothReferences(t *testing.T) {
 			t.Errorf("%s.md: H2s %q, want %q", kind, got, want)
 		}
 	}
+}
+
+// Classification: fails when close-issue stops closing, reopening or reading its PRs and
+// dependents through `lighthouse forge`, or stops naming its own forge section.
+func TestCloseIssueGoesThroughTheForgeSubcommands(t *testing.T) {
+	for variant, text := range variants(t, "core/skills/close-issue") {
+		t.Run(variant, func(t *testing.T) {
+			wantAll(t, text,
+				"lighthouse forge issue close <number> --body-file",
+				"lighthouse forge issue reopen <nr> --body-file",
+				"lighthouse forge issue blocking <nr>",
+				"lighthouse forge issue changes <nr>",
+				"lighthouse forge pr list --state open",
+				"lighthouse forge pr list --state merged",
+				"../lighthouse-forge/<kind>.md §close-issue")
+		})
+	}
+}
+
+// Classification: fails when the overview of shared subcommands in lighthouse-forge stops
+// listing what close-issue calls.
+func TestForgeSkillNamesTheCloseIssueSubcommands(t *testing.T) {
+	text := readPack(t, "core/skills/forge/SKILL.md")
+	_, shared, ok := strings.Cut(text, "## What lives where")
+	if !ok {
+		t.Fatal("no `## What lives where`")
+	}
+	wantAll(t, shared, "issue close|reopen", "issue blocking", "issue changes", "pr list", "--state closed")
 }
 
 var onlyRe = regexp.MustCompile(`\b(only|alleen)\b`)

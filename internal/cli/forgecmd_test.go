@@ -29,9 +29,14 @@ type readForge struct {
 	blockers   []forge.Blocker
 	comments   []protocol.Comment
 	milestones []forge.Milestone
+	changes    []forge.Change
+	linked     []forge.IssueChange
+	closer     int
 	checks     []forge.Check
 	logs       map[int64]string // a job without an entry has no log
 	err        error
+
+	listState string // the state ListChanges was asked for
 }
 
 func (r *readForge) Checks(context.Context, int) ([]forge.Check, error) { return r.checks, r.err }
@@ -55,6 +60,17 @@ func (r *readForge) Change(context.Context, int) (forge.Change, error) { return 
 func (r *readForge) BlockedBy(context.Context, int) ([]forge.Blocker, error) {
 	return r.blockers, r.err
 }
+func (r *readForge) Blocking(context.Context, int) ([]forge.Blocker, error) {
+	return r.blockers, r.err
+}
+func (r *readForge) ListChanges(_ context.Context, state string) ([]forge.Change, error) {
+	r.listState = state
+	return r.changes, r.err
+}
+func (r *readForge) IssueChanges(context.Context, int) ([]forge.IssueChange, error) {
+	return r.linked, r.err
+}
+func (r *readForge) Closer(context.Context, int) (int, error) { return r.closer, r.err }
 func (r *readForge) Comments(context.Context, int) ([]protocol.Comment, error) {
 	return r.comments, r.err
 }
@@ -107,7 +123,7 @@ func TestIssueViewJSONShape(t *testing.T) {
 	got := decode(t, out)
 	want := map[string]any{
 		"number": 7.0, "title": "T", "body": "B", "state": "open", "url": "https://x/7",
-		"created_at": "2026-11-01T10:30:00Z", "author": "ann",
+		"created_at": "2026-11-01T10:30:00Z", "author": "ann", "closed_at": "", "state_reason": "",
 		"labels":    []any{"bug", "ready"},
 		"milestone": map[string]any{"number": 3.0, "title": "M3", "description": "third"},
 	}
@@ -309,6 +325,124 @@ func TestDefaultForgeOpenerUsesGhAuthToken(t *testing.T) {
 	o := newDefaultForgeOpener()
 	if o.ghToken == nil {
 		t.Fatal("the opener of lighthouse forge has no gh auth token fallback")
+	}
+}
+
+func TestIssueViewClosedAtAndStateReason(t *testing.T) {
+	f := &readForge{issues: map[int]forge.Issue{
+		8: {Number: 8, State: "closed", StateReason: "not_planned", ClosedAt: time.Date(2026, 11, 5, 8, 0, 0, 0, time.UTC)}}}
+	for field, want := range map[string]string{"state_reason": "not_planned\n", "closed_at": "2026-11-05T08:00:00Z\n"} {
+		if code, out, _ := runForge(t, f, "issue", "view", "8", "--field", field); code != 0 || out != want {
+			t.Errorf("--field %s: code %d out %q, want %q", field, code, out, want)
+		}
+	}
+}
+
+func TestIssueBlockingShape(t *testing.T) {
+	f := &readForge{blockers: []forge.Blocker{{Repo: "o/r", Issue: 12, State: "OPEN"}, {Repo: "o/x", Issue: 3, State: "CLOSED", MergedPR: true}}}
+	_, out, _ := runForge(t, f, "issue", "blocking", "7")
+	want := `[
+  {
+    "merged_pr": false,
+    "number": 12,
+    "repo": "o/r",
+    "state": "open"
+  },
+  {
+    "merged_pr": true,
+    "number": 3,
+    "repo": "o/x",
+    "state": "closed"
+  }
+]
+`
+	if out != want {
+		t.Errorf("got\n%s\nwant\n%s", out, want)
+	}
+}
+
+func TestIssueChangesShape(t *testing.T) {
+	linked := []forge.IssueChange{
+		{Number: 14, State: "MERGED", HeadRef: "issue-7-x", CrossRepo: false, Repo: "o/r", Body: "Closes #7", Closes: true},
+		{Number: 15, State: "OPEN", HeadRef: "fork-br", CrossRepo: true, Repo: "o/r", Body: "see #7"},
+	}
+	f := &readForge{issues: map[int]forge.Issue{7: {Number: 7, State: "closed"}}, linked: linked, closer: 14}
+	_, out, errOut := runForge(t, f, "issue", "changes", "7")
+	want := `{
+  "changes": [
+    {
+      "body": "Closes #7",
+      "closes": true,
+      "cross_repo": false,
+      "head_ref": "issue-7-x",
+      "number": 14,
+      "repo": "o/r",
+      "state": "merged"
+    },
+    {
+      "body": "see #7",
+      "closes": false,
+      "cross_repo": true,
+      "head_ref": "fork-br",
+      "number": 15,
+      "repo": "o/r",
+      "state": "open"
+    }
+  ],
+  "closer": 14,
+  "state": "closed"
+}
+`
+	if out != want {
+		t.Errorf("err %q\ngot\n%s\nwant\n%s", errOut, out, want)
+	}
+	f = &readForge{issues: map[int]forge.Issue{7: {Number: 7, State: "open"}}}
+	_, out, _ = runForge(t, f, "issue", "changes", "7")
+	got := decode(t, out)
+	if c, has := got["closer"]; !has || c != nil || got["state"] != "open" || fmt.Sprint(got["changes"]) != "[]" {
+		t.Errorf("no closer: got %v", got)
+	}
+}
+
+func TestPRListStates(t *testing.T) {
+	merged := time.Date(2026, 11, 3, 9, 0, 0, 0, time.UTC)
+	f := &readForge{changes: []forge.Change{
+		{Number: 14, Title: "A", State: "merged", HeadRef: "issue-7-x", MergedAt: merged, Author: "ann"},
+		{Number: 15, Title: "B", State: "open", HeadRef: "b"},
+	}}
+	code, out, errOut := runForge(t, f, "pr", "list", "--state", "merged")
+	if code != 0 || f.listState != "merged" {
+		t.Fatalf("code %d err %q state %q", code, errOut, f.listState)
+	}
+	var got []map[string]any
+	if err := json.Unmarshal([]byte(out), &got); err != nil || len(got) != 2 {
+		t.Fatalf("out %q: %v", out, err)
+	}
+	if got[0]["merged_at"] != "2026-11-03T09:00:00Z" || got[0]["head_ref"] != "issue-7-x" || got[0]["state"] != "merged" {
+		t.Errorf("merged: %v", got[0])
+	}
+	if v, has := got[1]["merged_at"]; !has || v != nil {
+		t.Errorf("open merged_at = %v (present %v), want null", v, has)
+	}
+	for _, k := range []string{"number", "title", "body", "labels", "milestone", "url", "created_at", "author"} {
+		if _, has := got[0][k]; !has {
+			t.Errorf("missing %q", k)
+		}
+	}
+	if code, _, _ = runForge(t, f, "pr", "list"); code != 0 || f.listState != "" {
+		t.Errorf("default: code %d state %q", code, f.listState)
+	}
+	if code, _, errOut = runForge(t, f, "pr", "list", "--state", "weird"); code != 2 || !strings.Contains(errOut, "weird") {
+		t.Errorf("bad state: code %d err %q", code, errOut)
+	}
+}
+
+func TestMilestoneViewCounts(t *testing.T) {
+	f := &readForge{milestones: []forge.Milestone{{Number: 3, Title: "v3", State: "open", OpenIssues: 4, ClosedIssues: 9}}}
+	_, out, _ := runForge(t, f, "milestone", "view", "v3")
+	got := decode(t, out)
+	if got["open_issues"] != 4.0 || got["closed_issues"] != 9.0 {
+		t.Errorf("got %v", got)
 	}
 }
 

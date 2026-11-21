@@ -22,7 +22,7 @@ kind = "file"
 path = ".agents/skills/lighthouse-close-issue/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "6858d452f190a5dd2bc2929dcaedd323e62d37b603ab2039b50aa2e9eb6d6bc5"
+sha256 = "da7b0afe943d0b1ebd6563236d1ac23fcd7323564a9278fed2e41c0eb7dbf36e"
 
 [[unit]]
 kind = "file"
@@ -36,21 +36,21 @@ kind = "file"
 path = ".agents/skills/lighthouse-forge/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "b6b1b6b2b53d0a37ab15c17c3a448710bc5036d325120ff6369cd17f78085cca"
+sha256 = "edcb722fe06821502b2307ac363dd1407556d147bee56a6ebfbcff20c41ee901"
 
 [[unit]]
 kind = "file"
 path = ".agents/skills/lighthouse-forge/github.md"
 package = "core"
 version = "dev"
-sha256 = "4d3f05a90fad25e2a6bab84203df029a7298ba6b40688ed736ad145240bcfd35"
+sha256 = "103c591ef961946d076117c3bcb76cb559c38873dc4ae9a419221fd6b7997e0b"
 
 [[unit]]
 kind = "file"
 path = ".agents/skills/lighthouse-forge/gitlab.md"
 package = "core"
 version = "dev"
-sha256 = "3fc1631d15ceb369e9b7d7c9545764b42841e6b9fb4b5d60dfe54331dc3cc0c2"
+sha256 = "f1cc2c66a2661d62c47016dc9354dd1e78507c0d0ef11394f8d7a13c2e3af44a"
 
 [[unit]]
 kind = "file"
@@ -407,7 +407,7 @@ kind = "file"
 path = ".claude/skills/lighthouse-close-issue/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "848264ffc86e7b729a2c289aacf435bc68ca648a75eeddd1ab1a4a0307a001ec"
+sha256 = "38d8e9e43b01ce47bf8b50f7994443b4651a4e8caed7b3a83f945d710584f2c3"
 
 [[unit]]
 kind = "file"
@@ -421,21 +421,21 @@ kind = "file"
 path = ".claude/skills/lighthouse-forge/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "b6b1b6b2b53d0a37ab15c17c3a448710bc5036d325120ff6369cd17f78085cca"
+sha256 = "edcb722fe06821502b2307ac363dd1407556d147bee56a6ebfbcff20c41ee901"
 
 [[unit]]
 kind = "file"
 path = ".claude/skills/lighthouse-forge/github.md"
 package = "core"
 version = "dev"
-sha256 = "4d3f05a90fad25e2a6bab84203df029a7298ba6b40688ed736ad145240bcfd35"
+sha256 = "103c591ef961946d076117c3bcb76cb559c38873dc4ae9a419221fd6b7997e0b"
 
 [[unit]]
 kind = "file"
 path = ".claude/skills/lighthouse-forge/gitlab.md"
 package = "core"
 version = "dev"
-sha256 = "3fc1631d15ceb369e9b7d7c9545764b42841e6b9fb4b5d60dfe54331dc3cc0c2"
+sha256 = "f1cc2c66a2661d62c47016dc9354dd1e78507c0d0ef11394f8d7a13c2e3af44a"
 
 [[unit]]
 kind = "file"
@@ -582,7 +582,7 @@ kind = "file"
 path = ".github/workflows/lighthouse-unblock-dependents.yml"
 package = "core"
 version = "dev"
-sha256 = "7abfa9dd983c60dfa2d2a35124774ecee16c6d5e30c96933374a9331ec5caf03"
+sha256 = "2be89491575ca7c548198530d29c6f5dacc6bf6007c97104d153251199a66992"
 
 [[unit]]
 kind = "file"
