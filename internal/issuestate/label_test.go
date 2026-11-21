@@ -86,6 +86,7 @@ type fakeForge struct {
 	onBoard bool
 	editErr error // returned by EditIssue after it applied AddLabels
 	setErr  error // returned by SetStatus
+	closed  bool  // Issue reports state closed
 
 	edits     []forge.IssueEdit
 	itemCalls int
@@ -96,7 +97,11 @@ func (f *fakeForge) Issue(_ context.Context, nr int) (forge.Issue, error) {
 	if nr != 7 {
 		return forge.Issue{}, errors.New("unexpected issue")
 	}
-	return forge.Issue{Number: 7, State: "open", Labels: slices.Clone(f.labels)}, nil
+	state := "open"
+	if f.closed {
+		state = "closed"
+	}
+	return forge.Issue{Number: 7, State: state, Labels: slices.Clone(f.labels)}, nil
 }
 
 func (f *fakeForge) EditIssue(_ context.Context, nr int, e forge.IssueEdit) (forge.Issue, error) {
