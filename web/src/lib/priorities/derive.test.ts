@@ -1,8 +1,9 @@
+import cases from '../../../../tests/pack/fixtures/issue-state/cases.json'
 import { describe, expect, it } from 'vitest'
 import type { Issue, Repo, Run } from '../../api/lighthouse'
 import {
   buildGraph,
-  isActive,
+  issueState,
   isShaping,
   isUphill,
   milestoneRows,
@@ -20,6 +21,9 @@ const iss = (
   title: `t${number}`,
   url: `u${number}`,
   status: 'To do',
+  label: '',
+  open_question: false,
+  needs_label: false,
   blocked_by: by.length ? by.map(([repo, issue]) => ({ repo, issue })) : null,
   ...extra,
 })
@@ -120,24 +124,63 @@ describe('buildGraph', () => {
   })
 })
 
-describe('isActive / isUphill', () => {
-  const run = (state: string, phase: string): Run => ({ repo: R, issue: 1, state, phase })
-  it('parked run is active and downhill in executing-plans', () => {
-    const r = run('parked', 'executing-plans')
-    expect(isActive(iss(1), [r], R)).toBe(true)
-    expect(isUphill(r)).toBe(false)
+interface StateCase {
+  name: string
+  closed?: boolean
+  labels?: string[]
+  status?: string
+  run?: string
+  blockers?: Array<{ issue: number; state: string }>
+  open_question?: boolean
+  want: { state: string; needs_human?: boolean }
+}
+
+// Rank of the label keys, lowest first, as the API reports the one winning key.
+const LABEL_RANK = [
+  'needs_shaping',
+  'needs_decision',
+  'blocked_issue',
+  'blocked_external',
+  'needs_hands',
+  'needs_testing',
+]
+
+// Any needs_* label on the issue, built from the fixture labels like the server does.
+const NEEDS_LABELS = ['needs_shaping', 'needs_decision', 'needs_hands', 'needs_testing']
+
+describe('issueState follows the shared state fixture', () => {
+  const openCases = (cases as StateCase[]).filter((c) => !c.closed)
+  it.each(openCases)('$name', (c) => {
+    const label = LABEL_RANK.find((k) => c.labels?.includes(k)) ?? ''
+    const open = (c.blockers ?? []).filter((b) => b.state === 'OPEN')
+    const issue = iss(1, [], {
+      status: c.status ?? '',
+      label,
+      needs_label: NEEDS_LABELS.some((k) => c.labels?.includes(k)),
+      open_question: c.open_question ?? false,
+      blocked_by: open.length > 0 ? open.map((b) => ({ repo: R, issue: b.issue })) : null,
+    })
+    const runs: Run[] = c.run ? [{ repo: R, issue: 1, state: c.run, phase: 'sdd' }] : []
+    expect(issueState(issue, runs, R)).toEqual({
+      state: c.want.state,
+      needsHuman: c.want.needs_human ?? false,
+    })
   })
-  it('In progress without run is active and downhill', () => {
-    expect(isActive(iss(1, [], { status: 'In progress' }), [], R)).toBe(true)
-    expect(isUphill(undefined)).toBe(false)
+})
+
+describe('issueState / isUphill', () => {
+  const run = (state: string, phase: string): Run => ({ repo: R, issue: 1, state, phase })
+  it('a done run does not make an issue active', () => {
+    expect(issueState(iss(1), [run('done', 'sdd')], R).state).toBe('ready')
+  })
+  it('a run of another issue does not make an issue active', () => {
+    const other: Run = { repo: R, issue: 2, state: 'open', phase: 'sdd' }
+    expect(issueState(iss(1), [other], R).state).toBe('ready')
   })
   it('unknown phase is downhill, spec-review is uphill', () => {
+    expect(isUphill(undefined)).toBe(false)
     expect(isUphill(run('open', 'onbekend'))).toBe(false)
     expect(isUphill(run('open', 'spec-review'))).toBe(true)
-  })
-  it('To do without run is not active; a closed run does not count', () => {
-    expect(isActive(iss(1), [], R)).toBe(false)
-    expect(isActive(iss(1), [run('done', 'sdd')], R)).toBe(false)
   })
 })
 
@@ -162,6 +205,7 @@ describe('milestoneRows', () => {
     done,
     open,
     description,
+    closed: [],
   })
   const ref = (number: number) => ({ number, title: `M${number}`, state: 'open' })
 
@@ -186,10 +230,10 @@ describe('milestoneRows', () => {
     ]
     const [row] = milestoneRows(rs, buildGraph(rs, []))
     expect(row.outside.map((x) => x.key)).toEqual([`${R}#2`, `${R}#3`, 'z/q#9'])
-    expect(row.order.map((x) => x.number)).toEqual([4, 1])
+    expect(row.blocks.filter((b) => b.repo === R).map((b) => b.nr)).toEqual([4, 1])
   })
 
-  it('order is topological and keeps a cycle together by number', () => {
+  it('blocks keep a cycle together by number and put a blocker before what it blocks', () => {
     const rs = [
       repo(
         R,
@@ -203,31 +247,101 @@ describe('milestoneRows', () => {
       ),
     ]
     const [row] = milestoneRows(rs, buildGraph(rs, []))
-    const nums = row.order.map((x) => x.number)
+    const nums = row.blocks.map((b) => b.nr)
     expect(nums.indexOf(6)).toBeLessThan(nums.indexOf(8))
     expect(Math.abs(nums.indexOf(5) - nums.indexOf(7))).toBe(1)
     expect(nums.indexOf(5)).toBeLessThan(nums.indexOf(7))
   })
 
-  it('splits active and todo', () => {
+  it('gives an In progress issue the active state and a plain one ready', () => {
     const rs = [
       repo(R, [iss(1, [], { milestone: ref(1), status: 'In progress' }), iss(2, [], { milestone: ref(1) })], [m(1, 0)]),
     ]
     const [row] = milestoneRows(rs, buildGraph(rs, []))
-    expect(row.active.map((x) => x.number)).toEqual([1])
-    expect(row.todo.map((x) => x.number)).toEqual([2])
+    expect(row.blocks.map((b) => [b.nr, b.state])).toEqual([[1, 'active'], [2, 'ready']])
   })
 
-  it('empty milestone (also only not-planned) is shaping with null percent', () => {
+  it('empty milestone (also only not-planned) is shaping with percent 0', () => {
     const rs = [repo(R, [], [m(1, 0, 0)])]
     const [row] = milestoneRows(rs, buildGraph(rs, []))
-    expect(row).toMatchObject({ empty: true, percent: null, shaping: true })
+    expect(row).toMatchObject({ empty: true, percent: 0, shaping: true })
   })
 
   it('shaping marker on a milestone with issues', () => {
     const rs = [repo(R, [iss(1, [], { milestone: ref(1) })], [m(1, 1, 1, 'Status: shaping')])]
     const [row] = milestoneRows(rs, buildGraph(rs, []))
     expect(row.shaping).toBe(true)
+  })
+})
+
+describe('milestoneRows blocks', () => {
+  const ref = { number: 1, title: 'M1', state: 'open' }
+  const closed = [
+    { number: 30, title: 'c30', url: 'u30' },
+    { number: 20, title: 'c20', url: 'u20' },
+  ]
+  const ms = (extra: Partial<NonNullable<Repo['milestones']>[number]> = {}) => ({
+    number: 1,
+    title: 'M1',
+    done: 2,
+    open: 99,
+    description: '',
+    closed,
+    ...extra,
+  })
+  const mk = (issues: Issue[], milestone = ms()) => {
+    const rs = [repo(R, issues, [milestone])]
+    return milestoneRows(rs, buildGraph(rs, []))[0]
+  }
+
+  it('groups done, active, ready, needs_human, blocked in that order, by work order inside a group', () => {
+    const row = mk([
+      iss(1, [[R, 9]], { milestone: ref }),
+      iss(2, [], { milestone: ref, label: 'needs_decision' }),
+      iss(3, [], { milestone: ref }),
+      iss(4, [], { milestone: ref, status: 'In progress', open_question: true }),
+      iss(5, [[R, 3]], { milestone: ref }),
+      iss(6, [], { milestone: ref, status: 'Controller' }),
+      iss(9, [], { milestone: ref }),
+    ])
+    expect(row.blocks.map((b) => [b.nr, b.state, b.needsHuman])).toEqual([
+      [20, 'done', false],
+      [30, 'done', false],
+      [4, 'active', true],
+      [6, 'active', false],
+      [3, 'ready', false],
+      [9, 'ready', false],
+      [2, 'needs_human', false],
+      [1, 'blocked', false],
+      [5, 'blocked', false],
+    ])
+    expect(row.blocks[0]).toEqual({
+      nr: 20,
+      repo: R,
+      title: 'c20',
+      url: 'u20',
+      state: 'done',
+      needsHuman: false,
+    })
+  })
+
+  it('orders a group by dependency depth before number', () => {
+    const row = mk([
+      iss(1, [[R, 5]], { milestone: ref, label: 'needs_decision' }),
+      iss(5, [], { milestone: ref, label: 'needs_decision' }),
+    ])
+    expect(row.blocks.filter((b) => b.state === 'needs_human').map((b) => b.nr)).toEqual([5, 1])
+  })
+
+  it('an outside blocker without issue data is in outside, not in blocks', () => {
+    const row = mk([iss(1, [['z/q', 7]], { milestone: ref })])
+    expect(row.blocks.filter((b) => b.state !== 'done').map((b) => b.nr)).toEqual([1])
+    expect(row.outside).toMatchObject([{ repo: 'z/q', number: 7, external: true }])
+  })
+
+  it('no milestone issues and no closed gives shaping with percent 0, not NaN', () => {
+    const row = mk([], ms({ done: 0, closed: null }))
+    expect(row).toMatchObject({ blocks: [], shaping: true, percent: 0 })
   })
 })
 
@@ -239,7 +353,7 @@ describe('sortMilestoneRows', () => {
       open,
       done,
       empty: open === 0 && done === 0,
-      percent: open + done === 0 ? null : done / (open + done),
+      percent: open + done === 0 ? 0 : done / (open + done),
     }) as Parameters<typeof sortMilestoneRows>[0][number]
 
   it('fewest open first, ties by highest percent, empty last', () => {

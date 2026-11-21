@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -124,6 +125,11 @@ type Server struct {
 	PlanMilestones []map[string]any
 	// PlanBlockedByMore, per issue number, makes the blockedBy of that issue claim a next page.
 	PlanBlockedByMore map[int]bool
+	// PlanLabelsMore, per issue number, makes the labels of that issue claim a next page.
+	PlanLabelsMore map[int]bool
+	// PlanClosedMore, per milestone number, makes the closed issues of that milestone claim a
+	// next page. The closed issues themselves are derived from Issues by milestone title.
+	PlanClosedMore map[int]bool
 	// BlockingPage2Fails, per issue number, makes the second page of the blocking list of that
 	// issue answer a 500.
 	BlockingPage2Fails map[int]bool
@@ -941,6 +947,8 @@ func (s *Server) planIssues(vars map[string]any) any {
 			blockers = append(blockers, map[string]any{"number": b["number"],
 				"state": strings.ToUpper(fmt.Sprint(b["state"])), "repository": map[string]any{"nameWithOwner": repo}})
 		}
+		node["labels"] = map[string]any{"nodes": labelObjects(labelNames(it["labels"])),
+			"pageInfo": map[string]any{"hasNextPage": s.PlanLabelsMore[n]}}
 		node["blockedBy"] = map[string]any{"nodes": append([]any{}, blockers...),
 			"pageInfo": map[string]any{"hasNextPage": s.PlanBlockedByMore[n]}}
 		nodes = append(nodes, node)
@@ -949,12 +957,36 @@ func (s *Server) planIssues(vars map[string]any) any {
 }
 
 // planMilestones serves the OPEN PlanMilestones.
+// Each node carries the closed non-PR issues of Issues with its title, with stateReason in
+// upper case, as GitHub serves them.
 func (s *Server) planMilestones(vars map[string]any) any {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	var open []map[string]any
 	for _, m := range s.PlanMilestones {
-		if m["state"] == "OPEN" {
-			open = append(open, m)
+		if m["state"] != "OPEN" {
+			continue
 		}
+		var nums []int
+		for n, it := range s.Issues {
+			_, pr := it["pull_request"]
+			im, _ := it["milestone"].(map[string]any)
+			if !pr && it["state"] == "closed" && im != nil && im["title"] == m["title"] {
+				nums = append(nums, n)
+			}
+		}
+		slices.Sort(nums)
+		nodes := []any{}
+		for _, n := range nums {
+			it := s.Issues[n]
+			reason, _ := it["state_reason"].(string)
+			nodes = append(nodes, map[string]any{"number": n, "title": it["title"], "url": it["html_url"],
+				"stateReason": strings.ToUpper(reason)})
+		}
+		node := maps.Clone(m)
+		num, _ := m["number"].(int)
+		node["issues"] = map[string]any{"nodes": nodes, "pageInfo": map[string]any{"hasNextPage": s.PlanClosedMore[num]}}
+		open = append(open, node)
 	}
 	return map[string]any{"repository": map[string]any{"milestones": s.planPage(vars, open)}}
 }

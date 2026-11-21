@@ -411,6 +411,23 @@ func planning(t *testing.T, f Fixture) {
 	if c := got.Milestones[0]; c.Title != "M3" || c.Open != 1 || c.Done != wantDone {
 		t.Errorf("M3 = %+v, want 1 open and %d done (not-planned #6 counts only where the forge cannot tell)", c, wantDone)
 	}
+	wantClosed := []int{4, 5}
+	if f.NotPlannedCountsAsDone() {
+		wantClosed = []int{4, 5, 6}
+	}
+	var closed []int
+	for _, c := range got.Milestones[0].Closed {
+		closed = append(closed, c.Number)
+	}
+	if !slices.Equal(closed, wantClosed) || len(got.Milestones[0].Closed) != got.Milestones[0].Done {
+		t.Errorf("M3 Closed = %v with Done %d, want %v and len(Closed) == Done", closed, got.Milestones[0].Done, wantClosed)
+	}
+	if c := got.Milestones[1]; c.Closed == nil || len(c.Closed) != 0 {
+		t.Errorf("M9 Closed = %#v, want an empty non-nil list", c.Closed)
+	}
+	if !slices.Equal(got.Issues[0].Labels, []string{}) || got.Issues[0].Labels == nil {
+		t.Errorf("Issues[0].Labels = %#v, want an empty non-nil list", got.Issues[0].Labels)
+	}
 	if c := got.Milestones[1]; c.Title != "M9" || c.Open != 0 || c.Done != 0 {
 		t.Errorf("M9 = %+v, want 0 open and 0 done", c)
 	}
