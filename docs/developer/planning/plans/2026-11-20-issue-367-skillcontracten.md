@@ -301,7 +301,7 @@ De uitvoerder werkt deze tabel per taak bij. De PR-body neemt hem over. Telling:
 | `test_place_instruction_skill.py` | 9 | 8 naar Go (check 4 via `checkinstr.Run`), 1 gedekt (`python3`: `TestRequiresNamesTheSkillPerTool`), negatieven R3 binnen 4 tests | 5 |
 | `test_adversarial_review_skills.py` | 41 | 33 naar Go (PR-kop uit `review.PROpenPoints`, exit 6 uit `review.ExitBudgetEmpty`, `bij_rondegrens` uit `repoconfig.LoadFile`), 3 gedekt (`TestBuildPromptByteIdentical`, `TestCorePack` ×2), 1 beschermt niets, 4 onderwerp weg, negatieven R3 binnen 4 tests | 6 |
 | `test_issue_impact_scout.py` | 15 | 13 naar Go (`name` ingekort: gedekt door `TestScoutNameMatchesPersona`; de outputsecties opgegaan in de bloktest; de kop uit `config.Variants`), 2 gedekt (`TestCorePack` ×2) | 7 |
-| `test_pr_template.py` | 8 | naar Go, minus wat `inline_twins_test` dekt | 7 |
+| `test_pr_template.py` | 8 | 8 naar Go (1 ingekort: regelnummers; de vormen gebonden aan de parser van `prbody`, het subcommando via `cliFlags`, de kop via `config.Heading`), 0 gedekt (`inline_twins_test` faalt op geen enkele mutatie) | 7 |
 | `test_workflow_unblock.py` | 14 | 14 naar Go (5 als uitvoertest van het stapscript), negatieven R3 | 7 |
 | `test_fragments.py` | 4 | 1 naar Go, 3 beschermt niets | 8 |
 | `test_requires_without_python.py` | 1 | 1 gedekt (`TestLanguagePacks`) | 8 |
@@ -680,3 +680,20 @@ Geen vervallen negatieven: de bronrepo-paden, `(#N)` en Nederlandse woorden zijn
 | `test_issue_impact_scout.py` | `test_prompt_names_no_source_repo_layout` | naar Go | Blijvende invariant: geen mappen van de bronrepo. | `TestScoutIsDetachedAndEnglish`. Mutatie: "also in src/web/": FAIL. |
 | `test_issue_impact_scout.py` | `test_only_the_scout_is_an_agent` | weg — gedekt | Elke `agents/*.md` wordt een unit in de bestandslijst van `TestCorePack`. | `TestCorePack`. Mutatie: een kopie als `agents/second-scout.md`: FAIL. |
 | `test_issue_impact_scout.py` | `test_agents_are_english_and_carry_no_source_issue_numbers` | naar Go | Blijvende invariant: Engels, geen `(#N)`. | `TestScoutIsDetachedAndEnglish`. Mutaties: "(#412)", "Je bent geen poortwachter.": FAIL. |
+
+### `test_pr_template.py` (taak 7b, afgerond)
+
+8 naar Go (1 ingekort), 0 gedekt (8). De Go-tests staan in `internal/packcontract/prtemplate_test.go`. De vier vormen gaan door de parser van `internal/prbody`, zoals `pr-create-gate` ze leest; het subcommando door `cliFlags`, de sectienaam door `config.Heading`. `TestRefsTargetsMatchesCloseIssueJqFilter` (`inline_twins_test.go`) leest de template alleen om te bewijzen dat zijn `Refs` in commentaar staat: hij bleef groen op elke vormmutatie, dus dekt niets. Elke mutatie is gedraaid in `pack/core/templates/pull_request_template.md`, `pack/core/headings.toml` of `internal/cli/planreviewrecord.go`: de genoemde test faalde, daarna teruggezet en een lege `git status --short pack/ internal/`.
+
+Geen vervallen negatieven: `host`/`machine`, andere issuenummers en `ruff`/`pytest`/`ty` zijn blijvend (R1). Een vormmutatie in maar één van de twee `### Evidence #123`-vermeldingen slaagt: de andere draagt het token nog.
+
+| Bestand | Test | Bestemming | Reden | Go-test of mutatie |
+|---|---|---|---|---|
+| `test_pr_template.py` | `test_template_names_lighthouse_write_pr` | naar Go (ingekort) | De twee secties die write-pr schrijft en de Closes-uitzondering, als hele zinnen; precies drie write-pr-namen, alle met prefix `lighthouse-`. De regelnummers 11, 17, 24 vallen weg: positie stuurt niets (R2). | `TestPRTemplateNamesLighthouseWritePR`. Mutaties: "Written by /lighthouse-write-pr. " weg, `/paia-write-pr`: FAIL. |
+| `test_pr_template.py` | `test_template_is_hostless` | naar Go | Blijvende invariant: een open criterium is een test die CI niet kan draaien, nooit een vaste host; hele zin. | `TestPRTemplateIsHostless`. Mutaties: ", a test that cannot run in CI" weg, "a test on the build host": FAIL. |
+| `test_pr_template.py` | `test_template_puts_refs_first` | naar Go | `Refs` vóór `Closes`, en `Closes` alleen zonder write-pr; hele zin. | `TestPRTemplatePutsRefsFirst`. Mutaties: de twee vormen gewisseld, "only … without /lighthouse-write-pr" weg: FAIL. |
+| `test_pr_template.py` | `test_template_names_the_english_subcommand` | naar Go | `plan-review-record pr-open-points` staat er en bestaat (`cliFlags`). | `TestPRTemplateNamesTheEnglishSubcommand`. Mutaties: `open-points` in de template, `Use: "pr-points` in `internal/cli/planreviewrecord.go`: FAIL. |
+| `test_pr_template.py` | `test_template_open_after_review_is_the_english_heading` | naar Go | De sectienaam is de Engelse waarde van `open_after_review`, via `config.Heading`. | `TestPRTemplateOpenAfterReviewIsTheEnglishHeading`. Mutaties: `` `Open na review` `` in de template, `en = "## Left open after review"` in `headings.toml`: FAIL. |
+| `test_pr_template.py` | `test_template_keeps_its_tokens` | naar Go | De vier vormen staan erin én de parser van `pr-create-gate` leest ze (`prbody.ClosesTargets`, `HasEvidenceBlock`, `RefsIssues`, `NoIssue`). | `TestPRTemplateFormsAreWhatTheGateReads`. Mutaties: `` `Ref #123 `` , `` `No issue` `` zonder reden, beide `### Proof #123`, `` `Close-issue #123` ``: FAIL. Gedekt-check: `TestRefsTargetsMatchesCloseIssueJqFilter` blijft PASS op `Ref`, `No issue` en `Close-issue`. |
+| `test_pr_template.py` | `test_template_has_no_project_issue_numbers` | naar Go | Blijvende invariant: alleen de placeholder `#123`; minstens één hit. | `TestPRTemplateHasNoProjectIssueNumbers`. Mutaties: "(see #42)", elke `#123` → `#N`: FAIL. |
+| `test_pr_template.py` | `test_template_names_no_language_toolchain` | naar Go | Blijvende invariant: de template is taalneutraal. | `TestPRTemplateNamesNoLanguageToolchain`. Mutatie: "pytest counts": FAIL. |
