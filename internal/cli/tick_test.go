@@ -1992,3 +1992,31 @@ func TestTickPushHandoffYieldsKindPush(t *testing.T) {
 		})
 	}
 }
+
+// A Controller issue with a needs_* label starts no run: the tick moves it to To do and leaves
+// the label, and a second tick finds nothing more to do. It proves the tick hands the label
+// names of the repo to Decide (RepoInput.Labels in tick.go): with them empty the item counts as
+// a free issue and the tick starts a run for it instead.
+func TestTickNeedsLabelMovesToToDoWithoutRun(t *testing.T) {
+	env, db := tickFixture(t, repoDir(t, completeRepo))
+	srv, w := startable(t, &env)
+	srv.BoardNodes = []map[string]any{boardNode("I7", "c1", issueContent(7, "Issue", map[string]any{
+		"labels": map[string]any{"nodes": []any{map[string]any{"name": "needs-hands"}}}}))}
+	srv.Issues = map[int]map[string]any{7: {"number": 7, "title": "Issue", "state": "open", "labels": []any{map[string]any{"name": "needs-hands"}}}}
+	var errOut bytes.Buffer
+	if err := tick(context.Background(), env, db, &errOut); err != nil {
+		t.Fatalf("tick = %v\n%s", err, errOut.String())
+	}
+	if len(srv.StatusSets) != 1 || srv.StatusSets[0]["option"] != "t1" || srv.StatusSets[0]["item"] != "I7" {
+		t.Errorf("StatusSets = %v, want one move of I7 to To do (t1)", srv.StatusSets)
+	}
+	if posted := bodies(srv, 7); len(posted) != 0 {
+		t.Errorf("comments on #7 = %q, want none", posted)
+	}
+	if rows := history(t, openStore(t, db), "o/r"); len(rows) != 0 {
+		t.Errorf("runs = %+v, want none", rows)
+	}
+	if s := w.spawned(); len(s) != 0 {
+		t.Errorf("spawns = %+v, want none", s)
+	}
+}

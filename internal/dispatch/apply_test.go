@@ -2628,3 +2628,44 @@ func TestDecideFinishesOnlyOwnReturn(t *testing.T) {
 		t.Errorf("Returned of owner: Decide = %+v, want nothing", got)
 	}
 }
+
+// A KindToDo only sets To do on the board item: no comment, no label change, and an open run
+// and its workplace stay as they are. Any extra write in the KindToDo case turns this red.
+func TestApplyToDoOnlySetsStatus(t *testing.T) {
+	h := newHarness(t)
+	id := h.seedWorkplace(t, "ws-1", "key-1")
+	a := Action{Kind: KindToDo, Repo: applyRepo, Issue: 7, ItemID: "PVTI_7"}
+	if _, err := Apply(context.Background(), h.env, []Action{a}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if got, want := h.log.all(), []string{"SetStatus"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("calls = %q, want %q", got, want)
+	}
+	if want := []string{"PVTI_7 To do"}; !reflect.DeepEqual(h.poster(applyRepo).sets, want) {
+		t.Errorf("board = %q, want %q", h.poster(applyRepo).sets, want)
+	}
+	if rows := h.history(t); len(rows) != 1 || rows[0].ID != id || !rows[0].Open {
+		t.Errorf("history = %+v, want run %d still open", rows, id)
+	}
+}
+
+// A Controller issue whose last comment is the tick's own Returned and that carries needs_hands
+// gets exactly one todo and then nothing: it never reaches finishReturn (the needs_* rule of
+// decideIssue comes first), and once the board says To do neither rule fires. Dropping the
+// needs_* rule gives a start or a finish_return on tick 1; the blocking-label check inside
+// finishReturn is a second guard that matters for blocked_* labels and does not turn this red.
+func TestDecideNeedsLabelOwnReturnedNoLoop(t *testing.T) {
+	h := newHarness(t)
+	p := h.poster(applyRepo)
+	p.bodies = []string{protocol.RenderReturned("PR rood", "", "", "nl")}
+	p.labels = []string{"needs_hands"}
+	for i, want := range [][]Kind{{KindToDo}, {}, {}} {
+		got, err := h.tick(t)
+		if err != nil || !reflect.DeepEqual(kinds(got), want) {
+			t.Fatalf("tick %d = %+v, %v; want %v", i+1, got, err, want)
+		}
+	}
+	if want := []string{"PVTI_7 To do"}; !reflect.DeepEqual(p.sets, want) {
+		t.Errorf("board = %q, want one To do", p.sets)
+	}
+}

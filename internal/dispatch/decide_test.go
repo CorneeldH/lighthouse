@@ -570,10 +570,12 @@ func TestPushStartFailedGetsOneRetryThenQuestion(t *testing.T) {
 	returned := func(id int64, at string) Comment {
 		return Comment{ID: id, Author: "lh-bot", CreatedAt: at, Body: "🤖 Teruggegeven\n\nstart mislukt"}
 	}
-	// given is a Returned that stands with its give-back done: the label is on the issue.
+	// given is a Returned that stands with its give-back done: the label is on the issue and the
+	// board says To do (a needs_* label on Controller would get a todo).
 	given := func(in *Input, at string) {
 		item7(in).Comments = append(item7(in).Comments, returned(80, at))
 		item7(in).Labels, in.Repos[0].Labels = []string{"needs_hands"}, testLabels
+		item7(in).Status = "To do"
 	}
 	tests := []struct {
 		name   string
@@ -718,5 +720,67 @@ func TestSettleUnstartedFixPRMarksBlocked(t *testing.T) {
 		if len(got) != 1 || got[0].Kind != KindReturn || got[0].Blocked != want {
 			t.Errorf("%s: Decide = %+v, want one return with Blocked %v", name, got, want)
 		}
+	}
+}
+
+// needsHands marks item 7 of in with the needs_hands label and gives the repo its label names.
+func needsHands(in *Input) {
+	item7(in).Labels, in.Repos[0].Labels = []string{"needs_hands"}, testLabels
+}
+
+// A Controller issue with a needs_* label and no open run goes to To do and starts nothing, not
+// even the start of a new issue or the fix-pr start of a red PR. Dropping the needs_* check in
+// decideIssue gives the start back; dropping KindToDo gives no action.
+func TestDecideNeedsLabelNoRunMovesToToDo(t *testing.T) {
+	for _, label := range []string{"needs_shaping", "needs_decision", "needs_hands", "needs_testing"} {
+		t.Run(label, func(t *testing.T) {
+			in := loadInput(t, "new-issue-start")
+			item7(&in).Labels, in.Repos[0].Labels = []string{label}, testLabels
+			got := Decide(in)
+			if len(got) != 1 || got[0].Kind != KindToDo || got[0].ItemID != "I7" || got[0].Issue != 7 || got[0].RunID != 0 ||
+				got[0].Stop || got[0].End || got[0].Discard || got[0].Reason != "" {
+				t.Fatalf("Decide = %+v, want one bare todo on item I7", got)
+			}
+		})
+	}
+}
+
+// A needs_* label with a red PR and a closing run: the fix-pr start is not made. The label
+// check before the fix-pr start in decideIssue is what turns this red (the start comes back).
+func TestDecideNeedsLabelNoFixPRStart(t *testing.T) {
+	in := loadInput(t, "settle-red-pr")
+	needsHands(&in)
+	for _, a := range Decide(in) {
+		if a.Kind == KindStart || a.Kind == KindToDo {
+			t.Errorf("action %+v: a needs_hands issue must not start a fix-pr", a)
+		}
+	}
+}
+
+// With an open run the run goes on: no todo, and the settle actions stay as they are. Emitting
+// the todo before the run is looked at turns the first case red.
+func TestDecideNeedsLabelOpenRunKeepsRunning(t *testing.T) {
+	in := loadInput(t, "open-run-blocks-start")
+	want := summary(Decide(in))
+	needsHands(&in)
+	if got := summary(Decide(in)); !reflect.DeepEqual(got, want) {
+		t.Errorf("with needs_hands: %q, want the unlabelled %q", got, want)
+	}
+	for _, a := range Decide(in) {
+		if a.Kind == KindToDo {
+			t.Errorf("open run: got %+v, want no todo", a)
+		}
+	}
+}
+
+// A Handoff on a needs_* issue starts no run either.
+func TestDecideNeedsLabelNoNewStart(t *testing.T) {
+	in := loadInput(t, "handoff-start")
+	if got := kinds(Decide(in)); !reflect.DeepEqual(got, []Kind{KindStart}) {
+		t.Fatalf("unlabelled: %v, want a start (fixture premise)", got)
+	}
+	item7(&in).Labels, in.Repos[0].Labels = []string{"needs_shaping"}, testLabels
+	if got := kinds(Decide(in)); !reflect.DeepEqual(got, []Kind{KindToDo}) {
+		t.Errorf("needs_shaping: %v, want one todo and no start", got)
 	}
 }

@@ -95,6 +95,9 @@ const (
 	// its label and board status (a failed label or board write): issuestate.Return with the
 	// label ReturnLabelKey gives Reason, which decide read back from the Returned.
 	KindFinishReturn Kind = "finish_return"
+	// KindToDo moves a Controller issue that carries a needs_* label to To do (the label stays,
+	// no comment, no run or workplace is touched): a human owns it until the label is gone.
+	KindToDo Kind = "todo"
 	// KindScheduledClose closes scheduled run RunID with Outcome and the literal ReasonArg, after
 	// forgetting its launch (Discard), ending its agent (End), closing PR and deleting Branch.
 	KindScheduledClose Kind = "scheduled_close"
@@ -339,7 +342,8 @@ func cmpBool(a, b bool) int {
 // freesSlot reports whether a close frees the slot of its run in this tick: whether the next tick
 // no longer counts the run (spec "Welke sluiting"). A parked run stays counted until its usage
 // resume, a merge GitHub refuses leaves the run open, and a return without a run closes none.
-// The fix-pr close of rule 13 frees nothing either; decideIssue leaves that out.
+// The fix-pr close of rule 13 frees nothing either; decideIssue leaves that out. A todo is no
+// close and frees nothing.
 func freesSlot(a Action) bool {
 	switch a.Kind {
 	case KindClose:
@@ -406,6 +410,13 @@ func decideIssue(in Input, repo RepoInput, it Item) []planned {
 		if fix != nil && fix.merge {
 			// mergeReady already held the merge back for an active blocker.
 			out = append(out, c.mergePush(fix.pr, 1, c.now))
+		} else if c.needsHuman() {
+			// A human owns the issue: no run starts, also no fix-pr start (settleUnstartedFixPR
+			// then hands the closing run back). Without that return the issue only moves to To
+			// do; its label stays. An open run never gets here: free is false for it.
+			if fix == nil {
+				out = append(out, planned{Action: c.board(KindToDo)})
+			}
 		} else if fix != nil && !c.active() {
 			a := c.fresh(triggerFixPR, fix.key, cmdFixPR+" "+strconv.Itoa(fix.pr.Number), fix.pr.HeadRef)
 			a.Reason, a.ReasonArg = fix.reason, fix.arg
@@ -425,6 +436,17 @@ func decideIssue(in Input, repo RepoInput, it Item) []planned {
 		}
 	}
 	return out
+}
+
+// needsHuman reports whether the item carries one of the needs_* labels of the repo.
+func (c issueCtx) needsHuman() bool {
+	l := c.repo.Labels
+	for _, name := range []string{l.NeedsShaping, l.NeedsDecision, l.NeedsHands, l.NeedsTesting} {
+		if name != "" && slices.Contains(c.it.Labels, name) {
+			return true
+		}
+	}
+	return false
 }
 
 // parsed is a protocol comment with its header and its time.

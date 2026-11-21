@@ -197,6 +197,8 @@ func (ap applier) apply(ctx context.Context, a Action, res *Result) error {
 		return ap.setStatus(ctx, a, statusOnHold)
 	case KindUnpark:
 		return ap.setStatus(ctx, a, statusController)
+	case KindToDo:
+		return ap.setStatus(ctx, a, issuestate.ToDo)
 	case KindDropMarker:
 		ap.removeMarker(a)
 		return nil
