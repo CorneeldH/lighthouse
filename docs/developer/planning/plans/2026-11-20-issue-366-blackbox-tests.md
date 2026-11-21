@@ -553,6 +553,27 @@ Vul aan per taak. Gaat ongewijzigd naar de PR-body.
 | `test_pr_create_gate.py` | `test_fork_clone_without_repo_blocks_with_the_exact_flag` | gedekt | `TestMainWithoutRepoBlockNamesTheExactRepo`; mutatie `Add --repo ` → `Add --repo X`: rood | De vlag komt uit `forge.repo`, niet uit de remotes |
 | `test_pr_create_gate.py` | `test_slow_forge_passes_loudly_within_the_deadline` | naar Go | `TestMainSlowForgePassesLoudlyAfterTheACTimeout` (`internal/prbody/gate_test.go`, 5 s echt); mutatie `ACTimeoutS` 5 → 1 en → 50: rood | Geen Go-test pinde de default; `TestMainDeadlineBoundsSlowGHFallback` gebruikt een eigen deadline |
 | `test_pr_create_gate.py` | `test_hook_registered_and_executable` | → taak 11 | — | `hooks.json` (PreToolUse/Bash, timeout 15) en `run.sh`; de pytest-tekst staat in `task-6-report.md` |
+| `test_code_language_hook.py` | `test_hook_off_without_key` | gedekt | `TestCheckFixture/off_without_key`; mutatie `ErrNotSet` geeft `on = true` in `readSettings`: rood | |
+| `test_code_language_hook.py` | `test_hook_blocks_dutch_comment` | gedekt | `TestHookCanonicalPath` en `TestHookNoticeWithFindings`; mutatie `"%s:%d: %s: %s"` → `"%s:%d: %s; %s"` in `reportLine`: rood; exitcode 2 → 1 in `runHook`: rood | |
+| `test_code_language_hook.py` | `test_hook_relative_path_from_cwd` | gedekt | `TestHookCanonicalPath` en `TestHookRelativePathFromWorkingDirectory`; mutatie `abs = cwd + "/" + file` → `abs = file`: rood | |
+| `test_code_language_hook.py` | `test_hook_other_repo_without_toml` | gedekt | `TestCheckOffWithoutTOML` + de repo komt uit `gitRoot` van het bestand; mutatie `Check(…, repo, …)` → `repo+"/sub"`: rood in o.a. `TestHookCanonicalPath` | De hook kent geen cwd-repo om mee te verwarren |
+| `test_code_language_hook.py` | `test_hook_outside_git` | gedekt | `TestHookNotAGitRepo` en `TestHookGitFailures/not a repository`; mutatie `"not a git repository"` → `"xnot a git repository"`: rood | |
+| `test_code_language_hook.py` | `test_hook_cannot_check_bad_json` | gedekt | `TestHookPayload/not JSON`; mutatie `blocked("the payload is not valid JSON.")` → `hook.Result{}`: rood | |
+| `test_code_language_hook.py` | `test_hook_cannot_check_config_error` | gedekt | `TestCheckFixture/config_error` en `TestHookCheckerCannotCheck`; mutatie `readSettings` geeft bij `config.Load`-fout `nil` terug: rood | |
+| `test_code_language_hook.py` | `test_hook_cannot_check_syntax_error` | gedekt | `TestPyLexErrors/EOF with an open bracket` (`def f(:` eindigt in een open haakje) en `TestHookCheckerCannotCheck`; mutatie `checkerFailed(err)` → `hook.Result{}` in `runHook`: rood | De `Traceback`-assert is Python-specifiek: onderwerp weg |
+| `test_code_language_hook.py` | `test_hook_missing_file` | gedekt | `TestHookCanonicalPath`; mutatie `err != nil \|\| !info.Mode().IsRegular()` → `err == nil && !info.Mode().IsRegular()`: rood | |
+| `test_code_language_hook.py` | `test_hook_other_extension_skips` | gedekt | `TestCheckFixture/other_extension`; mutatie `!isCode && !inScope` → `&& false`: rood (`scope_*_outside`) | |
+| `test_code_language_hook.py` | `test_hook_exempt_skips` | gedekt | `TestCheckFixture/exempt_glob_exempt`; mutatie `matchGlob(glob, relative)` → `&& false`: rood | |
+| `test_code_language_hook.py` | `test_hook_manifest_skips` | gedekt | `TestCheckFixture/manifest_skips_managed`; mutatie `managed[relative]` → `&& false`: rood | |
+| `test_code_language_hook.py` | `test_hook_marker_skips` | gedekt | `TestScanFixture/python/python_marker_comment` en `TestCommentUnitShape`; mutatie marker-test in `unit.go:65` → `true`: rood | |
+| `test_code_language_hook.py` | `test_hook_markdown_in_scope` | gedekt | `TestCheckFixture/scope_markdown`; mutatie `Kind: "prose"` → `"prosa"`: rood | |
+| `test_code_language_hook.py` | `test_hook_toml_out_of_scope` | gedekt | `TestCheckFixture/scope_toml_outside` en `TestOutOfScopeDoesNotLoadData`; mutatie `!isCode && !inScope` → `&& false`: rood | |
+| `test_code_language_hook.py` | `test_hook_foreign_chain_is_never_used` | gedekt | `TestHookChainFromRuntimeRoot` en `TestForeignChainIsNeverUsed` (ook `Bearer sekrit`); mutatie `Check(…, sessionTOML)` → `filepath.Join(repo, "lighthouse.toml")` in `runHook`: rood | |
+| `test_code_language_hook.py` | `test_hook_notice_without_findings` | gedekt | `TestHookNoticeWithoutFindings`; mutatie `reportLine`-formaat (zie `blocks_dutch`): rood | |
+| `test_code_language_hook.py` | `test_hook_notice_with_findings` | gedekt | `TestHookNoticeWithFindings`; zelfde mutatie: rood | |
+| `test_code_language_hook.py` | `test_hook_ends_within_deadline` (3 modi) | naar Go | `TestHookSilentChainEndsAtPerModel` (`internal/codelang/hook_test.go`, 4 s echt); mutatie `PerModel` 4 s → 1 s en → 40 s: rood | Geen Go-test pinde de default: `TestAskTotalDeadline` en `TestAskEveryFailureKind` geven eigen deadlines mee. `drip` en de onbereikbare host zelfde code, gedekt door `TestAskEveryFailureKind/drip` en `/refused` |
+| `test_code_language_hook.py` | `test_hook_under_gates` | gedekt | `TestMainNoticeContract` en `TestUnderGatesSkips` (geen requests); mutatie `underGates` → `underGates && false` in `Resolve`: rood; `case os.Getenv(underGatesEnv) != ""` → `case false` in `runHook`: rood | |
+| `_fake_llm.py` | helper | weg | `fakeLLM` in `llm_test.go` is de Go-tweeling; niets anders importeerde hem | |
 
 Task 2: 67 tests → naar Go 2 / gedekt 57 / beschermt niets 7 / onderwerp weg 1
 
@@ -563,5 +584,7 @@ Task 4: 132 tests → naar Go 27 / gedekt 102 / beschermt niets 0 / onderwerp we
 Task 5: 68 tests → naar Go 45 / gedekt 20 / beschermt niets 1 / onderwerp weg 0 (2 overgedragen aan taak 11)
 
 Task 6: 53 pytest-functies → naar Go 13 / gedekt 39 / beschermt niets 0 / onderwerp weg 0 (1 overgedragen aan taak 11)
+
+Task 7: 20 pytest-functies → naar Go 1 / gedekt 19 / beschermt niets 0 / onderwerp weg 0 (0 overgedragen)
 
 **Totalen:** tests voor: 576 · naar Go: … · weg — gedekt: … · weg — beschermt niets: … · weg — onderwerp weg: …

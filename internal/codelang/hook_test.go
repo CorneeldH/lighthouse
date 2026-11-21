@@ -266,3 +266,25 @@ func TestHookNoticeWithFindings(t *testing.T) {
 		t.Errorf("got\n%+v\nwant\n%+v", got, want)
 	}
 }
+
+// A chain that never answers is cut off at PerModel, not at the server: the notice names the
+// default clip of 4.0 s. It runs for that long, as no other test uses the default.
+func TestHookSilentChainEndsAtPerModel(t *testing.T) {
+	withKey(t)
+	fake := newFakeLLM(t, nil, "silent")
+	root := gitRepo(t, "")
+	t.Setenv("LIGHTHOUSE_TOML", sessionTOML(t, t.TempDir(), llmTable(fake.url)))
+	path := filepath.Join(root, "a.py")
+	writeFile(t, path, []byte(doubtLine))
+	notice := "code-language-check: layer 2 did not answer (m1: no answer within 4.0 s); 1 doubtful units not checked:\n" +
+		path + ":1: name: legacy_processed_lijst_weg"
+	want := hook.Result{Output: map[string]any{
+		"systemMessage": notice,
+		"hookSpecificOutput": map[string]any{
+			"hookEventName": "PostToolUse", "additionalContext": notice,
+		},
+	}}
+	if got := hookOn(t, path); !reflect.DeepEqual(got, want) {
+		t.Errorf("got %+v, want %+v", got, want)
+	}
+}
