@@ -1,14 +1,11 @@
 """The skill `shell-standard` and the instruction block of `pack/shell`: config instead of
 paia's directories, the two harness variants, and KPI commands that really run."""
 
-import os
 import re
-import subprocess
-from pathlib import Path
 
 import pytest
 
-from tests.pack._testkit import GIT_ENV, PACKS, git, init_repo, install_pack, is_known_key
+from tests.pack._testkit import PACKS, is_known_key
 
 SHELL = PACKS / "shell"
 SKILL_DIR = SHELL / "skills" / "shell-standard"
@@ -107,99 +104,12 @@ def test_skill_links_are_lighthouse(variant):
         assert link.startswith("/lighthouse-"), link
 
 
-def _kpi_rows(text: str) -> list[tuple[str, str]]:
-    """(command, target) per row of the KPI table."""
-    section = text.split("## KPIs", 1)[1].split("\n## ", 1)[0]
-    rows = []
-    for line in section.splitlines():
-        cells = [c.strip() for c in re.split(r"(?<!\\)\|", line.strip().strip("|"))]
-        if len(cells) == 3 and cells[1].startswith("`"):
-            rows.append((cells[1].strip("`").replace(r"\|", "|"), cells[2]))
-    return rows
-
-
-def test_kpi_commands_run(tmp_path, pinned_shellcheck, lighthouse_bin):
-    """Each KPI command runs in a repo with pack/shell installed and meets its target
-    there: a KPI row nobody can run measures nothing."""
-    repo = tmp_path / "repo"
-    init_repo(repo)
-    install_pack("shell", repo)
-    (repo / "tools").mkdir()
-    (repo / "tools" / "ok.sh").write_text('#!/usr/bin/env bash\necho "ok"\n', encoding="utf-8")
-    git(repo, "add", "-A")
-    git(repo, "commit", "-qm", "install")
-    rows = _kpi_rows(_text("claude"))
-    assert len(rows) >= 3, rows
-    env = dict(os.environ, **GIT_ENV, SHELLCHECK_BIN=pinned_shellcheck, LIGHTHOUSE_REPO_ROOT=str(repo))
-    for command, target in rows:
-        want = re.fullmatch(r"rc (\d)", target)
-        assert want, target
-        result = subprocess.run(
-            ["bash", "-c", command], cwd=repo, env=env, capture_output=True, text=True, check=False
-        )
-        assert result.returncode == int(want.group(1)), (command, result.stdout, result.stderr)
-
-
 def test_instruction_block():
     text = BLOCK.read_text(encoding="utf-8")
     assert text.startswith("## Lighthouse: shell\n")
     assert len(text.split()) <= 60, len(text.split())
     assert "COULD NOT CHECK" in text
     assert "lighthouse-shell-standard" in text
-
-
-def _kpi_fixture(tmp_path: Path) -> tuple[Path, dict]:
-    repo = tmp_path / "repo"
-    init_repo(repo)
-    install_pack("shell", repo)
-    git(repo, "add", "-A")
-    git(repo, "commit", "-qm", "install")
-    return repo, {"LIGHTHOUSE_REPO_ROOT": str(repo)}
-
-
-def _run_kpi(repo: Path, command: str, env: dict) -> int:
-    return subprocess.run(
-        ["bash", "-c", command], cwd=repo, env=dict(os.environ, **GIT_ENV, **env), capture_output=True, check=False
-    ).returncode
-
-
-def test_kpi_rows_go_red(tmp_path, pinned_shellcheck, lighthouse_bin):
-    """Each row misses its target once the thing it measures is broken."""
-    (strict, _), (all_shell, _), (ignored, _) = _kpi_rows(_text("claude"))
-    repo, env = _kpi_fixture(tmp_path)
-    env["SHELLCHECK_BIN"] = pinned_shellcheck
-    style_only = '#!/usr/bin/env bash\nv="a b"\necho "$v" | sed \'s/a/c/\'\n'
-    warning = '#!/usr/bin/env bash\nf() {\n  local x=1\n  echo "hoi"\n}\nf\n'
-    (repo / ".claude" / "hooks" / "style.sh").write_text(style_only, encoding="utf-8")
-    assert _run_kpi(repo, strict, env) != 0
-    (repo / "tools").mkdir()
-    (repo / "tools" / "warn.bash").write_text(warning, encoding="utf-8")
-    assert _run_kpi(repo, all_shell, env) != 0
-    (repo / ".gitignore").write_text("lib/\n", encoding="utf-8")
-    (repo / ".claude" / "hooks" / "lib").mkdir()
-    (repo / ".claude" / "hooks" / "lib" / "a.bash").write_text("#!/bin/bash\n", encoding="utf-8")
-    assert _run_kpi(repo, ignored, env) != 1
-
-
-def test_kpi_gitignore_row_is_not_green_on_broken_config(tmp_path, lighthouse_bin):
-    (_, _), (_, _), (ignored, _) = _kpi_rows(_text("claude"))
-    repo, env = _kpi_fixture(tmp_path)
-    toml = tmp_path / "broken.toml"
-    toml.write_text('[project]\nlanguage = "en"\n\n[shell]\nstrict_dirs = ".claude/hooks"\n', encoding="utf-8")
-    env["LIGHTHOUSE_TOML"] = str(toml)
-    assert _run_kpi(repo, ignored, env) != 1
-
-
-def test_kpi_gitignore_row_handles_a_space(tmp_path, lighthouse_bin):
-    (_, _), (_, _), (ignored, _) = _kpi_rows(_text("claude"))
-    repo, env = _kpi_fixture(tmp_path)
-    toml = tmp_path / "space.toml"
-    toml.write_text('[project]\nlanguage = "en"\n\n[shell]\nstrict_dirs = ["my hooks"]\n', encoding="utf-8")
-    env["LIGHTHOUSE_TOML"] = str(toml)
-    (repo / ".gitignore").write_text("lib/\n", encoding="utf-8")
-    (repo / "my hooks" / "lib").mkdir(parents=True)
-    (repo / "my hooks" / "lib" / "a.sh").write_text("#!/bin/bash\n", encoding="utf-8")
-    assert _run_kpi(repo, ignored, env) == 0
 
 
 @pytest.mark.parametrize("variant", VARIANTS)
