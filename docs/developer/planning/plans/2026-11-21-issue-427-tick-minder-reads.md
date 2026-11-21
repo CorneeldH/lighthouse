@@ -57,13 +57,13 @@
 
 **Interfaces:**
 - Consumes: `GitHub.enrich(ctx, repo string, pr *PR) error`, `c.checks`.
-- Produces: `type prKey struct{ repo string; number int }`, `type enrichedPR struct{ mergeable, checks string }`. `enrich` kijkt eerst in de memo (alleen als `c.EnrichMemo`), bewaart alleen bij succes, en geeft de bewaarde `Mergeable` en `Checks` terug zonder request. Sleutel: de repo-string zoals `complete` en `BranchPRs` hem al doorgeven (`cmp.Or(pl.repo(), …)`).
+- Produces: `type prKey struct{ repo string; number int; headSHA string }`, `type enrichedPR struct{ mergeable, checks string }`. `enrich` kijkt eerst in de memo (alleen als `c.EnrichMemo`), bewaart alleen bij succes, en geeft de bewaarde `Mergeable` en `Checks` terug zonder request. Sleutel: de repo-string (en `HeadSHA` van de PR, want checks horen bij een head) zoals `complete` en `BranchPRs` hem al doorgeven (`cmp.Or(pl.repo(), …)`).
 
 - [ ] **Step 1: Schrijf de falende test** `TestBoardItemsAndBranchPRsEnrichOnce`: één open PR met run-branch is sluitende PR van een bordissue én staat in `pulls?head=`. Eén client met `EnrichMemo = true`; roep `BoardItems` en daarna `BranchPRs(branch)`. Asserts: `srv.Count("/repos/<repo>/pulls/<n>") == 1`, het check-run-pad precies 1, en beide PR's dragen dezelfde `Mergeable` en `Checks`.
 - [ ] **Step 2: Schrijf de falende test** `TestEnrichWithoutMemoRepeats`: zelfde opzet met `EnrichMemo = false`; `pulls/<n>` wordt 2 keer gevraagd (zo blijft de pusher actueel). Draai beide — verwacht FAIL op de eerste, PASS op de tweede.
 - [ ] **Step 3: Schrijf** `TestEnrichHiddenErrorNotMemoized`: een PR van een andere repo met 404 op `pulls/<n>` wordt bij een tweede aanroep opnieuw gevraagd (fout niet bewaard).
 - [ ] **Step 4: Implementeer** de memo in `enrich` en `GitHub`. Alleen een `OPEN` PR gaat door de memo; de vroege `return nil` voor andere PR's blijft.
-- [ ] **Step 5: Zet `EnrichMemo` aan** waar de tick zijn clients opent (`openForges` / `forRepo`), niet voor `serve`, `overview`, pusher of `postartefact`. Test in `internal/cli` dat een via de tick-opener geopende GitHub-client `EnrichMemo` heeft en een andere opener niet (volg het bestaande opener-testpatroon in `internal/cli`).
+- [ ] **Step 5: Zet `EnrichMemo` aan** alleen via `openForges` (`tick.go:299`): een veld op `forgeOpener` dat alleen daar aan staat en in `forRepo` (`forges.go:55-88`, gedeeld met `serve`, pusher en `run`) op de `*forge.GitHub` wordt toegepast; nooit onvoorwaardelijk in `forRepo`. Niet voor `serve`, `overview`, pusher of `postartefact`. Test in `internal/cli` dat een via de tick-opener geopende GitHub-client `EnrichMemo` heeft en een andere opener niet (volg het bestaande opener-testpatroon in `internal/cli`).
 - [ ] **Step 6: Draai** `go test -race ./internal/forge/... ./internal/dispatch/... ./internal/cli/...` — verwacht PASS; `TestBoardItemsSecondClientSameStore` (`board_test.go:415-434`) blijft groen.
 - [ ] **Step 7: Commit**: `feat(forge): één verrijking per (repo, PR) binnen een tick-client (#427)`.
 
@@ -75,7 +75,7 @@
 - Modify: `docs/tick.md` (stap 7 *Gather*, regels 85-109): voeg een lijst toe van de reads per item en per PR
 - Create: `changelog.d/issue-427-tick-minder-reads.md`
 
-- [ ] **Step 1: Schrijf in `docs/tick.md`** een korte lijst (Nederlands) onder *Gather*: per board-item `projectsV2`-pagina's (eenmaal per tick, gedeeld), `dependencies/blocked_by` alleen bij een open issue met `total_blocked_by > 0`; per PR `pulls/<n>` plus checks, hoogstens één keer per (repo, PR) per tick; per run-branch één `pulls?head=`; comments, reacties, `user` en collaborator-permissie zoals bij stap 7 al beschreven. Noem dat een 304 nog steeds een round trip kost, dus dat minder requests de tick verkort, niet de cache.
+- [ ] **Step 1: Schrijf in `docs/tick.md`** een korte lijst (Nederlands) onder *Gather*: per board-item `projectsV2`-pagina's (eenmaal per tick, gedeeld), bij GitHub `dependencies/blocked_by` alleen bij een open issue met `total_blocked_by > 0`; per PR `pulls/<n>` plus checks, hoogstens één keer per (repo, PR) per tick; per run-branch één `pulls?head=`; comments, reacties, `user` en collaborator-permissie zoals bij stap 7 al beschreven. Noem dat een 304 nog steeds een round trip kost, dus dat minder requests de tick verkort, niet de cache.
 - [ ] **Step 2: Schrijf het fragment** `changelog.d/issue-427-tick-minder-reads.md` met `type: changed` en één Nederlandse zin.
 - [ ] **Step 3: Draai** `.claude/hooks/lighthouse/run.sh md-link-check` is al een hook; controleer dat er geen absolute links zijn. Draai `lighthouse imports check`.
 - [ ] **Step 4: Commit**: `docs(tick): reads per item en per PR, changelog (#427)`.
@@ -84,8 +84,8 @@
 
 ### Task 4: Meting op het echte board (hand nodig)
 
-Dit is acceptatiecriterium 3 en kan niet in een test. Een controller-run heeft geen `/rate_limit`-meting op het echte board bij de hand; deze taak is voor een sessie met echte forge-toegang.
+**Buiten de onbewaakte uitvoering (SDD/executing-plans eindigt na Task 3).** De PR-body wordt `Refs #427 — meting AC3 volgt met de hand` (geen `Closes`). Dit is acceptatiecriterium 3 en kan niet in een test. Een controller-run heeft geen `/rate_limit`-meting op het echte board bij de hand; deze taak is voor een sessie met echte forge-toegang.
 
-- [ ] **Step 1:** Bouw de branch (`go build ./cmd/lighthouse`), meet zoals op #395: `/rate_limit` (core en graphql) voor en na één rustige tick (`lighthouse tick` met de echte `forge-cache.db`, direct na een volle tick), en de duur.
+- [ ] **Step 1:** Bouw de branch (`go build ./cmd/lighthouse`), meet zoals op #395: `/rate_limit` (core en graphql) voor en na één rustige tick (`lighthouse tick` met de echte `forge-cache.db`, direct na een volle tick; let op: dit is een echte tick met neveneffecten en `tick.lock`, draai hem alleen als normale timer-tick met de rem aan of in overleg), en de duur.
 - [ ] **Step 2:** Post de meting als comment op #427 met dezelfde tabel als in de issuetekst. Verwacht: duur < 78 s en minder `blocked_by`-GET's dan 127.
 - [ ] **Step 3:** Faalt de meting (niet korter), meld dat in het comment en in de PR-body; de andere drie criteria staan dan nog.
