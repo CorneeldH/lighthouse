@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"strings"
 )
 
 // graphqlError is one entry of the errors list GitHub answers with: its type, such as
@@ -59,4 +60,17 @@ func (c *GitHub) graphql(ctx context.Context, query string, vars map[string]any,
 		return fmt.Errorf("forge graphql: decode data: %w", err)
 	}
 	return nil
+}
+
+// ownerName is the owner and name of Repo for a GraphQL query, after checking the client is
+// configured.
+func (c *GitHub) ownerName() (owner, name string, err error) {
+	if err := c.configured(); err != nil {
+		return "", "", err
+	}
+	owner, name, ok := strings.Cut(c.Repo, "/")
+	if !ok || owner == "" || name == "" {
+		return "", "", fmt.Errorf("forge: repo %q is not owner/name", c.Repo)
+	}
+	return owner, name, nil
 }

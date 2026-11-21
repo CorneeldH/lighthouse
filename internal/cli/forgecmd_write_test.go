@@ -36,11 +36,13 @@ type writeForge struct {
 	onBoard    bool
 	milestones []forge.Milestone
 	msEdits    []msEdit
+	closed     map[int]string // CloseIssue: number -> comment
+	reopened   map[int]string
 }
 
 type msEdit struct {
-	number             int
-	title, description *string
+	number                    int
+	title, description, state *string
 }
 
 func (w *writeForge) Kind() string { return cmp.Or(w.kind, "github") }
@@ -99,14 +101,30 @@ func (w *writeForge) Milestones(context.Context, string) ([]forge.Milestone, err
 func (w *writeForge) CreateMilestone(_ context.Context, title, desc string) (forge.Milestone, error) {
 	return forge.Milestone{Number: 5, Title: title, Description: desc}, w.err
 }
-func (w *writeForge) EditMilestone(_ context.Context, n int, title, desc *string) (forge.Milestone, error) {
-	w.msEdits = append(w.msEdits, msEdit{n, title, desc})
+func (w *writeForge) EditMilestone(_ context.Context, n int, title, desc, state *string) (forge.Milestone, error) {
+	w.msEdits = append(w.msEdits, msEdit{n, title, desc, state})
 	return forge.Milestone{Number: n}, w.err
+}
+
+func (w *writeForge) CloseIssue(_ context.Context, n int, comment string) error {
+	if w.closed == nil {
+		w.closed = map[int]string{}
+	}
+	w.closed[n] = comment
+	return w.err
+}
+func (w *writeForge) ReopenIssue(_ context.Context, n int, comment string) error {
+	if w.reopened == nil {
+		w.reopened = map[int]string{}
+	}
+	w.reopened[n] = comment
+	return w.err
 }
 
 func writeEnv(f forge.Forge) *forgeEnv {
 	return &forgeEnv{
 		open:   func(context.Context) (forge.Forge, error) { return f, nil },
+		getenv: func(string) string { return "" }, // never the real controller run of the test gate
 		branch: func() (string, error) { return "issue-9-x", nil },
 		repo: func() (repoconfig.Repo, error) {
 			return repoconfig.Repo{DefaultBranch: "trunk", Board: &repoconfig.Board{
@@ -338,6 +356,45 @@ func TestMilestoneAmbiguousExit2(t *testing.T) {
 	code, _, errOut = runForgeEnv(writeEnv(dup), "milestone", "edit", "M", "--title", "N")
 	if code != 2 || !strings.Contains(errOut, "3 and 8") || len(dup.msEdits) != 0 {
 		t.Errorf("milestone edit: code %d err %q edits %v", code, errOut, dup.msEdits)
+	}
+}
+
+func TestIssueCloseAndReopen(t *testing.T) {
+	w := &writeForge{}
+	if code, out, errOut := runForgeEnv(writeEnv(w), "issue", "close", "7"); code != 0 || out != "" {
+		t.Fatalf("close: code %d out %q err %q", code, out, errOut)
+	}
+	if c, ok := w.closed[7]; !ok || c != "" {
+		t.Errorf("closed = %v, want 7 with no comment", w.closed)
+	}
+	if code, _, _ := runForgeEnv(writeEnv(w), "issue", "close", "8", "--body-file", bodyFile(t, "klaar")); code != 0 || w.closed[8] != "klaar" {
+		t.Errorf("close with body: code %d closed %v", code, w.closed)
+	}
+	if code, _, _ := runForgeEnv(writeEnv(w), "issue", "reopen", "7", "--body-file", bodyFile(t, "toch niet")); code != 0 || w.reopened[7] != "toch niet" {
+		t.Errorf("reopen with body: code %d reopened %v", code, w.reopened)
+	}
+	if code, _, _ := runForgeEnv(writeEnv(w), "issue", "reopen", "9"); code != 0 || len(w.reopened) != 2 || w.reopened[9] != "" {
+		t.Errorf("reopen: code %d reopened %v", code, w.reopened)
+	}
+	if code, _, _ := runForgeEnv(writeEnv(w), "issue", "close", "7", "--body-file", "/nonexistent"); code != 2 {
+		t.Errorf("missing body file: code %d, want 2", code)
+	}
+	if code, _, _ := runForgeEnv(writeEnv(&writeForge{err: errors.New("boom")}), "issue", "close", "7"); code != 1 {
+		t.Errorf("forge error: code %d, want 1", code)
+	}
+}
+
+func TestMilestoneEditState(t *testing.T) {
+	w := &writeForge{milestones: []forge.Milestone{{Number: 4, Title: "M4"}}}
+	code, _, errOut := runForgeEnv(writeEnv(w), "milestone", "edit", "M4", "--state", "closed")
+	if code != 0 || len(w.msEdits) != 1 {
+		t.Fatalf("code %d err %q edits %v", code, errOut, w.msEdits)
+	}
+	if e := w.msEdits[0]; e.number != 4 || e.title != nil || e.state == nil || *e.state != "closed" {
+		t.Errorf("edit = %+v", e)
+	}
+	if code, _, errOut = runForgeEnv(writeEnv(w), "milestone", "edit", "M4", "--state", "weird"); code != 2 || !strings.Contains(errOut, "weird") || len(w.msEdits) != 1 {
+		t.Errorf("bad state: code %d err %q edits %d", code, errOut, len(w.msEdits))
 	}
 }
 

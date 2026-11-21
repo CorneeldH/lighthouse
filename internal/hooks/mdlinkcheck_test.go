@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -52,10 +53,10 @@ func TestLinkCheckVerdicts(t *testing.T) {
 		stderr     string
 	}{
 		{"existing link", "See [x](exists.md) and [u](https://e.org) and [a](#top).\n", 0, ""},
-		{"dead link", "See [x](gone.md).\n", 2, blockHead + "  gone.md" + deadReason + "In: " + note + "\n"},
-		{"absolute link", "See [x](/abs.md).\n", 2, blockHead + "  /abs.md" + absoluteReason + "In: " + note + "\n"},
+		{"dead link", "See [x](gone.md).\n", 2, blockHead + "  [md-link-check/dead] gone.md" + deadReason + "In: " + note + "\n"},
+		{"absolute link", "See [x](/abs.md).\n", 2, blockHead + "  [md-link-check/absolute] /abs.md" + absoluteReason + "In: " + note + "\n"},
 		{"dead then absolute", "[y](/abs.md) [x](gone.md)\n", 2,
-			blockHead + "  gone.md" + deadReason + "  /abs.md" + absoluteReason + "In: " + note + "\n"},
+			blockHead + "  [md-link-check/dead] gone.md" + deadReason + "  [md-link-check/absolute] /abs.md" + absoluteReason + "In: " + note + "\n"},
 		{"link in a fence", "```\n[x](gone.md)\n```\n", 0, ""},
 		{"target outside the repo", "[x](../../outside.md)\n", 0, ""},
 	}
@@ -105,7 +106,7 @@ func TestLinkCheckMarkdownSuffix(t *testing.T) {
 	root := gitRepo(t)
 	note := writeFile(t, filepath.Join(root, "notes", "note.markdown"), "[x](gone.md)\n")
 	res := call(t, mdLinkCheck, "", linkPayload(note, ""))
-	if res.Code != 2 || res.Stderr != blockHead+"  gone.md"+deadReason+"In: "+note+"\n" {
+	if res.Code != 2 || res.Stderr != blockHead+"  [md-link-check/dead] gone.md"+deadReason+"In: "+note+"\n" {
 		t.Errorf("code %d stderr %q", res.Code, res.Stderr)
 	}
 }
@@ -115,7 +116,7 @@ func TestLinkCheckMarkdownSuffix(t *testing.T) {
 func TestLinkCheckResolvesThePath(t *testing.T) {
 	root := gitRepo(t)
 	note := writeFile(t, filepath.Join(root, "notes", "note.md"), "[x](gone.md)\n")
-	want := blockHead + "  gone.md" + deadReason + "In: " + note + "\n"
+	want := blockHead + "  [md-link-check/dead] gone.md" + deadReason + "In: " + note + "\n"
 
 	t.Run("cwd in payload", func(t *testing.T) {
 		res := call(t, mdLinkCheck, "", linkPayload("notes/note.md", root))
@@ -155,7 +156,7 @@ func TestLinkCheckTrace(t *testing.T) {
 	}
 	writeFile(t, note, "[x](gone.md)\n")
 	res = call(t, mdLinkCheck, "", linkPayload(note, ""))
-	want := "linkcheck: checking in " + root + "\n" + blockHead + "  gone.md" + deadReason + "In: " + note + "\n"
+	want := "linkcheck: checking in " + root + "\n" + blockHead + "  [md-link-check/dead] gone.md" + deadReason + "In: " + note + "\n"
 	if res.Code != 2 || res.Stderr != want {
 		t.Errorf("code %d stderr %q", res.Code, res.Stderr)
 	}
@@ -224,7 +225,71 @@ func TestLinkCheckInvalidUTF8ReadsOn(t *testing.T) {
 	root := gitRepo(t)
 	note := writeFile(t, filepath.Join(root, "notes", "note.md"), "\xff\xfe [x](gone.md)\n")
 	res := call(t, mdLinkCheck, "", linkPayload(note, ""))
-	if want := blockHead + "  gone.md" + deadReason + "In: " + note + "\n"; res.Code != 2 || res.Stderr != want {
+	if want := blockHead + "  [md-link-check/dead] gone.md" + deadReason + "In: " + note + "\n"; res.Code != 2 || res.Stderr != want {
 		t.Errorf("code %d stderr %q", res.Code, res.Stderr)
+	}
+}
+
+// linkedWorktree adds a linked worktree on a new branch to root, which needs a commit first; it
+// returns the worktree.
+func linkedWorktree(t *testing.T, root string) string {
+	t.Helper()
+	for _, k := range []string{"GIT_DIR", "GIT_INDEX_FILE", "GIT_WORK_TREE"} {
+		t.Setenv(k, "") // registers the restore; the Unsetenv below removes the variable itself
+		if err := os.Unsetenv(k); err != nil {
+			t.Fatal(err)
+		}
+	}
+	wt := filepath.Join(root, ".claude", "worktrees", "issue-1-iets")
+	for _, args := range [][]string{
+		{"add", "-A"},
+		{"-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false", "commit", "-qm", "init"},
+		{"worktree", "add", "-q", "-b", "issue-1-iets", wt},
+	} {
+		if out, err := exec.Command("git", append([]string{"-C", root}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	return wt
+}
+
+// The root of the check is the repository of the file itself: the linked worktree, not the main
+// checkout that holds it and not CLAUDE_PROJECT_DIR. A link to a file that exists only on this
+// branch passes.
+func TestLinkCheckInALinkedWorktree(t *testing.T) {
+	root := gitRepo(t)
+	wt := linkedWorktree(t, root)
+	t.Setenv("LIGHTHOUSE_LINKCHECK_TRACE", "1")
+	t.Setenv("CLAUDE_PROJECT_DIR", t.TempDir())
+	trace := "linkcheck: checking in " + wt + "\n"
+
+	writeFile(t, filepath.Join(wt, "docs", "specs", "x.md"), "# x\n")
+	plan := writeFile(t, filepath.Join(wt, "docs", "plans", "p.md"), "See [spec](../specs/x.md).\n")
+	res := call(t, mdLinkCheck, "", linkPayload(plan, wt))
+	if res.Code != 0 || res.Stderr != trace {
+		t.Errorf("branch-only link: code %d stderr %q, want 0 %q", res.Code, res.Stderr, trace)
+	}
+
+	note := writeFile(t, filepath.Join(wt, "docs", "note.md"), "See [x](weg.md).\n")
+	res = call(t, mdLinkCheck, "", linkPayload(note, wt))
+	want := trace + blockHead + "  [md-link-check/dead] weg.md" + deadReason + "In: " + note + "\n"
+	if res.Code != 2 || res.Stderr != want {
+		t.Errorf("dead link: code %d stderr %q, want 2 %q", res.Code, res.Stderr, want)
+	}
+}
+
+// Every finding line carries the tag of its own kind, so a canary can tell the two reasons apart.
+func TestMdLinkCheckTagsEveryFinding(t *testing.T) {
+	root := gitRepo(t)
+	note := writeFile(t, filepath.Join(root, "notes", "note.md"), "[x](gone.md) and [y](/abs.md)\n")
+	res := call(t, mdLinkCheck, "", linkPayload(note, root))
+	if res.Code != 2 {
+		t.Fatalf("code %d stderr %q, want 2", res.Code, res.Stderr)
+	}
+	for tag, target := range map[string]string{"[md-link-check/dead]": "gone.md", "[md-link-check/absolute]": "/abs.md"} {
+		want := "  " + tag + " " + target + " — "
+		if !strings.Contains(res.Stderr, "\n"+want) {
+			t.Errorf("stderr lacks a line starting %q:\n%s", want, res.Stderr)
+		}
 	}
 }

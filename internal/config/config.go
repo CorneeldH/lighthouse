@@ -135,6 +135,7 @@ var schema = []struct{ key, kind string }{
 	{"agent_audit.ignore", kStrs},
 	{"agent_audit.top", kInt},
 	{"agent_audit.description_max_chars", kInt},
+	{"imports.check", kBool},
 }
 
 // defaults is the value of an absent key. A key in schema without a default is optional: not
@@ -177,6 +178,7 @@ var defaults = map[string]any{
 	"agent_audit.ignore":                     []any{},
 	"agent_audit.top":                        int64(10),
 	"agent_audit.description_max_chars":      int64(1024),
+	"imports.check":                          true,
 }
 
 // mayBeEmpty are the keys whose empty value is a setting: `[test_gate] command = ""` turns the

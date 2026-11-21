@@ -16,8 +16,8 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/prbody"
 )
 
-// The run_row tests are the Go twins of tests/pack/test_evidence.py (run_row), with the same
-// asserts; the CLI tests there stay pytest and call `lighthouse evidence`.
+// The run tests here and in internal/cli/evidence_test.go replace the former pytest black-box
+// tests of `lighthouse evidence`.
 
 func writeFile(t *testing.T, path, content string, mode os.FileMode) {
 	t.Helper()

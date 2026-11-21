@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -29,6 +30,23 @@ type forgeEnv struct {
 	// repo is the lighthouse.toml of this repo: the default --base and the valid statuses.
 	repo     func() (repoconfig.Repo, error)
 	out, err io.Writer
+	// getenv and now serve the post-failed note; nil is os.Getenv and time.Now.
+	getenv func(string) string
+	now    func() time.Time
+}
+
+func (e *forgeEnv) env(key string) string {
+	if e.getenv != nil {
+		return e.getenv(key)
+	}
+	return os.Getenv(key)
+}
+
+func (e *forgeEnv) clock() time.Time {
+	if e.now != nil {
+		return e.now()
+	}
+	return time.Now()
 }
 
 // stdout and stderr are the streams a subcommand writes to.

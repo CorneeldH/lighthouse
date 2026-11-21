@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -12,6 +13,8 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/config"
 	"github.com/CorneeldH/lighthouse/internal/datadir"
 	"github.com/CorneeldH/lighthouse/internal/review"
+	"github.com/CorneeldH/lighthouse/internal/store"
+	"github.com/CorneeldH/lighthouse/internal/telemetry"
 )
 
 var (
@@ -67,9 +70,9 @@ func newPlanReviewRecordCommand(deps review.Deps) *cobra.Command {
 	cmd := scriptCommand(&cobra.Command{
 		Use:   "plan-review-record",
 		Short: "Attempt directory and measurement record of the adversarial plan and spec review",
-		Long: "Exit: 0 ok | 2 wrong usage | 3 not the host from host.toml, or host unknown/not measurable:\n" +
-			"no record | 4 write or validation error (only the staging directory stays). On 3 and 4 the\n" +
-			"skill carries on with the handoff: the review is the product, the record measurement material.",
+		Long: "Exit: 0 ok | 2 wrong usage | 4 write or validation error (only the staging directory\n" +
+			"stays). On 4 the skill carries on with the handoff: the review is the product, the record\n" +
+			"measurement material.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return usageErr(fmt.Errorf("%s: a subcommand is required: start, write, accept-open or pr-open-points", cmd.CommandPath()))
 		},
@@ -200,8 +203,7 @@ func newRecordWriteCommand(deps review.Deps) *cobra.Command {
 		Short: "Write the round JSONs, their decisions sidecars and one record.json to the data directory",
 		Long: "Writes the round JSONs, their decisions sidecars and one `record.json` to\n" +
 			"`<data-dir>/<kind>-review/<chain-key>/<attempt>/`, through a staging directory and one\n" +
-			"rename. `kind` comes from `attempt.json` (if it is missing, it is `plan`). Only on the host\n" +
-			"from host.toml; elsewhere no record and a loud message (exit 3).",
+			"rename. `kind` comes from `attempt.json` (if it is missing, it is `plan`). On every machine.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runRecordWrite(cmd, args[0], &f, deps)
 		},
@@ -274,10 +276,6 @@ func runRecordWrite(cmd *cobra.Command, attemptDir string, f *recordFlags, deps 
 			"which has no separate specs or issue\n", attemptDir)
 		return planReviewExit(2)
 	}
-	if reason := deps.HostRefusal(kind); reason != nil {
-		_, _ = fmt.Fprintln(stderr, *reason)
-		return planReviewExit(3)
-	}
 	final, err := writeRecord(attemptDir, repo, kind, hasIssue, f, deps)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "%s-REVIEW-RECORD FAILED: %v. Only the staging directory remains; "+
@@ -285,7 +283,38 @@ func runRecordWrite(cmd *cobra.Command, attemptDir string, f *recordFlags, deps 
 		return planReviewExit(4)
 	}
 	_, _ = fmt.Fprintln(cmd.OutOrStdout(), final)
+	indexAfterWrite(cmd)
 	return nil
+}
+
+// indexAfterWrite indexes the data directory, the new record included. The record is the
+// product: a failure or a skipped record is one line on stderr, never an exit code.
+func indexAfterWrite(cmd *cobra.Command) {
+	ctx := cmd.Context()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	var res review.IndexResult
+	err := func() error {
+		dbPath, err := store.DefaultPath()
+		if err != nil {
+			return err
+		}
+		st, err := store.OpenShared(ctx, dbPath)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = st.Close() }()
+		res, err = indexDataRoot(ctx, st.DB)
+		return err
+	}()
+	if err != nil {
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "REVIEW-INDEX FAILED: %v\n", err)
+		return
+	}
+	for _, s := range res.Skipped {
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "REVIEW-INDEX SKIPPED: %s: %s\n", s.Path, s.Reason)
+	}
 }
 
 // writeRecord builds the record and writes it to the data directory.
@@ -320,6 +349,7 @@ func writeRecord(attemptDir, repo, kind string, hasIssue bool, f *recordFlags, d
 		}
 		in.CodexHome = filepath.Join(home, ".codex-specreview")
 	}
+	in.Trajectory = recordTrajectory(repo, hasIssue, f.issue)
 	record, err := review.BuildRecord(attemptDir, in, deps)
 	if err != nil {
 		return "", err
@@ -329,4 +359,26 @@ func writeRecord(attemptDir, repo, kind string, hasIssue bool, f *recordFlags, d
 		return "", err
 	}
 	return review.Write(attemptDir, record, root, f.issueBody)
+}
+
+// recordTrajectory is the repo and issue a record belongs to: the issue is --issue, else the
+// number in the current branch name; the repo is forge.repo. Either one missing, or a
+// lighthouse.toml that does not load, gives nil: the record is the product, never an exit 4.
+func recordTrajectory(repo string, hasIssue bool, issue int) *review.Trajectory {
+	if !hasIssue {
+		branch, err := review.Git(repo, "branch", "--show-current")
+		if err != nil {
+			return nil
+		}
+		n, ok := telemetry.IssueFromBranch(strings.TrimSpace(string(branch)))
+		if !ok {
+			return nil
+		}
+		issue = n
+	}
+	cfg, err := loadRepoAtConfigPath()
+	if err != nil || cfg.Slug == "" {
+		return nil
+	}
+	return &review.Trajectory{Repo: cfg.Slug, Issue: issue}
 }

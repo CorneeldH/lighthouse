@@ -26,7 +26,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.pack._testkit import GIT_ENV, git, init_repo, lighthouse_dir, path_with_lighthouse, tool_bin
+from tests.pack.python._testkit import GIT_ENV, git, init_repo, lighthouse_dir, path_with_lighthouse, tool_bin
 
 ROOT = Path(__file__).resolve().parents[1]
 SCAN = ROOT / "tools" / "hooks" / "pre-push-secret-scan.sh"

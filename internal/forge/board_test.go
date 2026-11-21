@@ -14,6 +14,25 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 )
 
+func TestEffectiveStatus(t *testing.T) {
+	tests := []struct {
+		name string
+		item BoardItem
+		want string
+	}{
+		{"listed status", BoardItem{Status: "Controller", StatusName: "Controller"}, "Controller"},
+		{"unlisted status uses the board name", BoardItem{Status: UnknownStatusPrefix + "abc", StatusName: "On hold"}, "On hold"},
+		{"no status", BoardItem{}, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.item.EffectiveStatus(); got != tt.want {
+				t.Errorf("EffectiveStatus = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 // boardClient returns a forgetest server and a client pointed at it.
 func boardClient(t *testing.T) (*forgetest.Server, *GitHub) {
 	t.Helper()

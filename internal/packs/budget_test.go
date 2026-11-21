@@ -12,10 +12,14 @@ import (
 // The ceilings of the instruction blocks, in words as `wc -w` counts them, markers included. A
 // block points to a skill or a rule and carries no explanation. Raising a ceiling is a deliberate
 // choice, made in the PR; it never follows from a block that simply grew.
-var blockCeilings = map[string]int{"core": 373, "go": 50, "python": 57, "shell": 54}
+//
+// #383 raised go (50 to 73), python (57 to 83) and total (531 to 620) and added node (37): each of
+// the three language blocks gained the one line that names `lighthouse imports check` and its
+// Stop hook, a pointer, not an explanation.
+var blockCeilings = map[string]int{"core": 373, "go": 73, "node": 37, "python": 83, "shell": 54}
 
 // blocksCeiling is the ceiling for all blocks together, the heaviest combination.
-const blocksCeiling = 531
+const blocksCeiling = 620
 
 func TestInstructionBlocksWithinCeiling(t *testing.T) {
 	entries, err := fs.ReadDir(pack.Files, ".")

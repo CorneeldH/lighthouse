@@ -26,7 +26,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.pack._testkit import GIT_ENV, git, install_pack
+from tests.pack.python._testkit import GIT_ENV, git, install_pack
 
 # ratchet reads lighthouse.toml through the binary of this checkout (#274).
 pytestmark = pytest.mark.usefixtures("lighthouse_bin")

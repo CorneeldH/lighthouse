@@ -30,6 +30,11 @@
 # The pin of ty. The python-standard skill names the same version.
 TY_VERSION="0.0.72"
 HOOK_NAME="ty-gate"
+# The reasons this hook blocks on, each as a `[ty-gate/<reason>]` tag on the first line of the block
+# message. Every other exit 2 path is `COULD NOT CHECK` and carries no tag. A canary test runs the
+# hook once per reason: add a reason here and it needs a fixture there.
+# shellcheck disable=SC2034 # read by the canary test, not by this script
+BLOCKING_RULES="type-error,unresolved-imports-only"
 
 # A message to the user, without blocking. Without jq the JSON is built by hand:
 # the reasons below hold no quote or backslash.
@@ -184,7 +189,7 @@ EOF
     # `uv sync`, or add the dependency). It cannot loop: the stop_hook_active
     # guard at the top lets the hook fire once per turn.
     if [ "$CODES" = "unresolved-import" ]; then
-      echo "$HOOK_NAME: ty finds only unresolvable imports in $WHERE, no type errors." >&2
+      echo "[$HOOK_NAME/unresolved-imports-only] $HOOK_NAME: ty finds only unresolvable imports in $WHERE, no type errors." >&2
       echo "That points to a skewed environment rather than wrong code." >&2
       echo "" >&2
       echo "Check your venv first:  uv sync  (with the extras you use)." >&2
@@ -196,7 +201,7 @@ EOF
       exit 2
     fi
 
-    echo "$HOOK_NAME: ty finds errors in $WHERE. Fix them in the code — do not" >&2
+    echo "[$HOOK_NAME/type-error] $HOOK_NAME: ty finds errors in $WHERE. Fix them in the code — do not" >&2
     echo "turn off a ty rule and do not paste a bare # type: ignore over it." >&2
     echo "" >&2
     echo "$OUT" >&2

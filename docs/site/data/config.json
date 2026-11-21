@@ -136,6 +136,7 @@
                 "internal/initcmd/initcmd.go",
                 "internal/repoconfig/repoconfig.go",
                 "internal/workplace/kennforge/adapter.go",
+                "pack/core/skills/close-issue",
                 "pack/core/skills/fix-pr",
                 "pack/core/skills/forge",
                 "pack/core/skills/route-issue",
@@ -153,8 +154,11 @@
               "readers": [
                 "internal/boardstart/boardstart.go",
                 "internal/cli/forge_label.go",
+                "internal/cli/planreviewrecord.go",
                 "internal/cli/pushworkflows.go",
+                "internal/cli/reviewindex.go",
                 "internal/cli/worktreeaudit.go",
+                "internal/issuestate/cmd.go",
                 "internal/labels/labels.go",
                 "internal/postartefact/postartefact.go",
                 "internal/prbody/find.go",
@@ -202,7 +206,8 @@
                 "internal/prbody/form.go",
                 "internal/prbody/gate.go",
                 "internal/repoconfig/repoconfig.go",
-                "pack/core/skills/forge"
+                "pack/core/skills/forge",
+                "pack/core/workflows/unblock-dependents.yml"
               ]
             },
             {
@@ -240,7 +245,6 @@
               "required": "derived",
               "about": "The name part of forge.repo, derived by the lighthouse binary.",
               "readers": [
-                "pack/core/skills/close-issue",
                 "pack/python/scripts/quality/prcov_issues.py"
               ]
             },
@@ -250,7 +254,6 @@
               "required": "derived",
               "about": "The owner part of forge.repo, derived by the lighthouse binary.",
               "readers": [
-                "pack/core/skills/close-issue",
                 "pack/core/skills/forge",
                 "pack/python/scripts/quality/prcov_issues.py"
               ]
@@ -311,7 +314,6 @@
                 "internal/cli/triage.go",
                 "internal/forge/project.go",
                 "internal/repoconfig/repoconfig.go",
-                "pack/core/skills/close-issue",
                 "pack/core/skills/forge",
                 "pack/python/scripts/quality/prcov_issues.py"
               ]
@@ -340,7 +342,6 @@
                 "internal/cli/triage.go",
                 "internal/forge/project.go",
                 "internal/repoconfig/repoconfig.go",
-                "pack/core/skills/close-issue",
                 "pack/python/scripts/quality/prcov_issues.py"
               ]
             },
@@ -390,7 +391,10 @@
                 "pack/core/skills/fix-pr",
                 "pack/core/skills/upgrade",
                 "pack/core/skills/write-pr",
+                "pack/go/instructions/AGENTS.md",
                 "pack/go/skills/go-standard",
+                "pack/node/instructions/AGENTS.md",
+                "pack/python/instructions/AGENTS.md",
                 "pack/python/skills/python-standard"
               ]
             },
@@ -584,6 +588,7 @@
               "default": "blocked-external",
               "about": "The label for an issue blocked by something outside the repo.",
               "readers": [
+                "internal/issuestate/state.go",
                 "internal/repoconfig/repoconfig.go",
                 "internal/triage/rules.go",
                 "pack/core/skills/route-issue",
@@ -598,6 +603,7 @@
               "about": "The label for an issue blocked by another issue.",
               "readers": [
                 "internal/cli/unblockdependents.go",
+                "internal/issuestate/state.go",
                 "internal/repoconfig/repoconfig.go",
                 "internal/triage/rules.go",
                 "pack/core/skills/close-issue",
@@ -922,6 +928,34 @@
           ]
         },
         {
+          "table": "imports",
+          "title": "Imports",
+          "about": "The gate on direct imports that no manifest declares.",
+          "keys": [
+            {
+              "key": "imports.check",
+              "level": "advanced",
+              "required": "no",
+              "default": true,
+              "about": "Whether the gate on undeclared direct imports runs.",
+              "options": [
+                true,
+                false
+              ],
+              "readers": [
+                "internal/cli/imports.go",
+                "internal/commitgate/imports.go",
+                "pack/go/hooks/go-imports-gate.sh",
+                "pack/go/instructions/AGENTS.md",
+                "pack/node/hooks/node-imports-gate.sh",
+                "pack/node/instructions/AGENTS.md",
+                "pack/python/hooks/python-imports-gate.sh",
+                "pack/python/instructions/AGENTS.md"
+              ]
+            }
+          ]
+        },
+        {
           "table": "worktree_audit",
           "title": "Worktree audit",
           "about": "Worktrees and branches that the worktree audit never proposes to remove.",
@@ -1007,6 +1041,7 @@
               ],
               "about": "The Python source directories.",
               "readers": [
+                "internal/cli/imports.go",
                 "pack/python/hooks/ty-gate.sh",
                 "pack/python/scripts/quality/ratchet.py",
                 "pack/python/skills/python-standard"
@@ -1113,7 +1148,6 @@
               "about": "true: this machine is the controller host, the address is not measured; false: it is not. Without it, host-check uses tailscale_ip. An older reader ignores it.",
               "example": true,
               "readers": [
-                "internal/review/record.go",
                 "pack/core/skills/write-handoff"
               ]
             },
@@ -1123,9 +1157,7 @@
               "required": "no",
               "about": "The Tailscale address of this workstation; init writes it on a machine with Tailscale. Without it and without host.controller, host-check reports another host.",
               "example": "100.64.0.1",
-              "readers": [
-                "internal/review/record.go"
-              ]
+              "readers": []
             },
             {
               "key": "host.gate_slice",

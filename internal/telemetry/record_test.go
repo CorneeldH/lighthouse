@@ -546,3 +546,44 @@ func TestFindingRollsBackTrajectoryOnCheckFailure(t *testing.T) {
 		t.Errorf("findings = %d, want 0", n)
 	}
 }
+
+func TestFindingSumAndDelete(t *testing.T) {
+	ctx := context.Background()
+	db := openDB(t)
+	mk := func(sourceID string) FindingRecord {
+		return FindingRecord{
+			Origin: Origin{Source: "plan-review-record", SourceID: sourceID, RecordedAt: t0},
+			Repo:   "o/r", Issue: 3, Component: "plan_review", FindingKey: "f", RecordPath: "p", RecordSum: "sum-" + sourceID,
+		}
+	}
+	for _, id := range []string{"plan/a_b/A1/r1-f1", "plan/a_b/A2/r1-f1", "plan/axb/A1/r1-f1"} {
+		if _, _, err := RecordFinding(ctx, db, mk(id)); err != nil {
+			t.Fatalf("RecordFinding %s: %v", id, err)
+		}
+	}
+	sum, found, err := FindingSum(ctx, db, "plan-review-record", "plan/a_b/A1/r1-f1")
+	if err != nil || !found || sum != "sum-plan/a_b/A1/r1-f1" {
+		t.Fatalf("FindingSum = %q, %v, %v", sum, found, err)
+	}
+	if _, found, err := FindingSum(ctx, db, "plan-review-record", "nope"); err != nil || found {
+		t.Errorf("FindingSum unknown = %v, %v; want not found", found, err)
+	}
+	// "_" is no wildcard: plan/axb/ stays.
+	n, err := DeleteFindingsUnder(ctx, db, "plan-review-record", "plan/a_b/", "plan/a_b/A2/")
+	if err != nil || n != 1 {
+		t.Fatalf("DeleteFindingsUnder keep = %d, %v; want 1", n, err)
+	}
+	if got := count(t, db, `SELECT count(*) FROM findings`); got != 2 {
+		t.Errorf("findings = %d, want 2", got)
+	}
+	n, err = DeleteFindingsUnder(ctx, db, "plan-review-record", "plan/a_b/", "")
+	if err != nil || n != 1 {
+		t.Fatalf("DeleteFindingsUnder all = %d, %v; want 1", n, err)
+	}
+	if got := count(t, db, `SELECT count(*) FROM findings WHERE source_id LIKE 'plan/axb/%'`); got != 1 {
+		t.Errorf("axb rows = %d, want 1", got)
+	}
+	if n, _ := DeleteFindingsUnder(ctx, db, "sdd-ledger", "plan/axb/", ""); n != 0 {
+		t.Errorf("other source deleted %d rows", n)
+	}
+}

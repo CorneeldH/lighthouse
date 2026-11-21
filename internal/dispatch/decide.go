@@ -2,6 +2,7 @@ package dispatch
 
 import (
 	"cmp"
+	"fmt"
 	"regexp"
 	"slices"
 	"strconv"
@@ -77,6 +78,9 @@ const (
 	KindPush Kind = "push"
 	// KindDropMarker removes the resume marker of SessionID while its key is TriggerKey.
 	KindDropMarker Kind = "drop_marker"
+	// KindRepost posts Body on Issue for the open run RunID, which stays open: the run's own post
+	// of that Handoff or Question failed (rule 14a).
+	KindRepost Kind = "repost"
 	// KindScheduledStart claims and starts the run of Schedule for Slot; it has no issue.
 	KindScheduledStart Kind = "scheduled_start"
 	// KindScheduledFinish ends the agent of scheduled run RunID, checks and commits its result,
@@ -125,6 +129,7 @@ type Action struct {
 	Blockers   []string     `json:"blockers,omitempty"`   // park: "<repo>#<n> (<status>)" per active blocker
 	Worktree   string       `json:"worktree,omitempty"`   // push: the worktree of the run that asked for the push
 	PermitSHA  string       `json:"permit_sha,omitempty"` // push: the SHA a user's answer allowed
+	Body       string       `json:"body,omitempty"`       // repost: the comment, literal
 	// Schedule and Slot (YYYYMMDDTHHMM) name the scheduled run of a scheduled start, or of its
 	// defer; Issue is 0 then. Tools, Instructions and Verdict (scheduled.Record JSON) are its
 	// launch.
@@ -340,6 +345,11 @@ func decideIssue(in Input, repo RepoInput, it Item) []planned {
 			continue
 		}
 		a, closes, f := settle(in, repo, it, row, hs, base)
+		if a.Kind == KindRepost {
+			// Rule 14a: the run stays open, so the repost frees nothing and the item starts nothing.
+			out = append(out, planned{Action: a})
+			closes = false
+		}
 		if closes {
 			// The close carries its run's node and profile, and frees its slot unless it is the
 			// fix-pr close of rule 13, whose start inherits that slot (holdsSlot), or the close
@@ -446,7 +456,8 @@ func orphan(history []runs.Row, hs []parsed, base Action) (Action, bool) {
 // (pusherQuestion) is its Question. A Done closes, then a Handoff that does
 // not end the chain, then a Question, then the run's own Returned (posted by an earlier tick
 // whose stop failed); after those the measurement rules of runCtx.outcome. Every action it
-// returns closes row. The third result, only from fixPR, is the fix-pr start the close stands
+// returns closes row, except a KindRepost (rule 14a): decideIssue keeps the row open for that.
+// The third result, only from fixPR, is the fix-pr start the close stands
 // for; settle starts nothing itself.
 func settle(in Input, repo RepoInput, it Item, row runs.Row, hs []parsed, base Action) (Action, bool, *fixPRStart) {
 	var done, question, returned bool
@@ -544,8 +555,8 @@ func (c runCtx) outcome() (Action, bool, *fixPRStart) {
 	rules := []func() (Action, bool, *fixPRStart){
 		noStart(c.parked), noStart(c.merged), noStart(c.closedIssue), c.mergeReady, noStart(c.green),
 		noStart(c.gone), noStart(c.unknownCommand), noStart(c.didNothing), noStart(c.prClosed), noStart(c.prDraft),
-		c.fixPR, noStart(c.endNoPR), noStart(c.noHandoff), noStart(c.uncertain), noStart(c.permission), noStart(c.silent),
-		noStart(c.silentForge), noStart(c.timeout),
+		c.fixPR, noStart(c.endNoPR), noStart(c.postFailed), noStart(c.noHandoff), noStart(c.uncertain),
+		noStart(c.permission), noStart(c.silent), noStart(c.silentForge), noStart(c.timeout),
 	}
 	for _, rule := range rules {
 		if a, ok, fix := rule(); ok {
@@ -912,6 +923,51 @@ func fixPRRuns(history []runs.Row, issue, pr int) int {
 func (c runCtx) noHandoff() (Action, bool) {
 	anyPR := c.anyPR(func(forge.PR) bool { return true })
 	return c.returned("reason_no_handoff", ""), c.done() && !c.handoff && !anyPR
+}
+
+// postFailed is rule 14a: a session Done without a PR, Handoff or Question whose own post of
+// that Handoff or Question failed, with a note from the run's start on. An unreadable note is
+// dated by its file's modification time; one without a time (from an old node) counts. While the
+// run is younger than max_runtime (or max_runtime is 0) and the note is for the run's own issue, the controller
+// posts the note's body itself and the run stays open: the next tick sees the post and closes the run by the Handoff or Question rule,
+// after which this rule no longer holds. Otherwise the run goes back with the note's error.
+func (c runCtx) postFailed() (Action, bool) {
+	n := c.state.PostFailed
+	anyPR := c.anyPR(func(forge.PR) bool { return true })
+	if !c.done() || c.handoff || anyPR || n == nil || !n.At.IsZero() && n.At.Before(c.row.StartedAt) {
+		return Action{}, false
+	}
+	if n.Unreadable {
+		return c.returned("reason_post_failed_unreadable", ""), true
+	}
+	limit := time.Duration(c.in.MaxRuntime)
+	if n.Issue == c.it.Issue && repostable(n.Body, c.it.Issue, c.row.SessionID) && (limit <= 0 || c.age() < limit) {
+		a := c.base
+		a.Kind, a.RunID, a.Body = KindRepost, c.row.ID, n.Body
+		return a, true
+	}
+	return c.returned("reason_post_failed", n.Error), true
+}
+
+// repostable reports whether body reads as a Handoff for issue, or as a Question on issue from
+// session: only such a post counts for the run once it stands.
+func repostable(body string, issue int, session string) bool {
+	h, ok := protocol.ParseHeader(body)
+	if !ok {
+		return false
+	}
+	switch h.Kind {
+	case protocol.KindHandoff:
+		hf, err := protocol.ParseHandoff(h)
+		return err == nil && hf.Issue == issue
+	case protocol.KindQuestion:
+		if _, ok := protocol.ParseQuestion(body); !ok || h.Session != session {
+			return false
+		}
+		first, _, _ := strings.Cut(strings.TrimSpace(body), "\n")
+		return strings.Contains(first, fmt.Sprintf(" · #%d ", issue))
+	}
+	return false
 }
 
 // endNoPR closes a run that is Done with a Handoff that ends the chain but without any PR that

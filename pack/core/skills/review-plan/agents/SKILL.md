@@ -98,7 +98,7 @@ lighthouse plan-review-record start <plan>
 ```
 
 Prints the attempt directory `${TMPDIR:-/tmp}/plan-review/<chain-key>/<attempt>/` (below
-`<ATTEMPT>`) and records the commit round 1 reads; on the always-on host (`host.toml`) the
+`<ATTEMPT>`) and records the commit round 1 reads; the
 attempt is also in the data directory at once, so that a review that never reaches step 9 is
 still the newest. Exit 2 for a plan with uncommitted changes: commit first. Every new review of
 the same plan, also after a return through `spec`, starts here again. You never reuse an old
@@ -293,7 +293,7 @@ A second line for the same ID is a validation error in step 9. Ask the user noth
 `round_limit` is no question, also not when `spec` decisions are open. The record (step 9)
 always comes first.
 
-### 9. Record — only on the always-on host (`host.toml`)
+### 9. Record
 
 After the last fix commit, at every outcome:
 
@@ -309,8 +309,7 @@ instead of `--spec`. From inside Codex itself: `--review-mode codex_same_family`
 
 | exit | Meaning | You do |
 |---|---|---|
-| 0 | record written; the path is on stdout | report the path |
-| 3 | not on the always-on host (`host.toml`): no record | report loudly that this chain falls outside the measurement, on to step 10 |
+| 0 | record written; the path is on stdout. Stderr may carry `REVIEW-INDEX FAILED: …` or `REVIEW-INDEX SKIPPED: <path>: <reason>` (the indexing of the findings, never a failure of the record) | report the path, and the stderr line literally if there is one |
 | 4 | write or validation error: only the staging directory `.<attempt>.tmp/` stays | pass the message on literally; if it is a missing or wrong decision, repair the sidecar and run `write` again; otherwise on to step 10 |
 
 The record is measurement material for a later measurement, the review itself is the product: a

@@ -255,3 +255,21 @@ func TestUntilAutumnOverlapFirstPass(t *testing.T) {
 		t.Errorf("Until = %v, want %v (02:30 CEST)", got, want)
 	}
 }
+
+// A flag that cannot be read is not a pause, also when it holds a future date: reading fails
+// open, a stuck controller must not park a run it cannot explain.
+func TestReadPauseUnreadableIsInactive(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads a mode-000 file")
+	}
+	flag := filepath.Join(t.TempDir(), "PAUSE")
+	if err := os.WriteFile(flag, []byte("2099-01-01T00:00:00+02:00\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(flag, 0); err != nil {
+		t.Fatal(err)
+	}
+	if until, active := ReadPause(flag, time.Date(2026, 11, 1, 20, 0, 0, 0, time.UTC)); active || !until.IsZero() {
+		t.Errorf("ReadPause = %v, %v, want zero and inactive", until, active)
+	}
+}

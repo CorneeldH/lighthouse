@@ -11,12 +11,14 @@ import tomllib
 from pathlib import Path
 
 from tests._site_node import run_map
-from tests.pack._testkit import config_schema, lighthouse_dir
+from tests.pack.python._testkit import config_schema, lighthouse_dir
 from tests.test_site_loop import REPO_BLOB, REPO_TREE, ROOT, load
 
 NO_DEFAULT = object()
 # Keys nothing in the repo reads: only the config reader checks them (spec section 2).
-UNREAD = {"paths.history", "codex_usage.vraag_pct_week", "codex_usage.halt_pct_session", "host.name"}
+# host.tailscale_ip: only read by `config host-check`, which names no key as text (it reads the host struct).
+UNREAD = {"paths.history", "codex_usage.vraag_pct_week", "codex_usage.halt_pct_session", "host.name",
+          "host.tailscale_ip"}
 SET = {"project.language", "forge.kind", "forge.repo", "forge.host", "test_gate.command", "host.name", "host.controller", "host.tailscale_ip", "review.roborev", "report.enabled", "report.sink", "report.dir"}
 REQUIRED = {
     "forge.board.project_number": "with [forge.board]",

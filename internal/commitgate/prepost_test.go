@@ -60,7 +60,7 @@ func TestPreEarlyExits(t *testing.T) {
 		{"open quote with a commit", "git commit -m 'x", 2,
 			"commit-test-gate: COULD NOT CHECK — the command cannot be parsed (open quote). Split the command.\n\n" + preTail},
 		{"no-verify", "git commit --no-verify -m x", 2,
-			"commit-test-gate: --no-verify is not allowed in this repo.\n" +
+			"[commit-test-gate/no-verify] commit-test-gate: --no-verify is not allowed in this repo.\n" +
 				"\n" +
 				"The test gate is a Claude Code PreToolUse hook, not a git hook, so the\n" +
 				"flag skips nothing today — but it will as soon as git hooks are added.\n" +
