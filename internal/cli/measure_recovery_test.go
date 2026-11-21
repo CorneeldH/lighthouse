@@ -166,10 +166,10 @@ func TestMeasureRecoveryFetchesMeasuresAndIsIdempotent(t *testing.T) {
 		t.Fatalf("exit %d, stderr %q", code, errOut)
 	}
 	for _, want := range []string{
-		"#7 recovered 1 items, 0 fix-pr-rondes\n",
-		"#8 open 0 items, 0 fix-pr-rondes\n",
-		"#9 overgeslagen: no_issue_branch\n",
-		"#10 overgeslagen: no_merge_commit\n",
+		"#7 recovered 1 items, 0 fix-pr rounds\n",
+		"#8 open 0 items, 0 fix-pr rounds\n",
+		"#9 skipped: no_issue_branch\n",
+		"#10 skipped: no_merge_commit\n",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output lacks %q:\n%s", want, out)
@@ -225,7 +225,7 @@ func TestMeasureRecoveryCountsFixPRRounds(t *testing.T) {
 		mrMerge7.Add(-time.Hour).Format(time.RFC3339)); err != nil {
 		t.Fatal(err)
 	}
-	if _, out, _ := r.run(r.base()...); !strings.Contains(out, "#7 recovered 1 items, 1 fix-pr-rondes") {
+	if _, out, _ := r.run(r.base()...); !strings.Contains(out, "#7 recovered 1 items, 1 fix-pr rounds") {
 		t.Fatalf("out %q", out)
 	}
 }
@@ -303,6 +303,34 @@ func TestMeasureRecoveryUsage(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			if code, _, errOut := r.run(args...); code != 2 {
 				t.Errorf("exit %d, stderr %q; want 2", code, errOut)
+			}
+		})
+	}
+}
+
+func TestMeasureRecoveryOpenRowKeepsItsIssueWhenHeadIsGone(t *testing.T) {
+	for name, heads := range map[string][]forge.PullHead{
+		"head missing":   nil,
+		"other issue":    {{Number: 7, HeadRef: "issue-99-ander"}},
+		"no issue named": {{Number: 7, HeadRef: "fix-los"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := newMRRig(t)
+			r.now = mrMerge7.Add(2 * time.Hour)
+			if code, out, errOut := r.run(r.base()...); code != 0 || !strings.Contains(out, "#7 open") {
+				t.Fatalf("first run: exit %d, out %q, stderr %q", code, out, errOut)
+			}
+			r.now = mrAfter
+			r.fake.heads = heads
+			code, out, errOut := r.run(r.base()...)
+			if code != 0 || !strings.Contains(out, "#7 recovered 1 items") || strings.Contains(out, "skipped") {
+				t.Fatalf("exit %d, out %q, stderr %q; want #7 re-measured, not skipped", code, out, errOut)
+			}
+			if n := r.count(`SELECT count(*) FROM trajectories`); n != 1 {
+				t.Errorf("trajectories = %d, want 1: no orphan", n)
+			}
+			if n := r.count(`SELECT count(*) FROM recoveries r JOIN trajectories t ON t.id = r.trajectory_id WHERE t.issue = 3`); n != 1 {
+				t.Errorf("recoveries on issue 3 = %d, want 1", n)
 			}
 		})
 	}

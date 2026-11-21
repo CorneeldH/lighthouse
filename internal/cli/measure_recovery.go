@@ -68,8 +68,10 @@ func newMeasureRecoveryCommand(env measureRecoveryEnv) *cobra.Command {
 			"lighthouse.toml in --repo-dir; the clone there is fetched first and measured as\n" +
 			"origin/<default branch>. A measurement that is closed (recovered or none) is not touched\n" +
 			"again. GitHub only: GitLab cannot list merged PRs yet.\n\n" +
-			"Exit: 0 measured, also when PRs were skipped | 1 a config, git, forge or database error,\n" +
-			"nothing written | 2 wrong usage.",
+			"Exit: 0 measured, also when PRs were skipped | 1 a config, git, forge or database error |\n" +
+			"2 wrong usage. All measuring happens before the first write, so a git or forge error\n" +
+			"writes nothing; each PR is then written in its own transaction, so a database error\n" +
+			"can leave the PRs before it written.",
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) != 0 {
 				return usageErr(fmt.Errorf("%s: takes no arguments, got %d", cmd.CommandPath(), len(args)))
@@ -200,7 +202,13 @@ func recoveryJobs(ctx context.Context, f recoveryForge, known map[int]telemetry.
 			continue
 		}
 		seen[pr.Number] = true
-		if s, ok := known[pr.Number]; ok && s.Status != telemetry.RecoveryOpen {
+		s, hasRow := known[pr.Number]
+		if hasRow && s.Status != telemetry.RecoveryOpen {
+			continue
+		}
+		if hasRow {
+			// An open row carries its issue; the head of a merged PR may be gone or renamed.
+			jobs = append(jobs, recoveryJob{pr: pr.Number, issue: s.Issue, mergedAt: pr.MergedAt})
 			continue
 		}
 		if heads == nil {
@@ -239,10 +247,10 @@ func printRecoveries(out io.Writer, recs []telemetry.RecoveryRecord, skipped []s
 	slices.SortFunc(skipped, func(a, b skip) int { return a.pr - b.pr })
 	var b strings.Builder
 	for _, r := range recs {
-		fmt.Fprintf(&b, "#%d %s %d items, %d fix-pr-rondes\n", r.PR, r.Status, len(r.Items), r.FixPRRounds)
+		fmt.Fprintf(&b, "#%d %s %d items, %d fix-pr rounds\n", r.PR, r.Status, len(r.Items), r.FixPRRounds)
 	}
 	for _, s := range skipped {
-		fmt.Fprintf(&b, "#%d overgeslagen: %s\n", s.pr, s.reason)
+		fmt.Fprintf(&b, "#%d skipped: %s\n", s.pr, s.reason)
 	}
 	_, err := io.WriteString(out, b.String())
 	return err

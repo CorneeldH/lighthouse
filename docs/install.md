@@ -381,7 +381,8 @@ wordt niets geschreven) en meet op die ref.
   voorbij is.
 - **Traject.** Het issuenummer komt uit de branchnaam `issue-<nr>-...` van de PR; een PR zonder
   zo'n branch wordt overgeslagen met reden `no_issue_branch`. Elke overgeslagen PR staat met reden in
-  de uitvoer; de exitcode blijft 0.
+  de uitvoer; de exitcode blijft 0. De uitvoer is `#<pr> <status> <n> items, <m> fix-pr rounds` per
+  gemeten PR en `#<pr> skipped: <reason>` per overgeslagen PR.
 - **`fixpr_rounds`** telt de `fix-pr`-runs van de dispatcher die voor de merge begonnen (`runs`,
   trigger `fixpr`, zonder `start_failed`). Alleen die tellen: een ronde in een interactieve sessie
   laat geen PR-record achter en blijft buiten de telling.
