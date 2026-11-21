@@ -382,7 +382,7 @@ func TestStartIssueBindsTheScoutToGate4bAnd4c(t *testing.T) {
 func TestStartIssueEscapeHatchDemandsAConcreteReason(t *testing.T) {
 	for variant, body := range variants(t, startIssue) {
 		t.Run(variant, func(t *testing.T) {
-			wantAll(t, strings.ToLower(body), "looks simple", "not a valid reason")
+			wantAll(t, body, "`Looks simple`", "**not a valid reason** to skip it")
 		})
 	}
 }
