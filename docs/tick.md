@@ -107,7 +107,7 @@ Het is een korte run, geen daemon. Wie issues vooraf routeert en naar `Controlle
    - Het board: de `projectsV2`-pagina's, eenmaal per tick en gedeeld door alle items.
    - Per board-item: `dependencies/blocked_by` alleen bij een open issue met `total_blocked_by > 0`.
      Een gesloten issue start of hervat geen run, dus zijn blokkades leest tick niet.
-   - Per PR: `pulls/<n>` plus de checks, hoogstens één keer per (repo, PR, head-sha) per tick. Het
+   - Per PR: `pulls/<n>` plus de checks, hoogstens één keer per (repo, PR, head-sha) per tick en per GitHub-client (één per repo). Het
      geheugen leeft alleen in de GitHub-client van een tick; `serve`, de workflow-pusher en
      `postartefact` lezen steeds opnieuw. Een mislukte read wordt niet onthouden.
    - Per run-branch: één `pulls?head=`.
