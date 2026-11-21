@@ -117,6 +117,9 @@ def _without_default_paths(rel: str, text: str) -> str:
     if rel == "internal/telemetry/record_test.go":
         # docs/… are RecordPath values of a finding in test data: strings stored in a row, never read from this repo.
         return text.replace("docs/", "")
+    if rel in ("internal/review/runner_ports_test.go", "internal/cli/reviewrun_test.go"):
+        # docs/… are context paths of a spec/plan inside a temp repo or in a prompt string, never read from this repo.
+        return text.replace("docs/", "")
     if rel in ("internal/review/ledger_test.go", "internal/cli/reviewindex_test.go"):
         # docs/… are plan paths in a ledger header: text stored in a row, never read from this repo.
         return text.replace("docs/", "")
