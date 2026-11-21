@@ -35,6 +35,7 @@ func TestGoHooksRegistered(t *testing.T) {
 	}{
 		{"PostToolUse", "Edit|Write", "gofmt-check.sh", 15},
 		{"Stop", "", "go-lint-gate.sh", 120},
+		{"Stop", "", "go-imports-gate.sh", 120},
 	} {
 		command, timeout := registeredHook(t, repo, tc.event, tc.matcher, tc.script)
 		if !strings.HasPrefix(command, hookDirPrefix) {
@@ -93,7 +94,7 @@ func TestGofmtCheck(t *testing.T) {
 		if code != 2 {
 			t.Fatalf("rc %d\n%s", code, stdout)
 		}
-		if want := "gofmt-check: " + path + " does not parse — fix the syntax."; firstLine(stderr) != want {
+		if want := "[gofmt-check/parse-error] gofmt-check: " + path + " does not parse — fix the syntax."; firstLine(stderr) != want {
 			t.Fatalf("first line %q, want %q", firstLine(stderr), want)
 		}
 		if !strings.Contains(stderr, parseError) {
@@ -138,7 +139,7 @@ func TestGofmtCheck(t *testing.T) {
 		if code != 2 {
 			t.Fatalf("rc %d\n%s", code, stdout)
 		}
-		if !strings.HasPrefix(stderr, "gofmt-check: ") {
+		if !strings.HasPrefix(stderr, "[gofmt-check/parse-error] gofmt-check: ") {
 			t.Fatalf("stderr: %s", stderr)
 		}
 		if got := bashwrites.Classify(code, []byte(stderr)); got != "finding" {
