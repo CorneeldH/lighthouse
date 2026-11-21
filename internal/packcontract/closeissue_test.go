@@ -260,7 +260,7 @@ func TestCloseIssueEntryCNeverClosesItself(t *testing.T) {
 		t.Run(variant, func(t *testing.T) {
 			c := closeIssueSection(t, body, "## Entry C")
 			wantAll(t, flat(c), "Entry C closes nothing itself")
-			wantNone(t, c, "gh issue close")
+			wantNone(t, c, "gh issue close", "forge issue close")
 		})
 	}
 }

@@ -106,8 +106,9 @@ func TestPlaceInstructionPrefixAndCeilingFromConfig(t *testing.T) {
 	}
 }
 
-// overlapRepo is a repo with two installed skills whose descriptions share five trigger words;
-// the second ends in clause. It returns the output of check-instructions on it.
+// overlapRepo is a repo with two installed skills whose descriptions share seven trigger words
+// (check 4 trips at five); the second ends in clause. It returns the output of check-instructions
+// on it.
 func overlapRepo(t *testing.T, clause string) string {
 	t.Helper()
 	root := t.TempDir()

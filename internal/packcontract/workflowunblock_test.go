@@ -155,6 +155,9 @@ func TestUnblockRunNameEndsOnTheIssueNumber(t *testing.T) {
 // issue through env, or the binary loses that subcommand or its --issue flag.
 func TestUnblockCallsTheBinary(t *testing.T) {
 	steps := unblockSteps(t)
+	if len(steps) == 0 {
+		t.Fatal("the job has no steps")
+	}
 	last := steps[len(steps)-1]
 	if last.Run != `lighthouse unblock-dependents --issue "$ISSUE"` {
 		t.Errorf("last step runs %q", last.Run)

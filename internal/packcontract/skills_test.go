@@ -436,6 +436,9 @@ func TestDescriptionsPassTheOverlapCheck(t *testing.T) {
 	if strings.Contains(out.String(), "overlap without a bounding clause") {
 		t.Error(out.String())
 	}
+	// Positive control: the check ran over installed skills, not over an empty tree (an empty
+	// tree skips the duplicate-name check and still passes the overlap check).
+	wantAll(t, out.String(), "ok    no unbounded overlap between descriptions\n", "ok    no names claimed twice\n")
 }
 
 // toolUses is what a skill text does that needs a tool on the machine.
