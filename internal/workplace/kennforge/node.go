@@ -198,17 +198,18 @@ func (a *Adapter) Permission(ctx context.Context, sessionID string) ([]byte, err
 	return data, nil
 }
 
-// PostFailed is the raw post-failed note of the run on the node; nil, nil without one.
-func (a *Adapter) PostFailed(ctx context.Context, sessionID string) ([]byte, error) {
+// PostFailed is the raw post-failed note of the run on the node and its modification time (zero:
+// unknown); nil, zero, nil without one.
+func (a *Adapter) PostFailed(ctx context.Context, sessionID string) ([]byte, time.Time, error) {
 	n, err := a.nodeOnly("post-failed of " + sessionID)
 	if err != nil {
-		return nil, err
+		return nil, time.Time{}, err
 	}
-	data, err := n.PostFailed(ctx, sessionID)
+	data, mod, err := n.PostFailed(ctx, sessionID)
 	if err != nil {
-		return nil, fmt.Errorf("post-failed of %s on node %s: %w", sessionID, a.Node, notMeasurable(err))
+		return nil, time.Time{}, fmt.Errorf("post-failed of %s on node %s: %w", sessionID, a.Node, notMeasurable(err))
 	}
-	return data, nil
+	return data, mod, nil
 }
 
 // notMeasurable makes any failure of a measurement on the node not measurable: a 4xx of serve

@@ -302,7 +302,7 @@ gemergde of gesloten PR van vóór `started_at` niet. `max_wait` en `max_runtime
 | 13 | Klaar en een eigen PR met een van vier oorzaken: rode checks, een merge-conflict, een onverwerkte roborev-review of een mislukte merge | fix-pr-start (sleutel `fixpr:<pr>:<sha>`, plafond 3 runs per PR); is het plafond bereikt, of is de sleutel al gebruikt, of is er een actieve blokkade, dan Teruggegeven; houdt de rem de start tegen, dan blijft de run open (zie hieronder) | per oorzaak *PR rood*, *PR heeft een merge-conflict*, *PR heeft een onverwerkte roborev-review* of *merge mislukt*; bij het plafond met ` na 3 fix-pr-runs` erachter (*onverwerkte roborev-review na 3 fix-pr-runs*) |
 | 13b | Klaar en alleen een vreemde PR die rood is of een merge-conflict heeft (geen eigen open PR met een oorzaak) | Teruggegeven, sessie stoppen als ze niet klaar is | *PR rood* resp. *PR heeft een merge-conflict* |
 | 13c | Klaar met een Handoff die de keten eindigt (`next: /lighthouse-close-issue`), en geen PR van deze run | rij `handoff`, de claude van de run beëindigen; dezelfde tick start `/lighthouse-close-issue <nr>` op die handoff (sleutel `handoff:<comment-id>`), tenzij er een open PR is of een PR die na de handoff mergede of sloot: dan wacht het einde op die PR (#285) | |
-| 14a | Klaar, geen PR, geen Handoff of Vraag, wel een `post-failed.json` van op of na `started_at` (of een onleesbare) | leest de body als een 🤖 Handoff of 🤖 Vraag voor het issue van de run, hoorde de mislukte post bij dat issue (`issue` van de notitie) en is de run jonger dan `max_runtime` (of `max_runtime` is 0): `repost`, de controller post de body letterlijk en de run blijft open. Is de run `max_runtime` of ouder, of is de body leeg, een andere soort comment of van een ander issue, hoorde de mislukte post bij een ander issue, of is de notitie onleesbaar: Teruggegeven, zoals regel 14 | *post mislukt: <fout uit de notitie>*, resp. *post mislukt: notitie onleesbaar* |
+| 14a | Klaar, geen PR, geen Handoff of Vraag, wel een `post-failed.json` van op of na `started_at` (bij een onleesbare: de wijzigingstijd van het bestand; onbekend telt) | leest de body als een 🤖 Handoff of 🤖 Vraag voor het issue van de run, hoorde de mislukte post bij dat issue (`issue` van de notitie) en is de run jonger dan `max_runtime` (of `max_runtime` is 0): `repost`, de controller post de body letterlijk en de run blijft open. Is de run `max_runtime` of ouder, of is de body leeg, een andere soort comment of van een ander issue, hoorde de mislukte post bij een ander issue, of is de notitie onleesbaar: Teruggegeven, zoals regel 14 | *post mislukt: <fout uit de notitie>*, resp. *post mislukt: notitie onleesbaar* |
 | 14 | Klaar, geen PR, geen Handoff of Vraag | Teruggegeven | geen handoff of vraag |
 | 15 | `max_wait` > 0, run gemeten maar zonder sessie, ouder dan `max_wait` | Teruggegeven, launch vergeten | start onzeker: geen sessie gevonden |
 | 16 | `max_wait` > 0, permissie-prompt van deze run (niet van vóór `started_at`) waarna zijn draad `max_wait` lang niets deed | Teruggegeven, sessie blijft staan | wacht op permissie (met tool en pad) |
@@ -325,8 +325,12 @@ niet, dan meldt het commando een regel met `COULD NOT CHECK` op stderr; de exitc
 post veranderen nooit. Tick leest de notitie lokaal uit de runmap, en op een node via
 `GET …/runs/{session}/post-failed` (`404` met code `no_post_failed` is "geen notitie"; een `404` zonder code komt van
 een oude node en telt ook als "geen notitie", zodat die run niet onmeetbaar wordt en terugvalt op regel 14).
-Een notitie van vóór `started_at` hoort bij een eerdere run in dezelfde sessie en telt niet. Een onleesbare notitie
-stopt de tick niet, maar geeft de reden *post mislukt: notitie onleesbaar*.
+Een notitie van vóór `started_at` hoort bij een eerdere run in dezelfde sessie (een hervatting houdt de sessie) en
+telt niet. Een onleesbare notitie stopt de tick niet. Ze heeft geen leesbare `at`, dus telt de wijzigingstijd van het
+bestand: lokaal de `mtime`, op een node de header `X-Lighthouse-Mod-Time` van de route (RFC 3339 met nanoseconden;
+`Last-Modified` heeft alleen seconden). Is die van vóór `started_at`, dan telt ze niet en geldt regel 14; anders geeft
+ze de reden *post mislukt: notitie onleesbaar*. Een oude node stuurt die header niet: de tijd is dan onbekend, en de
+onleesbare notitie telt (#457).
 
 De keuze voor regel 14a is A+ boven twee alternatieven. A (alleen een reden op de Teruggegeven) laat de keten
 stilstaan tot iemand de handoff met de hand post. B (de mislukte `forge issue comment` herkennen in het transcript)

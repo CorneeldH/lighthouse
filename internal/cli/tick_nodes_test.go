@@ -274,6 +274,7 @@ func (n *hubNode) serveNode(t *testing.T, w http.ResponseWriter, r *http.Request
 			_ = json.NewEncoder(w).Encode(nodeapi.Problem{Status: 404, Code: nodeapi.CodeNoPostFailed, Detail: "no post-failed note"})
 			return
 		}
+		w.Header().Set(nodeapi.HeaderModTime, hubPostFailedModTime)
 		_, _ = w.Write(data)
 	case len(parts) == 3 && parts[0] == "workspaces":
 		n.serveWorkspace(t, w, r, parts[1], r.Method+" "+parts[2])
@@ -915,8 +916,9 @@ func TestRunProbeReadsPostFailedViaServe(t *testing.T) {
 		r := run
 		r.SessionID = sidGone
 		_, _, s, err := m.measure(ctx, r)
-		if err != nil || s.PostFailed == nil || !s.PostFailed.Unreadable {
-			t.Errorf("measure = %+v, %v; want Unreadable and no error", s.PostFailed, err)
+		want := &dispatch.PostFailed{At: time.Date(2026, 11, 20, 9, 0, 0, 0, time.UTC), Unreadable: true}
+		if err != nil || !reflect.DeepEqual(s.PostFailed, want) {
+			t.Errorf("measure = %+v, %v; want %+v (dated by the node's mtime) and no error", s.PostFailed, err, want)
 		}
 	})
 	t.Run("no note", func(t *testing.T) {
@@ -968,9 +970,12 @@ type measureWorkplaceAdapter struct {
 	reader workplace.PostFailedReader
 }
 
-func (w *measureWorkplaceAdapter) PostFailed(ctx context.Context, sessionID string) ([]byte, error) {
+func (w *measureWorkplaceAdapter) PostFailed(ctx context.Context, sessionID string) ([]byte, time.Time, error) {
 	return w.reader.PostFailed(ctx, sessionID)
 }
+
+// hubPostFailedModTime is the modification time the hub's serve sends with every post-failed note.
+const hubPostFailedModTime = "2026-11-20T09:00:00Z"
 
 // usageBodies is the PUT usage bodies node took, with the pointers read out ("<nil>" for none).
 func usageBodies(n *hubNode) []string {

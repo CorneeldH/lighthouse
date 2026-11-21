@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/nodeapi"
 	"github.com/CorneeldH/lighthouse/internal/workplace"
@@ -274,9 +275,16 @@ func TestPostFailedRoute(t *testing.T) {
 		}
 		note := `{"version": 9, "extra": [1]}` + "\n"
 		writeFile(t, dir, "post-failed.json", note)
+		mtime := time.Date(2026, 11, 19, 8, 30, 0, 250_000_000, time.UTC)
+		if err := os.Chtimes(filepath.Join(dir, "post-failed.json"), mtime, mtime); err != nil {
+			t.Fatal(err)
+		}
 		rec := send(f.h, http.MethodGet, postFailedPath(launchSession), nil)
 		if rec.Code != http.StatusOK || rec.Body.String() != note {
 			t.Errorf("status %d body %q, want 200 and %q", rec.Code, rec.Body.String(), note)
+		}
+		if got := rec.Header().Get(nodeapi.HeaderModTime); got != "2026-11-19T08:30:00.25Z" {
+			t.Errorf("%s = %q, want the file's mtime 2026-11-19T08:30:00.25Z", nodeapi.HeaderModTime, got)
 		}
 	})
 	t.Run("missing is 404 no_post_failed", func(t *testing.T) {
