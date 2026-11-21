@@ -3,6 +3,7 @@ package checkpointscan
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -147,4 +148,25 @@ func TestReadEntireSettingsBrokenJSONIsCouldNotCheck(t *testing.T) {
 
 	_, err = ReadEntireSettings(entireDir(t, "[1]", ""))
 	contains(t, cnc(t, err).Msg, "not a JSON object")
+}
+
+func TestReadEntireSettingsUnreadableDirIsCouldNotCheck(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("permissions are not enforced here")
+	}
+	top := t.TempDir()
+	dir := filepath.Join(top, ".entire")
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "settings.json"), []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+
+	_, err := ReadEntireSettings(top)
+	contains(t, cnc(t, err).Msg, "settings.json")
 }

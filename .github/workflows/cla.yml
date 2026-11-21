@@ -43,8 +43,8 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      # Go, set up from the pinned action and `go.mod`: no uv, no sync, no dependency install
-      # on fork code. `go run` builds the gate from this checkout.
+      # Go, set up from the pinned action and `go.mod`: no uv, no sync. `go run` builds the gate from
+      # this checkout and fetches its modules through the module proxy, checked against go.sum.
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod

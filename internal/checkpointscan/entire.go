@@ -2,7 +2,9 @@ package checkpointscan
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -33,7 +35,13 @@ func ReadEntireSettings(toplevel string) (EntireSettings, error) {
 	for _, name := range []string{"settings.json", "settings.local.json"} {
 		path := filepath.Join(toplevel, ".entire", name)
 		info, err := os.Stat(path)
-		if err != nil || !info.Mode().IsRegular() {
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return EntireSettings{}, settingsError(path, err)
+		}
+		if !info.Mode().IsRegular() {
 			continue
 		}
 		found = true

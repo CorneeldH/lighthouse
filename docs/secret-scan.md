@@ -185,7 +185,7 @@ Description=Lighthouse: checkpoints gescand pushen
 Type=oneshot
 WorkingDirectory=%h/repositories/lighthouse
 EnvironmentFile=%h/.config/lighthouse/checkpoint-push.env
-Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PATH=%h/.local/bin:%h/go/bin:/usr/local/bin:/usr/bin:/bin
 Environment=GIT_TERMINAL_PROMPT=0
 ExecStart=%h/go/bin/lighthouse checkpoint-scan push --report-rss https://github.com/CorneeldH/lighthouse-checkpoints.git
 TimeoutStartSec=30min
@@ -206,7 +206,7 @@ WantedBy=timers.target
 ```
 
 - `--user`: de unit draait onder het account dat de checkout en het token heeft.
-- `WorkingDirectory`: de hoofdcheckout, op `main`. `push` draait het script en de pre-push-hook
+- `WorkingDirectory`: de hoofdcheckout, op `main`. `push` draait de binary (`lighthouse checkpoint-scan`) en de pre-push-hook
   van die checkout, zie [De eerste push: `push`](#de-eerste-push-push); een checkout op een
   oudere branch draait oudere code.
 - `EnvironmentFile`: een bestand met `GH_TOKEN` (`chmod 600`). Maak een fine-grained token met
@@ -214,12 +214,13 @@ WantedBy=timers.target
   beperkt. Niet de keyring: `gh` leest daar zijn token uit, en die is in een user-service zonder
   ingelogde desktop op slot. `gh auth git-credential` geeft `GH_TOKEN` voorrang.
 - `Environment=PATH`: systemd geeft een user-unit een kaal `PATH`. `gitleaks` staat in
-  `~/.local/bin`; `git`, `systemctl`, `systemd-run` en `choom` in `/usr/bin`. Ontbreekt een van
+  `~/.local/bin` en `lighthouse` in `~/go/bin`; de pre-push-hook die `git push` draait, vindt
+  `lighthouse` alleen zo; `git`, `systemctl`, `systemd-run` en `choom` in `/usr/bin`. Ontbreekt een van
   die laatste drie, dan draait de scan zonder geheugenplafond (`no memory ceiling`).
 - `GIT_TERMINAL_PROMPT=0`: bij een ontbrekend token faalt `git push` met exitcode 2, in plaats
   van op een prompt te wachten die niemand beantwoordt.
-- `ExecStart`: een absoluut pad naar `lighthouse` (`%h/go/bin`, zoals `install.md`), want dat staat
-  niet in de `PATH` van de unit. `--report-rss` zet de piek-RSS per batch in de
+- `ExecStart`: een absoluut pad naar `lighthouse` (`%h/go/bin`, zoals `install.md`); dat
+  is ook de enige plek waar de unit de binary zoekt. `--report-rss` zet de piek-RSS per batch in de
   journal.
 - Geen `SuccessExitStatus`: exitcode 1 (er zijn vuile refs vastgehouden) zet de unit op
   `failed`, net als exitcode 2 (niets of niet alles gepusht). Een vastgehouden ref vraagt een
@@ -243,7 +244,7 @@ journalctl --user -u lighthouse-checkpoint-push.service -n 50
 systemctl --user --failed
 ```
 
-Start een handmatige run met `systemctl --user start`, niet met het script, zodat nooit twee
+Start een handmatige run met `systemctl --user start`, niet met de binary, zodat nooit twee
 pushes tegelijk lopen. Wil je een melding bij een mislukte run, hang dan een eigen unit aan
 `OnFailure=`; dat is host-keuze en niet nodig voor het signaal.
 
