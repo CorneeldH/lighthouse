@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -329,16 +330,38 @@ func (s *Server) listMilestones(w http.ResponseWriter, r *http.Request) {
 	var out []any
 	for _, m := range s.Milestones {
 		if st, _ := m["state"].(string); state == "all" || st == state {
-			out = append(out, m)
+			out = append(out, s.withCounts(m))
 		}
 	}
 	s.page(w, r, out)
 }
 
+// withCounts is milestone m with open_issues and closed_issues counted over the seeded issues,
+// as GitHub does. Caller holds s.mu where the issues can change.
+func (s *Server) withCounts(m map[string]any) map[string]any {
+	out := map[string]any{}
+	for k, v := range m {
+		out[k] = v
+	}
+	var open, closed int
+	for _, it := range s.Issues {
+		if im, _ := it["milestone"].(map[string]any); im == nil || fmt.Sprint(im["number"]) != fmt.Sprint(m["number"]) {
+			continue
+		}
+		if it["state"] == "closed" {
+			closed++
+		} else {
+			open++
+		}
+	}
+	out["open_issues"], out["closed_issues"] = open, closed
+	return out
+}
+
 func (s *Server) milestone(w http.ResponseWriter, r *http.Request) {
 	for _, m := range s.Milestones {
 		if fmt.Sprint(m["number"]) == r.PathValue("number") {
-			writeJSON(w, http.StatusOK, m)
+			writeJSON(w, http.StatusOK, s.withCounts(m))
 			return
 		}
 	}
@@ -370,12 +393,16 @@ func (s *Server) patchMilestone(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if st, set := body["state"]; set && st != "open" && st != "closed" {
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{"message": "Validation Failed: state is invalid"})
+		return
+	}
 	for _, m := range s.Milestones {
 		if fmt.Sprint(m["number"]) == r.PathValue("number") {
 			for k, v := range body {
 				m[k] = v
 			}
-			writeJSON(w, http.StatusOK, m)
+			writeJSON(w, http.StatusOK, s.withCounts(m))
 			return
 		}
 	}
@@ -388,4 +415,49 @@ func (s *Server) labels(w http.ResponseWriter, r *http.Request) {
 		out = append(out, map[string]any{"name": n})
 	}
 	s.page(w, r, out)
+}
+
+var labelColor = regexp.MustCompile(`^[0-9a-fA-F]{6}$`)
+
+// createLabel stores a label as GitHub does: the colour is six hex digits without a "#", and a
+// name that exists (case-insensitive) answers 422 with errors[].code already_exists.
+func (s *Server) createLabel(w http.ResponseWriter, r *http.Request) {
+	body, ok := s.decode(w, r, []string{"name", "color", "description"})
+	if !ok {
+		return
+	}
+	name, _ := body["name"].(string)
+	color, _ := body["color"].(string)
+	if name == "" || (color != "" && !labelColor.MatchString(color)) {
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]any{"message": "Validation Failed",
+			"errors": []any{map[string]any{"resource": "Label", "code": "invalid", "field": "color"}}})
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, n := range s.Labels {
+		if strings.EqualFold(n, name) {
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]any{"message": "Validation Failed",
+				"errors": []any{map[string]any{"resource": "Label", "code": "already_exists", "field": "name"}}})
+			return
+		}
+	}
+	s.Labels = append(s.Labels, name)
+	if s.LabelColors == nil {
+		s.LabelColors = map[string]string{}
+	}
+	s.LabelColors[name] = color
+	writeJSON(w, http.StatusCreated, map[string]any{"name": name, "color": color})
+}
+
+// commit answers a sha in Commits with 200 and any other with 404.
+func (s *Server) commit(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	known := slices.Contains(s.Commits, r.PathValue("sha"))
+	s.mu.Unlock()
+	if !known {
+		writeJSON(w, http.StatusNotFound, map[string]any{"message": "Not Found"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"sha": r.PathValue("sha")})
 }

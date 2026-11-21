@@ -162,7 +162,7 @@ def test_ty_hook_blames_the_venv_when_only_imports_are_unresolved(tmp_path):
     (root / "src" / "only_import.py").write_text(ONLY_IMPORT)
     result = _run(root)
     assert result.returncode == 2, result.stdout
-    assert result.stderr.startswith("ty-gate: "), result.stderr
+    assert result.stderr.startswith("[ty-gate/unresolved-imports-only] ty-gate: "), result.stderr
     assert "uv sync" in result.stderr
     assert "pyproject.toml" in result.stderr
     assert "Fix them in the code" not in result.stderr
@@ -177,7 +177,7 @@ def test_ty_hook_blocks_on_code_when_diagnostics_are_mixed(tmp_path):
     (root / "src" / "real_error.py").write_text('x: int = "not an int"\n')
     result = _run(root)
     assert result.returncode == 2, result.stdout
-    assert result.stderr.startswith("ty-gate: "), result.stderr
+    assert result.stderr.startswith("[ty-gate/type-error] ty-gate: "), result.stderr
     assert "Fix them in the code" in result.stderr
     assert "uv sync" not in result.stderr
     assert "invalid-assignment" in result.stderr
@@ -385,7 +385,7 @@ def test_ty_blocks_on_the_edited_worktree_with_the_cwd_on_main(tmp_path):
     result = _run(root, _edit_turn(tmp_path, root, wt / "src" / "bad.py"))
     assert result.returncode == 2, result.stdout
     assert result.stderr.splitlines()[0].startswith(
-        f"ty-gate: ty finds errors in src of {os.path.realpath(wt)}."
+        f"[ty-gate/type-error] ty-gate: ty finds errors in src of {os.path.realpath(wt)}."
     ), result.stderr
     assert "invalid-assignment" in result.stderr
 

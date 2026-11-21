@@ -37,6 +37,24 @@ type Fixture interface {
 	SetRole(t *testing.T, user, role string)
 	// AddBlocker makes b block issue number.
 	AddBlocker(t *testing.T, number int, b forge.Blocker)
+	// FailBlockingPage2 makes the second page of the blocking list of issue number answer a 500.
+	FailBlockingPage2(t *testing.T, number int)
+	// AddChange adds a pull or merge request with its Number, Title, State (open, closed or
+	// merged), HeadRef and, for a merged one, MergedAt.
+	AddChange(t *testing.T, c forge.Change)
+	// FailListChangesPage2 makes the second page of the pull or merge request list answer a 500.
+	FailListChangesPage2(t *testing.T)
+	// AddIssueChange makes pull or merge request c close issue number (c.Closes) or mention it,
+	// with c's Number, State, HeadRef, CrossRepo, Repo and Body.
+	AddIssueChange(t *testing.T, number int, c forge.IssueChange)
+	// FailIssueChangesPage2 makes every second page of the pull or merge requests around issue
+	// number fail.
+	FailIssueChangesPage2(t *testing.T, number int)
+	// FailComments makes posting a comment on issue number answer a 500.
+	FailComments(t *testing.T, number int)
+	// AddStateEvent records that issue number was "closed" or "reopened", in order; closer is
+	// the pull or merge request that closed it, 0 by hand, in repository repo ("" is Repo()).
+	AddStateEvent(t *testing.T, number int, state string, closer int, repo string)
 	AddOpenPR(t *testing.T, pr forge.OpenPR)
 	// AddOpenPRWithStatus adds an open pull request with its Number, Title, URL, Draft, Mergeable
 	// and Checks.
@@ -44,6 +62,11 @@ type Fixture interface {
 	// AddMergedPR adds a merged pull request with its Number, Title, URL and MergedAt.
 	AddMergedPR(t *testing.T, pr forge.PRSummary)
 	AddBranchPR(t *testing.T, branch string, pr forge.PR)
+	// AddPullHead adds a pull request in any state with its Number, State, MergedAt and HeadRef.
+	AddPullHead(t *testing.T, h forge.PullHead)
+	// AddClosingPR makes the pull request h close issue number (h.Closes) or only refer to it,
+	// with its HeadRef, Repo, Body, Merged and CrossRepo; Repo is where the pull request lives.
+	AddClosingPR(t *testing.T, number int, h forge.ClosingHead)
 	// AddMilestonedEvent records that issue number was put in the milestone titled milestoneTitle
 	// at at. The event names the milestone by title only; the issue is added with AddIssue.
 	AddMilestonedEvent(t *testing.T, number int, milestoneTitle string, at time.Time)
@@ -55,10 +78,6 @@ type Fixture interface {
 	// StatusOf is the last status the forge wrote for issue number, as a lighthouse name; ""
 	// when it wrote none.
 	StatusOf(t *testing.T, number int) string
-	// ChecksOnClosedPRs reports whether BranchPRs carries the checks of a closed or merged PR
-	// too. GitHub does; GitLab reads head_pipeline only for an open merge request, the only
-	// PR whose checks the dispatcher reads.
-	ChecksOnClosedPRs() bool
 	// PRCommentBodies lists the comment bodies on pull request number, oldest first. GitHub
 	// keeps them with the issue comments; GitLab keeps a merge request's notes apart.
 	PRCommentBodies(t *testing.T, number int) []string
@@ -76,6 +95,13 @@ type Fixture interface {
 	AddNamedMilestone(t *testing.T, title string, group bool) forge.Milestone
 	// SetLabels sets the label names of the repo.
 	SetLabels(t *testing.T, names ...string)
+	// AddCommit makes the forge know the commit with sha.
+	AddCommit(t *testing.T, sha string)
+	// FailCommit makes the lookup of the commit with sha answer a 500.
+	FailCommit(t *testing.T, sha string)
+	// LabelColor is the colour the forge stored for the label, in the shape the forge uses
+	// (GitHub: six hex digits; GitLab: with a leading "#"); "" when the label is unknown.
+	LabelColor(t *testing.T, name string) string
 	// UniqueMilestoneTitles reports whether the forge refuses two milestones with one title.
 	// GitHub does; GitLab does not, and also shows the milestones of the groups above the project.
 	UniqueMilestoneTitles() bool
@@ -101,6 +127,10 @@ var Cases = []Case{
 	{"OpenIssuesPages", openIssuesPages},
 	{"ClosedInMilestone", closedInMilestone},
 	{"BlockedBy", blockedBy},
+	{"Blocking", blocking},
+	{"BlockingNone", blockingNone},
+	{"BlockingPages", blockingPages},
+	{"BlockingSecondPageFails", blockingSecondPageFails},
 	{"Planning", planning},
 	{"Comments", comments},
 	{"Acknowledge", acknowledge},
@@ -118,13 +148,32 @@ var Cases = []Case{
 	{"MilestonedIssues", milestonedIssues},
 	{"CreateIssueRoundTrip", createIssueRoundTrip},
 	{"EditIssue", editIssue},
+	{"EditIssueRemoveAbsentLabel", editIssueRemoveAbsentLabel},
 	{"ListIssuesStateAndLabel", listIssuesStateAndLabel},
 	{"SearchIssues", searchIssues},
 	{"CreateAndViewChange", createAndViewChange},
 	{"ChangeComment", changeComment},
+	{"ListChangesStates", listChangesStates},
+	{"ListChangesDefaultsToOpen", listChangesDefaultsToOpen},
+	{"ListChangesBogusState", listChangesBogusState},
+	{"ListChangesPages", listChangesPages},
+	{"ListChangesPage2Fails", listChangesPage2Fails},
+	{"IssueChanges", issueChanges},
+	{"IssueChangesNone", issueChangesNone},
+	{"IssueChangesPages", issueChangesPages},
+	{"IssueChangesSecondPageFails", issueChangesSecondPageFails},
+	{"Closer", closer},
+	{"ReopenIssue", reopenIssue},
+	{"ReopenIssueNoComment", reopenIssueNoComment},
+	{"ReopenIssueCommentFails", reopenIssueCommentFails},
 	{"MilestonesAndLookup", milestonesAndLookup},
+	{"MilestoneCountsAndState", milestoneCountsAndState},
 	{"MilestoneAmbiguousTitle", milestoneAmbiguousTitle},
 	{"LabelsList", labelsList},
+	{"PullHeads", pullHeads},
+	{"IssueClosingHeads", issueClosingHeads},
+	{"CommitKnown", commitKnown},
+	{"CreateLabel", createLabel},
 	{"AddBlockerThenBlockedBy", addBlockerThenBlockedBy},
 	{"IssueLifecycleByMarker", issueLifecycleByMarker},
 	{"PRLifecycleByMarker", prLifecycleByMarker},
@@ -246,6 +295,74 @@ func blockedBy(t *testing.T, f Fixture) {
 		if g := got[i]; g.Repo != w.Repo || g.Issue != w.Issue || g.State != w.State {
 			t.Errorf("BlockedBy(7)[%d] = %+v, want repo %s, issue %d, state %s", i, g, w.Repo, w.Issue, w.State)
 		}
+	}
+}
+
+// blocking: issue 7 blocks the open issue 8 and the closed issue 9; Blocking(7) names both, with
+// the state of the blocked issue.
+func blocking(t *testing.T, f Fixture) {
+	f.AddIssue(t, openIssue(7))
+	f.AddIssue(t, openIssue(8))
+	f.AddIssue(t, closedIssue(9, nil, time.Now().Add(-time.Hour)))
+	f.AddBlocker(t, 8, forge.Blocker{Repo: f.Repo(), Issue: 7, State: "OPEN"})
+	f.AddBlocker(t, 9, forge.Blocker{Repo: f.Repo(), Issue: 7, State: "OPEN"})
+	got, err := f.Forge().Blocking(t.Context(), 7)
+	if err != nil {
+		t.Fatalf("Blocking(7): %v", err)
+	}
+	want := []forge.Blocker{{Repo: f.Repo(), Issue: 8, State: "OPEN"}, {Repo: f.Repo(), Issue: 9, State: "CLOSED"}}
+	slices.SortFunc(got, func(a, b forge.Blocker) int { return a.Issue - b.Issue })
+	if !slices.Equal(got, want) {
+		t.Errorf("Blocking(7) = %+v, want %+v", got, want)
+	}
+}
+
+// blockingNone: an issue that blocks nothing gives an empty list and no error.
+func blockingNone(t *testing.T, f Fixture) {
+	f.AddIssue(t, openIssue(7))
+	got, err := f.Forge().Blocking(t.Context(), 7)
+	if err != nil {
+		t.Fatalf("Blocking(7): %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("Blocking(7) = %+v, want none", got)
+	}
+}
+
+// addBlocked makes issue 7 block page open issues from 1001 up; page is one more than a REST page.
+func addBlocked(t *testing.T, f Fixture) []int {
+	t.Helper()
+	f.AddIssue(t, openIssue(7))
+	var nums []int
+	for n := 1001; n < 1001+page; n++ {
+		f.AddIssue(t, openIssue(n))
+		f.AddBlocker(t, n, forge.Blocker{Repo: f.Repo(), Issue: 7, State: "OPEN"})
+		nums = append(nums, n)
+	}
+	return nums
+}
+
+// blockingPages: more blocked issues than one page holds are all returned.
+func blockingPages(t *testing.T, f Fixture) {
+	want := addBlocked(t, f)
+	got, err := f.Forge().Blocking(t.Context(), 7)
+	if err != nil {
+		t.Fatalf("Blocking(7): %v", err)
+	}
+	var nums []int
+	for _, b := range got {
+		nums = append(nums, b.Issue)
+	}
+	once(t, "Blocking", nums, want)
+}
+
+// blockingSecondPageFails: a failing second page is an error, never a list cut short.
+func blockingSecondPageFails(t *testing.T, f Fixture) {
+	addBlocked(t, f)
+	f.FailBlockingPage2(t, 7)
+	got, err := f.Forge().Blocking(t.Context(), 7)
+	if err == nil {
+		t.Fatalf("Blocking(7) = %+v, want an error for the failing second page", got)
 	}
 }
 
@@ -643,13 +760,9 @@ func prFields(t *testing.T, f Fixture) {
 		t.Fatalf("BranchPRs = %+v, want one PR", prs)
 	}
 	p := prs[0]
-	wantChecks := ""
-	if f.ChecksOnClosedPRs() {
-		wantChecks = "SUCCESS"
-	}
 	if p.Number != 12 || p.State != "MERGED" || p.HeadSHA != "abc123" || p.HeadRef != "issue-7-x" || p.BaseRef != "main" ||
-		p.Checks != wantChecks || p.Mergeable != "MERGEABLE" || !p.MergedAt.Equal(mergedAt) || p.Closes {
-		t.Errorf("BranchPRs[0] = %+v; want #12 MERGED at %s, head abc123 on issue-7-x, checks %q, MERGEABLE, Closes false", p, mergedAt, wantChecks)
+		p.Checks != "" || p.Mergeable != "MERGEABLE" || !p.MergedAt.Equal(mergedAt) || p.Closes {
+		t.Errorf("BranchPRs[0] = %+v; want #12 MERGED at %s, head abc123 on issue-7-x, no checks, MERGEABLE, Closes false", p, mergedAt)
 	}
 
 	f.AddOpenPR(t, forge.OpenPR{Number: 13, Title: "Fix it", Body: "Closes #7", HeadRef: "issue-7-x"})
@@ -737,6 +850,21 @@ func editIssue(t *testing.T, f Fixture) {
 	}
 }
 
+// editIssueRemoveAbsentLabel: removing a label the issue does not carry (removed by hand in the
+// meantime) is no error; the other labels stay.
+func editIssueRemoveAbsentLabel(t *testing.T, f Fixture) {
+	is := openIssue(7)
+	is.Labels = []string{"b"}
+	f.AddIssue(t, is)
+	edited, err := f.Forge().EditIssue(t.Context(), 7, forge.IssueEdit{RemoveLabels: []string{"a"}})
+	if err != nil {
+		t.Fatalf("EditIssue(remove absent label): %v", err)
+	}
+	if !slices.Equal(edited.Labels, []string{"b"}) {
+		t.Errorf("EditIssue = labels %v; want [b]", edited.Labels)
+	}
+}
+
 func listIssuesStateAndLabel(t *testing.T, f Fixture) {
 	a := openIssue(1)
 	a.Labels = []string{"bug"}
@@ -801,6 +929,273 @@ func createAndViewChange(t *testing.T, f Fixture) {
 	}
 }
 
+// addThreeChanges adds an open (1), a merged (2) and a closed-not-merged (3) change; 2 merged at
+// mergedAt.
+func addThreeChanges(t *testing.T, f Fixture, mergedAt time.Time) {
+	t.Helper()
+	f.AddChange(t, forge.Change{Number: 1, Title: "Open", State: "open", HeadRef: "issue-1-open"})
+	f.AddChange(t, forge.Change{Number: 2, Title: "Merged", State: "merged", HeadRef: "issue-2-merged", MergedAt: mergedAt})
+	f.AddChange(t, forge.Change{Number: 3, Title: "Closed", State: "closed", HeadRef: "issue-3-closed"})
+}
+
+// changeNumbers lists the numbers of cs, in order.
+func changeNumbers(cs []forge.Change) []int {
+	var nums []int
+	for _, c := range cs {
+		nums = append(nums, c.Number)
+	}
+	slices.Sort(nums)
+	return nums
+}
+
+// listChangesStates: each state names exactly its changes; a closed-not-merged one is not merged;
+// the merged one carries State merged, MergedAt and its head branch.
+func listChangesStates(t *testing.T, f Fixture) {
+	mergedAt := time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
+	addThreeChanges(t, f, mergedAt)
+	for state, want := range map[string][]int{"open": {1}, "merged": {2}, "closed": {3}, "all": {1, 2, 3}} {
+		got, err := f.Forge().ListChanges(t.Context(), state)
+		if err != nil {
+			t.Fatalf("ListChanges(%q): %v", state, err)
+		}
+		if nums := changeNumbers(got); !slices.Equal(nums, want) {
+			t.Errorf("ListChanges(%q) = %v, want %v", state, nums, want)
+		}
+	}
+	merged, err := f.Forge().ListChanges(t.Context(), "merged")
+	if err != nil || len(merged) != 1 {
+		t.Fatalf("ListChanges(merged) = %+v, %v; want one change", merged, err)
+	}
+	if c := merged[0]; c.State != "merged" || !c.MergedAt.Equal(mergedAt) || c.HeadRef != "issue-2-merged" {
+		t.Errorf("merged change = %+v; want state merged at %s on issue-2-merged", c, mergedAt)
+	}
+	closed, err := f.Forge().ListChanges(t.Context(), "closed")
+	if err != nil || len(closed) != 1 || closed[0].State != "closed" || !closed[0].MergedAt.IsZero() {
+		t.Errorf("ListChanges(closed) = %+v, %v; want one closed change with no MergedAt", closed, err)
+	}
+}
+
+// listChangesDefaultsToOpen: an empty state is open.
+func listChangesDefaultsToOpen(t *testing.T, f Fixture) {
+	addThreeChanges(t, f, time.Now().Add(-time.Hour))
+	got, err := f.Forge().ListChanges(t.Context(), "")
+	if err != nil {
+		t.Fatalf("ListChanges(\"\"): %v", err)
+	}
+	if nums := changeNumbers(got); !slices.Equal(nums, []int{1}) {
+		t.Errorf("ListChanges(\"\") = %v, want [1]", nums)
+	}
+}
+
+// listChangesBogusState: an unknown state is an error, never an empty list.
+func listChangesBogusState(t *testing.T, f Fixture) {
+	got, err := f.Forge().ListChanges(t.Context(), "bogus")
+	if err == nil {
+		t.Errorf("ListChanges(bogus) = %+v, want an error", got)
+	}
+}
+
+// listChangesPages: more changes than one page holds are all returned.
+func listChangesPages(t *testing.T, f Fixture) {
+	var want []int
+	for n := 1; n <= page; n++ {
+		f.AddChange(t, forge.Change{Number: n, Title: "C", State: "open", HeadRef: fmt.Sprintf("fix-%d", n)})
+		want = append(want, n)
+	}
+	got, err := f.Forge().ListChanges(t.Context(), "open")
+	if err != nil {
+		t.Fatalf("ListChanges(open): %v", err)
+	}
+	once(t, "ListChanges", changeNumbers(got), want)
+}
+
+// listChangesPage2Fails: a failing second page is an error and no list, never the first page
+// alone (which could leave out an open change).
+func listChangesPage2Fails(t *testing.T, f Fixture) {
+	for n := 1; n <= page; n++ {
+		f.AddChange(t, forge.Change{Number: n, Title: "C", State: "open", HeadRef: fmt.Sprintf("fix-%d", n)})
+	}
+	f.FailListChangesPage2(t)
+	got, err := f.Forge().ListChanges(t.Context(), "open")
+	if err == nil || got != nil {
+		t.Errorf("ListChanges(open) = %d changes, %v; want nil and an error", len(got), err)
+	}
+}
+
+// issueChanges: issue 5 is closed by the merged PR 12, mentioned by PR 13 (Refs), by PR 15 from a
+// fork and by PR 16 of another repository; each comes back once, with its own fields.
+func issueChanges(t *testing.T, f Fixture) {
+	f.AddIssue(t, closedIssue(5, nil, time.Now().Add(-time.Hour)))
+	want := []forge.IssueChange{
+		{Number: 12, State: "MERGED", HeadRef: "issue-5-x", Repo: f.Repo(), Body: "Closes #5", Closes: true},
+		{Number: 13, State: "OPEN", HeadRef: "fix-y", Repo: f.Repo(), Body: "Refs #5 — part one"},
+		{Number: 15, State: "CLOSED", HeadRef: "patch-1", CrossRepo: true, Repo: f.Repo(), Body: "Refs #5"},
+		{Number: 16, State: "MERGED", HeadRef: "issue-9-z", Repo: "other/repo", Body: "See " + f.Repo() + "#5"},
+	}
+	for _, c := range want {
+		f.AddIssueChange(t, 5, c)
+	}
+	got, err := f.Forge().IssueChanges(t.Context(), 5)
+	if err != nil {
+		t.Fatalf("IssueChanges(5): %v", err)
+	}
+	slices.SortFunc(got, func(a, b forge.IssueChange) int { return a.Number - b.Number })
+	if !slices.Equal(got, want) {
+		t.Errorf("IssueChanges(5) =\n%+v\nwant\n%+v", got, want)
+	}
+}
+
+// issueChangesNone: an issue no pull request names gives an empty list and no error.
+func issueChangesNone(t *testing.T, f Fixture) {
+	f.AddIssue(t, openIssue(5))
+	got, err := f.Forge().IssueChanges(t.Context(), 5)
+	if err != nil {
+		t.Fatalf("IssueChanges(5): %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("IssueChanges(5) = %+v, want none", got)
+	}
+}
+
+// addIssueChanges gives issue 5 page closing pull requests from 1001 up and page mentioning ones
+// from 2001 up, and returns their numbers.
+func addIssueChanges(t *testing.T, f Fixture) []int {
+	t.Helper()
+	f.AddIssue(t, closedIssue(5, nil, time.Now().Add(-time.Hour)))
+	var nums []int
+	for i := range page {
+		for _, c := range []forge.IssueChange{
+			{Number: 1001 + i, State: "MERGED", HeadRef: fmt.Sprintf("c-%d", i), Repo: f.Repo(), Closes: true},
+			{Number: 2001 + i, State: "OPEN", HeadRef: fmt.Sprintf("m-%d", i), Repo: f.Repo()},
+		} {
+			f.AddIssueChange(t, 5, c)
+			nums = append(nums, c.Number)
+		}
+	}
+	return nums
+}
+
+// issueChangesPages: more closing and more mentioning pull requests than one page holds are all
+// returned, each once.
+func issueChangesPages(t *testing.T, f Fixture) {
+	want := addIssueChanges(t, f)
+	got, err := f.Forge().IssueChanges(t.Context(), 5)
+	if err != nil {
+		t.Fatalf("IssueChanges(5): %v", err)
+	}
+	var nums []int
+	for _, c := range got {
+		nums = append(nums, c.Number)
+	}
+	once(t, "IssueChanges", nums, want)
+}
+
+// issueChangesSecondPageFails: a failing second page is an error, never a list cut short.
+func issueChangesSecondPageFails(t *testing.T, f Fixture) {
+	addIssueChanges(t, f)
+	f.FailIssueChangesPage2(t, 5)
+	got, err := f.Forge().IssueChanges(t.Context(), 5)
+	if err == nil {
+		t.Fatalf("IssueChanges(5) = %d changes, want an error for the failing second page", len(got))
+	}
+}
+
+// reopenIssue: the comment lands, then the closed issue is open again.
+func reopenIssue(t *testing.T, f Fixture) {
+	ctx := t.Context()
+	f.AddIssue(t, forge.Issue{Number: 3, Title: "Dicht", Author: "ann", State: "closed"})
+	if err := f.Forge().ReopenIssue(ctx, 3, "weer open"); err != nil {
+		t.Fatalf("ReopenIssue: %v", err)
+	}
+	is, err := f.Forge().Issue(ctx, 3)
+	if err != nil {
+		t.Fatalf("Issue(3): %v", err)
+	}
+	if is.State != "open" {
+		t.Errorf("state after ReopenIssue = %q, want open", is.State)
+	}
+	cs, err := f.Forge().Comments(ctx, 3)
+	if err != nil {
+		t.Fatalf("Comments: %v", err)
+	}
+	if len(cs) != 1 || cs[0].Body != "weer open" {
+		t.Errorf("Comments = %+v, want the one comment %q", cs, "weer open")
+	}
+}
+
+// reopenIssueNoComment: an empty comment posts nothing.
+func reopenIssueNoComment(t *testing.T, f Fixture) {
+	ctx := t.Context()
+	f.AddIssue(t, forge.Issue{Number: 3, Title: "Dicht", Author: "ann", State: "closed"})
+	if err := f.Forge().ReopenIssue(ctx, 3, ""); err != nil {
+		t.Fatalf("ReopenIssue: %v", err)
+	}
+	if is, err := f.Forge().Issue(ctx, 3); err != nil || is.State != "open" {
+		t.Errorf("Issue(3) = %+v, %v; want open", is, err)
+	}
+	cs, err := f.Forge().Comments(ctx, 3)
+	if err != nil {
+		t.Fatalf("Comments: %v", err)
+	}
+	if len(cs) != 0 {
+		t.Errorf("Comments = %+v, want none for an empty comment", cs)
+	}
+}
+
+// reopenIssueCommentFails: a failing comment is an error and the issue stays closed.
+func reopenIssueCommentFails(t *testing.T, f Fixture) {
+	ctx := t.Context()
+	f.AddIssue(t, forge.Issue{Number: 3, Title: "Dicht", Author: "ann", State: "closed"})
+	f.FailComments(t, 3)
+	if err := f.Forge().ReopenIssue(ctx, 3, "weer open"); err == nil {
+		t.Fatal("ReopenIssue = nil, want the error of the failing comment")
+	}
+	if is, err := f.Forge().Issue(ctx, 3); err != nil || is.State != "closed" {
+		t.Errorf("Issue(3) = %+v, %v; want still closed", is, err)
+	}
+}
+
+// closer: the pull request of the last close wins, also when the issue was reopened since; a
+// close by hand is 0, also after an earlier close by a pull request, and so is an issue never
+// closed. A closer in another repository is 0 too: its number would name another change here.
+// The repository compares without regard to case.
+func closer(t *testing.T, f Fixture) {
+	type event struct {
+		state  string
+		closer int
+		repo   string
+	}
+	other, upper := "other/elsewhere", strings.ToUpper(f.Repo())
+	for _, tc := range []struct {
+		issue  int
+		events []event
+		want   int
+	}{
+		{5, []event{{"closed", 12, ""}}, 12},
+		{6, []event{{"closed", 0, ""}}, 0},
+		{7, []event{{"closed", 12, ""}, {"reopened", 0, ""}, {"closed", 14, ""}}, 14},
+		{8, []event{{"closed", 12, ""}, {"reopened", 0, ""}, {"closed", 0, ""}}, 0},
+		{10, []event{{"closed", 12, ""}, {"reopened", 0, ""}}, 12},
+		{9, nil, 0},
+		{11, []event{{"closed", 12, other}}, 0},
+		{12, []event{{"closed", 12, ""}, {"reopened", 0, ""}, {"closed", 15, other}}, 0},
+		{13, []event{{"closed", 16, upper}}, 16},
+	} {
+		is := closedIssue(tc.issue, nil, time.Now().Add(-time.Hour))
+		if tc.events == nil {
+			is = openIssue(tc.issue)
+		}
+		f.AddIssue(t, is)
+		for _, e := range tc.events {
+			f.AddStateEvent(t, tc.issue, e.state, e.closer, e.repo)
+		}
+		got, err := f.Forge().Closer(t.Context(), tc.issue)
+		if err != nil || got != tc.want {
+			t.Errorf("Closer(%d) = %d, %v; want %d", tc.issue, got, err, tc.want)
+		}
+	}
+}
+
 func changeComment(t *testing.T, f Fixture) {
 	created, err := f.Forge().CreateChange(t.Context(), forge.NewPR{Title: "C", Head: "feature-x", Base: "main"})
 	if err != nil {
@@ -844,7 +1239,7 @@ func milestonesAndLookup(t *testing.T, f Fixture) {
 		t.Errorf("CreateMilestone = %+v; want title M9, description Nine., state open", created)
 	}
 	title, desc := "M9b", "Still nine."
-	edited, err := f.Forge().EditMilestone(t.Context(), created.Number, &title, &desc)
+	edited, err := f.Forge().EditMilestone(t.Context(), created.Number, &title, &desc, nil)
 	if err != nil {
 		t.Fatalf("EditMilestone: %v", err)
 	}
@@ -854,6 +1249,61 @@ func milestonesAndLookup(t *testing.T, f Fixture) {
 	again, err := f.Forge().MilestoneByNumber(t.Context(), created.Number)
 	if err != nil || again.Title != "M9b" || again.Description != "Still nine." {
 		t.Errorf("MilestoneByNumber after edit = %+v, %v; want M9b", again, err)
+	}
+}
+
+// Milestones and MilestoneByNumber count the open and closed issues of a milestone, and
+// EditMilestone closes it in the same call that renames it; a nil state leaves the state alone and
+// a state other than open or closed is refused.
+func milestoneCountsAndState(t *testing.T, f Fixture) {
+	m := f.AddNamedMilestone(t, "Count", false)
+	f.AddNamedMilestone(t, "Other", false)
+	for n := 1; n <= 5; n++ {
+		is := openIssue(n)
+		if n > 2 {
+			is = closedIssue(n, nil, time.Now().Add(-time.Hour))
+		}
+		is.Milestone = &m
+		f.AddIssue(t, is)
+	}
+	f.AddIssue(t, openIssue(6)) // no milestone: counts for none
+	list, err := f.Forge().Milestones(t.Context(), "open")
+	if err != nil {
+		t.Fatalf("Milestones(open): %v", err)
+	}
+	for _, got := range list {
+		want := [2]int{0, 0}
+		if got.Title == "Count" {
+			want = [2]int{2, 3}
+		}
+		if [2]int{got.OpenIssues, got.ClosedIssues} != want {
+			t.Errorf("Milestones: %s counts = %d open, %d closed; want %v", got.Title, got.OpenIssues, got.ClosedIssues, want)
+		}
+	}
+	one, err := f.Forge().MilestoneByNumber(t.Context(), m.Number)
+	if err != nil || one.OpenIssues != 2 || one.ClosedIssues != 3 {
+		t.Errorf("MilestoneByNumber = %+v, %v; want 2 open, 3 closed", one, err)
+	}
+	title, closed := "Counted", "closed"
+	edited, err := f.Forge().EditMilestone(t.Context(), m.Number, &title, nil, &closed)
+	if err != nil || edited.State != "closed" || edited.Title != "Counted" {
+		t.Fatalf("EditMilestone(title, closed) = %+v, %v; want state closed, title Counted", edited, err)
+	}
+	again, err := f.Forge().MilestoneByNumber(t.Context(), m.Number)
+	if err != nil || again.State != "closed" || again.Title != "Counted" {
+		t.Errorf("MilestoneByNumber after close = %+v, %v; want closed, Counted", again, err)
+	}
+	kept, err := f.Forge().EditMilestone(t.Context(), m.Number, nil, nil, nil)
+	if err != nil || kept.State != "closed" {
+		t.Errorf("EditMilestone(nil state) = %+v, %v; want state closed kept", kept, err)
+	}
+	open := "open"
+	if reopened, err := f.Forge().EditMilestone(t.Context(), m.Number, nil, nil, &open); err != nil || reopened.State != "open" {
+		t.Errorf("EditMilestone(open) = %+v, %v; want state open", reopened, err)
+	}
+	bad := "archived"
+	if _, err := f.Forge().EditMilestone(t.Context(), m.Number, nil, nil, &bad); err == nil {
+		t.Errorf("EditMilestone(state archived) = nil error; want a refusal")
 	}
 }
 
@@ -886,6 +1336,89 @@ func labelsList(t *testing.T, f Fixture) {
 	got, err := f.Forge().Labels(t.Context())
 	if err != nil || !slices.Equal(sorted(got), []string{"area:cli", "bug"}) {
 		t.Errorf("Labels = %v, %v; want [area:cli bug]", got, err)
+	}
+}
+
+func pullHeads(t *testing.T, f Fixture) {
+	merged := "2026-11-18T10:00:00Z"
+	f.AddPullHead(t, forge.PullHead{Number: 1, State: "OPEN", HeadRef: "issue-1-open"})
+	f.AddPullHead(t, forge.PullHead{Number: 2, State: "CLOSED", HeadRef: "issue-2-closed"})
+	f.AddPullHead(t, forge.PullHead{Number: 3, State: "MERGED", MergedAt: merged, HeadRef: "issue-3-merged"})
+	want := []forge.PullHead{
+		{Number: 1, State: "OPEN", HeadRef: "issue-1-open"},
+		{Number: 2, State: "CLOSED", HeadRef: "issue-2-closed"},
+		{Number: 3, State: "MERGED", MergedAt: merged, HeadRef: "issue-3-merged"},
+	}
+	for n := 10; n < 10+page; n++ { // more than one page
+		h := forge.PullHead{Number: n, State: "CLOSED", HeadRef: fmt.Sprintf("issue-%d-x", n)}
+		f.AddPullHead(t, h)
+		want = append(want, h)
+	}
+	got, err := f.Forge().PullHeads(t.Context())
+	if err != nil {
+		t.Fatalf("PullHeads: %v", err)
+	}
+	slices.SortFunc(got, func(a, b forge.PullHead) int { return a.Number - b.Number })
+	if !slices.Equal(got, want) {
+		t.Errorf("PullHeads = %d heads, first %+v; want %d heads, first %+v (every state, every page)", len(got), got[:min(3, len(got))], len(want), want[:3])
+	}
+}
+
+func issueClosingHeads(t *testing.T, f Fixture) {
+	closing := forge.ClosingHead{HeadRef: "issue-7-a", Repo: f.Repo(), Body: "Closes #7", Merged: true, Closes: true}
+	fork := forge.ClosingHead{HeadRef: "issue-7-fork", Repo: f.Repo(), Body: "Closes #7", Closes: true, CrossRepo: true}
+	refs := forge.ClosingHead{HeadRef: "issue-7-refs", Repo: f.Repo(), Body: "Refs #7 — deel", Merged: true}
+	bare := forge.ClosingHead{HeadRef: "issue-7-bare", Repo: f.Repo(), Body: "noemt het issue alleen"}
+	other := forge.ClosingHead{HeadRef: "issue-7-other", Repo: "other/repo", Body: "Refs #7", Merged: true}
+	for _, h := range []forge.ClosingHead{closing, fork, refs, bare, other} {
+		f.AddClosingPR(t, 7, h)
+	}
+	got, err := f.Forge().IssueClosingHeads(t.Context(), 7)
+	if err != nil {
+		t.Fatalf("IssueClosingHeads: %v", err)
+	}
+	slices.SortFunc(got, func(a, b forge.ClosingHead) int { return strings.Compare(a.HeadRef, b.HeadRef) })
+	want := []forge.ClosingHead{closing, bare, fork, other, refs}
+	if !slices.Equal(got, want) {
+		t.Errorf("IssueClosingHeads(7) = %+v; want %+v", got, want)
+	}
+	none, err := f.Forge().IssueClosingHeads(t.Context(), 8)
+	if err != nil || len(none) != 0 {
+		t.Errorf("IssueClosingHeads(8) = %+v, %v; want none, nil", none, err)
+	}
+}
+
+func commitKnown(t *testing.T, f Fixture) {
+	f.AddCommit(t, "abc123")
+	f.FailCommit(t, "deadbeef")
+	got, err := f.Forge().CommitKnown(t.Context(), "abc123")
+	if err != nil || !got {
+		t.Errorf("CommitKnown(known) = %v, %v; want true, nil", got, err)
+	}
+	got, err = f.Forge().CommitKnown(t.Context(), "ffffff")
+	if err != nil || got {
+		t.Errorf("CommitKnown(unknown) = %v, %v; want false, nil", got, err)
+	}
+	if got, err = f.Forge().CommitKnown(t.Context(), "deadbeef"); err == nil || got {
+		t.Errorf("CommitKnown(500) = %v, %v; want false and an error", got, err)
+	}
+}
+
+func createLabel(t *testing.T, f Fixture) {
+	f.SetLabels(t, "bug")
+	if err := f.Forge().CreateLabel(t.Context(), "area:new", "0e8a16"); err != nil {
+		t.Fatalf("CreateLabel: %v", err)
+	}
+	got, err := f.Forge().Labels(t.Context())
+	if err != nil || !slices.Equal(sorted(got), []string{"area:new", "bug"}) {
+		t.Errorf("Labels after CreateLabel = %v, %v; want [area:new bug]", got, err)
+	}
+	if err := f.Forge().CreateLabel(t.Context(), "area:new", "0e8a16"); err != nil {
+		t.Errorf("CreateLabel of an existing label = %v, want nil", err)
+	}
+	want := f.LabelColor(t, "area:new")
+	if want != "0e8a16" && want != "#0e8a16" {
+		t.Errorf("stored colour = %q, want 0e8a16 (GitHub) or #0e8a16 (GitLab)", want)
 	}
 }
 

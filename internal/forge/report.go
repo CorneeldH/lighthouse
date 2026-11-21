@@ -8,7 +8,6 @@ import (
 	"net/http"
 	neturl "net/url"
 	"slices"
-	"strings"
 	"time"
 )
 
@@ -229,12 +228,9 @@ type openPRNode struct {
 // OpenPRsWithStatus lists the open pull requests with draft, mergeable and checks, by number,
 // following every page. MergedAt is zero.
 func (c *GitHub) OpenPRsWithStatus(ctx context.Context) ([]PRSummary, error) {
-	if err := c.configured(); err != nil {
+	owner, name, err := c.ownerName()
+	if err != nil {
 		return nil, err
-	}
-	owner, name, ok := strings.Cut(c.Repo, "/")
-	if !ok || owner == "" || name == "" {
-		return nil, fmt.Errorf("forge: repo %q is not owner/name", c.Repo)
 	}
 	var out []PRSummary
 	after := ""

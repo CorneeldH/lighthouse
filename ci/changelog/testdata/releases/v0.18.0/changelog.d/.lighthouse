@@ -1,0 +1,1 @@
+This directory holds one changelog fragment per change; the release workflow merges them into CHANGELOG.md. See docs/releasing.md.

@@ -18,10 +18,7 @@ def _gate_go_command():
 
 def _go_commands(path: Path) -> list[str]:
     text = path.read_text(encoding="utf-8")
-    runs = re.findall(r"^\s*- run: (go test .*?)\s*$", text, re.MULTILINE)
-    # The canary job is another suite (build tag `canary`, tools from the network), pinned in
-    # tests/test_ci_domains_pin.py.
-    return [run for run in runs if "-tags canary" not in run]
+    return re.findall(r"^\s*- run: (go test .*?)\s*$", text, re.MULTILINE)
 
 
 def test_ci_builds_without_cgo():
@@ -31,11 +28,11 @@ def test_ci_builds_without_cgo():
 
 
 def test_every_ci_go_test_has_gate_flags():
-    """Fails when a `go test` step in CI, the e2e step included, drops a flag of the gate."""
+    """Fails when a `go test` step in CI, the e2e and canary steps included, drops a flag of the gate."""
     flags = [token for token in _gate_go_command().split() if token.startswith("-")]
     assert flags, "the Go part of the gate has no flags to pin"
     runs = _go_commands(ROOT / ".github" / "workflows" / "ci.yml")
-    assert len(runs) == 2, runs
+    assert len(runs) == 4, runs
     for run in runs:
         assert all(flag in run.split() for flag in flags), run
 

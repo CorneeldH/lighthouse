@@ -19,6 +19,7 @@ type RunState struct {
 	SessionAt  time.Time             `json:"session_at,omitzero"`  // forge updated_at of the run's session
 	Transcript *workplace.Transcript `json:"transcript,omitempty"` // nil: not measurable
 	Permission *Permission           `json:"permission,omitempty"`
+	PostFailed *PostFailed           `json:"post_failed,omitempty"` // the note of a failed post
 }
 
 // Permission is the permission prompt the session of a run last showed, as the

@@ -596,3 +596,43 @@ func TestInfoFailureAskedOncePerClient(t *testing.T) {
 		})
 	}
 }
+
+func TestNodeClientPostFailed(t *testing.T) {
+	n := newFakeNode(t)
+	sess, bad := randomID(t), randomID(t)
+	n.mux.HandleFunc("GET "+nodeapi.PathPostFailed, func(w http.ResponseWriter, r *http.Request) {
+		switch r.PathValue("session") {
+		case sess:
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"version":1}`))
+		case bad:
+			writeNode(w, http.StatusInternalServerError, nodeapi.Problem{Status: 500, Detail: "boom"})
+		default:
+			writeNode(w, http.StatusNotFound, nodeapi.Problem{Status: 404, Code: nodeapi.CodeNoPostFailed, Detail: "none"})
+		}
+	})
+	c := n.client(t)
+	data, err := c.PostFailed(context.Background(), sess)
+	if err != nil || string(data) != `{"version":1}` {
+		t.Errorf("PostFailed: %q %v, want the raw bytes", data, err)
+	}
+	data, err = c.PostFailed(context.Background(), randomID(t))
+	if err != nil || data != nil {
+		t.Errorf("PostFailed on 404 no_post_failed: %q %v, want nil nil", data, err)
+	}
+	if data, err = c.PostFailed(context.Background(), bad); err == nil {
+		t.Errorf("PostFailed on 500: %q nil, want an error", data)
+	}
+}
+
+// An old node has no such route: its 404 carries no code, and that is "no note", not an error.
+func TestNodeClientPostFailedOldNode(t *testing.T) {
+	n := newFakeNode(t)
+	n.mux.HandleFunc("GET "+nodeapi.PathPostFailed, func(w http.ResponseWriter, _ *http.Request) {
+		writeNode(w, http.StatusNotFound, nodeapi.Problem{Status: 404, Detail: "Not Found"})
+	})
+	data, err := n.client(t).PostFailed(context.Background(), randomID(t))
+	if err != nil || data != nil {
+		t.Errorf("PostFailed on a 404 without code: %q %v, want nil nil", data, err)
+	}
+}

@@ -195,6 +195,7 @@ var baseKeys = []string{
 	"forge.board.project_id",
 	"forge.board.status_field_id",
 	"forge.board.priority_field_id",
+	"forge.board.project_owner",
 	"project.language",
 }
 
@@ -276,6 +277,7 @@ type Board struct {
 	ProjectID       string
 	StatusFieldID   string
 	PriorityFieldID string // "" when absent
+	ProjectOwner    string // "" when absent
 	StatusOptions   map[string]string
 	PriorityOptions map[string]string
 }
@@ -483,7 +485,7 @@ func (c *Config) board(board map[string]any, needsController bool, path string) 
 	gitlab := c.Kind == "gitlab"
 	if gitlab {
 		// GitLab's built-in status and scoped labels need no project or field IDs.
-		for _, key := range []string{"project_number", "project_id", "status_field_id", "priority_field_id"} {
+		for _, key := range []string{"project_number", "project_id", "status_field_id", "priority_field_id", "project_owner"} {
 			if _, ok := board[key]; ok {
 				return nil, errf("%s: key %s%s is only valid with kind = 'github'", path, where, key)
 			}
@@ -512,6 +514,11 @@ func (c *Config) board(board map[string]any, needsController bool, path string) 
 	b := &Board{StatusOptions: status}
 	if _, ok := board["priority_field_id"]; ok && !gitlab {
 		if b.PriorityFieldID, err = getString(board, "priority_field_id", where, path); err != nil {
+			return nil, err
+		}
+	}
+	if _, ok := board["project_owner"]; ok && !gitlab {
+		if b.ProjectOwner, err = getString(board, "project_owner", where, path); err != nil {
 			return nil, err
 		}
 	}

@@ -1,0 +1,36 @@
+[
+  {"name": "closed with open run is done", "closed": true, "run": "open", "want": {"state": "done"}},
+  {"name": "closed with blocked label is done", "closed": true, "labels": ["blocked_issue"], "want": {"state": "done"}},
+
+  {"name": "open run is active", "run": "open", "want": {"state": "active"}},
+  {"name": "parked run is active", "run": "parked", "want": {"state": "active"}},
+  {"name": "status In progress is active", "status": "In progress", "want": {"state": "active"}},
+  {"name": "status Controller is active", "status": "Controller", "want": {"state": "active"}},
+  {"name": "Controller wins over open blocker", "status": "Controller", "blockers": [{"issue": 5, "state": "OPEN"}], "want": {"state": "active"}},
+
+  {"name": "needs_shaping needs a human", "labels": ["needs_shaping"], "want": {"state": "needs_human"}},
+  {"name": "needs_decision needs a human", "labels": ["needs_decision"], "want": {"state": "needs_human"}},
+
+  {"name": "blocked_issue is blocked", "labels": ["blocked_issue"], "want": {"state": "blocked"}},
+  {"name": "blocked_external is blocked", "labels": ["blocked_external"], "want": {"state": "blocked"}},
+  {"name": "open blocker without label is blocked", "blockers": [{"issue": 5, "state": "OPEN"}], "want": {"state": "blocked"}},
+
+  {"name": "needs_hands needs a human", "labels": ["needs_hands"], "want": {"state": "needs_human"}},
+  {"name": "needs_testing needs a human", "labels": ["needs_testing"], "want": {"state": "needs_human"}},
+
+  {"name": "nothing is ready", "want": {"state": "ready"}},
+  {"name": "closed blocker only is ready", "blockers": [{"issue": 5, "state": "CLOSED"}], "want": {"state": "ready"}},
+  {"name": "status To do is ready", "status": "To do", "want": {"state": "ready"}},
+  {"name": "status On hold is ready", "status": "On hold", "want": {"state": "ready"}},
+  {"name": "other labels are ready", "labels": ["2-area:x", "1-loc:y"], "want": {"state": "ready"}},
+
+  {"name": "open blocker beats needs_hands", "labels": ["needs_hands"], "blockers": [{"issue": 5, "state": "OPEN"}], "want": {"state": "blocked"}},
+  {"name": "needs_shaping beats open blocker", "labels": ["needs_shaping"], "blockers": [{"issue": 5, "state": "OPEN"}], "want": {"state": "needs_human"}},
+  {"name": "needs_shaping beats blocked_issue label", "labels": ["blocked_issue", "needs_shaping"], "want": {"state": "needs_human"}},
+
+  {"name": "active with needs_hands flags a human", "run": "open", "labels": ["needs_hands"], "want": {"state": "active", "needs_human": true}},
+  {"name": "active with needs_shaping flags a human", "status": "Controller", "labels": ["needs_shaping"], "want": {"state": "active", "needs_human": true}},
+  {"name": "active with open question flags a human", "status": "Controller", "open_question": true, "want": {"state": "active", "needs_human": true}},
+  {"name": "active with blocked label does not flag", "status": "In progress", "labels": ["blocked_issue"], "want": {"state": "active"}},
+  {"name": "ready with open question does not flag", "open_question": true, "want": {"state": "ready"}}
+]

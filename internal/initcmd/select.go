@@ -210,6 +210,18 @@ func sortedNames[V any](m map[string]V) []string {
 	return names
 }
 
+// forgeRequires keeps the requirements that hold for kind: those without a forge, those
+// for kind, and all of them when kind is unknown ("").
+func forgeRequires(reqs []packs.Requirement, kind string) []packs.Requirement {
+	var out []packs.Requirement
+	for _, r := range reqs {
+		if r.Forge == "" || kind == "" || r.Forge == kind {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
 // mergeRequires joins the requirements of several packages per tool, so a tool that
 // two packages need gives one report with the units of both.
 func mergeRequires(reqs []packs.Requirement) []packs.Requirement {

@@ -304,6 +304,7 @@
   "forge.board.project_id",
   "forge.board.status_field_id",
   "forge.board.priority_field_id",
+  "forge.board.project_owner",
   "project.language"
  ],
  "host_keys": [

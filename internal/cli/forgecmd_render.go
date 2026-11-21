@@ -40,16 +40,23 @@ func renderIssue(i forge.Issue) map[string]any {
 		"number": i.Number, "title": i.Title, "body": i.Body, "state": i.State,
 		"labels": renderLabels(i.Labels), "milestone": renderMilestoneRef(i.Milestone),
 		"url": i.URL, "created_at": renderTime(i.CreatedAt), "author": i.Author,
+		"closed_at": renderTime(i.ClosedAt), "state_reason": i.StateReason,
 	}
 }
 
 // renderChange is the JSON shape of a pull request or merge request; state is open, closed or
-// merged.
+// merged. merged_at is null until it is merged.
 func renderChange(c forge.Change) map[string]any {
+	var mergedAt any
+	if !c.MergedAt.IsZero() {
+		mergedAt = renderTime(c.MergedAt)
+	}
 	return map[string]any{
-		"number": c.Number, "title": c.Title, "body": c.Body, "state": c.State,
+		"merged_at": mergedAt,
+		"number":    c.Number, "title": c.Title, "body": c.Body, "state": c.State,
 		"labels": renderLabels(c.Labels), "milestone": renderMilestoneRef(c.Milestone),
 		"url": c.URL, "created_at": renderTime(c.CreatedAt), "author": c.Author,
+		"draft": c.Draft, "mergeable": c.Mergeable, "head_ref": c.HeadRef, "base_ref": c.BaseRef,
 	}
 }
 
@@ -66,8 +73,24 @@ func renderBlocker(b forge.Blocker) map[string]any {
 	return map[string]any{"number": b.Issue, "state": strings.ToLower(b.State), "repo": b.Repo, "merged_pr": b.MergedPR}
 }
 
+// renderIssueChange is one pull or merge request around an issue; state is lower case.
+func renderIssueChange(c forge.IssueChange) map[string]any {
+	return map[string]any{"number": c.Number, "state": strings.ToLower(c.State), "head_ref": c.HeadRef,
+		"cross_repo": c.CrossRepo, "repo": c.Repo, "body": c.Body, "closes": c.Closes}
+}
+
 func renderMilestone(m forge.Milestone) map[string]any {
-	return map[string]any{"number": m.Number, "title": m.Title, "description": m.Description, "state": m.State}
+	return map[string]any{"number": m.Number, "title": m.Title, "description": m.Description, "state": m.State,
+		"open_issues": m.OpenIssues, "closed_issues": m.ClosedIssues}
+}
+
+// renderList renders every item of items with render.
+func renderList[T any](items []T, render func(T) map[string]any) []any {
+	out := make([]any, len(items))
+	for i, it := range items {
+		out[i] = render(it)
+	}
+	return out
 }
 
 // pickField follows path (names joined by dots) into v. A scalar comes back as text, anything

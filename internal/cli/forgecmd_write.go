@@ -1,10 +1,13 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -16,8 +19,16 @@ import (
 // write is one write command: it opens the forge and runs do. A write error is a forge
 // error (exit 1), except a title that fits two milestones, which is a usage error (exit 2).
 func (e *forgeEnv) write(cmd *cobra.Command, do func(f forge.Forge) error) error {
+	return e.writeNoting(cmd, nil, do)
+}
+
+// writeNoting is write, but onErr gets the raw error of open before fail turns it into errSilent.
+func (e *forgeEnv) writeNoting(cmd *cobra.Command, onErr func(error), do func(f forge.Forge) error) error {
 	f, err := e.open(cmd.Context())
 	if err != nil {
+		if onErr != nil {
+			onErr(err)
+		}
 		return e.fail(cmd, err)
 	}
 	if err := do(f); err != nil {
@@ -77,7 +88,32 @@ func newForgeIssueWriteCommands(env *forgeEnv) []*cobra.Command {
 	return []*cobra.Command{
 		newForgeIssueCreateCommand(env), newForgeIssueEditCommand(env), newForgeIssueCommentCommand(env),
 		newForgeIssueBlockCommand(env), newForgeIssueStatusCommand(env),
+		newForgeIssueStateCommand(env, "close", "Close an issue, after the comment in --body-file when given", forge.Forge.CloseIssue),
+		newForgeIssueStateCommand(env, "reopen", "Reopen an issue, after the comment in --body-file when given", forge.Forge.ReopenIssue),
 	}
+}
+
+// newForgeIssueStateCommand is `<name> <number> [--body-file F]`: change applies the state
+// change after the optional comment.
+func newForgeIssueStateCommand(env *forgeEnv, name, short string, change func(forge.Forge, context.Context, int, string) error) *cobra.Command {
+	cmd := &cobra.Command{
+		Use: name + " <number> [--body-file F]", Short: short, Args: forgeArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			n, err := forgeNumber(cmd, args[0])
+			if err != nil {
+				return err
+			}
+			comment := ""
+			if cmd.Flags().Changed("body-file") {
+				if comment, err = readBodyFile(cmd, "body-file"); err != nil {
+					return err
+				}
+			}
+			return env.write(cmd, func(f forge.Forge) error { return change(f, cmd.Context(), n, comment) })
+		},
+	}
+	cmd.Flags().String("body-file", "", "file with the comment to post first")
+	return cmd
 }
 
 func newForgeIssueCreateCommand(env *forgeEnv) *cobra.Command {
@@ -159,7 +195,9 @@ func newForgeIssueEditCommand(env *forgeEnv) *cobra.Command {
 }
 
 // newForgeCommentCommand is `comment <number> --body-file F`; post sends it (issue or change).
-func newForgeCommentCommand(env *forgeEnv, short string, post func(f forge.Forge, cmd *cobra.Command, n int, body string) (string, error)) *cobra.Command {
+// onFail, when not nil, hears of a failure to open the forge or to post, with the raw error;
+// never of a failure to print the URL.
+func newForgeCommentCommand(env *forgeEnv, short string, post func(f forge.Forge, cmd *cobra.Command, n int, body string) (string, error), onFail func(cmd *cobra.Command, n int, body string, err error)) *cobra.Command {
 	cmd := &cobra.Command{
 		Use: "comment <number> --body-file F", Short: short, Args: forgeArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -171,9 +209,16 @@ func newForgeCommentCommand(env *forgeEnv, short string, post func(f forge.Forge
 			if err != nil {
 				return err
 			}
-			return env.write(cmd, func(f forge.Forge) error {
+			var onOpen func(error)
+			if onFail != nil {
+				onOpen = func(err error) { onFail(cmd, n, body, err) }
+			}
+			return env.writeNoting(cmd, onOpen, func(f forge.Forge) error {
 				url, err := post(f, cmd, n, body)
 				if err != nil {
+					if onFail != nil {
+						onFail(cmd, n, body, err)
+					}
 					return err
 				}
 				_, err = fmt.Fprintln(env.stdout(cmd), url)
@@ -190,6 +235,9 @@ func newForgeIssueCommentCommand(env *forgeEnv) *cobra.Command {
 		func(f forge.Forge, cmd *cobra.Command, n int, body string) (string, error) {
 			c, err := f.CreateComment(cmd.Context(), n, body)
 			return c.URL, err
+		},
+		func(cmd *cobra.Command, n int, body string, err error) {
+			notePostFailed(env.env, env.clock(), env.stderr(cmd), n, "forge issue comment", body, err)
 		})
 }
 
@@ -232,11 +280,14 @@ func (e *forgeEnv) statusNames() []string {
 
 func newForgeIssueStatusCommand(env *forgeEnv) *cobra.Command {
 	return &cobra.Command{
-		Use: "status <number> <status>", Short: "Move an issue to a board status, adding it to the board first", Args: forgeArgs(2),
+		Use: "status <number> [<status>]", Short: "Read an issue's board status, or move it to one (adding it to the board first)", Args: forgeArgsRange(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			n, err := forgeNumber(cmd, args[0])
 			if err != nil {
 				return err
+			}
+			if len(args) == 1 {
+				return env.readIssueStatus(cmd, n)
 			}
 			status := args[1]
 			if names := env.statusNames(); names != nil && !slices.Contains(names, status) {
@@ -258,13 +309,49 @@ func newForgeIssueStatusCommand(env *forgeEnv) *cobra.Command {
 	}
 }
 
+// readIssueStatus prints {"board", "on_board", "status"}. Without [forge.board] there is no
+// board to read: it says so without opening the forge.
+func (e *forgeEnv) readIssueStatus(cmd *cobra.Command, n int) error {
+	noBoard := e.repo == nil
+	if !noBoard {
+		r, err := e.loadRepo(cmd)
+		if err != nil {
+			return err
+		}
+		noBoard = r.Board == nil
+	}
+	if noBoard {
+		return e.printStatus(cmd, map[string]any{"board": false, "on_board": false, "status": nil})
+	}
+	return e.read(cmd, "", func(f forge.Forge) (any, error) {
+		item, ok, err := f.IssueItem(cmd.Context(), n)
+		if err != nil {
+			return nil, err
+		}
+		var status any
+		if item.Status != "" {
+			status = item.Status
+		}
+		return map[string]any{"board": true, "on_board": ok, "status": status}, nil
+	})
+}
+
+func (e *forgeEnv) printStatus(cmd *cobra.Command, v map[string]any) error {
+	text, err := forgeResult{value: v}.render()
+	if err != nil {
+		return e.fail(cmd, err)
+	}
+	_, err = fmt.Fprint(e.stdout(cmd), text)
+	return err
+}
+
 func newForgePRWriteCommands(env *forgeEnv) []*cobra.Command {
 	return []*cobra.Command{newForgePRCreateCommand(env),
 		newForgeCommentCommand(env, "Comment on a pull request (merge request); prints the comment URL",
 			func(f forge.Forge, cmd *cobra.Command, n int, body string) (string, error) {
 				c, err := f.CreateChangeComment(cmd.Context(), n, body)
 				return c.URL, err
-			})}
+			}, nil)}
 }
 
 func newForgePRCreateCommand(env *forgeEnv) *cobra.Command {
@@ -367,11 +454,17 @@ func newForgeMilestoneWriteCommands(env *forgeEnv) []*cobra.Command {
 	create.Flags().StringVar(&createTitle, "title", "", "the title (required)")
 	create.Flags().String("description-file", "", "file with the description")
 
-	var newTitle string
+	var newTitle, newState string
 	edit := &cobra.Command{
-		Use: "edit <title> [--title T] [--description-file F]", Short: "Edit the milestone with this title", Args: forgeArgs(1),
+		Use: "edit <title> [--title T] [--description-file F] [--state open|closed]", Short: "Edit the milestone with this title", Args: forgeArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			var title, desc *string
+			var title, desc, state *string
+			if cmd.Flags().Changed("state") {
+				if newState != "open" && newState != "closed" {
+					return forgeUsage(cmd, fmt.Sprintf("--state %q is not open or closed", newState))
+				}
+				state = &newState
+			}
 			if cmd.Flags().Changed("title") {
 				if err := requireTitle(cmd, newTitle); err != nil {
 					return err
@@ -385,20 +478,49 @@ func newForgeMilestoneWriteCommands(env *forgeEnv) []*cobra.Command {
 				}
 				desc = &d
 			}
-			if title == nil && desc == nil {
-				return forgeUsage(cmd, "nothing to change: give --title or --description-file")
+			if title == nil && desc == nil && state == nil {
+				return forgeUsage(cmd, "nothing to change: give --title, --description-file or --state")
 			}
 			return env.write(cmd, func(f forge.Forge) error {
 				m, err := milestoneByTitle(cmd, f, args[0])
 				if err != nil {
 					return err
 				}
-				_, err = f.EditMilestone(cmd.Context(), m.Number, title, desc)
+				_, err = f.EditMilestone(cmd.Context(), m.Number, title, desc, state)
 				return err
 			})
 		},
 	}
 	edit.Flags().StringVar(&newTitle, "title", "", "the new title")
 	edit.Flags().String("description-file", "", "file with the new description")
+	edit.Flags().StringVar(&newState, "state", "", "open or closed")
 	return []*cobra.Command{create, edit}
+}
+
+var labelColorRE = regexp.MustCompile(`^[0-9a-fA-F]{6}$`)
+
+// newForgeLabelCreateCommand is `label create <name> --color <hex>`: the label is created as
+// written, the colour is six hex digits (a leading "#" is dropped; the forge adds what it needs).
+// A label that exists already is no error. It is also the command `init --labels` prints.
+func newForgeLabelCreateCommand(env *forgeEnv) *cobra.Command {
+	var color string
+	cmd := &cobra.Command{
+		Use: "create <name> --color <hex>", Short: "Create a label; a label that exists already is no error",
+		Args: forgeArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			hex := strings.TrimPrefix(color, "#")
+			if !labelColorRE.MatchString(hex) {
+				return forgeUsage(cmd, "--color must be six hex digits, got "+strconv.Quote(color))
+			}
+			return env.write(cmd, func(f forge.Forge) error {
+				if err := f.CreateLabel(cmd.Context(), args[0], hex); err != nil {
+					return err
+				}
+				_, err := fmt.Fprintf(env.stdout(cmd), "created %s\n", args[0])
+				return err
+			})
+		},
+	}
+	cmd.Flags().StringVar(&color, "color", "", "the colour, six hex digits (required)")
+	return cmd
 }

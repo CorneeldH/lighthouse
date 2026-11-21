@@ -190,5 +190,5 @@ func (g *Gate) importsVerdict(root, stdout, stderr string, code int, err error) 
 		b.WriteString(f + "\n")
 	}
 	b.WriteString("\n[imports] check = false in lighthouse.toml turns this check off.\n")
-	return blockResult(&b), true
+	return block(reasonUndeclaredImport, &b), true
 }

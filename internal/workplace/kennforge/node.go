@@ -21,6 +21,7 @@ var (
 	_ workplace.GitMeter         = (*Adapter)(nil)
 	_ workplace.Relocator        = (*Adapter)(nil)
 	_ workplace.PermissionReader = (*Adapter)(nil)
+	_ workplace.PostFailedReader = (*Adapter)(nil)
 )
 
 // serve returns the serve client of a.Node, or nil on self. An adapter on a node without one
@@ -193,6 +194,19 @@ func (a *Adapter) Permission(ctx context.Context, sessionID string) ([]byte, err
 	data, err := n.Permission(ctx, sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("permission of %s on node %s: %w", sessionID, a.Node, notMeasurable(err))
+	}
+	return data, nil
+}
+
+// PostFailed is the raw post-failed note of the run on the node; nil, nil without one.
+func (a *Adapter) PostFailed(ctx context.Context, sessionID string) ([]byte, error) {
+	n, err := a.nodeOnly("post-failed of " + sessionID)
+	if err != nil {
+		return nil, err
+	}
+	data, err := n.PostFailed(ctx, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("post-failed of %s on node %s: %w", sessionID, a.Node, notMeasurable(err))
 	}
 	return data, nil
 }

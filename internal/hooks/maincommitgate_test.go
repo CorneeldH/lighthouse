@@ -55,7 +55,7 @@ func TestMainCommitGateBlocksACommitOnMain(t *testing.T) {
 
 	res := gate(t, "git commit -m x", dir)
 
-	want := "Main-commit gate: blocked — '" + root + "' is on branch 'main' (commit).\n"
+	want := "[main-commit-gate/commit-to-main] Main-commit gate: blocked — '" + root + "' is on branch 'main' (commit).\n"
 	if res.Code != 2 || !strings.HasPrefix(res.Stderr, want) {
 		t.Fatalf("got code %d, stderr %q; want 2 and a stderr starting with %q", res.Code, res.Stderr, want)
 	}

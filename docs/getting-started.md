@@ -102,7 +102,7 @@ and goes on (see [Requirements](#requirements)).
   out. Both work later with `--upgrade`, and both repeat.
 - `lighthouse init --labels` also proposes a label taxonomy, with `[labels]` and `[paths] labels`
   in `lighthouse.toml`, in the same diff and under the same approval. `--create-labels`, only
-  with `--labels`, then creates the missing labels on the GitHub remote and asks nothing more: the
+  with `--labels`, then creates the missing labels on the forge (GitHub or GitLab) and asks nothing more: the
   flag is the approval, also when there is nothing to apply (`No changes.`).
 
 What `init` writes, all of it on the diff first:

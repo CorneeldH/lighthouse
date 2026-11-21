@@ -201,7 +201,7 @@ def test_publish_uses_notes_file_and_clobber():
     """Fails when publish loses the notes file, the re-upload or the checksums."""
     publish = _jobs(BUILD)["publish"]
     for needle in (
-        "ci/changelog.py notes",
+        "go run ./ci/changelog notes",
         "--notes-file",
         "--clobber",
         "SHA256SUMS",
@@ -209,6 +209,7 @@ def test_publish_uses_notes_file_and_clobber():
         "Pre-release build of $TAG for testing; not a release.",
     ):
         assert needle in publish, needle
+    _assert_setup_go_before(publish, "go run ./ci/changelog notes")
     # A normal tag without a section must fail; only the prerelease branch writes the fixed line.
     assert re.search(
         r'if \[ "\$PRERELEASE" = true \]; then\s*\n\s*echo "Pre-release build of \$TAG[^\n]*\n'
@@ -393,6 +394,15 @@ def test_release_waits_for_macos():
     assert re.search(r"^    needs: macos\s*$", jobs["ui"], re.MULTILINE)
 
 
+def _assert_setup_go_before(job: str, marker: str) -> None:
+    """The job sets up Go from go.mod, without a build cache, before `marker` (the go run)."""
+    setup = re.search(
+        r"uses: actions/setup-go@[0-9a-f]{40} # v[\d.]+\n\s+with:\n\s+go-version-file: go.mod\n\s+cache: false", job
+    )
+    assert setup, "no setup-go with go-version-file and cache: false"
+    assert setup.start() < job.index(marker), marker
+
+
 def _tested_commit_check(release: str) -> str:
     """The `if` block in the release loop that compares HEAD with the commit macOS tested."""
     head = '            if [ "$(git rev-parse HEAD)" != "$TESTED" ]; then\n'
@@ -410,7 +420,9 @@ def test_release_only_releases_the_tested_commit():
     check = release.index(block)
     assert release.index("for attempt in 1 2 3") < check
     assert release.index("git reset --hard origin/main") < check
-    assert check < release.index("ci/changelog.py release")
+    assert check < release.index("go run ./ci/changelog release")
+    # The toolchain is set up once, before the retry loop, not inside it.
+    _assert_setup_go_before(release, "for attempt in 1 2 3")
     # A push or cron run that was overtaken ends green: the run of the newer commit releases.
     assert re.search(r'^              echo "release: [^"]+"; exit 0$', block, re.MULTILINE), block
 

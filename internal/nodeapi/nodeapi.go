@@ -27,6 +27,8 @@ const (
 	PathCarrier = Prefix + "/workspaces/{id}/carrier"
 	// PathPermission is GET: the raw permission.json of the run, 404 no_permission without one.
 	PathPermission = Prefix + "/runs/{session}/permission"
+	// PathPostFailed is GET: the raw post-failed.json of the run, 404 no_post_failed without one.
+	PathPostFailed = Prefix + "/runs/{session}/post-failed"
 )
 
 // The git routes: each looks up the worktree of {id} at the node's own forge and works on
@@ -65,6 +67,7 @@ const (
 	CodeWorkspaceGone = "workspace_gone" // the node's forge no longer knows the workspace
 	CodeNoTranscript  = "no_transcript"  // the session has no transcript on the node
 	CodeNoPermission  = "no_permission"  // the run has no permission note on the node
+	CodeNoPostFailed  = "no_post_failed" // the run has no post-failed note on the node
 )
 
 // CodeOwnWork is the code of the 409 of follow: the workspace holds work origin lacks.

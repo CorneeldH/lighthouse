@@ -68,3 +68,38 @@ deliberate non-closing form.
 `gh issue list --json` breaks under the rtk proxy (`Failed to parse gh issue list output`). Use
 `lighthouse forge issue list` or `lighthouse forge issue search`, or `gh api` when you need a
 `gh` call.
+
+## §close-issue
+
+- **Unblock lane.** With the `ci.bot_*` keys set, `init` installs
+  `.github/workflows/lighthouse-unblock-dependents.yml`: the bot from `[ci]` releases at every
+  close as `completed`, and the session checks afterwards. The run check and the restart stay
+  `gh`: `gh run list --workflow lighthouse-unblock-dependents.yml` and
+  `gh workflow run lighthouse-unblock-dependents.yml -f issue=<nr>`. Without a bot there is no
+  lane: the session runs `lighthouse unblock-dependents --issue <nr>` itself.
+- **Close reason.** Only `completed` releases; `not_planned` and `duplicate` keep the blockers.
+  `lighthouse forge issue close` closes as `completed`.
+- **Release flow (only if present).** Only when the repo has `scripts/release.py`; it uses `gh workflow run`,
+  `gh run list` and `gh release view <version> --repo <forge.repo>`.
+- **`closer`** in `lighthouse forge issue changes` comes from the last closed event of the issue:
+  the pull request of this repository that closed it, else `null` (a commit, a manual close, a
+  pull request in another repository).
+- **Commit URL:** `https://github.com/<forge.repo>/commit/<sha>`, with the full hash.
+
+## §ci
+
+CI actions that have no shared command. The job list of a run, to see which step never completed:
+
+```bash
+R=$(lighthouse config forge.repo) && gh api "repos/$R/actions/runs/<id>/jobs"
+```
+
+Rerun only the failed jobs of a run: `gh run rerun <id> --failed --repo "$R"`. The roborev review
+comment on a PR comes from `github-actions[bot]`.
+
+## §workflows
+
+The workflows call `gh` themselves, so they are an exception to the forge-neutral `lighthouse forge`.
+`lighthouse unblock-dependents` calls `gh` and only runs in
+GitHub Actions on `issues: closed`. `gh release download` fetches the lighthouse binary on the
+runner, and `.github/workflows/build.yml` publishes lighthouse's own release with `gh release`; these steps run only in GitHub Actions and are skipped elsewhere.
