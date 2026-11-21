@@ -60,13 +60,20 @@ eigen spec-sectie en valt buiten dit plan.
   `planMilestonesQuery`, `planIssues`, `planMilestones`)
 - Modify: `internal/forge/gitlab_planning.go`
 - Modify: `internal/forge/forgesuite/suite.go` (rond regel 388)
+- Modify: `internal/forge/forgetest/server.go` (de fake-GitHub levert nu per issue `labels` en per
+  milestone de gesloten issues met `stateReason`; nu serveert `planMilestones` alleen
+  nummer/titel/staat, rond `:802-806` en `:951-958`)
 - Test: `internal/forge/planning_test.go`, `internal/forge/gitlab_planning_test.go`
 
 **Interfaces:**
 - Produces: `PlanIssue.Labels []string` (labelnamen, nooit nil) en
   `MilestoneCount.Closed []ClosedIssue` met
   `type ClosedIssue struct { Number int; Title, URL string }`, op nummer oplopend, nooit nil.
-  `Closed` bevat alleen issues gesloten als *completed*, zodat `len(Closed) == Done`.
+  Op GitHub bevat `Closed` alleen issues gesloten als *completed*, zodat `len(Closed) == Done`;
+  `Done` volgt daar uit `len(Closed)`, niet uit de zoek-telling, zodat blokjes en percentage niet
+  uiteen kunnen lopen. Op GitLab telt elk gesloten issue als `Done` (`gitlab_planning.go:14`,
+  `NotPlannedCountsAsDone` in de suite), dus daar is `Closed` alle gesloten issues; de suite
+  vertakt per forge zoals `wantDone` al doet.
 
 - [ ] **Step 1: Test.** `TestPlanningReadsLabels`: een open issue met labels `a`, `b` geeft
   `Labels == []string{"a","b"}`, zonder labels `[]string{}`. `TestPlanningClosedIssues`: een
@@ -77,9 +84,9 @@ eigen spec-sectie en valt buiten dit plan.
 - [ ] **Step 3: Implementeer** in `planning.go`: `labels(first: 50){ nodes { name } }` op de
   issuesquery (`pageInfo` bij afkapping is een fout) en
   `issues(first: 100, states: CLOSED){ pageInfo{hasNextPage} nodes{number title url stateReason} }`
-  op de milestonequery, in Go gefilterd op `stateReason == "COMPLETED"`. De aparte
-  tel-query voor `Done` blijft staan; `Closed` komt uit dezelfde milestone-read. Zorg dat
-  `len(Closed) == Done` in de tests, en noteer in de doc-comment van `Planning` dat de
+  op de milestonequery, in Go gefilterd op `stateReason == "COMPLETED"`. Op
+  GitHub haal je `Done` uit `len(Closed)` en verdwijnt de `is:closed reason:completed`-zoektelling
+  uit `planning.go:207-228`; zorg dat `len(Closed) == Done` in de tests, en noteer in de doc-comment van `Planning` dat de
   querykosten stijgen.
 - [ ] **Step 4:** Doe hetzelfde voor GitLab in `gitlab_planning.go` (labels zitten daar op het
   issue; gesloten issues via de milestone-issues met `state=closed`). Breid de gedeelde
@@ -93,7 +100,11 @@ eigen spec-sectie en valt buiten dit plan.
 
 **Files:**
 - Modify: `internal/priorities/priorities.go` (`Source`, `Issue`, `Milestone`, `Build`)
-- Modify: `internal/cli/serve.go` (`startPriorities`, regel 267-280, en waar `Source` wordt gevuld)
+- Modify: `internal/cli/serve.go` (`startPriorities`, regel 267-280, en waar `Source` wordt gevuld,
+  `:210-213`; `forgeReposWith`, `:123-143`, en het `--repo`-pad, `:117`)
+- Modify: `internal/overview/overview.go` (`RepoSource` krijgt `Labels repoconfig.Labels`) en
+  `internal/repoconfig/repoconfig.go` (geëxporteerde `DefaultLabels()` naast `defaultString`,
+  `:205`)
 - Modify: `web/openapi.json`, `web/src/api/lighthouse.ts` (regenereren)
 - Test: `internal/priorities/priorities_test.go`, `internal/server/priorities_test.go`,
   `internal/cli/serve_test.go`
@@ -115,11 +126,17 @@ eigen spec-sectie en valt buiten dit plan.
 - [ ] **Step 2: Draai** `go test ./internal/priorities/`; verwacht FAIL.
 - [ ] **Step 3: Implementeer** `Build` met een `map[string]bool` voor vragen naast de
   statusmap, volgens het patroon van `priorities.go:80-93`. Pas `startPriorities` aan zodat hij
-  `ov` doorgeeft. Vul `Source.Labels` uit de config van die repo; heeft de repo er geen, gebruik
-  de standaard.
-- [ ] **Step 4: Server- en serve-tests** bijwerken (`fakeForge`, `countingSource`) en een
-  endpointtest die de nieuwe JSON-velden en `[]` (nooit `null`) voor `closed` controleert.
-- [ ] **Step 5: Regenereer** de client: `cd web && npm run gen`; controleer
+  `ov` doorgeeft. `serve()` ziet de repo-config nu niet: `RepoSource` heeft geen labels en
+  `forgeReposWith` gooit `repoconfig.Repo` weg na het bouwen. Neem `Labels` dus op in
+  `RepoSource`, vul ze in `forgeReposWith`, en gebruik `repoconfig.DefaultLabels()` in het
+  `--repo`-pad (`serve.go:117`, waar `repoconfig.Repo{Slug, Kind}` lege labels heeft). Vul dan
+  `Source.Labels` in `serve.go:210-213` uit `r.Labels`.
+- [ ] **Step 4: Server- en serve-tests** bijwerken (`fakeForge`, `countingSource`), een serve-test
+  die voor beide paden (config en `--repo`) een niet-lege labelsleutel end-to-end controleert, en
+  een endpointtest die de nieuwe JSON-velden en `[]` (nooit `null`) voor `closed` controleert.
+- [ ] **Step 5: Regenereer** eerst `web/openapi.json` (die schrijft `TestOpenAPISnapshot`, niet
+  `npm run gen`): `go test ./internal/server -run TestOpenAPISnapshot -update`; dan de client:
+  `cd web && npm run gen`; controleer
   `git status --porcelain -- src/api` toont alleen de verwachte wijziging.
 - [ ] **Step 6: Draai** `go test -race ./internal/priorities/ ./internal/server/ ./internal/cli/`;
   verwacht PASS. **Commit** `feat(priorities): label, open vraag en gesloten issues in de API (#437)`.
@@ -141,9 +158,10 @@ eigen spec-sectie en valt buiten dit plan.
 - Consumes: `Issue.label`, `Issue.open_question`, `Issue.status`, `Issue.blocked_by`, `liveRun`.
 
 - [ ] **Step 1: Test.** `derive.test.ts` leest `tests/pack/fixtures/issue-state/cases.json`
-  (`fs.readFileSync` met een pad via `import.meta.url`, omdat de fixture buiten `web/` staat;
-  controleer dat vitest dat toestaat, anders kopieer niets maar zet `server.fs.allow` in de
-  vitest-config) en draait per case `issueState()`. De case-velden (`labels`, `status`, `run`,
+  (als JSON-import met `resolveJsonModule` in `web/tsconfig.app.json`; geen `node:fs`, want
+  `tsconfig.app.json` heeft alleen `types: ["vite/client"]` en `npm run typecheck` zou op
+  TS2307 falen. Staat Vite de import buiten `web/` niet toe, zet dan `server.fs.allow` voor het
+  workspace-root en kopieer niets) en draait per case `issueState()`. De case-velden (`labels`, `status`, `run`,
   `blockers`, `open_question`) worden vertaald naar `Issue` en `Run`; de labelnamen in de fixture
   zijn al sleutels, dus `label` is de sleutel met de laagste rang. Gesloten cases (`closed`)
   worden overgeslagen en in Taak 4 gedekt. Verwacht per case `want.state` en `want.needs_human`
@@ -154,14 +172,17 @@ eigen spec-sectie en valt buiten dit plan.
   dan blokkadelabel `blocked_*` of een blocker in `blocked_by`; dan `needs_hands`/`needs_testing`;
   anders `ready`. De vlag is `label` in `needs_*` of `open_question`, alleen als de toestand
   `active` is. Vervang `isActive` en alle aanroepen (`MilestonesView.tsx`, `DepsView.tsx`,
-  `UnassignedView.tsx`) door `issueState(...).state === 'active'` waar zij een boolean willen.
+  `UnassignedView.tsx`) door `issueState(...).state === 'active'` waar zij een boolean willen. `isActive` heeft alleen
+  aanroepen in `derive.ts:122` en `derive.test.ts:5,127-140`: vervang dat testblok.
 - [ ] **Step 4: Draai** `npm test`, `npm run typecheck`, `npm run lint`; verwacht PASS. **Commit**
   `feat(web): issueState() volgt de toestandstabel van de spec (#437)`.
 
 ### Task 4: gegroepeerde MilestoneRow
 
 **Files:**
-- Modify: `web/src/lib/priorities/derive.ts` (`MilestoneRow`, `derive.ts:215-289`, `isShaping`,
+- Modify: `web/src/lib/priorities/derive.ts` (`MilestoneRow` krijgt `blocks`, `shaping` en
+  `percent` erbij; de oude `active`, `todo` en `order` blijven staan tot Taak 5 hun laatste lezer
+  (`MilestonesView.tsx:20,96,107,127-130`) vervangt, anders faalt `tsc -b` bij deze commit; `derive.ts:215-289`, `isShaping`,
   `derive.ts:210-213`)
 - Test: `web/src/lib/priorities/derive.test.ts`
 
@@ -174,11 +195,12 @@ eigen spec-sectie en valt buiten dit plan.
 
 - [ ] **Step 1: Test.** Een milestone met issues in alle vijf toestanden geeft `blocks` in de
   volgorde af, actief, oppakbaar, mens nodig, geblokkeerd; binnen oppakbaar de werkvolgorde;
-  `done` op nummer. Een `Controller`-issue staat bij actief. Een actief issue met een open vraag
+  `done` op nummer. Een outside blocker uit een andere repo heeft geen issuedata (`blank()` in
+  `derive.ts`, `external: true`); die krijgt de toestand `ready` en een eigen rand. Een `Controller`-issue staat bij actief. Een actief issue met een open vraag
   heeft `needsHuman`. Een milestone zonder issues of met `Status: shaping` geeft `shaping: true`;
   bij 0 open en 0 gesloten is `percent` 0, niet `NaN`.
 - [ ] **Step 2: Draai** `npm test -- derive`; verwacht FAIL.
-- [ ] **Step 3: Implementeer** de groepering en vervang de `active`/`todo`-splitsing; houd de
+- [ ] **Step 3: Implementeer** de groepering en voeg de groepering toe naast de `active`/`todo`-splitsing; houd de
   bestaande werkvolgorde-sortering en pas die per groep toe.
 - [ ] **Step 4: Draai** de web-tests; verwacht PASS (pas `MilestonesView.test.tsx` en
   `PrioritiesTab.test.tsx` mee aan het nieuwe `MilestoneRow`). **Commit**
@@ -187,7 +209,8 @@ eigen spec-sectie en valt buiten dit plan.
 ### Task 5: balk, tokens en legenda
 
 **Files:**
-- Modify: `web/src/components/priorities/MilestonesView.tsx` (`:6-10`, `:20-22`, `:47-71`,
+- Modify: `web/src/components/priorities/MilestonesView.tsx` en `derive.ts` (verwijder de oude
+  `active`, `todo`, `order` van `MilestoneRow`) (`:6-10`, `:20-22`, `:47-71`,
   `:96-120`)
 - Modify: `web/src/components/priorities/Toolbar.tsx` (legenda, `:73-74`)
 - Modify: `web/src/index.css` (tokens, licht `:93-107`, donker `:144-157`)
@@ -203,12 +226,17 @@ eigen spec-sectie en valt buiten dit plan.
   `#nr`, een smaller niet maar het heeft nog steeds `title="#nr titel"`; een klik opent `url`
   (`window.open` of een `<a>`, volg wat de view nu voor links doet); `shaping` toont `voorlopig`
   en de grijze stippelrand, en `nog geen issues` bij 0 issues. De legenda toont vijf toestanden en
-  de shaping-rand en niet meer `picked up`. De breedte meet je in een test met een stub op de
-  containerbreedte; kies de drempel als constante `MIN_LABEL_WIDTH = 28`.
+  de shaping-rand en niet meer `picked up`. De breedte meet de component met een `ResizeObserver` op de balk
+  (blokbreedte = balkbreedte × aandeel); jsdom heeft er geen, dus stub `ResizeObserver` en
+  `offsetWidth`/`getBoundingClientRect` in de test, en toets ook dat het getal verdwijnt bij een
+  smallere container. Kies de drempel als constante `MIN_LABEL_WIDTH = 28`.
 - [ ] **Step 2: Draai** `npm test -- MilestonesView Toolbar`; verwacht FAIL.
-- [ ] **Step 3: Implementeer.** Verwijder `--lh-yellow`, `--lh-yellow-pale`, `--lh-hatch-*` en
-  `--lh-shaping-*` uit `index.css` en `MilestonesView.tsx` voor zover `DepsView.tsx` ze niet nog
-  gebruikt (die blijft buiten scope: laat zijn tokens staan en noem dat in de commit); voeg tokens
+- [ ] **Step 3: Implementeer.** Verwijder `--lh-yellow-pale`, `--lh-hatch-*` en
+  `--lh-shaping-*` uit `index.css` en `MilestonesView.tsx`, na een grep over heel `web/src`, en
+  alleen voor zover niets anders ze gebruikt. **Laat `--lh-yellow` staan**: het is het merkaccent
+  (`index.css:51`, `Header.tsx:35,40,57`, `Tabs.tsx:43`, `RunRow.tsx:18,51`, `RunBlocks.tsx:127`,
+  `ControllerSection.tsx:14`, `tone.ts:9`, gereserveerd in `palette.test.ts:7`); verwijder alleen
+  het gebruik ervan in `MilestonesView.tsx` en de legenda. `DepsView.tsx` blijft buiten scope: laat zijn tokens staan en noem dat in de commit. Voeg tokens
   toe voor de streep (`repeating-linear-gradient` van milestone-kleur en transparant) en het kruis,
   voor licht én donker. Mens nodig: `outline`/`border` 1,5 px dashed `var(--foreground)` over
   elke toestand. Outside blockers: dezelfde `Block` met `border: 1.5px solid <kleur eigen milestone>`.
