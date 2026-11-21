@@ -4,6 +4,28 @@ All notable changes to lighthouse. The format follows [Keep a Changelog](https:/
 chosen is in [docs/releasing.md](docs/releasing.md). The release workflow writes the sections below from the
 fragments in `changelog.d/`; never edit a released section by hand.
 
+## [v0.20.0] - 2026-11-21
+
+### Added
+
+- The `lighthouse.db` database now holds a telemetry data model: trajectories, sessions, assignments, usage and findings, with idempotent writers and a linking rule for interactive sessions.
+- `lighthouse measure-recovery` meet per gemergde PR het herstel in de 7 dagen na de merge (fix- en revert-commits op dezelfde bestanden, bug-issues die de PR noemen) en het aantal `fix-pr`-rondes ervoor, en schrijft dat idempotent in `lighthouse.db` (tabellen `recoveries` en `recovery_items`, migratie 0011). Alleen GitHub.
+- New command `lighthouse state`: `show <nr>` prints the state of an issue (done, active, needs human, blocked or ready), `label <nr> <key>` sets a blocking label with the rank rule (the lowest rank wins, the others go), and `return <nr> <key>` also moves the issue to `To do` on the board, leaving its Priority alone. Triage gate 0 now uses the same rules.
+
+### Changed
+
+- `plan-review-record` now writes the review record on every machine; the host.toml restriction and exit code 3 are gone.
+  The review record is now schema 6 and carries a `trajectory` (repo and issue, or `null`), taken from `--issue` or the issue branch and `forge.repo`.
+  The new `lighthouse review-index [--ledger <path>]... [--issue <n>]` links the findings of plan and spec review records, and the rulings of an SDD ledger, to their trajectory in `lighthouse.db`; `plan-review-record write` runs the same indexing after writing (a failure there is a warning).
+- Core hook blocks now carry the reason as `[<hook>/<id>]`. The go and shell hooks block a configuration that switches off a floor rule (the linters `errcheck`, `govet`, `ineffassign`, `staticcheck` and `unused`, and the shellcheck codes SC2164, SC2046, SC2115, SC2155 and SC2034), and name the route for existing debt: `issues.new-from-rev` for Go, a motivated `# shellcheck disable=SCxxxx <reason>` for shell.
+- The controller reads and writes the GitHub board, pull requests and blockers through REST with conditional requests, so an exhausted GraphQL limit normally no longer stops a tick.
+- `post-artefact`, `labels` (and so `init --create-labels`) and `worktree-audit` no longer call `gh` but read and write through the forge layer, so they work on GitLab too. New forge methods `CommitKnown`, `CreateLabel`, `PullHeads` and `IssueClosingHeads`, and a new command `lighthouse forge label create`. `lighthouse init` no longer writes the GitHub workflows on a GitLab repo; the workflows keep `gh`, recorded as an exception in `lighthouse-forge`.
+- The skills fix-pr, write-handoff, review-plan and upgrade no longer call `gh` directly but go through `lighthouse forge`, so they work on GitLab too, and `requires.toml` names `gh` only per forge. New commands: `lighthouse releases`, `lighthouse forge pr checks`, `forge pr view --comments` and the read form `forge issue status <nr>`.
+
+### Fixed
+
+- A controller run whose handoff or question post fails no longer stalls the chain: the run leaves a `post-failed.json` note, and the controller posts the comment itself or hands the issue back with the error. `lighthouse post-artefact` no longer uses GraphQL.
+
 ## [v0.19.0] - 2026-11-19
 
 ### Added
