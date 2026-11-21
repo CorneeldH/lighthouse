@@ -6,6 +6,8 @@ import {
   isShaping,
   isUphill,
   milestoneRows,
+  placeInRepo,
+  priorityOrder,
   sortMilestoneRows,
   withoutMilestone,
 } from './derive'
@@ -266,5 +268,54 @@ describe('withoutMilestone', () => {
     expect(rows[1]).toMatchObject({ relation: 'waits', relatedNumber: 7 })
     expect(rows[2].closedMilestone).toBe('Old')
     expect(rows[3].closedMilestone).toBeNull()
+  })
+})
+
+describe('milestone rank and priority order', () => {
+  const mrow = (repo: string, number: number, rank: number | null) =>
+    ({ repo, number, rank }) as Parameters<typeof priorityOrder>[0][number]
+  const ids = (rows: Array<{ repo: string; number: number }>) => rows.map((r) => `${r.repo}${r.number}`)
+
+  it('puts place 1 of every repo first, then place 2, with unranked below', () => {
+    // Input is in computed order.
+    const rows = [
+      mrow('A', 10, 2),
+      mrow('B', 20, null),
+      mrow('A', 11, 1),
+      mrow('B', 21, 1),
+      mrow('A', 12, null),
+    ]
+    expect(ids(priorityOrder(rows))).toEqual(['A11', 'B21', 'A10', 'B20', 'A12'])
+  })
+
+  it('keeps computed order for equal ranks within a repo', () => {
+    const rows = [mrow('A', 3, 1), mrow('A', 1, 1), mrow('A', 2, 1)]
+    expect(ids(priorityOrder(rows))).toEqual(['A3', 'A1', 'A2'])
+  })
+
+  it('does not mutate its input', () => {
+    const rows = [mrow('A', 1, 2), mrow('A', 2, 1)]
+    priorityOrder(rows)
+    expect(ids(rows)).toEqual(['A1', 'A2'])
+  })
+
+  it('placeInRepo counts ranked milestones of that repo only', () => {
+    const rows = [mrow('A', 1, 5), mrow('B', 2, 1), mrow('A', 3, 2), mrow('A', 4, null)]
+    expect(placeInRepo(rows, 'A', 3)).toBe(1)
+    expect(placeInRepo(rows, 'A', 1)).toBe(2)
+    expect(placeInRepo(rows, 'B', 2)).toBe(1)
+    expect(placeInRepo(rows, 'A', 4)).toBeNull()
+    expect(placeInRepo(rows, 'A', 99)).toBeNull()
+  })
+
+  it('milestoneRows reads the rank from the description', () => {
+    const repos = [
+      repo(R, [], [
+        { number: 1, title: 'one', open: 0, done: 0, description: 'x\nPriority: 4' },
+        { number: 2, title: 'two', open: 0, done: 0, description: 'none' },
+      ]),
+    ]
+    const rows = milestoneRows(repos, buildGraph(repos, []))
+    expect(rows.map((r) => r.rank)).toEqual([4, null])
   })
 })

@@ -1,4 +1,5 @@
 import type { Issue, MilestoneRef, Repo, Run } from '../../api/lighthouse'
+import { parseRank } from './rank'
 
 export type NodeKey = string
 
@@ -226,6 +227,7 @@ export interface MilestoneRow {
   empty: boolean
   outside: GNode[]
   order: GNode[]
+  rank: number | null
 }
 
 const byRepoNumber = (a: GNode, b: GNode) =>
@@ -286,10 +288,48 @@ export function milestoneRows(repos: Repo[], graph: Graph): MilestoneRow[] {
         empty,
         outside,
         order,
+        rank: parseRank(m.description),
       })
     }
   }
   return rows
+}
+
+// Place of each ranked row within its repo: by rank, ties by input (computed) order.
+function placesByRow(rows: MilestoneRow[]): Map<MilestoneRow, number> {
+  const byRepo = new Map<string, MilestoneRow[]>()
+  for (const r of rows) {
+    if (r.rank === null) continue
+    const l = byRepo.get(r.repo) ?? []
+    l.push(r)
+    byRepo.set(r.repo, l)
+  }
+  const places = new Map<MilestoneRow, number>()
+  for (const l of byRepo.values()) {
+    // Array.prototype.sort is stable, so equal ranks keep the input order.
+    ;[...l].sort((a, b) => (a.rank as number) - (b.rank as number)).forEach((r, i) => places.set(r, i + 1))
+  }
+  return places
+}
+
+// Priority order of rows that are already in computed order: place 1 of every repo, then place 2,
+// and so on; within a place the computed order; unranked rows below in computed order.
+export function priorityOrder(rows: MilestoneRow[]): MilestoneRow[] {
+  const places = placesByRow(rows)
+  const index = new Map(rows.map((r, i) => [r, i]))
+  const key = (r: MilestoneRow) => places.get(r) ?? Number.POSITIVE_INFINITY
+  return [...rows].sort((a, b) => {
+    const ka = key(a)
+    const kb = key(b)
+    if (ka !== kb) return ka < kb ? -1 : 1
+    return (index.get(a) as number) - (index.get(b) as number)
+  })
+}
+
+// 1-based place of a milestone among the ranked milestones of its repo, or null when unranked.
+export function placeInRepo(rows: MilestoneRow[], repo: string, number: number): number | null {
+  const row = rows.find((r) => r.repo === repo && r.number === number)
+  return row === undefined ? null : (placesByRow(rows).get(row) ?? null)
 }
 
 export function sortMilestoneRows(rows: MilestoneRow[]): MilestoneRow[] {
