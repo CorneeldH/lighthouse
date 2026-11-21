@@ -456,3 +456,86 @@ func TestSetPushedRoundTrip(t *testing.T) {
 		t.Errorf("History = %+v, %v; want the row still pushed at %s", hist, err, sha)
 	}
 }
+
+func TestTakeLinksTrajectory(t *testing.T) {
+	ctx := context.Background()
+	db := openDB(t)
+	first, err := Take(ctx, db, claim("owner/a", 7, "start:7"))
+	if err != nil {
+		t.Fatalf("Take: %v", err)
+	}
+	if err := Release(ctx, db, first.ID, Handoff, "", time.Now()); err != nil {
+		t.Fatalf("Release: %v", err)
+	}
+	resume := claim("owner/a", 7, "resume:7")
+	resume.Mode = "resume"
+	second, err := Take(ctx, db, resume)
+	if err != nil {
+		t.Fatalf("Take resume: %v", err)
+	}
+	var n int
+	if err := db.QueryRow(`SELECT count(*) FROM trajectories WHERE repo = 'owner/a' AND issue = 7`).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("trajectories for owner/a#7 = %d (err %v), want 1", n, err)
+	}
+	var total int
+	if err := db.QueryRow(`SELECT count(*) FROM trajectories`).Scan(&total); err != nil || total != 1 {
+		t.Fatalf("trajectories total = %d (err %v), want 1", total, err)
+	}
+	var tid int64
+	if err := db.QueryRow(`SELECT id FROM trajectories`).Scan(&tid); err != nil {
+		t.Fatalf("trajectory id: %v", err)
+	}
+	for _, id := range []int64{first.ID, second.ID} {
+		var got int64
+		var assignment string
+		if err := db.QueryRow(`SELECT trajectory_id, assignment FROM runs WHERE id = ?`, id).Scan(&got, &assignment); err != nil {
+			t.Fatalf("run %d: %v", id, err)
+		}
+		if got != tid || assignment != "standard" {
+			t.Errorf("run %d: trajectory_id = %d, assignment = %q; want %d, standard", id, got, assignment, tid)
+		}
+	}
+}
+
+func TestTakeScheduledHasNoTrajectory(t *testing.T) {
+	ctx := context.Background()
+	db := openDB(t)
+	r, err := Take(ctx, db, scheduledClaim("o/a", "reflect", "20261116T0300"))
+	if err != nil {
+		t.Fatalf("Take: %v", err)
+	}
+	var tid sql.NullInt64
+	if err := db.QueryRow(`SELECT trajectory_id FROM runs WHERE id = ?`, r.ID).Scan(&tid); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if tid.Valid {
+		t.Errorf("scheduled run trajectory_id = %d, want NULL", tid.Int64)
+	}
+	var n int
+	if err := db.QueryRow(`SELECT count(*) FROM trajectories`).Scan(&n); err != nil || n != 0 {
+		t.Errorf("trajectories = %d (err %v), want 0", n, err)
+	}
+}
+
+func TestTakeRefusedLeavesNoTrajectory(t *testing.T) {
+	ctx := context.Background()
+	db := openDB(t)
+	if _, err := db.Exec(`INSERT INTO runs (repo, issue, session_id, mode, trigger, trigger_key, attempt, started_at)
+		VALUES ('owner/a', 7, 's', 'start', 'handoff', 'start:7', 1, '2026-10-31T12:00:00Z')`); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if _, err := Take(ctx, db, claim("owner/a", 7, "answer:7")); !errors.Is(err, ErrClaimed) {
+		t.Fatalf("Take error = %v, want ErrClaimed", err)
+	}
+	var n int
+	if err := db.QueryRow(`SELECT count(*) FROM trajectories`).Scan(&n); err != nil || n != 0 {
+		t.Errorf("trajectories = %d (err %v), want 0", n, err)
+	}
+	var tid sql.NullInt64
+	if err := db.QueryRow(`SELECT trajectory_id FROM runs WHERE trigger_key = 'start:7'`).Scan(&tid); err != nil {
+		t.Fatalf("seeded run: %v", err)
+	}
+	if tid.Valid {
+		t.Errorf("seeded run trajectory_id = %d, want NULL", tid.Int64)
+	}
+}

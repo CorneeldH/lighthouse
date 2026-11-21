@@ -27,6 +27,7 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/agentsmd"
 	"github.com/CorneeldH/lighthouse/internal/deps"
+	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/hostconfig"
 	labelsync "github.com/CorneeldH/lighthouse/internal/labels"
 	"github.com/CorneeldH/lighthouse/internal/manifest"
@@ -54,7 +55,8 @@ type Options struct {
 	Upgrade, Force, Yes bool
 	Labels              bool                                                      // --labels: propose the label taxonomy file, [labels] and [paths] labels
 	CreateLabels        bool                                                      // --create-labels (with --labels): create the missing labels on the remote
-	SyncLabels          func(root string, create bool, out, errw io.Writer) error // nil means labels.Sync
+	SyncLabels          func(root string, create bool, out, errw io.Writer) error // nil means labels.Sync with the forge of LabelForge
+	LabelForge          func(root string) forge.Forge                             // opens the forge of the labels; nil, or a nil result, means labels are printed, not created
 	AddPacks, DropPacks []string                                                  // --pack and --no-pack (plan M0 (c), design choice 6)
 	ForgeHosts          []string                                                  // --forge-host: hosts of self-hosted GitLab instances
 	Audit               func(root string, out, errOut io.Writer)                  // read-only agent audit, run after the files are written; nil means none
@@ -169,7 +171,7 @@ func execute(o Options) error {
 			return err
 		}
 	}
-	tables, haveRepo, err := configTables(root, chosenPacks, labelsPath, o.ForgeHosts)
+	tables, haveRepo, kind, err := configTables(root, chosenPacks, labelsPath, o.ForgeHosts)
 	if err != nil {
 		return err
 	}
@@ -177,14 +179,14 @@ func execute(o Options) error {
 	if lookup == nil {
 		lookup = (&goLookup{root: root, tables: tables}).lookup
 	}
-	desired = fillWorkflows(o.Err, desired, lookup, func(rel string) ([]byte, bool) {
+	desired = fillWorkflows(o.Err, dropWorkflows(desired, kind), lookup, func(rel string) ([]byte, bool) {
 		if _, listed := m.Lookup(packs.Key{Kind: packs.KindFile, Path: rel}); !listed {
 			return nil, false
 		}
 		b, ok, err := readFile(root, rel)
 		return b, ok && err == nil
 	})
-	for _, miss := range o.Deps.Check(mergeRequires(reqs)) {
+	for _, miss := range o.Deps.Check(mergeRequires(forgeRequires(reqs, kind))) {
 		_, _ = fmt.Fprintf(o.Err, "missing dependency: %s (needed by: %s)\n", miss.Tool, strings.Join(miss.NeededBy, ", "))
 	}
 
@@ -248,7 +250,13 @@ func execute(o Options) error {
 	if o.Labels {
 		sync := o.SyncLabels
 		if sync == nil {
-			sync = labelsync.Sync
+			var f forge.Forge
+			if o.LabelForge != nil {
+				f = o.LabelForge(root)
+			}
+			sync = func(root string, create bool, out, errw io.Writer) error {
+				return labelsync.Sync(root, create, f, out, errw)
+			}
 		}
 		if err := sync(root, o.CreateLabels, o.Out, o.Err); err != nil {
 			_, _ = fmt.Fprintln(o.Err, "warning: labels: not synchronised")
@@ -527,8 +535,9 @@ type existingForge struct {
 // configTables are the tables lighthouse.toml should have: the core tables, then the
 // fragments of the chosen packages in their order (plan M0 (c), design choice 4). A
 // non-empty labelsPath adds the label tables, with that path in [paths] labels. A GitLab
-// host is known from extraHosts or from forge.host of an existing lighthouse.toml.
-func configTables(root string, chosen []packs.Pack, labelsPath string, extraHosts []string) ([]projectconfig.Table, bool, error) {
+// host is known from extraHosts or from forge.host of an existing lighthouse.toml. kind
+// is the existing [forge] kind, else the kind of the remote, else "".
+func configTables(root string, chosen []packs.Pack, labelsPath string, extraHosts []string) ([]projectconfig.Table, bool, string, error) {
 	var ex existingForge
 	if b, err := os.ReadFile(filepath.Join(root, configPath)); err == nil {
 		if _, err := toml.Decode(string(b), &ex); err != nil {
@@ -554,8 +563,13 @@ func configTables(root string, chosen []packs.Pack, labelsPath string, extraHost
 	if labelsPath != "" {
 		core = append(core, projectconfig.LabelTables(labelsPath)...)
 	}
+	// kind: the kind that lighthouse.toml has or gets; "" when neither is known.
+	kind := ex.Forge.Kind
+	if kind == "" {
+		kind = forge.Kind
+	}
 	tables, err := mergeTables(core, chosen)
-	return tables, haveRepo, err
+	return tables, haveRepo, kind, err
 }
 
 // mergeTables joins core and the fragments of chosen per table name, in order. A key

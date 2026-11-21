@@ -50,6 +50,7 @@ func renderChange(c forge.Change) map[string]any {
 		"number": c.Number, "title": c.Title, "body": c.Body, "state": c.State,
 		"labels": renderLabels(c.Labels), "milestone": renderMilestoneRef(c.Milestone),
 		"url": c.URL, "created_at": renderTime(c.CreatedAt), "author": c.Author,
+		"draft": c.Draft, "mergeable": c.Mergeable, "head_ref": c.HeadRef, "base_ref": c.BaseRef,
 	}
 }
 

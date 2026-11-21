@@ -87,7 +87,7 @@
       ],
       "expect": {
         "record": {
-          "schema_version": 5,
+          "schema_version": 6,
           "budget_checks": [
             {
               "round": 1,
@@ -132,7 +132,8 @@
               "source": null,
               "thresholds": null
             }
-          ]
+          ],
+          "trajectory": null
         }
       }
     },

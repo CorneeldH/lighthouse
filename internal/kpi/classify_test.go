@@ -112,3 +112,27 @@ func TestToolClassification(t *testing.T) {
 		t.Error("a mutating command is never diagnostic")
 	}
 }
+
+func TestIsDiagnosticForgePR(t *testing.T) {
+	cases := []struct {
+		command    string
+		diagnostic bool
+		mutating   bool
+	}{
+		{"lighthouse forge pr view 12", true, false},
+		{"lighthouse forge pr checks 12 --failed-log", true, false},
+		{"lighthouse forge pr create --title x", false, false},
+		{"lighthouse forge api -X POST projects/1/jobs/2/retry", false, true},
+		{"lighthouse forge pr comment 12 --body x", false, true},
+		{"lighthouse forge pr view 12 && lighthouse forge pr comment 12", false, true},
+	}
+	for _, c := range cases {
+		in := map[string]any{"command": c.command}
+		if got := isDiagnostic("Bash", in); got != c.diagnostic {
+			t.Errorf("isDiagnostic(%q) = %v, want %v", c.command, got, c.diagnostic)
+		}
+		if got := isMutating("Bash", in); got != c.mutating {
+			t.Errorf("isMutating(%q) = %v, want %v", c.command, got, c.mutating)
+		}
+	}
+}

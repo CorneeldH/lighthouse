@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,13 +11,16 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/CorneeldH/lighthouse/internal/fixturesetup"
+	"github.com/CorneeldH/lighthouse/internal/forge"
+	"github.com/CorneeldH/lighthouse/internal/prbody"
 	"github.com/CorneeldH/lighthouse/internal/scriptcase"
 )
 
 const worktreeAuditFixtures = "../../tests/pack/fixtures/scripts/worktree-audit/cases.json"
 
 // TestWorktreeAuditCases replays every case of cases.json, the fixture that worktree_audit.py ran
-// against first, through the real command: real git against the setup repo, a replayed gh.
+// against first, through the real command: real git against the setup repo, the forge on a replay
+// server (reached as in tests/pack, by the loopback override and a dummy token).
 func TestWorktreeAuditCases(t *testing.T) {
 	for _, c := range scriptcase.Load(t, worktreeAuditFixtures) {
 		t.Run(c.Name, func(t *testing.T) {
@@ -45,8 +49,14 @@ func TestWorktreeAuditCases(t *testing.T) {
 				t.Setenv(k, fixturesetup.Fill(t, v, root))
 			}
 			t.Chdir(root)
+			t.Setenv("GH_TOKEN", "dummy")
+			t.Setenv("GITHUB_TOKEN", "")
+			t.Setenv(prbody.GitHubAPIURLEnv, scriptcase.ReplayForge(t, fillForgeCalls(t, c.ForgeCalls, root)))
 			env := defaultWorktreeAuditEnv()
-			env.Run = scriptcase.Replay(t, fillCalls(t, c.Calls, root))
+			// gh is never scripted any more: a call of it fails the case.
+			if len(c.Calls) != 0 {
+				t.Fatal("a worktree-audit case scripts gh calls")
+			}
 			var out, errOut bytes.Buffer
 			top := &cobra.Command{Use: "lighthouse", SilenceUsage: true, SilenceErrors: true}
 			top.AddCommand(newWorktreeAuditCommand(env))
@@ -79,5 +89,80 @@ func TestWorktreeAuditCases(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func worktreeAuditToml(t *testing.T, text string) {
+	t.Helper()
+	postArtefactToml(t, text)
+}
+
+// The token goes with every request, so only a loopback API URL is followed: any other value is
+// ignored and the real GitHub API is used.
+func TestWorktreeAuditForgeFollowsOnlyALoopbackAPIURL(t *testing.T) {
+	worktreeAuditToml(t, "[forge]\nrepo = \"o/r\"\n")
+	t.Setenv("GH_TOKEN", "dummy")
+	for _, tc := range []struct{ name, url, want string }{
+		{"loopback", "http://127.0.0.1:9", "http://127.0.0.1:9"},
+		{"elsewhere", "https://evil.example.com/api", "https://api.github.com"},
+		{"unset", "", "https://api.github.com"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(prbody.GitHubAPIURLEnv, tc.url)
+
+			f, err := defaultWorktreeAuditEnv().Forge()
+
+			if err != nil {
+				t.Fatal(err)
+			}
+			if gh, ok := f.(*forge.GitHub); !ok || gh.BaseURL != tc.want {
+				t.Errorf("forge = %#v, want a GitHub with BaseURL %q", f, tc.want)
+			}
+		})
+	}
+}
+
+// Someone who is only logged in through `gh auth login` keeps working; without that token too
+// the error is a *forge.TokenError.
+func TestWorktreeAuditForgeFallsBackToGhAuthToken(t *testing.T) {
+	worktreeAuditToml(t, "[forge]\nrepo = \"o/r\"\n")
+	none := func(string) string { return "" }
+
+	o := newForgeOpener(none, "")
+	o.ghToken = func() string { return "from-gh" }
+	f, err := worktreeAuditEnvWith(o).Forge()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gh, ok := f.(*forge.GitHub); !ok || gh.Token != "from-gh" {
+		t.Errorf("forge = %#v, want a GitHub with the token of gh auth token", f)
+	}
+
+	_, err = worktreeAuditEnvWith(newForgeOpener(none, "")).Forge()
+	var te *forge.TokenError
+	if !errors.As(err, &te) {
+		t.Errorf("err = %v, want a *forge.TokenError", err)
+	}
+}
+
+// A GitLab repo opens a GitLab forge, with the token of GITLAB_TOKEN and never gh's.
+func TestWorktreeAuditForgeOpensGitLab(t *testing.T) {
+	worktreeAuditToml(t, "[forge]\nkind = \"gitlab\"\nhost = \"git.example.org\"\nrepo = \"g/p\"\n")
+	getenv := func(k string) string {
+		if k == "GITLAB_TOKEN" {
+			return "glpat"
+		}
+		return ""
+	}
+	o := newForgeOpener(getenv, "")
+	o.ghToken = func() string { t.Error("gh auth token asked for a GitLab repo"); return "x" }
+
+	f, err := worktreeAuditEnvWith(o).Forge()
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.Kind() != "gitlab" {
+		t.Errorf("kind = %q, want gitlab", f.Kind())
 	}
 }

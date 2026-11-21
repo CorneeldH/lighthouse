@@ -77,11 +77,11 @@ for an external event, such as red CI or a merge. Workflow step 4 applies this r
    **If the anchor is a spec or plan path and the issue number is known** (from the prompt or the
    branch `issue-<nr>-…`), post it on the issue,
    also in controller mode (if present) before the `🤖 heading:kind_handoff`,
-   with `dangerouslyDisableSandbox: true` (Go TLS of `gh`):
+   with `dangerouslyDisableSandbox: true`:
    ```bash
    cd <worktree> && lighthouse post-artefact <nr> <absolute path>
    ```
-   The command is idempotent: without a content change it posts nothing. If GitHub does not know
+   The command is idempotent: without a content change it posts nothing. If the forge does not know
    the commit yet, it pushes the branch itself (only without an open PR, never the default
    branch). Put the `artefact:` line in the block under `State:`.
    An error does not block the handoff: the error line goes under `Watch out:`.
@@ -150,27 +150,13 @@ tick starts the next phase itself. Two entries:
 1. **Issue number.** From the prompt, otherwise from the branch (`issue-<nr>-…`). If neither
    works: no comment, only the plain block.
 2. **Offer** (only interactive, and only if the Controller column in Workflow step 4
-   does not say `no`). At `no` you do not read the board status; if the issue is on `Controller` anyway, it stays there until the user moves it. Read the board status and
-   the item ID (`gh` with `dangerouslyDisableSandbox: true`). Gives one of the `forge.board.*` keys
-   rc 1, there is no board: report `board: skipped — no [forge.board] configured` and post without
-   a status change. At rc 2, stop.
-   ```bash
-   set -o pipefail
-   O=$(lighthouse config forge.owner) || exit 2
-   NAME=$(lighthouse config forge.name) || exit 2
-   N=$(lighthouse config forge.board.project_number) || exit $?
-   gh api graphql -f owner="$O" -f name="$NAME" -F nr=<nr> -f query='query($owner: String!, $name: String!, $nr: Int!) {
-     repository(owner: $owner, name: $name) { issue(number: $nr) {
-       projectItems(first: 20) { nodes { id project { number }
-         status: fieldValueByName(name: "Status") {
-           ... on ProjectV2ItemFieldSingleSelectValue { name } } } } } } }' \
-     | jq -r --argjson n "$N" '.data.repository.issue.projectItems.nodes[] | select(.project.number == $n) | "\(.id) \(.status.name)"'
-   ```
-   Not `gh project item-list`: that fetches the whole board with all fields and costs hundreds
-   of GraphQL points of the shared hourly budget.
+   does not say `no`). At `no` you do not read the board status; if the issue is on `Controller` anyway, it stays there until the user moves it. Read the board status
+   with `lighthouse forge issue status <nr>` (`dangerouslyDisableSandbox: true`, Go TLS). Exit 2: stop. Exit 1 (forge error): report `board: unknown — forge error` and post without a status change.
+   `board: false` means no board: report `board: skipped — no [forge.board] configured` and post
+   without a status change. No item ID is needed.
 
    **`default`: a spec, just committed.** At `default` you ask no question: read the
-   board status and the item ID (query above), post with
+   board status (`lighthouse forge issue status <nr>`), post with
    `next: /lighthouse-review-spec <absolute spec path>` (step 5) and set the Status to
    `Controller` (step 6). Report in one line: the worktree now belongs to the controller, an edit there
    breaks the paired round 1 (`blind` refuses a work tree that is not clean). This holds only
@@ -269,7 +255,6 @@ tick starts the next phase itself. Two entries:
    Exception on the workflow route (a controller run, if present): when the unpushed range (`origin/<branch>..HEAD`, or from the merge-base with `origin/<default branch>` when the branch is not on origin) touches `.github/workflows/`, never push (`workflow-push-gate` blocks it): run V2b of `/lighthouse-write-pr` with `lighthouse roborev-gate gate --push` first, then post the block with `next: push-workflows`, `after: /lighthouse-write-pr <nr>` (only while there is no PR) and `roborev: <the output of lighthouse roborev-gate body-line --push>`; the workflow pusher pushes.
    Then post:
    ```bash
-   R=$(lighthouse config forge.repo) || exit 2
    H=$(lighthouse headings kind_handoff) || exit 2
    { printf '🤖 %s\n' "$H"; cat <<'EOF'
    issue: #<nr>
@@ -283,8 +268,11 @@ tick starts the next phase itself. Two entries:
    <the block from Output format>
    ```
    EOF
-   } | gh issue comment <nr> --repo "$R" --body-file -
+   } > <scratch>/handoff.md && lighthouse forge issue comment <nr> --body-file <scratch>/handoff.md
    ```
+   `<scratch>` is the session's scratchpad directory, otherwise a `mktemp -d` directory. The post runs
+   only when the write succeeded; stop if it fails. Run the comment call with
+   `dangerouslyDisableSandbox: true` (Go TLS).
    Between the heading and the last field line there is no blank line: the parser stops at the first.
    For native there is an extra line `lane: native` between `next:` and `when:` (without
    a blank line); otherwise leave it out. The field is valid only next to
@@ -292,15 +280,8 @@ tick starts the next phase itself. Two entries:
    The field names are fixed tokens (`lighthouse protocol`); the prose of the block follows
    `[project] language`.
 6. **Status on `Controller`** (only interactive, also at `default`, after the comment; only with a
-   board, otherwise skipped). Without an item ID from step 2
-   first
-   `N=$(lighthouse config forge.board.project_number) && O=$(lighthouse config forge.owner) && gh project item-add "$N" --owner "$O" --url <issue-url> --format json --jq .id`.
-   ```bash
-   P=$(lighthouse config forge.board.project_id) || exit 2
-   F=$(lighthouse config forge.board.status_field_id) || exit 2
-   S=$(lighthouse config forge.board.status_options.Controller) || exit 2
-   gh project item-edit --id <item-id> --project-id "$P" --field-id "$F" --single-select-option-id "$S"
-   ```
+   board, otherwise skipped). `lighthouse forge issue status <nr> Controller`, with
+   `dangerouslyDisableSandbox: true` (Go TLS); it puts the issue on the board first when needed.
    Then report in one line that the controller picks it up within ten minutes; the
    `/clear` suggestion lapses then.
 7. **In a controller run you stop after the comment.** No `/clear` suggestion, no further

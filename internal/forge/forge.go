@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -18,6 +19,9 @@ var ErrIssueNotFound = errors.New("issue not found")
 
 // ErrReportUnsupported is the answer of a forge that cannot yet list the periods of lighthouse report.
 var ErrReportUnsupported = errors.New("lighthouse report is not supported on this forge yet")
+
+// ErrNoJobLog means a job has no log (any more): JobLog wraps it, on every forge.
+var ErrNoJobLog = errors.New("no log for job")
 
 // Forge is one repository on a forge: its issues, comments, acknowledgements, pull requests
 // and board. A status is an option name of [forge.board] status_options, never an ID.
@@ -57,6 +61,13 @@ type Forge interface {
 	// by milestone title and then number; At is the last such moment.
 	MilestonedIssues(ctx context.Context, since, until time.Time) ([]MilestonedIssue, error)
 	BranchPRs(ctx context.Context, branch string) ([]PR, error)
+	// PullHeads lists every pull request or merge request of the repo, in any state, over all
+	// pages: its number, state, merge time and head branch.
+	PullHeads(ctx context.Context) ([]PullHead, error)
+	// IssueClosingHeads lists the pull requests that close issue number or refer to it, as the
+	// forge reports them. It filters nothing: a PR that is not merged, from a fork, from another
+	// repo or without a mention in its body is returned too, for the caller to judge.
+	IssueClosingHeads(ctx context.Context, number int) ([]ClosingHead, error)
 	BoardItems(ctx context.Context) ([]BoardItem, error)
 	// IssueItem reads the board item of issue number. ok is false for an issue that exists but
 	// is not on the board. An issue that does not exist is an error wrapping ErrIssueNotFound.
@@ -74,6 +85,14 @@ type Forge interface {
 	SearchIssues(ctx context.Context, text string) ([]Issue, error)
 	CreateChange(ctx context.Context, in NewPR) (Change, error)
 	Change(ctx context.Context, number int) (Change, error)
+	// ChangeComments lists the comments of pull request number: on GitLab the notes of the merge
+	// request without system notes.
+	ChangeComments(ctx context.Context, number int) ([]protocol.Comment, error)
+	// Checks lists the CI checks of pull request number, newest pipeline only on GitLab. No checks
+	// is an empty list, not an error.
+	Checks(ctx context.Context, number int) ([]Check, error)
+	// JobLog is the raw log of a check's job; an error wrapping ErrNoJobLog when there is none.
+	JobLog(ctx context.Context, job int64) (string, error)
 	CreateChangeComment(ctx context.Context, number int, body string) (protocol.Comment, error)
 	// Milestones lists the milestones in state "open", "closed" or "all"; "" is open.
 	Milestones(ctx context.Context, state string) ([]Milestone, error)
@@ -81,6 +100,12 @@ type Forge interface {
 	CreateMilestone(ctx context.Context, title, description string) (Milestone, error)
 	EditMilestone(ctx context.Context, number int, title, description *string) (Milestone, error)
 	Labels(ctx context.Context) ([]string, error)
+	// CreateLabel creates the label name with color, six hex digits without a "#". A label that
+	// already exists is no error.
+	CreateLabel(ctx context.Context, name, color string) error
+	// CommitKnown reports whether the forge knows the commit sha; a 404 or 422 is false, nil,
+	// any other failure is returned.
+	CommitKnown(ctx context.Context, sha string) (bool, error)
 	// AddBlocker makes issue blocker block issue number.
 	AddBlocker(ctx context.Context, number, blocker int) error
 	// API sends r to the forge's REST API and returns the raw response body.
@@ -113,6 +138,10 @@ type Config struct {
 	Board *repoconfig.Board
 	// HTTP is the client for every request; nil is one with a 30 s timeout.
 	HTTP *http.Client
+	// Cache stores the answers of conditional GETs (GitHub only); nil: no cache.
+	Cache CacheStore
+	// CacheLog receives the one line a cache error produces per transport; nil discards it.
+	CacheLog io.Writer
 }
 
 // Open returns the forge of cfg.Kind ("" is github).
@@ -127,6 +156,10 @@ func Open(cfg Config) (Forge, error) {
 			c.HTTP = cfg.HTTP
 		}
 		c.Board = cfg.Board
+		if cfg.Cache != nil {
+			c.cache = cfg.Cache
+			c.HTTP = &http.Client{Timeout: c.HTTP.Timeout, Transport: newCachingTransport(c.HTTP.Transport, cfg.Cache, cfg.CacheLog)}
+		}
 		return c, nil
 	case "gitlab":
 		return newGitLab(cfg), nil

@@ -602,3 +602,20 @@ func TestLoadFileAnyName(t *testing.T) {
 		t.Errorf("LoadFile = %+v, %v; want Slug o/r, TokenEnv MY_TOKEN, Dir %s", r, err, dir)
 	}
 }
+
+func TestLoadProjectOwner(t *testing.T) {
+	r, err := Load(write(t, strings.Replace(full, "project_id = \"PVT_x\"\n", "project_id = \"PVT_x\"\nproject_owner = \"acme\"\n", 1)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Board.ProjectOwner != "acme" {
+		t.Errorf("ProjectOwner = %q, want acme", r.Board.ProjectOwner)
+	}
+	r, err = Load(write(t, full))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Board.ProjectOwner != "" {
+		t.Errorf("ProjectOwner = %q, want empty", r.Board.ProjectOwner)
+	}
+}

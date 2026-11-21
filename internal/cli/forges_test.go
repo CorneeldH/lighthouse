@@ -3,6 +3,8 @@ package cli
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -163,5 +165,58 @@ func TestOpenerLoginKeepsFailure(t *testing.T) {
 	}
 	if n := srv.Count("/user"); n != 1 {
 		t.Errorf("/user requests = %d, want 1", n)
+	}
+}
+
+func TestForgeOpenerPassesCache(t *testing.T) {
+	ctx := context.Background()
+	gh := repoconfig.Repo{Slug: "o/r"}
+	t.Run("with a state dir", func(t *testing.T) {
+		o, got := spyOpener(map[string]string{"GH_TOKEN": "t", "XDG_STATE_HOME": t.TempDir()}, "")
+		if _, err := o.forRepo(ctx, gh); err != nil {
+			t.Fatal(err)
+		}
+		if (*got)[0].Cache == nil || (*got)[0].CacheLog == nil {
+			t.Errorf("github Config Cache/CacheLog = %v/%v, want both set", (*got)[0].Cache, (*got)[0].CacheLog)
+		}
+	})
+	t.Run("without a state dir", func(t *testing.T) {
+		o, got := spyOpener(map[string]string{"GH_TOKEN": "t"}, "")
+		if _, err := o.forRepo(ctx, gh); err != nil {
+			t.Fatal(err)
+		}
+		if (*got)[0].Cache != nil {
+			t.Errorf("Cache = %v, want nil", (*got)[0].Cache)
+		}
+	})
+	t.Run("gitlab gets none", func(t *testing.T) {
+		o, got := spyOpener(map[string]string{"GITLAB_TOKEN": "t", "XDG_STATE_HOME": t.TempDir()}, "")
+		if _, err := o.forRepo(ctx, repoconfig.Repo{Slug: "g/l", Kind: "gitlab", Host: "gitlab.example"}); err != nil {
+			t.Fatal(err)
+		}
+		if (*got)[0].Cache != nil {
+			t.Errorf("gitlab Cache = %v, want nil", (*got)[0].Cache)
+		}
+	})
+}
+
+func TestForgeOpenerOpensCacheLazily(t *testing.T) {
+	state := t.TempDir()
+	o, _ := spyOpener(map[string]string{"GH_TOKEN": "t", "XDG_STATE_HOME": state}, "")
+	list := func() int {
+		es, err := os.ReadDir(state)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(es)
+	}
+	if n := list(); n != 0 {
+		t.Fatalf("newForgeOpener created %d entries under the state dir", n)
+	}
+	if _, err := o.forRepo(context.Background(), repoconfig.Repo{Slug: "o/r"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(state, "lighthouse", "forge-cache.db")); err != nil {
+		t.Errorf("first github forRepo left no cache file: %v", err)
 	}
 }

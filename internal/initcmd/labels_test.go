@@ -1,16 +1,17 @@
 package initcmd
 
 import (
-	"errors"
+	"context"
 	"io"
 	"io/fs"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/BurntSushi/toml"
 
-	labelsync "github.com/CorneeldH/lighthouse/internal/labels"
+	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/packs"
 	"github.com/CorneeldH/lighthouse/internal/projectconfig"
 	"github.com/CorneeldH/lighthouse/pack"
@@ -257,59 +258,53 @@ func TestLabelsSyncRunsOnUpgradeWithoutChanges(t *testing.T) {
 	}
 }
 
-// fakeGH replaces labels' gh call for one test and records the calls; the real gh never runs.
-func fakeGH(t *testing.T, fn func(args []string) (string, error)) *[][]string {
-	t.Helper()
-	var calls [][]string
-	restore := labelsync.SetRunGH(func(args []string) (string, error) {
-		calls = append(calls, args)
-		return fn(args)
-	})
-	t.Cleanup(restore)
-	return &calls
+// labelForge is a forge for the label step: it has these labels and records the creates; a
+// method it does not define panics on the nil embedded interface.
+type labelForge struct {
+	forge.Forge
+	have    []string
+	created []string
+	err     error
+}
+
+func (f *labelForge) Labels(context.Context) ([]string, error) { return f.have, f.err }
+
+func (f *labelForge) CreateLabel(_ context.Context, name, _ string) error {
+	f.created = append(f.created, name)
+	return nil
+}
+
+// withForge makes the label step use f (nil means the forge cannot be opened).
+func withForge(f forge.Forge) func(*Options) {
+	return func(o *Options) { o.LabelForge = func(string) forge.Forge { return f } }
 }
 
 func realCore(o *Options) { o.Packs = nil }
 
+// Without a forge (no token) init prints the commands, on init and on --upgrade, and finishes.
 func TestLabelsDefaultSyncUsesLabelsPackage(t *testing.T) {
-	fakeGH(t, func([]string) (string, error) { return "", errors.New("gh exited 1") })
 	root := newRepo(t)
-	r := run(t, root, "", all(realCore, labels, yes))
-	if r.code != 0 || !strings.Contains(r.out, "gh label create blocked-issue") {
+	r := run(t, root, "", all(realCore, labels, yes, withForge(nil)))
+	if r.code != 0 || !strings.Contains(r.out, "lighthouse forge label create blocked-issue") || strings.Contains(r.out, "gh label") ||
+		strings.Contains(r.err, "not synchronised") {
 		t.Fatalf("rc %d\n%s\n%s", r.code, r.out, r.err)
 	}
 	r = run(t, root, "", all(realCore, upgrade, labels))
-	if r.code != 0 || !strings.HasPrefix(r.out, "No changes.\n") || !strings.Contains(r.out, "gh label create blocked-issue") {
+	if r.code != 0 || !strings.HasPrefix(r.out, "No changes.\n") || !strings.Contains(r.out, "lighthouse forge label create blocked-issue") {
 		t.Fatalf("upgrade: rc %d\n%s\n%s", r.code, r.out, r.err)
 	}
 }
 
 func TestCreateLabelsDefaultSyncCreates(t *testing.T) {
-	calls := fakeGH(t, func(args []string) (string, error) {
-		if args[0] == "api" {
-			return "needs-hands\n", nil
-		}
-		return "", nil
-	})
+	f := &labelForge{have: []string{"needs-hands"}}
 	root := newRepo(t)
 	write(t, root, "lighthouse.toml", "[forge]\nrepo = \"Owner/repo\"\n")
-	r := run(t, root, "", all(realCore, labels, createLabels, yes))
+	r := run(t, root, "", all(realCore, labels, createLabels, yes, withForge(f)))
 	if r.code != 0 {
 		t.Fatalf("rc %d\n%s\n%s", r.code, r.out, r.err)
 	}
-	var creates []string
-	for _, c := range *calls {
-		if c[0] == "label" {
-			creates = append(creates, strings.Join(c, " "))
-		}
-	}
-	if len(creates) != 5 {
-		t.Fatalf("%d create calls, want 5: %v", len(creates), creates)
-	}
-	for _, l := range creates {
-		if !strings.Contains(l, "label create") || !strings.Contains(l, "--repo Owner/repo") || strings.Contains(l, "needs-hands") {
-			t.Errorf("bad call: %s", l)
-		}
+	if len(f.created) != 5 || slices.Contains(f.created, "needs-hands") {
+		t.Fatalf("created %v, want the 5 missing labels", f.created)
 	}
 }
 

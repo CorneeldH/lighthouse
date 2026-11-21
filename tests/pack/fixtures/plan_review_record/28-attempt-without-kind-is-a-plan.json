@@ -39,7 +39,8 @@
         "record": {
           "kind": "plan",
           "plan": "docs/developer/planning/plans/2026-09-25-voorbeeld.md",
-          "schema_version": 5
+          "schema_version": 6,
+          "trajectory": null
         }
       }
     }

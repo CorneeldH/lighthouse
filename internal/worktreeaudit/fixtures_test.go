@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/config"
+	"github.com/CorneeldH/lighthouse/internal/forge"
 )
 
 // The data fixtures of tests/pack/fixtures/worktree_audit, which test_worktree_audit_cases.py
@@ -249,14 +250,11 @@ func parse(t *testing.T, c parseCase) (got, want any) {
 		}()
 	case "parse_issue_pr_heads":
 		in := decode[struct {
-			Payload any
-			Slug    string
-			Nr      int
+			Heads []forge.ClosingHead
+			Slug  string
+			Nr    int
 		}](t, c.Input)
-		heads, ok := ParseIssuePRHeads(in.Payload, in.Slug, in.Nr)
-		if !ok {
-			heads = nil
-		}
+		heads := ParseIssuePRHeads(in.Heads, in.Slug, in.Nr)
 		return heads, decode[[]string](t, c.Expect)
 	case "issue_branches":
 		in := decode[struct {

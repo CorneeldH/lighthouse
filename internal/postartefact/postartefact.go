@@ -6,7 +6,7 @@
 //  1. resolve the path, find the git toplevel, take the kind from the directory
 //     (`paths.specs` or `paths.plans`)
 //  2. the file must be committed and clean
-//  3. the commit must be on GitHub (push if needed, except on `forge.default_branch`, a
+//  3. the commit must be on the forge (push if needed, except on `forge.default_branch`, a
 //     detached HEAD or with an open PR; in a controller run never a range that touches
 //     .github/workflows/, as workflow-push-gate)
 //  4. read the existing comments and find the current complete version
@@ -21,7 +21,6 @@ package postartefact
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -31,6 +30,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/CorneeldH/lighthouse/internal/config"
+	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/park"
 	"github.com/CorneeldH/lighthouse/internal/procrun"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
@@ -38,7 +38,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/workflowguard"
 )
 
-// RunTimeout is the timeout of every `git` and `gh` call: 300 s, not 60, because `git push` runs
+// RunTimeout is the timeout of every `git` call: 300 s, not 60, because `git push` runs
 // the whole pre-push chain.
 const RunTimeout = 300 * time.Second
 
@@ -46,9 +46,15 @@ const RunTimeout = 300 * time.Second
 // their `ok` lines first, the real error comes last.
 const stderrTail = 300
 
-// Env is what Run needs from outside: a way to start `git` and `gh`, and the configuration.
+// Env is what Run needs from outside: a way to start `git`, the forge of the repo and the
+// configuration.
 type Env struct {
-	Run    procrun.Func
+	// Run starts `git`; the forge is never reached through it.
+	Run procrun.Func
+	// Forge opens the forge of the repo whose git top is root. It is called at the first read or
+	// write of the forge, so a file that is refused earlier needs no token. A *forge.TokenError
+	// becomes `artefact: no token for forge`.
+	Forge  func(root string) (forge.Forge, error)
 	Config func() (*config.Config, error)
 	// Getenv reads LIGHTHOUSE_CONTROLLER_RUN; nil is os.Getenv.
 	Getenv func(string) string
@@ -68,8 +74,8 @@ func configError(err error) *Error {
 	return fail("config: %s", strings.Join(pytext.Fields(err.Error()), " "))
 }
 
-// runError is a `git` or `gh` that did not return 0 or took too long; the message carries the
-// tail of its stderr.
+// runError is a `git` that did not return 0 or took too long; the message carries the tail of
+// its stderr.
 type runError struct{ msg string }
 
 func (e *runError) Error() string { return e.msg }
@@ -77,9 +83,31 @@ func (e *runError) Error() string { return e.msg }
 type poster struct {
 	ctx    context.Context
 	run    procrun.Func
-	repo   string
+	open   func(root string) (forge.Forge, error)
+	top    string
+	forge  forge.Forge
 	cfg    *config.Config
 	getenv func(string) string
+}
+
+// forgeOf opens the forge on first use.
+func (p *poster) forgeOf() (forge.Forge, *Error) {
+	if p.forge != nil {
+		return p.forge, nil
+	}
+	if p.open == nil {
+		return nil, fail("forge failed: no forge is configured")
+	}
+	f, err := p.open(p.top)
+	var tokenErr *forge.TokenError
+	switch {
+	case errors.As(err, &tokenErr):
+		return nil, fail("no token for forge: %s", err)
+	case err != nil:
+		return nil, fail("forge failed: %s", err)
+	}
+	p.forge = f
+	return f, nil
 }
 
 // tail is the last n characters (code points) of s.
@@ -110,102 +138,62 @@ func (p *poster) git(cwd string, args ...string) (string, *runError) {
 	return p.do(nil, "git", append([]string{"-C", cwd}, args...)...)
 }
 
-func (p *poster) gh(stdin *string, args ...string) (string, *runError) {
-	return p.do(stdin, "gh", args...)
-}
-
-// commitKnown reports whether sha is on GitHub. Only a 404 or 422 from gh counts as no; every
-// other error is returned.
-func (p *poster) commitKnown(sha string) (bool, *runError) {
-	_, err := p.gh(nil, "api", fmt.Sprintf("repos/%s/commits/%s", p.repo, sha), "--jq", ".sha")
+// commitKnown reports whether sha is on the forge. A 404 or 422 is no, as a typed answer of
+// the forge; every other failure is an error.
+func (p *poster) commitKnown(sha string) (bool, *Error) {
+	f, err := p.forgeOf()
 	if err != nil {
-		if strings.Contains(err.msg, "HTTP 404") || strings.Contains(err.msg, "HTTP 422") {
-			return false, nil
-		}
 		return false, err
 	}
-	return true, nil
-}
-
-func (p *poster) commitKnownOrFail(sha string) (bool, *Error) {
-	known, err := p.commitKnown(sha)
-	if err != nil {
-		return false, fail("gh failed: %s", err.msg)
+	known, cerr := f.CommitKnown(p.ctx, sha)
+	if cerr != nil {
+		return false, fail("forge failed: %s", cerr)
 	}
 	return known, nil
 }
 
-func (p *poster) openPR(branch string) (bool, *runError) {
-	out, err := p.gh(nil, "pr", "list", "--repo", p.repo, "--head", branch, "--state", "open",
-		"--json", "number", "--jq", "length")
-	return out != "0", err
+// openPR reports whether the branch has an open PR; a closed or merged one does not count.
+func (p *poster) openPR(branch string) (bool, *Error) {
+	f, err := p.forgeOf()
+	if err != nil {
+		return false, err
+	}
+	prs, perr := f.BranchPRs(p.ctx, branch)
+	if perr != nil {
+		return false, fail("forge failed: %s", perr)
+	}
+	for _, pr := range prs {
+		if pr.State == "OPEN" {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // readComments reads every comment of the issue, oldest first.
-func (p *poster) readComments(nr int) ([]protocol.Comment, *runError) {
-	out, err := p.gh(nil, "api", "--paginate", fmt.Sprintf("repos/%s/issues/%d/comments?per_page=100", p.repo, nr),
-		"--jq", ".[] | {id, body, created_at, html_url}")
+func (p *poster) readComments(nr int) ([]protocol.Comment, *Error) {
+	f, err := p.forgeOf()
 	if err != nil {
 		return nil, err
 	}
-	var comments []protocol.Comment
-	// One object per line, cut at \n only: jq leaves U+2028 and the other separators that
-	// str.splitlines cuts at in a body, so splitting there would tear a comment in two.
-	for _, line := range strings.Split(out, "\n") {
-		if line == "" {
-			continue
-		}
-		c, ok := commentOf(line)
-		if !ok {
-			return nil, &runError{"unreadable comment: " + tail(line, 80)}
-		}
-		comments = append(comments, c)
+	comments, cerr := f.Comments(p.ctx, nr)
+	if cerr != nil {
+		return nil, fail("forge failed: %s", cerr)
 	}
 	return comments, nil
 }
 
-// commentOf reads one `{id, body, created_at, html_url}` line.
-func commentOf(line string) (protocol.Comment, bool) {
-	var raw struct {
-		ID        json.Number `json:"id"`
-		Body      *string     `json:"body"`
-		CreatedAt *string     `json:"created_at"`
-		HTMLURL   *string     `json:"html_url"`
-	}
-	dec := json.NewDecoder(strings.NewReader(line))
-	dec.UseNumber()
-	if err := dec.Decode(&raw); err != nil {
-		return protocol.Comment{}, false
-	}
-	id, err := raw.ID.Int64()
-	if err != nil {
-		return protocol.Comment{}, false
-	}
-	str := func(s *string) string {
-		if s == nil {
-			return ""
-		}
-		return *s
-	}
-	return protocol.Comment{ID: id, Body: str(raw.Body), CreatedAt: str(raw.CreatedAt), URL: str(raw.HTMLURL)}, true
-}
-
-// postComment posts body to the issue and returns the url of the new comment. The payload is
-// `json.dumps({"body": body})`: ASCII only, with Python's separators.
-func (p *poster) postComment(nr int, body string) (string, *runError) {
-	payload := `{"body": ` + pytext.JSONString(body, true) + `}`
-	out, err := p.gh(&payload, "api", fmt.Sprintf("repos/%s/issues/%d/comments", p.repo, nr),
-		"--input", "-", "--jq", "{id, html_url}")
+// postComment posts body to the issue and returns the url of the new comment.
+func (p *poster) postComment(nr int, body string) (string, *Error) {
+	f, err := p.forgeOf()
 	if err != nil {
 		return "", err
 	}
-	var reply struct {
-		URL *string `json:"html_url"`
+	c, cerr := f.CreateComment(p.ctx, nr, body)
+	if cerr != nil {
+		return "", fail("forge failed: %s", cerr)
 	}
-	if json.Unmarshal([]byte(out), &reply) != nil || reply.URL == nil {
-		return "", &runError{"unreadable reply: " + tail(out, 80)}
-	}
-	return *reply.URL, nil
+	return c.URL, nil
 }
 
 // setting is a key of lighthouse.toml, with its default, as text.
@@ -303,10 +291,10 @@ func (p *poster) committedSHA(top, file string) (string, *Error) {
 	return sha, nil
 }
 
-// ensureCommitOnGitHub pushes the commit when GitHub does not know it, unless that is never ours
+// ensureCommitOnForge pushes the commit when the forge does not know it, unless that is never ours
 // to do: a force-push to the default branch, a detached HEAD or a branch with an open PR.
-func (p *poster) ensureCommitOnGitHub(top, sha string) *Error {
-	known, err := p.commitKnownOrFail(sha)
+func (p *poster) ensureCommitOnForge(top, sha string) *Error {
+	known, err := p.commitKnown(sha)
 	if err != nil || known {
 		return err
 	}
@@ -314,16 +302,16 @@ func (p *poster) ensureCommitOnGitHub(top, sha string) *Error {
 	if runErr != nil {
 		return fail("git failed: %s", runErr.msg)
 	}
-	hasPR, runErr := p.openPR(branch)
-	if runErr != nil {
-		return fail("gh failed: %s", runErr.msg)
+	hasPR, err := p.openPR(branch)
+	if err != nil {
+		return err
 	}
 	defaultBranch, err := p.setting("forge.default_branch")
 	if err != nil {
 		return err
 	}
 	if branch == defaultBranch || branch == "HEAD" || hasPR {
-		return fail("commit %s not on GitHub", runeHead(sha, 7))
+		return fail("commit %s not on the forge", runeHead(sha, 7))
 	}
 	if err := p.refuseWorkflows(top, branch, defaultBranch); err != nil {
 		return err
@@ -338,7 +326,7 @@ func (p *poster) ensureCommitOnGitHub(top, sha string) *Error {
 // .github/workflows/: the push below falls outside workflow-push-gate, so it says the same.
 // Only in a controller run, like the hook: the refusal points at V2b and `next: push-workflows`,
 // a route only the dispatcher runs; a person outside it pushes with their own credentials, and
-// GitHub's check on those decides.
+// the forge's check on those decides.
 func (p *poster) refuseWorkflows(top, branch, defaultBranch string) *Error {
 	if !park.ControllerRun(p.getenv) {
 		return nil
@@ -378,7 +366,7 @@ func (p *poster) unchangedMeta(latest []protocol.Comment, hash string) (*protoco
 	if !ok || meta.Hash != hash {
 		return nil, nil
 	}
-	known, err := p.commitKnownOrFail(meta.Commit)
+	known, err := p.commitKnown(meta.Commit)
 	if err != nil || !known {
 		return nil, err
 	}
@@ -391,7 +379,7 @@ func (p *poster) postParts(nr int, bodies []string) ([]string, *Error) {
 	for k, body := range bodies {
 		url, err := p.postComment(nr, body)
 		if err != nil {
-			return nil, fail("part %d/%d not posted (%d were): %s", k+1, len(bodies), k, err.msg)
+			return nil, fail("part %d/%d not posted (%d were): %s", k+1, len(bodies), k, strings.TrimPrefix(err.Line, "artefact: "))
 		}
 		urls = append(urls, url)
 	}
@@ -419,21 +407,22 @@ func run(ctx context.Context, env Env, nr int, pathArg string) (string, *Error) 
 	if getenv == nil {
 		getenv = os.Getenv
 	}
-	p := &poster{ctx: ctx, run: env.Run, repo: cfg.Repo, cfg: cfg, getenv: getenv}
+	p := &poster{ctx: ctx, run: env.Run, open: env.Forge, cfg: cfg, getenv: getenv}
 	top, file, kind, err := p.resolveFile(pathArg)
 	if err != nil {
 		return "", err
 	}
+	p.top = top
 	sha, err := p.committedSHA(top, file)
 	if err != nil {
 		return "", err
 	}
-	if err := p.ensureCommitOnGitHub(top, sha); err != nil {
+	if err := p.ensureCommitOnForge(top, sha); err != nil {
 		return "", err
 	}
-	comments, runErr := p.readComments(nr)
-	if runErr != nil {
-		return "", fail("gh failed: %s", runErr.msg)
+	comments, err := p.readComments(nr)
+	if err != nil {
+		return "", err
 	}
 	latest := protocol.CurrentArtefact(comments, kind, file)
 
@@ -464,7 +453,7 @@ func run(ctx context.Context, env Env, nr int, pathArg string) (string, *Error) 
 	for k, part := range parts {
 		m := protocol.ArtefactMeta{Kind: kind, Version: version, Part: k + 1, Parts: len(parts),
 			File: file, Commit: sha, Hash: hash, Replaces: replaces}
-		body, renderErr := protocol.RenderArtefact(m, part, cfg.Language, cfg.Repo)
+		body, renderErr := protocol.RenderArtefactAt(m, part, cfg.Language, protocol.Source{Kind: cfg.Kind, Host: cfg.Host, Repo: cfg.Repo})
 		var metaErr *protocol.MetadataError
 		switch {
 		case errors.As(renderErr, &metaErr):

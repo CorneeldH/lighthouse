@@ -54,8 +54,9 @@
           "spec": "docs/developer/planning/specs/2026-09-25-voorbeeld-design.md",
           "specs": [],
           "issue_spec": null,
-          "schema_version": 5,
-          "prompt_sha256": "86083453f88c7d066c07f78e5ed336b5fbaf735a4887d5cef248803aaf6503ed"
+          "schema_version": 6,
+          "prompt_sha256": "86083453f88c7d066c07f78e5ed336b5fbaf735a4887d5cef248803aaf6503ed",
+          "trajectory": null
         },
         "record_absent": [
           "plan"

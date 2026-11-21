@@ -136,6 +136,7 @@
                 "internal/initcmd/initcmd.go",
                 "internal/repoconfig/repoconfig.go",
                 "internal/workplace/kennforge/adapter.go",
+                "pack/core/skills/fix-pr",
                 "pack/core/skills/forge",
                 "pack/core/skills/route-issue",
                 "pack/core/skills/start-issue",
@@ -151,8 +152,12 @@
               "example": "owner/name",
               "readers": [
                 "internal/boardstart/boardstart.go",
+                "internal/cli/forge_label.go",
+                "internal/cli/planreviewrecord.go",
                 "internal/cli/pushworkflows.go",
+                "internal/cli/reviewindex.go",
                 "internal/cli/worktreeaudit.go",
+                "internal/issuestate/cmd.go",
                 "internal/labels/labels.go",
                 "internal/postartefact/postartefact.go",
                 "internal/prbody/find.go",
@@ -168,10 +173,8 @@
                 "pack/core/skills/close-issue",
                 "pack/core/skills/fix-pr",
                 "pack/core/skills/forge",
-                "pack/core/skills/review-plan",
                 "pack/core/skills/route-issue",
                 "pack/core/skills/start-issue",
-                "pack/core/skills/write-handoff",
                 "pack/core/skills/write-pr",
                 "pack/python/scripts/quality/prcov_issues.py"
               ]
@@ -241,7 +244,6 @@
               "about": "The name part of forge.repo, derived by the lighthouse binary.",
               "readers": [
                 "pack/core/skills/close-issue",
-                "pack/core/skills/write-handoff",
                 "pack/python/scripts/quality/prcov_issues.py"
               ]
             },
@@ -253,7 +255,6 @@
               "readers": [
                 "pack/core/skills/close-issue",
                 "pack/core/skills/forge",
-                "pack/core/skills/write-handoff",
                 "pack/python/scripts/quality/prcov_issues.py"
               ]
             }
@@ -271,6 +272,7 @@
               "about": "The id of the board's Priority field.",
               "example": "PVTSSF_...",
               "readers": [
+                "internal/forge/project.go",
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/forge"
               ]
@@ -292,6 +294,17 @@
               ]
             },
             {
+              "key": "forge.board.project_owner",
+              "level": "optional",
+              "required": "no",
+              "about": "The user or organisation that owns the GitHub project board. Needed only when the owner is not the repository owner.",
+              "example": "acme",
+              "readers": [
+                "internal/forge/project.go",
+                "internal/repoconfig/repoconfig.go"
+              ]
+            },
+            {
               "key": "forge.board.project_id",
               "level": "optional",
               "required": "with [forge.board]",
@@ -299,11 +312,10 @@
               "example": "PVT_...",
               "readers": [
                 "internal/cli/triage.go",
-                "internal/forge/board.go",
+                "internal/forge/project.go",
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/close-issue",
                 "pack/core/skills/forge",
-                "pack/core/skills/write-handoff",
                 "pack/python/scripts/quality/prcov_issues.py"
               ]
             },
@@ -314,10 +326,10 @@
               "about": "The number of the GitHub project board.",
               "example": 1,
               "readers": [
+                "internal/forge/project.go",
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/forge",
                 "pack/core/skills/start-issue",
-                "pack/core/skills/write-handoff",
                 "pack/python/scripts/quality/prcov_issues.py"
               ]
             },
@@ -329,9 +341,9 @@
               "example": "PVTSSF_...",
               "readers": [
                 "internal/cli/triage.go",
+                "internal/forge/project.go",
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/close-issue",
-                "pack/core/skills/write-handoff",
                 "pack/python/scripts/quality/prcov_issues.py"
               ]
             },
@@ -356,7 +368,6 @@
                 "internal/forge/gitlab_board.go",
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/forge",
-                "pack/core/skills/write-handoff",
                 "pack/core/skills/write-issue",
                 "pack/python/scripts/quality/prcov_issues.py"
               ]
@@ -576,6 +587,7 @@
               "default": "blocked-external",
               "about": "The label for an issue blocked by something outside the repo.",
               "readers": [
+                "internal/issuestate/state.go",
                 "internal/repoconfig/repoconfig.go",
                 "internal/triage/rules.go",
                 "pack/core/skills/route-issue",
@@ -590,6 +602,7 @@
               "about": "The label for an issue blocked by another issue.",
               "readers": [
                 "internal/cli/unblockdependents.go",
+                "internal/issuestate/state.go",
                 "internal/repoconfig/repoconfig.go",
                 "internal/triage/rules.go",
                 "pack/core/skills/close-issue",
@@ -1105,7 +1118,6 @@
               "about": "true: this machine is the controller host, the address is not measured; false: it is not. Without it, host-check uses tailscale_ip. An older reader ignores it.",
               "example": true,
               "readers": [
-                "internal/review/record.go",
                 "pack/core/skills/write-handoff"
               ]
             },
@@ -1115,9 +1127,7 @@
               "required": "no",
               "about": "The Tailscale address of this workstation; init writes it on a machine with Tailscale. Without it and without host.controller, host-check reports another host.",
               "example": "100.64.0.1",
-              "readers": [
-                "internal/review/record.go"
-              ]
+              "readers": []
             },
             {
               "key": "host.gate_slice",

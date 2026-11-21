@@ -1,9 +1,12 @@
 package forge
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -81,8 +84,14 @@ type BoardItem struct {
 	Archived bool
 }
 
-// prFields are the pull request fields both queries read into a PR.
-const prFields = `number state isDraft mergeable headRefOid headRefName baseRefName isCrossRepository mergedAt closedAt url statusCheckRollup { state }`
+// EffectiveStatus is the status to decide on: the status_options name of the item's status,
+// or, for a board option that status_options does not list, its raw name on the board.
+func (it BoardItem) EffectiveStatus() string {
+	if strings.HasPrefix(it.Status, UnknownStatusPrefix) {
+		return it.StatusName
+	}
+	return it.Status
+}
 
 // fieldValuesSelection is the single-select values of a project item, shared by the board and
 // the one-issue query so both fill BoardItem.Status, StatusName and Priority the same way.
@@ -92,57 +101,6 @@ const fieldValuesSelection = `fieldValues(first: 50) {
               ... on ProjectV2ItemFieldSingleSelectValue { optionId name field { ... on ProjectV2SingleSelectField { id } } }
             }
           }`
-
-// BoardQuery reads one page of 100 project items. Every nested connection asks pageInfo, so a
-// list longer than its first: n is an error instead of a silent cut. GitHub prices a page by
-// the product of the nested limits; blockedBy and the closing PRs of a blocker dominate it,
-// so their limits stay small (measured: first: 50 × 10 cost 53 points per page).
-const BoardQuery = `query Board($project: ID!, $after: String) {
-  node(id: $project) {
-    ... on ProjectV2 {
-      items(first: 100, after: $after) {
-        pageInfo { hasNextPage endCursor }
-        nodes {
-          id
-          updatedAt
-          ` + fieldValuesSelection + `
-          content {
-            ... on Issue {
-              number title state updatedAt
-              repository { nameWithOwner }
-              labels(first: 20) { nodes { name } pageInfo { hasNextPage } }
-              blockedBy(first: 10) {
-                pageInfo { hasNextPage }
-                nodes {
-                  number state
-                  repository { nameWithOwner }
-                  closedByPullRequestsReferences(first: 5, includeClosedPrs: true) {
-                    pageInfo { hasNextPage }
-                    nodes { merged }
-                  }
-                }
-              }
-              closedByPullRequestsReferences(first: 20, includeClosedPrs: true) {
-                pageInfo { hasNextPage }
-                nodes { ` + prFields + ` }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-}`
-
-// BranchPRsQuery reads the pull requests whose head is one branch, in every state.
-const BranchPRsQuery = `query BranchPRs($owner: String!, $name: String!, $branch: String!) {
-  repository(owner: $owner, name: $name) {
-    pullRequests(headRefName: $branch, first: 20, states: [OPEN, CLOSED, MERGED]) {
-      pageInfo { hasNextPage }
-      nodes { ` + prFields + ` }
-    }
-  }
-}`
 
 // OpenPRsWithStatusQuery reads one page of 100 open pull requests with draft, mergeable and
 // the state of their checks.
@@ -171,16 +129,6 @@ const IssueItemsQuery = `query IssueItems($owner: String!, $name: String!, $numb
         }
       }
     }
-  }
-}`
-
-// AddToBoardMutation adds an issue, by its node ID, to a project.
-const AddToBoardMutation = `mutation AddToBoard($project: ID!, $content: ID!) { addProjectV2ItemById(input: {projectId: $project, contentId: $content}) { item { id } } }`
-
-// SetStatusMutation sets one single-select field of one project item.
-const SetStatusMutation = `mutation SetStatus($project: ID!, $item: ID!, $field: ID!, $option: String!) {
-  updateProjectV2ItemFieldValue(input: {projectId: $project, itemId: $item, fieldId: $field, value: {singleSelectOptionId: $option}}) {
-    projectV2Item { id }
   }
 }`
 
@@ -304,9 +252,9 @@ func optionName(options map[string]string, id string) string {
 	return ""
 }
 
-// BoardItems lists every item of the board of [forge.board] project_id, following every page.
-// A nested list that GitHub cut off is an error and gives no items: a missing blocker PR or
-// Status value would change what the dispatcher decides.
+// BoardItems lists every item of the board of [forge.board], following every page, without
+// archived items. A list that cannot be read completely is an error and gives no items: a
+// missing blocker or Status value would change what the dispatcher decides.
 func (c *GitHub) BoardItems(ctx context.Context) ([]BoardItem, error) {
 	if err := c.configured(); err != nil {
 		return nil, err
@@ -315,46 +263,81 @@ func (c *GitHub) BoardItems(ctx context.Context) ([]BoardItem, error) {
 	if err != nil {
 		return nil, err
 	}
-	return c.boardItems(ctx, b)
+	p, err := c.project(ctx, b)
+	if err != nil {
+		return nil, err
+	}
+	items, err := c.listItems(ctx, p)
+	if err != nil {
+		return nil, err
+	}
+	merged := mergedIssues(items, p, b)
+	var out []BoardItem
+	for _, r := range items {
+		if r.ArchivedAt != nil {
+			continue
+		}
+		it, pulls := r.boardItem(p, b)
+		total := 0
+		if r.issue() {
+			total = r.Content.Summary.TotalBlockedBy
+		}
+		if err := c.complete(ctx, &it, total, pulls, merged); err != nil {
+			return nil, fmt.Errorf("forge: board item %s: %w", it.ItemID, err)
+		}
+		out = append(out, it)
+	}
+	return out, nil
 }
 
-// boardItems reads the items of project b.ProjectID.
-func (c *GitHub) boardItems(ctx context.Context, b *repoconfig.Board) ([]BoardItem, error) {
-	projectID := b.ProjectID
-	var out []BoardItem
-	var after any // null on the first page
-	for {
-		var data struct {
-			Node *struct {
-				Items *struct {
-					PageInfo pageInfo   `json:"pageInfo"`
-					Nodes    []itemNode `json:"nodes"`
-				} `json:"items"`
-			} `json:"node"`
-		}
-		if err := c.graphql(ctx, BoardQuery, map[string]any{"project": projectID, "after": after}, &data); err != nil {
-			return nil, err
-		}
-		if data.Node == nil || data.Node.Items == nil {
-			return nil, fmt.Errorf("forge: board %s: not a ProjectV2", projectID)
-		}
-		for _, n := range data.Node.Items.Nodes {
-			it, values, err := n.item()
-			if err != nil {
-				return nil, fmt.Errorf("forge: board item %s: %w", n.ID, err)
+// mergedIssues is the set of issues on the board, archived items included, with a linked pull
+// request that is merged.
+func mergedIssues(items []restItem, p project, b *repoconfig.Board) map[issueKey]bool {
+	out := map[issueKey]bool{}
+	for _, r := range items {
+		it, pulls := r.boardItem(p, b)
+		for _, pl := range pulls {
+			if !pl.MergedAt.IsZero() {
+				out[issueKey{it.Repo, it.Issue}] = true
 			}
-			out = append(out, named(it, values, b))
 		}
-		if !data.Node.Items.PageInfo.HasNextPage {
-			return out, nil
-		}
-		// An empty or repeated cursor would ask the same page again, for ever.
-		next := data.Node.Items.PageInfo.EndCursor
-		if next == "" || next == after {
-			return nil, fmt.Errorf("forge: board %s: pagination stuck at endCursor %q", projectID, next)
-		}
-		after = next
 	}
+	return out
+}
+
+// complete reads the blockers of it (only when total, the total_blocked_by, is above 0) and
+// the PR fields of pulls into it. MergedPR of a blocker is true only for one on the board with
+// a merged linked pull request. A 403 or 404 on an item of another repo than c.Repo leaves
+// that part empty, as GraphQL did for content the token cannot see; any other error stays one.
+func (c *GitHub) complete(ctx context.Context, it *BoardItem, total int, pulls []restPull, merged map[issueKey]bool) error {
+	hidden := func(err error) bool { return it.Repo != c.Repo && notVisible(err) }
+	if total > 0 {
+		blockers, err := c.blockedBy(ctx, it.Repo, it.Issue)
+		if err != nil && !hidden(err) {
+			return err
+		}
+		for i := range blockers {
+			blockers[i].MergedPR = merged[issueKey{blockers[i].Repo, blockers[i].Issue}]
+		}
+		it.BlockedBy = blockers
+	}
+	for _, pl := range pulls {
+		pr := pl.pr(true)
+		if err := c.enrich(ctx, cmp.Or(pl.repo(), it.Repo), &pr); err != nil {
+			if !hidden(err) {
+				return err
+			}
+			pr.Mergeable, pr.Checks = "UNKNOWN", ""
+		}
+		it.ClosingPRs = append(it.ClosingPRs, pr)
+	}
+	return nil
+}
+
+// notVisible is a 404, or a 403 that is no rate limit: the token cannot see the resource.
+func notVisible(err error) bool {
+	var se *httpStatusError
+	return errors.As(err, &se) && (se.Code == http.StatusNotFound || se.Code == http.StatusForbidden && !se.RateLimited)
 }
 
 // item maps one node, refusing any nested connection with more pages. values are its
@@ -408,8 +391,10 @@ func truncated(connection string, n int) error {
 	return fmt.Errorf("%s truncated at %d", connection, n)
 }
 
-// BranchPRs lists the pull requests whose head is branch, open, closed and merged. Closes is
-// false on each: the branch says nothing about which issue a PR closes.
+// BranchPRs lists the pull requests whose head is branch in the repo, open, closed and merged,
+// following every page; an open one carries Mergeable and Checks. Closes is false on each: the
+// branch says nothing about which issue a PR closes. A PR from a fork with the same branch name
+// is not listed.
 func (c *GitHub) BranchPRs(ctx context.Context, branch string) ([]PR, error) {
 	if err := c.configured(); err != nil {
 		return nil, err
@@ -418,28 +403,158 @@ func (c *GitHub) BranchPRs(ctx context.Context, branch string) ([]PR, error) {
 	if !ok || owner == "" || name == "" {
 		return nil, fmt.Errorf("forge: repo %q is not owner/name", c.Repo)
 	}
-	var data struct {
-		Repository *struct {
-			PullRequests struct {
-				PageInfo pageInfo `json:"pageInfo"`
-				Nodes    []prNode `json:"nodes"`
-			} `json:"pullRequests"`
-		} `json:"repository"`
+	q := url.Values{"head": {owner + ":" + branch}, "state": {"all"}, "per_page": {"100"}}
+	var pulls []restPull
+	for next := fmt.Sprintf("%s/repos/%s/pulls?%s", c.BaseURL, c.Repo, q.Encode()); next != ""; {
+		var page []restPull
+		var err error
+		if next, err = c.do(ctx, http.MethodGet, next, nil, &page); err != nil {
+			return nil, err
+		}
+		pulls = append(pulls, page...)
 	}
-	vars := map[string]any{"owner": owner, "name": name, "branch": branch}
-	if err := c.graphql(ctx, BranchPRsQuery, vars, &data); err != nil {
+	out := make([]PR, 0, len(pulls))
+	for _, p := range pulls {
+		pr := p.pr(false)
+		if err := c.enrich(ctx, cmp.Or(p.repo(), c.Repo), &pr); err != nil {
+			return nil, fmt.Errorf("forge: branch %s: PR %d: %w", branch, p.Number, err)
+		}
+		out = append(out, pr)
+	}
+	return out, nil
+}
+
+// PullHead is the head of a pull request or merge request in any state.
+type PullHead struct {
+	Number int
+	State  string // OPEN, CLOSED or MERGED, as PR.State
+	// MergedAt is the merge time in RFC 3339, UTC; "" for a PR that is not merged.
+	MergedAt string
+	HeadRef  string
+}
+
+// ClosingHead is a pull request that closes an issue or refers to it.
+type ClosingHead struct {
+	HeadRef string
+	// Repo is the repository the pull request lives in, owner/name.
+	Repo string
+	Body string
+	// Merged is true for a merged pull request.
+	Merged bool
+	// Closes is true for a pull request that closes the issue; false for one that only refers
+	// to it.
+	Closes bool
+	// CrossRepo is true for a pull request whose head lives in another repository.
+	CrossRepo bool
+}
+
+// rfc3339 is t in RFC 3339, UTC; "" for the zero time.
+func rfc3339(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.UTC().Format(time.RFC3339)
+}
+
+// PullHeads lists every pull request of the repo in any state, following every page.
+func (c *GitHub) PullHeads(ctx context.Context) ([]PullHead, error) {
+	if err := c.configured(); err != nil {
 		return nil, err
 	}
-	if data.Repository == nil {
-		return nil, fmt.Errorf("forge: repository %s not found", c.Repo)
+	var out []PullHead
+	for next := fmt.Sprintf("%s/repos/%s/pulls?state=all&per_page=100", c.BaseURL, c.Repo); next != ""; {
+		var page []restPull
+		var err error
+		if next, err = c.do(ctx, http.MethodGet, next, nil, &page); err != nil {
+			return nil, err
+		}
+		for _, p := range page {
+			pr := p.pr(false)
+			out = append(out, PullHead{Number: p.Number, State: pr.State, MergedAt: rfc3339(p.MergedAt), HeadRef: p.Head.Ref})
+		}
 	}
-	prs := data.Repository.PullRequests
-	if prs.PageInfo.HasNextPage {
-		return nil, fmt.Errorf("forge: branch %s: %w", branch, truncated("pullRequests", len(prs.Nodes)))
+	return out, nil
+}
+
+// issueClosingHeadsQuery asks for the pull requests that close an issue and the ones that
+// cross-reference it.
+const issueClosingHeadsQuery = `query IssueClosingHeads($owner:String!,$name:String!,$nr:Int!){repository(owner:$owner,name:$name){issue(number:$nr){
+  closedByPullRequestsReferences(first:50,includeClosedPrs:true){pageInfo{hasNextPage} nodes{number headRefName merged isCrossRepository body repository{nameWithOwner}}}
+  timelineItems(itemTypes:[CROSS_REFERENCED_EVENT],first:100){pageInfo{hasNextPage} nodes{... on CrossReferencedEvent{source{... on PullRequest{number headRefName merged isCrossRepository body repository{nameWithOwner}}}}}}}}}`
+
+type closingNode struct {
+	Number            int    `json:"number"`
+	HeadRefName       string `json:"headRefName"`
+	Merged            bool   `json:"merged"`
+	IsCrossRepository bool   `json:"isCrossRepository"`
+	Body              string `json:"body"`
+	Repository        struct {
+		NameWithOwner string `json:"nameWithOwner"`
+	} `json:"repository"`
+}
+
+// IssueClosingHeads lists the pull requests that close issue number (closedByPullRequestsReferences)
+// and the ones that only refer to it (cross-referenced events). A PR in both counts once, as
+// closing. A connection that does not fit in one page is an error, never a short list.
+func (c *GitHub) IssueClosingHeads(ctx context.Context, number int) ([]ClosingHead, error) {
+	if err := c.configured(); err != nil {
+		return nil, err
 	}
-	out := make([]PR, 0, len(prs.Nodes))
-	for _, p := range prs.Nodes {
-		out = append(out, p.pr(false))
+	owner, name, ok := strings.Cut(c.Repo, "/")
+	if !ok || owner == "" || name == "" {
+		return nil, fmt.Errorf("forge: repo %q is not owner/name", c.Repo)
+	}
+	var data struct {
+		Repository struct {
+			Issue struct {
+				ClosedBy struct {
+					PageInfo struct {
+						HasNextPage bool `json:"hasNextPage"`
+					} `json:"pageInfo"`
+					Nodes []closingNode `json:"nodes"`
+				} `json:"closedByPullRequestsReferences"`
+				Timeline struct {
+					PageInfo struct {
+						HasNextPage bool `json:"hasNextPage"`
+					} `json:"pageInfo"`
+					Nodes []struct {
+						Source *closingNode `json:"source"`
+					} `json:"nodes"`
+				} `json:"timelineItems"`
+			} `json:"issue"`
+		} `json:"repository"`
+	}
+	vars := map[string]any{"owner": owner, "name": name, "nr": number}
+	if err := c.graphql(ctx, issueClosingHeadsQuery, vars, &data); err != nil {
+		return nil, err
+	}
+	issue := data.Repository.Issue
+	if issue.ClosedBy.PageInfo.HasNextPage {
+		return nil, truncated("closedByPullRequestsReferences", len(issue.ClosedBy.Nodes))
+	}
+	if issue.Timeline.PageInfo.HasNextPage {
+		return nil, truncated("timelineItems", len(issue.Timeline.Nodes))
+	}
+	type key struct {
+		repo string
+		nr   int
+	}
+	seen := map[key]bool{}
+	out := []ClosingHead{}
+	add := func(n *closingNode, closes bool) {
+		// A source that is no pull request (an issue) has no head branch.
+		if n == nil || n.HeadRefName == "" || seen[key{n.Repository.NameWithOwner, n.Number}] {
+			return
+		}
+		seen[key{n.Repository.NameWithOwner, n.Number}] = true
+		out = append(out, ClosingHead{HeadRef: n.HeadRefName, Repo: n.Repository.NameWithOwner, Body: n.Body,
+			Merged: n.Merged, Closes: closes, CrossRepo: n.IsCrossRepository})
+	}
+	for i := range issue.ClosedBy.Nodes {
+		add(&issue.ClosedBy.Nodes[i], true)
+	}
+	for _, it := range issue.Timeline.Nodes {
+		add(it.Source, false)
 	}
 	return out, nil
 }
@@ -461,18 +576,46 @@ func (c *GitHub) SetStatus(ctx context.Context, item BoardItem, status string) e
 	if item.ItemID == "" {
 		return fmt.Errorf("forge: %s#%d: no board item to set the status of", item.Repo, item.Issue)
 	}
-	return c.setOption(ctx, b.ProjectID, item.ItemID, b.StatusFieldID, option)
+	p, err := c.project(ctx, b)
+	if err != nil {
+		return err
+	}
+	id, err := c.itemNumber(ctx, p, item.ItemID)
+	if err != nil {
+		return err
+	}
+	body := map[string]any{"fields": []map[string]any{{"id": p.status, "value": option}}}
+	_, err = c.do(ctx, http.MethodPatch, fmt.Sprintf("%s/items/%d", p.base, id), body, nil)
+	return err
 }
 
-// setOption sets the single-select field fieldID of a board item to optionID.
-func (c *GitHub) setOption(ctx context.Context, projectID, itemID, fieldID, optionID string) error {
-	vars := map[string]any{"project": projectID, "item": itemID, "field": fieldID, "option": optionID}
-	return c.graphql(ctx, SetStatusMutation, vars, nil)
+// itemNumber is the numeric ID of the board item with node ID nodeID: from the table, else
+// after one read of the list, else an error naming nodeID.
+func (c *GitHub) itemNumber(ctx context.Context, p project, nodeID string) (int64, error) {
+	lookup := func() (int64, bool) {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		id, ok := c.itemIDs[nodeID]
+		return id, ok
+	}
+	if id, ok := lookup(); ok {
+		return id, nil
+	}
+	if _, err := c.listItems(ctx, p); err != nil {
+		return 0, err
+	}
+	if id, ok := lookup(); ok {
+		return id, nil
+	}
+	return 0, fmt.Errorf("forge: board item %s is not on the board of project %d", nodeID, c.Board.ProjectNumber)
 }
 
 // IssueItem returns the item of issue number on the board of [forge.board]; ok is false when
 // the issue is not on that board. Status, StatusName and Priority are filled as in BoardItems; a cut list
 // is an error. An archived item counts as an item, with Archived set.
+//
+// This stays on GraphQL: the REST project-items list never returns archived items (measured in
+// issue #395; see the verification notes of that issue).
 func (c *GitHub) IssueItem(ctx context.Context, number int) (item BoardItem, ok bool, err error) {
 	if err := c.configured(); err != nil {
 		return BoardItem{}, false, err
@@ -532,8 +675,7 @@ func (c *GitHub) IssueItem(ctx context.Context, number int) (item BoardItem, ok 
 }
 
 // AddToBoard adds issue number to the board of [forge.board] and returns the new item, without
-// a status. The issue's node ID comes from the cache Issue and OpenIssues fill, else from one
-// read of the issue.
+// a status. The item stays in the table of numeric IDs until the next complete list.
 func (c *GitHub) AddToBoard(ctx context.Context, number int) (BoardItem, error) {
 	if err := c.configured(); err != nil {
 		return BoardItem{}, err
@@ -542,32 +684,31 @@ func (c *GitHub) AddToBoard(ctx context.Context, number int) (BoardItem, error) 
 	if err != nil {
 		return BoardItem{}, err
 	}
-	contentID, err := c.nodeID(ctx, number)
+	owner, name, ok := strings.Cut(c.Repo, "/")
+	if !ok || owner == "" || name == "" {
+		return BoardItem{}, fmt.Errorf("forge: repo %q is not owner/name", c.Repo)
+	}
+	p, err := c.project(ctx, b)
 	if err != nil {
 		return BoardItem{}, err
 	}
-	itemID, err := c.addToBoard(ctx, b.ProjectID, contentID)
-	if err != nil {
+	var added struct {
+		ID     int64  `json:"id"`
+		NodeID string `json:"node_id"`
+	}
+	body := map[string]any{"type": "Issue", "owner": owner, "repo": name, "number": number}
+	if _, err := c.do(ctx, http.MethodPost, p.base+"/items", body, &added); err != nil {
 		return BoardItem{}, err
 	}
-	return BoardItem{ItemID: itemID, Repo: c.Repo, Issue: number}, nil
-}
-
-// addToBoard adds the issue with node ID contentID to project projectID and returns the ID of
-// the new project item.
-func (c *GitHub) addToBoard(ctx context.Context, projectID, contentID string) (string, error) {
-	var data struct {
-		AddProjectV2ItemByID *struct {
-			Item struct {
-				ID string `json:"id"`
-			} `json:"item"`
-		} `json:"addProjectV2ItemById"`
+	if added.ID == 0 || added.NodeID == "" {
+		return BoardItem{}, fmt.Errorf("forge: add %s#%d to board %s: no item in the answer", c.Repo, number, b.ProjectID)
 	}
-	if err := c.graphql(ctx, AddToBoardMutation, map[string]any{"project": projectID, "content": contentID}, &data); err != nil {
-		return "", err
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.itemIDs == nil {
+		c.itemIDs, c.issueItems = map[string]int64{}, map[issueKey]int64{}
 	}
-	if data.AddProjectV2ItemByID == nil || data.AddProjectV2ItemByID.Item.ID == "" {
-		return "", fmt.Errorf("forge: add %s to board %s: no item in the answer", contentID, projectID)
-	}
-	return data.AddProjectV2ItemByID.Item.ID, nil
+	c.itemIDs[added.NodeID] = added.ID
+	c.issueItems[issueKey{c.Repo, number}] = added.ID
+	return BoardItem{ItemID: added.NodeID, Repo: c.Repo, Issue: number}, nil
 }

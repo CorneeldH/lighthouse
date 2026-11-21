@@ -4,7 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -232,11 +234,14 @@ func (e *forgeEnv) statusNames() []string {
 
 func newForgeIssueStatusCommand(env *forgeEnv) *cobra.Command {
 	return &cobra.Command{
-		Use: "status <number> <status>", Short: "Move an issue to a board status, adding it to the board first", Args: forgeArgs(2),
+		Use: "status <number> [<status>]", Short: "Read an issue's board status, or move it to one (adding it to the board first)", Args: forgeArgsRange(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			n, err := forgeNumber(cmd, args[0])
 			if err != nil {
 				return err
+			}
+			if len(args) == 1 {
+				return env.readIssueStatus(cmd, n)
 			}
 			status := args[1]
 			if names := env.statusNames(); names != nil && !slices.Contains(names, status) {
@@ -256,6 +261,42 @@ func newForgeIssueStatusCommand(env *forgeEnv) *cobra.Command {
 			})
 		},
 	}
+}
+
+// readIssueStatus prints {"board", "on_board", "status"}. Without [forge.board] there is no
+// board to read: it says so without opening the forge.
+func (e *forgeEnv) readIssueStatus(cmd *cobra.Command, n int) error {
+	noBoard := e.repo == nil
+	if !noBoard {
+		r, err := e.loadRepo(cmd)
+		if err != nil {
+			return err
+		}
+		noBoard = r.Board == nil
+	}
+	if noBoard {
+		return e.printStatus(cmd, map[string]any{"board": false, "on_board": false, "status": nil})
+	}
+	return e.read(cmd, "", func(f forge.Forge) (any, error) {
+		item, ok, err := f.IssueItem(cmd.Context(), n)
+		if err != nil {
+			return nil, err
+		}
+		var status any
+		if item.Status != "" {
+			status = item.Status
+		}
+		return map[string]any{"board": true, "on_board": ok, "status": status}, nil
+	})
+}
+
+func (e *forgeEnv) printStatus(cmd *cobra.Command, v map[string]any) error {
+	text, err := forgeResult{value: v}.render()
+	if err != nil {
+		return e.fail(cmd, err)
+	}
+	_, err = fmt.Fprint(e.stdout(cmd), text)
+	return err
 }
 
 func newForgePRWriteCommands(env *forgeEnv) []*cobra.Command {
@@ -401,4 +442,32 @@ func newForgeMilestoneWriteCommands(env *forgeEnv) []*cobra.Command {
 	edit.Flags().StringVar(&newTitle, "title", "", "the new title")
 	edit.Flags().String("description-file", "", "file with the new description")
 	return []*cobra.Command{create, edit}
+}
+
+var labelColorRE = regexp.MustCompile(`^[0-9a-fA-F]{6}$`)
+
+// newForgeLabelCreateCommand is `label create <name> --color <hex>`: the label is created as
+// written, the colour is six hex digits (a leading "#" is dropped; the forge adds what it needs).
+// A label that exists already is no error. It is also the command `init --labels` prints.
+func newForgeLabelCreateCommand(env *forgeEnv) *cobra.Command {
+	var color string
+	cmd := &cobra.Command{
+		Use: "create <name> --color <hex>", Short: "Create a label; a label that exists already is no error",
+		Args: forgeArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			hex := strings.TrimPrefix(color, "#")
+			if !labelColorRE.MatchString(hex) {
+				return forgeUsage(cmd, "--color must be six hex digits, got "+strconv.Quote(color))
+			}
+			return env.write(cmd, func(f forge.Forge) error {
+				if err := f.CreateLabel(cmd.Context(), args[0], hex); err != nil {
+					return err
+				}
+				_, err := fmt.Fprintf(env.stdout(cmd), "created %s\n", args[0])
+				return err
+			})
+		},
+	}
+	cmd.Flags().StringVar(&color, "color", "", "the colour, six hex digits (required)")
+	return cmd
 }
