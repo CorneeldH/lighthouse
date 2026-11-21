@@ -121,6 +121,7 @@ export function elementById(html, id) {
 }
 
 let builtBin = null;
+let buildFailure = null;
 
 /** The lighthouse binary: `$LIGHTHOUSE_BIN` when set and not empty, otherwise one build of
  * ./cmd/lighthouse into a temporary directory, removed at exit. Fails, never skips, when there is
@@ -129,13 +130,18 @@ export function lighthouseBin() {
   const given = (process.env.LIGHTHOUSE_BIN ?? "").trim();
   if (given) return given;
   if (builtBin) return builtBin;
+  if (buildFailure) throw buildFailure;
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "lighthouse-bin-"));
   process.on("exit", () => fs.rmSync(dir, { recursive: true, force: true }));
   const out = path.join(dir, "lighthouse");
   try {
     execFileSync("go", ["build", "-o", out, "./cmd/lighthouse"], { cwd: ROOT, stdio: "pipe" });
-  } catch {
-    throw new Error("lighthouse binary needed: set LIGHTHOUSE_BIN or install Go (no silent skip)");
+  } catch (err) {
+    const detail = String(err.stderr ?? err.message ?? "").trim();
+    buildFailure = new Error(
+      `lighthouse binary needed: set LIGHTHOUSE_BIN or install Go (no silent skip)${detail ? `\n${detail}` : ""}`,
+    );
+    throw buildFailure;
   }
   builtBin = out;
   return out;

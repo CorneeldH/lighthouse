@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
-import { ROOT, SITE, elementById, relativeLinks, siteFiles } from "./helpers.mjs";
+import { ROOT, SITE, relativeLinks, siteFiles } from "./helpers.mjs";
 
 const GUIDE = path.join(ROOT, "docs", "getting-started.md");
 const HTML_SINKS = ["innerHTML", "outerHTML", "insertAdjacentHTML", "document.write"];

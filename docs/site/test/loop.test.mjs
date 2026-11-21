@@ -28,6 +28,11 @@ const dataMaps = fs
   .map((n) => [n, load(n)])
   .filter(([, data]) => data && !Array.isArray(data) && "chips" in data);
 const MAPS = [["fixture", readJson(FIXTURE)], ...dataMaps];
+for (const name of ["loop.json", "session.json"])
+  assert.ok(
+    dataMaps.some(([n]) => n === name),
+    `${name} is not among the checked data maps`,
+  );
 
 function vocabularyProblems(chain) {
   const phases = new Set(chain.phases.map((p) => p.id));

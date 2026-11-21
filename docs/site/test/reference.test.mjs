@@ -54,10 +54,14 @@ function referencePaths() {
 
 test("every pack part is on the reference", () => {
   const linked = referencePaths();
-  assert.deepEqual([...packParts()].filter((p) => !linked.has(p)).sort(), []);
+  const parts = packParts();
+  assert.ok(parts.size > 0, "no pack parts found");
+  assert.ok(linked.size > 0, "no reference paths found");
+  assert.deepEqual([...parts].filter((p) => !linked.has(p)).sort(), []);
 });
 
 test("every reference link exists", () => {
+  assert.ok(referencePaths().size > 0, "no reference paths found");
   assert.deepEqual([...referencePaths()].sort().filter((p) => !fs.existsSync(path.join(ROOT, p))), []);
 });
 
