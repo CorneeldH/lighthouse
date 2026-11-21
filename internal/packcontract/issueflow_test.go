@@ -19,65 +19,6 @@ const (
 	writeHandoff = "core/skills/write-handoff"
 )
 
-// wantAll fails for every phrase text does not contain.
-func wantAll(t *testing.T, text string, phrases ...string) {
-	t.Helper()
-	for _, p := range phrases {
-		if !strings.Contains(text, p) {
-			t.Errorf("missing %q", p)
-		}
-	}
-}
-
-// wantNone fails for every phrase text contains.
-func wantNone(t *testing.T, text string, phrases ...string) {
-	t.Helper()
-	for _, p := range phrases {
-		if strings.Contains(text, p) {
-			t.Errorf("contains %q", p)
-		}
-	}
-}
-
-// wantRe fails for every pattern that matches nowhere in text.
-func wantRe(t *testing.T, text string, patterns ...string) {
-	t.Helper()
-	for _, p := range patterns {
-		if !regexp.MustCompile(p).MatchString(text) {
-			t.Errorf("no match for %s", p)
-		}
-	}
-}
-
-// wantOrder fails when a piece is missing or the pieces do not appear in this order.
-func wantOrder(t *testing.T, text string, pieces ...string) {
-	t.Helper()
-	last := -1
-	for _, p := range pieces {
-		i := strings.Index(text, p)
-		if i < 0 {
-			t.Errorf("missing %q", p)
-			return
-		}
-		if i < last {
-			t.Errorf("%q comes before the piece preceding it", p)
-		}
-		last = i
-	}
-}
-
-// lineStarting returns the first line that starts with prefix (after leading spaces).
-func lineStarting(t *testing.T, text, prefix string) string {
-	t.Helper()
-	for line := range strings.SplitSeq(text, "\n") {
-		if strings.HasPrefix(strings.TrimLeft(line, " "), prefix) {
-			return line
-		}
-	}
-	t.Fatalf("no line starts with %q", prefix)
-	return ""
-}
-
 // --- route-issue -------------------------------------------------------------------
 
 // Classification: fails when gate 0 stops reading the blocker from `lighthouse forge issue
@@ -504,7 +445,7 @@ var planSeam = []string{
 	"`/superpowers:executing-plans` | `offer` |",
 	"`/lighthouse-fix-pr <pr>` | `offer` |",
 	"At `choice` you print two blocks in step 6 before the question: first *review*, then *interactive*.",
-	"then ask the question only with *review* or *interactive*, without *controller*",
+	"Without an issue number (step 1) there is nothing to post: then ask the question only with *review* or *interactive*, without *controller*",
 	"At `no` you do not read the board status; if the issue is on `Controller` anyway, it stays there until the user moves it.",
 	"If the user wants the plan review itself through the controller: `next: /lighthouse-review-plan <plan>` and steps 5 and 6.",
 	"When in doubt: **review**.",
