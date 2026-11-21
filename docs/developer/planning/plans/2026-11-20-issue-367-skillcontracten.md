@@ -303,7 +303,7 @@ De uitvoerder werkt deze tabel per taak bij. De PR-body neemt hem over. Telling:
 | `test_issue_impact_scout.py` | 15 | 13 naar Go (`name` ingekort: gedekt door `TestScoutNameMatchesPersona`; de outputsecties opgegaan in de bloktest; de kop uit `config.Variants`), 2 gedekt (`TestCorePack` ×2) | 7 |
 | `test_pr_template.py` | 8 | 8 naar Go (1 ingekort: regelnummers; de vormen gebonden aan de parser van `prbody`, het subcommando via `cliFlags`, de kop via `config.Heading`), 0 gedekt (`inline_twins_test` faalt op geen enkele mutatie) | 7 |
 | `test_workflow_unblock.py` | 14 | 14 naar Go (5 als uitvoertest van het stapscript, 1 ingekort: de allowlistkant; de YAML via `packs.Fill` en `yaml.v3`, de sleutels via `config.KindOf`), 0 gedekt (de init-tests vullen een stubworkflow), negatieven R3 binnen 1 test | 7 |
-| `test_fragments.py` | 4 | 1 naar Go, 3 beschermt niets | 8 |
+| `test_fragments.py` | 4 | 1 naar Go (`config.Parse` over basis plus fragment, elke sleutel via `config.KindOf`), 3 beschermt niets (zelftests van `_check`), 0 gedekt (de init-tests gebruiken een nepfragment) | 8 |
 | `test_requires_without_python.py` | 1 | 1 gedekt (`TestLanguagePacks`, voor go, node, shell en expo elk met `python3` en `tomllib` gemuteerd) | 8 |
 | `test_portable_shell.py` | 3 | 3 naar Go | 8 |
 | `test_shell_style.py` | 1 | 1 naar Go (open: shellcheck in de Go-job) | 8 |
@@ -728,3 +728,14 @@ Vervallen negatieven (R3): `uv `, `setup-uv`, `python` en `unblock_dependents.py
 | Bestand | Test | Bestemming | Reden | Go-test of mutatie |
 |---|---|---|---|---|
 | `test_requires_without_python.py` | `test_language_pack_requires_no_python` | weg — gedekt | De toollijst per pakket is exact gepind; een extra `python3` of `tomllib` verandert die lijst. | `TestLanguagePacks/go`, `/node`, `/shell`, `/expo`. Mutaties: `python3 = ["x"]` en `tomllib = ["x"]` in elk van de vier `requires.toml`: alle acht FAIL. |
+
+### `test_fragments.py` (taak 8b, afgerond)
+
+1 naar Go, 3 beschermt niets (4). De Go-test staat in `internal/packcontract/packfiles_test.go`. Hij loopt per glob over elk `pack/*/lighthouse.toml.fragment` (nu alleen `python`) en faalt als er geen is. De fragmenttests in `internal/initcmd/fragment_test.go` gebruiken een nep-`python`-pakket: met `["3"]` in het echte fragment bleef `go test ./internal/initcmd/ -run Fragment` groen, dus niet gedekt. Elke mutatie is gedraaid in `pack/python/lighthouse.toml.fragment`: de test faalde, daarna `git checkout -- pack/` en een lege `git status --short pack/`.
+
+| Bestand | Test | Bestemming | Reden | Go-test of mutatie |
+|---|---|---|---|---|
+| `test_fragments.py` | `test_fragment_is_valid_config` | naar Go | `init` kopieert de sleutels letterlijk naar `lighthouse.toml`: basis plus fragment moet door `config.Parse`, en elke bladsleutel moet `config.KindOf(key) != "unknown"` geven; minstens één fragment en één sleutel. | `TestFragmentIsValidConfig`. Mutaties: `unchecked_exit_codes = ["3"]`, `nope = 1`, een tabel `[tset_gate]`: FAIL. |
+| `test_fragments.py` | `test_check_catches_a_wrong_type` | weg — beschermt niets | Zelftest van de hulpfunctie `_check`; de Go-port roept `config.Parse` direct aan, en de mutatie `["3"]` hierboven bewijst dat die het type weigert. | — |
+| `test_fragments.py` | `test_check_catches_an_unknown_key` | weg — beschermt niets | Zelftest van `_check`; `config.KindOf` is getest in `internal/config` (`TestIsKnownKey`), en de mutatie `nope = 1` hierboven faalt. | — |
+| `test_fragments.py` | `test_check_accepts_the_python_default` | weg — beschermt niets | Zelftest van `_check` op een kopie van het fragment; de Go-test leest het echte fragment. | — |
