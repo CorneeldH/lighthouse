@@ -18,6 +18,8 @@ const iss = (
   title: `title-${number}`,
   url: `https://forge/${number}`,
   status: 'To do',
+  label: '',
+  open_question: false,
   blocked_by: by.length ? by.map(([r, i]) => ({ repo: r, issue: i })) : null,
   ...(ms === null ? {} : { milestone: { number: ms, state: 'open', title: `M${ms}` } }),
   ...extra,
@@ -28,6 +30,7 @@ const ms = (number: number, done: number, open: number, description = ''): Miles
   done,
   open,
   description,
+  closed: [],
 })
 const repo = (slug: string, issues: Issue[], milestones: Milestone[]): Repo => ({ slug, issues, milestones })
 

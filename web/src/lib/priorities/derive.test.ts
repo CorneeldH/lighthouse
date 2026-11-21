@@ -20,6 +20,8 @@ const iss = (
   title: `t${number}`,
   url: `u${number}`,
   status: 'To do',
+  label: '',
+  open_question: false,
   blocked_by: by.length ? by.map(([repo, issue]) => ({ repo, issue })) : null,
   ...extra,
 })
@@ -162,6 +164,7 @@ describe('milestoneRows', () => {
     done,
     open,
     description,
+    closed: [],
   })
   const ref = (number: number) => ({ number, title: `M${number}`, state: 'open' })
 
