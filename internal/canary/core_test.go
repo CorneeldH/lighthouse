@@ -15,7 +15,7 @@ import (
 func TestCoreCommandCanaries(t *testing.T) {
 	for id, c := range commandCases {
 		t.Run(id, func(t *testing.T) {
-			root := installRepo(t, "core")
+			root := installRepo(t, append([]string{"core"}, extraPacks[id]...)...)
 			if strings.Contains(root, id) {
 				t.Fatalf("the reason ID %q is in the repository path %s", id, root)
 			}

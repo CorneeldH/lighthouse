@@ -201,6 +201,13 @@ sha256 = "4c51ffd3d9fa3e0f9acfe043ac6c830d3955d3e177907fb8d42492f2c542638f"
 
 [[unit]]
 kind = "file"
+path = ".claude/hooks/lighthouse/go-imports-gate.sh"
+package = "go"
+version = "dev"
+sha256 = "890f35bcd71517cb4d5f56769cbb6235a25d492082f030eb531a54b50f029588"
+
+[[unit]]
+kind = "file"
 path = ".claude/hooks/lighthouse/go-lint-gate.sh"
 package = "go"
 version = "dev"
@@ -212,6 +219,13 @@ path = ".claude/hooks/lighthouse/gofmt-check.sh"
 package = "go"
 version = "dev"
 sha256 = "1280a3664d47b07023fb86647d8ac5c2b325dc736a8f6e669b9dd35fbb8a5841"
+
+[[unit]]
+kind = "file"
+path = ".claude/hooks/lighthouse/node-imports-gate.sh"
+package = "node"
+version = "dev"
+sha256 = "65e9b6a7d96f10f8ac3d23ac3ff767ab1abe01b5b6b9d7fbb4f66e9dc7e46d58"
 
 [[unit]]
 kind = "file"
@@ -359,10 +373,26 @@ sha256 = "0beb56d2df533c013dbfda8012394fb8e31267a30d5018fcbef2d164af4c2609"
 [[unit]]
 kind = "hook"
 path = ".claude/settings.json"
+id = "Stop||\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/go-imports-gate.sh"
+package = "go"
+version = "dev"
+sha256 = "680e7ea0fd4d4c8ab5075262305643a2454618d8e99ef155e04b5c70c831f662"
+
+[[unit]]
+kind = "hook"
+path = ".claude/settings.json"
 id = "Stop||\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/go-lint-gate.sh"
 package = "go"
 version = "dev"
 sha256 = "c1cf2dc8a27d1d896da557fda731bb616c01fd0afe3f31e0d8042a1bf6b6385a"
+
+[[unit]]
+kind = "hook"
+path = ".claude/settings.json"
+id = "Stop||\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/node-imports-gate.sh"
+package = "node"
+version = "dev"
+sha256 = "9b5c7336e9ae42e91d60c16d0ad6f3c097f77dfdbafe8d26847759af4594a684"
 
 [[unit]]
 kind = "hook"
@@ -605,4 +635,12 @@ path = "AGENTS.md"
 id = "go"
 package = "go"
 version = "dev"
-sha256 = "1616ce3959bf18a7a934d390a46512542ff2fcadb5c43dc3214a0354180c50d7"
+sha256 = "21a0f1cb6e8753ce75425bfe8abce7e1f733ff171b04ed198dedb858c62a4a10"
+
+[[unit]]
+kind = "block"
+path = "AGENTS.md"
+id = "node"
+package = "node"
+version = "dev"
+sha256 = "3c5ac4053a20aba4cc95c6d3d2c5fd16d45fbb77a8c9c9f43ad5282e82e9d321"

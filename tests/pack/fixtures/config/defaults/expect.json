@@ -318,5 +318,13 @@
   "rc": 1,
   "stdout": "",
   "stderr": "config: report.dir is not set\n"
+ },
+ {
+  "args": [
+   "imports.check"
+  ],
+  "rc": 0,
+  "stdout": "true\n",
+  "stderr": ""
  }
 ]

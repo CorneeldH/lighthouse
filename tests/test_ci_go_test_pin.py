@@ -32,7 +32,7 @@ def test_every_ci_go_test_has_gate_flags():
     flags = [token for token in _gate_go_command().split() if token.startswith("-")]
     assert flags, "the Go part of the gate has no flags to pin"
     runs = _go_commands(ROOT / ".github" / "workflows" / "ci.yml")
-    assert len(runs) == 3, runs
+    assert len(runs) == 4, runs
     for run in runs:
         assert all(flag in run.split() for flag in flags), run
 

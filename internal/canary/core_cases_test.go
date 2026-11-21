@@ -38,6 +38,10 @@ func writeConfig(t *testing.T, root, text string) {
 	}
 }
 
+// extraPacks are the packs a command case installs next to core: the import check of
+// commit-test-gate checks only the languages of the installed packs.
+var extraPacks = map[string][]string{"undeclared-import": {"go"}}
+
 var commandCases = map[string]commandCase{
 	"commit-to-main": {"main-commit-gate", "run.sh main-commit-gate", func(*testing.T, string) []string { return nil }},
 	"push-to-main": {"main-commit-gate", "run.sh main-commit-gate", func(t *testing.T, root string) []string {
@@ -48,6 +52,18 @@ var commandCases = map[string]commandCase{
 	"tests-red": {"commit-test-gate", "run.sh commit-test-gate pre", func(t *testing.T, root string) []string {
 		writeConfig(t, root, "[test_gate]\ncommand = \"false\"")
 		return nil
+	}},
+	"undeclared-import": {"commit-test-gate", "run.sh commit-test-gate pre", func(t *testing.T, root string) []string {
+		writeConfig(t, root, "[test_gate]\ncommand = \"true\"")
+		// An import of a module go.mod does not require; the replace resolves it offline.
+		fixturesetup.Build(t, root, []map[string]any{
+			{"file": "go.mod", "text": "module example.test/app\n\ngo 1.23\n\nreplace example.test/dep => ./dep\n"},
+			{"file": "dep/go.mod", "text": "module example.test/dep\n\ngo 1.23\n"},
+			{"file": "dep/dep.go", "text": "package dep\n\nfunc F() {}\n"},
+			{"file": "app.go", "text": "package app\n\nimport \"example.test/dep\"\n\nfunc G() { dep.F() }\n"},
+		})
+		fixturesetup.Git(t, root, "add", "go.mod", "dep", "app.go")
+		return []string{"GOPROXY=off", "GOFLAGS="}
 	}},
 	"pr-body": {"pr-create-gate", "run.sh pr-create-gate", func(t *testing.T, root string) []string {
 		writeConfig(t, root, "[forge]\nkind = \"github\"\nrepo = \"example/canary\"")

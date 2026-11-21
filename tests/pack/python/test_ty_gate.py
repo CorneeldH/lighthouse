@@ -413,7 +413,10 @@ def test_registered_at_stop():
         for block in registered["hooks"]["Stop"]
         for h in block["hooks"]
     ]
-    assert entries == [("", "${CLAUDE_PLUGIN_ROOT}/hooks/ty-gate.sh", 60)]
+    assert entries == [
+        ("", "${CLAUDE_PLUGIN_ROOT}/hooks/ty-gate.sh", 60),
+        ("", "${CLAUDE_PLUGIN_ROOT}/hooks/python-imports-gate.sh", 120),
+    ]
 
 
 def test_every_hook_script_is_registered():

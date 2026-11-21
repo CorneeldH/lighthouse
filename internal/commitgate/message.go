@@ -47,12 +47,14 @@ func (g *Gate) Emit(event string) Result {
 	}}
 }
 
-// reasons of commit-test-gate: --no-verify, and a test run that is red.
-var reasons = hook.Declare(HookName, "no-verify", "tests-red")
+// reasons of commit-test-gate: --no-verify, a test run that is red, and an import that no
+// manifest declares (#383).
+var reasons = hook.Declare(HookName, "no-verify", "tests-red", "undeclared-import")
 
 var (
-	reasonNoVerify = reasons[0]
-	reasonTestsRed = reasons[1]
+	reasonNoVerify         = reasons[0]
+	reasonTestsRed         = reasons[1]
+	reasonUndeclaredImport = reasons[2]
 )
 
 // block is the result of a refused commit: the message starts with the tag of r.

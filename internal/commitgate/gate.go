@@ -48,6 +48,13 @@ type Gate struct {
 	LookPath func(string) (string, error)
 	// Run runs the test command until the deadline (default deadline.RunCapture).
 	Run func(deadline time.Time, argv []string, o deadline.Options) (int, []byte, error)
+	// ImportsCheck runs `lighthouse imports check --files …` in root, at most limit long
+	// (default: runImportsDefault).
+	ImportsCheck func(root string, files []string, limit time.Duration) (stdout, stderr string, code int, err error)
+	// Executable is this binary (default os.Executable); Exec runs argv in dir with env (default
+	// exec.Cmd). Both are seams of the default ImportsCheck.
+	Executable func() (string, error)
+	Exec       func(dir string, env, argv []string) (stdout, stderr string, code int, err error)
 	// Trace, when set, gets one line "deadline" when the deadline is set (LIGHTHOUSE_GATE_TRACE).
 	Trace string
 	// Start, when set, replaces the clock in the deadline (LIGHTHOUSE_GATE_START).
@@ -58,6 +65,8 @@ type Gate struct {
 	// rest.
 	rows []Row
 	done int
+	// started is the start of the clock, once taken (see startUnix).
+	started *int64
 	// command is [test_gate] command, once read.
 	command string
 	// showRun runs `systemctl --user show` (default runCommand).
@@ -250,15 +259,25 @@ func (g *Gate) checkRanges(s *settings) *Result {
 	return nil
 }
 
+// startUnix is the start of the one clock of the gate: Start, or now, read once and only when
+// first needed (the import step or the deadline), so a gate that blocks on its settings never
+// reads the clock.
+func (g *Gate) startUnix() int64 {
+	if g.started == nil {
+		var start int64
+		if g.Start != nil {
+			start = *g.Start
+		} else {
+			start = g.now().Unix()
+		}
+		g.started = &start
+	}
+	return *g.started
+}
+
 // setDeadline is the one deadline of the whole loop, set before the slot: the wait counts towards
 // it. Whole seconds, like `date +%s`.
-func (g *Gate) setDeadline(seconds int) time.Time {
-	var start int64
-	if g.Start != nil {
-		start = *g.Start
-	} else {
-		start = g.now().Unix()
-	}
+func (g *Gate) setDeadline(start int64, seconds int) time.Time {
 	if g.Trace != "" {
 		if f, err := os.OpenFile(g.Trace, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o600); err == nil {
 			_, _ = f.WriteString("deadline\n")
@@ -368,6 +387,11 @@ func (g *Gate) RunRoots(rows []Row, event string) Result {
 	// Not inherited from an outer gate run: without a row of its own the command tests everything.
 	env := withoutKeys(g.Env, "LIGHTHOUSE_GATE_BASE", "LIGHTHOUSE_GATE_HEAD", "LIGHTHOUSE_GATE_FILES")
 
+	// The import step does not depend on [test_gate] command: it runs before that early return.
+	if stop, res := g.runImports(rows); stop {
+		return res
+	}
+
 	// Not set, or `command = ""` (the opt-out): the same note, nothing was tested.
 	command, set, block := g.readConfig("test_gate.command")
 	if block != nil {
@@ -383,7 +407,7 @@ func (g *Gate) RunRoots(rows []Row, event string) Result {
 		return *block
 	}
 
-	dl := g.setDeadline(s.deadlineSeconds)
+	dl := g.setDeadline(g.startUnix(), s.deadlineSeconds)
 	// So the slot wait never runs past the deadline either.
 	s.slotWait = min(s.slotWait, s.deadlineSeconds)
 
