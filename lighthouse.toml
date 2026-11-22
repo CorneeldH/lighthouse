@@ -93,7 +93,7 @@ version = "7.0.2"
 [pins.kenn-forge]
 kind = "tool"
 repo = "kenn-io/forge"
-version = "0.5.1"
+version = "0.8.0"
 command = "kenn-forge"
 version_args = ["version"]
 
