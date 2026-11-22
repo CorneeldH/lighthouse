@@ -33,6 +33,12 @@ func (s *Stand) UnmarshalText(b []byte) error {
 // CoreGates are the gates no level may turn off.
 var CoreGates = []string{"main-commit-gate", "worktree-check", "pr-create-gate"}
 
+// CoreGateWarning is the line for a core gate whose stand is not on; init and `lighthouse level`
+// print the same words.
+func CoreGateWarning(gate string, st Stand) string {
+	return fmt.Sprintf("lighthouse: %s is %s — this repo works outside the chain", gate, st)
+}
+
 // Table is one level's [<level>.components] and [<level>.flags].
 type Table struct {
 	Components map[string]Stand

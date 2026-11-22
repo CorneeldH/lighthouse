@@ -178,7 +178,7 @@ func validate(files []levels.File, level string, over map[string]levels.Stand, l
 	}
 	for _, g := range levels.CoreGates {
 		if st := r.Stand(g); st != levels.StandOn {
-			warnings = append(warnings, fmt.Sprintf("lighthouse: %s is %s — this repo works outside the chain", g, st))
+			warnings = append(warnings, levels.CoreGateWarning(g, st))
 		}
 	}
 	return warnings, nil
@@ -287,4 +287,26 @@ func filterBlockingUnits(units []packs.Unit, r levels.Resolved) []packs.Unit {
 		out[i] = u
 	}
 	return out
+}
+
+// CheckLevel is what `lighthouse level` shares with init: it validates level and the
+// [components] overrides with the same validate, against the levels.toml of every package in
+// fsys, and returns those files. The warnings of validate are dropped; the caller prints its own.
+func CheckLevel(fsys fs.FS, version, level string, over map[string]levels.Stand) ([]levels.File, error) {
+	all, err := loadAll(fsys, version)
+	if err != nil {
+		return nil, err
+	}
+	var chosen []packs.Pack
+	var desired []packs.Unit
+	for _, name := range slices.Sorted(maps.Keys(all)) {
+		chosen = append(chosen, all[name])
+		desired = append(desired, all[name].Units...)
+	}
+	byName := levelFiles(chosen)
+	files := fileList(byName)
+	if _, err := validate(files, level, over, loggableFunc(desired, byName)); err != nil {
+		return nil, err
+	}
+	return files, nil
 }
