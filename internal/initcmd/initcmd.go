@@ -218,6 +218,9 @@ func execute(o Options) error {
 		}
 		desired = append(desired, componentsUnit(resolved, installedSince(prev, found, resolved.Level, now)))
 	}
+	if haveLevels {
+		reqs = levelRequires(reqs, resolved)
+	}
 	for _, miss := range o.Deps.Check(mergeRequires(forgeRequires(reqs, kind))) {
 		_, _ = fmt.Fprintf(o.Err, "missing dependency: %s (needed by: %s)\n", miss.Tool, strings.Join(miss.NeededBy, ", "))
 	}
