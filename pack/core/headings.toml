@@ -454,3 +454,37 @@ en = "To correct: adjust the labels or the body if needed and delete this commen
 [area_near_goal]
 nl = "Nabij doel"
 en = "Near goal"
+
+[area_crux]
+nl = "Crux"
+en = "Crux"
+
+[policy]
+nl = "Leidend beleid"
+en = "Guiding policy"
+
+[not_now]
+nl = "Bewust niet"
+en = "Deliberately not"
+
+# Strategy document
+[strategy_diagnosis]
+nl = "Diagnose"
+en = "Diagnosis"
+
+[strategy_audience]
+nl = "Voor wie"
+en = "For whom"
+
+[strategy_roadmap]
+nl = "Roadmap"
+en = "Roadmap"
+
+# Tenets document
+[tenet_over]
+nl = "boven"
+en = "over"
+
+[tenet_evidence]
+nl = "Bewijs"
+en = "Evidence"

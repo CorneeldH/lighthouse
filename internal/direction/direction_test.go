@@ -84,6 +84,13 @@ func fixture(t *testing.T, over map[string]string) string {
 	for k, v := range over {
 		files[k] = v
 	}
+	headings, err := os.ReadFile("../../pack/core/headings.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := files[".lighthouse/headings.toml"]; !ok {
+		files[".lighthouse/headings.toml"] = string(headings)
+	}
 	root := t.TempDir()
 	for p, c := range files {
 		if c == del {
@@ -291,5 +298,68 @@ func TestCheckReportsAllErrorsAtOnce(t *testing.T) {
 func TestDirectionDocumentsHaveTheirShape(t *testing.T) {
 	for _, e := range Check(filepath.Join("..", "..")) {
 		t.Errorf("%s", e)
+	}
+}
+
+const englishTOML = `[project]
+language = "en"
+
+[forge]
+kind = "github"
+repo = "O/r"
+
+[labels]
+area_prefix = "2-area:"
+
+[paths]
+labels = "docs/labels.md"
+tenets = "docs/tenets.md"
+areas = "docs/areas"
+strategy = "docs/strategy.md"
+`
+
+const englishStrategy = "# Strategy\n\n## Diagnosis\n\nx\n\n## For whom\n\nx\n\n## Guiding policy\n\n- x\n\n## Deliberately not\n\n- **S1** one\n\n## Roadmap\n\nx\n"
+
+func englishArea(extra string) string {
+	return "# Area\n\n## Crux\n\nx\n\n## Guiding policy\n\n- x\n\n## Deliberately not\n\n" + extra
+}
+
+// Classification: unit; guards that the shape check reads headings through the headings table.
+// A change that hardcodes the Dutch headings fails it.
+func TestCheckAcceptsEnglishHeadings(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"lighthouse.toml":    englishTOML,
+		"docs/strategy.md":   englishStrategy,
+		"docs/tenets.md":     "# Tenets\n\n## A. X over Y\n\n*Evidence*: [a](a.md), [b](a.md)\n",
+		"docs/areas/core.md": englishArea("- **N1** not this -> init\n"),
+		"docs/areas/init.md": englishArea("- **N1** nothing\n"),
+	})
+	if errs := Check(root); len(errs) != 0 {
+		t.Fatalf("english repo reports %q", errs)
+	}
+}
+
+// Classification: unit; guards that reading accepts every variant and that the plain word
+// " over " in a Dutch title does not count as a second separator.
+// A change that insists on one language per repo, or counts every variant, fails it.
+func TestCheckAcceptsEveryVariantInOneRepo(t *testing.T) {
+	root := fixture(t, map[string]string{
+		"docs/strategy.md":   englishStrategy,
+		"docs/areas/init.md": englishArea("- **N1** nothing\n"),
+		"docs/tenets.md": "# Uitgangspunten\n\n## A. Praten over de klant boven aannames\n\n*Bewijs*: [a](a.md), [b](a.md)\n\n" +
+			"## B. X over Y\n\n*Evidence*: [a](a.md), [b](a.md)\n",
+	})
+	if errs := Check(root); len(errs) != 0 {
+		t.Fatalf("mixed repo reports %q", errs)
+	}
+}
+
+// Classification: unit; guards that a missing headings table is a finding, never silent green.
+// A change that skips the check when the table is absent fails it.
+func TestCheckMissingHeadingsTableIsFinding(t *testing.T) {
+	root := fixture(t, map[string]string{".lighthouse/headings.toml": del})
+	errs := Check(root)
+	if len(errs) == 0 || !strings.Contains(errs[0], ".lighthouse/headings.toml:1: kan niet laden") {
+		t.Fatalf("errs = %q", errs)
 	}
 }

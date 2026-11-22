@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/CorneeldH/lighthouse/internal/config"
 	"github.com/CorneeldH/lighthouse/internal/labels"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 )
@@ -26,10 +27,40 @@ var (
 	targetRe    = regexp.MustCompile(`→ ([a-z][a-z0-9-]*)`)
 )
 
+// Heading keys of .lighthouse/headings.toml, in the order a document wants them.
 var (
-	areaHeadings     = []string{"Crux", "Leidend beleid", "Bewust niet"}
-	strategyHeadings = []string{"Diagnose", "Voor wie", "Leidend beleid", "Bewust niet", "Roadmap"}
+	areaKeys     = []string{"area_crux", "policy", "not_now"}
+	strategyKeys = []string{"strategy_diagnosis", "strategy_audience", "policy", "not_now", "strategy_roadmap"}
 )
+
+// vocab is the headings table of the repo plus the language of [project] language; it turns a
+// key into its variants. Reading accepts every variant.
+type vocab struct {
+	table    *config.HeadingsTable
+	language string
+	err      error // first lookup error, reported once
+}
+
+func (v *vocab) variants(key string) []string {
+	out, err := v.table.Variants(key)
+	if err != nil && v.err == nil {
+		v.err = err
+	}
+	return out
+}
+
+// matches is whether text equals a variant of key.
+func (v *vocab) matches(key, text string) bool {
+	for _, w := range v.variants(key) {
+		if text == w {
+			return true
+		}
+	}
+	return false
+}
+
+// names is the variants of key as "a / b", for a message.
+func (v *vocab) names(key string) string { return strings.Join(v.variants(key), " / ") }
 
 type finding struct {
 	path string
@@ -59,12 +90,12 @@ func (d doc) heads() []heading {
 }
 
 // section returns the line numbers (1-based) of the lines after the "## name" heading up to the next one.
-func (d doc) section(name string) (from, to int, ok bool) {
+func (d doc) section(v *vocab, key string) (from, to int, ok bool) {
 	for i, l := range d.lines {
 		if ok && strings.HasPrefix(l, "## ") {
 			return from, i, true
 		}
-		if strings.TrimSpace(l) == "## "+name {
+		if strings.HasPrefix(l, "## ") && v.matches(key, strings.TrimSpace(l[3:])) {
 			from, ok = i+2, true
 		}
 	}
@@ -131,6 +162,12 @@ func Check(root string) []string {
 		add("lighthouse.toml", 1, "kan niet laden: %v", err)
 		return render(fs)
 	}
+	table, err := config.LoadHeadingsFile(filepath.Join(root, ".lighthouse", "headings.toml"))
+	if err != nil {
+		add(".lighthouse/headings.toml", 1, "kan niet laden: %v", err)
+		return render(fs)
+	}
+	v := &vocab{table: table, language: cfg.Language}
 	areaNames, labelsOK := areaLabels(root, cfg, add)
 
 	var docs []doc
@@ -149,11 +186,11 @@ func Check(root string) []string {
 	}
 
 	if d, ok := read("paths.strategy", cfg.Paths.Strategy); ok {
-		checkHeadings(d, strategyHeadings, add)
-		checkNotNow(d, strategyID, anyStratID, "S", nil, add)
+		checkHeadings(d, v, strategyKeys, add)
+		checkNotNow(d, v, strategyID, anyStratID, "S", nil, add)
 	}
 	if d, ok := read("paths.tenets", cfg.Paths.Tenets); ok {
-		checkTenets(d, add)
+		checkTenets(d, v, add)
 	}
 	if cfg.Paths.Areas == "" {
 		add("lighthouse.toml", 1, "paths.areas is niet gezet")
@@ -178,8 +215,8 @@ func Check(root string) []string {
 				add(rel, 1, "geen arealabel %s%s voor dit bestand", cfg.Labels.AreaPrefix, name)
 			}
 			if d, ok := read("paths.areas", rel); ok {
-				checkHeadings(d, areaHeadings, add)
-				checkNotNow(d, notNowID, anyNotNowID, "N", known, add)
+				checkHeadings(d, v, areaKeys, add)
+				checkNotNow(d, v, notNowID, anyNotNowID, "N", known, add)
 			}
 		}
 		if err == nil {
@@ -192,6 +229,9 @@ func Check(root string) []string {
 	}
 	for _, d := range docs {
 		checkLinks(root, d, add)
+	}
+	if v.err != nil {
+		add(".lighthouse/headings.toml", 1, "kop-sleutel ontbreekt: %v", v.err)
 	}
 	return render(fs)
 }
@@ -220,28 +260,28 @@ func areaLabels(root string, cfg repoconfig.Repo, add func(string, int, string, 
 	return names, true
 }
 
-// checkHeadings wants exactly the ## headings of want, in that order.
-func checkHeadings(d doc, want []string, add func(string, int, string, ...any)) {
+// checkHeadings wants exactly the ## headings of keys, in that order, each in any variant.
+func checkHeadings(d doc, v *vocab, keys []string, add func(string, int, string, ...any)) {
 	got := d.heads()
-	for i, w := range want {
+	for i, k := range keys {
 		if i >= len(got) {
-			add(d.path, len(d.lines), "kop ## %s ontbreekt", w)
+			add(d.path, len(d.lines), "kop ## %s ontbreekt", v.names(k))
 			return
 		}
-		if got[i].text != w {
-			add(d.path, got[i].line, "kop ## %s waar ## %s verwacht wordt", got[i].text, w)
+		if !v.matches(k, got[i].text) {
+			add(d.path, got[i].line, "kop ## %s waar ## %s verwacht wordt", got[i].text, v.names(k))
 			return
 		}
 	}
-	if len(got) > len(want) {
-		add(d.path, got[len(want)].line, "extra kop ## %s", got[len(want)].text)
+	if len(got) > len(keys) {
+		add(d.path, got[len(keys)].line, "extra kop ## %s", got[len(keys)].text)
 	}
 }
 
-// checkNotNow checks the bullets of "## Bewust niet": one unique ID each and, with known set,
+// checkNotNow checks the bullets of the not-now section: one unique ID each and, with known set,
 // a "→ <area>" that exists.
-func checkNotNow(d doc, idRe, anyRe *regexp.Regexp, letter string, known map[string]bool, add func(string, int, string, ...any)) {
-	from, to, ok := d.section("Bewust niet")
+func checkNotNow(d doc, v *vocab, idRe, anyRe *regexp.Regexp, letter string, known map[string]bool, add func(string, int, string, ...any)) {
+	from, to, ok := d.section(v, "not_now")
 	if !ok {
 		return
 	}
@@ -268,8 +308,8 @@ func checkNotNow(d doc, idRe, anyRe *regexp.Regexp, letter string, known map[str
 	}
 }
 
-// checkTenets checks the "## <letter>. X boven Y" headings and their evidence.
-func checkTenets(d doc, add func(string, int, string, ...any)) {
+// checkTenets checks the "## <letter>. X over Y" headings and their evidence.
+func checkTenets(d doc, v *vocab, add func(string, int, string, ...any)) {
 	letters := map[byte]int{}
 	for _, h := range d.heads() {
 		m := tenetHead.FindStringSubmatch("## " + h.text)
@@ -283,14 +323,14 @@ func checkTenets(d doc, add func(string, int, string, ...any)) {
 		} else {
 			letters[letter] = h.line
 		}
-		if n := strings.Count(title, " boven "); n != 1 {
-			add(d.path, h.line, "kop heeft %d keer ' boven ', precies 1 verwacht", n)
+		if n := separators(v, title); n != 1 {
+			add(d.path, h.line, "kop heeft %d keer ' %s ', precies 1 verwacht", n, v.names("tenet_over"))
 		}
 		if strings.Contains(title, "(vervallen)") {
 			continue
 		}
-		if links := evidenceLinks(d, h.line); links < 2 {
-			add(d.path, h.line, "geen *Bewijs*-regel met minstens 2 links (gevonden: %d)", links)
+		if links := evidenceLinks(d, v, h.line); links < 2 {
+			add(d.path, h.line, "geen *%s*-regel met minstens 2 links (gevonden: %d)", v.names("tenet_evidence"), links)
 		}
 	}
 	var max byte
@@ -306,10 +346,29 @@ func checkTenets(d doc, add func(string, int, string, ...any)) {
 	}
 }
 
-// evidenceLinks counts the links of the *Bewijs* line (and its continuation) of the section at line.
-func evidenceLinks(d doc, line int) int {
+// separators counts the " <over> " separators of a tenet title: the occurrences of all variants
+// together, or, when that is more than one, those of the variant of [project] language.
+func separators(v *vocab, title string) int {
+	all := 0
+	for _, w := range v.variants("tenet_over") {
+		all += strings.Count(title, " "+w+" ")
+	}
+	if all <= 1 {
+		return all
+	}
+	if w, err := v.table.Heading("tenet_over", v.language); err == nil {
+		return strings.Count(title, " "+w+" ")
+	}
+	return all
+}
+
+// evidenceLinks counts the links of the evidence line (and its continuation) of the section at line.
+func evidenceLinks(d doc, v *vocab, line int) int {
 	for i := line; i < len(d.lines) && !strings.HasPrefix(d.lines[i], "## "); i++ {
-		if strings.HasPrefix(d.lines[i], "*Bewijs*") {
+		for _, w := range v.variants("tenet_evidence") {
+			if !strings.HasPrefix(d.lines[i], "*"+w+"*") {
+				continue
+			}
 			n := 0
 			for ; i < len(d.lines) && strings.TrimSpace(d.lines[i]) != ""; i++ {
 				n += strings.Count(d.lines[i], "](")
