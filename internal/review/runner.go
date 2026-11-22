@@ -119,12 +119,25 @@ func RunRound(ctx context.Context, o Options) int {
 	if err := os.MkdirAll(ch, 0o755); err != nil {
 		return fail(ExitFailed, "%v", err)
 	}
-	auth := filepath.Join(home, ".codex", "auth.json")
-	if !isFile(auth) {
-		return fail(ExitNoLogin, "CODEX_UNAUTHENTICATED: ~/.codex/auth.json missing")
+	// The login lives in $CODEX_HOME when that is set, else in ~/.codex.
+	missing := "CODEX_UNAUTHENTICATED: ~/.codex/auth.json missing"
+	codexHome, err := usage.CodexHome()
+	if err != nil {
+		return fail(ExitNoLogin, "%s", missing)
 	}
-	if err := copyFile(auth, filepath.Join(ch, "auth.json")); err != nil { // takes a refreshed token along
-		return fail(ExitFailed, "%v", err)
+	auth := filepath.Join(codexHome, "auth.json")
+	if !isFile(auth) {
+		if os.Getenv("CODEX_HOME") != "" {
+			missing = "CODEX_UNAUTHENTICATED: " + auth + " missing"
+		}
+		return fail(ExitNoLogin, "%s", missing)
+	}
+	// Source and target can be the same file (CODEX_HOME is the clean home): then there is
+	// nothing to copy.
+	if dst := filepath.Join(ch, "auth.json"); filepath.Clean(auth) != filepath.Clean(dst) {
+		if err := copyFile(auth, dst); err != nil { // takes a refreshed token along
+			return fail(ExitFailed, "%v", err)
+		}
 	}
 	cfgPath := filepath.Join(ch, "config.toml")
 	if info, err := os.Stat(cfgPath); err != nil || info.Size() == 0 {
