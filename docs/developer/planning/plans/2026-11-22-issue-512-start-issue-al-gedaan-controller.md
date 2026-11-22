@@ -23,7 +23,7 @@
 - Controller-run met `likely` en een covering commit zonder `Refs`-PR (directe fix): de run schrijft toch de handoff naar close-issue, dat verifieert zelf. Test: stap 2 noemt de handoff voor élke `likely` in een controller-run.
 - Controller-run met `not measurable — fetch failed`: eindigt in `lighthouse ask`, niet in een handoff (close-issue zou op verouderde data meten). Test: de bullet noemt `lighthouse ask` en niet `next: /lighthouse-close-issue`.
 - Interactieve run: ongewijzigd, de keuze blijft chattekst aan de gebruiker. Test: de oude interactieve formulering "The user decides" blijft staan.
-- Twijfel tussen `likely` en `no` (commit noemt het issue maar dekt de AC onzeker): de run vraagt via `lighthouse ask` in plaats van te raden. Test: stap 2 noemt "in doubt" met `lighthouse ask`.
+- Twijfel tussen `likely` en `no` (commit met `(#<nr>)` in het onderwerp die de AC onzeker dekt): de run vraagt via `lighthouse ask` in plaats van te raden. Test: stap 2 noemt "in doubt" met `lighthouse ask`.
 - Een run die met alleen "as the last text" eindigt, wordt weer teruggegeven. Test: stap 2 bevat die zin niet meer.
 
 ---
@@ -52,7 +52,7 @@ Verwacht: FAIL op ontbrekende strings.
 
 - [ ] **Stap 3: Pas beide SKILL.md-varianten aan**
 
-In stap 2, bullet `already done? likely`: de zin "Controller run (if present): put the choice ... as the last text and stop; you never close yourself." vervangen door: in een controller-run post `/lighthouse-write-handoff` (controller mode) een handoff `next: /lighthouse-close-issue <nr>` met het bewijs (commit-sha) onder `Context:`, vanuit de worktree van het issue, en stop. De controller start dan `/lighthouse-close-issue` (rij `handoff`); close-issue entry B verifieert de criteria en vraagt zelf bij open criteria. Je sluit zelf nooit. Is het bewijs twijfelachtig (*in doubt*: de commit noemt het issue maar dekt de AC onzeker): één bundel `lighthouse ask --issue <nr> --phase start` met opties "close through `/lighthouse-close-issue <nr>`", "carry on anyway", `--recommended` op de eerste, en stop zonder handoff.
+In stap 2, bullet `already done? likely`: de zin "Controller run (if present): put the choice ... as the last text and stop; you never close yourself." vervangen door: in een controller-run post `/lighthouse-write-handoff` (controller mode) een handoff `next: /lighthouse-close-issue <nr>` met het bewijs (commit-sha) onder `Context:`, vanuit de worktree van het issue, en stop. De controller start dan `/lighthouse-close-issue` (rij `handoff`); close-issue entry B verifieert de criteria en vraagt zelf bij open criteria. Je sluit zelf nooit. Is het bewijs twijfelachtig (*in doubt*: alleen een commit met `(#<nr>)` in het onderwerp die het werk lijkt te leveren maar de AC onzeker dekt; een vermelding in een commit-body, spec of plan blijft `no`, tweede vorm, en gaat door naar stap 3): één bundel `lighthouse ask --issue <nr> --phase start` met opties "close through `/lighthouse-close-issue <nr>`", "carry on anyway", `--recommended` op de eerste, en stop zonder handoff. Voeg per optie één clausule toe voor de hervatte sessie: "close" → de controller-run-handoff `next: /lighthouse-close-issue <nr>`; "carry on anyway" → stap 3.
 
 In bullet `not measurable — fetch failed`: de controller-zin vervangen door één bundel `lighthouse ask --issue <nr> --phase start` met opties "try the fetch again" en "carry on anyway", `--recommended` op de eerste, en stop zonder handoff (close-issue zou op verouderde data meten). De interactieve zin ("the user chooses") blijft. Beide teksten in `[project] language` van de ask-velden noemen; het commando zelf in een codeblok is niet nodig, een verwijzing naar het voorbeeld in de controller-instructies volstaat. Geen literaal issuenummer.
 
@@ -70,7 +70,7 @@ Verwijder tijdelijk `next: /lighthouse-close-issue <nr>` uit één variant; de n
 Run: `go run ./cmd/lighthouse init --upgrade`, dan `lighthouse imports check`.
 
 ```bash
-git add pack/core/skills/start-issue internal/packcontract/issueflow_test.go .claude/skills .agents/skills
+git add pack/core/skills/start-issue internal/packcontract/issueflow_test.go .claude/skills .agents/skills .lighthouse/manifest.toml
 git commit -m "fix(pack): start-issue in een controller-run eindigt bij al gedaan in een handoff of vraag"
 ```
 
