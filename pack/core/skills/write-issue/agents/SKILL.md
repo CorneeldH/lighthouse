@@ -434,9 +434,11 @@ clashes with the everyday use of "project".
 Set a status with `lighthouse forge issue status <nr> "<status>"`, `<status>` a key of
 `[forge.board.status_options]`.
 
-The board can also have a **Priority** (`P0` · `P1` · `P2`, no value = at the back), from
-`[forge.board] priority_options`. There is no shared command for it: set it in the board UI, or
-as `../lighthouse-forge/<kind>.md §board` describes.
+The board can also have a **Priority** (`P0` · `P1` · `P2`), from `[forge.board] priority_options`.
+It is a manual override on the computed prio weight (milestone rank and `blocked_by`, #445), not a
+calculation: `P0` goes before everything, `P1` or no value follows the weight, `P2` goes behind
+everything. The tick and triage start in that order. There is no shared command for it: set it
+in the board UI, or as `../lighthouse-forge/<kind>.md §board` describes.
 
 Parking is not a status of its own: the tick parks an issue as `To do` plus
 `labels.blocked_issue`. Do not set `On hold` by hand; use the blocked label and the relation (3e).
