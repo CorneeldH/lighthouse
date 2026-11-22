@@ -196,7 +196,7 @@ def test_routes_are_the_situations():
         "main-commit": "I commit on main", "red-tests": "I commit with red tests",
         "pr-evidence": "I open a PR without evidence", "usage-limit": "My limit is almost reached",
         "dead-link": "I write a dead link", "write-gates": "I write code a gate rejects",
-        "agent": "I send an agent to scout",
+        "agent": "I send an agent to scout", "no-verify": "I commit with --no-verify",
         "permission-prompt": "A controller run waits on a permission",
         "workflow-push": "A controller run pushes a workflow change",
         "core-gate-off": "A session starts with a core gate switched off",

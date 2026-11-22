@@ -783,13 +783,6 @@
       ]
     },
     {
-      "id": "no-verify",
-      "label": "I commit with --no-verify",
-      "chips": [
-        "no-verify-check"
-      ]
-    },
-    {
       "id": "main-commit",
       "label": "I commit on main",
       "chips": [
@@ -810,6 +803,13 @@
       "label": "I open a PR without evidence",
       "chips": [
         "pr-create-gate"
+      ]
+    },
+    {
+      "id": "no-verify",
+      "label": "I commit with --no-verify",
+      "chips": [
+        "no-verify-check"
       ]
     },
     {
