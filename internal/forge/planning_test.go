@@ -400,3 +400,73 @@ func TestPlanningMilestonesSortedByNumber(t *testing.T) {
 		t.Fatalf("milestone order = %v, want [2 5 9]", nums)
 	}
 }
+
+// Classification: contract. Fails when PrioInputs reads the closed issues of a milestone
+// (ClosedInMilestone) or a blocked_by list, lists a pull request, or maps an issue to the wrong
+// milestone.
+func TestGitHubPrioInputsReadsOnlyOpenIssuesAndMilestones(t *testing.T) {
+	srv, c := boardClient(t)
+	m1 := map[string]any{"number": 1, "title": "M1", "state": "open", "description": "Priority: 2"}
+	srv.Milestones = []map[string]any{m1, {"number": 2, "title": "Dicht", "state": "closed"}}
+	pr := planIssue(4, m1)
+	pr["pull_request"] = map[string]any{}
+	srv.Issues = map[int]map[string]any{1: planIssue(1, m1), 2: planIssue(2, nil), 3: planIssue(3, m1), 4: pr}
+	srv.Issues[3]["state"] = "closed"
+	srv.BlockedBy = map[int][]map[string]any{2: {planBlocker(srv, "o/r", 1, "open")}}
+	got, err := c.PrioInputs(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := PrioInputs{
+		Issues: map[int]int{1: 1, 2: 0},
+		// The counts are the forge's own, pull request included, as Milestones reads them.
+		Milestones: []Milestone{{Number: 1, Title: "M1", State: "open", Description: "Priority: 2", OpenIssues: 2, ClosedIssues: 1}},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("PrioInputs = %+v, want %+v", got, want)
+	}
+	if n := srv.Count("/repos/o/r/issues"); n != 1 {
+		t.Errorf("issue list requests = %d, want 1 (no ClosedInMilestone read)", n)
+	}
+	if n := srv.Count("/repos/o/r/issues/2/dependencies/blocked_by"); n != 0 {
+		t.Errorf("blocked_by requests = %d, want 0", n)
+	}
+	if n := srv.GraphQLCount(); n != 0 {
+		t.Errorf("GraphQLCount = %d, want 0", n)
+	}
+}
+
+// Classification: io. Fails when PrioInputs goes around the ETag cache: a second read must be
+// answered by 304s only.
+func TestGitHubPrioInputsSecondReadIs304(t *testing.T) {
+	srv := forgetest.New(t)
+	m1 := map[string]any{"number": 1, "title": "M1", "state": "open", "description": "Priority: 1"}
+	srv.Milestones = []map[string]any{m1}
+	srv.Issues = map[int]map[string]any{1: planIssue(1, m1), 2: planIssue(2, nil)}
+	f, err := Open(Config{Repo: "o/r", Token: "secret-token", BaseURL: srv.URL(), Cache: NewMemoryCache()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths := []string{"/repos/o/r/issues", "/repos/o/r/milestones"}
+	first, err := f.PrioInputs(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := map[string][2]int{}
+	for _, p := range paths {
+		before[p] = [2]int{srv.Count(p), srv.NotModified(p)}
+	}
+	second, err := f.PrioInputs(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(first, second) {
+		t.Errorf("second read = %+v, want %+v", second, first)
+	}
+	for _, p := range paths {
+		reqs, nm := srv.Count(p)-before[p][0], srv.NotModified(p)-before[p][1]
+		if reqs == 0 || reqs != nm {
+			t.Errorf("%s: second read made %d requests, %d answered 304; want all of them 304", p, reqs, nm)
+		}
+	}
+}

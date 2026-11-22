@@ -8,6 +8,39 @@ import (
 	"strings"
 )
 
+// PrioInputs reads the open issues of the project with their milestone, and the active
+// milestones with their description: one call per page of each, no links and no closed issues.
+// A milestone's Number is its global id, as in Planning.
+func (g *GitLab) PrioInputs(ctx context.Context) (PrioInputs, error) {
+	items, err := getAll[glIssue](ctx, g, g.projectPath("/issues"), neturl.Values{"state": {"opened"}})
+	if err != nil {
+		return PrioInputs{}, err
+	}
+	out := PrioInputs{Issues: make(map[int]int, len(items)), Milestones: []Milestone{}}
+	for _, it := range items {
+		is := it.issue()
+		out.Issues[is.Number] = 0
+		if is.Milestone != nil {
+			out.Issues[is.Number] = is.Milestone.Number
+		}
+	}
+	milestones, err := getAll[glPlanMilestone](ctx, g, g.projectPath("/milestones"), neturl.Values{"state": {"active"}})
+	if err != nil {
+		return PrioInputs{}, err
+	}
+	for _, m := range milestones {
+		out.Milestones = append(out.Milestones, Milestone{Number: m.ID, Title: m.Title, State: "open", Description: m.Description})
+	}
+	return out, nil
+}
+
+// glPlanMilestone is an active milestone as Planning and PrioInputs read it.
+type glPlanMilestone struct {
+	ID          int    `json:"id"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+}
+
 // Planning reads the open issues of the project with their milestone and open blockers, and
 // per active milestone the open issues and the closed ones. Budget, for N open issues in P
 // pages and M active milestones in Q pages with R pages of closed issues: P calls for the
@@ -41,11 +74,7 @@ func (g *GitLab) Planning(ctx context.Context) (Planning, error) {
 		}
 		out.Issues = append(out.Issues, pi)
 	}
-	milestones, err := getAll[struct {
-		ID          int    `json:"id"`
-		Title       string `json:"title"`
-		Description string `json:"description"`
-	}](ctx, g, g.projectPath("/milestones"), neturl.Values{"state": {"active"}})
+	milestones, err := getAll[glPlanMilestone](ctx, g, g.projectPath("/milestones"), neturl.Values{"state": {"active"}})
 	if err != nil {
 		return Planning{}, err
 	}
