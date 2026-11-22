@@ -116,7 +116,7 @@ func newWorktreeAuditCommand(env worktreeaudit.Env) *cobra.Command {
 				}
 				return err
 			}
-			view := worktreeaudit.View{Policy: audit.Policy, Alive: e.Alive}
+			view := worktreeaudit.View{Policy: audit.Policy, Alive: e.Alive, Root: audit.Root}
 			out := cmd.OutOrStdout()
 			switch {
 			case cmd.Flags().Changed("only"):

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -316,5 +317,67 @@ func TestWorktreeCheckSpeaksWhenTheConfigIsBroken(t *testing.T) {
 	msg, _ := res.Output["systemMessage"].(string)
 	if res.Code != 0 || res.Stderr != "" || len(res.Output) != 1 || !strings.HasPrefix(msg, head) {
 		t.Errorf("got %#v\nwant a systemMessage starting with %q", res, head)
+	}
+}
+
+// outsideWorktree is a linked worktree of dir in a folder outside the repo, with a space in its path.
+func outsideWorktree(t *testing.T, dir string) string {
+	t.Helper()
+	wt := filepath.Join(physical(t, t.TempDir()), "my worktrees", "issue-1-x")
+	if out, err := exec.Command("git", "-C", dir, "worktree", "add", "-q", "-b", "issue-1-x", wt).CombinedOutput(); err != nil {
+		t.Fatalf("worktree add: %v\n%s", err, out)
+	}
+	return wt
+}
+
+// Detection is git's, not a path's: this stays green, and is red only when worktree-check starts
+// to look for `.claude/worktrees` in the path of the write.
+func TestWorktreeCheckIsSilentInAWorktreeOutsideTheRepo(t *testing.T) {
+	dir := repo(t, "main")
+	wt := outsideWorktree(t, dir)
+
+	if res := check(t, filepath.Join(wt, "x.go"), dir); res.Output != nil || res.Code != 0 {
+		t.Fatalf("a write in a worktree outside the repo warned: %+v", res)
+	}
+	if res := check(t, filepath.Join(physical(t, dir), "x.go"), wt); res.Output == nil {
+		t.Fatal("a write in the main checkout on main did not warn")
+	}
+}
+
+// Red when the message goes back to the fixed `.claude/worktrees/<name>`.
+func TestWorktreeCheckNamesTheConfiguredRoot(t *testing.T) {
+	dir := repo(t, "main")
+	setConfig(t, "[project]\nlanguage = \"en\"\n[worktree]\nroot = \"/data/my wt\"\n")
+
+	msg, _ := check(t, "x.go", dir).Output["systemMessage"].(string)
+
+	if !strings.Contains(msg, "git worktree add '/data/my wt'/<name> -b") || strings.Contains(msg, ".claude/worktrees") {
+		t.Fatalf("the message does not name the configured root: %q", msg)
+	}
+}
+
+// Red when isAbsPath does not exist, or counts only a leading `/`.
+func TestIsAbsPath(t *testing.T) {
+	for p, want := range map[string]bool{
+		`C:\x`: true, "C:/x": true, "/x": true, `c:\Users\A B\x.go`: true,
+		"x": false, "./x": false, "C:x": false, "": false, `:\x`: false,
+	} {
+		if got := isAbsPath(p); got != want {
+			t.Errorf("isAbsPath(%q) = %v, want %v", p, got, want)
+		}
+	}
+}
+
+// Red when canonMissing walks the volume as a component (`C:/C:/...`) or starts from a plain "/".
+func TestCanonMissingKeepsTheVolume(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("a drive letter is a volume only on Windows")
+	}
+	got, err := canonMissing(`C:\Users\A B\wt\x.go`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `C:\Users\A B\wt\x.go`; got != want {
+		t.Fatalf("got %q, want %q", got, want)
 	}
 }

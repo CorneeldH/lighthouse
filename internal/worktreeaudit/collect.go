@@ -16,6 +16,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/procrun"
 	"github.com/CorneeldH/lighthouse/internal/pytext"
+	"github.com/CorneeldH/lighthouse/internal/worktreeroot"
 )
 
 // Timeouts: one git call 60 s, one forge lookup 300 s.
@@ -23,9 +24,6 @@ const (
 	GitTimeout   = 60 * time.Second
 	ForgeTimeout = 300 * time.Second
 )
-
-// worktreeDir is where lighthouse puts its worktrees, relative to the main checkout.
-const worktreeDir = ".claude/worktrees"
 
 // Env is what Collect reaches outside itself. Run starts git (a test hands in a replay); a git
 // call gets GitTimeout on top of whatever Run enforces. Forge opens the forge of the repo for the
@@ -53,6 +51,7 @@ type Audit struct {
 	Rows   []Row
 	Policy Policy
 	Repo   string
+	Root   string // the resolved `[worktree] root`
 }
 
 // The read-only git allowlist: exactly the verbs this command issues. A verb outside it is a
@@ -202,6 +201,13 @@ func Collect(ctx context.Context, env Env, repoRoot string) (*Audit, error) {
 	if err == nil {
 		c.policy, repo, err = policyFrom(cfg)
 	}
+	var wtRoot string
+	if err == nil {
+		var v any
+		if v, err = config.Lookup(cfg, "worktree.root"); err == nil {
+			wtRoot = worktreeroot.Resolve(root, pyStr(v))
+		}
+	}
 	if err != nil {
 		// Exit 2, not 1: under --only, 1 already means "not cleanable".
 		return nil, &Failure{Code: 2, Message: "worktree-audit: " + err.Error()}
@@ -235,7 +241,7 @@ func Collect(ctx context.Context, env Env, repoRoot string) (*Audit, error) {
 		Sessions:       loadSessions(filepath.Join(env.Home, ".claude", "sessions")),
 		Transcripts:    map[string]Transcript{},
 		DetachedDirty:  map[string]*bool{},
-		Orphans:        findOrphans(root, worktrees),
+		Orphans:        findOrphans(wtRoot, worktrees),
 		Ports:          map[string]string{},
 		PRLookupOK:     lookupOK,
 	}
@@ -262,7 +268,7 @@ func Collect(ctx context.Context, env Env, repoRoot string) (*Audit, error) {
 	if c.refused != nil {
 		return nil, &Failure{Code: 1, Message: "worktree-audit: " + c.refused.Error()}
 	}
-	return &Audit{Rows: BuildRows(in, env.Alive), Policy: c.policy, Repo: repo}, nil
+	return &Audit{Rows: BuildRows(in, env.Alive), Policy: c.policy, Repo: repo, Root: wtRoot}, nil
 }
 
 func dirtyOf(status *string) *bool {
@@ -401,14 +407,14 @@ func (c *collector) probe(wt *WorktreeInfo, root, ref string, skipContent bool) 
 	return p
 }
 
-// findOrphans is every directory under `<root>/.claude/worktrees/` that git does not list, with
-// its sorted entries. A directory that cannot be read has no entries; no base, no orphans.
-func findOrphans(root string, worktrees []WorktreeInfo) []OrphanDir {
+// findOrphans is every directory under root (the resolved `[worktree] root`) that git does not
+// list, with its sorted entries. A directory that cannot be read has no entries; no base, no
+// orphans.
+func findOrphans(base string, worktrees []WorktreeInfo) []OrphanDir {
 	known := map[string]bool{}
 	for _, w := range worktrees {
 		known[w.Path] = true
 	}
-	base := filepath.Join(root, worktreeDir)
 	entries, err := os.ReadDir(base)
 	if err != nil {
 		return nil

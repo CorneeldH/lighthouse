@@ -370,3 +370,29 @@ exit 128
 		})
 	}
 }
+
+// Detection is git's (--show-toplevel and the branch), not a path's: green before and after, red
+// only when the gate starts to look for `.claude/worktrees` in the path.
+func TestMainCommitGateAllowsACommitInAWorktreeOutsideTheRepo(t *testing.T) {
+	dir := repo(t, "main")
+	wt := outsideWorktree(t, dir)
+
+	if res := gate(t, "git commit -m x", wt); res.Code != 0 {
+		t.Fatalf("a commit in a worktree outside the repo was blocked: %+v", res)
+	}
+	if res := gate(t, "git commit -m x", dir); res.Code != 2 {
+		t.Fatalf("a commit in the main checkout on main was allowed: %+v", res)
+	}
+}
+
+// Red when the block message goes back to the fixed `.claude/worktrees/<name>`.
+func TestMainCommitGateNamesTheConfiguredRoot(t *testing.T) {
+	dir := repo(t, "main")
+	setConfig(t, "[project]\nlanguage = \"en\"\n[worktree]\nroot = \"/data/my wt\"\n")
+
+	res := gate(t, "git commit -m x", dir)
+
+	if !strings.Contains(res.Stderr, "git worktree add '/data/my wt'/<name> -b") || strings.Contains(res.Stderr, ".claude/worktrees") {
+		t.Fatalf("the block does not name the configured root: %q", res.Stderr)
+	}
+}

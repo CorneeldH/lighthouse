@@ -653,3 +653,37 @@ func collectRowsStderr(t *testing.T, forgeEnv Env) ([]Row, string) {
 	}
 	return audit.Rows, stderr.String()
 }
+
+// Red when findOrphans goes back to joining the const `.claude/worktrees` onto the repo: a root
+// outside the repo is then never looked in, and the orphan is not found.
+func TestFindOrphansReadsARootOutsideTheRepo(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "my worktrees")
+	for _, d := range []string{"known", "orphan"} {
+		if err := os.MkdirAll(filepath.Join(root, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(root, "orphan", "f.txt"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got := findOrphans(root, []WorktreeInfo{{Path: filepath.Join(root, "known")}})
+	want := []OrphanDir{{Name: "orphan", Path: filepath.Join(root, "orphan"), DirEntries: []string{"f.txt"}}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %+v, want %+v", got, want)
+	}
+}
+
+// Red when KPI goes back to strings.Contains on the relative string: it then counts nothing under
+// an outside root, and counts `<root>-old/.claude/worktrees/x`.
+func TestKPICountsWorktreesUnderTheResolvedRoot(t *testing.T) {
+	row := func(p string) Row {
+		r := NewRow("b")
+		r.Worktree = &p
+		return r
+	}
+	v := View{Policy: mainPolicy, Alive: PidAlive, Root: "/data/wt"}
+	got := v.KPI([]Row{row("/data/wt/a"), row("/data/wt/b"), row("/data/wt-old/.claude/worktrees/x"), row("/data/wt")})
+	if !strings.HasPrefix(got, "worktrees=2 ") {
+		t.Fatalf("got %q, want worktrees=2", got)
+	}
+}
