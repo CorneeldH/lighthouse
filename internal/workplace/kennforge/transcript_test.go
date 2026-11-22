@@ -166,8 +166,26 @@ func TestTranscriptHost(t *testing.T) {
 		f, a := newFakeForge(t)
 		f.path = "/workspaces/issue-7"
 		a.Home = t.TempDir()
+		a.Run = scriptRunner(t, []step{{cmd: podmanPS, out: "c1\n"}, {cmd: "podman exec c1 sh -c " + containerScript + " sh -workspaces-issue-7 " + testSessionID + " ", code: notInContainer}}, &[]string{})
 		if _, err := a.Transcript(context.Background(), "ws1", testSessionID); !errors.Is(err, workplace.ErrNotMeasurable) {
 			t.Errorf("err = %v, want ErrNotMeasurable", err)
+		}
+	})
+	// A run in a container under a profile that is not "software" keeps its transcript in the
+	// container, not on this host: it is read from there, not called not measurable (#514).
+	t.Run("no project dir on the host, the transcript in a container", func(t *testing.T) {
+		f, a := newFakeForge(t)
+		f.path = "/srv/forge/ws/issue-7.x"
+		a.Profile = "container"
+		a.Home = t.TempDir()
+		stream := tarOf(t,
+			[2]string{deltaManifest, "236 0 " + testSessionID + ".jsonl\n"},
+			[2]string{testSessionID + ".jsonl", unknownTranscript},
+		)
+		a.Run = scriptRunner(t, []step{{cmd: podmanPS, out: "c1\n"}, {cmd: containerExec("c1"), out: stream}}, &[]string{})
+		got, err := a.Transcript(context.Background(), "ws1", testSessionID)
+		if err != nil || got.UnknownCommand != "/superpowers:subagent-driven-development" {
+			t.Errorf("Transcript = %+v, %v; want the transcript of the container", got, err)
 		}
 	})
 	t.Run("a file where the dir should be", func(t *testing.T) {
@@ -175,6 +193,7 @@ func TestTranscriptHost(t *testing.T) {
 		f.path = "/w"
 		a.Home = t.TempDir()
 		writeFile(t, filepath.Join(a.Home, ".claude", "projects", "-w"), "")
+		a.Run = scriptRunner(t, []step{{cmd: podmanPS, out: ""}}, &[]string{})
 		if _, err := a.Transcript(context.Background(), "ws1", testSessionID); !errors.Is(err, workplace.ErrNotMeasurable) {
 			t.Errorf("err = %v, want ErrNotMeasurable", err)
 		}

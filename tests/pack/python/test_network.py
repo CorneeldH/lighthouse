@@ -1,5 +1,5 @@
-"""tests/pack/_network.py and the hook in tests/pack/conftest.py: a network error while the runner is
-offline is a skip, every other failure stays red (#338)."""
+"""tests/pack/python/_network.py and the hook in tests/pack/python/conftest.py: a network error
+while the runner is offline is a skip, every other failure stays red (#338)."""
 
 import re
 import socket
@@ -9,9 +9,10 @@ from pathlib import Path
 
 import pytest
 
-from tests.pack._network import PROBE_ENV, network_error, offline
+from tests.pack.python._network import PROBE_ENV, network_error, offline
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
+assert (ROOT / "pyproject.toml").is_file(), ROOT
 
 
 # The lines come from the macOS run 42546929903, where the runner had no DNS for a moment.
@@ -125,7 +126,7 @@ def test_online_when_every_probe_target_answers(monkeypatch, listener):
 
 def _inner(tmp_path: Path, probe: str) -> subprocess.CompletedProcess:
     (tmp_path / "conftest.py").write_text(
-        "from tests.pack.conftest import pytest_runtest_makereport  # noqa: F401\n",
+        "from tests.pack.python.conftest import pytest_runtest_makereport  # noqa: F401\n",
         encoding="utf-8",
     )
     (tmp_path / "test_x.py").write_text(INNER, encoding="utf-8")

@@ -276,6 +276,18 @@ describe('milestoneRows', () => {
     const [row] = milestoneRows(rs, buildGraph(rs, []))
     expect(row.shaping).toBe(true)
   })
+
+  it('sortMilestoneRows puts a shaped milestone above one marked shaping (same flag as the border)', () => {
+    const rs = [
+      repo(
+        R,
+        [iss(1, [], { milestone: ref(1) }), iss(2, [], { milestone: ref(2) })],
+        [m(1, 5, 1, 'Status: shaping'), m(2, 0, 1)],
+      ),
+    ]
+    const rows = milestoneRows(rs, buildGraph(rs, []))
+    expect(sortMilestoneRows(rows).map((r) => r.number)).toEqual([2, 1])
+  })
 })
 
 describe('milestoneRows blocks', () => {
@@ -350,19 +362,45 @@ describe('milestoneRows blocks', () => {
 })
 
 describe('sortMilestoneRows', () => {
-  const row = (number: number, open: number, done: number) =>
+  const row = (number: number, open: number, done: number, shaping: boolean, repo = R) =>
     ({
-      repo: R,
+      repo,
       number,
       open,
       done,
+      total: open + done,
+      shaping,
       empty: open === 0 && done === 0,
       percent: open + done === 0 ? 0 : done / (open + done),
     }) as Parameters<typeof sortMilestoneRows>[0][number]
 
-  it('fewest open first, ties by highest percent, empty last', () => {
-    const sorted = sortMilestoneRows([row(1, 0, 0), row(2, 3, 1), row(3, 1, 0), row(4, 1, 5), row(5, 3, 9)])
-    expect(sorted.map((r) => r.number)).toEqual([4, 3, 5, 2, 1])
+  it('one milestone per group, inserted in reverse, comes back as groups 1 to 4', () => {
+    const shaped = row(1, 1, 3, false)
+    const withDone = row(2, 2, 1, true)
+    const noneDone = row(3, 4, 0, true)
+    const empty = row(4, 0, 0, true)
+    const sorted = sortMilestoneRows([empty, noneDone, withDone, shaped])
+    expect(sorted.map((r) => r.number)).toEqual([1, 2, 3, 4])
+  })
+
+  it('group 1: highest percent first, equal percent fewest open first', () => {
+    const sorted = sortMilestoneRows([row(1, 4, 4, false), row(2, 2, 2, false), row(3, 1, 9, false), row(4, 5, 5, false)])
+    expect(sorted.map((r) => r.number)).toEqual([3, 2, 1, 4])
+  })
+
+  it('group 2: most finished first', () => {
+    const sorted = sortMilestoneRows([row(1, 9, 1, true), row(2, 0, 5, true), row(3, 1, 3, true)])
+    expect(sorted.map((r) => r.number)).toEqual([2, 3, 1])
+  })
+
+  it('group 3: most issues first', () => {
+    const sorted = sortMilestoneRows([row(1, 1, 0, true), row(2, 6, 0, true), row(3, 3, 0, true)])
+    expect(sorted.map((r) => r.number)).toEqual([2, 3, 1])
+  })
+
+  it('ties end on repo, then number', () => {
+    const sorted = sortMilestoneRows([row(2, 0, 0, true, 'b/x'), row(9, 0, 0, true, 'a/x'), row(1, 0, 0, true, 'b/x')])
+    expect(sorted.map((r) => `${r.repo}#${r.number}`)).toEqual(['a/x#9', 'b/x#1', 'b/x#2'])
   })
 })
 

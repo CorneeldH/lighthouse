@@ -58,9 +58,31 @@ func (m Marker) valid(name string) bool {
 	return okReset && okCreated
 }
 
-// MarkerDir is lighthouse/resume under XDG_DATA_HOME, or under $HOME/.local/share when
-// XDG_DATA_HOME is not an absolute path.
+// ControllerResumeDir is <LIGHTHOUSE_STATE_DIR>/resume for a controller run: the one directory a
+// run in a container shares with the host, whatever its HOME is (#513). ok is false outside a
+// controller run or when LIGHTHOUSE_STATE_DIR is not an absolute path.
+func ControllerResumeDir(getenv func(string) string) (dir string, ok bool) {
+	state := getenv("LIGHTHOUSE_STATE_DIR")
+	if !ControllerRun(getenv) || !filepath.IsAbs(state) {
+		return "", false
+	}
+	return StateResumeDir(state), true
+}
+
+// StateResumeDir is the resume directory under the dispatcher state directory stateDir.
+func StateResumeDir(stateDir string) string { return filepath.Join(stateDir, "resume") }
+
+// MarkerDir is where this process writes its resume markers: ControllerResumeDir in a controller
+// run, else lighthouse/resume under XDG_DATA_HOME, or under $HOME/.local/share when XDG_DATA_HOME
+// is not an absolute path. The host reads both (HostMarkerDirs).
 func MarkerDir(getenv func(string) string) (string, error) {
+	if dir, ok := ControllerResumeDir(getenv); ok {
+		return dir, nil
+	}
+	return userMarkerDir(getenv)
+}
+
+func userMarkerDir(getenv func(string) string) (string, error) {
 	base := getenv("XDG_DATA_HOME")
 	if !filepath.IsAbs(base) {
 		home := getenv("HOME")
@@ -70,6 +92,23 @@ func MarkerDir(getenv func(string) string) (string, error) {
 		base = filepath.Join(home, ".local", "share")
 	}
 	return filepath.Join(base, "lighthouse", "resume"), nil
+}
+
+// HostMarkerDirs are the directories the controller reads markers from: the user's own
+// (lighthouse/resume under XDG_DATA_HOME or HOME) and StateResumeDir(stateDir), where a run in a
+// container leaves its marker. stateDir "" leaves out the second.
+func HostMarkerDirs(getenv func(string) string, stateDir string) ([]string, error) {
+	user, err := userMarkerDir(getenv)
+	if err != nil {
+		return nil, err
+	}
+	dirs := []string{user}
+	if stateDir != "" {
+		if d := StateResumeDir(stateDir); d != user {
+			dirs = append(dirs, d)
+		}
+	}
+	return dirs, nil
 }
 
 // readMarker reads <dir>/<id>.json; ok is false for a file that is missing, unreadable, not
@@ -125,4 +164,70 @@ func RemoveMarker(dir, sessionID, key string) error {
 		return nil
 	}
 	return err
+}
+
+// ReadMarkersIn is ReadMarkers over several directories, sorted by SessionID. A session with a
+// marker in more than one directory keeps the one with the latest created_at.
+func ReadMarkersIn(dirs []string) ([]Marker, error) {
+	latest := map[string]Marker{}
+	for _, dir := range dirs {
+		ms, err := ReadMarkers(dir)
+		if err != nil {
+			return nil, err
+		}
+		for _, m := range ms {
+			if old, ok := latest[m.SessionID]; !ok || m.CreatedAt > old.CreatedAt {
+				latest[m.SessionID] = m
+			}
+		}
+	}
+	out := make([]Marker, 0, len(latest))
+	for _, m := range latest {
+		out = append(out, m)
+	}
+	slices.SortFunc(out, func(a, b Marker) int { return strings.Compare(a.SessionID, b.SessionID) })
+	return out, nil
+}
+
+// UnreadableIn lists the session ids that have a <session_id>.json in dirs which is no valid
+// marker (unreadable, not JSON, wrong content): the usage guard parked that session, but the
+// controller cannot tell until when. A session that has a valid marker in any dir is not listed.
+// Sorted; a missing dir lists none.
+func UnreadableIn(dirs []string) []string {
+	valid := map[string]bool{}
+	bad := map[string]bool{}
+	for _, dir := range dirs {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			id, ok := strings.CutSuffix(e.Name(), ".json")
+			if !ok || e.IsDir() || !sessionIDPattern.MatchString(id) {
+				continue
+			}
+			if _, ok := readMarker(dir, id); ok {
+				valid[id] = true
+			} else {
+				bad[id] = true
+			}
+		}
+	}
+	var out []string
+	for id := range bad {
+		if !valid[id] {
+			out = append(out, id)
+		}
+	}
+	slices.Sort(out)
+	return out
+}
+
+// RemoveMarkerIn is RemoveMarker in every directory of dirs.
+func RemoveMarkerIn(dirs []string, sessionID, key string) error {
+	var errs []error
+	for _, dir := range dirs {
+		errs = append(errs, RemoveMarker(dir, sessionID, key))
+	}
+	return errors.Join(errs...)
 }

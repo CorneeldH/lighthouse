@@ -22,7 +22,9 @@ type hostFacts struct {
 	Brake      dispatch.Brake
 	PauseUntil time.Time                // zero: no active pause
 	Markers    map[string][]park.Marker // per repo slug: controller markers whose last run is there
-	MarkerDir  string
+	MarkerDirs []string
+	// Unreadable are the sessions with a marker file the controller cannot read (#513).
+	Unreadable []string
 	// MarkerNode is the node_id each marker read from a node came from, per session; a marker of
 	// this host is not in it. A resume or drop_marker removes the marker there.
 	MarkerNode map[string]string
@@ -68,9 +70,14 @@ func readHostFacts(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.
 	if err != nil {
 		return hostFacts{}, err
 	}
-	if f.MarkerDir, err = park.MarkerDir(env.Getenv); err != nil {
+	stateDir, err := env.stateDir()
+	if err != nil {
 		return hostFacts{}, err
 	}
+	if f.MarkerDirs, err = park.HostMarkerDirs(env.Getenv, stateDir); err != nil {
+		return hostFacts{}, err
+	}
+	f.Unreadable = park.UnreadableIn(f.MarkerDirs)
 	meter, err := env.meter()
 	if err != nil {
 		return hostFacts{}, fmt.Errorf("usage meter: %w", err)
@@ -97,7 +104,7 @@ func readHostFacts(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.
 	for _, r := range open {
 		b.CountRun(r.Node, r.Profile, r.Command)
 	}
-	all, err := park.ReadMarkers(f.MarkerDir)
+	all, err := park.ReadMarkersIn(f.MarkerDirs)
 	if err != nil {
 		return hostFacts{}, fmt.Errorf("resume markers: %w", err)
 	}

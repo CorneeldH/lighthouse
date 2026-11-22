@@ -264,7 +264,7 @@ column, not merely because the issue touches something the document describes. T
 before step 4; the label goes into the `--label` of step 4. No taxonomy file, or no such row: skip
 this step.
 
-**Planned on the map.** When the label's row also has a `Planned` value (`always`, or `milestone` and the issue gets the milestone from 3d), ask two things in the conversation before step 4. *Where does it belong?* The document and the explanation under the table give the candidates; a new part of the map, and `no item` when the explanation says a change to an existing part gives none, are always candidates. *Do we want it?* Always ask; when `paths.tenets`, `paths.areas` or `lighthouse config paths.strategy` gives a file or folder, first test the issue against the tenets, the leading policy and the deliberate no's of its area, and the strategy, and say what came out; name the ID that carries the judgement (`<area>/N<n>`, `strategy/S<n>`, `tenet <letter>`). A key that is not set (`lighthouse config` exits 1) skips silently; a set path that does not exist is reported in the conversation ("does not exist"). Write the place as one line under `### heading:map_placement` in the body. An answer of no to the second question: no issue, or no free label. Doubt, or "decide later": `labels.needs_decision` with the reason in the body. Headless (no conversation): write the place only when it is unambiguous, ask nothing, and leave the rest to the scheduled job. This step never writes the document.
+**Planned on the map.** When the label's row also has a `Planned` value (`always`, or `milestone` and the issue gets the milestone from 3d), ask two things in the conversation before step 4. *Where does it belong?* The document and the explanation under the table give the candidates; a new part of the map, and `no item` when the explanation says a change to an existing part gives none, are always candidates. *Do we want it?* Always ask; when `paths.tenets`, `paths.areas` or `lighthouse config paths.strategy` gives a file or folder, first test the issue against the tenets, the leading policy (`heading:policy`) and the deliberate no's (`heading:not_now`) of its area, and the strategy, and say what came out; name the ID that carries the judgement (`<area>/N<n>`, `strategy/S<n>`, `tenet <letter>`). A key that is not set (`lighthouse config` exits 1) skips silently; a set path that does not exist is reported in the conversation ("does not exist"). Write the place as one line under `### heading:map_placement` in the body. An answer of no to the second question: no issue, or no free label. Doubt, or "decide later": `labels.needs_decision` with the reason in the body. Headless (no conversation): write the place only when it is unambiguous, ask nothing, and leave the rest to the scheduled job. This step never writes the document.
 
 ### 4. Create the issue
 
@@ -393,10 +393,10 @@ the reason and the local workaround are. Post upstream only when the user asks f
 - **Description**: the pitch from "Pitch (Shape Up)" below, with its seven headings in that
   order. `lighthouse forge` names a milestone by its title (`milestone view`, `milestone edit`,
   `--milestone`). With `paths.areas`
-  (read with `lighthouse config`, only if set), the pitch names under *Problem / Opportunity* the crux of the area(s) the
+  (read with `lighthouse config`, only if set), the pitch names under *Problem / Opportunity* the crux (`heading:area_crux`) of the area(s) the
   issues of the milestone fall under most (the `labels.area_prefix` label of those issues). With
-  `paths.strategy` (only if set), it tests the milestone against the diagnosis
-  and the deliberate no's of the strategy and cites `strategy/S<n>`; doubt becomes a question in the conversation. A key that is not set skips silently; a set path that does not exist is
+  `paths.strategy` (only if set), it tests the milestone against the diagnosis (`heading:strategy_diagnosis`)
+  and the deliberate no's (`heading:not_now`) of the strategy and cites `strategy/S<n>`; doubt becomes a question in the conversation. A key that is not set skips silently; a set path that does not exist is
   reported in the conversation ("does not exist").
 - **Hard rule**: *a milestone without DoD text in its description does not exist.* Without that
   rule blocks grow into eternal bins again.

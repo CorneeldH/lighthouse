@@ -1084,8 +1084,8 @@ func TestTickMeasuresRunState(t *testing.T) {
 			Permission: &dispatch.Permission{At: time.Date(2026, 10, 31, 11, 56, 0, 0, time.UTC), Tool: "Bash", Path: "rm -rf build"},
 		},
 		2: {Gone: true},
-		3: {},                   // nothing found yet: measured, not an error
-		6: {SessionAt: updated}, // no transcript file yet: not measurable, no line
+		3: {TranscriptUnmeasurable: true}, // no project dir on this host: measured, but the transcript is not (#514)
+		6: {SessionAt: updated},           // no transcript file yet: not measurable, no line
 	}
 	if !reflect.DeepEqual(gotRuns, wantRuns) {
 		t.Errorf("runs =\n%+v\nwant\n%+v", gotRuns, wantRuns)
