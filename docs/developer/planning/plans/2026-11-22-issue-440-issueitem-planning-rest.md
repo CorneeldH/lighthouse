@@ -162,7 +162,7 @@
 - [ ] **Step 4: Commit**
 
   ```bash
-  git add docs changelog.d
+  git add docs changelog.d internal/cli/triage_gather.go internal/priorities
   git commit -m "docs(forge): tick en prioritering zonder GraphQL voor IssueItem en Planning (#440)"
   ```
 
