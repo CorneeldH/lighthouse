@@ -108,6 +108,7 @@ func NewRoot(in io.Reader, out, errOut io.Writer) *cobra.Command {
 	root.AddCommand(newMeasureRecoveryCommand(defaultMeasureRecoveryEnv()))
 	root.AddCommand(newCheckInstructionsCommand())
 	root.AddCommand(newDirectionCommand())
+	root.AddCommand(newCheckHooksCommand())
 	root.AddCommand(newAgentAuditCommand())
 	root.AddCommand(newCheckpointScanCommand())
 	root.AddCommand(&cobra.Command{

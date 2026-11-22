@@ -67,6 +67,7 @@ func newInitCommand() *cobra.Command {
 			o.Out = cmd.OutOrStdout()
 			o.Err = cmd.ErrOrStderr()
 			o.Audit = auditAfterInit
+			o.CheckHooks = checkHooksAfterInit
 			o.LabelForge = defaultLabelForge()
 			if initcmd.Run(o) != 0 {
 				return errSilent

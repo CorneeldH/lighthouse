@@ -4,6 +4,7 @@
 .claude/hooks/lighthouse/	file	core,go,node,python,shell
 .claude/settings.json	hook,permission	core,go,node,python,shell
 .claude/skills/lighthouse-*/	file	core,expo,go,python,shell
+.gitattributes	init	
 .github/pull_request_template.md	file	core
 .github/workflows/lighthouse-*.yml	file	core
 .lighthouse/headings.toml	file	core

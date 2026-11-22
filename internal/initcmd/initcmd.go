@@ -61,6 +61,7 @@ type Options struct {
 	AddPacks, DropPacks []string                                                  // --pack and --no-pack (plan M0 (c), design choice 6)
 	ForgeHosts          []string                                                  // --forge-host: hosts of self-hosted GitLab instances
 	Audit               func(root string, out, errOut io.Writer)                  // read-only agent audit, run after the files are written; nil means none
+	CheckHooks          func(root string, errOut io.Writer)                       // hook check, run after the files are written and also on No changes.; nil means none
 	AuditOnUpgrade      bool                                                      // --audit: also run Audit after --upgrade, not only after the first init
 	Version             string                                                    // "" means version.String()
 	Packs               fs.FS                                                     // holds <name>/...; nil means pack.Files
@@ -246,6 +247,9 @@ func execute(o Options) error {
 	warnMissingScripts(o.Err, root)
 	warnIgnored(o.Err, root, desired, plan)
 	reportPins(o, root)
+	if o.CheckHooks != nil {
+		o.CheckHooks(root, o.Err)
+	}
 	if o.Audit != nil && (!initialized && len(paths) > 0 || o.Upgrade && o.AuditOnUpgrade) {
 		_, _ = fmt.Fprintln(o.Out)
 		o.Audit(root, o.Out, o.Err)
@@ -388,7 +392,7 @@ func buildPlan(o Options, root string, names []string, desired []packs.Unit, cha
 				return nil, err
 			}
 			switch {
-			case c.Desired != nil && writes(c.Action, o.Force):
+			case c.Desired != nil && (writes(c.Action, o.Force) || c.Action == reconcile.Adopt && !bytes.Equal(c.Current.Content, c.Desired.Content)):
 				p.new, p.mode = c.Desired.Content, c.Desired.Mode
 			case keptRetired(c):
 				_, _ = fmt.Fprintf(o.Err, "warning: %s is changed locally; lighthouse no longer installs it, so it stays as it is and is no longer managed\n", c.Key.Path)
@@ -488,6 +492,12 @@ func buildPlan(o Options, root string, names []string, desired []packs.Unit, cha
 	if err := planConfig(o, load, desired, tables, haveRepo); err != nil {
 		return nil, err
 	}
+
+	ga, err := load(gitattributesPath)
+	if err != nil {
+		return nil, err
+	}
+	ga.new = ensureGitattributes(ga.old)
 
 	if seeds.labelsPath != "" && seeds.labelsTemplate != nil {
 		// Seed once: the file is the project's after this, so it is not in the manifest.

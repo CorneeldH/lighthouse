@@ -1715,3 +1715,76 @@ func TestInitSetsResponseLanguage(t *testing.T) {
 		})
 	}
 }
+
+func TestUpgradeRepairsCRLFHookWithoutForce(t *testing.T) {
+	root := newRepo(t)
+	initYes(t, root)
+	rels := []string{".claude/hooks/lighthouse/g.sh", ".lighthouse/scripts/a.py"}
+	for _, rel := range rels {
+		write(t, root, rel, strings.ReplaceAll(read(t, root, rel), "\n", "\r\n"))
+	}
+	r := run(t, root, "", func(o *Options) { o.Upgrade = true; o.Yes = true })
+	if r.code != 0 {
+		t.Fatalf("rc %d\n%s%s", r.code, r.out, r.err)
+	}
+	for _, rel := range rels {
+		if strings.Contains(read(t, root, rel), "\r") {
+			t.Errorf("%s still has CR", rel)
+		}
+		if !strings.Contains(r.out, rel) {
+			t.Errorf("diff does not name %s:\n%s", rel, r.out)
+		}
+	}
+}
+
+func TestInitAdoptsCRLFFileWithoutManifest(t *testing.T) {
+	root := newRepo(t)
+	write(t, root, ".claude/hooks/lighthouse/g.sh", "#!/bin/bash\r\n# lighthouse: core@dev\r\necho g\r\n")
+	initYes(t, root)
+	if got := read(t, root, ".claude/hooks/lighthouse/g.sh"); got != "#!/bin/bash\n# lighthouse: core@dev\necho g\n" {
+		t.Fatalf("g.sh = %q", got)
+	}
+}
+
+// Classification: cli-output. Fails when init skips the hook check after writing, or when the
+// check's own stderr output ends up on stdout or in the exit code.
+func TestCheckHooksRunsAfterWrite(t *testing.T) {
+	root := newRepo(t)
+	var calls int
+	var gotRoot string
+	r := run(t, root, "", func(o *Options) {
+		yes(o)
+		o.CheckHooks = func(r string, errOut io.Writer) { calls++; gotRoot = r; _, _ = io.WriteString(errOut, "HOOKS\n") }
+	})
+	if r.code != 0 || calls != 1 || gotRoot == "" || !strings.Contains(r.err, "HOOKS") || strings.Contains(r.out, "HOOKS") {
+		t.Errorf("rc %d, %d calls, root %q, out %q, err %q", r.code, calls, gotRoot, r.out, r.err)
+	}
+}
+
+// Classification: cli-output. Fails when the check no longer runs on `No changes.` or its
+// stderr output leaks into stdout, which must stay byte-equal.
+func TestCheckHooksRunsOnNoChanges(t *testing.T) {
+	root := newRepo(t)
+	initYes(t, root)
+	var calls int
+	r := run(t, root, "", func(o *Options) {
+		yes(o)
+		upgrade(o)
+		o.CheckHooks = func(_ string, errOut io.Writer) { calls++; _, _ = io.WriteString(errOut, "HOOKS\n") }
+	})
+	if r.code != 0 || calls != 1 || r.out != "No changes.\n" {
+		t.Errorf("rc %d, %d calls, out %q, err %q", r.code, calls, r.out, r.err)
+	}
+}
+
+// Classification: cli-output. Fails when the check runs although the user declined the diff.
+func TestCheckHooksSkippedWhenDeclined(t *testing.T) {
+	root := newRepo(t)
+	var calls int
+	r := run(t, root, "n\n", func(o *Options) {
+		o.CheckHooks = func(string, io.Writer) { calls++ }
+	})
+	if r.code == 0 || calls != 0 {
+		t.Errorf("rc %d, %d calls; want a declined init and no check", r.code, calls)
+	}
+}
