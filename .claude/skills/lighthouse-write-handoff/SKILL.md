@@ -94,9 +94,9 @@ for an external event, such as red CI or a merge. Workflow step 4 applies this r
 
    | What there is | First step | Controller (if present) |
    |---|---|---|
-   | a plan in the plans folder, not yet adversarially reviewed | `/lighthouse-review-plan` on that plan, if installed | `choice` |
+   | a plan in the plans folder, not yet adversarially reviewed (review skill, if installed) | `/lighthouse-review-plan` on that plan | `choice` |
    | a plan, review converged, open points accepted, or skipped on a decision of the user | `/superpowers:subagent-driven-development` on that plan; at *Yes, native* (controller mode step 2, only a plan that meets the native criterion) `/superpowers:executing-plans` with `lane: native`; at the answer *interactive* (controller mode step 2, *Exception*) `/superpowers:executing-plans` | `offer` |
-   | a spec, not yet adversarially reviewed | `/lighthouse-review-spec` on that spec, if installed | `default` |
+   | a spec, not yet adversarially reviewed (review skill, if installed) | `/lighthouse-review-spec` on that spec | `default` |
    | a spec, review converged or round limit with open points recorded, no plan yet | `/superpowers:writing-plans` on that spec | `no` |
    | an issue, no spec yet, several designs possible | `/superpowers:brainstorming` | `no` |
    | an issue that already settles the HOW | `/lighthouse-start-issue <nr>` | `no` |
@@ -104,7 +104,7 @@ for an external event, such as red CI or a merge. Workflow step 4 applies this r
    | build done, last commit green, no PR yet | `/lighthouse-write-pr <nr>` | `offer` |
    | work done, issue can be closed | `/lighthouse-close-issue <nr>` | `no` |
    | PR open, review needed | `/code-review` | `no` |
-   | PR red | `/lighthouse-fix-pr <pr>`, if installed | `offer` |
+   | PR red (fix-pr skill, if installed) | `/lighthouse-fix-pr <pr>` | `offer` |
    | context full, same phase | the same command as this phase; if the previous handoff carries `lane: native`, the new one carries it too | as that phase, but `default` becomes `no` (during a running plan review: `offer`) |
 
    The Controller column says what controller mode step 2 does (only if present; without a
@@ -196,7 +196,7 @@ tick starts the next phase itself. Two entries:
    between the tasks, and if the execution asks no decision of the user; you name it in
    the advice line (`My advice: controller (native), because …`).
 
-   - Answer *review*: the block is already there. No comment. If the user wants the plan review itself through the controller: `next: /lighthouse-review-plan <plan>` (if installed) and steps 5 and 6.
+   - Answer *review*: the block is already there (if installed; otherwise the question has no *review* answer). No comment. If the user wants the plan review itself through the controller: `next: /lighthouse-review-plan <plan>` and steps 5 and 6.
    - Answer *controller*: `next: /superpowers:subagent-driven-development <plan>`, then
      step 5 (post) and step 6 (Status `Controller`). This also holds when the issue is already on `Controller`.
    - Answer *interactive*: the block is already there; the agent executes itself, in a fresh
