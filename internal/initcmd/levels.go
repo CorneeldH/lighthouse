@@ -36,33 +36,26 @@ func levelFiles(chosen []packs.Pack) map[string]levels.File {
 	return out
 }
 
-// resolveLevels reads the level (the flag, else lighthouse.toml, else strict) and the
-// [components] overrides, and resolves them against the packs. With no levels.toml in
-// any chosen package there is nothing to select: ok is false. write is the level that
-// lighthouse.toml must get: set when the flag differs from the file, or on a first init
-// that found no level; "" when the file stays as it is (an upgrade never adds the key).
-func resolveLevels(o Options, root string, initialized bool, files map[string]levels.File, desired []packs.Unit) (r levels.Resolved, ok bool, write string, err error) {
-	if len(files) == 0 {
-		return levels.Resolved{}, false, "", nil
-	}
-	var level, fileLevel string
-	overrides := map[string]levels.Stand{}
+// levelInputs reads the level (the flag, else lighthouse.toml, else strict, or light on a
+// first init), the level lighthouse.toml itself names, and the [components] overrides.
+func levelInputs(o Options, root string, initialized bool) (level, fileLevel string, overrides map[string]levels.Stand, err error) {
+	overrides = map[string]levels.Stand{}
 	cfgPath := filepath.Join(root, configPath)
 	if _, statErr := os.Stat(cfgPath); statErr == nil {
 		cfg, err := config.Load(cfgPath)
 		if err != nil {
-			return levels.Resolved{}, false, "", err
+			return "", "", nil, err
 		}
 		level, fileLevel = cfg.Level, cfg.Level
 		for name, s := range cfg.Components {
 			stand := levels.Stand(s)
 			if err := stand.UnmarshalText([]byte(s)); err != nil {
-				return levels.Resolved{}, false, "", fmt.Errorf("[components] %s: %w", name, err)
+				return "", "", nil, fmt.Errorf("[components] %s: %w", name, err)
 			}
 			overrides[name] = stand
 		}
 	} else if !errors.Is(statErr, fs.ErrNotExist) {
-		return levels.Resolved{}, false, "", statErr
+		return "", "", nil, statErr
 	}
 	if o.Level != "" {
 		level = o.Level
@@ -72,6 +65,41 @@ func resolveLevels(o Options, root string, initialized bool, files map[string]le
 		if !initialized {
 			level = newLevel
 		}
+	}
+	return level, fileLevel, overrides, nil
+}
+
+// levelSetsLabels reports whether the level has the labels flag and this run is a first
+// init or a switch. It decides before the plan is built, so it validates nothing: a bad
+// level or override is reported by resolveLevels. Any doubt is false, never an error.
+func levelSetsLabels(o Options, root string, initialized bool, files map[string]levels.File) bool {
+	if len(files) == 0 {
+		return false
+	}
+	level, _, overrides, err := levelInputs(o, root, initialized)
+	if err != nil {
+		return false
+	}
+	r, err := levels.Resolve(fileList(files), level, overrides)
+	if err != nil || !r.Flags["labels"] {
+		return false
+	}
+	prev, found, err := levels.ReadInstalled(root)
+	return err == nil && switched(prev, found, level)
+}
+
+// resolveLevels resolves the level and the [components] overrides against the packs.
+// With no levels.toml in any chosen package there is nothing to select: ok is false.
+// write is the level that lighthouse.toml must get: set when the flag differs from the
+// file, or on a first init that found no level; "" when the file stays as it is (an
+// upgrade never adds the key).
+func resolveLevels(o Options, root string, initialized bool, files map[string]levels.File, desired []packs.Unit) (r levels.Resolved, ok bool, write string, err error) {
+	if len(files) == 0 {
+		return levels.Resolved{}, false, "", nil
+	}
+	level, fileLevel, overrides, err := levelInputs(o, root, initialized)
+	if err != nil {
+		return levels.Resolved{}, false, "", err
 	}
 	if level != fileLevel && (o.Level != "" || !initialized) {
 		write = level

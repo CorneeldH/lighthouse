@@ -1,6 +1,7 @@
 package initcmd
 
 import (
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/levels"
+	"github.com/CorneeldH/lighthouse/internal/projectconfig"
 )
 
 const levelsHooks = `{"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [
@@ -585,5 +587,120 @@ func TestSwitched(t *testing.T) {
 		if got := switched(c.in, c.found, c.level); got != c.want {
 			t.Errorf("switched(%+v, %v, %q) = %v", c.in, c.found, c.level, got)
 		}
+	}
+}
+
+const flagLevelsToml = `order = ["light", "standard", "strict"]
+base = ["run.sh"]
+on = ["main-commit-gate", "skill:forge"]
+
+[light.components]
+commit-test-gate = "off"
+"skill:fix-pr" = "off"
+
+[light.flags]
+labels = false
+
+[standard.components]
+
+[standard.flags]
+labels = true
+
+[strict.components]
+
+[strict.flags]
+labels = true
+`
+
+// labelCalls runs an init or upgrade over levelPacks with a levels.toml that carries the
+// labels flag, and returns the result plus the create argument of each sync call.
+func labelCalls(t *testing.T, root string, mod func(*Options)) (result, []bool) {
+	t.Helper()
+	var calls []bool
+	r := run(t, root, "", func(o *Options) {
+		p := levelPacks()
+		p["core/levels.toml"] = file(flagLevelsToml)
+		o.Packs = p
+		o.Yes = true
+		o.SyncLabels = func(_ string, create bool, _, _ io.Writer) error {
+			calls = append(calls, create)
+			return nil
+		}
+		if mod != nil {
+			mod(o)
+		}
+	})
+	return r, calls
+}
+
+// Red if execute stops treating the labels flag of the level as --labels on a first init.
+func TestLevelLabelsOnFirstInitStandard(t *testing.T) {
+	root := newRepo(t)
+	write(t, root, "lighthouse.toml", "level = \"standard\"\n")
+	r, calls := labelCalls(t, root, nil)
+	if r.code != 0 {
+		t.Fatalf("code %d: %s %s", r.code, r.out, r.err)
+	}
+	if len(calls) != 1 {
+		t.Fatalf("sync calls = %v", calls)
+	}
+	if !exists(root, projectconfig.DefaultLabelsPath) || !strings.Contains(read(t, root, "lighthouse.toml"), "[labels]") {
+		t.Error("taxonomy and [labels] not proposed")
+	}
+}
+
+// Red if a switch to a level with labels true no longer acts as --labels.
+func TestLevelLabelsOnSwitchToStandard(t *testing.T) {
+	root := newRepo(t)
+	write(t, root, "lighthouse.toml", "level = \"light\"\n")
+	if r, calls := labelCalls(t, root, nil); r.code != 0 || len(calls) != 0 {
+		t.Fatalf("light init: code %d calls %v: %s", r.code, calls, r.err)
+	}
+	r, calls := labelCalls(t, root, func(o *Options) { o.Upgrade, o.Level = true, "standard" })
+	if r.code != 0 {
+		t.Fatalf("code %d: %s %s", r.code, r.out, r.err)
+	}
+	if len(calls) != 1 || !exists(root, projectconfig.DefaultLabelsPath) {
+		t.Errorf("switch to standard: calls %v", calls)
+	}
+}
+
+// Red if execute applies the level flag on every upgrade instead of only on a switch:
+// a plain upgrade must make no label call (no network).
+func TestUpgradeWithoutSwitchTouchesNoLabels(t *testing.T) {
+	root := newRepo(t)
+	write(t, root, "lighthouse.toml", "level = \"standard\"\n")
+	if r, _ := labelCalls(t, root, nil); r.code != 0 {
+		t.Fatalf("init: %s", r.err)
+	}
+	if err := os.Remove(root + "/" + projectconfig.DefaultLabelsPath); err != nil {
+		t.Fatal(err)
+	}
+	r, calls := labelCalls(t, root, func(o *Options) { o.Upgrade = true })
+	if r.code != 0 {
+		t.Fatalf("code %d: %s", r.code, r.err)
+	}
+	if len(calls) != 0 || exists(root, projectconfig.DefaultLabelsPath) {
+		t.Errorf("upgrade without switch touched labels: calls %v", calls)
+	}
+}
+
+// Red if a level with labels false starts to set labels.
+func TestLightDoesNotSetLabels(t *testing.T) {
+	root := newRepo(t)
+	write(t, root, "lighthouse.toml", "level = \"light\"\n")
+	r, calls := labelCalls(t, root, nil)
+	if r.code != 0 || len(calls) != 0 || exists(root, projectconfig.DefaultLabelsPath) {
+		t.Errorf("light: code %d calls %v: %s", r.code, calls, r.err)
+	}
+}
+
+// Red if the level flag starts to imply --create-labels.
+func TestLevelNeverImpliesCreateLabels(t *testing.T) {
+	root := newRepo(t)
+	write(t, root, "lighthouse.toml", "level = \"strict\"\n")
+	r, calls := labelCalls(t, root, nil)
+	if r.code != 0 || len(calls) != 1 || calls[0] {
+		t.Errorf("code %d calls %v: %s", r.code, calls, r.err)
 	}
 }

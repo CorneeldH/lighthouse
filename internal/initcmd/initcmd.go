@@ -170,6 +170,12 @@ func execute(o Options) error {
 	for _, c := range chosen {
 		chosenPacks = append(chosenPacks, all[c.Name])
 	}
+	// A level with the labels flag acts as --labels on a first init or a switch;
+	// --create-labels is never implied.
+	lvFiles := levelFiles(chosenPacks)
+	if !o.Labels && levelSetsLabels(o, root, initialized, lvFiles) {
+		o.Labels = true
+	}
 	var labelsPath string
 	if o.Labels {
 		if labelsPath, err = labelsTarget(root); err != nil {
@@ -191,7 +197,6 @@ func execute(o Options) error {
 		b, ok, err := readFile(root, rel)
 		return b, ok && err == nil
 	})
-	lvFiles := levelFiles(chosenPacks)
 	resolved, haveLevels, writeLevel, err := resolveLevels(o, root, initialized, lvFiles, desired)
 	if err != nil {
 		return err

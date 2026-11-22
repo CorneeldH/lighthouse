@@ -16,6 +16,8 @@ ACTS = {"adds", "edits"}
 OFF_THE_MAP = {
     "CLAUDE.md": "init writes it only when AGENTS.md and CLAUDE.md are both missing, as one line "
     "@AGENTS.md, and never touches one that exists",
+    "docs/developer/labels.md": "init writes it only when the level has the labels flag or --labels is given, "
+    "and never touches one that exists",
 }
 INIT_ACTS = {"lighthouse.toml": "edits", ".lighthouse/manifest.toml": "adds"}
 EDIT_KINDS = {"block", "hook", "permission"}

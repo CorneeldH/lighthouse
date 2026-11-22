@@ -12,4 +12,5 @@
 .lighthouse/scripts/	file	python,shell
 AGENTS.md	block	core,go,python,shell
 CLAUDE.md	init	
+docs/developer/labels.md	init	
 lighthouse.toml	init	core,python
