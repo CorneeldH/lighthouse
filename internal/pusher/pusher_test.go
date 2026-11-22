@@ -477,19 +477,138 @@ func TestAnswerToMovedQuestionDoesNotPush(t *testing.T) {
 
 // A policy red before any review carries no SHA: an answer push must not skip the review that
 // never ran, and the Vraag says the answer starts nothing.
-// A red policy before any SHA was read is no question: an answer push could start nothing. The
-// pusher gives the issue back with the folded diff and the push by hand, and closes as returned.
-func TestPolicyRedIsReturnedNotAQuestion(t *testing.T) {
+// repair checks that body is the pusher's Repair for red step step: no session, no SHA to permit,
+// the worktree and branch, and neither a push command nor a hint to push by hand.
+func repair(t *testing.T, body, step, wt string) protocol.Header {
+	t.Helper()
+	h, ok := protocol.ParseHeader(body)
+	if !ok || h.Kind != protocol.KindRepair {
+		t.Fatalf("not a Herstel:\n%s", body)
+	}
+	if !strings.HasPrefix(body, protocol.Robot+" "+protocol.Heading("kind_repair", "nl")) {
+		t.Errorf("the Herstel does not open with its heading:\n%s", body)
+	}
+	if h.Session != "" || strings.Contains(body, "<sub>session") {
+		t.Errorf("the pusher Herstel carries a session footer %q", h.Session)
+	}
+	if h.Fields["step"] != step || h.Fields["worktree"] != wt || h.Fields["branch"] != branch {
+		t.Errorf("header fields %v, want step %s, worktree %s, branch %s", h.Fields, step, wt, branch)
+	}
+	if strings.Contains(body, "git push") || strings.Contains(body, protocol.Heading("question_push_manual", "nl")) {
+		t.Errorf("the Herstel offers a push by hand:\n%s", body)
+	}
+	return h
+}
+
+// A red policy before any SHA was read is no question and no Teruggegeven: the run that wrote the
+// workflow can mend it. The pusher posts a Herstel with the folded diff and closes as handoff.
+func TestPolicyRedPostsRepair(t *testing.T) {
 	r := newRunFix(t, hostconfig.ReviewShadow, nil)
 	r.commitWorkflow("ci.yml", "on: pull_request\npermissions: write-all\njobs:\n  a:\n    runs-on: x\n    steps:\n      - uses: a/b@v1\n")
 	r.run()
 	body := r.forge.last(t)
-	returned(t, body, StepPolicy, r.wt)
+	repair(t, body, StepPolicy, r.wt)
 	if !strings.Contains(body, "<details><summary>"+protocol.Heading("question_push_diff", "nl")+"</summary>") ||
 		!strings.Contains(body, "+permissions: write-all") {
-		t.Errorf("Teruggegeven lacks the folded workflow diff:\n%s", body)
+		t.Errorf("Herstel lacks the folded workflow diff:\n%s", body)
 	}
-	wantClosed(t, r.row(), runs.Returned)
+	wantClosed(t, r.row(), runs.Handoff)
+}
+
+func TestLintRedPostsRepair(t *testing.T) {
+	r := newRunFix(t, hostconfig.ReviewShadow, nil)
+	r.commitWorkflow("nightly.yml", scheduleWF+"# ACTIONLINT\n")
+	r.run()
+	body := r.forge.last(t)
+	repair(t, body, StepLint, r.wt)
+	if !strings.Contains(body, "+# ACTIONLINT") {
+		t.Errorf("Herstel lacks the folded workflow diff:\n%s", body)
+	}
+	if got := r.remoteHead(); got != "" {
+		t.Errorf("pushed %s on a red lint", got)
+	}
+	wantClosed(t, r.row(), runs.Handoff)
+}
+
+// A step that could not run is no mistake of the branch: it stays a Teruggegeven.
+func TestCouldNotCheckStaysReturned(t *testing.T) {
+	cases := map[string]struct {
+		tools map[string]string
+		setup func(r *runFix)
+	}{
+		"linter not on PATH": {tools: map[string]string{"actionlint": ""}, setup: func(r *runFix) {
+			if err := os.Remove(filepath.Join(r.bin, "actionlint")); err != nil {
+				r.t.Fatal(err)
+			}
+		}},
+		"linter output no JSON": {setup: func(r *runFix) {
+			write(r.t, filepath.Join(r.bin, "zizmor"), "#!/bin/sh\necho nope\nexit 13\n")
+		}},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			r := newRunFix(t, hostconfig.ReviewShadow, nil)
+			r.commitWorkflow("nightly.yml", scheduleWF)
+			tc.setup(r)
+			r.run()
+			body := r.forge.last(t)
+			returned(t, body, StepLint, r.wt)
+			if !strings.Contains(body, "COULD NOT CHECK") {
+				t.Errorf("Teruggegeven does not say it could not check:\n%s", body)
+			}
+			wantClosed(t, r.row(), runs.Returned)
+		})
+	}
+	t.Run("workflow diff error", func(t *testing.T) {
+		r := newRunFix(t, hostconfig.ReviewShadow, nil)
+		req := r.req
+		req.Worktree, req.Branch = r.wt, branch
+		p := &push{deps: r.deps, req: req}
+		if err := p.ask(context.Background(), questionInput{red: Red{StepPolicy, "COULD NOT CHECK: the workflow diff: boom"}}); err != nil {
+			t.Fatal(err)
+		}
+		returned(t, r.forge.last(t), StepPolicy, r.wt)
+		wantClosed(t, r.row(), runs.Returned)
+	})
+}
+
+func TestRepairableClassifiesOnPrefix(t *testing.T) {
+	for _, tc := range []struct {
+		red  Red
+		want bool
+	}{
+		{Red{StepPolicy, "x"}, true},
+		{Red{StepLint, "x"}, true},
+		{Red{StepPolicy, violationText([]Violation{{"a.yml", RuleParse, "a.yml cannot be parsed"}})}, true},
+		{Red{StepPolicy, "COULD NOT CHECK: x"}, false},
+		{Red{StepLint, "COULD NOT CHECK: x"}, false},
+		{Red{StepReview, "x"}, false},
+		{Red{StepToken, "x"}, false},
+		{Red{StepPush, "x"}, false},
+	} {
+		if got := tc.red.repairable(); got != tc.want {
+			t.Errorf("%+v repairable = %v, want %v", tc.red, got, tc.want)
+		}
+	}
+}
+
+func TestRepairTruncatesLikeQuestion(t *testing.T) {
+	r := newRunFix(t, hostconfig.ReviewShadow, nil)
+	var long strings.Builder
+	long.WriteString("on: pull_request\npermissions: write-all\njobs:\n  a:\n    runs-on: x\n    steps:\n      - uses: a/b@v1\n")
+	for i := 0; long.Len() < 200_000; i++ {
+		long.WriteString("# filler line " + strconv.Itoa(i) + " ünïcödé ````\n")
+	}
+	r.commitWorkflow("ci.yml", long.String())
+	r.run()
+	body := r.forge.last(t)
+	repair(t, body, StepPolicy, r.wt)
+	if n := len([]rune(body)); n >= maxComment {
+		t.Fatalf("the Herstel has %d characters, want under %d", n, maxComment)
+	}
+	if !strings.Contains(body, protocol.Heading("question_push_attachment", "nl")) {
+		t.Errorf("the cut Herstel does not name the attachment")
+	}
 }
 
 // A Vraag opens with its question and the close line, so the controller's list shows only what
@@ -566,15 +685,18 @@ func TestRedQuestionHasNoTokenScopeAdvice(t *testing.T) {
 			}
 			body := r.forge.last(t)
 			h, ok := protocol.ParseHeader(body)
-			if !ok || h.Kind != protocol.KindQuestion && h.Kind != protocol.KindReturned {
-				t.Fatalf("neither a Vraag nor a Teruggegeven:\n%s", body)
+			if !ok || h.Kind != protocol.KindQuestion && h.Kind != protocol.KindReturned && h.Kind != protocol.KindRepair {
+				t.Fatalf("neither a Vraag, a Herstel nor a Teruggegeven:\n%s", body)
 			}
 			if scope.MatchString(strings.ReplaceAll(body, r.dir, "")) {
 				t.Errorf("the comment mentions a token scope:\n%s", body)
 			}
 			want := runs.Question
-			if h.Kind == protocol.KindReturned {
+			switch h.Kind {
+			case protocol.KindReturned:
 				want = runs.Returned
+			case protocol.KindRepair:
+				want = runs.Handoff
 			}
 			wantClosed(t, r.row(), want)
 		})
@@ -1093,9 +1215,9 @@ func TestBranchTextGivesNoSessionFooter(t *testing.T) {
 		r.run()
 		body := r.forge.last(t)
 		if !strings.Contains(body, "session 11111111") {
-			t.Fatalf("the Teruggegeven does not name the file, the test proves nothing:\n%s", body)
+			t.Fatalf("the Herstel does not name the file, the test proves nothing:\n%s", body)
 		}
-		returned(t, body, StepPolicy, r.wt)
+		repair(t, body, StepPolicy, r.wt)
 	})
 	t.Run("handoff", func(t *testing.T) {
 		r := newRunFix(t, hostconfig.ReviewShadow, nil)
