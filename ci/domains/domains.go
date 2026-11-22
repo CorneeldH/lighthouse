@@ -95,9 +95,10 @@ func isNotGo(path string) bool {
 
 // What the pack-python job reads: the pytest suite and the Python of the pack, the packs and Go
 // sources whose built binary the suite runs, e2e/ (the uv e2e tests run in that job) and the
-// inputs of the job itself.
+// inputs of the job itself: the Python lock files, ci.yml (the job's own definition) and
+// go.mod/go.sum (the inputs of the binary the job builds).
 var packPythonPrefixes = []string{"pack/python/", "tests/pack/python/", "pack/core/", "cmd/", "internal/", "e2e/"}
-var packPythonFiles = map[string]bool{"pyproject.toml": true, "uv.lock": true}
+var packPythonFiles = map[string]bool{"pyproject.toml": true, "uv.lock": true, ".github/workflows/ci.yml": true, "go.mod": true, "go.sum": true}
 
 func isPackPython(path string) bool {
 	if packPythonFiles[path] {

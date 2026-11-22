@@ -314,6 +314,15 @@ func TestCIChangesJobClassifies(t *testing.T) {
 	changes := ciJob(t, "changes")
 	assertContains(t, "changes", changes, "fetch-depth: 0", "--no-renames", " -z ", "go run ./ci/domains classify")
 	assertMatches(t, "changes", changes, `(?m)^        shell: bash\s*$`)
+	assertContains(t, "changes", changes, "pack-python: ${{ steps.domains.outputs.pack-python }}")
+}
+
+// A production change that fails this test: the no-python job stops running for a go or a pack-python change.
+func TestCINoPythonRunsOnGoAndPackPythonChanges(t *testing.T) {
+	assertContains(t, "no-python", ciJob(t, "no-python"),
+		"needs: changes",
+		"needs.changes.outputs.go == 'true'",
+		"needs.changes.outputs.pack-python == 'true'")
 }
 
 // A production change that fails this test: the web job drops a check or the generated-client drift test.

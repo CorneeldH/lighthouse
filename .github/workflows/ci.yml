@@ -139,7 +139,7 @@ jobs:
       - run: uv sync --locked
       # `-n auto` (pytest-xdist): one worker per vCPU the runner has, 4 on ubuntu-latest for a
       # public repo. A fixed count would oversubscribe a smaller runner. Locally, a plain
-      # `uv run pytest -q` stays serial. No `-q`: it hides the header.
+      # `uv run pytest -q` stays serial.
       - run: uv run pytest -n auto tests/pack/python/
       - run: go test -race -shuffle=on -tags e2e ./e2e/ -run 'TestRedTestBlocksCommit|TestRedCommitComesBackAfter|TestDefaultCommandWithoutPytest' -v
 
@@ -215,8 +215,8 @@ jobs:
   # tool is a failure, never a skip; shellcheck comes from the pinned lib the test fetches.
   # The canaries of the imports gates (#383): each Stop hook, the built binary and the real
   # deptry, knip and `go mod tidy` against a fake repository per rule ID. Needs uv and npx, and
-  # the network for the pinned tools; it also runs for a change under tests/ (the Python fixtures
-  # live there); with CI set a missing tool fails the test, it never skips.
+  # the network for the pinned tools; it also runs for a change under tests/pack/python/ (through
+  # pack-python) or tests/pack/fixtures/ (through go); with CI set a missing tool fails the test, it never skips.
   canary:
     needs: changes
     if: needs.changes.outputs.go == 'true' || needs.changes.outputs.pack-python == 'true'
