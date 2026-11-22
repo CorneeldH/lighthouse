@@ -1999,6 +1999,30 @@ func TestTickOpensGitLabRepoWithoutProjectIDs(t *testing.T) {
 	}
 }
 
+// Classification: io. Fails when the GitHub client of a tick does not remember enrichments,
+// so a tick reads each open PR twice, or when an opener of serve, the pusher or postartefact
+// does, so it acts on a stale mergeable.
+func TestOnlyTickForgesMemoizeEnrichment(t *testing.T) {
+	dir := repoDir(t, completeRepo)
+	env, _ := tickFixture(t, dir)
+	loaded := repoconfig.LoadAll([]string{dir})
+	env.Getenv = func(k string) string { return map[string]string{"GH_TOKEN": "tok"}[k] }
+	out, err := openForges(context.Background(), env, loaded)
+	if err != nil || len(out) != 1 || out[0].err != nil {
+		t.Fatalf("openForges = %+v, %v; want one open forge", out, err)
+	}
+	if gh, ok := out[0].rf.Forge.(*forge.GitHub); !ok || !gh.EnrichMemo {
+		t.Errorf("tick forge = %T, EnrichMemo %v; want a *forge.GitHub with EnrichMemo", out[0].rf.Forge, ok && gh.EnrichMemo)
+	}
+	rf, err := newForgeOpener(env.Getenv, "").forRepo(context.Background(), loaded[0].Repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gh, ok := rf.Forge.(*forge.GitHub); !ok || gh.EnrichMemo {
+		t.Errorf("other opener forge = %T, EnrichMemo %v; want a *forge.GitHub without EnrichMemo", rf.Forge, ok && gh.EnrichMemo)
+	}
+}
+
 // A push-workflows handoff with [dispatch.workflow_push] in host.toml becomes a KindPush; the
 // unconfigured repo hands it back instead. Apply knows no KindPush yet (the pusher start comes
 // with the apply change), so the push shows as the one apply error of that kind and nothing is

@@ -294,9 +294,11 @@ type openedForge struct {
 // openForges opens, without output, the forge of each repo in loaded that loaded and is
 // dispatchable; the others carry their load, duplicate-slug or Dispatchable error. When no repo
 // gets a forge it returns the first token error. When no repo needed a forge, a GitHub token
-// must still be set, as before forges were per repo.
+// must still be set, as before forges were per repo. Its GitHub clients live one tick, so they
+// remember each enrichment of an open pull request (forge.GitHub.EnrichMemo).
 func openForges(ctx context.Context, env tickEnv, loaded []repoconfig.Loaded) ([]openedForge, error) {
 	o := newForgeOpener(env.Getenv, env.ForgeURL)
+	o.enrichMemo = true
 	out := make([]openedForge, len(loaded))
 	var tally openTally
 	for i, l := range loaded {
