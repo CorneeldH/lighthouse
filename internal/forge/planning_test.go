@@ -470,3 +470,25 @@ func TestGitHubPrioInputsSecondReadIs304(t *testing.T) {
 		}
 	}
 }
+
+// Classification: io. Fails when PrioInputs and Planning ask for the open issue list under
+// different URLs: then they keep two cache entries, and the read after the other is a full one.
+func TestGitHubPrioInputsSharesPlanningIssueCache(t *testing.T) {
+	srv := forgetest.New(t)
+	srv.Issues = map[int]map[string]any{1: planIssue(1, nil), 2: planIssue(2, nil)}
+	f, err := Open(Config{Repo: "o/r", Token: "secret-token", BaseURL: srv.URL(), Cache: NewMemoryCache()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.Planning(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	const path = "/repos/o/r/issues"
+	reqs, nm := srv.Count(path), srv.NotModified(path)
+	if _, err := f.PrioInputs(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if r, n := srv.Count(path)-reqs, srv.NotModified(path)-nm; r == 0 || r != n {
+		t.Errorf("PrioInputs after Planning: %d issue list requests, %d answered 304; want all of them 304", r, n)
+	}
+}

@@ -63,7 +63,7 @@ func (c *GitHub) PrioInputs(ctx context.Context) (PrioInputs, error) {
 		return PrioInputs{}, err
 	}
 	out := PrioInputs{Issues: map[int]int{}, Milestones: []Milestone{}}
-	url := fmt.Sprintf("%s/repos/%s/issues?state=open&sort=created&direction=asc&per_page=100", c.BaseURL, c.Repo)
+	url := c.openIssuesURL()
 	for url != "" {
 		var page []issueItem
 		next, err := c.do(ctx, http.MethodGet, url, nil, &page)
@@ -88,6 +88,12 @@ func (c *GitHub) PrioInputs(ctx context.Context) (PrioInputs, error) {
 	}
 	out.Milestones = append(out.Milestones, milestones...)
 	return out, nil
+}
+
+// openIssuesURL is the first page of the open issue list, oldest first. PrioInputs and planIssues
+// both read it under this one URL, so they share one cache entry and a repeated read is a 304.
+func (c *GitHub) openIssuesURL() string {
+	return fmt.Sprintf("%s/repos/%s/issues?state=open&sort=created&direction=asc&per_page=100", c.BaseURL, c.Repo)
 }
 
 // Planning reads the open issues of the repo with their milestone and open blockers, and per
@@ -132,7 +138,7 @@ func (c *GitHub) Planning(ctx context.Context) (Planning, error) {
 func (c *GitHub) planIssues(ctx context.Context) ([]PlanIssue, map[int]int, error) {
 	out := []PlanIssue{}
 	open := map[int]int{}
-	url := fmt.Sprintf("%s/repos/%s/issues?state=open&sort=created&direction=asc&per_page=100", c.BaseURL, c.Repo)
+	url := c.openIssuesURL()
 	for url != "" {
 		var page []issueItem
 		next, err := c.do(ctx, http.MethodGet, url, nil, &page)
