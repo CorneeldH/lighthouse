@@ -205,11 +205,32 @@ command = "<your test command>"
 | `forge.default_branch` | The branch nothing lands on directly; default `main`. |
 | `test_gate.command` | What `commit-test-gate` runs before every commit. An empty `command = ""` turns the gate off. The `python` package sets `uv run pytest -q`. |
 | `paths.specs`, `paths.plans` | Where specs and plans go; default `docs/developer/planning/specs` and `docs/developer/planning/plans`. |
+| `worktree.root` | The folder the worktrees live in; default `.claude/worktrees`. Relative, it is read from the main checkout; absolute (a leading `/`, a drive such as `C:/`), it may lie outside the repository, also in a path with spaces. See [Where the worktrees live](#where-the-worktrees-live). |
 | `forge.board` | Optional: a GitHub Project board the skills move issues on. |
 
 `[forge.board]` is not in the example. When you add it, it needs `project_number`, `project_id`,
 `status_field_id`, and `status_options` with an option ID for each of `To do`, `In progress`
 and `Done`. `On hold` is no longer needed: parking is `To do` plus the `blocked_issue` label.
+
+### Where the worktrees live
+
+`[worktree] root` sets the folder the hooks, the worktree audit and the skills use for worktrees;
+without it, that is `.claude/worktrees` in the main checkout.
+
+```toml
+[worktree]
+root = "../lighthouse-worktrees"   # relative to the main checkout, or absolute
+```
+
+- A relative `root` is resolved against the main checkout, never the cwd, so it reads the same from
+  a worktree. An absolute `root` is used as it is and may lie outside the repository.
+- A `root` outside the repository needs nothing in `.gitignore`. A relative `root` inside it other
+  than `.claude/worktrees` (say `.wt`) must go into your `.gitignore` or `.git/info/exclude`
+  yourself; lighthouse only knows the default.
+- Keep the repository and the worktree root out of a folder a sync client manages (Dropbox,
+  OneDrive, iCloud Drive, Google Drive): such a client corrupts a `.git` directory and the worktrees.
+  `lighthouse init` warns when the main checkout or the resolved root lies in one; it never blocks.
+- The local dispatch adapter ignores `worktree.root`; see [Lokaal](workplace.md#lokaal).
 
 Every other key, with its type and default, is in `schema` and `defaults` of
 [`internal/config/config.go`](../internal/config/config.go). A key with a wrong type or value is
