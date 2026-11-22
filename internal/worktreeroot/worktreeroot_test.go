@@ -17,6 +17,12 @@ func TestResolve(t *testing.T) {
 		{"relatief onder de repo", ".wt", filepath.Join(repo, ".wt")},
 		{"relatief naar boven wordt schoon", "../wt", filepath.Join(filepath.Dir(repo), "wt")},
 	}
+	// Red when Resolve goes back to filepath.IsAbs alone: on Windows `/data/wt` has no drive and
+	// would hang under the repo, while the skills' case treats `/*` as absolute.
+	cases = append(cases,
+		struct{ name, value, want string }{"slash zonder schijf is absoluut", "/data/wt", filepath.Clean("/data/wt")},
+		struct{ name, value, want string }{"backslash zonder schijf is absoluut", `\data\wt`, filepath.Clean(`\data\wt`)},
+	)
 	abs := filepath.Join(t.TempDir(), "mijn wt")
 	cases = append(cases, struct{ name, value, want string }{"absoluut met spaties blijft gelijk", abs, abs})
 	if runtime.GOOS == "windows" {
@@ -96,7 +102,14 @@ func TestInSyncFolder(t *testing.T) {
 		{"/Users/a/iCloud Drive/x", "iCloud Drive"},
 		{"/Users/a/iCloudDrive/x", "iCloud Drive"},
 		{"/Users/a/Library/Mobile Documents/com~apple~CloudDocs/x", "iCloud Drive"},
+		{"/Users/a/Library/CloudStorage/OneDrive-Bedrijf/x", "OneDrive"},
+		{"/Users/a/Library/CloudStorage/Dropbox (Team)/x", "Dropbox"},
+		{"/Users/a/Library/CloudStorage/GoogleDrive-a@b.nl/x", "Google Drive"},
+		{"/Users/a/Google Drive/x", "Google Drive"},
+		{"/Users/a/GoogleDrive/x", "Google Drive"},
 		{"/home/a/MyOneDriveNotes/x", ""},
+		{"/home/a/MyGoogleDriveNotes/x", ""},
+		{"/home/a/Dropboxes/x", ""},
 		{"/home/a/Dropbox-old/x", ""},
 		{"/Users/a/Library/Mobile Documents/other/x", ""},
 		{"/home/a/src/repo", ""},
