@@ -70,3 +70,25 @@ func TestMapPlannedWishTestReadsTheDirection(t *testing.T) {
 		})
 	}
 }
+
+// Classification: fails when step 4 stops naming the policy and not-now headings by key, or
+// brings back a Dutch heading as a reading contract.
+func TestMapPlannedNamesDirectionHeadingKeys(t *testing.T) {
+	for variant, body := range variants(t, mapPlanned) {
+		t.Run(variant, func(t *testing.T) {
+			step := flat(section(t, body, "### 4.", "\n### 5."))
+			wantAll(t, step, "`heading:policy`", "`heading:not_now`")
+			wantNone(t, body, "Leidend beleid", "Bewust niet")
+		})
+	}
+}
+
+// Classification: fails when step 4 stops skipping silently on documents the repo does not have.
+func TestMapPlannedStaysSilentWithoutDirectionKeys(t *testing.T) {
+	for variant, body := range variants(t, mapPlanned) {
+		t.Run(variant, func(t *testing.T) {
+			step := flat(section(t, body, "### 4.", "\n### 5."))
+			wantAll(t, step, "skips silently")
+		})
+	}
+}

@@ -120,6 +120,8 @@ and goes on (see [Requirements](#requirements)).
   in `lighthouse.toml`, in the same diff and under the same approval. `--create-labels`, only
   with `--labels`, then creates the missing labels on the forge (GitHub or GitLab) and asks nothing more: the
   flag is the approval, also when there is nothing to apply (`No changes.`).
+- `lighthouse init --direction` also seeds the optional direction documents (strategy, tenets, one
+  file per area label) where they are missing; see [Direction documents](richting.md).
 
 What `init` writes, all of it on the diff first:
 

@@ -75,6 +75,13 @@ func (a *Adapter) Transcript(ctx context.Context, workspaceID, sessionID string)
 		return readDeltas(deltas, sessionID)
 	}
 	dir, err := workplace.HostTranscriptDir(a.Home, workspaceID, w.WorktreeDir)
+	if errors.Is(err, workplace.ErrNotMeasurable) {
+		// A run in a container under a profile other than software keeps its transcripts
+		// there too: look in the devcontainers before calling it not measurable (#514).
+		if deltas, cerr := a.containerDelta(ctx, w.WorktreeDir, sessionID, nil); cerr == nil {
+			return readDeltas(deltas, sessionID)
+		}
+	}
 	if err != nil {
 		return workplace.Transcript{}, err
 	}

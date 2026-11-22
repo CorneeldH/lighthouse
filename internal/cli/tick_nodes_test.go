@@ -653,7 +653,7 @@ func TestMeasureUsesNodeOfRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := map[int64]dispatch.RunState{1: {}}; !reflect.DeepEqual(states, want) {
+	if want := map[int64]dispatch.RunState{1: {TranscriptUnmeasurable: true}}; !reflect.DeepEqual(states, want) {
 		t.Errorf("states = %+v, want %+v (not gone)", states, want)
 	}
 	if want := map[int64]workplace.Stand{1: workplace.Waiting}; !reflect.DeepEqual(stands, want) {

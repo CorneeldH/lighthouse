@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 type questionCase struct {
@@ -83,7 +84,7 @@ func TestAnswerPromptDropsFooterAndClose(t *testing.T) {
 			{Question: "two?", Options: []Option{{Text: "y"}}},
 		}}
 		posted := RenderQuestion(meta, fields, language)
-		got := AnswerPrompt(posted, "  1a, 2a \n")
+		got := AnswerPrompt(posted, "  1a, 2a \n", "u")
 		if strings.Contains(got, "<sub>") {
 			t.Errorf("%s: footer left in %q", language, got)
 		}
@@ -132,5 +133,32 @@ func TestRenderQuestionLimits(t *testing.T) {
 	got, _ := ParseQuestion(body)
 	if len(got.Questions) != MaxQuestions || len(got.Questions[0].Options) != len(Letters) {
 		t.Errorf("parsed %d questions, %d options", len(got.Questions), len(got.Questions[0].Options))
+	}
+}
+
+// A short answer stays literal; one of 140.000 characters (the journalctl paste of #427) goes in as
+// its begin plus a pointer to the comment, and the prompt stays under PromptLimit.
+func TestAnswerPromptTooLargeAnswerPointsToComment(t *testing.T) {
+	posted := RenderQuestion(QuestionMeta{Issue: 3, Session: "s"}, QuestionFields{Phase: "p", Where: "w", What: "x",
+		Questions: []Question{{Question: "q?", Options: []Option{{Text: "o"}}}}}, "en")
+	const ref = "https://github.com/o/r/issues/3#issuecomment-1"
+
+	if got := AnswerPrompt(posted, "1a", ref); !strings.HasSuffix(got, "\n\n1a") || strings.Contains(got, ref) {
+		t.Errorf("short answer not literal: %q", got)
+	}
+
+	big := strings.Repeat("é journal line\n", 10000) // 140.000 characters, more bytes
+	got := AnswerPrompt(posted, big, ref)
+	if len(got) > PromptLimit {
+		t.Errorf("prompt is %d bytes, over %d", len(got), PromptLimit)
+	}
+	if !strings.Contains(got, ref) || !strings.Contains(got, "é journal line") {
+		t.Errorf("pointer or begin of the answer missing: %q", got[len(got)-300:])
+	}
+	if !utf8.ValidString(got) {
+		t.Error("prompt is not valid UTF-8: a rune was cut")
+	}
+	if strings.Contains(got, strings.Repeat("é journal line\n", 500)) {
+		t.Error("answer not cut")
 	}
 }

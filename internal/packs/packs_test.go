@@ -151,6 +151,33 @@ func TestLoadKeepsLabelsTemplateOutOfUnits(t *testing.T) {
 	}
 }
 
+func TestLoadKeepsDirectionTemplatesOutOfUnits(t *testing.T) {
+	m := basePack()
+	names := []string{"strategy.md", "tenets.md", "area.md"}
+	for _, n := range names {
+		m["templates/"+n] = file("# " + n + "\n")
+	}
+	p, err := Load(m, "core", "dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.DirectionTemplates) != len(names) {
+		t.Fatalf("DirectionTemplates = %v", p.DirectionTemplates)
+	}
+	for _, n := range names {
+		if got := string(p.DirectionTemplates[n]); got != "# "+n+"\n" {
+			t.Errorf("DirectionTemplates[%s] = %q", n, got)
+		}
+	}
+	for _, u := range p.Units {
+		for _, n := range names {
+			if strings.HasSuffix(u.Path, n) {
+				t.Fatalf("%s became a unit: %s", n, u.Path)
+			}
+		}
+	}
+}
+
 func TestLoadRejectsOtherTemplate(t *testing.T) {
 	m := basePack()
 	m["templates/x.md"] = file("x\n")

@@ -78,7 +78,9 @@ func Plan(desired []packs.Unit, m manifest.Manifest, current map[packs.Key]Curre
 
 func decide(c *Change) Action {
 	cur := c.Current
-	untouched := c.Entry != nil && cur.Present && manifest.Sum(cur.Content) == c.Entry.SHA256
+	// A CRLF file counts as untouched: line endings are not a local edit. A lone CR does.
+	norm := bytes.ReplaceAll(cur.Content, []byte("\r\n"), []byte("\n"))
+	untouched := c.Entry != nil && cur.Present && manifest.Sum(norm) == c.Entry.SHA256
 	if c.Desired == nil {
 		switch {
 		case !cur.Present, untouched:
@@ -91,7 +93,7 @@ func decide(c *Change) Action {
 	switch {
 	case c.Entry == nil && !cur.Present:
 		return Add
-	case c.Entry == nil && same:
+	case c.Entry == nil && (same || cur.Present && bytes.Equal(norm, c.Desired.Content)):
 		return Adopt
 	case c.Entry == nil:
 		return Conflict

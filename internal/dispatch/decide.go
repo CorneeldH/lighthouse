@@ -737,14 +737,20 @@ func (c runCtx) done() bool {
 		// pusher pushed, when the row is done.
 		return true
 	}
-	return c.hasStand && c.stand == workplace.Done && !workAfterStop(c.state.Transcript)
+	return c.hasStand && c.stand == workplace.Done && !workAfterStop(c.state.Transcript, c.state.TranscriptUnmeasurable)
 }
 
 // workAfterStop reports whether t shows work after the Stop that made forge report done:
-// background work still running, or a turn on its notification. A nil t is not measurable and
-// shows none. RunViews uses it too, so the page and the tick agree on done (#309).
-func workAfterStop(t *workplace.Transcript) bool {
-	return t != nil && (t.Background > 0 || t.TurnOpen)
+// background work still running, or a turn on its notification. A nil t that the workplace could
+// not measure (unmeasurable) counts as work after the Stop: it proves no end, so the run stays
+// open until the silence or runtime rules decide (#514). A nil t without that flag (no
+// transcripts at all, none yet) shows none. RunViews uses it too, so the page and the tick agree
+// on done (#309).
+func workAfterStop(t *workplace.Transcript, unmeasurable bool) bool {
+	if t == nil {
+		return unmeasurable
+	}
+	return t.Background > 0 || t.TurnOpen
 }
 
 // closed closes row with o. A run that ends as done, handoff or question is over, but its
@@ -1641,7 +1647,11 @@ func (c issueCtx) answer() (planned, bool) {
 	a.Kind, a.Mode, a.Trigger, a.TriggerKey, a.Attempt = KindResume, modeResume, triggerAnswer, key, 1
 	a.SessionID, a.CommentID = q.Header.Session, ans.ID
 	a.Command, a.Branch = run.Command, run.Branch
-	a.Prompt = protocol.AnswerPrompt(q.Comment.Body, ans.Body)
+	ref := ans.URL
+	if ref == "" {
+		ref = strconv.FormatInt(ans.ID, 10)
+	}
+	a.Prompt = protocol.AnswerPrompt(q.Comment.Body, ans.Body, ref)
 	return c.planned(a, parseTime(ans.CreatedAt)), true
 }
 
