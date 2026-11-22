@@ -140,6 +140,10 @@ git -C "$REPO" commit -q -m "c" >/dev/null 2>&1
 hook PostToolUse "run.sh commit-test-gate post" "git commit -m x"
 row "11. commit-test-gate post, with \`[test_gate] command\`" "rc 0, \`git version\`" "$RC" "$(mark ok 0 'git version')" "$ERR"
 
+# `check-hooks` runs every registered hook in a smoketest and reads the line endings and the shell.
+(cd "$REPO" && PATH="$BIN_DIR:$PATH" "$BIN" check-hooks) >"$OUT" 2>"$ERR"; RC=$?
+row "12. \`lighthouse check-hooks\`" "rc 0" "$RC" "$(mark ok 0)" "$ERR"
+
 echo "### Host"
 echo
 echo '```'

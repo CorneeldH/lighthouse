@@ -155,7 +155,7 @@ to their shell profile, and call `~/.local/bin/lighthouse` by its full path unti
 
 Native Windows: the hooks need bash, so lighthouse does not work there as a whole. Tell the user,
 and recommend WSL: install inside WSL with the Linux x86-64 block, and work on the repository from
-WSL.
+WSL. After `init`, `lighthouse check-hooks` says whether the hooks can run on the machine.
 
 Then run `lighthouse --help` and `lighthouse init --help`, and hold this guide to them (see
 [Ground rules](#ground-rules)).
