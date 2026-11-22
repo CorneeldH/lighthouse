@@ -57,7 +57,7 @@ kind = "file"
 path = ".agents/skills/lighthouse-go-standard/SKILL.md"
 package = "go"
 version = "dev"
-sha256 = "aafb6ef66814852befbd07c6a6a3811cc85e4a45b863911ecd5a367e786fcaf2"
+sha256 = "16cb90a9ae9721ad2223e634b0e15313b336a34071ce3bf7d4932f8c7e0c5ea9"
 
 [[unit]]
 kind = "file"
@@ -627,7 +627,7 @@ path = "AGENTS.md"
 id = "core"
 package = "core"
 version = "dev"
-sha256 = "30e07e5375036160bd4d21d056e2e8496169c8378fd28f2117b9a660addcba67"
+sha256 = "9a6139a816b17a92825280b23951bf544ede8299cb31f36096ff3beef82bde53"
 
 [[unit]]
 kind = "block"
@@ -635,7 +635,7 @@ path = "AGENTS.md"
 id = "go"
 package = "go"
 version = "dev"
-sha256 = "21a0f1cb6e8753ce75425bfe8abce7e1f733ff171b04ed198dedb858c62a4a10"
+sha256 = "3b242867b0a09c6e2f58a3d0da742f77dcfa1becbfa350031632a608b3df8278"
 
 [[unit]]
 kind = "block"
@@ -643,4 +643,4 @@ path = "AGENTS.md"
 id = "node"
 package = "node"
 version = "dev"
-sha256 = "3c5ac4053a20aba4cc95c6d3d2c5fd16d45fbb77a8c9c9f43ad5282e82e9d321"
+sha256 = "f380c681960a7726da8fd6272b097bde2028213716c4c570fcdead582b983a82"

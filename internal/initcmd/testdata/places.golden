@@ -9,6 +9,6 @@
 .lighthouse/headings.toml	file	core
 .lighthouse/manifest.toml	init	
 .lighthouse/scripts/	file	python,shell
-AGENTS.md	block	core,go,node,python,shell
+AGENTS.md	block	core,go,node,python
 CLAUDE.md	init	
 lighthouse.toml	init	core,python
