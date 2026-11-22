@@ -216,11 +216,48 @@ func TestCloseIssueB2aNeverPastesBodyTextIntoACommand(t *testing.T) {
 	}
 }
 
-// Classification: fails when controller mode (B7) stops running B2a.
+// Classification: fails when controller mode (B7) stops running B2a, or stops saying that only
+// the place where B2 measures changes.
 func TestCloseIssueB7IncludesB2a(t *testing.T) {
 	for variant, body := range variants(t, closeIssue) {
 		t.Run(variant, func(t *testing.T) {
-			wantAll(t, flat(closeIssueSection(t, body, "### B7.")), "Step 0, B1–B4 and B2a hold unchanged.")
+			wantAll(t, flat(closeIssueSection(t, body, "### B7.")),
+				"Step 0, B1–B4 and B2a hold; only the place where B2 measures changes (*Measure on the default branch*, below).")
+		})
+	}
+}
+
+// Classification: fails when B7 stops sorting open criteria into the three kinds, stops setting
+// the relation before the handoff back to the after-merge check, asks a question when every open
+// criterion waits on an issue, stops falling back to the question when `issue block` fails,
+// counts a predecessor with a merged PR or in another repository as waiting, or measures B2 in
+// the cwd instead of a throwaway worktree on the fetched default branch.
+func TestCloseIssueB7ClassifiesOpenCriteria(t *testing.T) {
+	for variant, body := range variants(t, closeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			b7 := flat(closeIssueSection(t, body, "### B7."))
+			wantAll(t, b7,
+				"waits on an issue",
+				"code or docs",
+				"manual work or an event",
+				"lighthouse forge issue block <nr> --by <predecessor>",
+				"lighthouse forge pr list",
+				"next: /lighthouse-close-issue <nr>",
+				"falls back to the question",
+				"only for a predecessor that is `OPEN` and has no merged PR",
+				"in another repository",
+				"git fetch origin",
+				"git worktree add --detach",
+				"origin/<default branch>")
+			// The otherwise row no longer forbids the handoff; it points at the three kinds.
+			wantNone(t, b7, "without `/lighthouse-write-handoff` and without any further tool call")
+			all := section(t, b7, "**Every open criterion waits on an issue in this repo.**", "**Otherwise**")
+			wantOrder(t, all,
+				"lighthouse forge issue block <nr> --by <predecessor>",
+				"/lighthouse-write-handoff",
+				"next: /lighthouse-close-issue <nr>")
+			wantAll(t, all, "No question.", "State of Context")
+			wantAll(t, b7, "`merged_pr` from `lighthouse forge issue blockers` is always `false` on GitHub and does not count")
 		})
 	}
 }
