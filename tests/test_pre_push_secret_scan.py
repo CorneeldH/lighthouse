@@ -9,7 +9,7 @@ gitleaks is needed for every scan. Without it the scan tests skip, unless
 `LIGHTHOUSE_REQUIRE_GITLEAKS` is set: the `secret-scan` job in CI sets it, so a
 runner without gitleaks fails there instead of skipping.
 
-The hook bounds every gitleaks run through `tools/hooks/checkpoint_scan.py` (#198).
+The hook bounds every gitleaks run through `lighthouse checkpoint-scan` (#198).
 No test depends on the host for that: each one gets its own `host.toml` and
 pass-through stubs for `systemctl`, `systemd-run` and `choom` first on `PATH`. The
 tests of the split between blob mode and commit range use a fake gitleaks that
@@ -26,11 +26,10 @@ from pathlib import Path
 
 import pytest
 
-from tests.pack.python._testkit import GIT_ENV, git, init_repo, path_with_lighthouse, tool_bin
+from tests.pack.python._testkit import GIT_ENV, git, init_repo, lighthouse_dir, path_with_lighthouse, tool_bin
 
 ROOT = Path(__file__).resolve().parents[1]
 SCAN = ROOT / "tools" / "hooks" / "pre-push-secret-scan.sh"
-MODULE = ROOT / "tools" / "hooks" / "checkpoint_scan.py"
 INSTALL = ROOT / "tools" / "hooks" / "install.sh"
 ZERO = "0" * 40
 
@@ -375,7 +374,7 @@ def test_bulk_push_refused_with_pointer(fx, stubs, monkeypatch):
         LIGHTHOUSE_SCAN_VOLUME_LIMIT="1000",
     )
     assert result.returncode != 0
-    assert "checkpoint_scan.py push ckpt" in result.stderr
+    assert "checkpoint-scan push ckpt" in result.stderr
     # The refusal is its own message, not a scan that did not complete.
     assert "pre-push: BLOCKED — 3 checkpoint blobs (" in result.stderr
     assert "the scan did not complete" not in result.stderr
@@ -396,7 +395,7 @@ def test_checkpoint_remote_from_settings_matches_its_github_url(fx):
     ref = _checkpoint_ref(fx["repo"], "01EEEEEEEEEEEEEEEEEEEEEEEE", '{"text": "clean"}\n')
     sha = _out(fx["repo"], "rev-parse", ref)
     line = f"{ref} {sha} {ref} {ZERO}\n"
-    no_gitleaks = str(tool_bin(fx["repo"].parent / "bin", ("git", "bash", "python3", "cat", "dirname")))
+    no_gitleaks = _no_gitleaks_path(fx["repo"].parent / "bin")
     # With gitleaks absent the scan refuses after the ref check, so the message tells
     # the two rules apart: the ref check passes for the checkpoint repo only.
     other = _run_scan(fx["repo"], "pub", "https://github.com/Acme/widgets.git", line, path=no_gitleaks)
@@ -409,7 +408,7 @@ def test_checkpoint_remote_from_settings_matches_its_github_url(fx):
 def test_without_gitleaks_a_real_remote_is_refused_and_a_local_path_allowed(fx):
     sha = _out(fx["repo"], "rev-parse", "HEAD")
     line = f"refs/heads/work {sha} refs/heads/work {ZERO}\n"
-    no_gitleaks = str(tool_bin(fx["repo"].parent / "bin", ("git", "bash", "python3", "cat", "dirname")))
+    no_gitleaks = _no_gitleaks_path(fx["repo"].parent / "bin")
     real = _run_scan(fx["repo"], "origin", "https://github.com/Acme/widgets.git", line, path=no_gitleaks)
     assert real.returncode != 0
     assert "gitleaks is not installed" in real.stderr
@@ -417,11 +416,27 @@ def test_without_gitleaks_a_real_remote_is_refused_and_a_local_path_allowed(fx):
     assert local.returncode == 0, local.stderr
 
 
+def test_without_lighthouse_the_hook_refuses_instead_of_pushing_unscanned(fx):
+    sha = _out(fx["repo"], "rev-parse", "HEAD")
+    line = f"refs/heads/work {sha} refs/heads/work {ZERO}\n"
+    no_lighthouse = str(tool_bin(fx["repo"].parent / "bin", ("git", "bash", "cat", "dirname")))
+    result = _run_scan(fx["repo"], "origin", str(fx["origin"]), line, path=no_lighthouse)
+    assert result.returncode != 0
+    assert "COULD NOT CHECK — lighthouse is not on PATH" in result.stderr
+
+
 def test_a_ref_deletion_needs_no_scan(fx):
-    no_gitleaks = str(tool_bin(fx["repo"].parent / "bin", ("git", "bash", "python3", "cat", "dirname")))
+    no_gitleaks = _no_gitleaks_path(fx["repo"].parent / "bin")
     line = f"(delete) {ZERO} refs/heads/old 1111111111111111111111111111111111111111\n"
     result = _run_scan(fx["repo"], "origin", "https://github.com/Acme/widgets.git", line, path=no_gitleaks)
     assert result.returncode == 0, result.stderr
+
+
+def _no_gitleaks_path(bin_dir: Path) -> str:
+    """A PATH with git, bash and the built `lighthouse`, and no gitleaks."""
+    path = tool_bin(bin_dir, ("git", "bash", "cat", "dirname"))
+    (path / "lighthouse").symlink_to(lighthouse_dir() / "lighthouse")
+    return str(path)
 
 
 def _ci_scan_command() -> str:
@@ -519,8 +534,6 @@ def test_entire_checkpoints_leave_only_through_the_scan(tmp_path):
     git(repo, "push", "-q", "origin", "work")
     (repo / "tools" / "hooks").mkdir(parents=True)
     shutil.copy(SCAN, repo / "tools" / "hooks" / SCAN.name)
-    # The scan runs gitleaks through the module, which reads its limits with `lighthouse config`.
-    shutil.copy(MODULE, repo / "tools" / "hooks" / MODULE.name)
     shutil.copy(ROOT / ".gitleaks.toml", repo / ".gitleaks.toml")
     git(repo, "add", "tools", ".gitleaks.toml")
     git(repo, "commit", "-qm", "scan")

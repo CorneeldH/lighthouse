@@ -1,5 +1,5 @@
 {
-  "$comment": "The signature register. A signature is a commit that adds an entry to `signatures`; see CLA.md section 11. Guarded by tools/check_cla.py and .github/workflows/cla.yml.",
+  "$comment": "The signature register. A signature is a commit that adds an entry to `signatures`; see CLA.md section 11. Guarded by tools/check_cla and .github/workflows/cla.yml.",
   "cla_revisions": ["2026-08-24"],
   "current_cla_revision": "2026-08-24",
   "owner": {

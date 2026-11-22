@@ -89,7 +89,7 @@ func TestGolangciPinMatchesCI(t *testing.T) {
 
 // A `go test` step without a flag of the gate runs a weaker test than the commit gate does.
 func TestEveryCIGoTestHasGateFlags(t *testing.T) {
-	assertGateFlags(t, "ci.yml", 4) // unit, e2e and the two canary steps
+	assertGateFlags(t, "ci.yml", 5) // unit, e2e, the two canary steps and checkpointscan with gitleaks
 }
 
 // A production change that fails this test: a `go test` step in macos.yml loses one of the gate flags, so macOS runs a
