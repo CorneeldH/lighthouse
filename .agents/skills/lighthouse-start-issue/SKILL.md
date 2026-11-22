@@ -102,15 +102,18 @@ Report exactly one line, of one of three kinds:
   covers the AC uncertainly; a mention in a commit body, spec or plan stays `no`, second form,
   and goes on to step 3), post one bundle with `lighthouse ask --issue <nr> --phase start`
   instead, with the options "close through `/lighthouse-close-issue <nr>`" and "carry on
-  anyway", `--recommended` on the first, and stop without a handoff. Say per option what the
-  resumed session does: "close" is the controller-run handoff above, "carry on anyway" is step 3.
+  anyway", `--recommended a`, and stop without a handoff. Write the ask fields in the language of
+  the artefacts. Say per option what the resumed session does: "close" is the controller-run
+  handoff above, "carry on anyway" is step 3.
 - `already done? not measurable — fetch failed`: the output contains `FETCH FAILED` and there is
   no covering hit. The recipe then searched a possibly stale `origin/<default branch>`, so zero
   hits is no `no`. Stop before step 3; the user chooses between trying again and "carry on
   anyway". Controller run (if present): post one bundle with
   `lighthouse ask --issue <nr> --phase start`, with the options "try the fetch again" and "carry
-  on anyway", `--recommended` on the first, and stop without a handoff: close-issue would measure
-  on stale data. Write the ask fields in the language of the artefacts; the question in
+  on anyway", `--recommended a`, and stop without a handoff: close-issue would measure on stale
+  data. Say per option what the resumed session does: "try the fetch again" is the step 2 recipe
+  once more, "carry on anyway" is step 3. Write the ask fields in the language of the artefacts;
+  the question in
   `/lighthouse-close-issue` (open criteria) shows the shape. A covering hit stays `likely`: old
   data also proves the work was already there.
 
