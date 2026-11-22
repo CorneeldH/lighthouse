@@ -26,6 +26,8 @@ const iss = (
   label: '',
   open_question: false,
   needs_label: false,
+  prio_weight: 0,
+  factor: 0,
   blocked_by: by.length ? by.map(([repo, issue]) => ({ repo, issue })) : null,
   ...extra,
 })
