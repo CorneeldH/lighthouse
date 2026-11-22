@@ -1,4 +1,4 @@
-# The macOS gate for lighthouse (#337): the pytest suite in three parts, the Go race tests and the
+# The macOS gate for lighthouse (#337): the pack-python pytest job, the Go race tests and the
 # e2e tests on macos-latest. A pull request never runs it: release.yml calls it before every
 # release, so a release needs a green macOS run of its commit. Start it by hand
 # (workflow_dispatch) on a branch whose change touches portability.
@@ -12,14 +12,10 @@ permissions:
   contents: read
 
 jobs:
-  python:
+  pack-python:
     runs-on: macos-latest
     # macOS runners are slower than ubuntu-latest (#90).
     timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -30,10 +26,8 @@ jobs:
           go-version-file: go.mod
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       - run: uv sync --locked
-      # Same split as the python job in ci.yml: tests/conftest.py takes one third per shard.
-      - run: uv run pytest -n auto
-        env:
-          LIGHTHOUSE_PYTEST_SHARD: ${{ matrix.shard }}/3
+      # The same run as the pack-python job in ci.yml.
+      - run: uv run pytest -n auto tests/pack/python/
 
   go-test:
     runs-on: macos-latest

@@ -100,6 +100,21 @@ func TestEveryMacOSGoTestHasGateFlags(t *testing.T) {
 	assertGateFlags(t, "macos.yml", 2) // unit and e2e
 }
 
+// A production change that fails this test: macos.yml gets a matrix or a shard variable again, or its pack-python job
+// stops running pytest on tests/pack/python/ (#370).
+func TestMacOSPackPythonIsOnePytestRun(t *testing.T) {
+	job, ok := jobs(stripComments(read(t, ".github", "workflows", "macos.yml")))["pack-python"]
+	if !ok {
+		t.Fatal("macos.yml has no job pack-python")
+	}
+	for _, bad := range []string{"strategy:", "matrix", "LIGHTHOUSE_PYTEST_SHARD"} {
+		if strings.Contains(job, bad) {
+			t.Errorf("macos.yml pack-python contains %q:\n%s", bad, job)
+		}
+	}
+	assertMatches(t, "macos.yml pack-python", job, `(?m)^      - run: uv run pytest [^\n]*tests/pack/python/\s*$`)
+}
+
 // A production change that fails this test: the `CGO_ENABLED=0 go build ./...` step in ci.yml is removed or loses its
 // `CGO_ENABLED=0` prefix.
 func TestCIBuildsWithoutCGO(t *testing.T) {
