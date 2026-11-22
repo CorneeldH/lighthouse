@@ -1,5 +1,6 @@
 // Package settings merges the hook registrations of the lighthouse packages into
-// .claude/settings.json (spec, init punt 5).
+// .claude/settings.json (spec, init punt 5), and the "language" that follows from
+// the language of the project.
 //
 // A registration whose command points into .claude/hooks/lighthouse/ belongs to
 // lighthouse; every other registration belongs to the project and keeps its place.
@@ -8,6 +9,7 @@ package settings
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/CorneeldH/lighthouse/internal/orderedjson"
 	"github.com/CorneeldH/lighthouse/internal/packs"
@@ -295,4 +297,36 @@ func ApplyAllow(doc *orderedjson.Object, want, drop []string) error {
 	}
 	perms.Set("allow", out)
 	return nil
+}
+
+// ResponseLanguage is the value of Claude Code's "language" setting for a
+// project language code: "" for English or no code, where Claude keeps following
+// the language of the user's message; "dutch" for "nl"; the code itself otherwise.
+func ResponseLanguage(code string) string {
+	switch code = strings.ToLower(strings.TrimSpace(code)); code {
+	case "", "en":
+		return ""
+	case "nl":
+		return "dutch"
+	}
+	return code
+}
+
+// ApplyLanguage sets the top-level "language" to want, last in doc, when doc has no
+// "language" yet. A "language" that is there belongs to the project: it is never
+// changed, and when it differs from want, ApplyLanguage returns it so the caller can
+// warn. An empty want changes nothing.
+func ApplyLanguage(doc *orderedjson.Object, want string) (kept string) {
+	if want == "" {
+		return ""
+	}
+	v, ok := doc.Get("language")
+	if !ok {
+		doc.Set("language", want)
+		return ""
+	}
+	if s, isStr := v.(string); isStr && s == want {
+		return ""
+	}
+	return fmt.Sprint(v)
 }

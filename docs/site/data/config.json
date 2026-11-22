@@ -18,7 +18,7 @@
               "level": "set",
               "required": "no",
               "default": "en",
-              "about": "The language of issues, PRs and commit messages: nl or en.",
+              "about": "The language of issues, PRs and commit messages: nl or en. With nl, init also sets language in .claude/settings.json, so Claude Code replies in Dutch.",
               "options": [
                 "nl",
                 "en"
@@ -28,6 +28,7 @@
                 "internal/config/headings.go",
                 "internal/dispatch/instructions/run.md",
                 "internal/evidence/run.go",
+                "internal/initcmd/initcmd.go",
                 "internal/pusher/floor.go",
                 "internal/repoconfig/repoconfig.go",
                 "internal/report/render.go",

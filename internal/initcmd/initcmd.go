@@ -417,7 +417,8 @@ func buildPlan(o Options, root string, names []string, desired []packs.Unit, cha
 		}
 	}
 
-	if hooksTouched || len(allowWant) > 0 || len(allowDrop) > 0 {
+	replyLanguage := settings.ResponseLanguage(projectLanguage(root))
+	if hooksTouched || len(allowWant) > 0 || len(allowDrop) > 0 || replyLanguage != "" {
 		p, err := load(settingsPath)
 		if err != nil {
 			return nil, err
@@ -442,6 +443,9 @@ func buildPlan(o Options, root string, names []string, desired []packs.Unit, cha
 		}
 		if err := settings.ApplyAllow(doc, allowWant, allowDrop); err != nil {
 			return nil, err
+		}
+		if kept := settings.ApplyLanguage(doc, replyLanguage); kept != "" {
+			_, _ = fmt.Fprintf(o.Err, "warning: %s has language %q; [project] language asks for %q, so it stays as it is\n", settingsPath, kept, replyLanguage)
 		}
 		out, err := orderedjson.Marshal(doc)
 		if err != nil {
@@ -522,6 +526,25 @@ func hasLine(b []byte, line string) bool {
 		}
 	}
 	return false
+}
+
+// projectLanguage is `[project] language` of the existing lighthouse.toml, or "" when
+// the file, the key or a parse is missing. The default "en" that init proposes for a
+// new file needs no setting, so the proposal is not read here.
+func projectLanguage(root string) string {
+	var ex struct {
+		Project struct {
+			Language string `toml:"language"`
+		} `toml:"project"`
+	}
+	b, err := os.ReadFile(filepath.Join(root, configPath))
+	if err != nil {
+		return ""
+	}
+	if _, err := toml.Decode(string(b), &ex); err != nil {
+		return ""
+	}
+	return ex.Project.Language
 }
 
 // existingForge is the part of an existing lighthouse.toml that decides which hosts are known.

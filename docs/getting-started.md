@@ -178,7 +178,7 @@ command = "<your test command>"
 
 | Key | What it does |
 |---|---|
-| `project.language` | The language of your artefacts: issues, PRs, comments, commit messages. `nl` or `en`; default `en`. |
+| `project.language` | The language of your artefacts: issues, PRs, comments, commit messages. `nl` or `en`; default `en`. With `nl`, `init` also sets `"language": "dutch"` in `.claude/settings.json`, so Claude Code replies in Dutch; a `language` already there stays, with a warning. |
 | `project.code_language` | Set it to `en` to keep names, comments and file names in English while artefacts follow `project.language`. |
 | `project.code_language_paths` | The globs that `project.code_language` covers. |
 | `forge.kind` | `github` or `gitlab`; default `github`. |
