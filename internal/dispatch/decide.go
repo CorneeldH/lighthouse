@@ -546,7 +546,7 @@ func orphan(history []runs.Row, hs []parsed, base Action) (Action, bool) {
 // The third result, only from fixPR, is the fix-pr start the close stands
 // for; settle starts nothing itself.
 func settle(in Input, repo RepoInput, it Item, row runs.Row, hs []parsed, base Action) (Action, bool, *fixPRStart) {
-	var done, question, returned, pushReturned bool
+	var done, question, returned, pushReturned, repaired bool
 	var handoff *parsed
 	for i, p := range hs {
 		if p.Time.Before(row.StartedAt) {
@@ -563,6 +563,9 @@ func settle(in Input, repo RepoInput, it Item, row runs.Row, hs []parsed, base A
 			returned = returned || ofRun
 			// A push row has no session; the pusher's own Returned carries none either.
 			pushReturned = pushReturned || isPush(row) && p.Header.Session == ""
+		case protocol.KindRepair:
+			// The pusher's own Herstel: no session, and only the token's own login counts.
+			repaired = repaired || isPush(row) && pusherRepair(p.Header) && p.Comment.Author == repo.Snapshot.TokenLogin
 		case protocol.KindHandoff:
 			handoff = &hs[i]
 		}
@@ -576,6 +579,8 @@ func settle(in Input, repo RepoInput, it Item, row runs.Row, hs []parsed, base A
 		return c.closed(runs.Handoff), true, nil
 	case question:
 		return c.closed(runs.Question), true, nil
+	case repaired:
+		return c.closed(runs.Handoff), true, nil
 	case pushReturned:
 		return c.closed(runs.Returned), true, nil
 	case returned:
@@ -713,6 +718,11 @@ func isPush(row runs.Row) bool { return row.Command == cmdPush }
 // pusherQuestion reports whether h is a 🤖 Vraag of the pusher: without a session, with a sha.
 func pusherQuestion(h protocol.Header) bool {
 	return h.Kind == protocol.KindQuestion && h.Session == "" && h.Fields["sha"] != ""
+}
+
+// pusherRepair reports whether h is a 🤖 Herstel of the pusher: without a session.
+func pusherRepair(h protocol.Header) bool {
+	return h.Kind == protocol.KindRepair && h.Session == ""
 }
 
 // noStart lifts a measurement rule that never starts fix-pr into outcome's rule shape.
@@ -1262,10 +1272,10 @@ func repair(history []runs.Row, it Item, base Action) []Action {
 	return out
 }
 
-// triggerComment returns the comment id of a handoff:<id>, answer:<id>, push:<id> or
+// triggerComment returns the comment id of a handoff:<id>, answer:<id>, repair:<id>, push:<id> or
 // pushanswer:<id> trigger key.
 func triggerComment(key string) (int64, bool) {
-	for _, prefix := range []string{"handoff:", "answer:", triggerPush + ":", triggerPushAnswer + ":"} {
+	for _, prefix := range []string{"handoff:", "answer:", triggerRepair + ":", triggerPush + ":", triggerPushAnswer + ":"} {
 		if rest, ok := strings.CutPrefix(key, prefix); ok {
 			id, err := strconv.ParseInt(rest, 10, 64)
 			return id, err == nil
@@ -1284,6 +1294,7 @@ const (
 	modeResume        = "resume"
 	triggerHandoff    = "handoff"
 	triggerAnswer     = "answer"
+	triggerRepair     = "repair"
 	triggerPush       = "push"
 	triggerPushAnswer = "pushanswer"
 	// triggerMerge is the merge pusher of a PR with a pushed SHA; its row's key is merge:<pr>:<head>.
@@ -1292,6 +1303,8 @@ const (
 	triggerFixPR = "fixpr"
 	cmdFixPR     = "/lighthouse-fix-pr"
 	maxFixPRRuns = 3
+	// maxRepairRuns caps the repair runs one red push step may cost before the issue goes back.
+	maxRepairRuns = 2 //nolint:unused // read by the repair rule of the next task
 )
 
 // issueCtx is what the start rules of one item read.

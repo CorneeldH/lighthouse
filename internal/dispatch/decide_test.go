@@ -543,6 +543,48 @@ func TestPushRowClosesOnThePushersReturned(t *testing.T) {
 	}
 }
 
+// pusherRepairComment is the pusher's 🤖 Herstel for a red policy step, posted by author at.
+func pusherRepairComment(author string, at time.Time) Comment {
+	return Comment{ID: 71, Author: author, CreatedAt: at.Format(time.RFC3339),
+		Body: "🤖 Herstel\nworktree: " + pushWorktree + "\nbranch: issue-7-bouw-de-keten\nstep: policy\n\n**Rode stap:** policy"}
+}
+
+// The pusher's own Herstel closes its open push row as a handoff: the chain goes on with the
+// repair run, not with the give-back of a Teruggegeven.
+func TestSettleClosesPushRowOnRepair(t *testing.T) {
+	in := pushRow(t, "", 5*time.Minute)
+	in.Repos[0].Snapshot.TokenLogin = "lh-bot"
+	item7(&in).Comments = append(item7(&in).Comments, pusherRepairComment("lh-bot", in.Now.Add(-time.Minute)))
+	got := Decide(in)
+	if s := summary(got); !reflect.DeepEqual(s, []string{"close::"}) {
+		t.Fatalf("summary = %q, want one close", s)
+	}
+	if a := got[0]; a.RunID != 5 || a.Outcome != runs.Handoff || a.Stop || a.End || a.Discard || a.SessionID != "" {
+		t.Errorf("action %+v, want run 5 closed as handoff without touching a session or workplace", a)
+	}
+}
+
+// A Herstel of another author is no pusher's Herstel: the push row stays open.
+func TestSettleIgnoresRepairOfOtherAuthor(t *testing.T) {
+	in := pushRow(t, "", 5*time.Minute)
+	in.Repos[0].Snapshot.TokenLogin = "lh-bot"
+	item7(&in).Comments = append(item7(&in).Comments, pusherRepairComment("someone-else", in.Now.Add(-time.Minute)))
+	for _, a := range Decide(in) {
+		if a.Kind == KindClose && a.RunID == 5 {
+			t.Fatalf("action %+v closes run 5 on a Herstel of another author", a)
+		}
+	}
+}
+
+func TestTriggerCommentRepairPrefix(t *testing.T) {
+	if id, ok := triggerComment("repair:123"); !ok || id != 123 {
+		t.Errorf("triggerComment(repair:123) = %d, %v; want 123, true", id, ok)
+	}
+	if _, ok := triggerComment("repair:x"); ok {
+		t.Error("triggerComment(repair:x) ok, want false")
+	}
+}
+
 // Once the pusher pushed, the push row owns the PR of its branch: a green PR merges through the
 // merge pusher (the row's PushedSHA routes it there, with or without a push note), a red one
 // gets a fix-pr start, a merged one closes the row as done. max_runtime, max_wait and the push
