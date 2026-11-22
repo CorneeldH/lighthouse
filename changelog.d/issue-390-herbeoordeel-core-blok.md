@@ -1,4 +1,4 @@
 ---
-type: internal
+type: changed
 ---
-Het core-blok en de packinstructies (go, python, node) zijn ingekort en het shellblok is vervallen: de woordtelling van `AGENTS.md` + `CLAUDE.md` daalt van 1207 naar 957.
+`lighthouse init` schrijft een korter core-blok in `AGENTS.md`: de lijst met skills is eruit, want de skillcatalogus draagt ze, en de regels over de ontsnapping en de worktree zijn ingekort, want de hookmeldingen dragen ze; `lighthouse init --upgrade` verwijdert daarnaast het shellblok.
