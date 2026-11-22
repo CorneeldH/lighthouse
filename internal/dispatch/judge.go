@@ -215,6 +215,16 @@ func Executing(command string) bool {
 	return true
 }
 
+// SpecPhase reports whether command is the spec phase. Only the spec phase runs free under a
+// blocker; the plan and the execution wait for the merge of the predecessor.
+func SpecPhase(command string) bool {
+	fields := strings.Fields(command)
+	if len(fields) == 0 {
+		return false
+	}
+	return rewrite(fields[0]) == "/lighthouse-review-spec"
+}
+
 // Slug makes a branch-name fragment of a title: lower case, every run outside [a-z0-9] one
 // "-", trimmed, at most 40 bytes, cut back to a "-" when it falls inside a word.
 func Slug(title string) string {

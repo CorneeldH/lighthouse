@@ -1762,7 +1762,7 @@ func (c issueCtx) handoff() (planned, bool) {
 	if ho.When == "night" && !InNight(c.night, c.now) {
 		return c.deferred("night"), true
 	}
-	if Executing(j.Command) && c.active() {
+	if !SpecPhase(j.Command) && c.active() {
 		if c.ownParked() {
 			return planned{Action: c.board(KindHold)}, true
 		}
