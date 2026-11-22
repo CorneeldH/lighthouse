@@ -58,8 +58,9 @@ That is expected, not a problem. A document you delete is seeded again at the ne
 
 ## Fill them in
 
-Replace the placeholder text in each template and keep its headings; the check wants exactly those,
-in that order, and no other second-level heading.
+Replace the placeholder text in each template and keep its headings. For the strategy and the area
+files the check wants exactly those headings, in that order, and no other second-level heading; the
+tenets file has one heading per tenet instead.
 
 - Strategy: write the diagnosis as one paragraph, the audiences as a numbered list, three to five
   bullets of policy, and under *not now* one bullet per deliberate no, each starting with a bold
