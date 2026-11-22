@@ -795,15 +795,23 @@ Decide geeft de starts en hervattingen in deze volgorde: eerst de Priority-band,
 van hoog naar laag, dan het tijdstip van de trigger, dan repo en issue. Priority is een handmatige
 override op dat gewicht: `P0` gaat vóór alles, `P1` of een lege Priority volgt het gewicht, `P2` komt
 achter alles. Het gewicht is dat van [`priorities.md`](priorities.md) (#445): de rang van de
-milestone (`Priority: N` in de beschrijving van een open milestone; M milestones met een rang geven
-rang 1 factor M, rang 2 factor M-1 enzovoort, gelijke rangen delen een factor) plus, per issue dat
-op dit issue wacht, diens factor maal 2^(k-1), met k de langste afstand; een cyclus telt als één
-groep. De tick leest daarvoor per ronde `PrioInputs` (open issues met hun milestone en de open
-milestones, via de ETag-transport) en leest geen `ClosedInMilestone` en geen `blocked_by`. Dat laatste
-komt uit het bord: de graaf is de `BlockedBy` van alle bord-items van de repo. Een blokkeerder buiten
-het bord of in een andere repo telt dus niet mee, zodat de tick en `/api/priorities` daarin kunnen
-verschillen. Prepare leest `PrioInputs` alleen als er minstens één item overblijft; een fout daarin
-is de fout van Prepare, nooit een gewicht van 0.
+milestone (`Priority: N` in de beschrijving van een open milestone; bij M milestones met een rang is
+de factor M min de plaats, vanaf 0, waarop die rang voor het eerst staat in de oplopend gesorteerde
+rangen, zodat gelijke rangen een factor delen en een gat geen factor kost: rangen 1, 2, 5 geven 3, 2,
+1 en rangen 1, 1, 3 geven 3, 3, 1) plus, per issue dat op dit issue wacht, diens factor maal
+2^(k-1), met k de langste afstand; een cyclus telt als één groep. De tick leest daarvoor
+`PrioInputs` (open issues met hun milestone en de open milestones) en leest geen
+`ClosedInMilestone` en geen `blocked_by`. Op GitHub gaat dat via de ETag-transport, zodat een
+ongewijzigde pagina een `304` is; GitLab heeft die transport niet en leest de pagina's elke keer
+helemaal. De blokkeerders komen uit het bord: de graaf bestaat uit de `BlockedBy` van elk bord-item van
+de repo. Een open blokkeerder buiten het bord telt dus wél mee (hij staat in de open issues en krijgt
+de factor van het bord-item dat op hem wacht), maar een wachtende buiten het bord niet: zijn
+`BlockedBy` is onbekend, dus hij voegt niets toe aan het gewicht van zijn blokkeerder, en een keten
+die via zo'n issue loopt houdt daar op. Een blokkeerder in een andere repo telt nooit mee. Daarin
+kunnen de tick en `/api/priorities` verschillen. Prepare (de precheck van elke tick) leest
+`PrioInputs` niet; het bewaart alleen de graaf van het bord. Complete leest het, dus alleen voor
+een repo die due is, en alleen als er minstens één item overblijft; een fout daarin is de fout van
+Complete, nooit een gewicht van 0. Een rustige tick wordt er dus niet langer van.
 
 Voor elke start of hervatting die decide kiest, toetst tick één gedeelde rem over alle repo's van de
 host. Per kandidaat, in deze volgorde; de eerste dichte rem geeft de uitsteltekst:
