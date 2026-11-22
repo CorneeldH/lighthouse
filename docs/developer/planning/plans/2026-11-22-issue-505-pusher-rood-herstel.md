@@ -62,9 +62,9 @@
 - [ ] **Step 1: Failing tests** in `pusher_test.go`:
   - `TestRepairableClassifiesOnPrefix` (tabel): `{policy, "x"}` en `{lint, "x"}` → true; `{policy, "COULD NOT CHECK: x"}`, `{lint, "COULD NOT CHECK: x"}`, `{review, "x"}`, `{token, "x"}`, `{push, "x"}` → false; een `RuleParse`-overtredingstekst van policy → true.
   - `TestPolicyRedPostsRepair` en `TestLintRedPostsRepair`: bouw op `TestPolicyRedIsReturnedNotAQuestion` (r. 482); verwacht comment met kop `🤖 Herstel`, `step: policy`/`lint`, velden `worktree`, `branch`, geen `<sub>session`, geen push-commando, diff in `<details>`, en row `Outcome == runs.Handoff`.
-  - `TestCouldNotCheckStaysReturned` (drie gevallen: linter niet op `PATH`, linteruitvoer geen JSON, `workflowDiff`-fout): comment `🤖 Teruggegeven`, row `returned`.
+  - `TestCouldNotCheckStaysReturned` (drie gevallen: linter niet op `PATH`, linteruitvoer geen JSON, `workflowDiff`-fout; dat laatste geval mag een unittest op `ask` zijn, want pusher.go:225-228 draait pas na een geslaagde Floor op dezelfde clone): comment `🤖 Teruggegeven`, row `returned`.
   - `TestRepairTruncatesLikeQuestion`: diff > `maxComment` → body < `maxComment` en bijlage genoemd.
-  Pas bestaande tests aan die rood `policy`/`lint` als Teruggegeven verwachten (`TestPolicyRedIsReturnedNotAQuestion`, lint-tests).
+  Pas bestaande tests aan die rood `policy`/`lint` als Teruggegeven of Vraag verwachten (`TestPolicyRedIsReturnedNotAQuestion`, lint-tests, `TestRedQuestionHasNoTokenScopeAdvice/policy` en `TestBranchTextGivesNoSessionFooter/Vraag` in pusher_test.go ~r. 567 en ~r. 1091) en `TestPublicNames` in `internal/protocol/legacy_twins_test.go:51` (letterlijke `kinds`-lijst).
 - [ ] **Step 2:** `go test ./internal/pusher -run 'Repair|CouldNotCheck'` → FAIL.
 - [ ] **Step 3:** Implementeer `Red.repairable()` (één functie op het prefix) en `renderRepair`: kop `🤖 <kind_repair>`, `pushFields(q)`, `redLines`, diff opgevouwen als in `renderReturned`, `attachmentLines`; géén push-commando en géén hint. In `ask`: bij `q.hint == hintManual && q.red.repairable()` rendert `fitQuestion` via `renderRepair` en sluit `runs.Release(..., runs.Handoff, "push: "+step, …)`; elk ander `hintManual` blijft ongewijzigd. Werk de doc-comment van `ask` bij.
 - [ ] **Step 4:** `go test ./internal/pusher` → PASS.
@@ -79,7 +79,7 @@
 **Interfaces:**
 - Produces: constanten `triggerRepair = "repair"`, `maxRepairRuns = 2`; `func pusherRepair(h protocol.Header) bool` (Kind `repair`, `Session == ""`); `triggerComment("repair:<id>")` geeft `(id, true)`.
 
-- [ ] **Step 1: Failing tests**: `TestSettleClosesPushRowOnRepair` (open push-row, Herstel van `lh-bot` na `StartedAt` → één actie `close` met `Outcome == runs.Handoff`, naar model van `TestPushRowClosesOnThePushersReturned`); `TestSettleIgnoresRepairOfOtherAuthor` (andere auteur → geen close); `TestTriggerCommentRepairPrefix`; `TestPusherReturnedStillGivesBack` bestaat al (`finish_return:reason_pusher_red`), laat hem groen.
+- [ ] **Step 1: Failing tests**: `TestSettleClosesPushRowOnRepair` (open push-row, Herstel van `lh-bot` na `StartedAt` → één actie `close` met `Outcome == runs.Handoff`, naar model van `TestPushRowClosesOnThePushersReturned`); `TestSettleIgnoresRepairOfOtherAuthor` (andere auteur → geen close); `TestTriggerCommentRepairPrefix`; `TestPushRowClosesOnThePushersReturned` (decide_test.go:525) dekt in zijn tweede helft al `finish_return:reason_pusher_red`; laat hem groen. Voeg `TestRepairWaitsWhilePushRowOpen` toe in Taak 4 (zie daar).
 - [ ] **Step 2:** `go test ./internal/dispatch -run 'Settle.*Repair|TriggerCommentRepair'` → FAIL.
 - [ ] **Step 3:** In `settle` een tak `protocol.KindRepair`: `repair = repair || isPush(row) && pusherRepair(p.Header) && p.Comment.Author == in…TokenLogin` (zelfde bron als `finishReturn`, `repo.Snapshot.TokenLogin`); `case repair:` sluit `runs.Handoff`, plaatsing naast `pushReturned`. Voeg `triggerRepair+":"` toe aan `triggerComment`. `lastTurn` hoeft niet te veranderen (een Herstel is al een beurt); de test in Taak 4 bewijst dat.
 - [ ] **Step 4:** `go test ./internal/dispatch` → PASS.
@@ -93,20 +93,21 @@
 
 **Interfaces:**
 - Consumes: `lastTurn`, `pusherRepair`, `c.spent`, `c.planned`, `c.returned`, `pushCommand`, `isPush`, `lastRunOf`, `protocol.Heading`.
-- Produces: `func (c issueCtx) repair() (planned, bool)`; `func (c issueCtx) repairRounds() int` (punt 7 van de spec: push-rows van nieuw naar oud, sla `start_failed` en open row over, tel `handoff` zonder `PushedSHA`, stop bij andere uitkomst of bij een row van vóór de laatste Teruggegeven van de token-login); `func (c issueCtx) handoffRunBefore(t time.Time) (runs.Row, bool)` (laatste push-row vóór `t` → `push:<id>` → Handoff-comment → laatste run van dit issue met `Node == ""`, `Outcome == runs.Handoff`, `!isPush`, gestart vóór die comment).
+- Produces: `func (c issueCtx) repair() (planned, bool)`; `func (c issueCtx) repairRounds() int` (punt 7 van de spec: push-rows van nieuw naar oud, sla `start_failed` en open row over, tel `handoff` zonder `PushedSHA` (de gesloten row van de huidige Herstel telt dus mee: de pusher sloot hem als `handoff`), stop bij andere uitkomst of bij een row van vóór de laatste Teruggegeven van de token-login); `func (c issueCtx) handoffRunBefore(t time.Time) (runs.Row, bool)` (laatste push-row vóór `t` → `push:<id>` → Handoff-comment → laatste run van dit issue met `Node == ""`, `Outcome == runs.Handoff`, `!isPush`, gestart vóór die comment).
 
 - [ ] **Step 1: Failing tests** (decide_test, helpers als `pushRow`, `pusherReturned`):
   - `TestRepairResumesHandoffSession`: Herstel als laatste beurt, sessie gevonden → één actie `KindResume`, `Trigger == "repair"`, `TriggerKey == "repair:<id>"`, `SessionID`, `Command`, `Branch` van de handoff-run, `Attempt == 1`, prompt bevat `step`, de reden en de comment-URL, en niet de diff.
   - `TestRepairKeySpentDoesNothing`.
-  - `TestRepairCeiling`: derde aaneengesloten Herstel → `finish_return:reason_pusher_red_ceiling:` met argument `pushCommand(worktree)`; twee eerdere → hervatting.
+  - `TestRepairWaitsWhilePushRowOpen`: in de tick waarin `settle` de push-row op de Herstel sluit staat die row nog open in `History`; `repair` doet dan niets (alleen de `close`, geen resume en geen return). De hervatting volgt in de volgende tick, als de row gesloten is.
+  - `TestRepairCeiling`: fixtures met 1 en 2 gesloten Herstel-push-rows (de huidige meegeteld) → hervatting; 3 → `return:reason_pusher_red_ceiling:` met `pushCommand(worktree)` als ReasonArg (`c.returned` geeft `KindReturn`, niet `KindFinishReturn`).
   - `TestRepairCountResets` (tabel): gepushte push-row, `question`-row, Teruggegeven van de token-login tussen Herstels → telling opnieuw, dus hervatting.
   - `TestRepairIgnoresOtherAuthor`.
   - `TestRepairFindsHandoffRunNotPushRow`: naast de push-row (ook `handoff`) en een run met `Node != ""` wint de handoff-run van deze host.
-  - `TestRepairWithoutRunOrSessionReturns`: geen handoff-run, of zonder `SessionID` → `finish_return:reason_pusher_red:` met `pushCommand`.
+  - `TestRepairWithoutRunOrSessionReturns`: geen handoff-run, of zonder `SessionID` → `return:reason_pusher_red:` met `pushCommand(worktree)` als ReasonArg.
   - `TestRepairRoundWithoutHandoffNotCounted`: hervatte run (`repair:`-row, `answer`-trigger) sloot zonder nieuwe push-row → niet geteld door `repairRounds`.
-  - Golden `repair-resume.json` en `repair-ceiling.json` (kopieer de vorm van `answer-resume.json`; draai de golden-update die de testharnas kent, zie `grep -n update internal/dispatch/*_test.go`).
+  - Golden `repair-resume.json` en `repair-ceiling.json` (kopieer de vorm van `answer-resume.json`; het harnas heeft geen update-commando, schrijf `want` met de hand, `DisallowUnknownFields` geldt).
 - [ ] **Step 2:** `go test ./internal/dispatch -run Repair` → FAIL.
-- [ ] **Step 3:** Implementeer de regel in de volgorde van de spec (punten 1–4): rondes tellen met de nieuwe Herstel meegeteld (`> maxRepairRuns` → `c.returned("reason_pusher_red_ceiling", pushCommand(worktree))`), run zoeken, geen run/sessie → `c.returned("reason_pusher_red", pushCommand(worktree))`, anders `KindResume`/`modeResume` via `c.planned(a, parseTime(com.CreatedAt))`. `worktree` komt uit `Fields["worktree"]` van de Herstel. Prompt: `protocol.Heading("prompt_pusher_repair", lang)` + stap, reden (uit de body van de Herstel, zoals `redLines` hem schrijft: lees `Fields["step"]` en de fenced reden) + `com.URL`. Zet `c.repair` tussen `c.answer` en `c.closeCheck`. Werk de doc-comment van `next` bij.
+- [ ] **Step 3:** Implementeer de regel in de volgorde van de spec (punten 1–4): eerst niets doen zolang `hasOpenRun(c.repo.History, c.it.Issue)` waar is (zoals `finishReturn`, decide.go:1371; `settle` sluit de push-row in dezelfde tick en `next()` ziet hem dan nog open); dan `repairRounds()` (telt de gesloten row van de huidige Herstel al mee, dus geen `+1`) tegen `maxRepairRuns` (`repairRounds() > maxRepairRuns` → `c.returned("reason_pusher_red_ceiling", pushCommand(worktree))`), run zoeken, geen run/sessie → `c.returned("reason_pusher_red", pushCommand(worktree))`, anders `KindResume`/`modeResume` via `c.planned(a, parseTime(com.CreatedAt))`. `worktree` komt uit `Fields["worktree"]` van de Herstel. Prompt: `protocol.Heading("prompt_pusher_repair", lang)` + stap, reden (uit de body van de Herstel, zoals `redLines` hem schrijft: lees `Fields["step"]` en de fenced reden) + `com.URL`. Zet `c.repair` tussen `c.answer` en `c.closeCheck`. Werk de doc-comment van `next` bij.
 - [ ] **Step 4:** `go test ./internal/dispatch` → PASS (alle golden fixtures groen).
 - [ ] **Step 5:** Commit `feat(dispatch): regel repair hervat de run bij een Herstel (#505)`.
 
@@ -119,7 +120,7 @@
 **Interfaces:**
 - Consumes: `Action.Trigger == triggerRepair`; produces een `runs`-row met `Trigger == "answer"` en `TriggerKey == "repair:<id>"`.
 
-- [ ] **Step 1: Failing test** `TestApplyClaimsRepairResumeAsAnswer`: echte database (zoals de bestaande apply-tests met `runs.Take`), `Action{Kind: KindResume, Trigger: "repair", TriggerKey: "repair:77", …}` → `Take` slaagt (geen CHECK-fout) en `History` toont `Trigger == "answer"`, sleutel `repair:77`; tweede apply met dezelfde sleutel → `ErrTriggerSpent`, geen tweede run.
+- [ ] **Step 1: Failing test** `TestApplyClaimsRepairResumeAsAnswer`: echte database (zoals de bestaande apply-tests met `runs.Take`), `Action{Kind: KindResume, Trigger: "repair", TriggerKey: "repair:77", …}` → `Take` slaagt (geen CHECK-fout) en `History` toont `Trigger == "answer"`, sleutel `repair:77`; tweede apply met dezelfde sleutel → `Apply` geeft nil (de applier slokt `ErrTriggerSpent` in, apply.go:428-433), er komt geen tweede run en er staat een regel "not claimed" in de log.
 - [ ] **Step 2:** `go test ./internal/dispatch -run ClaimsRepair` → FAIL (CHECK constraint).
 - [ ] **Step 3:** Voor `runs.Take` in `apply.go`: `trigger := a.Trigger; if trigger == triggerRepair { trigger = triggerAnswer }`, zoals `push` (r. 530) al doet; gebruik `trigger` in de `Claim`. Eerste regel boven de code noemt dat `runs` geen trigger `repair` kent (`0008_runs_schedule.sql`).
 - [ ] **Step 4:** `go test ./internal/dispatch ./internal/runs` → PASS.
