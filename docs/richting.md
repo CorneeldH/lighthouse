@@ -11,8 +11,8 @@ the skills skip the step silently and `lighthouse direction check` prints nothin
 ## The three documents
 
 - **Strategy**: a diagnosis of the problem the product answers, the audiences in order of priority,
-  the guiding policy, what is deliberately not done (*not now*) and one sentence on where the
-  roadmap lives. A point in *not now* has an ID in bold, `S1`, `S2`, ..., cited as `strategy/S1`.
+  the guiding policy, what is deliberately not done (*deliberately not*) and one sentence on where the
+  roadmap lives. A point in *deliberately not* has an ID in bold, `S1`, `S2`, ..., cited as `strategy/S1`.
 - **Tenets**: beliefs that make a decision faster, each in the form "X over Y" with an opposite
   that someone could reasonably choose, and at least two decisions as evidence. The order in the
   file is the precedence: when two tenets conflict, the higher one wins. A hard rule (a hook, a gate,
@@ -63,7 +63,7 @@ files the check wants exactly those headings, in that order, and no other second
 tenets file has one heading per tenet instead.
 
 - Strategy: write the diagnosis as one paragraph, the audiences as a numbered list, three to five
-  bullets of policy, and under *not now* one bullet per deliberate no, each starting with a bold
+  bullets of policy, and under *deliberately not* one bullet per deliberate no, each starting with a bold
   unique ID (`**S1** No hosted service: the tool runs where the code is.`). A dropped point keeps its
   ID out of use.
 - Tenets: one second-level heading per tenet, `## A. <X> over <Y>`, one sentence why, and an
@@ -76,7 +76,9 @@ tenets file has one heading per tenet instead.
 - `write-issue`: step 3f tests an issue that may go on the map against the tenets, the leading
   policy and the no's of its area and the strategy, and names the ID that carries the judgement.
   A milestone pitch names under *Problem / Opportunity* the crux of the areas it touches.
-- `close-issue`: step 5 updates the near goal of an area when its file has that heading.
+- `close-issue`: step 5 updates the near goal of an area only when its file has that heading. The
+  seeded template has none and `lighthouse direction check` rejects it as an extra heading, so by
+  default this step does nothing.
 - The scheduled job `map-planned` reads the area files when it asks whether a planned issue belongs
   on the map.
 
@@ -103,7 +105,7 @@ Once at least one key is set, a missing or unreadable document of the other two 
 ## The headings in your language
 
 The check accepts the heading in every language variant. The keys are `strategy_diagnosis`,
-`strategy_audience`, `policy`, `not_now`, `strategy_roadmap`, `area_crux`, `area_near_goal`,
+`strategy_audience`, `policy`, `not_now`, `strategy_roadmap`, `area_crux`,
 `tenet_over` and `tenet_evidence`. To see what one is in your language:
 
 ```text

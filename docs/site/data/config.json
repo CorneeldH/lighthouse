@@ -468,7 +468,7 @@
               "key": "paths.areas",
               "level": "advanced",
               "required": "no",
-              "about": "The folder with one file per area: its crux, leading policy and deliberate no's, read when writing an issue. Closing a milestone updates its near goal when the area file has that heading. `lighthouse init` seeds the missing files, and `lighthouse direction check` checks their shape.",
+              "about": "The folder with one file per area: its crux, leading policy and deliberate no's, read when writing an issue. Closing a milestone updates its near goal only when the area file has that heading, which the shape check does not allow by default. `lighthouse init` seeds the missing files, and `lighthouse direction check` checks their shape.",
               "example": "docs/areas",
               "readers": [
                 "internal/scheduled/mapplanned/mapplanned.go",
