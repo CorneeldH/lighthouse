@@ -46,10 +46,10 @@
 | Python-test | Go-bestemming |
 |---|---|
 | `test_unit_calls_no_gh_for_a_forge_operation` × 5 (`review-plan`, `upgrade`, `audit-worktrees`, `write-handoff`, `fix-pr`) | Go: `TestChainSkillsDoNotCallGhForForgeOperations` (`skills_test.go:607`) dekt alleen `chainSkills`; breid dezelfde regex-controle uit naar de vijf units, in een eigen lijst `forgeNeutralUnits`. De Python-regex bevat ook `run|workflow|repo|search|release`; neem die over (`gh run` en `gh release` blijven verboden in deze units). |
-| `test_gh_is_required_only_on_github` | Controleer of een Go-test over `requires.toml` dit al afdwingt (`skills_test.go:446-520`, o.a. `TestRequiresNamesTheSkillPerTool`). Zo ja: weg, met naam. Zo nee: port. |
-| `test_forge_reference_has_ci_section`, `test_forge_files_have_workflows_section` | `forgeSections` (`skills_test.go:~644`) bevat `ci` en `workflows`; lees `TestForgeSkillHasBothReferences` en zijn buren. Gedekt: weg, met naam. Niet gedekt: port. |
-| `test_requires_toml_drops_gh_for_converted_units` | Gedekt door `TestRequiresNamesTheSkillPerTool` als dat `write-handoff` en `audit-worktrees` onder `git` en niet onder `gh` eist; anders port. |
-| `test_go_units_do_not_call_gh` | Go-test die de niet-`_test.go`-bronnen van `internal/postartefact`, `internal/labels`, `internal/worktreeaudit`, `internal/cli/{postartefact,worktreeaudit,forge_label}.go` scant op `"gh"` of `gh (label\|api\|pr\|issue)`; de allowlist (`internal/forge/token.go`, `internal/cli/ask.go`) blijft expliciet en wordt bewaakt zoals nu (staat niet in de scanlijst). Pad naar de repowortel: gebruik de helper die de buurtests in dit pakket al gebruiken. |
+| `test_gh_is_required_only_on_github` | Gemeten bij de review: `requires()` vouwt `[forge.<kind>]` in de toolmap en `TestRequiresNamesTheSkillPerTool` controleert alleen aanwezigheid, dus niet gedekt: **port**, met `requires.toml` ruw geparsed (niet via `requires()`). |
+| `test_forge_reference_has_ci_section`, `test_forge_files_have_workflows_section` | `forgeSections` (`skills_test.go:20`) bevat `ci` en `workflows`; lees `TestForgeSkillHasBothReferences` en zijn buren. Gedekt: weg, met naam. Niet gedekt: port. |
+| `test_requires_toml_drops_gh_for_converted_units` | Idem: **port** (ruw parsen; afwezigheid onder `gh` voor `write-handoff` en `audit-worktrees`). `ci`/`workflows`-secties: gedekt door `TestForgeSkillHasBothReferences` (`skills_test.go:~660`), weg met naam. |
+| `test_go_units_do_not_call_gh` | Go-test die de niet-`_test.go`-bronnen van `internal/postartefact`, `internal/labels`, `internal/worktreeaudit`, `internal/cli/{postartefact,worktreeaudit,forge_label}.go` scant op `"gh"` of `gh (label\|api\|pr\|issue)`; de allowlist (`internal/forge/token.go`, `internal/cli/ask.go`) blijft expliciet en wordt bewaakt zoals nu (staat niet in de scanlijst). Pad naar de repowortel: `filepath.Dir(packRoot)` (`helpers_test.go:17`, `packRoot = "../../pack"`); een repowortelhelper bestaat niet. |
 
 **Interfaces:**
 - Produceert: `forgeNeutralUnits []string` en de Go-tests `TestForgeNeutralUnitsCallNoGh`, `TestGoUnitsDoNotCallGh` (namen vrij, maar elke test een classificatiezin boven zich in de stijl van de buurtests).
@@ -58,24 +58,25 @@
 - [ ] **Stap 2: Schrijf de Go-tests** voor elke "port"-rij, met de assertie over `hits == []`-gedrag (foutmelding `rel:line: tekst` per treffer, zoals het origineel).
 - [ ] **Stap 3: Mutatiecheck** — voeg tijdelijk `gh pr list` toe aan een regel in `pack/core/skills/fix-pr/` (en apart: `exec.Command("gh", …)` in `internal/labels/`); `go test ./internal/packcontract/...` moet falen op de nieuwe test. Draai terug. Noteer één van de twee mutaties voor de PR.
 - [ ] **Stap 4:** `go test ./internal/packcontract/...` groen.
-- [ ] **Stap 5: Commit** — `git rm tests/pack/test_forge_neutral_units.py`; `git commit -m "test(packcontract): forge-neutrale units naar Go (#481)"`.
+- [ ] **Stap 5: Commit** — `git rm tests/pack/test_forge_neutral_units.py`; `git add internal/packcontract/`; controleer met `git diff --cached --name-status` dat de Go-test en de verwijdering erin zitten; `git commit -m "test(packcontract): forge-neutrale units naar Go (#481)"`.
 
 ### Taak 2: offline-skip naar tests/pack/python/
 
 **Bestanden:**
 - Verplaats (`git mv`): `tests/pack/_network.py` → `tests/pack/python/_network.py`; `tests/pack/test_network.py` → `tests/pack/python/test_network.py`
-- Wijzig: `tests/pack/python/conftest.py` (hook erbij), `tests/pack/python/test_network.py` (imports, `ROOT`, inner-conftest), `tests/pack/python/_network.py` (docstring-verwijzing naar `tests/pack/conftest.py`), `pyproject.toml:20` (markertekst noemt het nieuwe pad)
+- Wijzig: `tests/pack/python/conftest.py` (hook erbij), `tests/pack/python/test_network.py` (imports, `ROOT`, inner-conftest), `tests/pack/python/_network.py` (docstring-verwijzing naar `tests/pack/conftest.py`), `tests/pack/conftest.py` (haal de `tests.pack._network`-import en de hook eruit; die blijft anders de verhuisde module importeren en rood), `pyproject.toml:20` (markertekst noemt het nieuwe pad)
 
 **Interfaces:**
 - Produceert: `tests.pack.python._network` met `network_error(text: str) -> str | None`, `offline() -> bool`, `PROBE_ENV` (ongewijzigd); in `tests/pack/python/conftest.py` een `pytest_runtest_makereport`-wrapper identiek aan die in `tests/pack/conftest.py` (regel 20-31).
 
-- [ ] **Stap 1: Baseline** — `uv run pytest -q tests/pack/python tests/pack/test_network.py`; noteer het aantal tests.
+- [ ] **Stap 1: Baseline** — `uv run pytest -q tests/pack/python tests/pack/test_network.py`; noteer het aantal tests (de set `tests/pack/python` plus `test_network.py`).
 - [ ] **Stap 2:** `git mv` van beide bestanden; verander imports naar `tests.pack.python._network` en de inner-conftest naar `from tests.pack.python.conftest import pytest_runtest_makereport`.
 - [ ] **Stap 3:** Zet de hook (`pytest_runtest_makereport`) over naar `tests/pack/python/conftest.py`, en `ROOT` in `test_network.py` op de repowortel (`parents[3]` na de verhuizing; controleer met `ROOT / "pyproject.toml"` bestaat als assertie of in de test).
-- [ ] **Stap 4:** Werk markertekst en docstring bij naar `tests/pack/python/_network.py` / `tests/pack/python/conftest.py`.
-- [ ] **Stap 5:** `uv run pytest -q tests/pack/python/test_network.py` groen, en dezelfde test-aantallen als in stap 1 (geen stil verdwenen test).
+- [ ] **Stap 3b:** Haal in `tests/pack/conftest.py` de import `from tests.pack._network import …` en de hook `pytest_runtest_makereport` weg (de fixture en bytecoderegels blijven tot Taak 3), zodat de ouder-conftest niet op de verhuisde module breekt en de hook niet dubbel draait.
+- [ ] **Stap 4:** Werk markertekst, de docstring van `_network.py`, de moduledocstring van `test_network.py` en de hookcommentaarverwijzing bij naar `tests/pack/python/_network.py` / `tests/pack/python/conftest.py`.
+- [ ] **Stap 5:** `uv run pytest -q tests/pack/python` groen; omdat `test_network.py` nu in die map zit, moet het aantal gelijk zijn aan dat van stap 1 (geen stil verdwenen test).
 - [ ] **Stap 6: Mutatiecheck** — haal de `offline()`-voorwaarde uit de hook weg (`if reason:` i.p.v. `if reason and offline():`); `test_network.py` moet falen. Draai terug.
-- [ ] **Stap 7: Commit** — `git commit -m "test(pack): offline-skip naar tests/pack/python (#481)"`.
+- [ ] **Stap 7: Commit** — `git add tests/pack pyproject.toml`; `git diff --cached --name-status` toont de twee verhuisde bestanden en de gewijzigde conftests; `git commit -m "test(pack): offline-skip naar tests/pack/python (#481)"`.
 
 ### Taak 3: conftest.py en __init__.py weg, changelog
 
@@ -84,8 +85,8 @@
 - Maak: `changelog.d/issue-481-laatste-py-buiten-tests-pack.md`
 
 - [ ] **Stap 1: Meet vooraf** — `uv run pytest -q tests/pack/python` groen met de bestanden er nog; noteer aantal.
-- [ ] **Stap 2:** `git rm tests/pack/conftest.py tests/pack/__init__.py`. De `INSTALL_ROOT`-fixture en `PYTHONDONTWRITEBYTECODE`-regels uit de ouder-conftest gaan mee weg als de run groen blijft; blijkt `PYTHONDONTWRITEBYTECODE` of de installed-core-fixture toch nodig (rode of `__pycache__`-vervuilde run), verhuis dat stuk naar `tests/pack/python/conftest.py` — niet de hele fixture blind.
-- [ ] **Stap 3:** `uv run pytest -q tests/pack/python` groen, zelfde aantal als stap 1. Ook de volledige `uv run pytest -q` (of de gate-commando) groen: controleert dat `tests.pack.python._testkit` zonder `tests/pack/__init__.py` resolveert (namespace-package; `python/__init__.py` bestaat).
+- [ ] **Stap 2:** `git rm tests/pack/conftest.py tests/pack/__init__.py`. De `INSTALL_ROOT`-fixture en `PYTHONDONTWRITEBYTECODE`-regels uit de ouder-conftest gaan mee weg als de run groen blijft; blijkt `PYTHONDONTWRITEBYTECODE` of de installed-core-fixture toch nodig (rode run, of nieuwe `__pycache__`-mappen onder `pack/`: meet met `find pack -name __pycache__` voor en na de run), verhuis dat stuk naar `tests/pack/python/conftest.py` — niet de hele fixture blind.
+- [ ] **Stap 3:** `uv run pytest -q tests/pack/python` groen, zelfde aantal als stap 1. Ook de volledige `uv run pytest -q` (of het gate-commando) groen. Controleer daarnaast de modulenaam van de conftest: pytest laadt (prepend-modus) zonder `tests/pack/__init__.py` de conftest als `python.conftest`, terwijl vier testbestanden `tests.pack.python.conftest` importeren; dan draait de conftest twee keer met twee `PY_ROOT`-installs. Bewijs met een tijdelijke `print(__name__)` of `--collect-only` dat er één kopie is; zijn het er twee, zet dan `consider_namespace_packages = true` (pytest >= 8.1) in `[tool.pytest.ini_options]` (`pyproject.toml:16`) en meet opnieuw, of houd `tests/pack/__init__.py` en pas AC5 aan met reden.
 - [ ] **Stap 4:** `git ls-files 'tests/pack/*.py' | grep -v '^tests/pack/python/'` geeft niets.
 - [ ] **Stap 5:** Fragment, met frontmatter `type: internal`:
 
@@ -97,7 +98,7 @@
   ```
 
 - [ ] **Stap 6:** `lighthouse imports check`; `go test ./...` en de gate groen.
-- [ ] **Stap 7: Commit** — `git commit -m "test(pack): tests/pack/conftest.py en __init__.py weg (#481)"`.
+- [ ] **Stap 7: Commit** — `git add changelog.d pyproject.toml`; `git diff --cached --name-status` toont de twee verwijderde bestanden en het fragment; `git commit -m "test(pack): tests/pack/conftest.py en __init__.py weg (#481)"`.
 
 ## Zelfreview
 
