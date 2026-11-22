@@ -280,13 +280,20 @@ func TestStartIssueAsksAlreadyDoneBeforeTheWorktree(t *testing.T) {
 	}
 }
 
-// Classification: fails when a controller run that finds the work already done ends with the choice as chat text, or loses its handoff to /lighthouse-close-issue or its lighthouse ask.
+// Classification: fails when a controller run that finds the work already done ends with the
+// choice as chat text, when the `likely` bullet loses its handoff to /lighthouse-close-issue, its
+// lighthouse ask for the in-doubt case or its user decision, or when the `not measurable` bullet
+// loses its lighthouse ask or gains a handoff to close-issue (which would measure on stale data).
 func TestStartIssueAlreadyDoneEndsInFollowUpInControllerRun(t *testing.T) {
 	for variant, body := range variants(t, startIssue) {
 		t.Run(variant, func(t *testing.T) {
 			step2 := flat(section(t, body, "### 2.", "### 3."))
-			wantAll(t, step2, "/lighthouse-write-handoff", "next: /lighthouse-close-issue <nr>",
-				"lighthouse ask", "--phase start", "in doubt")
+			likely := flat(section(t, body, "already done? likely", "already done? not measurable"))
+			wantAll(t, likely, "/lighthouse-write-handoff", "next: /lighthouse-close-issue <nr>",
+				"lighthouse ask", "--phase start", "in doubt", "The user decides")
+			notMeasurable := flat(section(t, body, "already done? not measurable", "This step only reports"))
+			wantAll(t, notMeasurable, "lighthouse ask", "--phase start")
+			wantNone(t, notMeasurable, "next: /lighthouse-close-issue", "/lighthouse-write-handoff")
 			wantNone(t, step2, "as the last text")
 		})
 	}
