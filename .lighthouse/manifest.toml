@@ -57,7 +57,7 @@ kind = "file"
 path = ".agents/skills/lighthouse-go-standard/SKILL.md"
 package = "go"
 version = "dev"
-sha256 = "28d53dc7b5b851a54765741029b9306a5bc2f4c0ad47475cac630d2816ad08a7"
+sha256 = "16cb90a9ae9721ad2223e634b0e15313b336a34071ce3bf7d4932f8c7e0c5ea9"
 
 [[unit]]
 kind = "file"
