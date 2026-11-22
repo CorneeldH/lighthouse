@@ -256,7 +256,13 @@ func TestCloseIssueB7ClassifiesOpenCriteria(t *testing.T) {
 				"lighthouse forge issue block <nr> --by <predecessor>",
 				"/lighthouse-write-handoff",
 				"next: /lighthouse-close-issue <nr>")
-			wantAll(t, all, "No question.", "State of Context")
+			wantAll(t, all, "No question.", "under `State:` or `Context:`")
+			wantNone(t, b7, "State of Context", "After the comment, sort")
+			// The kinds are known before the comment, which names the predecessor per criterion.
+			wantOrder(t, b7,
+				"First sort each open criterion into its kind",
+				"always goes as a comment on the issue",
+				"for a criterion that waits on an issue, that line names its predecessor")
 			wantAll(t, b7, "`merged_pr` from `lighthouse forge issue blockers` is always `false` on GitHub and does not count")
 		})
 	}

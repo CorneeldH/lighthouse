@@ -256,15 +256,17 @@ Run each `git log`, `ls`, `grep` and criterion command with `<scratch>/measure-<
 working directory (`git -C`, or `cd` in the same call). After B3:
 `git worktree remove --force "<scratch>/measure-<nr>"`.
 
-**B5 lapses**: there is no user who sees the table. The table from B3 always goes as a comment
-on the issue, through `--body-file` from a `mktemp -d` directory. Heading line:
+**B5 lapses**: there is no user who sees the table. First sort each open criterion into its kind
+(*Open criteria: three kinds*, below). Then the table from B3 always goes as a comment on the
+issue, through `--body-file` from a `mktemp -d` directory. Heading line:
 `After-merge check of #<pr>`, without 🤖, because it is no controller heading. Then the table, and
-per AC that is not `demonstrably done` a line *what is missing*.
+per AC that is not `demonstrably done` a line *what is missing*; for a criterion that waits on an
+issue, that line names its predecessor.
 
 | Verdict over all AC | Outcome |
 |---|---|
 | all criteria `demonstrably done` | steps 4–6 of entry A. For the DoD the merge counts as review; a DoD line that is not measurable from here goes into the close comment as such and does not block. Close with `lighthouse forge issue close <nr> --body-file <file>` (the file from the `mktemp -d` directory, with the evidence lines): it posts the close comment first and closes only after it; a failed comment leaves the issue open. Before that close comment, run *Clean up the worktree*; its result per branch goes along as evidence lines in the close comment. |
-| otherwise: `partly`, `not`, or an AC `not measurable from here` | do not close, do not touch the board. After the comment, sort each open criterion into its kind (*Open criteria: three kinds*, below): when every open criterion waits on an issue, the handoff back to the after-merge check; in every other case one question. Stop after that, without any further tool call. |
+| otherwise: `partly`, `not`, or an AC `not measurable from here` | do not close, do not touch the board. After the comment, by the kinds sorted before it (*Open criteria: three kinds*, below): when every open criterion waits on an issue, the handoff back to the after-merge check; in every other case one question. Stop after that, without any further tool call. |
 
 **Open criteria: three kinds.** Each criterion that is not `demonstrably done` is one of:
 
@@ -295,9 +297,9 @@ The outcome follows from all open criteria together:
 **Every open criterion waits on an issue in this repo.** Per predecessor
 `lighthouse forge issue block <nr> --by <predecessor>`: the relation comes before the handoff, and
 without `--by` the command fails with exit 2. Then `/lighthouse-write-handoff` with
-`next: /lighthouse-close-issue <nr>`. No question. The handoff names its predecessors in State of
-Context, so two rounds never write the same handoff text; the after-merge comment names the
-predecessor per criterion. The controller parks the issue while a predecessor is active and starts
+`next: /lighthouse-close-issue <nr>`. No question. The handoff names its predecessors under `State:` or
+`Context:`, so two rounds never write the same handoff text; the after-merge comment already named
+the predecessor per criterion. The controller parks the issue while a predecessor is active and starts
 the handoff, a new after-merge check, once it closes or its PR is merged.
 
 **Otherwise** (a mix of kinds, or no criterion that waits on an issue): one question (below). A
