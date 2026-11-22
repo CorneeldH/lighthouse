@@ -20,13 +20,15 @@
 - `issueState()` en `internal/issuestate` blijven ongewijzigd.
 - Artefacten (docs, changelog, commitberichten) in het Nederlands; code, commentaar en testnamen in het Engels.
 - Voor elke commit naast `[test_gate] command` ook `lighthouse imports check`.
+- Voorbereiding vóór Taak 1: `web/node_modules` ontbreekt in een verse worktree. Draai `cd web && npm ci` en controleer dat `web/node_modules/.bin/vitest` bestaat; anders stoppen met die installatieopdracht in het verslag.
+- `GNode.needsHuman` is alleen waar bij een actief issue; een niet-actief issue met `state === 'needs_human'` (`needs_decision`, `needs_shaping`, `needs_hands`, `needs_testing`) heeft `needsHuman: false`. `NodeCard` leidt de stippelrand daarom af als `mensNodig = node.needsHuman || node.state === 'needs_human'` (zoals `shapeOf` in `MilestonesView.tsx:30-31`), en tekent hem alleen als `!grey`.
 
 ## Review Focus
 
 - Een `Controller`-issue zonder run is actief (gestreepte kleurstrook): test in Taak 1.
 - Een los issue op `In progress` is actief en staat in het raster, niet als chip: Taak 2.
 - Actief én mens nodig: gestreepte strook én stippelrand tegelijk: Taak 1.
-- Een geblokkeerd issue (open `blocked_by`) dat los hangt kan niet bestaan; een geblokkeerd issue in de graaf toont het kruis bij het nummer: Taak 1.
+- Een geblokkeerd issue met open `blocked_by` kan niet los hangen (een `blocked_*`-label zonder relaties wel: Taak 2 test dat); een geblokkeerd issue in de graaf toont het kruis bij het nummer: Taak 1.
 - Hover- en ketting-markering (`data-dimmed`, `chain`) en de `waiting`-pil blijven werken op de nieuwe kaart: Taak 1.
 
 ---
@@ -46,17 +48,17 @@
   - `marks a Controller issue without a run as active`: issue 1 met `status: 'Controller'` en een afhankelijkheid van 2 → `node(`${A}#1`)` heeft `data-state="active"`, de kleurstrook (`getByTestId('card-strip')` binnen de kaart) heeft klasse `lh-stripe`; geen tekst `picked up`.
   - `marks an In progress issue as active`: idem met `status: 'In progress'`.
   - `draws a ready card with a solid strip, and no dashed outline`: `data-state="ready"`, strook zonder `lh-stripe`, `data-needs-human="false"`.
-  - `draws needs human as a dashed outline, also on an active card`: issue met `label: 'needs_decision'` → `data-needs-human="true"`; en een actief issue met `open_question: true` → `data-state="active"` én `data-needs-human="true"`; de kaart heeft `style.outline` met `dashed`.
+  - `draws needs human as a dashed outline, also on an active card`: issue met `label: 'needs_decision'` (niet actief, `state === 'needs_human'`) en een issue met `label: 'needs_hands'` → `data-needs-human="true"`; en een actief issue met `open_question: true` → `data-state="active"` én `data-needs-human="true"`; de kaart heeft `style.outline` met `dashed`.
   - `puts a cross at the number of a blocked card`: issue 2 met afhankelijkheid van 1 → `within(node(`${A}#2`)).getByTestId('card-cross')` bestaat; kaart 1 heeft geen `card-cross`.
-  - `gives an external card a solid grey border`: bestaande test op `:69` (grijs gestippeld extern) wordt: klasse `border-lh-grey`, niet `border-dashed`.
-  - Pas `:85` en andere asserties aan die op `border-dashed`/`picked up` staan; behoud de `waiting-pill`-test en de `data-dimmed`-tests.
+  - `gives an external card a solid grey border`: bestaande test op `:69` (grijs gestippeld extern) wordt: klasse `border-lh-grey`, niet `border-dashed`; een externe (buiten-filter) kaart met `label: 'needs_decision'` heeft ook geen `style.outline` met `dashed` en `data-needs-human="false"`.
+  - Pas de asserties op `:56`, `:58` en `:74`, en andere asserties aan die op `border-dashed`/`picked up` staan; behoud de `waiting-pill`-test en de `data-dimmed`-tests.
 
 - [ ] **Stap 2: Draai de tests, zie ze falen**
 
 Run: `cd web && npx vitest run src/components/priorities/DepsView.test.tsx`
 Verwacht: FAIL op `card-strip`, `card-cross`, `data-state` (nog niet aanwezig).
 
-- [ ] **Stap 3: Implementeer `NodeCard`** in `NodeCard.tsx`. Aanpak: de linkerstrook (`w-1.5`, `testid card-strip`) is `lh-stripe` met `--ms-color` bij `active`, anders effen `color`; `needsHuman` zet `outline: '1.5px dashed var(--foreground)'` met `outlineOffset: -1`; `blocked` zet vóór het nummer een klein kruis (`testid card-cross`, klasse `lh-cross`, 12×12); een externe kaart krijgt `border border-lh-grey` (doorgetrokken), anders `border border-border`. Kopieer de bestaande kaartinhoud (nummer, titel, `cycle`, `waiting`-pil) ongewijzigd uit `DepsView.tsx`; verwijder de gele pil en de navy stippelrand.
+- [ ] **Stap 3: Implementeer `NodeCard`** in `NodeCard.tsx`. Aanpak: de linkerstrook (`w-1.5`, `testid card-strip`) is `lh-stripe` met `--ms-color` bij `active`, anders effen `color`; `mensNodig && !grey` zet `outline: '1.5px dashed var(--foreground)'` met `outlineOffset: -1` (een externe kaart krijgt nooit een stippelrand) en `data-needs-human="true"`; `blocked` zet vóór het nummer een klein kruis (`testid card-cross`, klasse `lh-cross`, 12×12); een externe kaart krijgt `border border-lh-grey` (doorgetrokken), anders `border border-border`. Kopieer de bestaande kaartinhoud (nummer, titel, `cycle`, `waiting`-pil) ongewijzigd uit `DepsView.tsx`; verwijder de gele pil en de navy stippelrand.
 
 - [ ] **Stap 4: Gebruik `NodeCard` in `DepsView.tsx`** voor `model.nodes`; behoud `href`-logica (`grey && n.url === ''`), `dimmed`, `chain` en de handlers. Verwijder niet-gebruikte imports.
 
@@ -85,7 +87,8 @@ git commit -m "feat(web): graafkaart tekent de toestand met de vormentaal van de
   - `shows a loose issue as a full card with number, title and state`: `view(CHAIN, [A])` → `screen.getByTestId(`loose-${A}#5`)` bevat `#5` en `title-5`, heeft `data-state="ready"` en maat `width: 210px; height: 38px`.
   - `marks a loose In progress issue as active`: los issue met `status: 'In progress'` → `data-state="active"`, strook met `lh-stripe`.
   - `marks a loose Controller issue without a run as active`: idem met `status: 'Controller'`.
-  - Pas de bestaande tests op `:117` en `:163` aan op de nieuwe kaart (testid `loose-<key>` blijft behouden, zodat verwijzingen blijven kloppen).
+  - `draws a cross on a loose card with a blocked_external label`: los issue met `label: 'blocked_external'` zonder relaties → `data-state="blocked"` en `card-cross` aanwezig.
+  - Pas de bestaande test op `:114-120` aan op de nieuwe kaart: de assertie op het `title`-attribuut van de losse `<a>` (`:118`) verhuist naar de titel-`span` in `NodeCard` (die `title={node.title}` houdt, zoals in `DepsView.tsx:163`); `:163-165` is een graaftest en blijft geldig (testid `loose-<key>` blijft behouden).
 
 - [ ] **Stap 2: Draai de tests, zie ze falen**
 
@@ -113,9 +116,9 @@ git commit -m "feat(web): issues zonder afhankelijkheden krijgen een volwaardige
 - Modify: `docs/priorities.md` (*Afgeleide begrippen*, r. ~126-135, en de beperking bij r. ~163)
 - Create: `changelog.d/issue-438-afhankelijkhedengraaf-vormentaal.md`
 
-- [ ] **Stap 1: Controleer de legenda.** De legenda toont al de vijf toestanden met `Block` (#437). Controleer dat zij kaart en balk beide dekken (tekst *kleurstrook* of vergelijkbaar); breid de uitleg aan alleen als dat ontbreekt. Test in `PrioritiesTab.test.tsx`: de legenda bevat geen `picked up` en geen `bg-lh-yellow` (bestaat al op `:193`); voeg toe dat de legenda de toestanden *actief*, *oppakbaar*, *mens nodig* en *geblokkeerd* noemt als dat nog niet zo is.
+- [ ] **Stap 1: Controleer de legenda.** De legenda toont al de vijf toestanden met `Block` (#437). Controleer dat zij kaart en balk beide dekken (tekst *kleurstrook* of vergelijkbaar); breid de uitleg aan alleen als dat ontbreekt. Test in `PrioritiesTab.test.tsx`: de legenda bevat geen `picked up` (bestaat al op `:181-193`; die test controleert alleen de tekst, voeg geen `bg-lh-yellow`-assertie toe tenzij de legenda die klasse kon dragen); voeg toe dat de legenda de toestanden *actief*, *oppakbaar*, *mens nodig* en *geblokkeerd* noemt als dat nog niet zo is.
 
-- [ ] **Stap 2: Werk `docs/priorities.md` bij** (Nederlands): de graaf toont de toestand met kleurstrook (gestreept actief, effen oppakbaar), stippelrand (mens nodig), kruis bij het nummer (geblokkeerd) en een doorgetrokken grijze rand voor een externe kaart; issues zonder afhankelijkheden staan als kaart in een raster onder de graaf. Relatieve links naar de spec.
+- [ ] **Stap 2: Werk `docs/priorities.md` bij** (Nederlands): de graaf toont de toestand met kleurstrook (gestreept actief, effen oppakbaar), stippelrand (mens nodig), kruis bij het nummer (geblokkeerd) en een doorgetrokken grijze rand voor een externe kaart; issues zonder afhankelijkheden staan als kaart in een raster onder de graaf. Corrigeer ook de bullet *Actief*: een issue is actief bij een live run, bordstatus `In progress` of `Controller` (zoals `issueState` en de spec, r. 81). Relatieve links naar de spec.
 
 - [ ] **Stap 3: Schrijf het changelog-fragment** `changelog.d/issue-438-afhankelijkhedengraaf-vormentaal.md`:
 
@@ -131,7 +134,7 @@ De afhankelijkhedengraaf in de Prioritering-tab tekent de toestand met dezelfde 
 - [ ] **Stap 4: Volledige verificatie**
 
 Run: `cd web && npm run lint && npm run typecheck && npm test` (controleer de scriptnamen in `web/package.json`; de gate in `lighthouse.toml` `[test_gate]` is leidend), daarna `lighthouse imports check`.
-Verwacht: alles groen. Zoek met `git grep -n "picked up\|bg-lh-yellow" web/src` en zie dat alleen negatieve asserties overblijven.
+Verwacht: alles groen. Zoek met `git grep -n "picked up\|bg-lh-yellow" web/src/components/priorities` en zie dat alleen negatieve asserties overblijven; `bg-lh-yellow` in `Header.tsx`, `RunBlocks.tsx`, `RunRow.tsx` en `tone.ts` is andere functionaliteit en blijft staan.
 
 - [ ] **Stap 5: Commit**
 
