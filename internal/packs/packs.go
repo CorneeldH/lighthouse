@@ -33,6 +33,7 @@ import (
 	"io/fs"
 	"path"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -107,16 +108,23 @@ type Detect struct {
 
 // Pack is a loaded package. Detect is nil without detect.toml, Config nil without
 // lighthouse.toml.fragment. LabelsTemplate is templates/labels.md, nil without it; it is
-// never a unit, `init --labels` seeds it on request.
+// never a unit, `init --labels` seeds it on request. DirectionTemplates holds the templates of
+// the direction documents by file name (DirectionTemplateNames); never units either, `init`
+// seeds them only where a file is missing.
 type Pack struct {
-	Name           string
-	Units          []Unit
-	Requires       []Requirement
-	Detect         *Detect
-	Guards         []Guard
-	Config         []projectconfig.Table
-	LabelsTemplate []byte
+	Name               string
+	Units              []Unit
+	Requires           []Requirement
+	Detect             *Detect
+	Guards             []Guard
+	Config             []projectconfig.Table
+	LabelsTemplate     []byte
+	DirectionTemplates map[string][]byte
 }
+
+// DirectionTemplateNames are the file names under templates/ that DirectionTemplates holds:
+// the strategy, the tenets and one area.
+var DirectionTemplateNames = []string{"strategy.md", "tenets.md", "area.md"}
 
 // HookDir is where the hook scripts of every package land. A registration whose command
 // points here belongs to lighthouse; any other registration belongs to the project.
@@ -330,8 +338,15 @@ func Load(fsys fs.FS, name, version string) (Pack, error) {
 				p.LabelsTemplate = data
 				return nil
 			}
+			if slices.Contains(DirectionTemplateNames, rest) {
+				if p.DirectionTemplates == nil {
+					p.DirectionTemplates = map[string][]byte{}
+				}
+				p.DirectionTemplates[rest] = data
+				return nil
+			}
 			if rest != "pull_request_template.md" {
-				return fmt.Errorf("package %s: templates/ holds only pull_request_template.md and labels.md, not %s", name, rel)
+				return fmt.Errorf("package %s: templates/ holds only pull_request_template.md, labels.md, %s, not %s", name, strings.Join(DirectionTemplateNames, ", "), rel)
 			}
 			target = PRTemplatePath
 		case "workflows":
