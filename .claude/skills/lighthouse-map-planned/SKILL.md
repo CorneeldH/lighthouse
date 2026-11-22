@@ -81,15 +81,19 @@ map", "not on the map"], "recommended": "a", "off": "c"}`: two to six options, `
 
 ### 4. Test the wish
 
+Run the wish test only when the issue's `answer` is `null`. An `answer` of topic `place` means
+the job already took the issue onto the map, so its wish is settled.
+
 An issue with no section `heading:map_placement` is not yet known to want a place. When
 `tenets` or `areas` in the corpus is not empty, test whether the issue belongs on the map at
 all, against those documents and the explanation of step 1. When you doubt, ask one question
 with topic `wish` and exactly two options: *yes, on the map* and *no, not on the map*, with
 `off` the letter of the second. That issue gets no item in this run.
 
-An `answer` with topic `wish` and letter `a` means yes: place the item as in step 3. Another
-letter was already settled and does not reach you. Never ask a wish question again for an issue
-whose `answer` has topic `wish`.
+An `answer` with topic `wish` and letter `a` means yes: place the item as in step 3. Letter `b`
+was already settled and does not reach you. A wish answered with a letter is never asked again.
+Only an `answer` with topic `wish` and an empty `letter` (a free answer that picks no option)
+asks the wish question again, with the same two options.
 
 ### 5. Unattended or by hand
 

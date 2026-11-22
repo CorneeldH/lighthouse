@@ -197,7 +197,12 @@ een machineregel `<!-- lighthouse:map-planned kind=<question|decision> topic=<pl
 - **Een beslissing** (*geen item*) is een comment met dezelfde kop en de vaste waarde; de poort leest
   hem als afgehandeld.
 
-Een vraag blijft staan tot er een antwoord is; de job stelt hem niet opnieuw.
+Een vraag blijft staan tot er een antwoord is; de job stelt hem niet opnieuw. Telt er meer dan één
+vertrouwd antwoord, dan geldt het eerste dat met een letter begint, en zonder zo'n antwoord het
+laatste vrije. Een wens die met een letter beantwoord is, wordt niet opnieuw gevraagd; alleen een
+vrij antwoord zonder letter op een wensvraag laat de agent de wensvraag opnieuw stellen. De wenstoets
+draait alleen voor een issue zonder antwoord: een antwoord op een plekvraag betekent dat de wens al
+vaststaat.
 
 ### 4. De check van de `loop`-kaart
 

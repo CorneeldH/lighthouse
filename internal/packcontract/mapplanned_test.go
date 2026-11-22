@@ -43,3 +43,18 @@ func TestMapPlannedSkillNamesNoLabelOrPath(t *testing.T) {
 		})
 	}
 }
+
+// Classification: fails when the skill runs the wish test on an issue whose answer is not null
+// (a place answer would ask the wish again), stops asking again after a free wish answer (the
+// issue would stay due every day with nothing done), or asks a wish again that has a letter.
+func TestMapPlannedSkillAsksAWishOnce(t *testing.T) {
+	for variant, body := range variants(t, mapPlanned) {
+		t.Run(variant, func(t *testing.T) {
+			f := flat(body)
+			wantAll(t, f, "Run the wish test only when the issue's `answer` is `null`",
+				"A wish answered with a letter is never asked again",
+				"Only an `answer` with topic `wish` and an empty `letter`",
+				"asks the wish question again")
+		})
+	}
+}
