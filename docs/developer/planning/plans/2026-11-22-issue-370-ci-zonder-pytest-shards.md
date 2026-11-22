@@ -38,7 +38,8 @@ tegen de nulmeting van #360.
 1. **Domeinnaam `pack-python`** (job-id, `ci/domains`-sleutel, `changes`-output). Het bestaande
    domein `python` (alles buiten `web/`) verdwijnt: niets in CI heeft het daarna nodig (zie 3).
 2. **`pack-python` is waar** voor een pad onder `pack/python/`, `tests/pack/python/`, `pack/core/`,
-   `cmd/` of `internal/` (spec §7), plus `pyproject.toml` en `uv.lock` (de invoer van de job zelf).
+   `cmd/` of `internal/` (spec §7), plus `pyproject.toml`, `uv.lock` (de invoer van de job zelf) en
+   `e2e/` (de uv-e2e-tests draaien na Task 3 alleen in `pack-python`; anders loopt een PR die alleen `e2e/` raakt groen langs ze).
    Een PR die alleen `docs/site/` raakt: onwaar; alleen `internal/`: waar (AC 3).
 3. **`ci/literal-grep.sh` (twee aanroepen) verhuist naar de job `go`.** Het draaide op shard 1 van
    de oude job omdat die op elk pad buiten `web/` liep; het leest `pack/`, `internal`, `cmd` en
@@ -61,7 +62,7 @@ tegen de nulmeting van #360.
   `tests/test_no_python_script.py`, `tests/test_tag_with_ui.py`.
 - Nieuw/uitgebreid (Go): `internal/repopins/workflows_test.go` (pins van `ci.yml`),
   `internal/repopins/tagwithui_test.go` (nieuw), `e2e/nopython_test.go` (nieuw, tag `e2e`),
-  `ci/domains/domains.go`, `main.go`, `domains_test.go`, `sources_test.go`.
+  `ci/domains/domains.go`, `main.go`, `domains_test.go`.
 - Gewijzigd: `tests/pack/python/conftest.py` (fixtures `lighthouse_bin`, `_lighthouse_build_dir`),
   `.github/workflows/ci.yml`, `.github/workflows/macos.yml`, `ci/no-python.sh`, `pyproject.toml`,
   `uv.lock`, `docs/releasing.md` (alleen de zin over de pytest-suite).
@@ -95,7 +96,7 @@ tegen de nulmeting van #360.
 Per testfunctie één bestemming, met de kernvraag. Schrijf de triagetabel (test, voor/na,
 bestemming, reden, bij "gedekt" de naam van de Go-test) in de PR-body; tel voor/na/weg.
 
-- [ ] **Step 1: Triage `tests/test_ci_domains_pin.py` (21 tests).** Eerst `go test ./internal/repopins/
+- [ ] **Step 1: Triage `tests/test_ci_domains_pin.py` (20 tests).** Eerst `go test ./internal/repopins/
   -run Workflow -v` en lees welke pins al bestaan (`TestEveryCIGoTestHasGateFlags`,
   `TestEveryWorkflowPinsActionsBySHA`, …): die tests zijn "gedekt", niet porten. Port wat een
   echte `ci.yml`-fout vangt als Go-test `TestCI<Onderwerp>` in `workflows_test.go`:
@@ -157,7 +158,7 @@ bestemming, reden, bij "gedekt" de naam van de Go-test) in de PR-body; tel voor/
 
 **Files:**
 - Modify: `ci/domains/domains.go`, `ci/domains/main.go`, `ci/domains/domains_test.go`,
-  `ci/domains/sources_test.go`, `.github/workflows/ci.yml`, `internal/repopins/workflows_test.go`,
+  `.github/workflows/ci.yml`, `internal/repopins/workflows_test.go`,
   `ci/no-python.sh`
 
 **Interfaces:**
@@ -166,15 +167,14 @@ bestemming, reden, bij "gedekt" de naam van de Go-test) in de PR-body; tel voor/
   CLI-uitvoer `web=`, `pack-python=`, `go=` voor `--github-output`.
 
 - [ ] **Step 1: Schrijf de falende tests in `ci/domains/domains_test.go`** (tabel):
-  `internal/x.go`→ `pack-python` waar; `docs/site/index.html`→ onwaar (en `go` onwaar, zoals nu);
+  `internal/x.go`→ `pack-python` waar; `docs/site/index.html` → `pack-python` onwaar maar `go` waar (zoals nu, `goDocs`; laat `goDocs` ongemoeid), `docs/site/other.html` → beide onwaar, `e2e/e2e_test.go` → `pack-python` en `go` waar;
   `pack/python/scripts/a.py`, `tests/pack/python/t.py`, `pack/core/x`, `cmd/lighthouse/main.go`,
   `pyproject.toml`, `uv.lock` → waar; `web/src/a.ts`, `docs/a.md`, `pack/node/x`, `ci/literal-grep.sh`,
   `tests/pack/fixtures/a.json` → onwaar. De sleutel `python` bestaat niet meer; de bestaande
-  `python`-gevallen worden vertaald of vervallen met reden (kernvraag), `sources_test.go:165,229`
-  houdt `goFixtures` en past alleen de sleutelnaam aan.
+  `python`-gevallen worden vertaald of vervallen met reden (kernvraag), `sources_test.go` heeft geen `python`-sleutel en blijft ongewijzigd.
 - [ ] **Step 2:** `go test ./ci/domains/ -run Classify -v` — FAIL (sleutel ontbreekt).
 - [ ] **Step 3: Implementeer** in `Classify` de sleutel `pack-python` met een lijst
-  `packPythonPrefixes = {"pack/python/", "tests/pack/python/", "pack/core/", "cmd/", "internal/"}` en
+  `packPythonPrefixes = {"pack/python/", "tests/pack/python/", "pack/core/", "cmd/", "internal/", "e2e/"}` en
   `packPythonFiles = {"pyproject.toml", "uv.lock"}`; verwijder `python`. Pas de doc-comments van
   `domains.go` (inclusief de uitleg bij `notGoDirs`) en `main.go` aan.
 - [ ] **Step 4:** `go test ./ci/domains/` — PASS.
@@ -184,16 +184,15 @@ bestemming, reden, bij "gedekt" de naam van de Go-test) in de PR-body; tel voor/
   (besluit 6 kan `-n auto` nog schrappen); `timeout-minutes` blijft 10. (b) de twee
   `literal-grep`-aanroepen gaan als stap naar de job `go`, ongewijzigd. (c) `setup-uv` met zijn
   commentaar uit `go-e2e` naar `pack-python` (staat er al); `go-e2e` houdt alleen setup-go en de
-  e2e-run, en laat de e2e-tests die `uv` nodig hebben niet stil overslaan: ze skippen bij ontbrekende
-  `uv` (`e2e/e2e_test.go:331-408`), dus draai ze in `pack-python`; zoek de testnamen met `grep -n 'uv' e2e/e2e_test.go` (regels 331-408) en gebruik ze in `-run`:
-  `go test -tags e2e ./e2e/ -run '<namen>' -v` na de build; zonder `uv` zouden ze stil skippen.
+  e2e-run. De e2e-tests die `uv` nodig hebben (`needUV`, `e2e/e2e_test.go:325-333`) doen onder `CI` een `t.Fatal` bij ontbrekende `uv` (lokaal skippen ze): sluit ze dus in `go-e2e` uit met `-skip` en draai ze in `pack-python`; zoek de testnamen met `grep -n 'uv' e2e/e2e_test.go` (regels 331-408) en gebruik ze in `-run`:
+  `go test -race -shuffle=on -tags e2e ./e2e/ -run '<namen>' -v` na de build (met `-race` en `-shuffle=on`, de vlaggen van de test-gate); in `go-e2e` dezelfde run met `-skip '<dezelfde namen>'` (nu `TestRedTestBlocksCommit|TestRedCommitComesBackAfter|TestDefaultCommandWithoutPytest`; controleer met `grep -n needUV e2e/e2e_test.go`).
   (d) `changes` job: output `pack-python`, dispatch-regel `echo "pack-python=$ALL"`; `canary` en
   `no-python`: `go == 'true' || pack-python == 'true'`. (e) Kop van `ci.yml`: de zinnen over shards en
   `python-only` herschreven; `workflow_dispatch`-inputbeschrijving `(web, pack-python, go)`.
 - [ ] **Step 6: Pins bijwerken in `workflows_test.go`:** `pack-python` heeft geen matrix en geen
   shard-env; draait `uv run pytest` op `tests/pack/python/`; wacht op `changes`; zet Go op vóór
   pytest; `go` bevat beide literal-grep-aanroepen (telling twee, in één job); `go-e2e` heeft géén
-  `setup-uv` en de e2e-run met `uv`-testen staat in `pack-python`; `canary`/`no-python` gate
+  `setup-uv` en sluit de `needUV`-tests uit met `-skip`, `pack-python` draait precies die in `-run` (pin: elke test die `needUV` aanroept staat in beide lijsten); `assertGateFlags(t, "ci.yml", 6)` wordt 7 (commentaar bijwerken); `canary`/`no-python` gate
   `go || pack-python`; telling `uses:` bijgewerkt; dispatch zet alle drie de domeinen. Mutatiecheck
   per pin.
 - [ ] **Step 7: `ci/no-python.sh`** volgens besluit 5; draai `go test -tags e2e ./e2e/ -run NoPython`
@@ -227,6 +226,7 @@ bestemming, reden, bij "gedekt" de naam van de Go-test) in de PR-body; tel voor/
   sneller is (nu is het de reden dat de oude shards `-n auto` draaiden). Zet de cijfers in de
   PR-body; pas `ci.yml` (Task 3 Step 5a), `macos.yml` en `tests/pack/python/test_network.py:134`
   (`-p no:xdist`) mee aan als xdist weggaat.
+- [ ] **Step 5b:** na de push in Task 5 draait ook `gh workflow run macos.yml --ref <branch>`; de job `pack-python` moet groen zijn binnen `timeout-minutes: 15` voordat de PR geschreven wordt (release.yml wacht op `macos`).
 - [ ] **Step 6:** `uv run pytest -q tests/pack/python/test_gate_python.py` — PASS (de test-gate in
   `lighthouse.toml` kiest pytestbestanden; hij moet na het inkorten blijven werken). Commit:
   `ci(pack): macos zonder shards, pyproject en uv.lock ingekort (#370)`.
@@ -252,7 +252,7 @@ bestemming, reden, bij "gedekt" de naam van de Go-test) in de PR-body; tel voor/
   referentie.
 - [ ] **Step 4: Drie runs na elkaar** zoals plan 360 Task 2 Step 2 (`gh workflow run ci.yml --ref
   <branch> -f all-domains=true`, `gh run watch --exit-status`, elke run pas na de vorige) en per
-  run de `gh run view … --json startedAt,updatedAt,jobs`-query van plan 360 Task 2 Step 3. Alle
+  run de `gh run view … --json startedAt,updatedAt,jobs`-query van plan 360 Task 2 Step 3. Vergelijk like-for-like: de nulmeting kent `canary` en `site` niet; rapporteer wandklok en runnerminuten zowel met als zonder die twee jobs en vergelijk de gelijke jobset met de nulmeting. Alle
   domeinjobs (`pack-python`, `go`, `go-test`, `go-e2e`, `web`, `binary`, `canary`,
   `no-python`) moeten draaien en groen zijn; anders telt de run niet.
 - [ ] **Step 5: Vergelijk.** Wandklok gemiddelde ≤ nulmeting; som runnerminuten gemiddelde <
@@ -263,5 +263,5 @@ bestemming, reden, bij "gedekt" de naam van de Go-test) in de PR-body; tel voor/
   stap *tests voor, geport, weg*; tel de eigen Task 1 erbij. Zet een tabel per stap met totaalregel.
 - [ ] **Step 7:** `/lighthouse-write-pr`: `Closes #370` met Evidence-tabel: de zes AC (AC 3 met
   `go run ./ci/domains classify` voor `internal/x.go` (waar) en `docs/site/x` (onwaar), AC 4 en 5
-  met de cijfers), de uitleg over de twee `python3`-treffers (besluit 5) en de xdist-meting.
+  met de cijfers), de uitleg over de twee `python3`-treffers (besluit 5) en de 13 treffers onder `ci/changelog/testdata/` die AC 2 letterlijk niet haalt: noem ze met bestandsnamen; wijkt AC 2 daardoor af, schrijf dan `Refs #370 — <reden>` in plaats van `Closes` en de xdist-meting.
   Handoff `next: /lighthouse-close-issue 370`.
