@@ -83,6 +83,9 @@ type report struct {
 
 func (r *report) ok(msg string) { _, _ = fmt.Fprintf(r.out, "ok    %s\n", msg) }
 
+// skip says a step did not run here; it is no finding.
+func (r *report) skip(msg string) { _, _ = fmt.Fprintf(r.out, "SKIPPED  %s\n", msg) }
+
 func (r *report) fail(msg string) {
 	_, _ = fmt.Fprintf(r.out, "FAIL  %s\n", msg)
 	r.findings++

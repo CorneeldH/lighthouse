@@ -191,6 +191,14 @@ func TestRunGitBashLineOnlyOnWindows(t *testing.T) {
 		t.Fatalf("windows with Git Bash: exit %d, want 0 and the ok line with the path:\n%s", code, out)
 	}
 
+	fake = windowsEnv(map[string]string{"CLAUDE_CODE_GIT_BASH_PATH": `D:\Gone\bash.exe`}, []string{`C:\Program Files\Git\bin\bash.exe`}, "")
+	env.Getenv, env.LookPath, env.Exists = fake.Getenv, fake.LookPath, fake.Exists
+	code, out, _ = run(env)
+	want := "ok    Git Bash: C:\\Program Files\\Git\\bin\\bash.exe (CLAUDE_CODE_GIT_BASH_PATH=D:\\Gone\\bash.exe is no bash or sh that exists, so Claude Code ignores it)"
+	if code != 0 || !strings.Contains(out, want) {
+		t.Fatalf("windows with a stale variable: exit %d, want 0 and %q:\n%s", code, want, out)
+	}
+
 	fake = windowsEnv(nil, nil, "")
 	env.Getenv, env.LookPath, env.Exists = fake.Getenv, fake.LookPath, fake.Exists
 	code, out, _ = run(env)
