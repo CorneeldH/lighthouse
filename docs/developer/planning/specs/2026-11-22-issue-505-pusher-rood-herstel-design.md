@@ -43,7 +43,7 @@ stappen en de review. Na een vast aantal rondes zonder groen gaat het issue teru
 
 - Een reparatieronde die op het issue leest als "Teruggegeven" terwijl het werk doorloopt.
 - Een reparatie die de review overslaat. Na elke reparatie draait de pusher volledig opnieuw.
-- Een lus zonder eind. Elke ronde telt, ook een ronde waarin de run geen nieuwe handoff schrijft.
+- Een lus zonder eind. Elke Herstel telt mee, tot een groene doorgang of een hand-back.
 - Decide die `COULD NOT CHECK` uit vrije tekst moet raden. De pusher beslist of een rood
   repareerbaar is.
 
@@ -78,15 +78,22 @@ naar een andere run. Elk ander rood zonder SHA blijft een Teruggegeven die als `
 Ook `policy` rood op de workflow-diff (`pusher.go`, `workflowDiff`) is `COULD NOT CHECK` en blijft
 dus een Teruggegeven.
 
+Alleen het prefix `COULD NOT CHECK:` maakt een rood niet-repareerbaar. Een `RuleParse`-overtreding
+van de policy (een workflow die een symlink is, te groot, of geen geldige YAML) is een fout in een
+bestand van het werk, en dus wel repareerbaar. *(eigen keuze na spec-review, r1-f4)*
+
 Hoe de pusher `COULD NOT CHECK` herkent, is aan de bouwer: een veld op `Red` of één functie op het
-prefix. Eis: decide hoeft het niet te weten, en een test dekt elke `COULD NOT CHECK`-plek in
-`lint.go` en `policy.go` als niet-repareerbaar.
+prefix. Eis: decide hoeft het niet te weten. Een unittest dekt de classificatie op het prefix.
+End-to-end tests dekken de bereikbare plekken: een linter niet op `PATH`, linteruitvoer die geen
+JSON is, en een fout van `workflowDiff` in `pusher.go`. *(eigen keuze na spec-review, r1-f5)*
 
 ### 3. Settle sluit de push-row op een Herstel
 
 Sluit de pusher zijn row niet (de release faalde na de post), dan sluit `settle` hem: een Herstel
 zonder sessie vanaf de start van een push-row sluit die row als `runs.Handoff`, naast de bestaande
-regel voor `pushReturned`.
+regel voor `pushReturned`. `settle` erkent een Herstel alleen als de auteur
+`Snapshot.TokenLogin` is, net als de regel `repair`. Een Herstel van een andere vertrouwde auteur
+sluit niets.
 
 ### 4. Nieuwe regel `repair` in `next()`
 
@@ -96,10 +103,12 @@ Volgorde: `retry, finishReturn, usageResume, answer, repair, closeCheck, newIssu
 De regel geldt als de laatste beurt een Herstel is van de token-login, en de trigger-sleutel
 `repair:<comment-id>` nog door geen run is gebruikt. Dan:
 
-1. **Rondes tellen.** Het aantal runs van dit issue met een sleutel `repair:…`, een mislukte start
-   niet meegeteld (patroon `fixPRRuns`). Is dat `>= maxRepairRuns` (constante, waarde `2`), dan
-   een Teruggegeven met reden `reason_pusher_red_ceiling` en de stap als argument. De
-   hand-back gaat via de bestaande `c.returned`, dus met label en `To do`.
+1. **Rondes tellen.** Tel de Herstel-rondes zonder groen ertussen (zie punt 7). Is dat aantal,
+   de nieuwe Herstel meegeteld, groter dan `maxRepairRuns` (constante, waarde `2`), dan volgt een
+   Teruggegeven met reden `reason_pusher_red_ceiling`. De hand-back gaat via de bestaande
+   `c.returned`, dus met label en `To do`. Het argument is `pushCommand(<worktree van de
+   Herstel>)`, zoals bij `pushAgain`; de stap en de reden staan in de Herstel erboven.
+   *(eigen keuze na spec-review, r1-f7)*
 2. **Run zoeken.** Een Handoff-comment draagt geen sessie: de write-handoff-skill schrijft geen
    sessiefooter. Decide zoekt de run daarom in de historie, met dezelfde regel waarmee de pusher
    de worktree vindt (`runs.LastHandoffWorkspace`, `pusher.ResolveWorktree`). Neem de laatste
@@ -109,20 +118,29 @@ De regel geldt als de laatste beurt een Herstel is van de token-login, en de tri
    run levert `SessionID`, `Command` en `Branch`. *Keuze van de schrijver*: geen sessiefooter op
    de handoff, want dat raakt `pack/`, de fixtures en oudere handoffs.
 3. **Geen run of geen sessie.** Is er zo'n run niet, of heeft hij geen sessie, dan een
-   Teruggegeven met `reason_pusher_red` en de stap: het gedrag van nu.
+   Teruggegeven met `reason_pusher_red` en `pushCommand(<worktree>)` als argument. De stap en de
+   reden staan in de Herstel erboven.
 4. **Anders hervatten.** `KindResume`, `modeResume`, trigger `repair`, sleutel
    `repair:<comment-id>`, `Attempt` 1, `SessionID`, `Command` en `Branch` van die run,
    `CommentID` van de Herstel. Plaatsing via `c.planned`, zoals `answer`. `triggerComment` kent
    het prefix `repair:`, zodat een tweede poging (`secondAttempt`) de comment-id houdt.
 
+   De tabel `runs` kent geen trigger `repair`: de `CHECK` in
+   `internal/store/migrations/0008_runs_schedule.sql` laat alleen een vaste lijst toe. Apply zet
+   `repair` daarom bij de claim om naar `answer`, zoals `push` dat al doet voor de push-rows; de
+   sleutel `repair:<id>` onderscheidt de row. Geen migratie. Een test claimt een repair-resume via
+   `runs.Take` op een echte database. *(eigen keuze na spec-review, r1-f1)*
+
 Op de fix-pr-route heeft de hervatte run het commando `/lighthouse-fix-pr <pr>`. Elke
 reparatieronde telt daar dus ook mee voor `maxFixPRRuns`. Dat geldt nu al voor een hervatting
 na een antwoord, en dat blijft zo.
 
-**Prompt.** Nieuwe heading `prompt_pusher_repair`, met de Herstel-body erachter (zoals
-`protocol.AnswerPrompt` de Vraag meegeeft). Inhoud nl: *De workflow-pusher vond deze stap rood.
-Repareer het in de worktree, commit, en schrijf een nieuwe handoff met `next: push-workflows`.*
-Plus en-variant.
+**Prompt.** Nieuwe heading `prompt_pusher_repair`, met daarachter de rode stap, de reden (zoals
+`redLines`) en de URL van de Herstel-comment. De diff gaat niet mee: die staat in de comment en
+in de worktree, en een grote diff kost context en kan de argv-grens van de resume raken. Inhoud
+nl: *De workflow-pusher vond deze stap rood. Repareer het in de worktree, commit, en schrijf een
+nieuwe handoff met `next: push-workflows`.* Plus en-variant. *(eigen keuze na spec-review,
+r1-f6)*
 
 Zo staan de rode stap en de reden in de opdracht (AC 1).
 
@@ -141,14 +159,23 @@ niet `handoff:<id>`. Een woord-voor-woord herhaling stopt dus pas bij `maxRepair
 volstaat: met N = 2 zijn dat hooguit twee overbodige rondes. *Keuze van de schrijver*:
 `repeatsHandoff` blijft zoals hij is.
 
-Schrijft de hervatte run geen nieuwe handoff, dan gelden de gewone uitkomstregels van een run. Ook
-die ronde telt mee voor `maxRepairRuns`.
+Schrijft de hervatte run geen nieuwe handoff, dan gelden de gewone uitkomstregels van een run
+(Klaar, Vraag, Teruggegeven). Zo'n ronde telt niet mee voor `maxRepairRuns`: zonder handoff draait
+er geen pusher, komt er geen nieuwe Herstel en dus geen lus. *(eigen keuze na spec-review,
+r2-f1)*
 
-### 7. Teller per issue
+### 7. Teller: rondes zonder groen
 
-De teller loopt per issue over de hele historie, net als het issue vraagt. Een nieuwe tak of een
-nieuwe push-handoff zet hem niet terug. Met N = 2: na de tweede reparatie die nog rood is, gaat
-het issue terug (AC 3).
+AC 3 zegt "N reparatierondes zonder groene `policy` of `lint`". De teller telt daarom alleen de
+aaneengesloten Herstel-rondes van dit issue. Loop de push-rows van het issue (sleutel `push:…`,
+geen merge-pusher) van nieuw naar oud. Sla mislukte starts en de open row over. Tel elke row die
+als `handoff` sloot zonder `PushedSHA`: die eindigde in een Herstel. Stop bij de eerste row die
+anders afliep (gepusht, `question`, `returned`). Stop ook bij een row die startte vóór de laatste
+Teruggegeven van de token-login: na een hand-back begint de telling opnieuw.
+
+Met N = 2: de eerste en de tweede Herstel hervatten de run, de derde aaneengesloten Herstel geeft
+het issue terug (AC 3). Een groene doorgang (een push, of een Vraag van de review) of een
+hand-back zet de teller terug. *(eigen keuze na spec-review, r1-f3)*
 
 ### 8. Loop-kaart en documentatie
 
@@ -172,7 +199,13 @@ het issue terug (AC 3).
   - Herstel als laatste beurt, sessie gevonden: `KindResume` met sleutel `repair:<id>`, de sessie
     van de handoff en een prompt met stap en reden.
   - Sleutel al gebruikt: niets.
-  - `maxRepairRuns` bereikt: Teruggegeven `reason_pusher_red_ceiling`.
+  - De derde aaneengesloten Herstel: Teruggegeven `reason_pusher_red_ceiling` met het
+    push-commando.
+  - Een gepushte push-row, een `question`-row of een Teruggegeven tussen de Herstels zet de
+    teller terug.
+  - Een Herstel van een andere auteur dan de token-login: `settle` sluit niets, `repair` doet
+    niets.
+  - Apply claimt een repair-resume met trigger `answer` in een echte database.
   - De gevonden run is de handoff-run, niet de push-row (die sluit ook als `handoff`), en geen
     run van een andere host.
   - Geen handoff-run vóór de Handoff-comment, of een zonder sessie: Teruggegeven
