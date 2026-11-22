@@ -154,6 +154,10 @@ path = "pack/core/skills/audit-agent-config/SKILL.md"
 new = true
 
 [[file]]
+path = "pack/core/skills/map-planned/SKILL.md"
+new = true
+
+[[file]]
 path = "pack/core/skills/audit-worktrees/SKILL.md"
 new = true
 

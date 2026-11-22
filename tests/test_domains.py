@@ -128,6 +128,13 @@ def _without_default_paths(rel: str, text: str) -> str:
         # docs/developer/reflect is the output_dir of the reflect job: a path inside the target
         # repo of the job (a temp repo in tests), never this repo's docs.
         return text.replace("docs/", "")
+    if rel == "internal/repoconfig/repoconfig_test.go":
+        # docs/… are the Document paths of a labels document inside a test string, never read from this repo.
+        return text.replace("docs/", "")
+    if rel.startswith("internal/scheduled/mapplanned/"):
+        # docs/… are map documents and changelog.d is the fragment directory of the target repo of the
+        # job (a temp repo in tests), never this repo's.
+        return text.replace("docs/", "").replace("changelog.d", "")
     return text
 
 
