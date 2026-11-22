@@ -5,6 +5,38 @@ De test-gate (`commit-test-gate`, via `run.sh commit-test-gate pre|post`) draait
 hoeveel geheugen ze krijgen, is een eigenschap van de machine, niet van het project. Daarom staan
 die grenzen in `[host]` van `host.toml`, en het project vraagt alleen.
 
+## Wanneer draait de gate: `[test_gate] on`
+
+`[test_gate] on` kiest het moment waarop `commit-test-gate` `[test_gate] command` draait.
+
+| Waarde | Gedrag |
+|---|---|
+| `commit` (standaard) | na elke commit, zoals voorheen |
+| `pr` | alleen vóór een `gh pr create` (ook `glab mr create` en `forge pr create`) |
+| `both` | bij beide momenten |
+
+Bij `pr` draait de gate op de branch-diff: de commits van `merge-base origin/<default branch> HEAD`
+tot `HEAD`, met die bestanden in `LIGHTHOUSE_GATE_FILES`. De importcheck schuift mee naar het
+PR-moment en draait dan op diezelfde bestanden. Een `--repo` of `GH_REPO` wordt niet gelezen: een
+create in dit project draait de gate. `command = ""` blijft de uitzetknop. Is de suite traag, kies
+dan `pr`: je betaalt één keer per PR in plaats van bij elke commit.
+
+- Een commando dat `git commit …` en `gh pr create …` combineert, blokkeert onder `pr` en `both`
+  met de reden om te splitsen: de hook draait vóór het commando, dus `HEAD` is nog de oude commit.
+- Met een kapotte of onleesbare `lighthouse.toml` blokkeert ook een `gh pr create` (ook bij de
+  standaard `commit`), want de gate leest de config; `pr-create-gate` laadde die al.
+- Is de config onleesbaar en `on` niet gezet, dan noemt het blok bij de commit `on` in plaats van
+  `forge.default_branch`; de oorzaaktekst blijft gelijk.
+- **Deadline.** `MaxDeadline` is 280 s, binnen de hooktimeout van 300 s. Dat geldt ook bij het
+  PR-moment: een suite van minuten geeft `COULD NOT CHECK (deadline)` en blokkeert de PR-create.
+  Houd de `pr`-run onder die grens.
+
+De managed-blocktekst in `AGENTS.md` blijft binnen het woordbudget van het core-blok en zegt daarom
+kort: `commit-test-gate runs [test_gate] command per [test_gate] on; fix red in a new commit.`
+Wat `on` doet, staat hier. Het
+changelogfragment staat in
+[`changelog.d/issue-495-test-gate-on-knop.md`](../changelog.d/issue-495-test-gate-on-knop.md).
+
 ## Sleutels in `[host]`
 
 Alle optioneel.

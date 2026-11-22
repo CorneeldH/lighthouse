@@ -641,7 +641,7 @@ path = "AGENTS.md"
 id = "core"
 package = "core"
 version = "dev"
-sha256 = "26fbf91a886e8a00eb1a1909d8bd11740d5873245316acbd63f5854f422084be"
+sha256 = "f277808ae30815e74d7ed5bfe29cd1cc40ea01d8e471f6370af182dc4e0ecee9"
 
 [[unit]]
 kind = "block"

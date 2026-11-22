@@ -16,8 +16,9 @@ const gateUnknownMode = commitgate.HookName + ": COULD NOT CHECK — unknown mod
 	"The registration in .claude/settings.json names no known mode; nothing was tested.\n"
 
 // CommitTestGate is the test gate of `git commit`: pre (PreToolUse `Bash`) blocks --no-verify,
-// tests a commit to the default branch before it and records the HEAD of every other root; post
-// (PostToolUse and PostToolUseFailure `Bash`) tests what those commits touched. root is the
+// tests a commit to the default branch before it and records the HEAD of every other root, and
+// tests the branch before a `gh pr create`; post (PostToolUse and PostToolUseFailure `Bash`) tests
+// what those commits touched. Which of the two moments run follows [test_gate] on. root is the
 // lighthouse root, used when LIGHTHOUSE_REPO_ROOT is not set.
 func CommitTestGate(ctx context.Context, root, stand string, p hook.Payload) hook.Result {
 	if stand != "pre" && stand != "post" {

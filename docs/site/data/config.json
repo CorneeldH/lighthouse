@@ -431,7 +431,8 @@
               "default": "commit",
               "about": "When the test gate runs: after each commit, at the PR, or both.",
               "readers": [
-                "internal/commitgate/gate.go"
+                "internal/commitgate/gate.go",
+                "pack/core/instructions/AGENTS.md"
               ]
             },
             {
