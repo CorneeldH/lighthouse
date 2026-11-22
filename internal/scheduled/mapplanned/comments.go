@@ -170,30 +170,41 @@ func answerLetter(text string) string {
 
 // StatusOf reads the comments of one issue, oldest first: the latest question or decision of
 // the job (a comment with the machine line whose Author is jobLogin, the login of the forge
-// token; the machine line of any other author is ignored), and the first comment after a
-// question by a trusted login that is not a job comment. A decision, or an answer whose letter
-// is Off, is settled.
+// token; the machine line of any other author is ignored), and the answer to a question: of
+// the comments after it by a trusted login that are not job comments, the first that starts
+// with an option letter, or else the latest free one. A decision, or an answer whose letter is
+// Off, is settled.
 func StatusOf(ctx context.Context, cs []protocol.Comment, jobLogin string, trusted func(context.Context, string) (bool, error)) (Status, Answer, error) {
 	var last *machineLine
-	var answer *Answer
+	var lettered, free *Answer
 	for _, c := range cs {
 		if m, ok := parseMachineLine(c.Body); ok {
 			if c.Author == jobLogin {
-				last, answer = &m, nil
+				last, lettered, free = &m, nil, nil
 			}
 			continue
 		}
-		if last == nil || last.kind != kindQuestion || answer != nil || !protocol.IsAnswer(c.Body) {
+		if last == nil || last.kind != kindQuestion || lettered != nil || !protocol.IsAnswer(c.Body) {
 			continue
 		}
 		ok, err := trusted(ctx, c.Author)
 		if err != nil {
 			return StatusNone, Answer{}, fmt.Errorf("trust of %s: %w", c.Author, err)
 		}
-		if ok {
-			text := strings.TrimSpace(c.Body)
-			answer = &Answer{Topic: last.topic, Letter: answerLetter(text), Text: text}
+		if !ok {
+			continue
 		}
+		text := strings.TrimSpace(c.Body)
+		a := &Answer{Topic: last.topic, Letter: answerLetter(text), Text: text}
+		if a.Letter != "" {
+			lettered = a
+		} else {
+			free = a
+		}
+	}
+	answer := lettered
+	if answer == nil {
+		answer = free
 	}
 	switch {
 	case last == nil:
