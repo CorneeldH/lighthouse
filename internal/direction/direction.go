@@ -64,7 +64,7 @@ func (d doc) section(name string) (from, to int, ok bool) {
 		if ok && strings.HasPrefix(l, "## ") {
 			return from, i, true
 		}
-		if l == "## "+name {
+		if strings.TrimSpace(l) == "## "+name {
 			from, ok = i+2, true
 		}
 	}
@@ -128,7 +128,7 @@ func Check(root string) []string {
 	}
 	cfg, err := repoconfig.Load(root)
 	if err != nil {
-		add("lighthouse.toml", 1, "cannot load: %v", err)
+		add("lighthouse.toml", 1, "kan niet laden: %v", err)
 		return render(fs)
 	}
 	areaNames, labelsOK := areaLabels(root, cfg, add)
@@ -136,12 +136,12 @@ func Check(root string) []string {
 	var docs []doc
 	read := func(key, rel string) (doc, bool) {
 		if rel == "" {
-			add("lighthouse.toml", 1, "%s is not set", key)
+			add("lighthouse.toml", 1, "%s is niet gezet", key)
 			return doc{}, false
 		}
 		d, err := readDoc(root, rel)
 		if err != nil {
-			add(rel, 1, "%s: cannot read: %v", key, err)
+			add(rel, 1, "%s: kan niet lezen: %v", key, err)
 			return doc{}, false
 		}
 		docs = append(docs, d)
@@ -156,11 +156,11 @@ func Check(root string) []string {
 		checkTenets(d, add)
 	}
 	if cfg.Paths.Areas == "" {
-		add("lighthouse.toml", 1, "paths.areas is not set")
+		add("lighthouse.toml", 1, "paths.areas is niet gezet")
 	} else {
 		entries, err := os.ReadDir(filepath.Join(root, filepath.FromSlash(cfg.Paths.Areas)))
 		if err != nil {
-			add(cfg.Paths.Areas, 1, "paths.areas: cannot read: %v", err)
+			add(cfg.Paths.Areas, 1, "paths.areas: kan niet lezen: %v", err)
 		}
 		known := map[string]bool{}
 		for _, n := range areaNames {
@@ -175,7 +175,7 @@ func Check(root string) []string {
 			onDisk[name] = true
 			rel := path.Join(cfg.Paths.Areas, e.Name())
 			if labelsOK && !known[name] {
-				add(rel, 1, "no area label %s%s for this file", cfg.Labels.AreaPrefix, name)
+				add(rel, 1, "geen arealabel %s%s voor dit bestand", cfg.Labels.AreaPrefix, name)
 			}
 			if d, ok := read("paths.areas", rel); ok {
 				checkHeadings(d, areaHeadings, add)
@@ -185,7 +185,7 @@ func Check(root string) []string {
 		if err == nil {
 			for _, n := range areaNames {
 				if !onDisk[n] {
-					add(path.Join(cfg.Paths.Areas, n+".md"), 1, "no file for area label %s%s", cfg.Labels.AreaPrefix, n)
+					add(path.Join(cfg.Paths.Areas, n+".md"), 1, "geen bestand voor arealabel %s%s", cfg.Labels.AreaPrefix, n)
 				}
 			}
 		}
@@ -199,16 +199,16 @@ func Check(root string) []string {
 // areaLabels returns the area names of the label taxonomy, and false when it cannot be read.
 func areaLabels(root string, cfg repoconfig.Repo, add func(string, int, string, ...any)) ([]string, bool) {
 	if cfg.Paths.Labels == "" {
-		add("lighthouse.toml", 1, "paths.labels is not set")
+		add("lighthouse.toml", 1, "paths.labels is niet gezet")
 		return nil, false
 	}
 	if cfg.Labels.AreaPrefix == "" {
-		add("lighthouse.toml", 1, "labels.area_prefix is not set")
+		add("lighthouse.toml", 1, "labels.area_prefix is niet gezet")
 		return nil, false
 	}
 	b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(cfg.Paths.Labels)))
 	if err != nil {
-		add(cfg.Paths.Labels, 1, "paths.labels: cannot read: %v", err)
+		add(cfg.Paths.Labels, 1, "paths.labels: kan niet lezen: %v", err)
 		return nil, false
 	}
 	var names []string
@@ -225,16 +225,16 @@ func checkHeadings(d doc, want []string, add func(string, int, string, ...any)) 
 	got := d.heads()
 	for i, w := range want {
 		if i >= len(got) {
-			add(d.path, len(d.lines), "missing heading ## %s", w)
+			add(d.path, len(d.lines), "kop ## %s ontbreekt", w)
 			return
 		}
 		if got[i].text != w {
-			add(d.path, got[i].line, "heading ## %s where ## %s is expected", got[i].text, w)
+			add(d.path, got[i].line, "kop ## %s waar ## %s verwacht wordt", got[i].text, w)
 			return
 		}
 	}
 	if len(got) > len(want) {
-		add(d.path, got[len(want)].line, "extra heading ## %s", got[len(want)].text)
+		add(d.path, got[len(want)].line, "extra kop ## %s", got[len(want)].text)
 	}
 }
 
@@ -250,9 +250,9 @@ func checkNotNow(d doc, idRe, anyRe *regexp.Regexp, letter string, known map[str
 		m := idRe.FindStringSubmatch(b.text)
 		switch {
 		case m == nil:
-			add(d.path, b.line, "bullet without an ID of the form **%s<n>**", letter)
+			add(d.path, b.line, "bullet zonder ID van de vorm **%s<n>**", letter)
 		case len(anyRe.FindAllString(b.text, -1)) > 1:
-			add(d.path, b.line, "bullet with two IDs")
+			add(d.path, b.line, "bullet met twee ID's")
 		case seen[m[1]]:
 			add(d.path, b.line, "dubbel ID %s%s", letter, m[1])
 		default:
@@ -261,7 +261,7 @@ func checkNotNow(d doc, idRe, anyRe *regexp.Regexp, letter string, known map[str
 		if known != nil {
 			for _, t := range targetRe.FindAllStringSubmatch(b.text, -1) {
 				if !known[t[1]] {
-					add(d.path, b.line, "→ %s is not an area", t[1])
+					add(d.path, b.line, "→ %s is geen area", t[1])
 				}
 			}
 		}
@@ -274,22 +274,23 @@ func checkTenets(d doc, add func(string, int, string, ...any)) {
 	for _, h := range d.heads() {
 		m := tenetHead.FindStringSubmatch("## " + h.text)
 		if m == nil {
+			add(d.path, h.line, "kop ## %s heeft niet de vorm ## <letter>. X boven Y", h.text)
 			continue
 		}
 		letter, title := m[1][0], m[2]
 		if first, dup := letters[letter]; dup {
-			add(d.path, h.line, "dubbel letter %c (first at line %d)", letter, first)
+			add(d.path, h.line, "dubbele letter %c (eerst op regel %d)", letter, first)
 		} else {
 			letters[letter] = h.line
+		}
+		if n := strings.Count(title, " boven "); n != 1 {
+			add(d.path, h.line, "kop heeft %d keer ' boven ', precies 1 verwacht", n)
 		}
 		if strings.Contains(title, "(vervallen)") {
 			continue
 		}
-		if n := strings.Count(title, " boven "); n != 1 {
-			add(d.path, h.line, "heading has %d times ' boven ', want exactly 1", n)
-		}
 		if links := evidenceLinks(d, h.line); links < 2 {
-			add(d.path, h.line, "no *Bewijs* line with at least 2 links (found %d)", links)
+			add(d.path, h.line, "geen *Bewijs*-regel met minstens 2 links (gevonden: %d)", links)
 		}
 	}
 	var max byte
@@ -300,7 +301,7 @@ func checkTenets(d doc, add func(string, int, string, ...any)) {
 	}
 	for l := byte('A'); l <= max; l++ {
 		if _, ok := letters[l]; !ok {
-			add(d.path, 1, "missing letter %c between A and %c (a lapsed tenet keeps its letter)", l, max)
+			add(d.path, 1, "letter %c ontbreekt tussen A en %c (een vervallen uitgangspunt houdt zijn letter)", l, max)
 		}
 	}
 }
@@ -329,7 +330,7 @@ func checkLinks(root string, d doc, add func(string, int, string, ...any)) {
 				continue
 			}
 			if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(path.Join(dir, target)))); err != nil {
-				add(d.path, i+1, "link %s points nowhere", target)
+				add(d.path, i+1, "link %s wijst nergens heen", target)
 			}
 		}
 	}

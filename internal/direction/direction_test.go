@@ -194,11 +194,38 @@ func TestCheckTenetHeadings(t *testing.T) {
 		}
 	})
 	t.Run("lapsed letter counts and needs no evidence", func(t *testing.T) {
-		doc := "# U\n\n## A. Een boven twee\n\n" + ev + "\n## B. Oud (vervallen)\n\nweg\n\n## C. Drie boven vier\n\n" + ev
+		doc := "# U\n\n## A. Een boven twee\n\n" + ev + "\n## B. Oud boven nieuw (vervallen)\n\nweg\n\n## C. Drie boven vier\n\n" + ev
 		if errs := Check(fixture(t, map[string]string{"docs/tenets.md": doc})); len(errs) != 0 {
 			t.Fatalf("got %q", errs)
 		}
 	})
+}
+
+// Classification: unit; guards that every second-level heading of the tenets file has the tenet form.
+// A change that skips a heading of another form fails it.
+func TestCheckTenetHeadingForm(t *testing.T) {
+	ev := "*Bewijs*: [a](a.md), [b](a.md)\n"
+	for name, head := range map[string]string{"lower case": "## a. Een boven twee", "no letter": "## Foo", "two letters": "## AB. Een boven twee"} {
+		t.Run(name, func(t *testing.T) {
+			doc := "# U\n\n## A. Een boven twee\n\n" + ev + "\n" + head + "\n\n" + ev
+			wantOne(t, Check(fixture(t, map[string]string{"docs/tenets.md": doc})), "docs/tenets.md:7", "vorm")
+		})
+	}
+}
+
+// Classification: unit; guards that a lapsed tenet keeps the tenet form (only its evidence is exempt).
+// A change that exempts a lapsed tenet from the form fails it.
+func TestCheckLapsedTenetKeepsBoven(t *testing.T) {
+	ev := "*Bewijs*: [a](a.md), [b](a.md)\n"
+	doc := "# U\n\n## A. Een boven twee\n\n" + ev + "\n## B. Oud (vervallen)\n\nweg\n"
+	wantOne(t, Check(fixture(t, map[string]string{"docs/tenets.md": doc})), "docs/tenets.md:7", "boven")
+}
+
+// Classification: unit; guards that a trailing space on "## Bewust niet" still gets the ID check.
+// A change that makes the section lookup exact-match only fails it.
+func TestCheckSectionTolerantOfTrailingSpace(t *testing.T) {
+	body := strings.Replace(validArea("- zonder id\n"), "## Bewust niet", "## Bewust niet ", 1)
+	wantOne(t, Check(fixture(t, map[string]string{"docs/areas/init.md": body})), "docs/areas/init.md", "ID")
 }
 
 // Classification: unit; guards the strategy: headings in order and unique S-IDs, one per bullet.
