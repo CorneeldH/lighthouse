@@ -17,7 +17,7 @@ NEEDLES = ("config.py", "headings.py")
 def test_no_installed_skill_calls_config_or_headings_py(tmp_path, lighthouse_bin):
     env = {k: v for k, v in os.environ.items() if not k.startswith("LIGHTHOUSE_")}
     subprocess.run(["git", "init", "-q", "-b", "main"], cwd=tmp_path, check=True)
-    args = [str(lighthouse_bin), "init", "--yes"]
+    args = [str(lighthouse_bin), "init", "--yes", "--level", "strict"]
     for pack in PACKS:
         args += ["--pack", pack]
     subprocess.run(args, cwd=tmp_path, env=env, check=True, capture_output=True)
