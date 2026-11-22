@@ -214,3 +214,135 @@ func TestSinceKeptWhileLevelUnchanged(t *testing.T) {
 		t.Errorf("components.toml = %s", got)
 	}
 }
+
+// shellHookPacks adds a shell hook (gofmt-check.sh) to levelPacks, listed at no level.
+func shellHookPacks() fstest.MapFS {
+	m := levelPacks()
+	m["core/hooks/hooks.json"] = file(`{"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [
+ {"type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh main-commit-gate", "timeout": 15},
+ {"type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh commit-test-gate pre", "timeout": 15},
+ {"type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh md-link-check", "timeout": 15},
+ {"type": "command", "command": "${CLAUDE_PLUGIN_ROOT}/hooks/gofmt-check.sh", "timeout": 15}]}]}}`)
+	m["core/hooks/gofmt-check.sh"] = file("#!/bin/bash\n")
+	m["core/levels.toml"] = file(strings.Replace(levelsToml, `on = [`, `on = ["md-link-check", "gofmt-check", `, 1))
+	return m
+}
+
+func initWith(t *testing.T, root, cfg string, packs fstest.MapFS) result {
+	t.Helper()
+	write(t, root, "lighthouse.toml", cfg)
+	return run(t, root, "", func(o *Options) { o.Yes = true; o.Packs = packs })
+}
+
+// Red if init stops rejecting an unknown level or its error stops naming the valid ones.
+func TestUnknownLevelNamesTheValidOnes(t *testing.T) {
+	r := initLevels(t, newRepo(t), "level = \"mild\"\n", nil)
+	if r.code == 0 || !strings.Contains(r.err, "mild") || !strings.Contains(r.err, "light") || !strings.Contains(r.err, "strict") {
+		t.Errorf("code %d err %q", r.code, r.err)
+	}
+}
+
+// Red if validate stops checking override names against the components the packs name.
+func TestUnknownComponentIsAnError(t *testing.T) {
+	r := initLevels(t, newRepo(t), "level = \"light\"\n\n[components]\n\"skill:nope\" = \"off\"\n", nil)
+	if r.code == 0 || !strings.Contains(r.err, "skill:nope") || !strings.Contains(r.err, "skill:forge") {
+		t.Errorf("code %d err %q", r.code, r.err)
+	}
+}
+
+// Red if validate accepts an override on a base component.
+func TestOverrideOnBaseIsRefused(t *testing.T) {
+	r := initLevels(t, newRepo(t), "[components]\n\"run.sh\" = \"off\"\n", nil)
+	if r.code == 0 || !strings.Contains(r.err, "run.sh") || !strings.Contains(r.err, "base") {
+		t.Errorf("code %d err %q", r.code, r.err)
+	}
+}
+
+// Red if validate lets log through for a skill.
+func TestLogOnSkillIsRefused(t *testing.T) {
+	r := initLevels(t, newRepo(t), "[components]\n\"skill:fix-pr\" = \"log\"\n", nil)
+	if r.code == 0 || !strings.Contains(r.err, "skill:fix-pr") {
+		t.Errorf("code %d err %q", r.code, r.err)
+	}
+}
+
+// Red if validate lets log through for a hook that does not go through run.sh.
+func TestLogOnShellHookIsRefused(t *testing.T) {
+	r := initWith(t, newRepo(t), "[components]\ngofmt-check = \"log\"\n", shellHookPacks())
+	if r.code == 0 || !strings.Contains(r.err, "gofmt-check") {
+		t.Errorf("code %d err %q", r.code, r.err)
+	}
+}
+
+// Red if validate refuses log on a Go hook, or loggable stops being derived from run.sh.
+func TestLogOnMdLinkCheckIsAccepted(t *testing.T) {
+	r := initWith(t, newRepo(t), "[components]\nmd-link-check = \"log\"\n", shellHookPacks())
+	if r.code != 0 {
+		t.Errorf("code %d err %q", r.code, r.err)
+	}
+}
+
+// Red if a core gate set off is refused instead of warned about, the warning goes to
+// stdout, or the gate stays registered.
+func TestCoreGateOffWarnsOnStderrAndInstallsWithoutIt(t *testing.T) {
+	root := newRepo(t)
+	r := initLevels(t, root, "[components]\nmain-commit-gate = \"off\"\n", nil)
+	if r.code != 0 {
+		t.Fatalf("code %d: %s", r.code, r.err)
+	}
+	want := "lighthouse: main-commit-gate is off — this repo works outside the chain"
+	if !strings.Contains(r.err, want) || strings.Contains(r.out, "outside the chain") {
+		t.Errorf("stderr %q stdout %q", r.err, r.out)
+	}
+	if strings.Contains(read(t, root, ".claude/settings.json"), "main-commit-gate") {
+		t.Error("main-commit-gate still registered")
+	}
+}
+
+// Red if validation moves after planning or writing.
+func TestInitWithBadNameWritesNothing(t *testing.T) {
+	root := newRepo(t)
+	r := initLevels(t, root, "[components]\n\"skill:nope\" = \"off\"\n", nil)
+	if r.code == 0 {
+		t.Fatal("want failure")
+	}
+	for _, p := range []string{".claude", ".lighthouse", "AGENTS.md", "CLAUDE.md"} {
+		if exists(root, p) {
+			t.Errorf("%s was written", p)
+		}
+	}
+}
+
+// Red if validate stops warning on a core gate that is not on.
+func TestValidateWarnsPerCoreGate(t *testing.T) {
+	f := levels.File{Levels: map[string]levels.Table{"strict": {}}, On: levels.CoreGates}
+	w, err := validate([]levels.File{f}, "strict", map[string]levels.Stand{"worktree-check": levels.StandOff, "pr-create-gate": levels.StandLog}, func(string) bool { return true })
+	if err != nil || len(w) != 2 {
+		t.Fatalf("w=%v err=%v", w, err)
+	}
+}
+
+// Red if validate stops refusing off on a skill that an on skill hands over to.
+func TestValidateOffOnCalledSkillIsRefused(t *testing.T) {
+	f := levels.File{
+		Levels: map[string]levels.Table{"strict": {}},
+		On:     []string{"skill:a", "skill:b"},
+		Calls:  map[string][]string{"skill:a": {"skill:b"}},
+	}
+	_, err := validate([]levels.File{f}, "strict", map[string]levels.Stand{"skill:b": levels.StandOff}, func(string) bool { return false })
+	if err == nil || !strings.Contains(err.Error(), "skill:a") || !strings.Contains(err.Error(), "skill:b") {
+		t.Errorf("err %v", err)
+	}
+}
+
+// Red if validate also refuses off on a skill that only an off skill hands over to.
+func TestValidateOffCallerMayCallOffSkill(t *testing.T) {
+	f := levels.File{
+		Levels: map[string]levels.Table{"light": {Components: map[string]levels.Stand{"skill:a": levels.StandOff}}},
+		On:     []string{"skill:b"},
+		Calls:  map[string][]string{"skill:a": {"skill:b"}},
+	}
+	if _, err := validate([]levels.File{f}, "light", map[string]levels.Stand{"skill:b": levels.StandOff}, func(string) bool { return false }); err != nil {
+		t.Errorf("err %v", err)
+	}
+}

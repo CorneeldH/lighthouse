@@ -190,7 +190,7 @@ func execute(o Options) error {
 		return b, ok && err == nil
 	})
 	lvFiles := levelFiles(chosenPacks)
-	resolved, haveLevels, err := resolveLevels(o, root, lvFiles)
+	resolved, haveLevels, err := resolveLevels(o, root, lvFiles, desired)
 	if err != nil {
 		return err
 	}
