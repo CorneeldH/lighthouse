@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/CorneeldH/lighthouse/internal/forge"
+	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 )
 
 func TestSetLabel(t *testing.T) {
@@ -86,6 +87,7 @@ type fakeForge struct {
 	onBoard bool
 	editErr error // returned by EditIssue after it applied AddLabels
 	setErr  error // returned by SetStatus
+	closed  bool  // Issue reports state closed
 
 	edits     []forge.IssueEdit
 	itemCalls int
@@ -96,7 +98,11 @@ func (f *fakeForge) Issue(_ context.Context, nr int) (forge.Issue, error) {
 	if nr != 7 {
 		return forge.Issue{}, errors.New("unexpected issue")
 	}
-	return forge.Issue{Number: 7, State: "open", Labels: slices.Clone(f.labels)}, nil
+	state := "open"
+	if f.closed {
+		state = "closed"
+	}
+	return forge.Issue{Number: 7, State: state, Labels: slices.Clone(f.labels)}, nil
 }
 
 func (f *fakeForge) EditIssue(_ context.Context, nr int, e forge.IssueEdit) (forge.Issue, error) {
@@ -180,5 +186,25 @@ func TestApplyAfterAHalfWriteFinishesTheEdit(t *testing.T) {
 	wantEdits := []forge.IssueEdit{{RemoveLabels: []string{"needs_testing"}}}
 	if !reflect.DeepEqual(f.edits, wantEdits) {
 		t.Errorf("second edits = %#v, want %#v", f.edits, wantEdits)
+	}
+}
+
+func TestBlockingKeyRankAndEmptyNames(t *testing.T) {
+	l := repoconfig.Labels{NeedsShaping: "shape", NeedsDecision: "decide", BlockedIssue: "blocked"}
+	tests := []struct {
+		name  string
+		names []string
+		want  string
+	}{
+		{"none", nil, ""},
+		{"unrelated", []string{"x"}, ""},
+		{"one", []string{"blocked"}, "blocked_issue"},
+		{"rank wins over order", []string{"blocked", "decide", "shape"}, "needs_shaping"},
+		{"empty never matches", []string{""}, ""},
+	}
+	for _, tt := range tests {
+		if got := BlockingKey(tt.names, l); got != tt.want {
+			t.Errorf("%s: BlockingKey(%q) = %q, want %q", tt.name, tt.names, got, tt.want)
+		}
 	}
 }

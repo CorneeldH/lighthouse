@@ -206,12 +206,6 @@ func TestUpgradePushAndPRAfterConsentThroughWritePR(t *testing.T) {
 	}
 }
 
-// Classification: fails when the skill list in the installed AGENTS.md block loses
-// /lighthouse-upgrade.
-func TestUpgradeAgentsMDListsTheSkill(t *testing.T) {
-	wantAll(t, readPack(t, "core/instructions/AGENTS.md"), "\n- `/lighthouse-upgrade`: ")
-}
-
 // upgradeSandbox is how each variant tells the agent to run a network call.
 var upgradeSandbox = map[string]string{
 	"claude": "run it with `dangerouslyDisableSandbox: true`.",

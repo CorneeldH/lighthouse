@@ -31,6 +31,7 @@ type Outcome struct {
 	Marker  protocol.TriageMarker
 	Comment string // starts with the marker line
 	Handoff string // "" unless Row is RowForward and wait_for_night
+	Label   string // key of the label to set ("needs_shaping" for RowDesign); "" is none
 }
 
 // Target is where a forwarded issue is started from.
@@ -49,7 +50,7 @@ func Choose(f Facts, devs []Deviation, g0 *Gate0, j *Judgment, l repoconfig.Labe
 
 	row := RowInvariant
 	if len(devs) == 0 {
-		row = judgedRow(j, g0, f.AuthorTrusted)
+		row = judgedRow(j, g0, f.AuthorTrusted, f.Labels, l)
 	}
 	switch row {
 	case RowInvariant:
@@ -77,6 +78,7 @@ func Choose(f Facts, devs []Deviation, g0 *Gate0, j *Judgment, l repoconfig.Labe
 	case RowDesign:
 		o.Row = RowDesign
 		o.Marker = protocol.TriageMarker{Gate: "4c"}
+		o.Label = "needs_shaping"
 		for _, name := range []string{l.NeedsShaping, l.NeedsDecision} {
 			if name != "" && slices.Contains(f.Labels, name) {
 				o.Marker.Label, o.Marker.Stop = name, true
@@ -89,7 +91,11 @@ func Choose(f Facts, devs []Deviation, g0 *Gate0, j *Judgment, l repoconfig.Labe
 		o.Row = RowInteractive
 		o.Marker = protocol.TriageMarker{Gate: gateOf(j, g0)}
 		route = routeLine(j, g0)
-		body = append(body, h("triage_interactive")+" "+modelText(j.HeadlessReason))
+		if name := l.NeedsName(f.Labels); j.Headless && name != "" {
+			body = append(body, h("triage_needs_label")+" "+name)
+		} else {
+			body = append(body, h("triage_interactive")+" "+modelText(j.HeadlessReason))
+		}
 	case RowUntrusted:
 		o.Row = RowUntrusted
 		o.Marker = protocol.TriageMarker{Gate: gateOf(j, g0)}
@@ -123,7 +129,9 @@ func Choose(f Facts, devs []Deviation, g0 *Gate0, j *Judgment, l repoconfig.Labe
 }
 
 // judgedRow is the row of a valid judgment, never RowInvariant: the first that fits wins.
-func judgedRow(j *Judgment, g0 *Gate0, authorTrusted bool) Row {
+// An issue that carries a needs_* label is never forwarded: a human owns it, so it ends as
+// RowInteractive, before the author check.
+func judgedRow(j *Judgment, g0 *Gate0, authorTrusted bool, labels []string, l repoconfig.Labels) Row {
 	switch {
 	case j.Redundancy == "duplicate" || j.Redundancy == "done":
 		return RowRedundant
@@ -131,7 +139,7 @@ func judgedRow(j *Judgment, g0 *Gate0, authorTrusted bool) Row {
 		return RowStop
 	case j.Gate == 4 && j.Sub == "c":
 		return RowDesign
-	case !j.Headless:
+	case !j.Headless, l.NeedsName(labels) != "":
 		return RowInteractive
 	case !authorTrusted:
 		return RowUntrusted

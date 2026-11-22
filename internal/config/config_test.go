@@ -119,6 +119,31 @@ func TestLookupErrorKinds(t *testing.T) {
 	}
 }
 
+// TestStatusOptionsWithoutOnHoldValid pins that On hold is not a required status option: a board
+// with only To do, In progress and Done loads. It goes red when "On hold" returns to
+// requiredStatusOptions.
+func TestStatusOptionsWithoutOnHoldValid(t *testing.T) {
+	src := `[forge]
+kind = "github"
+repo = "acme/widgets"
+[forge.board]
+project_number = 7
+project_id = "PVT_x"
+status_field_id = "PVTSSF_s"
+[forge.board.status_options]
+"To do" = "a1"
+"In progress" = "a2"
+Done = "a3"
+`
+	c, err := Parse([]byte(src), "lighthouse.toml")
+	if err != nil {
+		t.Fatalf("Parse without On hold: %v", err)
+	}
+	if _, ok := c.Board.StatusOptions["On hold"]; ok {
+		t.Errorf("StatusOptions = %v, want no On hold", c.Board.StatusOptions)
+	}
+}
+
 func TestParseFillsConfig(t *testing.T) {
 	src := `[forge]
 kind = "github"
@@ -458,7 +483,7 @@ func TestInstallDocGitLabExampleParses(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Parse(install.md example) = %v\n%s", err, src)
 		}
-		want := map[string]string{"To do": "To do", "In progress": "In progress", "Done": "Done", "On hold": "On hold", "Controller": "Controller"}
+		want := map[string]string{"To do": "To do", "In progress": "In progress", "Done": "Done", "Controller": "Controller"}
 		if c.Board == nil || !reflect.DeepEqual(c.Board.StatusOptions, want) {
 			t.Errorf("status_options = %v, want %v", c.Board, want)
 		}

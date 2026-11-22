@@ -47,6 +47,10 @@ type GitHub struct {
 	HTTP                 *http.Client
 	// Board is the [forge.board] of the repo; nil makes every board method fail.
 	Board *repoconfig.Board
+	// EnrichMemo makes enrich remember the Mergeable and Checks of an open pull request per
+	// (repo, number, head) for the life of the client, so a tick asks each once. Only a client
+	// that lives one tick sets it; a long-lived one (serve, the pusher) must read them fresh.
+	EnrichMemo bool
 
 	cache CacheStore // nil: none; do drops an entry whose body does not decode
 
@@ -58,6 +62,8 @@ type GitHub struct {
 	// filled by listItems and AddToBoard.
 	itemIDs    map[string]int64
 	issueItems map[issueKey]int64
+	// enriched is what enrich read per pull request while EnrichMemo is set.
+	enriched map[prKey]enrichedPR
 }
 
 // DefaultBaseURL is the GitHub API root.

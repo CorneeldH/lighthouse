@@ -119,7 +119,7 @@ func forgeReposWith(hostToml, repo string, o *forgeOpener, errOut io.Writer) (so
 			skip(repo, err)
 			return nil, []string{repo}, nil
 		}
-		return []overview.RepoSource{{Slug: repo, Src: rf.Forge}}, []string{repo}, nil
+		return []overview.RepoSource{{Slug: repo, Src: rf.Forge, Labels: repoconfig.DefaultLabels()}}, []string{repo}, nil
 	}
 	for _, l := range repoconfig.LoadAll(cfg.Repos) {
 		path, r := l.Path, l.Repo
@@ -135,7 +135,7 @@ func forgeReposWith(hostToml, repo string, o *forgeOpener, errOut io.Writer) (so
 			skip(path, err)
 			continue
 		}
-		src := overview.RepoSource{Slug: r.Slug, Src: rf.Forge, Board: r.Board != nil,
+		src := overview.RepoSource{Slug: r.Slug, Src: rf.Forge, Labels: r.Labels, Board: r.Board != nil,
 			Controller: r.Board != nil && r.Board.StatusOptions["Controller"] != ""}
 		if src.Board && !src.Controller {
 			_, _ = fmt.Fprintf(errOut, "lighthouse: %s: missing forge.board.status_options.Controller: overview shows every open issue\n", path)
@@ -209,7 +209,7 @@ func serve(ctx context.Context, addr, dbPath string, repos []overview.RepoSource
 	read, stopped := startOverview(refreshCtx, repos, interval)
 	prioSrcs := make([]priorities.Source, 0, len(repos))
 	for _, r := range repos {
-		prioSrcs = append(prioSrcs, priorities.Source{Slug: r.Slug, Src: r.Src})
+		prioSrcs = append(prioSrcs, priorities.Source{Slug: r.Slug, Src: r.Src, Labels: r.Labels})
 	}
 	prioRead, prioStopped := startPriorities(refreshCtx, prioSrcs, read, prioInterval)
 	srv := &http.Server{Handler: server.New(web.FS(), server.Deps{
@@ -277,7 +277,7 @@ func startPriorities(ctx context.Context, srcs []priorities.Source, overviewRead
 		if err != nil {
 			return nil, err
 		}
-		return priorities.Build(ctx, srcs, ov.Statuses)
+		return priorities.Build(ctx, srcs, ov)
 	}
 	// A failed planning read costs API points, so it retries at PrioritiesRetry, not RefreshRetry.
 	return startRefresher(ctx, len(srcs) > 0, build, interval, server.PrioritiesRetry)

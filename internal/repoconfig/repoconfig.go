@@ -61,6 +61,16 @@ func (l Labels) Blocking() []string {
 	return []string{l.BlockedIssue, l.BlockedExternal, l.NeedsShaping, l.NeedsDecision, l.NeedsHands, l.NeedsTesting}
 }
 
+// NeedsName returns the first of the four needs_* label names that labels carries, "" when none.
+func (l Labels) NeedsName(labels []string) string {
+	for _, name := range []string{l.NeedsShaping, l.NeedsDecision, l.NeedsHands, l.NeedsTesting} {
+		if name != "" && slices.Contains(labels, name) {
+			return name
+		}
+	}
+	return ""
+}
+
 // Triage is [controller.triage]. Load fills the defaults: MilestonesOnly and WaitForNight
 // true, MaxForwarded 5, MaxJudgments 15.
 type Triage struct {
@@ -140,6 +150,19 @@ type rawFile struct {
 	} `toml:"usage_guard"`
 	Report   toml.Primitive `toml:"report"`
 	Schedule []rawSchedule  `toml:"schedule"`
+}
+
+// DefaultLabels are the blocking label names of a repo without a repo config: the defaults of
+// internal/config. The location and area prefixes have no default.
+func DefaultLabels() Labels {
+	return Labels{
+		BlockedIssue:    defaultString("labels.blocked_issue"),
+		BlockedExternal: defaultString("labels.blocked_external"),
+		NeedsShaping:    defaultString("labels.needs_shaping"),
+		NeedsDecision:   defaultString("labels.needs_decision"),
+		NeedsHands:      defaultString("labels.needs_hands"),
+		NeedsTesting:    defaultString("labels.needs_testing"),
+	}
 }
 
 // defaultString is the default of key from internal/config, the one source of defaults.
@@ -368,7 +391,7 @@ func Dispatchable(r Repo) error {
 				add("forge.board.status_field_id is empty")
 			}
 		}
-		for _, name := range []string{"Controller", "On hold"} {
+		for _, name := range []string{"Controller"} {
 			if b.StatusOptions[name] == "" {
 				add("missing forge.board.status_options.%s", name)
 			}

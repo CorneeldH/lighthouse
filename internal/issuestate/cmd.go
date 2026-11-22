@@ -2,6 +2,7 @@ package issuestate
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"slices"
@@ -56,6 +57,11 @@ func open(ctx context.Context, env Env, out io.Writer) (target, int) {
 		return target{}, 2
 	}
 	f, err := env.Forge(ctx)
+	var te *forge.TokenError
+	if errors.As(err, &te) {
+		fail(out, err, "")
+		return target{}, 2
+	}
 	if err != nil {
 		return target{}, fail(out, err, "")
 	}
@@ -133,6 +139,19 @@ func (t target) input(ctx context.Context, env Env, nr int) (Input, error) {
 	return in, nil
 }
 
+// refuseClosed reads only the issue and, when it is closed, writes the error line and returns
+// exit 1: a closed issue gets no label and no board move. It returns 0 for an open issue.
+func (t target) refuseClosed(ctx context.Context, nr int, out io.Writer) int {
+	is, err := t.f.Issue(ctx, nr)
+	if err != nil {
+		return fail(out, err, "")
+	}
+	if is.State == "closed" {
+		return fail(out, fmt.Errorf("issue #%d is closed", nr), "")
+	}
+	return 0
+}
+
 // labelLine is `label: #<nr> <winner> (+<add>, -<remove>)`, or `label: #<nr> keeps <winner>`
 // without an edit.
 func labelLine(nr int, e LabelEdit) string {
@@ -171,6 +190,9 @@ func Label(ctx context.Context, env Env, nrArg, keyArg string, out io.Writer) in
 	if code != 0 {
 		return code
 	}
+	if code := t.refuseClosed(ctx, nr, out); code != 0 {
+		return code
+	}
 	e, err := Apply(ctx, t.f, nr, keyArg, t.labels)
 	if err != nil {
 		return labelFailure(out, e, err)
@@ -187,6 +209,9 @@ func GiveBack(ctx context.Context, env Env, nrArg, keyArg string, out io.Writer)
 	}
 	t, code := open(ctx, env, out)
 	if code != 0 {
+		return code
+	}
+	if code := t.refuseClosed(ctx, nr, out); code != 0 {
 		return code
 	}
 	r, err := Return(ctx, t.f, nr, keyArg, t.labels, t.cfg.Board != nil)

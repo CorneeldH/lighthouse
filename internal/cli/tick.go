@@ -294,9 +294,11 @@ type openedForge struct {
 // openForges opens, without output, the forge of each repo in loaded that loaded and is
 // dispatchable; the others carry their load, duplicate-slug or Dispatchable error. When no repo
 // gets a forge it returns the first token error. When no repo needed a forge, a GitHub token
-// must still be set, as before forges were per repo.
+// must still be set, as before forges were per repo. Its GitHub clients live one tick, so they
+// remember each enrichment of an open pull request (forge.GitHub.EnrichMemo).
 func openForges(ctx context.Context, env tickEnv, loaded []repoconfig.Loaded) ([]openedForge, error) {
 	o := newForgeOpener(env.Getenv, env.ForgeURL)
+	o.enrichMemo = true
 	out := make([]openedForge, len(loaded))
 	var tally openTally
 	for i, l := range loaded {
@@ -438,7 +440,7 @@ func sweepOne(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispa
 	}
 	in := workplace.SweepInput{
 		Repo:         sr.repo.Slug,
-		InController: dispatch.InController(sr.pre.Statuses),
+		InController: dispatch.InController(sr.pre),
 		MergedHead: func(ctx context.Context, branch string) (string, error) {
 			prs, err := f.BranchPRs(ctx, branch)
 			if err != nil {
@@ -537,6 +539,7 @@ func applyActions(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.D
 		ScheduledJob: scheduledJob(env, db, repos),
 		Remote:       scheduledRemote(env, dir, repos),
 		RoundLimit:   func(slug string) string { return repos[slug].Controller.AtRoundLimit },
+		Labels:       func(slug string) repoconfig.Labels { return repos[slug].Labels },
 		StateDir:     dir,
 		MarkerDir:    markerDir,
 		RemoveMarker: func(session, key string) error {
@@ -585,7 +588,7 @@ func (p prefixed) Write(b []byte) (int, error) {
 // gather writes one gathered line to errOut. rf is the forge of repo.
 func gatherRepo(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispatch, facts hostFacts, repo repoconfig.Repo,
 	rf repoForge, errOut io.Writer) (in *dispatch.RepoInput, fp string, _ *dispatch.Pre, err error) {
-	pre, err := measuredPre(ctx, env, db, cfg, rf.Forge, repo, errOut)
+	pre, err := measuredPre(ctx, env, db, cfg, rf, repo, errOut)
 	if err != nil {
 		return nil, "", nil, err
 	}
@@ -611,8 +614,11 @@ func gatherRepo(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dis
 }
 
 // prepare is the board half of a gather: the open runs, the branch of each issue's last run,
-// and the board with the PRs of those branches.
-func prepare(ctx context.Context, db *sql.DB, f forge.Forge, repo repoconfig.Repo) (dispatch.Pre, error) {
+// and the board with the PRs of those branches. The To do marks of the last precheck spare the
+// comment reads of unchanged To do items (dispatch.ToDoProbe); with save, prepare saves the
+// marks when they changed, so the next precheck reads none on an unchanged board.
+func prepare(ctx context.Context, db *sql.DB, cfg hostconfig.Dispatch, rf repoForge, repo repoconfig.Repo,
+	save bool, now time.Time) (dispatch.Pre, error) {
 	open, err := runs.Open(ctx, db, repo.Slug)
 	if err != nil {
 		return dispatch.Pre{}, err
@@ -621,19 +627,33 @@ func prepare(ctx context.Context, db *sql.DB, f forge.Forge, repo repoconfig.Rep
 	if err != nil {
 		return dispatch.Pre{}, err
 	}
-	return dispatch.Prepare(ctx, f, repo, open, dispatch.IssueBranches(history))
+	state, err := dispatch.LoadTickState(ctx, db, repo.Slug)
+	if err != nil {
+		return dispatch.Pre{}, err
+	}
+	probe := dispatch.ToDoProbe{Known: state.ToDo, TokenLogin: rf.who, Trust: dispatch.NewTrust(rf.Forge, cfg.AnswerPermissions)}
+	pre, err := dispatch.Prepare(ctx, rf.Forge, repo, open, dispatch.IssueBranches(history), probe)
+	if err != nil {
+		return dispatch.Pre{}, err
+	}
+	if save && !dispatch.SameToDo(state.ToDo, pre.ToDo) {
+		if err := dispatch.SaveToDo(ctx, db, repo.Slug, pre.ToDo, now); err != nil {
+			return dispatch.Pre{}, err
+		}
+	}
+	return pre, nil
 }
 
 // measuredPre is the precheck half of a gather that tick and `lighthouse run` share: it
 // adopts the sessions of uncertain starts, reads the board half (prepare), and measures the
 // open runs. Adoption comes first, so the open runs prepare reads already hold a session that
 // showed up in this tick.
-func measuredPre(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispatch, f forge.Forge,
+func measuredPre(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispatch, rf repoForge,
 	repo repoconfig.Repo, errOut io.Writer) (dispatch.Pre, error) {
 	if err := adopt(ctx, env, db, cfg, repo, errOut); err != nil {
 		return dispatch.Pre{}, err
 	}
-	pre, err := prepare(ctx, db, f, repo)
+	pre, err := prepare(ctx, db, cfg, rf, repo, true, env.now())
 	if err != nil {
 		return dispatch.Pre{}, err
 	}
@@ -847,8 +867,8 @@ func repoInput(ctx context.Context, db *sql.DB, cfg hostconfig.Dispatch, f forge
 	}
 	return dispatch.RepoInput{
 		Snapshot: snap, Controller: *pre.Repo.Controller, Language: pre.Repo.Language,
-		LocationPrefix: pre.Repo.Labels.LocationPrefix,
-		DefaultBranch:  pre.Repo.DefaultBranch, Installed: installed, History: history, Stands: pre.Stands, Runs: pre.Runs,
+		LocationPrefix: pre.Repo.Labels.LocationPrefix, Labels: pre.Repo.Labels,
+		DefaultBranch: pre.Repo.DefaultBranch, Installed: installed, History: history, Stands: pre.Stands, Runs: pre.Runs,
 		Markers:      pre.Markers,
 		WorkflowPush: cfg.WorkflowPush != nil, PushTimeout: dispatch.PushTimeout(cfg),
 	}, nil
