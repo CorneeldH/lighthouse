@@ -12,7 +12,7 @@ die grenzen in `[host]` van `host.toml`, en het project vraagt alleen.
 | Waarde | Gedrag |
 |---|---|
 | `commit` (standaard) | na elke commit, zoals voorheen |
-| `pr` | alleen vóór een `gh pr create` (ook `glab mr create` en `forge pr create`) |
+| `pr` | alleen vóór een `gh pr create` (ook `glab mr create` en `lighthouse forge pr create`) |
 | `both` | bij beide momenten |
 
 Bij `pr` draait de gate op de branch-diff: de commits van `merge-base origin/<default branch> HEAD`
@@ -33,9 +33,7 @@ dan `pr`: je betaalt één keer per PR in plaats van bij elke commit.
 
 De managed-blocktekst in `AGENTS.md` blijft binnen het woordbudget van het core-blok en zegt daarom
 kort: `commit-test-gate runs [test_gate] command per [test_gate] on; fix red in a new commit.`
-Wat `on` doet, staat hier. Het
-changelogfragment staat in
-[`changelog.d/issue-495-test-gate-on-knop.md`](../changelog.d/issue-495-test-gate-on-knop.md).
+Wat `on` doet, staat hier.
 
 ## Sleutels in `[host]`
 
