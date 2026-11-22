@@ -191,6 +191,10 @@ en = "the run that wrote this handoff ran on another host than the pusher"
 nl = "pusher reageerde niet"
 en = "pusher did not respond"
 
+[reason_pusher_red]
+nl = "workflow-pusher rood"
+en = "workflow pusher red"
+
 [reason_pusher_no_handoff]
 nl = "de pusher pushte, maar er kwam geen handoff of PR"
 en = "the pusher pushed, but no handoff or PR followed"
@@ -228,16 +232,16 @@ nl = "De worktree staat niet meer op de SHA waarvoor je toestemming gaf. Een ant
 en = "The worktree is no longer on the SHA you permitted. An answer `push` gives this Question again: have the new commits reviewed through a new handoff, or push by hand."
 
 [question_push_manual]
-nl = "Een antwoord `push` start hier niets. Push met de hand, of laat het werk repareren en een nieuwe handoff schrijven."
-en = "An answer `push` starts nothing here. Push by hand, or have the work repaired and a new handoff written."
+nl = "Push met de hand, of laat het werk repareren en een nieuwe handoff schrijven."
+en = "Push by hand, or have the work repaired and a new handoff written."
 
 [question_push_token_refused]
 nl = "de forge weigerde het workflow-token voor deze wijziging (de rechten van het token); zie het tokenbestand van [dispatch.workflow_push]"
 en = "the forge refused the workflow token for this change (the token's permissions); see the token file of [dispatch.workflow_push]"
 
 [question_merge_manual]
-nl = "Een antwoord `push` start hier niets. Merge de PR met de hand als de wijziging klopt, of laat het werk repareren."
-en = "An answer `push` starts nothing here. Merge the PR by hand if the change is right, or have the work repaired."
+nl = "Merge de PR met de hand als de wijziging klopt, of laat het werk repareren."
+en = "Merge the PR by hand if the change is right, or have the work repaired."
 
 [question_merge_command]
 nl = "Zelf mergen"
