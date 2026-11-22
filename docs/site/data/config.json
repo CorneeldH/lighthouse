@@ -1026,7 +1026,9 @@
               "required": "no",
               "default": ".claude/worktrees",
               "about": "The folder the worktrees live in: relative to the main checkout, or absolute.",
-              "readers": []
+              "readers": [
+                "internal/worktreeroot/worktreeroot.go"
+              ]
             }
           ]
         },
