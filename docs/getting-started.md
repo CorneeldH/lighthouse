@@ -230,7 +230,7 @@ What happens within one turn, which skill joins in and which hook steps in, is o
 1. **Write the issue.** Type `/lighthouse-write-issue` and describe the change. You get an issue
    on GitHub with acceptance criteria, in `project.language`.
 2. **Start on it.** Type `/lighthouse-start-issue <nr>`. You see a worktree under
-   `.claude/worktrees/` on a branch `issue-<nr>-<slug>`, and one route line:
+   the worktree root (`.claude/worktrees/` unless `[worktree] root` says otherwise) on a branch `issue-<nr>-<slug>`, and one route line:
    `#<nr> Gate <n>[a|b|c]: <route> — <reason>`. Gate `4a` builds directly. Gate `4b` writes a
    plan first and gate `4c` a spec first; both end in a handoff, a start command for a fresh
    session.

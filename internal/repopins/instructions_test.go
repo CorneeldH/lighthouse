@@ -56,7 +56,7 @@ func TestClaudeMDImportsAgentsMD(t *testing.T) {
 // the escape hatch, so an agent no longer learns how the gates work.
 func TestAgentsMDNamesTheGuardsAndTheEscapeHatch(t *testing.T) {
 	requireTokens(t, read(t, "AGENTS.md"),
-		"main-commit-gate", "worktree-check", ".claude/allow-main", ".claude/worktrees/")
+		"main-commit-gate", "worktree-check", ".claude/allow-main", "worktree.root")
 }
 
 // A production change that fails this test: the core block grows past 182 words or drops a
