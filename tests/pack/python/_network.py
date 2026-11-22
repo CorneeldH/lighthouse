@@ -2,7 +2,7 @@
 
 Some tests reach the network through a tool: `uvx` fetches ruff or ty, the shellcheck lib
 downloads its pinned release with curl. On a runner without DNS for a moment, such a test
-fails on the runner, not on lighthouse. `tests/pack/conftest.py` turns such a failure into a skip
+fails on the runner, not on lighthouse. `tests/pack/python/conftest.py` turns such a failure into a skip
 whose reason is the line of the tool that names the network error, but only when the runner
 is offline at that moment: `offline()` must fail to reach a probe target. With the network up,
 a failure that names a network error stays red: then it is no blip of the runner.
