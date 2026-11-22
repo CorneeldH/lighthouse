@@ -5,12 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/config"
 	"github.com/CorneeldH/lighthouse/internal/orderedjson"
+	"github.com/CorneeldH/lighthouse/internal/park"
 	"github.com/CorneeldH/lighthouse/internal/usage"
 	"github.com/CorneeldH/lighthouse/internal/workflowguard"
 )
@@ -42,23 +44,58 @@ func budgetFrom(read func(context.Context, time.Duration) (usage.CodexState, err
 	}
 }
 
-// budgetSkip is the skip reason when Codex may not be used, else "".
-func budgetSkip(budget Budget) string {
+// ClaudeAlarm reads the current Claude usage alarm: the alarm and whether one touches.
+type ClaudeAlarm func() (usage.Alarm, bool)
+
+// DefaultClaudeAlarm reads the usage meter files. When the paths cannot be resolved there is no
+// alarm, as in the usage gate.
+func DefaultClaudeAlarm() ClaudeAlarm {
+	return func() (usage.Alarm, bool) {
+		paths, err := usage.DefaultPaths()
+		if err != nil {
+			return usage.Alarm{}, false
+		}
+		return paths.CurrentAlarm(time.Now(), park.ControllerRun(os.Getenv))
+	}
+}
+
+// reviewAgent picks the agent of the review: `codex`, `claude-code` (Codex budget says fallback,
+// claude is on PATH and no Claude alarm touches) or none, with the skip reason. Exactly one of
+// the two results is not empty.
+func reviewAgent(budget Budget, alarm ClaudeAlarm) (agent, reason string) {
 	code, out := budget()
 	unreadable := fmt.Sprintf("Codex-budget: onleesbaar - exit %d", code)
 	var data map[string]any
 	if json.Unmarshal([]byte(out), &data) != nil {
-		return unreadable
+		return "", withAlarm(unreadable, alarm)
 	}
 	decision, okD := data["decision"]
-	reason, okR := data["reason"]
+	reasonV, okR := data["reason"]
 	if !okD || !okR || (code != 0 && code != 6) {
-		return unreadable
+		return "", withAlarm(unreadable, alarm)
 	}
 	if decision == "codex" && code == 0 {
-		return ""
+		return "codex", ""
 	}
-	return fmt.Sprintf("Codex-budget: %s - %s", pyStr(decision), pyStr(reason))
+	skip := fmt.Sprintf("Codex-budget: %s - %s", pyStr(decision), pyStr(reasonV))
+	if decision != "fallback" || code != 6 {
+		return "", withAlarm(skip, alarm)
+	}
+	if _, err := exec.LookPath("claude"); err != nil {
+		return "", skip + "; geen claude op PATH"
+	}
+	if a, ok := alarm(); ok {
+		return "", fmt.Sprintf("%s; Claude-alarm: %s %d%%", skip, a.Kind, a.Pct)
+	}
+	return "claude-code", ""
+}
+
+// withAlarm names the Claude alarm in a skip reason when one touches.
+func withAlarm(reason string, alarm ClaudeAlarm) string {
+	if a, ok := alarm(); ok {
+		return fmt.Sprintf("%s; Claude-alarm: %s %d%%", reason, a.Kind, a.Pct)
+	}
+	return reason
 }
 
 // settings are the two config values the gate reads.
@@ -90,8 +127,8 @@ func base(root string) (string, error) {
 // verdict except off carries `state` and `raw`, the absolute paths of <stem>.json and <stem>.md.
 // A skip is written to the state file at once, so a restart repeats the reason instead of
 // deciding again on a budget that may have moved.
-func Gate(root string, budget Budget) (*orderedjson.Object, error) {
-	return gate(root, budget, false)
+func Gate(root string, budget Budget, alarm ClaudeAlarm) (*orderedjson.Object, error) {
+	return gate(root, budget, alarm, false)
 }
 
 // GatePush is Gate for a branch whose workflow changes the workflow pusher pushes: it reviews the
@@ -99,11 +136,11 @@ func Gate(root string, budget Budget) (*orderedjson.Object, error) {
 // as workflow-push-gate measures it) without the code-line threshold, and reads and writes only
 // the push record `push-<head>.json` (raw review `push-<head>.md`). Every other skip reason stays
 // a skip, which the pusher counts red.
-func GatePush(root string, budget Budget) (*orderedjson.Object, error) {
-	return gate(root, budget, true)
+func GatePush(root string, budget Budget, alarm ClaudeAlarm) (*orderedjson.Object, error) {
+	return gate(root, budget, alarm, true)
 }
 
-func gate(root string, budget Budget, push bool) (*orderedjson.Object, error) {
+func gate(root string, budget Budget, alarm ClaudeAlarm, push bool) (*orderedjson.Object, error) {
 	setting, defaultBranch, err := settings(root)
 	if err != nil {
 		return nil, err
@@ -168,7 +205,7 @@ func gate(root string, budget Budget, push bool) (*orderedjson.Object, error) {
 	lines := CountCodeLines(numstat)
 	rng := start + ".." + head
 
-	var reason string
+	var reason, agent string
 	_, noRoborev := exec.LookPath("roborev")
 	_, noCodex := exec.LookPath("codex")
 	switch {
@@ -179,7 +216,7 @@ func gate(root string, budget Budget, push bool) (*orderedjson.Object, error) {
 	case !push && lines < Threshold:
 		reason = fmt.Sprintf("%d coderegels (drempel %d)", lines, Threshold)
 	default:
-		reason = budgetSkip(budget)
+		agent, reason = reviewAgent(budget, alarm)
 	}
 	if reason != "" {
 		skip := orderedjson.NewObject()
@@ -196,6 +233,9 @@ func gate(root string, budget Budget, push bool) (*orderedjson.Object, error) {
 	out.Set("verdict", "run")
 	out.Set("range", rng)
 	out.Set("lines", lines)
+	if agent != "" {
+		out.Set("agent", agent)
+	}
 	return withPaths(out), nil
 }
 

@@ -8,6 +8,7 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/orderedjson"
 	"github.com/CorneeldH/lighthouse/internal/roborev"
+	"github.com/CorneeldH/lighthouse/internal/usage"
 )
 
 // pushReviewFixture is the fixture with the branch on origin, one unpushed fix commit, a
@@ -51,7 +52,7 @@ func TestRoborevPushRecordRoundTrip(t *testing.T) {
 	f := pushReviewFixture(t)
 	head := f.head()
 
-	out, err := roborev.GatePush(f.wt, codexOK)
+	out, err := roborev.GatePush(f.wt, codexOK, noClaudeAlarm)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +81,7 @@ func TestRoborevPushSkipRecordIsRed(t *testing.T) {
 	if err := os.Remove(filepath.Join(f.wt, ".roborev.toml")); err != nil {
 		t.Fatal(err)
 	}
-	out, err := roborev.GatePush(f.wt, codexOK)
+	out, err := roborev.GatePush(f.wt, codexOK, noClaudeAlarm)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,3 +123,5 @@ func TestRoborevBodyLinePushAgreesWithCheck5(t *testing.T) {
 		})
 	}
 }
+
+func noClaudeAlarm() (usage.Alarm, bool) { return usage.Alarm{}, false }

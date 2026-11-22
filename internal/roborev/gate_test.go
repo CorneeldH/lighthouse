@@ -113,7 +113,7 @@ func TestRoborevGatePushSkipsThreshold(t *testing.T) {
 	head := r.git(r.root, "rev-parse", "HEAD")
 	pushed := r.git(r.root, "rev-parse", "origin/feat")
 
-	out, err := GatePush(r.root, codexBudget)
+	out, err := GatePush(r.root, codexBudget, noAlarm)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +144,7 @@ func TestRoborevGatePushSkipIsRecorded(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out, err := GatePush(r.root, codexBudget)
+	out, err := GatePush(r.root, codexBudget, noAlarm)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -171,7 +171,7 @@ func TestRoborevGatePushIgnoresBranchRecord(t *testing.T) {
 	branchRecord := filepath.Join(r.stateDir(), "feat.json")
 	r.writeAbs(branchRecord, `{"range": "a..b", "uitkomst": "done", "sha": "`+head+`", "bevindingen": []}`)
 
-	out, err := GatePush(r.root, codexBudget)
+	out, err := GatePush(r.root, codexBudget, noAlarm)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -190,7 +190,7 @@ func TestRoborevGatePushReturnsItsOwnRecord(t *testing.T) {
 	r.writeAbs(filepath.Join(r.stateDir(), "push-"+head+".json"),
 		`{"range": "a..b", "uitkomst": "done", "sha": "`+head+`", "bevindingen": []}`)
 
-	out, err := GatePush(r.root, codexBudget)
+	out, err := GatePush(r.root, codexBudget, noAlarm)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -211,7 +211,7 @@ func TestRoborevGatePushRangeFromMergeBase(t *testing.T) {
 	head := r.git(r.root, "rev-parse", "HEAD")
 	base := r.git(r.root, "rev-parse", "origin/main")
 
-	out, err := GatePush(r.root, codexBudget)
+	out, err := GatePush(r.root, codexBudget, noAlarm)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -227,7 +227,7 @@ func TestRoborevGateKeepsThreshold(t *testing.T) {
 	r.git(r.root, "reset", "-q", "--hard", "origin/main")
 	r.commitLines("fix.go", 3)
 
-	out, err := Gate(r.root, codexBudget)
+	out, err := Gate(r.root, codexBudget, noAlarm)
 	if err != nil {
 		t.Fatal(err)
 	}
