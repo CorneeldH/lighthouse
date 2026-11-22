@@ -171,6 +171,18 @@ func TestLevelWithoutComponentsFile(t *testing.T) {
 	}
 }
 
+// Classification: a cli-output change; the surface is the first line when lighthouse.toml sets a
+// level but components.toml is absent. It fails when the command claims "no level set" while the
+// file names one, or does not point to init --upgrade.
+func TestLevelFromTomlWithoutComponentsFile(t *testing.T) {
+	levelRepo(t, nil, "level = \"standard\"\n")
+	out, errOut, code := runLevel(t)
+	want := "level: standard (not installed yet; run lighthouse init --upgrade)\n"
+	if code != 0 || errOut != "" || out != want {
+		t.Errorf("code %d out %q err %q, want %q", code, out, errOut, want)
+	}
+}
+
 // Classification: a cli-output change; the surface is the exit code and the message for an unknown
 // level in lighthouse.toml. It fails when the command does not validate with init's validate (no
 // list of valid names) or exits 0.

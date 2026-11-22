@@ -50,6 +50,7 @@ func showLevel(out io.Writer) error {
 	if err != nil {
 		return err
 	}
+	tomlLevel := level
 	if level == "" {
 		level = installed.Level
 	}
@@ -61,7 +62,11 @@ func showLevel(out io.Writer) error {
 		return err
 	}
 	if !found {
-		_, _ = fmt.Fprintln(out, "level: strict (no level set)")
+		if tomlLevel != "" {
+			_, _ = fmt.Fprintf(out, "level: %s (not installed yet; run lighthouse init --upgrade)\n", tomlLevel)
+		} else {
+			_, _ = fmt.Fprintln(out, "level: strict (no level set)")
+		}
 		return nil
 	}
 	return writeLevel(out, root, installed, files)
