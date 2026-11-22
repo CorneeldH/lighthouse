@@ -51,6 +51,9 @@ type RepoInput struct {
 	// Markers are the controller markers whose session's last run is in this repo, resumable
 	// or not.
 	Markers []park.Marker `json:"markers"`
+	// Unreadable are the sessions with a marker file the controller cannot read: parked, but not
+	// until when (#513).
+	Unreadable []string `json:"unreadable,omitempty"`
 	// WorkflowPush is whether host.toml has [dispatch.workflow_push]; without it a push handoff
 	// goes back as a 🤖 Teruggegeven. PushTimeout is its timeout.
 	WorkflowPush bool          `json:"workflow_push,omitempty"`
@@ -602,19 +605,20 @@ type fixPRStart struct {
 
 // runCtx is what the measurement rules of one open run read.
 type runCtx struct {
-	in       Input
-	it       Item
-	row      runs.Row
-	base     Action
-	open     runs.OpenRun // the snapshot's open run of row; zero when it has none
-	state    RunState
-	measured bool // the run is in RepoInput.Runs
-	stand    workplace.Stand
-	hasStand bool
-	handoff  bool          // a Handoff stands from row's start on
-	markers  []park.Marker // the repo's resume markers
-	history  []runs.Row    // the repo's runs, open and closed
-	trunk    string        // the repo's default branch
+	in         Input
+	it         Item
+	row        runs.Row
+	base       Action
+	open       runs.OpenRun // the snapshot's open run of row; zero when it has none
+	state      RunState
+	measured   bool // the run is in RepoInput.Runs
+	stand      workplace.Stand
+	hasStand   bool
+	handoff    bool          // a Handoff stands from row's start on
+	markers    []park.Marker // the repo's resume markers
+	unreadable []string      // sessions with a marker file that does not read
+	history    []runs.Row    // the repo's runs, open and closed
+	trunk      string        // the repo's default branch
 	// pushTimeout is RepoInput.PushTimeout: how long a push row may stay open before it pushed.
 	pushTimeout time.Duration
 	// workflowPush is RepoInput.WorkflowPush: the pusher, also the merge pusher, is configured.
@@ -622,7 +626,7 @@ type runCtx struct {
 }
 
 func newRunCtx(in Input, repo RepoInput, it Item, row runs.Row, base Action) runCtx {
-	c := runCtx{in: in, it: it, row: row, base: base, markers: repo.Markers, history: repo.History,
+	c := runCtx{in: in, it: it, row: row, base: base, markers: repo.Markers, unreadable: repo.Unreadable, history: repo.History,
 		trunk: repo.DefaultBranch, pushTimeout: repo.PushTimeout, workflowPush: repo.WorkflowPush}
 	for _, o := range repo.Snapshot.OpenRuns {
 		if o.ID == row.ID {
@@ -645,7 +649,7 @@ func (c runCtx) outcome() (Action, bool, *fixPRStart) {
 	rules := []func() (Action, bool, *fixPRStart){
 		noStart(c.parked), noStart(c.merged), noStart(c.closedIssue), c.mergeReady, noStart(c.green),
 		noStart(c.gone), noStart(c.unknownCommand), noStart(c.didNothing), noStart(c.prClosed), noStart(c.prDraft),
-		c.fixPR, noStart(c.endNoPR), noStart(c.postFailed), noStart(c.noHandoff), noStart(c.uncertain),
+		c.fixPR, noStart(c.endNoPR), noStart(c.postFailed), noStart(c.markerUnreadable), noStart(c.noHandoff), noStart(c.uncertain),
 		noStart(c.permission), noStart(c.silent), noStart(c.silentForge), noStart(c.timeout),
 	}
 	for _, rule := range rules {
@@ -1018,6 +1022,15 @@ func (c runCtx) noHandoff() (Action, bool) {
 		reason = "reason_closecheck_open"
 	}
 	return c.returned(reason, ""), c.done() && !c.handoff && !anyPR
+}
+
+// markerUnreadable hands back a session that is Done without a PR, Handoff or Question while a
+// marker file of its session exists that the controller cannot read: the usage guard parked it,
+// but "no handoff or question" would be a wrong reason (#513).
+func (c runCtx) markerUnreadable() (Action, bool) {
+	anyPR := c.anyPR(func(forge.PR) bool { return true })
+	return c.returned("reason_park_marker_unreadable", ""),
+		c.done() && !c.handoff && !anyPR && c.row.SessionID != "" && slices.Contains(c.unreadable, c.row.SessionID)
 }
 
 // postFailed is rule 14a: a session Done without a PR, Handoff or Question whose own post of
