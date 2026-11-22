@@ -752,7 +752,7 @@ func (m *runProbe) measure(ctx context.Context, r runs.OpenRun) (stand workplace
 		}
 	}
 	if !s.Gone {
-		if s.Transcript, err = m.transcript(ctx, r); err != nil {
+		if s.Transcript, s.TranscriptUnmeasurable, err = m.transcript(ctx, r); err != nil {
 			return 0, false, dispatch.RunState{}, err
 		}
 	}
@@ -802,23 +802,28 @@ func (m *runProbe) permission(ctx context.Context, r runs.OpenRun) (*dispatch.Pe
 // workplace without transcripts, no transcript directory on this host, no transcript file yet
 // (an uncertain start whose agent never ran), or a transcript without a timestamp.
 // A node that did not answer (workplace.ErrUnanswered) is an error: the run is not measured
-// this tick, so a nil transcript never makes it silent.
-func (m *runProbe) transcript(ctx context.Context, r runs.OpenRun) (*workplace.Transcript, error) {
+// this tick, so a nil transcript never makes it silent. unmeasurable is true when the workplace
+// should hold a transcript but cannot show it (workplace.ErrNotMeasurable): Decide then never
+// reads the nil as "no work after the Stop" (#514).
+func (m *runProbe) transcript(ctx context.Context, r runs.OpenRun) (t *workplace.Transcript, unmeasurable bool, err error) {
 	tr, ok := m.w.(workplace.Transcripts)
 	if !ok {
-		return nil, nil
+		return nil, false, nil
 	}
-	t, err := tr.Transcript(ctx, r.WorkspaceID, r.SessionID)
+	got, err := tr.Transcript(ctx, r.WorkspaceID, r.SessionID)
 	if errors.Is(err, workplace.ErrUnanswered) {
-		return nil, err // the node did not answer: the run is not measurable, never silent
+		return nil, false, err // the node did not answer: the run is not measurable, never silent
 	}
-	if errors.Is(err, workplace.ErrNotMeasurable) || errors.Is(err, fs.ErrNotExist) {
-		return nil, nil
+	if errors.Is(err, workplace.ErrNotMeasurable) {
+		return nil, true, nil
+	}
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, false, nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return &t, nil
+	return &got, false, nil
 }
 
 // decideInput is the Input of one decide over repos, with the limits of host.toml [dispatch],

@@ -69,7 +69,7 @@ func RunViews(pre Pre, open, parked []runs.Brief) []RunView {
 			v.Task, v.Tasks, v.Step = p.Task, p.Tasks, p.Step
 		}
 		if stand, ok := pre.Stands[b.ID]; ok && state == "open" {
-			if stand == workplace.Done && workAfterStop(pre.Runs[b.ID].Transcript) {
+			if stand == workplace.Done && workAfterStop(pre.Runs[b.ID].Transcript, pre.Runs[b.ID].TranscriptUnmeasurable) {
 				stand = workplace.Working
 			}
 			v.Stand = stand.String()
