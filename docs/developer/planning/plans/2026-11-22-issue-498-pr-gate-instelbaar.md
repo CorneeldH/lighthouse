@@ -47,7 +47,7 @@
 - Wijzig: `internal/config/config.go` (`schema` na `imports.check`, `defaults`, validatie naast `review.roborev` rond regel 715)
 - Wijzig: `tests/pack/fixtures/config-schema.json` (sleutellijst + defaults), `tests/pack/fixtures/config/defaults/expect.json`, en zo nodig `config/full/{lighthouse.toml,expect.json}`
 - Test: `internal/config/config_test.go`
-- De kaart `docs/site/data/config.json` en `docs/site/test/config.test.mjs` komen pas in taak 3: de kaarttest leidt de `readers` af uit de actuele bestanden en wordt rood zolang gate en skill de sleutel nog niet noemen.
+- De kaart `docs/site/data/config.json` en `docs/site/test/config.test.mjs` komen in de commit van taak 2, niet hier: `[test_gate] command` draait `node --test docs/site/test/*.test.mjs` bij elke commit die `internal/`, `pack/` of `cmd/` raakt (`lighthouse.toml:47`), en de kaarttest leidt de `readers` af uit de actuele bestanden. Taak 1 is daarom een werkboomstap zonder commit; de commit van taak 2 bevat config, gate en kaart samen.
 
 **Interfaces:**
 - Produceert: `lighthouse config pr_gate.issue` drukt `optional` af zonder sleutel; `config.Lookup(cfg, "pr_gate.issue")` en `cfg.Raw["pr_gate"]` (map) geven de gezette waarde.
@@ -60,8 +60,8 @@
 - [ ] **Stap 2: draai** `go test ./internal/config/ -run TestPRGateIssue -v`. Verwacht: FAIL (`unknown key`).
 - [ ] **Stap 3: implementeer** in `config.go`: `{"pr_gate.issue", kStr}` in `schema`, `"pr_gate.issue": "optional"` in `defaults`, en in `build` een controle direct onder die van `review.roborev` die elke waarde buiten de drie met `errf("%s: key pr_gate.issue must be 'optional', 'required' or 'evidence', not %s", path, pyRepr(v))` afwijst (ook `""`; controleer dat `mayBeEmpty` die niet toelaat).
 - [ ] **Stap 4: fixtures bijwerken**: `config-schema.json` (sleutel en default), `config/defaults/expect.json` en eventueel `config/full`.
-- [ ] **Stap 5: draai** `go test ./internal/config/... ./internal/packcontract/...`. Verwacht: PASS. Draai hier nog niet `node --test test/config.test.mjs` en voeg `config.json` nog niet toe; `[test_gate] command` draait de site-test alleen bij een commit die `docs/site` raakt, en deze commit raakt die niet.
-- [ ] **Stap 6: commit** `feat(config): pr_gate.issue met optional, required en evidence (#498)`.
+- [ ] **Stap 5: draai** `go test ./internal/config/... ./internal/packcontract/...`. Verwacht: PASS. Draai hier nog niet `node --test test/config.test.mjs`: de sleutel staat dan wel in het schema maar nog niet op de kaart.
+- [ ] **Stap 6: geen commit.** Laat de wijzigingen staan; de commit volgt in taak 2, stap 6.
 
 ### Taak 2: de gate past de waarde toe
 
@@ -79,15 +79,16 @@
   - `required`: `No issue: een geldige reden hier` → 1 blocker met ``pr_gate.issue = required`` en `` `No issue` ``; `Refs #5 — een geldige reden hier` zonder tabel → geen blockers; `Refs #5 — kort` (reden < `MinReason`) → blocker waarvan de melding met ``pr_gate.issue = required:`` begint en `No issue` niet als toegestane vorm noemt; `No issue: een geldige reden hier` plus `Refs #5 — een geldige reden hier` → geen blockers.
   - `evidence`: `Refs #5 — een geldige reden hier` zonder tabel → 1 blocker met ``pr_gate.issue = evidence`` en ``### Evidence #5``; dezelfde body mét een geldige tabel (`### Evidence #5` met één rij, zoals de bestaande fixtures) → geen blockers; `No issue: …` → blocker met ``pr_gate.issue = evidence``; `Closes #5` met geldige tabel → geen blockers (de `acCount`-stub levert 1).
   - alle drie: `Closes #5` zonder Evidence → blocker (bestaande melding, niet verslapt).
-  Plus in `gate_test.go` één `Main`-test in het patroon van `TestMainNoIssuePasses` (regel 367): met een `lighthouse.toml` met `[pr_gate] issue = "required"` en een `gh pr create --body-file` met `No issue: …` is de exit 2 en bevat stderr ``pr_gate.issue = required``; zonder de tabel is dezelfde body exit 0.
+  Plus in `gate_test.go` één `Main`-test in het patroon van `TestMainNoIssuePasses` (regel 367): met een `lighthouse.toml` met `[pr_gate] issue = "required"` en een `gh pr create --body-file` met `No issue: …` is de exit 2 en bevat stderr ``pr_gate.issue = required`` en in de footer geen `No issue`; dezelfde `Main`-test onder `evidence` met `No issue: …` bevat in de melding en footer geen kale `Refs #N — <reason>` (alleen `Refs` mét `### Evidence #N`); zonder de tabel is dezelfde body exit 0.
 - [ ] **Stap 2: draai** `go test ./internal/prbody/ -run 'PRGate' -v`. Verwacht: FAIL.
 - [ ] **Stap 3: implementeer `CheckBody`-uitbreiding** in `form.go`: de bestaande "no valid form"-blocker (regel 433-441) krijgt onder `required` of `evidence` het voorvoegsel ``pr_gate.issue = <waarde>:`` en noemt alleen de toegestane vormen; `blockedMessage` in `gate.go` krijgt de waarde mee en toont alleen de toegestane vormen in de footer (onder `optional` ongewijzigd, zodat de bestaande fixtures groen blijven). Verder onderaan, na de bestaande verwerking van `Closes` en `Refs`, twee extra regels op basis van `repo.PRGate`:
-  - `required` of `evidence`, geen `targets`, geen `refs` en `NoIssue(body)`: blocker ``pr_gate.issue = <waarde>: the body has no issue — `No issue: <reason>` is not allowed; name an issue with `Closes #N` + `### Evidence #N` or `Refs #N — <reason>` `` (de bestaande "no valid form"-tak blijft voor wie niets geldigs heeft; `No issue` is dan niet de enige vorm, dus voorkom dubbele meldingen).
+  - `required` of `evidence`, geen `targets`, geen `refs` en `NoIssue(body)`: blocker ``pr_gate.issue = <waarde>: the body has no issue — `No issue: <reason>` is not allowed; name an issue with `Closes #N` + `### Evidence #N` or (only under `required`) `Refs #N — <reason>`; under `evidence` `Refs #N` needs its `### Evidence #N` table `` (de bestaande "no valid form"-tak blijft voor wie niets geldigs heeft; `No issue` is dan niet de enige vorm, dus voorkom dubbele meldingen).
   - `evidence`, een `Refs #N` zonder `HasEvidenceBlock(body, N)` (en `N` niet in `targets`): blocker ``pr_gate.issue = evidence: Refs #N has no `### Evidence #N` table`` — één per issue, in de bestaande lus bij regel 423-431.
   Houd het één plek per regel; geen nieuwe helper tenzij de lus er onleesbaar van wordt.
 - [ ] **Stap 4: implementeer de wiring** in `gate.go`: `lazyRepo` vult `Repo.PRGate` uit `cfg.Raw["pr_gate"]` (alleen lezen, validatie deed taak 1); laat de lazy-eigenschap intact.
 - [ ] **Stap 5: draai** `go test ./internal/prbody/... ./internal/hooks/... ./internal/cli/... ./internal/packcontract/... ./e2e/...`. Verwacht: PASS, inclusief de bestaande `cases.json`-fixtures (ongewijzigde default).
-- [ ] **Stap 6: commit** `feat(prbody): pr-create-gate volgt pr_gate.issue (#498)`.
+- [ ] **Stap 5b: kaart.** Voeg `docs/site/data/config.json` toe (entry naar het voorbeeld van `imports.check`: `level: "advanced"`, `required: "no"`, `default: "optional"`, `options` `["optional","required","evidence"]`, `about`: één Engelse zin; `readers`: `internal/prbody/form.go` en `internal/prbody/gate.go`; de skill komt in taak 3) en de regel `"pr_gate.issue": ["optional", "required", "evidence"]` in `expected` van de test *options are the values lighthouse accepts* in `docs/site/test/config.test.mjs` (hardgecodeerd, regel ~537-549). Draai `cd docs/site && node --test test/config.test.mjs`. Verwacht: PASS.
+- [ ] **Stap 6: commit** (taak 1 en 2 samen) `feat(prbody): pr-create-gate volgt pr_gate.issue (#498)`; alles uit taak 1, de gate en de kaart.
 
 ### Taak 3: skill, docs, changelog en dogfood
 
@@ -95,8 +96,7 @@
 - Wijzig: `pack/core/skills/write-pr/SKILL.md` (regel 11, 21-23, V3 regel 150-163)
 - Wijzig: `docs/getting-started.md` (regel 243: de beschrijving van `pr-create-gate`) en `docs/test-gate.md` niet; zoek eerst met `grep -rn "No issue" docs/*.md` of een andere gebruikersdoc de drie vormen noemt
 - Maak: `changelog.d/issue-498-pr-gate-instelbaar.md` (`type: changed`, één Engelse zin)
-- Wijzig: `docs/site/data/config.json` (nieuwe sleutel naar het voorbeeld van `imports.check`: `level: "advanced"`, `required: "no"`, `default: "optional"`, `options` `["optional","required","evidence"]`, `about`: één Engelse zin; `readers`: `internal/prbody/form.go`, `internal/prbody/gate.go`, `pack/core/skills/write-pr` — de directory van de skill, niet `SKILL.md`, zoals `readerUnit` in de test)
-- Wijzig: `docs/site/test/config.test.mjs` (de test *options are the values lighthouse accepts* heeft een hardgecodeerde `expected`; voeg `"pr_gate.issue": ["optional", "required", "evidence"]` toe)
+- Wijzig: `docs/site/data/config.json` (voeg bij de entry uit taak 2 de reader `pack/core/skills/write-pr` toe — de directory van de skill, niet `SKILL.md`, zoals `readerUnit` in de test)
 - Test: `internal/packcontract/writepr_test.go` en `skills_test.go` (bestaand; voeg een controle toe dat de skill `pr_gate.issue` noemt)
 
 **Interfaces:**
@@ -104,7 +104,7 @@
 
 - [ ] **Stap 1: faalende test** in `internal/packcontract/writepr_test.go`: de skilltekst bevat `lighthouse config pr_gate.issue` en de drie waarden, en `No issue` met `required`. Draai en zie FAIL.
 - [ ] **Stap 2: pas de skill aan** (Engels): lees onder *When* en vóór V1 één keer `lighthouse config pr_gate.issue`. Regels in de skill: zonder issuenummer en waarde `optional` blijft `No issue: <reason>`; bij `required` of `evidence` is een PR zonder nummer niet toegestaan → stop en meld dat de repo een issue eist (geen PR, geen vraag). In V3: bij `evidence` is de `### Evidence #N`-tabel verplicht, ook als alle criteria open zijn: dan is er niets te bewijzen en is `Refs` niet haalbaar → meld dat en stop (zoals de gate zou blokkeren), zonder een rij voor een open criterium te verzinnen. Pas regel 11 aan zodat "always `Refs #N`" de waarde `optional` noemt voor `No issue`.
-- [ ] **Stap 3: kaart, docs en changelog**: voeg de entry in `docs/site/data/config.json` en de `expected`-regel in `config.test.mjs` toe en draai `cd docs/site && node --test test/config.test.mjs` (verwacht PASS: nu noemen form.go, gate.go en de skill de sleutel). Pas de `pr-create-gate`-zin in `docs/getting-started.md` aan en noem `[pr_gate] issue`; schrijf het changelog-fragment.
+- [ ] **Stap 3: kaart, docs en changelog**: voeg de reader `pack/core/skills/write-pr` toe aan de entry in `docs/site/data/config.json` en draai `cd docs/site && node --test test/config.test.mjs` (verwacht PASS). Pas de `pr-create-gate`-zin in `docs/getting-started.md` aan en noem `[pr_gate] issue`; schrijf het changelog-fragment.
 - [ ] **Stap 4: dogfood** `go run ./cmd/lighthouse init --upgrade`; commit de geïnstalleerde kopieën (`.claude/skills/lighthouse-write-pr/`, `.agents/skills/lighthouse-write-pr/`) mee. Draai daarna nogmaals en verwacht `No changes.`.
 - [ ] **Stap 5: draai** `go test ./internal/packcontract/... ./internal/dispatch/...`, `[test_gate] command` en `lighthouse imports check`. Verwacht: PASS.
 - [ ] **Stap 6: commit** `docs(write-pr): skill en docs lezen pr_gate.issue (#498)`.
