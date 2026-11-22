@@ -64,7 +64,7 @@ over de run als geheel. De teksten zijn Engels, zoals de rest van de site.
 ```text
 [Everything] [Adds] [Edits your file] [Upgrade]
 
-One edited part stops the whole upgrade; --force overwrites every edited part at once.
+One edited or deleted part stops the whole upgrade; --force overwrites every edited part at once.
 
 your repo/
   ▤ AGENTS.md                    lighthouse's blocks replaced, your text stays   --force

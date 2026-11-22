@@ -171,5 +171,5 @@
     "label": "On your workstation",
     "note": "Only with Tailscale. It is not in the repo, so a teammate or another machine does not have it."
   },
-  "upgradeNote": "One edited part stops the whole upgrade; --force overwrites every edited part at once."
+  "upgradeNote": "One edited or deleted part stops the whole upgrade; --force overwrites every edited part at once."
 }

@@ -605,13 +605,13 @@ function repoRow(row) {
     force.append(el("span", "sr-only", " refuses while you edited or deleted it; --force overwrites"));
     upgrade.append(" ", force);
   }
-  pill.append(upgrade);
   if (row.href) {
     const go = el("a", "repo-go", "↗");
     go.href = row.href;
     go.setAttribute("aria-label", `More about ${row.label}`);
     pill.append(go);
   }
+  pill.append(upgrade);
   item.append(pill);
   return item;
 }
