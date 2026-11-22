@@ -36,3 +36,20 @@ func Weights(in forge.PrioInputs, blockers map[int][]int) map[int]int {
 	}
 	return prioweight.Compute(issues, prioweight.Factors(ranks))
 }
+
+// BlockerGraph is the blockers map of Weights: for every board item of repo slug the issues of
+// the same repo it waits on. A blocker of another repo is dropped.
+func BlockerGraph(board []forge.BoardItem, slug string) map[int][]int {
+	blockers := map[int][]int{}
+	for _, bi := range board {
+		if bi.Repo != slug || bi.Issue <= 0 {
+			continue
+		}
+		for _, bl := range bi.BlockedBy {
+			if bl.Repo == slug {
+				blockers[bi.Issue] = append(blockers[bi.Issue], bl.Issue)
+			}
+		}
+	}
+	return blockers
+}
