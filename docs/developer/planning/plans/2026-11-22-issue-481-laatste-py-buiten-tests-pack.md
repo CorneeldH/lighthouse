@@ -98,7 +98,7 @@
   ```
 
 - [ ] **Stap 6:** `lighthouse imports check`; `go test ./...` en de gate groen.
-- [ ] **Stap 7: Commit** — `git add changelog.d pyproject.toml`; `git diff --cached --name-status` toont de twee verwijderde bestanden en het fragment; `git commit -m "test(pack): tests/pack/conftest.py en __init__.py weg (#481)"`.
+- [ ] **Stap 7: Commit** — `git add tests/pack changelog.d pyproject.toml`; `git diff --cached --name-status` toont de twee verwijderde bestanden, het fragment en, als stap 2 daar iets naartoe verhuisde, `tests/pack/python/conftest.py`; `git commit -m "test(pack): tests/pack/conftest.py en __init__.py weg (#481)"`.
 
 ## Zelfreview
 
