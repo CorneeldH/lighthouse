@@ -110,6 +110,14 @@
         "when": "at every prompt, tool call, subagent stop and session stop"
       },
       {
+        "name": "level-check",
+        "source": "internal/hooks/levelcheck.go",
+        "events": [
+          "SessionStart"
+        ],
+        "when": "when a session starts"
+      },
+      {
         "name": "permission-check",
         "source": "internal/hooks/permissioncheck.go",
         "events": [

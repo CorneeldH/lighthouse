@@ -654,6 +654,33 @@
       "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/hooks/usagegate.go"
     },
     {
+      "id": "level-check",
+      "phase": "prompt",
+      "row": 0,
+      "kind": "hook",
+      "trigger": "event",
+      "events": [
+        "SessionStart"
+      ],
+      "matcher": "",
+      "command": "run.sh level-check",
+      "effects": [
+        "warns"
+      ],
+      "label": "level-check",
+      "what": "At the start of a session, names every core gate that is not on.",
+      "how": [
+        "It runs on SessionStart and reads .lighthouse/components.toml.",
+        "For main-commit-gate, worktree-check and pr-create-gate with stand off or log it says `lighthouse: <gate> is <stand> — this repo works outside the chain`, as a systemMessage and as context for the model.",
+        "With every core gate on, or without components.toml, it says nothing.",
+        "It always exits 0; a file it cannot read gives a systemMessage `COULD NOT CHECK`."
+      ],
+      "when": "When a session starts.",
+      "without": "A repo that has switched off a core gate looks like one that works in the chain.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/hooks/levelcheck.go"
+    },
+    {
       "id": "permission-check",
       "phase": "pre-tool",
       "row": 5,
