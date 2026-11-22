@@ -1007,7 +1007,12 @@ func fixPRRuns(history []runs.Row, issue, pr int) int {
 // and a Handoff that does not end the chain closed the run before this rule.
 func (c runCtx) noHandoff() (Action, bool) {
 	anyPR := c.anyPR(func(forge.PR) bool { return true })
-	return c.returned("reason_no_handoff", ""), c.done() && !c.handoff && !anyPR
+	reason := "reason_no_handoff"
+	if f := strings.Fields(c.row.Command); len(f) > 0 && rewrite(f[0]) == cmdClose {
+		// A close run that ends with neither Handoff nor Question left criteria open.
+		reason = "reason_closecheck_open"
+	}
+	return c.returned(reason, ""), c.done() && !c.handoff && !anyPR
 }
 
 // postFailed is rule 14a: a session Done without a PR, Handoff or Question whose own post of
