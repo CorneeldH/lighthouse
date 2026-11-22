@@ -173,3 +173,10 @@
 - **AC 1** → taak 2 (`TestIssueItemNoGraphQL`). **AC 2** → taak 2 (`TestIssueItemArchivedInNewProcess`, tabel in `CacheStore`). **AC 3** → taak 1 (`TestPlanningNoGraphQL`, `TestPlanningSecondReadIs304`). **AC 4** → taak 1 (`TestPlanningDoneCountsOnlyCompleted`) en taak 3 (docs). **AC 5** → taak 3.
 - Onbekend bij schrijven, door de uitvoerder in de code te controleren (niet te raden): of `Get` van `forgecache` `used_at` ververst (stap 3 van taak 2); of de echte API `issue_dependencies_summary` in de issuelijst geeft (zo niet, valt de code terug op één `blocked_by`-request per issue, correct maar duurder); welke van `report.go` en `issues.go` GraphQL echt in de tick draaien (taak 3).
 - Echte-API-gedrag (archief-item via `GET items/<id>`) is alleen met de hand bewezen in de verificaties van #395; de nep-server bewijst het contract, niet de live API. Meld dat in de PR.
+
+## Open na review
+
+Ronde 3 haalde de rondegrens met deze punten open. Ze zijn aanvaard als `accepted_open`;
+de volgende fase of de PR-review weegt ze opnieuw.
+
+- **r3-f1** (MAJOR, Task 3 Files / Step 4 Commit): The diff adds `internal/cli/triage_gather.go` (doc of `boardItem`, r.73-75) to Task 3's Files, but Task 3's commit step still stages only `git add docs changelog.d`. The `boardItem` comment edit is never committed by the plan. The docs/triage.md part, the `forge issue status` sentence and the line references are correct.
