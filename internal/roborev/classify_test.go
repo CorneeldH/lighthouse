@@ -52,3 +52,11 @@ func TestClassifyIgnoresAgentLookalike(t *testing.T) {
 		t.Errorf("Agent = %q, want empty", got)
 	}
 }
+
+func TestClassifyIgnoresAgentLineWithoutTimestamp(t *testing.T) {
+	const sha = "0123456789abcdef0123456789abcdef01234567"
+	raw := "## roborev: Review Passed (`" + sha + "`)\n\nci review: ref=a..b agents=[codex]\n"
+	if got := Classify(raw).Agent; got != "" {
+		t.Errorf("Agent = %q, want empty", got)
+	}
+}

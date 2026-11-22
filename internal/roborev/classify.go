@@ -17,7 +17,7 @@ var (
 	problem  = regexp.MustCompile(`^\*\*Problem:\*\*\s*(.*)$`)
 	// agentLine is the log line that names the reviewing agent; the agent is a plain name list,
 	// so text such as `agents=[x --> y]` in a review body never matches.
-	agentLine = regexp.MustCompile(`(?m)^[^\n]*?ci review: ref=\S+ agents=\[([\w.,-]+)\]`)
+	agentLine = regexp.MustCompile(`(?m)^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2} .*?ci review: ref=\S+ agents=\[([\w.,-]+)\]`)
 	// roborev's own log lines on stderr: never the reason.
 	logLine   = regexp.MustCompile(`^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2} `)
 	doneKinds = []string{"Review Complete", "Combined Review", "Review Passed"}
