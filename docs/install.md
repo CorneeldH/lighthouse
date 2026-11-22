@@ -74,6 +74,32 @@ binary or a `go install` of a tag (from the next release on) replaces a build fr
 still serves the UI. Only a `go install …@main`, an older tag, or a build from a clone without
 `npm run build`, replaces it with the placeholder page, and the systemd unit then serves that.
 
+## Start small
+
+A repository does not have to take the whole chain at once. A first `lighthouse init` in a new
+repository chooses the level `light`; the levels are `light`, `standard` and `strict`.
+
+```bash
+lighthouse init          # new repository: level light
+lighthouse level         # the level, the stand per component, what the components on log counted
+lighthouse init --upgrade --level standard
+```
+
+`lighthouse level` only reads. Scale up with `lighthouse init --upgrade --level standard`, later
+`--level strict`. `--level` records the choice in `lighthouse.toml` and in
+`.lighthouse/components.toml`. An existing repository without `level` in `lighthouse.toml`
+behaves as `strict`.
+
+- **Overrides.** `[components]` in `lighthouse.toml` sets one component to `off`, `log` or `on`,
+  whatever the level says. `log` exists only for the Go hooks of core: the hook runs, never blocks
+  and never speaks, and writes what it would have reported to a logbook outside the repository,
+  which `lighthouse level` counts. The base components (`run.sh`, `blocking`, `usage-gate`,
+  `permission-check`, `workflow-push-gate`, `level-check`, `no-verify-check`) cannot be overridden.
+  A skill that is on cannot hand over to a skill that is off; `init` refuses that.
+- **Core gates.** `main-commit-gate`, `worktree-check` and `pr-create-gate` keep the repository
+  in the chain. When one of them is not `on`, `init` warns, the session start (`level-check`)
+  warns, and so does the managed block in `AGENTS.md`.
+
 ## Run it as a user service
 
 Fetch the unit, [lighthouse.service](../deploy/systemd/lighthouse.service), into your user
