@@ -79,11 +79,13 @@ export interface MilestoneRef {
 export interface Issue {
   /** @nullable */
   blocked_by: Blocker[] | null;
+  factor: number;
   label: string;
   milestone?: MilestoneRef;
   needs_label: boolean;
   number: number;
   open_question: boolean;
+  prio_weight: number;
   status: string;
   title: string;
   url: string;

@@ -165,7 +165,7 @@ type Action struct {
 // cause of its fix-pr start (PR red, a merge conflict, a failed merge or an open roborev
 // review). The result is ordered: the actions without a start or resume (park, hold, unpark
 // and merge among them) by repo and issue, then the defers, then the starts and resumes by
-// priority, trigger time, repo and issue.
+// Priority band (PriorityBand), prio weight high to low, trigger time, repo and issue.
 func Decide(in Input) []Action {
 	var ps []planned
 	for _, repo := range in.Repos {
@@ -272,11 +272,13 @@ func ReturnLabelKey(reason string, blocked bool) string {
 	return "needs_hands"
 }
 
-// planned is an action with what orders it; priority and at count for a start or resume.
+// planned is an action with what orders it; band, weight and at count for a start or resume.
 type planned struct {
 	Action
-	priority int
-	at       time.Time
+	// band is the PriorityBand of the item; weight its prio weight, the higher the earlier.
+	band   int
+	weight int
+	at     time.Time
 	// software: the run's profile is "software"; of a start or resume the run that comes, of a
 	// close the run that closes.
 	software bool
@@ -322,7 +324,10 @@ func comparePlanned(a, b planned) int {
 		if c := -cmpBool(a.Kind == KindScheduledStart, b.Kind == KindScheduledStart); c != 0 {
 			return c
 		}
-		if c := cmp.Compare(a.priority, b.priority); c != 0 {
+		if c := cmp.Compare(a.band, b.band); c != 0 {
+			return c
+		}
+		if c := -cmp.Compare(a.weight, b.weight); c != 0 {
 			return c
 		}
 		if c := a.at.Compare(b.at); c != 0 {
@@ -1545,7 +1550,7 @@ func (c issueCtx) pushAgain(row runs.Row) (planned, bool) {
 		a := c.base
 		a.Kind, a.Trigger, a.TriggerKey, a.Attempt = KindPush, t.trigger, row.TriggerKey, 2
 		a.Command, a.Worktree, a.Branch, a.CommentID, a.PermitSHA = cmdPush, t.worktree, t.branch, t.comment, t.permit
-		return planned{Action: a, priority: priorityRank(c.it.Priority), at: t.at}, true
+		return c.ordered(a, t.at), true
 	case c.pushReturned(row):
 		return planned{}, false
 	case ok:
@@ -1875,7 +1880,7 @@ func (c issueCtx) push(p *parsed, ho protocol.Handoff, key string) planned {
 	a := c.base
 	a.Kind, a.Trigger, a.TriggerKey, a.Attempt = KindPush, triggerPush, key, 1
 	a.Command, a.Worktree, a.Branch, a.CommentID = cmdPush, ho.Worktree, ho.Branch, p.Comment.ID
-	return planned{Action: a, priority: priorityRank(c.it.Priority), at: p.Time}
+	return c.ordered(a, p.Time)
 }
 
 // mergePush is the KindPush of the merge pusher for pr on its head: no worktree, no permit, the
@@ -1884,7 +1889,7 @@ func (c issueCtx) mergePush(pr forge.PR, attempt int, at time.Time) planned {
 	a := c.base
 	a.Kind, a.Trigger, a.TriggerKey, a.Attempt = KindPush, triggerMerge, mergeKey(pr.Number, pr.HeadSHA), attempt
 	a.Command, a.Branch, a.PR, a.HeadSHA, a.PRURL = cmdPush, pr.HeadRef, pr.Number, pr.HeadSHA, pr.URL
-	return planned{Action: a, priority: priorityRank(c.it.Priority), at: at}
+	return c.ordered(a, at)
 }
 
 // pushAnswer is the KindPush for the answer `push` to a pusher 🤖 Vraag: a Vraag without a
@@ -1903,7 +1908,7 @@ func (c issueCtx) pushAnswer(q *parsed, ans Comment) (planned, bool) {
 	a := c.base
 	a.Kind, a.Trigger, a.TriggerKey, a.Attempt = KindPush, triggerPushAnswer, key, 1
 	a.Command, a.Worktree, a.Branch, a.CommentID, a.PermitSHA = cmdPush, worktree, branch, ans.ID, sha
-	return planned{Action: a, priority: priorityRank(c.it.Priority), at: parseTime(ans.CreatedAt)}, true
+	return c.ordered(a, parseTime(ans.CreatedAt)), true
 }
 
 // shaField is a git object name as the pusher's Vraag carries it.
@@ -2034,7 +2039,7 @@ func (c issueCtx) deferred(reason string) planned {
 	return planned{Action: a}
 }
 
-// planned orders a start or resume by the item's priority and the time of its trigger.
+// planned orders a start or resume by the item's Priority band, prio weight and the time of its trigger.
 // It places the run first: a placement that cannot be made defers the start instead.
 func (c issueCtx) planned(a Action, at time.Time) planned {
 	profile, node, reason := c.placement(a)
@@ -2044,25 +2049,13 @@ func (c issueCtx) planned(a Action, at time.Time) planned {
 		return d
 	}
 	a.Profile, a.Node = profile, node
-	return planned{
-		Action:    a,
-		priority:  priorityRank(c.it.Priority),
-		at:        at,
-		software:  a.Profile == ProfileSoftware,
-		node:      a.Node,
-		holdsSlot: a.Trigger == triggerUsage,
-	}
+	p := c.ordered(a, at)
+	p.software, p.node, p.holdsSlot = a.Profile == ProfileSoftware, a.Node, a.Trigger == triggerUsage
+	return p
 }
 
-// priorityRank orders P0, P1, P2, then no or an unknown priority.
-func priorityRank(priority string) int {
-	switch priority {
-	case "P0":
-		return 0
-	case "P1":
-		return 1
-	case "P2":
-		return 2
-	}
-	return 3
+// ordered is a with what orders it among the starts: the band of the item's Priority, its prio
+// weight and at. A push orders by it too, so it does not fall behind weighted starts.
+func (c issueCtx) ordered(a Action, at time.Time) planned {
+	return planned{Action: a, band: PriorityBand(c.it.Priority), weight: c.it.PrioWeight, at: at}
 }

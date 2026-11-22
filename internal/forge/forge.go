@@ -41,6 +41,10 @@ type Forge interface {
 	// Planning reads the open issues with their milestone and open blockers, and the issue
 	// counts of the open milestones, for the prioritisation view.
 	Planning(ctx context.Context) (Planning, error)
+	// PrioInputs reads what the priority weight needs besides the blockers: the milestone of
+	// every open issue and the open milestones with their description. It reads no closed
+	// issues and no blockers, so it can run on every tick.
+	PrioInputs(ctx context.Context) (PrioInputs, error)
 	Comments(ctx context.Context, number int) ([]protocol.Comment, error)
 	CreateComment(ctx context.Context, number int, body string) (protocol.Comment, error)
 	// Acknowledge marks comment commentID on issue number as seen by the token's user.
