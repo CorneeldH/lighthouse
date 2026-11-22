@@ -32,3 +32,15 @@ func TestCountCodeLinesIgnoresMalformedEntries(t *testing.T) {
 		t.Errorf("CountCodeLines = %d, want 3", got)
 	}
 }
+
+func TestClassifyReadsAgentFromLogLine(t *testing.T) {
+	const sha = "0123456789abcdef0123456789abcdef01234567"
+	body := "## roborev: Review Passed (`" + sha + "`)\n\nNo issues found.\n"
+	logged := "2026/11/22 14:31:33 ci review: ref=a..b agents=[claude-code] types=[default] reasoning=thorough\n" + body
+	if got := Classify(logged).Agent; got != "claude-code" {
+		t.Errorf("Agent = %q, want claude-code", got)
+	}
+	if got := Classify(body).Agent; got != "" {
+		t.Errorf("Agent without log line = %q, want empty", got)
+	}
+}

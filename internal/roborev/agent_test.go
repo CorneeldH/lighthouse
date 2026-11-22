@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/CorneeldH/lighthouse/internal/usage"
@@ -160,5 +161,123 @@ func TestGateFallbackWithoutCodexStaysSkip(t *testing.T) {
 	}
 	if got := gateField(t, out, "reason"); got != "geen roborev of codex op PATH" {
 		t.Fatalf("reason %v", got)
+	}
+}
+
+const agentLogLine = "2026/11/22 14:31:33 ci review: ref=a..b agents=[claude-code] types=[default] reasoning=thorough\n"
+
+func agentRaw(sha string, logged bool) string {
+	raw := "## roborev: Review Passed (`" + sha + "`)\n\nNo issues found.\n"
+	if logged {
+		raw = agentLogLine + raw
+	}
+	return raw
+}
+
+// recordPush records the review of HEAD the way the restart path does and returns head.
+func recordPush(t *testing.T, r *pushGateRepo, logged bool) string {
+	t.Helper()
+	head := r.git(r.root, "rev-parse", "HEAD")
+	rawPath := filepath.Join(r.stateDir(), "raw.md")
+	r.writeAbs(rawPath, agentRaw(head, logged))
+	state, _ := pushPathsOf(t, r, head)
+	rng := "aaaaaaa..bbbbbbb"
+	if _, err := Record(r.root, RecordOptions{Sha: &head, Decisions: []any{}, Out: state, Raw: rawPath, Range: &rng}); err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+	return head
+}
+
+func pushPathsOf(t *testing.T, r *pushGateRepo, head string) (string, string) {
+	t.Helper()
+	state, raw, err := PushPaths(r.root, head)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return state, raw
+}
+
+func TestRecordTakesAgentFromRaw(t *testing.T) {
+	r := newPushGateRepo(t)
+	head := recordPush(t, r, true)
+	state, _ := pushPathsOf(t, r, head)
+	text, err := os.ReadFile(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(text), `"agent": "claude-code"`) {
+		t.Errorf("record lacks the agent: %s", text)
+	}
+}
+
+func TestBodyLinePushNamesAgent(t *testing.T) {
+	r := newPushGateRepo(t)
+	head := recordPush(t, r, true)
+	got, err := BodyLinePush(r.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "<!-- roborev-lokaal: " + head + " agent: claude-code -->"; got != want {
+		t.Errorf("BodyLinePush = %q, want %q", got, want)
+	}
+}
+
+func TestBodyLineWithoutAgentKeepsOldMarker(t *testing.T) {
+	t.Run("BodyLinePush", func(t *testing.T) {
+		r := newPushGateRepo(t)
+		head := recordPush(t, r, false)
+		got, err := BodyLinePush(r.root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := "<!-- roborev-lokaal: " + head + " -->"; got != want {
+			t.Errorf("BodyLinePush = %q, want %q", got, want)
+		}
+	})
+	t.Run("covering record", func(t *testing.T) {
+		r := newPushGateRepo(t)
+		old := r.git(r.root, "rev-parse", "HEAD")
+		r.commitLines("fix2.go", 2)
+		fix := r.git(r.root, "rev-parse", "HEAD")
+		r.writeAbs(filepath.Join(r.stateDir(), "push-"+old+".json"), doneRecord(old, fix[:10]))
+		got, err := BodyLinePush(r.root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := "<!-- roborev-lokaal: " + old + " -->"; got != want {
+			t.Errorf("BodyLinePush = %q, want %q", got, want)
+		}
+	})
+	t.Run("BodyLine", func(t *testing.T) {
+		r := newPushGateRepo(t)
+		head := r.git(r.root, "rev-parse", "HEAD")
+		state, _, err := StatePaths(r.root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.writeAbs(state, doneRecord(head))
+		got, err := BodyLine(r.root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := "<!-- roborev-lokaal: " + head + " -->"; got != want {
+			t.Errorf("BodyLine = %q, want %q", got, want)
+		}
+	})
+}
+
+func TestBodyLinePushCoveringNamesAgent(t *testing.T) {
+	r := newPushGateRepo(t)
+	old := r.git(r.root, "rev-parse", "HEAD")
+	r.commitLines("fix2.go", 2)
+	fix := r.git(r.root, "rev-parse", "HEAD")
+	rec := strings.Replace(doneRecord(old, fix[:10]), `"uitkomst": "done"`, `"uitkomst": "done", "agent": "claude-code"`, 1)
+	r.writeAbs(filepath.Join(r.stateDir(), "push-"+old+".json"), rec)
+	got, err := BodyLinePush(r.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "<!-- roborev-lokaal: " + old + " agent: claude-code -->"; got != want {
+		t.Errorf("BodyLinePush = %q, want %q", got, want)
 	}
 }
