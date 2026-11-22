@@ -44,3 +44,11 @@ func TestClassifyReadsAgentFromLogLine(t *testing.T) {
 		t.Errorf("Agent without log line = %q, want empty", got)
 	}
 }
+
+func TestClassifyIgnoresAgentLookalike(t *testing.T) {
+	const sha = "0123456789abcdef0123456789abcdef01234567"
+	raw := "## roborev: Review Passed (`" + sha + "`)\n\nci review: ref=a..b agents=[x --> y] in a body line\n"
+	if got := Classify(raw).Agent; got != "" {
+		t.Errorf("Agent = %q, want empty", got)
+	}
+}
