@@ -49,7 +49,7 @@ func wantsDirection(root string, o Options) bool {
 // safeRel rejects a path that is absolute, not clean or leaves the repository, so nothing is
 // read or written outside it. key names the setting in the error.
 func safeRel(key, target string) error {
-	if filepath.IsAbs(target) || path.IsAbs(target) || path.Clean(target) != target || slices.Contains(strings.Split(target, "/"), "..") {
+	if filepath.IsAbs(target) || path.IsAbs(target) || filepath.VolumeName(target) != "" || strings.Contains(target, `\`) || path.Clean(target) != target || slices.Contains(strings.Split(target, "/"), "..") {
 		return fmt.Errorf("lighthouse.toml: %s %q must be a clean relative path inside the repository", key, target)
 	}
 	return nil
@@ -149,7 +149,12 @@ func directionPlan(root string, o Options, tmpl map[string][]byte, headings []by
 		}
 		if len(names) == 0 {
 			// The check reads the areas directory; an empty one keeps it green.
-			if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(cfg.Paths.Areas))); errors.Is(err, os.ErrNotExist) {
+			// A directory that exists but is empty is not in git either, so the keep file
+			// is planned whenever it is missing; a file on the areas path is an error.
+			switch fi, err := os.Stat(filepath.Join(root, filepath.FromSlash(cfg.Paths.Areas))); {
+			case err == nil && !fi.IsDir():
+				return fmt.Errorf("lighthouse.toml: paths.areas %q is not a directory", cfg.Paths.Areas)
+			case err == nil || errors.Is(err, os.ErrNotExist):
 				keepAreas = true
 			}
 			if o.Direction {

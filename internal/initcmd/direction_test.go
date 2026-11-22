@@ -259,3 +259,28 @@ func TestDirectionRejectsPathsOutsideRepo(t *testing.T) {
 		}
 	}
 }
+
+// An existing empty areas directory is not in git: the keep file is still planned.
+func TestDirectionKeepsExistingEmptyAreasDirectory(t *testing.T) {
+	root := newRepo(t)
+	write(t, root, "lighthouse.toml", "[project]\nlanguage = \"en\"\n")
+	if err := os.MkdirAll(filepath.Join(root, areasRel), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mustRun(t, root, all(withPacks(directionPacks(t)), yes, withDirection))
+	if _, err := os.Stat(filepath.Join(root, areasRel, ".gitkeep")); err != nil {
+		t.Errorf(".gitkeep: %v", err)
+	}
+}
+
+// Backslashes and volume names are not clean relative paths on any platform.
+func TestSafeRelRejectsBackslashAndVolume(t *testing.T) {
+	for _, p := range []string{`..\\outside.md`, `docs\\x.md`, `C:x.md`} {
+		if filepath.VolumeName(p) == "" && !strings.Contains(p, `\`) {
+			continue // C:x.md has no volume on this platform
+		}
+		if safeRel("paths.strategy", p) == nil {
+			t.Errorf("safeRel accepted %q", p)
+		}
+	}
+}
