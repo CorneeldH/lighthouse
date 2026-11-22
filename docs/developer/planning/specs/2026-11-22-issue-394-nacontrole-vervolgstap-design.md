@@ -81,9 +81,13 @@ B7 in `pack/core/skills/close-issue/{claude,agents}/SKILL.md` deelt elk open cri
 Uitkomst over alle open criteria:
 
 - **Alle open criteria wachten op een issue in deze repo.** Per voorganger
-  `lighthouse forge issue block <nr> <voorganger>` (de relatie komt vóór de handoff), dan
-  `/lighthouse-write-handoff` met `next: /lighthouse-close-issue <nr>`. Geen vraag. Het
-  after-merge-comment noemt per criterium de voorganger.
+  `lighthouse forge issue block <nr> --by <voorganger>` (de relatie komt vóór de handoff; zonder
+  `--by` faalt het commando met exit 2), dan `/lighthouse-write-handoff` met
+  `next: /lighthouse-close-issue <nr>`. Geen vraag. Het after-merge-comment noemt per criterium de
+  voorganger. De handoff noemt zijn voorgangers ook zelf (veld State of Context), zodat twee
+  rondes nooit dezelfde handoff-tekst geven *(eigen keus na spec review, r1-f4)*: `repeatsHandoff`
+  (`internal/dispatch/decide.go`) geeft bij een identieke tekst `reason_repeat_handoff` in plaats
+  van een derde nacontrole.
 - **Anders** (een mix, of geen enkel wachtend criterium): de vraag van #412. Een wachtend criterium
   staat in `--what` met zijn voorganger. De aanbeveling volgt de bestaande regels.
 
@@ -91,7 +95,9 @@ Mislukt `lighthouse forge issue block`, dan valt B7 terug op de vraag: zonder re
 tick niet, en zou de handoff meteen een nieuwe nacontrole starten.
 
 *Wacht op een issue* telt alleen voor een voorganger die `OPEN` is en geen gemergde PR heeft,
-dezelfde maat als `activeBlockers` in de tick. Een voorganger met een gemergde PR parkeert niet;
+dezelfde maat als `activeBlockers` in de tick. `lighthouse forge issue blockers` geeft alleen
+nummer en staat; de gemergde PR van een voorganger leest B7 met `lighthouse forge pr list` *(eigen
+keus na spec review, r1-f5)*. Een voorganger met een gemergde PR parkeert niet;
 de handoff zou meteen weer een nacontrole starten. Zo'n criterium valt onder de vraag. *(Eigen
 keus, uit de builder-check.)*
 
@@ -111,8 +117,11 @@ Te bewijzen met fixtures, niet aan te nemen:
 - de start van de handoff parkeert bij een actieve voorganger, ook binnen dezelfde tick als 13c;
 - na `unpark` start de handoff (sleutel `handoff:<comment-id>`), op een werkplek die de
   nacontrole aankan. De branch in de handoff is `closecheck/issue-<N>-pr-<pr>`; die is nooit
-  gepusht. Kan de werkplek die branch niet opnieuw maken vanaf `origin/<default branch>`, dan
-  hoort de oplossing in de plan-fase, niet een nieuwe functie.
+  gepusht, en `FollowRemote` (`internal/workplace/remote.go`) laat een bestaande werkplek dan op
+  zijn oude HEAD staan. Dat is geen gat: B7 in de controllermodus doet eerst `git fetch origin`
+  en meet de criteria tegen `origin/<default branch>`, niet tegen de worktree-branch. De HEAD van
+  de werkplek doet er niet toe. Een proza-contract pint die zin in B7 *(eigen keus na spec review,
+  r1-f3)*. Geen nieuwe functie.
 
 Geen lus: de sleutel `handoff:<comment-id>` wordt één keer gebruikt. Een tweede nacontrole met
 weer alleen wachtende criteria legt een nieuwe relatie of vindt er geen open voorganger meer;
@@ -122,8 +131,9 @@ zonder open voorganger valt hij onder de vraag.
 
 Regel 14 (`noHandoff`) krijgt bij een nacontrole een eigen reden. Een nacontrole is een run
 waarvan het commando `/lighthouse-close-issue` is, ongeacht de trigger: de eerste start heeft
-trigger `closecheck`, een herstart na `unpark` trigger `handoff`, en een 13c-einde ook `handoff`.
-Beide moeten de nieuwe reden krijgen. *(Eigen keus, uit de builder-check.)*
+trigger `closecheck`, een herstart na `unpark` trigger `handoff`.
+Alleen regel 14 met dat commando krijgt de nieuwe reden, voor beide triggers; een 13c-einde
+sluit als `handoff` en bereikt regel 14 niet *(eigen keus na spec review, r1-f8)*.
 
 | Sleutel | nl | en | Label |
 |---|---|---|---|
@@ -164,14 +174,21 @@ In de controller parkeert de tick die handoff (bestaand: `start-issue` is uitvoe
 uitzondering voor een verrekende blokkade (`stack:` of `blocker:` in de laatste 🤖 Gestart) blijft.
 Na een goedgekeurde spec wacht het plan op de voorganger *(eigen keus, uit de builder-check)*:
 
-- **Interactief.** Start-issue roept na de goedgekeurde spec bij een blokkade
-  `superpowers:writing-plans` niet aan, maar meldt *wacht op #x* en stopt. Brainstorming is extern;
-  de stop staat in start-issue, dat de route uitvoert.
-- **Controller.** `lighthouse-review-spec` blijft ongewijzigd en post `next: /superpowers:writing-plans`.
+- **Interactief.** Start-issue roept `superpowers:writing-plans` zelf nooit aan: bij poort 4c geeft
+  het brainstorming over, en brainstorming (extern) roept na de spec writing-plans aan, terwijl
+  `lighthouse-review-spec` interactief eindigt met een handoff `next: /superpowers:writing-plans`.
+  Daarom staat de stop op twee plekken *(eigen keus na spec review, r1-f2)*: (1) start-issue geeft
+  brainstorming bij poort 4c met een blokkade de opdracht mee om na de goedgekeurde spec te
+  eindigen met *wacht op #x*, zonder writing-plans; (2) de interactieve afsluiting van
+  `lighthouse-review-spec` schrijft bij een actieve voorganger *wacht op #x* in plaats van
+  `next: /superpowers:writing-plans`. De controllermodus van review-spec verandert niet.
+- **Controller.** `lighthouse-review-spec` blijft in de controllermodus ongewijzigd en post `next: /superpowers:writing-plans`.
   De tick parkeert die handoff bij een actieve voorganger (de nieuwe parkeerregel hieronder), en
-  start hem na `unpark`. Geen wijziging in review-spec nodig.
+  start hem na `unpark`.
 
-Het board blijft bij een blokkadelabel op To do (stap 3 slaat `board-start` over, zoals nu).
+Het board blijft bij een blokkadelabel op To do (stap 3 slaat `board-start` over, zoals nu). Dat
+geldt ook voor een open `blocked_by` zonder label (*label missing*): stap 3 slaat dan ook
+`board-start` over *(eigen keus na spec review, r1-f7)*.
 
 **Controller** (`internal/dispatch`). Vandaag parkeert de tick alleen een uitvoerende handoff;
 `writing-plans`, `review-plan` en `review-spec` zijn vrij. Voortaan zijn alleen de specfase-
@@ -190,7 +207,8 @@ met twee correcties voor de huidige main:
 - De proza van die worktree spreekt van `On hold`; main parkeert naar `To do` met
   `blocked_issue`. De tekst volgt main.
 
-`labels.blocked_external` verandert in de controller niet: een issue met dat label houdt een mens
+`labels.blocked_external` verandert in de controller niet, ook niet in de proza van poort 0: de
+zin *blocked_external always stops, here too* blijft staan *(eigen keus na spec review, r1-f6)*. Een issue met dat label houdt een mens
 vast (`heldByHuman`) en de controller start het niet. Een spec bij `blocked_external` is dus
 alleen interactief.
 
@@ -209,20 +227,21 @@ alleen interactief.
     `closecheck` als met trigger `handoff` (herstart);
   - nacontrole met handoff `next: /lighthouse-close-issue` en een actieve voorganger → Park;
   - geparkeerd issue, voorganger gesloten → Unpark, volgende tick start de nacontrole;
+  - tweede nacontrole-handoff na `unpark` met andere tekst (andere voorganger) → start, geen `reason_repeat_handoff`;
   - nacontrole met een vraag → run sluit als vraag (bestaand gedrag, vastgelegd);
   - handoff `next: /superpowers:writing-plans` met actieve voorganger → Park;
   - handoff `next: /lighthouse-review-spec` met actieve voorganger → start.
 - **Proza-contracten** (`internal/packcontract/`): B7 noemt de drie soorten,
   `lighthouse forge issue block` vóór de handoff en de terugval op de vraag; poort 0 stopt niet
   meer op een blokkade maar zet `— blocker #<x> open` achter de regel; start-issue voert bij een
-  blokkade alleen 4c uit. De varianten `claude` en `agents` zeggen hetzelfde.
+  blokkade alleen 4c uit; de interactieve afsluiting van review-spec schrijft bij een actieve
+  voorganger *wacht op #x*; B7 pint `git fetch origin` en meten tegen `origin/<default branch>`. De varianten `claude` en `agents` zeggen hetzelfde.
 - Bestaande prozatests die letterlijke B7- en poort-0-zinnen vastpinnen, aanpassen waar de tekst
   verandert, niet verwijderen.
 
 ## Aan de bouwer
 
 - De exacte vorm van het predicaat in `internal/dispatch` (§4, controller).
-- De werkplek voor een nacontrole die via een handoff herstart (§2, derde bewijspunt).
 - De woordkeus in B7, mits de drie soorten en de terugval erin staan.
 - De volgorde van commits: B7 en reden (#394) los van spec-ja-plan-nee.
 
