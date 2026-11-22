@@ -29,14 +29,14 @@
 #      everything (personal_ai_agent #455).
 #
 # What is scanned, in two modes (#198), each gitleaks run bounded by
-# tools/hooks/checkpoint_scan.py (systemd scope with a memory ceiling, no swap, a
+# `lighthouse checkpoint-scan` (systemd scope with a memory ceiling, no swap, a
 # CPU quota; on 2026-11-01 an unbounded gitleaks over every checkpoint pushed the
 # host into swap):
 #
-#   - refs/entire/* (by local or remote ref), the checkpoints: `checkpoint_scan.py
-#     scan`, every blob the remote lacks, once, minus the blobs a ledger already saw
+#   - refs/entire/* (by local or remote ref), the checkpoints: `lighthouse
+#     checkpoint-scan scan`, every blob the remote lacks, once, minus the blobs a ledger already saw
 #     clean. Above 256 MB unscanned the hook refuses and points to
-#     `checkpoint_scan.py push`.
+#     `lighthouse checkpoint-scan push`.
 #   - Every other ref, refs/heads/entire/* included (shadow branches sit on the work
 #     branch, so blob mode would read its whole history): the commits the remote
 #     lacks, not the tree of the tip. A secret added in one commit and removed in
@@ -45,7 +45,7 @@
 #     `gitleaks git` run: `<local shas> ^<remote shas> --not --remotes=<remote>`.
 #     `--remotes=<remote>` only when the push goes to the one fetch URL: the
 #     remote-tracking refs follow the fetch URL, and with a separate pushurl the
-#     push repo may lack what they hold (`checkpoint_scan.py remote-exclusion`).
+#     push repo may lack what they hold (`lighthouse checkpoint-scan remote-exclusion`).
 #
 # A memory ceiling hit or a scan that could not complete blocks the push, with its
 # own message rather than "found a secret".
@@ -64,7 +64,6 @@ set -euo pipefail
 # runs from whichever worktree pushes, or from the main checkout's copy (install.sh).
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 GITLEAKS_CONFIG="$SCRIPT_DIR/../../.gitleaks.toml"
-CHECKPOINT_SCAN="$SCRIPT_DIR/checkpoint_scan.py"
 
 remote="${1:-}"
 url="${2:-}"
@@ -85,16 +84,18 @@ remote_is_local() {
 
 toplevel="$(git rev-parse --show-toplevel)" || die "COULD NOT CHECK — not inside a work tree."
 
-# Without the module no scan is bounded, and entire's settings are read through it:
-# refuse rather than run gitleaks unbounded.
-[ -f "$CHECKPOINT_SCAN" ] || die "cannot find $CHECKPOINT_SCAN — every scan runs bounded through it."
-command -v python3 >/dev/null 2>&1 || die "COULD NOT CHECK — python3 is needed to read .entire/settings.json."
+# Without a `lighthouse` that knows checkpoint-scan no scan is bounded, and entire's
+# settings are read through it: refuse rather than run gitleaks unbounded or not at all.
+command -v lighthouse >/dev/null 2>&1 ||
+  die "COULD NOT CHECK — lighthouse is not on PATH; every scan runs bounded through 'lighthouse checkpoint-scan'."
+lighthouse checkpoint-scan --help >/dev/null 2>&1 ||
+  die "COULD NOT CHECK — this lighthouse has no checkpoint-scan; install a build from main or the next release."
 # entire's effective settings (.entire/settings.json, .entire/settings.local.json on
-# top) and the checkpoint-remote rule live in the module, which `checkpoint_scan.py
-# push` shares: two lines, whether entire may push by itself and whether this push
+# top) and the checkpoint-remote rule live in `lighthouse checkpoint-scan`, which its
+# `push` shares: two lines, whether entire may push by itself and whether this push
 # goes to the checkpoint remote (by the remote's name when entire has a checkpoint
 # push remote, else by the URL of the checkpoint repo).
-settings="$(python3 -I "$CHECKPOINT_SCAN" entire-remote --toplevel "$toplevel" "$remote" "$url")" ||
+settings="$(lighthouse checkpoint-scan entire-remote --toplevel "$toplevel" "$remote" "$url")" ||
   die "COULD NOT CHECK — could not read $toplevel/.entire/settings*.json."
 {
   read -r entire_self_push
@@ -128,7 +129,7 @@ is_checkpoint_ref() {
   esac
 }
 
-# <ref>=<sha> per checkpoint ref, for checkpoint_scan.py scan.
+# <ref>=<sha> per checkpoint ref, for lighthouse checkpoint-scan scan.
 checkpoints=()
 tips=()
 excludes=()
@@ -213,7 +214,7 @@ block() {
 
 if [ "${#checkpoints[@]}" -gt 0 ]; then
   rc=0
-  out="$(python3 -I "$CHECKPOINT_SCAN" scan --remote "$remote" --config "$GITLEAKS_CONFIG" \
+  out="$(lighthouse checkpoint-scan scan --remote "$remote" --config "$GITLEAKS_CONFIG" \
     "${checkpoints[@]}" 2>&1)" || rc=$?
   [ "$rc" -eq 0 ] || block "$rc" "checkpoints" "$out"
   say_no_ceiling "$out"
@@ -222,13 +223,13 @@ fi
 if [ "${#tips[@]}" -gt 0 ]; then
   log_opts="${tips[*]}"
   [ "${#excludes[@]}" -eq 0 ] || log_opts="$log_opts ${excludes[*]}"
-  # The rule for --remotes lives in the module, shared with the blob mode.
-  exclusion="$(python3 -I "$CHECKPOINT_SCAN" remote-exclusion "$remote")" ||
+  # The rule for --remotes lives in lighthouse checkpoint-scan, shared with the blob mode.
+  exclusion="$(lighthouse checkpoint-scan remote-exclusion "$remote")" ||
     die "COULD NOT CHECK — could not read the URLs of remote '$remote'."
   [ -z "$exclusion" ] || log_opts="$log_opts --not $exclusion"
 
   rc=0
-  out="$(python3 -I "$CHECKPOINT_SCAN" run-bounded -- \
+  out="$(lighthouse checkpoint-scan run-bounded -- \
     gitleaks git "$toplevel" --log-opts="$log_opts" --config "$GITLEAKS_CONFIG" \
     --no-banner --redact --exit-code 1 2>&1)" || rc=$?
   [ "$rc" -eq 0 ] || block "$rc" "commits" "$out" "${labels[@]}"
