@@ -1,4 +1,4 @@
 ---
 type: added
 ---
-`lighthouse init` zet `"language": "dutch"` in `.claude/settings.json` als `[project] language` `nl` is, zodat Claude Code in de chat Nederlands antwoordt; een `language` die er al staat blijft staan, met een waarschuwing. Het core-blok zegt nu dat ook chatantwoorden in `[project] language` zijn, behalve bij `en`.
+`lighthouse init` sets `"language": "dutch"` in `.claude/settings.json` when `[project] language` is `nl`, so Claude Code replies in Dutch; a `language` that is already there stays, with a warning. The core block now also puts chat replies in `[project] language`, except with `en`.
