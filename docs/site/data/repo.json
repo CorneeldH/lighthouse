@@ -124,6 +124,16 @@
       "force": true
     },
     {
+      "id": "gitattributes",
+      "place": ".gitattributes",
+      "label": ".gitattributes",
+      "dir": "root",
+      "kind": "config",
+      "act": "edits",
+      "upgrade": "missing eol=lf rules appended, your lines stay",
+      "force": false
+    },
+    {
       "id": "manifest",
       "place": ".lighthouse/manifest.toml",
       "label": "manifest.toml",

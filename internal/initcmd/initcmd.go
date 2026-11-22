@@ -478,6 +478,12 @@ func buildPlan(o Options, root string, names []string, desired []packs.Unit, cha
 		return nil, err
 	}
 
+	ga, err := load(gitattributesPath)
+	if err != nil {
+		return nil, err
+	}
+	ga.new = ensureGitattributes(ga.old)
+
 	if labelsPath != "" && labelsTemplate != nil {
 		// Seed once: the file is the project's after this, so it is not in the manifest.
 		p, err := load(labelsPath)
