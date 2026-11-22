@@ -280,6 +280,18 @@ func TestStartIssueAsksAlreadyDoneBeforeTheWorktree(t *testing.T) {
 	}
 }
 
+// Classification: fails when a controller run that finds the work already done ends with the choice as chat text, or loses its handoff to /lighthouse-close-issue or its lighthouse ask.
+func TestStartIssueAlreadyDoneEndsInFollowUpInControllerRun(t *testing.T) {
+	for variant, body := range variants(t, startIssue) {
+		t.Run(variant, func(t *testing.T) {
+			step2 := flat(section(t, body, "### 2.", "### 3."))
+			wantAll(t, step2, "/lighthouse-write-handoff", "next: /lighthouse-close-issue <nr>",
+				"lighthouse ask", "--phase start", "in doubt")
+			wantNone(t, step2, "as the last text")
+		})
+	}
+}
+
 // Classification: fails when start-issue stops reading the DoD, no-gos and open questions from
 // the milestone, stops reporting `fog:`, or stops passing the open questions to the scout.
 func TestStartIssueReadsFogFromTheMilestone(t *testing.T) {
