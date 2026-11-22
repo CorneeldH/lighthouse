@@ -32,7 +32,7 @@ func MergeKey(pr int, head string) string { return "merge:" + strconv.Itoa(pr) +
 // .github/workflows/ changed between them, so everything that reaches the default branch under
 // .github/workflows/ went through the pusher's floor and review. The pushed SHA comes from the
 // pusher's own push rows (runs.SetPushed), never from a comment, which a run can post. Every
-// refusal posts a 🤖 Vraag without a SHA to permit and closes the row as question; a merge posts a
+// refusal posts a 🤖 Returned and closes the row as returned; a merge posts a
 // 🤖 Done for the PR and closes it as done. Merge returns an error only when it cannot read its
 // row or cannot post or close.
 func Merge(ctx context.Context, deps Deps, req Request, pr int, head string) error {
@@ -260,30 +260,32 @@ func (m *merging) merged(ctx context.Context, url string) error {
 	return runs.Release(ctx, m.deps.DB, m.req.RunID, runs.Done, "", m.deps.Now())
 }
 
-// ask posts the merge pusher's 🤖 Vraag for red and closes the row as question. Its sha is none, so
-// an answer push starts nothing; it names the PR and head, never a push.
+// ask posts the merge pusher's 🤖 Returned for red and closes the row as returned: an answer push
+// could start nothing here, so it is no question. It names the PR and head, never a push; the next
+// tick gives the issue back with a label and To do (finishReturn).
 func (m *merging) ask(ctx context.Context, red Red) error {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), postTimeout)
 	defer cancel()
 	if m.handedBack(ctx) {
-		return fmt.Errorf("pusher: run %d was handed back: no Question posted for step %s", m.req.RunID, red.Step)
+		return fmt.Errorf("pusher: run %d was handed back: nothing posted for step %s", m.req.RunID, red.Step)
 	}
 	scrub := scrubList(m.scrub())
 	red.Why = scrubText(red.Why, scrub)
-	body := scrubText(renderMergeQuestion(red, m.req.Branch, m.pr, m.head, m.req.Language), scrub)
+	body := scrubText(renderMergeReturned(red, m.req.Branch, m.pr, m.head, m.req.Language), scrub)
 	if _, err := m.deps.Forge.CreateComment(ctx, m.req.Issue, body); err != nil {
-		return fmt.Errorf("pusher: post the Question on #%d: %w", m.req.Issue, err)
+		return fmt.Errorf("pusher: post the outcome of step %s on #%d: %w", red.Step, m.req.Issue, err)
 	}
-	return runs.Release(ctx, m.deps.DB, m.req.RunID, runs.Question, "merge: "+red.Step, m.deps.Now())
+	return runs.Release(ctx, m.deps.DB, m.req.RunID, runs.Returned, "merge: "+red.Step, m.deps.Now())
 }
 
-// renderMergeQuestion is the merge pusher's 🤖 Vraag: sha none (decide gives no permit), branch,
-// pr and head in the header, the red step and why, and how to merge by hand. No session footer.
-func renderMergeQuestion(red Red, branch string, pr int, head, language string) string {
+// renderMergeReturned is the merge pusher's 🤖 Returned: reason `workflow-pusher rood: <step>`,
+// branch, pr, head and step in the header, the red step and why, and how to merge by hand. No
+// session footer.
+func renderMergeReturned(red Red, branch string, pr int, head, language string) string {
 	h := func(key string) string { return protocol.Heading(key, language) }
 	lines := []string{
-		protocol.Robot + " " + h("kind_question") + " · " + Command,
-		"sha: " + noSHA,
+		protocol.Robot + " " + h("kind_returned"),
+		"reason: " + h("reason_pusher_red") + ": " + headerValue(red.Step),
 		"branch: " + headerValue(branch),
 		"pr: " + strconv.Itoa(pr),
 		"head: " + headerValue(head),

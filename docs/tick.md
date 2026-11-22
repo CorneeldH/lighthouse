@@ -197,22 +197,30 @@ slash-commando's.
   `workflows: <bestanden>`, en de rij sluit als `handoff`:
   de keten gaat verder met `/lighthouse-write-pr`. Op de fix-pr-route (de PR bestaat) post hij een
   🤖-comment met `branch`, `range` en `workflows`, en de rij blijft open als eigenaar van de PR (zie
-  *Afloop van een push-rij*). Rood is een 🤖 Vraag, en de rij sluit als `question`.
-- **De Vraag.** De kop is `🤖 Vraag · push-workflows`, met de velden `sha` (de SHA waarvoor een antwoord
-  toestemming geeft, `none` zolang geen review die SHA liet zien), `worktree`, `branch`, `after`,
-  `lane` (als de push-handoff er een had) en `step`, en geen sessie-voet. De tekst heeft de rode stap met zijn reden, het oordeel per reviewer,
-  de workflow-diff in een codeblok (een hek langer dan elke reeks backticks in de diff) en
-  `cd <worktree> && git push -u origin HEAD`. Is de diff te lang voor een comment (65535 tekens),
-  dan staat de volledige diff als bijlage in `<state>/push/<owner>/<name>/<sha>-<run>.diff` (mode
-  `0600`), niet in de worktree: die is van de run. Een Vraag adviseert nooit een token-scope te
-  verruimen; weigert GitHub het token, dan zegt de Vraag alleen dat de forge het token voor deze wijziging
-  weigerde.
+  *Afloop van een push-rij*). Rood is een 🤖 Vraag als een antwoord `push` er iets mee kan, en de rij
+  sluit als `question`. Anders is rood een 🤖 Teruggegeven, en de rij sluit als `returned`.
+- **De Vraag.** Alleen voor een rode stap met een SHA: de review (shadow of een `reject`), het token of de
+  push zelf, en elke rode stap van een run met toestemming. De kop is `🤖 Vraag · push-workflows`, met de
+  velden `sha` (de SHA waarvoor een antwoord toestemming geeft), `worktree`, `branch`, `after`, `lane`
+  (als de push-handoff er een had) en `step`, en geen sessie-voet. Daaronder eerst de vraag (wat een
+  antwoord `push` doet) en de sluitregel, zodat de lijst open vragen van de controller alleen die vraag
+  toont. Na de sluitregel staan de rode stap met zijn reden, het oordeel per reviewer, de workflow-diff
+  in een codeblok (een hek langer dan elke reeks backticks in de diff) en onder *Zelf pushen*
+  `cd <worktree> && git push -u origin HEAD`. Is de diff te lang voor een comment (65535 tekens), dan
+  staat de volledige diff als bijlage in `<state>/push/<owner>/<name>/<sha>-<run>.diff` (mode `0600`),
+  niet in de worktree: die is van de run. Een Vraag adviseert nooit een token-scope te verruimen;
+  weigert GitHub het token, dan zegt de Vraag alleen dat de forge het token voor deze wijziging weigerde.
+- **De Teruggegeven.** Een rode stap vóór de vloer een SHA las (trigger, config, route, de vloer, policy,
+  lint) is geen vraag: een antwoord `push` kan er niets mee. De pusher post dan een 🤖 Teruggegeven
+  zonder sessie, met `reason: workflow-pusher rood: <stap>` en de velden `worktree`, `branch`, `after`,
+  `lane` en `step`. De tekst heeft de rode stap met zijn reden, de workflow-diff ingeklapt
+  (`<details>`), wat je kunt doen en onder *Zelf pushen* het push-commando. De volgende tick geeft het
+  issue terug zoals elke Teruggegeven: label `needs_hands` en To do (`finishReturn`).
 - **Het antwoord `push` is toestemming.** Voor precies de `sha` uit de laatste Vraag van de pusher. Tick
   start de pusher opnieuw met `--permit <sha>`; hij draait de vloer opnieuw, en alleen als de SHA
   niet verschoof gaat hij zonder review door, zoals bij een geslaagde push. Toestemming heft alleen de
-  review op (een `reject` of shadow mode), nooit een rode vloer, policy of lint. Een Vraag met `sha: none`,
-  of een Vraag waarna de worktree verschoof, geeft geen toestemming: een antwoord `push` start dan niets
-  of geeft dezelfde Vraag opnieuw. Elk ander antwoord hervat niets, want er is geen sessie. Bekende
+  review op (een `reject` of shadow mode), nooit een rode vloer, policy of lint. Een Vraag waarna de
+  worktree verschoof, geeft geen toestemming: een antwoord `push` geeft dan dezelfde Vraag opnieuw. Elk ander antwoord hervat niets, want er is geen sessie. Bekende
   grens: een run post met hetzelfde account als de gebruiker en kan dus `push` antwoorden; dan valt de
   review weg en blijft de vloer staan. De roborev-records zijn door de run beheerd: check 5 is hygiëne
   tegen een vergeten of verouderde review, geen vertrouwensgrens. GitHub's eigen scope-controle blijft
@@ -230,8 +238,9 @@ slash-commando's.
   comment), eist dat die een voorouder is van de PR-head en dat `gepusht..head` geen pad onder
   `.github/workflows/` raakt (op de bouwroute volgt na de push nog een changelog-fragment), en merget
   dan met het workflow-token. Hij post een 🤖 Klaar zonder sessie met `note_merged` en sluit zijn rij
-  als `done`. Weigert hij, dan post hij een Vraag met `gh pr merge <n> --squash --match-head-commit
-  <head>`. Is `[dispatch.workflow_push]` weg, dan gaat het issue terug met *workflow-pusher staat uit*; is de
+  als `done`. Weigert hij, dan post hij een Teruggegeven met `reason: workflow-pusher rood: <stap>` en
+  onder *Zelf mergen* `gh pr merge <n> --squash --match-head-commit <head>`, en sluit zijn rij als
+  `returned`. Is `[dispatch.workflow_push]` weg, dan gaat het issue terug met *workflow-pusher staat uit*; is de
   sleutel `merge:<pr>:<head>` al gebruikt, dan met *merge mislukt*.
 
 **De vingerafdruk na apply.** Tick bewaart de vingerafdruk van de precheck pas na apply, en alleen
@@ -398,8 +407,9 @@ die met *wacht op permissie* (16) is teruggegeven laat zo geen claude achter die
 ### Afloop van een push-rij
 
 Een push-rij (command `push-workflows`) heeft geen werkplek en geen transcript. De regels die daarop
-meten (8-10 en 14-19) gelden er niet voor; de pusher sluit zijn eigen rij (`handoff`, `question` of
-`done`). Ze telt niet mee voor `slots` en `max_software` en houdt geen geheugenreserve vast: er draait
+meten (8-10 en 14-19) gelden er niet voor; de pusher sluit zijn eigen rij (`handoff`, `question`,
+`returned` of `done`). Staat zijn Teruggegeven er al maar de rij nog open (de pusher stierf tussen post
+en sluiten), dan sluit tick de rij als `returned`, zonder sessie of werkplek aan te raken. Ze telt niet mee voor `slots` en `max_software` en houdt geen geheugenreserve vast: er draait
 geen sessie, ook niet terwijl de rij op CI wacht.
 
 - **Pusher stil.** Staat de rij na `[dispatch.workflow_push] timeout` (standaard 30 minuten) nog open
@@ -975,7 +985,7 @@ command = ["claude", "-p", "--tools", ""]
 bij 30 minuten) en de helft naar elke reviewer (15 minuten; de reviewers draaien parallel). Het laatste
 kwart is de marge voor vloer, policy, lint en push. Alles valt onder één deadline: de start van de
 push-rij plus `timeout`, min 2 minuten voor de laatste post en 1 minuut marge. Zo post de pusher zijn
-eigen Vraag vóór tick de rij teruggeeft met *pusher reageerde niet*. Een pusher die pas na die
+eigen Vraag of Teruggegeven vóór tick de rij teruggeeft met *pusher reageerde niet*. Een pusher die pas na die
 deadline start, doet en post niets; vlak voor de push kijkt hij of de rij nog open is, en pusht niet
 als tick haar al teruggaf. Een `timeout` onder 10 minuten weigert `host.toml`.
 
