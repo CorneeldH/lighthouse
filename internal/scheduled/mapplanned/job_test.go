@@ -787,6 +787,32 @@ func TestCheckRefusesAnItemForAnIssueWithoutTheRowLabel(t *testing.T) {
 	})
 }
 
+func TestCheckRefusesADocumentThatLosesAnIssue(t *testing.T) {
+	// Fails if Check accepts a changed document from which an issue number of the base has
+	// disappeared (emptied, or one item deleted): nothing may disappear.
+	for name, c := range map[string]struct{ doc, missing string }{
+		"emptied":      {`[]`, "#3"},
+		"item deleted": {`[{"issue": 3}]`, "#12"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, env := checkRig(t, `[{"issue": 3}, {"issue": 12}]`)
+			put(t, env.Dir, "docs/site/data/loop.json", c.doc)
+			err := bind(t).Check(context.Background(), env, env.Dir)
+			if err == nil || !strings.Contains(err.Error(), "loop.json") || !strings.Contains(err.Error(), c.missing) {
+				t.Fatalf("Check = %v, want an error naming loop.json and %s", err, c.missing)
+			}
+		})
+	}
+	t.Run("adding while keeping", func(t *testing.T) {
+		r, env := checkRig(t, `[{"issue": 3}, {"issue": 12}]`)
+		r.issue(99, "loop", "")
+		put(t, env.Dir, "docs/site/data/loop.json", `[{"issue": 3}, {"issue": 12}, {"issue": 99}]`)
+		if err := bind(t).Check(context.Background(), env, env.Dir); err != nil {
+			t.Fatalf("Check = %v, want nil", err)
+		}
+	})
+}
+
 func TestCheckRefusesAnItemTheGateWouldNotLetThrough(t *testing.T) {
 	// Fails if Check accepts a new item for a closed issue, or, under a row with Planned
 	// milestone, for an issue without a milestone: the gate lets neither through.

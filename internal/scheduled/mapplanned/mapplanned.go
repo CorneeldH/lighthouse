@@ -475,8 +475,8 @@ func (j *Job) Check(ctx context.Context, env scheduled.Env, dir string) error {
 	return nil
 }
 
-// checkDocument checks one changed document p of rows: a regular file that parses, whose new
-// issue numbers since base are open issues on the forge that one of rows lets through, as the
+// checkDocument checks one changed document p of rows: a regular file that parses, that keeps
+// every issue number it had at base, and whose new issue numbers since base are open issues on the forge that one of rows lets through, as the
 // gate does (its label, and a milestone under Planned milestone). issues caches the issues read.
 func checkDocument(ctx context.Context, env scheduled.Env, dir, base, p string, rows []Row, issues map[int]forge.Issue) error {
 	b, err := readRegular(dir, p)
@@ -490,6 +490,11 @@ func checkDocument(ctx context.Context, env scheduled.Env, dir, base, p string, 
 	before, err := documentIssues(ctx, env, dir, base, p)
 	if err != nil {
 		return err
+	}
+	for _, n := range slices.Sorted(maps.Keys(before)) {
+		if !now[n] {
+			return fmt.Errorf("%s: #%d is no longer in the document", scheduled.ShowPath(p), n)
+		}
 	}
 	added := slices.Sorted(maps.Keys(now))
 	for _, n := range added {
