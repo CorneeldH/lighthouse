@@ -206,9 +206,11 @@ func TestRestItemNonIssueContent(t *testing.T) {
 	}
 }
 
-// Classification: io. Fails when BoardItems lists an item with archived_at.
+// Classification: io. Fails when BoardItems lists an item with archived_at. GitHub's list gives
+// none, so the fake lists it only with ListArchived.
 func TestBoardItemsSkipsArchived(t *testing.T) {
 	srv, c := projectServer(t)
+	srv.ListArchived = true
 	archived := restIssue("PVTI_old", 3, "o/r", nil, nil)
 	archived["isArchived"] = true
 	srv.BoardNodes = []map[string]any{archived, restIssue("PVTI_new", 4, "o/r", nil, nil)}

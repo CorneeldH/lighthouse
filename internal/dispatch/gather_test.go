@@ -725,7 +725,7 @@ func TestPrepareIssueItemErrors(t *testing.T) {
 }
 
 // On GitHub every issue of a run is on the board, so IssueItem only meets an issue that left
-// it. A deleted or transferred issue (the issue read answers 404) and an item archived before
+// it. A deleted issue (the issue read answers 404) and an item archived before
 // any list saw it (BoardItems lists none) both stay out, and the tick goes on, as before
 // IssueItem existed.
 func TestPrepareGitHubIssueOffBoard(t *testing.T) {

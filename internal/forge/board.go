@@ -462,13 +462,15 @@ func (c *GitHub) itemNumber(ctx context.Context, p project, nodeID string) (int6
 // IssueItem returns the item of issue number on the board of [forge.board], archived or not;
 // ok is false when the issue is not on that board. Status, StatusName, Priority and Labels are
 // filled as in BoardItems, blockers and closing PRs are not; an archived item has Archived set.
-// A deleted or transferred issue is ErrIssueNotFound.
+// A deleted issue (404 or 410 on the issue read) is ErrIssueNotFound.
 //
 // The REST list of the board holds no archived item, so the numeric item ID comes from the
 // in-process table, else one list read, else the item table saved in the CacheStore, which
-// keeps an item for 30 days after a list last showed it. An item archived before any list read
-// saw it, or gone for longer, reads as not on the board; a client without cache keeps that
-// table only for its own process.
+// keeps an item for 30 days after a list last showed it. That window holds only while the board
+// keeps being listed: each list reads the table, and the cache drops an entry unused for its
+// MaxAge (7 days in forgecache). An item archived before any list read saw it, or gone for
+// longer, reads as not on the board; a client without cache keeps that table only for its own
+// process.
 func (c *GitHub) IssueItem(ctx context.Context, number int) (item BoardItem, ok bool, err error) {
 	if err := c.configured(); err != nil {
 		return BoardItem{}, false, err

@@ -118,6 +118,9 @@ type Server struct {
 	// NoDependencySummary leaves issue_dependencies_summary out of the issue list; by default
 	// every listed issue carries it, with total_blocked_by from BlockedBy.
 	NoDependencySummary bool
+	// ListArchived makes the items list serve archived BoardNodes too, with archived_at set,
+	// which GitHub never does: a test that the client still skips them sets it.
+	ListArchived bool
 	// BlockingPage2Fails, per issue number, makes the second page of the blocking list of that
 	// issue answer a 500.
 	BlockingPage2Fails map[int]bool

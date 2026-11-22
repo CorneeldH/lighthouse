@@ -99,7 +99,8 @@ func collectFieldIDs(v any, ids *[]string) {
 }
 
 // items serves every BoardNodes item in REST shape in pages, with only the fields the query
-// names in fields=. An archived item is left out, as GitHub's list never gives one.
+// names in fields=. An archived item is left out, as GitHub's list never gives one, unless
+// ListArchived is set.
 func (s *Server) items(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -107,7 +108,7 @@ func (s *Server) items(w http.ResponseWriter, r *http.Request) {
 	ids := s.fieldNodeIDs()
 	var out []any
 	for i, n := range s.BoardNodes {
-		if archived, _ := n["isArchived"].(bool); archived {
+		if archived, _ := n["isArchived"].(bool); archived && !s.ListArchived {
 			continue
 		}
 		out = append(out, s.restItem(i, n, ids, want))
