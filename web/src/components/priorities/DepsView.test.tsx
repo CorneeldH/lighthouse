@@ -50,12 +50,53 @@ describe('DepsView', () => {
     expect(within(node(`${A}#1`)).getByText(`${A}#1`)).toBeTruthy()
   })
 
-  it('marks an active issue picked up with a dashed border, and only that one', () => {
+  it('marks a Controller issue without a run as active', () => {
+    view([repo(A, [iss(1, [], { status: 'Controller' }), iss(2, [[A, 1]])])], [A])
+    expect(node(`${A}#1`).getAttribute('data-state')).toBe('active')
+    expect(within(node(`${A}#1`)).getByTestId('card-strip').className).toContain('lh-stripe')
+    expect(within(node(`${A}#1`)).queryByText('picked up')).toBeNull()
+  })
+
+  it('marks an In progress issue as active', () => {
     view([repo(A, [iss(1, [], { status: 'In progress' }), iss(2, [[A, 1]])])], [A])
-    expect(within(node(`${A}#1`)).getByText('picked up')).toBeTruthy()
-    expect(node(`${A}#1`).className).toContain('border-dashed')
-    expect(within(node(`${A}#2`)).queryByText('picked up')).toBeNull()
-    expect(node(`${A}#2`).className).not.toContain('border-dashed')
+    expect(node(`${A}#1`).getAttribute('data-state')).toBe('active')
+    expect(within(node(`${A}#1`)).getByTestId('card-strip').className).toContain('lh-stripe')
+    expect(within(node(`${A}#1`)).queryByText('picked up')).toBeNull()
+  })
+
+  it('draws a ready card with a solid strip, and no dashed outline', () => {
+    view([repo(A, [iss(1), iss(2, [[A, 1]])])], [A])
+    expect(node(`${A}#1`).getAttribute('data-state')).toBe('ready')
+    expect(within(node(`${A}#1`)).getByTestId('card-strip').className).not.toContain('lh-stripe')
+    expect(node(`${A}#1`).getAttribute('data-needs-human')).toBe('false')
+    expect(node(`${A}#1`).style.outline).not.toContain('dashed')
+  })
+
+  it('draws needs human as a dashed outline, also on an active card', () => {
+    view(
+      [
+        repo(A, [
+          iss(1, [], { label: 'needs_decision' }),
+          iss(2, [], { label: 'needs_hands' }),
+          iss(3, [], { status: 'In progress', open_question: true }),
+          iss(4, [[A, 1], [A, 2], [A, 3]]),
+        ]),
+      ],
+      [A],
+    )
+    for (const k of [1, 2]) {
+      expect(node(`${A}#${k}`).getAttribute('data-needs-human')).toBe('true')
+      expect(node(`${A}#${k}`).style.outline).toContain('dashed')
+    }
+    expect(node(`${A}#3`).getAttribute('data-state')).toBe('active')
+    expect(node(`${A}#3`).getAttribute('data-needs-human')).toBe('true')
+    expect(node(`${A}#3`).style.outline).toContain('dashed')
+  })
+
+  it('puts a cross at the number of a blocked card', () => {
+    view([repo(A, [iss(1), iss(2, [[A, 1]])])], [A])
+    expect(within(node(`${A}#2`)).getByTestId('card-cross')).toBeTruthy()
+    expect(within(node(`${A}#1`)).queryByTestId('card-cross')).toBeNull()
   })
 
   it('shows the waiting pill only from two waiting issues', () => {
@@ -66,18 +107,27 @@ describe('DepsView', () => {
     expect(within(node(`${A}#2`)).queryByTestId('waiting-pill')).toBeNull()
   })
 
-  it('keeps a blocker in a filtered-out repo as a grey dashed node, and the column of its dependent', () => {
+  it('keeps a blocker in a filtered-out repo as a solid grey node, and the column of its dependent', () => {
     const other = repo('a/y', [iss(9)])
     view([repo(A, [iss(2, [['a/y', 9]]), iss(3, [[A, 2]])]), other], [A])
     const blocker = node('a/y#9')
     expect(blocker.getAttribute('data-external')).toBe('true')
-    expect(blocker.className).toContain('border-dashed')
     expect(blocker.className).toContain('border-lh-grey')
+    expect(blocker.className).not.toContain('border-dashed')
     // the dependent waits 1 step in the full computation, so the heading exists and "can start" holds #9 only
     expect(screen.getByText('Waits on 1 step')).toBeTruthy()
     expect(screen.getByText('Waits on 2 steps')).toBeTruthy()
     expect(node(`${A}#2`).getAttribute('data-depth')).toBe('1')
     expect(node('a/y#9').getAttribute('data-depth')).toBe('0')
+  })
+
+  it('gives an external card a solid grey border and never a needs-human outline', () => {
+    view([repo(A, [iss(2, [['a/y', 9]])]), repo('a/y', [iss(9, [], { label: 'needs_decision' })])], [A])
+    const ext = node('a/y#9')
+    expect(ext.className).toContain('border-lh-grey')
+    expect(ext.className).not.toContain('border-dashed')
+    expect(ext.style.outline).not.toContain('dashed')
+    expect(ext.getAttribute('data-needs-human')).toBe('false')
   })
 
   it('does not show a dependent that lives in a filtered-out repo', () => {
