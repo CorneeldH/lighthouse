@@ -107,8 +107,14 @@ func runHook(shell string, reg registration, root string, childEnv []string, dat
 	cmd.Cancel = func() error { deadline.KillGroup(cmd); return nil }
 	cmd.WaitDelay = waitDelay
 	err := cmd.Run()
-	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+	if err != nil && errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return fmt.Sprintf("timed out after %v", timeout)
+	}
+	if errors.Is(err, exec.ErrWaitDelay) {
+		// The hook exited 0, but a child of it still held stdout or stderr after WaitDelay: stop
+		// that child, and judge the hook by its exit as usual.
+		deadline.KillGroup(cmd)
+		err = nil
 	}
 	code := 0
 	var exit *exec.ExitError

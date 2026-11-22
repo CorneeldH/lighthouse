@@ -110,7 +110,7 @@ func TestSmokeOtherExitAndTimeoutAreFail(t *testing.T) {
 		// holding the pipes until WaitDelay.
 		{"timeout kills the group", "sleep 30\necho done\n", 2500 * time.Millisecond, ""},
 		// A grandchild in a session of its own escapes the group kill; WaitDelay stops the wait.
-		{"timeout with an escaped grandchild", "setsid sleep 30 &\nsleep 30\n", 5 * time.Second, "setsid"},
+		{"timeout with an escaped grandchild", "setsid sleep 5 &\nsleep 30\n", 4 * time.Second, "setsid"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
