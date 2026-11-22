@@ -17,8 +17,13 @@ const resolveRoot = `ROOT=$(lighthouse config worktree.root) || exit 2
 case "$ROOT" in /*|[A-Za-z]:*) ;; *) ROOT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/$ROOT" ;; esac`
 
 // hardcodeAllowed is the exact set of pack files that may name `.claude/worktrees`, and how
-// often: the one sentence of the managed block that states the default.
-var hardcodeAllowed = map[string]int{"core/instructions/AGENTS.md": 1}
+// often: the one sentence of the managed block that states the default, and the start-issue KPI
+// row, which says that `measure-start-issue-kpi worktree-first` matches only that default.
+var hardcodeAllowed = map[string]int{
+	"core/instructions/AGENTS.md":             1,
+	"core/skills/start-issue/claude/SKILL.md": 1,
+	"core/skills/start-issue/agents/SKILL.md": 1,
+}
 
 // A production change that fails this test: a pack file names `.claude/worktrees` again (a skill
 // goes back to the hardcoded folder), or the managed block stops naming the default exactly once.

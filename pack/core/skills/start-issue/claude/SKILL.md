@@ -304,7 +304,7 @@ plugin's own folder.
 | Metric | Target | Measurement |
 |---|---:|---|
 | Tool calls between pickup prompt and first `Skill`/`Write`/`Edit`/`AskUserQuestion` | ≤ 2 | `lighthouse measure-start-issue-kpi leadin` |
-| Share of pickups where the first visible write fell under the worktree root (`lighthouse config worktree.root`) | 100% | `lighthouse measure-start-issue-kpi worktree-first` |
+| Share of pickups where the first visible write fell under `.claude/worktrees/`, the default root; the KPI does not follow a configured root | 100% | `lighthouse measure-start-issue-kpi worktree-first` |
 | Sessions in which this skill loaded without an issue number in the prompt | 0 | `lighthouse measure-start-issue-kpi mistrigger` |
 | New spec/plan files on the project paths instead of the superpowers default folder | 100% | `lighthouse measure-start-issue-kpi paths` |
 | Pickups where the skill names the chosen gate explicitly | 100% | `lighthouse measure-start-issue-kpi gate` |
