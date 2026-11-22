@@ -37,6 +37,7 @@ func mustParse(t *testing.T, s string) File {
 	return f
 }
 
+// red if Parse drops or misreads any top-level section (order, base, on, owners, calls, level tables).
 func TestParseReadsAllSections(t *testing.T) {
 	f := mustParse(t, corePack)
 	if got := strings.Join(f.Order, ","); got != "light,standard,strict" {
@@ -56,13 +57,15 @@ func TestParseReadsAllSections(t *testing.T) {
 	}
 }
 
+// red if Stand.UnmarshalText accepts a value other than off|log|on, or the error loses the offending value.
 func TestParseRejectsBadStand(t *testing.T) {
 	_, err := Parse([]byte("[light.components]\nx = \"maybe\"\n"))
-	if err == nil {
-		t.Fatal("want error for stand maybe")
+	if err == nil || !strings.Contains(err.Error(), "maybe") {
+		t.Fatalf("want error naming maybe, got %v", err)
 	}
 }
 
+// red if overrides are applied before the level table instead of after it.
 func TestResolveOverrideWins(t *testing.T) {
 	r, err := Resolve([]File{mustParse(t, corePack)}, "light", map[string]Stand{"md-link-check": StandOn})
 	if err != nil {
@@ -76,6 +79,7 @@ func TestResolveOverrideWins(t *testing.T) {
 	}
 }
 
+// red if Resolved.Stand defaults an unlisted component to anything but on.
 func TestResolveUnlistedIsOn(t *testing.T) {
 	r, err := Resolve([]File{mustParse(t, corePack)}, "light", nil)
 	if err != nil {
@@ -89,6 +93,7 @@ func TestResolveUnlistedIsOn(t *testing.T) {
 	}
 }
 
+// red if Resolve accepts an unknown level or its error stops naming the known levels.
 func TestResolveUnknownLevel(t *testing.T) {
 	_, err := Resolve([]File{mustParse(t, corePack)}, "nope", nil)
 	if err == nil {
@@ -101,6 +106,7 @@ func TestResolveUnknownLevel(t *testing.T) {
 	}
 }
 
+// red if Resolve only keeps the last (or first) pack instead of merging components and flags.
 func TestResolveMergesPacks(t *testing.T) {
 	other := mustParse(t, "[light.components]\ngo-lint-gate = \"off\"\n[light.flags]\nf = true\n")
 	r, err := Resolve([]File{mustParse(t, corePack), other}, "light", nil)
@@ -118,6 +124,7 @@ func TestResolveMergesPacks(t *testing.T) {
 	}
 }
 
+// red if Names omits base or on components, or returns them unsorted.
 func TestNamesIncludesBaseOnAndLevels(t *testing.T) {
 	r, err := Resolve([]File{mustParse(t, corePack)}, "standard", nil)
 	if err != nil {
@@ -129,6 +136,7 @@ func TestNamesIncludesBaseOnAndLevels(t *testing.T) {
 	}
 }
 
+// red if the CoreGates list changes.
 func TestCoreGates(t *testing.T) {
 	if got := strings.Join(CoreGates, ","); got != "main-commit-gate,worktree-check,pr-create-gate" {
 		t.Errorf("CoreGates = %q", got)
