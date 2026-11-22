@@ -23,9 +23,9 @@ Een vrij label kan een document hebben: het bestand dat een PR bijwerkt zodra he
 label geleverd wordt. Een vrij label zonder document, zoals de GitHub-standaardlabels, laat
 `write-pr` met rust.
 
-| Label | Kleur | When | Document |
-|---|---|---|---|
-| `loop` | `F4D74B` | Voegt een stap, handoff of route van de loop toe of verandert die | `docs/site/data/loop.json` |
+| Label | Kleur | When | Document | Planned |
+|---|---|---|---|---|
+| `loop` | `F4D74B` | Voegt een stap, handoff of route van de loop toe of verandert die | `docs/site/data/loop.json` | `milestone` |
 
 Een label met een document betekent twee dingen. `write-issue` toetst een issue aan de kolom
 *When* en geeft het dan het label. `write-pr` werkt het bestand uit de kolom *Document* bij: altijd
@@ -39,6 +39,14 @@ verliest `issue`; een nieuwe stap of handoff komt erbij als `works`, met `source
 (`docs/site/loop.html`). Krijgt het issue een milestone, dan komt het als `planned` item met
 `issue` op de kaart (`milestone` mag erbij staan). Een `planned` item zonder `issue` mag niet.
 
+"Als gepland toevoegen" is in `loop.json` alleen een nieuwe stap, handoff of route als `planned`
+item met `issue`. Een wijziging aan een bestaand onderdeel geeft geen item.
+
+De kolom *Planned* zegt wanneer een issue met dit label op de kaart hoort: `milestone` (alleen
+met een milestone) of `always` (altijd); leeg betekent dat het label geen aanmaakkant heeft. De
+dagelijkse job `map-planned` zet zo'n issue als `planned` item op de kaart, of stelt een vraag
+als de plek onduidelijk is; `write-issue` legt plek en wens vast bij het aanmaken.
+
 `ci/loop_roadmap.py` en de workflow `loop-roadmap` (`.github/workflows/loop-roadmap.yml`)
 controleren dit in twee standen:
 
@@ -49,10 +57,9 @@ controleren dit in twee standen:
   open staat (het `issues`-event draait de hoofdmodus op de default branch): push een nieuwe
   commit of bewerk de PR-body om de PR-modus opnieuw te starten.
 - Hoofdmodus (bij push naar main, issues-events en workflow_dispatch), als vangnet: elk
-  `planned` item noemt een open issue met `loop`, en elk open `loop`-issue met een milestone
-  staat als `planned` item op de kaart. De omgekeerde richting geldt alleen voor issues met een
-  milestone; een `loop`-issue zonder milestone hoeft niet op de kaart. Een issue dat de PR sluit
-  telt in PR-modus niet mee. De workflow draait ook bij `milestoned` en `demilestoned`.
+  `planned` item noemt een open issue met `loop`. De richting issue naar kaart controleert
+  het script niet meer; die draagt de job `map-planned`. Een issue dat de PR sluit telt in
+  PR-modus niet mee.
 
 ## 2-area: — waar hoort het bij
 

@@ -33,12 +33,9 @@ def test_planned_item_on_a_closed_or_unlabelled_issue_is_flagged():
     ]
 
 
-def test_open_issue_on_a_milestone_missing_from_the_map_is_flagged():
+def test_open_issue_on_a_milestone_missing_from_the_map_is_not_flagged():
     data = chain({"id": "b", "status": "planned", "issue": 7})
-    assert roadmap.problems(data, {7: "M2", 9: "M2 later"}) == [
-        "#9: open issue labelled loop on milestone M2 later is not on the map "
-        "(see docs/developer/labels.md)"
-    ]
+    assert roadmap.problems(data, {7: "M2", 9: "M2 later"}) == []
 
 
 def test_open_issue_without_milestone_missing_from_the_map_is_not_flagged():
@@ -159,13 +156,13 @@ def test_pr_mode_closing_a_milestoned_issue_is_green(monkeypatch, tmp_path, caps
     assert "map in step" in capsys.readouterr().out
 
 
-def test_main_mode_flags_a_milestoned_issue_missing_from_the_map(monkeypatch, tmp_path, capsys):
+def test_main_mode_leaves_a_milestoned_issue_missing_from_the_map_to_the_job(monkeypatch, tmp_path, capsys):
     path = tmp_path / "loop.json"
     path.write_text(json.dumps(chain({"id": "a", "status": "works"})), encoding="utf-8")
     monkeypatch.setattr(roadmap, "LOOP", path)
     monkeypatch.setattr(roadmap, "open_loop_issues", lambda *_a: {9: "M2"})
-    assert roadmap.main([]) == 1
-    assert "#9: open issue labelled loop on milestone M2" in capsys.readouterr().out
+    assert roadmap.main([]) == 0
+    assert "is not on the map" not in capsys.readouterr().out
 
 
 def test_pr_mode_clean_exits_0(monkeypatch, tmp_path, capsys):

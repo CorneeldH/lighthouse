@@ -4,10 +4,10 @@
 The label marks an issue that adds or changes a step, a handoff or a route of the loop (see
 docs/developer/labels.md); explaining the controller is not one. Two modes:
 
-`python3 ci/loop_roadmap.py` (main mode) checks both directions. Every planned step or handoff in
-docs/site/data/loop.json names an open issue with the label. And every open issue with the label
-that sits on a milestone is named by a planned item of the map. An open issue without a milestone
-may be missing from the map: the PR that delivers it adds it.
+`python3 ci/loop_roadmap.py` (main mode) checks one direction: every planned step or handoff in
+docs/site/data/loop.json names an open issue with the label. The other direction, an open issue
+with the label that belongs on the map as a planned item, is carried by the scheduled job
+`map-planned` (it adds the item, or asks a question); this script no longer flags it.
 
 `python3 ci/loop_roadmap.py --pr <n>` (PR mode) checks that a PR closing a `loop` issue also
 updates the map: no closed issue is still planned on it, and the map file is touched. A PR that
@@ -46,19 +46,13 @@ SCRIPT = "ci/loop_roadmap.py"
 
 
 def problems(chain: dict, open_issues: dict[int, str | None]) -> list[str]:
-    """Planned items without an open `loop` issue, and milestoned open `loop` issues not on the map."""
+    """Planned items without an open `loop` issue."""
     items = planned(chain)
     found = [f"{name}: planned without an issue" for name, nr in items.items() if nr is None]
     found += [
         f"{name}: #{nr} is not an open issue labelled {LABEL} {HINT}"
         for name, nr in items.items()
         if nr is not None and nr not in open_issues
-    ]
-    on_map = set(items.values())
-    found += [
-        f"#{nr}: open issue labelled {LABEL} on milestone {title} is not on the map {HINT}"
-        for nr, title in sorted(open_issues.items())
-        if title is not None and nr not in on_map
     ]
     return found
 
@@ -139,8 +133,7 @@ def main(argv: list[str] | None = None) -> int:
         if pr is None:
             issues = open_loop_issues(repo)
             found = problems(chain, issues)
-            ok = (f"loop roadmap: {len(issues)} open {LABEL} issues, planned items all open, "
-                  "milestoned issues all on the map")
+            ok = (f"loop roadmap: {len(issues)} open {LABEL} issues, planned items all open")
         else:
             closed = closed_loop_issues(repo, pr)
             touched = touched_files(repo, pr)
