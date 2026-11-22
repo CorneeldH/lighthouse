@@ -145,8 +145,12 @@ Regels:
 - Een bestand dat alleen in CRLF verschilt van de *nieuwe* inhoud, is niet `same`. `init` schrijft
   het met LF en toont het in de diff, zodat de reparatie zichtbaar is.
 - De manifest bewaart de sha256 van de inhoud met LF, zoals nu.
-- Beheerde blokken in een gedeeld bestand (zoals in `AGENTS.md`) volgen dezelfde regel. De
-  bouwer kijkt of die door `decide` lopen of een eigen vergelijking hebben.
+- Een bestand zonder manifest-entry (eerste `init`) dat alleen in CRLF verschilt van de nieuwe
+  inhoud, wordt `Adopt` in plaats van `Conflict`, ook zonder `--force` *(eigen keuze na
+  spec-review, r1-f2)*.
+- Beheerde blokken in een gedeeld bestand (zoals in `AGENTS.md`) volgen al dezelfde regel:
+  `agentsmd.Find` normaliseert CRLF (`internal/agentsmd/agentsmd.go`) en `Set` schrijft het blok
+  met de regeleinden van het document. De bouwer past daar niets aan.
 
 ### `.gitattributes` door `init`
 
@@ -163,11 +167,14 @@ Regels:
 - `init` voegt alleen ontbrekende regels toe, achteraan. Bestaande regels van het project blijven
   staan. Een tweede run geeft `No changes.`
 - De regel voor `.claude/hooks/lighthouse/**` komt er altijd: hij raakt alleen bestanden van
-  lighthouse, en als laatste regel wint hij. *(mijn keus)*
+  lighthouse. Staat hij al eerder in het bestand, dan blijft hij staan; staat er daarna een
+  projectregel die hem overschrijft, dan wint die en meldt `init` dat niet *(eigen keuze na
+  spec-review, r1-f3)*. De CRLF-check van stap 2 blijft het vangnet.
 - De regel `*.sh eol=lf` komt er alleen als het project nog geen regel met precies het patroon
   `*.sh` heeft. Het project houdt zo de baas over zijn eigen scripts. *(mijn keus)*
-- Het mechanisme (een beheerd blok of losse regels) kiest de bouwer, naar het patroon dat `init`
-  al heeft voor bestanden die het met het project deelt.
+- Losse regels, geen beheerd blok: de HTML-commentaarmarkers van `agentsmd` zijn in
+  `.gitattributes` geen geldig commentaar. `init` verwijdert de regels niet, ook niet bij
+  `--no-pack` *(eigen keuze na spec-review, r1-f3)*.
 
 ### Stap 2b: registraties
 
@@ -197,7 +204,7 @@ Per registratie draait hij het commando één keer:
 |---|---|
 | `PreToolUse`, `PostToolUse`, `PostToolUseFailure` met matcher `Bash` | `tool_input.command = "true"` |
 | idem met matcher `Edit\|Write` | `tool_input.file_path` op een niet-bestaand pad zonder `.md` |
-| `PostToolUse` zonder matcher, `Stop`, `SubagentStop`, `UserPromptSubmit` | `transcript_path` op een leeg bestand in een tempdir |
+| `PostToolUse` zonder matcher, `Stop`, `SubagentStop`, `UserPromptSubmit` | `transcript_path` op een bestand in een tempdir met één prompt-entry met `timestamp` en zonder tool-use *(eigen keuze na spec-review, r1-f1)* |
 | `Notification` | `notification_type = "permission_prompt"`, buiten een controller-run |
 
 - met de state in een tempdir. De check zet `LIGHTHOUSE_STATE_DIR`, `XDG_RUNTIME_DIR` en de andere
@@ -213,6 +220,8 @@ Oordeel per registratie:
 - Exit 0 of 2, en geen `COULD NOT CHECK` in stdout of stderr: `ok`.
 - Al het andere is `FAIL`: een andere exit, een timeout, of `COULD NOT CHECK`. De regel noemt de
   hook en de eerste niet-lege regel van stderr (of stdout als stderr leeg is).
+
+Een leeg transcript volstaat niet: `internal/turnroots/transcript.go` geeft dan `Undetermined` ("no prompt in the transcript") en de Stop-hooks van de taalpakketten (`go-lint-gate`, `go-imports-gate`, `node-imports-gate`) melden `COULD NOT CHECK`. Met één prompt en zonder tool-use meldt turn-roots `untouched` en geven die gates `not checked` met exit 0.
 
 Een `COULD NOT CHECK` van een hook die bij deze payload terecht niet kan meten, is een fout in de
 payload, niet in de hook. De bouwer kiest de payloads zo dat elke hook uit de pakketten op Linux
@@ -232,7 +241,11 @@ De logica komt uit `ci/windows-measure.sh` (`hook` en `ok`), geport naar Go.
 - De aanroep krijgt een injecteerbare variabele, zoals `auditSummary`, zodat tests van `init` de
   hooks niet echt draaien.
 
-In de eigen checkout (`version = "dev"`) kan `run.sh` een build in de achtergrond starten. Een rode
+In de eigen checkout (`version = "dev"`) start `run.sh` bij elke hook-aanroep een losgekoppelde
+`go build` naar `.lighthouse/bin` als de stamp niet `HEAD` is (`pack/core/hooks/run.sh`). Die build
+draait door na de check en schrijft in de repo. Dat is een bekende uitzondering op het anti-doel
+"state onveranderd" en geldt alleen voor `dev`; de test voor onveranderde state draait met een
+niet-dev-binary *(eigen keuze na spec-review, r1-f4)*. Een rode
 check in de dogfood-CI faalt de CI niet, want de exit van `init` blijft gelijk. De bouwer kijkt of
 de check daar groen is, en noteert het als hij dat niet is.
 
