@@ -62,6 +62,14 @@ func Post(_ context.Context, g *Gate, raw []byte) Result {
 	if len(moved) == 0 {
 		return Result{}
 	}
+	// Only now, with a commit to test: without one Post reads no configuration.
+	on, blk := g.readOn()
+	if blk != nil {
+		return *blk
+	}
+	if on == "pr" {
+		return Result{}
+	}
 	rows := make([]Row, 0, len(moved))
 	for _, m := range moved {
 		rows = append(rows, Row(m))

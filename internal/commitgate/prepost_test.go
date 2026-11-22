@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -131,5 +132,106 @@ func TestPostRunsTheMovedRoots(t *testing.T) {
 				t.Fatalf("message:\n%s\nwant:\n%s", m, want)
 			}
 		})
+	}
+}
+
+// With on = "pr" the commit moment does nothing, also on the default branch: no test, no record.
+func TestPreOnPRSkipsDefaultBranchCommit(t *testing.T) {
+	h, repo := projectHarness(t, testGate+"on = \"pr\"\n")
+	res := h.pre("git commit -m x", repo)
+	if res.Code != 0 || res.Stderr != "" {
+		t.Fatalf("got %d %v\n%s, want a silent pass", res.Code, res.Output, res.Stderr)
+	}
+	if len(h.calls) != 0 {
+		t.Fatalf("the test command ran in %q", h.ranIn())
+	}
+}
+
+// With on = "pr" a commit on a feature branch records nothing for Post.
+func TestPreOnPRRecordsNothing(t *testing.T) {
+	h, repo := projectHarness(t, testGate+"on = \"pr\"\n")
+	gitIn(t, repo, "checkout", "-q", "-b", "issue-1-x")
+	res := h.pre("git commit -m x", repo)
+	if res.Code != 0 || res.Stderr != "" {
+		t.Fatalf("got %d %v\n%s, want a silent pass", res.Code, res.Output, res.Stderr)
+	}
+	if _, ok := markerHeads(t); ok {
+		t.Fatal("a marker was recorded with on = pr")
+	}
+}
+
+// --no-verify is refused whatever `on` says.
+func TestPreOnPRStillBlocksNoVerify(t *testing.T) {
+	h, repo := projectHarness(t, testGate+"on = \"pr\"\n")
+	res := h.pre("git commit --no-verify -m x", repo)
+	if res.Code != 2 || !strings.Contains(res.Stderr, "--no-verify is not allowed in this repo.") {
+		t.Fatalf("got %d\n%s, want the --no-verify block", res.Code, res.Stderr)
+	}
+}
+
+// on = "both" and the default (commit) keep the commit moment as it was.
+func TestPreOnBothTestsCommit(t *testing.T) {
+	h, repo := projectHarness(t, testGate+"on = \"both\"\n")
+	h.reply(runReply{0, "3 passed\n", nil})
+	res := h.pre("git commit -m x", repo)
+	if got := message(t, res, "PreToolUse"); got != passLine(repo) {
+		t.Fatalf("message:\n%s\nwant:\n%s", got, passLine(repo))
+	}
+	if got := h.ranIn(); len(got) != 1 || got[0] != repo {
+		t.Fatalf("the test command ran in %q, want only %q", got, repo)
+	}
+}
+
+func TestPreDefaultOnTestsCommit(t *testing.T) {
+	h, repo := projectHarness(t, testGate)
+	h.reply(runReply{0, "3 passed\n", nil})
+	res := h.pre("git commit -m x", repo)
+	if got := message(t, res, "PreToolUse"); got != passLine(repo) {
+		t.Fatalf("message:\n%s\nwant:\n%s", got, passLine(repo))
+	}
+	if got := h.ranIn(); len(got) != 1 || got[0] != repo {
+		t.Fatalf("the test command ran in %q, want only %q", got, repo)
+	}
+}
+
+// An unreadable `on` blocks a commit instead of guessing a moment.
+func TestPreBlocksOnAnInvalidOn(t *testing.T) {
+	h, repo := projectHarness(t, testGate+"on = \"always\"\n")
+	res := h.pre("git commit -m x", repo)
+	if res.Code != 2 || !strings.Contains(res.Stderr, "test_gate.on = \"always\"; it must be commit, pr or both.") {
+		t.Fatalf("got %d\n%s, want the invalid-on block", res.Code, res.Stderr)
+	}
+	if len(h.calls) != 0 {
+		t.Fatalf("the test command ran in %q", h.ranIn())
+	}
+}
+
+// With on = "pr" Post runs nothing for a moved root.
+func TestPostOnPRRunsNothing(t *testing.T) {
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
+	root, base, _ := gitRepo(t)
+	h := newHarness(t, "post", testGate+"on = \"pr\"\n", "")
+	raw := payload("git commit -m x")
+	marker, err := markerPath(raw, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(t, marker, `{"heads": {"`+root+`": "`+base+`"}}`)
+	res := Post(context.Background(), h.g, raw)
+	if res.Code != 0 || res.Stderr != "" {
+		t.Fatalf("got %d %v\n%s, want a silent pass", res.Code, res.Output, res.Stderr)
+	}
+	if len(h.calls) != 0 {
+		t.Fatalf("the test command ran %d times", len(h.calls))
+	}
+}
+
+// Without a moved root Post reads no configuration: an invalid `on` is not seen.
+func TestPostWithoutAMovedRootReadsNoOn(t *testing.T) {
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
+	h := newHarness(t, "post", testGate+"on = \"always\"\n", "")
+	res := Post(context.Background(), h.g, payload("git commit -m x"))
+	if res.Code != 0 || res.Stderr != "" {
+		t.Fatalf("got %d\n%s, want a silent pass", res.Code, res.Stderr)
 	}
 }
