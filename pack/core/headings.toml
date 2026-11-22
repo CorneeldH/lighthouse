@@ -224,8 +224,8 @@ nl = "Antwoord `push` om precies deze SHA te laten pushen: de vloer draait dan o
 en = "Answer `push` to have exactly this SHA pushed: the floor runs again, the review does not."
 
 [question_push_retry]
-nl = "Antwoord `push` als de oorzaak hierboven is verholpen: de pusher draait dan opnieuw voor precies deze SHA, zonder review. Of push met de hand."
-en = "Answer `push` once the cause above is fixed: the pusher then runs again for exactly this SHA, without review. Or push by hand."
+nl = "Antwoord `push` als de oorzaak hieronder is verholpen: de pusher draait dan opnieuw voor precies deze SHA, zonder review. Of push met de hand."
+en = "Answer `push` once the cause below is fixed: the pusher then runs again for exactly this SHA, without review. Or push by hand."
 
 [question_push_moved]
 nl = "De worktree staat niet meer op de SHA waarvoor je toestemming gaf. Een antwoord `push` geeft deze Vraag opnieuw: laat de nieuwe commits via een nieuwe handoff reviewen, of push met de hand."
