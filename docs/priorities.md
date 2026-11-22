@@ -92,7 +92,8 @@ de rang.
 De SPA leidt deze begrippen af in `web/src/lib/priorities/derive.ts`; de server levert ze niet.
 
 - **Actief.** Een issue is actief als er een open of geparkeerde run op staat, of als de
-  bordstatus `In progress` is.
+  bordstatus `In progress` of `Controller` is (zoals `issueState` en de
+  [spec](developer/planning/specs/2026-11-20-statusmodel-en-statusschema-design.md)).
 - **Toestand van een issue.** `issueState` kiest de eerste passende regel: *actief* (live run,
   bordstatus `In progress` of `Controller`; met de vlag *mens nodig* bij een `needs_*`-label of
   een open vraag), *mens nodig* (`needs_shaping` of `needs_decision`), *geblokkeerd* (label
@@ -101,6 +102,14 @@ De SPA leidt deze begrippen af in `web/src/lib/priorities/derive.ts`; de server 
   met één vormentaal en groepeert de blokjes per toestand. De API levert daarvoor per issue
   `label` (het label met de laagste rang), `needs_label` (er staat een `needs_*`-label op, welk
   ook) en `open_question`, en per milestone de gesloten issues (`closed`).
+- **Vormentaal van de graaf.** De graaf tekent de toestand van een issue op de kaart met
+  dezelfde vormentaal als de balk: een kleurstrook (gestreept bij *actief*, effen bij
+  elke andere toestand), een stippelrand van 1,5 px in de voorgrondkleur bij *mens nodig*, een kruis bij
+  het nummer bij *geblokkeerd* en een doorgetrokken grijze rand voor een externe kaart (andere
+  repo of buiten het filter), nooit gestippeld. Issues zonder afhankelijkheden staan als
+  dezelfde kaart in een raster onder de graaf. Zie de
+  [spec](developer/planning/specs/2026-11-20-statusmodel-en-statusschema-design.md) en het
+  [plan](developer/planning/plans/2026-11-22-issue-438-afhankelijkhedengraaf-vormentaal.md).
 - **Bergop / bergaf.** Een actief issue is bergop als de fase van zijn run een van
   `brainstorming`, `start-issue`, `spec-review`, `writing-plans` of `plan-review` is: het
   denkwerk vóór de uitvoering. Elke andere fase, of een issue dat alleen op het bord actief is,
@@ -127,6 +136,7 @@ van `Planning` (milestones, dependencies) nog niet en is zonder wijziging van de
   verdwijnen uit Milestones en uit Zonder milestone.
 - GitLab leest de gesloten issues van een milestone op milestonetitel (`/issues?state=closed&milestone=<titel>`).
 - Lange pijlen in de graaf delen één baan per overgeslagen kolom.
+- De kaartvorm van de graaf (kleurstrook, stippelrand, kruis) is alleen met jsdom getest, niet in een browser bekeken.
 - Het palet is niet gevalideerd met de dataviz-validator.
 - De gebruikersinterface is niet visueel in een browser gecontroleerd.
 - De e2e-test is overgeslagen: `fake-github.ts` kent de REST-routes van `Planning` nog niet.
