@@ -1,11 +1,15 @@
+import { ChevronDown, ChevronUp } from 'lucide-react'
 import { useLayoutEffect, useRef, useState, type JSX } from 'react'
 import {
   milestoneRows,
+  placeInRepo,
+  priorityOrder,
   sortMilestoneRows,
   type Block as BlockData,
   type GNode,
   type MilestoneRow,
 } from '@/lib/priorities/derive'
+import { canMove } from '@/lib/priorities/moves'
 import { NO_MILESTONE_COLOR } from '@/lib/priorities/palette'
 import { Block, type BlockState } from './Block'
 import type { ViewProps } from './types'
@@ -35,6 +39,44 @@ function meta(row: MilestoneRow, own: BlockData[]): string {
   return n === 0 ? base : `${base} · ${n} outside blocker${n === 1 ? '' : 's'}`
 }
 
+// Up/down state of one row in stand Prioriteit; absent in stand Berekend.
+interface Moves {
+  place: number | null
+  up: boolean
+  down: boolean
+  onMove: (dir: 'up' | 'down') => void
+}
+
+const MOVE_BTN =
+  'flex size-5 items-center justify-center rounded border border-border text-muted-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40'
+
+function MoveButtons({ moves, title }: { moves: Moves; title: string }): JSX.Element {
+  return (
+    <div className="flex shrink-0 flex-col gap-0.5">
+      <button
+        type="button"
+        aria-label={`${title} omhoog`}
+        title="Omhoog"
+        className={MOVE_BTN}
+        disabled={!moves.up}
+        onClick={() => moves.onMove('up')}
+      >
+        <ChevronUp aria-hidden className="size-3.5" />
+      </button>
+      <button
+        type="button"
+        aria-label={`${title} omlaag`}
+        title="Omlaag"
+        className={MOVE_BTN}
+        disabled={!moves.down}
+        onClick={() => moves.onMove('down')}
+      >
+        <ChevronDown aria-hidden className="size-3.5" />
+      </button>
+    </div>
+  )
+}
+
 function useWidth<T extends HTMLElement>(): [React.RefObject<T | null>, number] {
   const ref = useRef<T>(null)
   const [width, setWidth] = useState(0)
@@ -50,7 +92,7 @@ function useWidth<T extends HTMLElement>(): [React.RefObject<T | null>, number] 
   return [ref, width]
 }
 
-function Row({ row, colors }: { row: MilestoneRow; colors: Map<string, string> }): JSX.Element {
+function Row({ row, colors, moves }: { row: MilestoneRow; colors: Map<string, string>; moves?: Moves }): JSX.Element {
   const color = colors.get(`${row.repo}#m${row.number}`) ?? NO_MILESTONE_COLOR
   const [barRef, barWidth] = useWidth<HTMLDivElement>()
   // Outside blockers have their own column (row.outside); the bar holds the milestone's own blocks.
@@ -64,6 +106,7 @@ function Row({ row, colors }: { row: MilestoneRow; colors: Map<string, string> }
       className="grid grid-cols-[240px_1fr_110px] items-center gap-4 rounded-lg border p-4"
     >
       <div className="flex items-start gap-2.5 font-semibold">
+        {moves && <MoveButtons moves={moves} title={row.title} />}
         <i
           data-testid="swatch"
           className="mt-0.5 size-3.5 shrink-0 rounded-sm"
@@ -71,6 +114,19 @@ function Row({ row, colors }: { row: MilestoneRow; colors: Map<string, string> }
         />
         <div>
           {row.title}
+          {moves && moves.place !== null && (
+            <>
+              <small
+                data-testid="place"
+                aria-hidden
+                title="plaats in de repo"
+                className="ml-1.5 align-super text-[10px] font-semibold text-muted-foreground"
+              >
+                {moves.place}
+              </small>
+              <span className="sr-only">{`, plaats ${moves.place}`}</span>
+            </>
+          )}
           <small className="block text-xs font-normal text-muted-foreground">{meta(row, own)}</small>
         </div>
       </div>
@@ -153,17 +209,47 @@ function Row({ row, colors }: { row: MilestoneRow; colors: Map<string, string> }
   )
 }
 
-export function MilestonesView({ graph, repos, selected, colors }: ViewProps): JSX.Element {
-  const rows = sortMilestoneRows(
+export function MilestonesView({
+  graph,
+  repos,
+  selected,
+  colors,
+  order = 'computed',
+  onMove,
+  pendingRepos,
+}: ViewProps): JSX.Element {
+  const computed = sortMilestoneRows(
     milestoneRows(
       repos.filter((r) => selected.has(r.slug)),
       graph,
     ),
   )
+  const priority = order === 'priority'
+  const rows = priority ? priorityOrder(computed) : computed
+  // The repo filter hides whole repos, so the rows of a shown repo are all its milestones.
+  const byRepo = new Map<string, MilestoneRow[]>()
+  if (priority) {
+    for (const r of rows) {
+      const l = byRepo.get(r.repo) ?? []
+      l.push(r)
+      byRepo.set(r.repo, l)
+    }
+  }
+  const movesOf = (row: MilestoneRow): Moves | undefined => {
+    if (!priority) return undefined
+    const own = byRepo.get(row.repo) as MilestoneRow[]
+    const free = onMove !== undefined && !(pendingRepos?.has(row.repo) ?? false)
+    return {
+      place: placeInRepo(own, row.repo, row.number),
+      up: free && canMove(own, row.number, 'up'),
+      down: free && canMove(own, row.number, 'down'),
+      onMove: (dir) => onMove?.(row, dir),
+    }
+  }
   return (
     <div data-testid="view-milestones" className="flex flex-col gap-3">
       {rows.map((row) => (
-        <Row key={`${row.repo}#m${row.number}`} row={row} colors={colors} />
+        <Row key={`${row.repo}#m${row.number}`} row={row} colors={colors} moves={movesOf(row)} />
       ))}
     </div>
   )
