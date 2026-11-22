@@ -290,9 +290,9 @@ func filterBlockingUnits(units []packs.Unit, r levels.Resolved) []packs.Unit {
 }
 
 // CheckLevel is what `lighthouse level` shares with init: it validates level and the
-// [components] overrides with the same validate, against the levels.toml of every package in
-// fsys, and returns those files. The warnings of validate are dropped; the caller prints its own.
-func CheckLevel(fsys fs.FS, version, level string, over map[string]levels.Stand) ([]levels.File, error) {
+// [components] overrides with the same validate, against the levels.toml of the named packages
+// of fsys (every package when none is named), and returns those files. The warnings of validate are dropped; the caller prints its own.
+func CheckLevel(fsys fs.FS, version, level string, over map[string]levels.Stand, only []string) ([]levels.File, error) {
 	all, err := loadAll(fsys, version)
 	if err != nil {
 		return nil, err
@@ -300,6 +300,9 @@ func CheckLevel(fsys fs.FS, version, level string, over map[string]levels.Stand)
 	var chosen []packs.Pack
 	var desired []packs.Unit
 	for _, name := range slices.Sorted(maps.Keys(all)) {
+		if len(only) > 0 && !slices.Contains(only, name) {
+			continue
+		}
 		chosen = append(chosen, all[name])
 		desired = append(desired, all[name].Units...)
 	}

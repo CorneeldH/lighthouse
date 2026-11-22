@@ -18,6 +18,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/initcmd"
 	"github.com/CorneeldH/lighthouse/internal/levellog"
 	"github.com/CorneeldH/lighthouse/internal/levels"
+	"github.com/CorneeldH/lighthouse/internal/manifest"
 	"github.com/CorneeldH/lighthouse/internal/version"
 	"github.com/CorneeldH/lighthouse/pack"
 )
@@ -55,7 +56,7 @@ func showLevel(out io.Writer) error {
 	if level == "" {
 		level = "strict"
 	}
-	files, err := initcmd.CheckLevel(pack.Files, version.String(), level, over)
+	files, err := initcmd.CheckLevel(pack.Files, version.String(), level, over, installedPackages(root))
 	if err != nil {
 		return err
 	}
@@ -64,6 +65,16 @@ func showLevel(out io.Writer) error {
 		return nil
 	}
 	return writeLevel(out, root, installed, files)
+}
+
+// installedPackages are the packages of the manifest; nil (every package of the binary) when
+// the repo has no readable manifest yet.
+func installedPackages(root string) []string {
+	m, err := manifest.Read(root)
+	if err != nil {
+		return nil
+	}
+	return m.Packages
 }
 
 // levelConfig reads `level` and the [components] overrides of lighthouse.toml; both are empty

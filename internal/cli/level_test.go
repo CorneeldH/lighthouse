@@ -12,6 +12,7 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/levellog"
 	"github.com/CorneeldH/lighthouse/internal/levels"
+	"github.com/CorneeldH/lighthouse/internal/manifest"
 )
 
 // levelRepo is a git repository with the given components.toml and lighthouse.toml (either
@@ -181,5 +182,51 @@ func TestLevelBogusLevelFails(t *testing.T) {
 	}
 	if !strings.Contains(errOut, `unknown level "bogus" (known: light, standard, strict)`) {
 		t.Errorf("stderr %q does not name the valid levels", errOut)
+	}
+}
+
+// coreOnlyManifest gives root a manifest that lists the core package alone.
+func coreOnlyManifest(t *testing.T, root string) {
+	t.Helper()
+	p := filepath.Join(root, manifest.Path)
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, manifest.Encode(manifest.Manifest{Version: "dev", Packages: []string{"core"}}), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Classification: a cli-output change; the surface is the count line. It fails when the count
+// takes the components of packs the repo did not install (every pack of the binary) instead of
+// the packages of the manifest: a core-only repo then counts the go, python and node hooks as on.
+func TestLevelCountsOnlyInstalledPackages(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		in   *levels.Installed
+		want string
+	}{
+		{"light", func() *levels.Installed {
+			in := lightInstalled()
+			in.Components = map[string]levels.Stand{"commit-test-gate": levels.StandOff, "md-link-check": levels.StandLog,
+				"code-language-check": levels.StandLog}
+			for _, s := range []string{"write-issue", "fix-pr", "audit-worktrees", "audit-agent-config", "test-standard", "review-spec", "review-plan"} {
+				in.Components["skill:"+s] = levels.StandOff
+			}
+			return in
+		}(), "12"},
+		{"strict", &levels.Installed{Level: "strict", Since: "2026-03-01T10:00:00Z", Components: map[string]levels.Stand{}}, "22"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := levelRepo(t, tc.in, "")
+			coreOnlyManifest(t, root)
+			out, errOut, code := runLevel(t)
+			if code != 0 || errOut != "" {
+				t.Fatalf("code %d stderr %q", code, errOut)
+			}
+			if !strings.Contains(out, "\n"+tc.want+" components on\n") {
+				t.Errorf("stdout lacks %q components on:\n%s", tc.want, out)
+			}
+		})
 	}
 }
