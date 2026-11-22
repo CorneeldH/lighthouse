@@ -128,12 +128,51 @@ func TestPostRunsTheMovedRoots(t *testing.T) {
 	}
 }
 
-// Red when Pre judges --no-verify again: that is the base hook no-verify-check now, so the
-// test gate must not refuse it (it passes a commit on a path that is no repository).
+// writeBlocking gives root a hooks/lighthouse/blocking with the given lines.
+func writeBlocking(t *testing.T, root string, lines string) {
+	t.Helper()
+	d := filepath.Join(root, ".claude", "hooks", "lighthouse")
+	if err := os.MkdirAll(d, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(d, "blocking"), []byte(lines), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Red when Pre judges --no-verify in a repo whose pack lists no-verify-check: that base hook
+// refuses it, so the test gate must not refuse twice (the pass is a commit on a non-repo path).
 func TestPreLeavesNoVerifyToNoVerifyCheck(t *testing.T) {
 	dir := t.TempDir()
-	res := Pre(context.Background(), &Gate{Mode: "pre"}, payload("cd "+dir+" && git commit --no-verify -m x"), dir)
+	writeBlocking(t, dir, "main-commit-gate\ncommit-test-gate\nno-verify-check\n")
+	res := Pre(context.Background(), &Gate{Mode: "pre", Root: dir}, payload("cd "+dir+" && git commit --no-verify -m x"), dir)
 	if res.Code != 0 || res.Stderr != "" {
 		t.Fatalf("got %d %q, want a pass", res.Code, res.Stderr)
+	}
+}
+
+// Red when Pre stops refusing --no-verify in a repo on an older pack (no no-verify-check in
+// blocking, or no readable blocking file): a newer binary must not open that gap.
+func TestPreBlocksNoVerifyOnAnOlderPack(t *testing.T) {
+	const want = "commit-test-gate: --no-verify is not allowed in this repo.\n" +
+		"\n" +
+		"The test gate is a Claude Code PreToolUse hook, not a git hook, so the\n" +
+		"flag skips nothing today — but it will as soon as git hooks are added.\n" +
+		"If something fails: fix it. If it really has to be skipped, ask.\n"
+	for name, lines := range map[string]string{
+		"old blocking": "main-commit-gate\ncommit-test-gate\npr-create-gate\n",
+		"no blocking":  "",
+		"similar name": "no-verify-check-x\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			if name != "no blocking" {
+				writeBlocking(t, dir, lines)
+			}
+			res := Pre(context.Background(), &Gate{Mode: "pre", Root: dir}, payload("cd "+dir+" && git commit --no-verify -m x"), dir)
+			if res.Code != 2 || res.Stderr != want {
+				t.Fatalf("got %d %q, want a block", res.Code, res.Stderr)
+			}
+		})
 	}
 }
