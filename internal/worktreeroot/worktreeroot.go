@@ -46,3 +46,23 @@ func MainCheckout(dir string) (string, error) {
 	}
 	return filepath.Dir(common), nil
 }
+
+// InSyncFolder reports whether path runs through a folder that a sync client (OneDrive, Dropbox,
+// iCloud Drive) manages, and which provider. Only whole path segments count, case-insensitive,
+// with `/` or `\` as separator: MyOneDriveNotes is not OneDrive.
+func InSyncFolder(path string) (provider string, ok bool) {
+	segs := strings.FieldsFunc(strings.ToLower(path), func(r rune) bool { return r == '/' || r == '\\' })
+	for i, s := range segs {
+		switch {
+		case s == "onedrive" || strings.HasPrefix(s, "onedrive - "):
+			return "OneDrive", true
+		case s == "dropbox":
+			return "Dropbox", true
+		case s == "icloud drive" || s == "iclouddrive":
+			return "iCloud Drive", true
+		case s == "library" && i+2 < len(segs) && segs[i+1] == "mobile documents" && segs[i+2] == "com~apple~clouddocs":
+			return "iCloud Drive", true
+		}
+	}
+	return "", false
+}

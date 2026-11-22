@@ -82,3 +82,32 @@ func TestMainCheckout(t *testing.T) {
 		}
 	}
 }
+
+// Red when InSyncFolder stops matching whole path segments (or stops reading `\`): the table
+// holds a Windows path, a prefixed OneDrive name, and a lookalike that must not match.
+func TestInSyncFolder(t *testing.T) {
+	cases := []struct {
+		path, provider string
+	}{
+		{`C:\Users\A\OneDrive - Bedrijf\repo`, "OneDrive"},
+		{`C:\Users\A\OneDrive\repo`, "OneDrive"},
+		{"/home/a/onedrive/x", "OneDrive"},
+		{"/home/a/Dropbox/x", "Dropbox"},
+		{"/Users/a/iCloud Drive/x", "iCloud Drive"},
+		{"/Users/a/iCloudDrive/x", "iCloud Drive"},
+		{"/Users/a/Library/Mobile Documents/com~apple~CloudDocs/x", "iCloud Drive"},
+		{"/home/a/MyOneDriveNotes/x", ""},
+		{"/home/a/Dropbox-old/x", ""},
+		{"/Users/a/Library/Mobile Documents/other/x", ""},
+		{"/home/a/src/repo", ""},
+		{"", ""},
+	}
+	for _, c := range cases {
+		t.Run(c.path, func(t *testing.T) {
+			got, ok := InSyncFolder(c.path)
+			if got != c.provider || ok != (c.provider != "") {
+				t.Errorf("InSyncFolder(%q) = %q, %v; want %q", c.path, got, ok, c.provider)
+			}
+		})
+	}
+}
