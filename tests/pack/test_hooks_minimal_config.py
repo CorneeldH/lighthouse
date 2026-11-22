@@ -81,6 +81,8 @@ def _payload(event: str, script: str, worktree: Path, project: Path) -> dict:
             "tool_name": "Bash",
             "tool_input": {"command": "ls"},
         }
+    if name == "level-check":
+        return {"hook_event_name": event, "session_id": "s1", "cwd": str(worktree)}
     if name == "permission-check":
         return {
             "hook_event_name": event,
@@ -176,6 +178,7 @@ def test_every_registration_has_a_payload() -> None:
         "worktree-check",
         "md-link-check",
         "code-language-check",
+        "level-check",
         "usage-gate",
         "permission-check",
     }

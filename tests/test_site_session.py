@@ -199,6 +199,7 @@ def test_routes_are_the_situations():
         "agent": "I send an agent to scout",
         "permission-prompt": "A controller run waits on a permission",
         "workflow-push": "A controller run pushes a workflow change",
+        "core-gate-off": "A session starts with a core gate switched off",
     }
 
 

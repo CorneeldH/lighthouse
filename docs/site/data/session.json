@@ -791,6 +791,13 @@
       "chips": [
         "permission-check"
       ]
+    },
+    {
+      "id": "core-gate-off",
+      "label": "A session starts with a core gate switched off",
+      "chips": [
+        "level-check"
+      ]
     }
   ]
 }
