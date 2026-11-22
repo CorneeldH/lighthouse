@@ -102,22 +102,15 @@ jobs:
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.event.pull_request.head.sha }}
         run: gitleaks git . --log-opts="$BASE..$HEAD" --config .gitleaks.toml --no-banner --redact --exit-code 1
-      # The hook runs `lighthouse checkpoint-scan`, found on PATH. The tests
-      # build the same checkout again through `lighthouse_dir()` (tests/pack/python/_testkit.py).
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      - name: build lighthouse
-        run: |
-          go build -o "$RUNNER_TEMP/bin/lighthouse" ./cmd/lighthouse
-          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
-      - run: uv sync --locked
-      - run: uv run pytest -q tests/test_pre_push_secret_scan.py
+      # The go-test and go-e2e jobs have no gitleaks: here these tests run hard instead of
+      # skipping. The hook tests in e2e/ build the lighthouse of this checkout themselves.
+      - run: go test -race -shuffle=on ./internal/checkpointscan/... ./internal/cli/
         env:
           LIGHTHOUSE_REQUIRE_GITLEAKS: "1"
-      # The go-test job has no gitleaks: here its tests run hard instead of skipping.
-      - run: go test -race -shuffle=on ./internal/checkpointscan/... ./internal/cli/
+      - run: go test -race -shuffle=on -tags e2e -run 'TestPrePushScan|TestSecretScan' ./e2e/
         env:
           LIGHTHOUSE_REQUIRE_GITLEAKS: "1"
 
