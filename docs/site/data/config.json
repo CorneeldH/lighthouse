@@ -469,6 +469,7 @@
               "about": "The folder with one file per area: its crux, leading policy and deliberate no's, read when writing an issue. Closing a milestone updates its near goal when the area file has that heading.",
               "example": "docs/areas",
               "readers": [
+                "internal/scheduled/mapplanned/mapplanned.go",
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/close-issue",
                 "pack/core/skills/write-issue"
@@ -481,6 +482,7 @@
               "about": "The file with the project's strategy, read when writing an issue and when shaping a milestone.",
               "example": "docs/strategy.md",
               "readers": [
+                "internal/scheduled/mapplanned/mapplanned.go",
                 "pack/core/skills/write-issue",
                 "internal/repoconfig/repoconfig.go"
               ]
@@ -572,6 +574,7 @@
               "about": "The file with the project's tenets, read when writing an issue.",
               "example": "docs/tenets.md",
               "readers": [
+                "internal/scheduled/mapplanned/mapplanned.go",
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/write-issue"
               ]
@@ -590,6 +593,7 @@
               "about": "The prefix of area labels.",
               "example": "area:",
               "readers": [
+                "internal/scheduled/mapplanned/corpus.go",
                 "internal/repoconfig/repoconfig.go",
                 "internal/triage/prompt.go",
                 "pack/core/skills/start-issue",

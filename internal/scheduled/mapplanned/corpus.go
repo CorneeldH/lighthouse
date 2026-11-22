@@ -23,12 +23,15 @@ import (
 // Cleanup validates it as a whole against labels.md at the base of the run and the forge.
 
 type corpus struct {
-	Language  string           `json:"language"`
-	Taxonomy  string           `json:"taxonomy"`
-	Tenets    string           `json:"tenets"`
-	Areas     string           `json:"areas"`
-	Documents []corpusDocument `json:"documents"`
-	Issues    []corpusIssue    `json:"issues"`
+	Language string `json:"language"`
+	Taxonomy string `json:"taxonomy"`
+	Tenets   string `json:"tenets"`
+	Areas    string `json:"areas"`
+	Strategy string `json:"strategy"`
+	// AreaPrefix is labels.area_prefix: the label prefix that ties an issue to its area file.
+	AreaPrefix string           `json:"area_prefix"`
+	Documents  []corpusDocument `json:"documents"`
+	Issues     []corpusIssue    `json:"issues"`
 }
 
 type corpusDocument struct {
@@ -57,12 +60,14 @@ type corpusAnswer struct {
 // buildCorpus is the corpus of the rows and the issues due under them, in the repo of env.
 func buildCorpus(env scheduled.Env, rows []Row, due []dueIssue) ([]byte, error) {
 	c := corpus{
-		Language:  env.Repo.Language,
-		Taxonomy:  env.Repo.Paths.Labels,
-		Tenets:    env.Repo.Paths.Tenets,
-		Areas:     env.Repo.Paths.Areas,
-		Documents: []corpusDocument{},
-		Issues:    []corpusIssue{},
+		Language:   env.Repo.Language,
+		Taxonomy:   env.Repo.Paths.Labels,
+		Tenets:     env.Repo.Paths.Tenets,
+		Areas:      env.Repo.Paths.Areas,
+		Strategy:   env.Repo.Paths.Strategy,
+		AreaPrefix: env.Repo.Labels.AreaPrefix,
+		Documents:  []corpusDocument{},
+		Issues:     []corpusIssue{},
 	}
 	for _, r := range rows {
 		c.Documents = append(c.Documents, corpusDocument(r))
