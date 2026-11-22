@@ -61,6 +61,13 @@ sha256 = "16cb90a9ae9721ad2223e634b0e15313b336a34071ce3bf7d4932f8c7e0c5ea9"
 
 [[unit]]
 kind = "file"
+path = ".agents/skills/lighthouse-map-planned/SKILL.md"
+package = "core"
+version = "dev"
+sha256 = "892df4b8300d375504f862879e7ebc058076e246754428f90e0826c393cbd358"
+
+[[unit]]
+kind = "file"
 path = ".agents/skills/lighthouse-place-instruction/SKILL.md"
 package = "core"
 version = "dev"
@@ -473,6 +480,13 @@ path = ".claude/skills/lighthouse-go-standard/SKILL.md"
 package = "go"
 version = "dev"
 sha256 = "65e0bad7fe4db4f0918f82ee839d4e549468e05556f2d0a3a27b3b8778286d52"
+
+[[unit]]
+kind = "file"
+path = ".claude/skills/lighthouse-map-planned/SKILL.md"
+package = "core"
+version = "dev"
+sha256 = "892df4b8300d375504f862879e7ebc058076e246754428f90e0826c393cbd358"
 
 [[unit]]
 kind = "file"
