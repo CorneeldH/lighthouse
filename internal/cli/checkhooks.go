@@ -16,10 +16,15 @@ var hooksCheck = func(root string, out, errOut io.Writer) int {
 }
 
 // checkHooksAfterInit runs the hook check on root with all output on errOut. It never changes
-// the exit code of init: a failing check ends as one hint line.
+// the exit code of init: a finding (1) or a check that could not run (2) ends as one hint line
+// that says which of the two it was.
 func checkHooksAfterInit(root string, errOut io.Writer) {
-	if hooksCheck(root, errOut, errOut) != 0 {
+	switch hooksCheck(root, errOut, errOut) {
+	case 0:
+	case 1:
 		_, _ = fmt.Fprintln(errOut, "check-hooks: some hooks do not run; see `lighthouse check-hooks` for details")
+	default:
+		_, _ = fmt.Fprintln(errOut, "check-hooks: could not check the hooks; see `lighthouse check-hooks` for details")
 	}
 }
 

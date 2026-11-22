@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -38,16 +39,31 @@ func TestCheckHooksInHelp(t *testing.T) {
 	}
 }
 
-// Classification: cli-output. Fails when a failing check after init changes init's exit code or
-// loses the hint line.
+// Classification: cli-output. Fails when a failing check after init changes init's exit code, or
+// when the hint line does not say whether hooks fail (1) or the check could not run (2).
 func TestCheckHooksFailureKeepsInitExit(t *testing.T) {
-	stubHooksCheck(t, func(string, io.Writer, io.Writer) int { return 1 })
-	code, _, errOut := runInit(t, "--yes")
-	if code != 0 {
-		t.Errorf("exit %d, want 0: a failed hook check must not fail init\n%s", code, errOut)
+	const (
+		failing  = "check-hooks: some hooks do not run; see `lighthouse check-hooks` for details"
+		couldNot = "check-hooks: could not check the hooks; see `lighthouse check-hooks` for details"
+	)
+	cases := []struct {
+		code      int
+		want, not string
+	}{
+		{1, failing, couldNot},
+		{2, couldNot, failing},
 	}
-	if !strings.Contains(errOut, "lighthouse check-hooks") {
-		t.Errorf("stderr lacks the check-hooks hint:\n%s", errOut)
+	for _, c := range cases {
+		t.Run(strconv.Itoa(c.code), func(t *testing.T) {
+			stubHooksCheck(t, func(string, io.Writer, io.Writer) int { return c.code })
+			code, _, errOut := runInit(t, "--yes")
+			if code != 0 {
+				t.Errorf("exit %d, want 0: a failed hook check must not fail init\n%s", code, errOut)
+			}
+			if !strings.Contains(errOut, c.want) || strings.Contains(errOut, c.not) {
+				t.Errorf("stderr wants %q and not %q:\n%s", c.want, c.not, errOut)
+			}
+		})
 	}
 }
 
