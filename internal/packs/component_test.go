@@ -255,3 +255,21 @@ func TestScriptOwnersTable(t *testing.T) {
 		t.Errorf("scripts in packs = %v, table = %v", onDisk, keys)
 	}
 }
+
+// Red when a shipped levels.toml has a [calls] key or value that is no component of that
+// package (a typo): such a handover would silently never be checked.
+func TestCallsNameOnlyKnownComponents(t *testing.T) {
+	for pkgName, p := range shipped(t) {
+		known := named(p.Levels)
+		for from, tos := range p.Levels.Calls {
+			if !known[from] {
+				t.Errorf("package %s: [calls] key %q is no known component", pkgName, from)
+			}
+			for _, to := range tos {
+				if !known[to] {
+					t.Errorf("package %s: [calls] %q hands over to %q, which is no known component", pkgName, from, to)
+				}
+			}
+		}
+	}
+}
