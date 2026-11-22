@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"unicode/utf8"
 )
 
 // MaxQuestions is the most questions in one comment; Letters are the option letters.
@@ -298,9 +299,20 @@ func ParseQuestion(body string) (QuestionFields, bool) {
 	return fields, true
 }
 
+// PromptLimit is the largest resume prompt, in bytes, that lighthouse sends. kenn-forge refuses a
+// message of more than 64 KiB after line-ending normalization ("message must not exceed 64 KiB
+// after line-ending normalization", HTTP 400 validationError); the margin below it is for what
+// the workplace adds around the prompt. The one place this boundary lives.
+const PromptLimit = 64*1024 - 4*1024
+
+// answerHeadMax is the most of a too-large answer that still goes into the prompt, as its begin.
+const answerHeadMax = 2000
+
 // AnswerPrompt is the resume prompt: the question as posted, then the answer literally. The
 // option letters are in the posted text; footer and close lines are for the human and stay out.
-func AnswerPrompt(question, answer string) string {
+// An answer that would bring the prompt over PromptLimit goes in as its begin only, followed by
+// a pointer to the comment (answerRef: its URL or id) that holds it whole.
+func AnswerPrompt(question, answer, answerRef string) string {
 	forHuman := append(Variants("question_close"), Variants("question_bundle_hint")...)
 	var kept []string
 	for _, line := range strings.Split(strings.TrimSpace(question), "\n") {
@@ -310,6 +322,25 @@ func AnswerPrompt(question, answer string) string {
 		kept = append(kept, line)
 	}
 	posted := strings.TrimSpace(strings.Join(kept, "\n"))
-	return "Your question stands on the issue like this; the controller added the option letters:\n\n" +
-		posted + "\n\nThe user's answer:\n\n" + strings.TrimSpace(answer)
+	head := "Your question stands on the issue like this; the controller added the option letters:\n\n" +
+		posted + "\n\nThe user's answer:\n\n"
+	answer = strings.TrimSpace(answer)
+	if len(head)+len(answer) <= PromptLimit {
+		return head + answer
+	}
+	const pointer = "\n\n[The answer is too large for this prompt and is cut off here. Read the full answer in comment %s with `lighthouse forge issue view <nr> --comments` before you go on.]"
+	room := PromptLimit - len(head) - len(pointer) - len(answerRef)
+	room = min(room, answerHeadMax)
+	return head + truncateUTF8(answer, max(room, 0)) + fmt.Sprintf(pointer, answerRef)
+}
+
+// truncateUTF8 cuts s to at most n bytes without splitting a rune.
+func truncateUTF8(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n]
 }
