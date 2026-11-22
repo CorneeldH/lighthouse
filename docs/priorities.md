@@ -47,7 +47,7 @@ met de queries waar ze over gingen.
 
 `lighthouse serve` toont naast de overview een tabblad Prioritering (`#prioritering`) met drie
 weergaven: een afhankelijkhedengraaf van open issues, een milestone-weergave met voortgang
-(`Done` van `Done + Open`, waarbij `Open` hier het aantal open issues is dat `Planning.Issues` per milestone levert; de SPA negeert de `Open` van de zoekopdracht) en een weergave van issues zonder milestone. De server bouwt de
+(`Done` van `Done + Open`, waarbij `Open` het aantal open issues is uit de lijst open issues van `Planning.Issues`, per milestone geteld) en een weergave van issues zonder milestone. De server bouwt de
 gegevens in een eigen refresher, los van de overview, elke **300 s** (`PrioritiesInterval`) en
 levert ze op `/api/priorities`. De pagina leest, op één plek na: de rang van een milestone
 (zie het volgende kopje).
@@ -118,8 +118,8 @@ De SPA leidt deze begrippen af in `web/src/lib/priorities/derive.ts`; de server 
 
 Het kleurpalet van de milestones is **niet gevalideerd** met de dataviz-validator. De
 gebruikersinterface is **niet visueel gecontroleerd in een browser**: alleen de unit- en
-componenttests en de build zijn gedraaid. Er is geen e2e-test: `web/e2e/fake-github.ts` kent geen
-GraphQL-route die zonder wijziging van de bestaande tests uit te breiden is.
+componenttests en de build zijn gedraaid. Er is geen e2e-test: `web/e2e/fake-github.ts` kent de REST-routes
+van `Planning` (milestones, dependencies) nog niet en is zonder wijziging van de bestaande tests niet uit te breiden.
 
 ## Bekende beperkingen
 
@@ -129,4 +129,4 @@ GraphQL-route die zonder wijziging van de bestaande tests uit te breiden is.
 - Lange pijlen in de graaf delen één baan per overgeslagen kolom.
 - Het palet is niet gevalideerd met de dataviz-validator.
 - De gebruikersinterface is niet visueel in een browser gecontroleerd.
-- De e2e-test is overgeslagen: `fake-github.ts` heeft geen GraphQL-route.
+- De e2e-test is overgeslagen: `fake-github.ts` kent de REST-routes van `Planning` nog niet.

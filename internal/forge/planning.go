@@ -79,6 +79,8 @@ func (c *GitHub) Planning(ctx context.Context) (Planning, error) {
 		slices.SortFunc(done, func(a, b ClosedIssue) int { return a.Number - b.Number })
 		counts = append(counts, MilestoneCount{Milestone: m, Open: open[m.Number], Done: len(done), Closed: done})
 	}
+	// REST lists milestones by due date; the view wants a stable order.
+	slices.SortFunc(counts, func(a, b MilestoneCount) int { return a.Number - b.Number })
 	return Planning{Issues: issues, Milestones: counts}, nil
 }
 

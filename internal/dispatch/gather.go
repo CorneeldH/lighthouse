@@ -128,7 +128,7 @@ func Prepare(ctx context.Context, f forge.Forge, repo repoconfig.Repo, open []ru
 		}
 		bi, ok, err := f.IssueItem(ctx, r.Issue)
 		if errors.Is(err, forge.ErrIssueNotFound) {
-			continue // a deleted or moved issue: its run stays as it was, the tick goes on
+			continue // a deleted issue: its run stays as it was, the tick goes on
 		}
 		if err != nil {
 			return Pre{}, err

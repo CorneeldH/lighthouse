@@ -156,7 +156,7 @@ Een kolom die niet in `status_options` staat, zoals `In progress` of `Done`, tel
 status": zo'n issue is geen kandidaat. Een issue met een gearchiveerd board-item slaat de ronde
 over, met een regel op stderr; het telt als `skipped`. De tick ziet dat item niet, dus de ronde
 oordeelt er niet over en schrijft er niets. Dat werkt zolang `IssueItem` het item
-kent: het onthoudt de item-id's van elke boardlijst (tot 30 dagen na het laatste zien). Een item dat
+kent: het onthoudt de item-id's van elke boardlijst (tot 30 dagen na het laatste zien; de tabel verdwijnt ook na 7 dagen zonder boardlezing, de `MaxAge` van de cache). Een item dat
 al gearchiveerd was voordat een lijstlezing het ooit zag, of dat langer dan 30 dagen weg is, wordt
 niet gevonden: de ronde leest het issue dan als "niet op het board".
 

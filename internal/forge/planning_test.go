@@ -3,6 +3,7 @@ package forge
 import (
 	"fmt"
 	"reflect"
+	"slices"
 	"testing"
 
 	"github.com/CorneeldH/lighthouse/internal/forge/forgetest"
@@ -377,5 +378,25 @@ func TestPlanningMilestoneShapes(t *testing.T) {
 		if is.Labels == nil {
 			t.Errorf("#%d Labels is nil", is.Number)
 		}
+	}
+}
+
+// Classification: io. Fails when Planning returns the milestones in the order REST lists them
+// (by due date) instead of ascending by number.
+func TestPlanningMilestonesSortedByNumber(t *testing.T) {
+	srv, c := boardClient(t)
+	for _, n := range []int{5, 2, 9} {
+		srv.Milestones = append(srv.Milestones, map[string]any{"number": n, "title": fmt.Sprintf("M%d", n), "state": "open"})
+	}
+	got, err := c.Planning(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var nums []int
+	for _, m := range got.Milestones {
+		nums = append(nums, m.Number)
+	}
+	if !slices.Equal(nums, []int{2, 5, 9}) {
+		t.Fatalf("milestone order = %v, want [2 5 9]", nums)
 	}
 }
