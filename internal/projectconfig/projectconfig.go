@@ -306,6 +306,23 @@ func oneValue(value string) bool {
 	return err == nil
 }
 
+// afterLeadingComments is the index after a block of comment lines at the start of the file
+// that a blank line or the end of the top section closes. A comment that sits directly above
+// the first table header belongs to that table, so then it is 0.
+func afterLeadingComments(lines []string, top int) int {
+	i := 0
+	for i < top && strings.HasPrefix(strings.TrimSpace(lines[i]), "#") {
+		i++
+	}
+	if i < top && strings.TrimSpace(lines[i]) != "" {
+		return 0
+	}
+	if i == top && top < len(lines) {
+		return 0 // the block runs straight into a header
+	}
+	return i
+}
+
 // SetTopLevel sets the top-level key to value, a TOML literal such as `"light"`. An
 // existing top-level line keeps its comment and position; a missing key is inserted
 // after the last top-level key line, before the first table header. A key of the same
@@ -342,11 +359,15 @@ func SetTopLevel(existing []byte, key, value string) ([]byte, error) {
 	}
 	if !replaced {
 		at := last + 1
+		if last < 0 {
+			at = afterLeadingComments(lines, top)
+		}
 		if at > 0 && !strings.HasSuffix(lines[at-1], "\n") {
 			lines[at-1] += "\n"
 		}
 		ins := key + " = " + value + "\n"
-		if at < len(lines) && header.MatchString(strings.TrimRight(lines[at], "\r\n")) {
+		attached := at == 0 && at < len(lines) && strings.HasPrefix(strings.TrimSpace(lines[at]), "#")
+		if at < len(lines) && (attached || header.MatchString(strings.TrimRight(lines[at], "\r\n"))) {
 			ins += "\n" // keep a blank line before a header that follows directly
 		}
 		lines = append(lines[:at], append([]string{ins}, lines[at:]...)...)

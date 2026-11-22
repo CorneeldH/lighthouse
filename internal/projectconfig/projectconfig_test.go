@@ -326,3 +326,21 @@ func TestSetTopLevelInvalidTOML(t *testing.T) {
 		t.Error("want an error for an invalid value")
 	}
 }
+
+// Fails when SetTopLevel puts a new key above a file's leading comment block when the top
+// section holds only comments, instead of after that block.
+func TestSetTopLevelAfterLeadingComments(t *testing.T) {
+	for name, c := range map[string][2]string{
+		"blank then table":   {"# Lighthouse\n# config\n\n[project]\nlanguage = \"nl\"\n", "# Lighthouse\n# config\nlevel = \"light\"\n\n[project]\nlanguage = \"nl\"\n"},
+		"comments only":      {"# only\n", "# only\nlevel = \"light\"\n"},
+		"comment on a table": {"# project settings\n[project]\nlanguage = \"nl\"\n", "level = \"light\"\n\n# project settings\n[project]\nlanguage = \"nl\"\n"},
+	} {
+		out, err := SetTopLevel([]byte(c[0]), "level", `"light"`)
+		if err != nil {
+			t.Fatal(name, err)
+		}
+		if string(out) != c[1] {
+			t.Errorf("%s: got:\n%s\nwant:\n%s", name, out, c[1])
+		}
+	}
+}
