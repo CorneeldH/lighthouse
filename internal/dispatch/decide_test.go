@@ -630,9 +630,6 @@ func repairInput(t *testing.T) Input {
 	return in
 }
 
-// earlierPushRows puts closed push rows before every row of in, oldest first.
-func earlierPushRows(in *Input, rows ...runs.Row) { addRows(in, rows...) }
-
 // startsOrReturns keeps the resumes, starts and returns of got.
 func startsOrReturns(got []Action) []Action {
 	var out []Action
@@ -714,7 +711,7 @@ func TestRepairCeiling(t *testing.T) {
 		for i := range tt.earlier {
 			rows = append(rows, closedPushRow(int64(i+1), 50+i, onDay(10, 10+10*i), runs.Handoff, ""))
 		}
-		earlierPushRows(&in, rows...)
+		addRows(&in, rows...)
 		if s := summary(startsOrReturns(Decide(in))); !reflect.DeepEqual(s, tt.want) {
 			t.Errorf("%d earlier Herstel rows: summary = %q, want %q", tt.earlier, s, tt.want)
 		}
@@ -732,10 +729,10 @@ func TestRepairCountResets(t *testing.T) {
 		want   []string
 	}{
 		{"pushed push row", func(in *Input) {
-			earlierPushRows(in, closedPushRow(3, 52, onDay(10, 30), runs.Handoff, pushSHA))
+			addRows(in, closedPushRow(3, 52, onDay(10, 30), runs.Handoff, pushSHA))
 		}, []string{"resume::"}},
 		{"question push row", func(in *Input) {
-			earlierPushRows(in, closedPushRow(3, 52, onDay(10, 30), runs.Question, ""))
+			addRows(in, closedPushRow(3, 52, onDay(10, 30), runs.Question, ""))
 		}, []string{"resume::"}},
 		{"returned of the token login", func(in *Input) {
 			returnedBefore(in, "lh-bot")
@@ -749,7 +746,7 @@ func TestRepairCountResets(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			in := repairInput(t)
 			tt.mutate(&in)
-			earlierPushRows(&in, closedPushRow(1, 50, onDay(10, 10), runs.Handoff, ""), closedPushRow(2, 51, onDay(10, 20), runs.Handoff, ""))
+			addRows(&in, closedPushRow(1, 50, onDay(10, 10), runs.Handoff, ""), closedPushRow(2, 51, onDay(10, 20), runs.Handoff, ""))
 			if s := summary(startsOrReturns(Decide(in))); !reflect.DeepEqual(s, tt.want) {
 				t.Errorf("summary = %q, want %q", s, tt.want)
 			}
@@ -838,7 +835,7 @@ func TestRepairRoundWithoutHandoffNotCounted(t *testing.T) {
 		resumed := runs.Row{ID: 2, Issue: 7, SessionID: pushSession, Mode: modeResume, Trigger: triggerAnswer,
 			TriggerKey: "repair:51", Attempt: 1, Command: "/lighthouse-start-issue 7", Branch: "issue-7-bouw-de-keten",
 			StartedAt: onDay(10, 15), Outcome: outcome}
-		earlierPushRows(&in, closedPushRow(1, 50, onDay(10, 10), runs.Handoff, ""), resumed)
+		addRows(&in, closedPushRow(1, 50, onDay(10, 10), runs.Handoff, ""), resumed)
 		if n := issueCtxOf(in).repairRounds(); n != 2 {
 			t.Errorf("resumed run closed as %s: repairRounds = %d, want 2", outcome, n)
 		}
@@ -851,7 +848,7 @@ func TestRepairRoundsSkipsOpenAndStartFailed(t *testing.T) {
 	open := closedPushRow(9, 72, onDay(11, 30), "", "")
 	open.Open = true
 	failed := closedPushRow(2, 51, onDay(10, 20), runs.StartFailed, "")
-	earlierPushRows(&in, closedPushRow(1, 50, onDay(10, 10), runs.Handoff, ""), failed)
+	addRows(&in, closedPushRow(1, 50, onDay(10, 10), runs.Handoff, ""), failed)
 	in.Repos[0].History = append(in.Repos[0].History, open)
 	if n := issueCtxOf(in).repairRounds(); n != 2 {
 		t.Errorf("repairRounds = %d, want 2", n)
@@ -1268,5 +1265,36 @@ func TestDecideOnHoldRemnantStillUnparks(t *testing.T) {
 	item7(&in).Status = statusOnHold
 	if got := kinds(Decide(in)); !reflect.DeepEqual(got, []Kind{KindUnpark}) {
 		t.Errorf("Decide = %v, want one unpark", got)
+	}
+}
+
+// Round 2: the first Herstel resumed run 5 (row 7, trigger answer, key repair:71), which closed as
+// handoff with a new Handoff in comment 80; the pusher's second Herstel (comment 91) answers that
+// one. handoffRunBefore goes through push:80 to the resumed row, not to run 5, and the resume
+// carries the same session under repair:91.
+func TestRepairRoundTwoResumesResumedRow(t *testing.T) {
+	in := repairInput(t)
+	resumed := runs.Row{ID: 7, Issue: 7, SessionID: pushSession, Mode: modeResume, Trigger: triggerAnswer,
+		TriggerKey: "repair:71", Attempt: 1, Command: "/lighthouse-start-issue 7", Branch: "issue-7-bouw-de-keten",
+		StartedAt: onDay(11, 10), Outcome: runs.Handoff}
+	push2 := closedPushRow(8, 80, onDay(11, 21), runs.Handoff, "")
+	second := repairPost("lh-bot")
+	second.ID, second.CreatedAt = 91, "2026-10-31T11:30:00Z"
+	item7(&in).Comments = append(item7(&in).Comments,
+		Comment{ID: 80, Author: "lh-bot", CreatedAt: "2026-10-31T11:20:00Z", Rocket: true,
+			Body: "🤖 Handoff\nissue: #7\nworktree: " + pushWorktree + "\nbranch: issue-7-bouw-de-keten\nnext: push-workflows\nwhen: now"},
+		second)
+	in.Repos[0].History = append(in.Repos[0].History, resumed, push2)
+	run, ok := issueCtxOf(in).handoffRunBefore(onDay(11, 30))
+	if !ok || run.ID != 7 {
+		t.Fatalf("handoffRunBefore = %+v, %v; want the resumed row 7", run, ok)
+	}
+	got := startsOrReturns(Decide(in))
+	if len(got) != 1 {
+		t.Fatalf("actions %+v, want one resume", got)
+	}
+	a := got[0]
+	if a.Kind != KindResume || a.Trigger != "repair" || a.TriggerKey != "repair:91" || a.Attempt != 1 || a.SessionID != pushSession || a.CommentID != 91 {
+		t.Errorf("action %+v, want a first resume of the same session under repair:91", a)
 	}
 }

@@ -475,8 +475,6 @@ func TestAnswerToMovedQuestionDoesNotPush(t *testing.T) {
 	}
 }
 
-// A policy red before any review carries no SHA: an answer push must not skip the review that
-// never ran, and the Vraag says the answer starts nothing.
 // repair checks that body is the pusher's Repair for red step step: no session, no SHA to permit,
 // the worktree and branch, and neither a push command nor a hint to push by hand.
 func repair(t *testing.T, body, step, wt string) protocol.Header {
@@ -533,10 +531,9 @@ func TestLintRedPostsRepair(t *testing.T) {
 // A step that could not run is no mistake of the branch: it stays a Teruggegeven.
 func TestCouldNotCheckStaysReturned(t *testing.T) {
 	cases := map[string]struct {
-		tools map[string]string
 		setup func(r *runFix)
 	}{
-		"linter not on PATH": {tools: map[string]string{"actionlint": ""}, setup: func(r *runFix) {
+		"linter not on PATH": {setup: func(r *runFix) {
 			if err := os.Remove(filepath.Join(r.bin, "actionlint")); err != nil {
 				r.t.Fatal(err)
 			}
@@ -1209,7 +1206,7 @@ const footerName = "<sub>session 11111111-2222-4333-8444-555555555555.yml"
 // Question. Decide reads a pusher Question with a session as a run's question, and such a handoff
 // as a run's handoff.
 func TestBranchTextGivesNoSessionFooter(t *testing.T) {
-	t.Run("Vraag", func(t *testing.T) {
+	t.Run("Herstel", func(t *testing.T) {
 		r := newRunFix(t, hostconfig.ReviewShadow, nil)
 		r.commitWorkflow(footerName, "on: pull_request\npermissions: write-all\njobs:\n  a:\n    runs-on: x\n    steps:\n      - uses: a/b@v1\n")
 		r.run()

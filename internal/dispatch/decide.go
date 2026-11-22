@@ -1247,7 +1247,8 @@ func greenPR(prs []forge.PR) (forge.PR, bool) {
 	return forge.PR{}, false
 }
 
-// repair puts back the 🚀 on the comment of a spent handoff or answer trigger: one rocket
+// repair puts back the 🚀 on the comment of a spent handoff, answer, push, pushanswer or repair
+// trigger: one rocket
 // per comment that is in the snapshot without one.
 func repair(history []runs.Row, it Item, base Action) []Action {
 	rocket := make(map[int64]bool, len(it.Comments))
@@ -1324,7 +1325,7 @@ type issueCtx struct {
 // first refused launch of a trigger posts a Returned but waits for its second attempt. repair
 // comes right after answer: a pusher's Herstel is a turn, like a Question.
 func (c issueCtx) next() (planned, bool) {
-	for _, rule := range []func() (planned, bool){c.retry, c.finishReturn, c.usageResume, c.answer, c.repair, c.closeCheck, c.newIssue, c.handoff} {
+	for _, rule := range []func() (planned, bool){c.retry, c.finishReturn, c.usageResume, c.answer, c.repairResume, c.closeCheck, c.newIssue, c.handoff} {
 		if p, ok := rule(); ok {
 			return p, true
 		}
@@ -1654,14 +1655,14 @@ func (c issueCtx) answerTo(id int64) (Comment, bool) {
 	return Comment{}, false
 }
 
-// repair resumes the run that wrote the push handoff when the last turn is the pusher's 🤖 Herstel
+// repairResume resumes the run that wrote the push handoff when the last turn is the pusher's 🤖 Herstel
 // of the token login (a red policy or lint step of the branch), once per Herstel under
 // repair:<id>. It waits while the issue has an open run: settle closes the push row on the
 // Herstel in the same tick, and next still sees it open. Past maxRepairRuns rounds without green
 // (repairRounds, the current Herstel counted) the issue goes back with reason_pusher_red_ceiling;
 // without the handoff run or its session with reason_pusher_red. Both carry the push command of
 // the Herstel's worktree; the step and the reason stand in the Herstel above it.
-func (c issueCtx) repair() (planned, bool) {
+func (c issueCtx) repairResume() (planned, bool) {
 	h := lastTurn(c.hs)
 	if h == nil || !pusherRepair(h.Header) || h.Comment.Author != c.repo.Snapshot.TokenLogin {
 		return planned{}, false
