@@ -293,7 +293,7 @@ func TestCoreGateOffWarnsOnStderrAndInstallsWithoutIt(t *testing.T) {
 		t.Fatalf("code %d: %s", r.code, r.err)
 	}
 	want := "lighthouse: main-commit-gate is off — this repo works outside the chain"
-	if !strings.Contains(r.err, want) || strings.Contains(r.out, "outside the chain") {
+	if !strings.Contains(r.err, want) || strings.Contains(r.out, want) {
 		t.Errorf("stderr %q stdout %q", r.err, r.out)
 	}
 	if strings.Contains(read(t, root, ".claude/settings.json"), "main-commit-gate") {

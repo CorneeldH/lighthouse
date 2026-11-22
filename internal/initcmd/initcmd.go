@@ -206,6 +206,10 @@ func execute(o Options) error {
 			return err
 		}
 		desired = filterBlockingUnits(desired, resolved)
+	}
+	// Without levels every component is on: the markers are stripped, nothing is dropped.
+	desired = filterBlockUnits(desired, resolved)
+	if haveLevels {
 		now := o.Now
 		if now == nil {
 			now = time.Now

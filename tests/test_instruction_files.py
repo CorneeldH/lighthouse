@@ -1,5 +1,6 @@
 """AGENTS.md is the one source of the working agreements; CLAUDE.md imports it."""
 
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -24,12 +25,20 @@ def test_agents_md_names_the_guards_and_the_escape_hatch():
 
 CORE = ROOT / "pack" / "core"
 
+LEVEL_MARKER = re.compile(r" <!--level:[^ >]+-->")
+
+
+def _source_block(pkg="core"):
+    """The package's block as init writes it at strict: the source without its level markers."""
+    text = (ROOT / "pack" / pkg / "instructions" / "AGENTS.md").read_text(encoding="utf-8")
+    return LEVEL_MARKER.sub("", text)
+
 
 def test_core_block_word_budget():
     """The core block lands in every repo's AGENTS.md, next to the repo's own rules: at most
     365 words. It carries the chain rules the core skills and hooks enforce, the `heading:<key>`
     notation, the rule for the language of code, and one line per skill."""
-    text = (CORE / "instructions" / "AGENTS.md").read_text(encoding="utf-8")
+    text = _source_block()
     assert len(text.split()) <= 365, len(text.split())
     for token in (
         "main-commit-gate",
@@ -51,7 +60,7 @@ def test_core_block_word_budget():
 def test_core_block_says_how_to_read_a_heading():
     """Design choice 19: the block explains `heading:<key>` once — the command that prints the
     heading, and that reading accepts every language variant."""
-    text = " ".join((CORE / "instructions" / "AGENTS.md").read_text(encoding="utf-8").split())
+    text = " ".join(_source_block().split())
     assert "lighthouse headings <key>" in text
     assert "never the literal `heading:<key>`" in text
     assert "reading accepts every language variant" in text
@@ -60,7 +69,7 @@ def test_core_block_says_how_to_read_a_heading():
 def test_core_block_says_an_old_binary_is_no_unset_key():
     """#274: an older `lighthouse` without `config` exits 1 like an unset key does; the block
     tells the agent to tell the two apart by `unknown command` and to stop."""
-    text = " ".join((CORE / "instructions" / "AGENTS.md").read_text(encoding="utf-8").split())
+    text = " ".join(_source_block().split())
     assert (
         "`lighthouse config` exits 1 with `unknown command` on stderr: the binary is too old. "
         'Stop and say so; that is not "not set".'
@@ -69,7 +78,7 @@ def test_core_block_says_an_old_binary_is_no_unset_key():
 
 def test_core_block_says_finish_what_is_authorised():
     """#22: an agent does not hand back an action it already has permission for."""
-    text = " ".join((CORE / "instructions" / "AGENTS.md").read_text(encoding="utf-8").split())
+    text = " ".join(_source_block().split())
     assert (
         'Finish what you are already authorised to do; never end on an offer to do it '
         '("ready to push if you want" is not done).'
@@ -92,8 +101,8 @@ def test_installed_core_block_matches_the_package():
     """lighthouse dogfoods pack/core: the block in AGENTS.md is the one init installs."""
     text = AGENTS.read_text(encoding="utf-8")
     block = text.split(BLOCK_BEGIN, 1)[1].split(BLOCK_END, 1)[0]
-    package = (CORE / "instructions" / "AGENTS.md").read_text(encoding="utf-8")
-    assert block.strip() == package.strip()
+    assert "<!--level:" not in block
+    assert block.strip() == _source_block().strip()
 
 
 def test_project_part_does_not_repeat_the_core_block():
