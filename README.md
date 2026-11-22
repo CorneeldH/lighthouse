@@ -4,11 +4,11 @@ Agentic lighthouse: the development chain from issue to green pull request, buil
 
 ## Status
 
-Usable without the controller: `lighthouse init` installs the skill and hook packages into your repository, with worktrees, a test gate before every commit, PR bodies with evidence and, with `codex`, adversarial reviews. Start with [Getting started](docs/getting-started.md). The maps at [corneeldh.github.io/lighthouse](https://corneeldh.github.io/lighthouse/) show the chain from issue to close and what each pack adds. The server, `lighthouse serve`, is in early development. Roadmap: the milestones of this repository.
+Usable without the controller: `lighthouse init` installs the skill and hook packages into your repository, with worktrees, a test gate before every commit, PR bodies with evidence and, with `codex`, adversarial reviews. Start with [Getting started](docs/getting-started.md). The maps at [corneeldh.github.io/lighthouse](https://corneeldh.github.io/lighthouse/) show the chain from issue to close and what each pack adds. The server, `lighthouse serve`, is in early development. Roadmap: [strategie](docs/developer/strategie.md) and the milestones of this repository.
 
 ## Design
 
-The scope and roadmap: [lighthouse-scope-design](https://github.com/CorneeldH/personal_ai_agent/blob/main/docs/developer/planning/specs/2026-10-09-lighthouse-scope-design.md) (in Dutch).
+The scope and roadmap: [strategie](docs/developer/strategie.md) (in Dutch).
 
 ## Usage window
 
