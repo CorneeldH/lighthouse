@@ -1628,7 +1628,11 @@ func (c issueCtx) answer() (planned, bool) {
 	a.Kind, a.Mode, a.Trigger, a.TriggerKey, a.Attempt = KindResume, modeResume, triggerAnswer, key, 1
 	a.SessionID, a.CommentID = q.Header.Session, ans.ID
 	a.Command, a.Branch = run.Command, run.Branch
-	a.Prompt = protocol.AnswerPrompt(q.Comment.Body, ans.Body)
+	ref := ans.URL
+	if ref == "" {
+		ref = strconv.FormatInt(ans.ID, 10)
+	}
+	a.Prompt = protocol.AnswerPrompt(q.Comment.Body, ans.Body, ref)
 	return c.planned(a, parseTime(ans.CreatedAt)), true
 }
 
