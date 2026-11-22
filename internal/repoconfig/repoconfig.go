@@ -40,6 +40,14 @@ type Repo struct {
 	ReportErr error
 	// Schedules is [[schedule]], validated by Load; empty when the repo has none.
 	Schedules []Schedule
+	// Paths is [paths]: repo-relative paths, "" when a key is not set.
+	Paths Paths
+}
+
+// Paths is the part of [paths] that lighthouse reads here: the labels document, the tenets
+// document and the areas directory, all relative to the repo.
+type Paths struct {
+	Labels, Tenets, Areas string
 }
 
 // Report is [report]: whether lighthouse report runs, where it writes and, for sink "file", the
@@ -148,6 +156,11 @@ type rawFile struct {
 	UsageGuard struct {
 		Controller bool `toml:"controller"`
 	} `toml:"usage_guard"`
+	Paths struct {
+		Labels string `toml:"labels"`
+		Tenets string `toml:"tenets"`
+		Areas  string `toml:"areas"`
+	} `toml:"paths"`
 	Report   toml.Primitive `toml:"report"`
 	Schedule []rawSchedule  `toml:"schedule"`
 }
@@ -222,6 +235,7 @@ func LoadFile(path string) (Repo, error) {
 		Language:             cmp.Or(raw.Project.Language, "en"),
 		Board:                raw.Forge.Board,
 		UsageGuardController: raw.UsageGuard.Controller,
+		Paths:                Paths(raw.Paths),
 		Labels: Labels{
 			BlockedIssue:    cmp.Or(raw.Labels.BlockedIssue, defaultString("labels.blocked_issue")),
 			BlockedExternal: cmp.Or(raw.Labels.BlockedExternal, defaultString("labels.blocked_external")),
