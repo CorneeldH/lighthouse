@@ -244,7 +244,7 @@ func TestCloseIssueB7ClassifiesOpenCriteria(t *testing.T) {
 				"lighthouse forge pr list",
 				"next: /lighthouse-close-issue <nr>",
 				"falls back to the question",
-				"only for a predecessor that is `OPEN` and has no merged PR",
+				"only for a predecessor whose `state` is `open` (compare case-insensitively) and has no merged PR",
 				"in another repository",
 				"git fetch origin",
 				"git worktree add --detach",
@@ -264,6 +264,11 @@ func TestCloseIssueB7ClassifiesOpenCriteria(t *testing.T) {
 				"always goes as a comment on the issue",
 				"for a criterion that waits on an issue, that line names its predecessor")
 			wantAll(t, b7, "`merged_pr` from `lighthouse forge issue blockers` is always `false` on GitHub and does not count")
+			wantNone(t, b7, "`OPEN`")
+			// Every outcome of the question carries a recommendation, also a waiting criterion
+			// that cannot be handed off.
+			wantAll(t, b7, "Recommend `b` as well for a criterion that waits on an open predecessor in this repo but cannot be handed off: in a mix with manual work or an event, and after a failed `lighthouse forge issue block` while every criterion waits. A criterion that can be built in this repo keeps `a` first.")
+			wantOrder(t, b7, "When a `lighthouse forge issue block` fails, B7 falls back to the question", "Recommend `b` as well for a criterion that waits")
 		})
 	}
 }

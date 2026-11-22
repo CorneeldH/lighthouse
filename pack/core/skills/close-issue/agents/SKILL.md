@@ -276,8 +276,8 @@ issue, that line names its predecessor.
 | code or docs | what is missing can be built in this repo | the question, recommendation `a` |
 | manual work or an event | a command of the user, a live system, an external run | the question, each command as `--command` |
 
-*Waits on an issue* counts only for a predecessor that is `OPEN` and has no merged PR, in this
-repo: the same measure the tick uses for an active blocker. A predecessor that is closed, has a
+*Waits on an issue* counts only for a predecessor whose `state` is `open` (compare
+case-insensitively) and has no merged PR, in this repo: the same measure the tick uses for an active blocker. A predecessor that is closed, has a
 merged PR, or lives in another repository does not park the tick, so the handoff would start a new
 after-merge check at once; such a criterion goes to the question. Read the state with
 `lighthouse forge issue view <predecessor> --field state`. Read the merged PR explicitly:
@@ -327,7 +327,10 @@ lighthouse ask --issue <nr> --phase close-check \
 Recommend `a` when the missing work can be built in this repo; `b` only when it waits outside
 this repo (an issue in another repository, an external run, a live system) or on a predecessor
 with a merged PR; `c` only when every open AC is `not measurable from here` and the user measures
-it in one step. A command the user has to run for
+it in one step. Recommend `b` as well for a criterion that waits on an open predecessor in this
+repo but cannot be handed off: in a mix with manual work or an event, and after a failed
+`lighthouse forge issue block` while every criterion waits. A criterion that can be built in this
+repo keeps `a` first. A command the user has to run for
 an AC (for example `gh workflow run pins.yml`) goes with `--command`.
 
 The answer resumes this session:

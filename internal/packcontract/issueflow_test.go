@@ -81,16 +81,38 @@ func TestRouteIssueInvariantsKnowTheControllerRun(t *testing.T) {
 				}
 			}
 			hardStop := section(t, body, "The two blocked labels hold the plan", "## Non-negotiable")
-			wantAll(t, flat(hardStop), "controller run", "route on with `wait for: <label>`")
+			wantAll(t, flat(hardStop), "controller run", "route on with `— blocked: <label>`")
 			wantNone(t, body, "Only the two blocked labels are a hard stop")
 			external := lineStarting(t, body, "| `labels.blocked_external`")
 			if strings.Contains(external, "controller run") {
 				t.Error("labels.blocked_external row names the controller run; the controller does not start it")
 			}
-			wantAll(t, external, "interactively: route on with `wait for: <label>`", "the controller does not start it")
+			wantAll(t, external, "interactively: route on with `— blocked: <label>`", "the controller does not start it")
+			// `wait for: <label>` is start-issue's stop message, never the route-line suffix.
+			wantNone(t, external, "wait for: <label>")
+			wantNone(t, flat(hardStop), "wait for: <label>")
+			wantNone(t, lineStarting(t, body, "- ✅ `labels.blocked_*`"), "wait for: <label>")
 			for _, prefix := range []string{"| `labels.blocked_issue`", "| `labels.blocked_external`"} {
 				wantNone(t, lineStarting(t, body, prefix), "gate 0** — stop")
 			}
+		})
+	}
+}
+
+// Classification: fails when a controller run lets a block without an open blocker relation
+// (lapsed, unlinked) route on: start-issue would post `next: /lighthouse-start-issue`, the tick
+// finds no active predecessor to park on and restarts it at once. Fails too when that stop
+// spreads to the interactive mode or to an open relation, or the non-negotiable forgets it.
+func TestRouteIssueControllerRunStopsWithoutAnOpenRelation(t *testing.T) {
+	for variant, body := range variants(t, routeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			f := flat(section(t, body, "### Gate 0", "### Gate 1"))
+			wantAll(t, f,
+				"In a controller run (if present) a block without an open blocker relation — **lapsed** or **unlinked** — stays a stop at gate 0 as well:",
+				"the tick finds no active predecessor to park on, so a `next: /lighthouse-start-issue` handoff would start again at once.",
+				"Interactively they route on.")
+			wantOrder(t, f, "Only **unknown** stays a stop at gate 0", "In a controller run (if present) a block without an open blocker relation")
+			wantAll(t, lineStarting(t, body, "- ✅ `labels.blocked_*`"), "in a controller run also **lapsed** and **unlinked**")
 		})
 	}
 }
@@ -203,6 +225,7 @@ func TestStartIssueBlockedOnlyRunsGate4c(t *testing.T) {
 			wantAll(t, f,
 				"hand `superpowers:brainstorming` the instruction to end, after the approved spec, with `wait for #<x>` and not to call `superpowers:writing-plans`")
 			wantNone(t, step4, "**Blocked in a controller run?**")
+			wantAll(t, step4, "| gate `0` (**unknown**; in a controller run, if present, also **lapsed** or **unlinked**) | stop, with the reason from the line; no board, no route, no handoff: the human repairs the relation or the label |")
 			scout := section(t, body, "#### Scout", "## Non-negotiable")
 			wantAll(t, scout, "heading:scout_skipped — blocker #<x> open, the plan waits for the merge.")
 			step3 := flat(section(t, body, "### 3.", "### 4."))

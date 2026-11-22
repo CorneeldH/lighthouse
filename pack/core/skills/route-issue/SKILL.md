@@ -112,8 +112,9 @@ in the body.
 If there is no open blocker, the reason reports the verdict — **lapsed** (only closed relations)
 or **unlinked** (no relation) — with the repair command from `lighthouse-write-issue` 3e. The
 route goes on with the verdict and the repair command after the line, and the issue counts as
-blocked: removing the label or laying the relation is up to the user. If this call fails
-(exit 1 or 2), or the output is unreadable, the verdict is **unknown**, with the read command
+blocked: removing the label or laying the relation is up to the user. In a controller run (if
+present) they stop (*In both modes*, below). If this call fails (exit 1 or 2), or the output is
+unreadable, the verdict is **unknown**, with the read command
 added — **unknown** stays a stop, and a failed read, or one without output, is never **unlinked**
 (that puts the user on the wrong track of a `--remove-label`).
 
@@ -130,10 +131,14 @@ If the issue does carry `labels.needs_shaping` or `labels.needs_decision` with a
 continues through that label — gate 4c, with `— blocker #<x> open` after the line.
 
 **In both modes** — interactive, and a controller run (if present: the prompt ends on
-`(issue #<nr>, controller-run)`) — a readable block does not stop at gate 0: route on to gates 1–4
-and put `— blocker #<x> open` after the line, or `— blocked: <label>` when there is no issue number
+`(issue #<nr>, controller-run)`) — a readable block does not stop at gate 0 (one exception in a
+controller run, below): route on to gates 1–4 and put `— blocker #<x> open` after the line, or `— blocked: <label>` when there is no issue number
 (`labels.blocked_external`, **lapsed**, **unlinked**); the stop message of `lighthouse-start-issue`
 says `wait for: <label>` instead of `wait for #<x>` then. Only **unknown** stays a stop at gate 0.
+In a controller run (if present) a block without an open blocker relation — **lapsed** or
+**unlinked** — stays a stop at gate 0 as well: the tick finds no active predecessor to park on, so
+a `next: /lighthouse-start-issue` handoff would start again at once. Report the verdict with its
+repair command; the human repairs the relation or the label. Interactively they route on.
 Interactively `labels.blocked_external` routes on with `— blocked: <label>`, and the stop says
 `wait for: <label>`. In a controller run (if present) `labels.blocked_external` always stops, here
 too: the controller does not start such an issue (a human holds it, `heldByHuman`). A spec under
@@ -213,13 +218,14 @@ route the issue gets.
 | `labels.needs_hands` | **gate 4, b/a**, execute up to the hand movement, with an explicit instruction *where* human hands are needed |
 | `labels.needs_testing` | **gate 4, b/a**, execute and let the human judge whether it does what was meant |
 | `labels.blocked_issue` | **gate 0** — report the blocker from the relation (`issue blockers`), not from a mention in the body, and route on with `— blocker #<x> open`; the same in a controller run (if present), see Gate 0 |
-| `labels.blocked_external` | **gate 0** — interactively: route on with `wait for: <label>`; the controller does not start it |
+| `labels.blocked_external` | **gate 0** — interactively: route on with `— blocked: <label>`; the controller does not start it |
 
 The two blocked labels hold the plan, not the spec: they wait on something outside the session,
 so the issue may get a spec, and `lighthouse-start-issue` executes only gate 4c. Interactively
-both route on (for `labels.blocked_external`: route on with `wait for: <label>`). In a controller run
-(if present) `labels.blocked_issue` routes on the same way, and the controller does not start an
-issue with `labels.blocked_external`. The other four describe what has to happen *in* the
+both route on (for `labels.blocked_external`: route on with `— blocked: <label>`). In a controller
+run (if present) `labels.blocked_issue` routes on the same way with an open blocker (**lapsed** and
+**unlinked** stop, see Gate 0), and the controller does not start an issue with
+`labels.blocked_external`. The other four describe what has to happen *in* the
 session.
 
 ## Non-negotiable
@@ -230,7 +236,7 @@ session.
   sub-letter · ❌ route silently, or a bare `heading:gate_line 4: ...` without sub-letter
 - ✅ Choose one route and name it · ❌ propose two routes and let the user choose
 - ✅ Gate 1 from the catalogue in context · ❌ grep over `.claude/skills/` (costs the KPI ceiling)
-- ✅ `labels.blocked_*` and a bare open `blocked_by` route on with what they wait for after the line (in a controller run, if present, the controller does not start `labels.blocked_external`); only **unknown** stops · ❌ stop on a readable block, or treat a `labels.needs_*` label as a stop
+- ✅ `labels.blocked_*` and a bare open `blocked_by` route on with what they wait for after the line (in a controller run, if present, the controller does not start `labels.blocked_external`); only **unknown** stops, in a controller run also **lapsed** and **unlinked** · ❌ stop on a readable block, or treat a `labels.needs_*` label as a stop
 - ✅ Do not fetch an issue that is already in context again · ❌ a second read call per number
 
 ## Known pitfalls

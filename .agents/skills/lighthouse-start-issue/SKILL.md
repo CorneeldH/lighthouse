@@ -149,7 +149,7 @@ Then execute the reported route:
 
 | Line | Execution |
 |---|---|
-| gate `0` (**unknown**) | stop, with the reason from the line; no board, no route |
+| gate `0` (**unknown**; in a controller run, if present, also **lapsed** or **unlinked**) | stop, with the reason from the line; no board, no route, no handoff: the human repairs the relation or the label |
 | gate `1` | call that skill, done |
 | gate `2` | `superpowers:systematic-debugging` |
 | gate `4c` | `superpowers:brainstorming` → spec, then take off `labels.needs_shaping` |
@@ -182,7 +182,8 @@ stop. The controller returns the issue with "needs a brainstorm".
   `next: /lighthouse-start-issue <nr>` from the issue's own worktree, and stop. The controller
   parks it until the predecessor is closed or its PR is merged.
 - Without an issue number (`— blocked: <label>`) the stop says `wait for: <label>` instead of
-  `wait for #<x>`.
+  `wait for #<x>`. That is interactive only: in a controller run (if present) such a block
+  (**lapsed**, **unlinked**) already stopped at gate 0, without a handoff.
 - Exception: if the last `🤖 heading:kind_started` on the issue carries the field
   `stack:` or `blocker:`, the block is already accounted for and you execute the route (`blocker: accounted`:
   the predecessor is still open, but its PR is merged). An older comment may still carry the old
