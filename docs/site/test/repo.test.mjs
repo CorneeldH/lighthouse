@@ -17,7 +17,7 @@ const ACTS = new Set(["adds", "edits"]);
 // init writes CLAUDE.md only when AGENTS.md and CLAUDE.md are both missing, as one line
 // `@AGENTS.md`, and never touches one that exists.
 const OFF_THE_MAP = new Set(["CLAUDE.md"]);
-const INIT_ACTS = { "lighthouse.toml": "edits", ".gitattributes": "edits", ".lighthouse/manifest.toml": "adds" };
+const INIT_ACTS = { "lighthouse.toml": "edits", ".gitattributes": "edits", ".lighthouse/manifest.toml": "adds", "docs/developer/labels.md": "adds" };
 const EDIT_KINDS = new Set(["block", "hook", "permission"]);
 const FORCE_KINDS = new Set(["file", "block", "hook", "permission"]);
 const SEPARATORS = ["·", ","];

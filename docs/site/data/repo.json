@@ -139,7 +139,19 @@
       "label": "components.toml",
       "dir": ".lighthouse",
       "kind": "config",
-      "act": "adds"
+      "act": "adds",
+      "upgrade": "replaced",
+      "force": true
+    },
+    {
+      "id": "labels",
+      "place": "docs/developer/labels.md",
+      "label": "labels.md",
+      "dir": "root",
+      "kind": "config",
+      "act": "adds",
+      "upgrade": "left alone once it exists; only with --labels",
+      "force": false
     },
     {
       "id": "manifest",

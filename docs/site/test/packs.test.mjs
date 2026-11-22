@@ -21,6 +21,7 @@ const WHEN = new Map(
     ],
     [[["PreToolUse", "Edit|Write"]], "before every edit"],
     [[["PostToolUse", "Edit|Write"]], "after every edit"],
+    [[["SessionStart", ""]], "when a session starts"],
     [[["Stop", ""]], "when the session stops"],
     [
       [["PostToolUse", ""], ["UserPromptSubmit", ""], ["SubagentStop", ""], ["Stop", ""]],
