@@ -48,7 +48,7 @@ func TestPublicNames(t *testing.T) {
 	if !reflect.DeepEqual(artefactMarkers, []string{"<!-- lighthouse:", "<!-- paia:"}) {
 		t.Errorf("artefactMarkers = %q", artefactMarkers)
 	}
-	want := []Kind{"handoff", "started", "question", "resumed", "done", "returned", "rebased", "parked"}
+	want := []Kind{"handoff", "started", "question", "resumed", "done", "returned", "rebased", "parked", "repair"}
 	if !reflect.DeepEqual(kinds, want) {
 		t.Errorf("kinds = %v, want %v", kinds, want)
 	}

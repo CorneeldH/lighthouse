@@ -293,7 +293,7 @@ tick starts the next phase itself. Two entries:
 Always one fenced block, so it can be copied in one click:
 
 ```
-Work in worktree <absolute path>/.claude/worktrees/<name>
+Work in worktree <absolute worktree root>/<name>
 (branch <branch>). Goal: <one sentence>.
 
 Anchor: <issue #nr | path to plan/spec | PR #nr>
@@ -313,7 +313,7 @@ Below it, outside the block, one line: `Run /clear first, then paste the block.`
 ## Rules
 
 - **Absolute paths.** A link or path to a file that exists only on the worktree branch
-  must be the full `<repo>/.claude/worktrees/<name>/...` path —
+  must be the full `<root>/<name>/...` path (`<root>` is `lighthouse config worktree.root`, made absolute) —
   the fresh session starts in the main checkout and a relative path points at nothing there.
 - **No history.** Do not retell what happened; the next session reads
   the issue and `git log`. Hand-off = forward, not back.
@@ -346,10 +346,10 @@ Input: `/lighthouse-write-handoff`
 Output:
 
 ```
-Work in worktree /srv/src/widgets/.claude/worktrees/issue-537-feed-curation
+Work in worktree /srv/src/widgets-trees/issue-537-feed-curation
 (branch issue-537-feed-curation). Goal: execute the spec of #537.
 
-Anchor: /srv/src/widgets/.claude/worktrees/issue-537-feed-curation/docs/developer/planning/specs/2026-08-17-feed-curation-design.md
+Anchor: /srv/src/widgets-trees/issue-537-feed-curation/docs/developer/planning/specs/2026-08-17-feed-curation-design.md
 Context: in the review the user chose curation per feed, not per category; that is not in the spec yet.
 State: spec committed (a1b2c3d), adversarial review converged after 2 rounds (fixes in d4e5f6a),
 nothing else uncommitted.

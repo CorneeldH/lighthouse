@@ -145,6 +145,10 @@
    "list[str]"
   ],
   [
+   "worktree.root",
+   "str"
+  ],
+  [
    "project.instructions_word_ceiling",
    "int"
   ],
@@ -247,6 +251,10 @@
   [
    "imports.check",
    "bool"
+  ],
+  [
+   "pr_gate.issue",
+   "str"
   ]
  ],
  "defaults": {
@@ -275,6 +283,7 @@
   "codex_usage.review_pct_week": 95,
   "worktree_audit.protected_refs": [],
   "worktree_audit.protected_paths": [],
+  "worktree.root": ".claude/worktrees",
   "project.instructions_word_ceiling": 3000,
   "python.source_dirs": [
    "src"
@@ -296,7 +305,8 @@
   "agent_audit.ignore": [],
   "agent_audit.top": 10,
   "agent_audit.description_max_chars": 1024,
-  "imports.check": true
+  "imports.check": true,
+  "pr_gate.issue": "optional"
  },
  "base_keys": [
   "forge.kind",

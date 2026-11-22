@@ -45,7 +45,7 @@ the audit does not run.
 highest precedence that names it in `enabledPlugins` says `true`: `lokaal` before `project`,
 `project` before `gebruiker`. A plugin with scope `project` or `local` counts when its
 `projectPath` is the worktree root or the main checkout, so the audit gives the same answer from a
-worktree under `.claude/worktrees/`.
+worktree under the worktree root (`.claude/worktrees/` by default, `[worktree] root`).
 
 Each source gets one status line under `Bronnen`: `ok`, `afwezig` (does not exist, nothing to
 report), `overgeslagen (--repo-only)`, or `COULD NOT CHECK — <reason>` (exists but unreadable or

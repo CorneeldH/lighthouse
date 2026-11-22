@@ -80,7 +80,7 @@ func newWorktreeAuditCommand(env worktreeaudit.Env) *cobra.Command {
 		Short: "Audit worktrees, branches, PR state and sessions. Changes nothing.",
 		Long: "Audit worktrees, branches, PR state and sessions. Changes nothing.\n\n" +
 			"One row per branch (local or on origin), plus detached worktrees and orphan directories under\n" +
-			".claude/worktrees, each judged on a ladder whose first hit wins. Git runs read-only; the printed\n" +
+			"the configured worktree root (default .claude/worktrees), each judged on a ladder whose first hit wins. Git runs read-only; the printed\n" +
 			"commands are for a human to paste. The default branch comes from `[forge] default_branch`, the\n" +
 			"protected refs and paths from `[worktree_audit]`, the repo of the PR lookup from `[forge] repo`.\n\n" +
 			"Exit: 0 ok (--only: cleanable) | 1 --only: not cleanable, or git cannot read the repo |\n" +
@@ -116,7 +116,7 @@ func newWorktreeAuditCommand(env worktreeaudit.Env) *cobra.Command {
 				}
 				return err
 			}
-			view := worktreeaudit.View{Policy: audit.Policy, Alive: e.Alive}
+			view := worktreeaudit.View{Policy: audit.Policy, Alive: e.Alive, Root: audit.Root}
 			out := cmd.OutOrStdout()
 			switch {
 			case cmd.Flags().Changed("only"):

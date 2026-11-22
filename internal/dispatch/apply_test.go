@@ -2836,3 +2836,31 @@ func TestDecideFinishesBlockedReturnStuckOnController(t *testing.T) {
 		t.Errorf("blocked_external: Decide = %+v, want nothing", got)
 	}
 }
+
+// A repair resume (#505) is claimed as an answer: runs knows no trigger repair, and its key
+// repair:<id> still spends the comment once.
+func TestApplyClaimsRepairResumeAsAnswer(t *testing.T) {
+	h := newHarness(t)
+	h.seed(t, 7, oldSession, "start:7", runs.Question)
+	a := resumeAction()
+	a.Trigger, a.TriggerKey, a.CommentID = "repair", "repair:77", 77
+	if _, err := Apply(context.Background(), h.env, []Action{a}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	rows := h.history(t)
+	if len(rows) != 2 {
+		t.Fatalf("rows = %+v, want two", rows)
+	}
+	if r := rows[1]; r.Trigger != "answer" || r.TriggerKey != "repair:77" {
+		t.Errorf("repair row = %+v, want trigger answer, key repair:77", r)
+	}
+	if _, err := Apply(context.Background(), h.env, []Action{a}); err != nil {
+		t.Fatalf("second Apply: %v", err)
+	}
+	if rows := h.history(t); len(rows) != 2 {
+		t.Errorf("rows = %+v, want still two", rows)
+	}
+	if !strings.Contains(h.out.String(), "repair:77 not claimed") {
+		t.Errorf("log lacks a not-claimed line:\n%s", h.out.String())
+	}
+}

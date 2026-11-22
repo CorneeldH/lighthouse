@@ -420,8 +420,14 @@ func (ap applier) start(ctx context.Context, a Action, res *Result) error {
 		}
 	}
 	profile, mcpConfig := a.Profile, env.MCPConfig(a.Profile)
+	// runs knows no trigger repair (0008_runs_schedule.sql): its row takes answer, and its key
+	// repair:<id> tells it.
+	trigger := a.Trigger
+	if trigger == triggerRepair {
+		trigger = triggerAnswer
+	}
 	run, err := runs.Take(ctx, env.DB, runs.Claim{
-		Repo: a.Repo, Issue: a.Issue, SessionID: session, Mode: a.Mode, Trigger: a.Trigger,
+		Repo: a.Repo, Issue: a.Issue, SessionID: session, Mode: a.Mode, Trigger: trigger,
 		TriggerKey: a.TriggerKey, Command: a.Command, Prompt: a.Prompt, Profile: profile,
 		Node: a.Node, Branch: a.Branch, Now: now,
 	})

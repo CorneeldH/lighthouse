@@ -43,7 +43,7 @@ branch yourself before a commit, and run `[test_gate] command` from `lighthouse.
 <!-- lighthouse:begin core -->
 ## Lighthouse: core
 
-- Nothing lands directly on `main`: work in a worktree (`git worktree add .claude/worktrees/<name> -b <branch>`); `main-commit-gate` blocks commit and push to `main`.
+- Nothing lands on `main`: work in `git worktree add "$ROOT/<name>"` with `ROOT=$(lighthouse config worktree.root)` (default `.claude/worktrees`); `main-commit-gate` blocks `main` commits and pushes.
 - Every change goes through a PR and is squash-merged; `/lighthouse-write-pr` writes the PR body.
 - `commit-test-gate` runs `[test_gate] command` after each commit; fix red in a new commit.
 - Never `--no-verify`.

@@ -42,6 +42,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/settings"
 	"github.com/CorneeldH/lighthouse/internal/version"
 	"github.com/CorneeldH/lighthouse/internal/wordcount"
+	"github.com/CorneeldH/lighthouse/internal/worktreeroot"
 	"github.com/CorneeldH/lighthouse/pack"
 )
 
@@ -287,6 +288,7 @@ func execute(o Options) error {
 			_, _ = fmt.Fprintln(o.Out, levelSummary(lvFiles, resolved.Level))
 		}
 	}
+	warnSyncFolder(o.Err, root, lookup)
 	warnMissingScripts(o.Err, root)
 	warnIgnored(o.Err, root, desired, plan)
 	reportPins(o, root)
@@ -387,6 +389,27 @@ func (p planned) changes() bool {
 		return p.new != nil
 	default:
 		return !bytes.Equal(p.old, p.new) || p.mode != 0
+	}
+}
+
+// warnSyncFolder warns, never blocks, when the main checkout or the resolved `worktree.root` lies in
+// a folder a sync client manages: such a client corrupts a .git directory and the worktrees below it.
+func warnSyncFolder(w io.Writer, root string, lookup func(string) (string, bool, error)) {
+	repo, err := worktreeroot.MainCheckout(root)
+	if err != nil {
+		repo = root
+	}
+	value := ""
+	if v, ok, err := lookup("worktree.root"); err == nil && ok {
+		value = v
+	}
+	wt := worktreeroot.Resolve(repo, value)
+	repoProvider, repoSync := worktreeroot.InSyncFolder(repo)
+	if repoSync {
+		_, _ = fmt.Fprintf(w, "warning: %s lies in a %s sync folder; a sync client corrupts a .git directory, so keep the repository outside it. Where the worktrees go is set by `[worktree] root` in lighthouse.toml\n", repo, repoProvider)
+	}
+	if p, ok := worktreeroot.InSyncFolder(wt); ok && (!repoSync || !worktreeroot.Contains(repo, wt)) {
+		_, _ = fmt.Fprintf(w, "warning: the worktree root %s lies in a %s sync folder; a sync client corrupts worktrees. Set `[worktree] root` in lighthouse.toml to a folder outside it\n", wt, p)
 	}
 }
 
