@@ -599,6 +599,8 @@ func TestCleanupRefusesAPlaceQuestionWithoutOff(t *testing.T) {
 		"off empty":                       `{"questions":[` + off(`"off":""`) + `]}`,
 		"off missing":                     `{"questions":[` + off(`"x":1`) + `]}`,
 		"off outside the options":         `{"questions":[` + off(`"off":"d"`) + `]}`,
+		"off the first option":            `{"questions":[` + off(`"off":"a"`) + `]}`,
+		"off a middle option":             `{"questions":[` + off(`"off":"b"`) + `]}`,
 		"recommended outside the options": `{"questions":[` + strings.Replace(placeQ12, `"recommended":"a"`, `"recommended":"f"`, 1) + `]}`,
 		"unknown topic":                   `{"questions":[` + strings.Replace(placeQ12, `"place"`, `"where"`, 1) + `]}`,
 		"one option":                      `{"questions":[{"issue":12,"topic":"place","text":"Waar?","options":["a"],"recommended":"a","off":"a"}]}`,
