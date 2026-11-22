@@ -139,7 +139,7 @@
       Text        string
       Options     []string // 2..6, letters a..f in order
       Recommended string   // a letter
-      Off         string   // the letter of "not on the map"; "" for a wish question
+      Off         string   // the letter of "not on the map"; a wish question has two options: a) yes, on the map, b) no, not on the map, Off = "b"
   }
   // RenderQuestion and RenderDecision write the comment body: the heading, the machine line, the
   // text in language ("nl" or other).
@@ -148,17 +148,22 @@
   type Status int
   const (StatusNone Status = iota; StatusOpen; StatusAnswered; StatusSettled)
   type Answer struct{ Topic Topic; Letter, Text string }
-  // StatusOf reads the job's comments of one issue, oldest first: the latest question or
-  // decision of the job, and the first comment after a question by a trusted login that is not
-  // a job comment. A decision, or an answer whose letter is Off, is settled.
-  func StatusOf(ctx context.Context, cs []protocol.Comment, trusted func(context.Context, string) (bool, error)) (Status, Answer, error)
+  // StatusOf reads the comments of one issue, oldest first: the latest question or decision of
+  // the job (a comment with the machine line whose Author is jobLogin, the login of the forge
+  // token; the machine line of any other author is ignored), and the first comment after a
+  // question by a trusted login that is not a job comment. A decision, or an answer whose letter
+  // is Off, is settled.
+  func StatusOf(ctx context.Context, cs []protocol.Comment, jobLogin string, trusted func(context.Context, string) (bool, error)) (Status, Answer, error)
   ```
 
 - [ ] **Stap 1: Schrijf de falende tests:**
-  - `TestJobCommentsAreNoProtocolComments` (Review Focus 4): `protocol.ParseHeader(RenderQuestion(q, "nl"))` en `ParseHeader(RenderDecision(7, "nl"))` geven `ok == false`.
+  - `TestJobCommentsAreNoProtocolComments` (Review Focus 4): `protocol.ParseHeader(RenderQuestion(q, "nl"))` en `ParseHeader(RenderDecision(7, "nl"))` geven `ok == false`, én `protocol.IsAnswer` geeft `false` voor beide (in `internal/protocol/status.go` herkent `IsAnswer` een body met een regel die begint met `<!-- lighthouse:map-planned ` als job-comment; zonder dat telt `protocol.Classify` en `answerTo` in `internal/dispatch/decide.go` een job-comment na een open `🤖 Vraag` als het antwoord van de mens).
+  - `TestAJobCommentDoesNotAnswerAProtocolQuestion` (end-to-end in `internal/dispatch`, naast de bestaande `answerTo`-tests): een open `🤖 Vraag` gevolgd door een job-comment geeft nog steeds de status open en plant geen `resume`.
   - `TestRenderQuestionCarriesTheMachineLine`: de body bevat `<!-- lighthouse:map-planned kind=question topic=place off=c -->` en de opties als `a)`, `b)`, `c)`; `nl` begint met `🗺 Kaart · map-planned`.
   - `TestStatusOf`: tabel met gevallen — geen job-comment → `StatusNone`; alleen een vraag → `StatusOpen`; vraag + antwoord `c` van een vertrouwde login met `off=c` → `StatusSettled`; vraag + `b, onder intake` vertrouwd → `StatusAnswered` met `Letter "b"`; beslissing → `StatusSettled`.
   - `TestStatusOfIgnoresUntrustedAnswers` (Review Focus 2): vraag + antwoord `c` van een niet-vertrouwde login → `StatusOpen`.
+  - `TestStatusOfIgnoresAForgedJobComment`: een goed gevormde `kind=decision`-comment van een andere auteur dan `jobLogin` → `StatusNone`.
+  - `TestStatusOfAWishAnswer`: wensvraag (`off=b`) + antwoord `a` vertrouwd → `StatusAnswered` met `Letter "a"`; antwoord `b` → `StatusSettled`.
 - [ ] **Stap 2: Draai** `go test ./internal/scheduled/mapplanned/ -run 'TestJobComments|TestRender|TestStatusOf'` — verwacht FAIL.
 - [ ] **Stap 3: Implementeer** render en parse; de letter van een antwoord is het eerste teken (kleine letter `a`–`f`) gevolgd door einde, spatie of leesteken.
 - [ ] **Stap 4: Draai** de tests — verwacht PASS.
@@ -173,7 +178,7 @@
 - Test: `internal/scheduled/mapplanned/job_test.go`
 
 **Interfaces:**
-- Consumes: `Rows` (T3), `Issues` (T4), `StatusOf` (T5), `Env.Forge`, `Env.Trusted` (T2), `Repo.Paths` (T1).
+- Consumes: `Rows` (T3), `Issues` (T4), `StatusOf` (T5; `jobLogin` = `Env.Forge.Login(ctx)`), `Env.Forge`, `Env.Trusted` (T2), `Repo.Paths` (T1).
 - Produces:
   ```go
   const Name = "map-planned"
@@ -187,7 +192,7 @@
   Launch: `Command: "/lighthouse-map-planned --corpus .lighthouse/run/map-planned-corpus.json --result .lighthouse/run/map-planned-result.json"`, `Tools: Read Write Edit Glob Grep` (geen Bash), `MaxRuntime: 30m`, `Instructions`: onbemand, geen vragen in de sessie, alleen de documenten uit het corpus en het resultaatbestand schrijven, niet committen of pushen.
 
 - [ ] **Stap 1: Schrijf de falende tests** (git-repo met een `origin` in `t.TempDir()`, forge via `forgetest.New` zoals `internal/forge/forgetest/server_test.go:18`):
-  - `TestGateSkipsWithoutTaxonomy`: `Paths.Labels == ""` → `Skip == "no planned documents"`; een bestand zonder rij met `Planned` → dezelfde skip.
+  - `TestGateSkipsWithoutTaxonomy`: `Paths.Labels == ""` → `Skip == "no planned documents"`; een bestand zonder rij met `Planned` → dezelfde skip; `Paths.Labels` ingesteld maar het bestand ontbreekt op `origin/<branch>` → dezelfde skip, geen fout (onderscheid een ontbrekend object van een andere gitfout met `git cat-file -e origin/<branch>:<path>`: exit 1 = ontbreekt, ander falen = fout).
   - `TestGateLetsThroughAnIssueMissingFromItsDocument`: rij `loop`/`docs/site/data/loop.json`/`always`, open issue 12 met label `loop`, document zonder `issue: 12` → `Skip == ""`, `Score == 1`.
   - `TestGateSkipsWhenEveryIssueIsOnItsMap`: document met `"issue": 12` → `Skip == "every planned issue is on its map"`.
   - `TestGateMilestoneRowNeedsAMilestone` (Review Focus 5): rij `milestone`, issue 12 zonder milestone → skip; met milestone → door.
@@ -228,12 +233,15 @@
   - `TestCleanupLabelsAWishQuestion`: een `wish`-vraag → POST plus `labels.needs_decision` op het issue (via `issuestate.Apply`).
   - `TestCleanupPostsOncePerIssue` (Review Focus 3): `Cleanup` twee keer op hetzelfde resultaat → één POST per issue.
   - `TestCleanupRefusesAPlaceQuestionWithoutOff`: `off` leeg of buiten de opties → fout, niets gepost.
-  - `TestAllowedIsTheDocumentsOnly`: `docs/site/data/loop.json` ja; `labels.md`, `.lighthouse/run/x` (na Cleanup weg) en andere paden nee.
-  - `TestCheckRefusesAnItemForAnIssueOutsideTheCorpus`: een nieuw `"issue": 99` dat niet in het corpus staat → fout met `#99`; een kapot document → fout.
+  - `TestAllowedIsTheDocumentsOnly`: op een gloednieuwe instantie (geen `Stage`, geen `Cleanup`): het document van een `Planned`-rij ja, het fragment `changelog.d/scheduled-map-planned-x.md` ja; `labels.md`, `web/package.json`, `.lighthouse/run/x` en andere paden nee.
+  - `TestCheckRefusesAnItemForAnIssueWithoutTheRowLabel`: een nieuw `"issue": 99` waarvan de forge-issue het label van de rij niet draagt → fout met `#99`, ook als de agent het corpus aanpaste; een kapot document → fout.
+  - `TestCleanupRefusesAResultOutsideThePlannedIssues`: een resultaat met een vraag of beslissing voor een issue zonder label van een `Planned`-rij, of twee keer hetzelfde issue → fout, niets gepost, geen label gezet.
+  - `TestCleanupAcceptsAMissingResult`: geen resultaatbestand → geen fout, niets gepost.
+  - `TestFinishWritesAnInternalFragment`: na `Finish` staat een fragment met `type: internal` in `changelog.d/` en `Allowed` laat het toe.
   - `TestARunWithOnlyQuestionsEndsWithoutACommit` (e2e): agent schrijft alleen het resultaat → vraag gepost, geen commit, `done` zonder PR.
-  - `TestARunReachesTheBranchWithTheDocument` (e2e): agent zet `"issue": 12` in `loop.json` → commit met alleen dat bestand, zonder corpus of resultaat.
+  - `TestARunReachesTheBranchWithTheDocument` (e2e): agent zet `"issue": 12` in `loop.json` en schrijft geen resultaatbestand → commit met alleen dat bestand en het fragment, zonder corpus of resultaat.
 - [ ] **Stap 2: Draai** `go test ./internal/scheduled/mapplanned/` — verwacht FAIL.
-- [ ] **Stap 3: Implementeer** `Stage` (staging zoals `reflect.Stage`, via `safefs`), `Cleanup` (resultaat lezen; per issue eerst `StatusOf` — alleen bij `StatusNone` of `StatusAnswered` posten; vraag of beslissing posten met `Forge.CreateComment`; bij `wish` `issuestate.Apply(ctx, f, nr, "needs_decision", env.Repo.Labels)`; dan symlinks ontkoppelen en de stagingbestanden weghalen). `Cleanup` leest ook het corpus vóór het weghalen en bewaart op de job-instantie de `Document`-paden en de issuenummers: `Postcheck` roept `Cleanup`, `Allowed` en `Check` op dezelfde instantie aan, en daarna is het corpus weg. `Allowed`: precies die paden (vóór `Cleanup`: niets). `Check`: elk gewijzigd document parseert met `Issues`, en de nummers die erbij kwamen ten opzichte van `HEAD` zitten in de bewaarde set. Een hervatte run (`resume` → `checkCommit` in `postcheck.go`) roept `Check` aan zonder `Cleanup` ervoor: zonder bewaarde set toetst `Check` alleen het parsen (test `TestAResumedRunPassesCheckOnItsPushedCommit`, naar `reflect/job_test.go:387`). `Finish`: niets.
+- [ ] **Stap 3: Implementeer** `Stage` (staging zoals `reflect.Stage`, via `safefs`), `Cleanup` (resultaat lezen; per issue eerst `StatusOf` — alleen bij `StatusNone` of `StatusAnswered` posten; vraag of beslissing posten met `Forge.CreateComment`; bij `wish` `issuestate.Apply(ctx, f, nr, "needs_decision", env.Repo.Labels)`; dan symlinks ontkoppelen en de stagingbestanden weghalen). Het corpus is invoer voor de agent en nooit gezag: de agent kan het bewerken, dus `Cleanup`, `Allowed` en `Check` leiden hun toelatingen niet uit het corpus af en bewaren geen staat op de job-instantie (een hervatte run, `resume` in `postcheck.go`, en een herhaalde `Postcheck` krijgen een nieuwe instantie en draaien `Cleanup` niet of zonder corpus). Het gezag is: de rijen van `labels.md` op `origin/<branch>` (dezelfde `git show` als de poort) en de forge. `Allowed`: de `Document`-paden van de rijen met `Planned` op `origin/<branch>`, plus het changelog-fragment van `Finish` (hieronder); niets anders. `Check`: elk gewijzigd document parseert met `Issues`, en elk nummer dat erbij kwam ten opzichte van `HEAD` is via `Env.Forge.Issue` een issue dat het label van de rij van dat document draagt. `Cleanup`: een ontbrekend resultaatbestand betekent geen vragen en geen beslissingen (geen fout); een aanwezig resultaat wordt eerst als geheel gevalideerd, vóór enige forge-schrijfactie: elk `issue` is een open issue dat via `Env.Forge` een label van een rij met `Planned` draagt, elk issue komt hooguit één keer voor, en een plaatsvraag heeft `off` binnen de opties; bij de eerste overtreding een fout en niets gepost. `Finish`: schrijft `changelog.d/scheduled-map-planned-<run>.md` met `type: internal` (één zin; `<run>` is uniek per run, afgeleid van de branchnaam van de run), want de CI-check `changelog` (`ci/changelog/main.go:162`) eist op elke PR een nieuw fragment en de PR van de job raakt anders elke dag rood. Daarom is de test `TestAResumedRunPassesCheckOnItsPushedCommit` (naar `reflect/job_test.go:387`) een run met een nieuw gebonden instantie voor de tweede `Postcheck`, niet dezelfde `j`.
 - [ ] **Stap 4: Draai** `go test -race ./internal/scheduled/...` — verwacht PASS.
 - [ ] **Stap 5: Commit** `feat(mapplanned): corpus, comments en controle van de job (#476)`.
 
@@ -250,9 +258,9 @@
 
 De skill (Engels, frontmatter `name: lighthouse-map-planned`, `description` met "Use when the scheduled job map-planned starts it, or by hand to put planned issues on their map"), in deze volgorde:
 1. Lees `--corpus` en `--result` uit de argumenten; lees het taxonomiebestand en de uitleg onder de tabel *per document*: die zegt wat "als gepland toevoegen" betekent en of een wijziging aan een bestaand onderdeel een item geeft.
-2. Per issue: plek uit `heading:map_placement` in de body (`lighthouse headings map_placement` geeft de varianten), uit `answer`, of uit het document zelf.
+2. Per issue: plek uit `heading:map_placement` in de body (de varianten van `map_placement` staan onder die sleutel in `.lighthouse/headings.toml`, te lezen met Read: de sessie heeft geen Bash), uit `answer`, of uit het document zelf.
 3. Plek eenduidig: item erin volgens de uitleg. *Geen item*: een beslissing `no-item`. Onduidelijk: een vraag `place` met de kandidaten, altijd ook *nieuw onderdeel op de kaart* en *niet op de kaart*, `off` = de letter van de laatste.
-4. Geen `heading:map_placement` en `tenets`/`areas` in het corpus niet leeg: toets de wens; twijfel → een vraag `wish`, en dat issue komt er niet in.
+4. Geen `heading:map_placement` en `tenets`/`areas` in het corpus niet leeg: toets de wens; twijfel → een vraag `wish` met twee opties (*ja, op de kaart*, *nee, niet op de kaart*, `off` = de tweede), en dat issue komt er niet in. Een `answer` met `topic` `wish`: letter `a` → het item erin volgens stap 3; een andere letter is al afgehandeld en bereikt de agent niet. Een wens wordt nooit opnieuw gevraagd.
 5. Onbemand (de opdracht kwam van de job): geen vraag in de sessie, niets committen. Met de hand: vraag in het gesprek, en schrijf geen resultaatbestand.
 6. Noem nooit een labelnaam of pad die niet uit het corpus of het taxonomiebestand komt.
 
@@ -272,7 +280,7 @@ De skill (Engels, frontmatter `name: lighthouse-map-planned`, `description` met 
 
 Nieuwe tekst van 3f, na de bestaande alinea (letterlijk in beide varianten):
 
-> **Planned on the map.** When the label's row also has a `Planned` value (`always`, or `milestone` and the issue gets the milestone from 3d), ask two things in the conversation before step 4. *Where does it belong?* The document and the explanation under the table give the candidates; a new part of the map, and `no item` when the explanation says a change to an existing part gives none, are always candidates. *Do we want it?* Always ask; when `lighthouse config paths.tenets` or `paths.areas` gives a file or folder, first test the issue against the tenets and the leading policy and the deliberate no's of its area, and say what came out. Write the place as one line under `### heading:map_placement` in the body. An answer other than yes to the second question: no free label, or `labels.needs_decision` with the reason in the body. Headless (no conversation): write the place only when it is unambiguous, ask nothing, and leave the rest to the scheduled job. This step never writes the document.
+> **Planned on the map.** When the label's row also has a `Planned` value (`always`, or `milestone` and the issue gets the milestone from 3d), ask two things in the conversation before step 4. *Where does it belong?* The document and the explanation under the table give the candidates; a new part of the map, and `no item` when the explanation says a change to an existing part gives none, are always candidates. *Do we want it?* Always ask; when `lighthouse config paths.tenets` or `paths.areas` gives a file or folder, first test the issue against the tenets and the leading policy and the deliberate no's of its area, and say what came out. Write the place as one line under `### heading:map_placement` in the body. An answer of no to the second question: no issue, or no free label. Doubt, or "decide later": `labels.needs_decision` with the reason in the body. Headless (no conversation): write the place only when it is unambiguous, ask nothing, and leave the rest to the scheduled job. This step never writes the document.
 
 - [ ] **Stap 1: Breid de test uit**: `wantAll` op de zinnen *"When the label's row also has a `Planned` value"*, *"Always ask"*, *"### heading:map_placement"*, *"This step never writes the document."*; en `lighthouse headings map_placement` geeft `Op de kaart` (test naast de bestaande headingstests).
 - [ ] **Stap 2: Draai** `go test ./internal/packcontract/ -run TestWriteIssueFreeLabels` — verwacht FAIL.
@@ -300,7 +308,8 @@ Nieuwe tekst van 3f, na de bestaande alinea (letterlijk in beide varianten):
 - Modify: `docs/tick.md` (sectie *Job `map-planned`* na *Job `reflect`*: poort, corpus, comments, `Allowed`, geen params), `docs/install.md` (*Scheduled runs*: job `map-planned` in de lijst en het commentaar `# required; map-refresh, reflect or map-planned`)
 - Create: `changelog.d/issue-476-kaart-bij-aanmaken.md` (`type: added`; één tot drie zinnen: de job en de `write-issue`-stap)
 
-- [ ] **Stap 1: Draai** `go run ./cmd/lighthouse config` op de nieuwe `lighthouse.toml` (of `go test ./internal/repoconfig/`) — verwacht geen configfout.
+- [ ] **Stap 1: Laad** de nieuwe `lighthouse.toml` met `repoconfig.Load` (een korte test die `../../lighthouse.toml` laadt, of `go run ./cmd/lighthouse config <bestaande sleutel>` als dat `repoconfig.Load` draait; controleer dat vooraf) — verwacht geen configfout. Controleer ook dat de commitidentiteit van de postcheck (`postcheck.go`, terugval `lighthouse@localhost`) door de CLA-check (`.github/workflows/cla.yml`, `tools/check_cla.py`) komt; zo niet, zet de schedule dan niet aan en meld dat in de overdracht.
+- Noot voor de docs en de PR: een oudere `lighthouse`-binary weigert een `lighthouse.toml` met een onbekende `job` (`internal/repoconfig/schedule.go:74`) en slaat de repo over; de host moet na de merge opnieuw gebouwd zijn voordat de schedule meedraait.
 - [ ] **Stap 2: Schrijf** de docs en het fragment.
 - [ ] **Stap 3: Draai** `go test ./...`, `uv run pytest -q`, `go run ./cmd/lighthouse init --upgrade` — verwacht PASS en `No changes.`
 - [ ] **Stap 4: Commit** `docs(tick): job map-planned, aangezet in deze repo (#476)`.
