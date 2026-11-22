@@ -55,3 +55,23 @@ func TestRowsRefusesAnUnknownPlannedValue(t *testing.T) {
 		t.Fatalf("got %v, want an error naming soms and loop", err)
 	}
 }
+
+// Classification: pure function. Fails if Rows splits a cell on an escaped pipe (`\|`, as
+// Markdown writes a pipe inside a table cell), which shifts every later column of the row, or
+// keeps the backslash in the cell.
+func TestRowsKeepsAnEscapedPipeInItsCell(t *testing.T) {
+	md := "| Label | When | Document | Planned |\n|---|---|---|---|\n" +
+		"| `loop` | a \\| b | `a.json` | `always` |\n"
+	got, err := Rows([]byte(md))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Row{{"loop", "a.json", PlannedAlways}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	cells := splitRow(`| x \| y | z |`)
+	if want := []string{"x | y", "z"}; !reflect.DeepEqual(cells, want) {
+		t.Fatalf("splitRow = %q, want %q", cells, want)
+	}
+}

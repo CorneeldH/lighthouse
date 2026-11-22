@@ -61,9 +61,30 @@ func Rows(md []byte) ([]Row, error) {
 	return rows, nil
 }
 
+// splitRow splits a table line into its trimmed cells, on unescaped pipes only: `\|` is a pipe
+// inside a cell and stays in it as `|`. The outer pipes of the line make no cell.
 func splitRow(line string) []string {
-	line = strings.TrimSuffix(strings.TrimPrefix(line, "|"), "|")
-	cells := strings.Split(line, "|")
+	var cells []string
+	var cell strings.Builder
+	for i := 0; i < len(line); i++ {
+		switch {
+		case line[i] == '\\' && i+1 < len(line) && line[i+1] == '|':
+			cell.WriteByte('|')
+			i++
+		case line[i] == '|':
+			cells = append(cells, cell.String())
+			cell.Reset()
+		default:
+			cell.WriteByte(line[i])
+		}
+	}
+	cells = append(cells, cell.String())
+	// The line starts with a pipe, so the first cell is the empty text before it; a closing pipe
+	// leaves an empty last one.
+	cells = cells[1:]
+	if n := len(cells); n > 0 && cells[n-1] == "" {
+		cells = cells[:n-1]
+	}
 	for i, c := range cells {
 		cells[i] = strings.Trim(strings.TrimSpace(c), "`")
 	}
