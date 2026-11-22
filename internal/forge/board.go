@@ -499,27 +499,29 @@ func (c *GitHub) IssueItem(ctx context.Context, number int) (item BoardItem, ok 
 			id, found = c.savedItemID(ctx, key)
 		}
 	}
-	if !found {
-		if _, err := c.readIssue(ctx, number); err != nil {
-			var se *httpStatusError
-			if errors.As(err, &se) && (se.Code == http.StatusNotFound || se.Code == http.StatusGone) {
-				return BoardItem{}, false, fmt.Errorf("forge: issue %s#%d: %w", c.Repo, number, ErrIssueNotFound)
-			}
+	if found {
+		var r restItem
+		_, err := c.do(ctx, http.MethodGet, p.itemURL(id), nil, &r)
+		if err == nil {
+			it, _ := r.boardItem(p, b)
+			it.Repo, it.Issue = c.Repo, number
+			return it, true, nil
+		}
+		// A 404 is an item deleted from the board; the issue read below tells whether the issue
+		// went too.
+		var se *httpStatusError
+		if !errors.As(err, &se) || se.Code != http.StatusNotFound {
 			return BoardItem{}, false, err
 		}
-		return BoardItem{}, false, nil
 	}
-	var r restItem
-	if _, err := c.do(ctx, http.MethodGet, p.itemURL(id), nil, &r); err != nil {
+	if _, err := c.readIssue(ctx, number); err != nil {
 		var se *httpStatusError
-		if errors.As(err, &se) && se.Code == http.StatusNotFound {
-			return BoardItem{}, false, nil // the item was deleted from the board
+		if errors.As(err, &se) && (se.Code == http.StatusNotFound || se.Code == http.StatusGone) {
+			return BoardItem{}, false, fmt.Errorf("forge: issue %s#%d: %w", c.Repo, number, ErrIssueNotFound)
 		}
 		return BoardItem{}, false, err
 	}
-	it, _ := r.boardItem(p, b)
-	it.Repo, it.Issue = c.Repo, number
-	return it, true, nil
+	return BoardItem{}, false, nil
 }
 
 // AddToBoard adds issue number to the board of [forge.board] and returns the new item, without

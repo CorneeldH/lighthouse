@@ -582,9 +582,25 @@ func TestIssueItemDeletedIssue(t *testing.T) {
 		srv, c := projectServer(t)
 		c.Board = restBoard()
 		srv.BoardNodes = []map[string]any{statusIssue("PVTI_7", 7, "opt-ctrl")}
+		srv.Issues = map[int]map[string]any{7: {"number": 7}}
 		srv.Fail = map[string]int{"GET /users/o/projectsV2/1/items/5000": 404}
 		if it, ok, err := c.IssueItem(context.Background(), 7); ok || err != nil {
 			t.Errorf("IssueItem(7) = %+v, %v, %v; want ok=false and no error for a deleted item", it, ok, err)
+		}
+	})
+	// The item ID is known, but the item and the issue are both gone: a deleted issue stays
+	// ErrIssueNotFound, also when the item read answers 404 first.
+	t.Run("deleted item and issue", func(t *testing.T) {
+		srv, c := projectServer(t)
+		c.Board = restBoard()
+		srv.BoardNodes = []map[string]any{statusIssue("PVTI_7", 7, "opt-ctrl")}
+		srv.Fail = map[string]int{"GET /users/o/projectsV2/1/items/5000": 404}
+		_, ok, err := c.IssueItem(context.Background(), 7)
+		if ok || !errors.Is(err, ErrIssueNotFound) || !strings.Contains(err.Error(), "o/r#7") {
+			t.Errorf("IssueItem(7) ok=%v err=%v; want an error wrapping ErrIssueNotFound naming o/r#7", ok, err)
+		}
+		if n := srv.Count("/users/o/projectsV2/1/items/5000"); n != 1 {
+			t.Errorf("item reads = %d, want 1", n)
 		}
 	})
 }
