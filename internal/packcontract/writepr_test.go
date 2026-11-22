@@ -518,10 +518,12 @@ func TestWritePRRoborevStepCarriesTheContract(t *testing.T) {
 		t.Run(variant, func(t *testing.T) {
 			raw := writePRSection(t, body, "## V2b.")
 			s := flat(raw)
+			wantNone(t, s, "--agent codex")
 			wantAll(t, s,
 				"git fetch origin <default branch>",
 				"lighthouse roborev-gate gate",
-				"timeout 540 roborev ci review --agent codex --ref <range> > <raw> 2>&1",
+				"timeout 540 roborev ci review --agent <agent> --ref <range> > <raw> 2>&1",
+				"`<agent>` is `codex`, or `claude-code` when the Codex budget is in `fallback`; never pass a fixed agent.",
 				"In the foreground, with Bash timeout `600000`",
 				"(`dangerouslyDisableSandbox: true`)",
 				"follow `superpowers:receiving-code-review`",
