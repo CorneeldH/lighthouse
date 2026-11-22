@@ -3,7 +3,7 @@
 De kern van lighthouse als product, naar Rumelt: diagnose, leidend beleid, en wat bewust niet. De
 samenhangende acties zijn de milestones. Dit document legt richting vast, geen status. Citeer een
 punt als `strategie/S2`; de uitgangspunten staan in [uitgangspunten.md](uitgangspunten.md), de areas
-in [areas/](areas/core.md).
+in [areas/core.md](areas/core.md).
 
 ## Diagnose
 
