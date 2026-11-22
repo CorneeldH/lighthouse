@@ -121,12 +121,14 @@ Report the one `board:` line the command prints. Only `To do` (and a legacy `On 
 Without `[forge.board]` (`lighthouse config forge.board.project_number`
 gives rc 1) the command prints `board: skipped — no [forge.board] configured`. A `board: skipped`
 line is not a stop: picking up goes on. A `board: ERROR` line (rc 2, broken config) is reported
-and picking up goes on as well. Skip the step on a `labels.blocked_*` label from step 2: gate 0
-stops then, and the board would show `In progress` for work that stands still.
+and picking up goes on as well. Skip the step on a `labels.blocked_*` label from step 2, or on an
+open `blocked_by` without a label (*label missing*): the issue may get a spec, but the plan and
+the execution wait, and the board would show `In progress` for work that stands still. It stays
+on `To do`, also with `labels.blocked_issue`: the controller parks a blocked issue there too.
 
 The status `Controller` (only if present, with a `[controller]` table) stays: the controller
-selects on it and runs this skill itself. In a controller run `labels.blocked_issue` does not
-stop at gate 0 and the board stays `Controller`, so there is nothing to skip.
+selects on it and runs this skill itself. In a controller run the board stays `Controller`, also
+with a block, so there is nothing to skip.
 
 ### 4. Route through `lighthouse-route-issue`, then execute
 
@@ -146,7 +148,7 @@ Then execute the reported route:
 
 | Line | Execution |
 |---|---|
-| gate `0` | stop, with the reason from the line; no board, no route |
+| gate `0` (**unknown**) | stop, with the reason from the line; no board, no route |
 | gate `1` | call that skill, done |
 | gate `2` | `superpowers:systematic-debugging` |
 | gate `4c` | `superpowers:brainstorming` → spec, then take off `labels.needs_shaping` |
@@ -161,17 +163,32 @@ do not call `superpowers:brainstorming` at exit **c**: headless, nobody can answ
 `/lighthouse-write-handoff` (controller mode) a handoff with `next: /superpowers:brainstorming` and
 stop. The controller returns the issue with "needs a brainstorm".
 
-**Blocked in a controller run?** (Only if present.) If the line carries `— blocker #<x> open`:
-- Gate `4b` or `4c`: execute the route as always; those already end in a handoff.
-- Gate `1`, `2` or `4a`: do not execute. Post with `/lighthouse-write-handoff` (controller mode) a
-  handoff `next: /lighthouse-start-issue <nr>` from the issue's own worktree, and stop. The
-  controller starts it only when the predecessor's PR is green.
+**Blocked?** If the line carries `— blocker #<x> open` or `— blocked: <label>` (route-issue gate
+0), in both modes only gate 4c runs: spec yes, plan no.
+
+| Gate | With a block |
+|---|---|
+| 4c | execute: brainstorming, spec |
+| 4b, 4a, 1, 2 | do not execute: stop with `wait for #<x>` (interactive), or a handoff `next: /lighthouse-start-issue <nr>` (controller run, if present) |
+
+- Gate `4c`: hand `superpowers:brainstorming` the instruction to end, after the approved spec,
+  with `wait for #<x>` and not to call `superpowers:writing-plans`: the plan waits for a merged
+  PR of the predecessor. In a controller run (if present) brainstorming is a handoff anyway
+  (above); `lighthouse-review-spec` posts `next: /superpowers:writing-plans` there, and the
+  controller parks that handoff while the predecessor is active.
+- Gate `1`, `2`, `4a` or `4b`: do not execute. Interactive: report `wait for #<x>` and stop.
+  Controller run (if present): post with `/lighthouse-write-handoff` (controller mode) a handoff
+  `next: /lighthouse-start-issue <nr>` from the issue's own worktree, and stop. The controller
+  parks it until the predecessor is closed or its PR is merged.
+- Without an issue number (`— blocked: <label>`) the stop says `wait for: <label>` instead of
+  `wait for #<x>`.
 - Exception: if the last `🤖 heading:kind_started` on the issue carries the field
   `stack:` or `blocker:`, the block is already accounted for and you execute the route (`blocker: accounted`:
   the predecessor is still open, but its PR is merged). An older comment may still carry the old
   keys `stapel:` or `blokkade:` (`blokkade: verrekend`); they count the same.
 
-Report the choice in one line: `— stacked on #<x>` or `— waits for #<x>, handoff posted`.
+Report the choice in one line: `— stacked on #<x>`, `— waits for #<x>` or
+`— waits for #<x>, handoff posted`.
 
 **Gate 4c: needs_shaping.** The spec shapes the issue. Once the user has approved the spec
 (an approved spec, committed), remove the label so the issue is no longer held for shaping:
@@ -206,6 +223,13 @@ Scout: lighthouse-issue-impact-scout
 
 Gates `0`, `1`, `2` and `4a` never call it: they have, respectively, a stop, a complete recipe, a
 debug workflow and an execution that fits in one file.
+
+At gate `4b` with a block (step 4, *Blocked?*) the scout does not go out either: no plan follows
+in this session. Report:
+
+```text
+heading:scout_skipped — blocker #<x> open, the plan waits for the merge.
+```
 
 ##### Skipping is allowed, skipping silently is not
 

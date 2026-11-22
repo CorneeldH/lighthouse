@@ -34,30 +34,44 @@ func TestRouteIssueGate0ReadsTheRelation(t *testing.T) {
 }
 
 // Classification: fails when gate 0 lets an issue with an open blocker but no blocked label slip
-// through, or drops the verdicts "label missing" and "unknown".
-func TestRouteIssueGate0StopsWithoutBlockedLabel(t *testing.T) {
+// through unmarked, drops the verdicts "label missing" and "unknown", stops a readable block at
+// gate 0 instead of routing on with what it waits for after the line, lets an unknown block fall
+// through, or lets labels.blocked_external stop interactively (it stops only in a controller run).
+func TestRouteIssueGate0RoutesOnWithABlocker(t *testing.T) {
 	for variant, body := range variants(t, routeIssue) {
 		t.Run(variant, func(t *testing.T) {
 			gate0 := section(t, body, "### Gate 0", "### Gate 1")
+			f := flat(gate0)
 			wantAll(t, gate0, "open blocker in the `issue blockers` list", "**label missing**", "**unknown**")
+			wantAll(t, f,
+				"route on to gates 1–4 and put `— blocker #<x> open` after the line, or `— blocked: <label>` when there is no issue number",
+				"Only **unknown** stays a stop at gate 0",
+				"the stop message of `lighthouse-start-issue` says `wait for: <label>` instead of `wait for #<x>`",
+				"Interactively `labels.blocked_external` routes on with `— blocked: <label>`, and the stop says `wait for: <label>`.",
+				"In a controller run (if present) `labels.blocked_external` always stops, here too: the controller does not start such an issue (a human holds it, `heldByHuman`).")
+			wantNone(t, f, "the route stays stop", "this also stops at gate 0", "route: stop, reason")
+			triage := section(t, body, "## Triage", "### Gate 0")
+			wantNone(t, triage, "route: stop, reason: what it waits for")
 		})
 	}
 }
 
-// Classification: fails when gate 0 loses the controller-run exception, stops treating
-// labels.blocked_external as an unconditional stop, or lets the router post a handoff.
+// Classification: fails when gate 0 stops routing a block on in both modes (the old
+// controller-run-only exception), stops limiting labels.blocked_external's stop to the controller
+// run, or lets the router post a handoff.
 func TestRouteIssueGate0RoutesOnInAControllerRun(t *testing.T) {
 	for variant, body := range variants(t, routeIssue) {
 		t.Run(variant, func(t *testing.T) {
 			gate0 := section(t, body, "### Gate 0", "### Gate 1")
-			wantAll(t, gate0, "**Controller run**", "`labels.blocked_external` always stops")
-			wantNone(t, gate0, "/lighthouse-write-handoff")
+			wantAll(t, gate0, "**In both modes**", "`labels.blocked_external` always stops")
+			wantNone(t, gate0, "/lighthouse-write-handoff", "**Controller run** (only if present")
 		})
 	}
 }
 
 // Classification: fails when a router line (label row, hard-stop paragraph, non-negotiable)
-// contradicts the controller-run exception of gate 0, or extends it to labels.blocked_external.
+// still calls a blocked label a gate-0 stop, contradicts the controller-run rule of gate 0, or
+// extends the controller run to the labels.blocked_external row.
 func TestRouteIssueInvariantsKnowTheControllerRun(t *testing.T) {
 	for variant, body := range variants(t, routeIssue) {
 		t.Run(variant, func(t *testing.T) {
@@ -66,10 +80,16 @@ func TestRouteIssueInvariantsKnowTheControllerRun(t *testing.T) {
 					t.Errorf("line %q… does not name the controller run", prefix)
 				}
 			}
-			hardStop := section(t, body, "Only the two blocked labels", "## Non-negotiable")
-			wantAll(t, hardStop, "controller run")
-			if strings.Contains(lineStarting(t, body, "| `labels.blocked_external`"), "controller run") {
-				t.Error("labels.blocked_external row names the controller run; it stays an unconditional stop")
+			hardStop := section(t, body, "The two blocked labels hold the plan", "## Non-negotiable")
+			wantAll(t, flat(hardStop), "controller run", "route on with `wait for: <label>`")
+			wantNone(t, body, "Only the two blocked labels are a hard stop")
+			external := lineStarting(t, body, "| `labels.blocked_external`")
+			if strings.Contains(external, "controller run") {
+				t.Error("labels.blocked_external row names the controller run; the controller does not start it")
+			}
+			wantAll(t, external, "interactively: route on with `wait for: <label>`", "the controller does not start it")
+			for _, prefix := range []string{"| `labels.blocked_issue`", "| `labels.blocked_external`"} {
+				wantNone(t, lineStarting(t, body, prefix), "gate 0** — stop")
 			}
 		})
 	}
@@ -150,14 +170,44 @@ func TestRouteIssueNamesTheSubcommand(t *testing.T) {
 
 // --- start-issue -------------------------------------------------------------------
 
-// Classification: fails when step 4 stops holding a blocked execution at gates 1, 2 and 4a with
-// a `next: /lighthouse-start-issue` handoff, or forgets that `stack:`/`blocker:` accounts for it.
+// Classification: fails when step 4 stops holding a blocked execution at gates 1, 2, 4a and 4b
+// with a `next: /lighthouse-start-issue` handoff, or forgets that `stack:`/`blocker:` accounts for
+// it.
 func TestStartIssueHoldsABlockedExecution(t *testing.T) {
 	for variant, body := range variants(t, startIssue) {
 		t.Run(variant, func(t *testing.T) {
 			step4 := section(t, body, "### 4.", "#### Scout")
 			wantAll(t, step4, "next: /lighthouse-start-issue", "`stack:` or `blocker:`",
-				"Gate `1`, `2` or `4a`: do not execute.")
+				"Gate `1`, `2`, `4a` or `4b`: do not execute.")
+			wantNone(t, step4, "Gate `1`, `2` or `4a`: do not execute.")
+		})
+	}
+}
+
+// Classification: fails when a blocked issue runs anything but gate 4c (spec yes, plan no), the
+// stop loses `wait for #<x>` or the controller handoff, brainstorming is no longer told to end
+// at the approved spec without writing-plans, the scout goes out at a blocked 4b without the
+// fixed skip line, or step 3 moves a blocked issue (label or label missing) to In progress.
+func TestStartIssueBlockedOnlyRunsGate4c(t *testing.T) {
+	for variant, body := range variants(t, startIssue) {
+		t.Run(variant, func(t *testing.T) {
+			step4 := section(t, body, "### 4.", "#### Scout")
+			f := flat(step4)
+			wantAll(t, step4,
+				"| 4c | execute: brainstorming, spec |",
+				"| 4b, 4a, 1, 2 | do not execute",
+				"`wait for #<x>`",
+				"next: /lighthouse-start-issue <nr>",
+				"`stack:` or `blocker:`",
+				"Report the choice in one line")
+			wantAll(t, f,
+				"hand `superpowers:brainstorming` the instruction to end, after the approved spec, with `wait for #<x>` and not to call `superpowers:writing-plans`")
+			wantNone(t, step4, "**Blocked in a controller run?**")
+			scout := section(t, body, "#### Scout", "## Non-negotiable")
+			wantAll(t, scout, "heading:scout_skipped — blocker #<x> open, the plan waits for the merge.")
+			step3 := flat(section(t, body, "### 3.", "### 4."))
+			wantAll(t, step3, "Skip the step on a `labels.blocked_*` label from step 2, or on an open `blocked_by` without a label (*label missing*)")
+			wantNone(t, step3, "gate 0 stops then")
 		})
 	}
 }
