@@ -69,6 +69,10 @@ func withoutExemptions(rel, text string) string {
 	case rel == "internal/config/config_test.go":
 		// TestInstallDocGitLabExampleParses reads docs/install.md; classify keeps that file in go.
 		return strings.ReplaceAll(text, "docs/install.md", "")
+	case strings.HasPrefix(rel, "internal/repopins/") || rel == "e2e/literalgrep_test.go" || rel == "e2e/gettingstarted_test.go":
+		// They read docs/ and ci/literal-* files that classify keeps in go (goDocs, and the literal
+		// lists left out of notGo), as internal/config/config_test.go does.
+		return strings.ReplaceAll(strings.ReplaceAll(text, "docs/", ""), "ci/literal-", "")
 	case rel == "internal/dispatch/apply_scheduled.go":
 		// A doc comment points at docs/workplace.md; Go reads no file there.
 		return strings.ReplaceAll(text, "docs/workplace.md", "")

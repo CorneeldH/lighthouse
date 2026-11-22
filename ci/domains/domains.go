@@ -18,8 +18,17 @@ var webToo = map[string]bool{
 // web/node_modules.
 var goToo = map[string]bool{"web/openapi.json": true, "web/go.mod": true}
 
-// Inside docs/, but read by Go: internal/config/config_test.go parses the GitLab example in it.
-var goDocs = map[string]bool{"docs/install.md": true}
+// Inside docs/, but read by Go: internal/config/config_test.go parses the GitLab example in it;
+// the tests of internal/repopins and e2e/gettingstarted_test.go read the getting-started guide,
+// the agent install page and the site files.
+var goDocs = map[string]bool{
+	"docs/install.md":             true,
+	"docs/getting-started.md":     true,
+	"docs/site/agents/install.md": true,
+	"docs/site/install.html":      true,
+	"docs/site/index.html":        true,
+	"docs/site/download.js":       true,
+}
 
 // Inside tests/, but read by Go: internal/protocol/header_test.go reads the fixtures, and
 // internal/canary/bashwrite_test.go reads the ruff canary file that tests/pack/python shares.
@@ -32,7 +41,8 @@ var goFixtures = []string{"tests/pack/fixtures/", "tests/pack/python/testdata/ru
 // names docs/, changelog.d or ci/literal- (TestGoSourcesDoNotReadNotGoPaths fails when one does, except
 // the exemptions in withoutExemptions); the Go and e2e tests read outside their own package only
 // tests/pack/fixtures/, internal/usage/testdata/ and temporary repos; the literal lists are read
-// only by ci/literal-grep.sh.
+// by ci/literal-grep.sh, tools/gen_code_language_freq.py and, as the input of a black-box run,
+// e2e/literalgrep_test.go.
 // Measured again for #151: from tests/ Go reads only tests/pack/fixtures/; the other tests/ and
 // README.md strings in Go are files in temporary repos. Only the loose root .md files (README.md,
 // CHANGELOG.md, CONTRIBUTING.md, SECURITY.md, CLA.md) leave go; AGENTS.md and CLAUDE.md stay, the
@@ -41,14 +51,11 @@ var goFixtures = []string{"tests/pack/fixtures/", "tests/pack/python/testdata/ru
 var notGoDirs = []string{"docs/", "changelog.d/", "tests/"}
 
 var notGo = map[string]bool{
-	"ci/literal-denylist.txt":    true,
-	"ci/literal-denylist-go.txt": true,
-	"ci/literal-allowlist.txt":   true,
-	"README.md":                  true,
-	"CHANGELOG.md":               true,
-	"CONTRIBUTING.md":            true,
-	"SECURITY.md":                true,
-	"CLA.md":                     true,
+	"README.md":       true,
+	"CHANGELOG.md":    true,
+	"CONTRIBUTING.md": true,
+	"SECURITY.md":     true,
+	"CLA.md":          true,
 }
 
 func isNotGo(path string) bool {

@@ -17,5 +17,5 @@ package = false
 testpaths = ["tests"]
 pythonpath = ["."]
 markers = [
-    "network_stays_red: a network error in this test's failure is no skip (tests/_network.py, #338)",
+    "network_stays_red: a network error in this test's failure is no skip (tests/pack/_network.py, #338)",
 ]
