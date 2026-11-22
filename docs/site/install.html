@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Install lighthouse</title>
-<link rel="stylesheet" href="map.css?v=745c7a1f">
-<script type="module" src="install.js?v=745c7a1f"></script>
+<link rel="stylesheet" href="map.css?v=a9efdd74">
+<script type="module" src="install.js?v=a9efdd74"></script>
 </head>
 <body>
 <header class="page-head">
@@ -93,8 +93,10 @@ mkdir -p ~/.local/bin &amp;&amp; mv lighthouse_darwin_amd64 ~/.local/bin/lightho
 
   <details class="platform" data-platform="windows-amd64">
     <summary>Windows</summary>
-    <p class="platform-intro">The hooks need WSL: inside WSL, use the Linux x86-64 block. The Windows
-    binary runs the CLI only. In PowerShell:</p>
+    <p class="platform-intro">Claude Code runs the hooks in Git Bash, so install
+    <a href="https://gitforwindows.org/">Git for Windows</a> first. Put <code>lighthouse.exe</code> in a
+    folder on your <code>PATH</code> and restart Claude Code. Working inside WSL? Use the Linux x86-64
+    block there instead. In PowerShell:</p>
 <pre><code>&amp; {
   $ErrorActionPreference = "Stop"
   $ProgressPreference = "SilentlyContinue"

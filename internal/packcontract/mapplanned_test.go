@@ -23,7 +23,7 @@ func TestMapPlannedSkillContract(t *testing.T) {
 			wantAll(t, f, "`--corpus", "`--result", "`heading:map_placement`", "no-item", "`off`",
 				"new part on the map", "not on the map", "`place`", "`wish`",
 				"`answer`", "topic", "letter", "`taxonomy`", "`tenets`", "`areas`", "documents",
-				"`questions`", "`decisions`", "`recommended`", "options", "`planned`")
+				"`questions`", "`decisions`", "`recommended`", "options", "`planned`", "`strategy`", "`area_prefix`")
 			wantOrder(t, body, "new part on the map", "not on the map")
 		})
 	}
@@ -55,6 +55,18 @@ func TestMapPlannedSkillAsksAWishOnce(t *testing.T) {
 				"A wish answered with a letter is never asked again",
 				"Only an `answer` with topic `wish` and an empty `letter`",
 				"asks the wish question again")
+		})
+	}
+}
+
+// Classification: fails when step 4 keeps the old condition `tenets or areas` instead of
+// `tenets`, `areas` or `strategy`, or stops tying the issue to its area file through
+// `area_prefix`; only the schema being updated is not enough.
+func TestMapPlannedWishTestReadsTheDirection(t *testing.T) {
+	for variant, body := range variants(t, mapPlanned) {
+		t.Run(variant, func(t *testing.T) {
+			step := flat(section(t, body, "### 4.", "\n### 5."))
+			wantAll(t, step, "`tenets`, `areas` or `strategy`", "`area_prefix`")
 		})
 	}
 }

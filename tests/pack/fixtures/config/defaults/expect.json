@@ -289,6 +289,14 @@
  },
  {
   "args": [
+   "paths.strategy"
+  ],
+  "rc": 1,
+  "stdout": "",
+  "stderr": "config: paths.strategy is not set\n"
+ },
+ {
+  "args": [
    "review.roborev"
   ],
   "rc": 0,

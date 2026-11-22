@@ -112,6 +112,9 @@ func readState(state string) (*orderedjson.Object, error) {
 		sha, _ := data.Get("sha")
 		out.Set("verdict", "done")
 		out.Set("sha", sha)
+		if agent, ok := data.Get("agent"); ok {
+			out.Set("agent", agent)
+		}
 	case "skip":
 		reason, _ := data.Get("reden")
 		out.Set("verdict", "skip")

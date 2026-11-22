@@ -87,6 +87,22 @@ func (j *Job) Gate(ctx context.Context, env scheduled.Env) (scheduled.Verdict, e
 	if _, err := git(ctx, env, env.Repo.Dir, fetchLimit, "fetch", "--quiet", "origin", branch); err != nil {
 		return scheduled.Verdict{}, err
 	}
+	for _, k := range []struct{ key, path string }{
+		{"paths.tenets", env.Repo.Paths.Tenets},
+		{"paths.areas", env.Repo.Paths.Areas},
+		{"paths.strategy", env.Repo.Paths.Strategy},
+	} {
+		if k.path == "" {
+			continue
+		}
+		listed, err := git(ctx, env, env.Repo.Dir, gitLimit, "ls-tree", "origin/"+branch, "--", k.path)
+		if err != nil {
+			return scheduled.Verdict{}, err
+		}
+		if strings.TrimSpace(listed) == "" {
+			return scheduled.Verdict{}, fmt.Errorf("%s = %q does not exist at origin/%s", k.key, k.path, branch)
+		}
+	}
 	rows, err := plannedRows(ctx, env, env.Repo.Dir, "origin/"+branch)
 	if err != nil {
 		return scheduled.Verdict{}, err

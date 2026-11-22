@@ -153,9 +153,23 @@ mkdir -p ~/.local/bin && mv lighthouse_darwin_amd64 ~/.local/bin/lighthouse &&
 If `~/.local/bin` is not on the `PATH`, tell the user to add `export PATH="$HOME/.local/bin:$PATH"`
 to their shell profile, and call `~/.local/bin/lighthouse` by its full path until then.
 
-Native Windows: the hooks need bash, so lighthouse does not work there as a whole. Tell the user,
-and recommend WSL: install inside WSL with the Linux x86-64 block, and work on the repository from
-WSL.
+Native Windows (`uname -sm` gives `MINGW64_NT-… x86_64`): Claude Code runs your Bash tool and the
+hooks in Git Bash, so Git for Windows must be installed. Without it, Claude Code runs the hooks in
+PowerShell and they do not work: tell the user and stop. In Git Bash:
+
+```bash
+cd "$(mktemp -d)" &&
+curl -fsSLO https://github.com/CorneeldH/lighthouse/releases/latest/download/lighthouse_windows_amd64.exe &&
+curl -fsSLO https://github.com/CorneeldH/lighthouse/releases/latest/download/SHA256SUMS &&
+sha256sum --check --ignore-missing SHA256SUMS &&
+mkdir -p ~/.local/bin && mv lighthouse_windows_amd64.exe ~/.local/bin/lighthouse.exe &&
+~/.local/bin/lighthouse.exe version
+```
+
+The hooks look `lighthouse` up on the Windows `PATH`. Tell the user to add
+`%USERPROFILE%\.local\bin` to their user `PATH` (Settings, *Edit environment variables for your
+account*) and to restart Claude Code. Do not run `setx PATH` yourself: it truncates a long `PATH`.
+A user who works in WSL installs inside WSL with the Linux x86-64 block instead.
 
 Then run `lighthouse --help` and `lighthouse init --help`, and hold this guide to them (see
 [Ground rules](#ground-rules)).

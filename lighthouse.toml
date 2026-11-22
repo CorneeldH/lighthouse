@@ -37,6 +37,9 @@ area_prefix = "2-area:"
 
 [paths]
 labels = "docs/developer/labels.md"
+tenets = "docs/developer/uitgangspunten.md"
+areas = "docs/developer/areas"
+strategy = "docs/developer/strategie.md"
 
 [test_gate]
 # `lighthouse gate go`, gate_python.py and `lighthouse gate node` choose the Go packages, the

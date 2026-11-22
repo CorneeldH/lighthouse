@@ -1,9 +1,13 @@
 package packcontract
 
 import (
+	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
+
+	"github.com/CorneeldH/lighthouse/internal/config"
 )
 
 // close-issue: what lives only in skill text. Step 0 waits for the merge, B2a runs the Evidence
@@ -574,5 +578,39 @@ func TestCloseIssueAreaOfAMilestoneAfterThePrefix(t *testing.T) {
 			wantAll(t, flat(closeIssueSection(t, body, "### Step 5. Update the near goal of the area")),
 				"with `<area>` the part before `:` after `project.milestone_prefix` in the milestone title")
 		})
+	}
+}
+
+// Classification: fails when step 5 no longer stops, before the `git worktree add`, at a title
+// without `:`, a missing `<paths.areas>/<area>.md` or a missing near-goal heading, or stops
+// naming the heading as `heading:area_near_goal`.
+func TestCloseIssueStep5SkipsWithoutNearGoal(t *testing.T) {
+	for name, body := range variants(t, closeIssue) {
+		t.Run(name, func(t *testing.T) {
+			step := flat(section(t, body, "### Step 5.", "## When NOT to close"))
+			wantAll(t, step,
+				"heading:area_near_goal",
+				"areas: skipped — ",
+				"lowercase",
+				"no `:` in the title",
+				"no file `<paths.areas>/<area>.md`",
+				"no heading",
+			)
+			wantOrder(t, step, "heading:area_near_goal", "git worktree add")
+		})
+	}
+}
+
+// Classification: fails when headings.toml loses area_near_goal or changes its nl or en value.
+func TestAreaNearGoalHeading(t *testing.T) {
+	t.Setenv("LIGHTHOUSE_HEADINGS", filepath.Join(packRoot, "core", "headings.toml"))
+	got, err := config.Variants("area_near_goal")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"Nabij doel", "Near goal"} {
+		if !slices.Contains(got, want) {
+			t.Errorf("area_near_goal variants = %v, missing %q", got, want)
+		}
 	}
 }

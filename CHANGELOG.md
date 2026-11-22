@@ -4,6 +4,28 @@ All notable changes to lighthouse. The format follows [Keep a Changelog](https:/
 chosen is in [docs/releasing.md](docs/releasing.md). The release workflow writes the sections below from the
 fragments in `changelog.d/`; never edit a released section by hand.
 
+## [v0.23.0] - 2026-11-22
+
+### Added
+
+- `lighthouse init` sets `"language": "dutch"` in `.claude/settings.json` when `[project] language` is `nl`, so Claude Code replies in Dutch; a `language` that is already there stays, with a warning. The core block now also puts chat replies in `[project] language`, except with `en`.
+- De repokaart heeft een stand Upgrade die per rij toont wat `init --upgrade` doet en waar `--force` nodig is.
+- De weergave *Milestones* van het tabblad Prioritering heeft een stand *Prioriteit*, naast *Berekend*, met Omhoog en Omlaag. `lighthouse serve` schrijft daarbij een regel `Priority: N` in de beschrijving van de milestone (`POST /api/priorities/milestone-ranks`) en eist daarvoor een `Origin` gelijk aan `Host`. De Vite-devproxy staat daarom op `changeOrigin: false`.
+- De geplande job `map-planned` zet open issues met het label van een geplande kaart als geplande items op hun kaartdocument en stelt een vraag waar de plek of de wens onduidelijk is. Deze repo zet de job aan (elke dag om 05:00).
+- Een run kan zijn eigen `CODEX_HOME` krijgen: is die gezet, dan meten `lighthouse codex-usage`, de roborev-gate en `lighthouse usage` alleen die home, en haalt `review-run` zijn `auth.json` daar vandaan. Zonder `CODEX_HOME` blijft alles bij `~/.codex` en `~/.codex-specreview`.
+
+### Changed
+
+- The *Open questions* block of `lighthouse serve` shows only the question itself, numbered in a bundle; where, what, the options and the commands stay on the issue behind the link.
+- `lighthouse init` schrijft een korter core-blok in `AGENTS.md`: de lijst met skills is eruit, want de skillcatalogus draagt ze, en de regels over de ontsnapping en de worktree zijn ingekort, want de hookmeldingen dragen ze; `lighthouse init --upgrade` verwijdert daarnaast het shellblok.
+- Een tick doet minder opeenvolgende GitHub-reads: de blokkades van een gesloten issue worden niet meer gelezen en een open PR wordt per head hoogstens één keer verrijkt met mergebaarheid en checks.
+- `write-issue` legt bij een nieuw issue met het label van een geplande kaart de plek en de wens van het item vast.
+
+### Fixed
+
+- `run.sh` neemt het build-slot als bestand met noclobber (`O_EXCL`) in plaats van met `mkdir`. De uutils-`mkdir` van de CI-runner `ubuntu-26.04` is niet atomair: parallelle runs wonnen het slot soms tegelijk en bouwden dubbel, wat `TestRunShBuildsOnceAndNeverWaits` willekeurig rood maakte.
+- A tick reports a kenn-forge clone that is no longer bare (`core.bare` not `true`, or `core.worktree` set) with the repair, and exits 1. Cleanup removes a workspace whose worktree directory is gone when its PR merged or its branch is nowhere, instead of keeping it as `not measurable`.
+
 ## [v0.22.0] - 2026-11-21
 
 ### Changed

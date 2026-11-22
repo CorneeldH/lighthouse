@@ -49,6 +49,14 @@
  },
  {
   "args": [
+   "paths.strategy"
+  ],
+  "rc": 0,
+  "stdout": "s\n",
+  "stderr": ""
+ },
+ {
+  "args": [
    "paths.history"
   ],
   "rc": 0,

@@ -636,10 +636,11 @@ Zonder `paths.labels`, zonder bestand of zonder rij met `Document` en `Planned` 
 (`no planned documents`). Een issue is aan de beurt als het open is, het label van de rij draagt (bij
 `Planned = milestone` ook een milestone heeft), niet in het kaartdocument staat (alleen een veld met
 sleutel `issue` telt, geen getal elders) en geen open of afgehandelde vraag van de job heeft. Is er
-niets aan de beurt, dan `skip` (`every planned issue is on its map`); anders is de score het aantal issues.
+niets aan de beurt, dan `skip` (`every planned issue is on its map`); anders is de score het aantal issues. Staat `paths.tenets`, `paths.areas` of `paths.strategy` in de config maar bestaat
+het pad niet op `origin/<standaardbranch>`, dan faalt de poort met een fout die sleutel en pad noemt; een niet gezette sleutel wordt overgeslagen.
 
-**Het corpus.** `.lighthouse/run/map-planned-corpus.json` (JSON): taal, paden van taxonomie, tenets en
-gebieden, de documenten (label, pad, `Planned`) en per issue nummer, titel, body, labels, milestone, rij
+**Het corpus.** `.lighthouse/run/map-planned-corpus.json` (JSON): taal, paden van taxonomie, tenets,
+gebieden en strategie, het labelprefix van gebieden (`area_prefix`), de documenten (label, pad, `Planned`) en per issue nummer, titel, body, labels, milestone, rij
 en, na een vertrouwd antwoord op een eerdere vraag, dat antwoord. De agent leest dit bestand, niet de
 forge; nergens daarna wordt het als gezag gelezen. De agent schrijft alleen de kaartdocumenten en
 `.lighthouse/run/map-planned-result.json` met `questions` en `decisions` (waarde `no-item`: het issue
