@@ -137,6 +137,7 @@ var schema = []struct{ key, kind string }{
 	{"agent_audit.top", kInt},
 	{"agent_audit.description_max_chars", kInt},
 	{"imports.check", kBool},
+	{"pr_gate.issue", kStr},
 }
 
 // defaults is the value of an absent key. A key in schema without a default is optional: not
@@ -180,6 +181,7 @@ var defaults = map[string]any{
 	"agent_audit.top":                        int64(10),
 	"agent_audit.description_max_chars":      int64(1024),
 	"imports.check":                          true,
+	"pr_gate.issue":                          "optional",
 }
 
 // mayBeEmpty are the keys whose empty value is a setting: `[test_gate] command = ""` turns the
@@ -714,6 +716,11 @@ func build(data map[string]any, md toml.MetaData, rawPath string) (*Config, erro
 	if review, ok := data["review"].(map[string]any); ok {
 		if v, ok := review["roborev"]; ok && v != "local" && v != "off" {
 			return nil, errf("%s: key review.roborev must be 'local' or 'off', not %s", path, pyRepr(v))
+		}
+	}
+	if gate, ok := data["pr_gate"].(map[string]any); ok {
+		if v, ok := gate["issue"]; ok && v != "optional" && v != "required" && v != "evidence" {
+			return nil, errf("%s: key pr_gate.issue must be 'optional', 'required' or 'evidence', not %s", path, pyRepr(v))
 		}
 	}
 	if report, ok := data["report"].(map[string]any); ok {

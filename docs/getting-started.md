@@ -241,7 +241,9 @@ What happens within one turn, which skill joins in and which hook steps in, is o
 4. **Open the PR.** Type `/lighthouse-write-pr`. It checks each acceptance criterion on the
    branch and writes the PR body with `Refs #N` and an Evidence table of the proven criteria.
    `pr-create-gate` blocks a `gh pr create` whose body lacks `Closes #N` with evidence,
-   `Refs #N — <reason>` or `No issue: <reason>`.
+   `Refs #N — <reason>` or `No issue: <reason>`. `[pr_gate] issue` sets how strict it is:
+   `optional` (default) allows `No issue:`, `required` demands an issue, `evidence` also demands
+   an Evidence table for `Refs`.
 5. **After the merge.** Type `/lighthouse-close-issue <nr>`. The issue is still open: the skill
    runs the Evidence table of the merged PR on the default branch and closes the issue with that
    evidence, or leaves it open with what is missing.
