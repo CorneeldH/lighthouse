@@ -619,7 +619,7 @@ func TestPlanRepoGivesTheJobForgeAndTrust(t *testing.T) {
 	repo := repoconfig.Repo{Slug: "o/r", Schedules: []repoconfig.Schedule{{Name: "x", Job: "test", Cron: "0 4 * * *"}}}
 	var errOut bytes.Buffer
 	planRepo(context.Background(), env, db, hostconfig.Dispatch{}, f, repo, nil, &errOut)
-	if spy.Job.Calls() == nil {
+	if spy.Calls() == nil {
 		t.Fatalf("the gate did not run: %s", errOut.String())
 	}
 	if spy.seen.Forge != forge.Forge(f) || spy.seen.Trusted == nil {
