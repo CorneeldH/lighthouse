@@ -315,3 +315,10 @@ Nieuwe tekst van 3f, na de bestaande alinea (letterlijk in beide varianten):
 - [ ] **Stap 2: Schrijf** de docs en het fragment.
 - [ ] **Stap 3: Draai** `go test ./...`, `uv run pytest -q`, `go run ./cmd/lighthouse init --upgrade` — verwacht PASS en `No changes.`
 - [ ] **Stap 4: Commit** `docs(tick): job map-planned, aangezet in deze repo (#476)`.
+
+## Open na review
+
+Ronde 3 haalde de rondegrens met deze punten open. Ze zijn aanvaard als `accepted_open`;
+de volgende fase of de PR-review weegt ze opnieuw.
+
+- **r3-f1** (BLOCKER, Taak 7 Stap 3 — Allowed syntactisch filter, Check als echte toelating): On the normal path the authority Check uses `git diff --name-only <basis>`, and that command never lists untracked files. Allowed is now only a syntactic filter that accepts any *.json/*.yaml/*.yml outside .git/.lighthouse/.claude/.agents, so a new file the agent creates passes both checks.
