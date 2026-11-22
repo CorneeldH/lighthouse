@@ -100,13 +100,13 @@ version_args = ["version"]
 [pins.roborev]
 kind = "tool"
 repo = "roborev-dev/roborev"
-version = "0.69.0"
+version = "0.75.0"
 version_args = ["version"]
 
 [pins.codex]
 kind = "tool"
 repo = "openai/codex"
-version = "0.157.0"
+version = "0.171.0"
 tag_prefix = "rust-v"
 
 # Geplande run (docs/tick.md, *Job `map-planned`*): zet open issues van een gepland label op hun kaart.
