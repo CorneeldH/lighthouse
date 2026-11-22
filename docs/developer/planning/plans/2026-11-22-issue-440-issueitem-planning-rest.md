@@ -27,7 +27,7 @@
 - **Open vraag uit het issue (AC 2: "ook in een nieuw proces") is hiermee beantwoord:** de tabel wordt bij elke volledige lijstlezing bijgewerkt en bevat ook items die uit de lijst verdwenen zijn (gearchiveerd), tot 30 dagen na het laatste zien.
 - **`Done` blijft alleen *completed*.** REST `closed_issues` telt *not planned* mee en wordt daarom niet gebruikt; `Done` en `Closed` komen uit `issues?state=closed&milestone=<n>` met een filter op `state_reason`. Kost één request per open milestone, die met de ETag-cache op `304` terugkomen. `Open` is het aantal open issues (zonder pull requests) uit dezelfde lijst als `Planning.Issues`, dus zonder search-queries.
 - **`ErrIssueNotFound` zonder GraphQL:** vindt `IssueItem` geen item, dan leest hij `GET repos/<repo>/issues/<n>`; `404` én `410` (verwijderd issue) zijn `ErrIssueNotFound`, een andere fout wordt teruggegeven, een bestaand issue zonder item is `ok=false`.
-- **Beperking, bewust (AC 2 vraagt alleen "eerder in de boardlijst gezien"):** een item dat al gearchiveerd was voordat een lijstlezing het ooit zag, of dat langer dan 30 dagen weg is, is niet meer te vinden en geeft `ok=false`. Triage (`internal/cli/triage_gather.go`) leest zo'n issue dan als "niet op het board". Dat staat in de doc van `IssueItem` en in de PR-body; de bestaande tests die een nooit-geziene gearchiveerde node veronderstellen, krijgen eerst een lijstlezing waarin het item nog staat.
+- **Beperking, bewust (AC 2 vraagt alleen "eerder in de boardlijst gezien"):** een item dat al gearchiveerd was voordat een lijstlezing het ooit zag, of dat langer dan 30 dagen weg is, is niet meer te vinden en geeft `ok=false`. Triage (`internal/cli/triage_gather.go`) leest zo'n issue dan als "niet op het board". Dat staat in de doc van `IssueItem` en in de PR-body; de bestaande tests die een nooit-geziene gearchiveerde node veronderstellen, krijgen eerst een lijstlezing waarin het item nog staat. `lighthouse forge issue status N <s>` (`internal/cli/forgecmd_write.go:297-303`) roept voor zo'n nooit-gezien gearchiveerd item `AddToBoard` aan (ok=false); dat is aanvaard, want `AddToBoard` is idempotent op het board en zet het item terug. `docs/triage.md` (~r.156-158) en de doc van `boardItem` in `internal/cli/triage_gather.go:73-75` krijgen dezelfde beperking (taak 3).
 
 ## Review-focus
 
@@ -138,6 +138,7 @@
 **Files:**
 - Modify: `docs/tick.md:~27` en `:101-105` (de alinea over de gather: noem alleen GraphQL-gebruik dat echt in de tick zit; controleer per kandidaat — `report.go`, `issues.go` — of de tick hem aanroept, en noem ook de regel over een uitgeputte GraphQL-limiet opnieuw)
 - Modify: `docs/priorities.md` (beschrijving van de drie GraphQL-queries en de kostenregel `blockedBy(first: 20)` vervangen door de REST-route; zeg wat het tabblad telt: *Done* = alleen als *completed* gesloten issues, geen pull requests, en dat *not planned* niet meetelt)
+- Modify: `docs/triage.md` (alinea over een gearchiveerd item, ~r.156-158: de ronde slaat het item over zolang `IssueItem` het kent; een item dat nooit in een lijstlezing stond, wordt niet gevonden) en `internal/cli/triage_gather.go` (doc van `boardItem`, r.73-75: zelfde beperking)
 - Modify: `internal/priorities/priorities.go` en de tekst van het tabblad, alleen als daar nu een andere uitleg staat
 - Create: `changelog.d/issue-440-issueitem-planning-rest.md`
 
