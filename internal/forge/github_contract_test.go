@@ -132,15 +132,15 @@ func (g *githubFixture) SetCloseReason(t *testing.T, number int, reason string) 
 }
 
 func (g *githubFixture) AddMilestone(_ *testing.T, m forge.Milestone) {
-	g.srv.PlanMilestones = append(g.srv.PlanMilestones, map[string]any{
-		"number": m.Number, "title": m.Title, "state": strings.ToUpper(m.State), "description": m.Description,
+	g.srv.Milestones = append(g.srv.Milestones, map[string]any{
+		"number": m.Number, "title": m.Title, "state": strings.ToLower(m.State), "description": m.Description,
 	})
 }
 
-// SupportsPlanning: Planning reads GraphQL issues and search counts.
+// SupportsPlanning: Planning reads the REST issue and milestone lists.
 func (g *githubFixture) SupportsPlanning() bool { return true }
 
-// NotPlannedCountsAsDone: the search asks reason:completed.
+// NotPlannedCountsAsDone: the closed issues are filtered on state_reason.
 func (g *githubFixture) NotPlannedCountsAsDone() bool { return false }
 
 func (g *githubFixture) AddComment(_ *testing.T, number int, author, body string) int64 {

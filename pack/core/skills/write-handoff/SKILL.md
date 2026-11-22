@@ -240,7 +240,7 @@ tick starts the next phase itself. Two entries:
 
    A path is absolute and without spaces. At `/lighthouse-start-issue <nr>`, `worktree:` is the
    main checkout and `branch:` `main` (the default branch, `lighthouse config forge.default_branch`). Exception: the blocked restart from
-   `lighthouse-start-issue` (controller run, the gate-0 line carries `— blocker #<x> open`) —
+   `lighthouse-start-issue` (controller run, the route line carries `— blocker #<x> open`) —
    then `worktree:` and `branch:` are the own worktree and branch of the issue. From `main`
    the controller puts an executing handoff on hold and never stacks.
 4. **`when:`** is `now`, unless the user chooses or asks for `night`.

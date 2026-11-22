@@ -5,67 +5,35 @@ Dit document legt vast wat die lezing opvraagt, wat ze kost en wat live is gecon
 
 ## Wat `Planning` leest (GitHub)
 
-Drie soorten GraphQL-query's per bouw, alle achter elkaar:
+`Planning` gebruikt geen GraphQL: alleen REST, met conditionele requests (`ETag`), zodat een
+ongewijzigde pagina als `304` terugkomt en niet meetelt voor de rate limit. Een leeg
+GraphQL-budget laat het tabblad dus niet falen.
 
-1. `Planning`: de **open** issues in pagina's van 100 (`number title url`, `milestone { number
-   title state description }`, `labels(first: 50)`, `blockedBy(first: 20)`). Alleen **open** blockers komen in
-   `PlanIssue.BlockedBy`: een gesloten blocker blokkeert niets. `blockedBy` vraagt `pageInfo`;
-   een issue met meer dan 20 blockers geeft een fout (`blockedBy truncated at 20`), geen stille
-   afkapping. Een open issue in een gesloten milestone houdt `Milestone.State == "closed"`.
-2. `PlanMilestones`: alle **open** milestones (`milestones(states: OPEN)`), pagina's van 100,
-   ook milestones zonder issues. Elke milestone draagt `issues(first: 100, states: CLOSED)`
-   mee; Go houdt de issues met `stateReason == COMPLETED` over in `MilestoneCount.Closed`, en
-   `Done` is `len(Closed)`. Meer dan 100 gesloten issues (of meer dan 50 labels) is een fout
-   (`closed issues truncated at 100`), geen stille afkapping.
-3. `PlanCounts`: per open milestone één `search(type: ISSUE)`-alias in één query (maximaal
-   50 milestones per query): `repo:<r> milestone:"<titel>" is:issue is:open` wordt
-   `MilestoneCount.Open`.
+1. Issues: `issues?state=open` in pagina's van 100, pull requests overgeslagen. Elk issue draagt
+   zijn milestone en labels mee (een open issue in een gesloten milestone houdt
+   `Milestone.State == "closed"`). `PlanIssue.BlockedBy` komt uit `issue_dependencies_summary` in
+   die lijst; heeft een issue blockers, dan leest `Planning` ze met één `blocked_by`-request per
+   issue. Alleen **open** blockers komen erin: een gesloten blocker blokkeert niets.
+2. Milestones: alle **open** milestones, ook die zonder issues.
+3. Per open milestone één `issues?state=closed&milestone=<n>`; Go houdt de issues met
+   `state_reason == completed` over in `MilestoneCount.Closed`, en `Done` is `len(Closed)`.
+   `Open` is het aantal open issues (zonder pull requests) uit de lijst van punt 1.
 
-Een `hasNextPage` met een lege of ongewijzigde `endCursor` is een fout (`pagination stuck`),
-zoals bij `BoardItems`: de bouw faalt zichtbaar in plaats van te blijven lussen.
+`Done` telt alleen issues gesloten als *completed* (een oud issue zonder `state_reason` telt
+als klaar, zoals in `report.go`). REST `closed_issues` telt *not planned* mee en
+wordt daarom niet gebruikt. Pull requests en issues gesloten als *not planned* tellen in geen van
+beide: niet in `Done` en niet in `Closed`, zodat de blokjes en het percentage niet uiteen kunnen
+lopen.
 
-`Done` telt alleen issues gesloten als `completed`; de zoektelling `is:closed reason:completed`
-is vervallen, zodat de blokjes (`Closed`) en het percentage niet uiteen kunnen lopen. Pull requests (zonder `is:issue` telt de
-zoekopdracht ze mee) en issues gesloten als `not planned` tellen in geen van beide.
+## Kosten van één bouw (GitHub)
 
-## Controle van de zoekqualifiers tegen de live API
-
-Gemeten op 2026-11-17 met `gh api graphql` tegen `CorneeldH/lighthouse`, milestone
-`M3 — Tweede omgeving` (spaties en een em-dash in de titel):
-
-| Zoekopdracht | `issueCount` |
-|---|---|
-| `is:issue is:open` | 2 |
-| `is:issue is:closed` | 4 |
-| `is:issue is:closed reason:completed` | 4 |
-| `is:issue is:closed reason:"not planned"` | 0 |
-| `is:pr` | 4 |
-
-- `milestone:"<titel>"` met spaties en em-dash werkt; `is:issue` sluit de 4 pull requests uit
-  (de REST-teller van de milestone geeft 8 gesloten: 4 issues plus 4 PR's).
-- `reason:completed` werkt als qualifier op `is:closed`.
-- Titel met `"` of `\`: **niet geverifieerd.** GitHub documenteert geen escape in een gequote
-  qualifier en er bestaat in deze repo geen milestone met zo'n titel om tegen te toetsen. De
-  bouw weigert zo'n titel daarom met een fout die de milestone noemt (`a quote or backslash in
-  the title cannot be searched`), zodat een verkeerde telling nooit stil blijft. Is de escape
-  later live bewezen, dan vervalt die weigering in `planCounts`.
-
-## Kosten van één bouw
-
-Sinds #437 dragen de issuesquery de labels en de milestonequery de gesloten issues als
-geneste connecties mee, en vervalt een zoekalias per milestone. De geneste connecties verhogen
-de querykosten met het aantal issues en milestones; de meting hieronder dateert van vóór die
-wijziging en is niet opnieuw gedaan.
-
-Berekend (uit het plan): 12 bouwen per uur. Per repo kost een pagina van 100 issues met
-`blockedBy(first: 20)` ongeveer 21 punten, en elke `PlanCounts`-query 1 punt. Voor een repo met
-21 milestones: ongeveer 12 x (21 + 42) = 760 punten per uur, naast ongeveer 2100 per uur voor
-het bord van de overview; samen binnen de 5000 per uur.
-
-Gemeten met `rateLimit { cost }` op 2026-11-17, `CorneeldH/lighthouse` (57 open issues, 11 open
-milestones, 22 search-aliassen): elke van de drie query's kostte **1 punt**, dus **3 punten per
-bouw**, ruim onder de berekende ongeveer 21 punten voor de issuespagina. De berekende getallen
-zijn dus een bovengrens; de meting op een repo met meer dan 100 issues is niet gedaan.
+Een bouw kost geen GraphQL-punten. Hij leest één issuelijst (pagina's van 100), de open
+milestones, per open milestone één lijst gesloten issues en per issue met blockers één
+`blocked_by`-lijst. Elk request is conditioneel (`ETag`): een tweede bouw zonder wijzigingen
+krijgt overal `304`, dat niet meetelt voor de rate limit. Heeft de issuelijst van de echte API
+geen `issue_dependencies_summary`, dan leest `Planning` de `blocked_by`-lijst van elk issue: dat
+is correct maar duurder. De zoekqualifiers en de GraphQL-kostenmeting van #437 zijn vervallen
+met de queries waar ze over gingen.
 
 ## Twee kostenwijzigingen
 
@@ -79,7 +47,7 @@ zijn dus een bovengrens; de meting op een repo met meer dan 100 issues is niet g
 
 `lighthouse serve` toont naast de overview een tabblad Prioritering (`#prioritering`) met drie
 weergaven: een afhankelijkhedengraaf van open issues, een milestone-weergave met voortgang
-(`Done` van `Done + Open`, waarbij `Open` hier het aantal open issues is dat `Planning.Issues` per milestone levert; de SPA negeert de `Open` van de zoekopdracht) en een weergave van issues zonder milestone. De server bouwt de
+(`Done` van `Done + Open`, waarbij `Open` het aantal open issues is uit de lijst open issues van `Planning.Issues`, per milestone geteld) en een weergave van issues zonder milestone. De server bouwt de
 gegevens in een eigen refresher, los van de overview, elke **300 s** (`PrioritiesInterval`) en
 levert ze op `/api/priorities`. De pagina leest, op één plek na: de rang van een milestone
 (zie het volgende kopje).
@@ -124,7 +92,8 @@ de rang.
 De SPA leidt deze begrippen af in `web/src/lib/priorities/derive.ts`; de server levert ze niet.
 
 - **Actief.** Een issue is actief als er een open of geparkeerde run op staat, of als de
-  bordstatus `In progress` is.
+  bordstatus `In progress` of `Controller` is (zoals `issueState` en de
+  [spec](developer/planning/specs/2026-11-20-statusmodel-en-statusschema-design.md)).
 - **Toestand van een issue.** `issueState` kiest de eerste passende regel: *actief* (live run,
   bordstatus `In progress` of `Controller`; met de vlag *mens nodig* bij een `needs_*`-label of
   een open vraag), *mens nodig* (`needs_shaping` of `needs_decision`), *geblokkeerd* (label
@@ -133,6 +102,14 @@ De SPA leidt deze begrippen af in `web/src/lib/priorities/derive.ts`; de server 
   met één vormentaal en groepeert de blokjes per toestand. De API levert daarvoor per issue
   `label` (het label met de laagste rang), `needs_label` (er staat een `needs_*`-label op, welk
   ook) en `open_question`, en per milestone de gesloten issues (`closed`).
+- **Vormentaal van de graaf.** De graaf tekent de toestand van een issue op de kaart met
+  dezelfde vormentaal als de balk: een kleurstrook (gestreept bij *actief*, effen bij
+  elke andere toestand), een stippelrand van 1,5 px in de voorgrondkleur bij *mens nodig*, een kruis bij
+  het nummer bij *geblokkeerd* en een doorgetrokken grijze rand voor een externe kaart (andere
+  repo of buiten het filter), nooit gestippeld. Issues zonder afhankelijkheden staan als
+  dezelfde kaart in een raster onder de graaf. Zie de
+  [spec](developer/planning/specs/2026-11-20-statusmodel-en-statusschema-design.md) en het
+  [plan](developer/planning/plans/2026-11-22-issue-438-afhankelijkhedengraaf-vormentaal.md).
 - **Bergop / bergaf.** Een actief issue is bergop als de fase van zijn run een van
   `brainstorming`, `start-issue`, `spec-review`, `writing-plans` of `plan-review` is: het
   denkwerk vóór de uitvoering. Elke andere fase, of een issue dat alleen op het bord actief is,
@@ -150,17 +127,16 @@ De SPA leidt deze begrippen af in `web/src/lib/priorities/derive.ts`; de server 
 
 Het kleurpalet van de milestones is **niet gevalideerd** met de dataviz-validator. De
 gebruikersinterface is **niet visueel gecontroleerd in een browser**: alleen de unit- en
-componenttests en de build zijn gedraaid. Er is geen e2e-test: `web/e2e/fake-github.ts` kent geen
-GraphQL-route die zonder wijziging van de bestaande tests uit te breiden is.
+componenttests en de build zijn gedraaid. Er is geen e2e-test: `web/e2e/fake-github.ts` kent de REST-routes
+van `Planning` (milestones, dependencies) nog niet en is zonder wijziging van de bestaande tests niet uit te breiden.
 
 ## Bekende beperkingen
 
-- Een `"` of `\` in een milestonetitel laat de hele bouw falen; de refresher probeert het elke
-  60 s opnieuw, op GitHub tegen ongeveer 1 punt per query.
 - GitLab-groepsmilestones worden niet opgesomd (alleen projectmilestones). Zulke issues
   verdwijnen uit Milestones en uit Zonder milestone.
 - GitLab leest de gesloten issues van een milestone op milestonetitel (`/issues?state=closed&milestone=<titel>`).
 - Lange pijlen in de graaf delen één baan per overgeslagen kolom.
+- De kaartvorm van de graaf (kleurstrook, stippelrand, kruis) is alleen met jsdom getest, niet in een browser bekeken.
 - Het palet is niet gevalideerd met de dataviz-validator.
 - De gebruikersinterface is niet visueel in een browser gecontroleerd.
-- De e2e-test is overgeslagen: `fake-github.ts` heeft geen GraphQL-route.
+- De e2e-test is overgeslagen: `fake-github.ts` kent de REST-routes van `Planning` nog niet.

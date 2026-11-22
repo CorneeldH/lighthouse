@@ -191,6 +191,9 @@ describe('PrioritiesTab', () => {
         ['blocked', 'false'],
       ])
       expect(legend().queryByText('picked up')).toBeNull()
+      for (const label of ['active', 'ready', 'needs a human', 'blocked']) {
+        expect(legend().getByText(label)).toBeTruthy()
+      }
     })
 
     it('the without-milestone view has no milestone colours when no closed milestone is named', async () => {

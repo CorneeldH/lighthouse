@@ -205,8 +205,8 @@ The invariant, per open issue (label names from `[labels]`):
 label off is `lighthouse forge issue edit <nr> --remove-label "$BLOCKED"`, setting the relation is step 2 below.
 
 A `blocked_by` relation between two issues the controller runs (only if present) is also their
-stacking order: the controller lets the blocked issue do spec and plan and stacks the execution
-on the green PR of its predecessor. The invariant and the steps below stay the same.
+stacking order: spec yes, plan and execution wait for a merged PR of the predecessor. Outside the
+controller the same holds (`lighthouse-start-issue` step 4, *Blocked?*). The invariant and the steps below stay the same.
 
 1. **Create without the blocked-issue label** (step 4). Note the start time beforehand with
    `date -u +%Y-%m-%dT%H:%M:%SZ` and put the literal ISO value in your answer: a shell variable
