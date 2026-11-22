@@ -1006,7 +1006,8 @@
               ],
               "readers": [
                 "internal/prbody/form.go",
-                "internal/prbody/gate.go"
+                "internal/prbody/gate.go",
+                "pack/core/skills/write-pr"
               ]
             }
           ]
