@@ -1745,3 +1745,46 @@ func TestInitAdoptsCRLFFileWithoutManifest(t *testing.T) {
 		t.Fatalf("g.sh = %q", got)
 	}
 }
+
+// Classification: cli-output. Fails when init skips the hook check after writing, or when the
+// check's own stderr output ends up on stdout or in the exit code.
+func TestCheckHooksRunsAfterWrite(t *testing.T) {
+	root := newRepo(t)
+	var calls int
+	var gotRoot string
+	r := run(t, root, "", func(o *Options) {
+		yes(o)
+		o.CheckHooks = func(r string, errOut io.Writer) { calls++; gotRoot = r; _, _ = io.WriteString(errOut, "HOOKS\n") }
+	})
+	if r.code != 0 || calls != 1 || gotRoot == "" || !strings.Contains(r.err, "HOOKS") || strings.Contains(r.out, "HOOKS") {
+		t.Errorf("rc %d, %d calls, root %q, out %q, err %q", r.code, calls, gotRoot, r.out, r.err)
+	}
+}
+
+// Classification: cli-output. Fails when the check no longer runs on `No changes.` or its
+// stderr output leaks into stdout, which must stay byte-equal.
+func TestCheckHooksRunsOnNoChanges(t *testing.T) {
+	root := newRepo(t)
+	initYes(t, root)
+	var calls int
+	r := run(t, root, "", func(o *Options) {
+		yes(o)
+		upgrade(o)
+		o.CheckHooks = func(_ string, errOut io.Writer) { calls++; _, _ = io.WriteString(errOut, "HOOKS\n") }
+	})
+	if r.code != 0 || calls != 1 || r.out != "No changes.\n" {
+		t.Errorf("rc %d, %d calls, out %q, err %q", r.code, calls, r.out, r.err)
+	}
+}
+
+// Classification: cli-output. Fails when the check runs although the user declined the diff.
+func TestCheckHooksSkippedWhenDeclined(t *testing.T) {
+	root := newRepo(t)
+	var calls int
+	r := run(t, root, "n\n", func(o *Options) {
+		o.CheckHooks = func(string, io.Writer) { calls++ }
+	})
+	if r.code == 0 || calls != 0 {
+		t.Errorf("rc %d, %d calls; want a declined init and no check", r.code, calls)
+	}
+}
