@@ -1037,7 +1037,6 @@
                 "pack/core/skills/close-issue",
                 "pack/core/skills/fix-pr",
                 "pack/core/skills/review-plan",
-                "pack/core/skills/start-issue",
                 "pack/core/skills/upgrade",
                 "pack/core/skills/write-handoff",
                 "pack/go/skills/go-standard"
