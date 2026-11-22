@@ -46,6 +46,8 @@ func Issues(path string, doc []byte) (map[int]bool, error) {
 	return found, nil
 }
 
+// collectIssues walks node: a JSON object or YAML mapping (map[string]any, or map[any]any for
+// a YAML mapping with a key that is not a string) and a list.
 func collectIssues(node any, found map[int]bool) {
 	visit := func(key, child any) {
 		if key == "issue" {
@@ -57,6 +59,10 @@ func collectIssues(node any, found map[int]bool) {
 	}
 	switch v := node.(type) {
 	case map[string]any:
+		for key, child := range v {
+			visit(key, child)
+		}
+	case map[any]any:
 		for key, child := range v {
 			visit(key, child)
 		}

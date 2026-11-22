@@ -80,3 +80,14 @@ func TestIssuesRefusesASecondValue(t *testing.T) {
 	}
 }
 
+// Classification: pure function. Fails if Issues skips a YAML mapping with a key that is not a
+// string (yaml.v3 decodes it as map[any]any) and so misses the issue under it.
+func TestIssuesWalksAYAMLMapWithOtherKeys(t *testing.T) {
+	got, err := Issues("kaart.yaml", []byte("1:\n  - issue: 7\n2: {issue: 8}\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := map[int]bool{7: true, 8: true}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+}
