@@ -74,6 +74,9 @@ type itemFunc func(n int) (item forge.BoardItem, ok bool, err error)
 // boardItem looks n up in the board of the gather. The board lists no archived item, so for an
 // issue missing from it boardItem reads the items of the issue: an archived item must not read
 // as "not on the board", or the round would judge the issue every round and write next to it.
+// IssueItem finds an archived item only through the item ids it saved from earlier board reads
+// (up to 30 days after it was last listed). An item archived before any read saw it, or gone for
+// longer, is not found: boardItem then reports ok=false, "not on the board".
 func (g *repoGather) boardItem(ctx context.Context, n int) (forge.BoardItem, bool, error) {
 	if it, ok := g.board[n]; ok {
 		return it, true, nil
