@@ -305,3 +305,56 @@ func oneValue(value string) bool {
 	_, err := toml.Decode("v = ["+value+"]", &v)
 	return err == nil
 }
+
+// SetTopLevel sets the top-level key to value, a TOML literal such as `"light"`. An
+// existing top-level line keeps its comment and position; a missing key is inserted
+// after the last top-level key line, before the first table header. A key of the same
+// name inside a table is left alone. Invalid TOML, before or after, is an error.
+func SetTopLevel(existing []byte, key, value string) ([]byte, error) {
+	var probe map[string]any
+	if _, err := toml.Decode(string(existing), &probe); err != nil {
+		return nil, fmt.Errorf("lighthouse.toml: not valid TOML: %w", err)
+	}
+	lines := strings.SplitAfter(string(existing), "\n")
+	if lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	top := len(lines) // first header line, or the end
+	for i, l := range lines {
+		if header.MatchString(strings.TrimRight(l, "\r\n")) {
+			top = i
+			break
+		}
+	}
+	own := regexp.MustCompile(`^(\s*` + regexp.QuoteMeta(key) + `\s*=\s*)("(?:[^"\\]|\\.)*"|'[^']*'|[^#\r\n]*?)(\s*(?:#.*)?)$`)
+	last := -1 // last top-level key line
+	replaced := false
+	for i := 0; i < top; i++ {
+		body := strings.TrimRight(lines[i], "\r\n")
+		if m := own.FindStringSubmatch(body); m != nil {
+			lines[i] = m[1] + value + m[3] + lines[i][len(body):]
+			replaced = true
+			break
+		}
+		if t := strings.TrimSpace(body); t != "" && !strings.HasPrefix(t, "#") {
+			last = i
+		}
+	}
+	if !replaced {
+		at := last + 1
+		if at > 0 && !strings.HasSuffix(lines[at-1], "\n") {
+			lines[at-1] += "\n"
+		}
+		ins := key + " = " + value + "\n"
+		if at < len(lines) && header.MatchString(strings.TrimRight(lines[at], "\r\n")) {
+			ins += "\n" // keep a blank line before a header that follows directly
+		}
+		lines = append(lines[:at], append([]string{ins}, lines[at:]...)...)
+	}
+	out := strings.Join(lines, "")
+	var check map[string]any
+	if _, err := toml.Decode(out, &check); err != nil {
+		return nil, fmt.Errorf("lighthouse.toml: setting %s would break the file: %w", key, err)
+	}
+	return []byte(out), nil
+}
