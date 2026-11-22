@@ -110,7 +110,7 @@ Report exactly one line, of one of three kinds:
   anyway". Controller run (if present): post one bundle with
   `lighthouse ask --issue <nr> --phase start`, with the options "try the fetch again" and "carry
   on anyway", `--recommended` on the first, and stop without a handoff: close-issue would measure
-  on stale data. Write the ask fields in `[project] language`; the question in
+  on stale data. Write the ask fields in the language of the artefacts; the question in
   `/lighthouse-close-issue` (open criteria) shows the shape. A covering hit stays `likely`: old
   data also proves the work was already there.
 
