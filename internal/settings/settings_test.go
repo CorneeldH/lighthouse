@@ -233,3 +233,40 @@ func TestAllowRejectsShape(t *testing.T) {
 		}
 	}
 }
+
+func TestResponseLanguage(t *testing.T) {
+	cases := []struct{ code, want string }{
+		{"", ""},
+		{"en", ""},
+		{"EN", ""},
+		{"nl", "dutch"},
+		{"NL", "dutch"},
+		{" nl ", "dutch"},
+		{"de", "de"},
+	}
+	for _, c := range cases {
+		if got := ResponseLanguage(c.code); got != c.want {
+			t.Errorf("ResponseLanguage(%q) = %q, want %q", c.code, got, c.want)
+		}
+	}
+}
+
+func TestApplyLanguage(t *testing.T) {
+	cases := []struct {
+		name, doc, want, out, kept string
+	}{
+		{"absent is set last", `{"hooks":{}}`, "dutch", `{"hooks":{},"language":"dutch"}`, ""},
+		{"same value stays", `{"language":"dutch","hooks":{}}`, "dutch", `{"language":"dutch","hooks":{}}`, ""},
+		{"other value is the project's", `{"language":"english"}`, "dutch", `{"language":"english"}`, "english"},
+		{"non-string value is the project's", `{"language":7}`, "dutch", `{"language":7}`, "7"},
+		{"nothing wanted leaves it alone", `{"language":"english"}`, "", `{"language":"english"}`, ""},
+		{"nothing wanted adds nothing", `{}`, "", `{}`, ""},
+	}
+	for _, c := range cases {
+		doc := parse(t, c.doc)
+		kept := ApplyLanguage(doc, c.want)
+		if got := compact(t, doc); got != c.out || kept != c.kept {
+			t.Errorf("%s: doc %s kept %q, want %s kept %q", c.name, got, kept, c.out, c.kept)
+		}
+	}
+}

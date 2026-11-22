@@ -1670,3 +1670,48 @@ func TestInitWritesWorkflowsOnlyOnGitHub(t *testing.T) {
 		})
 	}
 }
+
+func TestInitSetsResponseLanguage(t *testing.T) {
+	cases := []struct {
+		name, toml, settings string
+		wantSetting          string // the "language" line in settings.json, or "" for none
+		wantWarn             bool
+	}{
+		{"nl sets dutch", "[project]\nlanguage = \"nl\"\n", "", `"language": "dutch"`, false},
+		{"en sets nothing", "[project]\nlanguage = \"en\"\n", "", "", false},
+		{"no language key sets nothing", "[forge]\nkind = \"github\"\n", "", "", false},
+		{"no lighthouse.toml sets nothing", "", "", "", false},
+		{"own value is kept", "[project]\nlanguage = \"nl\"\n", "{\n  \"language\": \"english\"\n}\n", `"language": "english"`, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			root := newRepo(t)
+			if c.toml != "" {
+				write(t, root, "lighthouse.toml", c.toml)
+			}
+			if c.settings != "" {
+				write(t, root, ".claude/settings.json", c.settings)
+			}
+			r := run(t, root, "", yes)
+			if r.code != 0 {
+				t.Fatalf("rc %d\n%s%s", r.code, r.out, r.err)
+			}
+			s := read(t, root, ".claude/settings.json")
+			switch {
+			case c.wantSetting == "" && strings.Contains(s, `"language"`):
+				t.Fatalf("settings has a language:\n%s", s)
+			case c.wantSetting != "" && strings.Count(s, `"language"`) != 1:
+				t.Fatalf("settings: want one language line %s:\n%s", c.wantSetting, s)
+			case c.wantSetting != "" && !strings.Contains(s, c.wantSetting):
+				t.Fatalf("settings: want %s:\n%s", c.wantSetting, s)
+			}
+			warned := strings.Contains(r.err, `.claude/settings.json has language "english"`)
+			if warned != c.wantWarn {
+				t.Fatalf("warning = %v, want %v; err %q", warned, c.wantWarn, r.err)
+			}
+			if u := run(t, root, "", upgrade); u.code != 0 || u.out != "No changes.\n" {
+				t.Fatalf("upgrade: rc %d\n%s\n%s", u.code, u.out, u.err)
+			}
+		})
+	}
+}
