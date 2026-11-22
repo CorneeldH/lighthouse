@@ -466,12 +466,22 @@
               "key": "paths.areas",
               "level": "advanced",
               "required": "no",
-              "about": "The folder with one file per area; closing a milestone updates its near goal.",
+              "about": "The folder with one file per area: its crux, leading policy and deliberate no's, read when writing an issue. Closing a milestone updates its near goal when the area file has that heading.",
               "example": "docs/areas",
               "readers": [
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/close-issue",
                 "pack/core/skills/write-issue"
+              ]
+            },
+            {
+              "key": "paths.strategy",
+              "level": "advanced",
+              "required": "no",
+              "about": "The file with the project's strategy, read when writing an issue and when shaping a milestone.",
+              "example": "docs/strategy.md",
+              "readers": [
+                "internal/repoconfig/repoconfig.go"
               ]
             },
             {
