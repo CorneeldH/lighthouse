@@ -43,7 +43,7 @@ model lezen op het moment dat er iets beslist wordt. Een test bewaakt de vorm.
    begrenst, is intent, taste en context, niet code.
 6. **De optionele feature voor elke repo** (`init --upgrade` maakt de documenten aan, plus uitleg voor
    gebruikers) gaat naar een **volgende milestone**, niet naar deze.
-7. **Een periodieke herziening** van de richting wordt een eigen geplande job, in een **volgende
+7. **Een periodieke herziening** van de richting wordt een eigen geplande job, `direction`, in een **volgende
    milestone**. Een schrijfmoment bij het sluiten van een milestone komt er nu **niet**.
 8. **Geen typering** (sneller hetzelfde, nieuw product, AI-native) in de toets van een issue: te veel.
 9. **Geen *Nabij doel* in de lighthouse-areas.** Dat is status, en de roadmap zijn de milestones.
@@ -214,7 +214,8 @@ in de crux niet; de bouwer meldt het in de PR.
 - `paths.strategy` is een nieuwe `kStr` zonder standaard in `internal/config/config.go`, naast
   `paths.tenets` en `paths.areas`.
 - Mee: `tests/pack/fixtures/config-schema.json`, `tests/pack/fixtures/config/{defaults,full}/expect.json`,
-  en een regel in `docs/site/data/config.json` met zijn `readers` (`docs/site/test/config.test.mjs`
+  de invoer `tests/pack/fixtures/config/full/lighthouse.toml` (krijgt `strategy` onder `[paths]`; de
+  fixture `defaults` houdt het geval "niet gezet") *(eigen keuze na spec-review, r1-f2)*, en een regel in `docs/site/data/config.json` met zijn `readers` (`docs/site/test/config.test.mjs`
   eist dat elke sleutel daar staat en dat de lezers hem echt noemen).
 - `paths.history` blijft ongebruikt; dit ontwerp zet hem niet.
 
@@ -238,9 +239,10 @@ stil over; een repo zonder deze documenten merkt niets.
 - **`close-issue` stap 5.** Leest `paths.areas` al, en leidt de area af uit het deel vóór `:` in de
   titel van de gesloten milestone. Bij lighthouse is dat geen area ("Systeemoverzicht: …"). Nieuw: bestaat
   `<paths.areas>/<area>.md` niet, of heeft het geen kop *Nabij doel*, dan meldt de stap
-  `areas: skipped — <reden>` en stopt hij. De kop krijgt een sleutel in `.lighthouse/headings.toml`
+  `areas: skipped — <reden>` en stopt hij. De kop krijgt een sleutel in de bron `pack/core/headings.toml`
   (bijvoorbeeld `area_near_goal`, `nl`: *Nabij doel*, `en`: *Near goal*), zodat de skill hem in elke taal
-  herkent. `internal/packcontract/closeissue_test.go` (stap 5) volgt. Deze wijziging landt uiterlijk in de
+  herkent; de geïnstalleerde kopie `.lighthouse/headings.toml` komt via `init --upgrade` mee in dezelfde
+  commit *(eigen keuze na spec-review, r1-f1)*. `internal/packcontract/closeissue_test.go` (stap 5) volgt. Deze wijziging landt uiterlijk in de
   PR die `paths.areas` zet; anders opent de eerstvolgende gesloten milestone een PR op een verkeerd bestand.
 
 De lezers in `write-issue` 3f en `map-planned` landen pas als #476 op `main` staat. De documenten, de
@@ -254,10 +256,13 @@ paden uit `lighthouse.toml` en de area-tabel uit `labels.md`:
 
 1. Elk `2-area:<x>` heeft `<paths.areas>/<x>.md`; elk bestand in die map hoort bij een label.
 2. Elk area-bestand heeft de koppen van §1 in die volgorde.
-3. De ID's onder *Bewust niet* zijn uniek binnen het bestand, en elke `→ <area>` noemt een bestaande area.
+3. Elke bullet onder *Bewust niet* heeft precies één ID van de juiste vorm (`**N<n>**`), de ID's zijn
+   uniek binnen het bestand, en elke `→ <area>` noemt een bestaande area *(eigen keuze na spec-review,
+   r1-f3)*.
 4. `uitgangspunten.md`: elke kop heeft de vorm `## <letter>. … boven …`; letters uniek, zonder gat in
    A tot en met de hoogste letter (een vervallen letter telt mee). De volgorde in het bestand is vrij.
-5. `strategie.md`: de koppen van §1 in die volgorde; de ID's onder *Bewust niet* uniek.
+5. `strategie.md`: de koppen van §1 in die volgorde; elke bullet onder *Bewust niet* heeft precies één
+   ID `**S<n>**`, en de ID's zijn uniek.
 6. Een sleutel die niet gezet is, of een bestand dat niet te lezen is: de test faalt met de naam ervan.
    In deze repo zijn de sleutels gezet, dus "niet gezet" is hier een fout, geen reden om over te slaan.
 
@@ -283,7 +288,7 @@ Na goedkeuring van dit ontwerp, via `/lighthouse-write-issue`:
 - **Nieuw issue: de optionele feature voor elke repo.** `init --upgrade` maakt sjablonen aan voor
   strategie, uitgangspunten en areas als ze ontbreken (zoals `labels.md` nu), plus uitleg in de docs
   voor gebruikers. Voorstel: milestone *Product: eerste versie voor anderen*.
-- **Nieuw issue: de job `richting`.** Een geplande job naar het voorbeeld van `reflect`: een poort in Go
+- **Nieuw issue: de job `direction`.** Een geplande job naar het voorbeeld van `reflect`: een poort in Go
   (genoeg nieuwe specs of gesloten milestones sinds de vorige ronde), een skill die de beslissingen
   naast de uitgangspunten en areas legt, en een PR met een voorstel. Voorstel: milestone
   *Explore/exploit: lighthouse stelt zichzelf bij*, die ook de telemetrie bevat die de job later leest.
