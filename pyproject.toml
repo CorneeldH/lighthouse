@@ -16,6 +16,7 @@ package = false
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+consider_namespace_packages = true
 markers = [
     "network_stays_red: a network error in this test's failure is no skip (tests/pack/python/_network.py, #338)",
 ]

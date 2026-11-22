@@ -2,11 +2,17 @@
 plus python (`install_pack`)."""
 
 import atexit
+import os
 import shutil
+import sys
 import tempfile
 from pathlib import Path
 
 import pytest
+
+# The scripts of pack/python are imported by the tests: leave no __pycache__ under pack/.
+os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
+sys.dont_write_bytecode = True
 
 from tests.pack.python._network import network_error, offline
 from tests.pack.python._testkit import install_pack
