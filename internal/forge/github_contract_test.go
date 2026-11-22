@@ -132,15 +132,15 @@ func (g *githubFixture) SetCloseReason(t *testing.T, number int, reason string) 
 }
 
 func (g *githubFixture) AddMilestone(_ *testing.T, m forge.Milestone) {
-	g.srv.PlanMilestones = append(g.srv.PlanMilestones, map[string]any{
-		"number": m.Number, "title": m.Title, "state": strings.ToUpper(m.State), "description": m.Description,
+	g.srv.Milestones = append(g.srv.Milestones, map[string]any{
+		"number": m.Number, "title": m.Title, "state": strings.ToLower(m.State), "description": m.Description,
 	})
 }
 
-// SupportsPlanning: Planning reads GraphQL issues and search counts.
+// SupportsPlanning: Planning reads the REST issue and milestone lists.
 func (g *githubFixture) SupportsPlanning() bool { return true }
 
-// NotPlannedCountsAsDone: the search asks reason:completed.
+// NotPlannedCountsAsDone: the closed issues are filtered on state_reason.
 func (g *githubFixture) NotPlannedCountsAsDone() bool { return false }
 
 func (g *githubFixture) AddComment(_ *testing.T, number int, author, body string) int64 {
@@ -175,6 +175,65 @@ func (g *githubFixture) AddBlocker(_ *testing.T, number int, b forge.Blocker) {
 	})
 	if n, ok := g.nodes[number]; ok {
 		n["content"].(map[string]any)["blockedBy"] = map[string]any{"nodes": g.blockers[number]}
+	}
+}
+
+func (g *githubFixture) FailBlockingPage2(_ *testing.T, number int) {
+	if g.srv.BlockingPage2Fails == nil {
+		g.srv.BlockingPage2Fails = map[int]bool{}
+	}
+	g.srv.BlockingPage2Fails[number] = true
+}
+
+func (g *githubFixture) FailListChangesPage2(*testing.T) { g.srv.PullsPage2Fails = true }
+
+func (g *githubFixture) AddChange(_ *testing.T, c forge.Change) {
+	p := map[string]any{"number": c.Number, "title": c.Title, "state": c.State, "head": map[string]any{"ref": c.HeadRef}}
+	if c.State == "merged" { // the pulls API has no merged state: closed, with a merged_at
+		p["state"], p["merged_at"] = "closed", c.MergedAt.UTC().Format(time.RFC3339)
+	}
+	g.srv.Pulls = append(g.srv.Pulls, p)
+}
+
+// AddIssueChange: a closing pull request is in closedByPullRequestsReferences and, as on
+// GitHub, also cross-references the issue in its timeline; a mentioning one only there.
+func (g *githubFixture) AddIssueChange(_ *testing.T, number int, c forge.IssueChange) {
+	node := map[string]any{"number": c.Number, "state": c.State, "headRefName": c.HeadRef,
+		"isCrossRepository": c.CrossRepo, "body": c.Body, "repository": map[string]any{"nameWithOwner": c.Repo}}
+	if g.srv.ChangeClosingPRs == nil {
+		g.srv.ChangeClosingPRs, g.srv.ChangeRefPRs = map[int][]map[string]any{}, map[int][]map[string]any{}
+	}
+	if c.Closes {
+		g.srv.ChangeClosingPRs[number] = append(g.srv.ChangeClosingPRs[number], node)
+	}
+	g.srv.ChangeRefPRs[number] = append(g.srv.ChangeRefPRs[number], node)
+}
+
+func (g *githubFixture) FailIssueChangesPage2(_ *testing.T, number int) {
+	if g.srv.IssueChangesPage2Fails == nil {
+		g.srv.IssueChangesPage2Fails = map[int]bool{}
+	}
+	g.srv.IssueChangesPage2Fails[number] = true
+}
+
+func (g *githubFixture) FailComments(_ *testing.T, number int) {
+	if g.srv.Fail == nil {
+		g.srv.Fail = map[string]int{}
+	}
+	g.srv.Fail[fmt.Sprintf("POST /repos/o/r/issues/%d/comments", number)] = http.StatusInternalServerError
+}
+
+// AddStateEvent: GitHub's timeline query reads only the ClosedEvents; a reopen is not in it.
+func (g *githubFixture) AddStateEvent(t *testing.T, number int, state string, closer int, repo string) {
+	switch state {
+	case "reopened":
+	case "closed":
+		if g.srv.Closers == nil {
+			g.srv.Closers = map[int][]forgetest.Closer{}
+		}
+		g.srv.Closers[number] = append(g.srv.Closers[number], forgetest.Closer{Number: closer, Repo: repo})
+	default:
+		t.Fatalf("AddStateEvent: state %q is not closed or reopened", state)
 	}
 }
 

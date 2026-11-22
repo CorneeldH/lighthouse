@@ -70,15 +70,6 @@ func hasBoard(env Env) (bool, error) {
 	return true, nil
 }
 
-// statusOf is the status board-start decides on: the status_options name of the item's status,
-// or, for a board option that status_options does not list, its raw name on the board.
-func statusOf(it forge.BoardItem) string {
-	if strings.HasPrefix(it.Status, forge.UnknownStatusPrefix) {
-		return it.StatusName
-	}
-	return it.Status
-}
-
 // at is `at <status>`, or `without status` for an empty one.
 func at(status string) string {
 	if status == "" {
@@ -105,7 +96,7 @@ func reopen(ctx context.Context, f forge.Forge, nr int, out io.Writer) int {
 	if !ok {
 		return fail("#%d is not on the board", nr)
 	}
-	switch status := statusOf(it); status {
+	switch status := it.EffectiveStatus(); status {
 	case inProgress:
 		_, _ = fmt.Fprintf(out, "board: #%d is already In progress\n", nr)
 		return 0
@@ -122,7 +113,7 @@ func reopen(ctx context.Context, f forge.Forge, nr int, out io.Writer) int {
 	}
 	after := ""
 	if ok {
-		after = statusOf(back)
+		after = back.EffectiveStatus()
 	}
 	if after != inProgress {
 		if after == "" {
@@ -141,7 +132,7 @@ func pickUp(ctx context.Context, f forge.Forge, nr int, out io.Writer) int {
 		_, _ = fmt.Fprintf(out, "board: #%d is not on the board\n", nr)
 		return 0
 	}
-	status := statusOf(it)
+	status := it.EffectiveStatus()
 	if err == nil {
 		if status != "To do" && status != "On hold" {
 			_, _ = fmt.Fprintf(out, "board: #%d stays %s\n", nr, at(status))

@@ -34,6 +34,28 @@ func TestClassify(t *testing.T) {
 	}
 }
 
+// Red when IsAnswer stops recognising the map-planned machine line on a later line, or
+// starts rejecting a human answer that only mentions it mid-line.
+func TestIsAnswerSkipsMapPlannedComments(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want bool
+	}{
+		{"job question", "🗺 Kaart · map-planned\n<!-- lighthouse:map-planned kind=question topic=place off=c -->\n\nWaar?", false},
+		{"job decision indented", "🗺 Map · map-planned\n  <!-- lighthouse:map-planned kind=decision topic=place -->\nNo item.", false},
+		{"human mentions the marker mid-line", "b, zie <!-- lighthouse:map-planned --> hierboven", true},
+		{"human answer", "b, onder intake", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsAnswer(tt.body); got != tt.want {
+				t.Errorf("IsAnswer(%q) = %v, want %v", tt.body, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestClassifyCarriesLastHeader(t *testing.T) {
 	got := Classify([]Comment{{Body: "🤖 Gestart"}, {Body: "🤖 Teruggegeven\nreden: x", URL: "u"}, {Body: "🤖 Herbaseerd"}})
 	if got.State != StateReturned || got.Comment.URL != "u" || got.Header.Fields["reason"] != "x" {
@@ -45,19 +67,24 @@ func TestClassifyCarriesLastHeader(t *testing.T) {
 	}
 }
 
-const questionIn = "🤖 Vraag · fase plan\n\n  **Vraag:** Welke?\n\n- **a)** dit\n\n**Zelf draaien:**\n```bash\n  echo  x\n\n```\n\n<sub>session …</sub>\n"
+const questionIn = "🤖 Vraag · fase plan\n\n**Vraag:** Welke?\n\n- **a)** dit\n\n**Zelf draaien:**\n```bash\n  echo  x\n\n```\n\n<sub>session …</sub>\n"
 
-const questionOut = "**Vraag:** Welke?\n- **a)** dit\n**Zelf draaien:**\n```bash\n  echo  x\n\n```"
+const questionBundle = "🤖 Vraag · fase plan\n\n**Waar:** w\n**Wat:** x\n\n**Vraag 1:** Eerste?\n- **1a)** dit\n\n**Vraag 2:** Tweede\nregel?\n- **2a)** dat\n\nAntwoord met de letter.\n<sub>session …</sub>\n"
+
+const questionFree = "🤖 Vraag\n\n  Welke database?\n\n```bash\n  echo  x\n\n```\n<sub>session …</sub>"
 
 func TestQuestionText(t *testing.T) {
-	inputs := map[string]string{
-		"lf":   questionIn,
-		"crlf": strings.ReplaceAll(questionIn, "\n", "\r\n"),
+	tests := []struct{ name, in, want string }{
+		{"one question", questionIn, "Welke?"},
+		{"crlf", strings.ReplaceAll(questionIn, "\n", "\r\n"), "Welke?"},
+		{"bundle", questionBundle, "1. Eerste?\n2. Tweede\nregel?"},
+		{"option without question", "🤖 Vraag\n\n- **a)** dit\n", "- **a)** dit"},
+		{"free text", questionFree, "Welke database?\n```bash\n  echo  x\n\n```"},
 	}
-	for name, in := range inputs {
-		t.Run(name, func(t *testing.T) {
-			if got := QuestionText(in); got != questionOut {
-				t.Fatalf("got %q, want %q", got, questionOut)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := QuestionText(tt.in); got != tt.want {
+				t.Fatalf("got %q, want %q", got, tt.want)
 			}
 		})
 	}

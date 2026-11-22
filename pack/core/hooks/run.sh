@@ -94,7 +94,7 @@ else
   printf "%s\n" "$3" >"$2/build.failed"
   rm -f "$tmp"
 fi
-rmdir "$2/build.lock"'
+rm -f "$2/build.lock"'
 
 start_build() {
   mkdir -p "$bin" 2>/dev/null || return 0
@@ -104,12 +104,13 @@ start_build() {
     [ -n "$(find "$bin/build.failed" -newer "$bin/pause.ref" 2>/dev/null)" ]; then
     return 0
   fi
-  if ! mkdir "$bin/build.lock" 2>/dev/null; then
+  # The lock is a file created with noclobber (O_EXCL): uutils mkdir is not atomic.
+  if ! (set -C && : >"$bin/build.lock") 2>/dev/null; then
     # Someone else builds, unless the lock is older than 120 seconds: then it was abandoned.
     ref "$bin/lock.ref" 0:02 || return 0
     [ -n "$(find "$bin/build.lock" -prune ! -newer "$bin/lock.ref" 2>/dev/null)" ] || return 0
     rm -rf "$bin/build.lock"
-    mkdir "$bin/build.lock" 2>/dev/null || return 0
+    (set -C && : >"$bin/build.lock") 2>/dev/null || return 0
   fi
   if command -v setsid >/dev/null 2>&1; then
     setsid sh -c "$BUILD" sh "$root" "$bin" "$head" </dev/null >/dev/null 2>&1 &

@@ -22,9 +22,10 @@ import (
 // askEnv is what `lighthouse ask` takes from its surroundings, so a test can replace it.
 type askEnv struct {
 	Getenv   func(string) string
-	Cwd      string        // where ask runs; its git top is the worktree and holds lighthouse.toml
-	ForgeURL string        // the API root of a GitHub repo; "" is forge.DefaultBaseURL
-	GhToken  func() string // the token of `gh auth token`; "" when there is none
+	Cwd      string           // where ask runs; its git top is the worktree and holds lighthouse.toml
+	ForgeURL string           // the API root of a GitHub repo; "" is forge.DefaultBaseURL
+	GhToken  func() string    // the token of `gh auth token`; "" when there is none
+	Now      func() time.Time // the time of the post-failed note; nil is time.Now
 }
 
 func defaultAskEnv() askEnv {
@@ -103,7 +104,7 @@ func newAskCommand(env askEnv) *cobra.Command {
 			"URL; with --dry-run, the question instead of posting it.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			err := ask(cmd.Context(), env, in, cmd.OutOrStdout())
+			err := ask(cmd.Context(), env, in, cmd.OutOrStdout(), cmd.ErrOrStderr())
 			if err == nil {
 				return nil
 			}
@@ -134,8 +135,10 @@ func newAskCommand(env askEnv) *cobra.Command {
 }
 
 // ask validates in, renders the question, checks that the controller reads it back as it went
-// in, and posts it. Every error before the post ends in "; nothing posted".
-func ask(ctx context.Context, env askEnv, in askInput, out io.Writer) error {
+// in, and posts it. Every error before the post ends in "; nothing posted". A failure after
+// the checks on the fields, the session and --issue leaves the post-failed note, except under
+// --dry-run and for a question that reads back differently.
+func ask(ctx context.Context, env askEnv, in askInput, out, errOut io.Writer) error {
 	fields, err := askFields(in)
 	if err != nil {
 		return fmt.Errorf("%w; nothing posted", err)
@@ -147,18 +150,31 @@ func ask(ctx context.Context, env askEnv, in askInput, out io.Writer) error {
 	if in.issue < 1 {
 		return errors.New("--issue is required and must be a positive number; nothing posted")
 	}
+	note := func(body string, err error) {
+		if in.dryRun {
+			return
+		}
+		now := time.Now
+		if env.Now != nil {
+			now = env.Now
+		}
+		notePostFailed(env.Getenv, now(), errOut, in.issue, "ask", body, err)
+	}
 	root := askRoot(env.Cwd)
 	repo, err := repoconfig.Load(root)
 	if err != nil {
+		note("", err)
 		return fmt.Errorf("%w; nothing posted", err)
 	}
 	rf, err := askOpener(env).forRepo(ctx, repo)
 	if err != nil {
+		note("", err)
 		return fmt.Errorf("%w; nothing posted", err)
 	}
 	c := rf.Forge
 	issue, err := c.Issue(ctx, in.issue)
 	if err != nil {
+		note("", err)
 		return fmt.Errorf("post failed: %w", err)
 	}
 	body := protocol.RenderQuestion(protocol.QuestionMeta{
@@ -173,6 +189,7 @@ func ask(ctx context.Context, env askEnv, in askInput, out io.Writer) error {
 	}
 	comment, err := c.CreateComment(ctx, in.issue, body)
 	if err != nil {
+		note(body, err)
 		return fmt.Errorf("post failed: %w", err)
 	}
 	_, err = fmt.Fprintln(out, comment.URL)

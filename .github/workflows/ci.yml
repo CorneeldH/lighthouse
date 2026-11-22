@@ -1,6 +1,6 @@
-# CI for lighthouse: one job per domain (python, go, web), each run only when ci/domains.py
-# finds a changed path in it. Go runs as three parallel jobs, `go`, `go-test` and `go-e2e`, and
-# Python as a matrix of three parts of the pytest suite (tests/conftest.py). Everything runs on
+# CI for lighthouse: one job per domain (python, go, web), each run only when ci/domains
+# finds a changed path in it. Go runs as three parallel jobs, `go`, `go-test` and `go-e2e`; `canary` runs on Go and on
+# python-only changes. Python is a matrix of three parts of the pytest suite (tests/conftest.py). Everything runs on
 # Linux; macOS runs in macos.yml, as the gate before the release (#337). A `binary` job builds the
 # SPA itself, embeds it in the Go binary and smoke-tests it, next to web instead of after it.
 # A manual run (workflow_dispatch) turns every domain on, for the baseline measurement (#360).
@@ -35,6 +35,10 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
       - id: domains
         # `shell: bash` runs with -o pipefail: a failed `git diff` must not look like an empty diff.
         shell: bash
@@ -48,7 +52,7 @@ jobs:
             { echo "web=$ALL"; echo "python=$ALL"; echo "go=$ALL"; } >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          git diff -z --name-only --no-renames "$BASE...$HEAD" | python3 ci/domains.py classify --github-output "$GITHUB_OUTPUT"
+          git diff -z --name-only --no-renames "$BASE...$HEAD" | go run ./ci/domains classify --github-output "$GITHUB_OUTPUT"
 
   # Every PR carries a changelog fragment, also outside the domains; see docs/releasing.md.
   changelog:
@@ -98,18 +102,15 @@ jobs:
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.event.pull_request.head.sha }}
         run: gitleaks git . --log-opts="$BASE..$HEAD" --config .gitleaks.toml --no-banner --redact --exit-code 1
-      # checkpoint_scan.py reads its limits through `lighthouse config`, found on PATH. The tests
-      # build the same checkout again through `lighthouse_dir()` (tests/pack/_testkit.py).
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      - name: build lighthouse
-        run: |
-          go build -o "$RUNNER_TEMP/bin/lighthouse" ./cmd/lighthouse
-          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
-      - run: uv sync --locked
-      - run: uv run pytest -q tests/test_pre_push_secret_scan.py tests/test_checkpoint_scan.py
+      # The go-test and go-e2e jobs have no gitleaks: here these tests run hard instead of
+      # skipping. The hook tests in e2e/ build the lighthouse of this checkout themselves.
+      - run: go test -race -shuffle=on ./internal/checkpointscan/... ./internal/cli/
+        env:
+          LIGHTHOUSE_REQUIRE_GITLEAKS: "1"
+      - run: go test -race -shuffle=on -tags e2e -run 'TestPrePushScan|TestSecretScan' ./e2e/
         env:
           LIGHTHOUSE_REQUIRE_GITLEAKS: "1"
 
@@ -127,11 +128,12 @@ jobs:
         with:
           persist-credentials: false
       # The `lighthouse_bin` fixture builds cmd/lighthouse: skills and pack/python call it (#274).
-      # Every path outside web/ already runs this job (ci/domains.py), Go changes included.
+      # Every path outside web/ already runs this job (ci/domains), Go changes included.
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      # checkpoint_scan.py reads its limits through `lighthouse config`, found on PATH (#285).
+      # `lighthouse checkpoint-scan` reads its limits in-process (config.HostValue); this job builds the
+      # binary for the hook test's `lighthouse_bin` fixture, found on PATH (#285).
       - name: build lighthouse
         run: |
           go build -o "$RUNNER_TEMP/bin/lighthouse" ./cmd/lighthouse
@@ -196,7 +198,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      # Same flags as the Go part of [test_gate] command; tests/test_ci_go_test_pin.py pins it.
+      # Same flags as the Go part of [test_gate] command; internal/repopins/workflows_test.go pins it.
       - run: go test -race -shuffle=on ./...
 
   go-e2e:
@@ -214,6 +216,43 @@ jobs:
       # The e2e tests of pack/python run the default test command, `uv run pytest -q`.
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       - run: go test -race -shuffle=on -tags e2e ./e2e/ -v
+
+  # One canary per blocking rule of every hook: each proves the rule blocks (#381). A missing
+  # tool is a failure, never a skip; shellcheck comes from the pinned lib the test fetches.
+  # The canaries of the imports gates (#383): each Stop hook, the built binary and the real
+  # deptry, knip and `go mod tidy` against a fake repository per rule ID. Needs uv and npx, and
+  # the network for the pinned tools; it also runs for a change under tests/ (the Python fixtures
+  # live there); with CI set a missing tool fails the test, it never skips.
+  canary:
+    needs: changes
+    if: needs.changes.outputs.go == 'true' || needs.changes.outputs.python == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      # install-only: `golangci-lint run --version` is an unknown flag in v2, so no lint run here.
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.15.0
+          install-only: true
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: web/.nvmrc
+      - name: build lighthouse
+        run: |
+          go build -o "$RUNNER_TEMP/bin/lighthouse" ./cmd/lighthouse
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - run: uv sync --locked
+      - run: go test -race -tags canary ./internal/canary/ -v
+      - run: uv run pytest -q tests/pack/python/test_canary.py
+      - run: go test -race -tags canary ./internal/importcheck/
+      - run: uv run pytest -q tests/pack/python/test_imports_gate_canary.py
 
   # A fresh init with every pack, and each hook it registers, on a PATH without python* (#285).
   # No setup-uv: Python is what this job proves is not needed.
@@ -233,6 +272,26 @@ jobs:
       - run: |
           mkdir -p "$RUNNER_TEMP/work"
           ci/no-python.sh "$RUNNER_TEMP/lighthouse" "$RUNNER_TEMP/work"
+
+  # Runs on every PR, without a domain condition: the site tests also read pack/, internal/ and
+  # build.yml, so a domain "only docs/site/" would be too narrow.
+  site:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: web/.nvmrc
+      - run: go build -o "$RUNNER_TEMP/lighthouse" ./cmd/lighthouse
+      - run: node --test "docs/site/test/*.test.mjs"
+        env:
+          LIGHTHOUSE_BIN: ${{ runner.temp }}/lighthouse
 
   web:
     needs: changes

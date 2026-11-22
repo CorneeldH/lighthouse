@@ -1,7 +1,6 @@
 {
   "description": "pr-open-points needs no host: a refused host still exits 0.",
   "world": "bare",
-  "host": "refuse",
   "steps": [
     {
       "op": "file",

@@ -2,6 +2,7 @@ package triage
 
 import (
 	"regexp"
+	"slices"
 	"testing"
 	"time"
 
@@ -215,10 +216,32 @@ func TestSort(t *testing.T) {
 	for _, f := range fs {
 		got = append(got, f.Number)
 	}
-	want := []int{4, 9, 3, 1}
+	// No priority sorts in the P1 band, so before P2 (#509).
+	want := []int{4, 9, 1, 3}
 	for i := range want {
 		if got[i] != want[i] {
 			t.Fatalf("order = %v, want %v", got, want)
 		}
+	}
+}
+
+// Classification: contract. Fails when Sort drops the weight (band then number only) or sorts it
+// ascending, or lets the weight beat the band.
+func TestSortBandWeightNumber(t *testing.T) {
+	fs := []Facts{
+		{Number: 1, Priority: "P2", PrioWeight: 500},
+		{Number: 2, PrioWeight: 99},
+		{Number: 3, Priority: "P0", PrioWeight: 1},
+		{Number: 5, PrioWeight: 7},
+		{Number: 4, PrioWeight: 7},
+	}
+	Sort(fs)
+	var got []int
+	for _, f := range fs {
+		got = append(got, f.Number)
+	}
+	want := []int{3, 2, 4, 5, 1}
+	if !slices.Equal(got, want) {
+		t.Fatalf("order = %v, want %v", got, want)
 	}
 }

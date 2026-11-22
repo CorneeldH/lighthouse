@@ -8,6 +8,8 @@ import {
   getReturned,
   getRuns,
   getUsage,
+  postMilestoneRanks,
+  type RankChange,
   type Issue,
   type Milestone,
   type Question,
@@ -127,6 +129,12 @@ export async function fetchPriorities(signal?: AbortSignal): Promise<PrioritiesD
     })),
     runs: body.runs ?? [],
   }
+}
+
+// Writes the ranks of milestones in one repo. A stale `from` comes back as ApiError(409). The
+// browser sets the Origin header the server checks; never set it here.
+export async function saveMilestoneRanks(repo: string, changes: RankChange[]): Promise<void> {
+  await call(() => postMilestoneRanks({ repo, changes }))
 }
 
 export function forgeErrorText(err: unknown): string {

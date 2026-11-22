@@ -1,0 +1,664 @@
+package packcontract
+
+import (
+	"path/filepath"
+	"regexp"
+	"slices"
+	"strings"
+	"testing"
+
+	"github.com/CorneeldH/lighthouse/internal/config"
+)
+
+// close-issue: what lives only in skill text. Step 0 waits for the merge, B2a runs the Evidence
+// tables of merged Refs PRs, entry C runs only the evidence runner on a fresh default branch and
+// reopens fail-closed, the released issues are checked against the installed unblock lane, and the
+// worktree cleanup follows `lighthouse worktree-audit` without a question. The comment filter and
+// the Refs test of both jq filters are bound to prbody.RefsTargets in internal/prbody.
+
+const closeIssue = "core/skills/close-issue"
+
+// closeIssueSection is the text from heading up to the next level-2 heading.
+func closeIssueSection(t *testing.T, body, heading string) string {
+	t.Helper()
+	return section(t, body, heading, "\n## ")
+}
+
+// closeIssueB2a is B2a up to the next level-3 heading.
+func closeIssueB2a(t *testing.T, body string) string {
+	t.Helper()
+	return section(t, body, "### B2a.", "\n### ")
+}
+
+// Classification: fails when step 6 stops reading the waiting issues, the close moment, the
+// reply comments or the labels through `lighthouse forge`, or stops naming the blocked-issue
+// label through its config key.
+func TestCloseIssueReportsReleasedIssues(t *testing.T) {
+	for variant, body := range variants(t, closeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			s := section(t, body, "### 6. Released issues", "## Clean up the worktree")
+			wantAll(t, s,
+				"lighthouse forge issue blocking <nr>",
+				"lighthouse forge issue view <nr> --field closed_at",
+				"lighthouse forge issue view <nr> --comments",
+				"lighthouse forge issue view <m> --field labels")
+			wantAll(t, flat(s), "loses the label `labels.blocked_issue` (`lighthouse config labels.blocked_issue`)")
+		})
+	}
+}
+
+// Classification: fails when, without a lane, the session stops running `unblock-dependents`
+// itself, stops reporting its summary literally, says "none" on exit 1, releases after a
+// reopening, or a session starts removing the blocked-issue label by hand.
+func TestCloseIssueWithoutALaneTheSessionReleases(t *testing.T) {
+	cliFlags(t, []string{"unblock-dependents"}, "issue")
+	for variant, body := range variants(t, closeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			s := section(t, body, "### 6. Released issues", "## Clean up the worktree")
+			wantAll(t, s, "lighthouse unblock-dependents --issue <nr>; echo \"exit=$?\"")
+			wantAll(t, flat(s),
+				"Then report its summary literally",
+				"Exit 1: report `released issues not read` with the command, never \"none\".",
+				"not after a reopening")
+			wantNone(t, body, "--remove-label")
+		})
+	}
+}
+
+// Classification: fails when a branch in which the issue is and stays closed (C1 without a
+// closing PR, C3 exit 0, 4 and COULD NOT CHECK, B7) stops running step 6, or a reopening starts
+// running it.
+func TestCloseIssueWithoutALaneEveryBranchThatStaysClosedReleases(t *testing.T) {
+	for variant, body := range variants(t, closeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			wantAll(t, section(t, body, "### C1", "### C2"), "step 6")
+			c3 := section(t, body, "### C3", "\n## ")
+			wantAll(t, lineStarting(t, c3, "| `0` |"), "step 6")
+			wantAll(t, lineStarting(t, c3, "| `4` |"), "step 6")
+			wantAll(t, section(t, c3, "**Exit `3`", "\nEntry C closes nothing"), "step 6")
+			wantNone(t, section(t, c3, "**Exit `1` or `2`", "**Exit `3`"), "step 6")
+			wantAll(t, closeIssueSection(t, body, "### B7."), "steps 4–6 of entry A")
+		})
+	}
+}
+
+var unblockLaneRe = regexp.MustCompile(`[\w-]*unblock-dependents\.yml`)
+
+// Classification: fails when the skill looks for the unblock lane under another name than the
+// installed lighthouse-unblock-dependents.yml, or stops recognising its reply comment.
+func TestCloseIssueFindsTheInstalledUnblockLane(t *testing.T) {
+	for variant, body := range variants(t, closeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			wantAll(t, body,
+				"gh run list --workflow lighthouse-unblock-dependents.yml",
+				"gh workflow run lighthouse-unblock-dependents.yml -f issue=<nr>",
+				`(.body | startswith("Released lane after this close:"))`)
+			names := unblockLaneRe.FindAllString(body, -1)
+			if len(names) == 0 {
+				t.Fatal("names no unblock-dependents.yml")
+			}
+			for _, n := range names {
+				if n != "lighthouse-unblock-dependents.yml" {
+					t.Errorf("names the lane as %q", n)
+				}
+			}
+		})
+	}
+}
+
+// Classification: fails when step 6 stops reading the bot from `ci.bot_login` or stops reporting
+// a skipped lane.
+func TestCloseIssueBotFromConfig(t *testing.T) {
+	for variant, body := range variants(t, closeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			s := flat(closeIssueSection(t, body, "### 6. Released issues"))
+			wantAll(t, s,
+				"The lane is there when `lighthouse config ci.bot_login` gives rc 0 **and** the workflow exists",
+				"Report `unblock lane: skipped — no bot in [ci]`",
+				"The lane releases, as the bot from `[ci]`, at every close as `completed`.")
+		})
+	}
+}
+
+const waitsForMerge = "waits for merge of #<pr>; run /lighthouse-close-issue <nr> again after the merge"
+
+// Classification: fails when step 0 stops reporting the waits-for-merge line and stopping, or no
+// longer comes before entry B.
+func TestCloseIssueStepZeroWaitsForMerge(t *testing.T) {
+	for variant, body := range variants(t, closeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			wantAll(t, closeIssueSection(t, body, "## Step 0"), "report literally `"+waitsForMerge+"` and **stop**")
+			wantOrder(t, body, "## Step 0", "## Entry B")
+		})
+	}
+}
+
+// Classification: fails when the second query of step 0 stops listing every open PR by head
+// branch through `lighthouse forge pr list`, or the forge calls stop running outside the sandbox.
+func TestCloseIssueStepZeroStopsOnAnOpenRefsPR(t *testing.T) {
+	for variant, body := range variants(t, closeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			s0 := closeIssueSection(t, body, "## Step 0")
+			wantAll(t, s0,
+				"lighthouse forge issue changes <nr>",
+				"lighthouse forge pr list --state open |",
+				`select((.head_ref | startswith("issue-<nr>-")) or`)
+			wantAll(t, flat(s0), "Both calls run outside the sandbox (`dangerouslyDisableSandbox: true`)")
+		})
+	}
+}
+
+// Classification: fails when the waits-for-merge stop also fires for a closed issue, or the
+// fall-through row to entry A or B changes.
+func TestCloseIssueStepZeroStopIsScopedToAnOpenIssue(t *testing.T) {
+	for variant, body := range variants(t, closeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			s0 := closeIssueSection(t, body, "## Step 0")
+			wantAll(t, s0,
+				"| issue `state` `open` and (a change with `closes` `true` and `state` `open` **or** a number from the second query) |",
+				"| issue `state` `closed` | **entry C** |",
+				"| otherwise (issue `open`, no open `Closes` PR and no open PR from the second query) | entry A or B |")
+		})
+	}
+}
+
+// Classification: fails when B2a stops listing merged PRs with an Evidence table newest first,
+// stops merging only the latest row per criterion, stops running the file through the runner on a
+// fresh default branch, or loses a row of its outcome-to-verdict table.
+func TestCloseIssueEntryBRunsTheEvidenceOfMergedRefsPRs(t *testing.T) {
+	cliFlags(t, []string{"evidence", "run"}, "issue", "body-file", "cwd")
+	for variant, body := range variants(t, closeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			b2a := closeIssueB2a(t, body)
+			if n := strings.Count(b2a, "mktemp -d"); n != 1 {
+				t.Errorf("B2a makes %d scratch directories, want 1", n)
+			}
+			wantAll(t, b2a,
+				"lighthouse forge pr list --state merged |",
+				`select((.head_ref | startswith("issue-<nr>-")) or`,
+				`select($b | test("(?m)^### Evidence #<nr>[ \t\r]*$"))] | sort_by(.merged_at) | reverse`,
+				"B=$(lighthouse config forge.default_branch) &&",
+				`git worktree add --detach "<scratch>/after-merge-<nr>" "origin/$B" &&`,
+				`{ lighthouse evidence run --issue <nr> --body-file "<scratch>/evidence.md" --cwd "<scratch>/after-merge-<nr>"`,
+				"| `heading:evidence_holds` | `demonstrably done`;",
+				"| `heading:evidence_fails` or `heading:evidence_invalid` | `not` |",
+				"| `heading:evidence_unmeasurable` | not measurable from here |")
+			wantAll(t, flat(b2a),
+				"the line `### Evidence #<nr>`, the head `| AC | Command | Result |`",
+				"per criterion only the row of the latest merged PR",
+				"The criterion is the number the AC cell starts with; a cell without a number is a criterion of its own.")
+		})
+	}
+}
+
+// Classification: fails when B2a moves out of its place between B2 and B3.
+func TestCloseIssueB2aSitsBetweenB2AndB3(t *testing.T) {
+	for variant, body := range variants(t, closeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			wantOrder(t, body, "### B2.", "### B2a.", "### B3.")
+		})
+	}
+}
+
+// Classification: fails when the per-PR body fetch of B2a stops running outside the sandbox.
+func TestCloseIssueB2aBodyFetchRunsOutsideTheSandbox(t *testing.T) {
+	for variant, body := range variants(t, closeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			wantAll(t, flat(closeIssueB2a(t, body)),
+				"Per PR fetch the body, outside the sandbox (`dangerouslyDisableSandbox: true`): `lighthouse forge pr view <pr> --field body > <scratch>/body-<pr>.md`")
+		})
+	}
+}
+
+// Classification: fails when B2a stops forbidding body text in a command line.
+func TestCloseIssueB2aNeverPastesBodyTextIntoACommand(t *testing.T) {
+	for variant, body := range variants(t, closeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			wantAll(t, flat(closeIssueB2a(t, body)),
+				"Body text is free text: never paste it into a command line, it travels only through `--body-file`.")
+		})
+	}
+}
+
+// Classification: fails when controller mode (B7) stops running B2a, or stops saying that only
+// the place where B2 measures changes.
+func TestCloseIssueB7IncludesB2a(t *testing.T) {
+	for variant, body := range variants(t, closeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			wantAll(t, flat(closeIssueSection(t, body, "### B7.")),
+				"Step 0, B1–B4 and B2a hold; only the place where B2 measures changes (*Measure on the default branch*, below).")
+		})
+	}
+}
+
+// Classification: fails when B7 stops sorting open criteria into the three kinds, stops setting
+// the relation before the handoff back to the after-merge check, asks a question when every open
+// criterion waits on an issue, stops falling back to the question when `issue block` fails,
+// counts a predecessor with a merged PR or in another repository as waiting, or measures B2 in
+// the cwd instead of a throwaway worktree on the fetched default branch.
+func TestCloseIssueB7ClassifiesOpenCriteria(t *testing.T) {
+	for variant, body := range variants(t, closeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			b7 := flat(closeIssueSection(t, body, "### B7."))
+			wantAll(t, b7,
+				"waits on an issue",
+				"code or docs",
+				"manual work or an event",
+				"lighthouse forge issue block <nr> --by <predecessor>",
+				"lighthouse forge pr list",
+				"next: /lighthouse-close-issue <nr>",
+				"falls back to the question",
+				"only for a predecessor whose `state` is `open` (compare case-insensitively) and has no merged PR",
+				"in another repository",
+				"git fetch origin",
+				"git worktree add --detach",
+				"origin/<default branch>")
+			// The otherwise row no longer forbids the handoff; it points at the three kinds.
+			wantNone(t, b7, "without `/lighthouse-write-handoff` and without any further tool call")
+			all := section(t, b7, "**Every open criterion waits on an issue in this repo.**", "**Otherwise**")
+			wantOrder(t, all,
+				"lighthouse forge issue block <nr> --by <predecessor>",
+				"/lighthouse-write-handoff",
+				"next: /lighthouse-close-issue <nr>")
+			wantAll(t, all, "No question.", "under `State:` or `Context:`")
+			wantNone(t, b7, "State of Context", "After the comment, sort")
+			// The kinds are known before the comment, which names the predecessor per criterion.
+			wantOrder(t, b7,
+				"First sort each open criterion into its kind",
+				"always goes as a comment on the issue",
+				"for a criterion that waits on an issue, that line names its predecessor")
+			wantAll(t, b7, "`merged_pr` from `lighthouse forge issue blockers` is always `false` on GitHub and does not count")
+			wantNone(t, b7, "`OPEN`")
+			// Every outcome of the question carries a recommendation, also a waiting criterion
+			// that cannot be handed off.
+			wantAll(t, b7, "Recommend `b` as well for a criterion that waits on an open predecessor in this repo but cannot be handed off: in a mix with manual work or an event, and after a failed `lighthouse forge issue block` while every criterion waits. A criterion that can be built in this repo keeps `a` first.")
+			wantOrder(t, b7, "When a `lighthouse forge issue block` fails, B7 falls back to the question", "Recommend `b` as well for a criterion that waits")
+		})
+	}
+}
+
+// Classification: fails when entry C stops measuring only through the runner, in a throwaway
+// worktree on the default branch read from config.
+func TestCloseIssueEntryCRunsOnlyTheRunner(t *testing.T) {
+	for variant, body := range variants(t, closeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			c := closeIssueSection(t, body, "## Entry C")
+			wantAll(t, flat(c), "Free command text from the body **never** runs. Only the runner runs rows, and only rows on the allowlist.")
+			wantAll(t, c,
+				"B=$(lighthouse config forge.default_branch) &&",
+				`{ lighthouse evidence run --issue <nr> --body-file "$scratch/body.md" --cwd "$scratch/after-merge-<nr>"`)
+		})
+	}
+}
+
+// Classification: fails when a reopen stops going issue first, board second, the board failure
+// stops being reported loudly, or the reopen outcomes lose their heading keys.
+func TestCloseIssueEntryCReopensFailClosed(t *testing.T) {
+	// board-start parses its arguments raw (`--reopen <nr>`): only the subcommand is checked.
+	cliFlags(t, []string{"board-start"})
+	for variant, body := range variants(t, closeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			c := closeIssueSection(t, body, "## Entry C")
+			wantAll(t, c, "**Exit `1` or `2` with recognised output — reopen, fail-closed.** First the issue, then the board:")
+			wantOrder(t, c, "lighthouse forge issue reopen <nr> --body-file <scratch>/run.txt", "lighthouse board-start --reopen <nr>")
+			wantAll(t, c,
+				`lighthouse forge issue status <nr> "In progress"`,
+				`printf 'after-merge check: %s\n' "$(lighthouse headings evidence_holds)" > <scratch>/comment.md`)
+			wantAll(t, flat(c),
+				"report loudly `issue reopened, board not updated` with the hand command",
+				"At `2` the comment (`run.txt`) starts with `heading:evidence_closes_without_block`",
+				"at `heading:evidence_invalid` rows the table says `Evidence outside the allowlist`")
+		})
+	}
+}
+
+// Classification: fails when a skipped board stops being no error, or its paragraph starts
+// reporting it as a board failure.
+func TestCloseIssueBoardSkipIsNoError(t *testing.T) {
+	for variant, body := range variants(t, closeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			c := closeIssueSection(t, body, "## Entry C")
+			wantAll(t, flat(c), "`board: skipped` (no `[forge.board]`, rc 0) is no error: report the line as it is and go on.")
+			hits := 0
+			for _, p := range paragraphSplit.Split(c, -1) {
+				if strings.Contains(p, "board: skipped") {
+					hits++
+					wantNone(t, p, "issue reopened, board not updated")
+				}
+			}
+			if hits == 0 {
+				t.Error("no paragraph names `board: skipped`")
+			}
+		})
+	}
+}
+
+// Classification: fails when entry C stops treating exit 3, an unknown exit, unrecognised output
+// or a missing rc line as not measurable, reported loudly without a reopen.
+func TestCloseIssueEntryCReportsAnUnmeasurableRunLoudly(t *testing.T) {
+	for variant, body := range variants(t, closeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			wantAll(t, flat(closeIssueSection(t, body, "## Entry C")),
+				"**Exit `3`, an unknown exit code, an unrecognised output or no `rc=` line.** Not measurable is no passed check and no proved failure.",
+				"**no** reopen, no board mutation, and report loudly to the user `COULD NOT CHECK` with the full content of `run.txt` and `run.err`.")
+		})
+	}
+}
+
+// Classification: fails when entry C starts closing an issue itself.
+func TestCloseIssueEntryCNeverClosesItself(t *testing.T) {
+	for variant, body := range variants(t, closeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			c := closeIssueSection(t, body, "## Entry C")
+			wantAll(t, flat(c), "Entry C closes nothing itself")
+			wantNone(t, c, "gh issue close", "forge issue close")
+		})
+	}
+}
+
+// Classification: fails when entry C pastes runner output into a quoted command line instead of
+// going through the run.txt file.
+func TestCloseIssueEntryCDoesNotPasteRunnerOutputInAQuotedLine(t *testing.T) {
+	for variant, body := range variants(t, closeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			c := closeIssueSection(t, body, "## Entry C")
+			wantAll(t, c, "lighthouse forge issue reopen <nr> --body-file <scratch>/run.txt")
+			wantAll(t, flat(c), "So never paste runner output or body text into a quoted command line")
+		})
+	}
+}
+
+// Classification: fails when entry C catches the exit code after the worktree remove, or stops
+// writing stderr to a file of its own.
+func TestCloseIssueEntryCCatchesTheExitCodeBeforeTheWorktreeRemove(t *testing.T) {
+	for variant, body := range variants(t, closeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			c := closeIssueSection(t, body, "## Entry C")
+			wantAll(t, c,
+				`> "$scratch/run.txt" 2> "$scratch/run.err"; rc=$?; echo "rc=$rc"; git worktree remove --force "$scratch/after-merge-<nr>"; }`)
+			wantAll(t, flat(c), "The exit code is caught in `rc` **before** the `git worktree remove`")
+		})
+	}
+}
+
+// Classification: fails when C3 stops telling a real outcome (table head, closes-without-block
+// heading) from a broken runner (traceback, argparse).
+func TestCloseIssueEntryCReopensOnlyOnARecognisedOutcome(t *testing.T) {
+	for variant, body := range variants(t, closeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			c3 := section(t, body, "### C3", "\n## ")
+			wantAll(t, c3,
+				"| `1` | the table head `heading:evidence_table_head` is in it |",
+				"| `2` | starts with `heading:evidence_closes_without_block` |",
+				"| everything else | `1` without table head (traceback), `2` without `heading:evidence_closes_without_block` (argparse), an unknown exit code | the runner itself is broken | see below |")
+		})
+	}
+}
+
+// Classification: fails when step 0 stops reading the closer through `lighthouse forge issue
+// changes`, C1 stops taking only a PR closer as the closing PR, or C1 stops pointing at the forge
+// reference for where the closer comes from.
+func TestCloseIssueEntryCMeasuresThePRThatActuallyClosedTheIssue(t *testing.T) {
+	for variant, body := range variants(t, closeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			step0 := section(t, body, "## Step 0", "## Three entries")
+			wantAll(t, step0, "lighthouse forge issue changes <nr>")
+			c1 := section(t, body, "### C1", "### C2")
+			wantAll(t, flat(c1),
+				"What counts is what **actually** closed the issue: `closer` from `lighthouse forge issue changes <nr>` in step 0",
+				"../lighthouse-forge/<kind>.md §close-issue",
+				"report `closed without a closing PR — no after-merge check`")
+		})
+	}
+}
+
+// forgeCloseIssue is the §close-issue section of a forge reference.
+func forgeCloseIssue(t *testing.T, kind string) string {
+	t.Helper()
+	return section(t, readPack(t, "core/skills/forge/"+kind+".md"), "## §close-issue", "\n## ")
+}
+
+// Classification: fails when a number in `closer` stops going straight to C2, a closer in another
+// repository stops landing in the `null` row, or a forge reference stops saying that a closer
+// elsewhere reads as `null`.
+func TestCloseIssueEntryCCloserIsOnlyAPROfThisRepo(t *testing.T) {
+	for variant, body := range variants(t, closeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			c1 := section(t, body, "### C1", "### C2")
+			wantAll(t, c1, "| a number `<pr>` | `<pr>` is the closing PR: on to C2 |")
+			null := lineStarting(t, c1, "| `null`")
+			wantAll(t, null, "a closer in another repository", "closed without a closing PR — no after-merge check")
+		})
+	}
+	for kind, other := range map[string]string{
+		"github": "a pull request in another repository",
+		"gitlab": "a merge request in another project",
+	} {
+		t.Run(kind, func(t *testing.T) {
+			closer := ""
+			for p := range strings.SplitSeq(forgeCloseIssue(t, kind), "\n- ") {
+				if strings.HasPrefix(p, "**`closer`**") {
+					closer = flat(p)
+				}
+			}
+			if closer == "" {
+				t.Fatal("no **`closer`** item in §close-issue")
+			}
+			wantAll(t, closer, "else `null`", other)
+		})
+	}
+}
+
+// Classification: fails when entry C stops making a fresh scratch directory before the runner,
+// stops chaining the worktree add, or stops treating a missing rc line as COULD NOT CHECK.
+func TestCloseIssueEntryCScratchIsFreshAndChained(t *testing.T) {
+	for variant, body := range variants(t, closeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			c := closeIssueSection(t, body, "## Entry C")
+			wantOrder(t, c, `scratch=$(mktemp -d) && echo "scratch=$scratch" &&`,
+				`git worktree add --detach "$scratch/after-merge-<nr>" "origin/$B" &&`, "lighthouse evidence run")
+			wantAll(t, flat(c), "If there is no `rc=` line in the output, the runner did not run: that is `COULD NOT CHECK`")
+		})
+	}
+}
+
+// Classification: fails when exit 4 stops writing its comment to a file and posting it with
+// `--body-file`.
+func TestCloseIssueEntryCExit4WritesACommentFile(t *testing.T) {
+	for variant, body := range variants(t, closeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			c := closeIssueSection(t, body, "## Entry C")
+			wantAll(t, c, "cat <scratch>/run.txt; } > <scratch>/comment.md",
+				"lighthouse forge issue comment <nr> --body-file <scratch>/comment.md")
+		})
+	}
+}
+
+// Classification: fails when the cleanup stops reading its verdict from `lighthouse
+// worktree-audit --issue`, or loses the yes or no token.
+func TestCloseIssueCleanupReadsTheAuditToken(t *testing.T) {
+	cliFlags(t, []string{"worktree-audit"}, "issue")
+	for variant, body := range variants(t, closeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			cleanup := closeIssueSection(t, body, "## Clean up the worktree")
+			wantAll(t, cleanup, "lighthouse worktree-audit --issue <nr>; echo \"exit=$?\"",
+				"| `cleanup: yes` |", "| `cleanup: no — <reason>` |")
+			wantAll(t, flat(cleanup), "Only exit `0` plus, in a branch's block, a line `cleanup: yes` can be cleaned up.")
+		})
+	}
+}
+
+// Classification: fails when the cleanup starts asking the user a question.
+func TestCloseIssueCleanupAsksNoQuestion(t *testing.T) {
+	for variant, body := range variants(t, closeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			cleanup := closeIssueSection(t, body, "## Clean up the worktree")
+			wantAll(t, flat(cleanup), "No question: the verdict is the safety check", "There is no question, in any mode.")
+			wantNone(t, cleanup, "AskUserQuestion")
+		})
+	}
+}
+
+// Classification: fails when B7 stops running the cleanup before its close comment, or a
+// headless run stops putting the cleanup lines into the close comment.
+func TestCloseIssueCleanupRunsHeadlessToo(t *testing.T) {
+	for variant, body := range variants(t, closeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			wantAll(t, flat(closeIssueSection(t, body, "### B7.")),
+				"Before that close comment, run *Clean up the worktree*; its result per branch goes along as evidence lines in the close comment.")
+			wantAll(t, flat(closeIssueSection(t, body, "## Clean up the worktree")),
+				"Headless (B7, controller run, if present) the same lines go as evidence lines into the close comment.")
+		})
+	}
+}
+
+// Classification: fails when the cleanup loses its forbidden line.
+func TestCloseIssueCleanupKeepsTheForbiddenLines(t *testing.T) {
+	for variant, body := range variants(t, closeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			wantAll(t, closeIssueSection(t, body, "## Clean up the worktree"),
+				"- ❌ `--force`, `git worktree unlock` or `git push origin --delete` — also not when git refuses")
+		})
+	}
+}
+
+// Classification: fails when a git refusal stops the cleanup of the remaining branches.
+func TestCloseIssueCleanupGoesOnAfterARefusal(t *testing.T) {
+	for variant, body := range variants(t, closeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			wantAll(t, flat(closeIssueSection(t, body, "## Clean up the worktree")),
+				"report the error line, skip the rest of that branch's lines, and go on with the next branch.")
+		})
+	}
+}
+
+// Classification: fails when the cleanup stops proving per branch, from the main checkout, that
+// worktree and branch are gone.
+func TestCloseIssueCleanupShowsEvidencePerBranch(t *testing.T) {
+	for variant, body := range variants(t, closeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			wantAll(t, closeIssueSection(t, body, "## Clean up the worktree"),
+				"\ngit -C <main checkout> worktree list\ngit -C <main checkout> branch --list <branch>\n")
+		})
+	}
+}
+
+// Classification: fails when the cleanup may remove the worktree that holds the own cwd.
+func TestCloseIssueCleanupNeverRemovesOwnCwd(t *testing.T) {
+	for variant, body := range variants(t, closeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			wantAll(t, flat(closeIssueSection(t, body, "## Clean up the worktree")),
+				"The worktree that holds your own cwd is never cleaned up")
+		})
+	}
+}
+
+// Classification: fails when the commit link stops coming from the forge reference (a fixed
+// github.com comes back), stops being filled from `forge.repo`, or a forge reference loses its
+// commit URL pattern.
+func TestCloseIssueCommitURLsPerForge(t *testing.T) {
+	for variant, body := range variants(t, closeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			wantNone(t, body, "https://github.com/")
+			wantAll(t, body, `printf 'Completed in commit: %s\n\n' "<commit-url>"`)
+			step5 := closeIssueSection(t, body, "### 5. Close with a correct commit link")
+			wantAll(t, flat(step5), "`<commit-url>` is the pattern of `../lighthouse-forge/<kind>.md §close-issue`, filled with `forge.repo` from `lighthouse.toml` (never the git remote of the cwd)")
+			wantAll(t, closeIssueSection(t, body, "## Commit Reference Format"), "`<commit-url>` per forge: `../lighthouse-forge/<kind>.md §close-issue`.")
+		})
+	}
+	wantAll(t, forgeCloseIssue(t, "github"), "https://github.com/<forge.repo>/commit/<sha>")
+	wantAll(t, forgeCloseIssue(t, "gitlab"), "https://<forge.host, else gitlab.com>/<forge.repo>/-/commit/<sha>")
+}
+
+// Classification: fails when the release step stops being conditional on scripts/release.py.
+func TestCloseIssueReleaseFlowOnlyIfPresent(t *testing.T) {
+	for variant, body := range variants(t, closeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			release := section(t, body, "### Step 4.", "### Step 5.")
+			wantAll(t, lineStarting(t, release, "### Step 4."), "(only if present)")
+			wantAll(t, flat(release),
+				"(`test -e scripts/release.py`); otherwise report `release: skipped — no scripts/release.py` and go on with step 5.")
+		})
+	}
+}
+
+// Classification: fails when the variants differ in any line but the instruction file of the DoD.
+func TestCloseIssueVariantsDifferOnlyInTheInstructionFile(t *testing.T) {
+	v := variants(t, closeIssue)
+	claude, agents := strings.Split(v["claude"], "\n"), strings.Split(v["agents"], "\n")
+	if len(claude) != len(agents) {
+		t.Fatalf("claude has %d lines, agents %d", len(claude), len(agents))
+	}
+	var diff []string
+	for i := range claude {
+		if claude[i] != agents[i] {
+			diff = append(diff, claude[i], agents[i])
+		}
+	}
+	want := []string{
+		"- [ ] Documentation updated (README, CLAUDE.md, etc.)",
+		"- [ ] Documentation updated (README, AGENTS.md, etc.)",
+	}
+	if strings.Join(diff, "\n") != strings.Join(want, "\n") {
+		t.Errorf("differing lines (claude, agents pairs) = %q, want %q", diff, want)
+	}
+}
+
+// Classification: fails when closing a milestone stops copying the title and appending " - DONE"
+// in the same `lighthouse forge milestone edit` as the close, or stops reading the title by
+// `milestone.title`.
+func TestCloseIssueMilestoneCloseKeepsTheTitleForm(t *testing.T) {
+	for variant, body := range variants(t, closeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			step := closeIssueSection(t, body, "### Step 3. Close the milestone")
+			wantAll(t, step, "lighthouse forge milestone edit '<title>' --state closed --title '<title> - DONE'")
+			wantAll(t, flat(step), "`<title>` is the title from step 1, copied exactly")
+			wantAll(t, body, "lighthouse forge issue view <number> --field milestone.title")
+		})
+	}
+}
+
+// Classification: fails when step 5 stops taking the area from the part of the milestone title
+// after `project.milestone_prefix`.
+func TestCloseIssueAreaOfAMilestoneAfterThePrefix(t *testing.T) {
+	for variant, body := range variants(t, closeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			wantAll(t, flat(closeIssueSection(t, body, "### Step 5. Update the near goal of the area")),
+				"with `<area>` the part before `:` after `project.milestone_prefix` in the milestone title")
+		})
+	}
+}
+
+// Classification: fails when step 5 no longer stops, before the `git worktree add`, at a title
+// without `:`, a missing `<paths.areas>/<area>.md` or a missing near-goal heading, or stops
+// naming the heading as `heading:area_near_goal`.
+func TestCloseIssueStep5SkipsWithoutNearGoal(t *testing.T) {
+	for name, body := range variants(t, closeIssue) {
+		t.Run(name, func(t *testing.T) {
+			step := flat(section(t, body, "### Step 5.", "## When NOT to close"))
+			wantAll(t, step,
+				"heading:area_near_goal",
+				"areas: skipped — ",
+				"lowercase",
+				"no `:` in the title",
+				"no file `<paths.areas>/<area>.md`",
+				"no heading",
+			)
+			wantOrder(t, step, "heading:area_near_goal", "git worktree add")
+		})
+	}
+}
+
+// Classification: fails when headings.toml loses area_near_goal or changes its nl or en value.
+func TestAreaNearGoalHeading(t *testing.T) {
+	t.Setenv("LIGHTHOUSE_HEADINGS", filepath.Join(packRoot, "core", "headings.toml"))
+	got, err := config.Variants("area_near_goal")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"Nabij doel", "Near goal"} {
+		if !slices.Contains(got, want) {
+			t.Errorf("area_near_goal variants = %v, missing %q", got, want)
+		}
+	}
+}

@@ -341,8 +341,7 @@ No `--spec` or `--issue`: for a spec review that is exit 2. From inside Codex it
 
 | exit | Meaning | You do |
 |---|---|---|
-| 0 | record written; the path is on stdout | report the path |
-| 3 | not on the always-on host (`host.toml`): no record | report loudly that this review falls outside the measurement, on to closing |
+| 0 | record written; the path is on stdout. Stderr may carry `REVIEW-INDEX FAILED: …` or `REVIEW-INDEX SKIPPED: <path>: <reason>` (the indexing of the findings, never a failure of the record) | report the path, and the stderr line literally if there is one |
 | 4 | write or validation error: only the staging directory `.<attempt>.tmp/` stays | pass the message on literally; if it is a missing or wrong decision, repair the sidecar and run `write` again; otherwise on to closing |
 
 The record is measurement material, the review itself is the product: a failed record never
@@ -350,8 +349,13 @@ blocks the handoff.
 
 Close with: spec path, number of rounds, accepted/rejected/deferred, the final verdict of the
 last round, `outcome`, and the record path or the message of `write`. End with
-`/lighthouse-write-handoff` — `superpowers:writing-plans` runs only in the next window (a fixed
-seam).
+`/lighthouse-write-handoff` with `next: /superpowers:writing-plans <absolute spec path>` —
+`superpowers:writing-plans` runs only in the next window (a fixed seam). With an active
+predecessor (an open blocker in this repo without a merged PR) the interactive close ends instead
+with `wait for #<x>`: no `next: /superpowers:writing-plans`, the plan waits for a merged PR of the
+predecessor. Read it as `lighthouse-close-issue` does for *waits on an issue*:
+`lighthouse forge issue blockers <issue>` for the open blockers, and `lighthouse forge pr list
+--state merged` for a merged PR of each.
 
 ## Fallback without Codex
 

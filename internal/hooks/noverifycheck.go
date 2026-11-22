@@ -10,6 +10,8 @@ import (
 
 func init() { hook.Register("no-verify-check", NoVerifyCheck) }
 
+var reasonNoVerify = hook.Declare("no-verify-check", "flag")[0]
+
 const (
 	noVerifyName = "no-verify-check"
 
@@ -33,7 +35,7 @@ const (
 func NoVerifyCheck(_ context.Context, _, _ string, p hook.Payload) hook.Result {
 	command, _, ok := commitgate.ReadPayload(p.Raw)
 	if !ok {
-		return blocked(noVerifyInvalidPayload)
+		return hook.CouldNotCheck(noVerifyInvalidPayload)
 	}
 	if command == "" {
 		return hook.Result{}
@@ -41,7 +43,7 @@ func NoVerifyCheck(_ context.Context, _, _ string, p hook.Payload) hook.Result {
 	// The command is walked from the hook's own working directory, as no_verify.py did.
 	here, _ := os.Getwd()
 	if commitgate.CommandHasNoVerify(command, here) {
-		return blocked(noVerifyBlock)
+		return hook.Block(reasonNoVerify, noVerifyBlock)
 	}
 	return hook.Result{}
 }

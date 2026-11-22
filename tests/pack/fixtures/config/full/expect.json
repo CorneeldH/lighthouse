@@ -49,6 +49,14 @@
  },
  {
   "args": [
+   "paths.strategy"
+  ],
+  "rc": 0,
+  "stdout": "s\n",
+  "stderr": ""
+ },
+ {
+  "args": [
    "paths.history"
   ],
   "rc": 0,
@@ -661,6 +669,14 @@
   ],
   "rc": 0,
   "stdout": "verslagen\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "imports.check"
+  ],
+  "rc": 0,
+  "stdout": "false\n",
   "stderr": ""
  }
 ]

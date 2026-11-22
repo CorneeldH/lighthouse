@@ -109,8 +109,9 @@ Anders dan `refresh` en `tick` schrijft dit commando niets: geen alarm, geen cac
 
 - **Bron.** `codex app-server`, met `CODEX_HOME` op een van de homes. De binary stuurt `initialize`,
   `initialized` en `account/rateLimits/read`, en geen andere methode.
-- **Homes.** Eerst `$HOME/.codex`, dan `$HOME/.codex-specreview`. De eerste home met een leesbare
-  stand wint. Zonder `HOME` is Codex niet meetbaar.
+- **Homes.** Met een gezette `CODEX_HOME` alleen die home (ook zonder `HOME`); anders eerst
+  `$HOME/.codex`, dan `$HOME/.codex-specreview`. De eerste home met een leesbare stand wint. Zonder
+  `CODEX_HOME` en zonder `HOME` is Codex niet meetbaar.
 - **Terugval.** Falen alle homes, dan leest de binary het sessielog
   (`<home>/sessions/**/rollout-*.jsonl`). De jongste regel over alle homes wint; die stand is een
   ondergrens (`lower_bound` is `true`).

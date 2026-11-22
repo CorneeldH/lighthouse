@@ -1,0 +1,10 @@
+{
+  "name": "app",
+  "version": "1.0.0",
+  "private": true,
+  "main": "App.js",
+  "dependencies": {
+    "expo": "52.0.0",
+    "left-pad": "1.3.0"
+  }
+}

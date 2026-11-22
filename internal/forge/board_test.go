@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"reflect"
 	"strings"
 	"testing"
@@ -13,6 +14,25 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/forge/forgetest"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 )
+
+func TestEffectiveStatus(t *testing.T) {
+	tests := []struct {
+		name string
+		item BoardItem
+		want string
+	}{
+		{"listed status", BoardItem{Status: "Controller", StatusName: "Controller"}, "Controller"},
+		{"unlisted status uses the board name", BoardItem{Status: UnknownStatusPrefix + "abc", StatusName: "On hold"}, "On hold"},
+		{"no status", BoardItem{}, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.item.EffectiveStatus(); got != tt.want {
+				t.Errorf("EffectiveStatus = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
 
 // boardClient returns a forgetest server and a client pointed at it.
 func boardClient(t *testing.T) (*forgetest.Server, *GitHub) {
@@ -186,9 +206,11 @@ func TestRestItemNonIssueContent(t *testing.T) {
 	}
 }
 
-// Classification: io. Fails when BoardItems lists an item with archived_at.
+// Classification: io. Fails when BoardItems lists an item with archived_at. GitHub's list gives
+// none, so the fake lists it only with ListArchived.
 func TestBoardItemsSkipsArchived(t *testing.T) {
 	srv, c := projectServer(t)
+	srv.ListArchived = true
 	archived := restIssue("PVTI_old", 3, "o/r", nil, nil)
 	archived["isArchived"] = true
 	srv.BoardNodes = []map[string]any{archived, restIssue("PVTI_new", 4, "o/r", nil, nil)}
@@ -239,8 +261,9 @@ func TestBoardItemsLaterPageFails(t *testing.T) {
 }
 
 // Classification: io. Fails when MergedPR comes from anything but a merged linked PR of the
-// blocker's own board item (archived ones included), when the state is not upper case, or when
-// an item without blockers asks the dependencies route.
+// blocker's own listed board item, when the state is not upper case, or when an item without
+// blockers asks the dependencies route. The REST list leaves archived items out, so a blocker
+// whose item is archived (#4) has no MergedPR, as on GitHub.
 func TestBoardItemsBlockers(t *testing.T) {
 	srv, c := projectServer(t)
 	merged := []any{map[string]any{"number": 15, "state": "MERGED", "headRefName": "issue-5-x", "mergedAt": "2026-10-30T12:00:00Z"}}
@@ -270,7 +293,7 @@ func TestBoardItemsBlockers(t *testing.T) {
 	want := []Blocker{
 		{Repo: "o/r", Issue: 5, State: "CLOSED", MergedPR: true},
 		{Repo: "o/x", Issue: 6, State: "OPEN"},
-		{Repo: "o/r", Issue: 4, State: "OPEN", MergedPR: true},
+		{Repo: "o/r", Issue: 4, State: "OPEN"},
 		{Repo: "o/r", Issue: 3, State: "OPEN"},
 	}
 	if got[0].Issue != 7 || !reflect.DeepEqual(got[0].BlockedBy, want) {
@@ -283,6 +306,30 @@ func TestBoardItemsBlockers(t *testing.T) {
 		if k := srv.Count(fmt.Sprintf("/repos/o/r/issues/%d/dependencies/blocked_by", n)); k != 0 {
 			t.Errorf("Count(blocked_by of %d) = %d, want 0: total_blocked_by is 0", n, k)
 		}
+	}
+}
+
+// Classification: io. Fails when BoardItems reads the dependencies route of a closed issue
+// (it starts or resumes no run), or stops reading it for an open issue with blockers.
+func TestBoardItemsClosedIssueSkipsBlockedBy(t *testing.T) {
+	srv, c := projectServer(t)
+	blockers := []any{map[string]any{"number": 4, "state": "OPEN", "repository": map[string]any{"nameWithOwner": "o/r"}}}
+	closed := restIssue("PVTI_5", 5, "o/r", nil, blockers)
+	closed["content"].(map[string]any)["state"] = "CLOSED"
+	srv.BoardNodes = []map[string]any{closed, restIssue("PVTI_7", 7, "o/r", nil, blockers)}
+	c.Board = restBoard()
+	got, err := c.BoardItems(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := srv.Count("/repos/o/r/issues/5/dependencies/blocked_by"); n != 0 {
+		t.Errorf("Count(blocked_by of closed 5) = %d, want 0", n)
+	}
+	if n := srv.Count("/repos/o/r/issues/7/dependencies/blocked_by"); n != 1 {
+		t.Errorf("Count(blocked_by of open 7) = %d, want 1", n)
+	}
+	if got[0].Issue != 5 || got[0].BlockedBy != nil {
+		t.Errorf("closed item = %d, BlockedBy %+v, want 5 and nil", got[0].Issue, got[0].BlockedBy)
 	}
 }
 
@@ -419,123 +466,168 @@ func TestBoardItemsSecondClientSameStore(t *testing.T) {
 	}
 }
 
-// issueNode is a board node of issue number with Status option opt, named "Option <opt>" on
-// the board, as the board serves it.
-func issueNode(id string, number int, opt string) map[string]any {
-	return map[string]any{
-		"id": id, "updatedAt": "2026-10-30T09:00:00Z",
-		"fieldValues": map[string]any{"nodes": []any{
-			map[string]any{"optionId": opt, "name": "Option " + opt, "field": map[string]any{"id": "F_status"}},
-		}},
-		"content": map[string]any{"number": number},
-	}
+// statusIssue is restIssue of issue number of o/r with Status option opt, named "Option <opt>"
+// on the board, and the label "bug".
+func statusIssue(id string, number int, opt string) map[string]any {
+	n := restIssue(id, number, "o/r", nil, nil)
+	n["fieldValues"] = map[string]any{"nodes": []any{
+		map[string]any{"optionId": opt, "name": "Option " + opt, "field": map[string]any{"id": "SF"}},
+	}}
+	n["content"].(map[string]any)["labels"] = map[string]any{"nodes": []any{map[string]any{"name": "bug"}}}
+	return n
 }
 
+// Classification: io. Fails when IssueItem loses Status, StatusName, Repo or Issue of an item
+// on the board, or reads an unlisted option as anything but unknown:<id>.
 func TestIssueItem(t *testing.T) {
-	srv, c := boardClient(t)
-	srv.ProjectID = "P1"
-	srv.BoardNodes = []map[string]any{issueNode("PVTI_7", 7, "s1"), issueNode("PVTI_9", 9, "s2")}
-	srv.Issues = map[int]map[string]any{8: {"number": 8}} // exists, on no board
+	srv, c := projectServer(t)
+	srv.BoardNodes = []map[string]any{statusIssue("PVTI_7", 7, "opt-ctrl"), statusIssue("PVTI_9", 9, "opt-other")}
+	c.Board = restBoard()
 	ctx := context.Background()
-	c.Board = &repoconfig.Board{ProjectID: "P1", StatusFieldID: "F_status", StatusOptions: map[string]string{"S1": "s1"}}
 
 	got, ok, err := c.IssueItem(ctx, 7)
 	if err != nil || !ok {
-		t.Fatalf("IssueItem(P1, 7) = %v, %v, %v; want the item", got, ok, err)
+		t.Fatalf("IssueItem(7) = %v, %v, %v; want the item", got, ok, err)
 	}
-	if got.ItemID != "PVTI_7" || got.Status != "S1" || got.StatusName != "Option s1" || got.Issue != 7 || got.Repo != "o/r" {
-		t.Errorf("item = %+v; want PVTI_7, Status S1, StatusName Option s1, issue 7 of o/r", got)
-	}
-	// s2 is no option of status_options: Status says unknown by its ID, StatusName has its name.
-	got, ok, err = c.IssueItem(ctx, 9)
-	if err != nil || !ok || got.Status != "unknown:s2" || got.StatusName != "Option s2" {
-		t.Errorf("IssueItem(P1, 9) = %+v, %v, %v; want Status unknown:s2, StatusName Option s2", got, ok, err)
-	}
-	if _, ok, err := c.IssueItem(ctx, 8); ok || err != nil {
-		t.Errorf("IssueItem(P1, 8) ok=%v err=%v; want not on the board and no error", ok, err)
-	}
-	c.Board = &repoconfig.Board{ProjectID: "P2"}
-	if _, ok, err := c.IssueItem(ctx, 7); ok || err != nil {
-		t.Errorf("IssueItem(P2, 7) ok=%v err=%v; want not on that board (only on P1)", ok, err)
-	}
-	vars := srv.Posts[0].Body["variables"].(map[string]any)
-	if vars["owner"] != "o" || vars["name"] != "r" || vars["number"] != float64(7) {
-		t.Errorf("variables = %v, want owner o, name r, number 7", vars)
-	}
-	if n := srv.Count("IssueItems"); n != 4 {
-		t.Errorf("Count(IssueItems) = %d, want 4", n)
-	}
-}
-
-// An archived item is still an item of the issue: IssueItem returns it, marked Archived.
-func TestIssueItemArchived(t *testing.T) {
-	srv, c := boardClient(t)
-	srv.ProjectID = "P1"
-	archived := issueNode("PVTI_7", 7, "s1")
-	archived["isArchived"] = true
-	srv.BoardNodes = []map[string]any{archived, issueNode("PVTI_9", 9, "s2")}
-	ctx := context.Background()
-	c.Board = &repoconfig.Board{ProjectID: "P1"}
-
-	got, ok, err := c.IssueItem(ctx, 7)
-	if err != nil || !ok || got.ItemID != "PVTI_7" || !got.Archived {
-		t.Errorf("IssueItem(P1, 7) = %+v, %v, %v; want PVTI_7, archived", got, ok, err)
+	if got.ItemID != "PVTI_7" || got.Status != "Controller" || got.StatusName != "Option opt-ctrl" ||
+		got.Issue != 7 || got.Repo != "o/r" || got.Archived || !reflect.DeepEqual(got.Labels, []string{"bug"}) {
+		t.Errorf("item = %+v; want PVTI_7, Status Controller, StatusName Option opt-ctrl, issue 7 of o/r, label bug", got)
 	}
 	got, ok, err = c.IssueItem(ctx, 9)
-	if err != nil || !ok || got.ItemID != "PVTI_9" || got.Archived {
-		t.Errorf("IssueItem(P1, 9) = %+v, %v, %v; want PVTI_9, not archived", got, ok, err)
+	if err != nil || !ok || got.Status != "unknown:opt-other" || got.StatusName != "Option opt-other" {
+		t.Errorf("IssueItem(9) = %+v, %v, %v; want Status unknown:opt-other, StatusName Option opt-other", got, ok, err)
 	}
 }
 
-// Only GitHub's answer for a missing issue, a NOT_FOUND on repository.issue, is
-// ErrIssueNotFound; any other GraphQL error on IssueItems stays a plain error.
-func TestIssueItemGraphQLErrors(t *testing.T) {
-	srv, c := boardClient(t)
-	srv.ProjectID = "P1"
-	c.Board = &repoconfig.Board{ProjectID: "P1"}
+// Classification: io. Fails when IssueItem makes a GraphQL request for an item on the board.
+func TestIssueItemNoGraphQL(t *testing.T) {
+	srv, c := projectServer(t)
+	srv.BoardNodes = []map[string]any{statusIssue("PVTI_7", 7, "opt-ctrl")}
+	c.Board = restBoard()
+	if _, ok, err := c.IssueItem(context.Background(), 7); err != nil || !ok {
+		t.Fatalf("IssueItem(7) ok=%v err=%v; want the item", ok, err)
+	}
+	if n := srv.GraphQLCount(); n != 0 {
+		t.Errorf("IssueItem made %d GraphQL requests, want 0", n)
+	}
+}
+
+// Classification: io. Fails when a new process (a client with an empty table, sharing the
+// cache) no longer finds an item that an earlier board read saw and that was archived since:
+// the REST list leaves archived items out, so only the saved table knows its ID.
+func TestIssueItemArchivedInNewProcess(t *testing.T) {
+	srv := forgetest.New(t)
+	srv.ProjectID = "PVT_1"
+	srv.BoardNodes = []map[string]any{statusIssue("PVTI_7", 7, "opt-ctrl"), statusIssue("PVTI_9", 9, "opt-ctrl")}
+	cache := NewMemoryCache()
 	ctx := context.Background()
-	_, ok, err := c.IssueItem(ctx, 99)
-	if ok || !errors.Is(err, ErrIssueNotFound) || !strings.Contains(err.Error(), "o/r#99") {
-		t.Errorf("IssueItem(99) ok=%v err=%v; want an error wrapping ErrIssueNotFound naming o/r#99", ok, err)
+	if _, err := cachedBoardClient(t, srv, cache).BoardItems(ctx); err != nil {
+		t.Fatal(err)
 	}
-	srv.FailOps = map[string]string{"IssueItems": "Something went wrong"}
-	_, ok, err = c.IssueItem(ctx, 99)
-	if ok || err == nil || errors.Is(err, ErrIssueNotFound) || !strings.Contains(err.Error(), "Something went wrong") {
-		t.Errorf("IssueItem with another GraphQL error ok=%v err=%v; want that error, not ErrIssueNotFound", ok, err)
+	srv.BoardNodes[0]["isArchived"] = true
+
+	got, ok, err := cachedBoardClient(t, srv, cache).IssueItem(ctx, 7)
+	if err != nil || !ok {
+		t.Fatalf("IssueItem(7) in a new process = %+v, %v, %v; want the archived item", got, ok, err)
+	}
+	if !got.Archived || got.ItemID != "PVTI_7" || got.Status != "Controller" || got.Repo != "o/r" || got.Issue != 7 ||
+		!reflect.DeepEqual(got.Labels, []string{"bug"}) {
+		t.Errorf("item = %+v; want PVTI_7, archived, Status Controller, issue 7 of o/r, label bug", got)
 	}
 }
 
-func TestGraphQLErrorsNotFound(t *testing.T) {
-	cases := []struct {
-		name string
-		errs graphqlErrors
-		want bool
-	}{
-		{"not found on the path", graphqlErrors{{Type: "NOT_FOUND", Path: []any{"repository", "issue"}}}, true},
-		{"second error matches", graphqlErrors{{Type: "FORBIDDEN"}, {Type: "NOT_FOUND", Path: []any{"repository", "issue"}}}, true},
-		{"not found on the repository", graphqlErrors{{Type: "NOT_FOUND", Path: []any{"repository"}}}, false},
-		{"other type on the path", graphqlErrors{{Type: "FORBIDDEN", Path: []any{"repository", "issue"}}}, false},
-		{"no type", graphqlErrors{{Message: "boom", Path: []any{"repository", "issue"}}}, false},
+// Classification: io. Fails when an issue that exists but is on no board is an error, or
+// IssueItem gives an item for it.
+func TestIssueItemNeverOnBoard(t *testing.T) {
+	srv, c := projectServer(t)
+	srv.BoardNodes = []map[string]any{statusIssue("PVTI_7", 7, "opt-ctrl")}
+	srv.Issues = map[int]map[string]any{8: {"number": 8}}
+	c.Board = restBoard()
+	if it, ok, err := c.IssueItem(context.Background(), 8); ok || err != nil {
+		t.Errorf("IssueItem(8) = %+v, %v, %v; want not on the board and no error", it, ok, err)
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := tc.errs.notFound("repository", "issue"); got != tc.want {
-				t.Errorf("notFound = %v, want %v", got, tc.want)
+	if n := srv.Count("/repos/o/r/issues/8"); n != 1 {
+		t.Errorf("Count(issue 8) = %d, want 1", n)
+	}
+}
+
+// Classification: io. Fails when a deleted issue (404 or 410) is not ErrIssueNotFound, when
+// another failure of the issue read becomes ErrIssueNotFound or ok=false, or when a deleted
+// item (404 on its own route) is an error instead of ok=false.
+func TestIssueItemDeletedIssue(t *testing.T) {
+	for _, code := range []int{404, 410} {
+		t.Run(fmt.Sprint(code), func(t *testing.T) {
+			srv, c := projectServer(t)
+			c.Board = restBoard()
+			if code != 404 {
+				srv.Issues = map[int]map[string]any{99: {"number": 99}}
+				srv.Fail = map[string]int{"GET /repos/o/r/issues/99": code}
+			}
+			_, ok, err := c.IssueItem(context.Background(), 99)
+			if ok || !errors.Is(err, ErrIssueNotFound) || !strings.Contains(err.Error(), "o/r#99") {
+				t.Errorf("IssueItem(99) ok=%v err=%v; want an error wrapping ErrIssueNotFound naming o/r#99", ok, err)
 			}
 		})
 	}
+	t.Run("other error", func(t *testing.T) {
+		srv, c := projectServer(t)
+		c.Board = restBoard()
+		srv.Fail = map[string]int{"GET /repos/o/r/issues/99": 502}
+		_, ok, err := c.IssueItem(context.Background(), 99)
+		if ok || err == nil || errors.Is(err, ErrIssueNotFound) || !strings.Contains(err.Error(), "status 502") {
+			t.Errorf("IssueItem(99) ok=%v err=%v; want the 502, not ErrIssueNotFound", ok, err)
+		}
+	})
+	t.Run("deleted item", func(t *testing.T) {
+		srv, c := projectServer(t)
+		c.Board = restBoard()
+		srv.BoardNodes = []map[string]any{statusIssue("PVTI_7", 7, "opt-ctrl")}
+		srv.Issues = map[int]map[string]any{7: {"number": 7}}
+		srv.Fail = map[string]int{"GET /users/o/projectsV2/1/items/5000": 404}
+		if it, ok, err := c.IssueItem(context.Background(), 7); ok || err != nil {
+			t.Errorf("IssueItem(7) = %+v, %v, %v; want ok=false and no error for a deleted item", it, ok, err)
+		}
+	})
+	// The item ID is known, but the item and the issue are both gone: a deleted issue stays
+	// ErrIssueNotFound, also when the item read answers 404 first.
+	t.Run("deleted item and issue", func(t *testing.T) {
+		srv, c := projectServer(t)
+		c.Board = restBoard()
+		srv.BoardNodes = []map[string]any{statusIssue("PVTI_7", 7, "opt-ctrl")}
+		srv.Fail = map[string]int{"GET /users/o/projectsV2/1/items/5000": 404}
+		_, ok, err := c.IssueItem(context.Background(), 7)
+		if ok || !errors.Is(err, ErrIssueNotFound) || !strings.Contains(err.Error(), "o/r#7") {
+			t.Errorf("IssueItem(7) ok=%v err=%v; want an error wrapping ErrIssueNotFound naming o/r#7", ok, err)
+		}
+		if n := srv.Count("/users/o/projectsV2/1/items/5000"); n != 1 {
+			t.Errorf("item reads = %d, want 1", n)
+		}
+	})
 }
 
-func TestIssueItemTruncated(t *testing.T) {
-	srv, c := boardClient(t)
-	srv.ProjectID = "P1"
-	node := issueNode("PVTI_7", 7, "s1")
-	node["fieldValues"].(map[string]any)["pageInfo"] = map[string]any{"hasNextPage": true}
-	srv.BoardNodes = []map[string]any{node}
-	c.Board = &repoconfig.Board{ProjectID: "P1"}
-	_, ok, err := c.IssueItem(context.Background(), 7)
-	if err == nil || ok || !strings.Contains(err.Error(), "fieldValues truncated") {
-		t.Fatalf("IssueItem ok=%v err=%v; want a fieldValues truncated error", ok, err)
+// Classification: io. Fails when a client without a cache errs, or loses an item that its own
+// earlier list saw once a later list no longer shows it.
+func TestIssueItemWithoutCache(t *testing.T) {
+	srv, c := projectServer(t)
+	srv.BoardNodes = []map[string]any{statusIssue("PVTI_7", 7, "opt-ctrl")}
+	srv.Issues = map[int]map[string]any{7: {"number": 7}}
+	c.Board = restBoard()
+	ctx := context.Background()
+	if _, err := c.BoardItems(ctx); err != nil {
+		t.Fatal(err)
+	}
+	srv.BoardNodes[0]["isArchived"] = true
+	if _, err := c.BoardItems(ctx); err != nil {
+		t.Fatal(err)
+	}
+	got, ok, err := c.IssueItem(ctx, 7)
+	if err != nil || !ok || !got.Archived || got.ItemID != "PVTI_7" {
+		t.Errorf("IssueItem(7) = %+v, %v, %v; want the archived item from this process's table", got, ok, err)
+	}
+	fresh := New("o/r", "secret-token")
+	fresh.BaseURL, fresh.Board = srv.URL(), restBoard()
+	if it, ok, err := fresh.IssueItem(ctx, 7); ok || err != nil {
+		t.Errorf("IssueItem(7) in a new process without cache = %+v, %v, %v; want ok=false, no error", it, ok, err)
 	}
 }
 
@@ -556,7 +648,7 @@ func TestAddToBoardThenIssueItem(t *testing.T) {
 }
 
 // Class: io. At risk: a controller path (the board read, the branch PRs, SetStatus, AddToBoard)
-// falls back to GraphQL, so an exhausted GraphQL limit stops a tick again.
+// (and Planning) falls back to GraphQL, so an exhausted GraphQL limit stops a tick again.
 func TestControllerPathsUseNoGraphQL(t *testing.T) {
 	srv, c := projectServer(t)
 	c.Board = restBoard()
@@ -585,13 +677,112 @@ func TestControllerPathsUseNoGraphQL(t *testing.T) {
 	if _, err := c.AddToBoard(ctx, 7); err != nil {
 		t.Fatalf("AddToBoard: %v", err)
 	}
-	if n := srv.Count("/graphql"); n != 0 {
-		t.Fatalf("controller paths made %d GraphQL requests, want 0", n)
-	}
 	if _, err := c.Planning(ctx); err != nil {
 		t.Fatalf("Planning: %v", err)
 	}
+	if n := srv.Count("/graphql"); n != 0 {
+		t.Fatalf("controller paths made %d GraphQL requests, want 0", n)
+	}
+	if _, err := c.OpenPRsWithStatus(ctx); err != nil {
+		t.Fatalf("OpenPRsWithStatus: %v", err)
+	}
 	if srv.Count("/graphql") == 0 {
-		t.Error("Planning made no GraphQL request; the test no longer tells REST from GraphQL")
+		t.Error("OpenPRsWithStatus made no GraphQL request; the test no longer tells REST from GraphQL")
+	}
+}
+
+// memoServer is a board with issue 6 of o/r, whose open closing PR #11 is also the PR of the
+// run branch issue-6-x, on a client with EnrichMemo set to memo.
+func memoServer(t *testing.T, memo bool) (*forgetest.Server, *GitHub) {
+	t.Helper()
+	srv, c := projectServer(t)
+	c.Board = restBoard()
+	c.EnrichMemo = memo
+	pr := map[string]any{"number": 11, "state": "OPEN", "isDraft": false, "mergeable": "MERGEABLE", "headRefOid": "sha-open",
+		"headRefName": "issue-6-x", "baseRefName": "main", "url": "https://github.com/o/r/pull/11",
+		"statusCheckRollup": map[string]any{"state": "SUCCESS"}}
+	srv.BoardNodes = []map[string]any{restIssue("PVTI_a", 6, "o/r", []any{pr}, nil)}
+	srv.Branches = map[string][]map[string]any{"issue-6-x": {pr}}
+	return srv, c
+}
+
+// boardThenBranch reads the board and then the PRs of the run branch, and returns the closing
+// PR of the board item and the branch PR.
+func boardThenBranch(t *testing.T, c *GitHub) (PR, PR) {
+	t.Helper()
+	ctx := context.Background()
+	items, err := c.BoardItems(ctx)
+	if err != nil || len(items) != 1 || len(items[0].ClosingPRs) != 1 {
+		t.Fatalf("BoardItems = %+v, %v; want one item with one closing PR", items, err)
+	}
+	prs, err := c.BranchPRs(ctx, "issue-6-x")
+	if err != nil || len(prs) != 1 {
+		t.Fatalf("BranchPRs = %+v, %v; want one PR", prs, err)
+	}
+	return items[0].ClosingPRs[0], prs[0]
+}
+
+// Classification: io. Fails when a client with EnrichMemo asks the pull request or its checks
+// a second time for the same (repo, PR, head) within its life, or when the remembered
+// enrichment differs from the first.
+func TestBoardItemsAndBranchPRsEnrichOnce(t *testing.T) {
+	srv, c := memoServer(t, true)
+	board, branch := boardThenBranch(t, c)
+	for _, p := range []string{"/repos/o/r/pulls/11", "/repos/o/r/commits/sha-open/check-runs"} {
+		if n := srv.Count(p); n != 1 {
+			t.Errorf("%s: %d requests, want 1", p, n)
+		}
+	}
+	if board.Mergeable != "MERGEABLE" || board.Checks != "SUCCESS" ||
+		branch.Mergeable != board.Mergeable || branch.Checks != board.Checks {
+		t.Fatalf("board PR %s/%s, branch PR %s/%s; want MERGEABLE/SUCCESS on both",
+			board.Mergeable, board.Checks, branch.Mergeable, branch.Checks)
+	}
+}
+
+// Classification: io. Fails when a client without EnrichMemo remembers an enrichment, so the
+// pusher would act on a stale mergeable.
+func TestEnrichWithoutMemoRepeats(t *testing.T) {
+	srv, c := memoServer(t, false)
+	boardThenBranch(t, c)
+	if n := srv.Count("/repos/o/r/pulls/11"); n != 2 {
+		t.Fatalf("/repos/o/r/pulls/11: %d requests, want 2", n)
+	}
+}
+
+// Classification: io. Fails when an enrichment that failed (a hidden 404 of another repo) is
+// remembered, so a second read keeps the UNKNOWN without asking again.
+func TestEnrichHiddenErrorNotMemoized(t *testing.T) {
+	srv, c := projectServer(t)
+	c.Board = restBoard()
+	c.EnrichMemo = true
+	pr := map[string]any{"number": 21, "state": "OPEN", "mergeable": "MERGEABLE", "headRefOid": "sha21",
+		"headRefName": "issue-9-x", "statusCheckRollup": map[string]any{"state": "SUCCESS"}}
+	srv.BoardNodes = []map[string]any{restIssue("PVTI_9", 9, "x/y", []any{pr}, nil)}
+	srv.Fail = map[string]int{"GET /repos/x/y/pulls/21": 404}
+	for round := 1; round <= 2; round++ {
+		got, err := c.BoardItems(context.Background())
+		if err != nil || len(got) != 1 || got[0].ClosingPRs[0].Mergeable != "UNKNOWN" {
+			t.Fatalf("round %d: BoardItems = %+v, %v; want the PR with Mergeable UNKNOWN", round, got, err)
+		}
+	}
+	if n := srv.Count("/repos/x/y/pulls/21"); n != 2 {
+		t.Fatalf("/repos/x/y/pulls/21: %d requests, want 2", n)
+	}
+}
+
+// Classification: io. Fails when the memo forgets the head in its key, so checks of an old
+// head are given to a PR that was pushed since.
+func TestEnrichNewHeadAsksAgain(t *testing.T) {
+	srv, c := memoServer(t, true)
+	moved := maps.Clone(srv.Branches["issue-6-x"][0])
+	moved["headRefOid"], moved["statusCheckRollup"] = "sha-new", map[string]any{"state": "PENDING"}
+	srv.Branches["issue-6-x"] = []map[string]any{moved}
+	_, branch := boardThenBranch(t, c)
+	if n := srv.Count("/repos/o/r/pulls/11"); n != 2 {
+		t.Errorf("/repos/o/r/pulls/11: %d requests, want 2", n)
+	}
+	if branch.HeadSHA != "sha-new" || branch.Checks != "PENDING" {
+		t.Fatalf("branch PR head %s checks %s; want sha-new with PENDING", branch.HeadSHA, branch.Checks)
 	}
 }

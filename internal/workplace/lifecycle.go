@@ -5,7 +5,10 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/runs"
@@ -265,7 +268,16 @@ func Cleanup(ctx context.Context, db *sql.DB, w Workplace, run Runner, c Candida
 	}
 
 	force := c.Schedule != ""
-	if !force {
+	orphan := false
+	if !force && c.Node == "" {
+		if WorktreeMissing(c.Workspace.Path) {
+			orphan = true
+			if reason := orphanKeepReason(ctx, w, c); reason != "" {
+				return keep(reason)
+			}
+		}
+	}
+	if !force && !orphan {
 		git := gitOf(w, run, c)
 		dirty, err := git.Dirty(ctx, c.Workspace.ID)
 		if err != nil {
@@ -289,7 +301,7 @@ func Cleanup(ctx context.Context, db *sql.DB, w Workplace, run Runner, c Candida
 	} else if running {
 		return false, nil
 	}
-	if err := w.Remove(ctx, c.Workspace.ID, RemoveOptions{Force: force}); err != nil {
+	if err := w.Remove(ctx, c.Workspace.ID, RemoveOptions{Force: force, Orphan: orphan}); err != nil {
 		if errors.Is(err, ErrDirty) && force {
 			return keep("forced remove refused: " + err.Error())
 		}
@@ -330,4 +342,37 @@ func (l localGit) Dirty(ctx context.Context, _ string) (bool, error) {
 
 func (l localGit) Unpushed(ctx context.Context, _, mergedHead string) (bool, error) {
 	return Unpushed(ctx, l.run, l.path, mergedHead)
+}
+
+// orphanKeepReason is why a workspace whose worktree directory is gone must stay, or "" when
+// nothing is lost by removing it: its PR merged, or its branch is nowhere (not in the clone, not
+// on origin). A missing directory has nothing uncommitted, and git cannot measure it anyway.
+func orphanKeepReason(ctx context.Context, w Workplace, c Candidate) string {
+	if c.MergedHead != "" {
+		return ""
+	}
+	oc, ok := w.(OrphanChecker)
+	if !ok {
+		return "not measurable: worktree directory is gone and the workplace cannot check the branch"
+	}
+	branch := strings.TrimPrefix(c.Workspace.Branch, "refs/heads/")
+	if branch == "" {
+		return "not measurable: worktree directory is gone and the workspace has no branch"
+	}
+	nowhere, err := oc.BranchNowhere(ctx, c.Workspace.ID, branch)
+	if err != nil {
+		return "not measurable: branch of the missing worktree: " + err.Error()
+	}
+	if !nowhere {
+		return "worktree directory is gone, but branch " + branch + " still exists"
+	}
+	return ""
+}
+
+// WorktreeMissing reports whether path is certainly not there; any other stat error is "there".
+// An exported variable only so tests in other packages, whose workspaces live at made-up paths,
+// can decide which paths exist; production code never sets it.
+var WorktreeMissing = func(path string) bool {
+	_, err := os.Stat(path)
+	return errors.Is(err, fs.ErrNotExist)
 }

@@ -58,6 +58,7 @@ type hubNode struct {
 	usage       []nodeapi.UsageRequest
 	deleted     []string
 	permissions map[string][]byte
+	postFailed  map[string][]byte
 	// markersStatus, usageStatus and authStatus, when set, answer GET markers, PUT usage and
 	// every request (a bad token) with that status.
 	markersStatus, usageStatus, authStatus int
@@ -86,7 +87,7 @@ func newFleetHub(t *testing.T, ids ...string) *fleetHub {
 		n := &hubNode{
 			workspaces: map[string]string{}, sessions: map[string][]string{}, sids: map[string]string{},
 			carriers: map[string]string{}, stopped: map[string]bool{}, release: make(chan struct{}),
-			serveToken: "serve-" + id, permissions: map[string][]byte{},
+			serveToken: "serve-" + id, permissions: map[string][]byte{}, postFailed: map[string][]byte{},
 		}
 		n.serveSrv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			h.add(id + " serve " + r.Method + " " + r.URL.EscapedPath())
@@ -264,6 +265,16 @@ func (n *hubNode) serveNode(t *testing.T, w http.ResponseWriter, r *http.Request
 			_ = json.NewEncoder(w).Encode(nodeapi.Problem{Status: 404, Code: nodeapi.CodeNoPermission, Detail: "no permission note"})
 			return
 		}
+		_, _ = w.Write(data)
+	case r.Method == http.MethodGet && len(parts) == 3 && parts[0] == "runs" && parts[2] == "post-failed":
+		data, ok := n.postFailed[parts[1]]
+		if !ok {
+			w.Header().Set("Content-Type", "application/problem+json")
+			w.WriteHeader(http.StatusNotFound)
+			_ = json.NewEncoder(w).Encode(nodeapi.Problem{Status: 404, Code: nodeapi.CodeNoPostFailed, Detail: "no post-failed note"})
+			return
+		}
+		w.Header().Set(nodeapi.HeaderModTime, hubPostFailedModTime)
 		_, _ = w.Write(data)
 	case len(parts) == 3 && parts[0] == "workspaces":
 		n.serveWorkspace(t, w, r, parts[1], r.Method+" "+parts[2])
@@ -642,7 +653,7 @@ func TestMeasureUsesNodeOfRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := map[int64]dispatch.RunState{1: {}}; !reflect.DeepEqual(states, want) {
+	if want := map[int64]dispatch.RunState{1: {TranscriptUnmeasurable: true}}; !reflect.DeepEqual(states, want) {
 		t.Errorf("states = %+v, want %+v (not gone)", states, want)
 	}
 	if want := map[int64]workplace.Stand{1: workplace.Waiting}; !reflect.DeepEqual(stands, want) {
@@ -867,6 +878,104 @@ func TestRunProbeReadsPermissionViaServe(t *testing.T) {
 		}
 	})
 }
+
+// A run on a node gets its post-failed note through serve, an unreadable one as Unreadable and
+// no error; a run on self reads the file; a serve that does not answer is an error.
+func TestRunProbeReadsPostFailedViaServe(t *testing.T) {
+	note := []byte(`{"version":1,"at":"2026-11-20T10:00:00.000Z","issue":7,"command":"ask","error":"boom","body":"hi"}`)
+	hub := newFleetHub(t, randomNode(), randomNode())
+	id := hub.ids[0]
+	node := hub.nodes[id]
+	node.set(func(n *hubNode) {
+		n.postFailed[sidMeasured] = note
+		n.postFailed[sidGone] = []byte("not json")
+	})
+	sessions := map[string][]workplace.Session{"ws-1": {{Key: "k1", WorkspaceID: "ws-1", State: "running"}}}
+	adapter := func(serve *kennforge.NodeClient) *measureWorkplaceAdapter {
+		return &measureWorkplaceAdapter{measureWorkplace: measureWorkplace{sessions: sessions}, reader: &kennforge.Adapter{Node: id, Serve: serve}}
+	}
+	run := runs.OpenRun{ID: 1, Issue: 7, SessionID: sidMeasured, WorkspaceID: "ws-1", WorkplaceSession: "k1", Node: id, Profile: "mac"}
+	ctx := context.Background()
+	live := func(t *testing.T) *kennforge.NodeClient {
+		return kennforge.NewNodeClient(node.serveSrv.URL, node.tokenFile(t))
+	}
+
+	t.Run("note via serve", func(t *testing.T) {
+		m := runProbe{w: adapter(live(t)), stateDir: t.TempDir()}
+		_, _, s, err := m.measure(ctx, run)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := &dispatch.PostFailed{At: time.Date(2026, 11, 20, 10, 0, 0, 0, time.UTC), Issue: 7, Command: "ask", Error: "boom", Body: "hi"}
+		if !reflect.DeepEqual(s.PostFailed, want) {
+			t.Errorf("PostFailed = %+v, want %+v", s.PostFailed, want)
+		}
+	})
+	t.Run("unreadable note is no error", func(t *testing.T) {
+		m := runProbe{w: adapter(live(t)), stateDir: t.TempDir()}
+		r := run
+		r.SessionID = sidGone
+		_, _, s, err := m.measure(ctx, r)
+		want := &dispatch.PostFailed{At: time.Date(2026, 11, 20, 9, 0, 0, 0, time.UTC), Unreadable: true}
+		if err != nil || !reflect.DeepEqual(s.PostFailed, want) {
+			t.Errorf("measure = %+v, %v; want %+v (dated by the node's mtime) and no error", s.PostFailed, err, want)
+		}
+	})
+	t.Run("no note", func(t *testing.T) {
+		selfDir := t.TempDir()
+		writeTestFile(t, dispatch.PostFailedPath(selfDir, sidNoFile), string(note)) // self must not be read for a node run
+		m := runProbe{w: adapter(live(t)), stateDir: selfDir}
+		r := run
+		r.SessionID = sidNoFile
+		_, _, s, err := m.measure(ctx, r)
+		if err != nil || s.PostFailed != nil {
+			t.Errorf("measure = %+v, %v; want no note", s.PostFailed, err)
+		}
+	})
+	t.Run("serve unreachable", func(t *testing.T) {
+		dead := httptest.NewServer(http.NotFoundHandler())
+		dead.Close()
+		m := runProbe{w: adapter(kennforge.NewNodeClient(dead.URL, node.tokenFile(t))), stateDir: t.TempDir()}
+		if _, _, _, err := m.measure(ctx, run); err == nil {
+			t.Error("measure = nil error, want an error for a serve that does not answer")
+		}
+	})
+	t.Run("self reads the file", func(t *testing.T) {
+		selfDir := t.TempDir()
+		writeTestFile(t, dispatch.PostFailedPath(selfDir, sidMeasured), string(note))
+		r := run
+		r.Node = ""
+		m := runProbe{w: adapter(live(t)), stateDir: selfDir}
+		_, _, s, err := m.measure(ctx, r)
+		if err != nil || s.PostFailed == nil || s.PostFailed.Command != "ask" {
+			t.Errorf("measure = %+v, %v; want the note of the file", s.PostFailed, err)
+		}
+	})
+	t.Run("self unreadable file", func(t *testing.T) {
+		selfDir := t.TempDir()
+		writeTestFile(t, dispatch.PostFailedPath(selfDir, sidMeasured), "garbage")
+		r := run
+		r.Node = ""
+		m := runProbe{w: adapter(live(t)), stateDir: selfDir}
+		_, _, s, err := m.measure(ctx, r)
+		if err != nil || s.PostFailed == nil || !s.PostFailed.Unreadable {
+			t.Errorf("measure = %+v, %v; want Unreadable and no error", s.PostFailed, err)
+		}
+	})
+}
+
+// measureWorkplaceAdapter is a measureWorkplace that reads notes like a kenn-forge adapter.
+type measureWorkplaceAdapter struct {
+	measureWorkplace
+	reader workplace.PostFailedReader
+}
+
+func (w *measureWorkplaceAdapter) PostFailed(ctx context.Context, sessionID string) ([]byte, time.Time, error) {
+	return w.reader.PostFailed(ctx, sessionID)
+}
+
+// hubPostFailedModTime is the modification time the hub's serve sends with every post-failed note.
+const hubPostFailedModTime = "2026-11-20T09:00:00Z"
 
 // usageBodies is the PUT usage bodies node took, with the pointers read out ("<nil>" for none).
 func usageBodies(n *hubNode) []string {

@@ -35,9 +35,16 @@ type Forge interface {
 	OpenIssues(ctx context.Context) ([]Issue, error)
 	ClosedInMilestone(ctx context.Context, m Milestone, since time.Time) ([]Issue, error)
 	BlockedBy(ctx context.Context, number int) ([]Blocker, error)
+	// Blocking lists the issues that issue number blocks, with their own state. Every page is
+	// followed; a failing page is an error, never a shorter list. MergedPR stays false.
+	Blocking(ctx context.Context, number int) ([]Blocker, error)
 	// Planning reads the open issues with their milestone and open blockers, and the issue
 	// counts of the open milestones, for the prioritisation view.
 	Planning(ctx context.Context) (Planning, error)
+	// PrioInputs reads what the priority weight needs besides the blockers: the milestone of
+	// every open issue and the open milestones with their description. It reads no closed
+	// issues and no blockers, so it can run on every tick.
+	PrioInputs(ctx context.Context) (PrioInputs, error)
 	Comments(ctx context.Context, number int) ([]protocol.Comment, error)
 	CreateComment(ctx context.Context, number int, body string) (protocol.Comment, error)
 	// Acknowledge marks comment commentID on issue number as seen by the token's user.
@@ -85,6 +92,17 @@ type Forge interface {
 	SearchIssues(ctx context.Context, text string) ([]Issue, error)
 	CreateChange(ctx context.Context, in NewPR) (Change, error)
 	Change(ctx context.Context, number int) (Change, error)
+	// ListChanges lists the pull or merge requests in state "open", "merged", "closed" (closed
+	// without a merge) or "all"; "" is open, any other value an error. HeadRef is filled and
+	// MergedAt set for a merged one. Every page is followed; a failing page is an error.
+	ListChanges(ctx context.Context, state string) ([]Change, error)
+	// IssueChanges lists the pull or merge requests that close issue number (Closes true) or
+	// mention it, each once, the closing ones first. Every page is followed; a failing page is
+	// an error, never a shorter list.
+	IssueChanges(ctx context.Context, number int) ([]IssueChange, error)
+	// Closer is the number of the pull or merge request that closed issue number the last time;
+	// 0 when none did, also for an issue closed by hand or never closed.
+	Closer(ctx context.Context, number int) (int, error)
 	// ChangeComments lists the comments of pull request number: on GitLab the notes of the merge
 	// request without system notes.
 	ChangeComments(ctx context.Context, number int) ([]protocol.Comment, error)
@@ -98,7 +116,7 @@ type Forge interface {
 	Milestones(ctx context.Context, state string) ([]Milestone, error)
 	MilestoneByNumber(ctx context.Context, number int) (Milestone, error)
 	CreateMilestone(ctx context.Context, title, description string) (Milestone, error)
-	EditMilestone(ctx context.Context, number int, title, description *string) (Milestone, error)
+	EditMilestone(ctx context.Context, number int, title, description, state *string) (Milestone, error)
 	Labels(ctx context.Context) ([]string, error)
 	// CreateLabel creates the label name with color, six hex digits without a "#". A label that
 	// already exists is no error.
@@ -116,6 +134,9 @@ type Forge interface {
 	UpdateIssueBody(ctx context.Context, number int, body string) error
 	// CloseIssue posts comment (when not empty) and then closes the issue.
 	CloseIssue(ctx context.Context, number int, comment string) error
+	// ReopenIssue posts comment (when not empty) and then reopens the issue. A failing comment
+	// is returned and leaves the issue closed.
+	ReopenIssue(ctx context.Context, number int, comment string) error
 	// CreatePR opens a pull request; with NewPR.Draft it is a draft.
 	CreatePR(ctx context.Context, pr NewPR) (PR, error)
 	UpdatePRBody(ctx context.Context, number int, body string) error

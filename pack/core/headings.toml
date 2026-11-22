@@ -8,6 +8,10 @@
 nl = "Acceptatiecriteria"
 en = "Acceptance criteria"
 
+[map_placement]
+nl = "Op de kaart"
+en = "On the map"
+
 # The kinds of a `🤖 <kind>` comment
 [kind_handoff]
 nl = "Handoff"
@@ -53,6 +57,10 @@ en = "asks for interactive execution"
 [reason_skill_missing]
 nl = "skill niet geïnstalleerd in de worktree"
 en = "skill not installed in the worktree"
+
+[reason_repeat_handoff]
+nl = "dezelfde handoff als de vorige, zonder voortgang"
+en = "same handoff as the previous one, no progress"
 
 [reason_not_allowed]
 nl = "commando niet toegestaan"
@@ -118,9 +126,25 @@ en = "merge failed"
 nl = "merge mislukt na 3 fix-pr-runs"
 en = "merge failed after 3 fix-pr runs"
 
+[reason_closecheck_open]
+nl = "nacontrole: criteria open"
+en = "after-merge check: criteria open"
+
 [reason_no_handoff]
 nl = "geen handoff of vraag"
 en = "no handoff or question"
+
+[reason_park_marker_unreadable]
+nl = "geparkeerd, marker niet leesbaar"
+en = "parked, marker not readable"
+
+[reason_post_failed]
+nl = "post mislukt"
+en = "post failed"
+
+[reason_post_failed_unreadable]
+nl = "post mislukt: notitie onleesbaar"
+en = "post failed: note unreadable"
 
 [reason_start_uncertain]
 nl = "start onzeker: geen sessie gevonden"
@@ -175,6 +199,10 @@ en = "the run that wrote this handoff ran on another host than the pusher"
 nl = "pusher reageerde niet"
 en = "pusher did not respond"
 
+[reason_pusher_red]
+nl = "workflow-pusher rood"
+en = "workflow pusher red"
+
 [reason_pusher_no_handoff]
 nl = "de pusher pushte, maar er kwam geen handoff of PR"
 en = "the pusher pushed, but no handoff or PR followed"
@@ -204,24 +232,24 @@ nl = "Antwoord `push` om precies deze SHA te laten pushen: de vloer draait dan o
 en = "Answer `push` to have exactly this SHA pushed: the floor runs again, the review does not."
 
 [question_push_retry]
-nl = "Antwoord `push` als de oorzaak hierboven is verholpen: de pusher draait dan opnieuw voor precies deze SHA, zonder review. Of push met de hand."
-en = "Answer `push` once the cause above is fixed: the pusher then runs again for exactly this SHA, without review. Or push by hand."
+nl = "Antwoord `push` als de oorzaak hieronder is verholpen: de pusher draait dan opnieuw voor precies deze SHA, zonder review. Of push met de hand."
+en = "Answer `push` once the cause below is fixed: the pusher then runs again for exactly this SHA, without review. Or push by hand."
 
 [question_push_moved]
 nl = "De worktree staat niet meer op de SHA waarvoor je toestemming gaf. Een antwoord `push` geeft deze Vraag opnieuw: laat de nieuwe commits via een nieuwe handoff reviewen, of push met de hand."
 en = "The worktree is no longer on the SHA you permitted. An answer `push` gives this Question again: have the new commits reviewed through a new handoff, or push by hand."
 
 [question_push_manual]
-nl = "Een antwoord `push` start hier niets. Push met de hand, of laat het werk repareren en een nieuwe handoff schrijven."
-en = "An answer `push` starts nothing here. Push by hand, or have the work repaired and a new handoff written."
+nl = "Push met de hand, of laat het werk repareren en een nieuwe handoff schrijven."
+en = "Push by hand, or have the work repaired and a new handoff written."
 
 [question_push_token_refused]
 nl = "de forge weigerde het workflow-token voor deze wijziging (de rechten van het token); zie het tokenbestand van [dispatch.workflow_push]"
 en = "the forge refused the workflow token for this change (the token's permissions); see the token file of [dispatch.workflow_push]"
 
 [question_merge_manual]
-nl = "Een antwoord `push` start hier niets. Merge de PR met de hand als de wijziging klopt, of laat het werk repareren."
-en = "An answer `push` starts nothing here. Merge the PR by hand if the change is right, or have the work repaired."
+nl = "Merge de PR met de hand als de wijziging klopt, of laat het werk repareren."
+en = "Merge the PR by hand if the change is right, or have the work repaired."
 
 [question_merge_command]
 nl = "Zelf mergen"
@@ -402,6 +430,10 @@ en = "Design questions"
 nl = "Dit moet interactief:"
 en = "This has to be interactive:"
 
+[triage_needs_label]
+nl = "Dit issue draagt al een needs_*-label; een mens pakt het op en het gaat niet naar de dispatcher. Label:"
+en = "This issue already carries a needs_* label; a human picks it up and it does not go to the dispatcher. Label:"
+
 [triage_untrusted]
 nl = "De auteur van dit issue valt niet in answer_permissions: een vertrouwde gebruiker zet het zelf door."
 en = "The author of this issue is not in answer_permissions: a trusted user forwards it themselves."
@@ -425,3 +457,42 @@ en = "To correct: not to the dispatcher: set the status back to To do. Triage ag
 [triage_fix_other]
 nl = "Corrigeren: pas zo nodig de labels of de body aan en verwijder deze comment; de volgende ronde triëert opnieuw."
 en = "To correct: adjust the labels or the body if needed and delete this comment; the next round triages again."
+
+# Areas
+[area_near_goal]
+nl = "Nabij doel"
+en = "Near goal"
+
+[area_crux]
+nl = "Crux"
+en = "Crux"
+
+[policy]
+nl = "Leidend beleid"
+en = "Guiding policy"
+
+[not_now]
+nl = "Bewust niet"
+en = "Deliberately not"
+
+# Strategy document
+[strategy_diagnosis]
+nl = "Diagnose"
+en = "Diagnosis"
+
+[strategy_audience]
+nl = "Voor wie"
+en = "For whom"
+
+[strategy_roadmap]
+nl = "Roadmap"
+en = "Roadmap"
+
+# Tenets document
+[tenet_over]
+nl = "boven"
+en = "over"
+
+[tenet_evidence]
+nl = "Bewijs"
+en = "Evidence"

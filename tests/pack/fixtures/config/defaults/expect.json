@@ -289,6 +289,14 @@
  },
  {
   "args": [
+   "paths.strategy"
+  ],
+  "rc": 1,
+  "stdout": "",
+  "stderr": "config: paths.strategy is not set\n"
+ },
+ {
+  "args": [
    "review.roborev"
   ],
   "rc": 0,
@@ -318,5 +326,13 @@
   "rc": 1,
   "stdout": "",
   "stderr": "config: report.dir is not set\n"
+ },
+ {
+  "args": [
+   "imports.check"
+  ],
+  "rc": 0,
+  "stdout": "true\n",
+  "stderr": ""
  }
 ]

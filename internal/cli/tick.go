@@ -264,7 +264,7 @@ func tick(ctx context.Context, env tickEnv, dbPath string, errOut io.Writer) err
 			gathered = append(gathered, gatheredRepo{repo: repo, in: *in, fp: fp})
 		}
 	}
-	planFailed := planSchedules(ctx, env, st.DB, gathered, errOut)
+	planFailed := planSchedules(ctx, env, st.DB, cfg, ticked, gathered, errOut)
 	failed, err := decideAndApply(ctx, env, st.DB, cfg, facts, ticked, gathered, errOut)
 	if err != nil {
 		return err
@@ -294,9 +294,11 @@ type openedForge struct {
 // openForges opens, without output, the forge of each repo in loaded that loaded and is
 // dispatchable; the others carry their load, duplicate-slug or Dispatchable error. When no repo
 // gets a forge it returns the first token error. When no repo needed a forge, a GitHub token
-// must still be set, as before forges were per repo.
+// must still be set, as before forges were per repo. Its GitHub clients live one tick, so they
+// remember each enrichment of an open pull request (forge.GitHub.EnrichMemo).
 func openForges(ctx context.Context, env tickEnv, loaded []repoconfig.Loaded) ([]openedForge, error) {
 	o := newForgeOpener(env.Getenv, env.ForgeURL)
+	o.enrichMemo = true
 	out := make([]openedForge, len(loaded))
 	var tally openTally
 	for i, l := range loaded {
@@ -345,11 +347,15 @@ func saveRunViews(ctx context.Context, env tickEnv, db *sql.DB, repos []checkedR
 	if len(repos) == 0 {
 		return false
 	}
-	markerDir, err := park.MarkerDir(env.Getenv)
 	var parked map[string][]runs.Row
 	var all []park.Marker
+	stateDir, err := env.stateDir()
+	var markerDirs []string
 	if err == nil {
-		all, err = park.ReadMarkers(markerDir)
+		markerDirs, err = park.HostMarkerDirs(env.Getenv, stateDir)
+	}
+	if err == nil {
+		all, err = park.ReadMarkersIn(markerDirs)
 	}
 	if err == nil {
 		onNodes, _, _ := env.nodeMarkers(ctx) // a node that does not read shows no parked run
@@ -395,6 +401,10 @@ func sweepRepos(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dis
 	repos []checkedRepo, errOut io.Writer) (failed bool) {
 	for _, sr := range repos {
 		slug := sr.repo.Slug
+		if msg := cloneProblem(ctx, env, cfg, sr.repo); msg != "" {
+			failed = true
+			_, _ = fmt.Fprintf(errOut, "lighthouse: cleanup %s: %s\n", slug, msg)
+		}
 		removed, err := sweepOne(ctx, env, db, cfg, forges[slug], sr)
 		for _, l := range removed {
 			of := fmt.Sprintf("%s#%d", slug, l.Issue)
@@ -438,7 +448,7 @@ func sweepOne(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispa
 	}
 	in := workplace.SweepInput{
 		Repo:         sr.repo.Slug,
-		InController: dispatch.InController(sr.pre.Statuses),
+		InController: dispatch.InController(sr.pre),
 		MergedHead: func(ctx context.Context, branch string) (string, error) {
 			prs, err := f.BranchPRs(ctx, branch)
 			if err != nil {
@@ -521,7 +531,7 @@ func applyActions(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.D
 	if err != nil {
 		return dispatch.Result{}, err
 	}
-	markerDir, err := park.MarkerDir(env.Getenv)
+	markerDirs, err := park.HostMarkerDirs(env.Getenv, dir)
 	if err != nil {
 		return dispatch.Result{}, err
 	}
@@ -534,13 +544,14 @@ func applyActions(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.D
 		Forge:        func(slug string) forge.Forge { return forges[slug] },
 		Workplace:    func(slug, node, profile string) workplace.Workplace { return places(repos[slug], node, profile) },
 		MCPConfig:    func(profile string) string { return cfg.Profiles[profile].MCPConfig },
-		ScheduledJob: scheduledJob(env, db, repos),
+		ScheduledJob: scheduledJob(env, db, cfg, forges, repos),
 		Remote:       scheduledRemote(env, dir, repos),
 		RoundLimit:   func(slug string) string { return repos[slug].Controller.AtRoundLimit },
+		Labels:       func(slug string) repoconfig.Labels { return repos[slug].Labels },
 		StateDir:     dir,
-		MarkerDir:    markerDir,
+		MarkerDir:    markerDirs[0],
 		RemoveMarker: func(session, key string) error {
-			return env.removeMarker(ctx, cfg, markerDir, markerNode[session], session, key)
+			return env.removeMarker(ctx, cfg, markerDirs, markerNode[session], session, key)
 		},
 		MaxWait:     cfg.MaxWait,
 		Now:         env.now,
@@ -555,10 +566,10 @@ func applyActions(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.D
 }
 
 // removeMarker removes the resume marker of session while its key is key: on node (DELETE
-// markers through serve), or in markerDir when node is "".
-func (e tickEnv) removeMarker(ctx context.Context, cfg hostconfig.Dispatch, markerDir, node, session, key string) error {
+// markers through serve), or in markerDirs when node is "".
+func (e tickEnv) removeMarker(ctx context.Context, cfg hostconfig.Dispatch, markerDirs []string, node, session, key string) error {
 	if node == "" {
-		return park.RemoveMarker(markerDir, session, key)
+		return park.RemoveMarkerIn(markerDirs, session, key)
 	}
 	c := e.serve(cfg, node)
 	if c == nil {
@@ -585,11 +596,11 @@ func (p prefixed) Write(b []byte) (int, error) {
 // gather writes one gathered line to errOut. rf is the forge of repo.
 func gatherRepo(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispatch, facts hostFacts, repo repoconfig.Repo,
 	rf repoForge, errOut io.Writer) (in *dispatch.RepoInput, fp string, _ *dispatch.Pre, err error) {
-	pre, err := measuredPre(ctx, env, db, cfg, rf.Forge, repo, errOut)
+	pre, err := measuredPre(ctx, env, db, cfg, rf, repo, errOut)
 	if err != nil {
 		return nil, "", nil, err
 	}
-	pre.Markers, pre.PauseUntil = facts.Markers[repo.Slug], facts.PauseUntil
+	pre.Markers, pre.PauseUntil, pre.Unreadable = facts.Markers[repo.Slug], facts.PauseUntil, facts.Unreadable
 	fp = dispatch.Fingerprint(pre)
 	prev, err := dispatch.LoadTickState(ctx, db, repo.Slug)
 	if err != nil {
@@ -611,8 +622,11 @@ func gatherRepo(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dis
 }
 
 // prepare is the board half of a gather: the open runs, the branch of each issue's last run,
-// and the board with the PRs of those branches.
-func prepare(ctx context.Context, db *sql.DB, f forge.Forge, repo repoconfig.Repo) (dispatch.Pre, error) {
+// and the board with the PRs of those branches. The To do marks of the last precheck spare the
+// comment reads of unchanged To do items (dispatch.ToDoProbe); with save, prepare saves the
+// marks when they changed, so the next precheck reads none on an unchanged board.
+func prepare(ctx context.Context, db *sql.DB, cfg hostconfig.Dispatch, rf repoForge, repo repoconfig.Repo,
+	save bool, now time.Time) (dispatch.Pre, error) {
 	open, err := runs.Open(ctx, db, repo.Slug)
 	if err != nil {
 		return dispatch.Pre{}, err
@@ -621,19 +635,33 @@ func prepare(ctx context.Context, db *sql.DB, f forge.Forge, repo repoconfig.Rep
 	if err != nil {
 		return dispatch.Pre{}, err
 	}
-	return dispatch.Prepare(ctx, f, repo, open, dispatch.IssueBranches(history))
+	state, err := dispatch.LoadTickState(ctx, db, repo.Slug)
+	if err != nil {
+		return dispatch.Pre{}, err
+	}
+	probe := dispatch.ToDoProbe{Known: state.ToDo, TokenLogin: rf.who, Trust: dispatch.NewTrust(rf.Forge, cfg.AnswerPermissions)}
+	pre, err := dispatch.Prepare(ctx, rf.Forge, repo, open, dispatch.IssueBranches(history), probe)
+	if err != nil {
+		return dispatch.Pre{}, err
+	}
+	if save && !dispatch.SameToDo(state.ToDo, pre.ToDo) {
+		if err := dispatch.SaveToDo(ctx, db, repo.Slug, pre.ToDo, now); err != nil {
+			return dispatch.Pre{}, err
+		}
+	}
+	return pre, nil
 }
 
 // measuredPre is the precheck half of a gather that tick and `lighthouse run` share: it
 // adopts the sessions of uncertain starts, reads the board half (prepare), and measures the
 // open runs. Adoption comes first, so the open runs prepare reads already hold a session that
 // showed up in this tick.
-func measuredPre(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispatch, f forge.Forge,
+func measuredPre(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispatch, rf repoForge,
 	repo repoconfig.Repo, errOut io.Writer) (dispatch.Pre, error) {
 	if err := adopt(ctx, env, db, cfg, repo, errOut); err != nil {
 		return dispatch.Pre{}, err
 	}
-	pre, err := prepare(ctx, db, f, repo)
+	pre, err := prepare(ctx, db, cfg, rf, repo, true, env.now())
 	if err != nil {
 		return dispatch.Pre{}, err
 	}
@@ -728,14 +756,33 @@ func (m *runProbe) measure(ctx context.Context, r runs.OpenRun) (stand workplace
 		}
 	}
 	if !s.Gone {
-		if s.Transcript, err = m.transcript(ctx, r); err != nil {
+		if s.Transcript, s.TranscriptUnmeasurable, err = m.transcript(ctx, r); err != nil {
 			return 0, false, dispatch.RunState{}, err
 		}
 	}
 	if s.Permission, err = m.permission(ctx, r); err != nil {
 		return 0, false, dispatch.RunState{}, err
 	}
+	if s.PostFailed, err = m.postFailed(ctx, r); err != nil {
+		return 0, false, dispatch.RunState{}, err
+	}
 	return stand, measured, s, nil
+}
+
+// postFailed is the post-failed note of the run, nil without one. It reads like permission: on a
+// node through serve (workplace.PostFailedReader), otherwise from the state directory. Content
+// that does not parse is a note with Unreadable set, never an error: the controller must still see
+// that a post failed. A serve that does not answer is an error.
+func (m *runProbe) postFailed(ctx context.Context, r runs.OpenRun) (*dispatch.PostFailed, error) {
+	pr, ok := m.w.(workplace.PostFailedReader)
+	if r.Node == "" || !ok {
+		return dispatch.ReadPostFailed(m.stateDir, r.SessionID)
+	}
+	data, mod, err := pr.PostFailed(ctx, r.SessionID)
+	if err != nil || data == nil {
+		return nil, err
+	}
+	return dispatch.ParsePostFailed(data, mod), nil
 }
 
 // permission is the permission note of the run, nil without one. A run on a node whose
@@ -759,23 +806,28 @@ func (m *runProbe) permission(ctx context.Context, r runs.OpenRun) (*dispatch.Pe
 // workplace without transcripts, no transcript directory on this host, no transcript file yet
 // (an uncertain start whose agent never ran), or a transcript without a timestamp.
 // A node that did not answer (workplace.ErrUnanswered) is an error: the run is not measured
-// this tick, so a nil transcript never makes it silent.
-func (m *runProbe) transcript(ctx context.Context, r runs.OpenRun) (*workplace.Transcript, error) {
+// this tick, so a nil transcript never makes it silent. unmeasurable is true when the workplace
+// should hold a transcript but cannot show it (workplace.ErrNotMeasurable): Decide then never
+// reads the nil as "no work after the Stop" (#514).
+func (m *runProbe) transcript(ctx context.Context, r runs.OpenRun) (t *workplace.Transcript, unmeasurable bool, err error) {
 	tr, ok := m.w.(workplace.Transcripts)
 	if !ok {
-		return nil, nil
+		return nil, false, nil
 	}
-	t, err := tr.Transcript(ctx, r.WorkspaceID, r.SessionID)
+	got, err := tr.Transcript(ctx, r.WorkspaceID, r.SessionID)
 	if errors.Is(err, workplace.ErrUnanswered) {
-		return nil, err // the node did not answer: the run is not measurable, never silent
+		return nil, false, err // the node did not answer: the run is not measurable, never silent
 	}
-	if errors.Is(err, workplace.ErrNotMeasurable) || errors.Is(err, fs.ErrNotExist) {
-		return nil, nil
+	if errors.Is(err, workplace.ErrNotMeasurable) {
+		return nil, true, nil
+	}
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, false, nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return &t, nil
+	return &got, false, nil
 }
 
 // decideInput is the Input of one decide over repos, with the limits of host.toml [dispatch],
@@ -828,9 +880,9 @@ func repoInput(ctx context.Context, db *sql.DB, cfg hostconfig.Dispatch, f forge
 	}
 	return dispatch.RepoInput{
 		Snapshot: snap, Controller: *pre.Repo.Controller, Language: pre.Repo.Language,
-		LocationPrefix: pre.Repo.Labels.LocationPrefix,
-		DefaultBranch:  pre.Repo.DefaultBranch, Installed: installed, History: history, Stands: pre.Stands, Runs: pre.Runs,
-		Markers:      pre.Markers,
+		LocationPrefix: pre.Repo.Labels.LocationPrefix, Labels: pre.Repo.Labels,
+		DefaultBranch: pre.Repo.DefaultBranch, Installed: installed, History: history, Stands: pre.Stands, Runs: pre.Runs,
+		Markers: pre.Markers, Unreadable: pre.Unreadable,
 		WorkflowPush: cfg.WorkflowPush != nil, PushTimeout: dispatch.PushTimeout(cfg),
 	}, nil
 }
@@ -849,4 +901,20 @@ func tokenEnvs(cfg hostconfig.Dispatch) []string {
 		}
 	}
 	return out
+}
+
+// cloneProblem is the one-line report, with its repair, of a kenn-forge clone of repo that is not
+// bare (kennforge.CheckClone, #478); "" when the clone is sound, when there is nothing to check
+// (another workplace, no HOME, no worktree to find the clone from) or when the check itself
+// fails: a failing check must not hide the sweep, so it is reported as a problem of its own.
+func cloneProblem(ctx context.Context, env tickEnv, cfg hostconfig.Dispatch, repo repoconfig.Repo) string {
+	home := env.Getenv("HOME")
+	if env.Workplace != nil || cfg.Workplace != hostconfig.WorkplaceKennForge || home == "" {
+		return ""
+	}
+	msg, err := kennforge.CheckClone(ctx, env.runner(), home, repo.Kind, repo.Host, repo.Slug)
+	if err != nil {
+		return "could not check the kenn-forge clone: " + oneLine(err)
+	}
+	return msg
 }

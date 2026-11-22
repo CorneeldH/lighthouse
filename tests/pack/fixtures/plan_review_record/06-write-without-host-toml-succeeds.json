@@ -1,0 +1,44 @@
+{
+  "description": "Without host.toml write still records: exit 0 and a record.json in the data directory.",
+  "steps": [
+    {
+      "op": "run",
+      "args": [
+        "start",
+        "${PLAN}"
+      ],
+      "bind": "a",
+      "expect": {}
+    },
+    {
+      "op": "round",
+      "attempt": "a",
+      "n": 1,
+      "severities": []
+    },
+    {
+      "op": "run",
+      "args": [
+        "write",
+        "${a}",
+        "--outcome",
+        "converged",
+        "--review-mode",
+        "codex",
+        "--spec",
+        "${SPEC}"
+      ],
+      "expect": {
+        "stdout_equals": "${data}/plan-review/2026-09-25-voorbeeld/${a.name}\n",
+        "stderr_not_contains": [
+          "NOT RECORDED"
+        ],
+        "dir_files": [
+          "attempt.json",
+          "record.json",
+          "round-1.json"
+        ]
+      }
+    }
+  ]
+}

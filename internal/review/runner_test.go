@@ -60,6 +60,7 @@ func newRound(t *testing.T) *round {
 	r := &round{capture: filepath.Join(tmp, "capture.txt")}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("HOME", home)
+	t.Setenv("CODEX_HOME", "")
 	t.Setenv("CODEX_SPECREVIEW_HOME", filepath.Join(tmp, "ch"))
 	t.Setenv("LIGHTHOUSE_REPO_ROOT", repo)
 	t.Setenv("LIGHTHOUSE_CODEX_BUDGET_CMD", "")
@@ -224,5 +225,61 @@ func TestRoundFailureExits(t *testing.T) {
 				t.Errorf("stderr = %q, want it to contain %q", r.stderr.String(), c.stderr)
 			}
 		})
+	}
+}
+
+// codexHomeRound is a round whose login lives in CODEX_HOME, not in $HOME/.codex.
+func codexHomeRound(t *testing.T, withAuth bool) (*round, string) {
+	t.Helper()
+	r := newRound(t)
+	r.opts.ReadBudget = func(context.Context) (usage.BudgetOutcome, int, string) {
+		return usage.BudgetOutcome{Decision: "codex", Reason: "ok"}, 0, ""
+	}
+	if err := os.RemoveAll(filepath.Join(os.Getenv("HOME"), ".codex")); err != nil {
+		t.Fatal(err)
+	}
+	runHome := filepath.Join(t.TempDir(), "run-home")
+	if err := os.MkdirAll(runHome, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if withAuth {
+		if err := os.WriteFile(filepath.Join(runHome, "auth.json"), []byte("run-token"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("CODEX_HOME", runHome)
+	return r, runHome
+}
+
+func TestRunCopiesAuthFromCodexHome(t *testing.T) {
+	r, _ := codexHomeRound(t, true)
+	if code := r.run(); code != 0 {
+		t.Fatalf("exit %d, stderr: %s", code, r.stderr.String())
+	}
+	got := string(readFile(t, filepath.Join(os.Getenv("CODEX_SPECREVIEW_HOME"), "auth.json")))
+	if got != "run-token" {
+		t.Errorf("clean home auth.json = %q, want run-token", got)
+	}
+}
+
+func TestRunCodexHomeWithoutAuth(t *testing.T) {
+	r, runHome := codexHomeRound(t, false)
+	if code := r.run(); code != ExitNoLogin {
+		t.Fatalf("exit %d, want %d; stderr: %s", code, ExitNoLogin, r.stderr.String())
+	}
+	want := "CODEX_UNAUTHENTICATED: " + filepath.Join(runHome, "auth.json") + " missing"
+	if !strings.Contains(r.stderr.String(), want) {
+		t.Errorf("stderr = %q, want it to contain %q", r.stderr.String(), want)
+	}
+}
+
+func TestRunCodexHomeIsCleanHome(t *testing.T) {
+	r, runHome := codexHomeRound(t, true)
+	t.Setenv("CODEX_SPECREVIEW_HOME", runHome)
+	if code := r.run(); code != 0 {
+		t.Fatalf("exit %d, stderr: %s", code, r.stderr.String())
+	}
+	if got := string(readFile(t, filepath.Join(runHome, "auth.json"))); got != "run-token" {
+		t.Errorf("auth.json = %q, want run-token (unchanged)", got)
 	}
 }

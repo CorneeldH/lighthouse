@@ -40,6 +40,14 @@ type Repo struct {
 	ReportErr error
 	// Schedules is [[schedule]], validated by Load; empty when the repo has none.
 	Schedules []Schedule
+	// Paths is [paths]: repo-relative paths, "" when a key is not set.
+	Paths Paths
+}
+
+// Paths is the part of [paths] that lighthouse reads here: the labels document, the tenets
+// document, the areas directory and the strategy document, all relative to the repo.
+type Paths struct {
+	Labels, Tenets, Areas, Strategy string
 }
 
 // Report is [report]: whether lighthouse report runs, where it writes and, for sink "file", the
@@ -59,6 +67,16 @@ type Labels struct {
 // Blocking returns the six blocked_* and needs_* label names, in that order.
 func (l Labels) Blocking() []string {
 	return []string{l.BlockedIssue, l.BlockedExternal, l.NeedsShaping, l.NeedsDecision, l.NeedsHands, l.NeedsTesting}
+}
+
+// NeedsName returns the first of the four needs_* label names that labels carries, "" when none.
+func (l Labels) NeedsName(labels []string) string {
+	for _, name := range []string{l.NeedsShaping, l.NeedsDecision, l.NeedsHands, l.NeedsTesting} {
+		if name != "" && slices.Contains(labels, name) {
+			return name
+		}
+	}
+	return ""
 }
 
 // Triage is [controller.triage]. Load fills the defaults: MilestonesOnly and WaitForNight
@@ -138,8 +156,27 @@ type rawFile struct {
 	UsageGuard struct {
 		Controller bool `toml:"controller"`
 	} `toml:"usage_guard"`
+	Paths struct {
+		Labels   string `toml:"labels"`
+		Tenets   string `toml:"tenets"`
+		Areas    string `toml:"areas"`
+		Strategy string `toml:"strategy"`
+	} `toml:"paths"`
 	Report   toml.Primitive `toml:"report"`
 	Schedule []rawSchedule  `toml:"schedule"`
+}
+
+// DefaultLabels are the blocking label names of a repo without a repo config: the defaults of
+// internal/config. The location and area prefixes have no default.
+func DefaultLabels() Labels {
+	return Labels{
+		BlockedIssue:    defaultString("labels.blocked_issue"),
+		BlockedExternal: defaultString("labels.blocked_external"),
+		NeedsShaping:    defaultString("labels.needs_shaping"),
+		NeedsDecision:   defaultString("labels.needs_decision"),
+		NeedsHands:      defaultString("labels.needs_hands"),
+		NeedsTesting:    defaultString("labels.needs_testing"),
+	}
 }
 
 // defaultString is the default of key from internal/config, the one source of defaults.
@@ -199,6 +236,7 @@ func LoadFile(path string) (Repo, error) {
 		Language:             cmp.Or(raw.Project.Language, "en"),
 		Board:                raw.Forge.Board,
 		UsageGuardController: raw.UsageGuard.Controller,
+		Paths:                Paths(raw.Paths),
 		Labels: Labels{
 			BlockedIssue:    cmp.Or(raw.Labels.BlockedIssue, defaultString("labels.blocked_issue")),
 			BlockedExternal: cmp.Or(raw.Labels.BlockedExternal, defaultString("labels.blocked_external")),
@@ -368,7 +406,7 @@ func Dispatchable(r Repo) error {
 				add("forge.board.status_field_id is empty")
 			}
 		}
-		for _, name := range []string{"Controller", "On hold"} {
+		for _, name := range []string{"Controller"} {
 			if b.StatusOptions[name] == "" {
 				add("missing forge.board.status_options.%s", name)
 			}

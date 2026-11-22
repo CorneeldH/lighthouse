@@ -40,6 +40,7 @@ on = [
 
 [light.components]
 commit-test-gate = "off"
+"skill:map-planned" = "off"
 md-link-check = "log"
 code-language-check = "log"
 "skill:write-issue" = "off"

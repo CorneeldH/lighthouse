@@ -65,7 +65,7 @@ func TestBoardStartOpensTheForgeOfLighthouseToml(t *testing.T) {
 			boardStartToml(t, tc.extra)
 			srv := forgetest.New(t)
 			srv.ProjectID = "PVT_test"
-			srv.BoardNodes = []map[string]any{{"id": "PVTI_a", "content": map[string]any{"number": 7},
+			srv.BoardNodes = []map[string]any{{"id": "PVTI_a", "content": map[string]any{"number": 7, "repository": map[string]any{"nameWithOwner": "Owner/repo"}},
 				"fieldValues": map[string]any{"nodes": []any{map[string]any{"optionId": "opt-todo", "name": "To do",
 					"field": map[string]any{"id": "FIELD_test"}}}}}}
 			o := newForgeOpener(func(string) string { return "" }, srv.URL())
@@ -87,8 +87,9 @@ func TestBoardStartOpensTheForgeOfLighthouseToml(t *testing.T) {
 			if got := srv.StatusSets[0]; got["project"] != "PVT_test" || got["item"] != "PVTI_a" || got["option"] != "opt-progress" {
 				t.Errorf("SetStatus variables = %v; want project PVT_test, item PVTI_a, option opt-progress", got)
 			}
-			if vars := srv.Posts[0].Body["variables"].(map[string]any); vars["owner"] != "Owner" || vars["name"] != "repo" || vars["number"] != float64(7) {
-				t.Errorf("IssueItems variables = %v; want owner Owner, name repo, number 7", vars)
+			// The item of Owner/repo#7 comes from the REST board of owner Owner, without GraphQL.
+			if n, gql := srv.Count("/users/Owner/projectsV2/1/items"), srv.GraphQLCount(); n != 1 || gql != 0 {
+				t.Errorf("board item reads = %d, GraphQL requests = %d; want 1 and 0", n, gql)
 			}
 		})
 	}

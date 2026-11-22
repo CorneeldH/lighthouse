@@ -679,6 +679,27 @@
       "without": "Issues blocked on the closed issue stay blocked until someone removes the label.",
       "status": "works",
       "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/workflows/unblock-dependents.yml"
+    },
+    {
+      "id": "close-followup",
+      "phase": "close",
+      "row": 2,
+      "kind": "lighthouse",
+      "form": "dispatcher",
+      "trigger": "event",
+      "label": "close-check follow-up",
+      "what": "An after-merge check that finds open criteria ends in a next step instead of leaving the issue idle.",
+      "how": [
+        "Open criteria that ask for code or docs in the repo end in a handoff to start-issue, which the controller starts.",
+        "Manual work or waiting for an event ends in one question through lighthouse ask, with every command as --command; the answer resumes the session, which checks the criteria again.",
+        "A criterion that waits on another issue is recorded so the controller picks the issue up again when that issue closes.",
+        "A close-check run the controller hands back names the check as its reason."
+      ],
+      "when": "When the after-merge check of a Refs PR finds criteria still open.",
+      "without": "The check posts its table and stops; nothing picks up the open criteria.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/skills/close-issue",
+      "milestone": null
     }
   ],
   "handoff": {
@@ -778,6 +799,7 @@
         "pr-create-gate",
         "pr-and-ci",
         "close-issue",
+        "close-followup",
         "unblock-dependents"
       ]
     },
@@ -806,6 +828,7 @@
         "pr-create-gate",
         "pr-and-ci",
         "close-issue",
+        "close-followup",
         "unblock-dependents"
       ]
     },
@@ -837,7 +860,8 @@
         "roborev",
         "pr-create-gate",
         "pr-and-ci",
-        "close-issue"
+        "close-issue",
+        "close-followup"
       ]
     },
     {
@@ -862,7 +886,8 @@
         "roborev",
         "pr-create-gate",
         "pr-and-ci",
-        "close-issue"
+        "close-issue",
+        "close-followup"
       ]
     },
     {
@@ -886,7 +911,8 @@
         "roborev",
         "pr-create-gate",
         "pr-and-ci",
-        "close-issue"
+        "close-issue",
+        "close-followup"
       ]
     },
     {
@@ -918,7 +944,8 @@
         "pr-create-gate",
         "pr-and-ci",
         "fix-pr",
-        "close-issue"
+        "close-issue",
+        "close-followup"
       ]
     },
     {

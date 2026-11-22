@@ -86,6 +86,28 @@ func (g *GitLab) BlockedBy(ctx context.Context, number int) ([]Blocker, error) {
 	return out, nil
 }
 
+// Blocking lists the issues that issue number blocks: the links of type blocks, also those into
+// other projects, with the state of the linked issue. MergedPR stays false.
+func (g *GitLab) Blocking(ctx context.Context, number int) ([]Blocker, error) {
+	links, err := getAll[glLink](ctx, g, g.projectPath("/issues/"+strconv.Itoa(number)+"/links"), nil)
+	if err != nil {
+		return nil, err
+	}
+	var out []Blocker
+	for _, l := range links {
+		if l.LinkType != "blocks" {
+			continue
+		}
+		repo, _, _ := strings.Cut(l.References.Full, "#")
+		b := Blocker{Repo: repo, Issue: l.IID, State: "OPEN"}
+		if l.State == "closed" {
+			b.State = "CLOSED"
+		}
+		out = append(out, b)
+	}
+	return out, nil
+}
+
 // closedByMerged reports whether a merge request that closes issue iid of project is merged.
 func (g *GitLab) closedByMerged(ctx context.Context, project string, iid int) (bool, error) {
 	mrs, err := getAll[struct {

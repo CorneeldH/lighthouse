@@ -24,6 +24,12 @@ export interface CleanupOutputBody {
   cleanup: Leftover[] | null;
 }
 
+export interface ClosedIssue {
+  number: number;
+  title: string;
+  url: string;
+}
+
 export interface DeferredView {
   at: string;
   issue: number;
@@ -73,14 +79,21 @@ export interface MilestoneRef {
 export interface Issue {
   /** @nullable */
   blocked_by: Blocker[] | null;
+  factor: number;
+  label: string;
   milestone?: MilestoneRef;
+  needs_label: boolean;
   number: number;
+  open_question: boolean;
+  prio_weight: number;
   status: string;
   title: string;
   url: string;
 }
 
 export interface Milestone {
+  /** @nullable */
+  closed: ClosedIssue[] | null;
   description: string;
   done: number;
   number: number;
@@ -100,6 +113,36 @@ export interface Question {
 export interface QuestionsOutputBody {
   /** @nullable */
   questions: Question[] | null;
+}
+
+export interface RankChange {
+  /**
+     * @minimum 1
+     * @nullable
+     */
+  from: number | null;
+  /** @minimum 1 */
+  number: number;
+  /**
+     * @minimum 1
+     * @maximum 1000000
+     */
+  to: number;
+}
+
+export interface RanksRequest {
+  /**
+     * @minItems 1
+     * @maxItems 200
+     * @nullable
+     */
+  changes: RankChange[] | null;
+  repo: string;
+}
+
+export interface RanksResult {
+  /** @nullable */
+  written: number[] | null;
 }
 
 export interface Repo {
@@ -415,6 +458,102 @@ export const getPriorities = async ( options?: RequestInit): Promise<getPrioriti
 
   const data: getPrioritiesResponse['data'] = body ? JSON.parse(body) : {}
   return { data, status: res.status, headers: res.headers } as getPrioritiesResponse
+}
+
+
+
+export type postMilestoneRanksResponse200 = {
+  data: RanksResult
+  status: 200
+}
+
+export type postMilestoneRanksResponse403 = {
+  data: ErrorModel
+  status: 403
+}
+
+export type postMilestoneRanksResponse404 = {
+  data: ErrorModel
+  status: 404
+}
+
+export type postMilestoneRanksResponse409 = {
+  data: ErrorModel
+  status: 409
+}
+
+export type postMilestoneRanksResponse415 = {
+  data: ErrorModel
+  status: 415
+}
+
+export type postMilestoneRanksResponse422 = {
+  data: ErrorModel
+  status: 422
+}
+
+export type postMilestoneRanksResponse500 = {
+  data: ErrorModel
+  status: 500
+}
+
+export type postMilestoneRanksResponse502 = {
+  data: ErrorModel
+  status: 502
+}
+
+export type postMilestoneRanksResponse503 = {
+  data: ErrorModel
+  status: 503
+}
+
+export type postMilestoneRanksResponseSuccess = (postMilestoneRanksResponse200) & {
+  headers: Headers;
+};
+export type postMilestoneRanksResponseError = (postMilestoneRanksResponse403 | postMilestoneRanksResponse404 | postMilestoneRanksResponse409 | postMilestoneRanksResponse415 | postMilestoneRanksResponse422 | postMilestoneRanksResponse500 | postMilestoneRanksResponse502 | postMilestoneRanksResponse503) & {
+  headers: Headers;
+};
+
+export type postMilestoneRanksResponse = (postMilestoneRanksResponseSuccess | postMilestoneRanksResponseError)
+
+export const getPostMilestoneRanksUrl = () => {
+
+
+
+
+  return `/api/priorities/milestone-ranks`
+}
+
+export const postMilestoneRanks = async (ranksRequest: RanksRequest, options?: RequestInit): Promise<postMilestoneRanksResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+const res = await fetch(getPostMilestoneRanksUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(ranksRequest)
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: postMilestoneRanksResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as postMilestoneRanksResponse
 }
 
 

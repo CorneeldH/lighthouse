@@ -16,6 +16,7 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/orderedjson"
 	"github.com/CorneeldH/lighthouse/internal/roborev"
+	"github.com/CorneeldH/lighthouse/internal/usage"
 )
 
 // The roborev-gate cases: one JSON file per case in
@@ -352,7 +353,7 @@ func (r *gateRun) step(step map[string]any) {
 			t.Errorf("CountCodeLines = %d, want %v", got, step["expect"])
 		}
 	case "gate":
-		out, err := roborev.Gate(root, gateBudget(t, step["budget"]))
+		out, err := roborev.Gate(root, gateBudget(t, step["budget"]), noClaudeAlarm)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -511,7 +512,7 @@ func (r *gateRun) cli(step map[string]any) {
 		t.Helper()
 		t.Fatal("budget must not be consulted")
 		return 0, ""
-	}))
+	}, noClaudeAlarm))
 	args := []string{"roborev-gate"}
 	for _, a := range r.sub(step["args"]).([]any) {
 		args = append(args, a.(string))
@@ -591,7 +592,7 @@ func TestRoborevGateUsageAndRegistration(t *testing.T) {
 		cmd := &cobra.Command{Use: "lighthouse", SilenceUsage: true, SilenceErrors: true}
 		cmd.SetOut(&out)
 		cmd.SetErr(&errOut)
-		cmd.AddCommand(newRoborevGateCommand(func() (int, string) { return 0, "" }))
+		cmd.AddCommand(newRoborevGateCommand(func() (int, string) { return 0, "" }, noClaudeAlarm))
 		cmd.SetArgs(append([]string{"roborev-gate"}, args...))
 		if code := execute(cmd, &errOut); code != 2 || out.String() != "" {
 			t.Errorf("%s: code %d, stdout %q; want 2 and nothing", name, code, out.String())
@@ -609,7 +610,7 @@ func TestRoborevGateStdoutIsOneOrderedLine(t *testing.T) {
 	cmd := &cobra.Command{Use: "lighthouse", SilenceUsage: true, SilenceErrors: true}
 	cmd.SetOut(&out)
 	cmd.SetErr(&errOut)
-	cmd.AddCommand(newRoborevGateCommand(func() (int, string) { return 0, "" }))
+	cmd.AddCommand(newRoborevGateCommand(func() (int, string) { return 0, "" }, noClaudeAlarm))
 	cmd.SetArgs([]string{"roborev-gate", "gate"})
 	if code := execute(cmd, &errOut); code != 0 {
 		t.Fatalf("exit %d: %s", code, errOut.String())
@@ -631,7 +632,7 @@ func TestRoborevGateProductionBudgetNotMeasurable(t *testing.T) {
 	cmd := &cobra.Command{Use: "lighthouse", SilenceUsage: true, SilenceErrors: true}
 	cmd.SetOut(&out)
 	cmd.SetErr(&errOut)
-	cmd.AddCommand(newRoborevGateCommand(roborev.DefaultBudget()))
+	cmd.AddCommand(newRoborevGateCommand(roborev.DefaultBudget(), noClaudeAlarm))
 	cmd.SetArgs([]string{"roborev-gate", "gate"})
 	if code := execute(cmd, &errOut); code != 0 {
 		t.Fatalf("exit %d: %s", code, errOut.String())
@@ -657,7 +658,7 @@ func TestRoborevGatePushFlag(t *testing.T) {
 	cmd := &cobra.Command{Use: "lighthouse", SilenceUsage: true, SilenceErrors: true}
 	cmd.SetOut(&out)
 	cmd.SetErr(&errOut)
-	cmd.AddCommand(newRoborevGateCommand(func() (int, string) { return 0, "" }))
+	cmd.AddCommand(newRoborevGateCommand(func() (int, string) { return 0, "" }, noClaudeAlarm))
 	cmd.SetArgs([]string{"roborev-gate", "gate", "--push"})
 	if code := execute(cmd, &errOut); code != 0 {
 		t.Fatalf("exit %d: %s", code, errOut.String())
@@ -684,7 +685,7 @@ func TestRoborevBodyLinePushFlag(t *testing.T) {
 		cmd := &cobra.Command{Use: "lighthouse", SilenceUsage: true, SilenceErrors: true}
 		cmd.SetOut(&out)
 		cmd.SetErr(&errOut)
-		cmd.AddCommand(newRoborevGateCommand(func() (int, string) { return 0, "" }))
+		cmd.AddCommand(newRoborevGateCommand(func() (int, string) { return 0, "" }, noClaudeAlarm))
 		cmd.SetArgs(append([]string{"roborev-gate"}, strings.Fields(args)...))
 		if code := execute(cmd, &errOut); code != 0 {
 			t.Fatalf("%s: exit %d: %s", args, code, errOut.String())
@@ -694,3 +695,5 @@ func TestRoborevBodyLinePushFlag(t *testing.T) {
 		}
 	}
 }
+
+func noClaudeAlarm() (usage.Alarm, bool) { return usage.Alarm{}, false }

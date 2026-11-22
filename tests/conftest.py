@@ -8,9 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from tests._network import network_error, offline
 from tests._shard import ENV, in_shard, parse_shard
-from tests.pack._testkit import lighthouse_dir
+from tests.pack.python._testkit import lighthouse_dir
 
 SHARD = pytest.StashKey[tuple[int, int] | None]()
 
@@ -42,20 +41,6 @@ def pytest_collection_modifyitems(config, items):
     items[:] = kept
     if dropped:
         config.hook.pytest_deselected(items=dropped)
-
-
-@pytest.hookimpl(wrapper=True)
-def pytest_runtest_makereport(item, call):
-    # A failure whose explanation names a network error of a tool (curl, uv, go) while the
-    # runner is offline is a skip with that line as the reason: lighthouse did nothing wrong
-    # (#338). Every other failure stays red; tests/_network.py says which lines count.
-    report = yield
-    exempt = item.get_closest_marker("network_stays_red") is not None
-    reason = network_error(report.longreprtext) if report.failed and not exempt else None
-    if reason and offline():
-        report.outcome = "skipped"
-        report.longrepr = (str(item.path), item.location[1], f"Skipped: network: {reason}")
-    return report
 
 
 @pytest.fixture(scope="session")

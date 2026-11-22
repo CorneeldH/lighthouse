@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { ApiError, fetchPriorities, fetchQuestions, fetchRuns, forgeErrorText } from './api'
+import { ApiError, fetchPriorities, fetchQuestions, fetchRuns, forgeErrorText, saveMilestoneRanks } from './api'
 
 afterEach(() => {
   vi.unstubAllGlobals()
@@ -114,5 +114,29 @@ describe('forgeErrorText', () => {
 
   it('reports an unreachable server on a TypeError', () => {
     expect(forgeErrorText(new TypeError('Failed to fetch'))).toBe('Server unreachable')
+  })
+})
+
+describe('saveMilestoneRanks', () => {
+  it('posts the changes as JSON to the milestone-ranks endpoint', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response('{"written":[6]}', { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+    await saveMilestoneRanks('o/r', [{ number: 6, from: null, to: 1 }])
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(url).toBe('/api/priorities/milestone-ranks')
+    expect(init.method).toBe('POST')
+    expect(new Headers(init.headers).get('Content-Type')).toBe('application/json')
+    expect(new Headers(init.headers).has('Origin')).toBe(false)
+    expect(JSON.parse(init.body as string)).toEqual({ repo: 'o/r', changes: [{ number: 6, from: null, to: 1 }] })
+  })
+
+  it('throws ApiError(409) with the detail on a stale rank', async () => {
+    stubResponse('{"detail":"rank changed"}', 409, 'application/problem+json')
+    const err = await saveMilestoneRanks('o/r', [{ number: 6, from: 2, to: 1 }]).catch((e: unknown) => e)
+    expect(err).toBeInstanceOf(ApiError)
+    expect(err).toMatchObject({ status: 409, detail: 'rank changed' })
   })
 })

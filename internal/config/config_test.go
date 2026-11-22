@@ -119,6 +119,31 @@ func TestLookupErrorKinds(t *testing.T) {
 	}
 }
 
+// TestStatusOptionsWithoutOnHoldValid pins that On hold is not a required status option: a board
+// with only To do, In progress and Done loads. It goes red when "On hold" returns to
+// requiredStatusOptions.
+func TestStatusOptionsWithoutOnHoldValid(t *testing.T) {
+	src := `[forge]
+kind = "github"
+repo = "acme/widgets"
+[forge.board]
+project_number = 7
+project_id = "PVT_x"
+status_field_id = "PVTSSF_s"
+[forge.board.status_options]
+"To do" = "a1"
+"In progress" = "a2"
+Done = "a3"
+`
+	c, err := Parse([]byte(src), "lighthouse.toml")
+	if err != nil {
+		t.Fatalf("Parse without On hold: %v", err)
+	}
+	if _, ok := c.Board.StatusOptions["On hold"]; ok {
+		t.Errorf("StatusOptions = %v, want no On hold", c.Board.StatusOptions)
+	}
+}
+
 func TestParseFillsConfig(t *testing.T) {
 	src := `[forge]
 kind = "github"
@@ -345,6 +370,37 @@ func TestReportEnabledMustBeBool(t *testing.T) {
 	}
 }
 
+// runImportsCheck runs `lighthouse config imports.check` against a lighthouse.toml with body.
+func runImportsCheck(t *testing.T, body string) (int, string) {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(dir+"/lighthouse.toml", []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+	t.Setenv("LIGHTHOUSE_REPO_ROOT", "")
+	t.Setenv("LIGHTHOUSE_TOML", "lighthouse.toml")
+	t.Setenv("LIGHTHOUSE_HOST_TOML", "host.toml")
+	var out, errOut bytes.Buffer
+	rc := Run([]string{"imports.check"}, &out, &errOut)
+	if rc != 0 {
+		t.Errorf("rc = %d, want 0 (stderr %q)", rc, errOut.String())
+	}
+	return rc, out.String()
+}
+
+func TestImportsCheckDefaultsToTrue(t *testing.T) {
+	if _, got := runImportsCheck(t, ""); got != "true\n" {
+		t.Errorf("stdout = %q, want %q", got, "true\n")
+	}
+}
+
+func TestImportsCheckFalse(t *testing.T) {
+	if _, got := runImportsCheck(t, "[imports]\ncheck = false\n"); got != "false\n" {
+		t.Errorf("stdout = %q, want %q", got, "false\n")
+	}
+}
+
 const gitlabBoard = `[forge]
 kind = "gitlab"
 repo = "g/sub/p"
@@ -427,7 +483,7 @@ func TestInstallDocGitLabExampleParses(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Parse(install.md example) = %v\n%s", err, src)
 		}
-		want := map[string]string{"To do": "To do", "In progress": "In progress", "Done": "Done", "On hold": "On hold", "Controller": "Controller"}
+		want := map[string]string{"To do": "To do", "In progress": "In progress", "Done": "Done", "Controller": "Controller"}
 		if c.Board == nil || !reflect.DeepEqual(c.Board.StatusOptions, want) {
 			t.Errorf("status_options = %v, want %v", c.Board, want)
 		}

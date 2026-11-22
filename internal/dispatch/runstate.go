@@ -18,7 +18,12 @@ type RunState struct {
 	Gone       bool                  `json:"gone,omitempty"`       // the workplace no longer knows the workspace
 	SessionAt  time.Time             `json:"session_at,omitzero"`  // forge updated_at of the run's session
 	Transcript *workplace.Transcript `json:"transcript,omitempty"` // nil: not measurable
-	Permission *Permission           `json:"permission,omitempty"`
+	// TranscriptUnmeasurable is true when the workplace should hold the transcript but could not
+	// show it (a container run whose transcript is not on this host, #514). A forge stand done
+	// then proves nothing: claude may have ended its turn for a background task.
+	TranscriptUnmeasurable bool        `json:"transcript_unmeasurable,omitempty"`
+	Permission             *Permission `json:"permission,omitempty"`
+	PostFailed             *PostFailed `json:"post_failed,omitempty"` // the note of a failed post
 }
 
 // Permission is the permission prompt the session of a run last showed, as the

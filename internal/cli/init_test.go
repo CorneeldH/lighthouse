@@ -13,9 +13,23 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/agentaudit"
 )
 
+// hooksCheckStubbed is true while a test has put its own hooksCheck in place; runInit then
+// leaves it, and otherwise swaps in a no-op so no init test starts real smoketests.
+var hooksCheckStubbed bool
+
+func stubHooksCheck(t *testing.T, f func(string, io.Writer, io.Writer) int) {
+	t.Helper()
+	orig := hooksCheck
+	hooksCheck, hooksCheckStubbed = f, true
+	t.Cleanup(func() { hooksCheck, hooksCheckStubbed = orig, false })
+}
+
 // runInit runs `lighthouse init <args>` in a new git repository with an isolated home.
 func runInit(t *testing.T, args ...string) (code int, stdout, stderr string) {
 	t.Helper()
+	if !hooksCheckStubbed {
+		stubHooksCheck(t, func(string, io.Writer, io.Writer) int { return 0 })
+	}
 	dir := t.TempDir()
 	if out, err := exec.Command("git", "-C", dir, "init", "-q", "-b", "main").CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v\n%s", err, out)

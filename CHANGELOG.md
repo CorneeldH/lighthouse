@@ -4,6 +4,107 @@ All notable changes to lighthouse. The format follows [Keep a Changelog](https:/
 chosen is in [docs/releasing.md](docs/releasing.md). The release workflow writes the sections below from the
 fragments in `changelog.d/`; never edit a released section by hand.
 
+## [v0.24.1] - 2026-11-22
+
+### Fixed
+
+- De loop-kaart toont de nacontrole-vervolgstap (#394) als werkend; `loop-roadmap` op `main` is weer groen.
+- Een controller-run die de usage-gate parkeert schrijft zijn resume-marker nu naar `<LIGHTHOUSE_STATE_DIR>/resume`, de map die een kenn-forge-container deelt met de host, en de controller leest die map naast de eigen marker-map. Zo gaat een geparkeerde run in een container niet meer terug met *geen handoff of vraag*. Een marker die de controller niet kan lezen geeft de reden *geparkeerd, marker niet leesbaar*. (#513)
+
+## [v0.24.0] - 2026-11-22
+
+### Added
+
+- Lighthouse legt de richting van een repo vast in drie documenten (strategie, uitgangspunten en areas), met de nieuwe sleutel `paths.strategy` in `lighthouse.toml` en een vormtest die ze controleert.
+- `lighthouse check-hooks` checks that the hooks registered in `.claude/settings.json` can run: the shell (`sh`, or Git Bash on Windows), the scripts, the line endings and a smoketest per hook. `lighthouse init` runs it after writing and prints the result, and sets `.gitattributes` rules so a checkout does not turn the hooks into CRLF.
+- Direction documents are optional for every repo: `lighthouse init --direction` seeds a strategy, tenets and one file per area from templates (only what is missing, never overwriting), and `lighthouse direction check` verifies them in any language and stays silent in a repo without those keys.
+
+### Changed
+
+- A red step of the workflow pusher that an answer `push` cannot act on (trigger, config, route, floor, policy, lint, and every refusal of the merge pusher) is no longer a 🤖 Question but a 🤖 Returned with `reason: workflow pusher red: <step>`, the diff folded and the command under *Push it yourself* or *Merge it yourself*; tick then gives the issue back with `needs_hands`. A real pusher Question opens with the question itself, so the controller's list of open questions no longer shows the whole diff.
+- `write-issue`, `map-planned` en `close-issue` lezen de richting van de repo voordat ze iets doen.
+- A close-issue check that waits for a predecessor now ends in a handoff to itself (or asks a question) instead of ending silently, and a close run that ends with neither gets its own reason, "nacontrole: criteria open". A blocked issue may now get a spec but no plan, both interactively and in the controller.
+- The tool pins in `lighthouse.toml` follow upstream again: codex 0.171.0 (was 0.157.0), kenn-forge 0.8.0 (was 0.5.1) and roborev 0.75.0 (was 0.69.0).
+- De afhankelijkhedengraaf in de Prioritering-tab tekent de toestand met dezelfde vormentaal als de milestone-balk, en issues zonder afhankelijkheden krijgen een volwaardige kaart in een raster onder de graaf.
+- `IssueItem` en `Planning` van de GitHub-forge gebruiken geen GraphQL meer. Een leeg GraphQL-budget laat het opzoeken van een boarditem en het tabblad Prioritering daardoor niet meer falen. Een gearchiveerd item blijft vindbaar, ook in een nieuw proces, als een eerdere boardlezing het zag (tot 30 dagen daarna). `MilestoneCount.Done` telt nog altijd alleen als *completed* gesloten issues.
+- Bij een vol Codex-budget reviewt roborev met Claude, zolang `claude` op PATH staat en het Claude-alarm uit is. Daardoor eindigt een workflow-push in een vol Codex-venster niet meer in een Vraag. De marker en het record noemen de agent.
+- Lighthouse runs natively on Windows: Claude Code runs the hooks in Git Bash, where every core hook passes, the test gate included. The getting-started guide, the install page and the agent guide now name that route, with Git for Windows as the requirement; WSL is no longer needed. The site opens the Windows tab for a Windows visitor.
+
+### Fixed
+
+- `lighthouse init --upgrade` treats a file that only has CRLF line endings as unchanged and writes it back with LF, without `--force`. An existing CRLF file without a manifest line is also repaired by `init`.
+- A run in a kenn-forge container whose transcript is not on the host is no longer handed back as *no handoff or question* at its first ended turn with a running subagent (#514). The adapter now reads such a transcript from the devcontainer for every profile, not only `software`, and a transcript that stays not measurable counts as work after the Stop: the run stays open until the silence or runtime rules decide.
+- Een antwoord op een 🤖 Vraag dat de prompt van de hervatting boven de 64 KiB van kenn-forge brengt, maakt de start niet meer onmogelijk: de prompt bevat dan alleen het begin van het antwoord en een verwijzing naar de comment met het volledige antwoord. Een kort antwoord blijft letterlijk. De grens (`protocol.PromptLimit`) staat op één plek.
+
+## [v0.23.0] - 2026-11-22
+
+### Added
+
+- `lighthouse init` sets `"language": "dutch"` in `.claude/settings.json` when `[project] language` is `nl`, so Claude Code replies in Dutch; a `language` that is already there stays, with a warning. The core block now also puts chat replies in `[project] language`, except with `en`.
+- De repokaart heeft een stand Upgrade die per rij toont wat `init --upgrade` doet en waar `--force` nodig is.
+- De weergave *Milestones* van het tabblad Prioritering heeft een stand *Prioriteit*, naast *Berekend*, met Omhoog en Omlaag. `lighthouse serve` schrijft daarbij een regel `Priority: N` in de beschrijving van de milestone (`POST /api/priorities/milestone-ranks`) en eist daarvoor een `Origin` gelijk aan `Host`. De Vite-devproxy staat daarom op `changeOrigin: false`.
+- De geplande job `map-planned` zet open issues met het label van een geplande kaart als geplande items op hun kaartdocument en stelt een vraag waar de plek of de wens onduidelijk is. Deze repo zet de job aan (elke dag om 05:00).
+- Een run kan zijn eigen `CODEX_HOME` krijgen: is die gezet, dan meten `lighthouse codex-usage`, de roborev-gate en `lighthouse usage` alleen die home, en haalt `review-run` zijn `auth.json` daar vandaan. Zonder `CODEX_HOME` blijft alles bij `~/.codex` en `~/.codex-specreview`.
+
+### Changed
+
+- The *Open questions* block of `lighthouse serve` shows only the question itself, numbered in a bundle; where, what, the options and the commands stay on the issue behind the link.
+- `lighthouse init` schrijft een korter core-blok in `AGENTS.md`: de lijst met skills is eruit, want de skillcatalogus draagt ze, en de regels over de ontsnapping en de worktree zijn ingekort, want de hookmeldingen dragen ze; `lighthouse init --upgrade` verwijdert daarnaast het shellblok.
+- Een tick doet minder opeenvolgende GitHub-reads: de blokkades van een gesloten issue worden niet meer gelezen en een open PR wordt per head hoogstens één keer verrijkt met mergebaarheid en checks.
+- `write-issue` legt bij een nieuw issue met het label van een geplande kaart de plek en de wens van het item vast.
+
+### Fixed
+
+- `run.sh` neemt het build-slot als bestand met noclobber (`O_EXCL`) in plaats van met `mkdir`. De uutils-`mkdir` van de CI-runner `ubuntu-26.04` is niet atomair: parallelle runs wonnen het slot soms tegelijk en bouwden dubbel, wat `TestRunShBuildsOnceAndNeverWaits` willekeurig rood maakte.
+- A tick reports a kenn-forge clone that is no longer bare (`core.bare` not `true`, or `core.worktree` set) with the repair, and exits 1. Cleanup removes a workspace whose worktree directory is gone when its PR merged or its branch is nowhere, instead of keeping it as `not measurable`.
+
+## [v0.22.0] - 2026-11-21
+
+### Changed
+
+- The status model now runs through tick and triage: every returned issue ends on To do with one label, parking is To do with `blocked_issue` (the tick moves it back), a `needs_*` label on a Controller issue starts no run, and triage sets `needs_shaping` at gate 4c. `On hold` is no longer written and no longer a required board status. After the upgrade, Controller issues whose last protocol comment is their own return move once to To do with a label.
+- De milestone-balk in het tabblad Prioritering tekent elk issue in een van vijf toestanden (af, actief, oppakbaar, mens nodig, geblokkeerd) met één vormentaal, en groepeert de blokjes per toestand. De API levert daarvoor het blokkerende label, of er een needs_*-label op staat, de open vraag en de gesloten issues mee.
+
+### Fixed
+
+- Een controller-run die op een ander open issue wacht, start niet langer elke tick opnieuw. De tick geeft het issue terug (`dezelfde handoff als de vorige, zonder voortgang`) zodra een uitvoerende handoff woordelijk gelijk is aan de vorige, waarvan de run al klaar is. De skill `write-handoff` noemt de uitweg: eerst de `blocked_by`-relatie en het label leggen, dan pas de handoff schrijven.
+
+## [v0.21.0] - 2026-11-21
+
+### Added
+
+- Een nieuwe poort controleert dat elke directe import in een manifest is gedeclareerd: `lighthouse imports check` draait `go mod tidy -diff` (Go), knip (node) en deptry (Python), per Stop-hook (`go-imports-gate`, `python-imports-gate`, `node-imports-gate`) en in `commit-test-gate`, ook met `[test_gate] command = ""`. Uitzetten kan alleen met `[imports] check = false`. Kan de commit-gate de check niet draaien, dan blokkeert zij met `COULD NOT CHECK`; de Stop-hooks melden dat zonder te blokkeren. Bekende beperking: bij `git commit -a` in één Bash-aanroep is er bij `pre` nog niets gestaged, dus slaat de commit-gate de check over; stage in een aparte aanroep. In een Expo-project zonder `main` of entry vindt knip niets. De CI-job `canary` houdt de checkers zelf in de gaten.
+
+### Changed
+
+- `/lighthouse-close-issue`, `lighthouse unblock-dependents` and `lighthouse worktree-audit` now read and write issues and pull requests through `lighthouse forge` instead of `gh`, so they work on GitLab as well as GitHub; checking workflow runs and the release flow still use `gh`. Without an unblock lane (GitLab, or GitHub without a bot in `[ci]`) the session releases the waiting issues itself with `lighthouse unblock-dependents`, which reports `released issues not read` with exit 1 when it cannot read the forge, and exits 2 with one line on stderr when the token is missing or the configuration is broken. When `worktree-audit` cannot read the PR status from the forge, it now writes one line to stderr instead of staying silent.
+
+### Fixed
+
+- An unreadable `post-failed.json` left by an earlier run in the same session no longer hands a later run back with *post mislukt: notitie onleesbaar*. Such a note is now dated by its file's modification time, which serve sends in the new `X-Lighthouse-Mod-Time` header on a node.
+
+## [v0.20.0] - 2026-11-21
+
+### Added
+
+- The `lighthouse.db` database now holds a telemetry data model: trajectories, sessions, assignments, usage and findings, with idempotent writers and a linking rule for interactive sessions.
+- `lighthouse measure-recovery` meet per gemergde PR het herstel in de 7 dagen na de merge (fix- en revert-commits op dezelfde bestanden, bug-issues die de PR noemen) en het aantal `fix-pr`-rondes ervoor, en schrijft dat idempotent in `lighthouse.db` (tabellen `recoveries` en `recovery_items`, migratie 0011). Alleen GitHub.
+- New command `lighthouse state`: `show <nr>` prints the state of an issue (done, active, needs human, blocked or ready), `label <nr> <key>` sets a blocking label with the rank rule (the lowest rank wins, the others go), and `return <nr> <key>` also moves the issue to `To do` on the board, leaving its Priority alone. Triage gate 0 now uses the same rules.
+
+### Changed
+
+- `plan-review-record` now writes the review record on every machine; the host.toml restriction and exit code 3 are gone.
+  The review record is now schema 6 and carries a `trajectory` (repo and issue, or `null`), taken from `--issue` or the issue branch and `forge.repo`.
+  The new `lighthouse review-index [--ledger <path>]... [--issue <n>]` links the findings of plan and spec review records, and the rulings of an SDD ledger, to their trajectory in `lighthouse.db`; `plan-review-record write` runs the same indexing after writing (a failure there is a warning).
+- Core hook blocks now carry the reason as `[<hook>/<id>]`. The go and shell hooks block a configuration that switches off a floor rule (the linters `errcheck`, `govet`, `ineffassign`, `staticcheck` and `unused`, and the shellcheck codes SC2164, SC2046, SC2115, SC2155 and SC2034), and name the route for existing debt: `issues.new-from-rev` for Go, a motivated `# shellcheck disable=SCxxxx <reason>` for shell.
+- The controller reads and writes the GitHub board, pull requests and blockers through REST with conditional requests, so an exhausted GraphQL limit normally no longer stops a tick.
+- `post-artefact`, `labels` (and so `init --create-labels`) and `worktree-audit` no longer call `gh` but read and write through the forge layer, so they work on GitLab too. New forge methods `CommitKnown`, `CreateLabel`, `PullHeads` and `IssueClosingHeads`, and a new command `lighthouse forge label create`. `lighthouse init` no longer writes the GitHub workflows on a GitLab repo; the workflows keep `gh`, recorded as an exception in `lighthouse-forge`.
+- The skills fix-pr, write-handoff, review-plan and upgrade no longer call `gh` directly but go through `lighthouse forge`, so they work on GitLab too, and `requires.toml` names `gh` only per forge. New commands: `lighthouse releases`, `lighthouse forge pr checks`, `forge pr view --comments` and the read form `forge issue status <nr>`.
+
+### Fixed
+
+- A controller run whose handoff or question post fails no longer stalls the chain: the run leaves a `post-failed.json` note, and the controller posts the comment itself or hands the issue back with the error. `lighthouse post-artefact` no longer uses GraphQL.
+
 ## [v0.19.0] - 2026-11-19
 
 ### Added

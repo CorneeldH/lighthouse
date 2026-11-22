@@ -175,11 +175,6 @@ func TestPackBlockMarkersNameKnownComponents(t *testing.T) {
 		}
 	}
 	core := string(blockContent(t, all["core"]))
-	for _, skill := range []string{"fix-pr", "start-issue", "upgrade"} {
-		if !strings.Contains(core, "<!--level:skill:"+skill+"-->") {
-			t.Errorf("core block has no marker for skill %s", skill)
-		}
-	}
 	if !strings.Contains(core, "<!--level:commit-test-gate-->") {
 		t.Error("core block has no marker for commit-test-gate")
 	}

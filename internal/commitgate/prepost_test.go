@@ -154,7 +154,7 @@ func TestPreLeavesNoVerifyToNoVerifyCheck(t *testing.T) {
 // Red when Pre stops refusing --no-verify in a repo on an older pack (no no-verify-check in
 // blocking, or no readable blocking file): a newer binary must not open that gap.
 func TestPreBlocksNoVerifyOnAnOlderPack(t *testing.T) {
-	const want = "commit-test-gate: --no-verify is not allowed in this repo.\n" +
+	const want = "[commit-test-gate/no-verify] commit-test-gate: --no-verify is not allowed in this repo.\n" +
 		"\n" +
 		"The test gate is a Claude Code PreToolUse hook, not a git hook, so the\n" +
 		"flag skips nothing today — but it will as soon as git hooks are added.\n" +

@@ -9,6 +9,7 @@
       "close-issue",
       "fix-pr",
       "forge",
+      "map-planned",
       "place-instruction",
       "review-plan",
       "review-spec",
@@ -166,6 +167,13 @@
           "Stop"
         ],
         "when": "when the session stops"
+      },
+      {
+        "name": "go-imports-gate",
+        "events": [
+          "Stop"
+        ],
+        "when": "when the session stops"
       }
     ],
     "extra": []
@@ -180,7 +188,15 @@
     "standard_skills": [],
     "agents": [],
     "workflows": [],
-    "hooks": [],
+    "hooks": [
+      {
+        "name": "node-imports-gate",
+        "events": [
+          "Stop"
+        ],
+        "when": "when the session stops"
+      }
+    ],
     "extra": []
   },
   {
@@ -207,6 +223,13 @@
       },
       {
         "name": "ty-gate",
+        "events": [
+          "Stop"
+        ],
+        "when": "when the session stops"
+      },
+      {
+        "name": "python-imports-gate",
         "events": [
           "Stop"
         ],

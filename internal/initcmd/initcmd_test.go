@@ -997,7 +997,7 @@ func TestInitProposesRealPython(t *testing.T) {
 			t.Fatalf("%s not installed", rel)
 		}
 	}
-	if !strings.Contains(read(t, root, "AGENTS.md"), "/lighthouse-python-standard") {
+	if !strings.Contains(read(t, root, "AGENTS.md"), "## Lighthouse: python") {
 		t.Fatal("instruction block of python missing in AGENTS.md")
 	}
 }
@@ -1018,6 +1018,27 @@ func TestEmptyCommandStaysOff(t *testing.T) {
 	}
 	if got := read(t, root, "lighthouse.toml"); !strings.Contains(got, "[test_gate]\ncommand = \"\"\n") {
 		t.Fatalf("lighthouse.toml = %q", got)
+	}
+}
+
+func TestInitProposesRealGo(t *testing.T) {
+	root := newRepo(t)
+	write(t, root, "go.mod", "module example.com/m\n\ngo 1.26\n")
+	r := run(t, root, "", func(o *Options) { o.Yes = true; o.Packs = nil; o.Level = "strict" })
+	if r.code != 0 || !strings.HasPrefix(r.out, "Packages: core, go (found go.mod)\n") {
+		t.Fatalf("rc %d\nout:\n%s\nerr:\n%s", r.code, r.out, r.err)
+	}
+	if !exists(root, ".claude/hooks/lighthouse/go-lint-gate.sh") {
+		t.Fatal("go-lint-gate.sh not installed")
+	}
+}
+
+func TestInitProposesRealShellBash(t *testing.T) {
+	root := newRepo(t)
+	write(t, root, "x.bash", "#!/bin/bash\necho x\n")
+	r := run(t, root, "", func(o *Options) { o.Yes = true; o.Packs = nil })
+	if r.code != 0 || !strings.HasPrefix(r.out, "Packages: core, shell (found x.bash)\n") {
+		t.Fatalf("rc %d\nout:\n%s\nerr:\n%s", r.code, r.out, r.err)
 	}
 }
 
@@ -1651,5 +1672,123 @@ func TestInitWritesWorkflowsOnlyOnGitHub(t *testing.T) {
 				t.Fatalf("workflow written = %v, want %v", got, c.want)
 			}
 		})
+	}
+}
+
+func TestInitSetsResponseLanguage(t *testing.T) {
+	cases := []struct {
+		name, toml, settings string
+		wantSetting          string // the "language" line in settings.json, or "" for none
+		wantWarn             bool
+	}{
+		{"nl sets dutch", "[project]\nlanguage = \"nl\"\n", "", `"language": "dutch"`, false},
+		{"en sets nothing", "[project]\nlanguage = \"en\"\n", "", "", false},
+		{"no language key sets nothing", "[forge]\nkind = \"github\"\n", "", "", false},
+		{"no lighthouse.toml sets nothing", "", "", "", false},
+		{"own value is kept", "[project]\nlanguage = \"nl\"\n", "{\n  \"language\": \"english\"\n}\n", `"language": "english"`, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			root := newRepo(t)
+			if c.toml != "" {
+				write(t, root, "lighthouse.toml", c.toml)
+			}
+			if c.settings != "" {
+				write(t, root, ".claude/settings.json", c.settings)
+			}
+			r := run(t, root, "", yes)
+			if r.code != 0 {
+				t.Fatalf("rc %d\n%s%s", r.code, r.out, r.err)
+			}
+			s := read(t, root, ".claude/settings.json")
+			switch {
+			case c.wantSetting == "" && strings.Contains(s, `"language"`):
+				t.Fatalf("settings has a language:\n%s", s)
+			case c.wantSetting != "" && strings.Count(s, `"language"`) != 1:
+				t.Fatalf("settings: want one language line %s:\n%s", c.wantSetting, s)
+			case c.wantSetting != "" && !strings.Contains(s, c.wantSetting):
+				t.Fatalf("settings: want %s:\n%s", c.wantSetting, s)
+			}
+			warned := strings.Contains(r.err, `.claude/settings.json has language "english"`)
+			if warned != c.wantWarn {
+				t.Fatalf("warning = %v, want %v; err %q", warned, c.wantWarn, r.err)
+			}
+			if u := run(t, root, "", upgrade); u.code != 0 || u.out != "No changes.\n" {
+				t.Fatalf("upgrade: rc %d\n%s\n%s", u.code, u.out, u.err)
+			}
+		})
+	}
+}
+
+func TestUpgradeRepairsCRLFHookWithoutForce(t *testing.T) {
+	root := newRepo(t)
+	initYes(t, root)
+	rels := []string{".claude/hooks/lighthouse/g.sh", ".lighthouse/scripts/a.py"}
+	for _, rel := range rels {
+		write(t, root, rel, strings.ReplaceAll(read(t, root, rel), "\n", "\r\n"))
+	}
+	r := run(t, root, "", func(o *Options) { o.Upgrade = true; o.Yes = true })
+	if r.code != 0 {
+		t.Fatalf("rc %d\n%s%s", r.code, r.out, r.err)
+	}
+	for _, rel := range rels {
+		if strings.Contains(read(t, root, rel), "\r") {
+			t.Errorf("%s still has CR", rel)
+		}
+		if !strings.Contains(r.out, rel) {
+			t.Errorf("diff does not name %s:\n%s", rel, r.out)
+		}
+	}
+}
+
+func TestInitAdoptsCRLFFileWithoutManifest(t *testing.T) {
+	root := newRepo(t)
+	write(t, root, ".claude/hooks/lighthouse/g.sh", "#!/bin/bash\r\n# lighthouse: core@dev\r\necho g\r\n")
+	initYes(t, root)
+	if got := read(t, root, ".claude/hooks/lighthouse/g.sh"); got != "#!/bin/bash\n# lighthouse: core@dev\necho g\n" {
+		t.Fatalf("g.sh = %q", got)
+	}
+}
+
+// Classification: cli-output. Fails when init skips the hook check after writing, or when the
+// check's own stderr output ends up on stdout or in the exit code.
+func TestCheckHooksRunsAfterWrite(t *testing.T) {
+	root := newRepo(t)
+	var calls int
+	var gotRoot string
+	r := run(t, root, "", func(o *Options) {
+		yes(o)
+		o.CheckHooks = func(r string, errOut io.Writer) { calls++; gotRoot = r; _, _ = io.WriteString(errOut, "HOOKS\n") }
+	})
+	if r.code != 0 || calls != 1 || gotRoot == "" || !strings.Contains(r.err, "HOOKS") || strings.Contains(r.out, "HOOKS") {
+		t.Errorf("rc %d, %d calls, root %q, out %q, err %q", r.code, calls, gotRoot, r.out, r.err)
+	}
+}
+
+// Classification: cli-output. Fails when the check no longer runs on `No changes.` or its
+// stderr output leaks into stdout, which must stay byte-equal.
+func TestCheckHooksRunsOnNoChanges(t *testing.T) {
+	root := newRepo(t)
+	initYes(t, root)
+	var calls int
+	r := run(t, root, "", func(o *Options) {
+		yes(o)
+		upgrade(o)
+		o.CheckHooks = func(_ string, errOut io.Writer) { calls++; _, _ = io.WriteString(errOut, "HOOKS\n") }
+	})
+	if r.code != 0 || calls != 1 || r.out != "No changes.\n" {
+		t.Errorf("rc %d, %d calls, out %q, err %q", r.code, calls, r.out, r.err)
+	}
+}
+
+// Classification: cli-output. Fails when the check runs although the user declined the diff.
+func TestCheckHooksSkippedWhenDeclined(t *testing.T) {
+	root := newRepo(t)
+	var calls int
+	r := run(t, root, "n\n", func(o *Options) {
+		o.CheckHooks = func(string, io.Writer) { calls++ }
+	})
+	if r.code == 0 || calls != 0 {
+		t.Errorf("rc %d, %d calls; want a declined init and no check", r.code, calls)
 	}
 }

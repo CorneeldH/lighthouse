@@ -13,7 +13,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/levels"
 )
 
-const noVerifyRefusal = "no-verify-check: --no-verify is not allowed in this repo.\n" +
+const noVerifyRefusal = "[no-verify-check/flag] no-verify-check: --no-verify is not allowed in this repo.\n" +
 	"\n" +
 	"The test gate is a Claude Code PreToolUse hook, not a git hook, so the\n" +
 	"flag skips nothing today — but it will as soon as git hooks are added.\n" +

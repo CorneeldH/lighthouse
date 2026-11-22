@@ -99,3 +99,39 @@ func TestVariants(t *testing.T) {
 		t.Error("Variants(unknown) returned no error")
 	}
 }
+
+// Classification: unit; guards the table of the pack and the language fallback of Heading.
+// A change that drops a direction key, or fails instead of falling back to en, fails it.
+func TestParseHeadingsDirectionKeys(t *testing.T) {
+	data, err := os.ReadFile("../../pack/core/headings.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	table, err := ParseHeadings(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string][2]string{
+		"area_crux": {"Crux", "Crux"}, "policy": {"Leidend beleid", "Guiding policy"},
+		"not_now": {"Bewust niet", "Deliberately not"}, "strategy_diagnosis": {"Diagnose", "Diagnosis"},
+		"strategy_audience": {"Voor wie", "For whom"}, "strategy_roadmap": {"Roadmap", "Roadmap"},
+		"tenet_over": {"boven", "over"}, "tenet_evidence": {"Bewijs", "Evidence"},
+	}
+	for key, w := range want {
+		for i, code := range []string{"nl", "en"} {
+			got, err := table.Heading(key, code)
+			if err != nil || got != w[i] {
+				t.Errorf("Heading(%s, %s) = %q, %v; want %q", key, code, got, err, w[i])
+			}
+		}
+	}
+	if got, err := table.Heading("policy", "fr"); err != nil || got != "Guiding policy" {
+		t.Errorf("fallback = %q, %v", got, err)
+	}
+	if v, err := table.Variants("tenet_over"); err != nil || strings.Join(v, "|") != "boven|over" {
+		t.Errorf("Variants = %q, %v", v, err)
+	}
+	if _, err := table.Heading("nope", "nl"); err == nil {
+		t.Error("unknown key returned no error")
+	}
+}

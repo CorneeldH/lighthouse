@@ -12,9 +12,11 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/cron"
 	"github.com/CorneeldH/lighthouse/internal/dispatch"
 	"github.com/CorneeldH/lighthouse/internal/forge"
+	"github.com/CorneeldH/lighthouse/internal/hostconfig"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/runs"
 	"github.com/CorneeldH/lighthouse/internal/scheduled"
+	_ "github.com/CorneeldH/lighthouse/internal/scheduled/mapplanned" // registers job map-planned
 	_ "github.com/CorneeldH/lighthouse/internal/scheduled/maprefresh" // registers job map-refresh
 	_ "github.com/CorneeldH/lighthouse/internal/scheduled/reflect"    // registers job reflect
 )
@@ -34,14 +36,15 @@ func (e tickEnv) job(name string) (scheduled.Job, bool) {
 // on errOut, holds the repo's tick state back so the next tick gathers and gates again, and
 // reports failed. An unknown job only gets its line: it holds and fails nothing. The schedules
 // that are left go to Decide in the repo's input.
-func planSchedules(ctx context.Context, env tickEnv, db *sql.DB, gathered []gatheredRepo, errOut io.Writer) (failed bool) {
+func planSchedules(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispatch, ticked map[string]forge.Forge,
+	gathered []gatheredRepo, errOut io.Writer) (failed bool) {
 	for i := range gathered {
 		g := &gathered[i]
 		if len(g.repo.Schedules) == 0 {
 			continue
 		}
 		var hold bool
-		g.in.Schedules, hold = planRepo(ctx, env, db, g.repo, g.in.History, errOut)
+		g.in.Schedules, hold = planRepo(ctx, env, db, cfg, ticked[g.repo.Slug], g.repo, g.in.History, errOut)
 		g.hold = g.hold || hold
 		failed = failed || hold
 	}
@@ -50,8 +53,8 @@ func planSchedules(ctx context.Context, env tickEnv, db *sql.DB, gathered []gath
 
 // planRepo plans the schedules of one repo with history, its runs; see planSchedules. hold
 // reports a line about a failure.
-func planRepo(ctx context.Context, env tickEnv, db *sql.DB, repo repoconfig.Repo, history []runs.Row,
-	errOut io.Writer) (due []dispatch.ScheduledDue, hold bool) {
+func planRepo(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dispatch, f forge.Forge, repo repoconfig.Repo,
+	history []runs.Row, errOut io.Writer) (due []dispatch.ScheduledDue, hold bool) {
 	now := env.now()
 	var skipErr error
 	skipped := func(schedule, slot string) bool {
@@ -88,7 +91,8 @@ func planRepo(ctx context.Context, env tickEnv, db *sql.DB, repo repoconfig.Repo
 			fail("config: %s", oneLine(err))
 			continue
 		}
-		jenv := scheduled.Env{Repo: repo, Schedule: d.Schedule, Now: now, Run: env.runner(), Home: env.Getenv("HOME"), History: history}
+		jenv := scheduled.Env{Repo: repo, Schedule: d.Schedule, Now: now, Run: env.runner(), Home: env.Getenv("HOME"), History: history,
+			Forge: f, Trusted: trustedOf(f, cfg)}
 		v, err := job.Gate(ctx, jenv)
 		if err != nil {
 			// Review focus 3: a failed gate is no verdict; the slot stays open.
@@ -115,8 +119,17 @@ func planRepo(ctx context.Context, env tickEnv, db *sql.DB, repo repoconfig.Repo
 	return due, hold
 }
 
+// trustedOf is the Trusted of a scheduled.Env: the answer_permissions check on f; nil without a forge.
+func trustedOf(f forge.Forge, cfg hostconfig.Dispatch) func(context.Context, string) (bool, error) {
+	if f == nil {
+		return nil
+	}
+	return dispatch.NewTrust(f, cfg.AnswerPermissions).Trusted
+}
+
 // scheduledJob resolves schedule of repo for apply: its job and the scheduled.Env it runs in.
-func scheduledJob(env tickEnv, db *sql.DB, repos map[string]repoconfig.Repo) func(repo, schedule string) (scheduled.Job, scheduled.Env, error) {
+func scheduledJob(env tickEnv, db *sql.DB, cfg hostconfig.Dispatch, forges map[string]forge.Forge,
+	repos map[string]repoconfig.Repo) func(repo, schedule string) (scheduled.Job, scheduled.Env, error) {
 	return func(slug, name string) (scheduled.Job, scheduled.Env, error) {
 		repo, ok := repos[slug]
 		if !ok {
@@ -140,7 +153,7 @@ func scheduledJob(env tickEnv, db *sql.DB, repos map[string]repoconfig.Repo) fun
 				return nil, scheduled.Env{}, fmt.Errorf("history of %s: %w", slug, err)
 			}
 			return job, scheduled.Env{Repo: repo, Schedule: s, Now: env.now(), Run: env.runner(),
-				Home: env.Getenv("HOME"), History: history}, nil
+				Home: env.Getenv("HOME"), History: history, Forge: forges[slug], Trusted: trustedOf(forges[slug], cfg)}, nil
 		}
 		return nil, scheduled.Env{}, fmt.Errorf("no schedule %s in %s", name, slug)
 	}

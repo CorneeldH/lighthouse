@@ -20,10 +20,11 @@ commit, PR bodies with evidence and, with `codex`, adversarial reviews.
 | `gh` | core, python | reading and writing issues and PRs in the skills that do not yet use `lighthouse forge` | Those skills cannot reach GitHub. `pr-create-gate` passes without counting the acceptance criteria, and says so. The chain skills `start-issue`, `route-issue`, `write-issue` and `write-pr` go through `lighthouse forge` and need `gh` only for the fallback `gh auth token`. |
 | `superpowers` (Claude Code plugin) | core, expo | the steps the skills hand off: worktrees, brainstorming, plans, debugging | The skills cannot hand off; `/lighthouse-start-issue` loses its worktree, spec and plan steps. |
 | `codex` (optional) | core | adversarial reviews by another model family; `lighthouse usage codex` | `/lighthouse-review-spec` and `/lighthouse-review-plan` stop with `CODEX_MISSING`. |
-| `uv` | python | `ruff-format-check`, `ty-gate`, the test gate `uv run pytest -q` | `ty-gate` reports `COULD NOT CHECK`; `ruff-format-check` falls back to `ruff` on the `PATH`, else blocks with `COULD NOT CHECK`. The test gate `uv run pytest -q` cannot start: `commit-test-gate` reports `COULD NOT CHECK` and blocks the commit. |
-| `go` | go | `go-lint-gate` | `go-lint-gate` reports `COULD NOT CHECK` at Stop; nothing was linted. |
+| `uv` | python | `ruff-format-check`, `ty-gate`, `python-imports-gate` (deptry), the test gate `uv run pytest -q` | `ty-gate` and `python-imports-gate` report `COULD NOT CHECK`; `ruff-format-check` falls back to `ruff` on the `PATH`, else blocks with `COULD NOT CHECK`. The test gate `uv run pytest -q` cannot start: `commit-test-gate` reports `COULD NOT CHECK` and blocks the commit. |
+| `go` | go | `go-lint-gate`, `go-imports-gate` (`go mod tidy -diff`) | `go-lint-gate` and `go-imports-gate` report `COULD NOT CHECK` at Stop; nothing was checked. |
 | `gofmt` | go | `gofmt-check` after every edit | `gofmt-check` blocks with `COULD NOT CHECK`. |
 | `golangci-lint` | go | `go-lint-gate` | `go-lint-gate` reports `COULD NOT CHECK` at Stop; nothing was linted. |
+| `npx` | node | `node-imports-gate` (knip) | `node-imports-gate` reports `COULD NOT CHECK` at Stop; nothing was checked. |
 | `node` | node | the test gate `lighthouse gate node` | `lighthouse gate node` reports `COULD NOT CHECK` (exit 3); with 3 in `unchecked_exit_codes` the gate reports the commit as not tested. |
 | `npm` | node | the web checks of `lighthouse gate node` (`npm run …`) | As for `node`. |
 | `curl` | shell | the first download of the pinned `shellcheck`, verified with sha256sum or shasum | No download. Without a `shellcheck` on your `PATH`, the `shell-lint-check` hook blocks with `COULD NOT CHECK` on every shell script you edit. |
@@ -72,6 +73,22 @@ lands in `~/go/bin`, so make sure that is on your `PATH`.
 Install a tag, not `main`. A build from `main` or from a clone reports version `dev`, and
 `lighthouse init` writes that version into `.lighthouse/manifest.toml`.
 
+### Windows
+
+Lighthouse runs natively on Windows: Claude Code runs the hooks in Git Bash, and every core hook
+passes there, the test gate included (measured by `windows-measure.yml`). What you need:
+
+- [Git for Windows](https://gitforwindows.org/). Without it, Claude Code runs the hooks in
+  PowerShell, where they do not work.
+- `lighthouse_windows_amd64.exe` from the Windows tab on the site, saved as `lighthouse.exe` in a
+  folder on your `PATH`. Restart Claude Code after you change the `PATH`.
+- Run `lighthouse init` in Git Bash.
+
+`lighthouse serve` and the controller do not run natively on Windows; neither does the `shell`
+package, whose pinned `shellcheck` download has no Windows build. WSL also works: install Claude
+Code and lighthouse inside WSL, with the Linux block, and keep the repository in the WSL file
+system.
+
 ## Run lighthouse init
 
 In the root of your own repository:
@@ -103,6 +120,8 @@ and goes on (see [Requirements](#requirements)).
   in `lighthouse.toml`, in the same diff and under the same approval. `--create-labels`, only
   with `--labels`, then creates the missing labels on the forge (GitHub or GitLab) and asks nothing more: the
   flag is the approval, also when there is nothing to apply (`No changes.`).
+- `lighthouse init --direction` also seeds the optional direction documents (strategy, tenets, one
+  file per area label) where they are missing; see [Direction documents](richting.md).
 
 What `init` writes, all of it on the diff first:
 
@@ -158,7 +177,7 @@ machine. An older reader ignores `controller` and falls back to `tailscale_ip`.
 
 `init` proposes `[project] language`, and `[forge]` from your `origin` remote when it is on
 GitHub or GitLab. Only the `python` package proposes a test gate. Until you set `[test_gate] command`,
-`commit-test-gate` passes every commit with `no test command configured, nothing was tested`.
+`commit-test-gate` passes every commit with `no test command configured, nothing was tested`. The gate also runs `lighthouse imports check` on the files of the commit, with or without a test command; see [the test gate](test-gate.md#de-importcheck).
 Every key and what reads it is on [the configuration map](site/config.html) (also online:
 [The configuration](https://corneeldh.github.io/lighthouse/config.html)).
 Check the file, and set your test gate:
@@ -177,7 +196,7 @@ command = "<your test command>"
 
 | Key | What it does |
 |---|---|
-| `project.language` | The language of your artefacts: issues, PRs, comments, commit messages. `nl` or `en`; default `en`. |
+| `project.language` | The language of your artefacts: issues, PRs, comments, commit messages. `nl` or `en`; default `en`. With `nl`, `init` also sets `"language": "dutch"` in `.claude/settings.json`, so Claude Code replies in Dutch; a `language` already there stays, with a warning. |
 | `project.code_language` | Set it to `en` to keep names, comments and file names in English while artefacts follow `project.language`. |
 | `project.code_language_paths` | The globs that `project.code_language` covers. |
 | `forge.kind` | `github` or `gitlab`; default `github`. |
@@ -189,8 +208,8 @@ command = "<your test command>"
 | `forge.board` | Optional: a GitHub Project board the skills move issues on. |
 
 `[forge.board]` is not in the example. When you add it, it needs `project_number`, `project_id`,
-`status_field_id`, and `status_options` with an option ID for each of `To do`, `In progress`,
-`Done` and `On hold`.
+`status_field_id`, and `status_options` with an option ID for each of `To do`, `In progress`
+and `Done`. `On hold` is no longer needed: parking is `To do` plus the `blocked_issue` label.
 
 Every other key, with its type and default, is in `schema` and `defaults` of
 [`internal/config/config.go`](../internal/config/config.go). A key with a wrong type or value is
@@ -202,7 +221,7 @@ reads, its default included.
 The chain runs from an issue to a merged PR. Each step names what you type, what you see, and
 which hook can step in. Run the skills in Claude Code, in your repository.
 To see it as a map, open [The loop](https://corneeldh.github.io/lighthouse/loop.html).
-In a clone of the lighthouse repository, run `python3 -m http.server --directory docs/site` from its
+In a clone of the lighthouse repository, run `go run ./tools/servedir docs/site` from its
 root and open [the local copy](site/loop.html) at `http://localhost:8000/loop.html`.
 What happens within one turn, which skill joins in and which hook steps in, is on
 [the session map](https://corneeldh.github.io/lighthouse/session.html), and locally at

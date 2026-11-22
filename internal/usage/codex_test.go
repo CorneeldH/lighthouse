@@ -323,6 +323,7 @@ func TestCodexReaderAllHomesFail(t *testing.T) {
 
 func TestNewCodexReaderNoHome(t *testing.T) {
 	t.Setenv("HOME", "")
+	t.Setenv("CODEX_HOME", "")
 	if _, err := NewCodexReader(); err == nil {
 		t.Error("want an error without HOME")
 	}
@@ -330,6 +331,7 @@ func TestNewCodexReaderNoHome(t *testing.T) {
 
 func TestNewCodexReaderHomes(t *testing.T) {
 	t.Setenv("HOME", "/h")
+	t.Setenv("CODEX_HOME", "")
 	r, err := NewCodexReader()
 	if err != nil {
 		t.Fatal(err)
@@ -339,6 +341,58 @@ func TestNewCodexReaderHomes(t *testing.T) {
 	}
 	if r.Timeout != 20*time.Second {
 		t.Errorf("Timeout = %v, want 20s", r.Timeout)
+	}
+}
+
+func TestNewCodexReaderCodexHome(t *testing.T) {
+	t.Setenv("HOME", "/h")
+	t.Setenv("CODEX_HOME", "/run/codex")
+	r, err := NewCodexReader()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(r.Homes, []string{"/run/codex"}) {
+		t.Errorf("Homes = %v", r.Homes)
+	}
+	if r.Timeout != 20*time.Second {
+		t.Errorf("Timeout = %v, want 20s", r.Timeout)
+	}
+}
+
+func TestNewCodexReaderCodexHomeWithoutHome(t *testing.T) {
+	t.Setenv("HOME", "")
+	t.Setenv("CODEX_HOME", "/run/codex")
+	r, err := NewCodexReader()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(r.Homes, []string{"/run/codex"}) {
+		t.Errorf("Homes = %v", r.Homes)
+	}
+}
+
+func TestCodexHome(t *testing.T) {
+	cases := []struct {
+		home, codexHome, want string
+		wantErr               bool
+	}{
+		{"/h", "", "/h/.codex", false},
+		{"/h", "/run/codex", "/run/codex", false},
+		{"", "/run/codex", "/run/codex", false},
+		{"", "", "", true},
+	}
+	for _, c := range cases {
+		t.Run(c.home+"|"+c.codexHome, func(t *testing.T) {
+			t.Setenv("HOME", c.home)
+			t.Setenv("CODEX_HOME", c.codexHome)
+			got, err := CodexHome()
+			if (err != nil) != c.wantErr {
+				t.Fatalf("err = %v, wantErr %v", err, c.wantErr)
+			}
+			if got != c.want {
+				t.Errorf("CodexHome = %q, want %q", got, c.want)
+			}
+		})
 	}
 }
 
