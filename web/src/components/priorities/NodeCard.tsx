@@ -39,7 +39,7 @@ export function NodeCard({
   onClick,
 }: Props): JSX.Element {
   // needsHuman is only true on an active issue; a non-active one carries it in its state.
-  const mensNodig = (node.needsHuman || node.state === 'needs_human') && !grey
+  const showsNeedsHuman = (node.needsHuman || node.state === 'needs_human') && !grey
   const active = node.state === 'active'
   const blocked = node.state === 'blocked'
   return (
@@ -49,7 +49,7 @@ export function NodeCard({
       rel="noreferrer"
       data-testid={testId}
       data-state={node.state}
-      data-needs-human={mensNodig ? 'true' : 'false'}
+      data-needs-human={showsNeedsHuman ? 'true' : 'false'}
       data-external={grey ? 'true' : 'false'}
       data-dimmed={dimmed ? 'true' : 'false'}
       data-depth={node.depth}
@@ -63,7 +63,7 @@ export function NodeCard({
       style={{
         width: NODE_W,
         height: NODE_H,
-        ...(mensNodig ? { outline: '1.5px dashed var(--foreground)', outlineOffset: -1 } : {}),
+        ...(showsNeedsHuman ? { outline: '1.5px dashed var(--foreground)', outlineOffset: -1 } : {}),
         ...style,
       }}
       onPointerDown={onPointerDown}

@@ -175,6 +175,7 @@ describe('DepsView', () => {
     expect(within(card).getByText('#5')).toBeTruthy()
     expect(within(card).getByText('title-5')).toBeTruthy()
     expect(card.getAttribute('data-state')).toBe('ready')
+    expect(within(card).getByTestId('card-strip').style.background).not.toBe('')
     expect(card.style.width).toBe('210px')
     expect(card.style.height).toBe('38px')
   })
@@ -184,6 +185,7 @@ describe('DepsView', () => {
     const card = screen.getByTestId(`loose-${A}#1`)
     expect(card.getAttribute('data-state')).toBe('active')
     expect(within(card).getByTestId('card-strip').className).toContain('lh-stripe')
+    expect(within(card).getByTestId('card-strip').getAttribute('style')).toContain('--ms-color')
   })
 
   it('marks a loose Controller issue without a run as active', () => {

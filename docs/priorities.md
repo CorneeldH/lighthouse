@@ -136,7 +136,7 @@ De SPA leidt deze begrippen af in `web/src/lib/priorities/derive.ts`; de server 
   ook) en `open_question`, en per milestone de gesloten issues (`closed`).
 - **Vormentaal van de graaf.** De graaf tekent de toestand van een issue op de kaart met
   dezelfde vormentaal als de balk: een kleurstrook (gestreept bij *actief*, effen bij
-  *oppakbaar*), een stippelrand van 1,5 px in de voorgrondkleur bij *mens nodig*, een kruis bij
+  elke andere toestand), een stippelrand van 1,5 px in de voorgrondkleur bij *mens nodig*, een kruis bij
   het nummer bij *geblokkeerd* en een doorgetrokken grijze rand voor een externe kaart (andere
   repo of buiten het filter), nooit gestippeld. Issues zonder afhankelijkheden staan als
   dezelfde kaart in een raster onder de graaf. Zie de

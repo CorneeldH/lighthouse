@@ -159,7 +159,7 @@ export function DepsView({ graph, selected, colors }: ViewProps): JSX.Element {
       )}
       <div className="border-t border-border pt-3">
         <h4 className="mb-2 text-[13px] font-semibold">No open dependencies ({loose.length})</h4>
-        <div className="grid gap-2.5" style={{ gridTemplateColumns: 'repeat(auto-fill, 210px)' }}>
+        <div className="grid gap-2.5" style={{ gridTemplateColumns: `repeat(auto-fill, ${NODE_W}px)` }}>
           {loose.map((n) => {
             const color = n.milestone ? (colors.get(`${n.repo}#m${n.milestone.number}`) ?? NO_MILESTONE_COLOR) : NO_MILESTONE_COLOR
             return (
