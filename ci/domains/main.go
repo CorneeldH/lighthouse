@@ -1,7 +1,7 @@
-// Command domains sorts changed paths into the domains web, python and go, for the jobs of CI.
+// Command domains sorts changed paths into the domains web, pack-python and go, for the jobs of CI.
 //
 // CI runs `go run ./ci/domains classify --github-output "$GITHUB_OUTPUT"` with the NUL-separated
-// paths of the change on stdin, and gets `web=`, `python=` and `go=` as job outputs, in that
+// paths of the change on stdin, and gets `web=`, `pack-python=` and `go=` as job outputs, in that
 // order, on stdout and appended to the file of `--github-output`.
 //
 // Exit codes of the binary: 0 is ok, 2 is a usage error (no or unknown subcommand, a bad flag) or

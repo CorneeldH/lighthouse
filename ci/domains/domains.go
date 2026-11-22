@@ -3,7 +3,7 @@ package main
 import "strings"
 
 // Domains in the order they are printed.
-var domains = [...]string{"web", "python", "go"}
+var domains = [...]string{"web", "pack-python", "go"}
 
 // Outside web/, but a change here can break the web checks: the CI job, this command, and the
 // gate command in lighthouse.toml.
@@ -55,8 +55,8 @@ func isGoDoc(path string) bool {
 // internal/canary/bashwrite_test.go reads the ruff canary file that tests/pack/python shares.
 var goFixtures = []string{"tests/pack/fixtures/", "tests/pack/python/testdata/ruff-format-check/"}
 
-// Outside web/, but read by no Go build or test, so they leave out go (python stays: pytest reads
-// docs/ and tests/, and ci/literal-grep.sh runs in that job, on pack/ and on the Go sources).
+// Outside web/, but read by no Go build or test, so they leave out go (and pack-python, which
+// lists its own inputs below; ci/literal-grep.sh runs in the go job, on pack/ and on the Go sources).
 // Every other unknown path still touches go. Measured on main (c72662c, #130): go:embed reads
 // only internal/web (dist, placeholder), pack/*/* and internal/store/migrations; no .go file
 // names docs/, changelog.d or ci/literal- (TestGoSourcesDoNotReadNotGoPaths fails when one does, except
@@ -93,9 +93,27 @@ func isNotGo(path string) bool {
 	return notGo[path]
 }
 
-// Classify returns the domains (web, python, go) the paths touch; every key is present.
+// What the pack-python job reads: the pytest suite and the Python of the pack, the packs and Go
+// sources whose built binary the suite runs, e2e/ (the uv e2e tests run in that job) and the
+// inputs of the job itself.
+var packPythonPrefixes = []string{"pack/python/", "tests/pack/python/", "pack/core/", "cmd/", "internal/", "e2e/"}
+var packPythonFiles = map[string]bool{"pyproject.toml": true, "uv.lock": true}
+
+func isPackPython(path string) bool {
+	if packPythonFiles[path] {
+		return true
+	}
+	for _, d := range packPythonPrefixes {
+		if strings.HasPrefix(path, d) {
+			return true
+		}
+	}
+	return false
+}
+
+// Classify returns the domains (web, pack-python, go) the paths touch; every key is present.
 func Classify(paths []string) map[string]bool {
-	touched := map[string]bool{"web": false, "python": false, "go": false}
+	touched := map[string]bool{"web": false, "pack-python": false, "go": false}
 	for _, p := range paths {
 		inWeb := strings.HasPrefix(p, "web/")
 		if inWeb || webToo[p] {
@@ -104,8 +122,8 @@ func Classify(paths []string) map[string]bool {
 		if (!inWeb && !isNotGo(p)) || goToo[p] || isGoDoc(p) {
 			touched["go"] = true
 		}
-		if !inWeb {
-			touched["python"] = true
+		if isPackPython(p) {
+			touched["pack-python"] = true
 		}
 	}
 	return touched
