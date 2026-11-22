@@ -481,6 +481,7 @@
               "about": "The file with the project's strategy, read when writing an issue and when shaping a milestone.",
               "example": "docs/strategy.md",
               "readers": [
+                "pack/core/skills/write-issue",
                 "internal/repoconfig/repoconfig.go"
               ]
             },
