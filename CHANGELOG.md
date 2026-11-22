@@ -4,6 +4,31 @@ All notable changes to lighthouse. The format follows [Keep a Changelog](https:/
 chosen is in [docs/releasing.md](docs/releasing.md). The release workflow writes the sections below from the
 fragments in `changelog.d/`; never edit a released section by hand.
 
+## [v0.24.0] - 2026-11-22
+
+### Added
+
+- Lighthouse legt de richting van een repo vast in drie documenten (strategie, uitgangspunten en areas), met de nieuwe sleutel `paths.strategy` in `lighthouse.toml` en een vormtest die ze controleert.
+- `lighthouse check-hooks` checks that the hooks registered in `.claude/settings.json` can run: the shell (`sh`, or Git Bash on Windows), the scripts, the line endings and a smoketest per hook. `lighthouse init` runs it after writing and prints the result, and sets `.gitattributes` rules so a checkout does not turn the hooks into CRLF.
+- Direction documents are optional for every repo: `lighthouse init --direction` seeds a strategy, tenets and one file per area from templates (only what is missing, never overwriting), and `lighthouse direction check` verifies them in any language and stays silent in a repo without those keys.
+
+### Changed
+
+- A red step of the workflow pusher that an answer `push` cannot act on (trigger, config, route, floor, policy, lint, and every refusal of the merge pusher) is no longer a 🤖 Question but a 🤖 Returned with `reason: workflow pusher red: <step>`, the diff folded and the command under *Push it yourself* or *Merge it yourself*; tick then gives the issue back with `needs_hands`. A real pusher Question opens with the question itself, so the controller's list of open questions no longer shows the whole diff.
+- `write-issue`, `map-planned` en `close-issue` lezen de richting van de repo voordat ze iets doen.
+- A close-issue check that waits for a predecessor now ends in a handoff to itself (or asks a question) instead of ending silently, and a close run that ends with neither gets its own reason, "nacontrole: criteria open". A blocked issue may now get a spec but no plan, both interactively and in the controller.
+- The tool pins in `lighthouse.toml` follow upstream again: codex 0.171.0 (was 0.157.0), kenn-forge 0.8.0 (was 0.5.1) and roborev 0.75.0 (was 0.69.0).
+- De afhankelijkhedengraaf in de Prioritering-tab tekent de toestand met dezelfde vormentaal als de milestone-balk, en issues zonder afhankelijkheden krijgen een volwaardige kaart in een raster onder de graaf.
+- `IssueItem` en `Planning` van de GitHub-forge gebruiken geen GraphQL meer. Een leeg GraphQL-budget laat het opzoeken van een boarditem en het tabblad Prioritering daardoor niet meer falen. Een gearchiveerd item blijft vindbaar, ook in een nieuw proces, als een eerdere boardlezing het zag (tot 30 dagen daarna). `MilestoneCount.Done` telt nog altijd alleen als *completed* gesloten issues.
+- Bij een vol Codex-budget reviewt roborev met Claude, zolang `claude` op PATH staat en het Claude-alarm uit is. Daardoor eindigt een workflow-push in een vol Codex-venster niet meer in een Vraag. De marker en het record noemen de agent.
+- Lighthouse runs natively on Windows: Claude Code runs the hooks in Git Bash, where every core hook passes, the test gate included. The getting-started guide, the install page and the agent guide now name that route, with Git for Windows as the requirement; WSL is no longer needed. The site opens the Windows tab for a Windows visitor.
+
+### Fixed
+
+- `lighthouse init --upgrade` treats a file that only has CRLF line endings as unchanged and writes it back with LF, without `--force`. An existing CRLF file without a manifest line is also repaired by `init`.
+- A run in a kenn-forge container whose transcript is not on the host is no longer handed back as *no handoff or question* at its first ended turn with a running subagent (#514). The adapter now reads such a transcript from the devcontainer for every profile, not only `software`, and a transcript that stays not measurable counts as work after the Stop: the run stays open until the silence or runtime rules decide.
+- Een antwoord op een 🤖 Vraag dat de prompt van de hervatting boven de 64 KiB van kenn-forge brengt, maakt de start niet meer onmogelijk: de prompt bevat dan alleen het begin van het antwoord en een verwijzing naar de comment met het volledige antwoord. Een kort antwoord blijft letterlijk. De grens (`protocol.PromptLimit`) staat op één plek.
+
 ## [v0.23.0] - 2026-11-22
 
 ### Added
