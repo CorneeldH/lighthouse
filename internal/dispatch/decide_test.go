@@ -743,7 +743,7 @@ func TestReturnLabelKeyTable(t *testing.T) {
 		"reason_pr_red": "needs_hands", "reason_pr_red_ceiling": "needs_hands", "reason_pr_conflict": "needs_hands",
 		"reason_pr_conflict_ceiling": "needs_hands", "reason_pr_roborev": "needs_hands",
 		"reason_pr_roborev_ceiling": "needs_hands", "reason_merge_failed": "needs_hands",
-		"reason_merge_failed_ceiling": "needs_hands", "reason_no_handoff": "needs_hands",
+		"reason_merge_failed_ceiling": "needs_hands", "reason_no_handoff": "needs_hands", "reason_closecheck_open": "needs_hands",
 		"reason_post_failed": "needs_hands", "reason_post_failed_unreadable": "needs_hands",
 		"reason_start_uncertain": "needs_hands", "reason_permission": "needs_hands", "reason_silent": "needs_hands",
 		"reason_silent_forge": "needs_hands", "reason_timeout": "needs_hands", "reason_pusher_off": "needs_hands",

@@ -324,12 +324,14 @@ gemergde of gesloten PR van vóór `started_at` niet. `max_wait` en `max_runtime
 | 13b | Klaar en alleen een vreemde PR die rood is of een merge-conflict heeft (geen eigen open PR met een oorzaak) | Teruggegeven, sessie stoppen als ze niet klaar is | *PR rood* resp. *PR heeft een merge-conflict* |
 | 13c | Klaar met een Handoff die de keten eindigt (`next: /lighthouse-close-issue`), en geen PR van deze run | rij `handoff`, de claude van de run beëindigen; dezelfde tick start `/lighthouse-close-issue <nr>` op die handoff (sleutel `handoff:<comment-id>`), tenzij er een open PR is of een PR die na de handoff mergede of sloot: dan wacht het einde op die PR (#285) | |
 | 14a | Klaar, geen PR, geen Handoff of Vraag, wel een `post-failed.json` van op of na `started_at` (bij een onleesbare: de wijzigingstijd van het bestand; onbekend telt) | leest de body als een 🤖 Handoff of 🤖 Vraag voor het issue van de run, hoorde de mislukte post bij dat issue (`issue` van de notitie) en is de run jonger dan `max_runtime` (of `max_runtime` is 0): `repost`, de controller post de body letterlijk en de run blijft open. Is de run `max_runtime` of ouder, of is de body leeg, een andere soort comment of van een ander issue, hoorde de mislukte post bij een ander issue, of is de notitie onleesbaar: Teruggegeven, zoals regel 14 | *post mislukt: <fout uit de notitie>*, resp. *post mislukt: notitie onleesbaar* |
-| 14 | Klaar, geen PR, geen Handoff of Vraag | Teruggegeven | geen handoff of vraag |
+| 14 | Klaar, geen PR, geen Handoff of Vraag | Teruggegeven | geen handoff of vraag; bij een run met command `/lighthouse-close-issue` (trigger `closecheck` of `handoff`): *nacontrole: criteria open* |
 | 15 | `max_wait` > 0, run gemeten maar zonder sessie, ouder dan `max_wait` | Teruggegeven, launch vergeten | start onzeker: geen sessie gevonden |
 | 16 | `max_wait` > 0, permissie-prompt van deze run (niet van vóór `started_at`) waarna zijn draad `max_wait` lang niets deed | Teruggegeven, sessie blijft staan | wacht op permissie (met tool en pad) |
 | 17 | `max_wait` > 0, niet klaar, geen openstaande permissie-prompt, geen activiteit in `max_wait` (geteld vanaf `started_at` op zijn vroegst) | Teruggegeven, sessie stoppen | geen activiteit in max_wait |
 | 18 | Idem, maar zonder transcript: stand `waiting` en de forge-sessie `max_wait` oud, ook geteld vanaf `started_at` op zijn vroegst (zonder forge-tijd niet) | Teruggegeven, sessie stoppen | geen activiteit in max_wait (forge-stand; transcript niet meetbaar) |
 | 19 | `max_runtime` > 0, run ouder dan `max_runtime` | Teruggegeven, sessie stoppen | time-out (max_runtime) |
+
+Regel 14: een nacontrole die op een ander issue wacht, eindigt in een Handoff naar zichzelf (`next: /lighthouse-close-issue <nr>`). Tick parkeert dat issue (zie *Blokkades*) en start de nacontrole opnieuw zodra de voorganger gesloten is. Eindigt een nacontrole zonder Handoff of Vraag, dan zijn de criteria open gebleven en geeft regel 14 die eigen reden.
 
 Regel 13: houdt de rem de fix-pr-start tegen (uitstel of weigering), dan vervalt de afsluiting van de run: ze blijft open en de volgende tick vindt dezelfde oorzaak opnieuw. Alleen een actieve blokkade (de issue-blokkade van de start), een al gebruikte sleutel of het plafond geeft Teruggegeven.
 
@@ -674,15 +676,15 @@ een rij van dat document. `Finish` schrijft, waar de repo `changelog.d/` heeft, 
 ## Blokkades
 
 Een voorganger is *actief* als hij `OPEN` is en geen gemergde PR heeft. Gesloten zonder merge telt als
-vervallen. Een issue is *uitvoerend* als zijn laatste Handoff een `next` heeft buiten de spec-, plan-
-en review-fase.
+vervallen. Een issue is *uitvoerend* als zijn laatste Handoff een `next` heeft buiten de spec-fase
+(`/lighthouse-review-spec` en de spec zelf); een Handoff naar `writing-plans` of `/lighthouse-review-plan` is dus uitvoerend en parkeert.
 
 - **Parkeren.** Heeft een uitvoerend issue in Controller een actieve voorganger, dan parkeert tick het.
   Eerst komt de comment `🤖 Geparkeerd` (`🤖 Parked`) met één regel
   `blocked_by: <repo>#<n> (<boardstatus>), …`; staat de voorganger niet op hetzelfde board, dan staat
   er geen status tussen haakjes. Daarna krijgt het issue het label `blocked_issue` en gaat het op het
-  board naar `To do`. De run en de werkplek blijven staan. Een issue dat nog in de spec-, plan- of
-  reviewfase zit, blijft staan; de blokkade hindert pas bij uitvoering. Parkeren vervangt een label
+  board naar `To do`. De run en de werkplek blijven staan. Een issue in de spec-fase blijft
+  staan; de blokkade hindert pas bij een plan of bij uitvoering, dus de plan-handoff is een parkeerreden. Parkeren vervangt een label
   `blocked_external` (één blokkadelabel per issue, `blocked_issue` wint); het issue komt zonder dat
   label terug naar Controller.
 - **Afmaken.** Slaagt de comment maar mislukt het label of de boardwijziging, dan eindigt tick met

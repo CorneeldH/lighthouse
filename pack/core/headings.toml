@@ -126,6 +126,10 @@ en = "merge failed"
 nl = "merge mislukt na 3 fix-pr-runs"
 en = "merge failed after 3 fix-pr runs"
 
+[reason_closecheck_open]
+nl = "nacontrole: criteria open"
+en = "after-merge check: criteria open"
+
 [reason_no_handoff]
 nl = "geen handoff of vraag"
 en = "no handoff or question"

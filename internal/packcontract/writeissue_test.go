@@ -360,6 +360,18 @@ func TestWriteIssueSkillSetsNeedsShapingAtGate4c(t *testing.T) {
 	}
 }
 
+// Classification: fails when the stacking order of a blocked_by relation again lets the blocked
+// issue make a plan before its predecessor's PR is merged.
+func TestWriteIssueStackingOrderSpecYesPlanNo(t *testing.T) {
+	for variant, body := range variants(t, writeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			f := flat(body)
+			wantAll(t, f, "spec yes, plan and execution wait for a merged PR of the predecessor")
+			wantNone(t, f, "lets the blocked issue do spec and plan")
+		})
+	}
+}
+
 // Classification: fails when the pitch of a milestone or step 3f stops reading `paths.areas` and
 // `paths.strategy`, stops naming the ID that carries the judgement, loses the difference between
 // an unset key (skip silently) and a set path that does not exist (say so), or the pitch loses
