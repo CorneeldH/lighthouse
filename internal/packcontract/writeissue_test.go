@@ -381,3 +381,34 @@ func TestWriteIssueReadsDirection(t *testing.T) {
 		})
 	}
 }
+
+// Classification: fails when 3f or the pitch go back to naming the direction headings as
+// literal words instead of the heading keys, or when a Dutch heading returns as a reading contract.
+func TestWriteIssueNamesDirectionHeadingKeys(t *testing.T) {
+	for variant, body := range variants(t, writeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			f3 := flat(section(t, body, "#### 3f.", "### 4."))
+			wantAll(t, f3, "`heading:policy`", "`heading:not_now`")
+			pitch := flat(section(t, body, "- **Description**: the pitch", "- **Hard rule**"))
+			wantAll(t, pitch, "`heading:area_crux`", "`heading:strategy_diagnosis`", "`heading:not_now`")
+			wantNone(t, body, "Leidend beleid", "Bewust niet")
+		})
+	}
+}
+
+// Classification: fails when 3f or the pitch stop skipping silently on a direction key that is not set.
+func TestSkillsStaySilentWithoutDirectionKeys(t *testing.T) {
+	for variant, body := range variants(t, writeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			for name, text := range map[string]string{
+				"3f":    flat(section(t, body, "#### 3f.", "### 4.")),
+				"pitch": flat(section(t, body, "- **Description**: the pitch", "- **Hard rule**")),
+			} {
+				wantAll(t, text, "A key that is not set")
+				if !strings.Contains(text, "skips silently") {
+					t.Errorf("%s: missing skips silently", name)
+				}
+			}
+		})
+	}
+}

@@ -91,8 +91,9 @@ An issue with no section `heading:map_placement` is not yet known to want a plac
 map at all, against those documents (the area file its `area_prefix` label names, when it has one)
 and the explanation of step 1. When you doubt, ask one question
 with topic `wish` and exactly two options: *yes, on the map* and *no, not on the map*, with
-`off` the letter of the second. Name in the question the ID (a tenet, a policy or a strategy
-line) that carries your verdict. That issue gets no item in this run.
+`off` the letter of the second. Read the area file by its headings: the leading policy `heading:policy` and the deliberate
+no's `heading:not_now` (any language variant). Name in the question the ID (a tenet, a policy or a strategy
+line) that carries your verdict. A document the corpus does not have skips silently. That issue gets no item in this run.
 
 An `answer` with topic `wish` and letter `a` means yes: place the item as in step 3. Letter `b`
 was already settled and does not reach you. A wish answered with a letter is never asked again.
