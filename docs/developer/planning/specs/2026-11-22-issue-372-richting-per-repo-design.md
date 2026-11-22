@@ -283,19 +283,21 @@ aan de bouwer; een tweede parser voor dezelfde tabel is er niet nodig (uitgangsp
 
 ### 7. Issues en milestone
 
-Na goedkeuring van dit ontwerp, via `/lighthouse-write-issue`:
+Gedaan na goedkeuring van dit ontwerp (2026-11-22), via `/lighthouse-write-issue`:
 
-- **Nieuw issue: de optionele feature voor elke repo.** `init --upgrade` maakt sjablonen aan voor
-  strategie, uitgangspunten en areas als ze ontbreken (zoals `labels.md` nu), plus uitleg in de docs
-  voor gebruikers. Voorstel: milestone *Product: eerste versie voor anderen*.
-- **Nieuw issue: de job `direction`.** Een geplande job naar het voorbeeld van `reflect`: een poort in Go
+- **#500, de optionele feature voor elke repo.** `init --upgrade` maakt sjablonen aan voor strategie,
+  uitgangspunten en areas als ze ontbreken (zoals `labels.md` nu), plus uitleg in de docs voor
+  gebruikers. Milestone *Product: eerste versie voor anderen* (Corneels keus, al raakt het de DoD daar
+  niet); geblokkeerd door #372.
+- **#501, de job `direction`.** Een geplande job naar het voorbeeld van `reflect`: een poort in Go
   (genoeg nieuwe specs of gesloten milestones sinds de vorige ronde), een skill die de beslissingen
-  naast de uitgangspunten en areas legt, en een PR met een voorstel. Voorstel: milestone
-  *Explore/exploit: lighthouse stelt zichzelf bij*, die ook de telemetrie bevat die de job later leest.
-- **De pitch van deze milestone:** de bullet onder *Nog niet vastgelegd* krijgt `→ #<nr>` van het eerste
-  nieuwe issue.
-- **#372 zelf:** de twee AC onder *Optioneel voor elke repo* verhuizen naar het nieuwe issue; het AC van
-  de job krijgt de kop van #476 in plaats van "🤖 Vraag". Het label `3-needs-shaping` gaat eraf.
+  naast de uitgangspunten en areas legt, en een PR met een voorstel. Backlog: de DoD van
+  *Explore/exploit* raakt hij niet.
+- **#499, de tools van Impatient Programming** (flinch en praxis integreren, ideeën uit qualm, covenant
+  en exhale), in milestone *Kwaliteitspoorten per taalpack*. Voortgekomen uit het onderzoek (verslag §8).
+- **De pitch van deze milestone:** de bullet onder *Nog niet vastgelegd* heeft `→ #500`.
+- **#372 zelf:** de twee AC onder *Optioneel voor elke repo* staan nu in #500; het AC van de job noemt de
+  kop van #476 in plaats van "🤖 Vraag". Het label `3-needs-shaping` is eraf.
 
 ### 8. Hoe het landt
 
