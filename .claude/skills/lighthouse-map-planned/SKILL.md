@@ -28,6 +28,7 @@ does not carry, and never edit it.
 
 ```json
 {"language": "…", "taxonomy": "…", "tenets": "…", "areas": "…",
+ "strategy": "…", "area_prefix": "…",
  "documents": [{"label": "…", "document": "…", "planned": "always|milestone"}],
  "issues": [{"number": 12, "title": "…", "body": "…", "labels": ["…"], "milestone": "…",
              "label": "…", "document": "…",
@@ -35,8 +36,9 @@ does not carry, and never edit it.
 ```
 
 - `language` is the language of every question text and option you write.
-- `taxonomy` is the path of the taxonomy file; `tenets` and `areas` are paths too, empty when the
-  repo has none.
+- `taxonomy` is the path of the taxonomy file; `tenets`, `areas` and `strategy` are paths too,
+  empty when the repo has none. `area_prefix` is the label prefix that ties an issue to its file
+  in `areas`: an issue label that starts with it names the area, so never guess the area.
 - Each issue names its own `label` and `document`: put its item in that `document` only.
 - `answer` is `null` unless a user answered an earlier question of this job on that issue.
 
@@ -85,10 +87,12 @@ Run the wish test only when the issue's `answer` is `null`. An `answer` of topic
 the job already took the issue onto the map, so its wish is settled.
 
 An issue with no section `heading:map_placement` is not yet known to want a place. When
-`tenets` or `areas` in the corpus is not empty, test whether the issue belongs on the map at
-all, against those documents and the explanation of step 1. When you doubt, ask one question
+`tenets`, `areas` or `strategy` in the corpus is not empty, test whether the issue belongs on the
+map at all, against those documents (the area file its `area_prefix` label names, when it has one)
+and the explanation of step 1. When you doubt, ask one question
 with topic `wish` and exactly two options: *yes, on the map* and *no, not on the map*, with
-`off` the letter of the second. That issue gets no item in this run.
+`off` the letter of the second. Name in the question the ID (a tenet, a policy or a strategy
+line) that carries your verdict. That issue gets no item in this run.
 
 An `answer` with topic `wish` and letter `a` means yes: place the item as in step 3. Letter `b`
 was already settled and does not reach you. A wish answered with a letter is never asked again.

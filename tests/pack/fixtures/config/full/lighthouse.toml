@@ -33,6 +33,7 @@ specs = "s"
 plans = "p"
 tenets = "t"
 areas = "a"
+strategy = "s"
 history = "h"
 labels = "l"
 search_dirs = ["x", "y z"]

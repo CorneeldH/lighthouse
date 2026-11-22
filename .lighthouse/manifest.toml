@@ -22,7 +22,7 @@ kind = "file"
 path = ".agents/skills/lighthouse-close-issue/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "da7b0afe943d0b1ebd6563236d1ac23fcd7323564a9278fed2e41c0eb7dbf36e"
+sha256 = "e5fbbe58e05fb19a4959b02b0f1e2a9ae11f1101b751fdd308931f4b755bc9d0"
 
 [[unit]]
 kind = "file"
@@ -64,7 +64,7 @@ kind = "file"
 path = ".agents/skills/lighthouse-map-planned/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "655eddf2d359edcd3f113cf78f82839c9f271017b9d72314e61b12440feae6b8"
+sha256 = "82e42fce7d42f340c6816d2188194b74d337056961daa514eeb5986113f1ad2e"
 
 [[unit]]
 kind = "file"
@@ -183,7 +183,7 @@ kind = "file"
 path = ".agents/skills/lighthouse-write-issue/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "9de5a48804b103515f1e4b01e48ec6d75f454cd6323be7fb036ed858c38c8590"
+sha256 = "759ecf92de4c9a67fe7d66c4fad5b1b8b9ad82cde3c7e00447904d53da918d0a"
 
 [[unit]]
 kind = "file"
@@ -444,7 +444,7 @@ kind = "file"
 path = ".claude/skills/lighthouse-close-issue/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "38d8e9e43b01ce47bf8b50f7994443b4651a4e8caed7b3a83f945d710584f2c3"
+sha256 = "ee0f5c6fe4a418b9e98940d84ec2b78826aff06b956e486f9c32411b402badda"
 
 [[unit]]
 kind = "file"
@@ -486,7 +486,7 @@ kind = "file"
 path = ".claude/skills/lighthouse-map-planned/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "655eddf2d359edcd3f113cf78f82839c9f271017b9d72314e61b12440feae6b8"
+sha256 = "82e42fce7d42f340c6816d2188194b74d337056961daa514eeb5986113f1ad2e"
 
 [[unit]]
 kind = "file"
@@ -605,7 +605,7 @@ kind = "file"
 path = ".claude/skills/lighthouse-write-issue/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "d13b72260c0dd3a3df20f7847f90bdb3ef22f8a6adf2ac2688eda807c6f8d587"
+sha256 = "4fcdcf8f9a4db308d654f17967bfd6ca74d48abccd19864f60d25084cbcfde42"
 
 [[unit]]
 kind = "file"
@@ -633,7 +633,7 @@ kind = "file"
 path = ".lighthouse/headings.toml"
 package = "core"
 version = "dev"
-sha256 = "fe12e9bef588ce195140baa54102999796c98103177d4a33ac5ea7f2232ca2e4"
+sha256 = "8c6591cd7edefa0158a8900fada43622c010d40ad29943dfe023138e1c2b6aac"
 
 [[unit]]
 kind = "block"

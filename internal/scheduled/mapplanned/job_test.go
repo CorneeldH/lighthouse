@@ -56,6 +56,9 @@ type rig struct {
 	root, origin, repo string
 	srv                *forgetest.Server
 	labels             string // Paths.Labels
+	tenets, areas      string // Paths.Tenets, Paths.Areas
+	strategy           string // Paths.Strategy
+	areaPrefix         string // Labels.AreaPrefix
 }
 
 func newRig(t *testing.T) *rig {
@@ -111,7 +114,8 @@ func (r *rig) env() scheduled.Env {
 	c.BaseURL = r.srv.URL()
 	return scheduled.Env{
 		Repo: repoconfig.Repo{Dir: r.repo, DefaultBranch: "main", Slug: "o/r", Kind: "github", Language: "nl",
-			Paths: repoconfig.Paths{Labels: r.labels}, Labels: repoconfig.Labels{NeedsDecision: "needs-decision"}},
+			Paths:  repoconfig.Paths{Labels: r.labels, Tenets: r.tenets, Areas: r.areas, Strategy: r.strategy},
+			Labels: repoconfig.Labels{NeedsDecision: "needs-decision", AreaPrefix: r.areaPrefix}},
 		Now:     time.Date(2026, 11, 22, 5, 0, 0, 0, time.UTC),
 		Run:     workplace.ExecRunner(),
 		Forge:   c,
@@ -173,6 +177,40 @@ func TestGateSkipsWithoutTaxonomy(t *testing.T) {
 		r.issue(12, "loop", "")
 		if v := gate(t, r); v.Skip != want {
 			t.Fatalf("Skip = %q, want %q", v.Skip, want)
+		}
+	})
+}
+
+func TestGateFailsOnMissingDirectionPath(t *testing.T) {
+	// Fails if Gate lets a set paths.tenets, paths.areas or paths.strategy that does not exist
+	// at origin/<default> run silently, or fails without naming the key and the path.
+	set := map[string]func(r *rig, p string){
+		"paths.tenets":   func(r *rig, p string) { r.tenets = p },
+		"paths.areas":    func(r *rig, p string) { r.areas = p },
+		"paths.strategy": func(r *rig, p string) { r.strategy = p },
+	}
+	for key, assign := range set {
+		t.Run(key, func(t *testing.T) {
+			r := loopRig(t, "[]")
+			assign(r, "docs/missing")
+			_, err := bind(t).Gate(context.Background(), r.env())
+			if err == nil || !strings.Contains(err.Error(), key) || !strings.Contains(err.Error(), "docs/missing") {
+				t.Fatalf("Gate error = %v, want one naming %s and docs/missing", err, key)
+			}
+		})
+	}
+	t.Run("no key", func(t *testing.T) {
+		if v := gate(t, loopRig(t, "[]")); v.Skip != "" {
+			t.Fatalf("Skip = %q, want none", v.Skip)
+		}
+	})
+	t.Run("existing path", func(t *testing.T) {
+		r := loopRig(t, "[]")
+		put(t, r.repo, "docs/s.md", "x")
+		r.commit()
+		r.strategy = "docs/s.md"
+		if v := gate(t, r); v.Skip != "" {
+			t.Fatalf("Skip = %q, want none", v.Skip)
 		}
 	})
 }
@@ -418,6 +456,9 @@ func TestStageWritesTheCorpus(t *testing.T) {
 		if c["language"] != "nl" || c["taxonomy"] != labelsPath {
 			t.Errorf("language %v, taxonomy %v; want nl and %s", c["language"], c["taxonomy"], labelsPath)
 		}
+		if c["strategy"] != "" || c["area_prefix"] != "" {
+			t.Errorf("strategy %v, area_prefix %v; want both empty", c["strategy"], c["area_prefix"])
+		}
 		docs := c["documents"].([]any)
 		if len(docs) != 1 || docs[0].(map[string]any)["document"] != "docs/site/data/loop.json" || docs[0].(map[string]any)["planned"] != "always" {
 			t.Errorf("documents = %v", docs)
@@ -432,6 +473,14 @@ func TestStageWritesTheCorpus(t *testing.T) {
 		}
 		if a, ok := is["answer"]; !ok || a != nil {
 			t.Errorf("answer = %v (present %v), want null", a, ok)
+		}
+	})
+	t.Run("direction", func(t *testing.T) {
+		r := loopRig(t, "[]")
+		r.strategy, r.areaPrefix = "docs/s.md", "2-area:"
+		c := readCorpus(t, stagedEnv(t, r, bind(t)).Dir)
+		if c["strategy"] != "docs/s.md" || c["area_prefix"] != "2-area:" {
+			t.Errorf("strategy %v, area_prefix %v; want docs/s.md and 2-area:", c["strategy"], c["area_prefix"])
 		}
 	})
 	t.Run("answered", func(t *testing.T) {

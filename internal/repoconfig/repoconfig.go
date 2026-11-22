@@ -45,9 +45,9 @@ type Repo struct {
 }
 
 // Paths is the part of [paths] that lighthouse reads here: the labels document, the tenets
-// document and the areas directory, all relative to the repo.
+// document, the areas directory and the strategy document, all relative to the repo.
 type Paths struct {
-	Labels, Tenets, Areas string
+	Labels, Tenets, Areas, Strategy string
 }
 
 // Report is [report]: whether lighthouse report runs, where it writes and, for sink "file", the
@@ -157,9 +157,10 @@ type rawFile struct {
 		Controller bool `toml:"controller"`
 	} `toml:"usage_guard"`
 	Paths struct {
-		Labels string `toml:"labels"`
-		Tenets string `toml:"tenets"`
-		Areas  string `toml:"areas"`
+		Labels   string `toml:"labels"`
+		Tenets   string `toml:"tenets"`
+		Areas    string `toml:"areas"`
+		Strategy string `toml:"strategy"`
 	} `toml:"paths"`
 	Report   toml.Primitive `toml:"report"`
 	Schedule []rawSchedule  `toml:"schedule"`
