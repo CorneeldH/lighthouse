@@ -1,4 +1,4 @@
 ---
 type: added
 ---
-De richtingsdocumenten zijn optioneel voor elke repo: `lighthouse init --direction` zaait strategie, uitgangspunten en een bestand per area uit sjablonen (alleen wat ontbreekt, nooit overschrijven), `lighthouse direction check` controleert ze in elke taal en blijft stil in een repo zonder die sleutels.
+Direction documents are optional for every repo: `lighthouse init --direction` seeds a strategy, tenets and one file per area from templates (only what is missing, never overwriting), and `lighthouse direction check` verifies them in any language and stays silent in a repo without those keys.
