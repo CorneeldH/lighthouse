@@ -468,7 +468,7 @@
               "key": "paths.areas",
               "level": "advanced",
               "required": "no",
-              "about": "The folder with one file per area: its crux, leading policy and deliberate no's, read when writing an issue. Closing a milestone updates its near goal when the area file has that heading.",
+              "about": "The folder with one file per area: its crux, leading policy and deliberate no's, read when writing an issue. Closing a milestone updates its near goal when the area file has that heading. `lighthouse init` seeds the missing files, and `lighthouse direction check` checks their shape.",
               "example": "docs/areas",
               "readers": [
                 "internal/scheduled/mapplanned/mapplanned.go",
@@ -483,7 +483,7 @@
               "key": "paths.strategy",
               "level": "advanced",
               "required": "no",
-              "about": "The file with the project's strategy, read when writing an issue and when shaping a milestone.",
+              "about": "The file with the project's strategy, read when writing an issue and when shaping a milestone. `lighthouse init` seeds it when missing, and `lighthouse direction check` checks its shape.",
               "example": "docs/strategy.md",
               "readers": [
                 "internal/scheduled/mapplanned/mapplanned.go",
@@ -579,7 +579,7 @@
               "key": "paths.tenets",
               "level": "advanced",
               "required": "no",
-              "about": "The file with the project's tenets, read when writing an issue.",
+              "about": "The file with the project's tenets, read when writing an issue. `lighthouse init` seeds it when missing, and `lighthouse direction check` checks its shape.",
               "example": "docs/tenets.md",
               "readers": [
                 "internal/scheduled/mapplanned/mapplanned.go",
