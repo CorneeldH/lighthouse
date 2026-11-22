@@ -1715,3 +1715,33 @@ func TestInitSetsResponseLanguage(t *testing.T) {
 		})
 	}
 }
+
+func TestUpgradeRepairsCRLFHookWithoutForce(t *testing.T) {
+	root := newRepo(t)
+	initYes(t, root)
+	rels := []string{".claude/hooks/lighthouse/g.sh", ".lighthouse/scripts/a.py"}
+	for _, rel := range rels {
+		write(t, root, rel, strings.ReplaceAll(read(t, root, rel), "\n", "\r\n"))
+	}
+	r := run(t, root, "", func(o *Options) { o.Upgrade = true; o.Yes = true })
+	if r.code != 0 {
+		t.Fatalf("rc %d\n%s%s", r.code, r.out, r.err)
+	}
+	for _, rel := range rels {
+		if strings.Contains(read(t, root, rel), "\r") {
+			t.Errorf("%s still has CR", rel)
+		}
+		if !strings.Contains(r.out, rel) {
+			t.Errorf("diff does not name %s:\n%s", rel, r.out)
+		}
+	}
+}
+
+func TestInitAdoptsCRLFFileWithoutManifest(t *testing.T) {
+	root := newRepo(t)
+	write(t, root, ".claude/hooks/lighthouse/g.sh", "#!/bin/bash\r\n# lighthouse: core@dev\r\necho g\r\n")
+	initYes(t, root)
+	if got := read(t, root, ".claude/hooks/lighthouse/g.sh"); got != "#!/bin/bash\n# lighthouse: core@dev\necho g\n" {
+		t.Fatalf("g.sh = %q", got)
+	}
+}

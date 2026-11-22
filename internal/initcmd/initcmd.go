@@ -377,7 +377,7 @@ func buildPlan(o Options, root string, names []string, desired []packs.Unit, cha
 				return nil, err
 			}
 			switch {
-			case c.Desired != nil && writes(c.Action, o.Force):
+			case c.Desired != nil && (writes(c.Action, o.Force) || c.Action == reconcile.Adopt && !bytes.Equal(c.Current.Content, c.Desired.Content)):
 				p.new, p.mode = c.Desired.Content, c.Desired.Mode
 			case keptRetired(c):
 				_, _ = fmt.Fprintf(o.Err, "warning: %s is changed locally; lighthouse no longer installs it, so it stays as it is and is no longer managed\n", c.Key.Path)

@@ -69,3 +69,44 @@ func TestPlanSortsByPathAndID(t *testing.T) {
 		t.Fatalf("order %q", got)
 	}
 }
+
+func decideOf(desired, current, recorded string, hasEntry, present bool) Action {
+	c := &Change{Current: Current{Content: []byte(current), Present: present}}
+	if desired != "" {
+		c.Desired = &packs.Unit{Content: []byte(desired)}
+	}
+	if hasEntry {
+		c.Entry = &manifest.Entry{SHA256: manifest.Sum([]byte(recorded))}
+	}
+	return decide(c)
+}
+
+func TestDecideCRLFOnlyIsUntouched(t *testing.T) {
+	if got := decideOf("a\nc\n", "a\r\nb\r\n", "a\nb\n", true, true); got != Replace {
+		t.Fatalf("%s, want Replace", got)
+	}
+}
+
+func TestDecideCRLFOnlyVersusDesiredIsNotUnchanged(t *testing.T) {
+	if got := decideOf("a\nb\n", "a\r\nb\r\n", "a\nb\n", true, true); got != Replace {
+		t.Fatalf("%s, want Replace", got)
+	}
+}
+
+func TestDecideNoEntryCRLFOnlyAdopts(t *testing.T) {
+	if got := decideOf("a\n", "a\r\n", "", false, true); got != Adopt {
+		t.Fatalf("%s, want Adopt", got)
+	}
+}
+
+func TestDecideLoneCRStaysConflict(t *testing.T) {
+	if got := decideOf("a\nc\n", "a\rb\n", "a\nb\n", true, true); got != Conflict {
+		t.Fatalf("%s, want Conflict", got)
+	}
+}
+
+func TestDecideRemoveCRLFOnlyIsRemove(t *testing.T) {
+	if got := decideOf("", "a\r\nb\r\n", "a\nb\n", true, true); got != Remove {
+		t.Fatalf("%s, want Remove", got)
+	}
+}
