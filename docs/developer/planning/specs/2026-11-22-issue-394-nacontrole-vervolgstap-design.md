@@ -118,10 +118,13 @@ Te bewijzen met fixtures, niet aan te nemen:
 - na `unpark` start de handoff (sleutel `handoff:<comment-id>`), op een werkplek die de
   nacontrole aankan. De branch in de handoff is `closecheck/issue-<N>-pr-<pr>`; die is nooit
   gepusht, en `FollowRemote` (`internal/workplace/remote.go`) laat een bestaande werkplek dan op
-  zijn oude HEAD staan. Dat is geen gat: B7 in de controllermodus doet eerst `git fetch origin`
-  en meet de criteria tegen `origin/<default branch>`, niet tegen de worktree-branch. De HEAD van
-  de werkplek doet er niet toe. Een proza-contract pint die zin in B7 *(eigen keus na spec review,
-  r1-f3)*. Geen nieuwe functie.
+  zijn oude HEAD staan. Dat is wél een gat voor B2 (zet 2 en 3, en de commando's van de criteria): die lopen in de cwd,
+  en alleen B2a meet in een wegwerp-worktree op `origin/<default branch>`. Daarom wijzigt B7 in de
+  controllermodus de maat: `git fetch origin` en dan B2 (zetten 2 en 3) en elk criteriumcommando
+  in een wegwerp-worktree `git worktree add --detach <scratch>/… origin/<default branch>`, zoals
+  B2a en C2 al doen. De HEAD van de closecheck-werkplek doet er dan niet toe. Een proza-contract
+  pint dat mechanisme, niet alleen de zin, en een fixture/test toont dat de maat op
+  `origin/<default branch>` loopt *(eigen keus na spec review, r1-f3, r2-f1)*. Geen nieuwe functie.
 
 Geen lus: de sleutel `handoff:<comment-id>` wordt één keer gebruikt. Een tweede nacontrole met
 weer alleen wachtende criteria legt een nieuwe relatie of vindt er geen open voorganger meer;
