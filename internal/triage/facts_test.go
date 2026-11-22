@@ -215,7 +215,8 @@ func TestSort(t *testing.T) {
 	for _, f := range fs {
 		got = append(got, f.Number)
 	}
-	want := []int{4, 9, 3, 1}
+	// No priority sorts in the P1 band, so before P2 (#509).
+	want := []int{4, 9, 1, 3}
 	for i := range want {
 		if got[i] != want[i] {
 			t.Fatalf("order = %v, want %v", got, want)

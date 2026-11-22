@@ -254,6 +254,20 @@
     {
       "kind": "start",
       "repo": "a/one",
+      "issue": 8,
+      "trigger": "handoff",
+      "trigger_key": "handoff:81",
+      "attempt": 1,
+      "mode": "start",
+      "command": "/superpowers:subagent-driven-development /home/u/r/docs/developer/planning/plans/2026-10-31-keten.md",
+      "prompt": "/superpowers:subagent-driven-development /home/u/r/docs/developer/planning/plans/2026-10-31-keten.md (issue #8, controller-run)",
+      "branch": "issue-8-werk",
+      "comment_id": 81,
+      "language": "nl"
+    },
+    {
+      "kind": "start",
+      "repo": "a/one",
       "issue": 6,
       "trigger": "handoff",
       "trigger_key": "handoff:61",
@@ -277,20 +291,6 @@
       "prompt": "/superpowers:subagent-driven-development /home/u/r/docs/developer/planning/plans/2026-10-31-keten.md (issue #3, controller-run)",
       "branch": "issue-3-werk",
       "comment_id": 31,
-      "language": "nl"
-    },
-    {
-      "kind": "start",
-      "repo": "a/one",
-      "issue": 8,
-      "trigger": "handoff",
-      "trigger_key": "handoff:81",
-      "attempt": 1,
-      "mode": "start",
-      "command": "/superpowers:subagent-driven-development /home/u/r/docs/developer/planning/plans/2026-10-31-keten.md",
-      "prompt": "/superpowers:subagent-driven-development /home/u/r/docs/developer/planning/plans/2026-10-31-keten.md (issue #8, controller-run)",
-      "branch": "issue-8-werk",
-      "comment_id": 81,
       "language": "nl"
     }
   ]

@@ -31,12 +31,14 @@ type Snapshot struct {
 // Item is one board item of the repo that Prepare keeps: Controller, On hold, To do with an own
 // 🤖 Parked, or any status with an open run.
 type Item struct {
-	Issue          int             `json:"issue"`
-	Title          string          `json:"title"`
-	State          string          `json:"state"`
-	ItemID         string          `json:"item_id"`
-	Status         string          `json:"status"`   // "Controller", "On hold" or "To do"; any with an open run
-	Priority       string          `json:"priority"` // option name, "" when unset
+	Issue    int    `json:"issue"`
+	Title    string `json:"title"`
+	State    string `json:"state"`
+	ItemID   string `json:"item_id"`
+	Status   string `json:"status"`   // "Controller", "On hold" or "To do"; any with an open run
+	Priority string `json:"priority"` // option name, "" when unset
+	// PrioWeight is the priority weight of #445 (milestone rank and blockers); 0 for none.
+	PrioWeight     int             `json:"prio_weight,omitempty"`
 	ItemUpdatedAt  time.Time       `json:"item_updated_at"`
 	IssueUpdatedAt time.Time       `json:"issue_updated_at"`
 	Labels         []string        `json:"labels,omitempty"` // label names of the issue

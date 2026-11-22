@@ -152,10 +152,10 @@ func commentIDs(cs []Comment) []int64 {
 	return ids
 }
 
-// Sort orders candidates by priority, then by issue number.
+// Sort orders candidates by priority band (dispatch.PriorityBand), then by issue number.
 func Sort(fs []Facts) {
 	sort.SliceStable(fs, func(i, j int) bool {
-		ri, rj := dispatch.PriorityRank(fs[i].Priority), dispatch.PriorityRank(fs[j].Priority)
+		ri, rj := dispatch.PriorityBand(fs[i].Priority), dispatch.PriorityBand(fs[j].Priority)
 		if ri != rj {
 			return ri < rj
 		}

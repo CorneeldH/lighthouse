@@ -193,11 +193,44 @@ func Prepare(ctx context.Context, f forge.Forge, repo repoconfig.Repo, open []ru
 		items = append(items, it)
 	}
 	slices.SortFunc(items, func(x, y Item) int { return x.Issue - y.Issue })
+	if err := setPrioWeights(ctx, f, repo, board, items); err != nil {
+		return Pre{}, err
+	}
 	scheduledPRs, err := scheduledBranchPRs(ctx, f, open)
 	if err != nil {
 		return Pre{}, err
 	}
 	return Pre{Repo: repo, Items: items, Statuses: statuses, OpenRuns: open, ScheduledPRs: scheduledPRs, ToDo: toDo}, nil
+}
+
+// setPrioWeights sets the PrioWeight of every item. The blocker graph is the BlockedBy of every
+// board item of repo, not only the items kept: a blocker of another repo, or one that is not an
+// open issue, counts for nothing. Without items it reads nothing; a failing PrioInputs is the
+// error of Prepare, never a weight of 0.
+func setPrioWeights(ctx context.Context, f forge.Forge, repo repoconfig.Repo, board []forge.BoardItem, items []Item) error {
+	if len(items) == 0 {
+		return nil
+	}
+	in, err := f.PrioInputs(ctx)
+	if err != nil {
+		return err
+	}
+	blockers := map[int][]int{}
+	for _, bi := range board {
+		if bi.Repo != repo.Slug || bi.Issue <= 0 {
+			continue
+		}
+		for _, bl := range bi.BlockedBy {
+			if bl.Repo == repo.Slug {
+				blockers[bi.Issue] = append(blockers[bi.Issue], bl.Issue)
+			}
+		}
+	}
+	weights := Weights(in, blockers)
+	for i := range items {
+		items[i].PrioWeight = weights[items[i].Issue]
+	}
+	return nil
 }
 
 // toDoCandidate reports whether bi is an open To do item of repo that the tick may have parked:
