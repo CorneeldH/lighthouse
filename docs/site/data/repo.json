@@ -106,6 +106,14 @@
       "act": "adds"
     },
     {
+      "id": "components",
+      "place": ".lighthouse/components.toml",
+      "label": "components.toml",
+      "dir": ".lighthouse",
+      "kind": "config",
+      "act": "adds"
+    },
+    {
       "id": "manifest",
       "place": ".lighthouse/manifest.toml",
       "label": "manifest.toml",

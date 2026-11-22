@@ -208,7 +208,7 @@ func IsInstallPath(kind Kind, p string) bool {
 				return true
 			}
 		}
-		if p == HeadingsPath || p == PRTemplatePath {
+		if p == HeadingsPath || p == PRTemplatePath || p == levels.InstalledPath {
 			return true
 		}
 		if rest := strings.TrimPrefix(p, WorkflowPrefix); rest != p {

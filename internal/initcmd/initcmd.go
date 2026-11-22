@@ -21,6 +21,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/BurntSushi/toml"
 	"github.com/pmezard/go-difflib/difflib"
@@ -57,6 +58,8 @@ type Options struct {
 	CreateLabels        bool                                                      // --create-labels (with --labels): create the missing labels on the remote
 	SyncLabels          func(root string, create bool, out, errw io.Writer) error // nil means labels.Sync with the forge of LabelForge
 	LabelForge          func(root string) forge.Forge                             // opens the forge of the labels; nil, or a nil result, means labels are printed, not created
+	Level               string                                                    // --level: the entry level; "" means lighthouse.toml, else strict
+	Now                 func() time.Time                                          // nil means time.Now
 	AddPacks, DropPacks []string                                                  // --pack and --no-pack (plan M0 (c), design choice 6)
 	ForgeHosts          []string                                                  // --forge-host: hosts of self-hosted GitLab instances
 	Audit               func(root string, out, errOut io.Writer)                  // read-only agent audit, run after the files are written; nil means none
@@ -186,6 +189,25 @@ func execute(o Options) error {
 		b, ok, err := readFile(root, rel)
 		return b, ok && err == nil
 	})
+	lvFiles := levelFiles(chosenPacks)
+	resolved, haveLevels, err := resolveLevels(o, root, lvFiles)
+	if err != nil {
+		return err
+	}
+	if haveLevels {
+		if desired, err = selectUnits(desired, lvFiles, resolved, o.Err); err != nil {
+			return err
+		}
+		now := o.Now
+		if now == nil {
+			now = time.Now
+		}
+		since, err := installedSince(root, resolved.Level, now)
+		if err != nil {
+			return err
+		}
+		desired = append(desired, componentsUnit(resolved, since))
+	}
 	for _, miss := range o.Deps.Check(mergeRequires(forgeRequires(reqs, kind))) {
 		_, _ = fmt.Fprintf(o.Err, "missing dependency: %s (needed by: %s)\n", miss.Tool, strings.Join(miss.NeededBy, ", "))
 	}
