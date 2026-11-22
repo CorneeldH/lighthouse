@@ -50,3 +50,37 @@ func TestCheckHooksFailureKeepsInitExit(t *testing.T) {
 		t.Errorf("stderr lacks the check-hooks hint:\n%s", errOut)
 	}
 }
+
+// runCheckHooksStub runs check-hooks with a stubbed hooksCheck inside a fake repo root.
+func runCheckHooksStub(t *testing.T, code int, marker string) (exit int, stdout, stderr string) {
+	t.Helper()
+	t.Setenv("LIGHTHOUSE_REPO_ROOT", t.TempDir())
+	stubHooksCheck(t, func(_ string, out, errOut io.Writer) int {
+		_, _ = io.WriteString(out, marker)
+		return code
+	})
+	var out, errOut bytes.Buffer
+	root := NewRoot(strings.NewReader(""), &out, &errOut)
+	root.SetArgs([]string{"check-hooks"})
+	exit = execute(root, &errOut)
+	return exit, out.String(), errOut.String()
+}
+
+// Classification: cli-output. Fails when the command sends the ok/FAIL lines to stderr instead of
+// stdout, or adds anything to stderr on a clean run.
+func TestCheckHooksReportGoesToStdout(t *testing.T) {
+	exit, out, errOut := runCheckHooksStub(t, 0, "ok hook x\n")
+	if exit != 0 || out != "ok hook x\n" || errOut != "" {
+		t.Errorf("exit %d, stdout %q, stderr %q; want 0, the marker on stdout, empty stderr", exit, out, errOut)
+	}
+}
+
+// Classification: cli-output. Fails when a finding (1) or COULD NOT CHECK (2) of the check is
+// not the exit code of the command.
+func TestCheckHooksExitCodePropagates(t *testing.T) {
+	for _, want := range []int{1, 2} {
+		if exit, _, errOut := runCheckHooksStub(t, want, "x\n"); exit != want {
+			t.Errorf("exit %d, want %d; stderr %q", exit, want, errOut)
+		}
+	}
+}
