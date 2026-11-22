@@ -51,6 +51,7 @@ func reviewSandbox(t *testing.T) reviewEnv {
 	put(filepath.Join(home, ".codex", "auth.json"), "{}", 0o600)
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("HOME", home)
+	t.Setenv("CODEX_HOME", "")
 	t.Setenv("CODEX_SPECREVIEW_HOME", filepath.Join(tmp, "ch"))
 	t.Setenv("LIGHTHOUSE_REPO_ROOT", repo)
 	t.Setenv("LIGHTHOUSE_TOML", "")
