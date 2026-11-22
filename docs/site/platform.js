@@ -8,8 +8,9 @@ export function choosePlatform(info) {
   // Android before Linux: Android user agents contain "Linux". No bare "win": "Darwin" has it.
   if (has(text, ["android", "iphone", "ipad"])) return { tab: null, note: null };
   if (has(text, ["windows", "win32", "win64"])) {
-    // WSL runs Linux for the machine's own architecture.
-    return { tab: arch === "arm" ? "linux-arm64" : "linux-amd64", note: "wsl" };
+    // Native Windows runs the hooks in Git Bash; there is only an amd64 build, which Windows on
+    // Arm runs under emulation.
+    return { tab: "windows-amd64", note: "gitbash" };
   }
   if (text.includes("mac")) {
     // A browser rarely tells Apple silicon from Intel, so arm64 is the default.
