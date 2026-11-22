@@ -96,6 +96,8 @@ def _payload(event: str, script: str, worktree: Path, project: Path) -> dict:
         cmd = "git commit -m x"
     elif name == "commit-test-gate":
         cmd = "git commit -m x"
+    elif name == "no-verify-check":
+        cmd = "git commit -m x"
     elif name == "workflow-push-gate":
         # Only a controller run (set in the test) reads the config; origin/main gives the
         # range a start, so the push of a branch without workflows passes.
@@ -172,6 +174,7 @@ def test_every_registration_has_a_payload() -> None:
     assert {_name(s) for _, _, s in REGISTRATIONS} == {
         "main-commit-gate",
         "commit-test-gate",
+        "no-verify-check",
         "bash-write-check",
         "pr-create-gate",
         "workflow-push-gate",
@@ -190,6 +193,7 @@ PRE_BASH = [s for e, m, s in REGISTRATIONS if e == "PreToolUse" and m == "Bash"]
 # pre` never blocks (a PreToolUse exit 2 blocks the call itself).
 GUARDED = {
     "run.sh main-commit-gate": "git commit -m x",
+    "run.sh no-verify-check": "git commit --no-verify -m x",
     "run.sh commit-test-gate pre": "git commit -m x",
     "run.sh pr-create-gate": "gh pr create --repo Acme/widgets --body x",
     "run.sh workflow-push-gate": "git push",

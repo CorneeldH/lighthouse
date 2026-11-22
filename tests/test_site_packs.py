@@ -98,7 +98,7 @@ def test_hooks_match_hooks_json():
             events = {event for event, _ in found[hook["name"]]}
             assert sorted(hook["events"]) == sorted(events), hook["name"]
     core = next(p for p in packs() if p["name"] == "core")
-    assert len(core["hooks"]) == 11
+    assert len(core["hooks"]) == 12
 
 
 def test_hook_when_follows_its_events():

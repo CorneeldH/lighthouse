@@ -4,7 +4,8 @@
 - Escape hatch, deliberately and once: `touch .claude/allow-main` in the repo root; remove it afterwards.
 - A worktree before the first write: `git worktree add .claude/worktrees/<name> -b <branch>`.
 - Every change goes through a PR and is squash-merged. `/lighthouse-write-pr` writes the PR body; `pr-create-gate` checks it.
-- Test gate: `commit-test-gate` runs `[test_gate] command` after each commit, on its files (default branch: before). Fix red in a new commit; never `--no-verify`. <!--level:commit-test-gate-->
+- Test gate: `commit-test-gate` runs `[test_gate] command` after each commit, on its files (default branch: before). Fix red in a new commit. <!--level:commit-test-gate-->
+- Never `--no-verify`.
 - Update a branch with `origin/<default branch>` by `git merge` once it is on origin, never by rebase plus force-push; rebase only a branch that is not pushed yet. Every PR is squash-merged, so the merge commit never reaches the default branch.
 - Artefacts (issues, PRs, comments, commit messages) are written in `[project] language`.
 - With `[project] code_language` set, names, comments, docstrings, file names and everything under `code_language_paths` are English.

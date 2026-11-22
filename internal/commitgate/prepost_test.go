@@ -59,12 +59,6 @@ func TestPreEarlyExits(t *testing.T) {
 		{"open quote without a commit", "echo 'x", 0, ""},
 		{"open quote with a commit", "git commit -m 'x", 2,
 			"commit-test-gate: COULD NOT CHECK — the command cannot be parsed (open quote). Split the command.\n\n" + preTail},
-		{"no-verify", "git commit --no-verify -m x", 2,
-			"commit-test-gate: --no-verify is not allowed in this repo.\n" +
-				"\n" +
-				"The test gate is a Claude Code PreToolUse hook, not a git hook, so the\n" +
-				"flag skips nothing today — but it will as soon as git hooks are added.\n" +
-				"If something fails: fix it. If it really has to be skipped, ask.\n"},
 		{"unresolved path", `git -C "$NOWHERE_XYZ" commit -m x`, 2,
 			"commit-test-gate: COULD NOT CHECK — the path '$NOWHERE_XYZ' cannot be resolved. Spell the path out.\n\n" + preTail},
 		{"new directory", "cd " + dir + "/new && git commit -m x", 2,
@@ -131,5 +125,15 @@ func TestPostRunsTheMovedRoots(t *testing.T) {
 				t.Fatalf("message:\n%s\nwant:\n%s", m, want)
 			}
 		})
+	}
+}
+
+// Red when Pre judges --no-verify again: that is the base hook no-verify-check now, so the
+// test gate must not refuse it (it passes a commit on a path that is no repository).
+func TestPreLeavesNoVerifyToNoVerifyCheck(t *testing.T) {
+	dir := t.TempDir()
+	res := Pre(context.Background(), &Gate{Mode: "pre"}, payload("cd "+dir+" && git commit --no-verify -m x"), dir)
+	if res.Code != 0 || res.Stderr != "" {
+		t.Fatalf("got %d %q, want a pass", res.Code, res.Stderr)
 	}
 }

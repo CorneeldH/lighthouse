@@ -59,6 +59,14 @@
         "when": "around every shell command"
       },
       {
+        "name": "no-verify-check",
+        "source": "internal/hooks/noverifycheck.go",
+        "events": [
+          "PreToolUse"
+        ],
+        "when": "before every shell command"
+      },
+      {
         "name": "pr-create-gate",
         "source": "internal/hooks/prcreategate.go",
         "events": [

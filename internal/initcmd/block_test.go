@@ -195,3 +195,21 @@ func blockContent(t *testing.T, p packs.Pack) []byte {
 	t.Fatalf("no block in %s", p.Name)
 	return nil
 }
+
+// Red if the `--no-verify` rule of pack/core's block is marked (or merged into the marked
+// commit-test-gate line) again: at light, where commit-test-gate is off, Codex and OpenCode
+// would lose the one rule that no hook protects there.
+func TestBlockOnLightKeepsNoVerifyRule(t *testing.T) {
+	body, err := fs.ReadFile(pack.Files, "core/instructions/AGENTS.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := standing(map[string]levels.Stand{"commit-test-gate": levels.StandOff})
+	got := string(filterBlock(blockUnit("core", string(body)), r).Content)
+	if strings.Contains(got, "`commit-test-gate`") {
+		t.Fatalf("fixture: commit-test-gate line stays at light:\n%s", got)
+	}
+	if !strings.Contains(got, "`--no-verify`") {
+		t.Errorf("the --no-verify rule is gone from the core block at light:\n%s", got)
+	}
+}
