@@ -170,7 +170,7 @@ source file is open.
 > norm half are missing. After every Python change, run by hand:
 > `uvx ruff@"$(cat .ruff-version)" check --select E722,B006,F403,F811,B023,PT012,PGH003,PGH004 <file>`
 > and `uvx ty@0.0.72 check $(lighthouse config python.source_dirs)`.
-> Open the norms yourself, as `AGENTS.md` prescribes. This is a deliberate asymmetry, not an
+> Open the norms yourself (`.claude/rules/python.md`, if present). This is a deliberate asymmetry, not an
 > omission: do not "fix" it by removing the hook reference.
 
 | Half | Carries | When |
