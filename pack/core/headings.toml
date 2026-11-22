@@ -8,6 +8,10 @@
 nl = "Acceptatiecriteria"
 en = "Acceptance criteria"
 
+[map_placement]
+nl = "Op de kaart"
+en = "On the map"
+
 # The kinds of a `🤖 <kind>` comment
 [kind_handoff]
 nl = "Handoff"

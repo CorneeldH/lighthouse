@@ -328,7 +328,11 @@ func TestWriteIssueFreeLabelsWithADocument(t *testing.T) {
 				"open that document to see what already exists, then test the issue against the `When` column",
 				"set the label only when the issue matches the row's `When` column, not merely because the issue touches something the document describes",
 				"This step runs before step 4; the label goes into the `--label` of step 4.",
-				"No taxonomy file, or no such row: skip this step.")
+				"No taxonomy file, or no such row: skip this step.",
+				"When the label's row also has a `Planned` value",
+				"Always ask",
+				"### heading:map_placement",
+				"This step never writes the document.")
 			_, existing, ok := strings.Cut(body, "## An existing issue")
 			if !ok {
 				t.Fatal("no ## An existing issue")
