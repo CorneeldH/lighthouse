@@ -197,7 +197,7 @@ kind = "file"
 path = ".claude/hooks/lighthouse/blocking"
 package = "core"
 version = "dev"
-sha256 = "4c51ffd3d9fa3e0f9acfe043ac6c830d3955d3e177907fb8d42492f2c542638f"
+sha256 = "45ed545950f54b44cdd24a9d3c6d0b97df5f79e19720a70fbc57eccc03c78a35"
 
 [[unit]]
 kind = "file"
@@ -331,6 +331,14 @@ id = "PreToolUse|Bash|\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/run.sh ma
 package = "core"
 version = "dev"
 sha256 = "6c5c8508589f3e46c35c0693c769f01aa446d945632378d6c08870ce4e270630"
+
+[[unit]]
+kind = "hook"
+path = ".claude/settings.json"
+id = "PreToolUse|Bash|\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/run.sh no-verify-check"
+package = "core"
+version = "dev"
+sha256 = "edf30b88ca9e2481e4f55817747dc6a8e904e5d339811aa82e35dc927c31c3b8"
 
 [[unit]]
 kind = "hook"
@@ -612,7 +620,7 @@ path = "AGENTS.md"
 id = "core"
 package = "core"
 version = "dev"
-sha256 = "30e07e5375036160bd4d21d056e2e8496169c8378fd28f2117b9a660addcba67"
+sha256 = "32e596d4af34e03b09be84ca9513f9a776dd5d0c1da1e17a4fe53a043bdffb3a"
 
 [[unit]]
 kind = "block"
