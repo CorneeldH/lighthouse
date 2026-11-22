@@ -79,8 +79,8 @@ func Pre(ctx context.Context, g *Gate, raw []byte, cwd string) Result {
 		return block(reasonNoVerify, &b)
 	}
 
-	// The `on` setting (read by readOn) decides whether the commit moment runs: with "pr" a commit is neither tested
-	// nor recorded; "commit" and "both" take the path below.
+	// The `on` setting (read by readOn) decides whether the commit moment runs: with "pr" a
+	// commit is neither tested nor recorded; "commit" and "both" take the path below.
 	on, blk := g.readOn()
 	if blk != nil {
 		return *blk
@@ -107,8 +107,8 @@ func Pre(ctx context.Context, g *Gate, raw []byte, cwd string) Result {
 	if blk != nil {
 		return *blk
 	}
-	// No project root (only another project): nothing to test or record, so no configuration,
-	// no slot and no wait.
+	// No project root (only another project): nothing to test or record, so no slot and no
+	// wait. The configuration was already read by readOn above.
 	if len(project) == 0 {
 		return g.Emit("PreToolUse")
 	}
