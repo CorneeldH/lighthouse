@@ -347,11 +347,15 @@ func saveRunViews(ctx context.Context, env tickEnv, db *sql.DB, repos []checkedR
 	if len(repos) == 0 {
 		return false
 	}
-	markerDir, err := park.MarkerDir(env.Getenv)
 	var parked map[string][]runs.Row
 	var all []park.Marker
+	stateDir, err := env.stateDir()
+	var markerDirs []string
 	if err == nil {
-		all, err = park.ReadMarkers(markerDir)
+		markerDirs, err = park.HostMarkerDirs(env.Getenv, stateDir)
+	}
+	if err == nil {
+		all, err = park.ReadMarkersIn(markerDirs)
 	}
 	if err == nil {
 		onNodes, _, _ := env.nodeMarkers(ctx) // a node that does not read shows no parked run
@@ -527,7 +531,7 @@ func applyActions(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.D
 	if err != nil {
 		return dispatch.Result{}, err
 	}
-	markerDir, err := park.MarkerDir(env.Getenv)
+	markerDirs, err := park.HostMarkerDirs(env.Getenv, dir)
 	if err != nil {
 		return dispatch.Result{}, err
 	}
@@ -545,9 +549,9 @@ func applyActions(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.D
 		RoundLimit:   func(slug string) string { return repos[slug].Controller.AtRoundLimit },
 		Labels:       func(slug string) repoconfig.Labels { return repos[slug].Labels },
 		StateDir:     dir,
-		MarkerDir:    markerDir,
+		MarkerDir:    markerDirs[0],
 		RemoveMarker: func(session, key string) error {
-			return env.removeMarker(ctx, cfg, markerDir, markerNode[session], session, key)
+			return env.removeMarker(ctx, cfg, markerDirs, markerNode[session], session, key)
 		},
 		MaxWait:     cfg.MaxWait,
 		Now:         env.now,
@@ -562,10 +566,10 @@ func applyActions(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.D
 }
 
 // removeMarker removes the resume marker of session while its key is key: on node (DELETE
-// markers through serve), or in markerDir when node is "".
-func (e tickEnv) removeMarker(ctx context.Context, cfg hostconfig.Dispatch, markerDir, node, session, key string) error {
+// markers through serve), or in markerDirs when node is "".
+func (e tickEnv) removeMarker(ctx context.Context, cfg hostconfig.Dispatch, markerDirs []string, node, session, key string) error {
 	if node == "" {
-		return park.RemoveMarker(markerDir, session, key)
+		return park.RemoveMarkerIn(markerDirs, session, key)
 	}
 	c := e.serve(cfg, node)
 	if c == nil {
@@ -596,7 +600,7 @@ func gatherRepo(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dis
 	if err != nil {
 		return nil, "", nil, err
 	}
-	pre.Markers, pre.PauseUntil = facts.Markers[repo.Slug], facts.PauseUntil
+	pre.Markers, pre.PauseUntil, pre.Unreadable = facts.Markers[repo.Slug], facts.PauseUntil, facts.Unreadable
 	fp = dispatch.Fingerprint(pre)
 	prev, err := dispatch.LoadTickState(ctx, db, repo.Slug)
 	if err != nil {
@@ -878,7 +882,7 @@ func repoInput(ctx context.Context, db *sql.DB, cfg hostconfig.Dispatch, f forge
 		Snapshot: snap, Controller: *pre.Repo.Controller, Language: pre.Repo.Language,
 		LocationPrefix: pre.Repo.Labels.LocationPrefix, Labels: pre.Repo.Labels,
 		DefaultBranch: pre.Repo.DefaultBranch, Installed: installed, History: history, Stands: pre.Stands, Runs: pre.Runs,
-		Markers:      pre.Markers,
+		Markers: pre.Markers, Unreadable: pre.Unreadable,
 		WorkflowPush: cfg.WorkflowPush != nil, PushTimeout: dispatch.PushTimeout(cfg),
 	}, nil
 }

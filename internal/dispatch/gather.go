@@ -86,6 +86,8 @@ type Pre struct {
 	// Markers are the controller markers whose session's last run is in this repo; the
 	// fingerprint and the boundaries of the precheck read them.
 	Markers []park.Marker
+	// Unreadable are the sessions with a marker file that does not read (#513).
+	Unreadable []string
 	// PauseUntil is the end of the active pause flag; zero is no pause. It is in the fingerprint,
 	// so a pause that ends makes the next tick gather.
 	PauseUntil time.Time

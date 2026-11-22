@@ -134,6 +134,10 @@ en = "after-merge check: criteria open"
 nl = "geen handoff of vraag"
 en = "no handoff or question"
 
+[reason_park_marker_unreadable]
+nl = "geparkeerd, marker niet leesbaar"
+en = "parked, marker not readable"
+
 [reason_post_failed]
 nl = "post mislukt"
 en = "post failed"
