@@ -27,6 +27,7 @@
                 "internal/cli/planreviewrecord.go",
                 "internal/config/headings.go",
                 "internal/dispatch/instructions/run.md",
+                "internal/direction/direction.go",
                 "internal/evidence/run.go",
                 "internal/initcmd/initcmd.go",
                 "internal/pusher/floor.go",
