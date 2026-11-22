@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 )
@@ -95,10 +96,29 @@ func Classify(comments []Comment) Status {
 
 var fenceOpen = regexp.MustCompile("^(`{3,})bash$")
 
-// QuestionText returns the question without its heading line and footer. Outside a code
-// block blank lines drop and lines are trimmed; inside one every line stays, so a command
-// copies literally.
+// QuestionText returns only the question of a `🤖 Question`: the text after the question label,
+// numbered `1.`, `2.` in a bundle. Where, what, options and commands stay on the issue. A
+// question without a question label, or with an empty one, falls back to the whole text
+// without heading line and footer; outside a code block it drops blank lines and trims each
+// line, inside one it keeps every line literally.
 func QuestionText(body string) string {
+	if fields, ok := ParseQuestion(body); ok && len(fields.Questions) > 0 {
+		var out []string
+		for i, q := range fields.Questions {
+			if q.Question == "" {
+				out = nil
+				break
+			}
+			if len(fields.Questions) > 1 {
+				out = append(out, fmt.Sprintf("%d. %s", i+1, q.Question))
+			} else {
+				out = append(out, q.Question)
+			}
+		}
+		if out != nil {
+			return strings.Join(out, "\n")
+		}
+	}
 	lines := strings.Split(strings.ReplaceAll(strings.TrimSpace(body), "\r\n", "\n"), "\n")
 	var out []string
 	fence := ""
