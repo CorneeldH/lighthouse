@@ -55,3 +55,28 @@ func TestIssuesRefusesOtherFormatsAndBrokenDocuments(t *testing.T) {
 		}
 	}
 }
+
+// Classification: pure function. Fails if Issues reads only the first value of a document and
+// ignores what follows: a second JSON value or a second YAML document could hide an item from
+// Check or count one the parser of the site never sees.
+func TestIssuesRefusesASecondValue(t *testing.T) {
+	for path, doc := range map[string]string{
+		"loop.json":  `{"issue": 5} {"issue": 6}`,
+		"trail.json": `{"issue": 5} x`,
+		"kaart.yaml": "issue: 5\n---\nissue: 6\n",
+	} {
+		if _, err := Issues(path, []byte(doc)); err == nil || !strings.Contains(err.Error(), path) {
+			t.Errorf("%s: err = %v, want an error naming the path", path, err)
+		}
+	}
+	for path, doc := range map[string]string{
+		"loop.json":  "{\"issue\": 5}\n\n",
+		"kaart.yaml": "---\nissue: 5\n",
+		"leeg.yaml":  "",
+	} {
+		if _, err := Issues(path, []byte(doc)); err != nil {
+			t.Errorf("%s: err = %v, want nil", path, err)
+		}
+	}
+}
+
