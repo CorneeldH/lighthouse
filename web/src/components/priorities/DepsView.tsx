@@ -159,22 +159,20 @@ export function DepsView({ graph, selected, colors }: ViewProps): JSX.Element {
       )}
       <div className="border-t border-border pt-3">
         <h4 className="mb-2 text-[13px] font-semibold">No open dependencies ({loose.length})</h4>
-        <div className="flex flex-wrap gap-1.5">
+        <div className="grid gap-2.5" style={{ gridTemplateColumns: 'repeat(auto-fill, 210px)' }}>
           {loose.map((n) => {
             const color = n.milestone ? (colors.get(`${n.repo}#m${n.milestone.number}`) ?? NO_MILESTONE_COLOR) : NO_MILESTONE_COLOR
             return (
-              <a
+              <NodeCard
                 key={n.key}
-                href={n.url}
-                target="_blank"
-                rel="noreferrer"
-                data-testid={`loose-${n.key}`}
-                title={n.title}
-                className="inline-flex items-center gap-1.5 overflow-hidden rounded-md border border-border bg-white py-0.5 pr-2 text-xs text-foreground no-underline dark:bg-card"
-              >
-                <span className="w-[5px] self-stretch" style={{ background: color }} />
-                <b className="font-semibold">{prefix ? `${n.repo}#${n.number}` : `#${n.number}`}</b>
-              </a>
+                node={n}
+                color={color}
+                grey={false}
+                label={prefix ? `${n.repo}#${n.number}` : `#${n.number}`}
+                testId={`loose-${n.key}`}
+                dimmed={false}
+                highlighted={false}
+              />
             )
           })}
         </div>

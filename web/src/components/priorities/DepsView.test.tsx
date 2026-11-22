@@ -161,12 +161,43 @@ describe('DepsView', () => {
     expect(fireEvent.click(a)).toBe(true)
   })
 
-  it('lists the issues without relations under the graph, with the title as tooltip', () => {
+  it('lists the issues without relations under the graph as full cards', () => {
     view(CHAIN, [A])
     expect(screen.getByText('No open dependencies (1)')).toBeTruthy()
-    const pill = screen.getByTestId(`loose-${A}#5`)
-    expect(pill.getAttribute('title')).toBe('title-5')
-    expect(pill.textContent).toContain('#5')
+    const card = screen.getByTestId(`loose-${A}#5`)
+    expect(within(card).getByText('title-5').getAttribute('title')).toBe('title-5')
+    expect(card.textContent).toContain('#5')
+  })
+
+  it('shows a loose issue as a full card with number, title and state', () => {
+    view(CHAIN, [A])
+    const card = screen.getByTestId(`loose-${A}#5`)
+    expect(within(card).getByText('#5')).toBeTruthy()
+    expect(within(card).getByText('title-5')).toBeTruthy()
+    expect(card.getAttribute('data-state')).toBe('ready')
+    expect(card.style.width).toBe('210px')
+    expect(card.style.height).toBe('38px')
+  })
+
+  it('marks a loose In progress issue as active', () => {
+    view([repo(A, [iss(1, [], { status: 'In progress' })])], [A])
+    const card = screen.getByTestId(`loose-${A}#1`)
+    expect(card.getAttribute('data-state')).toBe('active')
+    expect(within(card).getByTestId('card-strip').className).toContain('lh-stripe')
+  })
+
+  it('marks a loose Controller issue without a run as active', () => {
+    view([repo(A, [iss(1, [], { status: 'Controller' })])], [A])
+    const card = screen.getByTestId(`loose-${A}#1`)
+    expect(card.getAttribute('data-state')).toBe('active')
+    expect(within(card).getByTestId('card-strip').className).toContain('lh-stripe')
+  })
+
+  it('draws a cross on a loose card with a blocked_external label', () => {
+    view([repo(A, [iss(1, [], { label: 'blocked_external' })])], [A])
+    const card = screen.getByTestId(`loose-${A}#1`)
+    expect(card.getAttribute('data-state')).toBe('blocked')
+    expect(within(card).getByTestId('card-cross')).toBeTruthy()
   })
 
   it('says so in one sentence and draws no svg without any relation', () => {
