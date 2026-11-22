@@ -319,6 +319,23 @@ test("entries keep the order of the tree", () => {
   assert.equal(byId.workstation.note, load("repo.json").workstation.note);
 });
 
+test("upgrade dims nothing", () => {
+  const dimmed = Object.entries(entryRows("upgrade")).filter(([, r]) => r.dim).map(([p]) => p);
+  assert.deepEqual(dimmed, []);
+});
+
+test("rows carry the upgrade text", () => {
+  const rows = entryRows("everything");
+  const data = load("repo.json");
+  assert.equal(rows[".claude/settings.json"].force, true);
+  assert.equal(rows[".claude/settings.json"].upgrade, row(data, "claude-settings").upgrade);
+  assert.equal(rows["lighthouse.toml"].force, false);
+});
+
+test("the modes are four", () => {
+  assert.deepEqual(m.REPO_MODES.map((x) => x.id), ["everything", "adds", "edits", "upgrade"]);
+});
+
 test("everything dims nothing", () => {
   const dimmed = Object.entries(entryRows("everything")).filter(([, r]) => r.dim).map(([p]) => p);
   assert.deepEqual(dimmed, []);

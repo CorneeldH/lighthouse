@@ -537,17 +537,18 @@ export function renderConfig(root, data, packs) {
   root.replaceChildren(...sections);
 }
 
-/** The three positions of the switch above the tree of a repo after init. */
+/** The four positions of the switch above the tree of a repo after init. */
 export const REPO_MODES = [
   { id: "everything", label: "Everything" },
   { id: "adds", label: "Adds" },
   { id: "edits", label: "Edits your file" },
+  { id: "upgrade", label: "Upgrade" },
 ];
 const REPO_ACTS = { adds: "init adds it", edits: "init edits your file" };
 
 /** The tree without a DOM: the dirs in order, then the workstation, each with its rows.
-    [{id, label, yours, rows: [{id, place, label, kind, glyph, className, act, actLabel, href, dim}]},
-    …, {id: "workstation", label, note, rows}]. A row dims when `mode` shows the other act; the
+    [{id, label, yours, rows: [{id, place, label, kind, glyph, className, act, actLabel, href, upgrade, force, dim}]},
+    …, {id: "workstation", label, note, rows}]. A row dims when `mode` shows the other act (never in `upgrade`); the
     yours of a dir never dims. */
 export function repoEntries(data, mode = "everything") {
   if (!REPO_MODES.some((m) => m.id === mode)) {
@@ -573,7 +574,9 @@ export function repoEntries(data, mode = "everything") {
           act: row.act,
           actLabel: REPO_ACTS[row.act],
           href: row.href || null,
-          dim: mode !== "everything" && row.act !== mode,
+          upgrade: row.upgrade,
+          force: row.force,
+          dim: mode !== "everything" && mode !== "upgrade" && row.act !== mode,
         };
       });
   const dirs = data.dirs.map((dir) => ({
@@ -595,6 +598,14 @@ function repoRow(row) {
   const glyph = el("span", "glyph", row.glyph);
   glyph.setAttribute("aria-hidden", "true");
   pill.append(glyph, el("code", "", row.label), el("span", "sr-only", `, ${row.actLabel}`));
+  const upgrade = el("span", "repo-upgrade", row.upgrade);
+  upgrade.hidden = true;
+  if (row.force) {
+    const force = el("code", "repo-force", "--force");
+    force.append(el("span", "sr-only", " refuses while you edited or deleted it; --force overwrites"));
+    upgrade.append(" ", force);
+  }
+  pill.append(upgrade);
   if (row.href) {
     const go = el("a", "repo-go", "↗");
     go.href = row.href;
@@ -630,6 +641,9 @@ export function renderRepo(root, data) {
   });
   bar.append(...buttons);
 
+  const note = el("p", "repo-upgrade-note", data.upgradeNote ?? "");
+  note.hidden = true;
+
   const tree = el("div", "repo-tree");
   const list = el("ul");
   list.append(...top.rows.map(repoRow));
@@ -657,10 +671,14 @@ export function renderRepo(root, data) {
     for (const node of root.querySelectorAll(".repo-row")) {
       node.classList.toggle("dim", dim.get(node.dataset.id));
     }
+    for (const node of root.querySelectorAll(".repo-upgrade")) {
+      node.hidden = mode !== "upgrade";
+    }
+    note.hidden = mode !== "upgrade";
   };
   buttons.forEach((button) => button.addEventListener("click", () => select(button.dataset.mode)));
 
-  root.replaceChildren(bar, tree, stationBox);
+  root.replaceChildren(bar, note, tree, stationBox);
 }
 
 /** One item of the system page: a link with the glyph of its sort, its label and its note. */
