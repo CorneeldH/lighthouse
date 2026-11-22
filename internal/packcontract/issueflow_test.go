@@ -167,6 +167,39 @@ func TestRouteIssueSendsAnOpenFogQuestionTo4c(t *testing.T) {
 	}
 }
 
+// Classification: fails when the needs_hands or needs_testing row stops being a stop that
+// executes nothing and names the human's action or judgement, brings back the old meaning
+// (execute up to the hand movement, let the human judge), lets the non-negotiables call a
+// needs_* label no stop or forget the new rule, or when the six label rows leave rank order.
+func TestRouteIssueNeedsHandsAndTestingStop(t *testing.T) {
+	for variant, body := range variants(t, routeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			labels := section(t, body, "## A blocking label", "## Non-negotiable")
+			wantAll(t, lineStarting(t, labels, "| `labels.needs_hands`"),
+				"**stop**", "executes nothing", "which action of the human is needed first")
+			wantAll(t, lineStarting(t, labels, "| `labels.needs_testing`"),
+				"**stop**", "executes nothing", "which judgement of the human is needed first")
+			f := flat(labels)
+			wantNone(t, f, "execute up to the hand movement", "let the human judge whether it does what was meant")
+			nn := section(t, body, "## Non-negotiable", "## Known pitfalls")
+			wantNone(t, nn, "treat a `labels.needs_*` label as a stop")
+			wantAll(t, lineStarting(t, nn, "- ✅ stop and report"), "`labels.needs_hands`", "`labels.needs_testing`")
+			last := -1
+			for _, key := range []string{"needs_shaping", "needs_decision", "blocked_issue", "blocked_external", "needs_hands", "needs_testing"} {
+				row := "| `labels." + key + "`"
+				i := strings.Index(labels, row)
+				if i < 0 {
+					t.Fatalf("no row %q", row)
+				}
+				if i < last {
+					t.Errorf("row %q is out of rank order", row)
+				}
+				last = i
+			}
+		})
+	}
+}
+
 // Classification: fails when route-issue stops reading one of the six labels from config, or
 // names a literal label (`3-blocked`, `3-needs…`).
 func TestRouteIssueReadsLabelsFromConfig(t *testing.T) {
