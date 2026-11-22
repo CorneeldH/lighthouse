@@ -46,7 +46,7 @@ One row per file and assumption. The `Where` column links to the file and names 
 | [`releasing.md:101`](releasing.md#L101), [`triage.md:191-220`](triage.md#L191) | `systemctl --user` restart of the service, a systemd user timer for triage | Linux-only | Examples; use the scheduler of the host | — |
 | [`secret-scan.md`](secret-scan.md#host-deploy) | a systemd user service and timer for the checkpoint push | Linux-only | Example; use the scheduler of the host | — |
 | [`secret-scan.md:25,91-108`](secret-scan.md#L91) | The secret scan runs `gitleaks` in a `systemd-run` scope with `choom` | Host feature | Without systemd, the user bus or `choom` the scan runs without a ceiling and says so | — |
-| [`install.md`](install.md#L8) (hooks) | Hooks on native Windows | Linux-only | The hooks need WSL; the binary itself runs on Windows | #90 |
+| [`getting-started.md`](getting-started.md#windows) (hooks) | Hooks on native Windows run in Git Bash | Host feature | Measured by `windows-measure.yml`: every core hook passes under Git Bash, the test gate included. Without Git for Windows, Claude Code runs the hooks in PowerShell and they do not work | #493 |
 | [`checkinstructions.go`](../internal/cli/checkinstructions.go) | `lighthouse check-instructions` hashes the skill files itself, so it needs neither `sha256sum` nor `shasum`; it still calls `git` (check 11) and `wc` (check 10, via `internal/wordcount`) | Everywhere | Without `git` or `wc` the check says `SKIPPED` and the run still exits 0, never a silent pass | — |
 
 ## Scanned, no host assumption
