@@ -594,3 +594,30 @@ issue-workspaces.
   weigert (`not "scheduled/…" as the forge says`): zo'n workspace ruim je met de hand op.
 - Een workspace die geen runrij noemt, ziet de sweep niet. Dat gebeurt als een tick sterft tussen
   `Prepare` en `SetWorkplace` van een geplande start; zo'n workspace ruim je met de hand op.
+
+### Workspace zonder worktree-map en een niet-bare clone (#478)
+
+Een workspace waarvan de worktree-map op deze host ontbreekt, kon `Cleanup` niet meten: `git status`
+op een map die er niet is geeft exit 128, en de workspace bleef als `not measurable` achter. Een
+map die weg is, bevat niets ongecommits meer. `Cleanup` ruimt zo'n workspace daarom op, alleen op
+`self` en alleen als er ook geen werk in de branch verloren gaat:
+
+- de PR van de branch is gemerged (`MergedHead` is gevuld), of
+- de branch staat nergens meer: niet in de clone en niet op origin (`OrphanChecker.BranchNowhere`).
+  De adapter vraagt dat aan een andere worktree onder dezelfde worktree-root
+  (`WorktreeRoot`), want die deelt de refs en `origin` van de clone. Is er geen andere worktree,
+  of faalt git, dan blijft de workspace een achterblijver met `not measurable: branch of the missing
+  worktree: …`. Staat de branch nog ergens, dan is de reden `worktree directory is gone, but branch
+  <b> still exists`.
+
+`Remove` krijgt dan `RemoveOptions.Orphan`: de adapter slaat `discardWork` over en stuurt
+`DELETE /api/v1/workspaces/<id>?force=true`. Dirty en unpushed worden niet gemeten.
+
+De tick meldt ook een kenn-forge-clone die geen bare repo meer is (`kennforge.CheckClone`): zodra
+`core.bare` niet `true` is of `core.worktree` gezet is, weigert kenn-forge elke `DELETE` van een
+workspace met een 500. De tick leest dat per repo, via een andere worktree onder de worktree-root,
+en print `lighthouse: cleanup <repo>: kenn-forge clone <pad> is not bare (…)` met het herstel
+(`git -C <clone> config --unset core.worktree && git -C <clone> config core.bare true`). De tick
+eindigt dan met exit 1. Zonder worktree onder de root is er niets om de clone uit af te leiden, en
+dan zwijgt de check. De oorzaak was een `git init` met een geërfde `GIT_DIR` en `GIT_WORK_TREE`;
+de bron van `GIT_WORK_TREE` is niet gevonden.

@@ -1,7 +1,7 @@
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Issue, Milestone, Repo, Run } from '@/api/lighthouse'
-import { buildGraph } from '@/lib/priorities/derive'
+import { buildGraph, type MilestoneRow } from '@/lib/priorities/derive'
 import { assignColors } from '@/lib/priorities/palette'
 import { MilestonesView } from './MilestonesView'
 
@@ -263,5 +263,103 @@ describe('MilestonesView', () => {
     expect(screen.queryByTestId('ms-a/y#m1')).toBeNull()
     expect(within(row(`${A}#m1`)).getByTestId('swatch').getAttribute('style')).toContain('rgb(1, 2, 3)')
     expect(screen.getByTestId('view-milestones')).toBeTruthy()
+  })
+
+  describe('priority order', () => {
+    const B = 'b/y'
+    // Computed order is m3 (1 open), m1 (2 open), m2 (3 open), m4 (empty); ranks put m2 first.
+    const ranked = () =>
+      repo(
+        A,
+        [iss(1, 1), iss(2, 1), iss(3, 2), iss(4, 2), iss(5, 2), iss(6, 3)],
+        [ms(1, 0, 2, 'Priority: 2'), ms(2, 0, 3, 'Pitch\nPriority: 1'), ms(3, 0, 1), ms(4, 0, 0)],
+      )
+    function prio(
+      repos: Repo[],
+      extra: { onMove?: (row: MilestoneRow, dir: 'up' | 'down') => void; pendingRepos?: Set<string>; order?: 'computed' | 'priority' } = {},
+      selected: string[] = [A],
+    ) {
+      const graph = buildGraph(repos, [])
+      return render(
+        <MilestonesView
+          graph={graph}
+          repos={repos}
+          selected={new Set(selected)}
+          colors={new Map()}
+          order={extra.order ?? 'priority'}
+          onMove={extra.onMove ?? vi.fn()}
+          pendingRepos={extra.pendingRepos ?? new Set()}
+        />,
+      )
+    }
+    const btn = (key: string, name: 'Omhoog' | 'Omlaag') =>
+      within(row(key)).getByRole('button', { name: new RegExp(`${name}$`, 'i') }) as HTMLButtonElement
+    const order = () => screen.getAllByTestId(/^ms-/).map((e) => e.getAttribute('data-testid'))
+
+    it('lists ranked milestones first by place, unranked below in computed order', () => {
+      prio([ranked()])
+      expect(order()).toEqual([`ms-${A}#m2`, `ms-${A}#m1`, `ms-${A}#m3`, `ms-${A}#m4`])
+    })
+
+    it('keeps the computed order in stand Berekend, without buttons or place', () => {
+      prio([ranked()], { order: 'computed' })
+      expect(order()).toEqual([`ms-${A}#m3`, `ms-${A}#m1`, `ms-${A}#m2`, `ms-${A}#m4`])
+      expect(screen.queryAllByRole('button', { name: /omhoog|omlaag/i })).toHaveLength(0)
+      expect(screen.queryAllByTestId('place')).toHaveLength(0)
+    })
+
+    it('shows the place in the repo next to the title, and no number without a rank', () => {
+      prio([ranked()])
+      expect(within(row(`${A}#m2`)).getByTestId('place').textContent).toBe('1')
+      expect(within(row(`${A}#m1`)).getByTestId('place').textContent).toBe('2')
+      expect(within(row(`${A}#m3`)).queryByTestId('place')).toBeNull()
+      // A screen reader hears "plaats 1", not a bare number.
+      expect(within(row(`${A}#m2`)).getByText(/plaats 1/).textContent).toBe(', plaats 1')
+    })
+
+    it('disables up on place 1, down on the last ranked and down without a rank', () => {
+      prio([ranked()])
+      expect(btn(`${A}#m2`, 'Omhoog').disabled).toBe(true)
+      expect(btn(`${A}#m2`, 'Omlaag').disabled).toBe(false)
+      expect(btn(`${A}#m1`, 'Omhoog').disabled).toBe(false)
+      expect(btn(`${A}#m1`, 'Omlaag').disabled).toBe(true)
+      expect(btn(`${A}#m3`, 'Omhoog').disabled).toBe(false)
+      expect(btn(`${A}#m3`, 'Omlaag').disabled).toBe(true)
+    })
+
+    it('gives every button a name with its milestone title', () => {
+      prio([ranked()])
+      expect(within(row(`${A}#m1`)).getByRole('button', { name: 'M1 omhoog' })).toBeTruthy()
+      expect(within(row(`${A}#m2`)).getByRole('button', { name: 'M2 omlaag' })).toBeTruthy()
+    })
+
+    it('calls onMove with the row and the direction of the clicked button', () => {
+      const onMove = vi.fn<(row: MilestoneRow, dir: 'up' | 'down') => void>()
+      prio([ranked()], { onMove })
+      fireEvent.click(btn(`${A}#m1`, 'Omhoog'))
+      fireEvent.click(btn(`${A}#m2`, 'Omlaag'))
+      expect(onMove.mock.calls.map(([r, d]) => [r.repo, r.number, d])).toEqual([
+        [A, 1, 'up'],
+        [A, 2, 'down'],
+      ])
+    })
+
+    it('disables every button of a repo with a running request, not those of another repo', () => {
+      const other = repo(B, [], [ms(7, 1, 0, 'Priority: 1'), ms(8, 1, 0, 'Priority: 2')])
+      prio([ranked(), other], { pendingRepos: new Set([A]) }, [A, B])
+      for (const k of [`${A}#m1`, `${A}#m2`, `${A}#m3`]) {
+        expect(btn(k, 'Omhoog').disabled).toBe(true)
+        expect(btn(k, 'Omlaag').disabled).toBe(true)
+      }
+      expect(btn(`${B}#m8`, 'Omhoog').disabled).toBe(false)
+      expect(btn(`${B}#m7`, 'Omlaag').disabled).toBe(false)
+    })
+
+    it('numbers places per repo when repos are mixed', () => {
+      const other = repo(B, [], [ms(7, 1, 0, 'Priority: 5')])
+      prio([ranked(), other], {}, [A, B])
+      expect(within(row(`${B}#m7`)).getByTestId('place').textContent).toBe('1')
+      expect(order()).toEqual([`ms-${B}#m7`, `ms-${A}#m2`, `ms-${A}#m1`, `ms-${A}#m3`, `ms-${A}#m4`])
+    })
   })
 })

@@ -2,7 +2,7 @@
 language = "nl"
 code_language = "en"
 code_language_paths = ["pack/**", "internal/**", "cmd/**", "tests/**", "tools/**"]
-code_language_exempt = ["tests/pack/fixtures/code_language/**", "tests/pack/fixtures/roborev/**", "internal/canary/testdata/code-language-check/**", "internal/canary/testdata/go-lint-gate/typecheck.go", "internal/pins/semver.go", "internal/pins/semver_test.go"]
+code_language_exempt = ["internal/codelang/testdata/**", "tests/pack/fixtures/roborev/**", "internal/canary/testdata/code-language-check/**", "internal/canary/testdata/go-lint-gate/typecheck.go", "internal/pins/semver.go", "internal/pins/semver_test.go"]
 
 [forge]
 kind = "github"
@@ -40,8 +40,8 @@ labels = "docs/developer/labels.md"
 
 [test_gate]
 # `lighthouse gate go`, gate_python.py and `lighthouse gate node` choose the Go packages, the
-# pytest files and the web checks of the commit.
-command = "lighthouse gate go -- go test -race && python3 pack/python/scripts/gate_python.py -- uv run pytest -q --basetemp=\"$LIGHTHOUSE_GATE_TMP\" && lighthouse gate node --dir web --also .github/workflows/ci.yml --also lighthouse.toml --drift gen=src/api -- lint typecheck test"
+# pytest files and the web checks of the commit; the last segment runs the site tests when the commit touches what they read.
+command = "lighthouse gate go -- go test -race && python3 pack/python/scripts/gate_python.py -- uv run pytest -q --basetemp=\"$LIGHTHOUSE_GATE_TMP\" && lighthouse gate node --dir web --also .github/workflows/ci.yml --also lighthouse.toml --drift gen=src/api -- lint typecheck test && { [ -n \"$LIGHTHOUSE_GATE_FILES\" ] && ! grep -qE '^(docs/site/|pack/|internal/|cmd/|tools/|\\.github/workflows/build\\.yml)' \"$LIGHTHOUSE_GATE_FILES\" || { command -v node >/dev/null || exit 3; node --test \"docs/site/test/*.test.mjs\"; }; }"
 # 3: a selector could not check, so nothing was tested (see the scripts).
 unchecked_exit_codes = [3]
 

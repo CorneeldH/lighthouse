@@ -45,7 +45,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      # Same flags as the Go part of [test_gate] command; tests/test_ci_go_test_pin.py pins it.
+      # Same flags as the Go part of [test_gate] command; internal/repopins/workflows_test.go pins it.
       - run: go test -race -shuffle=on ./...
 
   go-e2e:

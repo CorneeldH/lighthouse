@@ -557,7 +557,7 @@ func TestRunShBuildsOnceAndNeverWaits(t *testing.T) {
 			}
 			r.waitBuilt(1)
 			if n := len(r.goCalls()); n != 1 {
-				t.Errorf("go calls = %d, want 1", n)
+				t.Errorf("go calls = %d, want 1: %q", n, r.goCalls())
 			}
 			if st, err := os.Stat(filepath.Join(r.bin, "lighthouse")); err != nil || st.Mode()&0o100 == 0 {
 				t.Errorf("no executable binary after the build: %v", err)
@@ -570,7 +570,7 @@ func TestRunShBuildsOnceAndNeverWaits(t *testing.T) {
 			}
 			checkRunSh(t, r.call(callOpts{}, nonBlockingHook), 0, "built-binary hook worktree-check\n", "")
 			if n := len(r.goCalls()); n != 1 {
-				t.Errorf("go calls after the second run = %d, want 1", n)
+				t.Errorf("go calls after the second run = %d, want 1: %q", n, r.goCalls())
 			}
 		})
 	}

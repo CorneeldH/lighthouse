@@ -43,12 +43,16 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      # Bare python3: no uv, no sync, no dependency install on fork code. Hence the
-      # stdlib-only rule for the script.
-      #
+      # Go, set up from the pinned action and `go.mod`: no uv, no sync. `go run` builds the gate from
+      # this checkout and fetches its modules through the module proxy, checked against go.sum.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
       # NOTE — this gate is not tamper-proof, and cannot be: the script and this workflow
       # both come from the pull request head. A fork pull request can hollow out
-      # `tools/check_cla.py` in the same diff, or delete this file so the lane never runs.
+      # `tools/check_cla/` in the same diff, or delete this file so the lane never runs.
       # Two branch-protection settings belong with it, neither enforceable from the
       # repository content:
       #   1. required review — catches a hollowed-out script;
@@ -61,4 +65,4 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: python3 tools/check_cla.py --base "$BASE_SHA" --head "$HEAD_SHA"
+        run: go run ./tools/check_cla --base "$BASE_SHA" --head "$HEAD_SHA"

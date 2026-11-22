@@ -47,18 +47,18 @@ met een milestone) of `always` (altijd); leeg betekent dat het label geen aanmaa
 dagelijkse job `map-planned` zet zo'n issue als `planned` item op de kaart, of stelt een vraag
 als de plek onduidelijk is; `write-issue` legt plek en wens vast bij het aanmaken.
 
-`ci/loop_roadmap.py` en de workflow `loop-roadmap` (`.github/workflows/loop-roadmap.yml`)
+`go run ./ci/loop_roadmap` en de workflow `loop-roadmap` (`.github/workflows/loop-roadmap.yml`)
 controleren dit in twee standen:
 
 - PR-modus (bij `pull_request`): voor elk issue met `loop` dat de PR met `Closes` sluit, noemt
   geen `planned` item het nog, en de PR raakt `docs/site/data/loop.json`. Raakt een PR
-  `docs/site/data/loop.json` of `ci/loop_roadmap.py`, dan krijgt hij ook de hoofdmodus-controle.
+  `docs/site/data/loop.json` of `ci/loop_roadmap/`, dan krijgt hij ook de hoofdmodus-controle.
   De PR-controle draait niet opnieuw als het label `loop` pas op een issue komt nadat zijn PR al
   open staat (het `issues`-event draait de hoofdmodus op de default branch): push een nieuwe
   commit of bewerk de PR-body om de PR-modus opnieuw te starten.
 - Hoofdmodus (bij push naar main, issues-events en workflow_dispatch), als vangnet: elk
   `planned` item noemt een open issue met `loop`. De richting issue naar kaart controleert
-  het script niet meer; die draagt de job `map-planned`. Een issue dat de PR sluit telt in
+  de check niet meer; die draagt de job `map-planned`. Een issue dat de PR sluit telt in
   PR-modus niet mee.
 
 ## 2-area: — waar hoort het bij

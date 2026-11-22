@@ -66,7 +66,7 @@ func walk(t *testing.T, dir, suffix string) []string {
 }
 
 func TestCorpusStdlibClean(t *testing.T) {
-	files, err := filepath.Glob(filepath.Join(fixtureDir, "stdlib", "*.py"))
+	files, err := filepath.Glob(filepath.Join(fixtureDir, "stdlib", "*.py.txt"))
 	if err != nil {
 		t.Fatal(err)
 	}
