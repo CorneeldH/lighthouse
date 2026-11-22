@@ -586,6 +586,13 @@ sha256 = "7abfa9dd983c60dfa2d2a35124774ecee16c6d5e30c96933374a9331ec5caf03"
 
 [[unit]]
 kind = "file"
+path = ".lighthouse/components.toml"
+package = "core"
+version = "dev"
+sha256 = "194bbe550f8c08935296c080604c7d4dba457a369c79c6205a33fe62889bc54e"
+
+[[unit]]
+kind = "file"
 path = ".lighthouse/headings.toml"
 package = "core"
 version = "dev"
