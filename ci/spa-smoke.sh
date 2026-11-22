@@ -27,7 +27,16 @@ cleanup() {
 }
 trap cleanup EXIT
 
-port=$(python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])')
+# A free port: pick one in the ephemeral range and skip it when something already listens there.
+port=
+for _ in $(seq 1 50); do
+  p=$((20000 + RANDOM % 20000))
+  if ! (exec 3<>"/dev/tcp/127.0.0.1/$p") 2>/dev/null; then
+    port=$p
+    break
+  fi
+done
+[ -n "$port" ] || fail "no free port found"
 base="http://127.0.0.1:$port"
 
 "$bin" serve --addr "127.0.0.1:$port" --db "$tmp/lighthouse.db" >"$tmp/serve.log" 2>&1 &
