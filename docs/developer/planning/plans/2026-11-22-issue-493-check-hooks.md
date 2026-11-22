@@ -25,7 +25,7 @@
 
 ## Review Focus
 
-- Repo-pad met spaties (`C:\Users\A B\repo`) of `D:` naast `d:`: de smoketest start de hooks nog steeds en `ok` blijft `ok`. Test in Task 3.
+- Repo-pad met spaties (`C:\Users\A B\repo`) of `D:` naast `d:`: de smoketest start de hooks nog steeds en `ok` blijft `ok`. Task 3 test alleen de Linux-root met spaties en de native padvorm (`TestProjectDirNative`); spaties en hoofdletterverschil op echte Windows blijven onbewezen tot de run van Task 5 Step 8 (alleen rij 12 met de runner-root) en gaan als open punt in de PR.
 - `.gitattributes` zonder afsluitende newline of met CRLF-regeleinden: toegevoegde regels staan op een eigen regel, de bestaande regels blijven byte-gelijk. Test in Task 2.
 - `bash` ontbreekt op Linux/macOS: `FAIL` met herstelstap, geen paniek en geen exit 0. Test in Task 3.
 - Een gedeeld `.claude/settings.json` met projectregistraties zonder `.claude/hooks/lighthouse/`: die worden niet gesmoketest. Test in Task 3.
@@ -62,7 +62,7 @@
 
 **Files:**
 - Create: `internal/initcmd/gitattributes.go`
-- Modify: `internal/initcmd/initcmd.go` (`buildPlan`, na `planConfig`)
+- Modify: `internal/initcmd/initcmd.go` (`buildPlan`, na `planConfig`), `internal/initcmd/testdata/places.golden` (regenereren), `docs/site/data/repo.json` (rij voor `.gitattributes`), `docs/site/test/repo.test.mjs` (`INIT_ACTS`: `.gitattributes: "edits"`), `.gitattributes` (dogfood)
 - Test: `internal/initcmd/gitattributes_test.go`
 
 **Interfaces:**
@@ -77,14 +77,15 @@
   - `.claude/hooks/lighthouse/** eol=lf` aanwezig gevolgd door `.claude/hooks/lighthouse/** -text` → niets toegevoegd.
   Plus `TestInitWritesGitattributes` (init in tempdir-repo: bestand bevat beide regels, diff noemt `.gitattributes`, `--upgrade` direct erna: `No changes.`) en `TestInitNoPackKeepsGitattributes`.
 - [ ] **Step 2: Run** `go test ./internal/initcmd/ -run 'Gitattributes' -v`. Verwacht: FAIL (niet gedefinieerd).
-- [ ] **Step 3: Implementeer** `ensureGitattributes`: split op regels, match per regel op patroon (eerste veld) en de regeleinde van het document; voeg alleen toe wat ontbreekt. In `buildPlan`: `p, _ := load(".gitattributes"); p.new = ensureGitattributes(p.old)`. Geen manifest-entry, geen beheerd blok.
-- [ ] **Step 4: Run** `go test ./internal/initcmd/`. Verwacht: PASS.
-- [ ] **Step 5: Commit** `feat(init): zet .gitattributes-regels tegen CRLF in de hooks (#493)`.
+- [ ] **Step 3: Implementeer** `ensureGitattributes`: split op regels, match per regel op patroon (eerste veld) en de regeleinde van het document; voeg alleen toe wat ontbreekt. In `buildPlan`: `p, err := load(".gitattributes")`, een fout behandel je zoals bij de andere `load`-aanroepen (geen nil-deref); dan `p.new = ensureGitattributes(p.old)`. Geen manifest-entry, geen beheerd blok.
+- [ ] **Step 4: Run** `go test ./internal/initcmd/`. Verwacht: rood op `TestPlacesGolden`; draai dan `go test ./internal/initcmd/ -run TestPlacesGolden -update`, voeg de `.gitattributes`-rij toe aan `docs/site/data/repo.json` (label, dir, kind `init`) en `".gitattributes": "edits"` aan `INIT_ACTS`, en draai `node --test docs/site/test/*.test.mjs` en `go test ./internal/initcmd/`. Verwacht: PASS.
+- [ ] **Step 5: Dogfood.** `go run ./cmd/lighthouse init --upgrade` (zonder `--force`) zet `.gitattributes` in deze repo; stage het samen met de wijziging.
+- [ ] **Step 6: Commit** `feat(init): zet .gitattributes-regels tegen CRLF in de hooks (#493)`, inclusief de dogfood-kopie (`AGENTS.md`-regel).
 
 ### Task 3: Package `internal/hookcheck`
 
 **Files:**
-- Create: `internal/hookcheck/hookcheck.go` (Env, Run, stappen 1, 2, 2b), `internal/hookcheck/smoke.go` (stap 3, payloads)
+- Create: `internal/hookcheck/gitenv_test.go`, `internal/hookcheck/hookcheck.go` (Env, Run, stappen 1, 2, 2b), `internal/hookcheck/smoke.go` (stap 3, payloads)
 - Test: `internal/hookcheck/hookcheck_test.go`, `internal/hookcheck/smoke_test.go`
 
 **Interfaces:**
@@ -96,8 +97,8 @@
   - `func Payload(event, matcher string, now time.Time, tmp string) ([]byte, error)` — payloads per spec-tabel.
 - Consumes: `settings.Registrations`, `packs.IsLighthouseCommand`, `manifest.Read`, `orderedjson.Parse`.
 
-- [ ] **Step 1: Verifieer Git Bash-volgorde.** Lees de hooks-docs (sectie Windows) en de env-var-docs van Claude Code; leg de gevonden volgorde vast in de doc-comment van `FindGitBash`. Wijkt hij af van spec §Stap 1, pas de volgorde aan en noteer het in de PR.
-- [ ] **Step 2: Schrijf de falende tests voor stappen 1, 2, 2b** (`hookcheck_test.go`, fixture-repo in `t.TempDir()` met `.claude/settings.json` en `.lighthouse/manifest.toml` van een echte `init`):
+- [ ] **Step 1: Verifieer Git Bash-volgorde.** Lees de hooks-docs (sectie Windows) en de env-var-docs van Claude Code; leg de gevonden volgorde vast in de doc-comment van `FindGitBash`. Verifieer ook welke shell Claude Code op Linux/macOS voor een hookcommando gebruikt (`bash -c` of `sh -c`) en wat een gezette maar ongeldige `CLAUDE_CODE_GIT_BASH_PATH` doet (genegeerd + auto-detectie, of fout). Wijkt iets af van spec §Stap 1 of de bash-keuze in Step 9, pas volgorde, shell en de tests (`TestFindGitBash`, `TestSmokeNoBashIsFail`) daarop aan en noteer het in de PR. Zonder netwerk: houd de spec-volgorde en noteer in de PR dat dit onbevestigd is.
+- [ ] **Step 2: Schrijf de falende tests voor stappen 1, 2, 2b.** Maak ook `internal/hookcheck/gitenv_test.go` met de blank import van `internal/gitenvscrub` (nodig omdat de tests git starten; `TestEveryPackageThatRunsGitInATestScrubsTheEnvironment` eist dat). Tests in `hookcheck_test.go`, fixture-repo in `t.TempDir()` met `.claude/settings.json` en `.lighthouse/manifest.toml` van een echte `init`):
   - `TestFindGitBash`: `GOOS:"windows"` met gefakete `Getenv/LookPath/Exists` — env-pad gezet en aanwezig → dat pad; gezet en afwezig → fout met pad; via `git.exe`; via standaardpad; nergens → fout; `GOOS:"linux"` → `Run` print geen Git Bash-regel.
   - `TestRunCRLFIsFail`: `blocking` met `\r\n` → exit 1, regel `FAIL` noemt het pad en `lighthouse init --upgrade`. Ook een niet-`.sh`-bestand telt.
   - `TestRunUnregisteredHookIsFail`: een hook-unit uit de manifest zonder registratie in `settings.json` → exit 1; herstelstap `lighthouse init --upgrade`.
@@ -110,16 +111,17 @@
 - [ ] **Step 7: Schrijf de falende smoketests** (`smoke_test.go`), elk met een nep-`run.sh` in een fixture-repo, behalve waar de echte pack nodig is:
   - `TestSmokeOKAndExit2`: exit 0 → `ok`; exit 2 zonder `COULD NOT CHECK` → `ok`.
   - `TestSmokeCouldNotCheckOnExit0IsFail`: stdout bevat `COULD NOT CHECK` bij exit 0 → `FAIL`, regel noemt hook en eerste niet-lege regel van stderr (stdout als stderr leeg is).
-  - `TestSmokeOtherExitAndTimeoutAreFail`: exit 1 en een `sleep` die de `timeout` van de registratie overschrijdt → `FAIL`.
+  - `TestSmokeOtherExitAndTimeoutAreFail`: exit 1 en een `sleep` (als kind van het nep-`run.sh`) die de `timeout` van de registratie overschrijdt → `FAIL`; de test controleert dat de verstreken tijd dicht bij de timeout ligt, niet bij de sleep.
   - `TestSmokeSkipsForeignRegistrations`: een registratie zonder `.claude/hooks/lighthouse/` wordt niet gedraaid (nep-commando schrijft een marker; marker ontbreekt).
   - `TestSmokeEnvAndCwd`: nep-hook schrijft `$CLAUDE_PROJECT_DIR`, `pwd`, `$LIGHTHOUSE_USAGE_REFRESH` en `${LIGHTHOUSE_CONTROLLER_RUN-unset}` naar een tempbestand → root, root, `1`, `unset`; ook met een root met spaties.
   - `TestPayloadPerEvent`: `Payload("PreToolUse","Bash",…)` bevat `tool_input.command == "true"`; `"Edit|Write"` een `file_path` zonder `.md` die niet bestaat; `Stop`/`UserPromptSubmit`/`SubagentStop`/`PostToolUse` zonder matcher een `transcript_path` naar een bestand met één prompt-entry zonder tool-use en `timestamp` = `now` naar boven afgerond op de hele seconde (UTC, RFC3339); `Notification` heeft `notification_type: "permission_prompt"`.
-  - `TestSmokeRealPackAllOKOnLinux` (skip zonder `bash`/`git`): fixture-repo met `init` van pack `core` plus `go`, met een eerdere commit en een vuil `.go`-bestand, en een niet-dev-binary op de `PATH` → elke hook `ok`, exit 0. Pint de timestamp-afronding: met een vaste oudere timestamp zou `go-lint-gate` echt lopen.
-  - `TestSmokeLeavesStateUntouched`: snapshot (bestandenlijst + mtimes) van de repo, `LIGHTHOUSE_STATE_DIR`-origineel en `XDG_RUNTIME_DIR`-origineel vóór en na → gelijk (niet-dev-binary).
+  - `TestSmokeRealPackAllOKOnLinux` (skip zonder `bash`/`git`/`jq`): fixture-repo met `init` van alle packs die hooks registreren (`core`, `go`, `node`, `python`, `shell`; zie `pack/*/hooks/hooks.json`), met een eerdere commit en een vuil `.go`-bestand, zonder `cmd/lighthouse/main.go` en met een binary gebouwd uit deze tree op de `PATH` (een `go build` meldt altijd `dev`; wat telt is dat de fixture geen `cmd/lighthouse/main.go` heeft) → elke hook `ok`, exit 0; een hook waarvan het externe gereedschap (`ruff`, `ty`, `shellcheck`, `node`) ontbreekt op de testhost wordt per subtest overgeslagen, niet rood. Pint de timestamp-afronding: met een vaste oudere timestamp zou `go-lint-gate` echt lopen.
+  - `TestSmokeLeavesStateUntouched`: snapshot (bestandenlijst + mtimes) van de repo en de originele `LIGHTHOUSE_STATE_DIR`, `XDG_RUNTIME_DIR`, `XDG_STATE_HOME` (hook-notices) en `XDG_CACHE_HOME` (usage-cache) vóór en na → gelijk; met een geforceerd verschil tussen binary- en manifestversie, zodat de versienotice-marker anders in de echte `XDG_STATE_HOME` zou landen.
+  - `TestProjectDirNative`: pure helper `projectDir(goos, root)` geeft op `windows` de native vorm (`filepath.FromSlash`, backslashes, zoals Claude Code die doorgeeft) en op Linux `root` ongewijzigd.
   - `TestSmokeNoBashIsFail`: `PATH` leeg op Linux → `FAIL` met herstelstap, exit 1.
   - `TestSmokeWindowsWithoutGitBashSkips`: `GOOS:"windows"`, `FindGitBash` faalt → stap 3 geeft één regel die naar stap 1 verwijst, exit 1 (stap 1 is `FAIL`).
 - [ ] **Step 8: Run** `go test ./internal/hookcheck/ -run 'Smoke|Payload' -v`. Verwacht: FAIL.
-- [ ] **Step 9: Implementeer** `smoke` en `Payload`. Per registratie: `exec.CommandContext` met `bash -c <command>` (op Windows `bash.exe` uit stap 1), `Dir` en `CLAUDE_PROJECT_DIR` = root, timeout uit het `timeout`-veld van de entry (default 60 s), env gebaseerd op de huidige env met `LIGHTHOUSE_STATE_DIR`, `XDG_RUNTIME_DIR`, `TMPDIR`, `LIGHTHOUSE_HOST_TOML` naar de tempdir, `LIGHTHOUSE_USAGE_REFRESH=1`, `LIGHTHOUSE_CONTROLLER_RUN` verwijderd; payload op stdin. Port van `hook` en `ok` uit `ci/windows-measure.sh`. Verifieer per hook uit `pack/*/hooks/` dat de payload op Linux `ok` geeft; vind zo welke state-variabelen nog nodig zijn.
+- [ ] **Step 9: Implementeer** `smoke` en `Payload`. Per registratie: `exec.CommandContext` met `bash -c <command>` (of de shell uit Step 1), elke hook in een eigen procesgroep (`Setpgid`) en na de timeout de hele groep gekilld met `cmd.WaitDelay`, naar het patroon van `internal/procrun/procrun.go` (hergebruik `procrun.Exec` als dat past), zodat kinderen van `run.sh` de pipes niet openhouden; (op Windows `bash.exe` uit stap 1), `Dir` = root en `CLAUDE_PROJECT_DIR` = `projectDir(GOOS, root)`, timeout uit het `timeout`-veld van de entry (default 60 s), env gebaseerd op de huidige env met `LIGHTHOUSE_STATE_DIR`, `XDG_RUNTIME_DIR`, `XDG_STATE_HOME`, `XDG_CACHE_HOME`, `TMPDIR`, `LIGHTHOUSE_HOST_TOML` naar de tempdir (`hookStateDir` in `internal/cli/hook.go` leest `XDG_STATE_HOME`/`HOME`), `LIGHTHOUSE_USAGE_REFRESH=1`, `LIGHTHOUSE_CONTROLLER_RUN` verwijderd; payload op stdin. Port van `hook` en `ok` uit `ci/windows-measure.sh`. Verifieer per hook uit `pack/*/hooks/` dat de payload op Linux `ok` geeft; vind zo welke state-variabelen nog nodig zijn.
 - [ ] **Step 10: Run** `go test ./internal/hookcheck/`. Verwacht: PASS.
 - [ ] **Step 11: Commit** `feat(hookcheck): smoketest van de geregistreerde hooks (#493)`.
 
@@ -147,17 +149,18 @@
 
 **Files:**
 - Modify: `ci/windows-measure.sh`, `docs/install.md`, `docs/site/agents/install.md`
-- Create: `changelog.d/issue-493-check-hooks.md`
-- Modify (dogfood): `.gitattributes` (nieuw), `.lighthouse/manifest.toml` en wat `init --upgrade` verder wijzigt
+- Create: `changelog.d/issue-493-check-na-init-dat-de-ge-nstalleerde.md`
+- Modify: `docs/host-assumptions.md` (rij voor `internal/hookcheck`: Git Bash-standaardpaden en `bash` op de `PATH` voor de smoketest)
+- Modify (dogfood): `.lighthouse/manifest.toml` en wat `init --upgrade` verder wijzigt
 
 **Interfaces:**
 - Consumes: het commando uit Task 4.
 
 - [ ] **Step 1: Voeg een rij toe aan `ci/windows-measure.sh`** na rij 11: `(cd "$REPO" && PATH="$BIN_DIR:$PATH" "$BIN" check-hooks) >"$OUT" 2>"$ERR"; RC=$?`, `row "12. \`lighthouse check-hooks\`" "rc 0" "$RC" "$(mark ok 0)" "$ERR"`. Pas de kopregel-uitleg in de header aan indien nodig.
 - [ ] **Step 2: Run lokaal** `ci/windows-measure.sh "$(go env GOPATH)/bin/lighthouse" "$(mktemp -d)"` na `go install ./cmd/lighthouse`. Verwacht: elke rij `pass`, ook rij 12.
-- [ ] **Step 3: Gids.** `docs/install.md`: sectie over `lighthouse check-hooks` (wanneer: na `init`, na een nieuwe machine, bij twijfel; per `FAIL` de betekenis en herstelstap; Git Bash alleen op Windows). De zin "Windows has a binary, but the hooks need WSL" en de passage in `docs/site/agents/install.md` (r. 156-158) gaan eruit zodra de Windows-run groen is; is hij niet groen, dan blijven ze staan en verwijzen ze naar de check. Alleen relatieve links naar bestaande doelen.
-- [ ] **Step 4: Fragment** `changelog.d/issue-493-check-hooks.md` met frontmatter `type: feature` (zoals de andere fragmenten) en één alinea (Engels of Nederlands volgens de bestaande fragmenten): `check-hooks`, `.gitattributes`, CRLF-reparatie.
+- [ ] **Step 3: Gids.** `docs/install.md`: sectie over `lighthouse check-hooks` (wanneer: na `init`, na een nieuwe machine, bij twijfel; per `FAIL` de betekenis en herstelstap; Git Bash alleen op Windows). De WSL-zin en de passage in `docs/site/agents/install.md` (r. 156-158) blijven in deze PR staan, met een verwijzing naar de check: de Windows-run komt pas na de push en we wachten niet op CI. `TestAgentGuideBinaryBlocks` (`internal/repopins/docs_test.go`) eist `WSL` in die sectie. Verwijderen is een opvolger (met aanpassing van die test en een Windows-installatieroute), na een groene rij 12; noteer dat in de PR. Alleen relatieve links naar bestaande doelen.
+- [ ] **Step 4: Fragment** `changelog.d/issue-493-check-na-init-dat-de-ge-nstalleerde.md` met frontmatter `type: added` en één tot drie Engelse zinnen voor een gebruiker (`docs/releasing.md`; typen: added, changed, fixed, removed, internal): `check-hooks`, `.gitattributes`, CRLF-reparatie.
 - [ ] **Step 5: Dogfood.** `go run ./cmd/lighthouse init --upgrade` (zonder `--force`), dan nogmaals: `No changes.`; bekijk of `check-hooks` daar groen is en noteer het in de PR als het dat niet is (dev-build van `run.sh` schrijft in `.lighthouse/bin`, een bekende uitzondering).
 - [ ] **Step 6: Volledige verificatie.** `go test ./...`, `go test -tags e2e ./e2e/`, `lighthouse imports check`. Verwacht: alles groen.
-- [ ] **Step 7: Commit** `docs(install): check-hooks, windows-meting en changelog (#493)` en daarna apart `chore(init): dogfood-kopie na check-hooks (#493)`.
+- [ ] **Step 7: Commit** `docs(install): check-hooks, windows-meting en changelog (#493)`; een eventuele verdere dogfood-wijziging na Step 5 apart als `chore(init): dogfood-kopie na check-hooks (#493)`, zonder lege commit.
 - [ ] **Step 8: Bewijs op Windows.** Na de push: `windows-measure.yml` via `workflow_dispatch` (de push van workflowbestanden doet de pusher; dit plan wijzigt er geen). Noteer in de PR rij 12.
