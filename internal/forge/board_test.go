@@ -600,7 +600,7 @@ func TestAddToBoardThenIssueItem(t *testing.T) {
 }
 
 // Class: io. At risk: a controller path (the board read, the branch PRs, SetStatus, AddToBoard)
-// falls back to GraphQL, so an exhausted GraphQL limit stops a tick again.
+// (and Planning) falls back to GraphQL, so an exhausted GraphQL limit stops a tick again.
 func TestControllerPathsUseNoGraphQL(t *testing.T) {
 	srv, c := projectServer(t)
 	c.Board = restBoard()
@@ -629,14 +629,17 @@ func TestControllerPathsUseNoGraphQL(t *testing.T) {
 	if _, err := c.AddToBoard(ctx, 7); err != nil {
 		t.Fatalf("AddToBoard: %v", err)
 	}
-	if n := srv.Count("/graphql"); n != 0 {
-		t.Fatalf("controller paths made %d GraphQL requests, want 0", n)
-	}
 	if _, err := c.Planning(ctx); err != nil {
 		t.Fatalf("Planning: %v", err)
 	}
+	if n := srv.Count("/graphql"); n != 0 {
+		t.Fatalf("controller paths made %d GraphQL requests, want 0", n)
+	}
+	if _, err := c.OpenPRsWithStatus(ctx); err != nil {
+		t.Fatalf("OpenPRsWithStatus: %v", err)
+	}
 	if srv.Count("/graphql") == 0 {
-		t.Error("Planning made no GraphQL request; the test no longer tells REST from GraphQL")
+		t.Error("OpenPRsWithStatus made no GraphQL request; the test no longer tells REST from GraphQL")
 	}
 }
 
