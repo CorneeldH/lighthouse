@@ -26,7 +26,8 @@
 - **Persistentie via `CacheStore`, geen nieuwe store.** `forgecache` is al de gedeelde, per-bestand SQLite-opslag naast de state-db; één extra entry met een eigen sleutel (`ITEMIDS …`, botst niet met `GET …`-sleutels) volstaat. Een client zonder cache (tests, `cache == nil`) houdt de tabel alleen per proces; dat staat in de doc van `IssueItem`.
 - **Open vraag uit het issue (AC 2: "ook in een nieuw proces") is hiermee beantwoord:** de tabel wordt bij elke volledige lijstlezing bijgewerkt en bevat ook items die uit de lijst verdwenen zijn (gearchiveerd), tot 30 dagen na het laatste zien.
 - **`Done` blijft alleen *completed*.** REST `closed_issues` telt *not planned* mee en wordt daarom niet gebruikt; `Done` en `Closed` komen uit `issues?state=closed&milestone=<n>` met een filter op `state_reason`. Kost één request per open milestone, die met de ETag-cache op `304` terugkomen. `Open` is het aantal open issues (zonder pull requests) uit dezelfde lijst als `Planning.Issues`, dus zonder search-queries.
-- **`ErrIssueNotFound` zonder GraphQL:** vindt `IssueItem` geen item, dan leest hij `GET repos/<repo>/issues/<n>`; `404` is `ErrIssueNotFound`, anders `ok=false`.
+- **`ErrIssueNotFound` zonder GraphQL:** vindt `IssueItem` geen item, dan leest hij `GET repos/<repo>/issues/<n>`; `404` én `410` (verwijderd issue) zijn `ErrIssueNotFound`, een andere fout wordt teruggegeven, een bestaand issue zonder item is `ok=false`.
+- **Beperking, bewust (AC 2 vraagt alleen "eerder in de boardlijst gezien"):** een item dat al gearchiveerd was voordat een lijstlezing het ooit zag, of dat langer dan 30 dagen weg is, is niet meer te vinden en geeft `ok=false`. Triage (`internal/cli/triage_gather.go`) leest zo'n issue dan als "niet op het board". Dat staat in de doc van `IssueItem` en in de PR-body; de bestaande tests die een nooit-geziene gearchiveerde node veronderstellen, krijgen eerst een lijstlezing waarin het item nog staat.
 
 ## Review-focus
 
@@ -43,6 +44,7 @@
 **Files:**
 - Modify: `internal/forge/planning.go` (vervang `planIssues`, `planMilestones`, `planCounts`, de twee queries en `planCountsChunk`; verwijder `nextCursor` en `planMilestoneNode` als niets anders ze gebruikt)
 - Modify: `internal/forge/issues.go` (`issueItem` krijgt `issue_dependencies_summary`)
+- Modify: `internal/forge/github_contract_test.go` (`AddMilestone` vult `srv.Milestones` met een kleine-letter `state`, niet meer alleen `PlanMilestones`)
 - Modify: `internal/forge/forgetest/server.go` (de GraphQL-handlers `Planning`, `PlanMilestones`, `PlanCounts` vervallen; de REST-fake moet `issue_dependencies_summary` en `state_reason` in de issue-lijst geven)
 - Test: `internal/forge/planning_test.go`
 
@@ -63,7 +65,7 @@
   Run: `go test ./internal/forge/ -run 'TestPlanning' -v`
   Expected: FAIL (GraphQL-teller > 0, `304`-assert, `Done`).
 
-- [ ] **Step 3: Implementeer** `Planning` in `planning.go` zonder GraphQL: één pagineerlus over `issues?state=open&per_page=100` (zonder PR's, met `labels`, `milestone`, `html_url`, `issue_dependencies_summary`), per issue met `TotalBlockedBy > 0` (of de samenvatting afwezig) `c.blockedBy`, met alleen de open blockers behouden in de vorm die `PlanIssue.BlockedBy` nu heeft (`Blocker{Repo, Issue, State}`); daarna `c.Milestones(ctx, "open")` en per milestone `c.ClosedInMilestone(ctx, m, time.Time{})`, gefilterd op `StateReason in {"", "completed"}`, oplopend op nummer. `Open` per milestone telt de open issues uit de eerste lijst. Verwijder de dode GraphQL-code; `Planning.Milestones` en `Closed` blijven nooit `nil`.
+- [ ] **Step 3: Implementeer** `Planning` in `planning.go` zonder GraphQL: één pagineerlus over `issues?state=open&sort=created&direction=asc&per_page=100` (zelfde volgorde als de oude GraphQL-query, `CREATED_AT ASC`) (zonder PR's, met `labels`, `milestone`, `html_url`, `issue_dependencies_summary`), per issue met `TotalBlockedBy > 0` (of de samenvatting afwezig) `c.blockedBy`, met alleen de open blockers behouden in de vorm die `PlanIssue.BlockedBy` nu heeft (`Blocker{Repo, Issue, State}`); daarna `c.Milestones(ctx, "open")` en per milestone `c.ClosedInMilestone(ctx, m, time.Time{})`, gefilterd op `StateReason in {"", "completed"}`, oplopend op nummer. `Open` per milestone telt de open issues uit de eerste lijst. Verwijder de dode GraphQL-code; `Planning.Milestones` en `Closed` blijven nooit `nil`.
 
 - [ ] **Step 4: Draai de tests en zie ze slagen**
 
@@ -86,7 +88,7 @@
 - Modify: `internal/forge/project.go` (`listItems` bewaart de tabel; nieuwe `project.itemURL(id int64) string` naast `itemsURL()` met dezelfde `fields`-parameters)
 - Create: `internal/forge/itemtable.go` (laden en bewaren van de tabel in de `CacheStore`)
 - Modify: `internal/forge/forgetest/server.go` en `server_project.go` (de REST-lijst laat gearchiveerde items weg, `GET …/items/<id>` geeft ze met `archived_at`, zoals de echte API; de GraphQL-handler `IssueItems` vervalt)
-- Test: `internal/forge/board_test.go`, `internal/forge/itemtable_test.go`, `internal/dispatch/gather_test.go:760` (teller `IssueItems` → REST-tellers)
+- Test: `internal/forge/board_test.go`, `internal/forge/itemtable_test.go`, `internal/dispatch/gather_test.go:760` (teller `IssueItems` → REST-tellers), `internal/cli/boardstart_test.go:91` (`Posts[0]` is nu de REST-aanroep, geen GraphQL-POST: pas de assert aan), `internal/cli/triage_test.go:713-745` (`TestTriageArchivedItem`: laat het item eerst in de lijstlezing staan, archiveer daarna; zie *Beperking*), `internal/forge/board_test.go` `TestBoardItemsBlockers` (verwacht `MergedPR` voor blocker #4 uit een gearchiveerd item via `mergedIssues`; de fake toont dat item niet meer in de lijst: pas fixture of verwachting aan en de doc op `mergedIssues`)
 
 **Interfaces:**
 - Consumes: `restItem`/`restItem.boardItem(p, b)` (project.go), `named(it, values, b)`, `c.readIssue(ctx, n)` (github.go), `GitHub.cache CacheStore`.
@@ -100,7 +102,7 @@
   - `TestIssueItemNoGraphQL`: `IssueItem` voor een item op het board; nul GraphQL-requests (teller uit taak 1).
   - `TestIssueItemArchivedInNewProcess`: client A (met `NewMemoryCache()`) leest de boardlijst (het item staat erin); archiveer het item in de fake; maak client B met **dezelfde cache** en een lege in-memory tabel; `IssueItem(n)` geeft `ok == true`, `Archived == true`, juiste `Status`/`Labels`, `ItemID` is het node-id.
   - `TestIssueItemNeverOnBoard`: issue bestaat, staat niet op het board → `ok == false`, `err == nil`.
-  - `TestIssueItemDeletedIssue`: issue 99 bestaat niet → `errors.Is(err, ErrIssueNotFound)` (de gedeelde suite `forgesuite/suite.go:537-598` moet op beide forges groen blijven).
+  - `TestIssueItemDeletedIssue`: issue 99 bestaat niet (de fake geeft `404`; een tweede geval met `410`, voeg die mogelijkheid aan `forgetest` toe) → `errors.Is(err, ErrIssueNotFound)` (de gedeelde suite `forgesuite/suite.go:537-598` moet op beide forges groen blijven).
   - `TestItemTableKeepsVanishedItems`: na het verdwijnen uit de lijst blijft het item in de tabel; na `gone_since` ouder dan 30 dagen niet meer; een terugkerend item (ongedaan archiveren) staat één keer in de tabel.
   - `TestIssueItemWithoutCache`: `cache == nil` → tabel alleen per proces, geen fout.
 
@@ -109,9 +111,9 @@
   Run: `go test ./internal/forge/ -run 'TestIssueItem|TestItemTable' -v`
   Expected: FAIL
 
-- [ ] **Step 3: Implementeer de tabel in `itemtable.go`.** Eén JSON-blob per (repo, project) in de `CacheStore`: lijst `{node, id, repo, issue, gone_since?}`. `saveItemTable` leest de oude blob, voegt de nieuwe lijst samen (items in de lijst: `gone_since` leeg; items uit de oude blob die niet meer in de lijst staan: `gone_since` = nu als nog leeg, verwijderd bij ouder dan 30 dagen) en schrijft hem alleen terug als de inhoud verandert of de bewaarde blob ouder dan een dag is. Controleer in `internal/forgecache` of `Get` `used_at` ververst; zo niet, dan houdt de dagelijkse `Put` de blob buiten de `MaxAge` van 7 dagen. `listItems` roept `saveItemTable` aan na een volledige lijst.
+- [ ] **Step 3: Implementeer de tabel in `itemtable.go`.** Eén JSON-blob per (repo, project) in de `CacheStore`: lijst `{node, id, repo, issue, gone_since?}`. `saveItemTable` leest de oude blob, voegt de nieuwe lijst samen (items in de lijst: `gone_since` leeg; items uit de oude blob die niet meer in de lijst staan: `gone_since` = nu als nog leeg, verwijderd bij ouder dan 30 dagen) en schrijft hem alleen terug als de inhoud verandert (`Get` ververst `used_at`, internal/forgecache/forgecache.go:126-135, dus de blob blijft binnen de `MaxAge` zolang hij gelezen wordt). `listItems` roept `saveItemTable` aan na een volledige lijst.
 
-- [ ] **Step 4: Implementeer `IssueItem` in `board.go`:** (1) id uit `issueItems`; (2) anders één `listItems` en opnieuw; (3) anders `savedItemID`; (4) met id: `GET p.itemURL(id)` → `restItem` → `boardItem` → `named`, `it.Repo, it.Issue` gezet; een `404` hierop is `ok=false` (item verwijderd); (5) zonder id: `c.readIssue`, `404` → `fmt.Errorf("forge: issue %s#%d: %w", …, ErrIssueNotFound)`, anders `ok=false`. Werk de doc-comment van `IssueItem` bij: GraphQL-verwijzing weg, beperking zonder cache genoemd.
+- [ ] **Step 4: Implementeer `IssueItem` in `board.go`:** (1) id uit `issueItems`; (2) anders één `listItems` en opnieuw; (3) anders `savedItemID`; (4) met id: `GET p.itemURL(id)` → `restItem` → `boardItem` → `named`, `it.Repo, it.Issue` gezet; een `404` hierop is `ok=false` (item verwijderd); (5) zonder id: `c.readIssue`; `404` of `410` → `fmt.Errorf("forge: issue %s#%d: %w", …, ErrIssueNotFound)`, een andere fout wordt teruggegeven, gelukt het lezen dan `ok=false`. Werk de doc-comment van `IssueItem` bij: GraphQL-verwijzing weg, beperking zonder cache genoemd.
 
 - [ ] **Step 5: Verwijder dode code** (`IssueItemsQuery`, de selectie van `isArchived`, de fake-handler `IssueItems`, `FailOps{"IssueItems"}`-tests omzetten naar een REST-fout op het item-pad) en pas `board_test.go:509`, `gather_test.go:760` aan op de nieuwe tellers.
 
@@ -125,7 +127,7 @@
 - [ ] **Step 8: Commit**
 
   ```bash
-  git add internal/forge internal/dispatch
+  git add internal/forge internal/dispatch internal/cli
   git commit -m "feat(forge): IssueItem van de GitHub-forge via REST (#440)"
   ```
 
