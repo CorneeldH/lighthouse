@@ -152,3 +152,50 @@ func TestBuildEmptyLabelNameNeverMatches(t *testing.T) {
 		t.Errorf("label = %q, want empty: an empty configured name matches nothing", l)
 	}
 }
+
+func prioWeightSource(t *testing.T) *fakeForge {
+	return &fakeForge{t: t, planning: forge.Planning{
+		Issues: []forge.PlanIssue{
+			{Number: 1, Milestone: &forge.Milestone{Number: 10}},
+			{Number: 2, Milestone: &forge.Milestone{Number: 20}, BlockedBy: []forge.Blocker{{Repo: "o/a", Issue: 1}, {Repo: "o/other", Issue: 1}}},
+			{Number: 3},
+		},
+		Milestones: []forge.MilestoneCount{
+			{Milestone: forge.Milestone{Number: 10, Description: "Priority: 1"}},
+			{Milestone: forge.Milestone{Number: 20, Description: "Priority: 2"}},
+		},
+	}}
+}
+
+func TestBuildPrioWeight(t *testing.T) {
+	got, err := Build(context.Background(), []Source{{Slug: "o/a", Src: prioWeightSource(t)}}, overview.Overview{})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	// Factors: rank 1 -> 2, rank 2 -> 1. Issue 1 waited on by 2: 2 + 1*2^0 = 3. The blocker in
+	// another repo is dropped, so it adds nothing to issue 2.
+	want := map[int][2]int{1: {3, 2}, 2: {1, 1}, 3: {0, 0}}
+	for _, i := range got[0].Issues {
+		if w := want[i.Number]; i.PrioWeight != w[0] || i.Factor != w[1] {
+			t.Errorf("issue %d: PrioWeight, Factor = %d, %d, want %d, %d", i.Number, i.PrioWeight, i.Factor, w[0], w[1])
+		}
+	}
+}
+
+func TestWithDescriptionRecomputesWeight(t *testing.T) {
+	repos, err := Build(context.Background(), []Source{{Slug: "o/a", Src: prioWeightSource(t)}}, overview.Overview{})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	got := WithDescription(repos, "o/a", 20, "Priority: 0")
+	// Rank 0 is not a valid rank: milestone 20 loses its factor, milestone 10 stays at 1.
+	want := map[int][2]int{1: {1, 1}, 2: {0, 0}, 3: {0, 0}}
+	for _, i := range got[0].Issues {
+		if w := want[i.Number]; i.PrioWeight != w[0] || i.Factor != w[1] {
+			t.Errorf("issue %d: PrioWeight, Factor = %d, %d, want %d, %d", i.Number, i.PrioWeight, i.Factor, w[0], w[1])
+		}
+	}
+	if repos[0].Issues[0].PrioWeight != 3 {
+		t.Errorf("input mutated: PrioWeight = %d, want 3", repos[0].Issues[0].PrioWeight)
+	}
+}

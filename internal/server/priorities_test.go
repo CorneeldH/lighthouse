@@ -24,7 +24,7 @@ func TestPrioritiesReturnsReposAndRuns(t *testing.T) {
 	repos := []priorities.Repo{{
 		Slug: "o/r",
 		Issues: []priorities.Issue{{
-			Number: 3, Title: "three", URL: "https://x/3", Status: "Ready", Label: "needs_shaping", OpenQuestion: true, NeedsLabel: true,
+			Number: 3, Title: "three", URL: "https://x/3", Status: "Ready", Label: "needs_shaping", OpenQuestion: true, NeedsLabel: true, PrioWeight: 5, Factor: 2,
 			Milestone: &priorities.MilestoneRef{Number: 1, Title: "M1", State: "open"},
 			BlockedBy: []priorities.Blocker{{Repo: "o/s", Issue: 9}},
 		}},

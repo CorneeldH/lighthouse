@@ -9,6 +9,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/issuestate"
 	"github.com/CorneeldH/lighthouse/internal/overview"
+	"github.com/CorneeldH/lighthouse/internal/prioweight"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 )
 
@@ -49,6 +50,10 @@ type Issue struct {
 	// NeedsLabel is true when the issue carries any needs_* label, not only the one in Label: the
 	// flag on an active issue follows it.
 	NeedsLabel bool `json:"needs_label"`
+	// PrioWeight is the priority weight of the issue (rule of #445), see package prioweight.
+	PrioWeight int `json:"prio_weight"`
+	// Factor is the own milestone factor of the issue, 0 without a ranked milestone.
+	Factor int `json:"factor"`
 }
 
 // ClosedIssue is an issue of a milestone that counts as done.
@@ -132,9 +137,45 @@ func Build(ctx context.Context, srcs []Source, ov overview.Overview) ([]Repo, er
 			r.Milestones = append(r.Milestones, Milestone{Number: m.Number, Title: m.Title, Description: m.Description,
 				Open: m.Open, Done: m.Done, Closed: closed})
 		}
+		applyWeights(&r)
 		repos = append(repos, r)
 	}
 	return repos, nil
+}
+
+// applyWeights sets PrioWeight and Factor on every issue of r from the ranks in the milestone
+// descriptions of r. Build and WithDescription both use it. A blocker from another repo is left
+// out: the weight counts issues of one repo. It writes into r.Issues, so the caller owns that slice.
+func applyWeights(r *Repo) {
+	ranks := make(map[int]int, len(r.Milestones))
+	for _, m := range r.Milestones {
+		if rank, ok := ParseRank(m.Description); ok {
+			ranks[m.Number] = rank
+		}
+	}
+	factors := prioweight.Factors(ranks)
+	in := make([]prioweight.Issue, 0, len(r.Issues))
+	for _, i := range r.Issues {
+		pi := prioweight.Issue{Number: i.Number}
+		if i.Milestone != nil {
+			pi.Milestone = i.Milestone.Number
+		}
+		for _, b := range i.BlockedBy {
+			if b.Repo == r.Slug {
+				pi.BlockedBy = append(pi.BlockedBy, b.Issue)
+			}
+		}
+		in = append(in, pi)
+	}
+	weights := prioweight.Compute(in, factors)
+	for k := range r.Issues {
+		i := &r.Issues[k]
+		i.PrioWeight = weights[i.Number]
+		i.Factor = 0
+		if i.Milestone != nil {
+			i.Factor = factors[i.Milestone.Number]
+		}
+	}
 }
 
 func key(repo string, issue int) string { return fmt.Sprintf("%s#%d", repo, issue) }
