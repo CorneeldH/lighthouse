@@ -340,3 +340,23 @@ new = true
 [[file]]
 path = "pack/node/detect.toml"
 new = true
+
+[[file]]
+path = "pack/core/levels.toml"
+new = true
+
+[[file]]
+path = "pack/expo/levels.toml"
+new = true
+
+[[file]]
+path = "pack/go/levels.toml"
+new = true
+
+[[file]]
+path = "pack/python/levels.toml"
+new = true
+
+[[file]]
+path = "pack/shell/levels.toml"
+new = true
