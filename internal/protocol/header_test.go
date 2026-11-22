@@ -81,3 +81,21 @@ func TestVariantsFromHeadings(t *testing.T) {
 		}
 	}
 }
+
+func TestParseHeaderRepair(t *testing.T) {
+	for _, word := range []string{"Herstel", "Repair"} {
+		header, ok := ParseHeader("🤖 " + word + "\nworktree: /w\nbranch: b\nstep: policy")
+		if !ok {
+			t.Fatalf("%s: no header", word)
+		}
+		if header.Kind != KindRepair {
+			t.Errorf("%s: Kind = %q, want %q", word, header.Kind, KindRepair)
+		}
+		if header.Fields["step"] != "policy" {
+			t.Errorf("%s: step = %q", word, header.Fields["step"])
+		}
+		if header.Session != "" {
+			t.Errorf("%s: Session = %q", word, header.Session)
+		}
+	}
+}

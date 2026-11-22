@@ -30,9 +30,10 @@ const (
 	KindReturned Kind = "returned"
 	KindRebased  Kind = "rebased"
 	KindParked   Kind = "parked"
+	KindRepair   Kind = "repair"
 )
 
-var kinds = []Kind{KindHandoff, KindStarted, KindQuestion, KindResumed, KindDone, KindReturned, KindRebased, KindParked}
+var kinds = []Kind{KindHandoff, KindStarted, KindQuestion, KindResumed, KindDone, KindReturned, KindRebased, KindParked, KindRepair}
 
 // Header is the kind and the fields of a protocol comment. Keys and values are canonical:
 // the legacy ones are translated.

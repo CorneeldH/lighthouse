@@ -217,6 +217,17 @@ slash-commando's.
   `lane` en `step`. De tekst heeft de rode stap met zijn reden, de workflow-diff ingeklapt
   (`<details>`), wat je kunt doen en onder *Zelf pushen* het push-commando. De volgende tick geeft het
   issue terug zoals elke Teruggegeven: label `needs_hands` en To do (`finishReturn`).
+- **De Herstel.** Een rode `policy` of `lint` (niet `COULD NOT CHECK:`; een `RuleParse`-overtreding telt mee)
+  is te repareren door de run zelf. De pusher post dan een 🤖 Herstel zonder sessie, met `step` en de
+  velden van de Teruggegeven, en de rij sluit als `handoff`: het werk gaat door, het issue wordt niet
+  teruggegeven. Alleen een Herstel van de token-login telt. De regel `repair` in `next` hervat de run
+  die de handoff schreef (trigger `repair`, sleutel `repair:<comment-id>`, bij de claim `answer`) met
+  een prompt die de stap, de reden en de URL van de Herstel noemt. De volgorde van `next` is
+  `retry, finishReturn, usageResume, answer, repair, closeCheck, newIssue, handoff`. Het plafond is
+  twee rondes: de derde aaneengesloten Herstel geeft het issue terug met een Teruggegeven
+  (`reason_pusher_red_ceiling`). De telling begint opnieuw bij een groene doorgang (een push of een
+  Vraag) en bij elke Teruggegeven van de token-login, ook een die voor een geweigerde start is
+  gepost. Vindt tick geen run of geen sessie voor de handoff, dan geeft hij het issue meteen terug.
 - **Het antwoord `push` is toestemming.** Voor precies de `sha` uit de laatste Vraag van de pusher. Tick
   start de pusher opnieuw met `--permit <sha>`; hij draait de vloer opnieuw, en alleen als de SHA
   niet verschoof gaat hij zonder review door, zoals bij een geslaagde push. Toestemming heft alleen de
