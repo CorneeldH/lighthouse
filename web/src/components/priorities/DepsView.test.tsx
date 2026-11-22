@@ -200,6 +200,21 @@ describe('DepsView', () => {
     expect(within(card).getByTestId('card-cross')).toBeTruthy()
   })
 
+  it('positions a graph card absolutely through its inline style', () => {
+    view(CHAIN, [A])
+    const card = node(`${A}#1`)
+    expect(card.style.position).toBe('absolute')
+    expect(card.style.left).not.toBe('')
+    expect(card.style.top).not.toBe('')
+  })
+
+  it('leaves a loose card in the grid flow, not absolute', () => {
+    view(CHAIN, [A])
+    const card = screen.getByTestId(`loose-${A}#5`)
+    expect(card.style.position).not.toBe('absolute')
+    expect(card.className.split(/\s+/)).not.toContain('absolute')
+  })
+
   it('says so in one sentence and draws no svg without any relation', () => {
     const { container } = view([repo(A, [iss(1), iss(2)])], [A])
     expect(screen.getByText('No open dependencies between these issues.')).toBeTruthy()

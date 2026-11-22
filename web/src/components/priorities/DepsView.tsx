@@ -140,7 +140,7 @@ export function DepsView({ graph, selected, colors }: ViewProps): JSX.Element {
                   testId={`node-${n.key}`}
                   dimmed={dimmed}
                   highlighted={chain?.has(n.key) === true && n.key !== focus}
-                  style={{ left: p.x, top: p.y }}
+                  style={{ position: 'absolute', left: p.x, top: p.y }}
                   onPointerDown={(e) => {
                     pointer.current = e.pointerType
                   }}

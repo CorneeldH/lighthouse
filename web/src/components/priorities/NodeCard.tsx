@@ -55,7 +55,7 @@ export function NodeCard({
       data-depth={node.depth}
       data-cycle={node.cycle ? 'true' : 'false'}
       className={[
-        'absolute flex items-center gap-2 overflow-hidden rounded-lg bg-white pr-2.5 text-foreground no-underline transition-opacity dark:bg-card',
+        'flex items-center gap-2 overflow-hidden rounded-lg bg-white pr-2.5 text-foreground no-underline transition-opacity dark:bg-card',
         grey ? 'border border-lh-grey' : 'border border-border',
         dimmed ? 'opacity-25' : '',
         highlighted ? 'shadow-[0_0_0_2px_var(--lh-navy)]' : '',
