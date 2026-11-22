@@ -171,6 +171,16 @@ func TestFixPRRoborevOnlyIfPresent(t *testing.T) {
 	}
 }
 
+// Classification: fails when a fix-pr variant pins the roborev agent to Codex instead of leaving
+// it to the gate (V2b), which falls back to claude-code on a full Codex budget.
+func TestFixPRRunsNoFixedRoborevAgent(t *testing.T) {
+	for variant, body := range variants(t, fixPR) {
+		t.Run(variant, func(t *testing.T) {
+			wantNone(t, body, "--agent codex")
+		})
+	}
+}
+
 // Classification: fails when section 2 stops creating the worktree on the head branch from
 // origin, or stops ruling out EnterWorktree (a new branch from the default branch).
 func TestFixPRWorktreeStepUsesTheHeadBranch(t *testing.T) {

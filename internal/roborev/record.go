@@ -240,7 +240,7 @@ func Record(root string, o RecordOptions) (string, error) {
 		data.Set("reden", *o.Skip)
 	} else {
 		var found []Finding
-		checked := false
+		checked, agent := false, ""
 		if raw != "" && isFile(raw) {
 			text, err := os.ReadFile(raw)
 			if err != nil {
@@ -253,7 +253,7 @@ func Record(root string, o RecordOptions) (string, error) {
 			if verdict.Sha != *o.Sha {
 				return "", valuef("--done %s is not the reviewed sha %s", *o.Sha, verdict.Sha)
 			}
-			found, checked = verdict.Findings, true
+			found, checked, agent = verdict.Findings, true, verdict.Agent
 		}
 		clean, err := validate(o.Decisions, found, checked)
 		if err != nil {
@@ -261,6 +261,9 @@ func Record(root string, o RecordOptions) (string, error) {
 		}
 		data.Set("uitkomst", "done")
 		data.Set("sha", *o.Sha)
+		if agent != "" {
+			data.Set("agent", agent)
+		}
 		data.Set("bevindingen", clean)
 	}
 	if err := writeState(target, data); err != nil {
@@ -291,7 +294,8 @@ func BodyLine(root string) (string, error) {
 	}
 	if verdict, _ := recorded.Get("verdict"); verdict == "done" {
 		sha, _ := recorded.Get("sha")
-		return fmt.Sprintf("<!-- roborev-lokaal: %s -->", pyStr(sha)), nil
+		agent, _ := recorded.Get("agent")
+		return marker(pyStr(sha), agentName(agent)), nil
 	}
 	reason, _ := recorded.Get("reason")
 	return "Roborev overgeslagen: " + pyStr(reason), nil
@@ -325,21 +329,37 @@ func BodyLinePush(root string) (string, error) {
 	if recorded != nil {
 		if verdict, _ := recorded.Get("verdict"); verdict == "done" {
 			sha, _ := recorded.Get("sha")
-			return fmt.Sprintf("<!-- roborev-lokaal: %s -->", pyStr(sha)), nil
+			agent, _ := recorded.Get("agent")
+			return marker(pyStr(sha), agentName(agent)), nil
 		}
 		reason, _ := recorded.Get("reason")
 		return "Roborev overgeslagen: " + pyStr(reason), nil
 	}
-	if sha := coveringPushRecord(root, filepath.Dir(own), head); sha != "" {
-		return fmt.Sprintf("<!-- roborev-lokaal: %s -->", sha), nil
+	if sha, agent := coveringPushRecord(root, filepath.Dir(own), head); sha != "" {
+		return marker(sha, agent), nil
 	}
 	return "Roborev overgeslagen: geen reviewuitkomst vastgelegd", nil
+}
+
+// marker is the PR-body marker of a recorded review; the agent is named only when known.
+func marker(sha, agent string) string {
+	if agent == "" {
+		return fmt.Sprintf("<!-- roborev-lokaal: %s -->", sha)
+	}
+	return fmt.Sprintf("<!-- roborev-lokaal: %s agent: %s -->", sha, agent)
+}
+
+// agentName is the agent of a state value, "" when absent or not a string.
+func agentName(v any) string {
+	s, _ := v.(string)
+	return s
 }
 
 // pushRecord is the part of a push record that decides whether it covers HEAD.
 type pushRecord struct {
 	Outcome   string `json:"uitkomst"`
 	SHA       string `json:"sha"`
+	Agent     string `json:"agent"`
 	Decisions []struct {
 		Outcome string `json:"uitkomst"`
 		Commit  string `json:"commit"`
@@ -349,11 +369,12 @@ type pushRecord struct {
 // minFixPrefix is the shortest abbreviation of a fix commit that counts, as for the pusher.
 const minFixPrefix = 7
 
-// coveringPushRecord is the sha of the newest done push-*.json in dir that covers head, or "".
-func coveringPushRecord(root, dir, head string) string {
+// coveringPushRecord is the sha and agent of the newest done push-*.json in dir that covers head,
+// or "" for the sha.
+func coveringPushRecord(root, dir, head string) (sha, agent string) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return ""
+		return "", ""
 	}
 	type candidate struct {
 		path string
@@ -380,10 +401,10 @@ func coveringPushRecord(root, dir, head string) string {
 			continue
 		}
 		if covers(root, rec, head) {
-			return rec.SHA
+			return rec.SHA, rec.Agent
 		}
 	}
-	return ""
+	return "", ""
 }
 
 // covers reports whether rec reviewed an ancestor of head after which every commit is a fix.
