@@ -63,7 +63,7 @@ func TestDefaultBudgetPanicIsUnreadable(t *testing.T) {
 	}
 }
 
-// With only CODEX_HOME set, the gate reads the budget in that home.
+// With CODEX_HOME set (HOME pointing elsewhere), the gate reads the budget in that home.
 func TestDefaultBudgetReadsCodexHome(t *testing.T) {
 	budgetEnv(t)
 	dir := os.Getenv("PATH")

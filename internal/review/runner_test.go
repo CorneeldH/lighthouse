@@ -280,6 +280,6 @@ func TestRunCodexHomeIsCleanHome(t *testing.T) {
 		t.Fatalf("exit %d, stderr: %s", code, r.stderr.String())
 	}
 	if got := string(readFile(t, filepath.Join(runHome, "auth.json"))); got != "run-token" {
-		t.Errorf("auth.json = %q, want run-token (not truncated)", got)
+		t.Errorf("auth.json = %q, want run-token (unchanged)", got)
 	}
 }

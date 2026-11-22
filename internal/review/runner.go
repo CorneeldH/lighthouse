@@ -133,7 +133,7 @@ func RunRound(ctx context.Context, o Options) int {
 		return fail(ExitNoLogin, "%s", missing)
 	}
 	// Source and target can be the same file (CODEX_HOME is the clean home): then there is
-	// nothing to copy, and copying would truncate the login.
+	// nothing to copy.
 	if dst := filepath.Join(ch, "auth.json"); filepath.Clean(auth) != filepath.Clean(dst) {
 		if err := copyFile(auth, dst); err != nil { // takes a refreshed token along
 			return fail(ExitFailed, "%v", err)
