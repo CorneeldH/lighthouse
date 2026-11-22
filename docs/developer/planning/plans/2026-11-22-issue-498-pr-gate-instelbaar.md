@@ -116,3 +116,10 @@
 - **AC 3** (`/lighthouse-write-pr` leest de waarde): taak 3.
 - **AC 4** (tests per waarde, net wel en net niet): taak 2 stap 1, plus taak 1 voor de config.
 - **DoD** gereviewd, tests groen, docs bijgewerkt: taak 3 en de eindreview van de uitvoerder.
+
+## Open na review
+
+Ronde 3 haalde de rondegrens met deze punten open. Ze zijn aanvaard als `accepted_open`;
+de volgende fase of de PR-review weegt ze opnieuw.
+
+- **r3-f1** (MAJOR, Taak 2 Stap 3 (No issue-blocker) en Stap 1 (Main-test onder evidence)): De voorgeschreven No issue-blocker is één sjabloon voor `required` en `evidence` en bevat letterlijk `Refs #N — <reason>` (met de kwalificatie "(only under `required`)"), terwijl de nieuwe Main-test onder `evidence` eist dat de melding geen kale `Refs #N — <reason>` bevat. Het plan schrijft niet voor dat de melding per waarde verschilt; test en implementatietekst spreken elkaar tegen.
