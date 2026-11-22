@@ -19,6 +19,7 @@ const ACTS = new Set(["adds", "edits"]);
 const OFF_THE_MAP = new Set(["CLAUDE.md"]);
 const INIT_ACTS = { "lighthouse.toml": "edits", ".lighthouse/manifest.toml": "adds" };
 const EDIT_KINDS = new Set(["block", "hook", "permission"]);
+const FORCE_KINDS = new Set(["file", "block", "hook", "permission"]);
 const SEPARATORS = ["·", ","];
 
 /** key -> {kinds, packs} of every non-comment line of places.golden (tab-separated). */
@@ -74,6 +75,23 @@ function actProblems(data, gold) {
   return problems.sort();
 }
 
+function forceProblems(data, gold) {
+  const problems = [];
+  for (const r of data.rows) {
+    const want = r.place in gold ? [...gold[r.place].kinds].some((k) => FORCE_KINDS.has(k)) : false;
+    if (r.force !== want) problems.push(`${r.id}: force ${r.force}, expected ${want}`);
+  }
+  return problems.sort();
+}
+
+function upgradeProblems(data) {
+  const problems = data.rows
+    .filter((r) => typeof r.upgrade !== "string" || !r.upgrade.trim())
+    .map((r) => `${r.id}: no upgrade text`);
+  if (typeof data.upgradeNote !== "string" || !data.upgradeNote.trim()) problems.push("no upgradeNote");
+  return problems.sort();
+}
+
 function shapeProblems(data, sorts) {
   const problems = [];
   const ids = data.dirs.map((d) => d.id);
@@ -126,6 +144,14 @@ test("the map matches the places init writes", () => {
 
 test("act matches the golden", () => {
   assert.deepEqual(actProblems(load("repo.json"), golden()), []);
+});
+
+test("force matches the golden", () => {
+  assert.deepEqual(forceProblems(load("repo.json"), golden()), []);
+});
+
+test("every row says what upgrade does", () => {
+  assert.deepEqual(upgradeProblems(load("repo.json")), []);
 });
 
 test("shape", () => {
@@ -209,6 +235,35 @@ test("the checkers flag what they guard", () => {
       expected: ["manifest: act edits, expected adds"],
     },
     {
+      name: "force on a row init only rewrites",
+      run() {
+        const data = mutated();
+        row(data, "lighthouse-toml").force = true;
+        row(data, "manifest").force = true;
+        return forceProblems(data, golden());
+      },
+      expected: ["lighthouse-toml: force true, expected false", "manifest: force true, expected false"],
+    },
+    {
+      name: "no force on a replaced file",
+      run() {
+        const data = mutated();
+        row(data, "workflows").force = false;
+        row(data, "claude-settings").force = false;
+        return forceProblems(data, golden());
+      },
+      expected: ["claude-settings: force false, expected true", "workflows: force false, expected true"],
+    },
+    {
+      name: "a row without upgrade text",
+      run() {
+        const data = mutated();
+        delete row(data, "agents-md").upgrade;
+        return upgradeProblems(data);
+      },
+      expected: ["agents-md: no upgrade text"],
+    },
+    {
       name: "an unknown kind and dir",
       run() {
         const data = mutated();
@@ -264,6 +319,23 @@ test("entries keep the order of the tree", () => {
   assert.equal(byId.workstation.note, load("repo.json").workstation.note);
 });
 
+test("upgrade dims nothing", () => {
+  const dimmed = Object.entries(entryRows("upgrade")).filter(([, r]) => r.dim).map(([p]) => p);
+  assert.deepEqual(dimmed, []);
+});
+
+test("rows carry the upgrade text", () => {
+  const rows = entryRows("everything");
+  const data = load("repo.json");
+  assert.equal(rows[".claude/settings.json"].force, true);
+  assert.equal(rows[".claude/settings.json"].upgrade, row(data, "claude-settings").upgrade);
+  assert.equal(rows["lighthouse.toml"].force, false);
+});
+
+test("the modes are four", () => {
+  assert.deepEqual(m.REPO_MODES.map((x) => x.id), ["everything", "adds", "edits", "upgrade"]);
+});
+
 test("everything dims nothing", () => {
   const dimmed = Object.entries(entryRows("everything")).filter(([, r]) => r.dim).map(([p]) => p);
   assert.deepEqual(dimmed, []);
@@ -298,7 +370,7 @@ test("rows say what init does", () => {
 });
 
 test("entries refuse an unknown mode, kind and act", () => {
-  assert.throws(() => entries("upgrade"), { message: "unknown mode: upgrade" });
+  assert.throws(() => entries("bogus"), { message: "unknown mode: bogus" });
   const kind = mutated();
   row(kind, "headings").kind = "skill";
   assert.throws(() => entries("everything", kind), { message: "unknown kind: skill" });

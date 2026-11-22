@@ -1565,6 +1565,28 @@ details.who summary:focus-visible {
   opacity: 0.25;
 }
 
+.repo-upgrade {
+  color: inherit;
+  opacity: 0.85;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.repo-force {
+  padding: 1px 6px;
+  border: 1.5px solid currentColor;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.repo-upgrade-note {
+  margin: 8px 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .repo-go {
   color: inherit;
   text-decoration: none;
@@ -1630,5 +1652,14 @@ details.who summary:focus-visible {
   .repo-tree li::before {
     left: -14px;
     width: 10px;
+  }
+
+  .repo-row {
+    flex-wrap: wrap;
+  }
+
+  .repo-upgrade {
+    display: block;
+    flex-basis: 100%;
   }
 }
