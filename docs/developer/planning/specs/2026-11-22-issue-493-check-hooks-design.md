@@ -204,7 +204,7 @@ Per registratie draait hij het commando één keer:
 |---|---|
 | `PreToolUse`, `PostToolUse`, `PostToolUseFailure` met matcher `Bash` | `tool_input.command = "true"` |
 | idem met matcher `Edit\|Write` | `tool_input.file_path` op een niet-bestaand pad zonder `.md` |
-| `PostToolUse` zonder matcher, `Stop`, `SubagentStop`, `UserPromptSubmit` | `transcript_path` op een bestand in een tempdir met één prompt-entry met `timestamp` en zonder tool-use *(eigen keuze na spec-review, r1-f1)* |
+| `PostToolUse` zonder matcher, `Stop`, `SubagentStop`, `UserPromptSubmit` | `transcript_path` op een bestand in een tempdir met één prompt-entry en zonder tool-use. De `timestamp` is het moment van de check (UTC, RFC3339), naar boven afgerond op de hele seconde, zodat geen mtime en geen reflog-entry er op of na valt *(eigen keuze na spec-review, r1-f1 en r2-f1)* |
 | `Notification` | `notification_type = "permission_prompt"`, buiten een controller-run |
 
 - met de state in een tempdir. De check zet `LIGHTHOUSE_STATE_DIR`, `XDG_RUNTIME_DIR` en de andere
@@ -221,7 +221,7 @@ Oordeel per registratie:
 - Al het andere is `FAIL`: een andere exit, een timeout, of `COULD NOT CHECK`. De regel noemt de
   hook en de eerste niet-lege regel van stderr (of stdout als stderr leeg is).
 
-Een leeg transcript volstaat niet: `internal/turnroots/transcript.go` geeft dan `Undetermined` ("no prompt in the transcript") en de Stop-hooks van de taalpakketten (`go-lint-gate`, `go-imports-gate`, `node-imports-gate`) melden `COULD NOT CHECK`. Met één prompt en zonder tool-use meldt turn-roots `untouched` en geven die gates `not checked` met exit 0.
+Een leeg transcript volstaat niet: `internal/turnroots/transcript.go` geeft dan `Undetermined` ("no prompt in the transcript") en de Stop-hooks van de taalpakketten (`go-lint-gate`, `go-imports-gate`, `node-imports-gate`) melden `COULD NOT CHECK`. Met één prompt en zonder tool-use meldt turn-roots `untouched` en geven die gates `not checked` met exit 0. Alleen bij die timestamp: een vaste, oudere waarde laat `Classify` dirty bestanden en commits sinds dat moment tellen, en dan draaien de gates echt (golangci-lint over de hele repo). De test die dit pint, draait in een fixture-repo met een eerdere commit en een vuil `.go`-bestand.
 
 Een `COULD NOT CHECK` van een hook die bij deze payload terecht niet kan meten, is een fout in de
 payload, niet in de hook. De bouwer kiest de payloads zo dat elke hook uit de pakketten op Linux
