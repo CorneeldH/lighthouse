@@ -75,7 +75,7 @@ func Pre(ctx context.Context, g *Gate, raw []byte, cwd string) Result {
 		return block(reasonNoVerify, &b)
 	}
 
-	// test_gate.on decides whether the commit moment runs: with "pr" a commit is neither tested
+	// The `on` setting (read by readOn) decides whether the commit moment runs: with "pr" a commit is neither tested
 	// nor recorded; "commit" and "both" take the path below.
 	on, blk := g.readOn()
 	if blk != nil {
