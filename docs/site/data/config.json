@@ -222,6 +222,7 @@
               "readers": [
                 "internal/cli/worktreeaudit.go",
                 "internal/commitgate/pre.go",
+                "internal/commitgate/pr.go",
                 "internal/hooks/hooks.go",
                 "internal/hooks/maincommitgate.go",
                 "internal/hooks/worktreecheck.go",
