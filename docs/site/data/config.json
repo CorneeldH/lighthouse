@@ -989,6 +989,29 @@
           ]
         },
         {
+          "table": "pr_gate",
+          "title": "PR gate",
+          "about": "How strict pr-create-gate is about the issue a pull request names.",
+          "keys": [
+            {
+              "key": "pr_gate.issue",
+              "level": "advanced",
+              "required": "no",
+              "default": "optional",
+              "about": "Whether the PR body may take `No issue:` (optional), must name an issue (required) or must also carry an Evidence table for `Refs` (evidence).",
+              "options": [
+                "optional",
+                "required",
+                "evidence"
+              ],
+              "readers": [
+                "internal/prbody/form.go",
+                "internal/prbody/gate.go"
+              ]
+            }
+          ]
+        },
+        {
           "table": "worktree_audit",
           "title": "Worktree audit",
           "about": "Worktrees and branches that the worktree audit never proposes to remove.",

@@ -401,6 +401,50 @@ func TestImportsCheckFalse(t *testing.T) {
 	}
 }
 
+// runPRGateIssue runs `lighthouse config pr_gate.issue` against a lighthouse.toml with body.
+func runPRGateIssue(t *testing.T, body string) (rc int, stdout, stderr string) {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(dir+"/lighthouse.toml", []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+	t.Setenv("LIGHTHOUSE_REPO_ROOT", "")
+	t.Setenv("LIGHTHOUSE_TOML", "lighthouse.toml")
+	t.Setenv("LIGHTHOUSE_HOST_TOML", "host.toml")
+	var out, errOut bytes.Buffer
+	rc = Run([]string{"pr_gate.issue"}, &out, &errOut)
+	return rc, out.String(), errOut.String()
+}
+
+func TestPRGateIssue(t *testing.T) {
+	tests := []struct {
+		name       string
+		toml       string
+		wantRC     int
+		wantOut    string
+		wantStderr string
+	}{
+		{"no table is optional", "", 0, "optional\n", ""},
+		{"required", "[pr_gate]\nissue = \"required\"\n", 0, "required\n", ""},
+		{"evidence", "[pr_gate]\nissue = \"evidence\"\n", 0, "evidence\n", ""},
+		{"unknown value is a config error", "[pr_gate]\nissue = \"strict\"\n", 2, "",
+			"key pr_gate.issue must be 'optional', 'required' or 'evidence'"},
+		{"capitals are a config error", "[pr_gate]\nissue = \"Required\"\n", 2, "",
+			"key pr_gate.issue must be 'optional', 'required' or 'evidence'"},
+		{"empty string is a config error", "[pr_gate]\nissue = \"\"\n", 2, "", "key pr_gate.issue is empty"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rc, out, errOut := runPRGateIssue(t, tt.toml)
+			if rc != tt.wantRC || out != tt.wantOut || !strings.Contains(errOut, tt.wantStderr) {
+				t.Errorf("rc=%d stdout=%q stderr=%q, want rc=%d stdout=%q stderr containing %q",
+					rc, out, errOut, tt.wantRC, tt.wantOut, tt.wantStderr)
+			}
+		})
+	}
+}
+
 const gitlabBoard = `[forge]
 kind = "gitlab"
 repo = "g/sub/p"
