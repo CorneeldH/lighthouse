@@ -49,6 +49,9 @@ func newInitCommand() *cobra.Command {
 			"or leave out a package with --pack and --no-pack, also later:\n" +
 			"  lighthouse init --upgrade --pack python\n" +
 			"  lighthouse init --upgrade --no-pack shell\n\n" +
+			"--level <name> sets `level` in lighthouse.toml in the same diff; a first init without it\n" +
+			"picks light, and a repo without `level` acts as strict. Switch later with\n" +
+			"  lighthouse init --upgrade --level standard\n\n" +
 			"--labels proposes a label taxonomy, [labels] and [paths] labels in the same diff,\n" +
 			"under the same single approval. --create-labels, only with --labels, then creates\n" +
 			"the missing labels on the forge (GitHub or GitLab) and asks nothing: the flag is the approval,\n" +
@@ -80,6 +83,7 @@ func newInitCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&o.Yes, "yes", false, "approve every change without asking")
 	cmd.Flags().BoolVar(&o.Labels, "labels", false, "propose a label taxonomy, [labels] and [paths] labels")
 	cmd.Flags().BoolVar(&o.CreateLabels, "create-labels", false, "with --labels: create the missing labels on the remote; this flag is the approval")
+	cmd.Flags().StringVar(&o.Level, "level", "", "set the entry level in lighthouse.toml (light, standard, strict); a first init picks light")
 	cmd.Flags().StringArrayVar(&o.AddPacks, "pack", nil, "add a package (repeatable)")
 	cmd.Flags().StringArrayVar(&o.DropPacks, "no-pack", nil, "leave a package out (repeatable)")
 	cmd.Flags().StringArrayVar(&o.ForgeHosts, "forge-host", nil, "host of a self-hosted GitLab (repeatable)")

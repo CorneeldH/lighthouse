@@ -101,6 +101,10 @@ func hostTOMLFor(t *testing.T) string {
 func yes(o *Options)     { o.Yes = true }
 func upgrade(o *Options) { o.Upgrade = true }
 
+// strict installs everything: a first init picks light, which drops the hooks of the
+// language packages.
+func strict(o *Options) { o.Level = "strict" }
+
 func read(t *testing.T, root, rel string) string {
 	t.Helper()
 	b, err := os.ReadFile(filepath.Join(root, rel))
@@ -499,7 +503,7 @@ var oldCoreLib = map[string]string{
 
 func TestUpgradeRemovesCoreLib(t *testing.T) {
 	root := newRepo(t)
-	if r := run(t, root, "", all(yes, realPacks)); r.code != 0 {
+	if r := run(t, root, "", all(yes, strict, realPacks)); r.code != 0 {
 		t.Fatalf("init: rc %d\n%s", r.code, r.err)
 	}
 	seedCoreLib(t, root, oldCoreLib)
@@ -522,7 +526,7 @@ func TestUpgradeRemovesCoreLib(t *testing.T) {
 // With --force a locally changed file under the retired lib still stays, and is still reported.
 func TestUpgradeForceKeepsModifiedCoreLib(t *testing.T) {
 	root := newRepo(t)
-	if r := run(t, root, "", all(yes, realPacks)); r.code != 0 {
+	if r := run(t, root, "", all(yes, strict, realPacks)); r.code != 0 {
 		t.Fatalf("init: rc %d\n%s", r.code, r.err)
 	}
 	seedCoreLib(t, root, oldCoreLib)
@@ -542,7 +546,7 @@ func TestUpgradeForceKeepsModifiedCoreLib(t *testing.T) {
 
 func TestUpgradeKeepsModifiedCoreLib(t *testing.T) {
 	root := newRepo(t)
-	if r := run(t, root, "", all(yes, realPacks)); r.code != 0 {
+	if r := run(t, root, "", all(yes, strict, realPacks)); r.code != 0 {
 		t.Fatalf("init: rc %d\n%s", r.code, r.err)
 	}
 	seedCoreLib(t, root, oldCoreLib)
@@ -575,7 +579,7 @@ func TestUpgradeKeepsModifiedCoreLib(t *testing.T) {
 func TestUpgradeCleanupKeepsProjectFiles(t *testing.T) {
 	root := newRepo(t)
 	write(t, root, "x.sh", "#!/bin/sh\necho x\n") // a shell script makes the pack install shellcheck-repo.sh
-	if r := run(t, root, "", all(yes, realPacks)); r.code != 0 {
+	if r := run(t, root, "", all(yes, strict, realPacks)); r.code != 0 {
 		t.Fatalf("init: rc %d\n%s", r.code, r.err)
 	}
 	seedCoreLib(t, root, oldCoreLib)
@@ -976,7 +980,7 @@ func TestInitProposesRealExpo(t *testing.T) {
 func TestInitProposesRealPython(t *testing.T) {
 	root := newRepo(t)
 	write(t, root, "pyproject.toml", "[project]\nname = \"x\"\n")
-	r := run(t, root, "", func(o *Options) { o.Yes = true; o.Packs = nil })
+	r := run(t, root, "", func(o *Options) { o.Yes = true; o.Packs = nil; o.Level = "strict" })
 	if r.code != 0 || !strings.HasPrefix(r.out, "Packages: core, python (found pyproject.toml)\n") {
 		t.Fatalf("rc %d\nout:\n%s\nerr:\n%s", r.code, r.out, r.err)
 	}
@@ -1020,7 +1024,7 @@ func TestEmptyCommandStaysOff(t *testing.T) {
 func TestInitProposesRealShell(t *testing.T) {
 	root := newRepo(t)
 	write(t, root, "x.sh", "#!/bin/sh\necho x\n")
-	r := run(t, root, "", func(o *Options) { o.Yes = true; o.Packs = nil })
+	r := run(t, root, "", func(o *Options) { o.Yes = true; o.Packs = nil; o.Level = "strict" })
 	if r.code != 0 || !strings.HasPrefix(r.out, "Packages: core, shell (found x.sh)\n") {
 		t.Fatalf("rc %d\nout:\n%s\nerr:\n%s", r.code, r.out, r.err)
 	}

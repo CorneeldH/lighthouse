@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -31,6 +32,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/hostconfig"
 	labelsync "github.com/CorneeldH/lighthouse/internal/labels"
+	"github.com/CorneeldH/lighthouse/internal/levels"
 	"github.com/CorneeldH/lighthouse/internal/manifest"
 	"github.com/CorneeldH/lighthouse/internal/orderedjson"
 	"github.com/CorneeldH/lighthouse/internal/packs"
@@ -58,7 +60,7 @@ type Options struct {
 	CreateLabels        bool                                                      // --create-labels (with --labels): create the missing labels on the remote
 	SyncLabels          func(root string, create bool, out, errw io.Writer) error // nil means labels.Sync with the forge of LabelForge
 	LabelForge          func(root string) forge.Forge                             // opens the forge of the labels; nil, or a nil result, means labels are printed, not created
-	Level               string                                                    // --level: the entry level; "" means lighthouse.toml, else strict
+	Level               string                                                    // --level: the level to set; "" means lighthouse.toml, else strict (light on a first init)
 	Now                 func() time.Time                                          // nil means time.Now
 	AddPacks, DropPacks []string                                                  // --pack and --no-pack (plan M0 (c), design choice 6)
 	ForgeHosts          []string                                                  // --forge-host: hosts of self-hosted GitLab instances
@@ -190,7 +192,7 @@ func execute(o Options) error {
 		return b, ok && err == nil
 	})
 	lvFiles := levelFiles(chosenPacks)
-	resolved, haveLevels, err := resolveLevels(o, root, lvFiles, desired)
+	resolved, haveLevels, writeLevel, err := resolveLevels(o, root, initialized, lvFiles, desired)
 	if err != nil {
 		return err
 	}
@@ -202,11 +204,14 @@ func execute(o Options) error {
 		if now == nil {
 			now = time.Now
 		}
-		since, err := installedSince(root, resolved.Level, now)
+		prev, found, err := levels.ReadInstalled(root)
 		if err != nil {
 			return err
 		}
-		desired = append(desired, componentsUnit(resolved, since))
+		if found && switched(prev, found, resolved.Level) {
+			_, _ = fmt.Fprintf(o.Err, "level: switching from %s to %s\n", prev.Level, resolved.Level)
+		}
+		desired = append(desired, componentsUnit(resolved, installedSince(prev, found, resolved.Level, now)))
 	}
 	for _, miss := range o.Deps.Check(mergeRequires(forgeRequires(reqs, kind))) {
 		_, _ = fmt.Fprintf(o.Err, "missing dependency: %s (needed by: %s)\n", miss.Tool, strings.Join(miss.NeededBy, ", "))
@@ -232,7 +237,7 @@ func execute(o Options) error {
 		}
 	}
 
-	plan, err := buildPlan(o, root, names, desired, changes, tables, haveRepo, labelsPath, all["core"].LabelsTemplate)
+	plan, err := buildPlan(o, root, names, desired, changes, tables, haveRepo, labelsPath, all["core"].LabelsTemplate, writeLevel)
 	if err != nil {
 		return err
 	}
@@ -261,6 +266,9 @@ func execute(o Options) error {
 			}
 		}
 		_, _ = fmt.Fprintf(o.Out, "Wrote %d file(s).\n", len(paths))
+		if haveLevels {
+			_, _ = fmt.Fprintln(o.Out, levelSummary(lvFiles, resolved.Level))
+		}
 	}
 	warnMissingScripts(o.Err, root)
 	warnIgnored(o.Err, root, desired, plan)
@@ -374,7 +382,7 @@ func writes(a reconcile.Action, force bool) bool {
 	return a == reconcile.Add || a == reconcile.Replace || (force && a == reconcile.Conflict)
 }
 
-func buildPlan(o Options, root string, names []string, desired []packs.Unit, changes []reconcile.Change, tables []projectconfig.Table, haveRepo bool, labelsPath string, labelsTemplate []byte) (map[string]*planned, error) {
+func buildPlan(o Options, root string, names []string, desired []packs.Unit, changes []reconcile.Change, tables []projectconfig.Table, haveRepo bool, labelsPath string, labelsTemplate []byte, writeLevel string) (map[string]*planned, error) {
 	plan := map[string]*planned{}
 	load := func(rel string) (*planned, error) {
 		if p, ok := plan[rel]; ok {
@@ -492,7 +500,7 @@ func buildPlan(o Options, root string, names []string, desired []packs.Unit, cha
 		_, _ = fmt.Fprintln(o.Err, "warning: CLAUDE.md does not import AGENTS.md; add a line `@AGENTS.md` so Claude Code reads the lighthouse rules")
 	}
 
-	if err := planConfig(o, load, desired, tables, haveRepo); err != nil {
+	if err := planConfig(o, load, desired, tables, haveRepo, writeLevel); err != nil {
 		return nil, err
 	}
 
@@ -637,7 +645,7 @@ func proposeConfig(old []byte, tables []projectconfig.Table) (out []byte, manual
 	return out, manual, err
 }
 
-func planConfig(o Options, load func(string) (*planned, error), desired []packs.Unit, tables []projectconfig.Table, haveRepo bool) error {
+func planConfig(o Options, load func(string) (*planned, error), desired []packs.Unit, tables []projectconfig.Table, haveRepo bool, writeLevel string) error {
 	p, err := load(configPath)
 	if err != nil {
 		return err
@@ -659,6 +667,11 @@ func planConfig(o Options, load func(string) (*planned, error), desired []packs.
 	out, manual, err := proposeConfig(base, tables)
 	if err != nil {
 		return err
+	}
+	if writeLevel != "" {
+		if out, err = projectconfig.SetTopLevel(out, "level", strconv.Quote(writeLevel)); err != nil {
+			return err
+		}
 	}
 	p.new = out
 	if !haveRepo {

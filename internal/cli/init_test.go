@@ -89,3 +89,16 @@ func TestAuditFlagNeedsUpgrade(t *testing.T) {
 		t.Errorf("exit %d, stderr %q; want a refusal naming --audit needs --upgrade", code, errOut)
 	}
 }
+
+// Fails when the --level flag is not wired to initcmd.Options.Level: init then picks light.
+func TestInitLevelFlagIsWired(t *testing.T) {
+	stubAudit(t, func(agentaudit.Env, agentaudit.Options, io.Writer, io.Writer) int { return 0 })
+	code, out, errOut := runInit(t, "--yes", "--level", "strict")
+	if code != 0 || !strings.Contains(out, "Level: strict.") {
+		t.Errorf("exit %d, stdout %q, stderr %q", code, out, errOut)
+	}
+	code, _, errOut = runInit(t, "--yes", "--level", "bogus")
+	if code == 0 || !strings.Contains(errOut, `unknown level "bogus"`) {
+		t.Errorf("exit %d, stderr %q; want the unknown level refused", code, errOut)
+	}
+}

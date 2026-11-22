@@ -1,6 +1,7 @@
 package initcmd
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -122,26 +123,23 @@ func TestInitWritesComponentsToml(t *testing.T) {
 	}
 }
 
-// Red if the default for a repo without `level` is anything but strict, or if upgrade
-// writes the key to lighthouse.toml.
+// Red if the default for an initialised repo without `level` is anything but strict.
 func TestInitRepoWithoutLevelActsAsStrict(t *testing.T) {
 	root := newRepo(t)
-	r := initLevels(t, root, "[project]\nlanguage = \"en\"\n", nil)
+	r := initLevels(t, root, "level = \"light\"\n", nil)
 	if r.code != 0 {
 		t.Fatalf("code %d: %s %s", r.code, r.out, r.err)
+	}
+	write(t, root, "lighthouse.toml", "[project]\nlanguage = \"en\"\n")
+	r = run(t, root, "", func(o *Options) { o.Packs = levelPacks(); o.Upgrade = true; o.Yes = true })
+	if r.code != 0 {
+		t.Fatalf("upgrade: code %d out %q err %q", r.code, r.out, r.err)
 	}
 	if !exists(root, ".claude/skills/lighthouse-fix-pr/SKILL.md") {
 		t.Error("a repo without level must install everything")
 	}
 	if !strings.Contains(read(t, root, levels.InstalledPath), "level = \"strict\"") {
 		t.Errorf("components.toml = %s", read(t, root, levels.InstalledPath))
-	}
-	r = run(t, root, "", func(o *Options) { o.Packs = levelPacks(); o.Upgrade = true; o.Yes = true })
-	if r.code != 0 || r.out != "No changes.\n" {
-		t.Fatalf("upgrade: code %d out %q err %q", r.code, r.out, r.err)
-	}
-	if strings.Contains(read(t, root, "lighthouse.toml"), "level") {
-		t.Errorf("upgrade wrote level: %s", read(t, root, "lighthouse.toml"))
 	}
 }
 
@@ -286,7 +284,7 @@ func TestLogOnMdLinkCheckIsAccepted(t *testing.T) {
 // stdout, or the gate stays registered.
 func TestCoreGateOffWarnsOnStderrAndInstallsWithoutIt(t *testing.T) {
 	root := newRepo(t)
-	r := initLevels(t, root, "[components]\nmain-commit-gate = \"off\"\n", nil)
+	r := initLevels(t, root, "level = \"strict\"\n\n[components]\nmain-commit-gate = \"off\"\n", nil)
 	if r.code != 0 {
 		t.Fatalf("code %d: %s", r.code, r.err)
 	}
@@ -344,5 +342,248 @@ func TestValidateOffCallerMayCallOffSkill(t *testing.T) {
 	}
 	if _, err := validate([]levels.File{f}, "light", map[string]levels.Stand{"skill:b": levels.StandOff}, func(string) bool { return false }); err != nil {
 		t.Errorf("err %v", err)
+	}
+}
+
+// tree reads every file under root except .git, by slash path.
+func tree(t *testing.T, root string) map[string]string {
+	t.Helper()
+	out := map[string]string{}
+	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if d.Name() == ".git" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		b, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(root, p)
+		out[filepath.ToSlash(rel)] = string(b)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+// ticking is a clock that advances a day per call.
+func ticking() func() time.Time {
+	at := time.Date(2026, 11, 22, 10, 0, 0, 0, time.UTC)
+	return func() time.Time { at = at.Add(24 * time.Hour); return at }
+}
+
+func switchTo(t *testing.T, root, level string, now func() time.Time) result {
+	t.Helper()
+	return run(t, root, "", func(o *Options) {
+		o.Packs = levelPacks()
+		o.Upgrade, o.Yes = true, true
+		o.Level = level
+		o.Now = now
+	})
+}
+
+// Red if resolveLevels stops defaulting a first init to light, or planConfig stops
+// writing the level line into the lighthouse.toml diff (the single y then shows no level).
+func TestNewRepoChoosesLightAndWritesLevel(t *testing.T) {
+	root := newRepo(t)
+	r := run(t, root, "y\n", func(o *Options) { o.Packs = levelPacks() })
+	if r.code != 0 {
+		t.Fatalf("code %d: %s %s", r.code, r.out, r.err)
+	}
+	if !strings.Contains(r.out, "+level = \"light\"") {
+		t.Errorf("diff lacks the level line:\n%s", r.out)
+	}
+	if !strings.HasPrefix(read(t, root, "lighthouse.toml"), "level = \"light\"\n") {
+		t.Errorf("lighthouse.toml = %q", read(t, root, "lighthouse.toml"))
+	}
+	if exists(root, ".claude/skills/lighthouse-fix-pr/SKILL.md") {
+		t.Error("light installed fix-pr")
+	}
+}
+
+// Red if --upgrade writes `level` on its own initiative (resolveLevels' write condition
+// drops the initialized check), or if the effective level stops being strict.
+func TestUpgradeWithoutLevelDoesNotWriteIt(t *testing.T) {
+	root := newRepo(t)
+	initLevels(t, root, "", nil)
+	write(t, root, "lighthouse.toml", "[project]\nlanguage = \"en\"\n")
+	r := run(t, root, "", func(o *Options) { o.Packs = levelPacks(); o.Upgrade, o.Yes = true, true })
+	if r.code != 0 {
+		t.Fatalf("code %d: %s %s", r.code, r.out, r.err)
+	}
+	if strings.Contains(read(t, root, "lighthouse.toml"), "level") {
+		t.Errorf("upgrade wrote level: %s", read(t, root, "lighthouse.toml"))
+	}
+	if !exists(root, ".claude/skills/lighthouse-fix-pr/SKILL.md") {
+		t.Error("without level the repo acts as strict")
+	}
+}
+
+// Red if --level on an upgrade no longer rewrites lighthouse.toml, or the switch no
+// longer goes through reconcile (the off units stay behind).
+func TestUpgradeLevelFlagSwitchesAndRemovesUnits(t *testing.T) {
+	root := newRepo(t)
+	initLevels(t, root, "level = \"strict\"\n", nil)
+	r := switchTo(t, root, "light", nil)
+	if r.code != 0 {
+		t.Fatalf("code %d: %s %s", r.code, r.out, r.err)
+	}
+	if !strings.Contains(read(t, root, "lighthouse.toml"), "level = \"light\"") {
+		t.Errorf("lighthouse.toml = %s", read(t, root, "lighthouse.toml"))
+	}
+	if exists(root, ".claude/skills/lighthouse-fix-pr/SKILL.md") {
+		t.Error("fix-pr survived the switch to light")
+	}
+	if strings.Contains(read(t, root, ".claude/settings.json"), "commit-test-gate") {
+		t.Error("commit-test-gate still registered")
+	}
+	if !strings.Contains(r.err, "level: switching from strict to light") {
+		t.Errorf("no switch message on stderr: %s", r.err)
+	}
+}
+
+// Red if a hand-edited `level` and --level give different trees: the flag must only be
+// a shortcut for the edit.
+func TestHandEditedLevelThenUpgradeEqualsLevelFlag(t *testing.T) {
+	a, b := newRepo(t), newRepo(t)
+	for _, root := range []string{a, b} {
+		initLevels(t, root, "level = \"strict\"\n", func(o *Options) { o.Now = ticking() })
+	}
+	switchTo(t, a, "light", ticking())
+	write(t, b, "lighthouse.toml", "level = \"light\"\n")
+	switchTo(t, b, "", ticking())
+	ta, tb := tree(t, a), tree(t, b)
+	for p, c := range ta {
+		if tb[p] != c {
+			t.Errorf("%s differs:\n%s\n---\n%s", p, c, tb[p])
+		}
+	}
+	for p := range tb {
+		if _, ok := ta[p]; !ok {
+			t.Errorf("%s only in the hand-edited tree", p)
+		}
+	}
+}
+
+// Red if a strict -> light -> strict round trip leaves other files than the start: only
+// components.toml (since) and its sha256 line in the manifest may differ.
+func TestSwitchRoundTripIsIdentical(t *testing.T) {
+	root := newRepo(t)
+	now := ticking()
+	initLevels(t, root, "level = \"strict\"\n", func(o *Options) { o.Now = now })
+	start := tree(t, root)
+	switchTo(t, root, "light", now)
+	switchTo(t, root, "strict", now)
+	end := tree(t, root)
+	for p, c := range start {
+		got, ok := end[p]
+		switch {
+		case !ok:
+			t.Errorf("%s missing after the round trip", p)
+		case p == levels.InstalledPath, p == ".lighthouse/manifest.toml":
+		case got != c:
+			t.Errorf("%s differs after the round trip", p)
+		}
+	}
+	for p := range end {
+		if _, ok := start[p]; !ok {
+			t.Errorf("%s appeared in the round trip", p)
+		}
+	}
+	line := func(s, prefix string) []string {
+		var out []string
+		for _, l := range strings.Split(s, "\n") {
+			if !strings.HasPrefix(l, prefix) {
+				out = append(out, l)
+			}
+		}
+		return out
+	}
+	if a, b := line(start[levels.InstalledPath], "since"), line(end[levels.InstalledPath], "since"); strings.Join(a, "\n") != strings.Join(b, "\n") {
+		t.Errorf("components.toml differs beyond since:\n%s\n---\n%s", start[levels.InstalledPath], end[levels.InstalledPath])
+	}
+	if start[levels.InstalledPath] == end[levels.InstalledPath] {
+		t.Error("since must differ after a round trip")
+	}
+	// The manifest differs in one line only: the sha256 of components.toml.
+	ms, me := strings.Split(start[".lighthouse/manifest.toml"], "\n"), strings.Split(end[".lighthouse/manifest.toml"], "\n")
+	if len(ms) != len(me) {
+		t.Fatalf("manifest length %d -> %d", len(ms), len(me))
+	}
+	diff := 0
+	for i := range ms {
+		if ms[i] != me[i] {
+			diff++
+			if !strings.Contains(ms[i], "sha256") {
+				t.Errorf("manifest line %d differs and is no sha256 line: %q", i, ms[i])
+			}
+		}
+	}
+	if diff != 1 {
+		t.Errorf("manifest differs in %d lines, want 1 (components.toml)", diff)
+	}
+}
+
+// Red if a switch overwrites a locally changed unit without --force: reconcile's conflict
+// refusal must apply to units the downgrade removes.
+func TestDowngradeConflictRefusesWithoutForce(t *testing.T) {
+	root := newRepo(t)
+	initLevels(t, root, "level = \"strict\"\n", nil)
+	write(t, root, ".claude/skills/lighthouse-fix-pr/SKILL.md", "mine\n")
+	r := switchTo(t, root, "light", nil)
+	if r.code == 0 || !strings.Contains(r.err, "refused: 1 locally modified unit(s)") {
+		t.Fatalf("code %d err %q", r.code, r.err)
+	}
+	if got := read(t, root, "lighthouse.toml"); !strings.Contains(got, "strict") {
+		t.Errorf("lighthouse.toml changed on a refusal: %s", got)
+	}
+	if read(t, root, ".claude/skills/lighthouse-fix-pr/SKILL.md") != "mine\n" {
+		t.Error("the local edit was lost")
+	}
+}
+
+// Red if the summary stops naming the level or the next one, goes to stderr, or shows
+// when nothing is written.
+func TestSummaryNamesLevelAndHowToScaleUp(t *testing.T) {
+	root := newRepo(t)
+	r := run(t, root, "", func(o *Options) { o.Packs = levelPacks(); o.Yes = true })
+	want := "Level: light. Scale up with: lighthouse init --upgrade --level standard\n"
+	if !strings.Contains(r.out, want) || strings.Contains(r.err, "Scale up") {
+		t.Errorf("stdout %q stderr %q", r.out, r.err)
+	}
+	r = run(t, root, "", func(o *Options) { o.Packs = levelPacks(); o.Upgrade, o.Yes = true, true })
+	if r.out != "No changes.\n" {
+		t.Errorf("no-change stdout = %q", r.out)
+	}
+	r = switchTo(t, root, "strict", nil)
+	if !strings.Contains(r.out, "Level: strict. Scale down with: lighthouse init --upgrade --level standard\n") {
+		t.Errorf("strict summary: %q", r.out)
+	}
+}
+
+// Red if switched stops treating a missing components.toml as a switch, or a recorded
+// level equal to the effective one as none.
+func TestSwitched(t *testing.T) {
+	in := levels.Installed{Level: "light"}
+	for _, c := range []struct {
+		in    levels.Installed
+		found bool
+		level string
+		want  bool
+	}{
+		{levels.Installed{}, false, "light", true},
+		{in, true, "light", false},
+		{in, true, "strict", true},
+	} {
+		if got := switched(c.in, c.found, c.level); got != c.want {
+			t.Errorf("switched(%+v, %v, %q) = %v", c.in, c.found, c.level, got)
+		}
 	}
 }

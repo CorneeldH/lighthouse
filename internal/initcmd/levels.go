@@ -17,8 +17,12 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/packs"
 )
 
-// defaultLevel is the level of a repo whose lighthouse.toml has no `level`.
-const defaultLevel = "strict"
+// defaultLevel is the level of an initialised repo whose lighthouse.toml has no `level`;
+// newLevel is what a first init picks when neither the flag nor lighthouse.toml says.
+const (
+	defaultLevel = "strict"
+	newLevel     = "light"
+)
 
 // levelFiles collects the levels.toml of the chosen packs, by package name. A package
 // without one (a test fixture) is left out.
@@ -34,45 +38,53 @@ func levelFiles(chosen []packs.Pack) map[string]levels.File {
 
 // resolveLevels reads the level (the flag, else lighthouse.toml, else strict) and the
 // [components] overrides, and resolves them against the packs. With no levels.toml in
-// any chosen package there is nothing to select: ok is false.
-func resolveLevels(o Options, root string, files map[string]levels.File, desired []packs.Unit) (r levels.Resolved, ok bool, err error) {
+// any chosen package there is nothing to select: ok is false. write is the level that
+// lighthouse.toml must get: set when the flag differs from the file, or on a first init
+// that found no level; "" when the file stays as it is (an upgrade never adds the key).
+func resolveLevels(o Options, root string, initialized bool, files map[string]levels.File, desired []packs.Unit) (r levels.Resolved, ok bool, write string, err error) {
 	if len(files) == 0 {
-		return levels.Resolved{}, false, nil
+		return levels.Resolved{}, false, "", nil
 	}
-	var level string
+	var level, fileLevel string
 	overrides := map[string]levels.Stand{}
 	cfgPath := filepath.Join(root, configPath)
 	if _, statErr := os.Stat(cfgPath); statErr == nil {
 		cfg, err := config.Load(cfgPath)
 		if err != nil {
-			return levels.Resolved{}, false, err
+			return levels.Resolved{}, false, "", err
 		}
-		level = cfg.Level
+		level, fileLevel = cfg.Level, cfg.Level
 		for name, s := range cfg.Components {
 			stand := levels.Stand(s)
 			if err := stand.UnmarshalText([]byte(s)); err != nil {
-				return levels.Resolved{}, false, fmt.Errorf("[components] %s: %w", name, err)
+				return levels.Resolved{}, false, "", fmt.Errorf("[components] %s: %w", name, err)
 			}
 			overrides[name] = stand
 		}
 	} else if !errors.Is(statErr, fs.ErrNotExist) {
-		return levels.Resolved{}, false, statErr
+		return levels.Resolved{}, false, "", statErr
 	}
 	if o.Level != "" {
 		level = o.Level
 	}
 	if level == "" {
 		level = defaultLevel
+		if !initialized {
+			level = newLevel
+		}
+	}
+	if level != fileLevel && (o.Level != "" || !initialized) {
+		write = level
 	}
 	warnings, err := validate(fileList(files), level, overrides, loggableFunc(desired, files))
 	if err != nil {
-		return levels.Resolved{}, false, err
+		return levels.Resolved{}, false, "", err
 	}
 	for _, w := range warnings {
 		_, _ = fmt.Fprintln(o.Err, w)
 	}
 	r, err = levels.Resolve(fileList(files), level, overrides)
-	return r, err == nil, err
+	return r, err == nil, write, err
 }
 
 func fileList(files map[string]levels.File) []levels.File {
@@ -182,15 +194,38 @@ func componentsUnit(r levels.Resolved, since string) packs.Unit {
 	return packs.Unit{Kind: packs.KindFile, Package: "core", Path: levels.InstalledPath, Content: i.Marshal(), Mode: 0o644}
 }
 
+// switched reports whether this run changes the level: the first init (nothing recorded),
+// or a recorded level that differs from the effective one.
+func switched(installed levels.Installed, found bool, level string) bool {
+	return !found || installed.Level != level
+}
+
 // installedSince is the since of the components.toml on disk when it has the same level,
 // else now.
-func installedSince(root, level string, now func() time.Time) (string, error) {
-	prev, ok, err := levels.ReadInstalled(root)
-	if err != nil {
-		return "", err
+func installedSince(installed levels.Installed, found bool, level string, now func() time.Time) string {
+	if !switched(installed, found, level) && installed.Since != "" {
+		return installed.Since
 	}
-	if ok && prev.Level == level && prev.Since != "" {
-		return prev.Since, nil
+	return now().UTC().Format(time.RFC3339)
+}
+
+// levelSummary is the stdout line after a write: the level, and the next one to move to.
+// Beyond the last level of the order it names the one below; without an order, no hint.
+func levelSummary(files map[string]levels.File, level string) string {
+	var order []string
+	for _, f := range files {
+		if len(f.Order) > 0 {
+			order = f.Order
+		}
 	}
-	return now().UTC().Format(time.RFC3339), nil
+	i := slices.Index(order, level)
+	switch {
+	case i < 0:
+		return fmt.Sprintf("Level: %s.", level)
+	case i+1 < len(order):
+		return fmt.Sprintf("Level: %s. Scale up with: lighthouse init --upgrade --level %s", level, order[i+1])
+	case i > 0:
+		return fmt.Sprintf("Level: %s. Scale down with: lighthouse init --upgrade --level %s", level, order[i-1])
+	}
+	return fmt.Sprintf("Level: %s.", level)
 }
