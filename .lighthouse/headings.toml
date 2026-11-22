@@ -445,3 +445,8 @@ en = "To correct: not to the dispatcher: set the status back to To do. Triage ag
 [triage_fix_other]
 nl = "Corrigeren: pas zo nodig de labels of de body aan en verwijder deze comment; de volgende ronde triëert opnieuw."
 en = "To correct: adjust the labels or the body if needed and delete this comment; the next round triages again."
+
+# Areas
+[area_near_goal]
+nl = "Nabij doel"
+en = "Near goal"
