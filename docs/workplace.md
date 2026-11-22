@@ -554,9 +554,10 @@ niet. Een repo zonder leesbaar board slaat de tick over, dus van geen enkel issu
 de controller verliet en wordt niets verwijderd. De kandidaten komen uit de runrijen
 (`runs.Workspaces`): één per workspace, met het issue en de branch van de laatste rij. Per kandidaat:
 
-- Staat het issue op `Controller` of `On hold`, of heeft het een open run, dan blijft de workspace
-  staan en verdwijnt een oud achterblijver-record. On hold telt als in de controller: de tick zet een
-  geparkeerd issue zelf terug.
+- Staat het issue op `Controller`, of heeft het een open run, of staat het op `To do` met een eigen
+  🤖 Geparkeerd als laatste protocol-comment (een geparkeerd issue), dan blijft de workspace staan en
+  verdwijnt een oud achterblijver-record. Een geparkeerd issue telt als in de controller: de tick zet het
+  zelf terug. Een legacy `On hold`-issue telt nog hetzelfde.
 - Anders zoekt `Sweep` de head-SHA van de laatst gemergede PR van de branch op (`MergedHead`; een PR uit
   een fork telt niet). Mislukt dat, dan is de workspace een achterblijver met
   `not measurable: merged PR: …`.

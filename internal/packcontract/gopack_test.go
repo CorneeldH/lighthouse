@@ -244,13 +244,14 @@ func TestGoStandardVetRowCaveatWithNewFromRev(t *testing.T) {
 	}
 }
 
-// Classification: fails when the instruction block of pack/go stops naming the skill, gofmt,
-// go-lint-gate and govet, or says `go vet` (the hook runs govet through golangci-lint).
+// Classification: fails when the instruction block of pack/go loses its heading or the line
+// that names `lighthouse imports check`, or says `go vet` (the hook runs govet through
+// golangci-lint). Since #390 the block carries only what no hook or skill already enforces.
 func TestGoInstructionBlock(t *testing.T) {
 	text := readPack(t, "go/instructions/AGENTS.md")
 	if !strings.HasPrefix(text, "## Lighthouse: go\n") {
 		t.Error("the block does not start with its heading")
 	}
-	wantAll(t, text, "/lighthouse-go-standard", "gofmt", "go-lint-gate", "govet")
+	wantAll(t, text, "lighthouse imports check")
 	wantNone(t, text, "go vet")
 }

@@ -623,3 +623,14 @@ func TestHandoffPrintsTheBlockAfterTheQuestion(t *testing.T) {
 		})
 	}
 }
+
+// Classification: fails when start-issue stops taking `labels.needs_shaping` off the issue after
+// an approved spec at gate 4c, or when it still presents `On hold` as a status it lifts.
+func TestStartIssueRemovesNeedsShapingAfterApprovedSpec(t *testing.T) {
+	for variant, body := range variants(t, startIssue) {
+		t.Run(variant, func(t *testing.T) {
+			wantAll(t, body, "approved spec", "`labels.needs_shaping`", "--remove-label")
+			wantNone(t, body, "`To do` and `On hold`")
+		})
+	}
+}

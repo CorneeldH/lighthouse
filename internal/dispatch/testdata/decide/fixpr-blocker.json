@@ -104,7 +104,8 @@
       "session_id": "11111111-2222-4333-8444-555555555555",
       "reason": "reason_pr_red",
       "language": "nl",
-      "end": true
+      "end": true,
+      "blocked": true
     }
   ]
 }

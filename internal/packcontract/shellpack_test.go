@@ -5,8 +5,9 @@ import (
 	"testing"
 )
 
-// shell pack: what lives only in the text of the skill shell-standard and the instruction block
-// of pack/shell. Name, paths, links and English are covered generically (the triage of #368).
+// shell pack: what lives only in the text of the skill shell-standard (pack/shell has no
+// instruction block since #390). Name, paths, links and English are covered generically (the
+// triage of #368).
 
 const (
 	shellSkill  = "shell/skills/shell-standard"
@@ -66,16 +67,6 @@ func TestShellStandardStrictDirsFromConfig(t *testing.T) {
 			wantNone(t, body, "scripts/hooks", "tests/integration")
 		})
 	}
-}
-
-// Classification: fails when the instruction block of pack/shell loses its heading, the
-// COULD NOT CHECK warning or the skill name. The word ceiling is TestInstructionBlocksWithinCeiling.
-func TestShellInstructionBlock(t *testing.T) {
-	text := readPack(t, "shell/instructions/AGENTS.md")
-	if !strings.HasPrefix(text, "## Lighthouse: shell\n") {
-		t.Error("the block does not start with its heading")
-	}
-	wantAll(t, text, "COULD NOT CHECK", "lighthouse-shell-standard")
 }
 
 // Classification: fails when the skill's three-outcomes paragraph claims the codes for every

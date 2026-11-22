@@ -118,7 +118,7 @@ Then update the board, from the worktree and with `dangerouslyDisableSandbox: tr
 lighthouse board-start <nr>
 ```
 
-Report the one `board:` line the command prints. Only `To do` and `On hold` become `In progress`.
+Report the one `board:` line the command prints. Only `To do` (and a legacy `On hold`) becomes `In progress`.
 Without `[forge.board]` (`lighthouse config forge.board.project_number`
 gives rc 1) the command prints `board: skipped — no [forge.board] configured`. A `board: skipped`
 line is not a stop: picking up goes on. A `board: ERROR` line (rc 2, broken config) is reported
@@ -150,7 +150,7 @@ Then execute the reported route:
 | gate `0` | stop, with the reason from the line; no board, no route |
 | gate `1` | call that skill, done |
 | gate `2` | `superpowers:systematic-debugging` |
-| gate `4c` | `superpowers:brainstorming` → spec |
+| gate `4c` | `superpowers:brainstorming` → spec, then take off `labels.needs_shaping` |
 | gate `4b` | `superpowers:writing-plans` |
 | gate `4a` | execute directly |
 
@@ -173,6 +173,16 @@ stop. The controller returns the issue with "needs a brainstorm".
   keys `stapel:` or `blokkade:` (`blokkade: verrekend`); they count the same.
 
 Report the choice in one line: `— stacked on #<x>` or `— waits for #<x>, handoff posted`.
+
+**Gate 4c: needs_shaping.** The spec shapes the issue. Once the user has approved the spec
+(an approved spec, committed), remove the label so the issue is no longer held for shaping:
+
+```bash
+lighthouse forge issue edit <nr> --remove-label "$(lighthouse config labels.needs_shaping)"
+```
+
+Skip it when the issue does not carry `labels.needs_shaping`. A spec the user has not approved
+leaves the label on.
 
 #### Scout: reconnaissance at 4b and 4c
 
@@ -263,7 +273,7 @@ plugin's own folder.
 - ✅ Name the project path when handing on · ❌ let superpowers choose its own default folder
 - ✅ At 4b/4c call the scout or skip it with a concrete reason · ❌ skip it silently
 - ✅ Leave the pack in context and refer to it with `IMPACT PACK: in context, do not repeat` · ❌ summarise, paraphrase or repeat the pack in the Skill args
-- ✅ After the worktree `lighthouse board-start` · ❌ overwrite a status other than `To do` or `On hold`
+- ✅ After the worktree `lighthouse board-start` · ❌ overwrite a status other than `To do` (or a legacy `On hold`)
 
 ## KPIs
 
@@ -303,7 +313,8 @@ whether gates 1 and 2 fire at all or are dead wood.
   `.claude/hooks/lighthouse/run.sh md-link-check` blocks an absolute path there.
 - **A milestone without DoD text does not exist.** If you come across one, report it — hanging
   the issue in it is a guess then.
-- **This skill sets exactly two transitions on the board: `To do` and `On hold` → `In progress`.**
-  No labels, no other status. `On hold` is a deliberate parking, and whoever explicitly picks up
-  the issue lifts it. `Controller` (if present) stays: a handover to the controller. For the rest
+- **This skill sets exactly one transition on the board: `To do` → `In progress`** (a legacy `On hold` item too).
+  No other status, and one label change: after an approved spec at gate `4c` it takes off
+  `labels.needs_shaping` (see Gate 4c below).
+  `Controller` (if present) stays: a handover to the controller. For the rest
   the same line as the board-sweep skill, if present.

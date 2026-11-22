@@ -20,7 +20,13 @@ const FullGatherAfter = 30 * time.Minute
 type TickState struct {
 	Fingerprint string
 	FullAt      time.Time // last full gather
+	// ToDo are the To do marks of the last precheck (Pre.ToDo), saved by SaveToDo whether the
+	// tick was due or not: they are a memo of comments read, not a decision.
+	ToDo map[int]ToDoMark
 }
+
+// toDoKey is the tick_state key of the To do marks, next to value and full_at.
+const toDoKey = "todo"
 
 // LoadTickState reads the state of repo; a repo without rows gives the zero value.
 func LoadTickState(ctx context.Context, db *sql.DB, repo string) (TickState, error) {
@@ -44,6 +50,10 @@ func LoadTickState(ctx context.Context, db *sql.DB, repo string) (TickState, err
 				return TickState{}, fmt.Errorf("dispatch: tick state %s: full_at %q: %w", repo, v, err)
 			}
 			s.FullAt = t
+		case toDoKey:
+			if err := json.Unmarshal([]byte(v), &s.ToDo); err != nil {
+				return TickState{}, fmt.Errorf("dispatch: tick state %s: todo: %w", repo, err)
+			}
 		}
 	}
 	if err := rows.Err(); err != nil {
@@ -73,6 +83,20 @@ func SaveTickState(ctx context.Context, db *sql.DB, repo string, s TickState, no
 	}
 	if err = tx.Commit(); err != nil {
 		return fmt.Errorf("dispatch: save tick state %s: %w", repo, err)
+	}
+	return nil
+}
+
+// SaveToDo upserts the To do marks of repo, the memo the next precheck reads (TickState.ToDo).
+func SaveToDo(ctx context.Context, db *sql.DB, repo string, marks map[int]ToDoMark, now time.Time) error {
+	value, err := json.Marshal(marks)
+	if err != nil {
+		return fmt.Errorf("dispatch: save to do marks %s: %w", repo, err)
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO tick_state (repo, kind, key, value, updated_at) VALUES (?, 'fingerprint', ?, ?, ?)
+		ON CONFLICT (repo, kind, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+		repo, toDoKey, string(value), now.UTC().Format(time.RFC3339)); err != nil {
+		return fmt.Errorf("dispatch: save to do marks %s: %w", repo, err)
 	}
 	return nil
 }
