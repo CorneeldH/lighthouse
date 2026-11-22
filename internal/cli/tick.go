@@ -397,6 +397,10 @@ func sweepRepos(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dis
 	repos []checkedRepo, errOut io.Writer) (failed bool) {
 	for _, sr := range repos {
 		slug := sr.repo.Slug
+		if msg := cloneProblem(ctx, env, cfg, sr.repo); msg != "" {
+			failed = true
+			_, _ = fmt.Fprintf(errOut, "lighthouse: cleanup %s: %s\n", slug, msg)
+		}
 		removed, err := sweepOne(ctx, env, db, cfg, forges[slug], sr)
 		for _, l := range removed {
 			of := fmt.Sprintf("%s#%d", slug, l.Issue)
@@ -888,4 +892,20 @@ func tokenEnvs(cfg hostconfig.Dispatch) []string {
 		}
 	}
 	return out
+}
+
+// cloneProblem is the one-line report, with its repair, of a kenn-forge clone of repo that is not
+// bare (kennforge.CheckClone, #478); "" when the clone is sound, when there is nothing to check
+// (another workplace, no HOME, no worktree to find the clone from) or when the check itself
+// fails: a failing check must not hide the sweep, so it is reported as a problem of its own.
+func cloneProblem(ctx context.Context, env tickEnv, cfg hostconfig.Dispatch, repo repoconfig.Repo) string {
+	home := env.Getenv("HOME")
+	if env.Workplace != nil || cfg.Workplace != hostconfig.WorkplaceKennForge || home == "" {
+		return ""
+	}
+	msg, err := kennforge.CheckClone(ctx, env.runner(), home, repo.Kind, repo.Host, repo.Slug)
+	if err != nil {
+		return "could not check the kenn-forge clone: " + oneLine(err)
+	}
+	return msg
 }

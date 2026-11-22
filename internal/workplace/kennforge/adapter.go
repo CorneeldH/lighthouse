@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -360,20 +361,25 @@ func (a *Adapter) readWorkspace(ctx context.Context, workspaceID string) (wireWo
 // On another node a 404 is "already gone" only as confirmGone allows; otherwise the carrier
 // stays and the error wraps workplace.ErrUncertain.
 //
-// kenn-forge refuses (409) to delete a dirty worktree and has no force parameter, so with
-// o.Force the worktree is first reset to HEAD and cleaned of every untracked and ignored file,
-// with local git. That needs the worktree on this host: on another node a forced Remove is an
+// kenn-forge refuses (409) to delete a dirty worktree. With o.Orphan the worktree directory is
+// gone, and the DELETE carries force=true. With o.Force the worktree is first reset to HEAD and
+// cleaned of every untracked and ignored file, with local git. That needs the worktree on this host: on another node a forced Remove is an
 // error, before anything is changed.
 func (a *Adapter) Remove(ctx context.Context, workspaceID string, o workplace.RemoveOptions) error {
 	if err := notForge(workspaceID); err != nil {
 		return err
 	}
-	if o.Force {
+	deletePath := wsPath(workspaceID)
+	if o.Orphan {
+		// The worktree directory is gone: there is nothing to discard, and kenn-forge cannot
+		// measure it dirty (exit 128, 409). force=true makes it delete the workspace anyway.
+		deletePath += "?force=true"
+	} else if o.Force {
 		if err := a.discardWork(ctx, workspaceID); err != nil {
 			return fmt.Errorf("remove workspace %s: %w", workspaceID, err)
 		}
 	}
-	err := a.Client.do(ctx, http.MethodDelete, a.path(wsPath(workspaceID)), nil, 0, nil)
+	err := a.Client.do(ctx, http.MethodDelete, a.path(deletePath), nil, 0, nil)
 	var se *StatusError
 	if errors.As(err, &se) && se.Status == http.StatusConflict {
 		return fmt.Errorf("remove workspace %s: %v: %w", workspaceID, se, workplace.ErrDirty)
@@ -490,4 +496,95 @@ func WorktreeRoot(home, kind, host, slug string) string {
 		host = "github.com"
 	}
 	return filepath.Join(home, ".kenn", "forge", "worktrees", kind, host, strings.ToLower(slug))
+}
+
+// BranchNowhere reports whether branch is neither in the clone of the repository nor on origin,
+// for a workspace whose worktree directory is gone. The worktree of the workspace cannot be asked,
+// so it asks a sibling worktree under the same worktree root: it shares the clone's refs and its
+// origin. Without such a sibling, or when git fails, it is an error: never "nowhere" on a guess.
+func (a *Adapter) BranchNowhere(ctx context.Context, workspaceID, branch string) (bool, error) {
+	if a.Node != "" {
+		return false, fmt.Errorf("branch check of %s needs local git, and the workspace is on node %s", workspaceID, a.Node)
+	}
+	home := a.Home
+	if home == "" {
+		h, err := os.UserHomeDir()
+		if err != nil {
+			return false, err
+		}
+		home = h
+	}
+	root := WorktreeRoot(home, a.Kind, "", a.Repo)
+	sibling := siblingWorktree(root)
+	if sibling == "" {
+		return false, fmt.Errorf("no worktree of %s under %s to ask", a.Repo, root)
+	}
+	git := func(args ...string) (string, error) {
+		argv := append(append(append([]string{}, forceGit...), "-C", sibling), args...)
+		out, code, err := a.Run(ctx, gitTimeout, "git", argv...)
+		if err != nil {
+			return "", fmt.Errorf("git %s: %w", args[0], err)
+		}
+		if code != 0 {
+			return "", fmt.Errorf("git %s: exit code %d", args[0], code)
+		}
+		return strings.TrimSpace(out), nil
+	}
+	local, err := git("for-each-ref", "--format=%(refname)", "refs/heads/"+branch, "refs/remotes/origin/"+branch)
+	if err != nil || local != "" {
+		return false, err
+	}
+	remote, err := git("ls-remote", "--heads", "origin", branch)
+	if err != nil || remote != "" {
+		return false, err
+	}
+	return true, nil
+}
+
+// siblingWorktree is a linked worktree under root, or "" when there is none.
+func siblingWorktree(root string) string {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return ""
+	}
+	for _, e := range entries {
+		dir := filepath.Join(root, e.Name())
+		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
+			return dir
+		}
+	}
+	return ""
+}
+
+// CheckClone reports, as one line with its repair, a clone of the repository slug that is not
+// bare: core.bare is not true, or core.worktree is set (#478: a git init with an inherited
+// GIT_DIR and GIT_WORK_TREE did that, and kenn-forge then refused every DELETE of a workspace).
+// "" is a sound clone, or no worktree under the worktree root to find the clone from.
+func CheckClone(ctx context.Context, run workplace.Runner, home, kind, host, slug string) (string, error) {
+	sibling := siblingWorktree(WorktreeRoot(home, kind, host, slug))
+	if sibling == "" {
+		return "", nil
+	}
+	git := func(args ...string) (string, int, error) {
+		out, code, err := run(ctx, gitTimeout, "git", append(append([]string{}, forceGit...), args...)...)
+		return strings.TrimSpace(out), code, err
+	}
+	common, code, err := git("-C", sibling, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	if err != nil || code != 0 {
+		return "", fmt.Errorf("clone of %s: git rev-parse --git-common-dir: exit %d: %v", slug, code, err)
+	}
+	cfg := filepath.Join(common, "config")
+	bare, code, err := git("config", "--file", cfg, "--get", "core.bare")
+	if err != nil || code > 1 {
+		return "", fmt.Errorf("clone of %s: git config core.bare: exit %d: %v", slug, code, err)
+	}
+	worktree, code, err := git("config", "--file", cfg, "--get", "core.worktree")
+	if err != nil || code > 1 {
+		return "", fmt.Errorf("clone of %s: git config core.worktree: exit %d: %v", slug, code, err)
+	}
+	if bare == "true" && worktree == "" {
+		return "", nil
+	}
+	return fmt.Sprintf("kenn-forge clone %s is not bare (core.bare=%s, core.worktree=%s): kenn-forge refuses every DELETE of its workspaces. Repair: git -C %s config --unset core.worktree && git -C %s config core.bare true",
+		common, bare, worktree, common, common), nil
 }
