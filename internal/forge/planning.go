@@ -47,6 +47,55 @@ type Planning struct {
 	Milestones []MilestoneCount
 }
 
+// PrioInputs is what the priority weight of #445 needs of one repository besides the blockers.
+type PrioInputs struct {
+	// Issues maps every open issue (no pull request) to the number of its milestone; 0 is none.
+	Issues map[int]int
+	// Milestones are the open milestones, with their description; never nil.
+	Milestones []Milestone
+}
+
+// PrioInputs reads the open issue list and the open milestones over REST, the same pages as
+// Planning, so a repeated read is answered by 304s. It reads no closed issues of a milestone and
+// no blocked_by list.
+func (c *GitHub) PrioInputs(ctx context.Context) (PrioInputs, error) {
+	if err := c.configured(); err != nil {
+		return PrioInputs{}, err
+	}
+	out := PrioInputs{Issues: map[int]int{}, Milestones: []Milestone{}}
+	url := c.openIssuesURL()
+	for url != "" {
+		var page []issueItem
+		next, err := c.do(ctx, http.MethodGet, url, nil, &page)
+		if err != nil {
+			return PrioInputs{}, err
+		}
+		for _, it := range page {
+			if it.PullRequest != nil {
+				continue
+			}
+			is := it.issue()
+			out.Issues[is.Number] = 0
+			if is.Milestone != nil {
+				out.Issues[is.Number] = is.Milestone.Number
+			}
+		}
+		url = next
+	}
+	milestones, err := c.Milestones(ctx, "open")
+	if err != nil {
+		return PrioInputs{}, err
+	}
+	out.Milestones = append(out.Milestones, milestones...)
+	return out, nil
+}
+
+// openIssuesURL is the first page of the open issue list, oldest first. PrioInputs and planIssues
+// both read it under this one URL, so they share one cache entry and a repeated read is a 304.
+func (c *GitHub) openIssuesURL() string {
+	return fmt.Sprintf("%s/repos/%s/issues?state=open&sort=created&direction=asc&per_page=100", c.BaseURL, c.Repo)
+}
+
 // Planning reads the open issues of the repo with their milestone and open blockers, and per
 // open milestone the number of open issues and the issues closed as completed. It reads REST
 // only: the open issue list, the open milestones, the closed issues of each of them, and the
@@ -89,7 +138,7 @@ func (c *GitHub) Planning(ctx context.Context) (Planning, error) {
 func (c *GitHub) planIssues(ctx context.Context) ([]PlanIssue, map[int]int, error) {
 	out := []PlanIssue{}
 	open := map[int]int{}
-	url := fmt.Sprintf("%s/repos/%s/issues?state=open&sort=created&direction=asc&per_page=100", c.BaseURL, c.Repo)
+	url := c.openIssuesURL()
 	for url != "" {
 		var page []issueItem
 		next, err := c.do(ctx, http.MethodGet, url, nil, &page)

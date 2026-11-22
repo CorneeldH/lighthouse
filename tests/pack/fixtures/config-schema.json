@@ -251,6 +251,10 @@
   [
    "imports.check",
    "bool"
+  ],
+  [
+   "pr_gate.issue",
+   "str"
   ]
  ],
  "defaults": {
@@ -301,7 +305,8 @@
   "agent_audit.ignore": [],
   "agent_audit.top": 10,
   "agent_audit.description_max_chars": 1024,
-  "imports.check": true
+  "imports.check": true,
+  "pr_gate.issue": "optional"
  },
  "base_keys": [
   "forge.kind",

@@ -66,8 +66,9 @@ var (
 const fallbackNotice = "pr-create-gate: AC count not measurable for #%d (%s) — structure checked only"
 
 // Repo is the forge of `forge.repo` in lighthouse.toml: Kind ("" is github), Slug (forge.repo,
-// "" when not set), Host (forge.host, "" for the default host) and TokenEnv (forge.token_env).
-type Repo struct{ Kind, Slug, Host, TokenEnv string }
+// "" when not set), Host (forge.host, "" for the default host), TokenEnv (forge.token_env) and
+// PRGate (pr_gate.issue: "" is "optional").
+type Repo struct{ Kind, Slug, Host, TokenEnv, PRGate string }
 
 // Row is one data row of an Evidence block; Command is the raw cell, with backticks.
 type Row struct{ AC, Command, Result string }
@@ -419,9 +420,18 @@ func CheckBody(body string, repo Repo, acCount func(nr int) (int, bool, string))
 		}
 	}
 
+	gate := repo.PRGate
+	strict := gate == "required" || gate == "evidence"
 	refs := RefsIssues(body)
 	for _, nr := range refs {
-		if slices.Contains(targets, nr) || !HasEvidenceBlock(body, nr) {
+		if slices.Contains(targets, nr) {
+			continue
+		}
+		if !HasEvidenceBlock(body, nr) {
+			if gate == "evidence" {
+				v.Blockers = append(v.Blockers, fmt.Sprintf(
+					"pr_gate.issue = evidence: Refs #%d has no `### Evidence #%d` table", nr, nr))
+			}
 			continue
 		}
 		// Form only: the rows are not counted, so the issue is not fetched.
@@ -430,14 +440,43 @@ func CheckBody(body string, repo Repo, acCount func(nr int) (int, bool, string))
 		}
 	}
 
-	if len(targets) == 0 && len(refs) == 0 && !NoIssue(body) {
-		hint := ""
-		if len(allRefs(body)) > 0 {
-			hint = fmt.Sprintf(" `Refs #N` lacks a reason of at least %d characters"+
-				" (`Refs #N — <reason>`; separator %s).", MinReason, strings.Join(refsSeps, ", "))
+	if len(targets) == 0 && len(refs) == 0 {
+		switch {
+		case NoIssue(body) && strict:
+			v.Blockers = append(v.Blockers, fmt.Sprintf(
+				"pr_gate.issue = %s: the body has no issue — `No issue: <reason>` is not allowed; name an issue %s",
+				gate, issueForms(gate)))
+		case !NoIssue(body):
+			hint := ""
+			if len(allRefs(body)) > 0 {
+				hint = fmt.Sprintf(" `Refs #N` lacks a reason of at least %d characters"+
+					" (`Refs #N — <reason>`; separator %s).", MinReason, strings.Join(refsSeps, ", "))
+			}
+			prefix := ""
+			if strict {
+				prefix = "pr_gate.issue = " + gate + ": "
+			}
+			v.Blockers = append(v.Blockers, prefix+"no valid form in the PR body: "+formList(gate)+"."+hint)
 		}
-		v.Blockers = append(v.Blockers, "no valid form in the PR body: `Closes #N` with `### Evidence #N`,"+
-			" `Refs #N — <reason>` or `No issue: <reason>`."+hint)
 	}
 	return v
+}
+
+// issueForms is the allowed forms that name an issue under gate, for the No-issue blocker.
+func issueForms(gate string) string {
+	if gate == "evidence" {
+		return "with `Closes #N` + `### Evidence #N` or `Refs #N — <reason>` with its `### Evidence #N` table"
+	}
+	return "with `Closes #N` + `### Evidence #N` or `Refs #N — <reason>`"
+}
+
+// formList is the sentence of the forms the body may take under gate.
+func formList(gate string) string {
+	switch gate {
+	case "required":
+		return "`Closes #N` with `### Evidence #N` or `Refs #N — <reason>`"
+	case "evidence":
+		return "`Closes #N` with `### Evidence #N` or `Refs #N — <reason>` with its `### Evidence #N` table"
+	}
+	return "`Closes #N` with `### Evidence #N`, `Refs #N — <reason>` or `No issue: <reason>`"
 }

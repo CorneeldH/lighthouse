@@ -101,7 +101,17 @@ De SPA leidt deze begrippen af in `web/src/lib/priorities/derive.ts`; de server 
   *oppakbaar*. Gesloten issues zijn *af* (`closed`). De milestone-balk tekent die vijf toestanden
   met één vormentaal en groepeert de blokjes per toestand. De API levert daarvoor per issue
   `label` (het label met de laagste rang), `needs_label` (er staat een `needs_*`-label op, welk
-  ook) en `open_question`, en per milestone de gesloten issues (`closed`).
+  ook), `open_question`, `prio_weight` en `factor` (zie *Prio-gewicht*), en per milestone de
+  gesloten issues (`closed`).
+- **Prio-gewicht.** De regel van #445 (`internal/prioweight`). Elke open milestone met een rang
+  (`Priority: N`) krijgt een factor: bij M zulke milestones is dat M min de plaats, vanaf 0,
+  waarop zijn rang voor het eerst staat in de oplopend gesorteerde rangen; gelijke rangen delen
+  een factor, een milestone zonder rang heeft factor 0. `factor` is de factor van de eigen
+  milestone van het issue. `prio_weight` is die factor plus, voor elk open issue van dezelfde
+  repo dat (direct of via een keten) op dit issue wacht, diens factor maal 2^(k-1), met k de
+  langste afstand in stappen; een cyclus telt als één groep. Een blokkeerder in een andere repo
+  telt niet mee. De tick en de triage ordenen met hetzelfde gewicht (zie
+  [`tick.md`](tick.md), *De rem*, en [`triage.md`](triage.md)).
 - **Vormentaal van de graaf.** De graaf tekent de toestand van een issue op de kaart met
   dezelfde vormentaal als de balk: een kleurstrook (gestreept bij *actief*, effen bij
   elke andere toestand), een stippelrand van 1,5 px in de voorgrondkleur bij *mens nodig*, een kruis bij

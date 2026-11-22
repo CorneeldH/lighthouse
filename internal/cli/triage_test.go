@@ -1569,3 +1569,62 @@ func TestTriageNeedsLabelNotForwarded(t *testing.T) {
 		})
 	}
 }
+
+// Classification: contract. Fails when triage does not set Facts.PrioWeight from the milestone
+// rank or the board blockers (the order falls back to band, then number), or counts a blocker
+// of another repo. The candidates are of one band and max_forwarded = 1 shows which is judged first.
+func TestTriageOrdersByPrioWeight(t *testing.T) {
+	blockedBy := func(repo string, n int) map[string]any {
+		return map[string]any{"blockedBy": map[string]any{"nodes": []any{map[string]any{
+			"number": n, "state": "OPEN", "repository": map[string]any{"nameWithOwner": repo},
+		}}}}
+	}
+	for _, tc := range []struct {
+		name  string
+		setup func(fx *triageFix)
+		first int
+	}{
+		{"milestone rank", func(fx *triageFix) {
+			fx.srv.Milestones = []map[string]any{
+				{"number": 1, "title": "M1", "state": "open", "description": "Priority: 2"},
+				{"number": 2, "title": "M2", "state": "open", "description": "Priority: 1"},
+			}
+			fx.issue(7, "2-area:cli")["milestone"] = fx.srv.Milestones[0]
+			fx.issue(8, "2-area:cli")["milestone"] = fx.srv.Milestones[1]
+			fx.onBoard(7, "t1", nil)
+			fx.onBoard(8, "t1", nil)
+		}, 8},
+		{"board blocker of the same repo", func(fx *triageFix) {
+			fx.srv.Milestones = []map[string]any{{"number": 1, "title": "M1", "state": "open", "description": "Priority: 1"}}
+			for _, n := range []int{7, 8, 9} {
+				fx.issue(n, "2-area:cli")["milestone"] = fx.srv.Milestones[0]
+			}
+			fx.onBoard(7, "t1", nil)
+			fx.onBoard(8, "t1", nil)
+			fx.onBoard(9, "c1", blockedBy("o/r", 8)) // #9 waits on #8: #8 weighs more
+		}, 8},
+		{"board blocker of another repo", func(fx *triageFix) {
+			fx.srv.Milestones = []map[string]any{{"number": 1, "title": "M1", "state": "open", "description": "Priority: 1"}}
+			for _, n := range []int{7, 8, 9} {
+				fx.issue(n, "2-area:cli")["milestone"] = fx.srv.Milestones[0]
+			}
+			fx.onBoard(7, "t1", nil)
+			fx.onBoard(8, "t1", nil)
+			fx.onBoard(9, "c1", blockedBy("x/y", 8)) // counts for nothing: equal weights, lowest number first
+		}, 7},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fx := triageFixture(t, withTriage("max_forwarded = 1\n"))
+			tc.setup(fx)
+			for _, n := range []int{7, 8} {
+				fx.judge.answers[n] = forward(n)
+			}
+			if _, errOut, err := fx.run(triageOpts{}); err != nil {
+				t.Fatalf("triage = %v\n%s", err, errOut)
+			}
+			if got := fx.judge.called(); !slices.Equal(got, []int{tc.first}) {
+				t.Errorf("judged %v, want [%d]", got, tc.first)
+			}
+		})
+	}
+}

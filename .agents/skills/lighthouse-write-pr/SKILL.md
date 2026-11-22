@@ -9,7 +9,7 @@ metadata:
 
 # PR body with evidence
 
-A PR always names its issue with `Refs #N`, and carries an evidence row for every acceptance
+A PR names its issue with `Refs #N` (only `pr_gate.issue = optional` allows `No issue: <reason>`), and carries an evidence row for every acceptance
 criterion it proves. `/lighthouse-close-issue` checks the rows again after the merge and closes the
 issue. This skill verifies and writes that body; it never closes an issue itself. It asks no
 question: interactive and headless (controller run, if present) the outcome is the same.
@@ -20,8 +20,24 @@ question: interactive and headless (controller run, if present) the outcome is t
   `finishing-a-development-branch`.
 - When `.claude/hooks/lighthouse/run.sh pr-create-gate` blocks a PR or MR create.
 - `/lighthouse-write-pr <nr>`. Without an argument the number comes from the branch
-  `issue-<nr>-…` (`git branch --show-current`). No issue: the body gets `No issue: <reason>`
-  (≥10 characters) and no milestone; skip V1–V3 (V2b still runs).
+  `issue-<nr>-…` (`git branch --show-current`). No issue: `No issue: <reason>` is only allowed under `optional`, not under `required` or `evidence`; see
+  *Read the gate setting* below.
+
+## Read the gate setting
+
+Once, before V1, read how strict the repo is about the issue:
+
+```bash
+lighthouse config pr_gate.issue
+```
+
+- rc 0 prints `optional`, `required` or `evidence`. An unset key prints `optional` (rc 0). rc 1 only comes from an older binary without the key or the
+  command: treat it as `optional` and say so in the report. rc 2: the configuration is broken; stop and
+  report it, no PR.
+- No issue number and `optional`: the body gets `No issue: <reason>` (≥10 characters) and no
+  milestone; skip V1–V3 (V2b still runs).
+- No issue number and `required` or `evidence`: a PR without an issue is not allowed. Stop and
+  report that the repo requires an issue; no PR, no question.
 
 ## V1. Read the issue
 
@@ -157,6 +173,10 @@ the number of the criterion in the issue (`1. …`). Below the table each open c
 `not`, `after merge`) with its verdict and what is still needed. A row for an open criterion does
 not exist: `lighthouse evidence run --before-pr` fails on a row that does not hold. Every criterion open:
 no table.
+
+With `pr_gate.issue = evidence` the `### Evidence #N` table is mandatory. When every criterion is
+open there is nothing to prove and `Refs` cannot pass: report that and stop, as the gate would
+block, without inventing a row for an open criterion.
 
 `Closes` stays valid for a PR a person opens without this skill. This skill never writes it: the
 merge would close the issue before the check after the merge. Nor any other closing keyword: which

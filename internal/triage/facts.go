@@ -40,6 +40,7 @@ type Facts struct {
 	Blockers                       []forge.Blocker // blocked_by, open and closed: BoardItem.BlockedBy, or forge.BlockedBy off the board
 	Comments                       []Comment       // oldest first
 	Work                           []string        // running work found, e.g. "PR #12", "branch origin/issue-7-x", "worktree /p", "run 31"
+	PrioWeight                     int             // the prio weight of #445, set by the triage round before Sort
 	GitLog                         string
 	GitShas                        []string // full shas of the commits in GitLog
 	MilestoneOpen, MilestoneClosed []Ref
@@ -152,12 +153,16 @@ func commentIDs(cs []Comment) []int64 {
 	return ids
 }
 
-// Sort orders candidates by priority, then by issue number.
+// Sort orders candidates by priority band (dispatch.PriorityBand), then by prio weight, high to
+// low, then by issue number.
 func Sort(fs []Facts) {
 	sort.SliceStable(fs, func(i, j int) bool {
-		ri, rj := dispatch.PriorityRank(fs[i].Priority), dispatch.PriorityRank(fs[j].Priority)
+		ri, rj := dispatch.PriorityBand(fs[i].Priority), dispatch.PriorityBand(fs[j].Priority)
 		if ri != rj {
 			return ri < rj
+		}
+		if fs[i].PrioWeight != fs[j].PrioWeight {
+			return fs[i].PrioWeight > fs[j].PrioWeight
 		}
 		return fs[i].Number < fs[j].Number
 	})

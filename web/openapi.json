@@ -186,6 +186,10 @@
               "null"
             ]
           },
+          "factor": {
+            "format": "int64",
+            "type": "integer"
+          },
           "label": {
             "type": "string"
           },
@@ -201,6 +205,10 @@
           },
           "open_question": {
             "type": "boolean"
+          },
+          "prio_weight": {
+            "format": "int64",
+            "type": "integer"
           },
           "status": {
             "type": "string"
@@ -220,7 +228,9 @@
           "status",
           "label",
           "open_question",
-          "needs_label"
+          "needs_label",
+          "prio_weight",
+          "factor"
         ],
         "type": "object"
       },

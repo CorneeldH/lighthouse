@@ -575,3 +575,24 @@ func TestWritePRDocumentsOfTheLinkedIssues(t *testing.T) {
 		})
 	}
 }
+
+// Classification: fails when write-pr stops reading `pr_gate.issue` or drops one of its values, so
+// the skill would write a `No issue:` body that the gate blocks under `required` or `evidence`.
+func TestWritePRReadsPrGateIssue(t *testing.T) {
+	for variant, body := range variants(t, writePR) {
+		t.Run(variant, func(t *testing.T) {
+			if !strings.Contains(body, "lighthouse config pr_gate.issue") {
+				t.Error("skill does not read `lighthouse config pr_gate.issue`")
+			}
+			for _, value := range []string{"optional", "required", "evidence"} {
+				if !strings.Contains(body, "`"+value+"`") {
+					t.Errorf("skill does not name the value %q", value)
+				}
+			}
+			when := writePRSection(t, body, "## When")
+			if !strings.Contains(when, "No issue") || !strings.Contains(when, "required") {
+				t.Error("## When does not tie `No issue` to the value `required`")
+			}
+		})
+	}
+}

@@ -342,5 +342,13 @@
   "rc": 0,
   "stdout": "true\n",
   "stderr": ""
+ },
+ {
+  "args": [
+   "pr_gate.issue"
+  ],
+  "rc": 0,
+  "stdout": "optional\n",
+  "stderr": ""
  }
 ]
