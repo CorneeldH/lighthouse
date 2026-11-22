@@ -58,12 +58,12 @@
   - `TestReviewAgentFallbackIsClaude`: met `withClaude` geeft `reviewAgent(fallbackBudget, noAlarm)` `("claude-code", "")`.
   - `TestReviewAgentFallbackWithoutClaude`: met `strictPath` geeft het `("", "Codex-budget: fallback - 5h 93%; geen claude op PATH")`.
   - `TestReviewAgentFallbackWithClaudeAlarm`: met `withClaude` en een alarm `usage.Alarm{Kind: "venster", Pct: 92}` geeft het `("", "Codex-budget: fallback - 5h 93%; Claude-alarm: venster 92%")`.
-  - `TestReviewAgentKeepsUnreadableAsSkip`, tabelgedreven. Elke rij geeft agent `""` en precies de reden van nu:
+  - `TestReviewAgentKeepsUnreadableAsSkip`, tabelgedreven, elke rij zonder en met raakend alarm. Elke rij geeft agent `""`; zonder alarm precies de reden van nu:
     - `0, {"decision":"not_measurable","reason":"x"}` geeft `Codex-budget: not_measurable - x`
     - `1, ""` geeft `Codex-budget: onleesbaar - exit 1`
     - `6, {"decision":"codex","reason":"x"}` geeft `Codex-budget: codex - x`
     - `6, {"reason":"x"}` geeft `Codex-budget: onleesbaar - exit 6`
-    - Een alarm dat raakt, moet `t.Fatal` geven: bij deze rijen leest de gate het alarm niet.
+    - Met een alarm dat raakt (`usage.Alarm{Kind: "venster", Pct: 92}`) blijft de agent `""` en volgt elke reden de reden van nu plus `; Claude-alarm: venster 92%` (AC2: een reden die beide budgetten noemt). Zonder alarm precies de reden van nu.
   - `TestGatePushFallbackRunsClaude`: `GatePush(r.root, fallbackBudget, noAlarm)` met `withClaude` geeft `verdict` `run` en `agent` `claude-code`, en schrijft geen state-bestand.
   - `TestGatePushCodexRunCarriesAgent`: `GatePush(r.root, codexBudget, noAlarm)` geeft `agent` `codex`.
   - `TestGateFallbackWithoutCodexStaysSkip`: `strictPath` met alleen `roborev` en `claude` in bin geeft `verdict` `skip` en reden `geen roborev of codex op PATH`.
@@ -79,7 +79,7 @@
     1. `exec.LookPath("claude")` faalt: reden `…; geen claude op PATH`.
     2. Anders `alarm()`. Raakt die, dan reden `…; Claude-alarm: <Kind> <Pct>%`.
     3. Anders `claude-code`.
-  - Elke andere combinatie geeft de reden `Codex-budget: <decision> - <reason>` van nu.
+  - Elke andere combinatie (een skip) geeft de reden `Codex-budget: <decision> - <reason>` van nu. Raakt `alarm()` daarbij, dan komt er `; Claude-alarm: <Kind> <Pct>%` achter, zodat de reden beide budgetten noemt.
   - In `gate` roept de `default`-tak `reviewAgent` aan. Een niet-lege agent gaat als `out.Set("agent", agent)` na `lines`.
   - Pas alle aanroepers en de twee fixtures aan.
 
@@ -151,12 +151,13 @@
   - `recordCovers` in `internal/pusher/floor.go`. Die blijft ongewijzigd: onbekende JSON-sleutels worden genegeerd.
 
 - [ ] **Stap 1: Schrijf de test** `TestRoborevPushClaudeRecordPassesCheckFive`. Volg `TestRoborevPushRecordRoundTrip` (r. 50-74), met deze verschillen:
-  - `pushReviewFixture` met een nep-`claude` erbij.
+  - `pushReviewFixture` met een nep-`claude` erbij (`write` + `chmod 0o755` in `<f.dir>/bin`, die al voor op PATH staat).
+  - Definieer in `roundtrip_test.go` zelf `noAlarm` (`func() (usage.Alarm, bool) { return usage.Alarm{}, false }`) en `fallbackOK`; die uit `internal/roborev/agent_test.go` zijn in package `pusher` niet zichtbaar. Gebruik `context.Background()` waar de test `ctx` nodig heeft.
   - `GatePush(f.wt, fallbackOK, noAlarm)`, met `fallbackOK` als `6, {"decision":"fallback","reason":"5h 93%"}`. Assert `agent` is `claude-code`.
   - Schrijf de raw met de `ci review: … agents=[claude-code] …`-logregel en `## roborev: Review Passed (\`<head>\`)` naar het `raw`-pad van de gate.
   - Roep `Record` aan met `Out: state`, `Raw: raw` en `Range: &rng`.
   - Assert dat het record `"agent": "claude-code"` en `"uitkomst": "done"` bevat.
-  - Assert dat `recordCovers(ctx, f.wt, state, head)` `true` geeft.
+  - Assert dat `recordCovers(context.Background(), f.wt, state, head)` als eerste waarde `true` geeft.
 
 - [ ] **Stap 2: Draai de test**
   Run: `go test -race ./internal/pusher/ -run 'RoborevPush'`
