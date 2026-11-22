@@ -92,6 +92,8 @@ the sub-letter; the backlog-stand skill, if present, sorts *Ready* on the gate f
 Only gate 0 (with a readable block) and gate 3 fall through. The number in the line is the gate
 where the triage stopped; that makes a wrongly chosen gate findable afterwards.
 
+A `labels.needs_hands` or `labels.needs_testing` label turns the route reached into `stop` (see the label table below).
+
 ### Gate 0 — blocked
 
 Two entries: the label, or a blocker without a label. A block does not stop the triage: a blocked
@@ -213,7 +215,9 @@ that sentence.
 Gate 0 notes the two blocked labels and routes on. `labels.needs_shaping` and
 `labels.needs_decision` are exactly the signal *which* route the issue gets;
 `labels.needs_hands` and `labels.needs_testing` end the triage in a stop. The rows are in the rank
-order of the rank rule: the label with the lowest rank number, the first in the table, decides.
+order of the rank rule, which orders the `labels.needs_*` and route labels: the one with the lowest rank
+number, the first in the table, decides. A blockade (label or relation) is reported by Gate 0 and does
+not cancel a stop.
 
 | Label | Route |
 |---|---|
@@ -224,7 +228,7 @@ order of the rank rule: the label with the lowest rank number, the first in the 
 | `labels.needs_hands` | **stop** — the next step is a human's; the route executes nothing and reports which action of the human is needed first (where human hands are needed) in `#<nr> heading:gate_line <n>[<a|b>]: stop — <label>: <action>`, with `<n>` the gate where the triage would have stopped |
 | `labels.needs_testing` | **stop** — the next step is a human's; the route executes nothing and reports which judgement of the human is needed first in `#<nr> heading:gate_line <n>[<a|b>]: stop — <label>: <judgement>`, with `<n>` the gate where the triage would have stopped |
 
-The rank rule wins: a higher label steers the route (`labels.needs_shaping` still goes to 4c, with
+Among the route labels the rank rule wins: a higher label steers the route (`labels.needs_shaping` still goes to 4c, with
 the stop of the lower label unreached). With an open blocker the reason says so too, but the stop
 stays: Gate 0 reports the blockade and routes on, the route arrives at the stop in this table, and
 the line carries both the blockade and the stop.

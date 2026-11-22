@@ -179,6 +179,8 @@ func TestRouteIssueNeedsHandsAndTestingStop(t *testing.T) {
 				"**stop**", "executes nothing", "which action of the human is needed first")
 			wantAll(t, lineStarting(t, labels, "| `labels.needs_testing`"),
 				"**stop**", "executes nothing", "which judgement of the human is needed first")
+			wantAll(t, flat(section(t, body, "## Triage", "## A blocking label")),
+				"label turns the route reached into `stop`")
 			f := flat(labels)
 			wantNone(t, f, "execute up to the hand movement", "let the human judge whether it does what was meant")
 			nn := section(t, body, "## Non-negotiable", "## Known pitfalls")
@@ -253,6 +255,9 @@ func TestStartIssueStopsOnNeedsStopLine(t *testing.T) {
 			wantAll(t, row, "route `stop` (`labels.needs_hands` or `labels.needs_testing`)",
 				"report what the human has to do first", "no execution, no spec, no plan",
 				"post no handoff", "`RowInteractive`", "before **Blocked?**", "no scout goes out")
+			scout := section(t, body, "#### Scout", "##### Skipping is allowed")
+			wantAll(t, scout, "heading:scout_skipped — <label>: the next step is a human's, no plan follows.")
+			wantAll(t, row, "heading:scout_skipped — <label>")
 		})
 	}
 }
