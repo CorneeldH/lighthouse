@@ -1,4 +1,4 @@
 ---
-type: docs
+type: changed
 ---
-Lighthouse werkt native op Windows: Claude Code draait de hooks in Git Bash, en alle core-hooks slagen daar, de test-gate inbegrepen. De startgids, de installatiepagina en de agentgids noemen die route nu, met Git for Windows als voorwaarde; WSL is niet meer nodig. De site opent voor een Windows-bezoeker de Windows-tab.
+Lighthouse runs natively on Windows: Claude Code runs the hooks in Git Bash, where every core hook passes, the test gate included. The getting-started guide, the install page and the agent guide now name that route, with Git for Windows as the requirement; WSL is no longer needed. The site opens the Windows tab for a Windows visitor.
