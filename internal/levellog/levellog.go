@@ -16,6 +16,7 @@ import (
 	"runtime"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // entry is one line of the logbook.
@@ -76,6 +77,21 @@ func logPath(root string) (string, error) {
 	return filepath.Join(dir, hex.EncodeToString(sum[:])[:16]+".jsonl"), nil
 }
 
+// maxLine caps the logged first line, so one long line never passes the scanner's limit in Count.
+const maxLine = 500
+
+// truncate cuts s to at most maxLine bytes, at a rune boundary.
+func truncate(s string) string {
+	if len(s) <= maxLine {
+		return s
+	}
+	cut := maxLine
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut]
+}
+
 // Append writes one line to the logbook of the repository at root: the component, the time and
 // the first line of its message. Any failure is returned; the caller decides what it means.
 func Append(root, component, firstLine string, at time.Time) error {
@@ -83,7 +99,7 @@ func Append(root, component, firstLine string, at time.Time) error {
 	if err != nil {
 		return err
 	}
-	data, err := json.Marshal(entry{Component: component, At: at, Line: firstLine})
+	data, err := json.Marshal(entry{Component: component, At: at, Line: truncate(firstLine)})
 	if err != nil {
 		return err
 	}

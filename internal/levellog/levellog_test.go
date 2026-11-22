@@ -1,12 +1,15 @@
 package levellog
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 func git(t *testing.T, dir string, args ...string) {
@@ -133,5 +136,43 @@ func TestKeyIsStableAcrossCalls(t *testing.T) {
 	}
 	if runtime.GOOS != "windows" && len(filepath.Base(first)) < 16 {
 		t.Errorf("key too short: %q", first)
+	}
+}
+
+// Fails when Append stops capping the line: a first line of 100 KiB then makes bufio.Scanner
+// return ErrTooLong, and Count (so `lighthouse level`) fails from then on. The multi-byte rune
+// at the cap checks the cut lies on a rune boundary.
+func TestAppendCapsALongLine(t *testing.T) {
+	main, _ := repoWithWorktree(t)
+	at := time.Now()
+	long := strings.Repeat("é", 50*1024) // 100 KiB
+	if err := Append(main, "md-link-check", long, at); err != nil {
+		t.Fatal(err)
+	}
+	if err := Append(main, "md-link-check", "short", at); err != nil {
+		t.Fatal(err)
+	}
+	counts, err := Count(main, at.Add(-time.Hour))
+	if err != nil {
+		t.Fatalf("Count after a long line: %v", err)
+	}
+	if counts["md-link-check"] != 2 {
+		t.Errorf("counts = %v, want 2 for md-link-check", counts)
+	}
+	path, err := logPath(main)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, _, _ := strings.Cut(string(data), "\n")
+	var e entry
+	if err := json.Unmarshal([]byte(first), &e); err != nil {
+		t.Fatal(err)
+	}
+	if len(e.Line) > 500 || !utf8.ValidString(e.Line) || e.Line == "" {
+		t.Errorf("logged line is %d bytes, valid utf8 %v; want a non-empty rune-clean cap of 500", len(e.Line), utf8.ValidString(e.Line))
 	}
 }
