@@ -15,7 +15,7 @@
 - Namen: niveaus `light`, `standard`, `strict`; standen `off`, `log`, `on`; een skill kent alleen `off` en `on`; hooks van taalpakketten (shellscripts) kennen alleen `off` en `on`.
 - Een onderdeel dat het niveau niet noemt staat `on`. Ontbreekt `components.toml`, dan staat alles `on`. Een bestand dat er is maar niet te lezen is, geeft `COULD NOT CHECK`.
 - Kerngates: `main-commit-gate`, `worktree-check`, `pr-create-gate`. Een vast niveau zet ze nooit uit; alleen een override mag, met waarschuwing (geen fout).
-- Basis (altijd geïnstalleerd, geen override): managed block, `headings.toml`, PR-template, workflows, permissions, `run.sh`, `blocking`, `usage-gate`, `permission-check`, `workflow-push-gate`, `level-check`, scripts die meer dan één onderdeel gebruikt.
+- Basis (altijd geïnstalleerd, geen override): managed block, `headings.toml`, PR-template, workflows, permissions, `run.sh`, `blocking`, `usage-gate`, `permission-check`, `workflow-push-gate`, `level-check`, `no-verify-check`, scripts die meer dan één onderdeel gebruikt.
 - `--no-verify` blijft op elk niveau geblokkeerd. Permissions zijn op elk niveau gelijk; een niveau voegt nooit `permissions.allow` toe.
 - Een bestaande repo zonder `level` gedraagt zich als `strict` en `init --upgrade` schrijft de sleutel niet bij. Een nieuwe repo: `light`, `level = "light"` in dezelfde diff.
 - `config.Load` controleert alleen de vorm en de standwaarden (`off`, `log`, `on`); alleen `init` en `lighthouse level` weigeren een onbekende niveau- of onderdeelnaam. Hooks lezen nooit `lighthouse.toml` voor de stand.
@@ -28,11 +28,11 @@
 
 ## Review Focus
 
-- `level = "bogus"` (of een onbekende naam in `[components]`) in `lighthouse.toml`: `config.Load` blijft slagen zodat elke gate blijft draaien; alleen `init` en `lighthouse level` falen, met de lijst geldige namen. (Task 3, 7)
-- Een corrupt `components.toml`: een hook meldt `COULD NOT CHECK` met exit 3 (zodat `run.sh` de blokkadelijst toepast) en blokkeert niet stilzwijgend door; een ontbrekend bestand betekent alles `on`. (Task 9)
-- Wisselen heen en terug (`strict` → `light` → `strict`) geeft byte-identieke bestanden en manifest; een lokaal gewijzigde unit die een wissel zou weghalen geeft de bestaande conflictweigering zonder `--force`. (Task 8)
+- `level = "bogus"` (of een onbekende naam in `[components]`) in `lighthouse.toml`: `config.Load` blijft slagen zodat elke gate blijft draaien; alleen `init` en `lighthouse level` falen, met de lijst geldige namen. (Task 3, 6)
+- Een corrupt `components.toml`: een hook meldt `COULD NOT CHECK` met exit 3 (zodat `run.sh` de blokkadelijst toepast) en blokkeert niet stilzwijgend door; een ontbrekend bestand betekent alles `on`; een basishook (ook `level-check`) kijkt niet naar `LevelErr`. (Task 12, 17)
+- Wisselen heen en terug (`strict` → `light` → `strict`) geeft byte-identieke bestanden en manifest; een lokaal gewijzigde unit die een wissel zou weghalen geeft de bestaande conflictweigering zonder `--force`. De `since`-datum verschilt na een heen-en-weerwissel bewust; de unitset en de bestanden niet. (Task 7)
 - Override op een basisonderdeel (`usage-gate = "off"`), `log` op een skill of shell-hook, of `off` op een skill waar een ingeschakelde skill hard naar verwijst: `init` weigert met een duidelijke fout. (Task 6, 16)
-- Het logboek kan niet geschreven worden (map niet schrijfbaar, geen `HOME`): de hook op `log` geeft toch exit 0 zonder uitvoer. (Task 9, 10)
+- Het logboek kan niet geschreven worden (map niet schrijfbaar, geen `HOME`): de hook op `log` geeft toch exit 0 zonder uitvoer. (Task 12)
 
 ---
 
@@ -55,6 +55,7 @@ Eindigt met een groene PR-grens: dogfood op `strict`, `No changes.` in CI, chang
       Order  []string            // top-level `order`, core only: ["light","standard","strict"]
       Levels map[string]Table    // [<level>.components], [<level>.flags]
       Base   []string            // top-level `base`: component names that are always installed
+      On     []string            // top-level `on`: components that are `on` at every level (named so they are known and never reported as unlisted)
       Owners map[string]string   // [owners]: package-relative path -> component, or "base"
       Calls  map[string][]string // [calls]: "skill:x" -> skills it hands over to
   }
@@ -62,7 +63,7 @@ Eindigt met een groene PR-grens: dogfood op `strict`, `No changes.` in CI, chang
   type Resolved struct { Level string; Components map[string]Stand; Flags map[string]bool }
   func Resolve(files []File, level string, overrides map[string]Stand) (Resolved, error) // one function: name + overrides -> stand per component
   func (r Resolved) Stand(component string) Stand // unlisted -> StandOn
-  func (r Resolved) Names() []string              // every component any pack lists, sorted
+  func (r Resolved) Names() []string              // every component any pack names in levels.toml: level tables, `base` and the new `on` list, sorted
   var CoreGates = []string{"main-commit-gate", "worktree-check", "pr-create-gate"}
   type Installed struct { Level string; Since string /* RFC3339 */; Components map[string]Stand }
   func (i Installed) Stand(component string) Stand
@@ -87,11 +88,11 @@ Eindigt met een groene PR-grens: dogfood op `strict`, `No changes.` in CI, chang
 
 **Interfaces:**
 - Consumes: `levels.File`, `levels.Parse` (Task 1).
-- Produces: `func Component(u Unit, f levels.File) (name string, base bool, err error)` — the one place a unit belongs to. Derivation: hook registration → the command `run.sh <name> …` or `<name>.sh` gives `<name>`; hook file unit `hooks/<name>.sh` → `<name>`; skill files `.claude/skills/lighthouse-<n>/…` and `.agents/skills/lighthouse-<n>/…` → `skill:<n>`; kinds `block`, `permission`, workflows, PR template, `headings.toml` → base; `run.sh`, `blocking` → base; agents and `scripts/` via `f.Owners` (key = path inside the package, e.g. `agents/issue-impact-scout.md`); names in `f.Base` → base. A unit with no place, or two, is an error.
+- Produces: `func Component(u Unit, f levels.File) (name string, base bool, err error)` — the one place a unit belongs to. Derivation: hook registration → the command `run.sh <name> …` or `<name>.sh` gives `<name>`; hook file unit `hooks/<name>.sh` → `<name>`; skill files `.claude/skills/lighthouse-<n>/…` and `.agents/skills/lighthouse-<n>/…` → `skill:<n>`; kinds `block`, `permission`, workflows, PR template, `headings.toml` → base; `run.sh`, `blocking` → base; agents and `scripts/` via `f.Owners` (key = path inside the package, e.g. `agents/issue-impact-scout.md`); names in `f.Base` → base. A unit with no place, or two, is an error, except in a package without `levels.toml` (test fixtures): there every unit counts as `base`.
 
 - [ ] **Step 1: Write the failing tests**: `TestEveryUnitHasExactlyOnePlace` loads every package of `pack.Files` through `loadAll`-style code (`fs.Sub` per directory), runs `Component` on each unit, fails with the unit path when no place; `TestComponentDerivation` (table: `commit-test-gate` registration under PreToolUse and PostToolUseFailure → the same name; `skills/go-standard` file → `skill:go-standard`; agent via owners; permission → base); `TestLoadIgnoresLevelsToml` (a fixture package with `levels.toml` yields no unit for it).
 - [ ] **Step 2: Run** `go test ./internal/packs/...` — Expected: FAIL.
-- [ ] **Step 3: Implement** `Component` and the `Load` change. Author the `levels.toml` files from the ladder in the spec (`## De ladder`) exactly: `pack/core/levels.toml` has `order`, `base = ["run.sh", "blocking", "usage-gate", "permission-check", "workflow-push-gate", "level-check"]`, `[owners]` for `agents/issue-impact-scout.md = "skill:start-issue"`, and one `[light.*]`, `[standard.*]`, `[strict.*]` table each (`strict.components` empty but present). `light`: `commit-test-gate = "off"`, `md-link-check = "log"`, `code-language-check = "log"`, skills `write-issue`, `fix-pr`, `audit-worktrees`, `audit-agent-config`, `test-standard`, `review-spec`, `review-plan` off, `[light.flags] labels = false`. `standard`: `review-spec`, `review-plan` off, `[standard.flags] labels = true`. `strict`: `labels = true`. Language packs: `gofmt-check`, `go-lint-gate`, `ruff-format-check`, `ty-gate`, `shell-lint-check` and their `skill:*-standard` off on `light`. Scripts: `grep` which hook calls each file under `pack/*/scripts/` and give it that hook in `[owners]`; used by more than one → `"base"`. `[calls]` stays empty here (Task 14). `level-check` is in `base` before its hook exists; that is fine.
+- [ ] **Step 3: Implement** `Component` and the `Load` change. Author the `levels.toml` files from the ladder in the spec (`## De ladder`) exactly: `pack/core/levels.toml` has `order`, `base = ["run.sh", "blocking", "usage-gate", "permission-check", "workflow-push-gate", "level-check", "no-verify-check"]`, `[owners]` for `agents/issue-impact-scout.md = "skill:start-issue"`, and one `[light.*]`, `[standard.*]`, `[strict.*]` table each (`strict.components` empty but present), and `on = ["main-commit-gate", "worktree-check", "pr-create-gate", "bash-write-check", …]` naming every other component of the package that no level table lists (every `levels.toml` likewise); `TestEveryDerivedComponentIsNamed` fails with the name of a derived component that is in no table, `base` or `on`. `light`: `commit-test-gate = "off"`, `md-link-check = "log"`, `code-language-check = "log"`, skills `write-issue`, `fix-pr`, `audit-worktrees`, `audit-agent-config`, `test-standard`, `review-spec`, `review-plan` off, `[light.flags] labels = false`. `standard`: `review-spec`, `review-plan` off, `[standard.flags] labels = true`. `strict`: `labels = true`. Language packs: `gofmt-check`, `go-lint-gate`, `ruff-format-check`, `ty-gate`, `shell-lint-check` and their `skill:*-standard` off on `light`. Scripts: list **every** file under `pack/*/scripts/` (helpers in `lib/` and `quality/` included) in `[owners]` or `base`: a script one hook calls (directly or through another script, e.g. `lib/shellcheck-bin.sh` via `shellcheck-repo.sh`) gets that hook; a script no hook calls (`gate_python.py`, `quality/*.py`, used by skills, `test_gate` and instructions) or used by more than one → `"base"`. `TestScriptOwnersTable` pins the concrete table. `[calls]` stays empty here (Task 14). `level-check` is in `base` before its hook exists; that is fine.
 - [ ] **Step 4: Run** `go test ./internal/packs/... ./pack/...` — Expected: PASS (the `strict` row of the ladder is all `on`).
 - [ ] **Step 5: Commit** `feat(packs): levels.toml per pakket en koppeling unit naar onderdeel (#19)`.
 
@@ -137,7 +138,7 @@ Eindigt met een groene PR-grens: dogfood op `strict`, `No changes.` in CI, chang
 - Produces: `func selectUnits(desired []packs.Unit, files []levels.File, r levels.Resolved) (kept []packs.Unit, err error)` — drops units whose component stand is `off`; base units stay. `func componentsUnit(r levels.Resolved, since string) packs.Unit` — `Kind: KindFile`, `Package: "core"`, `Path: levels.InstalledPath`, content from `Installed.Marshal`, mode 0o644. `Options.Level string` (`--level`; wired in Task 8).
 - Effective level for this task: `lighthouse.toml` `level`, else `strict` (a repo without `level`). Overrides come from `[components]`.
 
-- [ ] **Step 1: Write the failing tests** (use the `Options.Packs` fixture filesystem like `initcmd_test.go`): `TestInitLightSkipsOffUnits` (no `commit-test-gate` registration, no `skills/lighthouse-fix-pr/`), `TestInitStrictInstallsEverything` (unit set equals today's), `TestInitWritesComponentsToml` (content lists only non-`on`), `TestInitRepoWithoutLevelActsAsStrict`, `TestOverrideWinsOverLevel`, `TestUnlistedComponentIsReportedOnStderr` (a pack unit no `levels.toml` names → one stderr line, nothing on stdout, still installed).
+- [ ] **Step 1: Write the failing tests** (use the `Options.Packs` fixture filesystem like `initcmd_test.go`): `TestInitLightSkipsOffUnits` (no `commit-test-gate` registration, no `skills/lighthouse-fix-pr/`), `TestInitStrictInstallsEverything` (unit set equals today's), `TestInitWritesComponentsToml` (content lists only non-`on`), `TestInitRepoWithoutLevelActsAsStrict`, `TestOverrideWinsOverLevel`, `TestAlwaysOnListedComponentIsNotReported` (`main-commit-gate` in the `on` list of `pack/core/levels.toml` → no stderr line), `TestUnlistedComponentIsReportedOnStderr` (a pack unit no `levels.toml` names → one stderr line, nothing on stdout, still installed).
 - [ ] **Step 2: Run** `go test ./internal/initcmd/...` — Expected: FAIL.
 - [ ] **Step 3: Implement** and call `selectUnits` after `dropWorkflows` in `execute`; add `componentsUnit` to `desired`. `since` is the previous `components.toml` `since` when the level is unchanged, else `time.Now().UTC()` (an injectable clock in `Options` for tests).
 - [ ] **Step 4: Run** — Expected: PASS; `go test ./internal/packs/...` still PASS.
@@ -150,7 +151,7 @@ Eindigt met een groene PR-grens: dogfood op `strict`, `No changes.` in CI, chang
 - Test: `internal/initcmd/levels_test.go`
 
 **Interfaces:**
-- Produces: `func validate(files []levels.File, level string, over map[string]levels.Stand, loggable func(component string) bool) (warnings []string, err error)`. Errors: unknown level (lists the valid ones), unknown component name (lists them), override on a base component, `log` on a component that is not a Go hook of core (skill or shell hook; `loggable` is derived from the units: the component has a hook registration whose command contains `/run.sh `). Warnings (stderr, never an error): one line per core gate whose stand is not `on`: `lighthouse: <gate> is <stand> — this repo works outside the chain`.
+- Produces: `func validate(files []levels.File, level string, over map[string]levels.Stand, loggable func(component string) bool) (warnings []string, err error)`. Errors: unknown level (lists the valid ones), unknown component name (lists them; valid = `Names()`), override on a base component, `off` on a skill that an `on` skill lists in `[calls]` (names both; empty until Task 19), `log` on a component that is not a Go hook of core (skill or shell hook; `loggable` is derived from the units: the component has a hook registration whose command contains `/run.sh `). Warnings (stderr, never an error): one line per core gate whose stand is not `on`: `lighthouse: <gate> is <stand> — this repo works outside the chain`.
 
 - [ ] **Step 1: Write the failing tests**: `TestUnknownLevelNamesTheValidOnes`, `TestUnknownComponentIsAnError`, `TestOverrideOnBaseIsRefused` (`usage-gate = "off"`), `TestLogOnSkillIsRefused`, `TestLogOnShellHookIsRefused` (`gofmt-check = "log"`), `TestLogOnMdLinkCheckIsAccepted`, `TestCoreGateOffWarnsOnStderrAndInstallsWithoutIt` (`main-commit-gate = "off"` → exit 0, warning line, no registration), `TestInitWithBadNameWritesNothing`.
 - [ ] **Step 2: Run** `go test ./internal/initcmd/...` — Expected: FAIL.
@@ -168,7 +169,7 @@ Eindigt met een groene PR-grens: dogfood op `strict`, `No changes.` in CI, chang
 - Produces: `func switched(installed levels.Installed, found bool, level string) bool` — true on first init or when the `components.toml` level differs from the effective one. `--level <name>` with `init` sets the level; with `--upgrade` it rewrites `lighthouse.toml` via `projectconfig.SetTopLevel` in the same diff and installs the difference. Hand-edited `level` + plain `--upgrade` gives the same result. `init` without `--level` on a new repo writes `level = "light"`.
 - Rule: `--upgrade` without `level` in `lighthouse.toml` and without `--level` never writes the key.
 
-- [ ] **Step 1: Write the failing tests**: `TestNewRepoChoosesLightAndWritesLevel` (diff contains `level = "light"`, one `y`), `TestUpgradeWithoutLevelDoesNotWriteIt`, `TestUpgradeLevelFlagSwitchesAndRemovesUnits`, `TestHandEditedLevelThenUpgradeEqualsLevelFlag` (byte-equal tree), `TestSwitchRoundTripIsIdentical` (`strict`→`light`→`strict`: files and manifest identical to the start), `TestDowngradeConflictRefusesWithoutForce` (locally edited unit that the downgrade removes → `refused: 1 locally modified unit(s)`), `TestSummaryNamesLevelAndHowToScaleUp`.
+- [ ] **Step 1: Write the failing tests**: `TestNewRepoChoosesLightAndWritesLevel` (diff contains `level = "light"`, one `y`), `TestUpgradeWithoutLevelDoesNotWriteIt`, `TestUpgradeLevelFlagSwitchesAndRemovesUnits`, `TestHandEditedLevelThenUpgradeEqualsLevelFlag` (byte-equal tree), `TestSwitchRoundTripIsIdentical` (`strict`→`light`→`strict` with a clock that advances: every installed file except `components.toml` is identical to the start, and `components.toml` differs only in `since`), `TestDowngradeConflictRefusesWithoutForce` (locally edited unit that the downgrade removes → `refused: 1 locally modified unit(s)`), `TestSummaryNamesLevelAndHowToScaleUp`.
 - [ ] **Step 2: Run** `go test ./internal/initcmd/... ./internal/cli/...` — Expected: FAIL.
 - [ ] **Step 3: Implement**. The summary line (stdout, only when something is written) names the level and `lighthouse init --upgrade --level <next>`.
 - [ ] **Step 4: Run** — Expected: PASS.
@@ -197,9 +198,9 @@ Eindigt met een groene PR-grens: dogfood op `strict`, `No changes.` in CI, chang
 - Test: `internal/initcmd/select_test.go`
 
 **Interfaces:**
-- Produces: `func levelRequires(reqs []packs.Requirement, r levels.Resolved) []packs.Requirement` — keeps a `NeededBy` name when `r.Stand(name) != off` and `r.Stand("skill:"+name) != off`; a requirement without remaining `NeededBy` is dropped.
+- Produces: `func levelRequires(reqs []packs.Requirement, r levels.Resolved) []packs.Requirement` — keeps a `NeededBy` entry when the component named by its **first word** (the decoration after it, e.g. `shell-lint-check (download of the pinned binary)`, is ignored) is not `off`: `r.Stand(word) != off` and `r.Stand("skill:"+word) != off`; a requirement without remaining `NeededBy` is dropped.
 
-- [ ] **Step 1: Write the failing tests**: `TestLightDoesNotReportMissingCodex` (`codex` needed only by `review-spec`, `review-plan`, both off → no `missing dependency: codex` line), `TestStrictStillReportsCodex`, `TestRequirementKeepsOnlyOnNames`.
+- [ ] **Step 1: Write the failing tests**: `TestLightDoesNotReportMissingCodex` (`codex` needed only by `review-spec`, `review-plan`, both off → no `missing dependency: codex` line), `TestStrictStillReportsCodex`, `TestRequirementKeepsOnlyOnNames`, `TestDecoratedNeededByUsesFirstWord` (`shell-lint-check (download of the pinned binary)` on `light` → `curl`, `tar`, `xz` not reported; the real `pack/shell/requires.toml` and `pack/python/requires.toml`).
 - [ ] **Step 2: Run** `go test ./internal/initcmd/...` — Expected: FAIL.
 - [ ] **Step 3: Implement** and apply it before `mergeRequires(forgeRequires(...))`.
 - [ ] **Step 4: Run** — Expected: PASS.
@@ -213,7 +214,7 @@ Eindigt met een groene PR-grens: dogfood op `strict`, `No changes.` in CI, chang
 
 - [ ] **Step 1:** add `level = "strict"` with `projectconfig.SetTopLevel`-style placement by hand (top of the file).
 - [ ] **Step 2: Run** `go run ./cmd/lighthouse init --upgrade --yes` — Expected: a diff with `.lighthouse/components.toml` and the manifest; then run it again — Expected: stdout exactly `No changes.`
-- [ ] **Step 3: Run** the `[test_gate] command` and `golangci-lint run ./...` — Expected: green.
+- [ ] **Step 3: Run** the `[test_gate] command`, `golangci-lint run ./...` and `uv run pytest -q` — Expected: green. Update `docs/site/data/config.json` (`level`, `[components]`; `tests/test_site_config.py` demands every schema key) in this PR.
 - [ ] **Step 4: Commit** `feat(dogfood): lighthouse draait op level strict (#19)`.
 - [ ] **Step 5:** Push-grens deel 1: `/lighthouse-write-pr`-fase volgt het gedrag in de controller-run; stop hier met de handoff als het plan in delen wordt uitgevoerd.
 
@@ -250,15 +251,15 @@ Eindigt met een groene PR-grens: dogfood op `strict`, `No changes.` in CI, chang
 
 **Interfaces:**
 - Consumes: `levels.ReadInstalled`, `levellog.Append`.
-- Produces: `Env.Level levels.Installed` and `Env.LevelErr error`. In `Run` for hook `name` (component name = hook name):
+- Produces: `Env.Level levels.Installed` and `Env.LevelErr error`. In `Run` for hook `name` (component name = hook name). A **base** hook (`levels.File.Base`: `usage-gate`, `permission-check`, `workflow-push-gate`, `level-check`, and the new `no-verify-check` of Task 20) skips this whole block: no stand lookup, no `LevelErr` check, so a corrupt `components.toml` never blocks it. For every other hook:
   - `LevelErr != nil` → stderr `COULD NOT CHECK: <hook>: components.toml cannot be read: <err>`, return `ExitUnknown` (so `run.sh` applies `blocking`);
   - stand `off` → return 0 without running (a stale registration);
   - stand `log` → run the hook; when its result has a non-zero code, stderr, a `systemMessage` or Text, append one line (`name`, now, first line of that message) via `levellog.Append`; return exit 0 with no output, whatever happened, also on a panic or a failing `Append`;
   - otherwise unchanged.
 
-- [ ] **Step 1: Write the failing tests** (register throwaway hooks in the test): `TestLogStandCountsAndStaysSilent` (hook returns code 2 + stderr → exit 0, empty out/err, one log line with the first line), `TestLogStandPanicStillExitsZero`, `TestLogStandWithUnwritableLogExitsZero`, `TestOffStandSkipsTheHook`, `TestOnStandIsUnchanged`, `TestCorruptComponentsFileIsExit3` , `TestAbsentComponentsFileMeansOn`.
+- [ ] **Step 1: Write the failing tests** (register throwaway hooks in the test): `TestLogStandCountsAndStaysSilent` (hook returns code 2 + stderr → exit 0, empty out/err, one log line with the first line), `TestLogStandPanicStillExitsZero`, `TestLogStandWithUnwritableLogExitsZero`, `TestOffStandSkipsTheHook`, `TestOnStandIsUnchanged`, `TestCorruptComponentsFileIsExit3`, `TestBaseHookIgnoresCorruptComponentsFile` (`level-check` through `hook.Run` with a corrupt file → code 0 with `systemMessage`), `TestLogStandSuppressesVersionNotice`, `TestAbsentComponentsFileMeansOn`.
 - [ ] **Step 2: Run** `go test ./internal/hook/... ./internal/cli/...` — Expected: FAIL.
-- [ ] **Step 3: Implement.** The version/build notices of `withNotices` stay as they are; only the hook's own message is suppressed.
+- [ ] **Step 3: Implement.** On stand `log` `withNotices` is skipped too (the spec allows no `systemMessage` on `log`); on `on` the notices stay as they are.
 - [ ] **Step 4: Run** — Expected: PASS; `go test ./internal/hooks/... ./internal/codelang/...` still PASS.
 - [ ] **Step 5: Commit** `feat(hook): stand log en lezen van components.toml (#19)`.
 
@@ -286,7 +287,7 @@ Eindigt met een groene PR-grens: dogfood op `strict`, `No changes.` in CI, chang
 **Interfaces:**
 - Produces: `var GateComponents = map[string]string{"shell-lint-check.sh": "shell-lint-check", "ruff-format-check.sh": "ruff-format-check", "gofmt-check.sh": "gofmt-check", "md-link-check": "md-link-check", "code-language-check.sh": "code-language-check"}`. In `runGate`: when `levels.ReadInstalled(repoRoot)` gives `off` for the gate's component, the verdict is a skip with no notice (today's `"no <pack> check installed"` stays for a gate that is missing while its component is `on`). Gates on `log` still run: the nested `lighthouse hook` call applies `log` itself (Task 12).
 
-- [ ] **Step 1: Write the failing tests**: `TestGateOffIsSilentNotMissing` (`.go` file written, `gofmt-check` off → no `no go check installed`), `TestGateMissingWhileOnStillNotices`, `TestGateOnLogRunsAndStaysQuiet` (fixture gate exits 2 under `log`: no verdict output).
+- [ ] **Step 1: Write the failing tests**: `TestGateOffIsSilentNotMissing` (`.go` file written, `gofmt-check` off → no `no go check installed`), `TestGateMissingWhileOnStillNotices`, `TestGateOnLogRunsAndStaysQuiet` (fixture `run.sh` that calls the real `lighthouse hook`, so the nested `log` applies; the gate exits 2 under `log`: no verdict output).
 - [ ] **Step 2: Run** `go test ./internal/bashwrites/...` — Expected: FAIL.
 - [ ] **Step 3: Implement.**
 - [ ] **Step 4: Run** — Expected: PASS.
@@ -300,9 +301,9 @@ Eindigt met een groene PR-grens: dogfood op `strict`, `No changes.` in CI, chang
 - Test: `internal/cli/level_test.go`
 
 **Interfaces:**
-- Produces: `lighthouse level` (read-only). Output on stdout, in this order: `level: <name> (since <date>)`; one `<component>  <stand>` row per non-`on` component plus a count of the `on` ones; for each `log` component `<component>  would have reported <n>× since <since>` (from `levellog.Count`); a section `not measured at this level` listing components `off` here and not `off` at the next level in `File.Order` (on `light`: `commit-test-gate`, the language-pack hooks). No verdict "ready for standard". Without `components.toml`: `level: strict (no level set)`. Errors: unknown level in `lighthouse.toml` → exit 1 with the valid names (same `validate` as `init`).
+- Produces: `lighthouse level` (read-only). Output on stdout, in this order: `level: <name> (since <date>)`; one `<component>  <stand>` row per non-`on` component plus a count of the `on` ones; for each `log` component `<component>  would have reported <n>× since <since>` (from `levellog.Count`); a section `not measured at this level` listing components `off` here and not `off` at the next level in `File.Order` (on `light`: `commit-test-gate`, the language-pack hooks). For each of `levels.CoreGates` that is not `on`: the same line as `init` (`lighthouse: <gate> is <stand> — this repo works outside the chain`), after the rows. No verdict "ready for standard". Without `components.toml`: `level: strict (no level set)`. Errors: unknown level in `lighthouse.toml` → exit 1 with the valid names (same `validate` as `init`).
 
-- [ ] **Step 1: Write the failing tests** (golden stdout): `TestLevelShowsStandsAndCounts`, `TestLevelListsUnmeasuredComponentsOfNextLevel`, `TestLevelNeverClaimsReadiness` (no line contains `ready`), `TestLevelWithoutComponentsFile`, `TestLevelBogusLevelFails`.
+- [ ] **Step 1: Write the failing tests** (golden stdout): `TestLevelShowsStandsAndCounts`, `TestLevelListsUnmeasuredComponentsOfNextLevel`, `TestLevelNeverClaimsReadiness` (no line contains `ready`), `TestLevelWarnsPerDisabledCoreGate`, `TestLevelWithoutComponentsFile`, `TestLevelBogusLevelFails`.
 - [ ] **Step 2: Run** `go test ./internal/cli/...` — Expected: FAIL.
 - [ ] **Step 3: Implement**; embedded packs via `pack.Files` and the loader of Task 2.
 - [ ] **Step 4: Run** — Expected: PASS.
@@ -312,7 +313,7 @@ Eindigt met een groene PR-grens: dogfood op `strict`, `No changes.` in CI, chang
 
 - [ ] **Step 1: Run** `go run ./cmd/lighthouse init --upgrade --yes` and commit the installed copy (`blocking` stays byte-identical on `strict`). Second run: stdout exactly `No changes.`
 - [ ] **Step 2:** create `changelog.d/issue-19-instapniveaus-log.md` (`type: added`, Dutch).
-- [ ] **Step 3: Run** the `[test_gate] command` and `golangci-lint run ./...` — Expected: green.
+- [ ] **Step 3: Run** the `[test_gate] command`, `golangci-lint run ./...` and `uv run pytest -q` — Expected: green.
 - [ ] **Step 4: Commit** `docs(changelog): stand log en lighthouse level (#19)`. PR-grens deel 2.
 
 ---
@@ -323,13 +324,13 @@ Eindigt met een groene PR-grens: dogfood op `strict`, `No changes.` in CI, chang
 
 **Files:**
 - Create: `internal/hooks/levelcheck.go`
-- Modify: `pack/core/hooks/hooks.json` (a `SessionStart` group `run.sh level-check`, timeout 10), `internal/packs/packs.go` if `parseHooks` rejects `SessionStart`, `pack/core/guards.toml` (`[level-check]`)
+- Modify: `pack/core/hooks/hooks.json` (a `SessionStart` group `run.sh level-check`, timeout 10), `internal/packs/packs.go` if `parseHooks` rejects `SessionStart`
 - Test: `internal/hooks/levelcheck_test.go`
 
 **Interfaces:**
-- Produces: `func LevelCheck(ctx, root, stand string, p hook.Payload) hook.Result`, registered as `level-check`. Never blocks (code 0). For each of `levels.CoreGates` whose stand is not `on`, a line `lighthouse: <gate> is <stand> — this repo works outside the chain`; the result has `systemMessage` (lines joined) and `hookSpecificOutput.additionalContext` (same text, `hookEventName: "SessionStart"`). All `on` or no `components.toml` → empty result. Unreadable → `COULD NOT CHECK` as `systemMessage`, still code 0. It is a base component: no stand of its own.
+- Produces: `func LevelCheck(ctx, root, stand string, p hook.Payload) hook.Result`, registered as `level-check`. Never blocks (code 0), so it gets **no** `guards.toml` entry (`internal/agentaudit/sources.go` classifies every guard as blocking). For each of `levels.CoreGates` whose stand is not `on`, a line `lighthouse: <gate> is <stand> — this repo works outside the chain`; the result has `systemMessage` (lines joined) and `hookSpecificOutput.additionalContext` (same text, `hookEventName: "SessionStart"`). All `on` or no `components.toml` → empty result. Unreadable → `COULD NOT CHECK` as `systemMessage`, still code 0. It is a base component: no stand of its own.
 
-- [ ] **Step 1: Write the failing tests**: `TestLevelCheckSilentWhenGatesOn`, `TestLevelCheckWarnsForEachUnderstoodGate` (two gates off → two lines in both fields), `TestLevelCheckLogCountsAsNotOn`, `TestLevelCheckUnreadableFileSaysCouldNotCheckAndExitsZero`; a pack test that `hooks.json` registers it under `SessionStart`.
+- [ ] **Step 1: Write the failing tests**: `TestLevelCheckSilentWhenGatesOn`, `TestLevelCheckWarnsForEachUnderstoodGate` (two gates off → two lines in both fields), `TestLevelCheckLogCountsAsNotOn`, `TestLevelCheckUnreadableFileSaysCouldNotCheckAndExitsZero`; a pack test that `hooks.json` registers it under `SessionStart`; also update `tests/test_site_packs.py` (`WHEN` map gets `SessionStart`, the core hook count), `tests/test_site_session.py` and the site data `docs/site/data/packs.json`/`session.json` so the pytest lane stays green.
 - [ ] **Step 2: Run** `go test ./internal/hooks/... ./internal/packs/...` — Expected: FAIL.
 - [ ] **Step 3: Implement.**
 - [ ] **Step 4: Run** — Expected: PASS.
@@ -339,17 +340,17 @@ Eindigt met een groene PR-grens: dogfood op `strict`, `No changes.` in CI, chang
 
 **Files:**
 - Create: `internal/initcmd/block.go`
-- Modify: `pack/core/instructions/AGENTS.md`, `pack/go/instructions/AGENTS.md`, `pack/python/instructions/AGENTS.md`, `pack/shell/instructions/AGENTS.md` (add trailing markers), `internal/initcmd/initcmd.go`
+- Modify: `pack/core/instructions/AGENTS.md`, `pack/go/instructions/AGENTS.md`, `pack/python/instructions/AGENTS.md`, `pack/shell/instructions/AGENTS.md` (add trailing markers), `internal/packs/budget_test.go` (raise each `blockCeilings` entry by exactly the number of markers added to that block, in this commit, as a deliberate choice stated in the PR), `tests/test_instruction_files.py` (compare the installed block with the source block after stripping markers), `internal/initcmd/initcmd.go`
 - Test: `internal/initcmd/block_test.go`
 
 **Interfaces:**
-- Decision (builder's choice, spec "Aan de bouwer"): the block is **filtered**, not varied. A line ending in `<!-- level: <component> -->` is dropped when that component is not `on`; the marker is stripped from the lines that stay. `func filterBlock(u packs.Unit, r levels.Resolved) packs.Unit`. Mark the skill lines (`- /lighthouse-fix-pr: …` → `skill:fix-pr`, …), the `commit-test-gate` line, and the language-pack lines about `gofmt-check`, `go-lint-gate`, `go-standard`.
+- Decision (builder's choice, spec "Aan de bouwer"): the block is **filtered**, not varied. A line ending in the one-word marker `<!--level:<component>-->` (one `wc -w` word per marker) is dropped when that component is not `on`; the marker is stripped from the lines that stay. `func filterBlock(u packs.Unit, r levels.Resolved) packs.Unit`. Mark the skill lines (`- /lighthouse-fix-pr: …` → `skill:fix-pr`, …), the `commit-test-gate` line, and the language-pack lines about `gofmt-check`, `go-lint-gate`, `go-standard`.
 - Warning line: for each core gate not `on`, `filterBlock` appends to the core block `- Warning: <gate> is <stand> in this repo (override in [components]): it works outside the chain.` (English, in every session of Codex and OpenCode).
 
 - [ ] **Step 1: Write the failing tests**: `TestBlockOnLightLacksOffSkillsAndTestGate`, `TestBlockOnStrictEqualsTodaysBlock` (byte-equal after marker stripping to the committed `AGENTS.md` managed block content), `TestBlockWarnsPerDisabledCoreGate`, `TestBlockLeavesNoMarkerBehind`.
 - [ ] **Step 2: Run** `go test ./internal/initcmd/...` — Expected: FAIL.
 - [ ] **Step 3: Implement** and apply after `selectUnits` (block units are in `desired`).
-- [ ] **Step 4: Run** — Expected: PASS; `lighthouse check-instructions` still green (word budget).
+- [ ] **Step 4: Run** `go test ./internal/initcmd/... ./internal/packs/...` and `uv run pytest -q tests/test_instruction_files.py` — Expected: PASS; `lighthouse check-instructions` still green (word budget). Core's `--no-verify` rule becomes its own unmarked line (Task 20), so no level drops it.
 - [ ] **Step 5: Commit** `feat(init): managed block per niveau met kerngate-waarschuwing (#19)`.
 
 ### Task 19: `calls` en de teksten van de skills
@@ -367,23 +368,24 @@ Eindigt met een groene PR-grens: dogfood op `strict`, `No changes.` in CI, chang
 - [ ] **Step 1: Write the failing tests** (they fail on today's texts).
 - [ ] **Step 2: Run** `go test ./internal/packs/ -run 'Calls|Conditional'` — Expected: FAIL naming skill, line and level.
 - [ ] **Step 3:** fix each reported spot (data in `[calls]`, text edits); repeat Step 2 until PASS.
-- [ ] **Step 4: Run** `go test ./internal/packs/... ./internal/checkinstr/...` — Expected: PASS.
+- [ ] **Step 4: Run** `go test ./internal/packs/... ./internal/checkinstr/...` and `uv run pytest -q tests/pack` (skill-content tests such as `test_write_pr_skill.py`, `test_close_issue_skill.py`) — Expected: PASS.
 - [ ] **Step 5: Commit** `docs(skills): calls en voorwaardelijke verwijzingen per niveau (#19)`.
 
-### Task 20: `--no-verify` blijft geblokkeerd zonder `commit-test-gate`
+### Task 20: `--no-verify` blijft geblokkeerd, ook zonder `commit-test-gate` en met kerngates uit
 
 **Files:**
-- Modify: `internal/hooks/maincommitgate.go`, `internal/commitgate/pre.go` (remove the block), `pack/core/guards.toml`
-- Test: `internal/hooks/maincommitgate_test.go`, `internal/commitgate/pre_test.go`
+- Create: `internal/hooks/noverifycheck.go`
+- Modify: `internal/commitgate/pre.go` (remove the block), `internal/commitgate/prepost_test.go` (the `no-verify` case at line 62), `pack/core/hooks/hooks.json` (PreToolUse `Bash` `run.sh no-verify-check`), `pack/core/levels.toml` (`no-verify-check` in `base`), `pack/core/instructions/AGENTS.md` (the `--no-verify` rule as its own unmarked line, so Codex and OpenCode keep it on every level), `pack/core/guards.toml` (`[no-verify-check]` with `events`/`terms`; update `commit-test-gate` terms), `tests/pack/test_commit_test_gate_no_verify.py` (move to `no-verify-check`)
+- Test: `internal/hooks/noverifycheck_test.go`
 
 **Interfaces:**
-- Decision: the block moves to `main-commit-gate` (a core gate that is `on` on every level) instead of splitting `commit-test-gate`. `MainCommitGate` calls the existing `commitgate.CommandHasNoVerify(command, cwd)` and blocks with the unchanged text of `noVerifyBlock`, before the branch checks, on every branch. Move `noVerifyBlock` (exported) so both packages need no cycle.
+- Decision: the block moves to a new **base** hook `no-verify-check` (no stand, no override, never `off`), not to `main-commit-gate`: that is a core gate an override may switch off, and the spec says the refusal is "geen kerngate die je kunt uitzetten". `NoVerifyCheck` calls the existing `commitgate.CommandHasNoVerify(command, cwd)` and blocks with the text of `noVerifyBlock` under its own prefix `no-verify-check:` on every branch. `CommandHasNoVerify` is already exported from `internal/commitgate/noverify.go`; the constant text is copied, `commitgate` keeps no block.
 
-- [ ] **Step 1: Write the failing tests**: `TestMainCommitGateBlocksNoVerifyOnAFeatureBranch`, `TestMainCommitGateBlocksShortNOnCommit`, `TestMainCommitGateAllowsNoVerifyWordInMessage` (`git commit -m "no --no-verify"`), and move the existing `--no-verify` cases out of `pre_test.go` (the pre stand no longer judges it).
+- [ ] **Step 1: Write the failing tests**: `TestNoVerifyCheckBlocksOnAFeatureBranch`, `TestNoVerifyCheckBlocksShortNOnCommit`, `TestNoVerifyCheckAllowsNoVerifyWordInMessage` (`git commit -m "no --no-verify"`), `TestNoVerifyCheckStillBlocksWhenMainCommitGateIsOff` (components.toml with `main-commit-gate = "off"` through `hook.Run`), `TestNoVerifyCheckIgnoresCorruptComponentsFile`; remove the `no-verify` case from `internal/commitgate/prepost_test.go` (the pre stand no longer judges it; `fixtures_test.go` parser cases stay); move `tests/pack/test_commit_test_gate_no_verify.py` to run `run.sh no-verify-check`.
 - [ ] **Step 2: Run** `go test ./internal/hooks/... ./internal/commitgate/...` — Expected: FAIL.
-- [ ] **Step 3: Implement**; update the `does`/`terms` of `main-commit-gate` and `commit-test-gate` in `guards.toml` so `lighthouse agent-audit` keeps matching.
-- [ ] **Step 4: Run** — Expected: PASS; `go test ./internal/agentaudit/...` PASS.
-- [ ] **Step 5: Commit** `fix(hooks): --no-verify wordt geblokkeerd door main-commit-gate, op elk niveau (#19)`.
+- [ ] **Step 3: Implement**; update `guards.toml` so `lighthouse agent-audit` keeps matching.
+- [ ] **Step 4: Run** `go test ./internal/hooks/... ./internal/commitgate/... ./internal/agentaudit/...` and `uv run pytest -q tests/pack tests/test_site_packs.py` — Expected: PASS.
+- [ ] **Step 5: Commit** `fix(hooks): --no-verify wordt op elk niveau geblokkeerd door no-verify-check (#19)`.
 
 ### Task 21: Installatiegids, dogfood en changelog deel 3
 
@@ -400,6 +402,6 @@ Eindigt met een groene PR-grens: dogfood op `strict`, `No changes.` in CI, chang
 
 ## Self-review
 
-- **Spec-dekking:** ladder → Task 2; formaat/`level`/`[components]` → 1, 3; `init`-gedrag (nieuw, zonder level, wisselen, wisselherkenning, labels, bestand als unit, vereisten, permissions gelijk) → 4–9; kerngates → 6, 17, 18; stand `log` (logboek, `blocking`, `bash-write-check`, `lighthouse level`) → 11–15; `calls` → 19; `--no-verify` → 20; dogfood en gids → 10, 16, 21. De drie "Aan de bouwer"-keuzes zijn vastgelegd: koppeling door afleiding plus `[owners]` (Task 2), logboek in `levellog` (Task 11), block gefilterd (Task 18). Open punt r3-f1: opgelost door filteren in plaats van genereren (Task 13).
+- **Spec-dekking:** ladder → Task 2; formaat/`level`/`[components]` → 1, 3; `init`-gedrag (nieuw, zonder level, wisselen, wisselherkenning, labels, bestand als unit, vereisten, permissions gelijk) → 4–9; kerngates → 6, 17, 18; stand `log` (logboek, `blocking`, `bash-write-check`, `lighthouse level`) → 11–15; `calls` → 19; `--no-verify` → 20 (base hook `no-verify-check`); dogfood en gids → 10, 16, 21. De drie "Aan de bouwer"-keuzes zijn vastgelegd: koppeling door afleiding plus `[owners]` (Task 2), logboek in `levellog` (Task 11), block gefilterd (Task 18). Open punt r3-f1: opgelost door filteren in plaats van genereren (Task 13).
 - **Typen:** `levels.Resolved`, `levels.Installed`, `Stand` en `CoreGates` worden in Task 1 gedefinieerd en in 5–9, 12–15, 17–18 met dezelfde namen gebruikt.
 - **Niet-doelen bewaakt:** geen eigen niveaus, geen knoppen van #493–#498, geen controller-knoppen (#255 leest `components.toml`).
