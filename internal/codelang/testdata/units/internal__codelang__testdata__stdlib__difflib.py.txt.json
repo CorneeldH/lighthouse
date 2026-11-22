@@ -1,7 +1,7 @@
 {
   "found": [],
   "lang": "python",
-  "source": "tests/pack/fixtures/code_language/stdlib/difflib.py",
+  "source": "internal/codelang/testdata/stdlib/difflib.py.txt",
   "units": [
     [
       "name",

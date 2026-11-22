@@ -1,7 +1,7 @@
 {
   "found": [],
   "lang": "go",
-  "source": "tests/pack/fixtures/code_language/corpus/hook.go.txt",
+  "source": "internal/codelang/testdata/corpus/hook.go.txt",
   "units": [
     [
       "name",

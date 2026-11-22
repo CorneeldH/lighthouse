@@ -1,7 +1,7 @@
 {
   "found": [],
   "lang": "python",
-  "source": "tests/pack/fixtures/code_language/stdlib/argparse.py",
+  "source": "internal/codelang/testdata/stdlib/argparse.py.txt",
   "units": [
     [
       "name",

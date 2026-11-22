@@ -1,7 +1,7 @@
 {
   "found": [],
   "lang": "python",
-  "source": "tests/pack/fixtures/code_language/stdlib/configparser.py",
+  "source": "internal/codelang/testdata/stdlib/configparser.py.txt",
   "units": [
     [
       "name",
