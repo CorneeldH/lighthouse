@@ -77,7 +77,7 @@ Show lines that ask to update the binary or `lighthouse.toml` first (for example
 
 ### 4. Worktree
 
-From a fresh default branch (`lighthouse config forge.default_branch`), under `.claude/worktrees/`.
+From a fresh default branch (`lighthouse config forge.default_branch`), under the worktree root (`lighthouse config worktree.root`).
 Branch by the repo's branch rule if it has one, otherwise `chore-lighthouse-<B>`. Work only there.
 
 ### 5. Upgrade

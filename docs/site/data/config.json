@@ -1040,6 +1040,35 @@
           ]
         },
         {
+          "table": "worktree",
+          "title": "Worktrees",
+          "about": "Where the worktrees of this repo live.",
+          "keys": [
+            {
+              "key": "worktree.root",
+              "level": "advanced",
+              "required": "no",
+              "default": ".claude/worktrees",
+              "about": "The folder the worktrees live in: relative to the main checkout, or absolute.",
+              "readers": [
+                "internal/hooks/hooks.go",
+                "internal/initcmd/initcmd.go",
+                "internal/worktreeaudit/collect.go",
+                "internal/worktreeaudit/render.go",
+                "internal/worktreeroot/worktreeroot.go",
+                "pack/core/instructions/AGENTS.md",
+                "pack/core/skills/audit-worktrees",
+                "pack/core/skills/close-issue",
+                "pack/core/skills/fix-pr",
+                "pack/core/skills/review-plan",
+                "pack/core/skills/upgrade",
+                "pack/core/skills/write-handoff",
+                "pack/go/skills/go-standard"
+              ]
+            }
+          ]
+        },
+        {
           "table": "python",
           "title": "Python",
           "about": "Read by the python pack: where the source lives, which directories ruff and complexipy check, and how the nightly job measures coverage.",

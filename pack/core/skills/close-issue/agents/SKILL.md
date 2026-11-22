@@ -916,9 +916,11 @@ present): the release flow branches from `origin/<default branch>` and stages on
 and `publiccode.yml`. Take a worktree and branch of your own from `origin/<default branch>`:
 
 ```bash
+ROOT=$(lighthouse config worktree.root) || exit 2
+case "$ROOT" in /*|[A-Za-z]:*) ;; *) ROOT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/$ROOT" ;; esac
 B=$(lighthouse config forge.default_branch) || exit 2
 git fetch origin "$B"
-git worktree add .claude/worktrees/areas-<area>-near-goal -b areas-<area>-near-goal "origin/$B"
+git worktree add "$ROOT/areas-<area>-near-goal" -b areas-<area>-near-goal "origin/$B"
 ```
 
 Commit as `docs(areas): near goal <area> after <milestone title>`, in a PR of its own. This also

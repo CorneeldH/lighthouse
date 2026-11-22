@@ -148,7 +148,7 @@ From the `**Spec:**` line of the plan:
 | The line names | You do |
 |---|---|
 | a repo-relative path | pass it on as is |
-| an absolute worktree path | reduce it to repo-relative: everything after `.claude/worktrees/<name>/` |
+| an absolute worktree path | reduce it to repo-relative: everything after `<root>/<name>/`, with `<root>` the resolved `lighthouse config worktree.root` |
 | several specs | pass them all on |
 | "issue #N is the spec" | fetch the body (below), pass that file on |
 | nothing | report and ask; do not guess |

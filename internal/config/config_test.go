@@ -667,3 +667,11 @@ func TestParseProjectOwner(t *testing.T) {
 		})
 	}
 }
+
+// TestDefaultWorktreeRoot pins the default of [worktree] root.
+func TestDefaultWorktreeRoot(t *testing.T) {
+	v, ok := Default("worktree.root")
+	if !ok || v != ".claude/worktrees" {
+		t.Errorf("Default(worktree.root) = %v, %v; want .claude/worktrees", v, ok)
+	}
+}
