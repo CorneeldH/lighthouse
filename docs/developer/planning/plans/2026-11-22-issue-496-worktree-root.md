@@ -14,7 +14,7 @@
 
 Placeholder bij `init` versus `lighthouse config worktree.root` op runtime: **runtime**. Reden: `init --upgrade` herschrijft anders elke skill bij een wijziging van de sleutel; dogfood-diff blijft klein; de skills lezen al elders config zo (`lighthouse config forge.default_branch`). Gevolg: de pack-tekst bevat het letterlijke `.claude/worktrees` nog maar op één plek, als standaardwaarde-uitleg.
 
-Relatief pad = relatief aan de repo-root (de hoofdcheckout, niet aan de worktree zelf). Een worktree-pad wordt daarmee `<root>/<name>`; bij een relatieve waarde `<repo>/<root>/<name>`.
+Relatief pad = relatief aan de repo-root (de hoofdcheckout, niet aan de worktree zelf). Een worktree-pad wordt daarmee `<root>/<name>`; bij een relatieve waarde `<repo>/<root>/<name>`. "Repo-root" is overal de hoofdcheckout, ook wanneer lighthouse of een skill vanuit een gelinkte worktree draait: `git rev-parse --show-toplevel` geeft dan de worktree zelf en is **niet** bruikbaar; gebruik de map boven `git rev-parse --path-format=absolute --git-common-dir` (zoals `pack/core/skills/fix-pr/agents/SKILL.md` al doet).
 
 ## Globale eisen
 
@@ -40,18 +40,20 @@ Relatief pad = relatief aan de repo-root (de hoofdcheckout, niet aan de worktree
 **Bestanden:**
 - Wijzig: `internal/config/config.go` (schema ~:112, defaults ~:166)
 - Maak: `internal/worktreeroot/worktreeroot.go`, `internal/worktreeroot/worktreeroot_test.go`
-- Wijzig: `tests/pack/fixtures/config-schema.json`, `tests/pack/fixtures/config/defaults/expect.json`, `docs/site/data/config.json`
+- Wijzig: `tests/pack/fixtures/config-schema.json`, `tests/pack/fixtures/config/defaults/expect.json`, `docs/site/data/config.json` (entry `worktree.root`, niveau advanced, niet verplicht)
 
 **Interfaces:**
 - Produceert: `config` kent `worktree.root` (`kStr`, standaard `".claude/worktrees"`).
 - Produceert: `func Resolve(repoRoot, value string) string` — `value == ""` telt als de standaard; absoluut blijft absoluut; relatief wordt `filepath.Join(repoRoot, value)`; resultaat `filepath.Clean`.
 - Produceert: `const Default = ".claude/worktrees"`.
+- Produceert: `func MainCheckout(dir string) (string, error)` — de hoofdcheckout van de repo waarin `dir` ligt, via de map boven `git rev-parse --path-format=absolute --git-common-dir` (vanuit een gelinkte worktree dus de hoofdcheckout, niet `--show-toplevel`).
+- Produceert: `func Contains(root, path string) bool` — `path` ligt in `root` volgens `filepath.Rel` (resultaat niet `.` en niet beginnend met `..`); géén `strings.HasPrefix` (`/tmp/wt-old` valt niet onder `/tmp/wt`).
 
-- [ ] **Stap 1: schrijf falende tests** in `worktreeroot_test.go`: `TestResolve` met tabel (`""`→`<repo>/.claude/worktrees`; `".wt"`→`<repo>/.wt`; `"../wt"`→ bovenliggende map schoon; absoluut met spaties blijft gelijk; op Windows `C:\Users\A B\wt` blijft gelijk). Test in `config_test.go`-stijl dat `config.Default("worktree.root")` `".claude/worktrees"` geeft.
+- [ ] **Stap 1: schrijf falende tests** in `worktreeroot_test.go`: `TestResolve` met tabel (`""`→`<repo>/.claude/worktrees`; `".wt"`→`<repo>/.wt`; `"../wt"`→ bovenliggende map schoon; absoluut met spaties blijft gelijk; op Windows `C:\Users\A B\wt` blijft gelijk). Test in `config_test.go`-stijl dat `config.Default("worktree.root")` `".claude/worktrees"` geeft. `TestContains` met `/tmp/wt` tegen `/tmp/wt/a` (ja), `/tmp/wt-old/a` (nee), `/tmp/wt` zelf (nee). `TestMainCheckout` in een echte tijdelijke repo met gelinkte worktree: vanuit beide mappen dezelfde hoofdcheckout.
 - [ ] **Stap 2: draai** `go test ./internal/worktreeroot ./internal/config` → FAIL (package/sleutel ontbreekt).
 - [ ] **Stap 3: implementeer** de sleutel in schema en defaults, en `Resolve`/`Default`. Gebruik `filepath.IsAbs`.
-- [ ] **Stap 4: werk de snapshots bij** (`config-schema.json`, `defaults/expect.json`, `docs/site/data/config.json`); `config_test.go:14` dwingt dit af.
-- [ ] **Stap 5: draai** `go test ./internal/config ./internal/worktreeroot` → PASS.
+- [ ] **Stap 4: werk de snapshots bij** (`config-schema.json`, `defaults/expect.json`, `docs/site/data/config.json`); `config_test.go:14` dwingt dit af. `docs/site/test/config.test.mjs` eist per sleutel op de kaart dat de lijst `readers` exact de bestanden zijn die de tekst `worktree.root` bevatten (`pack/`, `internal/`, `cmd/`) en dat een sleutel zonder lezer in `UNREAD` staat; de gate draait die test bij elke commit onder `internal/`, `pack/` of `docs/site/`. Elke taak die een lezer toevoegt of verplaatst werkt dus de `readers` van `worktree.root` in `docs/site/data/config.json` bij en draait `node --test docs/site/test/config.test.mjs` vóór de commit. In taak 1 (nog geen lezer buiten `internal/config`, die `SKIPPED_READERS` overslaat): voeg `worktree.root` alleen aan `UNREAD` toe als de test anders rood blijft, en haal hem er in taak 2 weer uit.
+- [ ] **Stap 5: draai** `go test ./internal/config ./internal/worktreeroot` en `node --test docs/site/test/config.test.mjs` → PASS.
 - [ ] **Stap 6: commit** `feat(config): [worktree] root met standaard .claude/worktrees (#496)`.
 
 ### Taak 2: Drie herkenners (hooks en audit)
@@ -63,15 +65,17 @@ Relatief pad = relatief aan de repo-root (de hoofdcheckout, niet aan de worktree
 
 **Interfaces:**
 - Verbruikt: `worktreeroot.Resolve`, `worktreeroot.Default`.
-- Produceert: `findOrphans(root string, worktrees []WorktreeInfo)` leest de ingestelde `root` (via config, `Resolve`) in plaats van `const worktreeDir`; de KPI-telling matcht een worktree als zijn pad onder de opgeloste `root` ligt (`strings.HasPrefix` op schoon pad, niet `Contains` op de relatieve string).
+- Produceert: `findOrphans(root string, worktrees []WorktreeInfo)` leest de ingestelde `root` (via config, `Resolve`) in plaats van `const worktreeDir`; de KPI-telling matcht een worktree als zijn pad onder de opgeloste `root` ligt (`worktreeroot.Contains`, niet `strings.Contains` op de relatieve string en niet `strings.HasPrefix`). `View` krijgt een veld `Root string` (de opgeloste map; gezet door `internal/cli/worktreeaudit.go` uit `Collect`); de fixtures in `fixtures_test.go` en `tests/pack/fixtures/worktree_audit/render.json` zonder `Root` vallen terug op `<repo>/.claude/worktrees`, zodat de bestaande verwachtingen gelijk blijven.
+- Produceert: `worktree-check` verwerkt een absoluut pad in Windows-vorm (`C:\Users\A B\wt\x.go`): absolute-detectie met `filepath.IsAbs`/`filepath.VolumeName` en canonicalisatie op `filepath.ToSlash` (nu: alleen een leidende `/` telt, `worktreecheck.go:47`, en `canonMissing` splitst op `/`), zodat het pad niet aan de cwd wordt geplakt.
 
-Detectie in `worktreecheck` (`--git-dir` ≠ `--git-common-dir`) en `main-commit-gate` (`--show-toplevel` + branch) is al padonafhankelijk: de taak bewijst dat met tests en past alleen de berichten aan (noem de ingestelde plek, niet het vaste pad).
+Detectie via git (`--git-dir` ≠ `--git-common-dir` in `worktreecheck`; `--show-toplevel` + branch in `main-commit-gate`) is padonafhankelijk voor POSIX-paden: de taak bewijst dat met tests en past daar alleen de berichten aan (noem de ingestelde plek, niet het vaste pad). De padverwerking van `worktree-check` is dat **niet** voor Windows-paden (zie Produceert hierboven) en wordt in deze taak gerepareerd.
 
-- [ ] **Stap 1: schrijf falende tests.** Hooks: echte tijdelijke repo plus `git worktree add` naar een map **buiten** de repo met een spatie in het pad; `worktree-check` geeft geen waarschuwing voor een write daarin, wel voor een write in de hoofdcheckout op `main`; `main-commit-gate` blokkeert een commit in de hoofdcheckout op `main` en laat een commit in die worktree toe. Audit: `findOrphans` vindt een wees onder een `root` buiten de repo; de KPI telt een worktree onder die `root`.
+- [ ] **Stap 1: schrijf falende tests.** Hooks: echte tijdelijke repo plus `git worktree add` naar een map **buiten** de repo met een spatie in het pad; `worktree-check` geeft geen waarschuwing voor een write daarin, wel voor een write in de hoofdcheckout op `main`; `main-commit-gate` blokkeert een commit in de hoofdcheckout op `main` en laat een commit in die worktree toe. Audit: `findOrphans` vindt een wees onder een `root` buiten de repo; de KPI telt een worktree onder die `root` en telt `<root>-old/x` niet mee. Windows-pad: een `worktree-check`-test met een `file_path` in Windows-vorm (alleen draaiend onder `runtime.GOOS == "windows"`, plus een pure test van de absolute-detectie/canonicalisatie die overal draait).
 - [ ] **Stap 2: draai** `go test ./internal/hooks ./internal/worktreeaudit` → de audit-tests FAIL, hook-detectietests PASS (vastleggen in de commit).
 - [ ] **Stap 3: implementeer** in `worktreeaudit`: `worktreeDir`-const weg, `root` uit config opgelost met `Resolve`; `render.go` vergelijkt tegen de opgeloste map. Hookberichten: lees `worktree.root` zoals `internal/hooks/hooks.go:31-37` andere sleutels leest.
 - [ ] **Stap 4: draai** dezelfde tests → PASS; draai ook de bestaande fixtures (`tests/pack/fixtures/worktree_audit/*.json`); pas alleen aan wat de standaard betreft als het gedrag per ongeluk veranderde.
-- [ ] **Stap 5: commit** `feat(worktree): hooks en audit herkennen een root buiten de repo (#496)`.
+- [ ] **Stap 5: werk `readers` van `worktree.root` bij** in `docs/site/data/config.json` (`internal/worktreeaudit/collect.go`, `internal/hooks/*.go` die de tekst noemen) en draai `node --test docs/site/test/config.test.mjs` → PASS.
+- [ ] **Stap 6: commit** `feat(worktree): hooks en audit herkennen een root buiten de repo (#496)`.
 
 ### Taak 3: Pack-tekst gebruikt de ingestelde plek
 
@@ -82,12 +86,14 @@ Detectie in `worktreecheck` (`--git-dir` ≠ `--git-common-dir`) en `main-commit
 
 **Interfaces:**
 - Consumeert: `worktree.root` (taak 1).
+- Woordenbudget: het managed block staat precies op het budget van 182 woorden (`TestCoreBlockWordBudget`, `internal/repopins/instructions_test.go:62`). De regel over worktrees in `pack/core/instructions/AGENTS.md:3` wordt **vervangen**, niet aangevuld, door een zin met evenveel of minder woorden die `lighthouse config worktree.root` noemt en `.claude/worktrees` één keer als standaard; het budget wordt niet verhoogd. De uitvoerder telt vóór de commit met `wc -w pack/core/instructions/AGENTS.md` (blok ≤ 182) en past de pin `requireTokens(... ".claude/worktrees/")` (`instructions_test.go:59`) aan naar `worktree.root`.
 
 - [ ] **Stap 1: schrijf een falende pin-test**: geen `.claude/worktrees` in `pack/` behalve in een toegestane lijst (de ene standaardwaarde-zin in het managed block, en `internal/workplace/local` blijft buiten `pack/`). Assert met de exacte toegestane bestanden, zodat een nieuwe hardcode rood maakt.
+  Tweede pin: elke skill die `lighthouse config worktree.root` gebruikt om een relatieve waarde op te lossen, noemt ook `--git-common-dir` (hoofdcheckout-verankering); een skill met alleen `ROOT=$(lighthouse config worktree.root)` en `git worktree add "$ROOT/..."` zonder dat anker is rood.
 - [ ] **Stap 2: draai** de pin → FAIL met de lijst bestanden.
-- [ ] **Stap 3: herschrijf** de plekken: managed block en skills zeggen `ROOT=$(lighthouse config worktree.root)` (relatief → onder de repo-root) en maken/zoeken `<root>/<name>`; `git worktree add "<root>/<name>" -b <branch>` met aanhalingstekens (spaties). Het managed block noemt `.claude/worktrees` één keer als standaard. Pas `review-plan` en `write-handoff` aan: padreductie gaat uit van de opgeloste root, niet van de letterlijke map.
+- [ ] **Stap 3: herschrijf** de plekken: managed block en skills zeggen `ROOT=$(lighthouse config worktree.root)` (relatief → onder de repo-root) en maken/zoeken `<root>/<name>`; `git worktree add "<root>/<name>" -b <branch>` met aanhalingstekens (spaties). Een relatieve waarde wordt aan de hoofdcheckout verankerd (`$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/<root>`), nooit aan de cwd of `--show-toplevel`, zodat vanuit een gelinkte worktree geen geneste worktree ontstaat. Het managed block noemt `.claude/worktrees` één keer als standaard. Pas `review-plan` en `write-handoff` aan: padreductie gaat uit van de opgeloste root, niet van de letterlijke map.
 - [ ] **Stap 4: draai** `go run ./cmd/lighthouse init --upgrade` en commit de geïnstalleerde kopie in dezelfde commit; daarna `go run ./cmd/lighthouse init --upgrade` → `No changes.`
-- [ ] **Stap 5: draai** `go test ./internal/repopins ./internal/packcontract ./internal/checkinstr/...` → PASS.
+- [ ] **Stap 5: draai** `go test ./internal/repopins ./internal/packcontract ./internal/checkinstr/...` en `node --test docs/site/test/config.test.mjs` → PASS (de `readers` van `worktree.root` in `docs/site/data/config.json` bevatten nu elke pack-skill/-bestand dat de tekst noemt, per `pack/<pack>/skills/<naam>`).
 - [ ] **Stap 6: commit** `feat(pack): worktrees op de ingestelde plek, geen hardcoded pad (#496)`.
 
 ### Taak 4: Sync-map-waarschuwing in `init`
@@ -98,13 +104,14 @@ Detectie in `worktreecheck` (`--git-dir` ≠ `--git-common-dir`) en `main-commit
 
 **Interfaces:**
 - Produceert: `func InSyncFolder(path string) (provider string, ok bool)` — herkent padsegmenten (hoofdletterongevoelig) `OneDrive` (ook `OneDrive - <naam>`), `Dropbox`, `iCloud Drive`, `iCloudDrive`, `Library/Mobile Documents/com~apple~CloudDocs`; scheidingsteken `/` en `\`.
-- Consumeert: `Resolve`.
+- Consumeert: `Resolve`, `MainCheckout`. `initcmd.Run` leidt de hoofdcheckout af met `worktreeroot.MainCheckout(root)` en gebruikt `repoRoot` (`--show-toplevel`) niet voor het oplossen van `root` of de sync-controle van de repo.
 
-- [ ] **Stap 1: schrijf falende tests**: tabel voor `InSyncFolder` (o.a. `C:\Users\A\OneDrive - Bedrijf\repo`, `/home/a/Dropbox/x`, `/Users/a/Library/Mobile Documents/com~apple~CloudDocs/x`, `/home/a/MyOneDriveNotes/x` → **niet**: alleen volledige segmenten). Init-test: repo of opgeloste `root` in een sync-map → `warning:` op `o.Err`, exitcode 0; geen sync-map → geen waarschuwing.
+- [ ] **Stap 1: schrijf falende tests**: tabel voor `InSyncFolder` (o.a. `C:\Users\A\OneDrive - Bedrijf\repo`, `/home/a/Dropbox/x`, `/Users/a/Library/Mobile Documents/com~apple~CloudDocs/x`, `/home/a/MyOneDriveNotes/x` → **niet**: alleen volledige segmenten). Init-test: repo of opgeloste `root` in een sync-map → `warning:` op `o.Err`, exitcode 0; geen sync-map → geen waarschuwing. Plus een init-test vanuit een **gelinkte worktree buiten de sync-map** waarvan de hoofdcheckout in een sync-map ligt (padsegment `OneDrive - Bedrijf`): de waarschuwing gaat af.
 - [ ] **Stap 2: draai** → FAIL.
 - [ ] **Stap 3: implementeer** `InSyncFolder` en roep het in `initcmd.Run` aan voor de repo-root en de opgeloste `worktree.root`; waarschuwing in het Engels, blokkeert niet, noemt de provider en wijst op `[worktree] root`.
 - [ ] **Stap 4: draai** `go test ./internal/worktreeroot ./internal/initcmd ./internal/cli` → PASS.
-- [ ] **Stap 5: commit** `feat(init): waarschuw voor een repo of worktree-root in een sync-map (#496)`.
+- [ ] **Stap 5: werk `readers`** van `worktree.root` in `docs/site/data/config.json` bij (`internal/initcmd/initcmd.go`) en draai `node --test docs/site/test/config.test.mjs` → PASS.
+- [ ] **Stap 6: commit** `feat(init): waarschuw voor een repo of worktree-root in een sync-map (#496)`.
 
 ### Taak 5: Windows-CI, docs en changelog
 
@@ -113,10 +120,10 @@ Detectie in `worktreecheck` (`--git-dir` ≠ `--git-common-dir`) en `main-commit
 - Wijzig: `docs/workplace.md`, `docs/getting-started.md`, `docs/site/data/config.json` (beschrijving van de sleutel)
 - Maak: `changelog.d/issue-496-worktree-root.md`
 
-- [ ] **Stap 1:** voeg aan `ci/windows-measure.sh` een stap toe: maak een tijdelijke repo, een `root` buiten de repo in een pad **met spaties**, `git worktree add` daarheen, en laat `worktree-check` en `main-commit-gate` daar draaien; verwacht exit 0 respectievelijk de blokkade op de hoofdcheckout. Houd bestaande aanroepen (`WORK=$2`) intact.
-- [ ] **Stap 2:** documenteer `[worktree] root`, de standaard, de relatieve/absolute regel en de sync-waarschuwing in `docs/getting-started.md`; corrigeer de verwijzingen in `docs/workplace.md`.
+- [ ] **Stap 1:** voeg aan `ci/windows-measure.sh` een stap toe: maak een tijdelijke repo, een `root` buiten de repo in een pad **met spaties**, `git worktree add` daarheen, en laat `worktree-check` en `main-commit-gate` daar draaien. De `hook`-helper kent nu alleen een Bash-payload (`tool_input.command`) en Bash-matchers; `worktree-check` staat op `Edit|Write` en leest `tool_input.file_path`. Voeg dus een payload-variant toe (`file_path` in Windows-vorm met spaties) en toets op de **tekst** `Worktree check:` in de `systemMessage` (aanwezig voor een write in de hoofdcheckout op `main`, afwezig voor een write in de externe worktree), niet op exit 0 alleen (de hook blokkeert nooit). Houd bestaande aanroepen (`WORK=$2`) intact. Het script en `windows-measure.yml` zijn een meting en blijven groen wat ze ook vinden (`ci/windows-measure.sh:153-156`, `continue-on-error`): de zekerheid voor AC 5 komt daarom van de Go-tests uit taak 2 en 4 (die ook op Windows-CI draaien); bij de eindcontrole leest de uitvoerder de samenvattingsrij van de Windows-meting en meldt een `FAIL` in de PR-tekst in plaats van AC 5 af te vinken.
+- [ ] **Stap 2:** documenteer `[worktree] root`, de standaard, de relatieve/absolute regel, de sync-waarschuwing en dat een relatieve root binnen de repo anders dan `.claude/worktrees` (bijv. `.wt`) zelf in `.gitignore` of `.git/info/exclude` moet, in `docs/getting-started.md`; corrigeer de verwijzingen in `docs/workplace.md`.
 - [ ] **Stap 3:** schrijf het changelogfragment in het Nederlands.
-- [ ] **Stap 4: eindcontrole:** `go test ./...`, `lighthouse imports check`, `go run ./cmd/lighthouse init --upgrade` → `No changes.`
+- [ ] **Stap 4: eindcontrole:** `go test ./...`, `node --test docs/site/test/*.test.mjs`, `lighthouse imports check`, `go run ./cmd/lighthouse init --upgrade` → `No changes.`
 - [ ] **Stap 5: commit** `docs(worktree): [worktree] root, sync-waarschuwing en Windows-CI (#496)`.
 
 ## Buiten scope
