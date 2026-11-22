@@ -3,15 +3,19 @@ package dispatch
 import (
 	"context"
 	"errors"
+	"io"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/forge"
+	"github.com/CorneeldH/lighthouse/internal/protocol"
 )
 
-// Classification: logic with a fake forge. These tests fail if Prepare stops setting the prio
-// weight of #445 on its items, builds the blocker graph from the held items only, lets a blocker
-// of another repo count, or swallows a PrioInputs error.
+// Classification: logic with a fake forge. These tests fail if Prepare reads PrioInputs (the
+// precheck of every quiet tick), if Complete stops setting the prio weight of #445 on its items,
+// builds the blocker graph from the held items only, lets a blocker of another repo count, reads
+// PrioInputs without items, or swallows a PrioInputs error.
 
 // prioFake is a forge whose board and priority inputs are fixed.
 type prioFake struct {
@@ -23,6 +27,8 @@ type prioFake struct {
 }
 
 func (f *prioFake) BoardItems(context.Context) ([]forge.BoardItem, error) { return f.board, nil }
+
+func (f *prioFake) Comments(context.Context, int) ([]protocol.Comment, error) { return nil, nil }
 
 func (f *prioFake) PrioInputs(context.Context) (forge.PrioInputs, error) {
 	f.calls++
@@ -57,14 +63,34 @@ func prioBoard() *prioFake {
 	}
 }
 
-func TestPrepareSetsPrioWeight(t *testing.T) {
-	f := prioBoard()
+// prioComplete is the gather of f: Prepare, then Complete.
+func prioComplete(f *prioFake) (Snapshot, error) {
 	pre, err := Prepare(context.Background(), f, testRepo, nil, nil, ToDoProbe{})
 	if err != nil {
+		return Snapshot{}, err
+	}
+	return Complete(context.Background(), f, pre, NewTrust(f, nil), "lh-bot", io.Discard, time.Time{})
+}
+
+// The precheck runs on every tick, also a quiet one: it must not read the weights.
+func TestPrepareReadsNoPrioInputs(t *testing.T) {
+	f := prioBoard()
+	if _, err := Prepare(context.Background(), f, testRepo, nil, nil, ToDoProbe{}); err != nil {
 		t.Fatalf("Prepare: %v", err)
 	}
+	if f.calls != 0 {
+		t.Errorf("PrioInputs calls in Prepare = %d, want 0", f.calls)
+	}
+}
+
+func TestCompleteSetsPrioWeight(t *testing.T) {
+	f := prioBoard()
+	snap, err := prioComplete(f)
+	if err != nil {
+		t.Fatalf("gather: %v", err)
+	}
 	got := map[int]int{}
-	for _, it := range pre.Items {
+	for _, it := range snap.Items {
 		got[it.Issue] = it.PrioWeight
 	}
 	if want := map[int]int{1: 2, 2: 3, 3: 5, 5: 2}; !reflect.DeepEqual(got, want) {
@@ -75,12 +101,26 @@ func TestPrepareSetsPrioWeight(t *testing.T) {
 	}
 }
 
-func TestPreparePrioInputsErrorFails(t *testing.T) {
+func TestCompletePrioInputsErrorFails(t *testing.T) {
 	f := prioBoard()
 	boom := errors.New("boom")
 	f.err = boom
-	if _, err := Prepare(context.Background(), f, testRepo, nil, nil, ToDoProbe{}); !errors.Is(err, boom) {
-		t.Errorf("Prepare with a failing PrioInputs = %v; want the error, not weight 0", err)
+	if _, err := prioComplete(f); !errors.Is(err, boom) {
+		t.Errorf("Complete with a failing PrioInputs = %v; want the error, not weight 0", err)
+	}
+}
+
+// A repo without items has nothing to order: Complete reads no weights.
+func TestCompleteWithoutItemsReadsNoPrioInputs(t *testing.T) {
+	f := prioBoard()
+	for i := range f.board {
+		f.board[i].Status = "Done"
+	}
+	if _, err := prioComplete(f); err != nil {
+		t.Fatalf("gather: %v", err)
+	}
+	if f.calls != 0 {
+		t.Errorf("PrioInputs calls without items = %d, want 0", f.calls)
 	}
 }
 
