@@ -673,7 +673,7 @@ func TestUpgradeWithoutSwitchTouchesNoLabels(t *testing.T) {
 	if r, _ := labelCalls(t, root, nil); r.code != 0 {
 		t.Fatalf("init: %s", r.err)
 	}
-	if err := os.Remove(root + "/" + projectconfig.DefaultLabelsPath); err != nil {
+	if err := os.Remove(filepath.Join(root, projectconfig.DefaultLabelsPath)); err != nil {
 		t.Fatal(err)
 	}
 	r, calls := labelCalls(t, root, func(o *Options) { o.Upgrade = true })
@@ -702,5 +702,27 @@ func TestLevelNeverImpliesCreateLabels(t *testing.T) {
 	r, calls := labelCalls(t, root, nil)
 	if r.code != 0 || len(calls) != 1 || calls[0] {
 		t.Errorf("code %d calls %v: %s", r.code, calls, r.err)
+	}
+}
+
+// Red if levelSetsLabels counts a missing components.toml as a switch (it uses switched
+// instead of initialized/found): a repo from before levels would sync labels on upgrade.
+func TestUpgradeOfRepoWithoutRecordedLevelTouchesNoLabels(t *testing.T) {
+	root := newRepo(t)
+	write(t, root, "lighthouse.toml", "level = \"strict\"\n")
+	if r, _ := labelCalls(t, root, nil); r.code != 0 {
+		t.Fatalf("init: %s", r.err)
+	}
+	for _, p := range []string{projectconfig.DefaultLabelsPath, levels.InstalledPath} {
+		if err := os.Remove(filepath.Join(root, p)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r, calls := labelCalls(t, root, func(o *Options) { o.Upgrade, o.Force = true, true })
+	if r.code != 0 {
+		t.Fatalf("code %d: %s", r.code, r.err)
+	}
+	if len(calls) != 0 || exists(root, projectconfig.DefaultLabelsPath) {
+		t.Errorf("upgrade without recorded level touched labels: calls %v", calls)
 	}
 }

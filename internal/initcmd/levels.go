@@ -85,7 +85,9 @@ func levelSetsLabels(o Options, root string, initialized bool, files map[string]
 		return false
 	}
 	prev, found, err := levels.ReadInstalled(root)
-	return err == nil && switched(prev, found, level)
+	// A repo initialised before levels has a manifest but no components.toml: that is
+	// no switch, so only a recorded level that differs counts.
+	return err == nil && (!initialized || (found && prev.Level != level))
 }
 
 // resolveLevels resolves the level and the [components] overrides against the packs.
