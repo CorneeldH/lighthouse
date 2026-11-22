@@ -142,3 +142,27 @@ func TestCoreGates(t *testing.T) {
 		t.Errorf("CoreGates = %q", got)
 	}
 }
+
+// red if BaseHooks drifts from the hook entries of base in pack/core/levels.toml.
+func TestBaseHooksMatchPack(t *testing.T) {
+	data, err := os.ReadFile("../../pack/core/levels.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := Parse(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var want []string
+	for _, b := range f.Base {
+		if b != "run.sh" && b != "blocking" {
+			want = append(want, b)
+		}
+	}
+	got := slices.Clone(BaseHooks)
+	slices.Sort(got)
+	slices.Sort(want)
+	if !slices.Equal(got, want) {
+		t.Fatalf("BaseHooks %v, pack base hooks %v", got, want)
+	}
+}
