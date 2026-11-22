@@ -791,6 +791,20 @@ bleef er geen open run over die de merge opnieuw plant.
 
 ## De rem
 
+Decide geeft de starts en hervattingen in deze volgorde: eerst de Priority-band, dan het prio-gewicht
+van hoog naar laag, dan het tijdstip van de trigger, dan repo en issue. Priority is een handmatige
+override op dat gewicht: `P0` gaat vóór alles, `P1` of een lege Priority volgt het gewicht, `P2` komt
+achter alles. Het gewicht is dat van [`priorities.md`](priorities.md) (#445): de rang van de
+milestone (`Priority: N` in de beschrijving van een open milestone; M milestones met een rang geven
+rang 1 factor M, rang 2 factor M-1 enzovoort, gelijke rangen delen een factor) plus, per issue dat
+op dit issue wacht, diens factor maal 2^(k-1), met k de langste afstand; een cyclus telt als één
+groep. De tick leest daarvoor per ronde `PrioInputs` (open issues met hun milestone en de open
+milestones, via de ETag-transport) en leest geen `ClosedInMilestone` en geen `blocked_by`. Dat laatste
+komt uit het bord: de graaf is de `BlockedBy` van alle bord-items van de repo. Een blokkeerder buiten
+het bord of in een andere repo telt dus niet mee, zodat de tick en `/api/priorities` daarin kunnen
+verschillen. Prepare leest `PrioInputs` alleen als er minstens één item overblijft; een fout daarin
+is de fout van Prepare, nooit een gewicht van 0.
+
 Voor elke start of hervatting die decide kiest, toetst tick één gedeelde rem over alle repo's van de
 host. Per kandidaat, in deze volgorde; de eerste dichte rem geeft de uitsteltekst:
 
