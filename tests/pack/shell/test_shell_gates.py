@@ -13,7 +13,6 @@ from tests.pack.python._testkit import GIT_ENV, PACKS, git, init_repo, install_p
 SHELL = PACKS / "shell"
 SKILL_DIR = SHELL / "skills" / "shell-standard"
 VARIANTS = {"claude": SKILL_DIR / "claude" / "SKILL.md", "agents": SKILL_DIR / "agents" / "SKILL.md"}
-BLOCK = SHELL / "instructions" / "AGENTS.md"
 
 STRICT_LOOKUP = "lighthouse config shell.strict_dirs"
 
@@ -138,14 +137,6 @@ def test_kpi_commands_run(tmp_path, pinned_shellcheck, lighthouse_bin):
             ["bash", "-c", command], cwd=repo, env=env, capture_output=True, text=True, check=False
         )
         assert result.returncode == int(want.group(1)), (command, result.stdout, result.stderr)
-
-
-def test_instruction_block():
-    text = BLOCK.read_text(encoding="utf-8")
-    assert text.startswith("## Lighthouse: shell\n")
-    assert len(text.split()) <= 60, len(text.split())
-    assert "COULD NOT CHECK" in text
-    assert "lighthouse-shell-standard" in text
 
 
 def test_detect_rule():

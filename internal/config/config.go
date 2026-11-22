@@ -40,7 +40,7 @@ func notSet(key string) error { return fmt.Errorf("%s: %w", key, ErrNotSet) }
 // [controller] table.
 const ControllerStatusOption = "Controller"
 
-var requiredStatusOptions = []string{"To do", "In progress", "Done", "On hold"}
+var requiredStatusOptions = []string{"To do", "In progress", "Done"}
 
 var languages = []string{"nl", "en"}
 

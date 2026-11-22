@@ -342,3 +342,16 @@ func TestWriteIssueFreeLabelsWithADocument(t *testing.T) {
 		})
 	}
 }
+
+// Classification: fails when write-issue loses the gate-4 judgement (design depth at 4c means
+// `labels.needs_shaping`), or names `On hold` as a status again. Nothing writes `On hold` any more:
+// parking is `To do` plus `labels.blocked_issue`.
+func TestWriteIssueSkillSetsNeedsShapingAtGate4c(t *testing.T) {
+	for variant, body := range variants(t, writeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			wantAll(t, body, "gate 4", "4c", "`labels.needs_shaping`")
+			wantNone(t, body, "\"On hold\"", "Status `On hold`")
+			wantAll(t, body, "`To do`", "`labels.blocked_issue`")
+		})
+	}
+}

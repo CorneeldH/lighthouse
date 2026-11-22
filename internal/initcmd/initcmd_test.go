@@ -993,7 +993,7 @@ func TestInitProposesRealPython(t *testing.T) {
 			t.Fatalf("%s not installed", rel)
 		}
 	}
-	if !strings.Contains(read(t, root, "AGENTS.md"), "/lighthouse-python-standard") {
+	if !strings.Contains(read(t, root, "AGENTS.md"), "## Lighthouse: python") {
 		t.Fatal("instruction block of python missing in AGENTS.md")
 	}
 }

@@ -98,7 +98,7 @@ func runIssue(ctx context.Context, env tickEnv, target, dbPath string, errOut io
 	}
 	facts.Brake.Manual = true // a person who runs an issue decides on memory, slots and software
 
-	pre, err := measuredPre(ctx, env, st.DB, cfg, rf.Forge, repo, errOut)
+	pre, err := measuredPre(ctx, env, st.DB, cfg, rf, repo, errOut)
 	if err != nil {
 		return err
 	}

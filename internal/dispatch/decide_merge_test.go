@@ -169,6 +169,7 @@ func TestMergeReady(t *testing.T) {
 			[]string{"done::"}},
 		{"paused", func(in *Input) { in.Brake = &Brake{Paused: true} }, []string{}},
 		{"not in Controller", func(in *Input) { item7(in).Status = "On hold" }, []string{}},
+		{"parked in To do", func(in *Input) { item7(in).Status = statusToDo }, []string{}},
 		{"active blocker", blocker, []string{}},
 		{"blocker with a merged PR", func(in *Input) {
 			item7(in).BlockedBy = []forge.Blocker{{Repo: "o/r", Issue: 3, State: "OPEN", MergedPR: true}}

@@ -123,5 +123,13 @@
       }
     ]
   },
-  "want": []
+  "want": [
+    {
+      "kind": "finish_return",
+      "repo": "o/r",
+      "issue": 7,
+      "reason": "reason_start_failed",
+      "language": "nl"
+    }
+  ]
 }
