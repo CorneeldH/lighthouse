@@ -424,6 +424,16 @@
               ]
             },
             {
+              "key": "test_gate.on",
+              "level": "advanced",
+              "required": "no",
+              "default": "commit",
+              "about": "When the test gate runs: after each commit, at the PR, or both.",
+              "readers": [
+                "internal/commitgate/gate.go"
+              ]
+            },
+            {
               "key": "test_gate.slot_wait_seconds",
               "level": "advanced",
               "required": "no",

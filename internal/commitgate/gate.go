@@ -173,6 +173,24 @@ func (g *Gate) readInt(key string, into *int) *Result {
 	return nil
 }
 
+// readOn is test_gate.on: when the gate runs, "commit", "pr" or "both". Not set is "commit"; any
+// other value is a block.
+func (g *Gate) readOn() (on string, block *Result) {
+	value, set, block := g.readConfig("test_gate.on")
+	if block != nil {
+		return "", block
+	}
+	if !set {
+		return "commit", nil
+	}
+	switch value {
+	case "commit", "pr", "both":
+		return value, nil
+	}
+	res := g.Block("test_gate.on = \"" + value + "\"; it must be commit, pr or both.")
+	return "", &res
+}
+
 // readGiB is readConfig for a memory threshold.
 func (g *Gate) readGiB(key string, into **float64) *Result {
 	value, set, block := g.readConfig(key)

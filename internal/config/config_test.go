@@ -96,6 +96,9 @@ func TestDefaultHandsOutFreshLists(t *testing.T) {
 	if v, _ := Default("test_gate.slots"); v != int64(2) {
 		t.Errorf("Default(test_gate.slots) = %#v, want int64(2)", v)
 	}
+	if v, _ := Default("test_gate.on"); v != "commit" {
+		t.Errorf("Default(test_gate.on) = %#v, want \"commit\"", v)
+	}
 }
 
 func TestLookupErrorKinds(t *testing.T) {
