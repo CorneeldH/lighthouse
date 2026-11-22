@@ -252,17 +252,9 @@ test("no controller options", () => {
 
 // Each row mutates a copy of the map (or hands the checker its own copy of the exceptions) and the
 // checker must say exactly that; without these a broken checker would stay green for ever.
-const TEST_GATE_READERS = [
-  "internal/commitgate/gate.go",
-  "internal/commitgate/message.go",
-  "internal/initcmd/gatecommand.go",
-  "pack/core/instructions/AGENTS.md",
-  "pack/core/skills/fix-pr",
-  "pack/core/skills/upgrade",
-  "pack/core/skills/write-pr",
-  "pack/go/skills/go-standard",
-  "pack/python/skills/python-standard",
-];
+// The readers the map lists for test_gate.command, read from the map itself:
+// a hand-kept copy goes stale as soon as a pack names the key in one more file.
+const TEST_GATE_READERS = [...entryOf(load("config.json"), "test_gate.command").readers];
 const PROBLEM_ROWS = [
   {
     name: "a removed key",
