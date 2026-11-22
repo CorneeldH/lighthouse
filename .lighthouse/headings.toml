@@ -45,6 +45,10 @@ en = "Rebased"
 nl = "Geparkeerd"
 en = "Parked"
 
+[kind_repair]
+nl = "Herstel"
+en = "Repair"
+
 # Texts the dispatcher posts
 [reason_needs_brainstorm]
 nl = "heeft brainstorm nodig"
@@ -198,6 +202,14 @@ en = "workflow pusher red"
 [reason_pusher_no_handoff]
 nl = "de pusher pushte, maar er kwam geen handoff of PR"
 en = "the pusher pushed, but no handoff or PR followed"
+
+[reason_pusher_red_ceiling]
+nl = "workflow-pusher bleef rood na twee reparatierondes"
+en = "workflow pusher stayed red after two repair rounds"
+
+[prompt_pusher_repair]
+nl = "De workflow-pusher vond deze stap rood. Repareer het in de worktree, commit, en schrijf een nieuwe handoff met `next: push-workflows`."
+en = "The workflow pusher found this step red. Repair it in the worktree, commit, and write a new handoff with `next: push-workflows`."
 
 [question_push_step]
 nl = "Rode stap"
