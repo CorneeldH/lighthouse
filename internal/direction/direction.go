@@ -3,6 +3,7 @@
 package direction
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -12,9 +13,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/BurntSushi/toml"
 	"github.com/CorneeldH/lighthouse/internal/config"
 	"github.com/CorneeldH/lighthouse/internal/labels"
-	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 )
 
 var (
@@ -150,6 +151,49 @@ func readDoc(root, rel string) (doc, error) {
 	return doc{rel, lines}, nil
 }
 
+// repoPaths is the part of lighthouse.toml this package reads: [paths], [labels] area_prefix and
+// [project] language. Nothing of [forge] is needed.
+type repoPaths struct {
+	Language string
+	Paths    struct{ Labels, Tenets, Areas, Strategy string }
+	Labels   struct{ AreaPrefix string }
+}
+
+// readPaths decodes lighthouse.toml of root; a missing file is an empty config.
+func readPaths(root string) (repoPaths, error) {
+	var raw struct {
+		Project struct {
+			Language string `toml:"language"`
+		} `toml:"project"`
+		Paths struct {
+			Labels   string `toml:"labels"`
+			Tenets   string `toml:"tenets"`
+			Areas    string `toml:"areas"`
+			Strategy string `toml:"strategy"`
+		} `toml:"paths"`
+		Labels struct {
+			AreaPrefix string `toml:"area_prefix"`
+		} `toml:"labels"`
+	}
+	var out repoPaths
+	if _, err := toml.DecodeFile(filepath.Join(root, "lighthouse.toml"), &raw); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return out, err
+	}
+	out.Language = raw.Project.Language
+	if out.Language == "" {
+		out.Language = "en"
+	}
+	out.Paths.Labels, out.Paths.Tenets, out.Paths.Areas, out.Paths.Strategy = raw.Paths.Labels, raw.Paths.Tenets, raw.Paths.Areas, raw.Paths.Strategy
+	out.Labels.AreaPrefix = raw.Labels.AreaPrefix
+	return out, nil
+}
+
+// CheckConfig reports a lighthouse.toml of root that cannot be parsed; a missing one is fine.
+func CheckConfig(root string) error {
+	_, err := readPaths(root)
+	return err
+}
+
 // Check checks the direction documents named in the lighthouse.toml of root and returns every
 // error at once as "path:line: message", sorted; empty means the shape is right.
 func Check(root string) []string {
@@ -157,10 +201,13 @@ func Check(root string) []string {
 	add := func(p string, line int, format string, a ...any) {
 		fs = append(fs, finding{p, line, fmt.Sprintf(format, a...)})
 	}
-	cfg, err := repoconfig.Load(root)
+	cfg, err := readPaths(root)
 	if err != nil {
 		add("lighthouse.toml", 1, "kan niet laden: %v", err)
 		return render(fs)
+	}
+	if cfg.Paths.Strategy == "" && cfg.Paths.Tenets == "" && cfg.Paths.Areas == "" {
+		return nil // opt-out: the repo wants no direction documents
 	}
 	table, err := config.LoadHeadingsFile(filepath.Join(root, ".lighthouse", "headings.toml"))
 	if err != nil {
@@ -168,7 +215,6 @@ func Check(root string) []string {
 		return render(fs)
 	}
 	v := &vocab{table: table, language: cfg.Language}
-	areaNames, labelsOK := areaLabels(root, cfg, add)
 
 	var docs []doc
 	read := func(key, rel string) (doc, bool) {
@@ -198,6 +244,16 @@ func Check(root string) []string {
 		entries, err := os.ReadDir(filepath.Join(root, filepath.FromSlash(cfg.Paths.Areas)))
 		if err != nil {
 			add(cfg.Paths.Areas, 1, "paths.areas: kan niet lezen: %v", err)
+		}
+		hasMD := false
+		for _, e := range entries {
+			hasMD = hasMD || (!e.IsDir() && strings.HasSuffix(e.Name(), ".md"))
+		}
+		// No taxonomy is no error while there are no area files to compare with it.
+		var areaNames []string
+		labelsOK := false
+		if hasMD || (cfg.Paths.Labels != "" && cfg.Labels.AreaPrefix != "") {
+			areaNames, labelsOK = areaLabels(root, cfg, add)
 		}
 		known := map[string]bool{}
 		for _, n := range areaNames {
@@ -237,7 +293,7 @@ func Check(root string) []string {
 }
 
 // areaLabels returns the area names of the label taxonomy, and false when it cannot be read.
-func areaLabels(root string, cfg repoconfig.Repo, add func(string, int, string, ...any)) ([]string, bool) {
+func areaLabels(root string, cfg repoPaths, add func(string, int, string, ...any)) ([]string, bool) {
 	if cfg.Paths.Labels == "" {
 		add("lighthouse.toml", 1, "paths.labels is niet gezet")
 		return nil, false

@@ -363,3 +363,57 @@ func TestCheckMissingHeadingsTableIsFinding(t *testing.T) {
 		t.Fatalf("errs = %q", errs)
 	}
 }
+
+// Classification: unit; guards the opt-out: a repo that sets none of the three direction keys is
+// not checked. A change that checks such a repo anyway fails it.
+func TestCheckSkipsRepoWithoutDirectionKeys(t *testing.T) {
+	toml := strings.NewReplacer("strategy = ", "# strategy = ", "tenets = ", "# tenets = ", "areas = ", "# areas = ").Replace(validTOML)
+	if errs := Check(fixture(t, map[string]string{"lighthouse.toml": toml})); errs != nil {
+		t.Errorf("want nil, got %q", errs)
+	}
+}
+
+// Classification: unit; guards that a repo without [forge] repo and without direction keys is
+// silent, so the check does not depend on the forge. A change back to repoconfig.Load fails it.
+func TestCheckSkipsRepoWithoutForgeRepo(t *testing.T) {
+	if errs := Check(fixture(t, map[string]string{"lighthouse.toml": "[project]\nlanguage = \"nl\"\n"})); errs != nil {
+		t.Errorf("want nil, got %q", errs)
+	}
+}
+
+// Classification: unit; guards that one key opts the repo in: the two others are then errors.
+// A change that skips on a partial set fails it.
+func TestCheckStillFailsOnPartialKeys(t *testing.T) {
+	toml := "[project]\nlanguage = \"nl\"\n\n[labels]\narea_prefix = \"2-area:\"\n\n[paths]\nlabels = \"docs/labels.md\"\nareas = \"docs/areas\"\n"
+	errs := Check(fixture(t, map[string]string{"lighthouse.toml": toml}))
+	if len(errs) != 2 || !strings.Contains(errs[0], "paths.strategy is niet gezet") || !strings.Contains(errs[1], "paths.tenets is niet gezet") {
+		t.Errorf("want the errors for strategy and tenets, got %q", errs)
+	}
+}
+
+// Classification: unit; guards that no taxonomy is no error: an empty areas directory without
+// paths.labels passes. A change that demands paths.labels again fails it.
+func TestCheckAcceptsEmptyAreasWithoutTaxonomy(t *testing.T) {
+	toml := "[project]\nlanguage = \"nl\"\n\n[paths]\nareas = \"docs/areas\"\nstrategy = \"docs/strategy.md\"\ntenets = \"docs/tenets.md\"\n"
+	root := fixture(t, map[string]string{"lighthouse.toml": toml, "docs/areas/core.md": del, "docs/areas/init.md": del})
+	if err := os.MkdirAll(filepath.Join(root, "docs", "areas"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if errs := Check(root); len(errs) != 0 {
+		t.Errorf("want no errors, got %q", errs)
+	}
+}
+
+// Classification: unit; guards that CheckConfig reports an unparsable lighthouse.toml and accepts
+// a missing one. A change that swallows the parse error fails it.
+func TestCheckConfig(t *testing.T) {
+	if err := CheckConfig(fixture(t, map[string]string{"lighthouse.toml": "[paths\n"})); err == nil {
+		t.Error("want an error for a broken lighthouse.toml")
+	}
+	if err := CheckConfig(fixture(t, nil)); err != nil {
+		t.Errorf("valid toml: %v", err)
+	}
+	if err := CheckConfig(fixture(t, map[string]string{"lighthouse.toml": del})); err != nil {
+		t.Errorf("missing toml: %v", err)
+	}
+}
