@@ -52,6 +52,10 @@ type issueItem struct {
 		State       string `json:"state"`
 		Description string `json:"description"`
 	} `json:"milestone"`
+	// DependenciesSummary is nil where the list does not carry the summary.
+	DependenciesSummary *struct {
+		TotalBlockedBy int `json:"total_blocked_by"`
+	} `json:"issue_dependencies_summary"`
 }
 
 func (it issueItem) issue() Issue {

@@ -24,7 +24,7 @@ Het is een korte run, geen daemon. Wie issues vooraf routeert en naar `Controlle
    classic token, of een fine-grained token dat elke repo dekt waarvan issues op het board staan:
    een issue of PR in een andere repo dan die van de run, die het token niet mag lezen (403 of 404, geen
    rate limit), blijft stil leeg. Een fout bij een item van de eigen repo, een rate limit of een
-   GraphQL-fout van `IssueItem` slaat de hele repo over. De
+   fout van `IssueItem` slaat de hele repo over. De
    login van het token zelf heeft push-toegang tot de repo nodig (anders is de collaborator-permissie
    niet te lezen) en een rol in `[dispatch] answer_permissions`: zonder die rol vallen ook de eigen
    🤖-comments van lighthouse weg, zoals Gestart en Hervat.
@@ -98,10 +98,11 @@ Het is een korte run, geen daemon. Wie issues vooraf routeert en naar `Controlle
    `lighthouse: gathered <repo>: <n> items (<reden>)` naar stderr; de reden is `first`, `changed`,
    `stale` of `boundary`. Het board, de PR's van een branch en de blokkades leest tick bij GitHub
    via REST met conditionele requests (`ETag`): een ongewijzigde pagina komt als `304` terug en telt
-   niet mee voor de rate limit, en een uitgeputte GraphQL-limiet stopt een tick dus normaal gesproken
-   niet. Alleen `Planning` (tabblad Prioritering) en het opzoeken van één issue op het board
-   (`IssueItem`, voor een open run waarvan het item gearchiveerd of van het board gehaald is) gebruiken
-   nog GraphQL. Elke lijst leest tick via de `Link`-header tot het einde: een lange lijst voorgangers
+   niet mee voor de rate limit. Ook het opzoeken van één issue op het board
+   (`IssueItem`, voor een open run waarvan het item gearchiveerd of van het board gehaald is) gaat via
+   REST: de tick roept bij GitHub geen GraphQL aan, dus een uitgeputte GraphQL-limiet stopt hem niet.
+   `IssueItem` vindt een gearchiveerd item via een tabel van item-id's in de cache, die elke
+   volledige lijstlezing van het board bijwerkt. Elke lijst leest tick via de `Link`-header tot het einde: een lange lijst voorgangers
    of sluitende PR's wordt niet afgekapt.
    De reads van de gather, bij GitHub, per soort:
    - Het board: de `projectsV2`-pagina's, eenmaal per tick en gedeeld door alle items.
