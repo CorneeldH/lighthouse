@@ -87,6 +87,7 @@
 **Files:**
 - Modify: `internal/hooks/committestgate.go` (doc-comment; geen nieuwe modus), `internal/hooks/committestgate_test.go`
 - Modify: `docs/test-gate.md`, `docs/developer/areas/core.md`
+- Modify: `docs/site/data/config.json` (`readers` van `test_gate.on`: voeg `pack/core/instructions/AGENTS.md` toe, zodra die de sleutel noemt)
 - Modify: `pack/core/instructions/AGENTS.md` (regel `commit-test-gate runs …`, zie het geïnstalleerde `AGENTS.md:48`)
 - Create: `changelog.d/issue-495-test-gate-on-knop.md` (`type: added`, Nederlandse tekst)
 - Modify (door `init --upgrade`): `AGENTS.md`
@@ -97,7 +98,7 @@
 - [ ] **Step 1: Failing test** `TestCommitTestGatePreRunsAtPRCreate` in `internal/hooks/committestgate_test.go`.
 - [ ] **Step 2:** `go test ./internal/hooks/ -run PRCreate` → FAIL, na Task 3 PASS; pas anders alleen de doc-comment aan.
 - [ ] **Step 3: Documenteer** in `docs/test-gate.md` een sectie `## Wanneer draait de gate: [test_gate] on` (drie waarden, standaard `commit`; `pr` = branch-diff, import-check meegeschoven naar het PR-moment, `--repo` genegeerd, `command = ""` blijft de uitzetknop; trage tests ⇒ `pr`), het deadlinelimiet (`MaxDeadline` 280 s binnen de hooktimeout van 300 s geldt ook bij het PR-moment: een suite van minuten geeft `COULD NOT CHECK (deadline)` en blokkeert de PR-create; houd de `pr`-run onder die grens), de managed-blocktekst (`commit-test-gate runs [test_gate] command after each commit, before a PR create, or both, as [test_gate] on says; fix red in a new commit.`) en het changelogfragment.
-- [ ] **Step 4:** `go run ./cmd/lighthouse init --upgrade` ⇒ commit de geïnstalleerde kopie; daarna nogmaals ⇒ `No changes.`; `go test ./... && go run ./cmd/lighthouse imports check`.
+- [ ] **Step 4:** `go run ./cmd/lighthouse init --upgrade` ⇒ commit de geïnstalleerde kopie; daarna nogmaals ⇒ `No changes.`; `node --test docs/site/test/config.test.mjs` → PASS (de reader `pack/core/instructions/AGENTS.md` staat op de kaart); `go test ./... && go run ./cmd/lighthouse imports check`.
 - [ ] **Step 5: Commit** `docs(test-gate): on-knop in docs en managed block (#495)`.
 
 ### Task 5: `pwsh -File` als testcommando, getest op Windows-CI
