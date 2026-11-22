@@ -169,7 +169,8 @@ mkdir -p ~/.local/bin && mv lighthouse_windows_amd64.exe ~/.local/bin/lighthouse
 The hooks look `lighthouse` up on the Windows `PATH`. Tell the user to add
 `%USERPROFILE%\.local\bin` to their user `PATH` (Settings, *Edit environment variables for your
 account*) and to restart Claude Code. Do not run `setx PATH` yourself: it truncates a long `PATH`.
-A user who works in WSL installs inside WSL with the Linux x86-64 block instead.
+A user who works in WSL installs inside WSL with the Linux x86-64 block instead. After `init`,
+`lighthouse check-hooks` says whether the hooks can run on the machine.
 
 Then run `lighthouse --help` and `lighthouse init --help`, and hold this guide to them (see
 [Ground rules](#ground-rules)).

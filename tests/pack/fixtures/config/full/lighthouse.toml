@@ -98,3 +98,6 @@ description_max_chars = 200
 
 [imports]
 check = false
+
+[pr_gate]
+issue = "evidence"

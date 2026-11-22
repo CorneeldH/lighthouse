@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"slices"
 	"strings"
 )
 
@@ -26,16 +25,6 @@ func (e graphqlErrors) Error() string {
 		msg += fmt.Sprintf(" (and %d more)", more)
 	}
 	return "forge graphql: " + msg
-}
-
-// notFound reports whether one of the errors is a NOT_FOUND on exactly path.
-func (e graphqlErrors) notFound(path ...any) bool {
-	for _, ge := range e {
-		if ge.Type == "NOT_FOUND" && slices.Equal(ge.Path, path) {
-			return true
-		}
-	}
-	return false
 }
 
 // graphql posts query with vars to BaseURL/graphql and decodes data into into. GitHub answers

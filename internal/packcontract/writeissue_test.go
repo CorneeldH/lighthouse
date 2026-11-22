@@ -360,6 +360,18 @@ func TestWriteIssueSkillSetsNeedsShapingAtGate4c(t *testing.T) {
 	}
 }
 
+// Classification: fails when the stacking order of a blocked_by relation again lets the blocked
+// issue make a plan before its predecessor's PR is merged.
+func TestWriteIssueStackingOrderSpecYesPlanNo(t *testing.T) {
+	for variant, body := range variants(t, writeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			f := flat(body)
+			wantAll(t, f, "spec yes, plan and execution wait for a merged PR of the predecessor")
+			wantNone(t, f, "lets the blocked issue do spec and plan")
+		})
+	}
+}
+
 // Classification: fails when the pitch of a milestone or step 3f stops reading `paths.areas` and
 // `paths.strategy`, stops naming the ID that carries the judgement, loses the difference between
 // an unset key (skip silently) and a set path that does not exist (say so), or the pitch loses
@@ -376,6 +388,37 @@ func TestWriteIssueReadsDirection(t *testing.T) {
 			for name, text := range map[string]string{"3f": f3, "pitch": pitch} {
 				if !strings.Contains(text, "does not exist") || !strings.Contains(text, "skips silently") {
 					t.Errorf("%s: missing the unset (skips silently) versus nonexistent (does not exist) rule", name)
+				}
+			}
+		})
+	}
+}
+
+// Classification: fails when 3f or the pitch go back to naming the direction headings as
+// literal words instead of the heading keys, or when a Dutch heading returns as a reading contract.
+func TestWriteIssueNamesDirectionHeadingKeys(t *testing.T) {
+	for variant, body := range variants(t, writeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			f3 := flat(section(t, body, "#### 3f.", "### 4."))
+			wantAll(t, f3, "`heading:policy`", "`heading:not_now`")
+			pitch := flat(section(t, body, "- **Description**: the pitch", "- **Hard rule**"))
+			wantAll(t, pitch, "`heading:area_crux`", "`heading:strategy_diagnosis`", "`heading:not_now`")
+			wantNone(t, body, "Leidend beleid", "Bewust niet")
+		})
+	}
+}
+
+// Classification: fails when 3f or the pitch stop skipping silently on a direction key that is not set.
+func TestSkillsStaySilentWithoutDirectionKeys(t *testing.T) {
+	for variant, body := range variants(t, writeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			for name, text := range map[string]string{
+				"3f":    flat(section(t, body, "#### 3f.", "### 4.")),
+				"pitch": flat(section(t, body, "- **Description**: the pitch", "- **Hard rule**")),
+			} {
+				wantAll(t, text, "A key that is not set")
+				if !strings.Contains(text, "skips silently") {
+					t.Errorf("%s: missing skips silently", name)
 				}
 			}
 		})

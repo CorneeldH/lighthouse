@@ -51,6 +51,9 @@ type RepoInput struct {
 	// Markers are the controller markers whose session's last run is in this repo, resumable
 	// or not.
 	Markers []park.Marker `json:"markers"`
+	// Unreadable are the sessions with a marker file the controller cannot read: parked, but not
+	// until when (#513).
+	Unreadable []string `json:"unreadable,omitempty"`
 	// WorkflowPush is whether host.toml has [dispatch.workflow_push]; without it a push handoff
 	// goes back as a 🤖 Teruggegeven. PushTimeout is its timeout.
 	WorkflowPush bool          `json:"workflow_push,omitempty"`
@@ -162,7 +165,7 @@ type Action struct {
 // cause of its fix-pr start (PR red, a merge conflict, a failed merge or an open roborev
 // review). The result is ordered: the actions without a start or resume (park, hold, unpark
 // and merge among them) by repo and issue, then the defers, then the starts and resumes by
-// priority, trigger time, repo and issue.
+// Priority band (PriorityBand), prio weight high to low, trigger time, repo and issue.
 func Decide(in Input) []Action {
 	var ps []planned
 	for _, repo := range in.Repos {
@@ -269,11 +272,13 @@ func ReturnLabelKey(reason string, blocked bool) string {
 	return "needs_hands"
 }
 
-// planned is an action with what orders it; priority and at count for a start or resume.
+// planned is an action with what orders it; band, weight and at count for a start or resume.
 type planned struct {
 	Action
-	priority int
-	at       time.Time
+	// band is the PriorityBand of the item; weight its prio weight, the higher the earlier.
+	band   int
+	weight int
+	at     time.Time
 	// software: the run's profile is "software"; of a start or resume the run that comes, of a
 	// close the run that closes.
 	software bool
@@ -319,7 +324,10 @@ func comparePlanned(a, b planned) int {
 		if c := -cmpBool(a.Kind == KindScheduledStart, b.Kind == KindScheduledStart); c != 0 {
 			return c
 		}
-		if c := cmp.Compare(a.priority, b.priority); c != 0 {
+		if c := cmp.Compare(a.band, b.band); c != 0 {
+			return c
+		}
+		if c := -cmp.Compare(a.weight, b.weight); c != 0 {
 			return c
 		}
 		if c := a.at.Compare(b.at); c != 0 {
@@ -607,19 +615,20 @@ type fixPRStart struct {
 
 // runCtx is what the measurement rules of one open run read.
 type runCtx struct {
-	in       Input
-	it       Item
-	row      runs.Row
-	base     Action
-	open     runs.OpenRun // the snapshot's open run of row; zero when it has none
-	state    RunState
-	measured bool // the run is in RepoInput.Runs
-	stand    workplace.Stand
-	hasStand bool
-	handoff  bool          // a Handoff stands from row's start on
-	markers  []park.Marker // the repo's resume markers
-	history  []runs.Row    // the repo's runs, open and closed
-	trunk    string        // the repo's default branch
+	in         Input
+	it         Item
+	row        runs.Row
+	base       Action
+	open       runs.OpenRun // the snapshot's open run of row; zero when it has none
+	state      RunState
+	measured   bool // the run is in RepoInput.Runs
+	stand      workplace.Stand
+	hasStand   bool
+	handoff    bool          // a Handoff stands from row's start on
+	markers    []park.Marker // the repo's resume markers
+	unreadable []string      // sessions with a marker file that does not read
+	history    []runs.Row    // the repo's runs, open and closed
+	trunk      string        // the repo's default branch
 	// pushTimeout is RepoInput.PushTimeout: how long a push row may stay open before it pushed.
 	pushTimeout time.Duration
 	// workflowPush is RepoInput.WorkflowPush: the pusher, also the merge pusher, is configured.
@@ -627,7 +636,7 @@ type runCtx struct {
 }
 
 func newRunCtx(in Input, repo RepoInput, it Item, row runs.Row, base Action) runCtx {
-	c := runCtx{in: in, it: it, row: row, base: base, markers: repo.Markers, history: repo.History,
+	c := runCtx{in: in, it: it, row: row, base: base, markers: repo.Markers, unreadable: repo.Unreadable, history: repo.History,
 		trunk: repo.DefaultBranch, pushTimeout: repo.PushTimeout, workflowPush: repo.WorkflowPush}
 	for _, o := range repo.Snapshot.OpenRuns {
 		if o.ID == row.ID {
@@ -650,7 +659,7 @@ func (c runCtx) outcome() (Action, bool, *fixPRStart) {
 	rules := []func() (Action, bool, *fixPRStart){
 		noStart(c.parked), noStart(c.merged), noStart(c.closedIssue), c.mergeReady, noStart(c.green),
 		noStart(c.gone), noStart(c.unknownCommand), noStart(c.didNothing), noStart(c.prClosed), noStart(c.prDraft),
-		c.fixPR, noStart(c.endNoPR), noStart(c.postFailed), noStart(c.noHandoff), noStart(c.uncertain),
+		c.fixPR, noStart(c.endNoPR), noStart(c.postFailed), noStart(c.markerUnreadable), noStart(c.noHandoff), noStart(c.uncertain),
 		noStart(c.permission), noStart(c.silent), noStart(c.silentForge), noStart(c.timeout),
 	}
 	for _, rule := range rules {
@@ -743,14 +752,20 @@ func (c runCtx) done() bool {
 		// pusher pushed, when the row is done.
 		return true
 	}
-	return c.hasStand && c.stand == workplace.Done && !workAfterStop(c.state.Transcript)
+	return c.hasStand && c.stand == workplace.Done && !workAfterStop(c.state.Transcript, c.state.TranscriptUnmeasurable)
 }
 
 // workAfterStop reports whether t shows work after the Stop that made forge report done:
-// background work still running, or a turn on its notification. A nil t is not measurable and
-// shows none. RunViews uses it too, so the page and the tick agree on done (#309).
-func workAfterStop(t *workplace.Transcript) bool {
-	return t != nil && (t.Background > 0 || t.TurnOpen)
+// background work still running, or a turn on its notification. A nil t that the workplace could
+// not measure (unmeasurable) counts as work after the Stop: it proves no end, so the run stays
+// open until the silence or runtime rules decide (#514). A nil t without that flag (no
+// transcripts at all, none yet) shows none. RunViews uses it too, so the page and the tick agree
+// on done (#309).
+func workAfterStop(t *workplace.Transcript, unmeasurable bool) bool {
+	if t == nil {
+		return unmeasurable
+	}
+	return t.Background > 0 || t.TurnOpen
 }
 
 // closed closes row with o. A run that ends as done, handoff or question is over, but its
@@ -1022,7 +1037,21 @@ func fixPRRuns(history []runs.Row, issue, pr int) int {
 // and a Handoff that does not end the chain closed the run before this rule.
 func (c runCtx) noHandoff() (Action, bool) {
 	anyPR := c.anyPR(func(forge.PR) bool { return true })
-	return c.returned("reason_no_handoff", ""), c.done() && !c.handoff && !anyPR
+	reason := "reason_no_handoff"
+	if f := strings.Fields(c.row.Command); len(f) > 0 && rewrite(f[0]) == cmdClose {
+		// A close run that ends with neither Handoff nor Question left criteria open.
+		reason = "reason_closecheck_open"
+	}
+	return c.returned(reason, ""), c.done() && !c.handoff && !anyPR
+}
+
+// markerUnreadable hands back a session that is Done without a PR, Handoff or Question while a
+// marker file of its session exists that the controller cannot read: the usage guard parked it,
+// but "no handoff or question" would be a wrong reason (#513).
+func (c runCtx) markerUnreadable() (Action, bool) {
+	anyPR := c.anyPR(func(forge.PR) bool { return true })
+	return c.returned("reason_park_marker_unreadable", ""),
+		c.done() && !c.handoff && !anyPR && c.row.SessionID != "" && slices.Contains(c.unreadable, c.row.SessionID)
 }
 
 // postFailed is rule 14a: a session Done without a PR, Handoff or Question whose own post of
@@ -1536,7 +1565,7 @@ func (c issueCtx) pushAgain(row runs.Row) (planned, bool) {
 		a := c.base
 		a.Kind, a.Trigger, a.TriggerKey, a.Attempt = KindPush, t.trigger, row.TriggerKey, 2
 		a.Command, a.Worktree, a.Branch, a.CommentID, a.PermitSHA = cmdPush, t.worktree, t.branch, t.comment, t.permit
-		return planned{Action: a, priority: priorityRank(c.it.Priority), at: t.at}, true
+		return c.ordered(a, t.at), true
 	case c.pushReturned(row):
 		return planned{}, false
 	case ok:
@@ -1638,7 +1667,11 @@ func (c issueCtx) answer() (planned, bool) {
 	a.Kind, a.Mode, a.Trigger, a.TriggerKey, a.Attempt = KindResume, modeResume, triggerAnswer, key, 1
 	a.SessionID, a.CommentID = q.Header.Session, ans.ID
 	a.Command, a.Branch = run.Command, run.Branch
-	a.Prompt = protocol.AnswerPrompt(q.Comment.Body, ans.Body)
+	ref := ans.URL
+	if ref == "" {
+		ref = strconv.FormatInt(ans.ID, 10)
+	}
+	a.Prompt = protocol.AnswerPrompt(q.Comment.Body, ans.Body, ref)
 	return c.planned(a, parseTime(ans.CreatedAt)), true
 }
 
@@ -1906,7 +1939,7 @@ func (c issueCtx) handoff() (planned, bool) {
 	if ho.When == "night" && !InNight(c.night, c.now) {
 		return c.deferred("night"), true
 	}
-	if Executing(j.Command) && c.active() {
+	if !SpecPhase(j.Command) && c.active() {
 		if c.ownParked() {
 			return planned{Action: c.board(KindHold)}, true
 		}
@@ -1986,7 +2019,7 @@ func (c issueCtx) push(p *parsed, ho protocol.Handoff, key string) planned {
 	a := c.base
 	a.Kind, a.Trigger, a.TriggerKey, a.Attempt = KindPush, triggerPush, key, 1
 	a.Command, a.Worktree, a.Branch, a.CommentID = cmdPush, ho.Worktree, ho.Branch, p.Comment.ID
-	return planned{Action: a, priority: priorityRank(c.it.Priority), at: p.Time}
+	return c.ordered(a, p.Time)
 }
 
 // mergePush is the KindPush of the merge pusher for pr on its head: no worktree, no permit, the
@@ -1995,7 +2028,7 @@ func (c issueCtx) mergePush(pr forge.PR, attempt int, at time.Time) planned {
 	a := c.base
 	a.Kind, a.Trigger, a.TriggerKey, a.Attempt = KindPush, triggerMerge, mergeKey(pr.Number, pr.HeadSHA), attempt
 	a.Command, a.Branch, a.PR, a.HeadSHA, a.PRURL = cmdPush, pr.HeadRef, pr.Number, pr.HeadSHA, pr.URL
-	return planned{Action: a, priority: priorityRank(c.it.Priority), at: at}
+	return c.ordered(a, at)
 }
 
 // pushAnswer is the KindPush for the answer `push` to a pusher 🤖 Vraag: a Vraag without a
@@ -2014,7 +2047,7 @@ func (c issueCtx) pushAnswer(q *parsed, ans Comment) (planned, bool) {
 	a := c.base
 	a.Kind, a.Trigger, a.TriggerKey, a.Attempt = KindPush, triggerPushAnswer, key, 1
 	a.Command, a.Worktree, a.Branch, a.CommentID, a.PermitSHA = cmdPush, worktree, branch, ans.ID, sha
-	return planned{Action: a, priority: priorityRank(c.it.Priority), at: parseTime(ans.CreatedAt)}, true
+	return c.ordered(a, parseTime(ans.CreatedAt)), true
 }
 
 // shaField is a git object name as the pusher's Vraag carries it.
@@ -2145,7 +2178,7 @@ func (c issueCtx) deferred(reason string) planned {
 	return planned{Action: a}
 }
 
-// planned orders a start or resume by the item's priority and the time of its trigger.
+// planned orders a start or resume by the item's Priority band, prio weight and the time of its trigger.
 // It places the run first: a placement that cannot be made defers the start instead.
 func (c issueCtx) planned(a Action, at time.Time) planned {
 	profile, node, reason := c.placement(a)
@@ -2155,25 +2188,13 @@ func (c issueCtx) planned(a Action, at time.Time) planned {
 		return d
 	}
 	a.Profile, a.Node = profile, node
-	return planned{
-		Action:    a,
-		priority:  priorityRank(c.it.Priority),
-		at:        at,
-		software:  a.Profile == ProfileSoftware,
-		node:      a.Node,
-		holdsSlot: a.Trigger == triggerUsage,
-	}
+	p := c.ordered(a, at)
+	p.software, p.node, p.holdsSlot = a.Profile == ProfileSoftware, a.Node, a.Trigger == triggerUsage
+	return p
 }
 
-// priorityRank orders P0, P1, P2, then no or an unknown priority.
-func priorityRank(priority string) int {
-	switch priority {
-	case "P0":
-		return 0
-	case "P1":
-		return 1
-	case "P2":
-		return 2
-	}
-	return 3
+// ordered is a with what orders it among the starts: the band of the item's Priority, its prio
+// weight and at. A push orders by it too, so it does not fall behind weighted starts.
+func (c issueCtx) ordered(a Action, at time.Time) planned {
+	return planned{Action: a, band: PriorityBand(c.it.Priority), weight: c.it.PrioWeight, at: at}
 }

@@ -447,8 +447,15 @@ blocks the handoff.
 
 Close with: spec path, number of rounds, accepted/rejected/deferred, the final verdict of the
 last round, `outcome`, and the record path or the message of `write`. End with
-`/lighthouse-write-handoff`. Interactively, `superpowers:writing-plans` runs only in the next window
-(a fixed seam); for a controller run (if present) see *Controller run*.
+`/lighthouse-write-handoff` with `next: /superpowers:writing-plans <absolute spec path>`.
+Interactively, `superpowers:writing-plans` runs only in the next window (a fixed seam); for a
+controller run (if present) see *Controller run*. With an active predecessor (an open blocker in
+this repo without a merged PR) the interactive close ends instead with `wait for #<x>`: no
+`next: /superpowers:writing-plans`, the plan waits for a merged PR of the predecessor. Read it as `lighthouse-close-issue` does for *waits on an issue*:
+`lighthouse forge issue blockers <issue>` for the open blockers, and `lighthouse forge pr list
+--state merged` for a merged PR of each.
+The controller run does not change: the controller parks the writing-plans handoff itself while
+the predecessor is active.
 
 ## Fallback without Codex
 

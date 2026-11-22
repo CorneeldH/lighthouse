@@ -245,3 +245,47 @@ func TestProjectItemByID(t *testing.T) {
 		}
 	}
 }
+
+// Classification: test-only. Fails when the items list serves an archived node, as GitHub's
+// list never does, or renumbers the nodes after it.
+func TestProjectItemsLeaveOutArchived(t *testing.T) {
+	srv := forgetest.New(t)
+	srv.BoardNodes = []map[string]any{{"id": "PVTI_a", "isArchived": true, "content": map[string]any{}},
+		{"id": "PVTI_b", "content": map[string]any{}}}
+	req, _ := http.NewRequest(http.MethodGet, srv.URL()+"/users/o/projectsV2/1/items", nil)
+	req.Header.Set("Authorization", "Bearer x")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	var items []map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&items); err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0]["node_id"] != "PVTI_b" || items[0]["id"] != float64(5001) {
+		t.Fatalf("items = %v; want only PVTI_b as 5001", items)
+	}
+}
+
+// Classification: test-only. Fails when ListArchived does not make the items list serve an
+// archived node with archived_at set.
+func TestProjectItemsListArchived(t *testing.T) {
+	srv := forgetest.New(t)
+	srv.ListArchived = true
+	srv.BoardNodes = []map[string]any{{"id": "PVTI_a", "isArchived": true, "content": map[string]any{}}}
+	req, _ := http.NewRequest(http.MethodGet, srv.URL()+"/users/o/projectsV2/1/items", nil)
+	req.Header.Set("Authorization", "Bearer x")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	var items []map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&items); err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0]["node_id"] != "PVTI_a" || items[0]["archived_at"] == nil {
+		t.Fatalf("items = %v; want PVTI_a with archived_at", items)
+	}
+}

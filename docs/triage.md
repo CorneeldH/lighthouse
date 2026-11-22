@@ -149,13 +149,18 @@ auteur met een rol in `answer_permissions`. Met `milestone_title_exclude` valt e
 de milestone-titel op die regex past, bijvoorbeeld een geparkeerde milestone die op `ON-HOLD`
 eindigt. Daarnaast mag er geen werk lopen: geen open PR die naar het issue verwijst, geen lokale of
 remote branch `issue-<nr>-*`, geen worktree op zo'n branch en geen open rij in `runs`. Zo'n issue
-krijgt een regel op stderr en telt als `running work`. De volgorde is eerst `Priority`, dan het
-issuenummer.
+krijgt een regel op stderr en telt als `running work`. De volgorde is eerst de Priority-band
+(`P0` vóór alles, `P1` of leeg volgt het gewicht, `P2` achter alles), dan het prio-gewicht van hoog
+naar laag (milestone-rang en `blocked_by`, zie [`priorities.md`](priorities.md), #445), dan het
+issuenummer. Geeft `PrioInputs` een fout, dan slaat de ronde die repo over.
 
 Een kolom die niet in `status_options` staat, zoals `In progress` of `Done`, telt niet als "geen
 status": zo'n issue is geen kandidaat. Een issue met een gearchiveerd board-item slaat de ronde
 over, met een regel op stderr; het telt als `skipped`. De tick ziet dat item niet, dus de ronde
-oordeelt er niet over en schrijft er niets.
+oordeelt er niet over en schrijft er niets. Dat werkt zolang `IssueItem` het item
+kent: het onthoudt de item-id's van elke boardlijst (tot 30 dagen na het laatste zien; de tabel verdwijnt ook na 7 dagen zonder boardlezing, de `MaxAge` van de cache). Een item dat
+al gearchiveerd was voordat een lijstlezing het ooit zag, of dat langer dan 30 dagen weg is, wordt
+niet gevonden: de ronde leest het issue dan als "niet op het board".
 
 Een marker met een vaste stop (een open blokkeerder, een blokkadelabel of een gebroken invariant)
 vervalt zodra de stop is weggevallen; dan is het issue weer kandidaat. Een marker zonder vaste

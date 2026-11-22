@@ -69,6 +69,8 @@ func WithDescription(repos []Repo, slug string, number int, description string) 
 			}
 		}
 		out[i].Milestones = ms
+		out[i].Issues = append([]Issue(nil), r.Issues...)
+		applyWeights(&out[i])
 	}
 	return out
 }

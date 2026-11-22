@@ -24,7 +24,7 @@ Het is een korte run, geen daemon. Wie issues vooraf routeert en naar `Controlle
    classic token, of een fine-grained token dat elke repo dekt waarvan issues op het board staan:
    een issue of PR in een andere repo dan die van de run, die het token niet mag lezen (403 of 404, geen
    rate limit), blijft stil leeg. Een fout bij een item van de eigen repo, een rate limit of een
-   GraphQL-fout van `IssueItem` slaat de hele repo over. De
+   fout van `IssueItem` slaat de hele repo over. De
    login van het token zelf heeft push-toegang tot de repo nodig (anders is de collaborator-permissie
    niet te lezen) en een rol in `[dispatch] answer_permissions`: zonder die rol vallen ook de eigen
    🤖-comments van lighthouse weg, zoals Gestart en Hervat.
@@ -98,10 +98,11 @@ Het is een korte run, geen daemon. Wie issues vooraf routeert en naar `Controlle
    `lighthouse: gathered <repo>: <n> items (<reden>)` naar stderr; de reden is `first`, `changed`,
    `stale` of `boundary`. Het board, de PR's van een branch en de blokkades leest tick bij GitHub
    via REST met conditionele requests (`ETag`): een ongewijzigde pagina komt als `304` terug en telt
-   niet mee voor de rate limit, en een uitgeputte GraphQL-limiet stopt een tick dus normaal gesproken
-   niet. Alleen `Planning` (tabblad Prioritering) en het opzoeken van één issue op het board
-   (`IssueItem`, voor een open run waarvan het item gearchiveerd of van het board gehaald is) gebruiken
-   nog GraphQL. Elke lijst leest tick via de `Link`-header tot het einde: een lange lijst voorgangers
+   niet mee voor de rate limit. Ook het opzoeken van één issue op het board
+   (`IssueItem`, voor een open run waarvan het item gearchiveerd of van het board gehaald is) gaat via
+   REST: de tick roept bij GitHub geen GraphQL aan, dus een uitgeputte GraphQL-limiet stopt hem niet.
+   `IssueItem` vindt een gearchiveerd item via een tabel van item-id's in de cache, die elke
+   volledige lijstlezing van het board bijwerkt. Elke lijst leest tick via de `Link`-header tot het einde: een lange lijst voorgangers
    of sluitende PR's wordt niet afgekapt.
    De reads van de gather, bij GitHub, per soort:
    - Het board: de `projectsV2`-pagina's, eenmaal per tick en gedeeld door alle items.
@@ -334,12 +335,14 @@ gemergde of gesloten PR van vóór `started_at` niet. `max_wait` en `max_runtime
 | 13b | Klaar en alleen een vreemde PR die rood is of een merge-conflict heeft (geen eigen open PR met een oorzaak) | Teruggegeven, sessie stoppen als ze niet klaar is | *PR rood* resp. *PR heeft een merge-conflict* |
 | 13c | Klaar met een Handoff die de keten eindigt (`next: /lighthouse-close-issue`), en geen PR van deze run | rij `handoff`, de claude van de run beëindigen; dezelfde tick start `/lighthouse-close-issue <nr>` op die handoff (sleutel `handoff:<comment-id>`), tenzij er een open PR is of een PR die na de handoff mergede of sloot: dan wacht het einde op die PR (#285) | |
 | 14a | Klaar, geen PR, geen Handoff of Vraag, wel een `post-failed.json` van op of na `started_at` (bij een onleesbare: de wijzigingstijd van het bestand; onbekend telt) | leest de body als een 🤖 Handoff of 🤖 Vraag voor het issue van de run, hoorde de mislukte post bij dat issue (`issue` van de notitie) en is de run jonger dan `max_runtime` (of `max_runtime` is 0): `repost`, de controller post de body letterlijk en de run blijft open. Is de run `max_runtime` of ouder, of is de body leeg, een andere soort comment of van een ander issue, hoorde de mislukte post bij een ander issue, of is de notitie onleesbaar: Teruggegeven, zoals regel 14 | *post mislukt: <fout uit de notitie>*, resp. *post mislukt: notitie onleesbaar* |
-| 14 | Klaar, geen PR, geen Handoff of Vraag | Teruggegeven | geen handoff of vraag |
+| 14 | Klaar, geen PR, geen Handoff of Vraag | Teruggegeven | geen handoff of vraag; bij een run met command `/lighthouse-close-issue` (trigger `closecheck` of `handoff`): *nacontrole: criteria open* |
 | 15 | `max_wait` > 0, run gemeten maar zonder sessie, ouder dan `max_wait` | Teruggegeven, launch vergeten | start onzeker: geen sessie gevonden |
 | 16 | `max_wait` > 0, permissie-prompt van deze run (niet van vóór `started_at`) waarna zijn draad `max_wait` lang niets deed | Teruggegeven, sessie blijft staan | wacht op permissie (met tool en pad) |
 | 17 | `max_wait` > 0, niet klaar, geen openstaande permissie-prompt, geen activiteit in `max_wait` (geteld vanaf `started_at` op zijn vroegst) | Teruggegeven, sessie stoppen | geen activiteit in max_wait |
 | 18 | Idem, maar zonder transcript: stand `waiting` en de forge-sessie `max_wait` oud, ook geteld vanaf `started_at` op zijn vroegst (zonder forge-tijd niet) | Teruggegeven, sessie stoppen | geen activiteit in max_wait (forge-stand; transcript niet meetbaar) |
 | 19 | `max_runtime` > 0, run ouder dan `max_runtime` | Teruggegeven, sessie stoppen | time-out (max_runtime) |
+
+Regel 14: een nacontrole die op een ander issue wacht, eindigt in een Handoff naar zichzelf (`next: /lighthouse-close-issue <nr>`). Tick parkeert dat issue (zie *Blokkades*) en start de nacontrole opnieuw zodra de voorganger gesloten is. Eindigt een nacontrole zonder Handoff of Vraag, dan zijn de criteria open gebleven en geeft regel 14 die eigen reden. Ook een start-issue-run in een controller-run die vindt dat het werk al op de standaardbranch staat (`already done? likely`) eindigt in een Handoff `next: /lighthouse-close-issue <nr>` (rij 13c start die nacontrole), of in een Vraag bij twijfel of een mislukte fetch (`not measurable`). Eindigt ze zonder beide, dan geeft regel 14 *geen handoff of vraag*.
 
 Regel 13: houdt de rem de fix-pr-start tegen (uitstel of weigering), dan vervalt de afsluiting van de run: ze blijft open en de volgende tick vindt dezelfde oorzaak opnieuw. Alleen een actieve blokkade (de issue-blokkade van de start), een al gebruikte sleutel of het plafond geeft Teruggegeven.
 
@@ -684,15 +687,15 @@ een rij van dat document. `Finish` schrijft, waar de repo `changelog.d/` heeft, 
 ## Blokkades
 
 Een voorganger is *actief* als hij `OPEN` is en geen gemergde PR heeft. Gesloten zonder merge telt als
-vervallen. Een issue is *uitvoerend* als zijn laatste Handoff een `next` heeft buiten de spec-, plan-
-en review-fase.
+vervallen. Een issue is *uitvoerend* als zijn laatste Handoff een `next` heeft buiten de spec-fase
+(`/lighthouse-review-spec` en de spec zelf); een Handoff naar `writing-plans` of `/lighthouse-review-plan` is dus uitvoerend en parkeert.
 
 - **Parkeren.** Heeft een uitvoerend issue in Controller een actieve voorganger, dan parkeert tick het.
   Eerst komt de comment `🤖 Geparkeerd` (`🤖 Parked`) met één regel
   `blocked_by: <repo>#<n> (<boardstatus>), …`; staat de voorganger niet op hetzelfde board, dan staat
   er geen status tussen haakjes. Daarna krijgt het issue het label `blocked_issue` en gaat het op het
-  board naar `To do`. De run en de werkplek blijven staan. Een issue dat nog in de spec-, plan- of
-  reviewfase zit, blijft staan; de blokkade hindert pas bij uitvoering. Parkeren vervangt een label
+  board naar `To do`. De run en de werkplek blijven staan. Een issue in de spec-fase blijft
+  staan; de blokkade hindert pas bij een plan of bij uitvoering, dus de plan-handoff is een parkeerreden. Parkeren vervangt een label
   `blocked_external` (één blokkadelabel per issue, `blocked_issue` wint); het issue komt zonder dat
   label terug naar Controller.
 - **Afmaken.** Slaagt de comment maar mislukt het label of de boardwijziging, dan eindigt tick met
@@ -798,6 +801,28 @@ sluiting van de run die de PR aan die pusher overdraagt laat `run` dan ook ligge
 bleef er geen open run over die de merge opnieuw plant.
 
 ## De rem
+
+Decide geeft de starts en hervattingen in deze volgorde: eerst de Priority-band, dan het prio-gewicht
+van hoog naar laag, dan het tijdstip van de trigger, dan repo en issue. Priority is een handmatige
+override op dat gewicht: `P0` gaat vóór alles, `P1` of een lege Priority volgt het gewicht, `P2` komt
+achter alles. Het gewicht is dat van [`priorities.md`](priorities.md) (#445): de rang van de
+milestone (`Priority: N` in de beschrijving van een open milestone; bij M milestones met een rang is
+de factor M min de plaats, vanaf 0, waarop die rang voor het eerst staat in de oplopend gesorteerde
+rangen, zodat gelijke rangen een factor delen en een gat geen factor kost: rangen 1, 2, 5 geven 3, 2,
+1 en rangen 1, 1, 3 geven 3, 3, 1) plus, per issue dat op dit issue wacht, diens factor maal
+2^(k-1), met k de langste afstand; een cyclus telt als één groep. De tick leest daarvoor
+`PrioInputs` (open issues met hun milestone en de open milestones) en leest geen
+`ClosedInMilestone` en geen `blocked_by`. Op GitHub gaat dat via de ETag-transport, zodat een
+ongewijzigde pagina een `304` is; GitLab heeft die transport niet en leest de pagina's elke keer
+helemaal. De blokkeerders komen uit het bord: de graaf bestaat uit de `BlockedBy` van elk bord-item van
+de repo. Een open blokkeerder buiten het bord telt dus wél mee (hij staat in de open issues en krijgt
+de factor van het bord-item dat op hem wacht), maar een wachtende buiten het bord niet: zijn
+`BlockedBy` is onbekend, dus hij voegt niets toe aan het gewicht van zijn blokkeerder, en een keten
+die via zo'n issue loopt houdt daar op. Een blokkeerder in een andere repo telt nooit mee. Daarin
+kunnen de tick en `/api/priorities` verschillen. Prepare (de precheck van elke tick) leest
+`PrioInputs` niet; het bewaart alleen de graaf van het bord. Complete leest het, dus alleen voor
+een repo die due is, en alleen als er minstens één item overblijft; een fout daarin is de fout van
+Complete, nooit een gewicht van 0. Een rustige tick wordt er dus niet langer van.
 
 Voor elke start of hervatting die decide kiest, toetst tick één gedeelde rem over alle repo's van de
 host. Per kandidaat, in deze volgorde; de eerste dichte rem geeft de uitsteltekst:

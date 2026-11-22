@@ -47,6 +47,8 @@ const iss = (
   label: '',
   open_question: false,
   needs_label: false,
+  prio_weight: 0,
+  factor: 0,
   blocked_by: by.length ? by.map(([r, i]) => ({ repo: r, issue: i })) : null,
   ...(ms === null ? {} : { milestone: { number: ms, state: 'open', title: `M${ms}` } }),
   ...extra,
@@ -241,7 +243,7 @@ describe('MilestonesView', () => {
     expect(r.queryByText('voorlopig')).toBeNull()
   })
 
-  it('sorts like sortMilestoneRows: fewest open first, empty last', () => {
+  it('sorts like sortMilestoneRows: shaped first, empty last', () => {
     const r = repo(
       A,
       [iss(1, 1), iss(2, 1), iss(3, 2)],

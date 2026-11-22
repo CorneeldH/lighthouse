@@ -1084,8 +1084,8 @@ func TestTickMeasuresRunState(t *testing.T) {
 			Permission: &dispatch.Permission{At: time.Date(2026, 10, 31, 11, 56, 0, 0, time.UTC), Tool: "Bash", Path: "rm -rf build"},
 		},
 		2: {Gone: true},
-		3: {},                   // nothing found yet: measured, not an error
-		6: {SessionAt: updated}, // no transcript file yet: not measurable, no line
+		3: {TranscriptUnmeasurable: true}, // no project dir on this host: measured, but the transcript is not (#514)
+		6: {SessionAt: updated},           // no transcript file yet: not measurable, no line
 	}
 	if !reflect.DeepEqual(gotRuns, wantRuns) {
 		t.Errorf("runs =\n%+v\nwant\n%+v", gotRuns, wantRuns)
@@ -1550,6 +1550,30 @@ func TestTickRunViewWhenNotDue(t *testing.T) {
 		rv, _ := loadView(t, db)
 		if len(rv) != 1 || !rv[0].At.Equal(t0.Add(step.after)) {
 			t.Errorf("tick at +%v: views = %+v, want one with At %v", step.after, rv, t0.Add(step.after))
+		}
+	}
+}
+
+// Classification: io with a fake forge. Fails when a tick that is not due reads the prio weights
+// (open issues and milestones): only a gathered repo pays that read.
+func TestTickNotDueReadsNoPrioInputs(t *testing.T) {
+	env, db := tickFixture(t, repoDir(t, completeRepo))
+	srv, _ := startable(t, &env)
+	srv.BoardNodes = []map[string]any{boardNode("I7", "h1", issueContent(7, "Issue", nil))} // On hold: nothing starts
+	for _, step := range []struct {
+		after      time.Duration
+		milestones int
+	}{
+		{0, 1},           // first: gathered, the weights are read once
+		{time.Minute, 1}, // not due: no new read
+	} {
+		env.Now = func() time.Time { return t0.Add(step.after) }
+		var errOut bytes.Buffer
+		if err := tick(context.Background(), env, db, &errOut); err != nil {
+			t.Fatalf("tick at +%v = %v\n%s", step.after, err, errOut.String())
+		}
+		if n := srv.Count("/repos/o/r/milestones"); n != step.milestones {
+			t.Errorf("tick at +%v: milestone reads = %d, want %d\n%s", step.after, n, step.milestones, errOut.String())
 		}
 	}
 }

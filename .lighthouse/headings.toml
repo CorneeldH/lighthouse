@@ -130,9 +130,17 @@ en = "merge failed"
 nl = "merge mislukt na 3 fix-pr-runs"
 en = "merge failed after 3 fix-pr runs"
 
+[reason_closecheck_open]
+nl = "nacontrole: criteria open"
+en = "after-merge check: criteria open"
+
 [reason_no_handoff]
 nl = "geen handoff of vraag"
 en = "no handoff or question"
+
+[reason_park_marker_unreadable]
+nl = "geparkeerd, marker niet leesbaar"
+en = "parked, marker not readable"
 
 [reason_post_failed]
 nl = "post mislukt"
@@ -466,3 +474,37 @@ en = "To correct: adjust the labels or the body if needed and delete this commen
 [area_near_goal]
 nl = "Nabij doel"
 en = "Near goal"
+
+[area_crux]
+nl = "Crux"
+en = "Crux"
+
+[policy]
+nl = "Leidend beleid"
+en = "Guiding policy"
+
+[not_now]
+nl = "Bewust niet"
+en = "Deliberately not"
+
+# Strategy document
+[strategy_diagnosis]
+nl = "Diagnose"
+en = "Diagnosis"
+
+[strategy_audience]
+nl = "Voor wie"
+en = "For whom"
+
+[strategy_roadmap]
+nl = "Roadmap"
+en = "Roadmap"
+
+# Tenets document
+[tenet_over]
+nl = "boven"
+en = "over"
+
+[tenet_evidence]
+nl = "Bewijs"
+en = "Evidence"

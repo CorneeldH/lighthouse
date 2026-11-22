@@ -395,15 +395,31 @@ export function placeInRepo(rows: MilestoneRow[], repo: string, number: number):
   return row === undefined ? null : (placesByRow(rows).get(row) ?? null)
 }
 
+// Group 0: shaped; 1: not shaped, with finished issues; 2: not shaped, nothing finished but issues;
+// 3: not shaped and empty. "Not shaped" is `row.shaping`, the same rule as the shaping border (#437).
+function milestoneGroup(r: MilestoneRow): number {
+  if (!r.shaping) return 0
+  if (r.done > 0) return 1
+  return r.total > 0 ? 2 : 3
+}
+
 export function sortMilestoneRows(rows: MilestoneRow[]): MilestoneRow[] {
-  return [...rows].sort(
-    (a, b) =>
-      Number(a.empty) - Number(b.empty) ||
-      a.open - b.open ||
-      b.percent - a.percent ||
+  return [...rows].sort((a, b) => {
+    const ga = milestoneGroup(a)
+    const gb = milestoneGroup(b)
+    let within = 0
+    if (ga === gb) {
+      if (ga === 0) within = b.percent - a.percent || a.open - b.open
+      else if (ga === 1) within = b.done - a.done
+      else if (ga === 2) within = b.total - a.total
+    }
+    return (
+      ga - gb ||
+      within ||
       (a.repo < b.repo ? -1 : a.repo > b.repo ? 1 : 0) ||
-      a.number - b.number,
-  )
+      a.number - b.number
+    )
+  })
 }
 
 export interface UnassignedRow {

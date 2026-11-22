@@ -131,3 +131,46 @@ func TestMarkerDir(t *testing.T) {
 		})
 	}
 }
+
+func TestMarkerDirControllerRunUsesStateDir(t *testing.T) {
+	run := "11111111-2222-4333-8444-555555555555"
+	env := map[string]string{"HOME": "/home/vscode", "LIGHTHOUSE_CONTROLLER_RUN": run, "LIGHTHOUSE_STATE_DIR": "/home/corneel/.local/state/lighthouse/dispatch"}
+	got, err := MarkerDir(func(k string) string { return env[k] })
+	if err != nil || got != "/home/corneel/.local/state/lighthouse/dispatch/resume" {
+		t.Fatalf("MarkerDir in a container = %q, %v", got, err)
+	}
+	// The host (no controller run) reads the user dir and the state dir, so it finds that marker.
+	host := map[string]string{"HOME": "/home/corneel"}
+	dirs, err := HostMarkerDirs(func(k string) string { return host[k] }, "/home/corneel/.local/state/lighthouse/dispatch")
+	if err != nil || len(dirs) != 2 || dirs[1] != got {
+		t.Fatalf("HostMarkerDirs = %v, %v: want the state resume dir second", dirs, err)
+	}
+}
+
+func TestHostReadsMarkerFromStateDirAndFlagsUnreadable(t *testing.T) {
+	state, user := t.TempDir(), t.TempDir()
+	dirs := []string{user, StateResumeDir(state)}
+	if err := os.MkdirAll(dirs[1], 0o755); err != nil {
+		t.Fatal(err)
+	}
+	good := `{"session_id":"s1","reset_at":"2026-10-31T11:30:00Z","created_at":"2026-10-31T11:00:00Z"}`
+	if err := os.WriteFile(filepath.Join(dirs[1], "s1.json"), []byte(good), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dirs[1], "s2.json"), []byte("{broken"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ms, err := ReadMarkersIn(dirs)
+	if err != nil || len(ms) != 1 || ms[0].SessionID != "s1" {
+		t.Fatalf("ReadMarkersIn = %v, %v", ms, err)
+	}
+	if got := UnreadableIn(dirs); len(got) != 1 || got[0] != "s2" {
+		t.Fatalf("UnreadableIn = %v, want [s2]", got)
+	}
+	if err := RemoveMarkerIn(dirs, "s1", ms[0].Key()); err != nil {
+		t.Fatal(err)
+	}
+	if ms, _ := ReadMarkersIn(dirs); len(ms) != 0 {
+		t.Fatalf("marker still there: %v", ms)
+	}
+}

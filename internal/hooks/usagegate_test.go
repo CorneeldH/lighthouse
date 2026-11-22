@@ -42,6 +42,7 @@ func gateEnv(t *testing.T) gateDirs {
 	t.Setenv("XDG_STATE_HOME", g.state)
 	t.Setenv("XDG_DATA_HOME", filepath.Join(tmp, "data"))
 	t.Setenv("LIGHTHOUSE_CONTROLLER_RUN", "")
+	t.Setenv("LIGHTHOUSE_STATE_DIR", "")
 	t.Setenv("LIGHTHOUSE_CONTROLLER_STATE", g.ctl)
 	t.Setenv("LIGHTHOUSE_USAGE_REFRESH", "")
 	setOptions(t, g, "false", "false")
@@ -331,6 +332,27 @@ func TestUsageGatePauseOncePerFlag(t *testing.T) {
 	}
 	if res := call(t, usageGate, "tool", session(nil)); res.Output != nil {
 		t.Errorf("second tool call: %v, want none", res.Output)
+	}
+}
+
+// A controller run in a container has its own HOME: the marker goes to the state directory the
+// host shares with it, not under HOME (#513).
+func TestUsageGateMarkerInStateDirForControllerRun(t *testing.T) {
+	g := gateEnv(t)
+	setOptions(t, g, "false", "true")
+	t.Setenv("LIGHTHOUSE_CONTROLLER_RUN", gateRun)
+	state := t.TempDir()
+	t.Setenv("LIGHTHOUSE_STATE_DIR", state)
+	writePause(t, g, "2099-01-01T21:00:00+02:00")
+
+	if res := call(t, usageGate, "tool", session(nil)); res.Output == nil {
+		t.Fatal("tool call did not park")
+	}
+	if _, err := os.Stat(filepath.Join(state, "resume", "s1.json")); err != nil {
+		t.Fatalf("no marker in the state dir: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(g.resume, "s1.json")); err == nil {
+		t.Error("marker also written under HOME")
 	}
 }
 

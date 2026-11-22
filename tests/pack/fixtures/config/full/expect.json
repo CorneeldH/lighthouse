@@ -678,5 +678,13 @@
   "rc": 0,
   "stdout": "false\n",
   "stderr": ""
+ },
+ {
+  "args": [
+   "pr_gate.issue"
+  ],
+  "rc": 0,
+  "stdout": "evidence\n",
+  "stderr": ""
  }
 ]

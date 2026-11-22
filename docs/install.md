@@ -155,6 +155,30 @@ The API is read-only. Its routes:
 | `GET /api/cleanup` | the workspaces to clean up, from the database |
 | `GET /api/latest-comment?repo=owner/name&issue=N` | the comments of one issue, from the forge; redirects (302) to the newest comment, or to the issue page when it has none or the read fails. A repo `serve` does not serve gets 404 |
 
+## Check the hooks
+
+```bash
+lighthouse check-hooks
+```
+
+Run it after `lighthouse init` (which runs it for you and prints the result on stderr), on a new
+machine, and whenever a hook seems to do nothing. It reads `.claude/settings.json` and starts each
+registered hook once in a smoketest. Every line is `ok` or `FAIL` with its remedy; the exit code is
+0 when every hook can run, 1 on a `FAIL`, 2 when it could not check. The common `FAIL` lines:
+
+| `FAIL` | Meaning | Fix |
+|---|---|---|
+| `no sh on the PATH` | Claude Code runs every hook with `sh -c`, so none runs | Put a POSIX `sh` on the `PATH` |
+| `Git Bash not found` | Windows only: without Git Bash, Claude Code runs the hooks under PowerShell and they block nothing | Install Git for Windows, or set `CLAUDE_CODE_GIT_BASH_PATH` to its `bash.exe`, and start a new session |
+| `has CRLF line endings` | The shell does not run the hook, or lets everything through | `lighthouse init --upgrade`: it writes the hook with LF and sets `.gitattributes` |
+| `hook not registered` | A hook of the pack is missing from `.claude/settings.json` | `lighthouse init --upgrade` |
+| `disableAllHooks is true` | No hook runs | Remove that line from the settings file it names |
+| a hook line with a verdict | The hook failed its smoketest | Fix what the line says; `lighthouse init --upgrade` reinstalls the hooks |
+
+Git Bash matters only on Windows. The Windows route is not proven yet: the WSL advice in
+[the agent guide](site/agents/install.md) stays until `ci/windows-measure.sh` row 12 is green on
+native Windows.
+
 ## Connect the forge
 
 `GET /api/questions` and `GET /api/returned` read the open questions and returned issues of

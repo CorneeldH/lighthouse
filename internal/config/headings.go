@@ -6,6 +6,8 @@ import (
 	"io"
 	"os"
 	"strings"
+
+	"github.com/BurntSushi/toml"
 )
 
 // ErrUnknownKey is wrapped by the error for a key that headings.toml does not have.
@@ -23,24 +25,42 @@ func HeadingsPath() (string, error) {
 	return strings.TrimRight(root, "/") + "/.lighthouse/headings.toml", nil
 }
 
-// headingsTable is the validated headings.toml: per key the variants in the order nl, the
+// HeadingsTable is the validated headings.toml: per key the variants in the order nl, the
 // other known languages, then any further language in document order.
-type headingsTable struct {
+type HeadingsTable struct {
 	variants map[string][]headingVariant
 }
 
 type headingVariant struct{ language, text string }
 
-func loadHeadings() (*headingsTable, error) {
+func loadHeadings() (*HeadingsTable, error) {
 	rawPath, err := HeadingsPath()
 	if err != nil {
 		return nil, err
 	}
+	return LoadHeadingsFile(rawPath)
+}
+
+// LoadHeadingsFile reads and validates the headings table at path.
+func LoadHeadingsFile(rawPath string) (*HeadingsTable, error) {
 	path := pyPath(rawPath)
 	data, md, err := readTOML(rawPath, path+": file is missing")
 	if err != nil {
 		return nil, err
 	}
+	return buildHeadings(data, md, path)
+}
+
+// ParseHeadings validates headings.toml content held in memory, for the table embedded in the pack.
+func ParseHeadings(content []byte) (*HeadingsTable, error) {
+	data, md, err := decode(content, "headings.toml")
+	if err != nil {
+		return nil, err
+	}
+	return buildHeadings(data, md, "headings.toml")
+}
+
+func buildHeadings(data map[string]any, md toml.MetaData, path string) (*HeadingsTable, error) {
 	// Document order of the extra languages, per key.
 	extras := map[string][]string{}
 	for _, k := range md.Keys() {
@@ -48,7 +68,7 @@ func loadHeadings() (*headingsTable, error) {
 			extras[k[0]] = append(extras[k[0]], k[1])
 		}
 	}
-	table := &headingsTable{variants: map[string][]headingVariant{}}
+	table := &HeadingsTable{variants: map[string][]headingVariant{}}
 	for _, key := range sortedNames(data) {
 		entry, ok := data[key].(map[string]any)
 		if !ok {
@@ -78,12 +98,8 @@ func loadHeadings() (*headingsTable, error) {
 }
 
 // Variants is every variant of key, nl first, without duplicates.
-func Variants(key string) ([]string, error) {
-	table, err := loadHeadings()
-	if err != nil {
-		return nil, err
-	}
-	entry, ok := table.variants[key]
+func (t *HeadingsTable) Variants(key string) ([]string, error) {
+	entry, ok := t.variants[key]
 	if !ok {
 		return nil, fmt.Errorf("%s: %w", key, ErrUnknownKey)
 	}
@@ -96,15 +112,39 @@ func Variants(key string) ([]string, error) {
 	return out, nil
 }
 
+// Heading is key in language; a language without a variant of key falls back to en.
+func (t *HeadingsTable) Heading(key, language string) (string, error) {
+	entry, ok := t.variants[key]
+	if !ok {
+		return "", fmt.Errorf("%s: %w", key, ErrUnknownKey)
+	}
+	for _, want := range []string{language, "en"} {
+		for _, v := range entry {
+			if v.language == want {
+				return v.text, nil
+			}
+		}
+	}
+	return "", errf("key %s has no variant for language %s", key, language)
+}
+
+// Variants is every variant of key, nl first, without duplicates.
+func Variants(key string) ([]string, error) {
+	table, err := loadHeadings()
+	if err != nil {
+		return nil, err
+	}
+	return table.Variants(key)
+}
+
 // Heading is key in language; "" means [project] language of the repo.
 func Heading(key, language string) (string, error) {
 	table, err := loadHeadings()
 	if err != nil {
 		return "", err
 	}
-	entry, ok := table.variants[key]
-	if !ok {
-		return "", fmt.Errorf("%s: %w", key, ErrUnknownKey)
+	if _, err := table.Variants(key); err != nil {
+		return "", err
 	}
 	if language == "" {
 		path, err := Path()
@@ -117,12 +157,7 @@ func Heading(key, language string) (string, error) {
 		}
 		language = c.Language
 	}
-	for _, v := range entry {
-		if v.language == language {
-			return v.text, nil
-		}
-	}
-	return "", errf("key %s has no variant for language %s", key, language)
+	return table.Heading(key, language)
 }
 
 // RunHeadings is `lighthouse headings <key>`: rc 0 with the heading in the project language on

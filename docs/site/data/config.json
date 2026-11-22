@@ -27,6 +27,7 @@
                 "internal/cli/planreviewrecord.go",
                 "internal/config/headings.go",
                 "internal/dispatch/instructions/run.md",
+                "internal/direction/direction.go",
                 "internal/evidence/run.go",
                 "internal/initcmd/initcmd.go",
                 "internal/pusher/floor.go",
@@ -41,7 +42,8 @@
                 "pack/core/skills/write-handoff",
                 "pack/core/skills/write-issue",
                 "pack/core/skills/write-pr",
-                "pack/python/scripts/quality/prcov_issues.py"
+                "pack/python/scripts/quality/prcov_issues.py",
+                "internal/initcmd/direction.go"
               ]
             },
             {
@@ -466,27 +468,29 @@
               "key": "paths.areas",
               "level": "advanced",
               "required": "no",
-              "about": "The folder with one file per area: its crux, leading policy and deliberate no's, read when writing an issue. Closing a milestone updates its near goal when the area file has that heading.",
+              "about": "The folder with one file per area: its crux, leading policy and deliberate no's, read when writing an issue. Closing a milestone updates its near goal only when the area file has that heading, which the shape check does not allow by default. `lighthouse init` seeds the missing files, and `lighthouse direction check` checks their shape.",
               "example": "docs/areas",
               "readers": [
                 "internal/scheduled/mapplanned/mapplanned.go",
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/close-issue",
                 "pack/core/skills/write-issue",
-                "internal/direction/direction.go"
+                "internal/direction/direction.go",
+                "internal/initcmd/direction.go"
               ]
             },
             {
               "key": "paths.strategy",
               "level": "advanced",
               "required": "no",
-              "about": "The file with the project's strategy, read when writing an issue and when shaping a milestone.",
+              "about": "The file with the project's strategy, read when writing an issue and when shaping a milestone. `lighthouse init` seeds it when missing, and `lighthouse direction check` checks its shape.",
               "example": "docs/strategy.md",
               "readers": [
                 "internal/scheduled/mapplanned/mapplanned.go",
                 "pack/core/skills/write-issue",
                 "internal/repoconfig/repoconfig.go",
-                "internal/direction/direction.go"
+                "internal/direction/direction.go",
+                "internal/initcmd/direction.go"
               ]
             },
             {
@@ -511,7 +515,8 @@
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/write-issue",
                 "pack/core/skills/write-pr",
-                "internal/direction/direction.go"
+                "internal/direction/direction.go",
+                "internal/initcmd/direction.go"
               ]
             },
             {
@@ -574,13 +579,14 @@
               "key": "paths.tenets",
               "level": "advanced",
               "required": "no",
-              "about": "The file with the project's tenets, read when writing an issue.",
+              "about": "The file with the project's tenets, read when writing an issue. `lighthouse init` seeds it when missing, and `lighthouse direction check` checks its shape.",
               "example": "docs/tenets.md",
               "readers": [
                 "internal/scheduled/mapplanned/mapplanned.go",
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/write-issue",
-                "internal/direction/direction.go"
+                "internal/direction/direction.go",
+                "internal/initcmd/direction.go"
               ]
             }
           ]
@@ -603,7 +609,8 @@
                 "pack/core/skills/start-issue",
                 "pack/core/skills/write-issue",
                 "pack/expo/skills/refresh-expo-lockfiles",
-                "internal/direction/direction.go"
+                "internal/direction/direction.go",
+                "internal/initcmd/direction.go"
               ]
             },
             {
@@ -977,6 +984,30 @@
                 "pack/go/hooks/go-imports-gate.sh",
                 "pack/node/hooks/node-imports-gate.sh",
                 "pack/python/hooks/python-imports-gate.sh"
+              ]
+            }
+          ]
+        },
+        {
+          "table": "pr_gate",
+          "title": "PR gate",
+          "about": "How strict pr-create-gate is about the issue a pull request names.",
+          "keys": [
+            {
+              "key": "pr_gate.issue",
+              "level": "advanced",
+              "required": "no",
+              "default": "optional",
+              "about": "Whether the PR body may take `No issue:` (optional), must name an issue (required) or must also carry an Evidence table for `Refs` (evidence).",
+              "options": [
+                "optional",
+                "required",
+                "evidence"
+              ],
+              "readers": [
+                "internal/prbody/form.go",
+                "internal/prbody/gate.go",
+                "pack/core/skills/write-pr"
               ]
             }
           ]

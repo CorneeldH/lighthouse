@@ -538,3 +538,23 @@ func TestReviewSkillCallsTheRunnerWithKindAndVerify(t *testing.T) {
 		cliFlags(t, []string{"review-run"}, flags...)
 	})
 }
+
+// Classification: fails when the interactive close of review-spec hands an issue with an active
+// predecessor on to writing-plans instead of ending with `wait for #<x>`, drops the normal
+// writing-plans handoff, or the controller run (Claude variant only; agents has none) stops
+// posting `next: /superpowers:writing-plans`, which the controller parks itself.
+func TestReviewSpecInteractiveEndWaitsOnAPredecessor(t *testing.T) {
+	for variant, body := range variants(t, reviewSkills["review-spec"]) {
+		t.Run(variant, func(t *testing.T) {
+			end := flat(section(t, body, "Close with: spec path", "## Fallback without Codex"))
+			wantAll(t, end,
+				"`next: /superpowers:writing-plans <absolute spec path>`",
+				"With an active predecessor (an open blocker in this repo without a merged PR) the interactive close ends instead with `wait for #<x>`: no `next: /superpowers:writing-plans`, the plan waits for a merged PR of the predecessor.")
+			if variant == "claude" {
+				ctrl := flat(section(t, body, "## Controller run", "## Prerequisites"))
+				wantAll(t, ctrl, "At `converged` or `round_limit`: `/lighthouse-write-handoff` with `next: /superpowers:writing-plans <absolute spec path>`.")
+				wantNone(t, ctrl, "wait for #<x>")
+			}
+		})
+	}
+}

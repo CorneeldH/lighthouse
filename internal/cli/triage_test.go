@@ -707,14 +707,32 @@ func TestTriageUnlistedStatus(t *testing.T) {
 	})
 }
 
-// The board lists no archived item, but GitHub still has it: an issue whose item is archived is
-// skipped with a line, never judged and never written, and an item archived before the
-// recheck is a change.
+// earlierBoardRead reads the board of fx's repo once, as an earlier process would, through the
+// forge cache of fx.env: the item table saved there then holds every item the board lists now.
+func (fx *triageFix) earlierBoardRead(t *testing.T) {
+	t.Helper()
+	repo, err := repoconfig.Load(fx.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rf, err := newForgeOpener(fx.env.Getenv, fx.env.ForgeURL).forRepo(context.Background(), repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := rf.BoardItems(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The board lists no archived item, but GitHub still has it: an issue whose item an earlier
+// board read saw and that is archived since is skipped with a line, never judged and never
+// written, and an item archived before the recheck is a change.
 func TestTriageArchivedItem(t *testing.T) {
 	t.Run("gather", func(t *testing.T) {
 		fx := triageFixture(t, triageToml)
 		fx.issue(7, "2-area:cli")
 		fx.onBoard(7, "t1", nil)
+		fx.earlierBoardRead(t)
 		fx.srv.BoardNodes[0]["isArchived"] = true
 
 		_, errOut, err := fx.run(triageOpts{})
@@ -1547,6 +1565,65 @@ func TestTriageNeedsLabelNotForwarded(t *testing.T) {
 			assertWrites(t, fx.srv, `comment 7: <!-- lighthouse: {"kind":"triage","version":1,"gate":"`+gate.marker+`"} -->`)
 			if b := bodies(fx.srv, 7); len(b) != 1 || !strings.Contains(b[0], "3-needs-hands") {
 				t.Errorf("comment = %q, want one naming 3-needs-hands", b)
+			}
+		})
+	}
+}
+
+// Classification: contract. Fails when triage does not set Facts.PrioWeight from the milestone
+// rank or the board blockers (the order falls back to band, then number), or counts a blocker
+// of another repo. The candidates are of one band and max_forwarded = 1 shows which is judged first.
+func TestTriageOrdersByPrioWeight(t *testing.T) {
+	blockedBy := func(repo string, n int) map[string]any {
+		return map[string]any{"blockedBy": map[string]any{"nodes": []any{map[string]any{
+			"number": n, "state": "OPEN", "repository": map[string]any{"nameWithOwner": repo},
+		}}}}
+	}
+	for _, tc := range []struct {
+		name  string
+		setup func(fx *triageFix)
+		first int
+	}{
+		{"milestone rank", func(fx *triageFix) {
+			fx.srv.Milestones = []map[string]any{
+				{"number": 1, "title": "M1", "state": "open", "description": "Priority: 2"},
+				{"number": 2, "title": "M2", "state": "open", "description": "Priority: 1"},
+			}
+			fx.issue(7, "2-area:cli")["milestone"] = fx.srv.Milestones[0]
+			fx.issue(8, "2-area:cli")["milestone"] = fx.srv.Milestones[1]
+			fx.onBoard(7, "t1", nil)
+			fx.onBoard(8, "t1", nil)
+		}, 8},
+		{"board blocker of the same repo", func(fx *triageFix) {
+			fx.srv.Milestones = []map[string]any{{"number": 1, "title": "M1", "state": "open", "description": "Priority: 1"}}
+			for _, n := range []int{7, 8, 9} {
+				fx.issue(n, "2-area:cli")["milestone"] = fx.srv.Milestones[0]
+			}
+			fx.onBoard(7, "t1", nil)
+			fx.onBoard(8, "t1", nil)
+			fx.onBoard(9, "c1", blockedBy("o/r", 8)) // #9 waits on #8: #8 weighs more
+		}, 8},
+		{"board blocker of another repo", func(fx *triageFix) {
+			fx.srv.Milestones = []map[string]any{{"number": 1, "title": "M1", "state": "open", "description": "Priority: 1"}}
+			for _, n := range []int{7, 8, 9} {
+				fx.issue(n, "2-area:cli")["milestone"] = fx.srv.Milestones[0]
+			}
+			fx.onBoard(7, "t1", nil)
+			fx.onBoard(8, "t1", nil)
+			fx.onBoard(9, "c1", blockedBy("x/y", 8)) // counts for nothing: equal weights, lowest number first
+		}, 7},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fx := triageFixture(t, withTriage("max_forwarded = 1\n"))
+			tc.setup(fx)
+			for _, n := range []int{7, 8} {
+				fx.judge.answers[n] = forward(n)
+			}
+			if _, errOut, err := fx.run(triageOpts{}); err != nil {
+				t.Fatalf("triage = %v\n%s", err, errOut)
+			}
+			if got := fx.judge.called(); !slices.Equal(got, []int{tc.first}) {
+				t.Errorf("judged %v, want [%d]", got, tc.first)
 			}
 		})
 	}

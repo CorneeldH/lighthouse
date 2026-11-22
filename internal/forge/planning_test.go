@@ -3,7 +3,7 @@ package forge
 import (
 	"fmt"
 	"reflect"
-	"strings"
+	"slices"
 	"testing"
 
 	"github.com/CorneeldH/lighthouse/internal/forge/forgetest"
@@ -76,18 +76,15 @@ func TestGitHubPlanningKeepsClosedMilestoneState(t *testing.T) {
 	if got.Milestones == nil || len(got.Milestones) != 0 {
 		t.Errorf("Milestones = %#v, want an empty non-nil list (the closed milestone is no open milestone)", got.Milestones)
 	}
-	if n := srv.Count("PlanCounts"); n != 0 {
-		t.Errorf("Count(PlanCounts) = %d, want 0 without an open milestone", n)
-	}
 }
 
 func TestGitHubPlanningCountsIssuesOnly(t *testing.T) {
 	srv, c := boardClient(t)
 	m1 := map[string]any{"number": 1, "title": "M1", "state": "open"}
-	srv.PlanMilestones = []map[string]any{
-		{"number": 1, "title": "M1", "state": "OPEN", "description": "d"},
-		{"number": 2, "title": "M2 — leeg", "state": "OPEN"},
-		{"number": 3, "title": "Dicht", "state": "CLOSED"},
+	srv.Milestones = []map[string]any{
+		{"number": 1, "title": "M1", "state": "open", "description": "d"},
+		{"number": 2, "title": "M2 — leeg", "state": "open"},
+		{"number": 3, "title": "Dicht", "state": "closed"},
 	}
 	srv.Issues = map[int]map[string]any{}
 	add := func(n int, state, reason string, pr bool) {
@@ -123,9 +120,6 @@ func TestGitHubPlanningCountsIssuesOnly(t *testing.T) {
 	if !reflect.DeepEqual(got.Milestones, want) {
 		t.Errorf("Milestones = %+v, want %+v (open issues and completed ones; no PRs, no not-planned; closed milestone left out)", got.Milestones, want)
 	}
-	if n := srv.Count("PlanCounts"); n != 1 {
-		t.Errorf("Count(PlanCounts) = %d, want 1: one query for all milestones", n)
-	}
 }
 
 func TestGitHubPlanningPaginates(t *testing.T) {
@@ -148,32 +142,15 @@ func TestGitHubPlanningPaginates(t *testing.T) {
 	if len(got.Issues) != 101 || len(seen) != 101 {
 		t.Fatalf("got %d issues (%d distinct), want 101", len(got.Issues), len(seen))
 	}
-	if n := srv.Count("Planning"); n != 2 {
-		t.Errorf("Count(Planning) = %d, want 2 pages", n)
-	}
-	if after := srv.Posts[1].Body["variables"].(map[string]any)["after"]; after != "cursor-100" {
-		t.Errorf("second page after = %v, want cursor-100", after)
+	if n := srv.Count("/repos/o/r/issues"); n != 2 {
+		t.Errorf("Count(issues) = %d, want 2 pages", n)
 	}
 }
 
-func TestGitHubPlanningStuckCursorFails(t *testing.T) {
-	for name, cursor := range map[string]string{"empty": "", "unchanged": "cursor-0"} {
-		t.Run(name, func(t *testing.T) {
-			srv, c := boardClient(t)
-			srv.Issues = map[int]map[string]any{1: planIssue(1, nil)}
-			srv.PlanStuckCursor = &cursor
-			got, err := c.Planning(t.Context())
-			if err == nil || !strings.Contains(err.Error(), "pagination stuck") {
-				t.Fatalf("Planning = %+v, %v; want a pagination-stuck error", got, err)
-			}
-		})
-	}
-}
-
-func TestGitHubPlanningMilestonesPaginateAndStick(t *testing.T) {
+func TestGitHubPlanningMilestonesPaginate(t *testing.T) {
 	srv, c := boardClient(t)
 	for n := 1; n <= 101; n++ {
-		srv.PlanMilestones = append(srv.PlanMilestones, map[string]any{"number": n, "title": fmt.Sprintf("M%d", n), "state": "OPEN"})
+		srv.Milestones = append(srv.Milestones, map[string]any{"number": n, "title": fmt.Sprintf("M%d", n), "state": "open"})
 	}
 	got, err := c.Planning(t.Context())
 	if err != nil {
@@ -181,54 +158,6 @@ func TestGitHubPlanningMilestonesPaginateAndStick(t *testing.T) {
 	}
 	if len(got.Milestones) != 101 || got.Milestones[100].Title != "M101" {
 		t.Fatalf("got %d milestones, want 101 ending at M101", len(got.Milestones))
-	}
-	stuck := ""
-	srv.PlanStuckCursor = &stuck
-	if _, err := c.Planning(t.Context()); err == nil || !strings.Contains(err.Error(), "pagination stuck") {
-		t.Errorf("Planning with a stuck cursor: %v, want a pagination-stuck error", err)
-	}
-}
-
-func TestGitHubPlanningRefusesTruncatedBlockedBy(t *testing.T) {
-	srv, c := boardClient(t)
-	srv.Issues = map[int]map[string]any{1: planIssue(1, nil)}
-	srv.PlanBlockedByMore = map[int]bool{1: true}
-	if got, err := c.Planning(t.Context()); err == nil || !strings.Contains(err.Error(), "blockedBy truncated") {
-		t.Fatalf("Planning = %+v, %v; want a blockedBy-truncated error", got, err)
-	}
-}
-
-func TestGitHubPlanningRefusesQualifierBreakingTitle(t *testing.T) {
-	// GitHub documents no escape inside a quoted qualifier, so a title with a quote or a
-	// backslash fails visibly instead of counting the wrong milestone.
-	for _, title := range []string{`Het "plan"`, `a\b`} {
-		t.Run(title, func(t *testing.T) {
-			srv, c := boardClient(t)
-			srv.PlanMilestones = []map[string]any{{"number": 1, "title": title, "state": "OPEN"}}
-			got, err := c.Planning(t.Context())
-			if err == nil || !strings.Contains(err.Error(), "milestone") {
-				t.Fatalf("Planning = %+v, %v; want an error naming the milestone", got, err)
-			}
-			if n := srv.Count("PlanCounts"); n != 0 {
-				t.Errorf("Count(PlanCounts) = %d, want 0: no query is sent for the title", n)
-			}
-		})
-	}
-}
-
-func TestGitHubPlanningSearchSendsQualifiers(t *testing.T) {
-	srv, c := boardClient(t)
-	srv.PlanMilestones = []map[string]any{{"number": 1, "title": "M1 — Eerste", "state": "OPEN"}}
-	if _, err := c.Planning(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-	vars := srv.Posts[len(srv.Posts)-1].Body["variables"].(map[string]any)
-	got := map[string]bool{}
-	for _, v := range vars {
-		got[v.(string)] = true
-	}
-	if want := `repo:o/r milestone:"M1 — Eerste" is:issue is:open`; !got[want] || len(got) != 1 {
-		t.Errorf("search queries = %v, want only %q (Done comes from the closed issues)", vars, want)
 	}
 }
 
@@ -255,9 +184,9 @@ func TestPlanningReadsLabels(t *testing.T) {
 func TestPlanningClosedIssues(t *testing.T) {
 	srv, c := boardClient(t)
 	m1 := map[string]any{"number": 1, "title": "M1", "state": "open"}
-	srv.PlanMilestones = []map[string]any{
-		{"number": 1, "title": "M1", "state": "OPEN"},
-		{"number": 2, "title": "M2", "state": "OPEN"},
+	srv.Milestones = []map[string]any{
+		{"number": 1, "title": "M1", "state": "open"},
+		{"number": 2, "title": "M2", "state": "open"},
 	}
 	srv.Issues = map[int]map[string]any{}
 	add := func(n int, state, reason string, pr bool) {
@@ -293,21 +222,273 @@ func TestPlanningClosedIssues(t *testing.T) {
 	}
 }
 
-func TestPlanningClosedTruncated(t *testing.T) {
+// Classification: contract. Fails when Planning reads any of its data over GraphQL again.
+func TestPlanningNoGraphQL(t *testing.T) {
 	srv, c := boardClient(t)
-	srv.PlanMilestones = []map[string]any{{"number": 1, "title": "M1", "state": "OPEN"}}
-	srv.PlanClosedMore = map[int]bool{1: true}
-	got, err := c.Planning(t.Context())
-	if err == nil || !strings.Contains(err.Error(), "M1") || !strings.Contains(err.Error(), "truncated") {
-		t.Fatalf("Planning = %+v, %v; want a truncation error naming milestone M1", got, err)
+	m1 := map[string]any{"number": 1, "title": "M1", "state": "open"}
+	srv.Milestones = []map[string]any{m1}
+	srv.Issues = map[int]map[string]any{1: planIssue(1, m1), 2: planIssue(2, nil)}
+	srv.BlockedBy = map[int][]map[string]any{2: {planBlocker(srv, "o/r", 1, "open")}}
+	if _, err := c.Planning(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if n := srv.GraphQLCount(); n != 0 {
+		t.Errorf("GraphQLCount = %d, want 0: Planning reads REST only", n)
 	}
 }
 
-func TestPlanningLabelsTruncated(t *testing.T) {
+// Classification: io. Fails when a page of the second read is asked without If-None-Match, or
+// when the second read gives another result than the first.
+func TestPlanningSecondReadIs304(t *testing.T) {
+	srv := forgetest.New(t)
+	m1 := map[string]any{"number": 1, "title": "M1", "state": "open"}
+	srv.Milestones = []map[string]any{m1}
+	srv.Issues = map[int]map[string]any{1: planIssue(1, m1), 2: planIssue(2, nil), 3: planIssue(3, m1)}
+	srv.Issues[3]["state"] = "closed"
+	srv.Issues[3]["state_reason"] = "completed"
+	srv.BlockedBy = map[int][]map[string]any{2: {planBlocker(srv, "o/r", 1, "open")}}
+	f, err := Open(Config{Repo: "o/r", Token: "secret-token", BaseURL: srv.URL(), Cache: NewMemoryCache()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths := []string{"/repos/o/r/issues", "/repos/o/r/milestones", "/repos/o/r/issues/2/dependencies/blocked_by"}
+	first, err := f.Planning(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := map[string][2]int{}
+	for _, p := range paths {
+		before[p] = [2]int{srv.Count(p), srv.NotModified(p)}
+	}
+	second, err := f.Planning(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(first, second) {
+		t.Errorf("second read = %+v, want %+v", second, first)
+	}
+	for _, p := range paths {
+		reqs, nm := srv.Count(p)-before[p][0], srv.NotModified(p)-before[p][1]
+		if reqs == 0 || reqs != nm {
+			t.Errorf("%s: second read made %d requests, %d answered 304; want all of them 304", p, reqs, nm)
+		}
+	}
+}
+
+// Classification: logic. Fails when Done follows the closed_issues of the milestone (3 here)
+// instead of the issues closed as completed.
+func TestPlanningDoneCountsOnlyCompleted(t *testing.T) {
 	srv, c := boardClient(t)
-	srv.Issues = map[int]map[string]any{1: planIssue(1, nil)}
-	srv.PlanLabelsMore = map[int]bool{1: true}
-	if got, err := c.Planning(t.Context()); err == nil || !strings.Contains(err.Error(), "labels truncated") {
-		t.Fatalf("Planning = %+v, %v; want a labels-truncated error", got, err)
+	m1 := map[string]any{"number": 1, "title": "M1", "state": "open"}
+	srv.Milestones = []map[string]any{m1}
+	srv.Issues = map[int]map[string]any{}
+	for n, reason := range map[int]string{9: "completed", 4: "not_planned", 6: ""} {
+		it := planIssue(n, m1)
+		it["state"] = "closed"
+		if reason != "" {
+			it["state_reason"] = reason
+		}
+		srv.Issues[n] = it
+	}
+	got, err := c.Planning(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := got.Milestones[0]
+	if m.Done != 2 || len(m.Closed) != 2 || m.Closed[0].Number != 6 || m.Closed[1].Number != 9 {
+		t.Errorf("milestone = %+v, want Done 2 with Closed #6 then #9 (not_planned #4 left out)", m)
+	}
+	if ms, _ := c.Milestones(t.Context(), "open"); ms[0].ClosedIssues != 3 {
+		t.Fatalf("fake closed_issues = %d, want 3: the premise of this test", ms[0].ClosedIssues)
+	}
+}
+
+// Classification: logic. Fails when a pull request in the issue list counts as an issue.
+func TestPlanningOpenCountExcludesPullRequests(t *testing.T) {
+	srv, c := boardClient(t)
+	m1 := map[string]any{"number": 1, "title": "M1", "state": "open"}
+	srv.Milestones = []map[string]any{m1}
+	pr := planIssue(2, m1)
+	pr["pull_request"] = map[string]any{}
+	srv.Issues = map[int]map[string]any{1: planIssue(1, m1), 2: pr}
+	got, err := c.Planning(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Issues) != 1 || got.Issues[0].Number != 1 || got.Milestones[0].Open != 1 {
+		t.Errorf("Issues = %+v, Open = %d; want only #1 and Open 1", got.Issues, got.Milestones[0].Open)
+	}
+}
+
+// Classification: io. Fails when blocked_by is read for an issue whose summary says none, or
+// not read when the summary is absent, or when a closed blocker is kept.
+func TestPlanningBlockers(t *testing.T) {
+	path := func(n int) string { return fmt.Sprintf("/repos/o/r/issues/%d/dependencies/blocked_by", n) }
+	t.Run("summary", func(t *testing.T) {
+		srv, c := boardClient(t)
+		srv.Issues = map[int]map[string]any{1: planIssue(1, nil), 2: planIssue(2, nil)}
+		srv.BlockedBy = map[int][]map[string]any{2: {planBlocker(srv, "o/r", 1, "open"), planBlocker(srv, "o/r", 5, "closed")}}
+		got, err := c.Planning(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := []Blocker{{Repo: "o/r", Issue: 1, State: "OPEN"}}; !reflect.DeepEqual(got.Issues[1].BlockedBy, want) {
+			t.Errorf("Issues[1].BlockedBy = %+v, want %+v", got.Issues[1].BlockedBy, want)
+		}
+		if n := srv.Count(path(1)); n != 0 {
+			t.Errorf("blocked_by of #1 asked %d times, want 0 (total_blocked_by is 0)", n)
+		}
+		if n := srv.Count(path(2)); n != 1 {
+			t.Errorf("blocked_by of #2 asked %d times, want 1", n)
+		}
+	})
+	t.Run("no summary", func(t *testing.T) {
+		srv, c := boardClient(t)
+		srv.NoDependencySummary = true
+		srv.Issues = map[int]map[string]any{1: planIssue(1, nil)}
+		if _, err := c.Planning(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		if n := srv.Count(path(1)); n != 1 {
+			t.Errorf("blocked_by of #1 asked %d times, want 1 (no summary to trust)", n)
+		}
+	})
+}
+
+// Classification: logic. Fails when a closed milestone, a missing milestone or an empty open
+// milestone gets another shape than the Planning contract names.
+func TestPlanningMilestoneShapes(t *testing.T) {
+	srv, c := boardClient(t)
+	srv.Milestones = []map[string]any{{"number": 5, "title": "Leeg", "state": "open"}, {"number": 7, "title": "Oud", "state": "closed"}}
+	srv.Issues = map[int]map[string]any{
+		1: planIssue(1, map[string]any{"number": 7, "title": "Oud", "state": "closed"}),
+		2: planIssue(2, nil),
+	}
+	got, err := c.Planning(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Issues[0].Milestone == nil || got.Issues[0].Milestone.State != "closed" || got.Issues[1].Milestone != nil {
+		t.Errorf("Issues = %+v, want #1 in a closed milestone and #2 without one", got.Issues)
+	}
+	if len(got.Milestones) != 1 || got.Milestones[0].Open != 0 || got.Milestones[0].Done != 0 || got.Milestones[0].Closed == nil || len(got.Milestones[0].Closed) != 0 {
+		t.Errorf("Milestones = %#v, want only Leeg with Open 0, Done 0 and an empty non-nil Closed", got.Milestones)
+	}
+	for _, is := range got.Issues {
+		if is.Labels == nil {
+			t.Errorf("#%d Labels is nil", is.Number)
+		}
+	}
+}
+
+// Classification: io. Fails when Planning returns the milestones in the order REST lists them
+// (by due date) instead of ascending by number.
+func TestPlanningMilestonesSortedByNumber(t *testing.T) {
+	srv, c := boardClient(t)
+	for _, n := range []int{5, 2, 9} {
+		srv.Milestones = append(srv.Milestones, map[string]any{"number": n, "title": fmt.Sprintf("M%d", n), "state": "open"})
+	}
+	got, err := c.Planning(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var nums []int
+	for _, m := range got.Milestones {
+		nums = append(nums, m.Number)
+	}
+	if !slices.Equal(nums, []int{2, 5, 9}) {
+		t.Fatalf("milestone order = %v, want [2 5 9]", nums)
+	}
+}
+
+// Classification: contract. Fails when PrioInputs reads the closed issues of a milestone
+// (ClosedInMilestone) or a blocked_by list, lists a pull request, or maps an issue to the wrong
+// milestone.
+func TestGitHubPrioInputsReadsOnlyOpenIssuesAndMilestones(t *testing.T) {
+	srv, c := boardClient(t)
+	m1 := map[string]any{"number": 1, "title": "M1", "state": "open", "description": "Priority: 2"}
+	srv.Milestones = []map[string]any{m1, {"number": 2, "title": "Dicht", "state": "closed"}}
+	pr := planIssue(4, m1)
+	pr["pull_request"] = map[string]any{}
+	srv.Issues = map[int]map[string]any{1: planIssue(1, m1), 2: planIssue(2, nil), 3: planIssue(3, m1), 4: pr}
+	srv.Issues[3]["state"] = "closed"
+	srv.BlockedBy = map[int][]map[string]any{2: {planBlocker(srv, "o/r", 1, "open")}}
+	got, err := c.PrioInputs(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := PrioInputs{
+		Issues: map[int]int{1: 1, 2: 0},
+		// The counts are the forge's own, pull request included, as Milestones reads them.
+		Milestones: []Milestone{{Number: 1, Title: "M1", State: "open", Description: "Priority: 2", OpenIssues: 2, ClosedIssues: 1}},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("PrioInputs = %+v, want %+v", got, want)
+	}
+	if n := srv.Count("/repos/o/r/issues"); n != 1 {
+		t.Errorf("issue list requests = %d, want 1 (no ClosedInMilestone read)", n)
+	}
+	if n := srv.Count("/repos/o/r/issues/2/dependencies/blocked_by"); n != 0 {
+		t.Errorf("blocked_by requests = %d, want 0", n)
+	}
+	if n := srv.GraphQLCount(); n != 0 {
+		t.Errorf("GraphQLCount = %d, want 0", n)
+	}
+}
+
+// Classification: io. Fails when PrioInputs goes around the ETag cache: a second read must be
+// answered by 304s only.
+func TestGitHubPrioInputsSecondReadIs304(t *testing.T) {
+	srv := forgetest.New(t)
+	m1 := map[string]any{"number": 1, "title": "M1", "state": "open", "description": "Priority: 1"}
+	srv.Milestones = []map[string]any{m1}
+	srv.Issues = map[int]map[string]any{1: planIssue(1, m1), 2: planIssue(2, nil)}
+	f, err := Open(Config{Repo: "o/r", Token: "secret-token", BaseURL: srv.URL(), Cache: NewMemoryCache()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths := []string{"/repos/o/r/issues", "/repos/o/r/milestones"}
+	first, err := f.PrioInputs(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := map[string][2]int{}
+	for _, p := range paths {
+		before[p] = [2]int{srv.Count(p), srv.NotModified(p)}
+	}
+	second, err := f.PrioInputs(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(first, second) {
+		t.Errorf("second read = %+v, want %+v", second, first)
+	}
+	for _, p := range paths {
+		reqs, nm := srv.Count(p)-before[p][0], srv.NotModified(p)-before[p][1]
+		if reqs == 0 || reqs != nm {
+			t.Errorf("%s: second read made %d requests, %d answered 304; want all of them 304", p, reqs, nm)
+		}
+	}
+}
+
+// Classification: io. Fails when PrioInputs and Planning ask for the open issue list under
+// different URLs: then they keep two cache entries, and the read after the other is a full one.
+func TestGitHubPrioInputsSharesPlanningIssueCache(t *testing.T) {
+	srv := forgetest.New(t)
+	srv.Issues = map[int]map[string]any{1: planIssue(1, nil), 2: planIssue(2, nil)}
+	f, err := Open(Config{Repo: "o/r", Token: "secret-token", BaseURL: srv.URL(), Cache: NewMemoryCache()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.Planning(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	const path = "/repos/o/r/issues"
+	reqs, nm := srv.Count(path), srv.NotModified(path)
+	if _, err := f.PrioInputs(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if r, n := srv.Count(path)-reqs, srv.NotModified(path)-nm; r == 0 || r != n {
+		t.Errorf("PrioInputs after Planning: %d issue list requests, %d answered 304; want all of them 304", r, n)
 	}
 }
