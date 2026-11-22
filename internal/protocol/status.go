@@ -38,8 +38,12 @@ type Status struct {
 // current and the legacy marker.
 var artefactMarkers = []string{"<!-- lighthouse:", "<!-- paia:"}
 
-// IsAnswer reports whether a comment can answer a question: not empty, no protocol header
-// and no artefact comment.
+// MapPlannedMarker opens the machine line of a comment of the scheduled job map-planned. The
+// line follows the job's own heading, so it is not the first line of the body.
+const MapPlannedMarker = "<!-- lighthouse:map-planned "
+
+// IsAnswer reports whether a comment can answer a question: not empty, no protocol header,
+// no artefact comment and no comment of the map-planned job.
 func IsAnswer(body string) bool {
 	text := strings.TrimSpace(body)
 	if text == "" || strings.HasPrefix(text, Robot) {
@@ -47,6 +51,11 @@ func IsAnswer(body string) bool {
 	}
 	for _, marker := range artefactMarkers {
 		if strings.HasPrefix(text, marker) {
+			return false
+		}
+	}
+	for line := range strings.SplitSeq(text, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), MapPlannedMarker) {
 			return false
 		}
 	}
