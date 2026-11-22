@@ -107,11 +107,16 @@ func TestBranchNowhereWithoutSiblingIsNotMeasurable(t *testing.T) {
 }
 
 // cloneFixture is a bare clone with one linked worktree under the worktree root, as kenn-forge
-// makes them.
+// makes them. The clone path is the resolved one, as git reports it: on macOS t.TempDir() lies
+// under the symlink /var, and git names the clone under /private/var.
 func cloneFixture(t *testing.T) (home, clone string) {
 	t.Helper()
 	home = t.TempDir()
-	clone = filepath.Join(t.TempDir(), "lighthouse.git")
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	clone = filepath.Join(dir, "lighthouse.git")
 	gitIn(t, t.TempDir(), "init", "-q", "--bare", "-b", "main", clone)
 	seed := t.TempDir()
 	gitIn(t, seed, "init", "-q", "-b", "main")
