@@ -1,4 +1,4 @@
 ---
 type: added
 ---
-De plek van de worktrees is instelbaar met `[worktree] root` in `lighthouse.toml` (standaard `.claude/worktrees`, relatief aan de hoofdcheckout of absoluut, ook buiten de repo): hooks, worktree-audit en skills lezen die plek, en `lighthouse init` waarschuwt voor een repo of worktree-root in een sync-map.
+The location of the worktrees can now be set with `[worktree] root` in `lighthouse.toml` (default `.claude/worktrees`, relative to the main checkout or absolute, also outside the repository). Hooks, the worktree audit and the skills read that location, and `lighthouse init` warns about a repository or worktree root inside a sync folder.
