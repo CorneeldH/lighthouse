@@ -1016,6 +1016,21 @@
           ]
         },
         {
+          "table": "worktree",
+          "title": "Worktrees",
+          "about": "Where the worktrees of this repo live.",
+          "keys": [
+            {
+              "key": "worktree.root",
+              "level": "advanced",
+              "required": "no",
+              "default": ".claude/worktrees",
+              "about": "The folder the worktrees live in: relative to the main checkout, or absolute.",
+              "readers": []
+            }
+          ]
+        },
+        {
           "table": "python",
           "title": "Python",
           "about": "Read by the python pack: where the source lives, which directories ruff and complexipy check, and how the nightly job measures coverage.",

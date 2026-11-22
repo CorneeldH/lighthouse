@@ -145,6 +145,10 @@
    "list[str]"
   ],
   [
+   "worktree.root",
+   "str"
+  ],
+  [
    "project.instructions_word_ceiling",
    "int"
   ],
@@ -275,6 +279,7 @@
   "codex_usage.review_pct_week": 95,
   "worktree_audit.protected_refs": [],
   "worktree_audit.protected_paths": [],
+  "worktree.root": ".claude/worktrees",
   "project.instructions_word_ceiling": 3000,
   "python.source_dirs": [
    "src"

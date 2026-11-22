@@ -185,6 +185,14 @@
  },
  {
   "args": [
+   "worktree.root"
+  ],
+  "rc": 0,
+  "stdout": ".claude/worktrees\n",
+  "stderr": ""
+ },
+ {
+  "args": [
    "project.instructions_word_ceiling"
   ],
   "rc": 0,
