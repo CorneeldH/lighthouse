@@ -15,6 +15,9 @@ var (
 	bullet   = regexp.MustCompile(`^- (\S+?):(\d+):\s*(.*)$`)
 	location = regexp.MustCompile(`^\*\*Location:\*\*\s*(\S+?):(\d+)`)
 	problem  = regexp.MustCompile(`^\*\*Problem:\*\*\s*(.*)$`)
+	// agentLine is the log line that names the reviewing agent; the agent is a plain name list,
+	// so text such as `agents=[x --> y]` in a review body never matches.
+	agentLine = regexp.MustCompile(`(?m)^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2} .*?ci review: ref=\S+ agents=\[([\w.,-]+)\]`)
 	// roborev's own log lines on stderr: never the reason.
 	logLine   = regexp.MustCompile(`^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2} `)
 	doneKinds = []string{"Review Complete", "Combined Review", "Review Passed"}
@@ -36,6 +39,8 @@ type Classification struct {
 	Kind     string
 	Reason   string
 	Findings []Finding
+	// Agent is the agent the review log line names, or "" without such a line. Not in JSON.
+	Agent string
 }
 
 // JSON is the object `classify` prints, in the key order of the Python script.
@@ -192,5 +197,9 @@ func Classify(raw string) Classification {
 			return skipBecause("review faalde: bevindingen onleesbaar")
 		}
 	}
-	return Classification{Verdict: "done", Sha: sha, Kind: kind, Findings: found}
+	agent := ""
+	if m := agentLine.FindStringSubmatch(raw); m != nil {
+		agent = m[1]
+	}
+	return Classification{Verdict: "done", Sha: sha, Kind: kind, Findings: found, Agent: agent}
 }

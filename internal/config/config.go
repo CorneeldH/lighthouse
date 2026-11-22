@@ -81,6 +81,7 @@ var schema = []struct{ key, kind string }{
 	{"paths.plans", kStr},
 	{"paths.tenets", kStr},
 	{"paths.areas", kStr},
+	{"paths.strategy", kStr},
 	{"paths.history", kStr},
 	{"paths.labels", kStr},
 	{"paths.search_dirs", kStrs},

@@ -78,11 +78,13 @@ it in the answer and skip the rest of V2b; V4 still adds the `body-line` output.
    to V4.
 
    Exit 3 (`COULD NOT CHECK`): no PR; report the message.
-1. **Review** (`run` only), with `<range>` and `<raw>` from the gate output:
+1. **Review** (`run` only), with `<agent>`, `<range>` and `<raw>` from the gate output:
 
    ```bash
-   timeout 540 roborev ci review --agent codex --ref <range> > <raw> 2>&1
+   timeout 540 roborev ci review --agent <agent> --ref <range> > <raw> 2>&1
    ```
+
+   `<agent>` is `codex`, or `claude-code` when the Codex budget is in `fallback`; never pass a fixed agent.
 
    In the foreground, with Bash timeout `600000`: start no background work (controller run, if
    present). Exit 124 is the timeout:
@@ -313,7 +315,7 @@ starts with `## ` breaks the V4 section the tests cut out.
 
 Roborev line (V2b ran): add the output of `lighthouse roborev-gate body-line`
 to the body as a line of its own, outside the Evidence block. It is the marker
-`<!-- roborev-lokaal: <sha> -->` after a review, `Roborev overgeslagen: <reason>` after a skip, and
+`<!-- roborev-lokaal: <sha> agent: <agent> -->` after a review, `Roborev overgeslagen: <reason>` after a skip, and
 empty with `off` (then no line).
 
 Then give the command. The branch is on origin first (`git push -u origin HEAD`):

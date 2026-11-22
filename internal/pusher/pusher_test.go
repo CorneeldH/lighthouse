@@ -249,6 +249,31 @@ func question(t *testing.T, body, sha, wt string) protocol.Header {
 	return h
 }
 
+// returned checks that body is the pusher's Returned for red step step, as finishReturn reads it:
+// no session, reason_pusher_red, the worktree and branch, no SHA to permit, and the push by hand.
+func returned(t *testing.T, body, step, wt string) protocol.Header {
+	t.Helper()
+	h, ok := protocol.ParseHeader(body)
+	if !ok || h.Kind != protocol.KindReturned {
+		t.Fatalf("not a Teruggegeven:\n%s", body)
+	}
+	if h.Session != "" {
+		t.Errorf("the pusher Teruggegeven carries a session footer %q", h.Session)
+	}
+	if key, ok := protocol.ReasonKey(h.Fields["reason"]); !ok || key != "reason_pusher_red" {
+		t.Errorf("reason %q reads as %q, want reason_pusher_red", h.Fields["reason"], key)
+	}
+	if h.Fields["step"] != step || h.Fields["worktree"] != wt || h.Fields["branch"] != branch || h.Fields["sha"] != "" {
+		t.Errorf("header fields %v, want step %s, worktree %s, branch %s and no sha", h.Fields, step, wt, branch)
+	}
+	for _, want := range []string{protocol.Heading("question_push_manual", "nl"), "cd " + wt + " && git push -u origin HEAD"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("Teruggegeven lacks %q:\n%s", want, body)
+		}
+	}
+	return h
+}
+
 func wantClosed(t *testing.T, row runs.Row, o runs.Outcome) {
 	t.Helper()
 	if row.Open || row.Outcome != o {
@@ -452,14 +477,36 @@ func TestAnswerToMovedQuestionDoesNotPush(t *testing.T) {
 
 // A policy red before any review carries no SHA: an answer push must not skip the review that
 // never ran, and the Vraag says the answer starts nothing.
-func TestPolicyRedQuestionCarriesNoPermit(t *testing.T) {
+// A red policy before any SHA was read is no question: an answer push could start nothing. The
+// pusher gives the issue back with the folded diff and the push by hand, and closes as returned.
+func TestPolicyRedIsReturnedNotAQuestion(t *testing.T) {
 	r := newRunFix(t, hostconfig.ReviewShadow, nil)
 	r.commitWorkflow("ci.yml", "on: pull_request\npermissions: write-all\njobs:\n  a:\n    runs-on: x\n    steps:\n      - uses: a/b@v1\n")
 	r.run()
 	body := r.forge.last(t)
-	question(t, body, noSHA, r.wt)
-	if !strings.Contains(body, protocol.Heading("question_push_manual", "nl")) {
-		t.Errorf("Vraag does not say an answer push starts nothing:\n%s", body)
+	returned(t, body, StepPolicy, r.wt)
+	if !strings.Contains(body, "<details><summary>"+protocol.Heading("question_push_diff", "nl")+"</summary>") ||
+		!strings.Contains(body, "+permissions: write-all") {
+		t.Errorf("Teruggegeven lacks the folded workflow diff:\n%s", body)
+	}
+	wantClosed(t, r.row(), runs.Returned)
+}
+
+// A Vraag opens with its question and the close line, so the controller's list shows only what
+// an answer push does; the red step, the verdict and the diff stand below the close line.
+func TestQuestionTextIsTheQuestionLine(t *testing.T) {
+	r := newRunFix(t, hostconfig.ReviewShadow, nil)
+	head := r.commitWorkflow("ci.yml", preMergeWF)
+	r.run()
+	body := r.forge.last(t)
+	question(t, body, head, r.wt)
+	if got := protocol.QuestionText(body); got != permitLine() {
+		t.Errorf("QuestionText = %q, want the permit line %q", got, permitLine())
+	}
+	closeLine := strings.Index(body, protocol.Heading("question_close", "nl"))
+	diff := strings.Index(body, "+on: pull_request")
+	if closeLine < 0 || diff < closeLine {
+		t.Errorf("the diff does not stand below the close line:\n%s", body)
 	}
 }
 
@@ -518,13 +565,18 @@ func TestRedQuestionHasNoTokenScopeAdvice(t *testing.T) {
 				t.Fatalf("pushed %s", got)
 			}
 			body := r.forge.last(t)
-			if h, ok := protocol.ParseHeader(body); !ok || h.Kind != protocol.KindQuestion {
-				t.Fatalf("not a Vraag:\n%s", body)
+			h, ok := protocol.ParseHeader(body)
+			if !ok || h.Kind != protocol.KindQuestion && h.Kind != protocol.KindReturned {
+				t.Fatalf("neither a Vraag nor a Teruggegeven:\n%s", body)
 			}
 			if scope.MatchString(strings.ReplaceAll(body, r.dir, "")) {
-				t.Errorf("the Vraag mentions a token scope:\n%s", body)
+				t.Errorf("the comment mentions a token scope:\n%s", body)
 			}
-			wantClosed(t, r.row(), runs.Question)
+			want := runs.Question
+			if h.Kind == protocol.KindReturned {
+				want = runs.Returned
+			}
+			wantClosed(t, r.row(), want)
 		})
 	}
 }
@@ -803,10 +855,8 @@ func TestNoPRAndNoAfterAsks(t *testing.T) {
 	if got := r.remoteHead(); got != "" {
 		t.Fatalf("pushed %s without a route", got)
 	}
-	if body := r.forge.last(t); !strings.Contains(body, StepRoute) {
-		t.Errorf("Vraag does not name the route step:\n%s", body)
-	}
-	wantClosed(t, r.row(), runs.Question)
+	returned(t, r.forge.last(t), StepRoute, r.wt)
+	wantClosed(t, r.row(), runs.Returned)
 }
 
 func TestRunRefusesARowThatIsNotAnOpenPushRow(t *testing.T) {
@@ -1043,9 +1093,9 @@ func TestBranchTextGivesNoSessionFooter(t *testing.T) {
 		r.run()
 		body := r.forge.last(t)
 		if !strings.Contains(body, "session 11111111") {
-			t.Fatalf("the Vraag does not name the file, the test proves nothing:\n%s", body)
+			t.Fatalf("the Teruggegeven does not name the file, the test proves nothing:\n%s", body)
 		}
-		question(t, body, noSHA, r.wt)
+		returned(t, body, StepPolicy, r.wt)
 	})
 	t.Run("handoff", func(t *testing.T) {
 		r := newRunFix(t, hostconfig.ReviewShadow, nil)
@@ -1059,10 +1109,10 @@ func TestBranchTextGivesNoSessionFooter(t *testing.T) {
 			t.Errorf("decide does not read the handoff as the pusher's:\n%s", body)
 		}
 	})
-	t.Run("merge Vraag", func(t *testing.T) {
-		body := renderMergeQuestion(Red{StepAncestry, "changed:\n.github/workflows/" + footerName}, branch, 12, strings.Repeat("c", 40), "nl")
-		if h, ok := protocol.ParseHeader(body); !ok || h.Kind != protocol.KindQuestion || h.Session != "" {
-			t.Errorf("merge Vraag header %+v, want a Vraag without a session:\n%s", h, body)
+	t.Run("merge Teruggegeven", func(t *testing.T) {
+		body := renderMergeReturned(Red{StepAncestry, "changed:\n.github/workflows/" + footerName}, branch, 12, strings.Repeat("c", 40), "nl")
+		if h, ok := protocol.ParseHeader(body); !ok || h.Kind != protocol.KindReturned || h.Session != "" {
+			t.Errorf("merge Teruggegeven header %+v, want a Teruggegeven without a session:\n%s", h, body)
 		}
 	})
 }

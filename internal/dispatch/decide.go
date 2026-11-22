@@ -538,14 +538,15 @@ func orphan(history []runs.Row, hs []parsed, base Action) (Action, bool) {
 // settle decides whether the open run row ends in this tick: the first rule of the run-outcome
 // table that holds wins. Only comments from row's start on count; a Done, Question or Returned
 // also needs row's session, a Handoff carries none. A push row has no session: the pusher's Vraag
-// (pusherQuestion) is its Question. A Done closes, then a Handoff that does
-// not end the chain, then a Question, then the run's own Returned (posted by an earlier tick
-// whose stop failed); after those the measurement rules of runCtx.outcome. Every action it
+// (pusherQuestion) is its Question, and a Returned without a session its Returned, which closes the
+// row without touching a workplace (finishReturn gives the issue back). A Done closes, then a
+// Handoff that does not end the chain, then a Question, then the push row's Returned, then the
+// run's own Returned (posted by an earlier tick whose stop failed); after those the measurement rules of runCtx.outcome. Every action it
 // returns closes row, except a KindRepost (rule 14a): decideIssue keeps the row open for that.
 // The third result, only from fixPR, is the fix-pr start the close stands
 // for; settle starts nothing itself.
 func settle(in Input, repo RepoInput, it Item, row runs.Row, hs []parsed, base Action) (Action, bool, *fixPRStart) {
-	var done, question, returned bool
+	var done, question, returned, pushReturned bool
 	var handoff *parsed
 	for i, p := range hs {
 		if p.Time.Before(row.StartedAt) {
@@ -560,6 +561,8 @@ func settle(in Input, repo RepoInput, it Item, row runs.Row, hs []parsed, base A
 			question = question || ofRun || isPush(row) && pusherQuestion(p.Header)
 		case protocol.KindReturned:
 			returned = returned || ofRun
+			// A push row has no session; the pusher's own Returned carries none either.
+			pushReturned = pushReturned || isPush(row) && p.Header.Session == ""
 		case protocol.KindHandoff:
 			handoff = &hs[i]
 		}
@@ -573,6 +576,8 @@ func settle(in Input, repo RepoInput, it Item, row runs.Row, hs []parsed, base A
 		return c.closed(runs.Handoff), true, nil
 	case question:
 		return c.closed(runs.Question), true, nil
+	case pushReturned:
+		return c.closed(runs.Returned), true, nil
 	case returned:
 		a := c.closed(runs.Returned)
 		if c.open.WorkplaceSession == "" {

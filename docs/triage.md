@@ -155,7 +155,10 @@ issuenummer.
 Een kolom die niet in `status_options` staat, zoals `In progress` of `Done`, telt niet als "geen
 status": zo'n issue is geen kandidaat. Een issue met een gearchiveerd board-item slaat de ronde
 over, met een regel op stderr; het telt als `skipped`. De tick ziet dat item niet, dus de ronde
-oordeelt er niet over en schrijft er niets.
+oordeelt er niet over en schrijft er niets. Dat werkt zolang `IssueItem` het item
+kent: het onthoudt de item-id's van elke boardlijst (tot 30 dagen na het laatste zien; de tabel verdwijnt ook na 7 dagen zonder boardlezing, de `MaxAge` van de cache). Een item dat
+al gearchiveerd was voordat een lijstlezing het ooit zag, of dat langer dan 30 dagen weg is, wordt
+niet gevonden: de ronde leest het issue dan als "niet op het board".
 
 Een marker met een vaste stop (een open blokkeerder, een blokkadelabel of een gebroken invariant)
 vervalt zodra de stop is weggevallen; dan is het issue weer kandidaat. Een marker zonder vaste

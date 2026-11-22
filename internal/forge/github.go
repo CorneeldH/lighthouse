@@ -62,6 +62,8 @@ type GitHub struct {
 	// filled by listItems and AddToBoard.
 	itemIDs    map[string]int64
 	issueItems map[issueKey]int64
+	// itemTable is the saved item table of a client without cache (see saveItemTable).
+	itemTable []itemTableEntry
 	// enriched is what enrich read per pull request while EnrichMemo is set.
 	enriched map[prKey]enrichedPR
 }

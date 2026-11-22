@@ -25,6 +25,10 @@
    "str"
   ],
   [
+   "paths.strategy",
+   "str"
+  ],
+  [
    "paths.history",
    "str"
   ],

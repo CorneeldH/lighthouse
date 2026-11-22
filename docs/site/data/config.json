@@ -466,12 +466,27 @@
               "key": "paths.areas",
               "level": "advanced",
               "required": "no",
-              "about": "The folder with one file per area; closing a milestone updates its near goal.",
+              "about": "The folder with one file per area: its crux, leading policy and deliberate no's, read when writing an issue. Closing a milestone updates its near goal when the area file has that heading.",
               "example": "docs/areas",
               "readers": [
+                "internal/scheduled/mapplanned/mapplanned.go",
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/close-issue",
-                "pack/core/skills/write-issue"
+                "pack/core/skills/write-issue",
+                "internal/direction/direction.go"
+              ]
+            },
+            {
+              "key": "paths.strategy",
+              "level": "advanced",
+              "required": "no",
+              "about": "The file with the project's strategy, read when writing an issue and when shaping a milestone.",
+              "example": "docs/strategy.md",
+              "readers": [
+                "internal/scheduled/mapplanned/mapplanned.go",
+                "pack/core/skills/write-issue",
+                "internal/repoconfig/repoconfig.go",
+                "internal/direction/direction.go"
               ]
             },
             {
@@ -495,7 +510,8 @@
                 "internal/labels/labels.go",
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/write-issue",
-                "pack/core/skills/write-pr"
+                "pack/core/skills/write-pr",
+                "internal/direction/direction.go"
               ]
             },
             {
@@ -561,8 +577,10 @@
               "about": "The file with the project's tenets, read when writing an issue.",
               "example": "docs/tenets.md",
               "readers": [
+                "internal/scheduled/mapplanned/mapplanned.go",
                 "internal/repoconfig/repoconfig.go",
-                "pack/core/skills/write-issue"
+                "pack/core/skills/write-issue",
+                "internal/direction/direction.go"
               ]
             }
           ]
@@ -579,11 +597,13 @@
               "about": "The prefix of area labels.",
               "example": "area:",
               "readers": [
+                "internal/scheduled/mapplanned/corpus.go",
                 "internal/repoconfig/repoconfig.go",
                 "internal/triage/prompt.go",
                 "pack/core/skills/start-issue",
                 "pack/core/skills/write-issue",
-                "pack/expo/skills/refresh-expo-lockfiles"
+                "pack/expo/skills/refresh-expo-lockfiles",
+                "internal/direction/direction.go"
               ]
             },
             {

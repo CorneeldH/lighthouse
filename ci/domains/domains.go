@@ -20,7 +20,9 @@ var goToo = map[string]bool{"web/openapi.json": true, "web/go.mod": true}
 
 // Inside docs/, but read by Go: internal/config/config_test.go parses the GitLab example in it;
 // the tests of internal/repopins and e2e/gettingstarted_test.go read the getting-started guide,
-// the agent install page and the site files.
+// the agent install page and the site files. The direction documents are read by the shape test
+// of internal/direction (strategie.md, uitgangspunten.md, labels.md and everything under areas/):
+// without them a PR that only breaks one of those files would merge green, as no Go check ran.
 var goDocs = map[string]bool{
 	"docs/install.md":             true,
 	"docs/getting-started.md":     true,
@@ -28,6 +30,25 @@ var goDocs = map[string]bool{
 	"docs/site/install.html":      true,
 	"docs/site/index.html":        true,
 	"docs/site/download.js":       true,
+
+	"docs/developer/strategie.md":      true,
+	"docs/developer/uitgangspunten.md": true,
+	"docs/developer/labels.md":         true,
+}
+
+// Directories inside docs/ that Go reads whole; a prefix, so areas-extra.md does not match.
+var goDocPrefixes = []string{"docs/developer/areas/"}
+
+func isGoDoc(path string) bool {
+	if goDocs[path] {
+		return true
+	}
+	for _, d := range goDocPrefixes {
+		if strings.HasPrefix(path, d) {
+			return true
+		}
+	}
+	return false
 }
 
 // Inside tests/, but read by Go: internal/protocol/header_test.go reads the fixtures, and
@@ -80,7 +101,7 @@ func Classify(paths []string) map[string]bool {
 		if inWeb || webToo[p] {
 			touched["web"] = true
 		}
-		if (!inWeb && !isNotGo(p)) || goToo[p] || goDocs[p] {
+		if (!inWeb && !isNotGo(p)) || goToo[p] || isGoDoc(p) {
 			touched["go"] = true
 		}
 		if !inWeb {
