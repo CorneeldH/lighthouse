@@ -707,14 +707,32 @@ func TestTriageUnlistedStatus(t *testing.T) {
 	})
 }
 
-// The board lists no archived item, but GitHub still has it: an issue whose item is archived is
-// skipped with a line, never judged and never written, and an item archived before the
-// recheck is a change.
+// earlierBoardRead reads the board of fx's repo once, as an earlier process would, through the
+// forge cache of fx.env: the item table saved there then holds every item the board lists now.
+func (fx *triageFix) earlierBoardRead(t *testing.T) {
+	t.Helper()
+	repo, err := repoconfig.Load(fx.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rf, err := newForgeOpener(fx.env.Getenv, fx.env.ForgeURL).forRepo(context.Background(), repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := rf.BoardItems(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The board lists no archived item, but GitHub still has it: an issue whose item an earlier
+// board read saw and that is archived since is skipped with a line, never judged and never
+// written, and an item archived before the recheck is a change.
 func TestTriageArchivedItem(t *testing.T) {
 	t.Run("gather", func(t *testing.T) {
 		fx := triageFixture(t, triageToml)
 		fx.issue(7, "2-area:cli")
 		fx.onBoard(7, "t1", nil)
+		fx.earlierBoardRead(t)
 		fx.srv.BoardNodes[0]["isArchived"] = true
 
 		_, errOut, err := fx.run(triageOpts{})

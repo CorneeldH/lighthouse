@@ -109,12 +109,11 @@ type Server struct {
 	OpenPRNodes []map[string]any
 	// BoardNodes are the project items in GraphQL shape, as input only: the fake serves them as
 	// REST by GET .../projectsV2/{number}/items and .../items/{id} (the id of node i is
-	// 5000+i), and as GraphQL by IssueItems. A nested connection carries its own pageInfo when
-	// a test sets one. A node with "isArchived": true is listed by the REST items with
-	// archived_at set and served by IssueItems, as Issue.projectItems includes archived items.
+	// 5000+i). A nested connection carries its own pageInfo when a test sets one. A node with
+	// "isArchived": true is left out of the items list and served by .../items/{id} with
+	// archived_at set, as GitHub does.
 	BoardNodes []map[string]any
-	// ProjectID is the project every BoardNodes item belongs to, as IssueItems serves it in
-	// project { id }.
+	// ProjectID is the node ID of the project of BoardNodes.
 	ProjectID string
 	// NoDependencySummary leaves issue_dependencies_summary out of the issue list; by default
 	// every listed issue carries it, with total_blocked_by from BlockedBy.
@@ -146,7 +145,7 @@ type Server struct {
 	// GraphQLErrors, when set, makes every GraphQL operation answer 200 with these errors and
 	// null data.
 	GraphQLErrors []string
-	// FailOps maps a GraphQL operation name, such as "IssueItems", to an error message: only
+	// FailOps maps a GraphQL operation name, such as "IssueCloser", to an error message: only
 	// that operation answers 200 with that error and null data; the others work as usual.
 	FailOps map[string]string
 
@@ -826,12 +825,6 @@ func (s *Server) graphql(w http.ResponseWriter, r *http.Request) {
 		data = s.issueCloser(req.Variables)
 	case "IssueClosingHeads":
 		data = s.issueClosingHeads(req.Variables)
-	case "IssueItems":
-		var errs []any
-		if data, errs = s.issueItems(req.Query, req.Variables); errs != nil {
-			writeJSON(w, http.StatusOK, map[string]any{"data": data, "errors": errs})
-			return
-		}
 	default:
 		s.t.Errorf("forgetest: unknown GraphQL operation %q", op)
 		writeJSON(w, http.StatusOK, map[string]any{"errors": []any{map[string]any{"message": "unknown operation " + op}}})
@@ -910,48 +903,6 @@ func (s *Server) issueCloser(vars map[string]any) any {
 		nodes = append(nodes, map[string]any{"closer": closer})
 	}
 	return map[string]any{"repository": map[string]any{"issue": map[string]any{"timelineItems": map[string]any{"nodes": nodes}}}}
-}
-
-// issueItems serves the BoardNodes whose content.number is $number, each with project { id }
-// from ProjectID; a node whose content names another repository than $owner/$name is not one.
-// The content is left out, as the real query does not select it, and so is isArchived when
-// the query does not select it. An issue with neither an Issues entry nor a
-// BoardNodes item does not exist: it answers as GitHub does, issue null plus a NOT_FOUND error
-// on the path repository.issue.
-func (s *Server) issueItems(query string, vars map[string]any) (data any, errs []any) {
-	number, _ := vars["number"].(float64)
-	repo := fmt.Sprint(vars["owner"], "/", vars["name"])
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	nodes := []map[string]any{}
-	for _, n := range s.BoardNodes {
-		content, _ := n["content"].(map[string]any)
-		if num, ok := content["number"].(int); !ok || float64(num) != number {
-			continue
-		}
-		if other := nameWithOwner(content); other != "" && other != repo {
-			continue
-		}
-		cp := map[string]any{"project": map[string]any{"id": s.ProjectID}}
-		for k, v := range n {
-			if k != "content" && (k != "isArchived" || strings.Contains(query, "isArchived")) {
-				cp[k] = v
-			}
-		}
-		nodes = append(nodes, cp)
-	}
-	if _, known := s.Issues[int(number)]; !known && len(nodes) == 0 {
-		return map[string]any{"repository": map[string]any{"issue": nil}}, []any{map[string]any{
-			"type":      "NOT_FOUND",
-			"path":      []any{"repository", "issue"},
-			"locations": []any{map[string]any{"line": 3, "column": 5}},
-			"message":   fmt.Sprintf("Could not resolve to an Issue with the number of %d.", int(number)),
-		}}
-	}
-	return map[string]any{"repository": map[string]any{"issue": map[string]any{"projectItems": map[string]any{
-		"pageInfo": map[string]any{"hasNextPage": false},
-		"nodes":    nodes,
-	}}}}, nil
 }
 
 // operationName is the name after "query " or "mutation " at the start of a query.

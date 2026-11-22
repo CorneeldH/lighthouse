@@ -46,7 +46,7 @@ func stateServer(t *testing.T, labels []string, optionID, status string) *forget
 	srv.Issues = map[int]map[string]any{7: {"number": 7, "title": "x", "state": "open", "labels": ls}}
 	srv.BlockedBy = map[int][]map[string]any{7: {}}
 	if status != "" {
-		srv.BoardNodes = []map[string]any{{"id": "PVTI_a", "content": map[string]any{"number": 7},
+		srv.BoardNodes = []map[string]any{{"id": "PVTI_a", "content": map[string]any{"number": 7, "repository": map[string]any{"nameWithOwner": "Owner/repo"}},
 			"fieldValues": map[string]any{"nodes": []any{map[string]any{"optionId": optionID, "name": status,
 				"field": map[string]any{"id": "FIELD_test"}}}}}}
 	}
