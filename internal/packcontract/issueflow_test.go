@@ -239,6 +239,24 @@ func TestStartIssueHoldsABlockedExecution(t *testing.T) {
 	}
 }
 
+// Classification: fails when start-issue executes a stop line of route-issue (`needs_hands`,
+// `needs_testing`) instead of reporting what the human has to do first, posts a handoff for it
+// in a controller run, lets the stop come after the Blocked? block, sends a scout at a stop on
+// 4b, or moves the board to In progress for it.
+func TestStartIssueStopsOnNeedsStopLine(t *testing.T) {
+	for variant, body := range variants(t, startIssue) {
+		t.Run(variant, func(t *testing.T) {
+			step3 := section(t, body, "### 3.", "### 4.")
+			wantAll(t, flat(step3), "`labels.needs_hands` or `labels.needs_testing`", "the next step is a human's")
+			step4 := section(t, body, "### 4.", "#### Scout")
+			row := lineStarting(t, step4, "| route `stop`")
+			wantAll(t, row, "route `stop` (`labels.needs_hands` or `labels.needs_testing`)",
+				"report what the human has to do first", "no execution, no spec, no plan",
+				"post no handoff", "`RowInteractive`", "before **Blocked?**", "no scout goes out")
+		})
+	}
+}
+
 // Classification: fails when a blocked issue runs anything but gate 4c (spec yes, plan no), the
 // stop loses `wait for #<x>` or the controller handoff, brainstorming is no longer told to end
 // at the approved spec without writing-plans, the scout goes out at a blocked 4b without the
