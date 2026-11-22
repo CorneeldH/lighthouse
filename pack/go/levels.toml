@@ -1,0 +1,5 @@
+# The entry levels of the go package: lint and format come after the way of working.
+[light.components]
+gofmt-check = "off"
+go-lint-gate = "off"
+"skill:go-standard" = "off"

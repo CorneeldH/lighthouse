@@ -1,0 +1,9 @@
+# The entry levels of the shell package: lint and format come after the way of working.
+# Both scripts exist only for shell-lint-check (shellcheck-bin.sh through shellcheck-repo.sh).
+[owners]
+"scripts/shellcheck-repo.sh" = "shell-lint-check"
+"scripts/lib/shellcheck-bin.sh" = "shell-lint-check"
+
+[light.components]
+shell-lint-check = "off"
+"skill:shell-standard" = "off"

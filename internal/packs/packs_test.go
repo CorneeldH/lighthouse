@@ -532,3 +532,31 @@ func TestParseRequiresRefusesUnknownForge(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+// A levels.toml is package metadata like guards.toml: read into Pack.Levels, never a unit.
+// Red when Load treats levels.toml as an unknown file or installs it as a unit.
+func TestLoadIgnoresLevelsToml(t *testing.T) {
+	fsys := basePack()
+	fsys["levels.toml"] = file("on = [\"g\"]\n[light.components]\ng = \"off\"\n")
+	p, err := Load(fsys, "core", "dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, u := range p.Units {
+		if strings.Contains(u.Path, "levels.toml") {
+			t.Errorf("levels.toml became a unit: %+v", u)
+		}
+	}
+	if p.Levels.Levels["light"].Components["g"] != "off" || len(p.Levels.On) != 1 {
+		t.Errorf("Levels = %+v", p.Levels)
+	}
+}
+
+// Red when Load lets a broken levels.toml pass without naming the file.
+func TestLoadRejectsBrokenLevelsToml(t *testing.T) {
+	fsys := basePack()
+	fsys["levels.toml"] = file("[light.components]\ng = \"maybe\"\n")
+	if _, err := Load(fsys, "core", "dev"); err == nil || !strings.Contains(err.Error(), "levels.toml") {
+		t.Errorf("err = %v, want an error naming levels.toml", err)
+	}
+}
