@@ -469,7 +469,9 @@
               "about": "The folder with one file per area; closing a milestone updates its near goal.",
               "example": "docs/areas",
               "readers": [
-                "pack/core/skills/close-issue"
+                "internal/repoconfig/repoconfig.go",
+                "pack/core/skills/close-issue",
+                "pack/core/skills/write-issue"
               ]
             },
             {
@@ -491,6 +493,7 @@
                 "internal/initcmd/initcmd.go",
                 "internal/projectconfig/projectconfig.go",
                 "internal/labels/labels.go",
+                "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/write-issue",
                 "pack/core/skills/write-pr"
               ]
@@ -558,6 +561,7 @@
               "about": "The file with the project's tenets, read when writing an issue.",
               "example": "docs/tenets.md",
               "readers": [
+                "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/write-issue"
               ]
             }
@@ -638,6 +642,8 @@
               "about": "The label for an issue that waits for a decision.",
               "readers": [
                 "internal/repoconfig/repoconfig.go",
+                "internal/scheduled/mapplanned/corpus.go",
+                "internal/scheduled/mapplanned/mapplanned.go",
                 "pack/core/skills/route-issue",
                 "pack/core/skills/write-issue"
               ]

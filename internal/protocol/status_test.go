@@ -34,6 +34,28 @@ func TestClassify(t *testing.T) {
 	}
 }
 
+// Red when IsAnswer stops recognising the map-planned machine line on a later line, or
+// starts rejecting a human answer that only mentions it mid-line.
+func TestIsAnswerSkipsMapPlannedComments(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want bool
+	}{
+		{"job question", "🗺 Kaart · map-planned\n<!-- lighthouse:map-planned kind=question topic=place off=c -->\n\nWaar?", false},
+		{"job decision indented", "🗺 Map · map-planned\n  <!-- lighthouse:map-planned kind=decision topic=place -->\nNo item.", false},
+		{"human mentions the marker mid-line", "b, zie <!-- lighthouse:map-planned --> hierboven", true},
+		{"human answer", "b, onder intake", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsAnswer(tt.body); got != tt.want {
+				t.Errorf("IsAnswer(%q) = %v, want %v", tt.body, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestClassifyCarriesLastHeader(t *testing.T) {
 	got := Classify([]Comment{{Body: "🤖 Gestart"}, {Body: "🤖 Teruggegeven\nreden: x", URL: "u"}, {Body: "🤖 Herbaseerd"}})
 	if got.State != StateReturned || got.Comment.URL != "u" || got.Header.Fields["reason"] != "x" {

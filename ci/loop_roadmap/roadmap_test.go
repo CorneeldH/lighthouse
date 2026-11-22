@@ -44,20 +44,17 @@ func TestProblems(t *testing.T) {
 			[]string{"a->b: planned without an issue"}},
 		{"closed or unlabelled issue", Chain{Chips: []chip{chipOf("b", "idea", ip(7))}}, map[int]string{},
 			[]string{"b: #7 is not an open issue labelled loop " + hint}},
-		{"milestoned issue missing from the map", Chain{Chips: []chip{chipOf("b", "planned", ip(7))}}, map[int]string{7: "M2", 9: "M2 later"},
-			[]string{"#9: open issue labelled loop on milestone M2 later is not on the map " + hint}},
+		{"milestoned issue missing from the map is left to the job", Chain{Chips: []chip{chipOf("b", "planned", ip(7))}}, map[int]string{7: "M2", 9: "M2 later"}, nil},
 		{"issue without milestone missing from the map", Chain{Chips: []chip{chipOf("a", "works", nil)}}, map[int]string{9: ""}, nil},
 		{"milestoned issue planned on the map", Chain{Handoffs: []handoff{{From: "a", To: "b", Status: "planned", Issue: ip(9)}}}, map[int]string{9: "M2"}, nil},
 		{"issue only, no milestone: clean", Chain{Chips: []chip{chipOf("x", "planned", ip(7))}}, map[int]string{7: ""}, nil},
 		{"milestone only, no issue: flagged", Chain{Chips: []chip{chipOf("x", "planned", nil)}}, map[int]string{7: "M9"},
-			[]string{"x: planned without an issue", "#7: open issue labelled loop on milestone M9 is not on the map " + hint}},
-		{"missing issues come out sorted, after the planned ones",
+			[]string{"x: planned without an issue"}},
+		{"planned problems only, milestoned issues off the map are not flagged",
 			Chain{Chips: []chip{chipOf("x", "planned", nil), chipOf("y", "planned", ip(5))}}, map[int]string{20: "M", 10: "M"},
 			[]string{
 				"x: planned without an issue",
 				"y: #5 is not an open issue labelled loop " + hint,
-				"#10: open issue labelled loop on milestone M is not on the map " + hint,
-				"#20: open issue labelled loop on milestone M is not on the map " + hint,
 			}},
 	}
 	for _, tt := range tests {

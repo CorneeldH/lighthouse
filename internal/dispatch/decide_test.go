@@ -394,6 +394,43 @@ func TestDecidePushAnswer(t *testing.T) {
 	}
 }
 
+// Red when protocol.IsAnswer (used by Classify and answerTo) takes a map-planned job comment
+// after an open 🤖 Vraag for the human's answer: the question would read as answered and the
+// session would resume on the job's text.
+func TestAJobCommentDoesNotAnswerAProtocolQuestion(t *testing.T) {
+	const jobComment = "🗺 Kaart · map-planned\n" +
+		"<!-- lighthouse:map-planned kind=question topic=place off=c -->\n\n" +
+		"Waar hoort #7 op de kaart?\n\n- **a)** onder intake\n- **b)** nieuw onderdeel op de kaart\n- **c)** niet op de kaart"
+	tests := []struct {
+		name       string
+		jobComment string
+		wantState  protocol.State
+		wantResume bool
+	}{
+		{"job comment", jobComment, protocol.StateQuestion, false},
+		// The same position with a human answer resumes: the setup can produce a resume.
+		{"human answer", "Links.", protocol.StateOther, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			in := decideFixtures(t)["answer-resume"].Input
+			// Keep Gestart (62) and the Vraag (63); the only comment after the Vraag is ours.
+			item7(&in).Comments = append(item7(&in).Comments[:2],
+				Comment{ID: 64, Author: "lh-bot", CreatedAt: "2026-10-31T11:10:00Z", Body: tt.jobComment})
+			if st := protocol.Classify(item7(&in).ProtocolComments()).State; st != tt.wantState {
+				t.Errorf("Classify state = %v, want %v", st, tt.wantState)
+			}
+			resumed := false
+			for _, a := range Decide(in) {
+				resumed = resumed || a.Kind == KindResume
+			}
+			if resumed != tt.wantResume {
+				t.Errorf("resume planned = %v, want %v", resumed, tt.wantResume)
+			}
+		})
+	}
+}
+
 func TestDecidePushAnswerFields(t *testing.T) {
 	got := Decide(pushQuestion(t, "push"))
 	if len(got) != 1 {

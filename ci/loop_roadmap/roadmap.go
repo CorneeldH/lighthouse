@@ -99,8 +99,9 @@ func Planned(chain Chain) []Item {
 	return planned
 }
 
-// Problems lists planned items without an open `loop` issue, and milestoned open `loop` issues
-// not on the map. `open` maps an issue number to its milestone title ("": none).
+// Problems lists planned items without an open `loop` issue. `open` maps an issue number to its
+// milestone title ("": none). An open issue missing from the map is not flagged: the job
+// `map-planned` carries that direction.
 func Problems(chain Chain, open map[int]string) []string {
 	items := Planned(chain)
 	var found []string
@@ -114,22 +115,6 @@ func Problems(chain Chain, open map[int]string) []string {
 			if _, ok := open[*it.Issue]; !ok {
 				found = append(found, fmt.Sprintf("%s: #%d is not an open issue labelled %s %s", it.Name, *it.Issue, label, hint))
 			}
-		}
-	}
-	onMap := map[int]bool{}
-	for _, it := range items {
-		if it.Issue != nil {
-			onMap[*it.Issue] = true
-		}
-	}
-	numbers := make([]int, 0, len(open))
-	for nr := range open {
-		numbers = append(numbers, nr)
-	}
-	slices.Sort(numbers)
-	for _, nr := range numbers {
-		if title := open[nr]; title != "" && !onMap[nr] {
-			found = append(found, fmt.Sprintf("#%d: open issue labelled %s on milestone %s is not on the map %s", nr, label, title, hint))
 		}
 	}
 	return found

@@ -72,9 +72,11 @@ func TestRunMainMode(t *testing.T) {
 		wantErr  string
 	}{
 		{"ok", planned7, &fakeGH{open: map[int]string{7: ""}}, 0,
-			"loop roadmap: 1 open loop issues, planned items all open, milestoned issues all on the map\n", ""},
-		{"verdict", works, &fakeGH{open: map[int]string{9: "M2"}}, 1,
-			"#9: open issue labelled loop on milestone M2 is not on the map (see docs/developer/labels.md)\n", ""},
+			"loop roadmap: 1 open loop issues, planned items all open\n", ""},
+		{"verdict", planned7, &fakeGH{open: map[int]string{}}, 1,
+			"b: #7 is not an open issue labelled loop (see docs/developer/labels.md)\n", ""},
+		{"milestoned issue missing from the map is left to the job", works, &fakeGH{open: map[int]string{9: "M2"}}, 0,
+			"loop roadmap: 1 open loop issues, planned items all open\n", ""},
 		{"broken map", `{not json`, &fakeGH{}, 2, "", "COULD NOT CHECK:"},
 		{"chip without id", `{"chips":[{"status":"works"}],"handoffs":[]}`, &fakeGH{}, 2, "", "COULD NOT CHECK:"},
 		{"no handoffs key", `{"chips":[]}`, &fakeGH{}, 2, "", "COULD NOT CHECK:"},

@@ -264,7 +264,7 @@ func tick(ctx context.Context, env tickEnv, dbPath string, errOut io.Writer) err
 			gathered = append(gathered, gatheredRepo{repo: repo, in: *in, fp: fp})
 		}
 	}
-	planFailed := planSchedules(ctx, env, st.DB, gathered, errOut)
+	planFailed := planSchedules(ctx, env, st.DB, cfg, ticked, gathered, errOut)
 	failed, err := decideAndApply(ctx, env, st.DB, cfg, facts, ticked, gathered, errOut)
 	if err != nil {
 		return err
@@ -540,7 +540,7 @@ func applyActions(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.D
 		Forge:        func(slug string) forge.Forge { return forges[slug] },
 		Workplace:    func(slug, node, profile string) workplace.Workplace { return places(repos[slug], node, profile) },
 		MCPConfig:    func(profile string) string { return cfg.Profiles[profile].MCPConfig },
-		ScheduledJob: scheduledJob(env, db, repos),
+		ScheduledJob: scheduledJob(env, db, cfg, forges, repos),
 		Remote:       scheduledRemote(env, dir, repos),
 		RoundLimit:   func(slug string) string { return repos[slug].Controller.AtRoundLimit },
 		Labels:       func(slug string) repoconfig.Labels { return repos[slug].Labels },

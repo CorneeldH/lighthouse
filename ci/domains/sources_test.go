@@ -110,6 +110,13 @@ func withoutExemptions(rel, text string) string {
 		// docs/developer/reflect is the output_dir of the reflect job, a path in the target repo
 		// of the job (a temp repo in tests), never this repo's docs.
 		return strings.ReplaceAll(text, "docs/", "")
+	case rel == "internal/repoconfig/repoconfig_test.go":
+		// docs/... are the Document paths of a labels document inside a test string, never read from this repo.
+		return strings.ReplaceAll(text, "docs/", "")
+	case strings.HasPrefix(rel, "internal/scheduled/mapplanned/"):
+		// docs/... are map documents and changelog.d is the fragment directory of the target repo of
+		// the job (a temp repo in tests), never this repo's.
+		return strings.ReplaceAll(strings.ReplaceAll(text, "docs/", ""), "changelog.d", "")
 	}
 	return text
 }

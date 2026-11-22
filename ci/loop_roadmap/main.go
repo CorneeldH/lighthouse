@@ -3,10 +3,10 @@
 // The label marks an issue that adds or changes a step, a handoff or a route of the loop (see
 // docs/developer/labels.md); explaining the controller is not one. Two modes:
 //
-// `go run ./ci/loop_roadmap` (main mode) checks both directions. Every planned step or handoff in
-// docs/site/data/loop.json names an open issue with the label. And every open issue with the label
-// that sits on a milestone is named by a planned item of the map. An open issue without a milestone
-// may be missing from the map: the PR that delivers it adds it.
+// `go run ./ci/loop_roadmap` (main mode) checks one direction: every planned step or handoff in
+// docs/site/data/loop.json names an open issue with the label. The other direction, an open issue
+// with the label that belongs on the map as a planned item, is carried by the scheduled job
+// `map-planned` (it adds the item, or asks a question); this command no longer flags it.
 //
 // `go run ./ci/loop_roadmap --pr <n>` (PR mode) checks that a PR closing a `loop` issue also
 // updates the map: no closed issue is still planned on it, and the map file is touched. A PR that
@@ -104,7 +104,7 @@ func check(prMode bool, pr int, repo, root string, gh ghClient) (found []string,
 		if err != nil {
 			return nil, "", err
 		}
-		return Problems(chain, issues), fmt.Sprintf("loop roadmap: %d open %s issues, planned items all open, milestoned issues all on the map", len(issues), label), nil
+		return Problems(chain, issues), fmt.Sprintf("loop roadmap: %d open %s issues, planned items all open", len(issues), label), nil
 	}
 	closed, err := gh.ClosedLoopIssues(repo, pr)
 	if err != nil {

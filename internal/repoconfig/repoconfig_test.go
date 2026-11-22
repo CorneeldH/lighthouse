@@ -642,3 +642,25 @@ func TestLabelsNeedsName(t *testing.T) {
 		t.Errorf("NeedsName with empty names = %q, want empty", got)
 	}
 }
+
+// Fails when Load stops filling Repo.Paths from [paths], or when other [paths] keys
+// (history, mirror_exceptions) make Load fail.
+func TestLoadReadsPaths(t *testing.T) {
+	body := "[forge]\nrepo = \"o/r\"\n[paths]\nlabels = \"docs/developer/labels.md\"\n" +
+		"tenets = \"docs/t.md\"\nareas = \"docs/areas\"\nhistory = \"h.md\"\nmirror_exceptions = [\"x\"]\n"
+	r, err := Load(write(t, body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := Paths{Labels: "docs/developer/labels.md", Tenets: "docs/t.md", Areas: "docs/areas"}
+	if r.Paths != want {
+		t.Errorf("Paths = %+v, want %+v", r.Paths, want)
+	}
+	d, err := Load(write(t, "[forge]\nrepo = \"o/r\"\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Paths != (Paths{}) {
+		t.Errorf("Paths without [paths] = %+v, want zero", d.Paths)
+	}
+}

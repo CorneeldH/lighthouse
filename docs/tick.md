@@ -439,7 +439,7 @@ beëindigt ook wat een klare claude achterliet, zoals een dev-server (zie [workp
 Naast issue-runs start de tick runs op een vast schema, zonder issue: een *geplande run* (#121). Het
 ontwerp staat in [de spec](developer/planning/specs/2026-11-16-issue-121-geplande-runs-design.md).
 Het run-model, de planner en de afloop zijn er; van de jobs is `map-refresh` er (zie
-[Job `map-refresh`](#job-map-refresh)), `reflect` ook (zie [Job `reflect`](#job-reflect)). Een `[[schedule]]`-blok
+[Job `map-refresh`](#job-map-refresh)), `reflect` ook (zie [Job `reflect`](#job-reflect)), `map-planned` ook (zie [Job `map-planned`](#job-map-planned)). Een `[[schedule]]`-blok
 met een job zonder registratie geeft bij elke gather van de repo
 `lighthouse: <repo> scheduled:<naam>:<slot>: no job <job>`. Dat is een regel, geen fout: de tick
 eindigt met exitcode 0, bewaart zijn tick-state en start niets.
@@ -612,6 +612,45 @@ insluiting, zodat het nooit op de branch komt.
 insluiting niet; `Check` eist daarom dat precies één document nieuw of gewijzigd is, als gewoon bestand
 met minstens `min_lines` regels. `Finish` schrijft `output_dir/index.md` met de lijst van rondes. Schrijft de
 agent niets, dan eindigt de run als `done` zonder PR en ziet de volgende poort dezelfde sessies opnieuw.
+
+## Job `map-planned`
+
+De job zet open issues met het label van een geplande kaart (een rij met `Document` en `Planned` in het
+labelsdocument, `[paths] labels`) als geplande items op dat kaartdocument; skill `/lighthouse-map-planned`.
+Hij heeft geen `params`: een sleutel in `[schedule.params]` is een configfout. Een
+oudere `lighthouse`-binary kent de job niet en weigert een `lighthouse.toml` met `job = "map-planned"`
+(de repo wordt overgeslagen); bouw de host opnieuw na de merge, vóór de schedule meedraait.
+
+**De poort.** Na een fetch leest de poort de rijen van het labelsdocument op `origin/<standaardbranch>`.
+Zonder `paths.labels`, zonder bestand of zonder rij met `Document` en `Planned` geeft hij `skip`
+(`no planned documents`). Een issue is aan de beurt als het open is, het label van de rij draagt (bij
+`Planned = milestone` ook een milestone heeft), niet in het kaartdocument staat (alleen een veld met
+sleutel `issue` telt, geen getal elders) en geen open of afgehandelde vraag van de job heeft. Is er
+niets aan de beurt, dan `skip` (`every planned issue is on its map`); anders is de score het aantal issues.
+
+**Het corpus.** `.lighthouse/run/map-planned-corpus.json` (JSON): taal, paden van taxonomie, tenets en
+gebieden, de documenten (label, pad, `Planned`) en per issue nummer, titel, body, labels, milestone, rij
+en, na een vertrouwd antwoord op een eerdere vraag, dat antwoord. De agent leest dit bestand, niet de
+forge; nergens daarna wordt het als gezag gelezen. De agent schrijft alleen de kaartdocumenten en
+`.lighthouse/run/map-planned-result.json` met `questions` en `decisions` (waarde `no-item`: het issue
+krijgt geen item). Toolset: `Read Write Edit Glob Grep`; `max_runtime` is `30m`.
+
+**Comments.** `Cleanup` valideert het resultbestand als geheel tegen het labelsdocument op de basis van de
+run en de forge en plaatst de vragen en beslissingen als comment met de kop `🗺 Kaart · map-planned`
+(`nl`; anders `🗺 Map · map-planned`) en de machineregel
+`<!-- lighthouse:map-planned kind=<question|decision> topic=<place|wish> off=<letter> -->`. Een vraag over
+een wens zet ook het label `needs_decision`. Een issue met al een open of afgehandelde vraag krijgt geen
+tweede comment, dus een herhaalde `Cleanup` post niets dubbel. Een antwoord telt alleen van een login met
+een rol uit `answer_permissions`; een andere heropent niets en sluit niets af. Daarna worden corpus en
+resultbestand verwijderd, zodat ze nooit op de branch komen.
+
+**Insluiting en afronden.** `Allowed` is een grof, stateloos filter op de vorm van het pad: nooit onder
+`.git/`, `.lighthouse/`, `.claude/` of `.agents/`, verder een JSON- of YAML-bestand of het fragment van
+`Finish`. `Check` beslist, met als gezag het labelsdocument op de merge-base en de forge (nooit het
+corpus): elk gewijzigd pad, ook een nieuw bestand, is een kaartdocument van een rij of dat fragment; elk
+gewijzigd document is te lezen als gewoon bestand, en elk issuenummer dat erbij kwam draagt het label van
+een rij van dat document. `Finish` schrijft, waar de repo `changelog.d/` heeft, het fragment
+`changelog.d/scheduled-map-planned-<run>.md` met `type: internal` en een vaste zin.
 
 ## Exitcodes
 

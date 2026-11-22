@@ -264,6 +264,8 @@ column, not merely because the issue touches something the document describes. T
 before step 4; the label goes into the `--label` of step 4. No taxonomy file, or no such row: skip
 this step.
 
+**Planned on the map.** When the label's row also has a `Planned` value (`always`, or `milestone` and the issue gets the milestone from 3d), ask two things in the conversation before step 4. *Where does it belong?* The document and the explanation under the table give the candidates; a new part of the map, and `no item` when the explanation says a change to an existing part gives none, are always candidates. *Do we want it?* Always ask; when `lighthouse config paths.tenets` or `paths.areas` gives a file or folder, first test the issue against the tenets and the leading policy and the deliberate no's of its area, and say what came out. Write the place as one line under `### heading:map_placement` in the body. An answer of no to the second question: no issue, or no free label. Doubt, or "decide later": `labels.needs_decision` with the reason in the body. Headless (no conversation): write the place only when it is unambiguous, ask nothing, and leave the rest to the scheduled job. This step never writes the document.
+
 ### 4. Create the issue
 
 One `--label` for each axis the project has (3a, 3b) plus every free label from 3f. Write the

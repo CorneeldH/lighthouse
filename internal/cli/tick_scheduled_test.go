@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/dispatch"
+	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/forge/forgetest"
 	"github.com/CorneeldH/lighthouse/internal/hostconfig"
 	"github.com/CorneeldH/lighthouse/internal/park"
@@ -583,11 +585,60 @@ func TestScheduledJobGivesReflectItsHistoryAndHome(t *testing.T) {
 		TriggerKey: scheduled.TriggerKey("reflect", "20261118T0100"), SessionID: "sess-1"}); err != nil {
 		t.Fatal(err)
 	}
-	job, jenv, err := scheduledJob(s.env, openStore(t, s.db), map[string]repoconfig.Repo{"o/r": repo})("o/r", "reflect")
+	job, jenv, err := scheduledJob(s.env, openStore(t, s.db), hostconfig.Dispatch{}, nil, map[string]repoconfig.Repo{"o/r": repo})("o/r", "reflect")
 	if err != nil || job.Name() != "reflect" {
 		t.Fatalf("scheduledJob = %v, %v", job, err)
 	}
 	if jenv.Home != "/home/x" || len(jenv.History) != 1 || jenv.History[0].SessionID != "sess-1" {
 		t.Errorf("env = home %q, history %+v; want the home and the run history", jenv.Home, jenv.History)
+	}
+}
+
+// gateSpy is a job that records the Env of its Gate.
+type gateSpy struct {
+	*scheduledtest.Job
+	seen scheduled.Env
+}
+
+func (g *gateSpy) Gate(ctx context.Context, env scheduled.Env) (scheduled.Verdict, error) {
+	g.seen = env
+	return g.Job.Gate(ctx, env)
+}
+
+// stubForge is a forge.Forge that only has an identity.
+type stubForge struct{ forge.Forge }
+
+// Classification: wiring. Fails if planRepo stops putting the forge of the repo and a Trusted
+// function in the Env its job's Gate sees.
+func TestPlanRepoGivesTheJobForgeAndTrust(t *testing.T) {
+	f := &stubForge{}
+	spy := &gateSpy{Job: &scheduledtest.Job{Verdict: scheduled.Verdict{Skip: "no"}}}
+	env := tickEnv{Now: func() time.Time { return t0 }, Run: tickGit, Getenv: func(string) string { return "" },
+		Jobs: func(string) (scheduled.Job, bool) { return spy, true }}
+	db := openStore(t, filepath.Join(t.TempDir(), "s.db"))
+	repo := repoconfig.Repo{Slug: "o/r", Schedules: []repoconfig.Schedule{{Name: "x", Job: "test", Cron: "0 4 * * *"}}}
+	var errOut bytes.Buffer
+	planRepo(context.Background(), env, db, hostconfig.Dispatch{}, f, repo, nil, &errOut)
+	if spy.Calls() == nil {
+		t.Fatalf("the gate did not run: %s", errOut.String())
+	}
+	if spy.seen.Forge != forge.Forge(f) || spy.seen.Trusted == nil {
+		t.Errorf("env forge %v, trusted nil %v; want the repo forge and a Trusted", spy.seen.Forge, spy.seen.Trusted == nil)
+	}
+}
+
+// Classification: wiring. Fails if scheduledJob stops putting the forge of the repo and a Trusted
+// function in the Env a job gets in Stage.
+func TestScheduledJobGivesForgeAndTrust(t *testing.T) {
+	f := &stubForge{}
+	s := newScheduledTick(t, "")
+	repo := repoconfig.Repo{Slug: "o/r", Schedules: []repoconfig.Schedule{{Name: "codebase-map", Job: "map-refresh"}}}
+	_, jenv, err := scheduledJob(s.env, openStore(t, s.db), hostconfig.Dispatch{},
+		map[string]forge.Forge{"o/r": f}, map[string]repoconfig.Repo{"o/r": repo})("o/r", "codebase-map")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if jenv.Forge != forge.Forge(f) || jenv.Trusted == nil {
+		t.Errorf("env forge %v, trusted nil %v; want the repo forge and a Trusted", jenv.Forge, jenv.Trusted == nil)
 	}
 }
