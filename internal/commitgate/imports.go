@@ -183,7 +183,11 @@ func (g *Gate) importsVerdict(root, stdout, stderr string, code int, err error) 
 	if g.Mode == "post" {
 		b.WriteString(HookName + ": imports not declared in a manifest, on the commit you just made. Declare them in a new commit.\n\n")
 	} else {
-		b.WriteString(HookName + ": imports not declared in a manifest. Declare them before committing.\n\n")
+		before := "committing"
+		if g.Mode == "pr" {
+			before = "creating the PR"
+		}
+		b.WriteString(HookName + ": imports not declared in a manifest. Declare them before " + before + ".\n\n")
 	}
 	b.WriteString("Root: " + root + "\n")
 	for _, f := range findings {

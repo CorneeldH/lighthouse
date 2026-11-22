@@ -80,7 +80,11 @@ func (g *Gate) Block(reason string) Result {
 		b.WriteString("'Could not test' is not a green light.\n")
 		g.postUntested(&b)
 	} else {
-		b.WriteString("This command does contain a 'git commit'. 'Could not test' is not a\n")
+		what := "a 'git commit'"
+		if g.Mode == "pr" {
+			what = "a PR create"
+		}
+		b.WriteString("This command does contain " + what + ". 'Could not test' is not a\n")
 		b.WriteString("green light, so this does not pass silently.\n")
 	}
 	return couldNotCheck(&b)
@@ -132,4 +136,12 @@ func (g *Gate) postUntested(b *strings.Builder) {
 			r.Base + " " + r.Head + ` > "$f" && LIGHTHOUSE_GATE_BASE=` + r.Base + " LIGHTHOUSE_GATE_HEAD=" + r.Head +
 			` LIGHTHOUSE_GATE_FILES="$f" LIGHTHOUSE_GATE_TMP="$t" bash -c ` + command + "\n")
 	}
+}
+
+// again names what to retry after a pre block: the commit, or the PR create.
+func (g *Gate) again() string {
+	if g.Mode == "pr" {
+		return "PR create"
+	}
+	return "commit"
 }

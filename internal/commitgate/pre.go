@@ -8,6 +8,7 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/gitinvocations"
 	"github.com/CorneeldH/lighthouse/internal/hook"
+	"github.com/CorneeldH/lighthouse/internal/prbody"
 	"github.com/CorneeldH/lighthouse/internal/repoidentity"
 )
 
@@ -36,8 +37,10 @@ func orNoMessage(s string) string {
 }
 
 // Pre is the gate before a Bash call: it blocks --no-verify, tests a commit to the default branch
-// before it lands, and records the HEAD of every other root of this project for Post. cwd is the
-// directory the command runs in.
+// before it lands, and records the HEAD of every other root of this project for Post. The on
+// setting moves this: with "pr" the commit moment does nothing, and a call without a commit that
+// creates a pull or merge request is tested on the branch diff (Pr), with "both" at both moments.
+// cwd is the directory the command runs in.
 func Pre(ctx context.Context, g *Gate, raw []byte, cwd string) Result {
 	command, _, ok := ReadPayload(raw)
 	if !ok {
@@ -51,7 +54,8 @@ func Pre(ctx context.Context, g *Gate, raw []byte, cwd string) Result {
 		// The guard's two-step rule, here on `git` and `commit`: without them in the raw text
 		// there is nothing to test, and one stray apostrophe locks nothing up.
 		if !mayCommit(command) {
-			return Result{}
+			// No commit in the text: a PR create may be in it (Pr decides).
+			return Pr(ctx, g, command, cwd)
 		}
 		return g.Block("the command cannot be parsed (open quote). Split the command.")
 	}
@@ -65,7 +69,7 @@ func Pre(ctx context.Context, g *Gate, raw []byte, cwd string) Result {
 		}
 	}
 	if len(commits) == 0 {
-		return Result{}
+		return Pr(ctx, g, command, cwd)
 	}
 	// no_verify.py walked the command from its own working directory, not from cwd.
 	here, _ := os.Getwd()
@@ -80,6 +84,13 @@ func Pre(ctx context.Context, g *Gate, raw []byte, cwd string) Result {
 	on, blk := g.readOn()
 	if blk != nil {
 		return *blk
+	}
+	// A commit and a PR create in one call: the hook runs before the call, so the PR run would
+	// test the old HEAD.
+	if on != "commit" && mayCreate(command) {
+		if creates, err := prbody.FindPrCreates(command, cwd); err == nil && len(creates) > 0 {
+			return g.Block(splitReason)
+		}
 	}
 	if on == "pr" {
 		return Result{}
