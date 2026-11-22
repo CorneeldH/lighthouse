@@ -365,7 +365,7 @@ func warnSyncFolder(w io.Writer, root string, lookup func(string) (string, bool,
 	if repoSync {
 		_, _ = fmt.Fprintf(w, "warning: %s lies in a %s sync folder; a sync client corrupts a .git directory, so keep the repository outside it. Where the worktrees go is set by `[worktree] root` in lighthouse.toml\n", repo, repoProvider)
 	}
-	if p, ok := worktreeroot.InSyncFolder(wt); ok && !(repoSync && worktreeroot.Contains(repo, wt)) {
+	if p, ok := worktreeroot.InSyncFolder(wt); ok && (!repoSync || !worktreeroot.Contains(repo, wt)) {
 		_, _ = fmt.Fprintf(w, "warning: the worktree root %s lies in a %s sync folder; a sync client corrupts worktrees. Set `[worktree] root` in lighthouse.toml to a folder outside it\n", wt, p)
 	}
 }
