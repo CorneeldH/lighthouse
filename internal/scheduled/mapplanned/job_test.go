@@ -787,6 +787,47 @@ func TestCheckRefusesAnItemForAnIssueWithoutTheRowLabel(t *testing.T) {
 	})
 }
 
+func TestCheckRefusesAnItemTheGateWouldNotLetThrough(t *testing.T) {
+	// Fails if Check accepts a new item for a closed issue, or, under a row with Planned
+	// milestone, for an issue without a milestone: the gate lets neither through.
+	milestoneRig := func(t *testing.T) (*rig, scheduled.Env) {
+		t.Helper()
+		r := newRig(t)
+		put(t, r.repo, labelsPath, strings.Replace(loopTable, "| always |", "| milestone |", 1))
+		put(t, r.repo, "docs/site/data/loop.json", "[]")
+		r.commit()
+		dir, _ := r.workplace()
+		env := r.env()
+		env.Dir = dir
+		return r, env
+	}
+	t.Run("closed issue", func(t *testing.T) {
+		r, env := checkRig(t, "[]")
+		r.issue(99, "loop", "")
+		r.srv.Issues[99]["state"] = "closed"
+		put(t, env.Dir, "docs/site/data/loop.json", `[{"issue": 99}]`)
+		if err := bind(t).Check(context.Background(), env, env.Dir); err == nil || !strings.Contains(err.Error(), "#99") {
+			t.Fatalf("Check = %v, want an error naming #99", err)
+		}
+	})
+	t.Run("milestone row, issue without milestone", func(t *testing.T) {
+		r, env := milestoneRig(t)
+		r.issue(99, "loop", "")
+		put(t, env.Dir, "docs/site/data/loop.json", `[{"issue": 99}]`)
+		if err := bind(t).Check(context.Background(), env, env.Dir); err == nil || !strings.Contains(err.Error(), "#99") {
+			t.Fatalf("Check = %v, want an error naming #99", err)
+		}
+	})
+	t.Run("milestone row, issue with milestone", func(t *testing.T) {
+		r, env := milestoneRig(t)
+		r.issue(99, "loop", "v1")
+		put(t, env.Dir, "docs/site/data/loop.json", `[{"issue": 99}]`)
+		if err := bind(t).Check(context.Background(), env, env.Dir); err != nil {
+			t.Fatalf("Check = %v, want nil", err)
+		}
+	})
+}
+
 func TestFinishWritesAnInternalFragment(t *testing.T) {
 	// Fails if Finish writes no fragment where the repo keeps changelog.d/, one of another
 	// type or name, one Check refuses, or one in a repo without changelog.d/.

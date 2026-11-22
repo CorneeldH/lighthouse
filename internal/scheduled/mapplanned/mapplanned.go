@@ -425,8 +425,8 @@ func (*Job) Allowed(path string) bool {
 // pushed commit on resume) and the forge, never the corpus. Every path changed since the base,
 // untracked files included, is a document of a planned row or the fragment of Finish (only
 // where the base has changelog.d/, and only with its fixed content). Every changed document
-// parses, and every issue number it gained since the base is an issue that carries the label of
-// a row of that document.
+// parses, and every issue number it gained since the base is an open issue that carries the
+// label of a row of that document, with a milestone when that row says Planned milestone.
 func (j *Job) Check(ctx context.Context, env scheduled.Env, dir string) error {
 	if !j.bound {
 		return errUnbound
@@ -439,9 +439,9 @@ func (j *Job) Check(ctx context.Context, env scheduled.Env, dir string) error {
 	if err != nil {
 		return err
 	}
-	labelsOf := map[string][]string{} // document -> labels of its rows
+	rowsOf := map[string][]Row{} // document -> its rows
 	for _, r := range rows {
-		labelsOf[r.Document] = append(labelsOf[r.Document], r.Label)
+		rowsOf[r.Document] = append(rowsOf[r.Document], r)
 	}
 	changed, err := changedPaths(ctx, env, dir, base)
 	if err != nil {
@@ -452,11 +452,11 @@ func (j *Job) Check(ctx context.Context, env scheduled.Env, dir string) error {
 		// something: nothing against the base means the base is wrong.
 		return errors.New("nothing changed since the base of the run")
 	}
-	labelsOfIssue := map[int][]string{}
+	issues := map[int]forge.Issue{}
 	var fragments int
 	for _, p := range changed {
-		if labels, ok := labelsOf[p]; ok {
-			if err := checkDocument(ctx, env, dir, base, p, labels, labelsOfIssue); err != nil {
+		if docRows, ok := rowsOf[p]; ok {
+			if err := checkDocument(ctx, env, dir, base, p, docRows, issues); err != nil {
 				return err
 			}
 			continue
@@ -475,10 +475,10 @@ func (j *Job) Check(ctx context.Context, env scheduled.Env, dir string) error {
 	return nil
 }
 
-// checkDocument checks one changed document p of rows with labels: a regular file that parses,
-// whose new issue numbers since base carry one of labels on the forge. labelsOfIssue caches the
-// labels per issue number.
-func checkDocument(ctx context.Context, env scheduled.Env, dir, base, p string, labels []string, labelsOfIssue map[int][]string) error {
+// checkDocument checks one changed document p of rows: a regular file that parses, whose new
+// issue numbers since base are open issues on the forge that one of rows lets through, as the
+// gate does (its label, and a milestone under Planned milestone). issues caches the issues read.
+func checkDocument(ctx context.Context, env scheduled.Env, dir, base, p string, rows []Row, issues map[int]forge.Issue) error {
 	b, err := readRegular(dir, p)
 	if err != nil {
 		return err
@@ -496,20 +496,32 @@ func checkDocument(ctx context.Context, env scheduled.Env, dir, base, p string, 
 		if before[n] {
 			continue
 		}
-		have, ok := labelsOfIssue[n]
+		is, ok := issues[n]
 		if !ok {
 			if env.Forge == nil {
 				return fmt.Errorf("%s: the repo has no forge", Name)
 			}
-			is, err := env.Forge.Issue(ctx, n)
-			if err != nil {
+			var err error
+			if is, err = env.Forge.Issue(ctx, n); err != nil {
 				return fmt.Errorf("%s: #%d: %w", scheduled.ShowPath(p), n, err)
 			}
-			have = is.Labels
-			labelsOfIssue[n] = have
+			issues[n] = is
 		}
-		if !slices.ContainsFunc(labels, func(l string) bool { return slices.Contains(have, l) }) {
-			return fmt.Errorf("%s: #%d does not carry label %s", scheduled.ShowPath(p), n, strings.Join(labels, " or "))
+		if is.State != "open" {
+			return fmt.Errorf("%s: #%d is not open", scheduled.ShowPath(p), n)
+		}
+		if !slices.ContainsFunc(rows, func(r Row) bool {
+			return slices.Contains(is.Labels, r.Label) && (r.Planned != PlannedMilestone || is.Milestone != nil)
+		}) {
+			var want []string
+			for _, r := range rows {
+				w := "label " + r.Label
+				if r.Planned == PlannedMilestone {
+					w += " with a milestone"
+				}
+				want = append(want, w)
+			}
+			return fmt.Errorf("%s: #%d does not carry %s", scheduled.ShowPath(p), n, strings.Join(want, " or "))
 		}
 	}
 	return nil
