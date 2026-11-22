@@ -156,16 +156,12 @@ func TestRunBoundedPassesRCAndOutputThrough(t *testing.T) {
 
 func TestRunBoundedRunsInCwd(t *testing.T) {
 	stubPath(t, boundedStubs())
-	dir := t.TempDir()
+	dir := realTempDir(t)
 
 	run, err := runBounded([]string{"sh", "-c", "pwd -P"}, lim("200%", nil), dir, &bytes.Buffer{})
 
 	noErr(t, err)
-	want, _ := os.Readlink(dir)
-	if want == "" {
-		want = dir
-	}
-	contains(t, run.Output, strings.TrimPrefix(want, "/private"))
+	eq(t, dir+"\n", run.Output)
 }
 
 func TestRunBoundedReportsCeilingKill(t *testing.T) {

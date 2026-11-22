@@ -102,7 +102,7 @@ func gitOut(t *testing.T, repo string, stdin string, args ...string) string {
 // the fake gitleaks first on PATH, and an own gitleaks config.
 func newFixture(t *testing.T, fake bool) *fixture {
 	t.Helper()
-	root := t.TempDir()
+	root := realTempDir(t)
 	f := &fixture{t: t, repo: filepath.Join(root, "repo"), config: filepath.Join(root, "gitleaks.toml"), log: filepath.Join(root, "gitleaks.log")}
 	for _, d := range []string{f.repo, filepath.Join(root, "ckpt.git")} {
 		if err := os.MkdirAll(d, 0o755); err != nil {

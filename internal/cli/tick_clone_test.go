@@ -18,7 +18,12 @@ import (
 func TestSweepReposReportsNonBareClone(t *testing.T) {
 	isolateGit(t)
 	home := t.TempDir()
-	clone := filepath.Join(t.TempDir(), "r.git")
+	// git reports the resolved path; on macOS t.TempDir() lies under the symlink /var.
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	clone := filepath.Join(dir, "r.git")
 	mustGit(t, t.TempDir(), "init", "-q", "--bare", "-b", "main", clone)
 	seed := t.TempDir()
 	mustGit(t, seed, "init", "-q", "-b", "main")

@@ -47,9 +47,18 @@ func fakeGitleaks(t *testing.T, version string, code int) {
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
 
+// realTempDir is t.TempDir() with symlinks resolved: git and the code under test report the
+// resolved path, and on macOS t.TempDir() lies under the symlink /var (/private/var).
+func realTempDir(t *testing.T) string {
+	t.Helper()
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	noErr(t, err)
+	return dir
+}
+
 func initRepo(t *testing.T) string {
 	t.Helper()
-	repo := t.TempDir()
+	repo := realTempDir(t)
 	_, err := git(repo, nil, "init", "-q")
 	noErr(t, err)
 	return repo
