@@ -27,12 +27,21 @@ type project struct {
 
 // itemsURL is the first page of the items with the status, priority and linked-PR fields.
 func (p project) itemsURL() string {
+	return p.base + "/items?per_page=100&fields=" + p.fields()
+}
+
+// itemURL is the one item with numeric ID id, archived or not, with the fields of itemsURL.
+func (p project) itemURL(id int64) string {
+	return fmt.Sprintf("%s/items/%d?fields=%s", p.base, id, p.fields())
+}
+
+// fields is the fields= value of the status, priority and linked-PR fields.
+func (p project) fields() string {
 	fields := strconv.FormatInt(p.status, 10)
 	if p.priority != 0 {
 		fields += "," + strconv.FormatInt(p.priority, 10)
 	}
-	fields += "," + strconv.FormatInt(p.linkedPRs, 10)
-	return p.base + "/items?per_page=100&fields=" + fields
+	return fields + "," + strconv.FormatInt(p.linkedPRs, 10)
 }
 
 // project finds the project of b: the owner path (user, else organisation), the check of its
@@ -208,9 +217,9 @@ type issueKey struct {
 	number int
 }
 
-// listItems reads every page of the items of p, archived ones included as REST gives them. A
-// complete list replaces the table of numeric IDs by node ID and by issue; a failed one leaves
-// the old table.
+// listItems reads every page of the items of p; the REST list holds no archived item. A
+// complete list replaces the table of numeric IDs by node ID and by issue and is merged into the
+// saved item table (saveItemTable); a failed one leaves both tables.
 func (c *GitHub) listItems(ctx context.Context, p project) ([]restItem, error) {
 	var all []restItem
 	for url := p.itemsURL(); url != ""; {
@@ -230,8 +239,9 @@ func (c *GitHub) listItems(ctx context.Context, p project) ([]restItem, error) {
 		}
 	}
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	c.itemIDs, c.issueItems = itemIDs, issueItems
+	c.mu.Unlock()
+	c.saveItemTable(ctx, all)
 	return all, nil
 }
 

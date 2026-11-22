@@ -4,10 +4,12 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/CorneeldH/lighthouse/internal/orderedjson"
 	"github.com/CorneeldH/lighthouse/internal/roborev"
+	"github.com/CorneeldH/lighthouse/internal/usage"
 )
 
 // pushReviewFixture is the fixture with the branch on origin, one unpushed fix commit, a
@@ -35,6 +37,8 @@ func pushReviewFixture(t *testing.T) *fixture {
 
 func codexOK() (int, string) { return 0, `{"decision": "codex", "reason": "ok"}` }
 
+func fallbackOK() (int, string) { return 6, `{"decision":"fallback","reason":"5h 93%"}` }
+
 func gateString(t *testing.T, o *orderedjson.Object, key string) string {
 	t.Helper()
 	v, _ := o.Get(key)
@@ -51,7 +55,7 @@ func TestRoborevPushRecordRoundTrip(t *testing.T) {
 	f := pushReviewFixture(t)
 	head := f.head()
 
-	out, err := roborev.GatePush(f.wt, codexOK)
+	out, err := roborev.GatePush(f.wt, codexOK, noClaudeAlarm)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +84,7 @@ func TestRoborevPushSkipRecordIsRed(t *testing.T) {
 	if err := os.Remove(filepath.Join(f.wt, ".roborev.toml")); err != nil {
 		t.Fatal(err)
 	}
-	out, err := roborev.GatePush(f.wt, codexOK)
+	out, err := roborev.GatePush(f.wt, codexOK, noClaudeAlarm)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,5 +124,49 @@ func TestRoborevBodyLinePushAgreesWithCheck5(t *testing.T) {
 				t.Errorf("body-line %q, check 5 red %v; want both to accept only a listed fix", line, red)
 			}
 		})
+	}
+}
+
+func noClaudeAlarm() (usage.Alarm, bool) { return usage.Alarm{}, false }
+
+// A Claude review, which the gate picks when the Codex budget is full, is recorded as done with
+// its agent and passes check 5: recordCovers ignores the extra key.
+func TestRoborevPushClaudeRecordPassesCheckFive(t *testing.T) {
+	f := pushReviewFixture(t)
+	bin := filepath.Join(f.dir, "bin")
+	write(t, filepath.Join(bin, "claude"), "#!/bin/sh\n")
+	if err := os.Chmod(filepath.Join(bin, "claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	head := f.head()
+
+	out, err := roborev.GatePush(f.wt, fallbackOK, noClaudeAlarm)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v := gateString(t, out, "verdict"); v != "run" {
+		t.Fatalf("verdict %q, want run", v)
+	}
+	if a := gateString(t, out, "agent"); a != "claude-code" {
+		t.Fatalf("agent %q, want claude-code", a)
+	}
+	state, rng, raw := gateString(t, out, "state"), gateString(t, out, "range"), gateString(t, out, "raw")
+	log := "2026/11/22 14:31:33 ci review: ref=a..b agents=[claude-code] types=[default] reasoning=thorough\n"
+	write(t, raw, log+"## roborev: Review Passed (`"+head+"`)\n")
+	if _, err := roborev.Record(f.wt, roborev.RecordOptions{Sha: &head, Decisions: []any{}, Out: state, Raw: raw, Range: &rng}); err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := os.ReadFile(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"agent": "claude-code"`, `"uitkomst": "done"`} {
+		if !strings.Contains(string(data), want) {
+			t.Errorf("record lacks %s:\n%s", want, data)
+		}
+	}
+	if covers, _ := recordCovers(context.Background(), f.wt, state, head); !covers {
+		t.Error("check 5 does not accept the Claude record")
 	}
 }

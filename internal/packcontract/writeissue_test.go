@@ -359,3 +359,37 @@ func TestWriteIssueSkillSetsNeedsShapingAtGate4c(t *testing.T) {
 		})
 	}
 }
+
+// Classification: fails when the stacking order of a blocked_by relation again lets the blocked
+// issue make a plan before its predecessor's PR is merged.
+func TestWriteIssueStackingOrderSpecYesPlanNo(t *testing.T) {
+	for variant, body := range variants(t, writeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			f := flat(body)
+			wantAll(t, f, "spec yes, plan and execution wait for a merged PR of the predecessor")
+			wantNone(t, f, "lets the blocked issue do spec and plan")
+		})
+	}
+}
+
+// Classification: fails when the pitch of a milestone or step 3f stops reading `paths.areas` and
+// `paths.strategy`, stops naming the ID that carries the judgement, loses the difference between
+// an unset key (skip silently) and a set path that does not exist (say so), or the pitch loses
+// the diagnosis, the deliberate no's or the rule that doubt becomes a question.
+func TestWriteIssueReadsDirection(t *testing.T) {
+	for variant, body := range variants(t, writeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			f3 := flat(section(t, body, "#### 3f.", "### 4."))
+			wantAll(t, f3, "`lighthouse config paths.strategy`", "`paths.tenets`", "`paths.areas`",
+				"name the ID", "`strategy/S<n>`", "`<area>/N<n>`", "`tenet <letter>`")
+			pitch := flat(section(t, body, "- **Description**: the pitch", "- **Hard rule**"))
+			wantAll(t, pitch, "`paths.areas`", "`paths.strategy`", "diagnosis", "deliberate no",
+				"doubt becomes a question in the conversation", "`strategy/S<n>`")
+			for name, text := range map[string]string{"3f": f3, "pitch": pitch} {
+				if !strings.Contains(text, "does not exist") || !strings.Contains(text, "skips silently") {
+					t.Errorf("%s: missing the unset (skips silently) versus nonexistent (does not exist) rule", name)
+				}
+			}
+		})
+	}
+}

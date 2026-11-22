@@ -55,8 +55,9 @@ type Merger interface {
 
 // Run is one push: it reads the push row req.RunID and the comment that started it, runs the
 // floor, the policy and the lint, the review for a pre-merge change, then reads the workflow
-// token and pushes exactly the SHA the floor read. Every red step posts a 🤖 Question and closes
-// the row as question; a push posts the outcome of its route. All of it runs before the work
+// token and pushes exactly the SHA the floor read. A red step with a SHA an answer push can act on
+// posts a 🤖 Question and closes the row as question; one without posts a 🤖 Returned and closes it
+// as returned (ask). A push posts the outcome of its route. All of it runs before the work
 // deadline of the row (workDeadline), and nothing is pushed once tick handed the row back. Run
 // returns an error only when it cannot read its row, its deadline has passed, or it cannot post
 // or close: then tick's timeout hands the issue back.
@@ -96,7 +97,7 @@ func Run(ctx context.Context, deps Deps, req Request) error {
 	return p.pushUnderLock(ctx, route)
 }
 
-// noSHA is the sha field of a Question from before the floor read one: decide gives no permit for it.
+// noSHA is the SHA of a red step from before the floor read one: ask posts a Returned for it, no Question.
 const noSHA = "none"
 
 // push is one Run in progress: the request with the branch of its trigger, and what it read.
@@ -199,7 +200,7 @@ func (p *push) handedBack(ctx context.Context) bool {
 // The sha of a Question is the SHA an answer push permits, and a permit skips the review. So a
 // Question carries the SHA the floor read only once that SHA needs no review from this run: it
 // is post-merge, permitted, approved, or the Question itself shows the reviewers' verdict. Before
-// that it carries the permit it ran under, or none.
+// that it carries the permit it ran under, or none: then it is a Returned, not a Question.
 func (p *push) pushUnderLock(ctx context.Context, fixPR bool) error {
 	lockWait, _ := Budgets(p.req.Config.Timeout)
 	lctx, cancel := context.WithTimeout(ctx, lockWait)

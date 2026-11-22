@@ -725,8 +725,9 @@ func TestPrepareIssueItemErrors(t *testing.T) {
 }
 
 // On GitHub every issue of a run is on the board, so IssueItem only meets an issue that left
-// it. A deleted or transferred issue (GitHub answers issue null plus NOT_FOUND) and an archived
-// item (BoardItems lists none) both stay out, and the tick goes on, as before IssueItem existed.
+// it. A deleted issue (the issue read answers 404) and an item archived before
+// any list saw it (BoardItems lists none) both stay out, and the tick goes on, as before
+// IssueItem existed.
 func TestPrepareGitHubIssueOffBoard(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -757,8 +758,9 @@ func TestPrepareGitHubIssueOffBoard(t *testing.T) {
 			if _, ok := pre.Statuses[7]; ok {
 				t.Errorf("Statuses = %v, want no issue 7", pre.Statuses)
 			}
-			if n := srv.Count("IssueItems"); n != 1 {
-				t.Errorf("Count(IssueItems) = %d, want 1", n)
+			// The board read left issue 7 out, so IssueItem lists once more, then reads the issue.
+			if n, m, gql := srv.Count("/users/o/projectsV2/1/items"), srv.Count("/repos/o/r/issues/7"), srv.GraphQLCount(); n != 2 || m != 1 || gql != 0 {
+				t.Errorf("item lists = %d, issue reads = %d, GraphQL = %d; want 2, 1 and 0", n, m, gql)
 			}
 		})
 	}

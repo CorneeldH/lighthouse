@@ -118,22 +118,22 @@ func TestPushWorkflowsRefusesMissingConfig(t *testing.T) {
 	}
 	comments := srv.IssueComments(1)
 	if len(comments) != 2 {
-		t.Fatalf("%d comments, want the handoff and the Vraag", len(comments))
+		t.Fatalf("%d comments, want the handoff and the Teruggegeven", len(comments))
 	}
 	body, _ := comments[1]["body"].(string)
 	h, ok := protocol.ParseHeader(body)
-	if !ok || h.Kind != protocol.KindQuestion || h.Session != "" || h.Fields["worktree"] != wt || h.Fields["branch"] != "issue-1-wf" {
-		t.Fatalf("not the pusher's Vraag on %s:\n%s", wt, body)
+	if !ok || h.Kind != protocol.KindReturned || h.Session != "" || h.Fields["worktree"] != wt || h.Fields["branch"] != "issue-1-wf" {
+		t.Fatalf("not the pusher's Teruggegeven on %s:\n%s", wt, body)
 	}
 	if !strings.Contains(body, protocol.Heading("reason_pusher_off", "nl")) {
-		t.Errorf("the Vraag does not say the route is off:\n%s", body)
+		t.Errorf("the Teruggegeven does not say the route is off:\n%s", body)
 	}
 	if _, err := os.Stat(filepath.Join(state, "push")); err == nil {
 		t.Error("the pusher made its clone with the route off")
 	}
 	rows := history(t, db, "o/r")
-	if len(rows) != 1 || rows[0].Open || rows[0].Outcome != runs.Question {
-		t.Errorf("push row %+v, want closed as question", rows)
+	if len(rows) != 1 || rows[0].Open || rows[0].Outcome != runs.Returned {
+		t.Errorf("push row %+v, want closed as returned", rows)
 	}
 }
 

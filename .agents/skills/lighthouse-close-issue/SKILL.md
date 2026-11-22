@@ -238,22 +238,80 @@ next session sees what was already done and why.
 ### B7. Controller mode — check after a merge (only if present)
 
 **When.** The prompt is `/lighthouse-close-issue <nr> (issue #<nr>, controller-run)`: the
-controller started this run after a `Refs` PR for the issue was merged. Step 0, B1–B4 and B2a hold
-unchanged.
+controller started this run after a `Refs` PR for the issue was merged. Step 0, B1–B4 and B2a
+hold; only the place where B2 measures changes (*Measure on the default branch*, below).
 
-**B5 lapses**: there is no user who sees the table. The table from B3 always goes as a comment
-on the issue, through `--body-file` from a `mktemp -d` directory. Heading line:
+**Measure on the default branch.** The workplace of this run can stand on an old HEAD: its
+closecheck branch is never pushed, so it does not follow origin. So first `git fetch origin`,
+then run moves 2 and 3 of B2 and every command of a criterion in a throwaway worktree on
+`origin/<default branch>`, the way B2a and C2 do, never in the cwd. `<scratch>` is the scratch
+directory of B2a; without one, make it once the way B2a does. Outside the sandbox:
+
+```bash
+B=$(lighthouse config forge.default_branch) &&
+git fetch origin "$B" &&
+git worktree add --detach "<scratch>/measure-<nr>" "origin/$B"
+```
+
+Run each `git log`, `ls`, `grep` and criterion command with `<scratch>/measure-<nr>` as its
+working directory (`git -C`, or `cd` in the same call). After B3:
+`git worktree remove --force "<scratch>/measure-<nr>"`.
+
+**B5 lapses**: there is no user who sees the table. First sort each open criterion into its kind
+(*Open criteria: three kinds*, below). Then the table from B3 always goes as a comment on the
+issue, through `--body-file` from a `mktemp -d` directory. Heading line:
 `After-merge check of #<pr>`, without 🤖, because it is no controller heading. Then the table, and
-per AC that is not `demonstrably done` a line *what is missing*.
+per AC that is not `demonstrably done` a line *what is missing*; for a criterion that waits on an
+issue, that line names its predecessor.
 
 | Verdict over all AC | Outcome |
 |---|---|
 | all criteria `demonstrably done` | steps 4–6 of entry A. For the DoD the merge counts as review; a DoD line that is not measurable from here goes into the close comment as such and does not block. Close with `lighthouse forge issue close <nr> --body-file <file>` (the file from the `mktemp -d` directory, with the evidence lines): it posts the close comment first and closes only after it; a failed comment leaves the issue open. Before that close comment, run *Clean up the worktree*; its result per branch goes along as evidence lines in the close comment. |
-| otherwise: `partly`, `not`, or an AC `not measurable from here` | do not close, do not touch the board. After the comment, post one question (*Open criteria*, below) and stop after it, without `/lighthouse-write-handoff` and without any further tool call. |
+| otherwise: `partly`, `not`, or an AC `not measurable from here` | do not close, do not touch the board. After the comment, by the kinds sorted before it (*Open criteria: three kinds*, below): when every open criterion waits on an issue, the handoff back to the after-merge check; in every other case one question. Stop after that, without any further tool call. |
+
+**Open criteria: three kinds.** Each criterion that is not `demonstrably done` is one of:
+
+| Kind | Mark | Next step |
+|---|---|---|
+| waits on an issue | the criterion can only hold once another open issue in this repo closes | set the relation, then the handoff back to the after-merge check |
+| code or docs | what is missing can be built in this repo | the question, recommendation `a` |
+| manual work or an event | a command of the user, a live system, an external run | the question, each command as `--command` |
+
+*Waits on an issue* counts only for a predecessor whose `state` is `open` (compare
+case-insensitively) and has no merged PR, in this repo: the same measure the tick uses for an active blocker. A predecessor that is closed, has a
+merged PR, or lives in another repository does not park the tick, so the handoff would start a new
+after-merge check at once; such a criterion goes to the question. Read the state with
+`lighthouse forge issue view <predecessor> --field state`. Read the merged PR explicitly:
+`merged_pr` from `lighthouse forge issue blockers` is always `false` on GitHub and does not count.
+A predecessor has a merged PR when `lighthouse forge pr list` lists a merged PR with
+`Closes #<predecessor>` in its body or a head_ref `issue-<predecessor>-…`. Outside the sandbox:
+
+```bash
+lighthouse forge pr list --state merged |
+  jq -r '.[] | (.body // "" | gsub("<!--[\\s\\S]*?-->"; "")) as $b | select((.head_ref | startswith("issue-<predecessor>-")) or ($b | test("(^|[^\\w/])Closes[ \\t]+#<predecessor>([^\\w/]|$)"; "i"))) | .number'
+```
+
+Any number in the output: the predecessor has a merged PR.
+
+The outcome follows from all open criteria together:
+
+**Every open criterion waits on an issue in this repo.** Per predecessor
+`lighthouse forge issue block <nr> --by <predecessor>`: the relation comes before the handoff, and
+without `--by` the command fails with exit 2. Then `/lighthouse-write-handoff` with
+`next: /lighthouse-close-issue <nr>`. No question. The handoff names its predecessors under `State:` or
+`Context:`, so two rounds never write the same handoff text; the after-merge comment already named
+the predecessor per criterion. The controller parks the issue while a predecessor is active and starts
+the handoff, a new after-merge check, once it closes or its PR is merged.
+
+**Otherwise** (a mix of kinds, or no criterion that waits on an issue): one question (below). A
+criterion that waits on an issue goes into `--what` with its predecessor.
+
+When a `lighthouse forge issue block` fails, B7 falls back to the question: without the relation
+the tick does not park, and the handoff would start a new after-merge check at once.
 
 **Open criteria: one question.** A run that ends without a Handoff or Question is handed back
-with *no handoff or question*, and the open criteria then wait without a choice in front of the
-user. So post one bundle with one question through `lighthouse ask`, its text in
+with `heading:reason_closecheck_open`, and the open criteria then wait without a choice in front
+of the user. So post one bundle with one question through `lighthouse ask`, its text in
 `[project] language`:
 
 ```bash
@@ -267,9 +325,13 @@ lighthouse ask --issue <nr> --phase close-check \
   --recommended <a|b|c>
 ```
 
-Recommend `a` when the missing work can be built in this repo; `b` when it waits on something
-else (another issue, an external run, a live system); `c` only when every open AC is `not
-measurable from here` and the user measures it in one step. A command the user has to run for
+Recommend `a` when the missing work can be built in this repo; `b` only when it waits outside
+this repo (an issue in another repository, an external run, a live system) or on a predecessor
+with a merged PR; `c` only when every open AC is `not measurable from here` and the user measures
+it in one step. Recommend `b` as well for a criterion that waits on an open predecessor in this
+repo but cannot be handed off: in a mix with manual work or an event, and after a failed
+`lighthouse forge issue block` while every criterion waits. A criterion that can be built in this
+repo keeps `a` first. A command the user has to run for
 an AC (for example `gh workflow run pins.yml`) goes with `--command`.
 
 The answer resumes this session:
@@ -841,6 +903,11 @@ gh release view <version> --repo "$R"
 
 Only with an areas folder: `lighthouse config paths.areas` (rc 1:
 report `areas: skipped — no paths.areas` and stop here).
+
+Derive `<area>` from the part before `:` after `project.milestone_prefix` in the milestone
+title. Report `areas: skipped — <reason>` and stop here, before the worktree, when one of
+these holds: no `:` in the title; no file `<paths.areas>/<area>.md` (`<area>` in lowercase);
+no heading `heading:area_near_goal` in that file.
 
 If you closed a milestone in this repo, update the *near goal* in `<paths.areas>/<area>.md`, with
 `<area>` the part before `:` after `project.milestone_prefix` in the milestone title: the

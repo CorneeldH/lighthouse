@@ -647,12 +647,12 @@ func TestLabelsNeedsName(t *testing.T) {
 // (history, mirror_exceptions) make Load fail.
 func TestLoadReadsPaths(t *testing.T) {
 	body := "[forge]\nrepo = \"o/r\"\n[paths]\nlabels = \"docs/developer/labels.md\"\n" +
-		"tenets = \"docs/t.md\"\nareas = \"docs/areas\"\nhistory = \"h.md\"\nmirror_exceptions = [\"x\"]\n"
+		"tenets = \"docs/t.md\"\nareas = \"docs/areas\"\nstrategy = \"docs/s.md\"\nhistory = \"h.md\"\nmirror_exceptions = [\"x\"]\n"
 	r, err := Load(write(t, body))
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := Paths{Labels: "docs/developer/labels.md", Tenets: "docs/t.md", Areas: "docs/areas"}
+	want := Paths{Labels: "docs/developer/labels.md", Tenets: "docs/t.md", Areas: "docs/areas", Strategy: "docs/s.md"}
 	if r.Paths != want {
 		t.Errorf("Paths = %+v, want %+v", r.Paths, want)
 	}

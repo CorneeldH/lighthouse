@@ -1,9 +1,13 @@
 package packcontract
 
 import (
+	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
+
+	"github.com/CorneeldH/lighthouse/internal/config"
 )
 
 // close-issue: what lives only in skill text. Step 0 waits for the merge, B2a runs the Evidence
@@ -216,11 +220,59 @@ func TestCloseIssueB2aNeverPastesBodyTextIntoACommand(t *testing.T) {
 	}
 }
 
-// Classification: fails when controller mode (B7) stops running B2a.
+// Classification: fails when controller mode (B7) stops running B2a, or stops saying that only
+// the place where B2 measures changes.
 func TestCloseIssueB7IncludesB2a(t *testing.T) {
 	for variant, body := range variants(t, closeIssue) {
 		t.Run(variant, func(t *testing.T) {
-			wantAll(t, flat(closeIssueSection(t, body, "### B7.")), "Step 0, B1–B4 and B2a hold unchanged.")
+			wantAll(t, flat(closeIssueSection(t, body, "### B7.")),
+				"Step 0, B1–B4 and B2a hold; only the place where B2 measures changes (*Measure on the default branch*, below).")
+		})
+	}
+}
+
+// Classification: fails when B7 stops sorting open criteria into the three kinds, stops setting
+// the relation before the handoff back to the after-merge check, asks a question when every open
+// criterion waits on an issue, stops falling back to the question when `issue block` fails,
+// counts a predecessor with a merged PR or in another repository as waiting, or measures B2 in
+// the cwd instead of a throwaway worktree on the fetched default branch.
+func TestCloseIssueB7ClassifiesOpenCriteria(t *testing.T) {
+	for variant, body := range variants(t, closeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			b7 := flat(closeIssueSection(t, body, "### B7."))
+			wantAll(t, b7,
+				"waits on an issue",
+				"code or docs",
+				"manual work or an event",
+				"lighthouse forge issue block <nr> --by <predecessor>",
+				"lighthouse forge pr list",
+				"next: /lighthouse-close-issue <nr>",
+				"falls back to the question",
+				"only for a predecessor whose `state` is `open` (compare case-insensitively) and has no merged PR",
+				"in another repository",
+				"git fetch origin",
+				"git worktree add --detach",
+				"origin/<default branch>")
+			// The otherwise row no longer forbids the handoff; it points at the three kinds.
+			wantNone(t, b7, "without `/lighthouse-write-handoff` and without any further tool call")
+			all := section(t, b7, "**Every open criterion waits on an issue in this repo.**", "**Otherwise**")
+			wantOrder(t, all,
+				"lighthouse forge issue block <nr> --by <predecessor>",
+				"/lighthouse-write-handoff",
+				"next: /lighthouse-close-issue <nr>")
+			wantAll(t, all, "No question.", "under `State:` or `Context:`")
+			wantNone(t, b7, "State of Context", "After the comment, sort")
+			// The kinds are known before the comment, which names the predecessor per criterion.
+			wantOrder(t, b7,
+				"First sort each open criterion into its kind",
+				"always goes as a comment on the issue",
+				"for a criterion that waits on an issue, that line names its predecessor")
+			wantAll(t, b7, "`merged_pr` from `lighthouse forge issue blockers` is always `false` on GitHub and does not count")
+			wantNone(t, b7, "`OPEN`")
+			// Every outcome of the question carries a recommendation, also a waiting criterion
+			// that cannot be handed off.
+			wantAll(t, b7, "Recommend `b` as well for a criterion that waits on an open predecessor in this repo but cannot be handed off: in a mix with manual work or an event, and after a failed `lighthouse forge issue block` while every criterion waits. A criterion that can be built in this repo keeps `a` first.")
+			wantOrder(t, b7, "When a `lighthouse forge issue block` fails, B7 falls back to the question", "Recommend `b` as well for a criterion that waits")
 		})
 	}
 }
@@ -574,5 +626,39 @@ func TestCloseIssueAreaOfAMilestoneAfterThePrefix(t *testing.T) {
 			wantAll(t, flat(closeIssueSection(t, body, "### Step 5. Update the near goal of the area")),
 				"with `<area>` the part before `:` after `project.milestone_prefix` in the milestone title")
 		})
+	}
+}
+
+// Classification: fails when step 5 no longer stops, before the `git worktree add`, at a title
+// without `:`, a missing `<paths.areas>/<area>.md` or a missing near-goal heading, or stops
+// naming the heading as `heading:area_near_goal`.
+func TestCloseIssueStep5SkipsWithoutNearGoal(t *testing.T) {
+	for name, body := range variants(t, closeIssue) {
+		t.Run(name, func(t *testing.T) {
+			step := flat(section(t, body, "### Step 5.", "## When NOT to close"))
+			wantAll(t, step,
+				"heading:area_near_goal",
+				"areas: skipped — ",
+				"lowercase",
+				"no `:` in the title",
+				"no file `<paths.areas>/<area>.md`",
+				"no heading",
+			)
+			wantOrder(t, step, "heading:area_near_goal", "git worktree add")
+		})
+	}
+}
+
+// Classification: fails when headings.toml loses area_near_goal or changes its nl or en value.
+func TestAreaNearGoalHeading(t *testing.T) {
+	t.Setenv("LIGHTHOUSE_HEADINGS", filepath.Join(packRoot, "core", "headings.toml"))
+	got, err := config.Variants("area_near_goal")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"Nabij doel", "Near goal"} {
+		if !slices.Contains(got, want) {
+			t.Errorf("area_near_goal variants = %v, missing %q", got, want)
+		}
 	}
 }

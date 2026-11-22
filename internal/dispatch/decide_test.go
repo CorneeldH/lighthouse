@@ -512,6 +512,37 @@ func TestPushRowTimesOutWithoutMarker(t *testing.T) {
 	}
 }
 
+// pusherReturned is the pusher's 🤖 Teruggegeven for a red step without a SHA, posted at.
+func pusherReturned(at time.Time) Comment {
+	return Comment{ID: 70, Author: "lh-bot", CreatedAt: at.Format(time.RFC3339),
+		Body: "🤖 Teruggegeven\nreason: workflow-pusher rood: policy\nworktree: " + pushWorktree +
+			"\nbranch: issue-7-bouw-de-keten\nstep: policy\n\n**Rode stap:** policy"}
+}
+
+// The pusher's own Returned closes its open push row as returned, before the push timeout, when
+// the pusher died between the post and the close: without a session to stop and without a
+// workplace to discard. The tick after it gives the issue back, labelled by reason_pusher_red.
+func TestPushRowClosesOnThePushersReturned(t *testing.T) {
+	in := pushRow(t, "", 5*time.Minute)
+	item7(&in).Comments = append(item7(&in).Comments, pusherReturned(in.Now.Add(-time.Minute)))
+	got := Decide(in)
+	if s := summary(got); !reflect.DeepEqual(s, []string{"close::"}) {
+		t.Fatalf("summary = %q, want one close", s)
+	}
+	if a := got[0]; a.RunID != 5 || a.Outcome != runs.Returned || a.Stop || a.End || a.Discard || a.SessionID != "" {
+		t.Errorf("action %+v, want run 5 closed as returned without touching a session or workplace", a)
+	}
+
+	for i := range in.Repos[0].History {
+		if r := &in.Repos[0].History[i]; r.ID == 5 {
+			r.Open, r.Outcome = false, runs.Returned
+		}
+	}
+	if s := summary(Decide(in)); !reflect.DeepEqual(s, []string{"finish_return:reason_pusher_red:"}) {
+		t.Errorf("summary after the close = %q, want the give-back of reason_pusher_red", s)
+	}
+}
+
 // Once the pusher pushed, the push row owns the PR of its branch: a green PR merges through the
 // merge pusher (the row's PushedSHA routes it there, with or without a push note), a red one
 // gets a fix-pr start, a merged one closes the row as done. max_runtime, max_wait and the push
@@ -712,12 +743,12 @@ func TestReturnLabelKeyTable(t *testing.T) {
 		"reason_pr_red": "needs_hands", "reason_pr_red_ceiling": "needs_hands", "reason_pr_conflict": "needs_hands",
 		"reason_pr_conflict_ceiling": "needs_hands", "reason_pr_roborev": "needs_hands",
 		"reason_pr_roborev_ceiling": "needs_hands", "reason_merge_failed": "needs_hands",
-		"reason_merge_failed_ceiling": "needs_hands", "reason_no_handoff": "needs_hands",
+		"reason_merge_failed_ceiling": "needs_hands", "reason_no_handoff": "needs_hands", "reason_closecheck_open": "needs_hands",
 		"reason_post_failed": "needs_hands", "reason_post_failed_unreadable": "needs_hands",
 		"reason_start_uncertain": "needs_hands", "reason_permission": "needs_hands", "reason_silent": "needs_hands",
 		"reason_silent_forge": "needs_hands", "reason_timeout": "needs_hands", "reason_pusher_off": "needs_hands",
 		"reason_pusher_node": "needs_hands", "reason_pusher_silent": "needs_hands",
-		"reason_pusher_no_handoff": "needs_hands", "reason_repeat_handoff": "needs_hands",
+		"reason_pusher_no_handoff": "needs_hands", "reason_pusher_red": "needs_hands", "reason_repeat_handoff": "needs_hands",
 	}
 	var headings map[string]map[string]string
 	if _, err := toml.DecodeFile(filepath.Join("..", "..", "pack", "core", "headings.toml"), &headings); err != nil {

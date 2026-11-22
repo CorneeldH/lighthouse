@@ -24,7 +24,7 @@ Het is een korte run, geen daemon. Wie issues vooraf routeert en naar `Controlle
    classic token, of een fine-grained token dat elke repo dekt waarvan issues op het board staan:
    een issue of PR in een andere repo dan die van de run, die het token niet mag lezen (403 of 404, geen
    rate limit), blijft stil leeg. Een fout bij een item van de eigen repo, een rate limit of een
-   GraphQL-fout van `IssueItem` slaat de hele repo over. De
+   fout van `IssueItem` slaat de hele repo over. De
    login van het token zelf heeft push-toegang tot de repo nodig (anders is de collaborator-permissie
    niet te lezen) en een rol in `[dispatch] answer_permissions`: zonder die rol vallen ook de eigen
    🤖-comments van lighthouse weg, zoals Gestart en Hervat.
@@ -98,10 +98,11 @@ Het is een korte run, geen daemon. Wie issues vooraf routeert en naar `Controlle
    `lighthouse: gathered <repo>: <n> items (<reden>)` naar stderr; de reden is `first`, `changed`,
    `stale` of `boundary`. Het board, de PR's van een branch en de blokkades leest tick bij GitHub
    via REST met conditionele requests (`ETag`): een ongewijzigde pagina komt als `304` terug en telt
-   niet mee voor de rate limit, en een uitgeputte GraphQL-limiet stopt een tick dus normaal gesproken
-   niet. Alleen `Planning` (tabblad Prioritering) en het opzoeken van één issue op het board
-   (`IssueItem`, voor een open run waarvan het item gearchiveerd of van het board gehaald is) gebruiken
-   nog GraphQL. Elke lijst leest tick via de `Link`-header tot het einde: een lange lijst voorgangers
+   niet mee voor de rate limit. Ook het opzoeken van één issue op het board
+   (`IssueItem`, voor een open run waarvan het item gearchiveerd of van het board gehaald is) gaat via
+   REST: de tick roept bij GitHub geen GraphQL aan, dus een uitgeputte GraphQL-limiet stopt hem niet.
+   `IssueItem` vindt een gearchiveerd item via een tabel van item-id's in de cache, die elke
+   volledige lijstlezing van het board bijwerkt. Elke lijst leest tick via de `Link`-header tot het einde: een lange lijst voorgangers
    of sluitende PR's wordt niet afgekapt.
    De reads van de gather, bij GitHub, per soort:
    - Het board: de `projectsV2`-pagina's, eenmaal per tick en gedeeld door alle items.
@@ -197,22 +198,30 @@ slash-commando's.
   `workflows: <bestanden>`, en de rij sluit als `handoff`:
   de keten gaat verder met `/lighthouse-write-pr`. Op de fix-pr-route (de PR bestaat) post hij een
   🤖-comment met `branch`, `range` en `workflows`, en de rij blijft open als eigenaar van de PR (zie
-  *Afloop van een push-rij*). Rood is een 🤖 Vraag, en de rij sluit als `question`.
-- **De Vraag.** De kop is `🤖 Vraag · push-workflows`, met de velden `sha` (de SHA waarvoor een antwoord
-  toestemming geeft, `none` zolang geen review die SHA liet zien), `worktree`, `branch`, `after`,
-  `lane` (als de push-handoff er een had) en `step`, en geen sessie-voet. De tekst heeft de rode stap met zijn reden, het oordeel per reviewer,
-  de workflow-diff in een codeblok (een hek langer dan elke reeks backticks in de diff) en
-  `cd <worktree> && git push -u origin HEAD`. Is de diff te lang voor een comment (65535 tekens),
-  dan staat de volledige diff als bijlage in `<state>/push/<owner>/<name>/<sha>-<run>.diff` (mode
-  `0600`), niet in de worktree: die is van de run. Een Vraag adviseert nooit een token-scope te
-  verruimen; weigert GitHub het token, dan zegt de Vraag alleen dat de forge het token voor deze wijziging
-  weigerde.
+  *Afloop van een push-rij*). Rood is een 🤖 Vraag als een antwoord `push` er iets mee kan, en de rij
+  sluit als `question`. Anders is rood een 🤖 Teruggegeven, en de rij sluit als `returned`.
+- **De Vraag.** Alleen voor een rode stap met een SHA: de review (shadow of een `reject`), het token of de
+  push zelf, en elke rode stap van een run met toestemming. De kop is `🤖 Vraag · push-workflows`, met de
+  velden `sha` (de SHA waarvoor een antwoord toestemming geeft), `worktree`, `branch`, `after`, `lane`
+  (als de push-handoff er een had) en `step`, en geen sessie-voet. Daaronder eerst de vraag (wat een
+  antwoord `push` doet) en de sluitregel, zodat de lijst open vragen van de controller alleen die vraag
+  toont. Na de sluitregel staan de rode stap met zijn reden, het oordeel per reviewer, de workflow-diff
+  in een codeblok (een hek langer dan elke reeks backticks in de diff) en onder *Zelf pushen*
+  `cd <worktree> && git push -u origin HEAD`. Is de diff te lang voor een comment (65535 tekens), dan
+  staat de volledige diff als bijlage in `<state>/push/<owner>/<name>/<sha>-<run>.diff` (mode `0600`),
+  niet in de worktree: die is van de run. Een Vraag adviseert nooit een token-scope te verruimen;
+  weigert GitHub het token, dan zegt de Vraag alleen dat de forge het token voor deze wijziging weigerde.
+- **De Teruggegeven.** Een rode stap vóór de vloer een SHA las (trigger, config, route, de vloer, policy,
+  lint) is geen vraag: een antwoord `push` kan er niets mee. De pusher post dan een 🤖 Teruggegeven
+  zonder sessie, met `reason: workflow-pusher rood: <stap>` en de velden `worktree`, `branch`, `after`,
+  `lane` en `step`. De tekst heeft de rode stap met zijn reden, de workflow-diff ingeklapt
+  (`<details>`), wat je kunt doen en onder *Zelf pushen* het push-commando. De volgende tick geeft het
+  issue terug zoals elke Teruggegeven: label `needs_hands` en To do (`finishReturn`).
 - **Het antwoord `push` is toestemming.** Voor precies de `sha` uit de laatste Vraag van de pusher. Tick
   start de pusher opnieuw met `--permit <sha>`; hij draait de vloer opnieuw, en alleen als de SHA
   niet verschoof gaat hij zonder review door, zoals bij een geslaagde push. Toestemming heft alleen de
-  review op (een `reject` of shadow mode), nooit een rode vloer, policy of lint. Een Vraag met `sha: none`,
-  of een Vraag waarna de worktree verschoof, geeft geen toestemming: een antwoord `push` start dan niets
-  of geeft dezelfde Vraag opnieuw. Elk ander antwoord hervat niets, want er is geen sessie. Bekende
+  review op (een `reject` of shadow mode), nooit een rode vloer, policy of lint. Een Vraag waarna de
+  worktree verschoof, geeft geen toestemming: een antwoord `push` geeft dan dezelfde Vraag opnieuw. Elk ander antwoord hervat niets, want er is geen sessie. Bekende
   grens: een run post met hetzelfde account als de gebruiker en kan dus `push` antwoorden; dan valt de
   review weg en blijft de vloer staan. De roborev-records zijn door de run beheerd: check 5 is hygiëne
   tegen een vergeten of verouderde review, geen vertrouwensgrens. GitHub's eigen scope-controle blijft
@@ -230,8 +239,9 @@ slash-commando's.
   comment), eist dat die een voorouder is van de PR-head en dat `gepusht..head` geen pad onder
   `.github/workflows/` raakt (op de bouwroute volgt na de push nog een changelog-fragment), en merget
   dan met het workflow-token. Hij post een 🤖 Klaar zonder sessie met `note_merged` en sluit zijn rij
-  als `done`. Weigert hij, dan post hij een Vraag met `gh pr merge <n> --squash --match-head-commit
-  <head>`. Is `[dispatch.workflow_push]` weg, dan gaat het issue terug met *workflow-pusher staat uit*; is de
+  als `done`. Weigert hij, dan post hij een Teruggegeven met `reason: workflow-pusher rood: <stap>` en
+  onder *Zelf mergen* `gh pr merge <n> --squash --match-head-commit <head>`, en sluit zijn rij als
+  `returned`. Is `[dispatch.workflow_push]` weg, dan gaat het issue terug met *workflow-pusher staat uit*; is de
   sleutel `merge:<pr>:<head>` al gebruikt, dan met *merge mislukt*.
 
 **De vingerafdruk na apply.** Tick bewaart de vingerafdruk van de precheck pas na apply, en alleen
@@ -314,12 +324,14 @@ gemergde of gesloten PR van vóór `started_at` niet. `max_wait` en `max_runtime
 | 13b | Klaar en alleen een vreemde PR die rood is of een merge-conflict heeft (geen eigen open PR met een oorzaak) | Teruggegeven, sessie stoppen als ze niet klaar is | *PR rood* resp. *PR heeft een merge-conflict* |
 | 13c | Klaar met een Handoff die de keten eindigt (`next: /lighthouse-close-issue`), en geen PR van deze run | rij `handoff`, de claude van de run beëindigen; dezelfde tick start `/lighthouse-close-issue <nr>` op die handoff (sleutel `handoff:<comment-id>`), tenzij er een open PR is of een PR die na de handoff mergede of sloot: dan wacht het einde op die PR (#285) | |
 | 14a | Klaar, geen PR, geen Handoff of Vraag, wel een `post-failed.json` van op of na `started_at` (bij een onleesbare: de wijzigingstijd van het bestand; onbekend telt) | leest de body als een 🤖 Handoff of 🤖 Vraag voor het issue van de run, hoorde de mislukte post bij dat issue (`issue` van de notitie) en is de run jonger dan `max_runtime` (of `max_runtime` is 0): `repost`, de controller post de body letterlijk en de run blijft open. Is de run `max_runtime` of ouder, of is de body leeg, een andere soort comment of van een ander issue, hoorde de mislukte post bij een ander issue, of is de notitie onleesbaar: Teruggegeven, zoals regel 14 | *post mislukt: <fout uit de notitie>*, resp. *post mislukt: notitie onleesbaar* |
-| 14 | Klaar, geen PR, geen Handoff of Vraag | Teruggegeven | geen handoff of vraag |
+| 14 | Klaar, geen PR, geen Handoff of Vraag | Teruggegeven | geen handoff of vraag; bij een run met command `/lighthouse-close-issue` (trigger `closecheck` of `handoff`): *nacontrole: criteria open* |
 | 15 | `max_wait` > 0, run gemeten maar zonder sessie, ouder dan `max_wait` | Teruggegeven, launch vergeten | start onzeker: geen sessie gevonden |
 | 16 | `max_wait` > 0, permissie-prompt van deze run (niet van vóór `started_at`) waarna zijn draad `max_wait` lang niets deed | Teruggegeven, sessie blijft staan | wacht op permissie (met tool en pad) |
 | 17 | `max_wait` > 0, niet klaar, geen openstaande permissie-prompt, geen activiteit in `max_wait` (geteld vanaf `started_at` op zijn vroegst) | Teruggegeven, sessie stoppen | geen activiteit in max_wait |
 | 18 | Idem, maar zonder transcript: stand `waiting` en de forge-sessie `max_wait` oud, ook geteld vanaf `started_at` op zijn vroegst (zonder forge-tijd niet) | Teruggegeven, sessie stoppen | geen activiteit in max_wait (forge-stand; transcript niet meetbaar) |
 | 19 | `max_runtime` > 0, run ouder dan `max_runtime` | Teruggegeven, sessie stoppen | time-out (max_runtime) |
+
+Regel 14: een nacontrole die op een ander issue wacht, eindigt in een Handoff naar zichzelf (`next: /lighthouse-close-issue <nr>`). Tick parkeert dat issue (zie *Blokkades*) en start de nacontrole opnieuw zodra de voorganger gesloten is. Eindigt een nacontrole zonder Handoff of Vraag, dan zijn de criteria open gebleven en geeft regel 14 die eigen reden.
 
 Regel 13: houdt de rem de fix-pr-start tegen (uitstel of weigering), dan vervalt de afsluiting van de run: ze blijft open en de volgende tick vindt dezelfde oorzaak opnieuw. Alleen een actieve blokkade (de issue-blokkade van de start), een al gebruikte sleutel of het plafond geeft Teruggegeven.
 
@@ -398,8 +410,9 @@ die met *wacht op permissie* (16) is teruggegeven laat zo geen claude achter die
 ### Afloop van een push-rij
 
 Een push-rij (command `push-workflows`) heeft geen werkplek en geen transcript. De regels die daarop
-meten (8-10 en 14-19) gelden er niet voor; de pusher sluit zijn eigen rij (`handoff`, `question` of
-`done`). Ze telt niet mee voor `slots` en `max_software` en houdt geen geheugenreserve vast: er draait
+meten (8-10 en 14-19) gelden er niet voor; de pusher sluit zijn eigen rij (`handoff`, `question`,
+`returned` of `done`). Staat zijn Teruggegeven er al maar de rij nog open (de pusher stierf tussen post
+en sluiten), dan sluit tick de rij als `returned`, zonder sessie of werkplek aan te raken. Ze telt niet mee voor `slots` en `max_software` en houdt geen geheugenreserve vast: er draait
 geen sessie, ook niet terwijl de rij op CI wacht.
 
 - **Pusher stil.** Staat de rij na `[dispatch.workflow_push] timeout` (standaard 30 minuten) nog open
@@ -626,10 +639,11 @@ Zonder `paths.labels`, zonder bestand of zonder rij met `Document` en `Planned` 
 (`no planned documents`). Een issue is aan de beurt als het open is, het label van de rij draagt (bij
 `Planned = milestone` ook een milestone heeft), niet in het kaartdocument staat (alleen een veld met
 sleutel `issue` telt, geen getal elders) en geen open of afgehandelde vraag van de job heeft. Is er
-niets aan de beurt, dan `skip` (`every planned issue is on its map`); anders is de score het aantal issues.
+niets aan de beurt, dan `skip` (`every planned issue is on its map`); anders is de score het aantal issues. Staat `paths.tenets`, `paths.areas` of `paths.strategy` in de config maar bestaat
+het pad niet op `origin/<standaardbranch>`, dan faalt de poort met een fout die sleutel en pad noemt; een niet gezette sleutel wordt overgeslagen.
 
-**Het corpus.** `.lighthouse/run/map-planned-corpus.json` (JSON): taal, paden van taxonomie, tenets en
-gebieden, de documenten (label, pad, `Planned`) en per issue nummer, titel, body, labels, milestone, rij
+**Het corpus.** `.lighthouse/run/map-planned-corpus.json` (JSON): taal, paden van taxonomie, tenets,
+gebieden en strategie, het labelprefix van gebieden (`area_prefix`), de documenten (label, pad, `Planned`) en per issue nummer, titel, body, labels, milestone, rij
 en, na een vertrouwd antwoord op een eerdere vraag, dat antwoord. De agent leest dit bestand, niet de
 forge; nergens daarna wordt het als gezag gelezen. De agent schrijft alleen de kaartdocumenten en
 `.lighthouse/run/map-planned-result.json` met `questions` en `decisions` (waarde `no-item`: het issue
@@ -662,15 +676,15 @@ een rij van dat document. `Finish` schrijft, waar de repo `changelog.d/` heeft, 
 ## Blokkades
 
 Een voorganger is *actief* als hij `OPEN` is en geen gemergde PR heeft. Gesloten zonder merge telt als
-vervallen. Een issue is *uitvoerend* als zijn laatste Handoff een `next` heeft buiten de spec-, plan-
-en review-fase.
+vervallen. Een issue is *uitvoerend* als zijn laatste Handoff een `next` heeft buiten de spec-fase
+(`/lighthouse-review-spec` en de spec zelf); een Handoff naar `writing-plans` of `/lighthouse-review-plan` is dus uitvoerend en parkeert.
 
 - **Parkeren.** Heeft een uitvoerend issue in Controller een actieve voorganger, dan parkeert tick het.
   Eerst komt de comment `🤖 Geparkeerd` (`🤖 Parked`) met één regel
   `blocked_by: <repo>#<n> (<boardstatus>), …`; staat de voorganger niet op hetzelfde board, dan staat
   er geen status tussen haakjes. Daarna krijgt het issue het label `blocked_issue` en gaat het op het
-  board naar `To do`. De run en de werkplek blijven staan. Een issue dat nog in de spec-, plan- of
-  reviewfase zit, blijft staan; de blokkade hindert pas bij uitvoering. Parkeren vervangt een label
+  board naar `To do`. De run en de werkplek blijven staan. Een issue in de spec-fase blijft
+  staan; de blokkade hindert pas bij een plan of bij uitvoering, dus de plan-handoff is een parkeerreden. Parkeren vervangt een label
   `blocked_external` (één blokkadelabel per issue, `blocked_issue` wint); het issue komt zonder dat
   label terug naar Controller.
 - **Afmaken.** Slaagt de comment maar mislukt het label of de boardwijziging, dan eindigt tick met
@@ -974,7 +988,7 @@ command = ["claude", "-p", "--tools", ""]
 bij 30 minuten) en de helft naar elke reviewer (15 minuten; de reviewers draaien parallel). Het laatste
 kwart is de marge voor vloer, policy, lint en push. Alles valt onder één deadline: de start van de
 push-rij plus `timeout`, min 2 minuten voor de laatste post en 1 minuut marge. Zo post de pusher zijn
-eigen Vraag vóór tick de rij teruggeeft met *pusher reageerde niet*. Een pusher die pas na die
+eigen Vraag of Teruggegeven vóór tick de rij teruggeeft met *pusher reageerde niet*. Een pusher die pas na die
 deadline start, doet en post niets; vlak voor de push kijkt hij of de rij nog open is, en pusht niet
 als tick haar al teruggaf. Een `timeout` onder 10 minuten weigert `host.toml`.
 

@@ -59,6 +59,12 @@ func TestClassify(t *testing.T) {
 		{[]string{"docs/site/index.html"}, set("go", "python")},
 		{[]string{"docs/site/download.js"}, set("go", "python")},
 		{[]string{"docs/site/other.html"}, set("python")},
+		{[]string{"docs/developer/strategie.md"}, set("go", "python")},
+		{[]string{"docs/developer/uitgangspunten.md"}, set("go", "python")},
+		{[]string{"docs/developer/labels.md"}, set("go", "python")},
+		{[]string{"docs/developer/areas/core.md"}, set("go", "python")},
+		{[]string{"docs/developer/other.md"}, set("python")},
+		{[]string{"docs/developer/areas-extra.md"}, set("python")},
 		{[]string{"testsx/a.py"}, set("go", "python")},
 		{nil, set()},
 	}
@@ -81,7 +87,7 @@ func runCLI(t *testing.T, stdin string, args ...string) (int, string, string) {
 func TestRunCLI(t *testing.T) {
 	tests := []struct{ name, stdin, want string }{
 		{"two_paths", "a\x00b\x00", "web=false\npython=true\ngo=true\n"},
-		{"docs_only", "changelog.d/fix-labels.md\x00docs/developer/labels.md\x00", "web=false\npython=true\ngo=false\n"},
+		{"docs_only", "changelog.d/fix-labels.md\x00docs/developer/other.md\x00", "web=false\npython=true\ngo=false\n"},
 		{"tests_only", "tests/test_site_pages.py\x00README.md\x00changelog.d/x.md\x00", "web=false\npython=true\ngo=false\n"},
 		{"web_only", "web/x.tsx\x00", "web=true\npython=false\ngo=false\n"},
 		{"empty", "", "web=false\npython=false\ngo=false\n"},

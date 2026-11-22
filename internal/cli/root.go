@@ -77,7 +77,7 @@ func NewRoot(in io.Reader, out, errOut io.Writer) *cobra.Command {
 	root.AddCommand(newUsageCommand())
 	root.AddCommand(newCodexUsageCommand(usage.ReadCodexStrict))
 	root.AddCommand(newReviewRunCommand(usage.ReadCodexStrict))
-	root.AddCommand(newRoborevGateCommand(roborev.DefaultBudget()))
+	root.AddCommand(newRoborevGateCommand(roborev.DefaultBudget(), roborev.DefaultClaudeAlarm()))
 	root.AddCommand(newRoborevCommentCommand())
 	root.AddCommand(newPlanReviewRecordCommand(review.DefaultDeps()))
 	root.AddCommand(newReviewIndexCommand())

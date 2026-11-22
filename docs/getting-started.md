@@ -73,6 +73,22 @@ lands in `~/go/bin`, so make sure that is on your `PATH`.
 Install a tag, not `main`. A build from `main` or from a clone reports version `dev`, and
 `lighthouse init` writes that version into `.lighthouse/manifest.toml`.
 
+### Windows
+
+Lighthouse runs natively on Windows: Claude Code runs the hooks in Git Bash, and every core hook
+passes there, the test gate included (measured by `windows-measure.yml`). What you need:
+
+- [Git for Windows](https://gitforwindows.org/). Without it, Claude Code runs the hooks in
+  PowerShell, where they do not work.
+- `lighthouse_windows_amd64.exe` from the Windows tab on the site, saved as `lighthouse.exe` in a
+  folder on your `PATH`. Restart Claude Code after you change the `PATH`.
+- Run `lighthouse init` in Git Bash.
+
+`lighthouse serve` and the controller do not run natively on Windows; neither does the `shell`
+package, whose pinned `shellcheck` download has no Windows build. WSL also works: install Claude
+Code and lighthouse inside WSL, with the Linux block, and keep the repository in the WSL file
+system.
+
 ## Run lighthouse init
 
 In the root of your own repository:

@@ -7,7 +7,8 @@ serves all your repositories from one SQLite database.
 
 - Linux with systemd (user units) for `lighthouse serve`; macOS is not supported there. The CLI
   runs on macOS, but the hooks are untested there.
-  Windows has a binary, but the hooks need WSL.
+  On Windows, `lighthouse serve` does not run natively; the CLI and the hooks do (see
+  [getting-started.md](getting-started.md#windows)).
 - Go, only to install with `go install` or to build from a clone.
 - Node 22 with npm, only to build from a clone (the web UI). `web/.nvmrc` holds the exact version.
   A release binary needs neither Node nor a clone.
