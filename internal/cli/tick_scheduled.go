@@ -16,6 +16,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/runs"
 	"github.com/CorneeldH/lighthouse/internal/scheduled"
+	_ "github.com/CorneeldH/lighthouse/internal/scheduled/mapplanned" // registers job map-planned
 	_ "github.com/CorneeldH/lighthouse/internal/scheduled/maprefresh" // registers job map-refresh
 	_ "github.com/CorneeldH/lighthouse/internal/scheduled/reflect"    // registers job reflect
 )
