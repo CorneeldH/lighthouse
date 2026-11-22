@@ -115,8 +115,12 @@ volgorde:
 
 - Een korte inleiding met de voorrangsregel: een harde regel (`AGENTS.md`, een hook, een gate) wint
   altijd van een uitgangspunt; bij een conflict tussen uitgangspunten wint de hogere.
-- Per uitgangspunt een kop `## <letter>. <X> boven <Y>`, één zin waarom, en een regel *Bewijs* met
-  links naar minstens twee specs of milestones.
+- Per uitgangspunt een kop `## <letter>. <X> boven <Y>`, met precies één keer ` boven `. Daaronder één
+  zin waarom, eventueel een zin over de reikwijdte (zoals bij A, C en G in §2), en een regel *Bewijs*
+  met links naar minstens twee specs of milestones *(eigen keuze na Fable-review, f9)*.
+- Links zijn relatief vanaf het doelbestand: vanuit `docs/developer/uitgangspunten.md` wordt
+  `2026-…-design.md` dus `planning/specs/2026-…-design.md`, vanuit `docs/developer/areas/<area>.md`
+  `../planning/specs/…` *(f10)*.
 - De volgorde in het bestand is de voorrang: wie hoger staat, wint. De letters liggen vast en hoeven
   na een herschikking niet meer oplopend te staan *(eigen keuze)*. Een vervallen uitgangspunt houdt zijn
   letter, met `(vervallen)` in de kop.
@@ -133,9 +137,12 @@ nu acht: `core`, `packs`, `init`, `server`, `dispatcher`, `usage`, `product`, `m
 
 Geen `## Nabij doel` (besluit 9).
 
-**Koppen.** De test (§5) controleert voorlopig de Nederlandse koppen letterlijk; koppen die in elke taal
-werken (`heading:<key>`), komen met de feature voor elke repo *(eigen keuze)*. Uitzondering: de kop
-*Nabij doel* krijgt nu al een sleutel, omdat `close-issue` hem moet herkennen (§4).
+**Koppen.** De lijsten van koppen zijn gesloten: geen andere `##`-kop, dus ook geen `## Nabij doel` in
+een lighthouse-area *(f9)*. De test (§5) controleert voorlopig de Nederlandse koppen letterlijk; koppen
+die in elke taal werken (`heading:<key>`), komen met de feature voor elke repo (#500) *(eigen keuze)*.
+Tot dan vinden `write-issue` en `map-planned` *Crux*, *Leidend beleid* en *Bewust niet* op hun
+betekenis, zoals #476 nu al doet *(f7)*. Uitzondering: de kop *Nabij doel* krijgt nu al een sleutel,
+omdat `close-issue` hem moet herkennen om over te slaan (§4).
 
 **Citeren.** Een skill of een mens citeert `uitgangspunt C`, `strategie/S2` of `core/N1`. Zo is een
 toets naar zijn bron terug te volgen.
@@ -159,7 +166,9 @@ Afgesproken in het gesprek; de bouwer neemt deze tekst over en zet hem in de vor
 
 **Voor wie**, in deze volgorde: Corneel; een bevriende ontwikkelaar; collega's bij CEDA; iedereen.
 
-**Uitgangspunten**, in volgorde van voorrang:
+**Uitgangspunten**, in volgorde van voorrang. De kop is het deel tot en met de eerste `<Y>`; een tweede
+zin (A: vertrouwen per soort wijziging; C: "ook in metingen …"; G: de reikwijdte) gaat in de body *(f9)*.
+De links hieronder zijn relatief vanaf deze spec; in de documenten worden ze herschreven (§1).
 
 | | Uitgangspunt | Waarom (één zin, concept) | Bewijs (minstens) |
 |---|---|---|---|
@@ -215,29 +224,49 @@ in de crux niet; de bouwer meldt het in de PR.
 - Mee: `tests/pack/fixtures/config-schema.json`, `tests/pack/fixtures/config/{defaults,full}/expect.json`,
   de invoer `tests/pack/fixtures/config/full/lighthouse.toml` (krijgt `strategy` onder `[paths]`; de
   fixture `defaults` houdt het geval "niet gezet") *(eigen keuze na spec-review, r1-f2)*, en een regel in `docs/site/data/config.json` met zijn `readers` (`docs/site/test/config.test.mjs`
-  eist dat elke sleutel daar staat en dat de lezers hem echt noemen).
+  eist dat elke sleutel daar staat en dat de lezers hem echt noemen). De lezers van `paths.strategy`:
+  `internal/repoconfig/repoconfig.go` en `pack/core/skills/write-issue`; de skill `map-planned` noemt de
+  sleutel niet en telt dus niet. `paths.strategy` komt **niet** in de `UNREAD`-set: hij heeft lezers in
+  dezelfde PR *(f4)*. De `about` van `paths.areas` (`config.json`, nu "near goal") volgt §4.
 - `paths.history` blijft ongebruikt; dit ontwerp zet hem niet.
 
 ### 4. De lezers
 
-Generiek in `pack/core`: geen pad, geen areanaam. Zonder sleutel of zonder bestand slaat elke lezer
-stil over; een repo zonder deze documenten merkt niets.
+Generiek in `pack/core`: geen pad, geen areanaam. Zonder sleutel slaat elke lezer stil over; een repo
+zonder deze documenten merkt niets. Een sleutel die wél gezet is maar naar een bestand of map wijst die
+niet bestaat, is een configfout en geen "niets": `write-issue` zegt het in het gesprek, de job
+`map-planned` faalt luid in zijn poort (uitgangspunt C) *(f2)*.
 
-- **`write-issue`, de pitch van een milestone.** Leest naast `paths.tenets` (al zo) ook
-  `paths.strategy`: past de milestone bij de diagnose, en raakt hij een `strategie/S<n>`? Twijfel
-  wordt een vraag in het gesprek.
+- **`write-issue`, de pitch van een milestone.** Nu staat er: "If the project has tenets
+  (`paths.tenets`), the pitch names the crux of its main area" — maar de crux staat onder `paths.areas`,
+  en een lighthouse-milestone is een thema, geen area. Nieuw: met `paths.areas` noemt de pitch de crux
+  van de area('s) waar de issues van de milestone het meest onder vallen (hun `labels.area_prefix`-label),
+  en met `paths.strategy` toetst hij de milestone aan *Diagnose* en *Bewust niet* (`strategie/S<n>`).
+  Twijfel wordt een vraag in het gesprek *(f7)*.
 - **`write-issue` 3f, de toets "willen we het?" uit #476.** Leest naast de tenets en het area-bestand
   ook `paths.strategy`, en noemt bij de vraag het ID dat het oordeel draagt (`core/N2`,
   `strategie/S1`, `uitgangspunt G`).
-- **`map-planned` (#476).** Dezelfde bron. De `[paths]`-sleutels die #476 aan `repoconfig.Repo`
-  toevoegt (`labels`, `tenets`, `areas`), krijgen `strategy` erbij. Een twijfel over de wens wordt
-  de vraag met de eigen kop van #476 (`🗺 Kaart · map-planned`), **niet** `🤖 Vraag`: een kop die zo
-  begint, leest `internal/protocol` als vraag van de keten (zie het ontwerp van #476, §3). Het AC van
-  #372 dat "🤖 Vraag" noemt, volgt daarom #476.
+- **`map-planned` (#476).** Dezelfde bron, maar de skill heeft geen Bash en leest alleen paden uit het
+  corpus. Dat betekent *(f2)*:
+  - `repoconfig.Paths` en de ruwe struct (`internal/repoconfig/repoconfig.go`, beide; `Paths(raw.Paths)`
+    is een structconversie) krijgen `Strategy`; `TestLoadReadsPaths` volgt.
+  - Het corpus (`internal/scheduled/mapplanned/corpus.go`, `buildCorpus`) krijgt `strategy` en
+    `area_prefix` (uit `labels.area_prefix`), zodat de skill een issue aan `<areas>/<area>.md` koppelt
+    zonder te gokken; `TestStageWritesTheCorpus` volgt.
+  - De poort (Go) controleert dat een gezet pad bestaat; zo niet, dan faalt hij met de naam (zie boven).
+  - De skill (`pack/core/skills/map-planned/SKILL.md`): het corpusschema krijgt `strategy` en
+    `area_prefix`; stap 4 draait als `tenets`, `areas` of `strategy` niet leeg is; de vraag over de
+    wens noemt het ID dat het oordeel draagt. `internal/packcontract/mapplanned_test.go` (pint nu
+    `` `tenets` `` en `` `areas` ``) volgt, net als de corpusbeschrijving in `docs/tick.md`.
+  - Een twijfel over de wens blijft de vraag met de eigen kop van #476 (`🗺 Kaart · map-planned`),
+    **niet** `🤖 Vraag`: een kop die zo begint, leest `internal/protocol` als vraag van de keten (ontwerp
+    van #476, §3). Het AC van #372 volgt dat al.
 
 - **`close-issue` stap 5.** Leest `paths.areas` al, en leidt de area af uit het deel vóór `:` in de
-  titel van de gesloten milestone. Bij lighthouse is dat geen area ("Systeemoverzicht: …"). Nieuw: bestaat
-  `<paths.areas>/<area>.md` niet, of heeft het geen kop *Nabij doel*, dan meldt de stap
+  titel van de gesloten milestone. Bij lighthouse is dat geen area ("Systeemoverzicht: …"), en veel
+  titels hebben geen `:` ("M3 — Tweede omgeving", "GitLab-forge"). Nieuw, en vóór de `git worktree add`
+  van die stap *(f6)*: geen `:` in de titel, bestaat `<paths.areas>/<area>.md` niet (de area in kleine
+  letters: "Product" wordt `product.md`), of heeft het bestand geen kop *Nabij doel*, dan meldt de stap
   `areas: skipped — <reden>` en stopt hij. De kop krijgt een sleutel in de bron `pack/core/headings.toml`
   (bijvoorbeeld `area_near_goal`, `nl`: *Nabij doel*, `en`: *Near goal*), zodat de skill hem in elke taal
   herkent; de geïnstalleerde kopie `.lighthouse/headings.toml` komt via `init --upgrade` mee in dezelfde
@@ -254,31 +283,54 @@ Een Go-test in deze repo, in CI, die faalt met `pad:regel: melding` en alle fout
 paden uit `lighthouse.toml` en de area-tabel uit `labels.md`:
 
 1. Elk `2-area:<x>` heeft `<paths.areas>/<x>.md`; elk bestand in die map hoort bij een label.
-2. Elk area-bestand heeft de koppen van §1 in die volgorde.
+2. Elk area-bestand heeft precies de koppen van §1, in die volgorde, en geen andere `##`-kop.
 3. Elke bullet onder *Bewust niet* heeft precies één ID van de juiste vorm (`**N<n>**`), de ID's zijn
    uniek binnen het bestand, en elke `→ <area>` noemt een bestaande area *(eigen keuze na spec-review,
    r1-f3)*.
-4. `uitgangspunten.md`: elke kop heeft de vorm `## <letter>. … boven …`; letters uniek, zonder gat in
-   A tot en met de hoogste letter (een vervallen letter telt mee). De volgorde in het bestand is vrij.
-5. `strategie.md`: de koppen van §1 in die volgorde; elke bullet onder *Bewust niet* heeft precies één
-   ID `**S<n>**`, en de ID's zijn uniek.
+4. `uitgangspunten.md`: elke kop heeft de vorm `## <letter>. … boven …` met precies één ` boven `;
+   letters uniek, zonder gat in A tot en met de hoogste letter (een vervallen letter telt mee). De
+   volgorde in het bestand is vrij. Elk uitgangspunt dat niet vervallen is, heeft een regel *Bewijs*
+   met minstens twee links *(f9)*.
+5. `strategie.md`: precies de koppen van §1, in die volgorde; elke bullet onder *Bewust niet* heeft
+   precies één ID `**S<n>**`, en de ID's zijn uniek.
 6. Een sleutel die niet gezet is, of een bestand dat niet te lezen is: de test faalt met de naam ervan.
    In deze repo zijn de sleutels gezet, dus "niet gezet" is hier een fout, geen reden om over te slaan.
 
 De test controleert de vorm, niet of een issue past: dat oordeel hoort bij `write-issue`, de job of een
-mens (verslag §8). Waar de test staat en of hij de tabelparser van #476 hergebruikt, laat dit ontwerp
-aan de bouwer; een tweede parser voor dezelfde tabel is er niet nodig (uitgangspunt E).
+mens (verslag §8).
+
+**De area-tabel lezen.** De parser van #476 (`internal/scheduled/mapplanned/taxonomy.go`) leest alleen
+tabellen met `Label`, `Document` en `Planned`, niet de area-tabel. De test hergebruikt
+`internal/labels.ParseTaxonomy` en filtert op `labels.area_prefix`; geen tweede parser (uitgangspunt E)
+*(f3)*.
+
+**De test moet ook draaien als alleen de documenten veranderen** *(f1)*. Nu valt `docs/` buiten het
+go-domein van CI (`ci/domains/domains.go`, `notGoDirs`), en `go-test` draait alleen bij een wijziging in
+dat domein; de commit-gate kiest pakketten alleen op gewijzigde Go-bestanden. Een PR die alleen
+`areas/core.md` breekt, zou dus groen mergen: precies het stille groen van uitgangspunt C. Daarom gaan
+`docs/developer/strategie.md`, `docs/developer/uitgangspunten.md`, `docs/developer/labels.md` en de map
+`docs/developer/areas/` in het go-domein: `goDocs` krijgt ondersteuning voor een prefix, met rijen in
+`ci/domains/domains_test.go` en het commentaar boven `goDocs` bijgewerkt *(eigen keuze, boven een aparte
+workflow zoals `ci/loop_roadmap`: één mechanisme, uitgangspunt G)*.
 
 ### 6. README, docs, dogfood, changelog
 
 - README: de regel "Roadmap: the milestones of this repository" krijgt een link naar
   `docs/developer/strategie.md` (in het Nederlands). De sectie *Design* met de link naar de scope-spec
   in personal_ai_agent wijst voortaan naar dat document.
-- De wijziging in `write-issue` valt onder `pack/`: `go run ./cmd/lighthouse init --upgrade` en de
-  geïnstalleerde kopie (`.claude/skills/`, `.agents/skills/`) meecommitten; CI eist `No changes.`
-  Beide varianten (`claude/` en `agents/`) veranderen samen.
-- Een fragment in `changelog.d/`: `added` (de documenten en `paths.strategy`), `changed` (`write-issue`
-  leest de strategie).
+- Onder `pack/` veranderen: `write-issue` (`claude/` en `agents/`), `close-issue` (`claude/` en
+  `agents/`, stap 5), `map-planned/SKILL.md` (één bestand, zonder varianten) en `pack/core/headings.toml`.
+  Na elke wijziging daar: `go run ./cmd/lighthouse init --upgrade` en de geïnstalleerde kopieën
+  (`.claude/skills/`, `.agents/skills/`, `.lighthouse/headings.toml`) meecommitten; CI eist
+  `No changes.` *(f8)*
+- Docs die volgen: de corpusbeschrijving van `map-planned` in `docs/tick.md`, en de `about` van
+  `paths.areas` en de nieuwe regel voor `paths.strategy` in `docs/site/data/config.json`.
+- Volgorde van de commits, want `commit-test-gate` draait per commit *(f8)*: eerst de sleutel in het
+  schema (anders faalt `TestConfigKeysKnown` op de skilltekst), dan de skills; de documenten en de
+  sleutels in `lighthouse.toml` vóór of samen met de vormtest (die faalt op "niet gezet").
+- Twee fragmenten in `changelog.d/`, want een fragment heeft één `type:` (`docs/releasing.md`):
+  `<branch>.md` met `added` (de documenten, `paths.strategy`, de vormtest) en `<branch>-2.md` met
+  `changed` (`write-issue`, `map-planned` en `close-issue` lezen de richting) *(f5)*.
 
 ### 7. Issues en milestone
 
@@ -301,8 +353,8 @@ Gedaan na goedkeuring van dit ontwerp (2026-11-22), via `/lighthouse-write-issue
 ### 8. Hoe het landt
 
 - **Eén PR** *(eigen keuze, nu #476 op `main` staat)*: de documenten, `paths.strategy` in het schema, de
-  sleutels in `lighthouse.toml`, de wijziging in `close-issue` stap 5, de test, de README, en de lezers
-  (de pitch, 3f en `map-planned`). Gebouwd in een interactieve sessie, niet door de controller. De PR
+  sleutels in `lighthouse.toml`, de wijziging in `close-issue` stap 5, de test met het go-domein in CI,
+  de README, en de lezers (de pitch, 3f en `map-planned`). Gebouwd in een interactieve sessie, niet door de controller. De PR
   blijft **draft** tot Corneel de inhoud heeft goedgekeurd: de merge zet meteen echte lezers aan
   (`write-issue` leest `paths.tenets` al, `close-issue` en `map-planned` lezen `paths.areas`), en de tick
   merget een groene PR anders zelf (besluit 10).
@@ -310,7 +362,6 @@ Gedaan na goedkeuring van dit ontwerp (2026-11-22), via `/lighthouse-write-issue
 ## Aan de bouwer
 - De precieze tekst van *Waarom* per uitgangspunt en de area-bestanden, met citaten naar de specs. De
   bouwer gebruikt het bewijs uit het verslag (§9).
-- De plek van de test, en of hij de tabelparser van #476 hergebruikt.
-- `paths.strategy` in de `UNREAD`-set van `docs/site/test/config.test.mjs` zolang geen lezer hem noemt.
+- De plek van de test (hij hergebruikt `internal/labels.ParseTaxonomy`, §5).
 - Het bewijs per area: §9 van het verslag geeft patronen, niet per area. De bouwer zoekt per
   area-bestand de beslissingen in de specs en milestones op.
