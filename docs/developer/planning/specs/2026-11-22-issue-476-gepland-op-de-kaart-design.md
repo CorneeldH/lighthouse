@@ -133,8 +133,10 @@ Een nieuwe job in `internal/scheduled/mapplanned/`, geregistreerd met `Register`
 3. Een issue staat al in het document als een veld `issue` de waarde N heeft (`"issue": N` in JSON,
    `issue: N` in YAML). Een document dat niet parseert, of geen JSON of YAML is: de poort faalt met
    de naam van het document; de tick meldt het zoals een poortfout van `map-refresh`.
-4. **Afgehandeld** telt niet mee: een issue met `heading:map_placement` *geen item* in de body, of
-   met een beslissing van de job of een antwoord *niet op de kaart* (zie *Vragen*).
+4. **Afgehandeld** telt niet mee: een issue met een beslissing van de job (*geen item*) of een
+   antwoord *niet op de kaart* (zie *Vragen*). De poort leest alleen comments van de job, niet de
+   body: *geen item* uit `heading:map_placement` wordt bij de eerste run een beslissing van de job,
+   één agent-run per issue.
 5. Een issue met een open vraag van de job zonder antwoord telt niet mee.
 6. Blijft er niets over: `skip` (*every planned issue is on its map*). Anders draait de agent; de
    `Score` is het aantal issues.
@@ -159,18 +161,28 @@ zijn. Per issue:
 
 **Allowed.** Alleen de documenten uit de kolom `Document` en de stagingmap.
 
-**Cleanup, Check, Finish.** Het resultaatbestand wordt ingelezen voordat `Cleanup` de stagingmap
-weghaalt; hoe, laat het ontwerp aan de bouwer. `Check` toetst dat elk gewijzigd document nog parseert,
-en dat elk nieuw item een `issue` uit het corpus noemt. `Finish` post de vragen en beslissingen (zie
-*Vragen*). Geen documentwijziging: `done` zonder PR, ook als er comments gepost zijn. Anders volgt de
-PR zoals bij elke geplande run.
+**Cleanup, Check, Finish.** `Cleanup` leest het resultaatbestand, post de vragen en beslissingen (zie
+*Vragen*) en haalt dan de stagingmap weg. Dat gebeurt in `Cleanup` en niet in `Finish`: een run die
+geen document wijzigt, eindigt in `Postcheck` na de insluiting (`internal/scheduled/postcheck.go`,
+`len(paths) == 0`) en bereikt `Finish` nooit. `Cleanup` kan bij een herhaalde postcheck twee keer
+draaien; hij post daarom niet voor een issue dat al een open comment van de job heeft. `Check` toetst
+dat elk gewijzigd document nog parseert, en dat elk nieuw item een `issue` uit het corpus noemt. Geen
+documentwijziging: `done` zonder PR, ook als er comments gepost zijn. Anders volgt de PR zoals bij
+elke geplande run.
+
+**Forge in de job.** `scheduled.Env` heeft nu geen forge. Hij krijgt `Forge forge.Forge` en
+`Trusted func(ctx, login) (bool, error)` (de `answer_permissions` van de host, via
+`dispatch.NewTrust`), gezet in `planRepo` en in `scheduledJob` van `internal/cli/tick_scheduled.go`.
+`repoconfig.Repo` krijgt de `[paths]`-sleutels `labels`, `tenets` en `areas`.
 
 **Vragen en beslissingen.** Beide zijn een comment op het issue, gepost vanuit Go na de run, met het
 token van de repo, in de projecttaal. De kop is **geen protocolkop**: een kop die begint met
 `🤖 Vraag` leest `internal/protocol` als vraag van de keten (`kindOf` in `header.go`). Die verbergt dan
 een Handoff in `lastTurn`, en `newIssue` weigert het issue (`internal/dispatch/decide.go`). De job
-gebruikt daarom een eigen kop, bijvoorbeeld `🗺 Kaart · map-planned` *(vorm: eigen keuze)*, en een
-test toetst dat `protocol.ParseHeader` hem niet herkent. De keten van het issue loopt zo door.
+gebruikt daarom een eigen kop, `🗺 Kaart · map-planned` (`en`: `🗺 Map · map-planned`), met daaronder
+een machineregel `<!-- lighthouse:map-planned kind=<question|decision> topic=<place|wish> off=<letter> -->`
+*(vorm: eigen keuze)*. `off` is de letter van *niet op de kaart*. Een test toetst dat
+`protocol.ParseHeader` de comment niet herkent. De keten van het issue loopt zo door.
 
 - **Een vraag over de plek** wacht alleen het item: geen label. De opties zijn letters, zoals bij
   `lighthouse ask`; *nieuw onderdeel op de kaart* en *niet op de kaart* zijn er altijd bij. Het
@@ -178,8 +190,8 @@ test toetst dat `protocol.ParseHeader` hem niet herkent. De keten van het issue 
   met de letter begint. De poort leest die letter in Go: *niet op de kaart* is afgehandeld, elke
   andere letter (of een vrij antwoord) neemt het issue weer mee, en Stage zet het antwoord in het
   corpus.
-- **Een vraag over de wens** wacht het werk: `Finish` zet ook `labels.needs_decision` met
-  `lighthouse state label <nr> needs_decision` (de rangregel van `labels.md` geldt). Het label
+- **Een vraag over de wens** wacht het werk: `Cleanup` zet ook `labels.needs_decision` met
+  `issuestate.Apply` (de rangregel van `labels.md` geldt, zoals bij `lighthouse state label`). Het label
   haalt de mens eraf die beslist; de job haalt het niet weg. De poort neemt het issue weer mee zodra
   er een antwoord is.
 - **Een beslissing** (*geen item*) is een comment met dezelfde kop en de vaste waarde; de poort leest
