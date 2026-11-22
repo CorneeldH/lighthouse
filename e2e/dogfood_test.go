@@ -228,9 +228,10 @@ func TestNoRegistrationOutsideLighthouseHooks(t *testing.T) {
 	}
 }
 
-// A production change that fails this test: init stops registering the pack/go hooks, so
-// gofmt-check no longer runs after an edit or go-lint-gate no longer runs at Stop.
-func TestGoHooksRegistered(t *testing.T) {
+// A production change that fails this test: the installed copy of this repo stops registering the
+// pack/go hooks, so gofmt-check no longer runs after an edit or go-lint-gate no longer runs at
+// Stop. TestGoHooksRegistered covers the same hooks in a fresh init.
+func TestDogfoodGoHooksRegistered(t *testing.T) {
 	if got := registered(t, "PostToolUse", "Edit|Write", "gofmt-check.sh"); len(got) != 1 {
 		t.Errorf("gofmt-check.sh under PostToolUse Edit|Write: %q, want one", got)
 	}

@@ -1,4 +1,4 @@
-# CI for lighthouse: one job per domain (python, go, web), each run only when ci/domains.py
+# CI for lighthouse: one job per domain (python, go, web), each run only when ci/domains
 # finds a changed path in it. Go runs as three parallel jobs, `go`, `go-test` and `go-e2e`; `canary` runs on Go and on
 # python-only changes. Python is a matrix of three parts of the pytest suite (tests/conftest.py). Everything runs on
 # Linux; macOS runs in macos.yml, as the gate before the release (#337). A `binary` job builds the
@@ -35,6 +35,10 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
       - id: domains
         # `shell: bash` runs with -o pipefail: a failed `git diff` must not look like an empty diff.
         shell: bash
@@ -48,7 +52,7 @@ jobs:
             { echo "web=$ALL"; echo "python=$ALL"; echo "go=$ALL"; } >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          git diff -z --name-only --no-renames "$BASE...$HEAD" | python3 ci/domains.py classify --github-output "$GITHUB_OUTPUT"
+          git diff -z --name-only --no-renames "$BASE...$HEAD" | go run ./ci/domains classify --github-output "$GITHUB_OUTPUT"
 
   # Every PR carries a changelog fragment, also outside the domains; see docs/releasing.md.
   changelog:
@@ -127,7 +131,7 @@ jobs:
         with:
           persist-credentials: false
       # The `lighthouse_bin` fixture builds cmd/lighthouse: skills and pack/python call it (#274).
-      # Every path outside web/ already runs this job (ci/domains.py), Go changes included.
+      # Every path outside web/ already runs this job (ci/domains), Go changes included.
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
