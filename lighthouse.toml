@@ -105,3 +105,9 @@ kind = "tool"
 repo = "openai/codex"
 version = "0.157.0"
 tag_prefix = "rust-v"
+
+# Geplande run (docs/tick.md, *Job `map-planned`*): zet open issues van een gepland label op hun kaart.
+[[schedule]]
+name = "map-planned"
+job  = "map-planned"
+cron = "0 5 * * *"
