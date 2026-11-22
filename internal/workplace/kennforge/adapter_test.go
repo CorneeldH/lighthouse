@@ -119,6 +119,7 @@ func next(list []string, n int) string {
 func (f *fakeForge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	key := r.Method + " " + r.URL.EscapedPath()
+	f.bodies[key+"?"] = r.URL.RawQuery
 	n := f.counts[key]
 	f.counts[key]++
 	if r.Body != nil {
