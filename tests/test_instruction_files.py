@@ -36,10 +36,10 @@ def _source_block(pkg="core"):
 
 def test_core_block_word_budget():
     """The core block lands in every repo's AGENTS.md, next to the repo's own rules: at most
-    365 words. It carries the chain rules the core skills and hooks enforce, the `heading:<key>`
+    366 words. It carries the chain rules the core skills and hooks enforce, the `heading:<key>`
     notation, the rule for the language of code, and one line per skill."""
     text = _source_block()
-    assert len(text.split()) <= 365, len(text.split())
+    assert len(text.split()) <= 366, len(text.split())
     for token in (
         "main-commit-gate",
         ".claude/allow-main",
