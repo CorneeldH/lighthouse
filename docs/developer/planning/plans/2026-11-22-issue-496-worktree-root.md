@@ -141,3 +141,10 @@ Detectie via git (`--git-dir` ≠ `--git-common-dir` in `worktreecheck`; `--show
 - AC 1 → taak 1; AC 2 → taak 3; AC 3 → taak 2; AC 4 → taak 4; AC 5 → taken 2 en 5 (root buiten de repo, spaties, Windows-CI).
 - Typeconsistentie: `Resolve(repoRoot, value string) string`, `Default`, `InSyncFolder(path string) (string, bool)` worden in taken 2–4 gelijk gebruikt.
 - Open risico: de skill-tekst voor `write-handoff`/`review-plan` bevat voorbeeldpaden; de uitvoerder controleert elke `.claude/worktrees`-treffer met `git grep` na taak 3.
+
+## Open na review
+
+Ronde 3 haalde de rondegrens met deze punten open. Ze zijn aanvaard als `accepted_open`;
+de volgende fase of de PR-review weegt ze opnieuw.
+
+- **r3-f1** (MAJOR, Taak 2, Interfaces (worktree-check Windows-pad)): The diff prescribes that canonMissing starts from filepath.VolumeName(path)+"/" but does not say to strip the volume from the components that are walked. rest := strings.Split(path, "/") still yields "C:" as the first part, and filepath.Join("C:/", "C:") gives C:\C: on Windows. The literal fix swaps /C:/Users/... for C:\C:\Users\...
