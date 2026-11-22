@@ -19,6 +19,9 @@ import (
 
 const prGateName = "pr-create-gate"
 
+// reasonPRBody is the block of a PR body that lacks the closing line with evidence.
+var reasonPRBody = hook.Declare(prGateName, "pr-body")[0]
+
 // The messages of pr-create-gate, word for word those of the bash hook it replaces.
 const (
 	prGateMissingGit = prGateName + ": COULD NOT CHECK — missing tooling: git\n" +
@@ -43,11 +46,11 @@ var runGate = prbody.Main
 // that times out lets the call pass.
 func PrCreateGate(ctx context.Context, root, _ string, p hook.Payload) hook.Result {
 	if _, err := exec.LookPath("git"); err != nil {
-		return blocked(prGateMissingGit)
+		return hook.CouldNotCheck(prGateMissingGit)
 	}
 	command, cwd, ok := readGatePayload(p.Raw)
 	if !ok {
-		return blocked(prGateInvalidJSON)
+		return hook.CouldNotCheck(prGateInvalidJSON)
 	}
 	if command == "" {
 		return hook.Result{}
@@ -63,7 +66,7 @@ func PrCreateGate(ctx context.Context, root, _ string, p hook.Payload) hook.Resu
 	code, stdout, stderr, panicked := callGate(ctx, cwd, command)
 	switch {
 	case panicked != "":
-		return blocked(stderr + prGateCouldNotCheck("the body parser failed (panic: "+panicked+")."))
+		return hook.CouldNotCheck(stderr + prGateCouldNotCheck("the body parser failed (panic: "+panicked+")."))
 	case code == 0:
 		message := strings.TrimRight(stdout, "\n")
 		if message == "" {
@@ -77,17 +80,19 @@ func PrCreateGate(ctx context.Context, root, _ string, p hook.Payload) hook.Resu
 				"additionalContext": message,
 			},
 		}}
+	case code == 2 && strings.Contains(stderr, "COULD NOT CHECK"):
+		return hook.CouldNotCheck(stderr)
 	case code == 2:
-		return blocked(stderr)
+		return hook.Block(reasonPRBody, stderr)
 	case code == 3:
 		// Two-step rule: without a forge tool (`gh`, `glab`, `forge`) and `pr` or `mr` in the
 		// raw text there is nothing to check, and one stray apostrophe locks nothing up.
 		if !mentionsPrCreate(command) {
 			return hook.Result{Stderr: stderr}
 		}
-		return blocked(stderr + prGateCouldNotCheck("the command cannot be parsed (open quote). Split the command."))
+		return hook.CouldNotCheck(stderr + prGateCouldNotCheck("the command cannot be parsed (open quote). Split the command."))
 	default:
-		return blocked(stderr + prGateCouldNotCheck(fmt.Sprintf("the body parser failed (rc %d).", code)))
+		return hook.CouldNotCheck(stderr + prGateCouldNotCheck(fmt.Sprintf("the body parser failed (rc %d).", code)))
 	}
 }
 

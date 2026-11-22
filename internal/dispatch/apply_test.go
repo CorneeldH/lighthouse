@@ -2,6 +2,7 @@ package dispatch
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/rand"
 	"database/sql"
@@ -11,6 +12,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -18,6 +20,7 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
+	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/runs"
 	"github.com/CorneeldH/lighthouse/internal/store"
 	"github.com/CorneeldH/lighthouse/internal/workplace"
@@ -28,6 +31,10 @@ const (
 	freshSession = "11111111-1111-4111-8111-111111111111"
 	oldSession   = "22222222-2222-4222-8222-222222222222"
 )
+
+// testLabels names every blocking label after its key.
+var testLabels = repoconfig.Labels{BlockedIssue: "blocked_issue", BlockedExternal: "blocked_external",
+	NeedsShaping: "needs_shaping", NeedsDecision: "needs_decision", NeedsHands: "needs_hands", NeedsTesting: "needs_testing"}
 
 var applyNow = time.Date(2026, 10, 31, 9, 0, 0, 0, time.UTC)
 
@@ -74,6 +81,38 @@ type fakeForge struct {
 	bodies    []string
 	rockets   []int64
 	rocketOn  []int // the issue number per Acknowledge
+	// The issue a 🤖 Returned gives back (issuestate.Return): closedIssue closes it, labels are
+	// its label names, status its board status ("" is Controller), editErr fails EditIssue.
+	closedIssue bool
+	labels      []string
+	status      string
+	editErr     error
+}
+
+func (p *fakeForge) Issue(_ context.Context, number int) (forge.Issue, error) {
+	p.log.add("Issue")
+	state := "open"
+	if p.closedIssue {
+		state = "closed"
+	}
+	return forge.Issue{Number: number, State: state, Labels: slices.Clone(p.labels)}, nil
+}
+
+func (p *fakeForge) EditIssue(_ context.Context, number int, e forge.IssueEdit) (forge.Issue, error) {
+	p.log.add("EditIssue")
+	if p.editErr != nil {
+		return forge.Issue{}, p.editErr
+	}
+	p.labels = slices.DeleteFunc(p.labels, func(l string) bool { return slices.Contains(e.RemoveLabels, l) })
+	p.labels = append(p.labels, e.AddLabels...)
+	return forge.Issue{Number: number, Labels: slices.Clone(p.labels)}, nil
+}
+
+func (p *fakeForge) IssueItem(_ context.Context, number int) (forge.BoardItem, bool, error) {
+	p.log.add("IssueItem")
+	status := cmp.Or(p.status, statusController)
+	return forge.BoardItem{ItemID: "PVTI_" + strconv.Itoa(number), Issue: number, Status: status, StatusName: status,
+		Priority: "P1"}, true, nil
 }
 
 func (p *fakeForge) CreateComment(_ context.Context, number int, body string) (protocol.Comment, error) {
@@ -138,6 +177,7 @@ func (p *fakeForge) SetStatus(_ context.Context, item forge.BoardItem, status st
 		return p.setErr
 	}
 	p.sets = append(p.sets, item.ItemID+" "+status)
+	p.status = status
 	return nil
 }
 
@@ -273,6 +313,7 @@ func newHarnessOn(t *testing.T, db *sql.DB) *harness {
 		},
 		MCPConfig:  func(profile string) string { return "/etc/lighthouse/" + profile + ".json" },
 		RoundLimit: func(string) string { return "stop" },
+		Labels:     func(string) repoconfig.Labels { return testLabels },
 		StateDir:   t.TempDir(),
 		MaxWait:    10 * time.Minute,
 		Now:        func() time.Time { return applyNow },
@@ -483,7 +524,7 @@ func TestApplyOwnWorkReturns(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
-	want := []string{"Prepare", "Sessions 9c5c2b84ce761720", "CreateComment"}
+	want := append([]string{"Prepare", "Sessions 9c5c2b84ce761720", "CreateComment"}, giveBackCalls...)
 	if got := h.log.all(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("calls = %q, want %q", got, want)
 	}
@@ -1047,7 +1088,7 @@ func TestApplyReturnRunPostsThenStopsThenCloses(t *testing.T) {
 	if _, err := Apply(context.Background(), h.env, []Action{a}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
-	if got, want := h.log.all(), []string{"CreateComment", "Stop"}; !reflect.DeepEqual(got, want) {
+	if got, want := h.log.all(), append(append([]string{"CreateComment"}, giveBackCalls...), "Stop"); !reflect.DeepEqual(got, want) {
 		t.Errorf("calls = %q, want %q", got, want)
 	}
 	if want := []string{"ws-1 " + oldSession}; !reflect.DeepEqual(h.wp.stopped, want) {
@@ -1086,7 +1127,7 @@ func TestApplyReturnRunDiscard(t *testing.T) {
 	if _, err := Apply(context.Background(), h.env, []Action{a}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
-	if got, want := h.log.all(), []string{"CreateComment", "Discard"}; !reflect.DeepEqual(got, want) {
+	if got, want := h.log.all(), append(append([]string{"CreateComment"}, giveBackCalls...), "Discard"); !reflect.DeepEqual(got, want) {
 		t.Errorf("calls = %q, want %q", got, want)
 	}
 	if want := []string{"ws-1"}; !reflect.DeepEqual(h.wp.forgot, want) {
@@ -1383,20 +1424,45 @@ func parkAction() Action {
 		Blockers: []string{"o/r#5 (In progress)"}}
 }
 
-func TestApplyParkPostsThenHolds(t *testing.T) {
+// A park posts the 🤖 Geparkeerd, then labels blocked_issue and moves the item to To do; the run
+// and its workplace stay. Writing On hold, or skipping the label, turns this red.
+func TestApplyParkSetsToDoWithBlockedIssue(t *testing.T) {
 	h := newHarness(t)
+	id := h.seedWorkplace(t, "ws-1", "key-1")
 	if _, err := Apply(context.Background(), h.env, []Action{parkAction()}); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
-	if got, want := h.log.all(), []string{"CreateComment", "SetStatus"}; !reflect.DeepEqual(got, want) {
+	if got, want := h.log.all(), []string{"CreateComment", "Issue", "EditIssue", "SetStatus"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("calls = %q, want %q", got, want)
 	}
 	p := h.poster(applyRepo)
 	if len(p.bodies) != 1 || p.issues[0] != 7 || !strings.HasPrefix(p.bodies[0], "🤖 Geparkeerd\nblocked_by: o/r#5 (In progress)") {
 		t.Errorf("posted %q on %v, want one Geparkeerd naming o/r#5 (In progress) on #7", p.bodies, p.issues)
 	}
-	if want := []string{"I7 On hold"}; !reflect.DeepEqual(h.poster(applyRepo).sets, want) {
-		t.Errorf("status sets = %q, want %q", h.poster(applyRepo).sets, want)
+	if want := []string{"I7 To do"}; !reflect.DeepEqual(p.sets, want) {
+		t.Errorf("status sets = %q, want %q", p.sets, want)
+	}
+	if want := []string{"blocked_issue"}; !reflect.DeepEqual(p.labels, want) {
+		t.Errorf("labels = %q, want %q", p.labels, want)
+	}
+	if rows := h.history(t); len(rows) != 1 || rows[0].ID != id || !rows[0].Open {
+		t.Errorf("history = %+v, want run %d still open", rows, id)
+	}
+	if len(h.wp.stopped) != 0 || len(h.wp.forgot) != 0 {
+		t.Errorf("stopped %v, discarded %v; want the workplace untouched", h.wp.stopped, h.wp.forgot)
+	}
+}
+
+// A park whose label edit fails keeps its Geparkeerd and leaves the board as it is: the next
+// tick holds without a second comment.
+func TestApplyParkLabelFailsNoBoard(t *testing.T) {
+	h := newHarness(t)
+	h.poster(applyRepo).editErr = errors.New("label refused")
+	if _, err := Apply(context.Background(), h.env, []Action{parkAction()}); err == nil || !strings.Contains(err.Error(), "label refused") {
+		t.Fatalf("Apply: %v, want the label error", err)
+	}
+	if p := h.poster(applyRepo); len(p.bodies) != 1 || p.sets != nil {
+		t.Errorf("posted %q, board %q; want the Geparkeerd and no board change", p.bodies, p.sets)
 	}
 }
 
@@ -1430,29 +1496,126 @@ func TestApplyParkBoardFails(t *testing.T) {
 	}
 }
 
-func TestApplyHold(t *testing.T) {
-	h := newHarness(t)
-	if _, err := Apply(context.Background(), h.env, []Action{{Kind: KindHold, Repo: applyRepo, Issue: 7, ItemID: "I7"}}); err != nil {
-		t.Fatalf("Apply: %v", err)
-	}
-	if got, want := h.log.all(), []string{"SetStatus"}; !reflect.DeepEqual(got, want) {
-		t.Errorf("calls = %q, want %q", got, want)
-	}
-	if want := []string{"I7 On hold"}; !reflect.DeepEqual(h.poster(applyRepo).sets, want) {
-		t.Errorf("status sets = %q, want %q", h.poster(applyRepo).sets, want)
+// A hold is a park without its comment (the own Geparkeerd stands): blocked_issue and To do.
+// A label already there is not added again.
+func TestApplyHoldSetsToDoWithBlockedIssue(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		labels []string
+		calls  []string
+	}{
+		{"without label", nil, []string{"Issue", "EditIssue", "SetStatus"}},
+		{"label stands", []string{"blocked_issue"}, []string{"Issue", "SetStatus"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHarness(t)
+			p := h.poster(applyRepo)
+			p.labels = tc.labels
+			if _, err := Apply(context.Background(), h.env, []Action{{Kind: KindHold, Repo: applyRepo, Issue: 7, ItemID: "I7"}}); err != nil {
+				t.Fatalf("Apply: %v", err)
+			}
+			if got := h.log.all(); !reflect.DeepEqual(got, tc.calls) {
+				t.Errorf("calls = %q, want %q", got, tc.calls)
+			}
+			if want := []string{"I7 To do"}; !reflect.DeepEqual(p.sets, want) {
+				t.Errorf("status sets = %q, want %q", p.sets, want)
+			}
+			if want := []string{"blocked_issue"}; !reflect.DeepEqual(p.labels, want) || len(p.bodies) != 0 {
+				t.Errorf("labels %q, posts %q; want [blocked_issue] and no comment", p.labels, p.bodies)
+			}
+		})
 	}
 }
 
-func TestApplyUnpark(t *testing.T) {
+// An unpark takes blocked_issue off (only when it is there; other labels stay) and moves the
+// item to Controller. Dropping the removal, or removing without the label, turns this red.
+func TestApplyUnparkRemovesLabelSetsController(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		labels, want []string
+		calls        []string
+	}{
+		{"label on", []string{"blocked_issue", "2-loc:mac"}, []string{"2-loc:mac"}, []string{"Issue", "EditIssue", "SetStatus"}},
+		{"label already off", []string{"2-loc:mac"}, []string{"2-loc:mac"}, []string{"Issue", "SetStatus"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHarness(t)
+			p := h.poster(applyRepo)
+			p.labels, p.status = tc.labels, statusToDo
+			if _, err := Apply(context.Background(), h.env, []Action{{Kind: KindUnpark, Repo: applyRepo, Issue: 7, ItemID: "I7"}}); err != nil {
+				t.Fatalf("Apply: %v", err)
+			}
+			if got := h.log.all(); !reflect.DeepEqual(got, tc.calls) {
+				t.Errorf("calls = %q, want %q", got, tc.calls)
+			}
+			if !reflect.DeepEqual(p.labels, tc.want) {
+				t.Errorf("labels = %q, want %q", p.labels, tc.want)
+			}
+			if want := []string{"I7 Controller"}; !reflect.DeepEqual(p.sets, want) {
+				t.Errorf("status sets = %q, want %q", p.sets, want)
+			}
+		})
+	}
+}
+
+// A label removal that fails leaves the item on To do: the next tick unparks it again.
+func TestApplyUnparkLabelFailsKeepsToDo(t *testing.T) {
 	h := newHarness(t)
-	if _, err := Apply(context.Background(), h.env, []Action{{Kind: KindUnpark, Repo: applyRepo, Issue: 7, ItemID: "I7"}}); err != nil {
-		t.Fatalf("Apply: %v", err)
+	p := h.poster(applyRepo)
+	p.labels, p.editErr = []string{"blocked_issue"}, errors.New("label refused")
+	if _, err := Apply(context.Background(), h.env, []Action{{Kind: KindUnpark, Repo: applyRepo, Issue: 7, ItemID: "I7"}}); err == nil {
+		t.Fatal("Apply: err = nil, want the label error")
 	}
-	if got, want := h.log.all(), []string{"SetStatus"}; !reflect.DeepEqual(got, want) {
-		t.Errorf("calls = %q, want %q", got, want)
+	if p.sets != nil {
+		t.Errorf("status sets = %q, want none", p.sets)
 	}
-	if want := []string{"I7 Controller"}; !reflect.DeepEqual(h.poster(applyRepo).sets, want) {
-		t.Errorf("status sets = %q, want %q", h.poster(applyRepo).sets, want)
+}
+
+// The round trip on the fake forge: a park leaves To do with blocked_issue; while the blocker
+// is open the next ticks do nothing; once it is closed the tick unparks (label off, Controller);
+// the tick after starts the Handoff. No step writes On hold.
+func TestParkThenUnparkRoundTrip(t *testing.T) {
+	h := newHarness(t)
+	p := h.poster(applyRepo)
+	p.bodies = []string{"🤖 Handoff\nissue: #7\nworktree: /w\nbranch: issue-7-x\nanchor: abc\nnext: /superpowers:subagent-driven-development /w/plan.md\nwhen: now"}
+	blocker := forge.Blocker{Repo: "x/y", Issue: 5, State: "OPEN"}
+	decide := func() []Action {
+		in := h.tickInput(t)
+		in.Repos[0].Snapshot.Items[0].BlockedBy = []forge.Blocker{blocker}
+		return Decide(in)
+	}
+	tick := func() []Kind {
+		t.Helper()
+		actions := decide()
+		if _, err := Apply(context.Background(), h.env, actions); err != nil {
+			t.Fatalf("Apply %v: %v", kinds(actions), err)
+		}
+		return kinds(actions)
+	}
+	if got := tick(); !reflect.DeepEqual(got, []Kind{KindPark}) {
+		t.Fatalf("tick 1 = %v, want park", got)
+	}
+	if p.status != statusToDo || !reflect.DeepEqual(p.labels, []string{"blocked_issue"}) {
+		t.Fatalf("after park: status %q, labels %q; want To do with blocked_issue", p.status, p.labels)
+	}
+	if got := tick(); len(got) != 0 {
+		t.Fatalf("tick 2, blocker open = %v, want nothing", got)
+	}
+	blocker.MergedPR = true // the blocker in another repo has a merged PR: no longer active
+	if got := tick(); !reflect.DeepEqual(got, []Kind{KindUnpark}) {
+		t.Fatalf("tick 3 = %v, want unpark", got)
+	}
+	if p.status != statusController || len(p.labels) != 0 {
+		t.Fatalf("after unpark: status %q, labels %q; want Controller without label", p.status, p.labels)
+	}
+	// Decide only: the start itself is not what this test is about.
+	if got := kinds(decide()); !reflect.DeepEqual(got, []Kind{KindStart}) {
+		t.Fatalf("tick 4 = %v, want the start of the Handoff", got)
+	}
+	for _, set := range p.sets {
+		if strings.HasSuffix(set, statusOnHold) {
+			t.Errorf("status set %q: nothing may write On hold", set)
+		}
 	}
 }
 
@@ -2326,5 +2489,350 @@ func TestApplyMergePushSpentKeyStartsNothing(t *testing.T) {
 	}
 	if len(*specs) != 0 || len(h.history(t)) != 1 {
 		t.Errorf("specs = %v, rows = %d; want nothing started", *specs, len(h.history(t)))
+	}
+}
+
+func TestApplyRepostPostsBody(t *testing.T) {
+	h := newHarness(t)
+	id := h.seed(t, 7, oldSession, "start:7", "")
+	body := "🤖 Klaar\nsession: x\n\nliteral  body"
+	a := Action{Kind: KindRepost, Repo: applyRepo, Issue: 7, RunID: id, Body: body}
+	res, err := Apply(context.Background(), h.env, []Action{a})
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	p := h.poster(applyRepo)
+	if !reflect.DeepEqual(p.bodies, []string{body}) || !reflect.DeepEqual(p.issues, []int{7}) {
+		t.Errorf("posted %q on %v, want the body on issue 7", p.bodies, p.issues)
+	}
+	if len(res.Deferred) != 0 || len(res.Failed) != 0 {
+		t.Errorf("Deferred = %q, Failed = %v, want none", res.Deferred, res.Failed)
+	}
+	if rows := h.history(t); !rows[0].Open || rows[0].Outcome != "" {
+		t.Errorf("row = %+v, want the run still open without an outcome", rows[0])
+	}
+}
+
+func TestApplyRepostFailureDefers(t *testing.T) {
+	h := newHarness(t)
+	id := h.seed(t, 7, oldSession, "start:7", "")
+	h.poster(applyRepo).postErr = errors.New("502\nbad gateway")
+	actions := []Action{
+		{Kind: KindRepost, Repo: applyRepo, Issue: 7, RunID: id, Body: "b"},
+		{Kind: KindDefer, Repo: applyRepo, Issue: 9, Reason: "night"},
+	}
+	res, err := Apply(context.Background(), h.env, actions)
+	if err != nil {
+		t.Fatalf("Apply: %v, want nil", err)
+	}
+	if _, ok := res.Failed[applyRepo]; ok {
+		t.Errorf("Failed = %v, want no key for the repo", res.Failed)
+	}
+	want := []string{"o/r#7: repost run " + strconv.FormatInt(id, 10) + ": 502; bad gateway", "o/r#9: night"}
+	if !reflect.DeepEqual(res.Deferred, want) {
+		t.Errorf("Deferred = %q, want %q", res.Deferred, want)
+	}
+	if rows := h.history(t); !rows[0].Open {
+		t.Errorf("row = %+v, want the run still open", rows[0])
+	}
+}
+
+// giveBackCalls are the forge calls of a 🤖 Returned after its post: the closed check, then
+// issuestate.Return (the label edit, the board item, the move to To do).
+var giveBackCalls = []string{"Issue", "Issue", "EditIssue", "IssueItem", "SetStatus"}
+
+// wantGivenBack checks that issue 7 carries exactly label and moved to To do once. The board
+// Priority is never written: fakeForge has no SetPriority, so a write would panic.
+func wantGivenBack(t *testing.T, p *fakeForge, label string) {
+	t.Helper()
+	if !reflect.DeepEqual(p.labels, []string{label}) {
+		t.Errorf("labels = %q, want [%s]", p.labels, label)
+	}
+	if want := []string{"PVTI_7 To do"}; !reflect.DeepEqual(p.sets, want) {
+		t.Errorf("board = %q, want %q", p.sets, want)
+	}
+}
+
+// A KindReturn posts, labels by the spec table and moves the issue to To do, then stops the
+// session and closes the run as returned.
+func TestApplyReturnSetsToDoWithLabel(t *testing.T) {
+	tests := []struct {
+		reason  string
+		blocked bool
+		label   string
+	}{
+		{"reason_needs_brainstorm", false, "needs_shaping"},
+		{"reason_interactive", false, "needs_decision"},
+		{"reason_pr_red", true, "blocked_issue"},
+		{"reason_silent", false, "needs_hands"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.label, func(t *testing.T) {
+			h := newHarness(t)
+			a := returnRun(h.seedWorkplace(t, "ws-1", "key-1"))
+			a.Reason, a.Blocked, a.Stop = tt.reason, tt.blocked, true
+			if _, err := Apply(context.Background(), h.env, []Action{a}); err != nil {
+				t.Fatalf("Apply: %v", err)
+			}
+			want := append(append([]string{"CreateComment"}, giveBackCalls...), "Stop")
+			if got := h.log.all(); !reflect.DeepEqual(got, want) {
+				t.Errorf("calls = %q, want %q", got, want)
+			}
+			wantGivenBack(t, h.poster(applyRepo), tt.label)
+			if rows := h.history(t); rows[0].Open || rows[0].Outcome != runs.Returned {
+				t.Errorf("row = %+v, want closed as returned", rows[0])
+			}
+		})
+	}
+}
+
+func TestApplyReturnWithoutRunStillLabels(t *testing.T) {
+	h := newHarness(t)
+	a := Action{Kind: KindReturn, Repo: applyRepo, Issue: 7, Reason: "reason_bad_handoff", Language: "nl"}
+	if _, err := Apply(context.Background(), h.env, []Action{a}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	wantGivenBack(t, h.poster(applyRepo), "needs_hands")
+}
+
+// The forge moved a closed issue to Done: the Returned still lands, the label and board do not.
+func TestApplyReturnClosedIssueSkipsLabelAndStatus(t *testing.T) {
+	h := newHarness(t)
+	p := h.poster(applyRepo)
+	p.closedIssue = true
+	id := h.seed(t, 7, oldSession, "start:7", "")
+	if _, err := Apply(context.Background(), h.env, []Action{returnRun(id)}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if got, want := h.log.all(), []string{"CreateComment", "Issue"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("calls = %q, want %q", got, want)
+	}
+	if len(p.bodies) != 1 || p.labels != nil || p.sets != nil {
+		t.Errorf("posted %q, labels %q, board %q; want the Returned only", p.bodies, p.labels, p.sets)
+	}
+	if rows := h.history(t); rows[0].Open {
+		t.Errorf("row = %+v, want closed", rows[0])
+	}
+}
+
+func TestApplyReturnOwnWorkSetsToDo(t *testing.T) {
+	h := newHarness(t)
+	h.wp.prepareErr = &workplace.OwnWorkError{
+		Workspace: workplace.Workspace{ID: "ws-issue-7-x", Path: "/forge/issue-7-x", Branch: "issue-7-x"}, Commits: 2,
+	}
+	if _, err := Apply(context.Background(), h.env, []Action{startAction()}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	wantGivenBack(t, h.poster(applyRepo), "needs_hands")
+	if rows := h.history(t); len(rows) != 1 || rows[0].Open || rows[0].Outcome != runs.Returned {
+		t.Errorf("rows = %+v, want one closed returned run", rows)
+	}
+}
+
+func TestApplyReturnFixPRSetsToDo(t *testing.T) {
+	h := newHarness(t)
+	h.wp.sessions = []workplace.Session{{Key: "other", WorkspaceID: "ws-issue-7-x", State: "working", SessionID: "x"}}
+	if _, err := Apply(context.Background(), h.env, []Action{fixPRAction(1)}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	wantGivenBack(t, h.poster(applyRepo), "needs_hands")
+}
+
+// The first refused launch keeps the issue on Controller without a label: retry plans the second
+// attempt, and a To do would hide it from that.
+func TestApplyReturnStartFailedAttempt1KeepsController(t *testing.T) {
+	h := newHarness(t)
+	h.wp.spawnErr = workplace.ErrNotAccepted
+	if _, err := Apply(context.Background(), h.env, []Action{startAction()}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	p := h.poster(applyRepo)
+	if len(p.bodies) != 2 || p.labels != nil || p.sets != nil {
+		t.Errorf("posted %d, labels %q, board %q; want the Started and Returned only", len(p.bodies), p.labels, p.sets)
+	}
+}
+
+// The second refused launch is the last: no retry follows, so the issue goes to To do.
+func TestApplyReturnStartFailedAttempt2SetsToDo(t *testing.T) {
+	h := newHarness(t)
+	h.wp.spawnErr = workplace.ErrNotAccepted
+	a := startAction()
+	a.Attempt = 2
+	if _, err := Apply(context.Background(), h.env, []Action{a}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	wantGivenBack(t, h.poster(applyRepo), "needs_hands")
+}
+
+// tickInput is what the next tick gathers of issue 7: the item as the fake forge holds it, with
+// every post as a comment of the token login, and the runs of the database.
+func (h *harness) tickInput(t *testing.T) Input {
+	t.Helper()
+	p := h.poster(applyRepo)
+	it := Item{Issue: 7, Title: "x", State: "OPEN", ItemID: "PVTI_7", Status: cmp.Or(p.status, statusController),
+		Priority: "P1", Labels: p.labels}
+	for i, body := range p.bodies {
+		it.Comments = append(it.Comments, Comment{ID: int64(1001 + i), Author: "lh-bot", Body: body,
+			CreatedAt: applyNow.Format(time.RFC3339)})
+	}
+	return Input{Now: applyNow, Repos: []RepoInput{{
+		Snapshot: Snapshot{Version: SnapshotVersion, Repo: applyRepo, TokenLogin: "lh-bot", Items: []Item{it}},
+		Language: "nl", Labels: testLabels, History: h.history(t),
+	}}}
+}
+
+// tick is one Decide and Apply round on what tickInput gathers.
+func (h *harness) tick(t *testing.T) ([]Action, error) {
+	t.Helper()
+	actions := Decide(h.tickInput(t))
+	_, err := Apply(context.Background(), h.env, actions)
+	return actions, err
+}
+
+// A Returned whose label edit failed keeps its run open; the next tick closes the run (settle),
+// the one after finishes the hand-back with the label of its reason, and then nothing is left.
+func TestApplyReturnHalfWrittenFinishes(t *testing.T) {
+	h := newHarness(t)
+	p := h.poster(applyRepo)
+	p.editErr = errors.New("forge down")
+	a := returnRun(h.seed(t, 7, oldSession, "start:7", ""))
+	if _, err := Apply(context.Background(), h.env, []Action{a}); err == nil || !strings.Contains(err.Error(), "forge down") {
+		t.Fatalf("Apply = %v, want the label error", err)
+	}
+	if rows := h.history(t); !rows[0].Open {
+		t.Fatalf("row = %+v, want still open after the failed label", rows[0])
+	}
+	p.editErr = nil
+	for i, want := range [][]Kind{{KindClose}, {KindFinishReturn}, {}} {
+		got, err := h.tick(t)
+		if err != nil || !reflect.DeepEqual(kinds(got), want) {
+			t.Fatalf("tick %d = %+v, %v; want %v", i+1, got, err, want)
+		}
+	}
+	wantGivenBack(t, p, "needs_hands")
+	if rows := h.history(t); rows[0].Open || rows[0].Outcome != runs.Returned || len(p.bodies) != 1 {
+		t.Errorf("row = %+v, posts %d; want closed as returned under one Returned", rows[0], len(p.bodies))
+	}
+}
+
+// A Returned without a run (a handoff that wants a brainstorm) whose label edit failed is finished
+// by the next tick with the label its reason text names, needs_shaping, not the default.
+func TestDecideFinishesReturnWithoutRun(t *testing.T) {
+	h := newHarness(t)
+	p := h.poster(applyRepo)
+	p.editErr = errors.New("forge down")
+	a := Action{Kind: KindReturn, Repo: applyRepo, Issue: 7, Reason: "reason_needs_brainstorm", Language: "nl"}
+	if _, err := Apply(context.Background(), h.env, []Action{a}); err == nil {
+		t.Fatal("Apply: want the label error")
+	}
+	p.editErr = nil
+	for i, want := range [][]Kind{{KindFinishReturn}, {}} {
+		got, err := h.tick(t)
+		if err != nil || !reflect.DeepEqual(kinds(got), want) {
+			t.Fatalf("tick %d = %+v, %v; want %v", i+1, got, err, want)
+		}
+	}
+	wantGivenBack(t, p, "needs_shaping")
+}
+
+// Only the tick's own Returned is finished: a 🤖 Teruggegeven another author wrote by hand moves
+// nothing.
+func TestDecideFinishesOnlyOwnReturn(t *testing.T) {
+	h := newHarness(t)
+	p := h.poster(applyRepo)
+	p.bodies = []string{protocol.RenderReturned("PR rood", "", "", "nl")}
+	in := h.tickInput(t)
+	if got := Decide(in); !reflect.DeepEqual(kinds(got), []Kind{KindFinishReturn}) {
+		t.Fatalf("own Returned: Decide = %+v, want one finish_return", got)
+	}
+	in.Repos[0].Snapshot.Items[0].Comments[0].Author = "owner"
+	if got := Decide(in); len(got) != 0 {
+		t.Errorf("Returned of owner: Decide = %+v, want nothing", got)
+	}
+}
+
+// A Controller issue that carries blocked_issue while its own Returned names reason_interactive
+// (the label write failed) is finished with needs_decision: blocked_issue is no input of the
+// label, the rank rule drops it. Assigning a.Blocked in finishReturn from the blocked_issue
+// label turns this red: ReturnLabelKey then gives blocked_issue.
+func TestDecideFinishReturnKeepsReasonOverBlockedIssue(t *testing.T) {
+	h := newHarness(t)
+	p := h.poster(applyRepo)
+	p.bodies = []string{protocol.RenderReturned(protocol.Heading("reason_interactive", "nl"), "", "", "nl")}
+	p.labels = []string{"blocked_issue"}
+	got, err := h.tick(t)
+	if err != nil || !reflect.DeepEqual(kinds(got), []Kind{KindFinishReturn}) {
+		t.Fatalf("tick = %+v, %v; want one finish_return", got, err)
+	}
+	wantGivenBack(t, p, "needs_decision")
+}
+
+// A KindToDo only sets To do on the board item: no comment, no label change, and an open run
+// and its workplace stay as they are. Any extra write in the KindToDo case turns this red.
+func TestApplyToDoOnlySetsStatus(t *testing.T) {
+	h := newHarness(t)
+	id := h.seedWorkplace(t, "ws-1", "key-1")
+	a := Action{Kind: KindToDo, Repo: applyRepo, Issue: 7, ItemID: "PVTI_7"}
+	if _, err := Apply(context.Background(), h.env, []Action{a}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if got, want := h.log.all(), []string{"SetStatus"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("calls = %q, want %q", got, want)
+	}
+	if want := []string{"PVTI_7 To do"}; !reflect.DeepEqual(h.poster(applyRepo).sets, want) {
+		t.Errorf("board = %q, want %q", h.poster(applyRepo).sets, want)
+	}
+	if rows := h.history(t); len(rows) != 1 || rows[0].ID != id || !rows[0].Open {
+		t.Errorf("history = %+v, want run %d still open", rows, id)
+	}
+}
+
+// A Controller issue whose last comment is the tick's own Returned and that carries needs_hands
+// gets exactly one todo and then nothing: it never reaches finishReturn (the needs_* rule of
+// decideIssue comes first), and once the board says To do neither rule fires. Dropping the
+// needs_* rule gives a start or a finish_return on tick 1; the blocking-label check inside
+// finishReturn is a second guard that matters for blocked_* labels and does not turn this red.
+func TestDecideNeedsLabelOwnReturnedNoLoop(t *testing.T) {
+	h := newHarness(t)
+	p := h.poster(applyRepo)
+	p.bodies = []string{protocol.RenderReturned("PR rood", "", "", "nl")}
+	p.labels = []string{"needs_hands"}
+	for i, want := range [][]Kind{{KindToDo}, {}, {}} {
+		got, err := h.tick(t)
+		if err != nil || !reflect.DeepEqual(kinds(got), want) {
+			t.Fatalf("tick %d = %+v, %v; want %v", i+1, got, err, want)
+		}
+	}
+	if want := []string{"PVTI_7 To do"}; !reflect.DeepEqual(p.sets, want) {
+		t.Errorf("board = %q, want one To do", p.sets)
+	}
+}
+
+// A rule-13 Returned with an active blocker whose label landed but whose To do did not stays on
+// Controller with blocked_issue; the next tick finishes it as blocked (label kept, To do), and
+// then nothing is left. Skipping every blocking label in finishReturn turns tick 1 red.
+func TestDecideFinishesBlockedReturnStuckOnController(t *testing.T) {
+	h := newHarness(t)
+	p := h.poster(applyRepo)
+	p.setErr = errors.New("board down")
+	a := Action{Kind: KindReturn, Repo: applyRepo, Issue: 7, Reason: "reason_pr_red", Blocked: true, Language: "nl"}
+	if _, err := Apply(context.Background(), h.env, []Action{a}); err == nil {
+		t.Fatal("Apply: want the board error")
+	}
+	if p.status != "" || !reflect.DeepEqual(p.labels, []string{"blocked_issue"}) {
+		t.Fatalf("after the failed board write: status %q, labels %q; want Controller with blocked_issue", p.status, p.labels)
+	}
+	p.setErr = nil
+	for i, want := range [][]Kind{{KindFinishReturn}, {}} {
+		got, err := h.tick(t)
+		if err != nil || !reflect.DeepEqual(kinds(got), want) {
+			t.Fatalf("tick %d = %+v, %v; want %v", i+1, got, err, want)
+		}
+	}
+	wantGivenBack(t, p, "blocked_issue")
+	// A Controller issue with own Returned and blocked_external is a human's: no finish.
+	p.status, p.labels, p.sets = "", []string{"blocked_external"}, nil
+	if got := Decide(h.tickInput(t)); len(got) != 0 {
+		t.Errorf("blocked_external: Decide = %+v, want nothing", got)
 	}
 }

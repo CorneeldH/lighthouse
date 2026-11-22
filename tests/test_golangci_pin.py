@@ -7,11 +7,11 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_pin_matches_ci():
-    """Fails when `.golangci-version` and the `version:` of the lint action drift apart."""
+    """Fails when `.golangci-version` and the `version:` of any lint action step (the canary job included) drift apart."""
     pin = (ROOT / ".golangci-version").read_text(encoding="utf-8").strip()
     ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-    step = re.search(
+    versions = re.findall(
         r"uses: golangci/golangci-lint-action@\S+.*?\n\s+with:\n\s+version: (\S+)", ci, re.DOTALL
     )
-    assert step, "no golangci-lint-action step with a version in ci.yml"
-    assert pin == step.group(1)
+    assert versions, "no golangci-lint-action step with a version in ci.yml"
+    assert versions == [pin] * len(versions), (pin, versions)

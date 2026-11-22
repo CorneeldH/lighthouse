@@ -1,0 +1,8 @@
+{
+  "hook": "node",
+  "touch": "packages/child/index.js",
+  "exit": 0,
+  "node_modules": [
+    "left-pad"
+  ]
+}

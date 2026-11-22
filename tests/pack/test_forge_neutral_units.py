@@ -11,8 +11,22 @@ from pathlib import Path
 
 import pytest
 
-from tests.pack._testkit import CORE, PACKS
-from tests.pack.test_skill_contracts import _TOOL_USES
+from tests.pack.python._testkit import CORE, PACKS
+
+# A literal copy of `_TOOL_USES` from the removed `test_skill_contracts.py` (#367).
+_TOOL_USES = {
+    "superpowers": r"superpowers:",
+    "gh": r"\bgh (pr|issue|api|project|run|repo|search|label|workflow)\b",
+    "codex": r"(^|[\s`$(])codex (exec|review)\b|codex-usage",
+    # A call (`jq -r`, `| jq '.x'`), not a mention like "no `jq`".
+    "jq": r"\bjq\s+[-'\".]",
+    "git": r"\bgit (-C|worktree|log|fetch|diff|status|rev-parse|branch|push|commit|grep|show"
+    r"|merge-base|checkout|switch|ls-files|add)\b",
+    "python3": r"\bpython3\b",
+    # A lighthouse Python script reads lighthouse.toml through tomllib; `lighthouse config`
+    # does not (#274).
+    "tomllib": r"python3 \.lighthouse/scripts/|tomllib",
+}
 
 # The same `gh <command>` alternation requires.toml uses, plus release (see the docstring).
 FORGE_OP = re.compile(_TOOL_USES["gh"].replace("(pr|", "(release|pr|", 1))

@@ -9,7 +9,7 @@ the pointer in its AGENTS.md and the ruff pin read from its own `.ruff-version`.
 import re
 from pathlib import Path
 
-from tests.pack._testkit import config_kinds
+from tests.pack.python._testkit import config_kinds
 
 SKILL_DIR = Path(__file__).resolve().parents[3] / "pack" / "python" / "skills" / "python-standard"
 CLAUDE = SKILL_DIR / "claude" / "SKILL.md"

@@ -125,6 +125,7 @@ func TestLanguagePacks(t *testing.T) {
 			name: "go",
 			files: []string{
 				".agents/skills/lighthouse-go-standard/SKILL.md",
+				".claude/hooks/lighthouse/go-imports-gate.sh",
 				".claude/hooks/lighthouse/go-lint-gate.sh",
 				".claude/hooks/lighthouse/gofmt-check.sh",
 				".claude/skills/lighthouse-go-standard/SKILL.md",
@@ -132,18 +133,23 @@ func TestLanguagePacks(t *testing.T) {
 			detect: true,
 			tools:  "git,go,gofmt,golangci-lint,jq",
 			blocks: 1,
-			hooks:  2,
+			hooks:  3,
 		},
 		{
-			name:   "node",
-			files:  []string{},
+			name: "node",
+			files: []string{
+				".claude/hooks/lighthouse/node-imports-gate.sh",
+			},
 			detect: true,
-			tools:  "node,npm",
+			tools:  "node,npm,npx",
+			blocks: 1,
+			hooks:  1,
 		},
 		{
 			name: "python",
 			files: []string{
 				".agents/skills/lighthouse-python-standard/SKILL.md",
+				".claude/hooks/lighthouse/python-imports-gate.sh",
 				".claude/hooks/lighthouse/ruff-format-check.sh",
 				".claude/hooks/lighthouse/ty-gate.sh",
 				".claude/skills/lighthouse-python-standard/SKILL.md",
@@ -159,7 +165,7 @@ func TestLanguagePacks(t *testing.T) {
 			detect:   true,
 			tools:    "gh,jq,python3,tomllib,uv",
 			blocks:   1,
-			hooks:    2,
+			hooks:    3,
 			fragment: "test_gate",
 		},
 		{
@@ -173,7 +179,7 @@ func TestLanguagePacks(t *testing.T) {
 			},
 			detect: true,
 			tools:  "curl,git,jq,tar,xz",
-			blocks: 1,
+			blocks: 0,
 			hooks:  1,
 		},
 	}

@@ -23,8 +23,11 @@ type forgeOpener struct {
 	open      func(forge.Config) (forge.Forge, error) // forge.Open; tests replace it
 	http      *http.Client
 	cache     *forgecache.Lazy // the GitHub ETag cache, opened on the first GitHub forRepo
-	mu        sync.Mutex       // guards logins
-	logins    map[loginKey]*tokenLoginOnce
+	// enrichMemo sets forge.GitHub.EnrichMemo on each GitHub client it opens. Only openForges
+	// sets it: its clients live one tick; serve, the pusher and postartefact read fresh.
+	enrichMemo bool
+	mu         sync.Mutex // guards logins
+	logins     map[loginKey]*tokenLoginOnce
 }
 
 // loginKey is what the token login of a forge depends on.
@@ -75,6 +78,9 @@ func (o *forgeOpener) forRepo(ctx context.Context, repo repoconfig.Repo) (repoFo
 	f, err := o.open(cfg)
 	if err != nil {
 		return repoForge{}, err
+	}
+	if gh, ok := f.(*forge.GitHub); ok && o.enrichMemo {
+		gh.EnrichMemo = true
 	}
 	key := loginKey{kind: f.Kind(), host: cfg.Host, baseURL: cfg.BaseURL, token: token}
 	o.mu.Lock()

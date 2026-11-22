@@ -8,7 +8,7 @@ Modelled on `tests/pack/python/test_python_writing.py`; the content is fixed by 
 import re
 from pathlib import Path
 
-from tests.pack._testkit import config_kinds
+from tests.pack.python._testkit import config_kinds
 
 SKILL_DIR = Path(__file__).resolve().parents[3] / "pack" / "go" / "skills" / "go-standard"
 CLAUDE = SKILL_DIR / "claude" / "SKILL.md"

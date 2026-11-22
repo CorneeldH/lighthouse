@@ -114,8 +114,11 @@ func TestGitHubPlanningCountsIssuesOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []MilestoneCount{
-		{Milestone: Milestone{Number: 1, Title: "M1", State: "open", Description: "d"}, Open: 3, Done: 2},
-		{Milestone: Milestone{Number: 2, Title: "M2 — leeg", State: "open"}},
+		{Milestone: Milestone{Number: 1, Title: "M1", State: "open", Description: "d"}, Open: 3, Done: 2, Closed: []ClosedIssue{
+			{Number: 4, Title: "Issue 4", URL: "https://github.com/o/r/issues/4"},
+			{Number: 5, Title: "Issue 5", URL: "https://github.com/o/r/issues/5"},
+		}},
+		{Milestone: Milestone{Number: 2, Title: "M2 — leeg", State: "open"}, Closed: []ClosedIssue{}},
 	}
 	if !reflect.DeepEqual(got.Milestones, want) {
 		t.Errorf("Milestones = %+v, want %+v (open issues and completed ones; no PRs, no not-planned; closed milestone left out)", got.Milestones, want)
@@ -224,12 +227,87 @@ func TestGitHubPlanningSearchSendsQualifiers(t *testing.T) {
 	for _, v := range vars {
 		got[v.(string)] = true
 	}
-	for _, want := range []string{
-		`repo:o/r milestone:"M1 — Eerste" is:issue is:open`,
-		`repo:o/r milestone:"M1 — Eerste" is:issue is:closed reason:completed`,
-	} {
-		if !got[want] {
-			t.Errorf("search queries = %v, want %q", vars, want)
+	if want := `repo:o/r milestone:"M1 — Eerste" is:issue is:open`; !got[want] || len(got) != 1 {
+		t.Errorf("search queries = %v, want only %q (Done comes from the closed issues)", vars, want)
+	}
+}
+
+func TestPlanningReadsLabels(t *testing.T) {
+	srv, c := boardClient(t)
+	labelled := planIssue(1, nil)
+	labelled["labels"] = []any{map[string]any{"name": "a"}, map[string]any{"name": "b"}}
+	srv.Issues = map[int]map[string]any{1: labelled, 2: planIssue(2, nil)}
+	got, err := c.Planning(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Issues) != 2 {
+		t.Fatalf("Issues = %+v, want 2", got.Issues)
+	}
+	if want := []string{"a", "b"}; !reflect.DeepEqual(got.Issues[0].Labels, want) {
+		t.Errorf("Issues[0].Labels = %#v, want %#v", got.Issues[0].Labels, want)
+	}
+	if want := []string{}; !reflect.DeepEqual(got.Issues[1].Labels, want) {
+		t.Errorf("Issues[1].Labels = %#v, want an empty non-nil list", got.Issues[1].Labels)
+	}
+}
+
+func TestPlanningClosedIssues(t *testing.T) {
+	srv, c := boardClient(t)
+	m1 := map[string]any{"number": 1, "title": "M1", "state": "open"}
+	srv.PlanMilestones = []map[string]any{
+		{"number": 1, "title": "M1", "state": "OPEN"},
+		{"number": 2, "title": "M2", "state": "OPEN"},
+	}
+	srv.Issues = map[int]map[string]any{}
+	add := func(n int, state, reason string, pr bool) {
+		it := planIssue(n, m1)
+		it["state"] = state
+		if reason != "" {
+			it["state_reason"] = reason
 		}
+		if pr {
+			it["pull_request"] = map[string]any{}
+		}
+		srv.Issues[n] = it
+	}
+	add(9, "closed", "completed", false)
+	add(4, "closed", "completed", false)
+	add(6, "closed", "not_planned", false)
+	add(8, "closed", "completed", true)
+	add(10, "closed", "", false) // an old issue without a close reason: stateReason null
+	got, err := c.Planning(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []ClosedIssue{
+		{Number: 4, Title: "Issue 4", URL: "https://github.com/o/r/issues/4"},
+		{Number: 9, Title: "Issue 9", URL: "https://github.com/o/r/issues/9"},
+		{Number: 10, Title: "Issue 10", URL: "https://github.com/o/r/issues/10"},
+	}
+	if !reflect.DeepEqual(got.Milestones[0].Closed, want) || got.Milestones[0].Done != 3 {
+		t.Errorf("M1 Closed = %+v, Done = %d; want completed and reasonless issues #4, #9 and #10 in number order, Done 3", got.Milestones[0].Closed, got.Milestones[0].Done)
+	}
+	if got.Milestones[1].Closed == nil || len(got.Milestones[1].Closed) != 0 {
+		t.Errorf("M2 Closed = %#v, want an empty non-nil list", got.Milestones[1].Closed)
+	}
+}
+
+func TestPlanningClosedTruncated(t *testing.T) {
+	srv, c := boardClient(t)
+	srv.PlanMilestones = []map[string]any{{"number": 1, "title": "M1", "state": "OPEN"}}
+	srv.PlanClosedMore = map[int]bool{1: true}
+	got, err := c.Planning(t.Context())
+	if err == nil || !strings.Contains(err.Error(), "M1") || !strings.Contains(err.Error(), "truncated") {
+		t.Fatalf("Planning = %+v, %v; want a truncation error naming milestone M1", got, err)
+	}
+}
+
+func TestPlanningLabelsTruncated(t *testing.T) {
+	srv, c := boardClient(t)
+	srv.Issues = map[int]map[string]any{1: planIssue(1, nil)}
+	srv.PlanLabelsMore = map[int]bool{1: true}
+	if got, err := c.Planning(t.Context()); err == nil || !strings.Contains(err.Error(), "labels truncated") {
+		t.Fatalf("Planning = %+v, %v; want a labels-truncated error", got, err)
 	}
 }

@@ -54,6 +54,10 @@ en = "asks for interactive execution"
 nl = "skill niet geïnstalleerd in de worktree"
 en = "skill not installed in the worktree"
 
+[reason_repeat_handoff]
+nl = "dezelfde handoff als de vorige, zonder voortgang"
+en = "same handoff as the previous one, no progress"
+
 [reason_not_allowed]
 nl = "commando niet toegestaan"
 en = "command not allowed"
@@ -121,6 +125,14 @@ en = "merge failed after 3 fix-pr runs"
 [reason_no_handoff]
 nl = "geen handoff of vraag"
 en = "no handoff or question"
+
+[reason_post_failed]
+nl = "post mislukt"
+en = "post failed"
+
+[reason_post_failed_unreadable]
+nl = "post mislukt: notitie onleesbaar"
+en = "post failed: note unreadable"
 
 [reason_start_uncertain]
 nl = "start onzeker: geen sessie gevonden"
@@ -401,6 +413,10 @@ en = "Design questions"
 [triage_interactive]
 nl = "Dit moet interactief:"
 en = "This has to be interactive:"
+
+[triage_needs_label]
+nl = "Dit issue draagt al een needs_*-label; een mens pakt het op en het gaat niet naar de dispatcher. Label:"
+en = "This issue already carries a needs_* label; a human picks it up and it does not go to the dispatcher. Label:"
 
 [triage_untrusted]
 nl = "De auteur van dit issue valt niet in answer_permissions: een vertrouwde gebruiker zet het zelf door."

@@ -222,12 +222,12 @@ against a real GitLab is part of the definition of done of the GitLab milestone 
 `api` scope to write, `read_api` to only read.
 
 GitLab keeps the status of an issue in its built-in issue status (a work item widget), not in a
-label. Add the statuses *On hold* and *Controller* to the top group of the lifecycle, under
+label. Add the status *Controller* to the top group of the lifecycle, under
 *Settings → Work items → Statuses*. A status the lifecycle lacks stops the write with an error
 that names the status and this place. Names are matched case-insensitively.
 
 The `[forge.board]` of a GitLab repository has two tables only. `status_options` needs *To do*,
-*In progress*, *Done* and *On hold*, and *Controller* as well once the file has a `[controller]`
+*In progress* and *Done*, and *Controller* as well once the file has a `[controller]`
 table. Each lighthouse name needs a GitLab status of its own, and each priority a label of its
 own: two names on one status or label are refused.
 
@@ -241,7 +241,6 @@ host = "gitlab.example.com"
 "To do" = "To do"
 "In progress" = "In progress"
 "Done" = "Done"
-"On hold" = "On hold"
 "Controller" = "Controller"
 
 [forge.board.priority_options]  # lighthouse name = scoped label
@@ -290,7 +289,7 @@ curl -s http://127.0.0.1:8127/api/questions
 
 For a repository in `[dispatch] repos` whose `lighthouse.toml` has a `[forge.board]` with a
 `Controller` option, the overview shows only the issues in Controller. Issues the dispatcher
-parked (On hold, see [tick.md](tick.md)) then drop out. Otherwise it shows every open issue of
+parked (To do with the `blocked_issue` label, see [tick.md](tick.md)) then drop out. Otherwise it shows every open issue of
 that repository. With the filter `serve` reads the project board, so the token needs the
 `project` scope as well. A `host.toml` that does not load (an invalid value or an unknown key under
 `[dispatch]`) stops `serve`; a missing one counts as no `[dispatch]`.
@@ -327,7 +326,7 @@ the night window from `[dispatch] night` as `HH:MM-HH:MM`. A `500` means the dat
 
 ## Telemetry data model
 
-The same `lighthouse.db` holds the telemetry of the work, migration `0010`. A *trajectory* is one
+The same `lighthouse.db` holds the telemetry of the work, migration `0010`, recovery after merge `0011`. A *trajectory* is one
 issue of one repository (`trajectories`, unique on `repo` and `issue`, `repo` the configured slug
 exactly as in `runs.repo`). Four more tables and two columns carry the rest: `sessions` (interactive
 sessions only, never dispatcher runs), `setups` (the deployment of one run or session: model, effort,
@@ -356,6 +355,41 @@ with their branch:
 
 Scheduled runs (see *Scheduled runs*) have no issue and so no trajectory: `runs.trajectory_id` stays
 empty for them.
+
+### Herstel na merge
+
+`lighthouse measure-recovery --repo-dir <pad> [--days N] [--db <pad>]` meet per gemergde PR of het
+werk na de merge hersteld moest worden, en schrijft dat in `recoveries` (een rij per PR, uniek op
+traject en PR: `merged_at`, `window_end`, `status`, `fixpr_rounds`) en `recovery_items` (een rij per
+herstel: `kind` `fix`, `revert` of `bug_issue`, met `ref` en `at`). De opdracht draait niet vanzelf;
+start haar met de hand of vanuit een eigen cron. `--days` is standaard 14, `--db` standaard de
+`lighthouse.db` van de statusmap. Repo en default branch komen uit de `lighthouse.toml` in
+`--repo-dir`; de opdracht haalt eerst `origin/<default branch>` op (mislukt dat, dan is het exit 1 en
+wordt niets geschreven) en meet op die ref.
+
+- **Herstel** is een van drie dingen binnen het venster `(merged_at, merged_at + 7 dagen]`: een
+  commit op de default branch waarvan het onderwerp met `fix:` of `fix(` begint en die minstens een
+  bestand raakt dat ook de merge-commit raakte (`fix`), zo'n commit met `Revert "`, `revert:` of
+  `revert(` (`revert`), of een issue met het label `bug` dat `#<pr>` in titel of body noemt en
+  binnen het venster is aangemaakt (`bug_issue`). De merge-commit is de commit met `(#<pr>)` aan
+  het eind van het onderwerp (squash-merge); een PR zonder zo'n commit wordt overgeslagen
+  (`no_merge_commit`).
+- **Status.** Zolang het venster loopt is de status `open`, ook als er al herstel is. Daarna is hij
+  `recovered` (minstens een item) of `none`. Een rij die `recovered` of `none` is blijft zo; een
+  `open`-rij wordt bij elke run vervangen, ook buiten `--days`, zodat hij sluit zodra zijn venster
+  voorbij is.
+- **Traject.** Het issuenummer komt uit de branchnaam `issue-<nr>-...` van de PR (een PR met een
+  bestaande `open`-rij houdt het issue van die rij); een PR zonder
+  zo'n branch wordt overgeslagen met reden `no_issue_branch`. Elke overgeslagen PR staat met reden in
+  de uitvoer; de exitcode blijft 0. De uitvoer is `#<pr> <status> <n> items, <m> fix-pr rounds` per
+  gemeten PR en `#<pr> skipped: <reason>` per overgeslagen PR.
+- **`fixpr_rounds`** telt de `fix-pr`-runs van de dispatcher die voor de merge begonnen (`runs`,
+  trigger `fixpr`, zonder `start_failed`). Alleen die tellen: een ronde in een interactieve sessie
+  laat geen PR-record achter en blijft buiten de telling.
+- **Forge.** Per run is er een zoekopdracht (`label:bug created:>=<oudste merge>`) vanwege de
+  limiet van de zoek-API; een forgefout, ook een limiet, geeft exit 1 voordat er iets wordt
+  geschreven. Alleen GitHub: GitLab kan gemergde PR's nog niet opsommen, dus daar is de opdracht een
+  fout (exit 1).
 
 ## Run the tick
 

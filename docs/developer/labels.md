@@ -115,4 +115,14 @@ Hoogstens één. Gelden er twee, dan wint de **laagste rang**.
 
 Amber = de bal ligt bij Corneel, rood = buiten.
 
+`lighthouse state label <nr> <key>` past de rangregel toe: het label met de laagste rang blijft of
+komt erop, de andere blokkadelabels gaan eraf. `<key>` is de sleutel uit `[labels]`, zoals
+`needs_hands`. `lighthouse state return <nr> <key>` doet hetzelfde en zet het issue daarna op
+`To do`.
+
+Een `needs_*`-label betekent: interactief oppakken. De tick start er geen run voor en triage stuurt
+het issue niet naar `Controller`; staat zo'n issue op `Controller`, dan zet de tick het op `To do` en
+het label blijft. Het label `blocked_issue` is ook het parkeerlabel: zie [tick.md](../tick.md#blokkades).
+Een label en een status `On hold` bestaan niet naast elkaar: `On hold` wordt nergens meer geschreven.
+
 `3-blocked-issue` gaat nooit mee in `gh issue create`; de `blocked_by`-relatie komt eerst.

@@ -71,7 +71,7 @@ func runHook(ctx context.Context, root, _ string, p hook.Payload) hook.Result {
 		if note != "" {
 			report += "\n\n" + note
 		}
-		return hook.Result{Code: 2, Stderr: report + "\n"}
+		return hook.Block(reasonNonEnglish, report+"\n")
 	case note == "":
 		return hook.Result{}
 	case os.Getenv(underGatesEnv) != "":
@@ -85,6 +85,9 @@ func runHook(ctx context.Context, root, _ string, p hook.Payload) hook.Result {
 	}}
 }
 
+// reasonNonEnglish is the block of a written file whose code is not English.
+var reasonNonEnglish = hook.Declare("code-language-check", "non-english")[0]
+
 // blocked is cannot_check() of the shell hook: nothing was checked, with an optional detail.
 func blocked(reason, detail string) hook.Result {
 	s := "code-language-check: COULD NOT CHECK — " + reason + "\n\n" +
@@ -93,12 +96,12 @@ func blocked(reason, detail string) hook.Result {
 	if detail != "" {
 		s += "\n" + detail + "\n"
 	}
-	return hook.Result{Code: 2, Stderr: s}
+	return hook.CouldNotCheck(s)
 }
 
 // checkerFailed is a COULD NOT CHECK of the checker: one line with the reason.
 func checkerFailed(err error) hook.Result {
-	return hook.Result{Code: 2, Stderr: "code-language-check: COULD NOT CHECK — " + err.Error() + "\n"}
+	return hook.CouldNotCheck("code-language-check: COULD NOT CHECK — " + err.Error() + "\n")
 }
 
 // payloadPaths reads tool_input.file_path and cwd as `jq -r '.x // empty'` does: absent, null

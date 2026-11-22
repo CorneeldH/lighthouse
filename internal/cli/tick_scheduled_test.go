@@ -112,6 +112,7 @@ func newScheduledTick(t *testing.T, hostExtra string, others ...string) *schedul
 		appendHostToml(t, env, hostExtra)
 	}
 	srv, fw := startable(t, &env)
+	srv.Issues = nil // a scheduled run has no issue; its PR numbers start at 1
 	w := &spawnFailWorkplace{fakeWorkplace: fw}
 	env.Workplace = func(r repoconfig.Repo, node, _ string) workplace.Workplace {
 		if r.Slug != "o/r" {

@@ -218,9 +218,9 @@ het posten van het artefact, de controller-modus, elke vraag en de `/clear`-tip 
 
 ### Andere Stop-gates
 
-`go-lint-gate.sh` (pakket `go`) en `ty-gate.sh` (pakket `python`) blokkeren een `Stop` niet zolang er
+`go-lint-gate.sh` (pakket `go`), `ty-gate.sh` (pakket `python`) en de drie `*-imports-gate.sh` (pakketten `go`, `python`, `node`) blokkeren een `Stop` niet zolang er
 een geldig alarm is. Ze melden `go-lint-gate: not checked — the usage alarm is up until <reset_local>;
-the usage gate wraps up this session.` (`ty-gate: …` voor ty) als `systemMessage` en eindigen met
+the usage gate wraps up this session.` (`ty-gate: …` voor ty, `<pakket>-imports-gate: …` voor de importcheck) als `systemMessage` en eindigen met
 exit 0. Een `systemMessage` gaat naar de gebruiker en is geen opdracht aan de agent: "stil" uit #74
 betekent dat de gate niets afdwingt, niet dat hij niets zegt.
 

@@ -1,0 +1,7 @@
+{
+  "hook": "python",
+  "touch": "src/app/main.py",
+  "exit": 2,
+  "id": "DEP001",
+  "dists": []
+}

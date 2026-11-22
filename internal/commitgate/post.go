@@ -44,7 +44,7 @@ func payloadField(raw []byte, key string) string {
 func Post(_ context.Context, g *Gate, raw []byte) Result {
 	command, _, ok := ReadPayload(raw)
 	if !ok {
-		return Result{Code: 2, Stderr: InvalidPayload}
+		return couldNotCheckText(InvalidPayload)
 	}
 	if command == "" {
 		return Result{}

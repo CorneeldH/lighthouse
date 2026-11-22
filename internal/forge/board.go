@@ -84,6 +84,15 @@ type BoardItem struct {
 	Archived bool
 }
 
+// EffectiveStatus is the status to decide on: the status_options name of the item's status,
+// or, for a board option that status_options does not list, its raw name on the board.
+func (it BoardItem) EffectiveStatus() string {
+	if strings.HasPrefix(it.Status, UnknownStatusPrefix) {
+		return it.StatusName
+	}
+	return it.Status
+}
+
 // fieldValuesSelection is the single-select values of a project item, shared by the board and
 // the one-issue query so both fill BoardItem.Status, StatusName and Priority the same way.
 const fieldValuesSelection = `fieldValues(first: 50) {
@@ -270,7 +279,8 @@ func (c *GitHub) BoardItems(ctx context.Context) ([]BoardItem, error) {
 		}
 		it, pulls := r.boardItem(p, b)
 		total := 0
-		if r.issue() {
+		// A closed issue starts or resumes no run, so its blockers are not read.
+		if r.issue() && !strings.EqualFold(it.IssueState, "CLOSED") {
 			total = r.Content.Summary.TotalBlockedBy
 		}
 		if err := c.complete(ctx, &it, total, pulls, merged); err != nil {
