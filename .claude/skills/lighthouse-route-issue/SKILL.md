@@ -34,9 +34,10 @@ the name that call prints:
 
 - `lighthouse config labels.blocked_issue`, `lighthouse config labels.blocked_external`: waits on something
   outside the session;
-- `lighthouse config labels.needs_shaping`, `lighthouse config labels.needs_decision`,
-  `lighthouse config labels.needs_hands`, `lighthouse config labels.needs_testing`: what has to happen in the
-  session.
+- `lighthouse config labels.needs_shaping`, `lighthouse config labels.needs_decision`: what has to
+  happen in the session;
+- `lighthouse config labels.needs_hands`, `lighthouse config labels.needs_testing`: the next step is
+  a human's.
 
 ## Input
 
@@ -207,27 +208,34 @@ There is no tie-break rule. The skill weighs and names one route; if it is off, 
 it in one sentence. A rule that always leans to the expensive side when in doubt costs more than
 that sentence.
 
-## A blocking label steers the triage, it does not stop it
+## A blocking label steers the triage or ends it in a stop
 
-Gate 0 notes the two blocked labels and routes on. The other four are exactly the signal *which*
-route the issue gets.
+Gate 0 notes the two blocked labels and routes on. `labels.needs_shaping` and
+`labels.needs_decision` are exactly the signal *which* route the issue gets;
+`labels.needs_hands` and `labels.needs_testing` end the triage in a stop. The rows are in the rank
+order of the rank rule: the label with the lowest rank number, the first in the table, decides.
 
 | Label | Route |
 |---|---|
-| `labels.needs_shaping` | **gate 4, c** — that *is* exactly the missing step; a `needs_*` label means "pick up interactively", never a controller run |
+| `labels.needs_shaping` | **gate 4, c** — that *is* exactly the missing step; the label means "pick up interactively", never a controller run |
 | `labels.needs_decision` | **gate 4, c**, narrow: put the open decision as the first question |
-| `labels.needs_hands` | **gate 4, b/a**, execute up to the hand movement, with an explicit instruction *where* human hands are needed |
-| `labels.needs_testing` | **gate 4, b/a**, execute and let the human judge whether it does what was meant |
 | `labels.blocked_issue` | **gate 0** — report the blocker from the relation (`issue blockers`), not from a mention in the body, and route on with `— blocker #<x> open`; the same in a controller run (if present), see Gate 0 |
 | `labels.blocked_external` | **gate 0** — interactively: route on with `— blocked: <label>`; the controller does not start it |
+| `labels.needs_hands` | **stop** — the next step is a human's; the route executes nothing and reports which action of the human is needed first (where human hands are needed) in `#<nr> heading:gate_line <n>[<a|b>]: stop — <label>: <action>`, with `<n>` the gate where the triage would have stopped |
+| `labels.needs_testing` | **stop** — the next step is a human's; the route executes nothing and reports which judgement of the human is needed first in `#<nr> heading:gate_line <n>[<a|b>]: stop — <label>: <judgement>`, with `<n>` the gate where the triage would have stopped |
+
+The rank rule wins: a higher label steers the route (`labels.needs_shaping` still goes to 4c, with
+the stop of the lower label unreached). With an open blocker the reason says so too, but the stop
+stays: Gate 0 reports the blockade and routes on, the route arrives at the stop in this table, and
+the line carries both the blockade and the stop.
 
 The two blocked labels hold the plan, not the spec: they wait on something outside the session,
 so the issue may get a spec, and `lighthouse-start-issue` executes only gate 4c. Interactively
 both route on (for `labels.blocked_external`: route on with `— blocked: <label>`). In a controller
 run (if present) `labels.blocked_issue` routes on the same way with an open blocker (**lapsed** and
 **unlinked** stop, see Gate 0), and the controller does not start an issue with
-`labels.blocked_external`. The other four describe what has to happen *in* the
-session.
+`labels.blocked_external`. `labels.needs_shaping` and `labels.needs_decision` describe what has to
+happen *in* the session; `labels.needs_hands` and `labels.needs_testing` stop the route.
 
 ## Non-negotiable
 
@@ -237,7 +245,8 @@ session.
   sub-letter · ❌ route silently, or a bare `heading:gate_line 4: ...` without sub-letter
 - ✅ Choose one route and name it · ❌ propose two routes and let the user choose
 - ✅ Gate 1 from the catalogue in context · ❌ grep over `.claude/skills/` (costs the KPI ceiling)
-- ✅ `labels.blocked_*` and a bare open `blocked_by` route on with what they wait for after the line (in a controller run, if present, the controller does not start `labels.blocked_external`); only **unknown** stops, in a controller run also **lapsed** and **unlinked** · ❌ stop on a readable block, or treat a `labels.needs_*` label as a stop
+- ✅ `labels.blocked_*` and a bare open `blocked_by` route on with what they wait for after the line (in a controller run, if present, the controller does not start `labels.blocked_external`); only **unknown** stops, in a controller run also **lapsed** and **unlinked** · ❌ stop on a readable block
+- ✅ stop and report what the human has to do first at `labels.needs_hands` / `labels.needs_testing` · ❌ execute any step of the route there
 - ✅ Do not fetch an issue that is already in context again · ❌ a second read call per number
 
 ## Known pitfalls
