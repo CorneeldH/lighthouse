@@ -74,6 +74,10 @@ func TestStartOrderUnknownPriorityIsP1Band(t *testing.T) {
 	if want := []int{2, 1, 3}; !reflect.DeepEqual(got, want) {
 		t.Errorf("starts = %v, want %v (P3 sorts as empty, by weight; P2 last)", got, want)
 	}
+	// The option names are case-sensitive: a lowercase p0 is no P0 but an unknown value, band 1.
+	if got := PriorityBand("p0"); got != 1 {
+		t.Errorf("PriorityBand(\"p0\") = %d, want 1", got)
+	}
 }
 
 // A resume orders as a start does: with equal weight its earlier answer (11:30) goes before the
