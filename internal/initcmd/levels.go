@@ -259,3 +259,32 @@ func levelSummary(files map[string]levels.File, level string) string {
 	}
 	return fmt.Sprintf("Level: %s.", level)
 }
+
+// filterBlocking removes from the hooks/blocking list every hook whose component is not
+// on, so run.sh no longer treats a log or off hook as blocking. It only removes: it never
+// adds a line, and a base hook (not a component) is not subject to a stand. The content
+// was marked by packs.Load; a line that is not a hook name (a marker comment) stays.
+func filterBlocking(u packs.Unit, r levels.Resolved) packs.Unit {
+	var out strings.Builder
+	for _, line := range strings.SplitAfter(string(u.Content), "\n") {
+		name := strings.TrimSpace(line)
+		if name != "" && !strings.HasPrefix(name, "#") && r.Stand(name) != levels.StandOn {
+			continue
+		}
+		out.WriteString(line)
+	}
+	u.Content = []byte(out.String())
+	return u
+}
+
+// filterBlockingUnits applies filterBlocking to the blocking list among units.
+func filterBlockingUnits(units []packs.Unit, r levels.Resolved) []packs.Unit {
+	out := make([]packs.Unit, len(units))
+	for i, u := range units {
+		if u.Kind == packs.KindFile && u.Path == packs.HookDir+"blocking" {
+			u = filterBlocking(u, r)
+		}
+		out[i] = u
+	}
+	return out
+}

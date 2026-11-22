@@ -1,10 +1,12 @@
 package initcmd
 
 import (
+	"github.com/CorneeldH/lighthouse/internal/packs"
 	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -724,5 +726,103 @@ func TestUpgradeOfRepoWithoutRecordedLevelTouchesNoLabels(t *testing.T) {
 	}
 	if len(calls) != 0 || exists(root, projectconfig.DefaultLabelsPath) {
 		t.Errorf("upgrade without recorded level touched labels: calls %v", calls)
+	}
+}
+
+// coreBlocking resolves the real pack/core levels.toml at level against overrides and
+// returns that resolution with the real hooks/blocking list as a unit.
+func coreBlocking(t *testing.T, level string, over map[string]levels.Stand) (levels.Resolved, packs.Unit, []byte) {
+	t.Helper()
+	toml, err := os.ReadFile("../../pack/core/levels.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	src, err := os.ReadFile("../../pack/core/hooks/blocking")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := levels.Parse(toml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := levels.Resolve([]levels.File{f}, level, over)
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := packs.Unit{Kind: packs.KindFile, Package: "core", Path: packs.HookDir + "blocking", Content: src, Mode: 0o644}
+	return r, u, src
+}
+
+// Red if filterBlocking starts changing the list at strict, where every component is on.
+func TestBlockingOnStrictEqualsTodaysList(t *testing.T) {
+	r, u, src := coreBlocking(t, "strict", nil)
+	if got := filterBlocking(u, r).Content; string(got) != string(src) {
+		t.Errorf("strict list differs:\n%s\nwant:\n%s", got, src)
+	}
+}
+
+// Red if filterBlocking stops dropping the lines of components that are log or off, or
+// starts dropping a base or on hook.
+func TestBlockingOnLightDropsLogAndOff(t *testing.T) {
+	r, u, _ := coreBlocking(t, "light", nil)
+	names := strings.Fields(string(filterBlocking(u, r).Content))
+	for _, gone := range []string{"commit-test-gate", "md-link-check", "code-language-check"} {
+		if slices.Contains(names, gone) {
+			t.Errorf("%s still blocking at light: %v", gone, names)
+		}
+	}
+	for _, kept := range []string{"main-commit-gate", "pr-create-gate", "bash-write-check", "workflow-push-gate"} {
+		if !slices.Contains(names, kept) {
+			t.Errorf("%s missing at light: %v", kept, names)
+		}
+	}
+}
+
+// Red if filterBlocking generates lines instead of only removing them (worktree-check
+// never blocks, whatever its stand).
+func TestBlockingNeverGainsWorktreeCheck(t *testing.T) {
+	for _, level := range []string{"light", "standard", "strict"} {
+		r, u, _ := coreBlocking(t, level, nil)
+		if slices.Contains(strings.Fields(string(filterBlocking(u, r).Content)), "worktree-check") {
+			t.Errorf("worktree-check in blocking at %s", level)
+		}
+	}
+}
+
+// Red if an override that turns a core gate off no longer drops its line in blocking.
+func TestCoreGateOverrideOffDropsItsLine(t *testing.T) {
+	r, u, _ := coreBlocking(t, "strict", map[string]levels.Stand{"pr-create-gate": levels.StandOff})
+	names := strings.Fields(string(filterBlocking(u, r).Content))
+	if slices.Contains(names, "pr-create-gate") {
+		t.Errorf("pr-create-gate still blocking: %v", names)
+	}
+	if !slices.Contains(names, "main-commit-gate") {
+		t.Errorf("main-commit-gate lost: %v", names)
+	}
+}
+
+// Red if init stops applying filterBlocking after selectUnits, or applies it to a repo
+// without levels.toml.
+func TestInitWritesBlockingPerLevel(t *testing.T) {
+	packsFS := levelPacks()
+	packsFS["core/hooks/blocking"] = file("main-commit-gate\ncommit-test-gate\n")
+	root := newRepo(t)
+	write(t, root, "lighthouse.toml", "level = \"light\"\n")
+	r := run(t, root, "", func(o *Options) { o.Yes = true; o.Packs = packsFS })
+	if r.code != 0 {
+		t.Fatalf("code %d: %s %s", r.code, r.out, r.err)
+	}
+	if got := read(t, root, ".claude/hooks/lighthouse/blocking"); got != "main-commit-gate\n" {
+		t.Errorf("light blocking = %q", got)
+	}
+
+	delete(packsFS, "core/levels.toml")
+	plain := newRepo(t)
+	r = run(t, plain, "", func(o *Options) { o.Yes = true; o.Packs = packsFS })
+	if r.code != 0 {
+		t.Fatalf("code %d: %s %s", r.code, r.out, r.err)
+	}
+	if got := read(t, plain, ".claude/hooks/lighthouse/blocking"); got != "main-commit-gate\ncommit-test-gate\n" {
+		t.Errorf("without levels blocking = %q", got)
 	}
 }

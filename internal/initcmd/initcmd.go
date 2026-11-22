@@ -205,6 +205,7 @@ func execute(o Options) error {
 		if desired, err = selectUnits(desired, lvFiles, resolved, o.Err); err != nil {
 			return err
 		}
+		desired = filterBlockingUnits(desired, resolved)
 		now := o.Now
 		if now == nil {
 			now = time.Now
