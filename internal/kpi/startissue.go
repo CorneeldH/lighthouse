@@ -460,7 +460,7 @@ func correctDocDirs() ([]string, error) {
 		return nil, err
 	}
 	var dirs []string
-	for _, key := range []string{"paths.specs", "paths.plans"} { // readers: tests/test_site_config.py finds them by these literals
+	for _, key := range []string{"paths.specs", "paths.plans"} { // readers: the config-map site test (config.test.mjs) finds them by these literals
 		v, err := config.Lookup(cfg, key)
 		if err != nil {
 			return nil, err

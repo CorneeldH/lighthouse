@@ -203,7 +203,7 @@ reads, its default included.
 The chain runs from an issue to a merged PR. Each step names what you type, what you see, and
 which hook can step in. Run the skills in Claude Code, in your repository.
 To see it as a map, open [The loop](https://corneeldh.github.io/lighthouse/loop.html).
-In a clone of the lighthouse repository, run `python3 -m http.server --directory docs/site` from its
+In a clone of the lighthouse repository, run `go run ./tools/servedir docs/site` from its
 root and open [the local copy](site/loop.html) at `http://localhost:8000/loop.html`.
 What happens within one turn, which skill joins in and which hook steps in, is on
 [the session map](https://corneeldh.github.io/lighthouse/session.html), and locally at
