@@ -207,16 +207,16 @@ There is no tie-break rule. The skill weighs and names one route; if it is off, 
 it in one sentence. A rule that always leans to the expensive side when in doubt costs more than
 that sentence.
 
-## A blocking label steers the triage, it does not stop it
+## A blocking label steers the triage or ends it in a stop
 
 Gate 0 notes the two blocked labels and routes on. `labels.needs_shaping` and
 `labels.needs_decision` are exactly the signal *which* route the issue gets;
 `labels.needs_hands` and `labels.needs_testing` end the triage in a stop. The rows are in the rank
-order of the rank rule: the highest label that is present decides.
+order of the rank rule: the label with the lowest rank number, the first in the table, decides.
 
 | Label | Route |
 |---|---|
-| `labels.needs_shaping` | **gate 4, c** — that *is* exactly the missing step; a `needs_*` label means "pick up interactively", never a controller run |
+| `labels.needs_shaping` | **gate 4, c** — that *is* exactly the missing step; the label means "pick up interactively", never a controller run |
 | `labels.needs_decision` | **gate 4, c**, narrow: put the open decision as the first question |
 | `labels.blocked_issue` | **gate 0** — report the blocker from the relation (`issue blockers`), not from a mention in the body, and route on with `— blocker #<x> open`; the same in a controller run (if present), see Gate 0 |
 | `labels.blocked_external` | **gate 0** — interactively: route on with `— blocked: <label>`; the controller does not start it |
