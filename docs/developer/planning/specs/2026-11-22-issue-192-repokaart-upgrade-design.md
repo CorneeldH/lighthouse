@@ -68,7 +68,7 @@ One edited part stops the whole upgrade; --force overwrites every edited part at
 
 your repo/
   ▤ AGENTS.md                    lighthouse's blocks replaced, your text stays   --force
-  ⚙ lighthouse.toml              missing keys added, your values stay
+  ⚙ lighthouse.toml              missing keys added, your values stay (old gate commands rewritten)
   .claude/
     ⚓ hooks/lighthouse/          replaced, stale ones removed                    --force
     ◆ skills/lighthouse-*/       replaced, stale ones removed                    --force
@@ -94,8 +94,9 @@ On your workstation
 ```
 
 De glyphs in de schets staan er ter oriëntatie; de echte komen uit `SORTS` in `docs/site/map.js`.
-De chip `--force` krijgt voor schermlezers de tekst "refuses while you edited it; --force
-overwrites".
+De chip `--force` krijgt voor schermlezers de tekst "refuses while you edited or deleted it;
+--force overwrites" *(own choice after spec review, r1-f4)*. De rij-teksten mogen "replaced" blijven;
+de regel boven de boom en de chip dragen de weigering.
 
 ## Wat er gebouwd wordt
 
@@ -105,8 +106,13 @@ overwrites".
   geeft per rij `upgrade` en `force` door en dimt in deze stand niets. `renderRepo` toont de tekst
   en de chip alleen in de stand Upgrade, en de regel boven de boom ook.
 - `docs/site/map.css`: opmaak van tekst en chip; op telefoonbreedte valt de tekst onder de rij.
-- `docs/site/repo.html`: ondertitel en "Wait, but why?" noemen ook de upgrade. De cache-busting
-  `?v=` gaat omhoog.
+- `docs/site/data/repo.json`: ook `subtitle` noemt de upgrade. `docs/site/repo.js:10` zet de
+  ondertitel bij het laden uit `repo.json`; alleen `repo.html` aanpassen blijft dus onzichtbaar.
+- `docs/site/repo.html`: de statische ondertitel (de terugval) komt overeen met `subtitle`, en
+  "Wait, but why?" noemt ook de upgrade. De cache-busting `?v=` is één token over alle
+  `.js`/`.css`; na de wijziging aan `map.js` en `map.css` draait `node docs/site/test/version.mjs`,
+  dat het token in elke pagina herschrijft (`docs/site/test/assets.test.mjs:21-29` eist dat).
+  *(own choice after spec review, r1-f1, r1-f2)*
 - `docs/site/test/repo.test.mjs`:
   - `force` van elke rij is `true` precies als de soorten van zijn `place` in `places.golden` een
     van `file`, `block`, `hook`, `permission` bevatten; een rij zonder `place` (`host.toml`) heeft
