@@ -609,6 +609,17 @@ func TestCleanupRefusesAPlaceQuestionWithoutOff(t *testing.T) {
 	}
 }
 
+func TestCleanupRefusesAMalformedWishQuestion(t *testing.T) {
+	// Fails if Cleanup posts a wish question with other than two options, or whose off letter
+	// is not b (the gate would settle a yes or never settle a no).
+	for name, result := range map[string]string{
+		"three options": `{"questions":[` + strings.Replace(wishQ12, `"nee, niet op de kaart"]`, `"nee, niet op de kaart","later"]`, 1) + `]}`,
+		"off a":         `{"questions":[` + strings.Replace(wishQ12, `"off":"b"`, `"off":"a"`, 1) + `]}`,
+	} {
+		t.Run(name, func(t *testing.T) { refuseResult(t, result) })
+	}
+}
+
 func TestCleanupRefusesAResultOutsideThePlannedIssues(t *testing.T) {
 	// Fails if Cleanup posts for an issue that carries no label of a planned row, is closed or
 	// missing on the forge, or appears twice, or for a decision value the job does not know;

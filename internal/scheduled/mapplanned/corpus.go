@@ -201,7 +201,8 @@ func validate(ctx context.Context, env scheduled.Env, res *result, rows []Row) (
 }
 
 // checkQuestion checks the form of one question: the gate reads its off letter back, so a
-// question without one could never be settled.
+// question without one could never be settled. A wish question has exactly the two options of
+// Question, with off "b".
 func checkQuestion(q resultQuestion) error {
 	if q.Topic != TopicPlace && q.Topic != TopicWish {
 		return fmt.Errorf("topic %q, want %q or %q", q.Topic, TopicPlace, TopicWish)
@@ -211,6 +212,9 @@ func checkQuestion(q resultQuestion) error {
 	}
 	if len(q.Options) < 2 || len(q.Options) > len(protocol.Letters) {
 		return fmt.Errorf("%d options, want 2 to %d", len(q.Options), len(protocol.Letters))
+	}
+	if q.Topic == TopicWish && (len(q.Options) != 2 || q.Off != "b") {
+		return fmt.Errorf("a wish question has 2 options with off \"b\", got %d with off %q", len(q.Options), q.Off)
 	}
 	letters := protocol.Letters[:len(q.Options)]
 	for _, l := range []struct{ name, v string }{{"off", q.Off}, {"recommended", q.Recommended}} {
