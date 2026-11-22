@@ -42,7 +42,8 @@
                 "pack/core/skills/write-handoff",
                 "pack/core/skills/write-issue",
                 "pack/core/skills/write-pr",
-                "pack/python/scripts/quality/prcov_issues.py"
+                "pack/python/scripts/quality/prcov_issues.py",
+                "internal/initcmd/direction.go"
               ]
             },
             {
@@ -474,7 +475,8 @@
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/close-issue",
                 "pack/core/skills/write-issue",
-                "internal/direction/direction.go"
+                "internal/direction/direction.go",
+                "internal/initcmd/direction.go"
               ]
             },
             {
@@ -487,7 +489,8 @@
                 "internal/scheduled/mapplanned/mapplanned.go",
                 "pack/core/skills/write-issue",
                 "internal/repoconfig/repoconfig.go",
-                "internal/direction/direction.go"
+                "internal/direction/direction.go",
+                "internal/initcmd/direction.go"
               ]
             },
             {
@@ -512,7 +515,8 @@
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/write-issue",
                 "pack/core/skills/write-pr",
-                "internal/direction/direction.go"
+                "internal/direction/direction.go",
+                "internal/initcmd/direction.go"
               ]
             },
             {
@@ -581,7 +585,8 @@
                 "internal/scheduled/mapplanned/mapplanned.go",
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/write-issue",
-                "internal/direction/direction.go"
+                "internal/direction/direction.go",
+                "internal/initcmd/direction.go"
               ]
             }
           ]
@@ -604,7 +609,8 @@
                 "pack/core/skills/start-issue",
                 "pack/core/skills/write-issue",
                 "pack/expo/skills/refresh-expo-lockfiles",
-                "internal/direction/direction.go"
+                "internal/direction/direction.go",
+                "internal/initcmd/direction.go"
               ]
             },
             {
