@@ -2,8 +2,7 @@
 
 Issue: #372. Verslag van het onderzoek: [richting-verslag](2026-11-22-issue-372-richting-verslag.md).
 Milestone: *Systeemoverzicht: kaarten en richting die mens en model lezen*. Leunt op #476
-([ontwerp](https://github.com/CorneeldH/lighthouse/blob/issue-476-kaart-bij-aanmaken/docs/developer/planning/specs/2026-11-22-issue-476-gepland-op-de-kaart-design.md),
-nog niet op `main`).
+([ontwerp](2026-11-22-issue-476-gepland-op-de-kaart-design.md), gemerged in #494).
 
 ## Aanleiding
 
@@ -245,8 +244,8 @@ stil over; een repo zonder deze documenten merkt niets.
   commit *(eigen keuze na spec-review, r1-f1)*. `internal/packcontract/closeissue_test.go` (stap 5) volgt. Deze wijziging landt uiterlijk in de
   PR die `paths.areas` zet; anders opent de eerstvolgende gesloten milestone een PR op een verkeerd bestand.
 
-De lezers in `write-issue` 3f en `map-planned` landen pas als #476 op `main` staat. De documenten, de
-configuratie, de wijziging in `close-issue` en de test (§5) hangen daar niet van af.
+#476 staat op `main` (PR #494): de lezers in `write-issue` 3f en `map-planned` (`internal/scheduled/mapplanned/`,
+`repoconfig.Paths`) bestaan, en dit ontwerp breidt ze uit.
 
 ### 5. De test
 
@@ -301,13 +300,12 @@ Gedaan na goedkeuring van dit ontwerp (2026-11-22), via `/lighthouse-write-issue
 
 ### 8. Hoe het landt
 
-- **PR 1, los van #476:** de documenten, `paths.strategy` in het schema, de sleutels in `lighthouse.toml`,
-  de wijziging in `close-issue` stap 5, de test, de README en de pitch-lezer in `write-issue`. Gebouwd in
-  een interactieve sessie, niet door de controller. De PR blijft **draft** tot Corneel de inhoud heeft
-  goedgekeurd: de merge zet meteen echte lezers aan (`write-issue` leest `paths.tenets` al, `close-issue`
-  leest `paths.areas`), en de tick merget een groene PR anders zelf (besluit 10).
-- **PR 2, na de merge van #476:** `write-issue` 3f en `map-planned` lezen ook `paths.strategy` en noemen
-  het ID dat het oordeel draagt.
+- **Eén PR** *(eigen keuze, nu #476 op `main` staat)*: de documenten, `paths.strategy` in het schema, de
+  sleutels in `lighthouse.toml`, de wijziging in `close-issue` stap 5, de test, de README, en de lezers
+  (de pitch, 3f en `map-planned`). Gebouwd in een interactieve sessie, niet door de controller. De PR
+  blijft **draft** tot Corneel de inhoud heeft goedgekeurd: de merge zet meteen echte lezers aan
+  (`write-issue` leest `paths.tenets` al, `close-issue` en `map-planned` lezen `paths.areas`), en de tick
+  merget een groene PR anders zelf (besluit 10).
 
 ## Aan de bouwer
 - De precieze tekst van *Waarom* per uitgangspunt en de area-bestanden, met citaten naar de specs. De
