@@ -22,7 +22,7 @@ list. Callers: `lighthouse-start-issue` (step 4, one number) and the backlog-sta
 (the split of *Ready*, many numbers).
 
 Not here: starting on the issue or executing the route (`/lighthouse-start-issue`), writing or
-updating an issue (`/lighthouse-write-issue`), auditing the board (the board-sweep skill, if
+updating an issue (`/lighthouse-write-issue`, if installed), auditing the board (the board-sweep skill, if
 present).
 
 ## Labels
@@ -108,7 +108,7 @@ GitLab Free the list is empty without an error, and the blocker stands as a `Blo
 in the body.
 
 If there is no open blocker, the reason reports the verdict — **lapsed** (only closed relations)
-or **unlinked** (no relation) — with the repair command from `lighthouse-write-issue` 3e. The
+or **unlinked** (no relation) — with the repair command from `lighthouse-write-issue` 3e (if installed). The
 route stays stop: removing the label or laying the relation is up to the user. If this call fails
 (exit 1 or 2), or the output is unreadable, the verdict is **unknown**, with the read command
 added — the route stays stop, and a failed read, or one without output, is never **unlinked**
@@ -117,13 +117,13 @@ added — the route stays stop, and a failed read, or one without output, is nev
 **Without that label, but with an open blocker in the `issue blockers` list** (already in the
 answer of the read call; an issue from context without that list costs the one call above): if the issue carries none of `labels.needs_shaping`,
 `labels.needs_decision` or `labels.blocked_issue`, this also stops at gate 0. Report
-**label missing** with the repair command from `lighthouse-write-issue` 3e
+**label missing** with the repair command from `lighthouse-write-issue` 3e, if installed,
 (`lighthouse forge issue edit <nr> --add-label <labels.blocked_issue>`). If the list could not be
 read, report **unknown** and stop — an unreadable blocker never falls silently through to gate 4.
 
 If the issue does carry `labels.needs_shaping` or `labels.needs_decision` with an open
 `blocked_by`, that is **not** a gate-0 stop: the lower label wins (invariant
-`lighthouse-write-issue` 3e, "holds") and the route continues through that label — gate 4c.
+`lighthouse-write-issue` 3e, if installed, "holds") and the route continues through that label — gate 4c.
 
 **Controller run** (only if present: the prompt ends on `(issue #<nr>, controller-run)`): an open
 blocker through `labels.blocked_issue` or a bare `blocked_by` does not stop then. The controller
@@ -145,7 +145,7 @@ work that still has to happen?* Only the first closes.
 
 | | Example | Role |
 |---|---|---|
-| closing | `lighthouse-audit-worktrees`, a skill that refreshes lockfiles | the skill *does* the issue |
+| closing | `lighthouse-audit-worktrees` (if installed), a skill that refreshes lockfiles | the skill *does* the issue |
 | accompanying | a skill with the writing norms of a language, a diagram skill | the skill carries a norm |
 
 Those two rows are illustration, not a list to maintain. An accompanying skill closes nothing: it
@@ -185,7 +185,7 @@ present), no extra call. The same behaviour as `labels.needs_shaping`, but witho
 a bullet without `→ #<nr>`; only a question that demonstrably concerns the work of this issue
 counts. A milestone without that heading, or with "None.", routes as usual. The reason names the
 question: `— touches open question "<question>" from the milestone`. After the spec comes the
-outflow from `lighthouse-write-issue`: a question that has become sharp enough becomes an issue of
+outflow from `lighthouse-write-issue` (if installed): a question that has become sharp enough becomes an issue of
 its own and the bullet gets `→ #<nr>`.
 
 There is no tie-break rule. The skill weighs and names one route; if it is off, the user corrects

@@ -9,7 +9,7 @@ metadata:
 # Start Issue Skill
 
 From issue number to a read issue, a worktree and one chosen follow-up route. Fills the gap between
-`/lighthouse-write-issue` (opens the lane) and `/lighthouse-close-issue` (closes it).
+`/lighthouse-write-issue` (opens the lane; if installed) and `/lighthouse-close-issue` (closes it).
 
 ## Domain
 
@@ -17,7 +17,7 @@ In scope: the *start* of work on an existing issue in this repo (`forge.repo`) â
 the axes, ask whether it is already done, set up the worktree, get the route from
 `/lighthouse-route-issue` and hand on.
 
-Not here: writing or updating an issue (`/lighthouse-write-issue`), closing an issue
+Not here: writing or updating an issue (`/lighthouse-write-issue`, if installed), closing an issue
 (`/lighthouse-close-issue`), auditing the state of the board (the board-sweep skill, if present),
 and executing the chosen route itself â€” this skill delegates that.
 
