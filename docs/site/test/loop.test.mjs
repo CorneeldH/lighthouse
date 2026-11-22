@@ -165,7 +165,7 @@ test("sourceProblems flags a source pointing nowhere", () => {
 });
 
 test("plannedProblems flags a planned item without an issue, also with only a milestone", () => {
-  // The site half of the agreement with ci/loop_roadmap.py: an issue is what counts.
+  // The site half of the agreement with ci/loop_roadmap: an issue is what counts.
   const planned = (fields) => ({ chips: [{ id: "x", status: "planned", ...fields }], handoffs: [] });
   for (const [fields, flagged] of [
     [{ issue: 7 }, false],

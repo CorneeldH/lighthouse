@@ -1,8 +1,16 @@
 import { ListOrdered } from 'lucide-react'
 import { type JSX, useMemo, useState } from 'react'
 import { Panel } from '@/components/Panel'
-import { usePriorities } from '@/lib/queries'
-import { buildGraph, milestoneRows, withoutMilestone } from '@/lib/priorities/derive'
+import { useMilestoneRanks, usePriorities } from '@/lib/queries'
+import {
+  buildGraph,
+  milestoneRows,
+  priorityOrder,
+  sortMilestoneRows,
+  withoutMilestone,
+  type MilestoneRow,
+} from '@/lib/priorities/derive'
+import { planMove } from '@/lib/priorities/moves'
 import { assignColors } from '@/lib/priorities/palette'
 import { loadPrefs, savePrefs, type ViewId } from '@/lib/priorities/prefs'
 import { DepsView } from './DepsView'
@@ -13,6 +21,7 @@ import { UnassignedView } from './UnassignedView'
 export function PrioritiesTab(): JSX.Element {
   const { data, error, isPending } = usePriorities()
   const [prefs, setPrefs] = useState(loadPrefs)
+  const ranks = useMilestoneRanks()
   const repos = useMemo(() => data?.repos ?? [], [data])
   const slugs = useMemo(() => repos.map((r) => r.slug), [repos])
   // null = every repo on; a stored slug that no longer exists is ignored.
@@ -66,7 +75,16 @@ export function PrioritiesTab(): JSX.Element {
     return { key, label: prefix ? `${m.repo} · ${m.title}` : m.title, color: colors.get(key) as string }
   })
 
-  const props = { graph, repos, selected, colors }
+  // planMove needs every milestone of the repo in its current priority order, so the rows are
+  // built from the unfiltered repo, independent of what the view shows.
+  const onMove = (row: MilestoneRow, dir: 'up' | 'down') => {
+    const own = priorityOrder(sortMilestoneRows(milestoneRows(repos.filter((r) => r.slug === row.repo), graph)))
+    const changes = planMove(own, row.repo, row.number, dir)
+    if (changes !== null && changes.length > 0) ranks.mutate({ repo: row.repo, changes })
+  }
+  const pendingRepos = new Set(slugs.filter(ranks.isPending))
+
+  const props = { graph, repos, selected, colors, order: prefs.msOrder, onMove, pendingRepos }
   const empty = data !== undefined && repos.length === 0
   const View = prefs.view === 'deps' ? DepsView : prefs.view === 'milestones' ? MilestonesView : UnassignedView
   return (
@@ -83,7 +101,14 @@ export function PrioritiesTab(): JSX.Element {
               selected={selected}
               onToggleRepo={toggleRepo}
               legend={legend}
+              msOrder={prefs.msOrder}
+              onMsOrder={(msOrder) => update({ ...prefs, msOrder })}
             />
+            {ranks.error !== null && (
+              <p role="alert" className="text-sm font-medium text-destructive">
+                {ranks.error}
+              </p>
+            )}
             {selected.size === 0 ? <p>No repo selected.</p> : <View {...props} />}
           </>
         )}

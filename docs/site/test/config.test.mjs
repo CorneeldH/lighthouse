@@ -15,7 +15,7 @@ const NO_DEFAULT = Symbol("no default");
 // Keys nothing in the repo reads: only the config reader checks them (spec section 2).
 // host.tailscale_ip: only read by `config host-check`, which names no key as text (it reads the host struct).
 const UNREAD = new Set(["paths.history", "codex_usage.vraag_pct_week", "codex_usage.halt_pct_session", "host.name",
-  "host.scan_memory_max", "host.scan_cpu_quota", "host.tailscale_ip"]);
+  "host.tailscale_ip"]);
 const SET = new Set(["project.language", "forge.kind", "forge.repo", "forge.host", "test_gate.command", "host.name",
   "host.controller", "host.tailscale_ip", "review.roborev", "report.enabled", "report.sink", "report.dir"]);
 const REQUIRED = {

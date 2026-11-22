@@ -1,5 +1,5 @@
 # Provenance of every file in pack/ (spec, Opdeling (b) and (d)). Every file has exactly
-# one entry (tests/test_sources.py), with exactly one of:
+# one entry (internal/repopins/sources_test.go), with exactly one of:
 #   new = true       written for lighthouse
 #   pin = "<key>"    the file follows a pin in lighthouse.toml
 #   source_repo (owner/repo), source_sha (40 hex), source_path (one string)

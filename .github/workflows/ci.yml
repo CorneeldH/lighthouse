@@ -1,4 +1,4 @@
-# CI for lighthouse: one job per domain (python, go, web), each run only when ci/domains.py
+# CI for lighthouse: one job per domain (python, go, web), each run only when ci/domains
 # finds a changed path in it. Go runs as three parallel jobs, `go`, `go-test` and `go-e2e`; `canary` runs on Go and on
 # python-only changes. Python is a matrix of three parts of the pytest suite (tests/conftest.py). Everything runs on
 # Linux; macOS runs in macos.yml, as the gate before the release (#337). A `binary` job builds the
@@ -35,6 +35,10 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
       - id: domains
         # `shell: bash` runs with -o pipefail: a failed `git diff` must not look like an empty diff.
         shell: bash
@@ -48,7 +52,7 @@ jobs:
             { echo "web=$ALL"; echo "python=$ALL"; echo "go=$ALL"; } >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          git diff -z --name-only --no-renames "$BASE...$HEAD" | python3 ci/domains.py classify --github-output "$GITHUB_OUTPUT"
+          git diff -z --name-only --no-renames "$BASE...$HEAD" | go run ./ci/domains classify --github-output "$GITHUB_OUTPUT"
 
   # Every PR carries a changelog fragment, also outside the domains; see docs/releasing.md.
   changelog:
@@ -98,8 +102,8 @@ jobs:
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.event.pull_request.head.sha }}
         run: gitleaks git . --log-opts="$BASE..$HEAD" --config .gitleaks.toml --no-banner --redact --exit-code 1
-      # checkpoint_scan.py reads its limits through `lighthouse config`, found on PATH. The tests
-      # build the same checkout again through `lighthouse_dir()` (tests/pack/_testkit.py).
+      # The hook runs `lighthouse checkpoint-scan`, found on PATH. The tests
+      # build the same checkout again through `lighthouse_dir()` (tests/pack/python/_testkit.py).
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
@@ -109,7 +113,11 @@ jobs:
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       - run: uv sync --locked
-      - run: uv run pytest -q tests/test_pre_push_secret_scan.py tests/test_checkpoint_scan.py
+      - run: uv run pytest -q tests/test_pre_push_secret_scan.py
+        env:
+          LIGHTHOUSE_REQUIRE_GITLEAKS: "1"
+      # The go-test job has no gitleaks: here its tests run hard instead of skipping.
+      - run: go test -race -shuffle=on ./internal/checkpointscan/... ./internal/cli/
         env:
           LIGHTHOUSE_REQUIRE_GITLEAKS: "1"
 
@@ -127,11 +135,12 @@ jobs:
         with:
           persist-credentials: false
       # The `lighthouse_bin` fixture builds cmd/lighthouse: skills and pack/python call it (#274).
-      # Every path outside web/ already runs this job (ci/domains.py), Go changes included.
+      # Every path outside web/ already runs this job (ci/domains), Go changes included.
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      # checkpoint_scan.py reads its limits through `lighthouse config`, found on PATH (#285).
+      # `lighthouse checkpoint-scan` reads its limits in-process (config.HostValue); this job builds the
+      # binary for the hook test's `lighthouse_bin` fixture, found on PATH (#285).
       - name: build lighthouse
         run: |
           go build -o "$RUNNER_TEMP/bin/lighthouse" ./cmd/lighthouse
@@ -196,7 +205,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      # Same flags as the Go part of [test_gate] command; tests/test_ci_go_test_pin.py pins it.
+      # Same flags as the Go part of [test_gate] command; internal/repopins/workflows_test.go pins it.
       - run: go test -race -shuffle=on ./...
 
   go-e2e:
