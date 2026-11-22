@@ -52,7 +52,7 @@ tegen de nulmeting van #360.
    "de Python 3-interpreter"; gedrag blijft gelijk. De release-fixtures in
    `ci/changelog/testdata/releases/` bevatten `python3` in oude releasetekst, byte-gelijk aan wat
    de release schreef; die blijven. De PR-body noemt beide en geeft de AC-grep met
-   `--exclude-dir=testdata` als meting.
+   `--exclude-dir=testdata` als meting; omdat AC 2 letterlijk niet gehaald wordt, is de PR `Refs #370` (Task 5 Step 7).
 6. **`pytest-xdist`**: houd het alleen als `uv run pytest -n auto tests/pack/python/` meetbaar
    sneller is dan serieel (Task 4 Step 5 meet het); zo niet, uit `pyproject.toml` en `uv.lock`.
 
@@ -226,7 +226,6 @@ bestemming, reden, bij "gedekt" de naam van de Go-test) in de PR-body; tel voor/
   sneller is (nu is het de reden dat de oude shards `-n auto` draaiden). Zet de cijfers in de
   PR-body; pas `ci.yml` (Task 3 Step 5a), `macos.yml` en `tests/pack/python/test_network.py:134`
   (`-p no:xdist`) mee aan als xdist weggaat.
-- [ ] **Step 5b:** na de push in Task 5 draait ook `gh workflow run macos.yml --ref <branch>`; de job `pack-python` moet groen zijn binnen `timeout-minutes: 15` voordat de PR geschreven wordt (release.yml wacht op `macos`).
 - [ ] **Step 6:** `uv run pytest -q tests/pack/python/test_gate_python.py` — PASS (de test-gate in
   `lighthouse.toml` kiest pytestbestanden; hij moet na het inkorten blijven werken). Commit:
   `ci(pack): macos zonder shards, pyproject en uv.lock ingekort (#370)`.
@@ -255,13 +254,12 @@ bestemming, reden, bij "gedekt" de naam van de Go-test) in de PR-body; tel voor/
   run de `gh run view … --json startedAt,updatedAt,jobs`-query van plan 360 Task 2 Step 3. Vergelijk like-for-like: de nulmeting kent `canary` en `site` niet; rapporteer wandklok en runnerminuten zowel met als zonder die twee jobs en vergelijk de gelijke jobset met de nulmeting. Alle
   domeinjobs (`pack-python`, `go`, `go-test`, `go-e2e`, `web`, `binary`, `canary`,
   `no-python`) moeten draaien en groen zijn; anders telt de run niet.
-- [ ] **Step 5: Vergelijk.** Wandklok gemiddelde ≤ nulmeting; som runnerminuten gemiddelde <
-  nulmeting. Is een van beide niet gehaald: geen PR met `Closes`; maak één verbeteronderzoek (welke
-  job is de zwaarste) en meld het met `lighthouse ask`.
+- [ ] **Step 4b: macOS.** Na de drie runs: `gh workflow run macos.yml --ref <branch>` en `gh run watch --exit-status`; de job `pack-python` moet groen zijn binnen `timeout-minutes: 15` (release.yml wacht op `macos`). Rood of over de limiet: geen PR; meld het met `lighthouse ask`.
+- [ ] **Step 5: Vergelijk.** Beslissend is de jobset van de nulmeting (zonder `canary` en `site`, die de nulmeting niet kende); wandklok gemiddelde ≤ nulmeting en som runnerminuten gemiddelde < nulmeting. Verwacht: `go-test` (ca. 220-261 s) kan alleen al boven 235 s liggen. Is een van beide niet gehaald: geen `Closes`; maak één verbeteronderzoek (welke job is de zwaarste, Go-tests versnellen valt buiten de milestone) en schrijf de PR toch met `Refs #370 — meting niet gehaald` en de meettabel (met en zonder `canary`/`site`); meld het met `lighthouse ask` alleen als de gebruiker moet kiezen.
 - [ ] **Step 6: Triagetotalen (AC 5).** Lees de PR-bodies van de samengevoegde PR's van #360–#369
   (`git log --oneline --grep '(#36'` voor de nummers; `lighthouse forge pr view <nr>`) en tel per
   stap *tests voor, geport, weg*; tel de eigen Task 1 erbij. Zet een tabel per stap met totaalregel.
-- [ ] **Step 7:** `/lighthouse-write-pr`: `Closes #370` met Evidence-tabel: de zes AC (AC 3 met
+- [ ] **Step 7:** `/lighthouse-write-pr`: AC 2 wordt letterlijk niet gehaald (13 `python3`-treffers in `ci/changelog/testdata/releases/`, besluit 5), dus altijd `Refs #370 — AC 2 letterlijk niet gehaald (13 release-fixtures)` met Evidence-tabel, nooit `Closes`: de zes AC (AC 3 met
   `go run ./ci/domains classify` voor `internal/x.go` (waar) en `docs/site/x` (onwaar), AC 4 en 5
-  met de cijfers), de uitleg over de twee `python3`-treffers (besluit 5) en de 13 treffers onder `ci/changelog/testdata/` die AC 2 letterlijk niet haalt: noem ze met bestandsnamen; wijkt AC 2 daardoor af, schrijf dan `Refs #370 — <reden>` in plaats van `Closes` en de xdist-meting.
+  met de cijfers), de uitleg over de twee `python3`-treffers (besluit 5) en de 13 treffers onder `ci/changelog/testdata/` (noem ze met bestandsnamen) en de xdist-meting.
   Handoff `next: /lighthouse-close-issue 370`.
