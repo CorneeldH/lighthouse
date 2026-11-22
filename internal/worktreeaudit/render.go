@@ -266,20 +266,11 @@ func (v View) Origin(rows []Row) string {
 	return v.Cleanup(remote)
 }
 
-// underRoot reports whether path is a worktree below the resolved root. A View without a Root
-// (a replay, a fixture) falls back to the default `.claude/worktrees` folder of any repo.
-func (v View) underRoot(path string) bool {
-	if v.Root == "" {
-		return strings.Contains(filepath.ToSlash(path), "/"+worktreeroot.Default+"/")
-	}
-	return worktreeroot.Contains(v.Root, path)
-}
-
 // KPI is one line: worktrees under the `[worktree] root`, safe rows, remote branches, warnings.
 func (v View) KPI(rows []Row) string {
 	var worktrees, safe, remote, warn int
 	for _, p := range v.judge(rows) {
-		if nonEmpty(p.row.Worktree) && v.underRoot(*p.row.Worktree) {
+		if nonEmpty(p.row.Worktree) && worktreeroot.Contains(v.Root, *p.row.Worktree) {
 			worktrees++
 		}
 		if p.verdict.Safe() {

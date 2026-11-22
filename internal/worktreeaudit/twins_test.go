@@ -687,3 +687,15 @@ func TestKPICountsWorktreesUnderTheResolvedRoot(t *testing.T) {
 		t.Fatalf("got %q, want worktrees=2", got)
 	}
 }
+
+// Red when an empty Root goes back to a substring match on `.claude/worktrees`: then
+// `/data/wt-old/.claude/worktrees/x` counts, and a View without a Root counts nothing otherwise.
+func TestKPIWithoutARootCountsNoWorktree(t *testing.T) {
+	p := "/data/wt-old/.claude/worktrees/x"
+	r := NewRow("b")
+	r.Worktree = &p
+	got := View{Policy: mainPolicy, Alive: PidAlive}.KPI([]Row{r})
+	if !strings.HasPrefix(got, "worktrees=0 ") {
+		t.Fatalf("got %q, want worktrees=0", got)
+	}
+}

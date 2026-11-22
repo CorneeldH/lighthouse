@@ -170,7 +170,7 @@ func canonMissing(path string) (string, error) {
 		}
 		resolved = filepath.Dir(next)
 		if filepath.IsAbs(target) {
-			resolved = "/"
+			resolved = vol + "/"
 		}
 		rest = append(strings.Split(target, "/"), rest...)
 	}
