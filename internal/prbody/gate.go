@@ -32,7 +32,7 @@ func blockedMessage(blockers []string, gate string) string {
 	case "required":
 		forms = "`Closes #N` + `### Evidence #N` (one row per AC), `Refs #N — <reason>`"
 	case "evidence":
-		forms = "`Closes #N` + `### Evidence #N` (one row per AC), `Refs #N` + its `### Evidence #N` table"
+		forms = "`Closes #N` + `### Evidence #N` (one row per AC), `Refs #N — <reason>` with its `### Evidence #N` table"
 	}
 	return fmt.Sprintf(blockedHead, strings.Join(blockers, "; ")) + "Forms: " + forms + ".\n"
 }

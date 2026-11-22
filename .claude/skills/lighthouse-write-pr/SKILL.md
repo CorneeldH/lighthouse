@@ -20,7 +20,7 @@ question: interactive and headless (controller run, if present) the outcome is t
   `finishing-a-development-branch`.
 - When `.claude/hooks/lighthouse/run.sh pr-create-gate` blocks a PR or MR create.
 - `/lighthouse-write-pr <nr>`. Without an argument the number comes from the branch
-  `issue-<nr>-…` (`git branch --show-current`). No issue: `No issue: <reason>` is only allowed under `optional`, not under `required`; see
+  `issue-<nr>-…` (`git branch --show-current`). No issue: `No issue: <reason>` is only allowed under `optional`, not under `required` or `evidence`; see
   *Read the gate setting* below.
 
 ## Read the gate setting
@@ -31,8 +31,8 @@ Once, before V1, read how strict the repo is about the issue:
 lighthouse config pr_gate.issue
 ```
 
-- rc 0 prints `optional`, `required` or `evidence`. rc 1 (key not set, or an older binary):
-  treat it as `optional` and say so in the report. rc 2: the configuration is broken; stop and
+- rc 0 prints `optional`, `required` or `evidence`. An unset key prints `optional` (rc 0). rc 1 only comes from an older binary without the key or the
+  command: treat it as `optional` and say so in the report. rc 2: the configuration is broken; stop and
   report it, no PR.
 - No issue number and `optional`: the body gets `No issue: <reason>` (≥10 characters) and no
   milestone; skip V1–V3 (V2b still runs).

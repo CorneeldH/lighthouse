@@ -465,7 +465,7 @@ func CheckBody(body string, repo Repo, acCount func(nr int) (int, bool, string))
 // issueForms is the allowed forms that name an issue under gate, for the No-issue blocker.
 func issueForms(gate string) string {
 	if gate == "evidence" {
-		return "with `Closes #N` + `### Evidence #N` or `Refs #N` plus its `### Evidence #N` table"
+		return "with `Closes #N` + `### Evidence #N` or `Refs #N — <reason>` with its `### Evidence #N` table"
 	}
 	return "with `Closes #N` + `### Evidence #N` or `Refs #N — <reason>`"
 }
@@ -476,7 +476,7 @@ func formList(gate string) string {
 	case "required":
 		return "`Closes #N` with `### Evidence #N` or `Refs #N — <reason>`"
 	case "evidence":
-		return "`Closes #N` with `### Evidence #N` or `Refs #N` with its `### Evidence #N` table"
+		return "`Closes #N` with `### Evidence #N` or `Refs #N — <reason>` with its `### Evidence #N` table"
 	}
 	return "`Closes #N` with `### Evidence #N`, `Refs #N — <reason>` or `No issue: <reason>`"
 }
