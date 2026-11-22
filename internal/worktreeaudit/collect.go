@@ -206,6 +206,12 @@ func Collect(ctx context.Context, env Env, repoRoot string) (*Audit, error) {
 		var v any
 		if v, err = config.Lookup(cfg, "worktree.root"); err == nil {
 			wtRoot = worktreeroot.Resolve(root, pyStr(v))
+			// git lists a worktree by its symlink-resolved path: so must the root be, or a live
+			// worktree behind a symlinked root shows as an orphan. A root that does not exist yet
+			// keeps its value.
+			if real, rerr := filepath.EvalSymlinks(wtRoot); rerr == nil {
+				wtRoot = real
+			}
 		}
 	}
 	if err != nil {
@@ -413,7 +419,7 @@ func (c *collector) probe(wt *WorktreeInfo, root, ref string, skipContent bool) 
 func findOrphans(base string, worktrees []WorktreeInfo) []OrphanDir {
 	known := map[string]bool{}
 	for _, w := range worktrees {
-		known[w.Path] = true
+		known[filepath.Clean(w.Path)] = true
 	}
 	entries, err := os.ReadDir(base)
 	if err != nil {
@@ -422,7 +428,7 @@ func findOrphans(base string, worktrees []WorktreeInfo) []OrphanDir {
 	var out []OrphanDir
 	for _, e := range entries { // os.ReadDir sorts by name
 		path := filepath.Join(base, e.Name())
-		if info, err := os.Stat(path); err != nil || !info.IsDir() || known[path] {
+		if info, err := os.Stat(path); err != nil || !info.IsDir() || known[filepath.Clean(path)] {
 			continue
 		}
 		names := []string{}

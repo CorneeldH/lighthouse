@@ -3,7 +3,7 @@
 // is tested on are in tests/pack/fixtures/worktree_audit.
 //
 // The row is a branch, not a worktree: most cleanable things on origin have no worktree. An
-// orphan directory under `.claude/worktrees/` and a detached worktree get a row of their own.
+// orphan directory under the `[worktree] root` and a detached worktree get a row of their own.
 //
 // It mutates nothing. Git runs only through runGit, which refuses every verb outside a read-only
 // allowlist; the commands it prints are for a human to paste.
@@ -91,7 +91,7 @@ type BranchProbe struct {
 	RootCommit     *bool    `json:"root_commit"`
 }
 
-// OrphanDir is a directory under `.claude/worktrees/` that git does not list.
+// OrphanDir is a directory under the `[worktree] root` that git does not list.
 type OrphanDir struct {
 	Name       string   `json:"name"`
 	Path       string   `json:"path"`
