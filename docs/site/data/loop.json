@@ -496,9 +496,9 @@
       "kind": "hook",
       "trigger": "tool",
       "label": "commit-test-gate",
-      "what": "Blocks --no-verify and tests a commit to main before it; after a commit it runs [test_gate] command on the files of the commit and reports red.",
+      "what": "Tests a commit to main before it (--no-verify is blocked by the base hook no-verify-check); after a commit it runs [test_gate] command on the files of the commit and reports red.",
       "how": [
-        "The pre mode runs on PreToolUse for Bash: it blocks --no-verify, runs the tests up front for a commit to the default branch and records HEAD for every other repo of the project.",
+        "The pre mode runs on PreToolUse for Bash: it runs the tests up front for a commit to the default branch and records HEAD for every other repo of the project.",
         "The post mode runs on PostToolUse and PostToolUseFailure for Bash and, for every root whose HEAD moved, runs [test_gate] command from lighthouse.toml with the changed files in LIGHTHOUSE_GATE_FILES.",
         "A red run gives exit 2 after the commit, and the commit stays.",
         "It enforces its own deadline, takes one of a limited number of slots so sessions do not overload the host, and blocks with COULD NOT CHECK when it cannot test."
