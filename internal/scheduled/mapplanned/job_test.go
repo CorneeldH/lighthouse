@@ -2,9 +2,12 @@ package mapplanned
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -49,10 +52,10 @@ func put(t *testing.T, dir, rel, body string) {
 
 // rig is a clone of a bare origin on main, and a fake forge.
 type rig struct {
-	t      *testing.T
-	repo   string
-	srv    *forgetest.Server
-	labels string // Paths.Labels
+	t                  *testing.T
+	root, origin, repo string
+	srv                *forgetest.Server
+	labels             string // Paths.Labels
 }
 
 func newRig(t *testing.T) *rig {
@@ -68,7 +71,7 @@ func newRig(t *testing.T) *rig {
 	gitIn(t, root, "clone", "-q", origin, repo)
 	gitIn(t, repo, "checkout", "-q", "-b", "main")
 	put(t, repo, "README.md", "x\n")
-	r := &rig{t: t, repo: repo, srv: forgetest.New(t), labels: labelsPath}
+	r := &rig{t: t, root: root, origin: origin, repo: repo, srv: forgetest.New(t), labels: labelsPath}
 	r.srv.Login = jobLogin
 	r.srv.Issues = map[int]map[string]any{}
 	r.commit()
@@ -108,7 +111,7 @@ func (r *rig) env() scheduled.Env {
 	c.BaseURL = r.srv.URL()
 	return scheduled.Env{
 		Repo: repoconfig.Repo{Dir: r.repo, DefaultBranch: "main", Slug: "o/r", Kind: "github", Language: "nl",
-			Paths: repoconfig.Paths{Labels: r.labels}},
+			Paths: repoconfig.Paths{Labels: r.labels}, Labels: repoconfig.Labels{NeedsDecision: "needs-decision"}},
 		Now:     time.Date(2026, 11, 22, 5, 0, 0, 0, time.UTC),
 		Run:     workplace.ExecRunner(),
 		Forge:   c,
@@ -343,5 +346,437 @@ func TestAnUnboundJobRefusesToRun(t *testing.T) {
 	}
 	if _, err := New().Launch(scheduled.Verdict{}, scheduled.Env{}); err == nil {
 		t.Error("Launch on the unbound job: no error")
+	}
+}
+
+// gitOut runs git in dir and returns its trimmed output.
+func gitOut(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+const runBranch = "scheduled/map-planned-20261122T0500-1"
+
+// workplace adds the run's work tree on runBranch at origin/main and returns it with the start.
+func (r *rig) workplace() (dir, start string) {
+	r.t.Helper()
+	dir = filepath.Join(r.root, "work")
+	gitIn(r.t, r.repo, "worktree", "add", "-q", "-b", runBranch, dir, "origin/main")
+	return dir, gitOut(r.t, dir, "rev-parse", "HEAD")
+}
+
+// posts are the comment bodies POSTed to issue n.
+func (r *rig) posts(n int) []string {
+	var bodies []string
+	for _, p := range r.srv.Posts {
+		if p.Method == "POST" && p.Path == "/repos/o/r/issues/"+strconv.Itoa(n)+"/comments" {
+			bodies = append(bodies, p.Body["body"].(string))
+		}
+	}
+	return bodies
+}
+
+// writes counts every write request the forge received.
+func (r *rig) writes() int { return len(r.srv.Posts) }
+
+// stagedEnv is a loop rig's env with a work tree, after Stage.
+func stagedEnv(t *testing.T, r *rig, j *Job) scheduled.Env {
+	t.Helper()
+	dir, _ := r.workplace()
+	env := r.env()
+	env.Dir = dir
+	if err := j.Stage(context.Background(), env, scheduled.Verdict{Score: 1}); err != nil {
+		t.Fatalf("Stage: %v", err)
+	}
+	return env
+}
+
+func readCorpus(t *testing.T, dir string) map[string]any {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(dir, ".lighthouse/run/map-planned-corpus.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var c map[string]any
+	if err := json.Unmarshal(b, &c); err != nil {
+		t.Fatalf("corpus: %v\n%s", err, b)
+	}
+	return c
+}
+
+func TestStageWritesTheCorpus(t *testing.T) {
+	// Fails if Stage leaves out the due issue, its row's document, the taxonomy path or the
+	// language, writes an answer where there is none, or drops a trusted answer.
+	t.Run("no answer", func(t *testing.T) {
+		r := loopRig(t, "[]")
+		r.srv.Issues[12]["body"] = "Het lichaam"
+		c := readCorpus(t, stagedEnv(t, r, bind(t)).Dir)
+		if c["language"] != "nl" || c["taxonomy"] != labelsPath {
+			t.Errorf("language %v, taxonomy %v; want nl and %s", c["language"], c["taxonomy"], labelsPath)
+		}
+		docs := c["documents"].([]any)
+		if len(docs) != 1 || docs[0].(map[string]any)["document"] != "docs/site/data/loop.json" || docs[0].(map[string]any)["planned"] != "always" {
+			t.Errorf("documents = %v", docs)
+		}
+		issues := c["issues"].([]any)
+		if len(issues) != 1 {
+			t.Fatalf("issues = %v, want #12 only", issues)
+		}
+		is := issues[0].(map[string]any)
+		if is["number"] != 12.0 || is["body"] != "Het lichaam" || is["label"] != "loop" || is["document"] != "docs/site/data/loop.json" {
+			t.Errorf("issue = %v", is)
+		}
+		if a, ok := is["answer"]; !ok || a != nil {
+			t.Errorf("answer = %v (present %v), want null", a, ok)
+		}
+	})
+	t.Run("answered", func(t *testing.T) {
+		r := loopRig(t, "[]")
+		r.comment(12, jobLogin, RenderQuestion(Question{Issue: 12, Topic: TopicPlace, Text: "Waar?",
+			Options: []string{"hier", "nieuw", "niet"}, Recommended: "a", Off: "c"}, "nl"))
+		r.comment(12, "owner", "b, onder intake")
+		c := readCorpus(t, stagedEnv(t, r, bind(t)).Dir)
+		a, _ := c["issues"].([]any)[0].(map[string]any)["answer"].(map[string]any)
+		if a["letter"] != "b" || a["topic"] != "place" || a["text"] != "b, onder intake" {
+			t.Errorf("answer = %v, want letter b on place", a)
+		}
+	})
+}
+
+// writeResult puts the result file into the work tree.
+func writeResult(t *testing.T, dir, body string) {
+	t.Helper()
+	put(t, dir, ".lighthouse/run/map-planned-result.json", body)
+}
+
+const placeQ12 = `{"issue":12,"topic":"place","text":"Waar?","options":["onder intake","nieuw onderdeel op de kaart","niet op de kaart"],"recommended":"a","off":"c"}`
+
+func TestCleanupPostsQuestionsAndDecisions(t *testing.T) {
+	// Fails if Cleanup does not post the question or the decision, posts without the job
+	// heading or machine line, labels a place question, or leaves the staging files behind.
+	r := loopRig(t, "[]")
+	r.issue(13, "loop", "")
+	j := bind(t)
+	env := stagedEnv(t, r, j)
+	writeResult(t, env.Dir, `{"questions":[`+placeQ12+`],"decisions":[{"issue":13,"value":"no-item"}]}`)
+	if err := j.Cleanup(context.Background(), env, env.Dir); err != nil {
+		t.Fatalf("Cleanup: %v", err)
+	}
+	q, d := r.posts(12), r.posts(13)
+	if len(q) != 1 || !strings.HasPrefix(q[0], "🗺 Kaart · map-planned\n<!-- lighthouse:map-planned kind=question topic=place off=c -->") {
+		t.Errorf("posts on #12 = %q, want one place question", q)
+	}
+	if len(d) != 1 || !strings.Contains(d[0], "kind=decision") {
+		t.Errorf("posts on #13 = %q, want one decision", d)
+	}
+	for _, p := range r.srv.Posts {
+		if strings.HasSuffix(p.Path, "/labels") || p.Method == "PATCH" {
+			t.Errorf("label write %s %s: a place question sets no label", p.Method, p.Path)
+		}
+	}
+	for _, f := range []string{".lighthouse/run/map-planned-corpus.json", ".lighthouse/run/map-planned-result.json", ".lighthouse"} {
+		if _, err := os.Lstat(filepath.Join(env.Dir, f)); !os.IsNotExist(err) {
+			t.Errorf("%s left behind (err %v)", f, err)
+		}
+	}
+}
+
+func TestCleanupLabelsAWishQuestion(t *testing.T) {
+	// Fails if a wish question does not set labels.needs_decision on its issue.
+	r := loopRig(t, "[]")
+	j := bind(t)
+	env := stagedEnv(t, r, j)
+	writeResult(t, env.Dir, `{"questions":[{"issue":12,"topic":"wish","text":"Willen we dit?","options":["ja, op de kaart","nee, niet op de kaart"],"recommended":"a","off":"b"}]}`)
+	if err := j.Cleanup(context.Background(), env, env.Dir); err != nil {
+		t.Fatalf("Cleanup: %v", err)
+	}
+	if q := r.posts(12); len(q) != 1 || !strings.Contains(q[0], "topic=wish") {
+		t.Errorf("posts on #12 = %q, want one wish question", q)
+	}
+	is, err := env.Forge.Issue(context.Background(), 12)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(is.Labels, "needs-decision") {
+		t.Errorf("labels of #12 = %v, want needs-decision", is.Labels)
+	}
+}
+
+func TestCleanupPostsOncePerIssue(t *testing.T) {
+	// Review Focus 3. Fails if a repeated Cleanup (a postcheck after a transient error) posts
+	// a second question for an issue that already has an open one.
+	r := loopRig(t, "[]")
+	j := bind(t)
+	env := stagedEnv(t, r, j)
+	result := `{"questions":[` + placeQ12 + `]}`
+	for range 2 {
+		writeResult(t, env.Dir, result)
+		if err := j.Cleanup(context.Background(), env, env.Dir); err != nil {
+			t.Fatalf("Cleanup: %v", err)
+		}
+	}
+	if q := r.posts(12); len(q) != 1 {
+		t.Errorf("posts on #12 = %d, want 1", len(q))
+	}
+}
+
+// refuseResult runs Cleanup on result in a loop rig with #40 (another label) and #42 (closed)
+// on the forge, and wants an error and no forge write at all.
+func refuseResult(t *testing.T, result string) {
+	t.Helper()
+	r := loopRig(t, "[]")
+	r.issue(40, "other", "")
+	r.issue(42, "loop", "")
+	r.srv.Issues[42]["state"] = "closed"
+	j := bind(t)
+	env := stagedEnv(t, r, j)
+	writeResult(t, env.Dir, result)
+	if err := j.Cleanup(context.Background(), env, env.Dir); err == nil {
+		t.Fatal("Cleanup: no error")
+	}
+	if n := r.writes(); n != 0 {
+		t.Errorf("%d forge writes, want none: %+v", n, r.srv.Posts)
+	}
+}
+
+func TestCleanupRefusesAPlaceQuestionWithoutOff(t *testing.T) {
+	// Fails if Cleanup posts a question whose off letter is empty, missing or outside its
+	// options (the gate could never settle it), or a question that is malformed otherwise.
+	off := func(v string) string { return strings.Replace(placeQ12, `"off":"c"`, v, 1) }
+	for name, result := range map[string]string{
+		"off empty":                       `{"questions":[` + off(`"off":""`) + `]}`,
+		"off missing":                     `{"questions":[` + off(`"x":1`) + `]}`,
+		"off outside the options":         `{"questions":[` + off(`"off":"d"`) + `]}`,
+		"recommended outside the options": `{"questions":[` + strings.Replace(placeQ12, `"recommended":"a"`, `"recommended":"f"`, 1) + `]}`,
+		"unknown topic":                   `{"questions":[` + strings.Replace(placeQ12, `"place"`, `"where"`, 1) + `]}`,
+		"one option":                      `{"questions":[{"issue":12,"topic":"place","text":"Waar?","options":["a"],"recommended":"a","off":"a"}]}`,
+		"no text":                         `{"questions":[` + strings.Replace(placeQ12, `"Waar?"`, `" "`, 1) + `]}`,
+		"not json":                        `{"questions":[`,
+	} {
+		t.Run(name, func(t *testing.T) { refuseResult(t, result) })
+	}
+}
+
+func TestCleanupRefusesAResultOutsideThePlannedIssues(t *testing.T) {
+	// Fails if Cleanup posts for an issue that carries no label of a planned row, is closed or
+	// missing on the forge, or appears twice, or for a decision value the job does not know;
+	// each case has a valid entry for #12 first, so nothing may be posted before validation ends.
+	for name, result := range map[string]string{
+		"issue without a planned label": `{"decisions":[{"issue":12,"value":"no-item"},{"issue":40,"value":"no-item"}]}`,
+		"issue not on the forge":        `{"decisions":[{"issue":12,"value":"no-item"},{"issue":41,"value":"no-item"}]}`,
+		"closed issue":                  `{"decisions":[{"issue":12,"value":"no-item"},{"issue":42,"value":"no-item"}]}`,
+		"same issue twice":              `{"questions":[` + placeQ12 + `],"decisions":[{"issue":12,"value":"no-item"}]}`,
+		"unknown decision value":        `{"decisions":[{"issue":12,"value":"maybe"}]}`,
+	} {
+		t.Run(name, func(t *testing.T) { refuseResult(t, result) })
+	}
+}
+
+func TestCleanupAcceptsAMissingResult(t *testing.T) {
+	// Fails if a run without a result file (nothing to ask) fails or writes to the forge.
+	r := loopRig(t, "[]")
+	j := bind(t)
+	env := stagedEnv(t, r, j)
+	if err := j.Cleanup(context.Background(), env, env.Dir); err != nil {
+		t.Fatalf("Cleanup: %v", err)
+	}
+	if n := r.writes(); n != 0 {
+		t.Errorf("%d forge writes, want none", n)
+	}
+}
+
+func TestAllowedIsASyntacticFilter(t *testing.T) {
+	// Fails if Allowed depends on state of the instance (a resumed run gets a fresh one), lets
+	// through a staging or git path, or refuses a document or the run's fragment.
+	for _, j := range []scheduled.Job{New(), bind(t)} {
+		for p, want := range map[string]bool{
+			"docs/site/data/loop.json":                   true,
+			"docs/kaart.yaml":                            true,
+			"docs/kaart.yml":                             true,
+			"changelog.d/scheduled-map-planned-x.md":     true,
+			"changelog.d/other.md":                       false,
+			"changelog.d/sub/scheduled-map-planned-x.md": false,
+			".lighthouse/run/x":                          false,
+			".lighthouse/run/map-planned-result.json":    false,
+			".git/config":                                false,
+			".claude/settings.json":                      false,
+			".agents/x.json":                             false,
+			"main.go":                                    false,
+		} {
+			if got := j.Allowed(p); got != want {
+				t.Errorf("Allowed(%q) = %v, want %v", p, got, want)
+			}
+		}
+	}
+}
+
+// checkRig is a loop rig with web/package.json and changelog.d/ on origin, and a work tree.
+func checkRig(t *testing.T, doc string) (*rig, scheduled.Env) {
+	t.Helper()
+	r := loopRig(t, doc)
+	put(t, r.repo, "web/package.json", `{"name":"web"}`)
+	put(t, r.repo, "changelog.d/keep.md", "---\ntype: internal\n---\nx\n")
+	r.commit()
+	dir, _ := r.workplace()
+	env := r.env()
+	env.Dir = dir
+	return r, env
+}
+
+func TestCheckRefusesANewUntrackedFile(t *testing.T) {
+	// Fails if Check misses a file the agent added (untracked at the first Postcheck) that the
+	// syntactic filter lets through.
+	for _, p := range []string{"web/new.json", ".github/workflows/x.yml"} {
+		t.Run(p, func(t *testing.T) {
+			_, env := checkRig(t, "[]")
+			put(t, env.Dir, p, "{}\n")
+			err := bind(t).Check(context.Background(), env, env.Dir)
+			if err == nil || !strings.Contains(err.Error(), p) {
+				t.Fatalf("Check = %v, want an error naming %s", err, p)
+			}
+		})
+	}
+}
+
+func TestCheckRefusesAChangedFileThatIsNoPlannedDocument(t *testing.T) {
+	// Fails if Check lets through a tracked file that is no planned document, a change to the
+	// labels file itself, or a fragment where the repo has no changelog.d/ at the base.
+	t.Run("web/package.json", func(t *testing.T) {
+		_, env := checkRig(t, "[]")
+		put(t, env.Dir, "web/package.json", `{"name":"evil"}`)
+		if err := bind(t).Check(context.Background(), env, env.Dir); err == nil || !strings.Contains(err.Error(), "web/package.json") {
+			t.Fatalf("Check = %v, want an error naming web/package.json", err)
+		}
+	})
+	t.Run("labels.md", func(t *testing.T) {
+		_, env := checkRig(t, "[]")
+		put(t, env.Dir, labelsPath, loopTable+"| `web` | `web/package.json` | always |\n")
+		if err := bind(t).Check(context.Background(), env, env.Dir); err == nil || !strings.Contains(err.Error(), labelsPath) {
+			t.Fatalf("Check = %v, want an error naming %s", err, labelsPath)
+		}
+	})
+	t.Run("fragment without changelog.d at the base", func(t *testing.T) {
+		r := loopRig(t, "[]")
+		dir, _ := r.workplace()
+		env := r.env()
+		env.Dir = dir
+		put(t, dir, "changelog.d/scheduled-map-planned-x.md", fragmentBody("nl"))
+		if err := bind(t).Check(context.Background(), env, dir); err == nil || !strings.Contains(err.Error(), "changelog.d") {
+			t.Fatalf("Check = %v, want an error naming changelog.d", err)
+		}
+	})
+	t.Run("second fragment", func(t *testing.T) {
+		_, env := checkRig(t, "[]")
+		put(t, env.Dir, "changelog.d/scheduled-map-planned-x.md", fragmentBody("nl"))
+		put(t, env.Dir, "changelog.d/scheduled-map-planned-y.md", fragmentBody("nl"))
+		if err := bind(t).Check(context.Background(), env, env.Dir); err == nil || !strings.Contains(err.Error(), "more than one fragment") {
+			t.Fatalf("Check = %v, want an error for the second fragment", err)
+		}
+	})
+	t.Run("nothing changed", func(t *testing.T) {
+		// Postcheck never checks an empty change set: Check on one means its base is wrong.
+		_, env := checkRig(t, "[]")
+		if err := bind(t).Check(context.Background(), env, env.Dir); err == nil {
+			t.Fatal("Check on a clean work tree: no error")
+		}
+	})
+	t.Run("fragment with other content", func(t *testing.T) {
+		_, env := checkRig(t, "[]")
+		put(t, env.Dir, "changelog.d/scheduled-map-planned-x.md", "---\ntype: added\n---\nIets anders.\n")
+		if err := bind(t).Check(context.Background(), env, env.Dir); err == nil || !strings.Contains(err.Error(), "changelog.d/scheduled-map-planned-x.md") {
+			t.Fatalf("Check = %v, want an error naming the fragment", err)
+		}
+	})
+}
+
+func TestCheckRefusesAnItemForAnIssueWithoutTheRowLabel(t *testing.T) {
+	// Fails if Check accepts a new issue number on a document without asking the forge whether
+	// the issue carries the row's label, or accepts a document that no longer parses.
+	t.Run("issue without the label", func(t *testing.T) {
+		r, env := checkRig(t, `[{"issue": 3}]`)
+		r.issue(99, "other", "")
+		put(t, env.Dir, "docs/site/data/loop.json", `[{"issue": 3}, {"issue": 99}]`)
+		if err := bind(t).Check(context.Background(), env, env.Dir); err == nil || !strings.Contains(err.Error(), "#99") {
+			t.Fatalf("Check = %v, want an error naming #99", err)
+		}
+	})
+	t.Run("issue with the label", func(t *testing.T) {
+		r, env := checkRig(t, `[{"issue": 3}]`)
+		r.issue(99, "loop", "")
+		put(t, env.Dir, "docs/site/data/loop.json", `[{"issue": 3}, {"issue": 99}]`)
+		if err := bind(t).Check(context.Background(), env, env.Dir); err != nil {
+			t.Fatalf("Check = %v, want nil", err)
+		}
+	})
+	t.Run("broken document", func(t *testing.T) {
+		_, env := checkRig(t, "[]")
+		put(t, env.Dir, "docs/site/data/loop.json", `[{"issue": `)
+		if err := bind(t).Check(context.Background(), env, env.Dir); err == nil || !strings.Contains(err.Error(), "loop.json") {
+			t.Fatalf("Check = %v, want an error naming the document", err)
+		}
+	})
+	t.Run("deleted document", func(t *testing.T) {
+		_, env := checkRig(t, "[]")
+		must(t, os.Remove(filepath.Join(env.Dir, "docs/site/data/loop.json")))
+		if err := bind(t).Check(context.Background(), env, env.Dir); err == nil || !strings.Contains(err.Error(), "loop.json") {
+			t.Fatalf("Check = %v, want an error naming the document", err)
+		}
+	})
+}
+
+func TestFinishWritesAnInternalFragment(t *testing.T) {
+	// Fails if Finish writes no fragment where the repo keeps changelog.d/, one of another
+	// type or name, one Check refuses, or one in a repo without changelog.d/.
+	t.Run("with changelog.d", func(t *testing.T) {
+		_, env := checkRig(t, "[]")
+		j := bind(t)
+		must(t, j.Finish(context.Background(), env, env.Dir, scheduled.Verdict{}))
+		b, err := os.ReadFile(filepath.Join(env.Dir, "changelog.d/scheduled-map-planned-20261122T0500-1.md"))
+		if err != nil {
+			t.Fatalf("fragment: %v", err)
+		}
+		if !strings.HasPrefix(string(b), "---\ntype: internal\n---\n") {
+			t.Errorf("fragment = %q, want type internal", b)
+		}
+		if err := bind(t).Check(context.Background(), env, env.Dir); err != nil {
+			t.Errorf("Check after Finish = %v, want nil", err)
+		}
+	})
+	t.Run("without changelog.d", func(t *testing.T) {
+		r := loopRig(t, "[]")
+		dir, _ := r.workplace()
+		env := r.env()
+		env.Dir = dir
+		must(t, bind(t).Finish(context.Background(), env, dir, scheduled.Verdict{}))
+		if _, err := os.Lstat(filepath.Join(dir, "changelog.d")); !os.IsNotExist(err) {
+			t.Errorf("changelog.d made (err %v), want nothing written", err)
+		}
+	})
+}
+
+func TestGateRefusesADocumentOutsideTheRepo(t *testing.T) {
+	// Fails if a Document path that is not a clean relative path inside the repo reaches git
+	// or the corpus.
+	for _, doc := range []string{"../x.json", "/etc/x.json", "docs/../x.json", "./x.json"} {
+		t.Run(doc, func(t *testing.T) {
+			r := newRig(t)
+			put(t, r.repo, labelsPath, "| Label | Document | Planned |\n|---|---|---|\n| `loop` | `"+doc+"` | always |\n")
+			r.commit()
+			r.issue(12, "loop", "")
+			if _, err := bind(t).Gate(context.Background(), r.env()); err == nil || !strings.Contains(err.Error(), "loop") {
+				t.Fatalf("Gate = %v, want an error naming the row", err)
+			}
+		})
+	}
+}
+
+func must(t *testing.T, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatal(err)
 	}
 }
