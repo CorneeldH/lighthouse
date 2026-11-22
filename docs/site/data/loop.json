@@ -697,9 +697,9 @@
       ],
       "when": "When the after-merge check of a Refs PR finds criteria still open.",
       "without": "The check posts its table and stops; nothing picks up the open criteria.",
-      "status": "planned",
-      "issue": 394,
-      "milestone": "Controller: betrouwbaar onbemand draaien"
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/core/skills/close-issue",
+      "milestone": null
     }
   ],
   "handoff": {
