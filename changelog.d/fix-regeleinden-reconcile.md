@@ -1,4 +1,4 @@
 ---
-type: fix
+type: fixed
 ---
-`lighthouse init --upgrade` ziet een bestand dat alleen CRLF-regeleinden heeft als ongewijzigd en schrijft het terug met LF, zonder `--force`. Een bestaand CRLF-bestand zonder manifest-regel wordt bij `init` ook hersteld.
+`lighthouse init --upgrade` treats a file that only has CRLF line endings as unchanged and writes it back with LF, without `--force`. An existing CRLF file without a manifest line is also repaired by `init`.
