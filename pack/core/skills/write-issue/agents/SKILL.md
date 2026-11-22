@@ -143,9 +143,16 @@ The boundary hands/testing: hands is **setting up, entering, connecting**; testi
 remains is human judgement. `labels.needs_testing` can never stand before an implementation and
 is so also the "almost done" signal.
 
-Not to be confused with a board Status `On hold` (only if a board is configured): that is
-*parked on purpose*, a blocking label is *something is in the way*. An issue can be parked and
-unshaped at the same time.
+A blocking label and the board go together (only if a board is configured): an issue that
+carries a `needs_*` label or `labels.blocked_issue` stands on `To do`, never on `Controller` (if
+present); the tick and triage put it there. The label is the whole signal: `needs_*` means "pick
+up interactively". Nothing writes the board status `On hold` any more: parking is `To do` plus
+`labels.blocked_issue`.
+
+The gate-4 judgement of lighthouse-route-issue maps onto this table. An issue that needs design
+depth first (gate 4, exit 4c: the what or why is not sharp, a spec has to come before any plan)
+gets `labels.needs_shaping`. Triage sets it itself at 4c; when you write or edit such an issue by
+hand, set it too.
 
 `labels.blocked_issue` never goes along in `lighthouse forge issue create`: it leans on the
 `blocked_by` relation, and that comes first. See 3e.
@@ -426,9 +433,8 @@ The board can also have a **Priority** (`P0` · `P1` · `P2`, no value = at the 
 `[forge.board] priority_options`. There is no shared command for it: set it in the board UI, or
 as `../lighthouse-forge/<kind>.md §board` describes.
 
-`On hold` is the place for work parked on purpose; there is no on-hold label. Setting it goes in
-the board UI, or with `lighthouse forge issue status <nr> "On hold"` when `status_options` has
-that key.
+Parking is not a status of its own: the tick parks an issue as `To do` plus
+`labels.blocked_issue`. Do not set `On hold` by hand; use the blocked label and the relation (3e).
 
 ## Acceptance Criteria vs Definition of Done
 

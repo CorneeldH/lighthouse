@@ -1,0 +1,10 @@
+[
+ {
+  "args": [
+   "forge.board.project_number"
+  ],
+  "rc": 0,
+  "stdout": "7\n",
+  "stderr": ""
+ }
+]

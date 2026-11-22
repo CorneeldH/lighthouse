@@ -242,3 +242,44 @@ func TestStateRunsOpenNextToAServe(t *testing.T) {
 		t.Errorf("dbRunState next to an open store: %v", err)
 	}
 }
+
+// Red when Show stops writing "needs human" for an open 🤖 Vraag on an active issue.
+func TestStateShowReportsOpenQuestionNeedsHuman(t *testing.T) {
+	stateToml(t, stateLabels, true)
+	srv := stateServer(t, nil, "opt-ctrl", "Controller")
+	srv.Comments = map[int][]map[string]any{7: {{"id": 1, "body": "🤖 Vraag\n\nWelke kant op?", "user": map[string]any{"login": "lh-bot"}}}}
+	code, out, errOut := runState(t, srv, nil, "show", "7")
+	if want := "state: #7 active, needs human\n"; code != 0 || out != want || errOut != "" {
+		t.Errorf("state show 7 = %d, %q, stderr %q; want 0, %q", code, out, errOut, want)
+	}
+}
+
+// Red when a missing token stops being exit 2 (as forgeOpenWith gives for forge commands).
+func TestStateMissingTokenExitCode(t *testing.T) {
+	stateToml(t, stateLabels, true)
+	t.Setenv("GH_TOKEN", "")
+	t.Setenv("GITHUB_TOKEN", "")
+	srv := stateServer(t, nil, "opt-todo", "To do")
+	o := newForgeOpener(func(string) string { return "" }, srv.URL())
+	cmd := newStateCommandWith(o, func(context.Context, string, int) (string, error) { return "", nil })
+	cmd.SilenceUsage, cmd.SilenceErrors = true, true
+	var out, errOut bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errOut)
+	cmd.SetArgs([]string{"show", "7"})
+	if code := execute(cmd, &errOut); code != 2 {
+		t.Errorf("state show without token = %d, %q; want 2", code, out.String())
+	}
+}
+
+// Red when dbRunState goes back to store.OpenShared: that creates and migrates the database.
+func TestDBRunStateDoesNotCreateAMissingDatabase(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state", "lighthouse.db")
+	got, err := dbRunState(path)(context.Background(), "Owner/repo", 7)
+	if err != nil || got != "" {
+		t.Errorf("dbRunState on a missing database = %q, %v; want \"\", nil", got, err)
+	}
+	if _, err := os.Stat(filepath.Dir(path)); !os.IsNotExist(err) {
+		t.Errorf("stat %s: %v; want the directory not to exist", filepath.Dir(path), err)
+	}
+}

@@ -610,6 +610,7 @@
                 "pack/core/skills/forge",
                 "pack/core/skills/route-issue",
                 "pack/core/skills/start-issue",
+                "pack/core/skills/write-handoff",
                 "pack/core/skills/write-issue",
                 "pack/core/workflows/unblock-dependents.yml"
               ]
@@ -661,6 +662,7 @@
               "readers": [
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/route-issue",
+                "pack/core/skills/start-issue",
                 "pack/core/skills/write-issue"
               ]
             },
@@ -946,11 +948,8 @@
                 "internal/cli/imports.go",
                 "internal/commitgate/imports.go",
                 "pack/go/hooks/go-imports-gate.sh",
-                "pack/go/instructions/AGENTS.md",
                 "pack/node/hooks/node-imports-gate.sh",
-                "pack/node/instructions/AGENTS.md",
-                "pack/python/hooks/python-imports-gate.sh",
-                "pack/python/instructions/AGENTS.md"
+                "pack/python/hooks/python-imports-gate.sh"
               ]
             }
           ]

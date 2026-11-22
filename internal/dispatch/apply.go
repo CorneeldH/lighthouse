@@ -12,8 +12,10 @@ import (
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/forge"
+	"github.com/CorneeldH/lighthouse/internal/issuestate"
 	"github.com/CorneeldH/lighthouse/internal/park"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
+	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/runs"
 	"github.com/CorneeldH/lighthouse/internal/scheduled"
 	"github.com/CorneeldH/lighthouse/internal/workplace"
@@ -34,8 +36,10 @@ type Env struct {
 	// authenticated URL, never the workplace's origin. Finishing a scheduled run needs it.
 	Remote     func(repo string) (scheduled.Remote, error)
 	RoundLimit func(repo string) string // what a run does at an adversarial round limit
-	StateDir   string
-	MarkerDir  string // the resume markers; "" removes none
+	// Labels are the [labels] names of a repo: a 🤖 Returned sets one of them (giveBack).
+	Labels    func(repo string) repoconfig.Labels
+	StateDir  string
+	MarkerDir string // the resume markers; "" removes none
 	// RemoveMarker removes the resume marker of session while its key is key, where the marker
 	// came from (self or a node); nil is park.RemoveMarker in MarkerDir.
 	RemoveMarker func(session, key string) error
@@ -132,9 +136,14 @@ func (ap applier) apply(ctx context.Context, a Action, res *Result) error {
 	case KindScheduledClose:
 		return ap.closeScheduled(ctx, a)
 	case KindReturn:
+		// The Returned first, then the label and To do, then the run: a failed give-back leaves
+		// the run open, settle closes it on its own Returned, and finishReturn finishes the rest.
 		body := protocol.RenderReturned(reasonText(a), a.SessionID, "", a.Language)
 		if _, err := ap.env.Forge(a.Repo).CreateComment(ctx, a.Issue, body); err != nil {
 			return fmt.Errorf("post: %w", err)
+		}
+		if err := ap.giveBack(ctx, a, ReturnLabelKey(a.Reason, a.Blocked)); err != nil {
+			return err
 		}
 		if a.RunID == 0 {
 			return nil
@@ -143,6 +152,8 @@ func (ap applier) apply(ctx context.Context, a Action, res *Result) error {
 			return err
 		}
 		return ap.closeRun(ctx, a.RunID, runs.Returned, reasonText(a))
+	case KindFinishReturn:
+		return ap.giveBack(ctx, a, ReturnLabelKey(a.Reason, a.Blocked))
 	case KindDone:
 		note := protocol.Heading("note_done", a.Language)
 		body := protocol.RenderDone(a.SessionID, a.PRURL, note, a.Language)
@@ -175,17 +186,19 @@ func (ap applier) apply(ctx context.Context, a Action, res *Result) error {
 		res.Deferred = append(res.Deferred, deferral(a, a.Reason))
 		return nil
 	case KindPark:
-		// The comment first: a failed board change leaves a Parked that the next tick sees,
-		// and holds without posting a second one.
+		// The comment first: a failed label or board change leaves a Parked that the next tick
+		// sees, and holds without posting a second one.
 		body := protocol.RenderParked(a.Blockers, a.Language)
 		if _, err := ap.env.Forge(a.Repo).CreateComment(ctx, a.Issue, body); err != nil {
 			return fmt.Errorf("post: %w", err)
 		}
-		return ap.setStatus(ctx, a, statusOnHold)
+		return ap.hold(ctx, a)
 	case KindHold:
-		return ap.setStatus(ctx, a, statusOnHold)
+		return ap.hold(ctx, a)
 	case KindUnpark:
-		return ap.setStatus(ctx, a, statusController)
+		return ap.unpark(ctx, a)
+	case KindToDo:
+		return ap.setStatus(ctx, a, issuestate.ToDo)
 	case KindDropMarker:
 		ap.removeMarker(a)
 		return nil
@@ -229,6 +242,53 @@ func (ap applier) setStatus(ctx context.Context, a Action, status string) error 
 	item := forge.BoardItem{ItemID: a.ItemID, Repo: a.Repo, Issue: a.Issue}
 	if err := ap.env.Forge(a.Repo).SetStatus(ctx, item, status); err != nil {
 		return fmt.Errorf("board: %w", err)
+	}
+	return nil
+}
+
+// hold parks issue a.Issue after its 🤖 Parked: the blocked_issue label, then the board status
+// To do. The run and its workplace stay; the tick unparks the issue once no blocker is active.
+func (ap applier) hold(ctx context.Context, a Action) error {
+	if _, err := issuestate.Apply(ctx, ap.env.Forge(a.Repo), a.Issue, "blocked_issue", ap.env.Labels(a.Repo)); err != nil {
+		return fmt.Errorf("label: %w", err)
+	}
+	return ap.setStatus(ctx, a, issuestate.ToDo)
+}
+
+// unpark takes the blocked_issue label off issue a.Issue when it is there (the unblock lane may
+// have taken it off already), then moves the item to Controller, where the next tick resumes its
+// last Handoff. The label goes first: a failed board change leaves a To do item without the
+// label, which the tick unparks again.
+func (ap applier) unpark(ctx context.Context, a Action) error {
+	f := ap.env.Forge(a.Repo)
+	if name := ap.env.Labels(a.Repo).BlockedIssue; name != "" {
+		is, err := f.Issue(ctx, a.Issue)
+		if err != nil {
+			return fmt.Errorf("label: %w", err)
+		}
+		if slices.Contains(is.Labels, name) {
+			if _, err := f.EditIssue(ctx, a.Issue, forge.IssueEdit{RemoveLabels: []string{name}}); err != nil {
+				return fmt.Errorf("label: %w", err)
+			}
+		}
+	}
+	return ap.setStatus(ctx, a, statusController)
+}
+
+// giveBack gives issue a.Issue back to a human after its 🤖 Returned: the blocking label of key
+// and the board status To do, with the Priority as it is (issuestate.Return). A closed issue
+// gets neither: the forge already moved it to Done.
+func (ap applier) giveBack(ctx context.Context, a Action, key string) error {
+	f := ap.env.Forge(a.Repo)
+	is, err := f.Issue(ctx, a.Issue)
+	if err != nil {
+		return fmt.Errorf("give back: %w", err)
+	}
+	if is.State == "closed" {
+		return nil
+	}
+	if _, err := issuestate.Return(ctx, f, a.Issue, key, ap.env.Labels(a.Repo), true); err != nil {
+		return fmt.Errorf("give back: %w", err)
 	}
 	return nil
 }
@@ -430,10 +490,10 @@ func (ap applier) start(ctx context.Context, a Action, res *Result) error {
 		}
 		ap.logf("%s#%d: launch of run %d not accepted: %s", a.Repo, a.Issue, run.ID, oneLine(reason))
 		// The second attempt of a usage resume posts no header: a Returned now would outlast its agent.
-		if a.Trigger != triggerUsage || a.Attempt > 1 {
-			ap.returnStartFailed(ctx, a, run.ID, session, reason)
-		}
 		res.NotAccepted = append(res.NotAccepted, fmt.Sprintf("%s#%d", a.Repo, a.Issue))
+		if a.Trigger != triggerUsage || a.Attempt > 1 {
+			return ap.returnStartFailed(ctx, a, run.ID, session, reason)
+		}
 	}
 	return nil
 }
@@ -535,7 +595,8 @@ func (ap applier) returnFixPR(ctx context.Context, a Action, cause error) error 
 	if _, err := ap.env.Forge(a.Repo).CreateComment(ctx, a.Issue, body); err != nil {
 		return errors.Join(cause, fmt.Errorf("post returned: %w", err))
 	}
-	return cause
+	// No retry follows this Returned: the issue goes to To do.
+	return errors.Join(cause, ap.giveBack(ctx, ra, ReturnLabelKey(ra.Reason, false)))
 }
 
 // returnOwnWork hands back a claimed run whose workspace holds own work origin lacks (#269):
@@ -551,20 +612,32 @@ func (ap applier) returnOwnWork(ctx context.Context, a Action, runID int64, sess
 		return ap.startFailed(ctx, runID, "post", err)
 	}
 	ap.logf("%s#%d: run %d returned: %s", a.Repo, a.Issue, runID, reason)
-	return ap.closeRun(ctx, runID, runs.Returned, reason)
+	// The run closes also when the give-back fails: it has no agent, and settle would discard
+	// the workspace that holds the own work. finishReturn finishes the give-back.
+	return errors.Join(ap.giveBack(ctx, ra, ReturnLabelKey(ra.Reason, false)),
+		ap.closeRun(ctx, runID, runs.Returned, reason))
 }
 
 // returnStartFailed posts the 🤖 Returned of a refused launch under its Started, with the
 // session of the run, so decide sees it and posts none after a second refusal. A failed post
 // logs one line and is no action error: the run is closed, and decide posts the Returned of a
 // second refusal itself.
-func (ap applier) returnStartFailed(ctx context.Context, a Action, runID int64, session, reason string) {
+//
+// Only after the second attempt (a.Attempt > 1) does the issue go to To do with its label: after
+// the first, retry plans the second attempt, which runs only under Controller, so the issue
+// stays there without a label. A failed give-back is the action's error; finishReturn finishes it.
+func (ap applier) returnStartFailed(ctx context.Context, a Action, runID int64, session, reason string) error {
 	ra := a
 	ra.Reason, ra.ReasonArg = "reason_start_failed", reason
 	body := protocol.RenderReturned(reasonText(ra), session, "", a.Language)
 	if _, err := ap.env.Forge(a.Repo).CreateComment(ctx, a.Issue, body); err != nil {
 		ap.logf("%s#%d: post Returned of run %d: %v", a.Repo, a.Issue, runID, err)
+		return nil
 	}
+	if a.Attempt <= 1 {
+		return nil
+	}
+	return ap.giveBack(ctx, ra, ReturnLabelKey(ra.Reason, false))
 }
 
 // announce posts the 🤖 Started or Resumed and the 🚀; a failed post closes the run as

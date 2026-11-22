@@ -279,7 +279,8 @@ func (c *GitHub) BoardItems(ctx context.Context) ([]BoardItem, error) {
 		}
 		it, pulls := r.boardItem(p, b)
 		total := 0
-		if r.issue() {
+		// A closed issue starts or resumes no run, so its blockers are not read.
+		if r.issue() && !strings.EqualFold(it.IssueState, "CLOSED") {
 			total = r.Content.Summary.TotalBlockedBy
 		}
 		if err := c.complete(ctx, &it, total, pulls, merged); err != nil {

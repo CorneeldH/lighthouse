@@ -1,9 +1,6 @@
 package repopins
 
 import (
-	"os"
-	"path/filepath"
-	"sort"
 	"strings"
 	"testing"
 )
@@ -62,36 +59,18 @@ func TestAgentsMDNamesTheGuardsAndTheEscapeHatch(t *testing.T) {
 		"main-commit-gate", "worktree-check", ".claude/allow-main", ".claude/worktrees/")
 }
 
-// A production change that fails this test: the core block grows past 365 words, drops a rule
-// every repo needs, or leaves a core skill unlisted.
+// A production change that fails this test: the core block grows past 182 words or drops a
+// rule every repo needs. It carries only the chain rules a hook, a fact the model cannot derive
+// or a proven mistake supports, the `heading:<key>` notation and the rule for the language of code.
 func TestCoreBlockWordBudget(t *testing.T) {
 	text := coreBlock(t)
-	if n := len(strings.Fields(text)); n > 365 {
-		t.Errorf("core block has %d words, budget is 365", n)
+	if n := len(strings.Fields(text)); n > 182 {
+		t.Errorf("core block has %d words, budget is 182", n)
 	}
 	requireTokens(t, text,
-		"main-commit-gate", ".claude/allow-main", "worktree", "squash", "[project] language",
+		"main-commit-gate", "worktree", "squash", "[project] language",
 		"[project] code_language", "code_language_paths", "heading:<key>",
-		".lighthouse/headings.toml", "on which layer a new instruction belongs")
-	entries, err := os.ReadDir(filepath.Join(repoRoot(t), "pack", "core", "skills"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var skills []string
-	for _, e := range entries {
-		if e.IsDir() {
-			skills = append(skills, e.Name())
-		}
-	}
-	if len(skills) == 0 {
-		t.Fatal("pack/core/skills has no skill directory")
-	}
-	sort.Strings(skills)
-	for _, s := range skills {
-		if !strings.Contains(text, "`/lighthouse-"+s+"`") {
-			t.Errorf("core block does not list skill /lighthouse-%s", s)
-		}
-	}
+		".lighthouse/headings.toml")
 }
 
 // A production change that fails this test: the core block stops saying how to read a
@@ -99,7 +78,7 @@ func TestCoreBlockWordBudget(t *testing.T) {
 func TestCoreBlockSaysHowToReadAHeading(t *testing.T) {
 	requireTokens(t, oneLine(coreBlock(t)),
 		"lighthouse headings <key>",
-		"never the literal `heading:<key>`",
+		"not the literal `heading:<key>`",
 		"reading accepts every language variant")
 }
 
@@ -115,8 +94,7 @@ func TestCoreBlockSaysAnOldBinaryIsNoUnsetKey(t *testing.T) {
 // finishes what it is authorised to do instead of offering it.
 func TestCoreBlockSaysFinishWhatIsAuthorised(t *testing.T) {
 	requireTokens(t, oneLine(coreBlock(t)),
-		`Finish what you are already authorised to do; never end on an offer to do it `+
-			`("ready to push if you want" is not done).`)
+		"Finish what you are already authorised to do; an offer to do it is not done.")
 }
 
 // A production change that fails this test: a rule of the core block is copied into the

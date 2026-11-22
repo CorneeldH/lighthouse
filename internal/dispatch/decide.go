@@ -11,6 +11,7 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/hostconfig"
+	"github.com/CorneeldH/lighthouse/internal/issuestate"
 	"github.com/CorneeldH/lighthouse/internal/park"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
@@ -40,11 +41,13 @@ type RepoInput struct {
 	Language      string                `json:"language"`
 	DefaultBranch string                `json:"default_branch"`
 	// LocationPrefix is [labels] location_prefix; "" turns the location label off.
-	LocationPrefix string                    `json:"location_prefix,omitempty"`
-	Installed      map[string]bool           `json:"installed"`
-	History        []runs.Row                `json:"history"`
-	Stands         map[int64]workplace.Stand `json:"stands"`         // per open run id; missing = not measurable
-	Runs           map[int64]RunState        `json:"runs,omitempty"` // per open run id; missing = not measured
+	LocationPrefix string `json:"location_prefix,omitempty"`
+	// Labels are the [labels] names of the repo: which labels block it (needs_*, blocked_*).
+	Labels    repoconfig.Labels         `json:"labels"`
+	Installed map[string]bool           `json:"installed"`
+	History   []runs.Row                `json:"history"`
+	Stands    map[int64]workplace.Stand `json:"stands"`         // per open run id; missing = not measurable
+	Runs      map[int64]RunState        `json:"runs,omitempty"` // per open run id; missing = not measured
 	// Markers are the controller markers whose session's last run is in this repo, resumable
 	// or not.
 	Markers []park.Marker `json:"markers"`
@@ -89,6 +92,13 @@ const (
 	// KindScheduledMerge squash-merges PR of scheduled run RunID on HeadSHA, deletes Branch and
 	// ends the run as done.
 	KindScheduledMerge Kind = "scheduled_merge"
+	// KindFinishReturn finishes the hand-back of an issue whose own 🤖 Returned stands without
+	// its label and board status (a failed label or board write): issuestate.Return with the
+	// label ReturnLabelKey gives Reason, which decide read back from the Returned.
+	KindFinishReturn Kind = "finish_return"
+	// KindToDo moves a Controller issue that carries a needs_* label to To do (the label stays,
+	// no comment, no run or workplace is touched): a human owns it until the label is gone.
+	KindToDo Kind = "todo"
 	// KindScheduledClose closes scheduled run RunID with Outcome and the literal ReasonArg, after
 	// forgetting its launch (Discard), ending its agent (End), closing PR and deleting Branch.
 	KindScheduledClose Kind = "scheduled_close"
@@ -130,6 +140,9 @@ type Action struct {
 	Worktree   string       `json:"worktree,omitempty"`   // push: the worktree of the run that asked for the push
 	PermitSHA  string       `json:"permit_sha,omitempty"` // push: the SHA a user's answer allowed
 	Body       string       `json:"body,omitempty"`       // repost: the comment, literal
+	// Blocked marks the return of rule 13 while a blocker is active (settleUnstartedFixPR): its
+	// label is blocked_issue, whatever Reason says (ReturnLabelKey).
+	Blocked bool `json:"blocked,omitempty"`
 	// Schedule and Slot (YYYYMMDDTHHMM) name the scheduled run of a scheduled start, or of its
 	// defer; Issue is 0 then. Tools, Instructions and Verdict (scheduled.Record JSON) are its
 	// launch.
@@ -234,9 +247,26 @@ func settleUnstartedFixPR(ps []planned, wanted map[issueKey]bool) []planned {
 		}
 		a := p.Action
 		a.Kind, a.Reason, a.Outcome, a.ReasonArg = KindReturn, cmp.Or(p.fixReason, "reason_pr_red"), "", p.fixReasonArg
+		a.Blocked = p.fixBlocked
 		out = append(out, planned{Action: a})
 	}
 	return out
+}
+
+// ReturnLabelKey is the blocking label key a 🤖 Returned with reason (a headings key) sets on
+// the issue it gives back: blocked_issue for the return of rule 13 while a blocker is active
+// (blocked), needs_shaping for a handoff that wants a brainstorm, needs_decision for one that
+// wants an interactive skill, and needs_hands for every other reason, a passing one included.
+func ReturnLabelKey(reason string, blocked bool) string {
+	switch {
+	case blocked:
+		return "blocked_issue"
+	case reason == "reason_needs_brainstorm":
+		return "needs_shaping"
+	case reason == "reason_interactive":
+		return "needs_decision"
+	}
+	return "needs_hands"
 }
 
 // planned is an action with what orders it; priority and at count for a start or resume.
@@ -262,6 +292,9 @@ type planned struct {
 	// fixReason and fixReasonArg are the cause of the fix-pr start a fix-pr close stands for.
 	fixReason    string
 	fixReasonArg string
+	// fixBlocked: a blocker of the item is active, so a fix-pr close without a start goes back
+	// as blocked (Action.Blocked).
+	fixBlocked bool
 }
 
 // group places an action in the output: 0 without a start or resume (a park, hold or unpark
@@ -310,7 +343,8 @@ func cmpBool(a, b bool) int {
 // freesSlot reports whether a close frees the slot of its run in this tick: whether the next tick
 // no longer counts the run (spec "Welke sluiting"). A parked run stays counted until its usage
 // resume, a merge GitHub refuses leaves the run open, and a return without a run closes none.
-// The fix-pr close of rule 13 frees nothing either; decideIssue leaves that out.
+// The fix-pr close of rule 13 frees nothing either; decideIssue leaves that out. A todo is no
+// close and frees nothing.
 func freesSlot(a Action) bool {
 	switch a.Kind {
 	case KindClose:
@@ -326,12 +360,22 @@ func freesSlot(a Action) bool {
 // decideIssue gives the actions of one item. The start rules run only for an open issue in
 // Controller whose open runs all close in this tick, and not when the orphan rule hands the
 // issue back: a start next to that Returned would contradict it. The same holds for the
-// unpark rule of an open issue in On hold. When settle closed a run for a fix-pr start and no
+// unpark rule of an open issue in On hold. A To do item without an open run gets only the unpark
+// rule: a human who picked it up and put it back owns it, so neither orphan nor repair touches
+// it. A To do item with an open run gets the run rules only; its unpark waits for the tick after
+// the run closed. When settle closed a run for a fix-pr start and no
 // blocker is active, that start is the item's one start in this tick and next does not run;
 // with an active blocker Decide hands the run back (settleUnstartedFixPR).
 func decideIssue(in Input, repo RepoInput, it Item) []planned {
 	hs := headers(it)
 	base := Action{Repo: repo.Snapshot.Repo, Issue: it.Issue, Language: repo.Language}
+	c := issueCtx{repo: repo, it: it, hs: hs, base: base, now: in.Now, night: in.Night, profileNodes: in.ProfileNodes}
+	if it.Status == statusToDo && !hasOpenRun(repo.History, it.Issue) {
+		if p, ok := c.unparkToDo(); ok {
+			return []planned{p}
+		}
+		return nil
+	}
 	var out []planned
 	a, orphaned := orphan(repo.History, hs, base)
 	if orphaned {
@@ -359,6 +403,7 @@ func decideIssue(in Input, repo RepoInput, it Item) []planned {
 			if f != nil {
 				fix, fixRow = f, row
 				p.fixReason, p.fixReasonArg = f.reason, f.arg
+				p.fixBlocked = len(activeBlockers(it)) > 0
 			}
 			out = append(out, p)
 		}
@@ -370,12 +415,18 @@ func decideIssue(in Input, repo RepoInput, it Item) []planned {
 	if !free || it.State != "OPEN" {
 		return out
 	}
-	c := issueCtx{repo: repo, it: it, hs: hs, base: base, now: in.Now, night: in.Night, profileNodes: in.ProfileNodes}
 	switch it.Status {
 	case statusController:
 		if fix != nil && fix.merge {
 			// mergeReady already held the merge back for an active blocker.
 			out = append(out, c.mergePush(fix.pr, 1, c.now))
+		} else if c.needsHuman() {
+			// A human owns the issue: no run starts, also no fix-pr start (settleUnstartedFixPR
+			// then hands the closing run back). Without that return the issue only moves to To
+			// do; its label stays. An open run never gets here: free is false for it.
+			if fix == nil {
+				out = append(out, planned{Action: c.board(KindToDo)})
+			}
 		} else if fix != nil && !c.active() {
 			a := c.fresh(triggerFixPR, fix.key, cmdFixPR+" "+strconv.Itoa(fix.pr.Number), fix.pr.HeadRef)
 			a.Reason, a.ReasonArg = fix.reason, fix.arg
@@ -390,11 +441,45 @@ func decideIssue(in Input, repo RepoInput, it Item) []planned {
 			out = append(out, p)
 		}
 	case statusOnHold:
+		// The remnant of the old parking: unparked as before, never set again.
 		if c.ownParked() && !c.active() {
 			out = append(out, planned{Action: c.board(KindUnpark)})
 		}
 	}
 	return out
+}
+
+// unparkToDo is the unpark of an open To do item the tick parked itself (its last protocol
+// comment is its own 🤖 Parked) once no blocker is active, with or without the blocked_issue
+// label (the unblock lane may have taken it off already). An item with a needs_* or
+// blocked_external label stays: a human holds it, and an unpark would flip it back and forth
+// with the todo of a labelled Controller item.
+func (c issueCtx) unparkToDo() (planned, bool) {
+	if c.it.State != "OPEN" || heldByHuman(c.it.Labels, c.repo.Labels) || !c.ownParked() || c.active() {
+		return planned{}, false
+	}
+	return planned{Action: c.board(KindUnpark)}, true
+}
+
+// hasOpenRun reports whether history has an open run of issue.
+func hasOpenRun(history []runs.Row, issue int) bool {
+	return slices.ContainsFunc(history, func(row runs.Row) bool { return row.Open && row.Issue == issue })
+}
+
+// heldByHuman reports whether labels hold a needs_* or the blocked_external label of l: a human
+// owns such an issue, so the tick neither unparks it nor reads it as parked.
+func heldByHuman(labels []string, l repoconfig.Labels) bool {
+	for _, name := range []string{l.NeedsShaping, l.NeedsDecision, l.NeedsHands, l.NeedsTesting, l.BlockedExternal} {
+		if name != "" && slices.Contains(labels, name) {
+			return true
+		}
+	}
+	return false
+}
+
+// needsHuman reports whether the item carries one of the needs_* labels of the repo.
+func (c issueCtx) needsHuman() bool {
+	return c.repo.Labels.NeedsName(c.it.Labels) != ""
 }
 
 // parsed is a protocol comment with its header and its time.
@@ -1185,8 +1270,10 @@ func triggerComment(key string) (int64, bool) {
 }
 
 const (
-	statusController  = "Controller"
+	statusController = "Controller"
+	// statusOnHold is read only: an issue still there is unparked, but no code sets it.
 	statusOnHold      = "On hold"
+	statusToDo        = issuestate.ToDo
 	cmdStartIssue     = "/lighthouse-start-issue"
 	modeStart         = "start"
 	modeResume        = "resume"
@@ -1214,10 +1301,11 @@ type issueCtx struct {
 	profileNodes map[string]string
 }
 
-// next returns the one start, resume, return, defer, park or hold the item gets in this tick:
-// the first rule that gives an action wins.
+// next returns the one start, resume, return, finish, defer, park or hold the item gets in this
+// tick: the first rule that gives an action wins. finishReturn comes right after retry: the
+// first refused launch of a trigger posts a Returned but waits for its second attempt.
 func (c issueCtx) next() (planned, bool) {
-	for _, rule := range []func() (planned, bool){c.retry, c.usageResume, c.answer, c.closeCheck, c.newIssue, c.handoff} {
+	for _, rule := range []func() (planned, bool){c.retry, c.finishReturn, c.usageResume, c.answer, c.closeCheck, c.newIssue, c.handoff} {
 		if p, ok := rule(); ok {
 			return p, true
 		}
@@ -1260,6 +1348,36 @@ func (c issueCtx) retry() (planned, bool) {
 		}
 	}
 	return planned{}, false
+}
+
+// finishReturn finishes a hand-back that stopped after its 🤖 Returned: the label or board
+// write failed, or the Returned came from a path that wrote neither. It holds when the last
+// protocol comment (Rebased does not count) is a Returned of the token login, the issue has no
+// open run (settle closes the run of its own Returned first) and no blocking label but
+// blocked_issue (a rule-13 Returned stuck on Controller; the rank rule keeps that label), and retry
+// planned nothing before it in next: the first refused launch of a trigger keeps its Returned
+// without a label until retry starts the second attempt. The label comes from the reason the
+// Returned names (protocol.ReasonKey); an unreadable one gives needs_hands.
+func (c issueCtx) finishReturn() (planned, bool) {
+	last := lastProtocol(c.hs)
+	if last == nil || last.Header.Kind != protocol.KindReturned || last.Comment.Author != c.repo.Snapshot.TokenLogin {
+		return planned{}, false
+	}
+	if hasOpenRun(c.repo.History, c.it.Issue) {
+		return planned{}, false
+	}
+	// blocked_issue alone is the label of a rule-13 Returned whose board write failed: it
+	// stays, the rank rule keeps it over the label of the reason. Any other blocking label is a
+	// finished give-back or a human's.
+	for _, name := range c.repo.Labels.Blocking() {
+		if name != "" && name != c.repo.Labels.BlockedIssue && slices.Contains(c.it.Labels, name) {
+			return planned{}, false
+		}
+	}
+	a := c.base
+	a.Kind = KindFinishReturn
+	a.Reason, _ = protocol.ReasonKey(last.Header.Fields["reason"])
+	return planned{Action: a}, true
 }
 
 func allStartFailed(rows []runs.Row) bool {
@@ -1652,6 +1770,9 @@ func (c issueCtx) handoff() (planned, bool) {
 		a.Blockers = c.activeBlockers()
 		return planned{Action: a}, true
 	}
+	if Executing(j.Command) && c.repeatsHandoff(p) {
+		return c.returned("reason_repeat_handoff", ""), true
+	}
 	if j.Verdict == VerdictPush {
 		return c.push(p, ho, pushKey), true
 	}
@@ -1662,6 +1783,27 @@ func (c issueCtx) handoff() (planned, bool) {
 	a := c.fresh(triggerHandoff, key, j.Command, branch)
 	a.CommentID, a.Native, a.Skip = p.Comment.ID, j.Native, skip
 	return c.planned(a, p.Time), true
+}
+
+// repeatsHandoff reports whether the handoff p is the previous Handoff again, word for word,
+// while that one's run has already ended: a run that waits for something the tick cannot see
+// (a PR of another issue, without a blocked_by relation) writes the same handoff and, started
+// again, writes it once more. A run that made progress writes another State or Context, so the
+// text differs.
+func (c issueCtx) repeatsHandoff(p *parsed) bool {
+	var prev *parsed
+	for i := range c.hs {
+		if c.hs[i].Comment.ID == p.Comment.ID {
+			break
+		}
+		if c.hs[i].Header.Kind == protocol.KindHandoff {
+			prev = &c.hs[i]
+		}
+	}
+	if prev == nil || prev.Comment.Body != p.Comment.Body {
+		return false
+	}
+	return c.spent(triggerHandoff + ":" + strconv.FormatInt(prev.Comment.ID, 10))
 }
 
 // awaitsPR reports whether an end-of-chain handoff posted at t leaves the end to a PR: an open
@@ -1776,15 +1918,23 @@ func activeBlockers(it Item) []string {
 
 // ownParked reports whether the last protocol comment (Rebased does not count) is a Parked
 // by the token login: the tick parked the item itself.
-func (c issueCtx) ownParked() bool {
-	for i := len(c.hs) - 1; i >= 0; i-- {
-		p := c.hs[i]
-		if p.Header.Kind == protocol.KindRebased {
-			continue
+func (c issueCtx) ownParked() bool { return ownParkedBy(c.hs, c.repo.Snapshot.TokenLogin) }
+
+// ownParkedBy reports whether the last protocol comment of hs (Rebased does not count) is a
+// Parked by login. The precheck (readOwnParked) and decide share it.
+func ownParkedBy(hs []parsed, login string) bool {
+	p := lastProtocol(hs)
+	return p != nil && p.Header.Kind == protocol.KindParked && p.Comment.Author == login
+}
+
+// lastProtocol returns the last protocol comment that is no Rebased, nil when there is none.
+func lastProtocol(hs []parsed) *parsed {
+	for i := len(hs) - 1; i >= 0; i-- {
+		if hs[i].Header.Kind != protocol.KindRebased {
+			return &hs[i]
 		}
-		return p.Header.Kind == protocol.KindParked && p.Comment.Author == c.repo.Snapshot.TokenLogin
 	}
-	return false
+	return nil
 }
 
 // lastTurn returns the last protocol comment that is a turn: a Rebased or a Parked is a

@@ -56,7 +56,8 @@ type fpMarker struct {
 }
 
 // Fingerprint is the hex SHA-256 of what decides whether a tick has work: the board fields
-// of the items, the blockers of On hold items, the PRs of items with an open run, and the
+// of the items, the blockers of parked items (To do, which Prepare keeps only with an own
+// 🤖 Parked or an open run, and the On hold remnant), the PRs of items with an open run, and the
 // open runs with the stand of their session, the resume markers and the end of the pause.
 // Comments are left out: a new comment moves IssueUpdatedAt. Activity and permission prompts
 // are left out too: they change every tick, and Boundaries makes the tick look when their
@@ -88,7 +89,7 @@ func Fingerprint(pre Pre) string {
 			ItemUpdatedAt: it.ItemUpdatedAt.UTC(), IssueUpdatedAt: it.IssueUpdatedAt.UTC(),
 			Blockers: []fpBlocker{}, PRs: []fpPR{},
 		}
-		if it.Status == "On hold" {
+		if it.Status == statusToDo || it.Status == statusOnHold {
 			for _, b := range it.BlockedBy {
 				f.Blockers = append(f.Blockers, fpBlocker{b.Repo, b.Issue, b.State, b.MergedPR})
 			}
