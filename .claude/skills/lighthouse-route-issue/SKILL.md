@@ -200,7 +200,7 @@ issue gets.
 
 | Label | Route |
 |---|---|
-| `labels.needs_shaping` | **gate 4, c** — that *is* exactly the missing step |
+| `labels.needs_shaping` | **gate 4, c** — that *is* exactly the missing step; a `needs_*` label means "pick up interactively", never a controller run |
 | `labels.needs_decision` | **gate 4, c**, narrow: put the open decision as the first question |
 | `labels.needs_hands` | **gate 4, b/a**, execute up to the hand movement, with an explicit instruction *where* human hands are needed |
 | `labels.needs_testing` | **gate 4, b/a**, execute and let the human judge whether it does what was meant |

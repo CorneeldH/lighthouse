@@ -192,7 +192,7 @@ func (g *gitlabFixture) AddOpenPR(_ *testing.T, pr forge.OpenPR) {
 		"source_branch": pr.HeadRef, "source_project_id": 1, "target_project_id": 1})
 }
 
-// SupportsPlanning: Planning reads REST issues, links and issues_statistics.
+// SupportsPlanning: Planning reads REST issues, links and the closed issues per milestone.
 func (g *gitlabFixture) SupportsPlanning() bool { return true }
 
 // NotPlannedCountsAsDone: GitLab has no close reason, so every closed issue is done.

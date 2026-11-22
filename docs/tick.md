@@ -42,8 +42,8 @@ Het is een korte run, geen daemon. Wie issues vooraf routeert en naar `Controlle
    een repo niet, dan slaat tick hem luid over met `lighthouse: skip <pad>: <redenen>` op stderr en
    gaat door met de rest.
 6. **Precheck.** Per bedienbare repo leest tick het board, de open runs en de runhistorie, en rekent
-   daaruit een vingerafdruk: per item in Controller of On hold, of met een open run, de Status, Priority en de `updatedAt`
-   van item en issue, de voorgangers van een On hold-item, de PR's van een item met een open run, en
+   daaruit een vingerafdruk: per item in Controller of On hold, of met een open run, of op To do met een eigen Geparkeerd, de Status, Priority en de `updatedAt`
+   van item en issue, de voorgangers van een On hold-item, de voorgangers van een geparkeerd To do-item, de PR's van een item met een open run, en
    de open runs zelf met de stand van hun forge-sessie (`working`, `waiting` of `done`; een sessie die
    tick niet kan lezen telt als niet meetbaar), de resume-markers met `controller: true` waarvan de
    laatste run van de sessie in deze repo staat, en het einde van de pauze (zie *De rem*). De markers
@@ -83,7 +83,7 @@ Het is een korte run, geen daemon. Wie issues vooraf routeert en naar `Controlle
    Mislukt de precheck, dan blijven de rijen van de vorige tick staan. `serve` leest ze voor
    `GET /api/runs` en de blokken *Running runs*, *Parked runs*, *Queue* en *Night*, zonder de forge (zie [install.md](install.md)).
 7. **Gather.** Is de repo aan de beurt, dan leest tick de comments van elk item en bouwt de snapshot:
-   de items in Controller of On hold, plus elk item met een open run in een andere status, met hun velden, voorgangers en PR's (de PR's die het issue sluiten
+   de items in Controller, de geparkeerde items op To do (zie *Blokkades*) en de legacy-items op On hold, plus elk item met een open run in een andere status, met hun velden, voorgangers en PR's (de PR's die het issue sluiten
    plus de PR's op de branch van de laatste run van het issue, ook als die run al dicht is, met hun
    checks; een nacontrole-run telt daarvoor niet mee, zie *De werkplek van de nacontrole*), hun comments en de open runs. Van een mergeklare PR bij een open run leest tick ook de
    PR-comments, voor de roborev-stand (`""`, `processed` of `open`). Zo blijft een gemergde PR die het issue niet sluit zichtbaar.
@@ -103,6 +103,17 @@ Het is een korte run, geen daemon. Wie issues vooraf routeert en naar `Controlle
    (`IssueItem`, voor een open run waarvan het item gearchiveerd of van het board gehaald is) gebruiken
    nog GraphQL. Elke lijst leest tick via de `Link`-header tot het einde: een lange lijst voorgangers
    of sluitende PR's wordt niet afgekapt.
+   De reads van de gather, bij GitHub, per soort:
+   - Het board: de `projectsV2`-pagina's, eenmaal per tick en gedeeld door alle items.
+   - Per board-item: `dependencies/blocked_by` alleen bij een open issue met `total_blocked_by > 0`.
+     Een gesloten issue start of hervat geen run, dus zijn blokkades leest tick niet.
+   - Per PR: `pulls/<n>` plus de checks, hoogstens één keer per (repo, PR, head-sha) per tick en per GitHub-client (één per repo). Het
+     geheugen leeft alleen in de GitHub-client van een tick; `serve`, de workflow-pusher en
+     `postartefact` lezen steeds opnieuw. Een mislukte read wordt niet onthouden.
+   - Per run-branch: één `pulls?head=`.
+   - De comments, de reacties, de `user` en de collaborator-permissie zoals hierboven beschreven.
+
+   Een `304` kost nog steeds een round trip: minder requests verkort de tick, de cache doet dat niet.
    Een 403 of 404 op een extra aanroep (voorgangers, checks of mergebaarheid van een PR) negeert tick
    alleen bij een item van een andere repo dan die van de run, en nooit bij een 403 van een rate
    limit. Elke andere fout van GitHub slaat de repo luid over met `lighthouse: skip <pad>: <fout>` en
@@ -120,7 +131,7 @@ Het is een korte run, geen daemon. Wie issues vooraf routeert en naar `Controlle
    onderweg meldt (een claim die een ander proces al had, een onzekere launch) staat ook op stderr,
    met `lighthouse: ` ervoor.
 10. **Opruimen.** Na apply ruimt tick de forge-workspaces op van issues die niet meer op `Controller`
-    of `On hold` staan, zonder open run, zonder levende vreemde sessie, schoon en gepusht. Dat gebeurt
+    of `On hold` staan en niet als geparkeerd op `To do` (zie *Blokkades*), zonder open run, zonder levende vreemde sessie, schoon en gepusht. Dat gebeurt
     elke tick, ook voor een repo die niet *due* was, maar alleen voor een repo waarvan de precheck
     slaagde. De werkplek van een geplande run zonder open run erop gaat geforceerd weg (zie *Geplande
     runs*). Een verwijderde workspace geeft `lighthouse: removed workspace <id> of <repo>#<n>`, of
@@ -618,17 +629,58 @@ en review-fase.
 - **Parkeren.** Heeft een uitvoerend issue in Controller een actieve voorganger, dan parkeert tick het.
   Eerst komt de comment `🤖 Geparkeerd` (`🤖 Parked`) met één regel
   `blocked_by: <repo>#<n> (<boardstatus>), …`; staat de voorganger niet op hetzelfde board, dan staat
-  er geen status tussen haakjes. Daarna gaat het issue op het board naar On hold. Een issue dat nog in
-  de spec-, plan- of reviewfase zit, blijft staan; de blokkade hindert pas bij uitvoering.
-- **Afmaken.** Slaagt de comment maar mislukt de boardwijziging, dan eindigt tick met exitcode 1 en
-  bewaart hij de vingerafdruk van de repo niet. De volgende tick ziet zijn eigen Geparkeerd als laatste
-  beurt en zet het issue alleen op On hold (`hold`). Hij post nooit een tweede Geparkeerd.
-- **Terugzetten.** Een issue in On hold dat `OPEN` is, waarvan de laatste 🤖-comment (Rebased niet
+  er geen status tussen haakjes. Daarna krijgt het issue het label `blocked_issue` en gaat het op het
+  board naar `To do`. De run en de werkplek blijven staan. Een issue dat nog in de spec-, plan- of
+  reviewfase zit, blijft staan; de blokkade hindert pas bij uitvoering. Parkeren vervangt een label
+  `blocked_external` (één blokkadelabel per issue, `blocked_issue` wint); het issue komt zonder dat
+  label terug naar Controller.
+- **Afmaken.** Slaagt de comment maar mislukt het label of de boardwijziging, dan eindigt tick met
+  exitcode 1 en bewaart hij de vingerafdruk van de repo niet. De volgende tick ziet zijn eigen
+  Geparkeerd als laatste beurt en zet label en status alleen opnieuw (`hold`). Hij post nooit een
+  tweede Geparkeerd. Een halve parkering (label gezet, status niet) kan een verouderd `blocked_issue`
+  op een Controller-issue laten staan tot de unblock-lane het weghaalt.
+- **Terugzetten.** Een To do-item dat `OPEN` is, waarvan de laatste 🤖-comment (Rebased niet
   meegeteld) een eigen Geparkeerd is (auteur is de login van het token) en dat geen actieve voorganger
-  meer heeft, gaat terug naar Controller (`unpark`). De volgende tick start de laatste Handoff.
-- **Menselijk On hold.** Een issue dat een mens op On hold zette (de laatste 🤖-comment is geen
-  Geparkeerd, of er staat er een van een andere auteur) raakt lighthouse niet aan. Lighthouse haalt een
-  issue alleen uit Controller om het te parkeren.
+  meer heeft, gaat terug naar Controller (`unpark`): het label `blocked_issue` gaat eraf (ook als de
+  unblock-lane het al weghaalde) en de status wordt Controller. Dat geldt ook voor een voorganger in
+  een andere repo. De volgende tick start de laatste Handoff. Een To do-item met een `needs_*`-label of
+  `blocked_external` wordt niet teruggezet.
+- **Menselijk To do.** Een To do-item zonder eigen Geparkeerd als laatste protocol-comment (of met een
+  van een andere auteur) raakt lighthouse nooit aan.
+- **Legacy `On hold`.** Een bestaand `On hold`-issue met een eigen Geparkeerd wordt nog steeds naar
+  Controller teruggezet, maar niets schrijft `On hold` meer; een mens op `On hold` blijft ongemoeid.
+  Migratie van bestaande `On hold`-issues is een apart issue. `On hold` is geen verplichte
+  boardstatus meer.
+- **Commentaarlezing voor To do.** Voor To do-items leest tick de comments alleen als de
+  `updatedAt` van het item veranderde (`tick_state`-sleutel `todo`); de eerste tick na de
+  uitrol leest elk open To do-item zonder blokkadelabel één keer.
+
+## Teruggegeven en het statusmodel
+
+Elke 🤖 Teruggegeven zet het issue op `To do` met één label en laat de Priority staan; ook een
+issue dat een mens op In progress zette terwijl er een run open was. De volgorde is: comment,
+label en status, dan de run sluiten. Mislukt het label, dan blijft de run open.
+
+| Reden op de Teruggegeven | Label |
+|---|---|
+| `reason_needs_brainstorm` | `needs_shaping` |
+| `reason_interactive` | `needs_decision` |
+| regel 13 met actieve blokkade | `blocked_issue` |
+| alle andere redenen | `needs_hands` |
+
+- Een eigen Teruggegeven als laatste protocol-comment van een Controller-issue zonder open run en zonder
+  blokkadelabel wordt opnieuw teruggegeven (label en To do); post een Handoff om te hervatten.
+- **Uitrol.** Na de upgrade gaan bestaande Controller-issues waarvan de laatste protocol-comment een
+  eigen Teruggegeven is (geen blokkadelabel, geen open run) één keer naar To do met een label
+  (`needs_hands`, tenzij de redentekst anders afbeeldt).
+- Een eerste mislukte start blijft op Controller zonder label (er komt een tweede poging); pas de
+  tweede poging geeft het issue terug.
+
+## `needs_*` op Controller
+
+Een `needs_*`-label op een Controller-issue start geen run. Zonder open run gaat het issue naar
+`To do` en blijft het label staan; een open run loopt door. Een groene fix-pr-PR (de `fix.merge`-push)
+gaat nog altijd vóór de needs-check langs.
 
 ## `lighthouse gather`
 
@@ -944,7 +996,7 @@ Het `lighthouse.toml` van elke repo in `repos` heeft:
 - een `[controller]`-tabel;
 - `[usage_guard]` met `controller = true`;
 - `[forge.board]` met `project_number` (positief), `project_id`, `status_field_id` en
-  `priority_field_id`, en onder `status_options` minstens `Controller` en `On hold`.
+  `priority_field_id`, en onder `status_options` minstens `To do`, `In progress`, `Done` en `Controller`.
 
 Ontbreekt iets, dan staan alle ontbrekende sleutels, bij naam, in één `skip`-regel.
 

@@ -4,6 +4,17 @@ All notable changes to lighthouse. The format follows [Keep a Changelog](https:/
 chosen is in [docs/releasing.md](docs/releasing.md). The release workflow writes the sections below from the
 fragments in `changelog.d/`; never edit a released section by hand.
 
+## [v0.22.0] - 2026-11-21
+
+### Changed
+
+- The status model now runs through tick and triage: every returned issue ends on To do with one label, parking is To do with `blocked_issue` (the tick moves it back), a `needs_*` label on a Controller issue starts no run, and triage sets `needs_shaping` at gate 4c. `On hold` is no longer written and no longer a required board status. After the upgrade, Controller issues whose last protocol comment is their own return move once to To do with a label.
+- De milestone-balk in het tabblad Prioritering tekent elk issue in een van vijf toestanden (af, actief, oppakbaar, mens nodig, geblokkeerd) met één vormentaal, en groepeert de blokjes per toestand. De API levert daarvoor het blokkerende label, of er een needs_*-label op staat, de open vraag en de gesloten issues mee.
+
+### Fixed
+
+- Een controller-run die op een ander open issue wacht, start niet langer elke tick opnieuw. De tick geeft het issue terug (`dezelfde handoff als de vorige, zonder voortgang`) zodra een uitvoerende handoff woordelijk gelijk is aan de vorige, waarvan de run al klaar is. De skill `write-handoff` noemt de uitweg: eerst de `blocked_by`-relatie en het label leggen, dan pas de handoff schrijven.
+
 ## [v0.21.0] - 2026-11-21
 
 ### Added

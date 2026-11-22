@@ -13,13 +13,15 @@ import (
 // block points to a skill or a rule and carries no explanation. Raising a ceiling is a deliberate
 // choice, made in the PR; it never follows from a block that simply grew.
 //
-// #383 raised go (50 to 73), python (57 to 83) and total (531 to 620) and added node (37): each of
-// the three language blocks gained the one line that names `lighthouse imports check` and its
-// Stop hook, a pointer, not an explanation.
-var blockCeilings = map[string]int{"core": 373, "go": 73, "node": 37, "python": 83, "shell": 54}
+// #383 added to each language block the one line that names `lighthouse imports check` and its
+// Stop hook, a pointer, not an explanation. #390 cut every block to the rules a hook, a
+// non-derivable fact or a proven mistake carries (core 373 to 190, go 73 to 25, node 37 to 25,
+// python 83 to 25, total 620 to 260) and deleted the shell block, which held only rules a hook
+// already carries.
+var blockCeilings = map[string]int{"core": 190, "go": 25, "node": 25, "python": 25}
 
 // blocksCeiling is the ceiling for all blocks together, the heaviest combination.
-const blocksCeiling = 620
+const blocksCeiling = 260
 
 func TestInstructionBlocksWithinCeiling(t *testing.T) {
 	entries, err := fs.ReadDir(pack.Files, ".")

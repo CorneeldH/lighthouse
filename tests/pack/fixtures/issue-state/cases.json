@@ -31,6 +31,7 @@
   {"name": "active with needs_hands flags a human", "run": "open", "labels": ["needs_hands"], "want": {"state": "active", "needs_human": true}},
   {"name": "active with needs_shaping flags a human", "status": "Controller", "labels": ["needs_shaping"], "want": {"state": "active", "needs_human": true}},
   {"name": "active with open question flags a human", "status": "Controller", "open_question": true, "want": {"state": "active", "needs_human": true}},
+  {"name": "active with blocked_issue and needs_hands flags a human", "run": "open", "labels": ["blocked_issue", "needs_hands"], "want": {"state": "active", "needs_human": true}},
   {"name": "active with blocked label does not flag", "status": "In progress", "labels": ["blocked_issue"], "want": {"state": "active"}},
   {"name": "ready with open question does not flag", "open_question": true, "want": {"state": "ready"}}
 ]

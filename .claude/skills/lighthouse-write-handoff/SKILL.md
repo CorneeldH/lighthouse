@@ -105,7 +105,8 @@ for an external event, such as red CI or a merge. Workflow step 4 applies this r
    | work done, issue can be closed | `/lighthouse-close-issue <nr>` | `no` |
    | PR open, review needed | `/code-review` | `no` |
    | PR red | `/lighthouse-fix-pr <pr>` | `offer` |
-   | context full, same phase | the same command as this phase; if the previous handoff carries `lane: native`, the new one carries it too | as that phase, but `default` becomes `no` (during a running plan review: `offer`) |
+   | the next task waits for another issue or PR that is still open | no handoff with the same `next:`. Lay the relation first (`lighthouse-write-issue` 3e: `lighthouse forge issue edit <nr> --add-label <labels.blocked_issue>` and the `blocked_by` relation); then hand off with the same command as this phase: the tick parks an executing handoff while a blocker is open and starts it when that merges. A handoff that only says "wait for #N, else hand off again" restarts every tick; the tick returns the issue on the second identical one |
+| context full, same phase | the same command as this phase; if the previous handoff carries `lane: native`, the new one carries it too | as that phase, but `default` becomes `no` (during a running plan review: `offer`) |
 
    The Controller column says what controller mode step 2 does (only if present; without a
    controller every row is `no`): `no` is only the plain

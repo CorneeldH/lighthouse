@@ -63,7 +63,7 @@ func Of(in Input, l repoconfig.Labels) Result {
 	case in.Closed:
 		return Result{State: Done}
 	case in.Run == "open" || in.Run == "parked" || in.Status == statusInProgress || in.Status == statusController:
-		flag := in.OpenQuestion || has(l.NeedsShaping, l.NeedsDecision, l.NeedsHands, l.NeedsTesting)
+		flag := in.OpenQuestion || HasNeedsLabel(in.Labels, l)
 		return Result{State: Active, NeedsHuman: flag}
 	case has(l.NeedsShaping, l.NeedsDecision):
 		return Result{State: NeedsHuman}
@@ -73,6 +73,17 @@ func Of(in Input, l repoconfig.Labels) Result {
 		return Result{State: NeedsHuman}
 	}
 	return Result{State: Ready}
+}
+
+// HasNeedsLabel reports whether names holds any needs_* label (shaping, decision, hands or
+// testing): the label half of the flag on an active issue. An empty configured name never matches.
+func HasNeedsLabel(names []string, l repoconfig.Labels) bool {
+	for _, n := range []string{l.NeedsShaping, l.NeedsDecision, l.NeedsHands, l.NeedsTesting} {
+		if n != "" && slices.Contains(names, n) {
+			return true
+		}
+	}
+	return false
 }
 
 // Stop is the route-issue gate 0 stop.

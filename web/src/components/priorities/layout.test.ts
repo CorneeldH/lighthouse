@@ -11,6 +11,8 @@ const node = (nr: number, depth: number, extra: Partial<GNode> = {}): GNode => (
   milestone: null,
   external: false,
   active: false,
+  state: 'ready',
+  needsHuman: false,
   uphill: false,
   depth,
   waiting: 0,

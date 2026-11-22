@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/BurntSushi/toml"
+
 	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
 	"github.com/CorneeldH/lighthouse/internal/runs"
@@ -568,6 +570,13 @@ func TestPushStartFailedGetsOneRetryThenQuestion(t *testing.T) {
 	returned := func(id int64, at string) Comment {
 		return Comment{ID: id, Author: "lh-bot", CreatedAt: at, Body: "🤖 Teruggegeven\n\nstart mislukt"}
 	}
+	// given is a Returned that stands with its give-back done: the label is on the issue and the
+	// board says To do (a needs_* label on Controller would get a todo).
+	given := func(in *Input, at string) {
+		item7(in).Comments = append(item7(in).Comments, returned(80, at))
+		item7(in).Labels, in.Repos[0].Labels = []string{"needs_hands"}, testLabels
+		item7(in).Status = "To do"
+	}
 	tests := []struct {
 		name   string
 		mutate func(*Input)
@@ -579,7 +588,7 @@ func TestPushStartFailedGetsOneRetryThenQuestion(t *testing.T) {
 		}, []string{back}},
 		{"a Returned after the second failure stands", func(in *Input) {
 			addRows(in, failedPush(9, "push:63", t1), failedPush(10, "push:63", t2))
-			item7(in).Comments = append(item7(in).Comments, returned(80, "2026-10-31T11:11:00Z"))
+			given(in, "2026-10-31T11:11:00Z")
 		}, []string{}},
 		{"one failure without the pusher goes back", func(in *Input) {
 			addRows(in, failedPush(9, "push:63", t1))
@@ -592,7 +601,7 @@ func TestPushStartFailedGetsOneRetryThenQuestion(t *testing.T) {
 		{"a Returned after one failure stands", func(in *Input) {
 			addRows(in, failedPush(9, "push:63", t1))
 			in.Repos[0].WorkflowPush = false
-			item7(in).Comments = append(item7(in).Comments, returned(80, "2026-10-31T11:06:00Z"))
+			given(in, "2026-10-31T11:06:00Z")
 		}, []string{}},
 		{"an older Returned does not count", func(in *Input) {
 			addRows(in, failedPush(9, "push:63", t1), failedPush(10, "push:63", t2))
@@ -651,5 +660,230 @@ func TestPushAnswerRowRetryKeepsWorktreeAndPermit(t *testing.T) {
 				t.Errorf("got  %+v\nwant %+v", got, want)
 			}
 		})
+	}
+}
+
+// Every reason_* heading has the label of the spec table; a reason added to headings.toml without
+// a row here turns the test red, so its label is a decision. A dynamic key such as a
+// cause+"_ceiling" that no heading names falls to needs_hands.
+func TestReturnLabelKeyTable(t *testing.T) {
+	want := map[string]string{
+		"reason_needs_brainstorm": "needs_shaping", "reason_interactive": "needs_decision",
+		"reason_skill_missing": "needs_hands", "reason_not_allowed": "needs_hands", "reason_bad_handoff": "needs_hands",
+		"reason_state_lost": "needs_hands", "reason_start_failed": "needs_hands", "reason_own_work": "needs_hands",
+		"reason_workplace_gone": "needs_hands", "reason_pr_closed": "needs_hands", "reason_pr_draft": "needs_hands",
+		"reason_pr_red": "needs_hands", "reason_pr_red_ceiling": "needs_hands", "reason_pr_conflict": "needs_hands",
+		"reason_pr_conflict_ceiling": "needs_hands", "reason_pr_roborev": "needs_hands",
+		"reason_pr_roborev_ceiling": "needs_hands", "reason_merge_failed": "needs_hands",
+		"reason_merge_failed_ceiling": "needs_hands", "reason_no_handoff": "needs_hands",
+		"reason_post_failed": "needs_hands", "reason_post_failed_unreadable": "needs_hands",
+		"reason_start_uncertain": "needs_hands", "reason_permission": "needs_hands", "reason_silent": "needs_hands",
+		"reason_silent_forge": "needs_hands", "reason_timeout": "needs_hands", "reason_pusher_off": "needs_hands",
+		"reason_pusher_node": "needs_hands", "reason_pusher_silent": "needs_hands",
+		"reason_pusher_no_handoff": "needs_hands", "reason_repeat_handoff": "needs_hands",
+	}
+	var headings map[string]map[string]string
+	if _, err := toml.DecodeFile(filepath.Join("..", "..", "pack", "core", "headings.toml"), &headings); err != nil {
+		t.Fatal(err)
+	}
+	seen := 0
+	for key := range headings {
+		if !strings.HasPrefix(key, "reason_") {
+			continue
+		}
+		seen++
+		label, ok := want[key]
+		if !ok {
+			t.Errorf("%s has no row in the label table", key)
+			continue
+		}
+		if got := ReturnLabelKey(key, false); got != label {
+			t.Errorf("ReturnLabelKey(%q, false) = %q, want %q", key, got, label)
+		}
+	}
+	if seen != len(want) {
+		t.Errorf("headings.toml has %d reason keys, the table %d", seen, len(want))
+	}
+	if got := ReturnLabelKey("reason_pr_red", true); got != "blocked_issue" {
+		t.Errorf("ReturnLabelKey(reason_pr_red, blocked) = %q, want blocked_issue", got)
+	}
+	if got := ReturnLabelKey("", false); got != "needs_hands" {
+		t.Errorf("ReturnLabelKey(\"\", false) = %q, want needs_hands", got)
+	}
+}
+
+// Rule 13 with an active blocker hands the run back as blocked (label blocked_issue); a fix-pr
+// close that started nothing for another cause (the item is On hold) is not.
+func TestSettleUnstartedFixPRMarksBlocked(t *testing.T) {
+	for name, want := range map[string]bool{"fixpr-blocker": true, "fixpr-on-hold": false} {
+		got := Decide(loadInput(t, name))
+		if len(got) != 1 || got[0].Kind != KindReturn || got[0].Blocked != want {
+			t.Errorf("%s: Decide = %+v, want one return with Blocked %v", name, got, want)
+		}
+	}
+}
+
+// needsHands marks item 7 of in with the needs_hands label and gives the repo its label names.
+func needsHands(in *Input) {
+	item7(in).Labels, in.Repos[0].Labels = []string{"needs_hands"}, testLabels
+}
+
+// A Controller issue with a needs_* label and no open run goes to To do and starts nothing, not
+// even the start of a new issue or the fix-pr start of a red PR. Dropping the needs_* check in
+// decideIssue gives the start back; dropping KindToDo gives no action.
+func TestDecideNeedsLabelNoRunMovesToToDo(t *testing.T) {
+	for _, label := range []string{"needs_shaping", "needs_decision", "needs_hands", "needs_testing"} {
+		t.Run(label, func(t *testing.T) {
+			in := loadInput(t, "new-issue-start")
+			item7(&in).Labels, in.Repos[0].Labels = []string{label}, testLabels
+			got := Decide(in)
+			if len(got) != 1 || got[0].Kind != KindToDo || got[0].ItemID != "I7" || got[0].Issue != 7 || got[0].RunID != 0 ||
+				got[0].Stop || got[0].End || got[0].Discard || got[0].Reason != "" {
+				t.Fatalf("Decide = %+v, want one bare todo on item I7", got)
+			}
+		})
+	}
+}
+
+// A needs_* label with a red PR and a closing run: the fix-pr start is not made. The label
+// check before the fix-pr start in decideIssue is what turns this red (the start comes back).
+func TestDecideNeedsLabelNoFixPRStart(t *testing.T) {
+	in := loadInput(t, "settle-red-pr")
+	needsHands(&in)
+	for _, a := range Decide(in) {
+		if a.Kind == KindStart || a.Kind == KindToDo {
+			t.Errorf("action %+v: a needs_hands issue must not start a fix-pr", a)
+		}
+	}
+}
+
+// With an open run the run goes on: no todo, and the settle actions stay as they are. Emitting
+// the todo before the run is looked at turns the first case red.
+func TestDecideNeedsLabelOpenRunKeepsRunning(t *testing.T) {
+	in := loadInput(t, "open-run-blocks-start")
+	want := summary(Decide(in))
+	needsHands(&in)
+	if got := summary(Decide(in)); !reflect.DeepEqual(got, want) {
+		t.Errorf("with needs_hands: %q, want the unlabelled %q", got, want)
+	}
+	for _, a := range Decide(in) {
+		if a.Kind == KindToDo {
+			t.Errorf("open run: got %+v, want no todo", a)
+		}
+	}
+}
+
+// A Handoff on a needs_* issue starts no run either.
+func TestDecideNeedsLabelNoNewStart(t *testing.T) {
+	in := loadInput(t, "handoff-start")
+	if got := kinds(Decide(in)); !reflect.DeepEqual(got, []Kind{KindStart}) {
+		t.Fatalf("unlabelled: %v, want a start (fixture premise)", got)
+	}
+	item7(&in).Labels, in.Repos[0].Labels = []string{"needs_shaping"}, testLabels
+	if got := kinds(Decide(in)); !reflect.DeepEqual(got, []Kind{KindToDo}) {
+		t.Errorf("needs_shaping: %v, want one todo and no start", got)
+	}
+}
+
+// unparkInput is the fixture unpark (To do, own Geparkeerd last, blocker o/r#5 closed without a
+// merged PR, no open run) with the label names of the repo.
+func unparkInput(t *testing.T) Input {
+	t.Helper()
+	in := loadInput(t, "unpark")
+	in.Repos[0].Labels = testLabels
+	return in
+}
+
+// A To do item whose last protocol comment is the tick's own Geparkeerd and that has no active
+// blocker is unparked: a blocker that closed, and a blocker in another repo that is still open
+// but has a merged PR. Dropping the statusToDo branch in decideIssue turns every case red.
+func TestDecideUnparksToDoWhenPredecessorGone(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		blocker forge.Blocker
+	}{
+		{"closed in this repo", forge.Blocker{Repo: "o/r", Issue: 5, State: "CLOSED"}},
+		{"merged PR in another repo", forge.Blocker{Repo: "x/y", Issue: 9, State: "OPEN", MergedPR: true}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			in := unparkInput(t)
+			item7(&in).BlockedBy = []forge.Blocker{tc.blocker}
+			got := Decide(in)
+			if len(got) != 1 || got[0].Kind != KindUnpark || got[0].ItemID != "I7" || got[0].Issue != 7 {
+				t.Fatalf("Decide = %+v, want one unpark of item I7", got)
+			}
+		})
+	}
+	in := unparkInput(t)
+	item7(&in).BlockedBy = []forge.Blocker{{Repo: "x/y", Issue: 9, State: "OPEN"}}
+	if got := Decide(in); len(got) != 0 {
+		t.Errorf("blocker still active: Decide = %+v, want nothing", got)
+	}
+}
+
+// The unblock lane may take blocked_issue off before the tick looks: the item is unparked all
+// the same, and with the label still on as well.
+func TestDecideUnparkWithoutLabel(t *testing.T) {
+	for _, labels := range [][]string{nil, {"blocked_issue"}} {
+		in := unparkInput(t)
+		item7(&in).Labels = labels
+		if got := kinds(Decide(in)); !reflect.DeepEqual(got, []Kind{KindUnpark}) {
+			t.Errorf("labels %q: Decide = %v, want one unpark", labels, got)
+		}
+	}
+}
+
+// A To do item a human holds with a needs_* or blocked_external label is never unparked: the
+// todo of Task 4 would move it back, every tick. Dropping heldByHuman in unparkToDo turns this red.
+func TestDecideUnparkSkipsNeedsLabel(t *testing.T) {
+	for _, label := range []string{"needs_shaping", "needs_decision", "needs_hands", "needs_testing", "blocked_external"} {
+		in := unparkInput(t)
+		item7(&in).Labels = []string{"blocked_issue", label}
+		if got := Decide(in); len(got) != 0 {
+			t.Errorf("%s: Decide = %+v, want nothing", label, got)
+		}
+	}
+}
+
+// A To do item without the tick's own Geparkeerd as last protocol comment is left alone, also
+// when its blocker is closed: a human's To do item, a Geparkeerd of another author, and an
+// issue a human picked up interactively (a Started of a session no run knows). The last one
+// shows that neither orphan nor repair runs for a To do item without an open run: orphan would
+// hand it back with reason_state_lost.
+func TestDecideToDoWithoutOwnParkedUntouched(t *testing.T) {
+	started := "🤖 Gestart\nsession: 99999999-2222-4333-8444-555555555555\nworktree: /home/u/r/.claude/worktrees/issue-7-x\n" +
+		"command: /lighthouse-start-issue 7\nstart: 2026-10-31T11:40:00Z\nbranch: issue-7-x\nrunner: forge\n"
+	for _, tc := range []struct {
+		name   string
+		mutate func(it *Item)
+	}{
+		{"no Geparkeerd", func(it *Item) { it.Comments = it.Comments[:2] }},
+		{"Geparkeerd of another author", func(it *Item) { it.Comments[2].Author = "owner" }},
+		{"foreign Started after the Geparkeerd", func(it *Item) {
+			it.Comments = append(it.Comments, Comment{ID: 65, Author: "owner", Body: started, CreatedAt: "2026-10-31T11:40:00Z"})
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			in := unparkInput(t)
+			tc.mutate(item7(&in))
+			if got := Decide(in); len(got) != 0 {
+				t.Errorf("Decide = %+v, want nothing", got)
+			}
+			// The same item in Controller is not left alone: the case is not vacuous.
+			item7(&in).Status = statusController
+			if got := Decide(in); len(got) == 0 {
+				t.Errorf("in Controller: Decide = [], want an action (fixture premise)")
+			}
+		})
+	}
+}
+
+// The On hold remnant: an issue the old tick parked on On hold is still unparked to Controller,
+// although no code sets On hold any more.
+func TestDecideOnHoldRemnantStillUnparks(t *testing.T) {
+	in := unparkInput(t)
+	item7(&in).Status = statusOnHold
+	if got := kinds(Decide(in)); !reflect.DeepEqual(got, []Kind{KindUnpark}) {
+		t.Errorf("Decide = %v, want one unpark", got)
 	}
 }

@@ -179,7 +179,7 @@ func TestLanguagePacks(t *testing.T) {
 			},
 			detect: true,
 			tools:  "curl,git,jq,tar,xz",
-			blocks: 1,
+			blocks: 0,
 			hooks:  1,
 		},
 	}

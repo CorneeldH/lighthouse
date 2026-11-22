@@ -1,11 +1,16 @@
 package issuestate
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
+	"github.com/CorneeldH/lighthouse/internal/config"
 	"github.com/CorneeldH/lighthouse/internal/forge"
 )
 
@@ -76,5 +81,55 @@ func TestReturnReportsTheLabelBeforeABoardError(t *testing.T) {
 	}
 	if !got.Labeled {
 		t.Error("Labeled is false after a successful label edit")
+	}
+}
+
+// closedEnv is an Env over a closed issue 7 in a repo without a board; only Issue may be read.
+func closedEnv(t *testing.T, f *fakeForge) Env {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "lighthouse.toml")
+	if err := os.WriteFile(path, []byte("[forge]\nrepo = \"Owner/repo\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return Env{
+		Config: func() (*config.Config, error) { return &config.Config{Path: path, Repo: "Owner/repo"}, nil },
+		Forge:  func(context.Context) (forge.Forge, error) { return f, nil },
+	}
+}
+
+// Red when GiveBack or Label stops checking the issue state before Return/Apply: the edit then lands.
+func TestGiveBackRefusesClosedIssue(t *testing.T) {
+	f := &fakeForge{labels: []string{"needs_testing"}, closed: true}
+	var out bytes.Buffer
+	code := GiveBack(context.Background(), closedEnv(t, f), "7", "needs_hands", &out)
+	if code != 1 || !strings.Contains(out.String(), "closed") {
+		t.Errorf("GiveBack = %d, %q; want 1 and a line that says closed", code, out.String())
+	}
+	if len(f.edits) != 0 || len(f.statuses) != 0 {
+		t.Errorf("edits %v, statuses %v; want none", f.edits, f.statuses)
+	}
+}
+
+func TestLabelRefusesClosedIssue(t *testing.T) {
+	f := &fakeForge{labels: []string{"needs_testing"}, closed: true}
+	var out bytes.Buffer
+	code := Label(context.Background(), closedEnv(t, f), "7", "needs_hands", &out)
+	if code != 1 || !strings.Contains(out.String(), "closed") {
+		t.Errorf("Label = %d, %q; want 1 and a line that says closed", code, out.String())
+	}
+	if len(f.edits) != 0 {
+		t.Errorf("edits %v; want none", f.edits)
+	}
+}
+
+// Red when open stops mapping a *forge.TokenError to exit 2.
+func TestOpenMapsATokenErrorToExit2(t *testing.T) {
+	env := closedEnv(t, &fakeForge{})
+	env.Forge = func(context.Context) (forge.Forge, error) {
+		return nil, &forge.TokenError{Kind: "github", Vars: []string{"GH_TOKEN"}}
+	}
+	var out bytes.Buffer
+	if code := Show(context.Background(), env, "7", &out); code != 2 || !strings.Contains(out.String(), "token") {
+		t.Errorf("Show = %d, %q; want 2 and a token line", code, out.String())
 	}
 }
