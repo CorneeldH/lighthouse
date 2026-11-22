@@ -583,20 +583,20 @@ func TestCloseIssueAreaOfAMilestoneAfterThePrefix(t *testing.T) {
 
 // Classification: fails when step 5 no longer stops, before the `git worktree add`, at a title
 // without `:`, a missing `<paths.areas>/<area>.md` or a missing near-goal heading, or stops
-// naming the heading through `lighthouse headings area_near_goal`.
+// naming the heading as `heading:area_near_goal`.
 func TestCloseIssueStep5SkipsWithoutNearGoal(t *testing.T) {
 	for name, body := range variants(t, closeIssue) {
 		t.Run(name, func(t *testing.T) {
 			step := flat(section(t, body, "### Step 5.", "## When NOT to close"))
 			wantAll(t, step,
-				"lighthouse headings area_near_goal",
+				"heading:area_near_goal",
 				"areas: skipped — ",
 				"lowercase",
 				"no `:` in the title",
 				"no file `<paths.areas>/<area>.md`",
 				"no heading",
 			)
-			wantOrder(t, step, "lighthouse headings area_near_goal", "git worktree add")
+			wantOrder(t, step, "heading:area_near_goal", "git worktree add")
 		})
 	}
 }

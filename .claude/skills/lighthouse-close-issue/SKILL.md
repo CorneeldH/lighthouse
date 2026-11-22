@@ -845,7 +845,7 @@ report `areas: skipped — no paths.areas` and stop here).
 Derive `<area>` from the part before `:` after `project.milestone_prefix` in the milestone
 title. Report `areas: skipped — <reason>` and stop here, before the worktree, when one of
 these holds: no `:` in the title; no file `<paths.areas>/<area>.md` (`<area>` in lowercase);
-no heading `lighthouse headings area_near_goal` in that file.
+no heading `heading:area_near_goal` in that file.
 
 If you closed a milestone in this repo, update the *near goal* in `<paths.areas>/<area>.md`, with
 `<area>` the part before `:` after `project.milestone_prefix` in the milestone title: the
