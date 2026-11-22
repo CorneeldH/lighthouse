@@ -206,6 +206,24 @@ func CoreTables(f Forge, haveRepo bool) []Table {
 // has no [paths] labels. It is a path in the target repository, not a file Go reads here.
 var DefaultLabelsPath = path.Join("docs", "developer", "labels.md")
 
+// Default paths of the direction documents, for a repository that wants them and sets none.
+// They are paths in the target repository, not files Go reads here.
+var (
+	DefaultStrategyPath = path.Join("docs", "developer", "strategie.md")
+	DefaultTenetsPath   = path.Join("docs", "developer", "uitgangspunten.md")
+	DefaultAreasPath    = path.Join("docs", "developer", "areas")
+)
+
+// DirectionTables are the [paths] keys of the direction documents, with the default paths;
+// AppendMissing adds only the keys a lighthouse.toml lacks.
+func DirectionTables() []Table {
+	return []Table{{Name: "paths", Keys: []KV{
+		{Key: "strategy", Value: strconv.Quote(DefaultStrategyPath)},
+		{Key: "tenets", Value: strconv.Quote(DefaultTenetsPath)},
+		{Key: "areas", Value: strconv.Quote(DefaultAreasPath)},
+	}}}
+}
+
 // LabelTables are the tables `init --labels` proposes: [paths] labels and [labels]
 // with the defaults of the config reader (internal/config) plus the area prefix.
 func LabelTables(path string) []Table {

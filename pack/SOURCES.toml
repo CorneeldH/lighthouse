@@ -42,6 +42,18 @@ path = "pack/core/templates/labels.md"
 new = true
 
 [[file]]
+path = "pack/core/templates/strategy.md"
+new = true
+
+[[file]]
+path = "pack/core/templates/tenets.md"
+new = true
+
+[[file]]
+path = "pack/core/templates/area.md"
+new = true
+
+[[file]]
 path = "pack/core/templates/pull_request_template.md"
 new = true
 
