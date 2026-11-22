@@ -359,3 +359,10 @@ PR-grens *(eigen keuze na spec-review, r1-f20)*:
 | Een instaproute in de installatiegids | Gevolgen, installatiegids |
 | Geen niveau beantwoordt permissies automatisch | Anti-doelen; permissions gelijk op elk niveau |
 | Een tweede repo start met het lichtste niveau | Gedrag van `init`: een nieuwe repo kiest `light` |
+
+## Open na review
+
+Ronde 3 haalde de rondegrens met deze punten open. Ze zijn aanvaard als `accepted_open`;
+de volgende fase of de PR-review weegt ze opnieuw.
+
+- **r3-f1** (MAJOR, Stand `log` — "Ook als de hook zelf niet kan draaien"): The generation rule ("de blokkerende basishooks" plus "de onderdelen op `on`") does not yield today's list on `strict`, so the new test and the rule contradict each other. `worktree-check` is a hook component, runs through `run.sh`, is `on` on every level, and is not in today's `blocking` list. It only warns.
