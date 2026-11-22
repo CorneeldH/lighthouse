@@ -145,7 +145,8 @@ func Build(ctx context.Context, srcs []Source, ov overview.Overview) ([]Repo, er
 
 // applyWeights sets PrioWeight and Factor on every issue of r from the ranks in the milestone
 // descriptions of r. Build and WithDescription both use it. A blocker from another repo is left
-// out: the weight counts issues of one repo. It writes into r.Issues, so the caller owns that slice.
+// out: the weight counts issues of one repo. It writes into r.Issues, so the caller must pass a
+// copy it owns (WithDescription does).
 func applyWeights(r *Repo) {
 	ranks := make(map[int]int, len(r.Milestones))
 	for _, m := range r.Milestones {

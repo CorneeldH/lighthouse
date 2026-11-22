@@ -157,7 +157,7 @@ func prioWeightSource(t *testing.T) *fakeForge {
 	return &fakeForge{t: t, planning: forge.Planning{
 		Issues: []forge.PlanIssue{
 			{Number: 1, Milestone: &forge.Milestone{Number: 10}},
-			{Number: 2, Milestone: &forge.Milestone{Number: 20}, BlockedBy: []forge.Blocker{{Repo: "o/a", Issue: 1}, {Repo: "o/other", Issue: 1}}},
+			{Number: 2, Milestone: &forge.Milestone{Number: 20}, BlockedBy: []forge.Blocker{{Repo: "o/a", Issue: 1}, {Repo: "o/other", Issue: 3}}},
 			{Number: 3},
 		},
 		Milestones: []forge.MilestoneCount{
@@ -173,7 +173,7 @@ func TestBuildPrioWeight(t *testing.T) {
 		t.Fatalf("Build: %v", err)
 	}
 	// Factors: rank 1 -> 2, rank 2 -> 1. Issue 1 waited on by 2: 2 + 1*2^0 = 3. The blocker in
-	// another repo is dropped, so it adds nothing to issue 2.
+	// another repo (number 3 collides with local issue 3) is dropped, so issue 3 stays at 0.
 	want := map[int][2]int{1: {3, 2}, 2: {1, 1}, 3: {0, 0}}
 	for _, i := range got[0].Issues {
 		if w := want[i.Number]; i.PrioWeight != w[0] || i.Factor != w[1] {
