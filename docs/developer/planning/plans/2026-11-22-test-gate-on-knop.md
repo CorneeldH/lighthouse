@@ -36,16 +36,17 @@
 **Files:**
 - Modify: `internal/config/config.go` (sleutellijst rond :97-102, defaults rond :155-159)
 - Modify: `internal/commitgate/gate.go` (nieuwe `readOn`, bij `readSettings`)
+- Modify: `docs/site/data/config.json` (:379-447, tabel `test_gate`: sleutel `test_gate.on`, level `advanced`, default `"commit"`, `readers` = elk bestand in `pack/`, `internal/` en `cmd/` dat de sleutel noemt; de site-test `docs/site/test/config.test.mjs` leest `lighthouse config --schema` en `lighthouse.toml` laat `node --test` draaien bij een commit onder `internal/`, anders is de gate na deze commit rood met `not on the map: test_gate.on`)
 - Modify: `tests/pack/fixtures/config-schema.json` (:80-102 sleutels, :265-269 defaults) en `tests/pack/fixtures/config/{defaults,full,scalars}/expect.json`
 - Test: `internal/commitgate/gate_test.go`, `internal/config/config_test.go`
 
 **Interfaces:**
-- Produces: `func (g *Gate) readOn() (on string, block *Result)` — `on` is `"commit"`, `"pr"` of `"both"`; niet gezet of `""` geeft `"commit"`; andere waarde geeft een blok met `test_gate.on = "<x>"; it must be commit, pr or both.` Config-sleutel `{"test_gate.on", kStr}` met default `"commit"`.
+- Produces: `func (g *Gate) readOn() (on string, block *Result)` — `on` is `"commit"`, `"pr"` of `"both"`; niet gezet geeft `"commit"` (een lege string weigert de configvalidator al, `mayBeEmpty` blijft `test_gate.command` alleen); andere waarde geeft een blok met `test_gate.on = "<x>"; it must be commit, pr or both.` Config-sleutel `{"test_gate.on", kStr}` met default `"commit"`.
 
 - [ ] **Step 1: Failing tests.** `TestReadOnDefaultsToCommit` (geen sleutel → `commit`), `TestReadOnValues` (tabel: `commit`, `pr`, `both`), `TestReadOnRejectsUnknown` (`"always"` → `res.Code == 2` en stderr bevat `must be commit, pr or both`); in `config_test.go` de default `"commit"` via de bestaande defaults-test (:96).
 - [ ] **Step 2:** `go test ./internal/commitgate/ ./internal/config/ -run 'ReadOn|Defaults'` → FAIL.
 - [ ] **Step 3: Implementeer** de sleutel en `readOn` met `g.readConfig("test_gate.on")`; werk de vier fixturebestanden bij met de nieuwe sleutel en default.
-- [ ] **Step 4:** `go test ./internal/commitgate/ ./internal/config/ ./internal/packs/ ./internal/initcmd/` → PASS.
+- [ ] **Step 4:** `go test ./internal/commitgate/ ./internal/config/ ./internal/packs/ ./internal/initcmd/` → PASS; `node --test docs/site/test/config.test.mjs` → PASS (de sleutel staat op de kaart; als de test `options` voor `test_gate.on` verwacht, voeg ze toe in `config.json` en de verwachte kaart in dat testbestand).
 - [ ] **Step 5: Commit** `feat(test-gate): test_gate.on als sleutel (#495)`.
 
 ### Task 2: Commit-moment volgt `on`
@@ -75,9 +76,9 @@
 - Consumes: `prbody.FindPrCreates(command, cwd string) ([]prbody.PrCreate, error)` (`internal/prbody/find.go:295`; controleer met `go list -deps` dat `commitgate`→`prbody` geen importcirkel geeft, anders een seam `Gate.FindCreates` met dezelfde signatuur), `readOn`, `projectRoots`, `readConfig("forge.default_branch")`, `RunRoots`.
 - Produces: `Pr` doet, in deze volgorde: (1) tweestapsregel op de ruwe tekst (`gh`/`glab`/`forge` en `pr`/`mr`), anders `Result{}` zonder config te lezen; (2) `FindPrCreates`, `ErrUnparseable` ⇒ blok als de tekst een create noemt, geen creates ⇒ `Result{}`; (3) `readOn`, bij `commit` ⇒ `Result{}`; (4) per create de root (`git rev-parse --show-toplevel` in `pc.Cwd`, anders `cwd`) via `projectRoots`; (5) `base = git merge-base origin/<default> HEAD`, `head = git rev-parse HEAD`, een mislukte git-aanroep blokkeert met `COULD NOT CHECK`; (6) `base == head` ⇒ melding `no commits above origin/<default>, nothing was tested`; anders `RunRoots([]Row{{root, base, head}}, "PreToolUse")` met `g.Mode = "pr"`. `failLine` voor `pr`: `commit-test-gate: tests failed on this branch. Fix them before creating the PR.` gevolgd door `First error: <regel>`, de eerste regel van de uitvoer die `(?i)fail|error|panic` bevat, anders de eerste niet-lege regel; de volledige uitvoer blijft eronder staan. `--repo`/`GH_REPO` wordt genegeerd: een create in dit project draait de gate (vastgelegd in de docs, Task 4).
 
-- [ ] **Step 1: Failing tests** (echte `git init`-fixture met een `origin`-remote, `h.calls` voor de run): `TestPrOnPRRunsOnBranchDiff` (`on = "pr"`, `gh pr create --title x` ⇒ één run met `LIGHTHOUSE_GATE_BASE` = merge-base en `_FILES` met de branchbestanden); `TestPrOnBothRunsAtPR`; `TestPrDefaultOnDoesNothing`; `TestPrRedBlocksWithFirstErrorLine` (testcommando faalt met `FAIL TestX` ⇒ `Code 2`, stderr bevat `First error: FAIL TestX`); `TestPrNoCommitsAboveBase`; `TestPrMissingOriginRefBlocks` (`COULD NOT CHECK`); `TestPrNotACreate` (`gh pr view 3` ⇒ `Code 0`, `h.calls` leeg, ook met kapotte `lighthouse.toml`); `TestPrCommandEmptyWithOnPR` (`command = ""` ⇒ nota, `Code 0`); `TestPrForgeAndGlabForms` (`lighthouse forge pr create`, `glab mr create`).
+- [ ] **Step 1: Failing tests** (echte `git init`-fixture met een `origin`-remote, `h.calls` voor de run): `TestPrOnPRRunsOnBranchDiff` (`on = "pr"`, `gh pr create --title x` ⇒ één run met `LIGHTHOUSE_GATE_BASE` = merge-base en `_FILES` met de branchbestanden); `TestPrOnBothRunsAtPR`; `TestPrDefaultOnDoesNothing`; `TestPrRedBlocksWithFirstErrorLine` (testcommando faalt met `FAIL TestX` ⇒ `Code 2`, stderr bevat `First error: FAIL TestX`); `TestPrNoCommitsAboveBase`; `TestPrMissingOriginRefBlocks` (`COULD NOT CHECK`); `TestPrNotACreate` (`gh pr view 3` ⇒ `Code 0`, `h.calls` leeg, ook met kapotte `lighthouse.toml`); `TestPrCommandEmptyWithOnPR` (`command = ""` ⇒ nota, `Code 0`); `TestPrForgeAndGlabForms` (`lighthouse forge pr create`, `glab mr create`); `TestPrCombinedCommitAndCreateBlocks` (`git commit -m x && gh pr create`: `on = "pr"` en `"both"` ⇒ `Code 2` met de splits-reden, `on = "commit"` ⇒ commit-pad); `TestPrBlockMessageNamesPR` (ontbrekende `origin/<default>` noemt geen `git commit`).
 - [ ] **Step 2:** `go test ./internal/commitgate/ -run '^TestPr'` → FAIL.
-- [ ] **Step 3: Implementeer** `Pr` en de aanroep in `Pre` (een commando met commit blijft het commit-pad; een commando met zowel commit als create, `git commit … && gh pr create …`, draait beide paden).
+- [ ] **Step 3: Implementeer** `Pr` en de aanroep in `Pre` (een commando met commit blijft het commit-pad; een commando met zowel commit als create, `git commit … && gh pr create …`, blokkeert bij `on = "pr"` of `"both"` met de reden `split the commit and the PR create into separate Bash calls: the PR run needs the new commit as HEAD`, want de hook draait vóór de aanroep en `HEAD` is dan nog de oude commit; bij `on = "commit"` (standaard) blijft het commit-pad ongewijzigd). Geef `Mode "pr"` ook een eigen staart in `Block` en in de slot-, geheugen- en import-meldingen (`message.go`, `gate.go`, `imports.go`: nu per `Mode == "post"` of commit-tekst), zodat een blok bij een PR-create niet over `git commit` spreekt.
 - [ ] **Step 4:** `go test ./internal/commitgate/ ./internal/hooks/` → PASS; `go vet ./... && golangci-lint run ./internal/commitgate/...`.
 - [ ] **Step 5: Commit** `feat(test-gate): on = pr draait de gate voor de PR-create op de branch-diff (#495)`.
 
@@ -85,7 +86,7 @@
 
 **Files:**
 - Modify: `internal/hooks/committestgate.go` (doc-comment; geen nieuwe modus), `internal/hooks/committestgate_test.go`
-- Modify: `docs/test-gate.md`, `docs/site/data/config.json` (:379-447, tabel `test_gate`), `docs/developer/areas/core.md`
+- Modify: `docs/test-gate.md`, `docs/developer/areas/core.md`
 - Modify: `pack/core/instructions/AGENTS.md` (regel `commit-test-gate runs …`, zie het geïnstalleerde `AGENTS.md:48`)
 - Create: `changelog.d/issue-495-test-gate-on-knop.md` (`type: added`, Nederlandse tekst)
 - Modify (door `init --upgrade`): `AGENTS.md`
@@ -95,7 +96,7 @@
 
 - [ ] **Step 1: Failing test** `TestCommitTestGatePreRunsAtPRCreate` in `internal/hooks/committestgate_test.go`.
 - [ ] **Step 2:** `go test ./internal/hooks/ -run PRCreate` → FAIL, na Task 3 PASS; pas anders alleen de doc-comment aan.
-- [ ] **Step 3: Documenteer** in `docs/test-gate.md` een sectie `## Wanneer draait de gate: [test_gate] on` (drie waarden, standaard `commit`; `pr` = branch-diff, import-check meegeschoven naar het PR-moment, `--repo` genegeerd, `command = ""` blijft de uitzetknop; trage tests ⇒ `pr`), de sleutel in `config.json`, de managed-blocktekst (`commit-test-gate runs [test_gate] command after each commit, before a PR create, or both, as [test_gate] on says; fix red in a new commit.`) en het changelogfragment.
+- [ ] **Step 3: Documenteer** in `docs/test-gate.md` een sectie `## Wanneer draait de gate: [test_gate] on` (drie waarden, standaard `commit`; `pr` = branch-diff, import-check meegeschoven naar het PR-moment, `--repo` genegeerd, `command = ""` blijft de uitzetknop; trage tests ⇒ `pr`), het deadlinelimiet (`MaxDeadline` 280 s binnen de hooktimeout van 300 s geldt ook bij het PR-moment: een suite van minuten geeft `COULD NOT CHECK (deadline)` en blokkeert de PR-create; houd de `pr`-run onder die grens), de managed-blocktekst (`commit-test-gate runs [test_gate] command after each commit, before a PR create, or both, as [test_gate] on says; fix red in a new commit.`) en het changelogfragment.
 - [ ] **Step 4:** `go run ./cmd/lighthouse init --upgrade` ⇒ commit de geïnstalleerde kopie; daarna nogmaals ⇒ `No changes.`; `go test ./... && go run ./cmd/lighthouse imports check`.
 - [ ] **Step 5: Commit** `docs(test-gate): on-knop in docs en managed block (#495)`.
 
