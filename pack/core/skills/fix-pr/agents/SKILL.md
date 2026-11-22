@@ -106,7 +106,7 @@ branch from `origin/<default branch>` and are therefore wrong here.
 
 ```bash
 B=<head-branch>
-ROOT=$(lighthouse config worktree.root)
+ROOT=$(lighthouse config worktree.root) || exit 2
 case "$ROOT" in /*|[A-Za-z]:*) ;; *) ROOT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/$ROOT" ;; esac
 WT="$ROOT/$(printf '%s' "$B" | tr / -)"
 if git worktree list --porcelain | grep -qxF "branch refs/heads/$B"; then

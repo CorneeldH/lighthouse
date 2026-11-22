@@ -13,7 +13,7 @@ import (
 
 // resolveRoot is the one shell form every skill uses: a relative root hangs under the main
 // checkout (never the cwd or --show-toplevel), an absolute one stays as it is.
-const resolveRoot = `ROOT=$(lighthouse config worktree.root)
+const resolveRoot = `ROOT=$(lighthouse config worktree.root) || exit 2
 case "$ROOT" in /*|[A-Za-z]:*) ;; *) ROOT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/$ROOT" ;; esac`
 
 // hardcodeAllowed is the exact set of pack files that may name `.claude/worktrees`, and how
