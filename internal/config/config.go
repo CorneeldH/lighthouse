@@ -199,6 +199,18 @@ var baseKeys = []string{
 
 var optionPrefixes = []string{"forge.board.status_options.", "forge.board.priority_options."}
 
+// levelKey is the top-level key that names the install level; componentPrefix opens the free-form
+// [components] table, whose keys are component names. Both stay out of schema and the snapshot:
+// schema holds table.key pairs, and the names are checked against the pack's levels.toml
+// elsewhere, not here.
+const (
+	levelKey        = "level"
+	componentPrefix = "components."
+)
+
+// componentStands are the values a [components] entry may have.
+var componentStands = []string{"off", "log", "on"}
+
 // Default returns a fresh copy of the default of key, and false when the key has none.
 func Default(key string) (any, bool) {
 	d, ok := defaults[key]
@@ -213,7 +225,10 @@ func Default(key string) (any, bool) {
 
 // IsKnownKey reports whether key is one this reader knows, so a skill may name it.
 func IsKnownKey(key string) bool {
-	if contains(baseKeys, key) || contains(hostKeys, key) {
+	if key == levelKey || contains(baseKeys, key) || contains(hostKeys, key) {
+		return true
+	}
+	if strings.HasPrefix(key, componentPrefix) && len(key) > len(componentPrefix) {
 		return true
 	}
 	for _, s := range schema {
@@ -232,6 +247,9 @@ func IsKnownKey(key string) bool {
 // KindOf is the schema kind of key ("str", "list[str]", ...), "known" for another key
 // IsKnownKey accepts, and "unknown" for the rest.
 func KindOf(key string) string {
+	if key == levelKey {
+		return kStr
+	}
 	for _, s := range schema {
 		if s.key == key {
 			return s.kind
@@ -288,8 +306,12 @@ type Config struct {
 	Host     string // "" when absent; set only with kind gitlab
 	Language string
 	Board    *Board
-	Raw      map[string]any
-	Path     string
+	// Level is the top-level `level`, "" when unset; Components holds the raw [components]
+	// stands (off, log or on) by component name. Neither name is checked against a pack here.
+	Level      string
+	Components map[string]string
+	Raw        map[string]any
+	Path       string
 
 	// order is the position of the first key at or below each table path, so a walk picks
 	// the first of several matching tables in document order, like Python's dict.
@@ -707,6 +729,9 @@ func build(data map[string]any, md toml.MetaData, rawPath string) (*Config, erro
 	if err := checkSchema(data, path); err != nil {
 		return nil, err
 	}
+	if err := c.levelAndComponents(data, path); err != nil {
+		return nil, err
+	}
 
 	if review, ok := data["review"].(map[string]any); ok {
 		if v, ok := review["roborev"]; ok && v != "local" && v != "off" {
@@ -719,6 +744,35 @@ func build(data map[string]any, md toml.MetaData, rawPath string) (*Config, erro
 		}
 	}
 	return c, nil
+}
+
+// levelAndComponents reads `level` and [components]: only their shape and the stand values are
+// checked, never whether a level or component name exists.
+func (c *Config) levelAndComponents(data map[string]any, path string) error {
+	if _, ok := data[levelKey]; ok {
+		level, err := getString(data, levelKey, "", path)
+		if err != nil {
+			return err
+		}
+		c.Level = level
+	}
+	if _, ok := data["components"]; !ok {
+		return nil
+	}
+	table, err := getTable(data, "components", "", path)
+	if err != nil {
+		return err
+	}
+	c.Components = make(map[string]string, len(table))
+	for _, name := range c.ordered(table, []string{"components"}) {
+		stand, ok := table[name].(string)
+		if !ok || !contains(componentStands, stand) {
+			return errf("%s: key components.%s must be one of %s, not %s",
+				path, name, strings.Join(componentStands, ", "), pyRepr(table[name]))
+		}
+		c.Components[name] = stand
+	}
+	return nil
 }
 
 // documentOrder maps each table path to the index of the first key at or below it.
