@@ -30,7 +30,7 @@
 
 - `level = "bogus"` (of een onbekende naam in `[components]`) in `lighthouse.toml`: `config.Load` blijft slagen zodat elke gate blijft draaien; alleen `init` en `lighthouse level` falen, met de lijst geldige namen. (Task 3, 6)
 - Een corrupt `components.toml`: een hook meldt `COULD NOT CHECK` met exit 3 (zodat `run.sh` de blokkadelijst toepast) en blokkeert niet stilzwijgend door; een ontbrekend bestand betekent alles `on`; een basishook (ook `level-check`) kijkt niet naar `LevelErr`. (Task 12, 17)
-- Wisselen heen en terug (`strict` → `light` → `strict`) geeft byte-identieke bestanden en manifest; een lokaal gewijzigde unit die een wissel zou weghalen geeft de bestaande conflictweigering zonder `--force`. De `since`-datum verschilt na een heen-en-weerwissel bewust; de unitset en de bestanden niet. (Task 7)
+- Wisselen heen en terug (`strict` → `light` → `strict`) geeft dezelfde bestanden; alleen `components.toml` (de regel `since`) en in het manifest alleen de sha256-regel van `components.toml` verschillen; een lokaal gewijzigde unit die een wissel zou weghalen geeft de bestaande conflictweigering zonder `--force`. De `since`-datum verschilt na een heen-en-weerwissel bewust; de unitset en de bestanden niet. (Task 7)
 - Override op een basisonderdeel (`usage-gate = "off"`), `log` op een skill of shell-hook, of `off` op een skill waar een ingeschakelde skill hard naar verwijst: `init` weigert met een duidelijke fout. (Task 6, 16)
 - Het logboek kan niet geschreven worden (map niet schrijfbaar, geen `HOME`): de hook op `log` geeft toch exit 0 zonder uitvoer. (Task 12)
 
@@ -169,7 +169,7 @@ Eindigt met een groene PR-grens: dogfood op `strict`, `No changes.` in CI, chang
 - Produces: `func switched(installed levels.Installed, found bool, level string) bool` — true on first init or when the `components.toml` level differs from the effective one. `--level <name>` with `init` sets the level; with `--upgrade` it rewrites `lighthouse.toml` via `projectconfig.SetTopLevel` in the same diff and installs the difference. Hand-edited `level` + plain `--upgrade` gives the same result. `init` without `--level` on a new repo writes `level = "light"`.
 - Rule: `--upgrade` without `level` in `lighthouse.toml` and without `--level` never writes the key.
 
-- [ ] **Step 1: Write the failing tests**: `TestNewRepoChoosesLightAndWritesLevel` (diff contains `level = "light"`, one `y`), `TestUpgradeWithoutLevelDoesNotWriteIt`, `TestUpgradeLevelFlagSwitchesAndRemovesUnits`, `TestHandEditedLevelThenUpgradeEqualsLevelFlag` (byte-equal tree), `TestSwitchRoundTripIsIdentical` (`strict`→`light`→`strict` with a clock that advances: every installed file except `components.toml` is identical to the start, and `components.toml` differs only in `since`), `TestDowngradeConflictRefusesWithoutForce` (locally edited unit that the downgrade removes → `refused: 1 locally modified unit(s)`), `TestSummaryNamesLevelAndHowToScaleUp`.
+- [ ] **Step 1: Write the failing tests**: `TestNewRepoChoosesLightAndWritesLevel` (diff contains `level = "light"`, one `y`), `TestUpgradeWithoutLevelDoesNotWriteIt`, `TestUpgradeLevelFlagSwitchesAndRemovesUnits`, `TestHandEditedLevelThenUpgradeEqualsLevelFlag` (byte-equal tree), `TestSwitchRoundTripIsIdentical` (`strict`→`light`→`strict` with a clock that advances: every installed file except `components.toml` is identical to the start, and `components.toml` differs only in `since`; `.lighthouse/manifest.toml` differs only in the `sha256` line of `components.toml`; assert exactly that), `TestDowngradeConflictRefusesWithoutForce` (locally edited unit that the downgrade removes → `refused: 1 locally modified unit(s)`), `TestSummaryNamesLevelAndHowToScaleUp`.
 - [ ] **Step 2: Run** `go test ./internal/initcmd/... ./internal/cli/...` — Expected: FAIL.
 - [ ] **Step 3: Implement**. The summary line (stdout, only when something is written) names the level and `lighthouse init --upgrade --level <next>`.
 - [ ] **Step 4: Run** — Expected: PASS.
@@ -257,7 +257,7 @@ Eindigt met een groene PR-grens: dogfood op `strict`, `No changes.` in CI, chang
   - stand `log` → run the hook; when its result has a non-zero code, stderr, a `systemMessage` or Text, append one line (`name`, now, first line of that message) via `levellog.Append`; return exit 0 with no output, whatever happened, also on a panic or a failing `Append`;
   - otherwise unchanged.
 
-- [ ] **Step 1: Write the failing tests** (register throwaway hooks in the test): `TestLogStandCountsAndStaysSilent` (hook returns code 2 + stderr → exit 0, empty out/err, one log line with the first line), `TestLogStandPanicStillExitsZero`, `TestLogStandWithUnwritableLogExitsZero`, `TestOffStandSkipsTheHook`, `TestOnStandIsUnchanged`, `TestCorruptComponentsFileIsExit3`, `TestBaseHookIgnoresCorruptComponentsFile` (`level-check` through `hook.Run` with a corrupt file → code 0 with `systemMessage`), `TestLogStandSuppressesVersionNotice`, `TestAbsentComponentsFileMeansOn`.
+- [ ] **Step 1: Write the failing tests** (register throwaway hooks in the test): `TestLogStandCountsAndStaysSilent` (hook returns code 2 + stderr → exit 0, empty out/err, one log line with the first line), `TestLogStandPanicStillExitsZero`, `TestLogStandWithUnwritableLogExitsZero`, `TestOffStandSkipsTheHook`, `TestOnStandIsUnchanged`, `TestCorruptComponentsFileIsExit3`, `TestBaseHookIgnoresCorruptComponentsFile` (a throwaway hook whose name is in a fixture `base` list, run through `hook.Run` with a corrupt file → it runs, no `COULD NOT CHECK`), `TestLogStandSuppressesVersionNotice`, `TestAbsentComponentsFileMeansOn`.
 - [ ] **Step 2: Run** `go test ./internal/hook/... ./internal/cli/...` — Expected: FAIL.
 - [ ] **Step 3: Implement.** On stand `log` `withNotices` is skipped too (the spec allows no `systemMessage` on `log`); on `on` the notices stay as they are.
 - [ ] **Step 4: Run** — Expected: PASS; `go test ./internal/hooks/... ./internal/codelang/...` still PASS.
@@ -330,7 +330,7 @@ Eindigt met een groene PR-grens: dogfood op `strict`, `No changes.` in CI, chang
 **Interfaces:**
 - Produces: `func LevelCheck(ctx, root, stand string, p hook.Payload) hook.Result`, registered as `level-check`. Never blocks (code 0), so it gets **no** `guards.toml` entry (`internal/agentaudit/sources.go` classifies every guard as blocking). For each of `levels.CoreGates` whose stand is not `on`, a line `lighthouse: <gate> is <stand> — this repo works outside the chain`; the result has `systemMessage` (lines joined) and `hookSpecificOutput.additionalContext` (same text, `hookEventName: "SessionStart"`). All `on` or no `components.toml` → empty result. Unreadable → `COULD NOT CHECK` as `systemMessage`, still code 0. It is a base component: no stand of its own.
 
-- [ ] **Step 1: Write the failing tests**: `TestLevelCheckSilentWhenGatesOn`, `TestLevelCheckWarnsForEachUnderstoodGate` (two gates off → two lines in both fields), `TestLevelCheckLogCountsAsNotOn`, `TestLevelCheckUnreadableFileSaysCouldNotCheckAndExitsZero`; a pack test that `hooks.json` registers it under `SessionStart`; also update `tests/test_site_packs.py` (`WHEN` map gets `SessionStart`, the core hook count), `tests/test_site_session.py` and the site data `docs/site/data/packs.json`/`session.json` so the pytest lane stays green.
+- [ ] **Step 1: Write the failing tests**: `TestLevelCheckSilentWhenGatesOn`, `TestLevelCheckWarnsForEachUnderstoodGate` (two gates off → two lines in both fields), `TestLevelCheckLogCountsAsNotOn`, `TestLevelCheckUnreadableFileSaysCouldNotCheckAndExitsZero`, `TestLevelCheckThroughHookRunIgnoresCorruptFile` (the real `level-check` through `hook.Run` with a corrupt `components.toml` → code 0 with `systemMessage`); a pack test that `hooks.json` registers it under `SessionStart`; also update `tests/test_site_packs.py` (`WHEN` map gets `SessionStart`, the core hook count), `tests/test_site_session.py` and the site data `docs/site/data/packs.json`/`session.json` so the pytest lane stays green.
 - [ ] **Step 2: Run** `go test ./internal/hooks/... ./internal/packs/...` — Expected: FAIL.
 - [ ] **Step 3: Implement.**
 - [ ] **Step 4: Run** — Expected: PASS.
@@ -340,7 +340,7 @@ Eindigt met een groene PR-grens: dogfood op `strict`, `No changes.` in CI, chang
 
 **Files:**
 - Create: `internal/initcmd/block.go`
-- Modify: `pack/core/instructions/AGENTS.md`, `pack/go/instructions/AGENTS.md`, `pack/python/instructions/AGENTS.md`, `pack/shell/instructions/AGENTS.md` (add trailing markers), `internal/packs/budget_test.go` (raise each `blockCeilings` entry by exactly the number of markers added to that block, in this commit, as a deliberate choice stated in the PR), `tests/test_instruction_files.py` (compare the installed block with the source block after stripping markers), `internal/initcmd/initcmd.go`
+- Modify: `pack/core/instructions/AGENTS.md`, `pack/go/instructions/AGENTS.md`, `pack/python/instructions/AGENTS.md`, `pack/shell/instructions/AGENTS.md` (add trailing markers), `internal/packs/budget_test.go` (raise each `blockCeilings` entry by exactly the number of markers added to that block, and `blocksCeiling` (now 531) by the total, in this commit, as a deliberate choice stated in the PR), `tests/test_instruction_files.py` (compare the installed block with the source block after stripping markers), `internal/initcmd/initcmd.go`
 - Test: `internal/initcmd/block_test.go`
 
 **Interfaces:**
@@ -375,7 +375,7 @@ Eindigt met een groene PR-grens: dogfood op `strict`, `No changes.` in CI, chang
 
 **Files:**
 - Create: `internal/hooks/noverifycheck.go`
-- Modify: `internal/commitgate/pre.go` (remove the block), `internal/commitgate/prepost_test.go` (the `no-verify` case at line 62), `pack/core/hooks/hooks.json` (PreToolUse `Bash` `run.sh no-verify-check`), `pack/core/levels.toml` (`no-verify-check` in `base`), `pack/core/instructions/AGENTS.md` (the `--no-verify` rule as its own unmarked line, so Codex and OpenCode keep it on every level), `pack/core/guards.toml` (`[no-verify-check]` with `events`/`terms`; update `commit-test-gate` terms), `tests/pack/test_commit_test_gate_no_verify.py` (move to `no-verify-check`)
+- Modify: `internal/commitgate/pre.go` (remove the block), `internal/commitgate/prepost_test.go` (the `no-verify` case at line 62), `pack/core/hooks/hooks.json` (PreToolUse `Bash` `run.sh no-verify-check`), `pack/core/levels.toml` (`no-verify-check` in `base`), `pack/core/instructions/AGENTS.md` (the `--no-verify` rule as its own unmarked line, so Codex and OpenCode keep it on every level), `internal/packs/budget_test.go` (core ceiling and `blocksCeiling` raised by the exact word delta of that line), `pack/core/hooks/blocking` (add `no-verify-check`, so it fails closed like `commit-test-gate` did; update the `blocking` test expectations), `docs/site/data/packs.json`, `docs/site/data/session.json`, `tests/test_site_packs.py` (core hook count), `tests/test_site_session.py`, `pack/core/guards.toml` (`[no-verify-check]` with `events`/`terms`; update `commit-test-gate` terms), `tests/pack/test_commit_test_gate_no_verify.py` (move to `no-verify-check`)
 - Test: `internal/hooks/noverifycheck_test.go`
 
 **Interfaces:**
@@ -384,7 +384,7 @@ Eindigt met een groene PR-grens: dogfood op `strict`, `No changes.` in CI, chang
 - [ ] **Step 1: Write the failing tests**: `TestNoVerifyCheckBlocksOnAFeatureBranch`, `TestNoVerifyCheckBlocksShortNOnCommit`, `TestNoVerifyCheckAllowsNoVerifyWordInMessage` (`git commit -m "no --no-verify"`), `TestNoVerifyCheckStillBlocksWhenMainCommitGateIsOff` (components.toml with `main-commit-gate = "off"` through `hook.Run`), `TestNoVerifyCheckIgnoresCorruptComponentsFile`; remove the `no-verify` case from `internal/commitgate/prepost_test.go` (the pre stand no longer judges it; `fixtures_test.go` parser cases stay); move `tests/pack/test_commit_test_gate_no_verify.py` to run `run.sh no-verify-check`.
 - [ ] **Step 2: Run** `go test ./internal/hooks/... ./internal/commitgate/...` — Expected: FAIL.
 - [ ] **Step 3: Implement**; update `guards.toml` so `lighthouse agent-audit` keeps matching.
-- [ ] **Step 4: Run** `go test ./internal/hooks/... ./internal/commitgate/... ./internal/agentaudit/...` and `uv run pytest -q tests/pack tests/test_site_packs.py` — Expected: PASS.
+- [ ] **Step 4: Run** `go test ./internal/hooks/... ./internal/commitgate/... ./internal/agentaudit/... ./internal/packs/...` and `uv run pytest -q` — Expected: PASS.
 - [ ] **Step 5: Commit** `fix(hooks): --no-verify wordt op elk niveau geblokkeerd door no-verify-check (#19)`.
 
 ### Task 21: Installatiegids, dogfood en changelog deel 3
@@ -395,7 +395,7 @@ Eindigt met een groene PR-grens: dogfood op `strict`, `No changes.` in CI, chang
 
 - [ ] **Step 1:** write the section; relative links only to existing targets.
 - [ ] **Step 2: Run** `go run ./cmd/lighthouse init --upgrade --yes`, commit the installed copy; second run prints `No changes.` on stdout.
-- [ ] **Step 3: Run** the `[test_gate] command`, `golangci-lint run ./...`, `go run ./cmd/lighthouse check-instructions` — Expected: green.
+- [ ] **Step 3: Run** the `[test_gate] command`, `golangci-lint run ./...`, `uv run pytest -q`, `go run ./cmd/lighthouse check-instructions` — Expected: green.
 - [ ] **Step 4: Commit** `docs(install): instaproute met niveaus (#19)`. PR-grens deel 3; `/lighthouse-write-pr` verifieert de AC's van #19 (tabel "Acceptatiecriteria van #19, gekoppeld" in de spec).
 
 ---
