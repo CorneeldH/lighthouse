@@ -1,6 +1,6 @@
 {
   "title": "Your repo after init",
-  "subtitle": "Everything lighthouse init puts in your repo, and the files of yours it edits.",
+  "subtitle": "Everything lighthouse init puts in your repo, the files of yours it edits, and what an upgrade does with each.",
   "dirs": [
     {
       "id": "root",
@@ -34,7 +34,9 @@
       "dir": "root",
       "kind": "rules",
       "act": "edits",
-      "href": "system.html#rules"
+      "href": "system.html#rules",
+      "upgrade": "lighthouse's blocks replaced, your text stays",
+      "force": true
     },
     {
       "id": "lighthouse-toml",
@@ -43,7 +45,9 @@
       "dir": "root",
       "kind": "config",
       "act": "edits",
-      "href": "config.html"
+      "href": "config.html",
+      "upgrade": "missing keys added, your values stay (old gate commands rewritten)",
+      "force": false
     },
     {
       "id": "claude-hooks",
@@ -52,7 +56,9 @@
       "dir": ".claude",
       "kind": "hook",
       "act": "adds",
-      "href": "reference.html#hooks"
+      "href": "reference.html#hooks",
+      "upgrade": "replaced, stale ones removed",
+      "force": true
     },
     {
       "id": "claude-skills",
@@ -61,7 +67,9 @@
       "dir": ".claude",
       "kind": "standard-skill",
       "act": "adds",
-      "href": "reference.html#skills"
+      "href": "reference.html#skills",
+      "upgrade": "replaced, stale ones removed",
+      "force": true
     },
     {
       "id": "claude-agents",
@@ -70,7 +78,9 @@
       "dir": ".claude",
       "kind": "agent",
       "act": "adds",
-      "href": "reference.html#agents"
+      "href": "reference.html#agents",
+      "upgrade": "replaced, stale ones removed",
+      "force": true
     },
     {
       "id": "claude-settings",
@@ -78,7 +88,9 @@
       "label": "settings.json",
       "dir": ".claude",
       "kind": "config",
-      "act": "edits"
+      "act": "edits",
+      "upgrade": "lighthouse's hooks and rules replaced, the rest stays",
+      "force": true
     },
     {
       "id": "agents-skills",
@@ -87,7 +99,9 @@
       "dir": ".agents",
       "kind": "standard-skill",
       "act": "adds",
-      "href": "reference.html#skills"
+      "href": "reference.html#skills",
+      "upgrade": "replaced, stale ones removed",
+      "force": true
     },
     {
       "id": "lighthouse-scripts",
@@ -95,7 +109,9 @@
       "label": "scripts/",
       "dir": ".lighthouse",
       "kind": "config",
-      "act": "adds"
+      "act": "adds",
+      "upgrade": "replaced, stale ones removed",
+      "force": true
     },
     {
       "id": "headings",
@@ -103,7 +119,9 @@
       "label": "headings.toml",
       "dir": ".lighthouse",
       "kind": "config",
-      "act": "adds"
+      "act": "adds",
+      "upgrade": "replaced",
+      "force": true
     },
     {
       "id": "manifest",
@@ -111,7 +129,9 @@
       "label": "manifest.toml",
       "dir": ".lighthouse",
       "kind": "config",
-      "act": "adds"
+      "act": "adds",
+      "upgrade": "rewritten on every run",
+      "force": false
     },
     {
       "id": "pr-template",
@@ -120,7 +140,9 @@
       "dir": ".github",
       "kind": "github",
       "act": "adds",
-      "href": "reference.html#github"
+      "href": "reference.html#github",
+      "upgrade": "replaced",
+      "force": true
     },
     {
       "id": "workflows",
@@ -129,7 +151,9 @@
       "dir": ".github",
       "kind": "github",
       "act": "adds",
-      "href": "reference.html#github"
+      "href": "reference.html#github",
+      "upgrade": "replaced, stale ones removed",
+      "force": true
     },
     {
       "id": "host-toml",
@@ -137,12 +161,15 @@
       "dir": "workstation",
       "kind": "config",
       "act": "adds",
-      "href": "config.html"
+      "href": "config.html",
+      "upgrade": "left alone",
+      "force": false
     }
   ],
   "yours": "your code, your tests, your config, …",
   "workstation": {
     "label": "On your workstation",
     "note": "Only with Tailscale. It is not in the repo, so a teammate or another machine does not have it."
-  }
+  },
+  "upgradeNote": "One edited part stops the whole upgrade; --force overwrites every edited part at once."
 }
