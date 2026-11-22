@@ -506,6 +506,54 @@ func TestCleanupLabelsAWishQuestion(t *testing.T) {
 	}
 }
 
+const wishQ12 = `{"issue":12,"topic":"wish","text":"Willen we dit?","options":["ja, op de kaart","nee, niet op de kaart"],"recommended":"a","off":"b"}`
+
+func TestCleanupLabelsAWishBeforeItsQuestion(t *testing.T) {
+	// Fails if Cleanup posts the wish question before labels.needs_decision is set: a label
+	// that then fails leaves an open question without the label, which nothing ever repairs.
+	t.Run("label fails", func(t *testing.T) {
+		r := loopRig(t, "[]")
+		r.srv.Fail = map[string]int{"POST /repos/o/r/issues/12/labels": 500}
+		j := bind(t)
+		env := stagedEnv(t, r, j)
+		writeResult(t, env.Dir, `{"questions":[`+wishQ12+`]}`)
+		if err := j.Cleanup(context.Background(), env, env.Dir); err == nil {
+			t.Fatal("Cleanup: no error")
+		}
+		if q := r.posts(12); len(q) != 0 {
+			t.Errorf("posts on #12 = %q, want none after a failed label", q)
+		}
+	})
+	t.Run("comment fails after the label", func(t *testing.T) {
+		// The issue keeps no job comment, so the gate lets it through and a next run asks again.
+		r := loopRig(t, "[]")
+		r.srv.FailFirst = map[string]int{"POST /repos/o/r/issues/12/comments": 500}
+		j := bind(t)
+		env := stagedEnv(t, r, j)
+		writeResult(t, env.Dir, `{"questions":[`+wishQ12+`]}`)
+		if err := j.Cleanup(context.Background(), env, env.Dir); err == nil {
+			t.Fatal("Cleanup: no error")
+		}
+		if v := gate(t, r); v.Score != 1 {
+			t.Errorf("Gate after a failed comment = %+v, want #12 due", v)
+		}
+		writeResult(t, env.Dir, `{"questions":[`+wishQ12+`]}`)
+		if err := j.Cleanup(context.Background(), env, env.Dir); err != nil {
+			t.Fatalf("second Cleanup: %v", err)
+		}
+		is, err := env.Forge.Issue(context.Background(), 12)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !slices.Contains(is.Labels, "needs-decision") {
+			t.Errorf("labels of #12 = %v, want needs-decision", is.Labels)
+		}
+		if v := gate(t, r); v.Skip == "" {
+			t.Errorf("Gate after the question = %+v, want a skip", v)
+		}
+	})
+}
+
 func TestCleanupPostsOncePerIssue(t *testing.T) {
 	// Review Focus 3. Fails if a repeated Cleanup (a postcheck after a transient error) posts
 	// a second question for an issue that already has an open one.
