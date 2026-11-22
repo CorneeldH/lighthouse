@@ -1304,7 +1304,7 @@ const (
 	cmdFixPR     = "/lighthouse-fix-pr"
 	maxFixPRRuns = 3
 	// maxRepairRuns caps the repair runs one red push step may cost before the issue goes back.
-	maxRepairRuns = 2 //nolint:unused // read by the repair rule of the next task
+	maxRepairRuns = 2
 )
 
 // issueCtx is what the start rules of one item read.
@@ -1321,9 +1321,10 @@ type issueCtx struct {
 
 // next returns the one start, resume, return, finish, defer, park or hold the item gets in this
 // tick: the first rule that gives an action wins. finishReturn comes right after retry: the
-// first refused launch of a trigger posts a Returned but waits for its second attempt.
+// first refused launch of a trigger posts a Returned but waits for its second attempt. repair
+// comes right after answer: a pusher's Herstel is a turn, like a Question.
 func (c issueCtx) next() (planned, bool) {
-	for _, rule := range []func() (planned, bool){c.retry, c.finishReturn, c.usageResume, c.answer, c.closeCheck, c.newIssue, c.handoff} {
+	for _, rule := range []func() (planned, bool){c.retry, c.finishReturn, c.usageResume, c.answer, c.repair, c.closeCheck, c.newIssue, c.handoff} {
 		if p, ok := rule(); ok {
 			return p, true
 		}
@@ -1651,6 +1652,130 @@ func (c issueCtx) answerTo(id int64) (Comment, bool) {
 		after = after || com.ID == id
 	}
 	return Comment{}, false
+}
+
+// repair resumes the run that wrote the push handoff when the last turn is the pusher's 🤖 Herstel
+// of the token login (a red policy or lint step of the branch), once per Herstel under
+// repair:<id>. It waits while the issue has an open run: settle closes the push row on the
+// Herstel in the same tick, and next still sees it open. Past maxRepairRuns rounds without green
+// (repairRounds, the current Herstel counted) the issue goes back with reason_pusher_red_ceiling;
+// without the handoff run or its session with reason_pusher_red. Both carry the push command of
+// the Herstel's worktree; the step and the reason stand in the Herstel above it.
+func (c issueCtx) repair() (planned, bool) {
+	h := lastTurn(c.hs)
+	if h == nil || !pusherRepair(h.Header) || h.Comment.Author != c.repo.Snapshot.TokenLogin {
+		return planned{}, false
+	}
+	key := triggerRepair + ":" + strconv.FormatInt(h.Comment.ID, 10)
+	if c.spent(key) || hasOpenRun(c.repo.History, c.it.Issue) {
+		return planned{}, false
+	}
+	worktree := h.Header.Fields["worktree"]
+	if c.repairRounds() > maxRepairRuns {
+		return c.returned("reason_pusher_red_ceiling", pushCommand(worktree)), true
+	}
+	run, ok := c.handoffRunBefore(h.Time)
+	if !ok || run.SessionID == "" {
+		return c.returned("reason_pusher_red", pushCommand(worktree)), true
+	}
+	a := c.base
+	a.Kind, a.Mode, a.Trigger, a.TriggerKey, a.Attempt = KindResume, modeResume, triggerRepair, key, 1
+	a.SessionID, a.CommentID = run.SessionID, h.Comment.ID
+	a.Command, a.Branch = run.Command, run.Branch
+	a.Prompt = repairPrompt(h, c.repo.Language)
+	return c.planned(a, h.Time), true
+}
+
+// repairPrompt is the order of a repair resume: the prompt_pusher_repair heading, the red step,
+// the fenced reason of the Herstel and its URL. The diff stays in the comment and the worktree.
+func repairPrompt(h *parsed, language string) string {
+	parts := []string{protocol.Heading("prompt_pusher_repair", language),
+		"**" + protocol.Heading("question_push_step", language) + ":** " + h.Header.Fields["step"]}
+	if why := fencedReason(h.Comment.Body); why != "" {
+		parts = append(parts, why)
+	}
+	return strings.Join(append(parts, h.Comment.URL), "\n\n")
+}
+
+// fencedReason returns the first ```text block of body, fences included: the reason the pusher
+// wrote under the red step (redLines). "" when body has none.
+func fencedReason(body string) string {
+	lines := strings.Split(strings.ReplaceAll(body, "\r\n", "\n"), "\n")
+	for i, line := range lines {
+		fence, ok := strings.CutSuffix(line, "text")
+		if !ok || len(fence) < 3 || strings.Trim(fence, "`") != "" {
+			continue
+		}
+		for j := i + 1; j < len(lines); j++ {
+			if lines[j] == fence {
+				return strings.Join(lines[i:j+1], "\n")
+			}
+		}
+		return ""
+	}
+	return ""
+}
+
+// repairRounds counts the Herstel rounds of the issue without green in between: the push rows
+// (key push:<id>, no merge pusher) from new to old, skipping a failed start and the open row,
+// counting each that closed as handoff without a pushed SHA (it ended in a Herstel). It stops at
+// the first row that ended otherwise (pushed, question, returned), and at a row that started
+// before the last Returned of the token login: after a hand-back the count starts again.
+func (c issueCtx) repairRounds() int {
+	var handBack time.Time
+	for _, p := range c.hs {
+		if p.Header.Kind == protocol.KindReturned && p.Comment.Author == c.repo.Snapshot.TokenLogin && p.Time.After(handBack) {
+			handBack = p.Time
+		}
+	}
+	n := 0
+	for i := len(c.repo.History) - 1; i >= 0; i-- {
+		row := c.repo.History[i]
+		if row.Issue != c.it.Issue || !isPush(row) || !strings.HasPrefix(row.TriggerKey, triggerPush+":") ||
+			row.Open || row.Outcome == runs.StartFailed {
+			continue
+		}
+		if row.StartedAt.Before(handBack) || row.Outcome != runs.Handoff || row.PushedSHA != "" {
+			break
+		}
+		n++
+	}
+	return n
+}
+
+// handoffRunBefore returns the run that wrote the push handoff a Herstel at t answers: the last
+// push row of the issue that started before t names its Handoff comment (push:<id>), and the run
+// is the last of this issue on this host (Node "") that closed as handoff, is no push row and
+// started before that comment, the rule by which the pusher finds the worktree
+// (runs.LastHandoffWorkspace). A Handoff carries no session footer, so the history is the only
+// way to the session.
+func (c issueCtx) handoffRunBefore(t time.Time) (runs.Row, bool) {
+	var com Comment
+	found := false
+	for i := len(c.repo.History) - 1; i >= 0 && !found; i-- {
+		row := c.repo.History[i]
+		if row.Issue != c.it.Issue || !isPush(row) || !strings.HasPrefix(row.TriggerKey, triggerPush+":") || !row.StartedAt.Before(t) {
+			continue
+		}
+		id, ok := triggerComment(row.TriggerKey)
+		if !ok {
+			return runs.Row{}, false
+		}
+		if com, found = c.comment(id); !found {
+			return runs.Row{}, false
+		}
+	}
+	if !found {
+		return runs.Row{}, false
+	}
+	handoffAt := parseTime(com.CreatedAt)
+	for i := len(c.repo.History) - 1; i >= 0; i-- {
+		row := c.repo.History[i]
+		if row.Issue == c.it.Issue && row.Node == "" && row.Outcome == runs.Handoff && !isPush(row) && row.StartedAt.Before(handoffAt) {
+			return row, true
+		}
+	}
+	return runs.Row{}, false
 }
 
 // lastRunOf returns the last row of the history on issue with session.
