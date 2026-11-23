@@ -16,14 +16,17 @@ lighthouse lint check [--lang python|go|node|shell]... [--dir <pad>]...
 - Expo heeft geen eigen taal: een Expo-repo heeft ook `pack/node`, en de Node-check dekt hem.
 
 `lighthouse init` en `init --upgrade` draaien de check na de installatie. Bij een aangesloten
-repo printen ze niets extra; anders volgen de regels onder de kop
-`lint check: some linters are not wired`. `init` faalt er nooit op. Lighthouse draait de check
+repo printen ze niets extra. Bij exit 1 volgen de regels onder de kop
+`lint check: some linters are not wired`, bij exit 3 onder `lint check: could not check`. `init`
+faalt er nooit op. Lighthouse draait de check
 zelf in de job `lint-check` van [`ci.yml`](../.github/workflows/ci.yml), op elke PR.
 
 ## Uitvoer en exitcodes
 
-Bij succes één regel per linter op stdout: `<linter>: wired`. Anders één regel per ontbrekend
-onderdeel:
+Bij succes één regel per linter op stdout: `<linter>: wired`. Bij een Node-root die niet de root
+van de repo is, noemt de regel de map: `eslint: wired (web)`; een ontbrekende CI-stap daar ook:
+`no CI step runs eslint in web`. Een linter met een ontbrekend onderdeel in een map heet daar nooit
+`wired`. Anders één regel per ontbrekend onderdeel:
 
 ```
 <bestand>[:<regel>]: <linter> — <wat ontbreekt>
@@ -126,14 +129,20 @@ Wat wel telt, is een vlag die de vloer uitzet of versmalt:
 Bij `forge.kind = "github"` (of zonder `forge.kind`) leest de check `.github/workflows/*.yml` en
 `*.yaml`, bij `"gitlab"` `.gitlab-ci.yml`.
 
-- GitHub: de workflow heeft `push` of `pull_request` als trigger. Een herbruikbare workflow
-  (`on: workflow_call`) telt als een lokale workflow met zo'n trigger hem aanroept
-  (`uses: ./.github/workflows/<bestand>`), één niveau diep. Een `if:` op job of stap mag, behalve
-  letterlijk `false`.
+- GitHub: de workflow heeft `push`, `pull_request`, `pull_request_target` of `merge_group` als
+  trigger. Een herbruikbare workflow (`on: workflow_call`) telt als een lokale workflow met zo'n
+  trigger hem aanroept (`uses: ./.github/workflows/<bestand>`), één niveau diep, en de aanroepende
+  job niet letterlijk `if: false` heeft. Een `if:` op job of stap mag, behalve letterlijk `false`.
 - GitLab: een job telt niet bij `allow_failure` met een ware waarde (ook de vorm met
-  `exit_codes`), en niet bij `when: manual` of `when: never`, ook niet via `rules:`. De check volgt
-  `include:` en `extends:` niet: een lintjob die alleen in een ingevoegd bestand of via `extends:`
-  bestaat, vindt de check niet, en dat is exit 1.
+  `exit_codes`), op de job of in een regel van `rules:`, en niet bij `when: manual` of
+  `when: never`, ook niet via `rules:`. De check volgt `extends:` binnen `.gitlab-ci.yml` en voegt
+  de sjablonen samen zoals GitLab dat doet, ook hun `allow_failure`, `when` en `rules`. Een
+  `extends:` naar een job die niet in het bestand staat, geeft `step not recognised`. `include:`
+  volgt de check niet: een lintjob die alleen in een ingevoegd bestand bestaat, vindt hij niet, en
+  dat is exit 1. De `before_script` uit `default:` telt alleen als de job hem erft: niet bij
+  `inherit: default: false` of een `inherit: default:`-lijst zonder `before_script`.
+- Beide: YAML-ankers, aliassen (`*naam`) en merge-sleutels (`<<:`) leest de check zoals YAML ze
+  bedoelt.
 
 ### Herkende aanroepen
 
@@ -151,7 +160,11 @@ aanroep volgt uit `working-directory` op de stap, `defaults.run.working-director
 workflow, een `cd` in het script en `--prefix`, `-C`, `--dir` of `--cwd` van de package manager.
 
 Een aanroep die alleen informatie print (`--help`, `--version`, `--show-settings`,
-`--print-config` en dergelijke) is geen lintstap. Een ratel alleen (`ratchet.py`) ook niet.
+`--print-config` en dergelijke) is geen lintstap. Een script dat de bevindingen alleen telt of met
+een eerdere stand vergelijkt (een ratel, zoals `ratchet.py`) is ook geen lintstap: CI moet op elke
+bevinding rood worden, niet alleen op nieuwe. Daarom telt ook een aanroep met een ratelvlag niet:
+`only-new-issues` op `golangci/golangci-lint-action` en `--new`, `--new-from-rev`,
+`--new-from-merge-base` en `--new-from-patch` bij golangci-lint.
 
 Geen herkende stap: `no CI step runs <linter>` (exit 1). Bij meerdere aanroepen is de linter
 aangesloten als één ervan geldig is; anders meldt de check de eerste.
@@ -159,20 +172,28 @@ aangesloten als één ervan geldig is; anders meldt de check de eerste.
 ### Rood in CI: een allowlist
 
 Een herkende aanroep telt alleen als zijn exitstatus aantoonbaar de status van de stap is. Elke
-andere vorm geeft `step not recognised: <reden>`, exit 1, nooit groen. Dat is zo als:
+andere vorm is exit 1, nooit groen. Meestal luidt de melding `step not recognised: <reden>`; een
+stap of job die mag falen, noemt de oorzaak zelf: `step has continue-on-error`,
+`job has continue-on-error`, `job has allow_failure` of
+`job does not run on every change (when, rules or only)`. Een aanroep telt als:
 
 - de stap draait in een shell die met errexit start. De effectieve shell is `shell:` op de stap,
   anders `defaults.run.shell` op job of workflow, anders de standaard van de runner. Telt:
   `shell: bash`, `shell: sh`, geen shell op een Linux- of macOS-runner, en de standaardshell van
   GitLab. `bash {0}`, `sh {0}`, `pwsh`, een Windows-runner zonder shell of een `runs-on` die een
   expressie is, telt niet;
-- de aanroep een eigen regel is, of met `&&` aan de rest hangt **en** het laatste commando van het
-  script is. Een `&&`-keten met daarna nog commando's telt niet: dat is strenger dan nodig, maar
-  de check volgt de status niet verder;
+- de aanroep een eigen regel is, of in een `&&`-keten staat als laatste lid van die keten, of in
+  een keten die de laatste regel van het script is. Bash negeert errexit voor elk lid van een
+  `&&`-keten behalve het laatste: als laatste lid stopt een falende aanroep het script, dus mogen
+  er nog regels volgen (`cd src && ruff check .`). Een eerder lid (`ruff check . && echo ok`)
+  telt alleen als de keten de laatste regel is, want dan is de status van de keten de status van
+  het script. Een `||` in de keten telt nooit;
 - er na de aanroep geen `|`, `||` of `;` op dezelfde regel volgt. Een pipe alleen met
   `set -o pipefail` of `shell: bash` (die pipefail zet);
 - er geen `set +e` voor staat, en de aanroep niet in een `if`, lus, `{ … }`-groep, achter `!` of
   op de achtergrond (`&`) draait;
+- er nergens in het script een `trap` staat: een handler als `trap 'exit 0' EXIT` vervangt de
+  exitstatus;
 - `continue-on-error` op stap en job ontbreekt of letterlijk `false` is. Ook
   `continue-on-error: ${{ … }}` telt niet.
 
@@ -180,5 +201,8 @@ In een `package.json`-script, dat npm met `sh -c` zonder errexit draait, telt de
 als laatste commando.
 
 Vlaggen die bevindingen uit de exitstatus halen, maken de stap ook niet herkend: `--exit-zero`,
-`-e`, `--fix` en `--fix-only` bij ruff, `--issues-exit-code=0` bij golangci-lint en `--fix` bij
-eslint. Een actie (`uses:`) telt zonder `continue-on-error` en zonder zo'n vlag in `args:`.
+`-e`, `--fix`, `--fix-only`, `--diff`, `--add-noqa` en `--watch` (`-w`) bij ruff,
+`--issues-exit-code=0` en de ratelvlaggen `--new` (`-n`), `--new-from-rev`, `--new-from-merge-base`
+en `--new-from-patch` bij golangci-lint, en `--fix` bij eslint. Een actie (`uses:`) telt zonder
+`continue-on-error`, zonder zo'n vlag in `args:` en, bij `golangci/golangci-lint-action`, zonder
+`only-new-issues` (alleen letterlijk `false` mag).
