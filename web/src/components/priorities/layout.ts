@@ -33,7 +33,13 @@ export interface LaidGraph {
 // The column is the chain depth (GNode.depth), so "Can start now" is always the first column.
 // dagre (rankdir LR) only supplies the order inside a column, which keeps crossings low; the rows
 // are then packed per column, so two nodes never overlap whatever rank dagre gave them.
-export function layoutGraph(nodes: GNode[], edges: Array<{ from: NodeKey; to: NodeKey }>): LaidGraph {
+export type DepsOrder = 'prio' | 'weight' | 'crossings'
+
+export function layoutGraph(
+  nodes: GNode[],
+  edges: Array<{ from: NodeKey; to: NodeKey }>,
+  order: DepsOrder = 'crossings',
+): LaidGraph {
   const g = new dagre.graphlib.Graph()
   g.setGraph({ rankdir: 'LR', nodesep: ROW_GAP, ranksep: COL_GAP, ranker: 'longest-path' })
   g.setDefaultEdgeLabel(() => ({}))
@@ -49,7 +55,15 @@ export function layoutGraph(nodes: GNode[], edges: Array<{ from: NodeKey; to: No
   const laid = new Map<NodeKey, LaidNode>()
   let height = 0
   for (const [depth, col] of byDepth) {
-    col.sort((a, b) => (g.node(a.key)?.y ?? 0) - (g.node(b.key)?.y ?? 0) || a.number - b.number)
+    const byDagre = (a: GNode, b: GNode) =>
+      (g.node(a.key)?.y ?? 0) - (g.node(b.key)?.y ?? 0) || a.number - b.number
+    const key = (a: GNode, b: GNode) =>
+      order === 'prio'
+        ? (b.prioWeight ?? 0) - (a.prioWeight ?? 0) || (b.factor ?? 0) - (a.factor ?? 0)
+        : order === 'weight'
+          ? (b.weight ?? 0) - (a.weight ?? 0)
+          : 0
+    col.sort((a, b) => key(a, b) || byDagre(a, b))
     col.forEach((n, i) => {
       const y = TOP + i * (NODE_H + ROW_GAP)
       laid.set(n.key, { key: n.key, x: depth * (NODE_W + COL_GAP), y, w: NODE_W, h: NODE_H })

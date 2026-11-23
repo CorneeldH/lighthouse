@@ -110,6 +110,16 @@ describe('DepsView', () => {
     expect(within(node(`${A}#2`)).queryByTestId('waiting-pill')).toBeNull()
   })
 
+  it('the pill shows the waiting count; its title carries the weights', () => {
+    view(
+      [repo(A, [iss(1, [], { factor: 3, prio_weight: 10 }), iss(2, [[A, 1]]), iss(3, [[A, 1]]), iss(4, [[A, 1]])])],
+      [A],
+    )
+    const pill = within(node(`${A}#1`)).getByTestId('waiting-pill')
+    expect(pill.textContent).toBe('3')
+    expect(pill.getAttribute('title')).toBe('3 wait · weight 3 · factor 3 · prio-weight 10')
+  })
+
   it('keeps a blocker in a filtered-out repo as a solid grey node, and the column of its dependent', () => {
     const other = repo('a/y', [iss(9)])
     view([repo(A, [iss(2, [['a/y', 9]]), iss(3, [[A, 2]])]), other], [A])

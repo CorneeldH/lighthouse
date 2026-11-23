@@ -42,6 +42,70 @@ const n = (g: ReturnType<typeof buildGraph>, key: string) => {
   return node
 }
 
+describe('buildGraph weight, factor and prioWeight', () => {
+  it('weight: A met vijf issues op 1 stap is 5, B met twee op 1 en twee op 2 stappen is 6', () => {
+    const a = [iss(2, [[R, 1]]), iss(3, [[R, 1]]), iss(4, [[R, 1]]), iss(5, [[R, 1]]), iss(6, [[R, 1]])]
+    const g = buildGraph([repo(R, [iss(1), ...a])], [])
+    expect(n(g, `${R}#1`).weight).toBe(5)
+
+    const h = buildGraph(
+      [
+        repo(R, [
+          iss(10),
+          iss(11, [[R, 10]]),
+          iss(12, [[R, 10]]),
+          iss(13, [[R, 11]]),
+          iss(14, [[R, 12]]),
+        ]),
+      ],
+      [],
+    )
+    expect(n(h, `${R}#10`).weight).toBe(6)
+  })
+
+  it('weight: A→B→C geeft A = 3 (B op 1, C op 2, ook als C ook direct op A wacht)', () => {
+    const g = buildGraph(
+      [repo(R, [iss(1), iss(2, [[R, 1]]), iss(3, [[R, 2], [R, 1]])])],
+      [],
+    )
+    expect(n(g, `${R}#1`).weight).toBe(3)
+    expect(n(g, `${R}#2`).weight).toBe(1)
+    expect(n(g, `${R}#3`).weight).toBe(0)
+  })
+
+  it('weight: een cyclus telt als één groep', () => {
+    const g = buildGraph(
+      [repo(R, [iss(1, [[R, 2]]), iss(2, [[R, 1]]), iss(3, [[R, 2]]), iss(4), ])],
+      [],
+    )
+    expect(n(g, `${R}#1`).weight).toBe(1)
+    expect(n(g, `${R}#2`).weight).toBe(1)
+
+    // P (4) wacht op cyclus X↔Y (1,2): beide leden tellen
+    const p = buildGraph(
+      [repo(R, [iss(1, [[R, 2]]), iss(2, [[R, 1]]), iss(4, [[R, 1]])])],
+      [],
+    )
+    expect(n(p, `${R}#1`).weight).toBe(1)
+    // blocker P=5 met cyclus erachter: P = 2
+    const q = buildGraph(
+      [repo(R, [iss(5), iss(1, [[R, 2], [R, 5]]), iss(2, [[R, 1]])])],
+      [],
+    )
+    expect(n(q, `${R}#5`).weight).toBe(2)
+  })
+
+  it('weight: een externe blokkerende knoop met twee wachtende issues op 1 stap heeft weight 2, factor 0 en prioWeight 0', () => {
+    const g = buildGraph([repo(R, [iss(1, [['z/q', 9]]), iss(2, [['z/q', 9]])])], [])
+    expect(n(g, 'z/q#9')).toMatchObject({ weight: 2, factor: 0, prioWeight: 0 })
+  })
+
+  it('factor en prioWeight komen uit issue.factor en issue.prio_weight zonder herberekening', () => {
+    const g = buildGraph([repo(R, [iss(1, [], { prio_weight: 10, factor: 3 }), iss(2, [[R, 1]])])], [])
+    expect(n(g, `${R}#1`)).toMatchObject({ prioWeight: 10, factor: 3 })
+  })
+})
+
 describe('buildGraph', () => {
   it('chain A->B->C has depth 0,1,2 and waiting 2,1,0', () => {
     const g = buildGraph([repo(R, [iss(1), iss(2, [[R, 1]]), iss(3, [[R, 2]])])], [])

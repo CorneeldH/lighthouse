@@ -1,5 +1,6 @@
 import type { JSX } from 'react'
 import type { ViewId } from '@/lib/priorities/prefs'
+import type { DepsOrder } from './layout'
 import { Block, type BlockState } from './Block'
 
 export interface LegendItem {
@@ -18,6 +19,8 @@ interface ToolbarProps {
   legend: LegendItem[]
   msOrder: 'computed' | 'priority'
   onMsOrder: (o: 'computed' | 'priority') => void
+  depsOrder: DepsOrder
+  onDepsOrder: (o: DepsOrder) => void
 }
 
 const STATES: Array<{ key: string; label: string; state: BlockState; needsHuman: boolean }> = [
@@ -39,6 +42,12 @@ const ORDERS: Array<{ id: 'computed' | 'priority'; label: string }> = [
   { id: 'priority', label: 'Priority' },
 ]
 
+const SORTS: Array<{ id: DepsOrder; label: string }> = [
+  { id: 'prio', label: 'Prio-weight' },
+  { id: 'weight', label: 'Weight' },
+  { id: 'crossings', label: 'Fewest crossings' },
+]
+
 export function Toolbar({
   view,
   onView,
@@ -49,6 +58,8 @@ export function Toolbar({
   legend,
   msOrder,
   onMsOrder,
+  depsOrder,
+  onDepsOrder,
 }: ToolbarProps): JSX.Element {
   return (
     <div className="space-y-3">
@@ -80,6 +91,24 @@ export function Toolbar({
                   aria-pressed={on}
                   className={`px-3 py-1 text-sm font-medium ${on ? 'bg-lh-navy text-white' : 'bg-card text-foreground hover:bg-muted'}`}
                   onClick={() => onMsOrder(o.id)}
+                >
+                  {o.label}
+                </button>
+              )
+            })}
+          </div>
+        )}
+        {view === 'deps' && (
+          <div role="group" aria-label="Sort" className="inline-flex overflow-hidden rounded-md border border-lh-navy">
+            {SORTS.map((o) => {
+              const on = o.id === depsOrder
+              return (
+                <button
+                  key={o.id}
+                  type="button"
+                  aria-pressed={on}
+                  className={`px-3 py-1 text-sm font-medium ${on ? 'bg-lh-navy text-white' : 'bg-card text-foreground hover:bg-muted'}`}
+                  onClick={() => onDepsOrder(o.id)}
                 >
                   {o.label}
                 </button>

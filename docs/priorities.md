@@ -111,7 +111,8 @@ De SPA leidt deze begrippen af in `web/src/lib/priorities/derive.ts`; de server 
   repo dat (direct of via een keten) op dit issue wacht, diens factor maal 2^(k-1), met k de
   langste afstand in stappen; een cyclus telt als één groep. Een blokkeerder in een andere repo
   telt niet mee. De tick en de triage ordenen met hetzelfde gewicht (zie
-  [`tick.md`](tick.md), *De rem*, en [`triage.md`](triage.md)).
+  [`tick.md`](tick.md), *De rem*, en [`triage.md`](triage.md)). De graaf sorteert er zijn
+  kolommen mee (zie *Sortering van de graaf*).
 - **Vormentaal van de graaf.** De graaf tekent de toestand van een issue op de kaart met
   dezelfde vormentaal als de balk: een kleurstrook (gestreept bij *actief*, effen bij
   elke andere toestand), een stippelrand van 1,5 px in de voorgrondkleur bij *mens nodig*, een kruis bij
@@ -126,7 +127,22 @@ De SPA leidt deze begrippen af in `web/src/lib/priorities/derive.ts`; de server 
   is bergaf.
 - **Wachtenden.** Per issue het aantal open issues dat er (direct of via ketens) op wacht. De
   leden van een cyclus vormen samen één component en krijgen de diepte van dat component, in
-  één kolom; zo blijft de graaf eindig.
+  één kolom; zo blijft de graaf eindig. De sortering van de graaf gebruikt daarnaast het
+  *gewicht* (zie *Sortering van de graaf*).
+- **Sortering van de graaf.** In de weergave *Dependencies* staat een schakelaar *Sort* met drie
+  standen, binnen elke kolom: *Prio-weight* (standaard): prio-gewicht aflopend, dan de eigen
+  factor aflopend, dan de volgorde van dagre; *Weight*: gewicht aflopend, dan de volgorde van
+  dagre; *Fewest crossings*: de volgorde van dagre (y-positie, dan nummer), zoals voor #445.
+  Gelijke sleutels blijven deterministisch (dagre, dan nummer). Het *gewicht* is de som, over
+  alle issues die direct of via andere issues op dit issue wachten, van 2^(k-1), met k de
+  langste afstand in stappen; elk wachtend issue telt één keer en een cyclus is één groep. Het
+  gewicht rekent `derive.ts` zelf uit over de hele graaf, externe knopen en andere repo's
+  inbegrepen. Het prio-gewicht en de factor rekent de graaf niet na: ze komen uit
+  `/api/priorities` (#509, zie *Prio-gewicht*); een externe knoop zonder die velden krijgt 0.
+  De keuze staat in `localStorage` onder `lighthouse.priorities`, veld `depsOrder`; een
+  ontbrekende of vreemde waarde, of een blokkerende `localStorage`, valt terug op *Prio-weight*.
+  De pil met het aantal wachtenden (vanaf 2) toont bij hover `N wait · weight W · factor F ·
+  prio-weight P`.
 - **Shaping.** Een milestone is in shaping als hij geen open issues heeft en geen issues die als
   `completed` zijn gesloten (`isShaping`: nul issues), of als een regel van de
   milestonebeschrijving (zonder hoofdletters en omringende spaties) `Status: shaping` is. Een
