@@ -150,6 +150,7 @@ type Action struct {
 	// AnswerText and After are of a push_recover: the user's answer, and the after: command of the Vraag.
 	AnswerText string `json:"answer_text,omitempty"`
 	After      string `json:"after,omitempty"`
+	Lane       string `json:"lane,omitempty"` // push_recover: the lane field of the Vraag
 	// Blocked marks the return of rule 13 while a blocker is active (settleUnstartedFixPR): its
 	// label is blocked_issue, whatever Reason says (ReturnLabelKey).
 	Blocked bool `json:"blocked,omitempty"`
@@ -2073,9 +2074,9 @@ func (c issueCtx) pushAnswer(q *parsed, ans Comment) (planned, bool) {
 		return c.ordered(a, parseTime(ans.CreatedAt)), true
 	}
 	if a.After = q.Header.Fields["after"]; a.After == "" {
-		return c.returned("reason_pusher_no_after", ""), true
+		return c.returned("reason_pusher_no_after", pushCommand(worktree)), true
 	}
-	a.Kind, a.AnswerText = KindPushRecover, strings.TrimSpace(ans.Body)
+	a.Kind, a.AnswerText, a.Lane = KindPushRecover, strings.TrimSpace(ans.Body), q.Header.Fields["lane"]
 	return c.ordered(a, parseTime(ans.CreatedAt)), true
 }
 

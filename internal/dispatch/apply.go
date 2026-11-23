@@ -514,11 +514,16 @@ func (ap applier) start(ctx context.Context, a Action, res *Result) error {
 // under its own name, each only when tick has it and each once (a token_env may name one of the
 // others). The workflow token and every other variable of tick stay behind.
 func (ap applier) pusherEnv(repo string) []string {
+	return ap.scrubbedEnv(repo, true)
+}
+
+// scrubbedEnv is pusherEnv with the forge token only when token is set.
+func (ap applier) scrubbedEnv(repo string, token bool) []string {
 	if ap.env.Getenv == nil {
 		return nil
 	}
 	names := []string{"PATH", "HOME", "XDG_RUNTIME_DIR"}
-	if ap.env.TokenEnv != nil {
+	if token && ap.env.TokenEnv != nil {
 		if k := ap.env.TokenEnv(repo); !slices.Contains(names, k) {
 			names = append(names, k)
 		}
@@ -605,14 +610,14 @@ func (ap applier) pushRecover(ctx context.Context, a Action) error {
 	if lsRemote == nil {
 		lsRemote = gitLsRemote
 	}
-	sha, err := lsRemote(ctx, a.Worktree, a.Branch, ap.pusherEnv(a.Repo))
+	sha, err := lsRemote(ctx, a.Worktree, a.Branch, ap.scrubbedEnv(a.Repo, false))
 	switch {
 	case err != nil:
 		return ap.recoverReturn(ctx, a, run.ID, "reason_pusher_git_failed", oneLine(err.Error()))
 	case sha != a.PermitSHA:
 		return ap.recoverReturn(ctx, a, run.ID, "reason_pusher_answer_moved", clip(oneLine(a.AnswerText), 200))
 	}
-	body := protocol.RenderPushed(a.Issue, a.Worktree, a.Branch, "", "", a.After, "", a.Language)
+	body := protocol.RenderPushed(a.Issue, a.Worktree, a.Branch, "", "", a.After, a.Lane, a.Language)
 	if _, err := env.Forge(a.Repo).CreateComment(ctx, a.Issue, body); err != nil {
 		return ap.startFailed(ctx, run.ID, "post handoff", err)
 	}

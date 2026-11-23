@@ -361,10 +361,27 @@ func TestDecidePushRowIsNoSessionRetry(t *testing.T) {
 	}
 }
 
+// After a recovered answer (rocketed, its row Returned) and a Teruggegeven, a later `push` does
+// not start the pusher: the Teruggegeven is the last turn.
+func TestDecidePushAnswerAfterReturned(t *testing.T) {
+	in := pushQuestion(t, "gepushed")
+	withAfter(&in)
+	c := item7(&in).Comments
+	c[2].Rocket = true
+	item7(&in).Comments = append(c,
+		Comment{ID: 7172, Author: "lh-bot", CreatedAt: "2026-10-31T11:35:00Z", Body: "🤖 Teruggegeven\nreason: x"},
+		Comment{ID: 72, Author: "owner", CreatedAt: "2026-10-31T11:40:00Z", Body: "push"})
+	addRows(&in, runs.Row{ID: 9, Issue: 7, TriggerKey: "pushanswer:71", Command: "push-workflows", Outcome: runs.Returned})
+	item7(&in).Labels, in.Repos[0].Labels, item7(&in).Status = []string{"needs_hands"}, testLabels, "To do"
+	if s := summary(Decide(in)); !reflect.DeepEqual(s, []string{}) {
+		t.Fatalf("summary = %q, want no action", s)
+	}
+}
+
 // withAfter adds the after: field to the pusher Vraag, which is Comments[1] in pushQuestion.
 func withAfter(in *Input) {
 	c := &item7(in).Comments[1]
-	c.Body = strings.Replace(c.Body, "\nbranch: issue-7-bouw-de-keten\n", "\nbranch: issue-7-bouw-de-keten\nafter: /lighthouse-write-pr 7\n", 1)
+	c.Body = strings.Replace(c.Body, "\nbranch: issue-7-bouw-de-keten\n", "\nbranch: issue-7-bouw-de-keten\nafter: /lighthouse-write-pr 7\nlane: docs\n", 1)
 }
 
 func TestDecidePushAnswer(t *testing.T) {
@@ -378,11 +395,11 @@ func TestDecidePushAnswer(t *testing.T) {
 		{"push with case and a full stop", " Push. ", func(*Input) {}, []string{"push::"}},
 		{"other answer", "gepushed", func(in *Input) { withAfter(in) }, []string{"push_recover::"}},
 		{"other answer without after", "gepushed", func(*Input) {},
-			[]string{"return:reason_pusher_no_after:"}},
+			[]string{"return:reason_pusher_no_after:cd " + pushWorktree + " && git push -u origin HEAD"}},
 		{"push after other answer", "push", func(in *Input) {
 			withAfter(in)
 			c := item7(in).Comments
-			item7(in).Comments = append(c[:2], Comment{ID: 70 + 1, Author: "owner", CreatedAt: "2026-10-31T11:20:00Z", Body: "gepushed"}, Comment{ID: 72, Author: "owner", CreatedAt: "2026-10-31T11:40:00Z", Body: "push"})
+			item7(in).Comments = append(c[:2], Comment{ID: 71, Author: "owner", CreatedAt: "2026-10-31T11:20:00Z", Body: "gepushed"}, Comment{ID: 72, Author: "owner", CreatedAt: "2026-10-31T11:40:00Z", Body: "push"})
 		}, []string{"push::"}},
 		{"other answer, workflow push off", "gepushed", func(in *Input) {
 			withAfter(in)
@@ -415,7 +432,7 @@ func TestDecidePushAnswer(t *testing.T) {
 			}
 			if len(tt.want) > 0 && tt.want[0] == "push_recover::" {
 				a := got[0]
-				if a.PermitSHA != pushSHA || a.AnswerText != "gepushed" || a.After != "/lighthouse-write-pr 7" ||
+				if a.PermitSHA != pushSHA || a.AnswerText != "gepushed" || a.After != "/lighthouse-write-pr 7" || a.Lane != "docs" ||
 					a.Worktree != pushWorktree || a.Branch != "issue-7-bouw-de-keten" || a.CommentID != 71 ||
 					a.TriggerKey != "pushanswer:71" {
 					t.Errorf("action = %+v, want the Vraag's sha, worktree, branch and after, the answer text and id 71", a)

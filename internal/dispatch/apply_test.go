@@ -2869,7 +2869,7 @@ func pushRecoverAction() Action {
 	return Action{
 		Kind: KindPushRecover, Repo: applyRepo, Issue: 7, Trigger: triggerPushAnswer, TriggerKey: "pushanswer:71", Attempt: 1,
 		Command: cmdPush, Worktree: "/work/issue-7-x", Branch: "issue-7-x", CommentID: 71, Language: "nl",
-		PermitSHA: strings.Repeat("a", 40), AnswerText: "gepushed", After: "/lighthouse-write-pr 7",
+		PermitSHA: strings.Repeat("a", 40), AnswerText: "gepushed", After: "/lighthouse-write-pr 7", Lane: "docs",
 	}
 }
 
@@ -2891,12 +2891,12 @@ func TestApplyPushRecoverBranchOnSHA(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
-	wantAsked := []string{"/work/issue-7-x issue-7-x PATH=/usr/bin,HOME=/home/u,XDG_RUNTIME_DIR=/run/user/1,GH_TOKEN=forge-tok"}
+	wantAsked := []string{"/work/issue-7-x issue-7-x PATH=/usr/bin,HOME=/home/u,XDG_RUNTIME_DIR=/run/user/1"}
 	if !reflect.DeepEqual(asked, wantAsked) {
 		t.Errorf("ls-remote asked %q, want %q", asked, wantAsked)
 	}
 	p := h.poster(applyRepo)
-	wantBody := "🤖 Handoff\nissue: #7\nworktree: /work/issue-7-x\nbranch: issue-7-x\nnext: /lighthouse-write-pr 7\nwhen: now\nrange: \nworkflows: "
+	wantBody := "🤖 Handoff\nissue: #7\nworktree: /work/issue-7-x\nbranch: issue-7-x\nnext: /lighthouse-write-pr 7\nwhen: now\nlane: docs\nrange: \nworkflows: "
 	if !reflect.DeepEqual(p.bodies, []string{wantBody}) {
 		t.Errorf("posted %q, want %q", p.bodies, wantBody)
 	}
