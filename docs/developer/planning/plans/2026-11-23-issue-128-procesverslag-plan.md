@@ -22,7 +22,7 @@
 
 - Een foute `[report]` laat `Load` niet falen (docs/report.md): een test op de eigen `lighthouse.toml` moet `ReportErr == nil` eisen, anders blijft een typefout onopgemerkt tot `lighthouse report` draait.
 - `dir` zonder bestaande map: de generator maakt `docs/developer/verslag/day/` zelf aan; de map hoeft er niet te zijn. De README staat er wel, dus de map bestaat.
-- #102 is geen bestand in de repo (de kaart/systeemkaart); AC3 wordt daarom gelezen als de roadmap van `strategie.md`. Dit staat in de README zelf vastgelegd.
+- #102 is de systeemkaart (`docs/site/system.html`), die volgens haar eigen acceptatiecriteria geen roadmap bevat; AC3 wordt daarom gelezen als de roadmap van `strategie.md` (N2). Dit staat in de README zelf vastgelegd.
 - Het commando commit niets en er is geen `[[schedule]]` voor het verslag; de README zegt dat een mens of een latere taak het bestand commit.
 
 ---
@@ -34,14 +34,14 @@
 - Test: `internal/repoconfig/repo_own_report_test.go`
 
 **Interfaces:**
-- Consumes: `repoconfig.Load(path string) (*Repo, error)` met `Report` en `ReportErr` (internal/repoconfig/repoconfig.go:37-40); de helper `repoRoot(t)` uit `internal/repopins/repo_test.go:15` is een voorbeeld voor het vinden van de repo-root, kopieer het patroon (loop omhoog tot `go.mod`).
+- Consumes: `repoconfig.Load(dir string) (Repo, error)` (leest `<dir>/lighthouse.toml`; `LoadFile(path)` is de pad-variant) met `Report` en `ReportErr` (internal/repoconfig/repoconfig.go:37-40); de helper `repoRoot(t)` uit `internal/repopins/repo_test.go:15` is een voorbeeld voor het vinden van de repo-root, kopieer het patroon (loop omhoog tot `go.mod`).
 - Produces: `[report]` met `enabled = true`, `sink = "file"`, `dir = "docs/developer/verslag"`.
 
-- [ ] **Step 1: Schrijf de falende test** `TestOwnLighthouseTomlEnablesReport` in `internal/repoconfig/repo_own_report_test.go`: laadt `<repo-root>/lighthouse.toml` en eist `ReportErr == nil` en `Report == Report{Enabled: true, Sink: "file", Dir: "docs/developer/verslag"}`. Vang een `Load`-fout met `t.Fatalf`.
+- [ ] **Step 1: Schrijf de falende test** `TestOwnLighthouseTomlEnablesReport` in `internal/repoconfig/repo_own_report_test.go`: laadt met `Load(repoRoot(t))` (de map, niet het bestand) de `lighthouse.toml` en eist `ReportErr == nil` en `Report == Report{Enabled: true, Sink: "file", Dir: "docs/developer/verslag"}`. Vang een `Load`-fout met `t.Fatalf`. Stap 2 moet falen op `Enabled == false`, niet op een laadfout.
 - [ ] **Step 2: Draai** `go test ./internal/repoconfig/ -run TestOwnLighthouseTomlEnablesReport` — verwacht FAIL (`Enabled` false).
 - [ ] **Step 3: Voeg de tabel toe** in `lighthouse.toml`, met een commentaarregel erboven in de stijl van de andere tabellen: `# Het procesverslag van lighthouse zelf (docs/report.md, docs/developer/verslag/README.md).`, dan de drie sleutels hierboven.
 - [ ] **Step 4: Draai** dezelfde test — verwacht PASS. Draai ook `node --test "docs/site/test/*.test.mjs"` (de gate doet dat bij een wijziging in `lighthouse.toml`) — verwacht groen.
-- [ ] **Step 5: Commit** `feat(report): dagverslag aan in de eigen lighthouse.toml (#128)`; draai eerst `lighthouse imports check`.
+- [ ] **Step 5: Commit** `feat(report): dagverslag aan in de eigen lighthouse.toml (#128)`; draai eerst `go run ./cmd/lighthouse imports check` (niet de `lighthouse` op `PATH`: die kan achterlopen op de checkout en weigert dan het manifest). Meldt het `COULD NOT CHECK — node_modules missing in web`, draai dan `cd web && npm ci` en herhaal; blijft het `COULD NOT CHECK`, noteer dat in de PR en commit toch.
 
 ### Task 2: Vaste plek en kruislinks
 
@@ -57,8 +57,8 @@
 - [ ] **Step 1: Schrijf `docs/developer/verslag/README.md`** (Nederlands) met: wat dit is (laag 2: het procesverslag van lighthouse zelf, boven de tickets; laag 1 is de tool, laag 3 de showcase, die buiten #128 valt: #89 en #93); waar de gegenereerde verslagen staan (`day/`, `week/`, `month/` onder deze map, `<label>.md`) en hoe ze komen (`lighthouse report day`; het commando commit niets, een mens commit het bestand); een link naar `de roadmap` (`../strategie.md#roadmap`) met de zin dat de roadmap de milestones in rangorde op de forge zijn en er bewust geen roadmapdocument is (N2 in `../areas/meta.md`); een link naar `lighthouse report` (`../../report.md`).
 - [ ] **Step 2: Link terug.** In `docs/developer/strategie.md` onder `## Roadmap` een zin: het verslag van wat er gebeurd is staat bij `het procesverslag` (`verslag/README.md`).
 - [ ] **Step 3: Link vanuit `docs/report.md`.** Onder *Aanzetten* één zin: de eigen configuratie van lighthouse staat in `lighthouse.toml` en schrijft naar `het procesverslag` (`developer/verslag/README.md`).
-- [ ] **Step 4: Verifieer de links.** De hook `md-link-check` blokkeert een kapotte link bij het schrijven; draai daarnaast `go run ./cmd/lighthouse init --upgrade` — verwacht `No changes.`
-- [ ] **Step 5: Verifieer het commando.** `go run ./cmd/lighthouse report day --repo .` met `GH_TOKEN` — verwacht een bestand `docs/developer/verslag/day/<datum>.md`. Is er geen token, noteer dan `niet gemeten: geen token` in de PR; commit het gegenereerde bestand niet.
+- [ ] **Step 4: Verifieer de links.** De hook `md-link-check` blokkeert een kapotte link bij het schrijven; draai daarnaast `go run ./cmd/lighthouse init --upgrade` (dogfood-drift, geen linkcontrole) — verwacht `No changes.`; de hook negeert ankers, controleer met `grep -n '^## Roadmap' docs/developer/strategie.md` dat `#roadmap` bestaat
+- [ ] **Step 5: Verifieer het commando.** `go run ./cmd/lighthouse report day --repo .` met `GH_TOKEN` — verwacht een bestand `docs/developer/verslag/day/<datum>.md`. De proef is best-effort: is er geen token, of faalt het commando door credential, netwerk, rate limit of forgestoring, noteer dan `niet gemeten: <reden>` in de PR en ga door. Verwijder daarna het gegenereerde bestand en de lege `day/`-map (`rm -rf docs/developer/verslag/day`) en controleer met `git status --short` dat er niets ongecommitteerds resteert.
 - [ ] **Step 6: Commit** `docs(report): vaste plek voor het procesverslag met kruislinks naar de roadmap (#128)`.
 
 ### Task 3: Changelog
