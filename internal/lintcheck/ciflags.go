@@ -144,6 +144,11 @@ func (r resolver) actionCalls(s Step) []found {
 		if strings.TrimSpace(s.With["install-only"]) == "true" {
 			return nil
 		}
+		if v := strings.TrimSpace(s.With["only-new-issues"]); v != "" && v != "false" {
+			// a ratchet: findings outside the diff never fail the step
+			return []found{{Call: Call{Step: s, Linter: r.linter, Verdict: Unrecognised,
+				Reason: "step not recognised: only-new-issues hides findings from the exit status"}, dir: workDir(s)}}
+		}
 	default:
 		return nil
 	}
@@ -584,7 +589,7 @@ func (r resolver) judgeRuff(args []string, dir string) (Verdict, string) {
 		"--extend-select": true, "--output-format": true, "--target-version": true, "--line-length": true}
 	for _, f := range parseFlags(args, takes) {
 		switch f.name {
-		case "--exit-zero", "-e", "--fix", "--fix-only":
+		case "--exit-zero", "-e", "--fix", "--fix-only", "--diff", "--add-noqa", "--watch", "-w":
 			return Unrecognised, "step not recognised: " + f.name + " hides findings from the exit status"
 		case "--isolated":
 			return Narrowed, "CI flag --isolated drops the config"
@@ -622,9 +627,13 @@ func (r resolver) judgeRuff(args []string, dir string) (Verdict, string) {
 
 func (r resolver) judgeGolangci(args []string, dir string) (Verdict, string) {
 	takes := map[string]bool{"--disable": true, "-D": true, "--enable-only": true, "--default": true,
-		"--config": true, "-c": true, "--issues-exit-code": true, "--enable": true, "-E": true, "--timeout": true}
+		"--config": true, "-c": true, "--issues-exit-code": true, "--enable": true, "-E": true, "--timeout": true,
+		"--new-from-rev": true, "--new-from-merge-base": true, "--new-from-patch": true}
 	for _, f := range parseFlags(args, takes) {
 		switch f.name {
+		case "--new", "-n", "--new-from-rev", "--new-from-merge-base", "--new-from-patch":
+			// a ratchet: only findings in new code fail the step
+			return Unrecognised, "step not recognised: " + f.name + " hides findings from the exit status"
 		case "--issues-exit-code":
 			if strings.TrimSpace(f.value) == "0" {
 				return Unrecognised, "step not recognised: --issues-exit-code=0 hides findings from the exit status"
