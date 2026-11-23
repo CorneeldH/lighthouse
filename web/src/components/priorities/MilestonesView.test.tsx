@@ -136,7 +136,7 @@ describe('MilestonesView', () => {
     expect(b.getAttribute('target')).toBe('_blank')
   })
 
-  it('shows #nr in a block from MIN_LABEL_WIDTH on, and only the hover title below it', () => {
+  it('shows the number in a block from MIN_LABEL_WIDTH on, and only the hover title below it', () => {
     // Two blocks with a 2 px gap: (58 - 2) / 2 = 28 px each, (57 - 2) / 2 = 27.5 px each.
     const r = repo(A, [iss(1, 1), iss(2, 1)], [ms(1, 0, 2)])
     barWidth = 58
