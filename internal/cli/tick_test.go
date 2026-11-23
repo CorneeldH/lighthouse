@@ -1593,6 +1593,22 @@ func TestTickDeferredTitle(t *testing.T) {
 	}
 }
 
+// A start that apply finds busy (another session works in the workspace) is no run and no
+// action of Decide, but the Queue shows it with its reason and title.
+func TestTickBusyWorkplaceSavedAsDeferred(t *testing.T) {
+	env, db := tickFixture(t, repoDir(t, completeRepo))
+	_, w := startable(t, &env)
+	w.sessions["ws-issue-7-issue"] = []workplace.Session{{Key: "other", WorkspaceID: "ws-issue-7-issue", State: "working", SessionID: "x"}}
+	var errOut bytes.Buffer
+	if err := tick(context.Background(), env, db, &errOut); err != nil {
+		t.Fatalf("tick = %v\n%s", err, errOut.String())
+	}
+	_, dv := loadView(t, db)
+	if len(dv) != 1 || dv[0].Issue != 7 || dv[0].Title != "Issue" || !strings.HasPrefix(dv[0].Reason, "workplace busy: session other") {
+		t.Errorf("deferred = %+v, want issue 7 titled \"Issue\" with a workplace busy reason", dv)
+	}
+}
+
 const (
 	ws945     = "d7c0b0ea0de54804"
 	branch945 = "work-issue-945-immich-smart-search-191b7750"

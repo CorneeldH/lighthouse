@@ -297,6 +297,36 @@ func TestRunsList(t *testing.T) {
 	}
 }
 
+// A busy workplace shows in /api/runs as a deferred row, and a question answered only by an
+// author the repo does not trust stays in /api/questions.
+func TestRunsDeferredAndUntrustedAnswerStayVisible(t *testing.T) {
+	at := time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC)
+	src := fakeSource{
+		issues: []forge.Issue{{Number: 1, Title: "one", URL: "https://x/issues/1", Comments: 2}},
+		comments: map[int][]protocol.Comment{1: {
+			{Body: "🤖 Question\n\nWhich port?", CreatedAt: "2026-01-01T00:00:00Z", URL: "https://x/c1"},
+			{Author: "stranger", Body: "8080", CreatedAt: "2026-01-02T00:00:00Z"},
+		}},
+	}
+	d := testDeps(src, nil)
+	repos := d.Forge
+	repos[0].NewTrusted = func() overview.Trusted {
+		return func(context.Context, string) (bool, error) { return false, nil }
+	}
+	d.Runs = func(context.Context) ([]dispatch.RunView, []dispatch.DeferredView, error) {
+		return nil, []dispatch.DeferredView{{Repo: "o/r", Issue: 1, Title: "one", Reason: "workplace busy: session other", At: at}}, nil
+	}
+	h := New(testSite(), d)
+	rec := get(h, "/api/runs")
+	if got := string(decode(t, rec.Body.Bytes())["deferred"]); !strings.Contains(got, `"reason":"workplace busy: session other"`) {
+		t.Errorf("deferred = %s, want the busy workplace", got)
+	}
+	rec = get(h, "/api/questions")
+	if n := listLen(t, rec.Body.Bytes(), "questions"); n != 1 {
+		t.Errorf("questions = %s, want the question open", rec.Body)
+	}
+}
+
 // AC 4 (#121): GET /api/runs lists two open scheduled runs of one repo in the same list as an
 // issue run, each with its schedule, and a scheduled deferral in the deferred list.
 func TestRunsListScheduled(t *testing.T) {

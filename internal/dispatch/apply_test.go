@@ -640,6 +640,19 @@ func TestApplyBusyDefers(t *testing.T) {
 	}
 }
 
+func TestApplyBusyIsDeferredAction(t *testing.T) {
+	h := newHarness(t)
+	h.wp.sessions = []workplace.Session{{Key: "other", WorkspaceID: "ws-issue-7-x", State: "working", SessionID: "x"}}
+	res, err := Apply(context.Background(), h.env, []Action{startAction()})
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	want := []Action{{Kind: KindDefer, Repo: applyRepo, Issue: 7, Reason: "workplace busy: session other, working since unknown"}}
+	if !reflect.DeepEqual(res.DeferredActions, want) {
+		t.Errorf("DeferredActions = %+v, want %+v", res.DeferredActions, want)
+	}
+}
+
 func TestApplyOwnClosedSessionIsNotBusy(t *testing.T) {
 	h := newHarness(t)
 	id := h.seed(t, 7, oldSession, "start:7", "")

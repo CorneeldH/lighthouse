@@ -483,7 +483,9 @@ func decideAndApply(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig
 		return false, fmt.Errorf("tick: %w", err)
 	}
 	for _, g := range gathered {
-		defers := repoDefers(actions, g.repo.Slug)
+		// What Decide deferred plus what apply found out, such as a busy workplace; a key in both
+		// is one row.
+		defers := append(repoDefers(actions, g.repo.Slug), repoDefers(res.DeferredActions, g.repo.Slug)...)
 		titles := make(map[int]string, len(g.in.Snapshot.Items))
 		for _, it := range g.in.Snapshot.Items {
 			titles[it.Issue] = it.Title

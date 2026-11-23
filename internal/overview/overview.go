@@ -64,7 +64,14 @@ type RepoSource struct {
 	Controller bool
 	// Labels are the blocking label names of the repo, for the prioritisation view.
 	Labels repoconfig.Labels
+	// NewTrusted returns, per Build, a fresh check of whether a comment author may answer a
+	// question. It is a factory because dispatch.Trust is not safe for concurrent use and
+	// keeps the role of a login for as long as it lives. Nil trusts every author.
+	NewTrusted func() Trusted
 }
+
+// Trusted reports whether login may steer the dispatcher; an error fails the overview.
+type Trusted func(ctx context.Context, login string) (bool, error)
 
 // BuildAll runs Build per repo, in the order given, and sets Repo on every item. The first
 // failure fails the whole overview and names its repo; with no repos it returns
@@ -99,7 +106,11 @@ func BuildAll(ctx context.Context, repos []RepoSource) (Overview, error) {
 				}
 			}
 		}
-		o, err := Build(ctx, r.Src, in)
+		var trusted Trusted
+		if r.NewTrusted != nil {
+			trusted = r.NewTrusted()
+		}
+		o, err := Build(ctx, r.Src, in, trusted)
 		if err != nil {
 			return Overview{}, fmt.Errorf("%s: %w", r.Slug, err)
 		}
@@ -125,8 +136,10 @@ type entry[T any] struct {
 
 // Build lists the open questions and returned issues, oldest header comment first. With a
 // non-nil in only the issues it names count, and no comments are read for the
-// others. Any failure fails the whole build: a partial list would hide issues.
-func Build(ctx context.Context, src forge.Forge, in map[int]bool) (Overview, error) {
+// others. A question whose every answer is by an untrusted author stays open: the
+// dispatcher ignores such an answer too, so the overview must still ask for one; a nil trusted
+// trusts everyone. Any failure fails the whole build: a partial list would hide issues.
+func Build(ctx context.Context, src forge.Forge, in map[int]bool, trusted Trusted) (Overview, error) {
 	issues, err := src.OpenIssues(ctx)
 	if err != nil {
 		return Overview{}, err
@@ -144,6 +157,21 @@ func Build(ctx context.Context, src forge.Forge, in map[int]bool) (Overview, err
 	statuses, err := fetchStatuses(ctx, src, issues)
 	if err != nil {
 		return Overview{}, err
+	}
+	// After the goroutines of fetchStatuses: a Trusted caches and is not concurrency-safe.
+	if trusted != nil {
+		for i := range statuses {
+			if statuses[i].State != protocol.StateOther || len(statuses[i].Answers) == 0 {
+				continue
+			}
+			ok, err := anyTrusted(ctx, trusted, statuses[i].Answers)
+			if err != nil {
+				return Overview{}, err
+			}
+			if !ok {
+				statuses[i].State = protocol.StateQuestion
+			}
+		}
 	}
 
 	var questions []entry[Question]
@@ -174,6 +202,20 @@ func Build(ctx context.Context, src forge.Forge, in map[int]bool) (Overview, err
 	}
 
 	return Overview{Questions: sorted(questions), Returned: sorted(returned)}, nil
+}
+
+// anyTrusted reports whether one of the comments is by a trusted author.
+func anyTrusted(ctx context.Context, trusted Trusted, comments []protocol.Comment) (bool, error) {
+	for _, c := range comments {
+		ok, err := trusted(ctx, c.Author)
+		if err != nil {
+			return false, err
+		}
+		if ok {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // sorted orders oldest comment first, lowest issue number on a tie, and never returns nil.

@@ -127,7 +127,7 @@ func (ap applier) mergeScheduled(ctx context.Context, a Action, res *Result) err
 	var refused *forge.MergeRefused
 	switch {
 	case errors.Is(err, forge.ErrHeadMoved):
-		res.Deferred = append(res.Deferred, deferral(a, fmt.Sprintf("merge of PR #%d skipped: head moved", a.PR)))
+		res.postpone(a, fmt.Sprintf("merge of PR #%d skipped: head moved", a.PR))
 		return nil
 	case errors.As(err, &refused):
 		return ap.endScheduled(ctx, a, r, runs.Failed, "merge refused: "+oneLine(refused.Message), a.PR)

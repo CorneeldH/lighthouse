@@ -78,11 +78,21 @@ type PusherSpec struct {
 	HeadSHA string
 }
 
+// postpone records a deferral of a, for the log line and for the Queue.
+func (r *Result) postpone(a Action, reason string) {
+	r.Deferred = append(r.Deferred, deferral(a, reason))
+	r.DeferredActions = append(r.DeferredActions, Action{Kind: KindDefer, Repo: a.Repo, Issue: a.Issue,
+		Schedule: a.Schedule, Slot: a.Slot, Reason: reason})
+}
+
 // Result is what one Apply did.
 type Result struct {
-	Deferred []string         // "<repo>#<n>: <reason>"
-	Failed   map[string]error // per repo: the joined errors of its actions; absent = no error
-	Started  int              // launches that were accepted or are uncertain
+	Deferred []string // "<repo>#<n>: <reason>"
+	// DeferredActions is every Deferred entry as a KindDefer action (Repo, Issue, Schedule,
+	// Reason), so the tick can show a deferral that only apply found, such as a busy workplace.
+	DeferredActions []Action
+	Failed          map[string]error // per repo: the joined errors of its actions; absent = no error
+	Started         int              // launches that were accepted or are uncertain
 	// NotAccepted is "<repo>#<n>" per launch the workplace refused; its run is closed as
 	// start_failed, its Started stays, and a Returned with the reason follows (a usage resume:
 	// only after its second attempt).
@@ -172,7 +182,7 @@ func (ap applier) apply(ctx context.Context, a Action, res *Result) error {
 		// A stranded handoff or question: post the body again and leave the run open. A failed
 		// post is a deferral, so the next tick gathers and reposts; it is no action error.
 		if _, err := ap.env.Forge(a.Repo).CreateComment(ctx, a.Issue, a.Body); err != nil {
-			res.Deferred = append(res.Deferred, deferral(a, fmt.Sprintf("repost run %d: %s", a.RunID, oneLine(err.Error()))))
+			res.postpone(a, fmt.Sprintf("repost run %d: %s", a.RunID, oneLine(err.Error())))
 		}
 		return nil
 	case KindPush:
@@ -189,7 +199,7 @@ func (ap applier) apply(ctx context.Context, a Action, res *Result) error {
 	case KindRocket:
 		return ap.env.Forge(a.Repo).Acknowledge(ctx, a.Issue, a.CommentID)
 	case KindDefer:
-		res.Deferred = append(res.Deferred, deferral(a, a.Reason))
+		res.postpone(a, a.Reason)
 		return nil
 	case KindPark:
 		// The comment first: a failed label or board change leaves a Parked that the next tick
@@ -221,7 +231,7 @@ func (ap applier) merge(ctx context.Context, a Action, res *Result) error {
 	var refused *forge.MergeRefused
 	switch {
 	case errors.Is(err, forge.ErrHeadMoved):
-		res.Deferred = append(res.Deferred, deferral(a, fmt.Sprintf("merge of PR #%d skipped: head moved", a.PR)))
+		res.postpone(a, fmt.Sprintf("merge of PR #%d skipped: head moved", a.PR))
 		return nil
 	case errors.As(err, &refused):
 		if err := runs.NoteMergeFailed(ctx, ap.env.DB, a.RunID, a.HeadSHA, refused.Message); err != nil {
@@ -409,7 +419,7 @@ func (ap applier) start(ctx context.Context, a Action, res *Result) error {
 	}
 	if busy != "" {
 		err := ap.returnFixPR(ctx, a, nil)
-		res.Deferred = append(res.Deferred, deferral(a, busy))
+		res.postpone(a, busy)
 		return err
 	}
 
