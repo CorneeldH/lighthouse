@@ -33,7 +33,7 @@ func pinned(linter string, steps ...Step) []Step {
 
 func TestCallsRecognition(t *testing.T) {
 	scripts := map[string]map[string]string{
-		".":   {"lint": "eslint .", "build": "tsc", "lint:fix": "eslint . --fix", "masked": "eslint . || true"},
+		".":   {"lint": "eslint .", "build": "tsc", "version": "eslint --version", "lint:fix": "eslint . --fix", "masked": "eslint . || true"},
 		"web": {"lint": "expo lint"},
 	}
 	cases := []struct {
@@ -85,6 +85,36 @@ func TestCallsRecognition(t *testing.T) {
 		{"multi-line run", "ruff", pinned("ruff", ghStep("echo one\n\nruff check src/\necho two\n")), 1, Valid},
 		{"env assignment prefix", "ruff", pinned("ruff", ghStep("RUFF_OUTPUT_FORMAT=github ruff check")), 1, Valid},
 		{"find -exec is not placed", "shellcheck", pinned("shellcheck", ghStep("find . -name '*.sh' -exec shellcheck {} +")), 1, Unrecognised},
+		// commands that only look the tool up or print information lint nothing
+		{"command -v shellcheck", "shellcheck", pinned("shellcheck", ghStep("command -v shellcheck")), 0, NotFound},
+		{"command -V eslint", "eslint", pinned("eslint", ghStep("command -V eslint")), 0, NotFound},
+		{"command -v ruff", "ruff", pinned("ruff", ghStep("command -v ruff check")), 0, NotFound},
+		{"command runs the linter", "ruff", pinned("ruff", ghStep("command ruff check")), 1, Valid},
+		{"type shellcheck", "shellcheck", pinned("shellcheck", ghStep("type shellcheck")), 0, NotFound},
+		{"which eslint", "eslint", pinned("eslint", ghStep("which eslint")), 0, NotFound},
+		{"hash shellcheck", "shellcheck", pinned("shellcheck", ghStep("hash shellcheck")), 0, NotFound},
+		{"shellcheck --help", "shellcheck", pinned("shellcheck", ghStep("shellcheck --help")), 0, NotFound},
+		{"shellcheck -V", "shellcheck", pinned("shellcheck", ghStep("shellcheck -V")), 0, NotFound},
+		{"shellcheck-repo.sh --help", "shellcheck", []Step{ghStep(".lighthouse/scripts/shellcheck-repo.sh --help")}, 0, NotFound},
+		{"eslint --version", "eslint", pinned("eslint", ghStep("eslint --version")), 0, NotFound},
+		{"npx eslint --version", "eslint", pinned("eslint", ghStep("npx eslint --version")), 0, NotFound},
+		{"eslint -v", "eslint", pinned("eslint", ghStep("eslint -v")), 0, NotFound},
+		{"eslint --help", "eslint", pinned("eslint", ghStep("eslint --help")), 0, NotFound},
+		{"eslint -h", "eslint", pinned("eslint", ghStep("eslint -h")), 0, NotFound},
+		{"eslint --print-config", "eslint", pinned("eslint", ghStep("eslint --print-config src/a.js")), 0, NotFound},
+		{"eslint --env-info", "eslint", pinned("eslint", ghStep("eslint --env-info")), 0, NotFound},
+		{"eslint --init", "eslint", pinned("eslint", ghStep("eslint --init")), 0, NotFound},
+		{"expo lint --help", "eslint", pinned("eslint", ghStep("npx expo lint --help")), 0, NotFound},
+		{"npm script eslint --version", "eslint", pinned("eslint", ghStep("npm run version")), 0, NotFound},
+		{"npm run lint -- --version", "eslint", pinned("eslint", ghStep("npm run lint -- --version")), 0, NotFound},
+		{"ruff check --help", "ruff", pinned("ruff", ghStep("ruff check --help")), 0, NotFound},
+		{"ruff check -h", "ruff", pinned("ruff", ghStep("ruff check -h")), 0, NotFound},
+		{"ruff check --show-settings", "ruff", pinned("ruff", ghStep("ruff check --show-settings")), 0, NotFound},
+		{"ruff check --show-files", "ruff", pinned("ruff", ghStep("ruff check --show-files")), 0, NotFound},
+		{"golangci-lint run --help", "golangci-lint", pinned("golangci-lint", ghStep("golangci-lint run --help")), 0, NotFound},
+		{"golangci-lint run -h", "golangci-lint", pinned("golangci-lint", ghStep("golangci-lint run -h")), 0, NotFound},
+		{"ruff action args --help", "ruff", []Step{{Uses: "astral-sh/ruff-action@v3", With: map[string]string{"version": "0.9.0", "args": "check --help"}}}, 0, NotFound},
+		{"golangci action args --help", "golangci-lint", []Step{{Uses: "golangci/golangci-lint-action@v9", With: map[string]string{"version": "v2.15.0", "args": "--help"}}}, 0, NotFound},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

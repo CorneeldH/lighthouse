@@ -143,6 +143,9 @@ func (r resolver) actionCalls(s Step) []found {
 	default:
 		return nil
 	}
+	if infoOnly(r.linter, args) {
+		return nil
+	}
 	c := Call{Step: s, Linter: r.linter, Args: args, Verdict: Valid}
 	if why := stepGate(s); why != "" {
 		c.Verdict, c.Reason = Unrecognised, why
@@ -221,30 +224,15 @@ func (r resolver) match(words []string, dir string, follow bool) []match {
 	if len(argv) == 0 {
 		return nil
 	}
+	if args, ok := r.direct(argv); ok {
+		if infoOnly(r.linter, args) {
+			return nil // prints help, a version or settings: lints nothing
+		}
+		return []match{{args: args, dir: dir}}
+	}
 	name := binName(argv[0])
 	switch r.linter {
-	case "ruff":
-		if name == "ruff" && len(argv) > 1 && argv[1] == "check" {
-			return []match{{args: argv[2:], dir: dir}}
-		}
-	case "golangci-lint":
-		if name == "golangci-lint" && len(argv) > 1 && argv[1] == "run" {
-			return []match{{args: argv[2:], dir: dir}}
-		}
-	case "shellcheck":
-		if name == "shellcheck" && !hasAny(argv[1:], "--version", "-V") {
-			return []match{{args: argv[1:], dir: dir}}
-		}
-		if name == "shellcheck-repo.sh" && !hasAny(argv[1:], "--check-floor") {
-			return []match{{args: argv[1:], dir: dir}}
-		}
 	case "eslint":
-		if name == "eslint" {
-			return []match{{args: argv[1:], dir: dir}}
-		}
-		if name == "expo" && len(argv) > 1 && argv[1] == "lint" {
-			return []match{{args: argv[2:], dir: dir}}
-		}
 		if script, extra, sdir, ok := scriptRun(argv, dir); ok {
 			if !follow {
 				return nil
@@ -256,6 +244,48 @@ func (r resolver) match(words []string, dir string, follow bool) []match {
 		return []match{{dir: dir, unplaced: "step not recognised: call through " + name}}
 	}
 	return nil
+}
+
+// direct recognises a call of the linter itself and returns its arguments after the subcommand.
+func (r resolver) direct(argv []string) ([]string, bool) {
+	name := binName(argv[0])
+	sub := ""
+	if len(argv) > 1 {
+		sub = argv[1]
+	}
+	switch {
+	case r.linter == "ruff" && name == "ruff" && sub == "check",
+		r.linter == "golangci-lint" && name == "golangci-lint" && sub == "run",
+		r.linter == "eslint" && name == "expo" && sub == "lint":
+		return argv[2:], true
+	case r.linter == "shellcheck" && (name == "shellcheck" || name == "shellcheck-repo.sh"),
+		r.linter == "eslint" && name == "eslint":
+		return argv[1:], true
+	}
+	return nil, false
+}
+
+// infoFlags are the options with which a linter prints information and lints nothing.
+var infoFlags = map[string][]string{
+	"ruff":          {"--help", "-h", "--show-settings", "--show-files"},
+	"golangci-lint": {"--help", "-h"},
+	"shellcheck":    {"--help", "--version", "-V", "--check-floor"}, // --check-floor: shellcheck-repo.sh probes the floor
+	"eslint":        {"--version", "-v", "--help", "-h", "--print-config", "--env-info", "--init"},
+}
+
+func infoOnly(linter string, args []string) bool {
+	for _, a := range args {
+		if a == "--" {
+			return false
+		}
+		if j := strings.IndexByte(a, '='); j > 0 && strings.HasPrefix(a, "--") {
+			a = a[:j]
+		}
+		if hasAny([]string{a}, infoFlags[linter]...) {
+			return true
+		}
+	}
+	return false
 }
 
 // followScript recognises the linter in a package.json script. npm runs it with `sh -c`, without
@@ -280,6 +310,9 @@ func (r resolver) followScript(name string, extra []string, dir string) []match 
 					m.unplaced = why + " (package.json script " + name + ")"
 				}
 				m.args = append(append([]string{}, m.args...), extra...)
+				if infoOnly(r.linter, m.args) {
+					continue // the passed-on arguments make it print information only
+				}
 			}
 			out = append(out, m)
 		}
@@ -409,6 +442,8 @@ func unwrap(w []string) ([]string, bool) {
 			rest = rest[1:]
 		}
 		return rest, true
+	case name == "command" && (sub == "-v" || sub == "-V"):
+		return nil, true // looks the command up, runs nothing
 	case name == "sudo" || name == "time" || name == "command" || name == "exec" || name == "nice" || name == "nohup":
 		return skipFlags(w[1:]), true
 	case name == "timeout":
