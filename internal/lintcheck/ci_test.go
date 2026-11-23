@@ -156,3 +156,62 @@ func TestStepsReadsYamlExtension(t *testing.T) {
 		t.Fatalf("got %v, %v", got, err)
 	}
 }
+
+// Classification: ci-parse. Fails when an alias or a merge key on a key the check reads is not
+// resolved: the value is then empty and the step counts as if the key were absent (a silent green).
+func TestStepsResolvesAliasesAndMergeKeys(t *testing.T) {
+	got := stepsOf(t, map[string]string{
+		wf + "a.yml": `on: push
+env:
+  SOFT: &soft true
+  OFF: &off false
+  SHELL: &sh bash {0}
+jobs:
+  coe:
+    runs-on: ubuntu-latest
+    steps:
+      - run: ruff check
+        continue-on-error: *soft
+  off:
+    runs-on: ubuntu-latest
+    if: *off
+    steps:
+      - run: ruff check
+  merged:
+    <<: {runs-on: ubuntu-latest, continue-on-error: *soft}
+    steps:
+      - &st
+        run: ruff check
+        shell: *sh
+      - *st
+`,
+	})
+	if len(got) != 4 {
+		t.Fatalf("got %+v", got)
+	}
+	if got[0].ContinueOnError != "true" {
+		t.Errorf("step continue-on-error alias: %q", got[0].ContinueOnError)
+	}
+	if !got[1].IfFalse {
+		t.Error("job if alias to false not marked")
+	}
+	if got[2].RunsOn != "ubuntu-latest" || got[2].JobContinueOnError != "true" {
+		t.Errorf("merge key on job: %+v", got[2])
+	}
+	if got[2].Shell != "bash {0}" || got[3].Run != "ruff check" || got[3].Shell != "bash {0}" {
+		t.Errorf("aliased step: %+v / %+v", got[2], got[3])
+	}
+}
+
+// Classification: ci-parse. Fails when a GitLab job that takes allow_failure from a YAML merge key
+// counts as wired.
+func TestGitLabMergeKeyAllowFailure(t *testing.T) {
+	root := writeRepo(t, map[string]string{".gitlab-ci.yml": ".t: &t\n  allow_failure: true\nlint:\n  <<: *t\n  script:\n    - pip install ruff==0.9.0\n    - ruff check\n"})
+	steps, err := Steps(root, "gitlab")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(steps) != 1 || !steps[0].AllowFailure {
+		t.Fatalf("got %+v", steps)
+	}
+}

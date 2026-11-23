@@ -142,11 +142,11 @@ func loadWorkflow(root, file string) (*workflow, error) {
 			w.on[on.Value] = true
 		case yaml.SequenceNode:
 			for _, n := range on.Content {
-				w.on[n.Value] = true
+				w.on[scalar(n)] = true
 			}
 		case yaml.MappingNode:
-			for i := 0; i+1 < len(on.Content); i += 2 {
-				w.on[on.Content[i].Value] = true
+			for _, p := range mapPairs(on) {
+				w.on[p[0].Value] = true
 			}
 		}
 	}
@@ -168,13 +168,9 @@ type jobNode struct {
 }
 
 func jobs(top *yaml.Node) []jobNode {
-	m := mapGet(top, "jobs")
-	if m == nil || m.Kind != yaml.MappingNode {
-		return nil
-	}
 	var out []jobNode
-	for i := 0; i+1 < len(m.Content); i += 2 {
-		out = append(out, jobNode{m.Content[i].Value, m.Content[i+1]})
+	for _, p := range mapPairs(mapGet(top, "jobs")) {
+		out = append(out, jobNode{p[0].Value, p[1]})
 	}
 	return out
 }
@@ -197,8 +193,10 @@ func (w *workflow) steps() []Step {
 		jobCoE := scalar(mapGet(j.node, "continue-on-error"))
 		jobIfFalse := literalFalse(scalar(mapGet(j.node, "if")))
 		for i, sn := range seq.Content {
+			line := sn.Line
+			sn = resolve(sn)
 			s := Step{
-				File: w.file, Job: j.name, Index: i, Line: sn.Line,
+				File: w.file, Job: j.name, Index: i, Line: line,
 				Run: scalar(mapGet(sn, "run")), Uses: scalar(mapGet(sn, "uses")),
 				With:    stringMap(mapGet(sn, "with")),
 				Env:     mergeMaps(wfEnv, jobEnv, stringMap(mapGet(sn, "env"))),
@@ -226,20 +224,73 @@ func runDefaults(n *yaml.Node) (dir, shell string) {
 	return scalar(mapGet(run, "working-directory")), scalar(mapGet(run, "shell"))
 }
 
-// mapGet returns the value of key in a mapping node, or nil.
-func mapGet(n *yaml.Node, key string) *yaml.Node {
-	if n == nil || n.Kind != yaml.MappingNode {
+// maxAliasDepth bounds the chain of aliases and merge keys the check follows.
+const maxAliasDepth = 32
+
+// resolve follows an alias (`*name`) to the node of its anchor.
+func resolve(n *yaml.Node) *yaml.Node {
+	for i := 0; n != nil && n.Kind == yaml.AliasNode && i < maxAliasDepth; i++ {
+		n = n.Alias
+	}
+	return n
+}
+
+// isMergeKey reports a YAML merge key: a plain `<<`.
+func isMergeKey(k *yaml.Node) bool {
+	return k.Kind == yaml.ScalarNode && k.Value == "<<" && k.Style == 0
+}
+
+// mapPairs returns the key/value pairs of a mapping node, aliases resolved and merge keys (`<<:`)
+// expanded the way YAML does it: a key of the mapping itself wins over a merged one, and an
+// earlier merged mapping over a later one.
+func mapPairs(n *yaml.Node) [][2]*yaml.Node {
+	return mapPairsDepth(n, 0)
+}
+
+func mapPairsDepth(n *yaml.Node, depth int) [][2]*yaml.Node {
+	n = resolve(n)
+	if n == nil || n.Kind != yaml.MappingNode || depth > maxAliasDepth {
 		return nil
 	}
+	var own, merged [][2]*yaml.Node
+	seen := map[string]bool{}
 	for i := 0; i+1 < len(n.Content); i += 2 {
-		if n.Content[i].Value == key {
-			return n.Content[i+1]
+		k, v := n.Content[i], n.Content[i+1]
+		if isMergeKey(k) {
+			src := resolve(v)
+			sources := []*yaml.Node{src}
+			if src != nil && src.Kind == yaml.SequenceNode {
+				sources = src.Content
+			}
+			for _, s := range sources {
+				merged = append(merged, mapPairsDepth(s, depth+1)...)
+			}
+			continue
+		}
+		seen[k.Value] = true
+		own = append(own, [2]*yaml.Node{k, resolve(v)})
+	}
+	for _, p := range merged {
+		if !seen[p[0].Value] {
+			seen[p[0].Value] = true
+			own = append(own, p)
+		}
+	}
+	return own
+}
+
+// mapGet returns the value of key in a mapping node, or nil. Aliases and merge keys are resolved.
+func mapGet(n *yaml.Node, key string) *yaml.Node {
+	for _, p := range mapPairs(n) {
+		if p[0].Value == key {
+			return p[1]
 		}
 	}
 	return nil
 }
 
 func scalar(n *yaml.Node) string {
+	n = resolve(n)
 	if n == nil || n.Kind != yaml.ScalarNode {
 		return ""
 	}
@@ -247,12 +298,13 @@ func scalar(n *yaml.Node) string {
 }
 
 func stringMap(n *yaml.Node) map[string]string {
-	if n == nil || n.Kind != yaml.MappingNode {
+	pairs := mapPairs(n)
+	if pairs == nil {
 		return nil
 	}
 	m := map[string]string{}
-	for i := 0; i+1 < len(n.Content); i += 2 {
-		m[n.Content[i].Value] = scalar(n.Content[i+1])
+	for _, p := range pairs {
+		m[p[0].Value] = scalar(p[1])
 	}
 	return m
 }
@@ -315,8 +367,8 @@ func gitlabSteps(root string) ([]Step, error) {
 		defBefore = mapGet(top, "before_script") // the deprecated global form
 	}
 	var out []Step
-	for i := 0; i+1 < len(top.Content); i += 2 {
-		key, job := top.Content[i], top.Content[i+1]
+	for _, p := range mapPairs(top) {
+		key, job := p[0], p[1]
 		if gitlabKeywords[key.Value] || strings.HasPrefix(key.Value, ".") || job.Kind != yaml.MappingNode {
 			continue
 		}
@@ -342,6 +394,7 @@ func gitlabSteps(root string) ([]Step, error) {
 
 // scriptLines returns the commands of a script key: a list of strings or one string.
 func scriptLines(n *yaml.Node) []string {
+	n = resolve(n)
 	if n == nil {
 		return nil
 	}
@@ -351,6 +404,7 @@ func scriptLines(n *yaml.Node) []string {
 	var out []string
 	if n.Kind == yaml.SequenceNode {
 		for _, c := range n.Content {
+			c = resolve(c)
 			if c.Kind == yaml.SequenceNode { // a nested list from a YAML anchor
 				out = append(out, scriptLines(c)...)
 				continue
@@ -363,17 +417,17 @@ func scriptLines(n *yaml.Node) []string {
 
 // gitlabVariables reads variables, also in the form `NAME: {value: …}`.
 func gitlabVariables(n *yaml.Node) map[string]string {
-	if n == nil || n.Kind != yaml.MappingNode {
+	pairs := mapPairs(n)
+	if pairs == nil {
 		return nil
 	}
 	m := map[string]string{}
-	for i := 0; i+1 < len(n.Content); i += 2 {
-		v := n.Content[i+1]
-		if v.Kind == yaml.MappingNode {
-			m[n.Content[i].Value] = scalar(mapGet(v, "value"))
+	for _, p := range pairs {
+		if v := p[1]; v != nil && v.Kind == yaml.MappingNode {
+			m[p[0].Value] = scalar(mapGet(v, "value"))
 			continue
 		}
-		m[n.Content[i].Value] = scalar(v)
+		m[p[0].Value] = scalar(p[1])
 	}
 	return m
 }
@@ -381,6 +435,7 @@ func gitlabVariables(n *yaml.Node) map[string]string {
 // gitlabAllowFailure is an allowlist: only an absent key or the literal false lets a failing job
 // fail the pipeline; true, the exit_codes form and anything else do not.
 func gitlabAllowFailure(n *yaml.Node) bool {
+	n = resolve(n)
 	return n != nil && (n.Kind != yaml.ScalarNode || n.Value != "false")
 }
 
