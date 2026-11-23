@@ -2906,7 +2906,7 @@ func TestApplyPushRecoverBranchOnSHA(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
-	wantAsked := []string{"/work/issue-7-x issue-7-x PATH=/usr/bin,HOME=/home/u,XDG_RUNTIME_DIR=/run/user/1"}
+	wantAsked := []string{"/work/issue-7-x issue-7-x PATH=/usr/bin,HOME=/home/u,XDG_RUNTIME_DIR=/run/user/1,GIT_TERMINAL_PROMPT=0"}
 	if !reflect.DeepEqual(asked, wantAsked) {
 		t.Errorf("ls-remote asked %q, want %q", asked, wantAsked)
 	}

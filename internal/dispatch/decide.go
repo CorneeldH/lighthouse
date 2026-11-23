@@ -90,7 +90,9 @@ const (
 	KindPush Kind = "push"
 	// KindPushRecover answers a pusher 🤖 Vraag with something other than `push`: apply checks
 	// whether Branch stands on PermitSHA on origin and then hands on to After, or hands the issue
-	// back. AnswerText is the answer.
+	// back. AnswerText is the answer. It is group 0 (planned.group): it passes a paused brake, as
+	// it only posts a 🤖 Handoff or Returned and starts nothing; the start that Handoff triggers is
+	// still braked.
 	KindPushRecover Kind = "push_recover"
 	// KindDropMarker removes the resume marker of SessionID while its key is TriggerKey.
 	KindDropMarker Kind = "drop_marker"

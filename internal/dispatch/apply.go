@@ -621,7 +621,9 @@ func (ap applier) pushRecover(ctx context.Context, a Action) error {
 	if lsRemote == nil {
 		lsRemote = gitLsRemote
 	}
-	sha, err := lsRemote(ctx, a.Worktree, a.Branch, ap.scrubbedEnv(a.Repo, false))
+	// No prompt: git asks for credentials on the terminal, and the tick has none to answer.
+	gitEnv := append(ap.scrubbedEnv(a.Repo, false), "GIT_TERMINAL_PROMPT=0")
+	sha, err := lsRemote(ctx, a.Worktree, a.Branch, gitEnv)
 	switch {
 	case err != nil:
 		return ap.recoverReturn(ctx, a, run.ID, "reason_pusher_git_failed", oneLine(err.Error()))
@@ -666,8 +668,14 @@ func clip(s string, n int) string {
 	return s
 }
 
-// gitLsRemote is Env.LsRemote in production: git ls-remote origin refs/heads/<branch> in worktree.
+// lsRemoteTimeout bounds one git ls-remote: a remote that hangs must not hold the tick.
+const lsRemoteTimeout = 30 * time.Second
+
+// gitLsRemote is Env.LsRemote in production: git ls-remote origin refs/heads/<branch> in worktree,
+// within lsRemoteTimeout.
 func gitLsRemote(ctx context.Context, worktree, branch string, env []string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, lsRemoteTimeout)
+	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", "-C", worktree, "ls-remote", "origin", "refs/heads/"+branch)
 	cmd.Env = env
 	out, err := cmd.Output()
