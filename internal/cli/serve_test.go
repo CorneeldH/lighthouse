@@ -922,6 +922,50 @@ repo = "g/sub/p"
 	}
 }
 
+// Every production source gets a NewTrusted with the answer_permissions of [dispatch]: an
+// answer of a login without such a role leaves the question open, one of an admin closes it.
+func TestForgeReposSourcesCarryNewTrusted(t *testing.T) {
+	srv := gitlabtest.New(t)
+	srv.Login = "lh-bot"
+	srv.Project = "g/sub/p"
+	srv.SetStatuses("To do")
+	srv.AddIssue(map[string]any{"iid": 7, "id": 9007, "title": "zeven", "state": "opened", "labels": []string{},
+		"web_url": "https://gl/g/sub/p/-/issues/7", "user_notes_count": 2, "updated_at": time.Now().UTC().Format(time.RFC3339)})
+	srv.AddNote(7, "lh-bot", "🤖 Vraag\n\nWelke kleur?", false)
+	srv.AddNote(7, "guest", "blauw", false)
+	srv.SetMember("guest", 10)
+	srv.SetMember("owner", 50)
+	dir := repoDir(t, `[forge]
+kind = "gitlab"
+repo = "g/sub/p"
+
+[forge.board]
+
+[forge.board.status_options]
+"Controller" = "To do"
+`)
+	vars := map[string]string{"GITLAB_TOKEN": "gl-secret"}
+	o := newForgeOpener(func(k string) string { return vars[k] }, "http://127.0.0.1:1")
+	o.gitlabURL = srv.URL()
+	repos, _, err := forgeReposWith(hostToml(t, dir), "", o, io.Discard)
+	if err != nil || len(repos) != 1 {
+		t.Fatalf("forgeReposWith = %v, %v; want the one repo", repos, err)
+	}
+	if repos[0].NewTrusted == nil {
+		t.Fatal("NewTrusted is nil: an answer of anyone would count")
+	}
+	srv.SetWorkItemStatus(7, "To do")
+	ov, err := overview.BuildAll(t.Context(), repos)
+	if err != nil || len(ov.Questions) != 1 {
+		t.Fatalf("BuildAll = %+v, %v; want the question open after an answer of a read member", ov, err)
+	}
+	srv.AddNote(7, "owner", "blauw dus", false)
+	ov, err = overview.BuildAll(t.Context(), repos)
+	if err != nil || len(ov.Questions) != 0 {
+		t.Errorf("BuildAll = %+v, %v; want no question after an answer of an admin", ov, err)
+	}
+}
+
 func TestStartPrioritiesWithoutReposReportsNotConfigured(t *testing.T) {
 	overviewRead := func(context.Context) (overview.Overview, error) {
 		t.Error("overview read without sources")

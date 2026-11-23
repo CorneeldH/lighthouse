@@ -84,5 +84,14 @@
       }
     ]
   },
-  "want": []
+  "want": [
+    {
+      "kind": "return",
+      "repo": "o/r",
+      "issue": 7,
+      "reason": "reason_park_marker_gone",
+      "reason_arg": "s1",
+      "language": "nl"
+    }
+  ]
 }

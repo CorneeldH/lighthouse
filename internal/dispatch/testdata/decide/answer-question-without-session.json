@@ -89,5 +89,13 @@
       }
     ]
   },
-  "want": []
+  "want": [
+    {
+      "kind": "return",
+      "repo": "o/r",
+      "issue": 7,
+      "reason": "reason_answer_no_session",
+      "language": "nl"
+    }
+  ]
 }

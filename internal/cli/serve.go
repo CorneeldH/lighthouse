@@ -98,6 +98,12 @@ func forgeRepos(hostToml, repo, forgeURL string, getenv func(string) string, err
 	return forgeReposWith(hostToml, repo, newForgeOpener(getenv, forgeURL), errOut)
 }
 
+// newTrusted is the NewTrusted of one overview source: every Build gets a fresh Trust, which is
+// not safe for concurrent use and keeps the role of a login for as long as it lives.
+func newTrusted(f forge.Forge, allowed []string) func() overview.Trusted {
+	return func() overview.Trusted { return dispatch.NewTrust(f, allowed).Trusted }
+}
+
 // forgeReposWith is forgeRepos with the opener given, so a test can point the GitLab repos at
 // a fake through gitlabURL. The GitHub URL is o.githubURL, for GitHub repos only; production leaves gitlabURL empty.
 func forgeReposWith(hostToml, repo string, o *forgeOpener, errOut io.Writer) (sources []overview.RepoSource, slugs []string, err error) {
@@ -119,7 +125,8 @@ func forgeReposWith(hostToml, repo string, o *forgeOpener, errOut io.Writer) (so
 			skip(repo, err)
 			return nil, []string{repo}, nil
 		}
-		return []overview.RepoSource{{Slug: repo, Src: rf.Forge, Labels: repoconfig.DefaultLabels()}}, []string{repo}, nil
+		return []overview.RepoSource{{Slug: repo, Src: rf.Forge, Labels: repoconfig.DefaultLabels(),
+			NewTrusted: newTrusted(rf.Forge, cfg.AnswerPermissions)}}, []string{repo}, nil
 	}
 	for _, l := range repoconfig.LoadAll(cfg.Repos) {
 		path, r := l.Path, l.Repo
@@ -136,6 +143,7 @@ func forgeReposWith(hostToml, repo string, o *forgeOpener, errOut io.Writer) (so
 			continue
 		}
 		src := overview.RepoSource{Slug: r.Slug, Src: rf.Forge, Labels: r.Labels, Board: r.Board != nil,
+			NewTrusted: newTrusted(rf.Forge, cfg.AnswerPermissions),
 			Controller: r.Board != nil && r.Board.StatusOptions["Controller"] != ""}
 		if src.Board && !src.Controller {
 			_, _ = fmt.Fprintf(errOut, "lighthouse: %s: missing forge.board.status_options.Controller: overview shows every open issue\n", path)

@@ -88,6 +88,8 @@ type Pre struct {
 	Markers []park.Marker
 	// Unreadable are the sessions with a marker file that does not read (#513).
 	Unreadable []string
+	// MarkersIncomplete is whether a node's markers could not be read this tick.
+	MarkersIncomplete bool
 	// PauseUntil is the end of the active pause flag; zero is no pause. It is in the fingerprint,
 	// so a pause that ends makes the next tick gather.
 	PauseUntil time.Time

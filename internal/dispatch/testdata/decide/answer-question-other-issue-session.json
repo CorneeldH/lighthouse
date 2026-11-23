@@ -81,5 +81,14 @@
       }
     ]
   },
-  "want": []
+  "want": [
+    {
+      "kind": "return",
+      "repo": "o/r",
+      "issue": 13,
+      "reason": "reason_answer_no_run",
+      "reason_arg": "11111111-2222-4333-8444-555555555555",
+      "language": "nl"
+    }
+  ]
 }
