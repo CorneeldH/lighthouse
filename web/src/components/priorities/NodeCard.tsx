@@ -8,7 +8,7 @@ interface Props {
   color: string
   // External card: another repo or outside the filter.
   grey: boolean
-  // `#nr` or `repo#nr`.
+  // `nr` or `repo nr`.
   label: string
   testId: string
   dimmed: boolean
