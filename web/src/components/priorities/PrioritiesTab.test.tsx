@@ -228,13 +228,15 @@ describe('PrioritiesTab', () => {
     }
     const order = () => screen.getAllByTestId(/^ms-/).map((e) => e.getAttribute('data-testid'))
 
-    it('shows the switch only in the milestones view, Computed by default', async () => {
+    it('shows the switch only in the milestones view, % done by default', async () => {
       stub(() => json(RANKED))
       renderTab()
       await screen.findByTestId('view-deps')
       expect(screen.queryByRole('button', { name: 'Priority' })).toBeNull()
       fireEvent.click(screen.getByRole('button', { name: /^Milestones/ }))
-      expect(screen.getByRole('button', { name: 'Computed' }).getAttribute('aria-pressed')).toBe('true')
+      const computed = screen.getByRole('button', { name: '% done' })
+      expect(computed.textContent).toBe('%')
+      expect(computed.getAttribute('aria-pressed')).toBe('true')
       expect(screen.getByRole('button', { name: 'Priority' }).getAttribute('aria-pressed')).toBe('false')
       expect(order()).toEqual(['ms-a/x#m2', 'ms-a/x#m1'])
     })
