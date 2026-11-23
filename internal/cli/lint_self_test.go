@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,8 +13,9 @@ import (
 
 // Classification: these tests fail when lighthouse itself stops being wired for its own lint
 // check (a dropped pin, a config that no longer covers the floor, a CI lint step that is gone or
-// unrecognised), and when the `lint-check` job of ci.yml loses its step or gets a `needs:` or
-// `if:` that would let a PR skip it. They read the real repository, not a temp repo.
+// unrecognised), and when the `lint-check` job of ci.yml loses its step or gets a `needs:`, `if:`
+// or `continue-on-error` that would let a PR pass without it. They read the real repository, not
+// a temp repo.
 
 // selfRoot is the root of this repository, two levels above internal/cli.
 func selfRoot(t *testing.T) string {
@@ -41,6 +43,38 @@ func TestCIRunsLintCheckJob(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	for _, p := range lintCheckJobProblems(t, data) {
+		t.Error(p)
+	}
+}
+
+// Classification: guard-of-guard. Fails when lintCheckJobProblems lets through a lint-check job
+// that can stay green on a red lint check: continue-on-error on job or step, needs, if, or no step.
+func TestLintCheckJobProblemsCatchesEscapes(t *testing.T) {
+	const step = "      - run: go run ./cmd/lighthouse lint check\n"
+	head := "jobs:\n  lint-check:\n    runs-on: ubuntu-latest\n"
+	cases := map[string]string{
+		"job continue-on-error":  head + "    continue-on-error: true\n    steps:\n" + step,
+		"step continue-on-error": head + "    steps:\n" + step + "        continue-on-error: true\n",
+		"job needs":              head + "    needs: build\n    steps:\n" + step,
+		"job if":                 head + "    if: false\n    steps:\n" + step,
+		"step if":                head + "    steps:\n" + step + "        if: false\n",
+		"no step":                head + "    steps:\n      - run: echo\n",
+		"no job":                 "jobs:\n  other:\n    steps:\n" + step,
+	}
+	for name, yml := range cases {
+		if got := lintCheckJobProblems(t, []byte(yml)); len(got) == 0 {
+			t.Errorf("%s: no problem found in\n%s", name, yml)
+		}
+	}
+	if got := lintCheckJobProblems(t, []byte(head+"    steps:\n"+step)); len(got) != 0 {
+		t.Errorf("clean job: %v", got)
+	}
+}
+
+// lintCheckJobProblems lists what lets the lint-check job of a ci.yml skip or ignore the check.
+func lintCheckJobProblems(t *testing.T, data []byte) []string {
+	t.Helper()
 	var wf struct {
 		Jobs map[string]map[string]any `yaml:"jobs"`
 	}
@@ -49,25 +83,29 @@ func TestCIRunsLintCheckJob(t *testing.T) {
 	}
 	job, ok := wf.Jobs["lint-check"]
 	if !ok {
-		t.Fatal("ci.yml has no job lint-check")
+		return []string{"ci.yml has no job lint-check"}
 	}
-	for _, key := range []string{"needs", "if"} {
+	var out []string
+	for _, key := range []string{"needs", "if", "continue-on-error"} {
 		if _, ok := job[key]; ok {
-			t.Errorf("job lint-check has %q: a PR could skip the lint check", key)
+			out = append(out, "job lint-check has "+key+": a PR could pass without the lint check")
 		}
 	}
 	steps, _ := job["steps"].([]any)
 	found := false
 	for _, s := range steps {
 		step, _ := s.(map[string]any)
-		if _, ok := step["if"]; ok {
-			t.Errorf("job lint-check has a step with if: %v", step)
+		for _, key := range []string{"if", "continue-on-error"} {
+			if _, ok := step[key]; ok {
+				out = append(out, fmt.Sprintf("job lint-check has a step with %s: %v", key, step))
+			}
 		}
 		if run, _ := step["run"].(string); strings.TrimSpace(run) == "go run ./cmd/lighthouse lint check" {
 			found = true
 		}
 	}
 	if !found {
-		t.Error("job lint-check has no step `run: go run ./cmd/lighthouse lint check`")
+		out = append(out, "job lint-check has no step `run: go run ./cmd/lighthouse lint check`")
 	}
+	return out
 }
