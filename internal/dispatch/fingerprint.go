@@ -58,7 +58,8 @@ type fpMarker struct {
 // Fingerprint is the hex SHA-256 of what decides whether a tick has work: the board fields
 // of the items, the blockers of parked items (To do, which Prepare keeps only with an own
 // 🤖 Parked or an open run, and the On hold remnant), the PRs of items with an open run, and the
-// open runs with the stand of their session, the resume markers and the end of the pause.
+// open runs with the stand of their session, the resume markers, the unreadable marker files,
+// whether a node's markers could not be read, and the end of the pause.
 // Comments are left out: a new comment moves IssueUpdatedAt. Activity and permission prompts
 // are left out too: they change every tick, and Boundaries makes the tick look when their
 // max_wait runs out. Lists are sorted and an empty list hashes like a nil one, so order and
@@ -110,12 +111,18 @@ func Fingerprint(pre Pre) string {
 	}
 	slices.SortFunc(markers, func(a, b fpMarker) int { return cmp.Compare(a.Key, b.Key) })
 
+	// Both hold a parked run and the idle net, so a file or node that reads again wakes the tick.
+	// Without either the hash is as before they counted.
+	unreadable := slices.Sorted(slices.Values(pre.Unreadable))
+
 	data, err := json.Marshal(struct {
-		Items      []fpItem   `json:"items"`
-		Runs       []fpRun    `json:"runs"`
-		Markers    []fpMarker `json:"markers"`
-		PauseUntil time.Time  `json:"pause_until"`
-	}{items, runsIn, markers, pre.PauseUntil.UTC()})
+		Items             []fpItem   `json:"items"`
+		Runs              []fpRun    `json:"runs"`
+		Markers           []fpMarker `json:"markers"`
+		PauseUntil        time.Time  `json:"pause_until"`
+		Unreadable        []string   `json:"unreadable,omitempty"`
+		MarkersIncomplete bool       `json:"markers_incomplete,omitempty"`
+	}{items, runsIn, markers, pre.PauseUntil.UTC(), unreadable, pre.MarkersIncomplete})
 	if err != nil {
 		// Plain structs of strings, ints, bools and times cannot fail to marshal.
 		panic("dispatch: fingerprint: " + err.Error())
