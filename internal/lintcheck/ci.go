@@ -28,7 +28,7 @@ type Step struct {
 	RunsOn             string            // empty when absent or not a plain string
 	ContinueOnError    string
 	JobContinueOnError string
-	IfFalse            bool // the literal `if: false`
+	IfFalse            bool // the literal `if: false` (or `${{ false }}`) on the step or its job
 	GitLab             bool
 	AllowFailure       bool
 	Manual             bool
@@ -77,7 +77,7 @@ type workflow struct {
 // YAML is an UncheckedError; no CI files is an empty list.
 func Steps(root, forgeKind string) ([]Step, error) {
 	if isGitLab(forgeKind) {
-		return nil, UncheckedError("GitLab CI is not supported yet")
+		return gitlabSteps(root)
 	}
 	loaded := map[string]*workflow{}
 	var order []string
@@ -195,6 +195,7 @@ func (w *workflow) steps() []Step {
 		jobEnv := stringMap(mapGet(j.node, "env"))
 		runsOn := scalar(mapGet(j.node, "runs-on"))
 		jobCoE := scalar(mapGet(j.node, "continue-on-error"))
+		jobIfFalse := literalFalse(scalar(mapGet(j.node, "if")))
 		for i, sn := range seq.Content {
 			s := Step{
 				File: w.file, Job: j.name, Index: i, Line: sn.Line,
@@ -206,12 +207,18 @@ func (w *workflow) steps() []Step {
 				RunsOn:  runsOn, ContinueOnError: scalar(mapGet(sn, "continue-on-error")),
 				JobContinueOnError: jobCoE,
 			}
-			cond := strings.TrimSpace(scalar(mapGet(sn, "if")))
-			s.IfFalse = cond == "false" || strings.ReplaceAll(cond, " ", "") == "${{false}}"
+			s.IfFalse = jobIfFalse || literalFalse(scalar(mapGet(sn, "if")))
 			out = append(out, s)
 		}
 	}
 	return out
+}
+
+// literalFalse reports whether an `if:` is the literal false, bare or as an expression, whatever
+// the whitespace.
+func literalFalse(cond string) bool {
+	c := strings.Join(strings.Fields(cond), "")
+	return c == "false" || c == "${{false}}"
 }
 
 func runDefaults(n *yaml.Node) (dir, shell string) {
@@ -270,4 +277,145 @@ func firstNonEmpty(vals ...string) string {
 		}
 	}
 	return ""
+}
+
+const gitlabFile = ".gitlab-ci.yml"
+
+// gitlabKeywords are the top-level keys of .gitlab-ci.yml that are not jobs.
+var gitlabKeywords = map[string]bool{
+	"default": true, "include": true, "stages": true, "variables": true, "workflow": true,
+	"image": true, "services": true, "before_script": true, "after_script": true, "cache": true,
+	"spec": true,
+}
+
+// gitlabSteps returns one Step per job of .gitlab-ci.yml that has a script: Run is its
+// before_script (the job's, else the default one) and its script, one command per line. A hidden
+// job (`.name`) is a template and no step. A missing file is no steps; invalid YAML is an
+// UncheckedError. The file is read as is: `include:` and `extends:` are not followed, so a lint
+// job that only exists through them is not found (never green).
+func gitlabSteps(root string) ([]Step, error) {
+	data, err := os.ReadFile(filepath.Join(root, gitlabFile))
+	if os.IsNotExist(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, UncheckedError(fmt.Sprintf("cannot read %s: %v", gitlabFile, err))
+	}
+	var doc yaml.Node
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return nil, UncheckedError(fmt.Sprintf("%s is not valid YAML: %v", gitlabFile, err))
+	}
+	if doc.Kind != yaml.DocumentNode || len(doc.Content) != 1 || doc.Content[0].Kind != yaml.MappingNode {
+		return nil, nil
+	}
+	top := doc.Content[0]
+	vars := gitlabVariables(mapGet(top, "variables"))
+	defBefore := mapGet(mapGet(top, "default"), "before_script")
+	if defBefore == nil {
+		defBefore = mapGet(top, "before_script") // the deprecated global form
+	}
+	var out []Step
+	for i := 0; i+1 < len(top.Content); i += 2 {
+		key, job := top.Content[i], top.Content[i+1]
+		if gitlabKeywords[key.Value] || strings.HasPrefix(key.Value, ".") || job.Kind != yaml.MappingNode {
+			continue
+		}
+		script := mapGet(job, "script")
+		if script == nil {
+			continue
+		}
+		before := mapGet(job, "before_script")
+		if before == nil {
+			before = defBefore
+		}
+		lines := append(scriptLines(before), scriptLines(script)...)
+		out = append(out, Step{
+			File: gitlabFile, Job: key.Value, Line: key.Line, Run: strings.Join(lines, "\n"),
+			Env:          mergeMaps(vars, gitlabVariables(mapGet(job, "variables"))),
+			GitLab:       true,
+			AllowFailure: gitlabAllowFailure(mapGet(job, "allow_failure")),
+			Manual:       gitlabNotOnChange(job),
+		})
+	}
+	return out, nil
+}
+
+// scriptLines returns the commands of a script key: a list of strings or one string.
+func scriptLines(n *yaml.Node) []string {
+	if n == nil {
+		return nil
+	}
+	if n.Kind == yaml.ScalarNode {
+		return []string{n.Value}
+	}
+	var out []string
+	if n.Kind == yaml.SequenceNode {
+		for _, c := range n.Content {
+			if c.Kind == yaml.SequenceNode { // a nested list from a YAML anchor
+				out = append(out, scriptLines(c)...)
+				continue
+			}
+			out = append(out, scalar(c))
+		}
+	}
+	return out
+}
+
+// gitlabVariables reads variables, also in the form `NAME: {value: …}`.
+func gitlabVariables(n *yaml.Node) map[string]string {
+	if n == nil || n.Kind != yaml.MappingNode {
+		return nil
+	}
+	m := map[string]string{}
+	for i := 0; i+1 < len(n.Content); i += 2 {
+		v := n.Content[i+1]
+		if v.Kind == yaml.MappingNode {
+			m[n.Content[i].Value] = scalar(mapGet(v, "value"))
+			continue
+		}
+		m[n.Content[i].Value] = scalar(v)
+	}
+	return m
+}
+
+// gitlabAllowFailure is an allowlist: only an absent key or the literal false lets a failing job
+// fail the pipeline; true, the exit_codes form and anything else do not.
+func gitlabAllowFailure(n *yaml.Node) bool {
+	return n != nil && (n.Kind != yaml.ScalarNode || n.Value != "false")
+}
+
+// gitlabRunsWhen are the `when:` values of a job that runs on every pipeline.
+var gitlabRunsWhen = map[string]bool{"": true, "on_success": true, "always": true}
+
+// gitlabNotOnChange reports a job that does not run by itself on a change: a `when:` other than
+// on_success or always, the same in any `rules:` entry, or an `only:` without branches,
+// merge_requests or pushes.
+func gitlabNotOnChange(job *yaml.Node) bool {
+	if !gitlabRunsWhen[scalar(mapGet(job, "when"))] {
+		return true
+	}
+	if rules := mapGet(job, "rules"); rules != nil && rules.Kind == yaml.SequenceNode {
+		for _, r := range rules.Content {
+			if !gitlabRunsWhen[scalar(mapGet(r, "when"))] {
+				return true
+			}
+		}
+	}
+	only := mapGet(job, "only")
+	if only == nil {
+		return false
+	}
+	refs := only
+	if only.Kind == yaml.MappingNode {
+		refs = mapGet(only, "refs")
+		if refs == nil {
+			return false // only: changes/variables still runs on a matching change
+		}
+	}
+	for _, r := range scriptLines(refs) {
+		if r == "branches" || r == "merge_requests" || r == "pushes" {
+			return false
+		}
+	}
+	return true
 }
