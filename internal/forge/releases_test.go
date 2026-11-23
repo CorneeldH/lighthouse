@@ -162,3 +162,35 @@ func TestReleases_cancelledContextTriesOnce(t *testing.T) {
 }
 
 var _ ReleaseReader = (*GitHub)(nil)
+
+func TestReleasesUntil_stopsAfterThePageWithTheMatch(t *testing.T) {
+	srv := forgetest.New(t)
+	srv.Releases = map[string][]map[string]any{}
+	for i := 0; i < 100; i++ { // per_page=30: four pages
+		srv.Releases["up/stream"] = append(srv.Releases["up/stream"], relItem(i))
+	}
+	got, err := releaseClient(srv).ReleasesUntil(context.Background(), "up/stream",
+		func(r Release) bool { return r.Tag == "v1.0.35" })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 60 {
+		t.Fatalf("got %d releases, want the two pages up to and including the match (60)", len(got))
+	}
+	if n := srv.Count("/repos/up/stream/releases"); n != 2 {
+		t.Fatalf("requests = %d, want 2: no page past the match", n)
+	}
+}
+
+func TestReleasesUntil_neverMatchingFollowsAllPages(t *testing.T) {
+	srv := forgetest.New(t)
+	srv.Releases = map[string][]map[string]any{}
+	for i := 0; i < 70; i++ {
+		srv.Releases["up/stream"] = append(srv.Releases["up/stream"], relItem(i))
+	}
+	got, err := releaseClient(srv).ReleasesUntil(context.Background(), "up/stream",
+		func(Release) bool { return false })
+	if err != nil || len(got) != 70 {
+		t.Fatalf("got %d, %v; want all 70", len(got), err)
+	}
+}
