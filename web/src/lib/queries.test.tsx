@@ -271,7 +271,7 @@ describe('useMilestoneRanks', () => {
       expect(descriptionIn(client.getQueryData(queryKeys.priorities), 'o/r')).toBe('Pitch\nPriority: 3'),
     )
     expect(result.current.ranks.error).toBe(RANK_CONFLICT_TEXT)
-    expect(RANK_CONFLICT_TEXT).toBe('De volgorde is net ergens anders veranderd; de lijst is ververst.')
+    expect(RANK_CONFLICT_TEXT).toBe('The order was just changed elsewhere; the list has been refreshed.')
     expect(result.current.ranks.isPending('o/r')).toBe(false)
     expect(fetchMock.mock.calls.filter(([url]) => url === '/api/priorities')).toHaveLength(2)
     client.clear()
@@ -288,7 +288,7 @@ describe('useMilestoneRanks', () => {
     gets.push(() => Promise.resolve(json(prioritiesBody({ 'o/r': 'Priority: 2' }))))
     await act(async () => posts[0].resolve(json({ detail: 'github: 500' }, 502)))
 
-    await vi.waitFor(() => expect(result.current.ranks.error).toBe('Opslaan mislukt: github: 500'))
+    await vi.waitFor(() => expect(result.current.ranks.error).toBe('Save failed: github: 500'))
     await vi.waitFor(() =>
       expect(descriptionIn(client.getQueryData(queryKeys.priorities), 'o/r')).toBe('Priority: 2'),
     )

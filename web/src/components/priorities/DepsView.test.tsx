@@ -45,11 +45,12 @@ describe('DepsView', () => {
 
   it('shows the number bold with the title, and prefixes the repo over more than one repo', () => {
     view([repo(A, [iss(1), iss(2, [[A, 1]])]), repo('a/y', [])], [A])
-    expect(within(node(`${A}#1`)).getByText('#1').className).toContain('font-semibold')
+    expect(within(node(`${A}#1`)).getByText('1').className).toContain('font-semibold')
     expect(within(node(`${A}#1`)).getByText('title-1')).toBeTruthy()
     cleanup()
     view([repo(A, [iss(1), iss(2, [[A, 1]])]), repo('a/y', [])], [A, 'a/y'])
-    expect(within(node(`${A}#1`)).getByText(`${A}#1`)).toBeTruthy()
+    expect(within(node(`${A}#1`)).getByText(`${A} 1`)).toBeTruthy()
+    expect(within(node(`${A}#1`)).queryByText(/#/)).toBeNull()
   })
 
   it('marks a Controller issue without a run as active', () => {
@@ -168,13 +169,13 @@ describe('DepsView', () => {
     expect(screen.getByText('No open dependencies (1)')).toBeTruthy()
     const card = screen.getByTestId(`loose-${A}#5`)
     expect(within(card).getByText('title-5').getAttribute('title')).toBe('title-5')
-    expect(card.textContent).toContain('#5')
+    expect(card.textContent).toContain('5title-5')
   })
 
   it('shows a loose issue as a full card with number, title and state', () => {
     view(CHAIN, [A])
     const card = screen.getByTestId(`loose-${A}#5`)
-    expect(within(card).getByText('#5')).toBeTruthy()
+    expect(within(card).getByText('5')).toBeTruthy()
     expect(within(card).getByText('title-5')).toBeTruthy()
     expect(card.getAttribute('data-state')).toBe('ready')
     expect(within(card).getByTestId('card-strip').style.background).not.toBe('')

@@ -1,6 +1,6 @@
-# Prioritering: wat het tabblad leest
+# Priorities: wat het tabblad leest
 
-Het tabblad Prioritering leest per repo één `forge.Planning` (`internal/forge/planning.go`).
+Het tabblad Priorities leest per repo één `forge.Planning` (`internal/forge/planning.go`).
 Dit document legt vast wat die lezing opvraagt, wat ze kost en wat live is gecontroleerd.
 
 ## Wat `Planning` leest (GitHub)
@@ -45,7 +45,7 @@ met de queries waar ze over gingen.
 
 ## Wat het tabblad toont
 
-`lighthouse serve` toont naast de overview een tabblad Prioritering (`#prioritering`) met drie
+`lighthouse serve` toont naast de overview een tabblad Priorities (`#priorities`) met drie
 weergaven: een afhankelijkhedengraaf van open issues, een milestone-weergave met voortgang
 (`Done` van `Done + Open`, waarbij `Open` het aantal open issues is uit de lijst open issues van `Planning.Issues`, per milestone geteld) en een weergave van issues zonder milestone. De server bouwt de
 gegevens in een eigen refresher, los van de overview, elke **300 s** (`PrioritiesInterval`) en
@@ -54,9 +54,9 @@ levert ze op `/api/priorities`. De pagina leest, op één plek na: de rang van e
 
 ## De rang van een milestone schrijven
 
-De weergave Milestones heeft een schakelaar *Berekend* / *Prioriteit*. In *Berekend* geldt de
-berekende volgorde. In *Prioriteit* staan milestones met een rang bovenaan, op rang, en de
-milestones zonder rang daaronder in de berekende volgorde. De knoppen Omhoog en Omlaag wijzigen
+De weergave Milestones heeft een schakelaar `Computed` / `Priority`. In `Computed` geldt de
+berekende volgorde. In `Priority` staan milestones met een rang bovenaan, op rang, en de
+milestones zonder rang daaronder in de berekende volgorde. De knoppen `Up` en `Down` wijzigen
 de rang.
 
 - **De regel.** De rang staat in de beschrijving van de milestone, als een regel
@@ -143,7 +143,7 @@ van `Planning` (milestones, dependencies) nog niet en is zonder wijziging van de
 ## Bekende beperkingen
 
 - GitLab-groepsmilestones worden niet opgesomd (alleen projectmilestones). Zulke issues
-  verdwijnen uit Milestones en uit Zonder milestone.
+  verdwijnen uit Milestones en uit Without milestone.
 - GitLab leest de gesloten issues van een milestone op milestonetitel (`/issues?state=closed&milestone=<titel>`).
 - Lange pijlen in de graaf delen één baan per overgeslagen kolom.
 - De kaartvorm van de graaf (kleurstrook, stippelrand, kruis) is alleen met jsdom getest, niet in een browser bekeken.

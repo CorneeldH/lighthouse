@@ -117,6 +117,10 @@ func withoutExemptions(rel, text string) string {
 	case rel == "internal/lintcheck/ciflags_test.go":
 		// docs/** is a GitLab except:changes pattern inside a test string, never read from this repo.
 		return strings.ReplaceAll(text, "docs/", "")
+	case rel == "internal/repoconfig/repo_own_report_test.go":
+		// docs/developer/verslag is the expected Dir of the report in lighthouse.toml: a string
+		// compared with the parsed value, never a path read from this repo's docs.
+		return strings.ReplaceAll(text, "docs/", "")
 	case rel == "internal/repoconfig/repoconfig_test.go":
 		// docs/... are the Document paths of a labels document inside a test string, never read from this repo.
 		return strings.ReplaceAll(text, "docs/", "")

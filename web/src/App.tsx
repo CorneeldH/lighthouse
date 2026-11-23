@@ -12,7 +12,7 @@ import { UsagePanel } from '@/components/UsagePanel'
 export default function App() {
   const [tab, setTab] = useHashTab()
   return (
-    <main className={`mx-auto space-y-6 p-6 ${tab === 'prioritering' ? 'max-w-[1180px]' : 'max-w-3xl'}`}>
+    <main className={`mx-auto space-y-6 p-6 ${tab === 'priorities' ? 'max-w-[1180px]' : 'max-w-3xl'}`}>
       <Header />
       <UsagePanel />
       <Tabs active={tab} onChange={setTab} />

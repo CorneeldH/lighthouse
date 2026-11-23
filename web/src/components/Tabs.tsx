@@ -1,14 +1,14 @@
 import { type JSX, useCallback, useEffect, useState } from 'react'
 
-export type TabId = 'controller' | 'prioritering'
+export type TabId = 'controller' | 'priorities'
 
 const TABS: Array<{ id: TabId; label: string }> = [
   { id: 'controller', label: 'Controller' },
-  { id: 'prioritering', label: 'Prioritering' },
+  { id: 'priorities', label: 'Priorities' },
 ]
 
 function fromHash(): TabId {
-  return window.location.hash === '#prioritering' ? 'prioritering' : 'controller'
+  return window.location.hash === '#priorities' ? 'priorities' : 'controller'
 }
 
 // The hook lives beside the component it drives (one tab bar, one hook).

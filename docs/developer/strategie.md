@@ -76,3 +76,5 @@ In deze volgorde:
 De roadmap zijn de milestones in hun rangorde op de forge
 ([milestoneprioriteit](planning/specs/2026-11-20-milestone-prioriteit-design.md)); dit document houdt
 er geen lijst van bij.
+
+Het verslag van wat er gebeurd is staat bij [het procesverslag](verslag/README.md).

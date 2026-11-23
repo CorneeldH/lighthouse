@@ -4,6 +4,7 @@ import { type JSX, useState, useSyncExternalStore } from 'react'
 import { formatAgo } from '@/lib/format'
 import { useNow } from '@/lib/now'
 import { useVersion } from '@/lib/queries'
+import { ThemeToggle } from './ThemeToggle'
 
 // The oldest dataUpdatedAt > 0 over every query in the cache; 0 when none has data.
 function useOldestUpdate(): number {
@@ -52,6 +53,7 @@ export function Header(): JSX.Element {
           {/* Only the refresh is announced; the age changes every minute and stays silent. */}
           <span aria-live="polite">{refreshing && 'refreshing…'}</span>
         </span>
+        <ThemeToggle />
         <button
           type="button"
           className="inline-flex items-center gap-2 rounded-md bg-lh-yellow px-3 py-1 text-sm font-medium text-lh-navy hover:brightness-95 disabled:opacity-60"

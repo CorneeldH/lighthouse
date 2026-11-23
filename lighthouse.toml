@@ -111,6 +111,12 @@ repo = "openai/codex"
 version = "0.171.0"
 tag_prefix = "rust-v"
 
+# Het procesverslag van lighthouse zelf (docs/report.md, docs/developer/verslag/README.md).
+[report]
+enabled = true
+sink = "file"
+dir = "docs/developer/verslag"
+
 # Geplande run (docs/tick.md, *Job `map-planned`*): zet open issues van een gepland label op hun kaart.
 [[schedule]]
 name = "map-planned"
