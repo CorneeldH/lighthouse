@@ -4,6 +4,25 @@ All notable changes to lighthouse. The format follows [Keep a Changelog](https:/
 chosen is in [docs/releasing.md](docs/releasing.md). The release workflow writes the sections below from the
 fragments in `changelog.d/`; never edit a released section by hand.
 
+## [v0.25.0] - 2026-11-23
+
+### Added
+
+- The location of the worktrees can now be set with `[worktree] root` in `lighthouse.toml` (default `.claude/worktrees`, relative to the main checkout or absolute, also outside the repository). Hooks, the worktree audit and the skills read that location, and `lighthouse init` warns about a repository or worktree root inside a sync folder.
+
+### Changed
+
+- The Milestones view in the Priorities tab now lists shaped milestones first by percent done, then milestones still in shaping by finished and total issues, and empty milestones last.
+- The new `[pr_gate] issue` setting (`optional`, `required` or `evidence`) lets a repo decide how strict `pr-create-gate` is about the issue a pull request names, and `lighthouse-write-pr` follows it.
+- Een rode `policy` of `lint` van de workflow-pusher gaat niet meer meteen terug naar de gebruiker: de pusher post een 🤖 Herstel, en tick hervat de run die de handoff schreef zodat die de workflow-wijziging zelf repareert. Na twee rondes zonder groen geeft tick het issue alsnog terug met een 🤖 Teruggegeven. Een Teruggegeven van de token-login zet de telling terug.
+- De tick en triage starten in volgorde van prio-gewicht (milestone-rang en `blocked_by`, #445) en de board-Priority is nu een handmatige override: `P0` vóór alles, `P1` of leeg volgt het gewicht, `P2` achter alles; `/api/priorities` toont het gewicht.
+- A controller run of start-issue that finds the work already on the default branch now ends in a handoff to /lighthouse-close-issue or a question instead of plain chat text, so the controller no longer hands the issue back.
+- lighthouse-route-issue now stops at needs_hands and needs_testing and reports what the human has to do first; the triage marker for those labels holds while the label stays.
+
+### Fixed
+
+- `lighthouse pins check` meet een upstream met meer dan 1000 releases (openai/codex) weer: de releases worden newest-first gelezen en de meting stopt na de pagina met de release van de pin, zodat GitHub geen 422 ("Only the first 1000 results are available") meer geeft en een meting een paar pagina's kost in plaats van ongeveer 35.
+
 ## [v0.24.1] - 2026-11-22
 
 ### Fixed
