@@ -1646,7 +1646,8 @@ func (c issueCtx) usageResume() (planned, bool) {
 
 // answer resumes the session of the last turn when that is a Question with a session and an
 // answer follows it. A session no run of this issue has resumes nothing: a Question carrying
-// another issue's session never resumes that run.
+// another issue's session never resumes that run, and neither does a Question without a session
+// that is not the pusher's: both go back once.
 func (c issueCtx) answer() (planned, bool) {
 	q := lastTurn(c.hs)
 	if q == nil || q.Header.Kind != protocol.KindQuestion {
@@ -1660,7 +1661,7 @@ func (c issueCtx) answer() (planned, bool) {
 		// A Vraag without a session that carries a sha is the pusher's. It reads the last answer,
 		// not the first: a `push` after an answer that settled nothing still counts.
 		if !pusherQuestion(q.Header) {
-			return planned{}, false
+			return c.returned("reason_answer_no_session", ""), true
 		}
 		all := c.answersTo(q.Comment.ID)
 		return c.pushAnswer(q, all[len(all)-1])
@@ -1671,7 +1672,8 @@ func (c issueCtx) answer() (planned, bool) {
 	}
 	run, ok := lastRunOf(c.repo.History, c.it.Issue, q.Header.Session)
 	if !ok {
-		return planned{}, false
+		// The Returned that follows is the last turn, so this goes back once.
+		return c.returned("reason_answer_no_run", q.Header.Session), true
 	}
 	a := c.base
 	a.Kind, a.Mode, a.Trigger, a.TriggerKey, a.Attempt = KindResume, modeResume, triggerAnswer, key, 1
@@ -1932,6 +1934,9 @@ func (c issueCtx) handoff() (planned, bool) {
 		if c.awaitsPR(p.Time) {
 			return planned{}, false
 		}
+		if pr, ok := c.closedUnmerged(p.Time); ok {
+			return c.returned("reason_pr_closed_unmerged", strconv.Itoa(pr.Number)), true
+		}
 		// The end command closes this issue; its argument never comes from the comment.
 		j.Command = cmdClose + " " + strconv.Itoa(c.it.Issue)
 	case VerdictBrainstorm:
@@ -2005,13 +2010,25 @@ func (c issueCtx) repeatsHandoff(p *parsed) bool {
 }
 
 // awaitsPR reports whether an end-of-chain handoff posted at t leaves the end to a PR: an open
-// PR waits for green and its merge, and a PR that merged or closed from t on already went to
-// the close-check or the PR rules. Without either, nothing would ever start the end command,
-// so the handoff starts it.
+// PR waits for green and its merge, and a PR that merged from t on already went to the
+// close-check. A PR closed without a merge does not wait: closedUnmerged sends the handoff
+// back. Without either, nothing would ever start the end command, so the handoff starts it.
 func (c issueCtx) awaitsPR(t time.Time) bool {
 	return slices.ContainsFunc(c.it.PRs, func(pr forge.PR) bool {
-		return pr.State == "OPEN" || !pr.ClosedAt.IsZero() && !pr.ClosedAt.Before(t)
+		return pr.State == "OPEN" || !pr.MergedAt.IsZero() && !pr.MergedAt.Before(t)
 	})
+}
+
+// closedUnmerged returns a PR that closed without a merge from t on: the end handoff has no
+// merge to wait for, and nothing else would ever act on it.
+func (c issueCtx) closedUnmerged(t time.Time) (forge.PR, bool) {
+	i := slices.IndexFunc(c.it.PRs, func(pr forge.PR) bool {
+		return pr.State == "CLOSED" && pr.MergedAt.IsZero() && !pr.ClosedAt.IsZero() && !pr.ClosedAt.Before(t)
+	})
+	if i < 0 {
+		return forge.PR{}, false
+	}
+	return c.it.PRs[i], true
 }
 
 // pushCommand is what a user runs to push the worktree by hand: the Teruggegeven of a refused

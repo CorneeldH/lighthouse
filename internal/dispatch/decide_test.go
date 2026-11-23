@@ -1109,6 +1109,7 @@ func TestReturnLabelKeyTable(t *testing.T) {
 		"reason_pusher_answer_unknown": "needs_hands", "reason_pusher_answer_moved": "needs_hands", "reason_pusher_no_after": "needs_hands", "reason_pusher_git_failed": "needs_hands",
 		"reason_pusher_node": "needs_hands", "reason_pusher_silent": "needs_hands",
 		"reason_pusher_no_handoff": "needs_hands", "reason_pusher_red": "needs_hands", "reason_pusher_red_ceiling": "needs_hands", "reason_repeat_handoff": "needs_hands",
+		"reason_answer_no_session": "needs_hands", "reason_answer_no_run": "needs_hands", "reason_pr_closed_unmerged": "needs_hands",
 	}
 	var headings map[string]map[string]string
 	if _, err := toml.DecodeFile(filepath.Join("..", "..", "pack", "core", "headings.toml"), &headings); err != nil {
@@ -1344,5 +1345,64 @@ func TestRepairRoundTwoResumesResumedRow(t *testing.T) {
 	a := got[0]
 	if a.Kind != KindResume || a.Trigger != "repair" || a.TriggerKey != "repair:91" || a.Attempt != 1 || a.SessionID != pushSession || a.CommentID != 91 {
 		t.Errorf("action %+v, want a first resume of the same session under repair:91", a)
+	}
+}
+
+// returnedComment is a Returned comment of the bot at the given id, after the comments of the
+// answer fixtures.
+func returnedComment(id int64, at string) Comment {
+	return Comment{ID: id, Author: "lh-bot", CreatedAt: at, Body: "🤖 Teruggegeven\nreason: x"}
+}
+
+// An answered Question whose session no run of this issue has goes back once: the Teruggegeven
+// is the next last turn, so the second tick does nothing.
+func TestDecideAnswerNoRun(t *testing.T) {
+	in := loadInput(t, "answer-question-unknown-session")
+	want := []string{"return:reason_answer_no_run:99999999-8888-4777-8666-555555555555"}
+	if got := summary(Decide(in)); !reflect.DeepEqual(got, want) {
+		t.Fatalf("first tick = %q, want %q", got, want)
+	}
+	item7(&in).Comments = append(item7(&in).Comments, returnedComment(65, "2026-10-31T11:40:00Z"))
+	item7(&in).Labels, in.Repos[0].Labels, item7(&in).Status = []string{"needs_hands"}, testLabels, "To do"
+	if got := summary(Decide(in)); len(got) != 0 {
+		t.Errorf("second tick = %q, want nothing", got)
+	}
+}
+
+// An answered Question with neither a session nor a sha goes back once.
+func TestDecideAnswerNoSession(t *testing.T) {
+	in := loadInput(t, "answer-question-without-session")
+	want := []string{"return:reason_answer_no_session:"}
+	if got := summary(Decide(in)); !reflect.DeepEqual(got, want) {
+		t.Fatalf("first tick = %q, want %q", got, want)
+	}
+	item7(&in).Comments = append(item7(&in).Comments, returnedComment(65, "2026-10-31T11:40:00Z"))
+	item7(&in).Labels, in.Repos[0].Labels, item7(&in).Status = []string{"needs_hands"}, testLabels, "To do"
+	if got := summary(Decide(in)); len(got) != 0 {
+		t.Errorf("second tick = %q, want nothing", got)
+	}
+}
+
+// An end handoff (/lighthouse-close-issue) whose PR closed without a merge from the handoff on
+// goes back; an open PR keeps waiting and a merged one goes to the close-check.
+func TestDecideEndHandoffClosedPRWithoutMerge(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*forge.PR)
+		want   []string
+	}{
+		{"closed without merge", func(pr *forge.PR) { pr.State, pr.MergedAt = "CLOSED", time.Time{} },
+			[]string{"return:reason_pr_closed_unmerged:12"}},
+		{"open", func(pr *forge.PR) { pr.State, pr.MergedAt, pr.ClosedAt = "OPEN", time.Time{}, time.Time{} }, []string{}},
+		{"merged", func(*forge.PR) {}, []string{}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			in := loadInput(t, "handoff-end-pr-merged-after")
+			tc.mutate(&item7(&in).PRs[0])
+			if got := summary(Decide(in)); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("got %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
