@@ -4,6 +4,25 @@ All notable changes to lighthouse. The format follows [Keep a Changelog](https:/
 chosen is in [docs/releasing.md](docs/releasing.md). The release workflow writes the sections below from the
 fragments in `changelog.d/`; never edit a released section by hand.
 
+## [v0.26.0] - 2026-11-23
+
+### Added
+
+- This repository now enables its own daily report and gives the process report a fixed place under docs/developer/verslag.
+- `lighthouse level` shows the setup level of a repository, the stand per component, how often each component on `log` would have reported since the level was set, and which hooks of the next level are not measured yet. It never claims the next level is within reach.
+- A component can now be set to the stand `log` in `[components]`: its Go hook runs but never blocks and never speaks, and writes one line per would-be report to a logbook outside the repository.
+- `lighthouse init` now knows setup levels (`light`, `standard`, `strict`): `--level` chooses what gets installed, `level` in `lighthouse.toml` and `.lighthouse/components.toml` record the choice, and `[components]` switches single components on or off; the requirements of switched-off components no longer count. A first `init` in a new repository chooses `light`, and an existing repository without `level` behaves as `strict`. `init` now also fails on an invalid `lighthouse.toml`, because an existing file is read with `config.Load`.
+- Skill texts now carry `if installed` conditional references, and a `[calls]` table keeps the hand-overs between skills consistent per level. The managed block drops the lines of components that are off and warns when a core gate is not on.
+
+### Changed
+
+- `git commit --no-verify` (and `-n`) is now blocked by its own base hook `no-verify-check`, on every branch and at every level: it has no stand and no override, so it stays blocked when `commit-test-gate` or `main-commit-gate` is off. The `--no-verify` rule in the instruction block is its own line, so it stays at every level. Update the `lighthouse` binary before `init --upgrade` reaches a machine: an older binary does not know `no-verify-check`, and because the hook is in `blocking` it would block Bash calls there.
+- Dashboard: issue numbers without # on a light chip, a system/light/dark switch in the header, all UI text in English.
+
+### Fixed
+
+- The controller page links a workspace to `<workspace_url>/terminal/<id>`, the path of the new kenn-forge, instead of `/workspaces/<id>`.
+
 ## [v0.25.0] - 2026-11-23
 
 ### Added
