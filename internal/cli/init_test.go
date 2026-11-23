@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/CorneeldH/lighthouse/internal/agentaudit"
+	"github.com/CorneeldH/lighthouse/internal/lintcheck"
 )
 
 // hooksCheckStubbed is true while a test has put its own hooksCheck in place; runInit then
@@ -24,11 +25,25 @@ func stubHooksCheck(t *testing.T, f func(string, io.Writer, io.Writer) int) {
 	t.Cleanup(func() { hooksCheck, hooksCheckStubbed = orig, false })
 }
 
+// lintCheckStubbed is true while a test has put its own lintCheck in place; runInit then leaves
+// it, and otherwise swaps in a no-op so no init test runs the real lint check.
+var lintCheckStubbed bool
+
+func stubLintCheck(t *testing.T, f func(string, []lintcheck.Lang, []string, string, io.Writer, io.Writer) int) {
+	t.Helper()
+	orig := lintCheck
+	lintCheck, lintCheckStubbed = f, true
+	t.Cleanup(func() { lintCheck, lintCheckStubbed = orig, false })
+}
+
 // runInit runs `lighthouse init <args>` in a new git repository with an isolated home.
 func runInit(t *testing.T, args ...string) (code int, stdout, stderr string) {
 	t.Helper()
 	if !hooksCheckStubbed {
 		stubHooksCheck(t, func(string, io.Writer, io.Writer) int { return 0 })
+	}
+	if !lintCheckStubbed {
+		stubLintCheck(t, func(string, []lintcheck.Lang, []string, string, io.Writer, io.Writer) int { return 0 })
 	}
 	dir := t.TempDir()
 	if out, err := exec.Command("git", "-C", dir, "init", "-q", "-b", "main").CombinedOutput(); err != nil {
@@ -114,5 +129,68 @@ func TestInitLevelFlagIsWired(t *testing.T) {
 	code, _, errOut = runInit(t, "--yes", "--level", "bogus")
 	if code == 0 || !strings.Contains(errOut, `unknown level "bogus"`) {
 		t.Errorf("exit %d, stderr %q; want the unknown level refused", code, errOut)
+	}
+}
+
+// Classification: cli-output. Fails when a fully wired repo makes init print anything but
+// `No changes.`: lint stdout (`<linter>: wired`) must stay out.
+func TestInitPrintsNothingForWiredRepo(t *testing.T) {
+	stubLintCheck(t, func(_ string, _ []lintcheck.Lang, _ []string, _ string, out, _ io.Writer) int {
+		_, _ = io.WriteString(out, "ruff: wired\n")
+		return 0
+	})
+	code, out, errOut := runInit(t, "--yes")
+	if code != 0 || strings.Contains(out, "wired") || strings.Contains(errOut, "wired") || strings.Contains(errOut, "lint check") {
+		t.Errorf("rc %d, out %q, err %q", code, out, errOut)
+	}
+}
+
+// Classification: cli-output. Fails when findings are not shown under the heading on stderr.
+func TestInitShowsMissingUnderHeading(t *testing.T) {
+	stubLintCheck(t, func(_ string, _ []lintcheck.Lang, _ []string, _ string, out, _ io.Writer) int {
+		_, _ = io.WriteString(out, "ci.yml:3: ruff — LINTMARK\n")
+		return 1
+	})
+	code, out, errOut := runInit(t, "--yes")
+	if code != 0 || strings.Contains(out, "LINTMARK") ||
+		!strings.Contains(errOut, "lint check: some linters are not wired\nci.yml:3: ruff — LINTMARK") {
+		t.Errorf("rc %d, out %q, err %q", code, out, errOut)
+	}
+}
+
+// Classification: cli-output. Fails when exit 1 or 3 of the lint check changes the exit of init.
+func TestInitDoesNotFailOnLintExit1And3(t *testing.T) {
+	for _, rc := range []int{1, 3} {
+		stubLintCheck(t, func(_ string, _ []lintcheck.Lang, _ []string, _ string, _, errOut io.Writer) int {
+			_, _ = io.WriteString(errOut, "lint check: COULD NOT CHECK — x\n")
+			return rc
+		})
+		if code, _, _ := runInit(t, "--yes"); code != 0 {
+			t.Errorf("lint rc %d: init rc %d", rc, code)
+		}
+	}
+}
+
+// Classification: cli-output. Fails when init skips the lint check.
+func TestInitRunsLintCheck(t *testing.T) {
+	var calls int
+	stubLintCheck(t, func(string, []lintcheck.Lang, []string, string, io.Writer, io.Writer) int { calls++; return 0 })
+	if code, _, errOut := runInit(t, "--yes"); code != 0 || calls != 1 {
+		t.Errorf("rc %d, %d calls, err %q", code, calls, errOut)
+	}
+}
+
+// Classification: cli-output. Fails when exit 3 of the lint check shows the heading of exit 1:
+// a check that could not run would then read as missing wiring.
+func TestInitLintHeadingPerExit(t *testing.T) {
+	for rc, heading := range map[int]string{1: "lint check: some linters are not wired\n", 3: "lint check: could not check\n"} {
+		stubLintCheck(t, func(_ string, _ []lintcheck.Lang, _ []string, _ string, _, errOut io.Writer) int {
+			_, _ = io.WriteString(errOut, "LINTMARK\n")
+			return rc
+		})
+		code, _, errOut := runInit(t, "--yes")
+		if code != 0 || !strings.Contains(errOut, heading+"LINTMARK") {
+			t.Errorf("lint rc %d: init rc %d, stderr %q, want heading %q", rc, code, errOut, heading)
+		}
 	}
 }

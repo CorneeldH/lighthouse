@@ -135,6 +135,7 @@
               ],
               "example": "github",
               "readers": [
+                "internal/cli/lint.go",
                 "internal/evidence/run.go",
                 "internal/initcmd/initcmd.go",
                 "internal/repoconfig/repoconfig.go",

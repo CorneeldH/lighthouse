@@ -1793,6 +1793,30 @@ func TestCheckHooksSkippedWhenDeclined(t *testing.T) {
 	}
 }
 
+// Classification: cli-output. Fails when init skips the lint check after writing, or when it runs
+// on a declined diff, or when its output ends up on stdout.
+func TestLintCheckRunsAfterWriteAndOnNoChanges(t *testing.T) {
+	root := newRepo(t)
+	var calls int
+	hook := func(o *Options) {
+		o.LintCheck = func(r string, out, errOut io.Writer) { calls++; _, _ = io.WriteString(errOut, "LINT\n") }
+	}
+	r := run(t, root, "", func(o *Options) { yes(o); hook(o) })
+	if r.code != 0 || calls != 1 || !strings.Contains(r.err, "LINT") || strings.Contains(r.out, "LINT") {
+		t.Errorf("rc %d, %d calls, out %q, err %q", r.code, calls, r.out, r.err)
+	}
+	r = run(t, root, "", func(o *Options) { yes(o); upgrade(o); hook(o) })
+	if r.code != 0 || calls != 2 || r.out != "No changes.\n" {
+		t.Errorf("no-changes: rc %d, %d calls, out %q", r.code, calls, r.out)
+	}
+	calls = 0
+	root2 := newRepo(t)
+	r = run(t, root2, "n\n", hook)
+	if r.code == 0 || calls != 0 {
+		t.Errorf("declined: rc %d, %d calls", r.code, calls)
+	}
+}
+
 // Red when init stops calling InSyncFolder on the repo: the repo sits in a OneDrive folder, and
 // the warning must name the provider and [worktree] root, without failing the run.
 func TestWarnsRepoInSyncFolder(t *testing.T) {
