@@ -140,6 +140,8 @@ and picking up goes on as well. Skip the step on a `labels.blocked_*` label from
 open `blocked_by` without a label (*label missing*): the issue may get a spec, but the plan and
 the execution wait, and the board would show `In progress` for work that stands still. It stays
 on `To do`, also with `labels.blocked_issue`: the controller parks a blocked issue there too.
+Skip it as well on `labels.needs_hands` or `labels.needs_testing`: the next step is a human's, and the
+board stays on `To do`.
 
 The status `Controller` (only if present, with a `[controller]` table) stays: the controller
 selects on it and runs this skill itself. In a controller run the board stays `Controller`, also
@@ -163,6 +165,7 @@ Then execute the reported route:
 
 | Line | Execution |
 |---|---|
+| route `stop` (`labels.needs_hands` or `labels.needs_testing`) | report what the human has to do first and stop; no execution, no spec, no plan; the stop comes before **Blocked?**, so also with `— blocker #<x> open` no handoff; on a stop at 4b no scout goes out, and the line `heading:scout_skipped — <label>: the next step is a human's, no plan follows.` is reported; in a controller run post no handoff (the controller sends such an issue to `RowInteractive`) |
 | gate `0` (**unknown**; in a controller run, if present, also **lapsed** or **unlinked**) | stop, with the reason from the line; no board, no route, no handoff: the human repairs the relation or the label |
 | gate `1` | call that skill, done |
 | gate `2` | `superpowers:systematic-debugging` |
@@ -245,6 +248,12 @@ in this session. Report:
 
 ```text
 heading:scout_skipped — blocker #<x> open, the plan waits for the merge.
+```
+
+A stop at `4b` (route `stop`, step 4) sends no scout either; report:
+
+```text
+heading:scout_skipped — <label>: the next step is a human's, no plan follows.
 ```
 
 ##### Skipping is allowed, skipping silently is not

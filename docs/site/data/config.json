@@ -684,6 +684,7 @@
               "readers": [
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/route-issue",
+                "pack/core/skills/start-issue",
                 "pack/core/skills/write-issue"
               ]
             },
@@ -709,6 +710,7 @@
               "readers": [
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/route-issue",
+                "pack/core/skills/start-issue",
                 "pack/core/skills/write-issue"
               ]
             }

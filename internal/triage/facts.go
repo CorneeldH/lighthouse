@@ -106,11 +106,9 @@ func LastMarker(cs []Comment) (protocol.TriageMarker, bool) {
 }
 
 // MarkerHolds reports whether the marker still keeps the issue out of triage. A marker without
-// a stop never lapses by itself; one with a stop lapses when the stop is gone.
+// a stop never lapses by itself; one with a stop lapses when the stop is gone. A `needs_*` label
+// is such a stop: it holds while the label stays and lapses when the label is removed.
 func MarkerHolds(m protocol.TriageMarker, f Facts, l repoconfig.Labels) bool {
-	if m.Label != "" && (m.Label == l.NeedsHands || m.Label == l.NeedsTesting) {
-		return false
-	}
 	if !m.Stop {
 		return true
 	}
