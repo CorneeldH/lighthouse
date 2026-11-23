@@ -444,8 +444,12 @@ geen sessie, ook niet terwijl de rij op CI wacht.
 - **Pusher-Vraag met een ander antwoord.** Staat op de Vraag van de pusher een antwoord dat niet `push`
   is, dan herstelt tick op de `sha` van die Vraag: staat die sha op de remote (`git ls-remote`, zonder
   forge-token in de omgeving), dan gaat de rij met een Handoff verder en draagt de lane van de Vraag
-  mee. Staat ze er niet, of ontbreekt de sha, dan komt een 🤖 Teruggegeven met het antwoord als
-  reden (`reason_pusher_*`).
+  mee. Staat ze er niet, of kan git het niet zeggen, dan komt een 🤖 Teruggegeven met het antwoord
+  of de git-fout als reden (`reason_pusher_answer_moved`, `reason_pusher_git_failed`). Noemt de Vraag
+  geen `after:`, dan gaat het issue terug met `reason_pusher_no_after`. Mislukt de post van die Handoff
+  of Teruggegeven, dan sluit de rij als `returned` en niet als `start_failed`: alleen het antwoord
+  `push` start de pusher, ook bij een tweede poging. De sleutel is dan op en het vangnet (`idle`)
+  pakt het issue op.
 
 ### Afloop met de lokale werkplek
 

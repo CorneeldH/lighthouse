@@ -597,7 +597,8 @@ func (ap applier) push(ctx context.Context, a Action, res *Result) error {
 // already (by hand), so it posts the 🤖 Handoff the pusher posts after a push, with the Vraag's
 // after: command, and closes the row as handoff at once: no pusher starts, and an open row would
 // block handoff() and read as a silent pusher. Any other state of the branch, or a git that
-// cannot tell, posts a 🤖 Returned with the reason and gives the issue back.
+// cannot tell, posts a 🤖 Returned with the reason and gives the issue back. A failed post closes
+// the row as returned (recoverPostFailed).
 func (ap applier) pushRecover(ctx context.Context, a Action) error {
 	env := ap.env
 	run, err := runs.Take(ctx, env.DB, runs.Claim{
@@ -629,7 +630,7 @@ func (ap applier) pushRecover(ctx context.Context, a Action) error {
 	}
 	body := protocol.RenderPushed(a.Issue, a.Worktree, a.Branch, "", "", a.After, a.Lane, a.Language)
 	if _, err := env.Forge(a.Repo).CreateComment(ctx, a.Issue, body); err != nil {
-		return ap.startFailed(ctx, run.ID, "post handoff", err)
+		return ap.recoverPostFailed(ctx, run.ID, "post handoff", err)
 	}
 	return ap.closeRun(ctx, run.ID, runs.Handoff, "")
 }
@@ -642,12 +643,19 @@ func (ap applier) recoverReturn(ctx context.Context, a Action, runID int64, reas
 	text := reasonText(ra)
 	body := protocol.RenderReturned(text, "", "", a.Language)
 	if _, err := ap.env.Forge(a.Repo).CreateComment(ctx, a.Issue, body); err != nil {
-		return ap.startFailed(ctx, runID, "post returned", err)
+		return ap.recoverPostFailed(ctx, runID, "post returned", err)
 	}
 	if err := ap.giveBack(ctx, ra, ReturnLabelKey(reason, false)); err != nil {
 		return errors.Join(err, ap.closeRun(ctx, runID, runs.Returned, text))
 	}
 	return ap.closeRun(ctx, runID, runs.Returned, text)
+}
+
+// recoverPostFailed closes the row of a push recovery whose post failed as returned, never as
+// start_failed: retry reads a start_failed push row as a push to try again, and this answer
+// permitted no push. The trigger key stays spent; the idle net picks the silent issue up.
+func (ap applier) recoverPostFailed(ctx context.Context, runID int64, step string, cause error) error {
+	return ap.failedAs(ctx, runID, runs.Returned, step, cause)
 }
 
 // clip cuts s to at most n runes.
@@ -821,8 +829,14 @@ func (ap applier) busy(ctx context.Context, w workplace.Workplace, ws workplace.
 // startFailed closes a claimed run as start_failed with reason "<step>: <cause>". The release
 // ignores a cancelled ctx: the cancel may be what made the step fail.
 func (ap applier) startFailed(ctx context.Context, runID int64, step string, cause error) error {
+	return ap.failedAs(ctx, runID, runs.StartFailed, step, cause)
+}
+
+// failedAs closes runID with outcome o and the failed step as its reason, and returns that
+// failure, joined with a failed release. The release ignores a cancelled ctx.
+func (ap applier) failedAs(ctx context.Context, runID int64, o runs.Outcome, step string, cause error) error {
 	err := fmt.Errorf("%s: %w", step, cause)
-	if rerr := runs.Release(context.WithoutCancel(ctx), ap.env.DB, runID, runs.StartFailed, err.Error(), ap.env.Now()); rerr != nil {
+	if rerr := runs.Release(context.WithoutCancel(ctx), ap.env.DB, runID, o, err.Error(), ap.env.Now()); rerr != nil {
 		return errors.Join(err, fmt.Errorf("release run %d: %w", runID, rerr))
 	}
 	return err

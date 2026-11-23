@@ -2969,6 +2969,38 @@ func TestApplyPushRecoverGitFails(t *testing.T) {
 	}
 }
 
+// A failed post of the recovery's Handoff or Returned closes its row as returned, not as
+// start_failed: retry would read a start_failed pushanswer row as a push to try again, and the
+// user never answered `push`. The key stays spent; the idle net picks the issue up.
+func TestApplyPushRecoverPostFailsClosesReturned(t *testing.T) {
+	tests := []struct {
+		name       string
+		sha        string
+		wantReason string
+	}{
+		{"handoff post", strings.Repeat("a", 40), "post handoff: 502 bad gateway"},
+		{"returned post", strings.Repeat("b", 40), "post returned: 502 bad gateway"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h, specs := pushHarness(t)
+			var asked []string
+			h.env.LsRemote = lsRemoteFake(tt.sha, nil, &asked)
+			h.poster(applyRepo).postErr = errors.New("502 bad gateway")
+			if _, err := Apply(context.Background(), h.env, []Action{pushRecoverAction()}); err == nil {
+				t.Errorf("Apply: nil error, want the failed post")
+			}
+			rows := h.history(t)
+			if len(rows) != 1 || rows[0].Open || rows[0].Outcome != runs.Returned || rows[0].Reason != tt.wantReason {
+				t.Errorf("rows = %+v, want one row closed as returned with reason %q", rows, tt.wantReason)
+			}
+			if len(*specs) != 0 {
+				t.Errorf("specs = %v, want no pusher", *specs)
+			}
+		})
+	}
+}
+
 // A spent trigger key does nothing: no git call, no comment.
 func TestApplyPushRecoverSpentKeyDoesNothing(t *testing.T) {
 	h, _ := pushHarness(t)

@@ -1523,7 +1523,8 @@ type pushTarget struct {
 
 // pushTargetOf reads the target of a push trigger key from its comment: for push:<id> the
 // handoff, for pushanswer:<id> the last pusher Vraag before the answer, as the answer itself
-// carries none of it. false when the comment is gone or does not read.
+// carries none of it. false when the comment is gone or does not read, and for a pushanswer
+// key whose answer is not `push`.
 func (c issueCtx) pushTargetOf(key string) (pushTarget, bool) {
 	id, ok := triggerComment(key)
 	if !ok {
@@ -1542,6 +1543,11 @@ func (c issueCtx) pushTargetOf(key string) (pushTarget, bool) {
 		}
 		t.trigger, t.worktree, t.branch = triggerPush, ho.Worktree, ho.Branch
 		return t, true
+	}
+	// Only the answer `push` permits a SHA: a pushanswer row of any other answer is a recovery
+	// (KindPushRecover), whose row must never turn into a push.
+	if !permitAnswer(com.Body) {
+		return pushTarget{}, false
 	}
 	// The answer has no protocol header, so it is not in c.hs: the walk goes over the thread and
 	// stops at the answer. A pusher Vraag after it is not the one the user answered, and its SHA

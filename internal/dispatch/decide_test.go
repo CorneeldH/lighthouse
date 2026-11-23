@@ -437,6 +437,13 @@ func TestDecidePushAnswer(t *testing.T) {
 			item7(in).Comments[2].Rocket = true
 			addRows(in, runs.Row{ID: 9, Issue: 7, TriggerKey: "pushanswer:71", Command: "push-workflows", Outcome: runs.Handoff})
 		}, []string{}},
+		// A recovery row whose post failed must never become a push: the user did not answer
+		// `push`, so the Vraag's sha has no permit. The issue goes back instead.
+		{"spent key, start failed", "gepushed", func(in *Input) {
+			withAfter(in)
+			item7(in).Comments[2].Rocket = true
+			addRows(in, runs.Row{ID: 9, Issue: 7, TriggerKey: "pushanswer:71", Command: "push-workflows", Outcome: runs.StartFailed})
+		}, []string{"return:reason_start_failed:"}},
 		{"no config", "push", func(in *Input) { in.Repos[0].WorkflowPush = false },
 			[]string{"return:reason_pusher_off:cd " + pushWorktree + " && git push -u origin HEAD"}},
 		{"answer spent", "push", func(in *Input) {
