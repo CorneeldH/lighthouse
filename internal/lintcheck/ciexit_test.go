@@ -208,3 +208,16 @@ func TestExitJobIfFalseMarksEverySteps(t *testing.T) {
 		}
 	}
 }
+
+// Classification: cli-output. Fails when continue-on-error on the job is reported as on the step.
+func TestExitContinueOnErrorReasonNamesTheLevel(t *testing.T) {
+	s := ghStep("uvx ruff@0.9.0 check")
+	s.JobContinueOnError = "true"
+	if got := onlyVerdict(t, []Step{s}, "ruff"); got.Reason != "job has continue-on-error" {
+		t.Errorf("job level: %q", got.Reason)
+	}
+	s.JobContinueOnError, s.ContinueOnError = "", "true"
+	if got := onlyVerdict(t, []Step{s}, "ruff"); got.Reason != "step has continue-on-error" {
+		t.Errorf("step level: %q", got.Reason)
+	}
+}

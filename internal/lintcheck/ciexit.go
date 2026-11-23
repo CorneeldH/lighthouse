@@ -46,8 +46,11 @@ func stepGate(s Step) string {
 	if s.Unplaced != "" {
 		return s.Unplaced
 	}
-	if !literalFalseOrAbsent(s.ContinueOnError) || !literalFalseOrAbsent(s.JobContinueOnError) {
+	if !literalFalseOrAbsent(s.ContinueOnError) {
 		return "step has continue-on-error"
+	}
+	if !literalFalseOrAbsent(s.JobContinueOnError) {
+		return "job has continue-on-error"
 	}
 	if s.AllowFailure {
 		return "job has allow_failure"
