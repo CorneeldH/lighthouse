@@ -12,7 +12,7 @@
 
 ## Besluiten
 
-- Graafkaart (`DepsView.tsx`): zonder repo-voorvoegsel alleen `nr`; met voorvoegsel blijft `repo#nr` staan (het `#` scheidt daar repo en nummer en voorkomt dubbelzinnigheid tussen repo's). De issue noemt alleen "het `#` voor elk nummer"; dit is de enige lezing die de graaf leesbaar houdt.
+- Graafkaart (`DepsView.tsx`): AC 1 eist het nummer zonder `#` ook in de graaf. Zonder repo-voorvoegsel alleen `nr`; met voorvoegsel (of een grijze externe node) `repo nr`, gescheiden door een spatie, dus nooit een `#` (het hover-`title` blijft `#nr titel`).
 - Oude bladwijzer `#prioritering` krijgt geen redirect: de grep-eis (AC 7) sluit de oude term in `web/src` uit, en het dashboard is een lokaal hulpmiddel.
 - Naamgeving: tab `Priorities`, hash `#priorities`, tab-id `'priorities'`.
 
@@ -44,13 +44,13 @@
 - Produceert: `TabId = 'controller' | 'priorities'`; hash `#priorities`; `RANK_CONFLICT_TEXT` (Engels, exacte tekst: `The order was just changed elsewhere; the list has been refreshed.`).
 
 - [ ] **Stap 1: Tests omzetten naar de Engelse namen (rood)**
-  Pas de bestaande tests aan: tabnaam `Priorities`, hash `#priorities`, schakelaar `Computed` | `Priority`, groep `Order`, knoppen `Up` / `Down` met aria-label `… up` / `… down`, title `place in the repo`, sr-only `, place N`, `provisional`, `no issues yet`, conflicttekst en de twee `Opslaan mislukt`-meldingen als `Save failed: …` / `Save failed: server unreachable`.
+  Pas de bestaande tests aan: tabnaam `Priorities`, hash `#priorities`, schakelaar `Computed` | `Priority`, groep `Order`, knoppen `Up` / `Down` met aria-label `… up` / `… down`, title `place in the repo`, sr-only `, place N`, `provisional`, `no issues yet`, conflicttekst en de `Opslaan mislukt`-meldingen (`queries.test.tsx:291` en de andere) als `Save failed: …` / `Save failed: server unreachable`.
 - [ ] **Stap 2: Draai de tests, verwacht rood**
   Run: `cd web && npx vitest run src/components src/lib/queries.test.tsx` — verwacht FAIL op de oude namen.
 - [ ] **Stap 3: Vervang de tekst in de bestanden hierboven**
   Alleen strings, `title`, `aria-label`, sr-only en de tab-id; commentaar dat naar `stand Berekend` / `stand Prioriteit` verwijst wordt `Computed mode` / `Priority mode`.
 - [ ] **Stap 4: Sweep op verdwaalde Nederlandse tekst**
-  Run: `cd web && git grep -nEi "prioriteit|berekend|volgorde|omhoog|omlaag|plaats|voorlopig|nog geen|opslaan|onbereikbaar|ververst" -- src ':!*.test.*'` — verwacht alleen Engelse treffers (`Priority`) of niets. Lees daarna de overige componenten in `web/src/components` en `web/src/lib` door op andere Nederlandse tekst en vervang die ook; noteer in de commit wat er extra bij kwam.
+  Run: `cd web && git grep -nEi "prioritering|prioriteit|berekend|volgorde|omhoog|omlaag|plaats|voorlopig|nog geen|opslaan|onbereikbaar|ververst|mislukt" -- src ':!*.test.*'` — verwacht alleen Engelse treffers (`Priority`) of niets. Lees daarna de overige componenten in `web/src/components` en `web/src/lib` door op andere Nederlandse tekst en vervang die ook; noteer in de commit wat er extra bij kwam.
 - [ ] **Stap 5: Tests groen, commit**
   Run: `cd web && npm run test && npm run lint && npm run typecheck` — verwacht PASS.
   ```bash
@@ -61,20 +61,20 @@
 ### Taak 2: Nummer zonder `#` op een lichte chip
 
 **Bestanden:**
-- Wijzig: `web/src/components/priorities/Block.tsx:46`, `web/src/components/priorities/DepsView.tsx:139,171`, `web/src/index.css` (tokens in `:root` en in het donkere blok)
-- Test: `priorities/MilestonesView.test.tsx:144,163,209`, `priorities/DepsView.test.tsx:48`, nieuw `web/src/lib/contrast.test.ts`
+- Wijzig: `web/src/components/priorities/Block.tsx:46`, `web/src/components/priorities/DepsView.tsx:139,171`, `web/src/components/priorities/MilestonesView.tsx:194` (to-do-lijst), `web/src/index.css` (tokens in `:root` en in het donkere blok)
+- Test: `priorities/Block.test.tsx`, `priorities/MilestonesView.test.tsx:144,163,209`, `priorities/DepsView.test.tsx:48`, nieuw `web/src/lib/contrast.test.ts`
 
 **Interfaces:**
 - Produceert: CSS-tokens `--lh-chip-bg: #f4f5f8` en `--lh-chip-fg: #14213d` (in licht én donker dezelfde waarde); `contrastRatio(fg: string, bg: string): number` als testhelper in `contrast.test.ts` (hex in, WCAG-verhouding uit).
 
 - [ ] **Stap 1: Tests aanpassen en toevoegen (rood)**
-  - `MilestonesView.test.tsx`: verwacht chips `['1','2']`, `'1'` en `'to do:321…'`-variant zonder `#` (pas de samengestelde string op regel 209 aan); de titels (`#nr titel`) blijven ongewijzigd.
-  - `DepsView.test.tsx:48`: `getByText('1')`; voeg een geval toe met voorvoegsel waarin `repo#1` blijft.
-  - `contrast.test.ts`: leest `index.css`, haalt `--lh-chip-bg` en `--lh-chip-fg` uit `:root` én uit het donkere blok, en asserteert `contrastRatio(fg, bg) >= 4.5` voor allebei.
+  - `MilestonesView.test.tsx`: verwacht chips `['1','2']`, `'1'` en en regel 209 `'to do:324'` (nu `'to do:#3#2#4'`; de to-do-lijst rendert zijn eigen `#{b.nr}` en wordt in stap 3 aangepast); de titels (`#nr titel`) blijven ongewijzigd.
+  - `DepsView.test.tsx:48`: `getByText('1')`; pas het voorvoegselgeval aan naar `getByText(`${A} 1`)` en assert dat geen label een `#` bevat.
+  - `contrast.test.ts`: leest `index.css`, haalt `--lh-chip-bg` en `--lh-chip-fg` uit `:root` én uit het donkere blok, en asserteert `contrastRatio(fg, bg) >= 4.5` voor allebei. De CSS wordt gelezen met `import css from '../index.css?raw'` (typt via `vite/client`; assert eerst dat de string niet leeg is). Een Block-test (`Block.test.tsx`, nieuw of bestaand) asserteert dat de gerenderde chip de klassen `bg-[var(--lh-chip-bg)]` en `text-[var(--lh-chip-fg)]` draagt en geen `bg-background/70`, voor `done`, `active`, `ready`, `blocked` en `needsHuman`.
 - [ ] **Stap 2: Draai, verwacht rood**
   Run: `cd web && npx vitest run src/components/priorities src/lib/contrast.test.ts`
 - [ ] **Stap 3: Implementeer**
-  `Block.tsx`: chip toont `{label}` zonder `#`, klassen `rounded-sm bg-[var(--lh-chip-bg)] px-0.5 text-[var(--lh-chip-fg)]`. `DepsView.tsx`: label is `String(n.number)` zonder voorvoegsel, `` `${n.repo}#${n.number}` `` met voorvoegsel of `grey`. Tokens toevoegen aan `:root` en aan het donkere blok.
+  `Block.tsx`: chip toont `{label}` zonder `#`, klassen `rounded-sm bg-[var(--lh-chip-bg)] px-0.5 text-[var(--lh-chip-fg)]`. `DepsView.tsx`: label is `String(n.number)` zonder voorvoegsel, `` `${n.repo} ${n.number}` `` met voorvoegsel of `grey`. `MilestonesView.tsx:194`: `{b.nr}` in plaats van `#{b.nr}` in de to-do-lijst. Tokens toevoegen aan `:root` en aan het donkere blok.
 - [ ] **Stap 4: Tests groen, commit**
   ```bash
   git add web/src
@@ -85,7 +85,7 @@
 
 **Bestanden:**
 - Maak: `web/src/lib/theme.ts`, `web/src/lib/theme.test.ts`, `web/src/components/ThemeToggle.tsx`, `web/src/components/ThemeToggle.test.tsx`
-- Wijzig: `web/src/index.css:7` en het donkere tokenblok (`:106-151`), `web/src/components/Header.tsx:55-64` (naast Refresh), `web/index.html` (inline script tegen flits; controleer eerst of de bundel een CSP heeft), `web/e2e/ui.e2e.ts:144-158`
+- Wijzig: `web/src/index.css:6-7` (regel 6 is het commentaar "the page has no toggle", dat vervalt) en het donkere tokenblok (`:106-151`), `web/src/components/Header.tsx:55-64` (naast Refresh), `web/index.html` (inline script tegen flits; controleer eerst of de bundel een CSP heeft), `web/e2e/ui.e2e.ts:144-158`
 - Test: `web/src/components/Header.test.tsx`
 
 **Interfaces:**
@@ -106,9 +106,9 @@
 - [ ] **Stap 5: Inline script in `web/index.html`**
   Zet vóór de eerste paint `data-theme` uit `localStorage['lighthouse.theme']` als de waarde `light` of `dark` is; in try/catch.
 - [ ] **Stap 6: e2e**
-  Voeg aan `ui.e2e.ts` toe: stand `Dark` bij emulatie `light` geeft achtergrond `rgb(15, 20, 32)`; stand `Light` bij emulatie `dark` geeft `oklch(1 0 0)`-equivalent; herladen behoudt de keuze. Bestaande systeem-asserties blijven.
+  Voeg aan `ui.e2e.ts` toe: stand `Dark` bij emulatie `light` geeft achtergrond `rgb(15, 20, 32)`; stand `Light` bij emulatie `dark` geeft `oklch(1 0 0)`-equivalent; herladen behoudt de keuze. In beide forced-standen ook de Controller-kop (`dark:`-consument, `ControllerSection.tsx:15`): `rgb(232, 234, 240)` bij `Dark`, `rgb(20, 33, 61)` bij `Light`; dat bewijst dat de `@custom-variant dark` op `data-theme` reageert. Bestaande systeem-asserties blijven.
 - [ ] **Stap 7: Verifieer en commit**
-  Run: `cd web && npm run test && npm run lint && npm run typecheck && npm run build && npm run e2e` — verwacht PASS.
+  Run: `cd web && npm run test && npm run lint && npm run typecheck && npm run build`, daarna vanaf de repo-root `go build -o /tmp/lh ./cmd/lighthouse` en `cd web && npx playwright install chromium && LIGHTHOUSE_BIN=/tmp/lh npm run e2e` (zie `web/README.md`, *End-to-end tests*; zonder `LIGHTHOUSE_BIN` stopt Playwright direct) — verwacht PASS.
   ```bash
   git add web
   git commit -m "feat(web): knop systeem/licht/donker in de header (#504)"
@@ -118,7 +118,7 @@
 
 **Bestanden:**
 - Wijzig: `README.md:33`, `docs/priorities.md:1,3,48,57-59`
-- Maak: `changelog.d/issue-504-milestone-balk-thema-engels.md`
+- Maak: `changelog.d/issue-504-milestone-balk-nummers-zonder-en-beter.md`
 
 - [ ] **Stap 1: Docs bijwerken**
   `README.md`: de dashboard-zin noemt de knop systeem/licht/donker rechtsboven. `docs/priorities.md` (Nederlands): tabnaam `Priorities`, hash `#priorities`, schakelaar `Computed` | `Priority`, knoppen `Up` / `Down`.
