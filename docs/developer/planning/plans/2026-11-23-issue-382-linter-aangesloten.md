@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - Go, geen Python; tests in Go (`t.TempDir()` nep-repo's), niet in pytest.
-- Code, uitvoer van het subcommand, foutmeldingen en codecommentaar in het Engels; plan, PR en changelog-fragment in het Nederlands (`code_language_paths` bevat `internal/**`).
+- Code, uitvoer van het subcommand, foutmeldingen en codecommentaar in het Engels; plan en PR in het Nederlands, het changelog-fragment in het Engels (`docs/releasing.md`: één tot drie zinnen voor een gebruiker, in het Engels) (`code_language_paths` bevat `internal/**`).
 - Uitvoerregel per ontbrekend onderdeel: `<bestand>[:<regel>]: <linter> — <wat ontbreekt>`; succes: `<linter>: wired` op stdout; exit 0 / 1 / 3 (`gate.Unchecked`), foutmelding bij 3 `lint check: COULD NOT CHECK — <reden>` op stderr; 1 wint van 3, 3 wint van 0.
 - Een niet herkende lintstap is exit 1 (`step not recognised`), nooit groen. Geen uitweg in `lighthouse.toml`, geen tweede regellijst naast `BLOCKING_RULES`, geen Go-uitzonderingslijst voor niet-linter-IDs.
 - Vloer uit de **geïnstalleerde** hook onder `.claude/hooks/lighthouse/` (`ruff-format-check.sh`, `go-lint-gate.sh`, `shell-lint-check.sh`); ontbrekende hook of hook zonder `BLOCKING_RULES` is exit 3. Node en Expo: geen vloer.
@@ -47,7 +47,7 @@ Invoerklassen die de spec impliceert maar geen taak al dekt; elk heeft een test 
 - `internal/initcmd/initcmd.go` + `internal/cli/init.go` — `LintCheck`-aansluiting.
 - `.github/workflows/ci.yml`, `docs/lint-check.md`, `changelog.d/issue-382-linter-aangesloten.md`.
 
-Tests naast elk bestand (`*_test.go`), met één gedeelde helper `writeRepo(t, map[string]string) string` in `helpers_test.go`.
+Tests naast elk bestand (`*_test.go`), met één gedeelde helper `writeRepo(t, map[string]string) string` in `helpers_test.go`; de helper doet `git init` en `git add -A`, omdat `importcheck.Discover` alleen gevolgde bestanden ziet (`internal/importcheck/projects.go:97`). Tests voor workspace-kinderen en testdata-fixtures lopen via `Run` zonder `Dirs` en eisen dat er geen regel voor dat pad is.
 
 ---
 
@@ -69,7 +69,7 @@ Tests naast elk bestand (`*_test.go`), met één gedeelde helper `writeRepo(t, m
 
 - [ ] **Step 1: Write the failing tests** — `TestFloorSubtractsNonLinterRules` (hook met `BLOCKING_RULES="a,b,typecheck"`, `NON_LINTER_RULES="typecheck"` → `["a","b"]`); `TestFloorMissingHookIsUnchecked`; `TestFloorWithoutBlockingRulesIsUnchecked`; `TestRunExitCodes` met nep-`Checker`s: alleen findings → 1; findings plus een `UncheckedError` → 1 met beide meldingen (finding op stdout, `lint check: COULD NOT CHECK — …` op stderr); alleen unchecked → 3; niets → 0 met `<linter>: wired` op stdout; een taal zonder checker → 3, nooit 0.
 - [ ] **Step 2: Run** `go test ./internal/lintcheck/ -run 'Floor|Run' -v`. Expected: FAIL (pakket bestaat niet).
-- [ ] **Step 3: Implement** de types, `Floor` en `Run` zoals in Interfaces. Talen uit `.lighthouse/manifest.toml` via `manifest.Read` (`python`, `go`, `shell`; `node` en `expo` geven `node`; ontbrekend manifest = geen talen). Voor `node` zonder `Dirs`: `importcheck.Discover(root, "node")` (dekt workspace-roots en `testdata`). Dode code delen is toegestaan: lees `importcheck.manifestLanguages` na en exporteer het daar (`ManifestLanguages`) i.p.v. te kopiëren, en voeg `shell` toe in lintcheck zelf.
+- [ ] **Step 3: Implement** de types, `Floor` en `Run` zoals in Interfaces. Talen uit `.lighthouse/manifest.toml` via `manifest.Read` (`python`, `go`, `shell`; `node` en `expo` geven `node`; ontbrekend manifest = geen talen). Voor `node` zonder `Dirs`: `importcheck.Discover(root, "node")` (dekt workspace-roots en `testdata`). `importcheck.manifestLanguages` kent `shell` niet (`internal/importcheck/importcheck.go:161-187`) en blijft ongewijzigd: lintcheck leest `manifest.Read` zelf, met een eigen switch inclusief `shell`.
 - [ ] **Step 4: Run** dezelfde tests. Expected: PASS.
 - [ ] **Step 5: Commit** `feat(lintcheck): pakketskelet, uitvoer en vloer uit de hook (#382)`.
 
@@ -84,7 +84,8 @@ Tests naast elk bestand (`*_test.go`), met één gedeelde helper `writeRepo(t, m
 **Interfaces:**
 - Consumes: `Env.ForgeKind` uit Task 1 (leeg = `github`).
 - Produces:
-  - `type Step struct{ File string; Line int; Run string; Uses string; With map[string]string; Env map[string]string; WorkDir string; Shell string; RunsOn string; ContinueOnError, JobContinueOnError string; IfFalse bool; GitLab bool; AllowFailure, Manual bool }`
+  - `type Step struct{ File string; Job string; Index int; Line int; Run string; Uses string; With map[string]string; Env map[string]string; WorkDir string; Shell string; RunsOn string; ContinueOnError, JobContinueOnError string; IfFalse bool; GitLab bool; AllowFailure, Manual bool }`
+  - `Job` is de jobnaam, `Index` de positie van de stap in die job (0-gebaseerd); `Steps` geeft de stappen in jobvolgorde terug. Een voorafgaande installatie telt alleen met dezelfde `File`+`Job` en een lagere `Index`.
   - `func Steps(root, forgeKind string) ([]Step, error)` — alle stappen van workflows die bij een wijziging draaien; `UncheckedError` bij ongeldige YAML.
   - `func ciFilesPresent(root, forgeKind string) bool`.
 
@@ -108,14 +109,15 @@ Tests naast elk bestand (`*_test.go`), met één gedeelde helper `writeRepo(t, m
 - Produces:
   - `type Verdict int` met `NotFound`, `Valid`, `Unrecognised`, `Narrowed`, `Unpinned` (`Verdict` per linter-aanroep).
   - `type Call struct{ Step Step; Linter string; Args []string; Verdict Verdict; Reason string }`
-  - `func Calls(steps []Step, linter string, pkgJSON func(dir string) map[string]string, floor []string) []Call` — `linter` is `ruff`, `golangci-lint`, `shellcheck` of `eslint`; `pkgJSON` geeft de `scripts` van de `package.json` in een map (voor `npm run <script>`, één niveau); `floor` zijn de vloercodes uit `Floor` voor de `Narrowed`-beoordeling.
+  - `func Calls(steps []Step, linter string, pkgJSON func(dir string) map[string]string, floor []string, cfgNarrows func(dir, cfgPath string) bool) []Call` — `linter` is `ruff`, `golangci-lint`, `shellcheck` of `eslint`; `pkgJSON` geeft de `scripts` van de `package.json` in een map (voor `npm run <script>`, één niveau); `floor` zijn de vloercodes uit `Floor` voor de `Narrowed`-beoordeling; `cfgNarrows` laat de checker van het pack beoordelen of een `--config <bestand>` de vloer mist (ruff, golangci-lint) of geen keuze bevat (eslint); `Calls` kan dat zelf niet. Aggregatieregel: een linter is aangesloten als minstens één herkende aanroep `Valid` is; anders wordt de eerste niet-`Valid` herkende aanroep gemeld, en zonder herkende aanroep `no CI step runs <linter>`. Een `uses:`-actie met `install-only: true` is geen lintaanroep (`.github/workflows/ci.yml:242`); `args:` van een actie volgt dezelfde `Narrowed`- en exit-zero-regels als `run:`.
   - `func effectiveShell(s Step) (name string, errexit bool, ok bool)`.
 
 - [ ] **Step 1: Write the failing tests** (tabeltests, één rij per spec-geval):
   - Herkenning: `ruff check`, `uvx ruff@0.9.0 check`, `astral-sh/ruff-action`, `golangci-lint run`, de golangci-actie, `shellcheck x.sh`, `.lighthouse/scripts/shellcheck-repo.sh`, `eslint .`, `expo lint`, `npm run lint` (script `eslint .`). Niet herkend: `make lint`, `just lint`, `pre-commit run`, `ratchet.py`; `echo "ruff check"` en `# ruff check` tellen niet (Review Focus 2); `\`-voortzetting en meerregelige `run:` worden samengevoegd.
   - Exitstatus `Valid`: eigen regel, `&&`-keten, `shell: bash` met pipe (pipefail), geen shell op `ubuntu-latest`/`macos-latest`. `Unrecognised`: `|| true`, `| tee` zonder pipefail, `; ` na de aanroep, `set +e` ervoor, `continue-on-error` op stap of job anders dan letterlijk `false`/afwezig (ook een `${{ }}`-expressie), `shell: bash {0}` (ook via `defaults.run.shell`), `shell: pwsh`, `runs-on: windows-latest` zonder shell, `runs-on: ${{ matrix.os }}`, `--exit-zero`, `--issues-exit-code=0`. `uses:`-actie zonder `continue-on-error` is `Valid`.
   - Bereik telt niet: `ruff check --exclude migrations/` blijft `Valid`.
-  - `Narrowed`: `ruff check --select E9`, `--ignore <vloercode>`, `--extend-ignore`; `golangci-lint run --disable`/`--enable-only`/`--default none`; `shellcheck -e SC2164`, `--severity=error` boven een vloercode, `SHELLCHECK_OPTS: -e SC2164` in `env:` van workflow, job of stap; `eslint --no-config-lookup` zonder eigen `--config`. De vloercodes komen binnen via de `floor`-parameter van `Calls`; geen hardgecodeerde lijst.
+  - Pin voor `run:`-aanroepen: een herkende aanroep zonder pinbewijzende installatie (`ruff@<v>`, `ruff==<v>`, `go install …@<pin>`, `shellcheck-repo.sh`, of de actie met `version:`) in dezelfde of een eerdere stap van dezelfde job is `Unpinned`; `go install …@latest` ook. Tests per linter: kale aanroep, installatie op de pin, installatie op `@latest`.
+  - `Narrowed`: `ruff check --select E9`, `--ignore <vloercode>`, `--extend-ignore`; `golangci-lint run --disable`/`--enable-only`/`--default none`; `shellcheck -e SC2164`, `--severity=error` boven een vloercode, `SHELLCHECK_OPTS: -e SC2164` in `env:` van workflow, job of stap; `.shellcheckrc` met `severity=error` boven een vloercode (de bouwer bevestigt of `severity=` een geldige rc-sleutel is; zo niet, leg dat vast in een test); `eslint --no-config-lookup` zonder eigen `--config`; `--config <bestand>` bij ruff/golangci-lint/eslint via `cfgNarrows`; `shellcheck -i SC2086` (zonder vloercode) en `--include`; actie-invoer `install-only: true` (geen aanroep), `args: --issues-exit-code=0` (`Unrecognised`), `args: --disable errcheck` (`Narrowed`); twee aanroepen voor één linter (één `Valid` en één `Narrowed` → aangesloten). De vloercodes komen binnen via de `floor`-parameter van `Calls`; geen hardgecodeerde lijst.
   - GitLab (`.gitlab-ci.yml`): lintjob `Valid`; `allow_failure: true`, `allow_failure: {exit_codes: 1}`, `when: manual`, `when: never`, `rules:` met `when: manual|never` → `Unrecognised`.
 - [ ] **Step 2: Run** `go test ./internal/lintcheck/ -run 'Calls|Exit|Flags|GitLab' -v`. Expected: FAIL.
 - [ ] **Step 3: Implement.** `run:` ontleden met een kleine tokenizer (regels samenvoegen, commentaar en `echo`-argumenten wegstrippen, splitsen op `&&`, `||`, `;`, `|`); geen volledige shell-parser. Alles wat de tokenizer niet kan plaatsen is `Unrecognised`.
@@ -191,7 +193,7 @@ Tests naast elk bestand (`*_test.go`), met één gedeelde helper `writeRepo(t, m
 - Consumes: `lintcheck.Run`, `Options`, `Env`, de vier checkers.
 - Produces: `func newLintCommand() *cobra.Command`; `func lintRun(root string, langs []lintcheck.Lang, dirs []string, forgeKind string, out, errOut io.Writer) int` (hergebruikt door Task 8).
 
-- [ ] **Step 1: Write the failing tests**, naar `imports_test.go`: `TestLintCheckWiredRepoExit0`; `TestLintCheckMissingExit1WithLines`; `TestLintCheckUnknownLangExit3`; `TestLintCheckUnknownSubcommandExit3`; `TestLintCheckUnexpectedArgExit3`; `TestLintCheckFlagErrorExit3` (alle gebruiksfouten 3, zoals `imports check`); `TestLintCheckEmptyManifestExit0Silent` (Review Focus 5); `TestLintCheckLangNotInstalledExit3`; `TestLintCheckDirFlagNodeRoot`; `TestLintCheckForgeKindFromConfig` (GitLab-repo leest `.gitlab-ci.yml`; zonder `forge.kind` is het GitHub, naar `internal/config/config.go:649-650`).
+- [ ] **Step 1: Write the failing tests**, naar `imports_test.go`: `TestLintCheckWiredRepoExit0`; `TestLintCheckMissingExit1WithLines`; `TestLintCheckUnknownLangExit3`; `TestLintCheckUnknownSubcommandExit3`; `TestLintCheckUnexpectedArgExit3`; `TestLintCheckFlagErrorExit3` (alle gebruiksfouten 3, zoals `imports check`); `TestLintCheckEmptyManifestExit0Silent` (Review Focus 5); `TestLintCheckLangNotInstalledExit3`; `TestLintCheckDirFlagNodeRoot`; `TestLintCheckForgeKindFromConfig` (GitLab-repo leest `.gitlab-ci.yml`; zonder `forge.kind` is het GitHub, naar `internal/config/config.go:686`).
 - [ ] **Step 2: Run** `go test ./internal/cli/ -run LintCheck -v`. Expected: FAIL.
 - [ ] **Step 3: Implement** `newLintCommand` met `Use: "lint check [--lang python|go|node|shell]... [--dir PATH]..."` en dezelfde vorm als `newImportsCommand` (RunE op de ouder geeft 3, `SetFlagErrorFunc`, `errSilent` + `exitError{code}`). Stderr-prefix `lint check: COULD NOT CHECK — `. Forge-kind via `importsConfig("forge.kind")`.
 - [ ] **Step 4: Run** dezelfde tests. Expected: PASS. Controleer ook `go run ./cmd/lighthouse lint check` in deze worktree.
@@ -202,12 +204,12 @@ Tests naast elk bestand (`*_test.go`), met één gedeelde helper `writeRepo(t, m
 ### Task 8: Aansluiting op `init` en `init --upgrade`
 
 **Files:**
-- Modify: `internal/initcmd/initcmd.go` (veld `LintCheck func(root string, out, errOut io.Writer) int`, aanroep direct na `o.CheckHooks`, ook bij `No changes.`), `internal/cli/init.go` (`o.LintCheck = lintAfterInit`)
+- Modify: `internal/initcmd/initcmd.go` (veld `LintCheck func(root string, out, errOut io.Writer)` (zonder returnwaarde, zoals `CheckHooks`), aanroep direct na `o.CheckHooks`, ook bij `No changes.`), `internal/cli/init.go` (`o.LintCheck = lintAfterInit`)
 - Test: `internal/initcmd/initcmd_test.go`, `internal/cli/init_test.go`
 
 **Interfaces:**
 - Consumes: `lintRun` (Task 7).
-- Produces: `func lintAfterInit(root string, out, errOut io.Writer)` — roept `lintRun`, laat de uitvoer van een volledig aangesloten repo leeg (onderdruk `<linter>: wired`), print bij 1 of 3 een kop `lint check: some linters are not wired` gevolgd door de regels, wijzigt de exitcode van `init` nooit.
+- Produces: `func lintAfterInit(root string, out, errOut io.Writer)` — roept `lintRun`, laat de uitvoer van een volledig aangesloten repo leeg (onderdruk `<linter>: wired`), print bij 1 of 3 een kop `lint check: some linters are not wired` gevolgd door de regels, alles op `errOut` (zoals `checkHooksAfterInit`, `internal/cli/checkhooks.go:21`) zodat stdout exact `No changes.` blijft, wijzigt de exitcode van `init` nooit.
 
 - [ ] **Step 1: Write the failing tests** — `TestInitPrintsNothingForWiredRepo` (uitvoer is exact `No changes.` bij een tweede `init --upgrade` op een aangesloten repo); `TestInitShowsMissingUnderHeading`; `TestInitDoesNotFailOnLintExit1And3`; `TestUpgradeRunsLintCheck`. Een `lintCheck`-variabele in `cli` is vervangbaar door de test, zoals `hooksCheck`.
 - [ ] **Step 2: Run** `go test ./internal/initcmd/ ./internal/cli/ -run 'Init|Upgrade' -v`. Expected: FAIL.
@@ -222,11 +224,11 @@ Tests naast elk bestand (`*_test.go`), met één gedeelde helper `writeRepo(t, m
 **Files:**
 - Modify: `.github/workflows/ci.yml` (nieuwe job `lint-check`)
 - Create: `docs/lint-check.md`, `changelog.d/issue-382-linter-aangesloten.md`
-- Test: `internal/lintcheck/self_test.go` (build-tag-vrij)
+- Test: `internal/cli/lint_self_test.go` (build-tag-vrij; `lintRun` is niet-geëxporteerd in `cli` en `lintcheck` kan `cli` niet importeren)
 
-- [ ] **Step 1: Write the failing test** `TestLighthouseItselfIsWired`: draait `lintRun` op de repo-root (via `config.RepoRoot()`/`../..`) met `ForgeKind: "github"` en eist exit 0. Bewijst AC 5 en dat de check niet slaagt door een versoepelde config.
-- [ ] **Step 2: Run** `go test ./internal/lintcheck/ -run TestLighthouseItselfIsWired -v`. Expected: FAIL als lighthouse niet aangesloten is, anders PASS; bij FAIL sluit je aan (pin, CI-stap), nooit de config versoepelen (spec §5).
-- [ ] **Step 3: Implement** de job `lint-check` in `ci.yml`: `runs-on: ubuntu-latest`, `timeout-minutes: 5`, checkout met `persist-credentials: false`, `setup-go` met `go-version-file: go.mod`, stap `go run ./cmd/lighthouse lint check`; geen `needs: changes` en geen `if:` (spec §4). Gebruik dezelfde actie-SHA's als de `go`-job. Schrijf `docs/lint-check.md` (Nederlands): wat de check eist per pack, de herkende aanroepen, exitcodes, dat een niet herkende stap exit 1 geeft, en de keuze dat paden niet tellen. Schrijf het fragment (`type: added`, Nederlands, één alinea).
+- [ ] **Step 1: Write the failing test** `TestLighthouseItselfIsWired` (in `internal/cli`): draait `lintRun` op de repo-root (via `config.RepoRoot()`/`../..`) met `ForgeKind: "github"` en eist exit 0. Bewijst dat de check niet slaagt door een versoepelde config. Een tweede test `TestCIRunsLintCheckJob` leest `.github/workflows/ci.yml` en eist dat job `lint-check` een stap `go run ./cmd/lighthouse lint check` heeft, zonder `needs:` en zonder `if:` (AC 5).
+- [ ] **Step 2: Run** `go test ./internal/cli/ -run TestLighthouseItselfIsWired -v`. Expected: FAIL als lighthouse niet aangesloten is, anders PASS; bij FAIL sluit je aan (pin, CI-stap), nooit de config versoepelen (spec §5).
+- [ ] **Step 3: Implement** de job `lint-check` in `ci.yml`: `runs-on: ubuntu-latest`, `timeout-minutes: 5`, checkout met `persist-credentials: false`, `setup-go` met `go-version-file: go.mod`, stap `go run ./cmd/lighthouse lint check`; geen `needs: changes` en geen `if:` (spec §4). Gebruik dezelfde actie-SHA's als de `go`-job. Deze taak wijzigt `.github/workflows/`: in een controller-run gaat de push via de workflow-pusher (`next: push-workflows`), `workflow-push-gate` blokkeert hem anders. Schrijf `docs/lint-check.md` (Nederlands): wat de check eist per pack, de herkende aanroepen, exitcodes, dat een niet herkende stap exit 1 geeft, en de keuze dat paden niet tellen. Schrijf het fragment (`type: added`, Engels, één tot drie zinnen, naar `docs/releasing.md`).
 - [ ] **Step 4: Run** `go run ./cmd/lighthouse lint check` (exit 0, `<linter>: wired` per linter), `go run ./cmd/lighthouse init --upgrade` (verwacht `No changes.`), de test uit Step 1, `lighthouse imports check`, en `[test_gate] command` uit `lighthouse.toml`. Expected: alles groen.
 - [ ] **Step 5: Commit** `feat(ci): lint check in eigen CI, documentatie en changelog (#382)`.
 - [ ] **Step 6:** Draai de pakketten van deze branch met `-race` (`go test -race ./internal/lintcheck/ ./internal/cli/ ./internal/initcmd/`); rood wordt in een nieuwe commit hersteld.
