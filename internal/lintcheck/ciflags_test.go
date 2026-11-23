@@ -502,3 +502,59 @@ func TestGitLabMissingAndInvalid(t *testing.T) {
 		t.Fatalf("invalid YAML: want UncheckedError, got %v", err)
 	}
 }
+
+// Classification: ci-parse. Fails when GitLab's extends:, allow_failure in rules: or
+// inherit: default: false is ignored: a job that may fail, or whose pin proof does not run, then
+// counts as wired.
+func TestGitLabExtendsRulesInherit(t *testing.T) {
+	const script = "  script:\n    - pip install ruff==0.9.0\n    - ruff check\n"
+	cases := []struct {
+		name string
+		yml  string
+		want Verdict
+	}{
+		{"extends template with allow_failure", ".tmpl:\n  allow_failure: true\nlint:\n  extends: .tmpl\n" + script, Unrecognised},
+		{"extends list, last template with allow_failure", ".a:\n  stage: test\n.b:\n  allow_failure: true\nlint:\n  extends: [.a, .b]\n" + script, Unrecognised},
+		{"extends chain with when manual", ".a:\n  when: manual\n.b:\n  extends: .a\nlint:\n  extends: .b\n" + script, Unrecognised},
+		{"extends template with rules allow_failure", ".a:\n  rules:\n    - if: $CI\n      allow_failure: true\nlint:\n  extends: .a\n" + script, Unrecognised},
+		{"job overrides template allow_failure", ".tmpl:\n  allow_failure: true\nlint:\n  extends: .tmpl\n  allow_failure: false\n" + script, Valid},
+		{"script from the template", ".tmpl:\n  script:\n    - pip install ruff==0.9.0\n    - ruff check\nlint:\n  extends: .tmpl\n", Valid},
+		{"extends not in the file", "include: other.yml\nlint:\n  extends: .elsewhere\n" + script, Unrecognised},
+		{"rules allow_failure", "lint:\n  rules:\n    - if: $CI\n      allow_failure: true\n" + script, Unrecognised},
+		{"rules allow_failure false", "lint:\n  rules:\n    - if: $CI\n      allow_failure: false\n" + script, Valid},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			steps, err := Steps(writeRepo(t, map[string]string{".gitlab-ci.yml": c.yml}), "gitlab")
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := onlyVerdict(t, steps, "ruff")
+			if got.Verdict != c.want {
+				t.Fatalf("verdict %v (%s), want %v", got.Verdict, got.Reason, c.want)
+			}
+		})
+	}
+}
+
+// Classification: ci-parse. Fails when the default before_script proves the pin for a job that
+// does not inherit it.
+func TestGitLabInheritDefault(t *testing.T) {
+	const head = "default:\n  before_script:\n    - pip install ruff==0.9.0\nlint:\n  script:\n    - ruff check\n"
+	cases := map[string]Verdict{
+		"":                                   Valid,
+		"  inherit:\n    default: true\n":    Valid,
+		"  inherit:\n    default: false\n":   Unpinned,
+		"  inherit:\n    default: [image]\n": Unpinned,
+		"  inherit:\n    default: [before_script]\n": Valid,
+	}
+	for inherit, want := range cases {
+		steps, err := Steps(writeRepo(t, map[string]string{".gitlab-ci.yml": head + inherit}), "gitlab")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := onlyVerdict(t, steps, "ruff"); got.Verdict != want {
+			t.Errorf("inherit %q: verdict %v (%s), want %v", inherit, got.Verdict, got.Reason, want)
+		}
+	}
+}

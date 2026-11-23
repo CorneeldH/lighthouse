@@ -43,6 +43,9 @@ func startsWithPipefail(shell string) bool { return shell == "bash" }
 
 // stepGate returns why a step cannot make CI red whatever it runs, or "" when it can.
 func stepGate(s Step) string {
+	if s.Unplaced != "" {
+		return s.Unplaced
+	}
 	if !literalFalseOrAbsent(s.ContinueOnError) || !literalFalseOrAbsent(s.JobContinueOnError) {
 		return "step has continue-on-error"
 	}

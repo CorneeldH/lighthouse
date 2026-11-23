@@ -32,6 +32,9 @@ type Step struct {
 	GitLab             bool
 	AllowFailure       bool
 	Manual             bool
+	// Unplaced is why the check cannot read the step completely (a GitLab `extends:` it cannot
+	// follow); a call in such a step is Unrecognised with this reason.
+	Unplaced string
 }
 
 const workflowsDir = ".github/workflows"
@@ -341,10 +344,12 @@ var gitlabKeywords = map[string]bool{
 }
 
 // gitlabSteps returns one Step per job of .gitlab-ci.yml that has a script: Run is its
-// before_script (the job's, else the default one) and its script, one command per line. A hidden
-// job (`.name`) is a template and no step. A missing file is no steps; invalid YAML is an
-// UncheckedError. The file is read as is: `include:` and `extends:` are not followed, so a lint
-// job that only exists through them is not found (never green).
+// before_script (the job's, else the default one unless `inherit:` turns it off) and its script,
+// one command per line. A hidden job (`.name`) is a template and no step. `extends:` is followed
+// within this file, merged the way GitLab merges it; an `extends:` to a job that is not in this
+// file marks the step Unplaced. `include:` is not followed, so a lint job that only exists in an
+// included file is not found (never green). A missing file is no steps; invalid YAML is an
+// UncheckedError.
 func gitlabSteps(root string) ([]Step, error) {
 	data, err := os.ReadFile(filepath.Join(root, gitlabFile))
 	if os.IsNotExist(err) {
@@ -372,12 +377,13 @@ func gitlabSteps(root string) ([]Step, error) {
 		if gitlabKeywords[key.Value] || strings.HasPrefix(key.Value, ".") || job.Kind != yaml.MappingNode {
 			continue
 		}
+		job, unplaced := gitlabExtended(top, job, 0)
 		script := mapGet(job, "script")
 		if script == nil {
 			continue
 		}
 		before := mapGet(job, "before_script")
-		if before == nil {
+		if before == nil && gitlabInheritsBeforeScript(job) {
 			before = defBefore
 		}
 		lines := append(scriptLines(before), scriptLines(script)...)
@@ -385,8 +391,9 @@ func gitlabSteps(root string) ([]Step, error) {
 			File: gitlabFile, Job: key.Value, Line: key.Line, Run: strings.Join(lines, "\n"),
 			Env:          mergeMaps(vars, gitlabVariables(mapGet(job, "variables"))),
 			GitLab:       true,
-			AllowFailure: gitlabAllowFailure(mapGet(job, "allow_failure")),
+			AllowFailure: gitlabJobAllowFailure(job),
 			Manual:       gitlabNotOnChange(job),
+			Unplaced:     unplaced,
 		})
 	}
 	return out, nil
@@ -413,6 +420,124 @@ func scriptLines(n *yaml.Node) []string {
 		}
 	}
 	return out
+}
+
+// gitlabMaxExtends is the depth of `extends:` GitLab itself allows.
+const gitlabMaxExtends = 11
+
+// gitlabExtended returns job with its `extends:` applied: each named job of the same file, its
+// own extends first, merged in order and the job itself last. Mappings merge deeply; any other
+// value (a list, a scalar) of a later one replaces the earlier one. A name the file does not
+// have, or an extends the check cannot read, gives the reason the step is not placeable.
+func gitlabExtended(top, job *yaml.Node, depth int) (*yaml.Node, string) {
+	ext := mapGet(job, "extends")
+	if ext == nil {
+		return job, ""
+	}
+	if depth >= gitlabMaxExtends {
+		return job, "step not recognised: extends nested too deep"
+	}
+	var names []string
+	switch ext.Kind {
+	case yaml.ScalarNode:
+		names = []string{ext.Value}
+	case yaml.SequenceNode:
+		for _, n := range ext.Content {
+			n = resolve(n)
+			if n.Kind != yaml.ScalarNode {
+				return job, "step not recognised: extends not readable"
+			}
+			names = append(names, n.Value)
+		}
+	default:
+		return job, "step not recognised: extends not readable"
+	}
+	var merged *yaml.Node
+	for _, name := range names {
+		base := mapGet(top, name)
+		if base == nil || base.Kind != yaml.MappingNode {
+			return job, "step not recognised: extends " + name + " not followed (not in " + gitlabFile + ")"
+		}
+		base, why := gitlabExtended(top, base, depth+1)
+		if why != "" {
+			return job, why
+		}
+		merged = mergeNodes(merged, base)
+	}
+	return mergeNodes(merged, job), ""
+}
+
+// mergeNodes merges over into base: two mappings merge key by key, deeply; otherwise over wins.
+// The result is a new mapping without merge keys or `extends:`.
+func mergeNodes(base, over *yaml.Node) *yaml.Node {
+	base, over = resolve(base), resolve(over)
+	if base == nil || base.Kind != yaml.MappingNode || over == nil || over.Kind != yaml.MappingNode {
+		if over == nil {
+			return base
+		}
+		return over
+	}
+	out := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map", Line: over.Line, Column: over.Column}
+	idx := map[string]int{}
+	for _, p := range mapPairs(base) {
+		if p[0].Value == "extends" {
+			continue
+		}
+		idx[p[0].Value] = len(out.Content) + 1
+		out.Content = append(out.Content, p[0], p[1])
+	}
+	for _, p := range mapPairs(over) {
+		if p[0].Value == "extends" {
+			continue
+		}
+		if i, ok := idx[p[0].Value]; ok {
+			out.Content[i] = mergeNodes(out.Content[i], p[1])
+			continue
+		}
+		idx[p[0].Value] = len(out.Content) + 1
+		out.Content = append(out.Content, p[0], p[1])
+	}
+	return out
+}
+
+// gitlabInheritsBeforeScript reports whether a job takes the default before_script: without
+// `inherit:`, or with `inherit: default:` true or a list that names before_script. Any other
+// value (false, a list without it, something unreadable) does not.
+func gitlabInheritsBeforeScript(job *yaml.Node) bool {
+	inh := mapGet(job, "inherit")
+	if inh == nil {
+		return true
+	}
+	def := mapGet(inh, "default")
+	if def == nil {
+		return true
+	}
+	if def.Kind == yaml.ScalarNode {
+		return def.Value == "true"
+	}
+	if def.Kind == yaml.SequenceNode {
+		for _, n := range def.Content {
+			if scalar(n) == "before_script" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// gitlabJobAllowFailure reports allow_failure on the job or in any of its `rules:` entries.
+func gitlabJobAllowFailure(job *yaml.Node) bool {
+	if gitlabAllowFailure(mapGet(job, "allow_failure")) {
+		return true
+	}
+	if rules := mapGet(job, "rules"); rules != nil && rules.Kind == yaml.SequenceNode {
+		for _, r := range rules.Content {
+			if gitlabAllowFailure(mapGet(r, "allow_failure")) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // gitlabVariables reads variables, also in the form `NAME: {value: …}`.
