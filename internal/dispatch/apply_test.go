@@ -2758,9 +2758,11 @@ func TestDecideFinishesOnlyOwnReturn(t *testing.T) {
 	if got := Decide(in); !reflect.DeepEqual(kinds(got), []Kind{KindFinishReturn}) {
 		t.Fatalf("own Returned: Decide = %+v, want one finish_return", got)
 	}
+	// Nothing moves the issue then, so only the idle mark of #545 remains: a Returned the tick
+	// did not write does not count as given back.
 	in.Repos[0].Snapshot.Items[0].Comments[0].Author = "owner"
-	if got := Decide(in); len(got) != 0 {
-		t.Errorf("Returned of owner: Decide = %+v, want nothing", got)
+	if got := Decide(in); !reflect.DeepEqual(kinds(got), []Kind{KindIdle}) {
+		t.Errorf("Returned of owner: Decide = %+v, want only the idle mark", got)
 	}
 }
 

@@ -2164,3 +2164,75 @@ func TestGatherRepoCarriesMarkersIncomplete(t *testing.T) {
 		}
 	}
 }
+
+// idleRun gives issue 7 a closed run under start:7, so newIssue finds its trigger spent: with no
+// comment and no PR, issue 7 in Controller has no next step.
+func idleRun(t *testing.T, db string) {
+	t.Helper()
+	ctx := context.Background()
+	conn := openStore(t, db)
+	r, err := runs.Take(ctx, conn, runs.Claim{Repo: "o/r", Issue: 7, SessionID: runs.NewSessionID(), Mode: "start",
+		Trigger: "handoff", TriggerKey: "start:7", Now: t0.Add(-time.Hour)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runs.Release(ctx, conn, r.ID, runs.Handoff, "", t0.Add(-time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func loadIdle(t *testing.T, db string) map[int]int {
+	t.Helper()
+	got, err := dispatch.LoadIdle(context.Background(), openStore(t, db), "o/r")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return got
+}
+
+// Each full gather that finds issue 7 without a next step counts once; the third gives it back
+// and clears its count. A full gather comes at most every FullGatherAfter on an unchanged board.
+func TestTickIdleCounterAdvancesAndResets(t *testing.T) {
+	env, db := tickFixture(t, repoDir(t, completeRepo))
+	srv, _ := startable(t, &env)
+	idleRun(t, db)
+	wants := []map[int]int{{7: 1}, {7: 2}, {}}
+	for i, want := range wants {
+		at := t0.Add(time.Duration(i) * (dispatch.FullGatherAfter + time.Minute))
+		env.Now = func() time.Time { return at }
+		srv.Now = env.Now
+		var errOut bytes.Buffer
+		if err := tick(context.Background(), env, db, &errOut); err != nil {
+			t.Fatalf("tick %d = %v\n%s", i+1, err, errOut.String())
+		}
+		if got := loadIdle(t, db); !reflect.DeepEqual(got, want) {
+			t.Errorf("tick %d: idle = %v, want %v\n%s", i+1, got, want, errOut.String())
+		}
+		returned := slices.ContainsFunc(bodies(srv, 7), func(b string) bool {
+			return strings.Contains(b, "reason: no next step after 3 evaluations; last protocol comment: none")
+		})
+		if returned != (i == 2) {
+			t.Errorf("tick %d: returned = %v, want %v; comments %q", i+1, returned, i == 2, bodies(srv, 7))
+		}
+	}
+}
+
+// The idle mark is no action: apply never sees it, so it fails nothing and the fingerprint is saved.
+func TestTickIdleActionNeverReachesApply(t *testing.T) {
+	env, db := tickFixture(t, repoDir(t, completeRepo))
+	srv, _ := startable(t, &env)
+	idleRun(t, db)
+	var errOut bytes.Buffer
+	if err := tick(context.Background(), env, db, &errOut); err != nil {
+		t.Fatalf("tick = %v\n%s", err, errOut.String())
+	}
+	if strings.Contains(errOut.String(), "lighthouse: apply") {
+		t.Errorf("errOut = %q, want no apply line", errOut.String())
+	}
+	if s := tickState(t, openStore(t, db), "o/r"); s.Fingerprint == "" {
+		t.Errorf("fingerprint not saved after an idle tick:\n%s", errOut.String())
+	}
+	if w := writes(srv); len(w) != 0 {
+		t.Errorf("writes = %q, want none", w)
+	}
+}

@@ -154,6 +154,14 @@ en = "no handoff or question"
 nl = "geparkeerd door usage, marker verdwenen voor de sessie"
 en = "parked by usage, marker gone for the session"
 
+[reason_no_rule]
+nl = "geen vervolg na 3 evaluaties; laatste protocol-comment"
+en = "no next step after 3 evaluations; last protocol comment"
+
+[note_no_protocol_comment]
+nl = "geen"
+en = "none"
+
 [reason_park_marker_unreadable]
 nl = "geparkeerd, marker niet leesbaar"
 en = "parked, marker not readable"

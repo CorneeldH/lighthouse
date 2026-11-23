@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -64,6 +65,31 @@ func TestDecideFixtures(t *testing.T) {
 				t.Errorf("Decide:\ngot  %s\nwant %s", gotJSON, wantJSON)
 			}
 		})
+	}
+}
+
+// idleFixtures are the fixtures whose want got the idle mark when the idle rule came (#545), each
+// with why the issue has no next step: every run closed, the issue in Controller, nothing it waits
+// for. Only these may expect a KindIdle.
+var idleFixtures = map[string]string{
+	"handoff-rocket-no-row":          "the handoff's trigger is spent by the closed start:7 row",
+	"answer-row-exists-no-rocket":    "the answer is spent by its closed answer:64 row",
+	"dedup-row-not-failed-no-rocket": "the handoff's run ended Done without a next turn",
+	"dedup-row-not-failed":           "the handoff's run ended Done without a next turn",
+	"handoff-row-exists":             "the handoff's run was returned, no new turn since",
+	"repair-rocket":                  "the second attempt of the handoff ended Done without a next turn",
+	"new-issue-row-exists":           "start:7 is spent and no protocol comment followed",
+	"orphan-known-session":           "the Started's run is known and closed, no turn followed",
+	"closecheck-started-after-merge": "the merged PR came before any Started, so no close-check",
+	"closecheck-closes-merged":       "the merged PR closes the issue, but the issue is still open",
+}
+
+func TestDecideFixturesIdleOnlyWhereListed(t *testing.T) {
+	for name, f := range decideFixtures(t) {
+		idle := slices.ContainsFunc(f.Want, func(a Action) bool { return a.Kind == KindIdle })
+		if _, listed := idleFixtures[name]; idle != listed {
+			t.Errorf("%s: want has idle = %v, listed in idleFixtures = %v", name, idle, listed)
+		}
 	}
 }
 
@@ -304,11 +330,11 @@ func TestDecidePushHandoff(t *testing.T) {
 		{"trigger spent", func(in *Input) {
 			item7(in).Comments[1].Rocket = true
 			addRows(in, runs.Row{ID: 9, Issue: 7, TriggerKey: "push:63", Command: "push-workflows", Outcome: runs.Handoff})
-		}, "when: now", []string{}},
+		}, "when: now", []string{"idle::"}}, // the push ran and nothing followed: the idle mark of #545
 		{"handoff trigger spent", func(in *Input) {
 			item7(in).Comments[1].Rocket = true
 			addRows(in, runs.Row{ID: 9, Issue: 7, TriggerKey: "handoff:63", Command: "push-workflows", Outcome: runs.Handoff})
-		}, "when: now", []string{}},
+		}, "when: now", []string{"idle::"}}, // the push ran and nothing followed: the idle mark of #545
 		{"paused brake", func(in *Input) { in.Brake = &Brake{Paused: true} }, "when: now", []string{}},
 		{"usage brake closed", func(in *Input) { in.Brake = &Brake{} }, "when: now", []string{"defer:usage: not measured:"}},
 		{"slots full does not close a push", func(in *Input) {
@@ -344,7 +370,8 @@ func TestDecidePushRocketRepair(t *testing.T) {
 	in := pushHandoff(t, "when: now")
 	addRows(&in, runs.Row{ID: 9, Issue: 7, TriggerKey: "push:63", Command: "push-workflows", Outcome: runs.Handoff})
 	got := Decide(in)
-	if s := summary(got); !reflect.DeepEqual(s, []string{"rocket::"}) || got[0].CommentID != 63 {
+	// The push ran and nothing followed, so the idle mark of #545 comes after the rocket.
+	if s := summary(got); !reflect.DeepEqual(s, []string{"rocket::", "idle::"}) || got[0].CommentID != 63 {
 		t.Errorf("got %+v, want a rocket on 63", got)
 	}
 }
@@ -419,7 +446,7 @@ func TestDecidePushAnswer(t *testing.T) {
 		{"unreadable sha", "push", func(in *Input) {
 			c := &item7(in).Comments[1]
 			c.Body = strings.Replace(c.Body, pushSHA, "not-a-sha", 1)
-		}, []string{}},
+		}, []string{"idle::"}}, // an answer no rule can act on: the idle mark of #545 counts it
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -1109,7 +1136,7 @@ func TestReturnLabelKeyTable(t *testing.T) {
 		"reason_pusher_answer_unknown": "needs_hands", "reason_pusher_answer_moved": "needs_hands", "reason_pusher_no_after": "needs_hands", "reason_pusher_git_failed": "needs_hands",
 		"reason_pusher_node": "needs_hands", "reason_pusher_silent": "needs_hands",
 		"reason_pusher_no_handoff": "needs_hands", "reason_pusher_red": "needs_hands", "reason_pusher_red_ceiling": "needs_hands", "reason_repeat_handoff": "needs_hands",
-		"reason_answer_no_session": "needs_hands", "reason_answer_no_run": "needs_hands", "reason_pr_closed_unmerged": "needs_hands", "reason_park_marker_gone": "needs_hands",
+		"reason_answer_no_session": "needs_hands", "reason_answer_no_run": "needs_hands", "reason_pr_closed_unmerged": "needs_hands", "reason_park_marker_gone": "needs_hands", "reason_no_rule": "needs_hands",
 	}
 	var headings map[string]map[string]string
 	if _, err := toml.DecodeFile(filepath.Join("..", "..", "pack", "core", "headings.toml"), &headings); err != nil {
@@ -1426,7 +1453,8 @@ func TestDecideUsageParkMarkerGone(t *testing.T) {
 		{"marker of another session", func(r *RepoInput) { r.Markers[0].SessionID = "other" },
 			[]string{"return:reason_park_marker_gone:" + session}},
 		{"open run", func(r *RepoInput) { r.Markers, r.History[0].Open = nil, true }, []string{}},
-		{"closed other outcome", func(r *RepoInput) { r.Markers, r.History[0].Outcome = nil, runs.Handoff }, []string{}},
+		// No rule moves a run that ended as a handoff without one: the idle mark of #545.
+		{"closed other outcome", func(r *RepoInput) { r.Markers, r.History[0].Outcome = nil, runs.Handoff }, []string{"idle::"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

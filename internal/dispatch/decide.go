@@ -64,6 +64,9 @@ type RepoInput struct {
 	// Schedules are the schedules whose slot is up and whose gate let it through (the tick
 	// plans and gates them); Decide starts each under the brake.
 	Schedules []ScheduledDue `json:"schedules,omitempty"`
+	// IdleTicks is per issue how many evaluations in a row before this one found it in
+	// Controller without a next step (LoadIdle); a missing issue has none.
+	IdleTicks map[int]int `json:"idle_ticks,omitempty"`
 }
 
 // Kind is what an action does.
@@ -112,6 +115,9 @@ const (
 	// KindScheduledClose closes scheduled run RunID with Outcome and the literal ReasonArg, after
 	// forgetting its launch (Discard), ending its agent (End), closing PR and deleting Branch.
 	KindScheduledClose Kind = "scheduled_close"
+	// KindIdle has no effect: it only marks that the issue had no next step in this evaluation,
+	// so the tick counts it (SaveIdle) and takes it out of the actions before Apply.
+	KindIdle Kind = "idle"
 )
 
 // Action is one thing apply does. Reason and Skip are heading keys, never posted text; only a
@@ -1363,9 +1369,10 @@ type issueCtx struct {
 // next returns the one start, resume, return, finish, defer, park or hold the item gets in this
 // tick: the first rule that gives an action wins. finishReturn comes right after retry: the
 // first refused launch of a trigger posts a Returned but waits for its second attempt. repair
-// comes right after answer: a pusher's Herstel is a turn, like a Question.
+// comes right after answer: a pusher's Herstel is a turn, like a Question. idle comes last: it
+// marks or gives back an issue no other rule moves.
 func (c issueCtx) next() (planned, bool) {
-	for _, rule := range []func() (planned, bool){c.retry, c.finishReturn, c.usageResume, c.parkMarkerGone, c.answer, c.repairResume, c.closeCheck, c.newIssue, c.handoff} {
+	for _, rule := range []func() (planned, bool){c.retry, c.finishReturn, c.usageResume, c.parkMarkerGone, c.answer, c.repairResume, c.closeCheck, c.newIssue, c.handoff, c.idle} {
 		if p, ok := rule(); ok {
 			return p, true
 		}

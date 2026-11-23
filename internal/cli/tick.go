@@ -478,6 +478,11 @@ func decideAndApply(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig
 		repos[g.repo.Slug] = g.repo
 	}
 	actions := dispatch.Decide(decideInput(env, cfg, inputs, &facts.Brake))
+	if saveIdle(ctx, env, db, gathered, actions, errOut) {
+		failed = true
+	}
+	// An idle mark has no effect: Apply does not know the kind.
+	actions = slices.DeleteFunc(actions, func(a dispatch.Action) bool { return a.Kind == dispatch.KindIdle })
 	res, err := applyActions(ctx, env, db, cfg, facts.MarkerNode, forges, repos, actions, errOut)
 	if err != nil {
 		return false, fmt.Errorf("tick: %w", err)
@@ -518,6 +523,26 @@ func decideAndApply(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig
 		}
 	}
 	return failed, nil
+}
+
+// saveIdle saves per gathered repo the idle counts of this evaluation: an issue Decide marked
+// KindIdle gets the count it came in with plus one, every other issue loses its count, so only
+// evaluations in a row count. failed reports a count that was not saved.
+func saveIdle(ctx context.Context, env tickEnv, db *sql.DB, gathered []gatheredRepo, actions []dispatch.Action,
+	errOut io.Writer) (failed bool) {
+	for _, g := range gathered {
+		counts := map[int]int{}
+		for _, a := range actions {
+			if a.Kind == dispatch.KindIdle && a.Repo == g.repo.Slug {
+				counts[a.Issue] = g.in.IdleTicks[a.Issue] + 1
+			}
+		}
+		if err := dispatch.SaveIdle(ctx, db, g.repo.Slug, counts, env.now()); err != nil {
+			failed = true
+			_, _ = fmt.Fprintf(errOut, "lighthouse: save idle counts %s: %s\n", g.repo.Slug, oneLine(err))
+		}
+	}
+	return failed
 }
 
 // applyActions applies actions to repos, each with its forge in forges and its workplace; apply
@@ -618,6 +643,9 @@ func gatherRepo(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dis
 	}
 	ri, err := repoInput(ctx, db, cfg, rf.Forge, pre, rf.who, errOut, now)
 	if err != nil {
+		return nil, "", &pre, err
+	}
+	if ri.IdleTicks, err = dispatch.LoadIdle(ctx, db, repo.Slug); err != nil {
 		return nil, "", &pre, err
 	}
 	_, _ = fmt.Fprintf(errOut, "lighthouse: gathered %s: %d items (%s)\n", repo.Slug, len(ri.Snapshot.Items), reason)
