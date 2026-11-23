@@ -264,7 +264,9 @@ ongeldig via de regel voor exitstatus hieronder.
     draait dan `bash -e {0}`), en GitLab's standaard-shell. Elke andere waarde, zoals `bash {0}`,
     `sh {0}` of `pwsh`, een Windows-runner zonder shell, of een `runs-on` die de check niet kan
     lezen (een expressie), is `step not recognised` *(r2-f1, r3-f1)*;
-  - de aanroep een eigen regel is of met `&&` aan de rest hangt, er na de aanroep geen `|`, `||`
+  - de aanroep een eigen regel is, of met `&&` aan de rest hangt als laatste lid van de keten, of
+    als de keten de laatste regel van het script is (bash negeert errexit voor elk lid van een
+    `&&`-keten behalve het laatste), er na de aanroep geen `|`, `||`
     of `;`-keten volgt die zijn status kan maskeren (een pipe alleen met `set -o pipefail` of
     `shell: bash`, die pipefail zet), en er geen `set +e` voor staat;
   - `continue-on-error` op stap **en** job ontbreekt of letterlijk `false` is *(r2-f1)*.
