@@ -2123,3 +2123,28 @@ func TestTickNeedsLabelMovesToToDoWithoutRun(t *testing.T) {
 		t.Errorf("spawns = %+v, want none", s)
 	}
 }
+
+// A node whose markers were not readable this tick reaches Decide as MarkersIncomplete: a parked
+// run without a marker is then not a lost marker. Without it the gather leaves the field false.
+func TestGatherRepoCarriesMarkersIncomplete(t *testing.T) {
+	dir := repoDir(t, completeRepo)
+	env, db := tickFixture(t, dir)
+	srv := fakeForge(t, &env)
+	srv.Roles = map[string]string{"lh-bot": "admin"}
+	env.Now = func() time.Time { return t0 }
+	conn := openStore(t, db)
+	repo, err := repoconfig.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, incomplete := range []bool{true, false} {
+		in, _, _, err := gatherRepo(context.Background(), env, conn, hostconfig.Dispatch{},
+			hostFacts{MarkersIncomplete: incomplete}, repo, botForge(t, env, repo), &bytes.Buffer{})
+		if err != nil || in == nil {
+			t.Fatalf("gatherRepo = %v, %v", in, err)
+		}
+		if in.MarkersIncomplete != incomplete {
+			t.Errorf("MarkersIncomplete = %v, want %v", in.MarkersIncomplete, incomplete)
+		}
+	}
+}

@@ -1109,7 +1109,7 @@ func TestReturnLabelKeyTable(t *testing.T) {
 		"reason_pusher_answer_unknown": "needs_hands", "reason_pusher_answer_moved": "needs_hands", "reason_pusher_no_after": "needs_hands", "reason_pusher_git_failed": "needs_hands",
 		"reason_pusher_node": "needs_hands", "reason_pusher_silent": "needs_hands",
 		"reason_pusher_no_handoff": "needs_hands", "reason_pusher_red": "needs_hands", "reason_pusher_red_ceiling": "needs_hands", "reason_repeat_handoff": "needs_hands",
-		"reason_answer_no_session": "needs_hands", "reason_answer_no_run": "needs_hands", "reason_pr_closed_unmerged": "needs_hands",
+		"reason_answer_no_session": "needs_hands", "reason_answer_no_run": "needs_hands", "reason_pr_closed_unmerged": "needs_hands", "reason_park_marker_gone": "needs_hands",
 	}
 	var headings map[string]map[string]string
 	if _, err := toml.DecodeFile(filepath.Join("..", "..", "pack", "core", "headings.toml"), &headings); err != nil {
@@ -1402,6 +1402,38 @@ func TestDecideEndHandoffClosedPRWithoutMerge(t *testing.T) {
 			tc.mutate(&item7(&in).PRs[0])
 			if got := summary(Decide(in)); !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// Why the code did nothing before: usageResume walks RepoInput.Markers, so a closed parked row
+// whose marker is gone never enters its loop, and no other rule reads such a row: the issue
+// stayed in Controller without a run for ever. A marker, an unreadable marker file or a node
+// whose markers could not be read this tick is not a gone marker: those keep waiting.
+func TestDecideUsageParkMarkerGone(t *testing.T) {
+	const session = "s1"
+	tests := []struct {
+		name   string
+		mutate func(*RepoInput)
+		want   []string
+	}{
+		{"marker gone", func(r *RepoInput) { r.Markers = nil }, []string{"return:reason_park_marker_gone:" + session}},
+		{"marker present resumes", func(r *RepoInput) {}, []string{"resume::"}},
+		{"marker not due waits", func(r *RepoInput) { r.Markers[0].ResetAt = "2026-10-31T13:00:00Z" }, []string{}},
+		{"marker file unreadable", func(r *RepoInput) { r.Markers, r.Unreadable = nil, []string{session} }, []string{}},
+		{"markers incomplete", func(r *RepoInput) { r.Markers, r.MarkersIncomplete = nil, true }, []string{}},
+		{"marker of another session", func(r *RepoInput) { r.Markers[0].SessionID = "other" },
+			[]string{"return:reason_park_marker_gone:" + session}},
+		{"open run", func(r *RepoInput) { r.Markers, r.History[0].Open = nil, true }, []string{}},
+		{"closed other outcome", func(r *RepoInput) { r.Markers, r.History[0].Outcome = nil, runs.Handoff }, []string{}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			in := loadInput(t, "usage-resume")
+			tt.mutate(&in.Repos[0])
+			if got := summary(Decide(in)); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("Decide = %q, want %q", got, tt.want)
 			}
 		})
 	}

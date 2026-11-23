@@ -601,6 +601,7 @@ func gatherRepo(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dis
 		return nil, "", nil, err
 	}
 	pre.Markers, pre.PauseUntil, pre.Unreadable = facts.Markers[repo.Slug], facts.PauseUntil, facts.Unreadable
+	pre.MarkersIncomplete = facts.MarkersIncomplete
 	fp = dispatch.Fingerprint(pre)
 	prev, err := dispatch.LoadTickState(ctx, db, repo.Slug)
 	if err != nil {
@@ -882,7 +883,7 @@ func repoInput(ctx context.Context, db *sql.DB, cfg hostconfig.Dispatch, f forge
 		Snapshot: snap, Controller: *pre.Repo.Controller, Language: pre.Repo.Language,
 		LocationPrefix: pre.Repo.Labels.LocationPrefix, Labels: pre.Repo.Labels,
 		DefaultBranch: pre.Repo.DefaultBranch, Installed: installed, History: history, Stands: pre.Stands, Runs: pre.Runs,
-		Markers: pre.Markers, Unreadable: pre.Unreadable,
+		Markers: pre.Markers, Unreadable: pre.Unreadable, MarkersIncomplete: pre.MarkersIncomplete,
 		WorkflowPush: cfg.WorkflowPush != nil, PushTimeout: dispatch.PushTimeout(cfg),
 	}, nil
 }

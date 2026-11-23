@@ -25,6 +25,9 @@ type hostFacts struct {
 	MarkerDirs []string
 	// Unreadable are the sessions with a marker file the controller cannot read (#513).
 	Unreadable []string
+	// MarkersIncomplete is whether a node's markers were not readable this tick: a parked run
+	// without a marker may then still have one there.
+	MarkersIncomplete bool
 	// MarkerNode is the node_id each marker read from a node came from, per session; a marker of
 	// this host is not in it. A resume or drop_marker removes the marker there.
 	MarkerNode map[string]string
@@ -109,6 +112,7 @@ func readHostFacts(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.
 		return hostFacts{}, fmt.Errorf("resume markers: %w", err)
 	}
 	onNodes, from, unread := env.nodeMarkers(ctx)
+	f.MarkersIncomplete = len(unread) > 0
 	for _, id := range slices.Sorted(maps.Keys(unread)) {
 		n := b.Nodes[id]
 		n.Unmeasured = true

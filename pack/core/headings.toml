@@ -95,8 +95,8 @@ nl = "PR gesloten"
 en = "PR closed"
 
 [reason_pr_closed_unmerged]
-nl = "PR gesloten zonder merge, terwijl de handoff op de merge wachtte: PR"
-en = "PR closed without a merge, while the handoff waited for the merge: PR"
+nl = "PR gesloten zonder merge, terwijl de handoff op de merge wachtte"
+en = "PR closed without a merge, while the handoff waited for the merge"
 
 [reason_answer_no_session]
 nl = "antwoord op een Vraag zonder sessie: er is niets om te hervatten"
@@ -149,6 +149,10 @@ en = "after-merge check: criteria open"
 [reason_no_handoff]
 nl = "geen handoff of vraag"
 en = "no handoff or question"
+
+[reason_park_marker_gone]
+nl = "geparkeerd door usage, marker verdwenen voor de sessie"
+en = "parked by usage, marker gone for the session"
 
 [reason_park_marker_unreadable]
 nl = "geparkeerd, marker niet leesbaar"

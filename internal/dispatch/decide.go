@@ -54,6 +54,9 @@ type RepoInput struct {
 	// Unreadable are the sessions with a marker file the controller cannot read: parked, but not
 	// until when (#513).
 	Unreadable []string `json:"unreadable,omitempty"`
+	// MarkersIncomplete is whether a node's markers could not be read this tick: a marker that
+	// is not in Markers may then still exist on that node.
+	MarkersIncomplete bool `json:"markers_incomplete,omitempty"`
 	// WorkflowPush is whether host.toml has [dispatch.workflow_push]; without it a push handoff
 	// goes back as a 🤖 Teruggegeven. PushTimeout is its timeout.
 	WorkflowPush bool          `json:"workflow_push,omitempty"`
@@ -1362,7 +1365,7 @@ type issueCtx struct {
 // first refused launch of a trigger posts a Returned but waits for its second attempt. repair
 // comes right after answer: a pusher's Herstel is a turn, like a Question.
 func (c issueCtx) next() (planned, bool) {
-	for _, rule := range []func() (planned, bool){c.retry, c.finishReturn, c.usageResume, c.answer, c.repairResume, c.closeCheck, c.newIssue, c.handoff} {
+	for _, rule := range []func() (planned, bool){c.retry, c.finishReturn, c.usageResume, c.parkMarkerGone, c.answer, c.repairResume, c.closeCheck, c.newIssue, c.handoff} {
 		if p, ok := rule(); ok {
 			return p, true
 		}
@@ -1642,6 +1645,24 @@ func (c issueCtx) usageResume() (planned, bool) {
 		return c.planned(a, at), true
 	}
 	return planned{}, false
+}
+
+// parkMarkerGone hands the issue back when its last run closed as parked but no marker of that
+// session is left: nothing will resume it. A marker (usageResume's), an unreadable marker file
+// or a node whose markers were not read this tick is not a gone marker, so those wait.
+func (c issueCtx) parkMarkerGone() (planned, bool) {
+	var last runs.Row
+	for _, r := range c.repo.History {
+		if r.Issue == c.it.Issue {
+			last = r
+		}
+	}
+	if last.ID == 0 || last.Open || last.Outcome != runs.Parked || last.SessionID == "" || c.repo.MarkersIncomplete ||
+		slices.Contains(c.repo.Unreadable, last.SessionID) ||
+		slices.ContainsFunc(c.repo.Markers, func(m park.Marker) bool { return m.SessionID == last.SessionID }) {
+		return planned{}, false
+	}
+	return c.returned("reason_park_marker_gone", last.SessionID), true
 }
 
 // answer resumes the session of the last turn when that is a Question with a session and an
