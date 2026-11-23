@@ -9,6 +9,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"strings"
 )
 
 // NodeChecker checks eslint for a Node root (Expo included): an exact eslint version in
@@ -131,9 +132,6 @@ func findEslintConfig(root, dir string) (string, error) {
 }
 
 var (
-	blockComment = regexp.MustCompile(`(?s)/\*.*?\*/`)
-	// lineComment is // to the end of the line, except after a colon (a URL in a string).
-	lineComment = regexp.MustCompile(`(?m)(^|[^:])//.*$`)
 	hashComment = regexp.MustCompile(`(?m)(^|\s)#.*$`)
 	// eslintChoice are the textual signs of a choice: a rules key, extends, a shared config
 	// (configs.) or a preset package (eslint-config-…, eslint-config-expo included).
@@ -153,8 +151,7 @@ func eslintConfigChoice(root, rel string) (bool, error) {
 	if err != nil {
 		return false, UncheckedError(fmt.Sprintf("cannot read %s: %v", rel, err))
 	}
-	text := blockComment.ReplaceAllString(string(data), "")
-	text = lineComment.ReplaceAllString(text, "$1")
+	text := stripJSComments(string(data))
 	switch path.Ext(rel) {
 	case ".yaml", ".yml", "":
 		text = hashComment.ReplaceAllString(text, "$1")
@@ -165,4 +162,49 @@ func eslintConfigChoice(root, rel string) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+// stripJSComments drops /* */ and // comments outside quoted strings ('…', "…") and template
+// literals (`…`), so a glob such as '**/*.js' or a URL in a string is no comment. A comment
+// keeps its newlines, an unterminated one runs to the end.
+func stripJSComments(src string) string {
+	var b strings.Builder
+	for i := 0; i < len(src); {
+		c := src[i]
+		switch {
+		case c == '\'' || c == '"' || c == '`':
+			j := i + 1
+			for j < len(src) && src[j] != c {
+				if src[j] == '\\' {
+					j++
+				}
+				j++
+			}
+			if j < len(src) {
+				j++ // the closing quote
+			}
+			if j > len(src) {
+				j = len(src)
+			}
+			b.WriteString(src[i:j])
+			i = j
+		case strings.HasPrefix(src[i:], "/*"):
+			end := strings.Index(src[i+2:], "*/")
+			if end < 0 {
+				return b.String()
+			}
+			b.WriteString(strings.Repeat("\n", strings.Count(src[i:i+2+end], "\n")))
+			i += 2 + end + 2
+		case strings.HasPrefix(src[i:], "//"):
+			end := strings.IndexByte(src[i:], '\n')
+			if end < 0 {
+				return b.String()
+			}
+			i += end
+		default:
+			b.WriteByte(c)
+			i++
+		}
+	}
+	return b.String()
 }

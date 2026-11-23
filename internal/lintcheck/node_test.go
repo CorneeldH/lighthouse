@@ -133,17 +133,37 @@ func TestNodeConfigSignOnlyInComment(t *testing.T) {
 
 func TestNodeConfigSignsOfChoice(t *testing.T) {
 	for name, cfg := range map[string]string{
-		"rules":         "export default [{ rules: { 'no-unused-vars': 'error' } }]\n",
-		"rules key":     "export default [{ 'rules': { semi: 'error' } }]\n",
-		"extends":       "export default defineConfig([{ extends: ['js/recommended'] }])\n",
-		"configs.":      "import js from '@eslint/js'\nexport default [js.configs.recommended]\n",
-		"preset":        "import x from 'eslint-config-standard'\nexport default [x]\n",
-		"expo":          "const expoConfig = require('eslint-config-expo/flat')\nmodule.exports = [expoConfig]\n",
-		"url first":     "// see https://eslint.org\nexport default [{ rules: { semi: 'error' } }]\n",
-		"url in string": "export default [{ settings: { docs: 'https://eslint.org' }, rules: { semi: 'error' } }]\n",
+		"rules":              "export default [{ rules: { 'no-unused-vars': 'error' } }]\n",
+		"rules key":          "export default [{ 'rules': { semi: 'error' } }]\n",
+		"extends":            "export default defineConfig([{ extends: ['js/recommended'] }])\n",
+		"configs.":           "import js from '@eslint/js'\nexport default [js.configs.recommended]\n",
+		"preset":             "import x from 'eslint-config-standard'\nexport default [x]\n",
+		"expo":               "const expoConfig = require('eslint-config-expo/flat')\nmodule.exports = [expoConfig]\n",
+		"url first":          "// see https://eslint.org\nexport default [{ rules: { semi: 'error' } }]\n",
+		"url in string":      "export default [{ settings: { docs: 'https://eslint.org' }, rules: { semi: 'error' } }]\n",
+		"globs around rules": "export default [{ ignores: ['**/*.js'], rules: { semi: 'error' }, files: ['src/**/*.js'] }]\n",
+		"glob double quotes": "export default [{ ignores: [\"**/*.js\"], rules: {}, files: [\"src/**/*.js\"] }]\n",
+		"glob template":      "export default [{ ignores: [`**/*.js`], rules: {}, files: [`src/**/*.js`] }]\n",
+		"slashes in string":  "export default [{ settings: { p: 'a//b' }, rules: { semi: 'error' } }]\n",
+		"escaped quote":      "export default [{ settings: { p: 'it\\'s /* x' }, rules: { semi: 'error' } }]\n",
 	} {
 		t.Run(name, func(t *testing.T) {
 			wantNode(t, map[string]string{"web/eslint.config.js": cfg})
+		})
+	}
+}
+
+func TestNodeConfigCommentsStillStripped(t *testing.T) {
+	for name, cfg := range map[string]string{
+		"block":            "/* rules: { semi: 'error' } */\nexport default [{ ignores: ['dist/**'] }]\n",
+		"line":             "export default [{ ignores: ['dist/**'] }] // extends js.configs.recommended\n",
+		"block after glob": "export default [{ ignores: ['**/*.js'] /* rules: {} */ }]\n",
+		"line after slash": "export default [{ ignores: ['a//b'] }] // rules: {}\n",
+		"quote in comment": "// it's eslint-config-expo\nexport default [{ ignores: ['dist/**'] }]\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			wantNode(t, map[string]string{"web/eslint.config.js": cfg},
+				"web/eslint.config.js: eslint — config makes no choice (no rules, extends or preset)")
 		})
 	}
 }
@@ -269,6 +289,16 @@ func TestNodeRootDot(t *testing.T) {
 	got, wired, err := checkNode(t, root, ".")
 	if err != nil || len(got) != 0 || !reflect.DeepEqual(wired, []string{"eslint"}) {
 		t.Fatalf("got %q %v %v", got, wired, err)
+	}
+	// the call's Dir and the checker's dir both normalise to ".": ./ as working-directory, ./ as dir
+	root = writeRepo(t, map[string]string{
+		"package.json":     nodePkg,
+		"eslint.config.js": nodeConfig,
+		wf + "ci.yml":      "on: [push]\njobs:\n  lint:\n    runs-on: ubuntu-latest\n    defaults:\n      run:\n        working-directory: ./\n    steps:\n      - run: npm ci\n      - run: npm run lint\n",
+	})
+	got, wired, err = checkNode(t, root, "./")
+	if err != nil || len(got) != 0 || !reflect.DeepEqual(wired, []string{"eslint"}) {
+		t.Fatalf("./: got %q %v %v", got, wired, err)
 	}
 }
 
