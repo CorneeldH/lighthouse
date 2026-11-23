@@ -386,6 +386,10 @@ path = "pack/go/levels.toml"
 new = true
 
 [[file]]
+path = "pack/node/levels.toml"
+new = true
+
+[[file]]
 path = "pack/python/levels.toml"
 new = true
 
