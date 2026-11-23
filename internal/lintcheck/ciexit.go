@@ -56,7 +56,7 @@ func stepGate(s Step) string {
 		return "job has allow_failure"
 	}
 	if s.Manual {
-		return "job does not run on every change (when, rules or only)"
+		return "job does not run on every change (when, rules, only or except)"
 	}
 	return ""
 }

@@ -571,8 +571,9 @@ func gitlabAllowFailure(n *yaml.Node) bool {
 var gitlabRunsWhen = map[string]bool{"": true, "on_success": true, "always": true}
 
 // gitlabNotOnChange reports a job that does not run by itself on a change: a `when:` other than
-// on_success or always, the same in any `rules:` entry, or an `only:` without branches,
-// merge_requests or pushes.
+// on_success or always, the same in any `rules:` entry, an `only:` without branches,
+// merge_requests or pushes, or an `except:` that names one of those or a regex the check cannot
+// prove misses every branch.
 func gitlabNotOnChange(job *yaml.Node) bool {
 	if !gitlabRunsWhen[scalar(mapGet(job, "when"))] {
 		return true
@@ -583,6 +584,9 @@ func gitlabNotOnChange(job *yaml.Node) bool {
 				return true
 			}
 		}
+	}
+	if gitlabExceptsChange(mapGet(job, "except")) {
+		return true
 	}
 	only := mapGet(job, "only")
 	if only == nil {
@@ -601,4 +605,30 @@ func gitlabNotOnChange(job *yaml.Node) bool {
 		}
 	}
 	return true
+}
+
+// gitlabChangeRefs are the `only:`/`except:` refs that cover a pipeline for a code change.
+var gitlabChangeRefs = map[string]bool{"branches": true, "merge_requests": true, "pushes": true}
+
+// gitlabExceptsChange reports an `except:` (a list, one string, or a mapping with `refs`) that
+// leaves out a pipeline for a code change: it names branches, merge_requests or pushes, or holds a
+// regex, which may match every branch. A branch name, tags or schedules leave the change
+// pipelines alone; `except: changes` or `variables` is a filter, like an `if:`.
+func gitlabExceptsChange(except *yaml.Node) bool {
+	refs := resolve(except)
+	if refs == nil {
+		return false
+	}
+	if refs.Kind == yaml.MappingNode {
+		if refs = mapGet(refs, "refs"); refs == nil {
+			return false
+		}
+	}
+	for _, r := range scriptLines(refs) {
+		r = strings.TrimSpace(r)
+		if gitlabChangeRefs[r] || strings.HasPrefix(r, "/") {
+			return true
+		}
+	}
+	return false
 }

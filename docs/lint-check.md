@@ -140,7 +140,10 @@ Bij `forge.kind = "github"` (of zonder `forge.kind`) leest de check `.github/wor
   job niet letterlijk `if: false` heeft. Een `if:` op job of stap mag, behalve letterlijk `false`.
 - GitLab: een job telt niet bij `allow_failure` met een ware waarde (ook de vorm met
   `exit_codes`), op de job of in een regel van `rules:`, en niet bij `when: manual` of
-  `when: never`, ook niet via `rules:`. De check volgt `extends:` binnen `.gitlab-ci.yml` en voegt
+  `when: never`, ook niet via `rules:`. Ook niet bij een `only:` zonder `branches`,
+  `merge_requests` of `pushes`, of een `except:` die een daarvan noemt of een regex bevat (die kan
+  elke branch treffen). `except:` met een branchnaam, `tags` of `schedules`, of met `changes` of
+  `variables`, mag. De check volgt `extends:` binnen `.gitlab-ci.yml` en voegt
   de sjablonen samen zoals GitLab dat doet, ook hun `allow_failure`, `when` en `rules`. Een
   `extends:` naar een job die niet in het bestand staat, geeft `step not recognised`. `include:`
   volgt de check niet: een lintjob die alleen in een ingevoegd bestand bestaat, vindt hij niet, en
@@ -180,7 +183,7 @@ Een herkende aanroep telt alleen als zijn exitstatus aantoonbaar de status van d
 andere vorm is exit 1, nooit groen. Meestal luidt de melding `step not recognised: <reden>`; een
 stap of job die mag falen, noemt de oorzaak zelf: `step has continue-on-error`,
 `job has continue-on-error`, `job has allow_failure` of
-`job does not run on every change (when, rules or only)`. Een aanroep telt als:
+`job does not run on every change (when, rules, only or except)`. Een aanroep telt als:
 
 - de stap draait in een shell die met errexit start. De effectieve shell is `shell:` op de stap,
   anders `defaults.run.shell` op job of workflow, anders de standaard van de runner. Telt:
