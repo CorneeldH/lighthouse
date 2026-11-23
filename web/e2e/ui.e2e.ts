@@ -157,3 +157,34 @@ test('the colour scheme of the system picks light or dark', async ({ page, githu
   // The dark navy (#26335a) on the dark page is unreadable; the heading takes the foreground.
   await expect(heading).toHaveCSS('color', 'rgb(232, 234, 240)')
 })
+
+test('the theme toggle forces dark or light and keeps the choice', async ({ page, github, lighthouse }) => {
+  github.set({ issues: [] })
+  const url = await lighthouse.start({ token: true, cache: 'fresh' })
+  const body = page.locator('body')
+  const heading = page.getByRole('heading', { level: 2, name: 'Controller' })
+  const theme = page.getByRole('group', { name: 'Theme' })
+
+  // Dark forced on a light system: tokens and the dark: variant both follow.
+  await page.emulateMedia({ colorScheme: 'light' })
+  await page.goto(url)
+  await theme.getByRole('button', { name: 'Dark' }).click()
+  await expect(body).toHaveCSS('background-color', 'rgb(15, 20, 32)')
+  await expect(heading).toHaveCSS('color', 'rgb(232, 234, 240)')
+  await page.reload()
+  await expect(theme.getByRole('button', { name: 'Dark' })).toHaveAttribute('aria-pressed', 'true')
+  await expect(body).toHaveCSS('background-color', 'rgb(15, 20, 32)')
+
+  // Light forced on a dark system.
+  await page.emulateMedia({ colorScheme: 'dark' })
+  await theme.getByRole('button', { name: 'Light' }).click()
+  await expect(body).toHaveCSS('background-color', 'oklch(1 0 0)')
+  await expect(heading).toHaveCSS('color', 'rgb(20, 33, 61)')
+  await page.reload()
+  await expect(theme.getByRole('button', { name: 'Light' })).toHaveAttribute('aria-pressed', 'true')
+  await expect(body).toHaveCSS('background-color', 'oklch(1 0 0)')
+
+  // Back to System: the dark system wins again.
+  await theme.getByRole('button', { name: 'System' }).click()
+  await expect(body).toHaveCSS('background-color', 'rgb(15, 20, 32)')
+})

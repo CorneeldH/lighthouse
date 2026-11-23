@@ -35,13 +35,36 @@ describe('chip contrast', () => {
     expect(contrastRatio('#000000', '#ffffff')).toBeCloseTo(21, 5)
   })
 
-  it('is at least 4.5 in light and dark', () => {
-    const darkStart = css.indexOf('@media (prefers-color-scheme: dark) {')
-    expect(darkStart).toBeGreaterThan(0)
-    const light = css.slice(0, darkStart)
-    const dark = css.slice(darkStart)
-    for (const block of [light, dark]) {
+  // The two dark blocks of index.css: the attribute one and the media-query one.
+  function darkBlocks(): { light: string; attr: string; media: string } {
+    const attrStart = css.indexOf(':root[data-theme="dark"] {')
+    const mediaStart = css.indexOf('@media (prefers-color-scheme: dark) {\n:root:not([data-theme="light"]) {')
+    expect(attrStart).toBeGreaterThan(0)
+    expect(mediaStart).toBeGreaterThan(0)
+    const bodyOf = (from: number) => css.slice(css.indexOf('{', from) + 1, css.indexOf('}', from))
+    const mediaInner = css.indexOf('{', css.indexOf('{', mediaStart) + 1)
+    return {
+      light: css.slice(0, Math.min(attrStart, mediaStart)),
+      attr: bodyOf(attrStart),
+      media: css.slice(mediaInner + 1, css.indexOf('}', mediaInner)),
+    }
+  }
+
+  it('is at least 4.5 in light and both dark blocks', () => {
+    const { light, attr, media } = darkBlocks()
+    for (const block of [light, attr, media]) {
       expect(contrastRatio(token(block, '--lh-chip-fg'), token(block, '--lh-chip-bg'))).toBeGreaterThanOrEqual(4.5)
     }
+  })
+
+  it('keeps the attribute and the media-query dark blocks identical', () => {
+    const { attr, media } = darkBlocks()
+    const decls = (b: string) =>
+      b
+        .split(';')
+        .map((d) => d.trim().replace(/\s+/g, ' '))
+        .filter(Boolean)
+    expect(decls(attr).length).toBeGreaterThan(10)
+    expect(decls(media)).toEqual(decls(attr))
   })
 })
