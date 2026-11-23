@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { GNode } from '@/lib/priorities/derive'
-import { edgeSegments, layoutGraph } from './layout'
+import { type DepsOrder, edgeSegments, layoutGraph } from './layout'
 
 const node = (nr: number, depth: number, extra: Partial<GNode> = {}): GNode => ({
   key: `r#${nr}`,
@@ -90,5 +90,53 @@ describe('layoutGraph', () => {
       }
     }
     expect(res.height).toBeGreaterThanOrEqual(Math.max(...long.points.map((p) => p.y)))
+  })
+})
+
+describe('layoutGraph sorteermodus', () => {
+  // Eén kolom, met een tak zodat dagre iets te ordenen heeft; de volgorde komt van boven naar onder.
+  const edges = [edge(1, 4), edge(2, 4), edge(3, 4)]
+  const order = (nodes: GNode[], mode?: DepsOrder) => {
+    const res = layoutGraph(nodes, edges, mode)
+    return nodes
+      .filter((n) => n.depth === 0)
+      .map((n) => at(res, n.number))
+      .sort((a, b) => a.y - b.y)
+      .map((n) => n.key)
+  }
+  const col = (extra: (nr: number) => Partial<GNode>) => [
+    ...[1, 2, 3].map((nr) => node(nr, 0, extra(nr))),
+    node(4, 1),
+  ]
+
+  it('prio: kolom staat op prioWeight aflopend, dan factor aflopend, dan dagre', () => {
+    const pw = { 1: 1, 2: 5, 3: 5 } as Record<number, number>
+    const f = { 1: 9, 2: 1, 3: 2 } as Record<number, number>
+    const nodes = col((nr) => ({ prioWeight: pw[nr], factor: f[nr] }))
+    expect(order(nodes, 'prio')).toEqual(['r#3', 'r#2', 'r#1'])
+  })
+
+  it('weight: kolom staat op weight aflopend, bij gelijk gewicht in dagre-volgorde', () => {
+    const w = { 1: 2, 2: 7, 3: 2 } as Record<number, number>
+    const nodes = col((nr) => ({ weight: w[nr], prioWeight: 10 - nr }))
+    const dagre = order(nodes, 'crossings').filter((k) => k !== 'r#2')
+    expect(order(nodes, 'weight')).toEqual(['r#2', ...dagre])
+  })
+
+  it('crossings: de volgorde is die van dagre, ongeacht weight en prioWeight', () => {
+    const plain = order(col(() => ({})), 'crossings')
+    const heavy = order(col((nr) => ({ weight: nr * 3 % 5, prioWeight: nr * 7 % 4, factor: nr })), 'crossings')
+    expect(heavy).toEqual(plain)
+    expect(order(col(() => ({})))).toEqual(plain)
+  })
+
+  it('prio: gelijke prioWeight én factor valt terug op dagre-volgorde', () => {
+    const nodes = col(() => ({ prioWeight: 4, factor: 2 }))
+    expect(order(nodes, 'prio')).toEqual(order(nodes, 'crossings'))
+  })
+
+  it('prio: een knoop zonder dagre-positie crasht niet', () => {
+    const nodes = col((nr) => ({ prioWeight: nr }))
+    expect(() => layoutGraph(nodes, [edge(1, 9), ...edges], 'prio')).not.toThrow()
   })
 })
