@@ -12,5 +12,7 @@ commit het bestand.
 ## Verwijzingen
 
 - [De roadmap](../strategie.md#roadmap): de roadmap zijn de milestones in rangorde op de forge.
-  Er is bewust geen roadmapdocument (N2 in [meta](../areas/meta.md)).
+  Er is bewust geen roadmapdocument (N2 in [meta](../areas/meta.md)). #102 is de systeemkaart (`docs/site/system.html`) en bevat
+  volgens haar eigen acceptatiecriteria geen roadmap; AC3 van #128 wordt daarom gelezen als de
+  roadmap van `strategie.md` (N2).
 - [`lighthouse report`](../../report.md): de aanroep, de sleutels en het formaat van het verslag.
