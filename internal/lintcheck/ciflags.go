@@ -27,11 +27,14 @@ func (v Verdict) String() string {
 }
 
 // Call is one recognised call of a linter in CI. Args are the arguments after the subcommand
-// (`ruff check`, `golangci-lint run`, `expo lint`), or the `args:` input of an action.
+// (`ruff check`, `golangci-lint run`, `expo lint`), or the `args:` input of an action. Dir is the
+// directory the call runs in, slash-separated and relative to the repo root, after a cd or a
+// package.json script.
 type Call struct {
 	Step    Step
 	Linter  string
 	Args    []string
+	Dir     string
 	Verdict Verdict
 	Reason  string
 }
@@ -64,6 +67,7 @@ func Calls(steps []Step, linter string, pkgJSON func(dir string) map[string]stri
 			if f.Verdict == Valid && !r.pinned(steps, i, f) {
 				f.Verdict, f.Reason = Unpinned, "CI version not pinned"
 			}
+			f.Dir = f.dir
 			out = append(out, f.Call)
 		}
 	}
