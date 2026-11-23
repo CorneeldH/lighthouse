@@ -107,6 +107,9 @@ func Steps(root, forgeKind string) ([]Step, error) {
 		}
 		add(f)
 		for _, job := range jobs(w.top) {
+			if literalFalse(scalar(mapGet(job.node, "if"))) {
+				continue // a caller that never runs
+			}
 			if u := scalar(mapGet(job.node, "uses")); strings.HasPrefix(u, "./") {
 				if c, ok := loaded[path.Clean(u)]; ok && c.on["workflow_call"] {
 					add(c.file)

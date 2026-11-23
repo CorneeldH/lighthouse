@@ -215,3 +215,15 @@ func TestGitLabMergeKeyAllowFailure(t *testing.T) {
 		t.Fatalf("got %+v", steps)
 	}
 }
+
+// Classification: ci-parse. Fails when a reusable workflow counts although its only caller job is
+// `if: false` and never runs.
+func TestStepsSkipsReusableWorkflowOfIfFalseCaller(t *testing.T) {
+	got := stepsOf(t, map[string]string{
+		wf + "ci.yml":   "on: push\njobs:\n  l:\n    if: false\n    uses: ./.github/workflows/lint.yml\n",
+		wf + "lint.yml": "on: workflow_call\njobs:\n  ruff:\n    runs-on: x\n    steps:\n      - run: ruff check .\n",
+	})
+	if len(got) != 0 {
+		t.Fatalf("got %+v", got)
+	}
+}
