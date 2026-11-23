@@ -94,49 +94,59 @@ describe('layoutGraph', () => {
 })
 
 describe('layoutGraph sorteermodus', () => {
-  // Eén kolom, met een tak zodat dagre iets te ordenen heeft; de volgorde komt van boven naar onder.
-  const edges = [edge(1, 4), edge(2, 4), edge(3, 4)]
+  // Eén kolom (1-4) met een tak naar 5, zodat dagre iets te ordenen heeft; volgorde van boven naar onder.
+  const edges = [1, 2, 3, 4].map((nr) => edge(nr, 5))
   const order = (nodes: GNode[], mode?: DepsOrder) => {
     const res = layoutGraph(nodes, edges, mode)
     return nodes
       .filter((n) => n.depth === 0)
-      .map((n) => at(res, n.number))
+      .map((n) => ({ nr: n.number, y: at(res, n.number).y }))
       .sort((a, b) => a.y - b.y)
-      .map((n) => n.key)
+      .map((n) => n.nr)
   }
   const col = (extra: (nr: number) => Partial<GNode>) => [
-    ...[1, 2, 3].map((nr) => node(nr, 0, extra(nr))),
-    node(4, 1),
+    ...[1, 2, 3, 4].map((nr) => node(nr, 0, extra(nr))),
+    node(5, 1),
   ]
+  // De dagre-volgorde van de kolom, als [eerste, tweede, derde, vierde].
+  const dagreOrder = () => order(col(() => ({})), 'crossings')
 
   it('prio: kolom staat op prioWeight aflopend, dan factor aflopend, dan dagre', () => {
-    const pw = { 1: 1, 2: 5, 3: 5 } as Record<number, number>
-    const f = { 1: 9, 2: 1, 3: 2 } as Record<number, number>
+    const [a, b, c, d] = dagreOrder()
+    // a: laagste prioWeight maar eerst in dagre; b, c, d: gelijke prioWeight, factor tegen dagre in.
+    const pw: Record<number, number> = { [a]: 1, [b]: 5, [c]: 5, [d]: 5 }
+    const f: Record<number, number> = { [a]: 9, [b]: 1, [c]: 2, [d]: 3 }
     const nodes = col((nr) => ({ prioWeight: pw[nr], factor: f[nr] }))
-    expect(order(nodes, 'prio')).toEqual(['r#3', 'r#2', 'r#1'])
+    expect(order(nodes, 'prio')).toEqual([d, c, b, a])
+    expect(order(nodes, 'prio')).not.toEqual(order(nodes, 'crossings'))
   })
 
   it('weight: kolom staat op weight aflopend, bij gelijk gewicht in dagre-volgorde', () => {
-    const w = { 1: 2, 2: 7, 3: 2 } as Record<number, number>
-    const nodes = col((nr) => ({ weight: w[nr], prioWeight: 10 - nr }))
-    const dagre = order(nodes, 'crossings').filter((k) => k !== 'r#2')
-    expect(order(nodes, 'weight')).toEqual(['r#2', ...dagre])
+    const [a, b, c, d] = dagreOrder()
+    const w: Record<number, number> = { [a]: 2, [b]: 2, [c]: 7, [d]: 2 }
+    // prioWeight en factor wijzen de andere kant op: alleen weight mag tellen.
+    const nodes = col((nr) => ({ weight: w[nr], prioWeight: nr, factor: nr }))
+    expect(order(nodes, 'weight')).toEqual([c, a, b, d])
   })
 
   it('crossings: de volgorde is die van dagre, ongeacht weight en prioWeight', () => {
-    const plain = order(col(() => ({})), 'crossings')
-    const heavy = order(col((nr) => ({ weight: nr * 3 % 5, prioWeight: nr * 7 % 4, factor: nr })), 'crossings')
-    expect(heavy).toEqual(plain)
-    expect(order(col(() => ({})))).toEqual(plain)
+    const plain = dagreOrder()
+    const heavy = col((nr) => ({ weight: (nr * 3) % 5, prioWeight: (nr * 7) % 4, factor: nr }))
+    expect(order(heavy, 'crossings')).toEqual(plain)
+    expect(order(heavy)).toEqual(plain)
   })
 
   it('prio: gelijke prioWeight én factor valt terug op dagre-volgorde', () => {
-    const nodes = col(() => ({ prioWeight: 4, factor: 2 }))
-    expect(order(nodes, 'prio')).toEqual(order(nodes, 'crossings'))
+    const [a, b, c, d] = dagreOrder()
+    // a is eerst in dagre maar het laagst; b, c, d zijn gelijk en houden hun dagre-volgorde.
+    const nodes = col((nr) => (nr === a ? { prioWeight: 1, factor: 2 } : { prioWeight: 4, factor: 2 }))
+    expect(order(nodes, 'prio')).toEqual([b, c, d, a])
   })
 
-  it('prio: een knoop zonder dagre-positie crasht niet', () => {
-    const nodes = col((nr) => ({ prioWeight: nr }))
-    expect(() => layoutGraph(nodes, [edge(1, 9), ...edges], 'prio')).not.toThrow()
+  it('prio: een knoop zonder gewichten (undefined) crasht niet en telt als 0', () => {
+    const [a, b, c, d] = dagreOrder()
+    const none = { weight: undefined, factor: undefined, prioWeight: undefined } as unknown as Partial<GNode>
+    const nodes = col((nr) => (nr === a ? none : { prioWeight: 1 }))
+    expect(order(nodes, 'prio')).toEqual([b, c, d, a])
   })
 })
