@@ -89,8 +89,14 @@ lighthouse init --upgrade --level standard
 `lighthouse level` only reads. Scale up with `lighthouse init --upgrade --level standard`, later
 `--level strict`. `--level` records the choice in `lighthouse.toml` and in
 `.lighthouse/components.toml`. An existing repository without `level` in `lighthouse.toml`
-behaves as `strict`.
+behaves as `strict`. See [Setup levels](levels.md#what-each-level-skips-and-why) for what each
+level skips and why.
 
+- **When to scale up.** Move to `standard` once your first PRs hurt without tracking issues or
+  reviews, or once you want `commit-test-gate` to run after each commit; first check that
+  `lighthouse level` shows few reports for `md-link-check` and `code-language-check`, which
+  `standard` turns on. Move to `strict` once you want the second-model-family reviews of spec
+  and plan, which need Codex.
 - **Overrides.** `[components]` in `lighthouse.toml` sets one component to `off`, `log` or `on`,
   whatever the level says. `log` exists only for the Go hooks of core: the hook runs, never blocks
   and never speaks, and writes what it would have reported to a logbook outside the repository,

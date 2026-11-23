@@ -1,6 +1,7 @@
 package initcmd
 
 import (
+	"encoding/json"
 	"github.com/CorneeldH/lighthouse/internal/packs"
 	"io"
 	"io/fs"
@@ -787,6 +788,95 @@ func TestBlockingNeverGainsWorktreeCheck(t *testing.T) {
 			t.Errorf("worktree-check in blocking at %s", level)
 		}
 	}
+}
+
+// permissionsAllow parses permissions.allow out of .claude/settings.json.
+func permissionsAllow(t *testing.T, root string) []string {
+	t.Helper()
+	var s struct {
+		Permissions struct {
+			Allow []string `json:"allow"`
+		} `json:"permissions"`
+	}
+	if err := json.Unmarshal([]byte(read(t, root, ".claude/settings.json")), &s); err != nil {
+		t.Fatal(err)
+	}
+	return s.Permissions.Allow
+}
+
+// Red if a level adds, drops or reorders a permissions.allow rule (spec: permissions are the same at every level).
+func TestLevelsNeverChangePermissions(t *testing.T) {
+	raw, err := os.ReadFile("../../pack/core/permissions.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var real struct {
+		Allow []string `json:"allow"`
+	}
+	if err := json.Unmarshal(raw, &real); err != nil {
+		t.Fatal(err)
+	}
+	if len(real.Allow) == 0 {
+		t.Fatal("pack/core/permissions.json has no allow rules")
+	}
+	// settings.ApplyAllow keeps the project's own rules first and appends ours sorted.
+	want := append([]string{"Bash(ls)"}, slices.Sorted(slices.Values(real.Allow))...)
+	withPerms := func(o *Options) {
+		m := levelPacks()
+		m["core/permissions.json"] = &fstest.MapFile{Data: raw}
+		o.Packs = m
+	}
+	setup := func(t *testing.T) string {
+		root := newRepo(t)
+		write(t, root, ".claude/settings.json", `{"permissions": {"allow": ["Bash(ls)"]}}`+"\n")
+		return root
+	}
+
+	got := map[string][]string{}
+	for _, level := range []string{"light", "standard", "strict"} {
+		t.Run(level, func(t *testing.T) {
+			root := setup(t)
+			r := initLevels(t, root, "level = \""+level+"\"\n", withPerms)
+			if r.code != 0 {
+				t.Fatalf("code %d: %s %s", r.code, r.out, r.err)
+			}
+			got[level] = permissionsAllow(t, root)
+			if !slices.Equal(got[level], want) {
+				t.Errorf("allow at %s = %q, want %q", level, got[level], want)
+			}
+		})
+	}
+	for _, level := range []string{"standard", "strict"} {
+		if !slices.Equal(got["light"], got[level]) {
+			t.Errorf("allow differs between light and %s: %q vs %q", level, got["light"], got[level])
+		}
+	}
+
+	t.Run("upgrade", func(t *testing.T) {
+		root := setup(t)
+		r := initLevels(t, root, "level = \"light\"\n", withPerms)
+		if r.code != 0 {
+			t.Fatalf("code %d: %s %s", r.code, r.out, r.err)
+		}
+		before := permissionsAllow(t, root)
+		if !slices.Equal(before, want) {
+			t.Fatalf("allow at light = %q, want %q", before, want)
+		}
+		for _, level := range []string{"standard", "strict"} {
+			r := run(t, root, "", func(o *Options) {
+				withPerms(o)
+				o.Upgrade, o.Yes = true, true
+				o.Level = level
+				o.Now = ticking()
+			})
+			if r.code != 0 {
+				t.Fatalf("switch to %s: code %d: %s %s", level, r.code, r.out, r.err)
+			}
+			if after := permissionsAllow(t, root); !slices.Equal(after, before) {
+				t.Errorf("allow after switch to %s = %q, want %q", level, after, before)
+			}
+		}
+	})
 }
 
 // Red if an override that turns a core gate off no longer drops its line in blocking.
