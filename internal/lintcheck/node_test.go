@@ -85,14 +85,14 @@ func TestNodeWired(t *testing.T) {
 
 func TestNodeNoCIStep(t *testing.T) {
 	wantNode(t, map[string]string{wf + "ci.yml": nodeWorkflow("npm ci", "npm test")},
-		".github/workflows: eslint — no CI step runs eslint")
+		".github/workflows: eslint — no CI step runs eslint in web")
 }
 
 func TestNodeLintInOtherDirDoesNotCount(t *testing.T) {
 	// a valid eslint call for another package.json is no call for web
 	other := "on: [push]\njobs:\n  lint:\n    runs-on: ubuntu-latest\n    steps:\n      - run: npm ci\n      - run: npx eslint .\n"
 	wantNode(t, map[string]string{wf + "ci.yml": other, "package.json": nodePkg},
-		".github/workflows: eslint — no CI step runs eslint")
+		".github/workflows: eslint — no CI step runs eslint in web")
 }
 
 func TestNodeEslintCaret(t *testing.T) {
@@ -255,13 +255,13 @@ func TestNodeExpo(t *testing.T) {
 	over := map[string]string{"web/package.json": pkg, "web/eslint.config.js": cfg}
 	wantNode(t, over)
 	over[wf+"ci.yml"] = nodeWorkflow("npm ci", "npx expo export")
-	wantNode(t, over, ".github/workflows: eslint — no CI step runs eslint")
+	wantNode(t, over, ".github/workflows: eslint — no CI step runs eslint in web")
 }
 
 func TestNodeNoScriptsNoDevDependencies(t *testing.T) {
 	wantNode(t, map[string]string{"web/package.json": `{"name": "web"}`},
 		"web/package.json: eslint — pin missing in devDependencies",
-		".github/workflows: eslint — no CI step runs eslint")
+		".github/workflows: eslint — no CI step runs eslint in web")
 }
 
 func TestNodeInvalidPackageJSONIsUnchecked(t *testing.T) {
@@ -332,5 +332,19 @@ func TestNodeTestdataFixtureIgnored(t *testing.T) {
 	code, out := runNode(t, root)
 	if code != 0 || strings.Contains(out, "testdata") || !strings.Contains(out, "eslint: wired") {
 		t.Fatalf("code %d, output:\n%s", code, out)
+	}
+}
+
+// Classification: cli-output. Fails when a run over two Node roots, one wired and one without a
+// CI step, does not name the root in either line.
+func TestNodeMultiRootOutput(t *testing.T) {
+	root := nodeRepo(t, map[string]string{
+		"app/package.json":     strings.Replace(nodePkg, `"web"`, `"app"`, 1),
+		"app/eslint.config.js": nodeConfig,
+	})
+	code, out := runNode(t, root)
+	want := ".github/workflows: eslint — no CI step runs eslint in app\neslint: wired (web)\n"
+	if code != 1 || out != want {
+		t.Fatalf("code %d, output %q, want %q", code, out, want)
 	}
 }

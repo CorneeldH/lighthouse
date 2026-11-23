@@ -80,6 +80,9 @@ func (NodeChecker) Check(dir string, env Env) ([]Finding, []string, error) {
 		}
 	}
 	if c, ok := wiredCall(calls, eslintLinter); !ok {
+		if c.Verdict == NotFound && dir != "." {
+			c.Reason += " in " + dir // several Node roots: name the one without a step
+		}
 		findings = append(findings, callFinding(c, env.ForgeKind))
 	}
 

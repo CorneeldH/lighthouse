@@ -139,7 +139,7 @@ func TestLintCheckDirFlagNodeRoot(t *testing.T) {
 		t.Errorf("without --dir: code=%d stdout=%q", code, out)
 	}
 	code, out, errOut := runLint(t, "check", "--dir", "web")
-	if code != 0 || out != "eslint: wired\n" || errOut != "" {
+	if code != 0 || out != "eslint: wired (web)\n" || errOut != "" {
 		t.Errorf("--dir web: code=%d stdout=%q stderr=%q", code, out, errOut)
 	}
 }

@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"path"
+	"path/filepath"
 	"sort"
 
 	"github.com/CorneeldH/lighthouse/internal/gate"
@@ -104,12 +106,21 @@ func Run(o Options, env Env) int {
 				}
 				return findings[i].Line < findings[j].Line
 			})
+			missing := map[string]bool{}
 			for _, f := range findings {
 				_, _ = fmt.Fprintln(env.Stdout, FormatFinding(f))
+				missing[f.Linter] = true
 				found = true
 			}
 			for _, w := range wired {
-				_, _ = fmt.Fprintf(env.Stdout, "%s: wired\n", w)
+				if missing[w] {
+					continue // a linter with a finding in this directory is not wired here
+				}
+				if nd := path.Clean(filepath.ToSlash(d)); nd == "." {
+					_, _ = fmt.Fprintf(env.Stdout, "%s: wired\n", w)
+				} else {
+					_, _ = fmt.Fprintf(env.Stdout, "%s: wired (%s)\n", w, nd)
+				}
 			}
 		}
 	}

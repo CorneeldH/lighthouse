@@ -2,7 +2,6 @@ package lintcheck
 
 import (
 	"bytes"
-	"strings"
 	"testing"
 )
 
@@ -33,20 +32,44 @@ func TestRunExitCodes(t *testing.T) {
 		rc        int
 		out, er   string
 	}{
-		{"findings only", map[Lang]Checker{"python": fakeChecker{findings: []Finding{finding}}}, []Lang{"python"}, 1, "a.py:3: ruff — rule E722 missing", ""},
+		{"findings only", map[Lang]Checker{"python": fakeChecker{findings: []Finding{finding}}}, []Lang{"python"}, 1, "a.py:3: ruff — rule E722 missing\n", ""},
 		{"findings and unchecked", map[Lang]Checker{
 			"python": fakeChecker{findings: []Finding{finding}},
 			"go":     fakeChecker{err: UncheckedError("no golangci-lint")},
-		}, []Lang{"python", "go"}, 1, "a.py:3: ruff — rule E722 missing", "lint check: COULD NOT CHECK — no golangci-lint"},
-		{"unchecked only", map[Lang]Checker{"go": fakeChecker{err: UncheckedError("boom")}}, []Lang{"go"}, 3, "", "lint check: COULD NOT CHECK — boom"},
-		{"clean", map[Lang]Checker{"python": fakeChecker{wired: []string{"ruff"}}}, []Lang{"python"}, 0, "ruff: wired", ""},
-		{"no checker", nil, []Lang{"shell"}, 3, "", "lint check: COULD NOT CHECK"},
+		}, []Lang{"python", "go"}, 1, "a.py:3: ruff — rule E722 missing\n", "lint check: COULD NOT CHECK — no golangci-lint\n"},
+		{"unchecked only", map[Lang]Checker{"go": fakeChecker{err: UncheckedError("boom")}}, []Lang{"go"}, 3, "", "lint check: COULD NOT CHECK — boom\n"},
+		{"clean", map[Lang]Checker{"python": fakeChecker{wired: []string{"ruff"}}}, []Lang{"python"}, 0, "ruff: wired\n", ""},
+		{"no checker", nil, []Lang{"shell"}, 3, "", "lint check: COULD NOT CHECK — no checker for shell (.)\n"},
 	}
 	for _, c := range cases {
 		rc, out, er := run(t, c.languages, c.cs)
-		if rc != c.rc || !strings.Contains(out, c.out) || !strings.Contains(er, c.er) {
-			t.Errorf("%s: rc=%d out=%q err=%q", c.name, rc, out, er)
+		if rc != c.rc || out != c.out || er != c.er {
+			t.Errorf("%s: rc=%d out=%q err=%q, want rc=%d out=%q err=%q", c.name, rc, out, er, c.rc, c.out, c.er)
 		}
+	}
+}
+
+// dirChecker answers per directory.
+type dirChecker map[string]fakeChecker
+
+func (d dirChecker) Check(dir string, env Env) ([]Finding, []string, error) {
+	return d[dir].Check(dir, env)
+}
+
+// Classification: cli-output. Fails when a run over several Node roots prints `eslint: wired`
+// without naming the root, or prints it for a root that also has a finding for eslint.
+func TestRunMultiRootNamesTheDir(t *testing.T) {
+	var out, errOut bytes.Buffer
+	root := writeRepo(t, map[string]string{"x": ""})
+	miss := Finding{File: ".github/workflows", Linter: "eslint", Msg: "no CI step runs eslint in app"}
+	cs := map[Lang]Checker{"node": dirChecker{
+		"app": {findings: []Finding{miss}, wired: []string{"eslint"}},
+		"web": {wired: []string{"eslint"}},
+	}}
+	rc := Run(Options{Root: root, Langs: []Lang{"node"}, Dirs: []string{"app", "web"}, Checkers: cs}, Env{Stdout: &out, Stderr: &errOut})
+	want := ".github/workflows: eslint — no CI step runs eslint in app\neslint: wired (web)\n"
+	if rc != 1 || out.String() != want || errOut.Len() != 0 {
+		t.Fatalf("rc=%d out=%q err=%q, want out %q", rc, out.String(), errOut.String(), want)
 	}
 }
 
