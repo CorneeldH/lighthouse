@@ -142,8 +142,10 @@ func TestMarkerHolds(t *testing.T) {
 		{"invariant still broken", protocolMarker("invariant", nil, ""), func(f *Facts) { f.Labels = nil }, true},
 		{"4c label stays", protocolMarker("4c", nil, "3-needs-decision"), func(f *Facts) { f.Labels = []string{"3-needs-decision"} }, true},
 		{"4c label removed", protocolMarker("4c", nil, "3-needs-decision"), func(f *Facts) { f.Labels = nil }, false},
-		{"needs-hands label lapsed", protocolMarker("4a", nil, "3-needs-hands"), func(f *Facts) { f.Labels = []string{"3-needs-hands"} }, false},
-		{"needs-testing label lapsed", protocolMarker("4a", nil, "3-needs-testing"), func(f *Facts) { f.Labels = []string{"3-needs-testing"} }, false},
+		{"needs-hands label stays", protocolMarker("4a", nil, "3-needs-hands"), func(f *Facts) { f.Labels = []string{"3-needs-hands"} }, true},
+		{"needs-testing label stays", protocolMarker("4a", nil, "3-needs-testing"), func(f *Facts) { f.Labels = []string{"3-needs-testing"} }, true},
+		{"needs-hands label removed", protocolMarker("4a", nil, "3-needs-hands"), func(f *Facts) { f.Labels = nil }, false},
+		{"needs-testing label removed", protocolMarker("4a", nil, "3-needs-testing"), func(f *Facts) { f.Labels = nil }, false},
 		{"no stop", markerCase{Gate: "4b"}, func(f *Facts) {}, true},
 	}
 	for _, tt := range tests {
