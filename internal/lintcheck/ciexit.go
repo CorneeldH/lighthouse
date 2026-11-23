@@ -96,10 +96,12 @@ type andOr struct {
 }
 
 // script is a parsed run script. complex marks a construct the check does not place (a subshell,
-// a function, a case); every call in such a script is Unrecognised.
+// a function, a case); every call in such a script is Unrecognised. trap marks a `trap` anywhere
+// in the script: its handler can replace the exit status, so no call in it is placeable either.
 type script struct {
 	lists   []andOr
 	complex bool
+	trap    bool
 }
 
 var errUnplaceable = errors.New("script not placeable")
@@ -168,8 +170,25 @@ func parseScript(src string) (script, error) {
 		if len(l.ops) != len(l.pipes)-1 {
 			sc.complex = true // an operator without a command on one side
 		}
+		for _, p := range l.pipes {
+			for _, c := range p.cmds {
+				sc.trap = sc.trap || isTrap(texts(c.words))
+			}
+		}
 	}
 	return sc, nil
+}
+
+// isTrap reports a `trap` command, also after compound keywords or `builtin` / `command`.
+func isTrap(words []string) bool {
+	for _, w := range words {
+		switch {
+		case compoundOpen[w], compoundClose[w], compoundInner[w], w == "builtin", w == "command":
+			continue
+		}
+		return w == "trap"
+	}
+	return false
 }
 
 func skipNewlines(toks []token, i int) int {
@@ -470,6 +489,9 @@ type position struct {
 func (sc script) positionGate(p position, st shellState, inStep bool) string {
 	if sc.complex {
 		return "step not recognised: shell construct the check does not place"
+	}
+	if sc.trap {
+		return "step not recognised: trap can change the exit status"
 	}
 	if p.nested {
 		return "step not recognised: call inside a compound command"

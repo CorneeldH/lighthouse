@@ -126,6 +126,10 @@ func TestExitStatusAllowlist(t *testing.T) {
 		{"fix rewrites findings away", run("uvx ruff@0.9.0 check --fix ."), Unrecognised},
 		{"unparseable heredoc", run("cat <<EOF\nx\nEOF\n" + call), Unrecognised},
 		{"bash -c", run("bash -c '" + call + "'"), Unrecognised},
+		{"trap exit 0 before", run("trap 'exit 0' EXIT\n" + call), Unrecognised},
+		{"trap after", run(call + "\ntrap - EXIT"), Unrecognised},
+		{"trap in an and-chain", run("cd src && trap 'exit 0' ERR\n" + call), Unrecognised},
+		{"trap inside if", run("if true; then trap 'exit 0' EXIT; fi\n" + call), Unrecognised},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
