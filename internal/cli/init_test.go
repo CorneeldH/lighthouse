@@ -179,3 +179,18 @@ func TestInitRunsLintCheck(t *testing.T) {
 		t.Errorf("rc %d, %d calls, err %q", code, calls, errOut)
 	}
 }
+
+// Classification: cli-output. Fails when exit 3 of the lint check shows the heading of exit 1:
+// a check that could not run would then read as missing wiring.
+func TestInitLintHeadingPerExit(t *testing.T) {
+	for rc, heading := range map[int]string{1: "lint check: some linters are not wired\n", 3: "lint check: could not check\n"} {
+		stubLintCheck(t, func(_ string, _ []lintcheck.Lang, _ []string, _ string, _, errOut io.Writer) int {
+			_, _ = io.WriteString(errOut, "LINTMARK\n")
+			return rc
+		})
+		code, _, errOut := runInit(t, "--yes")
+		if code != 0 || !strings.Contains(errOut, heading+"LINTMARK") {
+			t.Errorf("lint rc %d: init rc %d, stderr %q, want heading %q", rc, code, errOut, heading)
+		}
+	}
+}

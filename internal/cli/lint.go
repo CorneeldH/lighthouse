@@ -41,7 +41,8 @@ var lintCheck = lintRun
 
 // lintAfterInit runs the lint check on root for every installed language. It never changes the
 // exit code of init and prints nothing for a fully wired repo, so init stays `No changes.` there:
-// the output of the check is held back and goes to errOut, under a heading, only for exit 1 or 3.
+// the output of the check is held back and goes to errOut, under a heading, only for exit 1 or 3,
+// with a heading of its own for each: missing wiring (1) or a check that could not run (3).
 // out is unused on purpose: nothing of the check may reach the stdout of init.
 func lintAfterInit(root string, _, errOut io.Writer) {
 	forgeKind := ""
@@ -53,7 +54,11 @@ func lintAfterInit(root string, _, errOut io.Writer) {
 	if rc == 0 {
 		return
 	}
-	_, _ = fmt.Fprintln(errOut, "lint check: some linters are not wired")
+	heading := "lint check: some linters are not wired"
+	if rc == gate.Unchecked {
+		heading = "lint check: could not check"
+	}
+	_, _ = fmt.Fprintln(errOut, heading)
 	_, _ = errOut.Write(held.Bytes())
 }
 
