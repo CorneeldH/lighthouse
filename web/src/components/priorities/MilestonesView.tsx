@@ -39,7 +39,7 @@ function meta(row: MilestoneRow, own: BlockData[]): string {
   return n === 0 ? base : `${base} · ${n} outside blocker${n === 1 ? '' : 's'}`
 }
 
-// Up/down state of one row in stand Prioriteit; absent in stand Berekend.
+// Up/down state of one row in Priority mode; absent in Computed mode.
 interface Moves {
   place: number | null
   up: boolean
@@ -55,8 +55,8 @@ function MoveButtons({ moves, title }: { moves: Moves; title: string }): JSX.Ele
     <div className="flex shrink-0 flex-col gap-0.5">
       <button
         type="button"
-        aria-label={`${title} omhoog`}
-        title="Omhoog"
+        aria-label={`${title} up`}
+        title="Up"
         className={MOVE_BTN}
         disabled={!moves.up}
         onClick={() => moves.onMove('up')}
@@ -65,8 +65,8 @@ function MoveButtons({ moves, title }: { moves: Moves; title: string }): JSX.Ele
       </button>
       <button
         type="button"
-        aria-label={`${title} omlaag`}
-        title="Omlaag"
+        aria-label={`${title} down`}
+        title="Down"
         className={MOVE_BTN}
         disabled={!moves.down}
         onClick={() => moves.onMove('down')}
@@ -119,12 +119,12 @@ function Row({ row, colors, moves }: { row: MilestoneRow; colors: Map<string, st
               <small
                 data-testid="place"
                 aria-hidden
-                title="plaats in de repo"
+                title="place in the repo"
                 className="ml-1.5 align-super text-[10px] font-semibold text-muted-foreground"
               >
                 {moves.place}
               </small>
-              <span className="sr-only">{`, plaats ${moves.place}`}</span>
+              <span className="sr-only">{`, place ${moves.place}`}</span>
             </>
           )}
           <small className="block text-xs font-normal text-muted-foreground">{meta(row, own)}</small>
@@ -169,7 +169,7 @@ function Row({ row, colors, moves }: { row: MilestoneRow; colors: Map<string, st
           >
             {own.length === 0 ? (
               <span data-testid="no-issues" className="text-xs text-muted-foreground">
-                nog geen issues
+                no issues yet
               </span>
             ) : (
               own.map((b) => (
@@ -202,7 +202,7 @@ function Row({ row, colors, moves }: { row: MilestoneRow; colors: Map<string, st
           {Math.round(row.percent * 100)}%
         </b>
         <small className="block text-[11.5px] text-muted-foreground">
-          {row.shaping ? 'voorlopig' : `${row.open} to do`}
+          {row.shaping ? 'provisional' : `${row.open} to do`}
         </small>
       </div>
     </div>

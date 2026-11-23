@@ -217,30 +217,30 @@ describe('MilestonesView', () => {
     expect(right.getByText('2 to do')).toBeTruthy()
   })
 
-  it('marks a shaping milestone with one grey dashed border round the bar and a grey voorlopig percentage', () => {
+  it('marks a shaping milestone with one grey dashed border round the bar and a grey provisional percentage', () => {
     view([repo(A, [iss(1, 1)], [ms(1, 1, 1, 'Status: shaping')])])
     const r = within(row(`${A}#m1`))
     expect(r.getByTestId('bar').getAttribute('data-shaping')).toBe('true')
     expect(r.getByText('50%').className).toContain('text-muted')
-    expect(r.getByText('voorlopig')).toBeTruthy()
-    expect(r.queryByText('nog geen issues')).toBeNull()
+    expect(r.getByText('provisional')).toBeTruthy()
+    expect(r.queryByText('no issues yet')).toBeNull()
     expect(blocks(`${A}#m1`)).toHaveLength(1)
   })
 
-  it('shows nog geen issues in the empty bar of a milestone without issues', () => {
+  it('shows no issues yet in the empty bar of a milestone without issues', () => {
     view([repo(A, [], [ms(1, 0, 0)])])
     const r = within(row(`${A}#m1`))
-    expect(r.getByText('nog geen issues')).toBeTruthy()
+    expect(r.getByText('no issues yet')).toBeTruthy()
     expect(r.getByTestId('bar').getAttribute('data-shaping')).toBe('true')
     expect(r.queryAllByTestId('block')).toHaveLength(0)
-    expect(r.getByText('voorlopig')).toBeTruthy()
+    expect(r.getByText('provisional')).toBeTruthy()
   })
 
   it('does not mark a shaped milestone', () => {
     view([repo(A, [iss(1, 1)], [ms(1, 1, 1)])])
     const r = within(row(`${A}#m1`))
     expect(r.getByTestId('bar').getAttribute('data-shaping')).toBe('false')
-    expect(r.queryByText('voorlopig')).toBeNull()
+    expect(r.queryByText('provisional')).toBeNull()
   })
 
   it('sorts like sortMilestoneRows: shaped first, empty last', () => {
@@ -294,7 +294,7 @@ describe('MilestonesView', () => {
         />,
       )
     }
-    const btn = (key: string, name: 'Omhoog' | 'Omlaag') =>
+    const btn = (key: string, name: 'Up' | 'Down') =>
       within(row(key)).getByRole('button', { name: new RegExp(`${name}$`, 'i') }) as HTMLButtonElement
     const order = () => screen.getAllByTestId(/^ms-/).map((e) => e.getAttribute('data-testid'))
 
@@ -303,10 +303,10 @@ describe('MilestonesView', () => {
       expect(order()).toEqual([`ms-${A}#m2`, `ms-${A}#m1`, `ms-${A}#m3`, `ms-${A}#m4`])
     })
 
-    it('keeps the computed order in stand Berekend, without buttons or place', () => {
+    it('keeps the computed order in Computed mode, without buttons or place', () => {
       prio([ranked()], { order: 'computed' })
       expect(order()).toEqual([`ms-${A}#m3`, `ms-${A}#m1`, `ms-${A}#m2`, `ms-${A}#m4`])
-      expect(screen.queryAllByRole('button', { name: /omhoog|omlaag/i })).toHaveLength(0)
+      expect(screen.queryAllByRole('button', { name: /up|down/i })).toHaveLength(0)
       expect(screen.queryAllByTestId('place')).toHaveLength(0)
     })
 
@@ -315,31 +315,31 @@ describe('MilestonesView', () => {
       expect(within(row(`${A}#m2`)).getByTestId('place').textContent).toBe('1')
       expect(within(row(`${A}#m1`)).getByTestId('place').textContent).toBe('2')
       expect(within(row(`${A}#m3`)).queryByTestId('place')).toBeNull()
-      // A screen reader hears "plaats 1", not a bare number.
-      expect(within(row(`${A}#m2`)).getByText(/plaats 1/).textContent).toBe(', plaats 1')
+      // A screen reader hears "place 1", not a bare number.
+      expect(within(row(`${A}#m2`)).getByText(/place 1/).textContent).toBe(', place 1')
     })
 
     it('disables up on place 1, down on the last ranked and down without a rank', () => {
       prio([ranked()])
-      expect(btn(`${A}#m2`, 'Omhoog').disabled).toBe(true)
-      expect(btn(`${A}#m2`, 'Omlaag').disabled).toBe(false)
-      expect(btn(`${A}#m1`, 'Omhoog').disabled).toBe(false)
-      expect(btn(`${A}#m1`, 'Omlaag').disabled).toBe(true)
-      expect(btn(`${A}#m3`, 'Omhoog').disabled).toBe(false)
-      expect(btn(`${A}#m3`, 'Omlaag').disabled).toBe(true)
+      expect(btn(`${A}#m2`, 'Up').disabled).toBe(true)
+      expect(btn(`${A}#m2`, 'Down').disabled).toBe(false)
+      expect(btn(`${A}#m1`, 'Up').disabled).toBe(false)
+      expect(btn(`${A}#m1`, 'Down').disabled).toBe(true)
+      expect(btn(`${A}#m3`, 'Up').disabled).toBe(false)
+      expect(btn(`${A}#m3`, 'Down').disabled).toBe(true)
     })
 
     it('gives every button a name with its milestone title', () => {
       prio([ranked()])
-      expect(within(row(`${A}#m1`)).getByRole('button', { name: 'M1 omhoog' })).toBeTruthy()
-      expect(within(row(`${A}#m2`)).getByRole('button', { name: 'M2 omlaag' })).toBeTruthy()
+      expect(within(row(`${A}#m1`)).getByRole('button', { name: 'M1 up' })).toBeTruthy()
+      expect(within(row(`${A}#m2`)).getByRole('button', { name: 'M2 down' })).toBeTruthy()
     })
 
     it('calls onMove with the row and the direction of the clicked button', () => {
       const onMove = vi.fn<(row: MilestoneRow, dir: 'up' | 'down') => void>()
       prio([ranked()], { onMove })
-      fireEvent.click(btn(`${A}#m1`, 'Omhoog'))
-      fireEvent.click(btn(`${A}#m2`, 'Omlaag'))
+      fireEvent.click(btn(`${A}#m1`, 'Up'))
+      fireEvent.click(btn(`${A}#m2`, 'Down'))
       expect(onMove.mock.calls.map(([r, d]) => [r.repo, r.number, d])).toEqual([
         [A, 1, 'up'],
         [A, 2, 'down'],
@@ -350,11 +350,11 @@ describe('MilestonesView', () => {
       const other = repo(B, [], [ms(7, 1, 0, 'Priority: 1'), ms(8, 1, 0, 'Priority: 2')])
       prio([ranked(), other], { pendingRepos: new Set([A]) }, [A, B])
       for (const k of [`${A}#m1`, `${A}#m2`, `${A}#m3`]) {
-        expect(btn(k, 'Omhoog').disabled).toBe(true)
-        expect(btn(k, 'Omlaag').disabled).toBe(true)
+        expect(btn(k, 'Up').disabled).toBe(true)
+        expect(btn(k, 'Down').disabled).toBe(true)
       }
-      expect(btn(`${B}#m8`, 'Omhoog').disabled).toBe(false)
-      expect(btn(`${B}#m7`, 'Omlaag').disabled).toBe(false)
+      expect(btn(`${B}#m8`, 'Up').disabled).toBe(false)
+      expect(btn(`${B}#m7`, 'Down').disabled).toBe(false)
     })
 
     it('numbers places per repo when repos are mixed', () => {
