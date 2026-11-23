@@ -361,6 +361,12 @@ func TestDecidePushRowIsNoSessionRetry(t *testing.T) {
 	}
 }
 
+// withAfter adds the after: field to the pusher Vraag, which is Comments[1] in pushQuestion.
+func withAfter(in *Input) {
+	c := &item7(in).Comments[1]
+	c.Body = strings.Replace(c.Body, "\nbranch: issue-7-bouw-de-keten\n", "\nbranch: issue-7-bouw-de-keten\nafter: /lighthouse-write-pr 7\n", 1)
+}
+
 func TestDecidePushAnswer(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -370,7 +376,23 @@ func TestDecidePushAnswer(t *testing.T) {
 	}{
 		{"push", "push", func(*Input) {}, []string{"push::"}},
 		{"push with case and a full stop", " Push. ", func(*Input) {}, []string{"push::"}},
-		{"other answer", "nee, laat maar", func(*Input) {}, []string{}},
+		{"other answer", "gepushed", func(in *Input) { withAfter(in) }, []string{"push_recover::"}},
+		{"other answer without after", "gepushed", func(*Input) {},
+			[]string{"return:reason_pusher_no_after:"}},
+		{"push after other answer", "push", func(in *Input) {
+			withAfter(in)
+			c := item7(in).Comments
+			item7(in).Comments = append(c[:2], Comment{ID: 70 + 1, Author: "owner", CreatedAt: "2026-10-31T11:20:00Z", Body: "gepushed"}, Comment{ID: 72, Author: "owner", CreatedAt: "2026-10-31T11:40:00Z", Body: "push"})
+		}, []string{"push::"}},
+		{"other answer, workflow push off", "gepushed", func(in *Input) {
+			withAfter(in)
+			in.Repos[0].WorkflowPush = false
+		}, []string{"return:reason_pusher_off:cd " + pushWorktree + " && git push -u origin HEAD"}},
+		{"spent key", "gepushed", func(in *Input) {
+			withAfter(in)
+			item7(in).Comments[2].Rocket = true
+			addRows(in, runs.Row{ID: 9, Issue: 7, TriggerKey: "pushanswer:71", Command: "push-workflows", Outcome: runs.Handoff})
+		}, []string{}},
 		{"no config", "push", func(in *Input) { in.Repos[0].WorkflowPush = false },
 			[]string{"return:reason_pusher_off:cd " + pushWorktree + " && git push -u origin HEAD"}},
 		{"answer spent", "push", func(in *Input) {
@@ -390,6 +412,14 @@ func TestDecidePushAnswer(t *testing.T) {
 			got := Decide(in)
 			if s := summary(got); !reflect.DeepEqual(s, tt.want) {
 				t.Fatalf("summary = %q, want %q", s, tt.want)
+			}
+			if len(tt.want) > 0 && tt.want[0] == "push_recover::" {
+				a := got[0]
+				if a.PermitSHA != pushSHA || a.AnswerText != "gepushed" || a.After != "/lighthouse-write-pr 7" ||
+					a.Worktree != pushWorktree || a.Branch != "issue-7-bouw-de-keten" || a.CommentID != 71 ||
+					a.TriggerKey != "pushanswer:71" {
+					t.Errorf("action = %+v, want the Vraag's sha, worktree, branch and after, the answer text and id 71", a)
+				}
 			}
 		})
 	}
@@ -1059,6 +1089,7 @@ func TestReturnLabelKeyTable(t *testing.T) {
 		"reason_park_marker_unreadable": "needs_hands", "reason_post_failed": "needs_hands", "reason_post_failed_unreadable": "needs_hands",
 		"reason_start_uncertain": "needs_hands", "reason_permission": "needs_hands", "reason_silent": "needs_hands",
 		"reason_silent_forge": "needs_hands", "reason_timeout": "needs_hands", "reason_pusher_off": "needs_hands",
+		"reason_pusher_answer_unknown": "needs_hands", "reason_pusher_answer_moved": "needs_hands", "reason_pusher_no_after": "needs_hands", "reason_pusher_git_failed": "needs_hands",
 		"reason_pusher_node": "needs_hands", "reason_pusher_silent": "needs_hands",
 		"reason_pusher_no_handoff": "needs_hands", "reason_pusher_red": "needs_hands", "reason_pusher_red_ceiling": "needs_hands", "reason_repeat_handoff": "needs_hands",
 	}

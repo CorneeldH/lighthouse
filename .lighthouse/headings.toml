@@ -195,6 +195,22 @@ en = "continue"
 nl = "workflow-pusher staat uit: [dispatch.workflow_push] ontbreekt in host.toml"
 en = "workflow pusher is off: [dispatch.workflow_push] is missing from host.toml"
 
+[reason_pusher_answer_unknown]
+nl = "antwoord op de pusher-vraag niet herkend (alleen `push` start de pusher)"
+en = "answer to the pusher question not recognised (only `push` starts the pusher)"
+
+[reason_pusher_answer_moved]
+nl = "antwoord op de pusher-vraag, maar de branch staat niet op de gevraagde commit"
+en = "answer to the pusher question, but the branch is not on the requested commit"
+
+[reason_pusher_no_after]
+nl = "de pusher-vraag noemt geen after:-commando om mee verder te gaan"
+en = "the pusher question names no after: command to continue with"
+
+[reason_pusher_git_failed]
+nl = "COULD NOT CHECK: git ls-remote op origin mislukte"
+en = "COULD NOT CHECK: git ls-remote on origin failed"
+
 [reason_pusher_node]
 nl = "de run die deze handoff schreef draaide op een andere host dan de pusher"
 en = "the run that wrote this handoff ran on another host than the pusher"

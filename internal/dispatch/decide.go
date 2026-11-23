@@ -82,6 +82,10 @@ const (
 	// KindPush starts the workflow pusher for Worktree and Branch, which runs no session.
 	// A push after a user's answer carries PermitSHA, the one SHA the user allowed.
 	KindPush Kind = "push"
+	// KindPushRecover answers a pusher 🤖 Vraag with something other than `push`: apply checks
+	// whether Branch stands on PermitSHA on origin and then hands on to After, or hands the issue
+	// back. AnswerText is the answer.
+	KindPushRecover Kind = "push_recover"
 	// KindDropMarker removes the resume marker of SessionID while its key is TriggerKey.
 	KindDropMarker Kind = "drop_marker"
 	// KindRepost posts Body on Issue for the open run RunID, which stays open: the run's own post
@@ -143,6 +147,9 @@ type Action struct {
 	Worktree   string       `json:"worktree,omitempty"`   // push: the worktree of the run that asked for the push
 	PermitSHA  string       `json:"permit_sha,omitempty"` // push: the SHA a user's answer allowed
 	Body       string       `json:"body,omitempty"`       // repost: the comment, literal
+	// AnswerText and After are of a push_recover: the user's answer, and the after: command of the Vraag.
+	AnswerText string `json:"answer_text,omitempty"`
+	After      string `json:"after,omitempty"`
 	// Blocked marks the return of rule 13 while a blocker is active (settleUnstartedFixPR): its
 	// label is blocked_issue, whatever Reason says (ReturnLabelKey).
 	Blocked bool `json:"blocked,omitempty"`
@@ -1649,11 +1656,13 @@ func (c issueCtx) answer() (planned, bool) {
 		return planned{}, false
 	}
 	if q.Header.Session == "" {
-		// A Vraag without a session that carries a sha is the pusher's.
+		// A Vraag without a session that carries a sha is the pusher's. It reads the last answer,
+		// not the first: a `push` after an answer that settled nothing still counts.
 		if !pusherQuestion(q.Header) {
 			return planned{}, false
 		}
-		return c.pushAnswer(q, ans)
+		all := c.answersTo(q.Comment.ID)
+		return c.pushAnswer(q, all[len(all)-1])
 	}
 	key := triggerAnswer + ":" + strconv.FormatInt(ans.ID, 10)
 	if c.spent(key) {
@@ -1678,14 +1687,25 @@ func (c issueCtx) answer() (planned, bool) {
 // answerTo returns the first comment after the one with id that can answer it: no 🚀, no
 // protocol header, no artefact (protocol.IsAnswer).
 func (c issueCtx) answerTo(id int64) (Comment, bool) {
+	all := c.answersTo(id)
+	if len(all) == 0 {
+		return Comment{}, false
+	}
+	return all[0], true
+}
+
+// answersTo returns every comment after the one with id that can answer it (see answerTo),
+// oldest first.
+func (c issueCtx) answersTo(id int64) []Comment {
+	var out []Comment
 	after := false
 	for _, com := range c.it.Comments {
 		if after && !com.Rocket && protocol.IsAnswer(com.Body) {
-			return com, true
+			out = append(out, com)
 		}
 		after = after || com.ID == id
 	}
-	return Comment{}, false
+	return out
 }
 
 // repairResume resumes the run that wrote the push handoff when the last turn is the pusher's 🤖 Herstel
@@ -2033,20 +2053,29 @@ func (c issueCtx) mergePush(pr forge.PR, attempt int, at time.Time) planned {
 
 // pushAnswer is the KindPush for the answer `push` to a pusher 🤖 Vraag: a Vraag without a
 // session whose fields name the SHA, the worktree and the branch of the red push. Any other
-// answer resumes nothing, as there is no session; a SHA that is none, or a branch git must not
-// see, gives no action.
+// answer resumes nothing, as there is no session: it is a KindPushRecover when the Vraag names an
+// after: command (apply checks whether the branch already stands on the SHA), else the issue
+// goes back. A SHA that is none, or a branch git must not see, gives no action.
 func (c issueCtx) pushAnswer(q *parsed, ans Comment) (planned, bool) {
 	sha, worktree, branch := q.Header.Fields["sha"], q.Header.Fields["worktree"], q.Header.Fields["branch"]
 	key := triggerPushAnswer + ":" + strconv.FormatInt(ans.ID, 10)
-	if c.spent(key) || !permitAnswer(ans.Body) || !shaField.MatchString(sha) || worktree == "" || !validBranch(branch) {
+	if c.spent(key) || !shaField.MatchString(sha) || worktree == "" || !validBranch(branch) {
 		return planned{}, false
 	}
 	if !c.repo.WorkflowPush {
 		return c.returned("reason_pusher_off", pushCommand(worktree)), true
 	}
 	a := c.base
-	a.Kind, a.Trigger, a.TriggerKey, a.Attempt = KindPush, triggerPushAnswer, key, 1
+	a.Trigger, a.TriggerKey, a.Attempt = triggerPushAnswer, key, 1
 	a.Command, a.Worktree, a.Branch, a.CommentID, a.PermitSHA = cmdPush, worktree, branch, ans.ID, sha
+	if permitAnswer(ans.Body) {
+		a.Kind = KindPush
+		return c.ordered(a, parseTime(ans.CreatedAt)), true
+	}
+	if a.After = q.Header.Fields["after"]; a.After == "" {
+		return c.returned("reason_pusher_no_after", ""), true
+	}
+	a.Kind, a.AnswerText = KindPushRecover, strings.TrimSpace(ans.Body)
 	return c.ordered(a, parseTime(ans.CreatedAt)), true
 }
 

@@ -656,7 +656,7 @@ kind = "file"
 path = ".lighthouse/headings.toml"
 package = "core"
 version = "dev"
-sha256 = "c270929c7a86065c32b8a9b5c0d249479ef9d07dca9117cd3d3b6e2266ae602b"
+sha256 = "5b004e3c815216f91c23d405b6c764411527608c4a76c2308030ef37047ff3f4"
 
 [[unit]]
 kind = "block"

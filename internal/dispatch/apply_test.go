@@ -2864,3 +2864,106 @@ func TestApplyClaimsRepairResumeAsAnswer(t *testing.T) {
 		t.Errorf("log lacks a not-claimed line:\n%s", h.out.String())
 	}
 }
+
+func pushRecoverAction() Action {
+	return Action{
+		Kind: KindPushRecover, Repo: applyRepo, Issue: 7, Trigger: triggerPushAnswer, TriggerKey: "pushanswer:71", Attempt: 1,
+		Command: cmdPush, Worktree: "/work/issue-7-x", Branch: "issue-7-x", CommentID: 71, Language: "nl",
+		PermitSHA: strings.Repeat("a", 40), AnswerText: "gepushed", After: "/lighthouse-write-pr 7",
+	}
+}
+
+// lsRemoteFake records what the applier asked and answers sha or err.
+func lsRemoteFake(sha string, err error, asked *[]string) func(context.Context, string, string, []string) (string, error) {
+	return func(_ context.Context, worktree, branch string, env []string) (string, error) {
+		*asked = append(*asked, worktree+" "+branch+" "+strings.Join(env, ","))
+		return sha, err
+	}
+}
+
+// The branch stands on the Vraag's sha already: the pusher is not started, a handoff with the
+// Vraag's after command is posted and the row closes as handoff.
+func TestApplyPushRecoverBranchOnSHA(t *testing.T) {
+	h, specs := pushHarness(t)
+	var asked []string
+	h.env.LsRemote = lsRemoteFake(strings.Repeat("a", 40), nil, &asked)
+	res, err := Apply(context.Background(), h.env, []Action{pushRecoverAction()})
+	if err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	wantAsked := []string{"/work/issue-7-x issue-7-x PATH=/usr/bin,HOME=/home/u,XDG_RUNTIME_DIR=/run/user/1,GH_TOKEN=forge-tok"}
+	if !reflect.DeepEqual(asked, wantAsked) {
+		t.Errorf("ls-remote asked %q, want %q", asked, wantAsked)
+	}
+	p := h.poster(applyRepo)
+	wantBody := "🤖 Handoff\nissue: #7\nworktree: /work/issue-7-x\nbranch: issue-7-x\nnext: /lighthouse-write-pr 7\nwhen: now\nrange: \nworkflows: "
+	if !reflect.DeepEqual(p.bodies, []string{wantBody}) {
+		t.Errorf("posted %q, want %q", p.bodies, wantBody)
+	}
+	if len(*specs) != 0 || res.Started != 0 {
+		t.Errorf("specs = %v, Started = %d, want no pusher", *specs, res.Started)
+	}
+	rows := h.history(t)
+	if len(rows) != 1 || rows[0].Open || rows[0].Outcome != runs.Handoff || rows[0].TriggerKey != "pushanswer:71" || rows[0].Trigger != "answer" {
+		t.Errorf("rows = %+v, want one closed handoff row keyed pushanswer:71", rows)
+	}
+	if !reflect.DeepEqual(p.rockets, []int64{71}) {
+		t.Errorf("rockets = %v, want the answer", p.rockets)
+	}
+}
+
+func TestApplyPushRecoverBranchElsewhere(t *testing.T) {
+	h, specs := pushHarness(t)
+	var asked []string
+	h.env.LsRemote = lsRemoteFake(strings.Repeat("b", 40), nil, &asked)
+	if _, err := Apply(context.Background(), h.env, []Action{pushRecoverAction()}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	p := h.poster(applyRepo)
+	if len(p.bodies) != 1 || !strings.HasPrefix(p.bodies[0], "🤖 Teruggegeven\nreason: ") || !strings.Contains(p.bodies[0], "gepushed") {
+		t.Errorf("posted %q, want one Teruggegeven naming the answer gepushed", p.bodies)
+	}
+	if !slices.Contains(p.labels, testLabels.NeedsHands) {
+		t.Errorf("labels = %q, want the needs_hands label %q", p.labels, testLabels.NeedsHands)
+	}
+	if len(*specs) != 0 {
+		t.Errorf("specs = %v, want no pusher", *specs)
+	}
+	rows := h.history(t)
+	if len(rows) != 1 || rows[0].Open || rows[0].Outcome != runs.Returned {
+		t.Errorf("rows = %+v, want one row closed as returned", rows)
+	}
+}
+
+func TestApplyPushRecoverGitFails(t *testing.T) {
+	h, specs := pushHarness(t)
+	var asked []string
+	h.env.LsRemote = lsRemoteFake("", errors.New("fatal: no network"), &asked)
+	if _, err := Apply(context.Background(), h.env, []Action{pushRecoverAction()}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	p := h.poster(applyRepo)
+	if len(p.bodies) != 1 || !strings.Contains(p.bodies[0], "COULD NOT CHECK") || !strings.Contains(p.bodies[0], "fatal: no network") {
+		t.Errorf("posted %q, want a Teruggegeven with COULD NOT CHECK and the git error", p.bodies)
+	}
+	if len(*specs) != 0 {
+		t.Errorf("specs = %v, want no pusher", *specs)
+	}
+	if rows := h.history(t); len(rows) != 1 || rows[0].Open || rows[0].Outcome != runs.Returned {
+		t.Errorf("rows = %+v, want one row closed as returned", rows)
+	}
+}
+
+// A spent trigger key does nothing: no git call, no comment.
+func TestApplyPushRecoverSpentKeyDoesNothing(t *testing.T) {
+	h, _ := pushHarness(t)
+	h.seed(t, 7, "", "pushanswer:71", runs.Handoff)
+	var asked []string
+	h.env.LsRemote = lsRemoteFake(strings.Repeat("a", 40), nil, &asked)
+	if _, err := Apply(context.Background(), h.env, []Action{pushRecoverAction()}); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if len(asked) != 0 || len(h.poster(applyRepo).bodies) != 0 {
+		t.Errorf("asked = %q, posted = %q, want nothing", asked, h.poster(applyRepo).bodies)
+	}
+}
