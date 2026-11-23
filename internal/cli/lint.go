@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -33,6 +34,27 @@ func lintRun(root string, langs []lintcheck.Lang, dirs []string, forgeKind strin
 	}
 	env := lintcheck.Env{Root: root, Stdout: out, Stderr: errOut, ForgeKind: forgeKind}
 	return lintcheck.Run(lintcheck.Options{Root: root, Langs: langs, Dirs: dirs, Checkers: checkers}, env)
+}
+
+// lintCheck is the lint check init runs after it wrote; a test replaces it.
+var lintCheck = lintRun
+
+// lintAfterInit runs the lint check on root for every installed language. It never changes the
+// exit code of init and prints nothing for a fully wired repo, so init stays `No changes.` there:
+// the output of the check is held back and goes to errOut, under a heading, only for exit 1 or 3.
+// out is unused on purpose: nothing of the check may reach the stdout of init.
+func lintAfterInit(root string, _, errOut io.Writer) {
+	forgeKind := ""
+	if lines, set, err := importsConfig("forge.kind"); err == nil && set {
+		forgeKind = lines[0]
+	}
+	var held bytes.Buffer
+	rc := lintCheck(root, nil, nil, forgeKind, &held, &held)
+	if rc == 0 {
+		return
+	}
+	_, _ = fmt.Fprintln(errOut, "lint check: some linters are not wired")
+	_, _ = errOut.Write(held.Bytes())
 }
 
 // newLintCommand is `lighthouse lint check`, the gate on a linter that is not wired. Every

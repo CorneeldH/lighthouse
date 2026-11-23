@@ -68,6 +68,7 @@ type Options struct {
 	ForgeHosts          []string                                                  // --forge-host: hosts of self-hosted GitLab instances
 	Audit               func(root string, out, errOut io.Writer)                  // read-only agent audit, run after the files are written; nil means none
 	CheckHooks          func(root string, errOut io.Writer)                       // hook check, run after the files are written and also on No changes.; nil means none
+	LintCheck           func(root string, out, errOut io.Writer)                  // lint check, run right after CheckHooks and also on No changes.; nil means none
 	AuditOnUpgrade      bool                                                      // --audit: also run Audit after --upgrade, not only after the first init
 	Version             string                                                    // "" means version.String()
 	Packs               fs.FS                                                     // holds <name>/...; nil means pack.Files
@@ -294,6 +295,9 @@ func execute(o Options) error {
 	reportPins(o, root)
 	if o.CheckHooks != nil {
 		o.CheckHooks(root, o.Err)
+	}
+	if o.LintCheck != nil {
+		o.LintCheck(root, o.Out, o.Err)
 	}
 	if o.Audit != nil && (!initialized && len(paths) > 0 || o.Upgrade && o.AuditOnUpgrade) {
 		_, _ = fmt.Fprintln(o.Out)
