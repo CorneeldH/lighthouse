@@ -17,6 +17,8 @@ sink = "file"
 dir = "docs/verslagen"
 ```
 
+De eigen configuratie van lighthouse staat in `lighthouse.toml` en schrijft naar [het procesverslag](developer/verslag/README.md).
+
 | Sleutel | Type | Default | Betekenis |
 |---|---|---|---|
 | `report.enabled` | bool | `false` | Zet het verslag aan. |
