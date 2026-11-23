@@ -18,7 +18,7 @@
 - Standaard `prio`. De keuze staat in `localStorage` (sleutel `lighthouse.priorities`); zonder `localStorage` blijft `prio` de standaard en werkt de schakelaar nog.
 - UI-tekst en changelog zijn Engels (bestaande UI is Engels); plan, docs en commitberichten zijn Nederlands.
 - Geen wijziging in Go, `pack/` of OpenAPI: geen `init --upgrade` nodig.
-- Voor elke commit: `lighthouse imports check` naast `[test_gate] command` (draait automatisch in `commit-test-gate`). Verificatie vanuit `web/`: `npm run lint && npm run typecheck && npm test`.
+- Voor elke commit: `lighthouse imports check` naast `[test_gate] command` (in Claude Code draait de `[test_gate] command` automatisch in `commit-test-gate`; elders draai je hem zelf). `lighthouse imports check` meldt in deze worktree `COULD NOT CHECK — .lighthouse/manifest.toml: unit 89 …`: dat is een bekende omgevingstoestand, geen fout van deze taak; noteer het in de PR en ga door. Verificatie vanuit `web/`: `npm run lint && npm run typecheck && npm test`.
 
 ## Review focus
 
@@ -45,16 +45,16 @@
 - Test: `web/src/lib/priorities/derive.test.ts`; wijzig ook de `GNode`-literal in `web/src/components/priorities/layout.test.ts:18`
 
 **Interfaces:**
-- Produceert: `GNode.weight: number`, `GNode.factor: number`, `GNode.prioWeight: number`. Externe knopen: alle drie 0. Latere taken gebruiken deze namen.
+- Produceert: `GNode.weight: number`, `GNode.factor: number`, `GNode.prioWeight: number`. Externe knopen: `factor` en `prioWeight` zijn 0, maar `weight` wordt gewoon berekend (een externe blokkerende knoop met wachtenden heeft een gewicht > 0, net als `waiting`). Latere taken gebruiken deze namen.
 
 - [ ] **Stap 1: schrijf de falende tests** in `derive.test.ts` (fixtures `R` en `n(g, key)` volgen zoals bij de `waiting`-tests l.46-98):
   - `weight: A met vijf issues op 1 stap is 5, B met twee op 1 en twee op 2 stappen is 6`
   - `weight: A→B→C geeft A = 3 (B op 1, C op 2, ook als C ook direct op A wacht)`
   - `weight: een cyclus telt als één groep` (cyclus X↔Y met Z erachter: X en Y hebben gewicht 1; een issue dat op de cyclus wacht telt beide leden: P→X, X↔Y ⇒ P = 2)
-  - `weight: een extern blanco knoop heeft gewicht, factor en prioWeight naar eigen waarde 0 voor factor/prioWeight`
+  - `weight: een externe blokkerende knoop met twee wachtende issues op 1 stap heeft weight 2, factor 0 en prioWeight 0`
   - `factor en prioWeight komen uit issue.factor en issue.prio_weight zonder herberekening` (fixture met `prio_weight: 10`, `factor: 3` ⇒ node heeft 10 en 3)
 - [ ] **Stap 2: draai de tests, verwacht falen.** `cd web && npx vitest run src/lib/priorities/derive.test.ts` → FAIL (`weight` is `undefined`).
-- [ ] **Stap 3: implementeer.** Voeg de drie velden toe aan `GNode` en `blank()` (alle 0); kopieer `issue.factor` en `issue.prio_weight` in de knoop (`factor`, `prioWeight`). Bereken `weight` per component `c` in de afrondende stap: een langste-afstand-doorloop over `cadj` (de gecondenseerde DAG) vanuit `c`, bijvoorbeeld door in topologische volgorde `dist[d] = max(dist[d], dist[c'] + 1)` te relaxeren over de bereikbare componenten (afstand 1 voor directe opvolgers), en dan `weight[c] = Σ members[d].length * 2 ** (dist[d] - 1)` over elke bereikbare `d ≠ c`. Zelfde `O(C*(C+E))` als de `waiting`-lus; één keer per fetch.
+- [ ] **Stap 3: implementeer.** Voeg de drie velden toe aan `GNode` en `blank()` (alle 0; `weight` wordt in de afrondende lus voor elke sleutel, externe knopen inbegrepen, overschreven); kopieer `issue.factor` en `issue.prio_weight` in de knoop (`factor`, `prioWeight`). Bereken `weight` per component `c` in de afrondende stap: een langste-afstand-doorloop over `cadj` (de gecondenseerde DAG) vanuit `c`, bijvoorbeeld door in topologische volgorde `dist[d] = max(dist[d], dist[c'] + 1)` te relaxeren over de bereikbare componenten (afstand 1 voor directe opvolgers), en dan `weight[c] = Σ members[d].length * 2 ** (dist[d] - 1)` over elke bereikbare `d ≠ c`. Zelfde `O(C*(C+E))` als de `waiting`-lus; één keer per fetch.
 - [ ] **Stap 4: pas `layout.test.ts:18` aan** (de `GNode`-literal krijgt `weight: 0, factor: 0, prioWeight: 0`) en eventuele andere `GNode`-literals die de typecheck meldt.
 - [ ] **Stap 5: draai** `cd web && npm run typecheck && npx vitest run src/lib/priorities src/components/priorities/layout.test.ts` → PASS.
 - [ ] **Stap 6: commit** `feat(web): gewicht, factor en prio-gewicht per knoop in de afhankelijkhedengraaf (#445)`.
@@ -69,7 +69,7 @@
 - Consumeert: `GNode.weight/factor/prioWeight` (taak 1).
 - Produceert: `export type DepsOrder = 'prio' | 'weight' | 'crossings'` (in `layout.ts`) en `layoutGraph(nodes: GNode[], edges: Array<{from: NodeKey; to: NodeKey}>, order: DepsOrder = 'crossings'): LaidGraph`. De standaardwaarde `'crossings'` houdt bestaande aanroepen en tests ongewijzigd.
 
-- [ ] **Stap 1: schrijf de falende tests** in `layout.test.ts`, elk met één kolom van drie knopen met bewust verschillende sleutels (de dagre-volgorde = nummervolgorde bij gelijke sleutels):
+- [ ] **Stap 1: schrijf de falende tests** in `layout.test.ts`, elk met één kolom van drie knopen met bewust verschillende sleutels (neem de verwachte volgorde bij gelijke sleutels uit `layoutGraph(…, 'crossings')` op dezelfde invoer, niet uit de nummervolgorde):
   - `prio: kolom staat op prioWeight aflopend, dan factor aflopend, dan dagre`
   - `weight: kolom staat op weight aflopend, bij gelijk gewicht in dagre-volgorde`
   - `crossings: de volgorde is die van dagre, ongeacht weight en prioWeight`
@@ -106,7 +106,7 @@
 
 - [ ] **Stap 1: werk `docs/priorities.md` bij** (Nederlands): een alinea *Sortering van de graaf* met de gewichtsregel (2^(k-1), langste afstand, cyclus = één groep), de drie standen en hun volgorde, de standaard `Prio-weight`, de bewaring in `localStorage`, de inhoud van de pil-hover, en dat het prio-gewicht uit `/api/priorities` komt (#509) terwijl het gewicht in `derive.ts` over de hele graaf telt, externe knopen en andere repo's inbegrepen. Links relatief.
 - [ ] **Stap 2: schrijf het changelogfragment**, bijvoorbeeld: `The Dependencies view sorts each column by prio-weight by default, with a switch to plain weight or fewest crossings; the pill hover shows weight, factor and prio-weight.`
-- [ ] **Stap 3: draai** `lighthouse imports check` en `.claude/hooks/lighthouse/run.sh md-link-check` is automatisch via de hook; controleer dat er geen foutmelding komt.
+- [ ] **Stap 3: draai** `lighthouse imports check` (een `COULD NOT CHECK` over `.lighthouse/manifest.toml` is de bekende omgevingstoestand) en controleer de relatieve links in `docs/priorities.md` met `printf '{"tool_input":{"file_path":"%s"}}' "$PWD/docs/priorities.md" | .claude/hooks/lighthouse/run.sh md-link-check` of, buiten Claude Code, met de hand; er mag geen blokkade komen.
 - [ ] **Stap 4: commit** `docs(priorities): sortering van de afhankelijkhedengraaf op prio-gewicht (#445)`.
 
 ---
