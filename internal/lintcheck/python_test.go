@@ -143,9 +143,9 @@ func TestPythonTopLevelSelect(t *testing.T) {
 		"ruff.toml: ruff — floor rule PGH004 disabled")
 }
 
-func TestPythonPerFileIgnoresTurnsFloorOff(t *testing.T) {
-	wantPy(t, map[string]string{"ruff.toml": "[lint]\nselect = [\"ALL\"]\n[lint.per-file-ignores]\n\"tests/*\" = [\"PT012\"]\n"},
-		"ruff.toml: ruff — floor rule PT012 disabled")
+func TestPythonPerFileIgnoresAreScope(t *testing.T) {
+	// a per-file ignore is path scope, which does not count
+	wantPy(t, map[string]string{"ruff.toml": "[lint]\nselect = [\"ALL\"]\n[lint.per-file-ignores]\n\"tests/*\" = [\"PT012\"]\n[lint.extend-per-file-ignores]\n\"**\" = [\"B006\"]\n"})
 }
 
 func TestPythonPyprojectToolRuffLint(t *testing.T) {
@@ -233,6 +233,21 @@ func TestPythonCIVersionFromAction(t *testing.T) {
 	wantPy(t, map[string]string{wf + "ci.yml": strings.Replace(act, "%s", "0.9.0", 1)})
 	wantPy(t, map[string]string{wf + "ci.yml": strings.Replace(act, "%s", "0.8.0", 1)},
 		".github/workflows/ci.yml:6: ruff — CI version 0.8.0, pin 0.9.0")
+}
+
+func TestPythonActionWithoutVersionIsNotPinned(t *testing.T) {
+	base := "on: [push]\njobs:\n  lint:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: astral-sh/ruff-action@v3\n"
+	for _, with := range []string{"", "        with:\n          version: \"\"\n", "        with:\n          version: latest\n"} {
+		wantPy(t, map[string]string{wf + "ci.yml": base + with}, ".github/workflows/ci.yml:6: ruff — CI version not pinned")
+	}
+	// the version step itself, should a call without a version input ever be judged valid
+	for _, v := range []string{"", "latest", " "} {
+		c := Call{Step: Step{File: wf + "ci.yml", Job: "lint", Line: 6, Uses: "astral-sh/ruff-action@v3", With: map[string]string{"version": v}}, Linter: "ruff", Verdict: Valid}
+		f, ok := ruffVersionFinding([]Step{c.Step}, []Call{c}, "0.9.0")
+		if ok || FormatFinding(f) != ".github/workflows/ci.yml:6: ruff — CI version not pinned" {
+			t.Fatalf("version %q: got %q, %v", v, FormatFinding(f), ok)
+		}
+	}
 }
 
 func TestPythonCIVersionFromEnv(t *testing.T) {

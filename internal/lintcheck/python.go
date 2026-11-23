@@ -158,7 +158,8 @@ var (
 // the step's env.
 func ruffCIVersion(steps []Step, c Call) (string, Step, bool) {
 	if c.Step.Uses != "" {
-		return strings.TrimSpace(c.Step.With["version"]), c.Step, true
+		v := c.Step.With["version"]
+		return strings.TrimSpace(v), c.Step, versionInput(v)
 	}
 	for i := len(steps) - 1; i >= 0; i-- {
 		s := steps[i]
@@ -214,7 +215,7 @@ func runRuffVersion(s Step) (string, bool) {
 type ruffLayer struct {
 	hasSelect bool
 	selects   []string // select and extend-select
-	ignores   []string // ignore, extend-ignore and every per-file ignore
+	ignores   []string // ignore and extend-ignore; per-file ignores are path scope and do not count
 }
 
 // ruffEffective reports whether code is on in ruff's own sense in the first of cfgPaths (relative
@@ -329,24 +330,6 @@ func ruffSelection(settings map[string]any, rel string) (ruffLayer, error) {
 	}
 	l.selects = append(list("select"), list("extend-select")...)
 	l.ignores = append(list("ignore"), list("extend-ignore")...)
-	for _, key := range []string{"per-file-ignores", "extend-per-file-ignores"} {
-		v := get(key)
-		if v == nil {
-			continue
-		}
-		m, ok := v.(map[string]any)
-		if !ok {
-			errs = append(errs, key)
-			continue
-		}
-		for _, codes := range m {
-			out, ok := stringList(codes)
-			if !ok {
-				errs = append(errs, key)
-			}
-			l.ignores = append(l.ignores, out...)
-		}
-	}
 	if len(errs) > 0 {
 		return l, UncheckedError(fmt.Sprintf("ruff config %s: %s is not a list of codes", rel, errs[0]))
 	}

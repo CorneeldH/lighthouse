@@ -595,12 +595,9 @@ func (r resolver) judgeRuff(args []string, dir string) (Verdict, string) {
 					return Narrowed, "CI flag --select drops floor rule " + code
 				}
 			}
-		case "--ignore", "--extend-ignore", "--per-file-ignores", "--extend-per-file-ignores":
-			v := f.value
-			if strings.Contains(f.name, "per-file") {
-				v = v[strings.LastIndexByte(v, ':')+1:]
-			}
-			for _, s := range splitList(v) {
+		case "--ignore", "--extend-ignore":
+			// --per-file-ignores is path scope, which does not count; it only takes a value
+			for _, s := range splitList(f.value) {
 				for _, code := range r.floor {
 					if ruffCovers(s, code) {
 						return Narrowed, "CI flag " + f.name + " turns off floor rule " + code
