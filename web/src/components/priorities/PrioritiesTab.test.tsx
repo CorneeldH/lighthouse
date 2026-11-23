@@ -211,6 +211,77 @@ describe('PrioritiesTab', () => {
     })
   })
 
+  describe('deps sort switch', () => {
+    const I = (number: number, by: number[], prio_weight = 0) => ({
+      number, title: `t${number}`, url: `u${number}`, status: 'To do', label: '', open_question: false,
+      needs_label: false, prio_weight, factor: 0, blocked_by: by.length ? by.map((issue) => ({ repo: 'a/x', issue })) : null,
+    })
+    // Column 0: 1, 2, 3. Weights: 3 blocks two issues (2), 1 and 2 one each. Prio-weights run the other way round.
+    const SORT = {
+      repos: [
+        {
+          slug: 'a/x',
+          issues: [I(1, [], 5), I(2, [], 1), I(3, [], 2), I(4, [3]), I(5, [3]), I(6, [1]), I(7, [2])],
+          milestones: [],
+        },
+      ],
+      runs: [],
+    }
+    const column = () =>
+      [1, 2, 3]
+        .map((n) => ({ n, top: Number.parseFloat(screen.getByTestId(`node-a/x#${n}`).style.top) }))
+        .sort((a, b) => a.top - b.top)
+        .map((x) => x.n)
+    const sortGroup = () => within(screen.getByRole('group', { name: 'Sort' }))
+
+    it('shows Prio-weight, Weight, Fewest crossings in Dependencies with Prio-weight pressed', async () => {
+      stub(() => json(SORT))
+      renderTab()
+      await screen.findByTestId('view-deps')
+      const names = sortGroup().getAllByRole('button').map((b) => b.textContent)
+      expect(names).toEqual(['Prio-weight', 'Weight', 'Fewest crossings'])
+      expect(sortGroup().getByRole('button', { name: 'Prio-weight' }).getAttribute('aria-pressed')).toBe('true')
+      expect(sortGroup().getByRole('button', { name: 'Weight' }).getAttribute('aria-pressed')).toBe('false')
+      expect(column()).toEqual([1, 3, 2])
+    })
+
+    it('clicking Weight stores depsOrder weight and reorders the column', async () => {
+      stub(() => json(SORT))
+      renderTab()
+      await screen.findByTestId('view-deps')
+      fireEvent.click(sortGroup().getByRole('button', { name: 'Weight' }))
+      expect(sortGroup().getByRole('button', { name: 'Weight' }).getAttribute('aria-pressed')).toBe('true')
+      expect(JSON.parse(localStorage.getItem('lighthouse.priorities') as string).depsOrder).toBe('weight')
+      expect(column()[0]).toBe(3)
+      expect(column()).not.toEqual([1, 3, 2])
+    })
+
+    it('works without localStorage', async () => {
+      vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+        throw new Error('denied')
+      })
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+        throw new Error('denied')
+      })
+      stub(() => json(SORT))
+      renderTab()
+      await screen.findByTestId('view-deps')
+      expect(sortGroup().getByRole('button', { name: 'Prio-weight' }).getAttribute('aria-pressed')).toBe('true')
+      fireEvent.click(sortGroup().getByRole('button', { name: 'Weight' }))
+      expect(column()[0]).toBe(3)
+    })
+
+    it('is absent in Milestones and Without milestone', async () => {
+      stub(() => json(SORT))
+      renderTab()
+      await screen.findByTestId('view-deps')
+      fireEvent.click(screen.getByRole('button', { name: /^Milestones/ }))
+      expect(screen.queryByRole('group', { name: 'Sort' })).toBeNull()
+      fireEvent.click(screen.getByRole('button', { name: /Without milestone/ }))
+      expect(screen.queryByRole('group', { name: 'Sort' })).toBeNull()
+    })
+  })
+
   describe('priority switch', () => {
     // Computed order: Beta (0 open) before Alpha (2 open); the ranks put Alpha first.
     const RANKED = {

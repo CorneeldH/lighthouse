@@ -84,7 +84,7 @@ export function PrioritiesTab(): JSX.Element {
   }
   const pendingRepos = new Set(slugs.filter(ranks.isPending))
 
-  const props = { graph, repos, selected, colors, order: prefs.msOrder, onMove, pendingRepos }
+  const props = { graph, repos, selected, colors, order: prefs.msOrder, depsOrder: prefs.depsOrder, onMove, pendingRepos }
   const empty = data !== undefined && repos.length === 0
   const View = prefs.view === 'deps' ? DepsView : prefs.view === 'milestones' ? MilestonesView : UnassignedView
   return (
@@ -103,6 +103,8 @@ export function PrioritiesTab(): JSX.Element {
               legend={legend}
               msOrder={prefs.msOrder}
               onMsOrder={(msOrder) => update({ ...prefs, msOrder })}
+              depsOrder={prefs.depsOrder}
+              onDepsOrder={(depsOrder) => update({ ...prefs, depsOrder })}
             />
             {ranks.error !== null && (
               <p role="alert" className="text-sm font-medium text-destructive">
