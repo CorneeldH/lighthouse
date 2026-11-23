@@ -48,7 +48,7 @@
           "repo": "o/r",
           "issue": 5,
           "state": "CLOSED",
-          "merged_pr": true
+          "merged_pr": false
         }
       ],
       "prs": [],
@@ -69,10 +69,10 @@
           "number": 29,
           "state": "CLOSED",
           "draft": false,
-          "mergeable": "MERGEABLE",
+          "mergeable": "UNKNOWN",
           "head_sha": "sha-old",
           "head_ref": "issue-9-y",
-          "checks": "FAILURE",
+          "checks": "",
           "closes": false,
           "url": "",
           "merged_at": "0001-01-01T00:00:00Z",

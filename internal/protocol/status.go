@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 )
@@ -38,8 +39,12 @@ type Status struct {
 // current and the legacy marker.
 var artefactMarkers = []string{"<!-- lighthouse:", "<!-- paia:"}
 
-// IsAnswer reports whether a comment can answer a question: not empty, no protocol header
-// and no artefact comment.
+// MapPlannedMarker opens the machine line of a comment of the scheduled job map-planned. The
+// line follows the job's own heading, so it is not the first line of the body.
+const MapPlannedMarker = "<!-- lighthouse:map-planned "
+
+// IsAnswer reports whether a comment can answer a question: not empty, no protocol header,
+// no artefact comment and no comment of the map-planned job.
 func IsAnswer(body string) bool {
 	text := strings.TrimSpace(body)
 	if text == "" || strings.HasPrefix(text, Robot) {
@@ -47,6 +52,11 @@ func IsAnswer(body string) bool {
 	}
 	for _, marker := range artefactMarkers {
 		if strings.HasPrefix(text, marker) {
+			return false
+		}
+	}
+	for line := range strings.SplitSeq(text, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), MapPlannedMarker) {
 			return false
 		}
 	}
@@ -95,10 +105,29 @@ func Classify(comments []Comment) Status {
 
 var fenceOpen = regexp.MustCompile("^(`{3,})bash$")
 
-// QuestionText returns the question without its heading line and footer. Outside a code
-// block blank lines drop and lines are trimmed; inside one every line stays, so a command
-// copies literally.
+// QuestionText returns only the question of a `🤖 Question`: the text after the question label,
+// numbered `1.`, `2.` in a bundle. Where, what, options and commands stay on the issue. A
+// question without a question label, or with an empty one, falls back to the whole text
+// without heading line and footer; outside a code block it drops blank lines and trims each
+// line, inside one it keeps every line literally.
 func QuestionText(body string) string {
+	if fields, ok := ParseQuestion(body); ok && len(fields.Questions) > 0 {
+		var out []string
+		for i, q := range fields.Questions {
+			if q.Question == "" {
+				out = nil
+				break
+			}
+			if len(fields.Questions) > 1 {
+				out = append(out, fmt.Sprintf("%d. %s", i+1, q.Question))
+			} else {
+				out = append(out, q.Question)
+			}
+		}
+		if out != nil {
+			return strings.Join(out, "\n")
+		}
+	}
 	lines := strings.Split(strings.ReplaceAll(strings.TrimSpace(body), "\r\n", "\n"), "\n")
 	var out []string
 	fence := ""

@@ -13,23 +13,24 @@ import (
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/config"
+	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/procrun"
 	"github.com/CorneeldH/lighthouse/internal/pytext"
+	"github.com/CorneeldH/lighthouse/internal/worktreeroot"
 )
 
-// Timeouts of the Python script: one git call 60 s, one gh call 300 s.
+// Timeouts: one git call 60 s, one forge lookup 300 s.
 const (
-	GitTimeout = 60 * time.Second
-	GHTimeout  = 300 * time.Second
+	GitTimeout   = 60 * time.Second
+	ForgeTimeout = 300 * time.Second
 )
 
-// worktreeDir is where lighthouse puts its worktrees, relative to the main checkout.
-const worktreeDir = ".claude/worktrees"
-
-// Env is what Collect reaches outside itself. Run starts git and gh (a test hands in a replay);
-// a git call gets GitTimeout on top of whatever Run enforces.
+// Env is what Collect reaches outside itself. Run starts git (a test hands in a replay); a git
+// call gets GitTimeout on top of whatever Run enforces. Forge opens the forge of the repo for the
+// PR lookups; nil, or an error, makes every PR state unknown.
 type Env struct {
 	Run    procrun.Func
+	Forge  func() (forge.Forge, error)
 	Config func() (*config.Config, error)
 	Alive  Alive
 	Home   string    // the home directory; `.claude/sessions` and `.claude/projects` hang below it
@@ -50,6 +51,7 @@ type Audit struct {
 	Rows   []Row
 	Policy Policy
 	Repo   string
+	Root   string // the resolved `[worktree] root`
 }
 
 // The read-only git allowlist: exactly the verbs this command issues. A verb outside it is a
@@ -115,15 +117,6 @@ func (c *collector) git(dir string, args ...string) *string {
 	ctx, cancel := context.WithTimeout(c.ctx, GitTimeout)
 	defer cancel()
 	res, err := c.env.Run(ctx, dir, nil, "git", args...)
-	if err != nil || res.Code != 0 {
-		return nil
-	}
-	return ptr(pytext.UniversalNewlines(res.Stdout))
-}
-
-// gh runs gh and returns its stdout, or nil when it failed.
-func (c *collector) gh(args ...string) *string {
-	res, err := c.env.Run(c.ctx, "", nil, "gh", args...)
 	if err != nil || res.Code != 0 {
 		return nil
 	}
@@ -208,6 +201,19 @@ func Collect(ctx context.Context, env Env, repoRoot string) (*Audit, error) {
 	if err == nil {
 		c.policy, repo, err = policyFrom(cfg)
 	}
+	var wtRoot string
+	if err == nil {
+		var v any
+		if v, err = config.Lookup(cfg, "worktree.root"); err == nil {
+			wtRoot = worktreeroot.Resolve(root, pyStr(v))
+			// git lists a worktree by its symlink-resolved path: so must the root be, or a live
+			// worktree behind a symlinked root shows as an orphan. A root that does not exist yet
+			// keeps its value.
+			if real, rerr := filepath.EvalSymlinks(wtRoot); rerr == nil {
+				wtRoot = real
+			}
+		}
+	}
 	if err != nil {
 		// Exit 2, not 1: under --only, 1 already means "not cleanable".
 		return nil, &Failure{Code: 2, Message: "worktree-audit: " + err.Error()}
@@ -241,7 +247,7 @@ func Collect(ctx context.Context, env Env, repoRoot string) (*Audit, error) {
 		Sessions:       loadSessions(filepath.Join(env.Home, ".claude", "sessions")),
 		Transcripts:    map[string]Transcript{},
 		DetachedDirty:  map[string]*bool{},
-		Orphans:        findOrphans(root, worktrees),
+		Orphans:        findOrphans(wtRoot, worktrees),
 		Ports:          map[string]string{},
 		PRLookupOK:     lookupOK,
 	}
@@ -268,7 +274,7 @@ func Collect(ctx context.Context, env Env, repoRoot string) (*Audit, error) {
 	if c.refused != nil {
 		return nil, &Failure{Code: 1, Message: "worktree-audit: " + c.refused.Error()}
 	}
-	return &Audit{Rows: BuildRows(in, env.Alive), Policy: c.policy, Repo: repo}, nil
+	return &Audit{Rows: BuildRows(in, env.Alive), Policy: c.policy, Repo: repo, Root: wtRoot}, nil
 }
 
 func dirtyOf(status *string) *bool {
@@ -278,54 +284,64 @@ func dirtyOf(status *string) *bool {
 	return ptr(pytext.Strip(*status) != "")
 }
 
-// pulls is `gh api --paginate` over every PR of repo. false: the lookup failed or there is no repo
-// — then every PR state is unknown, never "no PR".
+// openForge opens the forge of env; false when there is none or it cannot be opened.
+func (e Env) openForge() (forge.Forge, bool) {
+	if e.Forge == nil {
+		return nil, false
+	}
+	f, err := e.Forge()
+	return f, err == nil && f != nil
+}
+
+// pulls reads every PR of the repo through the forge, as the REST payload ParsePulls reads. false:
+// the lookup failed or there is no repo — then every PR state is unknown, never "no PR".
 func (c *collector) pulls(repo string) ([]any, bool) {
 	if repo == "" {
 		return nil, false
 	}
-	out := c.gh("api", "--paginate", "repos/"+repo+"/pulls?state=all&per_page=100",
-		"--jq", ".[] | {number, state, merged_at, head: {ref: .head.ref}}")
-	if out == nil {
+	f, ok := c.env.openForge()
+	if !ok {
 		return nil, false
 	}
-	payload := []any{}
-	for _, line := range pytext.SplitLines(*out, false) {
-		line = pytext.Strip(line)
-		if line == "" {
-			continue
+	ctx, cancel := context.WithTimeout(c.ctx, ForgeTimeout)
+	defer cancel()
+	heads, err := f.PullHeads(ctx)
+	if err != nil {
+		return nil, false
+	}
+	payload := make([]any, 0, len(heads))
+	for _, h := range heads {
+		// REST knows open and closed; a merged PR is a closed one with a merge time.
+		state := strings.ToLower(h.State)
+		var mergedAt any
+		if h.MergedAt != "" {
+			state, mergedAt = "closed", h.MergedAt
 		}
-		var v any
-		if json.Unmarshal([]byte(line), &v) == nil {
-			payload = append(payload, v)
-		}
+		payload = append(payload, map[string]any{
+			"number": float64(h.Number), "state": state, "merged_at": mergedAt,
+			"head": map[string]any{"ref": h.HeadRef},
+		})
 	}
 	return payload, true
 }
 
-// issuePRsQuery is ISSUE_PRS_QUERY of the Python, byte for byte.
-const issuePRsQuery = `query($owner:String!,$name:String!,$nr:Int!){repository(owner:$owner,name:$name){issue(number:$nr){
-  closedByPullRequestsReferences(first:50,includeClosedPrs:true){nodes{headRefName merged isCrossRepository repository{nameWithOwner}}}
-  timelineItems(itemTypes:[CROSS_REFERENCED_EVENT],first:100){nodes{... on CrossReferencedEvent{source{... on PullRequest{headRefName merged isCrossRepository body repository{nameWithOwner}}}}}}}}}`
-
-// IssuePRHeads asks GitHub for the merged PR heads of issue nr in repo; false when the lookup
-// failed or there is no repo.
+// IssuePRHeads asks the forge for the merged PR heads of issue nr in repo; false when the lookup
+// failed, for whatever reason, or there is no repo.
 func IssuePRHeads(ctx context.Context, env Env, repo string, nr int) ([]string, bool) {
 	if repo == "" {
 		return nil, false
 	}
-	owner, name, _ := strings.Cut(repo, "/")
-	c := &collector{ctx: ctx, env: env}
-	out := c.gh("api", "graphql", "-f", "owner="+owner, "-f", "name="+name, "-F", "nr="+itoa(nr),
-		"-f", "query="+issuePRsQuery)
-	if out == nil {
+	f, ok := env.openForge()
+	if !ok {
 		return nil, false
 	}
-	var payload any
-	if json.Unmarshal([]byte(*out), &payload) != nil {
+	ctx, cancel := context.WithTimeout(ctx, ForgeTimeout)
+	defer cancel()
+	closing, err := f.IssueClosingHeads(ctx, nr)
+	if err != nil {
 		return nil, false
 	}
-	return ParseIssuePRHeads(payload, repo, nr)
+	return ParseIssuePRHeads(closing, repo, nr), true
 }
 
 // probeAll measures every branch that no protected ref covers; the ref of a remote-only branch is
@@ -397,14 +413,14 @@ func (c *collector) probe(wt *WorktreeInfo, root, ref string, skipContent bool) 
 	return p
 }
 
-// findOrphans is every directory under `<root>/.claude/worktrees/` that git does not list, with
-// its sorted entries. A directory that cannot be read has no entries; no base, no orphans.
-func findOrphans(root string, worktrees []WorktreeInfo) []OrphanDir {
+// findOrphans is every directory under root (the resolved `[worktree] root`) that git does not
+// list, with its sorted entries. A directory that cannot be read has no entries; no base, no
+// orphans.
+func findOrphans(base string, worktrees []WorktreeInfo) []OrphanDir {
 	known := map[string]bool{}
 	for _, w := range worktrees {
-		known[w.Path] = true
+		known[filepath.Clean(w.Path)] = true
 	}
-	base := filepath.Join(root, worktreeDir)
 	entries, err := os.ReadDir(base)
 	if err != nil {
 		return nil
@@ -412,7 +428,7 @@ func findOrphans(root string, worktrees []WorktreeInfo) []OrphanDir {
 	var out []OrphanDir
 	for _, e := range entries { // os.ReadDir sorts by name
 		path := filepath.Join(base, e.Name())
-		if info, err := os.Stat(path); err != nil || !info.IsDir() || known[path] {
+		if info, err := os.Stat(path); err != nil || !info.IsDir() || known[filepath.Clean(path)] {
 			continue
 		}
 		names := []string{}

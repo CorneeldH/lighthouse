@@ -6,11 +6,17 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
 	"testing"
+	"time"
+
+	"github.com/CorneeldH/lighthouse/internal/levellog"
+	"github.com/CorneeldH/lighthouse/internal/levels"
 )
 
 // Classification: this is a hook/gate change; the likely regression surface is the exit code,
@@ -380,5 +386,162 @@ func TestNamesListsRegistered(t *testing.T) {
 	}
 	if !sort.StringsAreSorted(Names()) {
 		t.Errorf("Names() = %v, not sorted", Names())
+	}
+}
+
+// logEnv is an env whose root is a git repository, with the logbook in a private state dir.
+func logEnv(t *testing.T) Env {
+	t.Helper()
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	env := newEnv(t, "", "")
+	if out, err := exec.Command("git", "init", "-q", env.Root).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, out)
+	}
+	return env
+}
+
+func logged(t *testing.T, env Env) map[string]int {
+	t.Helper()
+	counts, err := levellog.Count(env.Root, time.Now().Add(-time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return counts
+}
+
+func installedWith(c string, s levels.Stand) levels.Installed {
+	return levels.Installed{Level: "light", Components: map[string]levels.Stand{c: s}}
+}
+
+func blocker(ran *bool) Func {
+	return func(context.Context, string, string, Payload) Result {
+		*ran = true
+		return Result{Code: 2, Stderr: "first line\nsecond line\n"}
+	}
+}
+
+// red if a hook on stand log still prints, blocks or leaves out the logbook line.
+func TestLogStandCountsAndStaysSilent(t *testing.T) {
+	env := logEnv(t)
+	env.Level = installedWith("blk", levels.StandLog)
+	var ran bool
+	register(t, "blk", blocker(&ran))
+	code, out, errOut := call(t, "blk", "s", env)
+	if code != 0 || out != "" || errOut != "" || !ran {
+		t.Fatalf("code=%d out=%q err=%q ran=%v, want 0, silent, ran", code, out, errOut, ran)
+	}
+	if got := logged(t, env); got["blk"] != 1 {
+		t.Fatalf("logbook %v, want one line for blk", got)
+	}
+}
+
+// red if a panic under stand log is reported as COULD NOT CHECK instead of logged.
+func TestLogStandPanicStillExitsZero(t *testing.T) {
+	env := logEnv(t)
+	env.Level = installedWith("boom", levels.StandLog)
+	register(t, "boom", func(context.Context, string, string, Payload) Result { panic("kaput") })
+	code, out, errOut := call(t, "boom", "s", env)
+	if code != 0 || out != "" || errOut != "" {
+		t.Fatalf("code=%d out=%q err=%q, want 0 and silent", code, out, errOut)
+	}
+	if got := logged(t, env); got["boom"] != 1 {
+		t.Fatalf("logbook %v, want one line for boom", got)
+	}
+}
+
+// red if a failing logbook turns into an exit code or a message.
+func TestLogStandWithUnwritableLogExitsZero(t *testing.T) {
+	env := logEnv(t)
+	blockedState := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(blockedState, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XDG_STATE_HOME", blockedState) // a file: no directory can be made under it
+	env.Level = installedWith("blk", levels.StandLog)
+	var ran bool
+	register(t, "blk", blocker(&ran))
+	code, out, errOut := call(t, "blk", "s", env)
+	if code != 0 || out != "" || errOut != "" {
+		t.Fatalf("code=%d out=%q err=%q, want 0 and silent", code, out, errOut)
+	}
+}
+
+// red if a hook on stand off still runs.
+func TestOffStandSkipsTheHook(t *testing.T) {
+	env := logEnv(t)
+	env.Level = installedWith("blk", levels.StandOff)
+	var ran bool
+	register(t, "blk", blocker(&ran))
+	code, out, errOut := call(t, "blk", "s", env)
+	if code != 0 || out != "" || errOut != "" || ran {
+		t.Fatalf("code=%d out=%q err=%q ran=%v, want 0, silent, not run", code, out, errOut, ran)
+	}
+}
+
+// red if stand on changes the result of a hook or logs it.
+func TestOnStandIsUnchanged(t *testing.T) {
+	env := logEnv(t)
+	env.Level = installedWith("blk", levels.StandOn)
+	var ran bool
+	register(t, "blk", blocker(&ran))
+	code, _, errOut := call(t, "blk", "s", env)
+	if code != 2 || errOut != "first line\nsecond line\n" {
+		t.Fatalf("code=%d err=%q, want the hook's own 2 and stderr", code, errOut)
+	}
+	if got := logged(t, env); len(got) != 0 {
+		t.Fatalf("logbook %v, want empty on stand on", got)
+	}
+}
+
+// red if an unreadable components.toml lets a hook through or is not exit 3.
+func TestCorruptComponentsFileIsExit3(t *testing.T) {
+	env := logEnv(t)
+	env.LevelErr = errors.New("parse: bad")
+	var ran bool
+	register(t, "blk", blocker(&ran))
+	code, _, errOut := call(t, "blk", "s", env)
+	if code != ExitUnknown || ran || !strings.Contains(errOut, "COULD NOT CHECK: blk: components.toml cannot be read: parse: bad") {
+		t.Fatalf("code=%d err=%q ran=%v, want exit 3 with COULD NOT CHECK", code, errOut, ran)
+	}
+}
+
+// red if a base hook looks at LevelErr or at its stand.
+func TestBaseHookIgnoresCorruptComponentsFile(t *testing.T) {
+	old := levels.BaseHooks
+	levels.BaseHooks = append(slices.Clone(old), "basey")
+	t.Cleanup(func() { levels.BaseHooks = old })
+	env := logEnv(t)
+	env.LevelErr = errors.New("parse: bad")
+	env.Level = installedWith("basey", levels.StandOff)
+	var ran bool
+	register(t, "basey", blocker(&ran))
+	code, _, errOut := call(t, "basey", "s", env)
+	if !ran || code != 2 || strings.Contains(errOut, "COULD NOT CHECK") {
+		t.Fatalf("code=%d err=%q ran=%v, want the hook to run untouched", code, errOut, ran)
+	}
+}
+
+// red if the log stand lets the version notice through.
+func TestLogStandSuppressesVersionNotice(t *testing.T) {
+	env := logEnv(t)
+	env.ManifestVersion, env.BinaryVersion = "0.12.1", "0.13.0"
+	env.Level = installedWith("ok", levels.StandLog)
+	register(t, "ok", func(context.Context, string, string, Payload) Result { return Result{} })
+	code, out, errOut := call(t, "ok", "s", env)
+	if code != 0 || out != "" || errOut != "" {
+		t.Fatalf("code=%d out=%q err=%q, want silent", code, out, errOut)
+	}
+	if got := logged(t, env); len(got) != 0 {
+		t.Fatalf("logbook %v, want empty for a quiet pass", got)
+	}
+}
+
+// red if a missing components.toml (zero Installed) is read as anything but on.
+func TestAbsentComponentsFileMeansOn(t *testing.T) {
+	env := logEnv(t)
+	var ran bool
+	register(t, "blk", blocker(&ran))
+	if code, _, _ := call(t, "blk", "s", env); code != 2 || !ran {
+		t.Fatalf("code=%d ran=%v, want the hook to run normally", code, ran)
 	}
 }

@@ -1,0 +1,8 @@
+{
+  "hook": "go",
+  "touch": "app.go",
+  "exit": 0,
+  "go_deps": [
+    "example.test/dep"
+  ]
+}

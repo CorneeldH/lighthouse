@@ -211,6 +211,33 @@
       "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/hooks/maincommitgate.go"
     },
     {
+      "id": "no-verify-check",
+      "phase": "pre-tool",
+      "row": 7,
+      "kind": "hook",
+      "trigger": "tool",
+      "events": [
+        "PreToolUse"
+      ],
+      "matcher": "Bash",
+      "command": "run.sh no-verify-check",
+      "effects": [
+        "blocks"
+      ],
+      "label": "no-verify-check",
+      "what": "Blocks git commit --no-verify and -n, on every branch and at every level.",
+      "how": [
+        "It runs in the lighthouse binary, through run.sh, and sees a commit after `cd`, `;`, `|`, `&&` or with `git -C <path>`.",
+        "A commit with --no-verify or -n blocks with exit 2 and a message on stderr; the flag as text in a commit message does not.",
+        "It has no stand and no override: switching off main-commit-gate or commit-test-gate does not unblock it, and a components.toml it cannot read changes nothing.",
+        "It is in hooks/blocking, so a crash of the hook blocks too."
+      ],
+      "when": "Before each Bash call.",
+      "without": "A commit skips the checks with --no-verify as soon as git hooks are added.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/hooks/noverifycheck.go"
+    },
+    {
       "id": "commit-test-gate-pre",
       "phase": "pre-tool",
       "row": 2,
@@ -225,7 +252,7 @@
         "blocks"
       ],
       "label": "commit-test-gate pre",
-      "what": "Blocks a commit with --no-verify and tests a commit to the default branch before it happens.",
+      "what": "Tests a commit to the default branch before it happens.",
       "how": [
         "It runs in the lighthouse binary, through run.sh.",
         "It sees a commit after `cd`, `;`, `|`, `&&` or with `git -C <path>`, and tests the tree that is committed.",
@@ -234,7 +261,7 @@
         "When it cannot parse the command or resolve the tree, it blocks with COULD NOT CHECK."
       ],
       "when": "Before each Bash call.",
-      "without": "A commit skips the gate with --no-verify, and a commit to main goes in untested.",
+      "without": "A commit to main goes in untested.",
       "status": "works",
       "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/hooks/committestgate.go"
     },
@@ -654,6 +681,33 @@
       "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/hooks/usagegate.go"
     },
     {
+      "id": "level-check",
+      "phase": "prompt",
+      "row": 0,
+      "kind": "hook",
+      "trigger": "event",
+      "events": [
+        "SessionStart"
+      ],
+      "matcher": "",
+      "command": "run.sh level-check",
+      "effects": [
+        "warns"
+      ],
+      "label": "level-check",
+      "what": "At the start of a session, names every core gate that is not on.",
+      "how": [
+        "It runs on SessionStart and reads .lighthouse/components.toml.",
+        "For main-commit-gate, worktree-check and pr-create-gate with stand off or log it says `lighthouse: <gate> is <stand> — this repo works outside the chain`, as a systemMessage and as context for the model.",
+        "With every core gate on, or without components.toml, it says nothing.",
+        "It always exits 0; a file it cannot read gives a systemMessage `COULD NOT CHECK`."
+      ],
+      "when": "When a session starts.",
+      "without": "A repo that has switched off a core gate looks like one that works in the chain.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/hooks/levelcheck.go"
+    },
+    {
       "id": "permission-check",
       "phase": "pre-tool",
       "row": 5,
@@ -679,6 +733,90 @@
       "without": "The dispatcher cannot tell a session waiting for a permission from a silent one.",
       "status": "works",
       "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/hooks/permissioncheck.go"
+    },
+    {
+      "id": "python-imports-gate",
+      "phase": "stop",
+      "row": 9,
+      "kind": "hook",
+      "trigger": "event",
+      "events": [
+        "Stop"
+      ],
+      "matcher": "",
+      "command": "python-imports-gate.sh",
+      "effects": [
+        "blocks",
+        "warns"
+      ],
+      "label": "python-imports-gate",
+      "what": "Runs `lighthouse imports check --lang python` at the end of a turn that touched Python, to catch an import of a third-party package that no manifest declares.",
+      "how": [
+        "It checks only a checkout in which the turn touched a .py file, pyproject.toml or uv.lock, and passes the touched paths with `--files`.",
+        "A finding (DEP001 or DEP003) blocks with exit 2 and sends it back to the model.",
+        "While the usage alarm is up, it says `not checked` and exits 0; `[imports] check = false` turns it off.",
+        "When it cannot check (exit 3, no finding line, a lighthouse too old to know `imports`), it exits 0 with a systemMessage `python-imports-gate: COULD NOT CHECK`."
+      ],
+      "when": "At the end of each turn.",
+      "without": "An import of a third-party package that no manifest declares is found only later, in CI or on another machine.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/python/hooks/python-imports-gate.sh"
+    },
+    {
+      "id": "go-imports-gate",
+      "phase": "stop",
+      "row": 11,
+      "kind": "hook",
+      "trigger": "event",
+      "events": [
+        "Stop"
+      ],
+      "matcher": "",
+      "command": "go-imports-gate.sh",
+      "effects": [
+        "blocks",
+        "warns"
+      ],
+      "label": "go-imports-gate",
+      "what": "Runs `lighthouse imports check --lang go` at the end of a turn that touched Go, to catch an import of a module that no manifest declares.",
+      "how": [
+        "It checks only a checkout in which the turn touched a .go file, go.mod or go.sum, and passes the touched paths with `--files`.",
+        "A finding (indirect-import or missing-require) blocks with exit 2 and sends it back to the model.",
+        "While the usage alarm is up, it says `not checked` and exits 0; `[imports] check = false` turns it off.",
+        "When it cannot check (exit 3, no finding line, a lighthouse too old to know `imports`), it exits 0 with a systemMessage `go-imports-gate: COULD NOT CHECK`."
+      ],
+      "when": "At the end of each turn.",
+      "without": "An import of a module that no manifest declares is found only later, in CI or on another machine.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/go/hooks/go-imports-gate.sh"
+    },
+    {
+      "id": "node-imports-gate",
+      "phase": "stop",
+      "row": 13,
+      "kind": "hook",
+      "trigger": "event",
+      "events": [
+        "Stop"
+      ],
+      "matcher": "",
+      "command": "node-imports-gate.sh",
+      "effects": [
+        "blocks",
+        "warns"
+      ],
+      "label": "node-imports-gate",
+      "what": "Runs `lighthouse imports check --lang node` at the end of a turn that touched Node, to catch an import of a package that no manifest declares.",
+      "how": [
+        "It checks only a checkout in which the turn touched a JavaScript or TypeScript file, package.json or a lockfile, and passes the touched paths with `--files`.",
+        "A finding (unlisted) blocks with exit 2 and sends it back to the model.",
+        "While the usage alarm is up, it says `not checked` and exits 0; `[imports] check = false` turns it off.",
+        "When it cannot check (exit 3, no finding line, a lighthouse too old to know `imports`), it exits 0 with a systemMessage `node-imports-gate: COULD NOT CHECK`."
+      ],
+      "when": "At the end of each turn.",
+      "without": "An import of a package that no manifest declares is found only later, in CI or on another machine.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/node/hooks/node-imports-gate.sh"
     }
   ],
   "handoffs": [],
@@ -697,7 +835,10 @@
         "shell-lint-check",
         "bash-write-check-post",
         "go-lint-gate",
-        "ty-gate"
+        "ty-gate",
+        "python-imports-gate",
+        "go-imports-gate",
+        "node-imports-gate"
       ]
     },
     {
@@ -752,6 +893,13 @@
       ]
     },
     {
+      "id": "no-verify",
+      "label": "I commit with --no-verify",
+      "chips": [
+        "no-verify-check"
+      ]
+    },
+    {
       "id": "workflow-push",
       "label": "A controller run pushes a workflow change",
       "chips": [
@@ -763,6 +911,13 @@
       "label": "A controller run waits on a permission",
       "chips": [
         "permission-check"
+      ]
+    },
+    {
+      "id": "core-gate-off",
+      "label": "A session starts with a core gate switched off",
+      "chips": [
+        "level-check"
       ]
     }
   ]

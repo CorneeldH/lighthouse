@@ -2,14 +2,14 @@
 # without the line number. Each one has a test that pins why it is needed.
 
 # The install command run.sh names when no binary is found (spec zonder-python §1).
-# Pinned by tests/pack/test_run_sh.py::test_missing_binary_blocks_blocking_hook.
+# Pinned by e2e/runsh_test.go::TestRunShMissingBinary.
 pack/core/hooks/run.sh:  module=github.com/CorneeldH/lighthouse/cmd/lighthouse
 
 # The lighthouse repo, for the release notes the upgrade skill shows (spec #46 § Vastgelegd).
-# Pinned by tests/pack/test_upgrade_skill.py::test_release_notes_come_from_the_lighthouse_repo.
+# Pinned by internal/packcontract/upgrade_test.go::TestUpgradeReleaseNotesComeFromTheLighthouseRepo.
 pack/core/skills/upgrade/claude/SKILL.md:L=CorneeldH/lighthouse
 pack/core/skills/upgrade/agents/SKILL.md:L=CorneeldH/lighthouse
 
 # The repository the release lane downloads the lighthouse binary from (spec zonder-python §6).
-# Pinned by tests/pack/test_workflow_unblock.py::test_the_one_literal_is_the_release_download.
+# Pinned by internal/packcontract/workflowunblock_test.go::TestUnblockTheOneLiteralIsTheReleaseDownload.
 pack/core/workflows/unblock-dependents.yml:              --repo CorneeldH/lighthouse \

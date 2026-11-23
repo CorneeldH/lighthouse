@@ -88,6 +88,9 @@ type RemoveOptions struct {
 	// Force removes a workspace with uncommitted or unpushed work too. Only the workspace of
 	// a scheduled run without an open row is removed this way: nothing in it must be kept.
 	Force bool
+	// Orphan: the worktree directory of the workspace is gone, so nothing in it can be lost.
+	// The forge deletes the workspace with force, and no git runs on the missing directory.
+	Orphan bool
 }
 
 // Workplace is the forge side of a run.
@@ -110,6 +113,13 @@ type Workplace interface {
 	Discard(ctx context.Context, workspaceID string) error
 }
 
+// OrphanChecker proves that a workspace whose worktree directory is gone has no branch left to
+// lose: the branch of the workspace is neither in the clone nor on origin. An error, or a
+// workplace without it, is "not measurable".
+type OrphanChecker interface {
+	BranchNowhere(ctx context.Context, workspaceID, branch string) (bool, error)
+}
+
 // The measurements of a run on another node, which on self run on this host (#327). Only the
 // kenn-forge adapter has them, and only on a node (Serve set) does it answer them: on self each
 // method is ErrNotMeasurable, never a clean or empty answer. A caller asks them only for a run
@@ -128,6 +138,11 @@ type (
 	// PermissionReader reads the raw permission note of a run; nil, nil when it has none.
 	PermissionReader interface {
 		Permission(ctx context.Context, sessionID string) ([]byte, error)
+	}
+	// PostFailedReader reads the raw post-failed note of a run and its file's modification time
+	// (zero: unknown); nil, zero, nil when it has none.
+	PostFailedReader interface {
+		PostFailed(ctx context.Context, sessionID string) ([]byte, time.Time, error)
 	}
 )
 

@@ -82,7 +82,7 @@ execution path and not only in this text.
 | 6 | merged PR | ✅ safe to remove |
 | 7 | no open or merged PR, and PR state unknown or content check failed or unique files against the default branch | ⚠️ PR status unknown / content check failed / unique work — review |
 | 8 | no PR, the content is in the default branch — or there is no content (`<default>..<branch>` counts 0) | ✅ safe to remove / ✅ empty — no own commits |
-| 9 | directory under `.claude/worktrees/` not in `git worktree list` | ❓ orphan — manual |
+| 9 | directory under the worktree root (`lighthouse config worktree.root`) not in `git worktree list` | ❓ orphan — manual |
 
 Rank 9 typically appears in a devcontainer: the `.git` of such a directory points to a path
 inside the container, so git does not know it and `git worktree prune` never touches it. Only
@@ -96,7 +96,7 @@ second is called **empty — no own commits**. Both are safe to remove: the tree
 start. For a fresh *last session* check whether someone is just starting on it.
 
 **Worktrees of a session server** (a remote-control service that starts sessions in
-`.claude/worktrees/bridge-…`) never get a PR. As long as a session has them as cwd: rank 2.
+`<root>/bridge-…`) never get a PR. As long as a session has them as cwd: rank 2.
 After that: rank 8 without own commits, rank 4 with. Their lock (`claude agent bridge-…`)
 carries the pid of the server, not of the session; the audit therefore does not count it as a
 session signal (modifier `server-lock`). Such a ✅ row is still locked, so it is not in the
@@ -145,8 +145,7 @@ block per worktree name.
 ## Non-negotiables
 
 - **Change nothing**, not even "just this one obvious case".
-- **`gh api`, never `gh pr list --json`** — that breaks under a proxy, and an unknown filter is
-  silently ignored there. In Claude Code `gh` runs with `dangerouslyDisableSandbox: true`.
+- **`lighthouse worktree-audit` reads the PR state itself; call no forge CLI next to it.**
 - **Never `git branch --merged`** as a merge test.
 - **Never force or unlock a lock.** Report the pid with it.
 - **Port blocks are reported, never killed** (only if present, with a port registry). The skill
@@ -162,7 +161,7 @@ All four come from the same call: `lighthouse worktree-audit --kpi`.
 
 | Metric | Field | Target |
 |---|---|---:|
-| Worktrees under `.claude/worktrees/` | `worktrees=` | ≤ 4 |
+| Worktrees under the worktree root | `worktrees=` | ≤ 4 |
 | Rows with verdict ✅ that stay | `safe=` | 0 |
 | Remote branches on origin | `remote_branches=` | ≤ 15 |
 | Rows with ⚠️ (unique work or local commits) | `warn=` | 0 |

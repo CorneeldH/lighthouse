@@ -51,11 +51,14 @@ var (
 		`|git⟨ws⟩+stash⟨ws⟩+(?:pop|apply)\b` +
 		`|sed⟨ws⟩+-i` +
 		`|<<-?⟨ws⟩*(?-i:['"]?[A-Z_][A-Z0-9_]*['"]?)` +
-		`|gh⟨ws⟩+(run⟨ws⟩+rerun|pr⟨ws⟩+merge|pr⟨ws⟩+edit)\b`)
+		`|gh⟨ws⟩+(run⟨ws⟩+rerun|pr⟨ws⟩+merge|pr⟨ws⟩+edit)\b` +
+		`|lighthouse⟨ws⟩+forge⟨ws⟩+pr⟨ws⟩+comment\b` +
+		`|lighthouse⟨ws⟩+forge⟨ws⟩+api⟨ws⟩+(?:⟨nws⟩+⟨ws⟩+)*-X⟨ws⟩*(?:POST|PUT|PATCH|DELETE)\b`)
 
 	diagnosticRe = pyRe(`(?i)` +
 		`gh⟨ws⟩+pr⟨ws⟩+(view|checks|diff)\b` +
 		`|gh⟨ws⟩+run⟨ws⟩+(view|list)\b` +
+		`|lighthouse⟨ws⟩+forge⟨ws⟩+pr⟨ws⟩+(view|checks)\b` +
 		`|git⟨ws⟩+stash⟨ws⟩+(?:list|show)\b` +
 		`|git⟨ws⟩+(worktree⟨ws⟩+list|status|log|branch|diff|show|fetch|rev-parse|merge-tree)\b`)
 )

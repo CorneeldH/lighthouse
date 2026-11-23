@@ -395,7 +395,7 @@ func checkRedundancy(j Judgment, number int) error {
 
 // checkPublished bounds the free text fields that the row of the judgment publishes.
 func checkPublished(j Judgment, f Facts, c Context) error {
-	switch judgedRow(&j, c.Gate0, f.AuthorTrusted) {
+	switch judgedRow(&j, c.Gate0, f.AuthorTrusted, f.Labels, c.Labels) {
 	case RowRedundant:
 		return checkEvidence(j.RedundancyEvidence, f.GitShas)
 	case RowDesign:

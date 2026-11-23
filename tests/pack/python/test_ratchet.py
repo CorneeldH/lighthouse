@@ -1187,7 +1187,7 @@ def test_tighten_does_both_axes_in_one_pass():
 
 # --- lighthouse: the directories, the command and the base from the config -------
 
-from tests.pack._testkit import MINIMAL_TOML
+from tests.pack.python._testkit import MINIMAL_TOML
 
 # ratchet reads lighthouse.toml through the binary of this checkout (#274).
 pytestmark = pytest.mark.usefixtures("lighthouse_bin")

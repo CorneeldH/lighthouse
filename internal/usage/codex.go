@@ -48,15 +48,35 @@ type CodexReader struct {
 	Command func(ctx context.Context, home string) *exec.Cmd // must use exec.CommandContext
 }
 
-// NewCodexReader returns a reader for $HOME/.codex and $HOME/.codex-specreview.
-// Without HOME Codex is not measurable.
-func NewCodexReader() (CodexReader, error) {
+// CodexHome returns the Codex home of this process: $CODEX_HOME when set, else
+// $HOME/.codex. Without both it fails.
+func CodexHome() (string, error) {
+	if h := os.Getenv("CODEX_HOME"); h != "" {
+		return h, nil
+	}
 	home := os.Getenv("HOME")
 	if home == "" {
-		return CodexReader{}, errors.New("HOME is not set")
+		return "", errors.New("HOME is not set")
+	}
+	return filepath.Join(home, ".codex"), nil
+}
+
+// NewCodexReader returns a reader for $CODEX_HOME when that is set, and then that is the
+// only home (also without HOME). Otherwise it reads $HOME/.codex and
+// $HOME/.codex-specreview; without HOME Codex is not measurable.
+func NewCodexReader() (CodexReader, error) {
+	homes := []string{}
+	if ch := os.Getenv("CODEX_HOME"); ch != "" {
+		homes = append(homes, ch)
+	} else {
+		home := os.Getenv("HOME")
+		if home == "" {
+			return CodexReader{}, errors.New("HOME is not set")
+		}
+		homes = append(homes, filepath.Join(home, ".codex"), filepath.Join(home, ".codex-specreview"))
 	}
 	return CodexReader{
-		Homes:   []string{filepath.Join(home, ".codex"), filepath.Join(home, ".codex-specreview")},
+		Homes:   homes,
 		Timeout: codexTimeout,
 		Now:     time.Now,
 		Command: codexCommand,

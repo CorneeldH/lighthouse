@@ -43,6 +43,7 @@ priority_field_id = "PF"
 [forge.board.status_options]
 "Controller" = "c1"
 "On hold" = "h1"
+"To do" = "t1"
 
 [controller]
 
@@ -127,6 +128,7 @@ func fakeForge(t *testing.T, env *tickEnv) *forgetest.Server {
 	t.Helper()
 	srv := forgetest.New(t)
 	srv.Login = "lh-bot"
+	srv.ProjectID = "PVT_x"
 	env.ForgeURL = srv.URL()
 	return srv
 }
@@ -235,8 +237,8 @@ func TestTickNoRepos(t *testing.T) {
 	if err := conn.QueryRow(`PRAGMA user_version`).Scan(&v); err != nil {
 		t.Fatal(err)
 	}
-	if v != 9 {
-		t.Errorf("user_version = %d, want 9", v)
+	if v != 11 {
+		t.Errorf("user_version = %d, want 11", v)
 	}
 }
 
@@ -328,7 +330,7 @@ func TestTickGathersThenSkipsUnchanged(t *testing.T) {
 		if n := srv.Count(comments); n != step.comments {
 			t.Errorf("tick at +%v: comment requests = %d, want %d", step.after, n, step.comments)
 		}
-		if n := srv.Count("Board"); n != step.boards {
+		if n := srv.Count("/users/o/projectsV2/3/items"); n != step.boards {
 			t.Errorf("tick at +%v: Board requests = %d, want %d", step.after, n, step.boards)
 		}
 	}
@@ -342,8 +344,10 @@ func TestTickForgeErrorSkipsLoudlyAndKeepsState(t *testing.T) {
 		setup func(*forgetest.Server)
 		want  string
 	}{
-		"graphql error": {func(s *forgetest.Server) { s.GraphQLErrors = []string{"Could not resolve to a node"} },
-			"Could not resolve to a node"},
+		"board error": {func(s *forgetest.Server) {
+			s.Fail = map[string]int{"GET /users/o/projectsV2/3/items": 502}
+			s.FailMessage = map[string]string{"GET /users/o/projectsV2/3/items": "Could not resolve to a node"}
+		}, "Could not resolve to a node"},
 		"empty token login": {func(s *forgetest.Server) { s.Login = "" }, "token has no login"},
 		// after login(), inside Complete: the permission read of the comment's author fails
 		"permission 500": {func(s *forgetest.Server) {
@@ -375,7 +379,7 @@ func TestTickForgeErrorSkipsLoudlyAndKeepsState(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if state != (dispatch.TickState{}) {
+			if !reflect.DeepEqual(state, dispatch.TickState{}) {
 				t.Errorf("tick state = %+v after a failed gather, want none", state)
 			}
 		})
@@ -458,7 +462,7 @@ func TestTickSkipsDuplicateSlug(t *testing.T) {
 			t.Errorf("line %d = %q, want a skip line for %s naming both paths and o/r", i, lines[i], self)
 		}
 	}
-	if n := srv.Count("Board"); n != 0 {
+	if n := srv.Count("/users/o/projectsV2/3/items"); n != 0 {
 		t.Errorf("Board requests = %d, want 0: no repo with a duplicate slug is gathered", n)
 	}
 }
@@ -644,6 +648,8 @@ func startable(t *testing.T, env *tickEnv) (*forgetest.Server, *fakeWorkplace) {
 	srv := fakeForge(t, env)
 	srv.Roles = map[string]string{"lh-bot": "admin", "owner": "admin"}
 	srv.BoardNodes = []map[string]any{boardNode("I7", "c1", issueContent(7, "Issue", nil))}
+	// Issue 7 is open: a 🤖 Returned reads it before it labels it and moves it to To do.
+	srv.Issues = map[int]map[string]any{7: {"number": 7, "title": "Issue", "state": "open", "labels": []any{}}}
 	env.Now = func() time.Time { return t0 }
 	srv.Now = env.Now
 	w := newFakeWorkplace(t, "o/r")
@@ -790,7 +796,7 @@ func TestTickDeferredKeepsFingerprint(t *testing.T) {
 	if rows := history(t, conn, "o/r"); len(rows) != 0 {
 		t.Errorf("runs = %+v, want none", rows)
 	}
-	if s := tickState(t, conn, "o/r"); s != (dispatch.TickState{}) {
+	if s := tickState(t, conn, "o/r"); !reflect.DeepEqual(s, dispatch.TickState{}) {
 		t.Errorf("tick state = %+v after a deferral, want none", s)
 	}
 	if s := tickState(t, conn, "o/s"); s.Fingerprint == "" {
@@ -942,7 +948,7 @@ func TestTickFailedRepoKeepsNoFingerprint(t *testing.T) {
 		t.Errorf("errOut = %q, want no apply line for o/s", errOut.String())
 	}
 	conn := openStore(t, db)
-	if s := tickState(t, conn, "o/r"); s != (dispatch.TickState{}) {
+	if s := tickState(t, conn, "o/r"); !reflect.DeepEqual(s, dispatch.TickState{}) {
 		t.Errorf("tick state of o/r = %+v after its failed post, want none", s)
 	}
 	if s := tickState(t, conn, "o/s"); s.Fingerprint == "" {
@@ -1078,8 +1084,8 @@ func TestTickMeasuresRunState(t *testing.T) {
 			Permission: &dispatch.Permission{At: time.Date(2026, 10, 31, 11, 56, 0, 0, time.UTC), Tool: "Bash", Path: "rm -rf build"},
 		},
 		2: {Gone: true},
-		3: {},                   // nothing found yet: measured, not an error
-		6: {SessionAt: updated}, // no transcript file yet: not measurable, no line
+		3: {TranscriptUnmeasurable: true}, // no project dir on this host: measured, but the transcript is not (#514)
+		6: {SessionAt: updated},           // no transcript file yet: not measurable, no line
 	}
 	if !reflect.DeepEqual(gotRuns, wantRuns) {
 		t.Errorf("runs =\n%+v\nwant\n%+v", gotRuns, wantRuns)
@@ -1243,8 +1249,12 @@ func TestTickParksBlockedHandoff(t *testing.T) {
 	if len(posted) != 2 || !strings.HasPrefix(posted[1], "🤖 Geparkeerd") {
 		t.Errorf("comments on #7 = %q, want the handoff and then one Geparkeerd", posted)
 	}
-	if got, want := statusSets(srv), []string{"I7 h1"}; !reflect.DeepEqual(got, want) {
+	// Parking is a give-back with blocked_issue: To do (t1), never On hold (h1).
+	if got, want := statusSets(srv), []string{"I7 t1"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("status sets = %q, want %q", got, want)
+	}
+	if got := fmt.Sprint(srv.Issues[7]["labels"]); !strings.Contains(got, "blocked-issue") {
+		t.Errorf("labels of #7 = %s, want blocked-issue", got)
 	}
 	if rows := history(t, openStore(t, db), "o/r"); len(rows) != 0 {
 		t.Errorf("runs = %+v, want none: a parked issue starts nothing", rows)
@@ -1255,7 +1265,8 @@ func TestTickParksBlockedHandoff(t *testing.T) {
 // its own Geparkeerd, posts nothing new and only sets the board.
 func TestTickParkBoardFailureRetries(t *testing.T) {
 	env, db, srv := parkable(t)
-	srv.FailOps = map[string]string{"SetStatus": "boom"}
+	const patch = "PATCH /users/o/projectsV2/3/items/5000" // item I7, project_number 3 of completeRepo
+	srv.Fail, srv.FailMessage = map[string]int{patch: 500}, map[string]string{patch: "boom"}
 	var errOut bytes.Buffer
 	if err := tick(context.Background(), env, db, &errOut); !errors.Is(err, errSilent) {
 		t.Fatalf("tick = %v, want errSilent\n%s", err, errOut.String())
@@ -1266,11 +1277,11 @@ func TestTickParkBoardFailureRetries(t *testing.T) {
 	if posted := bodies(srv, 7); len(posted) != 2 || !strings.HasPrefix(posted[1], "🤖 Geparkeerd") {
 		t.Fatalf("comments on #7 = %q, want the handoff and then one Geparkeerd", posted)
 	}
-	if s := tickState(t, openStore(t, db), "o/r"); s != (dispatch.TickState{}) {
+	if s := tickState(t, openStore(t, db), "o/r"); !reflect.DeepEqual(s, dispatch.TickState{}) {
 		t.Errorf("tick state = %+v after the failed board change, want none", s)
 	}
 
-	srv.FailOps = nil
+	srv.Fail = nil
 	errOut.Reset()
 	if err := tick(context.Background(), env, db, &errOut); err != nil {
 		t.Fatalf("second tick = %v\n%s", err, errOut.String())
@@ -1279,7 +1290,7 @@ func TestTickParkBoardFailureRetries(t *testing.T) {
 		t.Errorf("comments on #7 after the second tick = %q, want no new comment", posted)
 	}
 	// The failed SetStatus of the first tick is recorded too: StatusSets keeps every request.
-	if got, want := statusSets(srv), []string{"I7 h1", "I7 h1"}; !reflect.DeepEqual(got, want) {
+	if got, want := statusSets(srv), []string{"I7 t1", "I7 t1"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("status sets = %q, want %q", got, want)
 	}
 }
@@ -1338,7 +1349,7 @@ func TestTickUsageClosedDefers(t *testing.T) {
 		t.Errorf("writes %v, spawns %v; want none for a deferred start", p, w.spawned())
 	}
 	conn := openStore(t, db)
-	if s := tickState(t, conn, "o/r"); s != (dispatch.TickState{}) {
+	if s := tickState(t, conn, "o/r"); !reflect.DeepEqual(s, dispatch.TickState{}) {
 		t.Errorf("tick state = %+v after a deferral, want none", s)
 	}
 	rows := deferredRows(t, conn, "o/r")
@@ -1539,6 +1550,30 @@ func TestTickRunViewWhenNotDue(t *testing.T) {
 		rv, _ := loadView(t, db)
 		if len(rv) != 1 || !rv[0].At.Equal(t0.Add(step.after)) {
 			t.Errorf("tick at +%v: views = %+v, want one with At %v", step.after, rv, t0.Add(step.after))
+		}
+	}
+}
+
+// Classification: io with a fake forge. Fails when a tick that is not due reads the prio weights
+// (open issues and milestones): only a gathered repo pays that read.
+func TestTickNotDueReadsNoPrioInputs(t *testing.T) {
+	env, db := tickFixture(t, repoDir(t, completeRepo))
+	srv, _ := startable(t, &env)
+	srv.BoardNodes = []map[string]any{boardNode("I7", "h1", issueContent(7, "Issue", nil))} // On hold: nothing starts
+	for _, step := range []struct {
+		after      time.Duration
+		milestones int
+	}{
+		{0, 1},           // first: gathered, the weights are read once
+		{time.Minute, 1}, // not due: no new read
+	} {
+		env.Now = func() time.Time { return t0.Add(step.after) }
+		var errOut bytes.Buffer
+		if err := tick(context.Background(), env, db, &errOut); err != nil {
+			t.Fatalf("tick at +%v = %v\n%s", step.after, err, errOut.String())
+		}
+		if n := srv.Count("/repos/o/r/milestones"); n != step.milestones {
+			t.Errorf("tick at +%v: milestone reads = %d, want %d\n%s", step.after, n, step.milestones, errOut.String())
 		}
 	}
 }
@@ -1747,6 +1782,57 @@ func TestTickSweepLeavesControllerIssue(t *testing.T) {
 	}
 }
 
+// A parked issue now stands on To do (blocked_issue): its workspace stays for the resume as
+// long as its last protocol comment is the tick's own Geparkeerd, and the second tick, on an
+// unchanged board, reads none of its comments (the To do marks in tick_state). A To do issue
+// without that Geparkeerd is swept like any other. Wiring sweepOne to the statuses alone, or
+// dropping the marks, turns this red.
+func TestTickSweepKeepsWorkplaceOfParkedToDo(t *testing.T) {
+	const comments945 = "/repos/o/r/issues/945/comments"
+	for _, tc := range []struct {
+		name   string
+		parked bool
+	}{{"own Geparkeerd", true}, {"no Geparkeerd", false}} {
+		t.Run(tc.name, func(t *testing.T) {
+			env, db := tickFixture(t, repo945(t))
+			srv, w := sweepable(t, &env, "t1", &gitState{ahead: "0"})
+			srv.BoardNodes = []map[string]any{boardNode("I945", "t1", issueContent(945, "Immich smart search", map[string]any{
+				"blockedBy": map[string]any{"nodes": []any{map[string]any{
+					"number": 5, "state": "OPEN", "repository": map[string]any{"nameWithOwner": "o/r"},
+					"closedByPullRequestsReferences": map[string]any{"nodes": []any{}},
+				}}},
+			}))}
+			body := "een notitie"
+			if tc.parked {
+				body = "🤖 Geparkeerd\nblocked_by: o/r#5"
+			}
+			srv.Comments = map[int][]map[string]any{945: {{"id": 1, "body": body, "created_at": "2026-10-30T10:00:00Z",
+				"user": map[string]any{"login": "lh-bot"}}}}
+			doneRuns945(t, db)
+
+			var errOut bytes.Buffer
+			for range 2 {
+				if err := tick(context.Background(), env, db, &errOut); err != nil {
+					t.Fatalf("tick = %v\n%s", err, errOut.String())
+				}
+			}
+			_, _, removed := w.calls()
+			if got := slices.Contains(removed, ws945); got == tc.parked {
+				t.Errorf("removed = %v; parked %v must keep %s\n%s", removed, tc.parked, ws945, errOut.String())
+			}
+			// Tick 1: the precheck reads the comments once, and the full gather once more when the
+			// item is kept. Tick 2 reads none.
+			want := 1
+			if tc.parked {
+				want = 2
+			}
+			if got := srv.Count(comments945); got != want {
+				t.Errorf("comments of #945 read %d times over two ticks, want %d\n%s", got, want, errOut.String())
+			}
+		})
+	}
+}
+
 // AC 4: a running run is never stopped or removed, also when its issue left Controller.
 func TestTickSweepLeavesOpenRun(t *testing.T) {
 	env, db := tickFixture(t, repo945(t))
@@ -1781,7 +1867,7 @@ func TestTickSweepSkipsRepoWithoutBoard(t *testing.T) {
 	path := repo945(t)
 	env, db := tickFixture(t, path)
 	srv, w := sweepable(t, &env, "p1", &gitState{ahead: "0"})
-	srv.FailOps = map[string]string{"Board": "board down"}
+	srv.Fail = map[string]int{"GET /users/o/projectsV2/3/items": 502}
 	doneRuns945(t, db)
 
 	var errOut bytes.Buffer
@@ -1937,6 +2023,30 @@ func TestTickOpensGitLabRepoWithoutProjectIDs(t *testing.T) {
 	}
 }
 
+// Classification: io. Fails when the GitHub client of a tick does not remember enrichments,
+// so a tick reads each open PR twice, or when an opener of serve, the pusher or postartefact
+// does, so it acts on a stale mergeable.
+func TestOnlyTickForgesMemoizeEnrichment(t *testing.T) {
+	dir := repoDir(t, completeRepo)
+	env, _ := tickFixture(t, dir)
+	loaded := repoconfig.LoadAll([]string{dir})
+	env.Getenv = func(k string) string { return map[string]string{"GH_TOKEN": "tok"}[k] }
+	out, err := openForges(context.Background(), env, loaded)
+	if err != nil || len(out) != 1 || out[0].err != nil {
+		t.Fatalf("openForges = %+v, %v; want one open forge", out, err)
+	}
+	if gh, ok := out[0].rf.Forge.(*forge.GitHub); !ok || !gh.EnrichMemo {
+		t.Errorf("tick forge = %T, EnrichMemo %v; want a *forge.GitHub with EnrichMemo", out[0].rf.Forge, ok && gh.EnrichMemo)
+	}
+	rf, err := newForgeOpener(env.Getenv, "").forRepo(context.Background(), loaded[0].Repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gh, ok := rf.Forge.(*forge.GitHub); !ok || gh.EnrichMemo {
+		t.Errorf("other opener forge = %T, EnrichMemo %v; want a *forge.GitHub without EnrichMemo", rf.Forge, ok && gh.EnrichMemo)
+	}
+}
+
 // A push-workflows handoff with [dispatch.workflow_push] in host.toml becomes a KindPush; the
 // unconfigured repo hands it back instead. Apply knows no KindPush yet (the pusher start comes
 // with the apply change), so the push shows as the one apply error of that kind and nothing is
@@ -1983,5 +2093,33 @@ func TestTickPushHandoffYieldsKindPush(t *testing.T) {
 				t.Errorf("pusher starts = %v, want one when configured (%v)", started, tc.configured)
 			}
 		})
+	}
+}
+
+// A Controller issue with a needs_* label starts no run: the tick moves it to To do and leaves
+// the label, and a second tick finds nothing more to do. It proves the tick hands the label
+// names of the repo to Decide (RepoInput.Labels in tick.go): with them empty the item counts as
+// a free issue and the tick starts a run for it instead.
+func TestTickNeedsLabelMovesToToDoWithoutRun(t *testing.T) {
+	env, db := tickFixture(t, repoDir(t, completeRepo))
+	srv, w := startable(t, &env)
+	srv.BoardNodes = []map[string]any{boardNode("I7", "c1", issueContent(7, "Issue", map[string]any{
+		"labels": map[string]any{"nodes": []any{map[string]any{"name": "needs-hands"}}}}))}
+	srv.Issues = map[int]map[string]any{7: {"number": 7, "title": "Issue", "state": "open", "labels": []any{map[string]any{"name": "needs-hands"}}}}
+	var errOut bytes.Buffer
+	if err := tick(context.Background(), env, db, &errOut); err != nil {
+		t.Fatalf("tick = %v\n%s", err, errOut.String())
+	}
+	if len(srv.StatusSets) != 1 || srv.StatusSets[0]["option"] != "t1" || srv.StatusSets[0]["item"] != "I7" {
+		t.Errorf("StatusSets = %v, want one move of I7 to To do (t1)", srv.StatusSets)
+	}
+	if posted := bodies(srv, 7); len(posted) != 0 {
+		t.Errorf("comments on #7 = %q, want none", posted)
+	}
+	if rows := history(t, openStore(t, db), "o/r"); len(rows) != 0 {
+		t.Errorf("runs = %+v, want none", rows)
+	}
+	if s := w.spawned(); len(s) != 0 {
+		t.Errorf("spawns = %+v, want none", s)
 	}
 }

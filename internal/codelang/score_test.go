@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-const fixtureDir = "../../tests/pack/fixtures/code_language"
+const fixtureDir = "testdata"
 
 func readFixture(t *testing.T, name string, into any) {
 	t.Helper()

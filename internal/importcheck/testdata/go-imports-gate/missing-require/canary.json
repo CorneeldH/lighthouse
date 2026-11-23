@@ -1,0 +1,9 @@
+{
+  "hook": "go",
+  "touch": "app.go",
+  "exit": 2,
+  "id": "missing-require",
+  "go_deps": [
+    "example.test/dep"
+  ]
+}

@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/runs"
 	"github.com/CorneeldH/lighthouse/internal/workplace"
@@ -42,6 +43,10 @@ type Env struct {
 	// reads it. Both are set wherever a job's Gate or Stage runs.
 	Home    string
 	History []runs.Row
+	// Forge is the forge of the repo; nil where the tick has none (a skipped repo).
+	Forge forge.Forge
+	// Trusted reports whether login may answer a question of a run ([dispatch] answer_permissions).
+	Trusted func(ctx context.Context, login string) (bool, error)
 }
 
 // Job is one kind of scheduled run. The controller calls Gate, then Launch; in the workplace

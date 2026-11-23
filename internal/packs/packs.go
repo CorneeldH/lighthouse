@@ -22,6 +22,7 @@
 //	                        permissions.allow of .claude/settings.json
 //	detect.toml             when init proposes the package (see Detect); not copied
 //	guards.toml             what each lighthouse hook guards (see Guard); not copied
+//	levels.toml             the level of each component (see levels.File); not copied
 //	lighthouse.toml.fragment
 //	                        keys init adds to lighthouse.toml (see
 //	                        projectconfig.ParseFragment); not copied
@@ -33,11 +34,13 @@ import (
 	"io/fs"
 	"path"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
 	"github.com/BurntSushi/toml"
 
+	"github.com/CorneeldH/lighthouse/internal/levels"
 	"github.com/CorneeldH/lighthouse/internal/orderedjson"
 	"github.com/CorneeldH/lighthouse/internal/projectconfig"
 )
@@ -83,10 +86,12 @@ type Unit struct {
 // Key returns the key of u.
 func (u Unit) Key() Key { return Key{Kind: u.Kind, Path: u.Path, ID: u.ID} }
 
-// Requirement is a tool and the units of a package that need it.
+// Requirement is a tool and the units of a package that need it. An empty Forge
+// holds for every forge; otherwise the tool is needed on that forge kind only.
 type Requirement struct {
 	Tool     string
 	NeededBy []string
+	Forge    string
 }
 
 // Contains matches when a file that one of Files names holds Text.
@@ -105,16 +110,24 @@ type Detect struct {
 
 // Pack is a loaded package. Detect is nil without detect.toml, Config nil without
 // lighthouse.toml.fragment. LabelsTemplate is templates/labels.md, nil without it; it is
-// never a unit, `init --labels` seeds it on request.
+// never a unit, `init --labels` seeds it on request. DirectionTemplates holds the templates of
+// the direction documents by file name (DirectionTemplateNames); never units either, `init`
+// seeds them only where a file is missing.
 type Pack struct {
-	Name           string
-	Units          []Unit
-	Requires       []Requirement
-	Detect         *Detect
-	Guards         []Guard
-	Config         []projectconfig.Table
-	LabelsTemplate []byte
+	Name               string
+	Units              []Unit
+	Requires           []Requirement
+	Detect             *Detect
+	Guards             []Guard
+	Config             []projectconfig.Table
+	LabelsTemplate     []byte
+	DirectionTemplates map[string][]byte
+	Levels             levels.File // zero (nil Levels) without levels.toml
 }
+
+// DirectionTemplateNames are the file names under templates/ that DirectionTemplates holds:
+// the strategy, the tenets and one area.
+var DirectionTemplateNames = []string{"strategy.md", "tenets.md", "area.md"}
 
 // HookDir is where the hook scripts of every package land. A registration whose command
 // points here belongs to lighthouse; any other registration belongs to the project.
@@ -203,7 +216,7 @@ func IsInstallPath(kind Kind, p string) bool {
 				return true
 			}
 		}
-		if p == HeadingsPath || p == PRTemplatePath {
+		if p == HeadingsPath || p == PRTemplatePath || p == levels.InstalledPath {
 			return true
 		}
 		if rest := strings.TrimPrefix(p, WorkflowPrefix); rest != p {
@@ -294,6 +307,14 @@ func Load(fsys fs.FS, name, version string) (Pack, error) {
 				p.Guards = guards
 				return nil
 			}
+			if rel == "levels.toml" {
+				lv, err := levels.Parse(data)
+				if err != nil {
+					return fmt.Errorf("package %s: %w", name, err)
+				}
+				p.Levels = lv
+				return nil
+			}
 			if rel == "lighthouse.toml.fragment" {
 				tables, err := projectconfig.ParseFragment(data)
 				if err != nil {
@@ -328,8 +349,15 @@ func Load(fsys fs.FS, name, version string) (Pack, error) {
 				p.LabelsTemplate = data
 				return nil
 			}
+			if slices.Contains(DirectionTemplateNames, rest) {
+				if p.DirectionTemplates == nil {
+					p.DirectionTemplates = map[string][]byte{}
+				}
+				p.DirectionTemplates[rest] = data
+				return nil
+			}
 			if rest != "pull_request_template.md" {
-				return fmt.Errorf("package %s: templates/ holds only pull_request_template.md and labels.md, not %s", name, rel)
+				return fmt.Errorf("package %s: templates/ holds only pull_request_template.md, labels.md, %s, not %s", name, strings.Join(DirectionTemplateNames, ", "), rel)
 			}
 			target = PRTemplatePath
 		case "workflows":
@@ -578,16 +606,64 @@ func parseDetect(data []byte) (*Detect, error) {
 }
 
 func parseRequires(data []byte) ([]Requirement, error) {
-	var raw map[string][]string
+	var raw map[string]any
 	if _, err := toml.Decode(string(data), &raw); err != nil {
 		return nil, err
 	}
-	reqs := make([]Requirement, 0, len(raw))
-	for tool, by := range raw {
-		reqs = append(reqs, Requirement{Tool: tool, NeededBy: by})
+	var reqs []Requirement
+	for key, v := range raw {
+		if key != "forge" {
+			by, err := toStrings(v)
+			if err != nil {
+				return nil, fmt.Errorf("requires.toml: %s: %w", key, err)
+			}
+			reqs = append(reqs, Requirement{Tool: key, NeededBy: by})
+			continue
+		}
+		kinds, ok := v.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("requires.toml: forge must be a table")
+		}
+		for kind, tv := range kinds {
+			if kind != "github" && kind != "gitlab" {
+				return nil, fmt.Errorf("requires.toml: unknown forge %q", kind)
+			}
+			tools, ok := tv.(map[string]any)
+			if !ok {
+				return nil, fmt.Errorf("requires.toml: forge.%s must be a table", kind)
+			}
+			for tool, tbv := range tools {
+				by, err := toStrings(tbv)
+				if err != nil {
+					return nil, fmt.Errorf("requires.toml: forge.%s.%s: %w", kind, tool, err)
+				}
+				reqs = append(reqs, Requirement{Tool: tool, NeededBy: by, Forge: kind})
+			}
+		}
 	}
-	sort.Slice(reqs, func(i, j int) bool { return reqs[i].Tool < reqs[j].Tool })
+	sort.Slice(reqs, func(i, j int) bool {
+		if reqs[i].Tool != reqs[j].Tool {
+			return reqs[i].Tool < reqs[j].Tool
+		}
+		return reqs[i].Forge < reqs[j].Forge
+	})
 	return reqs, nil
+}
+
+func toStrings(v any) ([]string, error) {
+	list, ok := v.([]any)
+	if !ok {
+		return nil, fmt.Errorf("want a list of strings")
+	}
+	out := make([]string, 0, len(list))
+	for _, e := range list {
+		str, ok := e.(string)
+		if !ok {
+			return nil, fmt.Errorf("want a list of strings")
+		}
+		out = append(out, str)
+	}
+	return out, nil
 }
 
 // parseHooks reads hooks/hooks.json in plugin format and rewrites each command from

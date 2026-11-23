@@ -16,14 +16,26 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/config"
 	"github.com/CorneeldH/lighthouse/internal/forge"
+	"github.com/CorneeldH/lighthouse/internal/forgecache"
 	"github.com/CorneeldH/lighthouse/internal/gitinvocations"
 )
 
-// blockedMessage is BLOCKED_MESSAGE of pr_body_gate.py.
-const blockedMessage = "pr-create-gate: BLOCKED — %s\n\n" +
-	"Write the body with /lighthouse-write-pr <nr> and pass it with --body-file <path>.\n" +
-	"Forms: `Closes #N` + `### Evidence #N` (one row per AC), `Refs #N — <reason>`," +
-	" `No issue: <reason>`.\n"
+// blockedHead is the start of BLOCKED_MESSAGE of pr_body_gate.py, with the blockers.
+const blockedHead = "pr-create-gate: BLOCKED — %s\n\n" +
+	"Write the body with /lighthouse-write-pr <nr> and pass it with --body-file <path>.\n"
+
+// blockedMessage is BLOCKED_MESSAGE with blockers; its footer lists only the forms that
+// pr_gate.issue = gate allows.
+func blockedMessage(blockers []string, gate string) string {
+	forms := "`Closes #N` + `### Evidence #N` (one row per AC), `Refs #N — <reason>`, `No issue: <reason>`"
+	switch gate {
+	case "required":
+		forms = "`Closes #N` + `### Evidence #N` (one row per AC), `Refs #N — <reason>`"
+	case "evidence":
+		forms = "`Closes #N` + `### Evidence #N` (one row per AC), `Refs #N — <reason>` with its `### Evidence #N` table"
+	}
+	return fmt.Sprintf(blockedHead, strings.Join(blockers, "; ")) + "Forms: " + forms + ".\n"
+}
 
 // GitHubAPIURLEnv names the variable that replaces the GitHub API root of the AC count. It is a
 // test seam: the end-to-end tests point it at a fake API on localhost. Only the GitHub forge of
@@ -66,6 +78,7 @@ func (e Env) issue() func(ctx context.Context, repo Repo, nr int) (string, error
 // forgeIssue reads an issue body through the forge of the repo, with the token that forge.Token
 // finds through getenv; for GitHub `gh auth token` (through gh) is the last resort.
 func forgeIssue(gh func(context.Context, ...string) (string, int, error), getenv func(string) string) func(context.Context, Repo, int) (string, error) {
+	cache := forgecache.NewLazy(getenv, os.Stderr)
 	return func(ctx context.Context, repo Repo, nr int) (string, error) {
 		token, err := forge.Token(repo.Kind, repo.TokenEnv, getenv)
 		var te *forge.TokenError
@@ -81,7 +94,8 @@ func forgeIssue(gh func(context.Context, ...string) (string, int, error), getenv
 		}
 		cfg := forge.Config{Kind: repo.Kind, Repo: repo.Slug, Host: repo.Host, Token: token}
 		if repo.Kind == "" || repo.Kind == "github" {
-			cfg.BaseURL = loopbackAPIURL(getenv(GitHubAPIURLEnv))
+			cfg.BaseURL = LoopbackAPIURL(getenv(GitHubAPIURLEnv))
+			cfg.Cache, cfg.CacheLog = cache.Store(), os.Stderr
 		}
 		f, err := forge.Open(cfg)
 		if err != nil {
@@ -92,9 +106,9 @@ func forgeIssue(gh func(context.Context, ...string) (string, int, error), getenv
 	}
 }
 
-// loopbackAPIURL is v when it is an http(s) URL on a loopback host, "" otherwise: a value that
+// LoopbackAPIURL is v when it is an http(s) URL on a loopback host, "" otherwise: a value that
 // points elsewhere is ignored and the real GitHub API is used, so the token never leaves for it.
-func loopbackAPIURL(v string) string {
+func LoopbackAPIURL(v string) string {
 	u, err := url.Parse(v)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
 		return ""
@@ -292,6 +306,13 @@ func checkCreate(ctx context.Context, pc PrCreate, repo repoFunc, env Env) ([]st
 	return nil, append([]string{"pr-create-gate: body checked — " + forms(body, own, counts)}, verdict.Notices...), nil
 }
 
+// prGate is pr_gate.issue of cfg, "" when not set (config.Load has validated a set value).
+func prGate(cfg *config.Config) string {
+	g, _ := cfg.Raw["pr_gate"].(map[string]any)
+	v, _ := g["issue"].(string)
+	return v
+}
+
 // tokenEnv is forge.token_env of cfg, "" when not set.
 func tokenEnv(cfg *config.Config) string {
 	f, _ := cfg.Raw["forge"].(map[string]any)
@@ -312,7 +333,7 @@ func lazyRepo() repoFunc {
 			if path, err = config.Path(); err == nil {
 				var cfg *config.Config
 				if cfg, err = config.Load(path); err == nil {
-					repo = Repo{Kind: cfg.Kind, Slug: cfg.Repo, Host: cfg.Host, TokenEnv: tokenEnv(cfg)}
+					repo = Repo{Kind: cfg.Kind, Slug: cfg.Repo, Host: cfg.Host, TokenEnv: tokenEnv(cfg), PRGate: prGate(cfg)}
 				}
 			}
 		}
@@ -378,7 +399,9 @@ func Main(ctx context.Context, cwd string, stdin io.Reader, stdout, stderr io.Wr
 		}
 	}
 	if len(blockers) > 0 {
-		_, _ = fmt.Fprintf(stderr, blockedMessage, strings.Join(blockers, "; "))
+		// A config error here leaves the footer at the default forms.
+		r, _ := repo()
+		_, _ = fmt.Fprint(stderr, blockedMessage(blockers, r.PRGate))
 		return 2
 	}
 	for _, line := range lines {

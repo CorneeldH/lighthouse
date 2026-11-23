@@ -13,9 +13,31 @@ import (
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/config"
+	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/procrun"
-	"github.com/CorneeldH/lighthouse/internal/scriptcase"
 )
+
+// fakeForge answers the two reads of worktree-audit; every other method of the interface panics
+// on the nil embedded Forge, which a test would notice.
+type fakeForge struct {
+	forge.Forge
+	pulls      []forge.PullHead
+	pullsErr   error
+	closing    []forge.ClosingHead
+	closingErr error
+	asked      []int // the issue numbers IssueClosingHeads was asked for
+}
+
+func (f *fakeForge) PullHeads(context.Context) ([]forge.PullHead, error) { return f.pulls, f.pullsErr }
+
+func (f *fakeForge) IssueClosingHeads(_ context.Context, nr int) ([]forge.ClosingHead, error) {
+	f.asked = append(f.asked, nr)
+	return f.closing, f.closingErr
+}
+
+func opens(f forge.Forge) func() (forge.Forge, error) {
+	return func() (forge.Forge, error) { return f, nil }
+}
 
 // The twins of the tests of tests/pack/test_worktree_audit.py that are no data: processes, time,
 // the filesystem and the git calls of the probe and of collect.
@@ -279,33 +301,59 @@ func TestCollectWithoutForgeRepoSkipsTheLookup(t *testing.T) {
 			t.Errorf("row %s: PR lookup ok without a lookup", r.Name)
 		}
 	}
+	env.Forge = func() (forge.Forge, error) {
+		t.Error("the forge was opened without a repo")
+		return nil, errors.New("unexpected")
+	}
 	if _, ok := IssuePRHeads(context.Background(), env, "", 9); ok {
-		t.Error("IssuePRHeads without a repo must fail, not find nothing") // the fake refuses gh
+		t.Error("IssuePRHeads without a repo must fail, not find nothing")
 	}
 }
 
-// twin of test_run_gh_issue_pr_heads_argv
-func TestIssuePRHeadsArgvAndFailures(t *testing.T) {
-	argv := []string{"gh", "api", "graphql", "-f", "owner=o", "-f", "name=r", "-F", "nr=9", "-f", "query=" + issuePRsQuery}
-	empty := `{"data":{"repository":{"issue":{"closedByPullRequestsReferences":{"nodes":[]},"timelineItems":{"nodes":[]}}}}}`
+// twin of test_run_gh_issue_pr_heads_argv: the lookup runs on the forge and fails on every error.
+func TestIssuePRHeadsAsksTheForgeAndFailsOnEveryError(t *testing.T) {
 	for _, tt := range []struct {
 		name  string
-		call  scriptcase.Call
+		env   Env
 		heads []string
 		ok    bool
 	}{
-		{"found nothing", scriptcase.Call{Argv: argv, Stdout: empty}, []string{}, true},
-		{"gh fails", scriptcase.Call{Argv: argv, Code: 1}, nil, false},
-		{"no json", scriptcase.Call{Argv: argv, Stdout: "niet-json"}, nil, false},
-		{"timeout", scriptcase.Call{Argv: argv, Timeout: true}, nil, false},
+		{"found nothing", Env{Forge: opens(&fakeForge{})}, []string{}, true},
+		{"forge read fails", Env{Forge: opens(&fakeForge{closingErr: errors.New("boom")})}, nil, false},
+		{"forge cannot be opened", Env{Forge: func() (forge.Forge, error) { return nil, errors.New("no token") }}, nil, false},
+		{"no forge at all", Env{}, nil, false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			env := Env{Run: scriptcase.Replay(t, []scriptcase.Call{tt.call})}
-			heads, ok := IssuePRHeads(context.Background(), env, "o/r", 9)
+			heads, ok := IssuePRHeads(context.Background(), tt.env, "o/r", 9)
 			if ok != tt.ok || !reflect.DeepEqual(heads, tt.heads) {
 				t.Errorf("IssuePRHeads = %v %v, want %v %v", heads, ok, tt.heads, tt.ok)
 			}
 		})
+	}
+}
+
+// A merged PR from a fork, one from another repo, an unmerged one and one that only mentions the
+// issue are no merged head of it; a closing PR and a `Refs #nr` PR are.
+func TestIssuePRHeadsKeepsOnlyTheMergedHeadsOfTheIssue(t *testing.T) {
+	ff := &fakeForge{closing: []forge.ClosingHead{
+		{HeadRef: "issue-9-a", Repo: "o/r", Merged: true, Closes: true},
+		{HeadRef: "issue-9-fork", Repo: "o/r", Merged: true, Closes: true, CrossRepo: true},
+		{HeadRef: "issue-9-other", Repo: "x/fork", Merged: true, Closes: true},
+		{HeadRef: "issue-9-open", Repo: "o/r", Closes: true},
+		{HeadRef: "issue-9-refs", Repo: "o/r", Merged: true, Body: "Refs #9 — deel 1"},
+		{HeadRef: "issue-9-forkrefs", Repo: "o/r", Merged: true, CrossRepo: true, Body: "Refs #9"},
+		{HeadRef: "issue-9-mention", Repo: "o/r", Merged: true, Body: "zie #9"},
+		{HeadRef: "issue-9-nine3", Repo: "o/r", Merged: true, Body: "Refs #93"},
+		{HeadRef: "issue-9-refs", Repo: "o/r", Merged: true, Body: "Refs #9"},
+	}}
+
+	heads, ok := IssuePRHeads(context.Background(), Env{Forge: opens(ff)}, "o/r", 9)
+
+	if want := []string{"issue-9-a", "issue-9-refs"}; !ok || !reflect.DeepEqual(heads, want) {
+		t.Errorf("IssuePRHeads = %v %v, want %v true", heads, ok, want)
+	}
+	if !reflect.DeepEqual(ff.asked, []int{9}) {
+		t.Errorf("asked the forge for issues %v, want [9]", ff.asked)
 	}
 }
 
@@ -519,36 +567,135 @@ func TestParsePullsFailsOnAPullItCannotRead(t *testing.T) {
 	}
 }
 
-// An unreadable PR makes the whole lookup fail: the row says unknown and never cleans up.
-func TestCollectTreatsAnUnreadablePullAsAFailedLookup(t *testing.T) {
+// A forge that cannot be read makes every PR state unknown, never "no PR": a branch whose PR is
+// merged must not look like one without a PR.
+func TestCollectTreatsAForgeFailureAsAnUnknownPR(t *testing.T) {
+	for name, tt := range map[string]Env{
+		"read fails":       {Forge: opens(&fakeForge{pullsErr: errors.New("500")})},
+		"cannot be opened": {Forge: func() (forge.Forge, error) { return nil, errors.New("no token") }},
+		"no forge":         {},
+	} {
+		t.Run(name, func(t *testing.T) {
+			rows := collectRows(t, tt)
+			for _, r := range rows {
+				if r.PRLookupOK || r.PRState != nil {
+					t.Errorf("row %s: lookup ok %v, state %v; want an unknown PR", r.Name, r.PRLookupOK, r.PRState)
+				}
+			}
+		})
+	}
+}
+
+// A PR the forge reports in a state the audit does not know fails the whole lookup: skipping it
+// could let a merged PR of the same head win.
+func TestCollectTreatsAPullInAnUnknownStateAsAFailedLookup(t *testing.T) {
+	f := &fakeForge{pulls: []forge.PullHead{
+		{Number: 1, State: "MERGED", MergedAt: "2026-01-01T00:00:00Z", HeadRef: "feat-x"},
+		{Number: 2, State: "DRAFT", HeadRef: "feat-x"},
+	}}
+	env := Env{Forge: opens(f)}
+	rows, stderr := collectRowsStderr(t, env)
+	if !strings.Contains(stderr, "PR lookup failed") {
+		t.Errorf("stderr %q does not say the lookup failed", stderr)
+	}
+	for _, r := range rows {
+		if r.PRLookupOK || r.PRState != nil {
+			t.Errorf("row %s: lookup ok %v, state %v; want an unknown PR", r.Name, r.PRLookupOK, r.PRState)
+		}
+	}
+}
+
+// The heaviest state per head wins and a merged PR carries its merge time; open and closed come
+// from the forge as the GitHub REST names them.
+func TestCollectReadsThePullsOfTheForge(t *testing.T) {
+	f := &fakeForge{pulls: []forge.PullHead{
+		{Number: 1, State: "CLOSED", HeadRef: "feat-x"},
+		{Number: 2, State: "OPEN", HeadRef: "feat-y"},
+		{Number: 3, State: "MERGED", MergedAt: "2026-01-01T00:00:00Z", HeadRef: "feat-z"},
+	}}
+	rows, _ := collectRowsStderr(t, Env{Forge: opens(f)})
+	got := map[string]string{}
+	for _, r := range rows {
+		if r.PRState != nil {
+			got[r.Name] = *r.PRState + "#" + itoa(*r.PRNumber)
+		}
+	}
+	want := map[string]string{"feat-x": "closed#1", "feat-y": "open#2", "feat-z": "merged#3"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("PR states %v, want %v", got, want)
+	}
+}
+
+func collectRows(t *testing.T, env Env) []Row {
+	t.Helper()
+	rows, _ := collectRowsStderr(t, env)
+	return rows
+}
+
+// collectRowsStderr collects a repo with the branches main, feat-x, feat-y and feat-z against env's
+// forge.
+func collectRowsStderr(t *testing.T, forgeEnv Env) ([]Row, string) {
+	t.Helper()
 	f := &gitFake{answer: func(args []string) *string {
 		if args[0] == "branch" && len(args) == 2 {
-			return ptr("main\nfeat-x\n")
+			return ptr("main\nfeat-x\nfeat-y\nfeat-z\n")
 		}
 		return mainOnly(args)
 	}}
 	env, stderr := collectEnv(t, f, "[forge]\nrepo = \"o/r\"\n")
-	git := env.Run
-	env.Run = func(ctx context.Context, dir string, in *string, name string, args ...string) (procrun.Result, error) {
-		if name == "gh" {
-			return procrun.Result{Stdout: `{"number":1,"state":"merged","merged_at":"2026-01-01T00:00:00Z","head":{"ref":"feat-x"}}` + "\n" +
-				`{"number":"x","state":"open","merged_at":null,"head":{"ref":"feat-x"}}` + "\n"}, nil
-		}
-		return git(ctx, dir, in, name, args...)
-	}
+	env.Forge = forgeEnv.Forge
 	audit, err := Collect(context.Background(), env, "/repo")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(stderr.String(), "PR lookup failed") {
-		t.Errorf("stderr %q does not say the lookup failed", stderr.String())
-	}
 	if len(audit.Rows) == 0 {
 		t.Fatal("no rows to check")
 	}
-	for _, r := range audit.Rows {
-		if r.PRLookupOK || r.PRState != nil {
-			t.Errorf("row %s: lookup ok %v, state %v; want an unknown PR", r.Name, r.PRLookupOK, r.PRState)
+	return audit.Rows, stderr.String()
+}
+
+// Red when findOrphans goes back to joining the const `.claude/worktrees` onto the repo: a root
+// outside the repo is then never looked in, and the orphan is not found.
+func TestFindOrphansReadsARootOutsideTheRepo(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "my worktrees")
+	for _, d := range []string{"known", "orphan"} {
+		if err := os.MkdirAll(filepath.Join(root, d), 0o755); err != nil {
+			t.Fatal(err)
 		}
+	}
+	if err := os.WriteFile(filepath.Join(root, "orphan", "f.txt"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got := findOrphans(root, []WorktreeInfo{{Path: filepath.Join(root, "known")}})
+	want := []OrphanDir{{Name: "orphan", Path: filepath.Join(root, "orphan"), DirEntries: []string{"f.txt"}}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %+v, want %+v", got, want)
+	}
+}
+
+// Red when KPI goes back to strings.Contains on the relative string: it then counts nothing under
+// an outside root, and counts `<root>-old/.claude/worktrees/x`.
+func TestKPICountsWorktreesUnderTheResolvedRoot(t *testing.T) {
+	row := func(p string) Row {
+		r := NewRow("b")
+		r.Worktree = &p
+		return r
+	}
+	v := View{Policy: mainPolicy, Alive: PidAlive, Root: "/data/wt"}
+	got := v.KPI([]Row{row("/data/wt/a"), row("/data/wt/b"), row("/data/wt-old/.claude/worktrees/x"), row("/data/wt")})
+	if !strings.HasPrefix(got, "worktrees=2 ") {
+		t.Fatalf("got %q, want worktrees=2", got)
+	}
+}
+
+// Red when an empty Root goes back to a substring match on `.claude/worktrees`: then
+// `/data/wt-old/.claude/worktrees/x` counts, and a View without a Root counts nothing otherwise.
+func TestKPIWithoutARootCountsNoWorktree(t *testing.T) {
+	p := "/data/wt-old/.claude/worktrees/x"
+	r := NewRow("b")
+	r.Worktree = &p
+	got := View{Policy: mainPolicy, Alive: PidAlive}.KPI([]Row{r})
+	if !strings.HasPrefix(got, "worktrees=0 ") {
+		t.Fatalf("got %q, want worktrees=0", got)
 	}
 }

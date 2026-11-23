@@ -119,7 +119,7 @@ func forgeReposWith(hostToml, repo string, o *forgeOpener, errOut io.Writer) (so
 			skip(repo, err)
 			return nil, []string{repo}, nil
 		}
-		return []overview.RepoSource{{Slug: repo, Src: rf.Forge}}, []string{repo}, nil
+		return []overview.RepoSource{{Slug: repo, Src: rf.Forge, Labels: repoconfig.DefaultLabels()}}, []string{repo}, nil
 	}
 	for _, l := range repoconfig.LoadAll(cfg.Repos) {
 		path, r := l.Path, l.Repo
@@ -135,7 +135,7 @@ func forgeReposWith(hostToml, repo string, o *forgeOpener, errOut io.Writer) (so
 			skip(path, err)
 			continue
 		}
-		src := overview.RepoSource{Slug: r.Slug, Src: rf.Forge, Board: r.Board != nil,
+		src := overview.RepoSource{Slug: r.Slug, Src: rf.Forge, Labels: r.Labels, Board: r.Board != nil,
 			Controller: r.Board != nil && r.Board.StatusOptions["Controller"] != ""}
 		if src.Board && !src.Controller {
 			_, _ = fmt.Fprintf(errOut, "lighthouse: %s: missing forge.board.status_options.Controller: overview shows every open issue\n", path)
@@ -206,17 +206,22 @@ func serve(ctx context.Context, addr, dbPath string, repos []overview.RepoSource
 	}
 	refreshCtx, cancelRefresh := context.WithCancel(ctx)
 	defer cancelRefresh()
-	read, stopped := startOverview(refreshCtx, repos, interval)
+	read, _, stopped := startOverview(refreshCtx, repos, interval)
 	prioSrcs := make([]priorities.Source, 0, len(repos))
+	prioForges := make(map[string]forge.Forge, len(repos))
 	for _, r := range repos {
-		prioSrcs = append(prioSrcs, priorities.Source{Slug: r.Slug, Src: r.Src})
+		prioSrcs = append(prioSrcs, priorities.Source{Slug: r.Slug, Src: r.Src, Labels: r.Labels})
+		prioForges[r.Slug] = r.Src
 	}
-	prioRead, prioStopped := startPriorities(refreshCtx, prioSrcs, read, prioInterval)
+	prioRead, prioPatch, prioStopped := startPriorities(refreshCtx, prioSrcs, read, prioInterval)
 	srv := &http.Server{Handler: server.New(web.FS(), server.Deps{
 		Report:     rep.Report,
 		Forge:      repos,
 		Overview:   read,
 		Priorities: prioRead,
+		// Both are set together: the rank endpoint needs the forges and the cache patch.
+		PriorityForges:  prioForges,
+		PatchPriorities: prioPatch,
 		Leftovers: func(ctx context.Context) ([]workplace.Leftover, error) {
 			return workplace.Leftovers(ctx, st.DB)
 		},
@@ -256,8 +261,8 @@ func serve(ctx context.Context, addr, dbPath string, repos []overview.RepoSource
 // (which reports forge.ErrNotConfigured), starts nothing and stopped is a no-op. With repos it
 // starts a Refresher on ctx that builds every interval, and retries a failed build after
 // server.RefreshRetry or interval, whichever is shorter; stopped blocks until its goroutine has
-// returned.
-func startOverview(ctx context.Context, repos []overview.RepoSource, interval time.Duration) (read func(context.Context) (overview.Overview, error), stopped func()) {
+// returned. patch is the Refresher's Modify; the overview has no use for it.
+func startOverview(ctx context.Context, repos []overview.RepoSource, interval time.Duration) (read func(context.Context) (overview.Overview, error), patch func(func(overview.Overview) overview.Overview) bool, stopped func()) {
 	build := func(ctx context.Context) (overview.Overview, error) { return overview.BuildAll(ctx, repos) }
 	return startRefresher(ctx, len(repos) > 0, build, interval, server.RefreshRetry)
 }
@@ -266,9 +271,10 @@ func startOverview(ctx context.Context, repos []overview.RepoSource, interval ti
 // so a slow planning read never delays the overview. Each build reads the overview through
 // overviewRead for the board statuses and passes its error on, and then calls priorities.Build.
 // Without srcs it builds on every read (which reports forge.ErrNotConfigured), starts nothing
-// and stopped is a no-op; otherwise it behaves as startOverview.
+// and stopped is a no-op; otherwise it behaves as startOverview. patch changes the cached
+// lists in place, and does nothing (false) without a refresher.
 func startPriorities(ctx context.Context, srcs []priorities.Source, overviewRead func(context.Context) (overview.Overview, error),
-	interval time.Duration) (read func(context.Context) ([]priorities.Repo, error), stopped func()) {
+	interval time.Duration) (read func(context.Context) ([]priorities.Repo, error), patch func(func([]priorities.Repo) []priorities.Repo) bool, stopped func()) {
 	build := func(ctx context.Context) ([]priorities.Repo, error) {
 		if len(srcs) == 0 {
 			return nil, forge.ErrNotConfigured
@@ -277,18 +283,18 @@ func startPriorities(ctx context.Context, srcs []priorities.Source, overviewRead
 		if err != nil {
 			return nil, err
 		}
-		return priorities.Build(ctx, srcs, ov.Statuses)
+		return priorities.Build(ctx, srcs, ov)
 	}
 	// A failed planning read costs API points, so it retries at PrioritiesRetry, not RefreshRetry.
 	return startRefresher(ctx, len(srcs) > 0, build, interval, server.PrioritiesRetry)
 }
 
-// startRefresher starts a Refresher of build on ctx when enabled, and returns its reader and
-// a stopped that blocks until its goroutine has returned. Disabled, the reader builds on every
-// read and stopped is a no-op.
-func startRefresher[T any](ctx context.Context, enabled bool, build server.BuildFunc[T], interval, retry time.Duration) (read func(context.Context) (T, error), stopped func()) {
+// startRefresher starts a Refresher of build on ctx when enabled, and returns its reader, its
+// patch (Modify; a no-op returning false when disabled) and a stopped that blocks until its
+// goroutine has returned. Disabled, the reader builds on every read and stopped is a no-op.
+func startRefresher[T any](ctx context.Context, enabled bool, build server.BuildFunc[T], interval, retry time.Duration) (read func(context.Context) (T, error), patch func(func(T) T) bool, stopped func()) {
 	if !enabled {
-		return build, func() {}
+		return build, func(func(T) T) bool { return false }, func() {}
 	}
 	r := server.NewRefresher(build, interval, min(retry, interval), server.BuildTimeout)
 	done := make(chan struct{})
@@ -296,5 +302,5 @@ func startRefresher[T any](ctx context.Context, enabled bool, build server.Build
 		defer close(done)
 		r.Run(ctx)
 	}()
-	return r.Latest, func() { <-done }
+	return r.Latest, r.Modify, func() { <-done }
 }

@@ -116,3 +116,40 @@ included) or `https://<host>/<group>/<project>/-/issues/N`. A list closes every 
 
 Not applicable: the rtk proxy breaks only the `gh` CLI's JSON output, and no step on GitLab calls
 `gh`. Use `lighthouse forge`.
+
+## §close-issue
+
+- **No unblock lane.** No pipeline or webhook releases at a close: the session runs
+  `lighthouse unblock-dependents --issue <nr>` itself, with `GITLAB_TOKEN`.
+- **Close reason.** GitLab has none: every close counts as `completed` and releases.
+- **Blockers** are read from issue links only (Premium and Ultimate, see §blockers). A
+  `Blocked by #<n>` line in the body is not released: report such a dependent and leave it to a
+  human.
+- **No release flow:** report `release: skipped — no release flow on GitLab`.
+- **`closer`** in `lighthouse forge issue changes` comes from the issue's
+  `resource_state_events`: the merge request of this project behind the last close, else `null`
+  (a manual close, a commit, a merge request in another project).
+- **Commit URL:** `https://<forge.host, else gitlab.com>/<forge.repo>/-/commit/<sha>`, with the
+  full hash.
+- **Group milestone.** `lighthouse forge milestone edit` refuses a group milestone (exit 1): close
+  it and add ` - DONE` by hand in the group, or with `lighthouse forge api` on
+  `groups/<id>/milestones/<id>`, and report it.
+
+## §ci
+
+CI actions that have no shared command. `<project>` is `forge.repo`, URL-encoded (`/` as `%2F`).
+The jobs of a pipeline:
+
+```bash
+lighthouse forge api "projects/<project>/pipelines/<id>/jobs"
+```
+
+Jobs of a child pipeline (a bridge) are not listed by `pr checks`: when a pipeline is red but no job failed, check `lighthouse forge api "projects/<project>/pipelines/<id>/bridges"`.
+
+Rerun one job: `lighthouse forge api -X POST "projects/<project>/jobs/<job>/retry"`. Roborev does
+not exist on GitLab yet (it first needs a real run), so section 6 of `/lighthouse-fix-pr`, if installed, does not apply.
+
+## §workflows
+
+No equivalent in this milestone. A GitLab repo does not run the workflows, and `lighthouse init`
+does not write them.

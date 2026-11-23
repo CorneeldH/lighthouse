@@ -66,7 +66,7 @@ func walk(t *testing.T, dir, suffix string) []string {
 }
 
 func TestCorpusStdlibClean(t *testing.T) {
-	files, err := filepath.Glob(filepath.Join(fixtureDir, "stdlib", "*.py"))
+	files, err := filepath.Glob(filepath.Join(fixtureDir, "stdlib", "*.py.txt"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,6 +95,9 @@ func TestCorpusStdlibClean(t *testing.T) {
 func TestCorpusGoEnglish(t *testing.T) {
 	files := append(walk(t, filepath.Join(repoRoot, "internal"), ".go"),
 		walk(t, filepath.Join(repoRoot, "cmd"), ".go")...)
+	// The canary fixture of code-language-check is Dutch on purpose.
+	canary := filepath.Join(repoRoot, "internal", "canary", "testdata", "code-language-check") + string(filepath.Separator)
+	files = slices.DeleteFunc(files, func(f string) bool { return strings.HasPrefix(f, canary) })
 	if found := scanFiles(t, "go", files); len(found) != 0 {
 		t.Errorf("findings:\n%s", strings.Join(found, "\n"))
 	}

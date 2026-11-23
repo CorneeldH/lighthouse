@@ -1,7 +1,8 @@
 import { type JSX, type MouseEvent, useMemo, useRef, useState } from 'react'
 import type { GNode, NodeKey } from '@/lib/priorities/derive'
 import { NO_MILESTONE_COLOR } from '@/lib/priorities/palette'
-import { COL_GAP, NODE_H, NODE_W, edgePath, layoutGraph } from './layout'
+import { COL_GAP, NODE_W, edgePath, layoutGraph } from './layout'
+import { NodeCard } from './NodeCard'
 import type { ViewProps } from './types'
 
 const columnName = (depth: number): string =>
@@ -130,23 +131,16 @@ export function DepsView({ graph, selected, colors }: ViewProps): JSX.Element {
                 grey || !n.milestone ? NO_MILESTONE_COLOR : (colors.get(`${n.repo}#m${n.milestone.number}`) ?? NO_MILESTONE_COLOR)
               const dimmed = chain !== null && !chain.has(n.key)
               return (
-                <a
+                <NodeCard
                   key={n.key}
-                  href={grey && n.url === '' ? undefined : n.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  data-testid={`node-${n.key}`}
-                  data-external={grey ? 'true' : 'false'}
-                  data-dimmed={dimmed ? 'true' : 'false'}
-                  data-depth={n.depth}
-                  data-cycle={n.cycle ? 'true' : 'false'}
-                  className={[
-                    'absolute flex items-center gap-2 overflow-hidden rounded-lg bg-white pr-2.5 text-foreground no-underline transition-opacity dark:bg-card',
-                    n.active ? 'border-2 border-dashed border-lh-navy' : grey ? 'border border-dashed border-lh-grey' : 'border border-border',
-                    dimmed ? 'opacity-25' : '',
-                    chain?.has(n.key) && n.key !== focus ? 'shadow-[0_0_0_2px_var(--lh-navy)]' : '',
-                  ].join(' ')}
-                  style={{ left: p.x, top: p.y, width: NODE_W, height: NODE_H }}
+                  node={n}
+                  color={color}
+                  grey={grey}
+                  label={prefix || grey ? `${n.repo}#${n.number}` : `#${n.number}`}
+                  testId={`node-${n.key}`}
+                  dimmed={dimmed}
+                  highlighted={chain?.has(n.key) === true && n.key !== focus}
+                  style={{ position: 'absolute', left: p.x, top: p.y }}
                   onPointerDown={(e) => {
                     pointer.current = e.pointerType
                   }}
@@ -157,30 +151,7 @@ export function DepsView({ graph, selected, colors }: ViewProps): JSX.Element {
                   onMouseEnter={() => setHover(n.key)}
                   onMouseLeave={() => setHover(null)}
                   onClick={(e) => onClick(e, n.key)}
-                >
-                  <span className="w-1.5 flex-none self-stretch" style={{ background: color }} />
-                  <span className="flex-none text-[13px] font-semibold">
-                    {prefix || grey ? `${n.repo}#${n.number}` : `#${n.number}`}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground" title={n.title}>
-                    {n.title}
-                  </span>
-                  {n.cycle && <span className="flex-none text-[10.5px] font-semibold text-muted-foreground">cycle</span>}
-                  {n.active && (
-                    <span className="flex-none rounded-full bg-lh-yellow px-1.5 text-[10.5px] font-semibold text-lh-navy">
-                      picked up
-                    </span>
-                  )}
-                  {n.waiting >= 2 && (
-                    <span
-                      data-testid="waiting-pill"
-                      title={`${n.waiting} issues wait on this`}
-                      className="flex-none rounded-full bg-lh-navy px-1.5 text-[11px] font-semibold text-white"
-                    >
-                      {n.waiting}
-                    </span>
-                  )}
-                </a>
+                />
               )
             })}
           </div>
@@ -188,22 +159,20 @@ export function DepsView({ graph, selected, colors }: ViewProps): JSX.Element {
       )}
       <div className="border-t border-border pt-3">
         <h4 className="mb-2 text-[13px] font-semibold">No open dependencies ({loose.length})</h4>
-        <div className="flex flex-wrap gap-1.5">
+        <div className="grid gap-2.5" style={{ gridTemplateColumns: `repeat(auto-fill, ${NODE_W}px)` }}>
           {loose.map((n) => {
             const color = n.milestone ? (colors.get(`${n.repo}#m${n.milestone.number}`) ?? NO_MILESTONE_COLOR) : NO_MILESTONE_COLOR
             return (
-              <a
+              <NodeCard
                 key={n.key}
-                href={n.url}
-                target="_blank"
-                rel="noreferrer"
-                data-testid={`loose-${n.key}`}
-                title={n.title}
-                className="inline-flex items-center gap-1.5 overflow-hidden rounded-md border border-border bg-white py-0.5 pr-2 text-xs text-foreground no-underline dark:bg-card"
-              >
-                <span className="w-[5px] self-stretch" style={{ background: color }} />
-                <b className="font-semibold">{prefix ? `${n.repo}#${n.number}` : `#${n.number}`}</b>
-              </a>
+                node={n}
+                color={color}
+                grey={false}
+                label={prefix ? `${n.repo}#${n.number}` : `#${n.number}`}
+                testId={`loose-${n.key}`}
+                dimmed={false}
+                highlighted={false}
+              />
             )
           })}
         </div>

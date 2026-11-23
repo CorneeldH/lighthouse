@@ -433,7 +433,8 @@ workspace verwijderd, dan verdwijnt ook zijn achterblijver-record.
 ## Lokaal
 
 `workplace = "local"` laat de tick draaien zonder kenn-forge: geen `[dispatch.forge]`, geen `target_key`.
-Een run is een git worktree onder `<repo>/.claude/worktrees/` en een `claude -p` die de adapter
+Een run is een git worktree onder `<repo>/.claude/worktrees/` (altijd daar: de adapter leest `[worktree] root` niet, zie
+[de worktree-root](getting-started.md#where-the-worktrees-live)) en een `claude -p` die de adapter
 losgekoppeld start (`setsid -f` van util-linux) en laat doorlopen als de tick klaar is. De adapter werkt
 alleen op Linux: hij leest `/proc/<pid>/environ` en `/proc/<pid>/stat`. Op een andere host geven de
 methoden van `Procs` de fout `local workplace: needs /proc, which only linux has`. De eisen aan de host
@@ -443,7 +444,7 @@ van de tick staan.
 ### De acht methoden
 
 - `Prepare(branch)`: de worktree die git al voor de branch heeft, of een nieuwe onder
-  `<repo>/.claude/worktrees/<id>`. Een bestaande worktree die de adapter niet zelf maakte, wordt
+  `<repo>/.claude/worktrees/<id>`, ook als `[worktree] root` een andere plek zet. Een bestaande worktree die de adapter niet zelf maakte, wordt
   *adopted*: hij blijft van de gebruiker en `Remove` verwijdert hem nooit van schijf. Een lege branchnaam
   of een naam die met `-` begint, weigert `Prepare`; een branch die in de hoofdcheckout staat ook. Daarna
   volgt `workplace.FollowRemote` de `origin/<branch>`, met dezelfde regels als bij kenn-forge (zie
@@ -554,9 +555,10 @@ niet. Een repo zonder leesbaar board slaat de tick over, dus van geen enkel issu
 de controller verliet en wordt niets verwijderd. De kandidaten komen uit de runrijen
 (`runs.Workspaces`): één per workspace, met het issue en de branch van de laatste rij. Per kandidaat:
 
-- Staat het issue op `Controller` of `On hold`, of heeft het een open run, dan blijft de workspace
-  staan en verdwijnt een oud achterblijver-record. On hold telt als in de controller: de tick zet een
-  geparkeerd issue zelf terug.
+- Staat het issue op `Controller`, of heeft het een open run, of staat het op `To do` met een eigen
+  🤖 Geparkeerd als laatste protocol-comment (een geparkeerd issue), dan blijft de workspace staan en
+  verdwijnt een oud achterblijver-record. Een geparkeerd issue telt als in de controller: de tick zet het
+  zelf terug. Een legacy `On hold`-issue telt nog hetzelfde.
 - Anders zoekt `Sweep` de head-SHA van de laatst gemergede PR van de branch op (`MergedHead`; een PR uit
   een fork telt niet). Mislukt dat, dan is de workspace een achterblijver met
   `not measurable: merged PR: …`.
@@ -593,3 +595,30 @@ issue-workspaces.
   weigert (`not "scheduled/…" as the forge says`): zo'n workspace ruim je met de hand op.
 - Een workspace die geen runrij noemt, ziet de sweep niet. Dat gebeurt als een tick sterft tussen
   `Prepare` en `SetWorkplace` van een geplande start; zo'n workspace ruim je met de hand op.
+
+### Workspace zonder worktree-map en een niet-bare clone (#478)
+
+Een workspace waarvan de worktree-map op deze host ontbreekt, kon `Cleanup` niet meten: `git status`
+op een map die er niet is geeft exit 128, en de workspace bleef als `not measurable` achter. Een
+map die weg is, bevat niets ongecommits meer. `Cleanup` ruimt zo'n workspace daarom op, alleen op
+`self` en alleen als er ook geen werk in de branch verloren gaat:
+
+- de PR van de branch is gemerged (`MergedHead` is gevuld), of
+- de branch staat nergens meer: niet in de clone en niet op origin (`OrphanChecker.BranchNowhere`).
+  De adapter vraagt dat aan een andere worktree onder dezelfde worktree-root
+  (`WorktreeRoot`), want die deelt de refs en `origin` van de clone. Is er geen andere worktree,
+  of faalt git, dan blijft de workspace een achterblijver met `not measurable: branch of the missing
+  worktree: …`. Staat de branch nog ergens, dan is de reden `worktree directory is gone, but branch
+  <b> still exists`.
+
+`Remove` krijgt dan `RemoveOptions.Orphan`: de adapter slaat `discardWork` over en stuurt
+`DELETE /api/v1/workspaces/<id>?force=true`. Dirty en unpushed worden niet gemeten.
+
+De tick meldt ook een kenn-forge-clone die geen bare repo meer is (`kennforge.CheckClone`): zodra
+`core.bare` niet `true` is of `core.worktree` gezet is, weigert kenn-forge elke `DELETE` van een
+workspace met een 500. De tick leest dat per repo, via een andere worktree onder de worktree-root,
+en print `lighthouse: cleanup <repo>: kenn-forge clone <pad> is not bare (…)` met het herstel
+(`git -C <clone> config --unset core.worktree && git -C <clone> config core.bare true`). De tick
+eindigt dan met exit 1. Zonder worktree onder de root is er niets om de clone uit af te leiden, en
+dan zwijgt de check. De oorzaak was een `git init` met een geërfde `GIT_DIR` en `GIT_WORK_TREE`;
+de bron van `GIT_WORK_TREE` is niet gevonden.

@@ -3,11 +3,13 @@ package worktreeaudit
 import (
 	"fmt"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 	"unicode"
 
+	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/prbody"
 	"github.com/CorneeldH/lighthouse/internal/pytext"
 )
@@ -335,65 +337,20 @@ func allDigits(s string) bool {
 }
 
 // ParseIssuePRHeads is the head branches of the merged PRs of issue nr in repo slug, in order of
-// arrival: every closing PR, and a cross-referencing PR whose body has `Refs #nr`
-// (prbody.RefsTargets). A fork PR (isCrossRepository) never counts. false: the lookup failed
-// (GraphQL errors, or no issue for that number), which is not "no PRs".
-func ParseIssuePRHeads(payload any, slug string, nr int) ([]string, bool) {
-	doc := object(payload)
-	if doc == nil || truthy(doc["errors"]) {
-		return nil, false
-	}
-	data, ok := doc["data"].(map[string]any)
-	if !ok {
-		return nil, false
-	}
-	repository, ok := data["repository"].(map[string]any)
-	if !ok {
-		return nil, false
-	}
-	issue, ok := repository["issue"].(map[string]any)
-	if !ok {
-		return nil, false
-	}
+// arrival: every closing PR, and a PR that only refers to the issue when its body has `Refs #nr`
+// (prbody.RefsTargets). A fork PR (CrossRepo) and a PR of another repo never count.
+func ParseIssuePRHeads(closing []forge.ClosingHead, slug string, nr int) []string {
 	heads := []string{}
-	take := func(node any, needsRefs bool) {
-		n := object(node)
-		if n == nil || !truthy(n["merged"]) {
-			return
+	for _, h := range closing {
+		if !h.Merged || h.HeadRef == "" || h.Repo != slug || h.CrossRepo {
+			continue
 		}
-		head, _ := n["headRefName"].(string)
-		repo, _ := object(n["repository"])["nameWithOwner"].(string)
-		if head == "" || repo != slug || truthy(n["isCrossRepository"]) {
-			return
+		if !h.Closes && !slices.Contains(prbody.RefsTargets(h.Body), nr) {
+			continue
 		}
-		if needsRefs {
-			body, _ := n["body"].(string)
-			found := false
-			for _, target := range prbody.RefsTargets(body) {
-				found = found || target == nr
-			}
-			if !found {
-				return
-			}
+		if !slices.Contains(heads, h.HeadRef) {
+			heads = append(heads, h.HeadRef)
 		}
-		for _, h := range heads {
-			if h == head {
-				return
-			}
-		}
-		heads = append(heads, head)
 	}
-	for _, node := range nodes(issue["closedByPullRequestsReferences"]) {
-		take(node, false)
-	}
-	for _, item := range nodes(issue["timelineItems"]) {
-		take(object(item)["source"], true)
-	}
-	return heads, true
-}
-
-// nodes is `(x or {}).get("nodes") or []` for a connection.
-func nodes(connection any) []any {
-	list, _ := object(connection)["nodes"].([]any)
-	return list
+	return heads
 }

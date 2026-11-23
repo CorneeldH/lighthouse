@@ -103,7 +103,7 @@ func TestHookCanonicalPath(t *testing.T) {
 	}
 	raw, _ := json.Marshal(map[string]any{"cwd": root, "tool_input": map[string]any{"file_path": "link/a.py"}})
 	res := runPayload(t, string(raw))
-	want := "code-language-check: " + filepath.Join(root, "real", "a.py") + " is not English\n"
+	want := "[code-language-check/non-english] code-language-check: " + filepath.Join(root, "real", "a.py") + " is not English\n"
 	if res.Code != 2 || len(res.Stderr) < len(want) || res.Stderr[:len(want)] != want {
 		t.Errorf("symlinked directory: %+v, want 2 and a report on the real path", res)
 	}
@@ -152,7 +152,7 @@ func TestHookRelativePathFromWorkingDirectory(t *testing.T) {
 	writeFile(t, filepath.Join(root, "a.py"), []byte(dutchComment))
 	t.Chdir(root)
 	res := runPayload(t, `{"tool_input": {"file_path": "a.py"}}`)
-	if want := "code-language-check: " + filepath.Join(root, "a.py") + " is not English\n"; res.Code != 2 ||
+	if want := "[code-language-check/non-english] code-language-check: " + filepath.Join(root, "a.py") + " is not English\n"; res.Code != 2 ||
 		len(res.Stderr) < len(want) || res.Stderr[:len(want)] != want {
 		t.Errorf("%+v, want 2 and a report on %s", res, filepath.Join(root, "a.py"))
 	}
@@ -257,12 +257,56 @@ func TestHookNoticeWithFindings(t *testing.T) {
 	t.Setenv("LIGHTHOUSE_TOML", sessionTOML(t, t.TempDir(), llmTable(fake.url)))
 	path := filepath.Join(root, "a.py")
 	writeFile(t, path, []byte(layer1Line+doubtLine))
-	want := hook.Result{Code: 2, Stderr: "code-language-check: " + path + " is not English\n" +
+	want := hook.Result{Code: 2, Stderr: "[code-language-check/non-english] code-language-check: " + path + " is not English\n" +
 		path + ":1: name: lees_bestand [layer 1]\n" +
 		`The whole file must be English. A line that is deliberately not English gets "lighthouse: allow-language".` + "\n\n" +
 		"code-language-check: layer 2 did not answer (m1: HTTP 500); 1 doubtful units not checked:\n" +
 		path + ":2: name: legacy_processed_lijst_weg\n"}
 	if got := hookOn(t, path); !reflect.DeepEqual(got, want) {
 		t.Errorf("got\n%+v\nwant\n%+v", got, want)
+	}
+}
+
+// A chain that never answers is cut off at PerModel, not at the server: the notice names the
+// default clip of 4.0 s. It runs for that long, as no other test uses the default.
+func TestHookSilentChainEndsAtPerModel(t *testing.T) {
+	withKey(t)
+	fake := newFakeLLM(t, nil, "silent")
+	root := gitRepo(t, "")
+	t.Setenv("LIGHTHOUSE_TOML", sessionTOML(t, t.TempDir(), llmTable(fake.url)))
+	path := filepath.Join(root, "a.py")
+	writeFile(t, path, []byte(doubtLine))
+	notice := "code-language-check: layer 2 did not answer (m1: no answer within 4.0 s); 1 doubtful units not checked:\n" +
+		path + ":1: name: legacy_processed_lijst_weg"
+	want := hook.Result{Output: map[string]any{
+		"systemMessage": notice,
+		"hookSpecificOutput": map[string]any{
+			"hookEventName": "PostToolUse", "additionalContext": notice,
+		},
+	}}
+	if got := hookOn(t, path); !reflect.DeepEqual(got, want) {
+		t.Errorf("got %+v, want %+v", got, want)
+	}
+}
+
+// The config comes from the git root of the written file, not from the cwd of the payload: a
+// file in a repo without lighthouse.toml is not checked, whatever repo the session sits in.
+func TestHookRepoIsThatOfTheFileNotTheCwd(t *testing.T) {
+	cwdRepo := gitRepo(t, "")
+	other, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command("git", "init", "-q", other).CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, out)
+	}
+	path := filepath.Join(other, "a.py")
+	writeFile(t, path, []byte(dutchComment))
+	raw, err := json.Marshal(map[string]any{"cwd": cwdRepo, "tool_input": map[string]any{"file_path": path}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := runPayload(t, string(raw)); !reflect.DeepEqual(got, emptyResult()) {
+		t.Errorf("got %+v, want nothing", got)
 	}
 }

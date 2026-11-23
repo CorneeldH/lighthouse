@@ -1,4 +1,5 @@
 import type { Issue, MilestoneRef, Repo, Run } from '../../api/lighthouse'
+import { parseRank } from './rank'
 
 export type NodeKey = string
 
@@ -11,6 +12,8 @@ export interface GNode {
   milestone: MilestoneRef | null
   external: boolean
   active: boolean
+  state: IssueStateName
+  needsHuman: boolean
   uphill: boolean
   depth: number
   waiting: number
@@ -40,8 +43,31 @@ function liveRun(runs: Run[], repo: string, nr: number): Run | undefined {
   )
 }
 
-export function isActive(issue: Issue, runs: Run[], repo: string): boolean {
-  return liveRun(runs, repo, issue.number) !== undefined || issue.status === 'In progress'
+export type IssueStateName = 'done' | 'active' | 'needs_human' | 'blocked' | 'ready'
+
+const NEEDS_FIRST = new Set(['needs_shaping', 'needs_decision'])
+const NEEDS_LATER = new Set(['needs_hands', 'needs_testing'])
+
+// The state of an open issue: the first row of the state table that fits (spec Toestanden).
+// `needsHuman` is the flag on an active issue; a done issue is never in `issues`.
+export function issueState(
+  issue: Issue,
+  runs: Run[],
+  repo: string,
+): { state: IssueStateName; needsHuman: boolean } {
+  if (
+    liveRun(runs, repo, issue.number) !== undefined ||
+    issue.status === 'In progress' ||
+    issue.status === 'Controller'
+  ) {
+    return { state: 'active', needsHuman: issue.needs_label || issue.open_question }
+  }
+  if (NEEDS_FIRST.has(issue.label)) return { state: 'needs_human', needsHuman: false }
+  if (issue.label.startsWith('blocked_') || (issue.blocked_by?.length ?? 0) > 0) {
+    return { state: 'blocked', needsHuman: false }
+  }
+  if (NEEDS_LATER.has(issue.label)) return { state: 'needs_human', needsHuman: false }
+  return { state: 'ready', needsHuman: false }
 }
 
 export function isUphill(run: Run | undefined): boolean {
@@ -109,6 +135,8 @@ export function buildGraph(repos: Repo[], runs: Run[]): Graph {
     milestone: null,
     external: true,
     active: false,
+    state: 'ready',
+    needsHuman: false,
     uphill: false,
     depth: 0,
     waiting: 0,
@@ -119,7 +147,8 @@ export function buildGraph(repos: Repo[], runs: Run[]): Graph {
   for (const repo of repos) {
     for (const issue of repo.issues ?? []) {
       const run = liveRun(runs, repo.slug, issue.number)
-      const active = isActive(issue, runs, repo.slug)
+      const { state, needsHuman } = issueState(issue, runs, repo.slug)
+      const active = state === 'active'
       const key = keyOf(repo.slug, issue.number)
       nodes.set(key, {
         ...blank(key, repo.slug, issue.number),
@@ -128,6 +157,8 @@ export function buildGraph(repos: Repo[], runs: Run[]): Graph {
         milestone: issue.milestone ?? null,
         external: false,
         active,
+        state,
+        needsHuman,
         uphill: active && isUphill(run),
       })
     }
@@ -212,20 +243,30 @@ export function isShaping(description: string, issueCount: number): boolean {
   return description.split(/\r?\n/).some((l) => l.trim().toLowerCase() === 'status: shaping')
 }
 
+export interface Block {
+  nr: number
+  repo: string
+  title: string
+  url: string
+  state: IssueStateName
+  needsHuman: boolean
+}
+
+const GROUP_ORDER: IssueStateName[] = ['done', 'active', 'ready', 'needs_human', 'blocked']
+
 export interface MilestoneRow {
+  blocks: Block[]
   repo: string
   number: number
   title: string
   done: number
-  active: GNode[]
-  todo: GNode[]
   open: number
   total: number
-  percent: number | null
+  percent: number
   shaping: boolean
   empty: boolean
   outside: GNode[]
-  order: GNode[]
+  rank: number | null
 }
 
 const byRepoNumber = (a: GNode, b: GNode) =>
@@ -270,37 +311,115 @@ export function milestoneRows(repos: Repo[], graph: Graph): MilestoneRow[] {
           byRepoNumber(compMin.get(a.component) as GNode, compMin.get(b.component) as GNode) ||
           byRepoNumber(a, b),
       )
+      const toBlock = (n: GNode): Block => ({
+        nr: n.number,
+        repo: n.repo,
+        title: n.title,
+        url: n.url,
+        state: n.state,
+        needsHuman: n.needsHuman,
+      })
+      const doneBlocks: Block[] = [...(m.closed ?? [])]
+        .sort((a, b) => a.number - b.number)
+        .map((c) => ({
+          nr: c.number,
+          repo: repo.slug,
+          title: c.title,
+          url: c.url,
+          state: 'done',
+          needsHuman: false,
+        }))
+      // Outside blockers have their own column (row.outside); blocks holds the milestone's own.
+      const workBlocks = order.map(toBlock)
+      const blocks = [
+        ...doneBlocks,
+        ...GROUP_ORDER.filter((g) => g !== 'done').flatMap((g) =>
+          workBlocks.filter((b) => b.state === g),
+        ),
+      ]
       const open = own.length
       const empty = open === 0 && m.done === 0
       rows.push({
+        blocks,
         repo: repo.slug,
         number: m.number,
         title: m.title,
         done: m.done,
-        active: order.filter((n) => n.active),
-        todo: order.filter((n) => !n.active),
         open,
         total: m.done + open,
-        percent: empty ? null : m.done / (m.done + open),
+        percent: empty ? 0 : m.done / (m.done + open),
         shaping: isShaping(m.description, m.done + open),
         empty,
         outside,
-        order,
+        rank: parseRank(m.description),
       })
     }
   }
   return rows
 }
 
+// Place of each ranked row within its repo: by rank, ties by input (computed) order.
+function placesByRow(rows: MilestoneRow[]): Map<MilestoneRow, number> {
+  const byRepo = new Map<string, MilestoneRow[]>()
+  for (const r of rows) {
+    if (r.rank === null) continue
+    const l = byRepo.get(r.repo) ?? []
+    l.push(r)
+    byRepo.set(r.repo, l)
+  }
+  const places = new Map<MilestoneRow, number>()
+  for (const l of byRepo.values()) {
+    // Array.prototype.sort is stable, so equal ranks keep the input order.
+    ;[...l].sort((a, b) => (a.rank as number) - (b.rank as number)).forEach((r, i) => places.set(r, i + 1))
+  }
+  return places
+}
+
+// Priority order of rows that are already in computed order: place 1 of every repo, then place 2,
+// and so on; within a place the computed order; unranked rows below in computed order.
+export function priorityOrder(rows: MilestoneRow[]): MilestoneRow[] {
+  const places = placesByRow(rows)
+  const index = new Map(rows.map((r, i) => [r, i]))
+  const key = (r: MilestoneRow) => places.get(r) ?? Number.POSITIVE_INFINITY
+  return [...rows].sort((a, b) => {
+    const ka = key(a)
+    const kb = key(b)
+    if (ka !== kb) return ka < kb ? -1 : 1
+    return (index.get(a) as number) - (index.get(b) as number)
+  })
+}
+
+// 1-based place of a milestone among the ranked milestones of its repo, or null when unranked.
+export function placeInRepo(rows: MilestoneRow[], repo: string, number: number): number | null {
+  const row = rows.find((r) => r.repo === repo && r.number === number)
+  return row === undefined ? null : (placesByRow(rows).get(row) ?? null)
+}
+
+// Group 0: shaped; 1: not shaped, with finished issues; 2: not shaped, nothing finished but issues;
+// 3: not shaped and empty. "Not shaped" is `row.shaping`, the same rule as the shaping border (#437).
+function milestoneGroup(r: MilestoneRow): number {
+  if (!r.shaping) return 0
+  if (r.done > 0) return 1
+  return r.total > 0 ? 2 : 3
+}
+
 export function sortMilestoneRows(rows: MilestoneRow[]): MilestoneRow[] {
-  return [...rows].sort(
-    (a, b) =>
-      Number(a.empty) - Number(b.empty) ||
-      a.open - b.open ||
-      (b.percent ?? 0) - (a.percent ?? 0) ||
+  return [...rows].sort((a, b) => {
+    const ga = milestoneGroup(a)
+    const gb = milestoneGroup(b)
+    let within = 0
+    if (ga === gb) {
+      if (ga === 0) within = b.percent - a.percent || a.open - b.open
+      else if (ga === 1) within = b.done - a.done
+      else if (ga === 2) within = b.total - a.total
+    }
+    return (
+      ga - gb ||
+      within ||
       (a.repo < b.repo ? -1 : a.repo > b.repo ? 1 : 0) ||
-      a.number - b.number,
-  )
+      a.number - b.number
+    )
+  })
 }
 
 export interface UnassignedRow {

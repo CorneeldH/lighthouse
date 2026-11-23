@@ -13,6 +13,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/CorneeldH/lighthouse/internal/levels"
 	"github.com/CorneeldH/lighthouse/internal/manifest"
 	"github.com/CorneeldH/lighthouse/internal/packs"
 )
@@ -210,6 +211,18 @@ func sortedNames[V any](m map[string]V) []string {
 	return names
 }
 
+// forgeRequires keeps the requirements that hold for kind: those without a forge, those
+// for kind, and all of them when kind is unknown ("").
+func forgeRequires(reqs []packs.Requirement, kind string) []packs.Requirement {
+	var out []packs.Requirement
+	for _, r := range reqs {
+		if r.Forge == "" || kind == "" || r.Forge == kind {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
 // mergeRequires joins the requirements of several packages per tool, so a tool that
 // two packages need gives one report with the units of both.
 func mergeRequires(reqs []packs.Requirement) []packs.Requirement {
@@ -229,5 +242,27 @@ func mergeRequires(reqs []packs.Requirement) []packs.Requirement {
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Tool < out[j].Tool })
+	return out
+}
+
+// levelRequires drops from every requirement the units whose component is off, and the
+// requirement itself once no unit is left. A NeededBy entry names its component by its
+// first word; text after it ("shell-lint-check (download of the pinned binary)") only
+// decorates. The name is a hook or a skill, so both stands are looked up.
+func levelRequires(reqs []packs.Requirement, r levels.Resolved) []packs.Requirement {
+	var out []packs.Requirement
+	for _, req := range reqs {
+		var keep []string
+		for _, by := range req.NeededBy {
+			word, _, _ := strings.Cut(by, " ")
+			if r.Stand(word) != levels.StandOff && r.Stand("skill:"+word) != levels.StandOff {
+				keep = append(keep, by)
+			}
+		}
+		if len(keep) > 0 {
+			req.NeededBy = keep
+			out = append(out, req)
+		}
+	}
 	return out
 }

@@ -101,6 +101,10 @@ func hostTOMLFor(t *testing.T) string {
 func yes(o *Options)     { o.Yes = true }
 func upgrade(o *Options) { o.Upgrade = true }
 
+// strict installs everything: a first init picks light, which drops the hooks of the
+// language packages.
+func strict(o *Options) { o.Level = "strict" }
+
 func read(t *testing.T, root, rel string) string {
 	t.Helper()
 	b, err := os.ReadFile(filepath.Join(root, rel))
@@ -499,7 +503,7 @@ var oldCoreLib = map[string]string{
 
 func TestUpgradeRemovesCoreLib(t *testing.T) {
 	root := newRepo(t)
-	if r := run(t, root, "", all(yes, realPacks)); r.code != 0 {
+	if r := run(t, root, "", all(yes, strict, realPacks)); r.code != 0 {
 		t.Fatalf("init: rc %d\n%s", r.code, r.err)
 	}
 	seedCoreLib(t, root, oldCoreLib)
@@ -522,7 +526,7 @@ func TestUpgradeRemovesCoreLib(t *testing.T) {
 // With --force a locally changed file under the retired lib still stays, and is still reported.
 func TestUpgradeForceKeepsModifiedCoreLib(t *testing.T) {
 	root := newRepo(t)
-	if r := run(t, root, "", all(yes, realPacks)); r.code != 0 {
+	if r := run(t, root, "", all(yes, strict, realPacks)); r.code != 0 {
 		t.Fatalf("init: rc %d\n%s", r.code, r.err)
 	}
 	seedCoreLib(t, root, oldCoreLib)
@@ -542,7 +546,7 @@ func TestUpgradeForceKeepsModifiedCoreLib(t *testing.T) {
 
 func TestUpgradeKeepsModifiedCoreLib(t *testing.T) {
 	root := newRepo(t)
-	if r := run(t, root, "", all(yes, realPacks)); r.code != 0 {
+	if r := run(t, root, "", all(yes, strict, realPacks)); r.code != 0 {
 		t.Fatalf("init: rc %d\n%s", r.code, r.err)
 	}
 	seedCoreLib(t, root, oldCoreLib)
@@ -575,7 +579,7 @@ func TestUpgradeKeepsModifiedCoreLib(t *testing.T) {
 func TestUpgradeCleanupKeepsProjectFiles(t *testing.T) {
 	root := newRepo(t)
 	write(t, root, "x.sh", "#!/bin/sh\necho x\n") // a shell script makes the pack install shellcheck-repo.sh
-	if r := run(t, root, "", all(yes, realPacks)); r.code != 0 {
+	if r := run(t, root, "", all(yes, strict, realPacks)); r.code != 0 {
 		t.Fatalf("init: rc %d\n%s", r.code, r.err)
 	}
 	seedCoreLib(t, root, oldCoreLib)
@@ -810,6 +814,43 @@ func TestReportsMissingDeps(t *testing.T) {
 	}
 }
 
+func TestInitReportsGhOnlyOnGitHub(t *testing.T) {
+	cases := []struct {
+		name, config string
+		wantGh       bool
+	}{
+		{"github", "[forge]\nkind = \"github\"\nrepo = \"o/r\"\n", true},
+		{"gitlab", "[forge]\nkind = \"gitlab\"\nrepo = \"o/r\"\n", false},
+		{"unknown", "", true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			root := newRepo(t)
+			if c.config != "" {
+				if err := os.WriteFile(filepath.Join(root, "lighthouse.toml"), []byte(c.config), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			packsFS := testPacks()
+			packsFS["core/requires.toml"] = file("git = [\"a\"]\n[forge.github]\ngh = [\"fix-pr\"]\n")
+			r := run(t, root, "", func(o *Options) {
+				o.Yes = true
+				o.Packs = packsFS
+				o.Deps = deps.Checker{
+					LookPath: func(string) (string, error) { return "", errors.New("no") },
+					Run:      func(string, ...string) error { return nil },
+				}
+			})
+			if got := strings.Contains(r.err, "missing dependency: gh"); got != c.wantGh {
+				t.Fatalf("gh reported = %v, want %v; err %q", got, c.wantGh, r.err)
+			}
+			if !strings.Contains(r.err, "missing dependency: git") {
+				t.Fatalf("git not reported: %q", r.err)
+			}
+		})
+	}
+}
+
 func TestNoForgeWithoutGitHubRemote(t *testing.T) {
 	root := newRepo(t)
 	r := run(t, root, "", yes)
@@ -939,7 +980,7 @@ func TestInitProposesRealExpo(t *testing.T) {
 func TestInitProposesRealPython(t *testing.T) {
 	root := newRepo(t)
 	write(t, root, "pyproject.toml", "[project]\nname = \"x\"\n")
-	r := run(t, root, "", func(o *Options) { o.Yes = true; o.Packs = nil })
+	r := run(t, root, "", func(o *Options) { o.Yes = true; o.Packs = nil; o.Level = "strict" })
 	if r.code != 0 || !strings.HasPrefix(r.out, "Packages: core, python (found pyproject.toml)\n") {
 		t.Fatalf("rc %d\nout:\n%s\nerr:\n%s", r.code, r.out, r.err)
 	}
@@ -956,7 +997,7 @@ func TestInitProposesRealPython(t *testing.T) {
 			t.Fatalf("%s not installed", rel)
 		}
 	}
-	if !strings.Contains(read(t, root, "AGENTS.md"), "/lighthouse-python-standard") {
+	if !strings.Contains(read(t, root, "AGENTS.md"), "## Lighthouse: python") {
 		t.Fatal("instruction block of python missing in AGENTS.md")
 	}
 }
@@ -980,10 +1021,31 @@ func TestEmptyCommandStaysOff(t *testing.T) {
 	}
 }
 
+func TestInitProposesRealGo(t *testing.T) {
+	root := newRepo(t)
+	write(t, root, "go.mod", "module example.com/m\n\ngo 1.26\n")
+	r := run(t, root, "", func(o *Options) { o.Yes = true; o.Packs = nil; o.Level = "strict" })
+	if r.code != 0 || !strings.HasPrefix(r.out, "Packages: core, go (found go.mod)\n") {
+		t.Fatalf("rc %d\nout:\n%s\nerr:\n%s", r.code, r.out, r.err)
+	}
+	if !exists(root, ".claude/hooks/lighthouse/go-lint-gate.sh") {
+		t.Fatal("go-lint-gate.sh not installed")
+	}
+}
+
+func TestInitProposesRealShellBash(t *testing.T) {
+	root := newRepo(t)
+	write(t, root, "x.bash", "#!/bin/bash\necho x\n")
+	r := run(t, root, "", func(o *Options) { o.Yes = true; o.Packs = nil })
+	if r.code != 0 || !strings.HasPrefix(r.out, "Packages: core, shell (found x.bash)\n") {
+		t.Fatalf("rc %d\nout:\n%s\nerr:\n%s", r.code, r.out, r.err)
+	}
+}
+
 func TestInitProposesRealShell(t *testing.T) {
 	root := newRepo(t)
 	write(t, root, "x.sh", "#!/bin/sh\necho x\n")
-	r := run(t, root, "", func(o *Options) { o.Yes = true; o.Packs = nil })
+	r := run(t, root, "", func(o *Options) { o.Yes = true; o.Packs = nil; o.Level = "strict" })
 	if r.code != 0 || !strings.HasPrefix(r.out, "Packages: core, shell (found x.sh)\n") {
 		t.Fatalf("rc %d\nout:\n%s\nerr:\n%s", r.code, r.out, r.err)
 	}
@@ -1583,5 +1645,217 @@ func TestRemoveEmptyParents(t *testing.T) {
 	}
 	if !exists(root, ".lighthouse/manifest.toml") {
 		t.Error(".lighthouse was removed")
+	}
+}
+
+// A GitLab repo does not run the GitHub workflows, so init writes none there.
+func TestInitWritesWorkflowsOnlyOnGitHub(t *testing.T) {
+	cases := []struct {
+		name, config string
+		want         bool
+	}{
+		{"github", "[forge]\nkind = \"github\"\nrepo = \"o/r\"\n", true},
+		{"gitlab", "[forge]\nkind = \"gitlab\"\nrepo = \"o/r\"\n", false},
+		{"unknown", "", true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			root := newRepo(t)
+			if c.config != "" {
+				write(t, root, "lighthouse.toml", c.config)
+			}
+			mods := all(withWorkflow("runs-on: @@ci.runs_on@@\n"), stubLookup(map[string]string{"ci.runs_on": "ubuntu-latest"}))
+			if r := run(t, root, "", all(yes, mods)); r.code != 0 {
+				t.Fatalf("rc %d\n%s", r.code, r.err)
+			}
+			if got := exists(root, ".github/workflows/lighthouse-x.yml"); got != c.want {
+				t.Fatalf("workflow written = %v, want %v", got, c.want)
+			}
+		})
+	}
+}
+
+func TestInitSetsResponseLanguage(t *testing.T) {
+	cases := []struct {
+		name, toml, settings string
+		wantSetting          string // the "language" line in settings.json, or "" for none
+		wantWarn             bool
+	}{
+		{"nl sets dutch", "[project]\nlanguage = \"nl\"\n", "", `"language": "dutch"`, false},
+		{"en sets nothing", "[project]\nlanguage = \"en\"\n", "", "", false},
+		{"no language key sets nothing", "[forge]\nkind = \"github\"\n", "", "", false},
+		{"no lighthouse.toml sets nothing", "", "", "", false},
+		{"own value is kept", "[project]\nlanguage = \"nl\"\n", "{\n  \"language\": \"english\"\n}\n", `"language": "english"`, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			root := newRepo(t)
+			if c.toml != "" {
+				write(t, root, "lighthouse.toml", c.toml)
+			}
+			if c.settings != "" {
+				write(t, root, ".claude/settings.json", c.settings)
+			}
+			r := run(t, root, "", yes)
+			if r.code != 0 {
+				t.Fatalf("rc %d\n%s%s", r.code, r.out, r.err)
+			}
+			s := read(t, root, ".claude/settings.json")
+			switch {
+			case c.wantSetting == "" && strings.Contains(s, `"language"`):
+				t.Fatalf("settings has a language:\n%s", s)
+			case c.wantSetting != "" && strings.Count(s, `"language"`) != 1:
+				t.Fatalf("settings: want one language line %s:\n%s", c.wantSetting, s)
+			case c.wantSetting != "" && !strings.Contains(s, c.wantSetting):
+				t.Fatalf("settings: want %s:\n%s", c.wantSetting, s)
+			}
+			warned := strings.Contains(r.err, `.claude/settings.json has language "english"`)
+			if warned != c.wantWarn {
+				t.Fatalf("warning = %v, want %v; err %q", warned, c.wantWarn, r.err)
+			}
+			if u := run(t, root, "", upgrade); u.code != 0 || u.out != "No changes.\n" {
+				t.Fatalf("upgrade: rc %d\n%s\n%s", u.code, u.out, u.err)
+			}
+		})
+	}
+}
+
+func TestUpgradeRepairsCRLFHookWithoutForce(t *testing.T) {
+	root := newRepo(t)
+	initYes(t, root)
+	rels := []string{".claude/hooks/lighthouse/g.sh", ".lighthouse/scripts/a.py"}
+	for _, rel := range rels {
+		write(t, root, rel, strings.ReplaceAll(read(t, root, rel), "\n", "\r\n"))
+	}
+	r := run(t, root, "", func(o *Options) { o.Upgrade = true; o.Yes = true })
+	if r.code != 0 {
+		t.Fatalf("rc %d\n%s%s", r.code, r.out, r.err)
+	}
+	for _, rel := range rels {
+		if strings.Contains(read(t, root, rel), "\r") {
+			t.Errorf("%s still has CR", rel)
+		}
+		if !strings.Contains(r.out, rel) {
+			t.Errorf("diff does not name %s:\n%s", rel, r.out)
+		}
+	}
+}
+
+func TestInitAdoptsCRLFFileWithoutManifest(t *testing.T) {
+	root := newRepo(t)
+	write(t, root, ".claude/hooks/lighthouse/g.sh", "#!/bin/bash\r\n# lighthouse: core@dev\r\necho g\r\n")
+	initYes(t, root)
+	if got := read(t, root, ".claude/hooks/lighthouse/g.sh"); got != "#!/bin/bash\n# lighthouse: core@dev\necho g\n" {
+		t.Fatalf("g.sh = %q", got)
+	}
+}
+
+// Classification: cli-output. Fails when init skips the hook check after writing, or when the
+// check's own stderr output ends up on stdout or in the exit code.
+func TestCheckHooksRunsAfterWrite(t *testing.T) {
+	root := newRepo(t)
+	var calls int
+	var gotRoot string
+	r := run(t, root, "", func(o *Options) {
+		yes(o)
+		o.CheckHooks = func(r string, errOut io.Writer) { calls++; gotRoot = r; _, _ = io.WriteString(errOut, "HOOKS\n") }
+	})
+	if r.code != 0 || calls != 1 || gotRoot == "" || !strings.Contains(r.err, "HOOKS") || strings.Contains(r.out, "HOOKS") {
+		t.Errorf("rc %d, %d calls, root %q, out %q, err %q", r.code, calls, gotRoot, r.out, r.err)
+	}
+}
+
+// Classification: cli-output. Fails when the check no longer runs on `No changes.` or its
+// stderr output leaks into stdout, which must stay byte-equal.
+func TestCheckHooksRunsOnNoChanges(t *testing.T) {
+	root := newRepo(t)
+	initYes(t, root)
+	var calls int
+	r := run(t, root, "", func(o *Options) {
+		yes(o)
+		upgrade(o)
+		o.CheckHooks = func(_ string, errOut io.Writer) { calls++; _, _ = io.WriteString(errOut, "HOOKS\n") }
+	})
+	if r.code != 0 || calls != 1 || r.out != "No changes.\n" {
+		t.Errorf("rc %d, %d calls, out %q, err %q", r.code, calls, r.out, r.err)
+	}
+}
+
+// Classification: cli-output. Fails when the check runs although the user declined the diff.
+func TestCheckHooksSkippedWhenDeclined(t *testing.T) {
+	root := newRepo(t)
+	var calls int
+	r := run(t, root, "n\n", func(o *Options) {
+		o.CheckHooks = func(string, io.Writer) { calls++ }
+	})
+	if r.code == 0 || calls != 0 {
+		t.Errorf("rc %d, %d calls; want a declined init and no check", r.code, calls)
+	}
+}
+
+// Red when init stops calling InSyncFolder on the repo: the repo sits in a OneDrive folder, and
+// the warning must name the provider and [worktree] root, without failing the run.
+func TestWarnsRepoInSyncFolder(t *testing.T) {
+	base := t.TempDir()
+	dir := filepath.Join(base, "OneDrive - Bedrijf", "repo")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, dir, "init", "-q", "-b", "main")
+	dir, _ = filepath.EvalSymlinks(dir)
+	r := run(t, dir, "", yes)
+	if r.code != 0 {
+		t.Fatalf("code %d, stderr: %s", r.code, r.err)
+	}
+	if !strings.Contains(r.err, "warning:") || !strings.Contains(r.err, "OneDrive") || !strings.Contains(r.err, "[worktree] root") {
+		t.Errorf("no sync warning naming OneDrive and [worktree] root:\n%s", r.err)
+	}
+}
+
+// Red when init stops resolving [worktree] root: the repo is outside any sync folder, the
+// configured absolute root is inside a Dropbox folder.
+func TestWarnsWorktreeRootInSyncFolder(t *testing.T) {
+	root := newRepo(t)
+	wt := filepath.Join(t.TempDir(), "Dropbox", "wt")
+	if err := os.WriteFile(filepath.Join(root, "lighthouse.toml"), []byte("[worktree]\nroot = '"+wt+"'\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r := run(t, root, "", yes)
+	if r.code != 0 {
+		t.Fatalf("code %d, stderr: %s", r.code, r.err)
+	}
+	if !strings.Contains(r.err, "Dropbox") || !strings.Contains(r.err, "[worktree] root") {
+		t.Errorf("no warning for the worktree root:\n%s", r.err)
+	}
+}
+
+// Red when the warning appears without a sync folder.
+func TestNoSyncWarningOutsideSyncFolder(t *testing.T) {
+	root := newRepo(t)
+	r := run(t, root, "", yes)
+	if r.code != 0 || strings.Contains(r.err, "sync folder") {
+		t.Errorf("code %d, unexpected sync warning:\n%s", r.code, r.err)
+	}
+}
+
+// Red when init derives the repo from --show-toplevel instead of worktreeroot.MainCheckout: the
+// linked worktree lies outside the sync folder, its main checkout inside OneDrive - Bedrijf.
+func TestWarnsMainCheckoutInSyncFolderFromLinkedWorktree(t *testing.T) {
+	base := t.TempDir()
+	main := filepath.Join(base, "OneDrive - Bedrijf", "repo")
+	if err := os.MkdirAll(main, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, main, "init", "-q", "-b", "main")
+	gitIn(t, main, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "init")
+	linked := filepath.Join(base, "linked")
+	gitIn(t, main, "worktree", "add", "-q", "-b", "extra", linked)
+	linked, _ = filepath.EvalSymlinks(linked)
+	r := run(t, linked, "", yes)
+	if r.code != 0 {
+		t.Fatalf("code %d, stderr: %s", r.code, r.err)
+	}
+	if !strings.Contains(r.err, "OneDrive") {
+		t.Errorf("no warning for the main checkout in OneDrive:\n%s", r.err)
 	}
 }

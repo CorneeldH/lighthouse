@@ -251,3 +251,96 @@ func TestLabelTables(t *testing.T) {
 		}
 	}
 }
+
+// Fails when SetTopLevel appends at the end of the file instead of before the first
+// table header: the key would then land inside the last table.
+func TestSetTopLevelInsertsBeforeFirstTable(t *testing.T) {
+	out, err := SetTopLevel([]byte("[project]\nlanguage = \"nl\"\n"), "level", `"light"`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Level   string
+		Project struct{ Language string }
+	}
+	if _, err := toml.Decode(string(out), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Level != "light" || got.Project.Language != "nl" {
+		t.Errorf("got %+v from:\n%s", got, out)
+	}
+	if !strings.HasPrefix(string(out), "level = \"light\"\n") {
+		t.Errorf("key not before the first table:\n%s", out)
+	}
+}
+
+// Fails when the replace drops the trailing comment or the surrounding lines.
+func TestSetTopLevelReplacesAndKeepsComments(t *testing.T) {
+	in := "# head\nlevel = \"light\" # why\n\n[project]\nlanguage = \"nl\"\n"
+	out, err := SetTopLevel([]byte(in), "level", `"full"`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "# head\nlevel = \"full\" # why\n\n[project]\nlanguage = \"nl\"\n"
+	if string(out) != want {
+		t.Errorf("got:\n%s\nwant:\n%s", out, want)
+	}
+}
+
+// Fails when the insert assumes a header exists (no tables) or forgets the final newline.
+func TestSetTopLevelFileWithoutTables(t *testing.T) {
+	for in, want := range map[string]string{
+		"":                "level = \"light\"\n",
+		"a = 1":           "a = 1\nlevel = \"light\"\n",
+		"# only\na = 1\n": "# only\na = 1\nlevel = \"light\"\n",
+	} {
+		out, err := SetTopLevel([]byte(in), "level", `"light"`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(out) != want {
+			t.Errorf("in %q: got %q, want %q", in, out, want)
+		}
+	}
+}
+
+// Fails when the scan matches a key line anywhere instead of only before the first header.
+func TestSetTopLevelIgnoresSameKeyInsideATable(t *testing.T) {
+	in := "[forge]\nlevel = \"x\"\n"
+	out, err := SetTopLevel([]byte(in), "level", `"light"`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "level = \"light\"\n\n[forge]\nlevel = \"x\"\n"
+	if string(out) != want {
+		t.Errorf("got:\n%s\nwant:\n%s", out, want)
+	}
+}
+
+// Fails when invalid input is accepted instead of reported.
+func TestSetTopLevelInvalidTOML(t *testing.T) {
+	if _, err := SetTopLevel([]byte("[broken"), "level", `"light"`); err == nil {
+		t.Error("want an error for invalid TOML")
+	}
+	if _, err := SetTopLevel([]byte("a = 1\n"), "level", `"unterminated`); err == nil {
+		t.Error("want an error for an invalid value")
+	}
+}
+
+// Fails when SetTopLevel puts a new key above a file's leading comment block when the top
+// section holds only comments, instead of after that block.
+func TestSetTopLevelAfterLeadingComments(t *testing.T) {
+	for name, c := range map[string][2]string{
+		"blank then table":   {"# Lighthouse\n# config\n\n[project]\nlanguage = \"nl\"\n", "# Lighthouse\n# config\nlevel = \"light\"\n\n[project]\nlanguage = \"nl\"\n"},
+		"comments only":      {"# only\n", "# only\nlevel = \"light\"\n"},
+		"comment on a table": {"# project settings\n[project]\nlanguage = \"nl\"\n", "level = \"light\"\n\n# project settings\n[project]\nlanguage = \"nl\"\n"},
+	} {
+		out, err := SetTopLevel([]byte(c[0]), "level", `"light"`)
+		if err != nil {
+			t.Fatal(name, err)
+		}
+		if string(out) != c[1] {
+			t.Errorf("%s: got:\n%s\nwant:\n%s", name, out, c[1])
+		}
+	}
+}

@@ -1,5 +1,5 @@
 # Provenance of every file in pack/ (spec, Opdeling (b) and (d)). Every file has exactly
-# one entry (tests/test_sources.py), with exactly one of:
+# one entry (internal/repopins/sources_test.go), with exactly one of:
 #   new = true       written for lighthouse
 #   pin = "<key>"    the file follows a pin in lighthouse.toml
 #   source_repo (owner/repo), source_sha (40 hex), source_path (one string)
@@ -39,6 +39,18 @@ new = true
 
 [[file]]
 path = "pack/core/templates/labels.md"
+new = true
+
+[[file]]
+path = "pack/core/templates/strategy.md"
+new = true
+
+[[file]]
+path = "pack/core/templates/tenets.md"
+new = true
+
+[[file]]
+path = "pack/core/templates/area.md"
 new = true
 
 [[file]]
@@ -154,6 +166,10 @@ path = "pack/core/skills/audit-agent-config/SKILL.md"
 new = true
 
 [[file]]
+path = "pack/core/skills/map-planned/SKILL.md"
+new = true
+
+[[file]]
 path = "pack/core/skills/audit-worktrees/SKILL.md"
 new = true
 
@@ -207,6 +223,10 @@ new = true
 
 [[file]]
 path = "pack/python/hooks/ty-gate.sh"
+new = true
+
+[[file]]
+path = "pack/python/hooks/python-imports-gate.sh"
 new = true
 
 [[file]]
@@ -294,11 +314,11 @@ path = "pack/shell/detect.toml"
 new = true
 
 [[file]]
-path = "pack/shell/instructions/AGENTS.md"
+path = "pack/go/hooks/go-lint-gate.sh"
 new = true
 
 [[file]]
-path = "pack/go/hooks/go-lint-gate.sh"
+path = "pack/go/hooks/go-imports-gate.sh"
 new = true
 
 [[file]]
@@ -339,4 +359,40 @@ new = true
 
 [[file]]
 path = "pack/node/detect.toml"
+new = true
+
+[[file]]
+path = "pack/node/hooks/node-imports-gate.sh"
+new = true
+
+[[file]]
+path = "pack/node/hooks/hooks.json"
+new = true
+
+[[file]]
+path = "pack/node/instructions/AGENTS.md"
+new = true
+
+[[file]]
+path = "pack/core/levels.toml"
+new = true
+
+[[file]]
+path = "pack/expo/levels.toml"
+new = true
+
+[[file]]
+path = "pack/go/levels.toml"
+new = true
+
+[[file]]
+path = "pack/node/levels.toml"
+new = true
+
+[[file]]
+path = "pack/python/levels.toml"
+new = true
+
+[[file]]
+path = "pack/shell/levels.toml"
 new = true

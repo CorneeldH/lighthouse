@@ -42,6 +42,7 @@ type Refresher[T any] struct {
 	mu  sync.RWMutex
 	val T
 	err error
+	gen uint64 // bumped by Modify; a build that started before a bump is discarded
 }
 
 // NewRefresher returns a Refresher that has not built anything yet.
@@ -69,6 +70,26 @@ func (r *Refresher[T]) Latest(ctx context.Context) (T, error) {
 	return r.val, r.err
 }
 
+// Modify applies fn to the last built value under the lock, so a change that is already
+// known shows at once instead of after the next build. It does nothing and returns false
+// when there is no value yet or the last build failed. A build that was running during
+// the call is discarded, as it may predate the change.
+func (r *Refresher[T]) Modify(fn func(T) T) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	select {
+	case <-r.ready:
+	default:
+		return false
+	}
+	if r.err != nil {
+		return false
+	}
+	r.val = fn(r.val)
+	r.gen++
+	return true
+}
+
 // Run builds now and then on the interval (sooner after a failure) until ctx is done.
 func (r *Refresher[T]) Run(ctx context.Context) {
 	for {
@@ -91,15 +112,23 @@ func (r *Refresher[T]) Run(ctx context.Context) {
 }
 
 // refresh does exactly one build and stores its result. It reports whether the build
-// succeeded. A build cut short because ctx ended stores nothing.
+// succeeded. A build cut short because ctx ended stores nothing, and neither does one
+// overtaken by Modify; that counts as success so the normal interval follows.
 func (r *Refresher[T]) refresh(ctx context.Context) bool {
 	bctx, cancel := context.WithTimeout(ctx, r.timeout)
 	defer cancel()
+	r.mu.RLock()
+	gen := r.gen
+	r.mu.RUnlock()
 	val, err := r.build(bctx)
 	if ctx.Err() != nil {
 		return false
 	}
 	r.mu.Lock()
+	if r.gen != gen {
+		r.mu.Unlock()
+		return true
+	}
 	r.val, r.err = val, err
 	r.mu.Unlock()
 	r.readyOnce.Do(func() { close(r.ready) })

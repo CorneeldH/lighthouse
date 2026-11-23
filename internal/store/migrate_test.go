@@ -78,8 +78,8 @@ func TestMigrateTwice(t *testing.T) {
 	if !reflect.DeepEqual(schema1, schema2) || v1 != v2 {
 		t.Errorf("schema changed on second open:\n%v (v%d)\n%v (v%d)", schema1, v1, schema2, v2)
 	}
-	if v2 != 9 {
-		t.Errorf("user_version = %d, want 9", v2)
+	if v2 != 11 {
+		t.Errorf("user_version = %d, want 11", v2)
 	}
 	rows, err := s.DB.Query(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name`)
 	if err != nil {
@@ -94,7 +94,7 @@ func TestMigrateTwice(t *testing.T) {
 		tables = append(tables, name)
 	}
 	_ = rows.Close()
-	if want := []string{"action_failures", "meta", "runs", "schedule_slots", "tick_state"}; !reflect.DeepEqual(tables, want) {
+	if want := []string{"action_failures", "findings", "meta", "recoveries", "recovery_items", "runs", "schedule_slots", "sessions", "setups", "tick_state", "trajectories", "usage"}; !reflect.DeepEqual(tables, want) {
 		t.Errorf("tables = %v, want %v", tables, want)
 	}
 	// column -> primary key position (0 = not part of the key)
@@ -640,4 +640,335 @@ func TestMigrationPushedDefault(t *testing.T) {
 	if pushed != "" {
 		t.Errorf("pushed_sha = %q, want the empty string", pushed)
 	}
+}
+
+var upTo9 = append(append([]string{}, upTo7...), "0008_runs_schedule.sql", "0009_runs_pushed.sql")
+
+// 0010 links every existing run with an issue to one trajectory per (repo, issue), keeps every
+// run row, and leaves a scheduled run without a trajectory.
+func TestMigrate0010KeepsRuns(t *testing.T) {
+	ctx := context.Background()
+	db := bareDB(t)
+	if err := migrate(ctx, db, embeddedUpTo(t, upTo9...)); err != nil {
+		t.Fatalf("migrate to 9: %v", err)
+	}
+	for _, q := range []string{
+		`INSERT INTO runs (id, repo, issue, session_id, mode, trigger, trigger_key, attempt, command, started_at, ended_at, outcome)
+			VALUES (41, 'o/r', 7, 's1', 'start', 'handoff', 'start:7', 1, 'c', '2026-01-02T00:00:00Z', '2026-01-02T01:00:00Z', 'handoff')`,
+		`INSERT INTO runs (id, repo, issue, session_id, mode, trigger, trigger_key, attempt, command, started_at)
+			VALUES (42, 'o/r', 7, 's2', 'resume', 'answer', 'answer:7:x', 1, 'c', '2026-01-01T00:00:00Z')`,
+		`INSERT INTO runs (id, repo, schedule, session_id, mode, trigger, trigger_key, attempt, command, started_at)
+			VALUES (43, 'o/r', 'nightly', 's3', 'start', 'scheduled', 'sched:1', 1, 'c', '2026-01-03T00:00:00Z')`,
+	} {
+		if _, err := db.Exec(q); err != nil {
+			t.Fatalf("insert at v9: %v", err)
+		}
+	}
+	if err := migrate(ctx, db, embeddedUpTo(t, append(append([]string{}, upTo9...), "0010_telemetry.sql")...)); err != nil {
+		t.Fatalf("migrate to 10: %v", err)
+	}
+	rows, err := db.Query(`SELECT r.id, r.trigger_key, r.session_id, coalesce(t.repo, '-'), coalesce(t.issue, 0),
+		coalesce(t.created_at, '-'), r.assignment, r.trajectory_id IS NULL FROM runs r
+		LEFT JOIN trajectories t ON t.id = r.trajectory_id ORDER BY r.id`)
+	if err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var got [][]string
+	for rows.Next() {
+		r := make([]string, 8)
+		dest := make([]any, len(r))
+		for i := range r {
+			dest[i] = &r[i]
+		}
+		if err := rows.Scan(dest...); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		got = append(got, r)
+	}
+	want := [][]string{
+		{"41", "start:7", "s1", "o/r", "7", "2026-01-01T00:00:00Z", "standard", "0"},
+		{"42", "answer:7:x", "s2", "o/r", "7", "2026-01-01T00:00:00Z", "standard", "0"},
+		{"43", "sched:1", "s3", "-", "0", "-", "standard", "1"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("runs after 0010 =\n%q\nwant\n%q", got, want)
+	}
+	var n int
+	if err := db.QueryRow(`SELECT count(*) FROM trajectories`).Scan(&n); err != nil || n != 1 {
+		t.Errorf("trajectories = %d, %v; want 1", n, err)
+	}
+}
+
+const telemetryRun = `INSERT INTO runs (id, repo, issue, session_id, mode, trigger, trigger_key, attempt, command, started_at)
+	VALUES (1, 'o/r', 7, 's', 'start', 'handoff', 'start:7', 1, 'c', 't0')`
+
+func openTelemetryDB(t *testing.T) *sql.DB {
+	t.Helper()
+	s, err := OpenShared(context.Background(), filepath.Join(t.TempDir(), "lighthouse.db"))
+	if err != nil {
+		t.Fatalf("OpenShared: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	if _, err := s.DB.Exec(`INSERT INTO trajectories (id, repo, issue, created_at) VALUES (1, 'o/r', 7, 't0')`); err != nil {
+		t.Fatalf("insert trajectory: %v", err)
+	}
+	if _, err := s.DB.Exec(telemetryRun); err != nil {
+		t.Fatalf("insert run: %v", err)
+	}
+	return s.DB
+}
+
+func TestTelemetryConstraints(t *testing.T) {
+	const sess = `INSERT INTO sessions (source, source_id, recorded_at, repo, harness, session_key, transcript_path, started_at,
+		trajectory_id, link_basis, unlinked_reason, assignment) VALUES ('w', 'k%d', 'r', 'o/r', 'claude-code', 'k%d', '/p', 't0', %s)`
+	cases := []struct {
+		name string
+		sql  string
+		ok   bool
+	}{
+		{"runs assignment foo", `UPDATE runs SET assignment = 'foo'`, false},
+		{"runs assignment shadow", `UPDATE runs SET assignment = 'shadow:plan_review'`, true},
+		{"runs assignment variant", `UPDATE runs SET assignment = 'variant:model=opus'`, true},
+		{"runs assignment bare shadow", `UPDATE runs SET assignment = 'shadow:'`, false},
+		{"sessions assignment foo", fmt.Sprintf(sess, 1, 1, `1, 'branch', NULL, 'foo'`), false},
+		{"sessions assignment variant", fmt.Sprintf(sess, 2, 2, `1, 'branch', NULL, 'variant:model=opus'`), true},
+		{"sessions linked", fmt.Sprintf(sess, 3, 3, `1, 'transcript', NULL, 'standard'`), true},
+		{"sessions unlinked", fmt.Sprintf(sess, 4, 4, `NULL, NULL, 'main_only', 'standard'`), true},
+		{"sessions trajectory and reason", fmt.Sprintf(sess, 5, 5, `1, 'branch', 'main_only', 'standard'`), false},
+		{"sessions neither trajectory nor reason", fmt.Sprintf(sess, 6, 6, `NULL, NULL, NULL, 'standard'`), false},
+		{"sessions trajectory without link_basis", fmt.Sprintf(sess, 7, 7, `1, NULL, NULL, 'standard'`), false},
+		{"sessions link_basis without trajectory", fmt.Sprintf(sess, 8, 8, `NULL, 'branch', 'main_only', 'standard'`), false},
+		{"sessions bad reason", fmt.Sprintf(sess, 9, 9, `NULL, NULL, 'bogus', 'standard'`), false},
+		{"setups run only", `INSERT INTO setups (source, source_id, recorded_at, run_id) VALUES ('w', 'a', 'r', 1)`, true},
+		{"setups neither", `INSERT INTO setups (source, source_id, recorded_at) VALUES ('w', 'b', 'r')`, false},
+		{"usage cost without kind", `INSERT INTO usage (source, source_id, recorded_at, run_id, model, cost) VALUES ('w', 'a', 'r', 1, 'm', 1.5)`, false},
+		{"usage kind without cost", `INSERT INTO usage (source, source_id, recorded_at, run_id, model, cost_kind) VALUES ('w', 'b', 'r', 1, 'm', 'actual')`, false},
+		{"usage cost and kind", `INSERT INTO usage (source, source_id, recorded_at, run_id, model, cost, cost_kind) VALUES ('w', 'c', 'r', 1, 'm', 1.5, 'actual')`, true},
+		{"usage neither run nor session", `INSERT INTO usage (source, source_id, recorded_at, model) VALUES ('w', 'd', 'r', 'm')`, false},
+		{"findings decision maybe", `INSERT INTO findings (source, source_id, recorded_at, trajectory_id, component, finding_key, record_path, record_sum, decision)
+			VALUES ('w', 'a', 'r', 1, 'plan_review', 'r1-f1', '/p', 'x', 'maybe')`, false},
+		{"findings decision adopted", `INSERT INTO findings (source, source_id, recorded_at, trajectory_id, component, finding_key, record_path, record_sum, decision)
+			VALUES ('w', 'b', 'r', 1, 'plan_review', 'r1-f1', '/p', 'x', 'adopted')`, true},
+		{"findings no decision", `INSERT INTO findings (source, source_id, recorded_at, trajectory_id, component, finding_key, record_path, record_sum)
+			VALUES ('w', 'c', 'r', 1, 'plan_review', 'r1-f1', '/p', 'x')`, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			db := openTelemetryDB(t)
+			_, err := db.Exec(tc.sql)
+			if tc.ok && err != nil {
+				t.Errorf("rejected: %v", err)
+			}
+			if !tc.ok && err == nil {
+				t.Error("accepted, want a constraint error")
+			}
+		})
+	}
+
+	t.Run("setups run and session", func(t *testing.T) {
+		db := openTelemetryDB(t)
+		if _, err := db.Exec(fmt.Sprintf(sess, 1, 1, `1, 'branch', NULL, 'standard'`)); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(`INSERT INTO setups (source, source_id, recorded_at, run_id, session_id) VALUES ('w', 'a', 'r', 1, 1)`); err == nil {
+			t.Error("setup with run_id and session_id accepted")
+		}
+	})
+	t.Run("findings run and session", func(t *testing.T) {
+		db := openTelemetryDB(t)
+		if _, err := db.Exec(fmt.Sprintf(sess, 1, 1, `1, 'branch', NULL, 'standard'`)); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(`INSERT INTO findings (source, source_id, recorded_at, trajectory_id, run_id, session_id, component, finding_key, record_path, record_sum)
+			VALUES ('w', 'a', 'r', 1, 1, 1, 'plan_review', 'r1-f1', '/p', 'x')`); err == nil {
+			t.Error("finding with run_id and session_id accepted")
+		}
+	})
+}
+
+func TestMigrate0010ForeignKeysIntact(t *testing.T) {
+	db := openTelemetryDB(t)
+	if _, err := db.Exec(`INSERT INTO setups (source, source_id, recorded_at, run_id) VALUES ('w', 'a', 'r', 1)`); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := db.Query(`PRAGMA foreign_key_check`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rows.Close() }()
+	if rows.Next() {
+		t.Error("foreign_key_check reports a violation")
+	}
+	var n int
+	if err := db.QueryRow(`SELECT count(*) FROM setups WHERE run_id = 1`).Scan(&n); err != nil || n != 1 {
+		t.Errorf("setups of run 1 = %d, %v; want 1", n, err)
+	}
+	if _, err := db.Exec(`DELETE FROM runs WHERE id = 1`); err == nil {
+		t.Error("run with a setup deleted: foreign key not enforced")
+	}
+}
+
+// The recipe from the spec: rebuild runs with child rows pointing at it, in one transaction.
+func TestRebuildRunsWithChildrenCommits(t *testing.T) {
+	db := openTelemetryDB(t)
+	for _, q := range []string{
+		`INSERT INTO setups (source, source_id, recorded_at, run_id) VALUES ('w', 'a', 'r', 1)`,
+		`INSERT INTO usage (source, source_id, recorded_at, run_id, model) VALUES ('w', 'a', 'r', 1, 'm')`,
+	} {
+		if _, err := db.Exec(q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var create string
+	if err := db.QueryRow(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'runs'`).Scan(&create); err != nil {
+		t.Fatal(err)
+	}
+	widened := strings.Replace(create, "'scheduled')", "'scheduled', 'extra')", 1)
+	if widened == create {
+		t.Fatal("CHECK to widen not found in the runs definition")
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, q := range []string{
+		`PRAGMA defer_foreign_keys = ON`,
+		`CREATE TABLE runs_stage AS SELECT * FROM runs`,
+		`DROP TABLE runs`,
+		widened,
+		`INSERT INTO runs SELECT * FROM runs_stage`,
+		`DROP TABLE runs_stage`,
+	} {
+		if _, err := tx.Exec(q); err != nil {
+			t.Fatalf("%s: %v", q, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("COMMIT: %v", err)
+	}
+	rows, err := db.Query(`PRAGMA foreign_key_check`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rows.Next() {
+		t.Error("foreign_key_check reports a violation after the rebuild")
+	}
+	_ = rows.Close()
+	var runs, setups, usage int
+	if err := db.QueryRow(`SELECT (SELECT count(*) FROM runs), (SELECT count(*) FROM setups), (SELECT count(*) FROM usage)`).Scan(&runs, &setups, &usage); err != nil {
+		t.Fatal(err)
+	}
+	if runs != 1 || setups != 1 || usage != 1 {
+		t.Errorf("rows runs/setups/usage = %d/%d/%d, want 1/1/1", runs, setups, usage)
+	}
+	if _, err := db.Exec(`UPDATE runs SET trigger = 'extra'`); err != nil {
+		t.Errorf("widened CHECK not in effect: %v", err)
+	}
+}
+
+func tableColumns(t *testing.T, db *sql.DB, table string) []string {
+	t.Helper()
+	rows, err := db.Query(`SELECT name FROM pragma_table_info(?) ORDER BY cid`, table)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rows.Close() }()
+	var cols []string
+	for rows.Next() {
+		var c string
+		if err := rows.Scan(&c); err != nil {
+			t.Fatal(err)
+		}
+		cols = append(cols, c)
+	}
+	return cols
+}
+
+// The model references records and transcripts; it never stores their content.
+func TestTelemetrySchemaHasNoContentColumns(t *testing.T) {
+	db := openTelemetryDB(t)
+	want := map[string][]string{
+		"findings": {"id", "source", "source_id", "recorded_at", "trajectory_id", "run_id", "session_id", "component",
+			"finding_key", "severity", "decision", "record_path", "record_sum"},
+		"sessions": {"id", "source", "source_id", "recorded_at", "repo", "harness", "session_key", "transcript_path",
+			"branch", "trajectory_id", "link_basis", "unlinked_reason", "assignment", "started_at", "ended_at"},
+	}
+	for table, cols := range want {
+		if got := tableColumns(t, db, table); !reflect.DeepEqual(got, cols) {
+			t.Errorf("%s columns = %v, want %v", table, got, cols)
+		}
+	}
+}
+
+func TestMigration0011Recovery(t *testing.T) {
+	const rec = `INSERT INTO recoveries (source, source_id, recorded_at, trajectory_id, pr, merged_at, window_end, status)
+		VALUES ('w', '%s', 'r', 1, %d, 't0', 't1', '%s')`
+	const item = `INSERT INTO recovery_items (recovery_id, kind, ref, at) VALUES (1, 'fix', 'abc', 't0')`
+
+	t.Run("tables exist", func(t *testing.T) {
+		db := openTelemetryDB(t)
+		for _, table := range []string{"recoveries", "recovery_items"} {
+			var n int
+			if err := db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?`, table).Scan(&n); err != nil || n != 1 {
+				t.Errorf("table %s: count %d, %v; want 1", table, n, err)
+			}
+		}
+	})
+	t.Run("status maybe rejected", func(t *testing.T) {
+		db := openTelemetryDB(t)
+		if _, err := db.Exec(fmt.Sprintf(rec, "a", 5, "maybe")); err == nil {
+			t.Error("status maybe accepted")
+		}
+		if _, err := db.Exec(fmt.Sprintf(rec, "a", 5, "open")); err != nil {
+			t.Errorf("status open rejected: %v", err)
+		}
+	})
+	t.Run("duplicate trajectory and pr rejected", func(t *testing.T) {
+		db := openTelemetryDB(t)
+		if _, err := db.Exec(fmt.Sprintf(rec, "a", 5, "open")); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(fmt.Sprintf(rec, "b", 5, "open")); err == nil {
+			t.Error("second row with the same (trajectory_id, pr) accepted")
+		}
+	})
+	t.Run("duplicate source and source_id rejected", func(t *testing.T) {
+		db := openTelemetryDB(t)
+		if _, err := db.Exec(fmt.Sprintf(rec, "a", 5, "open")); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(fmt.Sprintf(rec, "a", 6, "open")); err == nil {
+			t.Error("second row with the same (source, source_id) accepted")
+		}
+	})
+	t.Run("unknown item kind rejected", func(t *testing.T) {
+		db := openTelemetryDB(t)
+		if _, err := db.Exec(fmt.Sprintf(rec, "a", 5, "open")); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(`INSERT INTO recovery_items (recovery_id, kind, ref, at) VALUES (1, 'other', 'abc', 't0')`); err == nil {
+			t.Error("kind other accepted")
+		}
+	})
+	t.Run("delete cascades to items", func(t *testing.T) {
+		db := openTelemetryDB(t)
+		if _, err := db.Exec(fmt.Sprintf(rec, "a", 5, "open")); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(item); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(item); err == nil {
+			t.Error("duplicate (recovery_id, kind, ref) accepted")
+		}
+		if _, err := db.Exec(`DELETE FROM recoveries WHERE id = 1`); err != nil {
+			t.Fatal(err)
+		}
+		var n int
+		if err := db.QueryRow(`SELECT count(*) FROM recovery_items`).Scan(&n); err != nil || n != 0 {
+			t.Errorf("items after delete = %d, %v; want 0", n, err)
+		}
+	})
 }

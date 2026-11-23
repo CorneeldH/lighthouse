@@ -9,7 +9,7 @@ metadata:
 
 # PR body with evidence
 
-A PR always names its issue with `Refs #N`, and carries an evidence row for every acceptance
+A PR names its issue with `Refs #N` (only `pr_gate.issue = optional` allows `No issue: <reason>`), and carries an evidence row for every acceptance
 criterion it proves. `/lighthouse-close-issue` checks the rows again after the merge and closes the
 issue. This skill verifies and writes that body; it never closes an issue itself. It asks no
 question: interactive and headless (controller run, if present) the outcome is the same.
@@ -20,8 +20,24 @@ question: interactive and headless (controller run, if present) the outcome is t
   `finishing-a-development-branch`.
 - When `.claude/hooks/lighthouse/run.sh pr-create-gate` blocks a PR or MR create.
 - `/lighthouse-write-pr <nr>`. Without an argument the number comes from the branch
-  `issue-<nr>-…` (`git branch --show-current`). No issue: the body gets `No issue: <reason>`
-  (≥10 characters) and no milestone; skip V1–V3 (V2b still runs).
+  `issue-<nr>-…` (`git branch --show-current`). No issue: `No issue: <reason>` is only allowed under `optional`, not under `required` or `evidence`; see
+  *Read the gate setting* below.
+
+## Read the gate setting
+
+Once, before V1, read how strict the repo is about the issue:
+
+```bash
+lighthouse config pr_gate.issue
+```
+
+- rc 0 prints `optional`, `required` or `evidence`. An unset key prints `optional` (rc 0). rc 1 only comes from an older binary without the key or the
+  command: treat it as `optional` and say so in the report. rc 2: the configuration is broken; stop and
+  report it, no PR.
+- No issue number and `optional`: the body gets `No issue: <reason>` (≥10 characters) and no
+  milestone; skip V1–V3 (V2b still runs).
+- No issue number and `required` or `evidence`: a PR without an issue is not allowed. Stop and
+  report that the repo requires an issue; no PR, no question.
 
 ## V1. Read the issue
 
@@ -78,11 +94,13 @@ it in the answer and skip the rest of V2b; V4 still adds the `body-line` output.
    to V4.
 
    Exit 3 (`COULD NOT CHECK`): no PR; report the message.
-1. **Review** (`run` only), with `<range>` and `<raw>` from the gate output:
+1. **Review** (`run` only), with `<agent>`, `<range>` and `<raw>` from the gate output:
 
    ```bash
-   timeout 540 roborev ci review --agent codex --ref <range> > <raw> 2>&1
+   timeout 540 roborev ci review --agent <agent> --ref <range> > <raw> 2>&1
    ```
+
+   `<agent>` is `codex`, or `claude-code` when the Codex budget is in `fallback`; never pass a fixed agent.
 
    In the foreground, with Bash timeout `600000`: start no background work (controller run, if
    present). Exit 124 is the timeout:
@@ -105,8 +123,8 @@ it in the answer and skip the rest of V2b; V4 still adds the `body-line` output.
    ```
 
    Each one listed is `fixed` in that commit; do not judge it again. For every other finding
-   follow `superpowers:receiving-code-review`: fix it or refute it with a reason, with the
-   severity rules of section 6 of `lighthouse-fix-pr` (high and medium seriously; a low only if
+   follow `superpowers:receiving-code-review`: fix it or refute it with a reason, with
+   these severity rules (high and medium seriously; a low only if
    the fix is trivial, otherwise `left`). Every fix is a commit of its own whose body has the
    line `roborev: <path>:<line> (<severity>)`, with `path`, `line` and `severity` as `classify`
    printed them (a finding without `path` gets no such line).
@@ -155,6 +173,10 @@ the number of the criterion in the issue (`1. …`). Below the table each open c
 `not`, `after merge`) with its verdict and what is still needed. A row for an open criterion does
 not exist: `lighthouse evidence run --before-pr` fails on a row that does not hold. Every criterion open:
 no table.
+
+With `pr_gate.issue = evidence` the `### Evidence #N` table is mandatory. When every criterion is
+open there is nothing to prove and `Refs` cannot pass: report that and stop, as the gate would
+block, without inventing a row for an open criterion.
 
 `Closes` stays valid for a PR a person opens without this skill. This skill never writes it: the
 merge would close the issue before the check after the merge. Nor any other closing keyword: which
@@ -313,7 +335,7 @@ starts with `## ` breaks the V4 section the tests cut out.
 
 Roborev line (V2b ran): add the output of `lighthouse roborev-gate body-line`
 to the body as a line of its own, outside the Evidence block. It is the marker
-`<!-- roborev-lokaal: <sha> -->` after a review, `Roborev overgeslagen: <reason>` after a skip, and
+`<!-- roborev-lokaal: <sha> agent: <agent> -->` after a review, `Roborev overgeslagen: <reason>` after a skip, and
 empty with `off` (then no line).
 
 Then give the command. The branch is on origin first (`git push -u origin HEAD`):

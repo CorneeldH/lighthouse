@@ -100,11 +100,11 @@ func TestGitLabMilestoneNumberIsGlobalID(t *testing.T) {
 		t.Errorf("MilestoneByNumber(1) err = %v, want ErrMilestoneNotFound (1 is an iid, not an id)", err)
 	}
 	open, err := g.Milestones(context.Background(), "")
-	if err != nil || !reflect.DeepEqual(open, []Milestone{{501, "P1", "open", "dP"}, {777, "G1", "open", "dG"}}) {
+	if err != nil || !reflect.DeepEqual(open, []Milestone{{Number: 501, Title: "P1", State: "open", Description: "dP"}, {Number: 777, Title: "G1", State: "open", Description: "dG"}}) {
 		t.Errorf("Milestones(open) = %+v, %v; want project and group milestone", open, err)
 	}
 	closed, err := g.Milestones(context.Background(), "closed")
-	if err != nil || !reflect.DeepEqual(closed, []Milestone{{888, "Old", "closed", ""}}) {
+	if err != nil || !reflect.DeepEqual(closed, []Milestone{{Number: 888, Title: "Old", State: "closed"}}) {
 		t.Errorf("Milestones(closed) = %+v, %v", closed, err)
 	}
 	all, _ := g.Milestones(context.Background(), "all")
@@ -122,7 +122,7 @@ func TestGitLabEditGroupMilestoneRefused(t *testing.T) {
 	srv, g := glClient(t)
 	glMilestones(srv)
 	title := "Nieuw"
-	_, err := g.EditMilestone(context.Background(), 777, &title, nil)
+	_, err := g.EditMilestone(context.Background(), 777, &title, nil, nil)
 	var gm *GroupMilestone
 	if !errors.As(err, &gm) || gm.Number != 777 {
 		t.Errorf("err = %v, want *GroupMilestone 777", err)
@@ -136,7 +136,7 @@ func TestGitLabMilestoneCreateAndEditUseGlobalID(t *testing.T) {
 	srv, g := glClient(t)
 	glMilestones(srv)
 	title, desc := "P1b", "nieuw"
-	got, err := g.EditMilestone(context.Background(), 501, &title, &desc)
+	got, err := g.EditMilestone(context.Background(), 501, &title, &desc, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -447,5 +447,55 @@ func TestGitLabAPIFollowsPages(t *testing.T) {
 	}
 	if !reflect.DeepEqual(queries, []string{"per_page=2", "page=2&per_page=2"}) {
 		t.Errorf("queries = %q, want the second page asked with the same fields", queries)
+	}
+}
+
+func TestGitLabChangeMergeable(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		extra map[string]any
+		want  string
+	}{
+		{"has_conflicts", map[string]any{"has_conflicts": true, "detailed_merge_status": "mergeable"}, "conflicting"},
+		{"conflict", map[string]any{"detailed_merge_status": "conflict"}, "conflicting"},
+		{"need_rebase", map[string]any{"detailed_merge_status": "need_rebase"}, "conflicting"},
+		{"unchecked", map[string]any{"detailed_merge_status": "unchecked"}, "unknown"},
+		{"checking", map[string]any{"detailed_merge_status": "checking"}, "unknown"},
+		{"preparing", map[string]any{"detailed_merge_status": "preparing"}, "unknown"},
+		{"approvals_syncing", map[string]any{"detailed_merge_status": "approvals_syncing"}, "unknown"},
+		{"mergeable", map[string]any{"detailed_merge_status": "mergeable"}, "mergeable"},
+		{"not_approved", map[string]any{"detailed_merge_status": "not_approved"}, "mergeable"},
+		{"ci_must_pass", map[string]any{"detailed_merge_status": "ci_must_pass"}, "mergeable"},
+		{"ci_still_running", map[string]any{"detailed_merge_status": "ci_still_running"}, "mergeable"},
+		{"discussions_not_resolved", map[string]any{"detailed_merge_status": "discussions_not_resolved"}, "mergeable"},
+		{"draft_status", map[string]any{"detailed_merge_status": "draft_status"}, "mergeable"},
+		{"blocked_status", map[string]any{"detailed_merge_status": "blocked_status"}, "mergeable"},
+		{"requested_changes", map[string]any{"detailed_merge_status": "requested_changes"}, "mergeable"},
+		{"external_status_checks", map[string]any{"detailed_merge_status": "external_status_checks"}, "mergeable"},
+		{"not_open", map[string]any{"detailed_merge_status": "not_open"}, "mergeable"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv, g := glClient(t)
+			mr := map[string]any{"iid": 3, "state": "opened", "draft": true}
+			for k, v := range tc.extra {
+				mr[k] = v
+			}
+			srv.AddMR(mr)
+			got, err := g.Change(context.Background(), 3)
+			if err != nil || got.Mergeable != tc.want || !got.Draft {
+				t.Errorf("Change(3) = mergeable %q draft %v, %v; want %q draft", got.Mergeable, got.Draft, err, tc.want)
+			}
+		})
+	}
+}
+
+func TestGitLabChangeCommentsSkipsSystemNotes(t *testing.T) {
+	srv, g := glClient(t)
+	srv.AddMR(map[string]any{"iid": 4, "state": "opened"})
+	srv.AddMRNote(4, "kim", "added 1 commit", true)
+	srv.AddMRNote(4, "ann", "Mooi", false)
+	got, err := g.ChangeComments(context.Background(), 4)
+	if err != nil || len(got) != 1 || got[0].Body != "Mooi" || got[0].Author != "ann" {
+		t.Errorf("ChangeComments = %+v, %v; want only ann's note", got, err)
 	}
 }

@@ -110,3 +110,14 @@ func TestLoadScheduleInvalid(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadScheduleAcceptsMapPlanned(t *testing.T) {
+	// Fails if map-planned is missing from scheduleJobs: its schedule would not load.
+	r, err := Load(write(t, "[forge]\nrepo = \"o/r\"\n[[schedule]]\nname = \"map-planned\"\njob = \"map-planned\"\ncron = \"0 5 * * *\"\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Schedules[0].Job != "map-planned" {
+		t.Errorf("job = %q", r.Schedules[0].Job)
+	}
+}

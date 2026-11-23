@@ -151,6 +151,33 @@ func TestLoadKeepsLabelsTemplateOutOfUnits(t *testing.T) {
 	}
 }
 
+func TestLoadKeepsDirectionTemplatesOutOfUnits(t *testing.T) {
+	m := basePack()
+	names := []string{"strategy.md", "tenets.md", "area.md"}
+	for _, n := range names {
+		m["templates/"+n] = file("# " + n + "\n")
+	}
+	p, err := Load(m, "core", "dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.DirectionTemplates) != len(names) {
+		t.Fatalf("DirectionTemplates = %v", p.DirectionTemplates)
+	}
+	for _, n := range names {
+		if got := string(p.DirectionTemplates[n]); got != "# "+n+"\n" {
+			t.Errorf("DirectionTemplates[%s] = %q", n, got)
+		}
+	}
+	for _, u := range p.Units {
+		for _, n := range names {
+			if strings.HasSuffix(u.Path, n) {
+				t.Fatalf("%s became a unit: %s", n, u.Path)
+			}
+		}
+	}
+}
+
 func TestLoadRejectsOtherTemplate(t *testing.T) {
 	m := basePack()
 	m["templates/x.md"] = file("x\n")
@@ -504,5 +531,59 @@ func TestLoadRejectsFragment(t *testing.T) {
 	_, err := Load(m, "python", "dev")
 	if err == nil || !strings.Contains(err.Error(), "lighthouse.toml.fragment") || !strings.Contains(err.Error(), "line 2") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestParseRequiresReadsForgeTables(t *testing.T) {
+	got, err := parseRequires([]byte("git = [\"a\"]\n[forge.github]\ngh = [\"fix-pr\"]\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Requirement{
+		{Tool: "gh", NeededBy: []string{"fix-pr"}, Forge: "github"},
+		{Tool: "git", NeededBy: []string{"a"}, Forge: ""},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %+v, want %+v", got, want)
+	}
+	for i := range want {
+		if got[i].Tool != want[i].Tool || got[i].Forge != want[i].Forge || strings.Join(got[i].NeededBy, ",") != strings.Join(want[i].NeededBy, ",") {
+			t.Fatalf("got %+v, want %+v", got, want)
+		}
+	}
+}
+
+func TestParseRequiresRefusesUnknownForge(t *testing.T) {
+	_, err := parseRequires([]byte("[forge.gitea]\ngh = [\"x\"]\n"))
+	if err == nil || !strings.Contains(err.Error(), "gitea") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+// A levels.toml is package metadata like guards.toml: read into Pack.Levels, never a unit.
+// Red when Load treats levels.toml as an unknown file or installs it as a unit.
+func TestLoadIgnoresLevelsToml(t *testing.T) {
+	fsys := basePack()
+	fsys["levels.toml"] = file("on = [\"g\"]\n[light.components]\ng = \"off\"\n")
+	p, err := Load(fsys, "core", "dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, u := range p.Units {
+		if strings.Contains(u.Path, "levels.toml") {
+			t.Errorf("levels.toml became a unit: %+v", u)
+		}
+	}
+	if p.Levels.Levels["light"].Components["g"] != "off" || len(p.Levels.On) != 1 {
+		t.Errorf("Levels = %+v", p.Levels)
+	}
+}
+
+// Red when Load lets a broken levels.toml pass without naming the file.
+func TestLoadRejectsBrokenLevelsToml(t *testing.T) {
+	fsys := basePack()
+	fsys["levels.toml"] = file("[light.components]\ng = \"maybe\"\n")
+	if _, err := Load(fsys, "core", "dev"); err == nil || !strings.Contains(err.Error(), "levels.toml") {
+		t.Errorf("err = %v, want an error naming levels.toml", err)
 	}
 }

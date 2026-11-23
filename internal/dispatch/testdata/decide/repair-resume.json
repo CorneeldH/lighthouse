@@ -1,0 +1,127 @@
+{
+  "input": {
+    "now": "2026-10-31T12:00:00Z",
+    "night": "",
+    "repos": [
+      {
+        "snapshot": {
+          "version": 1,
+          "repo": "o/r",
+          "token_login": "lh-bot",
+          "gathered_at": "2026-10-31T12:00:00Z",
+          "items": [
+            {
+              "issue": 7,
+              "title": "Bouw de keten",
+              "state": "OPEN",
+              "item_id": "I7",
+              "status": "Controller",
+              "priority": "P1",
+              "item_updated_at": "2026-10-31T08:00:00Z",
+              "issue_updated_at": "2026-10-31T08:00:00Z",
+              "blocked_by": [],
+              "prs": [],
+              "comments": [
+                {
+                  "id": 62,
+                  "author": "lh-bot",
+                  "body": "🤖 Gestart\nsession: 11111111-2222-4333-8444-555555555555\nworktree: /home/u/r/.claude/worktrees/issue-7-bouw-de-keten\ncommand: /lighthouse-start-issue 7\nstart: 2026-10-31T10:00:00Z\nbranch: issue-7-bouw-de-keten\nrunner: forge\nworkspace: ws-1\n\n<sub>session 11111111-2222-4333-8444-555555555555</sub>",
+                  "created_at": "2026-10-31T10:00:00Z",
+                  "url": "https://github.com/o/r/issues/7#issuecomment-62",
+                  "rocket": false
+                },
+                {
+                  "id": 63,
+                  "author": "lh-bot",
+                  "body": "🤖 Handoff\nissue: #7\nworktree: /home/u/r/.claude/worktrees/issue-7-bouw-de-keten\nbranch: issue-7-bouw-de-keten\nnext: push-workflows\nwhen: now",
+                  "created_at": "2026-10-31T11:00:00Z",
+                  "url": "https://github.com/o/r/issues/7#issuecomment-63",
+                  "rocket": true
+                },
+                {
+                  "id": 71,
+                  "author": "lh-bot",
+                  "body": "🤖 Herstel\nworktree: /home/u/r/.claude/worktrees/issue-7-bouw-de-keten\nbranch: issue-7-bouw-de-keten\nstep: policy\n\n**Rode stap:** policy\n```text\nci.yml: geen permissions: op workflowniveau\n```\n\n<details><summary>Workflow-diff</summary>\n\n```diff\n+permissions: {}\n```\n\n</details>",
+                  "created_at": "2026-10-31T11:05:00Z",
+                  "url": "https://github.com/o/r/issues/7#issuecomment-71",
+                  "rocket": false
+                }
+              ]
+            }
+          ],
+          "open_runs": []
+        },
+        "controller": {
+          "Profile": "",
+          "SpecReview": true,
+          "PlanReview": true,
+          "AtRoundLimit": ""
+        },
+        "language": "nl",
+        "default_branch": "main",
+        "workflow_push": true,
+        "installed": {
+          "lighthouse-start-issue": true,
+          "lighthouse-review-spec": true,
+          "lighthouse-review-plan": true,
+          "lighthouse-fix-pr": true,
+          "lighthouse-close-issue": true
+        },
+        "history": [
+          {
+            "ID": 5,
+            "Issue": 7,
+            "SessionID": "11111111-2222-4333-8444-555555555555",
+            "Mode": "start",
+            "Trigger": "handoff",
+            "TriggerKey": "start:7",
+            "Attempt": 1,
+            "Command": "/lighthouse-start-issue 7",
+            "Prompt": "/lighthouse-start-issue 7 (issue #7, controller-run)",
+            "Branch": "issue-7-bouw-de-keten",
+            "Profile": "",
+            "StartedAt": "2026-10-31T10:00:00Z",
+            "Open": false,
+            "Outcome": "handoff",
+            "Reason": ""
+          },
+          {
+            "ID": 6,
+            "Issue": 7,
+            "SessionID": "",
+            "Mode": "",
+            "Trigger": "push",
+            "TriggerKey": "push:63",
+            "Attempt": 1,
+            "Command": "push-workflows",
+            "Prompt": "",
+            "Branch": "issue-7-bouw-de-keten",
+            "Profile": "",
+            "StartedAt": "2026-10-31T11:01:00Z",
+            "Open": false,
+            "Outcome": "handoff",
+            "Reason": ""
+          }
+        ],
+        "stands": {}
+      }
+    ]
+  },
+  "want": [
+    {
+      "kind": "resume",
+      "repo": "o/r",
+      "issue": 7,
+      "trigger": "repair",
+      "trigger_key": "repair:71",
+      "attempt": 1,
+      "mode": "resume",
+      "session_id": "11111111-2222-4333-8444-555555555555",
+      "command": "/lighthouse-start-issue 7",
+      "prompt": "De workflow-pusher vond deze stap rood. Repareer het in de worktree, commit, en schrijf een nieuwe handoff met `next: push-workflows`.\n\n**Rode stap:** policy\n\n```text\nci.yml: geen permissions: op workflowniveau\n```\n\nhttps://github.com/o/r/issues/7#issuecomment-71",
+      "branch": "issue-7-bouw-de-keten",
+      "comment_id": 71,
+      "language": "nl"
+    }
+  ]
+}

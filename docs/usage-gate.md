@@ -118,7 +118,7 @@ Dit is wat de hook schrijft en wat een poller of controller leest.
 | alarm (lezen) | `${XDG_CACHE_HOME:-$HOME/.cache}/lighthouse/usage-window.alarm` |
 | kopie van het alarm (lezen, alleen een controller-run) | `${LIGHTHOUSE_CONTROLLER_STATE:-${XDG_STATE_HOME:-$HOME/.local/state}/lighthouse/controller}/usage-window.alarm` |
 | sleutels "één keer per venster" | `${XDG_STATE_HOME:-$HOME/.local/state}/lighthouse/usage-guard/` |
-| resume-markers | `${XDG_DATA_HOME:-$HOME/.local/share}/lighthouse/resume/<session_id>.json` |
+| resume-markers | `${XDG_DATA_HOME:-$HOME/.local/share}/lighthouse/resume/<session_id>.json`; in een controller-run `$LIGHTHOUSE_STATE_DIR/resume/<session_id>.json` (de map die een container met de host deelt, #513). De controller leest beide. Een marker die niet leest geeft de reden *geparkeerd, marker niet leesbaar* |
 | handoff | `${XDG_DATA_HOME:-$HOME/.local/share}/lighthouse/resume/<session_id>.handoff.md` |
 | pauzevlag | `${LIGHTHOUSE_CONTROLLER_STATE:-${XDG_STATE_HOME:-$HOME/.local/state}/lighthouse/controller}/PAUSE` |
 | controller-run | env `LIGHTHOUSE_CONTROLLER_RUN=<session-uuid>` |
@@ -218,9 +218,9 @@ het posten van het artefact, de controller-modus, elke vraag en de `/clear`-tip 
 
 ### Andere Stop-gates
 
-`go-lint-gate.sh` (pakket `go`) en `ty-gate.sh` (pakket `python`) blokkeren een `Stop` niet zolang er
+`go-lint-gate.sh` (pakket `go`), `ty-gate.sh` (pakket `python`) en de drie `*-imports-gate.sh` (pakketten `go`, `python`, `node`) blokkeren een `Stop` niet zolang er
 een geldig alarm is. Ze melden `go-lint-gate: not checked — the usage alarm is up until <reset_local>;
-the usage gate wraps up this session.` (`ty-gate: …` voor ty) als `systemMessage` en eindigen met
+the usage gate wraps up this session.` (`ty-gate: …` voor ty, `<pakket>-imports-gate: …` voor de importcheck) als `systemMessage` en eindigen met
 exit 0. Een `systemMessage` gaat naar de gebruiker en is geen opdracht aan de agent: "stil" uit #74
 betekent dat de gate niets afdwingt, niet dat hij niets zegt.
 

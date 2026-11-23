@@ -41,7 +41,7 @@ Every row is a command that runs in this repository.
 | The test gate is green | `bash -c "$(lighthouse config test_gate.command)"` | rc 0 |
 
 Row 1 runs over `git ls-files` and not over `.`: from the main checkout, `gofmt -l .` also walks
-into `.claude/worktrees/`. The `-r` keeps `xargs` from starting `gofmt` without files, where it
+into the worktree root (`lighthouse config worktree.root`) when that is inside the repo. The `-r` keeps `xargs` from starting `gofmt` without files, where it
 would wait on stdin. Row 2 needs Go 1.23 or later; on an older Go it is not measurable from here.
 
 `-shuffle=on` is the default, so an order dependency between tests shows. A run with
@@ -161,7 +161,7 @@ keep the session from stopping, so it reports it as a message. A repository with
 > **OpenCode does not run these hooks.** Claude Code hooks do not fire here, and
 > `.claude/rules/go.md` (if present) is not loaded by itself, so both the enforcement and the
 > norm half are missing. After every Go change, run by hand: `gofmt -w <file>`, and before you
-> stop, `golangci-lint run ./...`. Open the norms yourself, as `AGENTS.md` prescribes. This is a
+> stop, `golangci-lint run ./...`. Open the norms yourself (`.claude/rules/go.md`, if present). This is a
 > deliberate asymmetry, not an omission: do not "fix" it by removing the hook reference.
 
 ## Known pitfalls

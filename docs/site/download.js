@@ -3,7 +3,7 @@
 // for agents. Without this script every block stays folded in; it writes text and attributes
 // only, never HTML.
 
-import { choosePlatform, releaseLabel } from "./platform.js?v=4f898adc";
+import { choosePlatform, releaseLabel } from "./platform.js?v=a9efdd74";
 
 const API = "https://api.github.com/repos/CorneeldH/lighthouse/releases/latest";
 
@@ -78,8 +78,8 @@ function showNote(note, kind, select) {
     open.textContent = "Open the macOS Intel build.";
     open.addEventListener("click", () => select("darwin-amd64"));
     note.append("Intel Mac? ", open);
-  } else if (kind === "wsl") {
-    note.textContent = "The hooks need WSL: run this inside WSL.";
+  } else if (kind === "gitbash") {
+    note.textContent = "The hooks run in Git Bash: install Git for Windows first. In WSL, use the Linux block.";
   }
   note.hidden = !kind;
 }

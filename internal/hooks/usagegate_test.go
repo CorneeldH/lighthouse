@@ -42,6 +42,7 @@ func gateEnv(t *testing.T) gateDirs {
 	t.Setenv("XDG_STATE_HOME", g.state)
 	t.Setenv("XDG_DATA_HOME", filepath.Join(tmp, "data"))
 	t.Setenv("LIGHTHOUSE_CONTROLLER_RUN", "")
+	t.Setenv("LIGHTHOUSE_STATE_DIR", "")
 	t.Setenv("LIGHTHOUSE_CONTROLLER_STATE", g.ctl)
 	t.Setenv("LIGHTHOUSE_USAGE_REFRESH", "")
 	setOptions(t, g, "false", "false")
@@ -160,6 +161,30 @@ func TestUsageGateStopWritesItsKey(t *testing.T) {
 	}
 	if res := call(t, usageGate, "stop", session(nil)); res.Output != nil || res.Stderr != "" {
 		t.Errorf("second stop: %+v, want nothing", res)
+	}
+}
+
+// A broken [usage_guard] option falls back to the base wording and says so as one
+// `usage-gate: config:` line on stderr: the hook passes its warning sink on to ReadOptions.
+func TestUsageGateConfigErrorFallsBackToBase(t *testing.T) {
+	g := gateEnv(t)
+	writeAlarm(t, g)
+	path := writeFile(t, filepath.Join(g.tmp, "bad.toml"), "[usage_guard]\nresume = \"yes\"\n")
+	t.Setenv("LIGHTHOUSE_TOML", path)
+
+	res := call(t, usageGate, "tool", session(nil))
+	got := reason(t, res)
+	handoff := "`/lighthouse-write-handoff " + filepath.Join(g.resume, "s1.handoff.md") + "`"
+	want := "Usage is at 92% of the session window, which resets at 14:30. Before anything else: commit the work in progress, run " +
+		handoff + ", and report where the work stands (worktree, branch, what is still open). Do not start a new step and do not dispatch a subagent."
+	if got != want || res.Code != 0 {
+		t.Errorf("reason %q code %d\nwant   %q", got, res.Code, want)
+	}
+	if !strings.HasPrefix(res.Stderr, "usage-gate: config: ") || strings.Count(res.Stderr, "\n") != 1 {
+		t.Errorf("stderr %q, want one line starting %q", res.Stderr, "usage-gate: config: ")
+	}
+	if _, err := os.Stat(g.resume); !os.IsNotExist(err) {
+		t.Errorf("resume dir exists (%v), want no marker", err)
 	}
 }
 
@@ -307,6 +332,27 @@ func TestUsageGatePauseOncePerFlag(t *testing.T) {
 	}
 	if res := call(t, usageGate, "tool", session(nil)); res.Output != nil {
 		t.Errorf("second tool call: %v, want none", res.Output)
+	}
+}
+
+// A controller run in a container has its own HOME: the marker goes to the state directory the
+// host shares with it, not under HOME (#513).
+func TestUsageGateMarkerInStateDirForControllerRun(t *testing.T) {
+	g := gateEnv(t)
+	setOptions(t, g, "false", "true")
+	t.Setenv("LIGHTHOUSE_CONTROLLER_RUN", gateRun)
+	state := t.TempDir()
+	t.Setenv("LIGHTHOUSE_STATE_DIR", state)
+	writePause(t, g, "2099-01-01T21:00:00+02:00")
+
+	if res := call(t, usageGate, "tool", session(nil)); res.Output == nil {
+		t.Fatal("tool call did not park")
+	}
+	if _, err := os.Stat(filepath.Join(state, "resume", "s1.json")); err != nil {
+		t.Fatalf("no marker in the state dir: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(g.resume, "s1.json")); err == nil {
+		t.Error("marker also written under HOME")
 	}
 }
 

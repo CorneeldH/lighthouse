@@ -49,6 +49,14 @@
  },
  {
   "args": [
+   "paths.strategy"
+  ],
+  "rc": 0,
+  "stdout": "s\n",
+  "stderr": ""
+ },
+ {
+  "args": [
    "paths.history"
   ],
   "rc": 0,
@@ -521,6 +529,14 @@
  },
  {
   "args": [
+   "forge.board.project_owner"
+  ],
+  "rc": 0,
+  "stdout": "acme\n",
+  "stderr": ""
+ },
+ {
+  "args": [
    "project.language"
   ],
   "rc": 0,
@@ -653,6 +669,22 @@
   ],
   "rc": 0,
   "stdout": "verslagen\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "imports.check"
+  ],
+  "rc": 0,
+  "stdout": "false\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "pr_gate.issue"
+  ],
+  "rc": 0,
+  "stdout": "evidence\n",
   "stderr": ""
  }
 ]

@@ -31,6 +31,7 @@ func gatherForge(t *testing.T) *forgetest.Server {
 	t.Helper()
 	srv := forgetest.New(t)
 	srv.Login = "lh-bot"
+	srv.ProjectID = "PVT_x"
 	srv.Roles = map[string]string{"owner": "admin", "stranger": "read"}
 	check := func(state string) map[string]any { return map[string]any{"state": state} }
 	pr := func(number int, state, sha, checks string) map[string]any {
@@ -42,10 +43,10 @@ func gatherForge(t *testing.T) *forgetest.Server {
 	seven["fieldValues"].(map[string]any)["nodes"] = append(seven["fieldValues"].(map[string]any)["nodes"].([]any), p1)
 	srv.BoardNodes = []map[string]any{
 		seven,
+		// #5 is not on the board, so its merged_pr stays false.
 		boardNode("I8", "h1", issueContent(8, "Wacht op 5", map[string]any{
 			"blockedBy": map[string]any{"nodes": []any{map[string]any{
 				"number": 5, "state": "CLOSED", "repository": map[string]any{"nameWithOwner": "o/r"},
-				"closedByPullRequestsReferences": map[string]any{"nodes": []any{map[string]any{"merged": true}}},
 			}}},
 		})),
 		boardNode("I9", "c1", issueContent(9, "Bouw het", map[string]any{

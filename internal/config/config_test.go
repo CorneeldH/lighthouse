@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"reflect"
 	"strings"
@@ -63,6 +64,7 @@ func TestIsKnownKey(t *testing.T) {
 		{"forge.owner", true},
 		{"paths.specs", true},
 		{"host.gate_slots", true},
+		{"forge.board.project_owner", true},
 		{"forge.board.status_options.In progress", true},
 		{"forge.board.priority_options.a.b", true},
 		{"forge.board.status_options.", false},
@@ -114,6 +116,31 @@ func TestLookupErrorKinds(t *testing.T) {
 	}
 	if want := "a/b/lighthouse.toml: key forge.kind must be 'github' or 'gitlab', not 'x'"; cerr.Msg != want {
 		t.Errorf("Error.Msg = %q, want %q", cerr.Msg, want)
+	}
+}
+
+// TestStatusOptionsWithoutOnHoldValid pins that On hold is not a required status option: a board
+// with only To do, In progress and Done loads. It goes red when "On hold" returns to
+// requiredStatusOptions.
+func TestStatusOptionsWithoutOnHoldValid(t *testing.T) {
+	src := `[forge]
+kind = "github"
+repo = "acme/widgets"
+[forge.board]
+project_number = 7
+project_id = "PVT_x"
+status_field_id = "PVTSSF_s"
+[forge.board.status_options]
+"To do" = "a1"
+"In progress" = "a2"
+Done = "a3"
+`
+	c, err := Parse([]byte(src), "lighthouse.toml")
+	if err != nil {
+		t.Fatalf("Parse without On hold: %v", err)
+	}
+	if _, ok := c.Board.StatusOptions["On hold"]; ok {
+		t.Errorf("StatusOptions = %v, want no On hold", c.Board.StatusOptions)
 	}
 }
 
@@ -343,6 +370,81 @@ func TestReportEnabledMustBeBool(t *testing.T) {
 	}
 }
 
+// runImportsCheck runs `lighthouse config imports.check` against a lighthouse.toml with body.
+func runImportsCheck(t *testing.T, body string) (int, string) {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(dir+"/lighthouse.toml", []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+	t.Setenv("LIGHTHOUSE_REPO_ROOT", "")
+	t.Setenv("LIGHTHOUSE_TOML", "lighthouse.toml")
+	t.Setenv("LIGHTHOUSE_HOST_TOML", "host.toml")
+	var out, errOut bytes.Buffer
+	rc := Run([]string{"imports.check"}, &out, &errOut)
+	if rc != 0 {
+		t.Errorf("rc = %d, want 0 (stderr %q)", rc, errOut.String())
+	}
+	return rc, out.String()
+}
+
+func TestImportsCheckDefaultsToTrue(t *testing.T) {
+	if _, got := runImportsCheck(t, ""); got != "true\n" {
+		t.Errorf("stdout = %q, want %q", got, "true\n")
+	}
+}
+
+func TestImportsCheckFalse(t *testing.T) {
+	if _, got := runImportsCheck(t, "[imports]\ncheck = false\n"); got != "false\n" {
+		t.Errorf("stdout = %q, want %q", got, "false\n")
+	}
+}
+
+// runPRGateIssue runs `lighthouse config pr_gate.issue` against a lighthouse.toml with body.
+func runPRGateIssue(t *testing.T, body string) (rc int, stdout, stderr string) {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(dir+"/lighthouse.toml", []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(dir)
+	t.Setenv("LIGHTHOUSE_REPO_ROOT", "")
+	t.Setenv("LIGHTHOUSE_TOML", "lighthouse.toml")
+	t.Setenv("LIGHTHOUSE_HOST_TOML", "host.toml")
+	var out, errOut bytes.Buffer
+	rc = Run([]string{"pr_gate.issue"}, &out, &errOut)
+	return rc, out.String(), errOut.String()
+}
+
+func TestPRGateIssue(t *testing.T) {
+	tests := []struct {
+		name       string
+		toml       string
+		wantRC     int
+		wantOut    string
+		wantStderr string
+	}{
+		{"no table is optional", "", 0, "optional\n", ""},
+		{"required", "[pr_gate]\nissue = \"required\"\n", 0, "required\n", ""},
+		{"evidence", "[pr_gate]\nissue = \"evidence\"\n", 0, "evidence\n", ""},
+		{"unknown value is a config error", "[pr_gate]\nissue = \"strict\"\n", 2, "",
+			"key pr_gate.issue must be 'optional', 'required' or 'evidence'"},
+		{"capitals are a config error", "[pr_gate]\nissue = \"Required\"\n", 2, "",
+			"key pr_gate.issue must be 'optional', 'required' or 'evidence'"},
+		{"empty string is a config error", "[pr_gate]\nissue = \"\"\n", 2, "", "key pr_gate.issue is empty"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rc, out, errOut := runPRGateIssue(t, tt.toml)
+			if rc != tt.wantRC || out != tt.wantOut || !strings.Contains(errOut, tt.wantStderr) {
+				t.Errorf("rc=%d stdout=%q stderr=%q, want rc=%d stdout=%q stderr containing %q",
+					rc, out, errOut, tt.wantRC, tt.wantOut, tt.wantStderr)
+			}
+		})
+	}
+}
+
 const gitlabBoard = `[forge]
 kind = "gitlab"
 repo = "g/sub/p"
@@ -425,7 +527,7 @@ func TestInstallDocGitLabExampleParses(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Parse(install.md example) = %v\n%s", err, src)
 		}
-		want := map[string]string{"To do": "To do", "In progress": "In progress", "Done": "Done", "On hold": "On hold", "Controller": "Controller"}
+		want := map[string]string{"To do": "To do", "In progress": "In progress", "Done": "Done", "Controller": "Controller"}
 		if c.Board == nil || !reflect.DeepEqual(c.Board.StatusOptions, want) {
 			t.Errorf("status_options = %v, want %v", c.Board, want)
 		}
@@ -446,6 +548,8 @@ func TestParseBoardPerKind(t *testing.T) {
 			"lighthouse.toml: key forge.board.status_field_id is only valid with kind = 'github'"},
 		{"gitlab priority_field_id", strings.Replace(gitlabBoard, "[forge.board.status_options]", "[forge.board]\npriority_field_id = \"x\"\n[forge.board.status_options]", 1),
 			"lighthouse.toml: key forge.board.priority_field_id is only valid with kind = 'github'"},
+		{"gitlab project_owner", strings.Replace(gitlabBoard, "[forge.board.status_options]", "[forge.board]\nproject_owner = \"acme\"\n[forge.board.status_options]", 1),
+			"lighthouse.toml: key forge.board.project_owner is only valid with kind = 'github'"},
 		{"gitlab empty status name", strings.Replace(gitlabBoard, `Done = "Done"`, `Done = ""`, 1),
 			"must be a non-empty string"},
 		{"gitlab empty priority label", strings.Replace(gitlabBoard, `P1 = "priority::P1"`, `P1 = ""`, 1),
@@ -535,5 +639,120 @@ func TestSchemaDump(t *testing.T) {
 		if d[k] == nil {
 			t.Errorf("missing %s", k)
 		}
+	}
+}
+
+func TestParseProjectOwner(t *testing.T) {
+	base := "[forge]\nkind = \"github\"\nrepo = \"acme/widgets\"\n[forge.board]\nproject_number = 7\nproject_id = \"PVT_x\"\nstatus_field_id = \"PVTSSF_s\"\n%s[forge.board.status_options]\n\"To do\" = \"a1\"\n\"In progress\" = \"a2\"\nDone = \"a3\"\n\"On hold\" = \"a4\"\n"
+	rows := []struct{ name, line, want, wantErr string }{
+		{"set", "project_owner = \"acme\"\n", "acme", ""},
+		{"absent", "", "", ""},
+		{"not a string", "project_owner = 5\n", "", "lighthouse.toml: key forge.board.project_owner must be of type str"},
+	}
+	for _, r := range rows {
+		t.Run(r.name, func(t *testing.T) {
+			c, err := Parse([]byte(fmt.Sprintf(base, r.line)), "lighthouse.toml")
+			if r.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), r.wantErr) {
+					t.Fatalf("err = %v, want %q", err, r.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if c.Board.ProjectOwner != r.want {
+				t.Errorf("ProjectOwner = %q, want %q", c.Board.ProjectOwner, r.want)
+			}
+		})
+	}
+}
+
+// TestLevelAndComponentsParse fails when build stops filling Config.Level or Config.Components
+// from the top-level `level` key and the [components] table, or when IsKnownKey/KindOf stop
+// knowing them.
+func TestLevelAndComponentsParse(t *testing.T) {
+	src := "level = \"strict\"\n[components]\nmd-link-check = \"on\"\nusage-gate = \"log\"\nworktree-check = \"off\"\n"
+	c, err := Parse([]byte(src), "lighthouse.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Level != "strict" {
+		t.Errorf("Level = %q, want strict", c.Level)
+	}
+	want := map[string]string{"md-link-check": "on", "usage-gate": "log", "worktree-check": "off"}
+	if !reflect.DeepEqual(c.Components, want) {
+		t.Errorf("Components = %v, want %v", c.Components, want)
+	}
+	for _, key := range []string{"level", "components.md-link-check"} {
+		if !IsKnownKey(key) {
+			t.Errorf("IsKnownKey(%q) = false, want true", key)
+		}
+	}
+	if IsKnownKey("components.") {
+		t.Error("IsKnownKey(\"components.\") = true, want false")
+	}
+	if got := KindOf("level"); got != kStr {
+		t.Errorf("KindOf(level) = %q, want str", got)
+	}
+	none, err := Parse([]byte("[project]\nlanguage = \"nl\"\n"), "lighthouse.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if none.Level != "" || len(none.Components) != 0 {
+		t.Errorf("unset: Level = %q, Components = %v, want empty", none.Level, none.Components)
+	}
+}
+
+// TestComponentsBadStandIsError fails when build stops checking that a component value is
+// off, log or on, or when level or [components] stops being checked for shape.
+func TestComponentsBadStandIsError(t *testing.T) {
+	for name, src := range map[string]string{
+		"bad stand":     "[components]\nmd-link-check = \"maybe\"\n",
+		"not a string":  "[components]\nmd-link-check = 1\n",
+		"level not str": "level = 3\n",
+		"empty level":   "level = \"\"\n",
+		"not a table":   "components = \"on\"\n",
+	} {
+		_, err := Parse([]byte(src), "lighthouse.toml")
+		var cerr *Error
+		if !errors.As(err, &cerr) {
+			t.Errorf("%s: err = %v, want *Error", name, err)
+		}
+	}
+	_, err := Parse([]byte("[components]\nmd-link-check = \"maybe\"\n"), "lighthouse.toml")
+	if err == nil || !strings.Contains(err.Error(), "components.md-link-check") {
+		t.Errorf("error = %v, want it to name components.md-link-check", err)
+	}
+}
+
+// TestUnknownLevelNameIsNotAnError fails when build starts rejecting a level name: the names
+// are checked against the pack's levels.toml elsewhere, not by config.Load.
+func TestUnknownLevelNameIsNotAnError(t *testing.T) {
+	c, err := Parse([]byte("level = \"bogus\"\n"), "lighthouse.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Level != "bogus" {
+		t.Errorf("Level = %q, want bogus", c.Level)
+	}
+}
+
+// TestUnknownComponentNameIsNotAnError fails when build starts rejecting a component name.
+func TestUnknownComponentNameIsNotAnError(t *testing.T) {
+	c, err := Parse([]byte("[components]\nno-such-thing = \"on\"\n"), "lighthouse.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Components["no-such-thing"] != "on" {
+		t.Errorf("Components = %v, want no-such-thing = on", c.Components)
+	}
+}
+
+// TestDefaultWorktreeRoot pins the default of [worktree] root.
+func TestDefaultWorktreeRoot(t *testing.T) {
+	v, ok := Default("worktree.root")
+	if !ok || v != ".claude/worktrees" {
+		t.Errorf("Default(worktree.root) = %v, %v; want .claude/worktrees", v, ok)
 	}
 }

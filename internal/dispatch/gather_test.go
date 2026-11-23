@@ -24,6 +24,7 @@ import (
 )
 
 var testRepo = repoconfig.Repo{Slug: "o/r", Board: &repoconfig.Board{
+	ProjectNumber:   1,
 	ProjectID:       "PVT_1",
 	StatusFieldID:   "F_status",
 	PriorityFieldID: "F_prio",
@@ -74,7 +75,7 @@ func TestPrepareBlockerStatus(t *testing.T) {
 		})),
 		node("I5", map[string]string{"F_status": "opt-prog"}, issue("o/r", 5, nil)),
 	}
-	pre, err := Prepare(context.Background(), c, repo, nil, nil)
+	pre, err := Prepare(context.Background(), c, repo, nil, nil, ToDoProbe{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +105,7 @@ func TestPrepareUnmappedStatusIsEmpty(t *testing.T) {
 		node("I9", map[string]string{"F_status": "opt-ctrl"}, issue("o/r", 9, blocker8)),
 	}
 	open := []runs.OpenRun{{ID: 15, Issue: 7}}
-	pre, err := Prepare(context.Background(), c, testRepo, open, nil)
+	pre, err := Prepare(context.Background(), c, testRepo, open, nil, ToDoProbe{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +133,7 @@ func TestPrepareCarriesLabels(t *testing.T) {
 			"labels": map[string]any{"nodes": []any{map[string]any{"name": "1-loc:mac"}}},
 		})),
 	}
-	pre, err := Prepare(context.Background(), c, testRepo, nil, nil)
+	pre, err := Prepare(context.Background(), c, testRepo, nil, nil, ToDoProbe{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +163,7 @@ func TestPrepareFiltersBoard(t *testing.T) {
 		node("I8", map[string]string{"F_status": "opt-unknown"}, issue("o/r", 8, nil)),
 		node("I9", nil, issue("o/r", 9, nil)), // no Status at all
 	}
-	pre, err := Prepare(context.Background(), c, testRepo, nil, nil)
+	pre, err := Prepare(context.Background(), c, testRepo, nil, nil, ToDoProbe{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -175,7 +176,8 @@ func TestPrepareFiltersBoard(t *testing.T) {
 				HeadRef: "issue-1-x", Checks: "SUCCESS", Closes: true}}},
 		{Issue: 4, Title: "Issue", State: "OPEN", ItemID: "I4", Status: "On hold", Priority: "",
 			ItemUpdatedAt: itemAt, IssueUpdatedAt: issueAt,
-			BlockedBy: []forge.Blocker{{Repo: "o/r", Issue: 5, State: "CLOSED", MergedPR: true}}},
+			// #5 is not on the board: its merged closing PR is not looked up.
+			BlockedBy: []forge.Blocker{{Repo: "o/r", Issue: 5, State: "CLOSED", MergedPR: false}}},
 	}
 	if !reflect.DeepEqual(pre.Items, want) {
 		t.Errorf("Items =\n%+v\nwant\n%+v", pre.Items, want)
@@ -198,7 +200,7 @@ func TestPrepareStatuses(t *testing.T) {
 		node("I12", map[string]string{"F_status": "opt-ctrl"}, issue("o/r", 12, nil)),
 		node("I13", map[string]string{"F_status": "opt-prog"}, issue("o/x", 13, nil)),
 	}
-	pre, err := Prepare(context.Background(), c, repo, nil, nil)
+	pre, err := Prepare(context.Background(), c, repo, nil, nil, ToDoProbe{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -220,7 +222,7 @@ func TestPrepareKeepsItemWithOpenRun(t *testing.T) {
 		node("I5", map[string]string{"F_status": "opt-done"}, issue("o/x", 5, nil)), // open run, other repo
 	}
 	open := []runs.OpenRun{{ID: 15, Issue: 9}, {ID: 16, Issue: 5}}
-	pre, err := Prepare(context.Background(), c, testRepo, open, nil)
+	pre, err := Prepare(context.Background(), c, testRepo, open, nil, ToDoProbe{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -229,9 +231,15 @@ func TestPrepareKeepsItemWithOpenRun(t *testing.T) {
 	}
 }
 
+// InController holds Controller and the On hold remnant, and a To do item only while its mark
+// says the tick parked it: its workplace must stay for the resume (the sweep takes this func,
+// TestTickSweepKeepsWorkplaceOfParkedToDo). Dropping the To do term turns issue 6 red.
 func TestInController(t *testing.T) {
-	in := InController(map[int]string{1: "Controller", 2: "On hold", 3: "In progress", 4: ""})
-	for issue, want := range map[int]bool{1: true, 2: true, 3: false, 4: false, 5: false} {
+	in := InController(Pre{
+		Statuses: map[int]string{1: "Controller", 2: "On hold", 3: "In progress", 4: "", 6: "To do", 7: "To do", 8: "In progress"},
+		ToDo:     map[int]ToDoMark{6: {OwnParked: true}, 7: {OwnParked: false}, 8: {OwnParked: true}},
+	})
+	for issue, want := range map[int]bool{1: true, 2: true, 3: false, 4: false, 5: false, 6: true, 7: false, 8: false} {
 		if got := in(issue); got != want {
 			t.Errorf("InController(%d) = %v, want %v", issue, got, want)
 		}
@@ -286,7 +294,7 @@ func TestPrepareMergesBranchPRs(t *testing.T) {
 	}}
 	open := []runs.OpenRun{{ID: 1, Issue: 1, Branch: "issue-1-x"}, {ID: 2, Issue: 6, Branch: ""}}
 	branches := map[int]string{1: "issue-1-x", 6: ""}
-	pre, err := Prepare(context.Background(), c, testRepo, open, branches)
+	pre, err := Prepare(context.Background(), c, testRepo, open, branches, ToDoProbe{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -312,7 +320,7 @@ func TestPrepareMergesBranchPRs(t *testing.T) {
 	if len(byIssue[6]) != 0 {
 		t.Errorf("issue 6 PRs = %+v, want none", byIssue[6])
 	}
-	if n := srv.Count("BranchPRs"); n != 1 {
+	if n := srv.Count("/repos/o/r/pulls?head=issue-1-x"); n != 1 {
 		t.Errorf("BranchPRs requests = %d, want 1 (issue 4 has no run, issue 6 no branch)", n)
 	}
 	if !reflect.DeepEqual(pre.OpenRuns, open) {
@@ -328,7 +336,7 @@ func TestPrepareBranchOfClosedRun(t *testing.T) {
 		node("I1", map[string]string{"F_status": "opt-ctrl"}, issue("o/r", 1, nil)),
 	}
 	srv.Branches = map[string][]map[string]any{"issue-1-x": {prNode(11, "issue-1-x", nil)}}
-	pre, err := Prepare(context.Background(), c, testRepo, nil, map[int]string{1: "issue-1-x"})
+	pre, err := Prepare(context.Background(), c, testRepo, nil, map[int]string{1: "issue-1-x"}, ToDoProbe{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -343,7 +351,7 @@ func TestPrepareBranchOfClosedRun(t *testing.T) {
 
 func TestPrepareWithoutBoardFails(t *testing.T) {
 	_, c := client(t)
-	if _, err := Prepare(context.Background(), c, repoconfig.Repo{Slug: "o/r"}, nil, nil); err == nil {
+	if _, err := Prepare(context.Background(), c, repoconfig.Repo{Slug: "o/r"}, nil, nil, ToDoProbe{}); err == nil {
 		t.Fatal("Prepare without [forge.board] gave no error")
 	}
 }
@@ -576,7 +584,7 @@ func TestPrepareReadsThePRsOfScheduledRuns(t *testing.T) {
 	branch := "scheduled/codebase-map-20261031T0400-1"
 	srv.Branches = map[string][]map[string]any{branch: {prNode(31, branch, nil)}}
 	open := []runs.OpenRun{{ID: 1, Schedule: "codebase-map", Branch: branch}, {ID: 2, Schedule: "reflect"}}
-	pre, err := Prepare(context.Background(), c, testRepo, open, nil)
+	pre, err := Prepare(context.Background(), c, testRepo, open, nil, ToDoProbe{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -584,7 +592,7 @@ func TestPrepareReadsThePRsOfScheduledRuns(t *testing.T) {
 	if !reflect.DeepEqual(pre.ScheduledPRs, want) {
 		t.Errorf("ScheduledPRs = %+v\nwant %+v", pre.ScheduledPRs, want)
 	}
-	if n := srv.Count("BranchPRs"); n != 1 {
+	if n := srv.Count("/repos/o/r/pulls?head=" + branch); n != 1 {
 		t.Errorf("BranchPRs requests = %d, want 1", n)
 	}
 	if len(pre.Items) != 1 || len(pre.Items[0].PRs) != 0 {
@@ -620,6 +628,10 @@ type prCommentsFail struct {
 }
 
 func (f prCommentsFail) Kind() string { return f.kind }
+
+func (f prCommentsFail) PrioInputs(context.Context) (forge.PrioInputs, error) {
+	return forge.PrioInputs{}, nil
+}
 
 func (f prCommentsFail) Comments(_ context.Context, number int) ([]protocol.Comment, error) {
 	if number != f.issue {
@@ -674,7 +686,7 @@ func TestPrepareClosesRunOutsideBoardWindow(t *testing.T) {
 	srv.AddIssue(gitlabIssue(4, "closed", time.Now().Add(-60*24*time.Hour)))
 	srv.AddIssue(gitlabIssue(5, "closed", time.Now().Add(-60*24*time.Hour))) // no open run: stays out
 	open := []runs.OpenRun{{ID: 15, Issue: 4}}
-	pre, err := Prepare(context.Background(), f, repo, open, nil)
+	pre, err := Prepare(context.Background(), f, repo, open, nil, ToDoProbe{})
 	if err != nil {
 		t.Fatalf("Prepare: %v", err)
 	}
@@ -705,20 +717,21 @@ func (f *issueItemFake) IssueItem(context.Context, int) (forge.BoardItem, bool, 
 func TestPrepareIssueItemErrors(t *testing.T) {
 	open := []runs.OpenRun{{ID: 15, Issue: 99}}
 	f := &issueItemFake{err: fmt.Errorf("forge: issue o/r#99: %w", forge.ErrIssueNotFound)}
-	pre, err := Prepare(context.Background(), f, testRepo, open, nil)
+	pre, err := Prepare(context.Background(), f, testRepo, open, nil, ToDoProbe{})
 	if err != nil || len(pre.Items) != 0 || len(pre.OpenRuns) != 1 || f.calls != 1 {
 		t.Errorf("Prepare with a missing issue = %+v, %v, %d calls; want no error, no item and the run kept", pre, err, f.calls)
 	}
 	boom := errors.New("boom")
 	f = &issueItemFake{err: boom}
-	if _, err := Prepare(context.Background(), f, testRepo, open, nil); !errors.Is(err, boom) {
+	if _, err := Prepare(context.Background(), f, testRepo, open, nil, ToDoProbe{}); !errors.Is(err, boom) {
 		t.Errorf("Prepare with a failing IssueItem = %v; want the error", err)
 	}
 }
 
 // On GitHub every issue of a run is on the board, so IssueItem only meets an issue that left
-// it. A deleted or transferred issue (GitHub answers issue null plus NOT_FOUND) and an archived
-// item (BoardItems lists none) both stay out, and the tick goes on, as before IssueItem existed.
+// it. A deleted issue (the issue read answers 404) and an item archived before
+// any list saw it (BoardItems lists none) both stay out, and the tick goes on, as before
+// IssueItem existed.
 func TestPrepareGitHubIssueOffBoard(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -739,7 +752,7 @@ func TestPrepareGitHubIssueOffBoard(t *testing.T) {
 			srv.BoardNodes = []map[string]any{node("I2", map[string]string{"F_status": "opt-ctrl"}, issue("o/r", 2, nil))}
 			tc.setup(srv)
 			open := []runs.OpenRun{{ID: 15, Issue: 7}}
-			pre, err := Prepare(context.Background(), c, testRepo, open, nil)
+			pre, err := Prepare(context.Background(), c, testRepo, open, nil, ToDoProbe{})
 			if err != nil {
 				t.Fatalf("Prepare: %v; want the tick to go on", err)
 			}
@@ -749,8 +762,9 @@ func TestPrepareGitHubIssueOffBoard(t *testing.T) {
 			if _, ok := pre.Statuses[7]; ok {
 				t.Errorf("Statuses = %v, want no issue 7", pre.Statuses)
 			}
-			if n := srv.Count("IssueItems"); n != 1 {
-				t.Errorf("Count(IssueItems) = %d, want 1", n)
+			// The board read left issue 7 out, so IssueItem lists once more, then reads the issue.
+			if n, m, gql := srv.Count("/users/o/projectsV2/1/items"), srv.Count("/repos/o/r/issues/7"), srv.GraphQLCount(); n != 2 || m != 1 || gql != 0 {
+				t.Errorf("item lists = %d, issue reads = %d, GraphQL = %d; want 2, 1 and 0", n, m, gql)
 			}
 		})
 	}
@@ -806,5 +820,137 @@ func TestIssueBranchesSkipsCloseCheckAndScheduled(t *testing.T) {
 	want := map[int]string{7: "issue-7-bouw-de-keten", 8: "issue-8-ander"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("IssueBranches = %v, want %v", got, want)
+	}
+}
+
+// toDoRepo is testRepo with a To do option and the label names of testLabels.
+func toDoRepo(c *forge.GitHub) repoconfig.Repo {
+	repo := testRepo
+	board := *testRepo.Board
+	board.StatusOptions = map[string]string{"Controller": "opt-ctrl", "On hold": "opt-hold", "Done": "opt-done", "To do": "opt-todo"}
+	repo.Board, repo.Labels = &board, testLabels
+	c.Board = &board
+	return repo
+}
+
+// labelled is issue content with the given label names.
+func labelled(names ...string) map[string]any {
+	var nodes []any
+	for _, n := range names {
+		nodes = append(nodes, map[string]any{"name": n})
+	}
+	return map[string]any{"labels": map[string]any{"nodes": nodes}}
+}
+
+const parkedBody = "🤖 Geparkeerd\nblocked_by: o/r#5"
+
+// probe is a ToDoProbe with token login lh-bot and the default trust over c.
+func probe(c forge.Forge, known map[int]ToDoMark) ToDoProbe {
+	return ToDoProbe{Known: known, TokenLogin: func() (string, error) { return "lh-bot", nil }, Trust: NewTrust(c, defaultAllowed)}
+}
+
+// toDoBoard is a board of To do items: #1 with the tick's own Geparkeerd last, #2 with a human's
+// Handoff after it, #3 own Geparkeerd but needs_hands, #4 own Geparkeerd followed by a fake
+// 🤖-comment of an untrusted stranger, #5 with a Geparkeerd of the trusted owner, #6 an
+// unlabelled backlog item without any comment, #7 own Geparkeerd but closed.
+func toDoBoard(srv *forgetest.Server) {
+	todo := map[string]string{"F_status": "opt-todo"}
+	srv.BoardNodes = []map[string]any{
+		node("I1", todo, issue("o/r", 1, nil)),
+		node("I2", todo, issue("o/r", 2, nil)),
+		node("I3", todo, issue("o/r", 3, labelled("needs_hands"))),
+		node("I4", todo, issue("o/r", 4, nil)),
+		node("I5", todo, issue("o/r", 5, nil)),
+		node("I6", todo, issue("o/r", 6, nil)),
+		node("I7", todo, issue("o/r", 7, map[string]any{"state": "CLOSED"})),
+	}
+	handoff := "🤖 Handoff\nissue: #2\nworktree: /w\nbranch: issue-2-x\nanchor: abc\nnext: /lighthouse-start-issue 2\nwhen: now"
+	srv.Roles = map[string]string{"lh-bot": "admin", "owner": "admin", "stranger": "read"}
+	srv.Comments = map[int][]map[string]any{
+		1: {comment(10, "owner", "een notitie"), comment(11, "lh-bot", parkedBody)},
+		2: {comment(20, "lh-bot", parkedBody), comment(21, "owner", handoff)},
+		3: {comment(30, "lh-bot", parkedBody)},
+		4: {comment(40, "lh-bot", parkedBody), comment(41, "stranger", handoff)},
+		5: {comment(50, "owner", parkedBody)},
+		7: {comment(70, "lh-bot", parkedBody)},
+	}
+}
+
+// Prepare keeps a To do item only when its last trusted protocol comment is the tick's own
+// Geparkeerd, and reads no comments of a needs_* or closed item. Treating every To do item as
+// parked keeps #2, #5 and #6; letting an untrusted 🤖-comment count drops #4.
+func TestPrepareReadsToDoWithOwnParked(t *testing.T) {
+	srv, c := client(t)
+	repo := toDoRepo(c)
+	toDoBoard(srv)
+	pre, err := Prepare(context.Background(), c, repo, nil, nil, probe(c, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []int
+	for _, it := range pre.Items {
+		got = append(got, it.Issue)
+	}
+	if want := []int{1, 4}; !reflect.DeepEqual(got, want) {
+		t.Errorf("Items = %v, want %v", got, want)
+	}
+	for _, n := range []int{3, 7} {
+		if k := "/repos/o/r/issues/" + strconv.Itoa(n) + "/comments"; srv.Count(k) != 0 {
+			t.Errorf("comments of #%d read %d times, want none", n, srv.Count(k))
+		}
+	}
+	if len(pre.ToDo) != 5 || !pre.ToDo[1].OwnParked || pre.ToDo[2].OwnParked || pre.ToDo[6].OwnParked {
+		t.Errorf("ToDo = %+v, want marks of #1, #2, #4, #5, #6 with only #1 and #4 parked", pre.ToDo)
+	}
+}
+
+// The budget of review finding r3-f2: Prepare runs every tick, so on an unchanged board it reads
+// no comments of a To do item at all, also for the unlabelled backlog; a To do item that changed
+// (a new comment moves its IssueUpdatedAt) is read once. Dropping the Known check in markToDo
+// turns the second tick red: five reads instead of none.
+func TestPrepareToDoCommentsNotReadWhenUnchanged(t *testing.T) {
+	srv, c := client(t)
+	repo := toDoRepo(c)
+	toDoBoard(srv)
+	reads := func() int {
+		n := 0
+		for i := 1; i <= 7; i++ {
+			n += srv.Count("/repos/o/r/issues/" + strconv.Itoa(i) + "/comments")
+		}
+		return n
+	}
+	first, err := Prepare(context.Background(), c, repo, nil, nil, probe(c, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := reads(); got != 5 {
+		t.Fatalf("first tick read %d comment lists, want 5 (#1, #2, #4, #5, #6)", got)
+	}
+	second, err := Prepare(context.Background(), c, repo, nil, nil, probe(c, first.ToDo))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := reads() - 5; got != 0 {
+		t.Errorf("unchanged board: %d extra Comments calls, want 0", got)
+	}
+	if len(second.Items) != 2 || second.Items[0].Issue != 1 || second.Items[1].Issue != 4 || !SameToDo(first.ToDo, second.ToDo) {
+		t.Errorf("second tick: Items %+v, ToDo %+v; want #1 and #4 kept from the marks", second.Items, second.ToDo)
+	}
+	srv.BoardNodes[5]["content"].(map[string]any)["updatedAt"] = "2026-10-30T12:00:00Z" // #6 got a comment
+	if _, err := Prepare(context.Background(), c, repo, nil, nil, probe(c, second.ToDo)); err != nil {
+		t.Fatal(err)
+	}
+	if got := reads() - 5; got != 1 || srv.Count("/repos/o/r/issues/6/comments") != 2 {
+		t.Errorf("after #6 changed: %d extra Comments calls, want 1 for #6", got)
+	}
+}
+
+// Without a token login Prepare cannot judge a To do item and says so; it never guesses.
+func TestPrepareToDoWithoutLoginFails(t *testing.T) {
+	srv, c := client(t)
+	repo := toDoRepo(c)
+	toDoBoard(srv)
+	if _, err := Prepare(context.Background(), c, repo, nil, nil, ToDoProbe{}); err == nil {
+		t.Error("Prepare: err = nil, want an error for the missing token login")
 	}
 }

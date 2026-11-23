@@ -75,7 +75,7 @@ func TestPlacesGolden(t *testing.T) {
 	sort.Strings(names)
 
 	root := newRepo(t)
-	r := run(t, root, "", all(yes, func(o *Options) {
+	r := run(t, root, "", all(yes, strict, func(o *Options) {
 		o.Packs = nil
 		o.AddPacks = names
 		o.Lookup = func(string) (string, bool, error) { return "x", true, nil }
@@ -169,7 +169,7 @@ func TestPlacesGolden(t *testing.T) {
 		t.Fatal(err)
 	}
 	if string(want) != string(got) {
-		t.Errorf("%s\nplaces.golden is stale: run go test ./internal/initcmd -run TestPlacesGolden -update, then bring the repo map in step (tests/test_site_repo.py)",
+		t.Errorf("%s\nplaces.golden is stale: run go test ./internal/initcmd -run TestPlacesGolden -update, then bring the repo map in step (repo.test.mjs of the site tests)",
 			unified(want, got, "places.golden", "init"))
 	}
 }

@@ -7,7 +7,8 @@ serves all your repositories from one SQLite database.
 
 - Linux with systemd (user units) for `lighthouse serve`; macOS is not supported there. The CLI
   runs on macOS, but the hooks are untested there.
-  Windows has a binary, but the hooks need WSL.
+  On Windows, `lighthouse serve` does not run natively; the CLI and the hooks do (see
+  [getting-started.md](getting-started.md#windows)).
 - Go, only to install with `go install` or to build from a clone.
 - Node 22 with npm, only to build from a clone (the web UI). `web/.nvmrc` holds the exact version.
   A release binary needs neither Node nor a clone.
@@ -73,6 +74,32 @@ All routes write `~/go/bin/lighthouse` (or your chosen path), so the last one wi
 binary or a `go install` of a tag (from the next release on) replaces a build from a clone and
 still serves the UI. Only a `go install …@main`, an older tag, or a build from a clone without
 `npm run build`, replaces it with the placeholder page, and the systemd unit then serves that.
+
+## Start small
+
+A repository does not have to take the whole chain at once. A first `lighthouse init` in a new
+repository chooses the level `light`; the levels are `light`, `standard` and `strict`.
+
+```bash
+lighthouse init          # new repository: level light
+lighthouse level         # the level, the stand per component, what the components on log counted
+lighthouse init --upgrade --level standard
+```
+
+`lighthouse level` only reads. Scale up with `lighthouse init --upgrade --level standard`, later
+`--level strict`. `--level` records the choice in `lighthouse.toml` and in
+`.lighthouse/components.toml`. An existing repository without `level` in `lighthouse.toml`
+behaves as `strict`.
+
+- **Overrides.** `[components]` in `lighthouse.toml` sets one component to `off`, `log` or `on`,
+  whatever the level says. `log` exists only for the Go hooks of core: the hook runs, never blocks
+  and never speaks, and writes what it would have reported to a logbook outside the repository,
+  which `lighthouse level` counts. The base components (`run.sh`, `blocking`, `usage-gate`,
+  `permission-check`, `workflow-push-gate`, `level-check`, `no-verify-check`) cannot be overridden.
+  A skill that is on cannot hand over to a skill that is off; `init` refuses that.
+- **Core gates.** `main-commit-gate`, `worktree-check` and `pr-create-gate` keep the repository
+  in the chain. When one of them is not `on`, `init` warns, the session start (`level-check`)
+  warns, and so does the managed block in `AGENTS.md`.
 
 ## Run it as a user service
 
@@ -154,6 +181,30 @@ The API is read-only. Its routes:
 | `GET /api/cleanup` | the workspaces to clean up, from the database |
 | `GET /api/latest-comment?repo=owner/name&issue=N` | the comments of one issue, from the forge; redirects (302) to the newest comment, or to the issue page when it has none or the read fails. A repo `serve` does not serve gets 404 |
 
+## Check the hooks
+
+```bash
+lighthouse check-hooks
+```
+
+Run it after `lighthouse init` (which runs it for you and prints the result on stderr), on a new
+machine, and whenever a hook seems to do nothing. It reads `.claude/settings.json` and starts each
+registered hook once in a smoketest. Every line is `ok` or `FAIL` with its remedy; the exit code is
+0 when every hook can run, 1 on a `FAIL`, 2 when it could not check. The common `FAIL` lines:
+
+| `FAIL` | Meaning | Fix |
+|---|---|---|
+| `no sh on the PATH` | Claude Code runs every hook with `sh -c`, so none runs | Put a POSIX `sh` on the `PATH` |
+| `Git Bash not found` | Windows only: without Git Bash, Claude Code runs the hooks under PowerShell and they block nothing | Install Git for Windows, or set `CLAUDE_CODE_GIT_BASH_PATH` to its `bash.exe`, and start a new session |
+| `has CRLF line endings` | The shell does not run the hook, or lets everything through | `lighthouse init --upgrade`: it writes the hook with LF and sets `.gitattributes` |
+| `hook not registered` | A hook of the pack is missing from `.claude/settings.json` | `lighthouse init --upgrade` |
+| `disableAllHooks is true` | No hook runs | Remove that line from the settings file it names |
+| a hook line with a verdict | The hook failed its smoketest | Fix what the line says; `lighthouse init --upgrade` reinstalls the hooks |
+
+Git Bash matters only on Windows. The Windows route is not proven yet: the WSL advice in
+[the agent guide](site/agents/install.md) stays until `ci/windows-measure.sh` row 12 is green on
+native Windows.
+
 ## Connect the forge
 
 `GET /api/questions` and `GET /api/returned` read the open questions and returned issues of
@@ -222,12 +273,12 @@ against a real GitLab is part of the definition of done of the GitLab milestone 
 `api` scope to write, `read_api` to only read.
 
 GitLab keeps the status of an issue in its built-in issue status (a work item widget), not in a
-label. Add the statuses *On hold* and *Controller* to the top group of the lifecycle, under
+label. Add the status *Controller* to the top group of the lifecycle, under
 *Settings → Work items → Statuses*. A status the lifecycle lacks stops the write with an error
 that names the status and this place. Names are matched case-insensitively.
 
 The `[forge.board]` of a GitLab repository has two tables only. `status_options` needs *To do*,
-*In progress*, *Done* and *On hold*, and *Controller* as well once the file has a `[controller]`
+*In progress* and *Done*, and *Controller* as well once the file has a `[controller]`
 table. Each lighthouse name needs a GitLab status of its own, and each priority a label of its
 own: two names on one status or label are refused.
 
@@ -241,7 +292,6 @@ host = "gitlab.example.com"
 "To do" = "To do"
 "In progress" = "In progress"
 "Done" = "Done"
-"On hold" = "On hold"
 "Controller" = "Controller"
 
 [forge.board.priority_options]  # lighthouse name = scoped label
@@ -249,8 +299,9 @@ host = "gitlab.example.com"
 "P2" = "priority::P2"
 ```
 
-`project_number`, `project_id`, `status_field_id` and `priority_field_id` are GitHub Projects
-keys and are refused for GitLab. Limits of this first GitLab version:
+`project_number`, `project_id`, `status_field_id`, `priority_field_id` and `project_owner` are
+GitHub Projects keys and are refused for GitLab. `project_owner` is optional: set it when the
+user or organisation that owns the project board differs from the repository owner. Limits of this first GitLab version:
 
 - No script of `pack/core` is Python any more, so the old Python config reader, which
   required the GitHub board keys for every `[forge.board]`, is gone, and a host needs no `python3` for the core.
@@ -289,7 +340,7 @@ curl -s http://127.0.0.1:8127/api/questions
 
 For a repository in `[dispatch] repos` whose `lighthouse.toml` has a `[forge.board]` with a
 `Controller` option, the overview shows only the issues in Controller. Issues the dispatcher
-parked (On hold, see [tick.md](tick.md)) then drop out. Otherwise it shows every open issue of
+parked (To do with the `blocked_issue` label, see [tick.md](tick.md)) then drop out. Otherwise it shows every open issue of
 that repository. With the filter `serve` reads the project board, so the token needs the
 `project` scope as well. A `host.toml` that does not load (an invalid value or an unknown key under
 `[dispatch]`) stops `serve`; a missing one counts as no `[dispatch]`.
@@ -323,6 +374,73 @@ host.toml). Set `web_url` to the tailscale serve address when you open the page 
 machine; lighthouse itself keeps talking to the forge API on `url`. The page links the workspace id in
 a run row and in *Workspaces to clean up* to `<workspace_url>/workspaces/<id>`, in a new tab. The other setting is `night`,
 the night window from `[dispatch] night` as `HH:MM-HH:MM`. A `500` means the database could not be read.
+
+## Telemetry data model
+
+The same `lighthouse.db` holds the telemetry of the work, migration `0010`, recovery after merge `0011`. A *trajectory* is one
+issue of one repository (`trajectories`, unique on `repo` and `issue`, `repo` the configured slug
+exactly as in `runs.repo`). Four more tables and two columns carry the rest: `sessions` (interactive
+sessions only, never dispatcher runs), `setups` (the deployment of one run or session: model, effort,
+harness and tool versions, skills hash), `usage` (tokens and cost per model, with `cost_kind`
+`estimate`, `quota` or `actual`; an unknown cost is `NULL`) and `findings` (review findings with their
+`decision`: `adopted`, `rejected` or `left_open`; the record files stay the source), plus
+`runs.trajectory_id` and `runs.assignment` (`standard`, `shadow:<x>` or `variant:<k>=<v>`). `Take`
+links every issue run to its trajectory when it claims the run.
+
+Every telemetry row has the provenance columns `source`, `source_id` and `recorded_at`, unique on
+`(source, source_id)`. The writers in `internal/telemetry` are idempotent: offering the same record
+again never adds a row. A session and a finding update their derived fields (a session that grows can be
+offered again, a finding gets its decision later); a setup and a usage row keep the first row.
+
+An interactive session is linked to a trajectory in four steps, from the lines of its transcript
+with their branch:
+
+1. Lines on the default branch or with an empty branch do not count.
+2. Of the other lines, the issue number comes from the branch name (`issue-<N>` or `issue-<N>-<slug>`);
+   the issue with the most lines wins, ties go to the last one seen (basis `branch`).
+3. Without an issue branch, the issue number the transcript names most often wins, here every line
+   counts, also on the default branch (basis `transcript`).
+4. Otherwise the session has no trajectory and one reason, each when the transcript also gave no issue
+   number: `main_only` (all lines on the default branch), `no_issue_branch` (other branches, none an
+   issue branch) or `no_issue_number` (no usable branch at all).
+
+Scheduled runs (see *Scheduled runs*) have no issue and so no trajectory: `runs.trajectory_id` stays
+empty for them.
+
+### Herstel na merge
+
+`lighthouse measure-recovery --repo-dir <pad> [--days N] [--db <pad>]` meet per gemergde PR of het
+werk na de merge hersteld moest worden, en schrijft dat in `recoveries` (een rij per PR, uniek op
+traject en PR: `merged_at`, `window_end`, `status`, `fixpr_rounds`) en `recovery_items` (een rij per
+herstel: `kind` `fix`, `revert` of `bug_issue`, met `ref` en `at`). De opdracht draait niet vanzelf;
+start haar met de hand of vanuit een eigen cron. `--days` is standaard 14, `--db` standaard de
+`lighthouse.db` van de statusmap. Repo en default branch komen uit de `lighthouse.toml` in
+`--repo-dir`; de opdracht haalt eerst `origin/<default branch>` op (mislukt dat, dan is het exit 1 en
+wordt niets geschreven) en meet op die ref.
+
+- **Herstel** is een van drie dingen binnen het venster `(merged_at, merged_at + 7 dagen]`: een
+  commit op de default branch waarvan het onderwerp met `fix:` of `fix(` begint en die minstens een
+  bestand raakt dat ook de merge-commit raakte (`fix`), zo'n commit met `Revert "`, `revert:` of
+  `revert(` (`revert`), of een issue met het label `bug` dat `#<pr>` in titel of body noemt en
+  binnen het venster is aangemaakt (`bug_issue`). De merge-commit is de commit met `(#<pr>)` aan
+  het eind van het onderwerp (squash-merge); een PR zonder zo'n commit wordt overgeslagen
+  (`no_merge_commit`).
+- **Status.** Zolang het venster loopt is de status `open`, ook als er al herstel is. Daarna is hij
+  `recovered` (minstens een item) of `none`. Een rij die `recovered` of `none` is blijft zo; een
+  `open`-rij wordt bij elke run vervangen, ook buiten `--days`, zodat hij sluit zodra zijn venster
+  voorbij is.
+- **Traject.** Het issuenummer komt uit de branchnaam `issue-<nr>-...` van de PR (een PR met een
+  bestaande `open`-rij houdt het issue van die rij); een PR zonder
+  zo'n branch wordt overgeslagen met reden `no_issue_branch`. Elke overgeslagen PR staat met reden in
+  de uitvoer; de exitcode blijft 0. De uitvoer is `#<pr> <status> <n> items, <m> fix-pr rounds` per
+  gemeten PR en `#<pr> skipped: <reason>` per overgeslagen PR.
+- **`fixpr_rounds`** telt de `fix-pr`-runs van de dispatcher die voor de merge begonnen (`runs`,
+  trigger `fixpr`, zonder `start_failed`). Alleen die tellen: een ronde in een interactieve sessie
+  laat geen PR-record achter en blijft buiten de telling.
+- **Forge.** Per run is er een zoekopdracht (`label:bug created:>=<oudste merge>`) vanwege de
+  limiet van de zoek-API; een forgefout, ook een limiet, geeft exit 1 voordat er iets wordt
+  geschreven. Alleen GitHub: GitLab kan gemergde PR's nog niet opsommen, dus daar is de opdracht een
+  fout (exit 1).
 
 ## Run the tick
 
@@ -407,7 +525,7 @@ A repository can have runs on a fixed schedule, without an issue (#121, see
 ```toml
 [[schedule]]
 name = "codebase-map"   # required; [a-z0-9-]+, unique per repository: it goes into a branch name
-job  = "map-refresh"    # required; map-refresh or reflect
+job  = "map-refresh"    # required; map-refresh, reflect or map-planned
 cron = "0 4 1 * *"      # required; five fields, in the local time of the host
 # profile = "software"  # the profile of the run; default [controller] profile
 
@@ -422,8 +540,8 @@ weeks  = 2              # weeks and anchor go together: only the week of anchor 
 anchor = "2026-10-12"   # weeks-th week after it count (a week runs Monday to Sunday)
 ```
 
-An invalid block makes the repository's config invalid, like any other config error. Jobs `map-refresh`
-and `reflect` are available (their params are in [tick.md](tick.md#job-map-refresh) and [tick.md](tick.md#job-reflect)). A schedule
+An invalid block makes the repository's config invalid, like any other config error. Jobs `map-refresh`,
+`reflect` and `map-planned` are available (their params are in [tick.md](tick.md#job-map-refresh) and [tick.md](tick.md#job-reflect); `map-planned` takes none, see [tick.md](tick.md#job-map-planned)). An older binary refuses a `lighthouse.toml` with a `job` it does not know and skips the repo, so rebuild the host after the merge that adds such a block. A schedule
 that names a job the binary does not know makes the tick report, at each gather of the repo,
 `lighthouse: <repo> scheduled:<name>:<slot>: no job <job>` (a line, not an error: the tick still exits 0 and
 saves its state) and start nothing.

@@ -1,0 +1,2 @@
+# The expo package has one component and no level switches it.
+on = ["skill:refresh-expo-lockfiles"]

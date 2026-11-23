@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -29,6 +30,23 @@ type forgeEnv struct {
 	// repo is the lighthouse.toml of this repo: the default --base and the valid statuses.
 	repo     func() (repoconfig.Repo, error)
 	out, err io.Writer
+	// getenv and now serve the post-failed note; nil is os.Getenv and time.Now.
+	getenv func(string) string
+	now    func() time.Time
+}
+
+func (e *forgeEnv) env(key string) string {
+	if e.getenv != nil {
+		return e.getenv(key)
+	}
+	return os.Getenv(key)
+}
+
+func (e *forgeEnv) clock() time.Time {
+	if e.now != nil {
+		return e.now()
+	}
+	return time.Now()
 }
 
 // stdout and stderr are the streams a subcommand writes to.
@@ -144,6 +162,16 @@ func forgeGroup(use, short string) *cobra.Command {
 			return forgeUsage(cmd, fmt.Sprintf("unknown command %q", args[0]))
 		},
 		RunE: func(*cobra.Command, []string) error { return nil },
+	}
+}
+
+// forgeArgsRange is forgeArgs for a number of arguments between lo and hi.
+func forgeArgsRange(lo, hi int) cobra.PositionalArgs {
+	return func(cmd *cobra.Command, args []string) error {
+		if len(args) < lo || len(args) > hi {
+			return forgeUsage(cmd, fmt.Sprintf("accepts %d to %d argument(s), received %d", lo, hi, len(args)))
+		}
+		return nil
 	}
 }
 

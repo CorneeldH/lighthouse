@@ -41,10 +41,23 @@ def test_domain_jobs_wait_for_changes():
         assert f"needs.changes.outputs.{name} == 'true'" in jobs[name], name
 
 
+def test_canary_job_runs_both_canaries_with_every_tool():
+    """Fails when the canary job drops a canary, a setup action (uv, npx and go are the tools the
+    canary fails on when CI is set), or the gate on the changes job (#383)."""
+    canary = _jobs()["canary"]
+    assert "needs: changes" in canary
+    assert "needs.changes.outputs.go == 'true'" in canary
+    assert "needs.changes.outputs.python == 'true'" in canary
+    for action in ("setup-go", "setup-uv", "setup-node"):
+        assert re.search(rf"uses: \S*{action}@[0-9a-f]{{40}} # v[\d.]+", canary), action
+    assert "- run: go test -race -tags canary ./internal/importcheck/" in canary
+    assert "- run: uv run pytest -q tests/pack/python/test_imports_gate_canary.py" in canary
+
+
 def test_changes_job_classifies():
-    """Fails when the `changes` job stops classifying the diff with ci/domains.py."""
+    """Fails when the `changes` job stops classifying the diff with ci/domains."""
     changes = _jobs()["changes"]
-    for needle in ("fetch-depth: 0", "--no-renames", " -z ", "ci/domains.py classify"):
+    for needle in ("fetch-depth: 0", "--no-renames", " -z ", "go run ./ci/domains classify"):
         assert needle in changes, needle
     # A step line of its own (not the comment): without it `git diff | classify` has no pipefail.
     assert re.search(r"^        shell: bash\s*$", changes, re.MULTILINE)
@@ -189,7 +202,7 @@ def test_no_measurement_step():
 def test_actions_pinned_by_sha():
     """Fails when an action is referenced by tag, or loses its version comment."""
     uses = re.findall(r"^\s*(?:- )?uses: (\S+)(.*)$", _text(), re.MULTILINE)
-    assert len(uses) == 24, uses
+    assert len(uses) == 33, uses
     for ref, rest in uses:
         assert re.search(r"@[0-9a-f]{40}$", ref), ref
         assert re.match(r"\s+# v\d+\.\d+\.\d+\s*$", rest), (ref, rest)
@@ -198,9 +211,29 @@ def test_actions_pinned_by_sha():
 def test_changelog_job_runs_on_every_pr():
     """Fails when the fragment check starts depending on the domains of the change."""
     job = _jobs()["changelog"]
-    assert "needs:" not in job and "if:" not in job
-    for needle in ("runs-on: ubuntu-latest", "fetch-depth: 0", "python3 ci/changelog.py check --base \"$BASE\" --head \"$HEAD\""):
+    assert "needs:" not in job and "needs.changes" not in job
+    assert re.findall(r"^\s+if: .*$", job, re.M) == ["    if: github.event_name == 'pull_request'"]
+    for needle in ("runs-on: ubuntu-latest", "fetch-depth: 0", "go run ./ci/changelog check --base \"$BASE\" --head \"$HEAD\""):
         assert needle in job, needle
+    # go run needs the toolchain from go.mod, set up before the call. Without a build cache: the
+    # fastest Go job would otherwise save the shared setup-go cache key first and lock out the others.
+    setup = re.search(
+        r"uses: actions/setup-go@[0-9a-f]{40} # v[\d.]+\n\s+with:\n\s+go-version-file: go.mod\n\s+cache: false", job
+    )
+    assert setup and setup.start() < job.index("go run ./ci/changelog"), job
+
+
+def test_dispatch_turns_on_every_domain():
+    """Fails when a manual run stops enabling web, python and go, or loses the all-domains input."""
+    text = _text()
+    assert "workflow_dispatch:" in text
+    assert "all-domains:" in text
+    block = text[text.index("all-domains:"):]
+    assert "type: boolean" in block.split("permissions:")[0]
+    assert "default: true" in block.split("permissions:")[0]
+    changes = _jobs()["changes"]
+    for needle in ("web=$ALL", "python=$ALL", "go=$ALL"):
+        assert needle in changes, needle
 
 
 def test_binary_runs_playwright():

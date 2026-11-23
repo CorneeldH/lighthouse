@@ -62,3 +62,29 @@ func TestDefaultBudgetPanicIsUnreadable(t *testing.T) {
 		t.Errorf("code %d, body %q; want 1 and empty", code, body)
 	}
 }
+
+// With CODEX_HOME set (HOME pointing elsewhere), the gate reads the budget in that home.
+func TestDefaultBudgetReadsCodexHome(t *testing.T) {
+	budgetEnv(t)
+	dir := os.Getenv("PATH")
+	if err := os.MkdirAll(filepath.Join(dir, "codex-home"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	result := `{"rateLimits":{"limitId":"codex","primary":{"usedPercent":10,"windowDurationMins":300,"resetsAt":4102444800},"secondary":{"usedPercent":1,"windowDurationMins":10080,"resetsAt":4102444800}},"rateLimitResetCredits":{"availableCount":0,"credits":[]}}`
+	script := "#!/bin/sh\n" +
+		"[ \"$CODEX_HOME\" = \"" + dir + "/codex-home\" ] || exit 1\n" +
+		"echo '{\"id\":1,\"result\":{}}'\n" +
+		"echo '{\"id\":2,\"result\":" + result + "}'\n" +
+		"while read -r l; do :; done\n"
+	if err := os.WriteFile(filepath.Join(dir, "codex"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	code, body := DefaultBudget()()
+	var got struct{ Decision, Reason string }
+	if err := json.Unmarshal([]byte(body), &got); err != nil {
+		t.Fatalf("body %q: %v", body, err)
+	}
+	if code != 0 || got.Decision != "codex" {
+		t.Errorf("code %d, decision %q (%s); want 0, codex", code, got.Decision, got.Reason)
+	}
+}

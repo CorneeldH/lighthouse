@@ -1,5 +1,6 @@
 import type { JSX } from 'react'
 import type { ViewId } from '@/lib/priorities/prefs'
+import { Block, type BlockState } from './Block'
 
 export interface LegendItem {
   key: string
@@ -15,7 +16,17 @@ interface ToolbarProps {
   selected: Set<string>
   onToggleRepo: (slug: string) => void
   legend: LegendItem[]
+  msOrder: 'computed' | 'priority'
+  onMsOrder: (o: 'computed' | 'priority') => void
 }
+
+const STATES: Array<{ key: string; label: string; state: BlockState; needsHuman: boolean }> = [
+  { key: 'done', label: 'done', state: 'done', needsHuman: false },
+  { key: 'active', label: 'active', state: 'active', needsHuman: false },
+  { key: 'ready', label: 'ready', state: 'ready', needsHuman: false },
+  { key: 'needs-human', label: 'needs a human', state: 'ready', needsHuman: true },
+  { key: 'blocked', label: 'blocked', state: 'blocked', needsHuman: false },
+]
 
 const VIEWS: Array<{ id: ViewId; label: string }> = [
   { id: 'deps', label: 'Dependencies' },
@@ -23,7 +34,22 @@ const VIEWS: Array<{ id: ViewId; label: string }> = [
   { id: 'unassigned', label: 'Without milestone' },
 ]
 
-export function Toolbar({ view, onView, counts, repos, selected, onToggleRepo, legend }: ToolbarProps): JSX.Element {
+const ORDERS: Array<{ id: 'computed' | 'priority'; label: string }> = [
+  { id: 'computed', label: 'Berekend' },
+  { id: 'priority', label: 'Prioriteit' },
+]
+
+export function Toolbar({
+  view,
+  onView,
+  counts,
+  repos,
+  selected,
+  onToggleRepo,
+  legend,
+  msOrder,
+  onMsOrder,
+}: ToolbarProps): JSX.Element {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-4">
@@ -43,6 +69,24 @@ export function Toolbar({ view, onView, counts, repos, selected, onToggleRepo, l
             )
           })}
         </div>
+        {view === 'milestones' && (
+          <div role="group" aria-label="Volgorde" className="inline-flex overflow-hidden rounded-md border border-lh-navy">
+            {ORDERS.map((o) => {
+              const on = o.id === msOrder
+              return (
+                <button
+                  key={o.id}
+                  type="button"
+                  aria-pressed={on}
+                  className={`px-3 py-1 text-sm font-medium ${on ? 'bg-lh-navy text-white' : 'bg-card text-foreground hover:bg-muted'}`}
+                  onClick={() => onMsOrder(o.id)}
+                >
+                  {o.label}
+                </button>
+              )
+            })}
+          </div>
+        )}
         <div role="group" aria-label="Repos" className="flex flex-wrap gap-2">
           {repos.map((slug) => {
             const on = selected.has(slug)
@@ -69,9 +113,22 @@ export function Toolbar({ view, onView, counts, repos, selected, onToggleRepo, l
             {l.label}
           </li>
         ))}
-        <li className="inline-flex items-center gap-1.5">
-          <i aria-hidden className="inline-block h-3 w-3.5 rounded-sm border-2 border-dashed border-lh-navy" />
-          picked up
+        {STATES.map((st) => (
+          <li key={st.key} data-testid="legend-state" className="inline-flex items-center gap-1.5">
+            <Block
+              testId="legend-block"
+              state={st.state}
+              needsHuman={st.needsHuman}
+              color="var(--lh-grey)"
+              title={st.label}
+              className="size-3.5"
+            />
+            {st.label}
+          </li>
+        ))}
+        <li data-testid="legend-shaping" className="inline-flex items-center gap-1.5">
+          <i aria-hidden className="inline-block h-3 w-3.5 rounded-sm outline-[1.5px] outline-dashed outline-lh-grey" />
+          not shaped yet
         </li>
       </ul>
     </div>

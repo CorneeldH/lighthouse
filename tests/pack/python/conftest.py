@@ -2,13 +2,20 @@
 plus python (`install_pack`)."""
 
 import atexit
+import os
 import shutil
+import sys
 import tempfile
 from pathlib import Path
 
 import pytest
 
-from tests.pack._testkit import install_pack
+# The scripts of pack/python are imported by the tests: leave no __pycache__ under pack/.
+os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
+sys.dont_write_bytecode = True
+
+from tests.pack.python._network import network_error, offline
+from tests.pack.python._testkit import install_pack
 
 PY_ROOT = Path(tempfile.mkdtemp(prefix="lighthouse-python-"))
 atexit.register(shutil.rmtree, PY_ROOT, True)
@@ -59,3 +66,17 @@ def lighthouse_toml(tmp_path, monkeypatch):
 
     write()
     return write
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_makereport(item, call):
+    # A failure whose explanation names a network error of a tool (curl, uv, go) while the
+    # runner is offline is a skip with that line as the reason: lighthouse did nothing wrong
+    # (#338). Every other failure stays red; tests/pack/python/_network.py says which lines count.
+    report = yield
+    exempt = item.get_closest_marker("network_stays_red") is not None
+    reason = network_error(report.longreprtext) if report.failed and not exempt else None
+    if reason and offline():
+        report.outcome = "skipped"
+        report.longrepr = (str(item.path), item.location[1], f"Skipped: network: {reason}")
+    return report

@@ -16,7 +16,7 @@ import (
 
 // newRoborevGateCommand is `lighthouse roborev-gate`, the port of roborev_gate.py: the gate of
 // the local roborev review that write-pr runs before `gh pr create`.
-func newRoborevGateCommand(budget roborev.Budget) *cobra.Command {
+func newRoborevGateCommand(budget roborev.Budget, alarm roborev.ClaudeAlarm) *cobra.Command {
 	cmd := scriptCommand(&cobra.Command{
 		Use:   "roborev-gate",
 		Short: "Gate of the local roborev review before a PR is created",
@@ -27,7 +27,7 @@ func newRoborevGateCommand(budget roborev.Budget) *cobra.Command {
 		},
 	})
 	cmd.AddCommand(
-		newRoborevGate(budget),
+		newRoborevGate(budget, alarm),
 		roborevSub("fixed", "Print the findings that fix commits of this branch name, as JSON",
 			func(_ *cobra.Command, root string, _ []string) (string, error) {
 				fixed, err := roborev.FixedFindings(root)
@@ -83,7 +83,7 @@ func roborevFail(cmd *cobra.Command, err error) error {
 
 // newRoborevGate is `roborev-gate gate [--push]`. With --push it reviews the unpushed range for
 // the workflow pusher: no code-line threshold, only the push record of HEAD.
-func newRoborevGate(budget roborev.Budget) *cobra.Command {
+func newRoborevGate(budget roborev.Budget, alarm roborev.ClaudeAlarm) *cobra.Command {
 	var push bool
 	cmd := roborevSub("gate", "Print the verdict as JSON: off, done, skip, classify or run",
 		func(_ *cobra.Command, root string, _ []string) (string, error) {
@@ -91,7 +91,7 @@ func newRoborevGate(budget roborev.Budget) *cobra.Command {
 			if push {
 				gate = roborev.GatePush
 			}
-			out, err := gate(root, budget)
+			out, err := gate(root, budget, alarm)
 			return compactJSON(out, err)
 		})
 	cmd.Flags().BoolVar(&push, "push", false,

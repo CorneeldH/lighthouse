@@ -275,3 +275,32 @@ func fits(t *testing.T, parts []string) bool {
 	}
 	return true
 }
+
+// The source link of the header follows the forge: GitHub's /blob/, GitLab's /-/blob/ on the
+// configured host, gitlab.com without one.
+func TestRenderArtefactAtLinksToTheForge(t *testing.T) {
+	m := ArtefactMeta{Kind: "plan", Version: 1, Part: 1, Parts: 1, File: "plans/x.md",
+		Commit: strings.Repeat("a", 40), Hash: strings.Repeat("0", 12)}
+	for _, tc := range []struct {
+		name string
+		src  Source
+		want string
+	}{
+		{"github", Source{Kind: "github", Repo: "Owner/repo"}, `href="https://github.com/Owner/repo/blob/` + m.Commit + `/plans/x.md"`},
+		{"gitlab host", Source{Kind: "gitlab", Host: "git.example.org", Repo: "grp/sub/repo"}, `href="https://git.example.org/grp/sub/repo/-/blob/` + m.Commit + `/plans/x.md"`},
+		{"gitlab default host", Source{Kind: "gitlab", Repo: "grp/repo"}, `href="https://gitlab.com/grp/repo/-/blob/` + m.Commit + `/plans/x.md"`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body, err := RenderArtefactAt(m, "x", "en", tc.src)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(body, tc.want) {
+				t.Errorf("body lacks %s:\n%s", tc.want, body)
+			}
+		})
+	}
+	if _, err := RenderArtefactAt(m, "x", "en", Source{Kind: "gitlab"}); err == nil {
+		t.Error("an empty repo rendered")
+	}
+}

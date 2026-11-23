@@ -14,6 +14,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/dispatch"
 	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/overview"
+	"github.com/CorneeldH/lighthouse/internal/priorities"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
 	"github.com/CorneeldH/lighthouse/internal/workplace"
 )
@@ -39,6 +40,9 @@ func testDeps(src forge.Forge, board *fakeBoard) Deps {
 		Overview:  func(ctx context.Context) (overview.Overview, error) { return overview.BuildAll(ctx, repos) },
 		Leftovers: noLeftovers,
 		Runs:      noRuns,
+		// Set so the OpenAPI snapshot includes the milestone-rank endpoint.
+		PriorityForges:  map[string]forge.Forge{},
+		PatchPriorities: func(func([]priorities.Repo) []priorities.Repo) bool { return true },
 	}
 }
 

@@ -10,6 +10,9 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/hook"
 )
 
+// bash-write-check has no reason of its own: its gates block under their own names.
+var _ = hook.Declare("bash-write-check")
+
 const unknownMode = "bash-write-check: COULD NOT CHECK — unknown mode, expected pre or post"
 
 // loudEvent matches the event the way the shell wrapper read it without a JSON parser: per line,
@@ -30,14 +33,12 @@ func BashWriteCheck(_ context.Context, root, stand string, p hook.Payload) hook.
 		code, output, stderr := bashwrites.Post(p.Raw, root)
 		return hook.Result{Code: code, Output: output, Stderr: stderr}
 	}
-	return hook.Result{
-		Code:   2,
-		Stderr: unknownMode + "\n",
-		Output: map[string]any{"hookSpecificOutput": map[string]any{
-			"hookEventName":     eventOf(p.Raw),
-			"additionalContext": unknownMode,
-		}},
-	}
+	res := hook.CouldNotCheck(unknownMode + "\n")
+	res.Output = map[string]any{"hookSpecificOutput": map[string]any{
+		"hookEventName":     eventOf(p.Raw),
+		"additionalContext": unknownMode,
+	}}
+	return res
 }
 
 // eventOf is the event of the first line that names one, PostToolUse when none does or the first

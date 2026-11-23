@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Your repo after init</title>
-<link rel="stylesheet" href="map.css?v=4f898adc">
-<script type="module" src="repo.js?v=4f898adc"></script>
+<link rel="stylesheet" href="map.css?v=a9efdd74">
+<script type="module" src="repo.js?v=a9efdd74"></script>
 </head>
 <body>
 <header class="page-head">
   <div>
     <h1 id="title">Your repo after init</h1>
-    <p id="subtitle" class="subtitle">Everything lighthouse init puts in your repo, and the files of yours it edits.</p>
+    <p id="subtitle" class="subtitle">Everything lighthouse init puts in your repo, the files of yours it edits, and what an upgrade does with each.</p>
   </div>
   <a class="back-link" href="index.html">All maps</a>
   <button id="theme-toggle" class="theme-toggle" type="button">Theme</button>
@@ -19,14 +19,14 @@
 
 <p id="serve-hint" class="serve-hint">This map reads its data with <code>fetch</code>, which a
 browser blocks for a page opened straight from disk. From the root of the repository, run
-<code>python3 -m http.server --directory docs/site</code> and open
+<code>go run ./tools/servedir docs/site</code> and open
 <code>http://localhost:8000/repo.html</code>.</p>
 
 <details class="why">
   <summary>Wait, but why?</summary>
   <p>The tree is your repository. Each coloured row is a place <code>lighthouse init</code> writes;
   the grey rows are what was already yours, and they stay. The switch shows what <code>init</code>
-  adds and which files of yours it edits. An arrow ↗ leads to where that part is explained.</p>
+  adds and which files of yours it edits; the Upgrade switch shows, per row, what <code>lighthouse init --upgrade</code> does with it and where it needs <code>--force</code>. An arrow ↗ leads to where that part is explained.</p>
 </details>
 
 <div id="repo-map"></div>

@@ -104,6 +104,7 @@ type request struct {
 	query        url.Values
 	body         any
 	timeout      time.Duration // 0: nodeTimeout
+	header       *http.Header  // when set, send stores the headers of the answer in it
 }
 
 // send sends one request and returns status and body of the answer. A transport failure is
@@ -156,6 +157,9 @@ func (c *NodeClient) send(ctx context.Context, r request) (int, []byte, error) {
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return 0, nil, fmt.Errorf("node %s: %s %s: read answer: %v: %w: %w", c.URL, r.method, r.path, err, workplace.ErrUncertain, workplace.ErrNotMeasurable)
+	}
+	if r.header != nil {
+		*r.header = resp.Header
 	}
 	return resp.StatusCode, data, nil
 }
@@ -423,6 +427,33 @@ func (c *NodeClient) Permission(ctx context.Context, session string) ([]byte, er
 		return nil, e
 	}
 	return data, nil
+}
+
+// PostFailed is GET post-failed: the raw post-failed.json of the run and its modification time
+// on the node, nil, zero, nil without one. Both 404 no_post_failed and a 404 without a code (a
+// node from before the route) mean no note; any other failure is an error. A missing or
+// unparsable nodeapi.HeaderModTime (a node from before the header) is a zero time: unknown.
+func (c *NodeClient) PostFailed(ctx context.Context, session string) ([]byte, time.Time, error) {
+	if _, err := c.Info(ctx); err != nil {
+		return nil, time.Time{}, err
+	}
+	var header http.Header
+	status, data, err := c.send(ctx, request{method: http.MethodGet, path: nodePath(nodeapi.PathPostFailed, "session", session), header: &header})
+	if err != nil {
+		return nil, time.Time{}, err
+	}
+	if !ok(status) {
+		e := c.nodeError(status, data)
+		if e.Status == http.StatusNotFound && (e.Code == nodeapi.CodeNoPostFailed || e.Code == "") {
+			return nil, time.Time{}, nil
+		}
+		return nil, time.Time{}, e
+	}
+	mod, err := time.Parse(time.RFC3339Nano, header.Get(nodeapi.HeaderModTime))
+	if err != nil {
+		mod = time.Time{}
+	}
+	return data, mod, nil
 }
 
 // Git is GET git: Dirty and Unpushed of the worktree on the node, with mergedHead empty or a

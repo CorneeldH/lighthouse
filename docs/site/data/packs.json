@@ -9,6 +9,7 @@
       "close-issue",
       "fix-pr",
       "forge",
+      "map-planned",
       "place-instruction",
       "review-plan",
       "review-spec",
@@ -57,6 +58,14 @@
           "PostToolUseFailure"
         ],
         "when": "around every shell command"
+      },
+      {
+        "name": "no-verify-check",
+        "source": "internal/hooks/noverifycheck.go",
+        "events": [
+          "PreToolUse"
+        ],
+        "when": "before every shell command"
       },
       {
         "name": "pr-create-gate",
@@ -110,6 +119,14 @@
         "when": "at every prompt, tool call, subagent stop and session stop"
       },
       {
+        "name": "level-check",
+        "source": "internal/hooks/levelcheck.go",
+        "events": [
+          "SessionStart"
+        ],
+        "when": "when a session starts"
+      },
+      {
         "name": "permission-check",
         "source": "internal/hooks/permissioncheck.go",
         "events": [
@@ -150,6 +167,13 @@
           "Stop"
         ],
         "when": "when the session stops"
+      },
+      {
+        "name": "go-imports-gate",
+        "events": [
+          "Stop"
+        ],
+        "when": "when the session stops"
       }
     ],
     "extra": []
@@ -164,7 +188,15 @@
     "standard_skills": [],
     "agents": [],
     "workflows": [],
-    "hooks": [],
+    "hooks": [
+      {
+        "name": "node-imports-gate",
+        "events": [
+          "Stop"
+        ],
+        "when": "when the session stops"
+      }
+    ],
     "extra": []
   },
   {
@@ -191,6 +223,13 @@
       },
       {
         "name": "ty-gate",
+        "events": [
+          "Stop"
+        ],
+        "when": "when the session stops"
+      },
+      {
+        "name": "python-imports-gate",
         "events": [
           "Stop"
         ],

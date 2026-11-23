@@ -78,6 +78,10 @@ jobs:
         with:
           name: ui-dist
           path: ${{ runner.temp }}/ui-dist
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
       - id: release
         env:
           EVENT: ${{ github.event_name }}
@@ -100,7 +104,7 @@ jobs:
               if [ "$EVENT" = workflow_dispatch ] || [ "$ATTEMPT" != 1 ]; then echo "release: started for $TESTED, but main is at $(git rev-parse HEAD); start release by hand from main" >&2; exit 1; fi
               echo "release: main moved past $TESTED, the commit macOS tested; the run of the newer commit releases it"; exit 0
             fi
-            tag=$(python3 ci/changelog.py release --event "$EVENT" --bump "$BUMP")
+            tag=$(go run ./ci/changelog release --event "$EVENT" --bump "$BUMP")
             if [ -z "$tag" ]; then echo "nothing to release"; exit 0; fi
             git add -A CHANGELOG.md changelog.d
             git commit -m "chore(release): $tag"

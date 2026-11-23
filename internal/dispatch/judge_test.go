@@ -165,6 +165,22 @@ func TestExecuting(t *testing.T) {
 	}
 }
 
+func TestSpecPhase(t *testing.T) {
+	for cmd, want := range map[string]bool{
+		"/lighthouse-review-spec /a.md":                  true,
+		"/lighthouse-spec-adversarial-review /a.md":      true,
+		"/lighthouse-review-plan /a.md":                  false,
+		"/superpowers:writing-plans /a.md":               false,
+		"/lighthouse-start-issue 7":                      false,
+		"/superpowers:subagent-driven-development /a.md": false,
+		"": false,
+	} {
+		if got := SpecPhase(cmd); got != want {
+			t.Errorf("SpecPhase(%q) = %v, want %v", cmd, got, want)
+		}
+	}
+}
+
 func TestSlug(t *testing.T) {
 	for in, want := range map[string]string{
 		"De keten in decide en apply: handoff, start": "de-keten-in-decide-en-apply-handoff",

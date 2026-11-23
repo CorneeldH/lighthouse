@@ -31,16 +31,32 @@ var gitEnv = []string{
 	"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.com",
 }
 
+// e2eState is the XDG_STATE_HOME of every child that gets cleanEnv. TestMain creates it.
+var e2eState string
+
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "lighthouse-e2e-state-")
+	if err != nil {
+		panic(err)
+	}
+	e2eState = dir
+	code := m.Run()
+	_ = os.RemoveAll(dir)
+	os.Exit(code)
+}
+
 // cleanEnv is the process environment without the lighthouse overrides, so the guard
-// finds its lib the way it does in a real repository.
+// finds its lib the way it does in a real repository. XDG_STATE_HOME points at e2eState: with
+// LIGHTHOUSE_CONTROLLER_STATE gone, the controller state (the pause flag, the alarm mirror of
+// the usage meter) falls back to it, and a child must never write the developer's (#482).
 func cleanEnv() []string {
 	var env []string
 	for _, kv := range os.Environ() {
-		if !strings.HasPrefix(kv, "LIGHTHOUSE_") {
+		if !strings.HasPrefix(kv, "LIGHTHOUSE_") && !strings.HasPrefix(kv, "XDG_STATE_HOME=") {
 			env = append(env, kv)
 		}
 	}
-	return env
+	return append(env, "XDG_STATE_HOME="+e2eState)
 }
 
 // hookEnv is cleanEnv with the directory of bin first on PATH: run.sh looks up
@@ -237,7 +253,7 @@ func TestFreshRepoBlocksCommitOnMain(t *testing.T) {
 func TestFreshRepoGetsFullCore(t *testing.T) {
 	bin := buildLighthouse(t)
 	repo := freshRepo(t)
-	if out := run(t, repo, bin, "init", "--yes"); !strings.HasPrefix(out, "Packages: core\n") {
+	if out := run(t, repo, bin, "init", "--yes", "--level", "strict"); !strings.HasPrefix(out, "Packages: core\n") {
 		t.Fatalf("init:\n%s", out)
 	}
 	for _, rel := range []string{
@@ -324,7 +340,7 @@ func pythonRepo(t *testing.T, bin, pyproject string) string {
 	writeFile(t, repo, "pyproject.toml", pyproject)
 	git(t, repo, "add", "pyproject.toml")
 	git(t, repo, "commit", "-qm", "pyproject")
-	if out := run(t, repo, bin, "init", "--yes"); !strings.HasPrefix(out, "Packages: core, python (found pyproject.toml)\n") {
+	if out := run(t, repo, bin, "init", "--yes", "--level", "strict"); !strings.HasPrefix(out, "Packages: core, python (found pyproject.toml)\n") {
 		t.Fatalf("init:\n%s", out)
 	}
 	return repo

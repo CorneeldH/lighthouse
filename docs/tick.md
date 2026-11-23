@@ -22,7 +22,9 @@ Het is een korte run, geen daemon. Wie issues vooraf routeert en naar `Controlle
    `project` nodig: lighthouse leest en schrijft er comments, reacties en het board mee. Om een
    groene eigen PR te mergen (regel 7) heeft het token ook *Contents: write* nodig. Gebruik een
    classic token, of een fine-grained token dat elke repo dekt waarvan issues op het board staan:
-   een item dat het token niet mag lezen kan een GraphQL-fout geven, en die slaat de hele repo over. De
+   een issue of PR in een andere repo dan die van de run, die het token niet mag lezen (403 of 404, geen
+   rate limit), blijft stil leeg. Een fout bij een item van de eigen repo, een rate limit of een
+   fout van `IssueItem` slaat de hele repo over. De
    login van het token zelf heeft push-toegang tot de repo nodig (anders is de collaborator-permissie
    niet te lezen) en een rol in `[dispatch] answer_permissions`: zonder die rol vallen ook de eigen
    🤖-comments van lighthouse weg, zoals Gestart en Hervat.
@@ -34,13 +36,14 @@ Het is een korte run, geen daemon. Wie issues vooraf routeert en naar `Controlle
    (zonder pad: `lighthouse: no host.toml: no repos to check`) naar stderr en eindigt met exitcode 0.
 4. **Database.** Opent de SQLite-database naast `serve`
    (`${XDG_STATE_HOME:-~/.local/state}/lighthouse/lighthouse.db`, of `--db <pad>`). Daar staat de
-   runstaat: claim, pogingen en vrijgeven.
+   runstaat: claim, pogingen en vrijgeven. Ook de telemetrie staat daar (trajecten, sessies, inzet,
+   verbruik en bevindingen, zie [install.md](install.md#telemetry-data-model)).
 5. **Controle per repo.** Leest het `lighthouse.toml` van elke repo in `[dispatch] repos`. Voldoet
    een repo niet, dan slaat tick hem luid over met `lighthouse: skip <pad>: <redenen>` op stderr en
    gaat door met de rest.
 6. **Precheck.** Per bedienbare repo leest tick het board, de open runs en de runhistorie, en rekent
-   daaruit een vingerafdruk: per item in Controller of On hold, of met een open run, de Status, Priority en de `updatedAt`
-   van item en issue, de voorgangers van een On hold-item, de PR's van een item met een open run, en
+   daaruit een vingerafdruk: per item in Controller of On hold, of met een open run, of op To do met een eigen Geparkeerd, de Status, Priority en de `updatedAt`
+   van item en issue, de voorgangers van een On hold-item, de voorgangers van een geparkeerd To do-item, de PR's van een item met een open run, en
    de open runs zelf met de stand van hun forge-sessie (`working`, `waiting` of `done`; een sessie die
    tick niet kan lezen telt als niet meetbaar), de resume-markers met `controller: true` waarvan de
    laatste run van de sessie in deze repo staat, en het einde van de pauze (zie *De rem*). De markers
@@ -48,7 +51,8 @@ Het is een korte run, geen daemon. Wie issues vooraf routeert en naar `Controlle
    kan noch de rem noch de afloop (regel 5) kijken. Per open run met een werkplek meet tick ook de
    afloop: de laatste gebeurtenis in het transcript (subagents meegeteld, per draad), of de sessie
    nog een eerste commando mist (`Unknown command:`) of nooit een assistent-beurt had, en de laatste
-   permissie-prompt (`permission.json`, door de hook `permission-check` geschreven). Bij het
+   permissie-prompt (`permission.json`, door de hook `permission-check` geschreven) en de laatste
+   mislukte post (`post-failed.json`, zie regel 14a). Bij het
    Software-profiel haalt de werkplek het transcript uit de devcontainer, zodat ook daar een
    onbekend commando binnen één tick `start_failed` wordt (#237). Is er (nog) geen transcript, dan
    is de run niet meetbaar: geen fout, en de afloop valt terug op de forge-stand.
@@ -79,7 +83,7 @@ Het is een korte run, geen daemon. Wie issues vooraf routeert en naar `Controlle
    Mislukt de precheck, dan blijven de rijen van de vorige tick staan. `serve` leest ze voor
    `GET /api/runs` en de blokken *Running runs*, *Parked runs*, *Queue* en *Night*, zonder de forge (zie [install.md](install.md)).
 7. **Gather.** Is de repo aan de beurt, dan leest tick de comments van elk item en bouwt de snapshot:
-   de items in Controller of On hold, plus elk item met een open run in een andere status, met hun velden, voorgangers en PR's (de PR's die het issue sluiten
+   de items in Controller, de geparkeerde items op To do (zie *Blokkades*) en de legacy-items op On hold, plus elk item met een open run in een andere status, met hun velden, voorgangers en PR's (de PR's die het issue sluiten
    plus de PR's op de branch van de laatste run van het issue, ook als die run al dicht is, met hun
    checks; een nacontrole-run telt daarvoor niet mee, zie *De werkplek van de nacontrole*), hun comments en de open runs. Van een mergeklare PR bij een open run leest tick ook de
    PR-comments, voor de roborev-stand (`""`, `processed` of `open`). Zo blijft een gemergde PR die het issue niet sluit zichtbaar.
@@ -92,10 +96,29 @@ Het is een korte run, geen daemon. Wie issues vooraf routeert en naar `Controlle
    comments leest tick de runhistorie (zie *De volgorde van een start*) en de skills in
    `.claude/skills/` van de main checkout. Na de gather schrijft tick
    `lighthouse: gathered <repo>: <n> items (<reden>)` naar stderr; de reden is `first`, `changed`,
-   `stale` of `boundary`. Een fout van GitHub (ook een GraphQL-fout in een antwoord met status 200)
-   slaat de repo luid over met `lighthouse: skip <pad>: <fout>` en bewaart niets, zodat de volgende
-   tick opnieuw kijkt. Een issue met meer dan 10 voorgangers, of een voorganger met meer dan 5
-   sluitende PR's, slaat de repo ook luid over: zo'n lijst leest tick niet half.
+   `stale` of `boundary`. Het board, de PR's van een branch en de blokkades leest tick bij GitHub
+   via REST met conditionele requests (`ETag`): een ongewijzigde pagina komt als `304` terug en telt
+   niet mee voor de rate limit. Ook het opzoeken van één issue op het board
+   (`IssueItem`, voor een open run waarvan het item gearchiveerd of van het board gehaald is) gaat via
+   REST: de tick roept bij GitHub geen GraphQL aan, dus een uitgeputte GraphQL-limiet stopt hem niet.
+   `IssueItem` vindt een gearchiveerd item via een tabel van item-id's in de cache, die elke
+   volledige lijstlezing van het board bijwerkt. Elke lijst leest tick via de `Link`-header tot het einde: een lange lijst voorgangers
+   of sluitende PR's wordt niet afgekapt.
+   De reads van de gather, bij GitHub, per soort:
+   - Het board: de `projectsV2`-pagina's, eenmaal per tick en gedeeld door alle items.
+   - Per board-item: `dependencies/blocked_by` alleen bij een open issue met `total_blocked_by > 0`.
+     Een gesloten issue start of hervat geen run, dus zijn blokkades leest tick niet.
+   - Per PR: `pulls/<n>` plus de checks, hoogstens één keer per (repo, PR, head-sha) per tick en per GitHub-client (één per repo). Het
+     geheugen leeft alleen in de GitHub-client van een tick; `serve`, de workflow-pusher en
+     `postartefact` lezen steeds opnieuw. Een mislukte read wordt niet onthouden.
+   - Per run-branch: één `pulls?head=`.
+   - De comments, de reacties, de `user` en de collaborator-permissie zoals hierboven beschreven.
+
+   Een `304` kost nog steeds een round trip: minder requests verkort de tick, de cache doet dat niet.
+   Een 403 of 404 op een extra aanroep (voorgangers, checks of mergebaarheid van een PR) negeert tick
+   alleen bij een item van een andere repo dan die van de run, en nooit bij een 403 van een rate
+   limit. Elke andere fout van GitHub slaat de repo luid over met `lighthouse: skip <pad>: <fout>` en
+   bewaart niets, zodat de volgende tick opnieuw kijkt.
 
 8. **Decide.** Eén keer per tick, over alle gegatherde repo's samen, beslist tick wat er moet
    gebeuren: een run sluiten, een issue teruggeven, een 🚀 herstellen, een issue parkeren of
@@ -109,7 +132,7 @@ Het is een korte run, geen daemon. Wie issues vooraf routeert en naar `Controlle
    onderweg meldt (een claim die een ander proces al had, een onzekere launch) staat ook op stderr,
    met `lighthouse: ` ervoor.
 10. **Opruimen.** Na apply ruimt tick de forge-workspaces op van issues die niet meer op `Controller`
-    of `On hold` staan, zonder open run, zonder levende vreemde sessie, schoon en gepusht. Dat gebeurt
+    of `On hold` staan en niet als geparkeerd op `To do` (zie *Blokkades*), zonder open run, zonder levende vreemde sessie, schoon en gepusht. Dat gebeurt
     elke tick, ook voor een repo die niet *due* was, maar alleen voor een repo waarvan de precheck
     slaagde. De werkplek van een geplande run zonder open run erop gaat geforceerd weg (zie *Geplande
     runs*). Een verwijderde workspace geeft `lighthouse: removed workspace <id> of <repo>#<n>`, of
@@ -175,22 +198,41 @@ slash-commando's.
   `workflows: <bestanden>`, en de rij sluit als `handoff`:
   de keten gaat verder met `/lighthouse-write-pr`. Op de fix-pr-route (de PR bestaat) post hij een
   🤖-comment met `branch`, `range` en `workflows`, en de rij blijft open als eigenaar van de PR (zie
-  *Afloop van een push-rij*). Rood is een 🤖 Vraag, en de rij sluit als `question`.
-- **De Vraag.** De kop is `🤖 Vraag · push-workflows`, met de velden `sha` (de SHA waarvoor een antwoord
-  toestemming geeft, `none` zolang geen review die SHA liet zien), `worktree`, `branch`, `after`,
-  `lane` (als de push-handoff er een had) en `step`, en geen sessie-voet. De tekst heeft de rode stap met zijn reden, het oordeel per reviewer,
-  de workflow-diff in een codeblok (een hek langer dan elke reeks backticks in de diff) en
-  `cd <worktree> && git push -u origin HEAD`. Is de diff te lang voor een comment (65535 tekens),
-  dan staat de volledige diff als bijlage in `<state>/push/<owner>/<name>/<sha>-<run>.diff` (mode
-  `0600`), niet in de worktree: die is van de run. Een Vraag adviseert nooit een token-scope te
-  verruimen; weigert GitHub het token, dan zegt de Vraag alleen dat de forge het token voor deze wijziging
-  weigerde.
+  *Afloop van een push-rij*). Rood is een 🤖 Vraag als een antwoord `push` er iets mee kan, en de rij
+  sluit als `question`. Anders is rood een 🤖 Teruggegeven, en de rij sluit als `returned`.
+- **De Vraag.** Alleen voor een rode stap met een SHA: de review (shadow of een `reject`), het token of de
+  push zelf, en elke rode stap van een run met toestemming. De kop is `🤖 Vraag · push-workflows`, met de
+  velden `sha` (de SHA waarvoor een antwoord toestemming geeft), `worktree`, `branch`, `after`, `lane`
+  (als de push-handoff er een had) en `step`, en geen sessie-voet. Daaronder eerst de vraag (wat een
+  antwoord `push` doet) en de sluitregel, zodat de lijst open vragen van de controller alleen die vraag
+  toont. Na de sluitregel staan de rode stap met zijn reden, het oordeel per reviewer, de workflow-diff
+  in een codeblok (een hek langer dan elke reeks backticks in de diff) en onder *Zelf pushen*
+  `cd <worktree> && git push -u origin HEAD`. Is de diff te lang voor een comment (65535 tekens), dan
+  staat de volledige diff als bijlage in `<state>/push/<owner>/<name>/<sha>-<run>.diff` (mode `0600`),
+  niet in de worktree: die is van de run. Een Vraag adviseert nooit een token-scope te verruimen;
+  weigert GitHub het token, dan zegt de Vraag alleen dat de forge het token voor deze wijziging weigerde.
+- **De Teruggegeven.** Een rode stap vóór de vloer een SHA las (trigger, config, route, de vloer, policy,
+  lint) is geen vraag: een antwoord `push` kan er niets mee. De pusher post dan een 🤖 Teruggegeven
+  zonder sessie, met `reason: workflow-pusher rood: <stap>` en de velden `worktree`, `branch`, `after`,
+  `lane` en `step`. De tekst heeft de rode stap met zijn reden, de workflow-diff ingeklapt
+  (`<details>`), wat je kunt doen en onder *Zelf pushen* het push-commando. De volgende tick geeft het
+  issue terug zoals elke Teruggegeven: label `needs_hands` en To do (`finishReturn`).
+- **De Herstel.** Een rode `policy` of `lint` (niet `COULD NOT CHECK:`; een `RuleParse`-overtreding telt mee)
+  is te repareren door de run zelf. De pusher post dan een 🤖 Herstel zonder sessie, met `step` en de
+  velden van de Teruggegeven, en de rij sluit als `handoff`: het werk gaat door, het issue wordt niet
+  teruggegeven. Alleen een Herstel van de token-login telt. De regel `repair` in `next` hervat de run
+  die de handoff schreef (trigger `repair`, sleutel `repair:<comment-id>`, bij de claim `answer`) met
+  een prompt die de stap, de reden en de URL van de Herstel noemt. De volgorde van `next` is
+  `retry, finishReturn, usageResume, answer, repair, closeCheck, newIssue, handoff`. Het plafond is
+  twee rondes: de derde aaneengesloten Herstel geeft het issue terug met een Teruggegeven
+  (`reason_pusher_red_ceiling`). De telling begint opnieuw bij een groene doorgang (een push of een
+  Vraag) en bij elke Teruggegeven van de token-login, ook een die voor een geweigerde start is
+  gepost. Vindt tick geen run of geen sessie voor de handoff, dan geeft hij het issue meteen terug.
 - **Het antwoord `push` is toestemming.** Voor precies de `sha` uit de laatste Vraag van de pusher. Tick
   start de pusher opnieuw met `--permit <sha>`; hij draait de vloer opnieuw, en alleen als de SHA
   niet verschoof gaat hij zonder review door, zoals bij een geslaagde push. Toestemming heft alleen de
-  review op (een `reject` of shadow mode), nooit een rode vloer, policy of lint. Een Vraag met `sha: none`,
-  of een Vraag waarna de worktree verschoof, geeft geen toestemming: een antwoord `push` start dan niets
-  of geeft dezelfde Vraag opnieuw. Elk ander antwoord hervat niets, want er is geen sessie. Bekende
+  review op (een `reject` of shadow mode), nooit een rode vloer, policy of lint. Een Vraag waarna de
+  worktree verschoof, geeft geen toestemming: een antwoord `push` geeft dan dezelfde Vraag opnieuw. Elk ander antwoord hervat niets, want er is geen sessie. Bekende
   grens: een run post met hetzelfde account als de gebruiker en kan dus `push` antwoorden; dan valt de
   review weg en blijft de vloer staan. De roborev-records zijn door de run beheerd: check 5 is hygiëne
   tegen een vergeten of verouderde review, geen vertrouwensgrens. GitHub's eigen scope-controle blijft
@@ -208,8 +250,9 @@ slash-commando's.
   comment), eist dat die een voorouder is van de PR-head en dat `gepusht..head` geen pad onder
   `.github/workflows/` raakt (op de bouwroute volgt na de push nog een changelog-fragment), en merget
   dan met het workflow-token. Hij post een 🤖 Klaar zonder sessie met `note_merged` en sluit zijn rij
-  als `done`. Weigert hij, dan post hij een Vraag met `gh pr merge <n> --squash --match-head-commit
-  <head>`. Is `[dispatch.workflow_push]` weg, dan gaat het issue terug met *workflow-pusher staat uit*; is de
+  als `done`. Weigert hij, dan post hij een Teruggegeven met `reason: workflow-pusher rood: <stap>` en
+  onder *Zelf mergen* `gh pr merge <n> --squash --match-head-commit <head>`, en sluit zijn rij als
+  `returned`. Is `[dispatch.workflow_push]` weg, dan gaat het issue terug met *workflow-pusher staat uit*; is de
   sleutel `merge:<pr>:<head>` al gebruikt, dan met *merge mislukt*.
 
 **De vingerafdruk na apply.** Tick bewaart de vingerafdruk van de precheck pas na apply, en alleen
@@ -291,14 +334,49 @@ gemergde of gesloten PR van vóór `started_at` niet. `max_wait` en `max_runtime
 | 13 | Klaar en een eigen PR met een van vier oorzaken: rode checks, een merge-conflict, een onverwerkte roborev-review of een mislukte merge | fix-pr-start (sleutel `fixpr:<pr>:<sha>`, plafond 3 runs per PR); is het plafond bereikt, of is de sleutel al gebruikt, of is er een actieve blokkade, dan Teruggegeven; houdt de rem de start tegen, dan blijft de run open (zie hieronder) | per oorzaak *PR rood*, *PR heeft een merge-conflict*, *PR heeft een onverwerkte roborev-review* of *merge mislukt*; bij het plafond met ` na 3 fix-pr-runs` erachter (*onverwerkte roborev-review na 3 fix-pr-runs*) |
 | 13b | Klaar en alleen een vreemde PR die rood is of een merge-conflict heeft (geen eigen open PR met een oorzaak) | Teruggegeven, sessie stoppen als ze niet klaar is | *PR rood* resp. *PR heeft een merge-conflict* |
 | 13c | Klaar met een Handoff die de keten eindigt (`next: /lighthouse-close-issue`), en geen PR van deze run | rij `handoff`, de claude van de run beëindigen; dezelfde tick start `/lighthouse-close-issue <nr>` op die handoff (sleutel `handoff:<comment-id>`), tenzij er een open PR is of een PR die na de handoff mergede of sloot: dan wacht het einde op die PR (#285) | |
-| 14 | Klaar, geen PR, geen Handoff of Vraag | Teruggegeven | geen handoff of vraag |
+| 14a | Klaar, geen PR, geen Handoff of Vraag, wel een `post-failed.json` van op of na `started_at` (bij een onleesbare: de wijzigingstijd van het bestand; onbekend telt) | leest de body als een 🤖 Handoff of 🤖 Vraag voor het issue van de run, hoorde de mislukte post bij dat issue (`issue` van de notitie) en is de run jonger dan `max_runtime` (of `max_runtime` is 0): `repost`, de controller post de body letterlijk en de run blijft open. Is de run `max_runtime` of ouder, of is de body leeg, een andere soort comment of van een ander issue, hoorde de mislukte post bij een ander issue, of is de notitie onleesbaar: Teruggegeven, zoals regel 14 | *post mislukt: <fout uit de notitie>*, resp. *post mislukt: notitie onleesbaar* |
+| 14 | Klaar, geen PR, geen Handoff of Vraag | Teruggegeven | geen handoff of vraag; bij een run met command `/lighthouse-close-issue` (trigger `closecheck` of `handoff`): *nacontrole: criteria open* |
 | 15 | `max_wait` > 0, run gemeten maar zonder sessie, ouder dan `max_wait` | Teruggegeven, launch vergeten | start onzeker: geen sessie gevonden |
 | 16 | `max_wait` > 0, permissie-prompt van deze run (niet van vóór `started_at`) waarna zijn draad `max_wait` lang niets deed | Teruggegeven, sessie blijft staan | wacht op permissie (met tool en pad) |
 | 17 | `max_wait` > 0, niet klaar, geen openstaande permissie-prompt, geen activiteit in `max_wait` (geteld vanaf `started_at` op zijn vroegst) | Teruggegeven, sessie stoppen | geen activiteit in max_wait |
 | 18 | Idem, maar zonder transcript: stand `waiting` en de forge-sessie `max_wait` oud, ook geteld vanaf `started_at` op zijn vroegst (zonder forge-tijd niet) | Teruggegeven, sessie stoppen | geen activiteit in max_wait (forge-stand; transcript niet meetbaar) |
 | 19 | `max_runtime` > 0, run ouder dan `max_runtime` | Teruggegeven, sessie stoppen | time-out (max_runtime) |
 
+Regel 14: een nacontrole die op een ander issue wacht, eindigt in een Handoff naar zichzelf (`next: /lighthouse-close-issue <nr>`). Tick parkeert dat issue (zie *Blokkades*) en start de nacontrole opnieuw zodra de voorganger gesloten is. Eindigt een nacontrole zonder Handoff of Vraag, dan zijn de criteria open gebleven en geeft regel 14 die eigen reden. Ook een start-issue-run in een controller-run die vindt dat het werk al op de standaardbranch staat (`already done? likely`) eindigt in een Handoff `next: /lighthouse-close-issue <nr>` (rij 13c start die nacontrole), of in een Vraag bij twijfel of een mislukte fetch (`not measurable`). Eindigt ze zonder beide, dan geeft regel 14 *geen handoff of vraag*.
+
 Regel 13: houdt de rem de fix-pr-start tegen (uitstel of weigering), dan vervalt de afsluiting van de run: ze blijft open en de volgende tick vindt dezelfde oorzaak opnieuw. Alleen een actieve blokkade (de issue-blokkade van de start), een al gebruikte sleutel of het plafond geeft Teruggegeven.
+
+Regel 14a (#395): een run die zijn Handoff of Vraag niet gepost kreeg, liet vroeger niets achter en kreeg
+*geen handoff of vraag*; de keten stond stil. Nu schrijft `lighthouse forge issue comment` (niet `pr comment`)
+en `lighthouse ask` bij elke fout nadat de bedoeling vaststaat een notitie `post-failed.json`, alleen in een
+controller-run (`LIGHTHOUSE_CONTROLLER_RUN` in uuid-vorm en `LIGHTHOUSE_STATE_DIR` gezet). Dat is dus ook een fout
+bij het openen van de forge of bij de GET van `ask`, maar niet een onleesbaar body-bestand, een ongeldig nummer,
+een vraag die anders terugleest of `ask --dry-run`. De notitie staat in
+`<LIGHTHOUSE_STATE_DIR>/runs/<run>/post-failed.json`, naast `permission.json`, met de velden `version` (1), `at`
+(milliseconden, UTC), `issue`, `command` (`forge issue comment` of `ask`), `error` (op één regel) en `body`, in die
+volgorde. Een volgende mislukte post in dezelfde run overschrijft ze: alleen de nieuwste telt. Lukt het schrijven
+niet, dan meldt het commando een regel met `COULD NOT CHECK` op stderr; de exitcode en foutmelding van de mislukte
+post veranderen nooit. Tick leest de notitie lokaal uit de runmap, en op een node via
+`GET …/runs/{session}/post-failed` (`404` met code `no_post_failed` is "geen notitie"; een `404` zonder code komt van
+een oude node en telt ook als "geen notitie", zodat die run niet onmeetbaar wordt en terugvalt op regel 14).
+Een notitie van vóór `started_at` hoort bij een eerdere run in dezelfde sessie (een hervatting houdt de sessie) en
+telt niet. Een onleesbare notitie stopt de tick niet. Ze heeft geen leesbare `at`, dus telt de wijzigingstijd van het
+bestand: lokaal de `mtime`, op een node de header `X-Lighthouse-Mod-Time` van de route (RFC 3339 met nanoseconden;
+`Last-Modified` heeft alleen seconden). Is die van vóór `started_at`, dan telt ze niet en geldt regel 14; anders geeft
+ze de reden *post mislukt: notitie onleesbaar*. Een oude node stuurt die header niet: de tijd is dan onbekend, en de
+onleesbare notitie telt (#457).
+
+De keuze voor regel 14a is A+ boven twee alternatieven. A (alleen een reden op de Teruggegeven) laat de keten
+stilstaan tot iemand de handoff met de hand post. B (de mislukte `forge issue comment` herkennen in het transcript)
+is breekbaar, want het leunt op commandotekst en foutmeldingen, en geeft de controller geen body om te posten. A+
+neemt de post over: de notitie bevat de volledige body, de controller post die via REST en probeert het elke tick
+opnieuw. De posts van de run zijn al REST, dus een fout is meestal een limiet, een netwerkfout of een 5xx, en gaat
+over: de winst zit in het opnieuw proberen in de tijd. Een mislukte repost is een deferral
+(`lighthouse: deferred <repo>#<n>: …`), geen tickfout: de andere acties lopen door, de run blijft open en de tickstaat
+van die repo wordt niet bewaard, zodat de volgende tick opnieuw gathert en herpost (anders slaat de precheck de repo
+tot 30 minuten over). Een blijvende fout, zoals een 422 of 403, maakt zo niet elke tick rood. Decide telt geen
+pogingen; `max_runtime` is de grens, en staat die op 0, dan is er geen grens. Staat de post er eenmaal, dan gaan regel
+2 of 3 voor en geldt 14a niet meer.
 
 Verschillen met de spec-tabel, bewust:
 
@@ -319,7 +397,7 @@ Verschillen met de spec-tabel, bewust:
   een Teruggegeven voor een run die misschien draait.
 - Regel 6b: een sessie die klaar is op een gesloten issue laat geen Handoff, Vraag of PR achter.
 
-Apply voert de uitkomst uit. Een Teruggegeven post eerst en sluit de rij dan als `returned`; een
+Apply voert de uitkomst uit. `repost` post de body van de notitie en sluit niets. Een Teruggegeven post eerst en sluit de rij dan als `returned`; een
 `close` met `Stop` stopt de sessie voor elke uitkomst, ook voor `start_failed`. Stoppen gaat op
 de sessie-id van de run, niet op de forge-sleutel: de werkplek zoekt het proces op die id. Een stop
 of vergeet op een rij zonder sessie of werkplek slaat apply over. Mislukt het stoppen na de post, dan
@@ -343,8 +421,9 @@ die met *wacht op permissie* (16) is teruggegeven laat zo geen claude achter die
 ### Afloop van een push-rij
 
 Een push-rij (command `push-workflows`) heeft geen werkplek en geen transcript. De regels die daarop
-meten (8-10 en 14-19) gelden er niet voor; de pusher sluit zijn eigen rij (`handoff`, `question` of
-`done`). Ze telt niet mee voor `slots` en `max_software` en houdt geen geheugenreserve vast: er draait
+meten (8-10 en 14-19) gelden er niet voor; de pusher sluit zijn eigen rij (`handoff`, `question`,
+`returned` of `done`). Staat zijn Teruggegeven er al maar de rij nog open (de pusher stierf tussen post
+en sluiten), dan sluit tick de rij als `returned`, zonder sessie of werkplek aan te raken. Ze telt niet mee voor `slots` en `max_software` en houdt geen geheugenreserve vast: er draait
 geen sessie, ook niet terwijl de rij op CI wacht.
 
 - **Pusher stil.** Staat de rij na `[dispatch.workflow_push] timeout` (standaard 30 minuten) nog open
@@ -384,7 +463,7 @@ beëindigt ook wat een klare claude achterliet, zoals een dev-server (zie [workp
 Naast issue-runs start de tick runs op een vast schema, zonder issue: een *geplande run* (#121). Het
 ontwerp staat in [de spec](developer/planning/specs/2026-11-16-issue-121-geplande-runs-design.md).
 Het run-model, de planner en de afloop zijn er; van de jobs is `map-refresh` er (zie
-[Job `map-refresh`](#job-map-refresh)), `reflect` ook (zie [Job `reflect`](#job-reflect)). Een `[[schedule]]`-blok
+[Job `map-refresh`](#job-map-refresh)), `reflect` ook (zie [Job `reflect`](#job-reflect)), `map-planned` ook (zie [Job `map-planned`](#job-map-planned)). Een `[[schedule]]`-blok
 met een job zonder registratie geeft bij elke gather van de repo
 `lighthouse: <repo> scheduled:<naam>:<slot>: no job <job>`. Dat is een regel, geen fout: de tick
 eindigt met exitcode 0, bewaart zijn tick-state en start niets.
@@ -558,6 +637,46 @@ insluiting niet; `Check` eist daarom dat precies één document nieuw of gewijzi
 met minstens `min_lines` regels. `Finish` schrijft `output_dir/index.md` met de lijst van rondes. Schrijft de
 agent niets, dan eindigt de run als `done` zonder PR en ziet de volgende poort dezelfde sessies opnieuw.
 
+## Job `map-planned`
+
+De job zet open issues met het label van een geplande kaart (een rij met `Document` en `Planned` in het
+labelsdocument, `[paths] labels`) als geplande items op dat kaartdocument; skill `/lighthouse-map-planned`.
+Hij heeft geen `params`: een sleutel in `[schedule.params]` is een configfout. Een
+oudere `lighthouse`-binary kent de job niet en weigert een `lighthouse.toml` met `job = "map-planned"`
+(de repo wordt overgeslagen); bouw de host opnieuw na de merge, vóór de schedule meedraait.
+
+**De poort.** Na een fetch leest de poort de rijen van het labelsdocument op `origin/<standaardbranch>`.
+Zonder `paths.labels`, zonder bestand of zonder rij met `Document` en `Planned` geeft hij `skip`
+(`no planned documents`). Een issue is aan de beurt als het open is, het label van de rij draagt (bij
+`Planned = milestone` ook een milestone heeft), niet in het kaartdocument staat (alleen een veld met
+sleutel `issue` telt, geen getal elders) en geen open of afgehandelde vraag van de job heeft. Is er
+niets aan de beurt, dan `skip` (`every planned issue is on its map`); anders is de score het aantal issues. Staat `paths.tenets`, `paths.areas` of `paths.strategy` in de config maar bestaat
+het pad niet op `origin/<standaardbranch>`, dan faalt de poort met een fout die sleutel en pad noemt; een niet gezette sleutel wordt overgeslagen.
+
+**Het corpus.** `.lighthouse/run/map-planned-corpus.json` (JSON): taal, paden van taxonomie, tenets,
+gebieden en strategie, het labelprefix van gebieden (`area_prefix`), de documenten (label, pad, `Planned`) en per issue nummer, titel, body, labels, milestone, rij
+en, na een vertrouwd antwoord op een eerdere vraag, dat antwoord. De agent leest dit bestand, niet de
+forge; nergens daarna wordt het als gezag gelezen. De agent schrijft alleen de kaartdocumenten en
+`.lighthouse/run/map-planned-result.json` met `questions` en `decisions` (waarde `no-item`: het issue
+krijgt geen item). Toolset: `Read Write Edit Glob Grep`; `max_runtime` is `30m`.
+
+**Comments.** `Cleanup` valideert het resultbestand als geheel tegen het labelsdocument op de basis van de
+run en de forge en plaatst de vragen en beslissingen als comment met de kop `🗺 Kaart · map-planned`
+(`nl`; anders `🗺 Map · map-planned`) en de machineregel
+`<!-- lighthouse:map-planned kind=<question|decision> topic=<place|wish> off=<letter> -->`. Een vraag over
+een wens zet ook het label `needs_decision`. Een issue met al een open of afgehandelde vraag krijgt geen
+tweede comment, dus een herhaalde `Cleanup` post niets dubbel. Een antwoord telt alleen van een login met
+een rol uit `answer_permissions`; een andere heropent niets en sluit niets af. Daarna worden corpus en
+resultbestand verwijderd, zodat ze nooit op de branch komen.
+
+**Insluiting en afronden.** `Allowed` is een grof, stateloos filter op de vorm van het pad: nooit onder
+`.git/`, `.lighthouse/`, `.claude/` of `.agents/`, verder een JSON- of YAML-bestand of het fragment van
+`Finish`. `Check` beslist, met als gezag het labelsdocument op de merge-base en de forge (nooit het
+corpus): elk gewijzigd pad, ook een nieuw bestand, is een kaartdocument van een rij of dat fragment; elk
+gewijzigd document is te lezen als gewoon bestand, en elk issuenummer dat erbij kwam draagt het label van
+een rij van dat document. `Finish` schrijft, waar de repo `changelog.d/` heeft, het fragment
+`changelog.d/scheduled-map-planned-<run>.md` met `type: internal` en een vaste zin.
+
 ## Exitcodes
 
 | Code | Wanneer |
@@ -568,23 +687,64 @@ agent niets, dan eindigt de run als `done` zonder PR en ziet de volgende poort d
 ## Blokkades
 
 Een voorganger is *actief* als hij `OPEN` is en geen gemergde PR heeft. Gesloten zonder merge telt als
-vervallen. Een issue is *uitvoerend* als zijn laatste Handoff een `next` heeft buiten de spec-, plan-
-en review-fase.
+vervallen. Een issue is *uitvoerend* als zijn laatste Handoff een `next` heeft buiten de spec-fase
+(`/lighthouse-review-spec` en de spec zelf); een Handoff naar `writing-plans` of `/lighthouse-review-plan` is dus uitvoerend en parkeert.
 
 - **Parkeren.** Heeft een uitvoerend issue in Controller een actieve voorganger, dan parkeert tick het.
   Eerst komt de comment `🤖 Geparkeerd` (`🤖 Parked`) met één regel
   `blocked_by: <repo>#<n> (<boardstatus>), …`; staat de voorganger niet op hetzelfde board, dan staat
-  er geen status tussen haakjes. Daarna gaat het issue op het board naar On hold. Een issue dat nog in
-  de spec-, plan- of reviewfase zit, blijft staan; de blokkade hindert pas bij uitvoering.
-- **Afmaken.** Slaagt de comment maar mislukt de boardwijziging, dan eindigt tick met exitcode 1 en
-  bewaart hij de vingerafdruk van de repo niet. De volgende tick ziet zijn eigen Geparkeerd als laatste
-  beurt en zet het issue alleen op On hold (`hold`). Hij post nooit een tweede Geparkeerd.
-- **Terugzetten.** Een issue in On hold dat `OPEN` is, waarvan de laatste 🤖-comment (Rebased niet
+  er geen status tussen haakjes. Daarna krijgt het issue het label `blocked_issue` en gaat het op het
+  board naar `To do`. De run en de werkplek blijven staan. Een issue in de spec-fase blijft
+  staan; de blokkade hindert pas bij een plan of bij uitvoering, dus de plan-handoff is een parkeerreden. Parkeren vervangt een label
+  `blocked_external` (één blokkadelabel per issue, `blocked_issue` wint); het issue komt zonder dat
+  label terug naar Controller.
+- **Afmaken.** Slaagt de comment maar mislukt het label of de boardwijziging, dan eindigt tick met
+  exitcode 1 en bewaart hij de vingerafdruk van de repo niet. De volgende tick ziet zijn eigen
+  Geparkeerd als laatste beurt en zet label en status alleen opnieuw (`hold`). Hij post nooit een
+  tweede Geparkeerd. Een halve parkering (label gezet, status niet) kan een verouderd `blocked_issue`
+  op een Controller-issue laten staan tot de unblock-lane het weghaalt.
+- **Terugzetten.** Een To do-item dat `OPEN` is, waarvan de laatste 🤖-comment (Rebased niet
   meegeteld) een eigen Geparkeerd is (auteur is de login van het token) en dat geen actieve voorganger
-  meer heeft, gaat terug naar Controller (`unpark`). De volgende tick start de laatste Handoff.
-- **Menselijk On hold.** Een issue dat een mens op On hold zette (de laatste 🤖-comment is geen
-  Geparkeerd, of er staat er een van een andere auteur) raakt lighthouse niet aan. Lighthouse haalt een
-  issue alleen uit Controller om het te parkeren.
+  meer heeft, gaat terug naar Controller (`unpark`): het label `blocked_issue` gaat eraf (ook als de
+  unblock-lane het al weghaalde) en de status wordt Controller. Dat geldt ook voor een voorganger in
+  een andere repo. De volgende tick start de laatste Handoff. Een To do-item met een `needs_*`-label of
+  `blocked_external` wordt niet teruggezet.
+- **Menselijk To do.** Een To do-item zonder eigen Geparkeerd als laatste protocol-comment (of met een
+  van een andere auteur) raakt lighthouse nooit aan.
+- **Legacy `On hold`.** Een bestaand `On hold`-issue met een eigen Geparkeerd wordt nog steeds naar
+  Controller teruggezet, maar niets schrijft `On hold` meer; een mens op `On hold` blijft ongemoeid.
+  Migratie van bestaande `On hold`-issues is een apart issue. `On hold` is geen verplichte
+  boardstatus meer.
+- **Commentaarlezing voor To do.** Voor To do-items leest tick de comments alleen als de
+  `updatedAt` van het item veranderde (`tick_state`-sleutel `todo`); de eerste tick na de
+  uitrol leest elk open To do-item zonder blokkadelabel één keer.
+
+## Teruggegeven en het statusmodel
+
+Elke 🤖 Teruggegeven zet het issue op `To do` met één label en laat de Priority staan; ook een
+issue dat een mens op In progress zette terwijl er een run open was. De volgorde is: comment,
+label en status, dan de run sluiten. Mislukt het label, dan blijft de run open.
+
+| Reden op de Teruggegeven | Label |
+|---|---|
+| `reason_needs_brainstorm` | `needs_shaping` |
+| `reason_interactive` | `needs_decision` |
+| regel 13 met actieve blokkade | `blocked_issue` |
+| alle andere redenen | `needs_hands` |
+
+- Een eigen Teruggegeven als laatste protocol-comment van een Controller-issue zonder open run en zonder
+  blokkadelabel wordt opnieuw teruggegeven (label en To do); post een Handoff om te hervatten.
+- **Uitrol.** Na de upgrade gaan bestaande Controller-issues waarvan de laatste protocol-comment een
+  eigen Teruggegeven is (geen blokkadelabel, geen open run) één keer naar To do met een label
+  (`needs_hands`, tenzij de redentekst anders afbeeldt).
+- Een eerste mislukte start blijft op Controller zonder label (er komt een tweede poging); pas de
+  tweede poging geeft het issue terug.
+
+## `needs_*` op Controller
+
+Een `needs_*`-label op een Controller-issue start geen run. Zonder open run gaat het issue naar
+`To do` en blijft het label staan; een open run loopt door. Een groene fix-pr-PR (de `fix.merge`-push)
+gaat nog altijd vóór de needs-check langs.
 
 ## `lighthouse gather`
 
@@ -641,6 +801,28 @@ sluiting van de run die de PR aan die pusher overdraagt laat `run` dan ook ligge
 bleef er geen open run over die de merge opnieuw plant.
 
 ## De rem
+
+Decide geeft de starts en hervattingen in deze volgorde: eerst de Priority-band, dan het prio-gewicht
+van hoog naar laag, dan het tijdstip van de trigger, dan repo en issue. Priority is een handmatige
+override op dat gewicht: `P0` gaat vóór alles, `P1` of een lege Priority volgt het gewicht, `P2` komt
+achter alles. Het gewicht is dat van [`priorities.md`](priorities.md) (#445): de rang van de
+milestone (`Priority: N` in de beschrijving van een open milestone; bij M milestones met een rang is
+de factor M min de plaats, vanaf 0, waarop die rang voor het eerst staat in de oplopend gesorteerde
+rangen, zodat gelijke rangen een factor delen en een gat geen factor kost: rangen 1, 2, 5 geven 3, 2,
+1 en rangen 1, 1, 3 geven 3, 3, 1) plus, per issue dat op dit issue wacht, diens factor maal
+2^(k-1), met k de langste afstand; een cyclus telt als één groep. De tick leest daarvoor
+`PrioInputs` (open issues met hun milestone en de open milestones) en leest geen
+`ClosedInMilestone` en geen `blocked_by`. Op GitHub gaat dat via de ETag-transport, zodat een
+ongewijzigde pagina een `304` is; GitLab heeft die transport niet en leest de pagina's elke keer
+helemaal. De blokkeerders komen uit het bord: de graaf bestaat uit de `BlockedBy` van elk bord-item van
+de repo. Een open blokkeerder buiten het bord telt dus wél mee (hij staat in de open issues en krijgt
+de factor van het bord-item dat op hem wacht), maar een wachtende buiten het bord niet: zijn
+`BlockedBy` is onbekend, dus hij voegt niets toe aan het gewicht van zijn blokkeerder, en een keten
+die via zo'n issue loopt houdt daar op. Een blokkeerder in een andere repo telt nooit mee. Daarin
+kunnen de tick en `/api/priorities` verschillen. Prepare (de precheck van elke tick) leest
+`PrioInputs` niet; het bewaart alleen de graaf van het bord. Complete leest het, dus alleen voor
+een repo die due is, en alleen als er minstens één item overblijft; een fout daarin is de fout van
+Complete, nooit een gewicht van 0. Een rustige tick wordt er dus niet langer van.
 
 Voor elke start of hervatting die decide kiest, toetst tick één gedeelde rem over alle repo's van de
 host. Per kandidaat, in deze volgorde; de eerste dichte rem geeft de uitsteltekst:
@@ -839,7 +1021,7 @@ command = ["claude", "-p", "--tools", ""]
 bij 30 minuten) en de helft naar elke reviewer (15 minuten; de reviewers draaien parallel). Het laatste
 kwart is de marge voor vloer, policy, lint en push. Alles valt onder één deadline: de start van de
 push-rij plus `timeout`, min 2 minuten voor de laatste post en 1 minuut marge. Zo post de pusher zijn
-eigen Vraag vóór tick de rij teruggeeft met *pusher reageerde niet*. Een pusher die pas na die
+eigen Vraag of Teruggegeven vóór tick de rij teruggeeft met *pusher reageerde niet*. Een pusher die pas na die
 deadline start, doet en post niets; vlak voor de push kijkt hij of de rij nog open is, en pusht niet
 als tick haar al teruggaf. Een `timeout` onder 10 minuten weigert `host.toml`.
 
@@ -900,7 +1082,7 @@ Het `lighthouse.toml` van elke repo in `repos` heeft:
 - een `[controller]`-tabel;
 - `[usage_guard]` met `controller = true`;
 - `[forge.board]` met `project_number` (positief), `project_id`, `status_field_id` en
-  `priority_field_id`, en onder `status_options` minstens `Controller` en `On hold`.
+  `priority_field_id`, en onder `status_options` minstens `To do`, `In progress`, `Done` en `Controller`.
 
 Ontbreekt iets, dan staan alle ontbrekende sleutels, bij naam, in één `skip`-regel.
 

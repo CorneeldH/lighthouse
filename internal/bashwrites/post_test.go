@@ -17,6 +17,7 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/deadline"
 	"github.com/CorneeldH/lighthouse/internal/fixturesetup"
+	"github.com/CorneeldH/lighthouse/internal/levellog"
 )
 
 // The twins of the run_post, dispatch and pool tests in the former tests/pack/test_bash_writes.py.
@@ -1027,5 +1028,150 @@ func TestReadMarkerIsFieldTolerant(t *testing.T) {
 	var none marker
 	if none.Roots() != nil || none.since() != nil {
 		t.Fatal("a missing marker has roots or since")
+	}
+}
+
+func writeComponents(t *testing.T, root, text string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(root, ".lighthouse"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(root, ".lighthouse", "components.toml"), text)
+}
+
+// writeStands writes a components.toml under root with the given stands.
+func writeStands(t *testing.T, root string, stands map[string]string) {
+	t.Helper()
+	text := "level = \"light\"\nsince = \"2026-11-22T10:00:00Z\"\n\n[components]\n"
+	for c, s := range stands {
+		text += c + " = \"" + s + "\"\n"
+	}
+	writeComponents(t, root, text)
+}
+
+func TestGateComponentsNameEveryGate(t *testing.T) {
+	// Fails when GateComponents loses a gate or names another component than levels.toml does.
+	eq(t, "GateComponents", GateComponents, map[string]string{
+		"shell-lint-check.sh":    "shell-lint-check",
+		"ruff-format-check.sh":   "ruff-format-check",
+		"gofmt-check.sh":         "gofmt-check",
+		"md-link-check":          "md-link-check",
+		"code-language-check.sh": "code-language-check",
+	})
+	for gate := range GatePacks {
+		if GateComponents[gate] == "" {
+			t.Errorf("gate %s has no component", gate)
+		}
+	}
+}
+
+func TestGateOffIsSilentNotMissing(t *testing.T) {
+	// Fails when runGate does not read components.toml: the gate is then missing and says
+	// `no go check installed`, or runs; an off gate must be a skip without any notice.
+	e := utf8Env(t)
+	writeStands(t, e.gates, map[string]string{"gofmt-check": "off"})
+	if err := os.Remove(GatePath(e.gates, "gofmt-check.sh")); err != nil {
+		t.Fatal(err)
+	}
+	verdict, output, err := runGate(e.gates, e.repo, "a.go", "gofmt-check.sh", time.Now().Add(10*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	eq(t, "verdict", verdict, "ok")
+	eq(t, "output", string(output), "")
+	e.dirtyCalls(t, "a.go")
+	if r := e.post(t, 0); !r.silent() {
+		t.Fatalf("post = %+v", r)
+	}
+}
+
+func TestGateOffDoesNotRunAnExistingGate(t *testing.T) {
+	// Fails when an off gate still runs: the stub blocks with a finding.
+	e := utf8Env(t)
+	writeStands(t, e.gates, map[string]string{"shell-lint-check": "off"})
+	writeFile(t, GatePath(e.gates, "shell-lint-check.sh"), "#!/bin/sh\necho ran\nexit 2\n")
+	verdict, output, err := runGate(e.gates, e.repo, "a.sh", "shell-lint-check.sh", time.Now().Add(10*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	eq(t, "verdict", verdict, "ok")
+	eq(t, "output", string(output), "")
+}
+
+func TestGateMissingWhileOnStillNotices(t *testing.T) {
+	// Fails when the off skip also swallows a gate that is on: the missing-pack notice must stay,
+	// both with an explicit `on` and for a component components.toml does not list.
+	for name, stands := range map[string]map[string]string{
+		"explicit on": {"gofmt-check": "on"},
+		"unlisted":    {"shell-lint-check": "off"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			e := utf8Env(t)
+			writeStands(t, e.gates, stands)
+			if err := os.Remove(GatePath(e.gates, "gofmt-check.sh")); err != nil {
+				t.Fatal(err)
+			}
+			verdict, output, err := runGate(e.gates, e.repo, "a.go", "gofmt-check.sh", time.Now().Add(10*time.Second))
+			if err != nil {
+				t.Fatal(err)
+			}
+			eq(t, "verdict", verdict, "missing")
+			eq(t, "output", string(output), "no go check installed")
+		})
+	}
+}
+
+func TestGateWithAnUnreadableStandFileCouldNotCheck(t *testing.T) {
+	// Fails when a corrupt components.toml is ignored (the gate runs as if on) or turns into a
+	// skip: the hook layer answers COULD NOT CHECK, so the dispatcher must not read it as green.
+	e := utf8Env(t)
+	writeComponents(t, e.gates, "level = [\n")
+	verdict, output, err := runGate(e.gates, e.repo, "a.go", "gofmt-check.sh", time.Now().Add(10*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	eq(t, "verdict", verdict, "unchecked")
+	if !strings.Contains(string(output), "COULD NOT CHECK") || !strings.Contains(string(output), "components.toml") {
+		t.Fatalf("output = %q", output)
+	}
+	e.dirtyCalls(t, "a.go")
+	r := e.post(t, 0)
+	if r.code != 2 || !strings.Contains(r.stderr, "COULD NOT CHECK") {
+		t.Fatalf("post = %+v", r)
+	}
+}
+
+func TestGateOnLogRunsAndStaysQuiet(t *testing.T) {
+	// Fails when runGate skips a `log` gate (the gate then never runs, no logbook line) or reports
+	// its finding: the nested `lighthouse hook` applies `log` itself, so the verdict is silent.
+	bin := filepath.Join(t.TempDir(), "lighthouse")
+	build := exec.Command("go", "build", "-o", bin, "github.com/CorneeldH/lighthouse/cmd/lighthouse")
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("go build: %v\n%s", err, out)
+	}
+	state := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", state)
+	repo := newRepo(t)
+	writeStands(t, repo, map[string]string{"md-link-check": "log"})
+	if err := os.MkdirAll(filepath.Join(repo, hookDir), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(repo, hookDir, "run.sh"), "#!/bin/sh\nexec "+bin+" hook \"$@\"\n")
+	if err := os.Chmod(filepath.Join(repo, hookDir, "run.sh"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(repo, "x.md"), "[x](weg.md)\n")
+	verdict, output, err := runGate(repo, repo, "x.md", "md-link-check", time.Now().Add(60*time.Second))
+	if err != nil {
+		t.Fatal(err)
+	}
+	eq(t, "verdict", verdict, "ok")
+	eq(t, "output", string(output), "")
+	counts, err := levellog.Count(repo, time.Now().Add(-time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if counts["md-link-check"] != 1 {
+		t.Fatalf("logbook = %v", counts)
 	}
 }

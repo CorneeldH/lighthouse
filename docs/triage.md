@@ -29,15 +29,17 @@ niets: het heeft alleen `Read`, `Grep` en `Glob`.
    geen actie op dat issue, een foutregel op stderr, en het issue komt de volgende ronde terug.
 3. **Toepassen.** Vlak voor de eerste schrijfactie leest de ronde het issue opnieuw. Is er iets
    veranderd, dan slaat ze het over zonder één schrijfactie. Anders schrijft ze de triage-comment,
-   dan eventueel de `🤖 Handoff`, dan de status.
+   dan eventueel de `🤖 Handoff`, dan het label (poort 4c) of de status.
 
-Een issue op poort 4a, 4b of 2 gaat naar `Controller`, ook met `needs-hands` of `needs-testing`.
-Poort 0 en 1 houden hun status en krijgen alleen de comment. Poort 4c krijgt de comment met
-ontwerpvragen, elk met opties en een aanbevolen optie. Een vermoedelijk dubbel of al afgerond
+Een issue op poort 4a, 4b of 2 gaat naar `Controller`, tenzij het een `needs_*`-label draagt: een
+issue met een `needs_*`-label gaat nooit via triage naar `Controller` (de rij is *interactief*,
+alleen de comment). Poort 0 en 1 houden hun status en krijgen alleen de comment. Poort 4c krijgt de
+comment met ontwerpvragen, elk met opties en een aanbevolen optie, en het label `needs_shaping`.
+`/lighthouse-start-issue` haalt dat label weg zodra de spec goedgekeurd is. Een vermoedelijk dubbel of al afgerond
 issue wordt gemeld, nooit gesloten of doorgezet. Al afgerond is ook werk dat een commit onder een
 ander issuenummer leverde, zonder dit issue te noemen: het model weegt de code die het zelf leest,
-niet alleen de git log van dit nummer. Triage zet geen labels en legt geen
-`blocked_by`-relaties.
+niet alleen de git log van dit nummer. Triage zet alleen `needs_shaping` bij poort 4c, geen andere
+labels, en legt geen `blocked_by`-relaties.
 
 Vrije tekst van het model komt op één regel in de comment, zonder codefence, `<sub>` of `<!--`.
 Dat geldt voor de routeregel na `#<nr> Poort <n>:`, het bewijs bij een dubbel of afgerond issue,
@@ -147,13 +149,18 @@ auteur met een rol in `answer_permissions`. Met `milestone_title_exclude` valt e
 de milestone-titel op die regex past, bijvoorbeeld een geparkeerde milestone die op `ON-HOLD`
 eindigt. Daarnaast mag er geen werk lopen: geen open PR die naar het issue verwijst, geen lokale of
 remote branch `issue-<nr>-*`, geen worktree op zo'n branch en geen open rij in `runs`. Zo'n issue
-krijgt een regel op stderr en telt als `running work`. De volgorde is eerst `Priority`, dan het
-issuenummer.
+krijgt een regel op stderr en telt als `running work`. De volgorde is eerst de Priority-band
+(`P0` vóór alles, `P1` of leeg volgt het gewicht, `P2` achter alles), dan het prio-gewicht van hoog
+naar laag (milestone-rang en `blocked_by`, zie [`priorities.md`](priorities.md), #445), dan het
+issuenummer. Geeft `PrioInputs` een fout, dan slaat de ronde die repo over.
 
 Een kolom die niet in `status_options` staat, zoals `In progress` of `Done`, telt niet als "geen
 status": zo'n issue is geen kandidaat. Een issue met een gearchiveerd board-item slaat de ronde
 over, met een regel op stderr; het telt als `skipped`. De tick ziet dat item niet, dus de ronde
-oordeelt er niet over en schrijft er niets.
+oordeelt er niet over en schrijft er niets. Dat werkt zolang `IssueItem` het item
+kent: het onthoudt de item-id's van elke boardlijst (tot 30 dagen na het laatste zien; de tabel verdwijnt ook na 7 dagen zonder boardlezing, de `MaxAge` van de cache). Een item dat
+al gearchiveerd was voordat een lijstlezing het ooit zag, of dat langer dan 30 dagen weg is, wordt
+niet gevonden: de ronde leest het issue dan als "niet op het board".
 
 Een marker met een vaste stop (een open blokkeerder, een blokkadelabel of een gebroken invariant)
 vervalt zodra de stop is weggevallen; dan is het issue weer kandidaat. Een marker zonder vaste

@@ -24,7 +24,7 @@ import (
 // items is ITEMS of the pytest suite of the Python model chain (gone since #276).
 var items = [][2]string{{"name", "werkboom"}}
 
-// fakeLLM is tests/pack/_fake_llm.py: an OpenAI-compatible /v1/chat/completions. Mode per
+// fakeLLM is the Python FakeEndpoint of #37 (tests/pack/_fake_llm.py, gone with #366): an OpenAI-compatible /v1/chat/completions. Mode per
 // model: answer (NOT-EN for each numbered item), en (EN for each), silent (never replies), drip (headers, then
 // one byte per 0.5 s), http500, garbage (a reply that is no JSON). It checks the parts of the
 // request that belong to the contract.
@@ -222,7 +222,7 @@ func TestChainFrom(t *testing.T) {
 	}
 }
 
-// llmFixture is tests/pack/fixtures/code_language/llm.json.
+// llmFixture is testdata/llm.json.
 type llmFixture struct {
 	Prompt []struct {
 		Items [][2]string `json:"items"`

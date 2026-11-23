@@ -114,7 +114,6 @@ func TestDispatchable(t *testing.T) {
 		{"project_id", func(r *Repo) { r.Board.ProjectID = "" }, "forge.board.project_id"},
 		{"status_field_id", func(r *Repo) { r.Board.StatusFieldID = "" }, "forge.board.status_field_id"},
 		{"status Controller", func(r *Repo) { delete(r.Board.StatusOptions, "Controller") }, "forge.board.status_options.Controller"},
-		{"status On hold", func(r *Repo) { delete(r.Board.StatusOptions, "On hold") }, "forge.board.status_options.On hold"},
 		{"priority_field_id", func(r *Repo) { r.Board.PriorityFieldID = "" }, "forge.board.priority_field_id"},
 	}
 	for _, tc := range rows {
@@ -559,12 +558,16 @@ func TestDispatchableGitLab(t *testing.T) {
 	if err := Dispatchable(load(gitlabFull)); err != nil {
 		t.Fatalf("GitLab repo with status_options only: %v", err)
 	}
-	for _, key := range []string{"Controller", "On hold"} {
-		r := load(gitlabFull)
-		delete(r.Board.StatusOptions, key)
-		if err := Dispatchable(r); err == nil || !strings.Contains(err.Error(), "forge.board.status_options."+key) {
-			t.Errorf("without %s: err = %v", key, err)
-		}
+	r0 := load(gitlabFull)
+	delete(r0.Board.StatusOptions, "Controller")
+	if err := Dispatchable(r0); err == nil || !strings.Contains(err.Error(), "forge.board.status_options.Controller") {
+		t.Errorf("without Controller: err = %v", err)
+	}
+	// On hold is no longer required (red when "On hold" returns to the Dispatchable check).
+	r1 := load(gitlabFull)
+	delete(r1.Board.StatusOptions, "On hold")
+	if err := Dispatchable(r1); err != nil {
+		t.Errorf("without On hold: err = %v, want nil", err)
 	}
 	r := load(gitlabFull)
 	r.Board.StatusOptions["On hold"] = "controller"
@@ -600,5 +603,64 @@ func TestLoadFileAnyName(t *testing.T) {
 	r, err := LoadFile(path)
 	if err != nil || r.Slug != "o/r" || r.TokenEnv != "MY_TOKEN" || r.Dir != dir {
 		t.Errorf("LoadFile = %+v, %v; want Slug o/r, TokenEnv MY_TOKEN, Dir %s", r, err, dir)
+	}
+}
+
+func TestLoadProjectOwner(t *testing.T) {
+	r, err := Load(write(t, strings.Replace(full, "project_id = \"PVT_x\"\n", "project_id = \"PVT_x\"\nproject_owner = \"acme\"\n", 1)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Board.ProjectOwner != "acme" {
+		t.Errorf("ProjectOwner = %q, want acme", r.Board.ProjectOwner)
+	}
+	r, err = Load(write(t, full))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Board.ProjectOwner != "" {
+		t.Errorf("ProjectOwner = %q, want empty", r.Board.ProjectOwner)
+	}
+}
+
+// Production change that turns it red: NeedsName without one of the four keys, or with
+// blocked_*, returns the wrong name.
+func TestLabelsNeedsName(t *testing.T) {
+	l := Labels{BlockedIssue: "b-i", BlockedExternal: "b-e", NeedsShaping: "n-s", NeedsDecision: "n-d", NeedsHands: "n-h", NeedsTesting: "n-t"}
+	for _, tc := range []struct {
+		labels []string
+		want   string
+	}{
+		{[]string{"n-s"}, "n-s"}, {[]string{"x", "n-d"}, "n-d"}, {[]string{"n-h"}, "n-h"}, {[]string{"n-t"}, "n-t"},
+		{[]string{"b-i", "b-e", "x"}, ""}, {nil, ""},
+	} {
+		if got := l.NeedsName(tc.labels); got != tc.want {
+			t.Errorf("NeedsName(%v) = %q, want %q", tc.labels, got, tc.want)
+		}
+	}
+	if got := (Labels{}).NeedsName([]string{""}); got != "" {
+		t.Errorf("NeedsName with empty names = %q, want empty", got)
+	}
+}
+
+// Fails when Load stops filling Repo.Paths from [paths], or when other [paths] keys
+// (history, mirror_exceptions) make Load fail.
+func TestLoadReadsPaths(t *testing.T) {
+	body := "[forge]\nrepo = \"o/r\"\n[paths]\nlabels = \"docs/developer/labels.md\"\n" +
+		"tenets = \"docs/t.md\"\nareas = \"docs/areas\"\nstrategy = \"docs/s.md\"\nhistory = \"h.md\"\nmirror_exceptions = [\"x\"]\n"
+	r, err := Load(write(t, body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := Paths{Labels: "docs/developer/labels.md", Tenets: "docs/t.md", Areas: "docs/areas", Strategy: "docs/s.md"}
+	if r.Paths != want {
+		t.Errorf("Paths = %+v, want %+v", r.Paths, want)
+	}
+	d, err := Load(write(t, "[forge]\nrepo = \"o/r\"\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Paths != (Paths{}) {
+		t.Errorf("Paths without [paths] = %+v, want zero", d.Paths)
 	}
 }

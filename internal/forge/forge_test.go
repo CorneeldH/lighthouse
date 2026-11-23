@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/CorneeldH/lighthouse/internal/forge/forgetest"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 )
 
@@ -52,7 +53,7 @@ func TestOpenUnknownKind(t *testing.T) {
 
 // testBoard is a board with a Status and a Priority field and one option of each, plus On hold.
 func testBoard() *repoconfig.Board {
-	return &repoconfig.Board{ProjectID: "PVT_x", StatusFieldID: "SF", PriorityFieldID: "PF",
+	return &repoconfig.Board{ProjectNumber: 1, ProjectID: "PVT_x", StatusFieldID: "SF", PriorityFieldID: "PF",
 		StatusOptions:   map[string]string{"Controller": "c1", "On hold": "h1"},
 		PriorityOptions: map[string]string{"P1": "p1"}}
 }
@@ -65,32 +66,6 @@ func selectNode(id string, number int, values map[string]string) map[string]any 
 	}
 	return map[string]any{"id": id, "fieldValues": map[string]any{"nodes": nodes},
 		"content": map[string]any{"number": number, "repository": map[string]any{"nameWithOwner": "o/r"}}}
-}
-
-func TestBoardItemsStatusNames(t *testing.T) {
-	srv, c := boardClient(t)
-	c.Board = testBoard()
-	srv.BoardNodes = []map[string]any{
-		selectNode("A", 1, map[string]string{"SF": "c1", "PF": "p1"}),
-		selectNode("B", 2, nil),
-		selectNode("C", 3, map[string]string{"SF": "zz", "PF": "qq"}),
-	}
-	got, err := c.BoardItems(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	type sp struct{ status, priority string }
-	var gotSP []sp
-	for _, it := range got {
-		gotSP = append(gotSP, sp{it.Status, it.Priority})
-	}
-	want := []sp{{"Controller", "P1"}, {"", ""}, {"unknown:zz", ""}}
-	if !reflect.DeepEqual(gotSP, want) {
-		t.Errorf("status, priority = %v, want %v", gotSP, want)
-	}
-	if vars := srv.Posts[0].Body["variables"].(map[string]any); vars["project"] != "PVT_x" {
-		t.Errorf("variables = %v, want project PVT_x", vars)
-	}
 }
 
 func TestIssueItemStatusName(t *testing.T) {
@@ -126,18 +101,6 @@ func TestBoardMethodsWithoutBoard(t *testing.T) {
 	}
 }
 
-func TestSetStatusMapsName(t *testing.T) {
-	srv, c := boardClient(t)
-	c.Board = testBoard()
-	if err := c.SetStatus(context.Background(), BoardItem{ItemID: "I7", Repo: "o/r", Issue: 7}, "On hold"); err != nil {
-		t.Fatal(err)
-	}
-	want := []map[string]any{{"project": "PVT_x", "item": "I7", "field": "SF", "option": "h1"}}
-	if !reflect.DeepEqual(srv.StatusSets, want) {
-		t.Errorf("StatusSets = %v, want %v", srv.StatusSets, want)
-	}
-}
-
 func TestSetStatusUnknownName(t *testing.T) {
 	srv, c := boardClient(t)
 	c.Board = testBoard()
@@ -162,14 +125,108 @@ func TestSetStatusWithoutItemID(t *testing.T) {
 	}
 }
 
-func TestAddToBoardUsesCachedNodeID(t *testing.T) {
-	srv, c := boardClient(t)
-	c.Board = testBoard()
-	srv.Issues = map[int]map[string]any{7: {"number": 7, "node_id": "I_7"}}
+// statusBoard is restBoard with a second status, and a server whose project it is.
+func statusBoard(t *testing.T, nodes ...map[string]any) (*forgetest.Server, *GitHub) {
+	t.Helper()
+	srv, c := projectServer(t)
+	c.Board = restBoard()
+	c.Board.StatusOptions["In progress"] = "opt-prog"
+	srv.BoardNodes = nodes
+	return srv, c
+}
+
+const itemsPath = "/users/o/projectsV2/1/items"
+
+// Class: io (REST write against the fake). At risk: the numeric item and field IDs, the option
+// value, or the node ID StatusSets reports for the item.
+func TestSetStatusREST(t *testing.T) {
+	srv, c := statusBoard(t, restIssue("PVTI_a", 6, "o/r", nil, nil), restIssue("PVTI_b", 7, "o/r", nil, nil))
 	ctx := context.Background()
-	if _, err := c.Issue(ctx, 7); err != nil {
+	items, err := c.BoardItems(ctx)
+	if err != nil {
 		t.Fatal(err)
 	}
+	if err := c.SetStatus(ctx, items[1], "Controller"); err != nil {
+		t.Fatal(err)
+	}
+	// Item PVTI_b is the second node (REST id 5001); SF is field 107 in the fake's sorted list.
+	want := []forgetest.Post{{Method: "PATCH", Path: itemsPath + "/5001",
+		Body: map[string]any{"fields": []any{map[string]any{"id": 107.0, "value": "opt-ctrl"}}}}}
+	if !reflect.DeepEqual(srv.Posts, want) {
+		t.Errorf("writes = %+v, want %+v", srv.Posts, want)
+	}
+	wantSets := []map[string]any{{"project": "PVT_1", "item": "PVTI_b", "field": "SF", "option": "opt-ctrl"}}
+	if !reflect.DeepEqual(srv.StatusSets, wantSets) {
+		t.Errorf("StatusSets = %v, want %v", srv.StatusSets, wantSets)
+	}
+}
+
+// Class: io. At risk: an item the client never listed gets one list read, not none (a lost
+// table) and not one per call.
+func TestSetStatusUnknownNodeReadsListOnce(t *testing.T) {
+	srv, c := statusBoard(t, restIssue("PVTI_a", 7, "o/r", nil, nil))
+	if err := c.SetStatus(context.Background(), BoardItem{ItemID: "PVTI_a"}, "Controller"); err != nil {
+		t.Fatal(err)
+	}
+	if n := srv.Count(itemsPath); n != 1 {
+		t.Errorf("list reads = %d, want 1", n)
+	}
+	if len(srv.Posts) != 1 || srv.Posts[0].Path != itemsPath+"/5000" {
+		t.Errorf("writes = %+v, want one PATCH of 5000", srv.Posts)
+	}
+}
+
+// Class: io. At risk: a node ID that is not on the board still reaches a PATCH, or its error
+// loses the node ID.
+func TestSetStatusMissingNodeFails(t *testing.T) {
+	srv, c := statusBoard(t, restIssue("PVTI_a", 7, "o/r", nil, nil))
+	err := c.SetStatus(context.Background(), BoardItem{ItemID: "PVTI_gone"}, "Controller")
+	if err == nil || !strings.Contains(err.Error(), "PVTI_gone") {
+		t.Fatalf("SetStatus = %v, want an error naming PVTI_gone", err)
+	}
+	if len(srv.Posts) != 0 {
+		t.Errorf("writes = %+v, want none", srv.Posts)
+	}
+	if n := srv.Count(itemsPath); n != 1 {
+		t.Errorf("list reads = %d, want 1", n)
+	}
+}
+
+// Class: io. At risk: the table keeps an item that left the board; a failed list loses the
+// table instead of leaving it.
+func TestItemTableFollowsCompleteLists(t *testing.T) {
+	srv, c := statusBoard(t, restIssue("PVTI_a", 6, "o/r", nil, nil), restIssue("PVTI_b", 7, "o/r", nil, nil))
+	ctx := context.Background()
+	if _, err := c.BoardItems(ctx); err != nil {
+		t.Fatal(err)
+	}
+	srv.Fail = map[string]int{"GET " + itemsPath: 500}
+	if _, err := c.BoardItems(ctx); err == nil {
+		t.Fatal("BoardItems = nil error, want the failed list")
+	}
+	if err := c.SetStatus(ctx, BoardItem{ItemID: "PVTI_b"}, "Controller"); err != nil {
+		t.Fatalf("SetStatus after a failed list = %v, want the old table", err)
+	}
+	srv.Fail = nil
+	srv.BoardNodes = srv.BoardNodes[:1] // PVTI_b leaves the board
+	if _, err := c.BoardItems(ctx); err != nil {
+		t.Fatal(err)
+	}
+	err := c.SetStatus(ctx, BoardItem{ItemID: "PVTI_b"}, "Controller")
+	if err == nil || !strings.Contains(err.Error(), "PVTI_b") {
+		t.Errorf("SetStatus of a removed item = %v, want an error naming PVTI_b", err)
+	}
+	if len(srv.Posts) != 1 {
+		t.Errorf("writes = %+v, want only the first PATCH", srv.Posts)
+	}
+}
+
+// Class: io. At risk: AddToBoard reads the issue, sends another body, or leaves the new item
+// out of the table so SetStatus reads the list.
+func TestAddToBoardREST(t *testing.T) {
+	srv, c := statusBoard(t, restIssue("PVTI_a", 6, "o/r", nil, nil))
+	srv.Issues = map[int]map[string]any{7: {"number": 7, "node_id": "I_7"}}
+	ctx := context.Background()
 	item, err := c.AddToBoard(ctx, 7)
 	if err != nil {
 		t.Fatal(err)
@@ -177,41 +234,40 @@ func TestAddToBoardUsesCachedNodeID(t *testing.T) {
 	if want := (BoardItem{ItemID: "item-I_7", Repo: "o/r", Issue: 7}); !reflect.DeepEqual(item, want) {
 		t.Errorf("AddToBoard = %+v, want %+v", item, want)
 	}
-	if n := srv.Count("/repos/o/r/issues/7"); n != 1 {
-		t.Errorf("Count(issue 7) = %d, want 1: the node ID comes from the cache", n)
-	}
-}
-
-func TestAddToBoardOpenIssuesFillCache(t *testing.T) {
-	srv, c := boardClient(t)
-	c.Board = testBoard()
-	srv.Issues = map[int]map[string]any{7: {"number": 7, "state": "open", "node_id": "I_7"}}
-	ctx := context.Background()
-	if _, err := c.OpenIssues(ctx); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := c.AddToBoard(ctx, 7); err != nil {
-		t.Fatal(err)
+	want := []forgetest.Post{{Method: "POST", Path: itemsPath,
+		Body: map[string]any{"type": "Issue", "owner": "o", "repo": "r", "number": 7.0}}}
+	if !reflect.DeepEqual(srv.Posts, want) {
+		t.Errorf("writes = %+v, want %+v", srv.Posts, want)
 	}
 	if n := srv.Count("/repos/o/r/issues/7"); n != 0 {
-		t.Errorf("Count(issue 7) = %d, want 0: OpenIssues filled the cache", n)
+		t.Errorf("issue reads = %d, want 0", n)
+	}
+	if err := c.SetStatus(ctx, item, "Controller"); err != nil {
+		t.Fatal(err)
+	}
+	if n := srv.Count(itemsPath); n != 1 {
+		t.Errorf("list reads = %d, want 1: only the POST and the PATCH hit the items path", n)
+	}
+	if last := srv.Posts[len(srv.Posts)-1]; last.Path != itemsPath+"/5001" {
+		t.Errorf("PATCH path = %s, want the id the POST answered (5001)", last.Path)
 	}
 }
 
-func TestAddToBoardReadsNodeID(t *testing.T) {
-	srv, c := boardClient(t)
-	c.Board = testBoard()
-	srv.Issues = map[int]map[string]any{7: {"number": 7, "node_id": "I_7"}}
-	item, err := c.AddToBoard(context.Background(), 7)
-	if err != nil || item.ItemID != "item-I_7" {
-		t.Fatalf("AddToBoard = %+v, %v; want item-I_7", item, err)
+// Class: io. At risk: the PATCH reaches the fake but IssueItem reads the old status.
+func TestSetStatusThenIssueItemReadsBack(t *testing.T) {
+	node := selectNode("PVTI_7", 7, map[string]string{"SF": "opt-ctrl"})
+	_, c := statusBoard(t, node)
+	ctx := context.Background()
+	before, ok, err := c.IssueItem(ctx, 7)
+	if err != nil || !ok || before.Status != "Controller" {
+		t.Fatalf("IssueItem = %+v, %v, %v; want Controller", before, ok, err)
 	}
-	if n := srv.Count("/repos/o/r/issues/7"); n != 1 {
-		t.Errorf("Count(issue 7) = %d, want 1", n)
+	if err := c.SetStatus(ctx, before, "In progress"); err != nil {
+		t.Fatal(err)
 	}
-	vars := srv.Posts[0].Body["variables"].(map[string]any)
-	if vars["project"] != "PVT_x" || vars["content"] != "I_7" {
-		t.Errorf("variables = %v, want project PVT_x and content I_7", vars)
+	after, ok, err := c.IssueItem(ctx, 7)
+	if err != nil || !ok || after.Status != "In progress" {
+		t.Errorf("IssueItem = %+v, %v, %v; want In progress", after, ok, err)
 	}
 }
 

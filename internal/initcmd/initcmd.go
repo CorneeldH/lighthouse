@@ -20,15 +20,19 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/BurntSushi/toml"
 	"github.com/pmezard/go-difflib/difflib"
 
 	"github.com/CorneeldH/lighthouse/internal/agentsmd"
 	"github.com/CorneeldH/lighthouse/internal/deps"
+	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/hostconfig"
 	labelsync "github.com/CorneeldH/lighthouse/internal/labels"
+	"github.com/CorneeldH/lighthouse/internal/levels"
 	"github.com/CorneeldH/lighthouse/internal/manifest"
 	"github.com/CorneeldH/lighthouse/internal/orderedjson"
 	"github.com/CorneeldH/lighthouse/internal/packs"
@@ -38,6 +42,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/settings"
 	"github.com/CorneeldH/lighthouse/internal/version"
 	"github.com/CorneeldH/lighthouse/internal/wordcount"
+	"github.com/CorneeldH/lighthouse/internal/worktreeroot"
 	"github.com/CorneeldH/lighthouse/pack"
 )
 
@@ -54,10 +59,15 @@ type Options struct {
 	Upgrade, Force, Yes bool
 	Labels              bool                                                      // --labels: propose the label taxonomy file, [labels] and [paths] labels
 	CreateLabels        bool                                                      // --create-labels (with --labels): create the missing labels on the remote
-	SyncLabels          func(root string, create bool, out, errw io.Writer) error // nil means labels.Sync
+	Direction           bool                                                      // --direction: seed the missing direction documents and their [paths] keys
+	SyncLabels          func(root string, create bool, out, errw io.Writer) error // nil means labels.Sync with the forge of LabelForge
+	LabelForge          func(root string) forge.Forge                             // opens the forge of the labels; nil, or a nil result, means labels are printed, not created
+	Level               string                                                    // --level: the level to set; "" means lighthouse.toml, else strict (light on a first init)
+	Now                 func() time.Time                                          // nil means time.Now
 	AddPacks, DropPacks []string                                                  // --pack and --no-pack (plan M0 (c), design choice 6)
 	ForgeHosts          []string                                                  // --forge-host: hosts of self-hosted GitLab instances
 	Audit               func(root string, out, errOut io.Writer)                  // read-only agent audit, run after the files are written; nil means none
+	CheckHooks          func(root string, errOut io.Writer)                       // hook check, run after the files are written and also on No changes.; nil means none
 	AuditOnUpgrade      bool                                                      // --audit: also run Audit after --upgrade, not only after the first init
 	Version             string                                                    // "" means version.String()
 	Packs               fs.FS                                                     // holds <name>/...; nil means pack.Files
@@ -163,13 +173,20 @@ func execute(o Options) error {
 	for _, c := range chosen {
 		chosenPacks = append(chosenPacks, all[c.Name])
 	}
+	// A level with the labels flag acts as --labels on a first init or a switch;
+	// --create-labels is never implied.
+	lvFiles := levelFiles(chosenPacks)
+	if !o.Labels && levelSetsLabels(o, root, initialized, lvFiles) {
+		o.Labels = true
+	}
 	var labelsPath string
 	if o.Labels {
 		if labelsPath, err = labelsTarget(root); err != nil {
 			return err
 		}
 	}
-	tables, haveRepo, err := configTables(root, chosenPacks, labelsPath, o.ForgeHosts)
+	direction := wantsDirection(root, o)
+	tables, haveRepo, kind, err := configTables(root, chosenPacks, labelsPath, direction, o.ForgeHosts)
 	if err != nil {
 		return err
 	}
@@ -177,14 +194,43 @@ func execute(o Options) error {
 	if lookup == nil {
 		lookup = (&goLookup{root: root, tables: tables}).lookup
 	}
-	desired = fillWorkflows(o.Err, desired, lookup, func(rel string) ([]byte, bool) {
+	desired = fillWorkflows(o.Err, dropWorkflows(desired, kind), lookup, func(rel string) ([]byte, bool) {
 		if _, listed := m.Lookup(packs.Key{Kind: packs.KindFile, Path: rel}); !listed {
 			return nil, false
 		}
 		b, ok, err := readFile(root, rel)
 		return b, ok && err == nil
 	})
-	for _, miss := range o.Deps.Check(mergeRequires(reqs)) {
+	resolved, haveLevels, writeLevel, err := resolveLevels(o, root, initialized, lvFiles, desired)
+	if err != nil {
+		return err
+	}
+	if haveLevels {
+		if desired, err = selectUnits(desired, lvFiles, resolved, o.Err); err != nil {
+			return err
+		}
+		desired = filterBlockingUnits(desired, resolved)
+	}
+	// Without levels every component is on: the markers are stripped, nothing is dropped.
+	desired = filterBlockUnits(desired, resolved)
+	if haveLevels {
+		now := o.Now
+		if now == nil {
+			now = time.Now
+		}
+		prev, found, err := levels.ReadInstalled(root)
+		if err != nil {
+			return err
+		}
+		if found && switched(prev, found, resolved.Level) {
+			_, _ = fmt.Fprintf(o.Err, "level: switching from %s to %s\n", prev.Level, resolved.Level)
+		}
+		desired = append(desired, componentsUnit(resolved, installedSince(prev, found, resolved.Level, now)))
+	}
+	if haveLevels {
+		reqs = levelRequires(reqs, resolved)
+	}
+	for _, miss := range o.Deps.Check(mergeRequires(forgeRequires(reqs, kind))) {
 		_, _ = fmt.Fprintf(o.Err, "missing dependency: %s (needed by: %s)\n", miss.Tool, strings.Join(miss.NeededBy, ", "))
 	}
 
@@ -208,7 +254,8 @@ func execute(o Options) error {
 		}
 	}
 
-	plan, err := buildPlan(o, root, names, desired, changes, tables, haveRepo, labelsPath, all["core"].LabelsTemplate)
+	seeds := seeding{labelsPath: labelsPath, labelsTemplate: all["core"].LabelsTemplate, direction: direction, directionTemplates: all["core"].DirectionTemplates, writeLevel: writeLevel}
+	plan, err := buildPlan(o, root, names, desired, changes, tables, haveRepo, seeds)
 	if err != nil {
 		return err
 	}
@@ -237,10 +284,17 @@ func execute(o Options) error {
 			}
 		}
 		_, _ = fmt.Fprintf(o.Out, "Wrote %d file(s).\n", len(paths))
+		if haveLevels {
+			_, _ = fmt.Fprintln(o.Out, levelSummary(lvFiles, resolved.Level))
+		}
 	}
+	warnSyncFolder(o.Err, root, lookup)
 	warnMissingScripts(o.Err, root)
 	warnIgnored(o.Err, root, desired, plan)
 	reportPins(o, root)
+	if o.CheckHooks != nil {
+		o.CheckHooks(root, o.Err)
+	}
 	if o.Audit != nil && (!initialized && len(paths) > 0 || o.Upgrade && o.AuditOnUpgrade) {
 		_, _ = fmt.Fprintln(o.Out)
 		o.Audit(root, o.Out, o.Err)
@@ -248,7 +302,13 @@ func execute(o Options) error {
 	if o.Labels {
 		sync := o.SyncLabels
 		if sync == nil {
-			sync = labelsync.Sync
+			var f forge.Forge
+			if o.LabelForge != nil {
+				f = o.LabelForge(root)
+			}
+			sync = func(root string, create bool, out, errw io.Writer) error {
+				return labelsync.Sync(root, create, f, out, errw)
+			}
 		}
 		if err := sync(root, o.CreateLabels, o.Out, o.Err); err != nil {
 			_, _ = fmt.Fprintln(o.Err, "warning: labels: not synchronised")
@@ -332,6 +392,27 @@ func (p planned) changes() bool {
 	}
 }
 
+// warnSyncFolder warns, never blocks, when the main checkout or the resolved `worktree.root` lies in
+// a folder a sync client manages: such a client corrupts a .git directory and the worktrees below it.
+func warnSyncFolder(w io.Writer, root string, lookup func(string) (string, bool, error)) {
+	repo, err := worktreeroot.MainCheckout(root)
+	if err != nil {
+		repo = root
+	}
+	value := ""
+	if v, ok, err := lookup("worktree.root"); err == nil && ok {
+		value = v
+	}
+	wt := worktreeroot.Resolve(repo, value)
+	repoProvider, repoSync := worktreeroot.InSyncFolder(repo)
+	if repoSync {
+		_, _ = fmt.Fprintf(w, "warning: %s lies in a %s sync folder; a sync client corrupts a .git directory, so keep the repository outside it. Where the worktrees go is set by `[worktree] root` in lighthouse.toml\n", repo, repoProvider)
+	}
+	if p, ok := worktreeroot.InSyncFolder(wt); ok && (!repoSync || !worktreeroot.Contains(repo, wt)) {
+		_, _ = fmt.Fprintf(w, "warning: the worktree root %s lies in a %s sync folder; a sync client corrupts worktrees. Set `[worktree] root` in lighthouse.toml to a folder outside it\n", wt, p)
+	}
+}
+
 func repoRoot(dir string) (string, error) {
 	out, err := exec.Command("git", "-C", dir, "rev-parse", "--show-toplevel").Output()
 	if err != nil {
@@ -344,7 +425,16 @@ func writes(a reconcile.Action, force bool) bool {
 	return a == reconcile.Add || a == reconcile.Replace || (force && a == reconcile.Conflict)
 }
 
-func buildPlan(o Options, root string, names []string, desired []packs.Unit, changes []reconcile.Change, tables []projectconfig.Table, haveRepo bool, labelsPath string, labelsTemplate []byte) (map[string]*planned, error) {
+// seeding is what buildPlan seeds besides the units: files that are the project's once written.
+type seeding struct {
+	labelsPath         string // "" without --labels
+	labelsTemplate     []byte
+	direction          bool // wantsDirection
+	directionTemplates map[string][]byte
+	writeLevel         string // the level to write into lighthouse.toml, "" when it stays
+}
+
+func buildPlan(o Options, root string, names []string, desired []packs.Unit, changes []reconcile.Change, tables []projectconfig.Table, haveRepo bool, seeds seeding) (map[string]*planned, error) {
 	plan := map[string]*planned{}
 	load := func(rel string) (*planned, error) {
 		if p, ok := plan[rel]; ok {
@@ -369,7 +459,7 @@ func buildPlan(o Options, root string, names []string, desired []packs.Unit, cha
 				return nil, err
 			}
 			switch {
-			case c.Desired != nil && writes(c.Action, o.Force):
+			case c.Desired != nil && (writes(c.Action, o.Force) || c.Action == reconcile.Adopt && !bytes.Equal(c.Current.Content, c.Desired.Content)):
 				p.new, p.mode = c.Desired.Content, c.Desired.Mode
 			case keptRetired(c):
 				_, _ = fmt.Fprintf(o.Err, "warning: %s is changed locally; lighthouse no longer installs it, so it stays as it is and is no longer managed\n", c.Key.Path)
@@ -409,7 +499,8 @@ func buildPlan(o Options, root string, names []string, desired []packs.Unit, cha
 		}
 	}
 
-	if hooksTouched || len(allowWant) > 0 || len(allowDrop) > 0 {
+	replyLanguage := settings.ResponseLanguage(projectLanguage(root))
+	if hooksTouched || len(allowWant) > 0 || len(allowDrop) > 0 || replyLanguage != "" {
 		p, err := load(settingsPath)
 		if err != nil {
 			return nil, err
@@ -434,6 +525,9 @@ func buildPlan(o Options, root string, names []string, desired []packs.Unit, cha
 		}
 		if err := settings.ApplyAllow(doc, allowWant, allowDrop); err != nil {
 			return nil, err
+		}
+		if kept := settings.ApplyLanguage(doc, replyLanguage); kept != "" {
+			_, _ = fmt.Fprintf(o.Err, "warning: %s has language %q; [project] language asks for %q, so it stays as it is\n", settingsPath, kept, replyLanguage)
 		}
 		out, err := orderedjson.Marshal(doc)
 		if err != nil {
@@ -462,20 +556,31 @@ func buildPlan(o Options, root string, names []string, desired []packs.Unit, cha
 		_, _ = fmt.Fprintln(o.Err, "warning: CLAUDE.md does not import AGENTS.md; add a line `@AGENTS.md` so Claude Code reads the lighthouse rules")
 	}
 
-	if err := planConfig(o, load, desired, tables, haveRepo); err != nil {
+	if err := planConfig(o, load, desired, tables, haveRepo, seeds.writeLevel); err != nil {
 		return nil, err
 	}
 
-	if labelsPath != "" && labelsTemplate != nil {
+	ga, err := load(gitattributesPath)
+	if err != nil {
+		return nil, err
+	}
+	ga.new = ensureGitattributes(ga.old)
+
+	if seeds.labelsPath != "" && seeds.labelsTemplate != nil {
 		// Seed once: the file is the project's after this, so it is not in the manifest.
-		p, err := load(labelsPath)
+		p, err := load(seeds.labelsPath)
 		if err != nil {
 			return nil, err
 		}
 		if p.existed {
-			_, _ = fmt.Fprintf(o.Err, "labels: %s exists; left as it is\n", labelsPath)
+			_, _ = fmt.Fprintf(o.Err, "labels: %s exists; left as it is\n", seeds.labelsPath)
 		} else {
-			p.new, p.mode = labelsTemplate, 0o644
+			p.new, p.mode = seeds.labelsTemplate, 0o644
+		}
+	}
+	if seeds.direction {
+		if err := directionPlan(root, o, seeds.directionTemplates, headingsOf(desired), load); err != nil {
+			return nil, err
 		}
 	}
 
@@ -516,6 +621,25 @@ func hasLine(b []byte, line string) bool {
 	return false
 }
 
+// projectLanguage is `[project] language` of the existing lighthouse.toml, or "" when
+// the file, the key or a parse is missing. The default "en" that init proposes for a
+// new file needs no setting, so the proposal is not read here.
+func projectLanguage(root string) string {
+	var ex struct {
+		Project struct {
+			Language string `toml:"language"`
+		} `toml:"project"`
+	}
+	b, err := os.ReadFile(filepath.Join(root, configPath))
+	if err != nil {
+		return ""
+	}
+	if _, err := toml.Decode(string(b), &ex); err != nil {
+		return ""
+	}
+	return ex.Project.Language
+}
+
 // existingForge is the part of an existing lighthouse.toml that decides which hosts are known.
 type existingForge struct {
 	Forge struct {
@@ -526,9 +650,11 @@ type existingForge struct {
 
 // configTables are the tables lighthouse.toml should have: the core tables, then the
 // fragments of the chosen packages in their order (plan M0 (c), design choice 4). A
-// non-empty labelsPath adds the label tables, with that path in [paths] labels. A GitLab
-// host is known from extraHosts or from forge.host of an existing lighthouse.toml.
-func configTables(root string, chosen []packs.Pack, labelsPath string, extraHosts []string) ([]projectconfig.Table, bool, error) {
+// non-empty labelsPath adds the label tables, with that path in [paths] labels; direction adds
+// the [paths] keys of the direction documents. A GitLab
+// host is known from extraHosts or from forge.host of an existing lighthouse.toml. kind
+// is the existing [forge] kind, else the kind of the remote, else "".
+func configTables(root string, chosen []packs.Pack, labelsPath string, direction bool, extraHosts []string) ([]projectconfig.Table, bool, string, error) {
 	var ex existingForge
 	if b, err := os.ReadFile(filepath.Join(root, configPath)); err == nil {
 		if _, err := toml.Decode(string(b), &ex); err != nil {
@@ -554,8 +680,16 @@ func configTables(root string, chosen []packs.Pack, labelsPath string, extraHost
 	if labelsPath != "" {
 		core = append(core, projectconfig.LabelTables(labelsPath)...)
 	}
+	if direction {
+		core = append(core, projectconfig.DirectionTables()...)
+	}
+	// kind: the kind that lighthouse.toml has or gets; "" when neither is known.
+	kind := ex.Forge.Kind
+	if kind == "" {
+		kind = forge.Kind
+	}
 	tables, err := mergeTables(core, chosen)
-	return tables, haveRepo, err
+	return tables, haveRepo, kind, err
 }
 
 // mergeTables joins core and the fragments of chosen per table name, in order. A key
@@ -601,7 +735,7 @@ func proposeConfig(old []byte, tables []projectconfig.Table) (out []byte, manual
 	return out, manual, err
 }
 
-func planConfig(o Options, load func(string) (*planned, error), desired []packs.Unit, tables []projectconfig.Table, haveRepo bool) error {
+func planConfig(o Options, load func(string) (*planned, error), desired []packs.Unit, tables []projectconfig.Table, haveRepo bool, writeLevel string) error {
 	p, err := load(configPath)
 	if err != nil {
 		return err
@@ -623,6 +757,11 @@ func planConfig(o Options, load func(string) (*planned, error), desired []packs.
 	out, manual, err := proposeConfig(base, tables)
 	if err != nil {
 		return err
+	}
+	if writeLevel != "" {
+		if out, err = projectconfig.SetTopLevel(out, "level", strconv.Quote(writeLevel)); err != nil {
+			return err
+		}
 	}
 	p.new = out
 	if !haveRepo {
@@ -900,8 +1039,8 @@ func labelsTarget(root string) (string, error) {
 			target = cfg.Paths.Labels
 		}
 	}
-	if filepath.IsAbs(target) || path.IsAbs(target) || path.Clean(target) != target || slices.Contains(strings.Split(target, "/"), "..") {
-		return "", fmt.Errorf("lighthouse.toml: paths.labels %q must be a clean relative path inside the repository", target)
+	if err := safeRel("paths.labels", target); err != nil {
+		return "", err
 	}
 	return target, nil
 }

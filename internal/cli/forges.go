@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/forge"
+	"github.com/CorneeldH/lighthouse/internal/forgecache"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 )
 
@@ -20,8 +22,12 @@ type forgeOpener struct {
 	ghToken   func() string                           // last resort for a GitHub token (ask); nil is none
 	open      func(forge.Config) (forge.Forge, error) // forge.Open; tests replace it
 	http      *http.Client
-	mu        sync.Mutex // guards logins
-	logins    map[loginKey]*tokenLoginOnce
+	cache     *forgecache.Lazy // the GitHub ETag cache, opened on the first GitHub forRepo
+	// enrichMemo sets forge.GitHub.EnrichMemo on each GitHub client it opens. Only openForges
+	// sets it: its clients live one tick; serve, the pusher and postartefact read fresh.
+	enrichMemo bool
+	mu         sync.Mutex // guards logins
+	logins     map[loginKey]*tokenLoginOnce
 }
 
 // loginKey is what the token login of a forge depends on.
@@ -41,6 +47,7 @@ func newForgeOpener(getenv func(string) string, githubURL string) *forgeOpener {
 		githubURL: githubURL,
 		open:      forge.Open,
 		http:      &http.Client{Timeout: 30 * time.Second},
+		cache:     forgecache.NewLazy(getenv, os.Stderr),
 		logins:    map[loginKey]*tokenLoginOnce{},
 	}
 }
@@ -64,12 +71,16 @@ func (o *forgeOpener) forRepo(ctx context.Context, repo repoconfig.Repo) (repoFo
 	switch cfg.Kind {
 	case "", "github":
 		cfg.BaseURL = o.githubURL
+		cfg.Cache, cfg.CacheLog = o.cache.Store(), os.Stderr
 	case "gitlab":
 		cfg.BaseURL = o.gitlabURL
 	}
 	f, err := o.open(cfg)
 	if err != nil {
 		return repoForge{}, err
+	}
+	if gh, ok := f.(*forge.GitHub); ok && o.enrichMemo {
+		gh.EnrichMemo = true
 	}
 	key := loginKey{kind: f.Kind(), host: cfg.Host, baseURL: cfg.BaseURL, token: token}
 	o.mu.Lock()

@@ -356,8 +356,8 @@ func githubForge(t *testing.T, optionID, name string) (forge.Forge, *forgetest.S
 		values = append(values, map[string]any{"optionId": optionID, "name": name, "field": map[string]any{"id": "FIELD_test"}})
 	}
 	srv.BoardNodes = []map[string]any{{"id": "PVTI_a", "fieldValues": map[string]any{"nodes": values},
-		"content": map[string]any{"number": 7}}}
-	board := &repoconfig.Board{ProjectID: "PVT_test", StatusFieldID: "FIELD_test", StatusOptions: map[string]string{
+		"content": map[string]any{"number": 7, "repository": map[string]any{"nameWithOwner": "Owner/repo"}}}}
+	board := &repoconfig.Board{ProjectNumber: 1, ProjectID: "PVT_test", StatusFieldID: "FIELD_test", StatusOptions: map[string]string{
 		"To do": "opt-todo", "In progress": "opt-progress", "Done": "opt-done"}}
 	f, err := forge.Open(forge.Config{Repo: "Owner/repo", Token: "t", BaseURL: srv.URL(), Board: board})
 	if err != nil {

@@ -10,7 +10,7 @@
       ],
       "expect": {
         "verdict": "skip",
-        "reason": "Codex-budget: fallback - 5h 93%"
+        "reason": "Codex-budget: fallback - 5h 93%; geen claude op PATH"
       }
     }
   ]

@@ -47,20 +47,38 @@ type Server struct {
 	writes []Write
 	nextID int64
 
-	issues   map[int]map[string]any
-	notes    map[int][]map[string]any
-	awards   map[int64][]map[string]any
-	links    map[int][]map[string]any
-	mrs      []map[string]any
-	closedBy map[string][]map[string]any // "project#iid" to the merge requests that close it
-	users    map[string]int64            // username to user ID
-	members  map[string]int              // username to access level
-	statuses []string
-	status   map[int]string
+	issues map[int]map[string]any
+	notes  map[int][]map[string]any
+	awards map[int64][]map[string]any
+	links  map[int][]map[string]any
+	// failLinksPage2 holds the iids whose links list answers a 500 on page two.
+	failLinksPage2 map[int]bool
+	// failMRsPage2 makes the merge request list answer a 500 on page two.
+	failMRsPage2 bool
+	// failLinks holds the iids whose links list answers a 403 on every page.
+	failLinks   map[int]bool
+	mrs         []map[string]any
+	closedBy    map[string][]map[string]any // "project#iid" to the merge requests that close it
+	related     map[string][]map[string]any // "project#iid" to the merge requests that only refer to it
+	stateEvents map[int][]map[string]any    // iid to its resource state events, oldest first
+	// failIssueMRsPage2 holds the iids whose closed_by and related_merge_requests answer a 500
+	// on page two.
+	failIssueMRsPage2 map[int]bool
+	failNotes         map[int]bool     // iids whose note creation answers a 500
+	users             map[string]int64 // username to user ID
+	members           map[string]int   // username to access level
+	statuses          []string
+	status            map[int]string
 
 	milestones []map[string]any
 	labels     []string
+	labelColor map[string]string
+	commits    []string
+	failCommit map[string]bool
 	mrNotes    map[int][]map[string]any // notes of a merge request; its iid is not an issue iid
+	pipelines  map[int][]map[string]any // pipelines of a merge request, by its iid
+	jobs       map[int][]map[string]any // jobs of a pipeline, by pipeline id
+	traces     map[int64]string         // job log, by job id
 }
 
 // New starts a server that closes when the test ends.
@@ -71,7 +89,9 @@ func newServer(t reporter) *Server {
 	s := &Server{
 		t: t, Project: "group/project", nextID: 1000,
 		issues: map[int]map[string]any{}, notes: map[int][]map[string]any{}, mrNotes: map[int][]map[string]any{},
+		pipelines: map[int][]map[string]any{}, jobs: map[int][]map[string]any{}, traces: map[int64]string{},
 		awards: map[int64][]map[string]any{}, links: map[int][]map[string]any{}, closedBy: map[string][]map[string]any{},
+		related: map[string][]map[string]any{}, stateEvents: map[int][]map[string]any{}, failIssueMRsPage2: map[int]bool{},
 		users: map[string]int64{}, members: map[string]int{}, status: map[int]string{},
 	}
 	mux := http.NewServeMux()
@@ -90,11 +110,16 @@ func newServer(t reporter) *Server {
 	s.route(mux, "GET "+p+"/issues/{iid}/links", s.project(s.listLinks))
 	// closed_by answers for any project: a blocker can live in another one.
 	s.route(mux, "GET "+p+"/issues/{iid}/closed_by", s.listClosedBy)
+	s.route(mux, "GET "+p+"/issues/{iid}/related_merge_requests", s.listRelatedMRs)
+	s.route(mux, "GET "+p+"/issues/{iid}/resource_state_events", s.project(s.listStateEvents))
 	s.route(mux, "GET "+p+"/merge_requests", s.project(s.listMRs))
 	s.route(mux, "GET "+p+"/merge_requests/{iid}", s.project(s.getMR))
 	s.route(mux, "PUT "+p+"/merge_requests/{iid}", s.project(s.updateMR))
 	s.route(mux, "GET "+p+"/merge_requests/{iid}/notes", s.project(s.listMRNotes))
 	s.route(mux, "PUT "+p+"/merge_requests/{iid}/merge", s.project(s.mergeMR))
+	s.route(mux, "GET "+p+"/merge_requests/{iid}/pipelines", s.project(s.listMRPipelines))
+	s.route(mux, "GET "+p+"/pipelines/{pid}/jobs", s.project(s.listPipelineJobs))
+	s.route(mux, "GET "+p+"/jobs/{jid}/trace", s.project(s.jobTrace))
 	s.writeRoutes(mux, p)
 	mux.HandleFunc("POST /api/graphql", s.graphql)
 	mux.HandleFunc("/", s.unexpected)
@@ -296,6 +321,13 @@ func (s *Server) createNote(w http.ResponseWriter, r *http.Request) {
 	if !s.decode(w, r, &body) {
 		return
 	}
+	s.mu.Lock()
+	failed := s.failNotes[iid]
+	s.mu.Unlock()
+	if failed {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"message": "500 Internal Server Error"})
+		return
+	}
 	id := s.AddNote(iid, s.Login, body.Body, false)
 	s.mu.Lock()
 	n := s.findNote(iid, id)
@@ -334,23 +366,113 @@ func (s *Server) createAward(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) listClosedBy(w http.ResponseWriter, r *http.Request) {
 	key := r.PathValue("project") + "#" + r.PathValue("iid")
+	iid, _ := strconv.Atoi(r.PathValue("iid"))
 	s.mu.Lock()
+	fail := r.PathValue("project") == s.Project && s.failIssueMRsPage2[iid]
 	out := toAny(s.closedBy[key])
 	s.mu.Unlock()
+	paginateOrFail(w, r, out, fail)
+}
+
+// listRelatedMRs serves the merge requests that only refer to issue iid of the project in the path,
+// as AddRelatedMR seeded them.
+func (s *Server) listRelatedMRs(w http.ResponseWriter, r *http.Request) {
+	key := r.PathValue("project") + "#" + r.PathValue("iid")
+	iid, _ := strconv.Atoi(r.PathValue("iid"))
+	s.mu.Lock()
+	fail := r.PathValue("project") == s.Project && s.failIssueMRsPage2[iid]
+	out := toAny(s.related[key])
+	s.mu.Unlock()
+	paginateOrFail(w, r, out, fail)
+}
+
+// listStateEvents serves the resource state events of issue iid, oldest first.
+func (s *Server) listStateEvents(w http.ResponseWriter, r *http.Request) {
+	iid, _ := strconv.Atoi(r.PathValue("iid"))
+	s.mu.Lock()
+	out := toAny(s.stateEvents[iid])
+	s.mu.Unlock()
 	paginate(w, r, out)
+}
+
+// paginateOrFail is paginate, but answers a 500 for page two when failPage2 is set.
+func paginateOrFail(w http.ResponseWriter, r *http.Request, items []any, failPage2 bool) {
+	if failPage2 && r.URL.Query().Get("page") == "2" {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"message": "500 Internal Server Error"})
+		return
+	}
+	paginate(w, r, items)
 }
 
 func (s *Server) listLinks(w http.ResponseWriter, r *http.Request) {
 	iid, _ := strconv.Atoi(r.PathValue("iid"))
 	s.mu.Lock()
+	if s.failLinks[iid] {
+		s.mu.Unlock()
+		writeJSON(w, http.StatusForbidden, map[string]any{"message": "403 Forbidden"})
+		return
+	}
+	if s.failLinksPage2[iid] && r.URL.Query().Get("page") == "2" {
+		s.mu.Unlock()
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"message": "500 Internal Server Error"})
+		return
+	}
 	var links []map[string]any
 	for _, l := range s.links[iid] {
 		if !s.Free || l["link_type"] != "is_blocked_by" {
 			links = append(links, l)
 		}
 	}
+	if !s.Free {
+		links = append(links, s.blocksLinksLocked(iid)...)
+	}
 	s.mu.Unlock()
 	paginate(w, r, toAny(links))
+}
+
+// blocksLinksLocked are the links of type blocks that GitLab shows on issue iid for every
+// is_blocked_by link of another issue that names iid of Project, in iid order. The link state is
+// the state of the blocked issue. Call it with s.mu held.
+func (s *Server) blocksLinksLocked(iid int) []map[string]any {
+	var blocked []int
+	for m, ls := range s.links {
+		for _, l := range ls {
+			refs, _ := l["references"].(map[string]any)
+			if l["link_type"] == "is_blocked_by" && toInt(l["iid"]) == iid && fmt.Sprint(refs["full"]) == fmt.Sprintf("%s#%d", s.Project, iid) {
+				blocked = append(blocked, m)
+				break
+			}
+		}
+	}
+	slices.Sort(blocked)
+	var out []map[string]any
+	for _, m := range blocked {
+		out = append(out, map[string]any{
+			"iid": m, "state": s.issues[m]["state"], "link_type": "blocks",
+			"references": map[string]any{"full": fmt.Sprintf("%s#%d", s.Project, m)},
+		})
+	}
+	return out
+}
+
+// FailLinks makes every page of the links of issue iid answer a 403.
+func (s *Server) FailLinks(iid int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.failLinks == nil {
+		s.failLinks = map[int]bool{}
+	}
+	s.failLinks[iid] = true
+}
+
+// FailLinksPage2 makes the second page of the links of issue iid answer a 500.
+func (s *Server) FailLinksPage2(iid int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.failLinksPage2 == nil {
+		s.failLinksPage2 = map[int]bool{}
+	}
+	s.failLinksPage2[iid] = true
 }
 
 // listMRs serves the merge requests, filtered on state (opened, closed, merged; default all)
@@ -371,8 +493,16 @@ func (s *Server) listMRs(w http.ResponseWriter, r *http.Request) {
 		delete(cp, "head_pipeline")
 		out = append(out, cp)
 	}
+	failPage2 := s.failMRsPage2
 	s.mu.Unlock()
-	paginate(w, r, out)
+	paginateOrFail(w, r, out, failPage2)
+}
+
+// FailMRsPage2 makes the second page of the merge request list answer a 500.
+func (s *Server) FailMRsPage2() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.failMRsPage2 = true
 }
 
 // getMR serves one merge request, head_pipeline included; an unknown iid answers 404.
@@ -476,6 +606,19 @@ func (s *Server) AddNote(iid int, author, body string, system bool) int64 {
 	return id
 }
 
+// AddMRNote seeds a note on merge request iid and returns its ID.
+func (s *Server) AddMRNote(iid int, author, body string, system bool) int64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	id := s.newID()
+	s.mrNotes[iid] = append(s.mrNotes[iid], map[string]any{
+		"id": id, "body": body, "system": system,
+		"created_at": time.Now().UTC().Format(time.RFC3339),
+		"author":     map[string]any{"username": author},
+	})
+	return id
+}
+
 // AddAward seeds an award emoji on a note; iid is the issue the note belongs to.
 func (s *Server) AddAward(iid int, noteID int64, name, user string) {
 	s.mu.Lock()
@@ -507,6 +650,41 @@ func (s *Server) AddClosedBy(project string, iid int, mr map[string]any) {
 	defer s.mu.Unlock()
 	key := fmt.Sprintf("%s#%d", project, iid)
 	s.closedBy[key] = append(s.closedBy[key], mr)
+}
+
+// AddRelatedMR seeds a merge request that only refers to issue iid of project, which may be
+// another project than Project; closed_by does not list it.
+func (s *Server) AddRelatedMR(project string, iid int, mr map[string]any) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := fmt.Sprintf("%s#%d", project, iid)
+	s.related[key] = append(s.related[key], mr)
+}
+
+// AddStateEvent seeds a resource state event of issue iid (state, source_merge_request), after
+// the ones seeded before.
+func (s *Server) AddStateEvent(iid int, ev map[string]any) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.stateEvents[iid] = append(s.stateEvents[iid], ev)
+}
+
+// FailIssueMRsPage2 makes page two of closed_by and related_merge_requests of issue iid of
+// Project answer a 500.
+func (s *Server) FailIssueMRsPage2(iid int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.failIssueMRsPage2[iid] = true
+}
+
+// FailNotes makes creating a note on issue iid answer a 500.
+func (s *Server) FailNotes(iid int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.failNotes == nil {
+		s.failNotes = map[int]bool{}
+	}
+	s.failNotes[iid] = true
 }
 
 // AddMR seeds a merge request in GitLab's REST shape. A head_pipeline in it is served only by
@@ -674,4 +852,56 @@ func (s *Server) MRNotes(iid int) []string {
 		out = append(out, fmt.Sprint(n["body"]))
 	}
 	return out
+}
+
+// AddMRPipeline seeds a pipeline of merge request iid; id is its "id".
+func (s *Server) AddMRPipeline(iid, id int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.pipelines[iid] = append(s.pipelines[iid], map[string]any{"id": id, "iid": id, "status": "success"})
+}
+
+// AddJob seeds a job of pipeline pid in GitLab's REST shape; "id" is required.
+func (s *Server) AddJob(pid int, job map[string]any) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.jobs[pid] = append(s.jobs[pid], job)
+}
+
+// SetTrace seeds the log of job id; a job without one answers 404.
+func (s *Server) SetTrace(id int64, log string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.traces[id] = log
+}
+
+// listMRPipelines serves the pipelines of a merge request, newest (highest id) first.
+func (s *Server) listMRPipelines(w http.ResponseWriter, r *http.Request) {
+	iid, _ := strconv.Atoi(r.PathValue("iid"))
+	s.mu.Lock()
+	ps := slices.Clone(s.pipelines[iid])
+	s.mu.Unlock()
+	slices.SortFunc(ps, func(a, b map[string]any) int { return toInt(b["id"]) - toInt(a["id"]) })
+	paginate(w, r, toAny(ps))
+}
+
+func (s *Server) listPipelineJobs(w http.ResponseWriter, r *http.Request) {
+	pid, _ := strconv.Atoi(r.PathValue("pid"))
+	s.mu.Lock()
+	out := toAny(s.jobs[pid])
+	s.mu.Unlock()
+	paginate(w, r, out)
+}
+
+func (s *Server) jobTrace(w http.ResponseWriter, r *http.Request) {
+	jid, _ := strconv.ParseInt(r.PathValue("jid"), 10, 64)
+	s.mu.Lock()
+	log, ok := s.traces[jid]
+	s.mu.Unlock()
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]any{"message": "404 Not found"})
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain")
+	_, _ = io.WriteString(w, log)
 }

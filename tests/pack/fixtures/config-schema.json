@@ -25,6 +25,10 @@
    "str"
   ],
   [
+   "paths.strategy",
+   "str"
+  ],
+  [
    "paths.history",
    "str"
   ],
@@ -141,6 +145,10 @@
    "list[str]"
   ],
   [
+   "worktree.root",
+   "str"
+  ],
+  [
    "project.instructions_word_ceiling",
    "int"
   ],
@@ -239,6 +247,14 @@
   [
    "agent_audit.description_max_chars",
    "int"
+  ],
+  [
+   "imports.check",
+   "bool"
+  ],
+  [
+   "pr_gate.issue",
+   "str"
   ]
  ],
  "defaults": {
@@ -267,6 +283,7 @@
   "codex_usage.review_pct_week": 95,
   "worktree_audit.protected_refs": [],
   "worktree_audit.protected_paths": [],
+  "worktree.root": ".claude/worktrees",
   "project.instructions_word_ceiling": 3000,
   "python.source_dirs": [
    "src"
@@ -287,7 +304,9 @@
   "report.sink": "stdout",
   "agent_audit.ignore": [],
   "agent_audit.top": 10,
-  "agent_audit.description_max_chars": 1024
+  "agent_audit.description_max_chars": 1024,
+  "imports.check": true,
+  "pr_gate.issue": "optional"
  },
  "base_keys": [
   "forge.kind",
@@ -299,6 +318,7 @@
   "forge.board.project_id",
   "forge.board.status_field_id",
   "forge.board.priority_field_id",
+  "forge.board.project_owner",
   "project.language"
  ],
  "host_keys": [

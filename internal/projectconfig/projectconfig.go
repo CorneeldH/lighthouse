@@ -206,6 +206,24 @@ func CoreTables(f Forge, haveRepo bool) []Table {
 // has no [paths] labels. It is a path in the target repository, not a file Go reads here.
 var DefaultLabelsPath = path.Join("docs", "developer", "labels.md")
 
+// Default paths of the direction documents, for a repository that wants them and sets none.
+// They are paths in the target repository, not files Go reads here.
+var (
+	DefaultStrategyPath = path.Join("docs", "developer", "strategie.md")
+	DefaultTenetsPath   = path.Join("docs", "developer", "uitgangspunten.md")
+	DefaultAreasPath    = path.Join("docs", "developer", "areas")
+)
+
+// DirectionTables are the [paths] keys of the direction documents, with the default paths;
+// AppendMissing adds only the keys a lighthouse.toml lacks.
+func DirectionTables() []Table {
+	return []Table{{Name: "paths", Keys: []KV{
+		{Key: "strategy", Value: strconv.Quote(DefaultStrategyPath)},
+		{Key: "tenets", Value: strconv.Quote(DefaultTenetsPath)},
+		{Key: "areas", Value: strconv.Quote(DefaultAreasPath)},
+	}}}
+}
+
 // LabelTables are the tables `init --labels` proposes: [paths] labels and [labels]
 // with the defaults of the config reader (internal/config) plus the area prefix.
 func LabelTables(path string) []Table {
@@ -304,4 +322,78 @@ func oneValue(value string) bool {
 	var v map[string]any
 	_, err := toml.Decode("v = ["+value+"]", &v)
 	return err == nil
+}
+
+// afterLeadingComments is the index after a block of comment lines at the start of the file
+// that a blank line or the end of the top section closes. A comment that sits directly above
+// the first table header belongs to that table, so then it is 0.
+func afterLeadingComments(lines []string, top int) int {
+	i := 0
+	for i < top && strings.HasPrefix(strings.TrimSpace(lines[i]), "#") {
+		i++
+	}
+	if i < top && strings.TrimSpace(lines[i]) != "" {
+		return 0
+	}
+	if i == top && top < len(lines) {
+		return 0 // the block runs straight into a header
+	}
+	return i
+}
+
+// SetTopLevel sets the top-level key to value, a TOML literal such as `"light"`. An
+// existing top-level line keeps its comment and position; a missing key is inserted
+// after the last top-level key line, before the first table header. A key of the same
+// name inside a table is left alone. Invalid TOML, before or after, is an error.
+func SetTopLevel(existing []byte, key, value string) ([]byte, error) {
+	var probe map[string]any
+	if _, err := toml.Decode(string(existing), &probe); err != nil {
+		return nil, fmt.Errorf("lighthouse.toml: not valid TOML: %w", err)
+	}
+	lines := strings.SplitAfter(string(existing), "\n")
+	if lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	top := len(lines) // first header line, or the end
+	for i, l := range lines {
+		if header.MatchString(strings.TrimRight(l, "\r\n")) {
+			top = i
+			break
+		}
+	}
+	own := regexp.MustCompile(`^(\s*` + regexp.QuoteMeta(key) + `\s*=\s*)("(?:[^"\\]|\\.)*"|'[^']*'|[^#\r\n]*?)(\s*(?:#.*)?)$`)
+	last := -1 // last top-level key line
+	replaced := false
+	for i := 0; i < top; i++ {
+		body := strings.TrimRight(lines[i], "\r\n")
+		if m := own.FindStringSubmatch(body); m != nil {
+			lines[i] = m[1] + value + m[3] + lines[i][len(body):]
+			replaced = true
+			break
+		}
+		if t := strings.TrimSpace(body); t != "" && !strings.HasPrefix(t, "#") {
+			last = i
+		}
+	}
+	if !replaced {
+		at := last + 1
+		if last < 0 {
+			at = afterLeadingComments(lines, top)
+		}
+		if at > 0 && !strings.HasSuffix(lines[at-1], "\n") {
+			lines[at-1] += "\n"
+		}
+		ins := key + " = " + value + "\n"
+		attached := at == 0 && at < len(lines) && strings.HasPrefix(strings.TrimSpace(lines[at]), "#")
+		if at < len(lines) && (attached || header.MatchString(strings.TrimRight(lines[at], "\r\n"))) {
+			ins += "\n" // keep a blank line before a header that follows directly
+		}
+		lines = append(lines[:at], append([]string{ins}, lines[at:]...)...)
+	}
+	out := strings.Join(lines, "")
+	var check map[string]any
+	if _, err := toml.Decode(out, &check); err != nil {
+		return nil, fmt.Errorf("lighthouse.toml: setting %s would break the file: %w", key, err)
+	}
+	return []byte(out), nil
 }

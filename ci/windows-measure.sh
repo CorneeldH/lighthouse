@@ -31,23 +31,26 @@ row() {
 # hook <event> <registration substring> <bash command in the payload>: runs the one registered
 # command through bash with CLAUDE_PROJECT_DIR set, the directory of BIN first on the PATH and the
 # payload on stdin; sets RC, OUT, ERR.
-# The payload cwd is $REPO, or $HOOK_CWD when set.
+# The payload cwd is $REPO, or $HOOK_CWD when set. With $HOOK_FILE set, the payload is an Edit|Write
+# one (`tool_name: Write`, `tool_input.file_path`) and the registration is the one whose matcher
+# names Write, the one worktree-check has.
 hook() {
   local cmd payload
   OUT="$WORK/out.txt"
   ERR="$WORK/err.txt"
   : >"$OUT"
   : >"$ERR"
-  cmd=$(jq -r --arg ev "$1" --arg name "$2" \
-    '[.hooks[$ev][] | select(.matcher == "Bash" or .matcher == null or .matcher == "") | .hooks[].command | select(contains($name))] | first // empty' \
+  cmd=$(jq -r --arg ev "$1" --arg name "$2" --arg file "${HOOK_FILE:-}" \
+    '[.hooks[$ev][] | select(if $file != "" then (.matcher // "" | contains("Write")) else (.matcher == "Bash" or .matcher == null or .matcher == "") end) | .hooks[].command | select(contains($name))] | first // empty' \
     "$REPO/.claude/settings.json" 2>>"$ERR")
   if [ -z "$cmd" ]; then
     echo "no registration for $2 under $1" >>"$ERR"
     RC=127
     return
   fi
-  payload=$(jq -cn --arg ev "$1" --arg cwd "${HOOK_CWD:-$REPO}" --arg c "$3" \
-    '{session_id: "measure", hook_event_name: $ev, tool_name: "Bash", cwd: $cwd, tool_input: {command: $c}, tool_response: {stdout: "", stderr: "", interrupted: false}}')
+  payload=$(jq -cn --arg ev "$1" --arg cwd "${HOOK_CWD:-$REPO}" --arg c "$3" --arg file "${HOOK_FILE:-}" \
+    'if $file != "" then {session_id: "measure", hook_event_name: $ev, tool_name: "Write", cwd: $cwd, tool_input: {file_path: $file, content: "x"}}
+     else {session_id: "measure", hook_event_name: $ev, tool_name: "Bash", cwd: $cwd, tool_input: {command: $c}, tool_response: {stdout: "", stderr: "", interrupted: false}} end')
   (cd "$REPO" && printf '%s' "$payload" | PATH="$BIN_DIR:$PATH" CLAUDE_PROJECT_DIR="$REPO" \
     LIGHTHOUSE_HOST_TOML="$WORK/host.toml" XDG_RUNTIME_DIR="$WORK" \
     bash -c "$cmd") >"$OUT" 2>"$ERR"
@@ -139,6 +142,40 @@ git -C "$REPO" add c.txt
 git -C "$REPO" commit -q -m "c" >/dev/null 2>&1
 hook PostToolUse "run.sh commit-test-gate post" "git commit -m x"
 row "11. commit-test-gate post, with \`[test_gate] command\`" "rc 0, \`git version\`" "$RC" "$(mark ok 0 'git version')" "$ERR"
+
+# `check-hooks` runs every registered hook in a smoketest and reads the line endings and the shell.
+(cd "$REPO" && PATH="$BIN_DIR:$PATH" "$BIN" check-hooks) >"$OUT" 2>"$ERR"; RC=$?
+row "12. \`lighthouse check-hooks\`" "rc 0" "$RC" "$(mark ok 0)" "$ERR"
+
+# A worktree root outside the repo, in a path with spaces (#496): `[worktree] root` is absolute, the
+# worktree lives there, and the hooks must read both the main checkout and that worktree right. The
+# payload paths are in Windows form (`C:\...`), the way Claude Code sends them. worktree-check never
+# blocks, so the rows read its message: `Worktree check:` for a write in the main checkout on main,
+# none for a write in the external worktree.
+EXT=$(cygpath -m "$WORK/external root" 2>/dev/null || printf '%s' "$WORK/external root")
+git -C "$REPO" checkout -q main
+printf '\n[worktree]\nroot = "%s/worktrees"\n' "$EXT" >>"$REPO/lighthouse.toml"
+git -C "$REPO" commit -q -am "worktree root" >/dev/null 2>&1
+mkdir -p "$WORK/external root/worktrees"
+git -C "$REPO" worktree add -q -b issue-2-ext "$WORK/external root/worktrees/issue-2-ext" >"$OUT" 2>"$ERR"
+RC=$?
+row "13. \`git worktree add\` into a root outside the repo, path with spaces" "rc 0" "$RC" "$(mark ok 0)" "$ERR"
+WT_WIN=$(cygpath -w "$WORK/external root/worktrees/issue-2-ext" 2>/dev/null || printf '%s' "$WORK/external root/worktrees/issue-2-ext")
+REPO_WIN=$(cygpath -w "$REPO" 2>/dev/null || printf '%s' "$REPO")
+# The separator of a Windows path; on a host without cygpath (a Linux run) the paths stay POSIX.
+SEP=/
+command -v cygpath >/dev/null 2>&1 && SEP='\'
+
+# no_text <text>: the hook said nothing that contains the text.
+no_text() { ! cat "$OUT" "$ERR" | grep -qF "$1"; }
+rc0_no_check() { ok 0 && no_text 'Worktree check:'; }
+
+HOOK_FILE="$REPO_WIN${SEP}new.txt" hook PreToolUse "run.sh worktree-check" ""
+row "14. worktree-check, write in the main checkout on \`main\`" "rc 0, \`Worktree check:\`" "$RC" "$(mark ok 0 'Worktree check:')" "$ERR"
+HOOK_FILE="$WT_WIN${SEP}new.txt" HOOK_CWD="$WT_WIN" hook PreToolUse "run.sh worktree-check" ""
+row "15. worktree-check, write in the external worktree" "rc 0, no \`Worktree check:\`" "$RC" "$(mark rc0_no_check)" "$ERR"
+HOOK_CWD="$WT_WIN" hook PreToolUse "run.sh main-commit-gate" "git commit -m x"
+row "16. main-commit-gate, commit in the external worktree" "rc 0" "$RC" "$(mark ok 0)" "$ERR"
 
 echo "### Host"
 echo

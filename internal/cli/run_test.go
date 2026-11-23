@@ -165,7 +165,7 @@ func TestRunRefusesDuplicateSlug(t *testing.T) {
 	if err == nil || !strings.HasPrefix(err.Error(), "run: ") || !strings.Contains(err.Error(), first) || !strings.Contains(err.Error(), second) {
 		t.Fatalf("err = %v, want a run error naming %s and %s", err, first, second)
 	}
-	if n := srv.Count("Board"); n != 0 {
+	if n := srv.Count("/users/o/projectsV2/3/items"); n != 0 {
 		t.Errorf("Board requests = %d, want 0", n)
 	}
 	if errOut.Len() != 0 {

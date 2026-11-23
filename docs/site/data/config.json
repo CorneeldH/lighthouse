@@ -18,7 +18,7 @@
               "level": "set",
               "required": "no",
               "default": "en",
-              "about": "The language of issues, PRs and commit messages: nl or en.",
+              "about": "The language of issues, PRs and commit messages: nl or en. With nl, init also sets language in .claude/settings.json, so Claude Code replies in Dutch.",
               "options": [
                 "nl",
                 "en"
@@ -27,7 +27,9 @@
                 "internal/cli/planreviewrecord.go",
                 "internal/config/headings.go",
                 "internal/dispatch/instructions/run.md",
+                "internal/direction/direction.go",
                 "internal/evidence/run.go",
+                "internal/initcmd/initcmd.go",
                 "internal/pusher/floor.go",
                 "internal/repoconfig/repoconfig.go",
                 "internal/report/render.go",
@@ -40,7 +42,8 @@
                 "pack/core/skills/write-handoff",
                 "pack/core/skills/write-issue",
                 "pack/core/skills/write-pr",
-                "pack/python/scripts/quality/prcov_issues.py"
+                "pack/python/scripts/quality/prcov_issues.py",
+                "internal/initcmd/direction.go"
               ]
             },
             {
@@ -136,6 +139,8 @@
                 "internal/initcmd/initcmd.go",
                 "internal/repoconfig/repoconfig.go",
                 "internal/workplace/kennforge/adapter.go",
+                "pack/core/skills/close-issue",
+                "pack/core/skills/fix-pr",
                 "pack/core/skills/forge",
                 "pack/core/skills/route-issue",
                 "pack/core/skills/start-issue",
@@ -151,8 +156,12 @@
               "example": "owner/name",
               "readers": [
                 "internal/boardstart/boardstart.go",
+                "internal/cli/forge_label.go",
+                "internal/cli/planreviewrecord.go",
                 "internal/cli/pushworkflows.go",
+                "internal/cli/reviewindex.go",
                 "internal/cli/worktreeaudit.go",
+                "internal/issuestate/cmd.go",
                 "internal/labels/labels.go",
                 "internal/postartefact/postartefact.go",
                 "internal/prbody/find.go",
@@ -168,10 +177,8 @@
                 "pack/core/skills/close-issue",
                 "pack/core/skills/fix-pr",
                 "pack/core/skills/forge",
-                "pack/core/skills/review-plan",
                 "pack/core/skills/route-issue",
                 "pack/core/skills/start-issue",
-                "pack/core/skills/write-handoff",
                 "pack/core/skills/write-pr",
                 "pack/python/scripts/quality/prcov_issues.py"
               ]
@@ -202,7 +209,8 @@
                 "internal/prbody/form.go",
                 "internal/prbody/gate.go",
                 "internal/repoconfig/repoconfig.go",
-                "pack/core/skills/forge"
+                "pack/core/skills/forge",
+                "pack/core/workflows/unblock-dependents.yml"
               ]
             },
             {
@@ -240,8 +248,6 @@
               "required": "derived",
               "about": "The name part of forge.repo, derived by the lighthouse binary.",
               "readers": [
-                "pack/core/skills/close-issue",
-                "pack/core/skills/write-handoff",
                 "pack/python/scripts/quality/prcov_issues.py"
               ]
             },
@@ -251,9 +257,7 @@
               "required": "derived",
               "about": "The owner part of forge.repo, derived by the lighthouse binary.",
               "readers": [
-                "pack/core/skills/close-issue",
                 "pack/core/skills/forge",
-                "pack/core/skills/write-handoff",
                 "pack/python/scripts/quality/prcov_issues.py"
               ]
             }
@@ -271,6 +275,7 @@
               "about": "The id of the board's Priority field.",
               "example": "PVTSSF_...",
               "readers": [
+                "internal/forge/project.go",
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/forge"
               ]
@@ -292,6 +297,17 @@
               ]
             },
             {
+              "key": "forge.board.project_owner",
+              "level": "optional",
+              "required": "no",
+              "about": "The user or organisation that owns the GitHub project board. Needed only when the owner is not the repository owner.",
+              "example": "acme",
+              "readers": [
+                "internal/forge/project.go",
+                "internal/repoconfig/repoconfig.go"
+              ]
+            },
+            {
               "key": "forge.board.project_id",
               "level": "optional",
               "required": "with [forge.board]",
@@ -299,11 +315,9 @@
               "example": "PVT_...",
               "readers": [
                 "internal/cli/triage.go",
-                "internal/forge/board.go",
+                "internal/forge/project.go",
                 "internal/repoconfig/repoconfig.go",
-                "pack/core/skills/close-issue",
                 "pack/core/skills/forge",
-                "pack/core/skills/write-handoff",
                 "pack/python/scripts/quality/prcov_issues.py"
               ]
             },
@@ -314,10 +328,10 @@
               "about": "The number of the GitHub project board.",
               "example": 1,
               "readers": [
+                "internal/forge/project.go",
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/forge",
                 "pack/core/skills/start-issue",
-                "pack/core/skills/write-handoff",
                 "pack/python/scripts/quality/prcov_issues.py"
               ]
             },
@@ -329,9 +343,8 @@
               "example": "PVTSSF_...",
               "readers": [
                 "internal/cli/triage.go",
+                "internal/forge/project.go",
                 "internal/repoconfig/repoconfig.go",
-                "pack/core/skills/close-issue",
-                "pack/core/skills/write-handoff",
                 "pack/python/scripts/quality/prcov_issues.py"
               ]
             },
@@ -356,7 +369,6 @@
                 "internal/forge/gitlab_board.go",
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/forge",
-                "pack/core/skills/write-handoff",
                 "pack/core/skills/write-issue",
                 "pack/python/scripts/quality/prcov_issues.py"
               ]
@@ -382,7 +394,10 @@
                 "pack/core/skills/fix-pr",
                 "pack/core/skills/upgrade",
                 "pack/core/skills/write-pr",
+                "pack/go/instructions/AGENTS.md",
                 "pack/go/skills/go-standard",
+                "pack/node/instructions/AGENTS.md",
+                "pack/python/instructions/AGENTS.md",
                 "pack/python/skills/python-standard"
               ]
             },
@@ -453,10 +468,29 @@
               "key": "paths.areas",
               "level": "advanced",
               "required": "no",
-              "about": "The folder with one file per area; closing a milestone updates its near goal.",
+              "about": "The folder with one file per area: its crux, leading policy and deliberate no's, read when writing an issue. Closing a milestone updates its near goal only when the area file has that heading, which the shape check does not allow by default. `lighthouse init` seeds the missing files, and `lighthouse direction check` checks their shape.",
               "example": "docs/areas",
               "readers": [
-                "pack/core/skills/close-issue"
+                "internal/scheduled/mapplanned/mapplanned.go",
+                "internal/repoconfig/repoconfig.go",
+                "pack/core/skills/close-issue",
+                "pack/core/skills/write-issue",
+                "internal/direction/direction.go",
+                "internal/initcmd/direction.go"
+              ]
+            },
+            {
+              "key": "paths.strategy",
+              "level": "advanced",
+              "required": "no",
+              "about": "The file with the project's strategy, read when writing an issue and when shaping a milestone. `lighthouse init` seeds it when missing, and `lighthouse direction check` checks its shape.",
+              "example": "docs/strategy.md",
+              "readers": [
+                "internal/scheduled/mapplanned/mapplanned.go",
+                "pack/core/skills/write-issue",
+                "internal/repoconfig/repoconfig.go",
+                "internal/direction/direction.go",
+                "internal/initcmd/direction.go"
               ]
             },
             {
@@ -478,8 +512,11 @@
                 "internal/initcmd/initcmd.go",
                 "internal/projectconfig/projectconfig.go",
                 "internal/labels/labels.go",
+                "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/write-issue",
-                "pack/core/skills/write-pr"
+                "pack/core/skills/write-pr",
+                "internal/direction/direction.go",
+                "internal/initcmd/direction.go"
               ]
             },
             {
@@ -542,10 +579,14 @@
               "key": "paths.tenets",
               "level": "advanced",
               "required": "no",
-              "about": "The file with the project's tenets, read when writing an issue.",
+              "about": "The file with the project's tenets, read when writing an issue. `lighthouse init` seeds it when missing, and `lighthouse direction check` checks its shape.",
               "example": "docs/tenets.md",
               "readers": [
-                "pack/core/skills/write-issue"
+                "internal/scheduled/mapplanned/mapplanned.go",
+                "internal/repoconfig/repoconfig.go",
+                "pack/core/skills/write-issue",
+                "internal/direction/direction.go",
+                "internal/initcmd/direction.go"
               ]
             }
           ]
@@ -562,11 +603,14 @@
               "about": "The prefix of area labels.",
               "example": "area:",
               "readers": [
+                "internal/scheduled/mapplanned/corpus.go",
                 "internal/repoconfig/repoconfig.go",
                 "internal/triage/prompt.go",
                 "pack/core/skills/start-issue",
                 "pack/core/skills/write-issue",
-                "pack/expo/skills/refresh-expo-lockfiles"
+                "pack/expo/skills/refresh-expo-lockfiles",
+                "internal/direction/direction.go",
+                "internal/initcmd/direction.go"
               ]
             },
             {
@@ -576,6 +620,7 @@
               "default": "blocked-external",
               "about": "The label for an issue blocked by something outside the repo.",
               "readers": [
+                "internal/issuestate/state.go",
                 "internal/repoconfig/repoconfig.go",
                 "internal/triage/rules.go",
                 "pack/core/skills/route-issue",
@@ -590,12 +635,14 @@
               "about": "The label for an issue blocked by another issue.",
               "readers": [
                 "internal/cli/unblockdependents.go",
+                "internal/issuestate/state.go",
                 "internal/repoconfig/repoconfig.go",
                 "internal/triage/rules.go",
                 "pack/core/skills/close-issue",
                 "pack/core/skills/forge",
                 "pack/core/skills/route-issue",
                 "pack/core/skills/start-issue",
+                "pack/core/skills/write-handoff",
                 "pack/core/skills/write-issue",
                 "pack/core/workflows/unblock-dependents.yml"
               ]
@@ -622,6 +669,8 @@
               "about": "The label for an issue that waits for a decision.",
               "readers": [
                 "internal/repoconfig/repoconfig.go",
+                "internal/scheduled/mapplanned/corpus.go",
+                "internal/scheduled/mapplanned/mapplanned.go",
                 "pack/core/skills/route-issue",
                 "pack/core/skills/write-issue"
               ]
@@ -635,6 +684,7 @@
               "readers": [
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/route-issue",
+                "pack/core/skills/start-issue",
                 "pack/core/skills/write-issue"
               ]
             },
@@ -647,6 +697,7 @@
               "readers": [
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/route-issue",
+                "pack/core/skills/start-issue",
                 "pack/core/skills/write-issue"
               ]
             },
@@ -659,6 +710,7 @@
               "readers": [
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/route-issue",
+                "pack/core/skills/start-issue",
                 "pack/core/skills/write-issue"
               ]
             }
@@ -914,6 +966,55 @@
           ]
         },
         {
+          "table": "imports",
+          "title": "Imports",
+          "about": "The gate on direct imports that no manifest declares.",
+          "keys": [
+            {
+              "key": "imports.check",
+              "level": "advanced",
+              "required": "no",
+              "default": true,
+              "about": "Whether the gate on undeclared direct imports runs.",
+              "options": [
+                true,
+                false
+              ],
+              "readers": [
+                "internal/cli/imports.go",
+                "internal/commitgate/imports.go",
+                "pack/go/hooks/go-imports-gate.sh",
+                "pack/node/hooks/node-imports-gate.sh",
+                "pack/python/hooks/python-imports-gate.sh"
+              ]
+            }
+          ]
+        },
+        {
+          "table": "pr_gate",
+          "title": "PR gate",
+          "about": "How strict pr-create-gate is about the issue a pull request names.",
+          "keys": [
+            {
+              "key": "pr_gate.issue",
+              "level": "advanced",
+              "required": "no",
+              "default": "optional",
+              "about": "Whether the PR body may take `No issue:` (optional), must name an issue (required) or must also carry an Evidence table for `Refs` (evidence).",
+              "options": [
+                "optional",
+                "required",
+                "evidence"
+              ],
+              "readers": [
+                "internal/prbody/form.go",
+                "internal/prbody/gate.go",
+                "pack/core/skills/write-pr"
+              ]
+            }
+          ]
+        },
+        {
           "table": "worktree_audit",
           "title": "Worktree audit",
           "about": "Worktrees and branches that the worktree audit never proposes to remove.",
@@ -936,6 +1037,35 @@
               "about": "Branches the worktree audit never proposes to remove.",
               "readers": [
                 "internal/worktreeaudit/collect.go"
+              ]
+            }
+          ]
+        },
+        {
+          "table": "worktree",
+          "title": "Worktrees",
+          "about": "Where the worktrees of this repo live.",
+          "keys": [
+            {
+              "key": "worktree.root",
+              "level": "advanced",
+              "required": "no",
+              "default": ".claude/worktrees",
+              "about": "The folder the worktrees live in: relative to the main checkout, or absolute.",
+              "readers": [
+                "internal/hooks/hooks.go",
+                "internal/initcmd/initcmd.go",
+                "internal/worktreeaudit/collect.go",
+                "internal/worktreeaudit/render.go",
+                "internal/worktreeroot/worktreeroot.go",
+                "pack/core/instructions/AGENTS.md",
+                "pack/core/skills/audit-worktrees",
+                "pack/core/skills/close-issue",
+                "pack/core/skills/fix-pr",
+                "pack/core/skills/review-plan",
+                "pack/core/skills/upgrade",
+                "pack/core/skills/write-handoff",
+                "pack/go/skills/go-standard"
               ]
             }
           ]
@@ -999,6 +1129,7 @@
               ],
               "about": "The Python source directories.",
               "readers": [
+                "internal/cli/imports.go",
                 "pack/python/hooks/ty-gate.sh",
                 "pack/python/scripts/quality/ratchet.py",
                 "pack/python/skills/python-standard"
@@ -1105,7 +1236,6 @@
               "about": "true: this machine is the controller host, the address is not measured; false: it is not. Without it, host-check uses tailscale_ip. An older reader ignores it.",
               "example": true,
               "readers": [
-                "internal/review/record.go",
                 "pack/core/skills/write-handoff"
               ]
             },
@@ -1115,9 +1245,7 @@
               "required": "no",
               "about": "The Tailscale address of this workstation; init writes it on a machine with Tailscale. Without it and without host.controller, host-check reports another host.",
               "example": "100.64.0.1",
-              "readers": [
-                "internal/review/record.go"
-              ]
+              "readers": []
             },
             {
               "key": "host.gate_slice",
@@ -1126,6 +1254,7 @@
               "about": "The systemd slice the test gate runs in.",
               "example": "lighthouse-gate.slice",
               "readers": [
+                "internal/checkpointscan/limits.go",
                 "internal/commitgate/gate.go"
               ]
             },
@@ -1135,7 +1264,11 @@
               "required": "no",
               "about": "The memory ceiling of the secret scan of entire checkpoints; the scan is aborted above it. Without the key the scan uses 2G.",
               "example": "2G",
-              "readers": []
+              "readers": [
+                "internal/checkpointscan/limits.go",
+                "internal/checkpointscan/scan.go",
+                "internal/cli/checkpoint_scan.go"
+              ]
             },
             {
               "key": "host.scan_cpu_quota",
@@ -1143,7 +1276,9 @@
               "required": "no",
               "about": "The CPU quota of the secret scan of entire checkpoints, as a percentage of one core. Without the key the scan uses 200%.",
               "example": "200%",
-              "readers": []
+              "readers": [
+                "internal/checkpointscan/limits.go"
+              ]
             },
             {
               "key": "host.gate_slots",

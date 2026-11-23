@@ -77,11 +77,11 @@ for an external event, such as red CI or a merge. Workflow step 4 applies this r
    **If the anchor is a spec or plan path and the issue number is known** (from the prompt or the
    branch `issue-<nr>-…`), post it on the issue,
    also in controller mode (if present) before the `🤖 heading:kind_handoff`,
-   with `dangerouslyDisableSandbox: true` (Go TLS of `gh`):
+   with `dangerouslyDisableSandbox: true`:
    ```bash
    cd <worktree> && lighthouse post-artefact <nr> <absolute path>
    ```
-   The command is idempotent: without a content change it posts nothing. If GitHub does not know
+   The command is idempotent: without a content change it posts nothing. If the forge does not know
    the commit yet, it pushes the branch itself (only without an open PR, never the default
    branch). Put the `artefact:` line in the block under `State:`.
    An error does not block the handoff: the error line goes under `Watch out:`.
@@ -93,9 +93,9 @@ for an external event, such as red CI or a merge. Workflow step 4 applies this r
 
    | What there is | First step | Controller (if present) |
    |---|---|---|
-   | a plan in the plans folder, not yet adversarially reviewed | `/lighthouse-review-plan` on that plan | `choice` |
+   | a plan in the plans folder, not yet adversarially reviewed (review skill, if installed) | `/lighthouse-review-plan` on that plan | `choice` |
    | a plan, review converged, open points accepted, or skipped on a decision of the user | `/superpowers:subagent-driven-development` on that plan; at *Yes, native* (controller mode step 2, only a plan that meets the native criterion) `/superpowers:executing-plans` with `lane: native`; at the answer *interactive* (controller mode step 2, *Exception*) `/superpowers:executing-plans` | `offer` |
-   | a spec, not yet adversarially reviewed | `/lighthouse-review-spec` on that spec | `default` |
+   | a spec, not yet adversarially reviewed (review skill, if installed) | `/lighthouse-review-spec` on that spec | `default` |
    | a spec, review converged or round limit with open points recorded, no plan yet | `/superpowers:writing-plans` on that spec | `no` |
    | an issue, no spec yet, several designs possible | `/superpowers:brainstorming` | `no` |
    | an issue that already settles the HOW | `/lighthouse-start-issue <nr>` | `no` |
@@ -103,7 +103,8 @@ for an external event, such as red CI or a merge. Workflow step 4 applies this r
    | build done, last commit green, no PR yet | `/lighthouse-write-pr <nr>` | `offer` |
    | work done, issue can be closed | `/lighthouse-close-issue <nr>` | `no` |
    | PR open, review needed | `/code-review` | `no` |
-   | PR red | `/lighthouse-fix-pr <pr>` | `offer` |
+   | PR red (fix-pr skill, if installed) | `/lighthouse-fix-pr <pr>` | `offer` |
+   | the next task waits for another issue or PR that is still open | no handoff with the same `next:`. Lay the relation first (`lighthouse-write-issue` 3e, if installed: `lighthouse forge issue edit <nr> --add-label <labels.blocked_issue>` and the `blocked_by` relation); then hand off with the same command as this phase: the tick parks an executing handoff while a blocker is open and starts it when that merges. A handoff that only says "wait for #N, else hand off again" restarts every tick; the tick returns the issue on the second identical one |
    | context full, same phase | the same command as this phase; if the previous handoff carries `lane: native`, the new one carries it too | as that phase, but `default` becomes `no` (during a running plan review: `offer`) |
 
    The Controller column says what controller mode step 2 does (only if present; without a
@@ -150,28 +151,14 @@ tick starts the next phase itself. Two entries:
 1. **Issue number.** From the prompt, otherwise from the branch (`issue-<nr>-…`). If neither
    works: no comment, only the plain block.
 2. **Offer** (only interactive, and only if the Controller column in Workflow step 4
-   does not say `no`). At `no` you do not read the board status; if the issue is on `Controller` anyway, it stays there until the user moves it. Read the board status and
-   the item ID (`gh` with `dangerouslyDisableSandbox: true`). Gives one of the `forge.board.*` keys
-   rc 1, there is no board: report `board: skipped — no [forge.board] configured` and post without
-   a status change. At rc 2, stop.
-   ```bash
-   set -o pipefail
-   O=$(lighthouse config forge.owner) || exit 2
-   NAME=$(lighthouse config forge.name) || exit 2
-   N=$(lighthouse config forge.board.project_number) || exit $?
-   gh api graphql -f owner="$O" -f name="$NAME" -F nr=<nr> -f query='query($owner: String!, $name: String!, $nr: Int!) {
-     repository(owner: $owner, name: $name) { issue(number: $nr) {
-       projectItems(first: 20) { nodes { id project { number }
-         status: fieldValueByName(name: "Status") {
-           ... on ProjectV2ItemFieldSingleSelectValue { name } } } } } } }' \
-     | jq -r --argjson n "$N" '.data.repository.issue.projectItems.nodes[] | select(.project.number == $n) | "\(.id) \(.status.name)"'
-   ```
-   Not `gh project item-list`: that fetches the whole board with all fields and costs hundreds
-   of GraphQL points of the shared hourly budget.
+   does not say `no`). At `no` you do not read the board status; if the issue is on `Controller` anyway, it stays there until the user moves it. Read the board status
+   with `lighthouse forge issue status <nr>` (`dangerouslyDisableSandbox: true`, Go TLS). Exit 2: stop. Exit 1 (forge error): report `board: unknown — forge error` and post without a status change.
+   `board: false` means no board: report `board: skipped — no [forge.board] configured` and post
+   without a status change. No item ID is needed.
 
    **`default`: a spec, just committed.** At `default` you ask no question: read the
-   board status and the item ID (query above), post with
-   `next: /lighthouse-review-spec <absolute spec path>` (step 5) and set the Status to
+   board status (`lighthouse forge issue status <nr>`), post with
+   `next: /lighthouse-review-spec <absolute spec path>` (step 5; if installed) and set the Status to
    `Controller` (step 6). Report in one line: the worktree now belongs to the controller, an edit there
    breaks the paired round 1 (`blind` refuses a work tree that is not clean). This holds only
    in the window that just committed the spec (the brainstorm); another window that hands over an unreviewed
@@ -189,7 +176,7 @@ tick starts the next phase itself. Two entries:
    in plain chat text, in this order, and end the turn after it:
 
    1. The block for **review** (format of step 6), with
-      `First step: /lighthouse-review-plan <plan>`.
+      `First step: /lighthouse-review-plan <plan>` (if installed).
    2. The block for **interactive**, with `First step: /superpowers:executing-plans <plan>`.
    3. Plan link, advice and question. The plan link is clickable: `[<file name>](<absolute path>)`,
       not a bare path. Form:
@@ -209,7 +196,7 @@ tick starts the next phase itself. Two entries:
    between the tasks, and if the execution asks no decision of the user; you name it in
    the advice line (`My advice: controller (native), because …`).
 
-   - Answer *review*: the block is already there. No comment. If the user wants the plan review itself through the controller: `next: /lighthouse-review-plan <plan>` and steps 5 and 6.
+   - Answer *review*: the block is already there (if installed; otherwise the question has no *review* answer). No comment. If the user wants the plan review itself through the controller: `next: /lighthouse-review-plan <plan>` and steps 5 and 6.
    - Answer *controller*: `next: /superpowers:subagent-driven-development <plan>`, then
      step 5 (post) and step 6 (Status `Controller`). This also holds when the issue is already on `Controller`.
    - Answer *interactive*: the block is already there; the agent executes itself, in a fresh
@@ -218,7 +205,7 @@ tick starts the next phase itself. Two entries:
      field `lane: native`, then step 5 (post) and step 6 (Status `Controller`). The controller
      starts it on Sonnet; only after this answer, never on your own initiative.
 
-   A controller run does not ask this: there `next: /lighthouse-review-plan
+   A controller run does not ask this: there (if installed) `next: /lighthouse-review-plan
    <plan>` stays, because skipping needs a decision of the user. Without an issue number (step 1) there is nothing to post: then ask the question only with *review* or *interactive*, without *controller*.
 
    Only at `offer` (never at `default` above): if it is already on `Controller`, post at once (step 5), except for the route *interactive*
@@ -238,13 +225,13 @@ tick starts the next phase itself. Two entries:
 
    | What there is | `next:` |
    |---|---|
-   | a plan, not reviewed | `/lighthouse-review-plan <absolute plan path>` |
+   | a plan, not reviewed | `/lighthouse-review-plan <absolute plan path>`, if installed |
    | a plan, review converged or skipped on a decision of the user | `/superpowers:subagent-driven-development <absolute plan path>` |
-   | a spec, not reviewed | `/lighthouse-review-spec <absolute spec path>` |
+   | a spec, not reviewed | `/lighthouse-review-spec <absolute spec path>`, if installed |
    | a spec, review converged | `/superpowers:writing-plans <absolute spec path>` |
    | build done, last commit green | `/lighthouse-write-pr <nr>` |
    | PR open | `/lighthouse-close-issue <nr>` — final handoff: the controller does not start it from the handoff, but after the merge of the `Refs` PR, as the close check |
-   | PR red | `/lighthouse-fix-pr <pr>` |
+   | PR red | `/lighthouse-fix-pr <pr>`, if installed |
    | the range touches `.github/workflows/` (build done, or a fix-pr run that fixed the PR) | `push-workflows` — no slash command; the step above says how: V2b first, `after:` only while there is no PR. The tick starts the workflow pusher, never a session |
    | issue without spec, design open | `/superpowers:brainstorming` — the controller returns the issue |
    | plan the user has to guide themselves (only controller run) | `/superpowers:executing-plans <absolute plan path>` without `lane:` — the controller never starts this: it returns it, the status stays `Controller` |
@@ -253,7 +240,7 @@ tick starts the next phase itself. Two entries:
 
    A path is absolute and without spaces. At `/lighthouse-start-issue <nr>`, `worktree:` is the
    main checkout and `branch:` `main` (the default branch, `lighthouse config forge.default_branch`). Exception: the blocked restart from
-   `lighthouse-start-issue` (controller run, the gate-0 line carries `— blocker #<x> open`) —
+   `lighthouse-start-issue` (controller run, the route line carries `— blocker #<x> open`) —
    then `worktree:` and `branch:` are the own worktree and branch of the issue. From `main`
    the controller puts an executing handoff on hold and never stacks.
 4. **`when:`** is `now`, unless the user chooses or asks for `night`.
@@ -269,7 +256,6 @@ tick starts the next phase itself. Two entries:
    Exception on the workflow route (a controller run, if present): when the unpushed range (`origin/<branch>..HEAD`, or from the merge-base with `origin/<default branch>` when the branch is not on origin) touches `.github/workflows/`, never push (`workflow-push-gate` blocks it): run V2b of `/lighthouse-write-pr` with `lighthouse roborev-gate gate --push` first, then post the block with `next: push-workflows`, `after: /lighthouse-write-pr <nr>` (only while there is no PR) and `roborev: <the output of lighthouse roborev-gate body-line --push>`; the workflow pusher pushes.
    Then post:
    ```bash
-   R=$(lighthouse config forge.repo) || exit 2
    H=$(lighthouse headings kind_handoff) || exit 2
    { printf '🤖 %s\n' "$H"; cat <<'EOF'
    issue: #<nr>
@@ -283,8 +269,11 @@ tick starts the next phase itself. Two entries:
    <the block from Output format>
    ```
    EOF
-   } | gh issue comment <nr> --repo "$R" --body-file -
+   } > <scratch>/handoff.md && lighthouse forge issue comment <nr> --body-file <scratch>/handoff.md
    ```
+   `<scratch>` is the session's scratchpad directory, otherwise a `mktemp -d` directory. The post runs
+   only when the write succeeded; stop if it fails. In a controller run, `lighthouse forge issue comment` notes a failed post for the controller itself (`post-failed.json`), which posts it later; stop all the same. Run the comment call with
+   `dangerouslyDisableSandbox: true` (Go TLS).
    Between the heading and the last field line there is no blank line: the parser stops at the first.
    For native there is an extra line `lane: native` between `next:` and `when:` (without
    a blank line); otherwise leave it out. The field is valid only next to
@@ -292,15 +281,8 @@ tick starts the next phase itself. Two entries:
    The field names are fixed tokens (`lighthouse protocol`); the prose of the block follows
    `[project] language`.
 6. **Status on `Controller`** (only interactive, also at `default`, after the comment; only with a
-   board, otherwise skipped). Without an item ID from step 2
-   first
-   `N=$(lighthouse config forge.board.project_number) && O=$(lighthouse config forge.owner) && gh project item-add "$N" --owner "$O" --url <issue-url> --format json --jq .id`.
-   ```bash
-   P=$(lighthouse config forge.board.project_id) || exit 2
-   F=$(lighthouse config forge.board.status_field_id) || exit 2
-   S=$(lighthouse config forge.board.status_options.Controller) || exit 2
-   gh project item-edit --id <item-id> --project-id "$P" --field-id "$F" --single-select-option-id "$S"
-   ```
+   board, otherwise skipped). `lighthouse forge issue status <nr> Controller`, with
+   `dangerouslyDisableSandbox: true` (Go TLS); it puts the issue on the board first when needed.
    Then report in one line that the controller picks it up within ten minutes; the
    `/clear` suggestion lapses then.
 7. **In a controller run you stop after the comment.** No `/clear` suggestion, no further
@@ -311,7 +293,7 @@ tick starts the next phase itself. Two entries:
 Always one fenced block, so it can be copied in one click:
 
 ```
-Work in worktree <absolute path>/.claude/worktrees/<name>
+Work in worktree <absolute worktree root>/<name>
 (branch <branch>). Goal: <one sentence>.
 
 Anchor: <issue #nr | path to plan/spec | PR #nr>
@@ -331,7 +313,7 @@ Below it, outside the block, one line: `Run /clear first, then paste the block.`
 ## Rules
 
 - **Absolute paths.** A link or path to a file that exists only on the worktree branch
-  must be the full `<repo>/.claude/worktrees/<name>/...` path —
+  must be the full `<root>/<name>/...` path (`<root>` is `lighthouse config worktree.root`, made absolute) —
   the fresh session starts in the main checkout and a relative path points at nothing there.
 - **No history.** Do not retell what happened; the next session reads
   the issue and `git log`. Hand-off = forward, not back.
@@ -364,10 +346,10 @@ Input: `/lighthouse-write-handoff`
 Output:
 
 ```
-Work in worktree /srv/src/widgets/.claude/worktrees/issue-537-feed-curation
+Work in worktree /srv/src/widgets-trees/issue-537-feed-curation
 (branch issue-537-feed-curation). Goal: execute the spec of #537.
 
-Anchor: /srv/src/widgets/.claude/worktrees/issue-537-feed-curation/docs/developer/planning/specs/2026-08-17-feed-curation-design.md
+Anchor: /srv/src/widgets-trees/issue-537-feed-curation/docs/developer/planning/specs/2026-08-17-feed-curation-design.md
 Context: in the review the user chose curation per feed, not per category; that is not in the spec yet.
 State: spec committed (a1b2c3d), adversarial review converged after 2 rounds (fixes in d4e5f6a),
 nothing else uncommitted.

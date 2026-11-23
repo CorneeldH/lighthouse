@@ -39,11 +39,11 @@ var notARepo = []string{"not a git repository", "Not a git repository", "No such
 // COULD NOT CHECK, except for an unparseable command that cannot hold a commit or push at all.
 func MainCommitGate(ctx context.Context, _, _ string, p hook.Payload) hook.Result {
 	if _, err := exec.LookPath("git"); err != nil {
-		return blocked(gateMissingGit)
+		return hook.CouldNotCheck(gateMissingGit)
 	}
 	command, cwd, ok := readGatePayload(p.Raw)
 	if !ok {
-		return blocked(gateInvalidJSON)
+		return hook.CouldNotCheck(gateInvalidJSON)
 	}
 	if command == "" {
 		return hook.Result{}
@@ -63,7 +63,7 @@ func MainCommitGate(ctx context.Context, _, _ string, p hook.Payload) hook.Resul
 			if allowMain(repoRoot(ctx, cwd)) {
 				return hook.Result{}
 			}
-			return blocked("Main-commit gate: COULD NOT CHECK — the protected branch could not be read.\n\n" +
+			return hook.CouldNotCheck("Main-commit gate: COULD NOT CHECK — the protected branch could not be read.\n\n" +
 				errText + "\n" +
 				"Fix the cause above, or — deliberately and once —\n" +
 				"'touch <repo-root>/.claude/allow-main'.\n")
@@ -79,10 +79,10 @@ func MainCommitGate(ctx context.Context, _, _ string, p hook.Payload) hook.Resul
 		if !mayCommit(command) {
 			return hook.Result{}
 		}
-		return blocked(gateUnparseable)
+		return hook.CouldNotCheck(gateUnparseable)
 	}
 	if err != nil {
-		return blocked("Main-commit gate: COULD NOT CHECK — the command parser failed.\n\n" + err.Error() + "\n")
+		return hook.CouldNotCheck("Main-commit gate: COULD NOT CHECK — the command parser failed.\n\n" + err.Error() + "\n")
 	}
 	if len(found) == 0 {
 		return hook.Result{}
@@ -148,18 +148,22 @@ func checkInvocation(ctx context.Context, inv gitinvocations.Invocation, protect
 	if toMain == "yes" && branch != protected {
 		reason = "this push explicitly targets '" + protected + "' (" + inv.Action + " from branch '" + branch + "')"
 	}
-	return blocked("Main-commit gate: blocked — " + reason + ".\n" +
-		"\n" +
-		"This repo has no branch protection on GitHub (free private repo),\n" +
-		"so the line is drawn here. Nothing lands directly on '" + protected + "'.\n" +
-		"\n" +
-		"What you can do:\n" +
-		"  1. Work in a worktree on its own branch:\n" +
-		"     git worktree add .claude/worktrees/<name> -b issue-<nr>-<slug>\n" +
-		"  2. Is the work already in the main checkout? Move it:\n" +
-		"     git -C '" + root + "' stash push -u -m move-<tag>\n" +
-		"  3. If it really has to go on '" + protected + "', deliberately and once:\n" +
-		"     touch '" + root + "/.claude/allow-main'   # and remove it afterwards\n"), true
+	r := reasonCommitToMain
+	if inv.Action == "push" {
+		r = reasonPushToMain
+	}
+	return hook.Block(r, "Main-commit gate: blocked — "+reason+".\n"+
+		"\n"+
+		"This repo has no branch protection on GitHub (free private repo),\n"+
+		"so the line is drawn here. Nothing lands directly on '"+protected+"'.\n"+
+		"\n"+
+		"What you can do:\n"+
+		"  1. Work in a worktree on its own branch:\n"+
+		"     "+worktreeAddHint()+"\n"+
+		"  2. Is the work already in the main checkout? Move it:\n"+
+		"     git -C '"+root+"' stash push -u -m move-<tag>\n"+
+		"  3. If it really has to go on '"+protected+"', deliberately and once:\n"+
+		"     touch '"+root+"/.claude/allow-main'   # and remove it afterwards\n"), true
 }
 
 // readGatePayload reads `.tool_input.command` and `.cwd` the way `jq -r '.x // empty'` does. ok is
@@ -219,7 +223,7 @@ func orNoMessage(s string) string {
 
 // uncheckable blocks an invocation the gate could not look at.
 func uncheckable(reason, action string) hook.Result {
-	return blocked("Main-commit gate: COULD NOT CHECK — " + reason + "\n" +
+	return hook.CouldNotCheck("Main-commit gate: COULD NOT CHECK — " + reason + "\n" +
 		"\n" +
 		"This command does contain a '" + action + "'. 'Could not look' is not a\n" +
 		"negative result, so this does not pass silently.\n" +
@@ -230,6 +234,9 @@ func uncheckable(reason, action string) hook.Result {
 		"     touch <repo-root>/.claude/allow-main   # and remove it afterwards\n")
 }
 
-func blocked(stderr string) hook.Result {
-	return hook.Result{Code: 2, Stderr: stderr}
-}
+// Reasons of main-commit-gate: a commit or a push on, or explicitly to, the protected branch.
+var (
+	mainCommitGateReasons = hook.Declare("main-commit-gate", "commit-to-main", "push-to-main")
+	reasonCommitToMain    = mainCommitGateReasons[0]
+	reasonPushToMain      = mainCommitGateReasons[1]
+)

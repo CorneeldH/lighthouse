@@ -185,6 +185,14 @@
  },
  {
   "args": [
+   "worktree.root"
+  ],
+  "rc": 0,
+  "stdout": ".claude/worktrees\n",
+  "stderr": ""
+ },
+ {
+  "args": [
    "project.instructions_word_ceiling"
   ],
   "rc": 0,
@@ -289,6 +297,14 @@
  },
  {
   "args": [
+   "paths.strategy"
+  ],
+  "rc": 1,
+  "stdout": "",
+  "stderr": "config: paths.strategy is not set\n"
+ },
+ {
+  "args": [
    "review.roborev"
   ],
   "rc": 0,
@@ -318,5 +334,21 @@
   "rc": 1,
   "stdout": "",
   "stderr": "config: report.dir is not set\n"
+ },
+ {
+  "args": [
+   "imports.check"
+  ],
+  "rc": 0,
+  "stdout": "true\n",
+  "stderr": ""
+ },
+ {
+  "args": [
+   "pr_gate.issue"
+  ],
+  "rc": 0,
+  "stdout": "optional\n",
+  "stderr": ""
  }
 ]

@@ -28,15 +28,15 @@ const (
 	maxFindings = 20
 )
 
-// hint is what an answer push does with a Question, as the Question tells the user.
+// hint is what an answer push does with a red step, as the Question tells the user.
 type hint int
 
 const (
-	hintAuto   hint = iota // hintRetry when the Question carries a SHA, else hintManual
+	hintAuto   hint = iota // hintRetry when the red step carries a SHA, else hintManual
 	hintPermit             // the review did not approve, or shadow: push lifts the review
 	hintRetry              // push runs everything but the review again for this SHA
 	hintMoved              // the worktree left the permitted SHA: push gives this Question again
-	hintManual             // the Question carries no SHA: push starts nothing
+	hintManual             // no SHA: an answer push could start nothing, so no Question but a Returned
 )
 
 // hintHeadings are the heading keys of the hints.
@@ -59,9 +59,14 @@ type questionInput struct {
 // (workDeadline leaves room for it).
 const postTimeout = 2 * time.Minute
 
-// ask posts the Question for q and closes the push row as question. The text is scrubbed of every
-// token the pusher holds, and cut under maxComment with the full diff as an attachment. A row tick
-// already handed back gets no Question: its Returned stands.
+// ask posts what the red step of q gives and closes the push row. A red step an answer push acts
+// on is a 🤖 Question and closes the row as question. One without a SHA (hintManual) is no question.
+// When the step is policy or lint and it could run (Red.repairable), the branch is wrong: it is a
+// 🤖 Repair without a session, the row closes as handoff, and the run that wrote the branch mends
+// it. Any other step is a 🤖 Returned without a session, the row closes as returned, and the next
+// tick gives the issue back with a label and To do (finishReturn). The text is scrubbed of every token the
+// pusher holds, and cut under maxComment with the full diff as an attachment. A row tick already
+// handed back gets nothing: its Returned stands.
 func (p *push) ask(ctx context.Context, q questionInput) error {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), postTimeout)
 	defer cancel()
@@ -83,9 +88,16 @@ func (p *push) ask(ctx context.Context, q questionInput) error {
 	q.diff = scrubText(q.diff, scrub)
 	body := fitQuestion(q, p.req.Language, scrub, func(diff string) (string, error) { return p.attach(q.sha, diff) })
 	if _, err := p.deps.Forge.CreateComment(ctx, p.req.Issue, body); err != nil {
-		return fmt.Errorf("pusher: post the Question on #%d: %w", p.req.Issue, err)
+		return fmt.Errorf("pusher: post the outcome of step %s on #%d: %w", q.red.Step, p.req.Issue, err)
 	}
-	return runs.Release(ctx, p.deps.DB, p.req.RunID, runs.Question, "push: "+q.red.Step, p.deps.Now())
+	outcome := runs.Question
+	if q.hint == hintManual {
+		outcome = runs.Returned
+		if q.red.repairable() {
+			outcome = runs.Handoff
+		}
+	}
+	return runs.Release(ctx, p.deps.DB, p.req.RunID, outcome, "push: "+q.red.Step, p.deps.Now())
 }
 
 // pushed posts the outcome of a push. The row first records the pushed SHA, so a post that fails
@@ -153,10 +165,20 @@ func (p *push) attach(sha, diff string) (string, error) {
 	return path, f.Close()
 }
 
-// fitQuestion renders q, scrubbed. A Question of maxComment characters or more gets its diff cut
-// at a line under the limit, with the full diff written by attach and named in the text.
+// fitQuestion renders q, scrubbed: a Question, a Repair for a repairable hintManual, or a Returned
+// for any other hintManual. A text of
+// maxComment characters or more gets its diff cut at a line under the limit, with the full diff
+// written by attach and named in the text.
 func fitQuestion(q questionInput, language string, scrub []string, attach func(string) (string, error)) string {
-	render := func() string { return scrubText(renderQuestion(q, language), scrub) }
+	render := func() string {
+		if q.hint == hintManual && q.red.repairable() {
+			return scrubText(renderRepair(q, language), scrub)
+		}
+		if q.hint == hintManual {
+			return scrubText(renderReturned(q, language), scrub)
+		}
+		return scrubText(renderQuestion(q, language), scrub)
+	}
 	body := render()
 	over := utf8.RuneCountInString(body) - (maxComment - 1)
 	if over <= 0 {
@@ -197,24 +219,18 @@ func cutAtLine(s string, n int) string {
 }
 
 // renderQuestion renders the pusher's 🤖 Question. The header holds sha, worktree, branch, after
-// and lane for decide and the answer push, and has no session footer: that is how decide tells it from a run's question.
+// and lane for decide and the answer push, and has no session footer: that is how decide tells it
+// from a run's question. The question line (what an answer push does) and the close line come
+// first, so protocol.QuestionText shows only the question; the red step, the verdict and the diff
+// come after the close line, where protocol.ParseQuestion does not read.
 func renderQuestion(q questionInput, language string) string {
 	h := func(key string) string { return protocol.Heading(key, language) }
-	lines := []string{
-		protocol.Robot + " " + h("kind_question") + " · " + Command,
-		"sha: " + headerValue(q.sha),
-		"worktree: " + headerValue(q.worktree),
-		"branch: " + headerValue(q.branch),
+	lines := []string{protocol.Robot + " " + h("kind_question") + " · " + Command, "sha: " + headerValue(q.sha)}
+	lines = append(lines, pushFields(q)...)
+	if key, ok := hintHeadings[q.hint]; ok {
+		lines = append(lines, "", "**"+h("question_label")+":** "+h(key), "", h("question_close"))
 	}
-	if q.after != "" {
-		lines = append(lines, "after: "+headerValue(q.after))
-	}
-	if q.lane != "" {
-		lines = append(lines, "lane: "+headerValue(q.lane))
-	}
-	lines = append(lines, "step: "+headerValue(q.red.Step), "",
-		"**"+h("question_push_step")+":** "+prose(q.red.Step, maxProse))
-	lines = append(lines, fenced("text", noFooter(capRunes(strings.TrimSpace(q.red.Why), maxWhy)))...)
+	lines = append(lines, redLines(q, language)...)
 	if q.verdict != nil {
 		lines = append(lines, "", "**"+h("question_push_verdict")+":**")
 		lines = append(lines, verdictLines(*q.verdict)...)
@@ -223,15 +239,78 @@ func renderQuestion(q questionInput, language string) string {
 		lines = append(lines, "", "**"+h("question_push_diff")+":**")
 		lines = append(lines, fenced("diff", noFooter(q.diff))...)
 	}
-	if q.attachment != "" {
-		lines = append(lines, "", h("question_push_attachment")+" `"+q.attachment+"`.")
-	}
-	if key, ok := hintHeadings[q.hint]; ok {
-		lines = append(lines, "", h(key))
-	}
-	lines = append(lines, "", "**"+h("question_push_command")+":**")
-	lines = append(lines, fenced("bash", noFooter("cd "+shellWord(q.worktree)+" && git push -u origin HEAD"))...)
+	lines = append(lines, attachmentLines(q, language)...)
+	lines = append(lines, pushCommandLines(q, language)...)
 	return strings.Join(lines, "\n")
+}
+
+// renderReturned renders the pusher's 🤖 Returned for a red step an answer push cannot act on:
+// reason `workflow-pusher rood: <step>` (protocol.ReasonKey reads reason_pusher_red back), the
+// fields of the Question without sha, and no session footer. Below the red step stand the diff,
+// folded, what to do, and the push command.
+func renderReturned(q questionInput, language string) string {
+	h := func(key string) string { return protocol.Heading(key, language) }
+	lines := []string{protocol.Robot + " " + h("kind_returned"), "reason: " + h("reason_pusher_red") + ": " + headerValue(q.red.Step)}
+	lines = append(lines, pushFields(q)...)
+	lines = append(lines, redLines(q, language)...)
+	if q.diff != "" {
+		lines = append(lines, "", "<details><summary>"+h("question_push_diff")+"</summary>", "")
+		lines = append(lines, fenced("diff", noFooter(q.diff))...)
+		lines = append(lines, "", "</details>")
+	}
+	lines = append(lines, attachmentLines(q, language)...)
+	lines = append(lines, "", h(hintHeadings[hintManual]))
+	lines = append(lines, pushCommandLines(q, language)...)
+	return strings.Join(lines, "\n")
+}
+
+// renderRepair renders the pusher's 🤖 Repair for a policy or lint step that is red: the fields of
+// the Question without sha, the red step, and the diff folded. It names no push command and no
+// hint: the run that wrote the branch mends it, and the next push is its own.
+func renderRepair(q questionInput, language string) string {
+	h := func(key string) string { return protocol.Heading(key, language) }
+	lines := []string{protocol.Robot + " " + h("kind_repair")}
+	lines = append(lines, pushFields(q)...)
+	lines = append(lines, redLines(q, language)...)
+	if q.diff != "" {
+		lines = append(lines, "", "<details><summary>"+h("question_push_diff")+"</summary>", "")
+		lines = append(lines, fenced("diff", noFooter(q.diff))...)
+		lines = append(lines, "", "</details>")
+	}
+	lines = append(lines, attachmentLines(q, language)...)
+	return strings.Join(lines, "\n")
+}
+
+// pushFields are the worktree, branch, after, lane and step fields of a pusher comment's header.
+func pushFields(q questionInput) []string {
+	lines := []string{"worktree: " + headerValue(q.worktree), "branch: " + headerValue(q.branch)}
+	if q.after != "" {
+		lines = append(lines, "after: "+headerValue(q.after))
+	}
+	if q.lane != "" {
+		lines = append(lines, "lane: "+headerValue(q.lane))
+	}
+	return append(lines, "step: "+headerValue(q.red.Step))
+}
+
+// redLines is the red step and why it is red.
+func redLines(q questionInput, language string) []string {
+	lines := []string{"", "**" + protocol.Heading("question_push_step", language) + ":** " + prose(q.red.Step, maxProse)}
+	return append(lines, fenced("text", noFooter(capRunes(strings.TrimSpace(q.red.Why), maxWhy)))...)
+}
+
+// attachmentLines names the file with the full diff, when the diff in the text is cut.
+func attachmentLines(q questionInput, language string) []string {
+	if q.attachment == "" {
+		return nil
+	}
+	return []string{"", protocol.Heading("question_push_attachment", language) + " `" + q.attachment + "`."}
+}
+
+// pushCommandLines is the push by hand.
+func pushCommandLines(q questionInput, language string) []string {
+	lines := []string{"", "**" + protocol.Heading("question_push_command", language) + ":**"}
+	return append(lines, fenced("bash", noFooter("cd "+shellWord(q.worktree)+" && git push -u origin HEAD"))...)
 }
 
 // verdictLines is one line per reviewer, with its findings below it.

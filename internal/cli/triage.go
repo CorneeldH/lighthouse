@@ -17,6 +17,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/flock"
 	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/hostconfig"
+	"github.com/CorneeldH/lighthouse/internal/issuestate"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/store"
 	tri "github.com/CorneeldH/lighthouse/internal/triage"
@@ -258,6 +259,9 @@ func (r *round) repo(ctx context.Context, path string, repo repoconfig.Repo, rf 
 	}
 	var n counts
 	cands := r.candidates(ctx, g, &n)
+	if err := setPrioWeights(ctx, g, cands); err != nil {
+		return skip(err)
+	}
 	tri.Sort(cands)
 	jc := tri.Context{Language: repo.Language, Labels: repo.Labels, Catalog: catalog}
 	for _, f := range cands {
@@ -268,6 +272,28 @@ func (r *round) repo(ctx context.Context, path string, repo repoconfig.Repo, rf 
 	_, _ = fmt.Fprintf(r.errOut, "lighthouse: triage %s: candidates %d, judgments %d, forwarded %d, design %d, other %d, invalid %d, running work %d, skipped %d, errors %d\n",
 		repo.Slug, n.candidates, n.judgments, n.forwarded, n.design, n.other, n.invalid, n.work, n.skipped, n.errors)
 	return n.errors > 0
+}
+
+// setPrioWeights sets the PrioWeight of every candidate, the weight the tick uses. The blockers
+// come from the board items the gather already read: no extra read. Without candidates it reads
+// nothing; a failing PrioInputs skips the repo, never a weight of 0.
+func setPrioWeights(ctx context.Context, g *repoGather, cands []tri.Facts) error {
+	if len(cands) == 0 {
+		return nil
+	}
+	in, err := g.c.PrioInputs(ctx)
+	if err != nil {
+		return fmt.Errorf("prio inputs: %w", err)
+	}
+	board := make([]forge.BoardItem, 0, len(g.board))
+	for _, it := range g.board {
+		board = append(board, it)
+	}
+	weights := dispatch.Weights(in, dispatch.BlockerGraph(board, g.repo.Slug))
+	for i := range cands {
+		cands[i].PrioWeight = weights[cands[i].Number]
+	}
+	return nil
 }
 
 func (r *round) pluginsFile() string {
@@ -480,8 +506,8 @@ func (r *round) issue(ctx context.Context, g *repoGather, f tri.Facts, jc tri.Co
 // errChanged is the recheck finding a change: apply then writes nothing.
 var errChanged = errors.New("changed since gather")
 
-// apply rechecks issue f and writes outcome o: the comment, the handoff, and for a forwarded
-// issue the board item and the Controller status, in that order (spec "Volgorde per issue").
+// apply rechecks issue f and writes outcome o: the comment, the handoff, the label of o (when
+// it has one), and for a forwarded issue the board item and the Controller status, in that order (spec "Volgorde per issue").
 // step names the step that failed; it is "" for errChanged.
 func (r *round) apply(ctx context.Context, g *repoGather, f tri.Facts, o tri.Outcome) (step string, err error) {
 	after, err := g.recheck(ctx, f.Number)
@@ -497,6 +523,11 @@ func (r *round) apply(ctx context.Context, g *repoGather, f tri.Facts, o tri.Out
 	if o.Handoff != "" {
 		if _, err := g.c.CreateComment(ctx, f.Number, o.Handoff); err != nil {
 			return "handoff", err
+		}
+	}
+	if o.Label != "" {
+		if _, err := issuestate.Apply(ctx, g.c, f.Number, o.Label, g.repo.Labels); err != nil {
+			return "label", err
 		}
 	}
 	if o.Row != tri.RowForward {

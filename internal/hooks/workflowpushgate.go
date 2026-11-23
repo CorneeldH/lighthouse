@@ -14,6 +14,9 @@ import (
 
 const pushGatePrefix = "Workflow-push gate: "
 
+// reasonWorkflowPath is the block of a push whose range touches the workflow directory.
+var reasonWorkflowPath = hook.Declare("workflow-push-gate", "workflow-path")[0]
+
 // pushValueOptions are the `git push` options whose value is the next word.
 var pushValueOptions = map[string]bool{"-o": true, "--push-option": true, "--repo": true, "--receive-pack": true, "--exec": true}
 
@@ -156,7 +159,7 @@ func checkPush(ctx context.Context, dir string, args []string, literal []bool, d
 			return pushUncheckable(err.Error()), true
 		}
 		if len(paths) > 0 {
-			return blocked(pushGatePrefix + "blocked — " + workflowguard.Refusal(rng, paths)), true
+			return hook.Block(reasonWorkflowPath, pushGatePrefix+"blocked — "+workflowguard.Refusal(rng, paths)), true
 		}
 	}
 	return hook.Result{}, false
@@ -248,7 +251,7 @@ func pushSpecs(args []string, literal []bool) (specs []pushSpec, configured bool
 }
 
 func pushUncheckable(reason string) hook.Result {
-	return blocked(pushGatePrefix + workflowguard.Uncheckable(reason))
+	return hook.CouldNotCheck(pushGatePrefix + workflowguard.Uncheckable(reason))
 }
 
 // isRedirectOp reports whether a lexed word is a redirection operator: a run of `<` and `>`.

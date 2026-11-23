@@ -144,9 +144,16 @@ The boundary hands/testing: hands is **setting up, entering, connecting**; testi
 remains is human judgement. `labels.needs_testing` can never stand before an implementation and
 is so also the "almost done" signal.
 
-Not to be confused with a board Status `On hold` (only if a board is configured): that is
-*parked on purpose*, a blocking label is *something is in the way*. An issue can be parked and
-unshaped at the same time.
+A blocking label and the board go together (only if a board is configured): an issue that
+carries a `needs_*` label or `labels.blocked_issue` stands on `To do`, never on `Controller` (if
+present); the tick and triage put it there. The label is the whole signal: `needs_*` means "pick
+up interactively". Nothing writes the board status `On hold` any more: parking is `To do` plus
+`labels.blocked_issue`.
+
+The gate-4 judgement of lighthouse-route-issue maps onto this table. An issue that needs design
+depth first (gate 4, exit 4c: the what or why is not sharp, a spec has to come before any plan)
+gets `labels.needs_shaping`. Triage sets it itself at 4c; when you write or edit such an issue by
+hand, set it too.
 
 `labels.blocked_issue` never goes along in `lighthouse forge issue create`: it leans on the
 `blocked_by` relation, and that comes first. See 3e.
@@ -199,8 +206,8 @@ The invariant, per open issue (label names from `[labels]`):
 label off is `lighthouse forge issue edit <nr> --remove-label "$BLOCKED"`, setting the relation is step 2 below.
 
 A `blocked_by` relation between two issues the controller runs (only if present) is also their
-stacking order: the controller lets the blocked issue do spec and plan and stacks the execution
-on the green PR of its predecessor. The invariant and the steps below stay the same.
+stacking order: spec yes, plan and execution wait for a merged PR of the predecessor. Outside the
+controller the same holds (`lighthouse-start-issue` step 4, *Blocked?*). The invariant and the steps below stay the same.
 
 1. **Create without the blocked-issue label** (step 4). Note the start time beforehand with
    `date -u +%Y-%m-%dT%H:%M:%SZ` and put the literal ISO value in your answer: a shell variable
@@ -256,6 +263,8 @@ criterion, the document only context: set the label only when the issue matches 
 column, not merely because the issue touches something the document describes. This step runs
 before step 4; the label goes into the `--label` of step 4. No taxonomy file, or no such row: skip
 this step.
+
+**Planned on the map.** When the label's row also has a `Planned` value (`always`, or `milestone` and the issue gets the milestone from 3d), ask two things in the conversation before step 4. *Where does it belong?* The document and the explanation under the table give the candidates; a new part of the map, and `no item` when the explanation says a change to an existing part gives none, are always candidates. *Do we want it?* Always ask; when `paths.tenets`, `paths.areas` or `lighthouse config paths.strategy` gives a file or folder, first test the issue against the tenets, the leading policy (`heading:policy`) and the deliberate no's (`heading:not_now`) of its area, and the strategy, and say what came out; name the ID that carries the judgement (`<area>/N<n>`, `strategy/S<n>`, `tenet <letter>`). A key that is not set (`lighthouse config` exits 1) skips silently; a set path that does not exist is reported in the conversation ("does not exist"). Write the place as one line under `### heading:map_placement` in the body. An answer of no to the second question: no issue, or no free label. Doubt, or "decide later": `labels.needs_decision` with the reason in the body. Headless (no conversation): write the place only when it is unambiguous, ask nothing, and leave the rest to the scheduled job. This step never writes the document.
 
 ### 4. Create the issue
 
@@ -383,9 +392,12 @@ the reason and the local workaround are. Post upstream only when the user asks f
   See `lighthouse-close-issue`.
 - **Description**: the pitch from "Pitch (Shape Up)" below, with its seven headings in that
   order. `lighthouse forge` names a milestone by its title (`milestone view`, `milestone edit`,
-  `--milestone`). If the project has tenets
-  (`lighthouse config paths.tenets`, only if present), the pitch
-  names the crux of its main area under *Problem / Opportunity*.
+  `--milestone`). With `paths.areas`
+  (read with `lighthouse config`, only if set), the pitch names under *Problem / Opportunity* the crux (`heading:area_crux`) of the area(s) the
+  issues of the milestone fall under most (the `labels.area_prefix` label of those issues). With
+  `paths.strategy` (only if set), it tests the milestone against the diagnosis (`heading:strategy_diagnosis`)
+  and the deliberate no's (`heading:not_now`) of the strategy and cites `strategy/S<n>`; doubt becomes a question in the conversation. A key that is not set skips silently; a set path that does not exist is
+  reported in the conversation ("does not exist").
 - **Hard rule**: *a milestone without DoD text in its description does not exist.* Without that
   rule blocks grow into eternal bins again.
 - The description is at the same time the **gatekeeper**. If a new task does not belong in the
@@ -423,13 +435,14 @@ clashes with the everyday use of "project".
 Set a status with `lighthouse forge issue status <nr> "<status>"`, `<status>` a key of
 `[forge.board.status_options]`.
 
-The board can also have a **Priority** (`P0` · `P1` · `P2`, no value = at the back), from
-`[forge.board] priority_options`. There is no shared command for it: set it in the board UI, or
-as `../lighthouse-forge/<kind>.md §board` describes.
+The board can also have a **Priority** (`P0` · `P1` · `P2`), from `[forge.board] priority_options`.
+It is a manual override on the computed prio weight (milestone rank and `blocked_by`), not a
+calculation: `P0` goes before everything, `P1` or no value follows the weight, `P2` goes behind
+everything. The tick and triage start in that order. There is no shared command for it: set it
+in the board UI, or as `../lighthouse-forge/<kind>.md §board` describes.
 
-`On hold` is the place for work parked on purpose; there is no on-hold label. Setting it goes in
-the board UI, or with `lighthouse forge issue status <nr> "On hold"` when `status_options` has
-that key.
+Parking is not a status of its own: the tick parks an issue as `To do` plus
+`labels.blocked_issue`. Do not set `On hold` by hand; use the blocked label and the relation (3e).
 
 ## Acceptance Criteria vs Definition of Done
 

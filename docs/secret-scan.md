@@ -13,20 +13,20 @@ de fetch-URL.
 Daarom tellen ze alleen voor een geconfigureerde remote met precies één URL, waarnaar ook de push
 gaat (`git remote get-url --push --all <naam>` geeft hetzelfde als `git remote get-url --all
 <naam>`). Met een aparte `pushurl`, een tweede URL, of een push naar een kale URL sluit `--remotes`
-niets uit: de push-repo kan missen wat de fetch-repo heeft. De regel staat één keer in de module
-(`remote_exclusion`, voor de hook via `checkpoint_scan.py remote-exclusion <naam>`).
+niets uit: de push-repo kan missen wat de fetch-repo heeft. De regel staat één keer in `internal/checkpointscan`
+(voor de hook via `lighthouse checkpoint-scan remote-exclusion <naam>`).
 
 ## Waarom per blob, en begrensd
 
 Op 2026-11-01 legde één `gitleaks git` over alle checkpoints de host plat: 7–10 GB RSS, swap vol.
 Elke checkpoint is een root-commit, dus voor `gitleaks git` is de diff de hele boom, en bestanden
 als `full.jsonl` staan in elke boom opnieuw. Over 2671 tips waren dat 16.026 blob-vermeldingen
-(9,18 GB) tegen 8593 unieke blobs (0,61 GB). Daarom scant `tools/hooks/checkpoint_scan.py` elke
+(9,18 GB) tegen 8593 unieke blobs (0,61 GB). Daarom scant het verborgen subcommando `lighthouse checkpoint-scan` elke
 unieke blob één keer, in batches, elke gitleaks-run in een systemd-scope met een plafond.
 
 ## Blobmodus en ledger
 
-`checkpoint_scan.py scan --remote <naam> <ref>=<sha>…` (de hook roept dit aan voor `refs/entire/*`):
+`lighthouse checkpoint-scan scan --remote <naam> <ref>=<sha>…` (de hook roept dit aan voor `refs/entire/*`):
 
 1. Bepaalt de blobs die de remote mist (`git rev-list --objects`, met `--not --remotes=<naam>` alleen
    als de push naar de enige fetch-URL gaat; zie boven).
@@ -41,13 +41,13 @@ unieke blob één keer, in batches, elke gitleaks-run in een systemd-scope met e
 Wat de blobmodus garandeert: elke unieke blob die de remote mist, scant gitleaks volledig, of de
 batch telt als niet te scannen (`COULD NOT CHECK`, niets ervan in de ledger). Een checkpoint is een
 root-commit, dus `gitleaks git` zou dezelfde inhoud zien. Toch is de blobmodus daar niet vanzelf
-gelijk aan; de verschillen en wat de module ertegen doet:
+gelijk aan; de verschillen en wat `checkpoint-scan` ertegen doet:
 
 - `gitleaks dir` (8.30.1) slaat een bestand over waarvan de eerste bytes het magic number van een
   binair type zijn (zip, gzip, ELF, PDF, RTF, SQLite, OLE en meer), ook als git het als tekst ziet
   en `gitleaks git` het wel scant. De newline vooraan haalt dat weg: geen type begint daarmee.
   Matches blijven gelijk (gemeten, ook voor een match aan het begin van de blob); alleen
-  regelnummers schuiven één op, en de module meldt die niet.
+  regelnummers schuiven één op, en `checkpoint-scan` meldt die niet.
 - gitleaks draait in de tijdelijke map op `.`, dus het pad waarop zijn pad-allowlists werken is het
   kale blob-id. Op het absolute pad maakte een `TMPDIR` onder bijvoorbeeld `node_modules/` (in de
   standaard-allowlist) elke blob schoon. Zo doet ook een `.gitleaksignore` van de repo niet mee.
@@ -73,7 +73,7 @@ alleen naar de checkpoint-remote.
 
 De ledger staat in `<git-common-dir>/lighthouse/secret-scan/clean-<sleutel>.txt`, gedeeld door alle
 worktrees van een clone en nooit in een commit. De sleutel is de sha256 van de bytes van
-`.gitleaks.toml`, de uitvoer van `gitleaks version` en de scanmethode (`SCAN_METHOD` in de module).
+`.gitleaks.toml`, de uitvoer van `gitleaks version` en de scanmethode (`SCAN_METHOD` in `internal/checkpointscan`).
 Verandert een van de drie, dan begint een nieuwe ledger en volgt een volledige herscan; zo telt een
 ledger van vóór de newline en de bytetelling niet meer. Alleen blobs zonder finding uit een batch
 die afrondde (rc 0, of rc 1 met een gelezen rapport) en volledig gescand is, komen erin.
@@ -85,7 +85,7 @@ Eén vuile ref blokkeert de hele hook-push, want een hook kan niet half doorlate
 
 ## De begrensde scan
 
-Elke gitleaks-run loopt via `checkpoint_scan.py run-bounded` in:
+Elke gitleaks-run loopt via `lighthouse checkpoint-scan run-bounded` in:
 
 ```
 systemd-run --user --scope --quiet -p MemoryMax=<max> -p MemorySwapMax=0 -p CPUQuota=<quota> --collect \
@@ -116,7 +116,7 @@ hook; `push` gaat door (zie hieronder).
 ## De eerste push: `push`
 
 ```
-python3 -I tools/hooks/checkpoint_scan.py push https://github.com/CorneeldH/lighthouse-checkpoints.git
+lighthouse checkpoint-scan push https://github.com/CorneeldH/lighthouse-checkpoints.git
 ```
 
 Er is geen git-remote voor de checkpoints; de URL komt uit `checkpoint_remote` in
@@ -150,7 +150,7 @@ deur.
 
 Let op: `.git/hooks/pre-push` draait eerst het scanscript van het pushende checkout (`install.sh`).
 Een worktree op een branch van vóór #198 draait dus nog de oude hook, die `refs/entire/*`
-onbegrensd met `gitleaks git` scant. Push checkpoints alleen vanuit een checkout met deze module
+onbegrensd met `gitleaks git` scant. Push checkpoints alleen vanuit een checkout met deze hook
 (`main` na de merge).
 
 ## `held.txt`
@@ -168,6 +168,10 @@ meldingen van het findings-plafond, dan één blok per vuile ref: de ref, daarna
 
 ## Host-deploy
 
+De host heeft een `lighthouse`-binary mét `checkpoint-scan` nodig (geen Go-toolchain en geen python3):
+eerst releasen en de host upgraden, dan pas de hook en de unit op de host omzetten. De hook weigert
+te pushen (`COULD NOT CHECK`) zolang `lighthouse` ontbreekt of het subcommando niet kent.
+
 De timer en de unit horen bij de host-deploy, net als die van de triage, en staan niet in de repo.
 Dit is het voorbeeld. De unit heeft twee repo-specifieke waarden, `WorkingDirectory` en de URL; de
 rest is per host gelijk.
@@ -181,9 +185,9 @@ Description=Lighthouse: checkpoints gescand pushen
 Type=oneshot
 WorkingDirectory=%h/repositories/lighthouse
 EnvironmentFile=%h/.config/lighthouse/checkpoint-push.env
-Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PATH=%h/.local/bin:%h/go/bin:/usr/local/bin:/usr/bin:/bin
 Environment=GIT_TERMINAL_PROMPT=0
-ExecStart=/usr/bin/python3 -I tools/hooks/checkpoint_scan.py push --report-rss https://github.com/CorneeldH/lighthouse-checkpoints.git
+ExecStart=%h/go/bin/lighthouse checkpoint-scan push --report-rss https://github.com/CorneeldH/lighthouse-checkpoints.git
 TimeoutStartSec=30min
 ```
 
@@ -202,7 +206,7 @@ WantedBy=timers.target
 ```
 
 - `--user`: de unit draait onder het account dat de checkout en het token heeft.
-- `WorkingDirectory`: de hoofdcheckout, op `main`. `push` draait het script en de pre-push-hook
+- `WorkingDirectory`: de hoofdcheckout, op `main`. `push` draait de binary (`lighthouse checkpoint-scan`) en de pre-push-hook
   van die checkout, zie [De eerste push: `push`](#de-eerste-push-push); een checkout op een
   oudere branch draait oudere code.
 - `EnvironmentFile`: een bestand met `GH_TOKEN` (`chmod 600`). Maak een fine-grained token met
@@ -210,12 +214,13 @@ WantedBy=timers.target
   beperkt. Niet de keyring: `gh` leest daar zijn token uit, en die is in een user-service zonder
   ingelogde desktop op slot. `gh auth git-credential` geeft `GH_TOKEN` voorrang.
 - `Environment=PATH`: systemd geeft een user-unit een kaal `PATH`. `gitleaks` staat in
-  `~/.local/bin`; `git`, `systemctl`, `systemd-run` en `choom` in `/usr/bin`. Ontbreekt een van
+  `~/.local/bin` en `lighthouse` in `~/go/bin`; de pre-push-hook die `git push` draait, vindt
+  `lighthouse` alleen zo; `git`, `systemctl`, `systemd-run` en `choom` in `/usr/bin`. Ontbreekt een van
   die laatste drie, dan draait de scan zonder geheugenplafond (`no memory ceiling`).
 - `GIT_TERMINAL_PROMPT=0`: bij een ontbrekend token faalt `git push` met exitcode 2, in plaats
   van op een prompt te wachten die niemand beantwoordt.
-- `ExecStart`: een absoluut pad naar `python3`, dus geen venv uit `PATH`, met `-I` zoals elders in
-  dit document; het script gebruikt alleen stdlib. `--report-rss` zet de piek-RSS per batch in de
+- `ExecStart`: een absoluut pad naar `lighthouse` (`%h/go/bin`, zoals `install.md`); dat
+  is ook de enige plek waar de unit de binary zoekt. `--report-rss` zet de piek-RSS per batch in de
   journal.
 - Geen `SuccessExitStatus`: exitcode 1 (er zijn vuile refs vastgehouden) zet de unit op
   `failed`, net als exitcode 2 (niets of niet alles gepusht). Een vastgehouden ref vraagt een
@@ -239,7 +244,7 @@ journalctl --user -u lighthouse-checkpoint-push.service -n 50
 systemctl --user --failed
 ```
 
-Start een handmatige run met `systemctl --user start`, niet met het script, zodat nooit twee
+Start een handmatige run met `systemctl --user start`, niet met de binary, zodat nooit twee
 pushes tegelijk lopen. Wil je een melding bij een mislukte run, hang dan een eigen unit aan
 `OnFailure=`; dat is host-keuze en niet nodig voor het signaal.
 
@@ -248,7 +253,7 @@ pushes tegelijk lopen. Wil je een melding bij een mislukte run, hang dan een eig
 Een expliciete herscan zonder ledger (die wel wordt bijgewerkt), met piek-RSS per batch:
 
 ```
-python3 -I tools/hooks/checkpoint_scan.py scan --full --keep-going --remote <naam> \
+lighthouse checkpoint-scan scan --full --keep-going --remote <naam> \
   $(git for-each-ref --format='%(refname)=%(objectname)' refs/entire/)
 ```
 
@@ -291,12 +296,12 @@ batches (29,6 s, piek-RSS 107 MB, swap vlak).
 
 Tegen de constanten: een batch van 64 MB kost ca. 100 MB RSS, ver onder het plafond van 2G. De
 hele set (582 MiB) ligt boven de 256 MB-grens van de hook, dus de eerste push na deze import loopt
-via `checkpoint_scan.py push`, zoals bedoeld. Het findings-plafond (200) is niet bereikt. De
+via `lighthouse checkpoint-scan push`, zoals bedoeld. Het findings-plafond (200) is niet bereikt. De
 constanten 64 MB, 256 MB en 200 houden stand.
 
 De opdracht, met een `--remote` die niet bestaat zodat niets wordt uitgesloten:
 
 ```
-/usr/bin/time -v python3 -I tools/hooks/checkpoint_scan.py scan --full --keep-going --remote ckpt-probe \
+/usr/bin/time -v lighthouse checkpoint-scan scan --full --keep-going --remote ckpt-probe \
   $(git for-each-ref --format='%(refname)=%(objectname)' refs/entire/)
 ```

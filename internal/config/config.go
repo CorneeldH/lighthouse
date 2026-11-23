@@ -40,7 +40,7 @@ func notSet(key string) error { return fmt.Errorf("%s: %w", key, ErrNotSet) }
 // [controller] table.
 const ControllerStatusOption = "Controller"
 
-var requiredStatusOptions = []string{"To do", "In progress", "Done", "On hold"}
+var requiredStatusOptions = []string{"To do", "In progress", "Done"}
 
 var languages = []string{"nl", "en"}
 
@@ -81,6 +81,7 @@ var schema = []struct{ key, kind string }{
 	{"paths.plans", kStr},
 	{"paths.tenets", kStr},
 	{"paths.areas", kStr},
+	{"paths.strategy", kStr},
 	{"paths.history", kStr},
 	{"paths.labels", kStr},
 	{"paths.search_dirs", kStrs},
@@ -110,6 +111,7 @@ var schema = []struct{ key, kind string }{
 	{"codex_usage.review_pct_week", kInt},
 	{"worktree_audit.protected_refs", kStrs},
 	{"worktree_audit.protected_paths", kStrs},
+	{"worktree.root", kStr},
 	{"project.instructions_word_ceiling", kInt},
 	{"project.skill_prefix", kStr},
 	{"project.milestone_prefix", kStr},
@@ -135,6 +137,8 @@ var schema = []struct{ key, kind string }{
 	{"agent_audit.ignore", kStrs},
 	{"agent_audit.top", kInt},
 	{"agent_audit.description_max_chars", kInt},
+	{"imports.check", kBool},
+	{"pr_gate.issue", kStr},
 }
 
 // defaults is the value of an absent key. A key in schema without a default is optional: not
@@ -163,6 +167,7 @@ var defaults = map[string]any{
 	"codex_usage.review_pct_week":            int64(95),
 	"worktree_audit.protected_refs":          []any{},
 	"worktree_audit.protected_paths":         []any{},
+	"worktree.root":                          ".claude/worktrees",
 	"project.instructions_word_ceiling":      int64(3000),
 	"python.source_dirs":                     []any{"src"},
 	"python.lint_dirs":                       []any{"src", "tests"},
@@ -177,6 +182,8 @@ var defaults = map[string]any{
 	"agent_audit.ignore":                     []any{},
 	"agent_audit.top":                        int64(10),
 	"agent_audit.description_max_chars":      int64(1024),
+	"imports.check":                          true,
+	"pr_gate.issue":                          "optional",
 }
 
 // mayBeEmpty are the keys whose empty value is a setting: `[test_gate] command = ""` turns the
@@ -193,10 +200,23 @@ var baseKeys = []string{
 	"forge.board.project_id",
 	"forge.board.status_field_id",
 	"forge.board.priority_field_id",
+	"forge.board.project_owner",
 	"project.language",
 }
 
 var optionPrefixes = []string{"forge.board.status_options.", "forge.board.priority_options."}
+
+// levelKey is the top-level key that names the install level; componentPrefix opens the free-form
+// [components] table, whose keys are component names. Both stay out of schema and the snapshot:
+// schema holds table.key pairs, and the names are checked against the pack's levels.toml
+// elsewhere, not here.
+const (
+	levelKey        = "level"
+	componentPrefix = "components."
+)
+
+// componentStands are the values a [components] entry may have.
+var componentStands = []string{"off", "log", "on"}
 
 // Default returns a fresh copy of the default of key, and false when the key has none.
 func Default(key string) (any, bool) {
@@ -212,7 +232,10 @@ func Default(key string) (any, bool) {
 
 // IsKnownKey reports whether key is one this reader knows, so a skill may name it.
 func IsKnownKey(key string) bool {
-	if contains(baseKeys, key) || contains(hostKeys, key) {
+	if key == levelKey || contains(baseKeys, key) || contains(hostKeys, key) {
+		return true
+	}
+	if strings.HasPrefix(key, componentPrefix) && len(key) > len(componentPrefix) {
 		return true
 	}
 	for _, s := range schema {
@@ -231,6 +254,9 @@ func IsKnownKey(key string) bool {
 // KindOf is the schema kind of key ("str", "list[str]", ...), "known" for another key
 // IsKnownKey accepts, and "unknown" for the rest.
 func KindOf(key string) string {
+	if key == levelKey {
+		return kStr
+	}
 	for _, s := range schema {
 		if s.key == key {
 			return s.kind
@@ -274,6 +300,7 @@ type Board struct {
 	ProjectID       string
 	StatusFieldID   string
 	PriorityFieldID string // "" when absent
+	ProjectOwner    string // "" when absent
 	StatusOptions   map[string]string
 	PriorityOptions map[string]string
 }
@@ -286,8 +313,12 @@ type Config struct {
 	Host     string // "" when absent; set only with kind gitlab
 	Language string
 	Board    *Board
-	Raw      map[string]any
-	Path     string
+	// Level is the top-level `level`, "" when unset; Components holds the raw [components]
+	// stands (off, log or on) by component name. Neither name is checked against a pack here.
+	Level      string
+	Components map[string]string
+	Raw        map[string]any
+	Path       string
 
 	// order is the position of the first key at or below each table path, so a walk picks
 	// the first of several matching tables in document order, like Python's dict.
@@ -481,7 +512,7 @@ func (c *Config) board(board map[string]any, needsController bool, path string) 
 	gitlab := c.Kind == "gitlab"
 	if gitlab {
 		// GitLab's built-in status and scoped labels need no project or field IDs.
-		for _, key := range []string{"project_number", "project_id", "status_field_id", "priority_field_id"} {
+		for _, key := range []string{"project_number", "project_id", "status_field_id", "priority_field_id", "project_owner"} {
 			if _, ok := board[key]; ok {
 				return nil, errf("%s: key %s%s is only valid with kind = 'github'", path, where, key)
 			}
@@ -510,6 +541,11 @@ func (c *Config) board(board map[string]any, needsController bool, path string) 
 	b := &Board{StatusOptions: status}
 	if _, ok := board["priority_field_id"]; ok && !gitlab {
 		if b.PriorityFieldID, err = getString(board, "priority_field_id", where, path); err != nil {
+			return nil, err
+		}
+	}
+	if _, ok := board["project_owner"]; ok && !gitlab {
+		if b.ProjectOwner, err = getString(board, "project_owner", where, path); err != nil {
 			return nil, err
 		}
 	}
@@ -700,10 +736,18 @@ func build(data map[string]any, md toml.MetaData, rawPath string) (*Config, erro
 	if err := checkSchema(data, path); err != nil {
 		return nil, err
 	}
+	if err := c.levelAndComponents(data, path); err != nil {
+		return nil, err
+	}
 
 	if review, ok := data["review"].(map[string]any); ok {
 		if v, ok := review["roborev"]; ok && v != "local" && v != "off" {
 			return nil, errf("%s: key review.roborev must be 'local' or 'off', not %s", path, pyRepr(v))
+		}
+	}
+	if gate, ok := data["pr_gate"].(map[string]any); ok {
+		if v, ok := gate["issue"]; ok && v != "optional" && v != "required" && v != "evidence" {
+			return nil, errf("%s: key pr_gate.issue must be 'optional', 'required' or 'evidence', not %s", path, pyRepr(v))
 		}
 	}
 	if report, ok := data["report"].(map[string]any); ok {
@@ -712,6 +756,35 @@ func build(data map[string]any, md toml.MetaData, rawPath string) (*Config, erro
 		}
 	}
 	return c, nil
+}
+
+// levelAndComponents reads `level` and [components]: only their shape and the stand values are
+// checked, never whether a level or component name exists.
+func (c *Config) levelAndComponents(data map[string]any, path string) error {
+	if _, ok := data[levelKey]; ok {
+		level, err := getString(data, levelKey, "", path)
+		if err != nil {
+			return err
+		}
+		c.Level = level
+	}
+	if _, ok := data["components"]; !ok {
+		return nil
+	}
+	table, err := getTable(data, "components", "", path)
+	if err != nil {
+		return err
+	}
+	c.Components = make(map[string]string, len(table))
+	for _, name := range c.ordered(table, []string{"components"}) {
+		stand, ok := table[name].(string)
+		if !ok || !contains(componentStands, stand) {
+			return errf("%s: key components.%s must be one of %s, not %s",
+				path, name, strings.Join(componentStands, ", "), pyRepr(table[name]))
+		}
+		c.Components[name] = stand
+	}
+	return nil
 }
 
 // documentOrder maps each table path to the index of the first key at or below it.

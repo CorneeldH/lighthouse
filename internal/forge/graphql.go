@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"slices"
+	"strings"
 )
 
 // graphqlError is one entry of the errors list GitHub answers with: its type, such as
@@ -25,16 +25,6 @@ func (e graphqlErrors) Error() string {
 		msg += fmt.Sprintf(" (and %d more)", more)
 	}
 	return "forge graphql: " + msg
-}
-
-// notFound reports whether one of the errors is a NOT_FOUND on exactly path.
-func (e graphqlErrors) notFound(path ...any) bool {
-	for _, ge := range e {
-		if ge.Type == "NOT_FOUND" && slices.Equal(ge.Path, path) {
-			return true
-		}
-	}
-	return false
 }
 
 // graphql posts query with vars to BaseURL/graphql and decodes data into into. GitHub answers
@@ -59,4 +49,17 @@ func (c *GitHub) graphql(ctx context.Context, query string, vars map[string]any,
 		return fmt.Errorf("forge graphql: decode data: %w", err)
 	}
 	return nil
+}
+
+// ownerName is the owner and name of Repo for a GraphQL query, after checking the client is
+// configured.
+func (c *GitHub) ownerName() (owner, name string, err error) {
+	if err := c.configured(); err != nil {
+		return "", "", err
+	}
+	owner, name, ok := strings.Cut(c.Repo, "/")
+	if !ok || owner == "" || name == "" {
+		return "", "", fmt.Errorf("forge: repo %q is not owner/name", c.Repo)
+	}
+	return owner, name, nil
 }

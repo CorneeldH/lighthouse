@@ -47,10 +47,25 @@ type GitHub struct {
 	HTTP                 *http.Client
 	// Board is the [forge.board] of the repo; nil makes every board method fail.
 	Board *repoconfig.Board
+	// EnrichMemo makes enrich remember the Mergeable and Checks of an open pull request per
+	// (repo, number, head) for the life of the client, so a tick asks each once. Only a client
+	// that lives one tick sets it; a long-lived one (serve, the pusher) must read them fresh.
+	EnrichMemo bool
 
-	mu      sync.Mutex
-	nodeIDs map[int]string // issue number → node ID, filled by Issue and OpenIssues
-	base    string         // default branch, filled by CreatePR
+	cache CacheStore // nil: none; do drops an entry whose body does not decode
+
+	mu     sync.Mutex
+	base   string  // default branch, filled by CreatePR
+	proj   project // the REST coordinates of the board, valid when projOK
+	projOK bool
+	// itemIDs and issueItems are the numeric IDs of the board items by node ID and by issue,
+	// filled by listItems and AddToBoard.
+	itemIDs    map[string]int64
+	issueItems map[issueKey]int64
+	// itemTable is the saved item table of a client without cache (see saveItemTable).
+	itemTable []itemTableEntry
+	// enriched is what enrich read per pull request while EnrichMemo is set.
+	enriched map[prKey]enrichedPR
 }
 
 // DefaultBaseURL is the GitHub API root.
@@ -68,37 +83,6 @@ func New(repo, token string) *GitHub {
 
 // Kind is "github".
 func (c *GitHub) Kind() string { return "github" }
-
-// remember keeps the node ID of an issue for AddToBoard.
-func (c *GitHub) remember(it issueItem) {
-	if it.NodeID == "" {
-		return
-	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.nodeIDs == nil {
-		c.nodeIDs = map[int]string{}
-	}
-	c.nodeIDs[it.Number] = it.NodeID
-}
-
-// nodeID is the node ID of issue number: from the cache, else from one read of the issue.
-func (c *GitHub) nodeID(ctx context.Context, number int) (string, error) {
-	c.mu.Lock()
-	id := c.nodeIDs[number]
-	c.mu.Unlock()
-	if id != "" {
-		return id, nil
-	}
-	is, err := c.readIssue(ctx, number)
-	if err != nil {
-		return "", err
-	}
-	if is.NodeID == "" {
-		return "", fmt.Errorf("forge: issue %s#%d: no node ID", c.Repo, number)
-	}
-	return is.NodeID, nil
-}
 
 func (c *GitHub) configured() error {
 	if c.Repo == "" || c.Token == "" {
@@ -124,7 +108,6 @@ func (c *GitHub) OpenIssues(ctx context.Context) ([]Issue, error) {
 			if it.PullRequest != nil {
 				continue
 			}
-			c.remember(it)
 			out = append(out, it.issue())
 		}
 		url = next
@@ -141,7 +124,7 @@ func (c *GitHub) Issue(ctx context.Context, number int) (Issue, error) {
 	return it.issue(), nil
 }
 
-// readIssue reads one issue in REST shape and remembers its node ID.
+// readIssue reads one issue in REST shape.
 func (c *GitHub) readIssue(ctx context.Context, number int) (issueItem, error) {
 	if err := c.configured(); err != nil {
 		return issueItem{}, err
@@ -151,7 +134,6 @@ func (c *GitHub) readIssue(ctx context.Context, number int) (issueItem, error) {
 	if _, err := c.do(ctx, http.MethodGet, url, nil, &it); err != nil {
 		return issueItem{}, err
 	}
-	c.remember(it)
 	return it, nil
 }
 
@@ -231,6 +213,9 @@ func (c *GitHub) do(ctx context.Context, method, url string, body, into any) (st
 		*raw = data
 	} else if into != nil {
 		if err := json.NewDecoder(resp.Body).Decode(into); err != nil {
+			if c.cache != nil && resp.Header.Get(cacheHitHeader) != "" {
+				_ = c.cache.Delete(ctx, cacheKey(req))
+			}
 			return "", fmt.Errorf("forge %s %s: decode: %w", method, url, err)
 		}
 	}

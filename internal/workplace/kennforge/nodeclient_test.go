@@ -18,6 +18,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/nodeapi"
 	"github.com/CorneeldH/lighthouse/internal/workplace"
@@ -594,5 +595,58 @@ func TestInfoFailureAskedOncePerClient(t *testing.T) {
 				t.Errorf("info asked %d times by two clients, want 2", got)
 			}
 		})
+	}
+}
+
+func TestNodeClientPostFailed(t *testing.T) {
+	n := newFakeNode(t)
+	sess, noTime, badTime, bad := randomID(t), randomID(t), randomID(t), randomID(t)
+	n.mux.HandleFunc("GET "+nodeapi.PathPostFailed, func(w http.ResponseWriter, r *http.Request) {
+		switch r.PathValue("session") {
+		case sess:
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set(nodeapi.HeaderModTime, "2026-11-19T08:30:00.25Z")
+			_, _ = w.Write([]byte(`{"version":1}`))
+		case noTime:
+			_, _ = w.Write([]byte(`{"version":1}`))
+		case badTime:
+			w.Header().Set(nodeapi.HeaderModTime, "yesterday")
+			_, _ = w.Write([]byte(`{"version":1}`))
+		case bad:
+			writeNode(w, http.StatusInternalServerError, nodeapi.Problem{Status: 500, Detail: "boom"})
+		default:
+			writeNode(w, http.StatusNotFound, nodeapi.Problem{Status: 404, Code: nodeapi.CodeNoPostFailed, Detail: "none"})
+		}
+	})
+	c := n.client(t)
+	data, mod, err := c.PostFailed(context.Background(), sess)
+	if err != nil || string(data) != `{"version":1}` || !mod.Equal(time.Date(2026, 11, 19, 8, 30, 0, 250_000_000, time.UTC)) {
+		t.Errorf("PostFailed: %q %v %v, want the raw bytes at 2026-11-19T08:30:00.25Z", data, mod, err)
+	}
+	// A node from before the header, or one whose header does not parse: the time is unknown.
+	for _, s := range []string{noTime, badTime} {
+		data, mod, err = c.PostFailed(context.Background(), s)
+		if err != nil || string(data) != `{"version":1}` || !mod.IsZero() {
+			t.Errorf("PostFailed without a valid time: %q %v %v, want the raw bytes and a zero time", data, mod, err)
+		}
+	}
+	data, _, err = c.PostFailed(context.Background(), randomID(t))
+	if err != nil || data != nil {
+		t.Errorf("PostFailed on 404 no_post_failed: %q %v, want nil nil", data, err)
+	}
+	if data, _, err = c.PostFailed(context.Background(), bad); err == nil {
+		t.Errorf("PostFailed on 500: %q nil, want an error", data)
+	}
+}
+
+// An old node has no such route: its 404 carries no code, and that is "no note", not an error.
+func TestNodeClientPostFailedOldNode(t *testing.T) {
+	n := newFakeNode(t)
+	n.mux.HandleFunc("GET "+nodeapi.PathPostFailed, func(w http.ResponseWriter, _ *http.Request) {
+		writeNode(w, http.StatusNotFound, nodeapi.Problem{Status: 404, Detail: "Not Found"})
+	})
+	data, _, err := n.client(t).PostFailed(context.Background(), randomID(t))
+	if err != nil || data != nil {
+		t.Errorf("PostFailed on a 404 without code: %q %v, want nil nil", data, err)
 	}
 }

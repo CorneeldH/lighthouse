@@ -107,6 +107,36 @@ func TestUsageRefreshE2E(t *testing.T) {
 	}
 }
 
+// TestUsageKeepsControllerStateOut proves that a refresh in an e2e test never writes the alarm
+// mirror into the controller state of the developer (#482). A false alarm there, with a reset a
+// year ahead, parked real controller runs until that date.
+func TestUsageKeepsControllerStateOut(t *testing.T) {
+	bin := buildLighthouse(t)
+	fixture, err := filepath.Abs("../internal/usage/testdata/usage_full.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Stands in for the developer's real state directory: cleanEnv reads os.Environ.
+	real := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", real)
+	xdg, binDir := t.TempDir(), t.TempDir()
+	writeScript(t, binDir, "claude", "cat '"+fixture+"'\n")
+
+	runUsage(t, bin, usageEnv(t, xdg, binDir), "usage", "refresh")
+
+	if _, err := os.Stat(filepath.Join(xdg, "lighthouse", "usage-window.alarm")); err != nil {
+		t.Fatalf("the refresh wrote no alarm in its own cache, so this test proves nothing: %v", err)
+	}
+	leaked := filepath.Join(real, "lighthouse", "controller", "usage-window.alarm")
+	if got, err := os.ReadFile(leaked); err == nil {
+		t.Errorf("the e2e refresh wrote the alarm mirror into the outer XDG_STATE_HOME: %s = %q", leaked, got)
+	}
+	mirror := filepath.Join(e2eState, "lighthouse", "controller", "usage-window.alarm")
+	if got, err := os.ReadFile(mirror); err != nil || !strings.HasPrefix(string(got), "venster 99 ") {
+		t.Errorf("alarm mirror in the e2e state = %q (%v), want prefix %q", got, err, "venster 99 ")
+	}
+}
+
 func TestUsageTickWithoutClaude(t *testing.T) {
 	bin := buildLighthouse(t)
 	xdg, binDir, marker := t.TempDir(), t.TempDir(), filepath.Join(t.TempDir(), "ran")

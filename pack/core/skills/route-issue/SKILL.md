@@ -22,7 +22,7 @@ list. Callers: `lighthouse-start-issue` (step 4, one number) and the backlog-sta
 (the split of *Ready*, many numbers).
 
 Not here: starting on the issue or executing the route (`/lighthouse-start-issue`), writing or
-updating an issue (`/lighthouse-write-issue`), auditing the board (the board-sweep skill, if
+updating an issue (`/lighthouse-write-issue`, if installed), auditing the board (the board-sweep skill, if
 present).
 
 ## Labels
@@ -33,9 +33,10 @@ the name that call prints:
 
 - `lighthouse config labels.blocked_issue`, `lighthouse config labels.blocked_external`: waits on something
   outside the session;
-- `lighthouse config labels.needs_shaping`, `lighthouse config labels.needs_decision`,
-  `lighthouse config labels.needs_hands`, `lighthouse config labels.needs_testing`: what has to happen in the
-  session.
+- `lighthouse config labels.needs_shaping`, `lighthouse config labels.needs_decision`: what has to
+  happen in the session;
+- `lighthouse config labels.needs_hands`, `lighthouse config labels.needs_testing`: the next step is
+  a human's.
 
 ## Input
 
@@ -76,7 +77,7 @@ the sub-letter; the backlog-stand skill, if present, sorts *Ready* on the gate f
 ```
 0. Does the issue carry labels.blocked_issue or labels.blocked_external, or does it have
    an open blocked_by without labels.needs_shaping/labels.needs_decision/labels.blocked_issue?
-                                          → route: stop, reason: what it waits for (or: label missing)
+                                          → note what it waits for, fall through ↓ (unknown: stop)
 1. Does the description of a skill match this issue,
    and does that skill deliver the end result of the issue?
                                           → route: that skill (closes)
@@ -87,12 +88,16 @@ the sub-letter; the backlog-stand skill, if present, sorts *Ready* on the gate f
 4. Is the HOW settled?                    → c / b / a
 ```
 
-Only gate 3 falls through. The number in the line is the gate where the triage stopped; that makes
-a wrongly chosen gate findable afterwards.
+Only gate 0 (with a readable block) and gate 3 fall through. The number in the line is the gate
+where the triage stopped; that makes a wrongly chosen gate findable afterwards.
+
+A `labels.needs_hands` or `labels.needs_testing` label turns the route reached into `stop` (see the label table below).
 
 ### Gate 0 — blocked
 
-Two entries: the label, or a blocker without a label.
+Two entries: the label, or a blocker without a label. A block does not stop the triage: a blocked
+issue may get a spec, not a plan. Gate 0 notes what the issue waits for; executing only gate 4c is
+in `lighthouse-start-issue`.
 
 **With `labels.blocked_issue` or `labels.blocked_external`** the blocker comes from the relation,
 not from a mention in the body: the blocker list of the read call (Input), or, when the issue came from
@@ -108,28 +113,40 @@ GitLab Free the list is empty without an error, and the blocker stands as a `Blo
 in the body.
 
 If there is no open blocker, the reason reports the verdict — **lapsed** (only closed relations)
-or **unlinked** (no relation) — with the repair command from `lighthouse-write-issue` 3e. The
-route stays stop: removing the label or laying the relation is up to the user. If this call fails
-(exit 1 or 2), or the output is unreadable, the verdict is **unknown**, with the read command
-added — the route stays stop, and a failed read, or one without output, is never **unlinked**
+or **unlinked** (no relation) — with the repair command from `lighthouse-write-issue` 3e (if installed). The
+route goes on with the verdict and the repair command after the line, and the issue counts as
+blocked: removing the label or laying the relation is up to the user. In a controller run (if
+present) they stop (*In both modes*, below). If this call fails (exit 1 or 2), or the output is
+unreadable, the verdict is **unknown**, with the read command
+added — **unknown** stays a stop, and a failed read, or one without output, is never **unlinked**
 (that puts the user on the wrong track of a `--remove-label`).
 
 **Without that label, but with an open blocker in the `issue blockers` list** (already in the
 answer of the read call; an issue from context without that list costs the one call above): if the issue carries none of `labels.needs_shaping`,
-`labels.needs_decision` or `labels.blocked_issue`, this also stops at gate 0. Report
-**label missing** with the repair command from `lighthouse-write-issue` 3e
-(`lighthouse forge issue edit <nr> --add-label <labels.blocked_issue>`). If the list could not be
-read, report **unknown** and stop — an unreadable blocker never falls silently through to gate 4.
+`labels.needs_decision` or `labels.blocked_issue`, report **label missing** with the repair
+command from `lighthouse-write-issue` 3e, if installed,
+(`lighthouse forge issue edit <nr> --add-label <labels.blocked_issue>`) after the line. The issue
+counts as blocked and the route goes on. If the list could not be read, report **unknown** and
+stop — an unreadable blocker never falls silently through to gate 4.
 
 If the issue does carry `labels.needs_shaping` or `labels.needs_decision` with an open
-`blocked_by`, that is **not** a gate-0 stop: the lower label wins (invariant
-`lighthouse-write-issue` 3e, "holds") and the route continues through that label — gate 4c.
+`blocked_by`, the lower label wins (invariant `lighthouse-write-issue` 3e, if installed, "holds") and the route
+continues through that label — gate 4c, with `— blocker #<x> open` after the line.
 
-**Controller run** (only if present: the prompt ends on `(issue #<nr>, controller-run)`): an open
-blocker through `labels.blocked_issue` or a bare `blocked_by` does not stop then. The controller
-allows only spec and plan and stacks the execution itself. Route on to gates 1–4 and put
-`— blocker #<x> open` after the line. `labels.blocked_external` always stops, here too. The router
-stays read-only: it only reports the route; not executing is in `lighthouse-start-issue`.
+**In both modes** — interactive, and a controller run (if present: the prompt ends on
+`(issue #<nr>, controller-run)`) — a readable block does not stop at gate 0 (one exception in a
+controller run, below): route on to gates 1–4 and put `— blocker #<x> open` after the line, or `— blocked: <label>` when there is no issue number
+(`labels.blocked_external`, **lapsed**, **unlinked**); the stop message of `lighthouse-start-issue`
+says `wait for: <label>` instead of `wait for #<x>` then. Only **unknown** stays a stop at gate 0.
+In a controller run (if present) a block without an open blocker relation — **lapsed** or
+**unlinked** — stays a stop at gate 0 as well: the tick finds no active predecessor to park on, so
+a `next: /lighthouse-start-issue` handoff would start again at once. Report the verdict with its
+repair command; the human repairs the relation or the label. Interactively they route on.
+Interactively `labels.blocked_external` routes on with `— blocked: <label>`, and the stop says
+`wait for: <label>`. In a controller run (if present) `labels.blocked_external` always stops, here
+too: the controller does not start such an issue (a human holds it, `heldByHuman`). A spec under
+`labels.blocked_external` is therefore interactive only. The router stays read-only: it only
+reports the route; not executing is in `lighthouse-start-issue`.
 
 ### Gate 1 — known recipe
 
@@ -145,7 +162,7 @@ work that still has to happen?* Only the first closes.
 
 | | Example | Role |
 |---|---|---|
-| closing | `lighthouse-audit-worktrees`, a skill that refreshes lockfiles | the skill *does* the issue |
+| closing | `lighthouse-audit-worktrees` (if installed), a skill that refreshes lockfiles | the skill *does* the issue |
 | accompanying | a skill with the writing norms of a language, a diagram skill | the skill carries a norm |
 
 Those two rows are illustration, not a list to maintain. An accompanying skill closes nothing: it
@@ -185,30 +202,43 @@ present), no extra call. The same behaviour as `labels.needs_shaping`, but witho
 a bullet without `→ #<nr>`; only a question that demonstrably concerns the work of this issue
 counts. A milestone without that heading, or with "None.", routes as usual. The reason names the
 question: `— touches open question "<question>" from the milestone`. After the spec comes the
-outflow from `lighthouse-write-issue`: a question that has become sharp enough becomes an issue of
+outflow from `lighthouse-write-issue` (if installed): a question that has become sharp enough becomes an issue of
 its own and the bullet gets `→ #<nr>`.
 
 There is no tie-break rule. The skill weighs and names one route; if it is off, the user corrects
 it in one sentence. A rule that always leans to the expensive side when in doubt costs more than
 that sentence.
 
-## A blocking label steers the triage, it does not stop it
+## A blocking label steers the triage or ends it in a stop
 
-Gate 0 catches the two blocked labels. The other four are exactly the signal *which* route the
-issue gets.
+Gate 0 notes the two blocked labels and routes on. `labels.needs_shaping` and
+`labels.needs_decision` are exactly the signal *which* route the issue gets;
+`labels.needs_hands` and `labels.needs_testing` end the triage in a stop. The rows are in the rank
+order of the rank rule, which orders the `labels.needs_*` and route labels: the one with the lowest rank
+number, the first in the table, decides. A blockade (label or relation) is reported by Gate 0 and does
+not cancel a stop.
 
 | Label | Route |
 |---|---|
-| `labels.needs_shaping` | **gate 4, c** — that *is* exactly the missing step |
+| `labels.needs_shaping` | **gate 4, c** — that *is* exactly the missing step; the label means "pick up interactively", never a controller run |
 | `labels.needs_decision` | **gate 4, c**, narrow: put the open decision as the first question |
-| `labels.needs_hands` | **gate 4, b/a**, execute up to the hand movement, with an explicit instruction *where* human hands are needed |
-| `labels.needs_testing` | **gate 4, b/a**, execute and let the human judge whether it does what was meant |
-| `labels.blocked_issue` | **gate 0** — stop, report the blocker from the relation (`issue blockers`), not from a mention in the body; in a controller run (if present): route on, see Gate 0 |
-| `labels.blocked_external` | **gate 0** — stop, report what it waits for |
+| `labels.blocked_issue` | **gate 0** — report the blocker from the relation (`issue blockers`), not from a mention in the body, and route on with `— blocker #<x> open`; the same in a controller run (if present), see Gate 0 |
+| `labels.blocked_external` | **gate 0** — interactively: route on with `— blocked: <label>`; the controller does not start it |
+| `labels.needs_hands` | **stop** — the next step is a human's; the route executes nothing and reports which action of the human is needed first (where human hands are needed) in `#<nr> heading:gate_line <n>[<a|b>]: stop — <label>: <action>`, with `<n>` the gate where the triage would have stopped |
+| `labels.needs_testing` | **stop** — the next step is a human's; the route executes nothing and reports which judgement of the human is needed first in `#<nr> heading:gate_line <n>[<a|b>]: stop — <label>: <judgement>`, with `<n>` the gate where the triage would have stopped |
 
-Only the two blocked labels are a hard stop (except `labels.blocked_issue` in a controller run,
-see Gate 0, which applies only if present): those wait on something outside the session. The
-other four describe what has to happen *in* the session.
+Among the route labels the rank rule wins: a higher label steers the route (`labels.needs_shaping` still goes to 4c, with
+the stop of the lower label unreached). With an open blocker the reason says so too, but the stop
+stays: Gate 0 reports the blockade and routes on, the route arrives at the stop in this table, and
+the line carries both the blockade and the stop.
+
+The two blocked labels hold the plan, not the spec: they wait on something outside the session,
+so the issue may get a spec, and `lighthouse-start-issue` executes only gate 4c. Interactively
+both route on (for `labels.blocked_external`: route on with `— blocked: <label>`). In a controller
+run (if present) `labels.blocked_issue` routes on the same way with an open blocker (**lapsed** and
+**unlinked** stop, see Gate 0), and the controller does not start an issue with
+`labels.blocked_external`. `labels.needs_shaping` and `labels.needs_decision` describe what has to
+happen *in* the session; `labels.needs_hands` and `labels.needs_testing` stop the route.
 
 ## Non-negotiable
 
@@ -218,7 +248,8 @@ other four describe what has to happen *in* the session.
   sub-letter · ❌ route silently, or a bare `heading:gate_line 4: ...` without sub-letter
 - ✅ Choose one route and name it · ❌ propose two routes and let the user choose
 - ✅ Gate 1 from the catalogue in context · ❌ grep over `.claude/skills/` (costs the KPI ceiling)
-- ✅ `labels.blocked_*` stops (`labels.blocked_issue` not in a controller run, if present, see Gate 0) · ❌ treat a `labels.needs_*` label as a stop
+- ✅ `labels.blocked_*` and a bare open `blocked_by` route on with what they wait for after the line (in a controller run, if present, the controller does not start `labels.blocked_external`); only **unknown** stops, in a controller run also **lapsed** and **unlinked** · ❌ stop on a readable block
+- ✅ stop and report what the human has to do first at `labels.needs_hands` / `labels.needs_testing` · ❌ execute any step of the route there
 - ✅ Do not fetch an issue that is already in context again · ❌ a second read call per number
 
 ## Known pitfalls

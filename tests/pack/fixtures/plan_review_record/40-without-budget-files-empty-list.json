@@ -30,8 +30,9 @@
       ],
       "expect": {
         "record": {
-          "schema_version": 5,
-          "budget_checks": []
+          "schema_version": 6,
+          "budget_checks": [],
+          "trajectory": null
         }
       }
     }

@@ -98,8 +98,9 @@ func (m *mergeFix) merge(head string) {
 	}
 }
 
-// refused checks that the merge pusher asked instead of merging: a Vraag without a session and
-// without a SHA to permit, that names the step and contains want, and a row closed as question.
+// refused checks that the merge pusher gave the issue back instead of merging: a Teruggegeven
+// without a session, of reason_pusher_red, that names the step and contains want, and a row
+// closed as returned.
 func (m *mergeFix) refused(step, want string) string {
 	m.t.Helper()
 	if len(m.merger.calls) != 0 || len(m.merger.tokens) != 0 {
@@ -107,17 +108,18 @@ func (m *mergeFix) refused(step, want string) string {
 	}
 	body := m.forge.last(m.t)
 	h, ok := protocol.ParseHeader(body)
-	if !ok || h.Kind != protocol.KindQuestion || h.Session != "" || h.Fields["sha"] != noSHA ||
+	key, _ := protocol.ReasonKey(h.Fields["reason"])
+	if !ok || h.Kind != protocol.KindReturned || h.Session != "" || key != "reason_pusher_red" ||
 		h.Fields["branch"] != branch || h.Fields["pr"] != "12" || h.Fields["step"] != step {
-		m.t.Errorf("Vraag header %+v, want sha none, branch, pr 12, step %s:\n%s", h, step, body)
+		m.t.Errorf("Teruggegeven header %+v, want reason_pusher_red, branch, pr 12, step %s:\n%s", h, step, body)
 	}
 	if !strings.Contains(body, want) {
 		m.t.Errorf("Vraag lacks %q:\n%s", want, body)
 	}
 	if strings.Contains(body, "git push") || strings.Contains(strings.ToLower(body), "scope") {
-		m.t.Errorf("a merge Vraag offers a push or names a token scope:\n%s", body)
+		m.t.Errorf("a merge Teruggegeven offers a push or names a token scope:\n%s", body)
 	}
-	wantClosed(m.t, m.row(), runs.Question)
+	wantClosed(m.t, m.row(), runs.Returned)
 	return body
 }
 
@@ -322,8 +324,8 @@ func TestMergeRefusedByForgeAsksNeutrally(t *testing.T) {
 			}
 			body := m.forge.last(t)
 			h, _ := protocol.ParseHeader(body)
-			if h.Kind != protocol.KindQuestion || h.Fields["step"] != StepMerge || h.Fields["sha"] != noSHA {
-				t.Errorf("posted %q, want a merge Vraag without a SHA", body)
+			if h.Kind != protocol.KindReturned || h.Fields["step"] != StepMerge || h.Fields["sha"] != "" {
+				t.Errorf("posted %q, want a merge Teruggegeven without a SHA", body)
 			}
 			for _, bad := range []string{workflowTok, "refusing to allow", "scope", "git push"} {
 				if strings.Contains(strings.ToLower(body), strings.ToLower(bad)) {
@@ -333,7 +335,7 @@ func TestMergeRefusedByForgeAsksNeutrally(t *testing.T) {
 			if !strings.Contains(body, tt.want) {
 				t.Errorf("Vraag lacks %q:\n%s", tt.want, body)
 			}
-			wantClosed(t, m.row(), runs.Question)
+			wantClosed(t, m.row(), runs.Returned)
 		})
 	}
 }
@@ -486,7 +488,7 @@ func TestMergeRetriesOnceWhileStillOnHead(t *testing.T) {
 		if len(m.merger.calls) != 1 {
 			t.Fatalf("merges = %v, want one attempt", m.merger.calls)
 		}
-		wantClosed(t, m.row(), runs.Question)
+		wantClosed(t, m.row(), runs.Returned)
 	})
 }
 

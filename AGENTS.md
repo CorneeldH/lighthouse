@@ -43,40 +43,26 @@ branch yourself before a commit, and run `[test_gate] command` from `lighthouse.
 <!-- lighthouse:begin core -->
 ## Lighthouse: core
 
-- Nothing lands directly on `main`. Work on a branch in a worktree; `main-commit-gate` blocks `git commit` and `git push` to `main`.
-- Escape hatch, deliberately and once: `touch .claude/allow-main` in the repo root; remove it afterwards.
-- A worktree before the first write: `git worktree add .claude/worktrees/<name> -b <branch>`.
-- Every change goes through a PR and is squash-merged. `/lighthouse-write-pr` writes the PR body; `pr-create-gate` checks it.
-- Test gate: `commit-test-gate` runs `[test_gate] command` after each commit, on its files (default branch: before). Fix red in a new commit; never `--no-verify`.
-- Update a branch with `origin/<default branch>` by `git merge` once it is on origin, never by rebase plus force-push; rebase only a branch that is not pushed yet. Every PR is squash-merged, so the merge commit never reaches the default branch.
-- Artefacts (issues, PRs, comments, commit messages) are written in `[project] language`.
+- Nothing lands on `main`: work in `git worktree add "$ROOT/<name>"` with `ROOT=$(lighthouse config worktree.root)` (default `.claude/worktrees`); `main-commit-gate` blocks `main` commits and pushes.
+- Every change goes through a PR and is squash-merged; `/lighthouse-write-pr` writes the PR body.
+- `commit-test-gate` runs `[test_gate] command` after each commit; fix red in a new commit.
+- Never `--no-verify`.
+- Update a branch with `origin/<default branch>` by `git merge` once it is on origin, never by rebase plus force-push; rebase only a branch that is not pushed yet.
+- Artefacts (issues, PRs, comments, commit messages) are in `[project] language`; chat too, unless `en`.
 - With `[project] code_language` set, names, comments, docstrings, file names and everything under `code_language_paths` are English.
-- Finish what you are already authorised to do; never end on an offer to do it ("ready to push if you want" is not done).
-- `heading:<key>` in a skill names a contract heading in `.lighthouse/headings.toml`. Write what `lighthouse headings <key>` prints, never the literal `heading:<key>`; reading accepts every language variant.
+- Finish what you are already authorised to do; an offer to do it is not done.
+- `heading:<key>` in a skill names a contract heading in `.lighthouse/headings.toml`. Write what `lighthouse headings <key>` prints, not the literal `heading:<key>`; reading accepts every language variant.
 - `lighthouse config` exits 1 with `unknown command` on stderr: the binary is too old. Stop and say so; that is not "not set".
-
-Skills:
-
-- `/lighthouse-start-issue`: pick up an issue.
-- `/lighthouse-route-issue`: read-only triage, one route per issue.
-- `/lighthouse-write-issue`: write or edit issues and milestones.
-- `/lighthouse-write-pr`: check acceptance criteria, write the PR body.
-- `/lighthouse-fix-pr`: make a red or conflicting PR green.
-- `/lighthouse-forge`: per-forge differences, read through another skill.
-- `/lighthouse-close-issue`: close an issue with evidence, or reopen it.
-- `/lighthouse-write-handoff`: start command for the next session.
-- `/lighthouse-review-spec`: a spec reviewed by another model family.
-- `/lighthouse-review-plan`: a plan reviewed by another model family.
-- `/lighthouse-audit-agent-config`: audit the agentic configuration.
-- `/lighthouse-audit-worktrees`: which worktrees and branches can go.
-- `/lighthouse-place-instruction`: on which layer a new instruction belongs.
-- `/lighthouse-test-standard`: tests that fail when behaviour breaks.
-- `/lighthouse-upgrade`: move to the installed lighthouse version.
 <!-- lighthouse:end core -->
 
 <!-- lighthouse:begin go -->
 ## Lighthouse: go
 
-- Go code follows `/lighthouse-go-standard`.
-- Two hooks check it: `gofmt-check` after every edit (formats; blocks only on an unparsable file), `go-lint-gate` at Stop (`golangci-lint`, `govet` included; blocks on a finding, not during a usage alarm).
+- Before a commit, run `lighthouse imports check` next to `[test_gate] command`.
 <!-- lighthouse:end go -->
+
+<!-- lighthouse:begin node -->
+## Lighthouse: node
+
+- Before a commit, run `lighthouse imports check` next to `[test_gate] command`.
+<!-- lighthouse:end node -->

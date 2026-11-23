@@ -9,6 +9,7 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
+	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 )
 
 // maxConcurrent caps the comment fetches that run at the same time.
@@ -61,6 +62,8 @@ type RepoSource struct {
 	Src        forge.Forge
 	Board      bool
 	Controller bool
+	// Labels are the blocking label names of the repo, for the prioritisation view.
+	Labels repoconfig.Labels
 }
 
 // BuildAll runs Build per repo, in the order given, and sets Repo on every item. The first

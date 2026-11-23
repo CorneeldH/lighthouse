@@ -47,3 +47,10 @@ func TestTickScheduledInvalidParamsAreAConfigErrorEachTick(t *testing.T) {
 		t.Errorf("tick state = %+v, want none saved while the config error stands", st)
 	}
 }
+
+func TestMapPlannedIsRegisteredInTheTickBinary(t *testing.T) {
+	// Guards the blank import of the job package in tick_scheduled.go.
+	if j, ok := scheduled.Lookup("map-planned"); !ok || j.Name() != "map-planned" {
+		t.Fatalf("Lookup(map-planned) = %v, %v; want the job", j, ok)
+	}
+}

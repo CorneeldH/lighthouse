@@ -304,25 +304,24 @@ func (b *fakeBrake) Check() (string, bool) {
 func triageWrites(srv *forgetest.Server) []string {
 	var out []string
 	for _, p := range srv.Posts {
-		if p.Path == "/graphql" {
-			q, _ := p.Body["query"].(string)
-			vars, _ := p.Body["variables"].(map[string]any)
-			switch {
-			case strings.HasPrefix(q, "mutation SetStatus"):
-				out = append(out, fmt.Sprintf("SetStatus %v %v", vars["item"], vars["option"]))
-			case strings.HasPrefix(q, "mutation AddToBoard"):
-				out = append(out, fmt.Sprintf("AddToBoard %v", vars["content"]))
-			case strings.HasPrefix(q, "mutation"):
-				out = append(out, "mutation "+q)
-			}
-			continue
-		}
 		parts := strings.Split(p.Path, "/") // /repos/o/r/issues/7/comments
-		body, _ := p.Body["body"].(string)
-		first, _, _ := strings.Cut(body, "\n")
-		if len(parts) == 7 && parts[6] == "comments" {
+		switch {
+		case p.Path == "/graphql": // a read
+		case p.Method == "PATCH" && len(parts) == 7 && parts[3] == "projectsV2": // /users/o/projectsV2/3/items/5000
+			id, _ := strconv.Atoi(parts[6])
+			fields, _ := p.Body["fields"].([]any)
+			field, _ := fields[0].(map[string]any)
+			out = append(out, fmt.Sprintf("SetStatus %v %v", srv.BoardNodes[id-5000]["id"], field["value"]))
+		case p.Method == "POST" && len(parts) == 6 && parts[3] == "projectsV2": // /users/o/projectsV2/3/items
+			number := int(p.Body["number"].(float64))
+			out = append(out, fmt.Sprintf("AddToBoard %v", srv.Issues[number]["node_id"]))
+		case p.Method == "POST" && len(parts) == 7 && parts[6] == "labels": // /repos/o/r/issues/7/labels
+			out = append(out, fmt.Sprintf("labels %s: add %v", parts[5], p.Body["labels"]))
+		case len(parts) == 7 && parts[6] == "comments":
+			body, _ := p.Body["body"].(string)
+			first, _, _ := strings.Cut(body, "\n")
 			out = append(out, "comment "+parts[5]+": "+first)
-		} else {
+		default:
 			out = append(out, "POST "+p.Path)
 		}
 	}
@@ -359,7 +358,7 @@ func assertWrites(t *testing.T, srv *forgetest.Server, want ...string) {
 
 func TestTriageForwardsWithNightHandoff(t *testing.T) {
 	fx := triageFixture(t, triageToml)
-	fx.issue(7, "2-area:cli", "3-needs-hands")
+	fx.issue(7, "2-area:cli")
 	fx.onBoard(7, "t1", nil)
 	fx.judge.answers[7] = forward(7)
 
@@ -423,6 +422,7 @@ func TestTriageDesignAndStops(t *testing.T) {
 	}
 	assertWrites(t, fx.srv,
 		`comment 8: <!-- lighthouse: {"kind":"triage","version":1,"gate":"4c"} -->`,
+		"labels 8: add [3-needs-shaping]",
 		`comment 9: <!-- lighthouse: {"kind":"triage","version":1,"gate":"1"} -->`,
 		`comment 10: <!-- lighthouse: {"kind":"triage","version":1,"gate":"4b"} -->`,
 		`comment 11: <!-- lighthouse: {"kind":"triage","version":1,"gate":"4b"} -->`)
@@ -555,8 +555,9 @@ func TestTriageBoardBlocker(t *testing.T) {
 		t.Fatalf("triage = %v\n%s", err, errOut)
 	}
 	assertWrites(t, fx.srv, `comment 17: <!-- lighthouse: {"kind":"triage","version":1,"gate":"0","blockers":[5],"label":null} -->`)
-	if n := fx.srv.Count("/repos/o/r/issues/17/dependencies/blocked_by"); n != 0 {
-		t.Errorf("blocked_by REST reads = %d, want 0 for an issue on the board", n)
+	// The one read is BoardItems' own; triage adds none for an issue on the board.
+	if n := fx.srv.Count("/repos/o/r/issues/17/dependencies/blocked_by"); n != 1 {
+		t.Errorf("blocked_by REST reads = %d, want 1 (the board's) for an issue on the board", n)
 	}
 }
 
@@ -706,14 +707,32 @@ func TestTriageUnlistedStatus(t *testing.T) {
 	})
 }
 
-// The board lists no archived item, but GitHub still has it: an issue whose item is archived is
-// skipped with a line, never judged and never written, and an item archived before the
-// recheck is a change.
+// earlierBoardRead reads the board of fx's repo once, as an earlier process would, through the
+// forge cache of fx.env: the item table saved there then holds every item the board lists now.
+func (fx *triageFix) earlierBoardRead(t *testing.T) {
+	t.Helper()
+	repo, err := repoconfig.Load(fx.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rf, err := newForgeOpener(fx.env.Getenv, fx.env.ForgeURL).forRepo(context.Background(), repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := rf.BoardItems(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The board lists no archived item, but GitHub still has it: an issue whose item an earlier
+// board read saw and that is archived since is skipped with a line, never judged and never
+// written, and an item archived before the recheck is a change.
 func TestTriageArchivedItem(t *testing.T) {
 	t.Run("gather", func(t *testing.T) {
 		fx := triageFixture(t, triageToml)
 		fx.issue(7, "2-area:cli")
 		fx.onBoard(7, "t1", nil)
+		fx.earlierBoardRead(t)
 		fx.srv.BoardNodes[0]["isArchived"] = true
 
 		_, errOut, err := fx.run(triageOpts{})
@@ -988,7 +1007,7 @@ func TestTriageBrakeAtStart(t *testing.T) {
 	if errOut != "lighthouse: triage skipped: usage: not measured\n" {
 		t.Errorf("errOut = %q", errOut)
 	}
-	for _, key := range []string{"/user", "Board", "/repos/o/r/issues"} {
+	for _, key := range []string{"/user", "/users/o/projectsV2/3/items", "/repos/o/r/issues"} {
 		if n := fx.srv.Count(key); n != 0 {
 			t.Errorf("%s requests = %d, want 0 after a closed brake", key, n)
 		}
@@ -1049,7 +1068,7 @@ func TestTriageJudgesInExport(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeFiles(t, local, map[string]string{"SKILL.md": "---\nname: local-skill\n---\n"})
-	fx.issue(7, "2-area:cli", "3-needs-hands")
+	fx.issue(7, "2-area:cli")
 	fx.onBoard(7, "t1", nil)
 	fx.judge.answers[7] = forward(7)
 
@@ -1500,6 +1519,111 @@ func TestBoardReadyPerKind(t *testing.T) {
 				t.Errorf("boardReady = %v, want nil", err)
 			case tc.want != "" && (err == nil || err.Error() != tc.want):
 				t.Errorf("boardReady = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
+// Production change that turns it red: apply without issuestate.Apply on RowDesign writes no label.
+func TestTriageDesignSetsNeedsShaping(t *testing.T) {
+	fx := triageFixture(t, triageToml)
+	fx.issue(8, "2-area:cli")
+	fx.onBoard(8, "t1", nil)
+	fx.judge.answers[8] = answerWith("#8 Poort 4c: brainstorming — richting open", 4, "c", map[string]any{
+		"design_questions": []any{map[string]any{"question": "Welke kant?", "options": []any{"Links", "Rechts"}, "recommended": 0}}})
+
+	if _, errOut, err := fx.run(triageOpts{}); err != nil {
+		t.Fatalf("triage = %v\n%s", err, errOut)
+	}
+	assertWrites(t, fx.srv,
+		`comment 8: <!-- lighthouse: {"kind":"triage","version":1,"gate":"4c"} -->`,
+		"labels 8: add [3-needs-shaping]")
+}
+
+// Production change that turns it red: judgedRow without the labels check forwards the issue.
+func TestTriageNeedsLabelNotForwarded(t *testing.T) {
+	for _, gate := range []struct {
+		name   string
+		ans    func(n int) string
+		nr     int
+		sub    string
+		marker string
+	}{
+		{"4a", func(n int) string { return fmt.Sprintf("#%d Poort 4a: x — y", n) }, 4, "a", "4a"},
+		{"4b", func(n int) string { return fmt.Sprintf("#%d Poort 4b: x — y", n) }, 4, "b", "4b"},
+		{"2", func(n int) string { return fmt.Sprintf("#%d Poort 2: x — y", n) }, 2, "", "2"},
+	} {
+		t.Run(gate.name, func(t *testing.T) {
+			fx := triageFixture(t, triageToml)
+			fx.issue(7, "2-area:cli", "3-needs-hands")
+			fx.onBoard(7, "t1", nil)
+			fx.judge.answers[7] = answerWith(gate.ans(7), gate.nr, gate.sub, nil)
+
+			if _, errOut, err := fx.run(triageOpts{}); err != nil {
+				t.Fatalf("triage = %v\n%s", err, errOut)
+			}
+			assertWrites(t, fx.srv, `comment 7: <!-- lighthouse: {"kind":"triage","version":1,"gate":"`+gate.marker+`"} -->`)
+			if b := bodies(fx.srv, 7); len(b) != 1 || !strings.Contains(b[0], "3-needs-hands") {
+				t.Errorf("comment = %q, want one naming 3-needs-hands", b)
+			}
+		})
+	}
+}
+
+// Classification: contract. Fails when triage does not set Facts.PrioWeight from the milestone
+// rank or the board blockers (the order falls back to band, then number), or counts a blocker
+// of another repo. The candidates are of one band and max_forwarded = 1 shows which is judged first.
+func TestTriageOrdersByPrioWeight(t *testing.T) {
+	blockedBy := func(repo string, n int) map[string]any {
+		return map[string]any{"blockedBy": map[string]any{"nodes": []any{map[string]any{
+			"number": n, "state": "OPEN", "repository": map[string]any{"nameWithOwner": repo},
+		}}}}
+	}
+	for _, tc := range []struct {
+		name  string
+		setup func(fx *triageFix)
+		first int
+	}{
+		{"milestone rank", func(fx *triageFix) {
+			fx.srv.Milestones = []map[string]any{
+				{"number": 1, "title": "M1", "state": "open", "description": "Priority: 2"},
+				{"number": 2, "title": "M2", "state": "open", "description": "Priority: 1"},
+			}
+			fx.issue(7, "2-area:cli")["milestone"] = fx.srv.Milestones[0]
+			fx.issue(8, "2-area:cli")["milestone"] = fx.srv.Milestones[1]
+			fx.onBoard(7, "t1", nil)
+			fx.onBoard(8, "t1", nil)
+		}, 8},
+		{"board blocker of the same repo", func(fx *triageFix) {
+			fx.srv.Milestones = []map[string]any{{"number": 1, "title": "M1", "state": "open", "description": "Priority: 1"}}
+			for _, n := range []int{7, 8, 9} {
+				fx.issue(n, "2-area:cli")["milestone"] = fx.srv.Milestones[0]
+			}
+			fx.onBoard(7, "t1", nil)
+			fx.onBoard(8, "t1", nil)
+			fx.onBoard(9, "c1", blockedBy("o/r", 8)) // #9 waits on #8: #8 weighs more
+		}, 8},
+		{"board blocker of another repo", func(fx *triageFix) {
+			fx.srv.Milestones = []map[string]any{{"number": 1, "title": "M1", "state": "open", "description": "Priority: 1"}}
+			for _, n := range []int{7, 8, 9} {
+				fx.issue(n, "2-area:cli")["milestone"] = fx.srv.Milestones[0]
+			}
+			fx.onBoard(7, "t1", nil)
+			fx.onBoard(8, "t1", nil)
+			fx.onBoard(9, "c1", blockedBy("x/y", 8)) // counts for nothing: equal weights, lowest number first
+		}, 7},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fx := triageFixture(t, withTriage("max_forwarded = 1\n"))
+			tc.setup(fx)
+			for _, n := range []int{7, 8} {
+				fx.judge.answers[n] = forward(n)
+			}
+			if _, errOut, err := fx.run(triageOpts{}); err != nil {
+				t.Fatalf("triage = %v\n%s", err, errOut)
+			}
+			if got := fx.judge.called(); !slices.Equal(got, []int{tc.first}) {
+				t.Errorf("judged %v, want [%d]", got, tc.first)
 			}
 		})
 	}
