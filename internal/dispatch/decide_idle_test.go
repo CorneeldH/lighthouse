@@ -182,6 +182,37 @@ func TestIdleLeavesOpenQuestionAlone(t *testing.T) {
 	}
 }
 
+// A push recovery whose Handoff or Returned failed to post closed its row as returned with the
+// answer's key spent and the answer rocketed (or about to be, by repair). That Vraag waits for
+// no human any more: idle counts it and gives it back once at the limit, and starts nothing.
+func TestIdleCountsPusherQuestionWithSpentAnswer(t *testing.T) {
+	question := Comment{ID: 70, Author: "lh-bot", CreatedAt: "2026-10-31T11:10:00Z",
+		Body: "🤖 Vraag\nsha: " + pushSHA + "\nworktree: " + pushWorktree + "\nbranch: issue-7-bouw-de-keten\nafter: /lighthouse-write-pr 7\n\nRode stap: actionlint"}
+	answer := Comment{ID: 71, Author: "owner", CreatedAt: "2026-10-31T11:20:00Z", Body: "al met de hand gepusht", Rocket: true}
+	tests := []struct {
+		name  string
+		ticks int
+		want  []string
+	}{
+		{"below limit", 0, []string{"idle::"}},
+		{"at limit", 2, []string{"return:reason_no_rule:🤖 Vraag"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			in := idleInput(t, tt.ticks)
+			r := &in.Repos[0]
+			r.WorkflowPush = true
+			r.History = append(r.History, runs.Row{ID: 2, Issue: 7, Mode: "start", Trigger: "answer",
+				TriggerKey: "pushanswer:71", Command: cmdPush, Branch: "issue-7-bouw-de-keten", Outcome: runs.Returned,
+				Reason: "post handoff: boom"})
+			item7(&in).Comments = []Comment{started, question, answer}
+			if got := summary(Decide(in)); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("Decide = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 // An issue the tick already gave back that is in Controller again without a new protocol comment
 // is not given back again: its Returned stands, so no idle count and no second Returned. A
 // blocked_external label keeps finishReturn out, which is where the loop would start.

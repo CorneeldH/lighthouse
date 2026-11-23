@@ -2,10 +2,12 @@ package dispatch
 
 import (
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
+	"github.com/CorneeldH/lighthouse/internal/runs"
 )
 
 // idleTickLimit is the number of evaluations in a row, the current one counted, that find a
@@ -63,14 +65,36 @@ func (c issueCtx) ownReturned() bool {
 	return p != nil && p.Header.Kind == protocol.KindReturned && p.Comment.Author == c.repo.Snapshot.TokenLogin
 }
 
-// openQuestion reports whether the last turn is a Question nobody answered yet.
+// openQuestion reports whether the last turn is a Question nobody answered yet. An answer whose
+// push recovery closed returned counts too, although its 🚀 hides it from answerTo: the
+// recovery's post failed (recoverPostFailed), its key is spent, and it waits for no human any more.
 func (c issueCtx) openQuestion() bool {
 	q := lastTurn(c.hs)
 	if q == nil || q.Header.Kind != protocol.KindQuestion {
 		return false
 	}
-	_, answered := c.answerTo(q.Comment.ID)
-	return !answered
+	if _, answered := c.answerTo(q.Comment.ID); answered {
+		return false
+	}
+	return !c.recoveryReturnedAfter(q.Comment.ID)
+}
+
+// recoveryReturnedAfter reports whether a comment after the one with id has a pushanswer:<id> row
+// that closed returned.
+func (c issueCtx) recoveryReturnedAfter(id int64) bool {
+	after := false
+	for _, com := range c.it.Comments {
+		if after {
+			key := triggerPushAnswer + ":" + strconv.FormatInt(com.ID, 10)
+			if slices.ContainsFunc(c.repo.History, func(row runs.Row) bool {
+				return row.TriggerKey == key && !row.Open && row.Outcome == runs.Returned
+			}) {
+				return true
+			}
+		}
+		after = after || com.ID == id
+	}
+	return false
 }
 
 // lastProtocolLine is the first line of the last protocol comment, or note_no_protocol_comment
