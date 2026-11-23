@@ -175,6 +175,11 @@ func TestShellCIInstallVersionMismatch(t *testing.T) {
 		"      - run: " + shellcheckDownload("0.11.0") + "\n      - if: false\n        run: " + shellcheckDownload("0.9.0") + "\n      - run: shellcheck x.sh\n"})
 }
 
+func TestShellCIVersionOnlyBeforeTheCall(t *testing.T) {
+	wantSh(t, map[string]string{wf + "ci.yml": pyWorkflow(shellcheckDownload("0.10.0") + " && shellcheck x.sh && " + shellcheckDownload("0.11.0"))},
+		".github/workflows/ci.yml:6: shellcheck — CI version 0.10.0, pin 0.11.0")
+}
+
 func TestShellUnpinnedAptInstall(t *testing.T) {
 	wantSh(t, map[string]string{wf + "ci.yml": pyWorkflow("sudo apt-get install -y shellcheck", "shellcheck x.sh")},
 		".github/workflows/ci.yml:7: shellcheck — CI version not pinned")

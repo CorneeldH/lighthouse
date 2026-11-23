@@ -312,6 +312,12 @@ func TestPythonInstallAfterCall(t *testing.T) {
 		".github/workflows/ci.yml:6: ruff — CI version not pinned")
 }
 
+func TestPythonCIVersionOnlyBeforeTheCall(t *testing.T) {
+	// the install after the call in the same step does not set the version the call runs
+	wantPy(t, map[string]string{wf + "ci.yml": pyWorkflow("pip install ruff==0.8.0 && ruff check && pip install ruff==0.9.0")},
+		".github/workflows/ci.yml:6: ruff — CI version 0.8.0, pin 0.9.0")
+}
+
 func TestPythonGitLab(t *testing.T) {
 	root := pyRepo(t, map[string]string{
 		wf + "ci.yml":    pyDelete,

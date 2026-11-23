@@ -179,22 +179,23 @@ func ruffCIVersion(steps []Step, c Call) (string, Step, bool) {
 			}
 			continue
 		}
-		if v, ok := runRuffVersion(s); ok {
+		if v, ok := runRuffVersion(s, c); ok {
 			return v, s, true
 		}
 	}
 	return "", c.Step, false
 }
 
-// runRuffVersion returns the last ruff version a run step installs, outside echo and printf.
-func runRuffVersion(s Step) (string, bool) {
+// runRuffVersion returns the last ruff version a run step installs up to the call c, outside echo
+// and printf.
+func runRuffVersion(s Step, c Call) (string, bool) {
 	sc, err := parseScript(s.Run)
 	if err != nil {
 		return "", false
 	}
 	var last string
 	sc.walk(shellState{dir: workDir(s)}, func(v visit) {
-		if isEcho(v.words) {
+		if isEcho(v.words) || !upToCall(c, s, v.pos) {
 			return
 		}
 		for _, m := range ruffVersioned.FindAllStringSubmatch(strings.Join(v.words, " "), -1) {

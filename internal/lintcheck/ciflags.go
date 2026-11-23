@@ -37,6 +37,27 @@ type Call struct {
 	Dir     string
 	Verdict Verdict
 	Reason  string
+	// pos is where the call sits in its run step; nil for an action. An install later in the
+	// same step proves nothing about the version the call runs.
+	pos *position
+}
+
+// upToCall reports whether the command at p in step s runs before the call c, or is the call's
+// own command (`uvx ruff@0.9.0 check`). A command in another step is left to the step order; in
+// the call's own step only an earlier list or && member counts, not a later one and not another
+// member of the call's pipeline, which runs alongside it.
+func upToCall(c Call, s Step, p position) bool {
+	if c.pos == nil || s.File != c.Step.File || s.Job != c.Step.Job || s.Index != c.Step.Index {
+		return true
+	}
+	at := *c.pos
+	if p.list != at.list {
+		return p.list < at.list
+	}
+	if p.pipe != at.pipe {
+		return p.pipe < at.pipe
+	}
+	return p.cmd == at.cmd
 }
 
 // Calls returns every call of linter ("ruff", "golangci-lint", "shellcheck" or "eslint") in steps,
@@ -198,7 +219,8 @@ func (r resolver) runCalls(s Step) []found {
 	var out []found
 	sc.walk(start, func(v visit) {
 		for _, m := range r.match(v.words, v.state.dir, true) {
-			c := Call{Step: s, Linter: r.linter, Args: m.args, Verdict: Valid}
+			at := v.pos
+			c := Call{Step: s, Linter: r.linter, Args: m.args, Verdict: Valid, pos: &at}
 			switch {
 			case m.unplaced != "":
 				c.Verdict, c.Reason = Unrecognised, m.unplaced
@@ -787,7 +809,8 @@ var (
 )
 
 // pinned reports whether the call has an install on a pinned version: an action's own version
-// input, or a pin-proving install in the same step or an earlier step of the same job.
+// input, or a pin-proving install before the call in its own step or in an earlier step of the
+// same job.
 func (r resolver) pinned(steps []Step, at int, c found) bool {
 	if c.Step.Uses != "" {
 		return versionInput(c.Step.With["version"])
@@ -822,7 +845,7 @@ func (r resolver) stepPins(s Step, c found) bool {
 	}
 	pins := false
 	sc.walk(shellState{dir: workDir(s)}, func(v visit) {
-		if pins || isEcho(v.words) {
+		if pins || isEcho(v.words) || !upToCall(c.Call, s, v.pos) {
 			return
 		}
 		// the whole pipeline: an install script is often `curl … | sh -s -- <version>`

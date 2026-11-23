@@ -203,24 +203,24 @@ func shellcheckCIVersion(steps []Step, c Call) (string, Step, bool) {
 		if s.IfFalse || s.File != c.Step.File || s.Job != c.Step.Job || s.Index > c.Step.Index || s.Run == "" {
 			continue
 		}
-		if v, ok := runShellcheckVersion(s); ok {
+		if v, ok := runShellcheckVersion(s, c); ok {
 			return v, s, true
 		}
 	}
 	return "", c.Step, false
 }
 
-// runShellcheckVersion returns the last shellcheck version a run step provisions, outside echo and
-// printf: shellcheck-repo.sh provisions the pin, an install names the version in a word that
+// runShellcheckVersion returns the last shellcheck version a run step provisions up to the call c,
+// outside echo and printf: shellcheck-repo.sh provisions the pin, an install names the version in a word that
 // names shellcheck (a release URL, shellcheck=0.9.0-1).
-func runShellcheckVersion(s Step) (string, bool) {
+func runShellcheckVersion(s Step, c Call) (string, bool) {
 	sc, err := parseScript(s.Run)
 	if err != nil {
 		return "", false
 	}
 	var last string
 	sc.walk(shellState{dir: workDir(s)}, func(v visit) {
-		if isEcho(v.words) {
+		if isEcho(v.words) || !upToCall(c, s, v.pos) {
 			return
 		}
 		if binName(stripWrappersOrSelf(v.words)[0]) == "shellcheck-repo.sh" {

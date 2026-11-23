@@ -84,6 +84,11 @@ shell-drempel), eist de check niet in de config. Andere hooks met `BLOCKING_RULE
 Een CI-stap die de linter zonder versie installeert (`pip install ruff`, `apt install shellcheck`)
 of op een andere versie, geeft `CI version not pinned` of `CI version <x>, pin <y>`.
 
+Alleen een installatie vóór de lintaanroep telt: in een eerdere stap van dezelfde job, of in
+dezelfde stap op een eerdere regel of eerder in de `&&`-keten. Een installatie na de aanroep, ook
+in dezelfde stap (`ruff check && pip install ruff==0.9.0`), bewijst de pin niet en bepaalt ook
+niet de versie die CI draait. De aanroep zelf mag de versie dragen (`uvx ruff@0.9.0 check`).
+
 Bij Node betekent `CI version not pinned`: in dezelfde job gaat geen installatie uit de lockfile
 aan de lintstap vooraf. Die installatie is `npm ci`, `pnpm install --frozen-lockfile`,
 `yarn install --immutable` (of `--frozen-lockfile`) of `bun install --frozen-lockfile`. Een

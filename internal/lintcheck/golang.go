@@ -208,24 +208,24 @@ func golangciCIVersion(steps []Step, c Call) (string, Step, bool) {
 			}
 			continue
 		}
-		if v, ok := runGolangciVersion(s); ok {
+		if v, ok := runGolangciVersion(s, c); ok {
 			return v, s, true
 		}
 	}
 	return "", c.Step, false
 }
 
-// runGolangciVersion returns the last golangci-lint version a run step installs, outside echo and
-// printf: `go install …/golangci-lint@<v>` (or go run), or the version argument of the install
+// runGolangciVersion returns the last golangci-lint version a run step installs up to the call c,
+// outside echo and printf: `go install …/golangci-lint@<v>` (or go run), or the version argument of the install
 // script in a pipeline that fetches it.
-func runGolangciVersion(s Step) (string, bool) {
+func runGolangciVersion(s Step, c Call) (string, bool) {
 	sc, err := parseScript(s.Run)
 	if err != nil {
 		return "", false
 	}
 	var last string
 	sc.walk(shellState{dir: workDir(s)}, func(v visit) {
-		if isEcho(v.words) {
+		if isEcho(v.words) || !upToCall(c, s, v.pos) {
 			return
 		}
 		for _, w := range v.words {

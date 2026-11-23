@@ -260,6 +260,12 @@ func TestGoInstallAfterCall(t *testing.T) {
 		".github/workflows/ci.yml:6: golangci-lint — CI version not pinned")
 }
 
+func TestGoCIVersionOnlyBeforeTheCall(t *testing.T) {
+	wantGo(t, map[string]string{wf + "ci.yml": pyWorkflow(
+		"go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0 && golangci-lint run && go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0")},
+		".github/workflows/ci.yml:6: golangci-lint — CI version v2.14.0, pin v2.15.0")
+}
+
 func TestGoAllFindingsTogether(t *testing.T) {
 	wantGo(t, map[string]string{".golangci-version": pyDelete, ".golangci.yml": pyDelete, wf + "ci.yml": pyDelete},
 		".golangci-version: golangci-lint — pin missing",

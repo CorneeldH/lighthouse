@@ -235,6 +235,31 @@ func TestCallsPinOnlyFromSameJobEarlierStep(t *testing.T) {
 	}
 }
 
+func TestCallsPinOnlyBeforeTheCallInTheSameStep(t *testing.T) {
+	cases := []struct{ linter, run string }{
+		{"ruff", "ruff check && pip install ruff==0.9.0"},
+		{"golangci-lint", "golangci-lint run && go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0"},
+		{"shellcheck", "shellcheck x.sh && curl -sSL https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.x86_64.tar.xz | tar xJ"},
+		{"eslint", "npx eslint . && npm ci"},
+		{"eslint", "npx eslint .\nnpm ci"},
+	}
+	for _, c := range cases {
+		if got := onlyVerdict(t, []Step{ghStep(c.run)}, c.linter); got.Verdict != Unpinned {
+			t.Errorf("%s: install after the call in the same step counted: %+v", c.run, got)
+		}
+	}
+	// an install before the call in the same step, and the call that carries its own version, count
+	for _, c := range []struct{ linter, run string }{
+		{"ruff", "pip install ruff==0.9.0 && ruff check"},
+		{"ruff", "uvx ruff@0.9.0 check"},
+		{"eslint", "npm ci\nnpx eslint ."},
+	} {
+		if got := onlyVerdict(t, []Step{ghStep(c.run)}, c.linter); got.Verdict != Valid {
+			t.Errorf("%s: install before the call not counted: %+v", c.run, got)
+		}
+	}
+}
+
 func TestCallsFlags(t *testing.T) {
 	run := func(linter, script string) []Step { return pinned(linter, ghStep(script)) }
 	act := func(uses string, with map[string]string) []Step {
