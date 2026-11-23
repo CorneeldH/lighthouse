@@ -43,7 +43,7 @@ export function Block({
     ...(borderColor ? { border: `1.5px solid ${borderColor}` } : {}),
   }
   const cls = `flex items-center justify-center overflow-hidden rounded-sm text-[9.5px] font-bold ${shape.className} ${className}`
-  const inner = label === undefined ? null : <span className="rounded-sm bg-background/70 px-0.5">{`#${label}`}</span>
+  const inner = label === undefined ? null : <span className="rounded-sm bg-[var(--lh-chip-bg)] px-0.5 text-[var(--lh-chip-fg)]">{label}</span>
   const common = {
     'data-testid': testId,
     'data-state': state,

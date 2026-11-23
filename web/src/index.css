@@ -101,6 +101,8 @@
     --lh-seg-todo: #ececec;
     --lh-stripe-gap: transparent;
     --lh-cross: #6b7280;
+    --lh-chip-bg: #f4f5f8;
+    --lh-chip-fg: #14213d;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -147,6 +149,8 @@
     --lh-seg-todo: #2d3548;
     --lh-stripe-gap: transparent;
     --lh-cross: #9aa3b5;
+    --lh-chip-bg: #f4f5f8;
+    --lh-chip-fg: #14213d;
 }
 }
 

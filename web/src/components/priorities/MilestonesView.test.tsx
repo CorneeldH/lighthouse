@@ -141,7 +141,7 @@ describe('MilestonesView', () => {
     const r = repo(A, [iss(1, 1), iss(2, 1)], [ms(1, 0, 2)])
     barWidth = 58
     view([r])
-    expect(blocks(`${A}#m1`).map((b) => b.textContent)).toEqual(['#1', '#2'])
+    expect(blocks(`${A}#m1`).map((b) => b.textContent)).toEqual(['1', '2'])
     cleanup()
     barWidth = 57
     view([r])
@@ -160,7 +160,7 @@ describe('MilestonesView', () => {
     const withOut = within(row(`${A}#m1`))
     const out = withOut.getByTestId('outside-col').querySelectorAll('[data-testid="outside"]')
     expect(out).toHaveLength(1)
-    expect(out[0].textContent).toBe('#1')
+    expect(out[0].textContent).toBe('1')
     const own = within(row(`${A}#m2`)).getByTestId('swatch').style.background
     expect((out[0] as HTMLElement).style.border).toBe(`1.5px solid ${own}`)
     // The outside blocker is not drawn twice: the bar holds only the milestone's own issue.
@@ -206,7 +206,7 @@ describe('MilestonesView', () => {
     )
     view([r])
     const list = within(row(`${A}#m1`)).getByTestId('todo-list')
-    expect(list.textContent).toBe('to do:#3#2#4')
+    expect(list.textContent).toBe('to do:324')
   })
 
   it('shows the percentage and the number of own open issues on the right', () => {

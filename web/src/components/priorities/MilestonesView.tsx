@@ -191,7 +191,7 @@ function Row({ row, colors, moves }: { row: MilestoneRow; colors: Map<string, st
             to do:
             {todo.map((b) => (
               <b key={`${b.repo}#${b.nr}`} className="font-semibold">
-                #{b.nr}
+                {b.nr}
               </b>
             ))}
           </div>
