@@ -765,8 +765,9 @@ label en status, dan de run sluiten. Mislukt het label, dan blijft de run open.
   per volledige gather; een issue dat in een evaluatie niet idle is, valt uit de teller. Het vangnet
   laat een issue met rust bij een pauze (een marker, of `MarkersIncomplete`: kon één node-marker niet
   gelezen worden, dan telt die evaluatie voor de hele repo niet), een open run, een bezette werkplek,
-  een open PR en een open vraag. Een issue waarvan de PR na de eindhandoff gemerged is, telt nooit als
-  idle (bekend gat). Een Teruggegeven van de eigen bot-login als laatste protocol-comment stopt het
+  een open PR en een open vraag. Alleen een open PR houdt het vangnet tegen: een PR die na de
+  eindhandoff gemerged is niet, want idle komt na de close-check, die dan al liep of niet van
+  toepassing is. Een Teruggegeven van de eigen bot-login als laatste protocol-comment stopt het
   tellen tot er een nieuw protocol-comment komt.
 
 ## `needs_*` op Controller

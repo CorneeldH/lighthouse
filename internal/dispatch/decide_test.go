@@ -82,6 +82,7 @@ var idleFixtures = map[string]string{
 	"orphan-known-session":           "the Started's run is known and closed, no turn followed",
 	"closecheck-started-after-merge": "the merged PR came before any Started, so no close-check",
 	"closecheck-closes-merged":       "the merged PR closes the issue, but the issue is still open",
+	"handoff-end-pr-merged-after":    "the PR merged after the end handoff and its close check ran done, the issue still open",
 }
 
 func TestDecideFixturesIdleOnlyWhereListed(t *testing.T) {
@@ -1418,7 +1419,7 @@ func TestDecideAnswerNoSession(t *testing.T) {
 }
 
 // An end handoff (/lighthouse-close-issue) whose PR closed without a merge from the handoff on
-// goes back; an open PR keeps waiting and a merged one goes to the close-check.
+// goes back; an open PR keeps waiting and a merged one whose close check ran is idle.
 func TestDecideEndHandoffClosedPRWithoutMerge(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -1428,7 +1429,8 @@ func TestDecideEndHandoffClosedPRWithoutMerge(t *testing.T) {
 		{"closed without merge", func(pr *forge.PR) { pr.State, pr.MergedAt = "CLOSED", time.Time{} },
 			[]string{"return:reason_pr_closed_unmerged:12"}},
 		{"open", func(pr *forge.PR) { pr.State, pr.MergedAt, pr.ClosedAt = "OPEN", time.Time{}, time.Time{} }, []string{}},
-		{"merged", func(*forge.PR) {}, []string{}},
+		// Merged, and its close check (closecheck:12) ran: nothing waits, so the idle net counts it.
+		{"merged", func(*forge.PR) {}, []string{"idle::"}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

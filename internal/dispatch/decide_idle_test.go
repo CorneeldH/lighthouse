@@ -125,6 +125,29 @@ func TestIdleLeavesOpenPRAlone(t *testing.T) {
 	}
 }
 
+// A PR merged after the end handoff waits for nothing once its close check ran (closecheck:12
+// spent, done) and the issue stayed open: closeCheck declined, so idle counts it. Only an open
+// PR keeps idle away.
+func TestIdleEndHandoffMergedPRCloseCheckSpent(t *testing.T) {
+	tests := []struct {
+		name  string
+		ticks int
+		want  []string
+	}{
+		{"below limit", 0, []string{"idle::"}},
+		{"at limit", 2, []string{"return:reason_no_rule:🤖 Handoff"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			in := loadInput(t, "handoff-end-pr-merged-after")
+			in.Repos[0].IdleTicks = map[int]int{7: tt.ticks}
+			if got := summary(Decide(in)); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("Decide = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 // A run that closes in this tick still had the issue: the next evaluation judges what it left.
 // settle closes the run as done on its posted Done, and no start rule follows it. Without its PR
 // nothing else holds the issue.

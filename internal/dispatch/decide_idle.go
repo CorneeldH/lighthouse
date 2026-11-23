@@ -14,8 +14,7 @@ const idleTickLimit = 3
 
 // idle is the safety net of next: an issue in Controller for which no other rule gave an action
 // and that waits for nothing the tick knows of. It waits for something when it has an open run,
-// a needs_* label or an active blocker, a pause (pausedRun), an open PR or an end handoff that
-// awaits its PR, a Question without an answer (the pusher's too), or when the last protocol
+// a needs_* label or an active blocker, a pause (pausedRun), an open PR, a Question without an answer (the pusher's too), or when the last protocol
 // comment is the tick's own Returned: that issue was given back already, and giving it back
 // again would loop. Otherwise it is a KindIdle mark, the tick counts it in RepoInput.IdleTicks,
 // and the evaluation that reaches idleTickLimit gives it back naming the last protocol comment.
@@ -51,14 +50,11 @@ func (c issueCtx) pausedRun() bool {
 	return slices.ContainsFunc(c.repo.Unreadable, onIssue)
 }
 
-// waitsForPR reports whether a PR of the issue is open, or the last turn is a Handoff that
-// awaits its PR (awaitsPR).
+// waitsForPR reports whether a PR of the issue is open. A PR merged after an end handoff does
+// not count: idle runs after closeCheck, so by then the close check of that merge is spent or
+// does not apply, and nothing else waits on it.
 func (c issueCtx) waitsForPR() bool {
-	if slices.ContainsFunc(c.it.PRs, func(pr forge.PR) bool { return pr.State == "OPEN" }) {
-		return true
-	}
-	t := lastTurn(c.hs)
-	return t != nil && t.Header.Kind == protocol.KindHandoff && c.awaitsPR(t.Time)
+	return slices.ContainsFunc(c.it.PRs, func(pr forge.PR) bool { return pr.State == "OPEN" })
 }
 
 // ownReturned reports whether the last protocol comment is a Returned of the token login.
