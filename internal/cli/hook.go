@@ -13,6 +13,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/hook"
 	// The hooks register themselves with the runtime.
 	_ "github.com/CorneeldH/lighthouse/internal/hooks"
+	"github.com/CorneeldH/lighthouse/internal/levels"
 	"github.com/CorneeldH/lighthouse/internal/manifest"
 	"github.com/CorneeldH/lighthouse/internal/version"
 )
@@ -52,6 +53,7 @@ func hookEnv() hook.Env {
 		return env
 	}
 	env.Root = root
+	env.Level, _, env.LevelErr = levels.ReadInstalled(root)
 	if m, err := manifest.Read(root); err == nil {
 		env.ManifestVersion = m.Version
 	}

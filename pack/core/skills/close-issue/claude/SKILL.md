@@ -222,14 +222,14 @@ confirmation question. Every other outcome, or a DoD point in doubt, stops befor
 | mixed | **propose to shorten the issue** to the open criteria: tick the finished criteria in the body, leave the issue open. Do not close. |
 | mostly `not` | `/lighthouse-start-issue <nr>`; the issue stays as it is |
 
-Shortening goes through `/lighthouse-write-issue`, with a comment that carries the table — so the
+Shortening goes through `/lighthouse-write-issue` (if installed), with a comment that carries the table — so the
 next session sees what was already done and why.
 
 ### B6. Boundaries
 
 | Moment | Skill | Question |
 |---|---|---|
-| writing | `lighthouse-write-issue` | does this exist already? |
+| writing | `lighthouse-write-issue` (if installed) | does this exist already? |
 | picking up | `lighthouse-start-issue` | is this done by now? *(report, no close action)* |
 | periodic | the backlog-stand skill, if present | which open issues are silently done? *(only top 3 and controller-ready, no bulk scan)* |
 | **closing** | **this skill, entry B** | **is this done — per criterion, with evidence?** |
@@ -337,8 +337,8 @@ The answer resumes this session:
 
 | Answer | Do |
 |---|---|
-| a | tick the `demonstrably done` criteria in the issue body through `lighthouse-write-issue`, leave the issue open, then `/lighthouse-write-handoff` with `next: /lighthouse-start-issue <nr>` |
-| b | write the new issue through `lighthouse-write-issue`, with the open criteria as its acceptance criteria and a link to this issue; then close this issue as in the first row, the new issue as the evidence line of each open AC |
+| a | tick the `demonstrably done` criteria in the issue body through `lighthouse-write-issue` (if installed), leave the issue open, then `/lighthouse-write-handoff` with `next: /lighthouse-start-issue <nr>` |
+| b | write the new issue through `lighthouse-write-issue` (if installed), with the open criteria as its acceptance criteria and a link to this issue; then close this issue as in the first row, the new issue as the evidence line of each open AC |
 | c | close as in the first row, with `checked by the user: <URL of the answer>` as the evidence line of each open AC |
 | anything else | follow the answer; when nothing is left to do, stop without a handoff |
 
@@ -610,7 +610,7 @@ If a call fails, report "released issues not read" with that command, never "non
 ## Clean up the worktree — the last step
 
 After the close the worktree and the local branch of the issue otherwise stay. The verdict comes
-from `lighthouse worktree-audit`, the same ladder as `/lighthouse-audit-worktrees`: no
+from `lighthouse worktree-audit`, the same ladder as `/lighthouse-audit-worktrees` (if installed): no
 second set of rules here.
 
 **When.**
@@ -938,4 +938,4 @@ holds when step 4 was skipped (zero closed issues). You do not update the crux a
 
 ## Related Skills
 
-- `/lighthouse-write-issue` - Create issues with AC and DoD (this repo)
+- `/lighthouse-write-issue` (if installed) - Create issues with AC and DoD (this repo)

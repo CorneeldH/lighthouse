@@ -9,7 +9,7 @@ metadata:
 # Start Issue Skill
 
 From issue number to a read issue, a worktree and one chosen follow-up route. Fills the gap between
-`/lighthouse-write-issue` (opens the lane) and `/lighthouse-close-issue` (closes it).
+`/lighthouse-write-issue` (opens the lane; if installed) and `/lighthouse-close-issue` (closes it).
 
 ## Domain
 
@@ -17,7 +17,7 @@ In scope: the *start* of work on an existing issue in this repo (`forge.repo`) â
 the axes, ask whether it is already done, set up the worktree, get the route from
 `/lighthouse-route-issue` and hand on.
 
-Not here: writing or updating an issue (`/lighthouse-write-issue`), closing an issue
+Not here: writing or updating an issue (`/lighthouse-write-issue`, if installed), closing an issue
 (`/lighthouse-close-issue`), auditing the state of the board (the board-sweep skill, if present),
 and executing the chosen route itself â€” this skill delegates that.
 
@@ -192,7 +192,7 @@ stop. The controller returns the issue with "needs a brainstorm".
 - Gate `4c`: hand `superpowers:brainstorming` the instruction to end, after the approved spec,
   with `wait for #<x>` and not to call `superpowers:writing-plans`: the plan waits for a merged
   PR of the predecessor. In a controller run (if present) brainstorming is a handoff anyway
-  (above); `lighthouse-review-spec` posts `next: /superpowers:writing-plans` there, and the
+  (above); `lighthouse-review-spec` (if installed) posts `next: /superpowers:writing-plans` there, and the
   controller parks that handoff while the predecessor is active.
 - Gate `1`, `2`, `4a` or `4b`: do not execute. Interactive: report `wait for #<x>` and stop.
   Controller run (if present): post with `/lighthouse-write-handoff` (controller mode) a handoff

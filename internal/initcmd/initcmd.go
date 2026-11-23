@@ -20,7 +20,9 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/BurntSushi/toml"
 	"github.com/pmezard/go-difflib/difflib"
@@ -30,6 +32,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/hostconfig"
 	labelsync "github.com/CorneeldH/lighthouse/internal/labels"
+	"github.com/CorneeldH/lighthouse/internal/levels"
 	"github.com/CorneeldH/lighthouse/internal/manifest"
 	"github.com/CorneeldH/lighthouse/internal/orderedjson"
 	"github.com/CorneeldH/lighthouse/internal/packs"
@@ -59,6 +62,8 @@ type Options struct {
 	Direction           bool                                                      // --direction: seed the missing direction documents and their [paths] keys
 	SyncLabels          func(root string, create bool, out, errw io.Writer) error // nil means labels.Sync with the forge of LabelForge
 	LabelForge          func(root string) forge.Forge                             // opens the forge of the labels; nil, or a nil result, means labels are printed, not created
+	Level               string                                                    // --level: the level to set; "" means lighthouse.toml, else strict (light on a first init)
+	Now                 func() time.Time                                          // nil means time.Now
 	AddPacks, DropPacks []string                                                  // --pack and --no-pack (plan M0 (c), design choice 6)
 	ForgeHosts          []string                                                  // --forge-host: hosts of self-hosted GitLab instances
 	Audit               func(root string, out, errOut io.Writer)                  // read-only agent audit, run after the files are written; nil means none
@@ -168,6 +173,12 @@ func execute(o Options) error {
 	for _, c := range chosen {
 		chosenPacks = append(chosenPacks, all[c.Name])
 	}
+	// A level with the labels flag acts as --labels on a first init or a switch;
+	// --create-labels is never implied.
+	lvFiles := levelFiles(chosenPacks)
+	if !o.Labels && levelSetsLabels(o, root, initialized, lvFiles) {
+		o.Labels = true
+	}
 	var labelsPath string
 	if o.Labels {
 		if labelsPath, err = labelsTarget(root); err != nil {
@@ -190,6 +201,35 @@ func execute(o Options) error {
 		b, ok, err := readFile(root, rel)
 		return b, ok && err == nil
 	})
+	resolved, haveLevels, writeLevel, err := resolveLevels(o, root, initialized, lvFiles, desired)
+	if err != nil {
+		return err
+	}
+	if haveLevels {
+		if desired, err = selectUnits(desired, lvFiles, resolved, o.Err); err != nil {
+			return err
+		}
+		desired = filterBlockingUnits(desired, resolved)
+	}
+	// Without levels every component is on: the markers are stripped, nothing is dropped.
+	desired = filterBlockUnits(desired, resolved)
+	if haveLevels {
+		now := o.Now
+		if now == nil {
+			now = time.Now
+		}
+		prev, found, err := levels.ReadInstalled(root)
+		if err != nil {
+			return err
+		}
+		if found && switched(prev, found, resolved.Level) {
+			_, _ = fmt.Fprintf(o.Err, "level: switching from %s to %s\n", prev.Level, resolved.Level)
+		}
+		desired = append(desired, componentsUnit(resolved, installedSince(prev, found, resolved.Level, now)))
+	}
+	if haveLevels {
+		reqs = levelRequires(reqs, resolved)
+	}
 	for _, miss := range o.Deps.Check(mergeRequires(forgeRequires(reqs, kind))) {
 		_, _ = fmt.Fprintf(o.Err, "missing dependency: %s (needed by: %s)\n", miss.Tool, strings.Join(miss.NeededBy, ", "))
 	}
@@ -214,7 +254,7 @@ func execute(o Options) error {
 		}
 	}
 
-	seeds := seeding{labelsPath: labelsPath, labelsTemplate: all["core"].LabelsTemplate, direction: direction, directionTemplates: all["core"].DirectionTemplates}
+	seeds := seeding{labelsPath: labelsPath, labelsTemplate: all["core"].LabelsTemplate, direction: direction, directionTemplates: all["core"].DirectionTemplates, writeLevel: writeLevel}
 	plan, err := buildPlan(o, root, names, desired, changes, tables, haveRepo, seeds)
 	if err != nil {
 		return err
@@ -244,6 +284,9 @@ func execute(o Options) error {
 			}
 		}
 		_, _ = fmt.Fprintf(o.Out, "Wrote %d file(s).\n", len(paths))
+		if haveLevels {
+			_, _ = fmt.Fprintln(o.Out, levelSummary(lvFiles, resolved.Level))
+		}
 	}
 	warnSyncFolder(o.Err, root, lookup)
 	warnMissingScripts(o.Err, root)
@@ -388,6 +431,7 @@ type seeding struct {
 	labelsTemplate     []byte
 	direction          bool // wantsDirection
 	directionTemplates map[string][]byte
+	writeLevel         string // the level to write into lighthouse.toml, "" when it stays
 }
 
 func buildPlan(o Options, root string, names []string, desired []packs.Unit, changes []reconcile.Change, tables []projectconfig.Table, haveRepo bool, seeds seeding) (map[string]*planned, error) {
@@ -512,7 +556,7 @@ func buildPlan(o Options, root string, names []string, desired []packs.Unit, cha
 		_, _ = fmt.Fprintln(o.Err, "warning: CLAUDE.md does not import AGENTS.md; add a line `@AGENTS.md` so Claude Code reads the lighthouse rules")
 	}
 
-	if err := planConfig(o, load, desired, tables, haveRepo); err != nil {
+	if err := planConfig(o, load, desired, tables, haveRepo, seeds.writeLevel); err != nil {
 		return nil, err
 	}
 
@@ -691,7 +735,7 @@ func proposeConfig(old []byte, tables []projectconfig.Table) (out []byte, manual
 	return out, manual, err
 }
 
-func planConfig(o Options, load func(string) (*planned, error), desired []packs.Unit, tables []projectconfig.Table, haveRepo bool) error {
+func planConfig(o Options, load func(string) (*planned, error), desired []packs.Unit, tables []projectconfig.Table, haveRepo bool, writeLevel string) error {
 	p, err := load(configPath)
 	if err != nil {
 		return err
@@ -713,6 +757,11 @@ func planConfig(o Options, load func(string) (*planned, error), desired []packs.
 	out, manual, err := proposeConfig(base, tables)
 	if err != nil {
 		return err
+	}
+	if writeLevel != "" {
+		if out, err = projectconfig.SetTopLevel(out, "level", strconv.Quote(writeLevel)); err != nil {
+			return err
+		}
 	}
 	p.new = out
 	if !haveRepo {

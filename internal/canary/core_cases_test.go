@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/CorneeldH/lighthouse/internal/fixturesetup"
@@ -38,6 +39,24 @@ func writeConfig(t *testing.T, root, text string) {
 	}
 }
 
+// dropBlocking removes name from .claude/hooks/lighthouse/blocking of root.
+func dropBlocking(t *testing.T, root, name string) {
+	t.Helper()
+	path := filepath.Join(root, ".claude", "hooks", "lighthouse", "blocking")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(string(data), "\n")
+	kept := slices.DeleteFunc(lines, func(l string) bool { return strings.TrimSpace(l) == name })
+	if len(kept) == len(lines) {
+		t.Fatalf("%s is not in %s", name, path)
+	}
+	if err := os.WriteFile(path, []byte(strings.Join(kept, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // extraPacks are the packs a command case installs next to core: the import check of
 // commit-test-gate checks only the languages of the installed packs.
 var extraPacks = map[string][]string{"undeclared-import": {"go"}}
@@ -48,7 +67,13 @@ var commandCases = map[string]commandCase{
 		addOrigin(t, root)
 		return nil
 	}},
-	"no-verify": {"commit-test-gate", "run.sh commit-test-gate pre", func(*testing.T, string) []string { return nil }},
+	// commit-test-gate refuses --no-verify only in a repo whose pack predates no-verify-check:
+	// drop that line from the blocking list, as an older pack has it.
+	"no-verify": {"commit-test-gate", "run.sh commit-test-gate pre", func(t *testing.T, root string) []string {
+		dropBlocking(t, root, "no-verify-check")
+		return nil
+	}},
+	"flag": {"no-verify-check", "run.sh no-verify-check", func(*testing.T, string) []string { return nil }},
 	"tests-red": {"commit-test-gate", "run.sh commit-test-gate pre", func(t *testing.T, root string) []string {
 		writeConfig(t, root, "[test_gate]\ncommand = \"false\"")
 		return nil

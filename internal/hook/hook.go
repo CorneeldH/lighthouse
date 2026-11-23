@@ -16,9 +16,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
+	"time"
+
+	"github.com/CorneeldH/lighthouse/internal/levellog"
+	"github.com/CorneeldH/lighthouse/internal/levels"
 )
 
 // ExitUnknown is the exit code for a hook this binary does not know; a gate that cannot check
@@ -62,6 +67,11 @@ type Env struct {
 	// Nested marks a call from inside another hook (bash-write-check): the outer call owns
 	// the notices, so this one adds none and spends no marker.
 	Nested bool
+	// Level is what components.toml records; the zero value (no file) has every component on.
+	Level levels.Installed
+	// LevelErr is set when components.toml is there but cannot be read: every hook that is not
+	// a base hook then reports COULD NOT CHECK.
+	LevelErr error
 }
 
 var (
@@ -102,6 +112,19 @@ func Run(ctx context.Context, name, stand string, in io.Reader, out, errOut io.W
 		_, _ = fmt.Fprintf(errOut, "COULD NOT CHECK: unknown hook %s — %s\n", name, remedy(env))
 		return ExitUnknown
 	}
+	if !slices.Contains(levels.BaseHooks, name) {
+		if env.LevelErr != nil {
+			_, _ = fmt.Fprintf(errOut, "COULD NOT CHECK: %s: components.toml cannot be read: %v\n", name, env.LevelErr)
+			return ExitUnknown
+		}
+		switch env.Level.Stand(name) {
+		case levels.StandOff:
+			return 0 // a stale registration of a switched-off hook
+		case levels.StandLog:
+			runLogged(ctx, name, f, stand, in, env)
+			return 0
+		}
+	}
 	raw, err := io.ReadAll(in)
 	if err != nil {
 		_, _ = fmt.Fprintf(errOut, "COULD NOT CHECK: hook %s: reading stdin: %v\n", name, err)
@@ -135,6 +158,54 @@ func Run(ctx context.Context, name, stand string, in io.Reader, out, errOut io.W
 		}
 	}
 	return res.Code
+}
+
+// runLogged runs a hook on stand log: nothing is printed and the exit code is the caller's 0.
+// What the hook would have said (a block, a message, a crash) becomes one logbook line, so the
+// level can be judged by how often it would have fired. A failing logbook changes nothing.
+func runLogged(ctx context.Context, name string, f Func, stand string, in io.Reader, env Env) {
+	var note bytes.Buffer
+	raw, err := io.ReadAll(in)
+	if err != nil {
+		appendLog(env, name, fmt.Sprintf("reading stdin: %v", err))
+		return
+	}
+	p := Payload{Raw: raw}
+	_ = json.Unmarshal(raw, &p)
+	res, ok := invoke(ctx, name, f, env.Root, stand, p, &note)
+	if !ok {
+		appendLog(env, name, firstLine(note.String()))
+		return
+	}
+	msg, _ := res.Output["systemMessage"].(string)
+	for _, s := range []string{msg, res.Stderr, res.Text} {
+		if firstLine(s) != "" {
+			msg = s
+			break
+		}
+	}
+	if res.Code == 0 && firstLine(msg) == "" && len(res.Output) == 0 {
+		return
+	}
+	line := firstLine(msg)
+	if line == "" {
+		line = fmt.Sprintf("exit %d", res.Code)
+	}
+	appendLog(env, name, line)
+}
+
+func appendLog(env Env, name, line string) {
+	_ = levellog.Append(env.Root, name, line, time.Now())
+}
+
+// firstLine is the first non-blank line of s, trimmed.
+func firstLine(s string) string {
+	for _, l := range strings.Split(s, "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			return l
+		}
+	}
+	return ""
 }
 
 // invoke runs f and turns a panic into a COULD NOT CHECK on errOut: a gate that crashed did not

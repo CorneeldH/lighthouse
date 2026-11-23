@@ -123,8 +123,8 @@ it in the answer and skip the rest of V2b; V4 still adds the `body-line` output.
    ```
 
    Each one listed is `fixed` in that commit; do not judge it again. For every other finding
-   follow `superpowers:receiving-code-review`: fix it or refute it with a reason, with the
-   severity rules of section 6 of `lighthouse-fix-pr` (high and medium seriously; a low only if
+   follow `superpowers:receiving-code-review`: fix it or refute it with a reason, with
+   these severity rules (high and medium seriously; a low only if
    the fix is trivial, otherwise `left`). Every fix is a commit of its own whose body has the
    line `roborev: <path>:<line> (<severity>)`, with `path`, `line` and `severity` as `classify`
    printed them (a finding without `path` gets no such line).

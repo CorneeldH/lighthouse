@@ -93,9 +93,9 @@ for an external event, such as red CI or a merge. Workflow step 4 applies this r
 
    | What there is | First step | Controller (if present) |
    |---|---|---|
-   | a plan in the plans folder, not yet adversarially reviewed | `/lighthouse-review-plan` on that plan | `choice` |
+   | a plan in the plans folder, not yet adversarially reviewed (review skill, if installed) | `/lighthouse-review-plan` on that plan | `choice` |
    | a plan, review converged, open points accepted, or skipped on a decision of the user | `/superpowers:subagent-driven-development` on that plan; at *Yes, native* (controller mode step 2, only a plan that meets the native criterion) `/superpowers:executing-plans` with `lane: native`; at the answer *interactive* (controller mode step 2, *Exception*) `/superpowers:executing-plans` | `offer` |
-   | a spec, not yet adversarially reviewed | `/lighthouse-review-spec` on that spec | `default` |
+   | a spec, not yet adversarially reviewed (review skill, if installed) | `/lighthouse-review-spec` on that spec | `default` |
    | a spec, review converged or round limit with open points recorded, no plan yet | `/superpowers:writing-plans` on that spec | `no` |
    | an issue, no spec yet, several designs possible | `/superpowers:brainstorming` | `no` |
    | an issue that already settles the HOW | `/lighthouse-start-issue <nr>` | `no` |
@@ -103,9 +103,9 @@ for an external event, such as red CI or a merge. Workflow step 4 applies this r
    | build done, last commit green, no PR yet | `/lighthouse-write-pr <nr>` | `offer` |
    | work done, issue can be closed | `/lighthouse-close-issue <nr>` | `no` |
    | PR open, review needed | `/code-review` | `no` |
-   | PR red | `/lighthouse-fix-pr <pr>` | `offer` |
-   | the next task waits for another issue or PR that is still open | no handoff with the same `next:`. Lay the relation first (`lighthouse-write-issue` 3e: `lighthouse forge issue edit <nr> --add-label <labels.blocked_issue>` and the `blocked_by` relation); then hand off with the same command as this phase: the tick parks an executing handoff while a blocker is open and starts it when that merges. A handoff that only says "wait for #N, else hand off again" restarts every tick; the tick returns the issue on the second identical one |
-| context full, same phase | the same command as this phase; if the previous handoff carries `lane: native`, the new one carries it too | as that phase, but `default` becomes `no` (during a running plan review: `offer`) |
+   | PR red (fix-pr skill, if installed) | `/lighthouse-fix-pr <pr>` | `offer` |
+   | the next task waits for another issue or PR that is still open | no handoff with the same `next:`. Lay the relation first (`lighthouse-write-issue` 3e, if installed: `lighthouse forge issue edit <nr> --add-label <labels.blocked_issue>` and the `blocked_by` relation); then hand off with the same command as this phase: the tick parks an executing handoff while a blocker is open and starts it when that merges. A handoff that only says "wait for #N, else hand off again" restarts every tick; the tick returns the issue on the second identical one |
+   | context full, same phase | the same command as this phase; if the previous handoff carries `lane: native`, the new one carries it too | as that phase, but `default` becomes `no` (during a running plan review: `offer`) |
 
    The Controller column says what controller mode step 2 does (only if present; without a
    controller every row is `no`): `no` is only the plain
@@ -158,7 +158,7 @@ tick starts the next phase itself. Two entries:
 
    **`default`: a spec, just committed.** At `default` you ask no question: read the
    board status (`lighthouse forge issue status <nr>`), post with
-   `next: /lighthouse-review-spec <absolute spec path>` (step 5) and set the Status to
+   `next: /lighthouse-review-spec <absolute spec path>` (step 5; if installed) and set the Status to
    `Controller` (step 6). Report in one line: the worktree now belongs to the controller, an edit there
    breaks the paired round 1 (`blind` refuses a work tree that is not clean). This holds only
    in the window that just committed the spec (the brainstorm); another window that hands over an unreviewed
@@ -176,7 +176,7 @@ tick starts the next phase itself. Two entries:
    in plain chat text, in this order, and end the turn after it:
 
    1. The block for **review** (format of step 6), with
-      `First step: /lighthouse-review-plan <plan>`.
+      `First step: /lighthouse-review-plan <plan>` (if installed).
    2. The block for **interactive**, with `First step: /superpowers:executing-plans <plan>`.
    3. Plan link, advice and question. The plan link is clickable: `[<file name>](<absolute path>)`,
       not a bare path. Form:
@@ -196,7 +196,7 @@ tick starts the next phase itself. Two entries:
    between the tasks, and if the execution asks no decision of the user; you name it in
    the advice line (`My advice: controller (native), because …`).
 
-   - Answer *review*: the block is already there. No comment. If the user wants the plan review itself through the controller: `next: /lighthouse-review-plan <plan>` and steps 5 and 6.
+   - Answer *review*: the block is already there (if installed; otherwise the question has no *review* answer). No comment. If the user wants the plan review itself through the controller: `next: /lighthouse-review-plan <plan>` and steps 5 and 6.
    - Answer *controller*: `next: /superpowers:subagent-driven-development <plan>`, then
      step 5 (post) and step 6 (Status `Controller`). This also holds when the issue is already on `Controller`.
    - Answer *interactive*: the block is already there; the agent executes itself, in a fresh
@@ -205,7 +205,7 @@ tick starts the next phase itself. Two entries:
      field `lane: native`, then step 5 (post) and step 6 (Status `Controller`). The controller
      starts it on Sonnet; only after this answer, never on your own initiative.
 
-   A controller run does not ask this: there `next: /lighthouse-review-plan
+   A controller run does not ask this: there (if installed) `next: /lighthouse-review-plan
    <plan>` stays, because skipping needs a decision of the user. Without an issue number (step 1) there is nothing to post: then ask the question only with *review* or *interactive*, without *controller*.
 
    Only at `offer` (never at `default` above): if it is already on `Controller`, post at once (step 5), except for the route *interactive*
@@ -225,13 +225,13 @@ tick starts the next phase itself. Two entries:
 
    | What there is | `next:` |
    |---|---|
-   | a plan, not reviewed | `/lighthouse-review-plan <absolute plan path>` |
+   | a plan, not reviewed | `/lighthouse-review-plan <absolute plan path>`, if installed |
    | a plan, review converged or skipped on a decision of the user | `/superpowers:subagent-driven-development <absolute plan path>` |
-   | a spec, not reviewed | `/lighthouse-review-spec <absolute spec path>` |
+   | a spec, not reviewed | `/lighthouse-review-spec <absolute spec path>`, if installed |
    | a spec, review converged | `/superpowers:writing-plans <absolute spec path>` |
    | build done, last commit green | `/lighthouse-write-pr <nr>` |
    | PR open | `/lighthouse-close-issue <nr>` — final handoff: the controller does not start it from the handoff, but after the merge of the `Refs` PR, as the close check |
-   | PR red | `/lighthouse-fix-pr <pr>` |
+   | PR red | `/lighthouse-fix-pr <pr>`, if installed |
    | the range touches `.github/workflows/` (build done, or a fix-pr run that fixed the PR) | `push-workflows` — no slash command; the step above says how: V2b first, `after:` only while there is no PR. The tick starts the workflow pusher, never a session |
    | issue without spec, design open | `/superpowers:brainstorming` — the controller returns the issue |
    | plan the user has to guide themselves (only controller run) | `/superpowers:executing-plans <absolute plan path>` without `lane:` — the controller never starts this: it returns it, the status stays `Controller` |

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/CorneeldH/lighthouse/internal/gitinvocations"
@@ -17,6 +18,23 @@ const noVerifyBlock = HookName + ": --no-verify is not allowed in this repo.\n" 
 	"The test gate is a Claude Code PreToolUse hook, not a git hook, so the\n" +
 	"flag skips nothing today — but it will as soon as git hooks are added.\n" +
 	"If something fails: fix it. If it really has to be skipped, ask.\n"
+
+// noVerifyChecked is whether the base hook no-verify-check guards this repo: it is listed in
+// .claude/hooks/lighthouse/blocking, which `init --upgrade` writes. A repo still on an older pack
+// has no such line (or no file we can read), and a newer binary must not let --no-verify
+// through there: Pre keeps the refusal itself until the upgrade.
+func (g *Gate) noVerifyChecked() bool {
+	b, err := os.ReadFile(filepath.Join(g.Root, ".claude", "hooks", "lighthouse", "blocking"))
+	if err != nil {
+		return false
+	}
+	for _, line := range strings.Split(string(b), "\n") {
+		if strings.TrimSpace(line) == "no-verify-check" {
+			return true
+		}
+	}
+	return false
+}
 
 // notARepo are the git messages that mean "this target is no repository": a real outcome with
 // nothing to test, unlike a git that breaks.
@@ -35,8 +53,8 @@ func orNoMessage(s string) string {
 	return s
 }
 
-// Pre is the gate before a Bash call: it blocks --no-verify, tests a commit to the default branch
-// before it lands, and records the HEAD of every other root of this project for Post. cwd is the
+// Pre is the gate before a Bash call: it blocks --no-verify in a repo whose pack has no
+// no-verify-check yet, tests a commit to the default branch before it lands, and records the HEAD of every other root of this project for Post. cwd is the
 // directory the command runs in.
 func Pre(ctx context.Context, g *Gate, raw []byte, cwd string) Result {
 	command, _, ok := ReadPayload(raw)
@@ -68,11 +86,13 @@ func Pre(ctx context.Context, g *Gate, raw []byte, cwd string) Result {
 		return Result{}
 	}
 	// no_verify.py walked the command from its own working directory, not from cwd.
-	here, _ := os.Getwd()
-	if CommandHasNoVerify(command, here) {
-		var b strings.Builder
-		b.WriteString(noVerifyBlock)
-		return block(reasonNoVerify, &b)
+	if !g.noVerifyChecked() {
+		here, _ := os.Getwd()
+		if CommandHasNoVerify(command, here) {
+			var b strings.Builder
+			b.WriteString(noVerifyBlock)
+			return block(reasonNoVerify, &b)
+		}
 	}
 
 	roots, blk := g.commitRoots(ctx, commits)

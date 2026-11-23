@@ -75,7 +75,7 @@ printf '# nopython\n\nA repository without Python.\n' >"$REPO/README.md"
 git -C "$REPO" add -A
 git -C "$REPO" commit -q -m init
 
-if ! (cd "$REPO" && "$BIN" init --yes --pack core --pack go --pack node --pack shell --pack expo) \
+if ! (cd "$REPO" && "$BIN" init --yes --level strict --pack core --pack go --pack node --pack shell --pack expo) \
   >"$WORK/init.out" 2>"$WORK/init.err"; then
   fail "lighthouse init failed: $(head -3 "$WORK/init.err" | tr '\n' ' ')"
 fi

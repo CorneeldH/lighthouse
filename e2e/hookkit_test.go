@@ -34,7 +34,7 @@ func packRepo(t *testing.T, bin string, trigger map[string]string, wantPackages 
 	for rel, content := range trigger {
 		writeFile(t, repo, rel, content)
 	}
-	if out := run(t, repo, bin, "init", "--yes"); !strings.HasPrefix(out, wantPackages) {
+	if out := run(t, repo, bin, "init", "--yes", "--level", "strict"); !strings.HasPrefix(out, wantPackages) {
 		t.Fatalf("init: want output starting with %q, got:\n%s", wantPackages, out)
 	}
 	return repo

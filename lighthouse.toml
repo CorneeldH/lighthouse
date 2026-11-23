@@ -1,3 +1,5 @@
+level = "strict"
+
 [project]
 language = "nl"
 code_language = "en"

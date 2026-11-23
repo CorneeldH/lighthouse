@@ -668,6 +668,87 @@ func TestParseProjectOwner(t *testing.T) {
 	}
 }
 
+// TestLevelAndComponentsParse fails when build stops filling Config.Level or Config.Components
+// from the top-level `level` key and the [components] table, or when IsKnownKey/KindOf stop
+// knowing them.
+func TestLevelAndComponentsParse(t *testing.T) {
+	src := "level = \"strict\"\n[components]\nmd-link-check = \"on\"\nusage-gate = \"log\"\nworktree-check = \"off\"\n"
+	c, err := Parse([]byte(src), "lighthouse.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Level != "strict" {
+		t.Errorf("Level = %q, want strict", c.Level)
+	}
+	want := map[string]string{"md-link-check": "on", "usage-gate": "log", "worktree-check": "off"}
+	if !reflect.DeepEqual(c.Components, want) {
+		t.Errorf("Components = %v, want %v", c.Components, want)
+	}
+	for _, key := range []string{"level", "components.md-link-check"} {
+		if !IsKnownKey(key) {
+			t.Errorf("IsKnownKey(%q) = false, want true", key)
+		}
+	}
+	if IsKnownKey("components.") {
+		t.Error("IsKnownKey(\"components.\") = true, want false")
+	}
+	if got := KindOf("level"); got != kStr {
+		t.Errorf("KindOf(level) = %q, want str", got)
+	}
+	none, err := Parse([]byte("[project]\nlanguage = \"nl\"\n"), "lighthouse.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if none.Level != "" || len(none.Components) != 0 {
+		t.Errorf("unset: Level = %q, Components = %v, want empty", none.Level, none.Components)
+	}
+}
+
+// TestComponentsBadStandIsError fails when build stops checking that a component value is
+// off, log or on, or when level or [components] stops being checked for shape.
+func TestComponentsBadStandIsError(t *testing.T) {
+	for name, src := range map[string]string{
+		"bad stand":     "[components]\nmd-link-check = \"maybe\"\n",
+		"not a string":  "[components]\nmd-link-check = 1\n",
+		"level not str": "level = 3\n",
+		"empty level":   "level = \"\"\n",
+		"not a table":   "components = \"on\"\n",
+	} {
+		_, err := Parse([]byte(src), "lighthouse.toml")
+		var cerr *Error
+		if !errors.As(err, &cerr) {
+			t.Errorf("%s: err = %v, want *Error", name, err)
+		}
+	}
+	_, err := Parse([]byte("[components]\nmd-link-check = \"maybe\"\n"), "lighthouse.toml")
+	if err == nil || !strings.Contains(err.Error(), "components.md-link-check") {
+		t.Errorf("error = %v, want it to name components.md-link-check", err)
+	}
+}
+
+// TestUnknownLevelNameIsNotAnError fails when build starts rejecting a level name: the names
+// are checked against the pack's levels.toml elsewhere, not by config.Load.
+func TestUnknownLevelNameIsNotAnError(t *testing.T) {
+	c, err := Parse([]byte("level = \"bogus\"\n"), "lighthouse.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Level != "bogus" {
+		t.Errorf("Level = %q, want bogus", c.Level)
+	}
+}
+
+// TestUnknownComponentNameIsNotAnError fails when build starts rejecting a component name.
+func TestUnknownComponentNameIsNotAnError(t *testing.T) {
+	c, err := Parse([]byte("[components]\nno-such-thing = \"on\"\n"), "lighthouse.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Components["no-such-thing"] != "on" {
+		t.Errorf("Components = %v, want no-such-thing = on", c.Components)
+	}
+}
+
 // TestDefaultWorktreeRoot pins the default of [worktree] root.
 func TestDefaultWorktreeRoot(t *testing.T) {
 	v, ok := Default("worktree.root")

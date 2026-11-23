@@ -1,0 +1,20 @@
+# The entry levels of the python package: lint and format come after the way of working.
+# The scripts no hook calls (gate_python.py, quality/*.py) serve skills, test_gate and the
+# instructions, so they are base.
+# python-imports-gate guards the declared imports at every level.
+on = ["python-imports-gate"]
+
+[owners]
+"scripts/gate_python.py" = "base"
+"scripts/quality/__init__.py" = "base"
+"scripts/quality/baseline.py" = "base"
+"scripts/quality/diffcov.py" = "base"
+"scripts/quality/gitenv.py" = "base"
+"scripts/quality/prcov.py" = "base"
+"scripts/quality/prcov_issues.py" = "base"
+"scripts/quality/ratchet.py" = "base"
+
+[light.components]
+ruff-format-check = "off"
+ty-gate = "off"
+"skill:python-standard" = "off"
