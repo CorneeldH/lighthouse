@@ -19,7 +19,20 @@ type ReleaseReader interface {
 	Releases(ctx context.Context, repo string) ([]Release, error)
 }
 
-var _ ReleaseReader = (*GitHub)(nil)
+// ReleaseUntilReader is a ReleaseReader that can stop listing early. Releases come newest first,
+// so a caller that needs only the releases down to one known release stops there: a repository
+// with more than 1000 releases cannot be listed whole (GitHub answers 422 past the first 1000).
+type ReleaseUntilReader interface {
+	ReleaseReader
+	// ReleasesUntil lists releases like Releases, but stops after the page that holds the first
+	// release for which stop returns true. That page is returned whole.
+	ReleasesUntil(ctx context.Context, repo string, stop func(Release) bool) ([]Release, error)
+}
+
+var (
+	_ ReleaseReader      = (*GitHub)(nil)
+	_ ReleaseUntilReader = (*GitHub)(nil)
+)
 
 // releasesPerPage is 30, not 100: openai/codex answers HTTP 504 at per_page=100.
 const releasesPerPage = 30
@@ -32,6 +45,12 @@ const maxReleasePages = 100
 // lower rate limit. Drafts and prereleases are included, with their flags. A 5xx answer is
 // tried once more.
 func (c *GitHub) Releases(ctx context.Context, repo string) ([]Release, error) {
+	return c.ReleasesUntil(ctx, repo, nil)
+}
+
+// ReleasesUntil is Releases that stops after the page holding the first release for which stop
+// returns true. A nil stop follows every page.
+func (c *GitHub) ReleasesUntil(ctx context.Context, repo string, stop func(Release) bool) ([]Release, error) {
 	if repo == "" {
 		return nil, errors.New("forge releases: empty repo")
 	}
@@ -59,8 +78,16 @@ func (c *GitHub) Releases(ctx context.Context, repo string) ([]Release, error) {
 		if err != nil {
 			return nil, err
 		}
+		stopped := false
 		for _, it := range page {
-			out = append(out, Release(it))
+			r := Release(it)
+			out = append(out, r)
+			if stop != nil && stop(r) {
+				stopped = true
+			}
+		}
+		if stopped {
+			break
 		}
 		url = next
 	}

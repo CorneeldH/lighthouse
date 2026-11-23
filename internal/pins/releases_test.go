@@ -116,3 +116,43 @@ func TestMeasureRelease_tagPrefix(t *testing.T) {
 		t.Fatalf("got %+v", got)
 	}
 }
+
+// untilReleases is a ReleaseUntilReader that, like the forge, cuts the list after the page that
+// holds the match, and fails when asked for the whole list.
+type untilReleases struct{ rels []forge.Release }
+
+func (untilReleases) Releases(context.Context, string) ([]forge.Release, error) {
+	return nil, errors.New("status 422: Only the first 1000 results are available.")
+}
+
+func (u untilReleases) ReleasesUntil(_ context.Context, _ string, stop func(forge.Release) bool) ([]forge.Release, error) {
+	for i, r := range u.rels {
+		if stop(r) {
+			return u.rels[:i+1], nil
+		}
+	}
+	return nil, errors.New("status 422: Only the first 1000 results are available.")
+}
+
+func TestMeasureRelease_stopsAtThePinSoAHugeUpstreamMeasures(t *testing.T) {
+	alpha := rel("v1.4.0-alpha.1")
+	alpha.Prerelease = true
+	up := untilReleases{rels: []forge.Release{alpha, rel("v1.3.0"), rel("v1.2.0"), rel("v1.1.0")}}
+	got := MeasureRelease(context.Background(), up, pin("1.2.0"))
+	if got.Status != StatusBehind || got.Target != "1.3.0" {
+		t.Fatalf("got %+v", got)
+	}
+	if want := []string{"v1.3.0"}; !reflect.DeepEqual(tags(got.Releases), want) {
+		t.Fatalf("releases = %v, want %v", tags(got.Releases), want)
+	}
+}
+
+func TestMeasureRelease_aPrereleaseOfThePinTagDoesNotStopTheListing(t *testing.T) {
+	pre := rel("v1.2.0")
+	pre.Prerelease = true
+	up := untilReleases{rels: []forge.Release{rel("v1.3.0"), pre, rel("v1.2.0")}}
+	got := MeasureRelease(context.Background(), up, pin("1.2.0"))
+	if got.Status != StatusBehind || len(got.Releases) != 1 {
+		t.Fatalf("got %+v", got)
+	}
+}
