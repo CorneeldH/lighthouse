@@ -2,11 +2,13 @@
 
 settings.json keeps a registration where it stands and appends a new one (internal/settings
 Apply), so the hook entries may come back in another order: the file is compared as a set of
-commands, every other file byte for byte."""
+commands, every other file byte for byte. components.toml records when the level was set
+(`since`), so a switch gives it new bytes: it is left out, and so is its hash in the manifest."""
 
 import json
 import os
 import subprocess
+import tomllib
 from pathlib import Path
 
 PACKS = ("core", "go", "shell")
@@ -19,6 +21,13 @@ def _snapshot(root: Path) -> dict[str, bytes]:
         rel = p.relative_to(root).as_posix()
         if p.is_file() and not any(rel == s or rel.startswith(s + "/") for s in skip):
             files[rel] = p.read_bytes()
+    manifest = ".lighthouse/manifest.toml"
+    if manifest in files:
+        data = tomllib.loads(files[manifest].decode())
+        for unit in data.get("unit", []):
+            if unit.get("path") == ".lighthouse/components.toml":
+                unit.pop("sha256", None)
+        files[manifest] = json.dumps(data, sort_keys=True).encode()
     return files
 
 
