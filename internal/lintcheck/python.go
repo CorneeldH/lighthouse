@@ -113,10 +113,17 @@ func callFinding(c Call, forgeKind string) Finding {
 	return Finding{File: c.Step.File, Line: c.Step.Line, Linter: c.Linter, Msg: c.Reason}
 }
 
-// ruffVersionFinding compares the CI version of the valid calls with the pin. One valid call on the
-// pin is enough; otherwise the first mismatch is reported at the step that sets the version. A
-// missing pin has its own finding, so no comparison is made.
+// ruffVersionFinding compares the CI version of the valid calls with the pin.
 func ruffVersionFinding(steps []Step, calls []Call, pin string) (Finding, bool) {
+	return ciVersionFinding(calls, pin, ruffLinter, func(c Call) (string, Step, bool) { return ruffCIVersion(steps, c) })
+}
+
+// ciVersionFinding compares the CI version of the valid calls with the pin; ciVersion gives the
+// version a call runs, the step that sets it, and whether one was found (fromPinFile when CI reads
+// the pin file itself). One valid call on the pin is enough; otherwise the first mismatch is
+// reported at the step that sets the version. A missing pin has its own finding, so no comparison
+// is made.
+func ciVersionFinding(calls []Call, pin, linter string, ciVersion func(Call) (string, Step, bool)) (Finding, bool) {
 	if pin == "" {
 		return Finding{}, true
 	}
@@ -125,8 +132,8 @@ func ruffVersionFinding(steps []Step, calls []Call, pin string) (Finding, bool) 
 		if c.Verdict != Valid {
 			continue
 		}
-		v, at, found := ruffCIVersion(steps, c)
-		if found && (v == ruffFromPinFile || trimV(v) == trimV(pin)) {
+		v, at, found := ciVersion(c)
+		if found && (v == fromPinFile || trimV(v) == trimV(pin)) {
 			return Finding{}, true
 		}
 		if first == nil {
@@ -134,7 +141,7 @@ func ruffVersionFinding(steps []Step, calls []Call, pin string) (Finding, bool) 
 			if found {
 				msg = fmt.Sprintf("CI version %s, pin %s", v, pin)
 			}
-			first = &Finding{File: at.File, Line: at.Line, Linter: ruffLinter, Msg: msg}
+			first = &Finding{File: at.File, Line: at.Line, Linter: linter, Msg: msg}
 		}
 	}
 	if first == nil {
@@ -145,8 +152,8 @@ func ruffVersionFinding(steps []Step, calls []Call, pin string) (Finding, bool) 
 
 func trimV(v string) string { return strings.TrimPrefix(strings.TrimSpace(v), "v") }
 
-// ruffFromPinFile stands for a CI version read from .ruff-version itself.
-const ruffFromPinFile = "$(cat .ruff-version)"
+// fromPinFile stands for a CI version read from the pin file itself.
+const fromPinFile = "$(cat <pin file>)"
 
 var (
 	ruffVersioned = regexp.MustCompile(`(?:^|[^A-Za-z0-9_-])ruff(?:@|==)(\$\(\s*cat\s+(?:\./)?\.ruff-version\s*\)|\S+)`)
@@ -200,7 +207,7 @@ func runRuffVersion(s Step) (string, bool) {
 		return "", false
 	}
 	if strings.HasPrefix(last, "$(") {
-		return ruffFromPinFile, true
+		return fromPinFile, true
 	}
 	if m := shellVar.FindStringSubmatch(last); m != nil {
 		if val, ok := s.Env[m[1]]; ok {
