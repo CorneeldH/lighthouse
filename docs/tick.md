@@ -755,7 +755,8 @@ label en status, dan de run sluiten. Mislukt het label, dan blijft de run open.
   - `reason_*` voor een beantwoorde Vraag zonder run of zonder bekende sessie (ook de sessie van een
     ander issue);
   - een PR die gesloten is zonder merge, na de eindhandoff (een oudere, verlaten PR blokkeert het
-    eindcommando niet);
+    eindcommando niet). Sluit in dezelfde tick nog een open run op die PR (regel 11), dan geeft
+    alleen die sluiting het issue terug: één Teruggegeven per issue per tick;
   - een geparkeerde run waarvan de marker weg is (de marker is niet onleesbaar en de markers zijn
     compleet gelezen).
 - **Vangnet.** Een Controller-issue waar geen enkele regel iets voor doet, wordt na drie volledige

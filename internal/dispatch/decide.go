@@ -462,6 +462,9 @@ func decideIssue(in Input, repo RepoInput, it Item) []planned {
 			p.holdsSlot = p.Kind == KindStart && !isPush(fixRow) && p.node == fixRow.Node &&
 				p.software == (fixRow.Profile == ProfileSoftware)
 			out = append(out, p)
+		} else if slices.ContainsFunc(out, func(p planned) bool { return p.Kind == KindReturn }) {
+			// A close of this tick gives the issue back already (a closed PR, rule 11): next would
+			// read the same turn again, and one PR must not give two Returneds in one tick.
 		} else if p, ok := c.next(); ok {
 			out = append(out, p)
 		}

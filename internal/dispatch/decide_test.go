@@ -1441,6 +1441,36 @@ func TestDecideEndHandoffClosedPRWithoutMerge(t *testing.T) {
 	}
 }
 
+// One closed PR gives one Returned per tick. With the end handoff's run still open, its close
+// (rule 11, reason_pr_closed) already gives the issue back; next must not add handoff's
+// reason_pr_closed_unmerged for the same PR on top of it.
+func TestDecideEndHandoffOpenRunClosedPRReturnsOnce(t *testing.T) {
+	tests := []struct {
+		name string
+		push bool
+		want []string
+	}{
+		{"session run", false, []string{"return:reason_pr_closed:"}},
+		{"push row", true, []string{"return:reason_pr_closed:"}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			in := loadInput(t, "handoff-end-pr-merged-after")
+			pr := &item7(&in).PRs[0]
+			pr.State, pr.MergedAt = "CLOSED", time.Time{}
+			row := row5(&in)
+			row.Open, row.Outcome = true, ""
+			if tc.push {
+				// A pushed row owns the PR (fix-pr route): its closed PR settles it like rule 11.
+				row.Command, row.SessionID, row.PushedSHA = cmdPush, "", pr.HeadSHA
+			}
+			if got := summary(Decide(in)); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 // Why the code did nothing before: usageResume walks RepoInput.Markers, so a closed parked row
 // whose marker is gone never enters its loop, and no other rule reads such a row: the issue
 // stayed in Controller without a run for ever. A marker, an unreadable marker file or a node
