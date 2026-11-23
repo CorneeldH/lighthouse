@@ -35,8 +35,8 @@ const VIEWS: Array<{ id: ViewId; label: string }> = [
 ]
 
 const ORDERS: Array<{ id: 'computed' | 'priority'; label: string }> = [
-  { id: 'computed', label: 'Berekend' },
-  { id: 'priority', label: 'Prioriteit' },
+  { id: 'computed', label: 'Computed' },
+  { id: 'priority', label: 'Priority' },
 ]
 
 export function Toolbar({
@@ -70,7 +70,7 @@ export function Toolbar({
           })}
         </div>
         {view === 'milestones' && (
-          <div role="group" aria-label="Volgorde" className="inline-flex overflow-hidden rounded-md border border-lh-navy">
+          <div role="group" aria-label="Order" className="inline-flex overflow-hidden rounded-md border border-lh-navy">
             {ORDERS.map((o) => {
               const on = o.id === msOrder
               return (

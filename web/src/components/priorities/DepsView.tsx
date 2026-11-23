@@ -136,7 +136,7 @@ export function DepsView({ graph, selected, colors }: ViewProps): JSX.Element {
                   node={n}
                   color={color}
                   grey={grey}
-                  label={prefix || grey ? `${n.repo}#${n.number}` : `#${n.number}`}
+                  label={prefix || grey ? `${n.repo} ${n.number}` : String(n.number)}
                   testId={`node-${n.key}`}
                   dimmed={dimmed}
                   highlighted={chain?.has(n.key) === true && n.key !== focus}
@@ -168,7 +168,7 @@ export function DepsView({ graph, selected, colors }: ViewProps): JSX.Element {
                 node={n}
                 color={color}
                 grey={false}
-                label={prefix ? `${n.repo}#${n.number}` : `#${n.number}`}
+                label={prefix ? `${n.repo} ${n.number}` : String(n.number)}
                 testId={`loose-${n.key}`}
                 dimmed={false}
                 highlighted={false}

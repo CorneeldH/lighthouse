@@ -9,7 +9,7 @@ metadata:
 # Start Issue Skill
 
 From issue number to a read issue, a worktree and one chosen follow-up route. Fills the gap between
-`/lighthouse-write-issue` (opens the lane) and `/lighthouse-close-issue` (closes it).
+`/lighthouse-write-issue` (opens the lane; if installed) and `/lighthouse-close-issue` (closes it).
 
 ## Domain
 
@@ -17,7 +17,7 @@ In scope: the *start* of work on an existing issue in this repo (`forge.repo`) �
 the axes, ask whether it is already done, set up the worktree, get the route from
 `/lighthouse-route-issue` and hand on.
 
-Not here: writing or updating an issue (`/lighthouse-write-issue`), closing an issue
+Not here: writing or updating an issue (`/lighthouse-write-issue`, if installed), closing an issue
 (`/lighthouse-close-issue`), auditing the state of the board (the board-sweep skill, if present),
 and executing the chosen route itself — this skill delegates that.
 
@@ -92,14 +92,29 @@ Report exactly one line, of one of three kinds:
   `already done? no — named in <sha>, does not cover the AC`; that one also goes on to step 3.
 - `already done? likely — <evidence>`: stop before step 3 and offer `/lighthouse-close-issue <nr>`
   (entry B, which verifies). The user decides. If the user says "carry on anyway", continue with
-  step 3. Controller run (if present): put the choice (close through
-  `/lighthouse-close-issue <nr>`, by the user, or "carry on anyway") as the last text and stop;
-  you never close yourself.
+  step 3. Controller run (if present): the run ends in a follow-up, never in the choice as chat
+  text. Post `/lighthouse-write-handoff` (controller mode) with `next: /lighthouse-close-issue
+  <nr>`, the evidence (the commit sha) under `Context:`, from the worktree of the issue, and
+  stop. The controller then starts `/lighthouse-close-issue` (row `handoff`); its entry B verifies
+  the criteria and asks itself when some stay open. You never close yourself. When the evidence
+  is *in doubt* (only a commit with `(#<nr>)` in its subject that seems to deliver the work but
+  covers the AC uncertainly; a mention in a commit body, spec or plan stays `no`, second form,
+  and goes on to step 3), post one bundle with `lighthouse ask --issue <nr> --phase start`
+  instead, with the options "close through `/lighthouse-close-issue <nr>`" and "carry on
+  anyway", `--recommended a`, and stop without a handoff. Write the ask fields in the language of
+  the artefacts. Say per option what the resumed session does: "close" is the controller-run
+  handoff above, "carry on anyway" is step 3.
 - `already done? not measurable — fetch failed`: the output contains `FETCH FAILED` and there is
   no covering hit. The recipe then searched a possibly stale `origin/<default branch>`, so zero
   hits is no `no`. Stop before step 3; the user chooses between trying again and "carry on
-  anyway". Controller run (if present): put that choice as the last text and stop. A covering hit
-  stays `likely`: old data also proves the work was already there.
+  anyway". Controller run (if present): post one bundle with
+  `lighthouse ask --issue <nr> --phase start`, with the options "try the fetch again" and "carry
+  on anyway", `--recommended a`, and stop without a handoff: close-issue would measure on stale
+  data. Say per option what the resumed session does: "try the fetch again" is the step 2 recipe
+  once more, "carry on anyway" is step 3. Write the ask fields in the language of the artefacts;
+  the question in
+  `/lighthouse-close-issue` (open criteria) shows the shape. A covering hit stays `likely`: old
+  data also proves the work was already there.
 
 This step only reports: it closes nothing and sets no label.
 
@@ -125,6 +140,8 @@ and picking up goes on as well. Skip the step on a `labels.blocked_*` label from
 open `blocked_by` without a label (*label missing*): the issue may get a spec, but the plan and
 the execution wait, and the board would show `In progress` for work that stands still. It stays
 on `To do`, also with `labels.blocked_issue`: the controller parks a blocked issue there too.
+Skip it as well on `labels.needs_hands` or `labels.needs_testing`: the next step is a human's, and the
+board stays on `To do`.
 
 The status `Controller` (only if present, with a `[controller]` table) stays: the controller
 selects on it and runs this skill itself. In a controller run the board stays `Controller`, also
@@ -148,6 +165,7 @@ Then execute the reported route:
 
 | Line | Execution |
 |---|---|
+| route `stop` (`labels.needs_hands` or `labels.needs_testing`) | report what the human has to do first and stop; no execution, no spec, no plan; the stop comes before **Blocked?**, so also with `— blocker #<x> open` no handoff; on a stop at 4b no scout goes out, and the line `heading:scout_skipped — <label>: the next step is a human's, no plan follows.` is reported; in a controller run post no handoff (the controller sends such an issue to `RowInteractive`) |
 | gate `0` (**unknown**; in a controller run, if present, also **lapsed** or **unlinked**) | stop, with the reason from the line; no board, no route, no handoff: the human repairs the relation or the label |
 | gate `1` | call that skill, done |
 | gate `2` | `superpowers:systematic-debugging` |
@@ -174,7 +192,7 @@ stop. The controller returns the issue with "needs a brainstorm".
 - Gate `4c`: hand `superpowers:brainstorming` the instruction to end, after the approved spec,
   with `wait for #<x>` and not to call `superpowers:writing-plans`: the plan waits for a merged
   PR of the predecessor. In a controller run (if present) brainstorming is a handoff anyway
-  (above); `lighthouse-review-spec` posts `next: /superpowers:writing-plans` there, and the
+  (above); `lighthouse-review-spec` (if installed) posts `next: /superpowers:writing-plans` there, and the
   controller parks that handoff while the predecessor is active.
 - Gate `1`, `2`, `4a` or `4b`: do not execute. Interactive: report `wait for #<x>` and stop.
   Controller run (if present): post with `/lighthouse-write-handoff` (controller mode) a handoff
@@ -230,6 +248,12 @@ in this session. Report:
 
 ```text
 heading:scout_skipped — blocker #<x> open, the plan waits for the merge.
+```
+
+A stop at `4b` (route `stop`, step 4) sends no scout either; report:
+
+```text
+heading:scout_skipped — <label>: the next step is a human's, no plan follows.
 ```
 
 ##### Skipping is allowed, skipping silently is not
@@ -304,7 +328,7 @@ plugin's own folder.
 | Metric | Target | Measurement |
 |---|---:|---|
 | Tool calls between pickup prompt and first `Skill`/`Write`/`Edit`/`AskUserQuestion` | ≤ 2 | `lighthouse measure-start-issue-kpi leadin` |
-| Share of pickups where the first visible write fell under `.claude/worktrees/` | 100% | `lighthouse measure-start-issue-kpi worktree-first` |
+| Share of pickups where the first visible write fell under `.claude/worktrees/`, the default root; the KPI does not follow a configured root | 100% | `lighthouse measure-start-issue-kpi worktree-first` |
 | Sessions in which this skill loaded without an issue number in the prompt | 0 | `lighthouse measure-start-issue-kpi mistrigger` |
 | New spec/plan files on the project paths instead of the superpowers default folder | 100% | `lighthouse measure-start-issue-kpi paths` |
 | Pickups where the skill names the chosen gate explicitly | 100% | `lighthouse measure-start-issue-kpi gate` |

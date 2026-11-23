@@ -118,7 +118,7 @@ func installRepo(t *testing.T, packs ...string) string {
 	t.Cleanup(func() { _ = os.RemoveAll(parent) })
 	root := filepath.Join(parent, "repo")
 	fixturesetup.Build(t, parent, []map[string]any{{"repo": "repo", "branch": "main"}})
-	args := []string{"init", "--yes"}
+	args := []string{"init", "--yes", "--level", "strict"}
 	for _, p := range packs {
 		args = append(args, "--pack", p)
 	}

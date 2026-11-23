@@ -217,6 +217,17 @@ slash-commando's.
   `lane` en `step`. De tekst heeft de rode stap met zijn reden, de workflow-diff ingeklapt
   (`<details>`), wat je kunt doen en onder *Zelf pushen* het push-commando. De volgende tick geeft het
   issue terug zoals elke Teruggegeven: label `needs_hands` en To do (`finishReturn`).
+- **De Herstel.** Een rode `policy` of `lint` (niet `COULD NOT CHECK:`; een `RuleParse`-overtreding telt mee)
+  is te repareren door de run zelf. De pusher post dan een 🤖 Herstel zonder sessie, met `step` en de
+  velden van de Teruggegeven, en de rij sluit als `handoff`: het werk gaat door, het issue wordt niet
+  teruggegeven. Alleen een Herstel van de token-login telt. De regel `repair` in `next` hervat de run
+  die de handoff schreef (trigger `repair`, sleutel `repair:<comment-id>`, bij de claim `answer`) met
+  een prompt die de stap, de reden en de URL van de Herstel noemt. De volgorde van `next` is
+  `retry, finishReturn, usageResume, answer, repair, closeCheck, newIssue, handoff`. Het plafond is
+  twee rondes: de derde aaneengesloten Herstel geeft het issue terug met een Teruggegeven
+  (`reason_pusher_red_ceiling`). De telling begint opnieuw bij een groene doorgang (een push of een
+  Vraag) en bij elke Teruggegeven van de token-login, ook een die voor een geweigerde start is
+  gepost. Vindt tick geen run of geen sessie voor de handoff, dan geeft hij het issue meteen terug.
 - **Het antwoord `push` is toestemming.** Voor precies de `sha` uit de laatste Vraag van de pusher. Tick
   start de pusher opnieuw met `--permit <sha>`; hij draait de vloer opnieuw, en alleen als de SHA
   niet verschoof gaat hij zonder review door, zoals bij een geslaagde push. Toestemming heft alleen de
@@ -331,7 +342,7 @@ gemergde of gesloten PR van vóór `started_at` niet. `max_wait` en `max_runtime
 | 18 | Idem, maar zonder transcript: stand `waiting` en de forge-sessie `max_wait` oud, ook geteld vanaf `started_at` op zijn vroegst (zonder forge-tijd niet) | Teruggegeven, sessie stoppen | geen activiteit in max_wait (forge-stand; transcript niet meetbaar) |
 | 19 | `max_runtime` > 0, run ouder dan `max_runtime` | Teruggegeven, sessie stoppen | time-out (max_runtime) |
 
-Regel 14: een nacontrole die op een ander issue wacht, eindigt in een Handoff naar zichzelf (`next: /lighthouse-close-issue <nr>`). Tick parkeert dat issue (zie *Blokkades*) en start de nacontrole opnieuw zodra de voorganger gesloten is. Eindigt een nacontrole zonder Handoff of Vraag, dan zijn de criteria open gebleven en geeft regel 14 die eigen reden.
+Regel 14: een nacontrole die op een ander issue wacht, eindigt in een Handoff naar zichzelf (`next: /lighthouse-close-issue <nr>`). Tick parkeert dat issue (zie *Blokkades*) en start de nacontrole opnieuw zodra de voorganger gesloten is. Eindigt een nacontrole zonder Handoff of Vraag, dan zijn de criteria open gebleven en geeft regel 14 die eigen reden. Ook een start-issue-run in een controller-run die vindt dat het werk al op de standaardbranch staat (`already done? likely`) eindigt in een Handoff `next: /lighthouse-close-issue <nr>` (rij 13c start die nacontrole), of in een Vraag bij twijfel of een mislukte fetch (`not measurable`). Eindigt ze zonder beide, dan geeft regel 14 *geen handoff of vraag*.
 
 Regel 13: houdt de rem de fix-pr-start tegen (uitstel of weigering), dan vervalt de afsluiting van de run: ze blijft open en de volgende tick vindt dezelfde oorzaak opnieuw. Alleen een actieve blokkade (de issue-blokkade van de start), een al gebruikte sleutel of het plafond geeft Teruggegeven.
 
@@ -790,6 +801,28 @@ sluiting van de run die de PR aan die pusher overdraagt laat `run` dan ook ligge
 bleef er geen open run over die de merge opnieuw plant.
 
 ## De rem
+
+Decide geeft de starts en hervattingen in deze volgorde: eerst de Priority-band, dan het prio-gewicht
+van hoog naar laag, dan het tijdstip van de trigger, dan repo en issue. Priority is een handmatige
+override op dat gewicht: `P0` gaat vóór alles, `P1` of een lege Priority volgt het gewicht, `P2` komt
+achter alles. Het gewicht is dat van [`priorities.md`](priorities.md) (#445): de rang van de
+milestone (`Priority: N` in de beschrijving van een open milestone; bij M milestones met een rang is
+de factor M min de plaats, vanaf 0, waarop die rang voor het eerst staat in de oplopend gesorteerde
+rangen, zodat gelijke rangen een factor delen en een gat geen factor kost: rangen 1, 2, 5 geven 3, 2,
+1 en rangen 1, 1, 3 geven 3, 3, 1) plus, per issue dat op dit issue wacht, diens factor maal
+2^(k-1), met k de langste afstand; een cyclus telt als één groep. De tick leest daarvoor
+`PrioInputs` (open issues met hun milestone en de open milestones) en leest geen
+`ClosedInMilestone` en geen `blocked_by`. Op GitHub gaat dat via de ETag-transport, zodat een
+ongewijzigde pagina een `304` is; GitLab heeft die transport niet en leest de pagina's elke keer
+helemaal. De blokkeerders komen uit het bord: de graaf bestaat uit de `BlockedBy` van elk bord-item van
+de repo. Een open blokkeerder buiten het bord telt dus wél mee (hij staat in de open issues en krijgt
+de factor van het bord-item dat op hem wacht), maar een wachtende buiten het bord niet: zijn
+`BlockedBy` is onbekend, dus hij voegt niets toe aan het gewicht van zijn blokkeerder, en een keten
+die via zo'n issue loopt houdt daar op. Een blokkeerder in een andere repo telt nooit mee. Daarin
+kunnen de tick en `/api/priorities` verschillen. Prepare (de precheck van elke tick) leest
+`PrioInputs` niet; het bewaart alleen de graaf van het bord. Complete leest het, dus alleen voor
+een repo die due is, en alleen als er minstens één item overblijft; een fout daarin is de fout van
+Complete, nooit een gewicht van 0. Een rustige tick wordt er dus niet langer van.
 
 Voor elke start of hervatting die decide kiest, toetst tick één gedeelde rem over alle repo's van de
 host. Per kandidaat, in deze volgorde; de eerste dichte rem geeft de uitsteltekst:

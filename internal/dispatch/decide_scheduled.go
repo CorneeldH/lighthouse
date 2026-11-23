@@ -55,7 +55,7 @@ func decideScheduled(in Input, repo RepoInput) []planned {
 			Verdict: scheduled.Record{Verdict: d.Verdict, MaxRuntime: d.Plan.MaxRuntime}.Encode(),
 		}
 		// No issue, so no priority: comparePlanned puts a scheduled start first by its kind.
-		out = append(out, planned{Action: a, priority: priorityRank(""), software: d.Profile == ProfileSoftware})
+		out = append(out, planned{Action: a, band: PriorityBand(""), software: d.Profile == ProfileSoftware})
 	}
 	return out
 }

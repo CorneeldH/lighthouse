@@ -3,6 +3,7 @@ package forge_test
 import (
 	"context"
 	"errors"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -111,5 +112,39 @@ func TestGitLabPlanningBudgetIsOneLinksCallPerOpenIssue(t *testing.T) {
 	got, err := f.Planning(ctx)
 	if !errors.Is(err, context.Canceled) || len(got.Issues) != 0 || len(got.Milestones) != 0 {
 		t.Errorf("Planning on a cancelled context = %+v, %v; want the context error and no partial result", got, err)
+	}
+}
+
+// Classification: contract. Fails when PrioInputs on GitLab reads the links of an issue or the
+// closed issues of a milestone, or maps an issue to the wrong milestone.
+func TestGitLabPrioInputsReadsNoLinks(t *testing.T) {
+	srv, f := gitlabBoardOn(t, gitlabBoard, gitlabLifecycle...)
+	srv.AddMilestone(map[string]any{"id": 3, "iid": 13, "title": "M1", "state": "active", "description": "Priority: 1"})
+	one := boardIssue(1, "opened", time.Now())
+	one["milestone"] = map[string]any{"id": 3, "iid": 13, "title": "M1", "state": "active"}
+	srv.AddIssue(one)
+	srv.AddIssue(boardIssue(2, "opened", time.Now()))
+	srv.AddIssue(boardIssue(5, "closed", time.Now()))
+	srv.AddLink(2, planLink(1, "opened", "is_blocked_by", "g/p#1"))
+	got, err := f.PrioInputs(t.Context())
+	if err != nil {
+		t.Fatalf("PrioInputs: %v", err)
+	}
+	want := forge.PrioInputs{
+		Issues:     map[int]int{1: 3, 2: 0},
+		Milestones: []forge.Milestone{{Number: 3, Title: "M1", State: "open", Description: "Priority: 1"}},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("PrioInputs = %+v, want %+v", got, want)
+	}
+	// 1 open-issues page + 1 milestone list; no links, no closed issues.
+	reqs := srv.Requests()
+	for _, r := range reqs {
+		if strings.Contains(r, "/links") || strings.Contains(r, "state=closed") {
+			t.Errorf("request %q, want no links and no closed-issue read", r)
+		}
+	}
+	if len(reqs) != 2 {
+		t.Errorf("requests = %q, want 2", reqs)
 	}
 }

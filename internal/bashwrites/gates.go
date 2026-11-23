@@ -36,6 +36,16 @@ var GatePacks = map[string]string{
 	"code-language-check.sh": "core",
 }
 
+// GateComponents is the component of `.lighthouse/components.toml` (and levels.toml) that each
+// gate belongs to; a gate whose component is off does not run.
+var GateComponents = map[string]string{
+	"shell-lint-check.sh":    "shell-lint-check",
+	"ruff-format-check.sh":   "ruff-format-check",
+	"gofmt-check.sh":         "gofmt-check",
+	"md-link-check":          "md-link-check",
+	"code-language-check.sh": "code-language-check",
+}
+
 // GateArgv holds a gate that runs as `lighthouse hook <name>`: it has no script of its own, and
 // `run.sh <name>` in the same directory runs it. Every other gate is the script named by the gate.
 var GateArgv = map[string][]string{

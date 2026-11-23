@@ -162,4 +162,9 @@ describe('Header', () => {
     await screen.findByText('1.2.3')
     expect(screen.queryByText(/tick/)).toBeNull()
   })
+
+  it('contains the theme group', () => {
+    renderHeader()
+    expect(screen.getByRole('group', { name: 'Theme' })).toBeTruthy()
+  })
 })

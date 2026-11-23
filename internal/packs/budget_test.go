@@ -17,11 +17,12 @@ import (
 // Stop hook, a pointer, not an explanation. #390 cut every block to the rules a hook, a
 // non-derivable fact or a proven mistake carries (core 373 to 190, go 73 to 25, node 37 to 25,
 // python 83 to 25, total 620 to 260) and deleted the shell block, which held only rules a hook
-// already carries.
-var blockCeilings = map[string]int{"core": 190, "go": 25, "node": 25, "python": 25}
+// already carries. #19 added the `--no-verify` line back (the one rule no hook protects in Codex
+// and OpenCode) and the level marker of the commit-test-gate line: core 190 to 194, total 263.
+var blockCeilings = map[string]int{"core": 194, "go": 25, "node": 25, "python": 25}
 
 // blocksCeiling is the ceiling for all blocks together, the heaviest combination.
-const blocksCeiling = 260
+const blocksCeiling = 263
 
 func TestInstructionBlocksWithinCeiling(t *testing.T) {
 	entries, err := fs.ReadDir(pack.Files, ".")

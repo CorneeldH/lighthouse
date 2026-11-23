@@ -118,7 +118,7 @@ describe('PrioritiesTab', () => {
 
   it('a 502 shows the forge error in the card while the Controller tab still renders', async () => {
     stub(() => json({ error: 'boom' }, 502))
-    window.location.hash = '#prioritering'
+    window.location.hash = '#priorities'
     const client = newQueryClient()
     render(
       <QueryClientProvider client={client}>
@@ -228,29 +228,29 @@ describe('PrioritiesTab', () => {
     }
     const order = () => screen.getAllByTestId(/^ms-/).map((e) => e.getAttribute('data-testid'))
 
-    it('shows the switch only in the milestones view, Berekend by default', async () => {
+    it('shows the switch only in the milestones view, Computed by default', async () => {
       stub(() => json(RANKED))
       renderTab()
       await screen.findByTestId('view-deps')
-      expect(screen.queryByRole('button', { name: 'Prioriteit' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Priority' })).toBeNull()
       fireEvent.click(screen.getByRole('button', { name: /^Milestones/ }))
-      expect(screen.getByRole('button', { name: 'Berekend' }).getAttribute('aria-pressed')).toBe('true')
-      expect(screen.getByRole('button', { name: 'Prioriteit' }).getAttribute('aria-pressed')).toBe('false')
+      expect(screen.getByRole('button', { name: 'Computed' }).getAttribute('aria-pressed')).toBe('true')
+      expect(screen.getByRole('button', { name: 'Priority' }).getAttribute('aria-pressed')).toBe('false')
       expect(order()).toEqual(['ms-a/x#m2', 'ms-a/x#m1'])
     })
 
-    it('Prioriteit reorders the list and survives a remount through the prefs', async () => {
+    it('Priority reorders the list and survives a remount through the prefs', async () => {
       stub(() => json(RANKED))
       renderTab()
       await screen.findByTestId('view-deps')
       fireEvent.click(screen.getByRole('button', { name: /^Milestones/ }))
-      fireEvent.click(screen.getByRole('button', { name: 'Prioriteit' }))
-      expect(screen.getByRole('button', { name: 'Prioriteit' }).getAttribute('aria-pressed')).toBe('true')
+      fireEvent.click(screen.getByRole('button', { name: 'Priority' }))
+      expect(screen.getByRole('button', { name: 'Priority' }).getAttribute('aria-pressed')).toBe('true')
       expect(order()).toEqual(['ms-a/x#m1', 'ms-a/x#m2'])
       expect(JSON.parse(localStorage.getItem('lighthouse.priorities') as string).msOrder).toBe('priority')
       cleanup()
       renderTab()
-      expect((await screen.findByRole('button', { name: 'Prioriteit' })).getAttribute('aria-pressed')).toBe('true')
+      expect((await screen.findByRole('button', { name: 'Priority' })).getAttribute('aria-pressed')).toBe('true')
       expect(order()).toEqual(['ms-a/x#m1', 'ms-a/x#m2'])
     })
 
@@ -269,7 +269,7 @@ describe('PrioritiesTab', () => {
       )
       const client = renderTab()
       const beta = await screen.findByTestId('ms-a/x#m2')
-      fireEvent.click(within(beta).getByRole('button', { name: /omhoog/i }))
+      fireEvent.click(within(beta).getByRole('button', { name: /up/i }))
       await waitFor(() => expect(posts).toHaveLength(1))
       expect(posts[0].body).toEqual({
         repo: 'a/x',
@@ -280,10 +280,10 @@ describe('PrioritiesTab', () => {
       })
       // Optimistic: Beta is on top while the request runs, and its buttons are off.
       expect(order()).toEqual(['ms-a/x#m2', 'ms-a/x#m1'])
-      expect((within(screen.getByTestId('ms-a/x#m2')).getByRole('button', { name: /omlaag/i }) as HTMLButtonElement).disabled).toBe(true)
+      expect((within(screen.getByTestId('ms-a/x#m2')).getByRole('button', { name: /down/i }) as HTMLButtonElement).disabled).toBe(true)
       posts[0].resolve(await json({ detail: 'rank changed' }, 409))
       const alert = await screen.findByRole('alert')
-      expect(alert.textContent).toBe('De volgorde is net ergens anders veranderd; de lijst is ververst.')
+      expect(alert.textContent).toBe('The order was just changed elsewhere; the list has been refreshed.')
       await waitFor(() => expect(order()).toEqual(['ms-a/x#m1', 'ms-a/x#m2']))
       client.clear()
     })

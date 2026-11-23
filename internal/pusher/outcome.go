@@ -60,9 +60,11 @@ type questionInput struct {
 const postTimeout = 2 * time.Minute
 
 // ask posts what the red step of q gives and closes the push row. A red step an answer push acts
-// on is a 🤖 Question and closes the row as question; one without a SHA (hintManual) is no question:
-// it is a 🤖 Returned without a session, the row closes as returned, and the next tick gives
-// the issue back with a label and To do (finishReturn). The text is scrubbed of every token the
+// on is a 🤖 Question and closes the row as question. One without a SHA (hintManual) is no question.
+// When the step is policy or lint and it could run (Red.repairable), the branch is wrong: it is a
+// 🤖 Repair without a session, the row closes as handoff, and the run that wrote the branch mends
+// it. Any other step is a 🤖 Returned without a session, the row closes as returned, and the next
+// tick gives the issue back with a label and To do (finishReturn). The text is scrubbed of every token the
 // pusher holds, and cut under maxComment with the full diff as an attachment. A row tick already
 // handed back gets nothing: its Returned stands.
 func (p *push) ask(ctx context.Context, q questionInput) error {
@@ -91,6 +93,9 @@ func (p *push) ask(ctx context.Context, q questionInput) error {
 	outcome := runs.Question
 	if q.hint == hintManual {
 		outcome = runs.Returned
+		if q.red.repairable() {
+			outcome = runs.Handoff
+		}
 	}
 	return runs.Release(ctx, p.deps.DB, p.req.RunID, outcome, "push: "+q.red.Step, p.deps.Now())
 }
@@ -160,11 +165,15 @@ func (p *push) attach(sha, diff string) (string, error) {
 	return path, f.Close()
 }
 
-// fitQuestion renders q, scrubbed: a Question, or a Returned for hintManual. A text of
+// fitQuestion renders q, scrubbed: a Question, a Repair for a repairable hintManual, or a Returned
+// for any other hintManual. A text of
 // maxComment characters or more gets its diff cut at a line under the limit, with the full diff
 // written by attach and named in the text.
 func fitQuestion(q questionInput, language string, scrub []string, attach func(string) (string, error)) string {
 	render := func() string {
+		if q.hint == hintManual && q.red.repairable() {
+			return scrubText(renderRepair(q, language), scrub)
+		}
 		if q.hint == hintManual {
 			return scrubText(renderReturned(q, language), scrub)
 		}
@@ -252,6 +261,23 @@ func renderReturned(q questionInput, language string) string {
 	lines = append(lines, attachmentLines(q, language)...)
 	lines = append(lines, "", h(hintHeadings[hintManual]))
 	lines = append(lines, pushCommandLines(q, language)...)
+	return strings.Join(lines, "\n")
+}
+
+// renderRepair renders the pusher's 🤖 Repair for a policy or lint step that is red: the fields of
+// the Question without sha, the red step, and the diff folded. It names no push command and no
+// hint: the run that wrote the branch mends it, and the next push is its own.
+func renderRepair(q questionInput, language string) string {
+	h := func(key string) string { return protocol.Heading(key, language) }
+	lines := []string{protocol.Robot + " " + h("kind_repair")}
+	lines = append(lines, pushFields(q)...)
+	lines = append(lines, redLines(q, language)...)
+	if q.diff != "" {
+		lines = append(lines, "", "<details><summary>"+h("question_push_diff")+"</summary>", "")
+		lines = append(lines, fenced("diff", noFooter(q.diff))...)
+		lines = append(lines, "", "</details>")
+	}
+	lines = append(lines, attachmentLines(q, language)...)
 	return strings.Join(lines, "\n")
 }
 

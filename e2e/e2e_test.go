@@ -253,7 +253,7 @@ func TestFreshRepoBlocksCommitOnMain(t *testing.T) {
 func TestFreshRepoGetsFullCore(t *testing.T) {
 	bin := buildLighthouse(t)
 	repo := freshRepo(t)
-	if out := run(t, repo, bin, "init", "--yes"); !strings.HasPrefix(out, "Packages: core\n") {
+	if out := run(t, repo, bin, "init", "--yes", "--level", "strict"); !strings.HasPrefix(out, "Packages: core\n") {
 		t.Fatalf("init:\n%s", out)
 	}
 	for _, rel := range []string{
@@ -340,7 +340,7 @@ func pythonRepo(t *testing.T, bin, pyproject string) string {
 	writeFile(t, repo, "pyproject.toml", pyproject)
 	git(t, repo, "add", "pyproject.toml")
 	git(t, repo, "commit", "-qm", "pyproject")
-	if out := run(t, repo, bin, "init", "--yes"); !strings.HasPrefix(out, "Packages: core, python (found pyproject.toml)\n") {
+	if out := run(t, repo, bin, "init", "--yes", "--level", "strict"); !strings.HasPrefix(out, "Packages: core, python (found pyproject.toml)\n") {
 		t.Fatalf("init:\n%s", out)
 	}
 	return repo

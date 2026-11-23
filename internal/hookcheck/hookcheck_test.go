@@ -47,6 +47,7 @@ func newFixture(t *testing.T, version string, packNames ...string) string {
 		Yes:      true,
 		Version:  version,
 		AddPacks: packNames,
+		Level:    "strict", // a first init picks light; the smoke test wants every hook registered
 		Deps: deps.Checker{
 			LookPath: func(name string) (string, error) { return "/usr/bin/" + name, nil },
 			Run:      func(string, ...string) error { return nil },

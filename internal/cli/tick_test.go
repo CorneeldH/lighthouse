@@ -1554,6 +1554,30 @@ func TestTickRunViewWhenNotDue(t *testing.T) {
 	}
 }
 
+// Classification: io with a fake forge. Fails when a tick that is not due reads the prio weights
+// (open issues and milestones): only a gathered repo pays that read.
+func TestTickNotDueReadsNoPrioInputs(t *testing.T) {
+	env, db := tickFixture(t, repoDir(t, completeRepo))
+	srv, _ := startable(t, &env)
+	srv.BoardNodes = []map[string]any{boardNode("I7", "h1", issueContent(7, "Issue", nil))} // On hold: nothing starts
+	for _, step := range []struct {
+		after      time.Duration
+		milestones int
+	}{
+		{0, 1},           // first: gathered, the weights are read once
+		{time.Minute, 1}, // not due: no new read
+	} {
+		env.Now = func() time.Time { return t0.Add(step.after) }
+		var errOut bytes.Buffer
+		if err := tick(context.Background(), env, db, &errOut); err != nil {
+			t.Fatalf("tick at +%v = %v\n%s", step.after, err, errOut.String())
+		}
+		if n := srv.Count("/repos/o/r/milestones"); n != step.milestones {
+			t.Errorf("tick at +%v: milestone reads = %d, want %d\n%s", step.after, n, step.milestones, errOut.String())
+		}
+	}
+}
+
 // A deferred start carries the title of its board item.
 func TestTickDeferredTitle(t *testing.T) {
 	env, db := tickFixture(t, repoDir(t, completeRepo))

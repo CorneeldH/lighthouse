@@ -135,6 +135,7 @@
               ],
               "example": "github",
               "readers": [
+                "internal/cli/lint.go",
                 "internal/evidence/run.go",
                 "internal/initcmd/initcmd.go",
                 "internal/repoconfig/repoconfig.go",
@@ -696,6 +697,7 @@
               "readers": [
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/route-issue",
+                "pack/core/skills/start-issue",
                 "pack/core/skills/write-issue"
               ]
             },
@@ -721,6 +723,7 @@
               "readers": [
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/route-issue",
+                "pack/core/skills/start-issue",
                 "pack/core/skills/write-issue"
               ]
             }
@@ -1001,6 +1004,30 @@
           ]
         },
         {
+          "table": "pr_gate",
+          "title": "PR gate",
+          "about": "How strict pr-create-gate is about the issue a pull request names.",
+          "keys": [
+            {
+              "key": "pr_gate.issue",
+              "level": "advanced",
+              "required": "no",
+              "default": "optional",
+              "about": "Whether the PR body may take `No issue:` (optional), must name an issue (required) or must also carry an Evidence table for `Refs` (evidence).",
+              "options": [
+                "optional",
+                "required",
+                "evidence"
+              ],
+              "readers": [
+                "internal/prbody/form.go",
+                "internal/prbody/gate.go",
+                "pack/core/skills/write-pr"
+              ]
+            }
+          ]
+        },
+        {
           "table": "worktree_audit",
           "title": "Worktree audit",
           "about": "Worktrees and branches that the worktree audit never proposes to remove.",
@@ -1023,6 +1050,35 @@
               "about": "Branches the worktree audit never proposes to remove.",
               "readers": [
                 "internal/worktreeaudit/collect.go"
+              ]
+            }
+          ]
+        },
+        {
+          "table": "worktree",
+          "title": "Worktrees",
+          "about": "Where the worktrees of this repo live.",
+          "keys": [
+            {
+              "key": "worktree.root",
+              "level": "advanced",
+              "required": "no",
+              "default": ".claude/worktrees",
+              "about": "The folder the worktrees live in: relative to the main checkout, or absolute.",
+              "readers": [
+                "internal/hooks/hooks.go",
+                "internal/initcmd/initcmd.go",
+                "internal/worktreeaudit/collect.go",
+                "internal/worktreeaudit/render.go",
+                "internal/worktreeroot/worktreeroot.go",
+                "pack/core/instructions/AGENTS.md",
+                "pack/core/skills/audit-worktrees",
+                "pack/core/skills/close-issue",
+                "pack/core/skills/fix-pr",
+                "pack/core/skills/review-plan",
+                "pack/core/skills/upgrade",
+                "pack/core/skills/write-handoff",
+                "pack/go/skills/go-standard"
               ]
             }
           ]

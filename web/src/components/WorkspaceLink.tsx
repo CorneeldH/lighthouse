@@ -6,7 +6,7 @@ export function WorkspaceLink({ id, forgeUrl }: { id: string; forgeUrl: string }
   if (id === '') return null
   if (forgeUrl === '') return <code>{id}</code>
   return (
-    <ExternalLink href={`${forgeUrl}/workspaces/${encodeURIComponent(id)}`} label={`${id}, opens kenn-forge in a new tab`}>
+    <ExternalLink href={`${forgeUrl}/terminal/${encodeURIComponent(id)}`} label={`${id}, opens kenn-forge in a new tab`}>
       {id}
     </ExternalLink>
   )

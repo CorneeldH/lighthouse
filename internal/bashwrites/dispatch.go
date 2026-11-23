@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/CorneeldH/lighthouse/internal/deadline"
+	"github.com/CorneeldH/lighthouse/internal/levels"
 )
 
 // The dispatch of post: a gate per claimed file, its verdict, and the bundle that post reports.
@@ -49,10 +50,19 @@ var runGateFunc = runGate
 // `{"tool_name":"Bash","cwd":root,"tool_input":{"file_path":<abs>}}`, in root as working
 // directory (ruff-format-check.sh looks for its .ruff-version from there) and with
 // LIGHTHOUSE_UNDER_BASH_WRITE_CHECK=1. The verdict is Classify's, "stopped" when a signal to this
-// process stopped the gate, or "missing" with a notice when the gate is not under repoRoot. A gate
+// process stopped the gate, "ok" without output when the gate's component is off in
+// components.toml, "unchecked" when that file cannot be read, or "missing" with a notice when the gate is not under repoRoot. A gate
 // that exists but cannot start (EACCES) is an error, as the exception in the Python: Post turns it
 // into `internal error in the dispatcher (<error>)`, COULD NOT CHECK.
 func runGate(repoRoot, root, rel, gate string, until time.Time) (string, []byte, error) {
+	installed, _, levelErr := levels.ReadInstalled(repoRoot)
+	if levelErr != nil {
+		// As the hook layer does for a corrupt components.toml: nothing was checked.
+		return "unchecked", []byte(cannotCheck + ": components.toml cannot be read: " + levelErr.Error()), nil
+	}
+	if installed.Stand(GateComponents[gate]) == levels.StandOff {
+		return "ok", nil, nil
+	}
 	path := GatePath(repoRoot, gate)
 	if info, err := os.Stat(path); err != nil || !info.Mode().IsRegular() {
 		return verdictMissing, []byte("no " + GatePacks[gate] + " check installed"), nil

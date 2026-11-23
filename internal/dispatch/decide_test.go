@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -543,6 +544,317 @@ func TestPushRowClosesOnThePushersReturned(t *testing.T) {
 	}
 }
 
+// pusherRepairComment is the pusher's 🤖 Herstel for a red policy step, posted by author at.
+func pusherRepairComment(author string, at time.Time) Comment {
+	return Comment{ID: 71, Author: author, CreatedAt: at.Format(time.RFC3339),
+		Body: "🤖 Herstel\nworktree: " + pushWorktree + "\nbranch: issue-7-bouw-de-keten\nstep: policy\n\n**Rode stap:** policy"}
+}
+
+// The pusher's own Herstel closes its open push row as a handoff: the chain goes on with the
+// repair run, not with the give-back of a Teruggegeven.
+func TestSettleClosesPushRowOnRepair(t *testing.T) {
+	in := pushRow(t, "", 5*time.Minute)
+	in.Repos[0].Snapshot.TokenLogin = "lh-bot"
+	item7(&in).Comments = append(item7(&in).Comments, pusherRepairComment("lh-bot", in.Now.Add(-time.Minute)))
+	got := Decide(in)
+	if s := summary(got); !reflect.DeepEqual(s, []string{"close::"}) {
+		t.Fatalf("summary = %q, want one close", s)
+	}
+	if a := got[0]; a.RunID != 5 || a.Outcome != runs.Handoff || a.Stop || a.End || a.Discard || a.SessionID != "" {
+		t.Errorf("action %+v, want run 5 closed as handoff without touching a session or workplace", a)
+	}
+}
+
+// A Herstel of another author is no pusher's Herstel: the push row stays open.
+func TestSettleIgnoresRepairOfOtherAuthor(t *testing.T) {
+	in := pushRow(t, "", 5*time.Minute)
+	in.Repos[0].Snapshot.TokenLogin = "lh-bot"
+	item7(&in).Comments = append(item7(&in).Comments, pusherRepairComment("someone-else", in.Now.Add(-time.Minute)))
+	for _, a := range Decide(in) {
+		if a.Kind == KindClose && a.RunID == 5 {
+			t.Fatalf("action %+v closes run 5 on a Herstel of another author", a)
+		}
+	}
+}
+
+func TestTriggerCommentRepairPrefix(t *testing.T) {
+	if id, ok := triggerComment("repair:123"); !ok || id != 123 {
+		t.Errorf("triggerComment(repair:123) = %d, %v; want 123, true", id, ok)
+	}
+	if _, ok := triggerComment("repair:x"); ok {
+		t.Error("triggerComment(repair:x) ok, want false")
+	}
+}
+
+const (
+	repairWhy  = "ci.yml: geen permissions: op workflowniveau"
+	repairURL  = "https://github.com/o/r/issues/7#issuecomment-71"
+	repairDiff = "+permissions: {}"
+)
+
+// repairPost is the pusher's 🤖 Herstel of a red policy step as renderRepair writes it, with
+// the reason fenced and the diff folded, posted by author at 11:05.
+func repairPost(author string) Comment {
+	return Comment{ID: 71, Author: author, CreatedAt: "2026-10-31T11:05:00Z", URL: repairURL,
+		Body: "🤖 Herstel\nworktree: " + pushWorktree + "\nbranch: issue-7-bouw-de-keten\nstep: policy\n\n" +
+			"**Rode stap:** policy\n```text\n" + repairWhy + "\n```\n\n<details><summary>Workflow-diff</summary>\n\n" +
+			"```diff\n" + repairDiff + "\n```\n\n</details>"}
+}
+
+// closedPushRow is a closed push row of issue 7 for the handoff in comment handoff.
+func closedPushRow(id int64, handoff int, at time.Time, outcome runs.Outcome, pushed string) runs.Row {
+	return runs.Row{ID: id, Issue: 7, Trigger: triggerPush, TriggerKey: "push:" + strconv.Itoa(handoff), Attempt: 1,
+		Command: cmdPush, Branch: "issue-7-bouw-de-keten", StartedAt: at, Outcome: outcome, PushedSHA: pushed}
+}
+
+// onDay is 2026-10-31 at h:m UTC, the day of the decide fixtures.
+func onDay(h, m int) time.Time { return time.Date(2026, 10, 31, h, m, 0, 0, time.UTC) }
+
+// repairInput is the base of the repair tests: run 5 (session pushSession) wrote the push handoff
+// in comment 63 at 11:00 (without a session footer, as the skill writes it) and closed as
+// handoff; push row 6 for it closed as handoff on the pusher's Herstel in comment 71 at 11:05, by
+// the token login.
+func repairInput(t *testing.T) Input {
+	t.Helper()
+	in := loadInput(t, "settle-green-pr-done")
+	item7(&in).PRs = nil
+	in.Repos[0].Stands = nil
+	in.Repos[0].WorkflowPush, in.Repos[0].PushTimeout = true, 30*time.Minute
+	r := row5(&in)
+	r.Open, r.Outcome = false, runs.Handoff
+	item7(&in).Comments = append(item7(&in).Comments,
+		Comment{ID: 63, Author: "lh-bot", CreatedAt: "2026-10-31T11:00:00Z", Rocket: true,
+			Body: "🤖 Handoff\nissue: #7\nworktree: " + pushWorktree + "\nbranch: issue-7-bouw-de-keten\nnext: push-workflows\nwhen: now"},
+		repairPost("lh-bot"))
+	in.Repos[0].History = append(in.Repos[0].History, closedPushRow(6, 63, onDay(11, 1), runs.Handoff, ""))
+	return in
+}
+
+// startsOrReturns keeps the resumes, starts and returns of got.
+func startsOrReturns(got []Action) []Action {
+	var out []Action
+	for _, a := range got {
+		if a.Kind == KindResume || a.Kind == KindStart || a.Kind == KindReturn || a.Kind == KindFinishReturn {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+// The pusher's Herstel as the last turn resumes the session of the run that wrote the push
+// handoff, once under repair:<id>, with the red step, the reason and the comment's URL in the
+// prompt and without the diff.
+func TestRepairResumesHandoffSession(t *testing.T) {
+	in := repairInput(t)
+	got := startsOrReturns(Decide(in))
+	if len(got) != 1 {
+		t.Fatalf("actions %+v, want one resume", got)
+	}
+	a := got[0]
+	if a.Kind != KindResume || a.Mode != modeResume || a.Trigger != "repair" || a.TriggerKey != "repair:71" || a.Attempt != 1 {
+		t.Errorf("action %+v, want a first resume under repair:71", a)
+	}
+	if a.SessionID != pushSession || a.Command != "/lighthouse-start-issue 7" || a.Branch != "issue-7-bouw-de-keten" || a.CommentID != 71 {
+		t.Errorf("action %+v, want the session, command and branch of run 5 and the Herstel's id", a)
+	}
+	for _, want := range []string{protocol.Heading("prompt_pusher_repair", "nl"), "policy", repairWhy, repairURL} {
+		if !strings.Contains(a.Prompt, want) {
+			t.Errorf("prompt %q lacks %q", a.Prompt, want)
+		}
+	}
+	if strings.Contains(a.Prompt, repairDiff) {
+		t.Errorf("prompt %q carries the diff", a.Prompt)
+	}
+}
+
+// A Herstel whose key a run already has resumes nothing and returns nothing.
+func TestRepairKeySpentDoesNothing(t *testing.T) {
+	in := repairInput(t)
+	in.Repos[0].History = append(in.Repos[0].History, runs.Row{ID: 7, Issue: 7, SessionID: pushSession, Mode: modeResume,
+		Trigger: triggerAnswer, TriggerKey: "repair:71", Attempt: 1, Command: "/lighthouse-start-issue 7",
+		Branch: "issue-7-bouw-de-keten", StartedAt: onDay(11, 10), Outcome: runs.Done})
+	if got := startsOrReturns(Decide(in)); len(got) != 0 {
+		t.Errorf("actions %+v, want none for a spent repair key", got)
+	}
+}
+
+// In the tick in which settle closes the push row on the Herstel, the row is still open in the
+// history: repair waits, so the tick only closes. The tick after it resumes.
+func TestRepairWaitsWhilePushRowOpen(t *testing.T) {
+	in := repairInput(t)
+	r := &in.Repos[0].History[len(in.Repos[0].History)-1]
+	r.Open, r.Outcome = true, ""
+	in.Now = onDay(11, 10)
+	if s := summary(Decide(in)); !reflect.DeepEqual(s, []string{"close::"}) {
+		t.Fatalf("summary = %q, want only the close of the push row", s)
+	}
+	r.Open, r.Outcome = false, runs.Handoff
+	if s := summary(startsOrReturns(Decide(in))); !reflect.DeepEqual(s, []string{"resume::"}) {
+		t.Errorf("summary after the close = %q, want the resume", s)
+	}
+}
+
+// One and two closed Herstel push rows in a row, the current one counted, resume the run; the
+// third goes back with reason_pusher_red_ceiling and the push command of the Herstel's worktree.
+func TestRepairCeiling(t *testing.T) {
+	tests := []struct {
+		earlier int
+		want    []string
+	}{
+		{0, []string{"resume::"}},
+		{1, []string{"resume::"}},
+		{2, []string{"return:reason_pusher_red_ceiling:" + pushCommand(pushWorktree)}},
+	}
+	for _, tt := range tests {
+		in := repairInput(t)
+		var rows []runs.Row
+		for i := range tt.earlier {
+			rows = append(rows, closedPushRow(int64(i+1), 50+i, onDay(10, 10+10*i), runs.Handoff, ""))
+		}
+		addRows(&in, rows...)
+		if s := summary(startsOrReturns(Decide(in))); !reflect.DeepEqual(s, tt.want) {
+			t.Errorf("%d earlier Herstel rows: summary = %q, want %q", tt.earlier, s, tt.want)
+		}
+	}
+}
+
+// A pushed push row, a push row closed on a question, or a Returned of the token login between
+// the Herstels starts the count again: two earlier Herstel rows before it no longer reach the
+// ceiling. A Returned of another author resets nothing.
+func TestRepairCountResets(t *testing.T) {
+	ceiling := []string{"return:reason_pusher_red_ceiling:" + pushCommand(pushWorktree)}
+	tests := []struct {
+		name   string
+		mutate func(*Input)
+		want   []string
+	}{
+		{"pushed push row", func(in *Input) {
+			addRows(in, closedPushRow(3, 52, onDay(10, 30), runs.Handoff, pushSHA))
+		}, []string{"resume::"}},
+		{"question push row", func(in *Input) {
+			addRows(in, closedPushRow(3, 52, onDay(10, 30), runs.Question, ""))
+		}, []string{"resume::"}},
+		{"returned of the token login", func(in *Input) {
+			returnedBefore(in, "lh-bot")
+		}, []string{"resume::"}},
+		{"returned of another author", func(in *Input) {
+			returnedBefore(in, "someone-else")
+		}, ceiling},
+		{"no reset", func(*Input) {}, ceiling},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			in := repairInput(t)
+			tt.mutate(&in)
+			addRows(&in, closedPushRow(1, 50, onDay(10, 10), runs.Handoff, ""), closedPushRow(2, 51, onDay(10, 20), runs.Handoff, ""))
+			if s := summary(startsOrReturns(Decide(in))); !reflect.DeepEqual(s, tt.want) {
+				t.Errorf("summary = %q, want %q", s, tt.want)
+			}
+		})
+	}
+}
+
+// returnedBefore puts a Returned of author at 10:30, before the Handoff in comment 63.
+func returnedBefore(in *Input, author string) {
+	cs := item7(in).Comments
+	ret := Comment{ID: 60, Author: author, CreatedAt: "2026-10-31T10:30:00Z",
+		Body: "🤖 Teruggegeven\nreason: workflow-pusher rood: policy"}
+	item7(in).Comments = append([]Comment{cs[0], ret}, cs[1:]...)
+}
+
+// A Herstel of another author than the token login resumes nothing and returns nothing.
+func TestRepairIgnoresOtherAuthor(t *testing.T) {
+	in := repairInput(t)
+	cs := item7(&in).Comments
+	cs[len(cs)-1] = repairPost("someone-else")
+	if got := startsOrReturns(Decide(in)); len(got) != 0 {
+		t.Errorf("actions %+v, want none for a Herstel of another author", got)
+	}
+}
+
+// The run found is the one that wrote the handoff: not a push row (it closes as handoff too), not
+// a run on another node, and not a handoff run that started after the Handoff comment.
+func TestRepairFindsHandoffRunNotPushRow(t *testing.T) {
+	in := repairInput(t)
+	h := in.Repos[0].History
+	other := runs.Row{ID: 8, Issue: 7, SessionID: "99999999-2222-4333-8444-555555555555", Mode: modeStart, Trigger: triggerHandoff,
+		TriggerKey: "handoff:40", Attempt: 1, Command: "/lighthouse-other 7", Branch: "issue-7-elders", Node: "node-b",
+		StartedAt: onDay(10, 30), Outcome: runs.Handoff}
+	later := other
+	later.ID, later.SessionID, later.Node, later.Command, later.StartedAt = 9, "88888888-2222-4333-8444-555555555555", "", "/lighthouse-later 7", onDay(11, 2)
+	earlier := closedPushRow(7, 50, onDay(10, 40), runs.Handoff, "")
+	in.Repos[0].History = append([]runs.Row{h[0], other, earlier}, append(h[1:], later)...)
+	got := startsOrReturns(Decide(in))
+	if len(got) != 1 || got[0].Kind != KindResume || got[0].SessionID != pushSession || got[0].Command != "/lighthouse-start-issue 7" {
+		t.Errorf("actions %+v, want the resume of run 5", got)
+	}
+	run, ok := issueCtxOf(in).handoffRunBefore(onDay(11, 5))
+	if !ok || run.ID != 5 {
+		t.Errorf("handoffRunBefore = %+v, %v; want run 5", run, ok)
+	}
+}
+
+// issueCtxOf is the issueCtx of issue 7 in in.
+func issueCtxOf(in Input) issueCtx {
+	it := *item7(&in)
+	return issueCtx{repo: in.Repos[0], it: it, hs: headers(it), base: Action{Repo: "o/r", Issue: 7}, now: in.Now}
+}
+
+// Without a handoff run before the Handoff comment, or with one without a session, the issue goes
+// back with reason_pusher_red and the push command of the Herstel's worktree.
+func TestRepairWithoutRunOrSessionReturns(t *testing.T) {
+	want := []string{"return:reason_pusher_red:" + pushCommand(pushWorktree)}
+	tests := []struct {
+		name   string
+		mutate func(*Input)
+	}{
+		{"no handoff run", func(in *Input) { row5(in).Outcome = runs.Done }},
+		{"run without session", func(in *Input) { row5(in).SessionID = "" }},
+		{"run after the handoff", func(in *Input) { row5(in).StartedAt = onDay(11, 0) }},
+		{"handoff comment gone", func(in *Input) {
+			cs := item7(in).Comments
+			item7(in).Comments = append([]Comment{cs[0]}, cs[2:]...)
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			in := repairInput(t)
+			tt.mutate(&in)
+			if s := summary(startsOrReturns(Decide(in))); !reflect.DeepEqual(s, want) {
+				t.Errorf("summary = %q, want %q", s, want)
+			}
+		})
+	}
+}
+
+// A resumed repair run (its row under repair:<id>, with trigger answer) that closed without a new
+// push row is no round: repairRounds walks the push rows only.
+func TestRepairRoundWithoutHandoffNotCounted(t *testing.T) {
+	for _, outcome := range []runs.Outcome{runs.Done, runs.Handoff, runs.Question} {
+		in := repairInput(t)
+		resumed := runs.Row{ID: 2, Issue: 7, SessionID: pushSession, Mode: modeResume, Trigger: triggerAnswer,
+			TriggerKey: "repair:51", Attempt: 1, Command: "/lighthouse-start-issue 7", Branch: "issue-7-bouw-de-keten",
+			StartedAt: onDay(10, 15), Outcome: outcome}
+		addRows(&in, closedPushRow(1, 50, onDay(10, 10), runs.Handoff, ""), resumed)
+		if n := issueCtxOf(in).repairRounds(); n != 2 {
+			t.Errorf("resumed run closed as %s: repairRounds = %d, want 2", outcome, n)
+		}
+	}
+}
+
+// The open push row and a push row that failed to start are no rounds and stop nothing.
+func TestRepairRoundsSkipsOpenAndStartFailed(t *testing.T) {
+	in := repairInput(t)
+	open := closedPushRow(9, 72, onDay(11, 30), "", "")
+	open.Open = true
+	failed := closedPushRow(2, 51, onDay(10, 20), runs.StartFailed, "")
+	addRows(&in, closedPushRow(1, 50, onDay(10, 10), runs.Handoff, ""), failed)
+	in.Repos[0].History = append(in.Repos[0].History, open)
+	if n := issueCtxOf(in).repairRounds(); n != 2 {
+		t.Errorf("repairRounds = %d, want 2", n)
+	}
+}
+
 // Once the pusher pushed, the push row owns the PR of its branch: a green PR merges through the
 // merge pusher (the row's PushedSHA routes it there, with or without a push note), a red one
 // gets a fix-pr start, a merged one closes the row as done. max_runtime, max_wait and the push
@@ -748,7 +1060,7 @@ func TestReturnLabelKeyTable(t *testing.T) {
 		"reason_start_uncertain": "needs_hands", "reason_permission": "needs_hands", "reason_silent": "needs_hands",
 		"reason_silent_forge": "needs_hands", "reason_timeout": "needs_hands", "reason_pusher_off": "needs_hands",
 		"reason_pusher_node": "needs_hands", "reason_pusher_silent": "needs_hands",
-		"reason_pusher_no_handoff": "needs_hands", "reason_pusher_red": "needs_hands", "reason_repeat_handoff": "needs_hands",
+		"reason_pusher_no_handoff": "needs_hands", "reason_pusher_red": "needs_hands", "reason_pusher_red_ceiling": "needs_hands", "reason_repeat_handoff": "needs_hands",
 	}
 	var headings map[string]map[string]string
 	if _, err := toml.DecodeFile(filepath.Join("..", "..", "pack", "core", "headings.toml"), &headings); err != nil {
@@ -953,5 +1265,36 @@ func TestDecideOnHoldRemnantStillUnparks(t *testing.T) {
 	item7(&in).Status = statusOnHold
 	if got := kinds(Decide(in)); !reflect.DeepEqual(got, []Kind{KindUnpark}) {
 		t.Errorf("Decide = %v, want one unpark", got)
+	}
+}
+
+// Round 2: the first Herstel resumed run 5 (row 7, trigger answer, key repair:71), which closed as
+// handoff with a new Handoff in comment 80; the pusher's second Herstel (comment 91) answers that
+// one. handoffRunBefore goes through push:80 to the resumed row, not to run 5, and the resume
+// carries the same session under repair:91.
+func TestRepairRoundTwoResumesResumedRow(t *testing.T) {
+	in := repairInput(t)
+	resumed := runs.Row{ID: 7, Issue: 7, SessionID: pushSession, Mode: modeResume, Trigger: triggerAnswer,
+		TriggerKey: "repair:71", Attempt: 1, Command: "/lighthouse-start-issue 7", Branch: "issue-7-bouw-de-keten",
+		StartedAt: onDay(11, 10), Outcome: runs.Handoff}
+	push2 := closedPushRow(8, 80, onDay(11, 21), runs.Handoff, "")
+	second := repairPost("lh-bot")
+	second.ID, second.CreatedAt = 91, "2026-10-31T11:30:00Z"
+	item7(&in).Comments = append(item7(&in).Comments,
+		Comment{ID: 80, Author: "lh-bot", CreatedAt: "2026-10-31T11:20:00Z", Rocket: true,
+			Body: "🤖 Handoff\nissue: #7\nworktree: " + pushWorktree + "\nbranch: issue-7-bouw-de-keten\nnext: push-workflows\nwhen: now"},
+		second)
+	in.Repos[0].History = append(in.Repos[0].History, resumed, push2)
+	run, ok := issueCtxOf(in).handoffRunBefore(onDay(11, 30))
+	if !ok || run.ID != 7 {
+		t.Fatalf("handoffRunBefore = %+v, %v; want the resumed row 7", run, ok)
+	}
+	got := startsOrReturns(Decide(in))
+	if len(got) != 1 {
+		t.Fatalf("actions %+v, want one resume", got)
+	}
+	a := got[0]
+	if a.Kind != KindResume || a.Trigger != "repair" || a.TriggerKey != "repair:91" || a.Attempt != 1 || a.SessionID != pushSession || a.CommentID != 91 {
+		t.Errorf("action %+v, want a first resume of the same session under repair:91", a)
 	}
 }
