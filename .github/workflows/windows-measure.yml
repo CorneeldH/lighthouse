@@ -29,7 +29,6 @@ on:
       - go.sum
       - ci/windows-measure.sh
       - .github/workflows/windows-measure.yml
-      - internal/commitgate/**
 
 permissions:
   contents: read
