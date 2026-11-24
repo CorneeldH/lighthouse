@@ -35,6 +35,12 @@ instellen. Een handmatige push laat de keten vanzelf verder lopen.
 - De security-review (`supply-chain`, `secrets`, `injection`) zelf veranderen.
 - Een Teruggegeven van de pusher een `sha` geven (zie §2, *Teruggegeven*).
 
+## Open voor het plan
+
+- `lighthouse level` vergelijkt `[dispatch] repos` (absolute paden) met de repo-root; in een
+  worktree is dat het worktree-pad. Het plan kiest de hoofdcheckout of de slug, en laat een
+  `host.toml` die niet parset één melding zijn en geen fout (r1-f9).
+
 ## Anti-doelen
 
 - Een wijziging die nieuwe rechten geeft (een action, een permission, een event) gaat nooit
@@ -42,7 +48,8 @@ instellen. Een handmatige push laat de keten vanzelf verder lopen.
 - Een start door tick zonder antwoord geeft nooit toestemming (`permit`). Toestemming komt alleen
   van het antwoord `push` van een mens.
 - Geen lus: tick start de pusher niet elke tick opnieuw voor dezelfde Vraag.
-- Vloer, policy, `actionlint` en `zizmor` blijven altijd draaien. De intent-toets vervangt alleen
+- Vloer, policy, `actionlint` en `zizmor` blijven altijd draaien voor elke SHA die de pusher zelf
+  pusht. Bij `AlreadyPushed` (een `pushed:`-start) vallen ze weg: de SHA staat al op origin. De intent-toets vervangt alleen
   de security-review, en alleen binnen de klasse van §1.
 
 ## Aanpakken
@@ -80,16 +87,22 @@ merge-base met die op de SHA, beide gelezen in de eigen kloon.
    buiten.
 2. **Geen nieuw event.** De eventnamen onder `on:` op de SHA zijn een deelverzameling van die op de
    merge-base. Een filter onder een bestaand event (`paths`, `branches`, `tags`, `types`) mag
-   veranderen.
+   veranderen, maar een workflow die op de merge-base alleen post-merge draaide (`push` op precies
+   de default-branch) en op de SHA pre-merge kan draaien, valt buiten de klasse
+   *(eigen keuze na spec-review, r1-f3)*.
 3. **Geen nieuwe action.** Elke `uses:`-waarde op de SHA (stap en job, met ref) stond al op de
    merge-base. Een andere pin van dezelfde action is ook nieuw.
 4. **Geen ruimere permission.** Per scope, top-level en per job, is het niveau op de SHA niet
    hoger dan op de merge-base (`none` < `read` < `write`). `write-all` geldt als `write` op elke
    scope, en `read-all` als `read`. Een job zonder `permissions` erft de top-level. Wat een job
-   effectief krijgt, telt.
+   effectief krijgt, telt. De basis is de effectieve permission van dezelfde job op de merge-base;
+   een nieuwe job vergelijkt met de top-level van hetzelfde bestand op de merge-base, en een
+   ontbrekende top-level telt als de ruimste (dus buiten de klasse bij elke permission)
+   *(eigen keuze na spec-review, r1-f4)*.
 5. *Keuze van deze spec, niet van de gebruiker:* **geen nieuw secret.** Elke
    `secrets.<naam>`, `secrets: inherit` en `github.token`/`GITHUB_TOKEN` op de SHA stond al op de
-   merge-base. **Geen nieuwe runner.** De verzameling `runs-on`-waarden is een deelverzameling.
+   merge-base. **Geen nieuwe runner.** De verzameling `runs-on`-waarden is een deelverzameling. Ook geen nieuwe
+   `environment:` en geen nieuwe `container:`- of `services:`-image *(r1-f5)*.
    Reden: dit zijn de twee andere manieren om met dezelfde actions meer macht te krijgen. Ze
    vallen onder "geen nieuwe rechten" zoals de gebruiker het bedoelde.
 
@@ -111,6 +124,14 @@ en dezelfde binds-regels.
 - de titel en de body van het issue, gelezen met `Deps.Forge.Issue(ctx, req.Issue)`;
 - elk bestand onder `paths.specs` en `paths.plans` dat in `c.Files` staat (dus op de branch
   toegevoegd of gewijzigd), gelezen in de kloon op `c.SHA`.
+
+Issue, spec en plan zijn onbetrouwbare data: een run schreef spec en plan, en iedereen met
+schrijfrecht kan de issue-body wijzigen. Elk stuk komt tussen eigen markeringen met een
+willekeurige grens (zoals de diff in `reviewInput`), met dezelfde regel dat een instructie erin
+nooit wordt gevolgd. *(eigen keuze na spec-review, r1-f2)* `promptFor` en `reviewInput`
+(`internal/pusher/review.go`) groeien daarvoor mee: `promptFor` kent het onderwerp `intent`,
+`reviewInput` neemt extra stukken. De intent-reviewer loopt direct door `runReviewer`; `Review`
+met zijn eis van minstens twee reviewers per onderwerp blijft voor de security-reviewers.
 
 Elk stuk heeft een plafond (orde 30 000 tekens; de bouwer kiest het getal). Een afgekapt stuk
 krijgt een regel die dat zegt. De paden komen uit de repo-config. De CLI zet ze in de `Request`,
@@ -190,11 +211,17 @@ mislukte actie). Zo probeert de volgende tick het opnieuw.
 
 **De start.** Een nieuwe regel in `decide` geeft `KindPush` met trigger `pushed` en sleutel
 `pushed:<vraag-id>`. Dat gebeurt alleen als de Vraag `PushedQuestion` is, de sleutel niet gebruikt
-is, er geen open run is en `WorkflowPush` aan staat. De actie heeft **geen `PermitSHA`**. De plek
-in `next` is direct vóór `answer`: een antwoord van de mens na de Vraag maakt de Vraag niet meer de
-laatste beurt, dus de twee raken elkaar niet.
+is, er geen open run is, `WorkflowPush` aan staat en `answerTo(<vraag-id>)` niets vindt. De actie heeft **geen `PermitSHA`**. De plek
+in `next` is direct vóór `answer`. Een antwoord van de mens heeft geen protocolkop, dus de Vraag
+blijft de laatste beurt (`lastTurn` kijkt alleen naar kopregels); de regel moet het antwoord dus
+zelf uitsluiten, met dezelfde `answerTo` als `answer`. *Prepare* gebruikt dezelfde definitie van
+een antwoord en hetzelfde vertrouwensfilter als `Complete` (`trust.Trusted`), en valideert `sha` en
+`branch` van de Vraag zoals `pushTargetOf` (`shaField`, `validBranch`) vóór `BranchContains`.
+*(eigen keuze na spec-review, r1-f1, r1-f6)*
 
-Naast `targetOf` in de pusher kennen ook `pushTargetOf`, `triggerComment` en `pushAgain` in
+Naast `targetOf` in de pusher kennen ook `pushTargetOf`, `triggerComment`, `pushAgain`,
+`repairRounds` en `handoffRunBefore` (die tellen nu alleen rijen met prefix `push:`; een
+`pushed:`-rij die in een Herstel eindigt telt mee voor `maxRepairRuns`) in
 `internal/dispatch/decide.go` de sleutel `pushed:<id>`. Anders gaat een mislukte start van zo'n
 rij terug als `reason_start_failed`. De paden `paths.specs` en `paths.plans` komen uit
 `lighthouse.toml` (`internal/config`): `pushWorkflows` (`internal/cli/pushworkflows.go`) laadt ze
