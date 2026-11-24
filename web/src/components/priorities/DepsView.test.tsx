@@ -91,8 +91,7 @@ describe('DepsView', () => {
       expect(node(`${A}#${k}`).getAttribute('data-needs-human')).toBe('true')
       expect(node(`${A}#${k}`).style.outline).toContain('dashed')
     }
-    expect(node(`${A}#3`).getAttribute('data-state')).toBe('active')
-    expect(node(`${A}#3`).getAttribute('data-needs-human')).toBe('true')
+    expect(node(`${A}#3`).getAttribute('data-state')).toBe('needs_human')
     expect(node(`${A}#3`).style.outline).toContain('dashed')
   })
 

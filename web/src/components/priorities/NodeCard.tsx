@@ -38,8 +38,8 @@ export function NodeCard({
   onMouseLeave,
   onClick,
 }: Props): JSX.Element {
-  // needsHuman is only true on an active issue; a non-active one carries it in its state.
-  const showsNeedsHuman = (node.needsHuman || node.state === 'needs_human') && !grey
+  // Interim shape: needs_shaping and needs_human keep the dashed flag until the new shapes land.
+  const showsNeedsHuman = (node.state === 'needs_human' || node.state === 'needs_shaping') && !grey
   const active = node.state === 'active'
   const blocked = node.state === 'blocked'
   return (

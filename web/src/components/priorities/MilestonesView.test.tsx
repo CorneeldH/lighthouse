@@ -93,23 +93,25 @@ describe('MilestonesView', () => {
     expect(within(row(`${A}#m1`)).getByText(/· 2 outside blockers$/)).toBeTruthy()
   })
 
-  it('draws one block per issue grouped by state: done, active, ready, needs human, blocked', () => {
+  it('draws one block per issue grouped by state: done, needs human, active, ready, needs shaping, blocked', () => {
     const r = repo(
       A,
       [
         iss(1, 1, [[A, 2]]),
-        iss(2, 1, [], { label: 'needs_decision' }),
+        iss(2, 1, [], { label: 'needs_shaping' }),
         iss(3, 1),
         iss(4, 1, [], { status: 'In progress', open_question: true }),
+        iss(5, 1, [], { status: 'In progress' }),
       ],
-      [{ ...ms(1, 1, 4), closed: [{ number: 9, title: 'c9', url: 'u9' }] }],
+      [{ ...ms(1, 1, 5), closed: [{ number: 9, title: 'c9', url: 'u9' }] }],
     )
     view([r])
     expect(
       blocks(`${A}#m1`).map((b) => [b.getAttribute('data-state'), b.getAttribute('data-needs-human'), b.title]),
     ).toEqual([
       ['done', 'false', '#9 c9'],
-      ['active', 'true', '#4 title-4'],
+      ['ready', 'true', '#4 title-4'],
+      ['active', 'false', '#5 title-5'],
       ['ready', 'false', '#3 title-3'],
       ['ready', 'true', '#2 title-2'],
       ['blocked', 'false', '#1 title-1'],

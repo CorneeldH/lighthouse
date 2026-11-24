@@ -26,9 +26,11 @@ const MAX_OUTSIDE = 3
 const colorOf = (colors: Map<string, string>, n: GNode): string =>
   n.milestone ? (colors.get(`${n.repo}#m${n.milestone.number}`) ?? NO_MILESTONE_COLOR) : NO_MILESTONE_COLOR
 
-// "needs human" is a ready (or active) block with the dashed flag.
-function shapeOf(state: BlockData['state'], needsHuman: boolean): { state: BlockState; needsHuman: boolean } {
-  return state === 'needs_human' ? { state: 'ready', needsHuman: true } : { state, needsHuman }
+// Interim shape: needs_shaping and needs_human are a ready block with the dashed flag.
+function shapeOf(state: BlockData['state']): { state: BlockState; needsHuman: boolean } {
+  return state === 'needs_human' || state === 'needs_shaping'
+    ? { state: 'ready', needsHuman: true }
+    : { state, needsHuman: false }
 }
 
 function meta(row: MilestoneRow, own: BlockData[]): string {
@@ -137,7 +139,7 @@ function Row({ row, colors, moves }: { row: MilestoneRow; colors: Map<string, st
               <Block
                 key={n.key}
                 testId="outside"
-                {...shapeOf(n.state, n.needsHuman)}
+                {...shapeOf(n.state)}
                 color={colorOf(colors, n)}
                 borderColor={colorOf(colors, n)}
                 title={`#${n.number} ${n.title}`}
@@ -175,7 +177,7 @@ function Row({ row, colors, moves }: { row: MilestoneRow; colors: Map<string, st
               own.map((b) => (
                 <Block
                   key={`${b.repo}#${b.nr}`}
-                  {...shapeOf(b.state, b.needsHuman)}
+                  {...shapeOf(b.state)}
                   color={color}
                   title={`#${b.nr} ${b.title}`}
                   href={b.url || undefined}
