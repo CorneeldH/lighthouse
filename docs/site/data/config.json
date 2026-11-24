@@ -158,6 +158,7 @@
               "readers": [
                 "internal/boardstart/boardstart.go",
                 "internal/cli/forge_label.go",
+                "internal/cli/level.go",
                 "internal/cli/planreviewrecord.go",
                 "internal/cli/pushworkflows.go",
                 "internal/cli/reviewindex.go",
