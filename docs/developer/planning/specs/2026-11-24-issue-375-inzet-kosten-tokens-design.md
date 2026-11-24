@@ -282,7 +282,8 @@ lighthouse telemetry collect [--repo-dir <pad>] [--db <pad>] [--since-last] [--d
   bestandssysteem en niet via `Adapter.Transcript` (dat geeft alleen een samenvatting zonder
   `message.usage`), maar via `Adapter.TranscriptDelta`
   (`internal/workplace/kennforge/transcript.go`), dat de ruwe bestandsdelen van hoofdtranscript en
-  subagents uit de container of de spiegel van een andere node geeft. De collector leest vanaf
+  subagents uit de container geeft. Voor een run op een andere node en voor de lokale adapter is
+  de ruwe-bytes-bron nog niet vastgelegd: zie *Open voor het plan*. De collector leest vanaf
   offset 0 en parst de regels zelf: met het software-profiel draait claude in de gedeelde devcontainer en staan de
   transcripts in een volume dat de host niet leest (`internal/workplace/kennforge/transcript.go`,
   #237). Een run waarvan het transcript onbereikbaar is (de werkplek is al weg en er is geen spiegel),
@@ -380,3 +381,13 @@ taak, dan wordt die taak een vervolgissue. Wie als tweede mergt, hernummert zijn
 - Of het 1M-contextmodel (`[1m]` in `cost-state`, niet in `message.model`) anders geprijsd is, en
   hoe de raming daarmee omgaat (r1-f17).
 - De naam en het formaat van het log van de hook.
+
+## Open voor het plan
+
+- Waar de ruwe transcriptbytes van een run vandaan komen per werkplek (r3-f1, uitgesteld):
+  `kennforge.Adapter.TranscriptDelta` werkt alleen voor kenn-forge op deze node
+  (`transcriptWorkspace` geeft `ErrNotMeasurable` bij `a.Node != ""`); voor een andere node moet de
+  spiegel eerst gesynchroniseerd worden (zoals `nodeTranscript`) en daarna met `workplace.ReadDelta`
+  gelezen, voor de lokale adapter volstaat `workplace.ReadDelta` op de hosttranscriptmap. Het plan
+  kiest de vorm (een nieuwe methode of een optionele interface).
+- De prijs van het 1M-contextmodel (r1-f17).
