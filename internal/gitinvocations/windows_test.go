@@ -52,3 +52,13 @@ func TestRepoOfWindowsPath(t *testing.T) {
 		t.Errorf("ExistingAncestor(%q) = %q, %v; want %q", file, got, ok, filepath.ToSlash(repo))
 	}
 }
+
+// Walking up from `C:\…` must stop at the drive root `C:/`, never at `C:`: that is the current
+// directory of the drive, so a path just under the root would land in the repo of the cwd (#559).
+func TestExistingAncestorStopsAtTheDriveRoot(t *testing.T) {
+	vol := filepath.VolumeName(t.TempDir())
+	path := vol + `\lighthouse-559-missing\x`
+	if got, ok := ExistingAncestor(path); !ok || got != vol+"/" {
+		t.Errorf("ExistingAncestor(%q) = %q, %v; want %q", path, got, ok, vol+"/")
+	}
+}

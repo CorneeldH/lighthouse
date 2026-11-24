@@ -244,6 +244,16 @@ func commandStart(words []string) int {
 	return idx
 }
 
+// parentDir is pyDirname, except that the parent of `C:/x` is the drive root `C:/`: a bare `C:`
+// is the current directory of that drive on Windows (#559). Outside Windows it is pyDirname.
+func parentDir(p string) string {
+	parent := pyDirname(p)
+	if vol := filepath.VolumeName(parent); vol != "" && parent == vol {
+		return vol + "/"
+	}
+	return parent
+}
+
 // ExistingAncestor is the nearest directory that exists now, going up from path, in `/` form.
 func ExistingAncestor(path string) (string, bool) {
 	current := filepath.ToSlash(path) // a no-op outside Windows
@@ -251,7 +261,7 @@ func ExistingAncestor(path string) (string, bool) {
 		if isDir(current) {
 			return current, true
 		}
-		parent := pyDirname(current)
+		parent := parentDir(current)
 		if parent == current {
 			return "", false
 		}
@@ -273,7 +283,7 @@ func RepoOf(path string) (string, bool) {
 		if _, err := os.Lstat(pyJoin(dotGit, "HEAD")); err == nil {
 			return current, true
 		}
-		parent := pyDirname(current)
+		parent := parentDir(current)
 		if parent == current {
 			return "", false
 		}
