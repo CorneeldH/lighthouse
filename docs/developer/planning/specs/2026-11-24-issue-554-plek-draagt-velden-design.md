@@ -24,15 +24,16 @@ vraag en zonder te verzinnen, en de PR van de job blijft groen.
   `issue`, en `ci/loop_roadmap` leest routes niet. Een geplande stap wordt wel in bestaande routes
   opgenomen (zie *Ontwerp*, 1).
 - Geen wijziging aan de Go-job `map-planned` (`internal/scheduled/mapplanned`). Die werkt.
-- Geen wijziging aan `ci/loop_roadmap` behalve de nieuwe test (zie *Bewaking*).
+- Geen wijziging aan `ci/loop_roadmap`. De controle dat de veldentabel klopt met `loop.json`
+  staat in de site-tests (zie *Bewaking*). *(eigen keuze na spec-review, r1-f3)*
 - Geen nieuwe soorten items en geen nieuwe kaartsoorten (No-Go van milestone 17).
 - Geen herschrijving van de plek van bestaande open `loop`-issues.
 
 ## Anti-doel
 
 Het aanmaken van een issue wordt geen formulier, en `map-planned` schrijft geen beschrijving die
-het issue niet heeft. `write-issue` vraagt alleen wat de plek bepaalt; de naam en de korte
-omschrijving van een geplande stap komen uit het issue zelf; de rest van de beschrijving volgt
+het issue niet heeft. `write-issue` vraagt alleen wat de plek bepaalt, plus de korte naam van een
+nieuwe stap; de korte omschrijving komt uit het issue zelf; de rest van de beschrijving volgt
 met de PR die de stap levert.
 
 ## Randvoorwaarden
@@ -67,13 +68,19 @@ Corneel koos B.
 
 **Wat een geplande stap draagt.**
 
-- **X. Licht (gekozen).** De plek plus `label` en `what` uit het issue; `how`, `when` en
-  `without` worden optioneel bij `status: planned`, in de site-tests en in `map.js`.
+- **X. Licht (gekozen).** De plek plus `label` en `what`; `how`, `when` en `without` worden
+  optioneel bij `status: planned`, in de site-tests en in `map.js`.
 - **Y. Volledig.** Ook `how`, `when` en `without` uit het issue; de site-tests blijven gelijk.
   Afgevallen: het issue heeft die tekst vaak nog niet, en `map-planned` zou hem verzinnen.
 
 Corneel koos X. Eerder viel ook "`write-issue` vraagt ook de tekst van de stap" af: het aanmaken
 blijft licht.
+
+**Naam en omschrijving van een geplande stap** (na spec-review, r1-f1 en r1-f2). De korte naam
+staat in geen issue, en issues zijn Nederlands terwijl de kaart Engels is. Opties: de naam vragen
+en `what` laten vertalen; naam en `what` allebei vragen; alleen de naam vragen en `what`
+Nederlands laten. Corneel koos de eerste: `label` staat onder `Place`, `what` onder `From issue`,
+en vertalen naar de taal van het document telt als overnemen.
 
 ## Ontwerp
 
@@ -85,14 +92,15 @@ repo herkent:
 
 | Label | Item | Place | From issue |
 |---|---|---|---|
-| `loop` | stap (`chips`) | `phase`, `after`, `kind`, `trigger` | `label`, `what` |
+| `loop` | stap (`chips`) | `phase`, `after`, `kind`, `trigger`, `label` | `what` |
 | `loop` | handoff (`handoffs`) | `from`, `to` | |
 
 - **Item**: de soort item in de taal van het artefact, met tussen haakjes en backticks de plek in
   het document waar zo'n item staat. Voor `loop.json` is dat de array.
 - **Place**: wat de plek onder `### Op de kaart` noemt. `write-issue` vraagt het.
-- **From issue**: de velden die `map-planned` uit titel en body van het issue overneemt. Dat geldt
-  als overnemen, niet als verzinnen. Leeg: het item heeft er geen.
+- **From issue**: de velden die `map-planned` uit titel en body van het issue overneemt, in de
+  taal van het document. Overnemen en vertalen gelden niet als verzinnen. Leeg: het item heeft er
+  geen.
 - `status` en `issue` staan er niet in: die zet `map-planned` altijd (`planned`, het nummer).
 
 De uitleg erboven krijgt per soort item zinnen die hetzelfde zeggen in woorden (AC1), plus de
@@ -101,13 +109,17 @@ regels die de job nodig heeft om zonder vraag te plaatsen:
 - **Stap.**
   - `phase` is een `id` uit `phases`; `kind` en `trigger` zijn waarden die andere chips al dragen.
   - `after` is geen veld van de chip maar een verwijzing: het `id` van de stap waarna de nieuwe
-    komt. De job neemt de nieuwe stap op in elke route waarvan `chips` dat `id` bevat, direct erna.
-    Een `after` die op geen route staat, is geen geldige plek.
+    komt. De job neemt de nieuwe stap op in elke route waarvan `chips` dat `id` bevat, direct na
+    het eerste voorkomen. Een `after` die op geen route staat, of waarvan de fase ná `phase` ligt,
+    is geen geldige plek. *(eigen keuze na spec-review, r1-f8)*
   - `row` is de eerstvolgende vrije rij in die fase; andere chips schuiven niet.
-  - `id` is gelijk aan `label`; een `label` dat al een `id` is, is geen geldige plek.
+  - `label` is een korte Engelse naam in kleine letters met streepjes, zoals de bestaande `id`'s;
+    `write-issue` vraagt hem. `id` is gelijk aan `label`; een `label` dat al een `id` is, is geen
+    geldige plek.
+  - `what` is één Engelse zin die de job uit titel en body van het issue overneemt.
   - `how`, `when` en `without` blijven weg tot de PR die de stap levert.
 - **Handoff.** `from` en `to` zijn `id`'s van stappen die samen op een route liggen, `from` eerst.
-  Een stap die hetzelfde issue nieuw toevoegt, telt mee met zijn `id`.
+  Een stap die hetzelfde issue nieuw toevoegt, telt mee met zijn `label`, dat zijn `id` wordt.
 - **Route.** Krijgt nog geen gepland item.
 - **Vorm.** Eén regel per item onder `### Op de kaart`:
   `<item>: <veld> <waarde>, <veld> <waarde>`, bijvoorbeeld
@@ -135,7 +147,8 @@ De vaste zinnen die `internal/packcontract/writeissue_test.go` pint, blijven sta
 `pack/core/skills/map-planned/SKILL.md`, stap 3, *Unambiguous place*: nu "nothing else invented".
 Erbij, generiek:
 
-- de velden onder `From issue` neemt de job over uit titel en body van het issue;
+- de velden onder `From issue` neemt de job over uit titel en body van het issue, in de taal van
+  het document (vertalen mag);
 - wat de uitleg afleidt (bij `loop.json`: `row`, `id`, de opname in routes) doet de job zoals de
   uitleg zegt;
 - velden die de tabel niet noemt en de uitleg niet afleidt, laat de job weg;
@@ -147,24 +160,35 @@ deze spec.
 ### 4. De kaart en zijn tests
 
 - `docs/site/test/loop.test.mjs`: `how`, `when` en `without` zijn niet verplicht bij
-  `status: planned`; bij `works` blijven ze verplicht. Een test bewijst beide richtingen.
+  `status: planned`; bij `works` en `idea` blijven ze verplicht. Een test bewijst beide
+  richtingen. *(eigen keuze na spec-review, r1-f7)*
 - `docs/site/map.js`: een chip zonder `how`, `when` of `without` rendert zonder fout; het
-  detailpaneel toont voor een ontbrekend veld "not described yet" (de site is Engels).
+  detailpaneel toont voor een ontbrekende `how` of `without` "not described yet" (de site is
+  Engels). `when` toont het paneel nu niet; dat blijft zo. *(eigen keuze na spec-review, r1-f6)*
 
-### 5. Bewaking
+### 5. Het contract voor andere repo's
+
+`docs/tick.md` beschrijft naast de kolommen `Document` en `Planned` ook de veldentabel: de koppen
+`Label`, `Item`, `Place` en `From issue`, wat elk betekent, en dat zonder tabel stap 3f blijft
+zoals hij was. *(eigen keuze na spec-review, r1-f9)*
+
+### 6. Bewaking
 
 - **Generiek in `pack/core`:** een packcontract-test faalt als `write-issue` (beide varianten) of
-  `map-planned` `loop.json`, of een gegeven uit de kolom `Place` van lighthouse's veldentabel,
-  tussen backticks noemt. Corpusvelden van `map-planned` (zoals `label`, `issue`, `document`)
-  vallen erbuiten. `mapplanned_test.go` verbiedt al `loop`, `kaart`, `loop.json` en `kaart.yaml`
-  in `map-planned`.
+  `map-planned` `loop.json`, of een van de vaste namen `phase`, `after`, `kind`, `trigger`,
+  `from`, `to`, `row` en `what`, tussen backticks noemt. De lijst staat vast in de test:
+  `internal/packcontract` leest alleen `pack/`, niet `docs/`. *(eigen keuze na spec-review,
+  r1-f4, r1-f10)* Corpusvelden van `map-planned` (zoals `label`, `issue`, `document`) vallen
+  erbuiten. `mapplanned_test.go` verbiedt al `loop`, `kaart`, `loop.json` en `kaart.yaml` in
+  `map-planned`.
 - **Nieuwe zinnen gepind:** de packcontract-test van stap 3f pint de zinnen over de veldentabel,
   één regel per item en headless alleen-compleet, in beide varianten; die van `map-planned` de zin
   over `From issue`.
-- **De tabel liegt niet:** een test in `ci/loop_roadmap` leest de veldentabel uit
+- **De tabel liegt niet:** een test in `docs/site/test/loop.test.mjs` leest de veldentabel uit
   `docs/developer/labels.md` en faalt als een array uit `Item` niet in `loop.json` staat, of een
   veld uit `Place` of `From issue` op geen enkel item van die array voorkomt. `after` is geen veld
-  en is uitgezonderd; de test kent die uitzondering bij naam.
+  en is uitgezonderd; de test kent die uitzondering bij naam. De site-job draait bij elke PR, ook
+  een PR die alleen `loop.json` raakt. *(eigen keuze na spec-review, r1-f3)*
 
 ## Keuzes van de schrijver
 
@@ -172,7 +196,7 @@ Na de lezing door een reviewer, zonder aparte vraag aan Corneel; corrigeer bij h
 
 - `row` is de eerstvolgende vrije rij; geen verschuiving van andere chips.
 - `after` bepaalt de opname in routes; dat raakt `chips` van routes, geen gepland route-item.
-- `id` gelijk aan `label`.
+- `id` gelijk aan `label` (na spec-review vraagt `write-issue` het `label`; zie *Aanpakken*).
 - Een handoff moet op een route liggen; `write-issue` toetst dat, headless gaat een ongeldige
   regel niet door, en `map-planned` vraagt bij een ongeldige plek.
 - Meer items per issue mag, één regel per item.
@@ -181,6 +205,5 @@ Na de lezing door een reviewer, zonder aparte vraag aan Corneel; corrigeer bij h
 ## Aan de bouwer
 
 - De precieze Engelse zinnen in stap 3f en `map-planned`, binnen de vaste zinnen die tests pinnen.
-- Of de `ci/loop_roadmap`-test een kleine parser deelt met `mapplanned.Rows` of een eigen leest.
 - De Nederlandse zinnen in de uitleg van `labels.md`.
 - Hoe `map.js` "not described yet" vormgeeft.
