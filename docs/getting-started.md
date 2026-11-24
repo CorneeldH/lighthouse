@@ -149,7 +149,51 @@ On a machine with Tailscale, the first `init` also offers to write
 `~/.config/lighthouse/host.toml`; `--yes` writes it without asking. Without Tailscale you see
 `warning: host.toml not proposed: tailscale ip unavailable; lighthouse works without host.toml.
 For the gate_* keys (memory brake, slots) write it by hand: see "A host.toml without Tailscale" in
-the lighthouse getting-started guide`: the next section.
+the lighthouse getting-started guide`: the section after "Remove lighthouse".
+
+## Remove lighthouse
+
+```bash
+lighthouse uninstall
+```
+
+`uninstall` removes what `init` installed, as listed in `.lighthouse/manifest.toml`. It prints a
+diff per file and asks `Remove lighthouse? [y/N]`; nothing is removed until you answer `y`.
+
+- `lighthouse uninstall --yes` approves without asking. Without a terminal the question reads
+  empty stdin, which counts as no: nothing is removed and `uninstall` exits 1.
+- A unit you changed locally makes the whole run refuse, and nothing is removed, unless you add
+  `--force`.
+
+What `init` created is undone: files it created are removed, and the sections and keys it added to
+`AGENTS.md`, `.gitattributes` and `.claude/settings.json` are taken out again. `CLAUDE.md` is only
+removed when `init` created it; `init` never edits an existing one. A `lighthouse.toml` that
+already existed stays, with a `left:` line: `init` may have added keys to it, and `uninstall` does
+not know which. A file that holds other content than what `init` put there stays, and the closing
+report on stderr says so with a `kept:` or `left:` line.
+
+What stays, each with a line in that report:
+
+- the labels file and the direction documents `init --labels` and `--direction` seeded: they are
+  your project files after seeding;
+- `.lighthouse/run` and other runtime directories under `.lighthouse/`;
+- the labels on the forge, `~/.config/lighthouse/host.toml` and the lighthouse binary
+  (`not touched:`).
+
+Two things to know:
+
+- `.claude/settings.json` is written back in the canonical layout of `init`, so a hand-made
+  layout (indentation, key order) does not return byte for byte; the JSON content is the same.
+- A file without a final newline, or with an empty last line, does not return byte for byte
+  either.
+
+An install from before this version has no record of what `init` created. `uninstall` removes the
+units of the manifest, and you remove `lighthouse.toml` and the rest yourself. The same holds for
+what an `init --upgrade` with an older binary creates: that binary does not record it, so it stays.
+
+The report ends with a `note:` line: a running Claude Code session keeps its hooks until it
+restarts. The summary on stdout reads `Changed N file(s).`, which counts the files removed and the
+files edited.
 
 ## A host.toml without Tailscale
 

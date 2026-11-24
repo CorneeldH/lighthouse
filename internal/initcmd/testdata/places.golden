@@ -8,6 +8,7 @@
 .github/pull_request_template.md	file	core
 .github/workflows/lighthouse-*.yml	file	core
 .lighthouse/components.toml	file	core
+.lighthouse/created.toml	init	
 .lighthouse/headings.toml	file	core
 .lighthouse/manifest.toml	init	
 .lighthouse/scripts/	file	powershell,python,shell
