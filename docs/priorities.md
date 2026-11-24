@@ -121,7 +121,7 @@ De SPA leidt deze begrippen af in `web/src/lib/priorities/derive.ts`; de server 
 - **Vormentaal van de graaf.** De graaf tekent de status van een issue met dezelfde vormen als de
   balk, in een blokje van 14 bij 14 px vóór het nummer: een kruis (vectorlijnen die in elk blok
   glad blijven) bij *blocked*, een stippelrand van 1,5 px in de voorgrondkleur bij *needs
-  shaping*, strepen bij *needs human*, gestreept bij *active*, effen bij *to do* en *done*. Het
+  shaping*, strepen en een dichte rand (`inset 0 0 0 2px` in de voorgrondkleur) bij *needs human*, alleen strepen bij *active*, effen bij *to do* en *done*. Het
   nummer is onderstreept bij *needs shaping* en *needs human*, nergens anders, en staat zonder
   `#`. De kleurstrook links is altijd effen in de kleur van de milestone. Een externe kaart
   (andere repo of buiten het filter) heeft geen statusblokje en een doorgetrokken grijze rand.
@@ -169,7 +169,7 @@ van `Planning` (milestones, dependencies) nog niet en is zonder wijziging van de
   verdwijnen uit Milestones en uit Without milestone.
 - GitLab leest de gesloten issues van een milestone op milestonetitel (`/issues?state=closed&milestone=<titel>`).
 - Lange pijlen in de graaf delen één baan per overgeslagen kolom.
-- De kaartvorm van de graaf (kleurstrook, stippelrand, kruis) is alleen met jsdom getest, niet in een browser bekeken.
+- De kaartvorm van de graaf (kleurstrook links en een statusblokje van 14 bij 14 px vóór het nummer) is alleen met jsdom getest, niet in een browser bekeken.
 - Het palet is niet gevalideerd met de dataviz-validator.
 - De gebruikersinterface is niet visueel in een browser gecontroleerd.
 - De e2e-test is overgeslagen: `fake-github.ts` kent de REST-routes van `Planning` nog niet.
