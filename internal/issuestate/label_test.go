@@ -193,26 +193,6 @@ func TestApplyAfterAHalfWriteFinishesTheEdit(t *testing.T) {
 	}
 }
 
-func TestBlockingKeyRankAndEmptyNames(t *testing.T) {
-	l := repoconfig.Labels{NeedsMind: "shape", NeedsHands: "decide", BlockedIssue: "blocked"}
-	tests := []struct {
-		name  string
-		names []string
-		want  string
-	}{
-		{"none", nil, ""},
-		{"unrelated", []string{"x"}, ""},
-		{"one", []string{"blocked"}, "blocked_issue"},
-		{"rank wins over order", []string{"blocked", "decide", "shape"}, "needs_mind"},
-		{"empty never matches", []string{""}, ""},
-	}
-	for _, tt := range tests {
-		if got := BlockingKey(tt.names, l); got != tt.want {
-			t.Errorf("%s: BlockingKey(%q) = %q, want %q", tt.name, tt.names, got, tt.want)
-		}
-	}
-}
-
 func TestSetLabelNeedsMindKeepsBlock(t *testing.T) {
 	got, err := SetLabel([]string{"blocked-issue"}, "needs_mind", dashLabels)
 	if err != nil {

@@ -142,6 +142,21 @@ func TestBuildLabelKeyOpenQuestionAndClosed(t *testing.T) {
 	}
 }
 
+// Behaviour-preservation test: needs_mind stays the Label next to a blocking label.
+func TestBuildLabelNeedsMindBesideBlockedExternal(t *testing.T) {
+	labels := repoconfig.Labels{NeedsMind: "needs-mind", BlockedExternal: "blocked-external"}
+	src := &fakeForge{t: t, planning: forge.Planning{Issues: []forge.PlanIssue{
+		{Number: 1, Labels: []string{"needs-mind", "blocked-external"}},
+	}}}
+	got, err := Build(context.Background(), []Source{{Slug: "o/a", Src: src, Labels: labels}}, overview.Overview{})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	if l := got[0].Issues[0].Label; l != "needs_mind" {
+		t.Errorf("label = %q, want needs_mind", l)
+	}
+}
+
 func TestBuildEmptyLabelNameNeverMatches(t *testing.T) {
 	src := &fakeForge{t: t, planning: forge.Planning{Issues: []forge.PlanIssue{{Number: 1, Labels: []string{""}}}}}
 	got, err := Build(context.Background(), []Source{{Slug: "o/a", Src: src}}, overview.Overview{})

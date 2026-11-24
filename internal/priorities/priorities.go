@@ -119,7 +119,7 @@ func Build(ctx context.Context, srcs []Source, ov overview.Overview) ([]Repo, er
 		r := Repo{Slug: s.Slug, Issues: make([]Issue, 0, len(p.Issues)), Milestones: make([]Milestone, 0, len(p.Milestones))}
 		for _, pi := range p.Issues {
 			i := Issue{Number: pi.Number, Title: pi.Title, URL: pi.URL, BlockedBy: make([]Blocker, 0, len(pi.BlockedBy)),
-				Status: status[key(s.Slug, pi.Number)], Label: issuestate.BlockingKey(pi.Labels, s.Labels),
+				Status: status[key(s.Slug, pi.Number)], Label: firstMark(pi.Labels, s.Labels),
 				OpenQuestion: asked[key(s.Slug, pi.Number)], NeedsLabel: issuestate.HasNeedsLabel(pi.Labels, s.Labels)}
 			if m := pi.Milestone; m != nil {
 				i.Milestone = &MilestoneRef{Number: m.Number, Title: m.Title, State: m.State}
@@ -180,3 +180,12 @@ func applyWeights(r *Repo) {
 }
 
 func key(repo string, issue int) string { return fmt.Sprintf("%s#%d", repo, issue) }
+
+// firstMark is the first key of issuestate.Marks, "" when the issue has none. Marks lists
+// needs_mind first, so it wins next to a blocking label. Temporary until the status per axis.
+func firstMark(names []string, l repoconfig.Labels) string {
+	if m := issuestate.Marks(names, l); len(m) > 0 {
+		return m[0]
+	}
+	return ""
+}

@@ -29,17 +29,6 @@ func Name(key string, l repoconfig.Labels) (name string, ok bool) {
 	return name, name != ""
 }
 
-// BlockingKey is the key of the blocking label with the lowest rank among names, "" when none
-// is there. A label whose configured name is empty never matches.
-func BlockingKey(names []string, l repoconfig.Labels) string {
-	for _, k := range Keys {
-		if n, ok := Name(k, l); ok && slices.Contains(names, n) {
-			return k
-		}
-	}
-	return ""
-}
-
 // keyError is the error for a key that Name does not know or that has no name.
 func keyError(key string) error {
 	return fmt.Errorf("unknown or empty blocking label key %q (one of %s)", key, strings.Join(Keys, ", "))
