@@ -211,7 +211,10 @@ slash-commando's.
      (`none` < `read` < `write`; `write-all` is `write`, `read-all` is `read`; een job zonder
      `permissions` erft de top-level, en een ontbrekende top-level telt als de ruimste);
   5. geen nieuw secret (`secrets.<naam>`, `secrets: inherit`, `github.token`/`GITHUB_TOKEN`), geen
-     nieuwe `runs-on`, geen nieuwe `environment:` en geen nieuw `container:`- of `services:`-image.
+     nieuwe `runs-on`, geen nieuwe `environment:` en geen nieuwe of gewijzigde `container:` of
+     service: die tellen als geheel (image, `options`, `volumes`, `ports`, `credentials`). Komt een
+     runner, environment of container uit een expressie, dan telt een wijziging van de matrix of de
+     inputs als een nieuwe waarde.
 
   Een workflow die niet parset, valt erbuiten. Nieuwe `run:`-stappen, `env:`, `with:` en jobs uit
   bestaande bouwstenen vallen erbinnen. Daar zijn de intent-reviewer en `zizmor` de wacht.

@@ -97,6 +97,19 @@ const needsJobs = `  pick:
       - run: make
 `
 
+// boxJob runs in a container with options and has a service.
+const boxJob = `  box:
+    runs-on: ubuntu-latest
+    container:
+      image: node:20
+      options: --cpus 1
+    services:
+      db:
+        image: postgres:16
+    steps:
+      - run: make
+`
+
 // swap replaces old by repl in text and fails when old is not there, so every case changes
 // what it says it changes.
 func swap(t *testing.T, text, old, repl string) string {
@@ -130,6 +143,9 @@ func TestIntentOKInClass(t *testing.T) {
 		"secret dropped":        {baseWF, swap(t, baseWF, "          TOKEN: ${{ secrets.DEPLOY }}\n", "")},
 		"secret name, any case": {baseWF, swap(t, baseWF, "secrets.DEPLOY", "SECRETS.deploy")},
 		"env change next to expression-valued runner and images": {exprWF, swap(t, exprWF, "FOO: bar", "FOO: baz")},
+		"github.sha and github.event stay in": {baseWF,
+			swap(t, baseWF, "FOO: bar", "FOO: ${{ github.sha }}-${{ github.event.number }}")},
+		"env change next to a container with options": {baseWF + boxJob, swap(t, baseWF+boxJob, "FOO: bar", "FOO: baz")},
 		"secrets of a reusable workflow kept": {baseWF + inheritJob,
 			swap(t, baseWF+inheritJob, "FOO: bar", "FOO: baz")},
 	} {
@@ -190,10 +206,18 @@ func TestIntentOKOutsideClass(t *testing.T) {
 		"all secrets as JSON":    {baseWF, swap(t, baseWF, "secrets.DEPLOY", "toJSON(secrets)"), "secret"},
 		"secrets inherit": {baseWF,
 			baseWF + "  call:\n    uses: actions/checkout@" + pin + "\n    secrets: inherit\n", "secret"},
-		"new github.token": {baseWF, swap(t, baseWF, "FOO: bar", "FOO: ${{ github.token }}"), "token"},
-		"new GITHUB_TOKEN": {baseWF, swap(t, baseWF, "FOO: bar", "GITHUB_TOKEN: x"), "token"},
-		"token by index":   {baseWF, swap(t, baseWF, "FOO: bar", "FOO: ${{ github['token'] }}"), "token"},
-		"github as JSON":   {baseWF, swap(t, baseWF, "FOO: bar", "FOO: ${{ toJSON(github) }}"), "token"},
+		"new github.token":          {baseWF, swap(t, baseWF, "FOO: bar", "FOO: ${{ github.token }}"), "token"},
+		"new GITHUB_TOKEN":          {baseWF, swap(t, baseWF, "FOO: bar", "GITHUB_TOKEN: x"), "token"},
+		"token by index":            {baseWF, swap(t, baseWF, "FOO: bar", "FOO: ${{ github['token'] }}"), "token"},
+		"github as JSON":            {baseWF, swap(t, baseWF, "FOO: bar", "FOO: ${{ toJSON(github) }}"), "token"},
+		"every github property":     {baseWF, swap(t, baseWF, "FOO: bar", `FOO: ${{ join(github.*, ',') }}`), "token"},
+		"github as format argument": {baseWF, swap(t, baseWF, "FOO: bar", `FOO: ${{ format('{0}', github) }}`), "token"},
+		"container options added": {baseWF + boxJob,
+			swap(t, baseWF+boxJob, "      options: --cpus 1\n", "      options: --privileged\n"), "image"},
+		"container volume added": {baseWF + boxJob,
+			swap(t, baseWF+boxJob, "      image: node:20\n", "      image: node:20\n      volumes: [\"/:/host\"]\n"), "image"},
+		"service options added": {baseWF + boxJob,
+			swap(t, baseWF+boxJob, "        image: postgres:16\n", "        image: postgres:16\n        options: --privileged\n"), "image"},
 		"merge-base unreadable": {"on: pull_request\npermissions:\n  contents: read\njobs: [a]\n",
 			"on: pull_request\npermissions:\n  contents: read\njobs:\n  a:\n    steps:\n      - run: x\n", "merge-base"},
 		"new runs-on": {baseWF, swap(t, baseWF, "runs-on: ubuntu-latest", "runs-on: self-hosted"), "runner"},

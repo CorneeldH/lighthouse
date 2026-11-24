@@ -286,6 +286,39 @@ func TestLevelNotesPusherWithoutReviewers(t *testing.T) {
 	}
 }
 
+// Classification: same surface; it fails when the note says the same for every missing part,
+// or claims the pusher never pushes before the merge while the intent check or the security
+// review still can.
+func TestLevelPusherNoteSaysWhatTheMissingPartMeans(t *testing.T) {
+	reviewers := "[[dispatch.workflow_push.reviewers]]\ntopic = \"secrets\"\ncommand = [\"a\"]\n" +
+		"[[dispatch.workflow_push.reviewers]]\ntopic = \"injection\"\ncommand = [\"a\"]\n"
+	intent := "[dispatch.workflow_push.intent]\ncommand = [\"b\"]\n"
+	for name, tc := range map[string]struct{ body, want string }{
+		"neither": {pusherBare, " sets no reviewers ([[dispatch.workflow_push.reviewers]]) and no intent " +
+			"([dispatch.workflow_push.intent]), so the pusher never pushes a pre-merge workflow change itself: " +
+			"each one becomes a question"},
+		"no reviewers": {pusherBare + intent, " sets no reviewers ([[dispatch.workflow_push.reviewers]]), so the " +
+			"pusher pushes a pre-merge workflow change itself only when the intent check approves it"},
+		"no intent": {pusherBare + reviewers, " sets no intent ([dispatch.workflow_push.intent]), so every " +
+			"pre-merge workflow change goes to the security review, which pushes only on an approve with " +
+			"review = \"enforce\""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			root, host := pusherRepo(t, "")
+			if err := os.WriteFile(host, []byte(hostWith(root, tc.body)), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			stdout, _, code := runLevel(t)
+			if code != 0 || !strings.Contains(stdout, "workflow pusher: "+host+tc.want) {
+				t.Errorf("exit %d, want %q in:\n%s", code, tc.want, stdout)
+			}
+			if strings.Contains(stdout, "before the merge") {
+				t.Errorf("note still says the pusher never pushes before the merge:\n%s", stdout)
+			}
+		})
+	}
+}
+
 // Classification: same surface; it fails when the note is also written for a worktree path, the
 // slug being the key: a worktree of a listed repo is that repo.
 func TestLevelNotesPusherFromWorktree(t *testing.T) {

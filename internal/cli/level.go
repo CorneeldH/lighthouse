@@ -84,7 +84,8 @@ func showLevel(out io.Writer) error {
 }
 
 // pusherNotes is zero or one line about [dispatch.workflow_push] of the host.toml at hostToml:
-// it has no reviewers or no intent table, so the pusher never pushes before the merge. It speaks
+// it has no reviewers or no intent table, so the pusher pushes fewer pre-merge workflow changes
+// itself than it could; the line says what the missing part means. It speaks
 // only when this repo is in [dispatch] repos, matched by [forge] repo (the slug) and not by path,
 // so a worktree counts as its repo. No host.toml, an unlisted repo or a complete config gives
 // nothing; a host.toml that does not parse gives one line saying so. A note, never an error.
@@ -116,15 +117,19 @@ func pusherNotes(root, hostToml string) []string {
 	if !listed {
 		return nil
 	}
-	var missing []string
-	if len(wp.Reviewers) == 0 {
-		missing = append(missing, "reviewers ([[dispatch.workflow_push.reviewers]])")
+	var clause string
+	switch {
+	case len(wp.Reviewers) == 0 && wp.Intent == nil:
+		clause = "sets no reviewers ([[dispatch.workflow_push.reviewers]]) and no intent ([dispatch.workflow_push.intent]), " +
+			"so the pusher never pushes a pre-merge workflow change itself: each one becomes a question"
+	case len(wp.Reviewers) == 0:
+		clause = "sets no reviewers ([[dispatch.workflow_push.reviewers]]), so the pusher pushes a pre-merge " +
+			"workflow change itself only when the intent check approves it"
+	default:
+		clause = "sets no intent ([dispatch.workflow_push.intent]), so every pre-merge workflow change goes to " +
+			"the security review, which pushes only on an approve with review = \"enforce\""
 	}
-	if wp.Intent == nil {
-		missing = append(missing, "intent ([dispatch.workflow_push.intent])")
-	}
-	return []string{"workflow pusher: " + hostToml + " sets no " + strings.Join(missing, " and no ") +
-		", so the pusher never pushes before the merge (see docs/tick.md)"}
+	return []string{"workflow pusher: " + hostToml + " " + clause + " (see docs/tick.md)"}
 }
 
 // installedPackages are the packages of the manifest; nil (every package of the binary) when

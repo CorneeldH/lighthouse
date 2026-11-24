@@ -299,7 +299,8 @@ func (f *facts) job(top map[string]any, id string, v any) string {
 		f.envs[bound(canon(e), top, job)] = true
 	}
 	if c, present := job["container"]; present {
-		f.images["container "+bound(imageOf(c), top, job)] = true
+		// The whole value counts: options, volumes, ports and credentials give as much as an image.
+		f.images["container "+bound(canon(c), top, job)] = true
 	}
 	if s, present := job["services"]; present {
 		services, ok := asMap(s)
@@ -307,7 +308,7 @@ func (f *facts) job(top map[string]any, id string, v any) string {
 			return "services of job " + id + " are not a map"
 		}
 		for _, name := range sortedKeys(services) {
-			f.images["service "+bound(imageOf(services[name]), top, job)] = true
+			f.images["service "+name+" "+bound(canon(services[name]), top, job)] = true
 		}
 	}
 	if job["steps"] == nil {
@@ -349,14 +350,6 @@ func bound(val string, top, job map[string]any) string {
 	return val + " strategy " + canon(job["strategy"]) + " on " + canon(top["on"]) + " " + canon(top["true"])
 }
 
-// imageOf is the image of a container or service: the string itself, or the image of a map.
-func imageOf(v any) string {
-	if m, ok := asMap(v); ok {
-		return canon(m["image"])
-	}
-	return canon(v)
-}
-
 func isMap(v any) bool { _, ok := asMap(v); return ok }
 
 // canon is a stable text of a decoded YAML value; fmt prints map keys sorted.
@@ -383,8 +376,9 @@ var (
 	secretsWord = regexp.MustCompile(`(?i)\bsecrets\b`)
 	secretRef   = regexp.MustCompile(`(?i)^secrets\.([A-Za-z_][A-Za-z0-9_]*)`)
 	tokenRef    = regexp.MustCompile(`(?i)\bgithub\s*\.\s*token\b|\bgithub_token\b`)
-	// github['token'] and toJSON(github) reach the token without naming it.
-	githubWhole = regexp.MustCompile(`(?i)\bgithub\s*\[|\(\s*github\s*\)`)
+	// github['token'], github.*, toJSON(github) and format('{0}', github) reach the token without
+	// naming it.
+	githubWhole = regexp.MustCompile(`(?i)\bgithub\s*(\[|\.\s*\*)|[(,]\s*github\s*[,)]`)
 )
 
 // scanText walks every key and string of the workflow for secrets.<name> and the GitHub token.

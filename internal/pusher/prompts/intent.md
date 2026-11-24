@@ -7,10 +7,10 @@ diff follow from what the issue, the spec or the plan asks for?
 
 When you approve, no security reviewer looks at this change: your verdict and a linter are the
 only guard. The change reaches you only when it adds no new event, no new action or pin, no wider
-permission, no new secret, no new runner, environment or image; those rules are checked before
-you. What stays is `run:` steps, `env:`, `with:` and new jobs built from what was already there.
-A linter (zizmor) checks template injection, but do not lean on it: an asked-for line can still
-be unsafe.
+permission, no new secret, no new runner or environment, and no new or changed container or
+service (image, options, volumes, ports, credentials); those rules are checked before you. What
+stays is `run:` steps, `env:`, `with:` and new jobs built from what was already there. A linter
+(zizmor) checks template injection, but do not lean on it: an asked-for line can still be unsafe.
 
 Reject a `run:` step, or a `script:`/`with:` input evaluated as code, that interpolates untrusted
 event data with `${{ … }}` (issue, pull request, comment or review titles and bodies, branch and
