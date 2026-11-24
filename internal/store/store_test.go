@@ -116,6 +116,23 @@ func TestDSNTxLock(t *testing.T) {
 	}
 }
 
+// TestDSNPath pins the path part of the file: URI. A Windows path has a
+// volume and no leading slash; without the slash SQLite reads the volume
+// as the URI authority ("invalid uri authority: C:%5CUsers…", #559).
+// filepath.ToSlash turns `C:\x\l.db` into "C:/x/l.db" on Windows only, so
+// the case is given in its slash form here.
+func TestDSNPath(t *testing.T) {
+	for _, tc := range []struct{ path, want string }{
+		{"/x/l.db", "file:///x/l.db?"},
+		{"C:/x/l.db", "file:///C:/x/l.db?"},
+		{"/x/a b#?%.db", "file:///x/a%20b%23%3F%25.db?"},
+	} {
+		if got := dsn(tc.path); !strings.HasPrefix(got, tc.want) {
+			t.Errorf("dsn(%q) = %q, want prefix %q", tc.path, got, tc.want)
+		}
+	}
+}
+
 func TestOpenSharedTakesNoLock(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "l.db")
