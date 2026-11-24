@@ -34,7 +34,7 @@
 - `CLAUDE.md` die de gebruiker na `init` uitbreidde, of `"language"` met een andere waarde: blijft staan en wordt gemeld (Taak 5).
 - Kapotte of niet-object `.claude/settings.json`, of een kapot `created.toml`: duidelijke fout, niets geschreven (Taak 4 en 5).
 - Schrijffout halverwege `apply`: herhaalde uninstall ziet manifest en `created.toml` nog en maakt af (Taak 4).
-- `.claude/hooks/lighthouse/` met een `__pycache__` of een eigen bestand erin: pycache weg, eigen bestand houdt de map (Taak 4).
+- `.claude/hooks/lighthouse/` met een `__pycache__` of een eigen bestand erin: pycache alleen: map weg; eigen bestand ernaast: map blijft, pycache ook (Taak 4).
 
 ---
 
@@ -101,14 +101,15 @@
 - Produces (in `initcmd.go`, namen aan de bouwer toegestaan zolang de drie stappen apart staan):
   ```go
   func showDiffs(o Options, plan map[string]*planned, paths []string)
-  func confirm(o Options, in *bufio.Reader, question string) bool // o.Yes of ask(...)
+  func confirm(o Options, in *bufio.Reader, ask func() bool) bool // o.Yes, anders ask()
   func applyAll(root string, plan map[string]*planned, paths []string, apply func(root, rel string, p *planned) error) error
   ```
   De bestaande `apply` blijft de standaard voor init; uninstall geeft een eigen `apply` mee.
+  `execute` houdt de letterlijke aanroep `ask(o.Out, in, "Apply these changes? [y/N] ")` in `initcmd.go` (geef die als closure aan `confirm`): `TestInitPromptMatchesTheBinary` in `internal/repopins/docs_test.go` zoekt precies die aanroep met een regex.
 
-- [ ] **Step 1:** Geen nieuwe test: gedrag moet gelijk blijven. Run eerst `go test ./internal/initcmd/ ./internal/cli/ -race`; verwacht PASS (basislijn).
+- [ ] **Step 1:** Geen nieuwe test: gedrag moet gelijk blijven. Run eerst `go test ./internal/initcmd/ ./internal/cli/ ./internal/repopins/ -race`; verwacht PASS (basislijn).
 - [ ] **Step 2: Refactor** het blok in `execute` (diff tonen, `reportBudget`, vragen, toepassen) naar de drie functies; `execute` roept ze aan in dezelfde volgorde (diffs, `reportBudget`, vraag, toepassen, `Wrote N file(s).`).
-- [ ] **Step 3:** Zelfde run; verwacht PASS.
+- [ ] **Step 3:** Zelfde run (incl. `./internal/repopins/`); verwacht PASS.
 - [ ] **Step 4: Commit** `refactor(initcmd): diff, vraag en toepassen als gedeelde stappen (#91)`.
 
 ### Task 4: `Uninstall` voor de units van het manifest
@@ -129,14 +130,14 @@
 - [ ] **Step 1: Schrijf de falende tests** (`uninstall_test.go`, helper `runUninstall(t, root, mods ...func(*Options))` naast `run`):
   - `TestUninstallNotInstalled`: zonder manifest rc 1, `err` bevat `not installed`, snapshot gelijk.
   - `TestUninstallRoundTripKeepsProjectContent`: repo met eigen tekst in `AGENTS.md`, eigen hook en eigen permissieregel in `settings.json`, eigen `.gitattributes`; `init --yes`, `uninstall --yes`: rc 0 en `.claude/hooks/lighthouse/`, `.lighthouse/manifest.toml` weg; eigen inhoud staat er; vergelijk de bestanden *en* mappen (nieuwe `treeSnapshot` die mappen ook telt). In deze taak mag de vergelijking `lighthouse.toml`, `created.toml`-gerelateerde bestanden en wat uit Taak 5 komt uitsluiten; Taak 5 verscherpt dit tot volledige gelijkheid.
-  - `TestUninstallRefusesLocalEdit`: de vier gevallen van `TestUpgradeRefusesLocalEdit`; zonder `--force` rc 1, uitvoer bevat `refused: 1 locally modified unit(s)` en de diff, snapshot ongewijzigd; met `--force` gaan ze weg.
+  - `TestUninstallRefusesLocalEdit`: de gevallen van `TestUpgradeRefusesLocalEdit` waarbij een unit lokaal *gewijzigd* is (scriptregel, blokregel, hook-timeout); zonder `--force` rc 1, uitvoer bevat `refused: 1 locally modified unit(s)` en de diff, snapshot ongewijzigd; met `--force` gaan ze weg. Het geval 'deleted script' is geen conflict: `reconcile.Plan(nil, …)` geeft `Remove` voor een afwezige unit; test daarvoor apart dat uninstall zonder `--force` slaagt en de rest verwijdert.
   - `TestUninstallDecline`: invoer `n\n`, rc 1, niets geschreven, uitvoer bevat `Remove lighthouse? [y/N] `.
   - `TestUninstallNoSettingsFile`: manifest met hookunits maar `.claude/settings.json` verwijderd: uninstall maakt het niet aan.
   - `TestUninstallLastTwoPathsAndResume`: dwing een schrijffout af (map met `chmod 0o500` rond `AGENTS.md` of een `apply`-hook in `Options`; kies wat op Windows en Linux werkt, anders `t.Skip` op Windows): na de fout staan `manifest.toml` en `created.toml` er nog; na herstel maakt een tweede `uninstall --yes` het af.
-  - `TestUninstallPycacheAndOwnFileInHookDir`: `__pycache__` in `.claude/hooks/lighthouse/` verdwijnt met de map; een eigen bestand ernaast houdt de map en de bovenliggende `.claude`.
+  - `TestUninstallPycacheAndOwnFileInHookDir`: twee fixtures. (a) alleen `__pycache__` in `.claude/hooks/lighthouse/`: verdwijnt met de map. (b) `__pycache__` plus een eigen bestand: de map blijft met alles erin (pycache blijft ernaast staan) en de bovenliggende `.claude` blijft.
   - `TestRemoveEmptyDirs`: tabel op een tempdir: leeg keten tot root; stop bij map met bestand; `__pycache__`-only telt leeg; verwijdert nooit de root.
 - [ ] **Step 2:** Run `go test ./internal/initcmd/ -run 'Uninstall|RemoveEmptyDirs' -race`; verwacht FAIL.
-- [ ] **Step 3: Implementeer** `Uninstall`: `repoRoot`; `manifest.Read` (`fs.ErrNotExist` → fout `lighthouse is not installed here (.lighthouse/manifest.toml not found)`); `current` + `reconcile.Plan(nil, m, cur)`; zonder `--force` conflicten tonen via `printConflict` en `refused: N locally modified unit(s)` teruggeven (geen `keptRetired`-uitzondering voor uninstall: elke conflictunit telt). Plan per `Change`: `KindFile` → `delete`; `KindBlock` → `agentsmd.Remove` op de `AGENTS.md`-planned; `KindHook` → `settings.Apply(doc, nil)` eenmaal; `KindPermission` met `IsLighthouseRule` → drop. Verwijder het manifest zelf als eigen `planned{delete}`. Pad-volgorde: alle andere paden gesorteerd, dan `manifest.Path`, dan `created.Path`. Toepassen met een `apply` die bij `delete` `os.Remove` + `removeEmptyDirs` doet. Succes: `Removed N file(s).` op `o.Out`.
+- [ ] **Step 3: Implementeer** `Uninstall`: `repoRoot`; `manifest.Read` (`fs.ErrNotExist` → fout `lighthouse is not installed here (.lighthouse/manifest.toml not found)`); `current` + `reconcile.Plan(nil, m, cur)`; zonder `--force` conflicten tonen via `printConflict` en `refused: N locally modified unit(s)` teruggeven (geen `keptRetired`-uitzondering voor uninstall: elke conflictunit telt). Plan per `Change`: `KindFile` → `delete`; `KindBlock` → `agentsmd.Remove` op de `AGENTS.md`-planned; `KindHook` → `settings.Apply(doc, nil)` eenmaal; `KindPermission` met `IsLighthouseRule` → drop. Verwijder het manifest zelf als eigen `planned{delete}`, en `created.Path` altijd als eigen `planned{delete}` (ook als `created.toml` ontbreekt: dan overslaan). Pad-volgorde: alle andere paden gesorteerd, dan `manifest.Path`, dan `created.Path`. Toepassen met een `apply` die bij `delete` `os.Remove` + `removeEmptyDirs` doet. Succes: `Removed N file(s).` op `o.Out`.
 - [ ] **Step 4:** Zelfde run; verwacht PASS. Run `go test ./internal/initcmd/ -race`.
 - [ ] **Step 5: Commit** `feat(initcmd): uninstall verwijdert de units van het manifest (#91)`.
 
@@ -163,7 +164,7 @@
   - `TestUninstallSettingsOddFormat`: `settings.json` met afwijkende opmaak: JSON-inhoud gelijk aan vooraf, geen bytevergelijking.
   - `TestUninstallCorruptCreatedToml`: kapotte `created.toml` geeft rc 1, niets geschreven.
 - [ ] **Step 2:** Run `go test ./internal/initcmd/ -run Uninstall -race`; verwacht FAIL op de nieuwe gevallen.
-- [ ] **Step 3: Implementeer** `revertCreated` volgens de tabel *Terugdraaien van het vastgelegde* in de spec: `lighthouse.toml` in `files` altijd weg; `AGENTS.md` weg bij alleen witruimte na `agentsmd.Remove`; `settings.json` in `files` weg bij leeg object (lege `hooks`, `permissions`, `allow` tellen leeg; `settings.Apply`/`ApplyAllow` laten die containers staan, dus verwijder ze hier als ze in `settings_keys` staan of `settings.json` in `files`); `CLAUDE.md` in `files` weg als de inhoud precies `@AGENTS.md\n` is én `AGENTS.md` weggaat; `.gitattributes`-regels: per vastgelegde regel de laatste exacte treffer weg (CRLF-bewust), een ontbrekende regel overslaan, bestand weg bij alleen witruimte en in `files`; `"language"` weg als de waarde gelijk is aan `settings_language`. Afwijkend → blijft staan, regel in `notes`. Zonder `created.toml` (`found == false`): geen enkele terugdraai, wel `left:`-regels voor de aanwezige `lighthouse.toml`, `CLAUDE.md` met een `@AGENTS.md`-regel, `.gitattributes` met een van beide lighthouse-regels, `"language"` in `settings.json`. Roep `revertCreated` aan vóór het plannen van manifest en `created.toml`.
+- [ ] **Step 3: Implementeer** `revertCreated` volgens de tabel *Terugdraaien van het vastgelegde* in de spec: `lighthouse.toml` in `files` altijd weg; `AGENTS.md` in `files` weg bij alleen witruimte na `agentsmd.Remove`; `settings.json` in `files` weg bij leeg object (lege `hooks`, `permissions`, `allow` tellen leeg; `settings.Apply`/`ApplyAllow` laten die containers staan, dus verwijder ze hier als ze in `settings_keys` staan of `settings.json` in `files`); `CLAUDE.md` in `files` weg als de inhoud precies `@AGENTS.md\n` is én `AGENTS.md` weggaat of al afwezig is; `.gitattributes`-regels: per vastgelegde regel de laatste exacte treffer weg (CRLF-bewust), een ontbrekende regel overslaan, bestand weg bij alleen witruimte en in `files`; `"language"` weg als de waarde gelijk is aan `settings_language`. Afwijkend → blijft staan, regel in `notes`. Zonder `created.toml` (`found == false`): geen enkele terugdraai, wel `left:`-regels voor de aanwezige `lighthouse.toml`, `CLAUDE.md` met een `@AGENTS.md`-regel, `.gitattributes` met een van beide lighthouse-regels, `"language"` in `settings.json`. Roep `revertCreated` aan vóór het plannen van manifest en `created.toml`.
 - [ ] **Step 4:** Zelfde run plus `go test ./internal/initcmd/ -race`; verwacht PASS.
 - [ ] **Step 5: Commit** `feat(initcmd): uninstall draait vastgelegde aanmaak terug (#91)`.
 
@@ -183,7 +184,7 @@
   ```
 
 - [ ] **Step 1: Schrijf de falende tests**:
-  - `TestUninstallRoundTripStandardLevel`: `init --level standard --yes`, `uninstall --yes`: het labelsbestand en de direction-docs staan er nog, `o.Err` bevat per bestaand pad `kept: <pad> (project file after seeding)`; de rest van de boom gelijk aan vooraf.
+  - `TestUninstallRoundTripStandardLevel`: opzet met `levelPacks()` en `flagLevelsToml` (`levels_test.go`) zodat het level iets zaait, en `Direction: true` voor de direction-docs (de standaard `testPacks()` zaait niets); `init --level standard --yes`, `uninstall --yes`: het labelsbestand en de direction-docs staan er nog, `o.Err` bevat per bestaand pad `kept: <pad> (project file after seeding)`; de rest van de boom gelijk aan vooraf.
   - `TestUninstallReportsRuntimeDirs`: `.lighthouse/run/x` en `.lighthouse/bin/y` aangemaakt voor uninstall: blijven staan, melding `kept: .lighthouse/run (runtime state, not installed by init)` en idem `bin`.
   - `TestUninstallReportsNotTouched`: `o.Err` bevat een regel `not touched:` die labels op de forge en `host.toml` noemt, en een regel dat een lopende Claude Code-sessie de hooks pas na een herstart kwijt is.
   - `TestUninstallLeavesNoReportOnRefusal`: geweigerde run schrijft geen `kept:`-regels.
