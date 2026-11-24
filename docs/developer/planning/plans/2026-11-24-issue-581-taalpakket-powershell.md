@@ -127,3 +127,10 @@ De hook geeft deze set expliciet door (`-IncludeRule`), leest dus geen `PSScript
 - AC1 (init herkent): taak 1. AC2 (hook op Edit/Write/Bash): taak 2 + 3. AC3 (canary per regel, bijectie): taak 2. AC4 (requires.toml, niet stil): taak 1 + 3 + hookfout in taak 2. AC5 (niveaus): taak 1. AC6 (Linux en Windows-CI): taak 2 + 4.
 - Open keuze die de uitvoerder bevestigt: of `standard`/`strict` expliciet in `levels.toml` moeten (taak 1, stap 3), en de PSScriptAnalyzer-versie die CI pint (taak 4, stap 1).
 - Risico: PSScriptAnalyzer is een module, geen gepind en met sha256 geverifieerd binair; versiepin gebeurt in CI en de hook rapporteert de versie niet. Een eigen ontwerp voor pinnen valt buiten dit issue.
+
+## Open na review
+
+Ronde 3 haalde de rondegrens met deze punten open. Ze zijn aanvaard als `accepted_open`;
+de volgende fase of de PR-review weegt ze opnieuw.
+
+- **r3-f1** (MAJOR, Taak 2 stap 2 (versiepin-canary) + Taak 4 stap 1 (export LIGHTHOUSE_PSSA_VERSION)): The mechanism r2-f1 asked for is now there: `-Version` on the helper, `-RequiredVersion` in Stap 4, the hook forwarding `LIGHTHOUSE_PSSA_VERSION`, and a negative canary with `0.0.1`. The delivery path is still broken in the repo as it stands. The diff has CI export `LIGHTHOUSE_PSSA_VERSION` for the test step and runs the canary 'met `LIGHTHOUSE_PSSA_VERSION` = de in CI gepinde versie', which implies the hook inherits it. `runHook` builds the hook env from `cleanEnv`, and `cleanEnv` drops every `LIGHTHOUSE_*` variable from the test process. Unless the test reads the variable itself and passes it through runHook's `env` argument, the hook never sees it. The plan does not say to do that, and it does not say that an empty value under `CI` must fail.
