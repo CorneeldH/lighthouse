@@ -2,7 +2,7 @@ import type { Repo } from '@/api/lighthouse'
 import type { DepsOrder } from './layout'
 import type { Graph, MilestoneRow } from '@/lib/priorities/derive'
 
-// Shared by DepsView, MilestonesView and UnassignedView.
+// Shared by DepsView, MilestonesView and BacklogView.
 export interface ViewProps {
   graph: Graph
   repos: Repo[]
