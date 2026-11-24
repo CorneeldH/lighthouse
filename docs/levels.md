@@ -26,7 +26,7 @@ The stands come from the `levels.toml` file of each package under `pack/`.
 | `commit-test-gate` | off | on | on | At first the PR and its CI carry the quality, not a test run after each commit. |
 | `md-link-check` | log | on | on | Many `.md` writes, so much noise in the first step; `log` counts what it would have blocked. |
 | `code-language-check` | log | on | on | Only acts with `[project] code_language` set; `log` counts what it would have reported. |
-| Lint and format hooks of the language packs (`gofmt-check`, `go-lint-gate`, `ruff-format-check`, `ty-gate`, `shell-lint-check`) | off | on | on | Lint and format come after the way of working. |
+| Lint and format hooks of the language packs (`gofmt-check`, `go-lint-gate`, `ruff-format-check`, `ty-gate`, `shell-lint-check`, `powershell-lint-check`) | off | on | on | Lint and format come after the way of working. |
 | Imports gates of the language packs (`go-imports-gate`, `python-imports-gate`, `node-imports-gate`) | on | on | on | They guard the declared imports at every level. |
 | Standard skills of the language packs (`go-standard`, `python-standard`, `shell-standard`) | off | on | on | They follow their hooks: their text describes lint and format hooks that are off on `light`. |
 | Skills `start-issue`, `route-issue`, `forge`, `write-pr`, `close-issue`, `write-handoff`, `place-instruction`, `upgrade` | on | on | on | The chain from issue to PR to a closed issue, plus the way up. |
