@@ -83,6 +83,18 @@ func TestTimelineQuestionRunEndsAtQuestion(t *testing.T) {
 	assertSumIsWindow(t, got)
 }
 
+func TestTimelineQuestionRunDoneAfterQuestion(t *testing.T) {
+	// The tick that closed the question run at 35 also saw Done, at 34:
+	// the run still ends at the question (30), so the Done does not turn
+	// the human wait from 30 to 34 into active time.
+	in := ac4Input(35)
+	in.Events = append(in.Events, TimelineEvent{Kind: EventDone, RunID: 1, Ref: "1", At: mins(34)})
+	got := Timeline(in, mins(200))
+	assertCauses(t, got, map[Cause]time.Duration{
+		CauseActive: dur(60), CauseHuman: dur(30), CausePickup: dur(10), CauseCIReview: dur(30),
+	})
+}
+
 func TestTimelineDoneBeforeClose(t *testing.T) {
 	in := TimelineInput{
 		Runs:   []TimelineRun{{ID: 1, Trigger: "start", TriggerKey: "start:7", Outcome: "merged", StartedAt: mins(0), EndedAt: endAt(100)}},

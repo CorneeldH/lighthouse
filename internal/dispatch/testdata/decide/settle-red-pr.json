@@ -90,6 +90,13 @@
   },
   "want": [
     {
+      "kind": "note_done",
+      "repo": "o/r",
+      "issue": 7,
+      "run_id": 5,
+      "language": "nl"
+    },
+    {
       "kind": "close",
       "repo": "o/r",
       "issue": 7,
@@ -105,13 +112,13 @@
       "repo": "o/r",
       "issue": 7,
       "trigger": "fixpr",
-      "reason": "reason_pr_red",
       "trigger_key": "fixpr:12:abc123",
       "attempt": 1,
       "mode": "start",
       "command": "/lighthouse-fix-pr 12",
       "prompt": "/lighthouse-fix-pr 12 (issue #7, controller-run)",
       "branch": "issue-7-bouw-de-keten",
+      "reason": "reason_pr_red",
       "language": "nl"
     }
   ]

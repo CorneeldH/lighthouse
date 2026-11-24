@@ -120,8 +120,8 @@ const (
 	// KindIdle has no effect: it only marks that the issue had no next step in this evaluation,
 	// so the tick counts it (SaveIdle) and takes it out of the actions before Apply.
 	KindIdle Kind = "idle"
-	// KindNoteDone notes that the session of open agent run RunID measured Done while the run does
-	// not close in this tick: apply stores the done event once per run. It closes nothing and
+	// KindNoteDone notes that the session of open agent run RunID measured Done, whether or not the
+	// run closes in this tick: apply stores the done event once per run. It closes nothing and
 	// starts nothing, so it is group 0 and passes a paused brake.
 	KindNoteDone Kind = "note_done"
 )
@@ -431,9 +431,11 @@ func decideIssue(in Input, repo RepoInput, it Item) []planned {
 			out = append(out, planned{Action: a})
 			closes = false
 		}
-		if !closes && !isPush(row) && newRunCtx(in, repo, it, row, base).done() {
-			// The session is Done while its run stays open (a pending PR, a repost): apply
-			// stores the done event, once per run. A push row runs no session.
+		if !isPush(row) && newRunCtx(in, repo, it, row, base).done() {
+			// The session is Done: apply stores the done event, once per run. Also on the tick
+			// that closes the run, the first that may see Done, and before the close, so the
+			// event never lies after the run's end; a close the brake withdraws keeps it. A
+			// push row runs no session.
 			nd := base
 			nd.Kind, nd.RunID = KindNoteDone, row.ID
 			out = append(out, planned{Action: nd})

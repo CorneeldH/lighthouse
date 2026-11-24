@@ -1180,7 +1180,7 @@ func TestReturnLabelKeyTable(t *testing.T) {
 // close that started nothing for another cause (the item is On hold) is not.
 func TestSettleUnstartedFixPRMarksBlocked(t *testing.T) {
 	for name, want := range map[string]bool{"fixpr-blocker": true, "fixpr-on-hold": false} {
-		got := Decide(loadInput(t, name))
+		got := withoutNoteDone(Decide(loadInput(t, name)))
 		if len(got) != 1 || got[0].Kind != KindReturn || got[0].Blocked != want {
 			t.Errorf("%s: Decide = %+v, want one return with Blocked %v", name, got, want)
 		}
@@ -1580,9 +1580,20 @@ func noteDones(got []Action) []Action {
 	return out
 }
 
-// An open agent run whose session is Done and does not close in this tick gets one note_done;
-// one without the Done stand, one with work after its Stop, and one that closes on its Done
-// comment get none.
+// withoutNoteDone drops the note_done actions of got, for a test of what else a tick decides.
+func withoutNoteDone(got []Action) []Action {
+	out := []Action{}
+	for _, a := range got {
+		if a.Kind != KindNoteDone {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+// An open agent run whose session is Done gets one note_done, also on the tick that closes it on
+// its Done comment: that tick is the first that sees Done (spec, Done). One without the Done
+// stand and one with work after its Stop get none.
 func TestDecideNoteDoneForOpenDoneRun(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -1599,7 +1610,7 @@ func TestDecideNoteDoneForOpenDoneRun(t *testing.T) {
 		{"closes on its Done comment", func(in *Input) {
 			item7(in).Comments = append(item7(in).Comments, Comment{ID: 90, Author: "lh-bot", CreatedAt: "2026-10-31T11:50:00Z",
 				Body: "🤖 Klaar\n\n<sub>session 11111111-2222-4333-8444-555555555555</sub>"})
-		}, 0},
+		}, 1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

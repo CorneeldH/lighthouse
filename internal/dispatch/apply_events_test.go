@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/runs"
+	"github.com/CorneeldH/lighthouse/internal/telemetry"
 )
 
 // eventRow is one trajectory_events row as the dispatcher writes it.
@@ -172,6 +173,38 @@ func TestApplyWritesDoneEventOnce(t *testing.T) {
 	}
 	if r := h.history(t)[0]; !r.Open {
 		t.Errorf("run = %+v, want still open: a note_done closes nothing", r)
+	}
+}
+
+// On the tick that closes a Done run, Apply runs the note_done before the close: the done event
+// lies before the run's end, so the timeline splits the run into active and ci_review instead of
+// marking it active including CI/review.
+func TestApplyDoneOnClosingTick(t *testing.T) {
+	h := newHarness(t)
+	run := h.seed(t, 7, oldSession, "start:7", "")
+	tick := applyNow
+	h.env.Now = func() time.Time {
+		tick = tick.Add(time.Second)
+		return tick
+	}
+	acts := []Action{
+		{Kind: KindNoteDone, Repo: applyRepo, Issue: 7, RunID: run},
+		{Kind: KindClose, Repo: applyRepo, Issue: 7, RunID: run, Outcome: runs.Handoff},
+	}
+	if _, err := Apply(context.Background(), h.env, acts); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	id, ok, err := telemetry.FindTrajectoryID(context.Background(), h.db, applyRepo, 7)
+	if err != nil || !ok {
+		t.Fatalf("FindTrajectoryID = %d, %v, %v", id, ok, err)
+	}
+	tl, err := telemetry.LoadTimeline(context.Background(), h.db, id, time.Time{}, tick.Add(time.Hour))
+	if err != nil {
+		t.Fatalf("LoadTimeline: %v", err)
+	}
+	active, ci := tl.ByCause[telemetry.CauseActive], tl.ByCause[telemetry.CauseCIReview]
+	if active.InclusiveCIReview || ci.Duration <= 0 {
+		t.Errorf("ByCause = %+v, want active up to Done and ci_review after it", tl.ByCause)
 	}
 }
 

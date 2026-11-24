@@ -169,7 +169,7 @@ func isPusherRow(r TimelineRun) bool {
 
 // runSpans gives a pusher row ci_review over its whole length, and an agent
 // run active up to its first Done (ci_review after it) or up to its stored
-// question; without either, a closed run is active marked inclusive of
+// question, whichever comes first; without either, a closed run is active marked inclusive of
 // CI/review. An open run without Done still works (no tick saw Done yet), so
 // it is not inclusive.
 func runSpans(in TimelineInput, now time.Time) []span {
@@ -183,17 +183,23 @@ func runSpans(in TimelineInput, now time.Time) []span {
 			out = append(out, span{Interval: Interval{r.StartedAt, end}, cause: CauseCIReview, rank: rankCIReview, running: running})
 			continue
 		}
-		if done, ok := firstEvent(in.Events, EventDone, r.ID); ok && !done.Before(r.StartedAt) && !done.After(end) {
+		done, hasDone := firstEvent(in.Events, EventDone, r.ID)
+		hasDone = hasDone && !done.Before(r.StartedAt) && !done.After(end)
+		if r.Outcome == "question" {
+			// The run's active time ends at whichever comes first: a Done that
+			// the closing tick saw after the question must not take the human
+			// wait from the question on.
+			q, ok := firstEvent(in.Events, EventQuestion, r.ID)
+			if ok && !q.Before(r.StartedAt) && !q.After(end) && (!hasDone || q.Before(done)) {
+				out = append(out, span{Interval: Interval{r.StartedAt, q}, cause: CauseActive, rank: rankRunActive})
+				continue
+			}
+		}
+		if hasDone {
 			out = append(out,
 				span{Interval: Interval{r.StartedAt, done}, cause: CauseActive, rank: rankRunActive},
 				span{Interval: Interval{done, end}, cause: CauseCIReview, rank: rankCIReview, running: running})
 			continue
-		}
-		if r.Outcome == "question" {
-			if q, ok := firstEvent(in.Events, EventQuestion, r.ID); ok && !q.Before(r.StartedAt) && !q.After(end) {
-				out = append(out, span{Interval: Interval{r.StartedAt, q}, cause: CauseActive, rank: rankRunActive})
-				continue
-			}
 		}
 		out = append(out, span{Interval: Interval{r.StartedAt, end}, cause: CauseActive, rank: rankRunActive, running: running, inclusive: !running})
 	}

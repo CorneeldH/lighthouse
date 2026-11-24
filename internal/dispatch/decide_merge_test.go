@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -34,12 +35,12 @@ func loadInput(t *testing.T, name string) Input {
 	return f.Input
 }
 
-// summary gives kind:reason:reason_arg per action, without the note_done of an open Done run.
+// summary gives kind:reason:reason_arg per action, without the note_done of a Done run.
 func summary(got []Action) []string {
 	out := []string{}
 	for _, a := range got {
 		if a.Kind == KindNoteDone {
-			// The done note of an open Done run is TestDecideNoteDoneForOpenDoneRun's.
+			// The done note of a Done run is TestDecideNoteDoneForOpenDoneRun's.
 			continue
 		}
 		out = append(out, string(a.Kind)+":"+a.Reason+":"+a.ReasonArg)
@@ -199,9 +200,47 @@ func TestMergeReady(t *testing.T) {
 	})
 }
 
+// A Done run that settle closes for a fix-pr start gets its note_done in that tick, and keeps it
+// when the brake withdraws the start and with it the close: the session was Done either way.
+func TestDecideNoteDoneOnFixPRClose(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*Input)
+		closes bool
+	}{
+		{"fix-pr close", conflict, true},
+		{"close dropped by the brake", func(in *Input) { conflict(in); in.Brake = &Brake{Paused: true} }, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			in := loadInput(t, "settle-green-pr-done")
+			tt.mutate(&in)
+			got := Decide(in)
+			nd := noteDones(got)
+			if len(nd) != 1 || nd[0].RunID != 5 {
+				t.Fatalf("note_done = %+v, want one for run 5 in %+v", nd, got)
+			}
+			closed := false
+			for i, a := range got {
+				if a.Kind != KindClose || a.RunID != 5 {
+					continue
+				}
+				closed = true
+				if slices.IndexFunc(got, func(a Action) bool { return a.Kind == KindNoteDone }) > i {
+					// Apply follows this order: a done event after the close lies after the run's end.
+					t.Errorf("note_done after the close in %+v, want it before", got)
+				}
+			}
+			if closed != tt.closes {
+				t.Errorf("close of run 5 = %v, want %v in %+v", closed, tt.closes, got)
+			}
+		})
+	}
+}
+
 // The merge action carries what apply needs: the run, its session, the PR and its measured head.
 func TestMergeReadyAction(t *testing.T) {
-	got := Decide(loadInput(t, "settle-green-pr-done"))
+	got := withoutNoteDone(Decide(loadInput(t, "settle-green-pr-done")))
 	want := []Action{{
 		Kind: KindMerge, Repo: "o/r", Issue: 7, RunID: 5, SessionID: "11111111-2222-4333-8444-555555555555",
 		PR: 12, HeadSHA: "abc123", PRURL: "https://github.com/o/r/pull/12", Language: "nl", End: true,
@@ -334,7 +373,7 @@ func TestFixPRStartsInTickAfterBrakeOpens(t *testing.T) {
 				c.mutate(&in)
 				in.Brake = openBrake()
 				br.closed(in.Brake)
-				got := Decide(in)
+				got := withoutNoteDone(Decide(in))
 				if s := summary(got); !reflect.DeepEqual(s, br.tick1) {
 					t.Fatalf("tick 1 summary = %q, want %q", s, br.tick1)
 				}
@@ -346,7 +385,7 @@ func TestFixPRStartsInTickAfterBrakeOpens(t *testing.T) {
 
 				in.Now = in.Now.Add(5 * time.Minute)
 				in.Brake = openBrake()
-				got = Decide(in)
+				got = withoutNoteDone(Decide(in))
 				if s, want := summary(got), []string{fixClose12, c.start}; !reflect.DeepEqual(s, want) {
 					t.Fatalf("tick 2 summary = %q, want %q", s, want)
 				}
@@ -414,7 +453,7 @@ func TestDecideMergeStartsPusherForBuildRoutePR(t *testing.T) {
 	in := loadInput(t, "settle-green-pr-done")
 	row5(&in).Command, row5(&in).TriggerKey = "/lighthouse-write-pr 7", "handoff:64"
 	pushedPR(&in)
-	got := Decide(in)
+	got := withoutNoteDone(Decide(in))
 	if s := summary(got); !reflect.DeepEqual(s, []string{"close::" + mergeKey12, "push::"}) {
 		t.Fatalf("summary = %q, want the close of run 5 and the merge pusher", s)
 	}
@@ -429,7 +468,7 @@ func TestDecideMergeStartsPusherForBuildRoutePR(t *testing.T) {
 func TestDecideMergeUsesRunTokenWithoutPushedSHA(t *testing.T) {
 	in := loadInput(t, "settle-green-pr-done")
 	in.Repos[0].WorkflowPush = true
-	got := Decide(in)
+	got := withoutNoteDone(Decide(in))
 	if s := summary(got); !reflect.DeepEqual(s, []string{"merge::"}) {
 		t.Fatalf("summary = %q, want the merge with the run token", s)
 	}
