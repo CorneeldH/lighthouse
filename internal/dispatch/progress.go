@@ -65,8 +65,9 @@ func ReadProgress(command string) (Progress, bool) {
 	}
 	id := plan
 	// IsLocal, not a ".." prefix: a directory named "..plans" is inside the root.
+	// plan-path is written in `/` form, also on Windows (#559).
 	if rel, err := filepath.Rel(root, plan); err == nil && filepath.IsLocal(rel) {
-		id = rel
+		id = filepath.ToSlash(rel)
 	}
 	work, ok := workDir(root, id)
 	if !ok {
