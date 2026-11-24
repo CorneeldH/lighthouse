@@ -14,8 +14,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"regexp"
-	"strconv"
 	"strings"
 )
 
@@ -39,6 +37,7 @@ type Options struct {
 	Token        string       // optional, sent to the API call only
 	Client       *http.Client // nil = http.DefaultClient
 	Restart      func() error // nil = no restart; called only after a replace
+	Channel      Channel      // "" = release
 }
 
 // Result reports the outcome and the versions involved.
@@ -48,31 +47,23 @@ type Result struct {
 	To      string
 }
 
-var tagRe = regexp.MustCompile(`^v(\d+)\.(\d+)\.(\d+)$`)
+// Channel selects which releases Run may update to.
+type Channel string
 
-func parseTag(s string) ([3]int, error) {
-	var v [3]int
-	m := tagRe.FindStringSubmatch(s)
-	if m == nil {
-		return v, fmt.Errorf("version %q is not of the form vX.Y.Z", s)
-	}
-	for i := range v {
-		n, err := strconv.Atoi(m[i+1])
-		if err != nil {
-			return v, fmt.Errorf("version %q: %w", s, err)
-		}
-		v[i] = n
-	}
-	return v, nil
-}
+const (
+	// ChannelRelease follows the latest published release (vX.Y.Z only).
+	ChannelRelease Channel = "release"
+	// ChannelDev follows the highest tag, including -dev.N and -rc.N.
+	ChannelDev Channel = "dev"
+)
 
-func newer(a, b [3]int) bool {
-	for i := range a {
-		if a[i] != b[i] {
-			return a[i] > b[i]
-		}
+// ParseChannel accepts exactly "release" and "dev".
+func ParseChannel(s string) (Channel, error) {
+	switch Channel(s) {
+	case ChannelRelease, ChannelDev:
+		return Channel(s), nil
 	}
-	return false
+	return "", fmt.Errorf("unknown channel %q; want release or dev", s)
 }
 
 // Run replaces o.Target with the latest release when it is strictly newer
@@ -85,8 +76,7 @@ func Run(ctx context.Context, o Options) (Result, error) {
 	if o.GOOS == "windows" {
 		return res, errors.New("self-update is not supported on windows")
 	}
-	cur, err := parseTag(o.Current)
-	if err != nil {
+	if _, err := ParseTag(o.Current); err != nil {
 		return res, fmt.Errorf("current: %w", err)
 	}
 	client := o.Client
@@ -98,12 +88,13 @@ func Run(ctx context.Context, o Options) (Result, error) {
 	if err != nil {
 		return res, err
 	}
-	latest, err := parseTag(tag)
-	if err != nil {
+	if _, err := ParseTag(tag); err != nil {
 		return res, fmt.Errorf("latest release: %w", err)
 	}
 	res.To = tag
-	if !newer(latest, cur) {
+	if cmp, err := CompareTags(tag, o.Current); err != nil {
+		return res, fmt.Errorf("compare %s with %s: %w", tag, o.Current, err)
+	} else if cmp <= 0 {
 		res.Outcome = UpToDate
 		return res, nil
 	}
@@ -148,6 +139,9 @@ func get(ctx context.Context, c *http.Client, url, token string) (*http.Response
 }
 
 func latestTag(ctx context.Context, c *http.Client, o Options) (string, error) {
+	if o.Channel == ChannelDev {
+		return highestReleaseTag(ctx, c, o)
+	}
 	url := strings.TrimRight(o.APIBase, "/") + "/repos/" + o.Repo + "/releases/latest"
 	resp, err := get(ctx, c, url, o.Token)
 	if err != nil {
@@ -161,6 +155,67 @@ func latestTag(ctx context.Context, c *http.Client, o Options) (string, error) {
 		return "", fmt.Errorf("decode %s: %w", url, err)
 	}
 	return body.TagName, nil
+}
+
+// maxReleasePages bounds the pagination loop of the dev channel.
+const maxReleasePages = 100
+
+// highestReleaseTag lists every release over all pages, drops drafts and
+// returns the highest valid tag.
+func highestReleaseTag(ctx context.Context, c *http.Client, o Options) (string, error) {
+	base := strings.TrimRight(o.APIBase, "/")
+	next := base + "/repos/" + o.Repo + "/releases?per_page=100"
+	var tags []string
+	for page := 0; next != "" && page < maxReleasePages; page++ {
+		if !strings.HasPrefix(next, base+"/") {
+			return "", fmt.Errorf("release list: next page %s is outside %s", next, base)
+		}
+		resp, err := get(ctx, c, next, o.Token)
+		if err != nil {
+			return "", err
+		}
+		var list []struct {
+			TagName string `json:"tag_name"`
+			Draft   bool   `json:"draft"`
+		}
+		err = json.NewDecoder(resp.Body).Decode(&list)
+		link := resp.Header.Get("Link")
+		_ = resp.Body.Close()
+		if err != nil {
+			return "", fmt.Errorf("decode %s: %w", next, err)
+		}
+		for _, r := range list {
+			if !r.Draft {
+				tags = append(tags, r.TagName)
+			}
+		}
+		next = nextLink(link)
+	}
+	tag, err := HighestTag(tags)
+	if err != nil {
+		return "", fmt.Errorf("dev channel: %w", err)
+	}
+	return tag, nil
+}
+
+// nextLink returns the rel="next" target of a Link header, or "".
+func nextLink(h string) string {
+	for _, part := range strings.Split(h, ",") {
+		seg := strings.Split(part, ";")
+		if len(seg) < 2 {
+			continue
+		}
+		u := strings.TrimSpace(seg[0])
+		if !strings.HasPrefix(u, "<") || !strings.HasSuffix(u, ">") {
+			continue
+		}
+		for _, p := range seg[1:] {
+			if strings.ReplaceAll(strings.TrimSpace(p), " ", "") == `rel="next"` {
+				return u[1 : len(u)-1]
+			}
+		}
+	}
+	return ""
 }
 
 // expectedSum returns the hex digest listed for asset in the SHA256SUMS file.

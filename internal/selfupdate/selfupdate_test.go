@@ -4,13 +4,16 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -31,6 +34,15 @@ type fixture struct {
 	sums      string // SHA256SUMS body; "" = computed from newBody
 	assetCode int
 	newBody   string
+	pages     [][]rel // /releases pages; page 1 is pages[0]
+	latestHit atomic.Int32
+	listHit   atomic.Int32
+	listQuery atomic.Value // string, RawQuery of the last /releases call
+}
+
+type rel struct {
+	Tag   string `json:"tag_name"`
+	Draft bool   `json:"draft"`
 }
 
 func sumOf(s string) string {
@@ -52,8 +64,28 @@ func newFixture(t *testing.T, tag string) *fixture {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/repos/CorneeldH/lighthouse/releases/latest", func(w http.ResponseWriter, r *http.Request) {
 		f.calls.Add(1)
+		f.latestHit.Add(1)
 		f.auth.Store(r.Header.Get("Authorization"))
 		_, _ = fmt.Fprintf(w, `{"tag_name": %q}`, f.tag)
+	})
+	mux.HandleFunc("/repos/CorneeldH/lighthouse/releases", func(w http.ResponseWriter, r *http.Request) {
+		f.calls.Add(1)
+		f.listHit.Add(1)
+		f.auth.Store(r.Header.Get("Authorization"))
+		f.listQuery.Store(r.URL.RawQuery)
+		page := 1
+		if p := r.URL.Query().Get("page"); p != "" {
+			page, _ = strconv.Atoi(p)
+		}
+		if page < 1 || page > len(f.pages) {
+			_, _ = fmt.Fprint(w, "[]")
+			return
+		}
+		if page < len(f.pages) {
+			next := url.Values{"per_page": {"100"}, "page": {strconv.Itoa(page + 1)}}
+			w.Header().Set("Link", fmt.Sprintf(`<%s/repos/CorneeldH/lighthouse/releases?%s>; rel="next"`, f.srv.URL, next.Encode()))
+		}
+		_ = json.NewEncoder(w).Encode(f.pages[page-1])
 	})
 	base := "/CorneeldH/lighthouse/releases/download/" + tag + "/"
 	mux.HandleFunc(base+asset, func(w http.ResponseWriter, r *http.Request) {
@@ -203,7 +235,7 @@ func TestRunRejectsWindows(t *testing.T) {
 }
 
 func TestRunRejectsMalformedTag(t *testing.T) {
-	for _, tag := range []string{"v0.12.0-rc.1", "0.12.0", ""} {
+	for _, tag := range []string{"v0.12.0-beta.1", "0.12.0", ""} {
 		t.Run(tag, func(t *testing.T) {
 			f := newFixture(t, tag)
 			if _, err := Run(context.Background(), f.opts("v0.11.2")); err == nil {
@@ -352,11 +384,129 @@ func TestRunSendsTokenToAPIOnlyNotToDownloads(t *testing.T) {
 
 func TestRunRejectsMalformedCurrentBeforeNetwork(t *testing.T) {
 	f := newFixture(t, "v0.11.3")
-	if _, err := Run(context.Background(), f.opts("v0.12.0-rc.1")); err == nil {
+	if _, err := Run(context.Background(), f.opts("v0.12.0-beta.1")); err == nil {
 		t.Fatal("want error")
 	}
 	if n := f.calls.Load(); n != 0 {
 		t.Fatalf("server calls = %d; want 0", n)
 	}
 	f.assertOld(t)
+}
+
+func devOpts(f *fixture, current string) Options {
+	o := f.opts(current)
+	o.Channel = ChannelDev
+	return o
+}
+
+func TestRunDevChannelPicksHighestIncludingPrerelease(t *testing.T) {
+	f := newFixture(t, "v0.28.0-rc.1")
+	f.pages = [][]rel{{{Tag: "v0.27.0"}, {Tag: "v0.28.0-rc.1"}, {Tag: "v0.28.0-dev.5"}}}
+	res, err := Run(context.Background(), devOpts(f, "v0.27.0"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res != (Result{Replaced, "v0.27.0", "v0.28.0-rc.1"}) {
+		t.Fatalf("result = %+v", res)
+	}
+	if f.latestHit.Load() != 0 {
+		t.Fatal("dev channel must not call /releases/latest")
+	}
+	if q := f.listQuery.Load().(string); !strings.Contains(q, "per_page=100") {
+		t.Fatalf("query = %q; want per_page=100", q)
+	}
+}
+
+func TestRunDevChannelIgnoresDrafts(t *testing.T) {
+	f := newFixture(t, "v0.28.0-dev.5")
+	f.pages = [][]rel{{{Tag: "v0.27.0"}, {Tag: "v0.28.0-rc.1", Draft: true}, {Tag: "v0.28.0-dev.5"}}}
+	res, err := Run(context.Background(), devOpts(f, "v0.27.0"))
+	if err != nil || res.To != "v0.28.0-dev.5" || res.Outcome != Replaced {
+		t.Fatalf("res = %+v, err = %v", res, err)
+	}
+}
+
+func TestRunDevChannelIgnoresTestTags(t *testing.T) {
+	f := newFixture(t, "v0.28.0-rc.2")
+	f.pages = [][]rel{{{Tag: "v0.28.0-test.9"}, {Tag: "v0.28.0-rc.2"}}}
+	res, err := Run(context.Background(), devOpts(f, "v0.27.0"))
+	if err != nil || res.To != "v0.28.0-rc.2" || res.Outcome != Replaced {
+		t.Fatalf("res = %+v, err = %v", res, err)
+	}
+}
+
+func TestRunDevChannelFollowsPagination(t *testing.T) {
+	f := newFixture(t, "v0.30.0")
+	f.pages = [][]rel{{{Tag: "v0.27.0"}}, {{Tag: "v0.28.0"}}, {{Tag: "v0.30.0"}}}
+	res, err := Run(context.Background(), devOpts(f, "v0.27.0"))
+	if err != nil || res.To != "v0.30.0" || res.Outcome != Replaced {
+		t.Fatalf("res = %+v, err = %v", res, err)
+	}
+	if n := f.listHit.Load(); n != 3 {
+		t.Fatalf("list calls = %d; want 3", n)
+	}
+}
+
+func TestRunReleaseChannelStaysOnLatest(t *testing.T) {
+	f := newFixture(t, "v0.28.0")
+	f.pages = [][]rel{{{Tag: "v0.29.0-rc.1"}}}
+	for _, ch := range []Channel{"", ChannelRelease} {
+		o := f.opts("v0.27.0")
+		o.Channel = ch
+		res, err := Run(context.Background(), o)
+		if err != nil || res.To != "v0.28.0" {
+			t.Fatalf("channel %q: res = %+v, err = %v", ch, res, err)
+		}
+		if err := os.WriteFile(f.target, []byte("old"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if f.listHit.Load() != 0 || f.latestHit.Load() != 2 {
+		t.Fatalf("list = %d, latest = %d", f.listHit.Load(), f.latestHit.Load())
+	}
+}
+
+func TestRunNeverDowngrades(t *testing.T) {
+	f := newFixture(t, "v0.28.0")
+	res, err := Run(context.Background(), f.opts("v0.29.0-dev.3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Outcome != UpToDate || res.To != "v0.28.0" {
+		t.Fatalf("res = %+v", res)
+	}
+	f.assertOld(t)
+}
+
+func TestRunDevBinaryTagIsNotSkipped(t *testing.T) {
+	f := newFixture(t, "v0.28.0")
+	res, err := Run(context.Background(), f.opts("v0.29.0-dev.3"))
+	if err != nil || res.Outcome == SkippedDev {
+		t.Fatalf("res = %+v, err = %v", res, err)
+	}
+	if f.calls.Load() == 0 {
+		t.Fatal("want network calls")
+	}
+}
+
+func TestRunDevChannelWithoutValidTagFails(t *testing.T) {
+	f := newFixture(t, "v0.28.0")
+	f.pages = [][]rel{{{Tag: "v0.28.0-test.1"}, {Tag: "v0.29.0", Draft: true}, {Tag: "junk"}}}
+	if _, err := Run(context.Background(), devOpts(f, "v0.27.0")); err == nil {
+		t.Fatal("want error")
+	}
+	f.assertOld(t)
+}
+
+func TestParseChannelRejectsUnknown(t *testing.T) {
+	for _, s := range []string{"stable", "", "Dev"} {
+		if _, err := ParseChannel(s); err == nil {
+			t.Fatalf("ParseChannel(%q): want error", s)
+		}
+	}
+	for s, want := range map[string]Channel{"release": ChannelRelease, "dev": ChannelDev} {
+		if got, err := ParseChannel(s); err != nil || got != want {
+			t.Fatalf("ParseChannel(%q) = %q, %v", s, got, err)
+		}
+	}
 }
