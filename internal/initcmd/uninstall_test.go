@@ -818,7 +818,7 @@ func TestUninstallReportsNotTouched(t *testing.T) {
 	}
 	var forge, restart bool
 	for _, l := range strings.Split(r.err, "\n") {
-		if l == "not touched: labels on the forge, ~/"+hostconfig.HomeRel {
+		if l == "not touched: labels on the forge, ~/"+hostconfig.HomeRel+", the lighthouse binary" {
 			forge = true
 		}
 		if strings.HasPrefix(l, "note:") && strings.Contains(l, "running Claude Code session") && strings.Contains(l, "restart") {

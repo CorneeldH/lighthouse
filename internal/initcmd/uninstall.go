@@ -149,7 +149,7 @@ func report(o Options, root string, seeded, notes []string) {
 	for _, n := range notes {
 		line("%s", n)
 	}
-	line("not touched: labels on the forge, ~/%s", hostconfig.HomeRel)
+	line("not touched: labels on the forge, ~/%s, the lighthouse binary", hostconfig.HomeRel)
 	line("note: a running Claude Code session keeps its hooks until it restarts")
 }
 
