@@ -32,14 +32,14 @@ func TestVersionCompare(t *testing.T) {
 }
 
 func TestVersionCompareRejectsInvalid(t *testing.T) {
-	for _, bad := range []string{"dev", "x"} {
+	for _, bad := range []string{"dev", "1.2"} {
 		t.Run(bad, func(t *testing.T) {
 			out, errOut, code := runVersion("version", "compare", bad, "v0.28.0")
-			if code != 1 || out != "" || !strings.Contains(errOut, bad) {
+			if code != 1 || out != "" || !strings.Contains(errOut, `not a release tag: "v`+bad+`"`) {
 				t.Errorf("code=%d out=%q err=%q, want exit 1 naming %q", code, out, errOut, bad)
 			}
 			_, errOut, code = runVersion("version", "compare", "v0.28.0", bad)
-			if code != 1 || !strings.Contains(errOut, bad) {
+			if code != 1 || !strings.Contains(errOut, `not a release tag: "v`+bad+`"`) {
 				t.Errorf("second arg: code=%d err=%q", code, errOut)
 			}
 		})

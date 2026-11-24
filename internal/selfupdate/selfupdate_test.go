@@ -510,3 +510,81 @@ func TestParseChannelRejectsUnknown(t *testing.T) {
 		}
 	}
 }
+
+func TestRunDevChannelStopsAtPageCap(t *testing.T) {
+	f := newFixture(t, "v0.28.0")
+	for i := 0; i < maxReleasePages; i++ {
+		f.pages = append(f.pages, []rel{{Tag: "v0.28.0"}})
+	}
+	f.pages = append(f.pages, []rel{{Tag: "v0.99.0"}}) // page past the cap: never read
+	res, err := Run(context.Background(), devOpts(f, "v0.27.0"))
+	if err != nil || res.To != "v0.28.0" {
+		t.Fatalf("res = %+v, err = %v", res, err)
+	}
+	if n := f.listHit.Load(); n != int32(maxReleasePages) {
+		t.Fatalf("list calls = %d; want %d", n, maxReleasePages)
+	}
+}
+
+func TestRunDevChannelTreats422AfterFirstPageAsEnd(t *testing.T) {
+	var srv *httptest.Server
+	mux := http.NewServeMux()
+	mux.HandleFunc("/repos/CorneeldH/lighthouse/releases", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("page") == "2" {
+			http.Error(w, "pagination limit", http.StatusUnprocessableEntity)
+			return
+		}
+		w.Header().Set("Link", fmt.Sprintf(`<%s/repos/CorneeldH/lighthouse/releases?per_page=100&page=2>; rel="next"`, srv.URL))
+		_, _ = fmt.Fprint(w, `[{"tag_name":"v0.28.0-dev.1"}]`)
+	})
+	srv = httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	tag, err := highestReleaseTag(context.Background(), http.DefaultClient, Options{Repo: "CorneeldH/lighthouse", APIBase: srv.URL})
+	if err != nil || tag != "v0.28.0-dev.1" {
+		t.Fatalf("tag = %q, err = %v", tag, err)
+	}
+}
+
+func TestRunDevChannelFirstPage422IsAnError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "nope", http.StatusUnprocessableEntity)
+	}))
+	t.Cleanup(srv.Close)
+	if _, err := highestReleaseTag(context.Background(), http.DefaultClient, Options{Repo: "CorneeldH/lighthouse", APIBase: srv.URL}); err == nil {
+		t.Fatal("want error")
+	}
+}
+
+func TestRunDevChannelRejectsCrossHostLinkWithoutSendingToken(t *testing.T) {
+	var evilHits atomic.Int32
+	evil := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		evilHits.Add(1)
+		_, _ = fmt.Fprint(w, "[]")
+	}))
+	t.Cleanup(evil.Close)
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Link", fmt.Sprintf(`<%s/repos/CorneeldH/lighthouse/releases?page=2>; rel="next"`, evil.URL))
+		_, _ = fmt.Fprint(w, `[{"tag_name":"v0.28.0-dev.1"}]`)
+	}))
+	t.Cleanup(api.Close)
+	_, err := highestReleaseTag(context.Background(), http.DefaultClient,
+		Options{Repo: "CorneeldH/lighthouse", APIBase: api.URL, Token: "secret"})
+	if err == nil || !strings.Contains(err.Error(), "outside") {
+		t.Fatalf("err = %v; want outside-base error", err)
+	}
+	if evilHits.Load() != 0 {
+		t.Fatalf("foreign host got %d requests", evilHits.Load())
+	}
+}
+
+func TestRunRejectsUnknownChannelBeforeNetwork(t *testing.T) {
+	f := newFixture(t, "v0.28.0")
+	o := f.opts("v0.27.0")
+	o.Channel = "stable"
+	if _, err := Run(context.Background(), o); err == nil || !strings.Contains(err.Error(), "unknown channel") {
+		t.Fatalf("err = %v", err)
+	}
+	if f.calls.Load() != 0 {
+		t.Fatal("network was called")
+	}
+}

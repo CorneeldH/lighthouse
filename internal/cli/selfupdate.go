@@ -53,7 +53,7 @@ func newSelfUpdateCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			chPath := selfupdate.ChannelPath()
 			var ch selfupdate.Channel
-			if channel != "" {
+			if cmd.Flags().Changed("channel") {
 				c, err := selfupdate.ParseChannel(channel)
 				if err != nil {
 					return err
@@ -113,7 +113,7 @@ func newSelfUpdateCommand() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&channel, "channel", "", "channel to follow and store: release or dev (empty: the stored one)")
+	cmd.Flags().StringVar(&channel, "channel", "", "channel to follow and store: release or dev (not given: the stored one)")
 	cmd.Flags().StringVar(&unit, "restart", "", "systemd user unit to try-restart after a replace (empty: no restart)")
 	return cmd
 }
@@ -124,7 +124,7 @@ func reportSelfUpdate(out io.Writer, r selfupdate.Result, unit string) {
 	case selfupdate.SkippedDev:
 		_, _ = fmt.Fprintln(out, "self-update: skipped — dev build")
 	case selfupdate.UpToDate:
-		_, _ = fmt.Fprintf(out, "self-update: up to date (%s)\n", r.To)
+		_, _ = fmt.Fprintf(out, "self-update: up to date (%s; newest on channel %s)\n", r.From, r.To)
 	case selfupdate.Replaced:
 		_, _ = fmt.Fprintf(out, "self-update: replaced %s with %s\n", r.From, r.To)
 		if unit != "" {

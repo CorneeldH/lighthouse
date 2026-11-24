@@ -38,9 +38,9 @@ func TestReportSelfUpdate(t *testing.T) {
 		{"dev", selfupdate.Result{Outcome: selfupdate.SkippedDev, From: "dev"}, "lighthouse.service",
 			"self-update: skipped — dev build\n"},
 		{"up to date", selfupdate.Result{Outcome: selfupdate.UpToDate, From: "v0.11.3", To: "v0.11.3"}, "",
-			"self-update: up to date (v0.11.3)\n"},
-		{"up to date ignores unit", selfupdate.Result{Outcome: selfupdate.UpToDate, To: "v0.11.3"}, "lighthouse.service",
-			"self-update: up to date (v0.11.3)\n"},
+			"self-update: up to date (v0.11.3; newest on channel v0.11.3)\n"},
+		{"up to date after dev to release", selfupdate.Result{Outcome: selfupdate.UpToDate, From: "v0.29.0-dev.3", To: "v0.28.0"}, "lighthouse.service",
+			"self-update: up to date (v0.29.0-dev.3; newest on channel v0.28.0)\n"},
 		{"replaced with restart", selfupdate.Result{Outcome: selfupdate.Replaced, From: "v0.11.2", To: "v0.11.3"}, "lighthouse.service",
 			"self-update: replaced v0.11.2 with v0.11.3\nself-update: restarted lighthouse.service\n"},
 		{"replaced without restart", selfupdate.Result{Outcome: selfupdate.Replaced, From: "v0.11.2", To: "v0.11.3"}, "",
@@ -148,5 +148,42 @@ func TestChannelCommandPrintsStored(t *testing.T) {
 	}
 	if out, _, code := runSelfUpdate("channel"); code != 0 || out != "dev\n" {
 		t.Fatalf("stored: exit %d, out %q", code, out)
+	}
+}
+
+func TestSelfUpdateRejectsEmptyChannelFlag(t *testing.T) {
+	path := channelHome(t)
+	fakeRun(t, selfupdate.Result{Outcome: selfupdate.UpToDate, To: "v1.0.0"})
+	if _, e, code := runSelfUpdate("self-update", "--channel", ""); code != 1 || !strings.Contains(e, "unknown channel") {
+		t.Errorf("exit %d, stderr %q; want 1 and unknown channel", code, e)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Errorf("channel file exists after empty value: %v", err)
+	}
+}
+
+func TestCorruptChannelFileFailsWithoutFallback(t *testing.T) {
+	path := channelHome(t)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("stable\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	called := false
+	old := selfupdateRun
+	selfupdateRun = func(context.Context, selfupdate.Options) (selfupdate.Result, error) {
+		called = true
+		return selfupdate.Result{}, nil
+	}
+	t.Cleanup(func() { selfupdateRun = old })
+	for _, args := range [][]string{{"channel"}, {"self-update"}} {
+		out, e, code := runSelfUpdate(args...)
+		if code != 1 || out != "" || !strings.Contains(e, path) {
+			t.Errorf("%v: exit %d, out %q, stderr %q; want 1, no stdout, path in stderr", args, code, out, e)
+		}
+	}
+	if called {
+		t.Error("self-update ran with a corrupt channel file")
 	}
 }

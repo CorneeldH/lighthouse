@@ -66,10 +66,17 @@ func ParseChannel(s string) (Channel, error) {
 	return "", fmt.Errorf("unknown channel %q; want release or dev", s)
 }
 
-// Run replaces o.Target with the latest release when it is strictly newer
-// than o.Current. On any error before the rename the target is unchanged.
+// Run replaces o.Target with the newest release on o.Channel when it is
+// strictly newer than o.Current: the latest stable release on "release" (or
+// ""), the highest vX.Y.Z, -rc.N or -dev.N tag on "dev". On any error before
+// the rename the target is unchanged.
 func Run(ctx context.Context, o Options) (Result, error) {
 	res := Result{Outcome: SkippedDev, From: o.Current}
+	if o.Channel != "" {
+		if _, err := ParseChannel(string(o.Channel)); err != nil {
+			return res, err
+		}
+	}
 	if o.Current == "dev" {
 		return res, nil
 	}
@@ -119,6 +126,14 @@ func Run(ctx context.Context, o Options) (Result, error) {
 	return res, nil
 }
 
+// statusError is a non-200 answer; highestReleaseTag reads the code.
+type statusError struct {
+	url  string
+	code int
+}
+
+func (e *statusError) Error() string { return fmt.Sprintf("GET %s: status %d", e.url, e.code) }
+
 func get(ctx context.Context, c *http.Client, url, token string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -133,7 +148,7 @@ func get(ctx context.Context, c *http.Client, url, token string) (*http.Response
 	}
 	if resp.StatusCode != http.StatusOK {
 		_ = resp.Body.Close()
-		return nil, fmt.Errorf("GET %s: status %d", url, resp.StatusCode)
+		return nil, &statusError{url: url, code: resp.StatusCode}
 	}
 	return resp, nil
 }
@@ -157,11 +172,16 @@ func latestTag(ctx context.Context, c *http.Client, o Options) (string, error) {
 	return body.TagName, nil
 }
 
-// maxReleasePages bounds the pagination loop of the dev channel.
-const maxReleasePages = 100
+// maxReleasePages bounds the pagination loop of the dev channel at 10 pages of
+// 100: GitHub answers 422 past the first 1000 releases (see internal/forge/releases.go).
+// Releases come newest first and the newest dev builds have the highest
+// semver, so the first 1000 hold the answer. Reaching the cap is deliberate:
+// the highest tag of those pages is returned, never an error.
+const maxReleasePages = 10
 
-// highestReleaseTag lists every release over all pages, drops drafts and
-// returns the highest valid tag.
+// highestReleaseTag lists releases over at most maxReleasePages pages, drops
+// drafts and returns the highest valid tag. A 422 after page 1 is the end of
+// the list GitHub allows, not an error.
 func highestReleaseTag(ctx context.Context, c *http.Client, o Options) (string, error) {
 	base := strings.TrimRight(o.APIBase, "/")
 	next := base + "/repos/" + o.Repo + "/releases?per_page=100"
@@ -171,6 +191,10 @@ func highestReleaseTag(ctx context.Context, c *http.Client, o Options) (string, 
 			return "", fmt.Errorf("release list: next page %s is outside %s", next, base)
 		}
 		resp, err := get(ctx, c, next, o.Token)
+		var se *statusError
+		if page > 0 && errors.As(err, &se) && se.code == http.StatusUnprocessableEntity {
+			break
+		}
 		if err != nil {
 			return "", err
 		}
