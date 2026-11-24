@@ -25,12 +25,16 @@ type File struct {
 	R    io.Reader
 }
 
-// Entry is one parsed user or assistant line.
+// Entry is one parsed user or assistant line. It carries only what is needed
+// later; no transcript text is kept.
 type Entry struct {
 	At        time.Time
 	Type      string
 	Sidechain bool
 	SessionID string
+	Effort    string // top-level "effort" of an assistant line
+	Version   string // harness version of the line
+	Skill     *SkillLoad
 }
 
 // Message is one unique API message (by message.id, else requestId, else line).
@@ -48,6 +52,7 @@ type Reading struct {
 	Started  time.Time
 	Ended    time.Time
 	session  string
+	pending  []string // skill names announced but not yet loaded
 }
 
 type usageJSON struct {
@@ -67,6 +72,8 @@ type lineJSON struct {
 	SessionID string   `json:"sessionId"`
 	RequestID string   `json:"requestId"`
 	Sidechain bool     `json:"isSidechain"`
+	Effort    string   `json:"effort"`
+	Version   string   `json:"version"`
 	Message   *msgJSON `json:"message"`
 }
 
@@ -74,6 +81,8 @@ type msgJSON struct {
 	ID    string     `json:"id"`
 	Model string     `json:"model"`
 	Usage *usageJSON `json:"usage"`
+	// Content is a string (user) or a list of blocks; see contentBlocks.
+	Content json.RawMessage `json:"content"`
 }
 
 func (u usageJSON) tokens() telemetry.Tokens {
@@ -160,7 +169,11 @@ func (r *Reading) addLine(line, name string, sidechain bool, lineNo int, index m
 			r.session = strings.TrimSuffix(name, ".jsonl")
 		}
 	}
-	r.Entries = append(r.Entries, Entry{At: at, Type: l.Type, Sidechain: sidechain || l.Sidechain, SessionID: l.SessionID})
+	e := Entry{At: at, Type: l.Type, Sidechain: sidechain || l.Sidechain, SessionID: l.SessionID, Effort: l.Effort, Version: l.Version}
+	if l.Message != nil {
+		e.Skill = r.skillOf(l.Type, l.Message.Content)
+	}
+	r.Entries = append(r.Entries, e)
 	if l.Type != "assistant" || l.Message == nil || l.Message.Usage == nil {
 		return
 	}
