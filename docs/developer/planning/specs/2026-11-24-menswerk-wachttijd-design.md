@@ -211,7 +211,7 @@ dan tot `now`. Tijd vóór de eerste run of sessie (het issue lag op de backlog)
 
 | Oorzaak | Interval | Soort |
 |---|---|---|
-| `actief` | run: `started_at` .. eerste Done van die run, of `ended_at` als er geen Done is. Een run met uitkomst `question` en een opgeslagen Vraag eindigt bij `at` van die Vraag, niet bij `ended_at` (de tick zag de Vraag later) | gemeten |
+| `actief` | agent-run (geen pusher-rij): `started_at` .. eerste Done van die run, of `ended_at` als er geen Done is. Een run met uitkomst `question` en een opgeslagen Vraag eindigt bij `at` van die Vraag, niet bij `ended_at` (de tick zag de Vraag later) | gemeten |
 | `actief` (sessie) | sessie: `started_at` .. `ended_at`, min de vraag-antwoordintervallen erin | gemeten |
 | `ci_review` | run: eerste Done .. `ended_at` | gemeten |
 | `ci_review` | pusher-rij: `started_at` .. `ended_at` (de hele rij: wachten op pusher, CI en review) | gemeten |
@@ -221,7 +221,7 @@ dan tot `now`. Tijd vóór de eerste run of sessie (het issue lag op de backlog)
 | `usage` | `ended_at` van een run met `outcome = 'parked'` .. `started_at` van de hervatting met `trigger = 'usage'` | gemeten |
 | `onverklaard` | elk moment in het venster dat geen van de rijen hierboven dekt | ontbrekend |
 
-Een agent-run zonder Done (oude run, of een run die zonder Done eindigde) geeft alleen `actief`, met
+Een pusher-rij valt nooit onder `actief` (alleen onder `ci_review`, en `mens` voor haar eigen Vraag). Een agent-run zonder Done (oude run, of een run die zonder Done eindigde) geeft alleen `actief`, met
 de markering *inclusief eventueel CI/review*.
 
 **Onbeantwoorde vraag.** Een vraag zonder antwoord geeft `mens` tot het eerste van: de start van een
