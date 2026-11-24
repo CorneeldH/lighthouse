@@ -34,7 +34,7 @@ controller.
 - **N3** Schrijven naar de forge vanuit de UI, op de rang van een milestone na
   ([statusmodel](../planning/specs/2026-11-20-statusmodel-en-statusschema-design.md),
   [milestoneprioriteit](../planning/specs/2026-11-20-milestone-prioriteit-design.md)).
-- **N4** Modelsuggesties op het Prioritering-tabblad zonder de richting van een repo als bron
+- **N4** Modelsuggesties op het Priorities-tabblad zonder de richting van een repo als bron
   ([prioritering](../planning/specs/2026-11-16-prioritering-tabblad-design.md),
   [statusmodel](../planning/specs/2026-11-20-statusmodel-en-statusschema-design.md)).
 - **N5** Wat de controller beslist en doet; de server toont het alleen → dispatcher

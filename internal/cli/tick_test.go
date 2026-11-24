@@ -1554,6 +1554,30 @@ func TestTickRunViewWhenNotDue(t *testing.T) {
 	}
 }
 
+// Classification: io with a fake forge. Fails when a tick that is not due reads the prio weights
+// (open issues and milestones): only a gathered repo pays that read.
+func TestTickNotDueReadsNoPrioInputs(t *testing.T) {
+	env, db := tickFixture(t, repoDir(t, completeRepo))
+	srv, _ := startable(t, &env)
+	srv.BoardNodes = []map[string]any{boardNode("I7", "h1", issueContent(7, "Issue", nil))} // On hold: nothing starts
+	for _, step := range []struct {
+		after      time.Duration
+		milestones int
+	}{
+		{0, 1},           // first: gathered, the weights are read once
+		{time.Minute, 1}, // not due: no new read
+	} {
+		env.Now = func() time.Time { return t0.Add(step.after) }
+		var errOut bytes.Buffer
+		if err := tick(context.Background(), env, db, &errOut); err != nil {
+			t.Fatalf("tick at +%v = %v\n%s", step.after, err, errOut.String())
+		}
+		if n := srv.Count("/repos/o/r/milestones"); n != step.milestones {
+			t.Errorf("tick at +%v: milestone reads = %d, want %d\n%s", step.after, n, step.milestones, errOut.String())
+		}
+	}
+}
+
 // A deferred start carries the title of its board item.
 func TestTickDeferredTitle(t *testing.T) {
 	env, db := tickFixture(t, repoDir(t, completeRepo))
@@ -1566,6 +1590,22 @@ func TestTickDeferredTitle(t *testing.T) {
 	_, dv := loadView(t, db)
 	if len(dv) != 1 || dv[0].Issue != 7 || dv[0].Title != "Issue" {
 		t.Errorf("deferred = %+v, want issue 7 with title \"Issue\"", dv)
+	}
+}
+
+// A start that apply finds busy (another session works in the workspace) is no run and no
+// action of Decide, but the Queue shows it with its reason and title.
+func TestTickBusyWorkplaceSavedAsDeferred(t *testing.T) {
+	env, db := tickFixture(t, repoDir(t, completeRepo))
+	_, w := startable(t, &env)
+	w.sessions["ws-issue-7-issue"] = []workplace.Session{{Key: "other", WorkspaceID: "ws-issue-7-issue", State: "working", SessionID: "x"}}
+	var errOut bytes.Buffer
+	if err := tick(context.Background(), env, db, &errOut); err != nil {
+		t.Fatalf("tick = %v\n%s", err, errOut.String())
+	}
+	_, dv := loadView(t, db)
+	if len(dv) != 1 || dv[0].Issue != 7 || dv[0].Title != "Issue" || !strings.HasPrefix(dv[0].Reason, "workplace busy: session other") {
+		t.Errorf("deferred = %+v, want issue 7 titled \"Issue\" with a workplace busy reason", dv)
 	}
 }
 
@@ -2097,5 +2137,102 @@ func TestTickNeedsLabelMovesToToDoWithoutRun(t *testing.T) {
 	}
 	if s := w.spawned(); len(s) != 0 {
 		t.Errorf("spawns = %+v, want none", s)
+	}
+}
+
+// A node whose markers were not readable this tick reaches Decide as MarkersIncomplete: a parked
+// run without a marker is then not a lost marker. Without it the gather leaves the field false.
+func TestGatherRepoCarriesMarkersIncomplete(t *testing.T) {
+	dir := repoDir(t, completeRepo)
+	env, db := tickFixture(t, dir)
+	srv := fakeForge(t, &env)
+	srv.Roles = map[string]string{"lh-bot": "admin"}
+	env.Now = func() time.Time { return t0 }
+	conn := openStore(t, db)
+	repo, err := repoconfig.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, incomplete := range []bool{true, false} {
+		in, _, _, err := gatherRepo(context.Background(), env, conn, hostconfig.Dispatch{},
+			hostFacts{MarkersIncomplete: incomplete}, repo, botForge(t, env, repo), &bytes.Buffer{})
+		if err != nil || in == nil {
+			t.Fatalf("gatherRepo = %v, %v", in, err)
+		}
+		if in.MarkersIncomplete != incomplete {
+			t.Errorf("MarkersIncomplete = %v, want %v", in.MarkersIncomplete, incomplete)
+		}
+	}
+}
+
+// idleRun gives issue 7 a closed run under start:7, so newIssue finds its trigger spent: with no
+// comment and no PR, issue 7 in Controller has no next step.
+func idleRun(t *testing.T, db string) {
+	t.Helper()
+	ctx := context.Background()
+	conn := openStore(t, db)
+	r, err := runs.Take(ctx, conn, runs.Claim{Repo: "o/r", Issue: 7, SessionID: runs.NewSessionID(), Mode: "start",
+		Trigger: "handoff", TriggerKey: "start:7", Now: t0.Add(-time.Hour)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runs.Release(ctx, conn, r.ID, runs.Handoff, "", t0.Add(-time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func loadIdle(t *testing.T, db string) map[int]int {
+	t.Helper()
+	got, err := dispatch.LoadIdle(context.Background(), openStore(t, db), "o/r")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return got
+}
+
+// Each full gather that finds issue 7 without a next step counts once; the third gives it back
+// and clears its count. A full gather comes at most every FullGatherAfter on an unchanged board.
+func TestTickIdleCounterAdvancesAndResets(t *testing.T) {
+	env, db := tickFixture(t, repoDir(t, completeRepo))
+	srv, _ := startable(t, &env)
+	idleRun(t, db)
+	wants := []map[int]int{{7: 1}, {7: 2}, {}}
+	for i, want := range wants {
+		at := t0.Add(time.Duration(i) * (dispatch.FullGatherAfter + time.Minute))
+		env.Now = func() time.Time { return at }
+		srv.Now = env.Now
+		var errOut bytes.Buffer
+		if err := tick(context.Background(), env, db, &errOut); err != nil {
+			t.Fatalf("tick %d = %v\n%s", i+1, err, errOut.String())
+		}
+		if got := loadIdle(t, db); !reflect.DeepEqual(got, want) {
+			t.Errorf("tick %d: idle = %v, want %v\n%s", i+1, got, want, errOut.String())
+		}
+		returned := slices.ContainsFunc(bodies(srv, 7), func(b string) bool {
+			return strings.Contains(b, "reason: no next step after 3 evaluations; last protocol comment: none")
+		})
+		if returned != (i == 2) {
+			t.Errorf("tick %d: returned = %v, want %v; comments %q", i+1, returned, i == 2, bodies(srv, 7))
+		}
+	}
+}
+
+// The idle mark is no action: apply never sees it, so it fails nothing and the fingerprint is saved.
+func TestTickIdleActionNeverReachesApply(t *testing.T) {
+	env, db := tickFixture(t, repoDir(t, completeRepo))
+	srv, _ := startable(t, &env)
+	idleRun(t, db)
+	var errOut bytes.Buffer
+	if err := tick(context.Background(), env, db, &errOut); err != nil {
+		t.Fatalf("tick = %v\n%s", err, errOut.String())
+	}
+	if strings.Contains(errOut.String(), "lighthouse: apply") {
+		t.Errorf("errOut = %q, want no apply line", errOut.String())
+	}
+	if s := tickState(t, openStore(t, db), "o/r"); s.Fingerprint == "" {
+		t.Errorf("fingerprint not saved after an idle tick:\n%s", errOut.String())
+	}
+	if w := writes(srv); len(w) != 0 {
+		t.Errorf("writes = %q, want none", w)
 	}
 }

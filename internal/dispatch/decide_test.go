@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -63,6 +65,32 @@ func TestDecideFixtures(t *testing.T) {
 				t.Errorf("Decide:\ngot  %s\nwant %s", gotJSON, wantJSON)
 			}
 		})
+	}
+}
+
+// idleFixtures are the fixtures whose want got the idle mark when the idle rule came (#545), each
+// with why the issue has no next step: every run closed, the issue in Controller, nothing it waits
+// for. Only these may expect a KindIdle.
+var idleFixtures = map[string]string{
+	"handoff-rocket-no-row":          "the handoff's trigger is spent by the closed start:7 row",
+	"answer-row-exists-no-rocket":    "the answer is spent by its closed answer:64 row",
+	"dedup-row-not-failed-no-rocket": "the handoff's run ended Done without a next turn",
+	"dedup-row-not-failed":           "the handoff's run ended Done without a next turn",
+	"handoff-row-exists":             "the handoff's run was returned, no new turn since",
+	"repair-rocket":                  "the second attempt of the handoff ended Done without a next turn",
+	"new-issue-row-exists":           "start:7 is spent and no protocol comment followed",
+	"orphan-known-session":           "the Started's run is known and closed, no turn followed",
+	"closecheck-started-after-merge": "the merged PR came before any Started, so no close-check",
+	"closecheck-closes-merged":       "the merged PR closes the issue, but the issue is still open",
+	"handoff-end-pr-merged-after":    "the PR merged after the end handoff and its close check ran done, the issue still open",
+}
+
+func TestDecideFixturesIdleOnlyWhereListed(t *testing.T) {
+	for name, f := range decideFixtures(t) {
+		idle := slices.ContainsFunc(f.Want, func(a Action) bool { return a.Kind == KindIdle })
+		if _, listed := idleFixtures[name]; idle != listed {
+			t.Errorf("%s: want has idle = %v, listed in idleFixtures = %v", name, idle, listed)
+		}
 	}
 }
 
@@ -303,11 +331,11 @@ func TestDecidePushHandoff(t *testing.T) {
 		{"trigger spent", func(in *Input) {
 			item7(in).Comments[1].Rocket = true
 			addRows(in, runs.Row{ID: 9, Issue: 7, TriggerKey: "push:63", Command: "push-workflows", Outcome: runs.Handoff})
-		}, "when: now", []string{}},
+		}, "when: now", []string{"idle::"}}, // the push ran and nothing followed: the idle mark of #545
 		{"handoff trigger spent", func(in *Input) {
 			item7(in).Comments[1].Rocket = true
 			addRows(in, runs.Row{ID: 9, Issue: 7, TriggerKey: "handoff:63", Command: "push-workflows", Outcome: runs.Handoff})
-		}, "when: now", []string{}},
+		}, "when: now", []string{"idle::"}}, // the push ran and nothing followed: the idle mark of #545
 		{"paused brake", func(in *Input) { in.Brake = &Brake{Paused: true} }, "when: now", []string{}},
 		{"usage brake closed", func(in *Input) { in.Brake = &Brake{} }, "when: now", []string{"defer:usage: not measured:"}},
 		{"slots full does not close a push", func(in *Input) {
@@ -343,7 +371,8 @@ func TestDecidePushRocketRepair(t *testing.T) {
 	in := pushHandoff(t, "when: now")
 	addRows(&in, runs.Row{ID: 9, Issue: 7, TriggerKey: "push:63", Command: "push-workflows", Outcome: runs.Handoff})
 	got := Decide(in)
-	if s := summary(got); !reflect.DeepEqual(s, []string{"rocket::"}) || got[0].CommentID != 63 {
+	// The push ran and nothing followed, so the idle mark of #545 comes after the rocket.
+	if s := summary(got); !reflect.DeepEqual(s, []string{"rocket::", "idle::"}) || got[0].CommentID != 63 {
 		t.Errorf("got %+v, want a rocket on 63", got)
 	}
 }
@@ -360,6 +389,29 @@ func TestDecidePushRowIsNoSessionRetry(t *testing.T) {
 	}
 }
 
+// After a recovered answer (rocketed, its row Returned) and a Teruggegeven, a later `push` does
+// not start the pusher: the Teruggegeven is the last turn.
+func TestDecidePushAnswerAfterReturned(t *testing.T) {
+	in := pushQuestion(t, "gepushed")
+	withAfter(&in)
+	c := item7(&in).Comments
+	c[2].Rocket = true
+	item7(&in).Comments = append(c,
+		Comment{ID: 7172, Author: "lh-bot", CreatedAt: "2026-10-31T11:35:00Z", Body: "🤖 Teruggegeven\nreason: x"},
+		Comment{ID: 72, Author: "owner", CreatedAt: "2026-10-31T11:40:00Z", Body: "push"})
+	addRows(&in, runs.Row{ID: 9, Issue: 7, TriggerKey: "pushanswer:71", Command: "push-workflows", Outcome: runs.Returned})
+	item7(&in).Labels, in.Repos[0].Labels, item7(&in).Status = []string{"needs_hands"}, testLabels, "To do"
+	if s := summary(Decide(in)); !reflect.DeepEqual(s, []string{}) {
+		t.Fatalf("summary = %q, want no action", s)
+	}
+}
+
+// withAfter adds the after: field to the pusher Vraag, which is Comments[1] in pushQuestion.
+func withAfter(in *Input) {
+	c := &item7(in).Comments[1]
+	c.Body = strings.Replace(c.Body, "\nbranch: issue-7-bouw-de-keten\n", "\nbranch: issue-7-bouw-de-keten\nafter: /lighthouse-write-pr 7\nlane: docs\n", 1)
+}
+
 func TestDecidePushAnswer(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -369,7 +421,30 @@ func TestDecidePushAnswer(t *testing.T) {
 	}{
 		{"push", "push", func(*Input) {}, []string{"push::"}},
 		{"push with case and a full stop", " Push. ", func(*Input) {}, []string{"push::"}},
-		{"other answer", "nee, laat maar", func(*Input) {}, []string{}},
+		{"other answer", "gepushed", func(in *Input) { withAfter(in) }, []string{"push_recover::"}},
+		{"other answer without after", "gepushed", func(*Input) {},
+			[]string{"return:reason_pusher_no_after:cd " + pushWorktree + " && git push -u origin HEAD"}},
+		{"push after other answer", "push", func(in *Input) {
+			withAfter(in)
+			c := item7(in).Comments
+			item7(in).Comments = append(c[:2], Comment{ID: 71, Author: "owner", CreatedAt: "2026-10-31T11:20:00Z", Body: "gepushed"}, Comment{ID: 72, Author: "owner", CreatedAt: "2026-10-31T11:40:00Z", Body: "push"})
+		}, []string{"push::"}},
+		{"other answer, workflow push off", "gepushed", func(in *Input) {
+			withAfter(in)
+			in.Repos[0].WorkflowPush = false
+		}, []string{"return:reason_pusher_off:cd " + pushWorktree + " && git push -u origin HEAD"}},
+		{"spent key", "gepushed", func(in *Input) {
+			withAfter(in)
+			item7(in).Comments[2].Rocket = true
+			addRows(in, runs.Row{ID: 9, Issue: 7, TriggerKey: "pushanswer:71", Command: "push-workflows", Outcome: runs.Handoff})
+		}, []string{}},
+		// A recovery row whose post failed must never become a push: the user did not answer
+		// `push`, so the Vraag's sha has no permit. The issue goes back instead.
+		{"spent key, start failed", "gepushed", func(in *Input) {
+			withAfter(in)
+			item7(in).Comments[2].Rocket = true
+			addRows(in, runs.Row{ID: 9, Issue: 7, TriggerKey: "pushanswer:71", Command: "push-workflows", Outcome: runs.StartFailed})
+		}, []string{"return:reason_start_failed:"}},
 		{"no config", "push", func(in *Input) { in.Repos[0].WorkflowPush = false },
 			[]string{"return:reason_pusher_off:cd " + pushWorktree + " && git push -u origin HEAD"}},
 		{"answer spent", "push", func(in *Input) {
@@ -379,7 +454,7 @@ func TestDecidePushAnswer(t *testing.T) {
 		{"unreadable sha", "push", func(in *Input) {
 			c := &item7(in).Comments[1]
 			c.Body = strings.Replace(c.Body, pushSHA, "not-a-sha", 1)
-		}, []string{}},
+		}, []string{"idle::"}}, // an answer no rule can act on: the idle mark of #545 counts it
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -389,6 +464,14 @@ func TestDecidePushAnswer(t *testing.T) {
 			got := Decide(in)
 			if s := summary(got); !reflect.DeepEqual(s, tt.want) {
 				t.Fatalf("summary = %q, want %q", s, tt.want)
+			}
+			if len(tt.want) > 0 && tt.want[0] == "push_recover::" {
+				a := got[0]
+				if a.PermitSHA != pushSHA || a.AnswerText != "gepushed" || a.After != "/lighthouse-write-pr 7" || a.Lane != "docs" ||
+					a.Worktree != pushWorktree || a.Branch != "issue-7-bouw-de-keten" || a.CommentID != 71 ||
+					a.TriggerKey != "pushanswer:71" {
+					t.Errorf("action = %+v, want the Vraag's sha, worktree, branch and after, the answer text and id 71", a)
+				}
 			}
 		})
 	}
@@ -540,6 +623,317 @@ func TestPushRowClosesOnThePushersReturned(t *testing.T) {
 	}
 	if s := summary(Decide(in)); !reflect.DeepEqual(s, []string{"finish_return:reason_pusher_red:"}) {
 		t.Errorf("summary after the close = %q, want the give-back of reason_pusher_red", s)
+	}
+}
+
+// pusherRepairComment is the pusher's 🤖 Herstel for a red policy step, posted by author at.
+func pusherRepairComment(author string, at time.Time) Comment {
+	return Comment{ID: 71, Author: author, CreatedAt: at.Format(time.RFC3339),
+		Body: "🤖 Herstel\nworktree: " + pushWorktree + "\nbranch: issue-7-bouw-de-keten\nstep: policy\n\n**Rode stap:** policy"}
+}
+
+// The pusher's own Herstel closes its open push row as a handoff: the chain goes on with the
+// repair run, not with the give-back of a Teruggegeven.
+func TestSettleClosesPushRowOnRepair(t *testing.T) {
+	in := pushRow(t, "", 5*time.Minute)
+	in.Repos[0].Snapshot.TokenLogin = "lh-bot"
+	item7(&in).Comments = append(item7(&in).Comments, pusherRepairComment("lh-bot", in.Now.Add(-time.Minute)))
+	got := Decide(in)
+	if s := summary(got); !reflect.DeepEqual(s, []string{"close::"}) {
+		t.Fatalf("summary = %q, want one close", s)
+	}
+	if a := got[0]; a.RunID != 5 || a.Outcome != runs.Handoff || a.Stop || a.End || a.Discard || a.SessionID != "" {
+		t.Errorf("action %+v, want run 5 closed as handoff without touching a session or workplace", a)
+	}
+}
+
+// A Herstel of another author is no pusher's Herstel: the push row stays open.
+func TestSettleIgnoresRepairOfOtherAuthor(t *testing.T) {
+	in := pushRow(t, "", 5*time.Minute)
+	in.Repos[0].Snapshot.TokenLogin = "lh-bot"
+	item7(&in).Comments = append(item7(&in).Comments, pusherRepairComment("someone-else", in.Now.Add(-time.Minute)))
+	for _, a := range Decide(in) {
+		if a.Kind == KindClose && a.RunID == 5 {
+			t.Fatalf("action %+v closes run 5 on a Herstel of another author", a)
+		}
+	}
+}
+
+func TestTriggerCommentRepairPrefix(t *testing.T) {
+	if id, ok := triggerComment("repair:123"); !ok || id != 123 {
+		t.Errorf("triggerComment(repair:123) = %d, %v; want 123, true", id, ok)
+	}
+	if _, ok := triggerComment("repair:x"); ok {
+		t.Error("triggerComment(repair:x) ok, want false")
+	}
+}
+
+const (
+	repairWhy  = "ci.yml: geen permissions: op workflowniveau"
+	repairURL  = "https://github.com/o/r/issues/7#issuecomment-71"
+	repairDiff = "+permissions: {}"
+)
+
+// repairPost is the pusher's 🤖 Herstel of a red policy step as renderRepair writes it, with
+// the reason fenced and the diff folded, posted by author at 11:05.
+func repairPost(author string) Comment {
+	return Comment{ID: 71, Author: author, CreatedAt: "2026-10-31T11:05:00Z", URL: repairURL,
+		Body: "🤖 Herstel\nworktree: " + pushWorktree + "\nbranch: issue-7-bouw-de-keten\nstep: policy\n\n" +
+			"**Rode stap:** policy\n```text\n" + repairWhy + "\n```\n\n<details><summary>Workflow-diff</summary>\n\n" +
+			"```diff\n" + repairDiff + "\n```\n\n</details>"}
+}
+
+// closedPushRow is a closed push row of issue 7 for the handoff in comment handoff.
+func closedPushRow(id int64, handoff int, at time.Time, outcome runs.Outcome, pushed string) runs.Row {
+	return runs.Row{ID: id, Issue: 7, Trigger: triggerPush, TriggerKey: "push:" + strconv.Itoa(handoff), Attempt: 1,
+		Command: cmdPush, Branch: "issue-7-bouw-de-keten", StartedAt: at, Outcome: outcome, PushedSHA: pushed}
+}
+
+// onDay is 2026-10-31 at h:m UTC, the day of the decide fixtures.
+func onDay(h, m int) time.Time { return time.Date(2026, 10, 31, h, m, 0, 0, time.UTC) }
+
+// repairInput is the base of the repair tests: run 5 (session pushSession) wrote the push handoff
+// in comment 63 at 11:00 (without a session footer, as the skill writes it) and closed as
+// handoff; push row 6 for it closed as handoff on the pusher's Herstel in comment 71 at 11:05, by
+// the token login.
+func repairInput(t *testing.T) Input {
+	t.Helper()
+	in := loadInput(t, "settle-green-pr-done")
+	item7(&in).PRs = nil
+	in.Repos[0].Stands = nil
+	in.Repos[0].WorkflowPush, in.Repos[0].PushTimeout = true, 30*time.Minute
+	r := row5(&in)
+	r.Open, r.Outcome = false, runs.Handoff
+	item7(&in).Comments = append(item7(&in).Comments,
+		Comment{ID: 63, Author: "lh-bot", CreatedAt: "2026-10-31T11:00:00Z", Rocket: true,
+			Body: "🤖 Handoff\nissue: #7\nworktree: " + pushWorktree + "\nbranch: issue-7-bouw-de-keten\nnext: push-workflows\nwhen: now"},
+		repairPost("lh-bot"))
+	in.Repos[0].History = append(in.Repos[0].History, closedPushRow(6, 63, onDay(11, 1), runs.Handoff, ""))
+	return in
+}
+
+// startsOrReturns keeps the resumes, starts and returns of got.
+func startsOrReturns(got []Action) []Action {
+	var out []Action
+	for _, a := range got {
+		if a.Kind == KindResume || a.Kind == KindStart || a.Kind == KindReturn || a.Kind == KindFinishReturn {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+// The pusher's Herstel as the last turn resumes the session of the run that wrote the push
+// handoff, once under repair:<id>, with the red step, the reason and the comment's URL in the
+// prompt and without the diff.
+func TestRepairResumesHandoffSession(t *testing.T) {
+	in := repairInput(t)
+	got := startsOrReturns(Decide(in))
+	if len(got) != 1 {
+		t.Fatalf("actions %+v, want one resume", got)
+	}
+	a := got[0]
+	if a.Kind != KindResume || a.Mode != modeResume || a.Trigger != "repair" || a.TriggerKey != "repair:71" || a.Attempt != 1 {
+		t.Errorf("action %+v, want a first resume under repair:71", a)
+	}
+	if a.SessionID != pushSession || a.Command != "/lighthouse-start-issue 7" || a.Branch != "issue-7-bouw-de-keten" || a.CommentID != 71 {
+		t.Errorf("action %+v, want the session, command and branch of run 5 and the Herstel's id", a)
+	}
+	for _, want := range []string{protocol.Heading("prompt_pusher_repair", "nl"), "policy", repairWhy, repairURL} {
+		if !strings.Contains(a.Prompt, want) {
+			t.Errorf("prompt %q lacks %q", a.Prompt, want)
+		}
+	}
+	if strings.Contains(a.Prompt, repairDiff) {
+		t.Errorf("prompt %q carries the diff", a.Prompt)
+	}
+}
+
+// A Herstel whose key a run already has resumes nothing and returns nothing.
+func TestRepairKeySpentDoesNothing(t *testing.T) {
+	in := repairInput(t)
+	in.Repos[0].History = append(in.Repos[0].History, runs.Row{ID: 7, Issue: 7, SessionID: pushSession, Mode: modeResume,
+		Trigger: triggerAnswer, TriggerKey: "repair:71", Attempt: 1, Command: "/lighthouse-start-issue 7",
+		Branch: "issue-7-bouw-de-keten", StartedAt: onDay(11, 10), Outcome: runs.Done})
+	if got := startsOrReturns(Decide(in)); len(got) != 0 {
+		t.Errorf("actions %+v, want none for a spent repair key", got)
+	}
+}
+
+// In the tick in which settle closes the push row on the Herstel, the row is still open in the
+// history: repair waits, so the tick only closes. The tick after it resumes.
+func TestRepairWaitsWhilePushRowOpen(t *testing.T) {
+	in := repairInput(t)
+	r := &in.Repos[0].History[len(in.Repos[0].History)-1]
+	r.Open, r.Outcome = true, ""
+	in.Now = onDay(11, 10)
+	if s := summary(Decide(in)); !reflect.DeepEqual(s, []string{"close::"}) {
+		t.Fatalf("summary = %q, want only the close of the push row", s)
+	}
+	r.Open, r.Outcome = false, runs.Handoff
+	if s := summary(startsOrReturns(Decide(in))); !reflect.DeepEqual(s, []string{"resume::"}) {
+		t.Errorf("summary after the close = %q, want the resume", s)
+	}
+}
+
+// One and two closed Herstel push rows in a row, the current one counted, resume the run; the
+// third goes back with reason_pusher_red_ceiling and the push command of the Herstel's worktree.
+func TestRepairCeiling(t *testing.T) {
+	tests := []struct {
+		earlier int
+		want    []string
+	}{
+		{0, []string{"resume::"}},
+		{1, []string{"resume::"}},
+		{2, []string{"return:reason_pusher_red_ceiling:" + pushCommand(pushWorktree)}},
+	}
+	for _, tt := range tests {
+		in := repairInput(t)
+		var rows []runs.Row
+		for i := range tt.earlier {
+			rows = append(rows, closedPushRow(int64(i+1), 50+i, onDay(10, 10+10*i), runs.Handoff, ""))
+		}
+		addRows(&in, rows...)
+		if s := summary(startsOrReturns(Decide(in))); !reflect.DeepEqual(s, tt.want) {
+			t.Errorf("%d earlier Herstel rows: summary = %q, want %q", tt.earlier, s, tt.want)
+		}
+	}
+}
+
+// A pushed push row, a push row closed on a question, or a Returned of the token login between
+// the Herstels starts the count again: two earlier Herstel rows before it no longer reach the
+// ceiling. A Returned of another author resets nothing.
+func TestRepairCountResets(t *testing.T) {
+	ceiling := []string{"return:reason_pusher_red_ceiling:" + pushCommand(pushWorktree)}
+	tests := []struct {
+		name   string
+		mutate func(*Input)
+		want   []string
+	}{
+		{"pushed push row", func(in *Input) {
+			addRows(in, closedPushRow(3, 52, onDay(10, 30), runs.Handoff, pushSHA))
+		}, []string{"resume::"}},
+		{"question push row", func(in *Input) {
+			addRows(in, closedPushRow(3, 52, onDay(10, 30), runs.Question, ""))
+		}, []string{"resume::"}},
+		{"returned of the token login", func(in *Input) {
+			returnedBefore(in, "lh-bot")
+		}, []string{"resume::"}},
+		{"returned of another author", func(in *Input) {
+			returnedBefore(in, "someone-else")
+		}, ceiling},
+		{"no reset", func(*Input) {}, ceiling},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			in := repairInput(t)
+			tt.mutate(&in)
+			addRows(&in, closedPushRow(1, 50, onDay(10, 10), runs.Handoff, ""), closedPushRow(2, 51, onDay(10, 20), runs.Handoff, ""))
+			if s := summary(startsOrReturns(Decide(in))); !reflect.DeepEqual(s, tt.want) {
+				t.Errorf("summary = %q, want %q", s, tt.want)
+			}
+		})
+	}
+}
+
+// returnedBefore puts a Returned of author at 10:30, before the Handoff in comment 63.
+func returnedBefore(in *Input, author string) {
+	cs := item7(in).Comments
+	ret := Comment{ID: 60, Author: author, CreatedAt: "2026-10-31T10:30:00Z",
+		Body: "🤖 Teruggegeven\nreason: workflow-pusher rood: policy"}
+	item7(in).Comments = append([]Comment{cs[0], ret}, cs[1:]...)
+}
+
+// A Herstel of another author than the token login resumes nothing and returns nothing.
+func TestRepairIgnoresOtherAuthor(t *testing.T) {
+	in := repairInput(t)
+	cs := item7(&in).Comments
+	cs[len(cs)-1] = repairPost("someone-else")
+	if got := startsOrReturns(Decide(in)); len(got) != 0 {
+		t.Errorf("actions %+v, want none for a Herstel of another author", got)
+	}
+}
+
+// The run found is the one that wrote the handoff: not a push row (it closes as handoff too), not
+// a run on another node, and not a handoff run that started after the Handoff comment.
+func TestRepairFindsHandoffRunNotPushRow(t *testing.T) {
+	in := repairInput(t)
+	h := in.Repos[0].History
+	other := runs.Row{ID: 8, Issue: 7, SessionID: "99999999-2222-4333-8444-555555555555", Mode: modeStart, Trigger: triggerHandoff,
+		TriggerKey: "handoff:40", Attempt: 1, Command: "/lighthouse-other 7", Branch: "issue-7-elders", Node: "node-b",
+		StartedAt: onDay(10, 30), Outcome: runs.Handoff}
+	later := other
+	later.ID, later.SessionID, later.Node, later.Command, later.StartedAt = 9, "88888888-2222-4333-8444-555555555555", "", "/lighthouse-later 7", onDay(11, 2)
+	earlier := closedPushRow(7, 50, onDay(10, 40), runs.Handoff, "")
+	in.Repos[0].History = append([]runs.Row{h[0], other, earlier}, append(h[1:], later)...)
+	got := startsOrReturns(Decide(in))
+	if len(got) != 1 || got[0].Kind != KindResume || got[0].SessionID != pushSession || got[0].Command != "/lighthouse-start-issue 7" {
+		t.Errorf("actions %+v, want the resume of run 5", got)
+	}
+	run, ok := issueCtxOf(in).handoffRunBefore(onDay(11, 5))
+	if !ok || run.ID != 5 {
+		t.Errorf("handoffRunBefore = %+v, %v; want run 5", run, ok)
+	}
+}
+
+// issueCtxOf is the issueCtx of issue 7 in in.
+func issueCtxOf(in Input) issueCtx {
+	it := *item7(&in)
+	return issueCtx{repo: in.Repos[0], it: it, hs: headers(it), base: Action{Repo: "o/r", Issue: 7}, now: in.Now}
+}
+
+// Without a handoff run before the Handoff comment, or with one without a session, the issue goes
+// back with reason_pusher_red and the push command of the Herstel's worktree.
+func TestRepairWithoutRunOrSessionReturns(t *testing.T) {
+	want := []string{"return:reason_pusher_red:" + pushCommand(pushWorktree)}
+	tests := []struct {
+		name   string
+		mutate func(*Input)
+	}{
+		{"no handoff run", func(in *Input) { row5(in).Outcome = runs.Done }},
+		{"run without session", func(in *Input) { row5(in).SessionID = "" }},
+		{"run after the handoff", func(in *Input) { row5(in).StartedAt = onDay(11, 0) }},
+		{"handoff comment gone", func(in *Input) {
+			cs := item7(in).Comments
+			item7(in).Comments = append([]Comment{cs[0]}, cs[2:]...)
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			in := repairInput(t)
+			tt.mutate(&in)
+			if s := summary(startsOrReturns(Decide(in))); !reflect.DeepEqual(s, want) {
+				t.Errorf("summary = %q, want %q", s, want)
+			}
+		})
+	}
+}
+
+// A resumed repair run (its row under repair:<id>, with trigger answer) that closed without a new
+// push row is no round: repairRounds walks the push rows only.
+func TestRepairRoundWithoutHandoffNotCounted(t *testing.T) {
+	for _, outcome := range []runs.Outcome{runs.Done, runs.Handoff, runs.Question} {
+		in := repairInput(t)
+		resumed := runs.Row{ID: 2, Issue: 7, SessionID: pushSession, Mode: modeResume, Trigger: triggerAnswer,
+			TriggerKey: "repair:51", Attempt: 1, Command: "/lighthouse-start-issue 7", Branch: "issue-7-bouw-de-keten",
+			StartedAt: onDay(10, 15), Outcome: outcome}
+		addRows(&in, closedPushRow(1, 50, onDay(10, 10), runs.Handoff, ""), resumed)
+		if n := issueCtxOf(in).repairRounds(); n != 2 {
+			t.Errorf("resumed run closed as %s: repairRounds = %d, want 2", outcome, n)
+		}
+	}
+}
+
+// The open push row and a push row that failed to start are no rounds and stop nothing.
+func TestRepairRoundsSkipsOpenAndStartFailed(t *testing.T) {
+	in := repairInput(t)
+	open := closedPushRow(9, 72, onDay(11, 30), "", "")
+	open.Open = true
+	failed := closedPushRow(2, 51, onDay(10, 20), runs.StartFailed, "")
+	addRows(&in, closedPushRow(1, 50, onDay(10, 10), runs.Handoff, ""), failed)
+	in.Repos[0].History = append(in.Repos[0].History, open)
+	if n := issueCtxOf(in).repairRounds(); n != 2 {
+		t.Errorf("repairRounds = %d, want 2", n)
 	}
 }
 
@@ -747,8 +1141,10 @@ func TestReturnLabelKeyTable(t *testing.T) {
 		"reason_park_marker_unreadable": "needs_hands", "reason_post_failed": "needs_hands", "reason_post_failed_unreadable": "needs_hands",
 		"reason_start_uncertain": "needs_hands", "reason_permission": "needs_hands", "reason_silent": "needs_hands",
 		"reason_silent_forge": "needs_hands", "reason_timeout": "needs_hands", "reason_pusher_off": "needs_hands",
+		"reason_pusher_answer_unknown": "needs_hands", "reason_pusher_answer_moved": "needs_hands", "reason_pusher_no_after": "needs_hands", "reason_pusher_git_failed": "needs_hands",
 		"reason_pusher_node": "needs_hands", "reason_pusher_silent": "needs_hands",
-		"reason_pusher_no_handoff": "needs_hands", "reason_pusher_red": "needs_hands", "reason_repeat_handoff": "needs_hands",
+		"reason_pusher_no_handoff": "needs_hands", "reason_pusher_red": "needs_hands", "reason_pusher_red_ceiling": "needs_hands", "reason_repeat_handoff": "needs_hands",
+		"reason_answer_no_session": "needs_hands", "reason_answer_no_run": "needs_hands", "reason_pr_closed_unmerged": "needs_hands", "reason_park_marker_gone": "needs_hands", "reason_no_rule": "needs_hands",
 	}
 	var headings map[string]map[string]string
 	if _, err := toml.DecodeFile(filepath.Join("..", "..", "pack", "core", "headings.toml"), &headings); err != nil {
@@ -953,5 +1349,159 @@ func TestDecideOnHoldRemnantStillUnparks(t *testing.T) {
 	item7(&in).Status = statusOnHold
 	if got := kinds(Decide(in)); !reflect.DeepEqual(got, []Kind{KindUnpark}) {
 		t.Errorf("Decide = %v, want one unpark", got)
+	}
+}
+
+// Round 2: the first Herstel resumed run 5 (row 7, trigger answer, key repair:71), which closed as
+// handoff with a new Handoff in comment 80; the pusher's second Herstel (comment 91) answers that
+// one. handoffRunBefore goes through push:80 to the resumed row, not to run 5, and the resume
+// carries the same session under repair:91.
+func TestRepairRoundTwoResumesResumedRow(t *testing.T) {
+	in := repairInput(t)
+	resumed := runs.Row{ID: 7, Issue: 7, SessionID: pushSession, Mode: modeResume, Trigger: triggerAnswer,
+		TriggerKey: "repair:71", Attempt: 1, Command: "/lighthouse-start-issue 7", Branch: "issue-7-bouw-de-keten",
+		StartedAt: onDay(11, 10), Outcome: runs.Handoff}
+	push2 := closedPushRow(8, 80, onDay(11, 21), runs.Handoff, "")
+	second := repairPost("lh-bot")
+	second.ID, second.CreatedAt = 91, "2026-10-31T11:30:00Z"
+	item7(&in).Comments = append(item7(&in).Comments,
+		Comment{ID: 80, Author: "lh-bot", CreatedAt: "2026-10-31T11:20:00Z", Rocket: true,
+			Body: "🤖 Handoff\nissue: #7\nworktree: " + pushWorktree + "\nbranch: issue-7-bouw-de-keten\nnext: push-workflows\nwhen: now"},
+		second)
+	in.Repos[0].History = append(in.Repos[0].History, resumed, push2)
+	run, ok := issueCtxOf(in).handoffRunBefore(onDay(11, 30))
+	if !ok || run.ID != 7 {
+		t.Fatalf("handoffRunBefore = %+v, %v; want the resumed row 7", run, ok)
+	}
+	got := startsOrReturns(Decide(in))
+	if len(got) != 1 {
+		t.Fatalf("actions %+v, want one resume", got)
+	}
+	a := got[0]
+	if a.Kind != KindResume || a.Trigger != "repair" || a.TriggerKey != "repair:91" || a.Attempt != 1 || a.SessionID != pushSession || a.CommentID != 91 {
+		t.Errorf("action %+v, want a first resume of the same session under repair:91", a)
+	}
+}
+
+// returnedComment is a Returned comment of the bot at the given id, after the comments of the
+// answer fixtures.
+func returnedComment(id int64, at string) Comment {
+	return Comment{ID: id, Author: "lh-bot", CreatedAt: at, Body: "🤖 Teruggegeven\nreason: x"}
+}
+
+// An answered Question whose session no run of this issue has goes back once: the Teruggegeven
+// is the next last turn, so the second tick does nothing.
+func TestDecideAnswerNoRun(t *testing.T) {
+	in := loadInput(t, "answer-question-unknown-session")
+	want := []string{"return:reason_answer_no_run:99999999-8888-4777-8666-555555555555"}
+	if got := summary(Decide(in)); !reflect.DeepEqual(got, want) {
+		t.Fatalf("first tick = %q, want %q", got, want)
+	}
+	item7(&in).Comments = append(item7(&in).Comments, returnedComment(65, "2026-10-31T11:40:00Z"))
+	item7(&in).Labels, in.Repos[0].Labels, item7(&in).Status = []string{"needs_hands"}, testLabels, "To do"
+	if got := summary(Decide(in)); len(got) != 0 {
+		t.Errorf("second tick = %q, want nothing", got)
+	}
+}
+
+// An answered Question with neither a session nor a sha goes back once.
+func TestDecideAnswerNoSession(t *testing.T) {
+	in := loadInput(t, "answer-question-without-session")
+	want := []string{"return:reason_answer_no_session:"}
+	if got := summary(Decide(in)); !reflect.DeepEqual(got, want) {
+		t.Fatalf("first tick = %q, want %q", got, want)
+	}
+	item7(&in).Comments = append(item7(&in).Comments, returnedComment(65, "2026-10-31T11:40:00Z"))
+	item7(&in).Labels, in.Repos[0].Labels, item7(&in).Status = []string{"needs_hands"}, testLabels, "To do"
+	if got := summary(Decide(in)); len(got) != 0 {
+		t.Errorf("second tick = %q, want nothing", got)
+	}
+}
+
+// An end handoff (/lighthouse-close-issue) whose PR closed without a merge from the handoff on
+// goes back; an open PR keeps waiting and a merged one whose close check ran is idle.
+func TestDecideEndHandoffClosedPRWithoutMerge(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*forge.PR)
+		want   []string
+	}{
+		{"closed without merge", func(pr *forge.PR) { pr.State, pr.MergedAt = "CLOSED", time.Time{} },
+			[]string{"return:reason_pr_closed_unmerged:12"}},
+		{"open", func(pr *forge.PR) { pr.State, pr.MergedAt, pr.ClosedAt = "OPEN", time.Time{}, time.Time{} }, []string{}},
+		// Merged, and its close check (closecheck:12) ran: nothing waits, so the idle net counts it.
+		{"merged", func(*forge.PR) {}, []string{"idle::"}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			in := loadInput(t, "handoff-end-pr-merged-after")
+			tc.mutate(&item7(&in).PRs[0])
+			if got := summary(Decide(in)); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// One closed PR gives one Returned per tick. With the end handoff's run still open, its close
+// (rule 11, reason_pr_closed) already gives the issue back; next must not add handoff's
+// reason_pr_closed_unmerged for the same PR on top of it.
+func TestDecideEndHandoffOpenRunClosedPRReturnsOnce(t *testing.T) {
+	tests := []struct {
+		name string
+		push bool
+		want []string
+	}{
+		{"session run", false, []string{"return:reason_pr_closed:"}},
+		{"push row", true, []string{"return:reason_pr_closed:"}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			in := loadInput(t, "handoff-end-pr-merged-after")
+			pr := &item7(&in).PRs[0]
+			pr.State, pr.MergedAt = "CLOSED", time.Time{}
+			row := row5(&in)
+			row.Open, row.Outcome = true, ""
+			if tc.push {
+				// A pushed row owns the PR (fix-pr route): its closed PR settles it like rule 11.
+				row.Command, row.SessionID, row.PushedSHA = cmdPush, "", pr.HeadSHA
+			}
+			if got := summary(Decide(in)); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// Why the code did nothing before: usageResume walks RepoInput.Markers, so a closed parked row
+// whose marker is gone never enters its loop, and no other rule reads such a row: the issue
+// stayed in Controller without a run for ever. A marker, an unreadable marker file or a node
+// whose markers could not be read this tick is not a gone marker: those keep waiting.
+func TestDecideUsageParkMarkerGone(t *testing.T) {
+	const session = "s1"
+	tests := []struct {
+		name   string
+		mutate func(*RepoInput)
+		want   []string
+	}{
+		{"marker gone", func(r *RepoInput) { r.Markers = nil }, []string{"return:reason_park_marker_gone:" + session}},
+		{"marker present resumes", func(r *RepoInput) {}, []string{"resume::"}},
+		{"marker not due waits", func(r *RepoInput) { r.Markers[0].ResetAt = "2026-10-31T13:00:00Z" }, []string{}},
+		{"marker file unreadable", func(r *RepoInput) { r.Markers, r.Unreadable = nil, []string{session} }, []string{}},
+		{"markers incomplete", func(r *RepoInput) { r.Markers, r.MarkersIncomplete = nil, true }, []string{}},
+		{"marker of another session", func(r *RepoInput) { r.Markers[0].SessionID = "other" },
+			[]string{"return:reason_park_marker_gone:" + session}},
+		{"open run", func(r *RepoInput) { r.Markers, r.History[0].Open = nil, true }, []string{}},
+		// No rule moves a run that ended as a handoff without one: the idle mark of #545.
+		{"closed other outcome", func(r *RepoInput) { r.Markers, r.History[0].Outcome = nil, runs.Handoff }, []string{"idle::"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			in := loadInput(t, "usage-resume")
+			tt.mutate(&in.Repos[0])
+			if got := summary(Decide(in)); !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("Decide = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }

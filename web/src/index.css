@@ -3,8 +3,17 @@
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";
 
-/* Dark follows the colour scheme of the system; the page has no toggle. */
-@custom-variant dark (@media (prefers-color-scheme: dark));
+/* Dark follows data-theme on <html> when the header toggle forces it, else the colour scheme of the system. */
+@custom-variant dark {
+  &:where([data-theme="dark"], [data-theme="dark"] *) {
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    &:where(:root:not([data-theme="light"]) *) {
+      @slot;
+    }
+  }
+}
 
 @theme inline {
     --font-heading: var(--font-sans);
@@ -101,10 +110,11 @@
     --lh-seg-todo: #ececec;
     --lh-stripe-gap: transparent;
     --lh-cross: #6b7280;
+    --lh-chip-bg: #f4f5f8;
+    --lh-chip-fg: #14213d;
 }
 
-@media (prefers-color-scheme: dark) {
-:root {
+:root[data-theme="dark"] {
     color-scheme: dark;
     --background: #0f1420;
     --foreground: #e8eaf0;
@@ -147,6 +157,56 @@
     --lh-seg-todo: #2d3548;
     --lh-stripe-gap: transparent;
     --lh-cross: #9aa3b5;
+    --lh-chip-bg: #f4f5f8;
+    --lh-chip-fg: #14213d;
+}
+
+@media (prefers-color-scheme: dark) {
+:root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --background: #0f1420;
+    --foreground: #e8eaf0;
+    --card: #171d2b;
+    --card-foreground: #e8eaf0;
+    --popover: #171d2b;
+    --popover-foreground: #e8eaf0;
+    --primary: oklch(0.922 0 0);
+    --primary-foreground: oklch(0.205 0 0);
+    --secondary: #222a3c;
+    --secondary-foreground: #e8eaf0;
+    --muted: #222a3c;
+    --muted-foreground: #9aa3b5;
+    --accent: #222a3c;
+    --accent-foreground: #e8eaf0;
+    --destructive: oklch(0.704 0.191 22.216);
+    --border: #2d3548;
+    --input: oklch(1 0 0 / 15%);
+    --ring: oklch(0.556 0 0);
+    --chart-1: oklch(0.87 0 0);
+    --chart-2: oklch(0.556 0 0);
+    --chart-3: oklch(0.439 0 0);
+    --chart-4: oklch(0.371 0 0);
+    --chart-5: oklch(0.269 0 0);
+    --sidebar: #171d2b;
+    --sidebar-foreground: #e8eaf0;
+    --sidebar-primary: oklch(0.488 0.243 264.376);
+    --sidebar-primary-foreground: oklch(0.985 0 0);
+    --sidebar-accent: #222a3c;
+    --sidebar-accent-foreground: #e8eaf0;
+    --sidebar-border: #2d3548;
+    --sidebar-ring: oklch(0.556 0 0);
+    --lh-navy: #26335a;
+    --lh-link: #8fb0ff;
+    --lh-blue: #5b82f0;
+    --lh-purple: #a477e0;
+    --lh-green: #2fb68f;
+    --lh-orange: #ef9a73;
+    --lh-grey: #9aa3b5;
+    --lh-seg-todo: #2d3548;
+    --lh-stripe-gap: transparent;
+    --lh-cross: #9aa3b5;
+    --lh-chip-bg: #f4f5f8;
+    --lh-chip-fg: #14213d;
 }
 }
 
@@ -166,9 +226,7 @@
 .lh-stripe {
   background: repeating-linear-gradient(135deg, var(--ms-color) 0 4px, var(--lh-stripe-gap) 4px 8px);
 }
+/* The cross itself is an inline SVG in Block (a data URI cannot read --lh-cross). */
 .lh-cross {
-  background:
-    linear-gradient(to top right, transparent calc(50% - 1px), var(--lh-cross) 0 calc(50% + 1px), transparent 0),
-    linear-gradient(to bottom right, transparent calc(50% - 1px), var(--lh-cross) 0 calc(50% + 1px), transparent 0),
-    var(--lh-seg-todo);
+  background: var(--lh-seg-todo);
 }

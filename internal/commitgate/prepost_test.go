@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -59,12 +60,6 @@ func TestPreEarlyExits(t *testing.T) {
 		{"open quote without a commit", "echo 'x", 0, ""},
 		{"open quote with a commit", "git commit -m 'x", 2,
 			"commit-test-gate: COULD NOT CHECK — the command cannot be parsed (open quote). Split the command.\n\n" + preTail},
-		{"no-verify", "git commit --no-verify -m x", 2,
-			"[commit-test-gate/no-verify] commit-test-gate: --no-verify is not allowed in this repo.\n" +
-				"\n" +
-				"The test gate is a Claude Code PreToolUse hook, not a git hook, so the\n" +
-				"flag skips nothing today — but it will as soon as git hooks are added.\n" +
-				"If something fails: fix it. If it really has to be skipped, ask.\n"},
 		{"unresolved path", `git -C "$NOWHERE_XYZ" commit -m x`, 2,
 			"commit-test-gate: COULD NOT CHECK — the path '$NOWHERE_XYZ' cannot be resolved. Spell the path out.\n\n" + preTail},
 		{"new directory", "cd " + dir + "/new && git commit -m x", 2,
@@ -129,6 +124,156 @@ func TestPostRunsTheMovedRoots(t *testing.T) {
 			}
 			if want := plainNotes + "commit-test-gate: " + root + " — 3 passed"; m != want {
 				t.Fatalf("message:\n%s\nwant:\n%s", m, want)
+			}
+		})
+	}
+}
+
+// With on = "pr" the commit moment does nothing, also on the default branch: no test, no record.
+func TestPreOnPRSkipsDefaultBranchCommit(t *testing.T) {
+	h, repo := projectHarness(t, testGate+"on = \"pr\"\n")
+	res := h.pre("git commit -m x", repo)
+	if res.Code != 0 || res.Stderr != "" {
+		t.Fatalf("got %d %v\n%s, want a silent pass", res.Code, res.Output, res.Stderr)
+	}
+	if len(h.calls) != 0 {
+		t.Fatalf("the test command ran in %q", h.ranIn())
+	}
+}
+
+// With on = "pr" a commit on a feature branch records nothing for Post.
+func TestPreOnPRRecordsNothing(t *testing.T) {
+	h, repo := projectHarness(t, testGate+"on = \"pr\"\n")
+	gitIn(t, repo, "checkout", "-q", "-b", "issue-1-x")
+	res := h.pre("git commit -m x", repo)
+	if res.Code != 0 || res.Stderr != "" {
+		t.Fatalf("got %d %v\n%s, want a silent pass", res.Code, res.Output, res.Stderr)
+	}
+	if _, ok := markerHeads(t); ok {
+		t.Fatal("a marker was recorded with on = pr")
+	}
+}
+
+// --no-verify is refused whatever `on` says.
+func TestPreOnPRStillBlocksNoVerify(t *testing.T) {
+	h, repo := projectHarness(t, testGate+"on = \"pr\"\n")
+	res := h.pre("git commit --no-verify -m x", repo)
+	if res.Code != 2 || !strings.Contains(res.Stderr, "--no-verify is not allowed in this repo.") {
+		t.Fatalf("got %d\n%s, want the --no-verify block", res.Code, res.Stderr)
+	}
+}
+
+// on = "both" and the default (commit) keep the commit moment as it was.
+func TestPreOnBothTestsCommit(t *testing.T) {
+	h, repo := projectHarness(t, testGate+"on = \"both\"\n")
+	h.reply(runReply{0, "3 passed\n", nil})
+	res := h.pre("git commit -m x", repo)
+	if got := message(t, res, "PreToolUse"); got != passLine(repo) {
+		t.Fatalf("message:\n%s\nwant:\n%s", got, passLine(repo))
+	}
+	if got := h.ranIn(); len(got) != 1 || got[0] != repo {
+		t.Fatalf("the test command ran in %q, want only %q", got, repo)
+	}
+}
+
+func TestPreDefaultOnTestsCommit(t *testing.T) {
+	h, repo := projectHarness(t, testGate)
+	h.reply(runReply{0, "3 passed\n", nil})
+	res := h.pre("git commit -m x", repo)
+	if got := message(t, res, "PreToolUse"); got != passLine(repo) {
+		t.Fatalf("message:\n%s\nwant:\n%s", got, passLine(repo))
+	}
+	if got := h.ranIn(); len(got) != 1 || got[0] != repo {
+		t.Fatalf("the test command ran in %q, want only %q", got, repo)
+	}
+}
+
+// An unreadable `on` blocks a commit instead of guessing a moment.
+func TestPreBlocksOnAnInvalidOn(t *testing.T) {
+	h, repo := projectHarness(t, testGate+"on = \"always\"\n")
+	res := h.pre("git commit -m x", repo)
+	if res.Code != 2 || !strings.Contains(res.Stderr, "test_gate.on = \"always\"; it must be commit, pr or both.") {
+		t.Fatalf("got %d\n%s, want the invalid-on block", res.Code, res.Stderr)
+	}
+	if len(h.calls) != 0 {
+		t.Fatalf("the test command ran in %q", h.ranIn())
+	}
+}
+
+// With on = "pr" Post runs nothing for a moved root.
+func TestPostOnPRRunsNothing(t *testing.T) {
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
+	root, base, _ := gitRepo(t)
+	h := newHarness(t, "post", testGate+"on = \"pr\"\n", "")
+	raw := payload("git commit -m x")
+	marker, err := markerPath(raw, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(t, marker, `{"heads": {"`+root+`": "`+base+`"}}`)
+	res := Post(context.Background(), h.g, raw)
+	if res.Code != 0 || res.Stderr != "" {
+		t.Fatalf("got %d %v\n%s, want a silent pass", res.Code, res.Output, res.Stderr)
+	}
+	if len(h.calls) != 0 {
+		t.Fatalf("the test command ran %d times", len(h.calls))
+	}
+}
+
+// Without a moved root Post reads no configuration: an invalid `on` is not seen.
+func TestPostWithoutAMovedRootReadsNoOn(t *testing.T) {
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
+	h := newHarness(t, "post", testGate+"on = \"always\"\n", "")
+	res := Post(context.Background(), h.g, payload("git commit -m x"))
+	if res.Code != 0 || res.Stderr != "" {
+		t.Fatalf("got %d\n%s, want a silent pass", res.Code, res.Stderr)
+	}
+}
+
+// writeBlocking gives root a hooks/lighthouse/blocking with the given lines.
+func writeBlocking(t *testing.T, root string, lines string) {
+	t.Helper()
+	d := filepath.Join(root, ".claude", "hooks", "lighthouse")
+	if err := os.MkdirAll(d, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(d, "blocking"), []byte(lines), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Red when Pre judges --no-verify in a repo whose pack lists no-verify-check: that base hook
+// refuses it, so the test gate must not refuse twice (the pass is a commit on a non-repo path).
+func TestPreLeavesNoVerifyToNoVerifyCheck(t *testing.T) {
+	dir := t.TempDir()
+	writeBlocking(t, dir, "main-commit-gate\ncommit-test-gate\nno-verify-check\n")
+	res := Pre(context.Background(), &Gate{Mode: "pre", Root: dir}, payload("cd "+dir+" && git commit --no-verify -m x"), dir)
+	if res.Code != 0 || res.Stderr != "" {
+		t.Fatalf("got %d %q, want a pass", res.Code, res.Stderr)
+	}
+}
+
+// Red when Pre stops refusing --no-verify in a repo on an older pack (no no-verify-check in
+// blocking, or no readable blocking file): a newer binary must not open that gap.
+func TestPreBlocksNoVerifyOnAnOlderPack(t *testing.T) {
+	const want = "[commit-test-gate/no-verify] commit-test-gate: --no-verify is not allowed in this repo.\n" +
+		"\n" +
+		"The test gate is a Claude Code PreToolUse hook, not a git hook, so the\n" +
+		"flag skips nothing today — but it will as soon as git hooks are added.\n" +
+		"If something fails: fix it. If it really has to be skipped, ask.\n"
+	for name, lines := range map[string]string{
+		"old blocking": "main-commit-gate\ncommit-test-gate\npr-create-gate\n",
+		"no blocking":  "",
+		"similar name": "no-verify-check-x\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			if name != "no blocking" {
+				writeBlocking(t, dir, lines)
+			}
+			res := Pre(context.Background(), &Gate{Mode: "pre", Root: dir}, payload("cd "+dir+" && git commit --no-verify -m x"), dir)
+			if res.Code != 2 || res.Stderr != want {
+				t.Fatalf("got %d %q, want a block", res.Code, res.Stderr)
 			}
 		})
 	}

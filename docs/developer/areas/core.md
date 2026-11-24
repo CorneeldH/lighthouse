@@ -18,6 +18,8 @@ controleren, en geeft op elke machine hetzelfde oordeel.
   ([canary per regel](../planning/specs/2026-11-19-canary-per-regel-design.md)).
 - Een gate is niet te omzeilen: `--no-verify` blokkeert, en de test-gate draait na elke commit op wat
   die commit raakt ([gate na commit](../planning/specs/2026-10-27-gate-na-commit-design.md)).
+  `[test_gate] on` kiest het moment: bij de commit (standaard), bij de PR-create, of beide
+  ([test-gate](../../test-gate.md#wanneer-draait-de-gate-test_gate-on)).
 - `pack/core` is generiek: geen pad, label of areanaam van één repo; wat per repo verschilt, staat in
   `lighthouse.toml` ([loop-kaart bij PR](../planning/specs/2026-11-01-loop-kaart-bij-pr-design.md),
   [gepland op de kaart](../planning/specs/2026-11-22-issue-476-gepland-op-de-kaart-design.md)).

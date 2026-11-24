@@ -47,6 +47,8 @@ const iss = (
   label: '',
   open_question: false,
   needs_label: false,
+  prio_weight: 0,
+  factor: 0,
   blocked_by: by.length ? by.map(([r, i]) => ({ repo: r, issue: i })) : null,
   ...(ms === null ? {} : { milestone: { number: ms, state: 'open', title: `M${ms}` } }),
   ...extra,
@@ -91,39 +93,41 @@ describe('MilestonesView', () => {
     expect(within(row(`${A}#m1`)).getByText(/· 2 outside blockers$/)).toBeTruthy()
   })
 
-  it('draws one block per issue grouped by state: done, active, ready, needs human, blocked', () => {
+  it('draws one block per issue grouped by state: done, needs human, active, ready, needs shaping, blocked', () => {
     const r = repo(
       A,
       [
         iss(1, 1, [[A, 2]]),
-        iss(2, 1, [], { label: 'needs_decision' }),
+        iss(2, 1, [], { label: 'needs_shaping' }),
         iss(3, 1),
         iss(4, 1, [], { status: 'In progress', open_question: true }),
+        iss(5, 1, [], { status: 'In progress' }),
       ],
-      [{ ...ms(1, 1, 4), closed: [{ number: 9, title: 'c9', url: 'u9' }] }],
+      [{ ...ms(1, 1, 5), closed: [{ number: 9, title: 'c9', url: 'u9' }] }],
     )
     view([r])
     expect(
-      blocks(`${A}#m1`).map((b) => [b.getAttribute('data-state'), b.getAttribute('data-needs-human'), b.title]),
+      blocks(`${A}#m1`).map((b) => [b.getAttribute('data-state'), b.title]),
     ).toEqual([
-      ['done', 'false', '#9 c9'],
-      ['active', 'true', '#4 title-4'],
-      ['ready', 'false', '#3 title-3'],
-      ['ready', 'true', '#2 title-2'],
-      ['blocked', 'false', '#1 title-1'],
+      ['done', '9 c9'],
+      ['needs_human', '4 title-4'],
+      ['active', '5 title-5'],
+      ['ready', '3 title-3'],
+      ['needs_shaping', '2 title-2'],
+      ['blocked', '1 title-1'],
     ])
   })
 
-  it('an active block without the flag has data-needs-human false', () => {
-    view([repo(A, [iss(1, 1, [], { status: 'In progress' })], [ms(1, 0, 1)])])
-    expect(blocks(`${A}#m1`)[0].getAttribute('data-needs-human')).toBe('false')
-  })
-
-  it('draws the needs-human flag as a 1.5 px dashed foreground outline, on every state', () => {
-    view([repo(A, [iss(1, 1, [], { status: 'In progress', open_question: true }), iss(2, 1)], [ms(1, 0, 2)])])
-    const [flagged, plain] = blocks(`${A}#m1`)
-    expect(flagged.style.outline).toBe('1.5px dashed var(--foreground)')
-    expect(plain.style.outline).toBe('')
+  it('draws a needs_shaping block as a dashed shape and a needs_human block as stripes', () => {
+    view([
+      repo(A, [iss(1, 1, [], { label: 'needs_shaping' }), iss(2, 1, [], { status: 'In progress', open_question: true })], [ms(1, 0, 2)]),
+    ])
+    const [human, shaping] = blocks(`${A}#m1`)
+    expect(human.getAttribute('data-state')).toBe('needs_human')
+    expect(human.className).toContain('lh-stripe')
+    expect(shaping.getAttribute('data-state')).toBe('needs_shaping')
+    expect(shaping.style.outline).toBe('1.5px dashed var(--foreground)')
+    expect(blocks(`${A}#m1`).every((x) => !x.hasAttribute('data-needs-human'))).toBe(true)
   })
 
   it('opens the issue url in a new tab on click', () => {
@@ -134,18 +138,18 @@ describe('MilestonesView', () => {
     expect(b.getAttribute('target')).toBe('_blank')
   })
 
-  it('shows #nr in a block from MIN_LABEL_WIDTH on, and only the hover title below it', () => {
+  it('shows the number in a block from MIN_LABEL_WIDTH on, and only the hover title below it', () => {
     // Two blocks with a 2 px gap: (58 - 2) / 2 = 28 px each, (57 - 2) / 2 = 27.5 px each.
     const r = repo(A, [iss(1, 1), iss(2, 1)], [ms(1, 0, 2)])
     barWidth = 58
     view([r])
-    expect(blocks(`${A}#m1`).map((b) => b.textContent)).toEqual(['#1', '#2'])
+    expect(blocks(`${A}#m1`).map((b) => b.textContent)).toEqual(['1', '2'])
     cleanup()
     barWidth = 57
     view([r])
     const narrow = blocks(`${A}#m1`)
     expect(narrow.map((b) => b.textContent)).toEqual(['', ''])
-    expect(narrow[0].getAttribute('title')).toBe('#1 title-1')
+    expect(narrow[0].getAttribute('title')).toBe('1 title-1')
   })
 
   it('draws an outside blocker solid in the colour of its own milestone, in the fixed column', () => {
@@ -158,11 +162,11 @@ describe('MilestonesView', () => {
     const withOut = within(row(`${A}#m1`))
     const out = withOut.getByTestId('outside-col').querySelectorAll('[data-testid="outside"]')
     expect(out).toHaveLength(1)
-    expect(out[0].textContent).toBe('#1')
+    expect(out[0].textContent).toBe('1')
     const own = within(row(`${A}#m2`)).getByTestId('swatch').style.background
     expect((out[0] as HTMLElement).style.border).toBe(`1.5px solid ${own}`)
     // The outside blocker is not drawn twice: the bar holds only the milestone's own issue.
-    expect(blocks(`${A}#m1`).map((b) => b.title)).toEqual(['#2 title-2'])
+    expect(blocks(`${A}#m1`).map((b) => b.title)).toEqual(['2 title-2'])
     // Same fixed column on a row without outside blockers keeps the bars aligned.
     expect(within(row(`${A}#m2`)).getByTestId('outside-col').className).toBe(
       withOut.getByTestId('outside-col').className,
@@ -174,9 +178,9 @@ describe('MilestonesView', () => {
     view([repo(A, [iss(1, 1, [['z/q', 7]])], [ms(1, 0, 1)])])
     const out = within(row(`${A}#m1`)).getByTestId('outside')
     expect(out.getAttribute('data-state')).toBe('ready')
-    expect(out.getAttribute('data-needs-human')).toBe('false')
+    expect(out.hasAttribute('data-needs-human')).toBe(false)
     // Not drawn twice: the bar holds only the milestone's own issue.
-    expect(blocks(`${A}#m1`).map((b) => b.title)).toEqual(['#1 title-1'])
+    expect(blocks(`${A}#m1`).map((b) => b.title)).toEqual(['1 title-1'])
   })
 
   it('caps outside blockers and folds the rest into +N in the same column', () => {
@@ -191,8 +195,8 @@ describe('MilestonesView', () => {
     expect(col.querySelectorAll('[data-testid="outside"]')).toHaveLength(2)
     const more = within(col).getByTestId('outside-more')
     expect(more.textContent).toBe('+5')
-    expect(more.getAttribute('title')).toContain('#3 title-3')
-    expect(more.getAttribute('title')).toContain('#7 title-7')
+    expect(more.getAttribute('title')).toContain('3 title-3')
+    expect(more.getAttribute('title')).toContain('7 title-7')
     expect(within(row(`${A}#m2`)).getByTestId('outside-col').className).toBe(col.className)
   })
 
@@ -204,7 +208,7 @@ describe('MilestonesView', () => {
     )
     view([r])
     const list = within(row(`${A}#m1`)).getByTestId('todo-list')
-    expect(list.textContent).toBe('to do:#3#2#4')
+    expect(list.textContent).toBe('to do:324')
   })
 
   it('shows the percentage and the number of own open issues on the right', () => {
@@ -215,33 +219,33 @@ describe('MilestonesView', () => {
     expect(right.getByText('2 to do')).toBeTruthy()
   })
 
-  it('marks a shaping milestone with one grey dashed border round the bar and a grey voorlopig percentage', () => {
+  it('marks a shaping milestone with one grey dashed border round the bar and a grey provisional percentage', () => {
     view([repo(A, [iss(1, 1)], [ms(1, 1, 1, 'Status: shaping')])])
     const r = within(row(`${A}#m1`))
     expect(r.getByTestId('bar').getAttribute('data-shaping')).toBe('true')
     expect(r.getByText('50%').className).toContain('text-muted')
-    expect(r.getByText('voorlopig')).toBeTruthy()
-    expect(r.queryByText('nog geen issues')).toBeNull()
+    expect(r.getByText('provisional')).toBeTruthy()
+    expect(r.queryByText('no issues yet')).toBeNull()
     expect(blocks(`${A}#m1`)).toHaveLength(1)
   })
 
-  it('shows nog geen issues in the empty bar of a milestone without issues', () => {
+  it('shows no issues yet in the empty bar of a milestone without issues', () => {
     view([repo(A, [], [ms(1, 0, 0)])])
     const r = within(row(`${A}#m1`))
-    expect(r.getByText('nog geen issues')).toBeTruthy()
+    expect(r.getByText('no issues yet')).toBeTruthy()
     expect(r.getByTestId('bar').getAttribute('data-shaping')).toBe('true')
     expect(r.queryAllByTestId('block')).toHaveLength(0)
-    expect(r.getByText('voorlopig')).toBeTruthy()
+    expect(r.getByText('provisional')).toBeTruthy()
   })
 
   it('does not mark a shaped milestone', () => {
     view([repo(A, [iss(1, 1)], [ms(1, 1, 1)])])
     const r = within(row(`${A}#m1`))
     expect(r.getByTestId('bar').getAttribute('data-shaping')).toBe('false')
-    expect(r.queryByText('voorlopig')).toBeNull()
+    expect(r.queryByText('provisional')).toBeNull()
   })
 
-  it('sorts like sortMilestoneRows: fewest open first, empty last', () => {
+  it('sorts like sortMilestoneRows: shaped first, empty last', () => {
     const r = repo(
       A,
       [iss(1, 1), iss(2, 1), iss(3, 2)],
@@ -292,7 +296,7 @@ describe('MilestonesView', () => {
         />,
       )
     }
-    const btn = (key: string, name: 'Omhoog' | 'Omlaag') =>
+    const btn = (key: string, name: 'Up' | 'Down') =>
       within(row(key)).getByRole('button', { name: new RegExp(`${name}$`, 'i') }) as HTMLButtonElement
     const order = () => screen.getAllByTestId(/^ms-/).map((e) => e.getAttribute('data-testid'))
 
@@ -301,10 +305,10 @@ describe('MilestonesView', () => {
       expect(order()).toEqual([`ms-${A}#m2`, `ms-${A}#m1`, `ms-${A}#m3`, `ms-${A}#m4`])
     })
 
-    it('keeps the computed order in stand Berekend, without buttons or place', () => {
+    it('keeps the computed order in Computed mode, without buttons or place', () => {
       prio([ranked()], { order: 'computed' })
       expect(order()).toEqual([`ms-${A}#m3`, `ms-${A}#m1`, `ms-${A}#m2`, `ms-${A}#m4`])
-      expect(screen.queryAllByRole('button', { name: /omhoog|omlaag/i })).toHaveLength(0)
+      expect(screen.queryAllByRole('button', { name: /up|down/i })).toHaveLength(0)
       expect(screen.queryAllByTestId('place')).toHaveLength(0)
     })
 
@@ -313,31 +317,31 @@ describe('MilestonesView', () => {
       expect(within(row(`${A}#m2`)).getByTestId('place').textContent).toBe('1')
       expect(within(row(`${A}#m1`)).getByTestId('place').textContent).toBe('2')
       expect(within(row(`${A}#m3`)).queryByTestId('place')).toBeNull()
-      // A screen reader hears "plaats 1", not a bare number.
-      expect(within(row(`${A}#m2`)).getByText(/plaats 1/).textContent).toBe(', plaats 1')
+      // A screen reader hears "place 1", not a bare number.
+      expect(within(row(`${A}#m2`)).getByText(/place 1/).textContent).toBe(', place 1')
     })
 
     it('disables up on place 1, down on the last ranked and down without a rank', () => {
       prio([ranked()])
-      expect(btn(`${A}#m2`, 'Omhoog').disabled).toBe(true)
-      expect(btn(`${A}#m2`, 'Omlaag').disabled).toBe(false)
-      expect(btn(`${A}#m1`, 'Omhoog').disabled).toBe(false)
-      expect(btn(`${A}#m1`, 'Omlaag').disabled).toBe(true)
-      expect(btn(`${A}#m3`, 'Omhoog').disabled).toBe(false)
-      expect(btn(`${A}#m3`, 'Omlaag').disabled).toBe(true)
+      expect(btn(`${A}#m2`, 'Up').disabled).toBe(true)
+      expect(btn(`${A}#m2`, 'Down').disabled).toBe(false)
+      expect(btn(`${A}#m1`, 'Up').disabled).toBe(false)
+      expect(btn(`${A}#m1`, 'Down').disabled).toBe(true)
+      expect(btn(`${A}#m3`, 'Up').disabled).toBe(false)
+      expect(btn(`${A}#m3`, 'Down').disabled).toBe(true)
     })
 
     it('gives every button a name with its milestone title', () => {
       prio([ranked()])
-      expect(within(row(`${A}#m1`)).getByRole('button', { name: 'M1 omhoog' })).toBeTruthy()
-      expect(within(row(`${A}#m2`)).getByRole('button', { name: 'M2 omlaag' })).toBeTruthy()
+      expect(within(row(`${A}#m1`)).getByRole('button', { name: 'M1 up' })).toBeTruthy()
+      expect(within(row(`${A}#m2`)).getByRole('button', { name: 'M2 down' })).toBeTruthy()
     })
 
     it('calls onMove with the row and the direction of the clicked button', () => {
       const onMove = vi.fn<(row: MilestoneRow, dir: 'up' | 'down') => void>()
       prio([ranked()], { onMove })
-      fireEvent.click(btn(`${A}#m1`, 'Omhoog'))
-      fireEvent.click(btn(`${A}#m2`, 'Omlaag'))
+      fireEvent.click(btn(`${A}#m1`, 'Up'))
+      fireEvent.click(btn(`${A}#m2`, 'Down'))
       expect(onMove.mock.calls.map(([r, d]) => [r.repo, r.number, d])).toEqual([
         [A, 1, 'up'],
         [A, 2, 'down'],
@@ -348,11 +352,11 @@ describe('MilestonesView', () => {
       const other = repo(B, [], [ms(7, 1, 0, 'Priority: 1'), ms(8, 1, 0, 'Priority: 2')])
       prio([ranked(), other], { pendingRepos: new Set([A]) }, [A, B])
       for (const k of [`${A}#m1`, `${A}#m2`, `${A}#m3`]) {
-        expect(btn(k, 'Omhoog').disabled).toBe(true)
-        expect(btn(k, 'Omlaag').disabled).toBe(true)
+        expect(btn(k, 'Up').disabled).toBe(true)
+        expect(btn(k, 'Down').disabled).toBe(true)
       }
-      expect(btn(`${B}#m8`, 'Omhoog').disabled).toBe(false)
-      expect(btn(`${B}#m7`, 'Omlaag').disabled).toBe(false)
+      expect(btn(`${B}#m8`, 'Up').disabled).toBe(false)
+      expect(btn(`${B}#m7`, 'Down').disabled).toBe(false)
     })
 
     it('numbers places per repo when repos are mixed', () => {

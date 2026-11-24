@@ -433,7 +433,8 @@ workspace verwijderd, dan verdwijnt ook zijn achterblijver-record.
 ## Lokaal
 
 `workplace = "local"` laat de tick draaien zonder kenn-forge: geen `[dispatch.forge]`, geen `target_key`.
-Een run is een git worktree onder `<repo>/.claude/worktrees/` en een `claude -p` die de adapter
+Een run is een git worktree onder `<repo>/.claude/worktrees/` (altijd daar: de adapter leest `[worktree] root` niet, zie
+[de worktree-root](getting-started.md#where-the-worktrees-live)) en een `claude -p` die de adapter
 losgekoppeld start (`setsid -f` van util-linux) en laat doorlopen als de tick klaar is. De adapter werkt
 alleen op Linux: hij leest `/proc/<pid>/environ` en `/proc/<pid>/stat`. Op een andere host geven de
 methoden van `Procs` de fout `local workplace: needs /proc, which only linux has`. De eisen aan de host
@@ -443,7 +444,7 @@ van de tick staan.
 ### De acht methoden
 
 - `Prepare(branch)`: de worktree die git al voor de branch heeft, of een nieuwe onder
-  `<repo>/.claude/worktrees/<id>`. Een bestaande worktree die de adapter niet zelf maakte, wordt
+  `<repo>/.claude/worktrees/<id>`, ook als `[worktree] root` een andere plek zet. Een bestaande worktree die de adapter niet zelf maakte, wordt
   *adopted*: hij blijft van de gebruiker en `Remove` verwijdert hem nooit van schijf. Een lege branchnaam
   of een naam die met `-` begint, weigert `Prepare`; een branch die in de hoofdcheckout staat ook. Daarna
   volgt `workplace.FollowRemote` de `origin/<branch>`, met dezelfde regels als bij kenn-forge (zie

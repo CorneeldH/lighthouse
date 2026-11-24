@@ -11,7 +11,7 @@ import {
   type MilestoneRow,
 } from '@/lib/priorities/derive'
 import { planMove } from '@/lib/priorities/moves'
-import { assignColors } from '@/lib/priorities/palette'
+import { assignColors, NO_MILESTONE_COLOR } from '@/lib/priorities/palette'
 import { loadPrefs, savePrefs, type ViewId } from '@/lib/priorities/prefs'
 import { DepsView } from './DepsView'
 import { MilestonesView } from './MilestonesView'
@@ -39,6 +39,12 @@ export function PrioritiesTab(): JSX.Element {
     const unassigned = withoutMilestone(inView, graph).filter((r) => selected.has(r.node.repo))
     const nodes = [...graph.nodes.values()].filter((n) => selected.has(n.repo))
     return {
+      // Issues without a milestone in view: nodes in the graph, every row of the unassigned view.
+      hasUnassigned: {
+        deps: nodes.some((n) => !n.milestone),
+        milestones: false,
+        unassigned: unassigned.length > 0,
+      } satisfies Record<ViewId, boolean>,
       counts: {
         deps: nodes.length,
         milestones: rows.length,
@@ -74,6 +80,7 @@ export function PrioritiesTab(): JSX.Element {
     const m = shown.find((x) => `${x.repo}#m${x.number}` === key) as (typeof shown)[number]
     return { key, label: prefix ? `${m.repo} · ${m.title}` : m.title, color: colors.get(key) as string }
   })
+  if (derived.hasUnassigned[prefs.view]) legend.push({ key: 'none', label: 'Without milestone', color: NO_MILESTONE_COLOR })
 
   // planMove needs every milestone of the repo in its current priority order, so the rows are
   // built from the unfiltered repo, independent of what the view shows.
@@ -84,7 +91,7 @@ export function PrioritiesTab(): JSX.Element {
   }
   const pendingRepos = new Set(slugs.filter(ranks.isPending))
 
-  const props = { graph, repos, selected, colors, order: prefs.msOrder, onMove, pendingRepos }
+  const props = { graph, repos, selected, colors, order: prefs.msOrder, depsOrder: prefs.depsOrder, onMove, pendingRepos }
   const empty = data !== undefined && repos.length === 0
   const View = prefs.view === 'deps' ? DepsView : prefs.view === 'milestones' ? MilestonesView : UnassignedView
   return (
@@ -103,6 +110,8 @@ export function PrioritiesTab(): JSX.Element {
               legend={legend}
               msOrder={prefs.msOrder}
               onMsOrder={(msOrder) => update({ ...prefs, msOrder })}
+              depsOrder={prefs.depsOrder}
+              onDepsOrder={(depsOrder) => update({ ...prefs, depsOrder })}
             />
             {ranks.error !== null && (
               <p role="alert" className="text-sm font-medium text-destructive">

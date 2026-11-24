@@ -259,6 +259,9 @@ func (r *round) repo(ctx context.Context, path string, repo repoconfig.Repo, rf 
 	}
 	var n counts
 	cands := r.candidates(ctx, g, &n)
+	if err := setPrioWeights(ctx, g, cands); err != nil {
+		return skip(err)
+	}
 	tri.Sort(cands)
 	jc := tri.Context{Language: repo.Language, Labels: repo.Labels, Catalog: catalog}
 	for _, f := range cands {
@@ -269,6 +272,28 @@ func (r *round) repo(ctx context.Context, path string, repo repoconfig.Repo, rf 
 	_, _ = fmt.Fprintf(r.errOut, "lighthouse: triage %s: candidates %d, judgments %d, forwarded %d, design %d, other %d, invalid %d, running work %d, skipped %d, errors %d\n",
 		repo.Slug, n.candidates, n.judgments, n.forwarded, n.design, n.other, n.invalid, n.work, n.skipped, n.errors)
 	return n.errors > 0
+}
+
+// setPrioWeights sets the PrioWeight of every candidate, the weight the tick uses. The blockers
+// come from the board items the gather already read: no extra read. Without candidates it reads
+// nothing; a failing PrioInputs skips the repo, never a weight of 0.
+func setPrioWeights(ctx context.Context, g *repoGather, cands []tri.Facts) error {
+	if len(cands) == 0 {
+		return nil
+	}
+	in, err := g.c.PrioInputs(ctx)
+	if err != nil {
+		return fmt.Errorf("prio inputs: %w", err)
+	}
+	board := make([]forge.BoardItem, 0, len(g.board))
+	for _, it := range g.board {
+		board = append(board, it)
+	}
+	weights := dispatch.Weights(in, dispatch.BlockerGraph(board, g.repo.Slug))
+	for i := range cands {
+		cands[i].PrioWeight = weights[cands[i].Number]
+	}
+	return nil
 }
 
 func (r *round) pluginsFile() string {

@@ -543,6 +543,7 @@ test("options are the values lighthouse accepts", () => {
     "forge.kind": ["github", "gitlab"],
     "review.roborev": ["local", "off"],
     "report.sink": ["stdout", "file"],
+    "pr_gate.issue": ["optional", "required", "evidence"],
     ...Object.fromEntries(Object.entries(s.schema).filter(([, kind]) => kind === "bool").map(([key]) => [key, [true, false]])),
   };
   const onMap = Object.fromEntries(allKeys(load("config.json")).filter((k) => "options" in k).map((k) => [k.key, k.options]));

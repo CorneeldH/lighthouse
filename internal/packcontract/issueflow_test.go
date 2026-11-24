@@ -167,6 +167,41 @@ func TestRouteIssueSendsAnOpenFogQuestionTo4c(t *testing.T) {
 	}
 }
 
+// Classification: fails when the needs_hands or needs_testing row stops being a stop that
+// executes nothing and names the human's action or judgement, brings back the old meaning
+// (execute up to the hand movement, let the human judge), lets the non-negotiables call a
+// needs_* label no stop or forget the new rule, or when the six label rows leave rank order.
+func TestRouteIssueNeedsHandsAndTestingStop(t *testing.T) {
+	for variant, body := range variants(t, routeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			labels := section(t, body, "## A blocking label", "## Non-negotiable")
+			wantAll(t, lineStarting(t, labels, "| `labels.needs_hands`"),
+				"**stop**", "executes nothing", "which action of the human is needed first")
+			wantAll(t, lineStarting(t, labels, "| `labels.needs_testing`"),
+				"**stop**", "executes nothing", "which judgement of the human is needed first")
+			wantAll(t, flat(section(t, body, "## Triage", "## A blocking label")),
+				"label turns the route reached into `stop`")
+			f := flat(labels)
+			wantNone(t, f, "execute up to the hand movement", "let the human judge whether it does what was meant")
+			nn := section(t, body, "## Non-negotiable", "## Known pitfalls")
+			wantNone(t, nn, "treat a `labels.needs_*` label as a stop")
+			wantAll(t, lineStarting(t, nn, "- ✅ stop and report"), "`labels.needs_hands`", "`labels.needs_testing`")
+			last := -1
+			for _, key := range []string{"needs_shaping", "needs_decision", "blocked_issue", "blocked_external", "needs_hands", "needs_testing"} {
+				row := "| `labels." + key + "`"
+				i := strings.Index(labels, row)
+				if i < 0 {
+					t.Fatalf("no row %q", row)
+				}
+				if i < last {
+					t.Errorf("row %q is out of rank order", row)
+				}
+				last = i
+			}
+		})
+	}
+}
+
 // Classification: fails when route-issue stops reading one of the six labels from config, or
 // names a literal label (`3-blocked`, `3-needs…`).
 func TestRouteIssueReadsLabelsFromConfig(t *testing.T) {
@@ -202,6 +237,27 @@ func TestStartIssueHoldsABlockedExecution(t *testing.T) {
 			wantAll(t, step4, "next: /lighthouse-start-issue", "`stack:` or `blocker:`",
 				"Gate `1`, `2`, `4a` or `4b`: do not execute.")
 			wantNone(t, step4, "Gate `1`, `2` or `4a`: do not execute.")
+		})
+	}
+}
+
+// Classification: fails when start-issue executes a stop line of route-issue (`needs_hands`,
+// `needs_testing`) instead of reporting what the human has to do first, posts a handoff for it
+// in a controller run, lets the stop come after the Blocked? block, sends a scout at a stop on
+// 4b, or moves the board to In progress for it.
+func TestStartIssueStopsOnNeedsStopLine(t *testing.T) {
+	for variant, body := range variants(t, startIssue) {
+		t.Run(variant, func(t *testing.T) {
+			step3 := section(t, body, "### 3.", "### 4.")
+			wantAll(t, flat(step3), "`labels.needs_hands` or `labels.needs_testing`", "the next step is a human's")
+			step4 := section(t, body, "### 4.", "#### Scout")
+			row := lineStarting(t, step4, "| route `stop`")
+			wantAll(t, row, "route `stop` (`labels.needs_hands` or `labels.needs_testing`)",
+				"report what the human has to do first", "no execution, no spec, no plan",
+				"post no handoff", "`RowInteractive`", "before **Blocked?**", "no scout goes out")
+			scout := section(t, body, "#### Scout", "##### Skipping is allowed")
+			wantAll(t, scout, "heading:scout_skipped — <label>: the next step is a human's, no plan follows.")
+			wantAll(t, row, "heading:scout_skipped — <label>")
 		})
 	}
 }
@@ -276,6 +332,25 @@ func TestStartIssueAsksAlreadyDoneBeforeTheWorktree(t *testing.T) {
 				"/lighthouse-close-issue <nr>",
 				"already done? not measurable — fetch failed")
 			wantNone(t, step2, "gh issue close", "wontfix")
+		})
+	}
+}
+
+// Classification: fails when a controller run that finds the work already done ends with the
+// choice as chat text, when the `likely` bullet loses its handoff to /lighthouse-close-issue, its
+// lighthouse ask for the in-doubt case or its user decision, or when the `not measurable` bullet
+// loses its lighthouse ask or gains a handoff to close-issue (which would measure on stale data).
+func TestStartIssueAlreadyDoneEndsInFollowUpInControllerRun(t *testing.T) {
+	for variant, body := range variants(t, startIssue) {
+		t.Run(variant, func(t *testing.T) {
+			step2 := flat(section(t, body, "### 2.", "### 3."))
+			likely := flat(section(t, body, "already done? likely", "already done? not measurable"))
+			wantAll(t, likely, "/lighthouse-write-handoff", "next: /lighthouse-close-issue <nr>",
+				"lighthouse ask", "--phase start", "in doubt", "The user decides")
+			notMeasurable := flat(section(t, body, "already done? not measurable", "This step only reports"))
+			wantAll(t, notMeasurable, "lighthouse ask", "--phase start")
+			wantNone(t, notMeasurable, "next: /lighthouse-close-issue", "/lighthouse-write-handoff")
+			wantNone(t, step2, "as the last text")
 		})
 	}
 }

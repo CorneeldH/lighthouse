@@ -1,6 +1,8 @@
 import type { JSX } from 'react'
 import type { ViewId } from '@/lib/priorities/prefs'
-import { Block, type BlockState } from './Block'
+import type { DepsOrder } from './layout'
+import type { IssueStateName } from '@/lib/priorities/derive'
+import { Block } from './Block'
 
 export interface LegendItem {
   key: string
@@ -18,15 +20,22 @@ interface ToolbarProps {
   legend: LegendItem[]
   msOrder: 'computed' | 'priority'
   onMsOrder: (o: 'computed' | 'priority') => void
+  depsOrder: DepsOrder
+  onDepsOrder: (o: DepsOrder) => void
 }
 
-const STATES: Array<{ key: string; label: string; state: BlockState; needsHuman: boolean }> = [
-  { key: 'done', label: 'done', state: 'done', needsHuman: false },
-  { key: 'active', label: 'active', state: 'active', needsHuman: false },
-  { key: 'ready', label: 'ready', state: 'ready', needsHuman: false },
-  { key: 'needs-human', label: 'needs a human', state: 'ready', needsHuman: true },
-  { key: 'blocked', label: 'blocked', state: 'blocked', needsHuman: false },
+const STATES: Array<{ key: IssueStateName; label: string }> = [
+  { key: 'blocked', label: 'blocked' },
+  { key: 'needs_shaping', label: 'needs shaping' },
+  { key: 'ready', label: 'to do' },
+  { key: 'active', label: 'active' },
+  { key: 'needs_human', label: 'needs human' },
+  { key: 'done', label: 'done' },
 ]
+
+const UNDERLINED: ReadonlySet<IssueStateName> = new Set(['needs_shaping', 'needs_human'])
+
+const HEADING = 'text-[0.65rem] font-semibold uppercase tracking-wider text-muted-foreground'
 
 const VIEWS: Array<{ id: ViewId; label: string }> = [
   { id: 'deps', label: 'Dependencies' },
@@ -34,9 +43,16 @@ const VIEWS: Array<{ id: ViewId; label: string }> = [
   { id: 'unassigned', label: 'Without milestone' },
 ]
 
-const ORDERS: Array<{ id: 'computed' | 'priority'; label: string }> = [
-  { id: 'computed', label: 'Berekend' },
-  { id: 'priority', label: 'Prioriteit' },
+// The computed order sorts on % done; its button shows only the sign, its name says it in full.
+const ORDERS: Array<{ id: 'computed' | 'priority'; label: string; name: string }> = [
+  { id: 'computed', label: '%', name: '% done' },
+  { id: 'priority', label: 'Priority', name: 'Priority' },
+]
+
+const SORTS: Array<{ id: DepsOrder; label: string }> = [
+  { id: 'prio', label: 'Prio-weight' },
+  { id: 'weight', label: 'Weight' },
+  { id: 'crossings', label: 'Fewest crossings' },
 ]
 
 export function Toolbar({
@@ -49,6 +65,8 @@ export function Toolbar({
   legend,
   msOrder,
   onMsOrder,
+  depsOrder,
+  onDepsOrder,
 }: ToolbarProps): JSX.Element {
   return (
     <div className="space-y-3">
@@ -70,7 +88,7 @@ export function Toolbar({
           })}
         </div>
         {view === 'milestones' && (
-          <div role="group" aria-label="Volgorde" className="inline-flex overflow-hidden rounded-md border border-lh-navy">
+          <div role="group" aria-label="Order" className="inline-flex overflow-hidden rounded-md border border-lh-navy">
             {ORDERS.map((o) => {
               const on = o.id === msOrder
               return (
@@ -78,8 +96,28 @@ export function Toolbar({
                   key={o.id}
                   type="button"
                   aria-pressed={on}
+                  aria-label={o.name}
+                  title={o.name}
                   className={`px-3 py-1 text-sm font-medium ${on ? 'bg-lh-navy text-white' : 'bg-card text-foreground hover:bg-muted'}`}
                   onClick={() => onMsOrder(o.id)}
+                >
+                  {o.label}
+                </button>
+              )
+            })}
+          </div>
+        )}
+        {view === 'deps' && (
+          <div role="group" aria-label="Sort" className="inline-flex overflow-hidden rounded-md border border-lh-navy">
+            {SORTS.map((o) => {
+              const on = o.id === depsOrder
+              return (
+                <button
+                  key={o.id}
+                  type="button"
+                  aria-pressed={on}
+                  className={`px-3 py-1 text-sm font-medium ${on ? 'bg-lh-navy text-white' : 'bg-card text-foreground hover:bg-muted'}`}
+                  onClick={() => onDepsOrder(o.id)}
                 >
                   {o.label}
                 </button>
@@ -106,31 +144,41 @@ export function Toolbar({
           })}
         </div>
       </div>
-      <ul aria-label="Legend" className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-        {legend.map((l) => (
-          <li key={l.key} className="inline-flex items-center gap-1.5">
-            <i aria-hidden className="inline-block size-3 rounded-sm" style={{ background: l.color }} />
-            {l.label}
-          </li>
-        ))}
-        {STATES.map((st) => (
-          <li key={st.key} data-testid="legend-state" className="inline-flex items-center gap-1.5">
-            <Block
-              testId="legend-block"
-              state={st.state}
-              needsHuman={st.needsHuman}
-              color="var(--lh-grey)"
-              title={st.label}
-              className="size-3.5"
-            />
-            {st.label}
-          </li>
-        ))}
-        <li data-testid="legend-shaping" className="inline-flex items-center gap-1.5">
-          <i aria-hidden className="inline-block h-3 w-3.5 rounded-sm outline-[1.5px] outline-dashed outline-lh-grey" />
-          not shaped yet
-        </li>
-      </ul>
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-xs">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+          <span className={HEADING}>Milestones</span>
+          <ul aria-label="Milestones" className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            {legend.map((l) => (
+              <li key={l.key} className="inline-flex items-center gap-1.5">
+                <i aria-hidden className="inline-block size-3 rounded-sm" style={{ background: l.color }} />
+                {l.label}
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+          <span className={HEADING}>Status</span>
+          <ul aria-label="Status" className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            {STATES.map((st) => (
+              <li key={st.key} data-testid="legend-state" className="inline-flex items-center gap-1.5">
+                <Block
+                  testId="legend-block"
+                  state={st.key}
+                  color="var(--lh-grey)"
+                  title={st.label}
+                  className="size-3.5"
+                />
+                <span
+                  data-underlined={UNDERLINED.has(st.key) ? 'true' : undefined}
+                  className={UNDERLINED.has(st.key) ? 'underline underline-offset-2 decoration-2' : undefined}
+                >
+                  {st.label}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
     </div>
   )
 }

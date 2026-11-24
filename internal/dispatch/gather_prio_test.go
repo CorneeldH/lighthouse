@@ -1,0 +1,147 @@
+package dispatch
+
+import (
+	"context"
+	"errors"
+	"io"
+	"reflect"
+	"testing"
+	"time"
+
+	"github.com/CorneeldH/lighthouse/internal/forge"
+	"github.com/CorneeldH/lighthouse/internal/protocol"
+)
+
+// Classification: logic with a fake forge. These tests fail if Prepare reads PrioInputs (the
+// precheck of every quiet tick), if Complete stops setting the prio weight of #445 on its items,
+// builds the blocker graph from the held items only, lets a blocker of another repo count, reads
+// PrioInputs without items, or swallows a PrioInputs error.
+
+// prioFake is a forge whose board and priority inputs are fixed.
+type prioFake struct {
+	forge.Forge
+	board []forge.BoardItem
+	in    forge.PrioInputs
+	err   error
+	calls int
+}
+
+func (f *prioFake) BoardItems(context.Context) ([]forge.BoardItem, error) { return f.board, nil }
+
+func (f *prioFake) Comments(context.Context, int) ([]protocol.Comment, error) { return nil, nil }
+
+func (f *prioFake) PrioInputs(context.Context) (forge.PrioInputs, error) {
+	f.calls++
+	return f.in, f.err
+}
+
+// prioBoard is o/r with milestones M10 (Priority: 1, factor 2) and M20 (Priority: 2, factor 1).
+// #1 (M10) waits on #2 (M20) and on other/repo#5, #2 waits on #3, and #6 (M10, Done, so not an
+// item) waits on #5. Weights: #1 2; #2 1+2 = 3; #3 0+1+2*2 = 5; #5 0+2 = 2. The cross-repo
+// blocker would give #5 another 2.
+func prioBoard() *prioFake {
+	item := func(n int, status string, blockers ...forge.Blocker) forge.BoardItem {
+		return forge.BoardItem{ItemID: "I", Repo: "o/r", Issue: n, Title: "Issue", IssueState: "OPEN",
+			Status: status, BlockedBy: blockers}
+	}
+	return &prioFake{
+		board: []forge.BoardItem{
+			item(1, "Controller", forge.Blocker{Repo: "o/r", Issue: 2, State: "OPEN"},
+				forge.Blocker{Repo: "other/repo", Issue: 5, State: "OPEN"}),
+			item(2, "Controller", forge.Blocker{Repo: "o/r", Issue: 3, State: "OPEN"}),
+			item(3, "Controller"),
+			item(5, "Controller"),
+			item(6, "Done", forge.Blocker{Repo: "o/r", Issue: 5, State: "OPEN"}),
+		},
+		in: forge.PrioInputs{
+			Issues: map[int]int{1: 10, 2: 20, 3: 0, 5: 0, 6: 10},
+			Milestones: []forge.Milestone{
+				{Number: 10, Title: "M10", State: "open", Description: "Doel.\nPriority: 1"},
+				{Number: 20, Title: "M20", State: "open", Description: "Priority: 2"},
+			},
+		},
+	}
+}
+
+// prioComplete is the gather of f: Prepare, then Complete.
+func prioComplete(f *prioFake) (Snapshot, error) {
+	pre, err := Prepare(context.Background(), f, testRepo, nil, nil, ToDoProbe{})
+	if err != nil {
+		return Snapshot{}, err
+	}
+	return Complete(context.Background(), f, pre, NewTrust(f, nil), "lh-bot", io.Discard, time.Time{})
+}
+
+// The precheck runs on every tick, also a quiet one: it must not read the weights.
+func TestPrepareReadsNoPrioInputs(t *testing.T) {
+	f := prioBoard()
+	if _, err := Prepare(context.Background(), f, testRepo, nil, nil, ToDoProbe{}); err != nil {
+		t.Fatalf("Prepare: %v", err)
+	}
+	if f.calls != 0 {
+		t.Errorf("PrioInputs calls in Prepare = %d, want 0", f.calls)
+	}
+}
+
+func TestCompleteSetsPrioWeight(t *testing.T) {
+	f := prioBoard()
+	snap, err := prioComplete(f)
+	if err != nil {
+		t.Fatalf("gather: %v", err)
+	}
+	got := map[int]int{}
+	for _, it := range snap.Items {
+		got[it.Issue] = it.PrioWeight
+	}
+	if want := map[int]int{1: 2, 2: 3, 3: 5, 5: 2}; !reflect.DeepEqual(got, want) {
+		t.Errorf("PrioWeight per item = %v, want %v", got, want)
+	}
+	if f.calls != 1 {
+		t.Errorf("PrioInputs calls = %d, want 1", f.calls)
+	}
+}
+
+func TestCompletePrioInputsErrorFails(t *testing.T) {
+	f := prioBoard()
+	boom := errors.New("boom")
+	f.err = boom
+	if _, err := prioComplete(f); !errors.Is(err, boom) {
+		t.Errorf("Complete with a failing PrioInputs = %v; want the error, not weight 0", err)
+	}
+}
+
+// A repo without items has nothing to order: Complete reads no weights.
+func TestCompleteWithoutItemsReadsNoPrioInputs(t *testing.T) {
+	f := prioBoard()
+	for i := range f.board {
+		f.board[i].Status = "Done"
+	}
+	if _, err := prioComplete(f); err != nil {
+		t.Fatalf("gather: %v", err)
+	}
+	if f.calls != 0 {
+		t.Errorf("PrioInputs calls without items = %d, want 0", f.calls)
+	}
+}
+
+func TestWeights(t *testing.T) {
+	in := forge.PrioInputs{
+		Issues:     map[int]int{1: 10, 2: 20, 3: 0},
+		Milestones: []forge.Milestone{{Number: 10, Description: "Priority: 1"}, {Number: 20, Description: "Priority: 2"}, {Number: 30}},
+	}
+	got := Weights(in, map[int][]int{1: {2}, 2: {9}})
+	// #2: 1 + #1's 2; #9 is not an open issue and counts for nothing.
+	if want := map[int]int{1: 2, 2: 3, 3: 0}; !reflect.DeepEqual(got, want) {
+		t.Errorf("Weights = %v, want %v", got, want)
+	}
+}
+
+// The weight is derived from what the fingerprint already holds plus the milestones; it must not
+// make a quiet tick look changed.
+func TestFingerprintIgnoresPrioWeight(t *testing.T) {
+	a := Pre{Items: []Item{{Issue: 1, Status: "Controller"}}}
+	b := Pre{Items: []Item{{Issue: 1, Status: "Controller", PrioWeight: 7}}}
+	if Fingerprint(a) != Fingerprint(b) {
+		t.Error("PrioWeight changed the fingerprint")
+	}
+}

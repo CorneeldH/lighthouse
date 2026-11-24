@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prioritering: zes statussen — mockup</title>
+<style>body{font-family:system-ui,sans-serif;background:#f4f5f8;color:#14213d;max-width:1100px;margin:24px auto;padding:0 16px}.subtitle{color:#6b7280}</style>
+</head>
+<body>
+<style>
+  .mk { background:#fff; color:#14213d; font:13px system-ui, sans-serif; padding:14px; border-radius:8px; }
+  .mk h4 { margin:10px 0 4px; font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; color:#6b7280; }
+  .lg { display:flex; flex-wrap:wrap; gap:4px 14px; align-items:center; font-size:12px; }
+  .lg span { display:inline-flex; align-items:center; gap:6px; }
+  .lgrow { display:grid; grid-template-columns:80px 1fr; align-items:center; gap:8px; margin:3px 0; }
+  .lgrow > b { font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; color:#6b7280; font-weight:600; }
+  .sw { width:12px; height:12px; border-radius:2px; display:inline-block; }
+  .b { display:inline-flex; align-items:center; justify-content:center; border-radius:2px; box-sizing:border-box; font-size:9.5px; font-weight:700; }
+  .b i { font-style:normal; background:#f4f5f8; color:#14213d; border-radius:2px; padding:0 2px; }
+  .sm { width:14px; height:14px; flex:none; }
+  .todo { background:#ececec; }
+  .blocked { background:#ececec url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10' preserveAspectRatio='none'%3E%3Cpath d='M0 0L10 10M10 0L0 10' stroke='%236b7280' stroke-width='1.5' vector-effect='non-scaling-stroke' fill='none'/%3E%3C/svg%3E") center/100% 100% no-repeat; }
+  .shaping { background:#fff; outline:1.5px dashed #14213d; outline-offset:-1.5px; }
+  .active { background: repeating-linear-gradient(135deg, var(--c) 0 4px, transparent 4px 8px); }
+  .done { background: var(--c); }
+  .nh { background: repeating-linear-gradient(135deg, var(--c) 0 4px, transparent 4px 8px); box-shadow: inset 0 0 0 2px #14213d; }
+  .nh i, .shaping i, b.u { text-decoration: underline; text-decoration-thickness:2px; text-underline-offset:2px; }
+  .bar { display:flex; gap:2px; height:18px; align-items:center; }
+  .bar .b { flex:1; height:100%; }
+  .barshape { outline:1.5px dashed #14213d; outline-offset:3px; border-radius:2px; }
+  .ms { display:grid; grid-template-columns: 190px 1fr 70px; gap:12px; align-items:center; border:1px solid #e5e7eb; border-radius:8px; padding:10px 12px; margin:6px 0; font-size:12px; font-weight:600; }
+  .ms small { display:block; font-weight:400; color:#6b7280; font-size:10.5px; }
+  .pct { text-align:right; font-size:18px; font-weight:700; }
+  .pct small { font-size:10px; }
+  .list { margin-top:6px; font-weight:400; font-size:11.5px; color:#374151; display:flex; flex-direction:column; gap:3px; }
+  .list div { display:flex; gap:6px; align-items:center; }
+  .list .note { color:#9ca3af; margin-left:auto; }
+  .sugg { border:1px solid #e5e7eb; background:#f9fafb; border-radius:6px; padding:6px 8px; color:#6b7280; font-weight:400; font-size:11px; margin-top:6px; }
+  .tabs { display:inline-flex; border:1px solid #14213d; border-radius:6px; overflow:hidden; font-size:12px; font-weight:600; margin-bottom:8px; }
+  .tabs span { padding:3px 10px; } .tabs .on { background:#14213d; color:#fff; }
+  .kb { display:grid; grid-template-columns: repeat(6, minmax(0,1fr)); gap:8px; }
+  .col { background:#f4f5f8; border-radius:8px; padding:6px; min-height:150px; }
+  .col > header { display:flex; align-items:center; gap:6px; font-size:11px; font-weight:700; margin:2px 2px 6px; }
+  .col > header span { color:#6b7280; font-weight:600; margin-left:auto; }
+  .kc { background:#fff; border:1px solid #e5e7eb; border-radius:6px; display:flex; overflow:hidden; margin-bottom:5px; font-size:11px; }
+  .kc .strip { width:5px; background:var(--c); flex:none; }
+  .kc .in { padding:4px 6px; min-width:0; }
+  .kc .in b { font-size:12px; }
+  .kc .in div { color:#6b7280; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .tag { display:inline-block; font-size:9.5px; font-weight:600; border-radius:999px; padding:0 5px; margin-left:4px; background:#e5e7eb; color:#374151; }
+  .tag.ctl { background:#14213d; color:#fff; }
+  .filter { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px; font-size:11px; }
+  .filter span { border:1px solid #d1d5db; border-radius:999px; padding:1px 8px; display:inline-flex; gap:5px; align-items:center; }
+  .filter span.on { border-color:#14213d; }
+  .more { color:#6b7280; font-size:10.5px; text-align:center; }
+</style>
+
+<h2>Het geheel: vormen, Milestones en Status</h2>
+<p class="subtitle">Regel: <b>onderstreept nummer = een mens moet iets doen</b>, bij needs shaping én needs human. Tabbladen worden: Dependencies · Milestones · Status. <i>Without milestone</i> gaat als laatste blok in Milestones.</p>
+
+<div class="section">
+<h3>1. Legenda (op elk tabblad)</h3>
+<div class="mk">
+  <div class="lgrow"><b>Milestones</b><div class="lg"><span><i class="sw" style="background:#7c3aed"></i>Statusmodel</span><span><i class="sw" style="background:#a78bfa"></i>Telemetrie</span><span><i class="sw" style="background:#e8804a"></i>Explore/exploit</span><span><i class="sw" style="background:#6b7280"></i>Without milestone</span></div></div>
+  <div class="lgrow"><b>Status</b><div class="lg" style="--c:#6b7280">
+    <span><i class="b sm blocked"></i>blocked</span><span><i class="b sm shaping"></i><u>needs shaping</u></span><span><i class="b sm todo"></i>to do</span>
+    <span><i class="b sm active"></i>active</span><span><i class="b sm nh"></i><u>needs human</u></span><span><i class="b sm done"></i>done</span></div></div>
+</div>
+</div>
+
+<div class="section">
+<h3>2. Milestones, met onderaan Without milestone</h3>
+<div class="mk">
+  <div class="tabs"><span>Dependencies 38</span><span class="on">Milestones 13</span><span>Status 51</span></div>
+  <div class="ms"><div>Statusmodel<small>7 done · 1 active · 2 not yet</small></div>
+    <div class="bar" style="--c:#7c3aed"><i class="b done"><i>433</i></i><i class="b done"><i>434</i></i><i class="b done"><i>436</i></i><i class="b done"><i>437</i></i><i class="b done"><i>438</i></i><i class="b done"><i>446</i></i><i class="b done"><i>517</i></i><i class="b nh"><i>540</i></i><i class="b active"><i>509</i></i><i class="b blocked"><i>445</i></i></div>
+    <div class="pct">70%<small style="display:block;color:#6b7280;font-weight:400">3 to do</small></div></div>
+  <div class="ms"><div>Telemetrie<small>1 done · 0 active · 4 not yet</small></div>
+    <div class="bar barshape" style="--c:#a78bfa"><i class="b done"><i>373</i></i><i class="b nh"><i>380</i></i><i class="b shaping"><i>375</i></i><i class="b shaping"><i>378</i></i><i class="b shaping"><i>379</i></i></div>
+    <div class="pct" style="color:#9ca3af">20%<small style="display:block;color:#6b7280;font-weight:400">provisional</small></div></div>
+  <div class="ms"><div>Without milestone<small>13 open issues</small></div>
+    <div>
+      <div class="bar" style="--c:#6b7280"><i class="b active"><i>439</i></i><i class="b shaping"><i>501</i></i><i class="b todo"><i>540</i></i><i class="b todo"><i>527</i></i><i class="b shaping"><i>397</i></i><i class="b todo"><i>495</i></i><i class="b todo"><i>158</i></i></div>
+      <div class="list">
+        <div><i class="b sm shaping"></i><b class="u">501</b> Geplande job direction<span class="note">Systeemoverzicht · closed</span></div>
+        <div><i class="b sm todo"></i><b>495</b> Test-gate instelbaar per commit, per PR of allebei</div>
+        <div class="more">+ 11 more ▾</div>
+      </div>
+      <div class="sugg">Later (#439): voorgestelde milestones en groepen komen hier, met reden.</div>
+    </div>
+    <div class="pct" style="color:#9ca3af">–</div></div>
+</div>
+</div>
+
+<div class="section">
+<h3>3. Status: kanban, kolommen in de volgorde van de legenda</h3>
+<div class="mk">
+  <div class="tabs"><span>Dependencies 38</span><span>Milestones 13</span><span class="on">Status 51</span></div>
+  <div class="filter"><span class="on"><i class="sw" style="background:#7c3aed"></i>Statusmodel</span><span class="on"><i class="sw" style="background:#a78bfa"></i>Telemetrie</span><span><i class="sw" style="background:#e8804a"></i>Explore/exploit</span><span class="on"><i class="sw" style="background:#6b7280"></i>Without milestone</span></div>
+  <div class="kb">
+    <div class="col"><header><i class="b sm blocked"></i>blocked<span>3</span></header>
+      <div class="kc" style="--c:#7c3aed"><span class="strip"></span><div class="in"><b>445</b><div>Afhankelijkheden sorteren…</div></div></div>
+      <div class="kc" style="--c:#a78bfa"><span class="strip"></span><div class="in"><b>386</b><div>Architectuurscan per…</div></div></div>
+    </div>
+    <div class="col"><header><i class="b sm shaping"></i>needs shaping<span>9</span></header>
+      <div class="kc" style="--c:#a78bfa"><span class="strip"></span><div class="in"><b class="u">375</b><div>Inzet, lane, kosten…</div></div></div>
+      <div class="kc" style="--c:#a78bfa"><span class="strip"></span><div class="in"><b class="u">379</b><div>Telemetrie in de UI…</div></div></div>
+      <div class="kc" style="--c:#6b7280"><span class="strip"></span><div class="in"><b class="u">501</b><div>Geplande job direction</div></div></div>
+    </div>
+    <div class="col"><header><i class="b sm todo"></i>to do<span>12</span></header>
+      <div class="kc" style="--c:#7c3aed"><span class="strip"></span><div class="in"><b>495</b><div>Test-gate instelbaar…</div></div></div>
+      <div class="kc" style="--c:#6b7280"><span class="strip"></span><div class="in"><b>158</b><div>Usage-guard per worktree</div></div></div>
+    </div>
+    <div class="col"><header><i class="b sm active" style="--c:#6b7280"></i>active<span>2</span></header>
+      <div class="kc" style="--c:#7c3aed"><span class="strip"></span><div class="in"><b>509</b><span class="tag ctl">controller</span><div>Tick en triage starten…</div></div></div>
+      <div class="kc" style="--c:#6b7280"><span class="strip"></span><div class="in"><b>439</b><span class="tag">interactive</span><div>Modelsuggesties bij…</div></div></div>
+    </div>
+    <div class="col"><header><i class="b sm nh" style="--c:#6b7280"></i>needs human<span>2</span></header>
+      <div class="kc" style="--c:#7c3aed"><span class="strip"></span><div class="in"><b class="u">540</b><div>Live-verificatie van de…</div></div></div>
+      <div class="kc" style="--c:#a78bfa"><span class="strip"></span><div class="in"><b class="u">380</b><div>Versiewissel als mar…</div></div></div>
+    </div>
+    <div class="col"><header><i class="b sm done" style="--c:#6b7280"></i>done<span>8</span></header>
+      <div class="kc" style="--c:#7c3aed"><span class="strip"></span><div class="in"><b>517</b><div>route-issue volgt…</div></div></div>
+      <div class="kc" style="--c:#7c3aed"><span class="strip"></span><div class="in"><b>446</b><div>Milestones sorteren…</div></div></div>
+      <div class="more">+ 6 more ▾</div>
+    </div>
+  </div>
+  <p style="font-size:11px;color:#6b7280;margin:8px 0 0">Per kolom op prio-gewicht (#509). Done: alleen gesloten issues van open milestones, ingeklapt na 5.</p>
+</div>
+</div>
+
+</body>
+</html>

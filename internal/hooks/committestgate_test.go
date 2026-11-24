@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/CorneeldH/lighthouse/internal/hook"
@@ -126,5 +127,48 @@ func TestPreReadsTheConfigOfItsRoot(t *testing.T) {
 		"commit-test-gate: " + repo + " — root=none"
 	if res.Code != 0 || res.Stderr != "" || got != want || spec["hookEventName"] != "PreToolUse" {
 		t.Fatalf("got %d %q\n%s\nwant context:\n%s", res.Code, res.Stderr, got, want)
+	}
+}
+
+// With on = "pr" the hook runs the gate before a `gh pr create`, on the branch above
+// origin/<default branch>; the test command sees the branch diff.
+func TestCommitTestGatePreRunsAtPRCreate(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("no bash")
+	}
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "lighthouse.toml"), gateMinimalTOML+
+		"\n[test_gate]\non = \"pr\"\ncommand = 'echo \"ran-at-pr files=$(cat \"$LIGHTHOUSE_GATE_FILES\")\"'\nslot_wait_seconds = 0\n")
+	repo := realDir(t, t.TempDir())
+	origin := filepath.Join(t.TempDir(), "origin.git")
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", repo, "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false"}, args...)...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	git("init", "-q", "-b", "main")
+	git("commit", "-q", "--allow-empty", "-m", "a")
+	git("init", "-q", "--bare", origin)
+	git("remote", "add", "origin", origin)
+	git("push", "-q", "origin", "main")
+	git("fetch", "-q", "origin")
+	git("checkout", "-q", "-b", "issue-1-x")
+	writeFile(t, filepath.Join(repo, "feature.txt"), "x\n")
+	git("add", "feature.txt")
+	git("commit", "-q", "-m", "feature")
+	t.Setenv("LIGHTHOUSE_REPO_ROOT", "")
+	t.Setenv("LIGHTHOUSE_TOML", "")
+	t.Setenv("LIGHTHOUSE_HOST_TOML", filepath.Join(root, "absent.toml"))
+	t.Setenv("LIGHTHOUSE_GATE_SLOT_DIR", filepath.Join(root, "slots"))
+	t.Setenv("CLAUDE_PROJECT_DIR", repo)
+
+	raw := `{"session_id":"s1","cwd":"` + repo + `","tool_input":{"command":"gh pr create --title x"}}`
+	res := CommitTestGate(t.Context(), root, "pre", hook.Payload{Raw: []byte(raw)})
+	spec, _ := res.Output["hookSpecificOutput"].(map[string]any)
+	got, _ := spec["additionalContext"].(string)
+	if res.Code != 0 || !strings.Contains(got, "ran-at-pr files=feature.txt") {
+		t.Fatalf("got %d %q\n%s", res.Code, res.Stderr, got)
 	}
 }

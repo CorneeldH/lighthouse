@@ -1,4 +1,5 @@
 import type { Repo } from '@/api/lighthouse'
+import type { DepsOrder } from './layout'
 import type { Graph, MilestoneRow } from '@/lib/priorities/derive'
 
 // Shared by DepsView, MilestonesView and UnassignedView.
@@ -11,6 +12,8 @@ export interface ViewProps {
   // MilestonesView only: the order of the rows, and in 'priority' the up/down buttons.
   order?: 'computed' | 'priority'
   onMove?: (row: MilestoneRow, dir: 'up' | 'down') => void
+  // DepsView only: how the nodes of a column are ordered.
+  depsOrder?: DepsOrder
   // Repos with a rank write in flight: their buttons are off.
   pendingRepos?: Set<string>
 }

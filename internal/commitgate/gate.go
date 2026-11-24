@@ -33,7 +33,7 @@ type Row struct{ Root, Base, Head string }
 // Gate is one run of the gate: the configuration, the slot, the memory check, the brake, then
 // the test command per root.
 type Gate struct {
-	// Mode is "pre" or "post".
+	// Mode is "pre", "post", or "pr" (the gate before a PR create, set by Pr).
 	Mode string
 	// Root is the repository root of the configuration.
 	Root string
@@ -171,6 +171,24 @@ func (g *Gate) readInt(key string, into *int) *Result {
 	}
 	*into = n
 	return nil
+}
+
+// readOn is test_gate.on: when the gate runs, "commit", "pr" or "both". Not set is "commit"; any
+// other value is a block.
+func (g *Gate) readOn() (on string, block *Result) {
+	value, set, block := g.readConfig("test_gate.on")
+	if block != nil {
+		return "", block
+	}
+	if !set {
+		return "commit", nil
+	}
+	switch value {
+	case "commit", "pr", "both":
+		return value, nil
+	}
+	res := g.Block("test_gate.on = \"" + value + "\"; it must be commit, pr or both.")
+	return "", &res
 }
 
 // readGiB is readConfig for a memory threshold.
@@ -325,7 +343,7 @@ func (g *Gate) takeSlot(s *settings) (*os.File, *Result) {
 		b.WriteString("Other gates are running already. Not being able to test is not a green light.\n")
 		g.postUntested(&b)
 	} else {
-		b.WriteString("Other gates are running already. Try the commit again shortly.\n")
+		b.WriteString("Other gates are running already. Try the " + g.again() + " again shortly.\n")
 		b.WriteString("Not being able to test is not a green light.\n")
 	}
 	res := couldNotCheck(&b)
@@ -361,7 +379,7 @@ func (g *Gate) checkMemory(s *settings, dl time.Time) *Result {
 			b.WriteString("The host has too little free memory for a gate run. Not being able to test is not a green light.\n")
 			g.postUntested(&b)
 		} else {
-			b.WriteString("The host has too little free memory for a gate run. Try the commit again shortly.\n")
+			b.WriteString("The host has too little free memory for a gate run. Try the " + g.again() + " again shortly.\n")
 			b.WriteString("Not being able to test is not a green light.\n")
 		}
 	default:
@@ -381,8 +399,11 @@ func (g *Gate) checkMemory(s *settings, dl time.Time) *Result {
 func (g *Gate) RunRoots(rows []Row, event string) Result {
 	g.rows = rows
 	failLine := HookName + ": tests failed. Fix the failing tests before committing."
-	if g.Mode == "post" {
+	switch g.Mode {
+	case "post":
 		failLine = HookName + ": tests failed on the commit you just made. Fix them in a new commit."
+	case "pr":
+		failLine = HookName + ": tests failed on this branch. Fix them before creating the PR."
 	}
 	// Not inherited from an outer gate run: without a row of its own the command tests everything.
 	env := withoutKeys(g.Env, "LIGHTHOUSE_GATE_BASE", "LIGHTHOUSE_GATE_HEAD", "LIGHTHOUSE_GATE_FILES")
@@ -593,9 +614,32 @@ func (g *Gate) verdict(status int, output, root string, s *settings, brake Brake
 		head("the test command stopped with exit code " + strconv.Itoa(status) + ", listed in test_gate.unchecked_exit_codes: nothing was tested.")
 		return tail(notTested, s.hint)
 	}
+	if g.Mode == "pr" {
+		failLine += "\nFirst error: " + firstError(output)
+	}
 	b.WriteString(failLine + "\n" + s.hint + "\n\n" + output + "\n")
 	res := block(reasonTestsRed, &b)
 	return &res
+}
+
+var errorLine = regexp.MustCompile(`(?i)fail|error|panic`)
+
+// firstError is the first line of output with fail, error or panic in it, else the first line that
+// is not blank: the line a PR block puts above the whole output.
+func firstError(output string) string {
+	first := ""
+	for _, line := range strings.Split(output, "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		if errorLine.MatchString(line) {
+			return line
+		}
+		if first == "" {
+			first = line
+		}
+	}
+	return first
 }
 
 // signalNumber: a SIGKILL on a child of bash gives 137, one reported as a negative exit (Python's

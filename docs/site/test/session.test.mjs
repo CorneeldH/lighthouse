@@ -9,6 +9,8 @@ import { REPO_BLOB, ROOT, load } from "./helpers.mjs";
 
 // The column of the session map (docs/site/data/session.json) that each hook event belongs in.
 const EVENT_PHASE = {
+  // A session starts before the first prompt, so level-check sits in the first column.
+  SessionStart: "prompt",
   UserPromptSubmit: "prompt",
   PreToolUse: "pre-tool",
   // A permission prompt comes before the tool runs.

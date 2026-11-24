@@ -3,6 +3,7 @@ package dispatch
 import (
 	"context"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
@@ -250,5 +251,50 @@ func TestPushRowBoundaryAtTimeout(t *testing.T) {
 	push.PushedSHA = "3f2a1bc"
 	if got := Boundaries(d, []runs.OpenRun{push}, nil, nil, now); len(got) != 1 || !got[0].Equal(started.Add(30*time.Minute)) {
 		t.Errorf("a pushed push row wakes the tick at its push timeout only, got boundaries %v", got)
+	}
+}
+
+// The idle counts survive a save and a load per repo, an empty map clears them, and the other
+// tick state rows stay: they share kind fingerprint under their own key.
+func TestSaveLoadIdleRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.OpenShared(ctx, filepath.Join(t.TempDir(), "l.db"))
+	if err != nil {
+		t.Fatalf("OpenShared: %v", err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	now := time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC)
+
+	if got, err := LoadIdle(ctx, st.DB, "o/r"); err != nil || len(got) != 0 {
+		t.Fatalf("empty LoadIdle = %v, %v; want empty", got, err)
+	}
+	if err := SaveTickState(ctx, st.DB, "o/r", TickState{Fingerprint: "abc", FullAt: now}, now); err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveIdle(ctx, st.DB, "o/r", map[int]int{7: 2, 9: 1}, now); err != nil {
+		t.Fatalf("SaveIdle: %v", err)
+	}
+	if err := SaveIdle(ctx, st.DB, "o/other", map[int]int{7: 1}, now); err != nil {
+		t.Fatal(err)
+	}
+	got, err := LoadIdle(ctx, st.DB, "o/r")
+	if err != nil {
+		t.Fatalf("LoadIdle: %v", err)
+	}
+	if want := map[int]int{7: 2, 9: 1}; !reflect.DeepEqual(got, want) {
+		t.Errorf("LoadIdle = %v, want %v", got, want)
+	}
+	if s, err := LoadTickState(ctx, st.DB, "o/r"); err != nil || s.Fingerprint != "abc" {
+		t.Errorf("tick state after SaveIdle = %+v, %v; want fingerprint abc", s, err)
+	}
+
+	if err := SaveIdle(ctx, st.DB, "o/r", map[int]int{}, now); err != nil {
+		t.Fatalf("SaveIdle empty: %v", err)
+	}
+	if got, err := LoadIdle(ctx, st.DB, "o/r"); err != nil || len(got) != 0 {
+		t.Errorf("LoadIdle after clearing = %v, %v; want empty", got, err)
+	}
+	if got, _ := LoadIdle(ctx, st.DB, "o/other"); !reflect.DeepEqual(got, map[int]int{7: 1}) {
+		t.Errorf("LoadIdle o/other = %v, want map[7:1]", got)
 	}
 }

@@ -40,7 +40,8 @@ func payloadField(raw []byte, key string) string {
 // Post tests what the commits of this Bash call touched: per root that pre recorded and whose
 // HEAD moved, it runs the command with LIGHTHOUSE_GATE_BASE, _HEAD and _FILES. Without such a root
 // (nothing recorded, or nothing committed) it is silent, before configuration, slot or brake.
-// MovedRoots reads and removes the record, so a repeated post tests nothing.
+// MovedRoots reads and removes the record, so a repeated post tests nothing. With the on setting
+// at "pr" pre records nothing, so post has nothing to test: the PR create is Pre's moment.
 func Post(_ context.Context, g *Gate, raw []byte) Result {
 	command, _, ok := ReadPayload(raw)
 	if !ok {
@@ -60,6 +61,14 @@ func Post(_ context.Context, g *Gate, raw []byte) Result {
 		return g.Block("could not read the recorded HEAD: " + err.Error())
 	}
 	if len(moved) == 0 {
+		return Result{}
+	}
+	// Only now, with a commit to test: without one Post reads no configuration.
+	on, blk := g.readOn()
+	if blk != nil {
+		return *blk
+	}
+	if on == "pr" {
 		return Result{}
 	}
 	rows := make([]Row, 0, len(moved))

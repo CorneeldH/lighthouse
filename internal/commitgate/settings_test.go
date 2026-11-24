@@ -3,6 +3,7 @@ package commitgate
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -91,4 +92,35 @@ func TestSlotFailureShowsTheNotesGatheredBeforeIt(t *testing.T) {
 		"\n"+
 		"Without a slot this run would go unchecked beside the other gates.\n"+
 		"Not being able to test is not a green light.\n")
+}
+
+func TestReadOnDefaultsToCommit(t *testing.T) {
+	h := newHarness(t, "pre", testGate, "")
+	on, block := h.g.readOn()
+	if block != nil || on != "commit" {
+		t.Fatalf("readOn() = %q, %v; want commit and no block", on, block)
+	}
+}
+
+func TestReadOnValues(t *testing.T) {
+	for _, want := range []string{"commit", "pr", "both"} {
+		t.Run(want, func(t *testing.T) {
+			h := newHarness(t, "pre", testGate+"on = \""+want+"\"\n", "")
+			on, block := h.g.readOn()
+			if block != nil || on != want {
+				t.Fatalf("readOn() = %q, %v; want %q and no block", on, block, want)
+			}
+		})
+	}
+}
+
+func TestReadOnRejectsUnknown(t *testing.T) {
+	h := newHarness(t, "pre", testGate+"on = \"always\"\n", "")
+	_, block := h.g.readOn()
+	if block == nil || block.Code != 2 {
+		t.Fatalf("readOn() block = %v, want code 2", block)
+	}
+	if want := "test_gate.on = \"always\"; it must be commit, pr or both."; !strings.Contains(block.Stderr, want) {
+		t.Fatalf("stderr = %q, want it to contain %q", block.Stderr, want)
+	}
 }

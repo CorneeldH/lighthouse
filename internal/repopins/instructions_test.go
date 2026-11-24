@@ -56,16 +56,16 @@ func TestClaudeMDImportsAgentsMD(t *testing.T) {
 // the escape hatch, so an agent no longer learns how the gates work.
 func TestAgentsMDNamesTheGuardsAndTheEscapeHatch(t *testing.T) {
 	requireTokens(t, read(t, "AGENTS.md"),
-		"main-commit-gate", "worktree-check", ".claude/allow-main", ".claude/worktrees/")
+		"main-commit-gate", "worktree-check", ".claude/allow-main", "worktree.root")
 }
 
-// A production change that fails this test: the core block grows past 182 words or drops a
+// A production change that fails this test: the core block grows past 186 words or drops a
 // rule every repo needs. It carries only the chain rules a hook, a fact the model cannot derive
 // or a proven mistake supports, the `heading:<key>` notation and the rule for the language of code.
 func TestCoreBlockWordBudget(t *testing.T) {
 	text := coreBlock(t)
-	if n := len(strings.Fields(text)); n > 182 {
-		t.Errorf("core block has %d words, budget is 182", n)
+	if n := len(strings.Fields(text)); n > 186 {
+		t.Errorf("core block has %d words, budget is 186", n)
 	}
 	requireTokens(t, text,
 		"main-commit-gate", "worktree", "squash", "[project] language",

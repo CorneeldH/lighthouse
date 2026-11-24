@@ -60,6 +60,14 @@
         "when": "around every shell command"
       },
       {
+        "name": "no-verify-check",
+        "source": "internal/hooks/noverifycheck.go",
+        "events": [
+          "PreToolUse"
+        ],
+        "when": "before every shell command"
+      },
+      {
         "name": "pr-create-gate",
         "source": "internal/hooks/prcreategate.go",
         "events": [
@@ -109,6 +117,14 @@
           "UserPromptSubmit"
         ],
         "when": "at every prompt, tool call, subagent stop and session stop"
+      },
+      {
+        "name": "level-check",
+        "source": "internal/hooks/levelcheck.go",
+        "events": [
+          "SessionStart"
+        ],
+        "when": "when a session starts"
       },
       {
         "name": "permission-check",

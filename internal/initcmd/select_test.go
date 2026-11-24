@@ -5,11 +5,13 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"testing/fstest"
 
 	"github.com/CorneeldH/lighthouse/internal/deps"
+	"github.com/CorneeldH/lighthouse/internal/levels"
 	"github.com/CorneeldH/lighthouse/internal/manifest"
 	"github.com/CorneeldH/lighthouse/internal/packs"
 )
@@ -364,5 +366,116 @@ func TestDetectIgnoresInstalledFiles(t *testing.T) {
 	r = run(t, root, "", all(upgrade, realPacks))
 	if r.code != 0 || r.out != "No changes.\n" || strings.Contains(r.err, "package shell fits") {
 		t.Fatalf("upgrade: rc %d out %q err %q", r.code, r.out, r.err)
+	}
+}
+
+// realRequires loads the real packs and returns the merged requirements of the named
+// packs, with the stand of level resolved from the real core levels.toml.
+func realRequires(t *testing.T, level string, names ...string) ([]packs.Requirement, levels.Resolved) {
+	t.Helper()
+	all, err := loadAll(os.DirFS("../../pack"), "dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var reqs []packs.Requirement
+	files := []levels.File{all["core"].Levels}
+	for _, n := range names {
+		reqs = append(reqs, all[n].Requires...)
+		files = append(files, all[n].Levels)
+	}
+	r, err := levels.Resolve(files, level, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return reqs, r
+}
+
+func neededTools(reqs []packs.Requirement) map[string][]string {
+	out := map[string][]string{}
+	for _, r := range reqs {
+		out[r.Tool] = r.NeededBy
+	}
+	return out
+}
+
+// Red if levelRequires is not applied in Init before the dependency check: codex is then
+// reported on light although review-spec and review-plan are off.
+func TestLightDoesNotReportMissingCodex(t *testing.T) {
+	root := newRepo(t)
+	res := run(t, root, "", func(o *Options) {
+		o.Yes = true
+		o.Level = "light"
+		o.Packs = levelPacks()
+		m := o.Packs.(fstest.MapFS)
+		m["core/levels.toml"] = file("order = [\"light\", \"standard\", \"strict\"]\nbase = [\"run.sh\"]\n\n[light.components]\n\"skill:fix-pr\" = \"off\"\n\n[standard.components]\n\n[strict.components]\n")
+		m["core/requires.toml"] = file("codex = [\"fix-pr\"]\n")
+		o.Deps = deps.Checker{LookPath: func(string) (string, error) { return "", errors.New("absent") }, Run: func(string, ...string) error { return errors.New("absent") }}
+	})
+	if strings.Contains(res.err, "missing dependency: codex") {
+		t.Fatalf("codex of an off skill is reported:\n%s", res.err)
+	}
+}
+
+// Red if levelRequires drops a requirement of a component that is on: strict must keep
+// reporting codex.
+func TestStrictStillReportsCodex(t *testing.T) {
+	root := newRepo(t)
+	res := run(t, root, "", func(o *Options) {
+		o.Yes = true
+		o.Level = "strict"
+		o.Packs = levelPacks()
+		m := o.Packs.(fstest.MapFS)
+		m["core/levels.toml"] = file("order = [\"light\", \"standard\", \"strict\"]\nbase = [\"run.sh\"]\n\n[light.components]\n\"skill:fix-pr\" = \"off\"\n\n[standard.components]\n\n[strict.components]\n")
+		m["core/requires.toml"] = file("codex = [\"fix-pr\"]\n")
+		o.Deps = deps.Checker{LookPath: func(string) (string, error) { return "", errors.New("absent") }, Run: func(string, ...string) error { return errors.New("absent") }}
+	})
+	if !strings.Contains(res.err, "missing dependency: codex") {
+		t.Fatalf("codex of an on skill is not reported:\n%s", res.err)
+	}
+}
+
+// Red if levelRequires keeps a NeededBy entry whose component is off, or keeps a
+// requirement left without NeededBy.
+func TestRequirementKeepsOnlyOnNames(t *testing.T) {
+	r, err := levels.Resolve([]levels.File{{
+		Levels: map[string]levels.Table{"x": {Components: map[string]levels.Stand{
+			"ty-gate": levels.StandOff, "skill:review-spec": levels.StandOff, "md-link-check": levels.StandLog,
+		}}},
+	}}, "x", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := levelRequires([]packs.Requirement{
+		{Tool: "jq", NeededBy: []string{"ty-gate", "ruff-format-check", "md-link-check"}},
+		{Tool: "codex", NeededBy: []string{"review-spec"}},
+		{Tool: "gh", NeededBy: []string{"fix-pr"}, Forge: "github"},
+	}, r)
+	want := []packs.Requirement{
+		{Tool: "jq", NeededBy: []string{"ruff-format-check", "md-link-check"}},
+		{Tool: "gh", NeededBy: []string{"fix-pr"}, Forge: "github"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %+v, want %+v", got, want)
+	}
+}
+
+// Red if levelRequires compares the whole NeededBy text instead of its first word: the
+// decorated names of the real shell and python packs must be filtered on light.
+func TestDecoratedNeededByUsesFirstWord(t *testing.T) {
+	reqs, r := realRequires(t, "light", "shell", "python")
+	got := neededTools(levelRequires(reqs, r))
+	for _, tool := range []string{"curl", "tar", "xz"} {
+		if _, ok := got[tool]; ok {
+			t.Errorf("%s still required on light: %v", tool, got[tool])
+		}
+	}
+	for _, name := range got["uv"] {
+		if strings.HasPrefix(name, "commit-test-gate") {
+			t.Errorf("uv still needed by %q on light", name)
+		}
+	}
+	reqs, r = realRequires(t, "strict", "shell")
+	if _, ok := neededTools(levelRequires(reqs, r))["curl"]; !ok {
+		t.Error("curl must stay required on strict")
 	}
 }

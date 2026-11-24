@@ -75,7 +75,7 @@ func TestPlacesGolden(t *testing.T) {
 	sort.Strings(names)
 
 	root := newRepo(t)
-	r := run(t, root, "", all(yes, func(o *Options) {
+	r := run(t, root, "", all(yes, strict, func(o *Options) {
 		o.Packs = nil
 		o.AddPacks = names
 		o.Lookup = func(string) (string, bool, error) { return "x", true, nil }

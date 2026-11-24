@@ -81,6 +81,10 @@
    "str"
   ],
   [
+   "test_gate.on",
+   "str"
+  ],
+  [
    "test_gate.deadline_seconds",
    "int"
   ],
@@ -143,6 +147,10 @@
   [
    "worktree_audit.protected_paths",
    "list[str]"
+  ],
+  [
+   "worktree.root",
+   "str"
   ],
   [
    "project.instructions_word_ceiling",
@@ -247,6 +255,10 @@
   [
    "imports.check",
    "bool"
+  ],
+  [
+   "pr_gate.issue",
+   "str"
   ]
  ],
  "defaults": {
@@ -262,6 +274,7 @@
   "labels.needs_decision": "needs-decision",
   "labels.needs_hands": "needs-hands",
   "labels.needs_testing": "needs-testing",
+  "test_gate.on": "commit",
   "test_gate.deadline_seconds": 270,
   "test_gate.slots": 2,
   "test_gate.slot_wait_seconds": 180,
@@ -275,6 +288,7 @@
   "codex_usage.review_pct_week": 95,
   "worktree_audit.protected_refs": [],
   "worktree_audit.protected_paths": [],
+  "worktree.root": ".claude/worktrees",
   "project.instructions_word_ceiling": 3000,
   "python.source_dirs": [
    "src"
@@ -296,7 +310,8 @@
   "agent_audit.ignore": [],
   "agent_audit.top": 10,
   "agent_audit.description_max_chars": 1024,
-  "imports.check": true
+  "imports.check": true,
+  "pr_gate.issue": "optional"
  },
  "base_keys": [
   "forge.kind",

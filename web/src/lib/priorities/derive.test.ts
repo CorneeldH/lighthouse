@@ -26,6 +26,8 @@ const iss = (
   label: '',
   open_question: false,
   needs_label: false,
+  prio_weight: 0,
+  factor: 0,
   blocked_by: by.length ? by.map(([repo, issue]) => ({ repo, issue })) : null,
   ...extra,
 })
@@ -39,6 +41,70 @@ const n = (g: ReturnType<typeof buildGraph>, key: string) => {
   if (!node) throw new Error(`missing ${key}`)
   return node
 }
+
+describe('buildGraph weight, factor and prioWeight', () => {
+  it('weight: A met vijf issues op 1 stap is 5, B met twee op 1 en twee op 2 stappen is 6', () => {
+    const a = [iss(2, [[R, 1]]), iss(3, [[R, 1]]), iss(4, [[R, 1]]), iss(5, [[R, 1]]), iss(6, [[R, 1]])]
+    const g = buildGraph([repo(R, [iss(1), ...a])], [])
+    expect(n(g, `${R}#1`).weight).toBe(5)
+
+    const h = buildGraph(
+      [
+        repo(R, [
+          iss(10),
+          iss(11, [[R, 10]]),
+          iss(12, [[R, 10]]),
+          iss(13, [[R, 11]]),
+          iss(14, [[R, 12]]),
+        ]),
+      ],
+      [],
+    )
+    expect(n(h, `${R}#10`).weight).toBe(6)
+  })
+
+  it('weight: A→B→C geeft A = 3 (B op 1, C op 2, ook als C ook direct op A wacht)', () => {
+    const g = buildGraph(
+      [repo(R, [iss(1), iss(2, [[R, 1]]), iss(3, [[R, 2], [R, 1]])])],
+      [],
+    )
+    expect(n(g, `${R}#1`).weight).toBe(3)
+    expect(n(g, `${R}#2`).weight).toBe(1)
+    expect(n(g, `${R}#3`).weight).toBe(0)
+  })
+
+  it('weight: een cyclus telt als één groep', () => {
+    const g = buildGraph(
+      [repo(R, [iss(1, [[R, 2]]), iss(2, [[R, 1]]), iss(3, [[R, 2]]), iss(4), ])],
+      [],
+    )
+    expect(n(g, `${R}#1`).weight).toBe(1)
+    expect(n(g, `${R}#2`).weight).toBe(1)
+
+    // P (4) wacht op cyclus X↔Y (1,2): beide leden tellen
+    const p = buildGraph(
+      [repo(R, [iss(1, [[R, 2]]), iss(2, [[R, 1]]), iss(4, [[R, 1]])])],
+      [],
+    )
+    expect(n(p, `${R}#1`).weight).toBe(1)
+    // blocker P=5 met cyclus erachter: P = 2
+    const q = buildGraph(
+      [repo(R, [iss(5), iss(1, [[R, 2], [R, 5]]), iss(2, [[R, 1]])])],
+      [],
+    )
+    expect(n(q, `${R}#5`).weight).toBe(2)
+  })
+
+  it('weight: een externe blokkerende knoop met twee wachtende issues op 1 stap heeft weight 2, factor 0 en prioWeight 0', () => {
+    const g = buildGraph([repo(R, [iss(1, [['z/q', 9]]), iss(2, [['z/q', 9]])])], [])
+    expect(n(g, 'z/q#9')).toMatchObject({ weight: 2, factor: 0, prioWeight: 0 })
+  })
+
+  it('factor en prioWeight komen uit issue.factor en issue.prio_weight zonder herberekening', () => {
+    const g = buildGraph([repo(R, [iss(1, [], { prio_weight: 10, factor: 3 }), iss(2, [[R, 1]])])], [])
+    expect(n(g, `${R}#1`)).toMatchObject({ prioWeight: 10, factor: 3 })
+  })
+})
 
 describe('buildGraph', () => {
   it('chain A->B->C has depth 0,1,2 and waiting 2,1,0', () => {
@@ -134,7 +200,7 @@ interface StateCase {
   run?: string
   blockers?: Array<{ issue: number; state: string }>
   open_question?: boolean
-  want: { state: string; needs_human?: boolean }
+  want: { state: string }
 }
 
 // Rank of the label keys, lowest first, as the API reports the one winning key.
@@ -163,21 +229,18 @@ describe('issueState follows the shared state fixture', () => {
       blocked_by: open.length > 0 ? open.map((b) => ({ repo: R, issue: b.issue })) : null,
     })
     const runs: Run[] = c.run ? [{ repo: R, issue: 1, state: c.run, phase: 'sdd' }] : []
-    expect(issueState(issue, runs, R)).toEqual({
-      state: c.want.state,
-      needsHuman: c.want.needs_human ?? false,
-    })
+    expect(issueState(issue, runs, R)).toBe(c.want.state)
   })
 })
 
 describe('issueState / isUphill', () => {
   const run = (state: string, phase: string): Run => ({ repo: R, issue: 1, state, phase })
   it('a done run does not make an issue active', () => {
-    expect(issueState(iss(1), [run('done', 'sdd')], R).state).toBe('ready')
+    expect(issueState(iss(1), [run('done', 'sdd')], R)).toBe('ready')
   })
   it('a run of another issue does not make an issue active', () => {
     const other: Run = { repo: R, issue: 2, state: 'open', phase: 'sdd' }
-    expect(issueState(iss(1), [other], R).state).toBe('ready')
+    expect(issueState(iss(1), [other], R)).toBe('ready')
   })
   it('unknown phase is downhill, spec-review is uphill', () => {
     expect(isUphill(undefined)).toBe(false)
@@ -274,6 +337,18 @@ describe('milestoneRows', () => {
     const [row] = milestoneRows(rs, buildGraph(rs, []))
     expect(row.shaping).toBe(true)
   })
+
+  it('sortMilestoneRows puts a shaped milestone above one marked shaping (same flag as the border)', () => {
+    const rs = [
+      repo(
+        R,
+        [iss(1, [], { milestone: ref(1) }), iss(2, [], { milestone: ref(2) })],
+        [m(1, 5, 1, 'Status: shaping'), m(2, 0, 1)],
+      ),
+    ]
+    const rows = milestoneRows(rs, buildGraph(rs, []))
+    expect(sortMilestoneRows(rows).map((r) => r.number)).toEqual([2, 1])
+  })
 })
 
 describe('milestoneRows blocks', () => {
@@ -296,26 +371,26 @@ describe('milestoneRows blocks', () => {
     return milestoneRows(rs, buildGraph(rs, []))[0]
   }
 
-  it('groups done, active, ready, needs_human, blocked in that order, by work order inside a group', () => {
+  it('groups done, needs_human, active, ready, needs_shaping, blocked in that order, by work order inside a group', () => {
     const row = mk([
       iss(1, [[R, 9]], { milestone: ref }),
-      iss(2, [], { milestone: ref, label: 'needs_decision' }),
+      iss(2, [], { milestone: ref, label: 'needs_shaping' }),
       iss(3, [], { milestone: ref }),
       iss(4, [], { milestone: ref, status: 'In progress', open_question: true }),
       iss(5, [[R, 3]], { milestone: ref }),
       iss(6, [], { milestone: ref, status: 'Controller' }),
       iss(9, [], { milestone: ref }),
     ])
-    expect(row.blocks.map((b) => [b.nr, b.state, b.needsHuman])).toEqual([
-      [20, 'done', false],
-      [30, 'done', false],
-      [4, 'active', true],
-      [6, 'active', false],
-      [3, 'ready', false],
-      [9, 'ready', false],
-      [2, 'needs_human', false],
-      [1, 'blocked', false],
-      [5, 'blocked', false],
+    expect(row.blocks.map((b) => [b.nr, b.state])).toEqual([
+      [20, 'done'],
+      [30, 'done'],
+      [4, 'needs_human'],
+      [6, 'active'],
+      [3, 'ready'],
+      [9, 'ready'],
+      [2, 'needs_shaping'],
+      [1, 'blocked'],
+      [5, 'blocked'],
     ])
     expect(row.blocks[0]).toEqual({
       nr: 20,
@@ -323,16 +398,15 @@ describe('milestoneRows blocks', () => {
       title: 'c20',
       url: 'u20',
       state: 'done',
-      needsHuman: false,
     })
   })
 
   it('orders a group by dependency depth before number', () => {
     const row = mk([
-      iss(1, [[R, 5]], { milestone: ref, label: 'needs_decision' }),
-      iss(5, [], { milestone: ref, label: 'needs_decision' }),
+      iss(1, [[R, 5]], { milestone: ref, label: 'needs_shaping' }),
+      iss(5, [], { milestone: ref, label: 'needs_shaping' }),
     ])
-    expect(row.blocks.filter((b) => b.state === 'needs_human').map((b) => b.nr)).toEqual([5, 1])
+    expect(row.blocks.filter((b) => b.state === 'needs_shaping').map((b) => b.nr)).toEqual([5, 1])
   })
 
   it('an outside blocker without issue data is in outside, not in blocks', () => {
@@ -348,19 +422,45 @@ describe('milestoneRows blocks', () => {
 })
 
 describe('sortMilestoneRows', () => {
-  const row = (number: number, open: number, done: number) =>
+  const row = (number: number, open: number, done: number, shaping: boolean, repo = R) =>
     ({
-      repo: R,
+      repo,
       number,
       open,
       done,
+      total: open + done,
+      shaping,
       empty: open === 0 && done === 0,
       percent: open + done === 0 ? 0 : done / (open + done),
     }) as Parameters<typeof sortMilestoneRows>[0][number]
 
-  it('fewest open first, ties by highest percent, empty last', () => {
-    const sorted = sortMilestoneRows([row(1, 0, 0), row(2, 3, 1), row(3, 1, 0), row(4, 1, 5), row(5, 3, 9)])
-    expect(sorted.map((r) => r.number)).toEqual([4, 3, 5, 2, 1])
+  it('one milestone per group, inserted in reverse, comes back as groups 1 to 4', () => {
+    const shaped = row(1, 1, 3, false)
+    const withDone = row(2, 2, 1, true)
+    const noneDone = row(3, 4, 0, true)
+    const empty = row(4, 0, 0, true)
+    const sorted = sortMilestoneRows([empty, noneDone, withDone, shaped])
+    expect(sorted.map((r) => r.number)).toEqual([1, 2, 3, 4])
+  })
+
+  it('group 1: highest percent first, equal percent fewest open first', () => {
+    const sorted = sortMilestoneRows([row(1, 4, 4, false), row(2, 2, 2, false), row(3, 1, 9, false), row(4, 5, 5, false)])
+    expect(sorted.map((r) => r.number)).toEqual([3, 2, 1, 4])
+  })
+
+  it('group 2: most finished first', () => {
+    const sorted = sortMilestoneRows([row(1, 9, 1, true), row(2, 0, 5, true), row(3, 1, 3, true)])
+    expect(sorted.map((r) => r.number)).toEqual([2, 3, 1])
+  })
+
+  it('group 3: most issues first', () => {
+    const sorted = sortMilestoneRows([row(1, 1, 0, true), row(2, 6, 0, true), row(3, 3, 0, true)])
+    expect(sorted.map((r) => r.number)).toEqual([2, 3, 1])
+  })
+
+  it('ties end on repo, then number', () => {
+    const sorted = sortMilestoneRows([row(2, 0, 0, true, 'b/x'), row(9, 0, 0, true, 'a/x'), row(1, 0, 0, true, 'b/x')])
+    expect(sorted.map((r) => `${r.repo}#${r.number}`)).toEqual(['a/x#9', 'b/x#1', 'b/x#2'])
   })
 })
 

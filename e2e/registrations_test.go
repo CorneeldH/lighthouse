@@ -1,6 +1,6 @@
 //go:build e2e
 
-// Black-box tests of the hook registrations `lighthouse init --yes` writes to
+// Black-box tests of the hook registrations `lighthouse init --yes --level strict` writes to
 // .claude/settings.json: which event, matcher, command and timeout each hook gets, that every
 // registration runs under a lighthouse.toml with only [project] and [forge], and that a blocking
 // Bash hook blocks while the lighthouse binary is missing.
@@ -77,7 +77,7 @@ func initedRepo(t *testing.T) (bin, repo string) {
 	t.Helper()
 	bin = buildLighthouse(t)
 	repo = freshRepo(t)
-	run(t, repo, bin, "init", "--yes")
+	run(t, repo, bin, "init", "--yes", "--level", "strict")
 	return bin, repo
 }
 
@@ -177,7 +177,7 @@ func TestBlockingBashRegistrationsBlockWithoutLighthouse(t *testing.T) {
 	}
 	want := []string{
 		"run.sh bash-write-check pre", "run.sh commit-test-gate pre", "run.sh main-commit-gate",
-		"run.sh pr-create-gate", "run.sh workflow-push-gate",
+		"run.sh no-verify-check", "run.sh pr-create-gate", "run.sh workflow-push-gate",
 	}
 	slices.Sort(blocked)
 	if !slices.Equal(blocked, want) {
@@ -228,8 +228,10 @@ func minimalPayload(t *testing.T, r registration, project, worktree string) map[
 			"hook_event_name": r.event, "session_id": "s1", "cwd": worktree,
 			"notification_type": "permission_prompt", "message": "Claude needs your permission to use Write",
 		}
-	case "main-commit-gate", "commit-test-gate":
+	case "main-commit-gate", "commit-test-gate", "no-verify-check":
 		return bash("git commit -m x")
+	case "level-check":
+		return map[string]any{"hook_event_name": r.event, "session_id": "s1", "cwd": worktree, "source": "startup"}
 	case "workflow-push-gate":
 		// origin/main gives the range a start, so the push of a branch without workflows passes.
 		git(t, worktree, "update-ref", "refs/remotes/origin/main", "HEAD")
@@ -265,8 +267,9 @@ func TestEveryRegistrationRunsUnderMinimalConfig(t *testing.T) {
 	}
 	slices.Sort(hooks)
 	wantHooks := []string{
-		"bash-write-check", "code-language-check", "commit-test-gate", "main-commit-gate", "md-link-check",
-		"permission-check", "pr-create-gate", "usage-gate", "workflow-push-gate", "worktree-check",
+		"bash-write-check", "code-language-check", "commit-test-gate", "level-check", "main-commit-gate",
+		"md-link-check", "no-verify-check", "permission-check", "pr-create-gate", "usage-gate",
+		"workflow-push-gate", "worktree-check",
 	}
 	if !slices.Equal(hooks, wantHooks) {
 		t.Fatalf("registered hooks = %q, want %q: give a new one a payload in minimalPayload", hooks, wantHooks)

@@ -40,6 +40,7 @@ type Facts struct {
 	Blockers                       []forge.Blocker // blocked_by, open and closed: BoardItem.BlockedBy, or forge.BlockedBy off the board
 	Comments                       []Comment       // oldest first
 	Work                           []string        // running work found, e.g. "PR #12", "branch origin/issue-7-x", "worktree /p", "run 31"
+	PrioWeight                     int             // the prio weight of #445, set by the triage round before Sort
 	GitLog                         string
 	GitShas                        []string // full shas of the commits in GitLog
 	MilestoneOpen, MilestoneClosed []Ref
@@ -105,11 +106,9 @@ func LastMarker(cs []Comment) (protocol.TriageMarker, bool) {
 }
 
 // MarkerHolds reports whether the marker still keeps the issue out of triage. A marker without
-// a stop never lapses by itself; one with a stop lapses when the stop is gone.
+// a stop never lapses by itself; one with a stop lapses when the stop is gone. A `needs_*` label
+// is such a stop: it holds while the label stays and lapses when the label is removed.
 func MarkerHolds(m protocol.TriageMarker, f Facts, l repoconfig.Labels) bool {
-	if m.Label != "" && (m.Label == l.NeedsHands || m.Label == l.NeedsTesting) {
-		return false
-	}
 	if !m.Stop {
 		return true
 	}
@@ -152,12 +151,16 @@ func commentIDs(cs []Comment) []int64 {
 	return ids
 }
 
-// Sort orders candidates by priority, then by issue number.
+// Sort orders candidates by priority band (dispatch.PriorityBand), then by prio weight, high to
+// low, then by issue number.
 func Sort(fs []Facts) {
 	sort.SliceStable(fs, func(i, j int) bool {
-		ri, rj := dispatch.PriorityRank(fs[i].Priority), dispatch.PriorityRank(fs[j].Priority)
+		ri, rj := dispatch.PriorityBand(fs[i].Priority), dispatch.PriorityBand(fs[j].Priority)
 		if ri != rj {
 			return ri < rj
+		}
+		if fs[i].PrioWeight != fs[j].PrioWeight {
+			return fs[i].PrioWeight > fs[j].PrioWeight
 		}
 		return fs[i].Number < fs[j].Number
 	})

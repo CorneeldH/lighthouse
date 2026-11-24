@@ -356,7 +356,8 @@ func TestPreBlocksOnAnUnreadableDefaultBranch(t *testing.T) {
 	h, repo := projectHarness(t, testGate)
 	write(t, h.toml, minimalTOML+"default_branch = 3\n\n"+testGate)
 	res := h.pre("git commit -m x", repo)
-	blocked(t, res, "commit-test-gate: COULD NOT CHECK — the configuration cannot be read (forge.default_branch): config: "+h.toml+": key forge.default_branch must be of type str\n\n"+preTail)
+	// test_gate.on is the first key Pre reads, so the error names it; the broken key is the cause.
+	blocked(t, res, "commit-test-gate: COULD NOT CHECK — the configuration cannot be read (test_gate.on): config: "+h.toml+": key forge.default_branch must be of type str\n\n"+preTail)
 	if len(h.calls) != 0 {
 		t.Fatalf("the test command ran in %q", h.ranIn())
 	}

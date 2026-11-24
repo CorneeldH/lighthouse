@@ -11,7 +11,7 @@ import {
 } from '@/lib/priorities/derive'
 import { canMove } from '@/lib/priorities/moves'
 import { NO_MILESTONE_COLOR } from '@/lib/priorities/palette'
-import { Block, type BlockState } from './Block'
+import { Block } from './Block'
 import type { ViewProps } from './types'
 
 // Below this width a block shows no number; the hover title stays.
@@ -26,11 +26,6 @@ const MAX_OUTSIDE = 3
 const colorOf = (colors: Map<string, string>, n: GNode): string =>
   n.milestone ? (colors.get(`${n.repo}#m${n.milestone.number}`) ?? NO_MILESTONE_COLOR) : NO_MILESTONE_COLOR
 
-// "needs human" is a ready (or active) block with the dashed flag.
-function shapeOf(state: BlockData['state'], needsHuman: boolean): { state: BlockState; needsHuman: boolean } {
-  return state === 'needs_human' ? { state: 'ready', needsHuman: true } : { state, needsHuman }
-}
-
 function meta(row: MilestoneRow, own: BlockData[]): string {
   const active = own.filter((b) => b.state === 'active').length
   const notYet = own.filter((b) => b.state !== 'active' && b.state !== 'done').length
@@ -39,7 +34,7 @@ function meta(row: MilestoneRow, own: BlockData[]): string {
   return n === 0 ? base : `${base} · ${n} outside blocker${n === 1 ? '' : 's'}`
 }
 
-// Up/down state of one row in stand Prioriteit; absent in stand Berekend.
+// Up/down state of one row in Priority mode; absent in Computed mode.
 interface Moves {
   place: number | null
   up: boolean
@@ -55,8 +50,8 @@ function MoveButtons({ moves, title }: { moves: Moves; title: string }): JSX.Ele
     <div className="flex shrink-0 flex-col gap-0.5">
       <button
         type="button"
-        aria-label={`${title} omhoog`}
-        title="Omhoog"
+        aria-label={`${title} up`}
+        title="Up"
         className={MOVE_BTN}
         disabled={!moves.up}
         onClick={() => moves.onMove('up')}
@@ -65,8 +60,8 @@ function MoveButtons({ moves, title }: { moves: Moves; title: string }): JSX.Ele
       </button>
       <button
         type="button"
-        aria-label={`${title} omlaag`}
-        title="Omlaag"
+        aria-label={`${title} down`}
+        title="Down"
         className={MOVE_BTN}
         disabled={!moves.down}
         onClick={() => moves.onMove('down')}
@@ -119,12 +114,12 @@ function Row({ row, colors, moves }: { row: MilestoneRow; colors: Map<string, st
               <small
                 data-testid="place"
                 aria-hidden
-                title="plaats in de repo"
+                title="place in the repo"
                 className="ml-1.5 align-super text-[10px] font-semibold text-muted-foreground"
               >
                 {moves.place}
               </small>
-              <span className="sr-only">{`, plaats ${moves.place}`}</span>
+              <span className="sr-only">{`, place ${moves.place}`}</span>
             </>
           )}
           <small className="block text-xs font-normal text-muted-foreground">{meta(row, own)}</small>
@@ -137,10 +132,10 @@ function Row({ row, colors, moves }: { row: MilestoneRow; colors: Map<string, st
               <Block
                 key={n.key}
                 testId="outside"
-                {...shapeOf(n.state, n.needsHuman)}
+                state={n.state}
                 color={colorOf(colors, n)}
                 borderColor={colorOf(colors, n)}
-                title={`#${n.number} ${n.title}`}
+                title={`${n.number} ${n.title}`}
                 href={n.url || undefined}
                 label={n.number}
                 className="h-[18px] min-w-[26px] px-0.5"
@@ -151,7 +146,7 @@ function Row({ row, colors, moves }: { row: MilestoneRow; colors: Map<string, st
                 data-testid="outside-more"
                 title={row.outside
                   .slice(MAX_OUTSIDE - 1)
-                  .map((n) => `#${n.number} ${n.title}`)
+                  .map((n) => `${n.number} ${n.title}`)
                   .join('\n')}
                 className="flex h-[18px] min-w-[26px] items-center justify-center rounded border-[1.5px] border-lh-grey px-0.5 text-[9.5px] font-bold text-lh-grey"
               >
@@ -169,15 +164,15 @@ function Row({ row, colors, moves }: { row: MilestoneRow; colors: Map<string, st
           >
             {own.length === 0 ? (
               <span data-testid="no-issues" className="text-xs text-muted-foreground">
-                nog geen issues
+                no issues yet
               </span>
             ) : (
               own.map((b) => (
                 <Block
                   key={`${b.repo}#${b.nr}`}
-                  {...shapeOf(b.state, b.needsHuman)}
+                  state={b.state}
                   color={color}
-                  title={`#${b.nr} ${b.title}`}
+                  title={`${b.nr} ${b.title}`}
                   href={b.url || undefined}
                   label={showLabel ? b.nr : undefined}
                   className="h-full min-w-[3px] flex-1"
@@ -191,7 +186,7 @@ function Row({ row, colors, moves }: { row: MilestoneRow; colors: Map<string, st
             to do:
             {todo.map((b) => (
               <b key={`${b.repo}#${b.nr}`} className="font-semibold">
-                #{b.nr}
+                {b.nr}
               </b>
             ))}
           </div>
@@ -202,7 +197,7 @@ function Row({ row, colors, moves }: { row: MilestoneRow; colors: Map<string, st
           {Math.round(row.percent * 100)}%
         </b>
         <small className="block text-[11.5px] text-muted-foreground">
-          {row.shaping ? 'voorlopig' : `${row.open} to do`}
+          {row.shaping ? 'provisional' : `${row.open} to do`}
         </small>
       </div>
     </div>

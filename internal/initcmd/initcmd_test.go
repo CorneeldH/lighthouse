@@ -101,6 +101,10 @@ func hostTOMLFor(t *testing.T) string {
 func yes(o *Options)     { o.Yes = true }
 func upgrade(o *Options) { o.Upgrade = true }
 
+// strict installs everything: a first init picks light, which drops the hooks of the
+// language packages.
+func strict(o *Options) { o.Level = "strict" }
+
 func read(t *testing.T, root, rel string) string {
 	t.Helper()
 	b, err := os.ReadFile(filepath.Join(root, rel))
@@ -499,7 +503,7 @@ var oldCoreLib = map[string]string{
 
 func TestUpgradeRemovesCoreLib(t *testing.T) {
 	root := newRepo(t)
-	if r := run(t, root, "", all(yes, realPacks)); r.code != 0 {
+	if r := run(t, root, "", all(yes, strict, realPacks)); r.code != 0 {
 		t.Fatalf("init: rc %d\n%s", r.code, r.err)
 	}
 	seedCoreLib(t, root, oldCoreLib)
@@ -522,7 +526,7 @@ func TestUpgradeRemovesCoreLib(t *testing.T) {
 // With --force a locally changed file under the retired lib still stays, and is still reported.
 func TestUpgradeForceKeepsModifiedCoreLib(t *testing.T) {
 	root := newRepo(t)
-	if r := run(t, root, "", all(yes, realPacks)); r.code != 0 {
+	if r := run(t, root, "", all(yes, strict, realPacks)); r.code != 0 {
 		t.Fatalf("init: rc %d\n%s", r.code, r.err)
 	}
 	seedCoreLib(t, root, oldCoreLib)
@@ -542,7 +546,7 @@ func TestUpgradeForceKeepsModifiedCoreLib(t *testing.T) {
 
 func TestUpgradeKeepsModifiedCoreLib(t *testing.T) {
 	root := newRepo(t)
-	if r := run(t, root, "", all(yes, realPacks)); r.code != 0 {
+	if r := run(t, root, "", all(yes, strict, realPacks)); r.code != 0 {
 		t.Fatalf("init: rc %d\n%s", r.code, r.err)
 	}
 	seedCoreLib(t, root, oldCoreLib)
@@ -575,7 +579,7 @@ func TestUpgradeKeepsModifiedCoreLib(t *testing.T) {
 func TestUpgradeCleanupKeepsProjectFiles(t *testing.T) {
 	root := newRepo(t)
 	write(t, root, "x.sh", "#!/bin/sh\necho x\n") // a shell script makes the pack install shellcheck-repo.sh
-	if r := run(t, root, "", all(yes, realPacks)); r.code != 0 {
+	if r := run(t, root, "", all(yes, strict, realPacks)); r.code != 0 {
 		t.Fatalf("init: rc %d\n%s", r.code, r.err)
 	}
 	seedCoreLib(t, root, oldCoreLib)
@@ -976,7 +980,7 @@ func TestInitProposesRealExpo(t *testing.T) {
 func TestInitProposesRealPython(t *testing.T) {
 	root := newRepo(t)
 	write(t, root, "pyproject.toml", "[project]\nname = \"x\"\n")
-	r := run(t, root, "", func(o *Options) { o.Yes = true; o.Packs = nil })
+	r := run(t, root, "", func(o *Options) { o.Yes = true; o.Packs = nil; o.Level = "strict" })
 	if r.code != 0 || !strings.HasPrefix(r.out, "Packages: core, python (found pyproject.toml)\n") {
 		t.Fatalf("rc %d\nout:\n%s\nerr:\n%s", r.code, r.out, r.err)
 	}
@@ -1020,7 +1024,7 @@ func TestEmptyCommandStaysOff(t *testing.T) {
 func TestInitProposesRealGo(t *testing.T) {
 	root := newRepo(t)
 	write(t, root, "go.mod", "module example.com/m\n\ngo 1.26\n")
-	r := run(t, root, "", func(o *Options) { o.Yes = true; o.Packs = nil })
+	r := run(t, root, "", func(o *Options) { o.Yes = true; o.Packs = nil; o.Level = "strict" })
 	if r.code != 0 || !strings.HasPrefix(r.out, "Packages: core, go (found go.mod)\n") {
 		t.Fatalf("rc %d\nout:\n%s\nerr:\n%s", r.code, r.out, r.err)
 	}
@@ -1041,7 +1045,7 @@ func TestInitProposesRealShellBash(t *testing.T) {
 func TestInitProposesRealShell(t *testing.T) {
 	root := newRepo(t)
 	write(t, root, "x.sh", "#!/bin/sh\necho x\n")
-	r := run(t, root, "", func(o *Options) { o.Yes = true; o.Packs = nil })
+	r := run(t, root, "", func(o *Options) { o.Yes = true; o.Packs = nil; o.Level = "strict" })
 	if r.code != 0 || !strings.HasPrefix(r.out, "Packages: core, shell (found x.sh)\n") {
 		t.Fatalf("rc %d\nout:\n%s\nerr:\n%s", r.code, r.out, r.err)
 	}
@@ -1786,5 +1790,96 @@ func TestCheckHooksSkippedWhenDeclined(t *testing.T) {
 	})
 	if r.code == 0 || calls != 0 {
 		t.Errorf("rc %d, %d calls; want a declined init and no check", r.code, calls)
+	}
+}
+
+// Classification: cli-output. Fails when init skips the lint check after writing, or when it runs
+// on a declined diff, or when its output ends up on stdout.
+func TestLintCheckRunsAfterWriteAndOnNoChanges(t *testing.T) {
+	root := newRepo(t)
+	var calls int
+	hook := func(o *Options) {
+		o.LintCheck = func(r string, out, errOut io.Writer) { calls++; _, _ = io.WriteString(errOut, "LINT\n") }
+	}
+	r := run(t, root, "", func(o *Options) { yes(o); hook(o) })
+	if r.code != 0 || calls != 1 || !strings.Contains(r.err, "LINT") || strings.Contains(r.out, "LINT") {
+		t.Errorf("rc %d, %d calls, out %q, err %q", r.code, calls, r.out, r.err)
+	}
+	r = run(t, root, "", func(o *Options) { yes(o); upgrade(o); hook(o) })
+	if r.code != 0 || calls != 2 || r.out != "No changes.\n" {
+		t.Errorf("no-changes: rc %d, %d calls, out %q", r.code, calls, r.out)
+	}
+	calls = 0
+	root2 := newRepo(t)
+	r = run(t, root2, "n\n", hook)
+	if r.code == 0 || calls != 0 {
+		t.Errorf("declined: rc %d, %d calls", r.code, calls)
+	}
+}
+
+// Red when init stops calling InSyncFolder on the repo: the repo sits in a OneDrive folder, and
+// the warning must name the provider and [worktree] root, without failing the run.
+func TestWarnsRepoInSyncFolder(t *testing.T) {
+	base := t.TempDir()
+	dir := filepath.Join(base, "OneDrive - Bedrijf", "repo")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, dir, "init", "-q", "-b", "main")
+	dir, _ = filepath.EvalSymlinks(dir)
+	r := run(t, dir, "", yes)
+	if r.code != 0 {
+		t.Fatalf("code %d, stderr: %s", r.code, r.err)
+	}
+	if !strings.Contains(r.err, "warning:") || !strings.Contains(r.err, "OneDrive") || !strings.Contains(r.err, "[worktree] root") {
+		t.Errorf("no sync warning naming OneDrive and [worktree] root:\n%s", r.err)
+	}
+}
+
+// Red when init stops resolving [worktree] root: the repo is outside any sync folder, the
+// configured absolute root is inside a Dropbox folder.
+func TestWarnsWorktreeRootInSyncFolder(t *testing.T) {
+	root := newRepo(t)
+	wt := filepath.Join(t.TempDir(), "Dropbox", "wt")
+	if err := os.WriteFile(filepath.Join(root, "lighthouse.toml"), []byte("[worktree]\nroot = '"+wt+"'\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r := run(t, root, "", yes)
+	if r.code != 0 {
+		t.Fatalf("code %d, stderr: %s", r.code, r.err)
+	}
+	if !strings.Contains(r.err, "Dropbox") || !strings.Contains(r.err, "[worktree] root") {
+		t.Errorf("no warning for the worktree root:\n%s", r.err)
+	}
+}
+
+// Red when the warning appears without a sync folder.
+func TestNoSyncWarningOutsideSyncFolder(t *testing.T) {
+	root := newRepo(t)
+	r := run(t, root, "", yes)
+	if r.code != 0 || strings.Contains(r.err, "sync folder") {
+		t.Errorf("code %d, unexpected sync warning:\n%s", r.code, r.err)
+	}
+}
+
+// Red when init derives the repo from --show-toplevel instead of worktreeroot.MainCheckout: the
+// linked worktree lies outside the sync folder, its main checkout inside OneDrive - Bedrijf.
+func TestWarnsMainCheckoutInSyncFolderFromLinkedWorktree(t *testing.T) {
+	base := t.TempDir()
+	main := filepath.Join(base, "OneDrive - Bedrijf", "repo")
+	if err := os.MkdirAll(main, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, main, "init", "-q", "-b", "main")
+	gitIn(t, main, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "init")
+	linked := filepath.Join(base, "linked")
+	gitIn(t, main, "worktree", "add", "-q", "-b", "extra", linked)
+	linked, _ = filepath.EvalSymlinks(linked)
+	r := run(t, linked, "", yes)
+	if r.code != 0 {
+		t.Fatalf("code %d, stderr: %s", r.code, r.err)
+	}
+	if !strings.Contains(r.err, "OneDrive") {
+		t.Errorf("no warning for the main checkout in OneDrive:\n%s", r.err)
 	}
 }

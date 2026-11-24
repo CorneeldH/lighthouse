@@ -8,6 +8,7 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/config"
 	"github.com/CorneeldH/lighthouse/internal/hook"
+	"github.com/CorneeldH/lighthouse/internal/worktreeroot"
 )
 
 func init() {
@@ -34,4 +35,21 @@ func defaultBranch() (branch string, errText string, ok bool) {
 		return "", errOut.String(), false
 	}
 	return strings.TrimRight(out.String(), "\n"), "", true
+}
+
+// worktreeAddHint is the `git worktree add` line of the hook messages: the configured
+// `worktree.root`, `.claude/worktrees` when it is not set or cannot be read. The root is quoted
+// when it holds a space or a quote.
+func worktreeAddHint() string {
+	root := worktreeroot.Default
+	var out, errOut strings.Builder
+	if config.Run([]string{"worktree.root"}, &out, &errOut) == 0 {
+		if v := strings.TrimRight(out.String(), "\n"); v != "" {
+			root = v
+		}
+	}
+	if strings.ContainsAny(root, " '\"") {
+		root = "'" + strings.ReplaceAll(root, "'", `'\''`) + "'"
+	}
+	return "git worktree add " + root + "/<name> -b issue-<nr>-<slug>"
 }

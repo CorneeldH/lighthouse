@@ -2,7 +2,11 @@ package cli
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"testing"
+
+	"github.com/CorneeldH/lighthouse/internal/levels"
 )
 
 // Classification: a cli-output change; the surface is the exit code and stderr of an unknown hook.
@@ -72,5 +76,29 @@ func TestHookCodeLanguageCheckRegistered(t *testing.T) {
 		"Nothing was checked; that is not a green light.\n"
 	if code != 2 || out.String() != "" || errOut.String() != want {
 		t.Errorf("code %d out %q err %q, want 2 %q", code, out.String(), errOut.String(), want)
+	}
+}
+
+// red if hookEnv stops reading components.toml: a corrupt file would no longer reach the hooks,
+// and a present one would be ignored.
+func TestHookEnvReadsComponents(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("LIGHTHOUSE_REPO_ROOT", root)
+	if err := os.MkdirAll(filepath.Join(root, ".lighthouse"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, levels.InstalledPath)
+	if err := os.WriteFile(path, []byte("level = \"light\"\nsince = \"x\"\n[components]\nmd-link-check = \"log\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	env := hookEnv()
+	if env.LevelErr != nil || env.Level.Stand("md-link-check") != levels.StandLog {
+		t.Errorf("Level %+v err %v, want md-link-check on log", env.Level, env.LevelErr)
+	}
+	if err := os.WriteFile(path, []byte("level = = ["), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if hookEnv().LevelErr == nil {
+		t.Error("a corrupt components.toml gave no LevelErr")
 	}
 }

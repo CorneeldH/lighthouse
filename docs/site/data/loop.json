@@ -496,9 +496,9 @@
       "kind": "hook",
       "trigger": "tool",
       "label": "commit-test-gate",
-      "what": "Blocks --no-verify and tests a commit to main before it; after a commit it runs [test_gate] command on the files of the commit and reports red.",
+      "what": "Tests a commit to main before it (--no-verify is blocked by the base hook no-verify-check); after a commit it runs [test_gate] command on the files of the commit and reports red.",
       "how": [
-        "The pre mode runs on PreToolUse for Bash: it blocks --no-verify, runs the tests up front for a commit to the default branch and records HEAD for every other repo of the project.",
+        "The pre mode runs on PreToolUse for Bash: it runs the tests up front for a commit to the default branch and records HEAD for every other repo of the project.",
         "The post mode runs on PostToolUse and PostToolUseFailure for Bash and, for every root whose HEAD moved, runs [test_gate] command from lighthouse.toml with the changed files in LIGHTHOUSE_GATE_FILES.",
         "A red run gives exit 2 after the commit, and the commit stays.",
         "It enforces its own deadline, takes one of a limited number of slots so sessions do not overload the host, and blocks with COULD NOT CHECK when it cannot test."
@@ -635,6 +635,7 @@
         "A run whose branch touches .github/workflows/ does not push: workflow-push-gate blocks it, and the run posts a handoff with next: push-workflows after a roborev review of the range.",
         "The tick starts lighthouse push-workflows as its own process. It checks the worktree, the fast-forward, the roborev record, a policy on the workflow diff, actionlint and zizmor, and sends a pre-merge workflow past two or three sandboxed reviewers that must agree.",
         "Only after that it reads the workflow token, held in a file with mode 0600, and runs the one git push. In shadow mode the review decides nothing and a question with the diff asks you; the answer push permits exactly that commit.",
+        "A red policy or lint is not handed back at once but becomes a Repair: the tick resumes the run that wrote the handoff so it fixes the workflow change, at most two rounds, and only after that does the issue go back to you.",
         "On the build route it hands over to write-pr, on the fix-pr route it keeps the PR and the tick merges or repairs it, and a PR that touches workflows is merged by the pusher itself once it has pushed that branch."
       ],
       "when": "When a controller run changes a workflow file and hands off with next: push-workflows.",
@@ -769,6 +770,12 @@
       "from": "push-workflows",
       "to": "fix-pr",
       "status": "works"
+    },
+    {
+      "from": "close-issue",
+      "to": "close-followup",
+      "status": "planned",
+      "issue": 527
     }
   ],
   "routes": [
@@ -933,7 +940,7 @@
     {
       "id": "workflow-push",
       "label": "Workflow change",
-      "note": "A branch that touches .github/workflows/ is not pushed by the run: the workflow pusher of the dispatcher pushes it, then write-pr or fix-pr carries on.",
+      "note": "A branch that touches .github/workflows/ is not pushed by the run: the workflow pusher of the dispatcher pushes it, then write-pr or fix-pr carries on. A red policy or lint goes back to the work first, as a Repair.",
       "chips": [
         "start-issue",
         "using-git-worktrees",

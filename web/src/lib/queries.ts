@@ -65,7 +65,7 @@ export function usePriorities() {
   })
 }
 
-export const RANK_CONFLICT_TEXT = 'De volgorde is net ergens anders veranderd; de lijst is ververst.'
+export const RANK_CONFLICT_TEXT = 'The order was just changed elsewhere; the list has been refreshed.'
 
 const milestoneRanksKey = ['milestone-ranks'] as const
 
@@ -101,9 +101,9 @@ interface RankSnapshot {
 function rankErrorText(err: unknown): string {
   if (err instanceof ApiError) {
     if (err.status === 409) return RANK_CONFLICT_TEXT
-    return `Opslaan mislukt: ${err.detail === '' ? `HTTP ${err.status}` : err.detail}`
+    return `Save failed: ${err.detail === '' ? `HTTP ${err.status}` : err.detail}`
   }
-  return 'Opslaan mislukt: server onbereikbaar'
+  return 'Save failed: server unreachable'
 }
 
 // Writes milestone ranks optimistically. The pending repos are tracked here, not through

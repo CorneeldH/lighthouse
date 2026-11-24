@@ -15,8 +15,13 @@ hook cannot check, it blocks with `COULD NOT CHECK`, or says so where it never b
 - `main-commit-gate` (`run.sh main-commit-gate`) — PreToolUse `Bash`. Blocks (exit 2) a commit or
   push on `main`, also through `git -C <path>` and a preceding `cd`.
 - `commit-test-gate` (`run.sh commit-test-gate pre|post`) — PreToolUse, PostToolUse and
-  PostToolUseFailure `Bash`. `pre` blocks `--no-verify` and tests a commit to `main` before it;
+  PostToolUseFailure `Bash`. `pre` tests a commit to `main` before it, and still blocks
+  `--no-verify` in a repo whose `blocking` list has no `no-verify-check` yet (an older pack);
   `post` runs `[test_gate] command` on the files of the commit and reports red.
+- `no-verify-check` (`run.sh no-verify-check`) — PreToolUse `Bash`. A base hook (no stand, no override):
+  blocks `git commit --no-verify` and `-n` on every branch and at every level.
+- `level-check` (`run.sh level-check`) — SessionStart. Never blocks; warns for each core gate
+  (`main-commit-gate`, `worktree-check`, `pr-create-gate`) whose stand is not `on`.
 - `bash-write-check` (`run.sh bash-write-check`) — PreToolUse, PostToolUse and PostToolUseFailure `Bash`. Runs the
   write checks on what a Bash call wrote.
 - `pr-create-gate` (`run.sh pr-create-gate`) — PreToolUse `Bash`. Blocks a `gh pr create` whose body lacks

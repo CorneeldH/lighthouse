@@ -85,8 +85,7 @@ func parse(nrArg, keyArg string, key bool, out io.Writer) (int, bool) {
 	return nr, true
 }
 
-// Show writes the state of issue nrArg: `state: #<nr> <state>`, with `, needs human` for an
-// active issue that waits on a human.
+// Show writes the state of issue nrArg: `state: #<nr> <state>`.
 func Show(ctx context.Context, env Env, nrArg string, out io.Writer) int {
 	nr, ok := parse(nrArg, "", false, out)
 	if !ok {
@@ -101,11 +100,7 @@ func Show(ctx context.Context, env Env, nrArg string, out io.Writer) int {
 		return fail(out, err, "")
 	}
 	r := Of(in, t.labels)
-	line := fmt.Sprintf("state: #%d %s", nr, r.State)
-	if r.NeedsHuman {
-		line += ", needs human"
-	}
-	_, _ = fmt.Fprintln(out, line)
+	_, _ = fmt.Fprintf(out, "state: #%d %s\n", nr, r.State)
 	return 0
 }
 

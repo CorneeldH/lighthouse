@@ -518,8 +518,8 @@ func TestCILiteralGrepRunsTwiceInGoJob(t *testing.T) {
 // slipped in unnoticed. TestEveryWorkflowPinsActionsBySHA checks each one for its SHA.
 func TestCIPinsEveryActionCount(t *testing.T) {
 	uses := regexp.MustCompile(`(?m)^\s*(?:- )?uses: (\S+)`).FindAllStringSubmatch(ciText(t), -1)
-	if len(uses) != 32 {
-		t.Errorf("ci.yml has %d actions, want 32", len(uses))
+	if len(uses) != 34 {
+		t.Errorf("ci.yml has %d actions, want 34", len(uses))
 	}
 }
 

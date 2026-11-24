@@ -106,8 +106,9 @@ branch from `origin/<default branch>` and are therefore wrong here.
 
 ```bash
 B=<head-branch>
-ROOT=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-WT="$ROOT/.claude/worktrees/$(printf '%s' "$B" | tr / -)"
+ROOT=$(lighthouse config worktree.root) || exit 2
+case "$ROOT" in /*|[A-Za-z]:*) ;; *) ROOT="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/$ROOT" ;; esac
+WT="$ROOT/$(printf '%s' "$B" | tr / -)"
 if git worktree list --porcelain | grep -qxF "branch refs/heads/$B"; then
   git worktree list --porcelain | grep -B2 -xF "branch refs/heads/$B" | head -1   # exists already
 elif git rev-parse --verify --quiet "$B" >/dev/null; then
@@ -118,7 +119,7 @@ else
 fi
 ```
 
-`ROOT` is the main checkout, also when this block runs inside another worktree: `--git-common-dir`
+A relative `ROOT` hangs under the main checkout, also when this block runs inside another worktree: `--git-common-dir`
 always points at the shared `.git`, never at the worktree's own. Without that anchoring
 `git worktree add` makes a nested worktree under the current worktree, where cleanup rules do not
 look. The `-x` on both `grep`s matches the whole line, not a substring: `refs/heads/issue-664`
