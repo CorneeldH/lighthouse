@@ -212,8 +212,9 @@ In `internal/initcmd`, met de helpers van `TestUpgradeRightAfterInitIsEmpty` (`n
 - **Rondreis in een lege repo:** geen `AGENTS.md`, `CLAUDE.md`, `settings.json`,
   `.gitattributes` of `lighthouse.toml` vooraf: na de rondreis staan ze er ook niet.
 - **Weigering:** de gevallen van `TestUpgradeRefusesLocalEdit` (scriptregel, blokregel,
-  hook-timeout, verwijderd script) weigeren zonder `--force` en schrijven niets; met `--force`
-  gaan ze weg.
+  hook-timeout) weigeren zonder `--force` en schrijven niets; met `--force`
+  gaan ze weg. Een verwijderd script is geen conflict maar een `Remove`: de uninstall slaagt
+  (`TestUninstallDeletedScriptIsNoConflict`).
 - **Installatie zonder `.lighthouse/created.toml`:** units weg, `lighthouse.toml` en de rest
   blijven staan en worden gemeld.
 - **Afwijkend vastgelegd:** een gewijzigde `"language"` en een uitgebreide `CLAUDE.md` blijven
