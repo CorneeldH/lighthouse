@@ -63,7 +63,7 @@ func gather(ctx context.Context, env tickEnv, dir, dbPath string, out, errOut io
 	}
 	defer func() { _ = st.Close() }()
 
-	pre, err := prepare(ctx, st.DB, cfg, rf, repo, false, env.now())
+	pre, err := prepare(ctx, st.DB, cfg, rf, repo, false, env.now(), errOut)
 	if err != nil {
 		return err
 	}

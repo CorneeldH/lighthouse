@@ -261,7 +261,8 @@ func tick(ctx context.Context, env tickEnv, dbPath string, errOut io.Writer) err
 		}
 		checked = append(checked, checkedRepo{repo: repo, pre: *pre})
 		if in != nil {
-			gathered = append(gathered, gatheredRepo{repo: repo, in: *in, fp: fp})
+			// A push by hand that could not be checked must be checked again: no saved fingerprint.
+			gathered = append(gathered, gatheredRepo{repo: repo, in: *in, fp: fp, hold: pre.PushedIncomplete})
 		}
 	}
 	planFailed := planSchedules(ctx, env, st.DB, cfg, ticked, gathered, errOut)
@@ -325,8 +326,8 @@ func oneLine(err error) string {
 }
 
 // gatheredRepo is a repo whose full gather ran in this tick, with its precheck fingerprint.
-// hold keeps its tick state from being saved: its planner failed, so the next tick must gather
-// again.
+// hold keeps its tick state from being saved: its planner failed, or a push by hand could not be
+// checked (dispatch.Pre.PushedIncomplete), so the next tick must gather again.
 type gatheredRepo struct {
 	repo repoconfig.Repo
 	in   dispatch.RepoInput
@@ -655,9 +656,11 @@ func gatherRepo(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Dis
 // prepare is the board half of a gather: the open runs, the branch of each issue's last run,
 // and the board with the PRs of those branches. The To do marks of the last precheck spare the
 // comment reads of unchanged To do items (dispatch.ToDoProbe); with save, prepare saves the
-// marks when they changed, so the next precheck reads none on an unchanged board.
+// marks when they changed, so the next precheck reads none on an unchanged board. The issues
+// whose last run is a push row closed on a question (dispatch.PushQuestionRows) get their
+// PushedQuestion; a forge error there is a line on errOut and Pre.PushedIncomplete.
 func prepare(ctx context.Context, db *sql.DB, cfg hostconfig.Dispatch, rf repoForge, repo repoconfig.Repo,
-	save bool, now time.Time) (dispatch.Pre, error) {
+	save bool, now time.Time, errOut io.Writer) (dispatch.Pre, error) {
 	open, err := runs.Open(ctx, db, repo.Slug)
 	if err != nil {
 		return dispatch.Pre{}, err
@@ -670,8 +673,10 @@ func prepare(ctx context.Context, db *sql.DB, cfg hostconfig.Dispatch, rf repoFo
 	if err != nil {
 		return dispatch.Pre{}, err
 	}
-	probe := dispatch.ToDoProbe{Known: state.ToDo, TokenLogin: rf.who, Trust: dispatch.NewTrust(rf.Forge, cfg.AnswerPermissions)}
-	pre, err := dispatch.Prepare(ctx, rf.Forge, repo, open, dispatch.IssueBranches(history), probe)
+	probe := dispatch.ToDoProbe{Known: state.ToDo, TokenLogin: rf.who, Trust: dispatch.NewTrust(rf.Forge, cfg.AnswerPermissions),
+		Log: errOut}
+	pre, err := dispatch.Prepare(ctx, rf.Forge, repo, open, dispatch.IssueBranches(history),
+		dispatch.PushQuestionRows(history), probe)
 	if err != nil {
 		return dispatch.Pre{}, err
 	}
@@ -692,7 +697,7 @@ func measuredPre(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Di
 	if err := adopt(ctx, env, db, cfg, repo, errOut); err != nil {
 		return dispatch.Pre{}, err
 	}
-	pre, err := prepare(ctx, db, cfg, rf, repo, true, env.now())
+	pre, err := prepare(ctx, db, cfg, rf, repo, true, env.now(), errOut)
 	if err != nil {
 		return dispatch.Pre{}, err
 	}

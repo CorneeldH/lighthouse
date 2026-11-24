@@ -2236,3 +2236,46 @@ func TestTickIdleActionNeverReachesApply(t *testing.T) {
 		t.Errorf("writes = %q, want none", w)
 	}
 }
+
+// A push by hand that the forge cannot check (BranchContains fails) costs no repo: the tick goes
+// on with a line on errOut, but keeps the fingerprint unsaved so the next tick checks again
+// (spec §4). The same tick with a forge that answers saves it.
+func TestTickPushedCheckFailureHoldsFingerprint(t *testing.T) {
+	const sha = "3f2a1bcd4e5f60718293a4b5c6d7e8f901234567"
+	for _, fail := range []bool{false, true} {
+		t.Run(fmt.Sprintf("fail=%v", fail), func(t *testing.T) {
+			env, db := tickFixture(t, repoDir(t, completeRepo))
+			srv, _ := startable(t, &env)
+			ctx := context.Background()
+			conn := openStore(t, db)
+			r, err := runs.Take(ctx, conn, runs.Claim{Repo: "o/r", Issue: 7, Mode: "start", Trigger: "handoff",
+				TriggerKey: "push:30", Command: "push-workflows", Branch: "issue-7-issue", Now: t0.Add(-time.Hour)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := runs.Release(ctx, conn, r.ID, runs.Question, "", t0.Add(-time.Hour)); err != nil {
+				t.Fatal(err)
+			}
+			srv.Comments = map[int][]map[string]any{7: {{"id": 31, "created_at": "2026-10-31T11:00:00Z",
+				"html_url": "https://github.com/o/r/issues/7#issuecomment-31", "user": map[string]any{"login": "owner"},
+				"body": "🤖 Vraag\nsha: " + sha + "\nworktree: /work/issue-7-issue\nbranch: issue-7-issue\n\nRode stap: zizmor"}}}
+			srv.SetCompare(sha, "issue-7-issue", "behind")
+			if fail {
+				srv.Fail = map[string]int{"GET /repos/o/r/compare/" + sha + "...issue-7-issue": 500}
+			}
+			var errOut bytes.Buffer
+			if err := tick(ctx, env, db, &errOut); err != nil {
+				t.Fatalf("tick = %v\n%s", err, errOut.String())
+			}
+			if skipped := strings.Contains(errOut.String(), "lighthouse: skip"); skipped {
+				t.Errorf("errOut = %q, want the repo not skipped", errOut.String())
+			}
+			if line := strings.Contains(errOut.String(), "o/r#7: push by hand not checked"); line != fail {
+				t.Errorf("errOut = %q, want the check line: %v", errOut.String(), fail)
+			}
+			if saved := tickState(t, conn, "o/r").Fingerprint != ""; saved == fail {
+				t.Errorf("fingerprint saved = %v, want %v\n%s", saved, !fail, errOut.String())
+			}
+		})
+	}
+}

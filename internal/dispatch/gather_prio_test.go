@@ -65,7 +65,7 @@ func prioBoard() *prioFake {
 
 // prioComplete is the gather of f: Prepare, then Complete.
 func prioComplete(f *prioFake) (Snapshot, error) {
-	pre, err := Prepare(context.Background(), f, testRepo, nil, nil, ToDoProbe{})
+	pre, err := Prepare(context.Background(), f, testRepo, nil, nil, nil, ToDoProbe{})
 	if err != nil {
 		return Snapshot{}, err
 	}
@@ -75,7 +75,7 @@ func prioComplete(f *prioFake) (Snapshot, error) {
 // The precheck runs on every tick, also a quiet one: it must not read the weights.
 func TestPrepareReadsNoPrioInputs(t *testing.T) {
 	f := prioBoard()
-	if _, err := Prepare(context.Background(), f, testRepo, nil, nil, ToDoProbe{}); err != nil {
+	if _, err := Prepare(context.Background(), f, testRepo, nil, nil, nil, ToDoProbe{}); err != nil {
 		t.Fatalf("Prepare: %v", err)
 	}
 	if f.calls != 0 {

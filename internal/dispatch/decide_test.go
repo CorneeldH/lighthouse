@@ -1523,3 +1523,126 @@ func TestDecideUsageParkMarkerGone(t *testing.T) {
 		})
 	}
 }
+
+// pushedInput is the base of the tests of a manual push (spec §4): the pusher's Vraag 70 is the
+// last turn, nobody answered it, push row 9 of the handoff in comment 63 closed on it as a
+// question, and Prepare found origin holding the Vraag's sha (PushedQuestion 70).
+func pushedInput(t *testing.T) Input {
+	t.Helper()
+	in := pushQuestion(t, "")
+	item7(&in).Comments = item7(&in).Comments[:2]
+	in.Repos[0].History = append(in.Repos[0].History, closedPushRow(9, 63, onDay(11, 5), runs.Question, ""))
+	item7(&in).PushedQuestion = 70
+	return in
+}
+
+// hasPushedKey reports whether an action of got carries a pushed:<id> trigger key.
+func hasPushedKey(got []Action) bool {
+	return slices.ContainsFunc(got, func(a Action) bool { return strings.HasPrefix(a.TriggerKey, "pushed:") })
+}
+
+// A Vraag whose sha origin holds starts the pusher once under pushed:<id>, with the worktree and
+// branch of the Vraag and without a permit: the tick never gives the permission a human answer
+// gives. Without PushedQuestion the same issue starts nothing.
+func TestPushedQuestionStartsPusherWithoutPermit(t *testing.T) {
+	got := Decide(pushedInput(t))
+	want := []Action{{Kind: KindPush, Repo: "o/r", Issue: 7, Trigger: "pushed", TriggerKey: "pushed:70", Attempt: 1,
+		Command: "push-workflows", Worktree: pushWorktree, Branch: "issue-7-bouw-de-keten", CommentID: 70, Language: "nl"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got  %+v\nwant %+v", got, want)
+	}
+	in := pushedInput(t)
+	item7(&in).PushedQuestion = 0
+	if got := Decide(in); hasPushedKey(got) || slices.ContainsFunc(got, func(a Action) bool { return a.Kind == KindPush }) {
+		t.Errorf("without PushedQuestion: %+v, want no push", got)
+	}
+}
+
+// The start holds only for the open Vraag origin holds: a spent key (no loop), an answer of a
+// human after the Vraag, an open run, the pusher off, a later turn or another Vraag start nothing.
+func TestPushedNothingWhen(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*Input)
+	}{
+		{"key spent", func(in *Input) {
+			in.Repos[0].History = append(in.Repos[0].History, runs.Row{ID: 10, Issue: 7, Trigger: "answer",
+				TriggerKey: "pushed:70", Attempt: 1, Command: cmdPush, StartedAt: onDay(11, 20), Outcome: runs.Handoff})
+		}},
+		{"answer of a human after the Vraag", func(in *Input) {
+			item7(in).Comments = append(item7(in).Comments,
+				Comment{ID: 71, Author: "owner", CreatedAt: "2026-10-31T11:30:00Z", Body: "even wachten"})
+		}},
+		{"open run", func(in *Input) {
+			in.Repos[0].History = append(in.Repos[0].History, runs.Row{ID: 10, Issue: 7, SessionID: "s2", Mode: modeStart,
+				Trigger: triggerHandoff, TriggerKey: "handoff:99", Attempt: 1, Command: "/lighthouse-start-issue 7",
+				StartedAt: onDay(11, 40), Open: true})
+		}},
+		// settle closes this push row in the same tick (its PR merged), so next still runs and sees
+		// it open in the history.
+		{"run that settle closes in this tick", func(in *Input) {
+			row := closedPushRow(10, 63, onDay(11, 40), "", pushSHA)
+			row.Open = true
+			in.Repos[0].History = append(in.Repos[0].History, row)
+			addPR(in, forge.PR{Number: 12, State: "MERGED", HeadRef: "issue-7-bouw-de-keten", MergedAt: onDay(11, 50)})
+		}},
+		{"workflow push off", func(in *Input) { in.Repos[0].WorkflowPush = false }},
+		{"Vraag not the last turn", func(in *Input) {
+			item7(in).Comments = append(item7(in).Comments,
+				Comment{ID: 72, Author: "lh-bot", CreatedAt: "2026-10-31T11:40:00Z", Body: "🤖 Teruggegeven\nreason: x"})
+		}},
+		{"another Vraag", func(in *Input) { item7(in).PushedQuestion = 69 }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			in := pushedInput(t)
+			tt.mutate(&in)
+			if got := Decide(in); hasPushedKey(got) {
+				t.Errorf("got %+v, want no pushed: start", got)
+			}
+		})
+	}
+}
+
+// A pushed:<id> row is a push row like push:<id>: a failed start gets its second attempt from the
+// Vraag (pushAgain), not a reason_start_failed, and still without a permit; a Herstel round after
+// it counts toward maxRepairRuns (repairRounds), and the Herstel finds the run that wrote the
+// handoff through it (handoffRunBefore).
+func TestPushedKeysKnownEverywhere(t *testing.T) {
+	t.Run("second attempt", func(t *testing.T) {
+		in := pushedInput(t)
+		item7(&in).PushedQuestion = 0 // the last row is the failed start, so Prepare reads nothing
+		item7(&in).Comments[1].Rocket = true
+		row := failedPush(10, "pushed:70", onDay(11, 31))
+		row.Trigger = "answer"
+		in.Repos[0].History = append(in.Repos[0].History, row)
+		got := Decide(in)
+		want := []Action{{Kind: KindPush, Repo: "o/r", Issue: 7, Trigger: "pushed", TriggerKey: "pushed:70", Attempt: 2,
+			Command: "push-workflows", Worktree: pushWorktree, Branch: "issue-7-bouw-de-keten", CommentID: 70, Language: "nl"}}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("got  %+v\nwant %+v", got, want)
+		}
+	})
+	t.Run("repair rounds", func(t *testing.T) {
+		in := repairInput(t)
+		pushed := closedPushRow(3, 70, onDay(10, 50), runs.Handoff, "")
+		pushed.TriggerKey = "pushed:70"
+		addRows(&in, closedPushRow(1, 50, onDay(10, 10), runs.Handoff, ""), pushed)
+		want := []string{"return:reason_pusher_red_ceiling:" + pushCommand(pushWorktree)}
+		if s := summary(startsOrReturns(Decide(in))); !reflect.DeepEqual(s, want) {
+			t.Errorf("summary = %q, want %q", s, want)
+		}
+	})
+	t.Run("handoff run", func(t *testing.T) {
+		in := repairInput(t)
+		cs := item7(&in).Comments
+		question := Comment{ID: 70, Author: "lh-bot", CreatedAt: "2026-10-31T11:02:00Z",
+			Body: "🤖 Vraag\nsha: " + pushSHA + "\nworktree: " + pushWorktree + "\nbranch: issue-7-bouw-de-keten\n\nRode stap: zizmor"}
+		item7(&in).Comments = append(cs[:len(cs)-1:len(cs)-1], question, cs[len(cs)-1])
+		h := in.Repos[0].History
+		h[len(h)-1].TriggerKey = "pushed:70"
+		if s := summary(startsOrReturns(Decide(in))); !reflect.DeepEqual(s, []string{"resume::"}) {
+			t.Errorf("summary = %q, want the resume of the handoff run", s)
+		}
+	})
+}
