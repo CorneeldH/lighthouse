@@ -10,6 +10,15 @@ terms = [
   ["main", "master", "default branch", "allow-main"],
 ]
 
+[memory-gate]
+events = ["PreToolUse"]
+matcher = "Edit|Write|Bash"
+does = "Blocks a write into a Claude Code auto-memory directory."
+terms = [
+  ["memory"],
+  [".claude/projects", "auto-memory", "autoMemory"],
+]
+
 [commit-test-gate]
 events = ["PreToolUse", "PostToolUse", "PostToolUseFailure"]
 matcher = "Bash"

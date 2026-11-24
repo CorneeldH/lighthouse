@@ -90,7 +90,7 @@ func TestCorePack(t *testing.T) {
 	if strings.Join(files, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("files:\n%s", strings.Join(files, "\n"))
 	}
-	if kinds[KindBlock] != 1 || kinds[KindHook] != 20 {
+	if kinds[KindBlock] != 1 || kinds[KindHook] != 22 {
 		t.Fatalf("kinds = %v", kinds)
 	}
 	var tools []string

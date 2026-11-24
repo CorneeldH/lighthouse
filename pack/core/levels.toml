@@ -17,6 +17,7 @@ base = [
 on = [
   "main-commit-gate",
   "worktree-check",
+  "memory-gate",
   "pr-create-gate",
   "bash-write-check",
   "skill:start-issue",
@@ -41,6 +42,7 @@ on = [
 
 [light.components]
 commit-test-gate = "off"
+memory-gate = "log"
 "skill:map-planned" = "off"
 md-link-check = "log"
 code-language-check = "log"

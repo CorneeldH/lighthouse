@@ -177,7 +177,7 @@ func TestBlockingBashRegistrationsBlockWithoutLighthouse(t *testing.T) {
 	}
 	want := []string{
 		"run.sh bash-write-check pre", "run.sh commit-test-gate pre", "run.sh main-commit-gate",
-		"run.sh no-verify-check", "run.sh pr-create-gate", "run.sh workflow-push-gate",
+		"run.sh memory-gate", "run.sh no-verify-check", "run.sh pr-create-gate", "run.sh workflow-push-gate",
 	}
 	slices.Sort(blocked)
 	if !slices.Equal(blocked, want) {
@@ -214,6 +214,10 @@ func minimalPayload(t *testing.T, r registration, project, worktree string) map[
 		// A write in the main checkout on main: only there does the guard read forge.default_branch.
 		writeFile(t, project, "doc.md", "# doc\n")
 		return editPayload(r.event, filepath.Join(project, "doc.md"), worktree)
+	case "memory-gate":
+		// A write outside memory: the hook passes without reading anything.
+		writeFile(t, worktree, "doc.md", "# doc\n")
+		return editPayload(r.event, filepath.Join(worktree, "doc.md"), worktree)
 	case "md-link-check":
 		writeFile(t, worktree, "doc.md", "# doc\n\nSee [the readme](README.md).\n")
 		return editPayload(r.event, filepath.Join(worktree, "doc.md"), worktree)
@@ -268,7 +272,7 @@ func TestEveryRegistrationRunsUnderMinimalConfig(t *testing.T) {
 	slices.Sort(hooks)
 	wantHooks := []string{
 		"bash-write-check", "code-language-check", "commit-test-gate", "level-check", "main-commit-gate",
-		"md-link-check", "no-verify-check", "permission-check", "pr-create-gate", "telemetry-collect-check",
+		"md-link-check", "memory-gate", "no-verify-check", "permission-check", "pr-create-gate", "telemetry-collect-check",
 		"usage-gate", "workflow-push-gate", "worktree-check",
 	}
 	if !slices.Equal(hooks, wantHooks) {

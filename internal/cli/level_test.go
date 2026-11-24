@@ -221,13 +221,13 @@ func TestLevelCountsOnlyInstalledPackages(t *testing.T) {
 		{"light", func() *levels.Installed {
 			in := lightInstalled()
 			in.Components = map[string]levels.Stand{"commit-test-gate": levels.StandOff, "md-link-check": levels.StandLog,
-				"code-language-check": levels.StandLog}
+				"code-language-check": levels.StandLog, "memory-gate": levels.StandLog}
 			for _, s := range []string{"write-issue", "fix-pr", "audit-worktrees", "audit-agent-config", "test-standard", "review-spec", "review-plan", "map-planned"} {
 				in.Components["skill:"+s] = levels.StandOff
 			}
 			return in
 		}(), "12"},
-		{"strict", &levels.Installed{Level: "strict", Since: "2026-03-01T10:00:00Z", Components: map[string]levels.Stand{}}, "23"},
+		{"strict", &levels.Installed{Level: "strict", Since: "2026-03-01T10:00:00Z", Components: map[string]levels.Stand{}}, "24"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root := levelRepo(t, tc.in, "")

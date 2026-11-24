@@ -204,7 +204,7 @@ kind = "file"
 path = ".claude/hooks/lighthouse/blocking"
 package = "core"
 version = "dev"
-sha256 = "45ed545950f54b44cdd24a9d3c6d0b97df5f79e19720a70fbc57eccc03c78a35"
+sha256 = "80de9dadf1f7c77fe4015818801839a6c79c2710cdbf5f240b4832a0c4ba7bd0"
 
 [[unit]]
 kind = "file"
@@ -356,6 +356,14 @@ sha256 = "6c5c8508589f3e46c35c0693c769f01aa446d945632378d6c08870ce4e270630"
 [[unit]]
 kind = "hook"
 path = ".claude/settings.json"
+id = "PreToolUse|Bash|\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/run.sh memory-gate"
+package = "core"
+version = "dev"
+sha256 = "0629e64e198ac17285801840165c7f7b8fa24ae4fb7dce7b2c06eed80285f1ba"
+
+[[unit]]
+kind = "hook"
+path = ".claude/settings.json"
 id = "PreToolUse|Bash|\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/run.sh no-verify-check"
 package = "core"
 version = "dev"
@@ -376,6 +384,14 @@ id = "PreToolUse|Bash|\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/run.sh wo
 package = "core"
 version = "dev"
 sha256 = "7be64f505cb6eb3418c9b66502e24d62babcd8f8e1afc232e918d04b2228a327"
+
+[[unit]]
+kind = "hook"
+path = ".claude/settings.json"
+id = "PreToolUse|Edit|Write|\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/run.sh memory-gate"
+package = "core"
+version = "dev"
+sha256 = "0629e64e198ac17285801840165c7f7b8fa24ae4fb7dce7b2c06eed80285f1ba"
 
 [[unit]]
 kind = "hook"

@@ -21,6 +21,7 @@ The stands come from the `levels.toml` file of each package under `pack/`.
 |---|---|---|---|---|
 | `main-commit-gate` | on | on | on | Core rule: nothing lands on `main`. |
 | `worktree-check` | on | on | on | Core rule; it only warns. |
+| `memory-gate` | log | on | on | Core rule: no harness memory; `log` counts the writes it would have blocked. |
 | `pr-create-gate` | on | on | on | Core rule: every PR names its issue. |
 | `bash-write-check` | on | on | on | Carrier: it applies the stands of the write checks below. |
 | `commit-test-gate` | off | on | on | At first the PR and its CI carry the quality, not a test run after each commit. |

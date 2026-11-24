@@ -34,6 +34,8 @@ hook cannot check, it blocks with `COULD NOT CHECK`, or says so where it never b
   `lighthouse telemetry collect --since-last` detached, except in a controller run or with
   `LIGHTHOUSE_TELEMETRY_COLLECT=off`. Never blocks and opens no database; an error is one line in
   `<state>/telemetry/hook.log`.
+- `memory-gate` (`run.sh memory-gate`) — PreToolUse `Edit|Write` and `Bash`. Blocks a write into a Claude Code
+  auto-memory directory; reading stays free. Not in `blocking`.
 - `worktree-check` (`run.sh worktree-check`) — PreToolUse `Edit|Write`. Warns (never blocks) at a
   write into the main checkout on `main`.
 - `md-link-check` (`run.sh md-link-check`) — PostToolUse `Edit|Write`. Blocks a markdown link that is absolute

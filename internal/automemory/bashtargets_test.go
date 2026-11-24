@@ -27,7 +27,7 @@ func TestWriteTargets(t *testing.T) {
 		{"dev null", "cat " + m + " 2>/dev/null", nil},
 		{"fd dup", "ls /h/.claude/projects/p/memory 2>&1", nil},
 		{"other redirect", "grep foo " + m + " > /tmp/out", []string{"/tmp/out"}},
-		{"cp from memory", "cp " + m + " docs/a.md", []string{"docs/a.md"}},
+		{"cp from memory", "cp " + m + " out/a.md", []string{"out/a.md"}},
 		{"and chain", "cd x && echo y > " + m, []string{m}},
 		{"git status", "git status", nil},
 		{"home unexpanded", "echo x > $HOME/.claude/projects/p/memory/a.md", []string{"$HOME/.claude/projects/p/memory/a.md"}},
