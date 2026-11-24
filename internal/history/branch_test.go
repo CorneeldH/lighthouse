@@ -20,6 +20,9 @@ func TestResolveBranch(t *testing.T) {
 		{"plain push", "git push", "feat", nil, "feat", true},
 		{"push -u origin HEAD", "git push -u origin HEAD", "feat", nil, "feat", true},
 		{"refspec beats cd", "cd /wt && git push origin HEAD:main", "x", nil, "main", true},
+		{"forced origin", "git push origin +main", "x", nil, "main", true},
+		{"forced refspec", "git push origin +HEAD:main", "x", nil, "main", true},
+		{"detached HEAD", "git push", "HEAD", nil, "", false},
 		{"no git branch", "git push", "", nil, "", false},
 	}
 	for _, c := range cases {

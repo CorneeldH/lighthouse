@@ -61,7 +61,7 @@ func ReadFile(path string, since time.Time, fn func(Record)) (skipped int, err e
 	if err != nil {
 		return 0, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 64<<10), maxLine)
 	n := 0

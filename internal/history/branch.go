@@ -25,11 +25,11 @@ func ResolveBranch(command, gitBranch string, knownCwds map[string]string) (bran
 			}
 		}
 		if len(pos) >= 2 {
-			t := pos[1]
+			t := strings.TrimPrefix(pos[1], "+")
 			if i := strings.LastIndex(t, ":"); i >= 0 {
 				t = t[i+1:]
 			}
-			t = strings.TrimPrefix(t, "refs/heads/")
+			t = strings.TrimPrefix(strings.TrimPrefix(t, "+"), "refs/heads/")
 			if t != "" && t != "HEAD" {
 				return t, true
 			}
@@ -49,7 +49,7 @@ func ResolveBranch(command, gitBranch string, knownCwds map[string]string) (bran
 		}
 		return "", false
 	}
-	if gitBranch == "" {
+	if gitBranch == "" || gitBranch == "HEAD" {
 		return "", false
 	}
 	return gitBranch, true
