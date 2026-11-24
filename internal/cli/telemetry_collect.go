@@ -132,7 +132,14 @@ func runCollect(ctx context.Context, env collectEnv, opts collectOpts) (collectS
 	if m, err := worktreeroot.MainCheckout(repoDir); err == nil {
 		main = m
 	}
-	roots := []string{repoDir, worktreeroot.Resolve(main, wtValue)}
+	roots := []string{repoDir}
+	// worktree.root is a discovery root only when it lies inside the main checkout (the
+	// repo-local default). An absolute root outside it may be shared by several repos, so
+	// everything below it would pull their sessions in; the git worktrees and the slug rule find
+	// this repo's worktrees there.
+	if wr := worktreeroot.Resolve(main, wtValue); wr == main || worktreeroot.Contains(main, wr) {
+		roots = append(roots, wr)
+	}
 	wts, err := gitWorktrees(ctx, repoDir)
 	if err != nil {
 		return sum, err

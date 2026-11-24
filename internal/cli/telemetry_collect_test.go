@@ -162,6 +162,31 @@ func TestCollectFindsWorktreeTranscripts(t *testing.T) {
 	}
 }
 
+// Two repos share one absolute worktree.root: collecting for repo A must not take the sessions
+// of repo B, but still finds A's own git worktree below that root.
+func TestCollectSharedAbsoluteWorktreeRoot(t *testing.T) {
+	r := newTCRig(t)
+	shared := filepath.Join(filepath.Dir(r.repo), "shared-wt")
+	r.write(filepath.Join(r.repo, "lighthouse.toml"), "[forge]\nrepo = \"o/r\"\n\n[worktree]\nroot = "+fmt.Sprintf("%q", shared)+"\n")
+	mrGit(t, r.repo, nil, "-c", "user.name=T", "-c", "user.email=t@example.com", "commit", "-q", "--allow-empty", "-m", "init")
+	own := filepath.Join(shared, "issue-12-a")
+	mrGit(t, r.repo, nil, "worktree", "add", "-q", "-b", "issue-12-a", own)
+	foreign := filepath.Join(shared, "issue-12-b") // a worktree of another repo
+	for _, c := range []struct{ dir, sid, cwd string }{
+		{"-own", "s-own", own},
+		{"-foreign", "s-foreign", foreign},
+	} {
+		r.project(c.dir, c.sid, c.cwd, tcLine(c.sid, c.cwd, 0, ""), tcLine(c.sid, c.cwd, 1, "m-"+c.sid))
+	}
+	if code, out, errOut := r.run(r.base()...); code != 0 {
+		t.Fatalf("exit %d, stderr %q, stdout %q", code, errOut, out)
+	}
+	got := r.query(`SELECT session_key FROM sessions`)
+	if strings.Join(got, ",") != "s-own" {
+		t.Errorf("sessions = %v, want only s-own", got)
+	}
+}
+
 func TestCollectExitCodes(t *testing.T) {
 	r := newTCRig(t)
 	if code, _, errOut := r.run(r.base()...); code != 0 {

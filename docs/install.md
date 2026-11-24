@@ -461,6 +461,9 @@ de statusmap. Repo, default branch en `paths.plans` komen uit de `lighthouse.tom
 - **Vinden.** Onder `~/.claude/projects` hoort een projectmap bij de repo als haar eerste `cwd`
   in `--repo-dir` ligt, in `[worktree] root`, in een git-worktree van de repo of in een pad dat
   `<owner>/<repo>` bevat (in elke hoofdletterstand; dat vindt ook een al verwijderde worktree).
+  `[worktree] root` telt alleen als zoekmap wanneer hij binnen de hoofdcheckout ligt (de
+  standaard); een absolute root daarbuiten kan met andere repo's gedeeld zijn, en dan vinden de
+  git-worktrees en het `<owner>/<repo>`-pad de worktrees van deze repo.
   De subagent-transcripten van een sessie horen bij haar hoofdtranscript.
 - **Uitvoer en exitcodes.** Een regel per transcript: `<soort> <pad>`, of `skip <pad>: <reden>`
   voor een transcript dat blijft liggen (geen regels, geen leesrechten, de sessie houdt haar
