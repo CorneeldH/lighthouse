@@ -19,6 +19,9 @@ func TestIsMemoryPath(t *testing.T) {
 		{"notes", "/home/u/.claude/projects/p/notes/a.md", "", false},
 		{"repo memory", "/home/u/repo/memory/a.md", "", false},
 		{"settings", "/home/u/.claude/settings.json", "", false},
+		{"uppercase MEMORY", "/home/u/.claude/projects/p/MEMORY/a.md", "", true},
+		{"config dir trailing slash", "/cfg/projects/p/memory/a.md", "/cfg/", true},
+		{"config dir bare memory", "/cfg/projects/p/memory", "/cfg", true},
 		{"config dir memoryx", "/cfg/projects/p/memoryx/a.md", "/cfg", false},
 	}
 	for _, c := range cases {
@@ -50,6 +53,9 @@ func TestEncodeProject(t *testing.T) {
 	cases := map[string]string{
 		"/home/x/repo":                    "-home-x-repo",
 		`D:\x\repo`:                       "D--x-repo",
+		"é":                               "-",
+		"😀":                               "--",
+		"a_b c":                           "a-b-c",
 		"/home/corneel/.cache/lighthouse": "-home-corneel--cache-lighthouse",
 	}
 	for in, want := range cases {

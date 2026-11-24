@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"unicode/utf16"
 )
 
 var memoryRe = regexp.MustCompile(`(^|/)\.claude/projects/[^/]+/memory(/|$)`)
@@ -57,14 +58,18 @@ func IsMemoryPath(p, home, configDir string) bool {
 	return tail == "memory" || strings.HasPrefix(tail, "memory/")
 }
 
-// EncodeProject replaces every character that is not an ASCII letter or
-// digit with '-'.
+// EncodeProject replaces every UTF-16 code unit that is not an ASCII letter
+// or digit with '-', like JavaScript's replace(/[^a-zA-Z0-9]/g, "-"): an
+// astral character becomes two dashes.
 func EncodeProject(path string) string {
-	b := []byte(path)
-	for i, c := range b {
-		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9') {
-			b[i] = '-'
+	units := utf16.Encode([]rune(path))
+	var b strings.Builder
+	for _, u := range units {
+		if u >= 'a' && u <= 'z' || u >= 'A' && u <= 'Z' || u >= '0' && u <= '9' {
+			b.WriteByte(byte(u))
+		} else {
+			b.WriteByte('-')
 		}
 	}
-	return string(b)
+	return b.String()
 }
