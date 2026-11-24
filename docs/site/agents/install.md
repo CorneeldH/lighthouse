@@ -64,7 +64,7 @@ Read, do not change, and do not ask yet. Find out:
 | `go`, `gofmt`, `golangci-lint` | go | Go code is not formatted or linted. |
 | `node`, `npm` | node | The node test gate reports `COULD NOT CHECK`. |
 | `npx` | node | `node-imports-gate` reports `COULD NOT CHECK`; nothing was checked for undeclared imports. |
-| `pwsh`, `PSScriptAnalyzer` | powershell | The `powershell-lint-check` hook blocks with `COULD NOT CHECK` on a `.ps1` or `.psm1` file. |
+| `pwsh`, `PSScriptAnalyzer` | powershell | The `powershell-lint-check` hook blocks with `COULD NOT CHECK` on a `.ps1` or `.psm1` file. Install the module with `Install-Module PSScriptAnalyzer -Scope CurrentUser` (or `-Scope AllUsers`, with admin rights). |
 | `curl`, `tar`, `xz` | shell | No `shellcheck` download; sha256sum or shasum verifies it; the `shell-lint-check` hook blocks. |
 
 Report what you found to the user in one block. Then go to the choices.

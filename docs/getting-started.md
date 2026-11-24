@@ -28,7 +28,7 @@ commit, PR bodies with evidence and, with `codex`, adversarial reviews.
 | `node` | node | the test gate `lighthouse gate node` | `lighthouse gate node` reports `COULD NOT CHECK` (exit 3); with 3 in `unchecked_exit_codes` the gate reports the commit as not tested. |
 | `npm` | node | the web checks of `lighthouse gate node` (`npm run …`) | As for `node`. |
 | `pwsh` | powershell | `powershell-lint-check` runs PSScriptAnalyzer in it | `powershell-lint-check` blocks with `COULD NOT CHECK` on every `.ps1` or `.psm1` file you edit. |
-| `PSScriptAnalyzer` (PowerShell module) | powershell | the rules of `powershell-lint-check` | As for `pwsh`. Install it with `Install-Module PSScriptAnalyzer -Scope AllUsers`. |
+| `PSScriptAnalyzer` (PowerShell module) | powershell | the rules of `powershell-lint-check` | As for `pwsh`. Install it with `Install-Module PSScriptAnalyzer -Scope CurrentUser` (or `-Scope AllUsers`, which needs admin rights); the hook sees either. |
 | `curl` | shell | the first download of the pinned `shellcheck`, verified with sha256sum or shasum | No download. Without a `shellcheck` on your `PATH`, the `shell-lint-check` hook blocks with `COULD NOT CHECK` on every shell script you edit. |
 | `tar` | shell | unpacking that download | As for `curl`. |
 | `xz` | shell | unpacking that download | As for `curl`. |
