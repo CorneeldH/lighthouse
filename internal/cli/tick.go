@@ -266,6 +266,10 @@ func tick(ctx context.Context, env tickEnv, dbPath string, errOut io.Writer) err
 	if saveRunViews(ctx, env, st.DB, viewed, errOut) {
 		failed = true
 	}
+	// The transcripts of runs go first: the sweeps remove the workspaces and mirrors they come from.
+	if collectRuns(ctx, env, st.DB, cfg, loadedRepos(loaded), errOut) {
+		failed = true
+	}
 	if sweepRepos(ctx, env, st.DB, cfg, ticked, checked, errOut) {
 		failed = true
 	}
@@ -276,6 +280,17 @@ func tick(ctx context.Context, env tickEnv, dbPath string, errOut io.Writer) err
 		return errSilent
 	}
 	return nil
+}
+
+// loadedRepos are the repos of loaded that loaded without an error.
+func loadedRepos(loaded []repoconfig.Loaded) []repoconfig.Repo {
+	var out []repoconfig.Repo
+	for _, l := range loaded {
+		if l.Err == nil {
+			out = append(out, l.Repo)
+		}
+	}
+	return out
 }
 
 // openedForge is the forge of one loaded repo, or why it has none.
