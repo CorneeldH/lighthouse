@@ -1598,19 +1598,19 @@ func TestQuestionNamesMissingReviewers(t *testing.T) {
 // spec the branch does not touch, a file outside the two dirs and a symlink do not.
 func TestSpecAndPlanOfBranchReachReviewer(t *testing.T) {
 	r := newRunFix(t, hostconfig.ReviewShadow, nil)
-	r.req.SpecsDir, r.req.PlansDir = "docs/specs", "docs/plans"
+	r.req.SpecsDir, r.req.PlansDir = "design/specs", "design/plans"
 	_, stdin := r.intentReviewer(approveJSON)
-	write(t, filepath.Join(r.main, "docs/specs/old.md"), "OLD-SPEC-TEXT\n")
+	write(t, filepath.Join(r.main, "design/specs/old.md"), "OLD-SPEC-TEXT\n")
 	r.intentBase()
-	r.commit("docs/specs/new-design.md", "NEW-SPEC-TEXT\n")
-	r.commit("docs/plans/new.md", "NEW-PLAN-TEXT\n")
-	r.commit("docs/other.md", "OTHER-TEXT\n")
+	r.commit("design/specs/new-design.md", "NEW-SPEC-TEXT\n")
+	r.commit("design/plans/new.md", "NEW-PLAN-TEXT\n")
+	r.commit("design/other.md", "OTHER-TEXT\n")
 	secret := filepath.Join(r.dir, "outside.md")
 	write(t, secret, "OUTSIDE-TEXT\n")
-	if err := os.Symlink(secret, filepath.Join(r.wt, "docs/specs/link.md")); err != nil {
+	if err := os.Symlink(secret, filepath.Join(r.wt, "design/specs/link.md")); err != nil {
 		t.Fatal(err)
 	}
-	tgit(t, r.wt, "add", "docs/specs/link.md")
+	tgit(t, r.wt, "add", "design/specs/link.md")
 	tgit(t, r.wt, "commit", "-q", "-m", "link")
 	head := r.commitWorkflow("ci.yml", swap(t, baseWF, "FOO: bar", "FOO: baz"))
 	r.run()
@@ -1618,12 +1618,12 @@ func TestSpecAndPlanOfBranchReachReviewer(t *testing.T) {
 		t.Fatalf("origin/%s = %q, want the pushed %s:\n%s", branch, got, head, r.forge.last(t))
 	}
 	in := stdin()
-	for _, want := range []string{issueTitle, issueBody, "docs/specs/new-design.md", "NEW-SPEC-TEXT", "docs/plans/new.md", "NEW-PLAN-TEXT", "FOO: baz"} {
+	for _, want := range []string{issueTitle, issueBody, "design/specs/new-design.md", "NEW-SPEC-TEXT", "design/plans/new.md", "NEW-PLAN-TEXT", "FOO: baz"} {
 		if !strings.Contains(in, want) {
 			t.Errorf("the intent reviewer did not get %q:\n%s", want, in)
 		}
 	}
-	if !strings.Contains(in, "Path: docs/specs/link.md\n\n[not read: ") {
+	if !strings.Contains(in, "Path: design/specs/link.md\n\n[not read: ") {
 		t.Errorf("the symlink is not named as not read:\n%s", in)
 	}
 	// A symlink's blob is its target: read as a file, the target path would reach the reviewer.
