@@ -224,10 +224,14 @@ type question struct {
 
 // answerCandidate is a dispatcher answer no stored question claims by ref:
 // a stored answer to an older question, or an answer run without a stored
-// answer. It ends the estimated wait of the next dispatcher question.
+// answer. It ends the estimated wait of the next dispatcher question. A
+// candidate from an answer run carries its answer moment, which counts only
+// when a question consumes it: a second pushanswer run on an answered
+// question is no extra answer.
 type answerCandidate struct {
-	at   time.Time
-	used bool
+	at     time.Time
+	used   bool
+	answer *Moment
 }
 
 // isAnswerKey reports a run that took up a human answer. A repair run
@@ -284,14 +288,12 @@ func questionsAndAnswers(in TimelineInput, now time.Time) ([]Moment, []Moment, [
 		}
 	}
 	for _, r := range firstAnswerRuns(in.Runs) {
-		if answeredRuns[r.ID] || anyAnswered(in.Runs, r.TriggerKey, answeredRuns) {
+		if anyAnswered(in.Runs, r.TriggerKey, answeredRuns) {
 			continue
 		}
-		answers = append(answers, Moment{At: r.StartedAt, RunID: r.ID})
-		cands = append(cands, answerCandidate{at: r.StartedAt})
+		cands = append(cands, answerCandidate{at: r.StartedAt, answer: &Moment{At: r.StartedAt, RunID: r.ID}})
 	}
 	sort.SliceStable(cands, func(i, j int) bool { return cands[i].at.Before(cands[j].at) })
-	sort.SliceStable(answers, func(i, j int) bool { return answers[i].At.Before(answers[j].At) })
 
 	var spans []span
 	for i := range qs {
@@ -306,17 +308,21 @@ func questionsAndAnswers(in TimelineInput, now time.Time) ([]Moment, []Moment, [
 		if q.RunID != 0 {
 			if c := nextCandidate(cands, q.At, nextDispatcherQuestion(qs, i)); c != nil {
 				c.used, q.Answered = true, true
+				if c.answer != nil {
+					answers = append(answers, *c.answer)
+				}
 				if c.at.After(q.At) {
 					spans = append(spans, span{Interval: Interval{q.At, c.at}, cause: CauseHuman, rank: rankHuman, estimate: true})
 				}
 				continue
 			}
 		}
-		end, running := unansweredEnd(in, q.At, now)
+		end, running := unansweredEnd(in, q.Moment, now)
 		if end.After(q.At) {
 			spans = append(spans, span{Interval: Interval{q.At, end}, cause: CauseHuman, rank: rankHuman, estimate: !q.stored, running: running})
 		}
 	}
+	sort.SliceStable(answers, func(i, j int) bool { return answers[i].At.Before(answers[j].At) })
 	moments := make([]Moment, len(qs))
 	for i, q := range qs {
 		moments[i] = q.Moment
@@ -385,14 +391,14 @@ func nextCandidate(cands []answerCandidate, from time.Time, limit *time.Time) *a
 	return nil
 }
 
-// unansweredEnd ends the wait on a question without answer at the first of:
-// the start of a later run or session, the end of a returned run, the close
-// of the issue. Without any it runs to now.
-func unansweredEnd(in TimelineInput, from, now time.Time) (time.Time, bool) {
+// unansweredEnd ends the wait on question q without answer at the first of,
+// at or after q: the start of another run or session, the end of a returned
+// run, the close of the issue. Without any it runs to now.
+func unansweredEnd(in TimelineInput, q Moment, now time.Time) (time.Time, bool) {
 	var end time.Time
 	found := false
-	consider := func(t time.Time, inclusive bool) {
-		if t.Before(from) || (!inclusive && t.Equal(from)) {
+	consider := func(t time.Time) {
+		if t.Before(q.At) {
 			return
 		}
 		if !found || t.Before(end) {
@@ -400,16 +406,20 @@ func unansweredEnd(in TimelineInput, from, now time.Time) (time.Time, bool) {
 		}
 	}
 	for _, r := range in.Runs {
-		consider(r.StartedAt, false)
+		if r.ID != q.RunID {
+			consider(r.StartedAt)
+		}
 		if r.Outcome == "returned" && r.EndedAt != nil {
-			consider(*r.EndedAt, true)
+			consider(*r.EndedAt)
 		}
 	}
 	for _, s := range in.Sessions {
-		consider(s.StartedAt, false)
+		if s.ID != q.SessionID {
+			consider(s.StartedAt)
+		}
 	}
 	if !in.ClosedAt.IsZero() {
-		consider(in.ClosedAt, true)
+		consider(in.ClosedAt)
 	}
 	if found {
 		return end, false

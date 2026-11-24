@@ -510,3 +510,39 @@ func TestTimelineTieFlagsDoNotDependOnOrder(t *testing.T) {
 		}
 	}
 }
+
+func TestTimelineSecondPushanswerRunIsNoExtraAnswer(t *testing.T) {
+	// The pusher starts a second pushanswer run for the same question, on
+	// another answer comment; RecordEvent kept only the first answer.
+	in := TimelineInput{
+		Runs: []TimelineRun{
+			{ID: 1, Trigger: "handoff", TriggerKey: "push:7", Command: "push-workflows", Outcome: "question", StartedAt: mins(0), EndedAt: endAt(30)},
+			{ID: 2, Trigger: "answer", TriggerKey: "pushanswer:5", Command: "push-workflows", Outcome: "pushed", StartedAt: mins(50), EndedAt: endAt(60)},
+			{ID: 3, Trigger: "answer", TriggerKey: "pushanswer:6", Command: "push-workflows", Outcome: "pushed", StartedAt: mins(70), EndedAt: endAt(80)},
+		},
+		Events: []TimelineEvent{
+			{Kind: EventQuestion, RunID: 1, Ref: "q1", At: mins(30)},
+			{Kind: EventAnswer, RunID: 2, Ref: "q1", AnswerTo: "q1", At: mins(45)},
+		},
+	}
+	got := Timeline(in, mins(200))
+	if len(got.Answers) != 1 || got.Answers[0].RunID != 2 {
+		t.Errorf("Answers = %+v; want only the stored answer on run 2", got.Answers)
+	}
+}
+
+func TestTimelineUnansweredEndsAtRunStartingAtQuestion(t *testing.T) {
+	// The next run starts at the very moment of the question: the wait is
+	// zero, not running to now.
+	in := TimelineInput{
+		Runs: []TimelineRun{
+			{ID: 1, Trigger: "start", TriggerKey: "start:7", Outcome: "question", StartedAt: mins(0), EndedAt: endAt(30)},
+			{ID: 2, Trigger: "retry", TriggerKey: "retry:7", Outcome: "merged", StartedAt: mins(30), EndedAt: endAt(40)},
+		},
+	}
+	got := Timeline(in, mins(200))
+	assertCauses(t, got, map[Cause]time.Duration{CauseActive: dur(40)})
+	if len(got.Questions) != 1 || got.Questions[0].Answered {
+		t.Errorf("Questions = %+v; want one unanswered question", got.Questions)
+	}
+}
