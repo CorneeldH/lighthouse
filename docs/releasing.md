@@ -35,7 +35,7 @@ when it stamps the build, and the binary reports `dev` instead of the version.
 
 ## The macOS gate
 
-A release waits for a green run of `macos.yml` (the pytest suite, the Go race tests and the e2e
+A release waits for a green run of `macos.yml` (the pytest job of `pack/python`, the Go race tests and the e2e
 tests on `macos-latest`) on the commit that started the release run, `github.sha`. Pull requests
 run no macOS job (#337).
 

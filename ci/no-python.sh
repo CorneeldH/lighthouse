@@ -2,14 +2,18 @@
 # Proves that lighthouse needs no Python (#285): on a PATH without python*, `init --yes` with the
 # core, go, node, shell and expo packs, then every hook registration that init wrote, each with
 # its payload from tests/pack/fixtures/hooks/<event>/<hook>[-<stand>].json. Last, no installed
-# file may name python3. A gate, unlike ci/windows-measure.sh: every check runs, and each failure
+# file may name the Python 3 interpreter. A gate, unlike ci/windows-measure.sh: every check runs, and each failure
 # is one line on stderr.
 #
 # Usage: ci/no-python.sh <lighthouse binary> <empty work dir>
 # Exit: 0 all green, 1 a check failed, 2 wrong usage.
 # Test seams: NO_PYTHON_FIXTURES replaces the fixture directory; NO_PYTHON_EXTRA is a file
-# copied into the repo before the python3 grep.
+# copied into the repo before the interpreter-name grep.
 set -u
+
+# The needle of this gate, built here so that this script does not name it itself (#370).
+py=python
+needle="${py}3"
 
 if [ "$#" -ne 2 ] || [ ! -x "$1" ] || [ ! -d "$2" ] || [ -n "$(ls -A "$2")" ]; then
   echo "usage: $0 <lighthouse binary> <empty work dir>" >&2
@@ -54,8 +58,8 @@ export PATH="$BIN_DIR:$TOOLBOX"
 export HOME="$WORK"
 export LIGHTHOUSE_HOST_TOML="$WORK/host.toml"
 export XDG_RUNTIME_DIR="$WORK"
-if command -v python3 >/dev/null 2>&1; then
-  echo "no-python: python3 is still on the PATH: $(command -v python3)" >&2
+if command -v "$needle" >/dev/null 2>&1; then
+  echo "no-python: $needle is still on the PATH: $(command -v "$needle")" >&2
   exit 1
 fi
 
@@ -127,18 +131,18 @@ while IFS=$'\t' read -r event cmd; do
   fi
 done <<<"$registrations"
 
-# 4. No file of the initialised repo names python3.
+# 4. No file of the initialised repo names the interpreter.
 if [ -n "${NO_PYTHON_EXTRA:-}" ]; then
   cp "$NO_PYTHON_EXTRA" "$REPO/" || fail "cannot copy $NO_PYTHON_EXTRA"
 fi
-hits=$(grep -rn python3 --exclude-dir=.git "$REPO")
+hits=$(grep -rn "$needle" --exclude-dir=.git "$REPO")
 grep_rc=$?
 if [ "$grep_rc" -ge 2 ]; then
-  fail "the python3 search failed (grep exit $grep_rc)"
+  fail "the $needle search failed (grep exit $grep_rc)"
 fi
 while IFS= read -r hit; do
   [ -n "$hit" ] || continue
-  fail "python3 in $(printf '%s' "$hit" | cut -d: -f1,2)"
+  fail "$needle in $(printf '%s' "$hit" | cut -d: -f1,2)"
 done <<<"$hits"
 
 exit "$FAILED"

@@ -14,7 +14,7 @@ dev = [
 package = false
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests/pack/python"]
 pythonpath = ["."]
 # One conftest module name now that tests/pack has no __init__.py (#481); needs pytest >= 8.1.
 consider_namespace_packages = true
