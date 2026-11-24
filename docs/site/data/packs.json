@@ -275,6 +275,28 @@
     "extra": []
   },
   {
+    "name": "powershell",
+    "proposed_when": "git tracks a .ps1 or .psm1 file",
+    "detect": [
+      "**/*.ps1",
+      "**/*.psm1"
+    ],
+    "skills": [],
+    "standard_skills": [],
+    "agents": [],
+    "workflows": [],
+    "hooks": [
+      {
+        "name": "powershell-lint-check",
+        "events": [
+          "PostToolUse"
+        ],
+        "when": "after every edit"
+      }
+    ],
+    "extra": []
+  },
+  {
     "name": "expo",
     "proposed_when": "a package.json that names expo",
     "detect": [
