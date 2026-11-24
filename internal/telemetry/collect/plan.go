@@ -53,24 +53,51 @@ type planFile struct {
 	Text string
 }
 
-// relUnder returns the part of abs from plansDir on, with slashes ("docs/plans/x.md"), when abs
-// lies under a directory of that name.
-func relUnder(abs, plansDir string) (string, bool) {
-	dir := path.Clean(filepath.ToSlash(plansDir))
-	abs = filepath.ToSlash(abs)
-	if i := strings.LastIndex("/"+abs, "/"+dir+"/"); i >= 0 {
-		rel := ("/" + abs)[i+1:]
-		return rel, len(rel) > len(dir)+1
+// repoRoots are the directories a plan written by the session may live in: the repo dir and
+// its worktrees. A file under any other directory belongs to another repository.
+func repoRoots(ctx context.Context, opt Options) []string {
+	if opt.RepoDir == "" {
+		return nil
 	}
-	return "", false
+	roots := []string{filepath.Clean(opt.RepoDir)}
+	if out, ok, err := gitOut(ctx, opt, "worktree", "list", "--porcelain"); err == nil && ok {
+		for _, ln := range strings.Split(out, "\n") {
+			if p, found := strings.CutPrefix(ln, "worktree "); found {
+				roots = append(roots, filepath.Clean(strings.TrimSpace(p)))
+			}
+		}
+	}
+	return roots
 }
 
-// findPlan returns the plan of the issue: the last file written under plansDir that can still
-// be read, else the last file whose name holds issue-<nr>-. The content comes from the file as
-// written, else from the working tree, else from origin/<default>. A nil result is no plan.
-func findPlan(ctx context.Context, opt Options, issue int, written []transcript.WrittenFile) (*planFile, error) {
+// relUnder returns the repo-relative path ("docs/plans/x.md", slashes) of abs when abs lies
+// under plansDir of one of the roots; the deepest root wins, so a worktree inside the repo dir
+// is read as its own root.
+func relUnder(abs string, roots []string, plansDir string) (string, bool) {
+	dir := path.Clean(filepath.ToSlash(plansDir))
+	best, bestRel := -1, ""
+	for _, root := range roots {
+		r, err := filepath.Rel(root, filepath.Clean(abs))
+		if err != nil || r == "." || strings.HasPrefix(r, "..") || filepath.IsAbs(r) {
+			continue
+		}
+		if len(root) > best {
+			best, bestRel = len(root), filepath.ToSlash(r)
+		}
+	}
+	if best < 0 || !strings.HasPrefix(bestRel, dir+"/") || len(bestRel) <= len(dir)+1 {
+		return "", false
+	}
+	return bestRel, true
+}
+
+// findWrittenPlan returns the last file the transcript wrote under plansDir that can still be
+// read. The content comes from the file as written, else from the working tree, else from
+// origin/<default>. A nil result is no written plan.
+func findWrittenPlan(ctx context.Context, opt Options, written []transcript.WrittenFile) (*planFile, error) {
+	roots := repoRoots(ctx, opt)
 	for i := len(written) - 1; i >= 0; i-- {
-		rel, ok := relUnder(written[i].Path, opt.PlansDir)
+		rel, ok := relUnder(written[i].Path, roots, opt.PlansDir)
 		if !ok {
 			continue
 		}
@@ -80,6 +107,11 @@ func findPlan(ctx context.Context, opt Options, issue int, written []transcript.
 			return &planFile{Rel: rel, Text: text}, nil
 		}
 	}
+	return nil, nil
+}
+
+// findNamedPlan returns the last plan file whose name holds issue-<nr>-, or nil.
+func findNamedPlan(ctx context.Context, opt Options, issue int) (*planFile, error) {
 	names, err := planNames(ctx, opt)
 	if err != nil {
 		return nil, err

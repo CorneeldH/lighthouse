@@ -574,3 +574,54 @@ func TestProcessSessionKeepsLinkOnRefusal(t *testing.T) {
 		t.Errorf("refused move left a trajectory 9")
 	}
 }
+
+// twoTranscripts processes a session that wrote a plan and one that wrote none, both on issue 7,
+// in the given order, and returns the plan stored at the end.
+func twoTranscripts(t *testing.T, aFirst, withNamed bool) (sql.NullInt64, sql.NullString) {
+	t.Helper()
+	db, dir := openDB(t), t.TempDir()
+	now := base.Add(5 * time.Hour)
+	written := writePlan(t, dir, "2026-11-24-design.md", "## Task 1\n## Task 2\n## Task 3\n")
+	if withNamed {
+		writePlan(t, dir, "2026-11-20-issue-7-other.md", "## Task 1\n")
+	}
+	a := source("sA", now, append(sessionBranchLines(), tline{min: 3, branch: "issue-7-x", id: "w1", model: known, out: 1, write: written})...)
+	b := source("sB", now, sessionBranchLines()...)
+	order := []Source{a, b}
+	if !aFirst {
+		order = []Source{b, a}
+	}
+	for _, s := range order {
+		process(t, db, s, opts(dir, now))
+	}
+	return planOf(t, db)
+}
+
+func TestProcessPlanSurvivesOtherTranscriptOfTrajectory(t *testing.T) {
+	for _, aFirst := range []bool{true, false} {
+		tasks, path := twoTranscripts(t, aFirst, false)
+		if tasks.Int64 != 3 || path.String != plansRel+"/2026-11-24-design.md" {
+			t.Errorf("A first %v: plan %v %v, want the plan A wrote", aFirst, tasks, path)
+		}
+	}
+}
+
+func TestProcessNameFallbackDoesNotReplaceWrittenPlan(t *testing.T) {
+	for _, aFirst := range []bool{true, false} {
+		tasks, path := twoTranscripts(t, aFirst, true)
+		if tasks.Int64 != 3 || path.String != plansRel+"/2026-11-24-design.md" {
+			t.Errorf("A first %v: plan %v %v, want the written plan over the issue-7- file", aFirst, tasks, path)
+		}
+	}
+}
+
+func TestProcessPlanOutsideRepoIgnored(t *testing.T) {
+	db, dir, other := openDB(t), t.TempDir(), t.TempDir()
+	now := base.Add(5 * time.Hour)
+	foreign := writePlan(t, other, "x.md", "## Task 1\n## Task 2\n")
+	lines := append(sessionBranchLines(), tline{min: 3, branch: "issue-7-x", id: "w1", model: known, out: 1, write: foreign})
+	process(t, db, source("s1", now, lines...), opts(dir, now))
+	if tasks, path := planOf(t, db); tasks.Valid || path.Valid {
+		t.Errorf("plan from another repo counted: %v %v", tasks, path)
+	}
+}

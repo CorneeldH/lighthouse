@@ -218,7 +218,7 @@ func writeRun(ctx context.Context, db *sql.DB, src Source, opt Options, reading 
 	if err != nil {
 		return Outcome{}, err
 	}
-	plans, err := plansFor(ctx, opt, reading, runTrajectories(runRows))
+	plans, err := plansFor(ctx, db, opt, reading, runTrajectories(runRows))
 	if err != nil {
 		return Outcome{}, err
 	}
@@ -230,6 +230,9 @@ func writeRun(ctx context.Context, db *sql.DB, src Source, opt Options, reading 
 			if len(runRows) > 1 {
 				suffix = fmt.Sprintf(":%d", s.run.ID)
 			}
+			// Ordering assumption: runs are claimed before the transcript size is measured, so a
+			// later pass never moves a model's usage wholly to a later run; a usage row therefore
+			// never goes stale in the earlier run.
 			w := writing{
 				sid: src.SessionID, suffix: suffix, recorded: src.Recorded, runID: s.run.ID,
 				setup: reading.SetupBetween(s.from, s.to), usage: reading.UsageBetween(s.from, s.to),
@@ -258,7 +261,7 @@ func writeSession(ctx context.Context, db *sql.DB, src Source, opt Options, read
 	lines := reading.Lines()
 	var plans []plan
 	if link := telemetry.Link(opt.DefaultBranch, lines); link.Issue > 0 {
-		plans, err = plansFor(ctx, opt, reading, []trajectory{{repo: opt.Repo, issue: link.Issue}})
+		plans, err = plansFor(ctx, db, opt, reading, []trajectory{{repo: opt.Repo, issue: link.Issue}})
 		if err != nil {
 			return Outcome{}, err
 		}
@@ -376,18 +379,46 @@ func runTrajectories(runRows []runInfo) []trajectory {
 	return out
 }
 
-// plansFor finds the plan of each trajectory (planFor of the design), before the transaction opens.
-func plansFor(ctx context.Context, opt Options, reading transcript.Reading, ts []trajectory) ([]plan, error) {
+// plansFor finds the plan of each trajectory (planFor of the design), before the transaction
+// opens. A plan the transcript itself wrote always counts. The name fallback only applies to a
+// trajectory without a plan_path: a plan another transcript of the trajectory wrote stays, so the
+// result does not depend on the order the transcripts are collected in. A trajectory that has a
+// plan and for which this transcript found none is left alone.
+func plansFor(ctx context.Context, db *sql.DB, opt Options, reading transcript.Reading, ts []trajectory) ([]plan, error) {
 	var out []plan
 	written := reading.WrittenFiles()
 	for _, t := range ts {
-		f, err := findPlan(ctx, opt, t.issue, written)
+		f, err := findWrittenPlan(ctx, opt, written)
 		if err != nil {
 			return nil, err
+		}
+		if f == nil {
+			has, err := hasPlan(ctx, db, t)
+			if err != nil {
+				return nil, err
+			}
+			if has {
+				continue
+			}
+			if f, err = findNamedPlan(ctx, opt, t.issue); err != nil {
+				return nil, err
+			}
 		}
 		out = append(out, plan{trajectory: t, file: f})
 	}
 	return out, nil
+}
+
+// hasPlan reports whether the trajectory already has a plan_path. A trajectory that does not
+// exist yet has none.
+func hasPlan(ctx context.Context, db *sql.DB, t trajectory) (bool, error) {
+	var n int
+	err := db.QueryRowContext(ctx, `SELECT count(*) FROM trajectories WHERE repo = ? COLLATE NOCASE AND issue = ?
+		AND plan_path IS NOT NULL`, t.repo, t.issue).Scan(&n)
+	if err != nil {
+		return false, fmt.Errorf("plan of %s#%d: %w", t.repo, t.issue, err)
+	}
+	return n > 0, nil
 }
 
 func setPlans(ctx context.Context, tx *telemetry.Tx, repo string, plans []plan) error {
