@@ -162,6 +162,11 @@ type Action struct {
 	AnswerText string `json:"answer_text,omitempty"`
 	After      string `json:"after,omitempty"`
 	Lane       string `json:"lane,omitempty"` // push_recover: the lane field of the Vraag
+	// Step is the red step of the pusher's Vraag, QuestionURL the Vraag the answer belongs to,
+	// Braked the defer word of the brake that is closed ("pause" or the usage text), "" when open.
+	Step        string `json:"step,omitempty"`
+	QuestionURL string `json:"question_url,omitempty"`
+	Braked      string `json:"braked,omitempty"`
 	// Blocked marks the return of rule 13 while a blocker is active (settleUnstartedFixPR): its
 	// label is blocked_issue, whatever Reason says (ReturnLabelKey).
 	Blocked bool `json:"blocked,omitempty"`
@@ -2110,9 +2115,8 @@ func (c issueCtx) mergePush(pr forge.PR, attempt int, at time.Time) planned {
 
 // pushAnswer is the KindPush for the answer `push` to a pusher 🤖 Vraag: a Vraag without a
 // session whose fields name the SHA, the worktree and the branch of the red push. Any other
-// answer resumes nothing, as there is no session: it is a KindPushRecover when the Vraag names an
-// after: command (apply checks whether the branch already stands on the SHA), else the issue
-// goes back. A SHA that is none, or a branch git must not see, gives no action.
+// answer resumes nothing, as there is no session: it is always a KindPushRecover (apply checks
+// whether the branch already stands on the SHA and answers in plain language). A SHA that is none, or a branch git must not see, gives no action.
 func (c issueCtx) pushAnswer(q *parsed, ans Comment) (planned, bool) {
 	sha, worktree, branch := q.Header.Fields["sha"], q.Header.Fields["worktree"], q.Header.Fields["branch"]
 	key := triggerPushAnswer + ":" + strconv.FormatInt(ans.ID, 10)
@@ -2129,10 +2133,9 @@ func (c issueCtx) pushAnswer(q *parsed, ans Comment) (planned, bool) {
 		a.Kind = KindPush
 		return c.ordered(a, parseTime(ans.CreatedAt)), true
 	}
-	if a.After = q.Header.Fields["after"]; a.After == "" {
-		return c.returned("reason_pusher_no_after", pushCommand(worktree)), true
-	}
+	a.After = q.Header.Fields["after"]
 	a.Kind, a.AnswerText, a.Lane = KindPushRecover, strings.TrimSpace(ans.Body), q.Header.Fields["lane"]
+	a.Step, a.QuestionURL = q.Header.Fields["step"], cmp.Or(q.Header.Fields["vraag"], q.Comment.URL)
 	return c.ordered(a, parseTime(ans.CreatedAt)), true
 }
 
