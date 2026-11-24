@@ -39,7 +39,7 @@ export function PrioritiesTab(): JSX.Element {
     const unassigned = withoutMilestone(inView, graph).filter((r) => selected.has(r.node.repo))
     const nodes = [...graph.nodes.values()].filter((n) => selected.has(n.repo))
     return {
-      // Issues without a milestone in view: nodes in the graph, every row of the unassigned view.
+      // Issues without a milestone in view: nodes in the graph, every row of the backlog view.
       hasUnassigned: {
         deps: nodes.some((n) => !n.milestone),
         milestones: false,

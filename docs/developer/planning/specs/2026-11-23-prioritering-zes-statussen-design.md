@@ -143,8 +143,8 @@ Eén component tekent een status, overal: legenda, balk, graafkaart, kanbankolom
 
 Op elk tabblad twee regels, elk met een kopje in kleine hoofdletters:
 
-- **Milestones**: de kleur per milestone die het tabblad toont, met *Without milestone* in grijs
-  zodra issues zonder milestone in beeld zijn.
+- **Milestones**: de kleur per milestone die het tabblad toont; *Without milestone* in grijs staat op
+  de tab Backlog, zodra issues zonder milestone in beeld zijn.
 - **Status**: de zes statussen, in de volgorde uit 1, met de vorm uit 2. Het label van *needs
   shaping* en *needs human* is onderstreept. De labels zijn `blocked`, `needs shaping`, `to do`,
   `active`, `needs human` en `done`.
