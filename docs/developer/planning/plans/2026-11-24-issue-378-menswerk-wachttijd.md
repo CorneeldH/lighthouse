@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Code, namen en commentaar Engels (`code_language = "en"`); artefacten (commits, comment op #375, changelog-fragment, docs) Nederlands. Oorzaken in code: `active` (spec: `actief`), `human` (`mens`), `usage`, `ci_review`, `pickup` (`oppakken`), `unexplained` (`onverklaard`); soorten `measured` / `estimate` / `running` (spec: gemeten / schatting / lopend). `active` heeft twee rangen: `active` (run) en `active` (sessie); `Cause` is één waarde `active`, de rang zit in het interval (`rank`).
+- Code, namen en commentaar Engels (`code_language = "en"`); artefacten (commits, comment op #375, docs; het changelog-fragment is Engels per `docs/releasing.md`) Nederlands. Oorzaken in code: `active` (spec: `actief`), `human` (`mens`), `usage`, `ci_review`, `pickup` (`oppakken`), `unexplained` (`onverklaard`); soorten `measured` / `estimate` / `running` (spec: gemeten / schatting / lopend). `active` heeft twee rangen: `active` (run) en `active` (sessie); `Cause` is één waarde `active`, de rang zit in het interval (`rank`).
 - Eén opslag: `lighthouse.db`; wat in `runs` of `sessions` staat wordt bij het lezen afgeleid, nooit opnieuw opgeslagen.
 - Geen transcript- of commentaartekst in de database: alleen soort, tijdstip en bronsleutel.
 - Migratie `0012_trajectory_events.sql`: één transactie, alleen `CREATE TABLE`/`CREATE INDEX`, bestaande tabellen ongewijzigd.
@@ -123,7 +123,7 @@
   }
   func Timeline(in TimelineInput, now time.Time) TrajectoryTimeline
   ```
-  Taak 4 vult `Questions`, `Answers` en `Takeovers` en de `usage`/onbeantwoord-logica; deze taak levert de sweep en de overige oorzaken.
+  Deze taak levert de sweep en alle oorzaken uit gemeten gegevens, ook de gemeten `human`- (Vraag-event tot antwoord-event) en `pickup`-intervallen (antwoord-event tot `started_at` van de hervatting). Taak 4 voegt alleen toe: de `Questions`-, `Answers`- en `Takeovers`-momenten, de schattingen (`human`/`pickup` zonder opgeslagen events), `usage` en de onbeantwoorde-vraaglogica.
 
 - [ ] **Step 1: Tests (rood).** Eén helper `mins(n)` = `t0 + n minuten`. Per test een `TimelineInput`; assert op `ByCause[c].Duration` en op `sum(ByCause) == Window.End-Window.Start`:
   - `TestTimelineAC4`: startrun 0–30 (uitkomst `question`, `ended_at` 35), Vraag-event `at` 30 (`Ref` `q1`, `RunID` 1), antwoord-event `at` 60 (`Ref` `q1`, `RunID` 2), hervatting (run 2, `TriggerKey` `answer:9`) start 70, Done-event `at` 100, einde 130 → `active` 30+30 = 60, `human` 30, `pickup` 10, `ci_review` 30, geen `unexplained`, som = 130.
@@ -134,12 +134,13 @@
   - `TestTimelineGapIsUnexplained`: runs 0–10 en 20–30 → `unexplained` 10, `active` 20; leeg venster-gat nooit `active` of 0.
   - `TestTimelineNoCauseMissingFromMap`: zonder `usage`-interval staat `CauseUsage` niet in `ByCause`.
   - `TestTimelineOpenRunRunsToNow`: open run → `Running == true`, venster eindigt op `now`.
-  - `TestTimelineSessionOverlap`: sessie 10–50 over run 0–30 → overlap 10–30 telt één keer als `active`; 30–50 is `active` (sessie) met `Running` als `EndedAt == nil`; som = venster.
+  - `TestTimelineSessionOverlap`: gesloten sessie 10–50 over run 0–30 → overlap 10–30 telt één keer als `active`; 30–50 is `active` (sessie) met `Running == false`; som = venster. Tweede subtest met een open sessie (`EndedAt == nil`): `Running == true`, venster eindigt op `now`.
+  - `TestTimelineHumanBeatsCIReview`: pusher-rij (`push-workflows`) 0–100 met een gemeten Vraag-event `at` 20 en antwoord-event `at` 60 binnen die rij → `human` 40, `ci_review` 60; met verwisselde rangen zou `ci_review` 100 zijn.
   - `TestTimelineEmpty`: geen runs en geen sessies → `ByCause` leeg, geen paniek.
   - `TestTimelineWindowStartsAtFirstRunOrSession`: tijd vóór de eerste run telt niet.
 - [ ] **Step 2:** Run `go test ./internal/telemetry/ -run Timeline -race`; verwacht FAIL (compilatie).
 - [ ] **Step 3: Implementeer `Timeline`** als sweep: bouw een lijst `interval{start, end, cause, rank, estimate, running, inclusive}` uit de runs, sessies en gebeurtenissen volgens de intervaltabel van de spec; verzamel alle begin- en eindpunten binnen het venster, sorteer ze, en wijs elk elementair segment toe aan het dekkende interval met de laagste rang (bij gelijke rang wint `estimate == false`); geen dekking → `unexplained`. Rangen: run-active 0, human 1, usage 2, ci_review 3, session-active 4, pickup 5. Open intervallen eindigen op `now`. Het `Moment`-deel en de overnames blijven leeg tot Taak 4.
-- [ ] **Step 4:** Zelfde run; verwacht PASS. Mutatiecheck: wissel de rang van `human` en `ci_review` in de code; `TestTimelineAC4` moet falen. Zet terug.
+- [ ] **Step 4:** Zelfde run; verwacht PASS. Mutatiecheck: wissel de rang van `human` en `ci_review` in de code; `TestTimelineHumanBeatsCIReview` moet falen. Zet terug.
 - [ ] **Step 5: Commit** `feat(telemetry): Timeline met oorzaken en voorrang (#378)`.
 
 ### Task 4: Vragen, antwoorden, overnames, schattingen en onbeantwoorde vragen
@@ -149,7 +150,7 @@
 
 **Interfaces:**
 - Consumes: de types uit Taak 3.
-- Produces: gevulde `Questions`, `Answers`, `Takeovers` en de `human`-, `usage`- en `pickup`-intervallen van de spec.
+- Produces: gevulde `Questions`, `Answers`, `Takeovers`, de geschatte `human`- en `pickup`-intervallen en de `usage`-intervallen van de spec (de gemeten `human`/`pickup` komen uit Taak 3).
 
 - [ ] **Step 1: Tests (rood):**
   - `TestTimelineNoStoredEvents`: vraagrun 0–30 (`question`), hervatting (`answer:9`) start 70, geen events → `human` 40 met `Estimate == true`, `pickup` ontbreekt, `Questions[0].Estimate == true`.
@@ -172,9 +173,9 @@
 
 **Interfaces:**
 - Consumes: `Timeline`, `TimelineInput` uit Taak 3 en 4.
-- Produces: `func LoadTimeline(ctx context.Context, db *sql.DB, trajectoryID int64, closedAt, now time.Time) (TrajectoryTimeline, error)` en `func FindTrajectoryID(ctx context.Context, db *sql.DB, repo string, issue int) (int64, bool, error)`.
+- Produces: `func LoadTimeline(ctx context.Context, db *sql.DB, trajectoryID int64, closedAt, now time.Time) (TrajectoryTimeline, error)` en `func FindTrajectoryID(ctx context.Context, db *sql.DB, repo string, issue int) (int64, bool, error)`, die de repo hoofdletterongevoelig vergelijkt (zoals `resolveRepo` in `record.go`, `COLLATE NOCASE`).
 
-- [ ] **Step 1: Test (rood)** `TestLoadTimelineFromDB`: bouw met `takeRun`, `runs.Release`, `RecordSession` en `RecordEvent` een traject als in `TestTimelineAC4`; `LoadTimeline` geeft dezelfde `ByCause` als de pure functie op handgebouwde invoer. Tweede test `TestLoadTimelineSkipsUnlinkedSessions`: een sessie met `unlinked_reason` telt niet mee. Derde `TestFindTrajectoryIDMissing`: onbekend issue → `false`, geen fout.
+- [ ] **Step 1: Test (rood)** `TestLoadTimelineFromDB`: bouw met `takeRun`, `runs.Release`, `RecordSession` en `RecordEvent` een traject als in `TestTimelineAC4`; `LoadTimeline` geeft dezelfde `ByCause` als de pure functie op handgebouwde invoer. Tweede test `TestLoadTimelineExcludesOtherTrajectory`: een sessie en een run van een ander traject tellen niet mee (een sessie met `unlinked_reason` heeft altijd `trajectory_id` NULL door een CHECK in `0010_telemetry.sql`, dus daar test je niets mee). `takeRun` zet `Now` op `t0` en `Trigger` op `handoff`: voor runs op andere tijden of met trigger `answer:<id>` roep je `runs.Take` direct aan met expliciete waarden. Derde `TestFindTrajectoryIDMissing`: onbekend issue → `false`, geen fout.
 - [ ] **Step 2:** Run `go test ./internal/telemetry/ -run 'Load|FindTrajectory' -race`; verwacht FAIL.
 - [ ] **Step 3: Implementeer** drie `SELECT`s (runs, sessions, trajectory_events van `trajectory_id`), vul `TimelineInput`, roep `Timeline` aan. `Pusher`-herkenning zit in `Timeline` (Taak 3), de loader geeft `command` en `trigger_key` ongewijzigd door; tijden parsen als RFC 3339.
 - [ ] **Step 4:** Run `go test ./internal/telemetry/... -race`; verwacht PASS.
@@ -183,21 +184,21 @@
 ### Task 6: De dispatcher schrijft Vraag, antwoord en Done
 
 **Files:**
-- Modify: `internal/dispatch/decide.go` (`Action`: `EventAt time.Time` en `EventRef string`, beide `omitempty`; `settle`; `answer`; `pushAnswer`; een nieuwe `KindNoteDone`), `internal/dispatch/apply.go`
+- Modify: `internal/dispatch/decide.go` (`Action`: `EventAt time.Time` en `EventRef string`, beide `omitzero` (zoals `view.go` en `fingerprint.go`); `settle`; `answer`; `pushAnswer`; een nieuwe `KindNoteDone`), `internal/dispatch/apply.go`
 - Create: `internal/dispatch/apply_events.go`, `internal/dispatch/apply_events_test.go`
 - Test: `internal/dispatch/decide_test.go`, `internal/dispatch/apply_test.go`
 
 **Interfaces:**
 - Consumes: `telemetry.RecordEvent`, `telemetry.EventRecord` (Taak 2); `parsed.Comment` en `parsed.Time` in `decide.go`.
-- Produces: `Action.EventRef` (comment-id van de Vraag, als tekst) en `Action.EventAt` (`created_at` van het commentaar) op de `KindClose` met `Outcome == runs.Question` en op `KindStart`/`KindResume`/`KindPush` van een `answer:`- of `pushanswer:`-trigger (dan `EventRef` = id van de Vraag, `CommentID` = antwoord-id, `EventAt` = `created_at` van het antwoord); `KindNoteDone` = een niet-sluitende actie voor een open run waarvoor `c.done()` waar is, met `RunID`.
+- Produces: `Action.EventRef` (comment-id van de Vraag, als tekst) en `Action.EventAt` (`created_at` van het commentaar) op de `KindClose` met `Outcome == runs.Question` en op `KindStart`/`KindResume`/`KindPush` van een `answer:`- of `pushanswer:`-trigger (dan `EventRef` = id van de Vraag, `CommentID` = antwoord-id, `EventAt` = `created_at` van het antwoord); `KindNoteDone` = een niet-sluitende actie voor een open agent-run (`!isPush(row)`) waarvoor `c.done()` waar is (een pusher-rij draait geen sessie en krijgt nooit een Done-event), met `RunID`.
   - `func (ap applier) recordEvent(ctx context.Context, a Action, kind telemetry.EventKind, runID int64, sourceID, ref string, at time.Time)` — schrijft, logt een fout en geeft niets terug (de tick gaat door).
 
 - [ ] **Step 1: Tests (rood).**
-  - `decide_test.go`: `TestDecideQuestionCloseCarriesQuestionComment` — snapshot met een Vraag van de run: de `KindClose` heeft `EventRef` = Vraag-id en `EventAt` = `created_at` van het commentaar; `TestDecideAnswerCarriesEventFields` — resume met `answer:<id>` en push met `pushanswer:<id>` dragen `EventRef` van de Vraag; `TestDecideRepairCarriesNoEventRef`; `TestDecideNoteDoneForOpenDoneRun` — een open run met stand Done en geen werk na de Stop geeft `KindNoteDone`, een run zonder Done niet, en een run die al sluit (Done-commentaar) geeft er geen.
-  - `apply_events_test.go`: `TestApplyWritesQuestionEvent` (`KindClose`/`Question` → één rij `kind='question'`, `source_id` `question:<id>`, `at` = `EventAt`, `run_id` = de gesloten run, geschreven nadat `runs.Release` slaagde); `TestApplyWritesAnswerEvent` (na `runs.Take` met de nieuwe run als `run_id`, `source_id` `answer:<antwoord-id>`, `ref` = Vraag-id; een herstart met dezelfde `trigger_key` schrijft niets bij); `TestApplyWritesDoneEventOnce` (`KindNoteDone` twee keer → één rij, `at` van de eerste tick, `source_id` `done:<run-id>`, `ref` = run-id); `TestApplyContinuesWhenEventWriteFails` (een run waarvan `trajectory_id` NULL is, zodat `RecordEvent` weigert: `Apply` geeft `nil` terug, de run is gesloten en het log bevat `event not recorded`).
+  - `decide_test.go`: `TestDecideQuestionCloseCarriesQuestionComment` — snapshot met een Vraag van de run: de `KindClose` heeft `EventRef` = Vraag-id en `EventAt` = `created_at` van het commentaar; `TestDecideAnswerCarriesEventFields` — resume met `answer:<id>` en push met `pushanswer:<id>` dragen `EventRef` van de Vraag; `TestDecideRepairCarriesNoEventRef`; `TestDecideNoNoteDoneForPushRow` (een open `push-workflows`- of `merge:`-rij geeft nooit `KindNoteDone`); `TestDecideAnswerToPusherQuestionCarriesEventFields` (`KindPushRecover` draagt `EventRef`/`EventAt`); `TestDecideNoteDoneForOpenDoneRun` — een open run met stand Done en geen werk na de Stop geeft `KindNoteDone`, een run zonder Done niet, en een run die al sluit (Done-commentaar) geeft er geen.
+  - `apply_events_test.go`: `TestApplyWritesQuestionEvent` (`KindClose`/`Question` → één rij `kind='question'`, `source_id` `question:<id>`, `at` = `EventAt`, `run_id` = de gesloten run, geschreven nadat `runs.Release` slaagde); `TestApplyWritesAnswerEvent` (na `runs.Take` met de nieuwe run als `run_id`, `source_id` `answer:<antwoord-id>`, `ref` = Vraag-id; een herstart met dezelfde `trigger_key` schrijft niets bij); `TestApplyWritesDoneEventOnce` (`KindNoteDone` twee keer → één rij, `at` van de eerste tick, `source_id` `done:<run-id>`, `ref` = run-id); `TestApplyDoneWriteFailureNotRetried` (`KindNoteDone` met falende `RecordEvent` twee keer toegepast → één poging, één logregel); `TestApplyWritesAnswerEventAfterPushRecover` (`KindPushRecover` met `pushanswer:`-trigger → antwoord-rij); `TestApplyContinuesWhenEventWriteFails` (een run waarvan `trajectory_id` NULL is, zodat `RecordEvent` weigert: `Apply` geeft `nil` terug, de run is gesloten en het log bevat `event not recorded`).
 - [ ] **Step 2:** Run `go test ./internal/dispatch/ -run 'Event|NoteDone|CarriesQuestion|CarriesEvent' -race`; verwacht FAIL.
-- [ ] **Step 3: Implementeer.** In `settle` zet je op `closed(runs.Question)` de velden uit de eerste matchende Vraag-`parsed` van deze run (`Comment.ID`, `Time`). In `answer()` en `pushAnswer()` zet je `EventRef` = `q.Comment.ID` en `EventAt` = `parseTime(ans.CreatedAt)`; `repair` blijft zonder. Voeg `KindNoteDone` toe (groep 0 in `planned.group`, mag een gepauzeerde rem passeren, start niets) en emit hem in `decideIssue` voor elke open run van het issue waarvoor `runCtx.done()` waar is en die niet sluit. In `apply`: `KindClose` met `Outcome == runs.Question` roept na `closeRun` `recordEvent(… EventQuestion …)` aan; `start` en `push` roepen `recordEvent(… EventAnswer …)` aan direct na een geslaagde `runs.Take` voor een `answer:`- of `pushanswer:`-trigger met `EventRef != ""`; `KindNoteDone` roept `recordEvent(… EventDone, a.RunID, "done:<id>", "<id>", env.Now())` aan. Het traject volgt uit de run (`runs.trajectory_id`): lees `repo` en `issue` uit de actie. Een fout van `RecordEvent` gaat naar `ap.logf` met de tekst `event not recorded`, nooit als returnwaarde. Werk `internal/cli/tick.go` bij als die op het type actie filtert (zoals bij `KindIdle`) zodat `KindNoteDone` doorgaat naar `Apply`.
-- [ ] **Step 4:** Run `go test ./internal/dispatch/... ./internal/cli/... -race`; verwacht PASS. Run `go vet ./...`.
+- [ ] **Step 3: Implementeer.** In `settle` zet je op `closed(runs.Question)` de velden uit de eerste matchende Vraag-`parsed` van deze run (`Comment.ID`, `Time`). In `answer()` en `pushAnswer()` zet je `EventRef` = `q.Comment.ID` en `EventAt` = `parseTime(ans.CreatedAt)`; `repair` blijft zonder. Voeg `KindNoteDone` toe (groep 0 in `planned.group`, mag een gepauzeerde rem passeren, start niets) en emit hem in `decideIssue` voor elke open run van het issue waarvoor `runCtx.done()` waar is en die niet sluit. In `apply`: `KindClose` met `Outcome == runs.Question` roept na `closeRun` `recordEvent(… EventQuestion …)` aan; `start`, `push` en `pushRecover` (de `KindPushRecover` met trigger `pushanswer:`) roepen `recordEvent(… EventAnswer …)` aan direct na een geslaagde `runs.Take` voor een `answer:`- of `pushanswer:`-trigger met `EventRef != ""`; `KindNoteDone` onthoudt per run-id in de applier (in-memory, per proces) dat een poging is gedaan en probeert een mislukte Done-opslag niet opnieuw; hij roept `recordEvent(… EventDone, a.RunID, "done:<id>", "<id>", env.Now())` aan. Het traject volgt uit de run (`runs.trajectory_id`): lees `repo` en `issue` uit de actie. Een fout van `RecordEvent` gaat naar `ap.logf` met de tekst `event not recorded`, nooit als returnwaarde. Werk `internal/cli/tick.go` bij als die op het type actie filtert (zoals bij `KindIdle`) zodat `KindNoteDone` doorgaat naar `Apply`.
+- [ ] **Step 4:** Werk de bestaande verwachtingen bij die door `EventRef`/`EventAt`/`KindNoteDone` veranderen: de golden-fixtures `settle-question`, `closecheck-question-closes-as-question`, `answer-resume`, `dedup-one-start-failed-resume` (want krijgt `EventRef`/`EventAt`) en de fixtures met een open Done-run (`done-pr-pending`, `postfailed-repost-question`, `postfailed-repost-handoff`: want krijgt een `note_done`), en de `TestMergeReady`-gevallen in `decide_merge_test.go` (laat `summary()` `note_done` weglaten zodat de verwachte `[]string{}` blijft). Run `go test ./internal/dispatch/... ./internal/cli/... -race`; verwacht PASS. Run `go vet ./...`.
 - [ ] **Step 5: Commit** `feat(dispatch): Vraag, antwoord en Done als gebeurtenis opslaan (#378)`.
 
 ### Task 7: `lighthouse trajectory`
@@ -222,7 +223,7 @@
 - Modify: `docs/install.md` (bij `measure-recovery`, rond regel 418)
 - Create: `changelog.d/issue-378-menswerk-wachttijd.md` (zelfde frontmatter als de andere fragmenten; `type` zoals daar voor een nieuwe functie gebruikelijk is, kies uit de bestaande fragmenten en `docs/releasing.md`)
 
-- [ ] **Step 1:** Beschrijf `lighthouse trajectory <issue> [--repo-dir <pad>] [--db <pad>]` in `docs/install.md` (wat het print, de exitcodes) en schrijf het changelog-fragment in het Nederlands.
+- [ ] **Step 1:** Beschrijf `lighthouse trajectory <issue> [--repo-dir <pad>] [--db <pad>]` in `docs/install.md` (wat het print, de exitcodes) en schrijf het changelog-fragment in het Engels (`docs/releasing.md`).
 - [ ] **Step 2:** Run `lighthouse imports check`, `go run ./cmd/lighthouse init --upgrade` (verwacht `No changes.`; zo niet, commit de installatiekopie mee) en `[test_gate] command`.
 - [ ] **Step 3: Commit** `docs(telemetry): lighthouse trajectory en changelog (#378)`.
 - [ ] **Step 4:** Plaats een comment op #375 (Nederlands): de lezer schrijft vragen en antwoorden uit interactieve sessies via `telemetry.RecordEvent` (`EventRecord` met `SessionID`, `Ref` `<sessie-id>:<tool-use-id>`), met eigen `source`/`source_id`; geen tekst opslaan; `RecordSession` weigert een nieuw traject voor een sessie met gebeurtenissen; en een sessie moet een `ended_at` krijgen bij het afsluiten. Gebruik `gh issue comment 375 --body-file <bestand in de scratchpad>`.
