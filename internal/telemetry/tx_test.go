@@ -72,11 +72,11 @@ func TestSetPlanNullKeepsNull(t *testing.T) {
 		t.Errorf("plan = %v, %v; want NULL, NULL", n, p)
 	}
 	tasks := 7
-	if err := SetPlan(ctx, db, "o/r", 5, &tasks, "docs/plan.md"); err != nil {
+	if err := SetPlan(ctx, db, "o/r", 5, &tasks, "plans/plan.md"); err != nil {
 		t.Fatal(err)
 	}
-	if n, p := read(); n.Int64 != 7 || p.String != "docs/plan.md" {
-		t.Errorf("plan = %v, %v; want 7, docs/plan.md", n, p)
+	if n, p := read(); n.Int64 != 7 || p.String != "plans/plan.md" {
+		t.Errorf("plan = %v, %v; want 7, plans/plan.md", n, p)
 	}
 	if err := SetPlan(ctx, db, "o/r", 99, &tasks, "x"); err == nil {
 		t.Error("missing trajectory: no error")
