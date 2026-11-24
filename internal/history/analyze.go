@@ -17,7 +17,7 @@ type AnalyzeOptions struct {
 }
 
 // detectors lists the detectors of a run; tasks add theirs here.
-func detectors(env Env) []Detector { return nil }
+func detectors(env Env) []Detector { return []Detector{newTrunk(env)} }
 
 // newDetectors is a variable so tests can plug in their own.
 var newDetectors = detectors

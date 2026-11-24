@@ -64,7 +64,7 @@ func TestAnalyze_NoSessions(t *testing.T) {
 	}
 	newDetectors = old
 	b, _ := json.Marshal(Analyze(nil, Env{}, AnalyzeOptions{}))
-	for _, k := range []string{`"schema":1`, `"sessions":0`, `"skipped_lines":0`, `"findings":[]`, `"level":{"recommended":"light","reason":"no history"}`} {
+	for _, k := range []string{`"schema":1`, `"sessions":0`, `"skipped_lines":0`, `"findings":[{"key":"trunk","status":"no_data"`, `"level":{"recommended":"light","reason":"no history"}`} {
 		if !strings.Contains(string(b), k) {
 			t.Fatalf("missing %s in %s", k, b)
 		}
