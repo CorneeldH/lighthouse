@@ -1,6 +1,9 @@
 package protocol
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestHeadingLanguages(t *testing.T) {
 	for _, c := range []struct{ key, language, want string }{
@@ -51,6 +54,25 @@ func TestReasonKey(t *testing.T) {
 	for _, tt := range tests {
 		if key, ok := ReasonKey(tt.field); key != tt.key || ok != tt.ok {
 			t.Errorf("ReasonKey(%q) = %q, %v; want %q, %v", tt.field, key, ok, tt.key, tt.ok)
+		}
+	}
+}
+
+func TestQuestionPushHeadingsText(t *testing.T) {
+	for _, c := range []struct{ language, pushed, permission string }{
+		{"nl", "gepusht", "andere duidelijke toestemming"},
+		{"en", "pushed", "another clear permission"},
+	} {
+		for _, key := range []string{"question_push_permit", "question_push_retry", "question_push_moved"} {
+			got := Heading(key, c.language)
+			for _, want := range []string{"`push`", c.permission} {
+				if !strings.Contains(got, want) {
+					t.Errorf("Heading(%q, %q) = %q, want it to contain %q", key, c.language, got, want)
+				}
+			}
+		}
+		if got := Heading("question_push_permit", c.language); !strings.Contains(got, c.pushed) {
+			t.Errorf("Heading(question_push_permit, %q) = %q, want it to contain %q", c.language, got, c.pushed)
 		}
 	}
 }
