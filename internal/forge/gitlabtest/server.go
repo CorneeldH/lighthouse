@@ -75,6 +75,7 @@ type Server struct {
 	labelColor map[string]string
 	commits    []string
 	failCommit map[string]bool
+	mergeBase  map[string]string        // "<sha>|<branch>" to the relation set by SetMergeBase
 	mrNotes    map[int][]map[string]any // notes of a merge request; its iid is not an issue iid
 	pipelines  map[int][]map[string]any // pipelines of a merge request, by its iid
 	jobs       map[int][]map[string]any // jobs of a pipeline, by pipeline id

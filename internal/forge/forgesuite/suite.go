@@ -99,6 +99,11 @@ type Fixture interface {
 	AddCommit(t *testing.T, sha string)
 	// FailCommit makes the lookup of the commit with sha answer a 500.
 	FailCommit(t *testing.T, sha string)
+	// SetBranchRelation arranges how branch relates to commit sha for BranchContains: "identical"
+	// (the branch is at sha), "ahead" (it holds sha and more), "behind" (sha is ahead of the
+	// branch), "diverged" (neither holds the other) or "invalid" (the forge refuses the pair
+	// with a 4xx other than 404, as GitLab does with a 400). A pair never set is unknown: 404.
+	SetBranchRelation(t *testing.T, branch, sha, relation string)
 	// LabelColor is the colour the forge stored for the label, in the shape the forge uses
 	// (GitHub: six hex digits; GitLab: with a leading "#"); "" when the label is unknown.
 	LabelColor(t *testing.T, name string) string
@@ -173,6 +178,7 @@ var Cases = []Case{
 	{"PullHeads", pullHeads},
 	{"IssueClosingHeads", issueClosingHeads},
 	{"CommitKnown", commitKnown},
+	{"BranchContains", branchContains},
 	{"CreateLabel", createLabel},
 	{"AddBlockerThenBlockedBy", addBlockerThenBlockedBy},
 	{"IssueLifecycleByMarker", issueLifecycleByMarker},
@@ -1418,6 +1424,32 @@ func commitKnown(t *testing.T, f Fixture) {
 	}
 	if got, err = f.Forge().CommitKnown(t.Context(), "deadbeef"); err == nil || got {
 		t.Errorf("CommitKnown(500) = %v, %v; want false and an error", got, err)
+	}
+}
+
+func branchContains(t *testing.T, f Fixture) {
+	const sha = "abc123"
+	for _, c := range []struct {
+		relation string
+		want     bool
+	}{{"identical", true}, {"ahead", true}, {"behind", false}, {"diverged", false}, {"invalid", false}} {
+		f.SetBranchRelation(t, "issue-1-"+c.relation, sha, c.relation)
+		got, err := f.Forge().BranchContains(t.Context(), "issue-1-"+c.relation, sha)
+		if err != nil || got != c.want {
+			t.Errorf("BranchContains(%s) = %v, %v; want %v, nil", c.relation, got, err, c.want)
+		}
+	}
+	// A branch with a slash goes through URL-escaped.
+	f.SetBranchRelation(t, "feature/x y", sha, "ahead")
+	if got, err := f.Forge().BranchContains(t.Context(), "feature/x y", sha); err != nil || !got {
+		t.Errorf("BranchContains(slash branch) = %v, %v; want true, nil", got, err)
+	}
+	// A branch or a sha the forge does not know is false, nil, never an error.
+	if got, err := f.Forge().BranchContains(t.Context(), "gone", sha); err != nil || got {
+		t.Errorf("BranchContains(unknown branch) = %v, %v; want false, nil", got, err)
+	}
+	if got, err := f.Forge().BranchContains(t.Context(), "issue-1-ahead", "ffffff"); err != nil || got {
+		t.Errorf("BranchContains(unknown sha) = %v, %v; want false, nil", got, err)
 	}
 }
 

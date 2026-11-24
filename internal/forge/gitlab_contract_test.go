@@ -80,6 +80,9 @@ func (g *gitlabFixture) AddNamedMilestone(_ *testing.T, title string, group bool
 
 func (g *gitlabFixture) AddCommit(_ *testing.T, sha string)  { g.srv.AddCommit(sha) }
 func (g *gitlabFixture) FailCommit(_ *testing.T, sha string) { g.srv.FailCommit(sha) }
+func (g *gitlabFixture) SetBranchRelation(_ *testing.T, branch, sha, relation string) {
+	g.srv.SetMergeBase(sha, branch, relation)
+}
 func (g *gitlabFixture) LabelColor(_ *testing.T, name string) string {
 	return g.srv.LabelColor(name)
 }
