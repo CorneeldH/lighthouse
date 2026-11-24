@@ -301,7 +301,7 @@ lighthouse telemetry collect [--repo-dir <pad>] [--db <pad>] [--since-last] [--d
   meldt `COULD NOT CHECK` alleen in dat log, niet in de sessie.
 - **Lighthouse- en packversie** *(eigen keuze)*. Dezelfde hook kent de sessie-id uit zijn invoer,
   de eigen binaryversie en `version` uit `.lighthouse/manifest.toml`. Hij schrijft die in een klein
-  zijbestand, `<state>/telemetry/sessions/<sessie-id>.json`, met `<state>` = `LIGHTHOUSE_STATE_DIR`
+  zijbestand, `<state>/<sessie-id>.observations.json` (afwijking bij de bouw: niet onder `telemetry/sessions/`, het bestand ligt direct in de statusmap), met `<state>` = `LIGHTHOUSE_STATE_DIR`
   als die gezet is, anders dezelfde terugval als `tick` (`XDG_STATE_HOME` of `~/.local/state`, plus
   `lighthouse/dispatch`; `internal/cli/tick.go`): hook en collector leiden het pad op dezelfde manier
   af, ook voor een interactieve sessie zonder dispatcher (r1-f6). Het bestand is een lijst van
