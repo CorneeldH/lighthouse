@@ -145,10 +145,12 @@ describe('PrioritiesTab', () => {
       ],
       runs: [],
     }
-    const STATE_LABELS = ['done', 'active', 'ready', 'needs a human', 'blocked', 'not shaped yet']
-    const legend = () => within(screen.getByRole('list', { name: 'Legend' }))
+    const STATE_LABELS = ['blocked', 'needs shaping', 'to do', 'active', 'needs human', 'done']
+    const milestones = () => within(screen.getByRole('list', { name: 'Milestones', hidden: false }))
+    const statusList = () => screen.getByRole('list', { name: 'Status' })
+    const legend = milestones
     const swatches = () =>
-      Array.from(screen.getByRole('list', { name: 'Legend' }).querySelectorAll('li'))
+      Array.from(screen.getByRole('list', { name: 'Milestones' }).querySelectorAll('li'))
         .map((li) => [li.textContent, (li.querySelector('i') as HTMLElement).style.background])
 
     it('lists only milestones with a node in the deps view, with repo prefix for >1 repo', async () => {
@@ -175,33 +177,81 @@ describe('PrioritiesTab', () => {
       stub(() => json(TWO))
       renderTab()
       fireEvent.click(await screen.findByRole('button', { name: /^Milestones/ }))
-      expect(swatches().map((x) => x[0])).toEqual(['a/x · Alpha', 'a/x · Empty', 'a/y · Beta', ...STATE_LABELS])
+      expect(swatches().map((x) => x[0])).toEqual(['a/x · Alpha', 'a/x · Empty', 'a/y · Beta'])
     })
 
-    it('the legend shows the five states and the shaping border, and no picked-up pill', async () => {
+    it('has a Milestones list and a Status list with headings on each tab', async () => {
       stub(() => json(TWO))
       renderTab()
       await screen.findByRole('button', { name: 'a/x' })
+      for (const name of [/^Dependencies/, /^Milestones/, /Without milestone/]) {
+        fireEvent.click(screen.getByRole('button', { name }))
+        expect(screen.getByRole('list', { name: 'Milestones' })).toBeTruthy()
+        expect(statusList()).toBeTruthy()
+        expect(screen.getAllByText('Milestones', { selector: 'span,h3,p,div' }).length).toBeGreaterThan(0)
+        expect(screen.getAllByText('Status').length).toBeGreaterThan(0)
+        expect(screen.queryByRole('list', { name: 'Legend' })).toBeNull()
+      }
+    })
+
+    it('the Status list has the six states in order, no shaping item and no picked-up pill', async () => {
+      stub(() => json(TWO))
+      renderTab()
+      await screen.findByRole('button', { name: 'a/x' })
+      const items = Array.from(statusList().querySelectorAll('li'))
+      expect(items.map((li) => li.textContent)).toEqual(STATE_LABELS)
       const states = screen.getAllByTestId('legend-block')
       expect(states.map((b) => b.getAttribute('data-state'))).toEqual([
-        'done',
-        'active',
-        'ready',
-        'needs_human',
         'blocked',
+        'needs_shaping',
+        'ready',
+        'active',
+        'needs_human',
+        'done',
       ])
-      expect(states.every((b) => !b.hasAttribute('data-needs-human'))).toBe(true)
-      expect(legend().queryByText('picked up')).toBeNull()
-      for (const label of ['active', 'ready', 'needs a human', 'blocked']) {
-        expect(legend().getByText(label)).toBeTruthy()
+      expect(screen.queryByTestId('legend-shaping')).toBeNull()
+      expect(within(statusList()).queryByText('picked up')).toBeNull()
+      expect(within(statusList()).queryByText('needs a human')).toBeNull()
+    })
+
+    it('underlines only the labels needs shaping and needs human', async () => {
+      stub(() => json(TWO))
+      renderTab()
+      await screen.findByRole('button', { name: 'a/x' })
+      const underlined = Array.from(statusList().querySelectorAll('li'))
+        .filter((li) => li.querySelector('[data-underlined="true"]') !== null)
+        .map((li) => li.textContent)
+      expect(underlined).toEqual(['needs shaping', 'needs human'])
+    })
+
+    it('adds a grey Without milestone item once issues without a milestone are in view', async () => {
+      stub(() => json(PRIORITIES))
+      renderTab()
+      await screen.findByRole('button', { name: 'a/x' })
+      expect(swatches().at(-1)).toEqual(['Without milestone', 'var(--lh-grey)'])
+      fireEvent.click(screen.getByRole('button', { name: /^Milestones/ }))
+      expect(milestones().queryByText('Without milestone')).toBeNull()
+    })
+
+    it('a shaping milestone keeps its dotted bar border and gets no legend item', async () => {
+      const shaping = {
+        repos: [{ slug: 'a/x', issues: [iss(1, { number: 1, title: 'Alpha' })], milestones: [{ ...ms(1, 'Alpha'), description: 'Status: shaping' }] }],
+        runs: [],
       }
+      stub(() => json(shaping))
+      renderTab()
+      fireEvent.click(await screen.findByRole('button', { name: /^Milestones/ }))
+      expect(screen.getByTestId('bar').getAttribute('data-shaping')).toBe('true')
+      expect(screen.queryByTestId('legend-shaping')).toBeNull()
+      expect(screen.getByRole('list', { name: 'Milestones' }).querySelectorAll('li')).toHaveLength(1)
     })
 
     it('the without-milestone view has no milestone colours when no closed milestone is named', async () => {
       stub(() => json(TWO))
       renderTab()
       fireEvent.click(await screen.findByRole('button', { name: /Without milestone/ }))
-      expect(swatches().map((x) => x[0])).toEqual(STATE_LABELS)
+      expect(screen.getByRole('list', { name: 'Milestones' }).querySelectorAll('li')).toHaveLength(0)
+      expect(Array.from(statusList().querySelectorAll('li')).map((li) => li.textContent)).toEqual(STATE_LABELS)
     })
 
     it('a stored selection of only stale slugs counts as all on', async () => {

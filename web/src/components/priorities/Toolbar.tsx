@@ -1,7 +1,8 @@
 import type { JSX } from 'react'
 import type { ViewId } from '@/lib/priorities/prefs'
 import type { DepsOrder } from './layout'
-import { Block, type BlockState } from './Block'
+import type { IssueStateName } from '@/lib/priorities/derive'
+import { Block } from './Block'
 
 export interface LegendItem {
   key: string
@@ -23,13 +24,18 @@ interface ToolbarProps {
   onDepsOrder: (o: DepsOrder) => void
 }
 
-const STATES: Array<{ key: string; label: string; state: BlockState }> = [
-  { key: 'done', label: 'done', state: 'done' },
-  { key: 'active', label: 'active', state: 'active' },
-  { key: 'ready', label: 'ready', state: 'ready' },
-  { key: 'needs-human', label: 'needs a human', state: 'needs_human' },
-  { key: 'blocked', label: 'blocked', state: 'blocked' },
+const STATES: Array<{ key: IssueStateName; label: string }> = [
+  { key: 'blocked', label: 'blocked' },
+  { key: 'needs_shaping', label: 'needs shaping' },
+  { key: 'ready', label: 'to do' },
+  { key: 'active', label: 'active' },
+  { key: 'needs_human', label: 'needs human' },
+  { key: 'done', label: 'done' },
 ]
+
+const UNDERLINED: ReadonlySet<IssueStateName> = new Set(['needs_shaping', 'needs_human'])
+
+const HEADING = 'text-[0.65rem] font-semibold uppercase tracking-wider text-muted-foreground'
 
 const VIEWS: Array<{ id: ViewId; label: string }> = [
   { id: 'deps', label: 'Dependencies' },
@@ -138,30 +144,41 @@ export function Toolbar({
           })}
         </div>
       </div>
-      <ul aria-label="Legend" className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-        {legend.map((l) => (
-          <li key={l.key} className="inline-flex items-center gap-1.5">
-            <i aria-hidden className="inline-block size-3 rounded-sm" style={{ background: l.color }} />
-            {l.label}
-          </li>
-        ))}
-        {STATES.map((st) => (
-          <li key={st.key} data-testid="legend-state" className="inline-flex items-center gap-1.5">
-            <Block
-              testId="legend-block"
-              state={st.state}
-              color="var(--lh-grey)"
-              title={st.label}
-              className="size-3.5"
-            />
-            {st.label}
-          </li>
-        ))}
-        <li data-testid="legend-shaping" className="inline-flex items-center gap-1.5">
-          <i aria-hidden className="inline-block h-3 w-3.5 rounded-sm outline-[1.5px] outline-dashed outline-lh-grey" />
-          not shaped yet
-        </li>
-      </ul>
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-xs">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+          <span className={HEADING}>Milestones</span>
+          <ul aria-label="Milestones" className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            {legend.map((l) => (
+              <li key={l.key} className="inline-flex items-center gap-1.5">
+                <i aria-hidden className="inline-block size-3 rounded-sm" style={{ background: l.color }} />
+                {l.label}
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+          <span className={HEADING}>Status</span>
+          <ul aria-label="Status" className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            {STATES.map((st) => (
+              <li key={st.key} data-testid="legend-state" className="inline-flex items-center gap-1.5">
+                <Block
+                  testId="legend-block"
+                  state={st.key}
+                  color="var(--lh-grey)"
+                  title={st.label}
+                  className="size-3.5"
+                />
+                <span
+                  data-underlined={UNDERLINED.has(st.key) ? 'true' : undefined}
+                  className={UNDERLINED.has(st.key) ? 'underline underline-offset-2 decoration-2' : undefined}
+                >
+                  {st.label}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
     </div>
   )
 }
