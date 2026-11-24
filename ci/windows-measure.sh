@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Measures lighthouse on one host the way a user meets it (#90): `init --yes` in a fresh
-# repository, then the core hooks with the payloads Claude Code sends them, read from the
-# registrations `init` wrote. A measurement, not a gate: every step runs, a failed step does not
-# stop the next, and the script exits 0. It prints one markdown table, row per step: expected,
-# rc, verdict and the first line of stderr. On Linux every row must be a pass; the
-# windows-measure workflow runs it on native Windows (Git Bash).
+# Measures lighthouse on one host the way a user meets it (#90): `init --yes --level strict`
+# (the level with every core hook) in a fresh repository, then the core hooks with the payloads
+# Claude Code sends them, read from the registrations `init` wrote. Every step runs, a failed step does not stop the next. It prints one
+# markdown table, row per step: expected, rc, verdict and the first line of stderr, and exits 1
+# when a row fails. On Linux every row must be a pass; the windows-measure workflow runs it on
+# native Windows (Git Bash) as a gate.
 #
 # Usage: ci/windows-measure.sh <lighthouse binary> <empty work dir>
 set -u
@@ -88,11 +88,11 @@ git -C "$REPO" commit -q -m init
 
 OUT="$WORK/out.txt"
 ERR="$WORK/err.txt"
-(cd "$REPO" && "$BIN" init --yes) >"$OUT" 2>"$ERR"
+(cd "$REPO" && "$BIN" init --yes --level strict) >"$OUT" 2>"$ERR"
 RC=$?
 # Not `ok`: the diff init prints carries the skills, whose text names COULD NOT CHECK.
 init_ok() { [ "$RC" = 0 ] && [ "$(head -1 "$OUT")" = "Packages: core" ]; }
-row "1. \`lighthouse init --yes\`" "rc 0, \`Packages: core\`" "$RC" "$(mark init_ok)" "$ERR"
+row "1. \`lighthouse init --yes --level strict\`" "rc 0, \`Packages: core\`" "$RC" "$(mark init_ok)" "$ERR"
 
 git -C "$REPO" add -A >/dev/null 2>&1
 git -C "$REPO" commit -q -m "lighthouse init" >/dev/null 2>&1
@@ -186,4 +186,7 @@ echo
 echo "| Step | Expected | rc | Verdict | First stderr line |"
 echo "|---|---|---|---|---|"
 printf '%s\n' "${ROWS[@]}"
+case "${ROWS[*]}" in
+*"| FAIL |"*) exit 1 ;;
+esac
 exit 0

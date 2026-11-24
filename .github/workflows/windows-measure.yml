@@ -1,45 +1,96 @@
-# Measures lighthouse on native Windows, in Git Bash (#90): builds lighthouse.exe from this commit,
-# runs ci/windows-measure.sh (init plus the core hooks with Claude Code payloads) and the Go tests.
-# A measurement, not a gate: the job stays green whatever it finds; the job summary holds the
-# table per step and the outcome of the Go tests, the artifact the full output per step.
+# Lighthouse on native Windows, in Git Bash (#90). Two jobs:
+# - `hooks`, a gate: builds lighthouse.exe from this commit and runs ci/windows-measure.sh (init
+#   plus the core hooks with Claude Code payloads). A failed row turns the job red. About two
+#   minutes, so it runs on every PR that can change what init writes or how a hook runs.
+# - `tests`, a measurement: the Go tests and the e2e tests on Windows. Many are red there (#559),
+#   and they take over ten minutes, so they run after a merge to main and by hand, never on a PR.
+#   The job stays green; the job summary holds the outcome, the artifact the full output.
 name: windows-measure
 
 on:
   workflow_dispatch:
   pull_request:
     paths:
+      - cmd/**
+      - internal/**
+      - pack/core/**
+      - go.mod
+      - go.sum
       - ci/windows-measure.sh
       - .github/workflows/windows-measure.yml
-      - internal/commitgate/**
+  push:
+    branches: [main]
+    paths:
+      - cmd/**
+      - internal/**
+      - pack/**
+      - e2e/**
+      - go.mod
+      - go.sum
+      - ci/windows-measure.sh
+      - .github/workflows/windows-measure.yml
 
 permissions:
   contents: read
 
 jobs:
-  measure:
+  hooks:
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
     defaults:
       run:
         shell: bash
     steps:
+      # The release builds on Linux, so the embedded pack has LF line endings. Without this, the
+      # runner's core.autocrlf=true checks pack/ out with CRLF, and lighthouse.exe embeds files no
+      # release ever ships. Unset again after the checkout: the measurement repo must see the
+      # Git for Windows default, as a user does.
+      - run: git config --global core.autocrlf false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - run: git config --global --unset core.autocrlf
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      # The e2e tests of pack/python run the default test command, `uv run pytest -q`.
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       - run: go build -o "$RUNNER_TEMP/lighthouse.exe" ./cmd/lighthouse
       # Claude Code on Windows hands the hooks a Windows path (cwd, CLAUDE_PROJECT_DIR), so the
-      # work dir goes in in that form too.
+      # work dir goes in in that form too. The script exits 1 when a row fails; `shell: bash`
+      # runs with pipefail, so that ends the step red after the table is in the summary.
       - name: init and hooks
         run: |
           WORK=$(cygpath -w "$RUNNER_TEMP/measure")
           mkdir -p "$WORK"
           { echo "## Native Windows (Git Bash), commit $GITHUB_SHA"; echo; } >> "$GITHUB_STEP_SUMMARY"
           ci/windows-measure.sh "$RUNNER_TEMP/lighthouse.exe" "$WORK" | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: windows-measure-hooks
+          path: |
+            ${{ runner.temp }}/measure/steps
+            ${{ runner.temp }}/measure/env.txt
+
+  tests:
+    if: github.event_name != 'pull_request'
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # See the hooks job: the source checkout gets LF, as on the Linux release build.
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: git config --global --unset core.autocrlf
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      # The e2e tests of pack/python run the default test command, `uv run pytest -q`.
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - run: mkdir -p "$RUNNER_TEMP/measure"
       - id: gotest
         continue-on-error: true
         run: go test -shuffle=on ./... 2>&1 | tee "$RUNNER_TEMP/measure/go-test.txt"
@@ -53,6 +104,7 @@ jobs:
           GOE2E: ${{ steps.goe2e.outcome }}
         run: |
           {
+            echo "## Go tests on native Windows, commit $GITHUB_SHA"
             echo
             echo "| Go tests | Outcome | Failed |"
             echo "|---|---|---|"
@@ -66,8 +118,5 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
-          name: windows-measure
-          path: |
-            ${{ runner.temp }}/measure/steps
-            ${{ runner.temp }}/measure/env.txt
-            ${{ runner.temp }}/measure/go-*.txt
+          name: windows-measure-tests
+          path: ${{ runner.temp }}/measure/go-*.txt
