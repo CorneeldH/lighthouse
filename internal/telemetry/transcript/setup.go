@@ -60,16 +60,26 @@ func (r *Reading) skillOf(typ string, content json.RawMessage) *SkillLoad {
 	for _, b := range contentBlocks(content) {
 		switch {
 		case typ == "assistant" && b.Type == "tool_use" && b.Name == "Skill" && b.Input.Skill != "":
-			r.pending = append(r.pending, strings.TrimPrefix(b.Input.Skill, "/"))
+			r.announce(strings.TrimPrefix(b.Input.Skill, "/"))
 		case typ == "user" && b.Type == "text" && strings.Contains(b.Text, skillMarker):
 			load = r.loadOf(b.Text)
 		case typ == "user" && b.Type == "text":
 			if m := commandName.FindStringSubmatch(b.Text); m != nil {
-				r.pending = append(r.pending, m[1])
+				r.announce(m[1])
 			}
 		}
 	}
 	return load
+}
+
+// announce queues a skill name once; the queue is per file.
+func (r *Reading) announce(name string) {
+	for _, p := range r.pending {
+		if p == name {
+			return
+		}
+	}
+	r.pending = append(r.pending, name)
 }
 
 func (r *Reading) loadOf(text string) *SkillLoad {
@@ -81,13 +91,24 @@ func (r *Reading) loadOf(text string) *SkillLoad {
 	}
 	base = strings.TrimSpace(base)
 	name := ""
-	if len(r.pending) > 0 {
-		name, r.pending = r.pending[0], r.pending[1:]
-	} else if j := strings.LastIndexByte(base, '/'); j >= 0 {
-		name = base[j+1:]
+	slash := strings.LastIndexByte(base, '/')
+	if slash >= 0 {
+		name = base[slash+1:]
+	}
+	m := spVersion.FindStringSubmatch(base)
+	// Pair strictly: an announced name counts only when its part after ':' is the
+	// skill directory. Stale announcements (/clear, /model) before it are dropped.
+	for i, p := range r.pending {
+		if p[strings.LastIndexByte(p, ':')+1:] == name {
+			name, r.pending = p, r.pending[i+1:]
+			break
+		}
+	}
+	if m != nil && !strings.Contains(name, ":") {
+		name = "superpowers:" + name
 	}
 	l := &SkillLoad{Name: name, Hash: normalisedHash(text)}
-	if m := spVersion.FindStringSubmatch(base); m != nil {
+	if m != nil {
 		l.SuperpowersVersion = m[1]
 	}
 	return l

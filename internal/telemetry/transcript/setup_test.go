@@ -80,10 +80,11 @@ func TestSetupHarnessVersionLast(t *testing.T) {
 
 func TestSetupEmptyIsNil(t *testing.T) {
 	r := mustParse(t, f("s.jsonl", line("user", "2026-01-01T10:00:00Z", "", `"hi"`)))
-	s := r.SetupBetween(time.Time{}, time.Time{})
+	s := r.SetupBetween(ts("2027-01-01T00:00:00Z"), time.Time{}) // empty window
 	for name, p := range map[string]*string{
 		"Model": s.Model, "Effort": s.Effort, "HarnessVersion": s.HarnessVersion,
 		"SuperpowersVersion": s.SuperpowersVersion, "SkillsHash": s.SkillsHash, "Lane": s.Lane,
+		"Harness": s.Harness,
 	} {
 		if p != nil {
 			t.Errorf("%s = %q, want nil", name, *p)
@@ -214,5 +215,42 @@ func TestSetupSkillLoadFixture(t *testing.T) {
 		strVal(s.Effort) != "medium" || strVal(s.HarnessVersion) != "2.1.318" || strVal(s.Model) != "model-a" {
 		t.Fatalf("setup = lane %s sp %s effort %s ver %s model %s", strVal(s.Lane), strVal(s.SuperpowersVersion),
 			strVal(s.Effort), strVal(s.HarnessVersion), strVal(s.Model))
+	}
+}
+
+func TestSetupStaleCommandDoesNotStealSkillName(t *testing.T) {
+	r := mustParse(t, f("s.jsonl",
+		line("user", "2026-01-01T10:00:00Z", "", command("clear")),
+		line("user", "2026-01-01T10:00:01Z", "", command("superpowers:executing-plans")),
+		line("user", "2026-01-01T10:00:02Z", "", skillText("/h/superpowers/7.0.2/skills/executing-plans", "body", "")),
+	))
+	if got := strVal(r.SetupBetween(time.Time{}, time.Time{}).Lane); got != "native" {
+		t.Fatalf("lane = %s, want native", got)
+	}
+}
+
+func TestSetupLaneFromBaseDirectoryFallback(t *testing.T) {
+	r := mustParse(t, f("s.jsonl",
+		line("user", "2026-01-01T10:00:00Z", "", skillText("/h/superpowers/7.0.2/skills/subagent-driven-development", "body", "")),
+	))
+	if got := strVal(r.SetupBetween(time.Time{}, time.Time{}).Lane); got != "sdd" {
+		t.Fatalf("lane = %s, want sdd", got)
+	}
+	other := mustParse(t, f("s.jsonl",
+		line("user", "2026-01-01T10:00:00Z", "", skillText("/h/.claude/skills/executing-plans", "body", "")),
+	))
+	if got := strVal(other.SetupBetween(time.Time{}, time.Time{}).Lane); got != "<nil>" {
+		t.Fatalf("non-superpowers skill gave lane %s", got)
+	}
+}
+
+func TestSetupWindowBoundaries(t *testing.T) {
+	r := mustParse(t, f("s.jsonl",
+		asst("m1", "", "model-a", "2026-01-01T10:00:00Z", use(1, 5, 0, 0), `"effort":"low",`),
+		asst("m2", "", "model-b", "2026-01-01T11:00:00Z", use(1, 9, 0, 0), `"effort":"high",`),
+	))
+	s := r.SetupBetween(ts("2026-01-01T10:00:00Z"), ts("2026-01-01T11:00:00Z"))
+	if strVal(s.Model) != "model-a" || strVal(s.Effort) != "low" {
+		t.Fatalf("from inclusive / to exclusive violated: %s %s", strVal(s.Model), strVal(s.Effort))
 	}
 }

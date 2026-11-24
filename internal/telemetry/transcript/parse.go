@@ -124,6 +124,7 @@ func Parse(files []File) (Reading, error) {
 	lineNo := 0
 	for _, f := range files {
 		sidechain := strings.Contains(f.Name, "/subagents/")
+		r.pending = nil // announcements never pair across files
 		br := bufio.NewReader(f.R)
 		for {
 			raw, err := br.ReadString('\n')
