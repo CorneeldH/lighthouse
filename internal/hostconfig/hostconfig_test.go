@@ -514,3 +514,49 @@ func TestServeTokenFileMustBeAbsolute(t *testing.T) {
 		t.Fatalf("err = %v, want one naming serve_token_file", err)
 	}
 }
+
+func TestIntentReviewerRead(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	body := "[dispatch.workflow_push]\ntoken_file = \"/run/t\"\n[dispatch.workflow_push.intent]\n" +
+		"command = [\"claude\", \"-p\"]\nbinds = [\"~/x\"]\nenv = [\"CODEX_HOME\"]\n"
+	d, err := LoadDispatch(writeHost(t, body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := &Reviewer{Command: []string{"claude", "-p"}, Binds: []string{filepath.Join(home, "x")}, Env: []string{"CODEX_HOME"}}
+	if !reflect.DeepEqual(d.WorkflowPush.Intent, want) {
+		t.Errorf("Intent = %+v, want %+v", d.WorkflowPush.Intent, want)
+	}
+	if len(d.WorkflowPush.Reviewers) != 0 {
+		t.Errorf("Reviewers = %+v, want empty", d.WorkflowPush.Reviewers)
+	}
+}
+
+func TestIntentReviewerAbsent(t *testing.T) {
+	d, err := LoadDispatch(writeHost(t, "[dispatch.workflow_push]\ntoken_file = \"/run/t\"\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.WorkflowPush.Intent != nil {
+		t.Errorf("Intent = %+v, want nil", d.WorkflowPush.Intent)
+	}
+}
+
+func TestIntentReviewerInvalid(t *testing.T) {
+	const head = "[dispatch.workflow_push]\ntoken_file = \"/run/t\"\n[dispatch.workflow_push.intent]\n"
+	tests := []struct{ name, body, want string }{
+		{"no command", head + "binds = [\"~/x\"]\n", "intent.command"},
+		{"GH_TOKEN", head + "command = [\"a\"]\nenv = [\"GH_TOKEN\"]\n", "GH_TOKEN"},
+		{"bind under config", head + "command = [\"a\"]\nbinds = [\"~/.config/lighthouse/host.toml\"]\n", "intent.binds"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			_, err := LoadDispatch(writeHost(t, tt.body))
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Errorf("err = %v, want one containing %q", err, tt.want)
+			}
+		})
+	}
+}
