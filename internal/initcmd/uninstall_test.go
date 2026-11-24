@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
@@ -120,8 +121,33 @@ const ownSettings = `{
 }
 `
 
-// Red when uninstall leaves a unit, removes project content, or leaves an empty directory.
-func TestUninstallRoundTripKeepsProjectContent(t *testing.T) {
+// sameTree fails t for every path that differs between before and the tree under root.
+func sameTree(t *testing.T, root string, before map[string]string) {
+	t.Helper()
+	after := treeSnapshot(t, root)
+	for _, p := range diffSnapshots(before, after) {
+		t.Errorf("differs: %s\nbefore: %q\nafter:  %q", p, before[p], after[p])
+	}
+}
+
+// jsonContent is the canonical form of the JSON in s, so two layouts of the same
+// content compare equal.
+func jsonContent(t *testing.T, s string) string {
+	t.Helper()
+	v, err := orderedjson.Parse([]byte(s))
+	if err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, s)
+	}
+	b, err := orderedjson.Canonical(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+// Red when uninstall leaves a unit, removes project content, leaves an empty directory,
+// or leaves a line init added to .gitattributes.
+func TestUninstallRoundTripWithOwnContent(t *testing.T) {
 	root := newRepo(t)
 	write(t, root, "AGENTS.md", "# Mine\n\nOwn text.\n")
 	write(t, root, ".claude/settings.json", ownSettings)
@@ -138,28 +164,223 @@ func TestUninstallRoundTripKeepsProjectContent(t *testing.T) {
 	if !strings.Contains(read(t, root, ".claude/settings.json"), "Bash(lighthouse status)") {
 		t.Fatal("fixture: init added no lighthouse permission")
 	}
+	if !exists(root, "lighthouse.toml") || !strings.Contains(read(t, root, ".gitattributes"), "eol=lf") {
+		t.Fatal("fixture: init wrote no lighthouse.toml or .gitattributes lines")
+	}
 
 	r := runUninstall(t, root)
 	if r.code != 0 {
 		t.Fatalf("uninstall: rc %d\n%s%s", r.code, r.out, r.err)
 	}
-	for _, rel := range []string{".claude/hooks/lighthouse", manifest.Path, created.Path, ".lighthouse"} {
-		if exists(root, rel) {
-			t.Errorf("%s still there", rel)
-		}
-	}
 	if !strings.Contains(r.out, "Removed ") {
 		t.Errorf("no summary:\n%s", r.out)
 	}
-	// lighthouse.toml and the .gitattributes lines are what created.toml reverts (task 5).
-	after := treeSnapshot(t, root)
-	if d := diffSnapshots(before, after, "lighthouse.toml", ".gitattributes"); len(d) > 0 {
-		for _, p := range d {
-			t.Errorf("differs: %s\nbefore: %q\nafter:  %q", p, before[p], after[p])
+	sameTree(t, root, before)
+}
+
+// Red when a round trip in an empty repo leaves a file init created, or keeps an edited
+// lighthouse.toml.
+func TestUninstallRoundTripEmptyRepo(t *testing.T) {
+	root := newRepo(t)
+	before := treeSnapshot(t, root)
+	if r := run(t, root, "", packsWithPermissions()); r.code != 0 {
+		t.Fatalf("init: rc %d\n%s%s", r.code, r.out, r.err)
+	}
+	for _, rel := range []string{"AGENTS.md", "CLAUDE.md", ".claude/settings.json", ".gitattributes", "lighthouse.toml"} {
+		if !exists(root, rel) {
+			t.Fatalf("fixture: init did not create %s", rel)
 		}
 	}
-	if !strings.HasPrefix(read(t, root, ".gitattributes"), "*.png binary\n") {
-		t.Errorf(".gitattributes lost its own line: %q", read(t, root, ".gitattributes"))
+	// lighthouse.toml goes even when edited: it has no reader without lighthouse.
+	write(t, root, "lighthouse.toml", read(t, root, "lighthouse.toml")+"# edited\n")
+
+	r := runUninstall(t, root)
+	if r.code != 0 {
+		t.Fatalf("uninstall: rc %d\n%s%s", r.code, r.out, r.err)
+	}
+	if !strings.Contains(r.out, "# edited") {
+		t.Errorf("diff does not show the edited lighthouse.toml:\n%s", r.out)
+	}
+	if strings.Contains(r.err, "kept: ") || strings.Contains(r.err, "left: ") {
+		t.Errorf("notes for a clean round trip:\n%s", r.err)
+	}
+	sameTree(t, root, before)
+}
+
+// Red when uninstall rewrites a project's own .gitattributes beyond the lines init added.
+func TestUninstallGitattributesOwnLines(t *testing.T) {
+	for name, c := range map[string]struct{ before, after string }{
+		"no final newline":     {"*.png binary", "*.png binary\n"},
+		"look-alike sh line":   {"*.sh eol=lf text\n", "*.sh eol=lf text\n"},
+		"own exact sh line":    {"*.sh eol=lf\n*.png binary\n", "*.sh eol=lf\n*.png binary\n"},
+		"crlf":                 {"*.png binary\r\n", "*.png binary\r\n"},
+		"look-alike hook line": {".claude/hooks/lighthouse/** -text\n", ".claude/hooks/lighthouse/** -text\n"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			root := newRepo(t)
+			write(t, root, ".gitattributes", c.before)
+			initYes(t, root)
+			if read(t, root, ".gitattributes") == c.before {
+				t.Fatal("fixture: init added no line")
+			}
+			if r := runUninstall(t, root); r.code != 0 {
+				t.Fatalf("uninstall: rc %d\n%s%s", r.code, r.out, r.err)
+			}
+			if got := read(t, root, ".gitattributes"); got != c.after {
+				t.Errorf(".gitattributes = %q, want %q", got, c.after)
+			}
+		})
+	}
+}
+
+// Red when uninstall leaves the "language" that --upgrade set, or changes the rest.
+func TestUninstallRoundTripViaUpgrade(t *testing.T) {
+	root := newRepo(t)
+	write(t, root, ".claude/settings.json", ownSettings)
+	initYes(t, root)
+	toml := read(t, root, "lighthouse.toml")
+	if !strings.Contains(toml, `language = "en"`) {
+		t.Fatalf("fixture: no language to change:\n%s", toml)
+	}
+	write(t, root, "lighthouse.toml", strings.Replace(toml, `language = "en"`, `language = "nl"`, 1))
+	if r := run(t, root, "", func(o *Options) { o.Upgrade, o.Yes = true, true }); r.code != 0 {
+		t.Fatalf("upgrade: rc %d\n%s%s", r.code, r.out, r.err)
+	}
+	if !strings.Contains(read(t, root, ".claude/settings.json"), `"language": "dutch"`) {
+		t.Fatal("fixture: upgrade set no language")
+	}
+	if r := runUninstall(t, root); r.code != 0 {
+		t.Fatalf("uninstall: rc %d\n%s%s", r.code, r.out, r.err)
+	}
+	if got, want := jsonContent(t, read(t, root, ".claude/settings.json")), jsonContent(t, ownSettings); got != want {
+		t.Errorf("settings.json = %s\nwant %s", got, want)
+	}
+}
+
+// Red when uninstall removes a recorded thing that changed after init, or keeps it silently.
+func TestUninstallKeepsDeviatingCreated(t *testing.T) {
+	root := newRepo(t)
+	write(t, root, "lighthouse.toml", "[project]\nlanguage = \"nl\"\n")
+	initYes(t, root)
+	c := readCreated(t, root)
+	if c.SettingsLanguage != "dutch" || !sameList(c.Files, []string{"AGENTS.md", "CLAUDE.md", ".claude/settings.json", ".gitattributes"}) {
+		t.Fatalf("fixture: created = %+v", c)
+	}
+	s := read(t, root, ".claude/settings.json")
+	write(t, root, ".claude/settings.json", strings.Replace(s, `"language": "dutch"`, `"language": "english"`, 1))
+	write(t, root, "CLAUDE.md", "@AGENTS.md\nmore\n")
+
+	r := runUninstall(t, root)
+	if r.code != 0 {
+		t.Fatalf("uninstall: rc %d\n%s%s", r.code, r.out, r.err)
+	}
+	if got := jsonContent(t, read(t, root, ".claude/settings.json")); got != `{"language":"english"}` {
+		t.Errorf("settings.json = %s, want only the changed language", got)
+	}
+	if got := read(t, root, "CLAUDE.md"); got != "@AGENTS.md\nmore\n" {
+		t.Errorf("CLAUDE.md = %q", got)
+	}
+	if exists(root, "AGENTS.md") {
+		t.Errorf("AGENTS.md left: %q", read(t, root, "AGENTS.md"))
+	}
+	for _, want := range []string{"kept: .claude/settings.json", `"english"`, "kept: CLAUDE.md"} {
+		if !strings.Contains(r.err, want) {
+			t.Errorf("no note %q:\n%s", want, r.err)
+		}
+	}
+	// The same CLAUDE.md, untouched, still stays when AGENTS.md stays.
+	other := newRepo(t)
+	initYes(t, other)
+	write(t, other, "AGENTS.md", read(t, other, "AGENTS.md")+"own\n")
+	r = runUninstall(t, other)
+	if r.code != 0 {
+		t.Fatalf("uninstall: rc %d\n%s%s", r.code, r.out, r.err)
+	}
+	if !exists(other, "AGENTS.md") || !strings.Contains(read(t, other, "AGENTS.md"), "own") {
+		t.Errorf("AGENTS.md lost its own text: %q", read(t, other, "AGENTS.md"))
+	}
+	if !exists(other, "CLAUDE.md") || !strings.Contains(r.err, "kept: CLAUDE.md") {
+		t.Errorf("CLAUDE.md removed although AGENTS.md stays, or no note:\n%s", r.err)
+	}
+}
+
+// Red when uninstall without created.toml reverts anything outside the units, or does
+// not name what it left.
+func TestUninstallWithoutCreatedToml(t *testing.T) {
+	root := newRepo(t)
+	write(t, root, "lighthouse.toml", "[project]\nlanguage = \"nl\"\n")
+	initYes(t, root)
+	if err := os.Remove(filepath.Join(root, created.Path)); err != nil {
+		t.Fatal(err)
+	}
+	ga := read(t, root, ".gitattributes")
+	r := runUninstall(t, root)
+	if r.code != 0 {
+		t.Fatalf("uninstall: rc %d\n%s%s", r.code, r.out, r.err)
+	}
+	if exists(root, ".claude/hooks/lighthouse") || exists(root, manifest.Path) {
+		t.Error("units left")
+	}
+	if read(t, root, ".gitattributes") != ga || read(t, root, "CLAUDE.md") != "@AGENTS.md\n" || !exists(root, "lighthouse.toml") {
+		t.Error("reverted without created.toml")
+	}
+	if !strings.Contains(read(t, root, ".claude/settings.json"), `"language": "dutch"`) {
+		t.Error("language removed without created.toml")
+	}
+	const tail = " — init may have written it; remove it yourself if so\n"
+	for _, p := range []string{"lighthouse.toml", "CLAUDE.md", ".gitattributes", `.claude/settings.json "language"`} {
+		if !strings.Contains(r.err, "left: "+p+tail) {
+			t.Errorf("no left line for %s:\n%s", p, r.err)
+		}
+	}
+	if n := strings.Count(r.err, "left: "); n != 4 {
+		t.Errorf("%d left lines, want 4:\n%s", n, r.err)
+	}
+}
+
+// Red when a settings.json in another layout loses or gains content in a round trip.
+func TestUninstallSettingsOddFormat(t *testing.T) {
+	const odd = `{"permissions":{"allow":["Bash(npm test)"]},"model":"x"}`
+	root := newRepo(t)
+	write(t, root, ".claude/settings.json", odd)
+	if r := run(t, root, "", packsWithPermissions()); r.code != 0 {
+		t.Fatalf("init: rc %d\n%s%s", r.code, r.out, r.err)
+	}
+	if r := runUninstall(t, root); r.code != 0 {
+		t.Fatalf("uninstall: rc %d\n%s%s", r.code, r.out, r.err)
+	}
+	if got, want := jsonContent(t, read(t, root, ".claude/settings.json")), jsonContent(t, odd); got != want {
+		t.Errorf("settings.json = %s\nwant %s", got, want)
+	}
+}
+
+// Red when a broken created.toml lets uninstall write anything.
+func TestUninstallCorruptCreatedToml(t *testing.T) {
+	root := newRepo(t)
+	initYes(t, root)
+	write(t, root, created.Path, "this is = = not toml\n")
+	before := treeSnapshot(t, root)
+	r := runUninstall(t, root)
+	if r.code != 1 || !strings.Contains(r.err, created.Path) {
+		t.Fatalf("rc %d\n%s%s", r.code, r.out, r.err)
+	}
+	sameTree(t, root, before)
+}
+
+// Red when a settings.json that is no JSON object lets uninstall write anything.
+func TestUninstallBrokenSettings(t *testing.T) {
+	for name, body := range map[string]string{"broken": "{", "array": "[]", "string": `"x"`} {
+		t.Run(name, func(t *testing.T) {
+			root := newRepo(t)
+			initYes(t, root)
+			write(t, root, ".claude/settings.json", body)
+			before := treeSnapshot(t, root)
+			r := runUninstall(t, root)
+			if r.code != 1 || !strings.HasPrefix(r.err, "lighthouse uninstall: .claude/settings.json") {
+				t.Fatalf("rc %d\n%s%s", r.code, r.out, r.err)
+			}
+			sameTree(t, root, before)
+		})
 	}
 }
 
@@ -178,7 +399,7 @@ func TestUninstallRefusesLocalEdit(t *testing.T) {
 		}, "- rule LOCAL"},
 		"hook timeout": {func(t *testing.T, root string) {
 			write(t, root, ".claude/settings.json", strings.Replace(read(t, root, ".claude/settings.json"), `"timeout": 15`, `"timeout": 99`, 1))
-		}, "99"},
+		}, `"timeout":99`},
 	}
 	for name, c := range edits {
 		t.Run(name, func(t *testing.T) {
@@ -203,11 +424,11 @@ func TestUninstallRefusesLocalEdit(t *testing.T) {
 			if exists(root, ".claude/hooks/lighthouse") || exists(root, manifest.Path) {
 				t.Error("--force left the hook dir or the manifest")
 			}
-			if s := read(t, root, "AGENTS.md"); strings.Contains(s, "lighthouse:begin") {
-				t.Errorf("--force left the block: %q", s)
-			}
-			if s := read(t, root, ".claude/settings.json"); strings.Contains(s, "hooks/lighthouse") {
-				t.Errorf("--force left the hook registration:\n%s", s)
+			// init created both files here, so the round trip removes them.
+			for _, rel := range []string{"AGENTS.md", ".claude/settings.json"} {
+				if exists(root, rel) {
+					t.Errorf("--force left %s:\n%s", rel, read(t, root, rel))
+				}
 			}
 		})
 	}
@@ -229,8 +450,8 @@ func TestUninstallDeletedScriptIsNoConflict(t *testing.T) {
 			t.Errorf("%s still there", rel)
 		}
 	}
-	if s := read(t, root, ".claude/settings.json"); strings.Contains(s, "hooks/lighthouse") {
-		t.Errorf("hook registration left:\n%s", s)
+	if exists(root, ".claude/settings.json") {
+		t.Errorf("settings.json left:\n%s", read(t, root, ".claude/settings.json"))
 	}
 }
 
@@ -425,4 +646,42 @@ func TestRemoveEmptyDirs(t *testing.T) {
 			t.Error("a/keep removed")
 		}
 	})
+}
+
+// Red when removeLastLine removes another match than the last, a partial match, or
+// leaves the \r of a CRLF line.
+func TestRemoveLastLine(t *testing.T) {
+	const r = "*.sh eol=lf"
+	for in, want := range map[string]string{
+		"a\n" + r + "\nb\n" + r + "\nc\n": "a\n" + r + "\nb\nc\n",
+		"a\r\n" + r + "\r\nb\r\n":         "a\r\nb\r\n",
+		"a\n" + r:                         "a\n",
+		"a\n" + r + " text\n":             "a\n" + r + " text\n",
+		"":                                "",
+	} {
+		if got := string(removeLastLine([]byte(in), r)); got != want {
+			t.Errorf("removeLastLine(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// Red when the empty containers of a settings.json init created stay because
+// settings_keys does not name them: the file in files covers all three.
+func TestUninstallSettingsFileImpliesContainers(t *testing.T) {
+	root := newRepo(t)
+	if r := run(t, root, "", packsWithPermissions()); r.code != 0 {
+		t.Fatalf("init: rc %d\n%s%s", r.code, r.out, r.err)
+	}
+	c := readCreated(t, root)
+	if !slices.Contains(c.Files, ".claude/settings.json") {
+		t.Fatalf("fixture: settings.json not in files: %+v", c)
+	}
+	c.SettingsKeys = nil
+	write(t, root, created.Path, string(created.Encode(c)))
+	if r := runUninstall(t, root); r.code != 0 {
+		t.Fatalf("uninstall: rc %d\n%s%s", r.code, r.out, r.err)
+	}
+	if exists(root, ".claude/settings.json") {
+		t.Errorf("settings.json left:\n%s", read(t, root, ".claude/settings.json"))
+	}
 }

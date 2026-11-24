@@ -2,12 +2,14 @@ package initcmd
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -70,7 +72,7 @@ func uninstall(o Options) error {
 		}
 	}
 
-	plan, err := uninstallPlan(root, changes)
+	plan, notes, err := uninstallPlan(root, changes)
 	if err != nil {
 		return err
 	}
@@ -92,12 +94,16 @@ func uninstall(o Options) error {
 		}
 	}
 	_, _ = fmt.Fprintf(o.Out, "Removed %d file(s).\n", len(paths))
+	for _, n := range notes {
+		_, _ = fmt.Fprintln(o.Err, n)
+	}
 	return nil
 }
 
-// uninstallPlan plans the removal of every unit in changes, plus the manifest and
-// created.toml themselves.
-func uninstallPlan(root string, changes []reconcile.Change) (map[string]*planned, error) {
+// uninstallPlan plans the removal of every unit in changes, the undoing of what
+// created.toml records, and the manifest and created.toml themselves. The notes are
+// for the report after a successful run.
+func uninstallPlan(root string, changes []reconcile.Change) (map[string]*planned, []string, error) {
 	plan := map[string]*planned{}
 	load := func(rel string) (*planned, error) {
 		if p, ok := plan[rel]; ok {
@@ -119,16 +125,16 @@ func uninstallPlan(root string, changes []reconcile.Change) (map[string]*planned
 		case packs.KindFile:
 			p, err := load(c.Key.Path)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			p.delete = true
 		case packs.KindBlock:
 			p, err := load(agentsMDPath)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			if p.new, err = agentsmd.Remove(p.new, c.Key.ID); err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 		case packs.KindHook:
 			hooksTouched = true
@@ -143,25 +149,25 @@ func uninstallPlan(root string, changes []reconcile.Change) (map[string]*planned
 	if hooksTouched || len(allowDrop) > 0 {
 		doc, _, err := readSettings(root)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		// Without settings.json there is nothing to remove from; it is not created.
 		if doc != nil {
 			p, err := load(settingsPath)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			if hooksTouched {
 				if err := settings.Apply(doc, nil); err != nil {
-					return nil, err
+					return nil, nil, err
 				}
 			}
 			if err := settings.ApplyAllow(doc, nil, allowDrop); err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			out, err := orderedjson.Marshal(doc)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			if !jsonEqual(p.old, out) {
 				p.new = out
@@ -169,14 +175,28 @@ func uninstallPlan(root string, changes []reconcile.Change) (map[string]*planned
 		}
 	}
 
+	c, found, err := created.Read(root)
+	if err != nil {
+		return nil, nil, err
+	}
+	var notes []string
+	if found {
+		notes, err = revertCreated(root, c, plan, load)
+	} else {
+		notes, err = leftBehind(load)
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+
 	for _, rel := range []string{manifest.Path, created.Path} {
 		p, err := load(rel)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		p.delete = true
 	}
-	return plan, nil
+	return plan, notes, nil
 }
 
 // uninstallOrder is every changed path of plan, sorted, with manifest.Path and then
@@ -235,4 +255,218 @@ func removeEmptyDirs(root, rel string) error {
 		}
 	}
 	return nil
+}
+
+// revertCreated plans the undoing of what created.toml records, on top of the unit plan.
+// It returns lines for the report (kept / left).
+//
+// Recorded things are not under the conflict gate: what changed since init stays and
+// gets a note. The exception is lighthouse.toml, which goes even when edited: without
+// lighthouse it has no reader.
+func revertCreated(root string, c created.Created, plan map[string]*planned, load func(string) (*planned, error)) (notes []string, err error) {
+	inFiles := func(rel string) bool { return slices.Contains(c.Files, rel) }
+	keptOther := func(rel string) {
+		notes = append(notes, fmt.Sprintf("kept: %s (init created it; it holds other content now)", rel))
+	}
+
+	if inFiles(configPath) {
+		p, err := load(configPath)
+		if err != nil {
+			return nil, err
+		}
+		p.delete = p.existed
+	}
+
+	agents, err := load(agentsMDPath)
+	if err != nil {
+		return nil, err
+	}
+	if inFiles(agentsMDPath) && agents.existed {
+		if len(bytes.TrimSpace(agents.new)) == 0 {
+			agents.delete = true
+		} else {
+			keptOther(agentsMDPath)
+		}
+	}
+
+	if inFiles(claudeMDPath) {
+		p, err := load(claudeMDPath)
+		if err != nil {
+			return nil, err
+		}
+		switch {
+		case !p.existed:
+		case string(p.new) != "@AGENTS.md\n":
+			notes = append(notes, fmt.Sprintf("kept: %s (changed since init)", claudeMDPath))
+		case agents.existed && !agents.delete:
+			notes = append(notes, fmt.Sprintf("kept: %s (%s stays)", claudeMDPath, agentsMDPath))
+		default:
+			p.delete = true
+		}
+	}
+
+	if len(c.Gitattributes) > 0 || inFiles(gitattributesPath) {
+		p, err := load(gitattributesPath)
+		if err != nil {
+			return nil, err
+		}
+		if p.existed {
+			out := p.new
+			for _, rule := range c.Gitattributes {
+				out = removeLastLine(out, rule)
+			}
+			switch {
+			case inFiles(gitattributesPath) && len(bytes.TrimSpace(out)) == 0:
+				p.delete = true
+			default:
+				p.new = out
+				if inFiles(gitattributesPath) {
+					keptOther(gitattributesPath)
+				}
+			}
+		}
+	}
+
+	settingsNotes, err := revertSettings(c, inFiles(settingsPath), load)
+	if err != nil {
+		return nil, err
+	}
+	return append(notes, settingsNotes...), nil
+}
+
+// revertSettings removes the "language" and the emptied containers that created.toml
+// records from .claude/settings.json, and the file itself when init created it and
+// nothing is left. A settings.json that does not exist is not touched.
+func revertSettings(c created.Created, inFiles bool, load func(string) (*planned, error)) (notes []string, err error) {
+	containers := map[string]bool{}
+	for _, k := range c.SettingsKeys {
+		containers[k] = true
+	}
+	if inFiles {
+		containers["hooks"], containers["permissions"], containers["permissions.allow"] = true, true, true
+	}
+	if c.SettingsLanguage == "" && !containers["hooks"] && !containers["permissions"] && !containers["permissions.allow"] {
+		return nil, nil
+	}
+	p, err := load(settingsPath)
+	if err != nil || !p.existed {
+		return nil, err
+	}
+	doc, err := parseSettings(p.new)
+	if err != nil {
+		return nil, err
+	}
+
+	if c.SettingsLanguage != "" {
+		if v, ok := doc.Get("language"); ok {
+			if s, isStr := v.(string); isStr && s == c.SettingsLanguage {
+				doc.Delete("language")
+			} else {
+				got, _ := orderedjson.Canonical(v)
+				notes = append(notes, fmt.Sprintf("kept: %s \"language\" is %s; init set %q", settingsPath, got, c.SettingsLanguage))
+			}
+		}
+	}
+	if pv, ok := doc.Get("permissions"); ok {
+		if perms, isObj := pv.(*orderedjson.Object); isObj {
+			if av, ok := perms.Get("allow"); ok && containers["permissions.allow"] {
+				if allow, isArr := av.([]any); isArr && len(allow) == 0 {
+					perms.Delete("allow")
+				}
+			}
+			if containers["permissions"] && len(perms.Keys()) == 0 {
+				doc.Delete("permissions")
+			}
+		}
+	}
+	if hv, ok := doc.Get("hooks"); ok && containers["hooks"] {
+		if hooks, isObj := hv.(*orderedjson.Object); isObj && len(hooks.Keys()) == 0 {
+			doc.Delete("hooks")
+		}
+	}
+
+	if inFiles && len(doc.Keys()) == 0 {
+		p.delete = true
+		return notes, nil
+	}
+	if inFiles {
+		notes = append(notes, fmt.Sprintf("kept: %s (init created it; it holds other content now)", settingsPath))
+	}
+	out, err := orderedjson.Marshal(doc)
+	if err != nil {
+		return nil, err
+	}
+	if jsonEqual(p.old, out) {
+		p.new = p.old
+	} else {
+		p.new = out
+	}
+	return notes, nil
+}
+
+// leftBehind names what init may have written outside the units, for a repo without
+// created.toml: uninstall cannot tell init's from the project's, so it touches none.
+func leftBehind(load func(string) (*planned, error)) ([]string, error) {
+	const tail = " — init may have written it; remove it yourself if so"
+	var notes []string
+	get := func(rel string) ([]byte, bool, error) {
+		p, err := load(rel)
+		if err != nil {
+			return nil, false, err
+		}
+		return p.new, p.existed, nil
+	}
+
+	if _, ok, err := get(configPath); err != nil {
+		return nil, err
+	} else if ok {
+		notes = append(notes, "left: "+configPath+tail)
+	}
+	if b, ok, err := get(claudeMDPath); err != nil {
+		return nil, err
+	} else if ok && hasLine(b, "@AGENTS.md") {
+		notes = append(notes, "left: "+claudeMDPath+tail)
+	}
+	if b, ok, err := get(gitattributesPath); err != nil {
+		return nil, err
+	} else if ok && (hasLine(b, "*.sh eol=lf") || hasLine(b, ".claude/hooks/lighthouse/** eol=lf")) {
+		notes = append(notes, "left: "+gitattributesPath+tail)
+	}
+	if b, ok, err := get(settingsPath); err != nil {
+		return nil, err
+	} else if ok {
+		doc, err := parseSettings(b)
+		if err != nil {
+			return nil, err
+		}
+		if _, has := doc.Get("language"); has {
+			notes = append(notes, "left: "+settingsPath+` "language"`+tail)
+		}
+	}
+	return notes, nil
+}
+
+// parseSettings parses settings.json content that must be a JSON object.
+func parseSettings(b []byte) (*orderedjson.Object, error) {
+	v, err := orderedjson.Parse(b)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", settingsPath, err)
+	}
+	obj, isObj := v.(*orderedjson.Object)
+	if !isObj {
+		return nil, fmt.Errorf("%s: not a JSON object", settingsPath)
+	}
+	return obj, nil
+}
+
+// removeLastLine removes the last line of b that is exactly rule, with its line ending
+// (LF or CRLF). b is returned unchanged when no line matches.
+func removeLastLine(b []byte, rule string) []byte {
+	lines := strings.SplitAfter(string(b), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		if strings.TrimSuffix(strings.TrimSuffix(lines[i], "\n"), "\r") == rule {
+			return []byte(strings.Join(append(lines[:i:i], lines[i+1:]...), ""))
+		}
+	}
+	return b
 }
