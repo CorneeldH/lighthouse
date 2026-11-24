@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Sleutels, `meaning`, `proposal.text`, `reason` en code in het Engels (`code_language = "en"`); plan, commits en changelog in het Nederlands.
+- Sleutels, `meaning`, `proposal.text`, `reason` en code in het Engels (`code_language = "en"`); plan en commits in het Nederlands; het changelog-fragment in het Engels (`docs/releasing.md`).
 - Verslag: `"schema": 1`; `status` ∈ `found|none|no_data`; `confidence` ∈ `high|low`; `proposal.kind` ∈ `knob|advice`.
 - Exit 0 met verslag (ook zonder transcripten: `sessions: 0`, elk onderdeel `no_data`, niveau `light` met reden `no history`); exit 1 bij onleesbare projectenmap; exit 2 bij gebruiksfout, ook `lighthouse history: <dir> is not a git repository`.
 - Geen netwerk, geen schrijfacties, geen `lighthouse.toml` lezen. Nooit een prompt, tool-uitvoer of bestandsinhoud in de uitvoer; `measured` bevat alleen getallen, branchnamen, padpatronen en vaste patroonnamen.
@@ -65,19 +65,20 @@
 **Interfaces:**
 - Produces:
   - `type Record struct { File string; Line int; Type, Timestamp, GitBranch, Cwd, Entrypoint, SessionID string; Commands []string; WrittenPaths []string; PRNumber int; HookName, HookCommand string }` — `Commands` = `input.command` van `Bash`-tool_use, `WrittenPaths` = `input.file_path` van `Write`/`Edit`, `PRNumber` uit `pr-link`, `HookCommand` = `attachment.blockingError.command`. Nooit `blockingError.blockingError` of tekst van prompts of uitvoer.
-  - `func ReadFile(path string, since time.Time, fn func(Record)) (skipped int, err error)` — `bufio.Scanner` met buffer ≥ 64 MB; onleesbare regel telt als `skipped`; record met `timestamp` vóór `since` wordt overgeslagen; geen timestamp telt als niet vóór `since`.
+  - `func ReadFile(path string, since time.Time, fn func(Record)) (skipped int, err error)` — `bufio.Scanner` met buffer ≥ 64 MB; onleesbare regel telt als `skipped`; record met `timestamp` vóór of gelijk aan `since` wordt overgeslagen (spec: alleen een latere `timestamp`; test op de grenswaarde); geen timestamp telt als niet vóór `since`.
   - `type Detector interface { Add(Record); Finish(Env) Finding }`
-  - `type Env struct { Repo string; TrunkNames []string; ProjectsDir string; ProjectDirs []string; RepoRoot string; AuditHooks []HookOverlap }` (zie taken 5 en 8 voor wie wat vult)
+  - `type Env struct { Repo string; TrunkNames []string; ProjectsDir string; ProjectDirs []string; RepoRoot string; AuditHooks []HookOverlap; AuditErr error }` (zie taken 5 en 8 voor wie wat vult; `HookOverlap{Hook, Guard string}` wordt hier gedefinieerd en door taak 7 gebruikt)
   - `type Finding struct { Key, Status, Confidence string; Measured map[string]any; Meaning string; Proposal Proposal; Sources []Source }`, `Proposal{Kind, Text, Flag string}`, `Source{File string; Lines []int}`, `Report{Schema int; Sessions int; Span Span; SkippedLines int; Level Level; Findings []Finding; Hint string}` met JSON-tags uit de spec (`omitempty` op `hint`, `flag`, `sources`).
-  - `type Hits struct{}` met `Add(file string, line int)` en `Top() []Source`: houdt de 5 meest recente bestanden (op volgorde van aanroep, laatste = recentst) en per bestand de 10 laatste regels.
+  - `type Hits struct{}` met `Add(file string, line int, ts string)` en `Top() []Source`: houdt de 5 meest recente bestanden (op record-`timestamp`, niet op aanroepvolgorde; zonder timestamp telt de aanroepvolgorde) en per bestand de 10 laatste regels.
   - `func ResolveBranch(command, gitBranch string, knownCwds map[string]string) (branch string, known bool)` — volgorde uit de spec: refspec-doel (`HEAD:main`, `origin main`) → anders `cd <pad>`/`git -C <pad>` zonder match in `knownCwds` (cwd → gitBranch uit dezelfde sessie) = onbekend → anders `gitBranch`.
-  - `func Analyze(files []SessionFiles, env Env, o AnalyzeOptions) Report` met `SessionFiles{ID string; Paths []string}` en `AnalyzeOptions{Since time.Time; Sources bool}`: telt `sessions` = aantal `SessionFiles`, vult `span` uit timestamps, voert records aan alle detectoren, bouwt `Level` (taak 9), laat `sources` weg zonder `Sources`.
+  - `func Analyze(files []SessionFiles, env Env, o AnalyzeOptions) Report` met `SessionFiles{ID string; Paths []string}` en `AnalyzeOptions{Since time.Time; Sources bool}`: telt `sessions` = aantal `SessionFiles`, vult `span` uit timestamps, voegt de records van alle paden van één sessie (ouder en subagents) eerst op `timestamp` samen (stabiele merge; een record zonder `timestamp` houdt zijn plek na het voorgaande record van hetzelfde bestand) en voert ze in die volgorde aan alle detectoren, bouwt `Level`; bij `sessions == 0` zet het elk onderdeel op `no_data` (taak 9), laat `sources` weg zonder `Sources`.
 
 - [ ] **Step 1: Failende tests.**
   - `TestReadFile_LongLine`: regel van 5 MB met `Write`-`file_path` → record gelezen, `skipped == 0`.
   - `TestReadFile_BadLineAndSince`: één kapotte regel → `skipped == 1`; `since` laat oudere record weg.
   - `TestResolveBranch`: `git push origin HEAD:main` + `gitBranch=x` → `main`; `git -C /wt push` + `gitBranch=main`, `/wt` onbekend → onbekend; zelfde met `knownCwds{"/wt":"issue-1"}` → `issue-1`; `git push` zonder refspec → `gitBranch`.
   - `TestHits_Caps`: 7 bestanden × 12 regels → 5 bestanden, 10 regels, laatste eerst.
+  - `TestAnalyze_MergesSessionByTimestamp`: testcommando om 10:45 in een subagentbestand en commit om 10:51 in het hoofdbestand (subagent wordt als tweede pad gelezen) → `CommitsAfterTest == 1`; `Hits` kiest het recentste bestand op timestamp.
   - `TestReadFile_NoContentKept`: record met `SECRET-PROMPT-1` in een `user`-bericht heeft die tekst in geen enkel veld.
 - [ ] **Step 2: Run** `go test ./internal/history/` — verwacht FAIL.
 - [ ] **Step 3: Implementeer** de typen en functies hierboven. `Analyze` mag detectoren registreren via een slice `detectors(env) []Detector` in `analyze.go` die in taken 3–8 groeit.
@@ -89,9 +90,9 @@
 
 **Interfaces:**
 - Consumes: `Record`, `ResolveBranch`, `Hits`, `Env.TrunkNames` (default branch uit `origin/HEAD`, indien aanwezig).
-- Produces: `func newTrunk(env Env) Detector`; `func isTrunkName(name string, defaultBranch string) bool` — `main|master|develop|trunk|release/*` of de default branch.
+- Produces: `func newTrunk(env Env) Detector`; `func isTrunkName(name string, defaultBranch string) bool` — `main|master|develop|trunk|release/*` of de default branch; `defaultBranch` is een kale naam (de aanroeper haalt `refs/remotes/origin/` weg).
 
-- [ ] **Step 1: Tabeltest** `TestTrunk`: (a) 41 pushes `HEAD:release/r5.11` en 10 op `release/r1` → `found`, `measured.trunk_names == ["release/r1","release/r5.11"]` (volgorde eerste push), `pushes_by_branch["release/r5.11"] == 41`, voorstel `advice`; (b) `gitBranch=main` met `git -C <wt> push` → onbekend, telt in `unknown_branch` en niet in de verhouding; (c) >50% onbekend → `confidence: low`; (d) geen commits of pushes → `none`; (e) zonder records → `no_data` bij `sessions: 0`.
+- [ ] **Step 1: Tabeltest** `TestTrunk`: (a) 41 pushes `HEAD:release/r5.11` en 10 op `release/r1` → `found`, `measured.trunk_names == ["release/r1","release/r5.11"]` (volgorde eerste push), `pushes_by_branch["release/r5.11"] == 41`, voorstel `advice`; (b) `gitBranch=main` met `git -C <wt> push` → onbekend, telt in `unknown_branch` en niet in de verhouding; (f) niet-ingebouwde default branch `stable`: `isTrunkName("stable", "stable")` → true; (c) >50% onbekend → `confidence: low`; (d) geen commits of pushes → `none`; (e) zonder records → `no_data` bij `sessions: 0`.
 - [ ] **Step 2: Run** — FAIL. **Step 3: Implementeer** met vaste regex op `git push` / `git commit`; `measured`: `commits_by_branch`, `pushes_by_branch`, `trunk_names`, `trunk_push_ratio` (float, 0 bij noemer 0), `unknown_branch`. Meaning en proposal-tekst uit de spec-tabel.
 - [ ] **Step 4: Run** — PASS. Commit `feat(history): detector trunk (#491)`.
 
@@ -99,9 +100,9 @@
 
 **Files:** Create `internal/history/worktracking.go`, `worktracking_test.go`
 
-**Interfaces:** Produces `func newWorkTracking() Detector`; levert ook de tellingen voor de niveauregel via `func (d *workTracking) PRs() int` (unieke `prNumber` uit `pr-link` plus unieke `pr create`/`mr create`-aanroepen per sessie; `gh pr view` telt niet) en `IssueCommands() int`.
+**Interfaces:** Produces `func newWorkTracking() Detector`; levert ook de tellingen voor de niveauregel via `func (d *workTracking) PRs() int` (unieke `prNumber` uit `pr-link` plus unieke `pr create`/`mr create`-aanroepen per sessie die geen `pr-link` in dezelfde sessie hebben, want Claude Code schrijft na een geslaagde create een `pr-link` voor dezelfde PR; `gh pr view` telt niet) en `IssueCommands() int`.
 
-- [ ] **Step 1: Tabeltest**: `gh issue`, `gh pr`, `lighthouse forge pr|issue`, `glab mr|issue` tellen; dezelfde `prNumber` in twee records telt één; `Write` naar `TODO.md`, `docs/tasks/x.md`, `a.sqlite`, `b.db`, `memory/x.md` telt als `file_tasks`; met issues/PR's → voorstel `knob` met `flag: "--labels"`, anders `advice`; geen van beide → `none`.
+- [ ] **Step 1: Tabeltest**: `gh issue`, `gh pr`, `lighthouse forge pr|issue`, `glab mr|issue` tellen; dezelfde `prNumber` in twee records telt één; een `gh pr create` gevolgd door een `pr-link` in dezelfde sessie telt één PR; `Write` naar `TODO.md`, `docs/tasks/x.md`, `a.sqlite`, `b.db`, `memory/x.md` telt als `file_tasks`; met issues/PR's → voorstel `knob` met `flag: "--labels"`, anders `advice`; geen van beide → `none`.
 - [ ] **Step 2: Run** FAIL, **Step 3: Implementeer**, **Step 4: Run** PASS. Commit `feat(history): detector work_tracking (#491)`.
 
 ### Task 5: detector `memory`
@@ -112,7 +113,7 @@
 - Consumes: `Env.ProjectDirs []string` (de projectmappen onder `ProjectsDir` die bij de repo horen); records voor `Cwd`.
 - Produces: `func newMemory(env Env) Detector`. Leest alleen bestandsnamen, aantallen en regeltellingen van `<projectdir>/memory/`; nooit inhoud.
 
-- [ ] **Step 1: Test** met tijdelijke mappen: 213 bestanden verdeeld over `d--work-r` en `D--work-r` → `measured.files == 213`, `case_variant_dirs == 1`; `MEMORY.md` met 200 regels → `index_at_limit: true`, 199 → `false`; cwd's `D:\x` en `d:\x` in records → `case_variant_cwds == 1`; geen `memory/`-map → `none`; voorstel altijd `advice`. Test ook dat de tekst `SECRET-MEMORY-…` in een memory-bestand nergens in de uitvoer komt.
+- [ ] **Step 1: Test** met tijdelijke mappen (de hoofdletterverschillende mappen alleen in een tempdir bij testtijd; sla dit deel over als het bestandssysteem hoofdletterongevoelig is, te testen door beide aan te maken; nooit zulke paden committen in testdata): 213 bestanden verdeeld over `d--work-r` en `D--work-r` → `measured.files == 213`, `case_variant_dirs == 1`; `MEMORY.md` met 200 regels → `index_at_limit: true`, 199 → `false`; cwd's `D:\x` en `d:\x` in records → `case_variant_cwds == 1`; geen `memory/`-map → `none`; voorstel altijd `advice`. Test ook dat de tekst `SECRET-MEMORY-…` in een memory-bestand nergens in de uitvoer komt.
 - [ ] **Step 2–4: Run FAIL / implementeer / run PASS.** Commit `feat(history): detector memory (#491)`.
 
 ### Task 6: detector `shell`
@@ -130,9 +131,9 @@
 
 **Interfaces:**
 - Consumes: `agentaudit.Overlap`, `agentaudit.Collect`, `agentaudit.Env` en `packs.Guard` (niet gewijzigd).
-- Produces: `type HookOverlap struct { Hook, Guard string }`; `func OverlapFromAudit(env agentaudit.Env, guards []packs.Guard) ([]HookOverlap, error)` — draait `Collect` en `Overlap`, houdt alleen findings met bron `project`, `lokaal` of `gebruiker` (niet `lighthouse`, niet `plugin:*`), en bouwt de Engelse namen uit `Finding.Key` (`overlap:<guard>|<bron>/<pad>`), nooit uit `Finding.Text`; `func newHooks(env Env) Detector` met `measured`: `overlapping` (lijst `{hook, guard}`), `blocking_by_hook` (basename van `HookCommand` → aantal).
+- Produces: `type HookOverlap struct { Hook, Guard string }`; `func OverlapFromAudit(env agentaudit.Env, guards []packs.Guard) ([]HookOverlap, error)` — draait `Collect` en `Overlap`, houdt alleen findings met bron `project`, `lokaal` of `gebruiker` (niet `lighthouse`, niet `plugin:*`), en bouwt de Engelse namen uit `Finding.Key` (`overlap:<guard>|<bron>/<pad>`), nooit uit `Finding.Text`; `func newHooks(env Env) Detector` met `measured`: `overlapping` (lijst `{hook, guard}`), `blocking_by_hook` (eerste woord van `HookCommand` zonder aanhalingstekens, `\` en `/` beide als scheidingsteken genormaliseerd, dan basename → aantal).
 
-- [ ] **Step 1: Tests**: `OverlapFromAudit` op een tijdelijke repo met een eigen `PreToolUse`-hook die `git commit` blokkeert → één overlap met guard `main-commit-gate`; pluginhook uitgesloten. `TestHooks`: `HookCommand=/x/y/run.sh` ×3 → `blocking_by_hook["run.sh"] == 3`; `blockingError.blockingError`-tekst nergens in `measured`; voorstel `advice` met naam van de hooks en verwijzing naar `/lighthouse-audit-agent-config`; geen overlap en geen blokkades → `none`.
+- [ ] **Step 1: Tests**: `OverlapFromAudit` op een tijdelijke repo met een eigen `PreToolUse`-hook die `git commit` blokkeert → één overlap met guard `main-commit-gate`; pluginhook uitgesloten. `TestHooks`: `HookCommand=/x/y/run.sh` ×3 → `blocking_by_hook["run.sh"] == 3`; `"$CLAUDE_PROJECT_DIR"/.claude/hooks/lighthouse/usage-gate.sh tool` → `usage-gate.sh`; `C:\\Users\\Alice\\hooks\\run.ps1` onder Linux → `run.ps1`; `blockingError.blockingError`-tekst nergens in `measured`; voorstel `advice` met naam van de hooks en verwijzing naar `/lighthouse-audit-agent-config`; geen overlap en geen blokkades → `none`.
 - [ ] **Step 2–4: Run FAIL / implementeer / run PASS.** Commit `feat(history): detector hooks (#491)`.
 
 ### Task 8: detector `worktrees`
@@ -149,7 +150,7 @@
 **Files:** Create `internal/history/level.go`, `level_test.go`
 
 **Interfaces:**
-- Consumes: tellingen uit `trunk` (`trunk_push_ratio`, bekende pushes), `workTracking.PRs()`, en een nieuwe `type chainCounts struct { Commits, CommitsAfterTest, Codex int }` die `Analyze` per sessie (ouder + subagents) bijhoudt: een testcommando (`go test`, `pytest`, `npm test`, `uv run pytest`, `cargo test`, `lighthouse gate`) eerder in dezelfde sessie dan de commit; `codex` = aanroep van `codex`.
+- Consumes: tellingen uit `trunk` (`trunk_push_ratio`, bekende pushes), `workTracking.PRs()`, en een nieuwe `type chainCounts struct { Commits, CommitsAfterTest, Codex int }` die `Analyze` per sessie (ouder + subagents) bijhoudt: een testcommando in de op timestamp samengevoegde volgorde van de sessie (`go test`, `pytest`, `npm test`, `uv run pytest`, `cargo test`, `lighthouse gate`) eerder in dezelfde sessie dan de commit; `codex` = aanroep van `codex`.
 - Produces: `type Level struct { Recommended, Reason string }`; `func decideLevel(c Counts) Level` met constanten `minPRs = 3`, `maxTrunkPushRatio = 0.20`, `minTestedCommitRatio = 0.5`.
 
 - [ ] **Step 1: Tabeltest `TestDecideLevel`**: 3 PR's, 10% trunk, 60% getest → `standard`; plus 1 codex → `strict`; 2 PR's → `light` met reden die "PRs" noemt; 20,0% trunk → `light` (grens is "minder dan 20%"); noemer 0 (geen pushes met bekende branch / geen commits) → niet voldaan; `sessions: 0` → `light` met reden `no history`; `standard`-reden noemt waarom geen `strict`.
@@ -163,7 +164,7 @@
 
 **Interfaces:**
 - Consumes: `transcripts.Find` met `Options{FoldCase: true}`, `history.Analyze`, `history.OverlapFromAudit`.
-- Produces: `type historyEnv struct { Getenv func(string) string; Cwd func() (string, error); Stdout io.Writer }`; `func defaultHistoryEnv() historyEnv`; `func newHistoryCommand(env historyEnv) *cobra.Command` met `--sources`, `--since <ISO-datum>`, `--projects-dir <map>`; `func repoSlugFromRemote(dir string) string` die dezelfde ontleding als `initcmd` gebruikt (`projectconfig.ForgeFromRemote(url, nil)`), leeg zonder `origin` of bij een niet-ontleedbare remote.
+- Produces: `type historyEnv struct { Getenv func(string) string; Cwd func() (string, error); Stdout io.Writer; ProcVersion string }` (`ProcVersion` = pad van `/proc/version`, productie-default `/proc/version`); `func defaultHistoryEnv() historyEnv`; `func newHistoryCommand(env historyEnv) *cobra.Command` met `--sources`, `--since <ISO-datum>`, `--projects-dir <map>`; `func repoSlugFromRemote(dir string) string` die dezelfde ontleding als `initcmd` gebruikt (`projectconfig.ForgeFromRemote(url, nil)`), leeg zonder `origin` of bij een niet-ontleedbare remote.
 
 - [ ] **Step 1: Failende tests** (met `execute`-helper en tijdelijke git-repo's zoals `telemetry_collect_test.go`):
   - `TestHistory_NotGitRepo`: exit 2, stderr `lighthouse history: <dir> is not a git repository`.
@@ -171,16 +172,17 @@
   - `TestHistory_ForeignProjectWithoutOrigin`: repo zonder `origin`, projectmap met cwd in een andere repo → `sessions: 0`.
   - `TestHistory_UnreadableProjectsDir`: exit 1.
   - `TestHistory_BadSince`: `--since morgen` → exit 2.
-  - `TestHistory_WSLHint`: `/proc/version` met `microsoft` (via `historyEnv`-hook voor het bestandspad) en 0 sessies → `hint` noemt `/mnt/c/Users/<naam>/.claude/projects`.
-  - `TestHistory_SessionOnWSLPathAndSlug`: fixture met Windows-cwd's vanaf repo-pad `/mnt/c/…` (via roots) en vanaf `/home/…` (alleen via slug).
-- [ ] **Step 2: Run** — FAIL. **Step 3: Implementeer.** Roots = repo-root plus `git worktree list --porcelain` (hergebruik `gitWorktrees`); `Env.TrunkNames` uit `git symbolic-ref refs/remotes/origin/HEAD`; `ProjectDirs` uit de projectmappen die `transcripts.Find` aanwees (voeg daarvoor aan `Find` niets toe: leid ze af uit `filepath.Dir(Session.Path)`). Hooks: `agentaudit.DefaultEnv(root)` heeft vóór `init` geen manifest, dus zet `env.Packs` zelf uit alle mappen van `pack.Files` via `packs.Load`; fout daarbij laat `hooks` op `no_data`, geen exit 1. Druk JSON af met `json.MarshalIndent`; schrijf nergens.
+  - `TestHistory_WSLHint`: `/proc/version` met `microsoft` (via `historyEnv.ProcVersion`) en 0 sessies → `hint` noemt `/mnt/c/Users/<naam>/.claude/projects`.
+  - `TestHistory_SessionOnWSLPathAndSlug`: fixture met Windows-cwd's vanaf een repo onder `/home/…` (alleen via slug); de roots-helft (`/mnt/c/…`) is op unitniveau gedekt in taak 1.
+  - Alle CLI-tests zetten `t.Setenv` voor `HOME` en `CLAUDE_CONFIG_DIR` op een tijdelijke map, want `agentaudit.DefaultEnv` leest die uit het proces.
+- [ ] **Step 2: Run** — FAIL. **Step 3: Implementeer.** Roots = repo-root plus `git worktree list --porcelain` (hergebruik `gitWorktrees`); `Env.TrunkNames` uit `git symbolic-ref refs/remotes/origin/HEAD` met `refs/remotes/origin/` eraf (kale naam); `ProjectDirs` uit de projectmappen die `transcripts.Find` aanwees (voeg daarvoor aan `Find` niets toe: leid ze af uit `filepath.Dir(Session.Path)`). Hooks: `agentaudit.DefaultEnv(root)` heeft vóór `init` geen manifest, dus zet `env.Packs` zelf uit alle mappen van `pack.Files` via `packs.Load`; fout daarbij komt in `Env.AuditErr` en laat `hooks` op `no_data`, geen exit 1. Druk JSON af met `json.MarshalIndent`; schrijf nergens.
 - [ ] **Step 4: Run** — PASS. Commit `feat(cli): lighthouse history (#491)`.
 
 ### Task 11: fixtures, golden, privacy, geen schrijfacties
 
-**Files:** Create `internal/history/testdata/{tweede-gebruiker,keten,keten-codex}/…` (synthetische `projects/`-bomen met `.jsonl`), `internal/history/testdata/golden/*.json`, `internal/cli/history_golden_test.go`
+**Files:** Create `internal/history/testdata/{second-user,chain,chain-codex}/…` (Engelse namen: `internal/**` valt onder `code_language_paths`) (synthetische `projects/`-bomen met `.jsonl`), `internal/history/testdata/golden/*.json`, `internal/cli/history_golden_test.go`
 
-- [ ] **Step 1: Bouw de fixtures.** "tweede gebruiker": trunk schuift `release/r1`→`release/r5.11`, schrijfacties naar `TODO.md`, Windows-cwd's `D:\` en `d:\`, Git Bash + CRLF-signalen, OneDrive-worktrees → verwacht `light`. "keten": 3+ `pr-link`'s, weinig trunkpushes, testcommando's vóór commits → `standard`. "keten-codex": idem plus een `codex`-aanroep → `strict`. Prompts, tool-uitvoer en bestandsinhoud dragen `SECRET-PROMPT-1`, `SECRET-OUTPUT-1`, `SECRET-CONTENT-1`.
+- [ ] **Step 1: Bouw de fixtures.** "second-user": trunk schuift `release/r1`→`release/r5.11`, schrijfacties naar `TODO.md`, Windows-cwd's `D:\` en `d:\` (alleen in records; geen hoofdletterverschillende mappen in testdata), Git Bash + CRLF-signalen, OneDrive-worktrees → verwacht `light`. "chain": 3+ `pr-link`'s, weinig trunkpushes, testcommando's vóór commits → `standard`. "chain-codex": idem plus een `codex`-aanroep → `strict`. Prompts, tool-uitvoer en bestandsinhoud dragen `SECRET-PROMPT-1`, `SECRET-OUTPUT-1`, `SECRET-CONTENT-1`.
 - [ ] **Step 2: Tests** in `history_golden_test.go`:
   - `TestHistory_Golden`: per set het hele commando, vergelijk met golden JSON (`-update`-vlag om te vernieuwen; golden handmatig nakijken).
   - `TestHistory_NoSecrets`: uitvoer met en zonder `--sources` bevat geen `SECRET-`.
@@ -192,11 +194,11 @@
 
 ### Task 12: documentatie en changelog
 
-**Files:** Modify `docs/site/agents/install.md`, `docs/install.md`; Create `changelog.d/issue-491-historie-analyse.md`
+**Files:** Modify `docs/site/agents/install.md`, `docs/install.md`, `docs/host-assumptions.md`; Create `changelog.d/issue-491-historie-analyse.md`
 
 - [ ] **Step 1: `docs/site/agents/install.md`.** Voeg sectie **History** toe met de stappen 1–6 uit de spec (niveaus lokaal · diep · niet met de toestemmingstekst per harness; `lighthouse history`; `--sources` en `sed -n '<n>p' <file> | cut -c1-4000`, hoogstens 10 regels per bevinding en 50 samen; één bericht met voorstellen; foutafhandeling). Wijzig de volgorde: keuze 1 en de binaire installatie eerst, dan History, dan keuzes 2–5, 8 en 9; zonder `history` in `lighthouse --help` slaat de agent History over met een regel onder "Still open". Pas "Ground rules" aan voor die uitzondering.
 - [ ] **Step 2: `docs/install.md`.** Korte alinea onder "Start small" over `lighthouse history`.
-- [ ] **Step 3: Changelog-fragment** (`type: added`, Nederlands, noemt #491).
+- [ ] **Step 3: Changelog-fragment** (`type: added`, Engels, noemt #491), en een rij in `docs/host-assumptions.md` voor het lezen van `/proc/version` (alleen Linux).
 - [ ] **Step 4: Controleer** `go run ./cmd/lighthouse imports check`, links (`md-link-check` blokkeert), `go test ./...`, en `go run ./cmd/lighthouse init --upgrade` (verwacht `No changes.`; er verandert niets onder `pack/`). Commit `docs(history): agentgids en installatiepagina (#491)`.
 
 ---
