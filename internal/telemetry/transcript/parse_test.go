@@ -54,7 +54,7 @@ func TestParseRealShapeFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer fh.Close()
+	t.Cleanup(func() { _ = fh.Close() })
 	r := mustParse(t, File{Name: "sess-real.jsonl", R: fh})
 	u := r.UsageBetween(time.Time{}, time.Time{})["model-a"]
 	want := telemetry.Tokens{Input: 2, Output: 50, CacheRead: 200, CacheWrite1h: 300}
