@@ -1,0 +1,6 @@
+# Tool -> the units in this package that need it. `lighthouse init` reports a
+# missing tool with these names; it does not stop on it.
+pwsh = ["powershell-lint-check"]
+PSScriptAnalyzer = ["powershell-lint-check"]
+git = ["powershell-lint-check"]
+jq = ["powershell-lint-check"]

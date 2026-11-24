@@ -1903,3 +1903,54 @@ func TestWarnsMainCheckoutInSyncFolderFromLinkedWorktree(t *testing.T) {
 		t.Errorf("no warning for the main checkout in OneDrive:\n%s", r.err)
 	}
 }
+
+// TestInitReportsMissingPowershellTools runs the real pack/powershell: a host without pwsh, and one
+// with pwsh but without the PSScriptAnalyzer module, each name what is missing and which unit needs it.
+func TestInitReportsMissingPowershellTools(t *testing.T) {
+	cases := []struct {
+		name   string
+		noPwsh bool
+		want   []string
+		none   string
+	}{
+		// The module is reported too: it cannot be there without pwsh.
+		{"no pwsh", true, []string{
+			"missing dependency: pwsh (needed by: powershell-lint-check)\n",
+			"missing dependency: PSScriptAnalyzer (needed by: powershell-lint-check)\n",
+		}, ""},
+		{"no module", false, []string{"missing dependency: PSScriptAnalyzer (needed by: powershell-lint-check)\n"}, "missing dependency: pwsh"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			root := newRepo(t)
+			r := run(t, root, "", func(o *Options) {
+				o.Yes = true
+				o.Packs = os.DirFS("../../pack")
+				o.AddPacks = []string{"powershell"}
+				o.Level = "strict" // light has powershell-lint-check off, and needs nothing
+				o.Deps = deps.Checker{
+					LookPath: func(name string) (string, error) {
+						if name == "pwsh" && c.noPwsh {
+							return "", errors.New("no")
+						}
+						return "/usr/bin/" + name, nil
+					},
+					Run: func(name string, _ ...string) error {
+						if name == "pwsh" {
+							return errors.New("exit 1")
+						}
+						return nil
+					},
+				}
+			})
+			if r.code != 0 || (c.none != "" && strings.Contains(r.err, c.none)) {
+				t.Fatalf("rc %d err %q", r.code, r.err)
+			}
+			for _, w := range c.want {
+				if !strings.Contains(r.err, w) {
+					t.Fatalf("err lacks %q: %q", w, r.err)
+				}
+			}
+		})
+	}
+}

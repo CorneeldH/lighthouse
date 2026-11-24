@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/CorneeldH/lighthouse/internal/packs"
@@ -127,5 +128,44 @@ func TestSuperpowers(t *testing.T) {
 		if m := c.Check(sp); len(m) != 1 || m[0].Tool != "superpowers" {
 			t.Errorf("%s: missing = %v", name, m)
 		}
+	}
+}
+
+func TestPSScriptAnalyzer(t *testing.T) {
+	psr := []packs.Requirement{{Tool: "PSScriptAnalyzer", NeededBy: []string{"powershell-lint-check"}}}
+	var ran [][]string
+	c := Checker{
+		LookPath: func(name string) (string, error) { return "/usr/bin/" + name, nil },
+		Run: func(name string, args ...string) error {
+			ran = append(ran, append([]string{name}, args...))
+			return nil
+		},
+	}
+	if m := c.Check(psr); len(m) != 0 {
+		t.Fatalf("present: missing %v", m)
+	}
+	if len(ran) != 1 || ran[0][0] != "pwsh" {
+		t.Fatalf("ran %v", ran)
+	}
+	cmd := strings.Join(ran[0], " ")
+	for _, want := range []string{"-NoProfile", "-NonInteractive", "Get-Module -ListAvailable PSScriptAnalyzer"} {
+		if !strings.Contains(cmd, want) {
+			t.Errorf("%q missing from %q", want, cmd)
+		}
+	}
+
+	ran = nil
+	c.LookPath = func(name string) (string, error) { return "", errors.New("not found") }
+	if m := c.Check(psr); len(m) != 1 || m[0].Tool != "PSScriptAnalyzer" {
+		t.Fatalf("no pwsh: missing %v", m)
+	}
+	if len(ran) != 0 {
+		t.Fatalf("ran without pwsh: %v", ran)
+	}
+
+	c.LookPath = func(name string) (string, error) { return "/usr/bin/" + name, nil }
+	c.Run = func(string, ...string) error { return errors.New("exit 1") }
+	if m := c.Check(psr); len(m) != 1 || m[0].Tool != "PSScriptAnalyzer" {
+		t.Fatalf("no module: missing %v", m)
 	}
 }
