@@ -230,7 +230,7 @@ func minimalPayload(t *testing.T, r registration, project, worktree string) map[
 		}
 	case "main-commit-gate", "commit-test-gate", "no-verify-check":
 		return bash("git commit -m x")
-	case "level-check", "telemetry-collect":
+	case "level-check", "telemetry-collect-check":
 		return map[string]any{"hook_event_name": r.event, "session_id": "s1", "cwd": worktree, "source": "startup"}
 	case "workflow-push-gate":
 		// origin/main gives the range a start, so the push of a branch without workflows passes.
@@ -268,7 +268,7 @@ func TestEveryRegistrationRunsUnderMinimalConfig(t *testing.T) {
 	slices.Sort(hooks)
 	wantHooks := []string{
 		"bash-write-check", "code-language-check", "commit-test-gate", "level-check", "main-commit-gate",
-		"md-link-check", "no-verify-check", "permission-check", "pr-create-gate", "telemetry-collect",
+		"md-link-check", "no-verify-check", "permission-check", "pr-create-gate", "telemetry-collect-check",
 		"usage-gate", "workflow-push-gate", "worktree-check",
 	}
 	if !slices.Equal(hooks, wantHooks) {

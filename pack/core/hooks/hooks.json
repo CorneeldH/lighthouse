@@ -115,7 +115,7 @@
           },
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh telemetry-collect",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/run.sh telemetry-collect-check",
             "timeout": 10
           }
         ]

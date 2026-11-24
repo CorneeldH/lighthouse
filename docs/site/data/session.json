@@ -708,7 +708,7 @@
       "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/hooks/levelcheck.go"
     },
     {
-      "id": "telemetry-collect",
+      "id": "telemetry-collect-check",
       "phase": "prompt",
       "row": 1,
       "kind": "hook",
@@ -717,11 +717,11 @@
         "SessionStart"
       ],
       "matcher": "",
-      "command": "run.sh telemetry-collect",
+      "command": "run.sh telemetry-collect-check",
       "effects": [
         "records"
       ],
-      "label": "telemetry-collect",
+      "label": "telemetry-collect-check",
       "what": "At the start of a session, notes the lighthouse and pack versions and starts the telemetry collector in the background.",
       "how": [
         "It runs on SessionStart and appends an observation (time, binary version, pack version from .lighthouse/manifest.toml) to a sidecar file of the session in the state directory.",
@@ -731,7 +731,7 @@
       "when": "When a session starts.",
       "without": "Telemetry only fills when someone runs the collector by hand, and the lighthouse and pack versions of a session stay unknown.",
       "status": "works",
-      "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/hooks/telemetrycollect.go"
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/hooks/telemetrycollectcheck.go"
     },
     {
       "id": "permission-check",
@@ -950,7 +950,7 @@
       "id": "session-start-telemetry",
       "label": "A session starts and its telemetry must be collected",
       "chips": [
-        "telemetry-collect"
+        "telemetry-collect-check"
       ]
     }
   ]

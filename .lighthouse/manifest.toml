@@ -396,10 +396,10 @@ sha256 = "d7332f9a4488bab4db5cfe8bd3aad3f3d5227e65347290d95d1e3812c5a6ce11"
 [[unit]]
 kind = "hook"
 path = ".claude/settings.json"
-id = "SessionStart||\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/run.sh telemetry-collect"
+id = "SessionStart||\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/run.sh telemetry-collect-check"
 package = "core"
 version = "dev"
-sha256 = "680e341f4509d81a7ee511f0a5cffbc84782dfacc1647c61dfe94f093b8426ce"
+sha256 = "84f788c266b23de2ff797358d2ef034293c3a07564a0eec5e0a94f257c693d2e"
 
 [[unit]]
 kind = "hook"

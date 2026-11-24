@@ -163,7 +163,7 @@
           },
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/run.sh telemetry-collect",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/run.sh telemetry-collect-check",
             "timeout": 10
           }
         ]

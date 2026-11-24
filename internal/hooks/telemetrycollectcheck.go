@@ -15,7 +15,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/version"
 )
 
-func init() { hook.Register("telemetry-collect", TelemetryCollect) }
+func init() { hook.Register("telemetry-collect-check", TelemetryCollect) }
 
 // startWait is how long the hook waits for the collector to start before it returns anyway.
 var startWait = time.Second
@@ -59,7 +59,7 @@ func TelemetryCollect(_ context.Context, root string, _ string, p hook.Payload) 
 		}
 		defer func() { _ = f.Close() }()
 		msg = strings.ReplaceAll(strings.ReplaceAll(msg, "\r", " "), "\n", " ")
-		_, _ = fmt.Fprintf(f, "%s telemetry-collect: COULD NOT CHECK — %s\n", time.Now().UTC().Format(time.RFC3339), msg)
+		_, _ = fmt.Fprintf(f, "%s telemetry-collect-check: COULD NOT CHECK — %s\n", time.Now().UTC().Format(time.RFC3339), msg)
 	}
 
 	obs := collect.Observation{At: time.Now().UTC(), LighthouseVersion: version.String()}
