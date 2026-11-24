@@ -88,12 +88,17 @@ type Pre struct {
 	Markers []park.Marker
 	// Unreadable are the sessions with a marker file that does not read (#513).
 	Unreadable []string
+	// MarkersIncomplete is whether a node's markers could not be read this tick.
+	MarkersIncomplete bool
 	// PauseUntil is the end of the active pause flag; zero is no pause. It is in the fingerprint,
 	// so a pause that ends makes the next tick gather.
 	PauseUntil time.Time
 	// ToDo is the mark of every open To do item of the repo without a needs_* or
 	// blocked_external label (toDoCandidate); the caller saves it for the next precheck.
 	ToDo map[int]ToDoMark
+	// Blockers is the blocker graph of the prio weight (BlockerGraph of the whole board of the
+	// repo, not only the items). Complete reads the weights with it; the fingerprint does not.
+	Blockers map[int][]int
 }
 
 // Prepare reads the board of repo and keeps the issues of repo.Slug whose Status is
@@ -199,7 +204,24 @@ func Prepare(ctx context.Context, f forge.Forge, repo repoconfig.Repo, open []ru
 	if err != nil {
 		return Pre{}, err
 	}
-	return Pre{Repo: repo, Items: items, Statuses: statuses, OpenRuns: open, ScheduledPRs: scheduledPRs, ToDo: toDo}, nil
+	return Pre{Repo: repo, Items: items, Statuses: statuses, OpenRuns: open, ScheduledPRs: scheduledPRs, ToDo: toDo,
+		Blockers: BlockerGraph(board, repo.Slug)}, nil
+}
+
+// prioWeights is the PrioWeight per issue of pre. The blocker graph is pre.Blockers, the BlockedBy
+// of every board item of the repo, not only the items kept: a blocker of another repo, or one that
+// is not an open issue, counts for nothing. Only Complete reads it, so a tick that is not due
+// reads no weights. Without items it reads nothing; a failing PrioInputs is the error of
+// Complete, never a weight of 0.
+func prioWeights(ctx context.Context, f forge.Forge, pre Pre) (map[int]int, error) {
+	if len(pre.Items) == 0 {
+		return map[int]int{}, nil
+	}
+	in, err := f.PrioInputs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return Weights(in, pre.Blockers), nil
 }
 
 // toDoCandidate reports whether bi is an open To do item of repo that the tick may have parked:
@@ -307,8 +329,13 @@ func mergePRs(closing, onBranch []forge.PR) []forge.PR {
 // set only when tokenLogin put a 🚀 on it. Any failed request fails the whole gather. Every
 // list in the snapshot is non-nil, so its JSON has [] where a list is empty, never null.
 // For an item with an open run, every merge-ready PR gets its roborev state from the PR's
-// comments, on GitHub only; the PRs of Pre stay untouched.
+// comments, on GitHub only; the PRs of Pre stay untouched. Every item gets its PrioWeight here
+// (prioWeights), not in Prepare: a tick that is not due never reads the weights.
 func Complete(ctx context.Context, f forge.Forge, pre Pre, trust *Trust, tokenLogin string, log io.Writer, now time.Time) (Snapshot, error) {
+	weights, err := prioWeights(ctx, f, pre)
+	if err != nil {
+		return Snapshot{}, err
+	}
 	items := make([]Item, 0, len(pre.Items))
 	hasRun := make(map[int]bool, len(pre.OpenRuns))
 	for _, r := range pre.OpenRuns {
@@ -317,6 +344,7 @@ func Complete(ctx context.Context, f forge.Forge, pre Pre, trust *Trust, tokenLo
 		}
 	}
 	for _, it := range pre.Items {
+		it.PrioWeight = weights[it.Issue]
 		if hasRun[it.Issue] {
 			it.PRs = slices.Clone(it.PRs)
 			for i, pr := range it.PRs {

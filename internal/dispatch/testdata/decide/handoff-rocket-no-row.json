@@ -81,5 +81,12 @@
       }
     ]
   },
-  "want": []
+  "want": [
+    {
+      "kind": "idle",
+      "repo": "o/r",
+      "issue": 7,
+      "language": "nl"
+    }
+  ]
 }

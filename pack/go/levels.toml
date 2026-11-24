@@ -1,0 +1,8 @@
+# The entry levels of the go package: lint and format come after the way of working.
+# go-imports-gate guards the declared imports at every level.
+on = ["go-imports-gate"]
+
+[light.components]
+gofmt-check = "off"
+go-lint-gate = "off"
+"skill:go-standard" = "off"

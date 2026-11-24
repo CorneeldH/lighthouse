@@ -16,11 +16,11 @@ import (
 const (
 	worktreeMissingGit = "Worktree check: COULD NOT CHECK — missing tooling: git. " +
 		"Nothing was checked, so this is no sign that the write is in a worktree."
-	worktreeUncheckableTail = "\n" +
+	worktreeUncheckableHead = "\n" +
 		"\n" +
 		"Nothing was checked, so this is no sign that the write is in a worktree.\n" +
 		"Convention: work that produces a commit starts in a worktree on its own branch\n" +
-		"(git worktree add .claude/worktrees/<name> -b issue-<nr>-<slug>)."
+		"("
 )
 
 // loopCheckAfter is the number of symbolic links canonMissing follows before it checks for a
@@ -44,7 +44,7 @@ func WorktreeCheck(ctx context.Context, _, _ string, p hook.Payload) hook.Result
 	}
 
 	abs := filePath
-	if !strings.HasPrefix(filePath, "/") {
+	if !isAbsPath(filePath) {
 		if cwd == "" {
 			// When Getwd fails cwd stays "", as an unset $PWD in bash.
 			cwd, _ = os.Getwd()
@@ -101,7 +101,7 @@ func WorktreeCheck(ctx context.Context, _, _ string, p hook.Payload) hook.Result
 		"  " + abs + "\n" +
 		"\n" +
 		"Convention: work that produces a commit starts in a worktree on its own\n" +
-		"branch (git worktree add .claude/worktrees/<name> -b issue-<nr>-<slug>).\n" +
+		"branch (" + worktreeAddHint() + ").\n" +
 		"Exception: read-only work, or an explicit 'on main' from the user.\n" +
 		"\n" +
 		"Note: committing on '" + protected + "' is blocked (main-commit-gate). Move\n" +
@@ -128,15 +128,18 @@ func readWritePayload(raw []byte) (filePath, cwd string, ok bool) {
 // gnulib, after loopCheckAfter links a link met twice with the same remaining path stays as it
 // stands. The only error is a relative path without a working directory.
 func canonMissing(path string) (string, error) {
-	if !filepath.IsAbs(path) {
+	path = filepath.ToSlash(path)
+	if !isAbsPath(path) {
 		wd, err := os.Getwd()
 		if err != nil {
 			return "", err
 		}
-		path = wd + "/" + path
+		path = filepath.ToSlash(wd) + "/" + path
 	}
-	rest := strings.Split(path, "/")
-	resolved := "/"
+	// The volume is the start, not a component to walk: `C:/Users` is never `C:/C:/Users`.
+	vol := filepath.VolumeName(path)
+	resolved := vol + "/"
+	rest := strings.Split(path[len(vol):], "/")
 	links := 0
 	seen := map[string][]os.FileInfo{}
 	for len(rest) > 0 {
@@ -167,7 +170,7 @@ func canonMissing(path string) (string, error) {
 		}
 		resolved = filepath.Dir(next)
 		if filepath.IsAbs(target) {
-			resolved = "/"
+			resolved = vol + "/"
 		}
 		rest = append(strings.Split(target, "/"), rest...)
 	}
@@ -224,9 +227,22 @@ func isDir(path string) bool {
 }
 
 func warnUncheckable(reason string) hook.Result {
-	return systemMessage("Worktree check: COULD NOT CHECK — " + reason + worktreeUncheckableTail)
+	return systemMessage("Worktree check: COULD NOT CHECK — " + reason + worktreeUncheckableHead + worktreeAddHint() + ").")
 }
 
 func systemMessage(msg string) hook.Result {
 	return hook.Result{Output: map[string]any{"systemMessage": msg}}
+}
+
+// isAbsPath is filepath.IsAbs, and also a Windows path (`X:\` or `X:/`) on any OS: the payload of
+// a hook on Windows names its file that way, and on Linux filepath.IsAbs does not know it.
+func isAbsPath(p string) bool {
+	if strings.HasPrefix(p, "/") {
+		return true
+	}
+	if len(p) >= 3 && (p[1] == ':') && (p[2] == '\\' || p[2] == '/') {
+		c := p[0] | 0x20
+		return c >= 'a' && c <= 'z'
+	}
+	return filepath.IsAbs(p)
 }

@@ -17,6 +17,12 @@ export interface GNode {
   uphill: boolean
   depth: number
   waiting: number
+  // Sum over every issue that waits on this one, directly or through others, of 2^(k-1) with k the
+  // longest distance in steps (a cycle is one group). Computed locally.
+  weight: number
+  // Straight from the API (issue.factor, issue.prio_weight); 0 for external nodes.
+  factor: number
+  prioWeight: number
   cycle: boolean
   component: number
 }
@@ -140,6 +146,9 @@ export function buildGraph(repos: Repo[], runs: Run[]): Graph {
     uphill: false,
     depth: 0,
     waiting: 0,
+    weight: 0,
+    factor: 0,
+    prioWeight: 0,
     cycle: false,
     component: 0,
   })
@@ -160,6 +169,8 @@ export function buildGraph(repos: Repo[], runs: Run[]): Graph {
         state,
         needsHuman,
         uphill: active && isUphill(run),
+        factor: issue.factor,
+        prioWeight: issue.prio_weight,
       })
     }
   }
@@ -227,12 +238,30 @@ export function buildGraph(repos: Repo[], runs: Run[]): Graph {
     waiting[c] = total
   }
 
+  // Weight: longest distance per downstream component over the condensed DAG, relaxed in
+  // topological order (`queue`); weight = sum of members * 2^(dist-1). O(C*(C+E)), once per fetch.
+  const weight = new Array<number>(count).fill(0)
+  const dist = new Array<number>(count)
+  for (let c = 0; c < count; c++) {
+    dist.fill(0)
+    let total = 0
+    for (const u of queue) {
+      if (u !== c && dist[u] === 0) continue
+      for (const d of cadj[u]) dist[d] = Math.max(dist[d], dist[u] + 1)
+    }
+    for (let d = 0; d < count; d++) {
+      if (d !== c && dist[d] > 0) total += members[d].length * 2 ** (dist[d] - 1)
+    }
+    weight[c] = total
+  }
+
   keys.forEach((k, i) => {
     const node = nodes.get(k) as GNode
     const c = comp[i]
     node.component = c
     node.depth = depth[c]
     node.waiting = waiting[c]
+    node.weight = weight[c]
     node.cycle = size[c] > 1 || selfLoop.has(c)
   })
   return { nodes, edges }

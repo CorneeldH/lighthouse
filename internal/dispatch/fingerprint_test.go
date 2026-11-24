@@ -216,6 +216,28 @@ func TestFingerprintMarkersAndPause(t *testing.T) {
 	}
 }
 
+// An unreadable marker file and a node whose markers could not be read hold a parked run and the
+// idle net: once either clears, the tick must gather to see whether the marker is really gone.
+// The order of the unreadable sessions is no change, and none hashes like a Pre without the field.
+func TestFingerprintUnreadableMarkers(t *testing.T) {
+	base := Fingerprint(Pre{Unreadable: []string{"a", "b"}})
+	if got := Fingerprint(Pre{Unreadable: []string{"b", "a"}}); got != base {
+		t.Error("unreadable order changed the fingerprint")
+	}
+	if Fingerprint(Pre{Unreadable: []string{}}) != Fingerprint(Pre{}) {
+		t.Error("an empty unreadable list hashes unlike a nil one")
+	}
+	for name, pre := range map[string]Pre{
+		"unreadable cleared": {},
+		"other unreadable":   {Unreadable: []string{"a"}},
+		"markers incomplete": {Unreadable: []string{"a", "b"}, MarkersIncomplete: true},
+	} {
+		if Fingerprint(pre) == base {
+			t.Errorf("%s: fingerprint unchanged", name)
+		}
+	}
+}
+
 // A refused merge is noted on the open run; the note must wake the tick, and an empty note must
 // hash like a run from before the field existed.
 func TestFingerprintChangesOnMergeSHA(t *testing.T) {

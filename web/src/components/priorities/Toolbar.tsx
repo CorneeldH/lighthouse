@@ -1,5 +1,6 @@
 import type { JSX } from 'react'
 import type { ViewId } from '@/lib/priorities/prefs'
+import type { DepsOrder } from './layout'
 import { Block, type BlockState } from './Block'
 
 export interface LegendItem {
@@ -18,6 +19,8 @@ interface ToolbarProps {
   legend: LegendItem[]
   msOrder: 'computed' | 'priority'
   onMsOrder: (o: 'computed' | 'priority') => void
+  depsOrder: DepsOrder
+  onDepsOrder: (o: DepsOrder) => void
 }
 
 const STATES: Array<{ key: string; label: string; state: BlockState; needsHuman: boolean }> = [
@@ -34,9 +37,16 @@ const VIEWS: Array<{ id: ViewId; label: string }> = [
   { id: 'unassigned', label: 'Without milestone' },
 ]
 
-const ORDERS: Array<{ id: 'computed' | 'priority'; label: string }> = [
-  { id: 'computed', label: 'Berekend' },
-  { id: 'priority', label: 'Prioriteit' },
+// The computed order sorts on % done; its button shows only the sign, its name says it in full.
+const ORDERS: Array<{ id: 'computed' | 'priority'; label: string; name: string }> = [
+  { id: 'computed', label: '%', name: '% done' },
+  { id: 'priority', label: 'Priority', name: 'Priority' },
+]
+
+const SORTS: Array<{ id: DepsOrder; label: string }> = [
+  { id: 'prio', label: 'Prio-weight' },
+  { id: 'weight', label: 'Weight' },
+  { id: 'crossings', label: 'Fewest crossings' },
 ]
 
 export function Toolbar({
@@ -49,6 +59,8 @@ export function Toolbar({
   legend,
   msOrder,
   onMsOrder,
+  depsOrder,
+  onDepsOrder,
 }: ToolbarProps): JSX.Element {
   return (
     <div className="space-y-3">
@@ -70,7 +82,7 @@ export function Toolbar({
           })}
         </div>
         {view === 'milestones' && (
-          <div role="group" aria-label="Volgorde" className="inline-flex overflow-hidden rounded-md border border-lh-navy">
+          <div role="group" aria-label="Order" className="inline-flex overflow-hidden rounded-md border border-lh-navy">
             {ORDERS.map((o) => {
               const on = o.id === msOrder
               return (
@@ -78,8 +90,28 @@ export function Toolbar({
                   key={o.id}
                   type="button"
                   aria-pressed={on}
+                  aria-label={o.name}
+                  title={o.name}
                   className={`px-3 py-1 text-sm font-medium ${on ? 'bg-lh-navy text-white' : 'bg-card text-foreground hover:bg-muted'}`}
                   onClick={() => onMsOrder(o.id)}
+                >
+                  {o.label}
+                </button>
+              )
+            })}
+          </div>
+        )}
+        {view === 'deps' && (
+          <div role="group" aria-label="Sort" className="inline-flex overflow-hidden rounded-md border border-lh-navy">
+            {SORTS.map((o) => {
+              const on = o.id === depsOrder
+              return (
+                <button
+                  key={o.id}
+                  type="button"
+                  aria-pressed={on}
+                  className={`px-3 py-1 text-sm font-medium ${on ? 'bg-lh-navy text-white' : 'bg-card text-foreground hover:bg-muted'}`}
+                  onClick={() => onDepsOrder(o.id)}
                 >
                   {o.label}
                 </button>

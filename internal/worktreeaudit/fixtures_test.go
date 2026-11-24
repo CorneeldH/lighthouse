@@ -313,7 +313,7 @@ func TestRenderCases(t *testing.T) {
 	}
 	for _, c := range load[renderCase](t, "render") {
 		t.Run(c.Name, func(t *testing.T) {
-			v := View{Policy: policyOf(t, c.Config), Alive: aliveOf(t, c.Alive)}
+			v := View{Policy: policyOf(t, c.Config), Alive: aliveOf(t, c.Alive), Root: "/repo/.claude/worktrees"}
 			rows := rowsOf(c.Rows)
 			var text string
 			var ok *bool

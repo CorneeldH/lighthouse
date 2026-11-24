@@ -1,0 +1,7 @@
+{
+  "session_id": "no-python",
+  "transcript_path": "@TRANSCRIPT@",
+  "cwd": "@REPO@",
+  "hook_event_name": "SessionStart",
+  "source": "startup"
+}

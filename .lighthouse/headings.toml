@@ -45,6 +45,10 @@ en = "Rebased"
 nl = "Geparkeerd"
 en = "Parked"
 
+[kind_repair]
+nl = "Herstel"
+en = "Repair"
+
 # Texts the dispatcher posts
 [reason_needs_brainstorm]
 nl = "heeft brainstorm nodig"
@@ -90,6 +94,18 @@ en = "workplace gone"
 nl = "PR gesloten"
 en = "PR closed"
 
+[reason_pr_closed_unmerged]
+nl = "PR gesloten zonder merge, terwijl de handoff op de merge wachtte"
+en = "PR closed without a merge, while the handoff waited for the merge"
+
+[reason_answer_no_session]
+nl = "antwoord op een Vraag zonder sessie: er is niets om te hervatten"
+en = "answer to a question without a session: there is nothing to resume"
+
+[reason_answer_no_run]
+nl = "antwoord op een Vraag, maar geen run van dit issue heeft de sessie"
+en = "answer to a question, but no run of this issue has the session"
+
 [reason_pr_draft]
 nl = "PR is draft"
 en = "PR is a draft"
@@ -133,6 +149,18 @@ en = "after-merge check: criteria open"
 [reason_no_handoff]
 nl = "geen handoff of vraag"
 en = "no handoff or question"
+
+[reason_park_marker_gone]
+nl = "geparkeerd door usage, marker verdwenen voor de sessie"
+en = "parked by usage, marker gone for the session"
+
+[reason_no_rule]
+nl = "geen vervolg na 3 evaluaties; laatste protocol-comment"
+en = "no next step after 3 evaluations; last protocol comment"
+
+[note_no_protocol_comment]
+nl = "geen"
+en = "none"
 
 [reason_park_marker_unreadable]
 nl = "geparkeerd, marker niet leesbaar"
@@ -191,6 +219,22 @@ en = "continue"
 nl = "workflow-pusher staat uit: [dispatch.workflow_push] ontbreekt in host.toml"
 en = "workflow pusher is off: [dispatch.workflow_push] is missing from host.toml"
 
+[reason_pusher_answer_unknown]
+nl = "antwoord op de pusher-vraag niet herkend (alleen `push` start de pusher)"
+en = "answer to the pusher question not recognised (only `push` starts the pusher)"
+
+[reason_pusher_answer_moved]
+nl = "antwoord op de pusher-vraag, maar de branch staat niet op de gevraagde commit"
+en = "answer to the pusher question, but the branch is not on the requested commit"
+
+[reason_pusher_no_after]
+nl = "de pusher-vraag noemt geen after:-commando om mee verder te gaan"
+en = "the pusher question names no after: command to continue with"
+
+[reason_pusher_git_failed]
+nl = "COULD NOT CHECK: git ls-remote op origin mislukte"
+en = "COULD NOT CHECK: git ls-remote on origin failed"
+
 [reason_pusher_node]
 nl = "de run die deze handoff schreef draaide op een andere host dan de pusher"
 en = "the run that wrote this handoff ran on another host than the pusher"
@@ -206,6 +250,14 @@ en = "workflow pusher red"
 [reason_pusher_no_handoff]
 nl = "de pusher pushte, maar er kwam geen handoff of PR"
 en = "the pusher pushed, but no handoff or PR followed"
+
+[reason_pusher_red_ceiling]
+nl = "workflow-pusher bleef rood na twee reparatierondes"
+en = "workflow pusher stayed red after two repair rounds"
+
+[prompt_pusher_repair]
+nl = "De workflow-pusher vond deze stap rood. Repareer het in de worktree, commit, en schrijf een nieuwe handoff met `next: push-workflows`."
+en = "The workflow pusher found this step red. Repair it in the worktree, commit, and write a new handoff with `next: push-workflows`."
 
 [question_push_step]
 nl = "Rode stap"

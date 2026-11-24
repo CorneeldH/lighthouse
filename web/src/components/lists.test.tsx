@@ -184,7 +184,7 @@ describe('CleanupList', () => {
     renderWithClient(<CleanupList />)
 
     const link = await screen.findByRole('link', { name: 'ws 1, opens kenn-forge in a new tab' })
-    expect(link.getAttribute('href')).toBe('http://127.0.0.1:8091/workspaces/ws%201')
+    expect(link.getAttribute('href')).toBe('http://127.0.0.1:8091/terminal/ws%201')
     expect(link.getAttribute('target')).toBe('_blank')
     expect(link.getAttribute('rel')).toBe('noopener noreferrer')
   })
@@ -322,7 +322,7 @@ describe('RunningBlock', () => {
   it('links the workspace in a new tab', async () => {
     const region = await renderRunning()
     const link = within(region).getByRole('link', { name: 'ws-3, opens kenn-forge in a new tab' })
-    expect(link.getAttribute('href')).toBe('http://127.0.0.1:8091/workspaces/ws-3')
+    expect(link.getAttribute('href')).toBe('http://127.0.0.1:8091/terminal/ws-3')
     expect(link.getAttribute('target')).toBe('_blank')
   })
 

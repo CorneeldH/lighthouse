@@ -22,6 +22,7 @@
 //	                        permissions.allow of .claude/settings.json
 //	detect.toml             when init proposes the package (see Detect); not copied
 //	guards.toml             what each lighthouse hook guards (see Guard); not copied
+//	levels.toml             the level of each component (see levels.File); not copied
 //	lighthouse.toml.fragment
 //	                        keys init adds to lighthouse.toml (see
 //	                        projectconfig.ParseFragment); not copied
@@ -39,6 +40,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 
+	"github.com/CorneeldH/lighthouse/internal/levels"
 	"github.com/CorneeldH/lighthouse/internal/orderedjson"
 	"github.com/CorneeldH/lighthouse/internal/projectconfig"
 )
@@ -120,6 +122,7 @@ type Pack struct {
 	Config             []projectconfig.Table
 	LabelsTemplate     []byte
 	DirectionTemplates map[string][]byte
+	Levels             levels.File // zero (nil Levels) without levels.toml
 }
 
 // DirectionTemplateNames are the file names under templates/ that DirectionTemplates holds:
@@ -213,7 +216,7 @@ func IsInstallPath(kind Kind, p string) bool {
 				return true
 			}
 		}
-		if p == HeadingsPath || p == PRTemplatePath {
+		if p == HeadingsPath || p == PRTemplatePath || p == levels.InstalledPath {
 			return true
 		}
 		if rest := strings.TrimPrefix(p, WorkflowPrefix); rest != p {
@@ -302,6 +305,14 @@ func Load(fsys fs.FS, name, version string) (Pack, error) {
 					return err
 				}
 				p.Guards = guards
+				return nil
+			}
+			if rel == "levels.toml" {
+				lv, err := levels.Parse(data)
+				if err != nil {
+					return fmt.Errorf("package %s: %w", name, err)
+				}
+				p.Levels = lv
 				return nil
 			}
 			if rel == "lighthouse.toml.fragment" {

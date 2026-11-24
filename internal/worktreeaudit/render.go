@@ -11,12 +11,14 @@ import (
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/pytext"
+	"github.com/CorneeldH/lighthouse/internal/worktreeroot"
 )
 
 // View renders rows: it judges them with Policy, measuring lock pids with Alive.
 type View struct {
 	Policy Policy
 	Alive  Alive
+	Root   string
 }
 
 const (
@@ -264,11 +266,11 @@ func (v View) Origin(rows []Row) string {
 	return v.Cleanup(remote)
 }
 
-// KPI is one line: worktrees under `.claude/worktrees`, safe rows, remote branches, warnings.
+// KPI is one line: worktrees under the `[worktree] root`, safe rows, remote branches, warnings.
 func (v View) KPI(rows []Row) string {
 	var worktrees, safe, remote, warn int
 	for _, p := range v.judge(rows) {
-		if nonEmpty(p.row.Worktree) && strings.Contains(*p.row.Worktree, worktreeDir) {
+		if nonEmpty(p.row.Worktree) && worktreeroot.Contains(v.Root, *p.row.Worktree) {
 			worktrees++
 		}
 		if p.verdict.Safe() {

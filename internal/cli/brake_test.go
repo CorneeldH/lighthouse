@@ -305,4 +305,18 @@ func TestReadHostFactsNodeMarkersUnreadableSetsUnmeasured(t *testing.T) {
 	if !strings.HasPrefix(errOut.String(), "lighthouse: markers of node n0: ") || strings.Count(errOut.String(), "\n") != 1 {
 		t.Errorf("errOut = %q, want one markers line for node n0", errOut.String())
 	}
+	if !f.MarkersIncomplete {
+		t.Error("MarkersIncomplete = false, want true: a node did not read")
+	}
+}
+
+// All nodes read: the markers are complete, so a parked run without one has lost it.
+func TestReadHostFactsNodeMarkersReadComplete(t *testing.T) {
+	env, dbPath := tickFixture(t)
+	db := openStore(t, dbPath)
+	hub := newFleetHub(t, randomNode(), randomNode())
+	f, err := readHostFacts(context.Background(), env, db, nodeConfig(t, hub), io.Discard)
+	if err != nil || f.MarkersIncomplete {
+		t.Errorf("readHostFacts = MarkersIncomplete %v, %v; want false, nil", f.MarkersIncomplete, err)
+	}
 }

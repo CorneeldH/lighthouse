@@ -1,0 +1,67 @@
+# The entry levels of the core package: the stand of each component per level. A component
+# no table names is on. `base` is never switched; `on` names the components that are on at
+# every level, so that a new component never drops out unnoticed.
+order = ["light", "standard", "strict"]
+
+base = [
+  "run.sh",
+  "blocking",
+  "usage-gate",
+  "permission-check",
+  "workflow-push-gate",
+  "level-check",
+  "no-verify-check",
+]
+
+on = [
+  "main-commit-gate",
+  "worktree-check",
+  "pr-create-gate",
+  "bash-write-check",
+  "skill:start-issue",
+  "skill:route-issue",
+  "skill:forge",
+  "skill:write-pr",
+  "skill:close-issue",
+  "skill:write-handoff",
+  "skill:place-instruction",
+  "skill:upgrade",
+]
+
+[owners]
+"agents/issue-impact-scout.md" = "skill:start-issue"
+
+# The real handovers: a step of the skill calls the other skill as its follow-up. A skill that is
+# on may only call skills that are on; a mere mention is no entry.
+[calls]
+"skill:start-issue" = ["skill:route-issue", "skill:write-handoff"]
+"skill:close-issue" = ["skill:start-issue", "skill:write-handoff"]
+"skill:upgrade" = ["skill:write-pr"]
+
+[light.components]
+commit-test-gate = "off"
+"skill:map-planned" = "off"
+md-link-check = "log"
+code-language-check = "log"
+"skill:write-issue" = "off"
+"skill:fix-pr" = "off"
+"skill:audit-worktrees" = "off"
+"skill:audit-agent-config" = "off"
+"skill:test-standard" = "off"
+"skill:review-spec" = "off"
+"skill:review-plan" = "off"
+
+[light.flags]
+labels = false
+
+[standard.components]
+"skill:review-spec" = "off"
+"skill:review-plan" = "off"
+
+[standard.flags]
+labels = true
+
+[strict.components]
+
+[strict.flags]
+labels = true

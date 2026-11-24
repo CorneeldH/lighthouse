@@ -33,6 +33,9 @@ type Status struct {
 	State   State
 	Comment Comment
 	Header  Header
+	// Answers are the comments that answer a question, oldest first; State is StateOther
+	// when there is any. Only a question has them.
+	Answers []Comment
 }
 
 // artefactMarkers open an artefact comment (spec or plan as an issue comment), under the
@@ -92,7 +95,7 @@ func Classify(comments []Comment) Status {
 		for _, c := range after {
 			if c.Rockets == 0 && IsAnswer(c.Body) {
 				last.State = StateOther
-				break
+				last.Answers = append(last.Answers, c)
 			}
 		}
 	case KindReturned:

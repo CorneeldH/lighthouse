@@ -8,7 +8,7 @@ interface Props {
   color: string
   // External card: another repo or outside the filter.
   grey: boolean
-  // `#nr` or `repo#nr`.
+  // `nr` or `repo nr`.
   label: string
   testId: string
   dimmed: boolean
@@ -86,7 +86,7 @@ export function NodeCard({
       {node.waiting >= 2 && (
         <span
           data-testid="waiting-pill"
-          title={`${node.waiting} issues wait on this`}
+          title={`${node.waiting} wait · weight ${node.weight} · factor ${node.factor} · prio-weight ${node.prioWeight}`}
           className="flex-none rounded-full bg-lh-navy px-1.5 text-[11px] font-semibold text-white"
         >
           {node.waiting}

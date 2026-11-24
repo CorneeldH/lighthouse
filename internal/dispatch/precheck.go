@@ -227,3 +227,41 @@ func Due(prev TickState, fp string, now time.Time, boundaries []time.Time) (bool
 	}
 	return false, "unchanged"
 }
+
+// idleKey is the tick_state key of the idle counts (SaveIdle), next to value, full_at and todo:
+// kind fingerprint, as the table's CHECK allows no kind of its own.
+const idleKey = "idle"
+
+// SaveIdle upserts the idle counts of repo, issue number to the evaluations in a row that found
+// the issue without a next step; LoadIdle gives them to the next Decide (RepoInput.IdleTicks).
+// An empty map clears them.
+func SaveIdle(ctx context.Context, db *sql.DB, repo string, counts map[int]int, now time.Time) error {
+	value, err := json.Marshal(counts)
+	if err != nil {
+		return fmt.Errorf("dispatch: save idle counts %s: %w", repo, err)
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO tick_state (repo, kind, key, value, updated_at) VALUES (?, 'fingerprint', ?, ?, ?)
+		ON CONFLICT (repo, kind, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+		repo, idleKey, string(value), now.UTC().Format(time.RFC3339)); err != nil {
+		return fmt.Errorf("dispatch: save idle counts %s: %w", repo, err)
+	}
+	return nil
+}
+
+// LoadIdle reads the idle counts SaveIdle saved for repo; a repo without them gives an empty map.
+func LoadIdle(ctx context.Context, db *sql.DB, repo string) (map[int]int, error) {
+	var value string
+	err := db.QueryRowContext(ctx, `SELECT value FROM tick_state WHERE repo = ? AND kind = 'fingerprint' AND key = ?`,
+		repo, idleKey).Scan(&value)
+	if errors.Is(err, sql.ErrNoRows) {
+		return map[int]int{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("dispatch: load idle counts %s: %w", repo, err)
+	}
+	counts := map[int]int{}
+	if err := json.Unmarshal([]byte(value), &counts); err != nil {
+		return nil, fmt.Errorf("dispatch: idle counts %s: %w", repo, err)
+	}
+	return counts, nil
+}

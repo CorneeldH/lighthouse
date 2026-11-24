@@ -121,6 +121,12 @@
       "issue": 7,
       "comment_id": 63,
       "language": "nl"
+    },
+    {
+      "kind": "idle",
+      "repo": "o/r",
+      "issue": 7,
+      "language": "nl"
     }
   ]
 }

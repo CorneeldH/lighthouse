@@ -41,7 +41,7 @@ Every row is a command that runs in this repository.
 | The test gate is green | `bash -c "$(lighthouse config test_gate.command)"` | rc 0 |
 
 Row 1 runs over `git ls-files` and not over `.`: from the main checkout, `gofmt -l .` also walks
-into `.claude/worktrees/`. The `-r` keeps `xargs` from starting `gofmt` without files, where it
+into the worktree root (`lighthouse config worktree.root`) when that is inside the repo. The `-r` keeps `xargs` from starting `gofmt` without files, where it
 would wait on stdin. Row 2 needs Go 1.23 or later; on an older Go it is not measurable from here.
 
 `-shuffle=on` is the default, so an order dependency between tests shows. A run with

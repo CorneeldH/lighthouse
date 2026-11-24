@@ -4,6 +4,44 @@ All notable changes to lighthouse. The format follows [Keep a Changelog](https:/
 chosen is in [docs/releasing.md](docs/releasing.md). The release workflow writes the sections below from the
 fragments in `changelog.d/`; never edit a released section by hand.
 
+## [v0.26.0] - 2026-11-23
+
+### Added
+
+- This repository now enables its own daily report and gives the process report a fixed place under docs/developer/verslag.
+- `lighthouse level` shows the setup level of a repository, the stand per component, how often each component on `log` would have reported since the level was set, and which hooks of the next level are not measured yet. It never claims the next level is within reach.
+- A component can now be set to the stand `log` in `[components]`: its Go hook runs but never blocks and never speaks, and writes one line per would-be report to a logbook outside the repository.
+- `lighthouse init` now knows setup levels (`light`, `standard`, `strict`): `--level` chooses what gets installed, `level` in `lighthouse.toml` and `.lighthouse/components.toml` record the choice, and `[components]` switches single components on or off; the requirements of switched-off components no longer count. A first `init` in a new repository chooses `light`, and an existing repository without `level` behaves as `strict`. `init` now also fails on an invalid `lighthouse.toml`, because an existing file is read with `config.Load`.
+- Skill texts now carry `if installed` conditional references, and a `[calls]` table keeps the hand-overs between skills consistent per level. The managed block drops the lines of components that are off and warns when a core gate is not on.
+
+### Changed
+
+- `git commit --no-verify` (and `-n`) is now blocked by its own base hook `no-verify-check`, on every branch and at every level: it has no stand and no override, so it stays blocked when `commit-test-gate` or `main-commit-gate` is off. The `--no-verify` rule in the instruction block is its own line, so it stays at every level. Update the `lighthouse` binary before `init --upgrade` reaches a machine: an older binary does not know `no-verify-check`, and because the hook is in `blocking` it would block Bash calls there.
+- Dashboard: issue numbers without # on a light chip, a system/light/dark switch in the header, all UI text in English.
+
+### Fixed
+
+- The controller page links a workspace to `<workspace_url>/terminal/<id>`, the path of the new kenn-forge, instead of `/workspaces/<id>`.
+
+## [v0.25.0] - 2026-11-23
+
+### Added
+
+- The location of the worktrees can now be set with `[worktree] root` in `lighthouse.toml` (default `.claude/worktrees`, relative to the main checkout or absolute, also outside the repository). Hooks, the worktree audit and the skills read that location, and `lighthouse init` warns about a repository or worktree root inside a sync folder.
+
+### Changed
+
+- The Milestones view in the Priorities tab now lists shaped milestones first by percent done, then milestones still in shaping by finished and total issues, and empty milestones last.
+- The new `[pr_gate] issue` setting (`optional`, `required` or `evidence`) lets a repo decide how strict `pr-create-gate` is about the issue a pull request names, and `lighthouse-write-pr` follows it.
+- Een rode `policy` of `lint` van de workflow-pusher gaat niet meer meteen terug naar de gebruiker: de pusher post een 🤖 Herstel, en tick hervat de run die de handoff schreef zodat die de workflow-wijziging zelf repareert. Na twee rondes zonder groen geeft tick het issue alsnog terug met een 🤖 Teruggegeven. Een Teruggegeven van de token-login zet de telling terug.
+- De tick en triage starten in volgorde van prio-gewicht (milestone-rang en `blocked_by`, #445) en de board-Priority is nu een handmatige override: `P0` vóór alles, `P1` of leeg volgt het gewicht, `P2` achter alles; `/api/priorities` toont het gewicht.
+- A controller run of start-issue that finds the work already on the default branch now ends in a handoff to /lighthouse-close-issue or a question instead of plain chat text, so the controller no longer hands the issue back.
+- lighthouse-route-issue now stops at needs_hands and needs_testing and reports what the human has to do first; the triage marker for those labels holds while the label stays.
+
+### Fixed
+
+- `lighthouse pins check` meet een upstream met meer dan 1000 releases (openai/codex) weer: de releases worden newest-first gelezen en de meting stopt na de pagina met de release van de pin, zodat GitHub geen 422 ("Only the first 1000 results are available") meer geeft en een meting een paar pagina's kost in plaats van ongeveer 35.
+
 ## [v0.24.1] - 2026-11-22
 
 ### Fixed

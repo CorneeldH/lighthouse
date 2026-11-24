@@ -159,7 +159,7 @@ func checkInvocation(ctx context.Context, inv gitinvocations.Invocation, protect
 		"\n"+
 		"What you can do:\n"+
 		"  1. Work in a worktree on its own branch:\n"+
-		"     git worktree add .claude/worktrees/<name> -b issue-<nr>-<slug>\n"+
+		"     "+worktreeAddHint()+"\n"+
 		"  2. Is the work already in the main checkout? Move it:\n"+
 		"     git -C '"+root+"' stash push -u -m move-<tag>\n"+
 		"  3. If it really has to go on '"+protected+"', deliberately and once:\n"+

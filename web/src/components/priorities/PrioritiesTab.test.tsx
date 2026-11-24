@@ -118,7 +118,7 @@ describe('PrioritiesTab', () => {
 
   it('a 502 shows the forge error in the card while the Controller tab still renders', async () => {
     stub(() => json({ error: 'boom' }, 502))
-    window.location.hash = '#prioritering'
+    window.location.hash = '#priorities'
     const client = newQueryClient()
     render(
       <QueryClientProvider client={client}>
@@ -211,6 +211,77 @@ describe('PrioritiesTab', () => {
     })
   })
 
+  describe('deps sort switch', () => {
+    const I = (number: number, by: number[], prio_weight = 0) => ({
+      number, title: `t${number}`, url: `u${number}`, status: 'To do', label: '', open_question: false,
+      needs_label: false, prio_weight, factor: 0, blocked_by: by.length ? by.map((issue) => ({ repo: 'a/x', issue })) : null,
+    })
+    // Column 0: 1, 2, 3. Weights: 3 blocks two issues (2), 1 and 2 one each. Prio-weights run the other way round.
+    const SORT = {
+      repos: [
+        {
+          slug: 'a/x',
+          issues: [I(1, [], 5), I(2, [], 1), I(3, [], 2), I(4, [3]), I(5, [3]), I(6, [1]), I(7, [2])],
+          milestones: [],
+        },
+      ],
+      runs: [],
+    }
+    const column = () =>
+      [1, 2, 3]
+        .map((n) => ({ n, top: Number.parseFloat(screen.getByTestId(`node-a/x#${n}`).style.top) }))
+        .sort((a, b) => a.top - b.top)
+        .map((x) => x.n)
+    const sortGroup = () => within(screen.getByRole('group', { name: 'Sort' }))
+
+    it('shows Prio-weight, Weight, Fewest crossings in Dependencies with Prio-weight pressed', async () => {
+      stub(() => json(SORT))
+      renderTab()
+      await screen.findByTestId('view-deps')
+      const names = sortGroup().getAllByRole('button').map((b) => b.textContent)
+      expect(names).toEqual(['Prio-weight', 'Weight', 'Fewest crossings'])
+      expect(sortGroup().getByRole('button', { name: 'Prio-weight' }).getAttribute('aria-pressed')).toBe('true')
+      expect(sortGroup().getByRole('button', { name: 'Weight' }).getAttribute('aria-pressed')).toBe('false')
+      expect(column()).toEqual([1, 3, 2])
+    })
+
+    it('clicking Weight stores depsOrder weight and reorders the column', async () => {
+      stub(() => json(SORT))
+      renderTab()
+      await screen.findByTestId('view-deps')
+      fireEvent.click(sortGroup().getByRole('button', { name: 'Weight' }))
+      expect(sortGroup().getByRole('button', { name: 'Weight' }).getAttribute('aria-pressed')).toBe('true')
+      expect(JSON.parse(localStorage.getItem('lighthouse.priorities') as string).depsOrder).toBe('weight')
+      expect(column()[0]).toBe(3)
+      expect(column()).not.toEqual([1, 3, 2])
+    })
+
+    it('works without localStorage', async () => {
+      vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+        throw new Error('denied')
+      })
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+        throw new Error('denied')
+      })
+      stub(() => json(SORT))
+      renderTab()
+      await screen.findByTestId('view-deps')
+      expect(sortGroup().getByRole('button', { name: 'Prio-weight' }).getAttribute('aria-pressed')).toBe('true')
+      fireEvent.click(sortGroup().getByRole('button', { name: 'Weight' }))
+      expect(column()[0]).toBe(3)
+    })
+
+    it('is absent in Milestones and Without milestone', async () => {
+      stub(() => json(SORT))
+      renderTab()
+      await screen.findByTestId('view-deps')
+      fireEvent.click(screen.getByRole('button', { name: /^Milestones/ }))
+      expect(screen.queryByRole('group', { name: 'Sort' })).toBeNull()
+      fireEvent.click(screen.getByRole('button', { name: /Without milestone/ }))
+      expect(screen.queryByRole('group', { name: 'Sort' })).toBeNull()
+    })
+  })
+
   describe('priority switch', () => {
     // Computed order: Beta (0 open) before Alpha (2 open); the ranks put Alpha first.
     const RANKED = {
@@ -228,29 +299,31 @@ describe('PrioritiesTab', () => {
     }
     const order = () => screen.getAllByTestId(/^ms-/).map((e) => e.getAttribute('data-testid'))
 
-    it('shows the switch only in the milestones view, Berekend by default', async () => {
+    it('shows the switch only in the milestones view, % done by default', async () => {
       stub(() => json(RANKED))
       renderTab()
       await screen.findByTestId('view-deps')
-      expect(screen.queryByRole('button', { name: 'Prioriteit' })).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Priority' })).toBeNull()
       fireEvent.click(screen.getByRole('button', { name: /^Milestones/ }))
-      expect(screen.getByRole('button', { name: 'Berekend' }).getAttribute('aria-pressed')).toBe('true')
-      expect(screen.getByRole('button', { name: 'Prioriteit' }).getAttribute('aria-pressed')).toBe('false')
+      const computed = screen.getByRole('button', { name: '% done' })
+      expect(computed.textContent).toBe('%')
+      expect(computed.getAttribute('aria-pressed')).toBe('true')
+      expect(screen.getByRole('button', { name: 'Priority' }).getAttribute('aria-pressed')).toBe('false')
       expect(order()).toEqual(['ms-a/x#m2', 'ms-a/x#m1'])
     })
 
-    it('Prioriteit reorders the list and survives a remount through the prefs', async () => {
+    it('Priority reorders the list and survives a remount through the prefs', async () => {
       stub(() => json(RANKED))
       renderTab()
       await screen.findByTestId('view-deps')
       fireEvent.click(screen.getByRole('button', { name: /^Milestones/ }))
-      fireEvent.click(screen.getByRole('button', { name: 'Prioriteit' }))
-      expect(screen.getByRole('button', { name: 'Prioriteit' }).getAttribute('aria-pressed')).toBe('true')
+      fireEvent.click(screen.getByRole('button', { name: 'Priority' }))
+      expect(screen.getByRole('button', { name: 'Priority' }).getAttribute('aria-pressed')).toBe('true')
       expect(order()).toEqual(['ms-a/x#m1', 'ms-a/x#m2'])
       expect(JSON.parse(localStorage.getItem('lighthouse.priorities') as string).msOrder).toBe('priority')
       cleanup()
       renderTab()
-      expect((await screen.findByRole('button', { name: 'Prioriteit' })).getAttribute('aria-pressed')).toBe('true')
+      expect((await screen.findByRole('button', { name: 'Priority' })).getAttribute('aria-pressed')).toBe('true')
       expect(order()).toEqual(['ms-a/x#m1', 'ms-a/x#m2'])
     })
 
@@ -269,7 +342,7 @@ describe('PrioritiesTab', () => {
       )
       const client = renderTab()
       const beta = await screen.findByTestId('ms-a/x#m2')
-      fireEvent.click(within(beta).getByRole('button', { name: /omhoog/i }))
+      fireEvent.click(within(beta).getByRole('button', { name: /up/i }))
       await waitFor(() => expect(posts).toHaveLength(1))
       expect(posts[0].body).toEqual({
         repo: 'a/x',
@@ -280,10 +353,10 @@ describe('PrioritiesTab', () => {
       })
       // Optimistic: Beta is on top while the request runs, and its buttons are off.
       expect(order()).toEqual(['ms-a/x#m2', 'ms-a/x#m1'])
-      expect((within(screen.getByTestId('ms-a/x#m2')).getByRole('button', { name: /omlaag/i }) as HTMLButtonElement).disabled).toBe(true)
+      expect((within(screen.getByTestId('ms-a/x#m2')).getByRole('button', { name: /down/i }) as HTMLButtonElement).disabled).toBe(true)
       posts[0].resolve(await json({ detail: 'rank changed' }, 409))
       const alert = await screen.findByRole('alert')
-      expect(alert.textContent).toBe('De volgorde is net ergens anders veranderd; de lijst is ververst.')
+      expect(alert.textContent).toBe('The order was just changed elsewhere; the list has been refreshed.')
       await waitFor(() => expect(order()).toEqual(['ms-a/x#m1', 'ms-a/x#m2']))
       client.clear()
     })

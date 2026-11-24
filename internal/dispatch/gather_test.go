@@ -629,6 +629,10 @@ type prCommentsFail struct {
 
 func (f prCommentsFail) Kind() string { return f.kind }
 
+func (f prCommentsFail) PrioInputs(context.Context) (forge.PrioInputs, error) {
+	return forge.PrioInputs{}, nil
+}
+
 func (f prCommentsFail) Comments(_ context.Context, number int) ([]protocol.Comment, error) {
 	if number != f.issue {
 		return nil, errors.New("comments of a merge request number read the notes of another issue")

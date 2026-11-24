@@ -13,10 +13,19 @@ terms = [
 [commit-test-gate]
 events = ["PreToolUse", "PostToolUse", "PostToolUseFailure"]
 matcher = "Bash"
-does = "Blocks git commit --no-verify and runs the test gate on the files of a commit."
+does = "Runs the test gate on the files of a commit."
 terms = [
   ["git commit"],
-  ["--no-verify", "test gate", "test_gate", "go test", "npm test", "pytest", "make test", "cargo test", "run tests", "test suite"],
+  ["test gate", "test_gate", "go test", "npm test", "pytest", "make test", "cargo test", "run tests", "test suite"],
+]
+
+[no-verify-check]
+events = ["PreToolUse"]
+matcher = "Bash"
+does = "Blocks git commit --no-verify, on every branch and at every level."
+terms = [
+  ["git commit"],
+  ["--no-verify"],
 ]
 
 [pr-create-gate]

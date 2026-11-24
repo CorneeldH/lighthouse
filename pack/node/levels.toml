@@ -1,0 +1,2 @@
+# The entry levels of the node package: node-imports-gate guards the declared imports at every level.
+on = ["node-imports-gate"]

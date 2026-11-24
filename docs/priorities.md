@@ -1,6 +1,6 @@
-# Prioritering: wat het tabblad leest
+# Priorities: wat het tabblad leest
 
-Het tabblad Prioritering leest per repo één `forge.Planning` (`internal/forge/planning.go`).
+Het tabblad Priorities leest per repo één `forge.Planning` (`internal/forge/planning.go`).
 Dit document legt vast wat die lezing opvraagt, wat ze kost en wat live is gecontroleerd.
 
 ## Wat `Planning` leest (GitHub)
@@ -45,7 +45,7 @@ met de queries waar ze over gingen.
 
 ## Wat het tabblad toont
 
-`lighthouse serve` toont naast de overview een tabblad Prioritering (`#prioritering`) met drie
+`lighthouse serve` toont naast de overview een tabblad Priorities (`#priorities`) met drie
 weergaven: een afhankelijkhedengraaf van open issues, een milestone-weergave met voortgang
 (`Done` van `Done + Open`, waarbij `Open` het aantal open issues is uit de lijst open issues van `Planning.Issues`, per milestone geteld) en een weergave van issues zonder milestone. De server bouwt de
 gegevens in een eigen refresher, los van de overview, elke **300 s** (`PrioritiesInterval`) en
@@ -54,9 +54,9 @@ levert ze op `/api/priorities`. De pagina leest, op één plek na: de rang van e
 
 ## De rang van een milestone schrijven
 
-De weergave Milestones heeft een schakelaar *Berekend* / *Prioriteit*. In *Berekend* geldt de
-berekende volgorde. In *Prioriteit* staan milestones met een rang bovenaan, op rang, en de
-milestones zonder rang daaronder in de berekende volgorde. De knoppen Omhoog en Omlaag wijzigen
+De weergave Milestones heeft een schakelaar `Computed` / `Priority`. In `Computed` geldt de
+berekende volgorde. In `Priority` staan milestones met een rang bovenaan, op rang, en de
+milestones zonder rang daaronder in de berekende volgorde. De knoppen `Up` en `Down` wijzigen
 de rang.
 
 - **De regel.** De rang staat in de beschrijving van de milestone, als een regel
@@ -101,7 +101,18 @@ De SPA leidt deze begrippen af in `web/src/lib/priorities/derive.ts`; de server 
   *oppakbaar*. Gesloten issues zijn *af* (`closed`). De milestone-balk tekent die vijf toestanden
   met één vormentaal en groepeert de blokjes per toestand. De API levert daarvoor per issue
   `label` (het label met de laagste rang), `needs_label` (er staat een `needs_*`-label op, welk
-  ook) en `open_question`, en per milestone de gesloten issues (`closed`).
+  ook), `open_question`, `prio_weight` en `factor` (zie *Prio-gewicht*), en per milestone de
+  gesloten issues (`closed`).
+- **Prio-gewicht.** De regel van #445 (`internal/prioweight`). Elke open milestone met een rang
+  (`Priority: N`) krijgt een factor: bij M zulke milestones is dat M min de plaats, vanaf 0,
+  waarop zijn rang voor het eerst staat in de oplopend gesorteerde rangen; gelijke rangen delen
+  een factor, een milestone zonder rang heeft factor 0. `factor` is de factor van de eigen
+  milestone van het issue. `prio_weight` is die factor plus, voor elk open issue van dezelfde
+  repo dat (direct of via een keten) op dit issue wacht, diens factor maal 2^(k-1), met k de
+  langste afstand in stappen; een cyclus telt als één groep. Een blokkeerder in een andere repo
+  telt niet mee. De tick en de triage ordenen met hetzelfde gewicht (zie
+  [`tick.md`](tick.md), *De rem*, en [`triage.md`](triage.md)). De graaf sorteert er zijn
+  kolommen mee (zie *Sortering van de graaf*).
 - **Vormentaal van de graaf.** De graaf tekent de toestand van een issue op de kaart met
   dezelfde vormentaal als de balk: een kleurstrook (gestreept bij *actief*, effen bij
   elke andere toestand), een stippelrand van 1,5 px in de voorgrondkleur bij *mens nodig*, een kruis bij
@@ -116,7 +127,22 @@ De SPA leidt deze begrippen af in `web/src/lib/priorities/derive.ts`; de server 
   is bergaf.
 - **Wachtenden.** Per issue het aantal open issues dat er (direct of via ketens) op wacht. De
   leden van een cyclus vormen samen één component en krijgen de diepte van dat component, in
-  één kolom; zo blijft de graaf eindig.
+  één kolom; zo blijft de graaf eindig. De sortering van de graaf gebruikt daarnaast het
+  *gewicht* (zie *Sortering van de graaf*).
+- **Sortering van de graaf.** In de weergave *Dependencies* staat een schakelaar *Sort* met drie
+  standen, binnen elke kolom: *Prio-weight* (standaard): prio-gewicht aflopend, dan de eigen
+  factor aflopend, dan de volgorde van dagre; *Weight*: gewicht aflopend, dan de volgorde van
+  dagre; *Fewest crossings*: de volgorde van dagre (y-positie, dan nummer), zoals voor #445.
+  Gelijke sleutels blijven deterministisch (dagre, dan nummer). Het *gewicht* is de som, over
+  alle issues die direct of via andere issues op dit issue wachten, van 2^(k-1), met k de
+  langste afstand in stappen; elk wachtend issue telt één keer en een cyclus is één groep. Het
+  gewicht rekent `derive.ts` zelf uit over de hele graaf, externe knopen en andere repo's
+  inbegrepen. Het prio-gewicht en de factor rekent de graaf niet na: ze komen uit
+  `/api/priorities` (#509, zie *Prio-gewicht*); een externe knoop zonder die velden krijgt 0.
+  De keuze staat in `localStorage` onder `lighthouse.priorities`, veld `depsOrder`; een
+  ontbrekende of vreemde waarde, of een blokkerende `localStorage`, valt terug op *Prio-weight*.
+  De pil met het aantal wachtenden (vanaf 2) toont bij hover `N wait · weight W · factor F ·
+  prio-weight P`.
 - **Shaping.** Een milestone is in shaping als hij geen open issues heeft en geen issues die als
   `completed` zijn gesloten (`isShaping`: nul issues), of als een regel van de
   milestonebeschrijving (zonder hoofdletters en omringende spaties) `Status: shaping` is. Een
@@ -133,7 +159,7 @@ van `Planning` (milestones, dependencies) nog niet en is zonder wijziging van de
 ## Bekende beperkingen
 
 - GitLab-groepsmilestones worden niet opgesomd (alleen projectmilestones). Zulke issues
-  verdwijnen uit Milestones en uit Zonder milestone.
+  verdwijnen uit Milestones en uit Without milestone.
 - GitLab leest de gesloten issues van een milestone op milestonetitel (`/issues?state=closed&milestone=<titel>`).
 - Lange pijlen in de graaf delen één baan per overgeslagen kolom.
 - De kaartvorm van de graaf (kleurstrook, stippelrand, kruis) is alleen met jsdom getest, niet in een browser bekeken.
