@@ -16,7 +16,7 @@
 - `ViewId` wordt `'deps' | 'milestones' | 'backlog' | 'status'`; tabvolgorde Dependencies · Milestones · Backlog · Status. De tab heet exact `Status`.
 - Kolomvolgorde (gelijk aan `STATES` in `Toolbar.tsx`): blocked · needs shaping · to do · active · needs human · done; statusnamen `blocked`, `needs_shaping`, `ready`, `active`, `needs_human`, `done` als `IssueStateName`.
 - Volgorde per kolom: `prioWeight` aflopend, daarna nummer **oplopend** (spec sectie 6). Kolom *done*: nummer aflopend, 5 zichtbaar, de rest ingeklapt.
-- Een open issue zonder milestone of in een gesloten milestone telt als *Backlog* (grijze streep, `NO_MILESTONE_COLOR`), conform `withoutMilestone()`.
+- Een open issue zonder milestone of in een gesloten milestone telt als *Without milestone* (grijze streep, `NO_MILESTONE_COLOR`), conform `withoutMilestone()`. De chip heet `Without milestone` (spec sectie 6), niet `Backlog`: zo botst hij niet met de tab `Backlog` (zelfde toegankelijke naam). De interne sleutel blijft `backlog`.
 - Het filter op milestone staat alleen op de tab Status. Opslagvorm: `string[] | null` in `lighthouse.priorities`, sleutels `<repo>#m<nr>` en `backlog`; `null` = alles aan; een bewaarde sleutel die niet meer bestaat telt niet mee (zoals bij `repos`).
 - Geen nieuw label, geen nieuwe Status, geen schrijven vanuit de web-UI, geen slepen, geen modelsuggesties.
 - Gate-commando's: draai eerst `cd web && npm ci` als `web/node_modules` ontbreekt. Gebruik `go run ./cmd/lighthouse imports check` (de `lighthouse` op PATH geeft soms `COULD NOT CHECK`). Leun voor `[test_gate] command` op de uitvoer van `commit-test-gate` na elke commit.
@@ -24,7 +24,7 @@
 
 ## Review Focus
 
-- Issue in een gesloten milestone: kaart staat onder de chip *Backlog* met grijze streep, niet onder een milestonechip.
+- Issue in een gesloten milestone: kaart staat onder de chip *Without milestone* met grijze streep, niet onder een milestonechip.
 - Bewaard milestonefilter met een sleutel van een milestone die niet meer bestaat: genegeerd; blijft er niets geldigs over, dan staat alles aan (zoals bij `repos`).
 - Kaart in *needs shaping* of *needs human* met een live run of Status `Controller`/`In progress`: krijgt toch `controller`/`interactive`; zonder run en zonder zulke Status krijgt hij geen label.
 - Issue met run én Status `In progress`: `controller` wint.
@@ -67,6 +67,7 @@ git commit -m "feat(web): runner (controller of interactive) per issue in de gra
 
 **Files:**
 - Modify: `web/src/lib/priorities/prefs.ts`
+- Modify: `web/src/components/priorities/PrioritiesTab.tsx` (alleen voorlopige `status`-sleutels)
 - Test: `web/src/lib/priorities/prefs.test.ts`
 
 **Interfaces:**
@@ -75,7 +76,9 @@ git commit -m "feat(web): runner (controller of interactive) per issue in de gra
 - [ ] **Step 1: Schrijf de falende tests**: `it('keeps a stored view "status"')`, `it('defaults the milestone filter to null (all on)')`, `it('loads a stored milestone filter')`, `it('ignores a milestone filter that is not a string array')`.
 - [ ] **Step 2: Draai** `cd web && npx vitest run src/lib/priorities/prefs.test.ts` — verwacht FAIL.
 - [ ] **Step 3: Implementeer** in `prefs.ts`: `'status'` in `ViewId` en `VIEWS`; veld `milestones` in `Prefs` en in de defaults van `loadPrefs`, gelezen zoals `repos`.
-- [ ] **Step 4: Draai** dezelfde test — verwacht PASS. (De typecheck is rood tot taak 5: `Record<ViewId, …>` in `PrioritiesTab.tsx` mist `status`. Commit daarom samen met taak 5, of zet in `PrioritiesTab.tsx` hier al een voorlopige `status`-sleutel.)
+- [ ] **Step 4: Draai** dezelfde test — verwacht PASS. 
+- [ ] **Step 5: Houd de typecheck groen**: pas de bestaande `prefs.test.ts`-verwachtingen (`toEqual` op het hele `Prefs`-object) en `savePrefs`-literals aan met `milestones: null`. Zet in `PrioritiesTab.tsx` voorlopige sleutels `status` in `hasUnassigned` (`false`), `counts` (`0`) en `inViewMilestones` (`[]`), zodat `satisfies Record<ViewId, …>` slaagt; taak 5 vult ze in. Draai `cd web && npm run typecheck` — verwacht PASS.
+- [ ] **Step 6: Commit** `git add web/src && git commit -m "feat(web): voorkeuren kennen tab status en milestonefilter (#557)"`
 
 ### Task 3: `statusBoard()`
 
@@ -124,11 +127,11 @@ git commit -m "feat(web): statusBoard verdeelt issues over zes kolommen met mile
 - Consumes: `statusBoard`, `milestoneKey`, `StatusCard` (taak 3); `Block` (`state`, `color`, `title`, `testId`, `className`); `NO_MILESTONE_COLOR`.
 - Produces: `export function StatusView(props: ViewProps): JSX.Element` met testids `view-status`, `status-column-<state>` (state = `IssueStateName`), `status-count-<state>`, `status-card` (met `data-number`), `status-runner` (tekst `controller` of `interactive`), `status-more` (de inklapknop), en `data-underlined="true"` op het nummer bij `needs_shaping`/`needs_human`.
 
-- [ ] **Step 1: Schrijf de falende tests** in `StatusView.test.tsx` (fixtures als `BacklogView.test.tsx`): zes kolommen in volgorde met kopje (blokje, naam, aantal); een kaart linkt naar het issue en toont streep in de milestonekleur (grijs zonder milestone), nummer en titel; onderstreept nummer alleen bij needs shaping/needs human; `status-runner` toont `controller` of `interactive` of ontbreekt; *done* toont 5 kaarten en `status-more` met `+ 2 more` bij 7, en na een klik alle 7; bij 5 geen `status-more`; lege kolom toont lege-staatregel, geen `<ul>`; het milestonefilter (`milestoneFilter` prop) verbergt kaarten van een niet-gekozen milestone.
+- [ ] **Step 1: Schrijf de falende tests** in `StatusView.test.tsx` (fixtures als `BacklogView.test.tsx`): zes kolommen in volgorde met kopje (blokje, naam, aantal); een kaart linkt naar het issue en toont streep in de milestonekleur (grijs zonder milestone), nummer en titel; onderstreept nummer alleen bij needs shaping/needs human; `status-runner` toont `controller` of `interactive` of ontbreekt; *done* toont 5 kaarten en `status-more` met `+ 2 more` bij 7, en na een klik alle 7; bij 5 geen `status-more`; lege kolom toont lege-staatregel, geen `<ul>`; het milestonefilter (`milestoneFilter` prop) verbergt kaarten van een niet-gekozen milestone; een repo die niet in `selected` zit levert geen kaarten (open én done).
 - [ ] **Step 2: Draai** `cd web && npx vitest run src/components/priorities/StatusView.test.tsx` — verwacht FAIL.
-- [ ] **Step 3: Implementeer** `StatusView.tsx`: kolommen naast elkaar in een horizontaal scrollbare container; kaart volgt de opbouw van `Row` in `BacklogView.tsx` (streep in de kleur uit `colors.get(milestoneKey(...)) ?? NO_MILESTONE_COLOR`, onderstreping zoals daar); titel op één afgekapte regel; inklapstaat van *done* in lokale `useState`. Afmetingen en inklapvorm mogen de bouwer kiezen (spec *Aan de bouwer*).
+- [ ] **Step 3: Implementeer** `StatusView.tsx`: roep `statusBoard(repos.filter((r) => selected.has(r.slug)), graph, milestoneFilter ?? null)` aan (`ViewProps.repos` is ongefilterd); kolommen naast elkaar in een horizontaal scrollbare container; kaart volgt de opbouw van `Row` in `BacklogView.tsx` (streep in de kleur uit `colors.get(milestoneKey(...)) ?? NO_MILESTONE_COLOR`, onderstreping zoals daar); titel op één afgekapte regel; inklapstaat van *done* in lokale `useState`. Afmetingen en inklapvorm mogen de bouwer kiezen (spec *Aan de bouwer*).
 - [ ] **Step 4: Draai** dezelfde test plus `npm run typecheck` — verwacht PASS.
-- [ ] **Step 5: Commit** (samen met taak 5 als de typecheck daar op hangt).
+- [ ] **Step 5: Commit** (de typecheck is groen sinds taak 2).
 
 ### Task 5: Tab, chips en bedrading
 
@@ -139,11 +142,11 @@ git commit -m "feat(web): statusBoard verdeelt issues over zes kolommen met mile
 - Consumes: `StatusView`, `statusBoard`, `milestoneKey`, `MILESTONE_FILTER_BACKLOG`, `Prefs.milestones`.
 - Produces: tab `{ id: 'status', label: 'Status' }` na Backlog; `Toolbar` krijgt props `milestoneChips: Array<{ key: string; label: string; color: string }>`, `milestoneSelected: ReadonlySet<string>` en `onToggleMilestone: (key: string) => void`, alleen getoond bij `view === 'status'` in een groep `role="group" aria-label="Milestone filter"` met `aria-pressed` per chip (zelfde stijl als de repo-chips).
 
-- [ ] **Step 1: Schrijf de falende tests** in `PrioritiesTab.test.tsx`: tab `Status` bestaat en opent `view-status`; het getal op de tab is het aantal open issues in beeld, zonder *done*; chips voor elke open milestone plus `Backlog`, standaard allemaal aan; een chip uitzetten verbergt zijn kaarten, werkt het getal bij en bewaart `milestones` in `localStorage` `lighthouse.priorities`; een bewaarde sleutel van een bestaande milestone wordt hersteld; een bewaarde sleutel van een niet-bestaande milestone telt niet mee; de milestonechips staan niet op de tabs Dependencies, Milestones en Backlog.
+- [ ] **Step 1: Schrijf de falende tests** in `PrioritiesTab.test.tsx`: tab `Status` bestaat en opent `view-status`; het getal op de tab is het aantal open issues in beeld, zonder *done*; chips voor elke open milestone plus `Without milestone`, standaard allemaal aan; een chip uitzetten verbergt zijn kaarten, werkt het getal bij en bewaart `milestones` in `localStorage` `lighthouse.priorities`; een repo-chip uitzetten verbergt de kaarten van die repo en werkt het getal bij; een bewaarde sleutel van een bestaande milestone wordt hersteld; een bewaarde sleutel van een niet-bestaande milestone telt niet mee; de milestonechips staan niet op de tabs Dependencies, Milestones en Backlog.
 - [ ] **Step 2: Draai** `cd web && npx vitest run src/components/priorities` — verwacht FAIL.
-- [ ] **Step 3: Implementeer** in `PrioritiesTab.tsx`: sleutel `status` in `hasUnassigned` (`false`), `counts` (`statusBoard(...).open`), `inViewMilestones` (open milestones van de repos in beeld, als bij `milestones`); een geldige-selectieset `milestoneSelected` afgeleid van `prefs.milestones` met dezelfde regels als `selected` voor repos; `toggleMilestone`; `View` kiest `StatusView` voor `'status'`; geef `milestoneFilter` mee in `props`. In `Toolbar.tsx`: tab, chips en `counts`. Chipkleur uit `colors` (`NO_MILESTONE_COLOR` voor *Backlog*).
+- [ ] **Step 3: Implementeer** in `PrioritiesTab.tsx`: vul de voorlopige sleutels van taak 2 in: `hasUnassigned.status` (`false`), `counts.status` (`statusBoard(inView, graph, milestoneFilter).open`), `inViewMilestones.status` (open milestones van de repos in beeld, als bij `milestones`); een geldige-selectieset `milestoneSelected` afgeleid van `prefs.milestones` met dezelfde regels als `selected` voor repos; `toggleMilestone`; `View` kiest `StatusView` voor `'status'`; geef `milestoneFilter` mee in `props`. In `Toolbar.tsx`: tab, chips en `counts`. Chipkleur uit `colors` (`NO_MILESTONE_COLOR` voor *Without milestone*). Zoek in tests de tab met `getByRole('tab'…)`/exacte naam, niet met `/Backlog/`, en de chip op `Without milestone`. De geldigheid van een milestonesleutel en `toggleMilestone` gaan over de open milestones van álle repos (niet alleen die in beeld) plus `backlog`, zodat een verborgen repo zijn keuzes niet kwijtraakt.
 - [ ] **Step 4: Draai** `cd web && npx vitest run src/components/priorities src/lib/priorities && npm run typecheck && npm run lint` — verwacht alles groen.
-- [ ] **Step 5: Commit** (taken 2, 4 en 5 samen, want de typecheck hangt aan alle drie):
+- [ ] **Step 5: Commit**:
 
 ```bash
 git add web/src
