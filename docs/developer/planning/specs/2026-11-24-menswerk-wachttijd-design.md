@@ -22,8 +22,12 @@ Vandaag staat een deel daarvan impliciet in `runs`, maar met de verkeerde tijdst
   meldde (`internal/dispatch/decide.go`, `mergeReady` en verwant). `started_at`..`ended_at` slikt
   daardoor het hele wachten op CI en review.
 
-De tijdstippen die ontbreken staan wel op de forge: als `created_at` van de protocolcommentaren
-Vraag, het antwoord, en Done. Dit ontwerp slaat precies die op en leidt de rest af.
+De tijdstippen van Vraag en antwoord staan wel op de forge, als `created_at` van de protocolcommentaren.
+Done heeft geen eigen tijdstip: het `🤖 Done`-commentaar plaatst `apply` pas bij het sluiten van de
+run (`internal/dispatch/apply.go`, `KindDone`, en de merge-tak), terwijl de sessie al eerder Done was
+(`done()` in `internal/dispatch/decide.go` leest de werkplekstand). Dit ontwerp slaat de Vraag- en
+antwoordtijdstippen op, neemt voor Done het tijdstip waarop een tick de stand Done het eerst ziet, en
+leidt de rest af.
 
 ## Doelen, niet-doelen, anti-doelen
 
@@ -94,7 +98,8 @@ Vraag, het antwoord, en Done. Dit ontwerp slaat precies die op en leidt de rest 
 
 **Wachten op CI en review** *(gekozen door de gebruiker)*.
 
-- **Done als derde soort gebeurtenis.** Het tijdstip van het Done-commentaar splitst een agent-run in
+- **Done als derde soort gebeurtenis.** Het tijdstip waarop een tick de sessie van een open run voor het
+  eerst Done ziet (niet het Done-commentaar, dat pas bij het sluiten van de run komt) splitst een agent-run in
   `actief` (start tot Done) en `ci_review` (Done tot het einde van de run). Beide gemeten.
 - `actief` laten zoals `runs` het geeft, gemarkeerd als "inclusief CI/review": geen extra opslag,
   maar `ci_review` blijft leeg en AC 2 is maar half gehaald.
@@ -121,10 +126,11 @@ onderscheiden zonder een bron die er niet is.
 | **mensvraag (dispatcher)** | een Vraag-commentaar (`protocol.KindQuestion`) van een run van het traject; ook een Vraag van de workflow-pusher, want die vraagt ook een mens |
 | **antwoord (dispatcher)** | het eerste antwoordcommentaar op die Vraag dat de dispatcher oppakt: de run met `trigger_key` `answer:<id>` (hervatting) of `pushanswer:<id>` (pusher). `trigger = 'answer'` alleen is niet genoeg: `repair:<id>` draagt die trigger ook en beantwoordt geen mens |
 | **oppakken** | van het antwoordcommentaar tot `started_at` van de run die het oppakte |
-| **Done** | het Done-commentaar (`protocol.KindDone`) van een run van het traject |
+| **Done** | de eerste tick waarop `done()` (werkplekstand Done, zonder werk na de Stop) waar is voor een open agent-run; de nauwkeurigheid is die van de tick. Het `🤖 Done`-commentaar telt niet: dat valt samen met het sluiten van de run |
 | **mensvraag / antwoord (sessie)** | een AskUserQuestion in het transcript en de gebruikersbeurt erna (lezer #375) |
 | **usagepauze** | `runs.outcome = 'parked'` gevolgd door een run met `trigger = 'usage'` |
 | **merge-run** | een run met `trigger_key` `merge:<pr>:<head>` (opgeslagen met `trigger = 'handoff'`, er is geen trigger `merge`) |
+| **pusher-rij** | een push-rij van de workflow-pusher (`isPush`) of een merge-run: de sessie is al klaar en de rij wacht op de pusher, CI en review; ze draaien geen agentsessie |
 | **overname** | zie *Overnames* |
 
 ### Tabel
@@ -138,7 +144,7 @@ CREATE TABLE trajectory_events (
   session_id INTEGER REFERENCES sessions(id),  -- interactieve sessie (lezer #375)
   kind TEXT NOT NULL CHECK (kind IN ('question', 'answer', 'done')),
   ref TEXT NOT NULL,                           -- zie hieronder
-  at TEXT NOT NULL,                            -- RFC 3339, UTC: created_at van het commentaar, of het tijdstip in het transcript
+  at TEXT NOT NULL,                            -- RFC 3339, UTC: created_at van het commentaar, het tijdstip in het transcript, of bij Done het tijdstip van de tick
   CHECK ((run_id IS NULL) <> (session_id IS NULL)),
   CHECK (kind <> 'done' OR run_id IS NOT NULL),
   UNIQUE (source, source_id),
@@ -150,12 +156,16 @@ CREATE TABLE trajectory_events (
 
 - dispatcher-vraag: de commentaar-id van de Vraag; het antwoord draagt dezelfde `ref` (de id van de
   Vraag), de id van het antwoordcommentaar staat in `source_id`;
-- sessievraag en -antwoord: het tool-use-id van de AskUserQuestion;
-- Done: de commentaar-id van het Done-commentaar.
+- sessievraag en -antwoord: `<sessie-id>:<tool-use-id>` van de AskUserQuestion (een kaal tool-use-id
+  is niet uniek over sessies: transcripten hergebruiken ze);
+- Done: het run-id.
 
 Per vraag telt één antwoord, het eerste: `UNIQUE (trajectory_id, kind, ref)` houdt een tweede
 antwoord op dezelfde vraag buiten de tabel. Een antwoord zonder opgeslagen vraag wordt wel
 geaccepteerd (oude vraag van voor deze migratie); de tijdlijn rekent dan met een schatting.
+`RecordEvent` zoekt bij een conflict ook op `(trajectory_id, kind, ref)` en geeft dan het bestaande
+id terug met `isNew` onwaar, geen fout: de pusher kan meer dan één `pushanswer`-run per Vraag
+starten.
 
 ### Schrijffunctie
 
@@ -170,17 +180,21 @@ Twee schrijvers:
   (`protocol.Comment`).
   - Vraag: wanneer een tick een run sluit op `question`. `source_id` = `question:<comment-id>`.
   - Antwoord: wanneer een tick een run start met `trigger_key` `answer:<id>` of `pushanswer:<id>`.
-    `source_id` = `answer:<comment-id>`, `run_id` = de nieuwe run.
-  - Done: wanneer een tick voor het eerst ziet dat de sessie van een open run Done meldde.
-    `source_id` = `done:<comment-id>`.
+    `source_id` = `answer:<comment-id>`, `run_id` = de nieuwe run. Een herstart van die run (poging 2,
+    zelfde `trigger_key`) schrijft niets bij; `oppakken` loopt dan tot `started_at` van de laatste run
+    met die `trigger_key`.
+  - Done: wanneer een tick voor het eerst ziet dat de sessie van een open run Done meldde;
+    `at` = het `now` van die tick. `source_id` = `done:<run-id>`, `ref` = het run-id.
   - Mislukt het schrijven, dan gaat de tick door en meldt hij het; de tijdlijn valt voor dat
-    moment terug op een schatting.
+    moment terug op een schatting. Een mislukte gebeurtenis wordt niet opnieuw geprobeerd. Elke
+    gebeurtenis wordt geschreven nadat de run-rij bestaat (na `runs.Release` of `runs.Take`).
 - **De transcriptlezer van #375**: vraag en antwoord per AskUserQuestion. Bron en `source_id` legt
   #375 vast in zijn eigen spec, die nog geschreven moet worden.
 
 **Bestaande schrijver.** `RecordSession` weigert een sessie naar een ander traject te verplaatsen
 (of te ontkoppelen) zolang er `trajectory_events` naar de sessie wijzen, zoals `checkRetarget` dat
-nu doet voor bevindingen (`internal/telemetry/record.go`).
+nu doet voor bevindingen (`internal/telemetry/record.go`), met een eigen fout `ErrSessionHasEvents`
+(`checkRetarget` kent nu alleen `ErrSessionHasFindings`).
 
 ### Tijdlijn
 
@@ -197,11 +211,12 @@ dan tot `now`. Tijd vóór de eerste run of sessie (het issue lag op de backlog)
 
 | Oorzaak | Interval | Soort |
 |---|---|---|
-| `actief` | run: `started_at` .. eerste Done van die run, of `ended_at` als er geen Done is | gemeten |
-| `actief` | sessie: `started_at` .. `ended_at`, min de vraag-antwoordintervallen erin | gemeten |
+| `actief` | run: `started_at` .. eerste Done van die run, of `ended_at` als er geen Done is. Een run met uitkomst `question` en een opgeslagen Vraag eindigt bij `at` van die Vraag, niet bij `ended_at` (de tick zag de Vraag later) | gemeten |
+| `actief` (sessie) | sessie: `started_at` .. `ended_at`, min de vraag-antwoordintervallen erin | gemeten |
 | `ci_review` | run: eerste Done .. `ended_at` | gemeten |
+| `ci_review` | pusher-rij: `started_at` .. `ended_at` (de hele rij: wachten op pusher, CI en review) | gemeten |
 | `mens` | dispatcher: `at` van de Vraag .. `at` van het antwoord; sessie: `at` vraag .. `at` antwoord | gemeten |
-| `mens` | dispatcher-vraag zonder opgeslagen vraag of antwoord: `ended_at` van de vraagrun .. `started_at` van de run die het antwoord oppakte | schatting |
+| `mens` | dispatcher-vraag zonder opgeslagen vraag of antwoord: `ended_at` van de vraagrun .. `at` van het antwoord als dat is opgeslagen, anders `started_at` van de run die het antwoord oppakte | schatting |
 | `oppakken` | `at` van het dispatcher-antwoord .. `started_at` van de run die het oppakte | gemeten |
 | `usage` | `ended_at` van een run met `outcome = 'parked'` .. `started_at` van de hervatting met `trigger = 'usage'` | gemeten |
 | `onverklaard` | elk moment in het venster dat geen van de rijen hierboven dekt | ontbrekend |
@@ -214,11 +229,14 @@ volgende run of sessie van het traject, een run met uitkomst `returned`, het slu
 Is er geen van drieën, dan loopt hij tot `now` en is hij *lopend*.
 
 **Open sessie.** Een sessie met `ended_at` leeg geldt als open tot `now` en is *lopend*. Het
-afsluiten van een sessie is werk van #375.
+afsluiten van een sessie is werk van #375 (nu roept niets `RecordSession` met een `ended_at` aan).
+Omdat een open sessie niet zegt dat iemand werkt, rangschikt `actief` (sessie) onder `ci_review`
+(zie *Voorrang*).
 
-**Voorrang.** Valt een moment onder meer oorzaken, dan wint de eerste in deze volgorde: `actief`,
-`mens`, `usage`, `ci_review`, `oppakken`, `onverklaard`. Wie actief werkt, wacht niet: een run die
-loopt terwijl een sessie op een antwoord wacht, telt als actief. Een schatting verliest van een
+**Voorrang.** Valt een moment onder meer oorzaken, dan wint de eerste in deze volgorde: `actief` (run),
+`mens`, `usage`, `ci_review`, `actief` (sessie), `oppakken`, `onverklaard`. Wie actief werkt, wacht niet: een run die
+loopt terwijl een sessie op een antwoord wacht, telt als actief. Een sessie die een run overlapt telt
+het overlappende deel als `actief` van de run, dus één keer. Een schatting verliest van een
 gemeten interval van dezelfde oorzaak.
 
 ### Overnames
@@ -264,6 +282,10 @@ dit de plek waar het te zien is.)*
   hervatting (`answer:<id>`) die Done meldt en daarna merget: `mens` = Vraag tot antwoord,
   `oppakken` = antwoord tot hervatting, `actief` = startrun tot zijn einde plus hervatting tot Done,
   `ci_review` = Done tot merge, niets dubbel, som = venster.
+- Een vraagrun die de tick pas na de Vraag sluit (`ended_at` > `at` van de Vraag): `actief` eindigt
+  bij de Vraag, `mens` loopt vanaf de Vraag; de fixture heeft een echt gat tussen beide.
+- Een Done-tijdstip dat vóór het sluiten van de run ligt: `ci_review` is het verschil, niet nul.
+- Een push-rij en een merge-run geven `ci_review`, geen `actief`.
 - Hetzelfde zonder opgeslagen vraag en antwoord: `mens` is één schatting van `ended_at` van de
   vraagrun tot de hervatting; geen `oppakken`.
 - Een run zonder Done: alleen `actief`, gemarkeerd *inclusief eventueel CI/review*.
@@ -297,6 +319,7 @@ dit de plek waar het te zien is.)*
 
 - De precieze plek in `internal/dispatch` waar de gebeurtenissen geschreven worden (in `apply`, na de
   beslissing), zolang het in de tick gebeurt, de run-id bekend is, en `decide` puur blijft.
-- Hoe de dispatcher "voor het eerst ziet dat de sessie Done meldde" detecteert; idempotentie maakt
-  een herhaling onschadelijk.
+- Hoe de dispatcher "voor het eerst ziet dat de sessie Done meldde" detecteert (`done()` in de
+  beslissing, of de werkplekstand in `apply`); idempotentie via `done:<run-id>` maakt een herhaling
+  onschadelijk.
 - De vorm van `Moment`, `Interval` en `CauseTotal`.
