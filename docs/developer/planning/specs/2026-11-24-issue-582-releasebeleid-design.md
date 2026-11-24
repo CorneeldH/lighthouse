@@ -139,12 +139,17 @@ main ──merge──merge──merge──(milestone dicht)──merge──me
    branchnaam, of de volgende patch op de lijn van de branch); `ci/changelog` leidt hem niet meer
    af uit de fragmenten of de hoogste tag. *(eigen keuze na spec-review, r1-f8)* Een nieuwe rc
    terwijl de PR open staat: de workflow sluit de PR. Sluit de maintainer de PR zelf zonder
-   merge, dan opent de cron geen nieuwe tot er een nieuwe rc is. Fragmenten waarvan de
-   bestandsnaam al in een gereleasede sectie van `CHANGELOG.md` staat, neemt de release-PR niet
-   mee, los van de volgorde van de merges. *(eigen keuze na spec-review, r1-f10, r1-f12)*
+   merge, dan opent de cron geen nieuwe tot er een nieuwe rc is. Een fragment dat al
+   in een release uit is gegaan, neemt de release-PR niet mee, los van de volgorde van de merges.
+   De bron is git, niet `CHANGELOG.md` (dat bevat geen bestandsnamen): de fragmentpaden die een
+   releasecommit (`chore(release): vX.Y.Z`, bereikbaar vanaf een `vX.Y.Z`-tag) verwijderde.
+   *(r2-f4)* *(eigen keuze na spec-review, r1-f10, r1-f12)*
 5. **Release.** De merge van de release-PR start de release: macOS-gate, `dist`-commit (C2), tag
-   `vX.Y.0`, `build.yml`. De workflow weigert de tag als de ouder van de releasecommit niet de
-   commit van de nieuwste rc is: dan is er na de soak nog iets gemergd. *(r1-f12)*
+   `vX.Y.0`, `build.yml`. Bij een milestone-release (`vX.Y.0`) weigert de workflow de tag als de
+   ouder van de releasecommit niet de commit is waarvan de nieuwste rc gebouwd is: de ouder van
+   de `dist`-commit van die rc (`vX.Y.0-rc.N^`), want de rc-tag zelf wijst naar een `dist`-commit
+   die nooit op de branch staat. Dan is er na de soak nog iets gemergd. Een patch-release
+   (`vX.Y.Z+1`) heeft geen rc en krijgt deze controle niet. *(r1-f12, r2-f2, r2-f3)*
 6. **Sync naar `main`.** Een eigen stap, los van de tag, die je opnieuw kunt draaien. Hij leidt
    zijn werk af uit de tag: de sectie uit `CHANGELOG.md` op de tag, en de fragmentnamen die de
    releasecommit verwijderde. Hij zet die sectie op `main` en verwijdert daar de fragmenten met
@@ -183,7 +188,10 @@ invoer), zolang de checkout van de logica `main` is en die van de inhoud de rele
 
 ### `self-update` en het kanaal
 
-- `lighthouse self-update --channel release|dev`, standaard `release`.
+- `lighthouse self-update --channel release|dev` kiest het kanaal en bewaart het voor deze
+  gebruiker in `~/.config/lighthouse/channel`. Zonder `--channel` gebruikt `self-update` het
+  bewaarde kanaal; zonder bewaard kanaal `release`. `lighthouse channel` drukt het af.
+  *(eigen keuze na spec-review, r2-f1)*
 - `release`: zoals nu, `GET /releases/latest`.
 - `dev`: de lijst van releases (`GET /releases`, zoals `lighthouse releases` al doet), en daaruit
   de hoogste semver, prereleases inbegrepen.
@@ -194,8 +202,9 @@ invoer), zolang de checkout van de logica `main` is en die van de inhoud de rele
   tag, en `self-update` slaat hem niet over.
 - Geen downgrade: wie van `dev` naar `release` wisselt, blijft op zijn hogere dev-versie tot de
   release hem inhaalt.
-- `deploy/systemd/lighthouse-upgrade.service` geeft het kanaal door in `ExecStart`, standaard
-  `release`; de installatiegids beschrijft een drop-in voor `dev`.
+- `deploy/systemd/lighthouse-upgrade.service` hoeft het kanaal niet door te geven: de unit leest
+  het bewaarde kanaal (`ProtectHome=read-only` laat lezen toe). De installatiegids zegt: kies dev
+  één keer met `lighthouse self-update --channel dev`.
 
 ### Wat verdwijnt
 
@@ -221,8 +230,10 @@ Een repo op het devkanaal (personal_ai_agent) krijgt bij elke dev-build een ande
 - `/lighthouse-upgrade` vergelijkt versies nu met `sort -V` en laat prereleases weg
   (`pack/core/skills/upgrade/claude/SKILL.md:36`, `:45-46`). `sort -V` zet `0.29.0` vóór
   `0.29.0-rc.2`; een repo op `v0.29.0-rc.2` met een binary op `v0.29.0` krijgt dan "the binary is
-  older than the repo" en upgradet niet. De skill gaat over op `lighthouse version compare`, en
-  kiest de nieuwste versie op het kanaal van de binary. Dat is een wijziging onder `pack/`: dogfood
+  older than the repo" en upgradet niet. De skill gaat over op `lighthouse version compare`. Hij
+  leest het kanaal met `lighthouse channel`; op `dev` neemt hij prereleases mee in de nieuwste
+  versie en in de release notes, op `release` niet. De `lighthouse self-update` die hij voorstelt,
+  gebruikt vanzelf het bewaarde kanaal. *(r2-f1)* Dat is een wijziging onder `pack/`: dogfood
   met `init --upgrade` (besloten met de gebruiker na de spec-review, r1-f3).
 - Dev-releases worden nooit opgeruimd. Een repo zet zijn binary-versie in
   `.lighthouse/manifest.toml`, en `unblock-dependents.yml` downloadt precies die tag
