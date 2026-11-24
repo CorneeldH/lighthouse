@@ -37,9 +37,10 @@ const VIEWS: Array<{ id: ViewId; label: string }> = [
   { id: 'unassigned', label: 'Without milestone' },
 ]
 
-const ORDERS: Array<{ id: 'computed' | 'priority'; label: string }> = [
-  { id: 'computed', label: 'Computed' },
-  { id: 'priority', label: 'Priority' },
+// The computed order sorts on % done; its button shows only the sign, its name says it in full.
+const ORDERS: Array<{ id: 'computed' | 'priority'; label: string; name: string }> = [
+  { id: 'computed', label: '%', name: '% done' },
+  { id: 'priority', label: 'Priority', name: 'Priority' },
 ]
 
 const SORTS: Array<{ id: DepsOrder; label: string }> = [
@@ -89,6 +90,8 @@ export function Toolbar({
                   key={o.id}
                   type="button"
                   aria-pressed={on}
+                  aria-label={o.name}
+                  title={o.name}
                   className={`px-3 py-1 text-sm font-medium ${on ? 'bg-lh-navy text-white' : 'bg-card text-foreground hover:bg-muted'}`}
                   onClick={() => onMsOrder(o.id)}
                 >
