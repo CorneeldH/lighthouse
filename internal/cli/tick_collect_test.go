@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/CorneeldH/lighthouse/internal/hostconfig"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/runs"
 	"github.com/CorneeldH/lighthouse/internal/telemetry/collect"
@@ -346,5 +347,113 @@ func TestTickCollectOpenRunGenericErrorIsFailure(t *testing.T) {
 	}
 	if !strings.Contains(errOut.String(), "boom") || strings.Contains(errOut.String(), "unreachable") {
 		t.Errorf("errOut = %q, want the reason as a failure line", errOut.String())
+	}
+}
+
+// collectRig runs only the collection of the tick, without the sweeps that mark a workspace
+// removed, so the same closed run is offered tick after tick. now is the movable clock.
+type collectRig struct {
+	t   *testing.T
+	w   *rawWorkplace
+	db  string
+	now time.Time
+	run func() (failed bool, errOut string)
+}
+
+func newCollectRig(t *testing.T) *collectRig {
+	t.Helper()
+	dir := repo945(t)
+	env, db := tickFixture(t, dir)
+	_, fw := sweepable(t, &env, "p1", &gitState{ahead: "0"})
+	w := &rawWorkplace{fakeWorkplace: fw, raw: map[string][]workplace.FileDelta{}, errs: map[string]error{}}
+	env.Workplace = func(repoconfig.Repo, string, string) workplace.Workplace { return w }
+	r := &collectRig{t: t, w: w, db: db, now: t0}
+	env.Now = func() time.Time { return r.now }
+	repo, err := repoconfig.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.run = func() (bool, string) {
+		var errOut bytes.Buffer
+		failed := collectRuns(context.Background(), env, openStore(t, db), hostconfig.Dispatch{}, []repoconfig.Repo{repo}, &errOut)
+		return failed, errOut.String()
+	}
+	return r
+}
+
+func (r *collectRig) raws() int {
+	n := 0
+	for _, e := range r.w.eventLog() {
+		if strings.HasPrefix(e, "raw ") {
+			n++
+		}
+	}
+	return n
+}
+
+// A closed run that gets no setups row (no line of the transcript falls in it, or there is no
+// transcript) is fetched at most once an hour, not every tick.
+func TestTickCollectClosedRunWithoutRowIsThrottled(t *testing.T) {
+	for name, setup := range map[string]func(w *rawWorkplace, sid string){
+		"no line in the run": func(w *rawWorkplace, sid string) {
+			// The run starts an hour before t0; all lines are a day earlier.
+			data := strings.ReplaceAll(string(mainTranscript(sid, 5)[0].Data), "2026-10-31T11", "2026-10-30T11")
+			w.raw[sid] = []workplace.FileDelta{{Name: sid + ".jsonl", Size: int64(len(data)), Data: []byte(data)}}
+		},
+		"no transcript": func(w *rawWorkplace, sid string) { w.errs[sid] = fmt.Errorf("read: %w", workplace.ErrGone) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := newCollectRig(t)
+			sid := runs.NewSessionID()
+			closedRun(t, r.db, sid)
+			setup(r.w, sid)
+			for i, step := range []struct {
+				at   time.Duration
+				want int
+			}{{0, 1}, {time.Minute, 1}, {30 * time.Minute, 1}, {61 * time.Minute, 2}, {62 * time.Minute, 2}} {
+				r.now = t0.Add(step.at)
+				if failed, out := r.run(); failed {
+					t.Fatalf("pass %d failed: %s", i+1, out)
+				}
+				if got := r.raws(); got != step.want {
+					t.Fatalf("after pass %d: %d fetches, want %d", i+1, got, step.want)
+				}
+			}
+			if n := countSetups(t, openStore(t, r.db)); n != 0 {
+				t.Errorf("setups = %d, want 0", n)
+			}
+		})
+	}
+}
+
+// A closed run with a transcript to collect is collected in the first pass; a pass that fails
+// (the node did not answer) leaves it due every tick until its row exists.
+func TestTickCollectClosedRunIsDueEveryTickUntilRow(t *testing.T) {
+	r := newCollectRig(t)
+	sid := runs.NewSessionID()
+	closedRun(t, r.db, sid)
+	r.w.errs[sid] = fmt.Errorf("down: %w: %w", workplace.ErrNotMeasurable, workplace.ErrUnanswered)
+	for i := 1; i <= 2; i++ {
+		r.now = t0.Add(time.Duration(i) * time.Minute)
+		if failed, out := r.run(); !failed {
+			t.Fatalf("pass %d did not fail: %s", i, out)
+		}
+		if got := r.raws(); got != i {
+			t.Fatalf("after pass %d: %d fetches, want %d", i, got, i)
+		}
+	}
+	delete(r.w.errs, sid)
+	r.w.raw[sid] = mainTranscript(sid, 5)
+	r.now = t0.Add(3 * time.Minute)
+	if failed, out := r.run(); failed {
+		t.Fatalf("pass 3 failed: %s", out)
+	}
+	if got, n := r.raws(), countSetups(t, openStore(t, r.db)); got != 3 || n != 1 {
+		t.Fatalf("fetches = %d, setups = %d, want 3 and 1", got, n)
+	}
+	r.now = t0.Add(4 * time.Minute)
+	_, _ = r.run()
+	if got := r.raws(); got != 3 {
+		t.Errorf("fetches = %d after the row exists, want 3", got)
 	}
 }

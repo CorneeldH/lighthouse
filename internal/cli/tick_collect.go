@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -32,13 +33,15 @@ const lastCollectFile = "last-collect"
 type collectRef struct {
 	node, workspace, session, profile string
 	firstRun                          int64
-	open, due                         bool // some run is open; some run still needs a pass
+	open, due                         bool    // some run is open; some run still needs a pass
+	closed                            []int64 // the closed runs that made the ref due
 }
 
 // collectRuns collects, per repo, the transcripts of runs through the workplace that holds them
 // (workplace.RawTranscripts), before the sweeps remove those workplaces and mirrors. A run that
 // is open is collected at most once an hour (the moment is in <state>/telemetry/last-collect);
-// a closed run goes every tick until its setups row was recorded after its end. A run without
+// a closed run goes every tick until its setups row was recorded after its end, unless one
+// pass showed it gets none (see closedTriedFile). A run without
 // a workspace or session, or whose workspace is marked removed, is left alone. A transcript the
 // workplace cannot show (gone, not on this host, no file) gets an "unreachable, not processed"
 // line and is no failure; any other error gets a line with the run id and the reason and sets
@@ -54,7 +57,7 @@ func collectRuns(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Di
 	openDue := last.IsZero() || now.Sub(last) >= collectEvery
 	var openTried bool
 	for _, repo := range repos {
-		refs, err := collectRefs(ctx, db, repo.Slug, openDue)
+		refs, err := collectRefs(ctx, db, repo.Slug, stateDir, now, openDue)
 		if err != nil {
 			_, _ = fmt.Fprintf(errOut, "lighthouse: collect %s: %s\n", repo.Slug, oneLine(err))
 			failed = true
@@ -94,10 +97,33 @@ func readLastCollect(stateDir string) time.Time {
 	return t
 }
 
+// closedTriedDir is the folder under <state>/telemetry with one file per closed run that a pass
+// could not give a setups row: the transcript was unreachable, or no line of it falls in the
+// run (a resume run whose claude never started). Such a run would be due every tick, bypassing
+// the hourly throttle, with a whole-transcript fetch and rewrite each time, until the sweep
+// marks its workspace removed. With the moment of that pass on disk it is due once an hour. A
+// run that a pass gave a row, or whose pass failed (the node did not answer), is not recorded:
+// it stays due every tick, so a closed run is collected in the first tick after it closes.
+const closedTriedDir = "closed-tried"
+
+func closedTriedPath(stateDir string, id int64) string {
+	return filepath.Join(stateDir, "telemetry", closedTriedDir, fmt.Sprintf("%d", id))
+}
+
+// triedRecently says a pass of the last collectEvery gave closed run id no setups row.
+func triedRecently(stateDir string, id int64, now time.Time) bool {
+	raw, err := os.ReadFile(closedTriedPath(stateDir, id))
+	if err != nil {
+		return false
+	}
+	t, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(string(raw)))
+	return err == nil && now.Sub(t) < collectEvery
+}
+
 // collectRefs lists the transcripts of repo to collect now, one per (node, workspace, session),
 // in run order: the runs with a session and a workspace that no row marks removed, and that
 // are open while openDue, or closed without a setups row recorded after their end.
-func collectRefs(ctx context.Context, db *sql.DB, repo string, openDue bool) ([]collectRef, error) {
+func collectRefs(ctx context.Context, db *sql.DB, repo, stateDir string, now time.Time, openDue bool) ([]collectRef, error) {
 	rows, err := db.QueryContext(ctx, `SELECT r.id, r.node, r.profile, r.workspace_id, r.session_id, r.ended_at,
 			(SELECT recorded_at FROM setups WHERE run_id = r.id)
 		FROM runs r
@@ -117,6 +143,7 @@ func collectRefs(ctx context.Context, db *sql.DB, repo string, openDue bool) ([]
 			return nil, fmt.Errorf("runs to collect: %w", err)
 		}
 		due := false
+		var closedIDs []int64
 		switch {
 		case !ended.Valid:
 			due = openDue
@@ -127,6 +154,12 @@ func collectRefs(ctx context.Context, db *sql.DB, repo string, openDue bool) ([]
 			s, serr := time.Parse(time.RFC3339Nano, setup.String)
 			due = eerr != nil || serr != nil || s.Before(e)
 		}
+		tried := due && ended.Valid && triedRecently(stateDir, id, now)
+		if tried {
+			due = false
+		} else if due && ended.Valid {
+			closedIDs = append(closedIDs, id)
+		}
 		k := [3]string{node, ws, sid}
 		i, ok := index[k]
 		if !ok {
@@ -136,6 +169,7 @@ func collectRefs(ctx context.Context, db *sql.DB, repo string, openDue bool) ([]
 		}
 		out[i].open = out[i].open || !ended.Valid
 		out[i].due = out[i].due || due
+		out[i].closed = append(out[i].closed, closedIDs...)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("runs to collect: %w", err)
@@ -175,6 +209,12 @@ func collectRepo(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Di
 			out, err = processDeltas(ctx, db, ref, deltas, recorded, opt)
 		}
 		switch {
+		case err == nil:
+			noteClosedTried(errOut, stateDir, ref, out.RunIDs, recorded)
+		case unreachable(err):
+			noteClosedTried(errOut, stateDir, ref, nil, recorded)
+		}
+		switch {
 		case err == nil && out.Kind == "skipped":
 			_, _ = fmt.Fprintf(errOut, "lighthouse: collect %s: run %d: skip: %s\n", repo.Slug, ref.firstRun, out.Reason)
 		case err == nil:
@@ -186,6 +226,19 @@ func collectRepo(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Di
 		}
 	}
 	return failed
+}
+
+// noteClosedTried writes the moment of this pass for each closed run of ref that the pass gave
+// no row (not in gotRow); see closedTriedDir. A failed write only costs a retry next tick.
+func noteClosedTried(errOut io.Writer, stateDir string, ref collectRef, gotRow []int64, at time.Time) {
+	for _, id := range ref.closed {
+		if slices.Contains(gotRow, id) {
+			continue
+		}
+		if err := workplace.WriteFileAtomic(closedTriedPath(stateDir, id), []byte(at.UTC().Format(time.RFC3339Nano)+"\n")); err != nil {
+			_, _ = fmt.Fprintf(errOut, "lighthouse: collect: closed run %d: %s\n", id, oneLine(err))
+		}
+	}
 }
 
 // unreachable says the transcript is not there to read: the workspace is gone, there is no
