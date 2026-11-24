@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -44,8 +45,13 @@ func fakeHook(t *testing.T, root, name, body string) string {
 	return `"$CLAUDE_PROJECT_DIR"/.claude/hooks/lighthouse/` + name
 }
 
-// smokeOut runs step 3 alone and returns its lines and the number of findings.
+// smokeOut runs step 3 alone and returns its lines and the number of findings. On Windows
+// step 3 runs the hooks with Git Bash, so a bash "" there takes the bash on the PATH, as
+// Run does through FindGitBash; without it every smoke would skip (#559).
 func smokeOut(env Env, regs []registration, bash string) (string, int) {
+	if bash == "" && env.GOOS == "windows" {
+		bash, _ = exec.LookPath("bash")
+	}
 	var out bytes.Buffer
 	r := &report{out: &out}
 	smoke(env, regs, bash, r)
@@ -287,6 +293,9 @@ func TestProjectDirNative(t *testing.T) {
 func TestSmokeNoBashIsFail(t *testing.T) {
 	// Claude Code runs a shell-form hook with `sh -c` on Linux and macOS (hooks docs); without a
 	// sh on the PATH no hook runs.
+	if runtime.GOOS == "windows" {
+		t.Skip("the sh branch is Linux and macOS; Windows runs Git Bash, tested with windowsEnv")
+	}
 	root := fakeRoot(t, "repo")
 	marker := filepath.Join(t.TempDir(), "ran")
 	regs := []registration{{Event: "Stop", Command: fakeHook(t, root, "x.sh", "touch '"+marker+"'\n")}}
