@@ -32,8 +32,9 @@ De Prioritering-tab moet in één oogopslag laten zien in welke status elk issue
 - Een onderstreept nummer betekent overal: **een mens moet iets doen**.
 - Een legenda met een eigen regel per soort, elk met een kopje.
 - Een tab *Status* als kanban: een kolom per status, met een filter op milestone.
-- *Without milestone* wordt het laatste blok van de tab *Milestones*. Daarmee zijn er drie tabs:
-  **Dependencies · Milestones · Status**.
+- De tab *Without milestone* heet *Backlog* en blijft een eigen tab. Daarmee zijn er vier tabs:
+  **Dependencies · Milestones · Backlog · Status**. *Koers gewijzigd 2026-11-24, besluit Corneel:*
+  eerst was het plan *Without milestone* het laatste blok van *Milestones* te maken.
 
 ## Niet-doelen
 
@@ -169,25 +170,19 @@ De kaart heeft één signaal voor de status.
 Sortering per kolom, de schakelaar (`depsOrder`) en de hover van het pilletje komen uit #445 en
 blijven ongewijzigd. Dit ontwerp verandert alleen de kaart zelf.
 
-### 5. Milestones, met onderaan *Without milestone*
+### 5. Backlog
 
-- De tab *Without milestone* vervalt. Zijn inhoud wordt het laatste blok van *Milestones*.
-- **De rij *Without milestone*** heeft dezelfde opbouw als een milestonerij. Links staan een grijs
-  vlakje, de titel en het aantal open issues. Daarnaast een balk met een blok per issue, in de
-  balkvolgorde uit 2.
-- Rechts staat geen percentage maar een streepje. Er zijn geen knoppen om te verplaatsen, en de rij
-  staat altijd onderaan, in beide volgordes (*%* en *Priority*).
-- Onder de balk staat de lijst van nu (`UnassignedView`): blokje, nummer, titel, de relatie
-  (`blocks 12` of `waits on 12`, zonder `#`) en bij een gesloten milestone `<titel> · closed`.
-  Wat er in die lijst staat, blijft gelijk: open issues zonder milestone én open issues in een
-  gesloten milestone. De lijst toont de eerste 5 regels en klapt de rest in.
-  *Mijn keuze:* het getal 5 sluit aan bij de done-kolom van de kanban.
-- *Mijn keuze:* de rij krijgt een gewone, dichte rand. In de verkenningsmockup was die gestippeld,
-  maar een stippelrand betekent hier *needs shaping*.
-- Zonder issues zonder milestone verdwijnt de rij.
+- De tab *Without milestone* heet *Backlog* en blijft een eigen tab, na *Milestones*. *Milestones*
+  krijgt geen rij *Without milestone* en geen blok daarvoor.
+- De lijst heeft per regel een statusblokje (in de milestonekleur, grijs zonder milestone), het
+  nummer (onderstreept bij een mensstatus), de titel, de relatie (`blocks 12` of `waits on 12`,
+  zonder `#`) en bij een gesloten milestone `<titel> · closed`.
+- Wat er in de lijst staat, blijft gelijk: open issues zonder milestone én open issues in een
+  gesloten milestone. De lijst klapt niet in en heeft geen aparte rand.
+- De rij *Without milestone* in de balk, het inklappen na 5 en de dichte rand vervallen.
 - **#439** zet zijn suggesties (groepen, passende milestone, nieuwe milestone, mogelijk achterhaald)
-  in dit blok, onder de lijst. De tekst van #439 wordt daarop aangepast. De plek is in dit ontwerp
-  al gereserveerd, maar blijft leeg tot #439 klaar is.
+  in de tab Backlog, met een knop om suggesties direct op te vragen. De tekst van #439 wordt daarop
+  aangepast. De plek is in dit ontwerp al gereserveerd, maar blijft leeg tot #439 klaar is.
 
 ### 6. Status: de kanban
 
@@ -214,14 +209,14 @@ blijven ongewijzigd. Dit ontwerp verandert alleen de kaart zelf.
   voor de kanban; *Dependencies* en *Milestones* blijven zoals ze zijn.
 - *Mijn keuze:* een open issue in een gesloten milestone telt op de kanban als *Without
   milestone*: grijze streep, onder de chip *Without milestone*. Dat sluit aan bij 5, waar zo'n
-  issue ook in het blok *Without milestone* staat.
+  issue ook in de tab Backlog staat.
 - Het getal op de tab *Status* is het aantal open issues in beeld.
 - Geen slepen (zie Niet-doelen).
 
 ### 7. Voorkeuren
 
-- `ViewId` wordt `'deps' | 'milestones' | 'status'`.
-- Een bewaarde `'unassigned'` valt terug op `'milestones'`, want daar staat die inhoud nu.
+- `ViewId` wordt `'deps' | 'milestones' | 'backlog' | 'status'`.
+- Een bewaarde `'unassigned'` opent *Backlog*, want daar staat die inhoud nu.
 - Het filter op milestone komt erbij in `Prefs` en geldt alleen voor de tab Status. Een bewaarde
   milestone die niet meer bestaat, telt niet mee, zoals bij het filter op repo.
 
@@ -233,7 +228,7 @@ eigen PR, in deze volgorde:
 | | Issue | Inhoud |
 |---|---|---|
 | a | #555 | 1 tot en met 4: zes statussen in Go, `cases.json` en de web; de vormentaal met het vectorkruis en de onderstreping; de legenda met kopjes; de balkvolgorde; de graafkaart met één signaal. |
-| b | #556 | 5 en 7: *Without milestone* onder *Milestones*, de tab vervalt; de tekst van #439 aangepast. |
+| b | #556 | 5 en 7: de tab *Without milestone* heet *Backlog* en blijft eigen tab; sectie 5 en 7 volgen; de tekst van #439 aangepast. |
 | c | #557 | 6 en 7: de tab *Status*. |
 
 b en c hangen allebei af van a, en niet van elkaar. Beide raken `prefs.ts` en `ViewId`; wie als
@@ -258,12 +253,11 @@ Neem deze door bij het lezen. Alle andere keuzes komen van de gebruiker.
 3. Het label `controller` of `interactive` staat ook op een kaart in een mensstatus die uit een
    actief issue komt.
 4. De done-kolom toont alleen gesloten issues van open milestones, op nummer, ingeklapt na 5.
-5. *Without milestone* heeft een dichte rand, geen percentage en geen knoppen om te verplaatsen,
-   en staat altijd onderaan.
+5. *Without milestone* is de tab *Backlog*, een eigen tab zonder rij in de balk van *Milestones*.
 6. Kanbankaarten staan per kolom op `prio_weight`, daarna op nummer.
 7. Een externe graafkaart houdt haar grijze rand en heeft geen statusblokje, want haar status is
    onbekend.
 8. Het filter op milestone staat alleen op de tab Status.
 9. Een open issue in een gesloten milestone telt op de kanban als *Without milestone*.
 10. De nieuwe graafkaart valt onder deel a, zodat de graaf nooit twee mensstatussen gelijk toont.
-11. De lijst onder *Without milestone* houdt de relatie `blocks 12` of `waits on 12`.
+11. De lijst in de tab *Backlog* houdt de relatie `blocks 12` of `waits on 12`.
