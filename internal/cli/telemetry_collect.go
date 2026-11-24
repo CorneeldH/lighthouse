@@ -1,9 +1,7 @@
 package cli
 
 import (
-	"bufio"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -11,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -22,6 +19,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/store"
 	"github.com/CorneeldH/lighthouse/internal/telemetry/collect"
 	"github.com/CorneeldH/lighthouse/internal/telemetry/transcript"
+	"github.com/CorneeldH/lighthouse/internal/transcripts"
 	"github.com/CorneeldH/lighthouse/internal/worktreeroot"
 )
 
@@ -150,7 +148,7 @@ func runCollect(ctx context.Context, env collectEnv, opts collectOpts) (collectS
 	if !filepath.IsAbs(home) {
 		return sum, errors.New("HOME is not an absolute path: no place to find the transcripts")
 	}
-	found, err := findTranscripts(filepath.Join(home, ".claude", "projects"), roots, strings.Split(repo.Slug, "/"))
+	found, err := transcripts.Find(filepath.Join(home, ".claude", "projects"), roots, strings.Split(repo.Slug, "/"), transcripts.Options{})
 	if err != nil {
 		return sum, err
 	}
@@ -172,7 +170,7 @@ func runCollect(ctx context.Context, env collectEnv, opts collectOpts) (collectS
 		if errors.Is(err, fs.ErrNotExist) {
 			sum.addf("database %s does not exist: nothing would be compared", dbPath)
 			for _, f := range found {
-				sum.addf("found %s", f.path)
+				sum.addf("found %s", f.Path)
 			}
 			return sum, nil
 		}
@@ -191,7 +189,7 @@ func runCollect(ctx context.Context, env collectEnv, opts collectOpts) (collectS
 		if have < want {
 			sum.addf("database %s is at schema %d, this lighthouse writes %d: --dry-run does not migrate", dbPath, have, want)
 			for _, f := range found {
-				sum.addf("found %s", f.path)
+				sum.addf("found %s", f.Path)
 			}
 			return sum, nil
 		}
@@ -205,16 +203,16 @@ func runCollect(ctx context.Context, env collectEnv, opts collectOpts) (collectS
 		out, err := collectOne(ctx, env, st, f, procOpt)
 		switch {
 		case errors.Is(err, fs.ErrNotExist) || errors.Is(err, fs.ErrPermission):
-			sum.addf("skip %s: %v", f.path, err)
+			sum.addf("skip %s: %v", f.Path, err)
 		case err != nil:
 			sum.Failed++
-			sum.addf("fail %s: %v", f.path, err)
+			sum.addf("fail %s: %v", f.Path, err)
 		case out.Kind == "skipped":
-			sum.addf("skip %s: %s", f.path, out.Reason)
+			sum.addf("skip %s: %s", f.Path, out.Reason)
 		case opts.DryRun:
-			sum.addf("would collect %s as %s", f.path, out.Kind)
+			sum.addf("would collect %s as %s", f.Path, out.Kind)
 		default:
-			sum.addf("%s %s", out.Kind, f.path)
+			sum.addf("%s %s", out.Kind, f.Path)
 		}
 	}
 	if sum.Failed > 0 {
@@ -258,126 +256,10 @@ func gitWorktrees(ctx context.Context, dir string) ([]string, error) {
 	return paths, nil
 }
 
-// session is one main transcript with the subagent transcripts that belong to it.
-type session struct {
-	id, path string
-	subs     []string
-}
-
-// findTranscripts walks the project folders under projects, keeps those whose cwd belongs to the
-// repo and lists their main transcripts in a fixed order. A missing projects folder is no
-// transcripts.
-func findTranscripts(projects string, roots, slugSegs []string) ([]session, error) {
-	ents, err := os.ReadDir(projects)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	var out []session
-	for _, e := range ents {
-		if !e.IsDir() {
-			continue
-		}
-		dir := filepath.Join(projects, e.Name())
-		cwd := firstCwd(dir)
-		if cwd == "" || !belongsToRepo(cwd, roots, slugSegs) {
-			continue
-		}
-		files, err := os.ReadDir(dir)
-		if err != nil {
-			return nil, err
-		}
-		for _, f := range files {
-			if f.IsDir() || filepath.Ext(f.Name()) != ".jsonl" {
-				continue
-			}
-			id := strings.TrimSuffix(f.Name(), ".jsonl")
-			s := session{id: id, path: filepath.Join(dir, f.Name())}
-			subs, _ := filepath.Glob(filepath.Join(dir, id, "subagents", "*.jsonl"))
-			sort.Strings(subs)
-			s.subs = subs
-			out = append(out, s)
-		}
-	}
-	return out, nil
-}
-
-// cwdScanLines bounds how far into a transcript the first cwd is looked for: a session sets its
-// cwd on its first lines, so 200 is generous and keeps a huge file without one cheap to pass.
-const cwdScanLines = 200
-
-// firstCwd is the cwd of the first line object that has one, over the main transcripts of dir in
-// name order; "" when there is none.
-func firstCwd(dir string) string {
-	files, err := os.ReadDir(dir)
-	if err != nil {
-		return ""
-	}
-	for _, f := range files {
-		if f.IsDir() || filepath.Ext(f.Name()) != ".jsonl" {
-			continue
-		}
-		if cwd := cwdOf(filepath.Join(dir, f.Name())); cwd != "" {
-			return cwd
-		}
-	}
-	return ""
-}
-
-func cwdOf(path string) string {
-	fh, err := os.Open(path)
-	if err != nil {
-		return ""
-	}
-	defer func() { _ = fh.Close() }()
-	br := bufio.NewReader(fh)
-	for range cwdScanLines {
-		raw, err := br.ReadString('\n')
-		var o struct {
-			Cwd string `json:"cwd"`
-		}
-		if json.Unmarshal([]byte(strings.TrimSpace(raw)), &o) == nil && o.Cwd != "" {
-			return o.Cwd
-		}
-		if err != nil {
-			return ""
-		}
-	}
-	return ""
-}
-
-// belongsToRepo is true when cwd lies under one of the roots, or its path holds the segments of
-// the repo slug (<owner>/<repo>) next to each other, in any letter case: the layout of
-// kenn-forge worktrees, which also finds a worktree that is already removed.
-func belongsToRepo(cwd string, roots, slugSegs []string) bool {
-	cwd = filepath.Clean(cwd)
-	for _, r := range roots {
-		if cwd == r || worktreeroot.Contains(r, cwd) {
-			return true
-		}
-	}
-	segs := strings.FieldsFunc(filepath.ToSlash(cwd), func(r rune) bool { return r == '/' })
-	for i := 0; i+len(slugSegs) <= len(segs); i++ {
-		match := true
-		for j, s := range slugSegs {
-			if !strings.EqualFold(segs[i+j], s) {
-				match = false
-				break
-			}
-		}
-		if match {
-			return true
-		}
-	}
-	return false
-}
-
 // collectOne measures, reads and processes one session. The moment before the measuring is
 // recorded_at; each file is read up to the size it had then, so lines that arrive later wait
 // for the next pass.
-func collectOne(ctx context.Context, env collectEnv, st *store.Store, s session, opt collect.Options) (collect.Outcome, error) {
+func collectOne(ctx context.Context, env collectEnv, st *store.Store, s transcripts.Session, opt collect.Options) (collect.Outcome, error) {
 	recorded := env.Now()
 	type part struct {
 		name, path string
@@ -396,11 +278,11 @@ func collectOne(ctx context.Context, env collectEnv, st *store.Store, s session,
 		}
 		return nil
 	}
-	if err := add(s.id+".jsonl", s.path); err != nil {
+	if err := add(s.ID+".jsonl", s.Path); err != nil {
 		return collect.Outcome{}, err
 	}
-	for _, sub := range s.subs {
-		if err := add(s.id+"/subagents/"+filepath.Base(sub), sub); err != nil {
+	for _, sub := range s.Subs {
+		if err := add(s.ID+"/subagents/"+filepath.Base(sub), sub); err != nil {
 			return collect.Outcome{}, err
 		}
 	}
@@ -423,6 +305,6 @@ func collectOne(ctx context.Context, env collectEnv, st *store.Store, s session,
 		files = append(files, transcript.File{Name: p.name, R: io.LimitReader(fh, p.size)})
 	}
 	return collect.Process(ctx, st.DB, collect.Source{
-		SessionID: s.id, TranscriptPath: s.path, Files: files, MTime: mtime, Recorded: recorded,
+		SessionID: s.ID, TranscriptPath: s.Path, Files: files, MTime: mtime, Recorded: recorded,
 	}, opt)
 }
