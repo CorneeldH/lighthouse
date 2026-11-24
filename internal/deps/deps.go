@@ -34,7 +34,8 @@ func Default() Checker {
 }
 
 // Check returns the requirements that are not met, in the order of reqs. `tomllib`
-// means a python3 that can import it (Python 3.11 or newer); any other name is a
+// means a python3 that can import it (Python 3.11 or newer); `PSScriptAnalyzer` means a pwsh that
+// lists the module; any other name is a
 // program on PATH, except `superpowers`: the Claude Code plugin, present when
 // ~/.claude/plugins/installed_plugins.json lists a plugin whose name starts with it.
 func (c Checker) Check(reqs []packs.Requirement) []Missing {
@@ -57,6 +58,14 @@ func (c Checker) present(tool string) bool {
 		}
 		// -I: isolated mode, so a tomllib.py in the user's cwd is never imported.
 		return c.Run("python3", "-I", "-c", "import tomllib") == nil
+	}
+	if tool == "PSScriptAnalyzer" {
+		if _, err := c.LookPath("pwsh"); err != nil {
+			return false
+		}
+		// -NoProfile: a profile of the user must not decide whether the module is there.
+		return c.Run("pwsh", "-NoProfile", "-NonInteractive", "-Command",
+			"if (-not (Get-Module -ListAvailable PSScriptAnalyzer)) { exit 1 }") == nil
 	}
 	_, err := c.LookPath(tool)
 	return err == nil

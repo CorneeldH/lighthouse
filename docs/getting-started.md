@@ -15,8 +15,8 @@ commit, PR bodies with evidence and, with `codex`, adversarial reviews.
 |---|---|---|---|
 | Claude Code | all | running the skills and the hooks | The hooks do not run. Codex and OpenCode read `AGENTS.md`, but nothing enforces it: run the test gate yourself. |
 | Python 3.11+ (`python3`, `tomllib`) | python | `ty-gate`, `gate_python` and the `python-standard` skill | Those hooks and that skill cannot run. The other packages need no Python. |
-| `git` | core, expo, go, shell | worktrees, the commit gates, every skill | Nothing works: the hooks report `COULD NOT CHECK`; the blocking ones block, `worktree-check` only warns. |
-| `jq` | core, go, python, shell | the helper commands of the skills | Those skill steps fail. Every hook runs in the `lighthouse` binary and needs no `jq`. |
+| `git` | core, expo, go, powershell, shell | worktrees, the commit gates, every skill | Nothing works: the hooks report `COULD NOT CHECK`; the blocking ones block, `worktree-check` only warns. |
+| `jq` | core, go, powershell, python, shell | the helper commands of the skills | Those skill steps fail. Every hook runs in the `lighthouse` binary and needs no `jq`. |
 | `gh` | core, python | reading and writing issues and PRs in the skills that do not yet use `lighthouse forge` | Those skills cannot reach GitHub. `pr-create-gate` passes without counting the acceptance criteria, and says so. The chain skills `start-issue`, `route-issue`, `write-issue` and `write-pr` go through `lighthouse forge` and need `gh` only for the fallback `gh auth token`. |
 | `superpowers` (Claude Code plugin) | core, expo | the steps the skills hand off: worktrees, brainstorming, plans, debugging | The skills cannot hand off; `/lighthouse-start-issue` loses its worktree, spec and plan steps. |
 | `codex` (optional) | core | adversarial reviews by another model family; `lighthouse usage codex` | `/lighthouse-review-spec` and `/lighthouse-review-plan` stop with `CODEX_MISSING`. |
@@ -27,6 +27,8 @@ commit, PR bodies with evidence and, with `codex`, adversarial reviews.
 | `npx` | node | `node-imports-gate` (knip) | `node-imports-gate` reports `COULD NOT CHECK` at Stop; nothing was checked. |
 | `node` | node | the test gate `lighthouse gate node` | `lighthouse gate node` reports `COULD NOT CHECK` (exit 3); with 3 in `unchecked_exit_codes` the gate reports the commit as not tested. |
 | `npm` | node | the web checks of `lighthouse gate node` (`npm run …`) | As for `node`. |
+| `pwsh` | powershell | `powershell-lint-check` runs PSScriptAnalyzer in it | `powershell-lint-check` blocks with `COULD NOT CHECK` on every `.ps1` or `.psm1` file you edit. |
+| `PSScriptAnalyzer` (PowerShell module) | powershell | the rules of `powershell-lint-check` | As for `pwsh`. Install it with `Install-Module PSScriptAnalyzer -Scope AllUsers`. |
 | `curl` | shell | the first download of the pinned `shellcheck`, verified with sha256sum or shasum | No download. Without a `shellcheck` on your `PATH`, the `shell-lint-check` hook blocks with `COULD NOT CHECK` on every shell script you edit. |
 | `tar` | shell | unpacking that download | As for `curl`. |
 | `xz` | shell | unpacking that download | As for `curl`. |

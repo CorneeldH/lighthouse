@@ -47,15 +47,16 @@ Read, do not change, and do not ask yet. Find out:
    `.lighthouse/manifest.toml` exist? If `.lighthouse/manifest.toml` exists, stop. Tell the user
    lighthouse is already installed; updating it is outside this guide.
 5. Which requirements are missing. Check each tool with `command -v <tool>`, `tomllib` (only for the `python` package) with
-   `python3 -I -c 'import tomllib'`, and `superpowers` in
+   `python3 -I -c 'import tomllib'`, `PSScriptAnalyzer` (only for the `powershell` package) with
+   `pwsh -NoProfile -NonInteractive -Command "if (-not (Get-Module -ListAvailable PSScriptAnalyzer)) { exit 1 }"`, and `superpowers` in
    `~/.claude/plugins/installed_plugins.json`.
 6. Which languages the repository uses (`git ls-files`): this decides which packages `init` picks.
 
 | Tool | Package | Without it |
 |---|---|---|
 | `python3`, `tomllib` (Python 3.11+) | python | `ty-gate`, `gate_python` and `python-standard` cannot run. The other packages need no Python. |
-| `git` | core, expo, go, shell | Nothing works. |
-| `jq` | core, go, python, shell | The hooks cannot read their payload and report `COULD NOT CHECK`. |
+| `git` | core, expo, go, powershell, shell | Nothing works. |
+| `jq` | core, go, powershell, python, shell | The hooks cannot read their payload and report `COULD NOT CHECK`. |
 | `gh` | core, python | The skills that do not yet use `lighthouse forge` cannot reach GitHub. The chain skills need `gh` only for the fallback `gh auth token`. |
 | `superpowers` | core, expo | The skills cannot hand off worktrees, specs, plans and debugging. |
 | `codex` (optional) | core | The two adversarial reviews stop with `CODEX_MISSING`. |
@@ -63,6 +64,7 @@ Read, do not change, and do not ask yet. Find out:
 | `go`, `gofmt`, `golangci-lint` | go | Go code is not formatted or linted. |
 | `node`, `npm` | node | The node test gate reports `COULD NOT CHECK`. |
 | `npx` | node | `node-imports-gate` reports `COULD NOT CHECK`; nothing was checked for undeclared imports. |
+| `pwsh`, `PSScriptAnalyzer` | powershell | The `powershell-lint-check` hook blocks with `COULD NOT CHECK` on a `.ps1` or `.psm1` file. |
 | `curl`, `tar`, `xz` | shell | No `shellcheck` download; sha256sum or shasum verifies it; the `shell-lint-check` hook blocks. |
 
 Report what you found to the user in one block. Then go to the choices.
