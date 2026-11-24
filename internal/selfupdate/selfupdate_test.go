@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -121,11 +122,14 @@ func TestRunReplacesOnNewerTagAndGoodChecksum(t *testing.T) {
 	if string(b) != "new" {
 		t.Fatalf("target = %q", b)
 	}
+	f.assertOnlyTarget(t)
+	if runtime.GOOS == "windows" {
+		t.Skip("NTFS has no POSIX mode bits; see host-assumptions.md")
+	}
 	st, _ := os.Stat(f.target)
 	if st.Mode().Perm() != 0o755 {
 		t.Fatalf("mode = %v", st.Mode())
 	}
-	f.assertOnlyTarget(t)
 }
 
 func TestRunKeepsBinaryOnBadChecksum(t *testing.T) {

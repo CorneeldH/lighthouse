@@ -9,7 +9,7 @@
     "run_id": "",
     "pause_until": "",
     "now": "2026-09-06T11:58:00Z",
-    "expect": "venster-2026-09-06T12:30:00Z.tool.s1.done"
+    "expect": "venster-2026-09-06T12-30-00Z.tool.s1.done"
   },
   {
     "name": "tool without session",
@@ -19,7 +19,7 @@
     "run_id": "",
     "pause_until": "",
     "now": "2026-09-06T11:58:00Z",
-    "expect": "venster-2026-09-06T12:30:00Z.tool.done"
+    "expect": "venster-2026-09-06T12-30-00Z.tool.done"
   },
   {
     "name": "tool with session and run",
@@ -31,7 +31,7 @@
     "run_id": "R",
     "pause_until": "",
     "now": "2026-09-06T11:58:00Z",
-    "expect": "venster-2026-09-06T12:30:00Z.tool.s1.R.done"
+    "expect": "venster-2026-09-06T12-30-00Z.tool.s1.R.done"
   },
   {
     "name": "tool with run, no session",
@@ -41,7 +41,7 @@
     "run_id": "R",
     "pause_until": "",
     "now": "2026-09-06T11:58:00Z",
-    "expect": "venster-2026-09-06T12:30:00Z.tool.R.done"
+    "expect": "venster-2026-09-06T12-30-00Z.tool.R.done"
   },
   {
     "name": "subagent with session, agent and run",
@@ -54,7 +54,7 @@
     "run_id": "R",
     "pause_until": "",
     "now": "2026-09-06T11:58:00Z",
-    "expect": "venster-2026-09-06T12:30:00Z.subagent.s1.a1.done"
+    "expect": "venster-2026-09-06T12-30-00Z.subagent.s1.a1.done"
   },
   {
     "name": "subagent without agent id uses the run",
@@ -66,7 +66,7 @@
     "run_id": "R",
     "pause_until": "",
     "now": "2026-09-06T11:58:00Z",
-    "expect": "venster-2026-09-06T12:30:00Z.subagent.s1.R.done"
+    "expect": "venster-2026-09-06T12-30-00Z.subagent.s1.R.done"
   },
   {
     "name": "subagent without session",
@@ -78,7 +78,7 @@
     "run_id": "",
     "pause_until": "",
     "now": "2026-09-06T11:58:00Z",
-    "expect": "venster-2026-09-06T12:30:00Z.subagent.a1.done"
+    "expect": "venster-2026-09-06T12-30-00Z.subagent.a1.done"
   },
   {
     "name": "stop with session",
@@ -90,7 +90,7 @@
     "run_id": "",
     "pause_until": "",
     "now": "2026-09-06T11:58:00Z",
-    "expect": "venster-2026-09-06T12:30:00Z.stop.s1.done"
+    "expect": "venster-2026-09-06T12-30-00Z.stop.s1.done"
   },
   {
     "name": "stop with agent id ignores it",
@@ -103,7 +103,7 @@
     "run_id": "",
     "pause_until": "",
     "now": "2026-09-06T11:58:00Z",
-    "expect": "venster-2026-09-06T12:30:00Z.stop.s1.done"
+    "expect": "venster-2026-09-06T12-30-00Z.stop.s1.done"
   },
   {
     "name": "prompt with session and run",
@@ -115,7 +115,7 @@
     "run_id": "R",
     "pause_until": "",
     "now": "2026-09-06T11:58:00Z",
-    "expect": "venster-2026-09-06T12:30:00Z.prompt.s1.R.done"
+    "expect": "venster-2026-09-06T12-30-00Z.prompt.s1.R.done"
   },
   {
     "name": "tool ignores an agent id",
@@ -128,7 +128,7 @@
     "run_id": "",
     "pause_until": "",
     "now": "2026-09-06T11:58:00Z",
-    "expect": "venster-2026-09-06T12:30:00Z.tool.s1.done"
+    "expect": "venster-2026-09-06T12-30-00Z.tool.s1.done"
   },
   {
     "name": "unsafe session id counts as absent",
@@ -140,7 +140,7 @@
     "run_id": "",
     "pause_until": "",
     "now": "2026-09-06T11:58:00Z",
-    "expect": "venster-2026-09-06T12:30:00Z.tool.done"
+    "expect": "venster-2026-09-06T12-30-00Z.tool.done"
   },
   {
     "name": "session id with slash counts as absent",
@@ -152,7 +152,7 @@
     "run_id": "",
     "pause_until": "",
     "now": "2026-09-06T11:58:00Z",
-    "expect": "venster-2026-09-06T12:30:00Z.tool.done"
+    "expect": "venster-2026-09-06T12-30-00Z.tool.done"
   },
   {
     "name": "session id of 129 chars counts as absent",
@@ -164,7 +164,7 @@
     "run_id": "",
     "pause_until": "",
     "now": "2026-09-06T11:58:00Z",
-    "expect": "venster-2026-09-06T12:30:00Z.tool.done"
+    "expect": "venster-2026-09-06T12-30-00Z.tool.done"
   },
   {
     "name": "session id of 128 chars is kept",
@@ -176,7 +176,7 @@
     "run_id": "",
     "pause_until": "",
     "now": "2026-09-06T11:58:00Z",
-    "expect": "venster-2026-09-06T12:30:00Z.tool.ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss.done"
+    "expect": "venster-2026-09-06T12-30-00Z.tool.ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss.done"
   },
   {
     "name": "empty session id counts as absent",
@@ -188,7 +188,7 @@
     "run_id": "",
     "pause_until": "",
     "now": "2026-09-06T11:58:00Z",
-    "expect": "venster-2026-09-06T12:30:00Z.tool.done"
+    "expect": "venster-2026-09-06T12-30-00Z.tool.done"
   },
   {
     "name": "numeric session id counts as absent",
@@ -200,7 +200,7 @@
     "run_id": "",
     "pause_until": "",
     "now": "2026-09-06T11:58:00Z",
-    "expect": "venster-2026-09-06T12:30:00Z.tool.done"
+    "expect": "venster-2026-09-06T12-30-00Z.tool.done"
   },
   {
     "name": "unsafe agent id counts as absent",
@@ -213,7 +213,7 @@
     "run_id": "",
     "pause_until": "",
     "now": "2026-09-06T11:58:00Z",
-    "expect": "venster-2026-09-06T12:30:00Z.subagent.s1.done"
+    "expect": "venster-2026-09-06T12-30-00Z.subagent.s1.done"
   },
   {
     "name": "agent id with dash and underscore",
@@ -226,7 +226,7 @@
     "run_id": "",
     "pause_until": "",
     "now": "2026-09-06T11:58:00Z",
-    "expect": "venster-2026-09-06T12:30:00Z.subagent.s1.a_1-B.done"
+    "expect": "venster-2026-09-06T12-30-00Z.subagent.s1.a_1-B.done"
   },
   {
     "name": "session id with a dot counts as absent",
@@ -238,7 +238,7 @@
     "run_id": "",
     "pause_until": "",
     "now": "2026-09-06T11:58:00Z",
-    "expect": "venster-2026-09-06T12:30:00Z.tool.done"
+    "expect": "venster-2026-09-06T12-30-00Z.tool.done"
   },
   {
     "name": "pause with run",
@@ -250,7 +250,7 @@
     "run_id": "R",
     "pause_until": "2026-10-03T21:00:00+02:00",
     "now": "2026-09-06T11:58:00Z",
-    "expect": "pause-2026-10-03T21:00:00+02:00.R.done"
+    "expect": "pause-2026-10-03T21-00-00+02-00.R.done"
   },
   {
     "name": "pause with the run of a uuid",
@@ -260,7 +260,7 @@
     "run_id": "0b9e2c4a-1f00-4c8e-9d7e-5a1b2c3d4e5f",
     "pause_until": "2026-10-03T19:00:00Z",
     "now": "2026-09-06T11:58:00Z",
-    "expect": "pause-2026-10-03T19:00:00Z.0b9e2c4a-1f00-4c8e-9d7e-5a1b2c3d4e5f.done"
+    "expect": "pause-2026-10-03T19-00-00Z.0b9e2c4a-1f00-4c8e-9d7e-5a1b2c3d4e5f.done"
   },
   {
     "name": "handoff with session",

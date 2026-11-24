@@ -355,6 +355,7 @@ func TestHelperRequiredWithoutExtension(t *testing.T) {
 }
 
 func TestUnreadableHookIsNotClean(t *testing.T) {
+	skipOnWindows(t, "chmod 000 does not make a file unreadable on NTFS")
 	if os.Geteuid() == 0 {
 		t.Skip("root reads every file")
 	}

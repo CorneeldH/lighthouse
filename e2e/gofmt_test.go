@@ -48,6 +48,7 @@ func TestGoHooksRegistered(t *testing.T) {
 }
 
 func TestGofmtCheck(t *testing.T) {
+	skipOnWindows(t, "the pack hooks run through runPackHook's tool dir, which breaks bash -c quoting on Windows (#559)")
 	needTool(t, "jq")
 	bin := buildLighthouse(t)
 	repo := packRepo(t, bin, map[string]string{"go.mod": "module x\n\ngo 1.22\n"}, "Packages: core, go (found go.mod)\n")

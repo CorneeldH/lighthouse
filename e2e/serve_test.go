@@ -117,6 +117,7 @@ func exitCode(t *testing.T, done <-chan error) int {
 }
 
 func TestServeSignals(t *testing.T) {
+	skipOnWindows(t, "Windows cannot send SIGTERM or SIGINT to a process")
 	bin := buildLighthouse(t)
 	for _, sig := range []syscall.Signal{syscall.SIGTERM, syscall.SIGINT} {
 		t.Run(sig.String(), func(t *testing.T) {
@@ -171,7 +172,10 @@ func TestServePortInUse(t *testing.T) {
 	if code := exitCode(t, failing.done); code != 1 {
 		t.Fatalf("exit code = %d, want 1; stderr: %s", code, failing.stderr.String())
 	}
-	if !strings.Contains(failing.stderr.String(), "address already in use") {
+	// "bind: " is in the net.Listen error on every platform; the text after it is the OS's own
+	// ("address already in use" on Linux and macOS, "Only one usage of each socket address" on
+	// Windows, #559).
+	if !strings.Contains(failing.stderr.String(), "bind: ") {
 		t.Errorf("stderr lacks the net.Listen error: %s", failing.stderr.String())
 	}
 

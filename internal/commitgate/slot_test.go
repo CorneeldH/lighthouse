@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -114,7 +115,9 @@ func TestAcquireKeepsTheSlotHeldAndClosesTheOthers(t *testing.T) {
 	if held, err := flock.TryFile(probe); err != nil || held {
 		t.Errorf("slot-1 after Acquire: held = %v, %v; want it still taken", held, err)
 	}
-	if _, err := files[1].Stat(); !errors.Is(err, os.ErrClosed) {
+	// Close, not Stat: on Windows Stat does not check for a closed file and calls GetFileType on
+	// a stale handle (#559); a second Close reports os.ErrClosed everywhere.
+	if err := files[1].Close(); !errors.Is(err, os.ErrClosed) {
 		t.Errorf("file of slot 2 after Acquire: %v, want closed", err)
 	}
 	if err := files[0].Close(); err != nil {
@@ -137,9 +140,6 @@ func TestOpenSlotsMakesAPrivateDirAndN(t *testing.T) {
 	if len(files) != 3 {
 		t.Errorf("got %d files, want 3", len(files))
 	}
-	if info, err := os.Stat(dir); err != nil || info.Mode().Perm() != 0o700 {
-		t.Errorf("slot dir = %v, %v; want mode 0700", info, err)
-	}
 	for _, name := range []string{"slot-1", "slot-2", "slot-3"} {
 		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
 			t.Error(err)
@@ -147,6 +147,12 @@ func TestOpenSlotsMakesAPrivateDirAndN(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "slot-4")); !os.IsNotExist(err) {
 		t.Errorf("slot-4 exists: %v", err)
+	}
+	if runtime.GOOS == "windows" {
+		t.Skip("NTFS has no POSIX mode bits; see host-assumptions.md")
+	}
+	if info, err := os.Stat(dir); err != nil || info.Mode().Perm() != 0o700 {
+		t.Errorf("slot dir = %v, %v; want mode 0700", info, err)
 	}
 }
 

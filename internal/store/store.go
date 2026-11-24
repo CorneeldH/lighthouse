@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"modernc.org/sqlite" // pure-Go driver, registers "sqlite"
@@ -41,16 +42,26 @@ func DefaultPath() (string, error) {
 // setWAL, and setting it on every connection races a concurrent open into
 // SQLITE_BUSY. _txlock=immediate makes every transaction take the write
 // lock at BEGIN, so a migration rereads user_version under that lock.
-// path must be absolute: the file: URI form is built from a URL, which
-// escapes ?, # and % so SQLite opens exactly path.
 func dsn(path string) string {
-	q := url.Values{
+	return FileURI(path, url.Values{
 		"_pragma": {
 			"busy_timeout(5000)",
 			"foreign_keys(ON)",
 			"synchronous(NORMAL)",
 		},
 		"_txlock": {"immediate"},
+	})
+}
+
+// FileURI is the SQLite file: URI for path, with q as its query. path must
+// be absolute: the URI is built from a URL, which escapes ?, # and % so
+// SQLite opens exactly path. A Windows path (`C:\x\l.db`) goes in as
+// "/C:/x/l.db": without the leading slash the volume becomes the URI
+// authority, which SQLite refuses (#559).
+func FileURI(path string, q url.Values) string {
+	path = filepath.ToSlash(path)
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
 	}
 	return (&url.URL{Scheme: "file", Path: path, RawQuery: q.Encode()}).String()
 }

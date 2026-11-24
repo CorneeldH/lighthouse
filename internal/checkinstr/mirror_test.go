@@ -147,3 +147,23 @@ func TestMirrorDifferencesNamesUnreadableDir(t *testing.T) {
 		t.Errorf("stderr %q does not name %s", errOut.String(), closed)
 	}
 }
+
+// Git for Windows sets core.autocrlf=true; git diff then warns "LF will be replaced by CRLF"
+// on stderr, which reached errOut as if the comparison had failed (#559).
+func TestGitDiffU0IgnoresAutocrlf(t *testing.T) {
+	t.Setenv("GIT_CONFIG_COUNT", "1")
+	t.Setenv("GIT_CONFIG_KEY_0", "core.autocrlf")
+	t.Setenv("GIT_CONFIG_VALUE_0", "true")
+	dir := t.TempDir()
+	left, right := filepath.Join(dir, "l.md"), filepath.Join(dir, "r.md")
+	if err := os.WriteFile(left, []byte("a\nb\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(right, []byte("a\nc\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var errOut bytes.Buffer
+	if _, differ, err := gitDiffU0(left, right, &errOut); err != nil || !differ || errOut.Len() != 0 {
+		t.Fatalf("differ %v err %v stderr %q", differ, err, errOut.String())
+	}
+}

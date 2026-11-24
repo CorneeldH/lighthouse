@@ -75,7 +75,7 @@ jobs:
   tests:
     if: github.event_name != 'pull_request'
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     defaults:
       run:
         shell: bash
@@ -92,9 +92,11 @@ jobs:
       # The e2e tests of pack/python run the default test command, `uv run pytest -q`.
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       - run: mkdir -p "$RUNNER_TEMP/measure"
+      # internal/cli alone takes over ten minutes on Windows; the default -timeout 10m ends it in a
+      # panic that hides its real failures (#559).
       - id: gotest
         continue-on-error: true
-        run: go test -shuffle=on ./... 2>&1 | tee "$RUNNER_TEMP/measure/go-test.txt"
+        run: go test -shuffle=on -timeout 20m ./... 2>&1 | tee "$RUNNER_TEMP/measure/go-test.txt"
       # The pwsh tests of the test gate (#495) run apart and verbose: a pass must be told from
       # t.Skip("no pwsh"), and the rest of internal/commitgate is red on Windows (#559).
       - id: gopwsh

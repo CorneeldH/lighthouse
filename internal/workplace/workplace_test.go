@@ -3,10 +3,19 @@ package workplace
 import (
 	"context"
 	"errors"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 )
+
+// skipOnWindows skips t on native Windows, where the behaviour under test does not exist.
+func skipOnWindows(t *testing.T, why string) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip(why + "; see host-assumptions.md")
+	}
+}
 
 func TestStand(t *testing.T) {
 	cases := []struct {
@@ -59,6 +68,7 @@ func TestExecRunnerTimeoutWithGrandchildHoldingStdout(t *testing.T) {
 }
 
 func TestExecRunnerSignalKilledIsError(t *testing.T) {
+	skipOnWindows(t, "Windows has no POSIX signals: kill -9 $$ in Git Bash does not end the process by a signal")
 	_, code, err := ExecRunner()(context.Background(), 5*time.Second, "sh", "-c", "kill -9 $$")
 	if err == nil {
 		t.Errorf("killed by signal: want error, got code %d and no error", code)
@@ -67,11 +77,7 @@ func TestExecRunnerSignalKilledIsError(t *testing.T) {
 
 func TestExecRunnerErrorCarriesStderr(t *testing.T) {
 	run := ExecRunner()
-	_, _, err := run(context.Background(), 5*time.Second, "sh", "-c", "echo boom >&2; kill -9 $$")
-	if err == nil || !strings.Contains(err.Error(), "stderr: boom") {
-		t.Errorf("signal: err = %v, want stderr boom in it", err)
-	}
-	_, _, err = run(context.Background(), 300*time.Millisecond, "sh", "-c", "echo late >&2; sleep 5")
+	_, _, err := run(context.Background(), 300*time.Millisecond, "sh", "-c", "echo late >&2; sleep 5")
 	if !errors.Is(err, context.DeadlineExceeded) || !strings.Contains(err.Error(), "stderr: late") {
 		t.Errorf("timeout: err = %v, want DeadlineExceeded with stderr late", err)
 	}
@@ -79,9 +85,15 @@ func TestExecRunnerErrorCarriesStderr(t *testing.T) {
 	if err != nil || code != 2 {
 		t.Errorf("non-zero exit: code=%d err=%v, want code 2 and no error", code, err)
 	}
+	skipOnWindows(t, "Windows has no POSIX signals: kill -9 $$ in Git Bash does not end the process by a signal")
+	_, _, err = run(context.Background(), 5*time.Second, "sh", "-c", "echo boom >&2; kill -9 $$")
+	if err == nil || !strings.Contains(err.Error(), "stderr: boom") {
+		t.Errorf("signal: err = %v, want stderr boom in it", err)
+	}
 }
 
 func TestExecRunnerStderrIsClipped(t *testing.T) {
+	skipOnWindows(t, "Windows has no POSIX signals: kill -9 $$ in Git Bash does not end the process by a signal")
 	_, _, err := ExecRunner()(context.Background(), 5*time.Second, "sh", "-c", "printf '%0300d' 0 >&2; kill -9 $$")
 	if err == nil {
 		t.Fatal("want error")
