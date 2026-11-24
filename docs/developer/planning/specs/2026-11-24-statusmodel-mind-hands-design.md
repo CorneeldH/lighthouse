@@ -300,3 +300,10 @@ Neem deze door bij het lezen. De rest komt van de gebruiker.
 9. De nieuwe binary weigert oude `[labels]`-sleutels en wijst naar het migratiecommando.
 10. De migratie draait op de tick-host met de tick gepauzeerd, en is na een fout opnieuw te draaien.
 11. `/api/priorities` krijgt `labels` per as in plaats van `label` plus `needs_label`.
+
+## Open na review
+
+Ronde 3 haalde de rondegrens met deze punten open. Ze zijn aanvaard als `accepted_open`;
+de volgende fase of de PR-review weegt ze opnieuw.
+
+- **r3-f1** (MAJOR, §6 Migratie — Volgorde per repo, lighthouse zelf): De nieuwe volgorde start de hostbrede pauze al vóór de PR en houdt die aan tot na de merge, waardoor alle dispatch-repo's tijdens review en CI stilliggen.
