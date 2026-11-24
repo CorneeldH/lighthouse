@@ -4,6 +4,23 @@ All notable changes to lighthouse. The format follows [Keep a Changelog](https:/
 chosen is in [docs/releasing.md](docs/releasing.md). The release workflow writes the sections below from the
 fragments in `changelog.d/`; never edit a released section by hand.
 
+## [v0.27.0] - 2026-11-24
+
+### Added
+
+- `docs/levels.md` explains per setup level what it skips and why, and the install guide says when to scale up to the next level.
+- `lighthouse lint check` checks per language pack that the linter is really wired: the version is pinned, the config keeps the blocking rules of the linter hook on, and a CI step runs the linter so that a finding turns CI red. `lighthouse init` runs it after installing and lists what is missing, without failing. See `docs/lint-check.md`.
+- The Dependencies view sorts each column by prio-weight by default, with a switch to plain weight or fewest crossings; the pill hover shows weight, factor and prio-weight.
+- `[test_gate] on` kiest wanneer de test-gate draait: `commit` (standaard, zoals voorheen), `pr` (vóór een `gh pr create`, op de branch-diff) of `both`. Bij `pr` en `both` blokkeert een commando dat een commit en een PR-create combineert, met het verzoek ze te splitsen. Een onleesbare `lighthouse.toml` blokkeert nu ook een `gh pr create`, en bij een onleesbare config zonder `on` noemt het blok bij de commit nu `on` in plaats van `forge.default_branch`; de oorzaaktekst blijft gelijk.
+
+### Changed
+
+- In the Priorities tab, the Milestones view labels its computed order `%` instead of `Computed`: that order sorts milestones on the share of issues done. The button's accessible name and tooltip say `% done`.
+
+### Fixed
+
+- A Controller issue that has nowhere to go is now recovered or returned with a reason (pusher question with another answer, answered question without a run, closed PR, missing park marker, idle safety net). A busy workplace and an untrusted answer now show up in the UI.
+
 ## [v0.26.0] - 2026-11-23
 
 ### Added
