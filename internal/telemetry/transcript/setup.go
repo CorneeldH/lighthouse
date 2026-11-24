@@ -151,7 +151,7 @@ func (r Reading) SetupBetween(from, to time.Time) Setup {
 	inWindow := false
 	skills := map[string]string{}
 	lane := ""
-	for _, e := range r.Entries {
+	for _, e := range chronological(r.Entries) {
 		if !to.IsZero() && !e.At.IsZero() && !e.At.Before(to) {
 			continue
 		}
@@ -219,4 +219,15 @@ func (r Reading) topModel(from, to time.Time) string {
 		}
 	}
 	return best
+}
+
+// chronological returns the entries ordered by timestamp. Entries are kept per
+// file (main transcript first, then the subagent files), so "the last one wins"
+// would otherwise let an older line of a later file override a newer line of
+// the main transcript. The sort is stable and an entry without a timestamp sorts
+// first, so ties and missing times keep their file order.
+func chronological(entries []Entry) []Entry {
+	sorted := append([]Entry(nil), entries...)
+	sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].At.Before(sorted[j].At) })
+	return sorted
 }

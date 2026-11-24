@@ -254,3 +254,23 @@ func TestSetupWindowBoundaries(t *testing.T) {
 		t.Fatalf("from inclusive / to exclusive violated: %s %s", strVal(s.Model), strVal(s.Effort))
 	}
 }
+
+func TestSetupLastWinsByTimeAcrossFiles(t *testing.T) {
+	// The main transcript loads executing-plans at 10:05; a subagent file, parsed
+	// after it, holds an OLDER sdd load (10:01). The newest line must win.
+	r := mustParse(t,
+		f("s.jsonl",
+			line("user", "2026-01-01T10:05:00Z", "", skillText("/h/superpowers/7.0.2/skills/executing-plans", "body", "")),
+		),
+		f("s/subagents/agent-a.jsonl",
+			line("user", "2026-01-01T10:01:00Z", "", skillText("/h/superpowers/7.0.1/skills/subagent-driven-development", "body", "")),
+		),
+	)
+	s := r.SetupBetween(time.Time{}, time.Time{})
+	if got := strVal(s.Lane); got != "native" {
+		t.Errorf("lane = %s, want native (newest line wins)", got)
+	}
+	if got := strVal(s.SuperpowersVersion); got != "7.0.2" {
+		t.Errorf("superpowers version = %s, want 7.0.2", got)
+	}
+}
