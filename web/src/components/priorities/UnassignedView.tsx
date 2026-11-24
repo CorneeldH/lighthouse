@@ -4,7 +4,7 @@ import type { ViewProps } from './types'
 
 function relationText(row: UnassignedRow): string | null {
   if (row.relation === null) return null
-  return row.relation === 'blocks' ? `blocks #${row.relatedNumber}` : `waits on #${row.relatedNumber}`
+  return row.relation === 'blocks' ? `blocks ${row.relatedNumber}` : `waits on ${row.relatedNumber}`
 }
 
 function Row({ row }: { row: UnassignedRow }): JSX.Element {
@@ -22,7 +22,7 @@ function Row({ row }: { row: UnassignedRow }): JSX.Element {
         rel="noreferrer"
         className="shrink-0 font-semibold text-lh-link hover:underline"
       >
-        #{node.number}
+        {node.number}
       </a>
       <span className="min-w-0 flex-1 truncate">{node.title}</span>
       {row.closedMilestone !== null && (

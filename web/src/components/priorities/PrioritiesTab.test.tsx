@@ -183,13 +183,14 @@ describe('PrioritiesTab', () => {
       renderTab()
       await screen.findByRole('button', { name: 'a/x' })
       const states = screen.getAllByTestId('legend-block')
-      expect(states.map((b) => [b.getAttribute('data-state'), b.getAttribute('data-needs-human')])).toEqual([
-        ['done', 'false'],
-        ['active', 'false'],
-        ['ready', 'false'],
-        ['ready', 'true'],
-        ['blocked', 'false'],
+      expect(states.map((b) => b.getAttribute('data-state'))).toEqual([
+        'done',
+        'active',
+        'ready',
+        'needs_human',
+        'blocked',
       ])
+      expect(states.every((b) => !b.hasAttribute('data-needs-human'))).toBe(true)
       expect(legend().queryByText('picked up')).toBeNull()
       for (const label of ['active', 'ready', 'needs a human', 'blocked']) {
         expect(legend().getByText(label)).toBeTruthy()

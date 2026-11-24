@@ -39,7 +39,7 @@ describe('UnassignedView', () => {
   it('shows number as forge link and title per open issue without milestone', () => {
     view([repo(A, [iss(5, []), iss(6, [], { number: 1, state: 'open', title: 'M1' })])])
     expect(rows()).toHaveLength(1)
-    const link = screen.getByRole('link', { name: '#5' })
+    const link = screen.getByRole('link', { name: '5' })
     expect(link.getAttribute('href')).toBe('https://forge/5')
     expect(screen.getByText('title-5')).toBeTruthy()
   })
@@ -47,15 +47,15 @@ describe('UnassignedView', () => {
   it('names the relation with the related number', () => {
     view([repo(A, [iss(1), iss(2, [[A, 1]]), iss(3, [[A, 44]]), iss(44)])])
     const byNr = (n: number) => rows().find((r) => within(r).queryByText(`title-${n}`))!
-    expect(within(byNr(1)).getByText('blocks #2')).toBeTruthy()
-    expect(within(byNr(2)).getByText('waits on #1')).toBeTruthy()
-    expect(within(byNr(3)).getByText('waits on #44')).toBeTruthy()
-    expect(within(byNr(44)).getByText('blocks #3')).toBeTruthy()
+    expect(within(byNr(1)).getByText('blocks 2')).toBeTruthy()
+    expect(within(byNr(2)).getByText('waits on 1')).toBeTruthy()
+    expect(within(byNr(3)).getByText('waits on 44')).toBeTruthy()
+    expect(within(byNr(44)).getByText('blocks 3')).toBeTruthy()
   })
 
   it('draws the relation pill blue, not yellow', () => {
     view([repo(A, [iss(1), iss(2, [[A, 1]])])])
-    const pill = screen.getByText('waits on #1')
+    const pill = screen.getByText('waits on 1')
     expect(pill.getAttribute('style')).toContain('--lh-blue')
     expect(pill.getAttribute('style')).not.toContain('--lh-yellow')
   })

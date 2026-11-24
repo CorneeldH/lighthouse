@@ -23,12 +23,12 @@ interface ToolbarProps {
   onDepsOrder: (o: DepsOrder) => void
 }
 
-const STATES: Array<{ key: string; label: string; state: BlockState; needsHuman: boolean }> = [
-  { key: 'done', label: 'done', state: 'done', needsHuman: false },
-  { key: 'active', label: 'active', state: 'active', needsHuman: false },
-  { key: 'ready', label: 'ready', state: 'ready', needsHuman: false },
-  { key: 'needs-human', label: 'needs a human', state: 'ready', needsHuman: true },
-  { key: 'blocked', label: 'blocked', state: 'blocked', needsHuman: false },
+const STATES: Array<{ key: string; label: string; state: BlockState }> = [
+  { key: 'done', label: 'done', state: 'done' },
+  { key: 'active', label: 'active', state: 'active' },
+  { key: 'ready', label: 'ready', state: 'ready' },
+  { key: 'needs-human', label: 'needs a human', state: 'needs_human' },
+  { key: 'blocked', label: 'blocked', state: 'blocked' },
 ]
 
 const VIEWS: Array<{ id: ViewId; label: string }> = [
@@ -150,7 +150,6 @@ export function Toolbar({
             <Block
               testId="legend-block"
               state={st.state}
-              needsHuman={st.needsHuman}
               color="var(--lh-grey)"
               title={st.label}
               className="size-3.5"
