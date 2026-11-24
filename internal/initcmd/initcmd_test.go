@@ -1908,12 +1908,17 @@ func TestWarnsMainCheckoutInSyncFolderFromLinkedWorktree(t *testing.T) {
 // with pwsh but without the PSScriptAnalyzer module, each name what is missing and which unit needs it.
 func TestInitReportsMissingPowershellTools(t *testing.T) {
 	cases := []struct {
-		name       string
-		noPwsh     bool
-		want, none string
+		name   string
+		noPwsh bool
+		want   []string
+		none   string
 	}{
-		{"no pwsh", true, "missing dependency: pwsh (needed by: powershell-lint-check)\n", ""}, // the module is reported too: it cannot be there without pwsh
-		{"no module", false, "missing dependency: PSScriptAnalyzer (needed by: powershell-lint-check)\n", "missing dependency: pwsh"},
+		// The module is reported too: it cannot be there without pwsh.
+		{"no pwsh", true, []string{
+			"missing dependency: pwsh (needed by: powershell-lint-check)\n",
+			"missing dependency: PSScriptAnalyzer (needed by: powershell-lint-check)\n",
+		}, ""},
+		{"no module", false, []string{"missing dependency: PSScriptAnalyzer (needed by: powershell-lint-check)\n"}, "missing dependency: pwsh"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -1938,8 +1943,13 @@ func TestInitReportsMissingPowershellTools(t *testing.T) {
 					},
 				}
 			})
-			if r.code != 0 || !strings.Contains(r.err, c.want) || (c.none != "" && strings.Contains(r.err, c.none)) {
+			if r.code != 0 || (c.none != "" && strings.Contains(r.err, c.none)) {
 				t.Fatalf("rc %d err %q", r.code, r.err)
+			}
+			for _, w := range c.want {
+				if !strings.Contains(r.err, w) {
+					t.Fatalf("err lacks %q: %q", w, r.err)
+				}
 			}
 		})
 	}
