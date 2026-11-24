@@ -94,12 +94,17 @@ De SPA leidt deze begrippen af in `web/src/lib/priorities/derive.ts`; de server 
 - **Actief.** Een issue is actief als er een open of geparkeerde run op staat, of als de
   bordstatus `In progress` of `Controller` is (zoals `issueState` en de
   [spec](developer/planning/specs/2026-11-20-statusmodel-en-statusschema-design.md)).
-- **Toestand van een issue.** `issueState` kiest de eerste passende regel: *actief* (live run,
-  bordstatus `In progress` of `Controller`; met de vlag *mens nodig* bij een `needs_*`-label of
-  een open vraag), *mens nodig* (`needs_shaping` of `needs_decision`), *geblokkeerd* (label
-  `blocked_*` of open blockers), *mens nodig* (`needs_hands` of `needs_testing`), anders
-  *oppakbaar*. Gesloten issues zijn *af* (`closed`). De milestone-balk tekent die vijf toestanden
-  met één vormentaal en groepeert de blokjes per toestand. De API levert daarvoor per issue
+- **Toestand van een issue.** `issueState` kiest de eerste passende regel; een gesloten issue is
+  *done*. Een actief issue (live run, bordstatus `In progress` of `Controller`) is *needs shaping*
+  bij het label `needs_shaping`, anders *needs human* bij een open vraag of een ander
+  `needs_*`-label, anders *active*. Een niet-actief issue is *needs shaping* bij `needs_shaping`,
+  *needs human* bij `needs_decision`, *blocked* bij een label `blocked_*` of open blockers,
+  *needs human* bij `needs_hands` of `needs_testing`, anders *to do* (intern `ready`). De
+  milestone-balk tekent die zes toestanden met één vormentaal en groepeert de blokjes per
+  toestand, van links naar rechts: done, needs human, active, to do, needs shaping, blocked. De
+  legenda heeft de kopjes *Milestones* en *Status*; de volgorde onder *Status* is blocked, needs
+  shaping, to do, active, needs human, done. `lighthouse state show` drukt dezelfde status af
+  (`state: #<nr> <status>`) zonder vlag erbij. De API levert daarvoor per issue
   `label` (het label met de laagste rang), `needs_label` (er staat een `needs_*`-label op, welk
   ook), `open_question`, `prio_weight` en `factor` (zie *Prio-gewicht*), en per milestone de
   gesloten issues (`closed`).
@@ -113,14 +118,16 @@ De SPA leidt deze begrippen af in `web/src/lib/priorities/derive.ts`; de server 
   telt niet mee. De tick en de triage ordenen met hetzelfde gewicht (zie
   [`tick.md`](tick.md), *De rem*, en [`triage.md`](triage.md)). De graaf sorteert er zijn
   kolommen mee (zie *Sortering van de graaf*).
-- **Vormentaal van de graaf.** De graaf tekent de toestand van een issue op de kaart met
-  dezelfde vormentaal als de balk: een kleurstrook (gestreept bij *actief*, effen bij
-  elke andere toestand), een stippelrand van 1,5 px in de voorgrondkleur bij *mens nodig*, een kruis bij
-  het nummer bij *geblokkeerd* en een doorgetrokken grijze rand voor een externe kaart (andere
-  repo of buiten het filter), nooit gestippeld. Issues zonder afhankelijkheden staan als
-  dezelfde kaart in een raster onder de graaf. Zie de
-  [spec](developer/planning/specs/2026-11-20-statusmodel-en-statusschema-design.md) en het
-  [plan](developer/planning/plans/2026-11-22-issue-438-afhankelijkhedengraaf-vormentaal.md).
+- **Vormentaal van de graaf.** De graaf tekent de status van een issue met dezelfde vormen als de
+  balk, in een blokje van 14 bij 14 px vóór het nummer: een kruis (vectorlijnen die in elk blok
+  glad blijven) bij *blocked*, een stippelrand van 1,5 px in de voorgrondkleur bij *needs
+  shaping*, strepen bij *needs human*, gestreept bij *active*, effen bij *to do* en *done*. Het
+  nummer is onderstreept bij *needs shaping* en *needs human*, nergens anders, en staat zonder
+  `#`. De kleurstrook links is altijd effen in de kleur van de milestone. Een externe kaart
+  (andere repo of buiten het filter) heeft geen statusblokje en een doorgetrokken grijze rand.
+  Issues zonder afhankelijkheden staan als dezelfde kaart in een raster onder de graaf. Zie de
+  [spec](developer/planning/specs/2026-11-23-prioritering-zes-statussen-design.md) en het
+  [plan](developer/planning/plans/2026-11-24-issue-555-zes-statussen-vormentaal.md).
 - **Bergop / bergaf.** Een actief issue is bergop als de fase van zijn run een van
   `brainstorming`, `start-issue`, `spec-review`, `writing-plans` of `plan-review` is: het
   denkwerk vóór de uitvoering. Elke andere fase, of een issue dat alleen op het bord actief is,
