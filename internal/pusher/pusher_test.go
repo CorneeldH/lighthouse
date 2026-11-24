@@ -1633,3 +1633,138 @@ func TestSpecAndPlanOfBranchReachReviewer(t *testing.T) {
 		}
 	}
 }
+
+// pushedQuestion is the pusher Vraag of sha in wt as renderQuestion writes it, with after and lane.
+func pushedQuestion(sha, wt string) string {
+	return renderQuestion(questionInput{sha: sha, worktree: wt, branch: branch, after: after, lane: "native",
+		red: Red{StepReview, "shadow"}, hint: hintPermit}, "nl")
+}
+
+const pushedSHA = "0123456789abcdef0123456789abcdef01234567"
+
+// A pushed:<id> key names the pusher Vraag with that id: its worktree, branch, after and lane at
+// the time of the Vraag, and no permit. Fails when targetOf does not know pushed, or gives the
+// Vraag's SHA as a permit: nobody answered, so nothing lifts the review.
+func TestTargetOfPushed(t *testing.T) {
+	at := time.Date(2026, 11, 24, 12, 0, 0, 0, time.UTC)
+	comments := []protocol.Comment{
+		{ID: 7, Body: handoffBody("/w", after), CreatedAt: at.Add(-time.Hour).Format(time.RFC3339)},
+		{ID: 8, Body: pushedQuestion(pushedSHA, "/w"), CreatedAt: at.Format(time.RFC3339)},
+	}
+	got, err := targetOf(comments, "pushed:8")
+	if err != nil {
+		t.Fatalf("targetOf: %v", err)
+	}
+	want := target{worktree: "/w", branch: branch, after: after, lane: "native", at: at}
+	if got != want {
+		t.Errorf("targetOf = %+v, want %+v", got, want)
+	}
+}
+
+// Only a pusher Vraag starts a pushed row: a handoff, a Vraag of a session, a Herstel with a sha,
+// a Vraag without a usable sha and a gone comment are refused.
+func TestTargetOfPushedRejectsNonQuestion(t *testing.T) {
+	at := time.Date(2026, 11, 24, 12, 0, 0, 0, time.UTC).Format(time.RFC3339)
+	q := pushedQuestion(pushedSHA, "/w")
+	cases := map[string]string{
+		"handoff":           handoffBody("/w", after),
+		"question of a run": q + "\n<sub>session " + runs.NewSessionID() + "</sub>",
+		"herstel":           strings.Replace(q, protocol.Heading("kind_question", "nl"), protocol.Heading("kind_repair", "nl"), 1),
+		"no sha":            pushedQuestion("", "/w"),
+		"short sha":         pushedQuestion("0123abc", "/w"),
+		"relative wt":       pushedQuestion(pushedSHA, "w"),
+		"not a protocol":    "push",
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			if _, err := targetOf([]protocol.Comment{{ID: 8, Body: body, CreatedAt: at}}, "pushed:8"); err == nil {
+				t.Errorf("targetOf accepted %s:\n%s", name, body)
+			}
+		})
+	}
+	t.Run("gone", func(t *testing.T) {
+		if _, err := targetOf([]protocol.Comment{{ID: 8, Body: q, CreatedAt: at}}, "pushed:9"); err == nil {
+			t.Error("targetOf accepted the id of a comment that is not there")
+		}
+	})
+}
+
+// lastQuestion is the id of the last comment the pusher posted, which must be a pusher Vraag of sha.
+func (r *runFix) lastQuestion(sha string) int64 {
+	r.t.Helper()
+	body := r.forge.last(r.t)
+	question(r.t, body, sha, r.wt)
+	r.forge.mu.Lock()
+	defer r.forge.mu.Unlock()
+	for i := len(r.forge.comments) - 1; i >= 0; i-- {
+		if r.forge.comments[i].Body == body {
+			return r.forge.comments[i].ID
+		}
+	}
+	r.t.Fatal("the last post is not among the comments")
+	return 0
+}
+
+// pushedRow claims the push row tick starts for a Vraag pushed by hand: trigger answer, key
+// pushed:<id>, and no permit.
+func (r *runFix) pushedRow(id int64) {
+	r.t.Helper()
+	r.claim("answer", "pushed:"+strconv.FormatInt(id, 10), time.Now().Add(2*time.Second))
+	r.req.Permit = ""
+}
+
+// Someone pushed the SHA of the Vraag by hand: the pushed row reads the Vraag, the floor is green
+// with AlreadyPushed and the chain goes on to after, with no review and no push of its own.
+// Fails when targetOf does not know pushed (the row then asks at the trigger step).
+func TestRunPushedAlreadyOnOriginHandsOn(t *testing.T) {
+	r := newRunFix(t, hostconfig.ReviewShadow, nil)
+	head := r.commitWorkflow("ci.yml", preMergeWF)
+	r.run()
+	id := r.lastQuestion(head)
+	r.cfg.Reviewers = []hostconfig.Reviewer{rv("supply-chain", "never"), rv("injection", "never")}
+	tgit(t, r.wt, "push", "-q", "origin", branch)
+	base := tgit(t, r.main, "rev-parse", "main")
+	r.pushedRow(id)
+	r.run()
+	if r.reviewerRan() {
+		t.Error("a reviewer ran for a SHA origin already has")
+	}
+	if got := r.remoteHead(); got != head {
+		t.Fatalf("origin/%s = %q, want the hand-pushed %s", branch, got, head)
+	}
+	h, _ := protocol.ParseHeader(r.forge.last(t))
+	ho, err := protocol.ParseHandoff(h)
+	if err != nil {
+		t.Fatalf("ParseHandoff: %v\n%s", err, r.forge.last(t))
+	}
+	if ho.Next != after || ho.Branch != branch || h.Fields["range"] != base+".."+head {
+		t.Errorf("handoff %+v range %q, want next %q on %s, range %s..%s", ho, h.Fields["range"], after, branch, base, head)
+	}
+	wantClosed(t, r.row(), runs.Handoff)
+	if got := r.row().PushedSHA; got != head {
+		t.Errorf("row pushed %q, want %s", got, head)
+	}
+}
+
+// The forge said origin had the SHA, but it has not (a race, or the forge lied): the pushed row
+// runs the whole road, review included, and ends in a new Vraag with a new id, never in a push.
+// Fails when a pushed start counts as a permit.
+func TestRunPushedNotOnOriginRunsFullRoad(t *testing.T) {
+	r := newRunFix(t, hostconfig.ReviewShadow, nil)
+	head := r.commitWorkflow("ci.yml", preMergeWF)
+	r.run()
+	id := r.lastQuestion(head)
+	r.cfg.Reviewers = []hostconfig.Reviewer{rv("supply-chain", "never"), rv("injection", "never")}
+	r.pushedRow(id)
+	r.run()
+	if !r.reviewerRan() {
+		t.Error("no reviewer ran: the pushed start skipped the review")
+	}
+	if got := r.remoteHead(); got != "" {
+		t.Fatalf("pushed %s without an answer", got)
+	}
+	if again := r.lastQuestion(head); again == id {
+		t.Errorf("the new Vraag has the id %d of the old one", again)
+	}
+	wantClosed(t, r.row(), runs.Question)
+}

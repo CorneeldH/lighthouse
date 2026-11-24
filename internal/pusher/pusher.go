@@ -401,7 +401,8 @@ func openPushRow(ctx context.Context, db *sql.DB, req Request) (runs.Row, error)
 }
 
 // target is what the trigger of a push row names: from the handoff for push:<id>, from the
-// pusher Question answered by <id> for pushanswer:<id>.
+// pusher Question answered by <id> for pushanswer:<id>, from the pusher Question <id> itself,
+// without a permit, for pushed:<id>.
 type target struct {
 	worktree, branch, after, lane, permit string
 	at                                    time.Time // when the handoff or the Question was posted
@@ -433,6 +434,23 @@ func targetOf(comments []protocol.Comment, key string) (target, error) {
 			return checkTarget(target{worktree: ho.Worktree, branch: ho.Branch, after: ho.After, lane: ho.Lane,
 				at: parseTime(c.CreatedAt)})
 		}
+	case "pushed":
+		// Tick saw the Question's SHA on origin: someone pushed by hand. Nobody answered, so the
+		// target carries no permit and the review runs as on any start.
+		for _, c := range comments {
+			if c.ID != id {
+				continue
+			}
+			h, ok := protocol.ParseHeader(c.Body)
+			if !ok || !pusherQuestion(h) {
+				return target{}, fmt.Errorf("comment %d is not a pusher Question", id)
+			}
+			if !shaRe.MatchString(h.Fields["sha"]) {
+				return target{}, fmt.Errorf("the pusher Question %d carries no SHA (%q)", id, h.Fields["sha"])
+			}
+			return checkTarget(target{worktree: h.Fields["worktree"], branch: h.Fields["branch"], after: h.Fields["after"],
+				lane: h.Fields["lane"], at: parseTime(c.CreatedAt)})
+		}
 	case "pushanswer":
 		// The Question the user answered is the last pusher Question before the answer; one after it
 		// was never answered, and its SHA never gets the permit.
@@ -450,7 +468,7 @@ func targetOf(comments []protocol.Comment, key string) (target, error) {
 				}
 				return checkTarget(t)
 			}
-			if h, ok := protocol.ParseHeader(c.Body); ok && h.Kind == protocol.KindQuestion && h.Session == "" && h.Fields["sha"] != "" {
+			if h, ok := protocol.ParseHeader(c.Body); ok && pusherQuestion(h) {
 				q = &comments[i]
 			}
 		}
@@ -458,6 +476,11 @@ func targetOf(comments []protocol.Comment, key string) (target, error) {
 		return target{}, fmt.Errorf("trigger key %q is not a push trigger", key)
 	}
 	return target{}, fmt.Errorf("comment %d of trigger %s is gone", id, key)
+}
+
+// pusherQuestion reports whether h is a 🤖 Question of the pusher: no session, a sha field.
+func pusherQuestion(h protocol.Header) bool {
+	return h.Kind == protocol.KindQuestion && h.Session == "" && h.Fields["sha"] != ""
 }
 
 func checkTarget(t target) (target, error) {
