@@ -2,6 +2,7 @@ package initcmd
 
 import (
 	"bytes"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"github.com/CorneeldH/lighthouse/internal/created"
 	"github.com/CorneeldH/lighthouse/internal/manifest"
@@ -683,5 +685,170 @@ func TestUninstallSettingsFileImpliesContainers(t *testing.T) {
 	}
 	if exists(root, ".claude/settings.json") {
 		t.Errorf("settings.json left:\n%s", read(t, root, ".claude/settings.json"))
+	}
+}
+
+// standardPacks is levelPacks with the labels flag at standard and the real direction
+// templates, so a standard-level init seeds a labels file and the direction documents.
+func standardPacks(t *testing.T) fstest.MapFS {
+	t.Helper()
+	p := levelPacks()
+	for k, v := range directionPacks(t) {
+		if strings.HasPrefix(k, "core/templates/") || k == "core/headings.toml" {
+			p[k] = v
+		}
+	}
+	p["core/levels.toml"] = file(flagLevelsToml)
+	return p
+}
+
+// standardDirectionInit runs init at level standard with labels and direction documents over
+// levelPacks, so the run seeds a labels file and the direction documents.
+func standardDirectionInit(t *testing.T, root string) {
+	t.Helper()
+	r := run(t, root, "", func(o *Options) {
+		o.Level = "standard"
+		o.Packs = standardPacks(t)
+		o.Yes = true
+		o.Direction = true
+		o.SyncLabels = func(string, bool, io.Writer, io.Writer) error { return nil }
+	})
+	if r.code != 0 {
+		t.Fatalf("init: rc %d\n%s%s", r.code, r.out, r.err)
+	}
+}
+
+// Red when uninstall deletes a seeded file or stays silent about one.
+func TestUninstallRoundTripStandardLevel(t *testing.T) {
+	root := newRepo(t)
+	before := treeSnapshot(t, root)
+	standardDirectionInit(t, root)
+	seeded := []string{taxRel, strategyRel, tenetsRel, areasRel}
+	for _, rel := range seeded {
+		if !exists(root, rel) {
+			t.Fatalf("fixture: init seeded no %s", rel)
+		}
+	}
+
+	r := runUninstall(t, root, func(o *Options) {
+		o.Packs = standardPacks(t)
+	})
+	if r.code != 0 {
+		t.Fatalf("uninstall: rc %d\n%s%s", r.code, r.out, r.err)
+	}
+	for _, rel := range seeded {
+		if !exists(root, rel) {
+			t.Errorf("%s is gone", rel)
+		}
+		if want := "kept: " + rel + " (project file after seeding)\n"; !strings.Contains(r.err, want) {
+			t.Errorf("no %q in:\n%s", want, r.err)
+		}
+	}
+	// What remains beyond the tree of before is the seeded files and their directories.
+	for rel := range treeSnapshot(t, root) {
+		if _, ok := before[rel]; ok {
+			continue
+		}
+		owned := false
+		for _, s := range seeded {
+			if rel == s || strings.HasPrefix(rel, s+"/") || strings.HasPrefix(s, rel) {
+				owned = true
+			}
+		}
+		if !owned {
+			t.Errorf("uninstall left %s", rel)
+		}
+	}
+	for rel := range before {
+		if _, ok := treeSnapshot(t, root)[rel]; !ok {
+			t.Errorf("uninstall removed %s", rel)
+		}
+	}
+}
+
+// Red when a seeded path that is not there is reported, or one that is there is not.
+func TestUninstallSeededPathMissingIsNotReported(t *testing.T) {
+	root := newRepo(t)
+	standardDirectionInit(t, root)
+	if err := os.Remove(filepath.Join(root, filepath.FromSlash(tenetsRel))); err != nil {
+		t.Fatal(err)
+	}
+	r := runUninstall(t, root, func(o *Options) { o.Packs = standardPacks(t) })
+	if r.code != 0 {
+		t.Fatalf("uninstall: rc %d\n%s%s", r.code, r.out, r.err)
+	}
+	if strings.Contains(r.err, tenetsRel) {
+		t.Errorf("reports the missing %s:\n%s", tenetsRel, r.err)
+	}
+	if !strings.Contains(r.err, "kept: "+strategyRel+" ") {
+		t.Errorf("does not report %s:\n%s", strategyRel, r.err)
+	}
+}
+
+// Red when a runtime directory is deleted or goes unreported, or a loose file is reported as one.
+func TestUninstallReportsRuntimeDirs(t *testing.T) {
+	root := newRepo(t)
+	initYes(t, root)
+	write(t, root, ".lighthouse/run/x", "1\n")
+	write(t, root, ".lighthouse/bin/y", "2\n")
+	r := runUninstall(t, root)
+	if r.code != 0 {
+		t.Fatalf("uninstall: rc %d\n%s%s", r.code, r.out, r.err)
+	}
+	for _, rel := range []string{".lighthouse/run/x", ".lighthouse/bin/y"} {
+		if !exists(root, rel) {
+			t.Errorf("%s is gone", rel)
+		}
+	}
+	for _, d := range []string{".lighthouse/run", ".lighthouse/bin"} {
+		if want := "kept: " + d + " (runtime state, not installed by init)\n"; !strings.Contains(r.err, want) {
+			t.Errorf("no %q in:\n%s", want, r.err)
+		}
+	}
+}
+
+// Red when the fixed lines vanish: labels on the forge, host.toml, the running session.
+func TestUninstallReportsNotTouched(t *testing.T) {
+	root := newRepo(t)
+	initYes(t, root)
+	r := runUninstall(t, root)
+	if r.code != 0 {
+		t.Fatalf("uninstall: rc %d\n%s%s", r.code, r.out, r.err)
+	}
+	var forge, restart bool
+	for _, l := range strings.Split(r.err, "\n") {
+		if strings.HasPrefix(l, "not touched:") && strings.Contains(l, "labels on the forge") && strings.Contains(l, ".lighthouse/host.toml") {
+			forge = true
+		}
+		if strings.HasPrefix(l, "not touched:") && strings.Contains(l, "running Claude Code session") && strings.Contains(l, "restart") {
+			restart = true
+		}
+	}
+	if !forge || !restart {
+		t.Errorf("forge line %v, restart line %v in:\n%s", forge, restart, r.err)
+	}
+}
+
+// Red when a refused or declined run writes a report.
+func TestUninstallLeavesNoReportOnRefusal(t *testing.T) {
+	root := newRepo(t)
+	standardDirectionInit(t, root)
+	write(t, root, ".lighthouse/run/x", "1\n")
+	p := standardPacks(t)
+	write(t, root, ".claude/hooks/lighthouse/run.sh", read(t, root, ".claude/hooks/lighthouse/run.sh")+"# mine\n")
+	refused := runUninstall(t, root, func(o *Options) { o.Packs = p })
+	if refused.code != 1 || !strings.Contains(refused.err, "refused") {
+		t.Fatalf("fixture: want a refusal, rc %d\n%s", refused.code, refused.err)
+	}
+	declined := runUninstall(t, root, func(o *Options) { o.Packs = p; o.Force = true; o.Yes = false; o.In = strings.NewReader("n\n") })
+	if declined.code != 1 {
+		t.Fatalf("fixture: want a decline, rc %d\n%s%s", declined.code, declined.out, declined.err)
+	}
+	for name, r := range map[string]result{"refused": refused, "declined": declined} {
+		for _, w := range []string{"kept:", "not touched:", "left:"} {
+			if strings.Contains(r.err, w) {
+				t.Errorf("%s run reports %q:\n%s", name, w, r.err)
+			}
+		}
 	}
 }

@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/BurntSushi/toml"
 	"github.com/CorneeldH/lighthouse/internal/agentsmd"
 	"github.com/CorneeldH/lighthouse/internal/created"
 	"github.com/CorneeldH/lighthouse/internal/manifest"
@@ -72,6 +73,8 @@ func uninstall(o Options) error {
 		}
 	}
 
+	// Read before planning: lighthouse.toml goes in this run.
+	seeded := seededPaths(root)
 	plan, notes, err := uninstallPlan(root, changes)
 	if err != nil {
 		return err
@@ -94,10 +97,59 @@ func uninstall(o Options) error {
 		}
 	}
 	_, _ = fmt.Fprintf(o.Out, "Removed %d file(s).\n", len(paths))
-	for _, n := range notes {
-		_, _ = fmt.Fprintln(o.Err, n)
-	}
+	report(o, root, seeded, notes)
 	return nil
+}
+
+// seededPaths reads the [paths] labels, strategy, tenets and areas of lighthouse.toml: the
+// files init seeds and the project keeps. A missing or unreadable lighthouse.toml, or an
+// empty key, gives nothing.
+func seededPaths(root string) []string {
+	b, err := os.ReadFile(filepath.Join(root, configPath))
+	if err != nil {
+		return nil
+	}
+	var cfg struct {
+		Paths struct {
+			Labels   string `toml:"labels"`
+			Strategy string `toml:"strategy"`
+			Tenets   string `toml:"tenets"`
+			Areas    string `toml:"areas"`
+		} `toml:"paths"`
+	}
+	if _, err := toml.Decode(string(b), &cfg); err != nil {
+		return nil
+	}
+	var out []string
+	for _, p := range []string{cfg.Paths.Labels, cfg.Paths.Strategy, cfg.Paths.Tenets, cfg.Paths.Areas} {
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// report writes the closing lines of an uninstall to o.Err, one per case: seeded files that
+// still exist, runtime directories left under .lighthouse, the notes of revertCreated, and
+// what uninstall never touches.
+func report(o Options, root string, seeded, notes []string) {
+	line := func(format string, a ...any) { _, _ = fmt.Fprintf(o.Err, format+"\n", a...) }
+	for _, rel := range seeded {
+		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(rel))); err == nil {
+			line("kept: %s (project file after seeding)", rel)
+		}
+	}
+	entries, _ := os.ReadDir(filepath.Join(root, ".lighthouse"))
+	for _, e := range entries {
+		if e.IsDir() {
+			line("kept: .lighthouse/%s (runtime state, not installed by init)", e.Name())
+		}
+	}
+	for _, n := range notes {
+		line("%s", n)
+	}
+	line("not touched: labels on the forge, %s", ".lighthouse/host.toml")
+	line("not touched: a running Claude Code session keeps its hooks until it restarts")
 }
 
 // uninstallPlan plans the removal of every unit in changes, the undoing of what
