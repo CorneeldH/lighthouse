@@ -19,6 +19,18 @@ const underGatesEnv = "LIGHTHOUSE_UNDER_BASH_WRITE_CHECK"
 
 func init() { hook.Register("code-language-check", runHook) }
 
+// absFile is file against cwd (the process cwd when ""). An absolute file stays: `/…`, and
+// on Windows also `C:\…`, which strings.HasPrefix(file, "/") took for relative (#559).
+func absFile(file, cwd string) string {
+	if strings.HasPrefix(file, "/") || filepath.IsAbs(file) {
+		return file
+	}
+	if cwd == "" {
+		cwd, _ = os.Getwd()
+	}
+	return cwd + "/" + file
+}
+
 // runHook is the PostToolUse hook code-language-check: code must be written in English.
 // Findings block (2, the report on stderr). A notice alone never blocks: JSON for the user
 // and the agent, or plain text under bash-write-check, which passes it on. It is not
@@ -33,13 +45,7 @@ func runHook(ctx context.Context, root, _ string, p hook.Payload) hook.Result {
 	if file == "" {
 		return hook.Result{}
 	}
-	abs := file
-	if !strings.HasPrefix(file, "/") {
-		if cwd == "" {
-			cwd, _ = os.Getwd()
-		}
-		abs = cwd + "/" + file
-	}
+	abs := absFile(file, cwd)
 	path, err := canonical(abs)
 	if err != nil {
 		return blocked("cannot resolve '"+abs+"' (no 'realpath -m' and no python3).", "")
