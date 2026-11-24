@@ -170,10 +170,13 @@ func collectRepo(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Di
 		}
 		recorded := env.now()
 		deltas, err := raw.RawTranscript(ctx, ref.workspace, ref.session)
+		var out collect.Outcome
 		if err == nil {
-			err = processDeltas(ctx, db, ref, deltas, recorded, opt)
+			out, err = processDeltas(ctx, db, ref, deltas, recorded, opt)
 		}
 		switch {
+		case err == nil && out.Kind == "skipped":
+			_, _ = fmt.Fprintf(errOut, "lighthouse: collect %s: run %d: skip: %s\n", repo.Slug, ref.firstRun, out.Reason)
 		case err == nil:
 		case unreachable(err):
 			_, _ = fmt.Fprintf(errOut, "lighthouse: collect %s: run %d: unreachable, not processed: %s\n", repo.Slug, ref.firstRun, oneLine(err))
@@ -219,17 +222,16 @@ func collectOptions(env tickEnv, repo repoconfig.Repo, stateDir string) (collect
 
 // processDeltas hands the whole files of one session to collect.Process. The bytes carry no
 // mtime, so Process settles a run by its end and its setups row.
-func processDeltas(ctx context.Context, db *sql.DB, ref collectRef, deltas []workplace.FileDelta, recorded time.Time, opt collect.Options) error {
+func processDeltas(ctx context.Context, db *sql.DB, ref collectRef, deltas []workplace.FileDelta, recorded time.Time, opt collect.Options) (collect.Outcome, error) {
 	files := make([]transcript.File, len(deltas))
 	for i, d := range deltas {
 		if d.From != 0 {
-			return fmt.Errorf("transcript of %s: %s is no whole file", ref.session, d.Name)
+			return collect.Outcome{}, fmt.Errorf("transcript of %s: %s is no whole file", ref.session, d.Name)
 		}
 		files[i] = transcript.File{Name: d.Name, R: bytes.NewReader(d.Data)}
 	}
-	_, err := collect.Process(ctx, db, collect.Source{
+	return collect.Process(ctx, db, collect.Source{
 		SessionID: ref.session, TranscriptPath: "workplace:" + ref.workspace + "/" + ref.session + ".jsonl",
 		Files: files, Recorded: recorded,
 	}, opt)
-	return err
 }

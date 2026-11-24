@@ -267,6 +267,7 @@ func tick(ctx context.Context, env tickEnv, dbPath string, errOut io.Writer) err
 		failed = true
 	}
 	// The transcripts of runs go first: the sweeps remove the workspaces and mirrors they come from.
+	// A failed collection does not hold the sweeps back (see collectRuns).
 	if collectRuns(ctx, env, st.DB, cfg, loadedRepos(loaded), errOut) {
 		failed = true
 	}

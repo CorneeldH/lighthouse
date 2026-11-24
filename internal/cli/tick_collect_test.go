@@ -163,7 +163,8 @@ func TestTickCollectErrorDoesNotStopTick(t *testing.T) {
 	env, db, w := rawTick(t)
 	sid := runs.NewSessionID()
 	id := closedRun(t, db, sid)
-	w.errs[sid] = fmt.Errorf("transcript of %s on node n1: down: %w", sid, workplace.ErrUnanswered)
+	// As a real node error: not measurable and unanswered at once (nodeTranscript, serve()).
+	w.errs[sid] = fmt.Errorf("transcript of %s on node n1: down: %w: %w", sid, workplace.ErrNotMeasurable, workplace.ErrUnanswered)
 
 	var errOut bytes.Buffer
 	if err := tick(context.Background(), env, db, &errOut); !errors.Is(err, errSilent) {
@@ -282,5 +283,68 @@ func TestTickSkipsRemovedWorkspaceRuns(t *testing.T) {
 	}
 	if ev := w.eventLog(); len(ev) != 0 {
 		t.Errorf("events = %v, want no call for a run whose workspace is removed", ev)
+	}
+}
+
+// ErrUnanswered alone is a failure too, as is any error that is not about the transcript missing.
+func TestTickCollectUnansweredAloneIsFailure(t *testing.T) {
+	env, db, w := rawTick(t)
+	sid := runs.NewSessionID()
+	closedRun(t, db, sid)
+	w.errs[sid] = fmt.Errorf("node n1 did not answer: %w", workplace.ErrUnanswered)
+	var errOut bytes.Buffer
+	if err := tick(context.Background(), env, db, &errOut); !errors.Is(err, errSilent) {
+		t.Fatalf("tick = %v, want errSilent\n%s", err, errOut.String())
+	}
+}
+
+// openRunTick is rawTick with an open run of ws945 (an hour old) and its error cause.
+func openRunTick(t *testing.T, cause error) (tickEnv, string, *bytes.Buffer) {
+	t.Helper()
+	env, db, w := rawTick(t)
+	ctx := context.Background()
+	conn := openStore(t, db)
+	sid := runs.NewSessionID()
+	r, err := runs.Take(ctx, conn, runs.Claim{Repo: "o/r", Issue: 945, SessionID: sid, Mode: "start",
+		Trigger: "handoff", TriggerKey: "start:945", Now: t0.Add(-time.Hour)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runs.SetWorkplace(ctx, conn, r.ID, ws945, branch945); err != nil {
+		t.Fatal(err)
+	}
+	if err := runs.SetSession(ctx, conn, r.ID, "k-945"); err != nil {
+		t.Fatal(err)
+	}
+	w.sessions[ws945] = []workplace.Session{{Key: "k-945", WorkspaceID: ws945, State: "working", SessionID: sid}}
+	w.errs[sid] = cause
+	return env, db, &bytes.Buffer{}
+}
+
+// A freshly started run has no transcript yet: one line, no failure.
+func TestTickCollectOpenRunUnreachableIsNoFailure(t *testing.T) {
+	for name, cause := range map[string]error{
+		"not measurable": fmt.Errorf("no project dir: %w", workplace.ErrNotMeasurable),
+		"not exist":      fmt.Errorf("no transcript yet: %w", fs.ErrNotExist),
+	} {
+		t.Run(name, func(t *testing.T) {
+			env, db, errOut := openRunTick(t, cause)
+			if err := tick(context.Background(), env, db, errOut); err != nil {
+				t.Fatalf("tick = %v, want nil\n%s", err, errOut.String())
+			}
+			if !strings.Contains(errOut.String(), ": unreachable, not processed: ") {
+				t.Errorf("errOut = %q, want an unreachable line", errOut.String())
+			}
+		})
+	}
+}
+
+func TestTickCollectOpenRunGenericErrorIsFailure(t *testing.T) {
+	env, db, errOut := openRunTick(t, errors.New("boom"))
+	if err := tick(context.Background(), env, db, errOut); !errors.Is(err, errSilent) {
+		t.Fatalf("tick = %v, want errSilent\n%s", err, errOut.String())
+	}
+	if !strings.Contains(errOut.String(), "boom") || strings.Contains(errOut.String(), "unreachable") {
+		t.Errorf("errOut = %q, want the reason as a failure line", errOut.String())
 	}
 }
