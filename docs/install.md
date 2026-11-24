@@ -448,6 +448,24 @@ wordt niets geschreven) en meet op die ref.
   geschreven. Alleen GitHub: GitLab kan gemergde PR's nog niet opsommen, dus daar is de opdracht een
   fout (exit 1).
 
+### Menswerk en wachttijd per traject
+
+`lighthouse trajectory <issue> [--repo-dir <pad>] [--db <pad>]` toont van het traject van een issue
+wanneer elke vraag, elk antwoord en elke overname was, en hoe de tijd van het traject over de
+oorzaken verdeeld is. Repo komt uit de `lighthouse.toml` in `--repo-dir` (standaard `.`), `--db`
+is standaard de `lighthouse.db` van de statusmap. De opdracht leest het issue van de forge voor
+het sluitmoment.
+
+De uitvoer is eerst een regel per moment, `question`, `answer` of `takeover` met het tijdstip
+(UTC, RFC 3339) en waar bekend de reden, en daarna een regel per oorzaak in vaste volgorde:
+`active`, `human`, `usage`, `ci_review`, `pickup` en, als die er is, `unexplained`. Elke
+oorzaakregel heeft de vorm `<oorzaak> <duur> <soort>`, met als soort `measured`, `estimate` of
+`running` (het traject loopt nog). Een `active`-regel die CI- en reviewtijd kan bevatten eindigt
+op `incl. ci_review`.
+
+Exit: 0 uitvoer geprint | 1 een config-, forge- of databasefout, of `no trajectory for issue <N>`
+| 2 verkeerd gebruik (geen of geen geldig issuenummer, onbekende vlag).
+
 ## Run the tick
 
 `lighthouse tick` is the dispatcher. With `[dispatch] workplace = "local"` in `host.toml` it needs no
