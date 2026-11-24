@@ -184,6 +184,17 @@ func TestLanguagePacks(t *testing.T) {
 			blocks: 0,
 			hooks:  1,
 		},
+		{
+			name: "powershell",
+			files: []string{
+				".claude/hooks/lighthouse/powershell-lint-check.sh",
+				".lighthouse/scripts/psscriptanalyzer-repo.ps1",
+			},
+			detect: true,
+			tools:  "PSScriptAnalyzer,git,jq,pwsh",
+			blocks: 0,
+			hooks:  1,
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
