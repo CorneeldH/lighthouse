@@ -39,7 +39,8 @@ ANSWER>>>
 // in, and no forge token.
 func (e tickEnv) cleanJudgeEnv() []string {
 	var out []string
-	for _, k := range []string{"PATH", "HOME", "XDG_RUNTIME_DIR", "XDG_CONFIG_HOME", "CLAUDE_CONFIG_DIR", "TMPDIR", "LANG"} {
+	for _, k := range []string{"PATH", "HOME", "XDG_RUNTIME_DIR", "XDG_CONFIG_HOME", "CLAUDE_CONFIG_DIR", "TMPDIR", "LANG",
+		"ANTHROPIC_API_KEY", "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "SSL_CERT_FILE"} {
 		if v := e.Getenv(k); v != "" {
 			out = append(out, k+"="+v)
 		}
@@ -57,9 +58,12 @@ func (e tickEnv) classifyAnswer(cfg judgeConfig) func(context.Context, dispatch.
 			return "", err
 		}
 		defer func() { _ = os.RemoveAll(dir) }()
-		spec.Timeout = answerTimeout
-		prompt := fmt.Sprintf(answerPrompt, in.SHA, in.Branch, in.Step, in.Answer)
-		out, err := execJudge(ctx, dir, prompt, cfg, spec)
+		sp := spec
+		sp.Timeout = answerTimeout
+		// The fence markers cannot occur inside the answer: a copy of one is broken up.
+		answer := strings.NewReplacer("ANSWER>>>", "ANSWER> > >", "<<<ANSWER", "< < <ANSWER").Replace(in.Answer)
+		prompt := fmt.Sprintf(answerPrompt, in.SHA, in.Branch, in.Step, answer)
+		out, err := execJudge(ctx, dir, prompt, cfg, sp)
 		if err != nil {
 			return "", err
 		}
