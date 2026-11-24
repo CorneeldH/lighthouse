@@ -11,6 +11,10 @@ Dit ontwerp bouwt op:
 - #375, gemerged (#577): inzet (model, harness, versies, `setups.lane`), tokens en kosten, sessies,
   en `trajectories.plan_tasks` en `plan_path` (migratie `0013`). Vragen uit interactieve sessies
   schrijft #375 niet: `trajectory_events` krijgt vragen alleen van de dispatcher.
+- #388, spec [`2026-11-24-issue-388-explore-exploit-design.md`](2026-11-24-issue-388-explore-exploit-design.md):
+  de secties *Catalogus*, *Kenmerken* en *Uitkomstmaten* zijn de lijsten van deze UI. Dit ontwerp
+  neemt ze over; het voegt alleen model en harness als extra filter toe (de issuetekst vraagt die).
+  De bouw van de indeling (#572) wacht op dit issue.
 
 ## Aanleiding en doel
 
@@ -33,8 +37,9 @@ endpoints leveren kant-en-klare aggregaten. De frontend tekent en filtert alleen
 ## Doelen
 
 - Een tabblad `Telemetry` met vier delen: onderdelen, tijdlijn, trajecten (doorklikbaar) en dekking.
-- Per onderdeel: gevonden, overgenomen, kosten en afloop met en zonder het onderdeel, uitgesplitst
-  naar repo, plangrootteklasse, model en harness.
+- Per onderdeel uit de catalogus van #388: gevonden, overgenomen, kosten en afloop met en zonder het
+  onderdeel, uitgesplitst naar de kenmerken van #388 (route, plangrootte, PR-grootte, gebied, repo)
+  en naar model en harness.
 - Een weektijdlijn met kosten, herstel en mensvragen, en een plek voor markeringen.
 - Een trajectdetail met runs, sessies, bevindingen, herstel en gebeurtenissen.
 - Zichtbare dekking: elk gat met een reden.
@@ -49,8 +54,9 @@ endpoints leveren kant-en-klare aggregaten. De frontend tekent en filtert alleen
   `trajectory`-veld (allemaal van vóór #376). Een eenmalige analyse van die records komt in een eigen
   issue *(gekozen door de gebruiker: het moet gebeuren, maar niet hier)*. In de UI tellen ze als
   dekkingsgat.
-- Schaduw- en variantvergelijkingen. Alle records zijn `standard`; het label volgt de indeling, zodat
-  een latere indeling zonder UI-werk een ander label krijgt.
+- Schaduw- en variantindelingen toekennen: dat is #572. Alle records zijn nu `standard`. Het label
+  volgt de indeling: een vergelijking met een `variant:`-traject verliest het label *correlatie*
+  zonder UI-werk (§5).
 - Codex- en OpenCode-sessies als bron (milestone *Explore/exploit*).
 
 ## Anti-doelen
@@ -94,6 +100,7 @@ CREATE TABLE review_runs (
   component TEXT NOT NULL,               -- 'plan_review', 'spec_review', 'task_review'
   record_path TEXT NOT NULL, record_sum TEXT NOT NULL,
   ran_at TEXT NOT NULL,                  -- written_at van het record, of mtime van de ledger
+  outcome TEXT,                          -- outcome van het record (converged, round_limit, aborted); NULL bij een ledger
   finding_count INTEGER NOT NULL,
   CHECK ((trajectory_id IS NULL) = (unlinked_reason IS NOT NULL)),
   UNIQUE (source, source_id)
@@ -110,11 +117,35 @@ CREATE INDEX review_runs_trajectory ON review_runs(trajectory_id);
   betrouwbare component of tijd.
 - Idempotent: dezelfde `record_sum` verandert niets; `DeleteFindingsUnder` krijgt een tegenhanger
   voor `review_runs`.
-- Migratie: `0014`, het eerstvolgende vrije nummer na #375, alleen
-  `CREATE TABLE`/`CREATE INDEX`.
+- Een afgebroken review (`outcome = 'aborted'`) is een review die draaide: hij telt mee in de noemer
+  van *gevonden* (#388, *Uitkomstmaten*: mislukte en afgebroken runs tellen mee).
+- Migratie: `0014`, het eerstvolgende vrije nummer na #375: `review_runs` en de kolommen van §1b.
 
-Dit is de enige schrijver in dit issue. AC "de UI leest alleen" gaat over de UI; de index is een
-bestaande schrijver die een extra rij legt.
+### 1b. Schrijver: kenmerken per traject uit de forge *(gekozen door de gebruiker)*
+
+Route, gebied en PR-grootte (#388, *Kenmerken*) staan niet in `lighthouse.db`. `measure-recovery`
+leest per gemergde PR al de forge (`internal/telemetry/recovery.go`, `forgeissues.go`) en schrijft
+`recoveries`. Hij legt er voortaan ook de kenmerken bij vast:
+
+```sql
+ALTER TABLE trajectories ADD COLUMN route TEXT;      -- gate uit de triagemarker: '0', '1', '2', '4a', '4b', '4c'
+ALTER TABLE trajectories ADD COLUMN area TEXT;       -- het label met labels.area_prefix, zonder prefix
+ALTER TABLE recoveries ADD COLUMN code_lines INTEGER; -- roborev.CountCodeLines op de PR-diff
+```
+
+- **Route**: de `Gate` van het laatste issuecomment met een triagemarker
+  (`protocol.ParseTriageMarker`) vóór de eerste `review_runs`-rij van het traject, of vóór de merge
+  als er geen review was (#388). `invariant` en geen marker geven `NULL`.
+- **Gebied**: precies één issuelabel met `labels.area_prefix` geeft de rest van dat label. Nul of
+  meer dan één geeft `NULL` *(eigen keuze)*. Zonder `labels.area_prefix` blijft het `NULL`.
+- **PR-grootte** per PR, op de numstat van de squashcommit (`MergeCommit`). Het traject krijgt de
+  klasse van zijn grootste PR: `< roborev.Threshold` of `≥ roborev.Threshold` *(eigen keuze)*.
+- Elke run van `measure-recovery` overschrijft de drie waarden: een later label of comment telt
+  mee. Een forgefout laat de oude waarde staan en meldt het, zoals bij het herstel.
+- `NULL` is *niet gemeten* en staat in de dekking (§8), nooit als eigen klasse naast de andere.
+
+AC "de UI leest alleen" gaat over de UI. De review-index (§1) en `measure-recovery` (§1b) zijn
+bestaande schrijvers die extra gegevens vastleggen.
 
 ### 2. Readonly-verbinding
 
@@ -131,16 +162,24 @@ gemigreerd", en de rest van de UI blijft werken.
 
 De vergelijkingen draaien binnen een populatie, zodat met en zonder over hetzelfde soort werk gaan:
 
+De onderdelen zijn de catalogus van #388, met dezelfde namen (de waarden van `findings.component`
+en van `variant:<onderdeel>=…`):
+
 | Onderdeel | Populatie | Met | Zonder |
 |---|---|---|---|
-| planreview | trajecten met `plan_tasks IS NOT NULL` | ≥ 1 gekoppelde `review_runs`-rij `plan_review` | geen |
-| specreview | idem *(eigen keuze: een spec gaat aan een plan vooraf; trajecten zonder spec zijn niet af te bakenen)* | ≥ 1 `spec_review` | geen |
-| taakreview | trajecten met lane `sdd` (#375) | ≥ 1 `task_review` | geen |
-| model | trajecten met een bekend model in hun inzet | per model | — |
-| lane | trajecten met een bekende lane | `sdd` | `native` |
+| `plan_review` | trajecten met `plan_tasks IS NOT NULL` | ≥ 1 gekoppelde `review_runs`-rij `plan_review` | geen |
+| `spec_review` | idem *(eigen keuze: een spec gaat aan een plan vooraf; trajecten zonder spec zijn niet af te bakenen)* | ≥ 1 `spec_review` | geen |
+| `task_review` | trajecten met lane `sdd` (#375) | ≥ 1 `task_review` | geen |
+| `lane` | trajecten met een bekende lane | `sdd` | `native` |
+| `model` | trajecten met een bekend model in hun inzet | per model | — |
+| `harness` | trajecten met een bekende harness | per harness | — |
+| `final_review`, `pr_review`, `test_gate` | — | *niet gemeten*: geen bron in deze milestone (#388) | — |
+
+`harness` heeft nu alleen Claude Code als bron; de UI toont het blok met één groep en de dekking
+zegt *niet gemeten tot Explore/exploit* voor Codex en OpenCode.
 
 *(Gekozen door de gebruiker:* de groep "zonder planreview" zijn trajecten mét een plan maar zonder
-reviewrecord, niet alle trajecten.) Model en lane zijn geen aan/uit-onderdelen: ze vergelijken waarden,
+reviewrecord, niet alle trajecten.) Lane, model en harness zijn geen aan/uit-onderdelen: ze vergelijken waarden,
 en "gevonden" en "overgenomen" zijn daar *niet van toepassing*.
 
 **Lane per traject** *(eigen keuze)*: `setups.lane` (#375) staat per run of sessie. Een traject is
@@ -152,12 +191,22 @@ Een traject met meer dan één model (bijvoorbeeld Opus in de sessie, Sonnet in 
 het model met de meeste kosten *(eigen keuze)*; heeft geen enkel model kosten, dan bij het model met
 de meeste tokens.
 
-**Plangrootteklassen** uit `trajectories.plan_tasks` (#375): `1–4`, `5–8`, `9+` *(eigen keuze, de
-grenzen uit de paia-meting die #375 aanhaalt)*. Een vaste lijst in Go, één plek.
+**Kenmerken** (#388) met hun klassen, elk een vaste lijst in Go, één plek:
+
+| Kenmerk | Klassen | Bron |
+|---|---|---|
+| route | `0`, `1`, `2`, `4a`, `4b`, `4c` | `trajectories.route` (§1b) |
+| plangrootte | klein (≤ 3 taken), middel (4–8), groot (≥ 9) | `trajectories.plan_tasks` (#375) |
+| PR-grootte | `< roborev.Threshold`, `≥ roborev.Threshold` coderegels | `recoveries.code_lines` (§1b) |
+| gebied | de waarden van het gebiedslabel | `trajectories.area` (§1b) |
+| repo | `trajectories.repo` | — |
+
+Daarnaast model en harness als filter, uit de inzet (#375).
 
 ### 4. De vier antwoorden per onderdeel
 
-Per onderdeel × filtercontext (repo, plangrootteklasse, model, harness):
+Per onderdeel × filtercontext (de kenmerken van §3, plus model en harness). De maten zijn de
+*Uitkomstmaten* van #388:
 
 - **Gevonden**: aantal reviews met ≥ 1 bevinding / aantal reviews; plus het totaal aantal bevindingen
   en de verdeling naar ernst.
@@ -187,12 +236,14 @@ grijs met "te weinig trajecten"; er wordt niets verborgen.
 ### 5. Het correlatielabel
 
 `telemetry.ComparisonLabel(assignments []string) string` geeft `correlation` zolang alle
-indelingen van de runs en sessies in de vergelijking `standard` zijn. Bevindingen hebben geen
-indeling; ze erven die van hun traject. Komt er later een `shadow:`- of `variant:`-indeling bij, dan
-geeft de functie een ander label (nu niet gebouwd: alleen de tak `correlation` en een
-`mixed`-terugval die de UI als correlatie toont). Elk vergelijkingsblok in de API heeft een veld
-`label`; de UI toont het in het blok zelf, met de zin *"Observed, not caused: reviews run more often
-on hard issues."*
+indelingen van de runs en sessies in de vergelijking `standard` of `shadow:` zijn. Bevindingen
+hebben geen indeling; ze erven die van hun traject. Zodra een groep in de vergelijking alleen uit
+trajecten met een `variant:`-indeling bestaat, geeft de functie `assigned`: lighthouse koos de
+keuze, dus de vergelijking is meer dan waarneming (#388). Een groep die `standard` en `variant:`
+mengt, blijft `correlation`. Elk vergelijkingsblok in de API heeft een veld `label`; de UI toont het
+in het blok zelf. Bij `correlation` staat de zin *"Observed, not caused: reviews run more often on
+hard issues."* Bij `assigned` staat *"Assigned by lighthouse"*. Alle records zijn nu `standard`; de
+tak `assigned` is alleen met een fixture te zien.
 
 ### 6. Tijdlijn
 
@@ -222,12 +273,13 @@ Eén blok, elke regel een aantal met reden:
 - sessies zonder koppeling, per `unlinked_reason` (`main_only`, `no_issue_branch`, `no_issue_number`);
 - reviewrecords en ledgers zonder traject, per `unlinked_reason` van `review_runs`;
 - trajecten zonder inzet, zonder kosten, of met kosten zonder prijs (`cost IS NULL`);
+- trajecten zonder route, gebied of PR-grootte (§1b), per kenmerk;
 - trajecten buiten de afloop: lopend (open venster), zonder herstelmeting, of zonder lane / met
   `mixed` lane;
 - vragen uit interactieve sessies: *niet gemeten* zolang `trajectory_events` geen rijen uit de
   transcriptbron heeft (#375 levert die niet); de mediaan heet dan
   "dispatcher questions";
-- onderdelen zonder bron in deze milestone: eindreview, test-gate, en de reviewkosten — als
+- onderdelen zonder bron in deze milestone: `final_review`, `pr_review`, `test_gate`, en de reviewkosten — als
   *niet gemeten*;
 - harnesses zonder bron: Codex en OpenCode — *niet gemeten tot Explore/exploit*.
 
@@ -235,9 +287,9 @@ Eén blok, elke regel een aantal met reden:
 
 Endpoints (huma, `OperationID`, snake_case, nil-slices als `[]`, zoals `registerPriorities`):
 
-- `GET /api/telemetry/components?repo=&size=&model=&harness=`
+- `GET /api/telemetry/components?repo=&route=&size=&pr_size=&area=&model=&harness=`
 - `GET /api/telemetry/timeline?repo=`
-- `GET /api/telemetry/trajectories?repo=&size=&component=`
+- `GET /api/telemetry/trajectories?repo=&route=&size=&pr_size=&area=&component=`
 - `GET /api/telemetry/trajectories/{id}`
 - `GET /api/telemetry/coverage`
 
@@ -264,11 +316,15 @@ het Engels, zoals de rest van de UI *(eigen keuze)*.
 
 - `internal/review`: een record met nul bevindingen geeft één `review_runs`-rij met
   `finding_count = 0`; een record zonder traject geeft een rij met `no_trajectory`; een tweede
-  index met dezelfde hash verandert niets; een nieuwere poging vervangt de rij.
+  index met dezelfde hash verandert niets; een nieuwere poging vervangt de rij; een afgebroken
+  record krijgt `outcome = 'aborted'`.
+- `internal/telemetry` (`measure-recovery`): route uit het laatste triagecomment vóór de eerste
+  review; gebied bij nul, één en twee gebiedslabels; `code_lines` per PR; een forgefout laat de oude
+  waarde staan.
 - `internal/telemetry`: fixture-DB met trajecten met en zonder planreview in twee grootteklassen;
-  de aggregaten, de `n`, het correlatielabel, `null` voor ontbrekende bronnen en het weglaten van
-  `status = 'open'`.
-- `internal/store`: migratietest op de nieuwe tabel; `OpenReadOnly` weigert een `INSERT`.
+  de aggregaten, de `n`, het label (`correlation`, en `assigned` met een `variant:`-fixture),
+  `null` voor ontbrekende bronnen en het weglaten van `status = 'open'`.
+- `internal/store`: migratietest op `0014`; `OpenReadOnly` weigert een `INSERT`.
 - `internal/server`: handlertests per endpoint, de dekkingsmelding bij een ongemigreerde database,
   en de openapi-snapshot.
 - `web`: vitest per deel (label zichtbaar in elk vergelijkingsblok, `n < 5` grijs, `null` als
@@ -282,7 +338,9 @@ het Engels, zoals de rest van de UI *(eigen keuze)*.
 
 - De responsvormen, de componentindeling in React en de grafiekbibliotheek (bij voorkeur wat
   `web/` al heeft; anders gewone SVG).
-- De naam en plek van de readers in `internal/telemetry` en het migratienummer.
+- De naam en plek van de readers in `internal/telemetry`.
+- Hoe `measure-recovery` de issuecomments en labels leest: een methode op `RecoverySource` of een
+  eigen interface, zolang het via `internal/forge` loopt.
 - Of `LoadTimeline` per traject snel genoeg is voor de aggregaten, of dat een batchvariant nodig is.
 
 ## Open
