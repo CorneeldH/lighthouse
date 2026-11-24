@@ -156,7 +156,10 @@ export function buildGraph(repos: Repo[], runs: Run[]): Graph {
     for (const issue of repo.issues ?? []) {
       const run = liveRun(runs, repo.slug, issue.number)
       const state = issueState(issue, runs, repo.slug)
-      const active = state === 'active'
+      // `active` = the issue is being worked on, whatever its final status (needs_human and
+      // needs_shaping can hold for an issue with a live run).
+      const active =
+        run !== undefined || issue.status === 'In progress' || issue.status === 'Controller'
       const key = keyOf(repo.slug, issue.number)
       nodes.set(key, {
         ...blank(key, repo.slug, issue.number),
