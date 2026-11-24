@@ -16,7 +16,7 @@ import { loadPrefs, savePrefs, type ViewId } from '@/lib/priorities/prefs'
 import { DepsView } from './DepsView'
 import { MilestonesView } from './MilestonesView'
 import { Toolbar, type LegendItem } from './Toolbar'
-import { UnassignedView } from './UnassignedView'
+import { BacklogView } from './BacklogView'
 
 export function PrioritiesTab(): JSX.Element {
   const { data, error, isPending } = usePriorities()
@@ -43,19 +43,19 @@ export function PrioritiesTab(): JSX.Element {
       hasUnassigned: {
         deps: nodes.some((n) => !n.milestone),
         milestones: false,
-        unassigned: unassigned.length > 0,
+        backlog: unassigned.length > 0,
       } satisfies Record<ViewId, boolean>,
       counts: {
         deps: nodes.length,
         milestones: rows.length,
-        unassigned: unassigned.length,
+        backlog: unassigned.length,
       } satisfies Record<ViewId, number>,
       // Milestones that get a colour, per view: nodes shown in the graph, the rows shown, the
       // closed milestones named on the rows without an open milestone.
       inViewMilestones: {
         deps: nodes.flatMap((n) => (n.milestone ? [{ repo: n.repo, number: n.milestone.number, title: n.milestone.title }] : [])),
         milestones: rows.map((m) => ({ repo: m.repo, number: m.number, title: m.title })),
-        unassigned: unassigned.flatMap((r) =>
+        backlog: unassigned.flatMap((r) =>
           r.node.milestone ? [{ repo: r.node.repo, number: r.node.milestone.number, title: r.node.milestone.title }] : [],
         ),
       } satisfies Record<ViewId, Array<{ repo: string; number: number; title: string }>>,
@@ -93,7 +93,7 @@ export function PrioritiesTab(): JSX.Element {
 
   const props = { graph, repos, selected, colors, order: prefs.msOrder, depsOrder: prefs.depsOrder, onMove, pendingRepos }
   const empty = data !== undefined && repos.length === 0
-  const View = prefs.view === 'deps' ? DepsView : prefs.view === 'milestones' ? MilestonesView : UnassignedView
+  const View = prefs.view === 'deps' ? DepsView : prefs.view === 'milestones' ? MilestonesView : BacklogView
   return (
     <div className="w-full">
       <Panel id="priorities" title="Priorities" icon={ListOrdered} tone="navy" error={error} loading={isPending && !error}>
