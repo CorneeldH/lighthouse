@@ -551,6 +551,8 @@
               "default": "docs/developer/planning/plans",
               "about": "Where plans are written.",
               "readers": [
+                "internal/cli/telemetry_collect.go",
+                "internal/cli/tick_collect.go",
                 "internal/kpi/startissue.go",
                 "internal/postartefact/postartefact.go",
                 "internal/review/openpoints.go",
@@ -1066,6 +1068,7 @@
               "default": ".claude/worktrees",
               "about": "The folder the worktrees live in: relative to the main checkout, or absolute.",
               "readers": [
+                "internal/cli/telemetry_collect.go",
                 "internal/hooks/hooks.go",
                 "internal/initcmd/initcmd.go",
                 "internal/worktreeaudit/collect.go",

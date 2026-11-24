@@ -140,10 +140,10 @@ func TestRecordIdempotent(t *testing.T) {
 			return id, n, err
 		}},
 		{"setup run", "setups", func(o Origin) (int64, bool, error) {
-			return RecordSetup(ctx, db, SetupRecord{Origin: o, RunID: runID, Model: "opus"})
+			return RecordSetup(ctx, db, SetupRecord{Origin: o, RunID: runID, Model: ptr("opus")})
 		}},
 		{"setup session", "setups", func(o Origin) (int64, bool, error) {
-			return RecordSetup(ctx, db, SetupRecord{Origin: o, SessionID: sid, Model: "opus"})
+			return RecordSetup(ctx, db, SetupRecord{Origin: o, SessionID: sid, Model: ptr("opus")})
 		}},
 		{"usage run", "usage", func(o Origin) (int64, bool, error) {
 			return RecordUsage(ctx, db, UsageRecord{Origin: o, RunID: runID, Model: "opus", InputTokens: 10, Cost: &cost, CostKind: "estimate"})
@@ -585,6 +585,102 @@ func TestFindingSumAndDelete(t *testing.T) {
 	}
 	if n, _ := DeleteFindingsUnder(ctx, db, "sdd-ledger", "plan/axb/", ""); n != 0 {
 		t.Errorf("other source deleted %d rows", n)
+	}
+}
+
+func ptr(s string) *string { return &s }
+
+func setupModel(t *testing.T, db *sql.DB, id int64) (model, effort sql.NullString, recorded string) {
+	t.Helper()
+	if err := db.QueryRow(`SELECT model, effort, recorded_at FROM setups WHERE id = ?`, id).Scan(&model, &effort, &recorded); err != nil {
+		t.Fatal(err)
+	}
+	return
+}
+
+func TestRecordSetupUpdates(t *testing.T) {
+	ctx := context.Background()
+	db := openDB(t)
+	runID := takeRun(t, db, "o/r", 5, "start:5", "start")
+	o := Origin{Source: "transcript", SourceID: "transcript:a", RecordedAt: t0}
+	id1, isNew, err := RecordSetup(ctx, db, SetupRecord{Origin: o, RunID: runID, Model: ptr("opus")})
+	if err != nil || !isNew {
+		t.Fatalf("first: %v, new %v", err, isNew)
+	}
+	o.RecordedAt = t0.Add(time.Hour)
+	id2, isNew, err := RecordSetup(ctx, db, SetupRecord{Origin: o, RunID: runID, Model: ptr("sonnet"), Lane: ptr("sdd")})
+	if err != nil || isNew || id2 != id1 {
+		t.Fatalf("second: id %d, new %v, err %v; want id %d, not new", id2, isNew, err, id1)
+	}
+	if n := count(t, db, `SELECT count(*) FROM setups`); n != 1 {
+		t.Errorf("%d setup rows; want 1", n)
+	}
+	m, e, rec := setupModel(t, db, id1)
+	if m.String != "sonnet" || e.Valid || rec != stamp(o.RecordedAt) {
+		t.Errorf("row = model %v, effort %v, recorded %s; want sonnet, NULL, %s", m, e, rec, stamp(o.RecordedAt))
+	}
+}
+
+func TestRecordSetupNilIsNull(t *testing.T) {
+	ctx := context.Background()
+	db := openDB(t)
+	runID := takeRun(t, db, "o/r", 5, "start:5", "start")
+	id, _, err := RecordSetup(ctx, db, SetupRecord{Origin: Origin{Source: "s", SourceID: "x", RecordedAt: t0}, RunID: runID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cols [9]sql.NullString
+	if err := db.QueryRow(`SELECT model, effort, harness, harness_version, superpowers_version, lighthouse_version,
+		pack_version, skills_hash, lane FROM setups WHERE id = ?`, id).Scan(&cols[0], &cols[1], &cols[2], &cols[3],
+		&cols[4], &cols[5], &cols[6], &cols[7], &cols[8]); err != nil {
+		t.Fatal(err)
+	}
+	for i, c := range cols {
+		if c.Valid {
+			t.Errorf("column %d = %q; want NULL", i, c.String)
+		}
+	}
+}
+
+func TestRecordUsageUpdates(t *testing.T) {
+	ctx := context.Background()
+	db := openDB(t)
+	runID := takeRun(t, db, "o/r", 5, "start:5", "start")
+	o := Origin{Source: "transcript", SourceID: "transcript:a:opus", RecordedAt: t0}
+	id1, _, err := RecordUsage(ctx, db, UsageRecord{Origin: o, RunID: runID, Model: "opus", InputTokens: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cost := 2.5
+	o.RecordedAt = t0.Add(time.Hour)
+	id2, isNew, err := RecordUsage(ctx, db, UsageRecord{Origin: o, RunID: runID, Model: "opus", InputTokens: 30,
+		OutputTokens: 4, Cost: &cost, CostKind: "estimate"})
+	if err != nil || isNew || id2 != id1 {
+		t.Fatalf("second: id %d, new %v, err %v; want id %d, not new", id2, isNew, err, id1)
+	}
+	var in, out int64
+	var c sql.NullFloat64
+	var kind sql.NullString
+	var rec string
+	if err := db.QueryRow(`SELECT input_tokens, output_tokens, cost, cost_kind, recorded_at FROM usage WHERE id = ?`, id1).
+		Scan(&in, &out, &c, &kind, &rec); err != nil {
+		t.Fatal(err)
+	}
+	if in != 30 || out != 4 || c.Float64 != 2.5 || kind.String != "estimate" || rec != stamp(o.RecordedAt) {
+		t.Errorf("row = %d %d %v %v %s", in, out, c, kind, rec)
+	}
+	if n := count(t, db, `SELECT count(*) FROM usage`); n != 1 {
+		t.Errorf("%d usage rows; want 1", n)
+	}
+}
+
+func TestRecordSetupLaneCheck(t *testing.T) {
+	ctx := context.Background()
+	db := openDB(t)
+	runID := takeRun(t, db, "o/r", 5, "start:5", "start")
+	_, _, err := RecordSetup(ctx, db, SetupRecord{Origin: Origin{Source: "s", SourceID: "x", RecordedAt: t0}, RunID: runID, Lane: ptr("x")})
+	if err == nil {
+		t.Error("lane x: no error")
 	}
 }
 

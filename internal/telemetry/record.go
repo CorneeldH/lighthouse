@@ -57,10 +57,11 @@ type SessionRecord struct {
 // and SessionID is set.
 type SetupRecord struct {
 	Origin
-	RunID, SessionID                                   int64
-	Model, Effort, Harness, HarnessVersion             string
-	SuperpowersVersion, LighthouseVersion, PackVersion string
-	SkillsHash                                         string
+	RunID, SessionID int64
+	// A nil field is unknown and stored as NULL, never as ''. Lane is sdd or native.
+	Model, Effort, Harness, HarnessVersion             *string
+	SuperpowersVersion, LighthouseVersion, PackVersion *string
+	SkillsHash, Lane                                   *string
 }
 
 // UsageRecord is the token use of one model in one run or session: exactly
@@ -101,6 +102,14 @@ func nullString(s string) any {
 		return nil
 	}
 	return s
+}
+
+// nullPtr maps a nil pointer to NULL.
+func nullPtr(p *string) any {
+	if p == nil {
+		return nil
+	}
+	return *p
 }
 
 func oneOwner(runID, sessionID int64) error {
@@ -230,63 +239,65 @@ func byOwner(runID, sessionID int64, extra string, args ...any) lookup {
 // The find-then-write inside relies on the store's _txlock=immediate: the
 // write lock is taken at BEGIN, so two writers never both find nothing.
 func RecordSession(ctx context.Context, db *sql.DB, s SessionRecord) (int64, bool, error) {
+	return inTx(ctx, db, func(tx *sql.Tx) (int64, bool, error) { return recordSessionTx(ctx, tx, s) })
+}
+
+func recordSessionTx(ctx context.Context, tx *sql.Tx, s SessionRecord) (int64, bool, error) {
 	if err := s.validate(); err != nil {
 		return 0, false, err
 	}
 	link := Link(s.DefaultBranch, s.Lines)
-	return inTx(ctx, db, func(tx *sql.Tx) (int64, bool, error) {
-		repo, err := resolveRepo(ctx, tx, s.Repo)
+	repo, err := resolveRepo(ctx, tx, s.Repo)
+	if err != nil {
+		return 0, false, err
+	}
+	existing, found, err := findSession(ctx, tx, s)
+	if err != nil {
+		return 0, false, err
+	}
+	if found {
+		if err := checkRetarget(ctx, tx, existing, repo, link.Issue); err != nil {
+			return 0, false, err
+		}
+	}
+
+	var trajectory, basis, reason any
+	branch := ""
+	if link.Issue > 0 {
+		tid, err := ensureTrajectory(ctx, tx, repo, link.Issue, s.StartedAt)
 		if err != nil {
 			return 0, false, err
 		}
-		existing, found, err := findSession(ctx, tx, s)
-		if err != nil {
-			return 0, false, err
-		}
-		if found {
-			if err := checkRetarget(ctx, tx, existing, repo, link.Issue); err != nil {
-				return 0, false, err
-			}
-		}
+		trajectory, basis, branch = tid, link.Basis, link.Branch
+	} else {
+		reason = link.Reason
+	}
+	var ended any
+	if s.EndedAt != nil {
+		ended = stamp(*s.EndedAt)
+	}
 
-		var trajectory, basis, reason any
-		branch := ""
-		if link.Issue > 0 {
-			tid, err := ensureTrajectory(ctx, tx, repo, link.Issue, s.StartedAt)
-			if err != nil {
-				return 0, false, err
-			}
-			trajectory, basis, branch = tid, link.Basis, link.Branch
-		} else {
-			reason = link.Reason
-		}
-		var ended any
-		if s.EndedAt != nil {
-			ended = stamp(*s.EndedAt)
-		}
-
-		if found {
-			if _, err := tx.ExecContext(ctx, `UPDATE sessions SET branch = ?, trajectory_id = ?, link_basis = ?,
+	if found {
+		if _, err := tx.ExecContext(ctx, `UPDATE sessions SET branch = ?, trajectory_id = ?, link_basis = ?,
 				unlinked_reason = ?, ended_at = ?, recorded_at = ? WHERE id = ?`,
-				branch, trajectory, basis, reason, ended, stamp(s.RecordedAt), existing.id); err != nil {
-				return 0, false, fmt.Errorf("telemetry: update session: %w", err)
-			}
-			return existing.id, false, nil
+			branch, trajectory, basis, reason, ended, stamp(s.RecordedAt), existing.id); err != nil {
+			return 0, false, fmt.Errorf("telemetry: update session: %w", err)
 		}
-		res, err := tx.ExecContext(ctx, `INSERT INTO sessions (source, source_id, recorded_at, repo, harness,
+		return existing.id, false, nil
+	}
+	res, err := tx.ExecContext(ctx, `INSERT INTO sessions (source, source_id, recorded_at, repo, harness,
 			session_key, transcript_path, branch, trajectory_id, link_basis, unlinked_reason, started_at, ended_at)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			s.Source, s.SourceID, stamp(s.RecordedAt), repo, s.Harness, s.SessionKey, s.TranscriptPath,
-			branch, trajectory, basis, reason, stamp(s.StartedAt), ended)
-		if err != nil {
-			return 0, false, fmt.Errorf("telemetry: insert session: %w", err)
-		}
-		id, err := res.LastInsertId()
-		if err != nil {
-			return 0, false, fmt.Errorf("telemetry: insert session: %w", err)
-		}
-		return id, true, nil
-	})
+		s.Source, s.SourceID, stamp(s.RecordedAt), repo, s.Harness, s.SessionKey, s.TranscriptPath,
+		branch, trajectory, basis, reason, stamp(s.StartedAt), ended)
+	if err != nil {
+		return 0, false, fmt.Errorf("telemetry: insert session: %w", err)
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, false, fmt.Errorf("telemetry: insert session: %w", err)
+	}
+	return id, true, nil
 }
 
 func (s SessionRecord) validate() error {
@@ -371,34 +382,55 @@ func checkRetarget(ctx context.Context, tx *sql.Tx, existing storedSession, repo
 }
 
 // RecordSetup records the setup of one run or one session. A second offering
-// (same origin, or same run or session) leaves the first row and reports not
-// new. A (source, source_id) already used for a different run or session
-// returns that existing row's id with isNew false, per spec; callers must
-// derive source_id per object.
+// by the same owner (same run or session) updates the derived fields, lane
+// and recorded_at; source, source_id and owner stay, and isNew is false. A
+// (source, source_id) already used for a different run or session returns
+// that existing row's id with isNew false and changes nothing, per spec;
+// callers must derive source_id per object.
 func RecordSetup(ctx context.Context, db *sql.DB, s SetupRecord) (int64, bool, error) {
+	return inTx(ctx, db, func(tx *sql.Tx) (int64, bool, error) { return recordSetupTx(ctx, tx, s) })
+}
+
+func recordSetupTx(ctx context.Context, tx *sql.Tx, s SetupRecord) (int64, bool, error) {
 	if err := s.validate(); err != nil {
 		return 0, false, err
 	}
 	if err := oneOwner(s.RunID, s.SessionID); err != nil {
 		return 0, false, err
 	}
-	return inTx(ctx, db, func(tx *sql.Tx) (int64, bool, error) {
-		return insertOrFind(ctx, tx, "setups", `INSERT INTO setups (source, source_id, recorded_at, run_id, session_id,
-			model, effort, harness, harness_version, superpowers_version, lighthouse_version, pack_version, skills_hash)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`,
-			[]any{s.Source, s.SourceID, stamp(s.RecordedAt), nullID(s.RunID), nullID(s.SessionID),
-				s.Model, s.Effort, s.Harness, s.HarnessVersion, s.SuperpowersVersion, s.LighthouseVersion,
-				s.PackVersion, s.SkillsHash},
-			bySource(s.Origin), byOwner(s.RunID, s.SessionID, ""))
-	})
+	fields := []any{nullPtr(s.Model), nullPtr(s.Effort), nullPtr(s.Harness), nullPtr(s.HarnessVersion),
+		nullPtr(s.SuperpowersVersion), nullPtr(s.LighthouseVersion), nullPtr(s.PackVersion),
+		nullPtr(s.SkillsHash), nullPtr(s.Lane)}
+	args := append([]any{s.Source, s.SourceID, stamp(s.RecordedAt), nullID(s.RunID), nullID(s.SessionID)}, fields...)
+	id, isNew, err := insertOrFind(ctx, tx, "setups", `INSERT INTO setups (source, source_id, recorded_at, run_id, session_id,
+		model, effort, harness, harness_version, superpowers_version, lighthouse_version, pack_version, skills_hash, lane)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`,
+		args, bySource(s.Origin), byOwner(s.RunID, s.SessionID, ""))
+	if err != nil || isNew {
+		return id, isNew, err
+	}
+	owner := byOwner(s.RunID, s.SessionID, "")
+	upd := append(append([]any{}, fields...), stamp(s.RecordedAt), id)
+	upd = append(upd, owner.args...)
+	if _, err := tx.ExecContext(ctx, `UPDATE setups SET model = ?, effort = ?, harness = ?, harness_version = ?,
+		superpowers_version = ?, lighthouse_version = ?, pack_version = ?, skills_hash = ?, lane = ?, recorded_at = ?
+		WHERE id = ? AND `+owner.where, upd...); err != nil {
+		return 0, false, fmt.Errorf("telemetry: update setup: %w", err)
+	}
+	return id, false, nil
 }
 
 // RecordUsage records the tokens and cost of one model in one run or
-// session. A second offering (same origin, or same owner and model) leaves
-// the first row and reports not new. A (source, source_id) already used for a
-// different owner or model returns that existing row's id with isNew false,
-// per spec; callers must derive source_id per object.
+// session. A second offering by the same owner and model updates the tokens,
+// cost, cost kind and recorded_at; source, source_id and owner stay, and
+// isNew is false. A (source, source_id) already used for a different owner
+// or model returns that existing row's id with isNew false and changes
+// nothing, per spec; callers must derive source_id per object.
 func RecordUsage(ctx context.Context, db *sql.DB, u UsageRecord) (int64, bool, error) {
+	return inTx(ctx, db, func(tx *sql.Tx) (int64, bool, error) { return recordUsageTx(ctx, tx, u) })
+}
+
+func recordUsageTx(ctx context.Context, tx *sql.Tx, u UsageRecord) (int64, bool, error) {
 	if err := u.validate(); err != nil {
 		return 0, false, err
 	}
@@ -415,14 +447,24 @@ func RecordUsage(ctx context.Context, db *sql.DB, u UsageRecord) (int64, bool, e
 	if u.Cost != nil {
 		cost = *u.Cost
 	}
-	return inTx(ctx, db, func(tx *sql.Tx) (int64, bool, error) {
-		return insertOrFind(ctx, tx, "usage", `INSERT INTO usage (source, source_id, recorded_at, run_id, session_id,
-			model, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost, cost_kind)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`,
-			[]any{u.Source, u.SourceID, stamp(u.RecordedAt), nullID(u.RunID), nullID(u.SessionID), u.Model,
-				u.InputTokens, u.OutputTokens, u.CacheReadTokens, u.CacheWriteTokens, cost, nullString(u.CostKind)},
-			bySource(u.Origin), byOwner(u.RunID, u.SessionID, " AND model = ?", u.Model))
-	})
+	owner := byOwner(u.RunID, u.SessionID, " AND model = ?", u.Model)
+	id, isNew, err := insertOrFind(ctx, tx, "usage", `INSERT INTO usage (source, source_id, recorded_at, run_id, session_id,
+		model, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost, cost_kind)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`,
+		[]any{u.Source, u.SourceID, stamp(u.RecordedAt), nullID(u.RunID), nullID(u.SessionID), u.Model,
+			u.InputTokens, u.OutputTokens, u.CacheReadTokens, u.CacheWriteTokens, cost, nullString(u.CostKind)},
+		bySource(u.Origin), owner)
+	if err != nil || isNew {
+		return id, isNew, err
+	}
+	upd := []any{u.InputTokens, u.OutputTokens, u.CacheReadTokens, u.CacheWriteTokens, cost,
+		nullString(u.CostKind), stamp(u.RecordedAt), id}
+	upd = append(upd, owner.args...)
+	if _, err := tx.ExecContext(ctx, `UPDATE usage SET input_tokens = ?, output_tokens = ?, cache_read_tokens = ?,
+		cache_write_tokens = ?, cost = ?, cost_kind = ?, recorded_at = ? WHERE id = ? AND `+owner.where, upd...); err != nil {
+		return 0, false, fmt.Errorf("telemetry: update usage: %w", err)
+	}
+	return id, false, nil
 }
 
 // RecordFinding records a finding on the trajectory (Repo, Issue). A run or
