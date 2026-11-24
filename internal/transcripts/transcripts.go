@@ -8,6 +8,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -109,16 +111,37 @@ func cwdOf(path string) string {
 	return ""
 }
 
+// driveRe is a Windows drive prefix: the cwd of a session that ran on Windows.
+var driveRe = regexp.MustCompile(`^([A-Za-z]):[\\/]`)
+
+// normalize turns a Windows path (X:\a\b) into its WSL form (/mnt/x/a/b).
+func normalize(p string) string {
+	if m := driveRe.FindStringSubmatch(p); m != nil {
+		p = "/mnt/" + strings.ToLower(m[1]) + "/" + p[len(m[0]):]
+	}
+	return strings.ReplaceAll(p, `\`, "/")
+}
+
 // BelongsToRepo is true when cwd lies under one of the roots, or its path holds the segments of
 // the repo slug (<owner>/<repo>) next to each other, in any letter case: the layout of
-// kenn-forge worktrees, which also finds a worktree that is already removed.
+// kenn-forge worktrees, which also finds a worktree that is already removed. An empty slug (or a
+// slug with an empty segment) skips the slug rule. With FoldCase a Windows cwd is normalised and
+// the roots rule ignores letter case too.
 func BelongsToRepo(cwd string, roots, slugSegs []string, o Options) bool {
-	_ = o
+	if o.FoldCase {
+		cwd = strings.ToLower(normalize(cwd))
+	}
 	cwd = filepath.Clean(cwd)
 	for _, r := range roots {
+		if o.FoldCase {
+			r = strings.ToLower(filepath.Clean(normalize(r)))
+		}
 		if cwd == r || worktreeroot.Contains(r, cwd) {
 			return true
 		}
+	}
+	if len(slugSegs) == 0 || slices.Contains(slugSegs, "") {
+		return false
 	}
 	segs := strings.FieldsFunc(filepath.ToSlash(cwd), func(r rune) bool { return r == '/' })
 	for i := 0; i+len(slugSegs) <= len(segs); i++ {
