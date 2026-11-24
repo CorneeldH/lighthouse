@@ -107,6 +107,26 @@ func TestTimelineDoneBeforeClose(t *testing.T) {
 	}
 }
 
+func TestTimelineOverlappingRunsCountOnce(t *testing.T) {
+	// Two agent runs from 0 to 60 and from 30 to 90, the first Done at 40:
+	// 30..40 and 40..60 are active through either run, never twice.
+	in := TimelineInput{
+		Runs: []TimelineRun{
+			{ID: 1, Trigger: "start", TriggerKey: "start:7", Outcome: "merged", StartedAt: mins(0), EndedAt: endAt(60)},
+			{ID: 2, Trigger: "retry", TriggerKey: "retry:7", Outcome: "merged", StartedAt: mins(30), EndedAt: endAt(90)},
+		},
+		Events: []TimelineEvent{
+			{Kind: EventDone, RunID: 1, Ref: "1", At: mins(40)},
+			{Kind: EventDone, RunID: 2, Ref: "2", At: mins(80)},
+		},
+	}
+	got := Timeline(in, mins(200))
+	assertCauses(t, got, map[Cause]time.Duration{CauseActive: dur(80), CauseCIReview: dur(10)})
+	if w := got.Window; !w.Start.Equal(mins(0)) || !w.End.Equal(mins(90)) {
+		t.Errorf("Window = %v..%v; want 0..90", w.Start, w.End)
+	}
+}
+
 func TestTimelinePusherRowIsCIReview(t *testing.T) {
 	in := TimelineInput{
 		Runs: []TimelineRun{

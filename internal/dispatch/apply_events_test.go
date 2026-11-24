@@ -208,6 +208,59 @@ func TestApplyDoneOnClosingTick(t *testing.T) {
 	}
 }
 
+// The dispatcher's own events, written by Apply in the shapes it stores (source dispatch,
+// question:<id>, answer:<comment id> with the Vraag id as ref, done:<run id>), load into the
+// timeline of AC4: a start run that asks at 30 and closes at 35, an answer at 60 resumed at
+// 70, Done at 100 and the close at 130 give active 60m, human 30m, pickup 10m and ci_review 30m.
+func TestApplyEventsLoadIntoTimeline(t *testing.T) {
+	h := newHarness(t)
+	t0 := applyNow.Add(-time.Hour) // the start of the seeded run
+	at := func(m int) time.Time { return t0.Add(time.Duration(m) * time.Minute) }
+	tick := func(m int, a Action) {
+		t.Helper()
+		h.env.Now = func() time.Time { return at(m) }
+		if _, err := Apply(context.Background(), h.env, []Action{a}); err != nil {
+			t.Fatalf("Apply %s at %d: %v", a.Kind, m, err)
+		}
+	}
+	start := h.seed(t, 7, oldSession, "start:7", "")
+	tick(35, Action{Kind: KindClose, Repo: applyRepo, Issue: 7, RunID: start, Outcome: runs.Question,
+		EventRef: "63", EventAt: at(30)})
+	resume := resumeAction()
+	resume.EventRef, resume.EventAt = "63", at(60)
+	tick(70, resume)
+	rows := h.history(t)
+	resumed := rows[len(rows)-1].ID
+	tick(100, Action{Kind: KindNoteDone, Repo: applyRepo, Issue: 7, RunID: resumed})
+	tick(130, Action{Kind: KindClose, Repo: applyRepo, Issue: 7, RunID: resumed, Outcome: runs.Handoff})
+
+	id, ok, err := telemetry.FindTrajectoryID(context.Background(), h.db, applyRepo, 7)
+	if err != nil || !ok {
+		t.Fatalf("FindTrajectoryID = %d, %v, %v", id, ok, err)
+	}
+	tl, err := telemetry.LoadTimeline(context.Background(), h.db, id, time.Time{}, at(200))
+	if err != nil {
+		t.Fatalf("LoadTimeline: %v", err)
+	}
+	want := map[telemetry.Cause]time.Duration{
+		telemetry.CauseActive: 60 * time.Minute, telemetry.CauseHuman: 30 * time.Minute,
+		telemetry.CausePickup: 10 * time.Minute, telemetry.CauseCIReview: 30 * time.Minute,
+	}
+	if len(tl.ByCause) != len(want) {
+		t.Errorf("ByCause = %+v, want only %v", tl.ByCause, want)
+	}
+	for c, d := range want {
+		got := tl.ByCause[c]
+		if got.Duration != d || got.Estimate || got.Running || got.InclusiveCIReview {
+			t.Errorf("ByCause[%s] = %+v, want %v measured", c, got, d)
+		}
+	}
+	if len(tl.Questions) != 1 || !tl.Questions[0].At.Equal(at(30)) || !tl.Questions[0].Answered ||
+		len(tl.Answers) != 1 || !tl.Answers[0].At.Equal(at(60)) || tl.Answers[0].Estimate {
+		t.Errorf("Questions = %+v, Answers = %+v, want the stored Vraag at 30 answered at 60", tl.Questions, tl.Answers)
+	}
+}
+
 // A done event that could not be stored is not tried again in a later tick: one attempt, one
 // log line, across two Apply calls on the same state dir.
 func TestApplyDoneWriteFailureNotRetried(t *testing.T) {
