@@ -78,7 +78,7 @@
   - `TestReadFile_BadLineAndSince`: één kapotte regel → `skipped == 1`; `since` laat oudere record weg.
   - `TestResolveBranch`: `git push origin HEAD:main` + `gitBranch=x` → `main`; `git -C /wt push` + `gitBranch=main`, `/wt` onbekend → onbekend; zelfde met `knownCwds{"/wt":"issue-1"}` → `issue-1`; `git push` zonder refspec → `gitBranch`.
   - `TestHits_Caps`: 7 bestanden × 12 regels → 5 bestanden, 10 regels, laatste eerst.
-  - `TestAnalyze_MergesSessionByTimestamp`: testcommando om 10:45 in een subagentbestand en commit om 10:51 in het hoofdbestand (subagent wordt als tweede pad gelezen) → `CommitsAfterTest == 1`; `Hits` kiest het recentste bestand op timestamp.
+  - `TestAnalyze_MergesSessionByTimestamp`: een opnemende testdetector krijgt de records van een sessie (ouderbestand met timestamps 10:51, subagentbestand als tweede pad met 10:45) in de volgorde 10:45, 10:51; `Hits` kiest het recentste bestand op timestamp. De `CommitsAfterTest`-helft staat in taak 9.
   - `TestReadFile_NoContentKept`: record met `SECRET-PROMPT-1` in een `user`-bericht heeft die tekst in geen enkel veld.
 - [ ] **Step 2: Run** `go test ./internal/history/` — verwacht FAIL.
 - [ ] **Step 3: Implementeer** de typen en functies hierboven. `Analyze` mag detectoren registreren via een slice `detectors(env) []Detector` in `analyze.go` die in taken 3–8 groeit.
@@ -153,7 +153,7 @@
 - Consumes: tellingen uit `trunk` (`trunk_push_ratio`, bekende pushes), `workTracking.PRs()`, en een nieuwe `type chainCounts struct { Commits, CommitsAfterTest, Codex int }` die `Analyze` per sessie (ouder + subagents) bijhoudt: een testcommando in de op timestamp samengevoegde volgorde van de sessie (`go test`, `pytest`, `npm test`, `uv run pytest`, `cargo test`, `lighthouse gate`) eerder in dezelfde sessie dan de commit; `codex` = aanroep van `codex`.
 - Produces: `type Level struct { Recommended, Reason string }`; `func decideLevel(c Counts) Level` met constanten `minPRs = 3`, `maxTrunkPushRatio = 0.20`, `minTestedCommitRatio = 0.5`.
 
-- [ ] **Step 1: Tabeltest `TestDecideLevel`**: 3 PR's, 10% trunk, 60% getest → `standard`; plus 1 codex → `strict`; 2 PR's → `light` met reden die "PRs" noemt; 20,0% trunk → `light` (grens is "minder dan 20%"); noemer 0 (geen pushes met bekende branch / geen commits) → niet voldaan; `sessions: 0` → `light` met reden `no history`; `standard`-reden noemt waarom geen `strict`.
+- [ ] **Step 1: Integratietest `TestAnalyze_TestInSubagentBeforeCommit`**: testcommando om 10:45 in een subagentbestand, commit om 10:51 in het hoofdbestand → `CommitsAfterTest == 1` en niveau `standard` bij overigens voldane drempels. **Tabeltest `TestDecideLevel`**: 3 PR's, 10% trunk, 60% getest → `standard`; plus 1 codex → `strict`; 2 PR's → `light` met reden die "PRs" noemt; 20,0% trunk → `light` (grens is "minder dan 20%"); noemer 0 (geen pushes met bekende branch / geen commits) → niet voldaan; `sessions: 0` → `light` met reden `no history`; `standard`-reden noemt waarom geen `strict`.
 - [ ] **Step 2–4: Run FAIL / implementeer / run PASS.** Koppel in `Analyze`. Commit `feat(history): niveauregel (#491)`.
 
 ### Task 10: cobra-commando `lighthouse history`
@@ -171,6 +171,7 @@
   - `TestHistory_NoTranscripts`: exit 0, `sessions: 0`, elk onderdeel `no_data`, niveau `light` / `no history`.
   - `TestHistory_ForeignProjectWithoutOrigin`: repo zonder `origin`, projectmap met cwd in een andere repo → `sessions: 0`.
   - `TestHistory_UnreadableProjectsDir`: exit 1.
+  - `TestHistory_CustomDefaultBranch`: temp-repo waarvan `origin/HEAD` naar `stable` wijst (`git symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/stable`) en een fixture met pushes `HEAD:stable` → die pushes tellen als trunkpushes (`trunk_names` bevat `stable`).
   - `TestHistory_BadSince`: `--since morgen` → exit 2.
   - `TestHistory_WSLHint`: `/proc/version` met `microsoft` (via `historyEnv.ProcVersion`) en 0 sessies → `hint` noemt `/mnt/c/Users/<naam>/.claude/projects`.
   - `TestHistory_SessionOnWSLPathAndSlug`: fixture met Windows-cwd's vanaf een repo onder `/home/…` (alleen via slug); de roots-helft (`/mnt/c/…`) is op unitniveau gedekt in taak 1.
