@@ -84,7 +84,8 @@ Daarnaast zijn de vier mens-labels fijner dan het werk. `needs_decision` en `nee
 | **doen** | `needs_hands` | staat los van de andere assen; kan naast elk ander label |
 
 - `needs_mind` vervangt `needs_shaping` en `needs_decision`: de mens moet denken (shapen, een keuze
-  maken). Naam `3-needs-mind`, kleur `FBCA04`.
+  maken). Naam `3-needs-mind`, kleur `FBCA04`. De ingebouwde default (`internal/config`, voor een
+  repo zonder eigen `[labels]`) wordt `needs-mind`. *(eigen keuze na specreview, r1-f1)*
 - `needs_hands` neemt `needs_testing` op: de mens moet iets doen (instellen, draaien, testen,
   oordelen of het werkt). Naam blijft `3-needs-hands`.
 - Een blokkade wint van `needs_hands` in de **status** (§2), niet in de labels: `needs_hands`
@@ -94,7 +95,9 @@ Daarnaast zijn de vier mens-labels fijner dan het werk. `needs_decision` en `nee
   de agent zeggen?") blijft.
 - `lighthouse state label <nr> <key>` en `state return` passen de rang per as toe: `needs_mind`
   zetten laat een blokkadelabel staan; `blocked_issue` zetten laat `needs_mind` en `needs_hands`
-  staan en haalt alleen `blocked_external` weg.
+  staan en haalt alleen `blocked_external` weg. De uitvoerregel `label: #<nr> …` noemt alle
+  blokkade- en mens-labels die na de wijziging op het issue staan, niet één winnaar. *(eigen keuze
+  na specreview, r1-f14)*
 - De invariant van `lighthouse-write-issue` 3e verandert: `needs_mind` met een open `blocked_by`
   is **label missing** zolang `blocked_issue` ontbreekt. Het label komt erbij, `needs_mind` blijft.
 
@@ -110,7 +113,7 @@ De eerste rij die past, wint:
 | 1 | `done` | het issue is gesloten |
 | 2 | `needs_mind` | het label `needs_mind`, of een open 🤖 Vraag |
 | 3 | `needs_hands` | het label `needs_hands`, zonder blokkade |
-| 4 | `active` | een run met `open`; of Status `In progress` of `Controller`, zonder blokkade |
+| 4 | `active` | een run met `open` of `parked`; of Status `Controller`; of Status `In progress` zonder blokkade |
 | 5 | `ready` | de rest (UI-tekst "to do") |
 
 - **Blocked is geen status meer.** Een geblokkeerd issue staat op `ready` (of op `needs_mind`, of op
@@ -118,22 +121,36 @@ De eerste rij die past, wint:
   ook `Blocked bool` terug.
 - **Een open run wint van een blokkade.** Een controller-issue in de spec-, plan- of reviewfase met
   een open voorganger werkt echt; het is *active* met een kruis.
-- **Een `parked` run telt niet als werk.** Geparkeerd betekent: wacht op een voorganger.
-- **Een board-status zonder run telt niet bij een blokkade.** `In progress` of `Controller` met een
-  blokkade en zonder open run is `ready` met een kruis. Zo staat #379 niet meer op *active*.
+- **Een `parked` run telt als werk.** De runstatus `parked` betekent: de usage guard of de
+  pauzevlag hield de run aan, en hij hervat vanzelf (`parkedRun` in `internal/dispatch/decide.go`).
+  Wachten op een voorganger is iets anders: dan parkeert de tick het issue met `🤖 Geparkeerd`,
+  `blocked_issue` en board `To do`, zonder run. *(eigen keuze na specreview, r1-f11)*
+- **`Controller` is altijd *active*, ook met een blokkade.** Een controller-issue in de spec-fase
+  blijft met een open voorganger op `Controller` staan (`docs/tick.md`, *Parkeren*), en heeft tussen
+  twee runs geen open run (wachtrij, slots, nacht, usage). Een uitvoerend issue met een actieve
+  voorganger zet de tick zelf op `To do`. *(eigen keuze na specreview, r1-f12)*
+- **`In progress` zonder run telt niet bij een blokkade.** `In progress` met een blokkade en zonder
+  open of geparkeerde run is `ready` met een kruis. Zo staat #379 niet meer op *active*.
+- **`done` is nooit *blocked*.** `Of` geeft voor een gesloten issue `Blocked=false`; gesloten issues
+  dragen in `/api/priorities` geen labels of blockers. *(eigen keuze na specreview, r1-f6)*
 - Een issue met `needs_mind` is nooit *active*. Geeft de controller een besluit terug, of stelt hij
   een vraag, dan staat het issue op *needs mind*. Na het antwoord springt het terug naar *active*.
   De gebruiker vindt dat goed: het is de echte flow.
 - `needs_hands` met een open run is *needs hands*: de mens is aan zet, ook al loopt de run nog. De
   tick start bij een `needs_*`-label geen nieuwe run en zet het issue op `To do`, zoals nu.
-- **Run-gegevens.** `/api/priorities` levert de runs al; `derive.ts` leest ze met `liveRun`. Go en
-  web blijven dus één regel. De runs zijn die van de machine waarop `lighthouse serve` en de tick
-  draaien, zoals nu.
+- **Run-gegevens.** `/api/priorities` levert de runs al; `derive.ts` leest ze met `liveRun`
+  (`open` en `parked`, zoals nu). Go en web blijven dus één regel. De runs zijn die van de machine
+  waarop `lighthouse serve` en de tick draaien, zoals nu.
+- **Labels naar de web, per as.** Eén veld `label` (de laagste rang) plus `needs_label` kan
+  `needs_mind` met `blocked_external` niet dragen. `/api/priorities` levert daarom `labels`: alle
+  `[labels]`-sleutels van de blokkade- en mens-labels op het issue. `label` en `needs_label`
+  vervallen; `derive.ts` past dezelfde regel toe als `Of`. *(eigen keuze na specreview, r1-f10)*
 - `lighthouse state show <nr>` print `state: #<nr> <status>`, en `, blocked` erachter bij een
   blokkade.
 - `cases.json` krijgt minstens één geval per rij, plus: `needs_mind` met blokkade; `needs_hands`
-  met blokkade; open run met blokkade; `In progress` met blokkade zonder run; `parked` run met
-  `blocked_issue`.
+  met blokkade; open run met blokkade; `In progress` met blokkade zonder run; `Controller` met
+  blokkade zonder run; `parked` run met `blocked_issue`; `needs_mind` met `blocked_external`;
+  gesloten issue met een blokkadelabel.
 
 ### 3. Vormentaal
 
@@ -174,24 +191,61 @@ Het woord *Status* staat alleen op de kanban, waar het de kolommen zijn. In *Dep
 | `lighthouse-start-issue` na goedgekeurde spec | `needs_shaping` eraf; sessie wisselt naar `blocked_issue` | alleen `needs_mind` eraf |
 | `lighthouse-write-issue` 3c en 3e | zie §1 | zie §1 |
 | triage (`internal/triage`) | 4c zet `needs_shaping`; met `needs_shaping`/`needs_decision` moet de route 4c zijn | zelfde met `needs_mind` |
+| triage-invariant (`internal/triage/rules.go`) | meer dan één blokkadelabel is een afwijking (`Deviation{Kind: "blocking"}`) | per as: alleen `blocked_issue` plus `blocked_external` samen is een afwijking; `needs_mind` en `needs_hands` tellen niet mee *(eigen keuze na specreview, r1-f9)* |
+| map-planned (`internal/scheduled/mapplanned`) | een wensvraag zet `needs_decision` | een wensvraag zet `needs_mind` |
 | tick bij teruggeven | `reason_needs_brainstorm` → `needs_shaping`, `reason_interactive` → `needs_decision`, de rest → `needs_hands` | beide eerste → `needs_mind`; de rest ongewijzigd |
 | tick `heldByHuman` | vier `needs_*` plus `blocked_external` | `needs_mind`, `needs_hands`, `blocked_external` |
 
 ### 6. Migratie
 
-Eén commando, eenmalig per repo. Het toont eerst de lijst, en schrijft pas na bevestiging (zoals
-de migratie van `On hold`):
+Eén commando, eenmalig per repo. Het toont eerst de lijst, vraagt bevestiging, leest de forge
+daarna opnieuw en schrijft pas dan. Er is geen bestaand migratiecommando om na te volgen; de
+bevestigingsflow is nieuw. *(eigen keuze na specreview, r1-f15)*
 
-- `3-needs-shaping` en `3-needs-decision` → `3-needs-mind`; `3-needs-testing` → `3-needs-hands`.
-- Een issue met `3-needs-mind` en een open `blocked_by`, zonder `3-blocked-issue`, krijgt
-  `3-blocked-issue` erbij (§1).
-- Een issue op `In progress` of `Controller` met een blokkade en zonder open run: op de lijst, met
-  het voorstel `To do`. Pas na bevestiging.
-- Daarna de oude labels weg op de forge, en `[labels]` in `lighthouse.toml` naar de nieuwe sleutels.
-- **Volgorde bij een upgrade.** De nieuwe binary weigert de oude sleutels in `[labels]` met een fout
-  die het migratiecommando noemt. Het migratiecommando leest `lighthouse.toml` zelf, zonder die
-  controle, en is het enige dat ermee werkt. *Mijn keuze:* geen stille alias (aanpak 2 is
-  afgewezen), maar ook geen kapotte config zonder uitweg.
+**Oude namen.** Het commando haalt de oude labelnamen uit de oude sleutels in `[labels]`
+(`needs_shaping`, `needs_decision`, `needs_testing`), en anders uit de oude ingebouwde defaults
+(`needs-shaping`, `needs-decision`, `needs-testing`), die het als vaste lijst kent. Zo werkt het ook
+voor een repo zonder eigen `[labels]`. *(eigen keuze na specreview, r1-f1)*
+
+**Stappen**, in deze volgorde; elke stap kijkt eerst wat er al staat, zodat een herhaalde run na een
+fout halverwege verder gaat waar hij stopte:
+
+1. Per issue: oude mens-labels (`needs_shaping`, `needs_decision`) → `needs_mind`; `needs_testing` →
+   `needs_hands`.
+2. Een issue met `needs_mind` en een open `blocked_by`, zonder `blocked_issue`, krijgt
+   `blocked_issue` erbij (§1).
+3. Een issue op `In progress` met een blokkade en zonder open of geparkeerde run: op de lijst, met
+   het voorstel `To do`. `Controller` staat nooit op de lijst (§2). *(eigen keuze na specreview,
+   r1-f12)*
+4. Het taxonomiebestand uit `[paths].labels`: de rijen van de oude labels worden één rij
+   `needs_mind`, `needs_testing` gaat op in `needs_hands`. Kan het commando het bestand niet lezen,
+   dan stopt het vóór stap 1. *(eigen keuze na specreview, r1-f4)*
+5. `[labels]` in `lighthouse.toml` naar de nieuwe sleutels.
+6. Als laatste: de oude labels weg op de forge. Daarvoor krijgt de forge-laag een `DeleteLabel` voor
+   GitHub en GitLab; nu is er alleen `Labels` en `CreateLabel`. *(eigen keuze na specreview, r1-f15)*
+
+**Waar.** Het commando draait op de tick-host (waar de runs staan), met de tick gepauzeerd
+(`lighthouse pause`). Zonder runs-database weigert het stap 3 in plaats van "geen run" aan te nemen.
+*(eigen keuze na specreview, r1-f3)*
+
+**Weigeren.** Zowel `config.Load` (`internal/config`) als `repoconfig.LoadFile`
+(`internal/repoconfig`) weigeren de oude sleutels in `[labels]`, met een fout die het
+migratiecommando noemt. Het migratiecommando leest `lighthouse.toml` zelf, zonder die controle, en is
+het enige dat ermee werkt. *Mijn keuze:* geen stille alias (aanpak 2 is afgewezen), maar ook geen
+kapotte config zonder uitweg.
+
+**Volgorde per repo.** *(eigen keuze na specreview, r1-f1)*
+
+- **lighthouse zelf.** Deel a bevat de code, de nieuwe sleutels in `lighthouse.toml`, het
+  taxonomiebestand en de dogfood-kopie, zodat CI (`init --upgrade` → `No changes.`) groen is. Vóór de
+  merge: tick pauzeren, het migratiecommando uit de worktree van a draaien (stap 1–4 en 6 op de forge
+  en in het bestand; stap 5 staat al in de branch), mergen, de nieuwe binary op de tick-host
+  installeren, pauze eraf.
+- **personal_ai_agent** (pack v0.9.0, oude sleutels). Tick pauzeren, nieuwe binary, migreren,
+  direct `init --upgrade` (de oude pack-skills vragen naar `labels.needs_shaping`), committen via een
+  PR, pauze eraf. Tussen de binary en `init --upgrade` falen `lighthouse config`-aanroepen van die
+  repo; daarom staat de tick stil.
+- **Een nieuwe repo.** `init --labels` (`projectconfig.LabelTables`) schrijft de nieuwe sleutels.
 
 Op 24 november: 17 open issues met `3-needs-shaping` in deze repo, 0 met `3-needs-decision` of
 `3-needs-testing`. #379 staat op `In progress` met een blokkade.
@@ -202,40 +256,43 @@ Vijf kolommen: **needs mind · to do · active · needs hands · done**. *Blocke
 kaart, geen kolom. De rest van §6 van het vorige ontwerp blijft (kaart, `controller`/`interactive`,
 volgorde, done-kolom, filter op milestone). De kaart van een issue met blokkade toont daarnaast
 `waits on 375` (zonder `#`), zoals de lijst onder *Without milestone*; bij `blocked_external`
-`waits: external`.
+`waits: external`. Een `blocked_issue` zonder `blocked_by`-relatie (GitLab Free, waar de blokkade
+alleen als label plus `Blocked by #n` in de body bestaat) toont `waits: issue`. *(eigen keuze na
+specreview, r1-f7)*
 
 ## Opdeling
 
 | | Inhoud | Hangt af van |
 |---|---|---|
-| a | Labels en migratie: `[labels]`, `issuestate` (assen, `Keys`, `GateZero`, `state label`), triage, tick, pack-skills, `labels.md`, migratiecommando. `Of` mapt `needs_mind` tijdelijk op de oude status `needs_shaping`, en een open 🤖 Vraag blijft *needs human*: `cases.json` verandert in a alleen van labelnamen. | — |
-| b | Status en vorm: vijf statussen plus `Blocked` in `Of`, `cases.json` en `derive.ts`; blokje met kruis-overlay; legenda; balkvolgorde; `state show`. | a |
+| a | Labels en migratie: `[labels]` (schema en defaults in `internal/config`, `internal/repoconfig`, `projectconfig.LabelTables`), `issuestate` (assen, `Keys`, `GateZero`, `state label`), triage, tick, map-planned, `DeleteLabel` in de forge-laag, pack-skills, het pack-template `labels.md`, `docs/developer/labels.md`, `docs/tick.md`, `docs/triage.md`, `docs/priorities.md`, migratiecommando. `Of` mapt `needs_mind` tijdelijk op de oude status `needs_shaping`, en een open 🤖 Vraag blijft *needs human*. `derive.ts` leert in a alleen de sleutel `needs_mind` (dezelfde tijdelijke mapping), zodat `/api/priorities` en de web na a gelijk blijven. In `cases.json` veranderen de labelnamen, en de gevallen met `needs_decision` verwachten nu `needs_shaping` in plaats van `needs_human`. *(eigen keuze na specreview, r1-f2, r1-f5, r1-f13)* | — |
+| b | Status en vorm: vijf statussen plus `Blocked` in `Of`, `cases.json` en `derive.ts`; `labels` per as in `/api/priorities`; blokje met kruis-overlay; legenda; balkvolgorde; `state show`. | a |
 | c | #557 aanpassen en bouwen: vijf kolommen, `waits on` op de kaart. | b |
 
-Na a draait de migratie op deze repo en op `personal_ai_agent`. #556 staat los en blijft zoals hij is,
-behalve de balkvolgorde uit b.
+De migratie draait op deze repo en op `personal_ai_agent` in de volgorde van §6. #556 staat los en
+blijft zoals hij is, behalve de balkvolgorde uit b.
 
 ## Aan de bouwer
 
 - De naam en vorm van het migratiecommando (`lighthouse labels migrate` of onder `lighthouse state`).
-- Hoe `Blocked` naar de web gaat: een veld in `/api/priorities` of berekend uit wat er al is
-  (`label`, `blocked_by`). Wel dezelfde regel als Go.
 - Hoe het kruis over de stippelvorm ligt (één SVG of twee lagen), zolang het in 14 × 14 px leesbaar
   blijft.
-- Of `needs_label` in `/api/priorities` blijft of opgaat in de nieuwe velden.
 
 ## Keuzes die ik maakte
 
 Neem deze door bij het lezen. De rest komt van de gebruiker.
 
 1. Een open 🤖 Vraag geeft *needs mind* (nu *needs human*).
-2. Een open run wint van een blokkade (*active* met kruis); `parked` telt niet als run.
-3. `In progress` of `Controller` zonder run en met een blokkade is *to do* met kruis.
+2. Een open of geparkeerde run wint van een blokkade (*active* met kruis). *(herzien na
+   specreview: `parked` is de usage guard, geen voorganger)*
+3. `In progress` zonder run en met een blokkade is *to do* met kruis; `Controller` is altijd
+   *active*. *(herzien na specreview: de spec-fase blijft met een blokker op `Controller`)*
 4. `needs_hands` met een blokkade toont geen *needs hands*: de blokkade wint in de status. Het label
    blijft wel staan; de rang haalt het niet meer weg. `needs_hands` met een open run is *needs hands*.
 5. Legenda-kopjes *Milestones*, *Progress* en *Labels*; *Status* alleen op de kanban.
 6. Binnen *to do* in de balk: zonder kruis vóór met kruis.
-7. De migratie stelt `To do` voor bij een board-status met blokkade zonder run, en schrijft pas na
+7. De migratie stelt `To do` voor bij `In progress` met blokkade zonder run, en schrijft pas na
    bevestiging.
 8. Opdeling in drie, met labels eerst; in a blijft de statusuitvoer gelijk.
 9. De nieuwe binary weigert oude `[labels]`-sleutels en wijst naar het migratiecommando.
+10. De migratie draait op de tick-host met de tick gepauzeerd, en is na een fout opnieuw te draaien.
+11. `/api/priorities` krijgt `labels` per as in plaats van `label` plus `needs_label`.
