@@ -3074,8 +3074,11 @@ func TestApplyPushRecoverOriginMergedOnTop(t *testing.T) {
 	if !reflect.DeepEqual(fx.fetched, []string{tip}) || !reflect.DeepEqual(fx.ancestors, []string{strings.Repeat("a", 40) + "<" + tip}) {
 		t.Errorf("fetched = %q, ancestors = %q", fx.fetched, fx.ancestors)
 	}
+	if len(fx.envs) != 2 {
+		t.Fatalf("git calls = %d, want fetch and merge-base", len(fx.envs))
+	}
 	for _, e := range fx.envs {
-		if !strings.Contains(e, "GIT_TERMINAL_PROMPT=0") || strings.Contains(e, "GH_TOKEN") {
+		if !strings.Contains(e, "GIT_TERMINAL_PROMPT=0") || strings.Contains(e, "TOKEN") || strings.Contains(e, "forge-tok") {
 			t.Errorf("git env = %q, want scrubbed with GIT_TERMINAL_PROMPT=0", e)
 		}
 	}
@@ -3104,6 +3107,23 @@ func TestApplyPushRecoverOriginContainsWithoutAfter(t *testing.T) {
 	}
 	if rows := h.history(t); len(rows) != 1 || rows[0].Outcome != runs.Returned {
 		t.Errorf("rows = %+v, want one returned row", rows)
+	}
+}
+
+// A failed post of the Returned for a missing after: command closes the row as returned.
+func TestApplyPushRecoverNoAfterPostFailsClosesReturned(t *testing.T) {
+	h, _ := pushHarness(t)
+	var asked []string
+	h.env.LsRemote = lsRemoteFake(strings.Repeat("a", 40), nil, &asked)
+	h.poster(applyRepo).postErr = errors.New("502 bad gateway")
+	a := pushRecoverAction()
+	a.After = ""
+	if _, err := Apply(context.Background(), h.env, []Action{a}); err == nil {
+		t.Errorf("Apply: nil error, want the failed post")
+	}
+	rows := h.history(t)
+	if len(rows) != 1 || rows[0].Open || rows[0].Outcome != runs.Returned || rows[0].Reason != "post returned: 502 bad gateway" {
+		t.Errorf("rows = %+v, want one row closed as returned with reason post returned", rows)
 	}
 }
 

@@ -733,14 +733,6 @@ func (ap applier) recoverPostFailed(ctx context.Context, runID int64, step strin
 	return ap.failedAs(ctx, runID, runs.Returned, step, cause)
 }
 
-// clip cuts s to at most n runes.
-func clip(s string, n int) string {
-	if r := []rune(s); len(r) > n {
-		return string(r[:n]) + "…"
-	}
-	return s
-}
-
 // lsRemoteTimeout bounds one git ls-remote: a remote that hangs must not hold the tick.
 const lsRemoteTimeout = 30 * time.Second
 
