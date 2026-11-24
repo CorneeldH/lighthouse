@@ -16,6 +16,7 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/CorneeldH/lighthouse/internal/agentsmd"
 	"github.com/CorneeldH/lighthouse/internal/created"
+	"github.com/CorneeldH/lighthouse/internal/hostconfig"
 	"github.com/CorneeldH/lighthouse/internal/manifest"
 	"github.com/CorneeldH/lighthouse/internal/orderedjson"
 	"github.com/CorneeldH/lighthouse/internal/packs"
@@ -96,7 +97,7 @@ func uninstall(o Options) error {
 			}
 		}
 	}
-	_, _ = fmt.Fprintf(o.Out, "Removed %d file(s).\n", len(paths))
+	_, _ = fmt.Fprintf(o.Out, "Changed %d file(s).\n", len(paths))
 	report(o, root, seeded, notes)
 	return nil
 }
@@ -148,8 +149,8 @@ func report(o Options, root string, seeded, notes []string) {
 	for _, n := range notes {
 		line("%s", n)
 	}
-	line("not touched: labels on the forge, %s", ".lighthouse/host.toml")
-	line("not touched: a running Claude Code session keeps its hooks until it restarts")
+	line("not touched: labels on the forge, ~/%s", hostconfig.HomeRel)
+	line("note: a running Claude Code session keeps its hooks until it restarts")
 }
 
 // uninstallPlan plans the removal of every unit in changes, the undoing of what
@@ -327,6 +328,10 @@ func revertCreated(root string, c created.Created, plan map[string]*planned, loa
 			return nil, err
 		}
 		p.delete = p.existed
+	} else if p, err := load(configPath); err != nil {
+		return nil, err
+	} else if p.existed {
+		notes = append(notes, fmt.Sprintf("left: %s — init may have added keys to it; remove them yourself if so", configPath))
 	}
 
 	agents, err := load(agentsMDPath)

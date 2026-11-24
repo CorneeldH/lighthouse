@@ -13,6 +13,7 @@ import (
 	"testing/fstest"
 
 	"github.com/CorneeldH/lighthouse/internal/created"
+	"github.com/CorneeldH/lighthouse/internal/hostconfig"
 	"github.com/CorneeldH/lighthouse/internal/manifest"
 	"github.com/CorneeldH/lighthouse/internal/orderedjson"
 )
@@ -174,7 +175,7 @@ func TestUninstallRoundTripWithOwnContent(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("uninstall: rc %d\n%s%s", r.code, r.out, r.err)
 	}
-	if !strings.Contains(r.out, "Removed ") {
+	if !strings.Contains(r.out, "Changed ") {
 		t.Errorf("no summary:\n%s", r.out)
 	}
 	sameTree(t, root, before)
@@ -817,10 +818,10 @@ func TestUninstallReportsNotTouched(t *testing.T) {
 	}
 	var forge, restart bool
 	for _, l := range strings.Split(r.err, "\n") {
-		if strings.HasPrefix(l, "not touched:") && strings.Contains(l, "labels on the forge") && strings.Contains(l, ".lighthouse/host.toml") {
+		if l == "not touched: labels on the forge, ~/"+hostconfig.HomeRel {
 			forge = true
 		}
-		if strings.HasPrefix(l, "not touched:") && strings.Contains(l, "running Claude Code session") && strings.Contains(l, "restart") {
+		if strings.HasPrefix(l, "note:") && strings.Contains(l, "running Claude Code session") && strings.Contains(l, "restart") {
 			restart = true
 		}
 	}
@@ -850,5 +851,33 @@ func TestUninstallLeavesNoReportOnRefusal(t *testing.T) {
 				t.Errorf("%s run reports %q:\n%s", name, w, r.err)
 			}
 		}
+	}
+}
+
+// Red when an lighthouse.toml that existed before init is removed or goes unreported:
+// init may have added keys to it, and created.toml does not record that.
+func TestUninstallReportsPreExistingLighthouseToml(t *testing.T) {
+	root := newRepo(t)
+	write(t, root, "lighthouse.toml", "[project]\nlanguage = \"nl\"\n")
+	initYes(t, root)
+	if slices.Contains(readCreated(t, root).Files, "lighthouse.toml") {
+		t.Fatal("fixture: created.toml records lighthouse.toml")
+	}
+	r := runUninstall(t, root)
+	if r.code != 0 {
+		t.Fatalf("uninstall: rc %d\n%s%s", r.code, r.out, r.err)
+	}
+	if !exists(root, "lighthouse.toml") {
+		t.Error("lighthouse.toml removed")
+	}
+	if want := "left: lighthouse.toml — init may have added keys to it; remove them yourself if so\n"; !strings.Contains(r.err, want) {
+		t.Errorf("no %q in:\n%s", want, r.err)
+	}
+	// An lighthouse.toml that init created goes, without the note.
+	other := newRepo(t)
+	initYes(t, other)
+	r = runUninstall(t, other)
+	if strings.Contains(r.err, "left: lighthouse.toml") {
+		t.Errorf("note for a created lighthouse.toml:\n%s", r.err)
 	}
 }
