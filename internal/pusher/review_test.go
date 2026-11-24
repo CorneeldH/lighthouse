@@ -702,6 +702,14 @@ func TestPromptForIntent(t *testing.T) {
 	if strings.Contains(strings.ToLower(got), "scope") {
 		t.Errorf("prompt intent mentions a token scope")
 	}
+	// An intent approve skips the security review (spec #551 §2): the prompt must not hand
+	// injection to other reviewers, and must reject an asked-for step that interpolates event data.
+	if strings.Contains(got, "Security reviewers") || !strings.Contains(got, "no security reviewer looks at this change") {
+		t.Errorf("prompt intent claims security reviewers cover the change")
+	}
+	if !strings.Contains(got, "interpolates untrusted\nevent data") || !strings.Contains(got, "even\nwhen the issue asks for exactly that step") {
+		t.Errorf("prompt intent lacks the reject of an asked-for step with untrusted interpolation")
+	}
 	if _, ok := promptFor("secrets"); !ok {
 		t.Error("promptFor(secrets) is gone")
 	}
