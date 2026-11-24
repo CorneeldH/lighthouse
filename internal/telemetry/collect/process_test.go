@@ -54,6 +54,7 @@ type tline struct {
 	model  string
 	out    int
 	write  string // file_path of a Write tool use
+	ask    string // tool-use id of an AskUserQuestion tool use
 	extra  string // spliced into the content blocks of a user line, e.g. a skill text
 }
 
@@ -70,6 +71,9 @@ func (l tline) json(sid string) string {
 	content := `[{"type":"text","text":"x"}]`
 	if l.write != "" {
 		content = fmt.Sprintf(`[{"type":"tool_use","name":"Write","id":"tu%s","input":{"file_path":%q}}]`, l.id, l.write)
+	}
+	if l.ask != "" {
+		content = fmt.Sprintf(`[{"type":"tool_use","name":"AskUserQuestion","id":%q,"input":{}}]`, l.ask)
 	}
 	return fmt.Sprintf(`{"type":"assistant","sessionId":%q,"gitBranch":%q,"timestamp":%q,"version":"2.1.0","message":{"id":%q,"model":%q,"content":%s,"usage":{"input_tokens":10,"output_tokens":%d,"cache_read_input_tokens":100,"cache_creation_input_tokens":20}}}`,
 		sid, l.branch, ts, l.id, l.model, content, l.out)
@@ -623,5 +627,129 @@ func TestProcessPlanOutsideRepoIgnored(t *testing.T) {
 	process(t, db, source("s1", now, lines...), opts(dir, now))
 	if tasks, path := planOf(t, db); tasks.Valid || path.Valid {
 		t.Errorf("plan from another repo counted: %v %v", tasks, path)
+	}
+}
+
+// answerTo is the extra content of a user line that answers the AskUserQuestion with this id.
+func answerTo(id string) string {
+	return fmt.Sprintf(`[{"type":"tool_result","tool_use_id":%q,"content":"ok"}]`, id)
+}
+
+func questionLines(answered bool) []tline {
+	ls := []tline{
+		{min: 0, branch: "issue-7-x"},
+		{min: 1, branch: "issue-7-x", id: "m1", model: known, out: 50, ask: "q1"},
+	}
+	if answered {
+		ls = append(ls, tline{min: 5, branch: "issue-7-x", extra: answerTo("q1")})
+	}
+	return ls
+}
+
+type eventRow struct {
+	kind, ref, sourceID, at string
+}
+
+func eventsOf(t *testing.T, db *sql.DB) []eventRow {
+	t.Helper()
+	rows, err := db.Query(`SELECT kind, ref, source_id, at FROM trajectory_events ORDER BY kind DESC, id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rows.Close() }()
+	var out []eventRow
+	for rows.Next() {
+		var e eventRow
+		if err := rows.Scan(&e.kind, &e.ref, &e.sourceID, &e.at); err != nil {
+			t.Fatal(err)
+		}
+		out = append(out, e)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+func TestProcessQuestionAndAnswerClosedSession(t *testing.T) {
+	db := openDB(t)
+	now := base.Add(5 * time.Hour)
+	process(t, db, source("s1", now.Add(-2*time.Hour), questionLines(true)...), opts(t.TempDir(), now))
+	got := eventsOf(t, db)
+	want := []eventRow{
+		{"question", "s1:q1", "transcript:s1:q1:question", "2026-11-24T10:01:00Z"},
+		{"answer", "s1:q1", "transcript:s1:q1:answer", "2026-11-24T10:05:00Z"},
+	}
+	if len(got) != 2 || got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("events = %+v, want %+v", got, want)
+	}
+	if n := count(t, db, `SELECT count(*) FROM trajectory_events WHERE session_id IS NULL OR run_id IS NOT NULL`); n != 0 {
+		t.Errorf("%d events not owned by the session alone", n)
+	}
+}
+
+func TestProcessQuestionsSecondPassAddsNothing(t *testing.T) {
+	db := openDB(t)
+	now := base.Add(5 * time.Hour)
+	for i := 0; i < 2; i++ {
+		process(t, db, source("s1", now.Add(-2*time.Hour), questionLines(true)...), opts(t.TempDir(), now))
+	}
+	if n := count(t, db, `SELECT count(*) FROM trajectory_events`); n != 2 {
+		t.Errorf("events after two passes = %d, want 2", n)
+	}
+}
+
+func TestProcessOpenSessionWritesNoEvents(t *testing.T) {
+	db := openDB(t)
+	now := base.Add(5 * time.Hour)
+	process(t, db, source("s1", now.Add(-10*time.Minute), questionLines(true)...), opts(t.TempDir(), now))
+	if n := count(t, db, `SELECT count(*) FROM trajectory_events`); n != 0 {
+		t.Errorf("open session wrote %d events, want 0", n)
+	}
+}
+
+func TestProcessRunWritesNoEvents(t *testing.T) {
+	db := openDB(t)
+	takeRun(t, db, 7, "s1", "start:7", 0, 30)
+	now := base.Add(5 * time.Hour)
+	process(t, db, source("s1", now.Add(-2*time.Hour), questionLines(true)...), opts(t.TempDir(), now))
+	if n := count(t, db, `SELECT count(*) FROM trajectory_events`); n != 0 {
+		t.Errorf("run transcript wrote %d events, want 0", n)
+	}
+}
+
+func TestProcessUnansweredQuestion(t *testing.T) {
+	db := openDB(t)
+	now := base.Add(5 * time.Hour)
+	process(t, db, source("s1", now.Add(-2*time.Hour), questionLines(false)...), opts(t.TempDir(), now))
+	got := eventsOf(t, db)
+	if len(got) != 1 || got[0].kind != "question" {
+		t.Fatalf("events = %+v, want only the question", got)
+	}
+	// The answer arrives in a later pass: the question stays one row, the answer is added.
+	process(t, db, source("s1", now.Add(-time.Hour), questionLines(true)...), opts(t.TempDir(), now))
+	if got := eventsOf(t, db); len(got) != 2 || got[1].kind != "answer" {
+		t.Errorf("events after the answer = %+v, want question and answer", got)
+	}
+}
+
+func TestProcessSessionHasEventsKeepsLink(t *testing.T) {
+	db := openDB(t)
+	now := base.Add(5 * time.Hour)
+	process(t, db, source("s1", now.Add(-2*time.Hour), questionLines(true)...), opts(t.TempDir(), now))
+	moved := []tline{{min: 0, branch: "issue-9-y"}, {min: 1, branch: "issue-9-y", id: "m1", model: known, out: 50}}
+	got, err := Process(context.Background(), db, source("s1", now.Add(-time.Hour), moved...), opts(t.TempDir(), now))
+	if err != nil {
+		t.Fatalf("refusal is an error: %v", err)
+	}
+	if got.Kind != "skipped" || got.Reason == "" {
+		t.Fatalf("outcome %+v", got)
+	}
+	var issue int
+	if err := db.QueryRow(`SELECT t.issue FROM sessions s JOIN trajectories t ON t.id = s.trajectory_id`).Scan(&issue); err != nil || issue != 7 {
+		t.Errorf("session issue %d (%v), want to stay on 7", issue, err)
+	}
+	if n := count(t, db, `SELECT count(*) FROM trajectories WHERE issue = 9`); n != 0 {
+		t.Errorf("refused move left a trajectory 9")
 	}
 }

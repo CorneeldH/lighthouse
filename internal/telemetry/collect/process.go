@@ -269,7 +269,8 @@ func writeSession(ctx context.Context, db *sql.DB, src Source, opt Options, read
 	}
 	lines := reading.Lines()
 	var plans []plan
-	if link := telemetry.Link(opt.DefaultBranch, lines); link.Issue > 0 {
+	link := telemetry.Link(opt.DefaultBranch, lines)
+	if link.Issue > 0 {
 		plans, err = plansFor(ctx, db, opt, reading, []trajectory{{repo: opt.Repo, issue: link.Issue}})
 		if err != nil {
 			return Outcome{}, err
@@ -297,13 +298,45 @@ func writeSession(ctx context.Context, db *sql.DB, src Source, opt Options, read
 		if err := writeSetupAndUsage(ctx, tx, w); err != nil {
 			return err
 		}
+		if endedAt != nil {
+			if err := writeQuestions(ctx, tx, src, opt, reading, id, link.Issue); err != nil {
+				return err
+			}
+		}
 		return setPlans(ctx, tx, opt.Repo, plans)
 	})
-	if errors.Is(err, telemetry.ErrSessionHasFindings) {
+	if errors.Is(err, telemetry.ErrSessionHasFindings) || errors.Is(err, telemetry.ErrSessionHasEvents) {
 		// The session keeps its link; the transaction rolled back, so nothing of this pass is stored.
 		return Outcome{Kind: outcomeSkips, Reason: "session keeps its trajectory: " + err.Error()}, nil
 	}
 	return out, err
+}
+
+// writeQuestions records the questions and answers of a closed session as trajectory events.
+// A session without a trajectory (issue 0) has nothing to attach them to. The ref carries the
+// session id because transcripts reuse tool-use ids across sessions.
+func writeQuestions(ctx context.Context, tx *telemetry.Tx, src Source, opt Options, reading transcript.Reading, sessionRowID int64, issue int) error {
+	if issue == 0 {
+		return nil
+	}
+	for _, q := range reading.Questions() {
+		ref := src.SessionID + ":" + q.ToolUseID
+		ev := telemetry.EventRecord{
+			Origin: telemetry.Origin{Source: sourceName, SourceID: "transcript:" + ref + ":question", RecordedAt: src.Recorded},
+			Repo:   opt.Repo, Issue: issue, SessionID: sessionRowID, Kind: telemetry.EventQuestion, Ref: ref, At: q.Asked,
+		}
+		if _, _, err := tx.RecordEvent(ctx, ev); err != nil {
+			return err
+		}
+		if q.Answered == nil {
+			continue
+		}
+		ev.SourceID, ev.Kind, ev.At = "transcript:"+ref+":answer", telemetry.EventAnswer, *q.Answered
+		if _, _, err := tx.RecordEvent(ctx, ev); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // writing is what one run or session gets written: its setup, usage per model and the

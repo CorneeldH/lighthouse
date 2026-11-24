@@ -481,6 +481,12 @@ de statusmap. Repo, default branch en `paths.plans` komen uit de `lighthouse.tom
   model zonder prijs, zoals de aliassen `sonnet`, `opus` en `haiku`, geeft `NULL` kosten, nooit
   een gok. Zijvragen komen niet altijd in het transcript terecht en worden dus
   ondergeteld. Er is geen quotum: `quota` blijft leeg.
+- **Vragen en antwoorden.** Van een afgesloten sessie (`ended_at` gezet) die aan een traject hangt,
+  schrijft de collector per `AskUserQuestion` een `question`-gebeurtenis en, zodra het antwoord er
+  is, een `answer`-gebeurtenis in `trajectory_events`, met alleen soort, `ref`
+  (`<sessie-id>:<tool-use-id>`) en tijdstip, nooit de tekst. Een open sessie en een run schrijven
+  er geen. Heeft een sessie al gebeurtenissen, dan blijft zij bij haar traject, ook als een latere
+  pas een andere branch ziet (`skip <pad>: <reden>`).
 - **De hook `telemetry-collect-check`** (SessionStart, een basishook zonder stand en zonder
   override) schrijft een waarneming (tijdstip, lighthouse- en packversie) in een zijbestand,
   `<state>/<sessie-id>.observations.json`, en start daarna `lighthouse telemetry collect

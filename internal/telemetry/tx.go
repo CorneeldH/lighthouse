@@ -48,6 +48,11 @@ func (t *Tx) RecordUsage(ctx context.Context, u UsageRecord) (int64, bool, error
 	return recordUsageTx(ctx, t.tx, u)
 }
 
+// RecordEvent is RecordEvent inside the transaction.
+func (t *Tx) RecordEvent(ctx context.Context, e EventRecord) (int64, bool, error) {
+	return recordEventTx(ctx, t.tx, e)
+}
+
 // SetPlan is SetPlan inside the transaction.
 func (t *Tx) SetPlan(ctx context.Context, repo string, issue int, tasks *int, path string) error {
 	return setPlanTx(ctx, t.tx, repo, issue, tasks, path)
