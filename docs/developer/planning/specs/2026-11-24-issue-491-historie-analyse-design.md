@@ -92,16 +92,27 @@ Daarom:
 
 ### Plek in de agentgids
 
-Een nieuwe sectie **History** in [`docs/site/agents/install.md`](../../../site/agents/install.md),
-na keuze 1 (het binaire bestand moet er zijn) en vóór de overige keuzes. De resultaten sturen die
-keuzes: het niveau, keuze 9 (labels), en het advies.
+Een nieuwe sectie **History** in [`docs/site/agents/install.md`](../../../site/agents/install.md).
+Vandaag vraagt de gids eerst keuzes 1 tot 5, 8 en 9, en installeert hij het binaire bestand pas
+daarna (sectie "Install the binary"). History heeft het binaire bestand nodig, dus de volgorde
+verandert *(eigen keuze na spec-review, r1-f4)*:
+
+1. Keuze 1. Bij ja installeert de agent het binaire bestand direct en doet hij de `--help`-controle.
+   Bij nee wacht hij, zoals nu, tot `lighthouse` op het `PATH` staat.
+2. History (hieronder).
+3. Keuzes 2 tot 5, 8 en 9.
+
+Staat `history` niet in `lighthouse --help` (een oudere release op het `PATH`), dan slaat de agent
+History over, met een regel onder "Still open"; dat is een uitzondering op de grondregel die bij
+een ontbrekende vlag stopt *(eigen keuze na spec-review, r1-f11)*. De resultaten van History sturen
+de keuzes erna: het niveau, keuze 9 (labels), en het advies.
 
 1. De agent vraagt met de vraagtool, aanbevolen eerst: **lokaal** · diep · niet. De tekst noemt
    wat elk niveau leest en, buiten Claude Code, naar welke aanbieder diep gaat.
 2. **niet**: de agent draait niets en gaat door naar de keuzes.
 3. **lokaal**: `lighthouse history`.
 4. **diep**: `lighthouse history --sources`, daarna leest de agent per bevinding met `confidence:
-   "low"` of per `unknown`-signaal hoogstens de aangewezen regels (zie "Diep").
+   "low"` hoogstens de aangewezen regels (zie "Diep").
 5. De agent legt alle voorstellen in één bericht voor, elk met een korte uitleg in de taal van de
    gebruiker: eerst het niveau met de reden, dan per bevinding de betekenis en het voorstel. Een
    `knob` wordt een keuze die de gebruiker aanneemt of afwijst. Een `advice` is uitleg zonder
@@ -123,6 +134,10 @@ lighthouse history [--sources] [--since <datum>] [--projects-dir <map>]
   builder-check.)*
   - **Slug** uit `git remote get-url origin`, met dezelfde ontleding als `initcmd` (`internal/initcmd/initcmd.go`
     rond r. 679). Zonder `origin`, of met een remote die niet te ontleden is: geen slug, alleen roots.
+    Het gedeelde package slaat de slug-regel dan over. Vandaag zou `belongsToRepo` met een lege
+    `slugSegs` elke cwd laten matchen (`internal/cli/telemetry_collect.go:362-374`), en dan leest
+    `history` de transcripten van elke repo. Een test eist dat een vreemde projectmap zonder
+    `origin` buiten blijft *(eigen keuze na spec-review, r1-f3)*.
   - **Roots**: de repo-root, en elk pad uit `git worktree list --porcelain`. Wie ooit worktrees
     elders maakte (OneDrive), wordt zo alleen gevonden als die worktrees nog bestaan; verdwenen
     worktrees vindt de slug-regel, als er een slug is.
@@ -139,6 +154,17 @@ lighthouse history [--sources] [--since <datum>] [--projects-dir <map>]
   `/mnt/c/Users/<naam>/.claude/projects` als kandidaat. De agent vraagt de gebruiker vóór hij met
   `--projects-dir` opnieuw draait: dat valt onder dezelfde toestemming, maar het is een andere map.
   *(Eigen keuze, na de builder-check.)*
+- **Windows-cwd's onder Linux.** Transcripten van native Windows dragen cwd's als `C:\Users\…`.
+  Onder Linux is `filepath.ToSlash` daarop een no-op en vergelijkt `worktreeroot.Contains` met
+  `filepath.Rel`, dus zonder normalisatie matcht geen enkele sessie. `history` normaliseert daarom
+  elke cwd met een stationsletter vóór de vergelijking: `X:\a\b` wordt `/mnt/x/a/b`, en de
+  slug-regel splitst op `/` én `\`. Een fixture onder `--projects-dir` met Windows-cwd's, gelezen
+  vanuit een repo op een WSL-pad (`/mnt/c/…`) en een op `/home/…` (dan alleen via de slug), dekt
+  dat *(eigen keuze na spec-review, r1-f2)*.
+- **Subagents.** `findTranscripts` levert per sessie ook de transcripten onder
+  `<id>/subagents/*.jsonl` (`session.subs`). Die horen bij hun oudersessie: `sessions` telt alleen
+  de hoofdtranscripten, en "dezelfde sessie" in de niveauregel is de ouder samen met zijn
+  subagents *(eigen keuze na spec-review, r1-f5)*.
 - Leest elk `.jsonl`-bestand regel voor regel, met een `bufio.Scanner` met een ruime buffer
   (regels van meerdere MB komen voor). Een onleesbare regel telt als `skipped_lines`, het commando
   breekt niet af.
@@ -209,8 +235,23 @@ vaste regex. Hij bewaart nooit de tekst zelf.
 - anders, en daarnaast, elke branch waarvan de naam past op `main`, `master`, `develop`, `trunk` of
   `release/*`.
 
-Een **push op de trunk** is een `git push` terwijl `gitBranch` een trunk is, of een push waarvan de
-refspec een trunk als doel noemt (`HEAD:main`, `origin main`). Een **verschuivende trunk** is een
+**De branch van een commando** *(eigen keuze na spec-review, r1-f1)*. `gitBranch` is de branch van
+de sessie-cwd, niet van de checkout waar het commando op werkt. Wie in worktrees werkt, draait
+`cd <worktree> && git push` of `git -C <worktree> push` vanuit een sessie op `main`; in de
+transcripten van deze repo draagt bijna de helft van de pushes `gitBranch=main`, terwijl
+`main-commit-gate` elke push op `main` blokkeert. Daarom, in deze volgorde:
+
+1. noemt de refspec een doel (`HEAD:main`, `origin main`), dan is dat de branch;
+2. anders, staat er een `cd <pad>` of `git -C <pad>` voor, dan is de branch onbekend, tenzij `<pad>`
+   overeenkomt met een `cwd` uit dezelfde sessie waarvan `gitBranch` bekend is (de worktree waar de
+   sessie eerder stond);
+3. anders `gitBranch`.
+
+Een commando met onbekende branch telt mee in de totalen, niet in de verhoudingen; staat meer dan
+de helft op onbekend, dan krijgt `trunk` `confidence: low`. Een fixture-record met
+`gitBranch=main` en `git -C <wt> push` dekt dat.
+
+Een **push op de trunk** is een push waarvan de branch (zie hierboven) een trunk is. Een **verschuivende trunk** is een
 reeks van verschillende `release/*`-namen die over de tijd pushes op de trunk krijgen; `trunk_names`
 noemt ze in volgorde van eerste push.
 
@@ -224,9 +265,9 @@ waar lighthouse al draait, valt buiten de agentgids (die stopt bij een bestaande
 |---|---|---|
 | `trunk` | `git commit` en `git push` per `gitBranch`; pushes op de trunk (zie "De trunk"); de reeks van `release/*`-trunknamen | Pushes op de trunk botsen met `main-commit-gate`. Een schuivende trunk (`release/rN`) botst met één vaste default branch. Voorstel: `advice` (één vaste trunk, een branch per issue). |
 | `work_tracking` | `gh issue`- en `gh pr`-aanroepen, `pr-link`-records; schrijfacties naar `TODO.md`, `docs/tasks/**`, `*.sqlite`/`*.db` en `memory/**` als takenbestand | Werk buiten issues past niet bij de keten van issue naar PR. Voorstel: bij issues en PR's een `knob` (`--labels`, keuze 9); anders `advice` (werk naar GitHub-issues). |
-| `memory` | in `~/.claude/projects/<enc>/memory/`: aantal bestanden, regels van `MEMORY.md` tegen de leesgrens van 200 regels; projectmappen die alleen in hoofdletters verschillen (`D:` tegen `d:`) | Een index op de leesgrens valt deels weg. Lighthouse schrijft niets naar harness-memory. Voorstel: `advice` (memory opruimen; een regel die moet blijven gaat in de repo); later een `knob` via #497. Dit onderdeel leest alleen bestandsnamen, aantallen en regeltellingen, geen inhoud. |
+| `memory` | in `~/.claude/projects/<enc>/memory/`: aantal bestanden, regels van `MEMORY.md` tegen de leesgrens van 200 regels; projectmappen die alleen in hoofdletters verschillen (`D:` tegen `d:`), en, omdat NTFS die twee mappen meestal niet naast elkaar toelaat, ook cwd-waarden in de transcripten die alleen in de hoofdletter van de stationsletter verschillen *(eigen keuze na spec-review, r1-f10)* | Een index op de leesgrens valt deels weg. Lighthouse schrijft niets naar harness-memory. Voorstel: `advice` (memory opruimen; een regel die moet blijven gaat in de repo); later een `knob` via #497. Dit onderdeel leest alleen bestandsnamen, aantallen en regeltellingen, geen inhoud. |
 | `shell` | `entrypoint`; padvorm van `cwd` (`C:\`, `/c/`, `/mnt/c/`, `/home/`); patroonnamen in `Bash`-commando's (`powershell`, `cmd /c`, `wsl`); CRLF-signalen (`\r`, `dos2unix`, `core.autocrlf`, `git config … eol`) | Bepaalt native Windows, WSL of Linux, en daarmee welk installatieblok van de gids geldt. Voorstel: `advice` (bijvoorbeeld `.gitattributes` met `* text=auto eol=lf`). `confidence: low` als alleen padvormen het bepalen. |
-| `hooks` | de huidige project- en gebruikershooks (niet die van plugins) via `agentaudit.Overlap` (hergebruikt, niet gewijzigd), tegen de guards van alle packs die in het binaire bestand zitten: vóór `init` is er geen manifest *(eigen keuze, na de builder-check)*; `hook_blocking_error` per `hookName` in de historie | Overlappende eigen hooks blokkeren dubbel. Voorstel: `advice` met de namen van de overlappende hooks, en de verwijzing naar `/lighthouse-audit-agent-config` na de installatie. |
+| `hooks` | de huidige project- en gebruikershooks (niet die van plugins) via `agentaudit.Overlap` (hergebruikt, niet gewijzigd), tegen de guards van alle packs die in het binaire bestand zitten: vóór `init` is er geen manifest *(eigen keuze, na de builder-check)*. `Overlap` slaat alleen `SourceLighthouse` over, dus `history` filtert de findings zelf op de bronnen project, local en user; de Engelse tekst bouwt het uit de velden van `Finding`, niet uit het Nederlandse `Finding.Text` *(eigen keuze na spec-review, r1-f12)*. Uit de historie: `hook_blocking_error` geteld per basename van `attachment.blockingError.command`; `hookName` is alleen `Event:Matcher`. Het veld `blockingError.blockingError` (de meldingstekst) leest het nooit *(eigen keuze na spec-review, r1-f6)* | Overlappende eigen hooks blokkeren dubbel. Voorstel: `advice` met de namen van de overlappende hooks, en de verwijzing naar `/lighthouse-audit-agent-config` na de installatie. |
 | `worktrees` | `git worktree add` per padpatroon; `cwd`-waarden die op een worktree-pad lijken; het aantal verschillende worktrees; padpatronen van synchronisatiemappen (`OneDrive`, `Dropbox`, `iCloud`) | Worktrees in een synchronisatiemap geven lock- en kopieerproblemen. Voorstel: `advice`; later een `knob` via #496. |
 
 ### Niveauregel
@@ -242,15 +283,24 @@ Alles begint op `light`, net als een eerste `init` (#19). De regel kijkt alleen 
 *(Eigen keuze: de drempels. Ze staan als constanten in één bestand, zodat een volgende meting ze
 kan bijstellen.)*
 
+Randgevallen *(eigen keuze na spec-review, r1-f9)*:
+
+- Een PR is een uniek `prNumber` (uit `pr-link`) of een `pr create`/`mr create`-aanroep; `gh pr view`
+  en dergelijke tellen niet. Dezelfde PR in meerdere records telt één keer.
+- Een verhouding met noemer 0 (geen pushes met bekende branch, geen commits) geldt als "niet
+  voldaan".
+
 `reason` noemt bij `light` welke voorwaarden van `standard` ontbraken, en bij `standard` waarom het
 geen `strict` werd. Is er geen data (`sessions: 0`), dan `light` met reden `no history`.
 
 ### Diep
 
 Bij "diep" draait de agent `lighthouse history --sources`. Daarna leest hij per bevinding met
-`confidence: "low"`, of met `status: "no_data"`, hoogstens de regels uit `sources`, met
-`sed -n '<n>p' <file>` of de leestool van de harness. Per bevinding hoogstens 10 regels, samen
-hoogstens 50. Hij vult daarmee de uitleg aan; hij past de `measured`-waarden niet aan. In het
+`confidence: "low"` hoogstens de regels uit `sources`. Een bevinding met `no_data` heeft geen
+bronnen en valt erbuiten *(eigen keuze na spec-review, r1-f7)*. Hij leest met
+`sed -n '<n>p' <file> | cut -c1-4000`: een transcriptregel kan megabytes zijn, bijvoorbeeld een
+`Write` met de hele bestandsinhoud *(eigen keuze na spec-review, r1-f8)*. Per bevinding hoogstens
+10 regels, samen hoogstens 50. Hij vult daarmee de uitleg aan; hij past de `measured`-waarden niet aan. In het
 voorstel aan de gebruiker zegt hij welke punten hij zo heeft aangevuld.
 
 ### Code-indeling
