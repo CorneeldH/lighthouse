@@ -131,17 +131,13 @@ delivered yet, and not judge what has not been built yet. The names come from `[
 
 | Rank | Key | Binds when |
 |---|---|---|
-| 1 | `labels.needs_shaping` | What/why not sharp yet. Everything after it is premature |
-| 2 | `labels.needs_decision` | One choice of the user blocks, the rest is clear |
-| 3 | `labels.blocked_issue` | Waits on another issue in this repo |
-| 4 | `labels.blocked_external` | Waits on a third party, API, vendor, delivery |
-| 5 | `labels.needs_hands` | The user has to set up, enter, connect, buy |
-| 6 | `labels.needs_testing` | The build stands; the user has to judge whether it does what was meant |
+| 1 | `labels.needs_mind` | What/why not sharp yet, or one choice of the user blocks. Everything after it is premature |
+| 2 | `labels.blocked_issue` | Waits on another issue in this repo |
+| 3 | `labels.blocked_external` | Waits on a third party, API, vendor, delivery |
+| 4 | `labels.needs_hands` | The user has to set up, enter, connect, buy, or judge whether the build does what was meant |
 
-The boundary hands/testing: hands is **setting up, entering, connecting**; testing is
-**verifying that something works as meant**. The technical test the agent has done already; what
-remains is human judgement. `labels.needs_testing` can never stand before an implementation and
-is so also the "almost done" signal.
+`labels.needs_hands` is **setting up, entering, connecting** or **verifying that something works as
+meant**. The technical test the agent has done already; what remains is human judgement.
 
 A blocking label and the board go together (only if a board is configured): an issue that
 carries a `needs_*` label or `labels.blocked_issue` stands on `To do`, never on `Controller` (if
@@ -151,7 +147,7 @@ up interactively". Nothing writes the board status `On hold` any more: parking i
 
 The gate-4 judgement of lighthouse-route-issue maps onto this table. An issue that needs design
 depth first (gate 4, exit 4c: the what or why is not sharp, a spec has to come before any plan)
-gets `labels.needs_shaping`. Triage sets it itself at 4c; when you write or edit such an issue by
+gets `labels.needs_mind`. Triage sets it itself at 4c; when you write or edit such an issue by
 hand, set it too.
 
 `labels.blocked_issue` never goes along in `lighthouse forge issue create`: it leans on the
@@ -197,7 +193,7 @@ The invariant, per open issue (label names from `[labels]`):
 | `labels.blocked_issue` | ≥ 1 | **holds** |
 | `labels.blocked_issue` | 0, but closed relations | **lapsed**: label off |
 | `labels.blocked_issue` | no relation | **unlinked**: set the relation, or label off |
-| `labels.needs_shaping` or `labels.needs_decision` | ≥ 1 | **holds**: the lower label wins, the relation waits |
+| `labels.needs_mind` | ≥ 1 | **holds**: the lower label wins, the relation waits |
 | no blocking label, or one with a higher rank than `labels.blocked_issue` | ≥ 1 | **label missing**: `labels.blocked_issue` on (the higher label off) |
 | no label or another one | 0 | **holds**, outside this invariant |
 
@@ -229,7 +225,7 @@ controller the same holds (`lighthouse-start-issue` step 4, *Blocked?*). The inv
    lighthouse forge issue blockers <nr> | jq '.[].number'
    ```
 
-4. **Only then the label.** If `labels.needs_shaping` or `labels.needs_decision` is on already,
+4. **Only then the label.** If `labels.needs_mind` is on already,
    that label wins and the blocked-issue label does not go on. A blocking label with a higher
    rank comes off in the same edit (`--remove-label <label>`):
 
@@ -263,7 +259,7 @@ column, not merely because the issue touches something the document describes. T
 before step 4; the label goes into the `--label` of step 4. No taxonomy file, or no such row: skip
 this step.
 
-**Planned on the map.** When the label's row also has a `Planned` value (`always`, or `milestone` and the issue gets the milestone from 3d), ask two things in the conversation before step 4. *Where does it belong?* The document and the explanation under the table give the candidates; a new part of the map, and `no item` when the explanation says a change to an existing part gives none, are always candidates. *Do we want it?* Always ask; when `paths.tenets`, `paths.areas` or `lighthouse config paths.strategy` gives a file or folder, first test the issue against the tenets, the leading policy (`heading:policy`) and the deliberate no's (`heading:not_now`) of its area, and the strategy, and say what came out; name the ID that carries the judgement (`<area>/N<n>`, `strategy/S<n>`, `tenet <letter>`). A key that is not set (`lighthouse config` exits 1) skips silently; a set path that does not exist is reported in the conversation ("does not exist"). Write the place as one line under `### heading:map_placement` in the body. An answer of no to the second question: no issue, or no free label. Doubt, or "decide later": `labels.needs_decision` with the reason in the body. Headless (no conversation): write the place only when it is unambiguous, ask nothing, and leave the rest to the scheduled job. This step never writes the document.
+**Planned on the map.** When the label's row also has a `Planned` value (`always`, or `milestone` and the issue gets the milestone from 3d), ask two things in the conversation before step 4. *Where does it belong?* The document and the explanation under the table give the candidates; a new part of the map, and `no item` when the explanation says a change to an existing part gives none, are always candidates. *Do we want it?* Always ask; when `paths.tenets`, `paths.areas` or `lighthouse config paths.strategy` gives a file or folder, first test the issue against the tenets, the leading policy (`heading:policy`) and the deliberate no's (`heading:not_now`) of its area, and the strategy, and say what came out; name the ID that carries the judgement (`<area>/N<n>`, `strategy/S<n>`, `tenet <letter>`). A key that is not set (`lighthouse config` exits 1) skips silently; a set path that does not exist is reported in the conversation ("does not exist"). Write the place as one line under `### heading:map_placement` in the body. An answer of no to the second question: no issue, or no free label. Doubt, or "decide later": `labels.needs_mind` with the reason in the body. Headless (no conversation): write the place only when it is unambiguous, ask nothing, and leave the rest to the scheduled job. This step never writes the document.
 
 ### 4. Create the issue
 
@@ -295,12 +291,10 @@ After bulk work on labels, with the prefixes from 3a and 3b and the blocking lab
 ```bash
 LOC=$(lighthouse config labels.location_prefix)
 AREA=$(lighthouse config labels.area_prefix)
-BLK=$({ lighthouse config labels.needs_shaping
-  lighthouse config labels.needs_decision
+BLK=$({ lighthouse config labels.needs_mind
   lighthouse config labels.blocked_issue
   lighthouse config labels.blocked_external
-  lighthouse config labels.needs_hands
-  lighthouse config labels.needs_testing; } | jq -R . | jq -sc .)
+  lighthouse config labels.needs_hands; } | jq -R . | jq -sc .)
 lighthouse forge issue list --state open |
   jq -c --arg loc "$LOC" --arg area "$AREA" --argjson blk "$BLK" '.[] |
     {n:.number,

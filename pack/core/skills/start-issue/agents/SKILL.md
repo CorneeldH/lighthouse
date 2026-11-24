@@ -140,7 +140,7 @@ and picking up goes on as well. Skip the step on a `labels.blocked_*` label from
 open `blocked_by` without a label (*label missing*): the issue may get a spec, but the plan and
 the execution wait, and the board would show `In progress` for work that stands still. It stays
 on `To do`, also with `labels.blocked_issue`: the controller parks a blocked issue there too.
-Skip it as well on `labels.needs_hands` or `labels.needs_testing`: the next step is a human's, and the
+Skip it as well on `labels.needs_hands`: the next step is a human's, and the
 board stays on `To do`.
 
 The status `Controller` (only if present, with a `[controller]` table) stays: the controller
@@ -165,11 +165,11 @@ Then execute the reported route:
 
 | Line | Execution |
 |---|---|
-| route `stop` (`labels.needs_hands` or `labels.needs_testing`) | report what the human has to do first and stop; no execution, no spec, no plan; the stop comes before **Blocked?**, so also with `— blocker #<x> open` no handoff; on a stop at 4b no scout goes out, and the line `heading:scout_skipped — <label>: the next step is a human's, no plan follows.` is reported; in a controller run post no handoff (the controller sends such an issue to `RowInteractive`) |
+| route `stop` (`labels.needs_hands`) | report what the human has to do first and stop; no execution, no spec, no plan; the stop comes before **Blocked?**, so also with `— blocker #<x> open` no handoff; on a stop at 4b no scout goes out, and the line `heading:scout_skipped — <label>: the next step is a human's, no plan follows.` is reported; in a controller run post no handoff (the controller sends such an issue to `RowInteractive`) |
 | gate `0` (**unknown**; in a controller run, if present, also **lapsed** or **unlinked**) | stop, with the reason from the line; no board, no route, no handoff: the human repairs the relation or the label |
 | gate `1` | call that skill, done |
 | gate `2` | `superpowers:systematic-debugging` |
-| gate `4c` | `superpowers:brainstorming` → spec, then take off `labels.needs_shaping` |
+| gate `4c` | `superpowers:brainstorming` → spec, then take off `labels.needs_mind` |
 | gate `4b` | `superpowers:writing-plans` |
 | gate `4a` | execute directly |
 
@@ -209,14 +209,14 @@ stop. The controller returns the issue with "needs a brainstorm".
 Report the choice in one line: `— stacked on #<x>`, `— waits for #<x>` or
 `— waits for #<x>, handoff posted`.
 
-**Gate 4c: needs_shaping.** The spec shapes the issue. Once the user has approved the spec
+**Gate 4c: needs_mind.** The spec shapes the issue. Once the user has approved the spec
 (an approved spec, committed), remove the label so the issue is no longer held for shaping:
 
 ```bash
-lighthouse forge issue edit <nr> --remove-label "$(lighthouse config labels.needs_shaping)"
+lighthouse forge issue edit <nr> --remove-label "$(lighthouse config labels.needs_mind)"
 ```
 
-Skip it when the issue does not carry `labels.needs_shaping`. A spec the user has not approved
+Skip it when the issue does not carry `labels.needs_mind`. A spec the user has not approved
 leaves the label on.
 
 #### Scout: reconnaissance at 4b and 4c
@@ -370,6 +370,6 @@ whether gates 1 and 2 fire at all or are dead wood.
   the issue in it is a guess then.
 - **This skill sets exactly one transition on the board: `To do` → `In progress`** (a legacy `On hold` item too).
   No other status, and one label change: after an approved spec at gate `4c` it takes off
-  `labels.needs_shaping` (see Gate 4c below).
+  `labels.needs_mind` (see Gate 4c below).
   `Controller` (if present) stays: a handover to the controller. For the rest
   the same line as the board-sweep skill, if present.

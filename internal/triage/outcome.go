@@ -31,7 +31,7 @@ type Outcome struct {
 	Marker  protocol.TriageMarker
 	Comment string // starts with the marker line
 	Handoff string // "" unless Row is RowForward and wait_for_night
-	Label   string // key of the label to set ("needs_shaping" for RowDesign); "" is none
+	Label   string // key of the label to set ("needs_mind" for RowDesign); "" is none
 }
 
 // Target is where a forwarded issue is started from.
@@ -78,8 +78,8 @@ func Choose(f Facts, devs []Deviation, g0 *Gate0, j *Judgment, l repoconfig.Labe
 	case RowDesign:
 		o.Row = RowDesign
 		o.Marker = protocol.TriageMarker{Gate: "4c"}
-		o.Label = "needs_shaping"
-		for _, name := range []string{l.NeedsShaping, l.NeedsDecision} {
+		o.Label = "needs_mind"
+		for _, name := range []string{l.NeedsMind} {
 			if name != "" && slices.Contains(f.Labels, name) {
 				o.Marker.Label, o.Marker.Stop = name, true
 				break

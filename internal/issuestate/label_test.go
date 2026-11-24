@@ -19,15 +19,15 @@ func TestSetLabel(t *testing.T) {
 		edit    LabelEdit
 	}{
 		{"empty gets the label", nil, "needs_hands", LabelEdit{Winner: "needs_hands", Add: []string{"needs_hands"}}},
-		{"lower rank replaces higher", []string{"needs_testing"}, "needs_shaping",
-			LabelEdit{Winner: "needs_shaping", Add: []string{"needs_shaping"}, Remove: []string{"needs_testing"}}},
-		{"higher rank loses to lower", []string{"needs_shaping"}, "needs_hands", LabelEdit{Winner: "needs_shaping"}},
+		{"lower rank replaces higher", []string{"needs_hands"}, "needs_mind",
+			LabelEdit{Winner: "needs_mind", Add: []string{"needs_mind"}, Remove: []string{"needs_hands"}}},
+		{"higher rank loses to lower", []string{"needs_mind"}, "needs_hands", LabelEdit{Winner: "needs_mind"}},
 		{"same label is no edit", []string{"needs_hands"}, "needs_hands", LabelEdit{Winner: "needs_hands"}},
 		{"removes every other blocking label in rank order, keeps the rest",
-			[]string{"needs_testing", "2-area:x", "blocked_external"}, "blocked_issue",
-			LabelEdit{Winner: "blocked_issue", Add: []string{"blocked_issue"}, Remove: []string{"blocked_external", "needs_testing"}}},
-		{"two present, want the winner, removes the loser", []string{"needs_shaping", "needs_testing"}, "needs_shaping",
-			LabelEdit{Winner: "needs_shaping", Remove: []string{"needs_testing"}}},
+			[]string{"needs_hands", "2-area:x", "blocked_external"}, "blocked_issue",
+			LabelEdit{Winner: "blocked_issue", Add: []string{"blocked_issue"}, Remove: []string{"blocked_external", "needs_hands"}}},
+		{"two present, want the winner, removes the loser", []string{"needs_mind", "needs_hands"}, "needs_mind",
+			LabelEdit{Winner: "needs_mind", Remove: []string{"needs_hands"}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -45,8 +45,8 @@ func TestSetLabel(t *testing.T) {
 // Two keys may share one label name: the shared label is one label, never removed as its own loser.
 func TestSetLabelWithTwoKeysOnOneName(t *testing.T) {
 	l := keyLabels
-	l.NeedsHands, l.NeedsTesting = "help", "help"
-	got, err := SetLabel([]string{"help"}, "needs_testing", l)
+	l.NeedsMind, l.NeedsHands = "help", "help"
+	got, err := SetLabel([]string{"help"}, "needs_hands", l)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,9 +63,9 @@ func TestSetLabelRejectsAnUnknownKey(t *testing.T) {
 
 func TestSetLabelRejectsAKeyWithoutName(t *testing.T) {
 	l := keyLabels
-	l.NeedsTesting = ""
-	if _, err := SetLabel(nil, "needs_testing", l); err == nil {
-		t.Error("SetLabel(needs_testing) with an empty name gave no error")
+	l.NeedsHands = ""
+	if _, err := SetLabel(nil, "needs_hands", l); err == nil {
+		t.Error("SetLabel(needs_hands) with an empty name gave no error")
 	}
 }
 
@@ -135,12 +135,12 @@ func (f *fakeForge) SetStatus(_ context.Context, it forge.BoardItem, status stri
 }
 
 func TestApplyWithoutChangeSendsNoEdit(t *testing.T) {
-	f := &fakeForge{labels: []string{"needs_shaping"}}
+	f := &fakeForge{labels: []string{"needs_mind"}}
 	got, err := Apply(context.Background(), f, 7, "needs_hands", keyLabels)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := (LabelEdit{Winner: "needs_shaping"}); !reflect.DeepEqual(got, want) {
+	if want := (LabelEdit{Winner: "needs_mind"}); !reflect.DeepEqual(got, want) {
 		t.Errorf("Apply = %#v, want %#v", got, want)
 	}
 	if len(f.edits) != 0 {
@@ -149,11 +149,11 @@ func TestApplyWithoutChangeSendsNoEdit(t *testing.T) {
 }
 
 func TestApplySendsOneEditWithAddAndRemove(t *testing.T) {
-	f := &fakeForge{labels: []string{"needs_testing", "2-area:x"}}
-	if _, err := Apply(context.Background(), f, 7, "needs_shaping", keyLabels); err != nil {
+	f := &fakeForge{labels: []string{"needs_hands", "2-area:x"}}
+	if _, err := Apply(context.Background(), f, 7, "needs_mind", keyLabels); err != nil {
 		t.Fatal(err)
 	}
-	want := []forge.IssueEdit{{AddLabels: []string{"needs_shaping"}, RemoveLabels: []string{"needs_testing"}}}
+	want := []forge.IssueEdit{{AddLabels: []string{"needs_mind"}, RemoveLabels: []string{"needs_hands"}}}
 	if !reflect.DeepEqual(f.edits, want) {
 		t.Errorf("edits = %#v, want %#v", f.edits, want)
 	}
@@ -169,28 +169,28 @@ func TestApplyAnUnknownKeyCallsNoForge(t *testing.T) {
 // A GitHub edit adds before it removes: a failed DELETE leaves two blocking labels. A second
 // Apply with the same key finishes the edit, since SetLabel works from the current labels.
 func TestApplyAfterAHalfWriteFinishesTheEdit(t *testing.T) {
-	f := &fakeForge{labels: []string{"needs_testing"}, editErr: errors.New("DELETE failed")}
-	got, err := Apply(context.Background(), f, 7, "needs_shaping", keyLabels)
+	f := &fakeForge{labels: []string{"needs_hands"}, editErr: errors.New("DELETE failed")}
+	got, err := Apply(context.Background(), f, 7, "needs_mind", keyLabels)
 	if err == nil {
 		t.Fatal("Apply gave no error")
 	}
-	want := LabelEdit{Winner: "needs_shaping", Add: []string{"needs_shaping"}, Remove: []string{"needs_testing"}}
+	want := LabelEdit{Winner: "needs_mind", Add: []string{"needs_mind"}, Remove: []string{"needs_hands"}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("Apply = %#v, want %#v", got, want)
 	}
 
 	f.editErr, f.edits = nil, nil
-	if _, err := Apply(context.Background(), f, 7, "needs_shaping", keyLabels); err != nil {
+	if _, err := Apply(context.Background(), f, 7, "needs_mind", keyLabels); err != nil {
 		t.Fatal(err)
 	}
-	wantEdits := []forge.IssueEdit{{RemoveLabels: []string{"needs_testing"}}}
+	wantEdits := []forge.IssueEdit{{RemoveLabels: []string{"needs_hands"}}}
 	if !reflect.DeepEqual(f.edits, wantEdits) {
 		t.Errorf("second edits = %#v, want %#v", f.edits, wantEdits)
 	}
 }
 
 func TestBlockingKeyRankAndEmptyNames(t *testing.T) {
-	l := repoconfig.Labels{NeedsShaping: "shape", NeedsDecision: "decide", BlockedIssue: "blocked"}
+	l := repoconfig.Labels{NeedsMind: "shape", NeedsHands: "decide", BlockedIssue: "blocked"}
 	tests := []struct {
 		name  string
 		names []string
@@ -199,7 +199,7 @@ func TestBlockingKeyRankAndEmptyNames(t *testing.T) {
 		{"none", nil, ""},
 		{"unrelated", []string{"x"}, ""},
 		{"one", []string{"blocked"}, "blocked_issue"},
-		{"rank wins over order", []string{"blocked", "decide", "shape"}, "needs_shaping"},
+		{"rank wins over order", []string{"blocked", "decide", "shape"}, "needs_mind"},
 		{"empty never matches", []string{""}, ""},
 	}
 	for _, tt := range tests {

@@ -33,7 +33,7 @@ func newStateCommandWith(o *forgeOpener, run func(context.Context, string, int) 
 	cmd := &cobra.Command{
 		Use:   "state",
 		Short: "Show the state of an issue, set its blocking label, or give it back to To do",
-		Long: "Keys: needs_shaping, needs_decision, blocked_issue, blocked_external, needs_hands, needs_testing (rank order).\n" +
+		Long: "Keys: needs_mind, blocked_issue, blocked_external, needs_hands (rank order).\n" +
 			"Exit 1 on a wrong number or key (no forge call) and on a forge error; exit 2 on a config error or a missing token.",
 	}
 	cmd.AddCommand(

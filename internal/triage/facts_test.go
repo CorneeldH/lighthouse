@@ -12,8 +12,7 @@ import (
 
 var testLabels = repoconfig.Labels{
 	BlockedIssue: "3-blocked-issue", BlockedExternal: "3-blocked-external",
-	NeedsShaping: "3-needs-shaping", NeedsDecision: "3-needs-decision",
-	NeedsHands: "3-needs-hands", NeedsTesting: "3-needs-testing",
+	NeedsMind: "3-needs-mind", NeedsHands: "3-needs-hands",
 }
 
 var testCfg = repoconfig.Triage{MilestonesOnly: true, WaitForNight: true, MaxForwarded: 5, MaxJudgments: 15}

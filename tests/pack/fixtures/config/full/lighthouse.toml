@@ -41,10 +41,8 @@ mirror_exceptions = "m"
 [labels]
 blocked_issue = "bi"
 blocked_external = "be"
-needs_shaping = "ns"
-needs_decision = "nd"
+needs_mind = "nm"
 needs_hands = "nh"
-needs_testing = "nt"
 location_prefix = "loc:"
 area_prefix = "area:"
 [test_gate]

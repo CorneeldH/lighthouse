@@ -74,8 +74,8 @@ describe('DepsView', () => {
         repo(A, [
           iss(1),
           iss(2, [[A, 1]]),
-          iss(3, [], { label: 'needs_shaping' }),
-          iss(4, [], { label: 'needs_decision' }),
+          iss(3, [], { label: 'needs_mind' }),
+          iss(4, [], { label: 'needs_hands' }),
           iss(5, [], { status: 'In progress' }),
           iss(6, [[A, 3], [A, 4], [A, 5]]),
         ]),
@@ -101,7 +101,7 @@ describe('DepsView', () => {
       [
         repo(A, [
           iss(1),
-          iss(3, [], { label: 'needs_shaping' }),
+          iss(3, [], { label: 'needs_mind' }),
           iss(4, [], { label: 'needs_hands' }),
           iss(5, [], { status: 'In progress', open_question: true }),
           iss(6, [[A, 3], [A, 4], [A, 5], [A, 1]]),
@@ -155,7 +155,7 @@ describe('DepsView', () => {
   })
 
   it('gives an external card a solid grey border and never a needs-human outline', () => {
-    view([repo(A, [iss(2, [['a/y', 9]])]), repo('a/y', [iss(9, [], { label: 'needs_decision' })])], [A])
+    view([repo(A, [iss(2, [['a/y', 9]])]), repo('a/y', [iss(9, [], { label: 'needs_hands' })])], [A])
     const ext = node('a/y#9')
     expect(ext.className).toContain('border-lh-grey')
     expect(ext.className).not.toContain('border-dashed')

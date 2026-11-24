@@ -15,7 +15,7 @@ type Gate0 struct {
 }
 
 // FixedGate0 reports the gate 0 stop: the issue carries a blocked label, or has an open
-// blocked_by without needs_shaping, needs_decision or blocked_issue. The rule is
+// blocked_by without needs_mind or blocked_issue. The rule is
 // issuestate.GateZero.
 func FixedGate0(f Facts, l repoconfig.Labels) (Gate0, bool) {
 	s, ok := issuestate.GateZero(f.Labels, f.Blockers, l)

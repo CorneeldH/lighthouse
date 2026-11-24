@@ -16,8 +16,7 @@ import (
 
 var outcomeLabels = repoconfig.Labels{
 	BlockedIssue: "3-blocked-issue", BlockedExternal: "3-blocked-external",
-	NeedsShaping: "3-needs-shaping", NeedsDecision: "3-needs-decision",
-	NeedsHands: "3-needs-hands", NeedsTesting: "3-needs-testing",
+	NeedsMind: "3-needs-mind", NeedsHands: "3-needs-hands",
 	AreaPrefix: "area:",
 }
 
@@ -63,8 +62,8 @@ func TestChooseRows(t *testing.T) {
 		{"gate 0", outcomeFacts(), nil, g0, judged(0, "", g0Line), RowStop,
 			protocol.TriageMarker{Gate: "0", Blockers: []int{5}, Label: "3-blocked-external", Stop: true}},
 		{"gate 1", outcomeFacts(), nil, nil, judged(1, "", "#7 Poort 1: stop — x"), RowStop, protocol.TriageMarker{Gate: "1"}},
-		{"4c with needs-decision", outcomeFacts("3-needs-decision"), nil, nil, design, RowDesign,
-			protocol.TriageMarker{Gate: "4c", Label: "3-needs-decision", Stop: true}},
+		{"4c with needs-mind", outcomeFacts("3-needs-mind"), nil, nil, design, RowDesign,
+			protocol.TriageMarker{Gate: "4c", Label: "3-needs-mind", Stop: true}},
 		{"4c without label", outcomeFacts(), nil, nil, design, RowDesign, protocol.TriageMarker{Gate: "4c"}},
 		{"headless no", outcomeFacts(), nil, nil, interactive, RowInteractive, protocol.TriageMarker{Gate: "4b"}},
 		{"untrusted author", untrusted, nil, nil, judged(4, "b", "#7 Poort 4b: x — y"), RowUntrusted, protocol.TriageMarker{Gate: "4b"}},
@@ -123,7 +122,7 @@ func allRows() map[string]Outcome {
 		"done":        Choose(outcomeFacts(), nil, nil, done, outcomeLabels, outcomeTarget),
 		"stop0":       Choose(outcomeFacts(), nil, g0, judged(0, "", "#7 Poort 0: stop — #114, 3-blocked-issue"), outcomeLabels, outcomeTarget),
 		"stop1":       Choose(outcomeFacts(), nil, nil, judged(1, "", "#7 Poort 1: stop — x"), outcomeLabels, outcomeTarget),
-		"design":      Choose(outcomeFacts("3-needs-decision"), nil, nil, design, outcomeLabels, outcomeTarget),
+		"design":      Choose(outcomeFacts("3-needs-mind"), nil, nil, design, outcomeLabels, outcomeTarget),
 		"interactive": Choose(outcomeFacts(), nil, nil, inter, outcomeLabels, outcomeTarget),
 		"untrusted":   Choose(untrusted, nil, nil, judged(4, "b", "#7 Poort 4b: x — y"), outcomeLabels, outcomeTarget),
 		"forward":     Choose(outcomeFacts(), nil, nil, judged(4, "b", "#7 Poort 4b: x — y"), outcomeLabels, night),
@@ -402,10 +401,10 @@ func TestJudgedRowNeedsLabel(t *testing.T) {
 		want    Row
 	}{
 		{"4b with needs_hands", judged(4, "b", "x"), nil, []string{"3-needs-hands"}, true, RowInteractive},
-		{"4a with needs_testing", judged(4, "a", "x"), nil, []string{"3-needs-testing"}, true, RowInteractive},
-		{"gate 2 with needs_decision", judged(2, "", "x"), nil, []string{"3-needs-decision"}, true, RowInteractive},
+		{"4a with needs_mind", judged(4, "a", "x"), nil, []string{"3-needs-mind"}, true, RowInteractive},
+		{"gate 2 with needs_mind", judged(2, "", "x"), nil, []string{"3-needs-mind"}, true, RowInteractive},
 		{"untrusted with needs label is still interactive", judged(4, "b", "x"), nil, []string{"3-needs-hands"}, false, RowInteractive},
-		{"4c keeps design", judged(4, "c", "x"), nil, []string{"3-needs-shaping"}, true, RowDesign},
+		{"4c keeps design", judged(4, "c", "x"), nil, []string{"3-needs-mind"}, true, RowDesign},
 		{"gate 1 keeps stop", judged(1, "", "x"), nil, []string{"3-needs-hands"}, true, RowStop},
 		{"gate 0 keeps stop", judged(4, "b", "x"), g0, []string{"3-needs-hands"}, true, RowStop},
 		{"blocked_external is no needs label", judged(4, "b", "x"), nil, []string{"3-blocked-external"}, true, RowForward},
@@ -432,15 +431,15 @@ func TestChooseNeedsLabelNamesLabel(t *testing.T) {
 }
 
 // Production change that turns it red: Choose without Outcome.Label leaves it "".
-func TestChooseDesignSetsNeedsShapingLabel(t *testing.T) {
+func TestChooseDesignSetsNeedsMindLabel(t *testing.T) {
 	design := judged(4, "c", "#7 Poort 4c: x — y")
 	for _, tc := range []struct {
 		name   string
 		labels []string
 		want   string
 	}{
-		{"none present", nil, "needs_shaping"},
-		{"already present", []string{"3-needs-shaping"}, "needs_shaping"},
+		{"none present", nil, "needs_mind"},
+		{"already present", []string{"3-needs-mind"}, "needs_mind"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := Choose(outcomeFacts(tc.labels...), nil, nil, design, outcomeLabels, outcomeTarget).Label; got != tc.want {

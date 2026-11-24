@@ -49,10 +49,10 @@ type Result struct {
 }
 
 // Of is the state of an issue: the first row of the state table that fits, six states in all.
-// A closed issue is done before any row. An active issue is needs_shaping with the shaping label,
-// needs_human with an open question or another needs_* label, else active. A non-active issue is
-// needs_shaping with the shaping label, needs_human with the decision label, blocked with a
-// blocked label or open blocker, needs_human with the hands or testing label, else ready.
+// A closed issue is done before any row. An active issue is needs_shaping with the needs_mind label,
+// needs_human with an open question or the hands label, else active. A non-active issue is
+// needs_shaping with the needs_mind label, blocked with a
+// blocked label or open blocker, needs_human with the hands label, else ready.
 func Of(in Input, l repoconfig.Labels) Result {
 	has := func(names ...string) bool {
 		for _, n := range names {
@@ -67,28 +67,25 @@ func Of(in Input, l repoconfig.Labels) Result {
 		return Result{State: Done}
 	case in.Run == "open" || in.Run == "parked" || in.Status == statusInProgress || in.Status == statusController:
 		switch {
-		case has(l.NeedsShaping):
+		case has(l.NeedsMind):
 			return Result{State: NeedsShaping}
-		case in.OpenQuestion || has(l.NeedsDecision, l.NeedsHands, l.NeedsTesting):
+		case in.OpenQuestion || has(l.NeedsHands):
 			return Result{State: NeedsHuman}
 		}
 		return Result{State: Active}
-	case has(l.NeedsShaping):
+	case has(l.NeedsMind):
 		return Result{State: NeedsShaping}
-	case has(l.NeedsDecision):
-		return Result{State: NeedsHuman}
 	case has(l.BlockedIssue, l.BlockedExternal) || len(OpenBlockers(in.Blockers)) > 0:
 		return Result{State: Blocked}
-	case has(l.NeedsHands, l.NeedsTesting):
+	case has(l.NeedsHands):
 		return Result{State: NeedsHuman}
 	}
 	return Result{State: Ready}
 }
 
-// HasNeedsLabel reports whether names holds any needs_* label (shaping, decision, hands or
-// testing). An empty configured name never matches.
+// HasNeedsLabel reports whether names holds any needs_* label (mind or hands). An empty configured name never matches.
 func HasNeedsLabel(names []string, l repoconfig.Labels) bool {
-	for _, n := range []string{l.NeedsShaping, l.NeedsDecision, l.NeedsHands, l.NeedsTesting} {
+	for _, n := range []string{l.NeedsMind, l.NeedsHands} {
 		if n != "" && slices.Contains(names, n) {
 			return true
 		}
@@ -103,8 +100,8 @@ type Stop struct {
 }
 
 // GateZero reports the gate 0 stop: a blocked_issue label (before blocked_external) stops with
-// that label; else open blockers without needs_shaping or needs_decision stop. Blockers is
-// OpenBlockers in both cases. Unlike Of, a blocked label wins here over needs_shaping on an
+// that label; else open blockers without needs_mind stop. Blockers is
+// OpenBlockers in both cases. Unlike Of, a blocked label wins here over needs_mind on an
 // issue that carries both.
 func GateZero(labels []string, blockers []forge.Blocker, l repoconfig.Labels) (Stop, bool) {
 	has := func(name string) bool { return name != "" && slices.Contains(labels, name) }
@@ -118,7 +115,7 @@ func GateZero(labels []string, blockers []forge.Blocker, l repoconfig.Labels) (S
 	if s.Label != "" {
 		return s, true
 	}
-	if len(s.Blockers) > 0 && !has(l.NeedsShaping) && !has(l.NeedsDecision) {
+	if len(s.Blockers) > 0 && !has(l.NeedsMind) {
 		return s, true
 	}
 	return Stop{}, false

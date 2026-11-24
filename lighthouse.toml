@@ -31,10 +31,8 @@ P2 = "321d79fc"
 [labels]
 blocked_issue = "3-blocked-issue"
 blocked_external = "3-blocked-external"
-needs_shaping = "3-needs-shaping"
-needs_decision = "3-needs-decision"
+needs_mind = "3-needs-mind"
 needs_hands = "3-needs-hands"
-needs_testing = "3-needs-testing"
 area_prefix = "2-area:"
 
 [paths]

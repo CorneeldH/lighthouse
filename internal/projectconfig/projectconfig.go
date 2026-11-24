@@ -232,10 +232,8 @@ func LabelTables(path string) []Table {
 		{Name: "labels", Keys: []KV{
 			{Key: "blocked_issue", Value: `"blocked-issue"`},
 			{Key: "blocked_external", Value: `"blocked-external"`},
-			{Key: "needs_shaping", Value: `"needs-shaping"`},
-			{Key: "needs_decision", Value: `"needs-decision"`},
+			{Key: "needs_mind", Value: `"needs-mind"`},
 			{Key: "needs_hands", Value: `"needs-hands"`},
-			{Key: "needs_testing", Value: `"needs-testing"`},
 			{Key: "area_prefix", Value: `"area:"`},
 		}},
 	}

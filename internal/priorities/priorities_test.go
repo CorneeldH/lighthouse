@@ -102,11 +102,11 @@ func TestBuildOpenBlockerInOtherRepoKeepsItsRepo(t *testing.T) {
 }
 
 func TestBuildLabelKeyOpenQuestionAndClosed(t *testing.T) {
-	labels := repoconfig.Labels{NeedsShaping: "needs-shaping", NeedsDecision: "needs-decision", BlockedIssue: "blocked"}
+	labels := repoconfig.Labels{NeedsMind: "needs-mind", BlockedIssue: "blocked"}
 	src := &fakeForge{t: t, planning: forge.Planning{
 		Issues: []forge.PlanIssue{
-			{Number: 1, Labels: []string{"needs-shaping"}},
-			{Number: 2, Labels: []string{"blocked", "needs-decision"}}, // the rank of labels.md: needs_decision wins
+			{Number: 1, Labels: []string{"needs-mind"}},
+			{Number: 2, Labels: []string{"blocked", "needs-mind"}}, // needs_mind ranks first
 			{Number: 3, Labels: []string{"unrelated"}},
 			{Number: 4, Labels: []string{""}},
 			{Number: 5},
@@ -127,10 +127,10 @@ func TestBuildLabelKeyOpenQuestionAndClosed(t *testing.T) {
 		questions = append(questions, i.OpenQuestion)
 		needs = append(needs, i.NeedsLabel)
 	}
-	if want := []string{"needs_shaping", "needs_decision", "", "", ""}; !reflect.DeepEqual(keys, want) {
+	if want := []string{"needs_mind", "needs_mind", "", "", ""}; !reflect.DeepEqual(keys, want) {
 		t.Errorf("labels = %q, want %q", keys, want)
 	}
-	// Issue 2 carries blocked and needs-decision: Label is the winner, NeedsLabel is true anyway.
+	// Issue 2 carries blocked and needs-mind: Label is the winner, NeedsLabel is true anyway.
 	if want := []bool{true, true, false, false, false}; !reflect.DeepEqual(needs, want) {
 		t.Errorf("needs labels = %v, want %v", needs, want)
 	}

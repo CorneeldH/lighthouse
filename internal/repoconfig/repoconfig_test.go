@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/CorneeldH/lighthouse/internal/config"
 )
 
 const full = `[forge]
@@ -181,8 +183,7 @@ func TestLoadLabelsDefaults(t *testing.T) {
 	}
 	want := Labels{
 		BlockedIssue: "blocked-issue", BlockedExternal: "blocked-external",
-		NeedsShaping: "needs-shaping", NeedsDecision: "needs-decision",
-		NeedsHands: "needs-hands", NeedsTesting: "needs-testing",
+		NeedsMind: "needs-mind", NeedsHands: "needs-hands",
 	}
 	if r.Labels != want {
 		t.Errorf("labels = %+v, want %+v", r.Labels, want)
@@ -196,10 +197,8 @@ repo = "o/r"
 [labels]
 blocked_issue = "3-blocked-issue"
 blocked_external = "3-blocked-external"
-needs_shaping = "3-needs-shaping"
-needs_decision = "3-needs-decision"
+needs_mind = "3-needs-mind"
 needs_hands = "3-needs-hands"
-needs_testing = "3-needs-testing"
 location_prefix = "1-loc:"
 area_prefix = "2-area:"
 `
@@ -212,8 +211,7 @@ area_prefix = "2-area:"
 		t.Errorf("prefixes: %+v", l)
 	}
 	want := []string{
-		"3-blocked-issue", "3-blocked-external", "3-needs-shaping",
-		"3-needs-decision", "3-needs-hands", "3-needs-testing",
+		"3-blocked-issue", "3-blocked-external", "3-needs-mind", "3-needs-hands",
 	}
 	got := l.Blocking()
 	if len(got) != len(want) {
@@ -364,10 +362,8 @@ func TestLoadDefaultsFromConfig(t *testing.T) {
 		{"forge.default_branch", r.DefaultBranch, "main"},
 		{"labels.blocked_issue", r.Labels.BlockedIssue, "blocked-issue"},
 		{"labels.blocked_external", r.Labels.BlockedExternal, "blocked-external"},
-		{"labels.needs_shaping", r.Labels.NeedsShaping, "needs-shaping"},
-		{"labels.needs_decision", r.Labels.NeedsDecision, "needs-decision"},
+		{"labels.needs_mind", r.Labels.NeedsMind, "needs-mind"},
 		{"labels.needs_hands", r.Labels.NeedsHands, "needs-hands"},
-		{"labels.needs_testing", r.Labels.NeedsTesting, "needs-testing"},
 	} {
 		if tt.got != tt.want {
 			t.Errorf("%s: Load %q, want %q", tt.key, tt.got, tt.want)
@@ -623,15 +619,15 @@ func TestLoadProjectOwner(t *testing.T) {
 	}
 }
 
-// Production change that turns it red: NeedsName without one of the four keys, or with
+// Production change that turns it red: NeedsName without one of the two keys, or with
 // blocked_*, returns the wrong name.
 func TestLabelsNeedsName(t *testing.T) {
-	l := Labels{BlockedIssue: "b-i", BlockedExternal: "b-e", NeedsShaping: "n-s", NeedsDecision: "n-d", NeedsHands: "n-h", NeedsTesting: "n-t"}
+	l := Labels{BlockedIssue: "b-i", BlockedExternal: "b-e", NeedsMind: "n-m", NeedsHands: "n-h"}
 	for _, tc := range []struct {
 		labels []string
 		want   string
 	}{
-		{[]string{"n-s"}, "n-s"}, {[]string{"x", "n-d"}, "n-d"}, {[]string{"n-h"}, "n-h"}, {[]string{"n-t"}, "n-t"},
+		{[]string{"n-m"}, "n-m"}, {[]string{"x", "n-h"}, "n-h"},
 		{[]string{"b-i", "b-e", "x"}, ""}, {nil, ""},
 	} {
 		if got := l.NeedsName(tc.labels); got != tc.want {
@@ -662,5 +658,24 @@ func TestLoadReadsPaths(t *testing.T) {
 	}
 	if d.Paths != (Paths{}) {
 		t.Errorf("Paths without [paths] = %+v, want zero", d.Paths)
+	}
+}
+
+func TestLoadFileRejectsOldLabelKeys(t *testing.T) {
+	for _, key := range config.OldLabelKeys {
+		t.Run(key, func(t *testing.T) {
+			dir := write(t, "[forge]\nrepo = \"o/r\"\n\n[labels]\n"+key+" = \"x\"\n")
+			_, err := LoadFile(filepath.Join(dir, "lighthouse.toml"))
+			if err == nil || !strings.Contains(err.Error(), key) || !strings.Contains(err.Error(), "lighthouse labels migrate") {
+				t.Errorf("LoadFile error = %v, want it to name %s and lighthouse labels migrate", err, key)
+			}
+		})
+	}
+}
+
+func TestDefaultLabelsNeedsMind(t *testing.T) {
+	l := DefaultLabels()
+	if l.NeedsMind != "needs-mind" || l.NeedsHands != "needs-hands" {
+		t.Errorf("DefaultLabels = %+v, want needs-mind and needs-hands", l)
 	}
 }

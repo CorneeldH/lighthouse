@@ -98,7 +98,7 @@ describe('MilestonesView', () => {
       A,
       [
         iss(1, 1, [[A, 2]]),
-        iss(2, 1, [], { label: 'needs_shaping' }),
+        iss(2, 1, [], { label: 'needs_mind' }),
         iss(3, 1),
         iss(4, 1, [], { status: 'In progress', open_question: true }),
         iss(5, 1, [], { status: 'In progress' }),
@@ -120,7 +120,7 @@ describe('MilestonesView', () => {
 
   it('draws a needs_shaping block as a dashed shape and a needs_human block as stripes', () => {
     view([
-      repo(A, [iss(1, 1, [], { label: 'needs_shaping' }), iss(2, 1, [], { status: 'In progress', open_question: true })], [ms(1, 0, 2)]),
+      repo(A, [iss(1, 1, [], { label: 'needs_mind' }), iss(2, 1, [], { status: 'In progress', open_question: true })], [ms(1, 0, 2)]),
     ])
     const [human, shaping] = blocks(`${A}#m1`)
     expect(human.getAttribute('data-state')).toBe('needs_human')

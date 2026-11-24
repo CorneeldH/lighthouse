@@ -14,7 +14,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/store"
 )
 
-const stateLabels = "\n[labels]\nneeds_shaping = \"3-needs-shaping\"\nneeds_hands = \"3-needs-hands\"\nneeds_testing = \"3-needs-testing\"\n"
+const stateLabels = "\n[labels]\nneeds_mind = \"3-needs-mind\"\nneeds_hands = \"3-needs-hands\"\n"
 
 // stateToml writes a lighthouse.toml for Owner/repo with extra appended; board adds a GitHub
 // board PVT_test whose To do option is opt-todo.
@@ -103,7 +103,7 @@ func TestStateShow(t *testing.T) {
 			want: "state: #7 active\n"},
 		{name: "active with needs_hands needs a human", labels: []string{"3-needs-hands"}, optionID: "opt-ctrl", status: "Controller",
 			want: "state: #7 needs_human\n"},
-		{name: "not on the board", labels: []string{"3-needs-shaping"}, want: "state: #7 needs_shaping\n"},
+		{name: "not on the board", labels: []string{"3-needs-mind"}, want: "state: #7 needs_shaping\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			stateToml(t, stateLabels, true)
@@ -127,25 +127,25 @@ func TestStateShow(t *testing.T) {
 
 func TestStateLabelReplacesTheHigherRank(t *testing.T) {
 	stateToml(t, stateLabels, true)
-	srv := stateServer(t, []string{"3-needs-testing", "2-area:x"}, "opt-todo", "To do")
-	code, out, errOut := runState(t, srv, nil, "label", "7", "needs_shaping")
-	if want := "label: #7 3-needs-shaping (+3-needs-shaping, -3-needs-testing)\n"; code != 0 || out != want || errOut != "" {
+	srv := stateServer(t, []string{"3-needs-hands", "2-area:x"}, "opt-todo", "To do")
+	code, out, errOut := runState(t, srv, nil, "label", "7", "needs_mind")
+	if want := "label: #7 3-needs-mind (+3-needs-mind, -3-needs-hands)\n"; code != 0 || out != want || errOut != "" {
 		t.Errorf("state label = %d, %q, stderr %q; want 0, %q", code, out, errOut, want)
 	}
-	want := []string{"POST /repos/Owner/repo/issues/7/labels", "DELETE /repos/Owner/repo/issues/7/labels/3-needs-testing"}
+	want := []string{"POST /repos/Owner/repo/issues/7/labels", "DELETE /repos/Owner/repo/issues/7/labels/3-needs-hands"}
 	if got := stateWrites(srv); !reflect.DeepEqual(got, want) {
 		t.Errorf("writes = %v, want %v", got, want)
 	}
-	if got := srv.Posts[0].Body["labels"]; !reflect.DeepEqual(got, []any{"3-needs-shaping"}) {
-		t.Errorf("POST labels = %v, want [3-needs-shaping]", got)
+	if got := srv.Posts[0].Body["labels"]; !reflect.DeepEqual(got, []any{"3-needs-mind"}) {
+		t.Errorf("POST labels = %v, want [3-needs-mind]", got)
 	}
 }
 
 func TestStateLabelKeepsTheLowerRank(t *testing.T) {
 	stateToml(t, stateLabels, true)
-	srv := stateServer(t, []string{"3-needs-shaping"}, "opt-todo", "To do")
+	srv := stateServer(t, []string{"3-needs-mind"}, "opt-todo", "To do")
 	code, out, _ := runState(t, srv, nil, "label", "7", "needs_hands")
-	if want := "label: #7 keeps 3-needs-shaping\n"; code != 0 || out != want {
+	if want := "label: #7 keeps 3-needs-mind\n"; code != 0 || out != want {
 		t.Errorf("state label = %d, %q; want 0, %q", code, out, want)
 	}
 	if w := stateWrites(srv); len(w) != 0 {
@@ -164,7 +164,7 @@ func TestStateRefusesBeforeTheForge(t *testing.T) {
 		{"unknown key", stateLabels, []string{"label", "7", "needs-hands"}, 1, "state: usage: "},
 		{"unknown key on return", stateLabels, []string{"return", "7", "blocked"}, 1, "state: usage: "},
 		{"not a number", stateLabels, []string{"show", "x7"}, 1, "state: usage: "},
-		{"empty label name in lighthouse.toml", "\n[labels]\nneeds_testing = \"\"\n", []string{"label", "7", "needs_hands"}, 2,
+		{"empty label name in lighthouse.toml", "\n[labels]\nneeds_hands = \"\"\n", []string{"label", "7", "needs_hands"}, 2,
 			"state: ERROR — ConfigError: "},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -222,9 +222,9 @@ func TestStateReturnBoardLines(t *testing.T) {
 
 func TestStateLabelHalfWriteAsksToRunAgain(t *testing.T) {
 	stateToml(t, stateLabels, true)
-	srv := stateServer(t, []string{"3-needs-testing"}, "opt-todo", "To do")
-	srv.Fail = map[string]int{"DELETE /repos/Owner/repo/issues/7/labels/3-needs-testing": 500}
-	code, out, _ := runState(t, srv, nil, "label", "7", "needs_shaping")
+	srv := stateServer(t, []string{"3-needs-hands"}, "opt-todo", "To do")
+	srv.Fail = map[string]int{"DELETE /repos/Owner/repo/issues/7/labels/3-needs-hands": 500}
+	code, out, _ := runState(t, srv, nil, "label", "7", "needs_mind")
 	if code != 1 || !strings.HasPrefix(out, "state: ERROR — ") || !strings.HasSuffix(out, "; run it again to finish the label edit\n") {
 		t.Errorf("state label = %d, %q; want 1 and an ERROR line that asks to run it again", code, out)
 	}

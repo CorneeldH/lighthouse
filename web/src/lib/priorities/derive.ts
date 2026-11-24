@@ -56,7 +56,7 @@ export type IssueStateName =
   | 'ready'
   | 'blocked'
 
-const NEEDS_LATER = new Set(['needs_hands', 'needs_testing'])
+const NEEDS_LATER = new Set(['needs_hands'])
 
 // The state of an open issue: the first row of the state table that fits (same rows as
 // issuestate.Of in Go); a done issue is never in `issues`.
@@ -66,11 +66,10 @@ export function issueState(issue: Issue, runs: Run[], repo: string): IssueStateN
     issue.status === 'In progress' ||
     issue.status === 'Controller'
   ) {
-    if (issue.label === 'needs_shaping') return 'needs_shaping'
+    if (issue.label === 'needs_mind') return 'needs_shaping'
     return issue.needs_label || issue.open_question ? 'needs_human' : 'active'
   }
-  if (issue.label === 'needs_shaping') return 'needs_shaping'
-  if (issue.label === 'needs_decision') return 'needs_human'
+  if (issue.label === 'needs_mind') return 'needs_shaping'
   if (issue.label.startsWith('blocked_') || (issue.blocked_by?.length ?? 0) > 0) return 'blocked'
   if (NEEDS_LATER.has(issue.label)) return 'needs_human'
   return 'ready'

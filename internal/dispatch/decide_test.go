@@ -1130,7 +1130,7 @@ func TestPushAnswerRowRetryKeepsWorktreeAndPermit(t *testing.T) {
 // cause+"_ceiling" that no heading names falls to needs_hands.
 func TestReturnLabelKeyTable(t *testing.T) {
 	want := map[string]string{
-		"reason_needs_brainstorm": "needs_shaping", "reason_interactive": "needs_decision",
+		"reason_needs_brainstorm": "needs_mind", "reason_interactive": "needs_mind",
 		"reason_skill_missing": "needs_hands", "reason_not_allowed": "needs_hands", "reason_bad_handoff": "needs_hands",
 		"reason_state_lost": "needs_hands", "reason_start_failed": "needs_hands", "reason_own_work": "needs_hands",
 		"reason_workplace_gone": "needs_hands", "reason_pr_closed": "needs_hands", "reason_pr_draft": "needs_hands",
@@ -1196,7 +1196,7 @@ func needsHands(in *Input) {
 // even the start of a new issue or the fix-pr start of a red PR. Dropping the needs_* check in
 // decideIssue gives the start back; dropping KindToDo gives no action.
 func TestDecideNeedsLabelNoRunMovesToToDo(t *testing.T) {
-	for _, label := range []string{"needs_shaping", "needs_decision", "needs_hands", "needs_testing"} {
+	for _, label := range []string{"needs_mind", "needs_hands"} {
 		t.Run(label, func(t *testing.T) {
 			in := loadInput(t, "new-issue-start")
 			item7(&in).Labels, in.Repos[0].Labels = []string{label}, testLabels
@@ -1243,9 +1243,9 @@ func TestDecideNeedsLabelNoNewStart(t *testing.T) {
 	if got := kinds(Decide(in)); !reflect.DeepEqual(got, []Kind{KindStart}) {
 		t.Fatalf("unlabelled: %v, want a start (fixture premise)", got)
 	}
-	item7(&in).Labels, in.Repos[0].Labels = []string{"needs_shaping"}, testLabels
+	item7(&in).Labels, in.Repos[0].Labels = []string{"needs_mind"}, testLabels
 	if got := kinds(Decide(in)); !reflect.DeepEqual(got, []Kind{KindToDo}) {
-		t.Errorf("needs_shaping: %v, want one todo and no start", got)
+		t.Errorf("needs_mind: %v, want one todo and no start", got)
 	}
 }
 
@@ -1300,7 +1300,7 @@ func TestDecideUnparkWithoutLabel(t *testing.T) {
 // A To do item a human holds with a needs_* or blocked_external label is never unparked: the
 // todo of Task 4 would move it back, every tick. Dropping heldByHuman in unparkToDo turns this red.
 func TestDecideUnparkSkipsNeedsLabel(t *testing.T) {
-	for _, label := range []string{"needs_shaping", "needs_decision", "needs_hands", "needs_testing", "blocked_external"} {
+	for _, label := range []string{"needs_mind", "needs_hands", "blocked_external"} {
 		in := unparkInput(t)
 		item7(&in).Labels = []string{"blocked_issue", label}
 		if got := Decide(in); len(got) != 0 {

@@ -42,8 +42,7 @@ func Prompt(f Facts, c Context) string {
 	w("Label names (the skill's labels.<key>):\n")
 	for _, kv := range [][2]string{
 		{"blocked_issue", l.BlockedIssue}, {"blocked_external", l.BlockedExternal},
-		{"needs_shaping", l.NeedsShaping}, {"needs_decision", l.NeedsDecision},
-		{"needs_hands", l.NeedsHands}, {"needs_testing", l.NeedsTesting},
+		{"needs_mind", l.NeedsMind}, {"needs_hands", l.NeedsHands},
 	} {
 		w("- labels.%s = %s\n", kv[0], kv[1])
 	}

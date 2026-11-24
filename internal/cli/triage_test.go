@@ -51,10 +51,8 @@ P1 = "q1"
 [labels]
 blocked_issue = "3-blocked-issue"
 blocked_external = "3-blocked-external"
-needs_shaping = "3-needs-shaping"
-needs_decision = "3-needs-decision"
+needs_mind = "3-needs-mind"
 needs_hands = "3-needs-hands"
-needs_testing = "3-needs-testing"
 area_prefix = "2-area:"
 
 [controller]
@@ -422,7 +420,7 @@ func TestTriageDesignAndStops(t *testing.T) {
 	}
 	assertWrites(t, fx.srv,
 		`comment 8: <!-- lighthouse: {"kind":"triage","version":1,"gate":"4c"} -->`,
-		"labels 8: add [3-needs-shaping]",
+		"labels 8: add [3-needs-mind]",
 		`comment 9: <!-- lighthouse: {"kind":"triage","version":1,"gate":"1"} -->`,
 		`comment 10: <!-- lighthouse: {"kind":"triage","version":1,"gate":"4b"} -->`,
 		`comment 11: <!-- lighthouse: {"kind":"triage","version":1,"gate":"4b"} -->`)
@@ -1525,7 +1523,7 @@ func TestBoardReadyPerKind(t *testing.T) {
 }
 
 // Production change that turns it red: apply without issuestate.Apply on RowDesign writes no label.
-func TestTriageDesignSetsNeedsShaping(t *testing.T) {
+func TestTriageDesignSetsNeedsMind(t *testing.T) {
 	fx := triageFixture(t, triageToml)
 	fx.issue(8, "2-area:cli")
 	fx.onBoard(8, "t1", nil)
@@ -1537,7 +1535,7 @@ func TestTriageDesignSetsNeedsShaping(t *testing.T) {
 	}
 	assertWrites(t, fx.srv,
 		`comment 8: <!-- lighthouse: {"kind":"triage","version":1,"gate":"4c"} -->`,
-		"labels 8: add [3-needs-shaping]")
+		"labels 8: add [3-needs-mind]")
 }
 
 // Production change that turns it red: judgedRow without the labels check forwards the issue.

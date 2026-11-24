@@ -42,8 +42,8 @@ func TestWriteIssueSetsRelationBeforeLabel(t *testing.T) {
 // Classification: fails when 3e names the blocked-issue label literally instead of through its
 // config key, a blocking key disappears, or the rank table of 3c changes its order.
 func TestWriteIssueBlockingLabelsComeFromConfigInRankOrder(t *testing.T) {
-	keys := []string{"labels.needs_shaping", "labels.needs_decision", "labels.blocked_issue",
-		"labels.blocked_external", "labels.needs_hands", "labels.needs_testing"}
+	keys := []string{"labels.needs_mind", "labels.blocked_issue",
+		"labels.blocked_external", "labels.needs_hands"}
 	for variant, body := range variants(t, writeIssue) {
 		t.Run(variant, func(t *testing.T) {
 			wantAll(t, flat(section(t, body, "#### 3e. Set a block", "### 4.")),
@@ -263,7 +263,7 @@ func TestWriteIssueInvariantCheckRunsAgainstTheForge(t *testing.T) {
 		t.Fatal(err)
 	}
 	page := filepath.Join(repo, "page.json")
-	pageJSON := `[{"number": 1, "labels": ["loc-a", "area-b", "needs-shaping", "needs-decision"]},` +
+	pageJSON := `[{"number": 1, "labels": ["loc-a", "area-b", "needs-mind", "needs-hands"]},` +
 		` {"number": 2, "labels": ["loc-a", "area-b"]}]`
 	if err := os.WriteFile(page, []byte(pageJSON), 0o644); err != nil {
 		t.Fatal(err)
@@ -348,12 +348,12 @@ func TestWriteIssueFreeLabelsWithADocument(t *testing.T) {
 }
 
 // Classification: fails when write-issue loses the gate-4 judgement (design depth at 4c means
-// `labels.needs_shaping`), or names `On hold` as a status again. Nothing writes `On hold` any more:
+// `labels.needs_mind`), or names `On hold` as a status again. Nothing writes `On hold` any more:
 // parking is `To do` plus `labels.blocked_issue`.
-func TestWriteIssueSkillSetsNeedsShapingAtGate4c(t *testing.T) {
+func TestWriteIssueSkillSetsNeedsMindAtGate4c(t *testing.T) {
 	for variant, body := range variants(t, writeIssue) {
 		t.Run(variant, func(t *testing.T) {
-			wantAll(t, body, "gate 4", "4c", "`labels.needs_shaping`")
+			wantAll(t, body, "gate 4", "4c", "`labels.needs_mind`")
 			wantNone(t, body, "\"On hold\"", "Status `On hold`")
 			wantAll(t, body, "`To do`", "`labels.blocked_issue`")
 		})

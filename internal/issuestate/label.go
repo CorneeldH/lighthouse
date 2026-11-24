@@ -12,23 +12,19 @@ import (
 
 // Keys are the blocking label keys in rank order: the lowest rank wins. This is the rank of the
 // developer label taxonomy, not the order of repoconfig.Labels.Blocking.
-var Keys = []string{"needs_shaping", "needs_decision", "blocked_issue", "blocked_external", "needs_hands", "needs_testing"}
+var Keys = []string{"needs_mind", "blocked_issue", "blocked_external", "needs_hands"}
 
 // Name is the label name of key in l; ok is false for an unknown key or an empty name.
 func Name(key string, l repoconfig.Labels) (name string, ok bool) {
 	switch key {
-	case "needs_shaping":
-		name = l.NeedsShaping
-	case "needs_decision":
-		name = l.NeedsDecision
+	case "needs_mind":
+		name = l.NeedsMind
 	case "blocked_issue":
 		name = l.BlockedIssue
 	case "blocked_external":
 		name = l.BlockedExternal
 	case "needs_hands":
 		name = l.NeedsHands
-	case "needs_testing":
-		name = l.NeedsTesting
 	}
 	return name, name != ""
 }

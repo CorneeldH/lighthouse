@@ -287,16 +287,13 @@ func settleUnstartedFixPR(ps []planned, wanted map[issueKey]bool) []planned {
 
 // ReturnLabelKey is the blocking label key a 🤖 Returned with reason (a headings key) sets on
 // the issue it gives back: blocked_issue for the return of rule 13 while a blocker is active
-// (blocked), needs_shaping for a handoff that wants a brainstorm, needs_decision for one that
-// wants an interactive skill, and needs_hands for every other reason, a passing one included.
+// (blocked), needs_mind for a handoff that wants a brainstorm or an interactive skill, and needs_hands for every other reason, a passing one included.
 func ReturnLabelKey(reason string, blocked bool) string {
 	switch {
 	case blocked:
 		return "blocked_issue"
-	case reason == "reason_needs_brainstorm":
-		return "needs_shaping"
-	case reason == "reason_interactive":
-		return "needs_decision"
+	case reason == "reason_needs_brainstorm", reason == "reason_interactive":
+		return "needs_mind"
 	}
 	return "needs_hands"
 }
@@ -518,7 +515,7 @@ func hasOpenRun(history []runs.Row, issue int) bool {
 // heldByHuman reports whether labels hold a needs_* or the blocked_external label of l: a human
 // owns such an issue, so the tick neither unparks it nor reads it as parked.
 func heldByHuman(labels []string, l repoconfig.Labels) bool {
-	for _, name := range []string{l.NeedsShaping, l.NeedsDecision, l.NeedsHands, l.NeedsTesting, l.BlockedExternal} {
+	for _, name := range []string{l.NeedsMind, l.NeedsHands, l.BlockedExternal} {
 		if name != "" && slices.Contains(labels, name) {
 			return true
 		}

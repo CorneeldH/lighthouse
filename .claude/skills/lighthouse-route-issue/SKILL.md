@@ -34,9 +34,9 @@ the name that call prints:
 
 - `lighthouse config labels.blocked_issue`, `lighthouse config labels.blocked_external`: waits on something
   outside the session;
-- `lighthouse config labels.needs_shaping`, `lighthouse config labels.needs_decision`: what has to
+- `lighthouse config labels.needs_mind`: what has to
   happen in the session;
-- `lighthouse config labels.needs_hands`, `lighthouse config labels.needs_testing`: the next step is
+- `lighthouse config labels.needs_hands`: the next step is
   a human's.
 
 ## Input
@@ -77,7 +77,7 @@ the sub-letter; the backlog-stand skill, if present, sorts *Ready* on the gate f
 
 ```
 0. Does the issue carry labels.blocked_issue or labels.blocked_external, or does it have
-   an open blocked_by without labels.needs_shaping/labels.needs_decision/labels.blocked_issue?
+   an open blocked_by without labels.needs_mind/labels.blocked_issue?
                                           → note what it waits for, fall through ↓ (unknown: stop)
 1. Does the description of a skill match this issue,
    and does that skill deliver the end result of the issue?
@@ -92,7 +92,7 @@ the sub-letter; the backlog-stand skill, if present, sorts *Ready* on the gate f
 Only gate 0 (with a readable block) and gate 3 fall through. The number in the line is the gate
 where the triage stopped; that makes a wrongly chosen gate findable afterwards.
 
-A `labels.needs_hands` or `labels.needs_testing` label turns the route reached into `stop` (see the label table below).
+A `labels.needs_hands` label turns the route reached into `stop` (see the label table below).
 
 ### Gate 0 — blocked
 
@@ -123,14 +123,13 @@ added — **unknown** stays a stop, and a failed read, or one without output, is
 (that puts the user on the wrong track of a `--remove-label`).
 
 **Without that label, but with an open blocker in the `issue blockers` list** (already in the
-answer of the read call; an issue from context without that list costs the one call above): if the issue carries none of `labels.needs_shaping`,
-`labels.needs_decision` or `labels.blocked_issue`, report **label missing** with the repair
+answer of the read call; an issue from context without that list costs the one call above): if the issue carries none of `labels.needs_mind` or `labels.blocked_issue`, report **label missing** with the repair
 command from `lighthouse-write-issue` 3e, if installed,
 (`lighthouse forge issue edit <nr> --add-label <labels.blocked_issue>`) after the line. The issue
 counts as blocked and the route goes on. If the list could not be read, report **unknown** and
 stop — an unreadable blocker never falls silently through to gate 4.
 
-If the issue does carry `labels.needs_shaping` or `labels.needs_decision` with an open
+If the issue does carry `labels.needs_mind` with an open
 `blocked_by`, the lower label wins (invariant `lighthouse-write-issue` 3e, if installed, "holds") and the route
 continues through that label — gate 4c, with `— blocker #<x> open` after the line.
 
@@ -199,7 +198,7 @@ Research issues ("find out whether X can") fall under **c**.
 Also under **c** falls an issue that demonstrably touches an open question from the
 `### heading:milestone_not_yet_decided` section of its milestone — the description is already in
 context (`milestone.description` in the issue payload, or step 1 of the backlog-stand skill, if
-present), no extra call. The same behaviour as `labels.needs_shaping`, but without a label. Open =
+present), no extra call. The same behaviour as `labels.needs_mind`, but without a label. Open =
 a bullet without `→ #<nr>`; only a question that demonstrably concerns the work of this issue
 counts. A milestone without that heading, or with "None.", routes as usual. The reason names the
 question: `— touches open question "<question>" from the milestone`. After the spec comes the
@@ -212,23 +211,20 @@ that sentence.
 
 ## A blocking label steers the triage or ends it in a stop
 
-Gate 0 notes the two blocked labels and routes on. `labels.needs_shaping` and
-`labels.needs_decision` are exactly the signal *which* route the issue gets;
-`labels.needs_hands` and `labels.needs_testing` end the triage in a stop. The rows are in the rank
+Gate 0 notes the two blocked labels and routes on. `labels.needs_mind` is exactly the signal *which* route the issue gets;
+`labels.needs_hands` ends the triage in a stop. The rows are in the rank
 order of the rank rule, which orders the `labels.needs_*` and route labels: the one with the lowest rank
 number, the first in the table, decides. A blockade (label or relation) is reported by Gate 0 and does
 not cancel a stop.
 
 | Label | Route |
 |---|---|
-| `labels.needs_shaping` | **gate 4, c** — that *is* exactly the missing step; the label means "pick up interactively", never a controller run |
-| `labels.needs_decision` | **gate 4, c**, narrow: put the open decision as the first question |
+| `labels.needs_mind` | **gate 4, c** — that *is* exactly the missing step; the label means "pick up interactively", never a controller run |
 | `labels.blocked_issue` | **gate 0** — report the blocker from the relation (`issue blockers`), not from a mention in the body, and route on with `— blocker #<x> open`; the same in a controller run (if present), see Gate 0 |
 | `labels.blocked_external` | **gate 0** — interactively: route on with `— blocked: <label>`; the controller does not start it |
 | `labels.needs_hands` | **stop** — the next step is a human's; the route executes nothing and reports which action of the human is needed first (where human hands are needed) in `#<nr> heading:gate_line <n>[<a|b>]: stop — <label>: <action>`, with `<n>` the gate where the triage would have stopped |
-| `labels.needs_testing` | **stop** — the next step is a human's; the route executes nothing and reports which judgement of the human is needed first in `#<nr> heading:gate_line <n>[<a|b>]: stop — <label>: <judgement>`, with `<n>` the gate where the triage would have stopped |
 
-Among the route labels the rank rule wins: a higher label steers the route (`labels.needs_shaping` still goes to 4c, with
+Among the route labels the rank rule wins: a higher label steers the route (`labels.needs_mind` still goes to 4c, with
 the stop of the lower label unreached). With an open blocker the reason says so too, but the stop
 stays: Gate 0 reports the blockade and routes on, the route arrives at the stop in this table, and
 the line carries both the blockade and the stop.
@@ -238,8 +234,8 @@ so the issue may get a spec, and `lighthouse-start-issue` executes only gate 4c.
 both route on (for `labels.blocked_external`: route on with `— blocked: <label>`). In a controller
 run (if present) `labels.blocked_issue` routes on the same way with an open blocker (**lapsed** and
 **unlinked** stop, see Gate 0), and the controller does not start an issue with
-`labels.blocked_external`. `labels.needs_shaping` and `labels.needs_decision` describe what has to
-happen *in* the session; `labels.needs_hands` and `labels.needs_testing` stop the route.
+`labels.blocked_external`. `labels.needs_mind` describes what has to
+happen *in* the session; `labels.needs_hands` stops the route.
 
 ## Non-negotiable
 
@@ -250,7 +246,7 @@ happen *in* the session; `labels.needs_hands` and `labels.needs_testing` stop th
 - ✅ Choose one route and name it · ❌ propose two routes and let the user choose
 - ✅ Gate 1 from the catalogue in context · ❌ grep over `.claude/skills/` (costs the KPI ceiling)
 - ✅ `labels.blocked_*` and a bare open `blocked_by` route on with what they wait for after the line (in a controller run, if present, the controller does not start `labels.blocked_external`); only **unknown** stops, in a controller run also **lapsed** and **unlinked** · ❌ stop on a readable block
-- ✅ stop and report what the human has to do first at `labels.needs_hands` / `labels.needs_testing` · ❌ execute any step of the route there
+- ✅ stop and report what the human has to do first at `labels.needs_hands` · ❌ execute any step of the route there
 - ✅ Do not fetch an issue that is already in context again · ❌ a second read call per number
 
 ## Known pitfalls

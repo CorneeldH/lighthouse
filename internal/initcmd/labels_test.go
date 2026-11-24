@@ -159,8 +159,8 @@ func TestLabelTemplateHasEveryConfiguredLabel(t *testing.T) {
 			checked++
 		}
 	}
-	if checked != 6 {
-		t.Fatalf("checked %d labels, want 6", checked)
+	if checked != 4 {
+		t.Fatalf("checked %d labels, want 4", checked)
 	}
 }
 
@@ -303,8 +303,8 @@ func TestCreateLabelsDefaultSyncCreates(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("rc %d\n%s\n%s", r.code, r.out, r.err)
 	}
-	if len(f.created) != 5 || slices.Contains(f.created, "needs-hands") {
-		t.Fatalf("created %v, want the 5 missing labels", f.created)
+	if len(f.created) != 3 || slices.Contains(f.created, "needs-hands") {
+		t.Fatalf("created %v, want the 3 missing labels", f.created)
 	}
 }
 

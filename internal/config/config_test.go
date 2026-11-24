@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -757,5 +758,21 @@ func TestDefaultWorktreeRoot(t *testing.T) {
 	v, ok := Default("worktree.root")
 	if !ok || v != ".claude/worktrees" {
 		t.Errorf("Default(worktree.root) = %v, %v; want .claude/worktrees", v, ok)
+	}
+}
+
+func TestLoadRejectsOldLabelKeys(t *testing.T) {
+	for _, key := range OldLabelKeys {
+		t.Run(key, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "lighthouse.toml")
+			body := "[forge]\nrepo = \"o/r\"\n\n[labels]\n" + key + " = \"x\"\n"
+			if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			_, err := Load(path)
+			if err == nil || !strings.Contains(err.Error(), key) || !strings.Contains(err.Error(), "lighthouse labels migrate") {
+				t.Errorf("Load error = %v, want it to name %s and lighthouse labels migrate", err, key)
+			}
+		})
 	}
 }

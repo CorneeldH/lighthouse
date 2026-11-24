@@ -49,18 +49,10 @@
  },
  {
   "args": [
-   "labels.needs_shaping"
+   "labels.needs_mind"
   ],
   "rc": 0,
-  "stdout": "needs-shaping\n",
-  "stderr": ""
- },
- {
-  "args": [
-   "labels.needs_decision"
-  ],
-  "rc": 0,
-  "stdout": "needs-decision\n",
+  "stdout": "needs-mind\n",
   "stderr": ""
  },
  {
@@ -69,14 +61,6 @@
   ],
   "rc": 0,
   "stdout": "needs-hands\n",
-  "stderr": ""
- },
- {
-  "args": [
-   "labels.needs_testing"
-  ],
-  "rc": 0,
-  "stdout": "needs-testing\n",
   "stderr": ""
  },
  {

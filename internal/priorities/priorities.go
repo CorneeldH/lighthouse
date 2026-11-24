@@ -35,7 +35,7 @@ type Blocker struct {
 }
 
 // Issue is one open issue. Status is its board Status, "" when it has none. Label is the
-// `[labels]` key of its blocking label with the lowest rank (for example "needs_shaping"), ""
+// `[labels]` key of its blocking label with the lowest rank (for example "needs_mind"), ""
 // without one. OpenQuestion is true when the issue has an open question for the human.
 type Issue struct {
 	Number    int           `json:"number"`

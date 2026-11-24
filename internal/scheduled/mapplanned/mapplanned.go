@@ -330,7 +330,7 @@ func (j *Job) Stage(ctx context.Context, env scheduled.Env, _ scheduled.Verdict)
 const stagingDir = ".lighthouse/run"
 
 // Cleanup implements scheduled.Job: it validates the result file as a whole, posts its
-// questions and decisions (a wish question first gets labels.needs_decision), and removes the
+// questions and decisions (a wish question first gets labels.needs_mind), and removes the
 // staging files. A missing result file is nothing to post. An issue whose job comments already
 // hold an open question or a settled one gets no second comment, so a repeated Cleanup posts
 // nothing twice. Nothing here reads the corpus.
@@ -368,8 +368,8 @@ func postResult(ctx context.Context, env scheduled.Env, dir string, res *result)
 		return fmt.Errorf("%s: the repo has no forge", Name)
 	}
 	if res.hasWish() {
-		if _, ok := issuestate.Name("needs_decision", env.Repo.Labels); !ok {
-			return fmt.Errorf("%s: a wish question needs labels.needs_decision", Name)
+		if _, ok := issuestate.Name("needs_mind", env.Repo.Labels); !ok {
+			return fmt.Errorf("%s: a wish question needs labels.needs_mind", Name)
 		}
 	}
 	base, err := mergeBase(ctx, env, dir)
@@ -404,7 +404,7 @@ func postResult(ctx context.Context, env scheduled.Env, dir string, res *result)
 		// without a job comment and a next run asks again. The other order would leave an open
 		// question without its label for good.
 		if p.wish {
-			if _, err := issuestate.Apply(ctx, env.Forge, p.issue, "needs_decision", env.Repo.Labels); err != nil {
+			if _, err := issuestate.Apply(ctx, env.Forge, p.issue, "needs_mind", env.Repo.Labels); err != nil {
 				return fmt.Errorf("%s: label on #%d: %w", Name, p.issue, err)
 			}
 		}

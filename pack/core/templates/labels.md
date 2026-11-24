@@ -13,12 +13,10 @@ At most one; the lowest rank wins.
 
 | Rank | Label | Color | Binds when |
 |---|---|---|---|
-| 1 | `needs-shaping` | `FBCA04` | What and why are not sharp yet. Everything after is premature |
-| 2 | `needs-decision` | `FBCA04` | One choice by the maintainer blocks, the rest is clear |
-| 3 | `blocked-issue` | `D93F0B` | Waits on another issue in this repository |
-| 4 | `blocked-external` | `D93F0B` | Waits on a third party, API, vendor or delivery |
-| 5 | `needs-hands` | `FBCA04` | The maintainer must configure, enter, connect or purchase something |
-| 6 | `needs-testing` | `FBCA04` | The build is done; the maintainer must judge whether it does what was meant |
+| 1 | `needs-mind` | `FBCA04` | What and why are not sharp yet, or one choice by the maintainer blocks. Everything after is premature |
+| 2 | `blocked-issue` | `D93F0B` | Waits on another issue in this repository |
+| 3 | `blocked-external` | `D93F0B` | Waits on a third party, API, vendor or delivery |
+| 4 | `needs-hands` | `FBCA04` | The maintainer must configure, enter, connect or purchase something, or judge whether the build does what was meant |
 
 Amber means the ball is with the maintainer, red means it is outside.
 

@@ -333,7 +333,7 @@ func checkRoute(j *Judgment, raw rawJudgment, f Facts, c Context) error {
 	case raw.Sub != sub:
 		return invalid("field sub %q does not match route_line sub %q", raw.Sub, sub)
 	}
-	for _, l := range []string{c.Labels.NeedsShaping, c.Labels.NeedsDecision} {
+	for _, l := range []string{c.Labels.NeedsMind} {
 		if l != "" && slices.Contains(f.Labels, l) && sub != "c" {
 			return invalid("the issue carries %s, so the route must be 4c, not %d%s", l, gate, sub)
 		}

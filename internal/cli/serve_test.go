@@ -1156,22 +1156,22 @@ func TestServePrioritiesLabelKeyFromRepoConfig(t *testing.T) {
 	fake := forgetest.New(t)
 	fake.Issues = map[int]map[string]any{
 		1: {"number": 1, "title": "one", "html_url": "https://h/1", "state": "open", "labels": []any{map[string]any{"name": "shape-me"}}},
-		2: {"number": 2, "title": "two", "html_url": "https://h/2", "state": "open", "labels": []any{map[string]any{"name": "needs-shaping"}}},
+		2: {"number": 2, "title": "two", "html_url": "https://h/2", "state": "open", "labels": []any{map[string]any{"name": "needs-mind"}}},
 	}
-	repo := repoDir(t, "[forge]\nrepo = \"o/r\"\n\n[labels]\nneeds_shaping = \"shape-me\"\n")
+	repo := repoDir(t, "[forge]\nrepo = \"o/r\"\n\n[labels]\nneeds_mind = \"shape-me\"\n")
 	got := servePriorities(t, hostToml(t, repo), fake)
-	if got[1] != "needs_shaping" || got[2] != "" {
-		t.Errorf("label keys = %v, want #1 needs_shaping through the configured name and #2 none", got)
+	if got[1] != "needs_mind" || got[2] != "" {
+		t.Errorf("label keys = %v, want #1 needs_mind through the configured name and #2 none", got)
 	}
 }
 
 func TestServePrioritiesLabelKeyFromRepoFlagUsesDefaults(t *testing.T) {
 	fake := forgetest.New(t)
 	fake.Issues = map[int]map[string]any{
-		1: {"number": 1, "title": "one", "html_url": "https://h/1", "state": "open", "labels": []any{map[string]any{"name": "needs-shaping"}}},
+		1: {"number": 1, "title": "one", "html_url": "https://h/1", "state": "open", "labels": []any{map[string]any{"name": "needs-mind"}}},
 	}
 	got := servePriorities(t, filepath.Join(t.TempDir(), "host.toml"), fake)
-	if got[1] != "needs_shaping" {
-		t.Errorf("label keys = %v, want #1 needs_shaping through the default name", got)
+	if got[1] != "needs_mind" {
+		t.Errorf("label keys = %v, want #1 needs_mind through the default name", got)
 	}
 }

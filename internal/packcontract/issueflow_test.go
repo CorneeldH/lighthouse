@@ -160,34 +160,32 @@ func TestRouteIssueSendsAnOpenFogQuestionTo4c(t *testing.T) {
 			gate4 := section(t, body, "### Gate 4", "## A blocking label")
 			wantAll(t, gate4, "heading:milestone_not_yet_decided", `touches open question "`, "→ #<nr>")
 			labels := section(t, body, "## A blocking label", "## Non-negotiable")
-			if n := len(labelRowRe.FindAllString(labels, -1)); n != 6 {
-				t.Errorf("%d label rows, want 6", n)
+			if n := len(labelRowRe.FindAllString(labels, -1)); n != 4 {
+				t.Errorf("%d label rows, want 4", n)
 			}
 		})
 	}
 }
 
-// Classification: fails when the needs_hands or needs_testing row stops being a stop that
+// Classification: fails when the needs_hands row stops being a stop that
 // executes nothing and names the human's action or judgement, brings back the old meaning
 // (execute up to the hand movement, let the human judge), lets the non-negotiables call a
-// needs_* label no stop or forget the new rule, or when the six label rows leave rank order.
+// needs_* label no stop or forget the new rule, or when the four label rows leave rank order.
 func TestRouteIssueNeedsHandsAndTestingStop(t *testing.T) {
 	for variant, body := range variants(t, routeIssue) {
 		t.Run(variant, func(t *testing.T) {
 			labels := section(t, body, "## A blocking label", "## Non-negotiable")
 			wantAll(t, lineStarting(t, labels, "| `labels.needs_hands`"),
 				"**stop**", "executes nothing", "which action of the human is needed first")
-			wantAll(t, lineStarting(t, labels, "| `labels.needs_testing`"),
-				"**stop**", "executes nothing", "which judgement of the human is needed first")
 			wantAll(t, flat(section(t, body, "## Triage", "## A blocking label")),
 				"label turns the route reached into `stop`")
 			f := flat(labels)
 			wantNone(t, f, "execute up to the hand movement", "let the human judge whether it does what was meant")
 			nn := section(t, body, "## Non-negotiable", "## Known pitfalls")
 			wantNone(t, nn, "treat a `labels.needs_*` label as a stop")
-			wantAll(t, lineStarting(t, nn, "- ✅ stop and report"), "`labels.needs_hands`", "`labels.needs_testing`")
+			wantAll(t, lineStarting(t, nn, "- ✅ stop and report"), "`labels.needs_hands`")
 			last := -1
-			for _, key := range []string{"needs_shaping", "needs_decision", "blocked_issue", "blocked_external", "needs_hands", "needs_testing"} {
+			for _, key := range []string{"needs_mind", "blocked_issue", "blocked_external", "needs_hands"} {
 				row := "| `labels." + key + "`"
 				i := strings.Index(labels, row)
 				if i < 0 {
@@ -202,12 +200,12 @@ func TestRouteIssueNeedsHandsAndTestingStop(t *testing.T) {
 	}
 }
 
-// Classification: fails when route-issue stops reading one of the six labels from config, or
+// Classification: fails when route-issue stops reading one of the four labels from config, or
 // names a literal label (`3-blocked`, `3-needs…`).
 func TestRouteIssueReadsLabelsFromConfig(t *testing.T) {
 	for variant, body := range variants(t, routeIssue) {
 		t.Run(variant, func(t *testing.T) {
-			for _, key := range []string{"blocked_issue", "blocked_external", "needs_shaping", "needs_decision", "needs_hands", "needs_testing"} {
+			for _, key := range []string{"blocked_issue", "blocked_external", "needs_mind", "needs_hands"} {
 				wantRe(t, body, `lighthouse config labels\.`+key+`\b`)
 			}
 			wantNone(t, body, "3-blocked", "3-needs")
@@ -241,18 +239,17 @@ func TestStartIssueHoldsABlockedExecution(t *testing.T) {
 	}
 }
 
-// Classification: fails when start-issue executes a stop line of route-issue (`needs_hands`,
-// `needs_testing`) instead of reporting what the human has to do first, posts a handoff for it
+// Classification: fails when start-issue executes a stop line of route-issue (`needs_hands`) instead of reporting what the human has to do first, posts a handoff for it
 // in a controller run, lets the stop come after the Blocked? block, sends a scout at a stop on
 // 4b, or moves the board to In progress for it.
 func TestStartIssueStopsOnNeedsStopLine(t *testing.T) {
 	for variant, body := range variants(t, startIssue) {
 		t.Run(variant, func(t *testing.T) {
 			step3 := section(t, body, "### 3.", "### 4.")
-			wantAll(t, flat(step3), "`labels.needs_hands` or `labels.needs_testing`", "the next step is a human's")
+			wantAll(t, flat(step3), "`labels.needs_hands`", "the next step is a human's")
 			step4 := section(t, body, "### 4.", "#### Scout")
 			row := lineStarting(t, step4, "| route `stop`")
-			wantAll(t, row, "route `stop` (`labels.needs_hands` or `labels.needs_testing`)",
+			wantAll(t, row, "route `stop` (`labels.needs_hands`)",
 				"report what the human has to do first", "no execution, no spec, no plan",
 				"post no handoff", "`RowInteractive`", "before **Blocked?**", "no scout goes out")
 			scout := section(t, body, "#### Scout", "##### Skipping is allowed")
@@ -772,12 +769,12 @@ func TestHandoffPrintsTheBlockAfterTheQuestion(t *testing.T) {
 	}
 }
 
-// Classification: fails when start-issue stops taking `labels.needs_shaping` off the issue after
+// Classification: fails when start-issue stops taking `labels.needs_mind` off the issue after
 // an approved spec at gate 4c, or when it still presents `On hold` as a status it lifts.
 func TestStartIssueRemovesNeedsShapingAfterApprovedSpec(t *testing.T) {
 	for variant, body := range variants(t, startIssue) {
 		t.Run(variant, func(t *testing.T) {
-			wantAll(t, body, "approved spec", "`labels.needs_shaping`", "--remove-label")
+			wantAll(t, body, "approved spec", "`labels.needs_mind`", "--remove-label")
 			wantNone(t, body, "`To do` and `On hold`")
 		})
 	}

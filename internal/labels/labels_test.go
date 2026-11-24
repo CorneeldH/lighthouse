@@ -18,8 +18,7 @@ import (
 )
 
 var names = []string{
-	"blocked-issue", "blocked-external", "needs-shaping",
-	"needs-decision", "needs-hands", "needs-testing",
+	"blocked-issue", "blocked-external", "needs-mind", "needs-hands",
 }
 
 const (
@@ -126,7 +125,7 @@ func TestListsMissingWithoutCreate(t *testing.T) {
 		t.Fatal(r.rc, r.err)
 	}
 	lines := createLines(r.out)
-	if len(lines) != 5 {
+	if len(lines) != 3 {
 		t.Fatalf("%d lines:\n%s", len(lines), r.out)
 	}
 	for _, l := range lines {
@@ -185,7 +184,7 @@ func TestCreateMakesOnlyMissing(t *testing.T) {
 		t.Fatal(r.rc, r.err)
 	}
 	creates := f.creates()
-	if len(creates) != 5 {
+	if len(creates) != 3 {
 		t.Fatalf("%d creates: %v", len(creates), creates)
 	}
 	for _, c := range creates {
@@ -209,8 +208,8 @@ func TestExistingLabelCaseInsensitive(t *testing.T) {
 			t.Errorf("created an existing label: %v", c)
 		}
 	}
-	if len(f.creates()) != 5 {
-		t.Errorf("%d creates, want 5", len(f.creates()))
+	if len(f.creates()) != 3 {
+		t.Errorf("%d creates, want 3", len(f.creates()))
 	}
 }
 
@@ -221,7 +220,7 @@ func TestAllPresent(t *testing.T) {
 	if r.rc != nil {
 		t.Fatal(r.rc)
 	}
-	if !strings.Contains(r.out, "labels: all 6 present on Owner/repo") {
+	if !strings.Contains(r.out, "labels: all 4 present on Owner/repo") {
 		t.Errorf("out:\n%s", r.out)
 	}
 	if len(f.creates()) != 0 {
@@ -239,8 +238,8 @@ func TestForgeListErrorPrintsAllLines(t *testing.T) {
 	if !strings.Contains(r.out, "could not read") {
 		t.Errorf("out:\n%s", r.out)
 	}
-	if n := len(createLines(r.out)); n != 6 {
-		t.Errorf("%d lines, want 6", n)
+	if n := len(createLines(r.out)); n != 4 {
+		t.Errorf("%d lines, want 4", n)
 	}
 	if len(f.creates()) != 0 {
 		t.Errorf("creates: %v", f.creates())
@@ -275,7 +274,7 @@ func TestNoForgeRepoPrintsAllLines(t *testing.T) {
 		t.Fatal(r.rc, r.err)
 	}
 	lines := createLines(r.out)
-	if len(lines) != 6 {
+	if len(lines) != 4 {
 		t.Fatalf("%d lines:\n%s", len(lines), r.out)
 	}
 	for _, l := range lines {
@@ -293,8 +292,8 @@ func TestSyncFallbackPrintsForgeCommand(t *testing.T) {
 	if r.rc != nil {
 		t.Fatal(r.rc, r.err)
 	}
-	if n := len(createLines(r.out)); n != 6 {
-		t.Errorf("%d lines, want 6:\n%s", n, r.out)
+	if n := len(createLines(r.out)); n != 4 {
+		t.Errorf("%d lines, want 4:\n%s", n, r.out)
 	}
 	if strings.Contains(r.out, "gh ") || !strings.Contains(r.out, "could not read the labels of Owner/repo") {
 		t.Errorf("out:\n%s", r.out)
@@ -403,7 +402,7 @@ func TestRemoteLabelWithSpace(t *testing.T) {
 	if len(f.creates()) != 0 {
 		t.Errorf("creates: %v", f.creates())
 	}
-	if !strings.Contains(r.out, "labels: all 7 present on Owner/repo") {
+	if !strings.Contains(r.out, "labels: all 5 present on Owner/repo") {
 		t.Errorf("out:\n%s", r.out)
 	}
 }

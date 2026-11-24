@@ -205,16 +205,14 @@ interface StateCase {
 
 // Rank of the label keys, lowest first, as the API reports the one winning key.
 const LABEL_RANK = [
-  'needs_shaping',
-  'needs_decision',
+  'needs_mind',
   'blocked_issue',
   'blocked_external',
   'needs_hands',
-  'needs_testing',
 ]
 
 // Any needs_* label on the issue, built from the fixture labels like the server does.
-const NEEDS_LABELS = ['needs_shaping', 'needs_decision', 'needs_hands', 'needs_testing']
+const NEEDS_LABELS = ['needs_mind', 'needs_hands']
 
 describe('issueState follows the shared state fixture', () => {
   const openCases = (cases as StateCase[]).filter((c) => !c.closed)
@@ -374,7 +372,7 @@ describe('milestoneRows blocks', () => {
   it('groups done, needs_human, active, ready, needs_shaping, blocked in that order, by work order inside a group', () => {
     const row = mk([
       iss(1, [[R, 9]], { milestone: ref }),
-      iss(2, [], { milestone: ref, label: 'needs_shaping' }),
+      iss(2, [], { milestone: ref, label: 'needs_mind' }),
       iss(3, [], { milestone: ref }),
       iss(4, [], { milestone: ref, status: 'In progress', open_question: true }),
       iss(5, [[R, 3]], { milestone: ref }),
@@ -403,8 +401,8 @@ describe('milestoneRows blocks', () => {
 
   it('orders a group by dependency depth before number', () => {
     const row = mk([
-      iss(1, [[R, 5]], { milestone: ref, label: 'needs_shaping' }),
-      iss(5, [], { milestone: ref, label: 'needs_shaping' }),
+      iss(1, [[R, 5]], { milestone: ref, label: 'needs_mind' }),
+      iss(5, [], { milestone: ref, label: 'needs_mind' }),
     ])
     expect(row.blocks.filter((b) => b.state === 'needs_shaping').map((b) => b.nr)).toEqual([5, 1])
   })

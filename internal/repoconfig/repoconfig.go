@@ -60,18 +60,18 @@ type Report struct {
 // Labels is [labels]: the label names, defaults filled by Load. The two prefixes have no
 // default and are "" when the repo has none.
 type Labels struct {
-	BlockedIssue, BlockedExternal, NeedsShaping, NeedsDecision, NeedsHands, NeedsTesting string
-	LocationPrefix, AreaPrefix                                                           string
+	BlockedIssue, BlockedExternal, NeedsMind, NeedsHands string
+	LocationPrefix, AreaPrefix                           string
 }
 
-// Blocking returns the six blocked_* and needs_* label names, in that order.
+// Blocking returns the four blocked_* and needs_* label names, in that order.
 func (l Labels) Blocking() []string {
-	return []string{l.BlockedIssue, l.BlockedExternal, l.NeedsShaping, l.NeedsDecision, l.NeedsHands, l.NeedsTesting}
+	return []string{l.BlockedIssue, l.BlockedExternal, l.NeedsMind, l.NeedsHands}
 }
 
-// NeedsName returns the first of the four needs_* label names that labels carries, "" when none.
+// NeedsName returns the first of the two needs_* label names that labels carries, "" when none.
 func (l Labels) NeedsName(labels []string) string {
-	for _, name := range []string{l.NeedsShaping, l.NeedsDecision, l.NeedsHands, l.NeedsTesting} {
+	for _, name := range []string{l.NeedsMind, l.NeedsHands} {
 		if name != "" && slices.Contains(labels, name) {
 			return name
 		}
@@ -145,10 +145,8 @@ type rawFile struct {
 	Labels struct {
 		BlockedIssue    string `toml:"blocked_issue"`
 		BlockedExternal string `toml:"blocked_external"`
-		NeedsShaping    string `toml:"needs_shaping"`
-		NeedsDecision   string `toml:"needs_decision"`
+		NeedsMind       string `toml:"needs_mind"`
 		NeedsHands      string `toml:"needs_hands"`
-		NeedsTesting    string `toml:"needs_testing"`
 		LocationPrefix  string `toml:"location_prefix"`
 		AreaPrefix      string `toml:"area_prefix"`
 	} `toml:"labels"`
@@ -172,10 +170,8 @@ func DefaultLabels() Labels {
 	return Labels{
 		BlockedIssue:    defaultString("labels.blocked_issue"),
 		BlockedExternal: defaultString("labels.blocked_external"),
-		NeedsShaping:    defaultString("labels.needs_shaping"),
-		NeedsDecision:   defaultString("labels.needs_decision"),
+		NeedsMind:       defaultString("labels.needs_mind"),
 		NeedsHands:      defaultString("labels.needs_hands"),
-		NeedsTesting:    defaultString("labels.needs_testing"),
 	}
 }
 
@@ -220,6 +216,11 @@ func LoadFile(path string) (Repo, error) {
 	if err != nil {
 		return Repo{}, fmt.Errorf("read %s: %w", path, err)
 	}
+	for _, key := range config.OldLabelKeys {
+		if md.IsDefined("labels", key) {
+			return Repo{}, config.OldLabelKeyError(path, key)
+		}
+	}
 	if raw.Forge.Repo == "" {
 		return Repo{}, fmt.Errorf("%s: missing [forge] repo", path)
 	}
@@ -240,10 +241,8 @@ func LoadFile(path string) (Repo, error) {
 		Labels: Labels{
 			BlockedIssue:    cmp.Or(raw.Labels.BlockedIssue, defaultString("labels.blocked_issue")),
 			BlockedExternal: cmp.Or(raw.Labels.BlockedExternal, defaultString("labels.blocked_external")),
-			NeedsShaping:    cmp.Or(raw.Labels.NeedsShaping, defaultString("labels.needs_shaping")),
-			NeedsDecision:   cmp.Or(raw.Labels.NeedsDecision, defaultString("labels.needs_decision")),
+			NeedsMind:       cmp.Or(raw.Labels.NeedsMind, defaultString("labels.needs_mind")),
 			NeedsHands:      cmp.Or(raw.Labels.NeedsHands, defaultString("labels.needs_hands")),
-			NeedsTesting:    cmp.Or(raw.Labels.NeedsTesting, defaultString("labels.needs_testing")),
 			LocationPrefix:  raw.Labels.LocationPrefix,
 			AreaPrefix:      raw.Labels.AreaPrefix,
 		},

@@ -34,7 +34,7 @@ const (
 
 // testLabels names every blocking label after its key.
 var testLabels = repoconfig.Labels{BlockedIssue: "blocked_issue", BlockedExternal: "blocked_external",
-	NeedsShaping: "needs_shaping", NeedsDecision: "needs_decision", NeedsHands: "needs_hands", NeedsTesting: "needs_testing"}
+	NeedsMind: "needs_mind", NeedsHands: "needs_hands"}
 
 var applyNow = time.Date(2026, 10, 31, 9, 0, 0, 0, time.UTC)
 
@@ -2574,8 +2574,8 @@ func TestApplyReturnSetsToDoWithLabel(t *testing.T) {
 		blocked bool
 		label   string
 	}{
-		{"reason_needs_brainstorm", false, "needs_shaping"},
-		{"reason_interactive", false, "needs_decision"},
+		{"reason_needs_brainstorm", false, "needs_mind"},
+		{"reason_interactive", false, "needs_mind"},
 		{"reason_pr_red", true, "blocked_issue"},
 		{"reason_silent", false, "needs_hands"},
 	}
@@ -2729,7 +2729,7 @@ func TestApplyReturnHalfWrittenFinishes(t *testing.T) {
 }
 
 // A Returned without a run (a handoff that wants a brainstorm) whose label edit failed is finished
-// by the next tick with the label its reason text names, needs_shaping, not the default.
+// by the next tick with the label its reason text names, needs_mind, not the default.
 func TestDecideFinishesReturnWithoutRun(t *testing.T) {
 	h := newHarness(t)
 	p := h.poster(applyRepo)
@@ -2745,7 +2745,7 @@ func TestDecideFinishesReturnWithoutRun(t *testing.T) {
 			t.Fatalf("tick %d = %+v, %v; want %v", i+1, got, err, want)
 		}
 	}
-	wantGivenBack(t, p, "needs_shaping")
+	wantGivenBack(t, p, "needs_mind")
 }
 
 // Only the tick's own Returned is finished: a 🤖 Teruggegeven another author wrote by hand moves
@@ -2767,7 +2767,7 @@ func TestDecideFinishesOnlyOwnReturn(t *testing.T) {
 }
 
 // A Controller issue that carries blocked_issue while its own Returned names reason_interactive
-// (the label write failed) is finished with needs_decision: blocked_issue is no input of the
+// (the label write failed) is finished with needs_mind: blocked_issue is no input of the
 // label, the rank rule drops it. Assigning a.Blocked in finishReturn from the blocked_issue
 // label turns this red: ReturnLabelKey then gives blocked_issue.
 func TestDecideFinishReturnKeepsReasonOverBlockedIssue(t *testing.T) {
@@ -2779,7 +2779,7 @@ func TestDecideFinishReturnKeepsReasonOverBlockedIssue(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(kinds(got), []Kind{KindFinishReturn}) {
 		t.Fatalf("tick = %+v, %v; want one finish_return", got, err)
 	}
-	wantGivenBack(t, p, "needs_decision")
+	wantGivenBack(t, p, "needs_mind")
 }
 
 // A KindToDo only sets To do on the board item: no comment, no label change, and an open run
