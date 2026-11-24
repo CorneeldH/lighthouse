@@ -40,7 +40,10 @@ try {
     }
     # -Path takes wildcards: escape them, so `x [1].ps1` is that file and not a pattern.
     $target = [Management.Automation.WildcardPattern]::Escape($Path)
-    $findings = @(Invoke-ScriptAnalyzer -Path $target -IncludeRule $ruleList)
+    # PSScriptAnalyzer reports parse errors (MissingEndCurlyBrace, ...) whatever -IncludeRule says.
+    # They are no rule of the fixed set: only the given rules count, so a file with nothing else is clean.
+    $findings = @(Invoke-ScriptAnalyzer -Path $target -IncludeRule $ruleList |
+        Where-Object { $ruleList -contains $_.RuleName })
     foreach ($finding in $findings) {
         $message = ($finding.Message -replace '[\t\r\n]+', ' ').Trim()
         [Console]::Out.WriteLine("$($finding.RuleName)`t$($finding.Line)`t$message")

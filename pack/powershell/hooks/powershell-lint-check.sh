@@ -74,6 +74,7 @@ SCRIPT="$ROOT/.lighthouse/scripts/psscriptanalyzer-repo.ps1"
 command -v pwsh >/dev/null 2>&1 || fail "pwsh is not on PATH, so PSScriptAnalyzer cannot run. Install PowerShell 7 and the PSScriptAnalyzer module."
 
 # Every argument is its own word: a path with spaces or parentheses reaches pwsh whole.
+# Payload paths are absolute, so none starts with `-` and none is read as a parameter name.
 args=(-Path "$FILE_PATH" -Rules "$BLOCKING_RULES")
 # A pinned module version (CI): the helper loads exactly that one or fails with rc 3.
 [ -z "${LIGHTHOUSE_PSSA_VERSION:-}" ] || args+=(-Version "$LIGHTHOUSE_PSSA_VERSION")

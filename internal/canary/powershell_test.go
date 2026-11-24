@@ -8,6 +8,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -18,7 +20,12 @@ const (
 	psCouldNot   = "powershell-lint-check: COULD NOT CHECK"
 	psCleanPs1   = "function Get-Answer {\n    param([int]$Base)\n    return $Base + 1\n}\n"
 	psInvokeExpr = "PSAvoidUsingInvokeExpression"
+	// psBrokenPs1 has a parse error (MissingEndCurlyBrace) and breaks no blocking rule.
+	psBrokenPs1 = "function Get-Thing {\n    Get-Date\n"
 )
+
+// psTag is a rule tag of this hook on stderr.
+var psTag = regexp.MustCompile(`\[powershell-lint-check/([^\]]+)\]`)
 
 // pssaVersion is the PSScriptAnalyzer version CI pins, from LIGHTHOUSE_PSSA_VERSION. cleanEnv drops
 // every LIGHTHOUSE_* variable, so the tests pass it to the hook themselves. Under CI an empty value
@@ -178,6 +185,29 @@ func TestPowershellLintPasses(t *testing.T) {
 	})
 }
 
+// PSScriptAnalyzer reports parse errors whatever -IncludeRule says. A syntax error is no rule of the
+// fixed set: a broken file alone passes, and a broken file with a blocking finding blocks on that
+// rule only, with no tag outside BLOCKING_RULES.
+func TestPowershellLintParseErrors(t *testing.T) {
+	requirePwsh(t)
+	root := installRepo(t, "core", "powershell")
+	t.Run("only a parse error", func(t *testing.T) {
+		if r := runPsLint(t, root, "broken.ps1", psBrokenPs1, pssaEnv(t)...); r.Code != 0 {
+			t.Fatalf("exit %d, want 0\nstdout: %s\nstderr: %s", r.Code, r.Stdout, r.Stderr)
+		}
+	})
+	t.Run("parse error and a blocking finding", func(t *testing.T) {
+		r := runPsLint(t, root, "broken.ps1", readPsFixture(t, psInvokeExpr)+psBrokenPs1, pssaEnv(t)...)
+		requireCanary(t, r, psInvokeExpr, "[powershell-lint-check/"+psInvokeExpr+"]")
+		ids := blockingRules(t, psLintFile)
+		for _, tag := range psTag.FindAllStringSubmatch(r.Stderr, -1) {
+			if !slices.Contains(ids, tag[1]) {
+				t.Errorf("a tag outside BLOCKING_RULES: %s\n%s", tag[0], r.Stderr)
+			}
+		}
+	})
+}
+
 // No file in the payload, or a file deleted between the edit and the hook: nothing to check. These
 // never reach pwsh, so they run without it.
 func TestPowershellLintNothingToCheck(t *testing.T) {
@@ -268,7 +298,8 @@ func TestPowershellLintCouldNotCheck(t *testing.T) {
 	})
 }
 
-// The helper itself: its exit codes are the hook's contract (0 clean, 10 findings, 3 module, 4 rest).
+// The helper itself: its exit codes and stdout are the hook's contract (0 clean, 10 findings as
+// `Rule<TAB>Line<TAB>Message`, 3 module, 4 rest), and it reports only the rules it is given.
 func TestPowershellHelperExitCodes(t *testing.T) {
 	requirePwsh(t)
 	script, err := filepath.Abs(packFile("powershell/scripts/psscriptanalyzer-repo.ps1"))
@@ -276,21 +307,42 @@ func TestPowershellHelperExitCodes(t *testing.T) {
 		t.Fatal(err)
 	}
 	dir := t.TempDir()
-	clean := filepath.Join(dir, "clean.ps1")
-	writeFile(t, clean, psCleanPs1)
+	file := func(name, source string) string {
+		path := filepath.Join(dir, name)
+		writeFile(t, path, source)
+		return path
+	}
+	clean := file("clean.ps1", psCleanPs1)
+	bad := file("bad.ps1", readPsFixture(t, psInvokeExpr))
+	broken := file("broken.ps1", psBrokenPs1)
+	brokenBad := file("broken-bad.ps1", readPsFixture(t, psInvokeExpr)+psBrokenPs1)
 	rules := strings.Join(blockingRules(t, psLintFile), ",")
+	finding := regexp.MustCompile(`^` + psInvokeExpr + "\t1\t[^\t\n]+\n$")
 	cases := []struct {
-		name string
-		args []string
-		code int
+		name   string
+		args   []string
+		code   int
+		stdout *regexp.Regexp
 	}{
-		{"clean", []string{"-Path", clean, "-Rules", rules}, 0},
-		{"module version missing", []string{"-Path", clean, "-Rules", rules, "-Version", "0.0.1"}, 3},
-		{"file missing", []string{"-Path", filepath.Join(dir, "nope.ps1"), "-Rules", rules}, 4},
+		{"clean", []string{"-Path", clean, "-Rules", rules}, 0, nil},
+		{"finding", []string{"-Path", bad, "-Rules", rules}, 10, finding},
+		{"only a parse error", []string{"-Path", broken, "-Rules", rules}, 0, nil},
+		{"parse error and a finding", []string{"-Path", brokenBad, "-Rules", rules}, 10, finding},
+		{"module version missing", []string{"-Path", clean, "-Rules", rules, "-Version", "0.0.1"}, 3, nil},
+		{"file missing", []string{"-Path", filepath.Join(dir, "nope.ps1"), "-Rules", rules}, 4, nil},
+	}
+	if v := pssaVersion(t); v != "" {
+		cases = append(cases, struct {
+			name   string
+			args   []string
+			code   int
+			stdout *regexp.Regexp
+		}{"pinned version", []string{"-Path", bad, "-Rules", rules, "-Version", v}, 10, finding})
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			cmd := exec.Command("pwsh", append([]string{"-NoProfile", "-NonInteractive", "-File", script}, c.args...)...)
+			cmd.Env = append(os.Environ(), "HOME="+t.TempDir())
 			var stdout, stderr bytes.Buffer
 			cmd.Stdout, cmd.Stderr = &stdout, &stderr
 			err := cmd.Run()
@@ -300,8 +352,12 @@ func TestPowershellHelperExitCodes(t *testing.T) {
 			} else if err != nil {
 				t.Fatal(err)
 			}
-			if code != c.code || stdout.Len() != 0 {
-				t.Fatalf("exit %d, want %d and no stdout\nstdout: %s\nstderr: %s", code, c.code, stdout.String(), stderr.String())
+			okOut := stdout.Len() == 0
+			if c.stdout != nil {
+				okOut = c.stdout.MatchString(stdout.String())
+			}
+			if code != c.code || !okOut {
+				t.Fatalf("exit %d, want %d; stdout %q, want %v\nstderr: %s", code, c.code, stdout.String(), c.stdout, stderr.String())
 			}
 		})
 	}
