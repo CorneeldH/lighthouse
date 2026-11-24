@@ -40,8 +40,8 @@ func tokenize(s string) []token {
 	rs := []rune(s)
 	for i := 0; i < len(rs); i++ {
 		c := rs[i]
-		switch {
-		case c == '\'' || c == '"':
+		switch c {
+		case '\'', '"':
 			have, quoted = true, true
 			j := i + 1
 			for j < len(rs) && rs[j] != c {
@@ -49,15 +49,15 @@ func tokenize(s string) []token {
 				j++
 			}
 			i = j
-		case c == ' ' || c == '\t' || c == '\r':
+		case ' ', '\t', '\r':
 			flush()
-		case c == '\n' || c == ';' || c == '|':
+		case '\n', ';', '|':
 			flush()
 			if c == '|' && i+1 < len(rs) && rs[i+1] == '|' {
 				i++
 			}
 			toks = append(toks, token{tokSep, string(c)})
-		case c == '&':
+		case '&':
 			if !have && i+1 < len(rs) && rs[i+1] == '>' {
 				op := "&>"
 				i++
@@ -73,7 +73,7 @@ func tokenize(s string) []token {
 				i++
 			}
 			toks = append(toks, token{tokSep, "&"})
-		case c == '>':
+		case '>':
 			op := ">"
 			if have && !quoted && buf.String() == "2" {
 				op = "2>"
