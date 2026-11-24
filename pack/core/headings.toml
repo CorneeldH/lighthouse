@@ -311,6 +311,31 @@ en = "Merge it yourself"
 nl = "De diff is afgekapt; de volledige diff staat in"
 en = "The diff is cut off; the full diff is in"
 
+# The reply of tick to an answer on a pusher Vraag that started nothing
+[reply_push_not_on_origin]
+nl = "De SHA staat niet op origin"
+en = "The SHA is not on origin"
+
+[reply_push_not_permit]
+nl = "Tick las het antwoord niet als toestemming om te pushen."
+en = "Tick did not read the answer as permission to push."
+
+[reply_push_unreadable]
+nl = "Tick kon het antwoord niet lezen."
+en = "Tick could not read the answer."
+
+[reply_push_could_not_check]
+nl = "COULD NOT CHECK: git kon niet zien of origin de SHA bevat."
+en = "COULD NOT CHECK: git could not tell whether origin has the SHA."
+
+[reply_push_works]
+nl = "Wat werkt: antwoord `push` of geef een andere duidelijke toestemming, dan pusht de pusher precies deze SHA. Of push zelf en antwoord daarna `gepusht`."
+en = "What works: answer `push` or give other clear permission, and the pusher pushes exactly this SHA. Or push it yourself and then answer `pushed`."
+
+[reply_push_link]
+nl = "De Vraag met de diff en het oordeel van de reviewers"
+en = "The Question with the diff and the reviewers' verdict"
+
 [note_pushed]
 nl = "Workflow-bestanden gepusht door de pusher"
 en = "Workflow files pushed by the pusher"

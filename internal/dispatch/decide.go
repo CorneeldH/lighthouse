@@ -1554,9 +1554,10 @@ func (c issueCtx) pushTargetOf(key string) (pushTarget, bool) {
 		t.trigger, t.worktree, t.branch = triggerPush, ho.Worktree, ho.Branch
 		return t, true
 	}
-	// Only the answer `push` permits a SHA: a pushanswer row of any other answer is a recovery
-	// (KindPushRecover), whose row must never turn into a push.
-	if !permitAnswer(com.Body) {
+	// Only the answer `push`, or a row of this key the classifier noted as a permit, permits a
+	// SHA: a pushanswer row of any other answer is a recovery (KindPushRecover), whose row must
+	// never turn into a push.
+	if !permitAnswer(com.Body) && !c.permitNoted(key) {
 		return pushTarget{}, false
 	}
 	// The answer has no protocol header, so it is not in c.hs: the walk goes over the thread and
@@ -1576,6 +1577,18 @@ func (c issueCtx) pushTargetOf(key string) (pushTarget, bool) {
 	}
 	t.trigger, t.worktree, t.branch, t.permit = triggerPushAnswer, q.Fields["worktree"], q.Fields["branch"], q.Fields["sha"]
 	return t, true
+}
+
+// permitVerdict is the note apply writes on a pushanswer row whose answer the classifier read as
+// a permit (runs.Row.Verdict).
+const permitVerdict = `{"answer":"permit"}`
+
+// permitNoted reports whether a row of trigger key carries the classifier's permit: the first
+// row does, a second attempt claims a row of its own.
+func (c issueCtx) permitNoted(key string) bool {
+	return slices.ContainsFunc(c.repo.History, func(r runs.Row) bool {
+		return r.Issue == c.it.Issue && r.TriggerKey == key && r.Verdict == permitVerdict
+	})
 }
 
 // pushAgain is the second attempt of a push row that failed to start: a KindPush on the target

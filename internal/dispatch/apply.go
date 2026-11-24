@@ -595,6 +595,13 @@ func (ap applier) push(ctx context.Context, a Action, res *Result) error {
 			ap.logf("%s#%d: rocket on comment %d: %v", a.Repo, a.Issue, a.CommentID, err)
 		}
 	}
+	return ap.startPusher(ctx, a, run, res)
+}
+
+// startPusher starts the pusher on the claimed push row run, with a.PermitSHA as its permit. A
+// start that fails closes the row start_failed.
+func (ap applier) startPusher(ctx context.Context, a Action, run runs.Run, res *Result) error {
+	env := ap.env
 	if env.StartPusher == nil {
 		return ap.startFailed(ctx, run.ID, "start pusher", errors.New("no way to start the pusher"))
 	}
@@ -605,8 +612,7 @@ func (ap applier) push(ctx context.Context, a Action, res *Result) error {
 	if a.Trigger == triggerMerge {
 		spec.Merge, spec.PR, spec.HeadSHA = true, a.PR, a.HeadSHA
 	}
-	err = env.StartPusher(ctx, spec)
-	if err != nil {
+	if err := env.StartPusher(ctx, spec); err != nil {
 		return ap.startFailed(ctx, run.ID, "start pusher", err)
 	}
 	res.Started++
@@ -704,10 +710,55 @@ func (ap applier) originContains(ctx context.Context, a Action) (originState, er
 }
 
 // classifyFlow reads the answer to a pusher question that origin does not satisfy in plain
-// language (Task 4); gitErr is the git failure of originContains, nil when origin simply lacks
-// the SHA.
+// language; gitErr is the git failure of originContains, nil when origin simply lacks the SHA.
+// A permit notes itself on the claimed row (pushTargetOf reads it on a retry) and starts the
+// pusher for exactly the Vraag's SHA; a note that does not write starts nothing. Any other
+// verdict, a failing or missing classifier included, posts one reply that says what works and
+// closes the row as question: the reply is the open Vraag for the next answer.
 func (ap applier) classifyFlow(ctx context.Context, a Action, run runs.Run, gitErr error, res *Result) error {
-	return nil
+	if gitErr != nil {
+		ap.logf("%s#%d: %s: git could not tell whether origin has %s: %v", a.Repo, a.Issue, a.TriggerKey, a.PermitSHA, gitErr)
+	}
+	verdict := VerdictOther
+	readable := false
+	if classify := ap.env.ClassifyAnswer; classify != nil {
+		v, err := classify(ctx, AnswerInput{Step: a.Step, SHA: a.PermitSHA, Branch: a.Branch, Answer: a.AnswerText})
+		switch {
+		case err != nil:
+			ap.logf("%s#%d: %s: classifier: %v", a.Repo, a.Issue, a.TriggerKey, err)
+		case v == VerdictPermit || v == VerdictPushed || v == VerdictOther:
+			verdict, readable = v, true
+		default:
+			ap.logf("%s#%d: %s: classifier: unknown verdict %q", a.Repo, a.Issue, a.TriggerKey, v)
+		}
+	}
+	if verdict == VerdictPermit {
+		if err := runs.SetVerdict(ctx, ap.env.DB, run.ID, permitVerdict); err != nil {
+			return ap.startFailed(ctx, run.ID, "note permit", err)
+		}
+		return ap.startPusher(ctx, a, run, res)
+	}
+	h := func(key string) string { return protocol.Heading(key, a.Language) }
+	var line []string
+	switch {
+	case !readable:
+		line = append(line, h("reply_push_unreadable"))
+	case verdict == VerdictOther:
+		line = append(line, h("reply_push_not_permit"))
+	case gitErr == nil: // pushed, and origin lacks the SHA
+		line = append(line, h("reply_push_not_on_origin")+": `origin/"+a.Branch+"`.")
+	}
+	if gitErr != nil {
+		line = append(line, h("reply_push_could_not_check"))
+	}
+	body := protocol.RenderPushReply(protocol.PushReply{
+		SHA: a.PermitSHA, Worktree: a.Worktree, Branch: a.Branch, After: a.After, Lane: a.Lane, Step: a.Step,
+		Question: a.QuestionURL, Line: strings.Join(line, " "), Command: pushCommand(a.Worktree),
+	}, a.Language)
+	if _, err := ap.env.Forge(a.Repo).CreateComment(ctx, a.Issue, body); err != nil {
+		return ap.recoverPostFailed(ctx, run.ID, "post reply", err)
+	}
+	return ap.closeRun(ctx, run.ID, runs.Question, "")
 }
 
 // recoverReturn posts the 🤖 Returned of a push recovery that could not hand on, gives the issue

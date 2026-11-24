@@ -406,6 +406,53 @@ func TestDecidePushAnswerAfterReturned(t *testing.T) {
 	}
 }
 
+// A pushanswer row the classifier permitted carries {"answer":"permit"}: its failed start is
+// tried again as a push of the Vraag's SHA. Without that note, or with another one, a row of an
+// answer other than `push` never becomes a push.
+func TestPushTargetOfAcceptsPermitNote(t *testing.T) {
+	tests := []struct {
+		name, verdict string
+		want          []string
+	}{
+		{"permit note", `{"answer":"permit"}`, []string{"push::"}},
+		{"no note", "", []string{"return:reason_start_failed:"}},
+		{"other note", `{"answer":"other"}`, []string{"return:reason_start_failed:"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			in := pushQuestion(t, "ja, push maar")
+			item7(&in).Comments[2].Rocket = true
+			addRows(&in, runs.Row{ID: 9, Issue: 7, TriggerKey: "pushanswer:71", Command: "push-workflows",
+				Outcome: runs.StartFailed, Verdict: tt.verdict})
+			got := Decide(in)
+			if s := summary(got); !reflect.DeepEqual(s, tt.want) {
+				t.Fatalf("summary = %q, want %q", s, tt.want)
+			}
+			if tt.want[0] != "push::" {
+				return
+			}
+			if a := got[0]; a.PermitSHA != pushSHA || a.Attempt != 2 || a.TriggerKey != "pushanswer:71" ||
+				a.Worktree != pushWorktree || a.Branch != "issue-7-bouw-de-keten" {
+				t.Errorf("action = %+v, want attempt 2 of pushanswer:71 with the Vraag's SHA", a)
+			}
+		})
+	}
+}
+
+// The note counts only on a row of the same trigger key: a permit on another answer's row
+// permits nothing here.
+func TestPushTargetOfPermitNoteOfAnotherKey(t *testing.T) {
+	in := pushQuestion(t, "ja, push maar")
+	item7(&in).Comments[2].Rocket = true
+	addRows(&in,
+		runs.Row{ID: 8, Issue: 7, TriggerKey: "pushanswer:69", Command: "push-workflows", Outcome: runs.Handoff,
+			Verdict: `{"answer":"permit"}`},
+		runs.Row{ID: 9, Issue: 7, TriggerKey: "pushanswer:71", Command: "push-workflows", Outcome: runs.StartFailed})
+	if s := summary(Decide(in)); !reflect.DeepEqual(s, []string{"return:reason_start_failed:"}) {
+		t.Fatalf("summary = %q, want the issue back", s)
+	}
+}
+
 // withAfter adds the after: field to the pusher Vraag, which is Comments[1] in pushQuestion.
 func withAfter(in *Input) {
 	c := &item7(in).Comments[1]
