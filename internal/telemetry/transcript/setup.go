@@ -32,11 +32,15 @@ var (
 )
 
 type blockJSON struct {
-	Type  string `json:"type"`
-	Text  string `json:"text"`
-	Name  string `json:"name"`
-	Input struct {
-		Skill string `json:"skill"`
+	Type string `json:"type"`
+	Text string `json:"text"`
+	Name string `json:"name"`
+	ID   string `json:"id"`
+	// ToolUseID is set on a tool_result block.
+	ToolUseID string `json:"tool_use_id"`
+	Input     struct {
+		Skill    string `json:"skill"`
+		FilePath string `json:"file_path"`
 	} `json:"input"`
 }
 

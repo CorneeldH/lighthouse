@@ -35,6 +35,11 @@ type Entry struct {
 	Effort    string // top-level "effort" of an assistant line
 	Version   string // harness version of the line
 	Skill     *SkillLoad
+	Branch    string   // gitBranch of the line
+	Issue     int      // issue number from skill or command arguments; 0 is none
+	Writes    []string // file_path of Write and Edit tool uses
+	Asks      []string // ids of AskUserQuestion tool uses
+	Results   []string // tool_use_ids of tool results
 }
 
 // Message is one unique API message (by message.id, else requestId, else line).
@@ -74,6 +79,7 @@ type lineJSON struct {
 	Sidechain bool     `json:"isSidechain"`
 	Effort    string   `json:"effort"`
 	Version   string   `json:"version"`
+	GitBranch string   `json:"gitBranch"`
 	Message   *msgJSON `json:"message"`
 }
 
@@ -173,6 +179,8 @@ func (r *Reading) addLine(line, name string, sidechain bool, lineNo int, index m
 	e := Entry{At: at, Type: l.Type, Sidechain: sidechain || l.Sidechain, SessionID: l.SessionID, Effort: l.Effort, Version: l.Version}
 	if l.Message != nil {
 		e.Skill = r.skillOf(l.Type, l.Message.Content)
+		e.Branch, e.Issue = l.GitBranch, issueOf(l.Type, l.Message.Content)
+		e.Writes, e.Asks, e.Results = toolTraffic(l.Message.Content)
 	}
 	r.Entries = append(r.Entries, e)
 	if l.Type != "assistant" || l.Message == nil || l.Message.Usage == nil {
