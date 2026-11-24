@@ -64,6 +64,9 @@ de regels van de lezer: alleen `type` `user` en `assistant`.
   envelope met `total_cost_usd` bestaat alleen bij `claude -p`. `cost_kind = 'actual'` blijft in het
   schema voor later, maar dit issue schrijft het niet. (`cost-state` in het transcript is geen
   gefactureerd bedrag en geen bron; zie *Wat het transcript draagt*.)
+- Tokens van modellen die alleen in `cost-state` staan, zoals zijvragen van Claude Code zelf zonder
+  assistant-regel. `usage` is één rij per model dat in de assistant-regels voorkomt; die zijvragen
+  zijn een bekende ondertelling *(eigen keuze, r1-f9)*.
 - Quotumaandeel per sessie (`cost_kind = 'quota'`). Toerekenen aan één sessie is onbetrouwbaar als
   sessies parallel lopen *(gekozen door de gebruiker: alleen de dollarraming)*.
 - De UI (#379) en de vergelijking Native tegenover SDD zelf (milestone *Explore/exploit*).
@@ -275,19 +278,25 @@ lighthouse telemetry collect [--repo-dir <pad>] [--db <pad>] [--since-last] [--d
 - **In `tick`** *(eigen keuze)*. Het `[[schedule]]`-raamwerk start alleen agentjobs (Gate, Launch,
   Stage, Check, Finish), en een collector zonder agent past daar niet in. Daarom roept `tick` zelf
   `collect --since-last` aan, hooguit eens per uur. Het tijdstip van de laatste slag staat in een
-  bestand onder `LIGHTHOUSE_STATE_DIR`. De tick leest het transcript van een run via
-  `workplace.Adapter.Transcript` (de container, of de spiegel van een andere node), niet via het
-  bestandssysteem: met het software-profiel draait claude in de gedeelde devcontainer en staan de
+  bestand onder `LIGHTHOUSE_STATE_DIR`. De tick leest het transcript van een run niet via het
+  bestandssysteem en niet via `Adapter.Transcript` (dat geeft alleen een samenvatting zonder
+  `message.usage`), maar via `Adapter.TranscriptDelta`
+  (`internal/workplace/kennforge/transcript.go`), dat de ruwe bestandsdelen van hoofdtranscript en
+  subagents uit de container of de spiegel van een andere node geeft. De collector leest vanaf
+  offset 0 en parst de regels zelf: met het software-profiel draait claude in de gedeelde devcontainer en staan de
   transcripts in een volume dat de host niet leest (`internal/workplace/kennforge/transcript.go`,
-  #237). Een run waarvan het transcript onbereikbaar is, staat in de uitvoer met de reden (r1-f10). Dit draait alleen waar een dispatcher loopt en vraagt geen
+  #237). Een run waarvan het transcript onbereikbaar is (de werkplek is al weg en er is geen spiegel),
+  staat in de uitvoer met de reden (r1-f10). Dit draait alleen waar een dispatcher loopt en vraagt geen
   regel in `lighthouse.toml`. Een fout in het verzamelen laat de tick doorgaan en staat in zijn
   uitvoer.
 - **SessionStart-hook `telemetry-collect`** in `pack/core/hooks/`. Start
   `lighthouse telemetry collect --since-last` losgekoppeld op de achtergrond en keert meteen terug.
-  Blokkeert nooit en opent zelf geen database. Hij start niets in een controller-run
-  (`LIGHTHOUSE_CONTROLLER_RUN` gezet) en niet als de standaarddatabase op die plek niet bestaat:
-  in de devcontainer is er geen host-`lighthouse.db`, en een lege tweede database zou elke run als
-  sessie opnemen (`store.DefaultPath`, `internal/store/store.go`) *(eigen keuze, r1-f10)*. Bij een fout schrijft hij één regel naar zijn log en
+  Blokkeert nooit en opent zelf geen database. Hij start geen `collect` in een controller-run
+  (`LIGHTHOUSE_CONTROLLER_RUN` gezet): in de devcontainer is er geen host-`lighthouse.db`, en een
+  lege tweede database zou elke run als sessie opnemen (`store.DefaultPath`,
+  `internal/store/store.go`) *(eigen keuze, r1-f10)*. Een host-gebruiker zonder dispatcher krijgt
+  zijn database door de eerste `collect`; de hook zelf maakt er geen. Het zijbestand schrijft hij
+  wel altijd, ook in een controller-run: `LIGHTHOUSE_STATE_DIR` is daar de gekoppelde map. Bij een fout schrijft hij één regel naar zijn log en
   meldt `COULD NOT CHECK` alleen in dat log, niet in de sessie.
 - **Lighthouse- en packversie** *(eigen keuze)*. Dezelfde hook kent de sessie-id uit zijn invoer,
   de eigen binaryversie en `version` uit `.lighthouse/manifest.toml`. Hij schrijft die in een klein
@@ -296,8 +305,10 @@ lighthouse telemetry collect [--repo-dir <pad>] [--db <pad>] [--since-last] [--d
   `lighthouse/dispatch`; `internal/cli/tick.go`): hook en collector leiden het pad op dezelfde manier
   af, ook voor een interactieve sessie zonder dispatcher (r1-f6). Het bestand is een lijst van
   waarnemingen (tijdstip, lighthouse- en packversie), append-only: een hervatte sessie onder een
-  nieuwere versie voegt een waarneming toe, en de collector kiest per run de laatste waarneming op
-  of vóór het begin van zijn venster (r1-f7). Een database-rij kan hij
+  nieuwere versie voegt een waarneming toe, en de collector kiest per run de eerste waarneming die op of na het begin van zijn
+  venster valt en vóór zijn einde (of vóór de start van de volgende run): de hook vuurt na
+  `runs.started_at`, omdat de dispatcher de run claimt voordat claude start. Vindt hij er geen,
+  dan blijven de twee velden ontbrekend (r1-f7). Een database-rij kan hij
   niet schrijven: `setups.session_id` verwijst naar een `sessions`-rij die bij de start nog niet
   bestaat, en een run mag er geen krijgen. De collector leest het zijbestand bij het schrijven van
   de `setups`-rij, van run of sessie. Zonder zijbestand blijven de twee velden ontbrekend, dus bij
