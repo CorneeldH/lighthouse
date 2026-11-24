@@ -708,6 +708,32 @@
       "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/hooks/levelcheck.go"
     },
     {
+      "id": "telemetry-collect",
+      "phase": "prompt",
+      "row": 1,
+      "kind": "hook",
+      "trigger": "event",
+      "events": [
+        "SessionStart"
+      ],
+      "matcher": "",
+      "command": "run.sh telemetry-collect",
+      "effects": [
+        "records"
+      ],
+      "label": "telemetry-collect",
+      "what": "At the start of a session, notes the lighthouse and pack versions and starts the telemetry collector in the background.",
+      "how": [
+        "It runs on SessionStart and appends an observation (time, binary version, pack version from .lighthouse/manifest.toml) to a sidecar file of the session in the state directory.",
+        "Unless it runs in a controller run or LIGHTHOUSE_TELEMETRY_COLLECT is off, it starts `lighthouse telemetry collect --since-last` detached and returns at once.",
+        "It never opens the database and always exits 0; a failure is one line in telemetry/hook.log in the state directory, not in the session."
+      ],
+      "when": "When a session starts.",
+      "without": "Telemetry only fills when someone runs the collector by hand, and the lighthouse and pack versions of a session stay unknown.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/hooks/telemetrycollect.go"
+    },
+    {
       "id": "permission-check",
       "phase": "pre-tool",
       "row": 5,
@@ -918,6 +944,13 @@
       "label": "A session starts with a core gate switched off",
       "chips": [
         "level-check"
+      ]
+    },
+    {
+      "id": "session-start-telemetry",
+      "label": "A session starts and its telemetry must be collected",
+      "chips": [
+        "telemetry-collect"
       ]
     }
   ]

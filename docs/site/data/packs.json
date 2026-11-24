@@ -127,6 +127,14 @@
         "when": "when a session starts"
       },
       {
+        "name": "telemetry-collect",
+        "source": "internal/hooks/telemetrycollect.go",
+        "events": [
+          "SessionStart"
+        ],
+        "when": "when a session starts"
+      },
+      {
         "name": "permission-check",
         "source": "internal/hooks/permissioncheck.go",
         "events": [
