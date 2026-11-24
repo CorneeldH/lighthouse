@@ -60,7 +60,22 @@ type Env struct {
 	// LsRemote is the SHA of refs/heads/<branch> on origin as git sees it in worktree, "" when
 	// origin has no such branch; env is the pusher's environment. nil runs git ls-remote.
 	LsRemote func(ctx context.Context, worktree, branch string, env []string) (sha string, err error)
+	// ClassifyAnswer reads a user's answer to a pusher question in plain language; nil is no classifier.
+	ClassifyAnswer func(ctx context.Context, in AnswerInput) (AnswerVerdict, error)
 }
+
+// AnswerInput is what the classifier reads: the pusher's step, the SHA and branch the question
+// is about, and the user's answer.
+type AnswerInput struct{ Step, SHA, Branch, Answer string }
+
+// AnswerVerdict is what an answer means: "permit", "pushed" or "other".
+type AnswerVerdict string
+
+const (
+	VerdictPermit AnswerVerdict = "permit" // the user allows the push of the SHA
+	VerdictPushed AnswerVerdict = "pushed" // the user says they pushed it themselves
+	VerdictOther  AnswerVerdict = "other"  // anything else, in doubt too
+)
 
 // PusherSpec is what StartPusher starts: the push row RunID of issue Issue in Repo, for the
 // run's Worktree. Permit is the SHA a user's answer allowed, "" for a handoff. Env is the whole

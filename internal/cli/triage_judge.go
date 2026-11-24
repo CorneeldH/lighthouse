@@ -91,24 +91,43 @@ func loadJudgeConfig(path string) (judgeConfig, error) {
 	return cfg, nil
 }
 
-// judgeArgs are the flags of one judgment (spec "Het oordeel", "De leesgrens"): only Read, Grep
-// and Glob, no MCP servers, no settings source at all (settings is the only --settings: hooks
+// judgeSpec is what differs between judgments: the model, the --tools value, the JSON schema, the
+// time bound, and Env, the base environment of the process (nil is os.Environ).
+type judgeSpec struct {
+	Model, Tools, Schema string
+	Timeout              time.Duration
+	Env                  func() []string
+}
+
+// triageSpec is the spec of a triage judgment.
+var triageSpec = judgeSpec{Model: tri.Model, Tools: "Read,Grep,Glob", Schema: tri.Schema}
+
+// judgeArgs are the flags of one judgment (spec "Het oordeel", "De leesgrens"): only the tools of
+// spec, no MCP servers, no settings source at all (settings is the only --settings: hooks
 // off, plus modelSettings), no session file, and JSON output against the schema.
-func judgeArgs(settings string) []string {
-	return []string{"-p", "--model", tri.Model, "--tools", "Read,Grep,Glob", "--strict-mcp-config",
+func judgeArgs(settings string, spec judgeSpec) []string {
+	return []string{"-p", "--model", spec.Model, "--tools", spec.Tools, "--strict-mcp-config",
 		"--setting-sources", "", "--settings", settings, "--no-session-persistence",
-		"--output-format", "json", "--json-schema", tri.Schema}
+		"--output-format", "json", "--json-schema", spec.Schema}
 }
 
 // execJudge runs one judgment with claude in dir, prompt on stdin, cfg.Env added to the
 // environment, and returns its stdout. A failed exit carries the first bytes of stderr; a
 // timeout wraps context.DeadlineExceeded.
-func execJudge(ctx context.Context, dir, prompt string, cfg judgeConfig) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(ctx, judgeTimeout)
+func execJudge(ctx context.Context, dir, prompt string, cfg judgeConfig, spec judgeSpec) ([]byte, error) {
+	timeout := spec.Timeout
+	if timeout == 0 {
+		timeout = judgeTimeout
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
+	base := os.Environ
+	if spec.Env != nil {
+		base = spec.Env
+	}
 	var stdout, stderr bytes.Buffer
-	cmd := exec.CommandContext(ctx, "claude", judgeArgs(cfg.Settings)...)
-	cmd.Env = append(os.Environ(), cfg.Env...)
+	cmd := exec.CommandContext(ctx, "claude", judgeArgs(cfg.Settings, spec)...)
+	cmd.Env = append(base(), cfg.Env...)
 	cmd.Dir = dir
 	cmd.Stdin = strings.NewReader(prompt)
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
