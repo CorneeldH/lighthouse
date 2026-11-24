@@ -68,6 +68,7 @@ func NewRoot(in io.Reader, out, errOut io.Writer) *cobra.Command {
 	root.SetOut(out)
 	root.SetErr(errOut)
 	root.AddCommand(newInitCommand())
+	root.AddCommand(newUninstallCommand())
 	root.AddCommand(newConfigCommand())
 	root.AddCommand(newLevelCommand())
 	root.AddCommand(newHeadingsCommand())
