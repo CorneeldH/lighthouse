@@ -169,8 +169,16 @@ func canonMissing(path string) (string, error) {
 			continue
 		}
 		resolved = filepath.Dir(next)
-		if filepath.IsAbs(target) {
-			resolved = vol + "/"
+		// On Windows a target is `C:\…`: split on `/` only after ToSlash, and its volume is
+		// the start, as for path above, never a component (`C:\C:\Users`, #559).
+		target = filepath.ToSlash(target)
+		if strings.HasPrefix(target, "/") || filepath.IsAbs(target) {
+			tvol := filepath.VolumeName(target)
+			if tvol == "" {
+				tvol = vol
+			}
+			resolved = tvol + "/"
+			target = target[len(filepath.VolumeName(target)):]
 		}
 		rest = append(strings.Split(target, "/"), rest...)
 	}
