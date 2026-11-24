@@ -163,10 +163,17 @@ func refuseTooNew(ctx context.Context, db *sql.DB) error {
 
 // roDSN is the connection string of OpenReadOnly: mode=ro, so SQLite writes nothing, and no
 // _txlock=immediate, so nothing takes the write lock.
+//
+// A database with no -wal file next to it has no writer: it is opened immutable, so SQLite
+// creates no -wal or -shm file either. With a -wal file present (a live writer) the files exist
+// already and the normal read-only open is used.
 func roDSN(path string) string {
 	q := url.Values{
 		"mode":    {"ro"},
 		"_pragma": {"busy_timeout(5000)"},
+	}
+	if _, err := os.Stat(path + "-wal"); err != nil {
+		q.Set("immutable", "1")
 	}
 	return (&url.URL{Scheme: "file", Path: path, RawQuery: q.Encode()}).String()
 }

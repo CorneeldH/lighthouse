@@ -142,6 +142,8 @@ func TestCollectFindsWorktreeTranscripts(t *testing.T) {
 		{"plain-name", "s-forge", removed}, // a removed kenn-forge worktree, no name prefix
 		{"-other", "s-other", filepath.Join(root, "elsewhere", "other-project")},
 		{"-lookalike", "s-look", filepath.Join(root, "x", "o", "other", "r")}, // o and r not contiguous
+		{"-look2", "s-look2", filepath.Join(root, "x", "o", "r-other")},       // r-other is not r
+		{"-look3", "s-look3", filepath.Join(root, "x", "other", "r")},         // other/r is not o/r
 	}
 	for _, c := range cases {
 		r.project(c.dir, c.sid, c.cwd, tcLine(c.sid, c.cwd, 0, ""), tcLine(c.sid, c.cwd, 1, "m-"+c.sid))
@@ -221,11 +223,15 @@ func TestCollectDryRunLeavesOldSchemaAlone(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit %d, stderr %q, stdout %q", code, errOut, out)
 	}
+	if after := snapshot(); after != before {
+		ents, _ := os.ReadDir(filepath.Dir(r.db))
+		for _, e := range ents {
+			t.Log(e.Name())
+		}
+		t.Errorf("the database directory changed under --dry-run")
+	}
 	if v := r.query(`PRAGMA user_version`); v[0] != "10" {
 		t.Errorf("user_version = %v after --dry-run, want 10", v)
-	}
-	if after := snapshot(); after != before {
-		t.Errorf("the database directory changed under --dry-run")
 	}
 	if _, err := os.Stat(r.state); err == nil {
 		t.Errorf("--dry-run created the state directory %s (a sidecar)", r.state)
@@ -294,5 +300,36 @@ func TestCollectGrowingTranscript(t *testing.T) {
 	}
 	if got := r.query(`SELECT output_tokens FROM usage`); strings.Join(got, ",") != "10" {
 		t.Errorf("output_tokens after the second pass = %v, want both messages (10)", got)
+	}
+}
+
+func TestCollectSkipsVanishedAndUnreadable(t *testing.T) {
+	r := newTCRig(t)
+	gone := r.project("-repo", "s-gone", r.repo, tcLine("s-gone", r.repo, 0, ""), tcLine("s-gone", r.repo, 1, "m1"))
+	locked := r.project("-repo", "s-locked", r.repo, tcLine("s-locked", r.repo, 0, ""), tcLine("s-locked", r.repo, 1, "m3"))
+	r.project("-repo", "s-ok", r.repo, tcLine("s-ok", r.repo, 0, ""), tcLine("s-ok", r.repo, 1, "m2"))
+	// s-gone is the first session of the pass: it vanishes after its size is measured.
+	r.after = func() {
+		_ = os.Remove(gone)
+		r.after = nil
+	}
+	if os.Getuid() != 0 {
+		if err := os.Chmod(locked, 0); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = os.Chmod(locked, 0o600) })
+	}
+	code, out, errOut := r.run(r.base()...)
+	if code != 0 {
+		t.Fatalf("exit %d, stderr %q, stdout %q", code, errOut, out)
+	}
+	if !strings.Contains(out, "skip "+gone+":") {
+		t.Errorf("no skip line for the vanished transcript:\n%s", out)
+	}
+	if os.Getuid() != 0 && !strings.Contains(out, "skip "+locked+":") {
+		t.Errorf("no skip line for the unreadable transcript:\n%s", out)
+	}
+	if got := r.query(`SELECT session_key FROM sessions`); !strings.Contains(strings.Join(got, ","), "s-ok") {
+		t.Errorf("the readable transcript was not processed: %v", got)
 	}
 }

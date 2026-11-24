@@ -197,6 +197,8 @@ func runCollect(ctx context.Context, env collectEnv, opts collectOpts) (collectS
 	for _, f := range found {
 		out, err := collectOne(ctx, env, st, f, procOpt)
 		switch {
+		case errors.Is(err, fs.ErrNotExist) || errors.Is(err, fs.ErrPermission):
+			sum.addf("skip %s: %v", f.path, err)
 		case err != nil:
 			sum.Failed++
 			sum.addf("fail %s: %v", f.path, err)
@@ -295,7 +297,8 @@ func findTranscripts(projects string, roots, slugSegs []string) ([]session, erro
 	return out, nil
 }
 
-// cwdScanLines bounds how far into a transcript the first cwd is looked for.
+// cwdScanLines bounds how far into a transcript the first cwd is looked for: a session sets its
+// cwd on its first lines, so 200 is generous and keeps a huge file without one cheap to pass.
 const cwdScanLines = 200
 
 // firstCwd is the cwd of the first line object that has one, over the main transcripts of dir in
@@ -398,12 +401,18 @@ func collectOne(ctx context.Context, env collectEnv, st *store.Store, s session,
 		env.AfterMeasure()
 	}
 	var files []transcript.File
+	var opened []*os.File
+	defer func() {
+		for _, fh := range opened {
+			_ = fh.Close()
+		}
+	}()
 	for _, p := range parts {
 		fh, err := os.Open(p.path)
 		if err != nil {
 			return collect.Outcome{}, err
 		}
-		defer func() { _ = fh.Close() }()
+		opened = append(opened, fh)
 		files = append(files, transcript.File{Name: p.name, R: io.LimitReader(fh, p.size)})
 	}
 	return collect.Process(ctx, st.DB, collect.Source{
