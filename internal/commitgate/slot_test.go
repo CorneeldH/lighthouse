@@ -147,7 +147,7 @@ func TestOpenSlotsMakesAPrivateDirAndN(t *testing.T) {
 		t.Errorf("slot-4 exists: %v", err)
 	}
 	if runtime.GOOS == "windows" {
-		t.Skip("NTFS has no POSIX mode bits; see docs/host-assumptions.md")
+		t.Skip("NTFS has no POSIX mode bits; see host-assumptions.md")
 	}
 	if info, err := os.Stat(dir); err != nil || info.Mode().Perm() != 0o700 {
 		t.Errorf("slot dir = %v, %v; want mode 0700", info, err)

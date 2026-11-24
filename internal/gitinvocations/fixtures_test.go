@@ -41,7 +41,7 @@ func TestFixtures(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.Name, func(t *testing.T) {
 			if c.Name == "tilde-other-user" && runtime.GOOS == "windows" {
-				t.Skip("~user needs a POSIX user database, which native Windows lacks; see docs/host-assumptions.md")
+				t.Skip("~user needs a POSIX user database, which native Windows lacks; see host-assumptions.md")
 			}
 			root := t.TempDir() // deliberately without EvalSymlinks
 			t.Setenv("LH_UNSET_VAR", "")

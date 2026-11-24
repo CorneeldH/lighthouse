@@ -19,7 +19,7 @@ import (
 func skipOnWindows(t *testing.T, why string) {
 	t.Helper()
 	if runtime.GOOS == "windows" {
-		t.Skip(why + "; see docs/host-assumptions.md")
+		t.Skip(why + "; see host-assumptions.md")
 	}
 }
 

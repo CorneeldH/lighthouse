@@ -29,7 +29,7 @@ func TestPostArtefactCases(t *testing.T) {
 				t.Skip("not a Go case")
 			}
 			if c.Name == "test_file_name_with_quote_and_non_ascii" && runtime.GOOS == "windows" {
-				t.Skip("NTFS refuses \" in a file name; see docs/host-assumptions.md")
+				t.Skip("NTFS refuses \" in a file name; see host-assumptions.md")
 			}
 			root := t.TempDir()
 			fixturesetup.Build(t, root, c.Setup)

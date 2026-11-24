@@ -946,7 +946,7 @@ func TestNoForgeForUnknownHost(t *testing.T) {
 
 func TestRestoresExecBit(t *testing.T) {
 	if !execBits {
-		t.Skip("NTFS keeps no exec bits (docs/host-assumptions.md)")
+		t.Skip("NTFS keeps no exec bits (host-assumptions.md)")
 	}
 	root := newRepo(t)
 	initYes(t, root)

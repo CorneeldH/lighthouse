@@ -85,7 +85,7 @@ func TestStateDirIsPrivateAndRefusesPathEscape(t *testing.T) {
 		}
 	}
 	if runtime.GOOS == "windows" {
-		t.Skip("NTFS has no POSIX mode bits; see docs/host-assumptions.md")
+		t.Skip("NTFS has no POSIX mode bits; see host-assumptions.md")
 	}
 	if info, err := os.Stat(dir); err != nil || info.Mode().Perm() != 0o700 {
 		t.Errorf("state dir mode = %v, %v; want 0700", info, err)

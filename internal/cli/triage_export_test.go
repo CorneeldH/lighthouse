@@ -107,7 +107,7 @@ func TestExportTree(t *testing.T) {
 		t.Errorf("Stat after remove = %v, want ErrNotExist", err)
 	}
 	if runtime.GOOS == "windows" {
-		t.Skip("NTFS has no exec bit; see docs/host-assumptions.md")
+		t.Skip("NTFS has no exec bit; see host-assumptions.md")
 	}
 	if runShErr != nil || runSh.Mode()&0o100 == 0 {
 		t.Errorf("run.sh mode = %v, %v; want executable", runSh, runShErr)

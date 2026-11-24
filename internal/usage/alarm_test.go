@@ -152,7 +152,7 @@ func TestReadAlarmFixtures(t *testing.T) {
 				t.Skip("root reads a mode-000 file")
 			}
 			if c.Setup == "unreadable" && runtime.GOOS == "windows" {
-				t.Skip("chmod 000 does not make a file unreadable on NTFS; see docs/host-assumptions.md")
+				t.Skip("chmod 000 does not make a file unreadable on NTFS; see host-assumptions.md")
 			}
 			dir := t.TempDir()
 			path := filepath.Join(dir, "usage-window.alarm")

@@ -110,7 +110,7 @@ func TestPermissionWritesToolAndPath(t *testing.T) {
 		t.Errorf("run dir has %d entries, want only permission.json", len(entries))
 	}
 	if runtime.GOOS == "windows" {
-		t.Skip("NTFS has no POSIX mode bits; see docs/host-assumptions.md")
+		t.Skip("NTFS has no POSIX mode bits; see host-assumptions.md")
 	}
 	fi, err := os.Stat(path)
 	if err != nil {

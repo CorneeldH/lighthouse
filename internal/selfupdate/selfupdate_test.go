@@ -124,7 +124,7 @@ func TestRunReplacesOnNewerTagAndGoodChecksum(t *testing.T) {
 	}
 	f.assertOnlyTarget(t)
 	if runtime.GOOS == "windows" {
-		t.Skip("NTFS has no POSIX mode bits; see docs/host-assumptions.md")
+		t.Skip("NTFS has no POSIX mode bits; see host-assumptions.md")
 	}
 	st, _ := os.Stat(f.target)
 	if st.Mode().Perm() != 0o755 {

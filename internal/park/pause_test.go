@@ -261,7 +261,7 @@ func TestUntilAutumnOverlapFirstPass(t *testing.T) {
 // open, a stuck controller must not park a run it cannot explain.
 func TestReadPauseUnreadableIsInactive(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("chmod 000 does not make a file unreadable on NTFS; see docs/host-assumptions.md")
+		t.Skip("chmod 000 does not make a file unreadable on NTFS; see host-assumptions.md")
 	}
 	if os.Geteuid() == 0 {
 		t.Skip("root reads a mode-000 file")

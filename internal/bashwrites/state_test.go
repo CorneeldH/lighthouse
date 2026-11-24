@@ -87,7 +87,7 @@ func TestStateDirCreatesTheDirWithMode0700(t *testing.T) {
 		t.Fatalf("path = %s", path)
 	}
 	if runtime.GOOS == "windows" {
-		t.Skip("NTFS has no POSIX mode bits; see docs/host-assumptions.md")
+		t.Skip("NTFS has no POSIX mode bits; see host-assumptions.md")
 	}
 	if info.Mode().Perm() != 0o700 {
 		t.Fatalf("mode = %o, want 700", info.Mode().Perm())

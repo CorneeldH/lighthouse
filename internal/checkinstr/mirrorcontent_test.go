@@ -99,7 +99,7 @@ func TestMirrorContentUnreadable(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			if tc.dir && runtime.GOOS == "windows" {
-				t.Skip("chmod 000 does not close a directory on NTFS; see docs/host-assumptions.md")
+				t.Skip("chmod 000 does not close a directory on NTFS; see host-assumptions.md")
 			}
 			files := emptySkillRoots().with(mirrored("paia-dicht", skillText("paia-dicht", "Doet iets.", nil, "# x\n")))
 			base := t.TempDir()

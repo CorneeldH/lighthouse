@@ -109,7 +109,7 @@ func TestScanSecretsFileNames(t *testing.T) {
 // Classification: pure-logic. Fails if a path with a newline reaches a finding unquoted.
 func TestScanSecretsQuotesANewlineFileName(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("NTFS refuses a newline in a file name; see docs/host-assumptions.md")
+		t.Skip("NTFS refuses a newline in a file name; see host-assumptions.md")
 	}
 	dir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(dir, "out"), 0o700); err != nil {

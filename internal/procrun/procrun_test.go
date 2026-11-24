@@ -46,7 +46,7 @@ func TestExecReportsCodeTimeoutAndMissing(t *testing.T) {
 
 func TestExecTimeoutKillsGrandchildren(t *testing.T) {
 	if runtime.GOOS == "windows" {
-		t.Skip("Windows has no POSIX process groups to kill a grandchild with; see docs/host-assumptions.md")
+		t.Skip("Windows has no POSIX process groups to kill a grandchild with; see host-assumptions.md")
 	}
 	start := time.Now()
 	_, err := Exec(200*time.Millisecond)(context.Background(), "", nil, "sh", "-c", "sleep 30 & wait")
