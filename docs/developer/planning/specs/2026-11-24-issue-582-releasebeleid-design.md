@@ -16,7 +16,8 @@ dev-versie op de eigen repo's (lighthouse zelf en personal_ai_agent). Een kritie
 ## Doelen, niet-doelen, anti-doelen
 
 - **Doel:** een gebruiker op het releasekanaal krijgt alleen afgeronde milestones die minstens 7
-  dagen op dev gedraaid hebben, plus losse kritieke fixes.
+  dagen op dev gedraaid hebben, plus losse kritieke fixes. Wat op dev draait, is `main`; dat bevat
+  de rc (zie *Soak*).
 - **Doel:** de eigen repo's draaien elke wijziging snel in de praktijk, via een devkanaal.
 - **Doel:** een release wordt niet vergeten: de workflow opent zelf een PR die de maintainer
   alleen hoeft te mergen.
@@ -93,7 +94,12 @@ die parallel lopen; `main` bevat bij elke afsplitsing ook werk van open mileston
   hoogste `release/vX.Y`-branch, of na de laatste release als er geen open releasebranch is.
   Voorbeeld: na `v0.27.0` zijn de dev-builds `v0.28.0-dev.1`, `-dev.2`, …; na de afsplitsing van
   `release/v0.28` worden ze `v0.29.0-dev.N`.
-- `N` is één hoger dan de hoogste bestaande `N` voor die `X.Y.Z` en dat achtervoegsel.
+- `N` is één hoger dan de hoogste bestaande `N` voor die `X.Y.Z` en dat achtervoegsel. Alle
+  dev-builds delen één concurrency-groep, en `N` wordt binnen die groep berekend: twee merges kort
+  na elkaar geven geen botsende tag. *(eigen keuze na spec-review, r1-f9)*
+- `-dev` en `-rc` zijn van de workflows. Een testbuild met de hand via `prerelease.yml` krijgt
+  `-test.N` (`vX.Y.Z-test.N`), zodat hij de rc-nummering nooit raakt. *(eigen keuze na
+  spec-review, r1-f13)*
 - Semver-volgorde maakt het devkanaal vanzelf goed: `v0.28.0-dev.5 < v0.28.0-rc.1 < v0.28.0 <
   v0.29.0-dev.1`.
 - Een milestone-release is een minor (onder 0.x, ook bij een brekende wijziging). Een major kiest
@@ -109,28 +115,58 @@ main ──merge──merge──merge──(milestone dicht)──merge──me
                                        fix: PR op main, cherry-pick-PR naar release/v0.28 ── rc.2 (klok opnieuw)
 ```
 
-1. **Dev-build (D1).** Een push naar `main` waarvan de open fragmenten minstens één releasebaar
-   type bevatten (`added`, `changed`, `fixed`, `removed`) en waarvan de commit nieuwe fragmenten
-   toevoegt, maakt een dev-tag via het mechanisme van `prerelease.yml` (UI-build, `dist`-commit,
+1. **Dev-build (D1).** Een push naar `main` waarvan de commit minstens één fragment van een
+   releasebaar type toevoegt (`added`, `changed`, `fixed`, `removed`), maakt een dev-tag via het mechanisme van `prerelease.yml` (UI-build, `dist`-commit,
    alleen de tag pushen, `build.yml` met `--prerelease`). Een merge met alleen `internal` maakt
    geen dev-build.
 2. **Afsplitsen.** Een `milestone: closed`-event van een *releasemilestone* start de
    afsplitsing: `release/vX.Y` vanaf de `main`-commit van dat moment, en tag `vX.Y.0-rc.1`. Een
    releasemilestone heeft in zijn beschrijving een regel `Release: ja`; de sluiting van een
-   andere milestone doet niets. Geen releasebaar fragment open: geen
-   afsplitsing, de run meldt dat. Een `workflow_dispatch` doet hetzelfde zonder milestone (een
+   andere milestone doet niets. Geen releasebaar fragment open dat nog niet in een
+   releasebranch zit: geen afsplitsing, de run meldt dat. Een `workflow_dispatch` doet hetzelfde zonder milestone (een
    vergeten of milestoneloze release), met een keuze `minor`/`major`.
-3. **Soak.** De eigen repo's draaien op dev; dev bevat de rc. Een bug wordt gefixt via een PR op
+3. **Soak.** De eigen repo's draaien op dev. Het devkanaal kiest de hoogste versie, dus na de
+   eerste merge na de afsplitsing draait daar `vX.Y+1.0-dev.N`, niet de rc zelf. Dat is bedoeld:
+   `main` bevat de rc, dus wie `main` soakt, soakt de rc mee. Wat de soak niet ziet, is een fout
+   die alleen in de rc bestaat omdat `main` hem al met ander werk verhielp; die kans is klein,
+   en de soak meet dus `main`, niet de rc als losse build. *(r1-f6)* Een bug wordt gefixt via een PR op
    `main` (met `fixed`-fragment), daarna een cherry-pick-PR naar `release/vX.Y`. De merge daarvan
    tagt `rc.N+1`; de klok begint opnieuw.
 4. **Release-PR (R3).** Een dagelijkse cron kijkt per open `release/vX.Y`: is de nieuwste rc 7
    dagen oud en staat er geen release-PR open, dan opent de workflow een PR op `release/vX.Y` met
    de nieuwe sectie in `CHANGELOG.md` en de verwijdering van de vrijgegeven fragmenten,
-   `chore(release): vX.Y.0`. Een nieuwe rc terwijl de PR open staat: de workflow sluit de PR.
-5. **Release.** De merge van de release-PR start de release: `dist`-commit (C2), tag `vX.Y.0`,
-   `build.yml`. Daarna zet de bot de sectie in `CHANGELOG.md` op `main` en verwijdert daar de
-   fragmenten met dezelfde bestandsnaam. Fragmenten van werk voor de volgende milestone blijven
-   staan.
+   `chore(release): vX.Y.0`. De workflow geeft de versie expliciet aan `ci/changelog` mee (uit de
+   branchnaam, of de volgende patch op de lijn van de branch); `ci/changelog` leidt hem niet meer
+   af uit de fragmenten of de hoogste tag. *(eigen keuze na spec-review, r1-f8)* Een nieuwe rc
+   terwijl de PR open staat: de workflow sluit de PR. Sluit de maintainer de PR zelf zonder
+   merge, dan opent de cron geen nieuwe tot er een nieuwe rc is. Fragmenten waarvan de
+   bestandsnaam al in een gereleasede sectie van `CHANGELOG.md` staat, neemt de release-PR niet
+   mee, los van de volgorde van de merges. *(eigen keuze na spec-review, r1-f10, r1-f12)*
+5. **Release.** De merge van de release-PR start de release: macOS-gate, `dist`-commit (C2), tag
+   `vX.Y.0`, `build.yml`. De workflow weigert de tag als de ouder van de releasecommit niet de
+   commit van de nieuwste rc is: dan is er na de soak nog iets gemergd. *(r1-f12)*
+6. **Sync naar `main`.** Een eigen stap, los van de tag, die je opnieuw kunt draaien. Hij leidt
+   zijn werk af uit de tag: de sectie uit `CHANGELOG.md` op de tag, en de fragmentnamen die de
+   releasecommit verwijderde. Hij zet die sectie op `main` en verwijdert daar de fragmenten met
+   dezelfde naam. Is `main` al bij (sectie staat er, fragmenten weg), dan doet hij niets.
+   Fragmenten van werk voor de volgende milestone blijven staan. Faalt de push, dan draai je
+   alleen deze stap opnieuw; de tag blijft. *(r1-f2)*
+
+**Herstel na een gemergde release-PR zonder tag** (macOS rood, de job stierf): een
+`workflow_dispatch` "release" met als invoer de branch draait stap 5 en 6 opnieuw op de tip van
+die branch. De cron slaat een branch over waarvan de tip een `chore(release)`-commit zonder tag
+is; hij opent daar geen tweede release-PR. Een afsplitsing per dispatch is een andere invoer en
+raakt zo'n branch niet. *(r1-f1)*
+
+### Waar de logica draait
+
+Alle releaselogica draait uit de workflows en de `ci/changelog`-code van `main`, ook voor wat op
+een releasebranch gebeurt (rc na een cherry-pick, release na de release-PR, sync). Een event op
+`release/*` mag de workflow van die branch niet gebruiken: die is bevroren bij de afsplitsing,
+en een fix van de releaselogica zou dan een cherry-pick en een nieuwe rc vragen. De bouwer kiest
+het mechanisme (bijvoorbeeld `workflow_run` of een cron/dispatch op `main` met de branch als
+invoer), zolang de checkout van de logica `main` is en die van de inhoud de releasebranch.
+*(r1-f7)*
 
 ### Kritieke fix (route A)
 
@@ -151,6 +187,8 @@ main ──merge──merge──merge──(milestone dicht)──merge──me
 - `release`: zoals nu, `GET /releases/latest`.
 - `dev`: de lijst van releases (`GET /releases`, zoals `lighthouse releases` al doet), en daaruit
   de hoogste semver, prereleases inbegrepen.
+- `lighthouse version compare <a> <b>` (nieuw) vergelijkt twee versies volgens semver en geeft
+  `-1`, `0` of `1`; `self-update` en `/lighthouse-upgrade` gebruiken dezelfde vergelijking.
 - De parser accepteert `vX.Y.Z` met een optioneel `-dev.N` of `-rc.N`, en vergelijkt volgens
   semver. Een binary op `v0.29.0-dev.3` is geen lokale `dev`-build: `version.String()` geeft de
   tag, en `self-update` slaat hem niet over.
@@ -171,16 +209,25 @@ main ──merge──merge──merge──(milestone dicht)──merge──me
 
 Een PR naar `release/*` draait `macos.yml`, zodat de maintainer het resultaat ziet vóór de merge.
 De harde gate zit in de workflow na de merge: geen tag zonder een groene `macos`-run op de
-gemergde commit. Rood: geen tag, de branch blijft staan, herstel zoals nu (opnieuw draaien of met
-de hand starten). Dev- en rc-tags wachten niet op macOS, net als de huidige prereleases.
+gemergde commit. Rood: geen tag, de branch blijft staan; herstel met *Re-run failed jobs*, of met
+de dispatch "release" (zie *Herstel na een gemergde release-PR zonder tag*). Dev- en rc-tags wachten niet op macOS, net als de huidige prereleases.
 
 ### Gevolg voor repo's op dev
 
-Een repo op het devkanaal (personal_ai_agent) krijgt bij elke dev-build een andere binary. De
-versiemelding van de hooks ("run lighthouse init --upgrade") en `/lighthouse-upgrade` blijven
-zoals ze zijn: dit ontwerp gaat over hoe lighthouse zelf releaset, niet over het releasegedrag
-dat lighthouse aan zijn gebruikers geeft (besloten met de gebruiker). Een repo op dev ziet die
-melding dus vaker; dat is geaccepteerd.
+Een repo op het devkanaal (personal_ai_agent) krijgt bij elke dev-build een andere binary.
+
+- De versiemelding van de hooks ("run lighthouse init --upgrade") blijft zoals hij is: een repo
+  op dev ziet hem vaker; dat is geaccepteerd (besloten met de gebruiker).
+- `/lighthouse-upgrade` vergelijkt versies nu met `sort -V` en laat prereleases weg
+  (`pack/core/skills/upgrade/claude/SKILL.md:36`, `:45-46`). `sort -V` zet `0.29.0` vóór
+  `0.29.0-rc.2`; een repo op `v0.29.0-rc.2` met een binary op `v0.29.0` krijgt dan "the binary is
+  older than the repo" en upgradet niet. De skill gaat over op `lighthouse version compare`, en
+  kiest de nieuwste versie op het kanaal van de binary. Dat is een wijziging onder `pack/`: dogfood
+  met `init --upgrade` (besloten met de gebruiker na de spec-review, r1-f3).
+- Dev-releases worden nooit opgeruimd. Een repo zet zijn binary-versie in
+  `.lighthouse/manifest.toml`, en `unblock-dependents.yml` downloadt precies die tag
+  (`pack/core/workflows/unblock-dependents.yml:103`); een opgeruimde dev-tag breekt die workflow.
+  *(r1-f4)*
 
 ### Documentatie
 
@@ -195,11 +242,12 @@ Niet met de gebruiker besproken; te corrigeren bij het lezen.
 
 - Een afsplitsing terwijl de vorige rc nog niet gereleased is (twee milestones kort na elkaar):
   de workflow merget `main` in die `release/vX.Y` en tagt `rc.N+1`, met dezelfde versie. Geen
-  tweede releasebranch, geen overgeslagen versie, geen force-push.
+  tweede releasebranch, geen overgeslagen versie, geen force-push. Alleen als `main` releasebare
+  fragmenten heeft die nog niet op die branch staan; anders niets. Geeft de merge een conflict,
+  dan faalt de run met een melding en merget de maintainer `main` via een PR naar de branch.
+  *(eigen keuze na spec-review, r1-f11)*
 - Een cherry-pick naar een releasebranch gaat via een PR, met de hand gemaakt. Geen automatische
   backport op een label.
-- Oude dev-prereleases ruimt de workflow op: per `X.Y.Z` blijven de laatste vijf dev-tags staan,
-  rc- en releasetags blijven altijd.
 - De soakduur van 7 dagen staat als constante in de workflow, niet in `lighthouse.toml`.
 - De macOS-gate is een stap in de workflow, geen ruleset: de repo heeft geen rulesets, en een
   ruleset op `release/*` vraagt handwerk van een admin plus een bypass voor de bot.
@@ -208,8 +256,13 @@ Niet met de gebruiker besproken; te corrigeren bij het lezen.
 - Een releasebranch is open zolang er geen `vX.Y.0`-tag voor bestaat; de cron kijkt alleen
   daarnaar en naar gereleasede branches met een nieuwe cherry-pick.
 - De release-PR is vrijgesteld van de CI-eis van een nieuw fragment.
-- Een fragment dat al met een patch uit is, verdwijnt ook uit een releasebranch in soak, bij de
-  sync na die patch.
+- Een fragment dat al met een patch uit is, neemt een latere release-PR niet mee (stap 4).
+
+## Open voor het plan
+
+- Twee plannen: eerst `self-update --channel`, de semver-parser, `lighthouse version compare` en
+  `/lighthouse-upgrade`; daarna de workflows. Het eerste hangt alleen af van de vorm van de tags.
+  *(r1-f14)*
 
 ## Aan de bouwer
 
