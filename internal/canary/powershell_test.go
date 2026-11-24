@@ -298,6 +298,59 @@ func TestPowershellLintCouldNotCheck(t *testing.T) {
 	})
 }
 
+// A Windows payload names the file with backslashes. The hook still finds the repository of the
+// edited file, not the one of its working directory: an edit in a worktree is checked with that
+// worktree's helper. A stub pwsh names the helper it was given and fails, so the COULD NOT CHECK
+// message shows which root the hook chose. Without the normalisation dirname answers `.` for a path
+// without a slash, the hook's working directory (the other repository).
+func TestPowershellLintBackslashPathFindsTheFileRepo(t *testing.T) {
+	dir, err := os.MkdirTemp(workDir, "pwsh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	stub := "#!/bin/sh\necho \"helper=$4\" >&2\nexit 1\n"
+	if err := os.WriteFile(filepath.Join(dir, "pwsh"), []byte(stub), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	pathEnv := "PATH=" + dir + string(os.PathListSeparator) + os.Getenv("PATH")
+	helper := func(root string) string {
+		return "helper=" + filepath.Join(root, ".lighthouse", "scripts", "psscriptanalyzer-repo.ps1")
+	}
+	cases := map[string]func(t *testing.T, hookRoot, fileRoot string) string{
+		// Only the forward-slash form exists here (Linux): the hook checks that file.
+		"absolute path": func(t *testing.T, _, fileRoot string) string {
+			file := filepath.Join(fileRoot, "sub", "canary.ps1")
+			writeFile(t, file, readPsFixture(t, psInvokeExpr))
+			return strings.ReplaceAll(file, "/", `\`)
+		},
+		// The path exists as written, as on Windows: `w\canary.ps1` is a file in the hook's working
+		// directory, and `w` links to the directory of the edited repository. Only the split at the
+		// backslash reaches that repository.
+		"path that exists as written": func(t *testing.T, hookRoot, fileRoot string) string {
+			sub := filepath.Join(fileRoot, "sub")
+			writeFile(t, filepath.Join(sub, "canary.ps1"), readPsFixture(t, psInvokeExpr))
+			if err := os.Symlink(sub, filepath.Join(hookRoot, "w")); err != nil {
+				t.Fatal(err)
+			}
+			writeFile(t, filepath.Join(hookRoot, `w\canary.ps1`), readPsFixture(t, psInvokeExpr))
+			return `w\canary.ps1`
+		},
+	}
+	for name, payloadPath := range cases {
+		t.Run(name, func(t *testing.T) {
+			hookRoot := installRepo(t, "core", "powershell")
+			fileRoot := installRepo(t, "core", "powershell")
+			path := payloadPath(t, hookRoot, fileRoot)
+			r := runHook(t, hookRoot, psLintHook, psPayload(t, hookRoot, path), pathEnv)
+			requireCouldNotCheck(t, r, helper(fileRoot))
+			if strings.Contains(r.Stderr, helper(hookRoot)) {
+				t.Errorf("the hook used the helper of its working directory:\n%s", r.Stderr)
+			}
+		})
+	}
+}
+
 // The helper itself: its exit codes and stdout are the hook's contract (0 clean, 10 findings as
 // `Rule<TAB>Line<TAB>Message`, 3 module, 4 rest), and it reports only the rules it is given.
 func TestPowershellHelperExitCodes(t *testing.T) {

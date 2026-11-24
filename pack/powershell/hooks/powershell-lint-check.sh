@@ -38,13 +38,21 @@ case "$FILE_PATH" in
   *) exit 0 ;;
 esac
 
+# A Windows payload names the file with backslashes, which dirname does not split: it would
+# answer `.`, the hook's working directory (the main checkout). The forward-slash form finds
+# the directory of the file; pwsh gets the payload path itself whenever that one exists.
+SLASH_PATH="${FILE_PATH//\\//}"
+
 # Deleted or renamed between the edit and the hook: nothing to check.
-[ -f "$FILE_PATH" ] || exit 0
+if [ ! -f "$FILE_PATH" ]; then
+  [ -f "$SLASH_PATH" ] || exit 0
+  FILE_PATH="$SLASH_PATH"
+fi
 
 # The lighthouse root: LIGHTHOUSE_REPO_ROOT, else the tree of the EDITED file, and only
 # then that of the hook. $CLAUDE_PROJECT_DIR points to the main checkout, and an edit in a
 # worktree would then be checked with the script of another branch.
-FILE_DIR="$(dirname "$FILE_PATH")"
+FILE_DIR="$(dirname "$SLASH_PATH")"
 FILE_ROOT="$(git -C "$FILE_DIR" rev-parse --show-toplevel 2>/dev/null)" || FILE_ROOT=""
 candidates=()
 if [ -n "${LIGHTHOUSE_REPO_ROOT:-}" ]; then
