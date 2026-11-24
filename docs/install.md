@@ -137,6 +137,11 @@ runs `lighthouse self-update --restart lighthouse.service`, and
 binary is replaced only when the newest release is newer and its checksum matches, and the
 server restarts only after a replacement. A `dev` build is skipped.
 
+The timer follows the channel stored in `~/.config/lighthouse/channel`; without that file it is
+`release`. Choose once, by hand: `lighthouse self-update --channel dev` stores `dev` and
+updates at once, `--channel release` goes back, and `lighthouse channel` prints the current
+one.
+
 ```bash
 cp deploy/systemd/lighthouse-upgrade.{service,timer} ~/.config/systemd/user/
 systemctl --user daemon-reload && systemctl --user enable --now lighthouse-upgrade.timer
@@ -150,7 +155,9 @@ The installed binary must already be a release that has `self-update`: upgrade o
 first. Under the unit's hardening `~/go/bin/lighthouse` must not be a symlink to a path outside
 `~/go/bin`, because that directory is the only one the unit may write.
 
-Every release goes live without a review. To stop:
+Every release on the channel goes live without a review. On `release` that is the newest
+release; on `dev` it is the newest `dev` or `rc` prerelease of the next version too, never a
+`-test` tag. To stop:
 `systemctl --user disable --now lighthouse-upgrade.timer`.
 
 Which version runs, and what the last run did:

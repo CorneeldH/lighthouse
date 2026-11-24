@@ -14,7 +14,11 @@
 # has one (GH_TOKEN). The token is sent to api.github.com for the release lookup only, never to
 # the downloads. Keep the file mode 0600. The leading dash lets the unit run without the file.
 #
-# Every release goes live here without a review: a bad release reaches this machine at the next
+# Which releases: the unit follows the channel stored in ~/.config/lighthouse/channel (default
+# `release`; choose with `lighthouse self-update --channel dev`). The unit does not read
+# LIGHTHOUSE_HOST_TOML for it: the channel file is derived from the home directory.
+#
+# Every release on the channel goes live here without a review: a bad release reaches this machine at the next
 # tick. Disable the timer to hold a version (docs/install.md, "Upgrade automatically").
 #
 # Install (details in docs/install.md):
