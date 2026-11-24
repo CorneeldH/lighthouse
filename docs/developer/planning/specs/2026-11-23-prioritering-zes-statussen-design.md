@@ -227,14 +227,14 @@ blijven ongewijzigd. Dit ontwerp verandert alleen de kaart zelf.
 
 ## Opdeling
 
-Drie nieuwe issues in milestone *Statusmodel: één toestand per issue, van board tot balk*, elk met
-een eigen PR, in deze volgorde:
+Drie issues in milestone *Statusmodel: één toestand per issue, van board tot balk*, elk met een
+eigen PR, in deze volgorde:
 
-| | Inhoud |
-|---|---|
-| a | 1 tot en met 4: zes statussen in Go, `cases.json` en de web; de vormentaal met het vectorkruis en de onderstreping; de legenda met kopjes; de balkvolgorde; de graafkaart met één signaal. |
-| b | 5 en 7: *Without milestone* onder *Milestones*, de tab vervalt; de tekst van #439 aangepast. |
-| c | 6 en 7: de tab *Status*. |
+| | Issue | Inhoud |
+|---|---|---|
+| a | #555 | 1 tot en met 4: zes statussen in Go, `cases.json` en de web; de vormentaal met het vectorkruis en de onderstreping; de legenda met kopjes; de balkvolgorde; de graafkaart met één signaal. |
+| b | #556 | 5 en 7: *Without milestone* onder *Milestones*, de tab vervalt; de tekst van #439 aangepast. |
+| c | #557 | 6 en 7: de tab *Status*. |
 
 b en c hangen allebei af van a, en niet van elkaar. Beide raken `prefs.ts` en `ViewId`; wie als
 tweede merget, voegt samen.
