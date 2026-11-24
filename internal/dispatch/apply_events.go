@@ -1,7 +1,7 @@
 package dispatch
 
 // This file stores the question, answer and done moments of the dispatcher as trajectory
-// events (telemetry.RecordEvent), the source the menswerk and wait-time timeline reads. A
+// events (telemetry.RecordEvent), the source the human-work and wait-time timeline reads. A
 // failed write never fails the tick: it logs `event not recorded` and the timeline falls back
 // to an estimate for that moment. Nothing is retried.
 

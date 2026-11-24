@@ -1,7 +1,7 @@
 package telemetry
 
 // This file holds the writer for trajectory events: the question, answer and
-// done moments that menswerk and wait time are measured from. Only a kind, a
+// done moments that human work and wait time are measured from. Only a kind, a
 // reference and a time are stored, never the text of a question or answer.
 
 import (
