@@ -57,10 +57,11 @@ func newTrajectoryCommand(env trajectoryEnv) *cobra.Command {
 		Short: "Show the questions, answers, takeovers and wait time of one trajectory",
 		Long: "Show, for the trajectory of an issue, when each question, answer and takeover was and how\n" +
 			"the time of the trajectory divides over its causes: active, human, usage, ci_review,\n" +
-			"pickup and, when present, unexplained. Each cause line ends in measured, estimate or\n" +
-			"running; an active line that may include CI and review time says so. The repo comes from\n" +
-			"the lighthouse.toml in --repo-dir (default .); the issue is read from the forge for its\n" +
-			"closing time.\n\n" +
+			"pickup and, when present, unexplained. A moment derived from a run instead of stored\n" +
+			"says estimate; a question without answer says unanswered. Each cause line ends in\n" +
+			"measured, estimate or running; an active line that may include CI and review time says\n" +
+			"so. The repo comes from the lighthouse.toml in --repo-dir (default .); the issue is read\n" +
+			"from the forge for its closing time.\n\n" +
 			"Exit: 0 printed | 1 a config, forge or database error, or no trajectory for the issue |\n" +
 			"2 wrong usage.",
 		Args: func(cmd *cobra.Command, args []string) error {
@@ -132,18 +133,24 @@ var causeOrder = []telemetry.Cause{
 
 func formatTimeline(tl telemetry.TrajectoryTimeline) string {
 	var b strings.Builder
-	moments := func(name string, ms []telemetry.Moment) {
+	moments := func(name string, ms []telemetry.Moment, question bool) {
 		for _, m := range ms {
 			fmt.Fprintf(&b, "%s %s", name, m.At.UTC().Format(time.RFC3339))
+			if m.Estimate {
+				b.WriteString(" estimate")
+			}
+			if question && !m.Answered {
+				b.WriteString(" unanswered")
+			}
 			if m.Reason != "" {
 				fmt.Fprintf(&b, " %s", m.Reason)
 			}
 			b.WriteByte('\n')
 		}
 	}
-	moments("question", tl.Questions)
-	moments("answer", tl.Answers)
-	moments("takeover", tl.Takeovers)
+	moments("question", tl.Questions, true)
+	moments("answer", tl.Answers, false)
+	moments("takeover", tl.Takeovers, false)
 	for _, c := range causeOrder {
 		t, ok := tl.ByCause[c]
 		if !ok {

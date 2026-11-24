@@ -456,12 +456,15 @@ oorzaken verdeeld is. Repo komt uit de `lighthouse.toml` in `--repo-dir` (standa
 is standaard de `lighthouse.db` van de statusmap. De opdracht leest het issue van de forge voor
 het sluitmoment.
 
-De uitvoer is eerst een regel per moment, `question`, `answer` of `takeover` met het tijdstip
-(UTC, RFC 3339) en waar bekend de reden, en daarna een regel per oorzaak in vaste volgorde:
-`active`, `human`, `usage`, `ci_review`, `pickup` en, als die er is, `unexplained`. Elke
-oorzaakregel heeft de vorm `<oorzaak> <duur> <soort>`, met als soort `measured`, `estimate` of
-`running` (het traject loopt nog). Een `active`-regel die CI- en reviewtijd kan bevatten eindigt
-op `incl. ci_review`.
+De uitvoer is eerst een regel per moment, `<moment> <tijdstip> [estimate] [unanswered] [reden]`:
+`question`, `answer` of `takeover` met het tijdstip (UTC, RFC 3339). `estimate` staat achter een
+moment dat niet is opgeslagen maar uit een run is afgeleid (een vraag uit het einde van haar run,
+een antwoord uit de start van de run die het oppakte), `unanswered` achter een vraag zonder
+antwoord, en een overname eindigt waar bekend op de reden. Daarna volgt een regel per oorzaak in
+vaste volgorde: `active`, `human`, `usage`, `ci_review`, `pickup` en, als die er is,
+`unexplained`. Elke oorzaakregel heeft de vorm `<oorzaak> <duur> <soort>`, met als soort
+`measured`, `estimate` of `running` (het traject loopt nog). Een `active`-regel die CI- en
+reviewtijd kan bevatten eindigt op `incl. ci_review`.
 
 Exit: 0 uitvoer geprint | 1 een config-, forge- of databasefout, of `no trajectory for issue <N>`
 | 2 verkeerd gebruik (geen of geen geldig issuenummer, onbekende vlag).

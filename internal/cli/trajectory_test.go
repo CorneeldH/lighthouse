@@ -189,3 +189,71 @@ func TestTrajectoryForgeErrorIsExit1(t *testing.T) {
 		t.Errorf("exit %d, stderr %q; want 1 with boom", code, errOut)
 	}
 }
+
+// formatTimeline prints every moment with its marks (estimate, unanswered, a takeover's reason),
+// then one line per cause present in precedence order, each with its kind and, for active that
+// may hold CI/review time, incl. ci_review. Dropping a mark or reordering a cause fails this.
+func TestFormatTimeline(t *testing.T) {
+	m := func(n int) time.Duration { return time.Duration(n) * time.Minute }
+	moments := telemetry.TrajectoryTimeline{
+		Questions: []telemetry.Moment{
+			{At: trAt(30), RunID: 1, Answered: true},
+			{At: trAt(90), RunID: 3, Answered: true, Estimate: true},
+			{At: trAt(150), SessionID: 2},
+			{At: trAt(170), RunID: 5, Estimate: true},
+		},
+		Answers: []telemetry.Moment{
+			{At: trAt(60), RunID: 2},
+			{At: trAt(100), RunID: 4, Estimate: true},
+		},
+		Takeovers: []telemetry.Moment{
+			{At: trAt(120), RunID: 4, Reason: "no handoff"},
+			{At: trAt(140), SessionID: 2, Reason: "session"},
+		},
+	}
+	momentLines := "" +
+		"question 2026-11-20T09:30:00Z\n" +
+		"question 2026-11-20T10:30:00Z estimate\n" +
+		"question 2026-11-20T11:30:00Z unanswered\n" +
+		"question 2026-11-20T11:50:00Z estimate unanswered\n" +
+		"answer 2026-11-20T10:00:00Z\n" +
+		"answer 2026-11-20T10:40:00Z estimate\n" +
+		"takeover 2026-11-20T11:00:00Z no handoff\n" +
+		"takeover 2026-11-20T11:20:00Z session\n"
+	all := map[telemetry.Cause]telemetry.CauseTotal{
+		telemetry.CauseUnexplained: {Duration: m(2)},
+		telemetry.CausePickup:      {Duration: m(5), Estimate: true},
+		telemetry.CauseCIReview:    {Duration: m(20)},
+		telemetry.CauseUsage:       {Duration: m(15), Running: true},
+		telemetry.CauseHuman:       {Duration: m(30), Estimate: true, Running: true},
+		telemetry.CauseActive:      {Duration: m(60) + 30*time.Second, InclusiveCIReview: true},
+	}
+	tests := []struct {
+		name    string
+		byCause map[telemetry.Cause]telemetry.CauseTotal
+		want    string
+	}{
+		{"every cause", all, momentLines +
+			"active 1h0m30s measured incl. ci_review\n" +
+			"human 30m0s running\n" +
+			"usage 15m0s running\n" +
+			"ci_review 20m0s measured\n" +
+			"pickup 5m0s estimate\n" +
+			"unexplained 2m0s measured\n"},
+		{"no unexplained", map[telemetry.Cause]telemetry.CauseTotal{
+			telemetry.CauseActive:   {Duration: m(40)},
+			telemetry.CauseCIReview: {Duration: m(10), Running: true},
+		}, momentLines +
+			"active 40m0s measured\n" +
+			"ci_review 10m0s running\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tl := moments
+			tl.ByCause = tt.byCause
+			if got := formatTimeline(tl); got != tt.want {
+				t.Errorf("formatTimeline =\n%s\nwant\n%s", got, tt.want)
+			}
+		})
+	}
+}

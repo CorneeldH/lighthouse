@@ -70,12 +70,15 @@ type TimelineInput struct {
 	ClosedAt time.Time // zero: the issue is not closed
 }
 
-// Moment is one question, answer or takeover.
+// Moment is one question, answer or takeover. Estimate: At is not stored
+// but derived from a run (a question from the end of its run, an answer from
+// the start of the run that took it up).
 type Moment struct {
-	At                 time.Time
-	RunID, SessionID   int64
-	Answered, Estimate bool   // meaningful for Questions only
-	Reason             string // Takeovers only
+	At               time.Time
+	RunID, SessionID int64
+	Answered         bool   // Questions only
+	Estimate         bool   // Questions and Answers
+	Reason           string // Takeovers only
 }
 
 // CauseTotal is the time one cause won, with what is in it: an estimate, an
@@ -297,7 +300,7 @@ func questionsAndAnswers(in TimelineInput, now time.Time) ([]Moment, []Moment, [
 		if anyAnswered(in.Runs, r.TriggerKey, answeredRuns) {
 			continue
 		}
-		cands = append(cands, answerCandidate{at: r.StartedAt, answer: &Moment{At: r.StartedAt, RunID: r.ID}})
+		cands = append(cands, answerCandidate{at: r.StartedAt, answer: &Moment{At: r.StartedAt, RunID: r.ID, Estimate: true}})
 	}
 	sort.SliceStable(cands, func(i, j int) bool { return cands[i].at.Before(cands[j].at) })
 

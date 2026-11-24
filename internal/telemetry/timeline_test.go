@@ -289,8 +289,8 @@ func TestTimelineNoStoredEvents(t *testing.T) {
 	if len(got.Questions) != 1 || !got.Questions[0].Estimate || !got.Questions[0].Answered || !got.Questions[0].At.Equal(mins(30)) {
 		t.Errorf("Questions = %+v; want one estimated, answered question at 30", got.Questions)
 	}
-	if len(got.Answers) != 1 || !got.Answers[0].At.Equal(mins(70)) || got.Answers[0].RunID != 2 {
-		t.Errorf("Answers = %+v; want one answer at 70 on run 2", got.Answers)
+	if len(got.Answers) != 1 || !got.Answers[0].At.Equal(mins(70)) || got.Answers[0].RunID != 2 || !got.Answers[0].Estimate {
+		t.Errorf("Answers = %+v; want one estimated answer at 70 on run 2", got.Answers)
 	}
 }
 
@@ -313,8 +313,8 @@ func TestTimelineAnswerWithoutQuestion(t *testing.T) {
 	if len(got.Questions) != 1 || !got.Questions[0].Answered {
 		t.Errorf("Questions = %+v; want one answered question", got.Questions)
 	}
-	if len(got.Answers) != 1 || !got.Answers[0].At.Equal(mins(50)) {
-		t.Errorf("Answers = %+v; want the stored answer at 50", got.Answers)
+	if len(got.Answers) != 1 || !got.Answers[0].At.Equal(mins(50)) || got.Answers[0].Estimate {
+		t.Errorf("Answers = %+v; want the stored, measured answer at 50", got.Answers)
 	}
 }
 
