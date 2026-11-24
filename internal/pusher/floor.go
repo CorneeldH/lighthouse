@@ -52,6 +52,9 @@ type Request struct {
 	Off string
 	// Language is [project] language of the repo: the language of the comments.
 	Language string
+	// SpecsDir and PlansDir are paths.specs and paths.plans of the repo: a file under them that the
+	// branch adds or changes goes to the intent reviewer.
+	SpecsDir, PlansDir string
 	// Guard are paths no reviewer bind may touch: the forge token file, the state and clone dir.
 	Guard []string
 }
