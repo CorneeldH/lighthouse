@@ -18,6 +18,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"sort"
 	"strconv"
@@ -45,6 +46,10 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/worktreeroot"
 	"github.com/CorneeldH/lighthouse/pack"
 )
+
+// execBits is whether this file system keeps exec bits. NTFS does not: every file reads as
+// 0o666, so restoring 0o755 would be proposed at every `init --upgrade` (#559).
+var execBits = runtime.GOOS != "windows"
 
 const (
 	settingsPath = ".claude/settings.json"
@@ -469,7 +474,7 @@ func buildPlan(o Options, root string, names []string, desired []packs.Unit, cha
 				_, _ = fmt.Fprintf(o.Err, "warning: %s is changed locally; lighthouse no longer installs it, so it stays as it is and is no longer managed\n", c.Key.Path)
 			case c.Desired == nil && (c.Action == reconcile.Remove || o.Force):
 				p.delete = true
-			case c.Desired != nil && c.Desired.Mode == 0o755 && p.existed:
+			case execBits && c.Desired != nil && c.Desired.Mode == 0o755 && p.existed:
 				if info, err := os.Stat(filepath.Join(root, filepath.FromSlash(c.Key.Path))); err == nil && info.Mode().Perm()&0o111 == 0 {
 					p.mode = 0o755
 				}

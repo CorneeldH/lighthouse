@@ -945,6 +945,9 @@ func TestNoForgeForUnknownHost(t *testing.T) {
 }
 
 func TestRestoresExecBit(t *testing.T) {
+	if !execBits {
+		t.Skip("NTFS keeps no exec bits (docs/host-assumptions.md)")
+	}
 	root := newRepo(t)
 	initYes(t, root)
 	if err := os.Chmod(filepath.Join(root, ".claude/hooks/lighthouse/g.sh"), 0o644); err != nil {
@@ -954,6 +957,23 @@ func TestRestoresExecBit(t *testing.T) {
 	info, _ := os.Stat(filepath.Join(root, ".claude/hooks/lighthouse/g.sh"))
 	if r.code != 0 || info.Mode().Perm() != 0o755 {
 		t.Fatalf("rc %d mode %o\n%s", r.code, info.Mode().Perm(), r.out)
+	}
+}
+
+// Without exec bits (NTFS) a hook never looks non-executable: Git Bash runs it anyway, and
+// a mode proposal would keep `init --upgrade` from ever being "No changes." (#559).
+func TestNoExecBitProposalWithoutExecBits(t *testing.T) {
+	root := newRepo(t)
+	initYes(t, root)
+	if err := os.Chmod(filepath.Join(root, ".claude/hooks/lighthouse/g.sh"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	old := execBits
+	execBits = false
+	t.Cleanup(func() { execBits = old })
+	r := run(t, root, "", func(o *Options) { o.Upgrade = true; o.Yes = true })
+	if r.code != 0 || strings.Contains(r.out, "mode ") || !strings.Contains(r.out, "No changes.") {
+		t.Fatalf("rc %d\nout:\n%s\nerr:\n%s", r.code, r.out, r.err)
 	}
 }
 
