@@ -45,27 +45,3 @@ func Windows(runs []RunRow, readingEnd time.Time) []RunWindow {
 	}
 	return ws
 }
-
-// RunFor returns the run a line at t belongs to: the window that holds it, else the run that
-// started closest before it, else (t before every start) the first run. It is 0 without windows.
-// ws must come from Windows.
-func RunFor(ws []RunWindow, t time.Time) int64 {
-	if len(ws) == 0 {
-		return 0
-	}
-	var before int64
-	found := false
-	for _, w := range ws {
-		if t.Before(w.From) {
-			break
-		}
-		if w.To.IsZero() || t.Before(w.To) {
-			return w.RunID
-		}
-		before, found = w.RunID, true
-	}
-	if found {
-		return before
-	}
-	return ws[0].RunID
-}

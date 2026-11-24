@@ -502,7 +502,9 @@ de statusmap. Repo, default branch en `paths.plans` komen uit de `lighthouse.tom
 - **`tick`** verzamelt de runs zelf, uit de ruwe transcriptbytes van de werkplek van de run
   (`workplace.RawTranscripts`): een open run hooguit eens per uur (het moment staat in
   `<state>/telemetry/last-collect`), een gesloten run elke tick tot zijn `setups`-rij na zijn
-  einde is vastgelegd. Dat gebeurt vóór het opruimen van werkplekken en mirrors, zodat een
+  einde is vastgelegd; een gesloten run waarvan een slag geen rij opleverde (geen regel in zijn
+  venster, of geen transcript) hooguit eens per uur (`<state>/telemetry/closed-tried/<run-id>`).
+  Dat gebeurt vóór het opruimen van werkplekken en mirrors, zodat een
   transcript niet verdwijnt voordat het is gelezen. Een transcript dat de werkplek niet kan tonen
   (weg, niet op deze host) geeft `unreachable, not processed` en is geen fout; een andere fout
   geeft een regel met het run-id en zet de tick op mislukt, waarna hij doorgaat.

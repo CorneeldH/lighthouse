@@ -11,6 +11,24 @@ func at(min int) time.Time {
 
 func ptr(t time.Time) *time.Time { return &t }
 
+// lineRun is the run that assignRuns gives a line at t, 0 when no segment holds it.
+func lineRun(segs []segment, t time.Time) int64 {
+	for _, s := range segs {
+		if (s.from.IsZero() || !t.Before(s.from)) && (s.to.IsZero() || t.Before(s.to)) {
+			return s.run.ID
+		}
+	}
+	return 0
+}
+
+func runInfos(rows ...RunRow) []runInfo {
+	out := make([]runInfo, len(rows))
+	for i, r := range rows {
+		out[i] = runInfo{RunRow: r}
+	}
+	return out
+}
+
 func TestWindowsTwoRunsSameSession(t *testing.T) {
 	runs := []RunRow{
 		{ID: 2, Started: at(30), Ended: ptr(at(40))},
@@ -20,6 +38,7 @@ func TestWindowsTwoRunsSameSession(t *testing.T) {
 	if len(ws) != 2 || ws[0].RunID != 1 || ws[1].RunID != 2 {
 		t.Fatalf("windows not sorted by start: %+v", ws)
 	}
+	segs := assignRuns(runInfos(runs...), at(59))
 	for _, c := range []struct {
 		name string
 		line time.Time
@@ -34,7 +53,7 @@ func TestWindowsTwoRunsSameSession(t *testing.T) {
 		{"inside second", at(35), 2},
 		{"after second end", at(50), 2},
 	} {
-		if got := RunFor(ws, c.line); got != c.want {
+		if got := lineRun(segs, c.line); got != c.want {
 			t.Errorf("%s: run %d, want %d", c.name, got, c.want)
 		}
 	}
@@ -48,7 +67,7 @@ func TestWindowsOpenRun(t *testing.T) {
 	if len(ws) != 1 || !ws[0].To.IsZero() || ws[0].From != at(10) {
 		t.Fatalf("open run window = %+v", ws)
 	}
-	if got := RunFor(ws, at(55)); got != 7 {
+	if got := lineRun(assignRuns(runInfos(RunRow{ID: 7, Started: at(10)}), at(50)), at(55)); got != 7 {
 		t.Errorf("run %d", got)
 	}
 }
@@ -57,8 +76,8 @@ func TestWindowsEmpty(t *testing.T) {
 	if ws := Windows(nil, at(1)); len(ws) != 0 {
 		t.Fatalf("%+v", ws)
 	}
-	if got := RunFor(nil, at(1)); got != 0 {
-		t.Fatalf("%d", got)
+	if segs := assignRuns(nil, at(1)); len(segs) != 0 || lineRun(segs, at(1)) != 0 {
+		t.Fatalf("%+v", segs)
 	}
 }
 

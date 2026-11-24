@@ -187,8 +187,8 @@ type segment struct {
 }
 
 // assignRuns splits the transcript over the runs that started before its last line. The first
-// run takes everything before the second one starts, a later run everything up to the next start:
-// the same rule as RunFor, as ranges.
+// run takes everything before the second one starts, a later run everything up to the next start;
+// a line in a gap, or after an ended run's end, stays with the run that started before it.
 func assignRuns(runRows []runInfo, readingEnd time.Time) []segment {
 	rows := make([]RunRow, len(runRows))
 	byID := map[int64]runInfo{}
