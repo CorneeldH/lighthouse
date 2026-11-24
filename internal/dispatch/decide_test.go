@@ -521,7 +521,7 @@ func TestDecidePushAnswerFields(t *testing.T) {
 	}
 	want := Action{Kind: KindPush, Repo: "o/r", Issue: 7, Trigger: "pushanswer", TriggerKey: "pushanswer:71", Attempt: 1,
 		Command: "push-workflows", Worktree: pushWorktree, Branch: "issue-7-bouw-de-keten", CommentID: 71,
-		PermitSHA: pushSHA, Language: "nl"}
+		PermitSHA: pushSHA, Language: "nl", EventRef: "70", EventAt: time.Date(2026, 10, 31, 11, 30, 0, 0, time.UTC)}
 	if !reflect.DeepEqual(got[0], want) {
 		t.Errorf("got  %+v\nwant %+v", got[0], want)
 	}
@@ -1180,7 +1180,7 @@ func TestReturnLabelKeyTable(t *testing.T) {
 // close that started nothing for another cause (the item is On hold) is not.
 func TestSettleUnstartedFixPRMarksBlocked(t *testing.T) {
 	for name, want := range map[string]bool{"fixpr-blocker": true, "fixpr-on-hold": false} {
-		got := Decide(loadInput(t, name))
+		got := withoutNoteDone(Decide(loadInput(t, name)))
 		if len(got) != 1 || got[0].Kind != KindReturn || got[0].Blocked != want {
 			t.Errorf("%s: Decide = %+v, want one return with Blocked %v", name, got, want)
 		}
@@ -1503,5 +1503,137 @@ func TestDecideUsageParkMarkerGone(t *testing.T) {
 				t.Errorf("Decide = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+// eventTime is an RFC 3339 time of the fixtures, for the EventAt of an action.
+func eventTime(t *testing.T, s string) time.Time {
+	t.Helper()
+	at, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return at
+}
+
+// The close of a run on its Vraag carries that Vraag: its id as EventRef and its created_at as
+// EventAt, so apply can store the question event. Red when settle drops either.
+func TestDecideQuestionCloseCarriesQuestionComment(t *testing.T) {
+	got := Decide(loadInput(t, "settle-question"))
+	if len(got) != 1 || got[0].Kind != KindClose || got[0].Outcome != runs.Question {
+		t.Fatalf("got %+v, want one question close", got)
+	}
+	if got[0].EventRef != "63" || !got[0].EventAt.Equal(eventTime(t, "2026-10-31T11:00:00Z")) {
+		t.Errorf("EventRef, EventAt = %q, %v; want 63, the Vraag's created_at", got[0].EventRef, got[0].EventAt)
+	}
+}
+
+// A resume on an answer:<id> and a push on a pushanswer:<id> carry the id of the Vraag they
+// answer as EventRef and the answer's created_at as EventAt; CommentID stays the answer.
+func TestDecideAnswerCarriesEventFields(t *testing.T) {
+	got := Decide(loadInput(t, "answer-resume"))
+	if len(got) != 1 || got[0].Kind != KindResume {
+		t.Fatalf("got %+v, want one resume", got)
+	}
+	if a := got[0]; a.EventRef != "63" || a.CommentID != 65 || !a.EventAt.Equal(eventTime(t, "2026-10-31T11:30:00Z")) {
+		t.Errorf("resume EventRef, CommentID, EventAt = %q, %d, %v; want 63, 65, the answer's created_at", a.EventRef, a.CommentID, a.EventAt)
+	}
+	got = Decide(pushQuestion(t, "push"))
+	if len(got) != 1 || got[0].Kind != KindPush {
+		t.Fatalf("got %+v, want one push", got)
+	}
+	if a := got[0]; a.EventRef != "70" || a.CommentID != 71 || !a.EventAt.Equal(eventTime(t, "2026-10-31T11:30:00Z")) {
+		t.Errorf("push EventRef, CommentID, EventAt = %q, %d, %v; want 70, 71, the answer's created_at", a.EventRef, a.CommentID, a.EventAt)
+	}
+}
+
+// A recovery answer to a pusher Vraag answers a human question too: the push_recover carries it.
+func TestDecideAnswerToPusherQuestionCarriesEventFields(t *testing.T) {
+	in := pushQuestion(t, "gepushed")
+	withAfter(&in)
+	got := Decide(in)
+	if len(got) != 1 || got[0].Kind != KindPushRecover {
+		t.Fatalf("got %+v, want one push_recover", got)
+	}
+	if a := got[0]; a.EventRef != "70" || !a.EventAt.Equal(eventTime(t, "2026-10-31T11:30:00Z")) {
+		t.Errorf("EventRef, EventAt = %q, %v; want 70, the answer's created_at", a.EventRef, a.EventAt)
+	}
+}
+
+// A repair resume answers no human: it carries no event fields.
+func TestDecideRepairCarriesNoEventRef(t *testing.T) {
+	for _, a := range Decide(repairInput(t)) {
+		if a.EventRef != "" || !a.EventAt.IsZero() {
+			t.Errorf("action %+v carries event fields, want none for a repair", a)
+		}
+	}
+}
+
+// noteDones keeps the note_done actions of got.
+func noteDones(got []Action) []Action {
+	var out []Action
+	for _, a := range got {
+		if a.Kind == KindNoteDone {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+// withoutNoteDone drops the note_done actions of got, for a test of what else a tick decides.
+func withoutNoteDone(got []Action) []Action {
+	out := []Action{}
+	for _, a := range got {
+		if a.Kind != KindNoteDone {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+// An open agent run whose session is Done gets one note_done, also on the tick that closes it on
+// its Done comment: that tick is the first that sees Done (spec, Done). One without the Done
+// stand and one with work after its Stop get none.
+func TestDecideNoteDoneForOpenDoneRun(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*Input)
+		want   int
+	}{
+		{"done, PR pending", func(*Input) {}, 1},
+		{"no done stand", func(in *Input) { in.Repos[0].Stands = nil }, 0},
+		{"work after the stop", func(in *Input) {
+			st := in.Repos[0].Runs[5]
+			st.Transcript.Background = 1
+			in.Repos[0].Runs[5] = st
+		}, 0},
+		{"closes on its Done comment", func(in *Input) {
+			item7(in).Comments = append(item7(in).Comments, Comment{ID: 90, Author: "lh-bot", CreatedAt: "2026-10-31T11:50:00Z",
+				Body: "🤖 Klaar\n\n<sub>session 11111111-2222-4333-8444-555555555555</sub>"})
+		}, 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			in := loadInput(t, "done-pr-pending")
+			tt.mutate(&in)
+			got := noteDones(Decide(in))
+			if len(got) != tt.want {
+				t.Fatalf("note_done = %+v, want %d", got, tt.want)
+			}
+			if tt.want == 1 && (got[0].RunID != 5 || got[0].Repo != "o/r" || got[0].Issue != 7) {
+				t.Errorf("note_done = %+v, want run 5 of o/r#7", got[0])
+			}
+		})
+	}
+}
+
+// A push row runs no session: an open push-workflows or merge: row never gets a note_done.
+func TestDecideNoNoteDoneForPushRow(t *testing.T) {
+	for _, key := range []string{"push:63", "merge:12:abc123"} {
+		in := pushRow(t, "", time.Minute)
+		row5(&in).TriggerKey = key
+		if got := noteDones(Decide(in)); len(got) != 0 {
+			t.Errorf("%s: note_done = %+v, want none for a push row", key, got)
+		}
 	}
 }

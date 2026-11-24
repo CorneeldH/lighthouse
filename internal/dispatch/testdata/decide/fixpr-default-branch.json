@@ -90,6 +90,13 @@
   },
   "want": [
     {
+      "kind": "note_done",
+      "repo": "o/r",
+      "issue": 7,
+      "run_id": 5,
+      "language": "nl"
+    },
+    {
       "kind": "return",
       "repo": "o/r",
       "issue": 7,

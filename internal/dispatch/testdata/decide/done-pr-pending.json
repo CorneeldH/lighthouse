@@ -115,5 +115,13 @@
     "max_wait": "1h",
     "max_runtime": "8h"
   },
-  "want": []
+  "want": [
+    {
+      "kind": "note_done",
+      "repo": "o/r",
+      "issue": 7,
+      "run_id": 5,
+      "language": "nl"
+    }
+  ]
 }

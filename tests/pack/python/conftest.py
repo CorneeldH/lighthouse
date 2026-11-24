@@ -15,7 +15,7 @@ os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
 sys.dont_write_bytecode = True
 
 from tests.pack.python._network import network_error, offline
-from tests.pack.python._testkit import install_pack
+from tests.pack.python._testkit import install_pack, lighthouse_dir
 
 PY_ROOT = Path(tempfile.mkdtemp(prefix="lighthouse-python-"))
 atexit.register(shutil.rmtree, PY_ROOT, True)
@@ -80,3 +80,16 @@ def pytest_runtest_makereport(item, call):
         report.outcome = "skipped"
         report.longrepr = (str(item.path), item.location[1], f"Skipped: network: {reason}")
     return report
+
+
+@pytest.fixture(scope="session")
+def _lighthouse_build_dir() -> Path:
+    """The binary is built once per process by `lighthouse_dir`; the fixture shares that build."""
+    return lighthouse_dir()
+
+
+@pytest.fixture
+def lighthouse_bin(_lighthouse_build_dir, monkeypatch) -> Path:
+    """The binary of this checkout, with its directory first on the PATH."""
+    monkeypatch.setenv("PATH", f"{_lighthouse_build_dir}{os.pathsep}{os.environ.get('PATH', '')}")
+    return _lighthouse_build_dir / "lighthouse"
