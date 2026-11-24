@@ -17,7 +17,9 @@ toont eerst per bestand de diff, en verwijdert pas na akkoord.
 - Het draait ook terug wat `init` buiten de units schreef, voor zover `init` dat heeft
   vastgelegd (zie *Vastleggen buiten de units*).
 - Een lokaal gewijzigde unit weigert het, tenzij `--force`. Dezelfde regel als `init --upgrade`.
-- Na `init` en `uninstall` in een repo staat er dezelfde bestandsboom als vooraf.
+- Na `init` en `uninstall` in een repo staat er dezelfde bestandsboom als vooraf, op de gezaaide
+  projectbestanden na (labelsbestand en direction-docs, op level `standard`/`strict` altijd
+  gezaaid): die houdt het project en uninstall meldt ze. *(own choice after spec review, r1-f1)*
 - De startgids beschrijft het.
 
 ## Niet-doelen
@@ -105,15 +107,21 @@ lighthouse uninstall [--yes] [--force]
    - bestandsunits: het bestand weg;
    - blokunits: `agentsmd.Remove`;
    - hookunits en permissieunits: `settings.Apply` met een lege gewenste set, `ApplyAllow` met
-     de te laten vallen regels; projectentries blijven staan (dat doen beide al). Een
+     de te laten vallen regels; projectentries blijven staan (dat doen beide al). Bestaat `.claude/settings.json` niet,
+     dan raakt uninstall het niet aan en maakt het niet aan *(accepted, r1-f3)*. Een
      permissieregel valt alleen weg als `packs.IsLighthouseRule` hem herkent, zoals nu.
 4. Plan het terugdraaien van wat buiten de units is vastgelegd (volgende paragraaf).
-5. Plan het manifest zelf en `.lighthouse/created.toml` weg.
+5. Plan het manifest zelf en `.lighthouse/created.toml` weg. Lees vóór het plannen de paden van
+   het labelsbestand en de direction-docs uit `lighthouse.toml` `[paths]`: dat bestand gaat in
+   dezelfde run weg. *(own choice after spec review, r1-f9)*
 6. Toon per bestand de unified diff, en één vraag `Remove lighthouse? [y/N]`, zoals `init`.
    Nee is een nette stop, niets geschreven.
-7. Pas toe. Ruim daarna lege mappen op die door het verwijderen leeg raakten, van de map van
+7. Pas toe, met `.lighthouse/manifest.toml` en `.lighthouse/created.toml` als laatste twee
+   paden, na alle andere (niet in gesorteerde volgorde): faalt een schrijfactie halverwege, dan
+   ziet een herhaalde `lighthouse uninstall` het restant nog. Een test met een fout halverwege
+   bewaakt dat. *(accepted, r1-f2)* Ruim daarna lege mappen op die door het verwijderen leeg raakten, van de map van
    elk verwijderd bestand omhoog tot aan de repo-root; een map met nog iets erin stopt de
-   klim. Dat geldt voor de installatiewortels (`.claude/skills`, `.agents/skills`,
+   klim (`__pycache__` telt, zoals in `removeEmptyParents`, als leeg). Dat geldt voor de installatiewortels (`.claude/skills`, `.agents/skills`,
    `.claude/agents`, `.claude/hooks/lighthouse`) en voor mappen erbuiten (`.lighthouse/`,
    `.lighthouse/scripts/`, `.github/workflows/`). `removeEmptyParents` doet dat niet: het
    laat de installatiewortels bewust staan en raakt niets buiten die wortels. Uninstall krijgt
@@ -137,7 +145,7 @@ bestand leest een oudere binary niet.
 ```toml
 # Managed by lighthouse init. Do not edit by hand.
 
-files = ["lighthouse.toml", "CLAUDE.md"]
+files = ["lighthouse.toml", "AGENTS.md", "CLAUDE.md", ".claude/settings.json", ".gitattributes"]
 gitattributes = ["*.sh eol=lf", ".claude/hooks/lighthouse/** eol=lf"]
 settings_keys = ["language", "hooks", "permissions", "permissions.allow"]
 settings_language = "dutch"
@@ -145,10 +153,14 @@ settings_language = "dutch"
 
 - `files`: bestanden die er niet waren en die `init` schreef: `lighthouse.toml`, `CLAUDE.md`,
   `AGENTS.md`, `.claude/settings.json`, `.gitattributes`.
-- `gitattributes`: regels die `init` toevoegde aan een bestaande `.gitattributes`.
+- `gitattributes`: de regels die `init` toevoegde, ook aan een `.gitattributes` die `init` zelf
+  aanmaakte (dan staat dat bestand ook in `files`). Uninstall matcht alleen op deze vastgelegde regels.
 - `settings_keys`: sleutels en containers die `init` in een bestaande `.claude/settings.json`
   aanmaakte: `"language"`, `"hooks"`, `"permissions"`, `"permissions.allow"`.
 - `settings_language`: de waarde van `"language"` toen `init` de sleutel toevoegde.
+
+`settings_language` wordt overschreven telkens als `init` of `--upgrade` de sleutel opnieuw toevoegt
+met een andere waarde. *(own choice after spec review, r1-f6)*
 
 Zowel een verse `init` als `--upgrade` vult het bestand aan: `buildPlan` weet per pad of het
 bestond (`existed`), `ensureGitattributes` welke regels ontbraken, en `ApplyLanguage` of het
@@ -167,10 +179,10 @@ iets aanmaakt.
 | `AGENTS.md` in `files` | na het verwijderen van de blokken weg als er alleen witruimte over is; anders blijft de rest staan |
 | `.claude/settings.json` in `files` | na het verwijderen van registraties, regels en `"language"` weg als er een leeg object over is (lege `hooks`, `permissions` of `allow` tellen als leeg); anders blijft de rest staan |
 | `CLAUDE.md` in `files` | weg als de inhoud nog precies `@AGENTS.md` is en `AGENTS.md` weggaat; anders blijft hij staan en volgt een melding |
-| `.gitattributes` in `files` | na het verwijderen van de lighthouse-regels weg als er alleen witruimte over is |
+| `.gitattributes` in `files` | na het verwijderen van de regels uit `gitattributes` weg als er alleen witruimte over is |
 | regels in `gitattributes` | elke regel één keer weg (de laatste exacte treffer); een regel die er niet meer is, wordt overgeslagen |
 | `settings_language` / `"language"` in `settings_keys` | de sleutel weg als de waarde nog gelijk is; anders blijft hij staan |
-| containers in `settings_keys` | weg als ze na het verwijderen leeg zijn (`"hooks": {}`, `"allow": []`, `"permissions": {}`); `settings.Apply` en `ApplyAllow` laten ze nu staan |
+| containers in `settings_keys`, of alle drie als `.claude/settings.json` in `files` staat | weg als ze na het verwijderen leeg zijn (`"hooks": {}`, `"allow": []`, `"permissions": {}`); `settings.Apply` en `ApplyAllow` laten ze nu staan |
 
 Het vastgelegde valt niet onder de conflictpoort: wat afwijkt, blijft staan en wordt gemeld,
 behalve `lighthouse.toml`.
@@ -179,8 +191,7 @@ behalve `lighthouse.toml`.
 
 Na een geslaagde run meldt uninstall op stderr, één regel per geval:
 
-- gezaaide bestanden die het project houdt: het labelsbestand, `docs/developer/labels.md`,
-  direction-docs (`kept: <pad> (project file after seeding)`);
+- gezaaide bestanden die het project houdt: het labelsbestand en de direction-docs (`kept: <pad> (project file after seeding)`);
 - runtime-mappen onder `.lighthouse/` die bleven staan, zoals `.lighthouse/run/` en
   `.lighthouse/bin/` (`kept: <pad> (runtime state, not installed by init)`);
 - zonder `.lighthouse/created.toml`, voor elk van `lighthouse.toml`, `CLAUDE.md` met
@@ -207,13 +218,20 @@ In `internal/initcmd`, met de helpers van `TestUpgradeRightAfterInitIsEmpty` (`n
   blijven staan en worden gemeld.
 - **Afwijkend vastgelegd:** een gewijzigde `"language"` en een uitgebreide `CLAUDE.md` blijven
   staan en worden gemeld.
-- **Rondreis via `--upgrade`:** `init`, `[project] language` zetten, `--upgrade` (voegt
-  `"language"` toe), `uninstall`: dezelfde snapshot als na het zetten van de taal, zonder
-  `lighthouse.toml`.
+- **Rondreis via `--upgrade`:** een vooraf bestaande `.claude/settings.json`, `init`,
+  `[project] language` zetten, `--upgrade` (voegt `"language"` toe), `uninstall`: dezelfde
+  snapshot als vooraf.
+- **Rondreis op level `standard`:** het gezaaide labelsbestand blijft staan en wordt gemeld; de
+  rest van de snapshot is gelijk aan vooraf.
+- **Fout halverwege `apply`:** manifest en `created.toml` staan er nog; een tweede run maakt af.
+- **Geen `.claude/settings.json`, wel hookunits in het manifest:** uninstall maakt het niet aan.
 - **`--upgrade` vult `created.toml` aan en haalt er niets uit**, en schrijft het niet als er
   niets is aangemaakt.
 - **Niet geïnstalleerd:** zonder manifest een fout, niets geschreven.
 - **Nee op de vraag:** niets geschreven.
+
+De rondreistests vergelijken ook de lijst met mappen (niet alleen bestanden), zodat een lege
+achtergebleven map faalt. *(accepted, r1-f10)*
 
 Voor `created.toml`: lezen, schrijven en aanvullen (alleen groeien, geen dubbele items).
 
