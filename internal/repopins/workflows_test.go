@@ -1,8 +1,10 @@
 package repopins
 
 import (
+	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -89,13 +91,28 @@ func TestGolangciPinMatchesCI(t *testing.T) {
 
 // A `go test` step without a flag of the gate runs a weaker test than the commit gate does.
 func TestEveryCIGoTestHasGateFlags(t *testing.T) {
-	assertGateFlags(t, "ci.yml", 6) // unit, e2e, the two canary steps, checkpointscan and the hook e2e with gitleaks
+	assertGateFlags(t, "ci.yml", 7) // unit, e2e, the uv e2e of pack-python, the two canary steps, checkpointscan and the hook e2e with gitleaks
 }
 
 // A production change that fails this test: a `go test` step in macos.yml loses one of the gate flags, so macOS runs a
 // weaker test than the commit gate.
 func TestEveryMacOSGoTestHasGateFlags(t *testing.T) {
 	assertGateFlags(t, "macos.yml", 2) // unit and e2e
+}
+
+// A production change that fails this test: macos.yml gets a matrix or a shard variable again, or its pack-python job
+// stops running pytest on tests/pack/python/ (#370).
+func TestMacOSPackPythonIsOnePytestRun(t *testing.T) {
+	job, ok := jobs(stripComments(read(t, ".github", "workflows", "macos.yml")))["pack-python"]
+	if !ok {
+		t.Fatal("macos.yml has no job pack-python")
+	}
+	for _, bad := range []string{"strategy:", "matrix", "LIGHTHOUSE_PYTEST_SHARD"} {
+		if strings.Contains(job, bad) {
+			t.Errorf("macos.yml pack-python contains %q:\n%s", bad, job)
+		}
+	}
+	assertMatches(t, "macos.yml pack-python", job, `(?m)^      - run: uv run pytest [^\n]*tests/pack/python/\s*$`)
 }
 
 // A production change that fails this test: the `CGO_ENABLED=0 go build ./...` step in ci.yml is removed or loses its
@@ -173,5 +190,413 @@ func TestEveryWorkflowPinsActionsBySHA(t *testing.T) {
 				t.Errorf("%s: action not pinned by SHA with a version comment: %s", rel, strings.TrimSpace(line))
 			}
 		}
+	}
+}
+
+// ciText is ci.yml without its comment lines, so a pin cannot be satisfied by prose.
+func ciText(t *testing.T) string {
+	t.Helper()
+	return stripComments(read(t, ".github", "workflows", "ci.yml"))
+}
+
+func stripComments(text string) string {
+	var out []string
+	for _, line := range strings.Split(text, "\n") {
+		if !strings.HasPrefix(strings.TrimSpace(line), "#") {
+			out = append(out, line)
+		}
+	}
+	return strings.Join(out, "\n")
+}
+
+// ciJobs returns the jobs of ci.yml, comment lines removed.
+func ciJobs(t *testing.T) map[string]string {
+	t.Helper()
+	return jobs(ciText(t))
+}
+
+// ciJob returns one job of ci.yml and fails when it is gone.
+func ciJob(t *testing.T, name string) string {
+	t.Helper()
+	body, ok := ciJobs(t)[name]
+	if !ok {
+		t.Fatalf("ci.yml has no job %q", name)
+	}
+	return body
+}
+
+// ciGoJobs returns `go` and every job split off from it (`go-*`).
+func ciGoJobs(t *testing.T) map[string]string {
+	t.Helper()
+	out := map[string]string{}
+	for name, body := range ciJobs(t) {
+		if name == "go" || strings.HasPrefix(name, "go-") {
+			out[name] = body
+		}
+	}
+	return out
+}
+
+// stepsOf cuts a job into its steps: each starts with a `      - ` line.
+func stepsOf(body string) []string {
+	var steps []string
+	for _, line := range strings.Split(body, "\n") {
+		if strings.HasPrefix(line, "      - ") {
+			steps = append(steps, line)
+		} else if len(steps) > 0 {
+			steps[len(steps)-1] += "\n" + line
+		}
+	}
+	return steps
+}
+
+func stepsWith(body, needle string) []string {
+	var out []string
+	for _, s := range stepsOf(body) {
+		if strings.Contains(s, needle) {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+func assertContains(t *testing.T, what, text string, needles ...string) {
+	t.Helper()
+	for _, n := range needles {
+		if !strings.Contains(text, n) {
+			t.Errorf("%s lacks %q", what, n)
+		}
+	}
+}
+
+func assertMatches(t *testing.T, what, text, pattern string) []int {
+	t.Helper()
+	loc := regexp.MustCompile(pattern).FindStringIndex(text)
+	if loc == nil {
+		t.Errorf("%s does not match %s", what, pattern)
+	}
+	return loc
+}
+
+// A production change that fails this test: a `paths:` filter returns to the `on:` block of ci.yml.
+func TestCINoPathsFilter(t *testing.T) {
+	on, _, _ := strings.Cut(ciText(t), "\npermissions:")
+	if strings.Contains(on, "paths") {
+		t.Errorf("the `on:` block of ci.yml has a paths filter:\n%s", on)
+	}
+}
+
+// A production change that fails this test: a domain job runs without consulting the `changes` job.
+func TestCIDomainJobsWaitForChanges(t *testing.T) {
+	for _, name := range []string{"pack-python", "go", "web"} {
+		body := ciJob(t, name)
+		assertContains(t, name, body, "needs: changes", "needs.changes.outputs."+name+" == 'true'")
+	}
+}
+
+// A production change that fails this test: the canary job drops a canary, a setup action or its gate on the `changes` job.
+func TestCICanaryRunsBothCanariesWithEveryTool(t *testing.T) {
+	canary := ciJob(t, "canary")
+	assertContains(t, "canary", canary,
+		"needs: changes",
+		"needs.changes.outputs.go == 'true'",
+		"needs.changes.outputs.pack-python == 'true'",
+		"- run: go test -race -tags canary ./internal/importcheck/",
+		"- run: uv run pytest -q tests/pack/python/test_imports_gate_canary.py")
+	for _, action := range []string{"setup-go", "setup-uv", "setup-node"} {
+		assertMatches(t, "canary action "+action, canary, `uses: \S*`+action+`@[0-9a-f]{40} # v[\d.]+`)
+	}
+}
+
+// A production change that fails this test: the `changes` job stops classifying the diff with ci/domains, or loses
+// `shell: bash` (without it `git diff | classify` has no pipefail).
+func TestCIChangesJobClassifies(t *testing.T) {
+	changes := ciJob(t, "changes")
+	assertContains(t, "changes", changes, "fetch-depth: 0", "--no-renames", " -z ", "go run ./ci/domains classify")
+	assertMatches(t, "changes", changes, `(?m)^        shell: bash\s*$`)
+	assertContains(t, "changes", changes, "pack-python: ${{ steps.domains.outputs.pack-python }}")
+}
+
+// A production change that fails this test: the no-python job stops running for a go or a pack-python change.
+func TestCINoPythonRunsOnGoAndPackPythonChanges(t *testing.T) {
+	assertContains(t, "no-python", ciJob(t, "no-python"),
+		"needs: changes",
+		"needs.changes.outputs.go == 'true'",
+		"needs.changes.outputs.pack-python == 'true'")
+}
+
+// A production change that fails this test: the web job drops a check or the generated-client drift test.
+func TestCIWebJobRunsEveryCheck(t *testing.T) {
+	assertContains(t, "web", ciJob(t, "web"),
+		"node-version-file: web/.nvmrc", "npm ci", "npm run lint", "npm run typecheck", "npm test",
+		"npm run gen", "git status --porcelain -- src/api", "npm run build")
+}
+
+// A production change that fails this test: the pack-python job drops its Go setup before pytest, so the
+// `lighthouse_bin` fixture cannot build the binary (#274).
+func TestCIPackPythonJobSetsUpGoBeforePytest(t *testing.T) {
+	job := ciJob(t, "pack-python")
+	loc := assertMatches(t, "pack-python", job,
+		`uses: actions/setup-go@[0-9a-f]{40} # v[\d.]+\n\s+with:\n\s+go-version-file: go.mod`)
+	pytest := strings.Index(job, "run: uv run pytest ")
+	if loc == nil || pytest < 0 || loc[0] > pytest {
+		t.Errorf("pack-python does not set up Go before `uv run pytest`:\n%s", job)
+	}
+}
+
+// A production change that fails this test: pack-python gets a matrix or a shard variable again, so the suite is split
+// over parallel jobs (#370), or it stops running pytest on tests/pack/python/.
+func TestCIPackPythonIsOnePytestRun(t *testing.T) {
+	job := ciJob(t, "pack-python")
+	for _, bad := range []string{"strategy:", "matrix", "LIGHTHOUSE_PYTEST_SHARD"} {
+		if strings.Contains(job, bad) {
+			t.Errorf("pack-python contains %q:\n%s", bad, job)
+		}
+	}
+	assertMatches(t, "pack-python", job, `(?m)^      - run: uv run pytest [^\n]*tests/pack/python/\s*$`)
+}
+
+// A production change that fails this test: a PR job runs on macOS again; macOS is the gate before the release (#337).
+func TestCIPRRunsNoMacOSJob(t *testing.T) {
+	if strings.Contains(ciText(t), "macos-latest") {
+		t.Error("ci.yml runs a job on macos-latest")
+	}
+	for _, name := range []string{"pack-python", "go-test", "go-e2e"} {
+		body := ciJob(t, name)
+		assertMatches(t, name, body, `(?m)^    runs-on: ubuntu-latest\s*$`)
+		if strings.Contains(body, "matrix.os") {
+			t.Errorf("%s uses matrix.os", name)
+		}
+	}
+}
+
+// A production change that fails this test: web or binary stops caching the npm download for `npm ci`.
+func TestCINodeJobsCacheNpm(t *testing.T) {
+	for _, name := range []string{"web", "binary"} {
+		setup := stepsWith(ciJob(t, name), "actions/setup-node")
+		if len(setup) != 1 {
+			t.Errorf("%s has %d setup-node steps, want 1", name, len(setup))
+			continue
+		}
+		assertMatches(t, name, setup[0], `(?m)^\s+cache: npm\s*$`)
+		assertContains(t, name, setup[0], "cache-dependency-path: web/package-lock.json")
+	}
+}
+
+// A production change that fails this test: binary waits for web again, or stops building the SPA, the binary or the smoke.
+func TestCIBinaryRunsWithoutWeb(t *testing.T) {
+	binary := ciJob(t, "binary")
+	assertMatches(t, "binary", binary, `(?m)^    needs: changes\s*$`)
+	if strings.Contains(binary, "needs.web") {
+		t.Error("binary needs the web job")
+	}
+	assertContains(t, "binary", binary,
+		"outputs.web == 'true'", "outputs.go == 'true'", "CGO_ENABLED=0 go build ./cmd/lighthouse", "ci/spa-smoke.sh")
+	var build []string
+	for _, s := range stepsOf(binary) {
+		if regexp.MustCompile(`(?m)run: npm run build\s*$`).MatchString(s) {
+			build = append(build, s)
+		}
+	}
+	if len(build) != 1 || regexp.MustCompile(`(?m)^\s*if:`).MatchString(build[0]) {
+		t.Errorf("want one unconditional `npm run build` step, got %q", build)
+	}
+	ci, run, goBuild := strings.Index(binary, "run: npm ci"), strings.Index(binary, "run: npm run build"), strings.Index(binary, "go build ./cmd/lighthouse")
+	if ci < 0 || run < ci || goBuild < run {
+		t.Errorf("binary does not run npm ci, npm run build and go build in that order (%d, %d, %d)", ci, run, goBuild)
+	}
+	if strings.Contains(ciText(t), "web-dist") {
+		t.Error("ci.yml hands a web-dist artifact around again")
+	}
+}
+
+// A production change that fails this test: a job split off from `go` runs without the go output of the `changes` job.
+func TestCIGoJobsWaitForChanges(t *testing.T) {
+	goJobs := ciGoJobs(t)
+	if len(goJobs) < 2 {
+		t.Fatalf("want at least 2 go jobs, got %d", len(goJobs))
+	}
+	for name, body := range goJobs {
+		assertMatches(t, name, body, `(?m)^    needs: changes\s*$`)
+		assertContains(t, name, body, "if: needs.changes.outputs.go == 'true'")
+	}
+}
+
+// A production change that fails this test: a Go check drops out of every go job while the go jobs are split.
+func TestCIGoLintGatesStayInGoJobs(t *testing.T) {
+	var all []string
+	for _, body := range ciGoJobs(t) {
+		all = append(all, body)
+	}
+	assertContains(t, "the go jobs", strings.Join(all, "\n"),
+		"golangci/golangci-lint-action@",
+		"- run: CGO_ENABLED=0 go build ./...",
+		"- run: GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build ./...",
+		"- run: GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build ./...",
+		"- run: go test -race -shuffle=on ./...",
+		"- run: go test -race -shuffle=on -tags e2e ./e2e/ -skip ",
+		"name: installed pack/core matches pack/")
+}
+
+// A production change that fails this test: the e2e run moves back into the job of the race tests, which made that job
+// the slowest.
+func TestCIE2ERunsApartFromRaceTests(t *testing.T) {
+	goJobs := ciGoJobs(t)
+	var race, e2e []string
+	for name, body := range goJobs {
+		if strings.Contains(body, "- run: go test -race -shuffle=on ./...") {
+			race = append(race, name)
+		}
+		if strings.Contains(body, "- run: go test -race -shuffle=on -tags e2e ./e2e/ -skip ") {
+			e2e = append(e2e, name)
+		}
+	}
+	if len(race) != 1 || len(e2e) != 1 || race[0] == e2e[0] {
+		t.Fatalf("want the race tests and the e2e in two different jobs, got race %q, e2e %q", race, e2e)
+	}
+}
+
+// A production change that fails this test: go-e2e gets setup-uv back (the uv tests then run twice, #370), or a go
+// job other than go-e2e installs uv.
+func TestCIGoJobsHaveNoUV(t *testing.T) {
+	for name, body := range ciGoJobs(t) {
+		if strings.Contains(body, "astral-sh/setup-uv@") {
+			t.Errorf("%s installs uv; the uv e2e tests run in pack-python", name)
+		}
+	}
+	if !strings.Contains(ciJob(t, "pack-python"), "astral-sh/setup-uv@") {
+		t.Error("pack-python does not install uv")
+	}
+}
+
+var needUVCalls = regexp.MustCompile(`(?m)^func (Test\w+)\(t \*testing\.T\) \{\n\tneedUV\(t\)`)
+
+// ciE2ELists returns the test names of the `-run` list in pack-python and of the `-skip` list in go-e2e.
+func ciE2ELists(t *testing.T) (run, skip []string) {
+	t.Helper()
+	r := regexp.MustCompile(`-tags e2e \./e2e/ -run '([^']*)'`).FindStringSubmatch(ciJob(t, "pack-python"))
+	k := regexp.MustCompile(`-tags e2e \./e2e/ -skip '([^']*)'`).FindStringSubmatch(ciJob(t, "go-e2e"))
+	if r == nil || k == nil {
+		t.Fatalf("pack-python has no `-run '<names>'` e2e step (%v) or go-e2e no `-skip '<names>'` (%v)", r, k)
+	}
+	return strings.Split(r[1], "|"), strings.Split(k[1], "|")
+}
+
+// A production change that fails this test: a test that calls needUV is in neither or only one of the lists, so it
+// runs in no job (it would fail on CI without uv) or in go-e2e, where uv is missing and CI makes it a t.Fatal; or a
+// list names a test that no longer exists, so `-run` matches nothing.
+func TestCIUVE2ETestsRunOnlyInPackPython(t *testing.T) {
+	src := read(t, "e2e", "e2e_test.go")
+	var want []string
+	for _, m := range needUVCalls.FindAllStringSubmatch(src, -1) {
+		want = append(want, m[1])
+	}
+	if len(want) == 0 {
+		t.Fatal("no test in e2e/e2e_test.go calls needUV")
+	}
+	run, skip := ciE2ELists(t)
+	slices.Sort(want)
+	slices.Sort(run)
+	slices.Sort(skip)
+	if !slices.Equal(run, want) || !slices.Equal(skip, want) {
+		t.Errorf("tests that call needUV: %q; pack-python -run: %q; go-e2e -skip: %q", want, run, skip)
+	}
+}
+
+// A production change that fails this test: a literal-grep call leaves the go job (the pack-python job would run it
+// only for Python changes) or one of the two calls is dropped.
+func TestCILiteralGrepRunsTwiceInGoJob(t *testing.T) {
+	assertContains(t, "go", ciJob(t, "go"),
+		"ci/literal-grep.sh\n",
+		"LITERAL_DENYLIST=ci/literal-denylist-go.txt LITERAL_SKIP_TESTS=1 ci/literal-grep.sh internal cmd")
+	if n := strings.Count(ciText(t), "ci/literal-grep.sh"); n != 2 {
+		t.Errorf("ci.yml calls ci/literal-grep.sh %d times, want 2", n)
+	}
+}
+
+// A production change that fails this test: ci.yml gets a different number of action references, so a new `uses:`
+// slipped in unnoticed. TestEveryWorkflowPinsActionsBySHA checks each one for its SHA.
+func TestCIPinsEveryActionCount(t *testing.T) {
+	uses := regexp.MustCompile(`(?m)^\s*(?:- )?uses: (\S+)`).FindAllStringSubmatch(ciText(t), -1)
+	if len(uses) != 34 {
+		t.Errorf("ci.yml has %d actions, want 34", len(uses))
+	}
+}
+
+// A production change that fails this test: the fragment check starts depending on the domains of the change, or loses
+// its Go setup (without a build cache, so it cannot lock out the others).
+func TestCIChangelogJobRunsOnEveryPR(t *testing.T) {
+	job := ciJob(t, "changelog")
+	if strings.Contains(job, "needs:") || strings.Contains(job, "needs.changes") {
+		t.Error("changelog depends on another job")
+	}
+	ifs := regexp.MustCompile(`(?m)^\s+if: .*$`).FindAllString(job, -1)
+	if len(ifs) != 1 || ifs[0] != "    if: github.event_name == 'pull_request'" {
+		t.Errorf("changelog conditions = %q, want only the pull_request one", ifs)
+	}
+	assertContains(t, "changelog", job, "runs-on: ubuntu-latest", "fetch-depth: 0",
+		`go run ./ci/changelog check --base "$BASE" --head "$HEAD"`)
+	loc := assertMatches(t, "changelog", job,
+		`uses: actions/setup-go@[0-9a-f]{40} # v[\d.]+\n\s+with:\n\s+go-version-file: go.mod\n\s+cache: false`)
+	if loc != nil && loc[0] > strings.Index(job, "go run ./ci/changelog") {
+		t.Error("changelog sets up Go after `go run ./ci/changelog`")
+	}
+}
+
+// A production change that fails this test: a manual run stops enabling web, pack-python and go, or loses the all-domains input.
+func TestCIDispatchTurnsOnEveryDomain(t *testing.T) {
+	text := ciText(t)
+	assertContains(t, "ci.yml", text, "workflow_dispatch:", "all-domains:")
+	block, _, _ := strings.Cut(text[strings.Index(text, "all-domains:"):], "permissions:")
+	assertContains(t, "the all-domains input", block, "type: boolean", "default: true")
+	assertContains(t, "changes", ciJob(t, "changes"), "web=$ALL", "pack-python=$ALL", "go=$ALL")
+}
+
+// A production change that fails this test: binary stops running Playwright after the smoke, or Node and `npm ci` can
+// be skipped.
+func TestCIBinaryRunsPlaywright(t *testing.T) {
+	binary := ciJob(t, "binary")
+	install := "npx playwright install --with-deps chromium"
+	if !strings.Contains(binary, install) {
+		t.Fatalf("binary lacks %q", install)
+	}
+	run := regexp.MustCompile(`LIGHTHOUSE_BIN=\S+ npm run e2e`).FindStringIndex(binary)
+	if run == nil {
+		t.Fatal("binary has no `LIGHTHOUSE_BIN=... npm run e2e` step")
+	}
+	if smoke, inst := strings.Index(binary, "ci/spa-smoke.sh"), strings.Index(binary, install); smoke < 0 || smoke >= inst || inst >= run[0] {
+		t.Error("binary does not run the smoke, the playwright install and the e2e in that order")
+	}
+	setup := stepsWith(binary, "actions/setup-node")
+	npmCI := stepsWith(binary, "run: npm ci")
+	if len(setup) != 1 || len(npmCI) != 1 {
+		t.Fatalf("want one setup-node and one npm ci step, got %d and %d", len(setup), len(npmCI))
+	}
+	for _, step := range append(setup, npmCI...) {
+		if regexp.MustCompile(`(?m)^\s*(- )?if:`).MatchString(step) {
+			t.Errorf("step can be skipped:\n%s", step)
+		}
+	}
+	if node, npm := strings.Index(binary, "actions/setup-node"), strings.Index(binary, "run: npm ci"); node >= npm || npm >= run[0] {
+		t.Error("binary does not run setup-node, npm ci and the e2e in that order")
+	}
+}
+
+// A production change that fails this test: git stops tracking ci/spa-smoke.sh as executable.
+func TestCISmokeScriptExecutable(t *testing.T) {
+	assertTrackedExecutable(t, "ci/spa-smoke.sh")
+}
+
+// assertTrackedExecutable fails when git does not track rel with mode 100755.
+func assertTrackedExecutable(t *testing.T, rel string) {
+	t.Helper()
+	cmd := exec.Command("git", "ls-files", "-s", rel)
+	cmd.Dir = repoRoot(t)
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("COULD NOT CHECK: git ls-files -s %s: %v", rel, err)
+	}
+	if !strings.HasPrefix(string(out), "100755") {
+		t.Errorf("git does not track %s as executable: %q", rel, out)
 	}
 }

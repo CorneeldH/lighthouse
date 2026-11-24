@@ -22,7 +22,7 @@ Elke taak neemt deze regels mee.
 - Eén transactie per transcript. `recorded_at` = het tijdstip vóór het lezen; het bestand wordt gelezen tot de vooraf gemeten grootte.
 - Code, commentaar en bestandsnamen onder `internal/**` en `pack/**` zijn Engels (`code_language = "en"`); documenten Nederlands.
 - Voor elke commit: `[test_gate] command` uit `lighthouse.toml` en `lighthouse imports check`. Nooit `--no-verify`.
-- Migratienummer is `0012`; mergt #378 eerst, dan het volgende vrije nummer (en hernoem het bestand, de test en `docs/`-verwijzingen).
+- Migratienummer is `0013` (#378 nam `0012`); mergt #378 eerst, dan het volgende vrije nummer (en hernoem het bestand, de test en `docs/`-verwijzingen).
 
 ## Review Focus
 

@@ -195,7 +195,14 @@ func (ap applier) apply(ctx context.Context, a Action, res *Result) error {
 		if err := ap.release(ctx, a); err != nil {
 			return err
 		}
-		return ap.closeRun(ctx, a.RunID, a.Outcome, closeReason(a))
+		if err := ap.closeRun(ctx, a.RunID, a.Outcome, closeReason(a)); err != nil {
+			return err
+		}
+		ap.recordQuestion(ctx, a)
+		return nil
+	case KindNoteDone:
+		ap.noteDone(ctx, a)
+		return nil
 	case KindRocket:
 		return ap.env.Forge(a.Repo).Acknowledge(ctx, a.Issue, a.CommentID)
 	case KindDefer:
@@ -457,6 +464,7 @@ func (ap applier) start(ctx context.Context, a Action, res *Result) error {
 	if err != nil {
 		return err
 	}
+	ap.recordAnswer(ctx, a, run.ID)
 	// After the claim, so the retry rule sees a start_failed run with the path in its reason.
 	if relocErr != nil {
 		return ap.startFailed(ctx, run.ID, "handoff path", relocErr)
@@ -569,6 +577,7 @@ func (ap applier) push(ctx context.Context, a Action, res *Result) error {
 	if err != nil {
 		return err
 	}
+	ap.recordAnswer(ctx, a, run.ID)
 	if a.CommentID > 0 {
 		if err := env.Forge(a.Repo).Acknowledge(ctx, a.Issue, a.CommentID); err != nil {
 			ap.logf("%s#%d: rocket on comment %d: %v", a.Repo, a.Issue, a.CommentID, err)
@@ -612,6 +621,7 @@ func (ap applier) pushRecover(ctx context.Context, a Action) error {
 	if err != nil {
 		return err
 	}
+	ap.recordAnswer(ctx, a, run.ID)
 	if a.CommentID > 0 {
 		if err := env.Forge(a.Repo).Acknowledge(ctx, a.Issue, a.CommentID); err != nil {
 			ap.logf("%s#%d: rocket on comment %d: %v", a.Repo, a.Issue, a.CommentID, err)

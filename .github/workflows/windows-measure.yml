@@ -29,6 +29,7 @@ on:
       - go.sum
       - ci/windows-measure.sh
       - .github/workflows/windows-measure.yml
+      - internal/commitgate/**
 
 permissions:
   contents: read
@@ -94,6 +95,11 @@ jobs:
       - id: gotest
         continue-on-error: true
         run: go test -shuffle=on ./... 2>&1 | tee "$RUNNER_TEMP/measure/go-test.txt"
+      # The pwsh tests of the test gate (#495) run apart and verbose: a pass must be told from
+      # t.Skip("no pwsh"), and the rest of internal/commitgate is red on Windows (#559).
+      - id: gopwsh
+        continue-on-error: true
+        run: go test -v -count=1 -run 'TestPowerShell' ./internal/commitgate/ 2>&1 | tee "$RUNNER_TEMP/measure/go-pwsh.txt"
       - id: goe2e
         continue-on-error: true
         run: go test -shuffle=on -tags e2e ./e2e/ -v 2>&1 | tee "$RUNNER_TEMP/measure/go-e2e.txt"
@@ -102,6 +108,7 @@ jobs:
         env:
           GOTEST: ${{ steps.gotest.outcome }}
           GOE2E: ${{ steps.goe2e.outcome }}
+          GOPWSH: ${{ steps.gopwsh.outcome }}
         run: |
           {
             echo "## Go tests on native Windows, commit $GITHUB_SHA"
@@ -114,6 +121,13 @@ jobs:
               f=$({ grep -E '^(--- FAIL|FAIL)' "$RUNNER_TEMP/measure/$t.txt" 2>/dev/null || true; } | head -8 | tr '\n' ' ' | tr '|' '/')
               echo "| \`$t\` | $o | ${f:+\`$f\`} |"
             done
+            # The pwsh tests count only when they ran and passed: no SKIP, at least one PASS.
+            p=$(grep -c -- '^--- PASS: TestPowerShell' "$RUNNER_TEMP/measure/go-pwsh.txt" 2>/dev/null || true)
+            s=$(grep -c -- '^--- SKIP: TestPowerShell' "$RUNNER_TEMP/measure/go-pwsh.txt" 2>/dev/null || true)
+            echo
+            echo "| pwsh test gate (#495) | Outcome | Passed | Skipped |"
+            echo "|---|---|---|---|"
+            echo "| \`go-pwsh\` | $GOPWSH | ${p:-0} | ${s:-0} |"
           } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()

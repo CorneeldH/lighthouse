@@ -683,3 +683,35 @@ func TestRecordSetupLaneCheck(t *testing.T) {
 		t.Error("lane x: no error")
 	}
 }
+
+func TestRecordSessionRefusesRetargetWithEvents(t *testing.T) {
+	ctx := context.Background()
+	db := openDB(t)
+	s := session("s1", Line{Branch: "issue-9-x"})
+	sid, _, err := RecordSession(ctx, db, s)
+	if err != nil {
+		t.Fatalf("session: %v", err)
+	}
+	moved := session("s1", Line{Branch: "issue-10-x"}, Line{Branch: "issue-10-x"})
+	moved.RecordedAt = t0.Add(time.Hour)
+
+	// Without an event the session may move.
+	if _, _, err := RecordSession(ctx, db, moved); err != nil {
+		t.Fatalf("retarget without events: %v", err)
+	}
+	back := session("s1", Line{Branch: "issue-9-x"}, Line{Branch: "issue-9-x"}, Line{Branch: "issue-9-x"})
+	back.RecordedAt = t0.Add(2 * time.Hour)
+	if _, _, err := RecordSession(ctx, db, back); err != nil {
+		t.Fatalf("retarget back: %v", err)
+	}
+
+	if _, _, err := RecordEvent(ctx, db, EventRecord{
+		Origin: Origin{Source: "events", SourceID: "question:1", RecordedAt: t0},
+		Repo:   "o/r", Issue: 9, SessionID: sid, Kind: EventQuestion, Ref: "q1", At: t0,
+	}); err != nil {
+		t.Fatalf("event: %v", err)
+	}
+	if _, _, err := RecordSession(ctx, db, moved); !errors.Is(err, ErrSessionHasEvents) {
+		t.Errorf("retarget err = %v, want ErrSessionHasEvents", err)
+	}
+}

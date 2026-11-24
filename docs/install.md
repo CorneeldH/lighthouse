@@ -453,7 +453,7 @@ wordt niets geschreven) en meet op die ref.
 `lighthouse telemetry collect [--repo-dir <pad>] [--db <pad>] [--since-last] [--dry-run]` leest de
 Claude Code-transcripten van een repo en schrijft per transcript, in een transactie, de inzet
 (`setups`: model, effort, harness- en toolversies, skillshash, `lane` `sdd` of `native`) en de
-tokens met kosten (`usage`) in `lighthouse.db` (migratie `0012`: `setups.model` en de andere
+tokens met kosten (`usage`) in `lighthouse.db` (migratie `0013`: `setups.model` en de andere
 velden mogen `NULL` zijn, plus `setups.lane`, `trajectories.plan_tasks` en
 `trajectories.plan_path`). `--repo-dir` is standaard `.`, `--db` standaard de `lighthouse.db` van
 de statusmap. Repo, default branch en `paths.plans` komen uit de `lighthouse.toml` in `--repo-dir`.
@@ -497,6 +497,27 @@ de statusmap. Repo, default branch en `paths.plans` komen uit de `lighthouse.tom
   transcript niet verdwijnt voordat het is gelezen. Een transcript dat de werkplek niet kan tonen
   (weg, niet op deze host) geeft `unreachable, not processed` en is geen fout; een andere fout
   geeft een regel met het run-id en zet de tick op mislukt, waarna hij doorgaat.
+
+### Menswerk en wachttijd per traject
+
+`lighthouse trajectory <issue> [--repo-dir <pad>] [--db <pad>]` toont van het traject van een issue
+wanneer elke vraag, elk antwoord en elke overname was, en hoe de tijd van het traject over de
+oorzaken verdeeld is. Repo komt uit de `lighthouse.toml` in `--repo-dir` (standaard `.`), `--db`
+is standaard de `lighthouse.db` van de statusmap. De opdracht leest het issue van de forge voor
+het sluitmoment.
+
+De uitvoer is eerst een regel per moment, `<moment> <tijdstip> [estimate] [unanswered] [reden]`:
+`question`, `answer` of `takeover` met het tijdstip (UTC, RFC 3339). `estimate` staat achter een
+moment dat niet is opgeslagen maar uit een run is afgeleid (een vraag uit het einde van haar run,
+een antwoord uit de start van de run die het oppakte), `unanswered` achter een vraag zonder
+antwoord, en een overname eindigt waar bekend op de reden. Daarna volgt een regel per oorzaak in
+vaste volgorde: `active`, `human`, `usage`, `ci_review`, `pickup` en, als die er is,
+`unexplained`. Elke oorzaakregel heeft de vorm `<oorzaak> <duur> <soort>`, met als soort
+`measured`, `estimate` of `running` (het traject loopt nog). Een `active`-regel die CI- en
+reviewtijd kan bevatten eindigt op `incl. ci_review`.
+
+Exit: 0 uitvoer geprint | 1 een config-, forge- of databasefout, of `no trajectory for issue <N>`
+| 2 verkeerd gebruik (geen of geen geldig issuenummer, onbekende vlag).
 
 ## Run the tick
 

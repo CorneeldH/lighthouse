@@ -17,6 +17,9 @@ var (
 	// ErrSessionHasFindings: a new offering of a session would move it to
 	// another trajectory (or unlink it) while findings point at the session.
 	ErrSessionHasFindings = errors.New("telemetry: session has findings; its trajectory cannot change")
+	// ErrSessionHasEvents: a new offering of a session would move it to
+	// another trajectory (or unlink it) while events point at the session.
+	ErrSessionHasEvents = errors.New("telemetry: session has events; its trajectory cannot change")
 	// ErrTrajectoryMismatch: the run or session of a finding does not point
 	// at the trajectory of the finding's repo and issue (or at none).
 	ErrTrajectoryMismatch = errors.New("telemetry: run or session belongs to another trajectory")
@@ -347,7 +350,8 @@ func findSession(ctx context.Context, tx *sql.Tx, s SessionRecord) (storedSessio
 	return got, found, nil
 }
 
-// checkRetarget refuses a change of trajectory for a session with findings.
+// checkRetarget refuses a change of trajectory for a session with findings
+// or events.
 // It creates nothing: a trajectory that does not exist yet is a change.
 func checkRetarget(ctx context.Context, tx *sql.Tx, existing storedSession, repo string, issue int) error {
 	same := issue == 0 && !existing.trajectory.Valid
@@ -367,6 +371,12 @@ func checkRetarget(ctx context.Context, tx *sql.Tx, existing storedSession, repo
 	}
 	if n > 0 {
 		return ErrSessionHasFindings
+	}
+	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM trajectory_events WHERE session_id = ?`, existing.id).Scan(&n); err != nil {
+		return fmt.Errorf("telemetry: count session events: %w", err)
+	}
+	if n > 0 {
+		return ErrSessionHasEvents
 	}
 	return nil
 }
