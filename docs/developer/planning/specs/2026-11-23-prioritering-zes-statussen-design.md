@@ -5,8 +5,8 @@ Open het bestand in een browser. De statussen van #540 en #380 in de mockup zijn
 voorbeeld.
 
 Bouwt voort op het [Prioritering-tabblad](2026-11-16-prioritering-tabblad-design.md) en het
-[statusmodel](2026-11-20-statusmodel-en-statusschema-design.md). Neemt #445 op in één geheel en
-verplaatst de plek van #439.
+[statusmodel](2026-11-20-statusmodel-en-statusschema-design.md). Gaat uit van #445
+(gemerged in #549: sortering op prio-gewicht, schakelaar en hover) en verplaatst de plek van #439.
 
 ## Waarom
 
@@ -151,7 +151,7 @@ Op elk tabblad twee regels, elk met een kopje in kleine hoofdletters:
 "not shaped yet" en "needs a human" verdwijnen als legenda-items. Het blokje van *done* en *active*
 in de legenda gebruikt grijs (`--lh-grey`), want het staat los van een milestone.
 
-### 4. Dependencies: de graafkaart, samen met #445
+### 4. Dependencies: de graafkaart
 
 De kaart heeft één signaal voor de status.
 
@@ -166,16 +166,8 @@ De kaart heeft één signaal voor de status.
 - Rechts blijft het pilletje met het aantal wachtende issues.
 - Hover-titels gebruiken geen `#` meer (`540 Live-verificatie …`).
 
-**#445 hoort bij de graaf.** Het vult de graaf aan met:
-
-- een sortering per kolom op prio-gewicht (`prio_weight` uit `/api/priorities`, berekend in Go door
-  #509), met gewicht en de volgorde van dagre als tiebreak;
-- een schakelaar *prio-gewicht · gewicht · minste kruisingen*;
-- de hover van het pilletje met gewicht, factor en prio-gewicht.
-
-Wat #445 daarover zegt, blijft gelden. De kaart hierboven valt onder deel a (zie Opdeling),
-omdat de graaf de zes statussen meteen moet kunnen tonen. #445 houdt sortering, schakelaar en
-hover.
+Sortering per kolom, de schakelaar (`depsOrder`) en de hover van het pilletje komen uit #445 en
+blijven ongewijzigd. Dit ontwerp verandert alleen de kaart zelf.
 
 ### 5. Milestones, met onderaan *Without milestone*
 
@@ -184,7 +176,7 @@ hover.
   vlakje, de titel en het aantal open issues. Daarnaast een balk met een blok per issue, in de
   balkvolgorde uit 2.
 - Rechts staat geen percentage maar een streepje. Er zijn geen knoppen om te verplaatsen, en de rij
-  staat altijd onderaan, in *Computed* en in *Priority*.
+  staat altijd onderaan, in beide volgordes (*%* en *Priority*).
 - Onder de balk staat de lijst van nu (`UnassignedView`): blokje, nummer, titel, de relatie
   (`blocks 12` of `waits on 12`, zonder `#`) en bij een gesloten milestone `<titel> · closed`.
   Wat er in die lijst staat, blijft gelijk: open issues zonder milestone én open issues in een
@@ -235,18 +227,17 @@ hover.
 
 ## Opdeling
 
-Vier issues in milestone *Statusmodel: één toestand per issue, van board tot balk*, elk met een
-eigen PR, in deze volgorde:
+Drie nieuwe issues in milestone *Statusmodel: één toestand per issue, van board tot balk*, elk met
+een eigen PR, in deze volgorde:
 
-| | Issue | Inhoud |
-|---|---|---|
-| a | nieuw | 1, 2 en 3, en de kaart uit 4: zes statussen in Go, `cases.json` en de web; de vormentaal met het vectorkruis en de onderstreping; de legenda met kopjes; de balkvolgorde; de graafkaart met één signaal. |
-| b | #445, herschreven | De rest van 4: sortering op prio-gewicht, schakelaar en hover uit #445. |
-| c | nieuw | 5 en 7: *Without milestone* onder *Milestones*, de tab vervalt; de tekst van #439 aangepast. |
-| d | nieuw | 6 en 7: de tab *Status*. |
+| | Inhoud |
+|---|---|
+| a | 1 tot en met 4: zes statussen in Go, `cases.json` en de web; de vormentaal met het vectorkruis en de onderstreping; de legenda met kopjes; de balkvolgorde; de graafkaart met één signaal. |
+| b | 5 en 7: *Without milestone* onder *Milestones*, de tab vervalt; de tekst van #439 aangepast. |
+| c | 6 en 7: de tab *Status*. |
 
-b, c en d hangen alle drie af van a, en niet van elkaar. Wie de volgorde van b tot d wijzigt,
-breekt niets.
+b en c hangen allebei af van a, en niet van elkaar. Beide raken `prefs.ts` en `ViewId`; wie als
+tweede merget, voegt samen.
 
 ## Aan de bouwer
 
@@ -275,5 +266,4 @@ Neem deze door bij het lezen. Alle andere keuzes komen van de gebruiker.
 8. Het filter op milestone staat alleen op de tab Status.
 9. Een open issue in een gesloten milestone telt op de kanban als *Without milestone*.
 10. De nieuwe graafkaart valt onder deel a, zodat de graaf nooit twee mensstatussen gelijk toont.
-    #445 (deel b) houdt alleen sortering, schakelaar en hover.
 11. De lijst onder *Without milestone* houdt de relatie `blocks 12` of `waits on 12`.
