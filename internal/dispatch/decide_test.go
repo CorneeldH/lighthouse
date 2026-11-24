@@ -747,6 +747,24 @@ func TestRepairResumesHandoffSession(t *testing.T) {
 	if strings.Contains(a.Prompt, repairDiff) {
 		t.Errorf("prompt %q carries the diff", a.Prompt)
 	}
+	if strings.Contains(a.Prompt, protocol.Heading("prompt_pusher_repair_roborev", "nl")) {
+		t.Errorf("prompt %q of a policy Herstel tells the run to run roborev", a.Prompt)
+	}
+}
+
+// A Herstel on a red roborev step (a skip, or no record) tells the resumed run to review the
+// range with roborev before its new handoff: committing alone mends nothing there (#551).
+func TestRepairOnRoborevTellsTheRunToReview(t *testing.T) {
+	in := repairInput(t)
+	post := &item7(&in).Comments[len(item7(&in).Comments)-1]
+	post.Body = strings.Replace(post.Body, "step: policy", "step: roborev", 1)
+	got := startsOrReturns(Decide(in))
+	if len(got) != 1 || got[0].Kind != KindResume {
+		t.Fatalf("actions %+v, want one resume", got)
+	}
+	if want := protocol.Heading("prompt_pusher_repair_roborev", "nl"); !strings.Contains(got[0].Prompt, want) {
+		t.Errorf("prompt %q lacks %q", got[0].Prompt, want)
+	}
 }
 
 // A Herstel whose key a run already has resumes nothing and returns nothing.

@@ -1785,8 +1785,12 @@ func (c issueCtx) repairResume() (planned, bool) {
 // repairPrompt is the order of a repair resume: the prompt_pusher_repair heading, the red step,
 // the fenced reason of the Herstel and its URL. The diff stays in the comment and the worktree.
 func repairPrompt(h *parsed, language string) string {
-	parts := []string{protocol.Heading("prompt_pusher_repair", language),
-		"**" + protocol.Heading("question_push_step", language) + ":** " + h.Header.Fields["step"]}
+	parts := []string{protocol.Heading("prompt_pusher_repair", language)}
+	// A red roborev step is mended by a review, not by a commit (pusher.StepRoborev).
+	if h.Header.Fields["step"] == "roborev" {
+		parts = append(parts, protocol.Heading("prompt_pusher_repair_roborev", language))
+	}
+	parts = append(parts, "**"+protocol.Heading("question_push_step", language)+":** "+h.Header.Fields["step"])
 	if why := fencedReason(h.Comment.Body); why != "" {
 		parts = append(parts, why)
 	}

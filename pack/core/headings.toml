@@ -259,6 +259,10 @@ en = "workflow pusher stayed red after two repair rounds"
 nl = "De workflow-pusher vond deze stap rood. Repareer het in de worktree, commit, en schrijf een nieuwe handoff met `next: push-workflows`."
 en = "The workflow pusher found this step red. Repair it in the worktree, commit, and write a new handoff with `next: push-workflows`."
 
+[prompt_pusher_repair_roborev]
+nl = "Geen roborev-review dekt deze SHA (een skip, of geen record). Draai V2b van `/lighthouse-write-pr` op de workflow-route (`lighthouse roborev-gate gate --push`) tot het push-record `done` is; schrijf pas daarna de nieuwe handoff."
+en = "No roborev review covers this SHA (a skip, or no record). Run V2b of `/lighthouse-write-pr` on the workflow route (`lighthouse roborev-gate gate --push`) until the push record is `done`; only then write the new handoff."
+
 [question_push_step]
 nl = "Rode stap"
 en = "Red step"

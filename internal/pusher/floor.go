@@ -67,10 +67,11 @@ type Checked struct {
 // Red is the first red step and why.
 type Red struct{ Step, Why string }
 
-// repairable is whether the branch itself is wrong, so the run that wrote it can mend it: a
-// policy or lint finding. A step that could not run (COULD NOT CHECK) is no mistake of the branch.
+// repairable is whether the run that wrote the branch can mend it: a policy or lint finding, or a
+// roborev record that does not cover the SHA (a skip, none, a stale one), which the run mends by
+// running roborev. A step that could not run (COULD NOT CHECK) is no mistake of the branch.
 func (r Red) repairable() bool {
-	return (r.Step == StepPolicy || r.Step == StepLint) && !strings.HasPrefix(r.Why, "COULD NOT CHECK:")
+	return (r.Step == StepPolicy || r.Step == StepLint || r.Step == StepRoborev) && !strings.HasPrefix(r.Why, "COULD NOT CHECK:")
 }
 
 // lockPoll is how often a waiting pusher retries the clone lock.

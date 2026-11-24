@@ -528,6 +528,34 @@ func TestLintRedPostsRepair(t *testing.T) {
 	wantClosed(t, r.row(), runs.Handoff)
 }
 
+// A roborev record that is a skip, or missing, is no review of the SHA: the run that wrote the
+// handoff can run roborev and write a new handoff, so it is a Herstel, not a Teruggegeven (#551).
+func TestRoborevRedPostsRepair(t *testing.T) {
+	for name, record := range map[string]func(r *runFix){
+		"skip": func(r *runFix) {
+			r.branchRecord(map[string]any{"uitkomst": "skip", "reden": "build session ran no review"})
+		},
+		"no record": func(r *runFix) {
+			gitDir := tgit(r.t, r.wt, "rev-parse", "--absolute-git-dir")
+			if err := os.Remove(filepath.Join(gitDir, "lighthouse", "roborev", branch+".json")); err != nil {
+				r.t.Fatal(err)
+			}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := newRunFix(t, hostconfig.ReviewShadow, nil)
+			r.commitWorkflow("nightly.yml", scheduleWF)
+			record(r)
+			r.run()
+			repair(t, r.forge.last(t), StepRoborev, r.wt)
+			if got := r.remoteHead(); got != "" {
+				t.Errorf("pushed %s without a review", got)
+			}
+			wantClosed(t, r.row(), runs.Handoff)
+		})
+	}
+}
+
 // A SHA origin already has, here under a merge pushed by hand, closes the row as after a push of
 // its own: the handoff to after, the SHA recorded, origin untouched. Neither the skip record nor
 // the shadow review stops it: there is nothing left to push (#551, 9187eeda under 18e3a81).
@@ -617,6 +645,8 @@ func TestRepairableClassifiesOnPrefix(t *testing.T) {
 		{Red{StepPolicy, violationText([]Violation{{"a.yml", RuleParse, "a.yml cannot be parsed"}})}, true},
 		{Red{StepPolicy, "COULD NOT CHECK: x"}, false},
 		{Red{StepLint, "COULD NOT CHECK: x"}, false},
+		{Red{StepRoborev, `no roborev review covers abc (x.json: uitkomst "skip", not done)`}, true},
+		{Red{StepRoborev, "COULD NOT CHECK: x"}, false},
 		{Red{StepReview, "x"}, false},
 		{Red{StepToken, "x"}, false},
 		{Red{StepPush, "x"}, false},
