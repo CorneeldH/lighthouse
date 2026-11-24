@@ -66,6 +66,7 @@ func TestStartStateRecordsHeadAndGitConfig(t *testing.T) {
 // A git-state file that cannot be read fails the start state with its base name, never the
 // workplace path: the error becomes the run's reason.
 func TestStartStateUnreadableFileNamesNoPath(t *testing.T) {
+	skipOnWindows(t, "reading a directory on Windows fails with another error than POSIX EISDIR")
 	f := newFixture(t)
 	if err := os.MkdirAll(filepath.Join(f.work, ".git", "info", "attributes"), 0o755); err != nil {
 		t.Fatal(err)

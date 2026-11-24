@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -82,11 +83,14 @@ func TestStateDirCreatesTheDirWithMode0700(t *testing.T) {
 	if err != nil || !info.IsDir() {
 		t.Fatalf("state dir missing: %v", err)
 	}
-	if info.Mode().Perm() != 0o700 {
-		t.Fatalf("mode = %o, want 700", info.Mode().Perm())
-	}
 	if !strings.HasSuffix(path, filepath.Join("lighthouse-bash-gates", "abc123")) {
 		t.Fatalf("path = %s", path)
+	}
+	if runtime.GOOS == "windows" {
+		t.Skip("NTFS has no POSIX mode bits; see docs/host-assumptions.md")
+	}
+	if info.Mode().Perm() != 0o700 {
+		t.Fatalf("mode = %o, want 700", info.Mode().Perm())
 	}
 }
 

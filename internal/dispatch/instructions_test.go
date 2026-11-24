@@ -42,6 +42,7 @@ func TestWriteInstructions(t *testing.T) {
 			if string(got) != tc.want {
 				t.Errorf("content differs from instructions/*.md:\n%s", got)
 			}
+			skipOnWindows(t, "NTFS has no POSIX mode bits")
 			info, err := os.Stat(path)
 			if err != nil {
 				t.Fatal(err)
@@ -61,6 +62,7 @@ func TestWriteInstructions(t *testing.T) {
 }
 
 func TestWriteInstructionsTightensAnExistingFile(t *testing.T) {
+	skipOnWindows(t, "NTFS has no POSIX mode bits")
 	state := t.TempDir()
 	dir := filepath.Join(state, "runs", freshSession)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -116,13 +118,14 @@ func TestWriteInstructionsContentWritesBytesVerbatim(t *testing.T) {
 	if string(got) != "instructies van de tick\n" {
 		t.Errorf("content = %q", got)
 	}
-	if info, err := os.Stat(path); err != nil || info.Mode().Perm() != 0o600 {
-		t.Errorf("file = %v, %v; want mode 0600", info, err)
-	}
 	for _, session := range []string{"", "..", "a/b"} {
 		if _, err := WriteInstructionsContent(t.TempDir(), session, []byte("x")); err == nil {
 			t.Errorf("WriteInstructionsContent(%q): want an error", session)
 		}
+	}
+	skipOnWindows(t, "NTFS has no POSIX mode bits")
+	if info, err := os.Stat(path); err != nil || info.Mode().Perm() != 0o600 {
+		t.Errorf("file = %v, %v; want mode 0600", info, err)
 	}
 }
 

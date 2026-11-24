@@ -117,6 +117,7 @@ func exitCode(t *testing.T, done <-chan error) int {
 }
 
 func TestServeSignals(t *testing.T) {
+	skipOnWindows(t, "Windows cannot send SIGTERM or SIGINT to a process")
 	bin := buildLighthouse(t)
 	for _, sig := range []syscall.Signal{syscall.SIGTERM, syscall.SIGINT} {
 		t.Run(sig.String(), func(t *testing.T) {

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -137,9 +138,6 @@ func TestOpenSlotsMakesAPrivateDirAndN(t *testing.T) {
 	if len(files) != 3 {
 		t.Errorf("got %d files, want 3", len(files))
 	}
-	if info, err := os.Stat(dir); err != nil || info.Mode().Perm() != 0o700 {
-		t.Errorf("slot dir = %v, %v; want mode 0700", info, err)
-	}
 	for _, name := range []string{"slot-1", "slot-2", "slot-3"} {
 		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
 			t.Error(err)
@@ -147,6 +145,12 @@ func TestOpenSlotsMakesAPrivateDirAndN(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "slot-4")); !os.IsNotExist(err) {
 		t.Errorf("slot-4 exists: %v", err)
+	}
+	if runtime.GOOS == "windows" {
+		t.Skip("NTFS has no POSIX mode bits; see docs/host-assumptions.md")
+	}
+	if info, err := os.Stat(dir); err != nil || info.Mode().Perm() != 0o700 {
+		t.Errorf("slot dir = %v, %v; want mode 0700", info, err)
 	}
 }
 

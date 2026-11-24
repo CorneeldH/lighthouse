@@ -76,6 +76,7 @@ func TestShellKPI(t *testing.T) {
 	}
 
 	t.Run("commands_run", func(t *testing.T) {
+		skipOnWindows(t, "shellcheck has no MINGW release, so the pinned shellcheck cannot be fetched")
 		// Each KPI command runs in a repo with the shell pack installed and meets its target
 		// there: a KPI row nobody can run measures nothing.
 		repo, rows := newRepo(t)
@@ -95,6 +96,7 @@ func TestShellKPI(t *testing.T) {
 	})
 
 	t.Run("rows_go_red", func(t *testing.T) {
+		skipOnWindows(t, "shellcheck has no MINGW release, so the pinned shellcheck cannot be fetched")
 		// Each row misses its target once the thing it measures is broken.
 		repo, rows := newRepo(t)
 		if len(rows) != 3 {

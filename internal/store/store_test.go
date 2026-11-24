@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -44,6 +45,9 @@ func TestOpenSetsPragmas(t *testing.T) {
 	defer func() { _ = s.Close() }()
 	checkPragmas(t, s)
 
+	if runtime.GOOS == "windows" {
+		t.Skip("NTFS has no POSIX mode bits; see docs/host-assumptions.md")
+	}
 	info, err := os.Stat(dir)
 	if err != nil {
 		t.Fatalf("stat dir: %v", err)
@@ -191,6 +195,9 @@ func TestOpenTwiceIsLocked(t *testing.T) {
 func TestOpenPutsFilesAtThePath(t *testing.T) {
 	for _, name := range []string{"plain", "with space", "with?query", "with#hash", "with%41pct"} {
 		t.Run(name, func(t *testing.T) {
+			if name == "with?query" && runtime.GOOS == "windows" {
+				t.Skip("NTFS refuses ? in a file name; see docs/host-assumptions.md")
+			}
 			dir := filepath.Join(t.TempDir(), name)
 			path := filepath.Join(dir, "l.db")
 			s, err := Open(context.Background(), path)

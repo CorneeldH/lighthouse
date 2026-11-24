@@ -9,10 +9,19 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 )
+
+// skipOnWindows skips t on native Windows, where the behaviour under test does not exist.
+func skipOnWindows(t *testing.T, why string) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip(why + "; see docs/host-assumptions.md")
+	}
+}
 
 // needTool skips a test when name is not on the PATH; in CI it fails instead, so a missing
 // tool never turns a gate test into a silent skip.

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -121,6 +122,9 @@ func TestGoCommandExitCodePassesThrough(t *testing.T) {
 }
 
 func TestGoSignalledCommandIsRed(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows has no POSIX signals: kill -TERM $$ in Git Bash gives no exit 143; see docs/host-assumptions.md")
+	}
 	rc, _, _ := runGo(t, t.TempDir(), "", "--", "sh", "-c", "kill -TERM $$")
 	if rc != 143 {
 		t.Errorf("rc = %d, want 143", rc)

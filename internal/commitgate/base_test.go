@@ -3,6 +3,7 @@ package commitgate
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -69,22 +70,25 @@ func TestOldMarkersArePruned(t *testing.T) {
 }
 
 func TestStateDirIsPrivateAndRefusesPathEscape(t *testing.T) {
-	runtime := runtimeDir(t)
+	runDir := runtimeDir(t)
 	dir, err := StateDir("s1", true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := filepath.Join(runtime, "lighthouse-commit-test-gate", "s1"); dir != want {
+	if want := filepath.Join(runDir, "lighthouse-commit-test-gate", "s1"); dir != want {
 		t.Errorf("StateDir = %q, want %q", dir, want)
-	}
-	if info, err := os.Stat(dir); err != nil || info.Mode().Perm() != 0o700 {
-		t.Errorf("state dir mode = %v, %v; want 0700", info, err)
 	}
 	for _, id := range []string{"a/b", ".."} {
 		_, err := StateDir(id, true)
 		if want := "invalid session_id: '" + id + "'"; err == nil || err.Error() != want {
 			t.Errorf("StateDir(%q) err = %v, want %q", id, err, want)
 		}
+	}
+	if runtime.GOOS == "windows" {
+		t.Skip("NTFS has no POSIX mode bits; see docs/host-assumptions.md")
+	}
+	if info, err := os.Stat(dir); err != nil || info.Mode().Perm() != 0o700 {
+		t.Errorf("state dir mode = %v, %v; want 0700", info, err)
 	}
 }
 

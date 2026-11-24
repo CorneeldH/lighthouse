@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -104,16 +105,19 @@ func TestPermissionWritesToolAndPath(t *testing.T) {
 		t.Errorf("note %v", m)
 	}
 	path := filepath.Join(state, "runs", gateRun, "permission.json")
+	entries, _ := os.ReadDir(filepath.Dir(path))
+	if len(entries) != 1 {
+		t.Errorf("run dir has %d entries, want only permission.json", len(entries))
+	}
+	if runtime.GOOS == "windows" {
+		t.Skip("NTFS has no POSIX mode bits; see docs/host-assumptions.md")
+	}
 	fi, err := os.Stat(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if fi.Mode().Perm() != 0o600 {
 		t.Errorf("mode %v, want 0600", fi.Mode().Perm())
-	}
-	entries, _ := os.ReadDir(filepath.Dir(path))
-	if len(entries) != 1 {
-		t.Errorf("run dir has %d entries, want only permission.json", len(entries))
 	}
 }
 

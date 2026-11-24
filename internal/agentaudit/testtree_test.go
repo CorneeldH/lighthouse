@@ -6,9 +6,18 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"testing"
 )
+
+// skipOnWindows skips t on native Windows, where the behaviour under test does not exist.
+func skipOnWindows(t *testing.T, why string) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip(why + "; see docs/host-assumptions.md")
+	}
+}
 
 // tree writes files (slash paths relative to a new temporary directory) and returns that
 // directory. A path ending in ".sh" is made executable.
