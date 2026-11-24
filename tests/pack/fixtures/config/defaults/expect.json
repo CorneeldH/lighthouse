@@ -81,6 +81,14 @@
  },
  {
   "args": [
+   "test_gate.on"
+  ],
+  "rc": 0,
+  "stdout": "commit\n",
+  "stderr": ""
+ },
+ {
+  "args": [
    "test_gate.deadline_seconds"
   ],
   "rc": 0,

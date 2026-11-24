@@ -81,6 +81,10 @@
    "str"
   ],
   [
+   "test_gate.on",
+   "str"
+  ],
+  [
    "test_gate.deadline_seconds",
    "int"
   ],
@@ -270,6 +274,7 @@
   "labels.needs_decision": "needs-decision",
   "labels.needs_hands": "needs-hands",
   "labels.needs_testing": "needs-testing",
+  "test_gate.on": "commit",
   "test_gate.deadline_seconds": 270,
   "test_gate.slots": 2,
   "test_gate.slot_wait_seconds": 180,

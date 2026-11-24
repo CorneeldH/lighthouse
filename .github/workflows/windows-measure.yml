@@ -10,6 +10,7 @@ on:
     paths:
       - ci/windows-measure.sh
       - .github/workflows/windows-measure.yml
+      - internal/commitgate/**
 
 permissions:
   contents: read

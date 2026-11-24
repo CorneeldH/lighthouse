@@ -223,6 +223,7 @@
               "readers": [
                 "internal/cli/worktreeaudit.go",
                 "internal/commitgate/pre.go",
+                "internal/commitgate/pr.go",
                 "internal/hooks/hooks.go",
                 "internal/hooks/maincommitgate.go",
                 "internal/hooks/worktreecheck.go",
@@ -422,6 +423,17 @@
                 "internal/evidence/allowlist.go",
                 "internal/evidence/run.go",
                 "pack/core/skills/write-pr"
+              ]
+            },
+            {
+              "key": "test_gate.on",
+              "level": "advanced",
+              "required": "no",
+              "default": "commit",
+              "about": "When the test gate runs: after each commit, at the PR, or both.",
+              "readers": [
+                "internal/commitgate/gate.go",
+                "pack/core/instructions/AGENTS.md"
               ]
             },
             {
