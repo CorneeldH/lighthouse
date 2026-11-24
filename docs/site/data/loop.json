@@ -770,12 +770,6 @@
       "from": "push-workflows",
       "to": "fix-pr",
       "status": "works"
-    },
-    {
-      "from": "close-issue",
-      "to": "close-followup",
-      "status": "planned",
-      "issue": 527
     }
   ],
   "routes": [
