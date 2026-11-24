@@ -8,6 +8,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -246,14 +247,27 @@ func (p *push) pushUnderLock(ctx context.Context, fixPR bool) error {
 		return p.ask(ctx, questionInput{red: *red, diff: diff})
 	}
 	if class == PreMerge && p.req.Permit == "" {
-		v := Review(ctx, *p.req.Config, diff, p.scrub(), p.req.Guard)
-		switch {
-		case p.req.Config.Review != hostconfig.ReviewEnforce:
-			return p.ask(ctx, questionInput{red: Red{StepReview, protocol.Heading("question_push_shadow", p.req.Language)},
-				sha: c.SHA, diff: diff, verdict: &v, hint: hintPermit})
-		case !v.Approve:
-			return p.ask(ctx, questionInput{red: Red{StepReview, "not every reviewer approves"},
-				sha: c.SHA, diff: diff, verdict: &v, hint: hintPermit})
+		missing := questionInput{sha: c.SHA, diff: diff, hint: hintPermit,
+			noReviewers: len(p.req.Config.Reviewers) == 0, noIntent: p.req.Config.Intent == nil}
+		if r, ok := p.intent(ctx, c, diff); ok {
+			// The intent reviewer decides in the class intent, in shadow and in enforce alike.
+			if !r.Approve {
+				q := missing
+				q.red, q.verdict = Red{StepReview, "the intent reviewer does not approve"}, &Verdict{Results: []ReviewerResult{r}}
+				return p.ask(ctx, q)
+			}
+		} else {
+			v := Review(ctx, *p.req.Config, diff, p.scrub(), p.req.Guard)
+			q := missing
+			q.verdict = &v
+			switch {
+			case p.req.Config.Review != hostconfig.ReviewEnforce:
+				q.red = Red{StepReview, protocol.Heading("question_push_shadow", p.req.Language)}
+				return p.ask(ctx, q)
+			case !v.Approve:
+				q.red = Red{StepReview, "not every reviewer approves"}
+				return p.ask(ctx, q)
+			}
 		}
 	}
 	// Post-merge, permitted or approved: from here an answer push may permit exactly this SHA.
@@ -280,6 +294,68 @@ func (p *push) pushUnderLock(ctx context.Context, fixPR bool) error {
 		return p.ask(ctx, questionInput{red: Red{StepPush, why}, diff: diff})
 	}
 	return p.pushed(ctx, fixPR, old+".."+c.SHA, workflowsOf(c.Files))
+}
+
+// intent runs the intent reviewer of spec #551 §2 on a pre-merge change. ok is false on the
+// ordinary road: no [dispatch.workflow_push.intent], a change outside the class intent, an issue
+// the forge does not give, or spec and plan dirs it cannot list. Then the security review decides
+// as if the class did not exist.
+func (p *push) intent(ctx context.Context, c Checked, diff string) (r ReviewerResult, ok bool) {
+	if p.req.Config.Intent == nil {
+		return ReviewerResult{}, false
+	}
+	if in, _ := InIntentClass(ctx, p.req, c); !in {
+		return ReviewerResult{}, false
+	}
+	issue, err := p.deps.Forge.Issue(ctx, p.req.Issue)
+	if err != nil {
+		return ReviewerResult{}, false
+	}
+	docs, err := intentDocs(ctx, p.req, c)
+	if err != nil {
+		return ReviewerResult{}, false
+	}
+	in := IntentInput{Diff: diff, IssueTitle: issue.Title, IssueBody: issue.Body, Docs: docs}
+	return ReviewIntent(ctx, *p.req.Config, in, p.scrub(), p.req.Guard), true
+}
+
+// intentDocs are the files under req.SpecsDir and req.PlansDir at c.SHA that the branch adds or
+// changes (c.Files), read in the clone. The two dirs come from the repo config and are listed with
+// ls-tree; a path from the branch never goes to git, and only a regular blob of at most maxRead
+// bytes is read, by its object id. Any other entry is named with the reason it was not read.
+func intentDocs(ctx context.Context, req Request, c Checked) ([]IntentDoc, error) {
+	var dirs []string
+	for _, d := range []string{req.SpecsDir, req.PlansDir} {
+		d = path.Clean(strings.TrimSpace(d))
+		if d == "." || d == "" || path.IsAbs(d) || d == ".." || strings.HasPrefix(d, "../") || strings.HasPrefix(d, "-") {
+			continue
+		}
+		dirs = append(dirs, d)
+	}
+	if len(dirs) == 0 {
+		return nil, nil
+	}
+	entries, err := treeEntries(ctx, req.CloneDir, c.SHA, true, dirs)
+	if err != nil {
+		return nil, err
+	}
+	var docs []IntentDoc
+	for _, f := range c.Files {
+		e, ok := entries[f]
+		if !ok {
+			continue // deleted, or outside the two dirs
+		}
+		text, reason, err := readWorkflow(ctx, req.CloneDir, e)
+		if err != nil {
+			return nil, err
+		}
+		if reason != "" {
+			docs = append(docs, IntentDoc{Path: f, Text: "[not read: " + reason + "]"})
+			continue
+		}
+		docs = append(docs, IntentDoc{Path: f, Text: string(text)})
+	}
+	return docs, nil
 }
 
 // scrub is the forge token and every token read so far, trimmed.

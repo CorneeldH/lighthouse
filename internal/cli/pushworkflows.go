@@ -253,15 +253,7 @@ func pushWorkflows(ctx context.Context, env pushEnv, o pushOptions) error {
 	}
 	defer func() { _ = st.Close() }()
 	te := tickEnv{Getenv: getenv, HostToml: o.hostToml, StateDir: o.stateDir, Workplace: env.Workplace}
-	req := pusher.Request{
-		Repo: repo.Slug, Default: repo.DefaultBranch, Worktree: o.worktree, Issue: o.issue, RunID: o.runID,
-		StateDir: o.stateDir, CloneDir: o.cloneDir, PauseFile: o.pauseFile, ForgeToken: token, Permit: o.permit,
-		Config: cfg.WorkflowPush, Language: repo.Language,
-		Guard: []string{cfg.Forge.TokenFile, o.stateDir, o.cloneDir},
-	}
-	if req.URL, err = pusher.RemoteURL(repo); err != nil {
-		req.Off = err.Error()
-	}
+	req := pushRequest(cfg, repo, o, token)
 	deps := pusher.Deps{DB: st.DB, Forge: rf.Forge, Now: time.Now, ReadToken: pusher.ReadTokenFile}
 	if o.merge {
 		deps.Merger = mergeClient(repo, env.ForgeURL)
@@ -269,6 +261,24 @@ func pushWorkflows(ctx context.Context, env pushEnv, o pushOptions) error {
 	}
 	deps.Workplace = te.workplace(cfg, repo, o.stateDir, "", "")
 	return pusher.Run(ctx, deps, req)
+}
+
+// pushRequest is the pusher's Request for o on repo: the paths tick passed, the forge token, and
+// from the repo config the language of the comments and paths.specs and paths.plans, whose files
+// on the branch go to the intent reviewer. A forge URL the pusher cannot use turns the route off.
+func pushRequest(cfg hostconfig.Dispatch, repo repoconfig.Repo, o pushOptions, token string) pusher.Request {
+	req := pusher.Request{
+		Repo: repo.Slug, Default: repo.DefaultBranch, Worktree: o.worktree, Issue: o.issue, RunID: o.runID,
+		StateDir: o.stateDir, CloneDir: o.cloneDir, PauseFile: o.pauseFile, ForgeToken: token, Permit: o.permit,
+		Config: cfg.WorkflowPush, Language: repo.Language, SpecsDir: repo.SpecsDir, PlansDir: repo.PlansDir,
+		Guard: []string{cfg.Forge.TokenFile, o.stateDir, o.cloneDir},
+	}
+	url, err := pusher.RemoteURL(repo)
+	if err != nil {
+		req.Off = err.Error()
+	}
+	req.URL = url
+	return req
 }
 
 // dispatchRepo is the repo of [dispatch] repos whose forge.repo is slug.

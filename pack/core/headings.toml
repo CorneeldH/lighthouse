@@ -283,6 +283,14 @@ en = "Push it yourself"
 nl = "shadow mode: de review beslist niet, jij wel"
 en = "shadow mode: the review does not decide, you do"
 
+[question_push_no_reviewers]
+nl = "Er zijn geen reviewers ingesteld, dus de pusher pusht een pre-merge wijziging nooit zelf. Zet ze in `host.toml` met `[[dispatch.workflow_push.reviewers]]` en `review = \"enforce\"`; zie `docs/tick.md`, *De review*."
+en = "No reviewers are configured, so the pusher never pushes a pre-merge change itself. Set them in `host.toml` with `[[dispatch.workflow_push.reviewers]]` and `review = \"enforce\"`; see `docs/tick.md`, *De review*."
+
+[question_push_no_intent]
+nl = "Er is geen intent-toets ingesteld. Met `[dispatch.workflow_push.intent]` in `host.toml` pusht de pusher een wijziging zonder nieuwe rechten die past bij issue, spec en plan zelf; zie `docs/tick.md`, *De review*."
+en = "No intent check is configured. With `[dispatch.workflow_push.intent]` in `host.toml` the pusher itself pushes a change without new rights that fits the issue, spec and plan; see `docs/tick.md`, *De review*."
+
 [question_push_permit]
 nl = "Antwoord `push` om precies deze SHA te laten pushen: de vloer draait dan opnieuw, de review niet."
 en = "Answer `push` to have exactly this SHA pushed: the floor runs again, the review does not."

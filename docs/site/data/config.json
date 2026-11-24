@@ -551,9 +551,11 @@
               "default": "docs/developer/planning/plans",
               "about": "Where plans are written.",
               "readers": [
+                "internal/cli/pushworkflows.go",
                 "internal/kpi/startissue.go",
                 "internal/postartefact/postartefact.go",
                 "internal/pusher/floor.go",
+                "internal/repoconfig/repoconfig.go",
                 "internal/review/openpoints.go",
                 "pack/core/skills/review-plan",
                 "pack/core/skills/start-issue",
@@ -580,9 +582,11 @@
               "default": "docs/developer/planning/specs",
               "about": "Where specs are written.",
               "readers": [
+                "internal/cli/pushworkflows.go",
                 "internal/kpi/startissue.go",
                 "internal/postartefact/postartefact.go",
                 "internal/pusher/floor.go",
+                "internal/repoconfig/repoconfig.go",
                 "internal/review/openpoints.go",
                 "pack/core/skills/review-spec",
                 "pack/core/skills/start-issue",
