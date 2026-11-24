@@ -226,7 +226,10 @@ fout halverwege verder gaat waar hij stopte:
 
 **Waar.** Het commando draait op de tick-host (waar de runs staan), met de tick gepauzeerd
 (`lighthouse pause`). Zonder runs-database weigert het stap 3 in plaats van "geen run" aan te nemen.
-*(eigen keuze na specreview, r1-f3)*
+*(eigen keuze na specreview, r1-f3)* De pauze alleen is geen grens: een tick die al loopt, kan nog
+labels schrijven (`KindReturn`). Het commando neemt daarom de tick-lock (`internal/cli/tick.go`)
+voor de hele schrijffase, en weigert zolang een run `open` is. De herlezing na de bevestiging valt
+binnen die lock. *(eigen keuze na specreview, r2-f1)*
 
 **Weigeren.** Zowel `config.Load` (`internal/config`) als `repoconfig.LoadFile`
 (`internal/repoconfig`) weigeren de oude sleutels in `[labels]`, met een fout die het
@@ -236,11 +239,12 @@ kapotte config zonder uitweg.
 
 **Volgorde per repo.** *(eigen keuze na specreview, r1-f1)*
 
-- **lighthouse zelf.** Deel a bevat de code, de nieuwe sleutels in `lighthouse.toml`, het
-  taxonomiebestand en de dogfood-kopie, zodat CI (`init --upgrade` → `No changes.`) groen is. Vóór de
-  merge: tick pauzeren, het migratiecommando uit de worktree van a draaien (stap 1–4 en 6 op de forge
-  en in het bestand; stap 5 staat al in de branch), mergen, de nieuwe binary op de tick-host
-  installeren, pauze eraf.
+- **lighthouse zelf.** De code van deel a laat `lighthouse.toml` en het taxonomiebestand eerst
+  oud: het migratiecommando moet de `3-*`-namen daaruit lezen. Vóór de PR: tick pauzeren, het
+  migratiecommando uit de worktree van a draaien (alle stappen 1–6: forge, taxonomiebestand en
+  `[labels]`), de herschreven `lighthouse.toml` en het taxonomiebestand in a committen, dan pas
+  pushen, zodat CI (`init --upgrade` → `No changes.`) de nieuwe sleutels ziet. Daarna mergen, de
+  nieuwe binary op de tick-host installeren, pauze eraf. *(eigen keuze na specreview, r2-f2)*
 - **personal_ai_agent** (pack v0.9.0, oude sleutels). Tick pauzeren, nieuwe binary, migreren,
   direct `init --upgrade` (de oude pack-skills vragen naar `labels.needs_shaping`), committen via een
   PR, pauze eraf. Tussen de binary en `init --upgrade` falen `lighthouse config`-aanroepen van die
