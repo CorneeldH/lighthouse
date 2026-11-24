@@ -115,7 +115,9 @@ func TestAcquireKeepsTheSlotHeldAndClosesTheOthers(t *testing.T) {
 	if held, err := flock.TryFile(probe); err != nil || held {
 		t.Errorf("slot-1 after Acquire: held = %v, %v; want it still taken", held, err)
 	}
-	if _, err := files[1].Stat(); !errors.Is(err, os.ErrClosed) {
+	// Close, not Stat: on Windows Stat does not check for a closed file and calls GetFileType on
+	// a stale handle (#559); a second Close reports os.ErrClosed everywhere.
+	if err := files[1].Close(); !errors.Is(err, os.ErrClosed) {
 		t.Errorf("file of slot 2 after Acquire: %v, want closed", err)
 	}
 	if err := files[0].Close(); err != nil {
