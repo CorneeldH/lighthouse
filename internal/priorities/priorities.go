@@ -47,8 +47,8 @@ type Issue struct {
 	Label     string        `json:"label"`
 	// OpenQuestion is true when the overview holds a question for this issue.
 	OpenQuestion bool `json:"open_question"`
-	// NeedsLabel is true when the issue carries any needs_* label, not only the one in Label: the
-	// flag on an active issue follows it.
+	// NeedsLabel is true when the issue carries any needs_* label, not only the one in Label: it
+	// drives the needs_human row for an active issue.
 	NeedsLabel bool `json:"needs_label"`
 	// PrioWeight is the priority weight of the issue (rule of #445), see package prioweight.
 	PrioWeight int `json:"prio_weight"`

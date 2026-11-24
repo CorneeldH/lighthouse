@@ -13,7 +13,6 @@ export interface GNode {
   external: boolean
   active: boolean
   state: IssueStateName
-  needsHuman: boolean
   uphill: boolean
   depth: number
   waiting: number
@@ -49,31 +48,32 @@ function liveRun(runs: Run[], repo: string, nr: number): Run | undefined {
   )
 }
 
-export type IssueStateName = 'done' | 'active' | 'needs_human' | 'blocked' | 'ready'
+export type IssueStateName =
+  | 'done'
+  | 'needs_shaping'
+  | 'needs_human'
+  | 'active'
+  | 'ready'
+  | 'blocked'
 
-const NEEDS_FIRST = new Set(['needs_shaping', 'needs_decision'])
 const NEEDS_LATER = new Set(['needs_hands', 'needs_testing'])
 
-// The state of an open issue: the first row of the state table that fits (spec Toestanden).
-// `needsHuman` is the flag on an active issue; a done issue is never in `issues`.
-export function issueState(
-  issue: Issue,
-  runs: Run[],
-  repo: string,
-): { state: IssueStateName; needsHuman: boolean } {
+// The state of an open issue: the first row of the state table that fits (same rows as
+// issuestate.Of in Go); a done issue is never in `issues`.
+export function issueState(issue: Issue, runs: Run[], repo: string): IssueStateName {
   if (
     liveRun(runs, repo, issue.number) !== undefined ||
     issue.status === 'In progress' ||
     issue.status === 'Controller'
   ) {
-    return { state: 'active', needsHuman: issue.needs_label || issue.open_question }
+    if (issue.label === 'needs_shaping') return 'needs_shaping'
+    return issue.needs_label || issue.open_question ? 'needs_human' : 'active'
   }
-  if (NEEDS_FIRST.has(issue.label)) return { state: 'needs_human', needsHuman: false }
-  if (issue.label.startsWith('blocked_') || (issue.blocked_by?.length ?? 0) > 0) {
-    return { state: 'blocked', needsHuman: false }
-  }
-  if (NEEDS_LATER.has(issue.label)) return { state: 'needs_human', needsHuman: false }
-  return { state: 'ready', needsHuman: false }
+  if (issue.label === 'needs_shaping') return 'needs_shaping'
+  if (issue.label === 'needs_decision') return 'needs_human'
+  if (issue.label.startsWith('blocked_') || (issue.blocked_by?.length ?? 0) > 0) return 'blocked'
+  if (NEEDS_LATER.has(issue.label)) return 'needs_human'
+  return 'ready'
 }
 
 export function isUphill(run: Run | undefined): boolean {
@@ -142,7 +142,6 @@ export function buildGraph(repos: Repo[], runs: Run[]): Graph {
     external: true,
     active: false,
     state: 'ready',
-    needsHuman: false,
     uphill: false,
     depth: 0,
     waiting: 0,
@@ -156,8 +155,11 @@ export function buildGraph(repos: Repo[], runs: Run[]): Graph {
   for (const repo of repos) {
     for (const issue of repo.issues ?? []) {
       const run = liveRun(runs, repo.slug, issue.number)
-      const { state, needsHuman } = issueState(issue, runs, repo.slug)
-      const active = state === 'active'
+      const state = issueState(issue, runs, repo.slug)
+      // `active` = the issue is being worked on, whatever its final status (needs_human and
+      // needs_shaping can hold for an issue with a live run).
+      const active =
+        run !== undefined || issue.status === 'In progress' || issue.status === 'Controller'
       const key = keyOf(repo.slug, issue.number)
       nodes.set(key, {
         ...blank(key, repo.slug, issue.number),
@@ -167,7 +169,6 @@ export function buildGraph(repos: Repo[], runs: Run[]): Graph {
         external: false,
         active,
         state,
-        needsHuman,
         uphill: active && isUphill(run),
         factor: issue.factor,
         prioWeight: issue.prio_weight,
@@ -278,10 +279,16 @@ export interface Block {
   title: string
   url: string
   state: IssueStateName
-  needsHuman: boolean
 }
 
-const GROUP_ORDER: IssueStateName[] = ['done', 'active', 'ready', 'needs_human', 'blocked']
+const GROUP_ORDER: IssueStateName[] = [
+  'done',
+  'needs_human',
+  'active',
+  'ready',
+  'needs_shaping',
+  'blocked',
+]
 
 export interface MilestoneRow {
   blocks: Block[]
@@ -346,7 +353,6 @@ export function milestoneRows(repos: Repo[], graph: Graph): MilestoneRow[] {
         title: n.title,
         url: n.url,
         state: n.state,
-        needsHuman: n.needsHuman,
       })
       const doneBlocks: Block[] = [...(m.closed ?? [])]
         .sort((a, b) => a.number - b.number)
@@ -356,7 +362,6 @@ export function milestoneRows(repos: Repo[], graph: Graph): MilestoneRow[] {
           title: c.title,
           url: c.url,
           state: 'done',
-          needsHuman: false,
         }))
       // Outside blockers have their own column (row.outside); blocks holds the milestone's own.
       const workBlocks = order.map(toBlock)

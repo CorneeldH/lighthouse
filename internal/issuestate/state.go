@@ -19,11 +19,12 @@ type State string
 
 // The states of an issue.
 const (
-	Done       State = "done"
-	Active     State = "active"
-	NeedsHuman State = "needs_human"
-	Blocked    State = "blocked"
-	Ready      State = "ready"
+	Done         State = "done"
+	Active       State = "active"
+	NeedsShaping State = "needs_shaping"
+	NeedsHuman   State = "needs_human"
+	Blocked      State = "blocked"
+	Ready        State = "ready"
 )
 
 // Board statuses that make an issue active.
@@ -42,14 +43,16 @@ type Input struct {
 	OpenQuestion bool // protocol.Classify(...).State == protocol.StateQuestion
 }
 
-// Result is the state of an issue; NeedsHuman is only true when State is Active.
+// Result is the state of an issue.
 type Result struct {
-	State      State
-	NeedsHuman bool
+	State State
 }
 
-// Of is the state of an issue: the first row of the state table that fits. A closed issue is
-// done before any row.
+// Of is the state of an issue: the first row of the state table that fits, six states in all.
+// A closed issue is done before any row. An active issue is needs_shaping with the shaping label,
+// needs_human with an open question or another needs_* label, else active. A non-active issue is
+// needs_shaping with the shaping label, needs_human with the decision label, blocked with a
+// blocked label or open blocker, needs_human with the hands or testing label, else ready.
 func Of(in Input, l repoconfig.Labels) Result {
 	has := func(names ...string) bool {
 		for _, n := range names {
@@ -63,9 +66,16 @@ func Of(in Input, l repoconfig.Labels) Result {
 	case in.Closed:
 		return Result{State: Done}
 	case in.Run == "open" || in.Run == "parked" || in.Status == statusInProgress || in.Status == statusController:
-		flag := in.OpenQuestion || HasNeedsLabel(in.Labels, l)
-		return Result{State: Active, NeedsHuman: flag}
-	case has(l.NeedsShaping, l.NeedsDecision):
+		switch {
+		case has(l.NeedsShaping):
+			return Result{State: NeedsShaping}
+		case in.OpenQuestion || has(l.NeedsDecision, l.NeedsHands, l.NeedsTesting):
+			return Result{State: NeedsHuman}
+		}
+		return Result{State: Active}
+	case has(l.NeedsShaping):
+		return Result{State: NeedsShaping}
+	case has(l.NeedsDecision):
 		return Result{State: NeedsHuman}
 	case has(l.BlockedIssue, l.BlockedExternal) || len(OpenBlockers(in.Blockers)) > 0:
 		return Result{State: Blocked}
@@ -76,7 +86,7 @@ func Of(in Input, l repoconfig.Labels) Result {
 }
 
 // HasNeedsLabel reports whether names holds any needs_* label (shaping, decision, hands or
-// testing): the label half of the flag on an active issue. An empty configured name never matches.
+// testing). An empty configured name never matches.
 func HasNeedsLabel(names []string, l repoconfig.Labels) bool {
 	for _, n := range []string{l.NeedsShaping, l.NeedsDecision, l.NeedsHands, l.NeedsTesting} {
 		if n != "" && slices.Contains(names, n) {
