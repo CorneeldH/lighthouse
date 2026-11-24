@@ -15,10 +15,12 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/CorneeldH/lighthouse/internal/config"
+	"github.com/CorneeldH/lighthouse/internal/hostconfig"
 	"github.com/CorneeldH/lighthouse/internal/initcmd"
 	"github.com/CorneeldH/lighthouse/internal/levellog"
 	"github.com/CorneeldH/lighthouse/internal/levels"
 	"github.com/CorneeldH/lighthouse/internal/manifest"
+	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/version"
 	"github.com/CorneeldH/lighthouse/pack"
 )
@@ -32,7 +34,16 @@ func newLevelCommand() *cobra.Command {
 		Short: "Show the setup level, the stand per component and what the log stands counted",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return showLevel(cmd.OutOrStdout())
+			out := cmd.OutOrStdout()
+			if err := showLevel(out); err != nil {
+				return err
+			}
+			if root, err := config.RepoRoot(); err == nil {
+				for _, note := range pusherNotes(root, hostconfig.Path()) {
+					_, _ = fmt.Fprintln(out, note)
+				}
+			}
+			return nil
 		},
 	}
 }
@@ -70,6 +81,50 @@ func showLevel(out io.Writer) error {
 		return nil
 	}
 	return writeLevel(out, root, installed, files)
+}
+
+// pusherNotes is zero or one line about [dispatch.workflow_push] of the host.toml at hostToml:
+// it has no reviewers or no intent table, so the pusher never pushes before the merge. It speaks
+// only when this repo is in [dispatch] repos, matched by [forge] repo (the slug) and not by path,
+// so a worktree counts as its repo. No host.toml, an unlisted repo or a complete config gives
+// nothing; a host.toml that does not parse gives one line saying so. A note, never an error.
+func pusherNotes(root, hostToml string) []string {
+	if hostToml == "" {
+		return nil
+	}
+	if _, err := os.Stat(hostToml); err != nil {
+		return nil
+	}
+	cfg, err := hostconfig.LoadDispatch(hostToml)
+	if err != nil {
+		return []string{fmt.Sprintf("workflow pusher: cannot check host.toml: %v", err)}
+	}
+	wp := cfg.WorkflowPush
+	if wp == nil || (len(wp.Reviewers) > 0 && wp.Intent != nil) {
+		return nil
+	}
+	here, err := repoconfig.Load(root)
+	if err != nil {
+		return nil
+	}
+	listed := false
+	for _, l := range repoconfig.LoadAll(cfg.Repos) {
+		if l.Err == nil && l.Repo.Slug == here.Slug {
+			listed = true
+		}
+	}
+	if !listed {
+		return nil
+	}
+	var missing []string
+	if len(wp.Reviewers) == 0 {
+		missing = append(missing, "reviewers ([[dispatch.workflow_push.reviewers]])")
+	}
+	if wp.Intent == nil {
+		missing = append(missing, "intent ([dispatch.workflow_push.intent])")
+	}
+	return []string{"workflow pusher: " + hostToml + " sets no " + strings.Join(missing, " and no ") +
+		", so the pusher never pushes before the merge (see docs/tick.md)"}
 }
 
 // installedPackages are the packages of the manifest; nil (every package of the binary) when
