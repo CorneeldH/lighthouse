@@ -184,6 +184,58 @@
       "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/hooks/worktreecheck.go"
     },
     {
+      "id": "memory-gate-edit",
+      "phase": "pre-tool",
+      "row": 8,
+      "kind": "hook",
+      "trigger": "tool",
+      "events": [
+        "PreToolUse"
+      ],
+      "matcher": "Edit|Write",
+      "command": "run.sh memory-gate",
+      "effects": [
+        "blocks"
+      ],
+      "label": "memory-gate (edit)",
+      "what": "Blocks a write into a Claude Code auto-memory directory.",
+      "how": [
+        "It reads the target of the write: the file path of an Edit or Write, or the redirect targets and file arguments of a Bash command such as tee, cp, mv, rm and sed -i.",
+        "A target under .claude/projects/<project>/memory, or under CLAUDE_CONFIG_DIR, blocks with exit 2 and a message that points to /lighthouse-place-instruction and /lighthouse-migrate-memory. Reading stays free.",
+        "On the stand log it only counts the block in the logbook."
+      ],
+      "when": "Before each Edit or Write.",
+      "without": "The harness writes lessons into one-machine memory that nobody reviews, next to the rules in the repo.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/hooks/memorygate.go"
+    },
+    {
+      "id": "memory-gate-bash",
+      "phase": "pre-tool",
+      "row": 9,
+      "kind": "hook",
+      "trigger": "tool",
+      "events": [
+        "PreToolUse"
+      ],
+      "matcher": "Bash",
+      "command": "run.sh memory-gate",
+      "effects": [
+        "blocks"
+      ],
+      "label": "memory-gate (bash)",
+      "what": "Blocks a write into a Claude Code auto-memory directory.",
+      "how": [
+        "It reads the target of the write: the file path of an Edit or Write, or the redirect targets and file arguments of a Bash command such as tee, cp, mv, rm and sed -i.",
+        "A target under .claude/projects/<project>/memory, or under CLAUDE_CONFIG_DIR, blocks with exit 2 and a message that points to /lighthouse-place-instruction and /lighthouse-migrate-memory. Reading stays free.",
+        "On the stand log it only counts the block in the logbook."
+      ],
+      "when": "Before each Bash call.",
+      "without": "The harness writes lessons into one-machine memory that nobody reviews, next to the rules in the repo.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/internal/hooks/memorygate.go"
+    },
+    {
       "id": "main-commit-gate",
       "phase": "pre-tool",
       "row": 1,
@@ -909,6 +961,14 @@
       "chips": [
         "issue-impact-scout",
         "usage-gate-subagent"
+      ]
+    },
+    {
+      "id": "memory-write",
+      "label": "I write to auto-memory",
+      "chips": [
+        "memory-gate-edit",
+        "memory-gate-bash"
       ]
     },
     {

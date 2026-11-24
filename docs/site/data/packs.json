@@ -84,6 +84,14 @@
         "when": "before every shell command"
       },
       {
+        "name": "memory-gate",
+        "source": "internal/hooks/memorygate.go",
+        "events": [
+          "PreToolUse"
+        ],
+        "when": "before every edit and shell command"
+      },
+      {
         "name": "worktree-check",
         "source": "internal/hooks/worktreecheck.go",
         "events": [
