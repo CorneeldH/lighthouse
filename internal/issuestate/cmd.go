@@ -135,21 +135,28 @@ func (t target) input(ctx context.Context, env Env, nr int) (Input, error) {
 }
 
 // refuseClosed reads only the issue and, when it is closed, writes the error line and returns
-// exit 1: a closed issue gets no label and no board move. It returns 0 for an open issue.
-func (t target) refuseClosed(ctx context.Context, nr int, out io.Writer) int {
+// exit 1: a closed issue gets no label and no board move. It returns the labels of an open issue
+// and 0.
+func (t target) refuseClosed(ctx context.Context, nr int, out io.Writer) ([]string, int) {
 	is, err := t.f.Issue(ctx, nr)
 	if err != nil {
-		return fail(out, err, "")
+		return nil, fail(out, err, "")
 	}
 	if is.State == "closed" {
-		return fail(out, fmt.Errorf("issue #%d is closed", nr), "")
+		return nil, fail(out, fmt.Errorf("issue #%d is closed", nr), "")
 	}
-	return 0
+	return is.Labels, 0
 }
 
-// labelLine is `label: #<nr> <winner> (+<add>, -<remove>)`, or `label: #<nr> keeps <winner>`
-// without an edit.
-func labelLine(nr int, e LabelEdit) string {
+// labelLine is `label: #<nr> <names> (+<add>, -<remove>)`, or `label: #<nr> keeps <names>`
+// without an edit; names are the marks of the issue after the edit, in Keys order.
+func labelLine(nr int, after []string, e LabelEdit, l repoconfig.Labels) string {
+	var names []string
+	for _, k := range Marks(after, l) {
+		if n, _ := Name(k, l); !slices.Contains(names, n) {
+			names = append(names, n)
+		}
+	}
 	var parts []string
 	for _, a := range e.Add {
 		parts = append(parts, "+"+a)
@@ -158,9 +165,20 @@ func labelLine(nr int, e LabelEdit) string {
 		parts = append(parts, "-"+r)
 	}
 	if len(parts) == 0 {
-		return fmt.Sprintf("label: #%d keeps %s", nr, e.Winner)
+		return fmt.Sprintf("label: #%d keeps %s", nr, strings.Join(names, ", "))
 	}
-	return fmt.Sprintf("label: #%d %s (%s)", nr, e.Winner, strings.Join(parts, ", "))
+	return fmt.Sprintf("label: #%d %s (%s)", nr, strings.Join(names, ", "), strings.Join(parts, ", "))
+}
+
+// afterEdit is current with e applied.
+func afterEdit(current []string, e LabelEdit) []string {
+	var out []string
+	for _, n := range current {
+		if !slices.Contains(e.Remove, n) {
+			out = append(out, n)
+		}
+	}
+	return append(out, e.Add...)
 }
 
 // halfWriteHint is appended to the error of a label edit that may have landed half.
@@ -185,14 +203,15 @@ func Label(ctx context.Context, env Env, nrArg, keyArg string, out io.Writer) in
 	if code != 0 {
 		return code
 	}
-	if code := t.refuseClosed(ctx, nr, out); code != 0 {
+	before, code := t.refuseClosed(ctx, nr, out)
+	if code != 0 {
 		return code
 	}
 	e, err := Apply(ctx, t.f, nr, keyArg, t.labels)
 	if err != nil {
 		return labelFailure(out, e, err)
 	}
-	_, _ = fmt.Fprintln(out, labelLine(nr, e))
+	_, _ = fmt.Fprintln(out, labelLine(nr, afterEdit(before, e), e, t.labels))
 	return 0
 }
 
@@ -206,14 +225,15 @@ func GiveBack(ctx context.Context, env Env, nrArg, keyArg string, out io.Writer)
 	if code != 0 {
 		return code
 	}
-	if code := t.refuseClosed(ctx, nr, out); code != 0 {
+	before, code := t.refuseClosed(ctx, nr, out)
+	if code != 0 {
 		return code
 	}
 	r, err := Return(ctx, t.f, nr, keyArg, t.labels, t.cfg.Board != nil)
 	if !r.Labeled {
 		return labelFailure(out, r.Label, err)
 	}
-	_, _ = fmt.Fprintln(out, labelLine(nr, r.Label))
+	_, _ = fmt.Fprintln(out, labelLine(nr, afterEdit(before, r.Label), r.Label, t.labels))
 	switch {
 	case err != nil:
 		return fail(out, err, "")

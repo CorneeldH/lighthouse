@@ -125,14 +125,14 @@ func TestStateShow(t *testing.T) {
 	}
 }
 
-func TestStateLabelReplacesTheHigherRank(t *testing.T) {
+func TestStateLabelAddsNeedsMindAndKeepsTheRest(t *testing.T) {
 	stateToml(t, stateLabels, true)
 	srv := stateServer(t, []string{"3-needs-hands", "2-area:x"}, "opt-todo", "To do")
 	code, out, errOut := runState(t, srv, nil, "label", "7", "needs_mind")
-	if want := "label: #7 3-needs-mind (+3-needs-mind, -3-needs-hands)\n"; code != 0 || out != want || errOut != "" {
+	if want := "label: #7 3-needs-mind, 3-needs-hands (+3-needs-mind)\n"; code != 0 || out != want || errOut != "" {
 		t.Errorf("state label = %d, %q, stderr %q; want 0, %q", code, out, errOut, want)
 	}
-	want := []string{"POST /repos/Owner/repo/issues/7/labels", "DELETE /repos/Owner/repo/issues/7/labels/3-needs-hands"}
+	want := []string{"POST /repos/Owner/repo/issues/7/labels"}
 	if got := stateWrites(srv); !reflect.DeepEqual(got, want) {
 		t.Errorf("writes = %v, want %v", got, want)
 	}
@@ -141,10 +141,25 @@ func TestStateLabelReplacesTheHigherRank(t *testing.T) {
 	}
 }
 
-func TestStateLabelKeepsTheLowerRank(t *testing.T) {
+// Review focus 4: needs_mind next to blocked-issue loses nothing and the line names both.
+func TestStateLabelNeedsMindKeepsABlockAndNamesBoth(t *testing.T) {
+	stateToml(t, stateLabels+"blocked_issue = \"3-blocked-issue\"\n", true)
+	srv := stateServer(t, []string{"3-blocked-issue"}, "opt-todo", "To do")
+	code, out, _ := runState(t, srv, nil, "label", "7", "needs_mind")
+	if want := "label: #7 3-needs-mind, 3-blocked-issue (+3-needs-mind)\n"; code != 0 || out != want {
+		t.Errorf("state label = %d, %q; want 0, %q", code, out, want)
+	}
+	for _, w := range stateWrites(srv) {
+		if strings.HasPrefix(w, "DELETE") {
+			t.Errorf("write %q removed a label", w)
+		}
+	}
+}
+
+func TestStateLabelKeepsWhatIsThere(t *testing.T) {
 	stateToml(t, stateLabels, true)
 	srv := stateServer(t, []string{"3-needs-mind"}, "opt-todo", "To do")
-	code, out, _ := runState(t, srv, nil, "label", "7", "needs_hands")
+	code, out, _ := runState(t, srv, nil, "label", "7", "needs_mind")
 	if want := "label: #7 keeps 3-needs-mind\n"; code != 0 || out != want {
 		t.Errorf("state label = %d, %q; want 0, %q", code, out, want)
 	}
@@ -221,10 +236,10 @@ func TestStateReturnBoardLines(t *testing.T) {
 }
 
 func TestStateLabelHalfWriteAsksToRunAgain(t *testing.T) {
-	stateToml(t, stateLabels, true)
-	srv := stateServer(t, []string{"3-needs-hands"}, "opt-todo", "To do")
-	srv.Fail = map[string]int{"DELETE /repos/Owner/repo/issues/7/labels/3-needs-hands": 500}
-	code, out, _ := runState(t, srv, nil, "label", "7", "needs_mind")
+	stateToml(t, stateLabels+"blocked_issue = \"3-blocked-issue\"\nblocked_external = \"3-blocked-external\"\n", true)
+	srv := stateServer(t, []string{"3-blocked-external"}, "opt-todo", "To do")
+	srv.Fail = map[string]int{"DELETE /repos/Owner/repo/issues/7/labels/3-blocked-external": 500}
+	code, out, _ := runState(t, srv, nil, "label", "7", "blocked_issue")
 	if code != 1 || !strings.HasPrefix(out, "state: ERROR — ") || !strings.HasSuffix(out, "; run it again to finish the label edit\n") {
 		t.Errorf("state label = %d, %q; want 1 and an ERROR line that asks to run it again", code, out)
 	}

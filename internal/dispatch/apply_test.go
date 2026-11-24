@@ -2779,7 +2779,10 @@ func TestDecideFinishReturnKeepsReasonOverBlockedIssue(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(kinds(got), []Kind{KindFinishReturn}) {
 		t.Fatalf("tick = %+v, %v; want one finish_return", got, err)
 	}
-	wantGivenBack(t, p, "needs_mind")
+	// Interim (task 4 of #588 reworks finishReturn): the rank rule no longer drops blocked_issue.
+	if want := []string{"blocked_issue", "needs_mind"}; !reflect.DeepEqual(p.labels, want) {
+		t.Errorf("labels = %q, want %q", p.labels, want)
+	}
 }
 
 // A KindToDo only sets To do on the board item: no comment, no label change, and an open run
@@ -2844,7 +2847,10 @@ func TestDecideFinishesBlockedReturnStuckOnController(t *testing.T) {
 			t.Fatalf("tick %d = %+v, %v; want %v", i+1, got, err, want)
 		}
 	}
-	wantGivenBack(t, p, "blocked_issue")
+	// Interim (task 4 of #588 reworks finishReturn): the rank rule no longer drops needs_hands.
+	if want := []string{"blocked_issue", "needs_hands"}; !reflect.DeepEqual(p.labels, want) {
+		t.Errorf("labels = %q, want %q", p.labels, want)
+	}
 	// A Controller issue with own Returned and blocked_external is a human's: no finish.
 	p.status, p.labels, p.sets = "", []string{"blocked_external"}, nil
 	if got := Decide(h.tickInput(t)); len(got) != 0 {

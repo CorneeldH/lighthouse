@@ -10,8 +10,8 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 )
 
-// Keys are the blocking label keys in rank order: the lowest rank wins. This is the rank of the
-// developer label taxonomy, not the order of repoconfig.Labels.Blocking.
+// Keys are the label keys of the state commands, in the order Marks lists them. Only
+// blocked_issue outranks another key (blocked_external); the others stand apart.
 var Keys = []string{"needs_mind", "blocked_issue", "blocked_external", "needs_hands"}
 
 // Name is the label name of key in l; ok is false for an unknown key or an empty name.
@@ -45,35 +45,46 @@ func keyError(key string) error {
 	return fmt.Errorf("unknown or empty blocking label key %q (one of %s)", key, strings.Join(Keys, ", "))
 }
 
-// LabelEdit is the edit of the blocking label of an issue, in label names.
+// Marks is the keys of the blocking and human labels on names, in Keys order. Two keys that share
+// one label name both appear. A label whose configured name is empty never matches.
+func Marks(names []string, l repoconfig.Labels) []string {
+	var keys []string
+	for _, k := range Keys {
+		if n, ok := Name(k, l); ok && slices.Contains(names, n) {
+			keys = append(keys, k)
+		}
+	}
+	return keys
+}
+
+// LabelEdit is the edit of the blocking labels of an issue, in label names.
 type LabelEdit struct {
-	Winner      string
 	Add, Remove []string
 }
 
-// SetLabel applies the rank rule: the winner is the lowest rank among the blocking labels in
-// current plus the one of wantKey; Add is the winner when current lacks it; Remove is every
-// other blocking label in current, in rank order. An unknown key or a key without a name is an
-// error.
+// SetLabel applies the rank rule per axis. needs_mind and needs_hands only add their label and
+// remove nothing. blocked_issue adds its label and removes only blocked_external; blocked_external
+// adds nothing when blocked_issue is already there. Add is empty when current already has the
+// label. An unknown key or a key without a name is an error.
 func SetLabel(current []string, wantKey string, l repoconfig.Labels) (LabelEdit, error) {
 	want, ok := Name(wantKey, l)
 	if !ok {
 		return LabelEdit{}, keyError(wantKey)
 	}
-	var present []string // blocking label names, in rank order
-	for _, k := range Keys {
-		n, ok := Name(k, l)
-		if ok && (n == want || slices.Contains(current, n)) && !slices.Contains(present, n) {
-			present = append(present, n)
-		}
+	has := func(key string) bool {
+		n, ok := Name(key, l)
+		return ok && slices.Contains(current, n)
 	}
-	e := LabelEdit{Winner: present[0]}
-	if !slices.Contains(current, e.Winner) {
-		e.Add = []string{e.Winner}
+	var e LabelEdit
+	if wantKey == "blocked_external" && has("blocked_issue") {
+		return e, nil
 	}
-	for _, n := range present[1:] {
-		if slices.Contains(current, n) {
-			e.Remove = append(e.Remove, n)
+	if !slices.Contains(current, want) {
+		e.Add = []string{want}
+	}
+	if wantKey == "blocked_issue" {
+		if n, ok := Name("blocked_external", l); ok && n != want && slices.Contains(current, n) {
+			e.Remove = []string{n}
 		}
 	}
 	return e, nil

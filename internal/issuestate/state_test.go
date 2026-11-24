@@ -83,11 +83,11 @@ func TestGateZero(t *testing.T) {
 		{"external label", []string{"3-blocked-external"}, nil, Stop{Label: "3-blocked-external"}, true},
 		{"open blocker no label", nil, open5, Stop{Blockers: []int{5}}, true},
 		{"open blocker with needs-mind", []string{"3-needs-mind"}, open5, Stop{}, false},
+		{"blocked-issue with needs-mind routes on", []string{"3-needs-mind", "3-blocked-issue"}, nil, Stop{}, false},
+		{"blocked-external with needs-mind routes on", []string{"3-needs-mind", "3-blocked-external"}, open5, Stop{}, false},
 		{"open blocker with blocked-issue", []string{"3-blocked-issue"}, open5, Stop{Blockers: []int{5}, Label: "3-blocked-issue"}, true},
 		{"closed blockers only", nil, []forge.Blocker{{Issue: 5, State: "CLOSED"}}, Stop{}, false},
 		{"nothing", nil, nil, Stop{}, false},
-		// Two blocking labels break the invariant; the label stops here, while Of says needs_shaping.
-		{"blocked-issue and needs-mind", []string{"3-blocked-issue", "3-needs-mind"}, open5, Stop{Label: "3-blocked-issue", Blockers: []int{5}}, true},
 		{"blocked-issue before blocked-external", []string{"3-blocked-external", "3-blocked-issue"}, nil, Stop{Label: "3-blocked-issue"}, true},
 	}
 	for _, tt := range tests {

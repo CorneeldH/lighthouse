@@ -33,7 +33,7 @@ func newStateCommandWith(o *forgeOpener, run func(context.Context, string, int) 
 	cmd := &cobra.Command{
 		Use:   "state",
 		Short: "Show the state of an issue, set its blocking label, or give it back to To do",
-		Long: "Keys: needs_mind, blocked_issue, blocked_external, needs_hands (rank order).\n" +
+		Long: "Keys: needs_mind, blocked_issue, blocked_external, needs_hands (blocked_issue outranks blocked_external; the mind and hands labels stand apart).\n" +
 			"Exit 1 on a wrong number or key (no forge call) and on a forge error; exit 2 on a config error or a missing token.",
 	}
 	cmd.AddCommand(
@@ -47,7 +47,7 @@ func newStateCommandWith(o *forgeOpener, run func(context.Context, string, int) 
 		},
 		&cobra.Command{
 			Use:   "label <nr> <key>",
-			Short: "Set blocking label <key> on issue <nr>; the lowest rank wins, the others go",
+			Short: "Set label <key> on issue <nr>; blocked_issue also removes blocked_external, the rest stay",
 			Args:  cobra.ExactArgs(2),
 			RunE: func(c *cobra.Command, args []string) error {
 				return exit(issuestate.Label(c.Context(), env, args[0], args[1], c.OutOrStdout()))

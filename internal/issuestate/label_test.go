@@ -11,6 +11,10 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 )
 
+var dashLabels = repoconfig.Labels{
+	NeedsMind: "needs-mind", BlockedIssue: "blocked-issue", BlockedExternal: "blocked-external", NeedsHands: "needs-hands",
+}
+
 func TestSetLabel(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -18,16 +22,16 @@ func TestSetLabel(t *testing.T) {
 		want    string
 		edit    LabelEdit
 	}{
-		{"empty gets the label", nil, "needs_hands", LabelEdit{Winner: "needs_hands", Add: []string{"needs_hands"}}},
-		{"lower rank replaces higher", []string{"needs_hands"}, "needs_mind",
-			LabelEdit{Winner: "needs_mind", Add: []string{"needs_mind"}, Remove: []string{"needs_hands"}}},
-		{"higher rank loses to lower", []string{"needs_mind"}, "needs_hands", LabelEdit{Winner: "needs_mind"}},
-		{"same label is no edit", []string{"needs_hands"}, "needs_hands", LabelEdit{Winner: "needs_hands"}},
-		{"removes every other blocking label in rank order, keeps the rest",
+		{"empty gets the label", nil, "needs_hands", LabelEdit{Add: []string{"needs_hands"}}},
+		{"needs_mind keeps needs_hands", []string{"needs_hands"}, "needs_mind", LabelEdit{Add: []string{"needs_mind"}}},
+		{"needs_hands keeps needs_mind", []string{"needs_mind"}, "needs_hands", LabelEdit{Add: []string{"needs_hands"}}},
+		{"same label is no edit", []string{"needs_hands"}, "needs_hands", LabelEdit{}},
+		{"blocked_issue removes only blocked_external, keeps the rest",
 			[]string{"needs_hands", "2-area:x", "blocked_external"}, "blocked_issue",
-			LabelEdit{Winner: "blocked_issue", Add: []string{"blocked_issue"}, Remove: []string{"blocked_external", "needs_hands"}}},
-		{"two present, want the winner, removes the loser", []string{"needs_mind", "needs_hands"}, "needs_mind",
-			LabelEdit{Winner: "needs_mind", Remove: []string{"needs_hands"}}},
+			LabelEdit{Add: []string{"blocked_issue"}, Remove: []string{"blocked_external"}}},
+		{"blocked_external loses to blocked_issue", []string{"blocked_issue"}, "blocked_external", LabelEdit{}},
+		{"blocked_external is added without blocked_issue", []string{"needs_mind"}, "blocked_external",
+			LabelEdit{Add: []string{"blocked_external"}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -50,7 +54,7 @@ func TestSetLabelWithTwoKeysOnOneName(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := (LabelEdit{Winner: "help"}); !reflect.DeepEqual(got, want) {
+	if want := (LabelEdit{}); !reflect.DeepEqual(got, want) {
 		t.Errorf("SetLabel = %#v, want %#v", got, want)
 	}
 }
@@ -135,12 +139,12 @@ func (f *fakeForge) SetStatus(_ context.Context, it forge.BoardItem, status stri
 }
 
 func TestApplyWithoutChangeSendsNoEdit(t *testing.T) {
-	f := &fakeForge{labels: []string{"needs_mind"}}
+	f := &fakeForge{labels: []string{"needs_hands"}}
 	got, err := Apply(context.Background(), f, 7, "needs_hands", keyLabels)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := (LabelEdit{Winner: "needs_mind"}); !reflect.DeepEqual(got, want) {
+	if want := (LabelEdit{}); !reflect.DeepEqual(got, want) {
 		t.Errorf("Apply = %#v, want %#v", got, want)
 	}
 	if len(f.edits) != 0 {
@@ -149,11 +153,11 @@ func TestApplyWithoutChangeSendsNoEdit(t *testing.T) {
 }
 
 func TestApplySendsOneEditWithAddAndRemove(t *testing.T) {
-	f := &fakeForge{labels: []string{"needs_hands", "2-area:x"}}
-	if _, err := Apply(context.Background(), f, 7, "needs_mind", keyLabels); err != nil {
+	f := &fakeForge{labels: []string{"blocked_external", "2-area:x"}}
+	if _, err := Apply(context.Background(), f, 7, "blocked_issue", keyLabels); err != nil {
 		t.Fatal(err)
 	}
-	want := []forge.IssueEdit{{AddLabels: []string{"needs_mind"}, RemoveLabels: []string{"needs_hands"}}}
+	want := []forge.IssueEdit{{AddLabels: []string{"blocked_issue"}, RemoveLabels: []string{"blocked_external"}}}
 	if !reflect.DeepEqual(f.edits, want) {
 		t.Errorf("edits = %#v, want %#v", f.edits, want)
 	}
@@ -169,21 +173,21 @@ func TestApplyAnUnknownKeyCallsNoForge(t *testing.T) {
 // A GitHub edit adds before it removes: a failed DELETE leaves two blocking labels. A second
 // Apply with the same key finishes the edit, since SetLabel works from the current labels.
 func TestApplyAfterAHalfWriteFinishesTheEdit(t *testing.T) {
-	f := &fakeForge{labels: []string{"needs_hands"}, editErr: errors.New("DELETE failed")}
-	got, err := Apply(context.Background(), f, 7, "needs_mind", keyLabels)
+	f := &fakeForge{labels: []string{"blocked_external"}, editErr: errors.New("DELETE failed")}
+	got, err := Apply(context.Background(), f, 7, "blocked_issue", keyLabels)
 	if err == nil {
 		t.Fatal("Apply gave no error")
 	}
-	want := LabelEdit{Winner: "needs_mind", Add: []string{"needs_mind"}, Remove: []string{"needs_hands"}}
+	want := LabelEdit{Add: []string{"blocked_issue"}, Remove: []string{"blocked_external"}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("Apply = %#v, want %#v", got, want)
 	}
 
 	f.editErr, f.edits = nil, nil
-	if _, err := Apply(context.Background(), f, 7, "needs_mind", keyLabels); err != nil {
+	if _, err := Apply(context.Background(), f, 7, "blocked_issue", keyLabels); err != nil {
 		t.Fatal(err)
 	}
-	wantEdits := []forge.IssueEdit{{RemoveLabels: []string{"needs_hands"}}}
+	wantEdits := []forge.IssueEdit{{RemoveLabels: []string{"blocked_external"}}}
 	if !reflect.DeepEqual(f.edits, wantEdits) {
 		t.Errorf("second edits = %#v, want %#v", f.edits, wantEdits)
 	}
@@ -206,5 +210,47 @@ func TestBlockingKeyRankAndEmptyNames(t *testing.T) {
 		if got := BlockingKey(tt.names, l); got != tt.want {
 			t.Errorf("%s: BlockingKey(%q) = %q, want %q", tt.name, tt.names, got, tt.want)
 		}
+	}
+}
+
+func TestSetLabelNeedsMindKeepsBlock(t *testing.T) {
+	got, err := SetLabel([]string{"blocked-issue"}, "needs_mind", dashLabels)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := (LabelEdit{Add: []string{"needs-mind"}}); !reflect.DeepEqual(got, want) {
+		t.Errorf("SetLabel = %#v, want %#v", got, want)
+	}
+}
+
+func TestSetLabelBlockedIssueKeepsHumanLabels(t *testing.T) {
+	got, err := SetLabel([]string{"needs-mind", "needs-hands", "blocked-external"}, "blocked_issue", dashLabels)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := (LabelEdit{Add: []string{"blocked-issue"}, Remove: []string{"blocked-external"}}); !reflect.DeepEqual(got, want) {
+		t.Errorf("SetLabel = %#v, want %#v", got, want)
+	}
+}
+
+func TestSetLabelBlockedExternalLosesToIssue(t *testing.T) {
+	got, err := SetLabel([]string{"blocked-issue"}, "blocked_external", dashLabels)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Add) != 0 || len(got.Remove) != 0 {
+		t.Errorf("SetLabel = %#v, want an empty edit", got)
+	}
+}
+
+// Review focus 4: an issue with all four labels names all four keys, in Keys order.
+func TestMarksListsAll(t *testing.T) {
+	names := []string{"needs-hands", "x", "blocked-external", "blocked-issue", "needs-mind"}
+	want := []string{"needs_mind", "blocked_issue", "blocked_external", "needs_hands"}
+	if got := Marks(names, dashLabels); !reflect.DeepEqual(got, want) {
+		t.Errorf("Marks = %v, want %v", got, want)
+	}
+	if got := Marks([]string{"x"}, dashLabels); len(got) != 0 {
+		t.Errorf("Marks(unrelated) = %v, want none", got)
 	}
 }

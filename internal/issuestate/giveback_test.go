@@ -37,13 +37,13 @@ func TestReturn(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			f := &fakeForge{labels: []string{"needs_hands"}, item: tt.item, onBoard: tt.onBoard}
-			got, err := Return(context.Background(), f, 7, "needs_mind", keyLabels, tt.board)
+			f := &fakeForge{labels: []string{"blocked_external"}, item: tt.item, onBoard: tt.onBoard}
+			got, err := Return(context.Background(), f, 7, "blocked_issue", keyLabels, tt.board)
 			if err != nil {
 				t.Fatal(err)
 			}
 			tt.want.Labeled = true
-			tt.want.Label = LabelEdit{Winner: "needs_mind", Add: []string{"needs_mind"}, Remove: []string{"needs_hands"}}
+			tt.want.Label = LabelEdit{Add: []string{"blocked_issue"}, Remove: []string{"blocked_external"}}
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("Return = %#v, want %#v", got, tt.want)
 			}

@@ -100,11 +100,14 @@ type Stop struct {
 }
 
 // GateZero reports the gate 0 stop: a blocked_issue label (before blocked_external) stops with
-// that label; else open blockers without needs_mind stop. Blockers is
-// OpenBlockers in both cases. Unlike Of, a blocked label wins here over needs_mind on an
-// issue that carries both.
+// that label; else open blockers stop. Blockers is OpenBlockers in both cases. An issue that
+// carries needs_mind does not stop, with or without a blocked label or an open blocker: it
+// routes on to the shaping gate.
 func GateZero(labels []string, blockers []forge.Blocker, l repoconfig.Labels) (Stop, bool) {
 	has := func(name string) bool { return name != "" && slices.Contains(labels, name) }
+	if has(l.NeedsMind) {
+		return Stop{}, false
+	}
 	s := Stop{Blockers: OpenBlockers(blockers)}
 	switch {
 	case has(l.BlockedIssue):
@@ -115,7 +118,7 @@ func GateZero(labels []string, blockers []forge.Blocker, l repoconfig.Labels) (S
 	if s.Label != "" {
 		return s, true
 	}
-	if len(s.Blockers) > 0 && !has(l.NeedsMind) {
+	if len(s.Blockers) > 0 {
 		return s, true
 	}
 	return Stop{}, false
