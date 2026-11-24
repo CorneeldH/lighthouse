@@ -800,7 +800,12 @@ func TestRunShInstalledFindsItsRootWithoutEnv(t *testing.T) {
 	payload, _ := json.Marshal(map[string]any{
 		"tool_name": "Bash", "cwd": feature, "tool_input": map[string]string{"command": "git commit -m x"},
 	})
-	cmd := exec.Command(filepath.Join(home, ".claude", "hooks", "lighthouse", "run.sh"), "main-commit-gate")
+	runSh := filepath.Join(home, ".claude", "hooks", "lighthouse", "run.sh")
+	cmd := exec.Command(runSh, "main-commit-gate")
+	if runtime.GOOS == "windows" {
+		// Windows cannot exec a shell script; Claude Code runs the hook through Git Bash there (#559).
+		cmd = exec.Command("bash", filepath.ToSlash(runSh), "main-commit-gate")
+	}
 	cmd.Dir = feature
 	cmd.Env = hookEnv(bin)
 	cmd.Stdin = bytes.NewReader(payload)

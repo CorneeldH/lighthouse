@@ -441,6 +441,7 @@ func TestShellcheckRepo(t *testing.T) {
 }
 
 func TestShellcheckBin(t *testing.T) {
+	skipOnWindows(t, "shellcheck has no release for native Windows, so shellcheck-bin.sh downloads nothing there (#559)")
 	bin := buildLighthouse(t)
 	installed := shellRepo(t, bin)
 	lib := shellLib(installed)
