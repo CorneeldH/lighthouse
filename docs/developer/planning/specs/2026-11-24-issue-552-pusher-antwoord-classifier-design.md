@@ -84,7 +84,9 @@ dus mag vóór de claim. Daarna claimt apply de rij met de sleutel `pushanswer:<
 zet de 🚀 op het antwoord. De stappen:
 
 1. **Bevat origin de SHA?** Eerst `git ls-remote origin refs/heads/<branch>`. Is het resultaat
-   gelijk aan de SHA, dan is het antwoord ja. Anders haalt tick alleen die commit op:
+   gelijk aan de SHA, dan is het antwoord ja. Is het resultaat leeg (de branch staat niet op
+   origin, `Env.LsRemote` geeft dan `""` zonder fout), dan is het antwoord **nee**, zonder fetch
+   *(eigen keuze na spec-review, r1-f3)*. Anders haalt tick alleen die commit op:
    `git fetch --no-write-fetch-head origin <origin-sha>` in de worktree, met dezelfde omgeving als
    de `ls-remote` nu (geen token, `GIT_TERMINAL_PROMPT=0`). Zo verandert geen ref in de worktree
    van de run (`origin/<branch>`, `FETCH_HEAD`), en ziet `workflow-push-gate` op een latere push
@@ -93,7 +95,7 @@ zet de 🚀 op het antwoord. De stappen:
      rij als `handoff`.
    - **Ja, zonder `after`** (fix-pr-route): het issue gaat terug met `reason_pusher_no_after`,
      zoals nu.
-   - **Git faalt** (ls-remote, fetch of merge-base geeft een fout): ga verder naar de classifier,
+   - **Git faalt** (ls-remote, fetch of merge-base geeft een fout; een lege ls-remote is geen fout): ga verder naar de classifier,
      met de melding dat git het niet kon zien. Een classifier-`permit` start dan de pusher; de
      vloer van de pusher controleert alles opnieuw. Een andere uitkomst geeft de reactie, met
      `COULD NOT CHECK` erbij.
@@ -120,6 +122,12 @@ en de pusher starten. Besluit van de gebruiker:
   claimt de sleutel `pushanswer:<id>` dan niet en post niets. Het antwoord blijft liggen, en een
   tick met een open rem leest het opnieuw. Je hoeft dus niet opnieuw te antwoorden.
 
+Een git-fout telt voor de rem als *bevat de SHA niet*: met een dichte rem claimt apply niets en
+post niets *(eigen keuze na spec-review, r1-f4)*. Het antwoord wordt zo uitgesteld via
+`Result.Deferred` (`DeferredActions`), zodat tick de fingerprint van de repository niet opslaat
+en het antwoord bij de eerstvolgende tick opnieuw leest, niet pas na de periodieke volledige
+lezing *(r1-f1)*.
+
 Apply moet daarvoor de stand van de rem kennen, bijvoorbeeld als veld op de `Action` dat de
 planner zet. Zolang de rem dicht is, herhaalt elke tick de git-check voor zo'n antwoord. Dat is
 acceptabel: zulke antwoorden zijn zeldzaam, en de check is één `ls-remote` plus hooguit één fetch.
@@ -140,7 +148,17 @@ De inhoud:
 - Een link naar de oorspronkelijke Vraag voor de diff en het oordeel van de reviewers. De diff
   wordt niet opnieuw gepost.
 
+De link naar de oorspronkelijke Vraag staat als extra headerveld (bijvoorbeeld `vraag`) in de
+reactie; een volgende reactie neemt dat veld over, zodat de link altijd naar de Vraag met de diff
+wijst en niet naar een eerdere reactie *(eigen keuze na spec-review, r1-f7)*.
+
 De reactie geeft het issue niet terug: geen label en geen statuswissel.
+
+**Crashvenster.** Apply claimt de rij en zet de 🚀 vóór de classifier (tot ca. 60 s). Een tick
+die in dat venster sterft, laat een open push-rij zonder pusher achter; na `push_timeout` gaat
+het issue terug met `reason_pusher_silent`. Hetzelfde venster bestaat al tussen
+claim en start bij het antwoord `push`; het wordt aanvaard, het is een zeldzame Returned, geen
+vastloper *(r1-f2 afgewezen, r1-f6)*.
 
 ### Herhaling na een mislukte start
 
@@ -149,7 +167,10 @@ De reactie geeft het issue niet terug: geen label en geen statuswissel.
 classifier, moet bij een tweede poging ook als toestemming tellen. Daarom noteert apply
 `permit` op de rij (in `runs.Row.Verdict`, nu alleen gebruikt door geplande jobs, als
 `{"answer":"permit"}`). `pushTargetOf` accepteert een `pushanswer`-sleutel dan bij
-`permitAnswer(body)` óf bij die notitie op de rij. De bestaande garantie blijft: een rij die geen
+`permitAnswer(body)` óf bij die notitie op een rij met dezelfde trigger-sleutel (de eerste rij
+draagt de notitie, de tweede poging claimt een nieuwe rij; `pushTargetOf` krijgt daarvoor de rij
+of de rijen erbij) *(r1-f5)*. Lukt het schrijven van de notitie niet, dan start apply de pusher
+niet en sluit de rij als `start_failed` *(r1-f11)*. De bestaande garantie blijft: een rij die geen
 toestemming kreeg, wordt nooit een push.
 
 ### De classifier
@@ -162,6 +183,8 @@ toestemming kreeg, wordt nooit een push.
   `internal/cli/triage_judge.go`: settings zonder hooks, geen sessie, `--output-format json`, en
   een eigen `--json-schema` met één veld `verdict` (enum `permit`, `pushed`, `other`). Geen tools
   (`--tools ""`): de classifier leest alleen de prompt.
+- De classifier draait in een lege, neutrale tempdir (`cmd.Dir`), niet in de worktree van de run,
+  zodat geen `CLAUDE.md` of ander projectbestand van de run de context binnenkomt *(r1-f10)*.
 - Een eigen time-out (kortere orde dan de triage-judge, bijvoorbeeld 60 s). Tests kunnen die
   inkorten, zoals `judgeTimeout`.
 - De prompt zet de antwoordtekst in een duidelijk afgebakend blok, als data, en zegt dat
@@ -178,13 +201,17 @@ de vloer, de policy en de lint altijd. `docs/tick.md` noemt dit.
 
 ### Teksten en docs
 
-- De pusher-Vraag (`question_push_permit`, `_retry`, `_moved` in `pack/core/headings.toml`)
+- De pusher-Vraag (`question_push_permit`, `question_push_retry` en `question_push_moved` in
+  `pack/core/headings.toml`)
   noemt dat ook een andere duidelijke toestemming werkt, en dat `gepusht` na een eigen push de
   keten voortzet. Daarna `go run ./cmd/lighthouse init --upgrade` en het geïnstalleerde
   `.lighthouse/headings.toml` committen.
 - Nieuwe headings voor de reactie, in nl en en, in beide headings-bestanden.
 - `docs/tick.md`, *Het antwoord `push` is toestemming* en *Afloop van een push-rij*: de stroom
   hierboven, de classifier, wat hij leest, de time-out en de grens.
+- `reason_pusher_answer_moved` en `reason_pusher_git_failed` blijven in `pack/core/headings.toml`
+  staan, voor het teruglezen van oude Returned-comments door `ReasonKey`, ook al zendt apply ze
+  niet meer uit *(r1-f8)*. `docs/tick.md` (regels rond 444-452) wordt herschreven.
 - Een changelog-fragment `changelog.d/issue-552-<slug>.md`.
 
 ## Bewijs
