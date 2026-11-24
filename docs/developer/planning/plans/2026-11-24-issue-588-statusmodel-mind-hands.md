@@ -103,7 +103,7 @@ Taken 1–13 hebben geen mensstap en wachten op niemand. Alleen de uitrol (taak 
 - Consumeert: `issuestate.Marks`, `repoconfig.Labels.NeedsMind` (taak 1-2).
 - Gedrag in deel a: `needs_mind` geeft de oude status `needs_shaping`; een open 🤖 Vraag blijft `needs_human`; `needs_hands` blijft `needs_human`. `Of` en `cases.json` zijn al in taak 1 aangepast; `derive.ts` is al in taak 1 gelijkgetrokken; deze taak vervangt het gebruik van `BlockingKey`.
 
-- [ ] **Stap 1:** schrijf in `internal/priorities/priorities_test.go` een test dat `Issue.Label` voor `[needs-mind, blocked-external]` `needs_mind` is; verwacht FAIL (`BlockingKey` kent het niet meer na stap 2).
+- [ ] **Stap 1:** schrijf in `internal/priorities/priorities_test.go` een test dat `Issue.Label` voor `[needs-mind, blocked-external]` `needs_mind` is; dit is een gedragsbehoud-test en is al groen vóór stap 2 (`BlockingKey` geeft nog `needs_mind`): verwacht PASS, en na stap 2 nog steeds PASS.
 - [ ] **Stap 2:** implementeer in `priorities.go` met `Marks` (`Of` en `derive.ts` zijn al klaar); haal `BlockingKey` weg.
 - [ ] **Stap 3:** `go test ./internal/... && cd web && npx vitest run src/lib/priorities`; verwacht PASS.
 - [ ] **Stap 4: commit** — `refactor(priorities): priorities.go leest Marks, gelijk gedrag`
@@ -328,3 +328,10 @@ Dit lost r3-f1 op. De spec liet lighthouse zelf vóór de PR migreren met de tic
 - **Dekking:** §1 → taken 1-2, 4; §2 → 3, 10; §3 en §4 → 11; §5 → 4, 9; §6 → 5-8, 14; §7 is deel c (buiten dit plan, #557). Doelen "één regel Go en web" → taken 1, 3 en 10 delen `cases.json`.
 - **Types:** `Marks`, `LabelEdit{Add, Remove}`, `Result{State, Blocked}`, `issuestate.Keys` en `ReturnLabelKey` hebben overal dezelfde naam; `BlockingKey` verdwijnt in taak 3 en zijn enige gebruiker (`priorities.go`) krijgt in taak 3 `Marks` en in taak 10 `Labels`.
 - **Open punt:** in taak 3 gebruikt `priorities.Issue.Label` tijdelijk de eerste sleutel van `Marks`; taak 10 verwijdert het veld.
+
+## Open na review
+
+Ronde 3 haalde de rondegrens met deze punten open. Ze zijn aanvaard als `accepted_open`;
+de volgende fase of de PR-review weegt ze opnieuw.
+
+- **r3-f1** (MAJOR, Taak 3 stap 1-2): The rewritten Taak 3 stap 1 adds a priorities test that `Issue.Label` for `[needs-mind, blocked-external]` is `needs_mind` and expects FAIL. Before stap 2 that test already passes. BlockingKey still exists after Taak 2 (Taak 2 says 'BlockingKey blijft tot taak 3') and walks the new `Keys` from Taak 2 in order, with `needs_mind` first, so it returns `needs_mind` for this input. The stated reason, '(BlockingKey kent het niet meer na stap 2)', describes the state after the implementation, not before it.
