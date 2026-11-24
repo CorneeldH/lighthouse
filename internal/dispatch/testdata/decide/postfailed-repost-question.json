@@ -116,6 +116,13 @@
       "run_id": 5,
       "body": "🤖 Vraag · #7 Bouw de keten ([link](https://github.com/o/r/issues/7)) · fase plan\n\n**Waar het staat:** de keten\n**Wat er speelt:** links of rechts\n**Vraag:** Links of rechts?\n- **a)** Links\n- **b)** Rechts\n\n**Max 1 comment als reactie.**\n<sub>session 11111111-2222-4333-8444-555555555555 · worktree /home/u/r/.claude/worktrees/issue-7-bouw-de-keten</sub>",
       "language": "nl"
+    },
+    {
+      "kind": "note_done",
+      "repo": "o/r",
+      "issue": 7,
+      "run_id": 5,
+      "language": "nl"
     }
   ]
 }

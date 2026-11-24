@@ -34,10 +34,14 @@ func loadInput(t *testing.T, name string) Input {
 	return f.Input
 }
 
-// summary gives kind:reason:reason_arg per action.
+// summary gives kind:reason:reason_arg per action, without the note_done of an open Done run.
 func summary(got []Action) []string {
 	out := []string{}
 	for _, a := range got {
+		if a.Kind == KindNoteDone {
+			// The done note of an open Done run is TestDecideNoteDoneForOpenDoneRun's.
+			continue
+		}
 		out = append(out, string(a.Kind)+":"+a.Reason+":"+a.ReasonArg)
 	}
 	return out
