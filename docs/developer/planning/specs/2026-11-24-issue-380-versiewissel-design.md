@@ -21,8 +21,11 @@ issue voorstelt.
 
 ## Niet-doelen
 
-- **De markering tekenen.** Dat doet #379 op zijn tijdlijn; #380 levert de lijst die #379 tekent.
-  Daarmee wacht #380 niet meer op #379.
+- **De markering tekenen.** Dat doet #379 op zijn tijdlijn
+  (spec #379, `2026-11-24-issue-379-telemetrie-ui-design.md`, nog op branch
+  `issue-379-telemetrie-ui`; §6: het veld `markers`, leeg "tot
+  #380 het vult", getekend als verticale lijn). #380 levert de wissels in die vorm (zie *Aansluiting
+  op #379*). Daarmee wacht #380 niet meer op #379.
 - **De meting zelf.** Protocol, budget en uitvoering horen bij #388 en de milestone *Explore/exploit*.
 - **Versies installeren of bijwerken.** Lighthouse installeert of wijzigt zelf geen versie (no-go
   van de milestone; #325 levert pins en de achterstand-lane, die hier buiten blijven).
@@ -88,6 +91,28 @@ A→B→A→B levert één wissel, A→B. Een terugval naar een oude versie is d
 - **Harness per harness.** Versienummers van verschillende harnesses (na #389 ook Codex en OpenCode)
   zijn onvergelijkbaar; een andere `harness`-naam zelf is geen wissel.
 
+### Aansluiting op #379
+
+De tijdlijn van #379 heeft per ISO-week (maandag, UTC) een lijst `markers` met week, soort en tekst
+(spec #379, §6). #380 levert daarvoor een functie naast `VersionChanges`, bijvoorbeeld
+`VersionMarkers`, die elke wissel omzet naar:
+
+| Veld | Waarde |
+|---|---|
+| week | de ISO-week van de eerste run of sessie met de nieuwe waarde |
+| soort | de dimensie: `superpowers`, `model` of `harness` |
+| tekst | oud en nieuw, bijvoorbeeld `superpowers 7.0.1→7.0.2`; bij harness met de harnessnaam erbij |
+
+- **Leesbaar via de readonly-verbinding** van #379 (`store.OpenReadOnly`, spec #379 §2): beide
+  functies doen alleen `SELECT`.
+- **Ongemigreerde database.** Ontbreekt `setups`, dan geeft de functie een herkenbare fout, zodat het
+  endpoint van #379 een dekkingsmelding toont in plaats van een 500 (spec #379 §2).
+- **Wie koppelt.** Het vullen van `markers` in de tijdlijnreader is één aanroep. Wie als laatste
+  merget, #379 of #380, legt die aanroep en de test dat een wissel als markering in de juiste week
+  verschijnt *(eigen keuze: geen van beide wacht op de ander)*.
+- **Repo-filter.** De tijdlijn van #379 filtert op `repo`; een wissel is hostbreed en verschijnt in
+  elke repo-weergave.
+
 ### Koppeling aan onderdelen
 
 Een vaste tabel in code, voor nu grof:
@@ -138,7 +163,7 @@ tick al ziet.
 
 | AC | Bewijs |
 |---|---|
-| Een versiewissel verschijnt als markering, met oude en nieuwe versie | `VersionChanges` geeft de wissel met oud en nieuw; #379 tekent hem |
+| Een versiewissel verschijnt als markering, met oude en nieuwe versie | `VersionMarkers` geeft de wissel met week, soort en oud→nieuw; #379 tekent hem in `markers` |
 | Precies één voorstel, met reden; een tweede run met dezelfde versie stelt niets nieuws voor | test: twee stappen, de tweede vindt de marker en schrijft niets; een derde run op dezelfde versie levert geen nieuwe wissel |
 | Lighthouse installeert of wijzigt zelf geen versie | de stap leest `setups` en schrijft alleen een issue |
 | Twee runs op verschillende superpowers-versies tonen één markering | test op `VersionChanges` met twee runs: precies één wissel; daarnaast A, B, A, B: nog steeds één |
@@ -150,6 +175,8 @@ tick al ziet.
 - Alleen de laatste wissel per reeks krijgt een voorstel.
 - Alleen runs met indeling `standard` tellen mee.
 - De stap draait op een eigen uurpoort met een tijdsbestand.
+- Wie van #379 en #380 als laatste merget, koppelt `VersionMarkers` aan de tijdlijn.
+- Een wissel verschijnt in elke repo-weergave van de tijdlijn.
 
 ## Aan de bouwer
 
