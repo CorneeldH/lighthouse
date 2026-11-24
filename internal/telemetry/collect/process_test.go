@@ -18,7 +18,7 @@ import (
 
 const (
 	testRepo = "o/r"
-	plansRel = "docs/plans"
+	plansRel = "design/plans"
 	known    = "claude-sonnet-5-5"
 )
 

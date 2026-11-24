@@ -70,7 +70,7 @@ func repoRoots(ctx context.Context, opt Options) []string {
 	return roots
 }
 
-// relUnder returns the repo-relative path ("docs/plans/x.md", slashes) of abs when abs lies
+// relUnder returns the repo-relative path ("plans/x.md", slashes) of abs when abs lies
 // under plansDir of one of the roots; the deepest root wins, so a worktree inside the repo dir
 // is read as its own root.
 func relUnder(abs string, roots []string, plansDir string) (string, bool) {
