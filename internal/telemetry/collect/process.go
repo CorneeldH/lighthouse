@@ -37,6 +37,9 @@ type Options struct {
 	Repo, DefaultBranch, PlansDir, RepoDir, StateDir string
 	Now                                              func() time.Time
 	SinceLast                                        bool
+	// DryRun parses and assigns but writes nothing: no transaction and no plan update. The
+	// outcome carries the runs the transcript would go to; SessionID stays 0.
+	DryRun bool
 }
 
 // Outcome says what Process did with a transcript: Kind is "run", "session" or "skipped".
@@ -223,6 +226,12 @@ func writeRun(ctx context.Context, db *sql.DB, src Source, opt Options, reading 
 		return Outcome{}, err
 	}
 	out := Outcome{Kind: outcomeRun}
+	if opt.DryRun {
+		for _, s := range segs {
+			out.RunIDs = append(out.RunIDs, s.run.ID)
+		}
+		return out, nil
+	}
 	err = telemetry.InTransaction(ctx, db, func(tx *telemetry.Tx) error {
 		out.RunIDs = nil
 		for _, s := range segs {
@@ -267,6 +276,9 @@ func writeSession(ctx context.Context, db *sql.DB, src Source, opt Options, read
 		}
 	}
 	out := Outcome{Kind: outcomeSess}
+	if opt.DryRun {
+		return out, nil
+	}
 	err = telemetry.InTransaction(ctx, db, func(tx *telemetry.Tx) error {
 		id, _, err := tx.RecordSession(ctx, telemetry.SessionRecord{
 			Origin: telemetry.Origin{Source: sourceName, SourceID: "transcript:" + src.SessionID, RecordedAt: src.Recorded},

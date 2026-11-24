@@ -160,3 +160,45 @@ func refuseTooNew(ctx context.Context, db *sql.DB) error {
 	_, err = checkVersion(ctx, db, len(list))
 	return err
 }
+
+// roDSN is the connection string of OpenReadOnly: mode=ro, so SQLite writes nothing, and no
+// _txlock=immediate, so nothing takes the write lock.
+func roDSN(path string) string {
+	q := url.Values{
+		"mode":    {"ro"},
+		"_pragma": {"busy_timeout(5000)"},
+	}
+	return (&url.URL{Scheme: "file", Path: path, RawQuery: q.Encode()}).String()
+}
+
+// OpenReadOnly opens the database at path read-only and without migrating it: it creates no
+// file or directory, leaves the journal mode alone and does not touch an old or a newer schema.
+// A database that does not exist returns an error that wraps fs.ErrNotExist.
+func OpenReadOnly(ctx context.Context, path string) (*Store, error) {
+	path, err := filepath.Abs(path)
+	if err != nil {
+		return nil, fmt.Errorf("resolve database path: %w", err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		return nil, fmt.Errorf("open database %s: %w", path, err)
+	}
+	db, err := sql.Open("sqlite", roDSN(path))
+	if err != nil {
+		return nil, fmt.Errorf("open database %s: %w", path, err)
+	}
+	if err := db.PingContext(ctx); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("open database %s: %w", path, err)
+	}
+	return &Store{DB: db}, nil
+}
+
+// SchemaVersions returns the user_version of db and the version this lighthouse expects.
+func SchemaVersions(ctx context.Context, db *sql.DB) (have, want int, err error) {
+	list, err := loadMigrations(migrationFS)
+	if err != nil {
+		return 0, 0, err
+	}
+	have, err = checkVersion(ctx, db, len(list))
+	return have, len(list), err
+}
