@@ -8,12 +8,9 @@ Dit ontwerp bouwt op:
 
 - #378, gemerged (#570): `trajectory_events` (vraag, antwoord, done, migratie `0012`) en
   `telemetry.LoadTimeline` met de doorlooptijd per oorzaak.
-- #375, nog niet gemerged; spec
-  `docs/developer/planning/specs/2026-11-24-issue-375-inzet-kosten-tokens-design.md` op branch
-  `issue-375-inzet-kosten-tokens`: inzet (model, harness, versies, lane), tokens en kosten, sessies,
-  en `trajectories.plan_tasks`. Zijn migratie schuift naar `0013`.
-
-Het plan van #379 wacht op de merge van #375.
+- #375, gemerged (#577): inzet (model, harness, versies, `setups.lane`), tokens en kosten, sessies,
+  en `trajectories.plan_tasks` en `plan_path` (migratie `0013`). Vragen uit interactieve sessies
+  schrijft #375 niet: `trajectory_events` krijgt vragen alleen van de dispatcher.
 
 ## Aanleiding en doel
 
@@ -113,7 +110,7 @@ CREATE INDEX review_runs_trajectory ON review_runs(trajectory_id);
   betrouwbare component of tijd.
 - Idempotent: dezelfde `record_sum` verandert niets; `DeleteFindingsUnder` krijgt een tegenhanger
   voor `review_runs`.
-- Migratie: het eerstvolgende vrije nummer na #375 (vermoedelijk `0014`), alleen
+- Migratie: `0014`, het eerstvolgende vrije nummer na #375, alleen
   `CREATE TABLE`/`CREATE INDEX`.
 
 Dit is de enige schrijver in dit issue. AC "de UI leest alleen" gaat over de UI; de index is een
@@ -228,7 +225,7 @@ Eén blok, elke regel een aantal met reden:
 - trajecten buiten de afloop: lopend (open venster), zonder herstelmeting, of zonder lane / met
   `mixed` lane;
 - vragen uit interactieve sessies: *niet gemeten* zolang `trajectory_events` geen rijen uit de
-  transcriptbron heeft (#375 kan die taak naar een vervolgissue schuiven); de mediaan heet dan
+  transcriptbron heeft (#375 levert die niet); de mediaan heet dan
   "dispatcher questions";
 - onderdelen zonder bron in deze milestone: eindreview, test-gate, en de reviewkosten — als
   *niet gemeten*;
@@ -259,8 +256,8 @@ het Engels, zoals de rest van de UI *(eigen keuze)*.
 - Geen automatische wijziging aan model, skill of configuratie.
 - `web/openapi.json` en de gegenereerde client worden meegecommit (`TestOpenAPISnapshot`); de
   build-uitvoer niet.
-- Afhankelijkheid: #375 (inzet, kosten, `plan_tasks`, lane). Die staat nog niet als
-  blocker-relatie op #379; die moet erbij. #378 is gemerged.
+- Afhankelijkheid: #375 (inzet, kosten, `plan_tasks`, lane) en #378 (`trajectory_events`), beide
+  gemerged.
 - De telemetrie-readers lezen alleen `lighthouse.db`, geen forge.
 
 ## Tests en bewijs
