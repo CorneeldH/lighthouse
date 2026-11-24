@@ -24,6 +24,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/runs"
 	"github.com/CorneeldH/lighthouse/internal/scheduled"
 	"github.com/CorneeldH/lighthouse/internal/store"
+	"github.com/CorneeldH/lighthouse/internal/telemetry/collect"
 	"github.com/CorneeldH/lighthouse/internal/usage"
 	"github.com/CorneeldH/lighthouse/internal/workplace"
 	"github.com/CorneeldH/lighthouse/internal/workplace/kennforge"
@@ -86,15 +87,7 @@ func (e tickEnv) stateDir() (string, error) {
 	if e.StateDir != "" {
 		return e.StateDir, nil
 	}
-	base := e.Getenv("XDG_STATE_HOME")
-	if !filepath.IsAbs(base) {
-		home := e.Getenv("HOME")
-		if !filepath.IsAbs(home) {
-			return "", errors.New("neither XDG_STATE_HOME nor HOME is an absolute path: no place for the run instructions")
-		}
-		base = filepath.Join(home, ".local", "state")
-	}
-	return filepath.Join(base, "lighthouse", "dispatch"), nil
+	return collect.DispatchStateDir(e.Getenv)
 }
 
 // workplace returns the workplace of repo on node ("" is self) for profile; stateDir is where
