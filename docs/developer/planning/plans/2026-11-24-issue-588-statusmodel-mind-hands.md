@@ -32,9 +32,9 @@ Invoer of omstandigheden die de spec impliceert maar waar geen eigen taak-test o
 5. Gesloten issue met een blokkadelabel: `Blocked=false` en geen `labels` in `/api/priorities` (taak 10, 11).
 6. `lighthouse.toml` met oude sleutel: `config.Load`, `repoconfig.LoadFile` en `lighthouse config` falen met de naam van het migratiecommando, maar `lighthouse labels migrate` leest zo'n bestand wel (taak 1, 8).
 
-## Handmatige stappen (vooraf één vraag via `lighthouse ask`)
+## Handmatige stappen (na de PR, niet vooraf)
 
-Alleen taak 13 vraagt de gebruiker iets: pauzeren, binary installeren, migratie draaien op de tick-host en in `personal_ai_agent`. Stel die ene vraag aan het begin van de uitvoering, met elk commando uit taak 13 letterlijk via `--command`, opties *klaar* en *anders*. Taken 1–12 en 14 hebben geen mensstap.
+Taken 1–13 hebben geen mensstap en wachten op niemand. Alleen de uitrol (taak 14: pauzeren, mergen, release, binary installeren, migratie draaien op de tick-host en in `personal_ai_agent`) is mensenwerk, en elke stap daarvan kan pas ná de PR (de binary met `labels migrate` bestaat eerder niet). Taak 14 zet die stappen letterlijk in de PR-body en in één `lighthouse ask` (elk commando via `--command`, opties *klaar* en *anders*) ná het openen van de PR; de bouw wacht er niet op.
 
 ## Bestandsstructuur
 
@@ -53,7 +53,7 @@ Alleen taak 13 vraagt de gebruiker iets: pauzeren, binary installeren, migratie 
 ### Taak 1: `[labels]` hernoemen en oude sleutels weigeren
 
 **Bestanden:**
-- Wijzig: `internal/config/config.go` (schema ~r.91-93, defaults ~r.154-157, `Load` r.651), `internal/repoconfig/repoconfig.go` (`Labels` r.63, `Blocking`, `NeedsName`, `rawFile.Labels`, `DefaultLabels`, `LoadFile`), `internal/projectconfig/projectconfig.go:235` (`LabelTables`), `tests/pack/fixtures/config-schema.json`, `tests/pack/fixtures/config/{full,defaults}/*`, `docs/site/data/config.json`, `lighthouse.toml` blijft in deze taak ongewijzigd.
+- Wijzig: `internal/config/config.go` (schema ~r.91-93, defaults ~r.154-157, `Load` r.651), `internal/repoconfig/repoconfig.go` (`Labels` r.63, `Blocking`, `NeedsName`, `rawFile.Labels`, `DefaultLabels`, `LoadFile`), `internal/projectconfig/projectconfig.go:235` (`LabelTables`), `tests/pack/fixtures/config-schema.json`, `tests/pack/fixtures/config/{full,defaults}/*`, `docs/site/data/config.json`, `lighthouse.toml` (`[labels]`: `needs_shaping`/`needs_decision` worden `needs_mind = "3-needs-mind"`, `needs_testing` vervalt, `needs_hands` blijft; anders weigert `config.Load` het eigen bestand, ook in `internal/codelang` en `init --upgrade`), `tests/pack/fixtures/issue-state/cases.json` (alleen labelnamen en verwachting, zie stap 4).
 - Wijzig mechanisch (compileren): elke gebruiker van `NeedsShaping`/`NeedsDecision`/`NeedsTesting` in `internal/` (`grep -rn "NeedsShaping\|NeedsDecision\|NeedsTesting" internal`) wordt `NeedsMind` of vervalt; sleutelstrings `"needs_shaping"`/`"needs_decision"` worden `"needs_mind"`, `"needs_testing"` wordt `"needs_hands"`.
 - Test: `internal/config/config_test.go`, `internal/repoconfig/repoconfig_test.go`, `internal/projectconfig/projectconfig_test.go`.
 
@@ -67,8 +67,8 @@ Alleen taak 13 vraagt de gebruiker iets: pauzeren, binary installeren, migratie 
   - `TestLabelTablesUseNewKeys` (projectconfig): `LabelTables` heeft `needs_mind = "needs-mind"` en `needs_hands`, en geen `needs_shaping`/`needs_decision`/`needs_testing`.
 - [ ] **Stap 2: draai ze** — `go test ./internal/config ./internal/repoconfig ./internal/projectconfig -run 'OldLabelKeys|NeedsMind|NewKeys'`; verwacht FAIL.
 - [ ] **Stap 3: implementeer** het schema en de structs zoals onder Interfaces; weiger oude sleutels in `config.Load` en `repoconfig.LoadFile` met `md.IsDefined("labels", key)`. Voeg geen lenient-pad toe: de migratie leest het toml zelf (taak 6).
-- [ ] **Stap 4: herstel de rest** — werk fixtures en `config-schema.json` bij; regenereer `docs/site/data/config.json` met het commando dat `docs/site/` daarvoor heeft (`grep -rn "config.json" docs/site tools` toont het), en laat de bestaande tests die de oude namen noemen de nieuwe namen gebruiken.
-- [ ] **Stap 5: volledige Go-tests** — `go build ./... && go vet ./... && go test ./...`; verwacht groen. Het eigen `lighthouse.toml` heeft nog oude sleutels: `internal/cli`-tests die dat bestand laden mogen niet rood worden; gebruik hun eigen fixture-toml.
+- [ ] **Stap 4: herstel de rest** — werk fixtures en `config-schema.json` bij; pas `docs/site/data/config.json` met de hand aan (er is geen generator; `docs/site/test/config.test.mjs` controleert het, draai `node --test docs/site/test/config.test.mjs`), herschrijf `[labels]` in `lighthouse.toml` zoals onder Bestanden, pas in `cases.json` de labelnamen aan (`needs_shaping`/`needs_decision` → `needs_mind`, `needs_testing` → `needs_hands`) en laat de gevallen met `needs_decision` `needs_shaping` verwachten in plaats van `needs_human`; in `Of` geeft `NeedsMind` de oude status `needs_shaping` (tijdelijke mapping tot taak 10), en laat de bestaande tests die de oude namen noemen de nieuwe namen gebruiken.
+- [ ] **Stap 5: volledige Go-tests** — `go build ./... && go vet ./... && go test ./...`; verwacht groen. Het eigen `lighthouse.toml` heeft nu de nieuwe sleutels; de forge heeft nog de oude labels tot taak 14, dat raakt geen test.
 - [ ] **Stap 6: commit** — `refactor(labels): needs_mind en needs_hands in [labels], oude sleutels geweigerd`
 
 ### Taak 2: rangregel per as in `issuestate`
@@ -78,7 +78,7 @@ Alleen taak 13 vraagt de gebruiker iets: pauzeren, binary installeren, migratie 
 - Test: `internal/issuestate/label_test.go`, `giveback_test.go`, `state_test.go`, `internal/cli/state_test.go`.
 
 **Interfaces:**
-- Produceert: `issuestate.Keys = []string{"needs_mind","blocked_issue","blocked_external","needs_hands"}`; `Name(key, l)` kent deze vier; `Marks(names []string, l repoconfig.Labels) []string` (de sleutels van blokkade- en mens-labels op het issue, in de volgorde van `Keys`); `SetLabel(current []string, wantKey string, l) (LabelEdit, error)` met `LabelEdit{Add, Remove []string}` (het veld `Winner` vervalt); `GateZero` onveranderd van vorm. `BlockingKey` vervalt (taak 10 vervangt het gebruik).
+- Produceert: `issuestate.Keys = []string{"needs_mind","blocked_issue","blocked_external","needs_hands"}`; `Name(key, l)` kent deze vier; `Marks(names []string, l repoconfig.Labels) []string` (de sleutels van blokkade- en mens-labels op het issue, in de volgorde van `Keys`); `SetLabel(current []string, wantKey string, l) (LabelEdit, error)` met `LabelEdit{Add, Remove []string}` (het veld `Winner` vervalt); `GateZero` houdt zijn vorm maar stopt niet meer als het issue `NeedsMind` draagt, ook niet bij `blocked_issue`/`blocked_external` of een open blocker (spec §5: `needs_mind` met een blokkade routeert door naar 4c). `BlockingKey` blijft tot taak 3 (taak 3 vervangt het enige gebruik in `priorities.go` en laat het dan vervallen).
 - Rang: `needs_mind` en `needs_hands` zetten voegt alleen dat label toe en haalt niets weg. `blocked_issue` zetten voegt toe en haalt alleen `blocked_external` weg. `blocked_external` zetten met `blocked_issue` aanwezig voegt niets toe (`Add` leeg).
 
 - [ ] **Stap 1: tests (rood)** in `label_test.go`:
@@ -87,54 +87,57 @@ Alleen taak 13 vraagt de gebruiker iets: pauzeren, binary installeren, migratie 
   - `TestSetLabelBlockedExternalLosesToIssue`: current `[blocked-issue]`, want `blocked_external` → `Add` en `Remove` leeg.
   - `TestMarksListsAll`: names met `needs-mind`, `blocked-issue`, `blocked-external`, `needs-hands` → alle vier sleutels in `Keys`-volgorde (Review Focus 4).
   - `cmd`-test: de uitvoer na `state label 7 needs_mind` op een issue met `blocked-issue` begint met `label: #7` en noemt beide namen.
-  - `GateZero`-test: issue met `needs-mind` en open blocker geeft géén stop (zoals nu met `needs_shaping`), met `blocked-issue` wél (ongewijzigd).
+  - `GateZero`-test: issue met `needs-mind` en open blocker, en met `needs-mind` plus `blocked-issue`, geeft géén stop; `blocked-issue` zonder `needs-mind` wél.
 - [ ] **Stap 2: draai** `go test ./internal/issuestate ./internal/cli -run 'SetLabel|Marks|GateZero|StateLabel'`; verwacht FAIL.
 - [ ] **Stap 3: implementeer** de signaturen hierboven; `Return` en `Apply` geven `LabelEdit` door; de uitvoerregel in `cmd.go` print `Marks` van `is.Labels` na de wijziging.
 - [ ] **Stap 4: draai** dezelfde tests plus `go test ./internal/...`; verwacht PASS.
 - [ ] **Stap 5: commit** — `feat(issuestate): rangregel per as, needs_mind naast een blokkade`
 
-### Taak 3: `Of` en `derive.ts` kennen `needs_mind` (tijdelijke mapping)
+### Taak 3: `derive.ts` en `priorities.go` kennen `needs_mind` (tijdelijke mapping)
 
 **Bestanden:**
-- Wijzig: `internal/issuestate/state.go` (`Of`), `web/src/lib/priorities/derive.ts` (`issueState`), `tests/pack/fixtures/issue-state/cases.json`, `internal/priorities/priorities.go` (`Label` blijft in deze taak: gevuld uit de eerste sleutel van `Marks` met `needs_mind` vóór de rest).
+- Wijzig: `web/src/lib/priorities/derive.ts` (`issueState`), `internal/priorities/priorities.go` (`Label` blijft in deze taak: gevuld uit de eerste sleutel van `Marks` met `needs_mind` vóór de rest; `issuestate.BlockingKey` vervalt hier), `internal/issuestate/label.go` (`BlockingKey` weg).
 - Test: `internal/issuestate/state_test.go`, `web/src/lib/priorities/derive.test.ts`.
 
 **Interfaces:**
 - Consumeert: `issuestate.Marks`, `repoconfig.Labels.NeedsMind` (taak 1-2).
-- Gedrag in deel a: `needs_mind` geeft de oude status `needs_shaping`; een open 🤖 Vraag blijft `needs_human`; `needs_hands` blijft `needs_human`. In `cases.json` worden de labelnamen vervangen (`needs_shaping`/`needs_decision` → `needs_mind`; `needs_testing` → `needs_hands`) en de gevallen met `needs_decision` verwachten `needs_shaping`.
+- Gedrag in deel a: `needs_mind` geeft de oude status `needs_shaping`; een open 🤖 Vraag blijft `needs_human`; `needs_hands` blijft `needs_human`. `Of` en `cases.json` zijn al in taak 1 aangepast; deze taak brengt `derive.ts` gelijk.
 
-- [ ] **Stap 1:** pas `cases.json` aan zoals hierboven; draai `go test ./internal/issuestate -run Cases` en `cd web && npx vitest run src/lib/priorities/derive.test.ts`; verwacht FAIL op de gewijzigde gevallen.
-- [ ] **Stap 2:** implementeer in `Of`: overal waar `l.NeedsShaping` of `l.NeedsDecision` stond, nu `l.NeedsMind` met resultaat `NeedsShaping`; `l.NeedsTesting` vervalt. In `derive.ts`: `issue.label === 'needs_mind'` → `needs_shaping`; `NEEDS_LATER` is alleen `needs_hands`; `needs_decision` vervalt.
-- [ ] **Stap 3:** draai beide testsets; verwacht PASS.
-- [ ] **Stap 4: commit** — `refactor(issuestate): Of en derive.ts lezen needs_mind, gelijk gedrag`
+- [ ] **Stap 1:** draai `cd web && npx vitest run src/lib/priorities/derive.test.ts` tegen de aangepaste `cases.json`; verwacht FAIL op de gewijzigde gevallen.
+- [ ] **Stap 2:** implementeer in `derive.ts` (`Of` is al klaar): `issue.label === 'needs_mind'` → `needs_shaping`; `NEEDS_LATER` is alleen `needs_hands`; `needs_decision` vervalt.
+- [ ] **Stap 3:** `go test ./internal/... && cd web && npx vitest run src/lib/priorities`; verwacht PASS.
+- [ ] **Stap 4: commit** — `refactor(priorities): derive.ts en priorities.go lezen needs_mind, gelijk gedrag`
 
 ### Taak 4: triage, tick en map-planned op `needs_mind`
 
 **Bestanden:**
-- Wijzig: `internal/triage/{rules,outcome,prompt,judgment}.go`, `internal/dispatch/decide.go` (`ReturnLabelKey` r.292, `heldByHuman` r.519), `internal/scheduled/mapplanned/{mapplanned,corpus}.go`.
+- Wijzig: `internal/triage/{rules,outcome,prompt,judgment}.go`, `internal/dispatch/decide.go` (`ReturnLabelKey` r.292, `heldByHuman` r.519, `finishReturn` r.1462), `internal/scheduled/mapplanned/{mapplanned,corpus}.go`.
 - Test: `internal/triage/{rules,outcome,prompt,judgment}_test.go`, `internal/dispatch/decide_test.go`, `apply_test.go`, `internal/scheduled/mapplanned/job_test.go`.
 
 **Interfaces:**
 - `triage.Invariant(labels, l) []Deviation`: `Deviation{Kind:"blocking"}` alleen als `BlockedIssue` én `BlockedExternal` samen op het issue staan; `needs_mind` en `needs_hands` tellen niet mee.
 - `dispatch.ReturnLabelKey(reason string, blocked bool) string`: `blocked` → `"blocked_issue"`; `reason_needs_brainstorm` of `reason_interactive` → `"needs_mind"`; rest → `"needs_hands"`.
 - `heldByHuman(labels, l)` kijkt naar `NeedsMind`, `NeedsHands`, `BlockedExternal`.
+- `finishReturn` rekende op de oude rangregel (`blocked_issue` wint van het label van de reden). Nu geeft `ReturnLabelKey` per as `needs_hands` náást `blocked_issue`: `finishReturn` roept `ReturnLabelKey(reason, true)` aan als `blocked_issue` al op het issue staat, zodat er geen extra mens-label bijkomt.
+- Gate 0 (`FixedGate0`, `GateZero` uit taak 2) stopt niet meer bij `needs_mind`; de triage-uitvoer van een `needs_mind`-issue met een blokkade is route 4c met `— blocker #<x> open` (de blokkers uit `GateZero`/`OpenBlockers`).
 - `RowDesign` zet `o.Label = "needs_mind"`; `judgment` eist route 4c bij het label `NeedsMind`; de prompt noemt `labels.needs_mind` en `labels.needs_hands`, niet meer de andere drie; map-planned zet `needs_mind` bij een wensvraag (foutmelding `a wish question needs labels.needs_mind`).
 
 - [ ] **Stap 1: tests (rood)**
   - `TestInvariantBlockingPerAxis`: `[needs-mind, blocked-issue]` → geen afwijking; `[blocked-issue, blocked-external]` → één `blocking`; `[needs-mind, needs-hands]` → geen.
   - `TestReturnLabelKey`: tabel `reason_needs_brainstorm`→`needs_mind`, `reason_interactive`→`needs_mind`, `reason_pr_red`→`needs_hands`, `blocked=true`→`blocked_issue`.
   - `TestHeldByHuman`: `needs-mind` alleen → true; `blocked-issue` alleen → false (zoals nu).
-  - triage-outcome-test: een issue met `needs-mind` en route niet 4c is ongeldig (`the issue carries needs-mind, so the route must be 4c`).
+  - triage-outcome-test: een issue met `needs-mind` en route niet 4c is ongeldig (`the issue carries needs-mind, so the route must be 4c`); een issue met `needs-mind` en `blocked-issue` met open blocker geeft géén `RowStop` maar route 4c met `blocker #<x> open`.
+  - decide/apply-test voor `finishReturn`: Returned (reden `reason_pr_red`) op een issue met alleen `blocked-issue` → geen `needs-hands` erbij.
   - map-planned-test: een wensvraag zet `needs-mind` via `issuestate.Apply`.
 - [ ] **Stap 2: draai** `go test ./internal/triage ./internal/dispatch ./internal/scheduled/...`; verwacht FAIL.
-- [ ] **Stap 3: implementeer** per Interfaces; `FixedGate0` blijft `issuestate.GateZero`.
+- [ ] **Stap 3: implementeer** per Interfaces; `FixedGate0` blijft `issuestate.GateZero` (nu zonder stop bij `needs_mind`).
 - [ ] **Stap 4:** `go test ./...`; verwacht PASS.
 - [ ] **Stap 5: commit** — `feat(triage): needs_mind in triage, tick en map-planned, invariant per as`
 
 ### Taak 5: `DeleteLabel` in de forge-laag
 
 **Bestanden:**
-- Wijzig: `internal/forge/forge.go` (interface naast `CreateLabel` r.123), `internal/forge/write_issue.go` (GitHub), `internal/forge/gitlab_write.go` (GitLab), elke fake van `forge.Forge` (`grep -rn "CreateLabel(ctx" internal --include=*_test.go internal/forge/forgesuite`), `internal/forge/forgesuite/suite.go`.
+- Wijzig: `internal/forge/forge.go` (interface naast `CreateLabel` r.123), `internal/forge/write_issue.go` (GitHub), `internal/forge/gitlab_write.go` (GitLab), elke fake van `forge.Forge` (`grep -rn "CreateLabel(ctx" internal --include=*_test.go internal/forge/forgesuite`), `internal/forge/forgesuite/suite.go`, de nepservers `internal/forge/forgetest/server_write.go` en `internal/forge/gitlabtest/server_write.go` (een `DELETE`-route die het label ook van issues haalt).
 - Test: `internal/forge/write_issue_test.go`, `forgesuite/suite.go`, GitLab-test naast `gitlab_write.go`.
 
 **Interfaces:**
@@ -202,7 +205,7 @@ Alleen taak 13 vraagt de gebruiker iets: pauzeren, binary installeren, migratie 
 - Maak: `internal/cli/labels.go`, `internal/cli/labels_test.go`; wijzig `internal/cli/root.go` (`root.AddCommand(newLabelsCommand())`).
 
 **Interfaces:**
-- Consumeert: `labelmigrate.*` (taken 6-7), `flock.TryLock`, het pad van `tick.lock` uit `internal/cli/tick.go` (r.183-200: `$XDG_RUNTIME_DIR/tick.lock`; trek de padbepaling uit in `tickLockPath() (string, error)` en gebruik haar in `tick` en hier), `dbRunState` (`internal/cli/state.go`), de pauzevlag uit `internal/cli/pause.go`.
+- Consumeert: `labelmigrate.*` (taken 6-7), `flock.TryLock`, het pad van `tick.lock` uit `internal/cli/tick.go` (r.183-193: `$XDG_RUNTIME_DIR/lighthouse/tick.lock`; trek de padbepaling uit in `tickLockPath() (string, error)` en gebruik haar in `tick` en hier), `dbRunState` (`internal/cli/state.go`; die geeft bij een ontbrekende database `""` terug, dus de CLI controleert zelf met `os.Stat` op `store.DefaultPath()` en geeft dan `RunLookup=nil` door aan `BuildPlan`), de pauzevlag uit `internal/cli/pause.go`.
 - Produceert: `lighthouse labels migrate [--stage all|files|forge] [--old key=name ...] [--yes]`.
 - Gedrag: leest `lighthouse.toml` zelf via `labelmigrate.ReadOldNames`; `--old needs_shaping=3-needs-shaping` (herhaalbaar) overschrijft de namen (nodig in stage `forge` nadat `[labels]` al nieuw is). Stage `files`: stappen 4 en 5, geen forge, geen lock. Stage `forge`: stappen 1-3 en 6. Stage `all`: eerst stap 4 lezen (kan het taxonomiebestand niet gelezen worden → stop vóór alles), dan de rest in spec-volgorde. Voor elke forge-schrijffase: neem de tick-lock (`flock.TryLock`; bezet → fout `tick is running; pause and retry`), weiger als een run `open` is of als de pauzevlag niet staat (fout noemt `lighthouse pause`), toon het plan, vraag bevestiging (`--yes` slaat de vraag over, niet de preview), lees de forge daarna opnieuw, bouw het plan opnieuw binnen de lock en voer dat uit. Exit 0 bij succes, 1 bij fout, 2 bij een configfout.
 
@@ -210,6 +213,7 @@ Alleen taak 13 vraagt de gebruiker iets: pauzeren, binary installeren, migratie 
   - `TestLabelsMigrateRefusesWithoutPause`: geen pauzevlag → exit 1, uitvoer noemt `lighthouse pause`.
   - `TestLabelsMigrateRefusesHeldLock`: een gehouden `tick.lock` → exit 1.
   - `TestLabelsMigrateRefusesOpenRun`.
+  - `TestLabelsMigrateRefusesStep3WithoutDB`: geen runs-database → stap 3 weigert (fout `stap 3 vraagt de runs-database`), geen forge-schrijfaanroep.
   - `TestLabelsMigrateAbortsOnNo`: antwoord `n` → forge-fake kreeg geen schrijfaanroep.
   - `TestLabelsMigrateReadsOldToml`: een toml met oude sleutels laadt zonder fout (Review Focus 6) terwijl `config.Load` van hetzelfde bestand faalt.
   - `TestLabelsMigrateFilesStage`: schrijft taxonomie en `[labels]`, raakt de forge niet aan.
@@ -222,21 +226,21 @@ Alleen taak 13 vraagt de gebruiker iets: pauzeren, binary installeren, migratie 
 ### Taak 9: pack-skills, template, docs van deel a, dogfood
 
 **Bestanden:**
-- Wijzig: `pack/core/skills/route-issue/SKILL.md`, `pack/core/skills/start-issue/{claude,agents}/SKILL.md`, `pack/core/skills/write-issue/{claude,agents}/SKILL.md`, `pack/core/templates/labels.md`, `docs/developer/labels.md`, `docs/tick.md`, `docs/triage.md`, `docs/priorities.md` (alleen de labelnamen en as-uitleg; de statusuitleg volgt in taak 12), `ci/literal-denylist.txt` indien die de oude namen noemt, `internal/packcontract/{skills_test,issueflow_test,writeissue_test}.go`, `internal/protocol/triage_test.go`.
+- Wijzig: `pack/core/skills/route-issue/SKILL.md`, `pack/core/skills/start-issue/{claude,agents}/SKILL.md`, `pack/core/skills/write-issue/{claude,agents}/SKILL.md`, `pack/core/templates/labels.md`, `docs/developer/labels.md` (ook de rij- en rangtabel, met de hand: één rij `3-needs-mind` `FBCA04`, `needs_testing` opgegaan in `needs_hands`, de rangtabel vervangen door twee assen; dit is de enige taak die dat bestand herschrijft), `docs/tick.md`, `docs/triage.md`, `docs/priorities.md` (alleen de labelnamen en as-uitleg; de statusuitleg volgt in taak 12), `ci/literal-denylist.txt` indien die de oude namen noemt, `internal/packcontract/{skills_test,issueflow_test,writeissue_test}.go`, `internal/protocol/triage_test.go`.
 - Wijzig via dogfood: `.claude/skills/*`, `.agents/skills/*` (`go run ./cmd/lighthouse init --upgrade`).
-- Maak: `changelog.d/issue-588-statusmodel-mind-hands.md`.
+- Maak: `changelog.d/fix-statusmodel-mind-hands.md` (Engels, een tot drie zinnen voor een gebruiker, `docs/releasing.md`; de bestandsnaam is de branchnaam).
 
 **Inhoud (uit spec §1 en §5):**
 - route-issue: `needs_mind` → gate 4c; is er al een spec of gaat het om één keuze → smal (de open keuze eerst). Gate 0: `needs_mind` met een blokkade routeert door naar 4c met `— blocker #<x> open`; spec ja, plan nee.
 - start-issue: board-start overgeslagen bij elke blokkade (ook met `needs_mind`); na een goedgekeurde spec gaat alleen `needs_mind` eraf, geen wissel naar `blocked_issue`.
 - write-issue 3c/3e: `needs_mind` met open `blocked_by` is *label missing* zolang `blocked_issue` ontbreekt; het label komt erbij, `needs_mind` blijft.
 - `labels.md` (pack-template en developer): twee assen in plaats van één rangtabel; de toets "kan ik dit gewoon tegen de agent zeggen?" blijft. `needs_hands` neemt testen op.
-- Fragment (`type: internal` of het type dat `docs/releasing.md` voor gebruikerszichtbaar noemt — kies dat laatste, het is een breaking config-wijziging): noem de nieuwe sleutels en `lighthouse labels migrate`.
+- Fragment (`type: changed`, een breaking config-wijziging; een `changed`-fragment wacht tot maandag op een release, zie taak 14): noem de nieuwe sleutels en `lighthouse labels migrate`.
 
 - [ ] **Stap 1: tests (rood):** pas de pack-contracttests aan zodat ze de nieuwe sleutels en zinnen eisen (`labels.needs_mind` in route-issue; géén `labels.needs_shaping`, `needs_decision`, `needs_testing` in enige skill); `go test ./internal/packcontract ./internal/protocol`; FAIL.
 - [ ] **Stap 2:** werk skills, templates en docs bij.
 - [ ] **Stap 3:** `go run ./cmd/lighthouse init --upgrade`, daarna nogmaals; de tweede keer meldt `No changes.`
-- [ ] **Stap 4:** `grep -rIn "needs_shaping\|needs_decision\|needs_testing\|needs-shaping\|needs-decision\|needs-testing" --exclude-dir=.git --exclude-dir=node_modules . | grep -v 'docs/developer/planning\|CHANGELOG.md\|internal/labelmigrate\|internal/cli/labels'` is leeg, op `lighthouse.toml` en de taxonomie na (die migreert taak 13).
+- [ ] **Stap 4:** `grep -rIn "needs_shaping\|needs_decision\|needs_testing\|needs-shaping\|needs-decision\|needs-testing" --exclude-dir=.git --exclude-dir=node_modules . | grep -v 'docs/developer/planning\|CHANGELOG.md\|internal/labelmigrate\|internal/cli/labels'` is leeg, met `internal/config`, `internal/repoconfig`, `internal/projectconfig` en hun tests als extra uitzondering (de oude-sleutelweigering noemt die namen bewust).
 - [ ] **Stap 5:** `go test ./...`; PASS. Commit — `docs(labels): needs_mind en needs_hands in skills, template en docs`
 
 ---
@@ -248,6 +252,7 @@ Alleen taak 13 vraagt de gebruiker iets: pauzeren, binary installeren, migratie 
 **Bestanden:**
 - Wijzig: `internal/issuestate/state.go`, `tests/pack/fixtures/issue-state/cases.json`, `web/src/lib/priorities/derive.ts`, `internal/priorities/priorities.go`, `internal/issuestate/cmd.go` (`state show`), alle gebruikers van `issuestate.State` (`grep -rn "issuestate\.\(NeedsHuman\|NeedsShaping\|Blocked\)" internal`).
 - Test: `internal/issuestate/state_test.go`, `web/src/lib/priorities/derive.test.ts`, `internal/priorities/priorities_test.go`, `internal/server/priorities_test.go`, `internal/cli/serve_test.go`, `internal/cli/state_test.go`.
+- Wijzig ook: `web/openapi.json` en de gegenereerde client `web/src/api/` (`go test ./internal/server -run TestOpenAPISnapshot -update`, daarna `cd web && npm run gen`; zonder dat is `TestOpenAPISnapshot` rood en kent `typecheck` `issue.labels` niet).
 
 **Interfaces:**
 - Produceert Go: `State` met `Done`, `NeedsMind`, `NeedsHands`, `Active`, `Ready` (waarden `"done"`, `"needs_mind"`, `"needs_hands"`, `"active"`, `"ready"`); `Result{State State; Blocked bool}`; `Input` krijgt niets nieuws. `Of(in Input, l repoconfig.Labels) Result` volgt de statusregel uit de globale beperkingen. `Blocked` is waar bij een blokkade, behalve bij `done`.
@@ -259,7 +264,7 @@ Alleen taak 13 vraagt de gebruiker iets: pauzeren, binary installeren, migratie 
 - [ ] **Stap 2:** `go test ./internal/issuestate -run Cases` en `cd web && npx vitest run src/lib/priorities`; FAIL.
 - [ ] **Stap 3:** implementeer Go en `derive.ts` volgens de statusregel; `derive.ts` gebruikt `liveRun` (`open` en `parked`).
 - [ ] **Stap 4:** `/api/priorities`: vul `Labels` met `Marks`, behalve voor gesloten issues (`Planning` levert alleen open; test dat een issue met gesloten state geen `labels` en `blocked_by` meekrijgt waar milestones `Closed` laden). Test in `internal/priorities/priorities_test.go` dat een issue met `[needs-mind, blocked-external]` `labels == ["needs_mind","blocked_external"]` geeft.
-- [ ] **Stap 5:** `go test ./... && cd web && npx vitest run && npm run typecheck && npm run lint`; PASS. (De component-tests uit taak 11 mogen hier nog op de oude `state`-vorm leunen; pas ze minimaal aan zodat ze compileren.)
+- [ ] **Stap 5:** `go test ./internal/server -run TestOpenAPISnapshot -update`, `cd web && npm run gen`; dan `go test ./... && cd web && npx vitest run && npm run typecheck && npm run lint`; PASS. (De component-tests uit taak 11 mogen hier nog op de oude `state`-vorm leunen; pas ze minimaal aan zodat ze compileren.)
 - [ ] **Stap 6: commit** — `feat(issuestate): vijf statussen plus Blocked, labels per as in de API`
 
 ### Taak 11: blokje met kruis-overlay, balkvolgorde, legenda
@@ -295,34 +300,31 @@ Alleen taak 13 vraagt de gebruiker iets: pauzeren, binary installeren, migratie 
 
 ---
 
-## Uitrol
+## Afronden en uitrol
 
-### Taak 13: migratie draaien (mensstappen, na de merge)
+### Taak 13: afronden en PR
 
-Dit lost r3-f1 op. De spec liet lighthouse zelf vóór de PR migreren met de tick gepauzeerd tot na de merge; dat legt alle dispatch-repo's stil tijdens review en CI. Hier is de pauze alleen het venster rond de merge. De tick leest `lighthouse.toml` en de labelnamen pas bij een tick; zolang `main` nog oude sleutels heeft en de forge oude labels, klopt alles voor de oude binary. Deze taak wijkt daarmee bewust af van §6 *Volgorde per repo*; de acceptatiecriteria van #588 (geen open issue met de oude labels) blijven gelden.
+- [ ] **Stap 1:** `lighthouse evidence`/`/lighthouse-write-pr 588` verifieert de acceptatiecriteria met bewijs per regel; criterium "migratie gedraaid" is pas na taak 14 aantoonbaar, dus de PR is `Refs #588 — <reden>` met een Evidence-tabel, niet `Closes`. De PR-body bevat de uitrolstappen van taak 14 letterlijk.
+- [ ] **Stap 2:** deel c is #557; laat het issue de kanban-wijzigingen niet bevatten.
+- [ ] **Stap 3:** plaats na het openen van de PR één `lighthouse ask` met de commando's van taak 14 (elk via `--command`, opties *klaar* en *anders*). De bouw wacht er niet op; het mergen doet de gebruiker, nooit de agent.
 
-**Vóór de PR (geen pauze, geen forge-schrijfactie), in de worktree van deze branch:**
+### Taak 14: migratie draaien (mensstappen, na de PR)
 
-- [ ] **Stap 1:** `go run ./cmd/lighthouse labels migrate --stage files` herschrijft het taxonomiebestand en `[labels]` in `lighthouse.toml`; commit beide (`chore(labels): lighthouse.toml en taxonomie naar needs_mind`). CI (`init --upgrade` → `No changes.`) ziet nu de nieuwe sleutels. De PR volgt via `/lighthouse-write-pr`.
+Dit lost r3-f1 op. De spec liet lighthouse zelf vóór de PR migreren met de tick gepauzeerd tot na de merge; dat legt alle dispatch-repo's stil tijdens review en CI. Hier is de pauze alleen het venster rond de merge, en de `lighthouse.toml`- en taxonomie-wijziging staan al in de PR (taken 1 en 9, met de hand), zodat CI (`init --upgrade` → `No changes.`) de nieuwe sleutels ziet. De tick leest `lighthouse.toml` en de labelnamen pas bij een tick; zolang `main` nog oude sleutels heeft en de forge oude labels, klopt alles voor de oude binary. Deze taak wijkt daarmee bewust af van §6 *Volgorde per repo*, zoals de spec zelf toelaat (*Open na review*, r3-f1); de acceptatiecriteria van #588 (geen open issue met de oude labels) blijven gelden.
 
 **Venster rond de merge (korte onderhoudsperiode), op de tick-host, door de gebruiker:**
 
-- [ ] **Stap 2:** `lighthouse pause`; wacht tot geen run `open` is.
-- [ ] **Stap 3:** de PR mergen (de gebruiker; nooit de agent), de release afwachten, de nieuwe binary installeren (`lighthouse self-update`).
-- [ ] **Stap 4:** `lighthouse labels migrate --stage forge --old needs_shaping=3-needs-shaping --old needs_decision=3-needs-decision --old needs_testing=3-needs-testing`: preview, bevestigen, uitvoeren.
-- [ ] **Stap 5:** `lighthouse pause --off` (de exacte vlag staat in `internal/cli/pause.go`). Het venster is dicht. Controle: `gh issue list --label 3-needs-shaping` en dezelfde voor `3-needs-decision` en `3-needs-testing` geven niets; `lighthouse state show 379` toont `blocked` (na deel b).
+- [ ] **Stap 1:** `lighthouse pause --until HH:MM` met een tijd die het hele venster dekt (zonder `--until` eindigt de pauze bij het begin van de nacht, vóór een mogelijke release); wacht tot geen run `open` is.
+- [ ] **Stap 2:** de PR mergen. Een fragment van het type `changed` wacht tot maandag 06:00 UTC op een release (`docs/releasing.md`): start de `release`-workflow met de hand (`workflow_dispatch`, `bump: minor`) en wacht op de release. Installeer de nieuwe binary (`lighthouse self-update`). Zolang de nieuwe binary er niet is, draait de oude tick op de nieuwe `lighthouse.toml`; daarom dekt de pauze het hele venster.
+- [ ] **Stap 3:** `lighthouse labels migrate --stage forge --old needs_shaping=3-needs-shaping --old needs_decision=3-needs-decision --old needs_testing=3-needs-testing`: preview, bevestigen, uitvoeren.
+- [ ] **Stap 4:** `lighthouse pause off`. Het venster is dicht. Controle: `gh issue list --label 3-needs-shaping` en dezelfde voor `3-needs-decision` en `3-needs-testing` geven niets; `lighthouse state show 379` toont `blocked` (na deel b).
 
 **`personal_ai_agent` (pack v0.9.0, oude sleutels):**
 
-- [ ] **Stap 6:** tick pauzeren, nieuwe binary, `lighthouse labels migrate` (stage `all`), direct `lighthouse init --upgrade`, committen via een PR, pauze eraf. Tussen de binary en `init --upgrade` falen `lighthouse config`-aanroepen van die repo; daarom staat de tick stil.
-
-### Taak 14: afronden
-
-- [ ] **Stap 1:** `lighthouse evidence`/`/lighthouse-write-pr 588` verifieert de acceptatiecriteria met bewijs per regel; criterium "migratie gedraaid" is pas na taak 13 aantoonbaar, dus de PR is `Refs #588 — <reden>` met een Evidence-tabel, niet `Closes`.
-- [ ] **Stap 2:** deel c is #557; laat het issue de kanban-wijzigingen niet bevatten.
+- [ ] **Stap 5:** tick pauzeren, nieuwe binary, `lighthouse labels migrate` (stage `all`), direct `lighthouse init --upgrade`, committen via een PR, `lighthouse pause off`. Tussen de binary en `init --upgrade` falen `lighthouse config`-aanroepen van die repo; daarom staat de tick stil.
 
 ## Zelfreview
 
-- **Dekking:** §1 → taken 1-2, 4; §2 → 3, 10; §3 en §4 → 11; §5 → 4, 9; §6 → 5-8, 13; §7 is deel c (buiten dit plan, #557). Doelen "één regel Go en web" → taken 3 en 10 delen `cases.json`.
-- **Types:** `Marks`, `LabelEdit{Add, Remove}`, `Result{State, Blocked}`, `issuestate.Keys` en `ReturnLabelKey` hebben overal dezelfde naam; `BlockingKey` verdwijnt in taak 2 en zijn enige gebruiker (`priorities.go`) krijgt in taak 3 `Marks` en in taak 10 `Labels`.
+- **Dekking:** §1 → taken 1-2, 4; §2 → 3, 10; §3 en §4 → 11; §5 → 4, 9; §6 → 5-8, 14; §7 is deel c (buiten dit plan, #557). Doelen "één regel Go en web" → taken 1, 3 en 10 delen `cases.json`.
+- **Types:** `Marks`, `LabelEdit{Add, Remove}`, `Result{State, Blocked}`, `issuestate.Keys` en `ReturnLabelKey` hebben overal dezelfde naam; `BlockingKey` verdwijnt in taak 3 en zijn enige gebruiker (`priorities.go`) krijgt in taak 3 `Marks` en in taak 10 `Labels`.
 - **Open punt:** in taak 3 gebruikt `priorities.Issue.Label` tijdelijk de eerste sleutel van `Marks`; taak 10 verwijdert het veld.
