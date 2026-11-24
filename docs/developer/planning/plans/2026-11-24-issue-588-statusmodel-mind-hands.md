@@ -53,7 +53,7 @@ Taken 1–13 hebben geen mensstap en wachten op niemand. Alleen de uitrol (taak 
 ### Taak 1: `[labels]` hernoemen en oude sleutels weigeren
 
 **Bestanden:**
-- Wijzig: `internal/config/config.go` (schema ~r.91-93, defaults ~r.154-157, `Load` r.651), `internal/repoconfig/repoconfig.go` (`Labels` r.63, `Blocking`, `NeedsName`, `rawFile.Labels`, `DefaultLabels`, `LoadFile`), `internal/projectconfig/projectconfig.go:235` (`LabelTables`), `tests/pack/fixtures/config-schema.json`, `tests/pack/fixtures/config/{full,defaults}/*`, `docs/site/data/config.json`, `lighthouse.toml` (`[labels]`: `needs_shaping`/`needs_decision` worden `needs_mind = "3-needs-mind"`, `needs_testing` vervalt, `needs_hands` blijft; anders weigert `config.Load` het eigen bestand, ook in `internal/codelang` en `init --upgrade`), `tests/pack/fixtures/issue-state/cases.json` (alleen labelnamen en verwachting, zie stap 4).
+- Wijzig: `internal/config/config.go` (schema ~r.91-93, defaults ~r.154-157, `Load` r.651), `internal/repoconfig/repoconfig.go` (`Labels` r.63, `Blocking`, `NeedsName`, `rawFile.Labels`, `DefaultLabels`, `LoadFile`), `internal/projectconfig/projectconfig.go:235` (`LabelTables`), `tests/pack/fixtures/config-schema.json`, `tests/pack/fixtures/config/{full,defaults}/*`, `docs/site/data/config.json`, `lighthouse.toml` (`[labels]`: `needs_shaping`/`needs_decision` worden `needs_mind = "3-needs-mind"`, `needs_testing` vervalt, `needs_hands` blijft; anders weigert `config.Load` het eigen bestand, ook in `internal/codelang` en `init --upgrade`), `tests/pack/fixtures/issue-state/cases.json` (alleen labelnamen en verwachting, zie stap 4), `web/src/lib/priorities/derive.ts` (`issueState`: `issue.label === 'needs_mind'` → `needs_shaping`; `NEEDS_LATER` is alleen `needs_hands`; `needs_decision` vervalt; `derive.test.ts` leest dezelfde `cases.json`).
 - Wijzig mechanisch (compileren): elke gebruiker van `NeedsShaping`/`NeedsDecision`/`NeedsTesting` in `internal/` (`grep -rn "NeedsShaping\|NeedsDecision\|NeedsTesting" internal`) wordt `NeedsMind` of vervalt; sleutelstrings `"needs_shaping"`/`"needs_decision"` worden `"needs_mind"`, `"needs_testing"` wordt `"needs_hands"`.
 - Test: `internal/config/config_test.go`, `internal/repoconfig/repoconfig_test.go`, `internal/projectconfig/projectconfig_test.go`.
 
@@ -68,7 +68,7 @@ Taken 1–13 hebben geen mensstap en wachten op niemand. Alleen de uitrol (taak 
 - [ ] **Stap 2: draai ze** — `go test ./internal/config ./internal/repoconfig ./internal/projectconfig -run 'OldLabelKeys|NeedsMind|NewKeys'`; verwacht FAIL.
 - [ ] **Stap 3: implementeer** het schema en de structs zoals onder Interfaces; weiger oude sleutels in `config.Load` en `repoconfig.LoadFile` met `md.IsDefined("labels", key)`. Voeg geen lenient-pad toe: de migratie leest het toml zelf (taak 6).
 - [ ] **Stap 4: herstel de rest** — werk fixtures en `config-schema.json` bij; pas `docs/site/data/config.json` met de hand aan (er is geen generator; `docs/site/test/config.test.mjs` controleert het, draai `node --test docs/site/test/config.test.mjs`), herschrijf `[labels]` in `lighthouse.toml` zoals onder Bestanden, pas in `cases.json` de labelnamen aan (`needs_shaping`/`needs_decision` → `needs_mind`, `needs_testing` → `needs_hands`) en laat de gevallen met `needs_decision` `needs_shaping` verwachten in plaats van `needs_human`; in `Of` geeft `NeedsMind` de oude status `needs_shaping` (tijdelijke mapping tot taak 10), en laat de bestaande tests die de oude namen noemen de nieuwe namen gebruiken.
-- [ ] **Stap 5: volledige Go-tests** — `go build ./... && go vet ./... && go test ./...`; verwacht groen. Het eigen `lighthouse.toml` heeft nu de nieuwe sleutels; de forge heeft nog de oude labels tot taak 14, dat raakt geen test.
+- [ ] **Stap 5: volledige tests** — `go build ./... && go vet ./... && go test ./... && cd web && npx vitest run src/lib/priorities`; verwacht groen. Het eigen `lighthouse.toml` heeft nu de nieuwe sleutels; de forge heeft nog de oude labels tot taak 14, dat raakt geen test.
 - [ ] **Stap 6: commit** — `refactor(labels): needs_mind en needs_hands in [labels], oude sleutels geweigerd`
 
 ### Taak 2: rangregel per as in `issuestate`
@@ -93,20 +93,20 @@ Taken 1–13 hebben geen mensstap en wachten op niemand. Alleen de uitrol (taak 
 - [ ] **Stap 4: draai** dezelfde tests plus `go test ./internal/...`; verwacht PASS.
 - [ ] **Stap 5: commit** — `feat(issuestate): rangregel per as, needs_mind naast een blokkade`
 
-### Taak 3: `derive.ts` en `priorities.go` kennen `needs_mind` (tijdelijke mapping)
+### Taak 3: `priorities.go` kent `needs_mind` (tijdelijke mapping)
 
 **Bestanden:**
-- Wijzig: `web/src/lib/priorities/derive.ts` (`issueState`), `internal/priorities/priorities.go` (`Label` blijft in deze taak: gevuld uit de eerste sleutel van `Marks` met `needs_mind` vóór de rest; `issuestate.BlockingKey` vervalt hier), `internal/issuestate/label.go` (`BlockingKey` weg).
-- Test: `internal/issuestate/state_test.go`, `web/src/lib/priorities/derive.test.ts`.
+- Wijzig: `internal/priorities/priorities.go` (`Label` blijft in deze taak: gevuld uit de eerste sleutel van `Marks` met `needs_mind` vóór de rest; `issuestate.BlockingKey` vervalt hier), `internal/issuestate/label.go` (`BlockingKey` weg).
+- Test: `internal/priorities/priorities_test.go`.
 
 **Interfaces:**
 - Consumeert: `issuestate.Marks`, `repoconfig.Labels.NeedsMind` (taak 1-2).
-- Gedrag in deel a: `needs_mind` geeft de oude status `needs_shaping`; een open 🤖 Vraag blijft `needs_human`; `needs_hands` blijft `needs_human`. `Of` en `cases.json` zijn al in taak 1 aangepast; deze taak brengt `derive.ts` gelijk.
+- Gedrag in deel a: `needs_mind` geeft de oude status `needs_shaping`; een open 🤖 Vraag blijft `needs_human`; `needs_hands` blijft `needs_human`. `Of` en `cases.json` zijn al in taak 1 aangepast; `derive.ts` is al in taak 1 gelijkgetrokken; deze taak vervangt het gebruik van `BlockingKey`.
 
-- [ ] **Stap 1:** draai `cd web && npx vitest run src/lib/priorities/derive.test.ts` tegen de aangepaste `cases.json`; verwacht FAIL op de gewijzigde gevallen.
-- [ ] **Stap 2:** implementeer in `derive.ts` (`Of` is al klaar): `issue.label === 'needs_mind'` → `needs_shaping`; `NEEDS_LATER` is alleen `needs_hands`; `needs_decision` vervalt.
+- [ ] **Stap 1:** schrijf in `internal/priorities/priorities_test.go` een test dat `Issue.Label` voor `[needs-mind, blocked-external]` `needs_mind` is; verwacht FAIL (`BlockingKey` kent het niet meer na stap 2).
+- [ ] **Stap 2:** implementeer in `priorities.go` met `Marks` (`Of` en `derive.ts` zijn al klaar); haal `BlockingKey` weg.
 - [ ] **Stap 3:** `go test ./internal/... && cd web && npx vitest run src/lib/priorities`; verwacht PASS.
-- [ ] **Stap 4: commit** — `refactor(priorities): derive.ts en priorities.go lezen needs_mind, gelijk gedrag`
+- [ ] **Stap 4: commit** — `refactor(priorities): priorities.go leest Marks, gelijk gedrag`
 
 ### Taak 4: triage, tick en map-planned op `needs_mind`
 
