@@ -134,6 +134,28 @@ func Run(o Options) int {
 
 var errDeclined = errors.New("nothing written")
 
+// showDiffs prints the diff of every changed path.
+func showDiffs(o Options, plan map[string]*planned, paths []string) {
+	for _, p := range paths {
+		printDiff(o.Out, p, plan[p])
+	}
+}
+
+// confirm reports whether to go on: --yes, otherwise the answer of ask.
+func confirm(o Options, ask func() bool) bool {
+	return o.Yes || ask()
+}
+
+// applyAll applies every changed path with apply, stopping at the first error.
+func applyAll(root string, plan map[string]*planned, paths []string, apply func(root, rel string, p *planned) error) error {
+	for _, p := range paths {
+		if err := apply(root, p, plan[p]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func execute(o Options) error {
 	if o.CreateLabels && !o.Labels {
 		return errors.New("--create-labels needs --labels")
@@ -278,17 +300,13 @@ func execute(o Options) error {
 		_, _ = fmt.Fprintln(o.Out, "No changes.")
 		reportBudget(o, plan, lookup)
 	} else {
-		for _, p := range paths {
-			printDiff(o.Out, p, plan[p])
-		}
+		showDiffs(o, plan, paths)
 		reportBudget(o, plan, lookup)
-		if !o.Yes && !ask(o.Out, in, "Apply these changes? [y/N] ") {
+		if !confirm(o, func() bool { return ask(o.Out, in, "Apply these changes? [y/N] ") }) {
 			return errDeclined
 		}
-		for _, p := range paths {
-			if err := apply(root, p, plan[p]); err != nil {
-				return err
-			}
+		if err := applyAll(root, plan, paths, apply); err != nil {
+			return err
 		}
 		_, _ = fmt.Fprintf(o.Out, "Wrote %d file(s).\n", len(paths))
 		if haveLevels {
