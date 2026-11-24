@@ -1,5 +1,6 @@
 import type { CSSProperties, JSX, MouseEventHandler, PointerEventHandler } from 'react'
 import type { GNode } from '@/lib/priorities/derive'
+import { Block } from './Block'
 import { NODE_H, NODE_W } from './layout'
 
 interface Props {
@@ -21,8 +22,8 @@ interface Props {
   onClick?: MouseEventHandler<HTMLAnchorElement>
 }
 
-// One issue card, drawn with the shape language of the milestone bar: striped strip = active,
-// dashed outline = needs a human, cross at the number = blocked, solid grey border = external.
+// One issue card: a solid milestone strip, one status block of the shape language before the
+// number (none on an external card, which has a solid grey border instead).
 export function NodeCard({
   node,
   color,
@@ -38,10 +39,7 @@ export function NodeCard({
   onMouseLeave,
   onClick,
 }: Props): JSX.Element {
-  // Interim shape: needs_shaping and needs_human keep the dashed flag until the new shapes land.
-  const showsNeedsHuman = (node.state === 'needs_human' || node.state === 'needs_shaping') && !grey
-  const active = node.state === 'active'
-  const blocked = node.state === 'blocked'
+  const underlined = node.state === 'needs_shaping' || node.state === 'needs_human'
   return (
     <a
       href={grey && node.url === '' ? undefined : node.url}
@@ -49,7 +47,6 @@ export function NodeCard({
       rel="noreferrer"
       data-testid={testId}
       data-state={node.state}
-      data-needs-human={showsNeedsHuman ? 'true' : 'false'}
       data-external={grey ? 'true' : 'false'}
       data-dimmed={dimmed ? 'true' : 'false'}
       data-depth={node.depth}
@@ -63,7 +60,6 @@ export function NodeCard({
       style={{
         width: NODE_W,
         height: NODE_H,
-        ...(showsNeedsHuman ? { outline: '1.5px dashed var(--foreground)', outlineOffset: -1 } : {}),
         ...style,
       }}
       onPointerDown={onPointerDown}
@@ -72,13 +68,14 @@ export function NodeCard({
       onMouseLeave={onMouseLeave}
       onClick={onClick}
     >
+      <span data-testid="card-strip" className="w-1.5 flex-none self-stretch" style={{ background: color }} />
+      {!grey && <Block testId="card-status" className="size-3.5 flex-none" state={node.state} color={color} title={node.title} />}
       <span
-        data-testid="card-strip"
-        className={`w-1.5 flex-none self-stretch ${active ? 'lh-stripe' : ''}`}
-        style={active ? ({ ['--ms-color' as string]: color } as CSSProperties) : { background: color }}
-      />
-      {blocked && <span data-testid="card-cross" className="lh-cross inline-block size-3 flex-none" />}
-      <span className="flex-none text-[13px] font-semibold">{label}</span>
+        data-underlined={underlined && !grey ? 'true' : undefined}
+        className={`flex-none text-[13px] font-semibold${underlined && !grey ? ' underline underline-offset-2 decoration-2' : ''}`}
+      >
+        {label}
+      </span>
       <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground" title={node.title}>
         {node.title}
       </span>
