@@ -93,9 +93,15 @@ func maxTokens(a, b telemetry.Tokens) telemetry.Tokens {
 		}
 		return x
 	}
+	// The cache-write pair is taken whole from the line with the larger total, so a
+	// split and an unsplit duplicate never add up to more than one line's total.
+	cw := a
+	if b.CacheWrite() > a.CacheWrite() {
+		cw = b
+	}
 	return telemetry.Tokens{
 		Input: m(a.Input, b.Input), Output: m(a.Output, b.Output), CacheRead: m(a.CacheRead, b.CacheRead),
-		CacheWrite5m: m(a.CacheWrite5m, b.CacheWrite5m), CacheWrite1h: m(a.CacheWrite1h, b.CacheWrite1h),
+		CacheWrite5m: cw.CacheWrite5m, CacheWrite1h: cw.CacheWrite1h,
 	}
 }
 
@@ -193,6 +199,8 @@ type ModelUsage struct {
 	Cost   *float64 // nil: model unknown in the price table
 }
 
+// A message with a zero At (unparseable timestamp) falls outside any window with a
+// non-zero from.
 // UsageBetween sums messages with from <= At < to per model; a zero bound is
 // open. Cost is the sum of per-message estimates at each message's own
 // timestamp; one unpriced message makes Cost nil for that model.

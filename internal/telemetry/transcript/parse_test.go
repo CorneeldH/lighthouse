@@ -262,3 +262,32 @@ func TestParseHugeLine(t *testing.T) {
 		t.Fatalf("input = %d", got)
 	}
 }
+
+func TestParseDuplicateTakesMaxAndEarliestAt(t *testing.T) {
+	r := mustParse(t, f("s1.jsonl",
+		asst("m1", "r1", "model-a", "2026-01-01T10:00:02Z", use(1, 1, 0, 0), ""),
+		asst("m1", "r1", "model-a", "2026-01-01T10:00:00Z", use(1, 8, 0, 0), ""),
+		asst("m1", "r1", "model-a", "2026-01-01T10:00:01Z", use(1, 5, 0, 0), "")))
+	if len(r.Messages) != 1 {
+		t.Fatalf("messages = %d", len(r.Messages))
+	}
+	if got := r.Messages[0].Tokens.Output; got != 8 {
+		t.Fatalf("output = %d, want max 8", got)
+	}
+	if !r.Messages[0].At.Equal(ts("2026-01-01T10:00:00Z")) {
+		t.Fatalf("At = %v, want earliest", r.Messages[0].At)
+	}
+}
+
+func TestParseDuplicateCacheWriteNotDoubleCounted(t *testing.T) {
+	split := `{"input_tokens":1,"output_tokens":1,"cache_creation_input_tokens":300,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":300}}`
+	for _, lines := range [][]string{
+		{asst("m1", "r1", "model-a", "2026-01-01T10:00:00Z", use(1, 1, 0, 300), ""), asst("m1", "r1", "model-a", "2026-01-01T10:00:01Z", split, "")},
+		{asst("m1", "r1", "model-a", "2026-01-01T10:00:00Z", split, ""), asst("m1", "r1", "model-a", "2026-01-01T10:00:01Z", use(1, 1, 0, 300), "")},
+	} {
+		got := mustParse(t, f("s1.jsonl", lines...)).UsageBetween(time.Time{}, time.Time{})["model-a"].Tokens
+		if got.CacheWrite() != 300 {
+			t.Fatalf("cache write = %+v, want total 300", got)
+		}
+	}
+}
