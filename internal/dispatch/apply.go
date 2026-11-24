@@ -746,7 +746,7 @@ func (ap applier) classifyFlow(ctx context.Context, a Action, run runs.Run, gitE
 	case verdict == VerdictOther:
 		line = append(line, h("reply_push_not_permit"))
 	case gitErr == nil: // pushed, and origin lacks the SHA
-		line = append(line, h("reply_push_not_on_origin")+": `origin/"+a.Branch+"`.")
+		line = append(line, strings.NewReplacer("{sha}", a.PermitSHA, "{branch}", a.Branch).Replace(h("reply_push_not_on_origin")))
 	}
 	if gitErr != nil {
 		line = append(line, h("reply_push_could_not_check"))

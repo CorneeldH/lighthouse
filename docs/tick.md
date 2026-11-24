@@ -469,8 +469,9 @@ geen sessie, ook niet terwijl de rij op CI wacht.
   leest het opnieuw. Je hoeft dus niet opnieuw te antwoorden. De git-check zelf mag langs de rem.
   Mislukt een post van de reactie, Handoff of Teruggegeven, dan sluit de rij als `returned` en niet
   als `start_failed`: de sleutel is dan op en het vangnet (`idle`) pakt het issue op. Mislukt de start
-  na een classifier-`permit` (`start_failed`), dan telt het volgende antwoord opnieuw als toestemming
-  en start de eerstvolgende tick de pusher opnieuw; na de tweede mislukking komt de Vraag of Teruggegeven.
+  na een classifier-`permit` (`start_failed`), dan telt hetzelfde antwoord opnieuw als toestemming:
+  de rij draagt de notitie `{"answer":"permit"}`, en de eerstvolgende tick start de pusher opnieuw
+  (`pushAgain`) zonder nieuw antwoord; na de tweede mislukking komt de Vraag of Teruggegeven.
 
 ### Afloop met de lokale werkplek
 

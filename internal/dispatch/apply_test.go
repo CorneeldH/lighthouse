@@ -3375,6 +3375,7 @@ func TestApplyPushRecoverReply(t *testing.T) {
 		{"classifier nil", "", nil, true, "reply_push_unreadable"},
 		{"classifier timeout", "", context.DeadlineExceeded, false, "reply_push_unreadable"},
 		{"unknown verdict", "maybe", nil, false, "reply_push_unreadable"},
+		{"permit with error", VerdictPermit, errors.New("x"), false, "reply_push_unreadable"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -3402,8 +3403,12 @@ func TestApplyPushRecoverReply(t *testing.T) {
 				t.Errorf("header = %+v, want a pusher Vraag with the Vraag's fields", hd)
 			}
 			for _, key := range []string{tt.line, "reply_push_works"} {
-				if !strings.Contains(body, protocol.Heading(key, "nl")) {
-					t.Errorf("reply lacks %s:\n%s", key, body)
+				want := protocol.Heading(key, "nl")
+				if key == "reply_push_not_on_origin" {
+					want = "De SHA `" + a.PermitSHA + "` staat niet op `origin/issue-7-x`."
+				}
+				if !strings.Contains(body, want) {
+					t.Errorf("reply lacks %s (%q):\n%s", key, want, body)
 				}
 			}
 			if !strings.Contains(body, "cd /work/issue-7-x && git push -u origin HEAD") || strings.Contains(body, "COULD NOT CHECK") {
@@ -3450,7 +3455,7 @@ func TestApplyPushRecoverGitErrorClassifierPermit(t *testing.T) {
 				return
 			}
 			if len(*specs) != 0 || len(b) != 1 || !strings.Contains(b[0], "COULD NOT CHECK") ||
-				strings.Contains(b[0], protocol.Heading("reply_push_not_on_origin", "nl")) {
+				strings.Contains(b[0], "staat niet op `origin/") {
 				t.Errorf("specs = %+v, posted = %q, want one reply with COULD NOT CHECK", *specs, b)
 			}
 		})
