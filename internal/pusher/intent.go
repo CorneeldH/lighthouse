@@ -264,7 +264,7 @@ func extract(top map[string]any) (facts, string) {
 		return f, "`jobs` is not a map"
 	}
 	for _, id := range sortedKeys(jobs) {
-		if why := f.job(id, jobs[id]); why != "" {
+		if why := f.job(top, id, jobs[id]); why != "" {
 			return f, why
 		}
 	}
@@ -273,7 +273,7 @@ func extract(top map[string]any) (facts, string) {
 
 // job reads one job: its effective permissions, uses, runner, environment, images and
 // secrets: inherit.
-func (f *facts) job(id string, v any) string {
+func (f *facts) job(top map[string]any, id string, v any) string {
 	job, ok := asMap(v)
 	if !ok {
 		return "job " + id + " is not a map"
@@ -293,18 +293,13 @@ func (f *facts) job(id string, v any) string {
 		f.secrets["secrets: "+canon(s)] = true
 	}
 	if r, present := job["runs-on"]; present {
-		runner := canon(r)
-		if strings.Contains(runner, "${{") {
-			// The runner comes from an expression, mostly the matrix: the strategy is part of it.
-			runner += " strategy " + canon(job["strategy"])
-		}
-		f.runners[runner] = true
+		f.runners[bound(canon(r), top, job)] = true
 	}
 	if e, present := job["environment"]; present {
-		f.envs[canon(e)] = true
+		f.envs[bound(canon(e), top, job)] = true
 	}
 	if c, present := job["container"]; present {
-		f.images["container "+imageOf(c)] = true
+		f.images["container "+bound(imageOf(c), top, job)] = true
 	}
 	if s, present := job["services"]; present {
 		services, ok := asMap(s)
@@ -312,7 +307,7 @@ func (f *facts) job(id string, v any) string {
 			return "services of job " + id + " are not a map"
 		}
 		for _, name := range sortedKeys(services) {
-			f.images["service "+imageOf(services[name])] = true
+			f.images["service "+bound(imageOf(services[name]), top, job)] = true
 		}
 	}
 	if job["steps"] == nil {
@@ -335,6 +330,23 @@ func (f *facts) job(id string, v any) string {
 		}
 	}
 	return ""
+}
+
+var needsWord = regexp.MustCompile(`(?i)\bneeds\b`)
+
+// bound is the token of a runner, environment or image. A literal value is itself. An expression
+// draws its value from the matrix or the inputs, whose options the class lets change: the job's
+// strategy and the workflow's triggers become part of the token, so a change to either is a new
+// value. An expression on needs draws it from the output of another job, which a run: step
+// writes: then the whole workflow is the token, and every change is a new value.
+func bound(val string, top, job map[string]any) string {
+	if !strings.Contains(val, "${{") {
+		return val
+	}
+	if needsWord.MatchString(val) {
+		return val + " workflow " + canon(top)
+	}
+	return val + " strategy " + canon(job["strategy"]) + " on " + canon(top["on"]) + " " + canon(top["true"])
 }
 
 // imageOf is the image of a container or service: the string itself, or the image of a map.

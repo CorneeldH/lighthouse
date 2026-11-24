@@ -37,6 +37,66 @@ jobs:
       - run: make
 `
 
+// exprWF takes its container image, service image and environment from the matrix and its
+// runner from an input, each in its own job so that each case meets only one of them.
+const exprWF = `on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        type: choice
+        options: [ubuntu-latest]
+permissions:
+  contents: read
+jobs:
+  box:
+    strategy:
+      matrix:
+        img: [node:20]
+    runs-on: ubuntu-latest
+    container: ${{ matrix.img }}
+    steps:
+      - run: make
+        env:
+          FOO: bar
+  svc:
+    strategy:
+      matrix:
+        db: [postgres:16]
+    runs-on: ubuntu-latest
+    services:
+      db:
+        image: ${{ matrix.db }}
+    steps:
+      - run: make
+  deploy:
+    strategy:
+      matrix:
+        env: [staging]
+    runs-on: ubuntu-latest
+    environment: ${{ matrix.env }}
+    steps:
+      - run: make
+  manual:
+    runs-on: ${{ inputs.runner }}
+    steps:
+      - run: make
+`
+
+// needsJobs take a runner from the output of a job, which its run: step writes.
+const needsJobs = `  pick:
+    runs-on: ubuntu-latest
+    outputs:
+      r: ${{ steps.p.outputs.r }}
+    steps:
+      - id: p
+        run: echo r=ubuntu-latest >> "$GITHUB_OUTPUT"
+  after:
+    needs: pick
+    runs-on: ${{ needs.pick.outputs.r }}
+    steps:
+      - run: make
+`
+
 // swap replaces old by repl in text and fails when old is not there, so every case changes
 // what it says it changes.
 func swap(t *testing.T, text, old, repl string) string {
@@ -69,6 +129,7 @@ func TestIntentOKInClass(t *testing.T) {
 		"narrower permission":   {baseWF, swap(t, baseWF, "contents: read", "contents: none")},
 		"secret dropped":        {baseWF, swap(t, baseWF, "          TOKEN: ${{ secrets.DEPLOY }}\n", "")},
 		"secret name, any case": {baseWF, swap(t, baseWF, "secrets.DEPLOY", "SECRETS.deploy")},
+		"env change next to expression-valued runner and images": {exprWF, swap(t, exprWF, "FOO: bar", "FOO: baz")},
 		"secrets of a reusable workflow kept": {baseWF + inheritJob,
 			swap(t, baseWF+inheritJob, "FOO: bar", "FOO: baz")},
 	} {
@@ -149,6 +210,13 @@ func TestIntentOKOutsideClass(t *testing.T) {
 			swap(t, baseWF, "    runs-on: ubuntu-latest\n", "    runs-on: ubuntu-latest\n    services:\n      db:\n        image: postgres:16\n"), "image"},
 		"case variant of a key the check reads": {baseWF,
 			swap(t, baseWF, "      - run: make\n", "      - Uses: evil/x@"+pin+"\n      - run: make\n"), "case variant"},
+		"matrix container image": {exprWF, swap(t, exprWF, "img: [node:20]", "img: [node:20, evil:1]"), "image"},
+		"matrix service image":   {exprWF, swap(t, exprWF, "db: [postgres:16]", "db: [postgres:16, evil:1]"), "image"},
+		"matrix environment":     {exprWF, swap(t, exprWF, "env: [staging]", "env: [staging, production]"), "environment"},
+		"input-driven runner": {exprWF,
+			swap(t, exprWF, "options: [ubuntu-latest]", "options: [ubuntu-latest, self-hosted]"), "runner"},
+		"runner from a job output": {exprWF + needsJobs,
+			swap(t, exprWF+needsJobs, "echo r=ubuntu-latest", "echo r=self-hosted"), "runner"},
 		"case variant at the top level": {baseWF, baseWF + "Permissions: write-all\n", "case variant"},
 		"jobs not a map":                {baseWF, "on: pull_request\npermissions:\n  contents: read\njobs: [a]\n", "jobs"},
 	} {
