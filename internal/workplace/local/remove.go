@@ -150,3 +150,24 @@ func (a *Adapter) Transcript(ctx context.Context, workspaceID, sessionID string)
 	}
 	return workplace.ReadTranscript(dir, sessionID)
 }
+
+// RawTranscript reads the whole transcript files of session sessionID from the project directory
+// of the worktree under Home, as workplace.ReadDelta does with no offsets. Errors are those of
+// Transcript.
+func (a *Adapter) RawTranscript(ctx context.Context, workspaceID, sessionID string) ([]workplace.FileDelta, error) {
+	if err := checkLocal(workspaceID); err != nil {
+		return nil, err
+	}
+	if !workplace.SafeSession.MatchString(sessionID) {
+		return nil, fmt.Errorf("transcript in workspace %s: unsafe session id %q", workspaceID, sessionID)
+	}
+	rec, _, err := a.resolve(ctx, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	dir, err := workplace.HostTranscriptDir(a.Home, workspaceID, rec.Path)
+	if err != nil {
+		return nil, err
+	}
+	return workplace.ReadDelta(dir, sessionID, nil)
+}

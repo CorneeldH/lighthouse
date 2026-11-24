@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -394,5 +395,75 @@ func TestUntarDeltaOrdersLikeReadDelta(t *testing.T) {
 	}
 	if strings.Join(names, " ") != strings.Join(want, " ") {
 		t.Errorf("order = %q, want %q", names, want)
+	}
+}
+
+var _ workplace.RawTranscripts = (*Adapter)(nil)
+
+// RawTranscript on self gives the whole files, as ReadDelta does with no offsets.
+func TestRawTranscriptHostIsReadDeltaWithoutOffsets(t *testing.T) {
+	f, a := newFakeForge(t)
+	f.path = "/srv/forge/ws/issue-7.x"
+	a.Home = t.TempDir()
+	dir := filepath.Join(a.Home, ".claude", "projects", "-srv-forge-ws-issue-7-x")
+	writeFile(t, filepath.Join(dir, testSessionID+".jsonl"), "0123456789\n")
+	writeFile(t, filepath.Join(dir, testSessionID, "subagents", "agent-a.jsonl"), subagentLine)
+	got, err := a.RawTranscript(context.Background(), "ws1", testSessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := workplace.ReadDelta(dir, testSessionID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, want) || len(got) != 2 || got[0].From != 0 {
+		t.Errorf("RawTranscript = %+v, want %+v", got, want)
+	}
+}
+
+func TestRawTranscriptSoftwareFromTheContainer(t *testing.T) {
+	stream := tarOf(t,
+		[2]string{deltaManifest, "236 0 " + testSessionID + ".jsonl\n"},
+		[2]string{testSessionID + ".jsonl", unknownTranscript},
+	)
+	a, _ := softwareTranscriptAdapter(t, []step{{cmd: podmanPS, out: "c1\n"}, {cmd: containerExec("c1"), out: stream}})
+	got, err := a.RawTranscript(context.Background(), "ws1", testSessionID)
+	if err != nil || len(got) != 1 || string(got[0].Data) != unknownTranscript || got[0].From != 0 {
+		t.Fatalf("RawTranscript = %+v, %v; want the whole file of the container", got, err)
+	}
+}
+
+// As Transcript does (#514): no project dir on the host under a profile other than software
+// sends the read to the devcontainers; a transcript in none of them stays an error.
+func TestRawTranscriptContainerFallback(t *testing.T) {
+	stream := tarOf(t,
+		[2]string{deltaManifest, "236 0 " + testSessionID + ".jsonl\n"},
+		[2]string{testSessionID + ".jsonl", unknownTranscript},
+	)
+	f, a := newFakeForge(t)
+	f.path = "/srv/forge/ws/issue-7.x"
+	a.Profile = "container"
+	a.Home = t.TempDir()
+	a.Run = scriptRunner(t, []step{{cmd: podmanPS, out: "c1\n"}, {cmd: containerExec("c1"), out: stream}}, &[]string{})
+	got, err := a.RawTranscript(context.Background(), "ws1", testSessionID)
+	if err != nil || len(got) != 1 || string(got[0].Data) != unknownTranscript {
+		t.Fatalf("RawTranscript = %+v, %v; want the transcript of the container", got, err)
+	}
+
+	f, a = newFakeForge(t)
+	f.path = "/srv/forge/ws/issue-7.x"
+	a.Profile = "container"
+	a.Home = t.TempDir()
+	a.Run = scriptRunner(t, []step{{cmd: podmanPS, out: "c1\n"}, {cmd: containerExec("c1"), code: notInContainer}}, &[]string{})
+	if _, err := a.RawTranscript(context.Background(), "ws1", testSessionID); !errors.Is(err, workplace.ErrNotMeasurable) {
+		t.Errorf("err = %v, want ErrNotMeasurable when no container holds it either", err)
+	}
+}
+
+func TestRawTranscriptRejectsAnUnsafeSessionID(t *testing.T) {
+	_, a := newFakeForge(t)
+	a.Home = t.TempDir()
+	if _, err := a.RawTranscript(context.Background(), "ws1", "../x"); err == nil {
+		t.Error("RawTranscript of an unsafe session id = nil, want an error")
 	}
 }
