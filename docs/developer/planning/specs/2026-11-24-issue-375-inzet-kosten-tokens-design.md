@@ -2,8 +2,7 @@
 
 Issue #375 (T2 van milestone *Telemetrie: wat voegt elk onderdeel toe*). Bouwt op het gegevensmodel
 van #373: [`2026-11-19-telemetrie-gegevensmodel-design.md`](2026-11-19-telemetrie-gegevensmodel-design.md).
-Raakt #378: [`2026-11-24-menswerk-wachttijd-design.md`](https://github.com/CorneeldH/lighthouse/blob/issue-378-menswerk-wachttijd/docs/developer/planning/specs/2026-11-24-menswerk-wachttijd-design.md)
-(nog op zijn branch). Herkomst: [`2026-11-16-zelflerende-lighthouse-design.md`](2026-11-16-zelflerende-lighthouse-design.md),
+Raakt #378: [`2026-11-24-menswerk-wachttijd-design.md`](2026-11-24-menswerk-wachttijd-design.md). Herkomst: [`2026-11-16-zelflerende-lighthouse-design.md`](2026-11-16-zelflerende-lighthouse-design.md),
 rij T2.
 
 ## Aanleiding en doel
