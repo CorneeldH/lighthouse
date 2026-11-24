@@ -1,0 +1,4 @@
+---
+type: added
+---
+De workflow-pusher pusht een workflow-wijziging zonder mens als die bij de bedoeling past (#551). Een pre-merge wijziging aan bestaande workflows zonder nieuw event, nieuwe action of pin, ruimere permission, nieuw secret, nieuwe runner, environment of image gaat met `[dispatch.workflow_push.intent]` in `host.toml` langs één intent-reviewer, die de diff weegt tegen issue, spec en plan; een `approve` pusht zonder security-review, ook in `shadow`. Staat de SHA al op origin, dan is de vloer groen zonder roborev-eis en zonder push. Een rode roborev-stap wordt een Herstel. Een Vraag van de review en `lighthouse level` zeggen welke reviewers of welke intent-toets ontbreken. Pusht iemand de branch met de hand onder een open pusher-Vraag, dan start tick de pusher één keer (sleutel `pushed:<vraag-id>`, zonder toestemming) en loopt de keten door. Een run post geen handoff `next: push-workflows` meer boven een roborev-skip.
