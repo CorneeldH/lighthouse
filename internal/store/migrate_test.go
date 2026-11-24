@@ -78,8 +78,8 @@ func TestMigrateTwice(t *testing.T) {
 	if !reflect.DeepEqual(schema1, schema2) || v1 != v2 {
 		t.Errorf("schema changed on second open:\n%v (v%d)\n%v (v%d)", schema1, v1, schema2, v2)
 	}
-	if v2 != 11 {
-		t.Errorf("user_version = %d, want 11", v2)
+	if v2 != 12 {
+		t.Errorf("user_version = %d, want 12", v2)
 	}
 	rows, err := s.DB.Query(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name`)
 	if err != nil {
@@ -94,7 +94,7 @@ func TestMigrateTwice(t *testing.T) {
 		tables = append(tables, name)
 	}
 	_ = rows.Close()
-	if want := []string{"action_failures", "findings", "meta", "recoveries", "recovery_items", "runs", "schedule_slots", "sessions", "setups", "tick_state", "trajectories", "usage"}; !reflect.DeepEqual(tables, want) {
+	if want := []string{"action_failures", "findings", "meta", "recoveries", "recovery_items", "runs", "schedule_slots", "sessions", "setups", "tick_state", "trajectories", "trajectory_events", "usage"}; !reflect.DeepEqual(tables, want) {
 		t.Errorf("tables = %v, want %v", tables, want)
 	}
 	// column -> primary key position (0 = not part of the key)
@@ -971,4 +971,46 @@ func TestMigration0011Recovery(t *testing.T) {
 			t.Errorf("items after delete = %d, %v; want 0", n, err)
 		}
 	})
+}
+
+func TestTrajectoryEventsConstraints(t *testing.T) {
+	ctx := context.Background()
+	s, err := Open(ctx, filepath.Join(t.TempDir(), "lighthouse.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer func() { _ = s.Close() }()
+	for _, q := range []string{
+		`INSERT INTO trajectories (id, repo, issue, created_at) VALUES (1, 'o/r', 1, '2026-01-01T00:00:00Z')`,
+		`INSERT INTO runs (id, repo, issue, session_id, mode, trigger, trigger_key, attempt, started_at)
+		 VALUES (1, 'o/r', 1, 's', 'start', 'handoff', 'k', 1, '2026-01-01T00:00:00Z')`,
+		`INSERT INTO sessions (id, source, source_id, recorded_at, repo, harness, session_key, transcript_path, trajectory_id, link_basis, started_at)
+		 VALUES (1, 'src', 's1', '2026-01-01T00:00:00Z', 'o/r', 'claude', 'k', '/t', 1, 'branch', '2026-01-01T00:00:00Z')`,
+	} {
+		if _, err := s.DB.Exec(q); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+	}
+	const ins = `INSERT INTO trajectory_events (source, source_id, recorded_at, trajectory_id, run_id, session_id, kind, ref, at)
+		VALUES (?, ?, '2026-01-01T00:00:00Z', 1, ?, ?, ?, ?, '2026-01-01T00:00:00Z')`
+	// A valid row first, so the unique check below has something to collide with.
+	if _, err := s.DB.Exec(ins, "src", "e1", 1, nil, "question", "c1"); err != nil {
+		t.Fatalf("valid insert: %v", err)
+	}
+	cases := []struct {
+		name             string
+		source, sourceID string
+		run, session     any
+		kind, ref        string
+	}{
+		{"neither run nor session", "src", "e2", nil, nil, "question", "c2"},
+		{"both run and session", "src", "e3", 1, 1, "question", "c3"},
+		{"done without run", "src", "e4", nil, 1, "done", "c4"},
+		{"duplicate trajectory, kind, ref", "src", "e5", 1, nil, "question", "c1"},
+	}
+	for _, c := range cases {
+		if _, err := s.DB.Exec(ins, c.source, c.sourceID, c.run, c.session, c.kind, c.ref); err == nil {
+			t.Errorf("%s: insert accepted, want constraint error", c.name)
+		}
+	}
 }

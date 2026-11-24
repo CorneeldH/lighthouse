@@ -120,6 +120,10 @@ const (
 	// KindIdle has no effect: it only marks that the issue had no next step in this evaluation,
 	// so the tick counts it (SaveIdle) and takes it out of the actions before Apply.
 	KindIdle Kind = "idle"
+	// KindNoteDone notes that the session of open agent run RunID measured Done, whether or not the
+	// run closes in this tick: apply stores the done event once per run. It closes nothing and
+	// starts nothing, so it is group 0 and passes a paused brake.
+	KindNoteDone Kind = "note_done"
 )
 
 // Action is one thing apply does. Reason and Skip are heading keys, never posted text; only a
@@ -173,6 +177,12 @@ type Action struct {
 	Tools        []string `json:"tools,omitempty"`
 	Instructions string   `json:"instructions,omitempty"`
 	Verdict      string   `json:"verdict,omitempty"`
+	// EventRef and EventAt are the human question a question close or an answer stands for: the
+	// comment id of the 🤖 Vraag, and the created_at of the Vraag (close) or of the answer (a start,
+	// resume, push or push_recover on an answer: or pushanswer: key, whose CommentID is the answer).
+	// apply stores them as a trajectory event; empty on every other action.
+	EventRef string    `json:"event_ref,omitzero"`
+	EventAt  time.Time `json:"event_at,omitzero"`
 }
 
 // Decide is the pure decision of one tick: per repo, per item, first the orphan rule, then
@@ -421,6 +431,15 @@ func decideIssue(in Input, repo RepoInput, it Item) []planned {
 			out = append(out, planned{Action: a})
 			closes = false
 		}
+		if !isPush(row) && newRunCtx(in, repo, it, row, base).done() {
+			// The session is Done: apply stores the done event, once per run. Also on the tick
+			// that closes the run, the first that may see Done, and before the close, so the
+			// event never lies after the run's end; a close the brake withdraws keeps it. A
+			// push row runs no session.
+			nd := base
+			nd.Kind, nd.RunID = KindNoteDone, row.ID
+			out = append(out, planned{Action: nd})
+		}
 		if closes {
 			// The close carries its run's node and profile, and frees its slot unless it is the
 			// fix-pr close of rule 13, whose start inherits that slot (holdsSlot), or the close
@@ -577,7 +596,7 @@ func orphan(history []runs.Row, hs []parsed, base Action) (Action, bool) {
 // for; settle starts nothing itself.
 func settle(in Input, repo RepoInput, it Item, row runs.Row, hs []parsed, base Action) (Action, bool, *fixPRStart) {
 	var done, question, returned, pushReturned, repaired bool
-	var handoff *parsed
+	var handoff, asked *parsed
 	for i, p := range hs {
 		if p.Time.Before(row.StartedAt) {
 			continue
@@ -588,7 +607,12 @@ func settle(in Input, repo RepoInput, it Item, row runs.Row, hs []parsed, base A
 			done = done || ofRun
 		case protocol.KindQuestion:
 			// A push row has no session; the pusher's own Vraag carries none and a sha.
-			question = question || ofRun || isPush(row) && pusherQuestion(p.Header)
+			if ofRun || isPush(row) && pusherQuestion(p.Header) {
+				question = true
+				if asked == nil {
+					asked = &hs[i]
+				}
+			}
 		case protocol.KindReturned:
 			returned = returned || ofRun
 			// A push row has no session; the pusher's own Returned carries none either.
@@ -608,7 +632,9 @@ func settle(in Input, repo RepoInput, it Item, row runs.Row, hs []parsed, base A
 	case handoff != nil && !endsChain(repo, it.Issue, handoff.Header):
 		return c.closed(runs.Handoff), true, nil
 	case question:
-		return c.closed(runs.Question), true, nil
+		a := c.closed(runs.Question)
+		a.EventRef, a.EventAt = strconv.FormatInt(asked.Comment.ID, 10), asked.Time
+		return a, true, nil
 	case repaired:
 		return c.closed(runs.Handoff), true, nil
 	case pushReturned:
@@ -1718,6 +1744,7 @@ func (c issueCtx) answer() (planned, bool) {
 	a.Kind, a.Mode, a.Trigger, a.TriggerKey, a.Attempt = KindResume, modeResume, triggerAnswer, key, 1
 	a.SessionID, a.CommentID = q.Header.Session, ans.ID
 	a.Command, a.Branch = run.Command, run.Branch
+	a.EventRef, a.EventAt = strconv.FormatInt(q.Comment.ID, 10), parseTime(ans.CreatedAt)
 	ref := ans.URL
 	if ref == "" {
 		ref = strconv.FormatInt(ans.ID, 10)
@@ -2125,6 +2152,7 @@ func (c issueCtx) pushAnswer(q *parsed, ans Comment) (planned, bool) {
 	a := c.base
 	a.Trigger, a.TriggerKey, a.Attempt = triggerPushAnswer, key, 1
 	a.Command, a.Worktree, a.Branch, a.CommentID, a.PermitSHA = cmdPush, worktree, branch, ans.ID, sha
+	a.EventRef, a.EventAt = strconv.FormatInt(q.Comment.ID, 10), parseTime(ans.CreatedAt)
 	if permitAnswer(ans.Body) {
 		a.Kind = KindPush
 		return c.ordered(a, parseTime(ans.CreatedAt)), true

@@ -111,13 +111,22 @@
   },
   "want": [
     {
+      "kind": "note_done",
+      "repo": "o/r",
+      "issue": 7,
+      "run_id": 5,
+      "language": "nl"
+    },
+    {
       "kind": "close",
       "repo": "o/r",
       "issue": 7,
       "run_id": 5,
       "outcome": "question",
       "language": "nl",
-      "end": true
+      "end": true,
+      "event_ref": "63",
+      "event_at": "2026-10-31T11:00:00Z"
     }
   ]
 }
