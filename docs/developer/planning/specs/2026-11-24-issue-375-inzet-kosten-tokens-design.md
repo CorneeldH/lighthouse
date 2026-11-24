@@ -33,7 +33,14 @@ In een gemeten transcript stonden 17 assistant-regels voor 8 unieke `message.id`
 optelt, telt dubbel.
 
 `total_cost_usd` staat **niet** in het transcript. Het staat alleen in de envelope van
-`claude -p --output-format json`, en zo draaien runs en sessies niet.
+`claude -p --output-format json`, en zo draaien runs en sessies niet. Wel staan er regels van het
+type `cost-state` met `totalCostUSD` en een `modelUsage` per model (ook modellen zonder
+assistant-regel, en model-id's met `[1m]`). Ze staan niet in elk transcript (op de meetmachine in
+ongeveer de helft), hun gedrag bij een hervatting is niet gemeten, en ze zijn niet per runvenster te
+splitsen. Ze zijn daarom geen bron *(eigen keuze na spec-review, r1-f9; keuze a van de gebruiker
+blijft staan)*; de bouwer mag ze als kruiscontrole lezen.
+Andere regeltypen (`api-request-blob`, `api-request`, `attachment`, `cost-state`) tellen niet mee in
+de regels van de lezer: alleen `type` `user` en `assistant`.
 
 ## Doelen, niet-doelen, anti-doelen
 
@@ -55,7 +62,8 @@ optelt, telt dubbel.
 
 - Werkelijk gefactureerde kosten. Er is geen bron: de gebruiker draait op een abonnement, en de
   envelope met `total_cost_usd` bestaat alleen bij `claude -p`. `cost_kind = 'actual'` blijft in het
-  schema voor later, maar dit issue schrijft het niet.
+  schema voor later, maar dit issue schrijft het niet. (`cost-state` in het transcript is geen
+  gefactureerd bedrag en geen bron; zie *Wat het transcript draagt*.)
 - Quotumaandeel per sessie (`cost_kind = 'quota'`). Toerekenen aan één sessie is onbetrouwbaar als
   sessies parallel lopen *(gekozen door de gebruiker: alleen de dollarraming)*.
 - De UI (#379) en de vergelijking Native tegenover SDD zelf (milestone *Explore/exploit*).
@@ -78,6 +86,8 @@ optelt, telt dubbel.
   (`sessions.transcript_path`).
 - Schrijvers zijn idempotent via `source`/`source_id` (`Origin` in `internal/telemetry/record.go`).
 - Migratie `0012` (of het volgende vrije nummer als #378 eerder mergt), in één transactie.
+- `SetupRecord` krijgt nullable velden (`*string`); een ontbrekende waarde wordt `NULL` geschreven,
+  niet `''` (nu schrijft `RecordSetup` ze zonder `nullString`).
 - Alleen Claude Code als harness.
 
 ## Aanpakken
@@ -151,11 +161,15 @@ Regels:
   (het bericht *Base directory for this skill*). Meerdere versies in één sessie: de laatste.
   Geen superpowers-skill geladen: ontbrekend.
 - **Skillhash**: sha256 over de gesorteerde paren *(skillnaam, sha256 van de geladen skilltekst)*
-  van alle skills die in de sessie laadden. Geen skill geladen: ontbrekend. De tekst zelf wordt
+  van alle skills die in de sessie laadden. De skilltekst wordt eerst genormaliseerd: de regel
+  *Base directory for this skill: <pad>* en de staart `ARGUMENTS: …` gaan eraf, anders verschilt de
+  hash per worktree en per aanroep *(eigen keuze na spec-review, r1-f12)*. Geen skill geladen: ontbrekend. De tekst zelf wordt
   niet opgeslagen.
 - **Lane**: `sdd` als `superpowers:subagent-driven-development` laadde, `native` als
   `superpowers:executing-plans` laadde (in de dispatcher heet dat de native lane), anders ontbrekend.
-  Laadden beide, dan wint de laatste.
+  Laadden beide, dan wint de laatste. Lane is de geladen skill, niet het dispatcherverdict: een
+  mens die zelf `executing-plans` draait, krijgt ook `native`. Wie Native tegenover SDD vergelijkt,
+  filtert op runs of op sessies *(r1-f16)*.
 - **Lighthouse- en packversie**: het transcript draagt ze niet. Zie *SessionStart-hook*.
 - **Vragen**: elke `AskUserQuestion`-tool-use met zijn id en tijdstip; het antwoord is de
   `tool_result` met hetzelfde id. Alleen tijdstippen, geen tekst.
@@ -179,23 +193,31 @@ Per hoofdtranscript, op `sessionId`:
 1. **Run.** Staat de sessie-id in `runs.session_id`, dan horen de regels bij die run. Delen meerdere
    runs dezelfde sessie-id (een hervatting die de sessie voortzet), dan krijgt elke run de regels
    tussen zijn `started_at` en `ended_at`; een regel buiten elk venster gaat naar de run die er het
-   dichtst vóór startte. Zo telt een hervatting bij hetzelfde traject (`runs.trajectory_id`) en
-   telt geen bericht twee keer. Een run krijgt geen `sessions`-rij. Dat geldt voor de tokens; de
-   inzet van een run komt uit het transcript van het begin tot het einde van zijn venster, want een
-   hervatting laadt zelden opnieuw een skill terwijl de skills van de eerdere run nog in context
-   staan *(eigen keuze)*.
+   dichtst vóór startte, en een regel vóór de eerste start naar de eerste run. Zo telt een hervatting bij hetzelfde traject (`runs.trajectory_id`) en
+   telt geen bericht twee keer. Een run krijgt geen `sessions`-rij. Dat geldt voor de tokens. Voor de inzet geldt per veld *(eigen keuze, r1-f1)*:
+   `model`, `effort` en `harness_version` komen uit de regels in het venster van de run;
+   `lane`, `skills_hash` en `superpowers_version` uit alle regels van het begin van het transcript
+   tot het einde van het venster, want een hervatting laadt zelden opnieuw een skill terwijl de
+   skills van de eerdere run nog in context staan. Het zijbestand (zie *Wanneer het draait*) levert
+   de waarneming die bij het begin van het venster hoort.
 2. **Sessie.** Anders wordt het een interactieve sessie: `RecordSession` met `telemetry.Link`
    (#373). Een sessie zonder issuebranch en zonder issuenummer in het transcript staat in
    `sessions` met `unlinked_reason` en zonder traject. Dat beantwoordt de open milestonevraag over
    sessies op `main`.
 
 **Einde van een sessie** *(eigen keuze)*. `ended_at` wordt de laatste timestamp zodra het
-hoofdbestand en zijn subagentbestanden minstens een uur niet gewijzigd zijn (mtime). Daarvoor
+hoofdbestand en zijn subagentbestanden minstens een uur niet gewijzigd zijn (mtime). `--since-last`
+slaat daarom een sessie met `ended_at IS NULL` nooit over op grond van versheid alleen: zodra de
+laatste mtime een uur oud is, wordt ze herbezocht en afgesloten (r1-f2). Daarvoor
 blijft `ended_at` leeg en geldt de sessie voor #378 als lopend. Groeit een afgesloten transcript
 weer (een hervatte sessie), dan maakt de volgende slag `ended_at` weer leeg of schuift hem op.
 
 ### Schrijven
 
+- **Eén transactie per transcript.** Sessie, setups, usage en gebeurtenissen van één transcript
+  worden atomair geschreven (de `Record*`-functies nemen een open transactie, of een variant ervan),
+  zodat een vroeg gezet `recorded_at` nooit een half geschreven transcript als klaar markeert
+  (r1-f4).
 - **`RecordSetup` en `RecordUsage` werken bij.** Nu laat een tweede aanbieding de eerste rij staan.
   Dat wordt: dezelfde eigenaar (en bij `usage` hetzelfde model) werkt de afgeleide velden en
   `recorded_at` bij, zoals `RecordSession` dat al doet. Zo groeit een sessie mee met elke slag.
@@ -226,15 +248,26 @@ weer (een hervatte sessie), dan maakt de volgende slag `ended_at` weer leeg of s
 lighthouse telemetry collect [--repo-dir <pad>] [--db <pad>] [--since-last] [--dry-run]
 ```
 
-- Zoekt de transcriptmappen van de repo en zijn worktrees (zoals `kpi.sessionFiles` met de
-  `--claude-worktrees-`-zustermappen) en verwerkt elk hoofdtranscript.
+- Zoekt de transcripts van de repo en zijn worktrees (r1-f11). Niet op het mapnaamvoorvoegsel van
+  `kpi.sessionFiles` (`--claude-worktrees-`): worktrees onder de kenn-forge-root delen dat niet met
+  de clone, en een verwijderde worktree staat niet meer in `git worktree list`. Wel: alle
+  projectmappen onder `~/.claude/projects`, gefilterd op de `cwd` van hun regels (onder de repo-dir,
+  onder `lighthouse config worktree.root`, of onder een worktree van de repo). De precieze regel is
+  aan de bouwer. Verwerkt elk hoofdtranscript.
+- Leest elk bestand tot de grootte die vóór het lezen gemeten is, en zet `recorded_at` op het
+  tijdstip vóór het lezen. Een regel die Claude tijdens het lezen toevoegt, geeft het bestand dan een
+  mtime ná `recorded_at` en wordt in de volgende slag meegenomen (r1-f5).
 - `--since-last` slaat een transcript over waarvan de `sessions`- of `setups`-rij een `recorded_at`
-  heeft die niet ouder is dan de mtime van het hoofdbestand en van zijn subagentbestanden. Er komt
-  geen aparte statustabel.
+  heeft die niet ouder is dan de mtime van het hoofdbestand en van zijn subagentbestanden, behalve
+  een sessie met `ended_at IS NULL` (zie *Einde van een sessie*). Er komt geen aparte statustabel.
+- `--dry-run` schrijft niets: geen database, geen migratie, geen tick-staat, geen zijbestand. Het
+  opent de database alleen-lezen zonder migratie, en meldt wat het zou doen (r1-f8).
 - Print per overgeslagen of niet te lezen transcript één regel met de reden (zelfde vorm als
   `measure-recovery`). Een transcript dat niet te parsen is, wordt niet opgeslagen: er is niets om
   op te slaan behalve de reden, en die staat in de uitvoer.
-- Exitcodes als `measure-recovery`: 0 klaar, 1 deels mislukt, 2 configfout.
+- Exitcodes zoals `measure-recovery` (`internal/cli/measure_recovery.go`): 0 klaar, 1 een
+  verwerkings-, config-, git- of databasefout (ook een deels mislukte slag), 2 verkeerd gebruik van
+  de opdrachtregel (r1-f3).
 - Terugverwerken is dit commando zonder `--since-last`.
 
 ### Wanneer het draait
@@ -242,16 +275,29 @@ lighthouse telemetry collect [--repo-dir <pad>] [--db <pad>] [--since-last] [--d
 - **In `tick`** *(eigen keuze)*. Het `[[schedule]]`-raamwerk start alleen agentjobs (Gate, Launch,
   Stage, Check, Finish), en een collector zonder agent past daar niet in. Daarom roept `tick` zelf
   `collect --since-last` aan, hooguit eens per uur. Het tijdstip van de laatste slag staat in een
-  bestand onder `LIGHTHOUSE_STATE_DIR`. Dit draait alleen waar een dispatcher loopt en vraagt geen
+  bestand onder `LIGHTHOUSE_STATE_DIR`. De tick leest het transcript van een run via
+  `workplace.Adapter.Transcript` (de container, of de spiegel van een andere node), niet via het
+  bestandssysteem: met het software-profiel draait claude in de gedeelde devcontainer en staan de
+  transcripts in een volume dat de host niet leest (`internal/workplace/kennforge/transcript.go`,
+  #237). Een run waarvan het transcript onbereikbaar is, staat in de uitvoer met de reden (r1-f10). Dit draait alleen waar een dispatcher loopt en vraagt geen
   regel in `lighthouse.toml`. Een fout in het verzamelen laat de tick doorgaan en staat in zijn
   uitvoer.
 - **SessionStart-hook `telemetry-collect`** in `pack/core/hooks/`. Start
   `lighthouse telemetry collect --since-last` losgekoppeld op de achtergrond en keert meteen terug.
-  Blokkeert nooit en opent zelf geen database. Bij een fout schrijft hij één regel naar zijn log en
+  Blokkeert nooit en opent zelf geen database. Hij start niets in een controller-run
+  (`LIGHTHOUSE_CONTROLLER_RUN` gezet) en niet als de standaarddatabase op die plek niet bestaat:
+  in de devcontainer is er geen host-`lighthouse.db`, en een lege tweede database zou elke run als
+  sessie opnemen (`store.DefaultPath`, `internal/store/store.go`) *(eigen keuze, r1-f10)*. Bij een fout schrijft hij één regel naar zijn log en
   meldt `COULD NOT CHECK` alleen in dat log, niet in de sessie.
 - **Lighthouse- en packversie** *(eigen keuze)*. Dezelfde hook kent de sessie-id uit zijn invoer,
   de eigen binaryversie en `version` uit `.lighthouse/manifest.toml`. Hij schrijft die in een klein
-  zijbestand, `<LIGHTHOUSE_STATE_DIR>/telemetry/sessions/<sessie-id>.json`. Een database-rij kan hij
+  zijbestand, `<state>/telemetry/sessions/<sessie-id>.json`, met `<state>` = `LIGHTHOUSE_STATE_DIR`
+  als die gezet is, anders dezelfde terugval als `tick` (`XDG_STATE_HOME` of `~/.local/state`, plus
+  `lighthouse/dispatch`; `internal/cli/tick.go`): hook en collector leiden het pad op dezelfde manier
+  af, ook voor een interactieve sessie zonder dispatcher (r1-f6). Het bestand is een lijst van
+  waarnemingen (tijdstip, lighthouse- en packversie), append-only: een hervatte sessie onder een
+  nieuwere versie voegt een waarneming toe, en de collector kiest per run de laatste waarneming op
+  of vóór het begin van zijn venster (r1-f7). Een database-rij kan hij
   niet schrijven: `setups.session_id` verwijst naar een `sessions`-rij die bij de start nog niet
   bestaat, en een run mag er geen krijgen. De collector leest het zijbestand bij het schrijven van
   de `setups`-rij, van run of sessie. Zonder zijbestand blijven de twee velden ontbrekend, dus bij
@@ -289,6 +335,15 @@ lighthouse telemetry collect [--repo-dir <pad>] [--db <pad>] [--since-last] [--d
 - Zijbestand: met zijbestand staan lighthouse- en packversie in `setups`; zonder zijbestand zijn
   ze `NULL`.
 - `tick` verzamelt hooguit eens per uur.
+- Een sessie met `ended_at IS NULL` die een uur stilstond, wordt in een volgende `--since-last`-slag
+  afgesloten, ook als haar `recorded_at` nieuwer is dan de mtime.
+- `--dry-run` op een database met een ouder schema laat `user_version` en alle rijen ongemoeid.
+- Een transcript dat groeit terwijl de collector leest: de volgende slag neemt de nieuwe regels mee.
+- Een mislukte schrijf halverwege laat geen sessie-, setup- of usagerij van dat transcript achter.
+- De skillhash is gelijk voor twee sessies die dezelfde skill laden vanuit andere worktrees.
+- Regels van het type `api-request-blob` en `cost-state` tellen niet mee.
+- Een run-transcript uit de container komt via `workplace.Adapter.Transcript` binnen en niet via de
+  hook.
 
 ## Volgorde met #378
 
@@ -311,4 +366,6 @@ taak, dan wordt die taak een vervolgissue. Wie als tweede mergt, hernummert zijn
 - Hoe de transcriptmap van een kenn-forge-run gevonden wordt, zolang een run waarvan het transcript
   onbereikbaar is in de uitvoer staat met de reden.
 - De begininhoud van `prices.toml`, uit de officiële prijspagina, met `source` en `as_of`.
+- Of het 1M-contextmodel (`[1m]` in `cost-state`, niet in `message.model`) anders geprijsd is, en
+  hoe de raming daarmee omgaat (r1-f17).
 - De naam en het formaat van het log van de hook.
