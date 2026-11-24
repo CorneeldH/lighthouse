@@ -44,16 +44,17 @@
 
 **Interfaces:**
 - Produces: nieuw veld `Action.Braked string` (`json:"braked,omitempty"`): het defer-woord van de rem ("pause" of de tekst van `UsageClosed()`), leeg als de rem open is. Alleen gezet op `KindPushRecover`.
-- Produces: `pushAnswer` geeft voor een ander antwoord dan `push` altijd een `KindPushRecover` met `AnswerText`, `After` (mag leeg), `Lane`, `PermitSHA`, `Worktree`, `Branch`, `CommentID`; geen `reason_pusher_no_after` meer vooraf.
+- Produces: `pushAnswer` geeft voor een ander antwoord dan `push` altijd een `KindPushRecover` met `AnswerText`, `After` (mag leeg), `Lane`, `PermitSHA`, `Worktree`, `Branch`, `CommentID`, plus nieuwe velden `Step` (uit `q.Header.Fields["step"]`, de rode stap) en `QuestionURL` (uit het `vraag`-veld van de Vraag, anders de URL van de Vraag-comment zelf); geen `reason_pusher_no_after` meer vooraf.
 
 - [ ] **Step 1: Schrijf falende tests**
   - `TestPushAnswerWithoutAfterIsRecover` (decide): een pusher-Vraag zonder `after` + antwoord `gepusht` geeft `KindPushRecover` met `After == ""` (nu: `KindReturn` `reason_pusher_no_after`).
   - `TestPushAnswerExactPushStaysKindPush`: antwoorden `push`, `Push!`, ` PUSH. ` geven `KindPush` met `PermitSHA`.
   - `TestPushReplyIsOpenQuestion`: een tick-reactie (pusher-Vraag-header, geen sessie, `sha:`) na het eerste antwoord is de open Vraag; een tweede antwoord geeft `KindPushRecover` met `TriggerKey == "pushanswer:<id van het tweede antwoord>"`. (Pas bestaande fixture-helpers aan; de reactie-header gebruikt dezelfde velden als de Vraag.)
+  - `TestPushRecoverCarriesStepAndQuestionURL`: de actie draagt `Step` en `QuestionURL` van de Vraag; bij een antwoord op een reactie (met `vraag:`-veld) wijst `QuestionURL` naar de oorspronkelijke Vraag.
   - `TestBrakeSetsBrakedOnPushRecover`: `Brake{Paused:true}` → `KindPushRecover` blijft in de uitvoer met `Braked == "pause"`; `Brake{UsageMeasured:true, SessionPct:99, HaltPctSession:90}` → `Braked == UsageClosed()`; open rem → `Braked == ""`. Een `KindPush` blijft zoals nu (defer/drop).
 - [ ] **Step 2: Draai ze, verwacht FAIL**: `go test ./internal/dispatch -run 'PushAnswer|PushReply|BrakeSetsBraked' -v`
 - [ ] **Step 3: Implementeer** `Action.Braked`; in `pushAnswer` de `after`-controle en `returned("reason_pusher_no_after", …)` verwijderen (`After` blijft `q.Header.Fields["after"]`); in `Brake.apply`, vóór de `group() != 2`-tak, voor `p.Kind == KindPushRecover`: `Braked = "pause"` bij `b.Paused`, anders `b.UsageClosed()`; de actie blijft altijd in de uitvoer.
-- [ ] **Step 4: Draai `go test ./internal/dispatch` volledig**, verwacht PASS (bestaande fixtures met `reason_pusher_no_after` in `testdata/decide` aanpassen naar `KindPushRecover`).
+- [ ] **Step 4: Draai `go test ./internal/dispatch` volledig**, verwacht PASS (het bestaande tabelgeval 'other answer without after' in `decide_test.go:425-426` aanpassen naar `KindPushRecover`; `testdata/decide` bevat geen zulke fixture).
 - [ ] **Step 5: Commit** `feat(dispatch): elk antwoord op een pusher-Vraag wordt een push-recover (#552)`
 
 ---
@@ -63,6 +64,7 @@
 **Files:**
 - Modify: `internal/dispatch/apply.go` (`Env`)
 - Modify: `internal/cli/triage_judge.go` (`execJudge` parametriseren)
+- Modify: `internal/cli/triage.go` (default-closure voor `r.env.Judge`, regel 143)
 - Create: `internal/cli/answer_classifier.go`
 - Modify: `internal/cli/tick.go` (bedrading in `dispatch.Env{…}` rond regel 569)
 - Test: `internal/cli/triage_judge_test.go`, `internal/cli/answer_classifier_test.go`
@@ -76,17 +78,18 @@
   ClassifyAnswer func(ctx context.Context, in AnswerInput) (AnswerVerdict, error)
   ```
   met constanten `VerdictPermit`, `VerdictPushed`, `VerdictOther`.
-- Produces (cli): `execJudge` krijgt een extra `judgeSpec`-parameter `{Model, Tools, Schema string; Timeout time.Duration}`; de triage-aanroep geeft `{tri.Model, "Read,Grep,Glob", tri.Schema, judgeTimeout}` mee en gedrag blijft identiek (bestaande tests onveranderd groen na aanpassing van de aanroep). `judgeArgs(settings string, spec judgeSpec) []string`.
+- Produces (cli): `execJudge` krijgt een extra `judgeSpec`-parameter `{Model, Tools, Schema string; Timeout time.Duration}`; de triage-aanroep geeft `{tri.Model, "Read,Grep,Glob", tri.Schema, judgeTimeout}` mee en gedrag blijft identiek (bestaande tests onveranderd groen na aanpassing van de aanroep). `judgeArgs(settings string, spec judgeSpec) []string`. `judgeSpec` krijgt ook `Env func() []string` (basisomgeving: `os.Environ` voor triage, een opgeschoonde omgeving zonder forge-tokens voor de classifier; `cmd.Env = append(spec.Env(), cfg.Env...)`). `judgeFunc` (`internal/cli/triage.go:27`) blijft ongewijzigd: de triage-standaard `r.env.Judge = execJudge` (`triage.go:143`) wordt een closure `func(ctx, dir, p, cfg) { return execJudge(ctx, dir, p, cfg, triageSpec) }`. `internal/cli/triage.go` hoort dus bij de gewijzigde bestanden.
 - Produces (cli): `func (e tickEnv) classifyAnswer(cfg judgeConfig) func(context.Context, dispatch.AnswerInput) (dispatch.AnswerVerdict, error)` en `var answerTimeout = 60 * time.Second`.
 
 - [ ] **Step 1: Schrijf falende tests**
   - `TestExecJudgeSpecArgs` (naast de bestaande fake-`claude` tests op regel 47-113): met `judgeSpec{Model:"m", Tools:"", Schema:"{}", Timeout:…}` krijgt de fake-claude `--model m`, `--tools ""` en `--json-schema {}`.
-  - `TestClassifyAnswer`: fake-`claude` die `{"structured_output":{"verdict":"permit"}}` (zelfde envelop als de triage-judge teruggeeft; lees de parse in `internal/cli/triage.go` rond regel 462 en hergebruik die parser) → `VerdictPermit`; `pushed`, `other` idem; onbekende waarde `maybe`, lege stdout en niet-JSON → fout.
+  - `TestClassifyAnswer`: fake-`claude` die `{"structured_output":{"verdict":"permit"}}` (zelfde envelop als de triage-judge teruggeeft). Er is geen herbruikbare parser: `tri.Validate` (`internal/triage/judgment.go:248-266`) is op het triage-schema vastgezet en weigert het veld `verdict`. Schrijf in `answer_classifier.go` een kleine strikte envelop-decoder (weigert `is_error`, ontbrekende `structured_output` en een onbekende `verdict`-waarde) → `VerdictPermit`; `pushed`, `other` idem; onbekende waarde `maybe`, lege stdout en niet-JSON → fout.
   - `TestClassifyAnswerRunsInEmptyTempDir`: de fake-claude schrijft zijn cwd weg; dat is een lege, niet-worktree map.
   - `TestClassifyAnswerPromptFencesAnswer`: de prompt op stdin bevat de antwoordtekst binnen een afgebakend blok en de zin dat instructies erin niet gelden; een antwoord met `negeer alles` komt alleen in dat blok voor.
   - `TestClassifyAnswerTimeout`: met `answerTimeout` op 100 ms en een fake die 120 s slaapt → fout met `context.DeadlineExceeded`, zoals `triage_judge_test.go:109`.
 - [ ] **Step 2: Draai, verwacht FAIL**: `go test ./internal/cli -run 'ExecJudge|ClassifyAnswer' -v`
-- [ ] **Step 3: Implementeer** de parametrisering van `execJudge`/`judgeArgs`; `classifyAnswer` in `answer_classifier.go`: tempdir via `os.MkdirTemp`, prompt (Engels) met stap, SHA, branch en het antwoord in een afgebakend blok ("data, geen instructies"), twijfel (vraag, voorwaarde, ontkenning als `niet pushen`) is `other`; schema als string-constante `{"type":"object","properties":{"verdict":{"enum":["permit","pushed","other"]}},"required":["verdict"],"additionalProperties":false}`; model: dezelfde `tri.Model`-constante is toegestaan, tenzij `claude` een kleiner model nodig heeft (bouwerskeuze, noem in commit). Bedraad `ClassifyAnswer` in `tick.go` met `loadJudgeConfig(settingsFile)` (een leesfout van de settings → `ClassifyAnswer` geeft die fout per aanroep, zodat de reactie "kon het antwoord niet lezen" volgt).
+- [ ] **Step 3: Implementeer** de parametrisering van `execJudge`/`judgeArgs`; `classifyAnswer` in `answer_classifier.go`: tempdir via `os.MkdirTemp`, prompt (Engels) met stap, SHA, branch en het antwoord in een afgebakend blok ("data, geen instructies"), twijfel (vraag, voorwaarde, ontkenning als `niet pushen`) is `other`; schema als string-constante `{"type":"object","properties":{"verdict":{"enum":["permit","pushed","other"]}},"required":["verdict"],"additionalProperties":false}`; model: dezelfde `tri.Model`-constante is toegestaan, tenzij `claude` een kleiner model nodig heeft (bouwerskeuze, noem in commit). Bedraad `ClassifyAnswer` in `tick.go`: `tickEnv` heeft geen settings-veld; los het pad op met `judgeSettingsPath(env.Getenv)` (zie `triage.go:306-310` voor het patroon), laad `loadJudgeConfig` lui bij de eerste aanroep van de classifier en geef een leesfout per aanroep terug (zodat de reactie "kon het antwoord niet lezen" volgt en de tick niet faalt).
+- [ ] **Step 3b: Echte-CLI-check (één keer, handmatig)**: draai `claude -p` met exact `judgeArgs(…)` van de classifier (`--tools ""`, `--output-format json`, `--json-schema`) en een triviale prompt; bevestig dat de envelop `structured_output.verdict` bevat. Noteer het resultaat in de commit. Lukt het niet (geen `structured_output`, `is_error`): kies een toolset die de CLI wel accepteert en leg dat in de commit vast; is `claude` niet beschikbaar in de omgeving, zeg dat in de commit en ga door (de unit-tests gebruiken een fake).
 - [ ] **Step 4: Draai `go test ./internal/cli`**, verwacht PASS.
 - [ ] **Step 5: Commit** `feat(cli): classifier voor een antwoord op een pusher-Vraag (#552)`
 
@@ -113,7 +116,7 @@
   - `TestOriginContainsLeavesRefsAlone`: met echte tijdelijke git-repo's (een bare origin, een clone als worktree, origin heeft een merge bovenop de SHA) en de productie-`Fetch`/`IsAncestor`: `git for-each-ref` en `.git/FETCH_HEAD` van de clone zijn vóór en na `originContains` gelijk, en het resultaat is `onOrigin`.
 - [ ] **Step 2: Draai, verwacht FAIL**: `go test ./internal/dispatch -run 'PushRecover|OriginContains' -v`
 - [ ] **Step 3: Implementeer** `originContains` en herschik `pushRecover(ctx, a, res)`: eerst `originContains`; bij `Braked != ""` en niet `onOrigin` → `res.postpone(a, "…")` en return nil; daarna claim (`runs.Take`, ongewijzigd) + 🚀; `onOrigin`: `After == ""` → `recoverReturn(…, "reason_pusher_no_after", pushCommand(worktree))` (gebruik dezelfde command-helper als decide; verplaats/exporteer binnen het pakket als nodig), anders Handoff zoals nu. Anders: roep `ap.classifyFlow(ctx, a, run, gitErr, res)` aan (Task 4; tot dan een stub die `recoverPostFailed`-vrij niets doet, zodat deze task zelfstandig compileert).
-- [ ] **Step 4: Draai `go test ./internal/dispatch`**; bestaande tests `TestApplyPushRecoverBranchElsewhere` en git-fout-tests (verwachtten Returned) worden herschreven naar de nieuwe flow in Task 4; markeer ze tijdelijk niet als `Skip` maar pas ze aan zodra Task 4 ze nodig heeft: houd Task 3 en 4 in één groene commit-reeks (commit Task 3 alleen als de suite groen is; anders samen committen).
+- [ ] **Step 4: Draai `go test ./internal/dispatch`**; bestaande tests `TestApplyPushRecoverBranchElsewhere` en git-fout-tests (verwachtten Returned) worden herschreven naar de nieuwe flow in Task 4; markeer ze tijdelijk niet als `Skip` maar pas ze aan zodra Task 4 ze nodig heeft: Task 3 en 4 worden samen als één groene commit-reeks afgerond: commit Task 3 pas als de suite groen is, anders samen met Task 4. Pas expliciet aan: `TestApplyPushRecoverBranchElsewhere`, de git-fout-test, het 'returned post'-subtest van `PostFailsClosesReturned` (`apply_test.go` ~2930-3003) en `SpentKeyDoesNothing` (`~3005-3016`, asserteert nu nul ls-remote-aanroepen: met de nieuwe volgorde mag ls-remote vóór de claim lopen, maar geen post en geen claim).
 - [ ] **Step 5: Commit** `feat(dispatch): git-check op origin vóór de claim van een pusher-antwoord (#552)`
 
 ---
@@ -124,6 +127,8 @@
 - Create: `internal/protocol/pushreply.go`
 - Modify: `internal/dispatch/apply.go` (`classifyFlow`)
 - Modify: `internal/dispatch/decide.go` (`pushTargetOf`, `pushAgain`, `pushStartFailed`)
+- Modify: `pack/core/headings.toml` (de zes `reply_push_*`-sleutels) en `.lighthouse/headings.toml` (via `go run ./cmd/lighthouse init --upgrade`)
+- Test: `internal/protocol` (`TestReplyPushHeadingsExist`)
 - Test: `internal/protocol/pushreply_test.go`, `internal/dispatch/apply_test.go`, `internal/dispatch/decide_test.go`
 
 **Interfaces:**
@@ -141,16 +146,17 @@
 - Produces (dispatch): `func (ap applier) classifyFlow(ctx, a Action, run runs.Run, gitErr error, res *Result) error`.
 - Produces: `pushTargetOf(key string)` accepteert een `pushanswer`-sleutel ook als een rij in `c.repo.History` met dezelfde `TriggerKey` en `Verdict == `{"answer":"permit"}``.
 - Consumes: `Env.ClassifyAnswer`, `AnswerInput` (Task 2); `originContains`-uitkomst (Task 3); `runs.SetVerdict`.
-- Heading-sleutels (Task 5 schrijft ze): `reply_push_not_on_origin`, `reply_push_not_permit`, `reply_push_unreadable`, `reply_push_could_not_check`, `reply_push_works`, `reply_push_link`.
+- Heading-sleutels (deze task schrijft ze, in `pack/core/headings.toml`, nl en en; `protocol.Heading` paniekt op een onbekende sleutel, `internal/protocol/heading.go:13-17`): `reply_push_not_on_origin`, `reply_push_not_permit`, `reply_push_unreadable`, `reply_push_could_not_check`, `reply_push_works`, `reply_push_link`.
 
 - [ ] **Step 1: Schrijf falende tests**
+  - `TestReplyPushHeadingsExist` (`internal/protocol`): elk van de zes `reply_push_*`-sleutels geeft voor `nl` en `en` een niet-lege waarde die verschilt van de sleutel zelf. Schrijf daarna eerst de headings (korte zinnen: *niet op origin*, *niet begrepen als toestemming*, *kon het antwoord niet lezen*, `COULD NOT CHECK`-regel, de werkende antwoorden, link-label) en draai `go run ./cmd/lighthouse init --upgrade` (twee keer; tweede keer `No changes.`), vóór de andere tests draaien.
   - `TestRenderPushReply`: exacte output voor nl met en zonder `after`/`lane`; `pusherQuestion(ParseHeader(body))` is true (test in `internal/dispatch`); de header bevat `vraag:`.
   - `TestApplyPushRecoverPermit`: niet op origin + classifier `permit` → `StartPusher` krijgt `PusherSpec{Permit: <sha uit de Vraag>, RunID: <geclaimde rij>}`, `Started == 1`, rij `Verdict == {"answer":"permit"}`, geen reactie, ook met `After == ""`.
   - `TestApplyPushRecoverPermitStartFails`: `StartPusher` fout → rij `start_failed`; daarna `pushAgain` (decide-test) geeft `KindPush` met `PermitSHA` en `Attempt 2`.
   - `TestApplyPushRecoverPermitNoteFails`: `SetVerdict` mislukt (gesloten rij/DB-fout) → geen start, rij `start_failed`.
   - `TestApplyPushRecoverPushed`, `…Other`, `…ClassifierError`, `…ClassifierNil`, `…ClassifierTimeout` (nep geeft `context.DeadlineExceeded`): één gepost comment (pusher-Vraag, geen sessie), geen `StartPusher`, geen label/statuswissel (`h.forge` heeft geen `giveBack`-aanroepen), rij gesloten als `question`, 🚀 op het antwoord. `Pushed` noemt `reply_push_not_on_origin`; `Other` `reply_push_not_permit`; fout/time-out/nil `reply_push_unreadable`.
   - `TestApplyPushRecoverGitErrorClassifierPermit`: git-fout + `permit` → pusher start; git-fout + `pushed`/`other` → reactie bevat `COULD NOT CHECK`.
-  - `TestApplyPushRecoverReplyKeepsVraagLink`: de reactie op een antwoord op een eerdere reactie draagt het `vraag:`-veld van die reactie over (de URL van de oorspronkelijke Vraag). Dit is een decide-gedreven test: `Action` heeft daarvoor `QuestionURL string` (gezet door `pushAnswer` uit `vraag` van de Vraag, anders uit de URL van de Vraag-comment zelf).
+  - `TestApplyPushRecoverReplyKeepsVraagLink`: de reactie op een antwoord op een eerdere reactie draagt het `vraag:`-veld van die reactie over (de URL van de oorspronkelijke Vraag). Dit is een decide-gedreven test: `Action.QuestionURL` komt uit Task 1.
   - `TestApplyPushRecoverPostFails`: `CreateComment` faalt → `recoverPostFailed` (rij `returned`, sleutel besteed).
   - `TestPushTargetOfAcceptsPermitNote`: een `pushanswer`-sleutel waarvan het antwoord geen `push` is maar de rij `Verdict` `permit` draagt → doel gevonden; zonder notitie (of `{"answer":"other"}`) → niet gevonden (garantie: een rij zonder toestemming wordt nooit een push).
 - [ ] **Step 2: Draai, verwacht FAIL**: `go test ./internal/protocol ./internal/dispatch -run 'PushReply|PushRecover|PushTargetOf' -v`
@@ -163,18 +169,18 @@
 ### Task 5: Headings, pusher-Vraagtekst, docs, changelog, dogfood
 
 **Files:**
-- Modify: `pack/core/headings.toml` (`question_push_permit`, `question_push_retry`, `question_push_moved`; nieuwe `reply_push_*`; `reason_pusher_answer_moved` en `reason_pusher_git_failed` blijven staan)
+- Modify: `pack/core/headings.toml` (`question_push_permit`, `question_push_retry`, `question_push_moved`; `reply_push_*` staan al sinds Task 4; `reason_pusher_answer_moved` en `reason_pusher_git_failed` blijven staan)
 - Modify: `docs/tick.md` (secties *Het antwoord `push` is toestemming*, *Afloop van een push-rij*, regels ~444-452)
 - Create: `changelog.d/issue-552-pusher-antwoord-classifier.md`
 - Modify: `.lighthouse/headings.toml` (via `go run ./cmd/lighthouse init --upgrade`)
 - Test: bestaande headings-test (`go test ./internal/protocol ./internal/pusher`)
 
 **Interfaces:**
-- Consumes: de zes `reply_push_*`-sleutels uit Task 4, elk met `nl` en `en`.
+- Consumes: de zes `reply_push_*`-sleutels die Task 4 al schreef.
 
-- [ ] **Step 1: Schrijf falende test**: `TestReplyPushHeadingsExist` in `internal/protocol`: elk van de zes sleutels geeft voor `nl` en `en` een niet-lege waarde die verschilt van de sleutel zelf; `question_push_permit` (nl en en) noemt `gepusht`/`pushed` en "andere duidelijke toestemming"/"another clear permission".
-- [ ] **Step 2: Draai, verwacht FAIL**: `go test ./internal/protocol -run ReplyPushHeadings -v`
-- [ ] **Step 3: Schrijf** de headings (nl en en, korte zinnen: *niet op origin*, *niet begrepen als toestemming*, *kon het antwoord niet lezen*, `COULD NOT CHECK`-regel, de werkende antwoorden, link-label), pas de drie bestaande pusher-Vraagteksten aan, herschrijf de docs (stroom per antwoord, git-check, classifier en wat hij leest, time-out 60 s, de rem, de grens: toestemming blijft SHA-gebonden en de pusher draait de vloer altijd), en schrijf het changelog-fragment (formaat volgens `changelog.d/issue-555-*.md`). Draai daarna `go run ./cmd/lighthouse init --upgrade` en controleer `go run ./cmd/lighthouse init --upgrade` nogmaals: uitvoer `No changes.`
+- [ ] **Step 1: Schrijf falende test**: `TestQuestionPushHeadingsText` in `internal/protocol`: `question_push_permit` (nl en en) noemt `gepusht`/`pushed` en "andere duidelijke toestemming"/"another clear permission".
+- [ ] **Step 2: Draai, verwacht FAIL**: `go test ./internal/protocol -run QuestionPushHeadingsText -v`
+- [ ] **Step 3: Pas** de drie bestaande pusher-Vraagteksten aan, herschrijf de docs (stroom per antwoord, git-check, classifier en wat hij leest, time-out 60 s, de rem, de grens: toestemming blijft SHA-gebonden en de pusher draait de vloer altijd), en schrijf het changelog-fragment (formaat volgens `changelog.d/issue-555-*.md`). Draai daarna `go run ./cmd/lighthouse init --upgrade` en controleer `go run ./cmd/lighthouse init --upgrade` nogmaals: uitvoer `No changes.`
 - [ ] **Step 4: Draai het hele pakket**: `go test ./...` en `lighthouse imports check`; verwacht PASS en geen meldingen.
 - [ ] **Step 5: Commit** `docs(tick): antwoord in gewone taal op een pusher-Vraag (#552)` (inclusief `.lighthouse/headings.toml` en changelog)
 
