@@ -60,6 +60,8 @@ type Request struct {
 type Checked struct {
 	SHA, MergeBase string
 	Files          []string // changed in MergeBase..SHA
+	// AlreadyPushed is origin/<branch> holding the SHA already: there is nothing left to push.
+	AlreadyPushed bool
 }
 
 // Red is the first red step and why.
@@ -100,8 +102,11 @@ func Floor(ctx context.Context, req Request, lock *CloneLock) (Checked, *Red) {
 	if red := ownHistory(ctx, req, &c); red != nil {
 		return Checked{}, red
 	}
-	if red := reviewed(ctx, req, sha); red != nil {
-		return Checked{}, red
+	// A SHA origin already holds is not pushed, so no review has to cover it.
+	if !c.AlreadyPushed {
+		if red := reviewed(ctx, req, sha); red != nil {
+			return Checked{}, red
+		}
 	}
 	if req.PauseFile == "" {
 		return Checked{}, &Red{StepPause, "COULD NOT CHECK: no pause file given"}
@@ -263,11 +268,18 @@ func fetchOrigin(ctx context.Context, req Request) *Red {
 func ownHistory(ctx context.Context, req Request, c *Checked) *Red {
 	originBranch := "refs/remotes/origin/" + req.Branch
 	if _, err := runGit(ctx, req.CloneDir, nil, "rev-parse", "--verify", "-q", originBranch); err == nil {
+		// A SHA origin already holds, also under a merge pushed by hand, is no fast-forward and
+		// needs none: nothing is pushed.
+		on, err := isAncestor(ctx, req.CloneDir, c.SHA, originBranch)
+		if err != nil {
+			return &Red{StepFastForward, err.Error()}
+		}
+		c.AlreadyPushed = on
 		ff, err := isAncestor(ctx, req.CloneDir, originBranch, c.SHA)
 		if err != nil {
 			return &Red{StepFastForward, err.Error()}
 		}
-		if !ff {
+		if !ff && !on {
 			return &Red{StepFastForward, fmt.Sprintf("origin/%s is not an ancestor of %s: not a fast-forward", req.Branch, c.SHA)}
 		}
 	}

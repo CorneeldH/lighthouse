@@ -528,6 +528,44 @@ func TestLintRedPostsRepair(t *testing.T) {
 	wantClosed(t, r.row(), runs.Handoff)
 }
 
+// A SHA origin already has, here under a merge pushed by hand, closes the row as after a push of
+// its own: the handoff to after, the SHA recorded, origin untouched. Neither the skip record nor
+// the shadow review stops it: there is nothing left to push (#551, 9187eeda under 18e3a81).
+func TestAlreadyOnOriginClosesWithoutPush(t *testing.T) {
+	r := newRunFix(t, hostconfig.ReviewShadow, nil)
+	r.cfg.Reviewers = []hostconfig.Reviewer{rv("supply-chain", "never"), rv("injection", "never")}
+	head := r.commitWorkflow("ci.yml", preMergeWF)
+	r.branchRecord(map[string]any{"uitkomst": "skip", "reden": "build session ran no review"})
+	tgit(t, r.wt, "push", "-q", "origin", branch)
+	merge := r.mergeOnOrigin()
+	base := tgit(t, r.main, "rev-parse", "main~1")
+	r.run()
+	if got := r.remoteHead(); got != merge {
+		t.Fatalf("origin/%s = %q, want the hand-made merge %s left alone", branch, got, merge)
+	}
+	if r.reviewerRan() {
+		t.Error("a reviewer ran for a SHA origin already has")
+	}
+	h, ok := protocol.ParseHeader(r.forge.last(t))
+	if !ok {
+		t.Fatalf("not a protocol comment:\n%s", r.forge.last(t))
+	}
+	ho, err := protocol.ParseHandoff(h)
+	if err != nil {
+		t.Fatalf("ParseHandoff: %v", err)
+	}
+	if ho.Next != after || ho.Branch != branch {
+		t.Errorf("handoff %+v, want next %q on %s", ho, after, branch)
+	}
+	if h.Fields["range"] != base+".."+head {
+		t.Errorf("range %q, want %s..%s", h.Fields["range"], base, head)
+	}
+	wantClosed(t, r.row(), runs.Handoff)
+	if got := r.row().PushedSHA; got != head {
+		t.Errorf("row pushed %q, want %s", got, head)
+	}
+}
+
 // A step that could not run is no mistake of the branch: it stays a Teruggegeven.
 func TestCouldNotCheckStaysReturned(t *testing.T) {
 	cases := map[string]struct {

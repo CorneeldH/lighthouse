@@ -216,6 +216,15 @@ func (p *push) pushUnderLock(ctx context.Context, fixPR bool) error {
 	if red != nil {
 		return p.ask(ctx, questionInput{red: *red})
 	}
+	if c.AlreadyPushed {
+		// Someone pushed the SHA already: the chain goes on as after a push of our own, without
+		// one, and the row records the SHA for the merge pusher.
+		p.sha = c.SHA
+		if p.handedBack(ctx) {
+			return fmt.Errorf("pusher: run %d was handed back: nothing posted for the SHA already on origin", p.req.RunID)
+		}
+		return p.pushed(ctx, fixPR, c.MergeBase+".."+c.SHA, workflowsOf(c.Files))
+	}
 	if p.req.Permit != "" && c.SHA != p.req.Permit {
 		// The Question keeps the permitted SHA: the moved one was never shown to anyone, and an
 		// answer push to this Question must give this Question again, never a permit for it.

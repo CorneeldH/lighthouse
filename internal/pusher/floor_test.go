@@ -212,6 +212,46 @@ func TestFloorAcceptsFastForwardOnOrigin(t *testing.T) {
 	wantGreen(t, red)
 }
 
+// mergeOnOrigin makes origin/<branch> a merge of a moved main on top of what origin has, as a
+// hand-made update of the branch does (#551: origin 18e3a81 is such a merge on top of 9187eeda).
+func (f *fixture) mergeOnOrigin() string {
+	f.t.Helper()
+	tgit(f.t, f.main, "checkout", "-q", "main")
+	write(f.t, filepath.Join(f.main, "main.txt"), "main\n")
+	tgit(f.t, f.main, "add", "main.txt")
+	tgit(f.t, f.main, "commit", "-q", "-m", "main moves")
+	tgit(f.t, f.main, "push", "-q", "origin", "main")
+	tgit(f.t, f.main, "fetch", "-q", "origin")
+	tgit(f.t, f.main, "checkout", "-q", "-b", "update", "origin/"+branch)
+	tgit(f.t, f.main, "merge", "-q", "--no-ff", "-m", "update", "main")
+	tgit(f.t, f.main, "push", "-q", "origin", "update:"+branch)
+	return tgit(f.t, f.main, "rev-parse", "update")
+}
+
+// A SHA origin already has needs no push: the floor is green with AlreadyPushed, also without a
+// roborev record, because there is nothing left to guard.
+func TestFloorAcceptsSHAAlreadyOnOrigin(t *testing.T) {
+	for name, onOrigin := range map[string]func(f *fixture){
+		"origin is the sha":            func(*fixture) {},
+		"origin is a merge on the sha": func(f *fixture) { f.mergeOnOrigin() },
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newFixture(t)
+			head := f.head()
+			base := tgit(t, f.main, "rev-parse", "main")
+			tgit(t, f.wt, "push", "-q", "origin", branch)
+			onOrigin(f)
+			f.branchRecord(map[string]any{"range": "aaaaaaa..bbbbbbb", "uitkomst": "skip", "reden": "build session ran no review"})
+			got, red := floor(t, f.req)
+			wantGreen(t, red)
+			want := Checked{SHA: head, MergeBase: base, Files: []string{"feature.txt"}, AlreadyPushed: true}
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("Checked = %+v, want %+v", got, want)
+			}
+		})
+	}
+}
+
 func TestFloorRefusesDirtyWorktree(t *testing.T) {
 	for name, dirty := range map[string]func(f *fixture){
 		"modified":  func(f *fixture) { write(f.t, filepath.Join(f.wt, "feature.txt"), "changed\n") },
