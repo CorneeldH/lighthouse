@@ -261,3 +261,252 @@ func TestTimelineClockSkewKeepsWindowOrdered(t *testing.T) {
 	}
 	assertCauses(t, got, map[Cause]time.Duration{})
 }
+
+func TestTimelineNoStoredEvents(t *testing.T) {
+	in := TimelineInput{
+		Runs: []TimelineRun{
+			{ID: 1, Trigger: "start", TriggerKey: "start:7", Outcome: "question", StartedAt: mins(0), EndedAt: endAt(30)},
+			{ID: 2, Trigger: "answer", TriggerKey: "answer:9", Outcome: "merged", StartedAt: mins(70), EndedAt: endAt(100)},
+		},
+	}
+	got := Timeline(in, mins(200))
+	assertCauses(t, got, map[Cause]time.Duration{CauseActive: dur(60), CauseHuman: dur(40)})
+	if !got.ByCause[CauseHuman].Estimate {
+		t.Error("human without stored events is not an Estimate")
+	}
+	if len(got.Questions) != 1 || !got.Questions[0].Estimate || !got.Questions[0].Answered || !got.Questions[0].At.Equal(mins(30)) {
+		t.Errorf("Questions = %+v; want one estimated, answered question at 30", got.Questions)
+	}
+	if len(got.Answers) != 1 || !got.Answers[0].At.Equal(mins(70)) || got.Answers[0].RunID != 2 {
+		t.Errorf("Answers = %+v; want one answer at 70 on run 2", got.Answers)
+	}
+}
+
+func TestTimelineAnswerWithoutQuestion(t *testing.T) {
+	in := TimelineInput{
+		Runs: []TimelineRun{
+			{ID: 1, Trigger: "start", TriggerKey: "start:7", Outcome: "question", StartedAt: mins(0), EndedAt: endAt(30)},
+			{ID: 2, Trigger: "answer", TriggerKey: "answer:9", Outcome: "merged", StartedAt: mins(70), EndedAt: endAt(100)},
+		},
+		Events: []TimelineEvent{{Kind: EventAnswer, RunID: 2, Ref: "q-old", AnswerTo: "q-old", At: mins(50)}},
+	}
+	got := Timeline(in, mins(200))
+	assertCauses(t, got, map[Cause]time.Duration{CauseActive: dur(60), CauseHuman: dur(20), CausePickup: dur(20)})
+	if !got.ByCause[CauseHuman].Estimate {
+		t.Error("human from ended_at of the question run is not an Estimate")
+	}
+	if got.ByCause[CausePickup].Estimate {
+		t.Error("pickup from a stored answer is an Estimate")
+	}
+	if len(got.Questions) != 1 || !got.Questions[0].Answered {
+		t.Errorf("Questions = %+v; want one answered question", got.Questions)
+	}
+	if len(got.Answers) != 1 || !got.Answers[0].At.Equal(mins(50)) {
+		t.Errorf("Answers = %+v; want the stored answer at 50", got.Answers)
+	}
+}
+
+func TestTimelineRepairIsNoAnswer(t *testing.T) {
+	question := TimelineRun{ID: 1, Trigger: "handoff", TriggerKey: "push:7", Command: "push-workflows", Outcome: "question", StartedAt: mins(0), EndedAt: endAt(30)}
+	t.Run("repair", func(t *testing.T) {
+		in := TimelineInput{Runs: []TimelineRun{
+			question,
+			{ID: 2, Trigger: "answer", TriggerKey: "repair:4", Outcome: "merged", StartedAt: mins(50), EndedAt: endAt(60)},
+		}}
+		got := Timeline(in, mins(200))
+		if len(got.Answers) != 0 {
+			t.Errorf("Answers = %+v; a repair run answers no human", got.Answers)
+		}
+		if len(got.Questions) != 1 || got.Questions[0].Answered {
+			t.Errorf("Questions = %+v; want one unanswered question", got.Questions)
+		}
+		// The question stays unanswered; per the spec it ends at the start
+		// of the next run, the repair run.
+		assertCauses(t, got, map[Cause]time.Duration{CauseCIReview: dur(30), CauseHuman: dur(20), CauseActive: dur(10)})
+	})
+	t.Run("pushanswer", func(t *testing.T) {
+		in := TimelineInput{Runs: []TimelineRun{
+			question,
+			{ID: 2, Trigger: "answer", TriggerKey: "pushanswer:5", Command: "push-workflows", Outcome: "pushed", StartedAt: mins(50), EndedAt: endAt(60)},
+		}}
+		got := Timeline(in, mins(200))
+		if len(got.Answers) != 1 || got.Answers[0].RunID != 2 {
+			t.Errorf("Answers = %+v; want one answer on the pushanswer run", got.Answers)
+		}
+		if len(got.Questions) != 1 || !got.Questions[0].Answered {
+			t.Errorf("Questions = %+v; want one answered question", got.Questions)
+		}
+		assertCauses(t, got, map[Cause]time.Duration{CauseCIReview: dur(40), CauseHuman: dur(20)})
+		if !got.ByCause[CauseHuman].Estimate {
+			t.Error("human up to the pushanswer run is not an Estimate")
+		}
+	})
+}
+
+func TestTimelineRestartKeepsPickupToLastRun(t *testing.T) {
+	in := TimelineInput{
+		Runs: []TimelineRun{
+			{ID: 1, Trigger: "start", TriggerKey: "start:7", Outcome: "question", StartedAt: mins(0), EndedAt: endAt(30)},
+			{ID: 2, Trigger: "answer", TriggerKey: "answer:9", Outcome: "start_failed", StartedAt: mins(70), EndedAt: endAt(70)},
+			{ID: 3, Trigger: "answer", TriggerKey: "answer:9", Outcome: "merged", StartedAt: mins(80), EndedAt: endAt(100)},
+		},
+		Events: []TimelineEvent{
+			{Kind: EventQuestion, RunID: 1, Ref: "q1", At: mins(30)},
+			{Kind: EventAnswer, RunID: 2, Ref: "q1", AnswerTo: "q1", At: mins(60)},
+		},
+	}
+	got := Timeline(in, mins(200))
+	assertCauses(t, got, map[Cause]time.Duration{CauseActive: dur(50), CauseHuman: dur(30), CausePickup: dur(20)})
+	if len(got.Answers) != 1 {
+		t.Errorf("Answers = %+v; a restart is the same answer", got.Answers)
+	}
+}
+
+func TestTimelineUsagePause(t *testing.T) {
+	in := TimelineInput{
+		Runs: []TimelineRun{
+			{ID: 1, Trigger: "start", TriggerKey: "start:7", Outcome: "parked", StartedAt: mins(0), EndedAt: endAt(30)},
+			{ID: 2, Trigger: "usage", TriggerKey: "usage:7", Outcome: "merged", StartedAt: mins(90), EndedAt: endAt(100)},
+		},
+	}
+	got := Timeline(in, mins(200))
+	assertCauses(t, got, map[Cause]time.Duration{CauseActive: dur(40), CauseUsage: dur(60)})
+	if got.ByCause[CauseUsage].Estimate {
+		t.Error("usage is an Estimate; want measured")
+	}
+}
+
+func TestTimelineUnansweredQuestion(t *testing.T) {
+	questionRun := TimelineRun{ID: 1, Trigger: "start", TriggerKey: "start:7", Outcome: "question", StartedAt: mins(0), EndedAt: endAt(35)}
+	question := TimelineEvent{Kind: EventQuestion, RunID: 1, Ref: "q1", At: mins(30)}
+	check := func(t *testing.T, got TrajectoryTimeline, human time.Duration, running bool) {
+		t.Helper()
+		if len(got.Questions) != 1 || got.Questions[0].Answered || got.Questions[0].Estimate {
+			t.Errorf("Questions = %+v; want one stored, unanswered question", got.Questions)
+		}
+		if len(got.Answers) != 0 {
+			t.Errorf("Answers = %+v; want none", got.Answers)
+		}
+		total := got.ByCause[CauseHuman]
+		if total.Duration != human || total.Running != running {
+			t.Errorf("human = %+v; want %v, Running %v", total, human, running)
+		}
+		assertSumIsWindow(t, got)
+	}
+	t.Run("next run", func(t *testing.T) {
+		in := TimelineInput{
+			Runs:   []TimelineRun{questionRun, {ID: 2, Trigger: "retry", TriggerKey: "retry:7", Outcome: "merged", StartedAt: mins(80), EndedAt: endAt(90)}},
+			Events: []TimelineEvent{question},
+		}
+		check(t, Timeline(in, mins(200)), dur(50), false)
+	})
+	t.Run("returned run", func(t *testing.T) {
+		in := TimelineInput{
+			Runs: []TimelineRun{questionRun, {ID: 2, Trigger: "handoff", TriggerKey: "push:7", Command: "push-workflows",
+				Outcome: "returned", Reason: "pusher_silent", StartedAt: mins(10), EndedAt: endAt(60)}},
+			Events: []TimelineEvent{question},
+		}
+		check(t, Timeline(in, mins(200)), dur(30), false)
+	})
+	t.Run("closed issue", func(t *testing.T) {
+		in := TimelineInput{Runs: []TimelineRun{questionRun}, Events: []TimelineEvent{question}, ClosedAt: mins(70)}
+		got := Timeline(in, mins(200))
+		check(t, got, dur(40), false)
+		if !got.Window.End.Equal(mins(70)) {
+			t.Errorf("Window.End = %v; want the close at 70", got.Window.End)
+		}
+	})
+	t.Run("running to now", func(t *testing.T) {
+		in := TimelineInput{Runs: []TimelineRun{questionRun}, Events: []TimelineEvent{question}}
+		got := Timeline(in, mins(100))
+		check(t, got, dur(70), true)
+		if !got.Window.End.Equal(mins(100)) {
+			t.Errorf("Window.End = %v; want now", got.Window.End)
+		}
+	})
+}
+
+func TestTimelineSessionQuestion(t *testing.T) {
+	session := TimelineSession{ID: 1, StartedAt: mins(0), EndedAt: endAt(100)}
+	events := []TimelineEvent{
+		{Kind: EventQuestion, SessionID: 1, Ref: "1:tu1", At: mins(20)},
+		{Kind: EventAnswer, SessionID: 1, Ref: "1:tu1", AnswerTo: "1:tu1", At: mins(50)},
+	}
+	t.Run("session only", func(t *testing.T) {
+		got := Timeline(TimelineInput{Sessions: []TimelineSession{session}, Events: events}, mins(200))
+		assertCauses(t, got, map[Cause]time.Duration{CauseActive: dur(70), CauseHuman: dur(30)})
+		if len(got.Questions) != 1 || got.Questions[0].SessionID != 1 || !got.Questions[0].Answered {
+			t.Errorf("Questions = %+v; want one answered session question", got.Questions)
+		}
+		if len(got.Answers) != 1 || got.Answers[0].SessionID != 1 {
+			t.Errorf("Answers = %+v; want one session answer", got.Answers)
+		}
+	})
+	t.Run("run over the question", func(t *testing.T) {
+		in := TimelineInput{
+			Runs:     []TimelineRun{{ID: 1, Trigger: "start", TriggerKey: "start:7", Outcome: "merged", StartedAt: mins(10), EndedAt: endAt(40)}},
+			Sessions: []TimelineSession{session},
+			Events:   events,
+		}
+		got := Timeline(in, mins(200))
+		assertCauses(t, got, map[Cause]time.Duration{CauseActive: dur(90), CauseHuman: dur(10)})
+	})
+}
+
+func TestTimelineTakeovers(t *testing.T) {
+	type want struct {
+		at     int
+		reason string
+	}
+	cases := []struct {
+		name string
+		in   TimelineInput
+		want []want
+	}{
+		{"returned then session", TimelineInput{
+			Runs:     []TimelineRun{{ID: 1, Trigger: "start", TriggerKey: "start:7", Outcome: "returned", Reason: "agent_gave_up", StartedAt: mins(0), EndedAt: endAt(30)}},
+			Sessions: []TimelineSession{{ID: 1, StartedAt: mins(40), EndedAt: endAt(60)}},
+		}, []want{{30, "agent_gave_up"}}},
+		{"two sessions without a run between", TimelineInput{
+			Runs: []TimelineRun{{ID: 1, Trigger: "start", TriggerKey: "start:7", Outcome: "failed", StartedAt: mins(0), EndedAt: endAt(30)}},
+			Sessions: []TimelineSession{
+				{ID: 1, StartedAt: mins(40), EndedAt: endAt(50)},
+				{ID: 2, StartedAt: mins(60), EndedAt: endAt(70)},
+			},
+		}, []want{{40, "session"}}},
+		{"session before the first run", TimelineInput{
+			Runs:     []TimelineRun{{ID: 1, Trigger: "start", TriggerKey: "start:7", Outcome: "merged", StartedAt: mins(20), EndedAt: endAt(30)}},
+			Sessions: []TimelineSession{{ID: 1, StartedAt: mins(0), EndedAt: endAt(10)}},
+		}, nil},
+		{"returned without session", TimelineInput{
+			Runs: []TimelineRun{{ID: 1, Trigger: "handoff", TriggerKey: "push:7", Command: "push-workflows", Outcome: "returned", Reason: "pusher_silent", StartedAt: mins(0), EndedAt: endAt(30)}},
+		}, []want{{30, "pusher_silent"}}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := Timeline(tc.in, mins(200)).Takeovers
+			if len(got) != len(tc.want) {
+				t.Fatalf("Takeovers = %+v; want %d", got, len(tc.want))
+			}
+			for i, w := range tc.want {
+				if !got[i].At.Equal(mins(w.at)) || got[i].Reason != w.reason {
+					t.Errorf("Takeovers[%d] = %+v; want at %d, reason %q", i, got[i], w.at, w.reason)
+				}
+			}
+		})
+	}
+}
+
+func TestTimelineTieFlagsDoNotDependOnOrder(t *testing.T) {
+	// Two runs over the same 0..30: one Done at its end (not inclusive),
+	// one without Done (inclusive). The tie is the only source of the flag.
+	withDone := TimelineRun{ID: 1, Trigger: "start", TriggerKey: "start:7", Outcome: "merged", StartedAt: mins(0), EndedAt: endAt(30)}
+	without := TimelineRun{ID: 2, Trigger: "retry", TriggerKey: "retry:7", Outcome: "merged", StartedAt: mins(0), EndedAt: endAt(30)}
+	done := []TimelineEvent{{Kind: EventDone, RunID: 1, Ref: "1", At: mins(30)}}
+	for _, runs := range [][]TimelineRun{{withDone, without}, {without, withDone}} {
+		got := Timeline(TimelineInput{Runs: runs, Events: done}, mins(60))
+		if !got.ByCause[CauseActive].InclusiveCIReview {
+			t.Errorf("runs %d,%d: active = %+v; want InclusiveCIReview from the tied run without Done", runs[0].ID, runs[1].ID, got.ByCause[CauseActive])
+		}
+	}
+}

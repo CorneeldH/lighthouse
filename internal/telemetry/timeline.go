@@ -110,12 +110,23 @@ func Timeline(in TimelineInput, now time.Time) TrajectoryTimeline {
 	if !ok {
 		return out
 	}
-	out.Window = window
+	questions, answers, human := questionsAndAnswers(in, now)
 	var spans []span
 	spans = append(spans, runSpans(in, now)...)
 	spans = append(spans, sessionSpans(in, now)...)
-	spans = append(spans, humanSpans(in)...)
+	spans = append(spans, human...)
+	spans = append(spans, usageSpans(in)...)
 	spans = append(spans, pickupSpans(in)...)
+	// An unanswered question can outlast every run and session: it holds
+	// the window open to its end (the close of the issue, or now).
+	for _, s := range human {
+		if s.End.After(window.End) {
+			window.End = s.End
+		}
+	}
+	out.Window = window
+	out.Questions, out.Answers = questions, answers
+	out.Takeovers = takeovers(in)
 	out.ByCause = sweep(window, spans)
 	return out
 }
@@ -203,19 +214,271 @@ func sessionSpans(in TimelineInput, now time.Time) []span {
 	return out
 }
 
-// humanSpans gives the measured wait on a human: from a stored question to
-// the stored answer with the same ref.
-func humanSpans(in TimelineInput) []span {
+// question is one human question of the trajectory, stored or estimated
+// from a run that ended on outcome question without a stored question.
+type question struct {
+	Moment
+	ref    string
+	stored bool
+}
+
+// answerCandidate is a dispatcher answer no stored question claims by ref:
+// a stored answer to an older question, or an answer run without a stored
+// answer. It ends the estimated wait of the next dispatcher question.
+type answerCandidate struct {
+	at   time.Time
+	used bool
+}
+
+// isAnswerKey reports a run that took up a human answer. A repair run
+// carries trigger answer as well but answers no human.
+func isAnswerKey(key string) bool {
+	return strings.HasPrefix(key, "answer:") || strings.HasPrefix(key, "pushanswer:")
+}
+
+// questionsAndAnswers lists the questions and answers of the trajectory and
+// gives every question its human wait: measured from a stored question to
+// the stored answer with its ref; estimated when either is missing, up to
+// the next dispatcher answer; unanswered up to unansweredEnd.
+func questionsAndAnswers(in TimelineInput, now time.Time) ([]Moment, []Moment, []span) {
+	firstAnswer := map[string]TimelineEvent{}
+	answeredRuns := map[int64]bool{}
+	var answers []Moment
+	for _, e := range in.Events {
+		if e.Kind != EventAnswer {
+			continue
+		}
+		answers = append(answers, Moment{At: e.At, RunID: e.RunID, SessionID: e.SessionID})
+		if a, ok := firstAnswer[e.Ref]; !ok || e.At.Before(a.At) {
+			firstAnswer[e.Ref] = e
+		}
+		if e.RunID != 0 {
+			answeredRuns[e.RunID] = true
+		}
+	}
+
+	var qs []question
+	storedRefs := map[string]bool{}
+	questionRuns := map[int64]bool{}
+	for _, e := range in.Events {
+		if e.Kind != EventQuestion {
+			continue
+		}
+		qs = append(qs, question{Moment: Moment{At: e.At, RunID: e.RunID, SessionID: e.SessionID}, ref: e.Ref, stored: true})
+		storedRefs[e.Ref] = true
+		if e.RunID != 0 {
+			questionRuns[e.RunID] = true
+		}
+	}
+	for _, r := range in.Runs {
+		if r.Outcome == "question" && r.EndedAt != nil && !questionRuns[r.ID] {
+			qs = append(qs, question{Moment: Moment{At: *r.EndedAt, RunID: r.ID, Estimate: true}})
+		}
+	}
+	sort.SliceStable(qs, func(i, j int) bool { return qs[i].At.Before(qs[j].At) })
+
+	var cands []answerCandidate
+	for _, e := range in.Events {
+		if e.Kind == EventAnswer && e.RunID != 0 && !storedRefs[e.Ref] && firstAnswer[e.Ref] == e {
+			cands = append(cands, answerCandidate{at: e.At})
+		}
+	}
+	for _, r := range firstAnswerRuns(in.Runs) {
+		if answeredRuns[r.ID] || anyAnswered(in.Runs, r.TriggerKey, answeredRuns) {
+			continue
+		}
+		answers = append(answers, Moment{At: r.StartedAt, RunID: r.ID})
+		cands = append(cands, answerCandidate{at: r.StartedAt})
+	}
+	sort.SliceStable(cands, func(i, j int) bool { return cands[i].at.Before(cands[j].at) })
+	sort.SliceStable(answers, func(i, j int) bool { return answers[i].At.Before(answers[j].At) })
+
+	var spans []span
+	for i := range qs {
+		q := &qs[i]
+		if a, ok := firstAnswer[q.ref]; ok && q.stored {
+			q.Answered = true
+			if a.At.After(q.At) {
+				spans = append(spans, span{Interval: Interval{q.At, a.At}, cause: CauseHuman, rank: rankHuman})
+			}
+			continue
+		}
+		if q.RunID != 0 {
+			if c := nextCandidate(cands, q.At, nextDispatcherQuestion(qs, i)); c != nil {
+				c.used, q.Answered = true, true
+				if c.at.After(q.At) {
+					spans = append(spans, span{Interval: Interval{q.At, c.at}, cause: CauseHuman, rank: rankHuman, estimate: true})
+				}
+				continue
+			}
+		}
+		end, running := unansweredEnd(in, q.At, now)
+		if end.After(q.At) {
+			spans = append(spans, span{Interval: Interval{q.At, end}, cause: CauseHuman, rank: rankHuman, estimate: !q.stored, running: running})
+		}
+	}
+	moments := make([]Moment, len(qs))
+	for i, q := range qs {
+		moments[i] = q.Moment
+	}
+	return moments, answers, spans
+}
+
+// firstAnswerRuns returns, per answer trigger key, the run that started
+// first: a restart of that run (same key) is the same answer.
+func firstAnswerRuns(runs []TimelineRun) []TimelineRun {
+	first := map[string]TimelineRun{}
+	var keys []string
+	for _, r := range runs {
+		if !isAnswerKey(r.TriggerKey) {
+			continue
+		}
+		f, ok := first[r.TriggerKey]
+		if !ok {
+			keys = append(keys, r.TriggerKey)
+		}
+		if !ok || r.StartedAt.Before(f.StartedAt) {
+			first[r.TriggerKey] = r
+		}
+	}
+	out := make([]TimelineRun, 0, len(keys))
+	for _, k := range keys {
+		out = append(out, first[k])
+	}
+	return out
+}
+
+// anyAnswered reports a stored answer on any run with trigger key key.
+func anyAnswered(runs []TimelineRun, key string, answeredRuns map[int64]bool) bool {
+	for _, r := range runs {
+		if r.TriggerKey == key && answeredRuns[r.ID] {
+			return true
+		}
+	}
+	return false
+}
+
+// nextDispatcherQuestion returns the time of the first dispatcher question
+// after qs[i], or nil when there is none.
+func nextDispatcherQuestion(qs []question, i int) *time.Time {
+	for j := i + 1; j < len(qs); j++ {
+		if qs[j].RunID != 0 {
+			return &qs[j].At
+		}
+	}
+	return nil
+}
+
+// nextCandidate returns the first unused answer candidate at or after from
+// and before limit (nil: no limit), so an answer never skips a question.
+func nextCandidate(cands []answerCandidate, from time.Time, limit *time.Time) *answerCandidate {
+	for i := range cands {
+		c := &cands[i]
+		if c.used || c.at.Before(from) {
+			continue
+		}
+		if limit != nil && !c.at.Before(*limit) {
+			return nil
+		}
+		return c
+	}
+	return nil
+}
+
+// unansweredEnd ends the wait on a question without answer at the first of:
+// the start of a later run or session, the end of a returned run, the close
+// of the issue. Without any it runs to now.
+func unansweredEnd(in TimelineInput, from, now time.Time) (time.Time, bool) {
+	var end time.Time
+	found := false
+	consider := func(t time.Time, inclusive bool) {
+		if t.Before(from) || (!inclusive && t.Equal(from)) {
+			return
+		}
+		if !found || t.Before(end) {
+			end, found = t, true
+		}
+	}
+	for _, r := range in.Runs {
+		consider(r.StartedAt, false)
+		if r.Outcome == "returned" && r.EndedAt != nil {
+			consider(*r.EndedAt, true)
+		}
+	}
+	for _, s := range in.Sessions {
+		consider(s.StartedAt, false)
+	}
+	if !in.ClosedAt.IsZero() {
+		consider(in.ClosedAt, true)
+	}
+	if found {
+		return end, false
+	}
+	return now, true
+}
+
+// usageSpans gives a usage pause: from the end of a parked run to the start
+// of the first later run with trigger usage.
+func usageSpans(in TimelineInput) []span {
 	var out []span
-	for _, q := range in.Events {
-		if q.Kind != EventQuestion {
+	for _, p := range in.Runs {
+		if p.Outcome != "parked" || p.EndedAt == nil {
 			continue
 		}
-		a, ok := answerTo(in.Events, q.Ref)
-		if !ok || !a.At.After(q.At) {
-			continue
+		var resume time.Time
+		found := false
+		for _, r := range in.Runs {
+			if r.Trigger == "usage" && !r.StartedAt.Before(*p.EndedAt) && (!found || r.StartedAt.Before(resume)) {
+				resume, found = r.StartedAt, true
+			}
 		}
-		out = append(out, span{Interval: Interval{q.At, a.At}, cause: CauseHuman, rank: rankHuman})
+		if found && resume.After(*p.EndedAt) {
+			out = append(out, span{Interval: Interval{*p.EndedAt, resume}, cause: CauseUsage, rank: rankUsage})
+		}
+	}
+	return out
+}
+
+// takeovers lists every handover from the dispatcher to a human in time
+// order: a run that ends returned, and a session that starts while a
+// dispatcher run ran since the last takeover.
+func takeovers(in TimelineInput) []Moment {
+	type step struct {
+		at    time.Time
+		order int // at equal time: returned ends, then run starts, then sessions
+		run   *TimelineRun
+		sess  *TimelineSession
+	}
+	var steps []step
+	for i := range in.Runs {
+		r := &in.Runs[i]
+		steps = append(steps, step{at: r.StartedAt, order: 1, run: r})
+		if r.Outcome == "returned" && r.EndedAt != nil {
+			steps = append(steps, step{at: *r.EndedAt, order: 0, run: r})
+		}
+	}
+	for i := range in.Sessions {
+		steps = append(steps, step{at: in.Sessions[i].StartedAt, order: 2, sess: &in.Sessions[i]})
+	}
+	sort.SliceStable(steps, func(i, j int) bool {
+		if !steps[i].at.Equal(steps[j].at) {
+			return steps[i].at.Before(steps[j].at)
+		}
+		return steps[i].order < steps[j].order
+	})
+	var out []Moment
+	ranSince := false
+	for _, s := range steps {
+		switch {
+		case s.order == 0:
+			out = append(out, Moment{At: s.at, RunID: s.run.ID, Reason: s.run.Reason})
+			ranSince = false
+		case s.order == 1:
+			ranSince = true
+		case ranSince:
+			out = append(out, Moment{At: s.at, SessionID: s.sess.ID, Reason: "session"})
+			ranSince = false
+		}
 	}
 	return out
 }
@@ -270,15 +533,6 @@ func firstEvent(events []TimelineEvent, kind EventKind, runID int64) (time.Time,
 	return first, found
 }
 
-func answerTo(events []TimelineEvent, ref string) (TimelineEvent, bool) {
-	for _, e := range events {
-		if e.Kind == EventAnswer && e.Ref == ref {
-			return e, true
-		}
-	}
-	return TimelineEvent{}, false
-}
-
 // sweep cuts the window at every span boundary and gives each elementary
 // segment to the covering span of lowest rank; on equal rank a measured span
 // beats an estimate. An uncovered segment is unexplained.
@@ -306,6 +560,14 @@ func sweep(window Interval, spans []span) map[Cause]CauseTotal {
 			}
 			if !covered || s.rank < win.rank || (s.rank == win.rank && win.estimate && !s.estimate) {
 				win, covered = s, true
+			}
+		}
+		// Spans that tie with the winner give their flags too, so the
+		// result does not depend on the order of the spans.
+		for _, s := range spans {
+			if covered && !s.Start.After(from) && s.End.After(from) && s.rank == win.rank && s.estimate == win.estimate {
+				win.running = win.running || s.running
+				win.inclusive = win.inclusive || s.inclusive
 			}
 		}
 		t := totals[win.cause]
