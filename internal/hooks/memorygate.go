@@ -10,10 +10,16 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/hook"
 )
 
-var reasonMemoryWrite = hook.Declare("memory-gate", "memory-write")[0]
+// memoryDenied is the reason of a deny.
+func memoryDenied(target string) string {
+	return "memory-gate: auto-memory write blocked (" + target + ").\n" +
+		"AGENTS.md forbids harness memory: it lives on one machine and nobody reviews it.\n" +
+		"Put a lasting rule in the repo with /lighthouse-place-instruction; move existing memory with /lighthouse-migrate-memory.\n"
+}
 
-// MemoryGate blocks a write into a Claude Code auto-memory directory: an Edit or Write of such a
-// file, or a Bash command whose redirect or file argument is one. Reading stays free. The stands
+// MemoryGate denies a write into a Claude Code auto-memory directory: an Edit or Write of such a
+// file, or a Bash command whose redirect or file argument is one. It denies through
+// permissionDecision with exit 0, not exit 2, so it is no blocking hook. Reading stays free. The stands
 // `log` and `off` are hook.Run's.
 func MemoryGate(_ context.Context, _, _ string, p hook.Payload) hook.Result {
 	top, ok := hook.JQFields(p.Raw)
@@ -48,9 +54,11 @@ func MemoryGate(_ context.Context, _, _ string, p hook.Payload) hook.Result {
 	configDir := automemory.ConfigDir(os.Getenv, home)
 	for _, target := range targets {
 		if automemory.IsMemoryPath(absoluteTarget(target, cwd), home, configDir) {
-			return hook.Block(reasonMemoryWrite, "memory-gate: auto-memory write blocked ("+target+").\n"+
-				"AGENTS.md forbids harness memory: it lives on one machine and nobody reviews it.\n"+
-				"Put a lasting rule in the repo with /lighthouse-place-instruction; move existing memory with /lighthouse-migrate-memory.\n")
+			return hook.Result{Output: map[string]any{"hookSpecificOutput": map[string]any{
+				"hookEventName":            "PreToolUse",
+				"permissionDecision":       "deny",
+				"permissionDecisionReason": memoryDenied(target),
+			}}}
 		}
 	}
 	return hook.Result{}

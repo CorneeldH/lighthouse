@@ -53,14 +53,26 @@ func TestMemoryGate(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			res := MemoryGate(context.Background(), "", "", hook.Payload{Raw: c.raw})
-			if res.Code != c.code || !strings.HasPrefix(res.Stderr, c.want) && !strings.Contains(res.Stderr, c.want) {
-				t.Fatalf("got code %d, stderr %q; want code %d, stderr starting with %q", res.Code, res.Stderr, c.code, c.want)
+			if res.Code != c.code && !(c.code == 2 && res.Code == 0) {
+				t.Fatalf("got code %d, want %d", res.Code, c.code)
 			}
-			if c.code == 0 && res.Stderr != "" {
-				t.Fatalf("stderr %q, want empty", res.Stderr)
-			}
-			if c.code == 2 && c.want != "COULD NOT CHECK" && !strings.Contains(res.Stderr, "/lighthouse-migrate-memory.") {
-				t.Fatalf("stderr %q lacks the migrate hint", res.Stderr)
+			switch c.want {
+			case "":
+				if res.Code != 0 || res.Stderr != "" || res.Output != nil {
+					t.Fatalf("got code %d, stderr %q, output %v; want silence", res.Code, res.Stderr, res.Output)
+				}
+			case "COULD NOT CHECK":
+				if res.Code != 2 || !strings.Contains(res.Stderr, c.want) {
+					t.Fatalf("got code %d, stderr %q; want COULD NOT CHECK", res.Code, res.Stderr)
+				}
+			default:
+				specific, _ := res.Output["hookSpecificOutput"].(map[string]any)
+				reason, _ := specific["permissionDecisionReason"].(string)
+				if res.Code != 0 || res.Stderr != "" || specific["permissionDecision"] != "deny" ||
+					specific["hookEventName"] != "PreToolUse" || !strings.HasPrefix(reason, c.want) ||
+					!strings.Contains(reason, "/lighthouse-migrate-memory.") {
+					t.Fatalf("got code %d, stderr %q, output %v; want a deny starting with %q", res.Code, res.Stderr, res.Output, c.want)
+				}
 			}
 		})
 	}
@@ -81,7 +93,7 @@ func TestMemoryGateOnStandLog(t *testing.T) {
 	var out, errOut bytes.Buffer
 	code := hook.Run(context.Background(), "memory-gate", "log", bytes.NewReader(raw), &out, &errOut, env)
 
-	if code != 0 || out.Len() != 0 || errOut.Len() != 0 {
+	if code != 0 || out.Len() != 0 || errOut.Len() != 0 || strings.Contains(out.String(), "deny") {
 		t.Fatalf("code=%d out=%q err=%q, want 0 and silence", code, out.String(), errOut.String())
 	}
 	counts, err := levellog.Count(root, time.Now().Add(-time.Hour))

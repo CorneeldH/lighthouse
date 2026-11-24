@@ -6,4 +6,3 @@ workflow-push-gate
 bash-write-check
 md-link-check
 code-language-check
-memory-gate

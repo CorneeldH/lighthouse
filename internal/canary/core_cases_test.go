@@ -73,8 +73,7 @@ var commandCases = map[string]commandCase{
 		dropBlocking(t, root, "no-verify-check")
 		return nil
 	}},
-	"memory-write": {"memory-gate", "run.sh memory-gate", func(*testing.T, string) []string { return nil }},
-	"flag":         {"no-verify-check", "run.sh no-verify-check", func(*testing.T, string) []string { return nil }},
+	"flag": {"no-verify-check", "run.sh no-verify-check", func(*testing.T, string) []string { return nil }},
 	"tests-red": {"commit-test-gate", "run.sh commit-test-gate pre", func(t *testing.T, root string) []string {
 		writeConfig(t, root, "[test_gate]\ncommand = \"false\"")
 		return nil

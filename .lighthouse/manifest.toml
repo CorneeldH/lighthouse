@@ -204,7 +204,7 @@ kind = "file"
 path = ".claude/hooks/lighthouse/blocking"
 package = "core"
 version = "dev"
-sha256 = "80de9dadf1f7c77fe4015818801839a6c79c2710cdbf5f240b4832a0c4ba7bd0"
+sha256 = "45ed545950f54b44cdd24a9d3c6d0b97df5f79e19720a70fbc57eccc03c78a35"
 
 [[unit]]
 kind = "file"

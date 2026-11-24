@@ -177,7 +177,7 @@ func TestBlockingBashRegistrationsBlockWithoutLighthouse(t *testing.T) {
 	}
 	want := []string{
 		"run.sh bash-write-check pre", "run.sh commit-test-gate pre", "run.sh main-commit-gate",
-		"run.sh memory-gate", "run.sh no-verify-check", "run.sh pr-create-gate", "run.sh workflow-push-gate",
+		"run.sh no-verify-check", "run.sh pr-create-gate", "run.sh workflow-push-gate",
 	}
 	slices.Sort(blocked)
 	if !slices.Equal(blocked, want) {
