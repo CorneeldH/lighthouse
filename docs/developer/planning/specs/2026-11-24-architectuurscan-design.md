@@ -82,6 +82,7 @@ Herbruikbaar voor latere metingen van de milestone, maar die schrijven vooral ee
    sluit de gebruiker het scanissue.
 5. **Een mislukte run sluit als `failed`.** Het criterium *eindigt niet-nul* betekent: de run-rij
    sluit als `failed` met de reden. De tick houdt zijn exitcode (0), zoals bij elke geplande job.
+   Een fout in de gate is geen mislukte run maar een mislukte tick (zie *Mislukken*).
 
 ## Ontwerp
 
@@ -94,8 +95,10 @@ vragen, rangschikking `Strong` / `Worth exploring` / `Speculative`.
 
 Ontdaan van paia:
 
-- Hotspots via `git log --since=… --name-only` over de paden van `lighthouse config paths.search_dirs`,
-  niet over `src/*.py`.
+- Hotspots over de paden van `paths.search_dirs` (`lighthouse config`), niet over `src/*.py`.
+  Interactief via `git log --since=… --name-only`, zoals in paia. Headless rekent `Stage` de
+  hotspotlijst in Go uit en zet hem in het corpus: de headless agent heeft geen `Bash`.
+  *(own choice after spec review, r1-f2)*
 - Kaartdocumenten zijn optioneel: wat de repo in `[paths]` heeft staan (`tenets`, `areas`,
   `strategy`), alleen als het bestaat. Geen vaste paia-paden.
 - Een gekozen kandidaat wordt een issue via `/lighthouse-write-issue`.
@@ -104,9 +107,11 @@ Ontdaan van paia:
 
 - *Interactief* (geen `--out`): zoals paia, kandidaten in de chat, afsluiten met één topaanbeveling
   en de vraag welke de gebruiker wil uitwerken.
-- *Headless* (`--corpus <pad> --out <pad>`): stelt geen vragen, leest issues alleen uit het corpus,
-  schrijft precies één bestand op `--out` in het vaste formaat hieronder, maakt geen issues, geen
-  commit, geen push.
+- *Headless* (`--corpus <pad> --out <pad>`): stelt geen vragen, leest issues en hotspots alleen uit
+  het corpus, schrijft precies één bestand op `--out` in het vaste formaat hieronder, maakt geen
+  issues, geen commit, geen push. Nameten gaat met `Read`, `Grep` en `Glob`; het *commando* van een
+  nagemeten claim is die toolaanroep, of het getal uit het corpus met zijn bron.
+  *(own choice after spec review, r1-f2)*
 
 Nieuw in beide modi: elke claim draagt een van de drie markeringen, en een kandidaat die onder een
 open issue valt, gaat naar *nog open uit eerdere scans*.
@@ -116,8 +121,10 @@ open issue valt, gaat naar *nog open uit eerdere scans*.
 - Een kandidaat uit het open scanissue zonder vinkje is nog onbeslist en komt terug als volledige
   kandidaat, bijgewerkt. Het scanissue zelf telt nooit als "open issue waar de kandidaat onder valt".
 - Een kandidaat met een vinkje, in het open of het laatst gesloten scanissue, komt alleen terug met
-  nieuw bewijs, gemarkeerd als *eerder afgewezen, opnieuw omdat …*. In het bijgewerkte open issue blijft
-  een afgewezen kandidaat staan, met vinkje, zodat de beslissing niet verloren gaat.
+  nieuw bewijs, gemarkeerd als *eerder afgewezen, opnieuw omdat …*. Een afgewezen kandidaat blijft
+  met vinkje staan, in het bijgewerkte open issue én in een nieuw scanissue na een gesloten issue,
+  zodat de beslissing nooit verder terug hoeft dan het laatst gesloten issue.
+  *(own choice after spec review, r1-f4)*
 - Een kandidaat die een issue werd, valt onder dat issue: *nog open* zolang het openstaat.
 
 ### Het resultaatformaat
@@ -147,35 +154,45 @@ Nieuw package `internal/scheduled/archscan/`, naam `architecture-scan`, geregist
 
 **Configuratie.** Opt-in via een `[[schedule]]`-blok. Standaardschema per kwartaal, bijvoorbeeld
 `cron = "0 6 1 1,4,7,10 *"`. Lighthouse zelf zet het blok aan in zijn eigen `lighthouse.toml`, met
-`labels = ["2-area:core"]`. `params` naar het patroon van `reflect`:
+`params.labels = ["2-area:core"]` (een `labels` buiten `params` is een onbekende sleutel en breekt het
+laden van `lighthouse.toml`). `params` naar het patroon van `reflect`:
 
 | Param | Standaard |
 |---|---|
 | `command` | `/lighthouse-architecture-scan` |
 | `window` | `3 months` (recency) |
 | `labels` | geen; extra labels naast `needs_decision` |
-| `tools` | `Read Glob Grep Write` plus de alleen-lezende nameetcommando's; `Configure` weigert elke tool buiten een vaste lijst, dus nooit vrije `Bash` of `Agent` |
+| `tools` | `Read Glob Grep Write`; `Configure` weigert elke tool buiten die lijst, dus nooit `Bash` of `Agent` |
 | `max_runtime` | `60m` |
 
 **Het scanissue.** Een issue telt als scanissue als het label `needs_decision` draagt, op regel 1
 van de body de marker heeft, en geschreven is door de login van het token (zoals `map-planned`
 antwoorden controleert). Zijn er meerdere open, dan telt het oudste. De marker:
-`<!-- lighthouse: {"kind":"architecture-scan","version":1,"slot":"…","base":"<sha>","first":"<datum>","scans":<n>} -->`.
+`<!-- lighthouse: {"kind":"architecture-scan","version":1,"run":"…","base":"<sha>","first":"<datum>","scans":<n>} -->`.
+De marker staat op regel 1, de waarschuwingsregel op regel 2. *(own choice after spec review, r1-f10)*
 
 **Gate.** Zonder forge: fout. HEAD van `origin/<standaardbranch>` gelijk aan de basiscommit in de
-marker van het open scanissue: `skip` (`no commits since last scan`). De gate geeft de slot door aan
-`Finish` (bijvoorbeeld via de `Verdict`); `Env` heeft geen slotveld.
+marker van het open scanissue: `skip` (`no commits since last scan`). De gate zet een run-id in een
+nieuw veld van de `Verdict`, afgeleid van `Env.Now`; `Finish` krijgt de `Verdict` mee. Het id hoeft
+alleen per run uniek te zijn. *(own choice after spec review, r1-f6)*
 
-**Stage.** Schrijft `.lighthouse/run/architecture-scan-corpus.json`: taal, de paden uit `[paths]`,
-alle open issues (nummer, titel, labels, body afgekapt), en apart het open scanissue en het laatst
-gesloten scanissue, elk met body (vinkjes) en comments.
+**Stage.** Schrijft `.lighthouse/run/architecture-scan-corpus.json`: taal, `paths.search_dirs` en de
+paden uit `[paths]`, de hotspotlijst (gewijzigde bestanden per pad binnen `window`, uit `git log`),
+de basiscommit, alle open issues (nummer, titel, labels, body afgekapt), en apart het open scanissue
+en het laatst gesloten scanissue, elk met body (vinkjes) en comments.
 
 **Launch.** Onbemande instructies naar het patroon van `reflect`: geen vragen, alleen het corpus
 lezen, precies één bestand op `--out`, geen issue, geen commit, geen push.
 
-**Cleanup.** Ontbreekt het resultaatbestand of is het leeg, dan faalt de run hier: zonder gewijzigd
-pad slaat `Postcheck` `Check` over (`internal/scheduled/postcheck.go:117-120`) en zou de run anders
-`done` eindigen. Daarna gaat het corpus weg. `Allowed` laat alleen het resultaatbestand toe.
+**Het resultaatbestand** heeft een vast pad in de werkplek, `architecture-scan-result.md` in de root,
+niet onder een map die een doelrepo kan negeren: `Postcheck` ziet alleen wat `git status` toont
+(`internal/scheduled/postcheck.go:308`). *(own choice after spec review, r1-f8)*
+
+**Cleanup.** Toont `git status` het resultaatbestand niet, of is het leeg, dan faalt de run hier:
+zonder gewijzigd pad slaat `Postcheck` `Check` over (`internal/scheduled/postcheck.go:117-120`) en zou
+de run anders `done` eindigen. Uitzondering: draagt het open scanissue al het run-id van deze run, dan
+publiceerde een eerdere `Postcheck` al, en is een ontbrekend bestand goed. *(own choice after spec
+review, r1-f7)* Daarna gaat het corpus weg. `Allowed` laat alleen het resultaatbestand toe.
 
 **Check.** Faalt de run (en er volgt geen issue of comment) bij:
 
@@ -184,28 +201,46 @@ pad slaat `Postcheck` `Check` over (`internal/scheduled/postcheck.go:117-120`) e
 - een claim zonder of met meer dan één markering, of een *nagemeten* zonder commando of uitkomst;
 - een nummer onder *nog open uit eerdere scans* dat niet bestaat, niet open is, of het scanissue zelf
   is, nagelezen op de forge, nooit in het corpus;
-- een vinkje uit het open scanissue dat in het resultaat verdwenen is;
-- een treffer van de secret-scan op de body. Die scan loopt hier expliciet: de gewone secret-scan komt
-  pas na `Finish` en ziet een bestand dat niet gecommit wordt niet. Er is nog geen geëxporteerde
-  scan op een string (`internal/scheduled/secrets.go`); die komt erbij.
+- een vinkje dat in het resultaat verdwenen is, vergeleken met de **live** body van het open scanissue
+  op de forge (of, zonder open issue, van het laatst gesloten), niet met het corpus;
+  *(own choice after spec review, r1-f5)*
+- een body die met marker en waarschuwing langer wordt dan 60 000 tekens (onder de GitHub-grens van
+  65 536); *(own choice after spec review, r1-f11)*
+- een treffer van `scheduled.ScanSecrets` op het resultaatbestand
+  (`internal/scheduled/secrets.go:95`). Die scan loopt hier expliciet: de gewone secret-scan komt pas
+  na `Finish` en ziet een bestand dat niet gecommit wordt niet. *(own choice after spec review,
+  r1-f9)*
 
-**Finish (publiceren).** Via de helper in `internal/scheduled`:
+**Finish (publiceren).** Via de helper in `internal/scheduled`. Elke route eindigt met het
+verwijderen van het resultaatbestand, ook de vroege uitgangen: blijft het staan, dan commit, pusht en
+merget `Postcheck` het naar de standaardbranch (`internal/scheduled/postcheck.go:129-157`).
+*(own choice after spec review, r1-f1)*
 
-1. Draagt de marker van het open scanissue al deze slot, dan doet `Finish` niets: een herhaalde
-   `Postcheck` (een run die openbleef) publiceert niet dubbel.
-2. Nul kandidaten en geen open scanissue: niets posten.
-3. Geen open scanissue: maak er een, met `needs_decision`, de `labels` uit de params en de marker
-   (`scans` 1).
-4. Wel een open scanissue: plaats de huidige body als comment (*Scan van <datum>*), herschrijf daarna de
-   body met de nieuwe scan, `scans` + 1, `first` ongewijzigd, en bovenaan de waarschuwingsregel.
+1. Draagt de marker van het open scanissue al het run-id van deze run, dan publiceert `Finish` niets:
+   een herhaalde `Postcheck` (een run die openbleef) publiceert niet dubbel.
+2. Geen kandidaat zonder vinkje en geen open scanissue: niets posten. Overgenomen afwijzingen tellen
+   hier niet als kandidaat; ze blijven in het laatst gesloten scanissue staan.
+   *(own choice after spec review, r2-f1)*
+3. Geen open scanissue en minstens één kandidaat zonder vinkje: maak er een, met `needs_decision`, de
+   `labels` uit de params en de marker (`scans` 1).
+4. Wel een open scanissue: lees de body opnieuw van de forge. Een vinkje dat na `Check` gezet is,
+   wordt in de nieuwe body overgenomen (op de sleutel van de kandidaat). Plaats dan de huidige body als
+   comment (*Scan van <datum>*) en herschrijf de body met de nieuwe scan, `scans` + 1, `first`
+   ongewijzigd, en de waarschuwingsregel op regel 2. *(own choice after spec review, r1-f5)*
 5. Verwijder het resultaatbestand. Er blijft niets te committen: de run eindigt `done` zonder PR.
 
 Comment eerst, body daarna: een verloren body is erger dan een dubbel comment.
 
-**Mislukken.** Geen auth, lege uitvoer of een `Check`-fout: de run sluit als `failed` met de reden,
-zonder issue of comment. Een forge-fout in `Finish` sluit de run ook als `failed`; de scan van dat
-kwartaal is dan verloren en de volgende slot probeert opnieuw. Een time-out volgt de gewone
-levenscyclus: eerst `retry`, dan een tweede poging.
+**Mislukken.** Twee soorten, met een ander contract *(own choice after spec review, r1-f3)*:
+
+- **In de gate** (geen forge, verlopen token, een forge-fout bij het lezen van het scanissue): er komt
+  geen run-rij. De slot blijft open, de repo wordt vastgehouden en de tick eindigt met exitcode 1,
+  zoals bij `map-planned` (`internal/cli/tick_scheduled.go:96-100`). De volgende tick probeert opnieuw.
+- **Vanaf `Stage`** (lege uitvoer, een `Check`-fout, een forge-fout in `Finish`): de run sluit als
+  `failed` met de reden, zonder issue of comment, en de tick houdt exitcode 0. Een forge-fout in
+  `Finish` kost de scan van dat kwartaal; de volgende slot probeert opnieuw.
+
+Een time-out volgt de gewone levenscyclus: eerst `retry`, dan een tweede poging.
 
 ### Telemetrie
 
@@ -222,8 +257,6 @@ in de telemetrie* wordt pas aangetoond als #375 gemerged is.
 ## Aan de bouwer
 
 - De exacte namen van de nieuwe `headings.toml`-sleutels en hun `en`-varianten.
-- Hoe het nameten in `tools` past (een patroon als `Bash(git log:*)`, of alleen `Grep`/`Glob`, met de
-  toolaanroep als *commando*).
 - Hoe de afkapping van issuebodies in het corpus heet en hoe groot ze is (naar `max_corpus_bytes` van
   `reflect`).
 - Of `skill:architecture-scan` een niveau in `pack/core/levels.toml` krijgt, naar `map-planned`.
