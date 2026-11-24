@@ -244,9 +244,9 @@ func commandStart(words []string) int {
 	return idx
 }
 
-// ExistingAncestor is the nearest directory that exists now, going up from path.
+// ExistingAncestor is the nearest directory that exists now, going up from path, in `/` form.
 func ExistingAncestor(path string) (string, bool) {
-	current := path
+	current := filepath.ToSlash(path) // a no-op outside Windows
 	for {
 		if isDir(current) {
 			return current, true
@@ -262,8 +262,9 @@ func ExistingAncestor(path string) (string, bool) {
 // RepoOf is the repo root that path lies in: it walks up until a `.git` is found, without
 // calling git. A worktree has a file there instead of a directory. A `.git` directory without
 // `HEAD` is a stray directory, not a repo, and is walked past; a garbage `HEAD` still counts.
+// The root is in `/` form.
 func RepoOf(path string) (string, bool) {
-	current := path
+	current := filepath.ToSlash(path) // a no-op outside Windows
 	for {
 		dotGit := pyJoin(current, ".git")
 		if info, err := os.Stat(dotGit); err == nil && info.Mode().IsRegular() {
