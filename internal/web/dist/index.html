@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="lighthouse-ui" content="spa" />
+    <script>
+      // Before the first paint: apply a forced theme so there is no flash (see src/lib/theme.ts).
+      try {
+        var t = localStorage.getItem('lighthouse.theme')
+        if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t
+      } catch (e) {}
+    </script>
+    <title>lighthouse · Controller</title>
+    <script type="module" crossorigin src="/assets/index-CyVquiGB.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-DWqAlWXs.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
