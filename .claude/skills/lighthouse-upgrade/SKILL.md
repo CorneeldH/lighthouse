@@ -31,24 +31,36 @@ set -uo pipefail
 L=CorneeldH/lighthouse
 M=$(sed -n 's/^version = "\(.*\)"$/\1/p' .lighthouse/manifest.toml | head -n 1)
 B=$(lighthouse version | awk '{print $NF}')
+C=$(lighthouse channel)   # release or dev
 # skipped when the releases cannot be fetched: then self-update is not offered
 T=$(mktemp -d)
 lighthouse releases --repo "$L" > "$T/releases.json" || echo "releases: FETCH FAILED"
-N=$(jq -r '.[]|select((.prerelease or .draft)|not)|.tag' "$T/releases.json" | sort -V | tail -1)
+# draft never counts; prerelease only counts on dev, and there only vX.Y.Z, -dev.N and -rc.N
+if [ "$C" = dev ]; then
+  TAGS=$(jq -r '.[]|select(.draft|not)|.tag|select(test("^v[0-9]+\\.[0-9]+\\.[0-9]+(-(dev|rc)\\.[0-9]+)?$"))' "$T/releases.json")
+else
+  TAGS=$(jq -r '.[]|select((.prerelease or .draft)|not)|.tag' "$T/releases.json")
+fi
+echo "$TAGS" > "$T/tags.txt"
+# the highest tag, by lighthouse version compare
+N=
+for t in $TAGS; do
+  if [ -z "$N" ] || [ "$(lighthouse version compare "$t" "$N")" = 1 ]; then N=$t; fi
+done
 M=${M#v}; B=${B#v}; N=${N#v}
-echo "repo=$M binary=$B newest=$N"
-echo "releases=$T/releases.json"
+echo "repo=$M binary=$B newest=$N channel=$C"
+echo "releases=$T/releases.json tags=$T/tags.txt"
 ```
 
 - `M` or `B` is empty (the manifest has no version, or `lighthouse version` printed nothing): say so
   and stop, before any comparison.
 - `M` or `B` is `dev`: say so and stop. Never compare a `dev` build.
-- `B` is older than the repo (`M` > `B` by `sort -V`): say "the binary is older than the repo" and
+- `B` is older than the repo (`lighthouse version compare "$M" "$B"` prints `1`): say "the binary is older than the repo" and
   stop. Never run `init --upgrade` then; it would downgrade.
 
 ### 2. The binary
 
-If `N` is newer than `B` (`sort -V`), propose `lighthouse self-update` and warn that it replaces the
+If `N` is newer than `B` (`lighthouse version compare "$N" "$B"` prints `1`), propose `lighthouse self-update` and warn that it replaces the
 binary for the whole host. It needs the network: run it with `dangerouslyDisableSandbox: true`. Run it only after the user agrees (`AskUserQuestion`), then read `B`
 again.
 
@@ -63,12 +75,12 @@ The `lighthouse releases` call needs the network: run it with `dangerouslyDisabl
 notes" and why; do not go on as if there were none.
 
 For every tag with `M < tag <= B`, show the notes. Strip the `v` with
-`${x#v}`, and filter with `sort -V`, never on the order `lighthouse releases` returns them.
+`${x#v}`, and keep a tag when `lighthouse version compare` says `M < tag <= B`, never on the order `lighthouse releases` returns them. On the `dev` channel the prereleases of step 1 count too.
 
 ```bash
 # the releases were fetched once in step 1: R is the `releases=` path it printed
-R=<path from step 1>
-jq -r '.[] | select((.prerelease or .draft) | not) | .tag' "$R"
+R=<releases= path from step 1>
+cat <tags= path from step 1>   # the candidate tags of this channel
 jq -r --arg t "<tag>" '.[] | select(.tag == $t) | .body' "$R"
 ```
 
@@ -121,7 +133,7 @@ open the PR only after the user agrees, through `/lighthouse-write-pr`.
 
 ## Non-negotiable
 
-- ✅ Compare versions without the `v`, with `sort -V` · ❌ compare strings, or a `dev` build
+- ✅ Compare versions without the `v`, with `lighthouse version compare` · ❌ compare strings, or a `dev` build
 - ✅ Stop when the binary is older than the repo · ❌ `init --upgrade` with an older binary
 - ✅ `lighthouse self-update`, after consent, warned as whole-host · ❌ any other way to get a binary
 - ✅ `--yes` only after the user agreed to the shown diff · ❌ `--yes` on the first call

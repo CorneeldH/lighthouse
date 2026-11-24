@@ -5,8 +5,9 @@ import (
 	"testing"
 )
 
-// upgrade: what lives only in skill text. Step 1 reads both versions and compares them without
-// the `v` and with `sort -V`, stops on an empty, `dev` or older version, and fetches the release
+// upgrade: what lives only in skill text. Step 1 reads both versions and the channel, compares
+// versions without the `v` and with `lighthouse version compare` (never `sort -V`), picks the
+// newest release per channel with jq, stops on an empty, `dev` or older version, and fetches the release
 // notes from the one lighthouse repo the literal allow list names. The binary comes only through
 // `lighthouse self-update`, `--yes` only after consent, a `refused:` stops, the evidence runs in
 // order and the commit holds only what `init` wrote. The frontmatter is TestCorePack (name) and
@@ -38,14 +39,33 @@ func TestUpgradeReadsBothVersions(t *testing.T) {
 	}
 }
 
-// Classification: fails when the versions are compared with their `v` prefix or without
-// `sort -V`.
+// Classification: fails when the versions are compared with their `v` prefix, the newest
+// release is picked without `lighthouse version compare`, or the channel filter of jq changes
+// (draft dropped on both channels, prerelease only on `release`, `-dev.N` and `-rc.N` only on
+// `dev`, never `-test.N`).
 func TestUpgradeComparesVersionsWithoutTheVPrefix(t *testing.T) {
 	for variant, body := range variants(t, upgrade) {
 		t.Run(variant, func(t *testing.T) {
-			wantAll(t, upgradeStep(t, body, "1"), "M=${M#v}; B=${B#v}; N=${N#v}", `| sort -V | tail -1)`)
+			s1 := upgradeStep(t, body, "1")
+			wantAll(t, s1, "M=${M#v}; B=${B#v}; N=${N#v}", "C=$(lighthouse channel)",
+				`select((.prerelease or .draft)|not)`,
+				`select(.draft|not)`,
+				`^v[0-9]+\\.[0-9]+\\.[0-9]+(-(dev|rc)\\.[0-9]+)?$`,
+				`lighthouse version compare "$t" "$N"`)
+			wantNone(t, s1, "-test")
 			wantAll(t, flat(upgradeStep(t, body, "3")),
-				"Strip the `v` with `${x#v}`, and filter with `sort -V`, never on the order `lighthouse releases` returns them.")
+				"Strip the `v` with `${x#v}`, and keep a tag when `lighthouse version compare` says `M < tag <= B`, never on the order `lighthouse releases` returns them. On the `dev` channel the prereleases of step 1 count too.")
+		})
+	}
+}
+
+// Classification: fails when a skill goes back to `sort -V` or loses `lighthouse channel` or
+// `lighthouse version compare`.
+func TestUpgradeSkillUsesVersionCompare(t *testing.T) {
+	for variant, body := range variants(t, upgrade) {
+		t.Run(variant, func(t *testing.T) {
+			wantAll(t, body, "lighthouse version compare", "lighthouse channel")
+			wantNone(t, body, "sort -V")
 		})
 	}
 }
@@ -65,7 +85,7 @@ func TestUpgradeOlderBinaryStops(t *testing.T) {
 	for variant, body := range variants(t, upgrade) {
 		t.Run(variant, func(t *testing.T) {
 			wantAll(t, flat(upgradeStep(t, body, "1")),
-				"- `B` is older than the repo (`M` > `B` by `sort -V`): say \"the binary is older than the repo\" and stop. Never run `init --upgrade` then; it would downgrade.")
+				"- `B` is older than the repo (`lighthouse version compare \"$M\" \"$B\"` prints `1`): say \"the binary is older than the repo\" and stop. Never run `init --upgrade` then; it would downgrade.")
 		})
 	}
 }
