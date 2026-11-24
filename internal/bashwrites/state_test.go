@@ -393,6 +393,9 @@ func TestLedgerKeepsANanosecondSignatureAbove2To53(t *testing.T) {
 func TestSeedExcludesFilesChangedAtOrAfterThePreStart(t *testing.T) {
 	repo := newRepo(t)
 	writeFile(t, filepath.Join(repo, "a.sh"), "echo a\n")
+	// On Windows time.Now reads a coarse tick (up to ~15.6 ms) that can lag the file stamp, so
+	// a.sh written just before t0 could carry a stamp after it (#559).
+	time.Sleep(30 * time.Millisecond)
 	t0 := time.Now().UnixNano()
 	time.Sleep(30 * time.Millisecond) // the kernel stamps ctime with a coarse clock that lags t0
 	writeFile(t, filepath.Join(repo, "b.sh"), "echo b\n")
