@@ -144,6 +144,9 @@ func timelineWindow(in TimelineInput, now time.Time) (Interval, bool) {
 	for _, s := range in.Sessions {
 		widen(s.StartedAt, s.EndedAt)
 	}
+	if w.End.Before(w.Start) {
+		w.End = w.Start // clock skew or a corrupt row: never a negative window
+	}
 	return w, found
 }
 
@@ -155,7 +158,9 @@ func isPusherRow(r TimelineRun) bool {
 
 // runSpans gives a pusher row ci_review over its whole length, and an agent
 // run active up to its first Done (ci_review after it) or up to its stored
-// question; without either, active marked inclusive of CI/review.
+// question; without either, a closed run is active marked inclusive of
+// CI/review. An open run without Done still works (no tick saw Done yet), so
+// it is not inclusive.
 func runSpans(in TimelineInput, now time.Time) []span {
 	var out []span
 	for _, r := range in.Runs {
@@ -167,19 +172,19 @@ func runSpans(in TimelineInput, now time.Time) []span {
 			out = append(out, span{Interval: Interval{r.StartedAt, end}, cause: CauseCIReview, rank: rankCIReview, running: running})
 			continue
 		}
-		if done, ok := firstEvent(in.Events, EventDone, r.ID); ok && !done.Before(r.StartedAt) && done.Before(end) {
+		if done, ok := firstEvent(in.Events, EventDone, r.ID); ok && !done.Before(r.StartedAt) && !done.After(end) {
 			out = append(out,
 				span{Interval: Interval{r.StartedAt, done}, cause: CauseActive, rank: rankRunActive},
 				span{Interval: Interval{done, end}, cause: CauseCIReview, rank: rankCIReview, running: running})
 			continue
 		}
 		if r.Outcome == "question" {
-			if q, ok := firstEvent(in.Events, EventQuestion, r.ID); ok && !q.Before(r.StartedAt) && q.Before(end) {
+			if q, ok := firstEvent(in.Events, EventQuestion, r.ID); ok && !q.Before(r.StartedAt) && !q.After(end) {
 				out = append(out, span{Interval: Interval{r.StartedAt, q}, cause: CauseActive, rank: rankRunActive})
 				continue
 			}
 		}
-		out = append(out, span{Interval: Interval{r.StartedAt, end}, cause: CauseActive, rank: rankRunActive, running: running, inclusive: true})
+		out = append(out, span{Interval: Interval{r.StartedAt, end}, cause: CauseActive, rank: rankRunActive, running: running, inclusive: !running})
 	}
 	return out
 }

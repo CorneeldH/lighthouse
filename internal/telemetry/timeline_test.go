@@ -210,3 +210,54 @@ func TestTimelineWindowStartsAtFirstRunOrSession(t *testing.T) {
 	}
 	assertCauses(t, got, map[Cause]time.Duration{CauseActive: dur(35), CauseUnexplained: dur(5)})
 }
+
+func TestTimelineEventAtEndedAtCounts(t *testing.T) {
+	t.Run("done", func(t *testing.T) {
+		in := TimelineInput{
+			Runs:   []TimelineRun{{ID: 1, Trigger: "start", TriggerKey: "start:7", Outcome: "merged", StartedAt: mins(0), EndedAt: endAt(100)}},
+			Events: []TimelineEvent{{Kind: EventDone, RunID: 1, Ref: "1", At: mins(100)}},
+		}
+		got := Timeline(in, mins(200))
+		assertCauses(t, got, map[Cause]time.Duration{CauseActive: dur(100)})
+		if got.ByCause[CauseActive].InclusiveCIReview {
+			t.Error("active with a Done at ended_at is marked inclusive of CI/review")
+		}
+	})
+	t.Run("question", func(t *testing.T) {
+		in := TimelineInput{
+			Runs:   []TimelineRun{{ID: 1, Trigger: "start", TriggerKey: "start:7", Outcome: "question", StartedAt: mins(0), EndedAt: endAt(30)}},
+			Events: []TimelineEvent{{Kind: EventQuestion, RunID: 1, Ref: "q1", At: mins(30)}},
+			// Closed at the question: the question ends there, so the
+			// window holds only the run.
+			ClosedAt: mins(30),
+		}
+		got := Timeline(in, mins(200))
+		assertCauses(t, got, map[Cause]time.Duration{CauseActive: dur(30)})
+		if got.ByCause[CauseActive].InclusiveCIReview {
+			t.Error("active of a question run with its question at ended_at is marked inclusive of CI/review")
+		}
+	})
+}
+
+func TestTimelineOpenRunWithoutDoneIsNotInclusive(t *testing.T) {
+	// No Done yet on an open run: the session has not reported Done, so it
+	// still works; its active time cannot hold CI/review waiting.
+	in := TimelineInput{
+		Runs: []TimelineRun{{ID: 1, Trigger: "start", TriggerKey: "start:7", StartedAt: mins(0)}},
+	}
+	got := Timeline(in, mins(45))
+	if total := got.ByCause[CauseActive]; total.InclusiveCIReview || !total.Running {
+		t.Errorf("active of an open run without Done = %+v; want Running, not InclusiveCIReview", total)
+	}
+}
+
+func TestTimelineClockSkewKeepsWindowOrdered(t *testing.T) {
+	in := TimelineInput{
+		Runs: []TimelineRun{{ID: 1, Trigger: "start", TriggerKey: "start:7", Outcome: "merged", StartedAt: mins(50), EndedAt: endAt(20)}},
+	}
+	got := Timeline(in, mins(200))
+	if got.Window.End.Before(got.Window.Start) {
+		t.Errorf("Window = %v..%v; End before Start", got.Window.Start, got.Window.End)
+	}
+	assertCauses(t, got, map[Cause]time.Duration{})
+}
