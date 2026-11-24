@@ -11,7 +11,7 @@ import {
 } from '@/lib/priorities/derive'
 import { canMove } from '@/lib/priorities/moves'
 import { NO_MILESTONE_COLOR } from '@/lib/priorities/palette'
-import { Block, type BlockState } from './Block'
+import { Block } from './Block'
 import type { ViewProps } from './types'
 
 // Below this width a block shows no number; the hover title stays.
@@ -25,11 +25,6 @@ const MAX_OUTSIDE = 3
 
 const colorOf = (colors: Map<string, string>, n: GNode): string =>
   n.milestone ? (colors.get(`${n.repo}#m${n.milestone.number}`) ?? NO_MILESTONE_COLOR) : NO_MILESTONE_COLOR
-
-// "needs human" is a ready (or active) block with the dashed flag.
-function shapeOf(state: BlockData['state'], needsHuman: boolean): { state: BlockState; needsHuman: boolean } {
-  return state === 'needs_human' ? { state: 'ready', needsHuman: true } : { state, needsHuman }
-}
 
 function meta(row: MilestoneRow, own: BlockData[]): string {
   const active = own.filter((b) => b.state === 'active').length
@@ -137,10 +132,10 @@ function Row({ row, colors, moves }: { row: MilestoneRow; colors: Map<string, st
               <Block
                 key={n.key}
                 testId="outside"
-                {...shapeOf(n.state, n.needsHuman)}
+                state={n.state}
                 color={colorOf(colors, n)}
                 borderColor={colorOf(colors, n)}
-                title={`#${n.number} ${n.title}`}
+                title={`${n.number} ${n.title}`}
                 href={n.url || undefined}
                 label={n.number}
                 className="h-[18px] min-w-[26px] px-0.5"
@@ -151,7 +146,7 @@ function Row({ row, colors, moves }: { row: MilestoneRow; colors: Map<string, st
                 data-testid="outside-more"
                 title={row.outside
                   .slice(MAX_OUTSIDE - 1)
-                  .map((n) => `#${n.number} ${n.title}`)
+                  .map((n) => `${n.number} ${n.title}`)
                   .join('\n')}
                 className="flex h-[18px] min-w-[26px] items-center justify-center rounded border-[1.5px] border-lh-grey px-0.5 text-[9.5px] font-bold text-lh-grey"
               >
@@ -175,9 +170,9 @@ function Row({ row, colors, moves }: { row: MilestoneRow; colors: Map<string, st
               own.map((b) => (
                 <Block
                   key={`${b.repo}#${b.nr}`}
-                  {...shapeOf(b.state, b.needsHuman)}
+                  state={b.state}
                   color={color}
-                  title={`#${b.nr} ${b.title}`}
+                  title={`${b.nr} ${b.title}`}
                   href={b.url || undefined}
                   label={showLabel ? b.nr : undefined}
                   className="h-full min-w-[3px] flex-1"

@@ -23,7 +23,7 @@ function reach(start: NodeKey, next: Map<NodeKey, NodeKey[]>): Set<NodeKey> {
   return seen
 }
 
-export function DepsView({ graph, selected, colors }: ViewProps): JSX.Element {
+export function DepsView({ graph, selected, colors, depsOrder }: ViewProps): JSX.Element {
   const [hover, setHover] = useState<NodeKey | null>(null)
   const [pinned, setPinned] = useState<NodeKey | null>(null)
   const pointer = useRef('mouse')
@@ -51,8 +51,8 @@ export function DepsView({ graph, selected, colors }: ViewProps): JSX.Element {
       down.set(e.from, [...(down.get(e.from) ?? []), e.to])
       up.set(e.to, [...(up.get(e.to) ?? []), e.from])
     }
-    return { nodes, edges, loose, down, up, laid: layoutGraph(nodes, edges) }
-  }, [graph, selected])
+    return { nodes, edges, loose, down, up, laid: layoutGraph(nodes, edges, depsOrder) }
+  }, [graph, selected, depsOrder])
 
   const focus = pinned ?? hover
   const chain = useMemo(

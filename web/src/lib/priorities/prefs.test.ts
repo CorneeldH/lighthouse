@@ -8,24 +8,24 @@ afterEach(() => {
 
 describe('prefs', () => {
   it('returns the defaults when nothing is stored', () => {
-    expect(loadPrefs()).toEqual({ view: 'deps', repos: null, msOrder: 'computed' })
+    expect(loadPrefs()).toEqual({ view: 'deps', repos: null, msOrder: 'computed', depsOrder: 'prio' })
   })
 
   it('round-trips view and repos', () => {
-    savePrefs({ view: 'milestones', repos: ['a/x'], msOrder: 'priority' })
-    expect(loadPrefs()).toEqual({ view: 'milestones', repos: ['a/x'], msOrder: 'priority' })
+    savePrefs({ view: 'milestones', repos: ['a/x'], msOrder: 'priority', depsOrder: 'prio' })
+    expect(loadPrefs()).toEqual({ view: 'milestones', repos: ['a/x'], msOrder: 'priority', depsOrder: 'prio' })
   })
 
   it('falls back to the defaults on garbage or an unknown view', () => {
     localStorage.setItem('lighthouse.priorities', '{nope')
-    expect(loadPrefs()).toEqual({ view: 'deps', repos: null, msOrder: 'computed' })
+    expect(loadPrefs()).toEqual({ view: 'deps', repos: null, msOrder: 'computed', depsOrder: 'prio' })
     localStorage.setItem('lighthouse.priorities', JSON.stringify({ view: 'zzz', repos: 'x' }))
-    expect(loadPrefs()).toEqual({ view: 'deps', repos: null, msOrder: 'computed' })
+    expect(loadPrefs()).toEqual({ view: 'deps', repos: null, msOrder: 'computed', depsOrder: 'prio' })
   })
 
   it('falls back to computed for an unknown msOrder and keeps a valid view', () => {
     localStorage.setItem('lighthouse.priorities', JSON.stringify({ view: 'milestones', msOrder: 'zzz' }))
-    expect(loadPrefs()).toEqual({ view: 'milestones', repos: null, msOrder: 'computed' })
+    expect(loadPrefs()).toEqual({ view: 'milestones', repos: null, msOrder: 'computed', depsOrder: 'prio' })
   })
 
   it('does not throw when localStorage throws', () => {
@@ -35,7 +35,34 @@ describe('prefs', () => {
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       throw new Error('denied')
     })
-    expect(loadPrefs()).toEqual({ view: 'deps', repos: null, msOrder: 'computed' })
-    expect(() => savePrefs({ view: 'unassigned', repos: null, msOrder: 'computed' })).not.toThrow()
+    expect(loadPrefs()).toEqual({ view: 'deps', repos: null, msOrder: 'computed', depsOrder: 'prio' })
+    expect(() => savePrefs({ view: 'unassigned', repos: null, msOrder: 'computed', depsOrder: 'prio' })).not.toThrow()
+  })
+
+  it('depsOrder staat standaard op prio', () => {
+    expect(loadPrefs().depsOrder).toBe('prio')
+  })
+
+  it('een opgeslagen weight of crossings wordt teruggelezen', () => {
+    for (const depsOrder of ['weight', 'crossings'] as const) {
+      savePrefs({ view: 'deps', repos: null, msOrder: 'computed', depsOrder })
+      expect(loadPrefs().depsOrder).toBe(depsOrder)
+    }
+  })
+
+  it('een onbekende waarde valt terug op prio', () => {
+    for (const bad of ['zzz', 3, null, ['weight']]) {
+      localStorage.setItem('lighthouse.priorities', JSON.stringify({ view: 'deps', depsOrder: bad }))
+      expect(loadPrefs().depsOrder).toBe('prio')
+    }
+  })
+
+  it('een kapotte of geblokkeerde localStorage geeft prio', () => {
+    localStorage.setItem('lighthouse.priorities', '{nope')
+    expect(loadPrefs().depsOrder).toBe('prio')
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('denied')
+    })
+    expect(loadPrefs().depsOrder).toBe('prio')
   })
 })

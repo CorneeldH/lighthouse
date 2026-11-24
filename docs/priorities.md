@@ -94,12 +94,17 @@ De SPA leidt deze begrippen af in `web/src/lib/priorities/derive.ts`; de server 
 - **Actief.** Een issue is actief als er een open of geparkeerde run op staat, of als de
   bordstatus `In progress` of `Controller` is (zoals `issueState` en de
   [spec](developer/planning/specs/2026-11-20-statusmodel-en-statusschema-design.md)).
-- **Toestand van een issue.** `issueState` kiest de eerste passende regel: *actief* (live run,
-  bordstatus `In progress` of `Controller`; met de vlag *mens nodig* bij een `needs_*`-label of
-  een open vraag), *mens nodig* (`needs_shaping` of `needs_decision`), *geblokkeerd* (label
-  `blocked_*` of open blockers), *mens nodig* (`needs_hands` of `needs_testing`), anders
-  *oppakbaar*. Gesloten issues zijn *af* (`closed`). De milestone-balk tekent die vijf toestanden
-  met één vormentaal en groepeert de blokjes per toestand. De API levert daarvoor per issue
+- **Toestand van een issue.** `issueState` kiest de eerste passende regel; een gesloten issue is
+  *done*. Een actief issue (live run, bordstatus `In progress` of `Controller`) is *needs shaping*
+  bij het label `needs_shaping`, anders *needs human* bij een open vraag of een ander
+  `needs_*`-label, anders *active*. Een niet-actief issue is *needs shaping* bij `needs_shaping`,
+  *needs human* bij `needs_decision`, *blocked* bij een label `blocked_*` of open blockers,
+  *needs human* bij `needs_hands` of `needs_testing`, anders *to do* (intern `ready`). De
+  milestone-balk tekent die zes toestanden met één vormentaal en groepeert de blokjes per
+  toestand, van links naar rechts: done, needs human, active, to do, needs shaping, blocked. De
+  legenda heeft de kopjes *Milestones* en *Status*; de volgorde onder *Status* is blocked, needs
+  shaping, to do, active, needs human, done. `lighthouse state show` drukt dezelfde status af
+  (`state: #<nr> <status>`) zonder vlag erbij. De API levert daarvoor per issue
   `label` (het label met de laagste rang), `needs_label` (er staat een `needs_*`-label op, welk
   ook), `open_question`, `prio_weight` en `factor` (zie *Prio-gewicht*), en per milestone de
   gesloten issues (`closed`).
@@ -111,22 +116,40 @@ De SPA leidt deze begrippen af in `web/src/lib/priorities/derive.ts`; de server 
   repo dat (direct of via een keten) op dit issue wacht, diens factor maal 2^(k-1), met k de
   langste afstand in stappen; een cyclus telt als één groep. Een blokkeerder in een andere repo
   telt niet mee. De tick en de triage ordenen met hetzelfde gewicht (zie
-  [`tick.md`](tick.md), *De rem*, en [`triage.md`](triage.md)).
-- **Vormentaal van de graaf.** De graaf tekent de toestand van een issue op de kaart met
-  dezelfde vormentaal als de balk: een kleurstrook (gestreept bij *actief*, effen bij
-  elke andere toestand), een stippelrand van 1,5 px in de voorgrondkleur bij *mens nodig*, een kruis bij
-  het nummer bij *geblokkeerd* en een doorgetrokken grijze rand voor een externe kaart (andere
-  repo of buiten het filter), nooit gestippeld. Issues zonder afhankelijkheden staan als
-  dezelfde kaart in een raster onder de graaf. Zie de
-  [spec](developer/planning/specs/2026-11-20-statusmodel-en-statusschema-design.md) en het
-  [plan](developer/planning/plans/2026-11-22-issue-438-afhankelijkhedengraaf-vormentaal.md).
+  [`tick.md`](tick.md), *De rem*, en [`triage.md`](triage.md)). De graaf sorteert er zijn
+  kolommen mee (zie *Sortering van de graaf*).
+- **Vormentaal van de graaf.** De graaf tekent de status van een issue met dezelfde vormen als de
+  balk, in een blokje van 14 bij 14 px vóór het nummer: een kruis (vectorlijnen die in elk blok
+  glad blijven) bij *blocked*, een stippelrand van 1,5 px in de voorgrondkleur bij *needs
+  shaping*, strepen en een dichte rand (`inset 0 0 0 2px` in de voorgrondkleur) bij *needs human*, alleen strepen bij *active*, effen bij *to do* en *done*. Het
+  nummer is onderstreept bij *needs shaping* en *needs human*, nergens anders, en staat zonder
+  `#`. De kleurstrook links is altijd effen in de kleur van de milestone. Een externe kaart
+  (andere repo of buiten het filter) heeft geen statusblokje en een doorgetrokken grijze rand.
+  Issues zonder afhankelijkheden staan als dezelfde kaart in een raster onder de graaf. Zie de
+  [spec](developer/planning/specs/2026-11-23-prioritering-zes-statussen-design.md) en het
+  [plan](developer/planning/plans/2026-11-24-issue-555-zes-statussen-vormentaal.md).
 - **Bergop / bergaf.** Een actief issue is bergop als de fase van zijn run een van
   `brainstorming`, `start-issue`, `spec-review`, `writing-plans` of `plan-review` is: het
   denkwerk vóór de uitvoering. Elke andere fase, of een issue dat alleen op het bord actief is,
   is bergaf.
 - **Wachtenden.** Per issue het aantal open issues dat er (direct of via ketens) op wacht. De
   leden van een cyclus vormen samen één component en krijgen de diepte van dat component, in
-  één kolom; zo blijft de graaf eindig.
+  één kolom; zo blijft de graaf eindig. De sortering van de graaf gebruikt daarnaast het
+  *gewicht* (zie *Sortering van de graaf*).
+- **Sortering van de graaf.** In de weergave *Dependencies* staat een schakelaar *Sort* met drie
+  standen, binnen elke kolom: *Prio-weight* (standaard): prio-gewicht aflopend, dan de eigen
+  factor aflopend, dan de volgorde van dagre; *Weight*: gewicht aflopend, dan de volgorde van
+  dagre; *Fewest crossings*: de volgorde van dagre (y-positie, dan nummer), zoals voor #445.
+  Gelijke sleutels blijven deterministisch (dagre, dan nummer). Het *gewicht* is de som, over
+  alle issues die direct of via andere issues op dit issue wachten, van 2^(k-1), met k de
+  langste afstand in stappen; elk wachtend issue telt één keer en een cyclus is één groep. Het
+  gewicht rekent `derive.ts` zelf uit over de hele graaf, externe knopen en andere repo's
+  inbegrepen. Het prio-gewicht en de factor rekent de graaf niet na: ze komen uit
+  `/api/priorities` (#509, zie *Prio-gewicht*); een externe knoop zonder die velden krijgt 0.
+  De keuze staat in `localStorage` onder `lighthouse.priorities`, veld `depsOrder`; een
+  ontbrekende of vreemde waarde, of een blokkerende `localStorage`, valt terug op *Prio-weight*.
+  De pil met het aantal wachtenden (vanaf 2) toont bij hover `N wait · weight W · factor F ·
+  prio-weight P`.
 - **Shaping.** Een milestone is in shaping als hij geen open issues heeft en geen issues die als
   `completed` zijn gesloten (`isShaping`: nul issues), of als een regel van de
   milestonebeschrijving (zonder hoofdletters en omringende spaties) `Status: shaping` is. Een
@@ -146,7 +169,7 @@ van `Planning` (milestones, dependencies) nog niet en is zonder wijziging van de
   verdwijnen uit Milestones en uit Without milestone.
 - GitLab leest de gesloten issues van een milestone op milestonetitel (`/issues?state=closed&milestone=<titel>`).
 - Lange pijlen in de graaf delen één baan per overgeslagen kolom.
-- De kaartvorm van de graaf (kleurstrook, stippelrand, kruis) is alleen met jsdom getest, niet in een browser bekeken.
+- De kaartvorm van de graaf (kleurstrook links en een statusblokje van 14 bij 14 px vóór het nummer) is alleen met jsdom getest, niet in een browser bekeken.
 - Het palet is niet gevalideerd met de dataviz-validator.
 - De gebruikersinterface is niet visueel in een browser gecontroleerd.
 - De e2e-test is overgeslagen: `fake-github.ts` kent de REST-routes van `Planning` nog niet.

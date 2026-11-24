@@ -226,9 +226,7 @@
 .lh-stripe {
   background: repeating-linear-gradient(135deg, var(--ms-color) 0 4px, var(--lh-stripe-gap) 4px 8px);
 }
+/* The cross itself is an inline SVG in Block (a data URI cannot read --lh-cross). */
 .lh-cross {
-  background:
-    linear-gradient(to top right, transparent calc(50% - 1px), var(--lh-cross) 0 calc(50% + 1px), transparent 0),
-    linear-gradient(to bottom right, transparent calc(50% - 1px), var(--lh-cross) 0 calc(50% + 1px), transparent 0),
-    var(--lh-seg-todo);
+  background: var(--lh-seg-todo);
 }

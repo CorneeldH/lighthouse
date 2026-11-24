@@ -56,50 +56,70 @@ describe('DepsView', () => {
   it('marks a Controller issue without a run as active', () => {
     view([repo(A, [iss(1, [], { status: 'Controller' }), iss(2, [[A, 1]])])], [A])
     expect(node(`${A}#1`).getAttribute('data-state')).toBe('active')
-    expect(within(node(`${A}#1`)).getByTestId('card-strip').className).toContain('lh-stripe')
+    expect(within(node(`${A}#1`)).getByTestId('card-status').getAttribute('data-state')).toBe('active')
+    expect(within(node(`${A}#1`)).getByTestId('card-strip').className).not.toContain('lh-stripe')
     expect(within(node(`${A}#1`)).queryByText('picked up')).toBeNull()
   })
 
   it('marks an In progress issue as active', () => {
     view([repo(A, [iss(1, [], { status: 'In progress' }), iss(2, [[A, 1]])])], [A])
     expect(node(`${A}#1`).getAttribute('data-state')).toBe('active')
-    expect(within(node(`${A}#1`)).getByTestId('card-strip').className).toContain('lh-stripe')
-    expect(within(node(`${A}#1`)).queryByText('picked up')).toBeNull()
-  })
-
-  it('draws a ready card with a solid strip, and no dashed outline', () => {
-    view([repo(A, [iss(1), iss(2, [[A, 1]])])], [A])
-    expect(node(`${A}#1`).getAttribute('data-state')).toBe('ready')
+    expect(within(node(`${A}#1`)).getByTestId('card-status').getAttribute('data-state')).toBe('active')
     expect(within(node(`${A}#1`)).getByTestId('card-strip').className).not.toContain('lh-stripe')
-    expect(node(`${A}#1`).getAttribute('data-needs-human')).toBe('false')
-    expect(node(`${A}#1`).style.outline).not.toContain('dashed')
   })
 
-  it('draws needs human as a dashed outline, also on an active card', () => {
+  it('draws every state as a 14px status block before the number, with a solid strip', () => {
     view(
       [
         repo(A, [
-          iss(1, [], { label: 'needs_decision' }),
-          iss(2, [], { label: 'needs_hands' }),
-          iss(3, [], { status: 'In progress', open_question: true }),
-          iss(4, [[A, 1], [A, 2], [A, 3]]),
+          iss(1),
+          iss(2, [[A, 1]]),
+          iss(3, [], { label: 'needs_shaping' }),
+          iss(4, [], { label: 'needs_decision' }),
+          iss(5, [], { status: 'In progress' }),
+          iss(6, [[A, 3], [A, 4], [A, 5]]),
         ]),
       ],
       [A],
     )
-    for (const k of [1, 2]) {
-      expect(node(`${A}#${k}`).getAttribute('data-needs-human')).toBe('true')
-      expect(node(`${A}#${k}`).style.outline).toContain('dashed')
+    const want: Record<number, string> = { 1: 'ready', 2: 'blocked', 3: 'needs_shaping', 4: 'needs_human', 5: 'active' }
+    for (const [k, st] of Object.entries(want)) {
+      const card = node(`${A}#${k}`)
+      expect(card.getAttribute('data-state')).toBe(st)
+      const b = within(card).getByTestId('card-status')
+      expect(b.getAttribute('data-state')).toBe(st)
+      expect(b.className).toContain('size-3.5')
+      expect(within(card).getByTestId('card-strip').className).not.toContain('lh-stripe')
+      expect(card.style.outline).toBe('')
+      expect(card.hasAttribute('data-needs-human')).toBe(false)
+      expect(within(card).queryByTestId('card-cross')).toBeNull()
     }
-    expect(node(`${A}#3`).getAttribute('data-state')).toBe('active')
-    expect(node(`${A}#3`).getAttribute('data-needs-human')).toBe('true')
-    expect(node(`${A}#3`).style.outline).toContain('dashed')
   })
 
-  it('puts a cross at the number of a blocked card', () => {
-    view([repo(A, [iss(1), iss(2, [[A, 1]])])], [A])
-    expect(within(node(`${A}#2`)).getByTestId('card-cross')).toBeTruthy()
-    expect(within(node(`${A}#1`)).queryByTestId('card-cross')).toBeNull()
+  it('underlines the number for needs shaping and needs human only, without a hash', () => {
+    view(
+      [
+        repo(A, [
+          iss(1),
+          iss(3, [], { label: 'needs_shaping' }),
+          iss(4, [], { label: 'needs_hands' }),
+          iss(5, [], { status: 'In progress', open_question: true }),
+          iss(6, [[A, 3], [A, 4], [A, 5], [A, 1]]),
+        ]),
+      ],
+      [A],
+    )
+    for (const k of [3, 4, 5]) {
+      const n = within(node(`${A}#${k}`)).getByText(String(k))
+      expect(n.getAttribute('data-underlined')).toBe('true')
+      expect(n.className).toContain('underline')
+    }
+    expect(node(`${A}#5`).getAttribute('data-state')).toBe('needs_human')
+    for (const k of [1, 6]) {
+      const n = within(node(`${A}#${k}`)).getByText(String(k))
+      expect(n.getAttribute('data-underlined')).toBeNull()
+      expect(n.className).not.toContain('underline')
+    }
   })
 
   it('shows the waiting pill only from two waiting issues', () => {
@@ -108,6 +128,16 @@ describe('DepsView', () => {
     expect(within(node(`${A}#1`)).getByText('3')).toBeTruthy()
     expect(within(node(`${A}#3`)).queryByTestId('waiting-pill')).toBeNull()
     expect(within(node(`${A}#2`)).queryByTestId('waiting-pill')).toBeNull()
+  })
+
+  it('the pill shows the waiting count; its title carries the weights', () => {
+    view(
+      [repo(A, [iss(1, [], { factor: 3, prio_weight: 10 }), iss(2, [[A, 1]]), iss(3, [[A, 1]]), iss(4, [[A, 1]])])],
+      [A],
+    )
+    const pill = within(node(`${A}#1`)).getByTestId('waiting-pill')
+    expect(pill.textContent).toBe('3')
+    expect(pill.getAttribute('title')).toBe('3 wait · weight 3 · factor 3 · prio-weight 10')
   })
 
   it('keeps a blocker in a filtered-out repo as a solid grey node, and the column of its dependent', () => {
@@ -129,8 +159,12 @@ describe('DepsView', () => {
     const ext = node('a/y#9')
     expect(ext.className).toContain('border-lh-grey')
     expect(ext.className).not.toContain('border-dashed')
-    expect(ext.style.outline).not.toContain('dashed')
-    expect(ext.getAttribute('data-needs-human')).toBe('false')
+    expect(ext.getAttribute('data-external')).toBe('true')
+    expect(within(ext).queryByTestId('card-status')).toBeNull()
+    expect(ext.querySelector('[data-underlined]')).toBeNull()
+    expect(within(ext).getByText('a/y 9').className).not.toContain('underline')
+    expect(ext.style.outline).toBe('')
+    expect(ext.hasAttribute('data-needs-human')).toBe(false)
   })
 
   it('does not show a dependent that lives in a filtered-out repo', () => {
@@ -187,22 +221,22 @@ describe('DepsView', () => {
     view([repo(A, [iss(1, [], { status: 'In progress' })])], [A])
     const card = screen.getByTestId(`loose-${A}#1`)
     expect(card.getAttribute('data-state')).toBe('active')
-    expect(within(card).getByTestId('card-strip').className).toContain('lh-stripe')
-    expect(within(card).getByTestId('card-strip').getAttribute('style')).toContain('--ms-color')
+    expect(within(card).getByTestId('card-status').getAttribute('data-state')).toBe('active')
+    expect(within(card).getByTestId('card-strip').className).not.toContain('lh-stripe')
   })
 
   it('marks a loose Controller issue without a run as active', () => {
     view([repo(A, [iss(1, [], { status: 'Controller' })])], [A])
     const card = screen.getByTestId(`loose-${A}#1`)
     expect(card.getAttribute('data-state')).toBe('active')
-    expect(within(card).getByTestId('card-strip').className).toContain('lh-stripe')
+    expect(within(card).getByTestId('card-strip').className).not.toContain('lh-stripe')
   })
 
-  it('draws a cross on a loose card with a blocked_external label', () => {
+  it('draws a blocked status block on a loose card with a blocked_external label', () => {
     view([repo(A, [iss(1, [], { label: 'blocked_external' })])], [A])
     const card = screen.getByTestId(`loose-${A}#1`)
     expect(card.getAttribute('data-state')).toBe('blocked')
-    expect(within(card).getByTestId('card-cross')).toBeTruthy()
+    expect(within(card).getByTestId('card-status').getAttribute('data-state')).toBe('blocked')
   })
 
   it('positions a graph card absolutely through its inline style', () => {

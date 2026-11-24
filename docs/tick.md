@@ -441,6 +441,16 @@ geen sessie, ook niet terwijl de rij op CI wacht.
   sessie-retry: de eerstvolgende tick start de pusher opnieuw, en na de tweede mislukking komt de Vraag
   of Teruggegeven.
 
+- **Pusher-Vraag met een ander antwoord.** Staat op de Vraag van de pusher een antwoord dat niet `push`
+  is, dan herstelt tick op de `sha` van die Vraag: staat die sha op de remote (`git ls-remote`, zonder
+  forge-token in de omgeving), dan gaat de rij met een Handoff verder en draagt de lane van de Vraag
+  mee. Staat ze er niet, of kan git het niet zeggen, dan komt een 🤖 Teruggegeven met het antwoord
+  of de git-fout als reden (`reason_pusher_answer_moved`, `reason_pusher_git_failed`). Noemt de Vraag
+  geen `after:`, dan gaat het issue terug met `reason_pusher_no_after`. Mislukt de post van die Handoff
+  of Teruggegeven, dan sluit de rij als `returned` en niet als `start_failed`: alleen het antwoord
+  `push` start de pusher, ook bij een tweede poging. De sleutel is dan op en het vangnet (`idle`)
+  pakt het issue op.
+
 ### Afloop met de lokale werkplek
 
 Decide verandert niet, maar `claude -p` loopt anders dan een interactieve claude. Bij
@@ -739,6 +749,26 @@ label en status, dan de run sluiten. Mislukt het label, dan blijft de run open.
   (`needs_hands`, tenzij de redentekst anders afbeeldt).
 - Een eerste mislukte start blijft op Controller zonder label (er komt een tweede poging); pas de
   tweede poging geeft het issue terug.
+
+- **Teruggaven zonder vervolg.** Een Controller-issue dat nergens meer heen kan, krijgt een Teruggegeven
+  met een reden in plaats van te blijven staan:
+  - `reason_*` voor een beantwoorde Vraag zonder run of zonder bekende sessie (ook de sessie van een
+    ander issue);
+  - een PR die gesloten is zonder merge, na de eindhandoff (een oudere, verlaten PR blokkeert het
+    eindcommando niet). Sluit in dezelfde tick nog een open run op die PR (regel 11), dan geeft
+    alleen die sluiting het issue terug: één Teruggegeven per issue per tick;
+  - een geparkeerde run waarvan de marker weg is (de marker is niet onleesbaar en de markers zijn
+    compleet gelezen).
+- **Vangnet.** Een Controller-issue waar geen enkele regel iets voor doet, wordt na drie volledige
+  gathers (drie evaluaties, ruim een uur) teruggegeven met `reason_no_rule` en de eerste regel van het
+  laatste protocol-comment. De teller staat in `tick_state`, kind `fingerprint`, sleutel `idle`, en telt
+  per volledige gather; een issue dat in een evaluatie niet idle is, valt uit de teller. Het vangnet
+  laat een issue met rust bij een pauze (een marker, of `MarkersIncomplete`: kon één node-marker niet
+  gelezen worden, dan telt die evaluatie voor de hele repo niet), een open run, een bezette werkplek,
+  een open PR en een open vraag. Alleen een open PR houdt het vangnet tegen: een PR die na de
+  eindhandoff gemerged is niet, want idle komt na de close-check, die dan al liep of niet van
+  toepassing is. Een Teruggegeven van de eigen bot-login als laatste protocol-comment stopt het
+  tellen tot er een nieuw protocol-comment komt.
 
 ## `needs_*` op Controller
 
@@ -1112,5 +1142,9 @@ Een geplande run staat in dezelfde lijsten:
 | `deferred` in `GET /api/runs` | een uitgestelde geplande start, met `schedule` |
 | `GET /api/cleanup` | een geplande werkplek die niet weg kon, met `schedule` |
 | De pagina | `<repo> · scheduled <naam>` in plaats van een issuenummer, zonder link; bij een open PR *PR open since HH:MM* |
+
+Een bezette werkplek staat in *Queue* (uitgestelde start) en een open vraag met een antwoord van
+iemand die niet mag antwoorden (`answer_permissions`) blijft als open vraag in
+`GET /api/questions` staan: een onvertrouwd antwoord beantwoordt niet.
 
 De uitkomst en de reden van een gesloten geplande run staan in de runrij (`outcome`, `reason`).

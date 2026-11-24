@@ -102,8 +102,8 @@ func TestStateShow(t *testing.T) {
 			runs: []dispatch.RunView{{Repo: "Owner/repo", Issue: 8, State: "open"}, {Repo: "Owner/repo", Issue: 7, State: "parked"}},
 			want: "state: #7 active\n"},
 		{name: "active with needs_hands needs a human", labels: []string{"3-needs-hands"}, optionID: "opt-ctrl", status: "Controller",
-			want: "state: #7 active, needs human\n"},
-		{name: "not on the board", labels: []string{"3-needs-shaping"}, want: "state: #7 needs_human\n"},
+			want: "state: #7 needs_human\n"},
+		{name: "not on the board", labels: []string{"3-needs-shaping"}, want: "state: #7 needs_shaping\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			stateToml(t, stateLabels, true)
@@ -249,7 +249,7 @@ func TestStateShowReportsOpenQuestionNeedsHuman(t *testing.T) {
 	srv := stateServer(t, nil, "opt-ctrl", "Controller")
 	srv.Comments = map[int][]map[string]any{7: {{"id": 1, "body": "🤖 Vraag\n\nWelke kant op?", "user": map[string]any{"login": "lh-bot"}}}}
 	code, out, errOut := runState(t, srv, nil, "show", "7")
-	if want := "state: #7 active, needs human\n"; code != 0 || out != want || errOut != "" {
+	if want := "state: #7 needs_human\n"; code != 0 || out != want || errOut != "" {
 		t.Errorf("state show 7 = %d, %q, stderr %q; want 0, %q", code, out, errOut, want)
 	}
 }

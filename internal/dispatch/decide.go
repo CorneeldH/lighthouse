@@ -54,6 +54,9 @@ type RepoInput struct {
 	// Unreadable are the sessions with a marker file the controller cannot read: parked, but not
 	// until when (#513).
 	Unreadable []string `json:"unreadable,omitempty"`
+	// MarkersIncomplete is whether a node's markers could not be read this tick: a marker that
+	// is not in Markers may then still exist on that node.
+	MarkersIncomplete bool `json:"markers_incomplete,omitempty"`
 	// WorkflowPush is whether host.toml has [dispatch.workflow_push]; without it a push handoff
 	// goes back as a 🤖 Teruggegeven. PushTimeout is its timeout.
 	WorkflowPush bool          `json:"workflow_push,omitempty"`
@@ -61,6 +64,9 @@ type RepoInput struct {
 	// Schedules are the schedules whose slot is up and whose gate let it through (the tick
 	// plans and gates them); Decide starts each under the brake.
 	Schedules []ScheduledDue `json:"schedules,omitempty"`
+	// IdleTicks is per issue how many evaluations in a row before this one found it in
+	// Controller without a next step (LoadIdle); a missing issue has none.
+	IdleTicks map[int]int `json:"idle_ticks,omitempty"`
 }
 
 // Kind is what an action does.
@@ -82,6 +88,12 @@ const (
 	// KindPush starts the workflow pusher for Worktree and Branch, which runs no session.
 	// A push after a user's answer carries PermitSHA, the one SHA the user allowed.
 	KindPush Kind = "push"
+	// KindPushRecover answers a pusher 🤖 Vraag with something other than `push`: apply checks
+	// whether Branch stands on PermitSHA on origin and then hands on to After, or hands the issue
+	// back. AnswerText is the answer. It is group 0 (planned.group): it passes a paused brake, as
+	// it only posts a 🤖 Handoff or Returned and starts nothing; the start that Handoff triggers is
+	// still braked.
+	KindPushRecover Kind = "push_recover"
 	// KindDropMarker removes the resume marker of SessionID while its key is TriggerKey.
 	KindDropMarker Kind = "drop_marker"
 	// KindRepost posts Body on Issue for the open run RunID, which stays open: the run's own post
@@ -105,6 +117,9 @@ const (
 	// KindScheduledClose closes scheduled run RunID with Outcome and the literal ReasonArg, after
 	// forgetting its launch (Discard), ending its agent (End), closing PR and deleting Branch.
 	KindScheduledClose Kind = "scheduled_close"
+	// KindIdle has no effect: it only marks that the issue had no next step in this evaluation,
+	// so the tick counts it (SaveIdle) and takes it out of the actions before Apply.
+	KindIdle Kind = "idle"
 )
 
 // Action is one thing apply does. Reason and Skip are heading keys, never posted text; only a
@@ -143,6 +158,10 @@ type Action struct {
 	Worktree   string       `json:"worktree,omitempty"`   // push: the worktree of the run that asked for the push
 	PermitSHA  string       `json:"permit_sha,omitempty"` // push: the SHA a user's answer allowed
 	Body       string       `json:"body,omitempty"`       // repost: the comment, literal
+	// AnswerText and After are of a push_recover: the user's answer, and the after: command of the Vraag.
+	AnswerText string `json:"answer_text,omitempty"`
+	After      string `json:"after,omitempty"`
+	Lane       string `json:"lane,omitempty"` // push_recover: the lane field of the Vraag
 	// Blocked marks the return of rule 13 while a blocker is active (settleUnstartedFixPR): its
 	// label is blocked_issue, whatever Reason says (ReturnLabelKey).
 	Blocked bool `json:"blocked,omitempty"`
@@ -445,6 +464,9 @@ func decideIssue(in Input, repo RepoInput, it Item) []planned {
 			p.holdsSlot = p.Kind == KindStart && !isPush(fixRow) && p.node == fixRow.Node &&
 				p.software == (fixRow.Profile == ProfileSoftware)
 			out = append(out, p)
+		} else if slices.ContainsFunc(out, func(p planned) bool { return p.Kind == KindReturn }) {
+			// A close of this tick gives the issue back already (a closed PR, rule 11): next would
+			// read the same turn again, and one PR must not give two Returneds in one tick.
 		} else if p, ok := c.next(); ok {
 			out = append(out, p)
 		}
@@ -1352,9 +1374,10 @@ type issueCtx struct {
 // next returns the one start, resume, return, finish, defer, park or hold the item gets in this
 // tick: the first rule that gives an action wins. finishReturn comes right after retry: the
 // first refused launch of a trigger posts a Returned but waits for its second attempt. repair
-// comes right after answer: a pusher's Herstel is a turn, like a Question.
+// comes right after answer: a pusher's Herstel is a turn, like a Question. idle comes last: it
+// marks or gives back an issue no other rule moves.
 func (c issueCtx) next() (planned, bool) {
-	for _, rule := range []func() (planned, bool){c.retry, c.finishReturn, c.usageResume, c.answer, c.repairResume, c.closeCheck, c.newIssue, c.handoff} {
+	for _, rule := range []func() (planned, bool){c.retry, c.finishReturn, c.usageResume, c.parkMarkerGone, c.answer, c.repairResume, c.closeCheck, c.newIssue, c.handoff, c.idle} {
 		if p, ok := rule(); ok {
 			return p, true
 		}
@@ -1505,7 +1528,8 @@ type pushTarget struct {
 
 // pushTargetOf reads the target of a push trigger key from its comment: for push:<id> the
 // handoff, for pushanswer:<id> the last pusher Vraag before the answer, as the answer itself
-// carries none of it. false when the comment is gone or does not read.
+// carries none of it. false when the comment is gone or does not read, and for a pushanswer
+// key whose answer is not `push`.
 func (c issueCtx) pushTargetOf(key string) (pushTarget, bool) {
 	id, ok := triggerComment(key)
 	if !ok {
@@ -1524,6 +1548,11 @@ func (c issueCtx) pushTargetOf(key string) (pushTarget, bool) {
 		}
 		t.trigger, t.worktree, t.branch = triggerPush, ho.Worktree, ho.Branch
 		return t, true
+	}
+	// Only the answer `push` permits a SHA: a pushanswer row of any other answer is a recovery
+	// (KindPushRecover), whose row must never turn into a push.
+	if !permitAnswer(com.Body) {
+		return pushTarget{}, false
 	}
 	// The answer has no protocol header, so it is not in c.hs: the walk goes over the thread and
 	// stops at the answer. A pusher Vraag after it is not the one the user answered, and its SHA
@@ -1636,9 +1665,28 @@ func (c issueCtx) usageResume() (planned, bool) {
 	return planned{}, false
 }
 
+// parkMarkerGone hands the issue back when its last run closed as parked but no marker of that
+// session is left: nothing will resume it. A marker (usageResume's), an unreadable marker file
+// or a node whose markers were not read this tick is not a gone marker, so those wait.
+func (c issueCtx) parkMarkerGone() (planned, bool) {
+	var last runs.Row
+	for _, r := range c.repo.History {
+		if r.Issue == c.it.Issue {
+			last = r
+		}
+	}
+	if last.ID == 0 || last.Open || last.Outcome != runs.Parked || last.SessionID == "" || c.repo.MarkersIncomplete ||
+		slices.Contains(c.repo.Unreadable, last.SessionID) ||
+		slices.ContainsFunc(c.repo.Markers, func(m park.Marker) bool { return m.SessionID == last.SessionID }) {
+		return planned{}, false
+	}
+	return c.returned("reason_park_marker_gone", last.SessionID), true
+}
+
 // answer resumes the session of the last turn when that is a Question with a session and an
 // answer follows it. A session no run of this issue has resumes nothing: a Question carrying
-// another issue's session never resumes that run.
+// another issue's session never resumes that run, and neither does a Question without a session
+// that is not the pusher's: both go back once.
 func (c issueCtx) answer() (planned, bool) {
 	q := lastTurn(c.hs)
 	if q == nil || q.Header.Kind != protocol.KindQuestion {
@@ -1649,11 +1697,13 @@ func (c issueCtx) answer() (planned, bool) {
 		return planned{}, false
 	}
 	if q.Header.Session == "" {
-		// A Vraag without a session that carries a sha is the pusher's.
+		// A Vraag without a session that carries a sha is the pusher's. It reads the last answer,
+		// not the first: a `push` after an answer that settled nothing still counts.
 		if !pusherQuestion(q.Header) {
-			return planned{}, false
+			return c.returned("reason_answer_no_session", ""), true
 		}
-		return c.pushAnswer(q, ans)
+		all := c.answersTo(q.Comment.ID)
+		return c.pushAnswer(q, all[len(all)-1])
 	}
 	key := triggerAnswer + ":" + strconv.FormatInt(ans.ID, 10)
 	if c.spent(key) {
@@ -1661,7 +1711,8 @@ func (c issueCtx) answer() (planned, bool) {
 	}
 	run, ok := lastRunOf(c.repo.History, c.it.Issue, q.Header.Session)
 	if !ok {
-		return planned{}, false
+		// The Returned that follows is the last turn, so this goes back once.
+		return c.returned("reason_answer_no_run", q.Header.Session), true
 	}
 	a := c.base
 	a.Kind, a.Mode, a.Trigger, a.TriggerKey, a.Attempt = KindResume, modeResume, triggerAnswer, key, 1
@@ -1678,14 +1729,25 @@ func (c issueCtx) answer() (planned, bool) {
 // answerTo returns the first comment after the one with id that can answer it: no 🚀, no
 // protocol header, no artefact (protocol.IsAnswer).
 func (c issueCtx) answerTo(id int64) (Comment, bool) {
+	all := c.answersTo(id)
+	if len(all) == 0 {
+		return Comment{}, false
+	}
+	return all[0], true
+}
+
+// answersTo returns every comment after the one with id that can answer it (see answerTo),
+// oldest first.
+func (c issueCtx) answersTo(id int64) []Comment {
+	var out []Comment
 	after := false
 	for _, com := range c.it.Comments {
 		if after && !com.Rocket && protocol.IsAnswer(com.Body) {
-			return com, true
+			out = append(out, com)
 		}
 		after = after || com.ID == id
 	}
-	return Comment{}, false
+	return out
 }
 
 // repairResume resumes the run that wrote the push handoff when the last turn is the pusher's 🤖 Herstel
@@ -1911,6 +1973,9 @@ func (c issueCtx) handoff() (planned, bool) {
 		if c.awaitsPR(p.Time) {
 			return planned{}, false
 		}
+		if pr, ok := c.closedUnmerged(p.Time); ok {
+			return c.returned("reason_pr_closed_unmerged", strconv.Itoa(pr.Number)), true
+		}
 		// The end command closes this issue; its argument never comes from the comment.
 		j.Command = cmdClose + " " + strconv.Itoa(c.it.Issue)
 	case VerdictBrainstorm:
@@ -1984,13 +2049,25 @@ func (c issueCtx) repeatsHandoff(p *parsed) bool {
 }
 
 // awaitsPR reports whether an end-of-chain handoff posted at t leaves the end to a PR: an open
-// PR waits for green and its merge, and a PR that merged or closed from t on already went to
-// the close-check or the PR rules. Without either, nothing would ever start the end command,
-// so the handoff starts it.
+// PR waits for green and its merge, and a PR that merged from t on already went to the
+// close-check. A PR closed without a merge does not wait: closedUnmerged sends the handoff
+// back. Without either, nothing would ever start the end command, so the handoff starts it.
 func (c issueCtx) awaitsPR(t time.Time) bool {
 	return slices.ContainsFunc(c.it.PRs, func(pr forge.PR) bool {
-		return pr.State == "OPEN" || !pr.ClosedAt.IsZero() && !pr.ClosedAt.Before(t)
+		return pr.State == "OPEN" || !pr.MergedAt.IsZero() && !pr.MergedAt.Before(t)
 	})
+}
+
+// closedUnmerged returns a PR that closed without a merge from t on: the end handoff has no
+// merge to wait for, and nothing else would ever act on it.
+func (c issueCtx) closedUnmerged(t time.Time) (forge.PR, bool) {
+	i := slices.IndexFunc(c.it.PRs, func(pr forge.PR) bool {
+		return pr.State == "CLOSED" && pr.MergedAt.IsZero() && !pr.ClosedAt.IsZero() && !pr.ClosedAt.Before(t)
+	})
+	if i < 0 {
+		return forge.PR{}, false
+	}
+	return c.it.PRs[i], true
 }
 
 // pushCommand is what a user runs to push the worktree by hand: the Teruggegeven of a refused
@@ -2033,20 +2110,29 @@ func (c issueCtx) mergePush(pr forge.PR, attempt int, at time.Time) planned {
 
 // pushAnswer is the KindPush for the answer `push` to a pusher 🤖 Vraag: a Vraag without a
 // session whose fields name the SHA, the worktree and the branch of the red push. Any other
-// answer resumes nothing, as there is no session; a SHA that is none, or a branch git must not
-// see, gives no action.
+// answer resumes nothing, as there is no session: it is a KindPushRecover when the Vraag names an
+// after: command (apply checks whether the branch already stands on the SHA), else the issue
+// goes back. A SHA that is none, or a branch git must not see, gives no action.
 func (c issueCtx) pushAnswer(q *parsed, ans Comment) (planned, bool) {
 	sha, worktree, branch := q.Header.Fields["sha"], q.Header.Fields["worktree"], q.Header.Fields["branch"]
 	key := triggerPushAnswer + ":" + strconv.FormatInt(ans.ID, 10)
-	if c.spent(key) || !permitAnswer(ans.Body) || !shaField.MatchString(sha) || worktree == "" || !validBranch(branch) {
+	if c.spent(key) || !shaField.MatchString(sha) || worktree == "" || !validBranch(branch) {
 		return planned{}, false
 	}
 	if !c.repo.WorkflowPush {
 		return c.returned("reason_pusher_off", pushCommand(worktree)), true
 	}
 	a := c.base
-	a.Kind, a.Trigger, a.TriggerKey, a.Attempt = KindPush, triggerPushAnswer, key, 1
+	a.Trigger, a.TriggerKey, a.Attempt = triggerPushAnswer, key, 1
 	a.Command, a.Worktree, a.Branch, a.CommentID, a.PermitSHA = cmdPush, worktree, branch, ans.ID, sha
+	if permitAnswer(ans.Body) {
+		a.Kind = KindPush
+		return c.ordered(a, parseTime(ans.CreatedAt)), true
+	}
+	if a.After = q.Header.Fields["after"]; a.After == "" {
+		return c.returned("reason_pusher_no_after", pushCommand(worktree)), true
+	}
+	a.Kind, a.AnswerText, a.Lane = KindPushRecover, strings.TrimSpace(ans.Body), q.Header.Fields["lane"]
 	return c.ordered(a, parseTime(ans.CreatedAt)), true
 }
 

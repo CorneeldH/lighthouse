@@ -93,39 +93,41 @@ describe('MilestonesView', () => {
     expect(within(row(`${A}#m1`)).getByText(/· 2 outside blockers$/)).toBeTruthy()
   })
 
-  it('draws one block per issue grouped by state: done, active, ready, needs human, blocked', () => {
+  it('draws one block per issue grouped by state: done, needs human, active, ready, needs shaping, blocked', () => {
     const r = repo(
       A,
       [
         iss(1, 1, [[A, 2]]),
-        iss(2, 1, [], { label: 'needs_decision' }),
+        iss(2, 1, [], { label: 'needs_shaping' }),
         iss(3, 1),
         iss(4, 1, [], { status: 'In progress', open_question: true }),
+        iss(5, 1, [], { status: 'In progress' }),
       ],
-      [{ ...ms(1, 1, 4), closed: [{ number: 9, title: 'c9', url: 'u9' }] }],
+      [{ ...ms(1, 1, 5), closed: [{ number: 9, title: 'c9', url: 'u9' }] }],
     )
     view([r])
     expect(
-      blocks(`${A}#m1`).map((b) => [b.getAttribute('data-state'), b.getAttribute('data-needs-human'), b.title]),
+      blocks(`${A}#m1`).map((b) => [b.getAttribute('data-state'), b.title]),
     ).toEqual([
-      ['done', 'false', '#9 c9'],
-      ['active', 'true', '#4 title-4'],
-      ['ready', 'false', '#3 title-3'],
-      ['ready', 'true', '#2 title-2'],
-      ['blocked', 'false', '#1 title-1'],
+      ['done', '9 c9'],
+      ['needs_human', '4 title-4'],
+      ['active', '5 title-5'],
+      ['ready', '3 title-3'],
+      ['needs_shaping', '2 title-2'],
+      ['blocked', '1 title-1'],
     ])
   })
 
-  it('an active block without the flag has data-needs-human false', () => {
-    view([repo(A, [iss(1, 1, [], { status: 'In progress' })], [ms(1, 0, 1)])])
-    expect(blocks(`${A}#m1`)[0].getAttribute('data-needs-human')).toBe('false')
-  })
-
-  it('draws the needs-human flag as a 1.5 px dashed foreground outline, on every state', () => {
-    view([repo(A, [iss(1, 1, [], { status: 'In progress', open_question: true }), iss(2, 1)], [ms(1, 0, 2)])])
-    const [flagged, plain] = blocks(`${A}#m1`)
-    expect(flagged.style.outline).toBe('1.5px dashed var(--foreground)')
-    expect(plain.style.outline).toBe('')
+  it('draws a needs_shaping block as a dashed shape and a needs_human block as stripes', () => {
+    view([
+      repo(A, [iss(1, 1, [], { label: 'needs_shaping' }), iss(2, 1, [], { status: 'In progress', open_question: true })], [ms(1, 0, 2)]),
+    ])
+    const [human, shaping] = blocks(`${A}#m1`)
+    expect(human.getAttribute('data-state')).toBe('needs_human')
+    expect(human.className).toContain('lh-stripe')
+    expect(shaping.getAttribute('data-state')).toBe('needs_shaping')
+    expect(shaping.style.outline).toBe('1.5px dashed var(--foreground)')
+    expect(blocks(`${A}#m1`).every((x) => !x.hasAttribute('data-needs-human'))).toBe(true)
   })
 
   it('opens the issue url in a new tab on click', () => {
@@ -147,7 +149,7 @@ describe('MilestonesView', () => {
     view([r])
     const narrow = blocks(`${A}#m1`)
     expect(narrow.map((b) => b.textContent)).toEqual(['', ''])
-    expect(narrow[0].getAttribute('title')).toBe('#1 title-1')
+    expect(narrow[0].getAttribute('title')).toBe('1 title-1')
   })
 
   it('draws an outside blocker solid in the colour of its own milestone, in the fixed column', () => {
@@ -164,7 +166,7 @@ describe('MilestonesView', () => {
     const own = within(row(`${A}#m2`)).getByTestId('swatch').style.background
     expect((out[0] as HTMLElement).style.border).toBe(`1.5px solid ${own}`)
     // The outside blocker is not drawn twice: the bar holds only the milestone's own issue.
-    expect(blocks(`${A}#m1`).map((b) => b.title)).toEqual(['#2 title-2'])
+    expect(blocks(`${A}#m1`).map((b) => b.title)).toEqual(['2 title-2'])
     // Same fixed column on a row without outside blockers keeps the bars aligned.
     expect(within(row(`${A}#m2`)).getByTestId('outside-col').className).toBe(
       withOut.getByTestId('outside-col').className,
@@ -176,9 +178,9 @@ describe('MilestonesView', () => {
     view([repo(A, [iss(1, 1, [['z/q', 7]])], [ms(1, 0, 1)])])
     const out = within(row(`${A}#m1`)).getByTestId('outside')
     expect(out.getAttribute('data-state')).toBe('ready')
-    expect(out.getAttribute('data-needs-human')).toBe('false')
+    expect(out.hasAttribute('data-needs-human')).toBe(false)
     // Not drawn twice: the bar holds only the milestone's own issue.
-    expect(blocks(`${A}#m1`).map((b) => b.title)).toEqual(['#1 title-1'])
+    expect(blocks(`${A}#m1`).map((b) => b.title)).toEqual(['1 title-1'])
   })
 
   it('caps outside blockers and folds the rest into +N in the same column', () => {
@@ -193,8 +195,8 @@ describe('MilestonesView', () => {
     expect(col.querySelectorAll('[data-testid="outside"]')).toHaveLength(2)
     const more = within(col).getByTestId('outside-more')
     expect(more.textContent).toBe('+5')
-    expect(more.getAttribute('title')).toContain('#3 title-3')
-    expect(more.getAttribute('title')).toContain('#7 title-7')
+    expect(more.getAttribute('title')).toContain('3 title-3')
+    expect(more.getAttribute('title')).toContain('7 title-7')
     expect(within(row(`${A}#m2`)).getByTestId('outside-col').className).toBe(col.className)
   })
 

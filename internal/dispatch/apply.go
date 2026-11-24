@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os/exec"
 	"slices"
 	"strings"
 	"time"
@@ -56,6 +57,9 @@ type Env struct {
 	TokenEnvs []string
 	// StartPusher starts the workflow pusher detached and returns at once; it does not wait for it.
 	StartPusher func(ctx context.Context, spec PusherSpec) error
+	// LsRemote is the SHA of refs/heads/<branch> on origin as git sees it in worktree, "" when
+	// origin has no such branch; env is the pusher's environment. nil runs git ls-remote.
+	LsRemote func(ctx context.Context, worktree, branch string, env []string) (sha string, err error)
 }
 
 // PusherSpec is what StartPusher starts: the push row RunID of issue Issue in Repo, for the
@@ -74,11 +78,21 @@ type PusherSpec struct {
 	HeadSHA string
 }
 
+// postpone records a deferral of a, for the log line and for the Queue.
+func (r *Result) postpone(a Action, reason string) {
+	r.Deferred = append(r.Deferred, deferral(a, reason))
+	r.DeferredActions = append(r.DeferredActions, Action{Kind: KindDefer, Repo: a.Repo, Issue: a.Issue,
+		Schedule: a.Schedule, Slot: a.Slot, Reason: reason})
+}
+
 // Result is what one Apply did.
 type Result struct {
-	Deferred []string         // "<repo>#<n>: <reason>"
-	Failed   map[string]error // per repo: the joined errors of its actions; absent = no error
-	Started  int              // launches that were accepted or are uncertain
+	Deferred []string // "<repo>#<n>: <reason>"
+	// DeferredActions is every Deferred entry as a KindDefer action (Repo, Issue, Schedule,
+	// Reason), so the tick can show a deferral that only apply found, such as a busy workplace.
+	DeferredActions []Action
+	Failed          map[string]error // per repo: the joined errors of its actions; absent = no error
+	Started         int              // launches that were accepted or are uncertain
 	// NotAccepted is "<repo>#<n>" per launch the workplace refused; its run is closed as
 	// start_failed, its Started stays, and a Returned with the reason follows (a usage resume:
 	// only after its second attempt).
@@ -168,11 +182,13 @@ func (ap applier) apply(ctx context.Context, a Action, res *Result) error {
 		// A stranded handoff or question: post the body again and leave the run open. A failed
 		// post is a deferral, so the next tick gathers and reposts; it is no action error.
 		if _, err := ap.env.Forge(a.Repo).CreateComment(ctx, a.Issue, a.Body); err != nil {
-			res.Deferred = append(res.Deferred, deferral(a, fmt.Sprintf("repost run %d: %s", a.RunID, oneLine(err.Error()))))
+			res.postpone(a, fmt.Sprintf("repost run %d: %s", a.RunID, oneLine(err.Error())))
 		}
 		return nil
 	case KindPush:
 		return ap.push(ctx, a, res)
+	case KindPushRecover:
+		return ap.pushRecover(ctx, a)
 	case KindMerge:
 		return ap.merge(ctx, a, res)
 	case KindClose:
@@ -183,7 +199,7 @@ func (ap applier) apply(ctx context.Context, a Action, res *Result) error {
 	case KindRocket:
 		return ap.env.Forge(a.Repo).Acknowledge(ctx, a.Issue, a.CommentID)
 	case KindDefer:
-		res.Deferred = append(res.Deferred, deferral(a, a.Reason))
+		res.postpone(a, a.Reason)
 		return nil
 	case KindPark:
 		// The comment first: a failed label or board change leaves a Parked that the next tick
@@ -215,7 +231,7 @@ func (ap applier) merge(ctx context.Context, a Action, res *Result) error {
 	var refused *forge.MergeRefused
 	switch {
 	case errors.Is(err, forge.ErrHeadMoved):
-		res.Deferred = append(res.Deferred, deferral(a, fmt.Sprintf("merge of PR #%d skipped: head moved", a.PR)))
+		res.postpone(a, fmt.Sprintf("merge of PR #%d skipped: head moved", a.PR))
 		return nil
 	case errors.As(err, &refused):
 		if err := runs.NoteMergeFailed(ctx, ap.env.DB, a.RunID, a.HeadSHA, refused.Message); err != nil {
@@ -403,7 +419,7 @@ func (ap applier) start(ctx context.Context, a Action, res *Result) error {
 	}
 	if busy != "" {
 		err := ap.returnFixPR(ctx, a, nil)
-		res.Deferred = append(res.Deferred, deferral(a, busy))
+		res.postpone(a, busy)
 		return err
 	}
 
@@ -508,11 +524,16 @@ func (ap applier) start(ctx context.Context, a Action, res *Result) error {
 // under its own name, each only when tick has it and each once (a token_env may name one of the
 // others). The workflow token and every other variable of tick stay behind.
 func (ap applier) pusherEnv(repo string) []string {
+	return ap.scrubbedEnv(repo, true)
+}
+
+// scrubbedEnv is pusherEnv with the forge token only when token is set.
+func (ap applier) scrubbedEnv(repo string, token bool) []string {
 	if ap.env.Getenv == nil {
 		return nil
 	}
 	names := []string{"PATH", "HOME", "XDG_RUNTIME_DIR"}
-	if ap.env.TokenEnv != nil {
+	if token && ap.env.TokenEnv != nil {
 		if k := ap.env.TokenEnv(repo); !slices.Contains(names, k) {
 			names = append(names, k)
 		}
@@ -569,6 +590,104 @@ func (ap applier) push(ctx context.Context, a Action, res *Result) error {
 	}
 	res.Started++
 	return nil
+}
+
+// pushRecover handles a user's answer other than `push` to a pusher 🤖 Vraag. It takes the
+// trigger key first, like push. When origin has Branch on the Vraag's SHA the push has happened
+// already (by hand), so it posts the 🤖 Handoff the pusher posts after a push, with the Vraag's
+// after: command, and closes the row as handoff at once: no pusher starts, and an open row would
+// block handoff() and read as a silent pusher. Any other state of the branch, or a git that
+// cannot tell, posts a 🤖 Returned with the reason and gives the issue back. A failed post closes
+// the row as returned (recoverPostFailed).
+func (ap applier) pushRecover(ctx context.Context, a Action) error {
+	env := ap.env
+	run, err := runs.Take(ctx, env.DB, runs.Claim{
+		Repo: a.Repo, Issue: a.Issue, Mode: "start", Trigger: "answer", TriggerKey: a.TriggerKey,
+		Command: cmdPush, Branch: a.Branch, Now: env.Now(),
+	})
+	if errors.Is(err, runs.ErrClaimed) || errors.Is(err, runs.ErrTriggerSpent) {
+		ap.logf("%s#%d: %s not claimed: %v", a.Repo, a.Issue, a.TriggerKey, err)
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if a.CommentID > 0 {
+		if err := env.Forge(a.Repo).Acknowledge(ctx, a.Issue, a.CommentID); err != nil {
+			ap.logf("%s#%d: rocket on comment %d: %v", a.Repo, a.Issue, a.CommentID, err)
+		}
+	}
+	lsRemote := env.LsRemote
+	if lsRemote == nil {
+		lsRemote = gitLsRemote
+	}
+	// No prompt: git asks for credentials on the terminal, and the tick has none to answer.
+	gitEnv := append(ap.scrubbedEnv(a.Repo, false), "GIT_TERMINAL_PROMPT=0")
+	sha, err := lsRemote(ctx, a.Worktree, a.Branch, gitEnv)
+	switch {
+	case err != nil:
+		return ap.recoverReturn(ctx, a, run.ID, "reason_pusher_git_failed", oneLine(err.Error()))
+	case sha != a.PermitSHA:
+		return ap.recoverReturn(ctx, a, run.ID, "reason_pusher_answer_moved", clip(oneLine(a.AnswerText), 200))
+	}
+	body := protocol.RenderPushed(a.Issue, a.Worktree, a.Branch, "", "", a.After, a.Lane, a.Language)
+	if _, err := env.Forge(a.Repo).CreateComment(ctx, a.Issue, body); err != nil {
+		return ap.recoverPostFailed(ctx, run.ID, "post handoff", err)
+	}
+	return ap.closeRun(ctx, run.ID, runs.Handoff, "")
+}
+
+// recoverReturn posts the 🤖 Returned of a push recovery that could not hand on, gives the issue
+// back and closes the claimed row as returned.
+func (ap applier) recoverReturn(ctx context.Context, a Action, runID int64, reason, arg string) error {
+	ra := a
+	ra.Reason, ra.ReasonArg = reason, arg
+	text := reasonText(ra)
+	body := protocol.RenderReturned(text, "", "", a.Language)
+	if _, err := ap.env.Forge(a.Repo).CreateComment(ctx, a.Issue, body); err != nil {
+		return ap.recoverPostFailed(ctx, runID, "post returned", err)
+	}
+	if err := ap.giveBack(ctx, ra, ReturnLabelKey(reason, false)); err != nil {
+		return errors.Join(err, ap.closeRun(ctx, runID, runs.Returned, text))
+	}
+	return ap.closeRun(ctx, runID, runs.Returned, text)
+}
+
+// recoverPostFailed closes the row of a push recovery whose post failed as returned, never as
+// start_failed: retry reads a start_failed push row as a push to try again, and this answer
+// permitted no push. The trigger key stays spent; the idle net picks the silent issue up.
+func (ap applier) recoverPostFailed(ctx context.Context, runID int64, step string, cause error) error {
+	return ap.failedAs(ctx, runID, runs.Returned, step, cause)
+}
+
+// clip cuts s to at most n runes.
+func clip(s string, n int) string {
+	if r := []rune(s); len(r) > n {
+		return string(r[:n]) + "…"
+	}
+	return s
+}
+
+// lsRemoteTimeout bounds one git ls-remote: a remote that hangs must not hold the tick.
+const lsRemoteTimeout = 30 * time.Second
+
+// gitLsRemote is Env.LsRemote in production: git ls-remote origin refs/heads/<branch> in worktree,
+// within lsRemoteTimeout.
+func gitLsRemote(ctx context.Context, worktree, branch string, env []string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, lsRemoteTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", "-C", worktree, "ls-remote", "origin", "refs/heads/"+branch)
+	cmd.Env = env
+	out, err := cmd.Output()
+	if err != nil {
+		var ee *exec.ExitError
+		if errors.As(err, &ee) {
+			return "", fmt.Errorf("git ls-remote: %w: %s", err, strings.TrimSpace(string(ee.Stderr)))
+		}
+		return "", fmt.Errorf("git ls-remote: %w", err)
+	}
+	sha, _, _ := strings.Cut(strings.TrimSpace(string(out)), "\t")
+	return sha, nil
 }
 
 // relocate finds the path of the start command in the worktree of ws. On self it looks on this
@@ -718,8 +837,14 @@ func (ap applier) busy(ctx context.Context, w workplace.Workplace, ws workplace.
 // startFailed closes a claimed run as start_failed with reason "<step>: <cause>". The release
 // ignores a cancelled ctx: the cancel may be what made the step fail.
 func (ap applier) startFailed(ctx context.Context, runID int64, step string, cause error) error {
+	return ap.failedAs(ctx, runID, runs.StartFailed, step, cause)
+}
+
+// failedAs closes runID with outcome o and the failed step as its reason, and returns that
+// failure, joined with a failed release. The release ignores a cancelled ctx.
+func (ap applier) failedAs(ctx context.Context, runID int64, o runs.Outcome, step string, cause error) error {
 	err := fmt.Errorf("%s: %w", step, cause)
-	if rerr := runs.Release(context.WithoutCancel(ctx), ap.env.DB, runID, runs.StartFailed, err.Error(), ap.env.Now()); rerr != nil {
+	if rerr := runs.Release(context.WithoutCancel(ctx), ap.env.DB, runID, o, err.Error(), ap.env.Now()); rerr != nil {
 		return errors.Join(err, fmt.Errorf("release run %d: %w", runID, rerr))
 	}
 	return err

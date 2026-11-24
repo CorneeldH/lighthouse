@@ -145,10 +145,12 @@ describe('PrioritiesTab', () => {
       ],
       runs: [],
     }
-    const STATE_LABELS = ['done', 'active', 'ready', 'needs a human', 'blocked', 'not shaped yet']
-    const legend = () => within(screen.getByRole('list', { name: 'Legend' }))
+    const STATE_LABELS = ['blocked', 'needs shaping', 'to do', 'active', 'needs human', 'done']
+    const milestones = () => within(screen.getByRole('list', { name: 'Milestones', hidden: false }))
+    const statusList = () => screen.getByRole('list', { name: 'Status' })
+    const legend = milestones
     const swatches = () =>
-      Array.from(screen.getByRole('list', { name: 'Legend' }).querySelectorAll('li'))
+      Array.from(screen.getByRole('list', { name: 'Milestones' }).querySelectorAll('li'))
         .map((li) => [li.textContent, (li.querySelector('i') as HTMLElement).style.background])
 
     it('lists only milestones with a node in the deps view, with repo prefix for >1 repo', async () => {
@@ -175,32 +177,81 @@ describe('PrioritiesTab', () => {
       stub(() => json(TWO))
       renderTab()
       fireEvent.click(await screen.findByRole('button', { name: /^Milestones/ }))
-      expect(swatches().map((x) => x[0])).toEqual(['a/x · Alpha', 'a/x · Empty', 'a/y · Beta', ...STATE_LABELS])
+      expect(swatches().map((x) => x[0])).toEqual(['a/x · Alpha', 'a/x · Empty', 'a/y · Beta'])
     })
 
-    it('the legend shows the five states and the shaping border, and no picked-up pill', async () => {
+    it('has a Milestones list and a Status list with headings on each tab', async () => {
       stub(() => json(TWO))
       renderTab()
       await screen.findByRole('button', { name: 'a/x' })
-      const states = screen.getAllByTestId('legend-block')
-      expect(states.map((b) => [b.getAttribute('data-state'), b.getAttribute('data-needs-human')])).toEqual([
-        ['done', 'false'],
-        ['active', 'false'],
-        ['ready', 'false'],
-        ['ready', 'true'],
-        ['blocked', 'false'],
-      ])
-      expect(legend().queryByText('picked up')).toBeNull()
-      for (const label of ['active', 'ready', 'needs a human', 'blocked']) {
-        expect(legend().getByText(label)).toBeTruthy()
+      for (const name of [/^Dependencies/, /^Milestones/, /Without milestone/]) {
+        fireEvent.click(screen.getByRole('button', { name }))
+        expect(screen.getByRole('list', { name: 'Milestones' })).toBeTruthy()
+        expect(statusList()).toBeTruthy()
+        expect(screen.getAllByText('Milestones', { selector: 'span,h3,p,div' }).length).toBeGreaterThan(0)
+        expect(screen.getAllByText('Status').length).toBeGreaterThan(0)
+        expect(screen.queryByRole('list', { name: 'Legend' })).toBeNull()
       }
+    })
+
+    it('the Status list has the six states in order, no shaping item and no picked-up pill', async () => {
+      stub(() => json(TWO))
+      renderTab()
+      await screen.findByRole('button', { name: 'a/x' })
+      const items = Array.from(statusList().querySelectorAll('li'))
+      expect(items.map((li) => li.textContent)).toEqual(STATE_LABELS)
+      const states = screen.getAllByTestId('legend-block')
+      expect(states.map((b) => b.getAttribute('data-state'))).toEqual([
+        'blocked',
+        'needs_shaping',
+        'ready',
+        'active',
+        'needs_human',
+        'done',
+      ])
+      expect(screen.queryByTestId('legend-shaping')).toBeNull()
+      expect(within(statusList()).queryByText('picked up')).toBeNull()
+      expect(within(statusList()).queryByText('needs a human')).toBeNull()
+    })
+
+    it('underlines only the labels needs shaping and needs human', async () => {
+      stub(() => json(TWO))
+      renderTab()
+      await screen.findByRole('button', { name: 'a/x' })
+      const underlined = Array.from(statusList().querySelectorAll('li'))
+        .filter((li) => li.querySelector('[data-underlined="true"]') !== null)
+        .map((li) => li.textContent)
+      expect(underlined).toEqual(['needs shaping', 'needs human'])
+    })
+
+    it('adds a grey Without milestone item once issues without a milestone are in view', async () => {
+      stub(() => json(PRIORITIES))
+      renderTab()
+      await screen.findByRole('button', { name: 'a/x' })
+      expect(swatches().at(-1)).toEqual(['Without milestone', 'var(--lh-grey)'])
+      fireEvent.click(screen.getByRole('button', { name: /^Milestones/ }))
+      expect(milestones().queryByText('Without milestone')).toBeNull()
+    })
+
+    it('a shaping milestone keeps its dotted bar border and gets no legend item', async () => {
+      const shaping = {
+        repos: [{ slug: 'a/x', issues: [iss(1, { number: 1, title: 'Alpha' })], milestones: [{ ...ms(1, 'Alpha'), description: 'Status: shaping' }] }],
+        runs: [],
+      }
+      stub(() => json(shaping))
+      renderTab()
+      fireEvent.click(await screen.findByRole('button', { name: /^Milestones/ }))
+      expect(screen.getByTestId('bar').getAttribute('data-shaping')).toBe('true')
+      expect(screen.queryByTestId('legend-shaping')).toBeNull()
+      expect(screen.getByRole('list', { name: 'Milestones' }).querySelectorAll('li')).toHaveLength(1)
     })
 
     it('the without-milestone view has no milestone colours when no closed milestone is named', async () => {
       stub(() => json(TWO))
       renderTab()
       fireEvent.click(await screen.findByRole('button', { name: /Without milestone/ }))
-      expect(swatches().map((x) => x[0])).toEqual(STATE_LABELS)
+      expect(screen.getByRole('list', { name: 'Milestones' }).querySelectorAll('li')).toHaveLength(0)
+      expect(Array.from(statusList().querySelectorAll('li')).map((li) => li.textContent)).toEqual(STATE_LABELS)
     })
 
     it('a stored selection of only stale slugs counts as all on', async () => {
@@ -208,6 +259,77 @@ describe('PrioritiesTab', () => {
       stub(() => json(TWO))
       renderTab()
       expect((await screen.findByRole('button', { name: 'a/x' })).getAttribute('aria-pressed')).toBe('true')
+    })
+  })
+
+  describe('deps sort switch', () => {
+    const I = (number: number, by: number[], prio_weight = 0) => ({
+      number, title: `t${number}`, url: `u${number}`, status: 'To do', label: '', open_question: false,
+      needs_label: false, prio_weight, factor: 0, blocked_by: by.length ? by.map((issue) => ({ repo: 'a/x', issue })) : null,
+    })
+    // Column 0: 1, 2, 3. Weights: 3 blocks two issues (2), 1 and 2 one each. Prio-weights run the other way round.
+    const SORT = {
+      repos: [
+        {
+          slug: 'a/x',
+          issues: [I(1, [], 5), I(2, [], 1), I(3, [], 2), I(4, [3]), I(5, [3]), I(6, [1]), I(7, [2])],
+          milestones: [],
+        },
+      ],
+      runs: [],
+    }
+    const column = () =>
+      [1, 2, 3]
+        .map((n) => ({ n, top: Number.parseFloat(screen.getByTestId(`node-a/x#${n}`).style.top) }))
+        .sort((a, b) => a.top - b.top)
+        .map((x) => x.n)
+    const sortGroup = () => within(screen.getByRole('group', { name: 'Sort' }))
+
+    it('shows Prio-weight, Weight, Fewest crossings in Dependencies with Prio-weight pressed', async () => {
+      stub(() => json(SORT))
+      renderTab()
+      await screen.findByTestId('view-deps')
+      const names = sortGroup().getAllByRole('button').map((b) => b.textContent)
+      expect(names).toEqual(['Prio-weight', 'Weight', 'Fewest crossings'])
+      expect(sortGroup().getByRole('button', { name: 'Prio-weight' }).getAttribute('aria-pressed')).toBe('true')
+      expect(sortGroup().getByRole('button', { name: 'Weight' }).getAttribute('aria-pressed')).toBe('false')
+      expect(column()).toEqual([1, 3, 2])
+    })
+
+    it('clicking Weight stores depsOrder weight and reorders the column', async () => {
+      stub(() => json(SORT))
+      renderTab()
+      await screen.findByTestId('view-deps')
+      fireEvent.click(sortGroup().getByRole('button', { name: 'Weight' }))
+      expect(sortGroup().getByRole('button', { name: 'Weight' }).getAttribute('aria-pressed')).toBe('true')
+      expect(JSON.parse(localStorage.getItem('lighthouse.priorities') as string).depsOrder).toBe('weight')
+      expect(column()[0]).toBe(3)
+      expect(column()).not.toEqual([1, 3, 2])
+    })
+
+    it('works without localStorage', async () => {
+      vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+        throw new Error('denied')
+      })
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+        throw new Error('denied')
+      })
+      stub(() => json(SORT))
+      renderTab()
+      await screen.findByTestId('view-deps')
+      expect(sortGroup().getByRole('button', { name: 'Prio-weight' }).getAttribute('aria-pressed')).toBe('true')
+      fireEvent.click(sortGroup().getByRole('button', { name: 'Weight' }))
+      expect(column()[0]).toBe(3)
+    })
+
+    it('is absent in Milestones and Without milestone', async () => {
+      stub(() => json(SORT))
+      renderTab()
+      await screen.findByTestId('view-deps')
+      fireEvent.click(screen.getByRole('button', { name: /^Milestones/ }))
+      expect(screen.queryByRole('group', { name: 'Sort' })).toBeNull()
+      fireEvent.click(screen.getByRole('button', { name: /Without milestone/ }))
+      expect(screen.queryByRole('group', { name: 'Sort' })).toBeNull()
     })
   })
 
@@ -228,13 +350,15 @@ describe('PrioritiesTab', () => {
     }
     const order = () => screen.getAllByTestId(/^ms-/).map((e) => e.getAttribute('data-testid'))
 
-    it('shows the switch only in the milestones view, Computed by default', async () => {
+    it('shows the switch only in the milestones view, % done by default', async () => {
       stub(() => json(RANKED))
       renderTab()
       await screen.findByTestId('view-deps')
       expect(screen.queryByRole('button', { name: 'Priority' })).toBeNull()
       fireEvent.click(screen.getByRole('button', { name: /^Milestones/ }))
-      expect(screen.getByRole('button', { name: 'Computed' }).getAttribute('aria-pressed')).toBe('true')
+      const computed = screen.getByRole('button', { name: '% done' })
+      expect(computed.textContent).toBe('%')
+      expect(computed.getAttribute('aria-pressed')).toBe('true')
       expect(screen.getByRole('button', { name: 'Priority' }).getAttribute('aria-pressed')).toBe('false')
       expect(order()).toEqual(['ms-a/x#m2', 'ms-a/x#m1'])
     })

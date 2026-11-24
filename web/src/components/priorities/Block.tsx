@@ -1,33 +1,59 @@
 import type { CSSProperties, JSX } from 'react'
+import type { IssueStateName } from '@/lib/priorities/derive'
 
-export type BlockState = 'done' | 'active' | 'ready' | 'blocked'
+export type BlockState = IssueStateName
 
 interface BlockProps {
   state: BlockState
-  needsHuman: boolean
   // Milestone colour: fill of a done block, stripe colour of an active one.
   color: string
   title: string
   href?: string
   // Number shown inside the block; undefined when it does not fit.
-  label?: number
+  label?: number | string
   // Outside blockers: solid border in the colour of their own milestone.
   borderColor?: string
   testId?: string
   className?: string
 }
 
+const STRIPES = { className: 'lh-stripe', style: (c: string): CSSProperties => ({ ['--ms-color' as string]: c }) }
+
 const SHAPE: Record<BlockState, { className: string; style: (color: string) => CSSProperties }> = {
   done: { className: '', style: (c) => ({ background: c }) },
-  active: { className: 'lh-stripe', style: (c) => ({ ['--ms-color' as string]: c }) },
+  active: STRIPES,
   ready: { className: 'bg-[var(--lh-seg-todo)]', style: () => ({}) },
-  blocked: { className: 'lh-cross', style: () => ({}) },
+  blocked: { className: 'lh-cross relative', style: () => ({}) },
+  // The dashed line is an outline, so a solid borderColor (outside blockers) cannot replace it.
+  needs_shaping: {
+    className: 'bg-[var(--background)]',
+    style: () => ({ outline: '1.5px dashed var(--foreground)', outlineOffset: '-1.5px' }),
+  },
+  needs_human: {
+    className: STRIPES.className,
+    style: (c) => ({ ...STRIPES.style(c), boxShadow: 'inset 0 0 0 2px var(--foreground)' }),
+  },
+}
+
+// A vector cross corner to corner: it stretches with the block and keeps its stroke width.
+function Cross(): JSX.Element {
+  return (
+    <svg
+      aria-hidden
+      viewBox="0 0 10 10"
+      preserveAspectRatio="none"
+      className="pointer-events-none absolute inset-0 size-full"
+      style={{ stroke: 'var(--lh-cross)' }}
+    >
+      <line x1="0" y1="0" x2="10" y2="10" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+      <line x1="10" y1="0" x2="0" y2="10" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+    </svg>
+  )
 }
 
 // One block of the shape language, shared by the milestone bar, the outside column and the legend.
 export function Block({
   state,
-  needsHuman,
   color,
   title,
   href,
@@ -39,15 +65,30 @@ export function Block({
   const shape = SHAPE[state]
   const style: CSSProperties = {
     ...shape.style(color),
-    ...(needsHuman ? { outline: '1.5px dashed var(--foreground)' } : {}),
     ...(borderColor ? { border: `1.5px solid ${borderColor}` } : {}),
   }
   const cls = `flex items-center justify-center overflow-hidden rounded-sm text-[9.5px] font-bold ${shape.className} ${className}`
-  const inner = label === undefined ? null : <span className="rounded-sm bg-[var(--lh-chip-bg)] px-0.5 text-[var(--lh-chip-fg)]">{label}</span>
+  const underlined = state === 'needs_shaping' || state === 'needs_human'
+  const chip =
+    label === undefined ? null : (
+      <span
+        data-underlined={underlined ? 'true' : undefined}
+        className={`relative rounded-sm bg-[var(--lh-chip-bg)] px-0.5 text-[var(--lh-chip-fg)]${
+          underlined ? ' underline underline-offset-2 decoration-2' : ''
+        }`}
+      >
+        {label}
+      </span>
+    )
+  const inner = (
+    <>
+      {state === 'blocked' && <Cross />}
+      {chip}
+    </>
+  )
   const common = {
     'data-testid': testId,
     'data-state': state,
-    'data-needs-human': needsHuman ? 'true' : 'false',
     title,
     className: cls,
     style,
