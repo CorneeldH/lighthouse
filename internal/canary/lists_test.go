@@ -164,9 +164,10 @@ func TestEveryReasonHasATestdataFile(t *testing.T) {
 // the name of their testdata directory and the file of the hook, relative to pack/. A task that adds
 // such a hook adds it here.
 var ruleListHooks = map[string]string{
-	"gofmt-check":      "go/hooks/gofmt-check.sh",
-	"go-lint-gate":     "go/hooks/go-lint-gate.sh",
-	"shell-lint-check": "shell/hooks/shell-lint-check.sh",
+	"gofmt-check":           "go/hooks/gofmt-check.sh",
+	"go-lint-gate":          "go/hooks/go-lint-gate.sh",
+	"shell-lint-check":      "shell/hooks/shell-lint-check.sh",
+	"powershell-lint-check": "powershell/hooks/powershell-lint-check.sh",
 }
 
 // strayDirs are the directories of testdata that no hook claims: not declared with hook.Reasons and
