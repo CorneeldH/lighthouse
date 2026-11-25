@@ -251,77 +251,6 @@ func fragsOf(types ...string) []fragment {
 	return out
 }
 
-func TestDecideBump(t *testing.T) {
-	tests := []struct {
-		types         []string
-		event, forced string
-		want          string
-	}{
-		{nil, "push", "auto", ""},
-		{[]string{"internal"}, "push", "auto", ""},
-		{[]string{"fixed"}, "push", "auto", "patch"},
-		{[]string{"fixed", "internal"}, "push", "auto", "patch"},
-		{[]string{"added"}, "push", "auto", ""},
-		{[]string{"fixed", "added"}, "push", "auto", "minor"},
-		{[]string{"added"}, "schedule", "auto", "minor"},
-		{[]string{"fixed"}, "schedule", "auto", "patch"},
-		{[]string{"internal"}, "schedule", "auto", ""},
-		{[]string{"changed"}, "workflow_dispatch", "auto", "minor"},
-		{[]string{"fixed"}, "workflow_dispatch", "minor", "minor"},
-		{[]string{"added"}, "workflow_dispatch", "major", "major"},
-	}
-	for _, tc := range tests {
-		got, err := decideBump(fragsOf(tc.types...), tc.event, tc.forced)
-		if err != nil || got != tc.want {
-			t.Errorf("decideBump(%v, %s, %s) = %q, %v; want %q", tc.types, tc.event, tc.forced, got, err, tc.want)
-		}
-	}
-}
-
-func TestDecideBumpRefuses(t *testing.T) {
-	tests := []struct {
-		types  []string
-		forced string
-		msg    string
-	}{
-		{[]string{"added"}, "patch", "forced bump patch is lower than the minor the fragments need"},
-		{nil, "major", "nothing to release: no releasable fragment for the forced bump"},
-		{[]string{"internal"}, "minor", "nothing to release: no releasable fragment for the forced bump"},
-	}
-	for _, tc := range tests {
-		_, err := decideBump(fragsOf(tc.types...), "workflow_dispatch", tc.forced)
-		var re *releaseError
-		if !errors.As(err, &re) || re.msg != tc.msg {
-			t.Errorf("decideBump(%v, %s) err = %v, want releaseError %q", tc.types, tc.forced, err, tc.msg)
-		}
-	}
-}
-
-func TestLatestTag(t *testing.T) {
-	got, err := latestTag([]string{"v0.1.6", "v0.1.10", "v0.1.9", "v0.2.0-rc.1", "vfoo"})
-	if err != nil || got != "v0.1.10" {
-		t.Fatalf("latestTag = %q, %v; want v0.1.10", got, err)
-	}
-	for _, tags := range [][]string{nil, {"v0.2.0-rc.1"}} {
-		_, err := latestTag(tags)
-		var te *tagError
-		if !errors.As(err, &te) || te.msg != "no vX.Y.Z release tag found (a checkout without tags?)" {
-			t.Errorf("latestTag(%v) err = %v, want tagError", tags, err)
-		}
-	}
-}
-
-func TestNextVersion(t *testing.T) {
-	for bump, want := range map[string]string{"patch": "v0.1.7", "minor": "v0.2.0", "major": "v1.0.0"} {
-		if got, err := nextVersion("v0.1.6", bump); err != nil || got != want {
-			t.Errorf("nextVersion(%s) = %q, %v; want %q", bump, got, err, want)
-		}
-	}
-	if _, err := nextVersion("v0.1.6", "huge"); err == nil || err.Error() != "cannot bump 'v0.1.6' by 'huge'" {
-		t.Errorf("err = %v", err)
-	}
-}
-
 func TestRenderSection(t *testing.T) {
 	frags := []fragment{
 		{typ: "removed", text: "Gone."}, {typ: "internal", text: "Secret."},
@@ -409,7 +338,7 @@ func releaseRoot(t *testing.T, fragments map[string]string, changelog string, wi
 
 func TestReleaseWritesChangelogAndRemovesFragments(t *testing.T) {
 	root := releaseRoot(t, map[string]string{"a.md": "fixed", "b.md": "added", "c.md": "internal"}, preamble+oldRelease, true)
-	tag, err := release(root, "push", "auto", "2026-10-27", []string{"v0.1.6"})
+	tag, err := release(root, "v0.2.0", "2026-10-27", []string{"v0.1.6"})
 	if err != nil || tag != "v0.2.0" {
 		t.Fatalf("release = %q, %v; want v0.2.0", tag, err)
 	}
@@ -424,11 +353,12 @@ func TestReleaseWritesChangelogAndRemovesFragments(t *testing.T) {
 	}
 }
 
-func TestReleaseNothingLeavesTreeUntouched(t *testing.T) {
-	root := releaseRoot(t, map[string]string{"a.md": "added"}, preamble+oldRelease, true)
-	tag, err := release(root, "push", "auto", "2026-10-27", []string{"v0.1.6"})
-	if err != nil || tag != "" {
-		t.Fatalf("release = %q, %v; want empty, nil", tag, err)
+func TestReleaseNothingReleasable(t *testing.T) {
+	root := releaseRoot(t, map[string]string{"a.md": "internal"}, preamble+oldRelease, true)
+	_, err := release(root, "v0.2.0", "2026-10-27", []string{"v0.1.6"})
+	var re *releaseError
+	if !errors.As(err, &re) || re.msg != "nothing to release" {
+		t.Fatalf("err = %v, want releaseError nothing to release", err)
 	}
 	text, _ := os.ReadFile(filepath.Join(root, "CHANGELOG.md"))
 	if string(text) != preamble+oldRelease {
@@ -441,7 +371,7 @@ func TestReleaseNothingLeavesTreeUntouched(t *testing.T) {
 
 func TestReleaseWithoutChangelogRefuses(t *testing.T) {
 	root := releaseRoot(t, map[string]string{"a.md": "fixed"}, "", false)
-	_, err := release(root, "push", "auto", "2026-10-27", []string{"v0.1.6"})
+	_, err := release(root, "v0.2.0", "2026-10-27", []string{"v0.1.6"})
 	var re *releaseError
 	if !errors.As(err, &re) || !strings.HasPrefix(re.msg, filepath.Join(root, "CHANGELOG.md")+": cannot read: ") {
 		t.Fatalf("err = %v, want releaseError", err)
@@ -451,11 +381,26 @@ func TestReleaseWithoutChangelogRefuses(t *testing.T) {
 	}
 }
 
-func TestReleaseWithoutTagsComesFirst(t *testing.T) {
-	root := releaseRoot(t, map[string]string{"a.md": "fixed"}, "", false)
-	_, err := release(root, "push", "auto", "2026-10-27", nil)
-	var te *tagError
-	if !errors.As(err, &te) {
-		t.Fatalf("err = %v, want tagError", err)
+func TestReleaseUsesGivenVersion(t *testing.T) {
+	root := releaseRoot(t, map[string]string{"a.md": "added", "b.md": "fixed"}, preamble+oldRelease, true)
+	tag, err := release(root, "v0.30.0", "2026-10-27", []string{"v0.27.0"})
+	if err != nil || tag != "v0.30.0" {
+		t.Fatalf("release = %q, %v; want v0.30.0", tag, err)
+	}
+	text, _ := os.ReadFile(filepath.Join(root, "CHANGELOG.md"))
+	if !strings.Contains(string(text), "## [v0.30.0] - 2026-10-27\n") {
+		t.Errorf("section missing: %q", text)
+	}
+}
+
+func TestReleaseRefusesExistingTag(t *testing.T) {
+	root := releaseRoot(t, map[string]string{"a.md": "fixed"}, preamble+oldRelease, true)
+	_, err := release(root, "v0.1.6", "2026-10-27", []string{"v0.1.6"})
+	var re *releaseError
+	if !errors.As(err, &re) || re.msg != "v0.1.6 already has a tag" {
+		t.Fatalf("err = %v, want releaseError", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "changelog.d", "a.md")); err != nil {
+		t.Errorf("fragment removed: %v", err)
 	}
 }

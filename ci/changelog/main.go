@@ -4,13 +4,12 @@
 // A fragment is a markdown file with a one-line front matter (`type: <t>`) and the text of the
 // entry. The release workflow merges the fragments into CHANGELOG.md; see docs/releasing.md.
 //
-// Three calls, all through `go run ./ci/changelog <command>`:
+// Calls, all through `go run ./ci/changelog <command>`:
 //
 //   - `check --base B --head H` runs on every PR. It needs at least one fragment added in
 //     `B...H` and refuses any fragment that does not parse.
-//   - `release --event E [--bump auto|patch|minor|major] [--date YYYY-MM-DD]` decides the bump
-//     from the open fragments, writes the section into CHANGELOG.md, removes the fragments and
-//     prints the new tag (an empty line when there is nothing to release).
+//   - `release --version vX.Y.Z [--date YYYY-MM-DD]` writes the section into CHANGELOG.md, removes
+//     the fragments and prints the tag. Nothing releasable, or a version that has a tag, is exit 1.
 //   - `notes <tag>` prints the CHANGELOG.md section of a tag.
 //
 // Every call takes `--root` (default `.`). The positional tag of `notes` may stand before or
@@ -50,23 +49,6 @@ func main() {
 }
 
 const usageText = "usage: changelog <check|release|notes> [flags]"
-
-// choice is a flag value limited to a fixed set.
-type choice struct {
-	name    string
-	value   string
-	allowed []string
-}
-
-func (c *choice) String() string { return c.value }
-
-func (c *choice) Set(v string) error {
-	if !contains(c.allowed, v) {
-		return fmt.Errorf("invalid value '%s' for --%s (choose from %s)", v, c.name, strings.Join(c.allowed, ", "))
-	}
-	c.value = v
-	return nil
-}
 
 // parseFlags parses args into fs. A positional argument is returned in order; `--root` may come
 // after one. Errors and help text go to stderr.
@@ -120,10 +102,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 		return runCheck(*root, *base, *head, stderr)
 	case "release":
-		event := &choice{name: "event", allowed: []string{"push", "schedule", "workflow_dispatch"}}
-		bump := &choice{name: "bump", value: "auto", allowed: append([]string{"auto"}, bumps...)}
-		fs.Var(event, "event", "push, schedule or workflow_dispatch")
-		fs.Var(bump, "bump", "auto, patch, minor or major")
+		version := fs.String("version", "", "version to release, vX.Y.Z")
 		date := fs.String("date", time.Now().Format("2006-01-02"), "release date")
 		pos, code, done := parseFlags(fs, args[1:])
 		if done {
@@ -132,10 +111,13 @@ func run(args []string, stdout, stderr io.Writer) int {
 		if len(pos) > 0 {
 			return usageError("unexpected argument '" + pos[0] + "'")
 		}
-		if event.value == "" {
-			return usageError("--event is required")
+		if *version == "" {
+			return usageError("--version is required")
 		}
-		return runRelease(*root, event.value, bump.value, *date, stdout, stderr)
+		if _, ok := parseTag(*version); !ok {
+			return usageError("invalid --version '" + *version + "' (want vX.Y.Z)")
+		}
+		return runRelease(*root, *version, *date, stdout, stderr)
 	case "notes":
 		pos, code, done := parseFlags(fs, args[1:])
 		if done {
@@ -167,7 +149,7 @@ func runCheck(root, base, head string, stderr io.Writer) int {
 	return 0
 }
 
-func runRelease(root, event, bump, date string, stdout, stderr io.Writer) int {
+func runRelease(root, version, date string, stdout, stderr io.Writer) int {
 	cmd := exec.Command("git", "-C", root, "tag", "--list", "v*")
 	var gitErr strings.Builder
 	cmd.Stderr = &gitErr
@@ -180,7 +162,7 @@ func runRelease(root, event, bump, date string, stdout, stderr io.Writer) int {
 		sayf(stderr, "COULD NOT CHECK: git tag failed: %s\n", detail)
 		return 2
 	}
-	tag, err := release(root, event, bump, date, strings.Fields(string(out)))
+	tag, err := release(root, version, date, strings.Fields(string(out)))
 	switch err.(type) {
 	case nil:
 		say(stdout, tag)
