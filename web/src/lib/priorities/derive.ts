@@ -295,6 +295,7 @@ export interface MilestoneRow {
   repo: string
   number: number
   title: string
+  url: string
   done: number
   open: number
   total: number
@@ -378,6 +379,7 @@ export function milestoneRows(repos: Repo[], graph: Graph): MilestoneRow[] {
         repo: repo.slug,
         number: m.number,
         title: m.title,
+        url: m.url,
         done: m.done,
         open,
         total: m.done + open,
@@ -458,7 +460,7 @@ export function sortMilestoneRows(rows: MilestoneRow[]): MilestoneRow[] {
 
 export interface UnassignedRow {
   node: GNode
-  closedMilestone: string | null
+  closedMilestone: { title: string; url: string } | null
   relation: 'blocks' | 'waits' | null
   relatedNumber?: number
 }
@@ -473,7 +475,7 @@ export function withoutMilestone(_repos: Repo[], graph: Graph): UnassignedRow[] 
     const waits = graph.edges.filter((e) => e.to === node.key).map((e) => graph.nodes.get(e.from) as GNode)
     const row: UnassignedRow = {
       node,
-      closedMilestone: closed ? (node.milestone as MilestoneRef).title : null,
+      closedMilestone: closed ? { title: (node.milestone as MilestoneRef).title, url: (node.milestone as MilestoneRef).url } : null,
       relation: blocks.length > 0 ? 'blocks' : waits.length > 0 ? 'waits' : null,
     }
     const rel = blocks.length > 0 ? blocks : waits

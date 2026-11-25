@@ -112,7 +112,11 @@ func (g *githubFixture) AddIssue(_ *testing.T, is forge.Issue) {
 		"user": map[string]any{"login": is.Author}, "labels": labels,
 	}
 	if m := is.Milestone; m != nil {
-		it["milestone"] = map[string]any{"number": m.Number, "title": m.Title, "state": m.State}
+		ms := map[string]any{"number": m.Number, "title": m.Title, "state": m.State}
+		if m.URL != "" {
+			ms["html_url"] = m.URL
+		}
+		it["milestone"] = ms
 	}
 	if !is.ClosedAt.IsZero() {
 		it["closed_at"] = is.ClosedAt.UTC().Format(time.RFC3339)
@@ -136,9 +140,13 @@ func (g *githubFixture) SetCloseReason(t *testing.T, number int, reason string) 
 }
 
 func (g *githubFixture) AddMilestone(_ *testing.T, m forge.Milestone) {
-	g.srv.Milestones = append(g.srv.Milestones, map[string]any{
+	ms := map[string]any{
 		"number": m.Number, "title": m.Title, "state": strings.ToLower(m.State), "description": m.Description,
-	})
+	}
+	if m.URL != "" {
+		ms["html_url"] = m.URL
+	}
+	g.srv.Milestones = append(g.srv.Milestones, ms)
 }
 
 // SupportsPlanning: Planning reads the REST issue and milestone lists.

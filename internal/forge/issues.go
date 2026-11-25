@@ -13,6 +13,8 @@ import (
 type Milestone struct {
 	Number                    int
 	Title, State, Description string // State is "open" or "closed"
+	// URL is the web URL of the milestone on the forge; empty where the forge does not give it.
+	URL string
 	// OpenIssues and ClosedIssues count the issues of the milestone by state; both are zero where
 	// the forge does not say.
 	OpenIssues, ClosedIssues int
@@ -51,6 +53,7 @@ type issueItem struct {
 		Title       string `json:"title"`
 		State       string `json:"state"`
 		Description string `json:"description"`
+		HTMLURL     string `json:"html_url"`
 	} `json:"milestone"`
 	// DependenciesSummary is nil where the list does not carry the summary.
 	DependenciesSummary *struct {
@@ -71,7 +74,7 @@ func (it issueItem) issue() Issue {
 		out.Labels = append(out.Labels, l.Name)
 	}
 	if m := it.Milestone; m != nil {
-		out.Milestone = &Milestone{Number: m.Number, Title: m.Title, State: m.State, Description: m.Description}
+		out.Milestone = &Milestone{Number: m.Number, Title: m.Title, State: m.State, Description: m.Description, URL: m.HTMLURL}
 	}
 	return out
 }

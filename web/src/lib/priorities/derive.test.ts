@@ -270,14 +270,21 @@ describe('milestoneRows', () => {
     done,
     open,
     description,
+    url: `u-m${number}`,
     closed: [],
   })
-  const ref = (number: number) => ({ number, title: `M${number}`, state: 'open' })
+  const ref = (number: number) => ({ number, title: `M${number}`, state: 'open', url: `u-m${number}` })
 
   it('percent is done/(done+delivered open); search Open is ignored', () => {
     const rs = [repo(R, [iss(1, [], { milestone: ref(1) }), iss(2, [], { milestone: ref(1) })], [m(1, 2)])]
     const [row] = milestoneRows(rs, buildGraph(rs, []))
     expect(row).toMatchObject({ open: 2, done: 2, total: 4, percent: 0.5, empty: false })
+  })
+
+  it('takes the url from the Milestone of repo.milestones, also without issues', () => {
+    const rs = [repo(R, [], [m(1, 0)])]
+    const [row] = milestoneRows(rs, buildGraph(rs, []))
+    expect(row.url).toBe('u-m1')
   })
 
   it('outside holds transitive external blockers, two layers deep, not own issues', () => {
@@ -352,7 +359,7 @@ describe('milestoneRows', () => {
 })
 
 describe('milestoneRows blocks', () => {
-  const ref = { number: 1, title: 'M1', state: 'open' }
+  const ref = { number: 1, title: 'M1', state: 'open', url: 'u-m1' }
   const closed = [
     { number: 30, title: 'c30', url: 'u30' },
     { number: 20, title: 'c20', url: 'u20' },
@@ -363,6 +370,7 @@ describe('milestoneRows blocks', () => {
     done: 2,
     open: 99,
     description: '',
+    url: 'u-m1',
     closed,
     ...extra,
   })
@@ -472,15 +480,15 @@ describe('withoutMilestone', () => {
         iss(20),
         iss(5, [[R, 7]]),
         iss(7),
-        iss(30, [], { milestone: { number: 2, title: 'Old', state: 'closed' } }),
-        iss(40, [], { milestone: { number: 3, title: 'Live', state: 'open' } }),
+        iss(30, [], { milestone: { number: 2, title: 'Old', state: 'closed', url: 'u-old' } }),
+        iss(40, [], { milestone: { number: 3, title: 'Live', state: 'open', url: 'u-live' } }),
       ]),
     ]
     const rows = withoutMilestone(rs, buildGraph(rs, []))
     expect(rows.map((r) => r.node.number)).toEqual([7, 5, 30, 20, 10])
     expect(rows[0]).toMatchObject({ relation: 'blocks', relatedNumber: 5 })
     expect(rows[1]).toMatchObject({ relation: 'waits', relatedNumber: 7 })
-    expect(rows[2].closedMilestone).toBe('Old')
+    expect(rows[2].closedMilestone).toEqual({ title: 'Old', url: 'u-old' })
     expect(rows[3].closedMilestone).toBeNull()
   })
 })
@@ -525,8 +533,8 @@ describe('milestone rank and priority order', () => {
   it('milestoneRows reads the rank from the description', () => {
     const repos = [
       repo(R, [], [
-        { number: 1, title: 'one', open: 0, done: 0, closed: null, description: 'x\nPriority: 4' },
-        { number: 2, title: 'two', open: 0, done: 0, closed: null, description: 'none' },
+        { number: 1, title: 'one', open: 0, done: 0, closed: null, description: 'x\nPriority: 4', url: 'u1' },
+        { number: 2, title: 'two', open: 0, done: 0, closed: null, description: 'none', url: 'u2' },
       ]),
     ]
     const rows = milestoneRows(repos, buildGraph(repos, []))
