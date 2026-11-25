@@ -155,7 +155,11 @@ head-SHA, zonder commit-titel en zonder branch-opruiming. Gaat de merge door, da
 
 **De workflow-push.** Raakt een branch `.github/workflows/`, dan pusht een run niet: GitHub weigert dat
 met het token van tick, en een run krijgt nooit een token met `workflow`-scope
-(`workflow-push-gate` blokkeert zo'n `git push` in een controller-run). De run draait roborev over de
+(`workflow-push-gate` blokkeert zo'n `git push` in een controller-run). Alleen de eigen wijziging van de
+branch telt: commits die al op `origin/<default>` staan niet, en een pad uit de netto diff alleen als
+`HEAD` er ook van `origin/<default>` verschilt. Een merge van main die alleen de workflows van main
+binnenbrengt (de update-merge van fix-pr) pusht de run dus zelf; een eigen workflow-wijziging naast die
+merge, of een conflict dat anders dan main is opgelost, telt wel. De run draait roborev over de
 ongepushte range en post een 🤖 Handoff met `next: push-workflows` (en, zolang er nog geen PR is,
 `after: /lighthouse-write-pr <nr>` en de `roborev:`-regel van `lighthouse roborev-gate body-line
 --push`). `Judge` kent `push-workflows` als eigen verdict; het staat niet in de lijst van
