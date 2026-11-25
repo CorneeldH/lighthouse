@@ -130,7 +130,7 @@ blokkadelabel staan; `blocked_issue` zetten laat `needs_mind` en `needs_hands` s
 
 Een blokkade haalt `needs_hands` niet weg: het label blijft staan, zodat de handeling niet
 vergeten wordt als de voorganger dicht gaat. De status laat de blokkade winnen, zie
-[priorities.md](../priorities.md).
+[priorities.md](../priorities.md#afgeleide-begrippen), *Toestand van een issue*.
 
 Een `needs_*`-label betekent: interactief oppakken. De tick start er geen run voor en triage stuurt
 het issue niet naar `Controller`; staat zo'n issue op `Controller`, dan zet de tick het op `To do` en

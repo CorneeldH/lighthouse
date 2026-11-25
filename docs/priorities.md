@@ -117,15 +117,16 @@ De SPA leidt deze begrippen af in `web/src/lib/priorities/derive.ts`; de server 
   [`tick.md`](tick.md), *De rem*, en [`triage.md`](triage.md)). De graaf sorteert er zijn
   kolommen mee (zie *Sortering van de graaf*).
 - **Vormentaal van de graaf.** De graaf tekent de status van een issue met dezelfde vormen als de
-  balk, in een blokje van 14 bij 14 px vóór het nummer: een kruis (vectorlijnen die in elk blok
-  glad blijven) bij *blocked*, een stippelrand van 1,5 px in de voorgrondkleur bij *needs
-  shaping*, strepen en een dichte rand (`inset 0 0 0 2px` in de voorgrondkleur) bij *needs human*, alleen strepen bij *active*, effen bij *to do* en *done*. Het
-  nummer is onderstreept bij *needs shaping* en *needs human*, nergens anders, en staat zonder
-  `#`. De kleurstrook links is altijd effen in de kleur van de milestone. Een externe kaart
-  (andere repo of buiten het filter) heeft geen statusblokje en een doorgetrokken grijze rand.
-  Issues zonder afhankelijkheden staan als dezelfde kaart in een raster onder de graaf. Zie de
-  [spec](developer/planning/specs/2026-11-23-prioritering-zes-statussen-design.md) en het
-  [plan](developer/planning/plans/2026-11-24-issue-555-zes-statussen-vormentaal.md).
+  balk, in een blokje van 14 bij 14 px vóór het nummer: een stippelrand van 1,5 px in de
+  voorgrondkleur bij *needs mind*, effen bij *to do* en *done*, alleen strepen bij *active*, strepen
+  en een dichte rand (`inset 0 0 0 2px` in de voorgrondkleur) bij *needs hands*. Een blokkade is het
+  kruis (vectorlijnen die in elk blok glad blijven) over de vorm heen, dus ook over *to do*. Het
+  nummer is onderstreept bij *needs mind* en *needs hands*, nergens anders, en staat zonder `#`. De
+  legenda heeft drie koppen: *Milestones*, *Progress* (to do, active, done) en *Labels* (needs
+  mind, blocked, needs hands). De kleurstrook links is altijd effen in de kleur van de milestone.
+  Een externe kaart (andere repo of buiten het filter) heeft geen statusblokje en een doorgetrokken
+  grijze rand. Issues zonder afhankelijkheden staan als dezelfde kaart in een raster onder de graaf.
+  Zie de [spec](developer/planning/specs/2026-11-24-statusmodel-mind-hands-design.md).
 - **Bergop / bergaf.** Een actief issue is bergop als de fase van zijn run een van
   `brainstorming`, `start-issue`, `spec-review`, `writing-plans` of `plan-review` is: het
   denkwerk vóór de uitvoering. Elke andere fase, of een issue dat alleen op het bord actief is,
