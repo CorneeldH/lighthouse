@@ -15,6 +15,8 @@
 //   - `sync --tag T --source DIR` copies the section of T into --root and removes its fragments.
 //   - `reconcile --branch B --now T --pr-open BOOL --pr-closed-by-hand BOOL` prints the action for a
 //     release branch: none, tag-rc, open-release-pr, close-release-pr, open-patch-pr, release-tip or recover.
+//   - `split --kind minor|major` prints `split B RC`, `merge B RC` or `skip REASON`.
+//   - `milestone-release --description T` prints yes when T has a line `Release: ja`, else no.
 //   - `notes <tag>` prints the CHANGELOG.md section of a tag.
 //
 // Every call takes `--root` (default `.`). The positional tag of `notes` may stand before or
@@ -54,7 +56,7 @@ func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
-const usageText = "usage: changelog <check|release|released|next|sync|reconcile|notes> [flags]"
+const usageText = "usage: changelog <check|release|released|next|sync|reconcile|split|milestone-release|notes> [flags]"
 
 // parseFlags parses args into fs. A positional argument is returned in order; `--root` may come
 // after one. Errors and help text go to stderr.
@@ -213,6 +215,44 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 		state.ReleasePROpen, state.ReleasePRClosedByHand = open, hand
 		say(stdout, decide(state, now))
+		return 0
+	case "split":
+		kind := fs.String("kind", "", "minor or major")
+		pos, code, done := parseFlags(fs, args[1:])
+		if done {
+			return code
+		}
+		if len(pos) > 0 {
+			return usageError("unexpected argument '" + pos[0] + "'")
+		}
+		if *kind != "minor" && *kind != "major" {
+			return usageError("--kind minor or major is required")
+		}
+		verdict, err := decideSplit(*root, *kind)
+		switch err.(type) {
+		case nil:
+			say(stdout, verdict)
+			return 0
+		case *releaseError, *fragmentError:
+			say(stderr, err)
+			return 1
+		}
+		sayf(stderr, "COULD NOT CHECK: %v\n", err)
+		return 2
+	case "milestone-release":
+		description := fs.String("description", "", "the milestone description")
+		pos, code, done := parseFlags(fs, args[1:])
+		if done {
+			return code
+		}
+		if len(pos) > 0 {
+			return usageError("unexpected argument '" + pos[0] + "'")
+		}
+		if milestoneRelease(*description) {
+			say(stdout, "yes")
+		} else {
+			say(stdout, "no")
+		}
 		return 0
 	case "released":
 		pos, code, done := parseFlags(fs, args[1:])
