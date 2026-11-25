@@ -134,8 +134,8 @@ The server listens on `127.0.0.1:8127` and stores its database in
 A timer can keep the binary current. [lighthouse-upgrade.service](../deploy/systemd/lighthouse-upgrade.service)
 runs `lighthouse self-update --restart lighthouse.service`, and
 [lighthouse-upgrade.timer](../deploy/systemd/lighthouse-upgrade.timer) starts it daily. The
-binary is replaced only when the newest release is newer and its checksum matches, and the
-server restarts only after a replacement. A `dev` build is skipped.
+binary is replaced only when the newest release on the channel is newer and its checksum matches, and the
+server restarts only after a replacement. A local build without a tag (`dev`) is skipped.
 
 The timer follows the channel stored in `~/.config/lighthouse/channel`; without that file it is
 `release`. Choose once, by hand: `lighthouse self-update --channel dev` stores `dev` and

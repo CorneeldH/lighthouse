@@ -30,7 +30,8 @@ set -uo pipefail
 L=CorneeldH/lighthouse
 M=$(sed -n 's/^version = "\(.*\)"$/\1/p' .lighthouse/manifest.toml | head -n 1)
 B=$(lighthouse version | awk '{print $NF}')
-C=$(lighthouse channel)   # release or dev
+C=$(lighthouse channel) || echo "channel: FAILED"   # release or dev
+[ "$(lighthouse version compare 0.0.0 0.0.0 2>/dev/null)" = 0 ] || echo "binary too old for this skill"
 # skipped when the releases cannot be fetched: then self-update is not offered
 T=$(mktemp -d)
 lighthouse releases --repo "$L" > "$T/releases.json" || echo "releases: FETCH FAILED"
@@ -38,7 +39,7 @@ lighthouse releases --repo "$L" > "$T/releases.json" || echo "releases: FETCH FA
 if [ "$C" = dev ]; then
   TAGS=$(jq -r '.[]|select(.draft|not)|.tag|select(test("^v[0-9]+\\.[0-9]+\\.[0-9]+(-(dev|rc)\\.[0-9]+)?$"))' "$T/releases.json")
 else
-  TAGS=$(jq -r '.[]|select((.prerelease or .draft)|not)|.tag' "$T/releases.json")
+  TAGS=$(jq -r '.[]|select((.prerelease or .draft)|not)|.tag|select(test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))' "$T/releases.json")
 fi
 echo "$TAGS" > "$T/tags.txt"
 # the highest tag, by lighthouse version compare
@@ -53,6 +54,8 @@ echo "releases=$T/releases.json tags=$T/tags.txt"
 
 - `M` or `B` is empty (the manifest has no version, or `lighthouse version` printed nothing): say so
   and stop, before any comparison.
+- Step 1 printed `binary too old for this skill` (`lighthouse version compare` exits non-zero or prints nothing): say so and stop; the binary predates the channel.
+- `C` is empty or not one of the two channel names (`lighthouse channel` failed, or the channel file is broken): show its error and stop. Never fall back to a default channel.
 - `M` or `B` is `dev`: say so and stop. Never compare a `dev` build.
 - `B` is older than the repo (`lighthouse version compare "$M" "$B"` prints `1`): say "the binary is older than the repo" and
   stop. Never run `init --upgrade` then; it would downgrade.

@@ -48,7 +48,7 @@ func TestUpgradeComparesVersionsWithoutTheVPrefix(t *testing.T) {
 		t.Run(variant, func(t *testing.T) {
 			s1 := upgradeStep(t, body, "1")
 			wantAll(t, s1, "M=${M#v}; B=${B#v}; N=${N#v}", "C=$(lighthouse channel)",
-				`select((.prerelease or .draft)|not)`,
+				`select((.prerelease or .draft)|not)|.tag|select(test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))`,
 				`select(.draft|not)`,
 				`^v[0-9]+\\.[0-9]+\\.[0-9]+(-(dev|rc)\\.[0-9]+)?$`,
 				`lighthouse version compare "$t" "$N"`)
@@ -62,6 +62,8 @@ func TestUpgradeComparesVersionsWithoutTheVPrefix(t *testing.T) {
 // Classification: fails when a skill goes back to `sort -V` or loses `lighthouse channel` or
 // `lighthouse version compare`.
 func TestUpgradeSkillUsesVersionCompare(t *testing.T) {
+	cliFlags(t, []string{"channel"})
+	cliFlags(t, []string{"version", "compare"})
 	for variant, body := range variants(t, upgrade) {
 		t.Run(variant, func(t *testing.T) {
 			wantAll(t, body, "lighthouse version compare", "lighthouse channel")
@@ -268,6 +270,21 @@ func TestUpgradeEmptyTestGateIsNoEvidence(t *testing.T) {
 		t.Run(variant, func(t *testing.T) {
 			wantAll(t, flat(upgradeStep(t, body, "6")),
 				"`lighthouse config test_gate.command` exits 1 when none is set, or prints nothing when it is empty: say so and skip it, it is no evidence; never count `bash -c \"\"` as green.")
+		})
+	}
+}
+
+// Classification: fails when a binary from before the channels (no `version compare`, no
+// `channel`) or a broken channel file no longer stops the skill, so the skill fails open on
+// `release`.
+func TestUpgradeOldBinaryAndBadChannelStop(t *testing.T) {
+	for variant, body := range variants(t, upgrade) {
+		t.Run(variant, func(t *testing.T) {
+			s1 := flat(upgradeStep(t, body, "1"))
+			wantAll(t, s1,
+				`[ "$(lighthouse version compare 0.0.0 0.0.0 2>/dev/null)" = 0 ] || echo "binary too old for this skill"`,
+				"- Step 1 printed `binary too old for this skill` (`lighthouse version compare` exits non-zero or prints nothing): say so and stop; the binary predates the channel.",
+				"- `C` is empty or not one of the two channel names (`lighthouse channel` failed, or the channel file is broken): show its error and stop. Never fall back to a default channel.")
 		})
 	}
 }
