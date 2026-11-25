@@ -39,7 +39,32 @@ The expo pack has one component, the skill `refresh-expo-lockfiles`, and it is o
 The base components (`run.sh`, `blocking`, `usage-gate`, `permission-check`,
 `workflow-push-gate`, `level-check`, `no-verify-check`) are never switched.
 
+## Controller knobs per level
+
+The controller (`[controller]` in `lighthouse.toml`) takes the default of two review knobs from the
+installed level. The result with the pack as it is:
+
+| Level | `spec_review` | `plan_review` | `bij_rondegrens` | Why |
+|---|---|---|---|---|
+| `light` | `false` | `false` | `doorgaan` | The review skills are off: a review asks Codex, a second model family. `fix-pr` is off too, but the dispatcher still starts a `fix-pr` run on a red PR. |
+| `standard` | `false` | `false` | `doorgaan` | The same. |
+| `strict` | `true` | `true` | `doorgaan` | The reviews run; at the round limit the run goes on with the open points as `accepted_open`. |
+
+The order for `spec_review` and `plan_review`:
+
+1. An explicit key in `[controller]` wins, in both directions.
+2. Otherwise the level: `false` when `skill:review-spec` (for `spec_review`) or `skill:review-plan`
+   (for `plan_review`) is `off` in `.lighthouse/components.toml`.
+3. Otherwise `true`.
+
+A repo without `.lighthouse/components.toml` keeps both knobs on. An explicit `spec_review = true`
+on a level where `skill:review-spec` is off makes the run hand back with `reason_skill_missing`:
+the key says to review, and the skill is not there.
+
+`bij_rondegrens` defaults to `"doorgaan"` at every level. The number of slots (`slots` in
+`[dispatch]` of `host.toml`) is not a knob of the level: it belongs to the host, not to the repo.
+
 Permissions are the same at every level: no level adds to or removes from
-`permissions.allow`, and no level answers a permission or security question. The core rules stay
+`permissions.allow`, and no level answers a permission, a security question or a controller question automatically. The core rules stay
 on at every level. Only an override in `[components]` of `lighthouse.toml` turns a core gate off,
 and then `init`, the session start and the managed block in `AGENTS.md` warn about it.

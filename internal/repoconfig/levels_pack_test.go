@@ -28,12 +28,12 @@ func TestPackLevelsDeriveControllerKnobs(t *testing.T) {
 		"strict":   {true, true, "doorgaan"},
 	}
 	if len(f.Order) != len(want) {
-		t.Fatalf("levels %v: this table and docs/levels.md, section Controller knobs per level, must follow", f.Order)
+		t.Fatalf("levels %v: this table and the section Controller knobs per level of levels.md, must follow", f.Order)
 	}
 	for _, level := range f.Order {
 		w, ok := want[level]
 		if !ok {
-			t.Fatalf("level %q missing from the table: docs/levels.md, section Controller knobs per level, must follow", level)
+			t.Fatalf("level %q missing from the table: the section Controller knobs per level of levels.md, must follow", level)
 		}
 		resolved, err := levels.Resolve([]levels.File{f}, level, nil)
 		if err != nil {
@@ -59,7 +59,7 @@ func TestPackLevelsDeriveControllerKnobs(t *testing.T) {
 		}
 		c := *r.Controller
 		if c.SpecReview != w.spec || c.PlanReview != w.plan || c.AtRoundLimit != w.limit {
-			t.Errorf("%s: spec_review=%v plan_review=%v at_round_limit=%q, want %v %v %q; docs/levels.md, section Controller knobs per level, must follow",
+			t.Errorf("%s: spec_review=%v plan_review=%v at_round_limit=%q, want %v %v %q; the section Controller knobs per level of levels.md, must follow",
 				level, c.SpecReview, c.PlanReview, c.AtRoundLimit, w.spec, w.plan, w.limit)
 		}
 	}
