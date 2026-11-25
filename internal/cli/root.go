@@ -115,6 +115,7 @@ func NewRoot(in io.Reader, out, errOut io.Writer) *cobra.Command {
 	root.AddCommand(newCheckHooksCommand())
 	root.AddCommand(newAgentAuditCommand())
 	root.AddCommand(newCheckpointScanCommand())
+	root.AddCommand(newHistoryCommand(defaultHistoryEnv()))
 	root.AddCommand(&cobra.Command{
 		Use:   "version",
 		Short: "Print the version of this binary",
