@@ -107,7 +107,7 @@ func (d *workTracking) Finish(Env) Finding {
 		f.Status = "found"
 		f.Sources = d.hits.Top()
 	}
-	if d.issues+prs > 0 {
+	if d.issues > 0 && prs > 0 {
 		f.Proposal = Proposal{Kind: "knob", Flag: "--labels",
 			Text: "Install the issue labels so issues and PRs carry the chain."}
 	}

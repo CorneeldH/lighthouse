@@ -81,3 +81,19 @@ func TestWorkTracking_Finish(t *testing.T) {
 		t.Fatalf("%v", f.Measured)
 	}
 }
+
+func TestWorkTracking_KnobNeedsIssuesAndPRs(t *testing.T) {
+	for name, cmds := range map[string][]string{
+		"only prs":    {"gh pr create"},
+		"only issues": {"gh issue list"},
+	} {
+		d := newWorkTracking()
+		for _, c := range cmds {
+			d.Add(bashRec("s", "b", "/r", c))
+		}
+		f := d.Finish(Env{})
+		if f.Status != "found" || f.Proposal.Kind != "advice" || f.Proposal.Flag != "" {
+			t.Errorf("%s: %+v", name, f.Proposal)
+		}
+	}
+}
