@@ -58,7 +58,7 @@
 
 - [ ] **Stap 1: Schrijf de falende test** in `internal/commitgate/roots_test.go`: `stubGit` (`roots_test.go:81-98`) is een sh-script dat faalt of de echte git draait en kan dus geen vaste uitvoer leveren: gebruik een fake-git zoals het `hooks`-pakket (een script op het PATH dat `"/repo/root//\n"` echoot) zodat `Clean` op Linux zichtbaar is; assert `filepath.Clean("/repo/root")`. Zelfde idee in `maincommitgate_test.go`: assert dat de blokmelding `filepath.Clean(root)` bevat (op Linux gelijk aan nu; het pint de keuze).
 - [ ] **Stap 2: Draai** de nieuwe tests — verwacht FAIL waar een plek nog rauw leest, anders alvast PASS en dan de pin als regressiebewaking laten staan.
-- [ ] **Stap 3: Vervang** op elke genoemde regel `strings.TrimSpace(out)` (of rauw gebruik) door `gitpath.Native(out)`. Houd de lege-uitvoer-takken (`if root == ""`) intact; ze werken nu op de genormaliseerde waarde.
+- [ ] **Stap 3: Vervang** op elke genoemde regel `strings.TrimSpace(out)` (of rauw gebruik) door `gitpath.Native(out)`. Houd de lege-uitvoer-takken (`if root == ""`) intact; ze werken nu op de genormaliseerde waarde. Uitzondering, stdout en stderr delen één buffer: in `hooks/mdlinkcheck.go` (`:83`, `root := strings.TrimRight(out.String(), "\n")`) en `hooks/worktreecheck.go:67/74` (`gitCombined`) pas `Native` alleen toe ná de foutentak, op het succespad; de foutmelding (`cannotCheck`, `warnUncheckable`, de `not a git repository`-match) houdt de ruwe tekst. Zelfde voor `codelang/hook.go` in taak 3.
 - [ ] **Stap 4: Draai** `go test -race -shuffle=on ./internal/commitgate/ ./internal/hooks/ ./internal/initcmd/` — verwacht PASS.
 - [ ] **Stap 5: Commit** `fix(hooks): git-paden native in commitgate, hooks en init (#565)`.
 
