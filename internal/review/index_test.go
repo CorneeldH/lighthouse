@@ -372,7 +372,7 @@ func TestIndexRecordsFailureKeepsOldRows(t *testing.T) {
 func TestIndexLedgerWritesNoReviewRun(t *testing.T) {
 	ctx, db := context.Background(), openIndexDB(t)
 	path := filepath.Join(t.TempDir(), "ledger.md")
-	body := "# SDD ledger — plan: docs/developer/planning/plans/issue-5-x.md\nTask 1: done. Ruling: ok\n"
+	body := "# SDD ledger — plan: plans/issue-5-x.md\nTask 1: done. Ruling: ok\n"
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}

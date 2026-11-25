@@ -14,7 +14,7 @@ func reviewRun(sourceID string, issue int, sum string) ReviewRunRecord {
 		Repo:         "o/r",
 		Issue:        issue,
 		Component:    "plan_review",
-		RecordPath:   "docs/review.md",
+		RecordPath:   "records/review.md",
 		RecordSum:    sum,
 		RanAt:        t0,
 		Outcome:      "converged",
@@ -59,7 +59,7 @@ func TestRecordReviewRunUpdatesSameOrigin(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := reviewRun("plan:a:1", 7, "s2")
-	r.RecordPath = "docs/other.md"
+	r.RecordPath = "records/other.md"
 	r.RanAt = t0.Add(time.Hour)
 	r.Outcome = "round_limit"
 	r.FindingCount = 3
@@ -78,7 +78,7 @@ func TestRecordReviewRunUpdatesSameOrigin(t *testing.T) {
 		FROM review_runs WHERE id = ?`, id).Scan(&path, &sum, &ran, &outcome, &findings, &traj, &rec); err != nil {
 		t.Fatal(err)
 	}
-	if path != "docs/other.md" || sum != "s2" || ran != stamp(r.RanAt) || outcome != "round_limit" ||
+	if path != "records/other.md" || sum != "s2" || ran != stamp(r.RanAt) || outcome != "round_limit" ||
 		findings != 3 || !traj.Valid || rec != stamp(r.RecordedAt) {
 		t.Errorf("row not updated: %s %s %s %s %d %v %s", path, sum, ran, outcome, findings, traj, rec)
 	}
