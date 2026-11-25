@@ -35,9 +35,16 @@ func TestDecide(t *testing.T) {
 		{"tagged release tip with sync pending recovers", with(func(s *BranchState) { s.TipSubject, s.TipTagged, s.SyncPending = "chore(release): v0.28.0", true, true }), t0, ActionRecover},
 		{"tagged release tip in sync does nothing", with(func(s *BranchState) { s.TipSubject, s.TipTagged = "chore(release): v0.28.0", true }), t0, ActionNone},
 		{"released branch without new commits", released, t0, ActionNone},
-		{"released branch with new commit opens patch pr", with2(released, func(s *BranchState) { s.NewCommitsSinceLatestTag = true }), t0, ActionOpenPatchPR},
-		{"released branch patch pr already open", with2(released, func(s *BranchState) { s.NewCommitsSinceLatestTag, s.ReleasePROpen = true, true }), t0, ActionNone},
-		{"released branch closed by hand", with2(released, func(s *BranchState) { s.NewCommitsSinceLatestTag, s.ReleasePRClosedByHand = true, true }), t0, ActionNone},
+		{"released branch with new commit opens patch pr", with2(released, func(s *BranchState) { s.NewCommitsSinceLatestTag, s.ReleasableOpen = true, true }), t0, ActionOpenPatchPR},
+		{"released branch whose new commit has nothing releasable waits", with2(released, func(s *BranchState) { s.NewCommitsSinceLatestTag = true }), t0, ActionNone},
+		{"released branch with a stale patch pr closes it", with2(released, func(s *BranchState) {
+			s.NewCommitsSinceLatestTag, s.ReleasableOpen, s.ReleasePROpen, s.ReleasePRStale = true, true, true, true
+		}), t0, ActionCloseReleasePR},
+		{"untagged release tip whose parent is not the rc source is blocked", with(func(s *BranchState) { s.TipSubject, s.ParentMismatch = "chore(release): v0.28.0 (#9)", true }), t0, ActionBlocked},
+		{"released branch patch pr already open", with2(released, func(s *BranchState) { s.NewCommitsSinceLatestTag, s.ReleasableOpen, s.ReleasePROpen = true, true, true }), t0, ActionNone},
+		{"released branch closed by hand", with2(released, func(s *BranchState) {
+			s.NewCommitsSinceLatestTag, s.ReleasableOpen, s.ReleasePRClosedByHand = true, true, true
+		}), t0, ActionNone},
 		{"released branch untagged patch tip", with2(released, func(s *BranchState) { s.TipSubject = "chore(release): v0.28.1"; s.NewCommitsSinceLatestTag = true }), t0, ActionReleaseTip},
 	}
 	for _, tc := range tests {
@@ -111,11 +118,54 @@ func TestLoadStateReleasedAndSync(t *testing.T) {
 	}
 }
 
+func TestLoadStateReleasableOpenIgnoresInternalAndReleased(t *testing.T) {
+	root := taggedRepo(t, map[string]string{"a.md": "added", "i.md": "internal"})
+	git(t, root, "checkout", "-q", "-b", "release/v0.2")
+	releaseCommit(t, root, "v0.2.0", []string{"a.md"}, true)
+	// a backport brings back a.md (released) and i.md (internal) but nothing new
+	write(t, filepath.Join(root, "changelog.d", "a.md"), "---\ntype: added\n---\nBack.\n")
+	commit(t, root, "fix: backport (#8)")
+	s, err := loadState(root, "release/v0.2")
+	if err != nil || s.ReleasableOpen || !s.NewCommitsSinceLatestTag {
+		t.Fatalf("state = %+v, %v; want new commits but nothing releasable", s, err)
+	}
+	write(t, filepath.Join(root, "changelog.d", "n.md"), "---\ntype: fixed\n---\nNew.\n")
+	commit(t, root, "fix: real (#9)")
+	if s, _ = loadState(root, "release/v0.2"); !s.ReleasableOpen {
+		t.Fatalf("n.md is open and releasable: %+v", s)
+	}
+}
+
+func TestLoadStateParentMismatch(t *testing.T) {
+	root := reconcileRepo(t)
+	// a cherry-pick lands after the rc, then the release commit on top of it
+	write(t, filepath.Join(root, "late.txt"), "late\n")
+	commit(t, root, "fix: late (#6)")
+	write(t, filepath.Join(root, "rel.txt"), "release\n")
+	commit(t, root, "chore(release): v0.2.0 (#7)")
+	s, err := loadState(root, "release/v0.2")
+	if err != nil || !s.ParentMismatch || s.TipTagged {
+		t.Fatalf("state = %+v, %v; want ParentMismatch", s, err)
+	}
+	if got := decide(s, time.Now()); got != ActionBlocked {
+		t.Errorf("decide = %q, want blocked", got)
+	}
+}
+
+func TestLoadStateParentMatchesRCSource(t *testing.T) {
+	root := reconcileRepo(t)
+	write(t, filepath.Join(root, "rel.txt"), "release\n")
+	commit(t, root, "chore(release): v0.2.0 (#7)")
+	if s, _ := loadState(root, "release/v0.2"); s.ParentMismatch {
+		t.Fatalf("release commit sits right on the rc source: %+v", s)
+	}
+}
+
 func TestRunReconcilePrintsAction(t *testing.T) {
 	root := reconcileRepo(t)
 	now := time.Now().Add(8 * 24 * time.Hour).UTC().Format(time.RFC3339)
 	code, stdout, stderr := runCLI("reconcile", "--branch", "release/v0.2", "--now", now,
-		"--pr-open", "false", "--pr-closed-by-hand", "false", "--root", root)
+		"--pr-open", "false", "--pr-closed-by-hand", "false", "--pr-stale", "false", "--root", root)
 	if code != 0 || stdout != "open-release-pr\n" {
 		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout, stderr)
 	}

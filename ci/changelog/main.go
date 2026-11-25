@@ -14,7 +14,7 @@
 //   - `next --kind K [--branch B]` prints the next dev, rc, test, minor, major or patch tag.
 //   - `sync --tag T --source DIR` copies the section of T into --root and removes its fragments.
 //   - `reconcile --branch B --now T --pr-open BOOL --pr-closed-by-hand BOOL` prints the action for a
-//     release branch: none, tag-rc, open-release-pr, close-release-pr, open-patch-pr, release-tip or recover.
+//     release branch: none, tag-rc, open-release-pr, close-release-pr, open-patch-pr, release-tip, recover or blocked.
 //   - `split --kind minor|major` prints `split B RC`, `merge B RC` or `skip REASON`.
 //   - `milestone-release --description T` prints yes when T has a line `Release: ja`, else no.
 //   - `notes <tag>` prints the CHANGELOG.md section of a tag.
@@ -186,6 +186,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		nowFlag := fs.String("now", "", "the time to judge by, RFC 3339 (default: now)")
 		prOpen := fs.String("pr-open", "false", "true when a release PR is open")
 		closedByHand := fs.String("pr-closed-by-hand", "false", "true when the last release PR was closed by hand")
+		prStale := fs.String("pr-stale", "false", "true when the open release PR was cut before the newest commit of the branch")
 		pos, code, done := parseFlags(fs, args[1:])
 		if done {
 			return code
@@ -205,15 +206,16 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 		open, errOpen := strconv.ParseBool(*prOpen)
 		hand, errHand := strconv.ParseBool(*closedByHand)
-		if errOpen != nil || errHand != nil {
-			return usageError("--pr-open and --pr-closed-by-hand take true or false")
+		stale, errStale := strconv.ParseBool(*prStale)
+		if errOpen != nil || errHand != nil || errStale != nil {
+			return usageError("--pr-open, --pr-closed-by-hand and --pr-stale take true or false")
 		}
 		state, err := loadState(*root, *branch)
 		if err != nil {
 			sayf(stderr, "COULD NOT CHECK: %v\n", err)
 			return 2
 		}
-		state.ReleasePROpen, state.ReleasePRClosedByHand = open, hand
+		state.ReleasePROpen, state.ReleasePRClosedByHand, state.ReleasePRStale = open, hand, stale
 		say(stdout, decide(state, now))
 		return 0
 	case "split":

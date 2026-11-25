@@ -26,6 +26,10 @@ const (
 	// ActionRecover: the tip is released and tagged, but main still lacks the section: only the
 	// sync step runs again.
 	ActionRecover Action = "recover"
+	// ActionBlocked: the tip is a milestone release commit whose parent is not the source of the
+	// newest rc, so something was merged after the soak and release.yml would refuse the tag every
+	// hour, after a full macOS run. Only a revert of the release commit by hand clears it.
+	ActionBlocked Action = "blocked"
 )
 
 // BranchState is everything decide needs to know about one release branch.
@@ -42,7 +46,14 @@ type BranchState struct {
 	// release on a released one) does not.
 	NewCommitsSinceLatestTag bool
 	TipTagged                bool // the tip, or the commit a tag sits on, carries a release tag
-	SyncPending              bool // the tag of the tip has no section in main's CHANGELOG.md yet
+	// ReleasableOpen: the branch holds a fragment of a releasable type that no earlier release
+	// shipped, so a patch release has something to release.
+	ReleasableOpen bool
+	// ReleasePRStale: the open release PR was cut before the newest commit of the branch.
+	ReleasePRStale bool
+	// ParentMismatch: see ActionBlocked.
+	ParentMismatch bool
+	SyncPending    bool // the tag of the tip has no section in main's CHANGELOG.md yet
 }
 
 var releaseSubjectRe = regexp.MustCompile(`^chore\(release\): v\d+\.\d+\.\d+( \(#\d+\))?$`)
@@ -51,6 +62,8 @@ var releaseSubjectRe = regexp.MustCompile(`^chore\(release\): v\d+\.\d+\.\d+( \(
 func decide(s BranchState, now time.Time) Action {
 	if releaseSubjectRe.MatchString(s.TipSubject) {
 		switch {
+		case !s.TipTagged && s.ParentMismatch:
+			return ActionBlocked
 		case !s.TipTagged:
 			return ActionReleaseTip
 		case s.SyncPending:
@@ -59,10 +72,16 @@ func decide(s BranchState, now time.Time) Action {
 		return ActionNone
 	}
 	if s.Released {
-		if s.NewCommitsSinceLatestTag && !s.ReleasePROpen && !s.ReleasePRClosedByHand {
-			return ActionOpenPatchPR
+		switch {
+		case !s.NewCommitsSinceLatestTag || !s.ReleasableOpen:
+			return ActionNone
+		case s.ReleasePROpen && s.ReleasePRStale:
+			// A fix landed after the patch PR was cut: it would ship the code without its entry.
+			return ActionCloseReleasePR
+		case s.ReleasePROpen || s.ReleasePRClosedByHand:
+			return ActionNone
 		}
-		return ActionNone
+		return ActionOpenPatchPR
 	}
 	if s.LatestRC == "" || s.NewCommitsSinceLatestTag {
 		if s.ReleasePROpen {
@@ -152,6 +171,17 @@ func loadState(root, branch string) (BranchState, error) {
 			return s, err
 		}
 	}
+	if s.ReleasableOpen, err = releasableOpen(root, ref, branch); err != nil {
+		return s, err
+	}
+	if releaseSubjectRe.MatchString(s.TipSubject) && s.LatestRC != "" {
+		version := strings.Fields(s.TipSubject)[1]
+		if strings.HasSuffix(version, ".0") {
+			parent, err1 := gitOut(root, "rev-parse", "-q", "--verify", tip+"^")
+			source, err2 := gitOut(root, "rev-parse", "-q", "--verify", s.LatestRC+"^")
+			s.ParentMismatch = err1 == nil && err2 == nil && parent != source
+		}
+	}
 	// The tip is tagged when a release tag sits on it or on a commit directly above it (the dist
 	// commit of tag-with-ui).
 	for _, tag := range tags {
@@ -180,4 +210,32 @@ func mainRef(root string) string {
 		return "origin/main"
 	}
 	return "main"
+}
+
+var fragmentTypeRe = regexp.MustCompile(`(?m)^type:[ \t]*(\w+)`)
+
+// releasableOpen reports whether the branch holds an open fragment of a releasable type that no
+// earlier release shipped.
+func releasableOpen(root, ref, branch string) (bool, error) {
+	names, err := branchFragments(root, branch)
+	if err != nil {
+		return false, err
+	}
+	released, err := releasedFragments(root)
+	if err != nil {
+		return false, err
+	}
+	for name := range names {
+		if released[name] || !strings.HasSuffix(name, ".md") {
+			continue
+		}
+		body, err := gitOut(root, "show", ref+":"+fragmentDir+"/"+name)
+		if err != nil {
+			return false, err
+		}
+		if m := fragmentTypeRe.FindStringSubmatch(body); m != nil && contains(releasable, m[1]) {
+			return true, nil
+		}
+	}
+	return false, nil
 }

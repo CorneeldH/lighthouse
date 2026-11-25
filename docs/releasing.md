@@ -147,38 +147,6 @@ path in the message.
 
 ## The release commit
 
-The workflow makes two commits. The first commits `CHANGELOG.md` and the removal of the released
-fragments to `main` as `github-actions[bot]`, with message `chore(release): vX.Y.Z`. The second
-sits on top of it and adds the built web UI (`internal/web/dist`), so that `go install` of the
-tag serves the UI. The tag points at the second commit, which `main` never gets: the tag is not
-an ancestor of `main`. The workflow pushes `main` and the tag in one atomic push. This is the
-only exception to "nothing lands on `main` directly". If `main` gets a ruleset, give the bot a
-bypass for it.
-
-A refused push lands nothing. If someone merged in the meantime, the run ends as in "main moved"
-under [The macOS gate](#the-macos-gate): that newer commit has its own run. Otherwise (a network
-error) the workflow fetches `main` and retries, three times at most.
-
-## Recovering a failed release
-
-- The workflow failed before or during the push: nothing landed, or the fragments are still
-  open. If `main` is still at the run's commit, choose *Re-run failed jobs* on the failed run
-  first: it keeps the event, so a failed push run follows the push rule again, and it runs the
-  failed macOS jobs again too. Otherwise, or if that fails, dispatch the `release` workflow with
-  `bump: auto` from `main`. A dispatch follows the schedule rule: with only `added` open it releases a minor
-  at once, where the failed push run would have waited for Monday.
-- The tag exists but the build failed: run the `build` workflow by hand (`workflow_dispatch`)
-  with that tag. It builds the five binaries again. If the GitHub release exists, it uploads the
-  files with `--clobber`; otherwise it creates the release. The notes of an existing release
-  stay as they are. To change them, edit the release notes on GitHub by hand. The run still
-  needs a `CHANGELOG.md` section for the tag, and for a non-prerelease tag it fails without one.
-- The `web` check of `build` fails on a tag that is already pushed (its `dist` is missing or does
-  not match `web/`): fix the cause, then release a new patch version. Never move or re-set the
-  tag, also not when `build` later runs again and its output differs, for instance because of a
-  newer runner image. Running `build` again only works for tags made with the `dist` commit.
-
-## The release commit
-
 The release PR is squash-merged, so the tip of the release branch is the commit
 `chore(release): vX.Y.Z (#N)` (C1) with `CHANGELOG.md` and the removal of the released fragments.
 `release.yml` adds a second commit on top of it with the built web UI (`internal/web/dist`), so
@@ -193,8 +161,9 @@ gets a ruleset, give the bot a bypass for the sync.
 - **The merged release PR got no tag** (macOS red, the job died). Choose *Re-run failed jobs* on the
   run, or run the `release` workflow by hand (`workflow_dispatch`) from `main` with `branch:
   release/vX.Y`. It repeats steps 5 and 6 on the tip of that branch. The train skips a branch whose
-  tip is a `chore(release)` commit without a tag; it never opens a second release PR there. An
-  action `release` of `release-train` does the same.
+  tip is a `chore(release)` commit without a tag calls `release.yml` again every hour, so
+  the missing tag is made by the next run, and the train never opens a second release PR there.
+  The dispatch with action `release` of `release-train` does the same on the spot.
 - **The tag exists but the build failed.** Run the `build` workflow by hand (`workflow_dispatch`)
   with that tag. It builds the five binaries again. If the GitHub release exists, it uploads the
   files with `--clobber`; otherwise it creates the release. The notes of an existing release stay
@@ -207,6 +176,14 @@ gets a ruleset, give the bot a bypass for the sync.
   not match `web/`): fix the cause, then release a new patch version. Never move or re-set the
   tag, also not when `build` later runs again and its output differs, for instance because of a
   newer runner image. Running `build` again only works for tags made with the `dist` commit.
+- **The train warns that a branch is blocked.** A fix was merged into `release/vX.Y` after the
+  newest rc and before the release PR, so the parent of the release commit is not the source of
+  the rc. `release.yml` refuses that tag, and the train does not retry it. Revert the release commit
+  on the branch by hand (a PR to `release/vX.Y`); the fixed fragment is still there, so the next rc
+  and release PR follow.
+- **A patch PR is closed by the train** when a second fix lands on the branch while it is open; it
+  opens a new one with both fixes at once. A patch PR you close yourself stays closed until the next
+  commit lands on the branch.
 - **Merging `main` into the release branch conflicts** when a new rc is cut. The run fails with the
   conflict named; merge `main` into the branch by hand, and the next run tags the rc.
 

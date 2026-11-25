@@ -165,15 +165,23 @@ jobs:
               if ! printf '%s\n' "$branch" | grep -Eq '^release/v[0-9]+\.[0-9]+$'; then continue; fi
               if [ -n "$ONLY" ] && [ "$branch" != "$ONLY" ]; then continue; fi
               line=${branch#release/}
-              # The time of the newest tag of the line: a release PR closed after it was closed by hand.
+              # The time since which a release PR closed without merge counts as closed by hand: the
+              # newest tag of an open branch, the newest commit of a released one (a new fix
+              # brings a new patch PR). The bot closes a PR with the marker below; that never counts.
               newest=$(git tag --list "$line.*" --sort=-creatordate | head -1)
               since=$(git log -1 --format=%cI "${newest:-origin/$branch}")
-              pulls=$(gh pr list --repo "$REPO" --base "$branch" --state all --limit 100 --json title,state,mergedAt,closedAt)
+              if git rev-parse -q --verify "refs/tags/$line.0" >/dev/null; then since=$(git log -1 --format=%cI "origin/$branch"); fi
+              since=$(date -u -d "$since" +%Y-%m-%dT%H:%M:%SZ)
+              pulls=$(gh pr list --repo "$REPO" --base "$branch" --state all --limit 100 --json title,state,mergedAt,closedAt,headRefOid,comments)
               open=$(jq '[.[] | select(.state == "OPEN" and (.title | test("^chore\\(release\\): v")))] | length' <<< "$pulls")
-              hand=$(jq --arg since "$since" '[.[] | select(.state == "CLOSED" and .mergedAt == null and .closedAt > $since and (.title | test("^chore\\(release\\): v")))] | length' <<< "$pulls")
+              hand=$(jq --arg since "$since" '[.[] | select(.state == "CLOSED" and .mergedAt == null and .closedAt > $since and (.title | test("^chore\\(release\\): v")) and ((.comments | map(.body) | join("")) | contains("release-train:auto-closed") | not))] | length' <<< "$pulls")
               pr_open=false; [ "$open" -gt 0 ] && pr_open=true
               closed_by_hand=false; [ "$hand" -gt 0 ] && closed_by_hand=true
-              action=$(go run ./ci/changelog reconcile --branch "$branch" --now "$now" --pr-open "$pr_open" --pr-closed-by-hand "$closed_by_hand")
+              # Stale: the open PR was cut on an older tip than the branch has now.
+              stale=false
+              oid=$(jq -r '[.[] | select(.state == "OPEN" and (.title | test("^chore\\(release\\): v")))][0].headRefOid // empty' <<< "$pulls")
+              if [ -n "$oid" ] && [ "$(git rev-parse -q --verify "$oid^" 2>/dev/null || echo none)" != "$(git rev-parse "origin/$branch")" ]; then stale=true; fi
+              action=$(go run ./ci/changelog reconcile --branch "$branch" --now "$now" --pr-open "$pr_open" --pr-closed-by-hand "$closed_by_hand" --pr-stale "$stale")
               echo "plan: $branch -> $action"
               case "$action" in
                 tag-rc)
@@ -185,6 +193,9 @@ jobs:
                   ;;
                 release-tip|recover)
                   rel=$(jq -c --arg b "$branch" '. + [{branch: $b}]' <<< "$rel")
+                  ;;
+                blocked)
+                  echo "::warning::plan: $branch has a release commit whose parent is not the source of the newest rc (something was merged after the soak); revert the release commit on the branch by hand, see docs/releasing.md"
                   ;;
               esac
             done
@@ -262,7 +273,7 @@ jobs:
           case "$ACTION" in
             close-release-pr)
               for n in $(gh pr list --repo "$REPO" --base "$BRANCH" --state open --json number,title --jq '.[] | select(.title | test("^chore\\(release\\): v")) | .number'); do
-                gh pr close "$n" --repo "$REPO" --comment "Er is een nieuwe release candidate gemaakt; deze release-PR is gesloten. Na de wachttijd van de nieuwe rc opent er een nieuwe."
+                gh pr close "$n" --repo "$REPO" --comment "<!-- release-train:auto-closed --> Er is een nieuwe commit op $BRANCH gekomen; deze release-PR is gesloten en er opent een nieuwe (bij een rc na de wachttijd van de nieuwe rc, bij een patch meteen)."
               done
               exit 0
               ;;

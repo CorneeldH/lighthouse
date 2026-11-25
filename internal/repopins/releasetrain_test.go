@@ -117,3 +117,34 @@ func TestReleaseRecoveryDispatchTakesBranch(t *testing.T) {
 	train := jobOf(t, "release-train.yml", "plan")
 	mustContain(t, "plan job", train, "ACTION: ${{ inputs.action }}", "action release needs a branch")
 }
+
+// A release PR that CI turns red (it only removes fragments) can never merge; the exemption must
+// hold for the bot's own PR only, not for any PR that picks a branch name.
+func TestCIChangelogExemptsOnlyTheBotReleasePR(t *testing.T) {
+	job := ciJob(t, "changelog")
+	assertContains(t, "changelog", job, "release-bot/*)", `"$HEAD_REPO" = "$REPO"`,
+		"HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}",
+		"TITLE: ${{ github.event.pull_request.title }}", `chore\(release\): v[0-9]+\.[0-9]+\.[0-9]+$`)
+	inOrder(t, "changelog", job, "release-bot/*)", "go run ./ci/changelog check")
+}
+
+// A patch PR that a later fix overtakes ships the code without its entry; one the bot closed itself
+// must not look closed by hand, or the next patch PR never opens.
+func TestTrainClosesStalePRsAndMarksItsOwnClose(t *testing.T) {
+	plan := jobOf(t, "release-train.yml", "plan")
+	mustContain(t, "plan job", plan, `--pr-stale "$stale"`, "headRefOid", "release-train:auto-closed")
+	pr := jobOf(t, "release-train.yml", "pr")
+	mustContain(t, "pr job", pr, "<!-- release-train:auto-closed -->", "gh pr close")
+	// on a released branch a PR closed by hand counts from the newest commit, not the newest tag
+	mustContain(t, "plan job", plan, `git log -1 --format=%cI "origin/$branch"`)
+}
+
+// A branch whose release commit can never be tagged must not start a macOS run every hour.
+func TestTrainDoesNotReleaseABlockedBranch(t *testing.T) {
+	plan := jobOf(t, "release-train.yml", "plan")
+	mustMatch(t, "plan job", plan, `(?s)blocked\)\s*\n\s+echo "::warning::`)
+	mustMatch(t, "plan job", plan, `(?s)blocked\).*?;;`)
+	if i, j := strings.Index(plan, "blocked)"), strings.Index(plan, "release-tip|recover)"); i >= 0 && j >= 0 && strings.Contains(plan[i:], "rel=") && strings.Index(plan[i:], "rel=") < strings.Index(plan[i:], ";;") {
+		t.Error("the blocked case adds the branch to the release matrix")
+	}
+}
