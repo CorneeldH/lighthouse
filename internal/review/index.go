@@ -41,7 +41,9 @@ type Skip struct{ Path, Reason string }
 // IndexResult counts what one IndexRecords run did.
 type IndexResult struct {
 	New, Updated, Unchanged, Removed int
-	Skipped                          []Skip
+	// Runs counts the review_runs rows written new or updated.
+	Runs    int
+	Skipped []Skip
 }
 
 // IndexRecords walks <dataRoot>/{plan,spec}-review/<chain>/ and indexes the
@@ -96,6 +98,25 @@ func newestAttempt(chainDir string) (attempt string, finished bool, err error) {
 	return attempt, finished, nil
 }
 
+// unlinkedRepo is the repo of a review run that belongs to no trajectory:
+// the row stores no repo, but RecordReviewRun wants a non-empty one.
+const unlinkedRepo = "-"
+
+// deleteChain removes, in one transaction, the rows of the chain outside keep
+// ("" removes them all). Only findings count in Removed.
+func deleteChain(ctx context.Context, db *sql.DB, chainPrefix, keep string, res *IndexResult) error {
+	var removed int64
+	err := telemetry.InTransaction(ctx, db, func(tx *telemetry.Tx) error {
+		var err error
+		removed, _, err = tx.DeleteChain(ctx, IndexSource, chainPrefix, keep)
+		return err
+	})
+	if err == nil {
+		res.Removed += int(removed)
+	}
+	return err
+}
+
 func indexChain(ctx context.Context, db *sql.DB, dataRoot, kind, chain string, res *IndexResult) error {
 	chainDir := filepath.Join(dataRoot, kind+"-review", chain)
 	// Data and read errors of one chain are skips, so that one bad chain does not
@@ -120,13 +141,8 @@ func indexChain(ctx context.Context, db *sql.DB, dataRoot, kind, chain string, r
 			return nil
 		}
 	}
-	removed, err := telemetry.DeleteFindingsUnder(ctx, db, IndexSource, chainPrefix, keep)
-	if err != nil {
-		return err
-	}
-	res.Removed += int(removed)
 	if keep == "" {
-		return nil
+		return deleteChain(ctx, db, chainPrefix, "", res)
 	}
 	skip := func(reason string) {
 		res.Skipped = append(res.Skipped, Skip{Path: recordPath, Reason: reason})
@@ -142,49 +158,98 @@ func indexChain(ctx context.Context, db *sql.DB, dataRoot, kind, chain string, r
 			Severity string  `json:"severity"`
 			Decision *string `json:"decision"`
 		} `json:"findings"`
+		Outcome   string `json:"outcome"`
 		WrittenAt string `json:"written_at"`
 	}
 	if err := json.Unmarshal(data, &doc); err != nil {
 		skip("unreadable record: " + err.Error())
-		return nil
-	}
-	if doc.Trajectory == nil || doc.Trajectory.Repo == "" || doc.Trajectory.Issue < 1 {
-		skip(fmt.Sprintf("no trajectory in the record (schema %d): not linked to a repo and issue", doc.SchemaVersion))
-		return nil
+		return deleteChain(ctx, db, chainPrefix, keep, res)
 	}
 	at, err := time.Parse(time.RFC3339, doc.WrittenAt)
+	if err == nil && at.IsZero() {
+		err = errors.New("the zero time " + doc.WrittenAt)
+	}
 	if err != nil {
 		skip("bad written_at: " + err.Error())
-		return nil
+		return deleteChain(ctx, db, chainPrefix, keep, res)
 	}
-	if at.IsZero() {
-		skip("bad written_at: the zero time " + doc.WrittenAt)
-		return nil
+	linked := doc.Trajectory != nil && doc.Trajectory.Repo != "" && doc.Trajectory.Issue >= 1
+	repo, issue := unlinkedRepo, 0
+	if linked {
+		repo, issue = doc.Trajectory.Repo, doc.Trajectory.Issue
+	} else {
+		skip(fmt.Sprintf("no trajectory in the record (schema %d): not linked to a repo and issue", doc.SchemaVersion))
 	}
 	sum := Sum(data)
-	for _, f := range doc.Findings {
-		sourceID := keep + f.ID
-		old, found, err := telemetry.FindingSum(ctx, db, IndexSource, sourceID)
-		if err != nil {
+	runID := keep + "record.json"
+	runSum, runFound, err := telemetry.ReviewRunSum(ctx, db, IndexSource, runID)
+	if err != nil {
+		return err
+	}
+	runCurrent := runFound && runSum == sum
+	// Findings of an unlinked record are not written; the run row counts them anyway.
+	type pending struct {
+		sourceID, id, severity, decision string
+		found                            bool
+	}
+	var todo []pending
+	unchanged := 0
+	if linked {
+		for _, f := range doc.Findings {
+			sourceID := keep + f.ID
+			old, found, err := telemetry.FindingSum(ctx, db, IndexSource, sourceID)
+			if err != nil {
+				return err
+			}
+			if found && old == sum {
+				unchanged++
+				continue
+			}
+			decision := ""
+			if f.Decision != nil {
+				decision = FindingDecision(*f.Decision)
+			}
+			todo = append(todo, pending{sourceID, f.ID, f.Severity, decision, found})
+		}
+	}
+	var removed int64
+	err = telemetry.InTransaction(ctx, db, func(tx *telemetry.Tx) error {
+		var err error
+		if removed, _, err = tx.DeleteChain(ctx, IndexSource, chainPrefix, keep); err != nil {
 			return err
 		}
-		if found && old == sum {
-			res.Unchanged++
-			continue
+		if !runCurrent {
+			if _, _, err := tx.RecordReviewRun(ctx, telemetry.ReviewRunRecord{
+				Origin: telemetry.Origin{Source: IndexSource, SourceID: runID, RecordedAt: at},
+				Repo:   repo, Issue: issue, Component: kind + "_review",
+				RecordPath: recordPath, RecordSum: sum, RanAt: at,
+				Outcome: doc.Outcome, FindingCount: len(doc.Findings),
+			}); err != nil {
+				return err
+			}
 		}
-		decision := ""
-		if f.Decision != nil {
-			decision = FindingDecision(*f.Decision)
+		for _, f := range todo {
+			if _, _, err := tx.RecordFinding(ctx, telemetry.FindingRecord{
+				Origin: telemetry.Origin{Source: IndexSource, SourceID: f.sourceID, RecordedAt: at},
+				Repo:   repo, Issue: issue,
+				Component: kind + "_review", FindingKey: f.id, Severity: f.severity, Decision: f.decision,
+				RecordPath: recordPath, RecordSum: sum,
+			}); err != nil {
+				return err
+			}
 		}
-		if _, _, err := telemetry.RecordFinding(ctx, db, telemetry.FindingRecord{
-			Origin: telemetry.Origin{Source: IndexSource, SourceID: sourceID, RecordedAt: at},
-			Repo:   doc.Trajectory.Repo, Issue: doc.Trajectory.Issue,
-			Component: kind + "_review", FindingKey: f.ID, Severity: f.Severity, Decision: decision,
-			RecordPath: recordPath, RecordSum: sum,
-		}); err != nil {
-			return err
-		}
-		if found {
+		return nil
+	})
+	if err != nil {
+		return err // rolled back: nothing counts
+	}
+	res.Removed += int(removed)
+	if !runCurrent {
+		res.Runs++
+	}
+	res.Unchanged += unchanged
+	for _, f := range todo {
+		if f.found {
 			res.Updated++
 		} else {
 			res.New++

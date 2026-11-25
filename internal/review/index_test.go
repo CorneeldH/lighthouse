@@ -234,3 +234,154 @@ func TestIndexRecordsBadChainDoesNotStopTheRest(t *testing.T) {
 		t.Errorf("Skipped = %+v, want %d", res.Skipped, want)
 	}
 }
+
+func runRows(t *testing.T, db *sql.DB, where string) int {
+	t.Helper()
+	var n int
+	if err := db.QueryRow(`SELECT count(*) FROM review_runs WHERE ` + where).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
+}
+
+func TestIndexRecordsWritesRunWithoutFindings(t *testing.T) {
+	ctx, db, root := context.Background(), openIndexDB(t), t.TempDir()
+	r := rec(376)
+	r["outcome"] = "converged"
+	path := writeChain(t, root, "plan", "c1", "A1", r)
+	data, _ := os.ReadFile(path)
+	res, err := IndexRecords(ctx, db, root, fixedNow)
+	if err != nil || res.Runs != 1 || res.New != 0 || len(res.Skipped) != 0 {
+		t.Fatalf("res = %+v, %v; want Runs 1", res, err)
+	}
+	if n := runRows(t, db, `finding_count = 0 AND outcome = 'converged' AND component = 'plan_review'
+		AND source = 'plan-review-record' AND record_sum = '`+Sum(data)+`' AND trajectory_id IS NOT NULL
+		AND ran_at LIKE '2026-11-20T10:00:00%'`); n != 1 {
+		t.Errorf("matching run rows = %d, want 1", n)
+	}
+}
+
+func TestIndexRecordsUnlinkedRecordGetsRunAndSkip(t *testing.T) {
+	ctx, db, root := context.Background(), openIndexDB(t), t.TempDir()
+	null := rec(1, [3]string{"r1-f1", "MAJOR", "accept"})
+	null["trajectory"] = nil
+	writeChain(t, root, "spec", "u", "A1", null)
+	res, err := IndexRecords(ctx, db, root, fixedNow)
+	if err != nil || res.Runs != 1 || len(res.Skipped) != 1 {
+		t.Fatalf("res = %+v, %v; want Runs 1 and one Skip", res, err)
+	}
+	if n := runRows(t, db, `trajectory_id IS NULL AND unlinked_reason = 'no_trajectory' AND component = 'spec_review'`); n != 1 {
+		t.Errorf("unlinked run rows = %d, want 1", n)
+	}
+	if n := rows(t, db, `1 = 1`); n != 0 {
+		t.Errorf("finding rows = %d, want 0", n)
+	}
+}
+
+func TestIndexRecordsUnreadableRecordWritesNoRun(t *testing.T) {
+	ctx, db, root := context.Background(), openIndexDB(t), t.TempDir()
+	bad := rec(1)
+	bad["written_at"] = "nonsense"
+	writeChain(t, root, "plan", "bad", "A1", bad)
+	path := writeChain(t, root, "plan", "json", "A1", rec(2))
+	if err := os.WriteFile(path, []byte("{"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res, err := IndexRecords(ctx, db, root, fixedNow)
+	if err != nil || len(res.Skipped) != 2 || res.Runs != 0 {
+		t.Fatalf("res = %+v, %v; want 2 skips, no runs", res, err)
+	}
+	if n := runRows(t, db, `1 = 1`); n != 0 {
+		t.Errorf("run rows = %d, want 0", n)
+	}
+}
+
+func TestIndexRecordsSameSumChangesNothing(t *testing.T) {
+	ctx, db, root := context.Background(), openIndexDB(t), t.TempDir()
+	writeChain(t, root, "plan", "c1", "A1", rec(376, [3]string{"r1-f1", "MAJOR", "accept"}))
+	writeChain(t, root, "plan", "c2", "A1", rec(377))
+	if _, err := IndexRecords(ctx, db, root, fixedNow); err != nil {
+		t.Fatal(err)
+	}
+	res, err := IndexRecords(ctx, db, root, fixedNow)
+	if err != nil || res.Runs != 0 || res.New != 0 || res.Updated != 0 || res.Removed != 0 || res.Unchanged != 1 {
+		t.Fatalf("res = %+v, %v; want only Unchanged 1", res, err)
+	}
+	if n := runRows(t, db, `1 = 1`); n != 2 {
+		t.Errorf("run rows = %d, want 2", n)
+	}
+}
+
+func TestIndexRecordsNewerAttemptReplacesRun(t *testing.T) {
+	ctx, db, root := context.Background(), openIndexDB(t), t.TempDir()
+	writeChain(t, root, "plan", "c1", "A1", rec(376, [3]string{"r1-f1", "MAJOR", "accept"}))
+	if _, err := IndexRecords(ctx, db, root, fixedNow); err != nil {
+		t.Fatal(err)
+	}
+	writeChain(t, root, "plan", "c1", "A2", rec(376))
+	res, err := IndexRecords(ctx, db, root, fixedNow)
+	if err != nil || res.Runs != 1 || res.Removed != 1 {
+		t.Fatalf("res = %+v, %v; want Runs 1, Removed 1 (findings only)", res, err)
+	}
+	if n := runRows(t, db, `1 = 1`); n != 1 {
+		t.Errorf("run rows = %d, want 1", n)
+	}
+	if n := runRows(t, db, `source_id LIKE 'plan/c1/A2/%' AND finding_count = 0`); n != 1 {
+		t.Errorf("A2 run rows = %d, want 1", n)
+	}
+}
+
+func TestIndexRecordsAbortedOutcome(t *testing.T) {
+	ctx, db, root := context.Background(), openIndexDB(t), t.TempDir()
+	r := rec(376, [3]string{"r1-f1", "MAJOR", ""}, [3]string{"r1-f2", "MINOR", ""})
+	r["outcome"] = "aborted"
+	writeChain(t, root, "plan", "c1", "A1", r)
+	if _, err := IndexRecords(ctx, db, root, fixedNow); err != nil {
+		t.Fatal(err)
+	}
+	if n := runRows(t, db, `outcome = 'aborted' AND finding_count = 2`); n != 1 {
+		t.Errorf("aborted run rows = %d, want 1", n)
+	}
+}
+
+func TestIndexRecordsFailureKeepsOldRows(t *testing.T) {
+	ctx, db, root := context.Background(), openIndexDB(t), t.TempDir()
+	writeChain(t, root, "plan", "c1", "A1", rec(376, [3]string{"r1-f1", "MAJOR", "accept"}))
+	if _, err := IndexRecords(ctx, db, root, fixedNow); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`CREATE TRIGGER fail_finding BEFORE INSERT ON findings WHEN NEW.finding_key = 'boom'
+		BEGIN SELECT RAISE(ABORT, 'test failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+	writeChain(t, root, "plan", "c1", "A2", rec(376, [3]string{"r1-f1", "MAJOR", "accept"}, [3]string{"boom", "MAJOR", "accept"}))
+	if _, err := IndexRecords(ctx, db, root, fixedNow); err == nil {
+		t.Fatal("IndexRecords succeeded, want the trigger failure")
+	}
+	if n := rows(t, db, `source_id = 'plan/c1/A1/r1-f1'`); n != 1 {
+		t.Errorf("old finding rows = %d, want 1", n)
+	}
+	if n := runRows(t, db, `source_id LIKE 'plan/c1/A1/%'`); n != 1 {
+		t.Errorf("old run rows = %d, want 1", n)
+	}
+	if n := runRows(t, db, `source_id LIKE 'plan/c1/A2/%'`) + rows(t, db, `source_id LIKE 'plan/c1/A2/%'`); n != 0 {
+		t.Errorf("new rows = %d, want 0", n)
+	}
+}
+
+func TestIndexLedgerWritesNoReviewRun(t *testing.T) {
+	ctx, db := context.Background(), openIndexDB(t)
+	path := filepath.Join(t.TempDir(), "ledger.md")
+	body := "# SDD ledger — plan: docs/developer/planning/plans/issue-5-x.md\nTask 1: done. Ruling: ok\n"
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tr := &Trajectory{Repo: "CorneeldH/lighthouse", Issue: 5}
+	res, err := IndexLedger(ctx, db, path, tr, fixedNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Runs != 0 || runRows(t, db, `1 = 1`) != 0 {
+		t.Errorf("res = %+v, run rows = %d, want none", res, runRows(t, db, `1 = 1`))
+	}
+}

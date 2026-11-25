@@ -2,7 +2,7 @@
 
 `lighthouse review-index` koppelt de bevindingen van de adversariële plan- en spec-reviews, en de
 uitspraken van de taakreviews van een SDD-run, aan het traject (repo en issue) waartoe ze horen. Het
-schrijft rijen naar `findings` in `lighthouse.db`; de inhoud van een record of ledger wordt nooit
+schrijft rijen naar `findings` en, per afgerond reviewrecord, één rij naar `review_runs` in `lighthouse.db`; de inhoud van een record of ledger wordt nooit
 gekopieerd (alleen pad, hash, component, sleutel, ernst en besluit).
 
 ```
@@ -28,7 +28,16 @@ verdubbeld).
 - **Traject.** Het record (schema 6) draagt `trajectory`: `null`, of `{repo, issue}`. Het issue is
   `--issue` van `write` (het issue staat dan voor de spec), anders het nummer in de huidige branch
   (`issue-<n>`); de repo is `forge.repo` uit `lighthouse.toml`. Een record met `trajectory: null`,
-  of van schema 5 of lager, wordt niet geïndexeerd en verschijnt als `skipped` met de reden.
+  of van schema 5 of lager, krijgt geen bevindingen, maar wel een `review_runs`-rij zonder traject
+  (`trajectory_id` leeg, reden `no_trajectory`), en verschijnt als `skipped` met de reden.
+- **Reviewruns.** Per afgerond record één rij in `review_runs`: `source = plan-review-record`,
+  `source_id = <kind>/<chain>/<attempt>/record.json`, component (`plan_review` of `spec_review`),
+  pad en hash van het record, `ran_at` (`written_at`), `outcome` (`converged`, `round_limit` of
+  `aborted`) en `finding_count` (ook 0). Een nieuwere poging vervangt de rij van de oudere, en
+  dezelfde hash verandert niets. Per keten gebeurt het verwijderen van oude rijen, het schrijven
+  van de run en het schrijven van de bevindingen in één transactie: bij een fout blijven de rijen
+  van de vorige poging staan. Een onleesbaar record of een foute `written_at` blijft een
+  `skipped`-regel zonder rij. Het ledger (`--ledger`) schrijft geen `review_runs`.
 - **Nieuwste poging per keten.** Per keten telt de poging met de grootste naam. Heeft die alleen
   `attempt.json` (nog `.<attempt>.tmp/`, of een mislukte `write`), dan geldt de keten als niet
   geslaagd: de bevindingen van oudere pogingen verdwijnen en er komen er geen bij.
