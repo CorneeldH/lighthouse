@@ -48,7 +48,7 @@ func TestMemoryGate(t *testing.T) {
 		{"bash relative redirect", memoryPayload(t, "Bash", "command", "echo x > memory/a.md", home+"/.claude/projects/p"), 2, "memory-gate: auto-memory write blocked"},
 		{"bash read", memoryPayload(t, "Bash", "command", "cat ~/.claude/projects/p/memory/a.md", tmp), 0, ""},
 		{"bash copy out", memoryPayload(t, "Bash", "command", "cp ~/.claude/projects/p/memory/a.md out/a.md", tmp), 0, ""},
-		{"bash mv out of memory", memoryPayload(t, "Bash", "command", "mv ~/.claude/projects/p/memory/a.md docs/a.md", tmp), 2, "memory-gate: auto-memory write blocked"},
+		{"bash mv out of memory", memoryPayload(t, "Bash", "command", "mv ~/.claude/projects/p/memory/a.md out/a.md", tmp), 2, "memory-gate: auto-memory write blocked"},
 		{"not json", []byte("not json"), 2, "COULD NOT CHECK"},
 	}
 	for _, c := range cases {

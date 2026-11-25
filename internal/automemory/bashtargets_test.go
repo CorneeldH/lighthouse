@@ -19,7 +19,7 @@ func TestWriteTargets(t *testing.T) {
 		{"tee", "printf x | tee -a " + m, []string{m}},
 		{"cp", "cp a.md " + m, []string{m}},
 		{"mv", "mv a " + m, []string{"a", m}},
-		{"mv from memory", "mv " + m + " docs/a.md", []string{m, "docs/a.md"}},
+		{"mv from memory", "mv " + m + " out/a.md", []string{m, "out/a.md"}},
 		{"rm", "rm -f " + m, []string{m}},
 		{"touch", "touch " + m, []string{m}},
 		{"mkdir", "mkdir -p /h/.claude/projects/p/memory", []string{"/h/.claude/projects/p/memory"}},
