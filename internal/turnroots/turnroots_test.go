@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
 )
 
 // Classification: pure-logic. TestFnmatchCase fails when `*` stops matching `/` (path.Match),
@@ -226,11 +228,10 @@ func TestAGitParseErrorIsNotInvalidJSON(t *testing.T) {
 	}
 
 	bin := t.TempDir()
-	script := "#!/bin/sh\nfor a in \"$@\"; do [ \"$a\" = reflog ] && { printf 'no-separators-here\\n'; exit 0; }; done\nexec '" + realGit + "' \"$@\"\n"
-	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	stubbin.RequirePOSIX(t, "for loop over \"$@\" and exec of the real git")
+	script := "for a in \"$@\"; do [ \"$a\" = reflog ] && { printf 'no-separators-here\\n'; exit 0; }; done\nexec '" + realGit + "' \"$@\"\n"
+	stubbin.MakeScript(t, bin, "git", script)
+	stubbin.Prepend(t, bin)
 
 	got, err = Classify(payload, repo, []string{"*.go"})
 	if err != nil {
