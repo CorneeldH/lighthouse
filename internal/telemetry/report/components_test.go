@@ -175,11 +175,13 @@ func TestComponentsCostNilWhenUnpriced(t *testing.T) {
 		run := f.addRun(tid, "standard", at(0), at(10))
 		f.addSetup(ofRun(run), "sdd", "", "")
 		f.addUsage(ofRun(run), "opus", 10, cost, "estimate")
+		f.addRecovery(tid, 10+i, "none", at(60), nil)
 	}
 	tid := f.addTrajectory("o/r", 9)
 	run := f.addRun(tid, "standard", at(0), at(10))
 	f.addSetup(ofRun(run), "native", "", "")
 	f.addUsage(ofRun(run), "opus", 10, nil, "")
+	f.addRecovery(tid, 19, "none", at(60), nil)
 
 	b := blockOf(t, Components(load(t, db), Filter{}), "lane")
 	sdd := groupOf(t, b, "sdd")
@@ -221,7 +223,17 @@ func TestComponentsLabelCorrelationAndAssigned(t *testing.T) {
 	b := f.addTrajectory("o/r", 2)
 	f.addSetup(ofRun(f.addRun(b, "standard", at(0), at(10))), "native", "", "")
 
-	lane := blockOf(t, Components(load(t, db), Filter{}), "lane")
+	pa := f.addTrajectory("o/r", 4, withPlan(2))
+	f.addRun(pa, "variant:plan_review=on", at(0), at(10))
+	f.addReview(pa, "plan_review", at(0), 0)
+	pb := f.addTrajectory("o/r", 5, withPlan(2))
+	f.addRun(pb, "standard", at(0), at(10))
+
+	r := Components(load(t, db), Filter{})
+	if pr := blockOf(t, r, "plan_review"); pr.Label != LabelAssigned || pr.LabelNote != LabelNote(LabelAssigned) {
+		t.Errorf("plan_review: Label %q, LabelNote %q; want assigned", pr.Label, pr.LabelNote)
+	}
+	lane := blockOf(t, r, "lane")
 	if lane.Label != LabelAssigned || lane.LabelNote != LabelNote(LabelAssigned) {
 		t.Errorf("pure: Label %q, LabelNote %q; want assigned", lane.Label, lane.LabelNote)
 	}
@@ -398,9 +410,73 @@ func TestComponentsCostKindMixedAcrossTrajectories(t *testing.T) {
 		run := f.addRun(tid, "standard", at(0), at(10))
 		f.addSetup(ofRun(run), "sdd", "", "")
 		f.addUsage(ofRun(run), "opus", 10, fp(1), kind)
+		f.addRecovery(tid, 10+i, "none", at(60), nil)
 	}
 	g := groupOf(t, blockOf(t, Components(load(t, db), Filter{}), "lane"), "sdd")
 	if g.CostKind != "mixed" {
 		t.Errorf("CostKind = %q; want mixed", g.CostKind)
 	}
+}
+
+func TestComponentsCostOnlyOverClosedTrajectories(t *testing.T) {
+	db, f := newFixture(t)
+	add := func(issue int, cost float64) int64 {
+		tid := f.addTrajectory("o/r", issue)
+		run := f.addRun(tid, "standard", at(0), at(10))
+		f.addSetup(ofRun(run), "sdd", "", "")
+		f.addUsage(ofRun(run), "opus", 10, fp(cost), "estimate")
+		return tid
+	}
+	closed := add(1, 2)
+	f.addRecovery(closed, 10, "none", at(60), nil)
+	running := add(2, 10)
+	f.addRecovery(running, 11, "open", at(60), nil)
+	add(3, 20) // no recovery measurement
+
+	b := blockOf(t, Components(load(t, db), Filter{}), "lane")
+	sdd := groupOf(t, b, "sdd")
+	wantValue(t, "sdd Cost", sdd.Cost, 2, 1)
+	if b.Outside.Running != 1 || b.Outside.NoRecovery != 1 {
+		t.Errorf("Outside = %+v; want running 1, no recovery 1", b.Outside)
+	}
+
+	only := f.addTrajectory("o/r", 4)
+	f.addSetup(ofRun(f.addRun(only, "standard", at(0), at(10))), "native", "", "")
+	f.addRecovery(only, 12, "none", at(60), nil)
+	native := groupOf(t, blockOf(t, Components(load(t, db), Filter{}), "lane"), "native")
+	wantNull(t, "native Cost", native.Cost, 0)
+	if native.Cost.Reason != ReasonNoCost {
+		t.Errorf("native Cost reason = %q; want %q", native.Cost.Reason, ReasonNoCost)
+	}
+}
+
+func TestComponentsOptionsOrderAndShownValues(t *testing.T) {
+	db, f := newFixture(t)
+	big := 10000
+	for i, route := range []string{"4c", "2", "0", "4a"} {
+		tid := f.addTrajectory("o/r", i+1, withRoute(route), withPlan([]int{12, 2, 5, 1}[i]))
+		lines := 1
+		if i == 0 {
+			lines = big
+		}
+		f.addRecovery(tid, 10+i, "none", at(60), &lines)
+	}
+	mixed := f.addTrajectory("o/r", 9)
+	f.addSession(mixed, "claude-code", "standard", at(0), at(10))
+	f.addSession(mixed, "codex", "standard", at(0), at(10))
+	one := f.addTrajectory("o/r", 10)
+	f.addSession(one, "claude-code", "standard", at(0), at(10))
+
+	o := Components(load(t, db), Filter{}).Options
+	eq := func(what string, got, want []string) {
+		t.Helper()
+		if fmt.Sprint(got) != fmt.Sprint(want) {
+			t.Errorf("%s = %v; want %v", what, got, want)
+		}
+	}
+	eq("Sizes", o.Sizes, []string{SizeSmall, SizeMedium, SizeLarge})
+	eq("PRSizes", o.PRSizes, []string{PRBelow, PRAbove})
+	eq("Routes", o.Routes, []string{"0", "2", "4a", "4c"})
+	eq("Harnesses", o.Harnesses, []string{"claude-code"})
+	eq("Models", o.Models, []string{})
 }

@@ -60,7 +60,8 @@ type Measure struct {
 }
 
 // Group is one side of a comparison. Active and HumanWait are in seconds;
-// Cost, Questions, Active and HumanWait are medians.
+// Cost, Questions, Active and HumanWait are medians. Cost and the outcome
+// measures cover only the closed trajectories of the group.
 type Group struct {
 	Name          string         `json:"name"`
 	Trajectories  int            `json:"trajectories"`
@@ -134,7 +135,7 @@ const (
 	ReasonNotApplicable = "not applicable"
 	ReasonNoReviews     = "no reviews"
 	ReasonNoDecisions   = "no findings with a decision"
-	ReasonNoCost        = "no trajectories with a priced cost"
+	ReasonNoCost        = "no closed trajectories with a priced cost"
 	ReasonNoClosed      = "no closed trajectories"
 	ReasonNoTimeline    = "no closed trajectories with a run or session"
 )
@@ -276,12 +277,12 @@ func group(name string, ts []*Trajectory, component string) Group {
 	kinds := map[string]bool{}
 	var recovered, items, questions, active, human []float64
 	for _, t := range ts {
+		if !t.Closed {
+			continue
+		}
 		if t.Cost != nil {
 			costs = append(costs, *t.Cost)
 			kinds[t.CostKind] = true
-		}
-		if !t.Closed {
-			continue
 		}
 		rec, n := 0.0, 0
 		for _, r := range t.Recoveries {
@@ -399,7 +400,15 @@ func median(xs []float64) (float64, bool) {
 	return (s[mid-1] + s[mid]) / 2, true
 }
 
-// options collects the filter values that occur in d, unfiltered.
+// Fixed orders of the classed options; other values sort after them.
+var (
+	routeOrder  = []string{"0", "1", "2", "4a", "4b", "4c"}
+	sizeOrder   = []string{SizeSmall, SizeMedium, SizeLarge}
+	prSizeOrder = []string{PRBelow, PRAbove}
+)
+
+// options collects the filter values that occur in d, unfiltered. A model or
+// harness the blocks never show (empty, "mixed") is left out.
 func options(d *Dataset) Options {
 	sets := make([]map[string]bool, 7)
 	for i := range sets {
@@ -408,20 +417,38 @@ func options(d *Dataset) Options {
 	for i := range d.Trajectories {
 		t := &d.Trajectories[i]
 		size, _ := SizeClass(t.PlanTasks)
-		for j, v := range []string{t.Repo, deref(t.Route), size, t.PRSize, deref(t.Area), t.Model, t.Harness} {
+		harness := t.Harness
+		if harness == "mixed" {
+			harness = ""
+		}
+		for j, v := range []string{t.Repo, deref(t.Route), size, t.PRSize, deref(t.Area), t.Model, harness} {
 			if v != "" {
 				sets[j][v] = true
 			}
 		}
 	}
-	list := func(set map[string]bool) []string {
-		out := make([]string, 0, len(set))
-		for v := range set {
+	return Options{Repos: ordered(sets[0], nil), Routes: ordered(sets[1], routeOrder),
+		Sizes: ordered(sets[2], sizeOrder), PRSizes: ordered(sets[3], prSizeOrder),
+		Areas: ordered(sets[4], nil), Models: ordered(sets[5], nil), Harnesses: ordered(sets[6], nil)}
+}
+
+// ordered lists set: first the values of order that occur, then the rest
+// alphabetically.
+func ordered(set map[string]bool, order []string) []string {
+	out := make([]string, 0, len(set))
+	known := map[string]bool{}
+	for _, v := range order {
+		known[v] = true
+		if set[v] {
 			out = append(out, v)
 		}
-		sort.Strings(out)
-		return out
 	}
-	return Options{Repos: list(sets[0]), Routes: list(sets[1]), Sizes: list(sets[2]), PRSizes: list(sets[3]),
-		Areas: list(sets[4]), Models: list(sets[5]), Harnesses: list(sets[6])}
+	rest := make([]string, 0, len(set))
+	for v := range set {
+		if !known[v] {
+			rest = append(rest, v)
+		}
+	}
+	sort.Strings(rest)
+	return append(out, rest...)
 }
