@@ -108,7 +108,6 @@ export function useTelemetryTrajectory(id: number) {
     queryFn: ({ signal }) => fetchTelemetryTrajectory(id, signal),
     refetchInterval: FORGE_INTERVAL_MS,
     staleTime: FORGE_INTERVAL_MS,
-    placeholderData: keepPreviousData,
   })
 }
 

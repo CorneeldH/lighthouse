@@ -455,4 +455,14 @@ describe('telemetry hooks', () => {
     expect(fetchMock.mock.calls[0][0]).toBe('/api/telemetry/trajectories/7')
     client.clear()
   })
+
+  it('useTelemetryTrajectory shows no data of the previous id while another id loads', async () => {
+    const { client, wrapper } = setup('{"id":7}')
+    const { result, rerender } = renderHook(({ id }) => useTelemetryTrajectory(id), { wrapper, initialProps: { id: 7 } })
+    await vi.waitFor(() => expect(result.current.data).toEqual({ id: 7 }))
+    vi.stubGlobal('fetch', vi.fn().mockReturnValue(new Promise(() => {})))
+    rerender({ id: 8 })
+    expect(result.current.data).toBeUndefined()
+    client.clear()
+  })
 })
