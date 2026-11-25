@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/dispatch"
+	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 )
@@ -449,5 +450,23 @@ func TestChooseDesignSetsNeedsMindLabel(t *testing.T) {
 	}
 	if got := Choose(outcomeFacts(), nil, nil, judged(4, "b", "#7 Poort 4b: x — y"), outcomeLabels, outcomeTarget).Label; got != "" {
 		t.Errorf("Label of a forward = %q, want empty", got)
+	}
+}
+
+// A needs_mind issue with blocked_issue and an open blocker is no gate 0 stop: FixedGate0 finds
+// none, so Choose gives RowDesign (route 4c) and the comment carries the blocker line. Making
+// FixedGate0 stop on the block turns it red (RowStop).
+func TestChooseNeedsMindWithBlockerIsDesign(t *testing.T) {
+	f := outcomeFacts("3-needs-mind", "3-blocked-issue")
+	f.Blockers = []forge.Blocker{{Issue: 5, State: "OPEN"}}
+	if g0, stop := FixedGate0(f, outcomeLabels); stop {
+		t.Fatalf("FixedGate0 = %+v, want no stop", g0)
+	}
+	j := judged(4, "c", "#7 Poort 4c: brainstorming — blocker #5 open")
+	j.Questions = []Question{{Text: "Hoe?", Options: []string{"een", "twee"}, Recommended: 1}}
+	o := Choose(f, nil, nil, j, outcomeLabels, outcomeTarget)
+	// modelText puts a zero-width joiner inside a reference; drop it to read the line.
+	if o.Row != RowDesign || !strings.Contains(strings.ReplaceAll(o.Comment, "\u200d", ""), "blocker #5 open") {
+		t.Errorf("Row = %d, comment:\n%s\nwant RowDesign naming blocker #5", o.Row, o.Comment)
 	}
 }

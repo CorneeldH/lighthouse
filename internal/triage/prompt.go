@@ -72,6 +72,8 @@ func Prompt(f Facts, c Context) string {
 	w("option (recommended is its index in options). The open questions of the milestone stand under the heading %s.\n",
 		quoteAll(protocol.Variants("milestone_not_yet_decided")))
 	w("At every other gate design_questions is [].\n")
+	w("An issue with the needs_mind label routes to 4c even with an open blocker; then the reason of the route line ends with\n")
+	w("\"blocker #<number> open\" (Go adds it when you leave it out).\n")
 	w("Lengths in characters: route at most %d, reason at most %d (both in route_line), headless_reason at most %d,\n",
 		MaxRouteRunes, MaxRouteReasonRunes, MaxHeadlessReasonRunes)
 	w("design question at most %d, option at most %d, redundancy_evidence at most %d.\n",

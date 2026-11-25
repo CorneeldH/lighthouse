@@ -2767,10 +2767,10 @@ func TestDecideFinishesOnlyOwnReturn(t *testing.T) {
 }
 
 // A Controller issue that carries blocked_issue while its own Returned names reason_interactive
-// (the label write failed) is finished with needs_mind: blocked_issue is no input of the
-// label, the rank rule drops it. Assigning a.Blocked in finishReturn from the blocked_issue
-// label turns this red: ReturnLabelKey then gives blocked_issue.
-func TestDecideFinishReturnKeepsReasonOverBlockedIssue(t *testing.T) {
+// (the label write failed) is finished as blocked: blocked_issue stays and no human label
+// (needs_mind, needs_hands) is added next to it. Dropping the blocked mark in finishReturn
+// turns this red: ReturnLabelKey then gives needs_mind.
+func TestDecideFinishReturnAddsNoHumanLabelToBlockedIssue(t *testing.T) {
 	h := newHarness(t)
 	p := h.poster(applyRepo)
 	p.bodies = []string{protocol.RenderReturned(protocol.Heading("reason_interactive", "nl"), "", "", "nl")}
@@ -2779,8 +2779,7 @@ func TestDecideFinishReturnKeepsReasonOverBlockedIssue(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(kinds(got), []Kind{KindFinishReturn}) {
 		t.Fatalf("tick = %+v, %v; want one finish_return", got, err)
 	}
-	// Interim (task 4 of #588 reworks finishReturn): the rank rule no longer drops blocked_issue.
-	if want := []string{"blocked_issue", "needs_mind"}; !reflect.DeepEqual(p.labels, want) {
+	if want := []string{"blocked_issue"}; !reflect.DeepEqual(p.labels, want) {
 		t.Errorf("labels = %q, want %q", p.labels, want)
 	}
 }
@@ -2828,7 +2827,8 @@ func TestDecideNeedsLabelOwnReturnedNoLoop(t *testing.T) {
 
 // A rule-13 Returned with an active blocker whose label landed but whose To do did not stays on
 // Controller with blocked_issue; the next tick finishes it as blocked (label kept, To do), and
-// then nothing is left. Skipping every blocking label in finishReturn turns tick 1 red.
+// then nothing is left, with no needs_hands next to blocked_issue. Skipping every blocking label
+// in finishReturn turns tick 1 red.
 func TestDecideFinishesBlockedReturnStuckOnController(t *testing.T) {
 	h := newHarness(t)
 	p := h.poster(applyRepo)
@@ -2847,8 +2847,7 @@ func TestDecideFinishesBlockedReturnStuckOnController(t *testing.T) {
 			t.Fatalf("tick %d = %+v, %v; want %v", i+1, got, err, want)
 		}
 	}
-	// Interim (task 4 of #588 reworks finishReturn): the rank rule no longer drops needs_hands.
-	if want := []string{"blocked_issue", "needs_hands"}; !reflect.DeepEqual(p.labels, want) {
+	if want := []string{"blocked_issue"}; !reflect.DeepEqual(p.labels, want) {
 		t.Errorf("labels = %q, want %q", p.labels, want)
 	}
 	// A Controller issue with own Returned and blocked_external is a human's: no finish.

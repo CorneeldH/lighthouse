@@ -1637,3 +1637,22 @@ func TestDecideNoNoteDoneForPushRow(t *testing.T) {
 		}
 	}
 }
+
+// heldByHuman looks at needs_mind, needs_hands and blocked_external; blocked_issue alone is the
+// tick's own label and no human holds it.
+func TestHeldByHuman(t *testing.T) {
+	for _, tt := range []struct {
+		labels []string
+		want   bool
+	}{
+		{[]string{"needs_mind"}, true},
+		{[]string{"needs_hands"}, true},
+		{[]string{"blocked_external"}, true},
+		{[]string{"blocked_issue"}, false},
+		{nil, false},
+	} {
+		if got := heldByHuman(tt.labels, testLabels); got != tt.want {
+			t.Errorf("heldByHuman(%v) = %v, want %v", tt.labels, got, tt.want)
+		}
+	}
+}

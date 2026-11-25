@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/CorneeldH/lighthouse/internal/issuestate"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 )
@@ -336,6 +337,16 @@ func checkRoute(j *Judgment, raw rawJudgment, f Facts, c Context) error {
 	for _, l := range []string{c.Labels.NeedsMind} {
 		if l != "" && slices.Contains(f.Labels, l) && sub != "c" {
 			return invalid("the issue carries %s, so the route must be 4c, not %d%s", l, gate, sub)
+		}
+	}
+	// A needs_mind issue with an open blocker routes to 4c and says so: Go adds what the model left out.
+	if open := issuestate.OpenBlockers(f.Blockers); sub == "c" && len(open) > 0 && c.Labels.NeedsMind != "" && slices.Contains(f.Labels, c.Labels.NeedsMind) {
+		var refs []string
+		for _, n := range open {
+			refs = append(refs, "#"+strconv.Itoa(n))
+		}
+		if want := "blocker " + strings.Join(refs, ", ") + " open"; !strings.Contains(m[5], want) {
+			raw.RouteLine += " — " + want
 		}
 	}
 	qs, err := checkQuestions(raw.DesignQuestions, sub == "c")

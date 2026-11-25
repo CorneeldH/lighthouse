@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 )
 
@@ -422,5 +423,27 @@ func TestValidateGate0FromGo(t *testing.T) {
 	// the redundancy rules still hold under gate 0
 	if _, err := Validate(envelope(t, verdict(map[string]any{"redundancy": "done"})), facts7(), c); err == nil {
 		t.Error("done without evidence passed")
+	}
+}
+
+// A needs-mind issue with an open blocker is routed to 4c with "blocker #<x> open" in the reason: Go
+// adds it when the model leaves it out, and keeps a reason that has it. Dropping the append turns
+// the first case red.
+func TestValidateNeedsMindBlockerReason(t *testing.T) {
+	f := facts7()
+	f.Labels = append(f.Labels, "needs-mind", "blocked-issue")
+	f.Blockers = []forge.Blocker{{Issue: 5, State: "OPEN"}, {Issue: 6, State: "CLOSED"}}
+	for _, tt := range []struct{ name, line, want string }{
+		{"left out", "#7 Poort 4c: brainstorming — x", "#7 Poort 4c: brainstorming — x — blocker #5 open"},
+		{"already there", "#7 Poort 4c: brainstorming — blocker #5 open", "#7 Poort 4c: brainstorming — blocker #5 open"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			j, err := Validate(envelope(t, verdict(map[string]any{
+				"route_line": tt.line, "gate": 4, "sub": "c", "design_questions": questions(1, 2, 0),
+			})), f, ctxNL())
+			if err != nil || j.RouteLine != tt.want {
+				t.Errorf("RouteLine = %q, %v; want %q", j.RouteLine, err, tt.want)
+			}
+		})
 	}
 }

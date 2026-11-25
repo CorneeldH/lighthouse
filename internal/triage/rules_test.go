@@ -54,7 +54,7 @@ func TestFixedGate0(t *testing.T) {
 	}
 }
 
-func TestInvariant(t *testing.T) {
+func TestInvariantBlockingPerAxis(t *testing.T) {
 	area := repoconfig.Labels{AreaPrefix: "2-area:"}
 	loc := repoconfig.Labels{LocationPrefix: "1-loc:"}
 	tests := []struct {
@@ -68,8 +68,10 @@ func TestInvariant(t *testing.T) {
 		{"area once", []string{"2-area:a"}, area, nil},
 		{"location missing", []string{"other"}, loc, []Deviation{{Kind: "missing", Prefix: "1-loc:"}}},
 		{"no prefixes", nil, repoconfig.Labels{}, nil},
-		{"two blocking", []string{"3-needs-mind", "3-needs-hands"}, testLabels,
-			[]Deviation{{Kind: "blocking", Found: []string{"3-needs-mind", "3-needs-hands"}}}},
+		{"blocked pair", []string{"3-blocked-issue", "3-blocked-external"}, testLabels,
+			[]Deviation{{Kind: "blocking", Found: []string{"3-blocked-issue", "3-blocked-external"}}}},
+		{"needs_mind next to a block", []string{"3-needs-mind", "3-blocked-issue"}, testLabels, nil},
+		{"needs_mind and needs_hands", []string{"3-needs-mind", "3-needs-hands"}, testLabels, nil},
 		{"one blocking", []string{"3-needs-hands"}, testLabels, nil},
 		{"empty label names are no blocking labels", []string{"x"}, repoconfig.Labels{}, nil},
 	}
