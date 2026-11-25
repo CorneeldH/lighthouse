@@ -73,23 +73,36 @@ A→B→A→B levert één wissel, A→B. Een terugval naar een oude versie is d
 | Dimensie | Kolom in `setups` | Reeks | Over welke rijen |
 |---|---|---|---|
 | `superpowers` | `superpowers_version` | één reeks | runs en sessies |
-| `model` | `model` | één reeks | alleen dispatcher-runs (`run_id` gezet) |
+| `model` | `model` | één reeks per `setups.lane` (`sdd`, `native`; een rij zonder lane is een eigen reeks) | alleen dispatcher-runs (`run_id` gezet) |
 | `harness` | `harness_version` | één reeks per `harness` | runs en sessies |
 
 - **Volgorde.** Op `started_at` van de run of sessie zelf, niet op `setups.recorded_at`: dat moment
-  schuift mee wanneer de collector een rij bijwerkt.
+  schuift mee wanneer de collector een rij bijwerkt. `started_at` heeft secondeprecisie; bij gelijke
+  tijd beslist `setups.id` oplopend, zodat *oud* en nieuw deterministisch zijn
+  *(eigen keuze na spec-review, r1-f5)*.
 - **Onbekend telt niet.** Een `NULL` wordt overgeslagen. `superpowers_version` is alleen bekend als
   in die sessie een superpowers-skill laadde (`internal/telemetry/transcript/setup.go`), dus gaten
   zijn normaal.
 - **Hostbreed.** De lijst loopt over alle repo's in `lighthouse.db` samen: een superpowers-update
   raakt paia en lighthouse tegelijk.
 - **Alleen indeling `standard`.** Een run met een andere `runs.assignment` (`shadow:*`,
-  `variant:*=*`) telt niet mee: een vergelijking van #388 draait juist met opzet op een andere keuze,
-  en zou anders zelf een nieuw voorstel uitlokken. Sessies hebben geen indeling en tellen mee.
+  `variant:*=*`) telt niet mee, en een sessie met een andere `sessions.assignment` evenmin
+  (`internal/store/migrations/0010_telemetry.sql:24-25`; nu zet geen code hem anders dan `standard`):
+  een vergelijking van #388 draait juist met opzet op een andere keuze, en zou anders zelf een nieuw
+  voorstel uitlokken.
 - **Model alleen uit dispatcher-runs.** In een interactieve sessie kiest de mens het model; dat zou
   wissels geven die niets met de stand te maken hebben.
+- **Model per lane.** De dispatcher start een Native-run met `--model sonnet`, een SDD-run zonder
+  `--model` (`internal/workplace/carrier.go:112-114`). Eén reeks over beide lanes zou de laneskeuze
+  als modelwissel zien en de *oud*-waarde van een echte update verkeerd noemen; vandaar een reeks
+  per `setups.lane`.
 - **Harness per harness.** Versienummers van verschillende harnesses (na #389 ook Codex en OpenCode)
   zijn onvergelijkbaar; een andere `harness`-naam zelf is geen wissel.
+- **Een nooit eerder geziene oudere versie.** Een node met een verouderde installatie die voor het
+  eerst rijen levert, geeft `nieuw→ouder`. Die wissel staat wel in de lijst (en als markering),
+  maar krijgt geen voorstel wanneer de nieuwe waarde voor `superpowers` of `harness` als semver lager
+  is dan de hoogste eerder geziene waarde in die reeks; een waarde die niet als semver te lezen is,
+  telt als gewone wissel, en `model` kent geen rangorde *(eigen keuze na spec-review, r1-f4)*.
 
 ### Aansluiting op #379
 
@@ -101,10 +114,11 @@ De tijdlijn van #379 heeft per ISO-week (maandag, UTC) een lijst `markers` met w
 |---|---|
 | week | de ISO-week van de eerste run of sessie met de nieuwe waarde |
 | soort | de dimensie: `superpowers`, `model` of `harness` |
-| tekst | oud en nieuw, bijvoorbeeld `superpowers 7.0.1→7.0.2`; bij harness met de harnessnaam erbij |
+| tekst | oud en nieuw, bijvoorbeeld `superpowers 7.0.1→7.0.2`; bij harness met de harnessnaam erbij, bij model met de lane erbij |
 
-- **Leesbaar via de readonly-verbinding** van #379 (`store.OpenReadOnly`, spec #379 §2): beide
-  functies doen alleen `SELECT`.
+- **Leesbaar via elke readonly-verbinding**, ook de live-variant van #379 (`store.OpenReadOnlyLive`,
+  spec #379 §2; `OpenReadOnly` is daar juist afgewezen vanwege `immutable=1`): beide functies doen
+  alleen `SELECT`.
 - **Ongemigreerde database.** Ontbreekt `setups`, dan geeft de functie een herkenbare fout, zodat het
   endpoint van #379 een dekkingsmelding toont in plaats van een 500 (spec #379 §2).
 - **Wie koppelt.** Het vullen van `markers` in de tijdlijnreader is één aanroep. Wie als laatste
@@ -147,17 +161,28 @@ tick al ziet.
   (`internal/pins/lane/body.go`):
 
   ```text
-  <!-- lighthouse-version-change: superpowers 7.0.1→7.0.2 -->
+  <!-- lighthouse-version-change: superpowers →7.0.2 -->
+  <!-- lighthouse-version-change: harness codex →0.6 -->
+  <!-- lighthouse-version-change: model native →claude-sonnet-5-5 -->
   ```
 
-  Voor het schrijven zoekt de stap met `forge.FindByMarker` (open én gesloten). Bestaat er al een
-  item met die marker, dan schrijft hij niets. Een gesloten voorstel komt dus niet terug.
-- **Inhoud** (Nederlands, `[project] language` van de doelrepo): de wissel met oude en nieuwe
+  De marker draagt de dimensie, bij harness de harnessnaam, bij model de lane, en de *nieuwe*
+  waarde, maar niet de oude: *oud* is afgeleid en kan verschuiven wanneer een rij laat binnenkomt of
+  ter plekke wordt bijgewerkt, of wanneer twee dispatcherhosts elk een andere reeks zien
+  *(eigen keuze na spec-review, r1-f2)*. Oud→nieuw staat alleen in titel, tekst en markering. De
+  stap zoekt met `forge.FindByMarker` (open én gesloten) altijd naar de volledige comment tot en
+  met ` -->`: `FindByMarker` is een kale substring-match (`internal/forge/write.go:215`), en zonder
+  afsluiter vindt `→7.0.2` ook `→7.0.20`. Bestaat er al een item met die marker, dan schrijft hij
+  niets. Een gesloten voorstel komt dus niet terug.
+- **Inhoud** (in `[project] language` van de doelrepo, `nl` of `en`; de repoconfig valt terug op `en`): de wissel met oude en nieuwe
   waarde, de eerste run of sessie met de nieuwe waarde, de geraakte onderdelen, de reden ("een
   versiewissel is een trigger volgens #388") en een verwijzing naar het protocol per vergelijking in
   de spec van #388. Lighthouse start de meting niet.
 - **Fouten.** Een forge-fout of een onleesbare `setups` geeft één logregel met reden; de tick gaat
-  door en meldt de stap als mislukt, zoals `collectRuns` dat doet.
+  door en meldt de stap als mislukt, zoals `collectRuns` dat doet. Een ontbrekende `proposals_repo`
+  is geen mislukking: één logregel, de stap telt als geslaagd. Het tijdsbestand wordt na elke poging
+  geschreven, ook na een mislukte, zodat een forge-storing niet elke 3 minuten alle issues laat
+  doorbladeren *(eigen keuze na spec-review, r1-f8)*.
 
 ## Wat het bewijst (AC)
 
@@ -167,6 +192,7 @@ tick al ziet.
 | Precies één voorstel, met reden; een tweede run met dezelfde versie stelt niets nieuws voor | test: twee stappen, de tweede vindt de marker en schrijft niets; een derde run op dezelfde versie levert geen nieuwe wissel |
 | Lighthouse installeert of wijzigt zelf geen versie | de stap leest `setups` en schrijft alleen een issue |
 | Twee runs op verschillende superpowers-versies tonen één markering | test op `VersionChanges` met twee runs: precies één wissel; daarnaast A, B, A, B: nog steeds één |
+| Een laat binnenkomende rij levert geen tweede voorstel | test: marker `superpowers →B` bestaat; een rij met eerdere `started_at` en waarde X komt binnen; de stap schrijft niets |
 
 ## Mijn keuzes (corrigeerbaar)
 
@@ -176,6 +202,7 @@ tick al ziet.
 - Alleen runs met indeling `standard` tellen mee.
 - De stap draait op een eigen uurpoort met een tijdsbestand.
 - Wie van #379 en #380 als laatste merget, koppelt `VersionMarkers` aan de tijdlijn.
+- Model: een reeks per lane; marker op dimensie en nieuwe waarde, zonder oude.
 - Een wissel verschijnt in elke repo-weergave van de tijdlijn.
 
 ## Aan de bouwer
