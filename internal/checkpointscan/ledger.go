@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/CorneeldH/lighthouse/internal/gitpath"
 	"github.com/CorneeldH/lighthouse/internal/procrun"
 )
 
@@ -41,7 +42,7 @@ func LedgerPath(repo, config string) (string, error) {
 	h.Write([]byte{0})
 	h.Write([]byte(ScanMethod))
 	key := hex.EncodeToString(h.Sum(nil))
-	return filepath.Join(strings.TrimSpace(common), "lighthouse", "secret-scan", "clean-"+key+".txt"), nil
+	return filepath.Join(gitpath.Native(common), "lighthouse", "secret-scan", "clean-"+key+".txt"), nil
 }
 
 // LoadLedger reads the ledger: the set of blob ids that came out clean. A missing file is an

@@ -18,6 +18,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/CorneeldH/lighthouse/internal/config"
+	"github.com/CorneeldH/lighthouse/internal/gitpath"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/store"
 	"github.com/CorneeldH/lighthouse/internal/telemetry/collect"
@@ -252,7 +253,7 @@ func gitWorktrees(ctx context.Context, dir string) ([]string, error) {
 	var paths []string
 	for _, ln := range strings.Split(string(out), "\n") {
 		if p, ok := strings.CutPrefix(ln, "worktree "); ok {
-			paths = append(paths, filepath.Clean(strings.TrimSpace(p)))
+			paths = append(paths, gitpath.Native(p))
 		}
 	}
 	return paths, nil

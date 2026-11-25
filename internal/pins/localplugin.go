@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/CorneeldH/lighthouse/internal/gitpath"
 )
 
 // installedPlugins is the part of Claude Code's installed_plugins.json this package reads:
@@ -101,7 +103,7 @@ func mainCheckout(dir string) string {
 	if err != nil {
 		return ""
 	}
-	common := strings.TrimSpace(string(out))
+	common := gitpath.Native(string(out))
 	if common == "" {
 		return ""
 	}

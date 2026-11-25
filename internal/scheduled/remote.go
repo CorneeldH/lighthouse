@@ -12,6 +12,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/CorneeldH/lighthouse/internal/gitpath"
 )
 
 // Remote is where the branch of a scheduled run goes. Both calls name the remote by an explicit
@@ -112,7 +114,7 @@ func (r HTTPSRemote) objectDir(ctx context.Context, dir string) (string, error) 
 	if !filepath.IsAbs(common) || strings.ContainsAny(common, "\n\r") {
 		return "", errors.New("push: the workplace has no usable common dir")
 	}
-	return filepath.Join(common, "objects"), nil
+	return filepath.Join(gitpath.Native(common), "objects"), nil
 }
 
 // git runs git against r.URL ("{url}" in args) in a fresh temporary bare repository whose

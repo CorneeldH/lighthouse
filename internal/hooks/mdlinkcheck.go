@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/CorneeldH/lighthouse/internal/gitpath"
 	"github.com/CorneeldH/lighthouse/internal/hook"
 	"github.com/CorneeldH/lighthouse/internal/mdlinks"
 )
@@ -91,6 +92,7 @@ func mdLinkCheck(_ context.Context, _ string, _ string, p hook.Payload) hook.Res
 		}
 		return cannotCheck("", "git could not read '"+dir+"'.", root)
 	}
+	root = gitpath.Native(root)
 	if root == "" {
 		return cannotCheck("", "git gave no repository root for '"+dir+"'.", "")
 	}
