@@ -12,10 +12,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/CorneeldH/lighthouse/internal/stubbin"
-
 	"github.com/CorneeldH/lighthouse/internal/scheduled"
 	"github.com/CorneeldH/lighthouse/internal/scheduled/scheduledtest"
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
 	"github.com/CorneeldH/lighthouse/internal/workplace"
 )
 

@@ -119,7 +119,7 @@ func TestRunRowOutsideAllowlistDoesNotRun(t *testing.T) {
 func TestRunRowGHNotReachable(t *testing.T) {
 	withConfig(t, "")
 	marker := filepath.Join(t.TempDir(), "gh-called")
-	stubBin(t, "touch marker file", map[string]string{"gh": "#!/bin/sh\ntouch " + marker + "\necho x\n"})
+	stubBin(t, "touch of a marker file by the gh stub", map[string]string{"gh": "#!/bin/sh\ntouch " + marker + "\necho x\n"})
 	o, d := runOne(t, "`gh pr view 1`", "x", t.TempDir(), false, defaultTimeout)
 	want(t, o, d, Unmeasurable, "gh not reachable")
 	if _, err := os.Stat(marker); err == nil {

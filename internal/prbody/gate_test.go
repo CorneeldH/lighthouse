@@ -503,7 +503,7 @@ func TestMainDeadlineGitBlocksLoudly(t *testing.T) {
 	oldGit := gitTimeout
 	gitTimeout = time.Hour
 	t.Cleanup(func() { gitTimeout = oldGit })
-	prependPath(t, stubBin(t, "a script that sleeps", map[string]string{"git": "#!/bin/sh\nsleep 120\n"}))
+	prependPath(t, stubBin(t, "sleep 120 as a hung git", map[string]string{"git": "#!/bin/sh\nsleep 120\n"}))
 	writeFile(t, filepath.Join(project, "body.md"), closesBody("9", 1))
 	got := runMain(t, project, "gh pr create -F body.md", project)
 	eq(t, "main", got, mainResult{2, "", blocked("repo of the project cannot be determined (COULD NOT CHECK: git timeout or deadline reached)")})
