@@ -17,6 +17,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/CorneeldH/lighthouse/internal/review"
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 )
 
 // The cases that carry data live as JSON in
@@ -86,7 +87,7 @@ func newScenario(t *testing.T, c map[string]any) *scenario {
 	mustWrite(t, filepath.Join(tmp, "lighthouse.toml"), "[project]\nlanguage = \""+w.Language+"\"\n")
 	t.Setenv("LIGHTHOUSE_TOML", filepath.Join(tmp, "lighthouse.toml"))
 	t.Setenv("LIGHTHOUSE_HEADINGS", "../../pack/core/headings.toml")
-	t.Setenv("HOME", s.vars["home"])
+	testpath.SetHome(t, s.vars["home"])
 	t.Setenv("XDG_STATE_HOME", filepath.Join(tmp, "state"))
 	t.Setenv("TMPDIR", s.vars["tmpdir"])
 	t.Setenv("LIGHTHOUSE_DATA", s.vars["data"])

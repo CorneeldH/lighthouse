@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/CorneeldH/lighthouse/internal/selfupdate"
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 )
 
 // Classification: these tests fail when the self-update command is not registered, when a test
@@ -63,7 +64,7 @@ func TestReportSelfUpdate(t *testing.T) {
 func channelHome(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	testpath.SetHome(t, home)
 	t.Setenv("LIGHTHOUSE_HOST_TOML", "")
 	return filepath.Join(home, ".config", "lighthouse", "channel")
 }

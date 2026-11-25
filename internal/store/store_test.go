@@ -10,20 +10,24 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 )
 
 func TestDefaultPath(t *testing.T) {
+	x, h := testpath.Abs("x", "state"), testpath.Abs("h")
+	hDB := filepath.Join(h, ".local", "state", "lighthouse", "lighthouse.db")
 	tests := []struct {
 		name, xdg, home, want string
 	}{
-		{"absolute xdg", "/x/state", "/h", "/x/state/lighthouse/lighthouse.db"},
-		{"relative xdg ignored", "rel/state", "/h", "/h/.local/state/lighthouse/lighthouse.db"},
-		{"empty xdg", "", "/h", "/h/.local/state/lighthouse/lighthouse.db"},
+		{"absolute xdg", x, h, filepath.Join(x, "lighthouse", "lighthouse.db")},
+		{"relative xdg ignored", filepath.Join("rel", "state"), h, hDB},
+		{"empty xdg", "", h, hDB},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("XDG_STATE_HOME", tc.xdg)
-			t.Setenv("HOME", tc.home)
+			testpath.SetHome(t, tc.home)
 			got, err := DefaultPath()
 			if err != nil {
 				t.Fatalf("DefaultPath: %v", err)

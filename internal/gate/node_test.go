@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
 )
 
 func readFixture(t *testing.T, name string, into any) {
@@ -62,8 +64,7 @@ func TestNodeUsageFixtures(t *testing.T) {
 	}
 }
 
-const fakeNpm = `#!/bin/sh
-echo "$PWD $*" >> "$NPM_LOG"
+const fakeNpm = `echo "$PWD $*" >> "$NPM_LOG"
 script="$3"
 if [ "$script" = gen ]; then
   if [ -n "$GEN_CONTENT" ]; then printf '%s' "$GEN_CONTENT" > src/api/client.ts; fi
@@ -98,9 +99,13 @@ func nodeProject(t *testing.T) string {
 	writeFile(t, filepath.Join(web, "src", "api.ts"), "v1", 0o644)
 	writeFile(t, filepath.Join(web, "src", "api", "client.ts"), "v1", 0o644)
 	bin := filepath.Join(root, "bin")
-	writeFile(t, filepath.Join(bin, "npm"), fakeNpm, 0o755)
-	writeFile(t, filepath.Join(bin, "node"), "#!/bin/sh\nexit 0\n", 0o755)
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	stubbin.RequirePOSIX(t, "fakeNpm reads NPM_EXIT_<script> and branches on $1")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	stubbin.MakeScript(t, bin, "npm", fakeNpm)
+	stubbin.Make(t, bin, "node", stubbin.Spec{})
+	stubbin.Prepend(t, bin)
 	t.Setenv("NPM_LOG", filepath.Join(root, "npm.log"))
 	for _, name := range []string{"GEN_CONTENT", "GEN_FILE", "GEN_NEW", "NPM_EXIT_lint", "NPM_EXIT_gen"} {
 		t.Setenv(name, "")

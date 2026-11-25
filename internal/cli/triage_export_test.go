@@ -12,6 +12,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
 )
 
 func writeModeFile(t *testing.T, path string, data string, mode os.FileMode) {
@@ -141,9 +143,8 @@ func TestExportTreeBadRef(t *testing.T) {
 // truncated-archive error.
 func TestExportTreeGitDiesMidStream(t *testing.T) {
 	bin := t.TempDir()
-	script := "#!/bin/sh\necho 'fatal: pack is corrupt' >&2\nprintf short\nexit 128\n"
-	writeModeFile(t, filepath.Join(bin, "git"), script, 0o755)
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	stubbin.Make(t, bin, "git", stubbin.Spec{Stdout: "short", Stderr: "fatal: pack is corrupt\n", Exit: 128})
+	stubbin.Prepend(t, bin)
 	t.Setenv("TMPDIR", t.TempDir())
 
 	_, _, err := exportTree(context.Background(), t.TempDir(), "origin/main")

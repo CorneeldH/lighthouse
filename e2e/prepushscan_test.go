@@ -32,6 +32,8 @@ import (
 	"testing"
 
 	"github.com/BurntSushi/toml"
+
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
 )
 
 const zeroSHA = "0000000000000000000000000000000000000000"
@@ -49,19 +51,17 @@ const passThrough = "while [ \"$#\" -gt 0 ]; do\n" +
 
 // boundedStubs make `systemctl --user` work and let systemd-run and choom run their command.
 var boundedStubs = map[string]string{
-	"systemctl":   "#!/bin/sh\nexit 0\n",
-	"systemd-run": "#!/bin/sh\n" + passThrough,
-	"choom":       "#!/bin/sh\n" + passThrough,
+	"systemd-run": passThrough,
+	"choom":       passThrough,
 }
 
-// systemdRunKilled is what a shell reports for a child the kernel killed at the ceiling.
-const systemdRunKilled = "#!/bin/sh\nexit 137\n"
+// systemdRunKilledExit is what a shell reports for a child the kernel killed at the ceiling.
+const systemdRunKilledExit = 137
 
 // fakeGitleaks logs its subcommand and arguments, one call per line, to $FAKE_GITLEAKS_LOG,
 // prints a version, writes an empty report for `dir` and says, like gitleaks, how many bytes
 // it scanned (the files in its cwd), and finds nothing.
-const fakeGitleaks = `#!/bin/sh
-echo "$*" >> "$FAKE_GITLEAKS_LOG"
+const fakeGitleaks = `echo "$*" >> "$FAKE_GITLEAKS_LOG"
 case "$1" in
   version) echo "fake 1" ;;
   dir)
@@ -157,8 +157,10 @@ func newScanEnv(t *testing.T) *scanFx {
 	if err := os.Mkdir(stubs, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	stubbin.RequirePOSIX(t, "the scan is a bash script that runs these stubs through sh")
+	stubbin.Make(t, stubs, "systemctl", stubbin.Spec{})
 	for name, body := range boundedStubs {
-		writeExe(t, stubs, name, body)
+		stubbin.MakeScript(t, stubs, name, body)
 	}
 	env := overrideEnv(append(cleanEnv(), gitEnv...),
 		"LIGHTHOUSE_HOST_TOML="+host,
@@ -302,7 +304,7 @@ func (fx *scanFx) useFakeGitleaks() string {
 	fx.t.Helper()
 	log := filepath.Join(fx.dir, "gitleaks.log")
 	fx.env = overrideEnv(fx.env, "FAKE_GITLEAKS_LOG="+log)
-	writeExe(fx.t, fx.stubs, "gitleaks", fakeGitleaks)
+	stubbin.MakeScript(fx.t, fx.stubs, "gitleaks", fakeGitleaks)
 	return log
 }
 
@@ -548,7 +550,7 @@ func TestPrePushScanCeilingBlocksPush(t *testing.T) {
 			// unscanned, and the ceiling would never be reached.
 			fx := newScanFx(t)
 			fx.useFakeGitleaks()
-			writeExe(t, fx.stubs, "systemd-run", systemdRunKilled)
+			stubbin.Make(t, fx.stubs, "systemd-run", stubbin.Spec{Exit: systemdRunKilledExit})
 			var r result
 			if kind == "branch" {
 				fx.commit("a.txt", "nothing to see\n")

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 )
 
 func git(t *testing.T, dir string, args ...string) string {
@@ -200,10 +202,10 @@ func TestGitRunnerErrorPropagates(t *testing.T) {
 	run := func(context.Context, time.Duration, string, ...string) (string, int, error) {
 		return "", -1, context.DeadlineExceeded
 	}
-	if _, err := Dirty(context.Background(), run, "/x"); err == nil {
+	if _, err := Dirty(context.Background(), run, testpath.Abs("x")); err == nil {
 		t.Error("Dirty: want error")
 	}
-	if _, err := Unpushed(context.Background(), run, "/x", ""); err == nil {
+	if _, err := Unpushed(context.Background(), run, testpath.Abs("x"), ""); err == nil {
 		t.Error("Unpushed: want error")
 	}
 }
