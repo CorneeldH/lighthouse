@@ -1,4 +1,4 @@
 ---
 type: fixed
 ---
-`workflow-push-gate` en `lighthouse post-artefact` tellen alleen nog de eigen workflow-wijziging van een branch. Een merge van main die alleen de workflows van `origin/main` binnenbrengt, blokkeert de push niet meer en stuurt de run niet meer naar de workflow-pusher; een eigen workflow-wijziging naast die merge telt wel (#606).
+`workflow-push-gate` and `lighthouse post-artefact` count only a branch's own workflow change. A merge of main that only brings in the workflows of `origin/main` no longer blocks the push or sends the run to the workflow pusher; the branch's own workflow change beside that merge still counts (#606).
