@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/CorneeldH/lighthouse/internal/hook"
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
 )
 
 // repo makes a git repository on branch with one commit, and points the config at a
@@ -332,11 +333,10 @@ func TestMainCommitGateUnreadablePayloadBlocks(t *testing.T) {
 // stubGit puts a `git` that runs script first on the PATH.
 func stubGit(t *testing.T, script string) {
 	t.Helper()
+	stubbin.RequirePOSIX(t, "the stub git is a sh script (locale and exit-code branching)")
 	bin := t.TempDir()
-	if err := os.WriteFile(filepath.Join(bin, "git"), []byte("#!/bin/sh\n"+script), 0o755); err != nil { //nolint:gosec // an executable stub
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", bin)
+	stubbin.MakeScript(t, bin, "git", script)
+	stubbin.Only(t, bin)
 }
 
 func TestMainCommitGateTargetWithoutARepository(t *testing.T) {
