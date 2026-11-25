@@ -16,6 +16,7 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/orderedjson"
 	"github.com/CorneeldH/lighthouse/internal/roborev"
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
 	"github.com/CorneeldH/lighthouse/internal/usage"
 )
 
@@ -111,13 +112,13 @@ func newGateRun(t *testing.T, c gateCase) *gateRun {
 	gateGit(t, r.repo, "checkout", "-b", "feat")
 	gateCommitLines(t, r.repo, 100, "x.go")
 	bin := filepath.Join(dir, "bin")
-	for _, tool := range []string{"roborev", "codex"} {
-		gateWrite(t, filepath.Join(bin, tool), "#!/bin/sh\n")
-		if err := os.Chmod(filepath.Join(bin, tool), 0o755); err != nil {
-			t.Fatal(err)
-		}
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
 	}
-	t.Setenv("PATH", bin+":/usr/bin:/bin")
+	for _, tool := range []string{"roborev", "codex"} {
+		stubbin.Make(t, bin, tool, stubbin.Spec{})
+	}
+	stubbin.Only(t, bin, "git")
 	r.vars["base"] = gateGit(t, r.repo, "rev-parse", "origin/main")
 	return r
 }
