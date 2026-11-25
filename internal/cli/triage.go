@@ -35,7 +35,7 @@ type brake interface {
 // brake and the plugin list the skill catalog reads.
 type triageEnv struct {
 	tickEnv               // Getenv, HostToml, ForgeURL, Now
-	Judge       judgeFunc // nil is execJudge
+	Judge       judgeFunc // nil is execJudge with triageSpec
 	Brake       brake     // required
 	PluginsFile string    // "" is $HOME/.claude/plugins/installed_plugins.json
 	// SettingsFile is the user's settings file the judgment takes env and modelSettings from;
@@ -140,7 +140,9 @@ func triage(ctx context.Context, env triageEnv, opts triageOpts, dbPath string, 
 
 	r := &round{env: env, opts: opts, cfg: cfg, db: st, out: out, errOut: errOut}
 	if r.env.Judge == nil {
-		r.env.Judge = execJudge
+		r.env.Judge = func(ctx context.Context, dir, prompt string, cfg judgeConfig) ([]byte, error) {
+			return execJudge(ctx, dir, prompt, cfg, triageSpec)
+		}
 	}
 	for _, e := range repos {
 		if r.repo(ctx, e.path, e.repo, e.rf) {
