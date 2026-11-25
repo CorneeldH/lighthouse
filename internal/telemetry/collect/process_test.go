@@ -753,3 +753,34 @@ func TestProcessSessionHasEventsKeepsLink(t *testing.T) {
 		t.Errorf("refused move left a trajectory 9")
 	}
 }
+
+// TestProcessScheduledArchitectureScanUsage proves a scheduled architecture-scan run lands in the
+// telemetry like any other run: a run row without an issue, tokens and cost per model (#386, AC 7).
+func TestProcessScheduledArchitectureScanUsage(t *testing.T) {
+	db := openDB(t)
+	ctx := context.Background()
+	r, err := runs.Take(ctx, db, runs.Claim{Repo: testRepo, Schedule: "architecture-scan", SessionID: "scan1",
+		Mode: "start", Trigger: runs.TriggerScheduled, TriggerKey: "scheduled:architecture-scan:2026-11-24",
+		Now: base})
+	if err != nil {
+		t.Fatalf("Take: %v", err)
+	}
+	lines := []tline{
+		{min: 0},
+		{min: 1, id: "m1", model: known, out: 50},
+		{min: 2, id: "m2", model: known, out: 70},
+	}
+	out := process(t, db, source("scan1", base.Add(5*time.Minute), lines...), opts(t.TempDir(), base.Add(time.Hour)))
+	if out.Kind != "run" || len(out.RunIDs) != 1 || out.RunIDs[0] != r.ID {
+		t.Fatalf("outcome %+v", out)
+	}
+	var in, outTok int
+	var cost sql.NullFloat64
+	if err := db.QueryRow(`SELECT sum(input_tokens), sum(output_tokens), sum(cost) FROM usage WHERE run_id = ?`, r.ID).
+		Scan(&in, &outTok, &cost); err != nil {
+		t.Fatalf("usage: %v", err)
+	}
+	if in != 20 || outTok != 120 || !cost.Valid || cost.Float64 <= 0 {
+		t.Errorf("usage in=%d out=%d cost=%v", in, outTok, cost)
+	}
+}
