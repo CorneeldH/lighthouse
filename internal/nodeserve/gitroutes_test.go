@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/CorneeldH/lighthouse/internal/nodeapi"
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 	"github.com/CorneeldH/lighthouse/internal/workplace"
 )
 
@@ -251,6 +252,7 @@ func relocate(f fixture, id, command string) *httptest.ResponseRecorder {
 }
 
 func TestRelocateFindsPathInNodeWorktree(t *testing.T) {
+	testpath.SkipOnWindowsPOSIXAbs(t)
 	repo := gitRepo(t)
 	if err := os.MkdirAll(filepath.Join(repo, "plans"), 0o750); err != nil {
 		t.Fatal(err)

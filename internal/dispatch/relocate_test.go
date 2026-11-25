@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 )
 
 func writeEmpty(t *testing.T, path string) {
@@ -22,17 +24,20 @@ func TestRelocate(t *testing.T) {
 	writeEmpty(t, filepath.Join(wt, "root.md"))
 	cases := []struct {
 		name, command, want string
+		posixAbs            bool // Relocate parses POSIX paths only
 	}{
 		{
 			// Run 19 of #237: the handoff was written in a worktree of the main checkout.
-			name:    "a plan in another checkout",
-			command: "/superpowers:subagent-driven-development /home/u/repo/.claude/worktrees/issue-147-x/design/plans/p.md",
-			want:    "/superpowers:subagent-driven-development " + filepath.Join(wt, "design", "plans", "p.md"),
+			name:     "a plan in another checkout",
+			command:  "/superpowers:subagent-driven-development /home/u/repo/.claude/worktrees/issue-147-x/design/plans/p.md",
+			want:     "/superpowers:subagent-driven-development " + filepath.Join(wt, "design", "plans", "p.md"),
+			posixAbs: true,
 		},
 		{
-			name:    "a plan in the run's worktree stays",
-			command: "/lighthouse-review-plan " + wt + "/design/plans/p.md",
-			want:    "/lighthouse-review-plan " + wt + "/design/plans/p.md",
+			name:     "a plan in the run's worktree stays",
+			command:  "/lighthouse-review-plan " + wt + "/design/plans/p.md",
+			want:     "/lighthouse-review-plan " + wt + "/design/plans/p.md",
+			posixAbs: true,
 		},
 		{
 			name:    "no path argument",
@@ -42,6 +47,9 @@ func TestRelocate(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			if c.posixAbs {
+				testpath.SkipOnWindowsPOSIXAbs(t)
+			}
 			got, err := Relocate(c.command, wt)
 			if err != nil || got != c.want {
 				t.Errorf("Relocate = %q, %v; want %q", got, err, c.want)
@@ -51,6 +59,7 @@ func TestRelocate(t *testing.T) {
 }
 
 func TestRelocateNoTailInTheWorktreeIsAnError(t *testing.T) {
+	testpath.SkipOnWindowsPOSIXAbs(t)
 	wt := t.TempDir()
 	writeEmpty(t, filepath.Join(wt, "p.md"))
 	for _, command := range []string{

@@ -483,25 +483,26 @@ func TestControllerLocations(t *testing.T) {
 
 func TestLoadReport(t *testing.T) {
 	tests := []struct {
-		name    string
-		table   string
-		want    Report
-		wantErr string // "" means ReportErr must be nil
+		name     string
+		table    string
+		want     Report
+		wantErr  string // "" means ReportErr must be nil
+		posixAbs bool   // the table holds a POSIX absolute path, no path on Windows
 	}{
 		{"geldig", "[report]\nenabled = true\nsink = \"file\"\ndir = \"verslagen\"\n",
-			Report{Enabled: true, Sink: "file", Dir: "verslagen"}, ""},
-		{"zonder tabel", "", Report{Sink: "stdout"}, ""},
-		{"enabled als string", "[report]\nenabled = \"true\"\n", Report{Sink: "stdout"}, "report.enabled"},
-		{"onbekende sink", "[report]\nsink = \"wiki\"\n", Report{Sink: "stdout"}, "report.sink"},
-		{"file zonder dir", "[report]\nsink = \"file\"\n", Report{Sink: "file"}, "report.dir"},
-		{"absolute dir", "[report]\nsink = \"file\"\ndir = \"/abs\"\n", Report{Sink: "file"}, "report.dir"},
-		{"dir buiten repo", "[report]\nsink = \"file\"\ndir = \"../buiten\"\n", Report{Sink: "file"}, "report.dir"},
-		{"dir ontsnapt via ..", "[report]\nsink = \"file\"\ndir = \"a/../../b\"\n", Report{Sink: "file"}, "report.dir"},
-		{"dir geen string", "[report]\nsink = \"file\"\ndir = 5\n", Report{Sink: "file"}, "report.dir"},
+			Report{Enabled: true, Sink: "file", Dir: "verslagen"}, "", false},
+		{"zonder tabel", "", Report{Sink: "stdout"}, "", false},
+		{"enabled als string", "[report]\nenabled = \"true\"\n", Report{Sink: "stdout"}, "report.enabled", false},
+		{"onbekende sink", "[report]\nsink = \"wiki\"\n", Report{Sink: "stdout"}, "report.sink", false},
+		{"file zonder dir", "[report]\nsink = \"file\"\n", Report{Sink: "file"}, "report.dir", false},
+		{"absolute dir", "[report]\nsink = \"file\"\ndir = \"/abs\"\n", Report{Sink: "file"}, "report.dir", true},
+		{"dir buiten repo", "[report]\nsink = \"file\"\ndir = \"../buiten\"\n", Report{Sink: "file"}, "report.dir", false},
+		{"dir ontsnapt via ..", "[report]\nsink = \"file\"\ndir = \"a/../../b\"\n", Report{Sink: "file"}, "report.dir", false},
+		{"dir geen string", "[report]\nsink = \"file\"\ndir = 5\n", Report{Sink: "file"}, "report.dir", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if tt.name == "absolute dir" {
+			if tt.posixAbs {
 				// "/abs" is a POSIX absolute path; filepath.IsAbs rejects it on Windows (no drive).
 				testpath.SkipOnWindowsPOSIXAbs(t)
 			}

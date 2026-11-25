@@ -24,6 +24,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/runs"
 	"github.com/CorneeldH/lighthouse/internal/store"
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 	"github.com/CorneeldH/lighthouse/internal/workplace"
 )
 
@@ -449,6 +450,7 @@ func TestApplyStartWithoutTriggerCommentPostsNoRocket(t *testing.T) {
 // A handoff written in another checkout names its plan there (#237): the run launches with the
 // same plan in its own worktree, and the Started and the run row say so.
 func TestApplyStartRelocatesAPlanFromAnotherCheckout(t *testing.T) {
+	testpath.SkipOnWindowsPOSIXAbs(t)
 	h := newHarness(t)
 	h.wp.root = t.TempDir()
 	plan := filepath.Join(h.wp.root, "forge", "issue-7-x", "design", "plans", "p.md")

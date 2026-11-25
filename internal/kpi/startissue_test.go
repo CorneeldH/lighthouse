@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -73,7 +74,7 @@ func TestTranscriptDirFromRepoRoot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := filepath.Join(home, ".claude", "projects", nonAlnum.ReplaceAllString(root, "-"))
+	want := filepath.Join(home, ".claude", "projects", regexp.MustCompile("[^A-Za-z0-9]").ReplaceAllString(root, "-"))
 	if got != want {
 		t.Fatalf("dir %q, want %q", got, want)
 	}
