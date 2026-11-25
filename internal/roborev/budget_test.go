@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
 	"github.com/CorneeldH/lighthouse/internal/testpath"
 	"github.com/CorneeldH/lighthouse/internal/usage"
 )
@@ -72,14 +73,12 @@ func TestDefaultBudgetReadsCodexHome(t *testing.T) {
 		t.Fatal(err)
 	}
 	result := `{"rateLimits":{"limitId":"codex","primary":{"usedPercent":10,"windowDurationMins":300,"resetsAt":4102444800},"secondary":{"usedPercent":1,"windowDurationMins":10080,"resetsAt":4102444800}},"rateLimitResetCredits":{"availableCount":0,"credits":[]}}`
-	script := "#!/bin/sh\n" +
-		"[ \"$CODEX_HOME\" = \"" + dir + "/codex-home\" ] || exit 1\n" +
+	stubbin.RequirePOSIX(t, "the stub codex checks $CODEX_HOME and drains stdin with read -r")
+	script := "[ \"$CODEX_HOME\" = \"" + dir + "/codex-home\" ] || exit 1\n" +
 		"echo '{\"id\":1,\"result\":{}}'\n" +
 		"echo '{\"id\":2,\"result\":" + result + "}'\n" +
 		"while read -r l; do :; done\n"
-	if err := os.WriteFile(filepath.Join(dir, "codex"), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	stubbin.MakeScript(t, dir, "codex", script)
 	code, body := DefaultBudget()()
 	var got struct{ Decision, Reason string }
 	if err := json.Unmarshal([]byte(body), &got); err != nil {

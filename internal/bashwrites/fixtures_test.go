@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/fixturesetup"
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
 )
 
 type fixtureCase struct {
@@ -204,11 +205,10 @@ func TestGitFailsWithAGitErrorOnANonZeroExit(t *testing.T) {
 }
 
 func TestGitFailsWithATimeoutError(t *testing.T) {
+	stubbin.RequirePOSIX(t, "exec of a long sleep")
 	bin := t.TempDir()
-	if err := os.WriteFile(bin+"/git", []byte("#!/bin/sh\nexec sleep 30\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", bin+":"+os.Getenv("PATH"))
+	stubbin.MakeScript(t, bin, "git", "exec sleep 30\n")
+	stubbin.Prepend(t, bin)
 	// An elapsed deadline still gets the floor of 100 ms.
 	_, err := Git(t.TempDir(), time.Now().Add(-time.Hour), "status")
 	var ge *GitError

@@ -6,12 +6,12 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/hook"
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
 	"github.com/CorneeldH/lighthouse/internal/testpath"
 )
 
@@ -361,16 +361,12 @@ func TestUsageGateMarkerInStateDirForControllerRun(t *testing.T) {
 // the returned file and then sleeps 2 s.
 func fakeLighthouse(t *testing.T) string {
 	t.Helper()
-	if runtime.GOOS == "windows" {
-		t.Skip("the fake lighthouse is a sh script")
-	}
+	stubbin.RequirePOSIX(t, "the fake lighthouse logs an env var and execs sleep")
 	bin := t.TempDir()
 	out := filepath.Join(t.TempDir(), "called")
-	script := "#!/bin/sh\nprintf '%s|%s\\n' \"$*\" \"$LIGHTHOUSE_USAGE_REFRESH\" > " + out + "\nexec sleep 2\n"
-	if err := os.WriteFile(filepath.Join(bin, "lighthouse"), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+"/bin"+string(os.PathListSeparator)+"/usr/bin")
+	script := "printf '%s|%s\\n' \"$*\" \"$LIGHTHOUSE_USAGE_REFRESH\" > " + out + "\nexec sleep 2\n"
+	stubbin.MakeScript(t, bin, "lighthouse", script)
+	stubbin.Prepend(t, bin)
 	return out
 }
 

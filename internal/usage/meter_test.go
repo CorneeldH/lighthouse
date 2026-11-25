@@ -10,6 +10,8 @@ import (
 	"slices"
 	"testing"
 	"time"
+
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
 )
 
 // meterNow is the clock of the meter tests; usage_full parses against it.
@@ -382,11 +384,8 @@ func TestUsageCommandTimeout(t *testing.T) {
 	bin := t.TempDir()
 	// The trailing echo keeps the shell from exec'ing sleep: after the kill of
 	// the shell, sleep is a grandchild that still holds stdout open.
-	script := "#!/bin/sh\nsleep 30\necho late\n"
-	if err := os.WriteFile(filepath.Join(bin, "claude"), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	stubbin.MakeScript(t, bin, "claude", "sleep 30\necho late\n")
+	stubbin.Prepend(t, bin)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
@@ -412,11 +411,8 @@ func TestRunUsageStderr(t *testing.T) {
 		t.Skip("needs a /bin/sh script")
 	}
 	bin := t.TempDir()
-	script := "#!/bin/sh\necho 'Not logged in' >&2\necho second >&2\nexit 1\n"
-	if err := os.WriteFile(filepath.Join(bin, "claude"), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	stubbin.Make(t, bin, "claude", stubbin.Spec{Stderr: "Not logged in\nsecond\n", Exit: 1})
+	stubbin.Prepend(t, bin)
 
 	_, err := runUsage(context.Background(), t.TempDir())
 	if err == nil {

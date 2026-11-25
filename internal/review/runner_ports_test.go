@@ -5,12 +5,13 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
 )
 
 // fakeCodexPrompt is a `codex` that records the prompt (its last argument) and the value of
 // --output-schema next to $CAPTURE, and answers `exec` with a clean result.
-const fakeCodexPrompt = `#!/bin/sh
-for a; do last=$a; done
+const fakeCodexPrompt = `for a; do last=$a; done
 printf '%s' "$last" > "$CAPTURE.prompt"
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -94,11 +95,9 @@ func TestRoundPicksPromptAndSchemaByKindVerifyAndSkillDir(t *testing.T) {
 			repo := os.Getenv("LIGHTHOUSE_REPO_ROOT")
 			tmp := t.TempDir()
 			bin := t.TempDir()
-			put(t, filepath.Join(bin, "codex"), fakeCodexPrompt)
-			if err := os.Chmod(filepath.Join(bin, "codex"), 0o755); err != nil {
-				t.Fatal(err)
-			}
-			t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+			stubbin.RequirePOSIX(t, "fakeCodexPrompt reads its last argument and walks the options with shift")
+			stubbin.MakeScript(t, bin, "codex", fakeCodexPrompt)
+			stubbin.Prepend(t, bin)
 			put(t, filepath.Join(repo, docsDir+"spec.md"), "# spec\n")
 			put(t, filepath.Join(tmp, "round-2.fixes.diff"), "--- a\n+++ b\n")
 			for _, kind := range []string{"spec", "plan"} {
@@ -150,12 +149,8 @@ func TestRoundPicksPromptAndSchemaByKindVerifyAndSkillDir(t *testing.T) {
 // writeSeam writes an executable `sh` stub and returns its path, for LIGHTHOUSE_CODEX_BUDGET_CMD.
 func writeSeam(t *testing.T, body string) string {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "budget-stub")
-	put(t, path, "#!/bin/sh\n"+body+"\n")
-	if err := os.Chmod(path, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	return path
+	stubbin.RequirePOSIX(t, "the budget seam is a sh script")
+	return stubbin.MakeScript(t, t.TempDir(), "budget-stub", body+"\n")
 }
 
 // pytest: test_missing_context_path_is_a_usage_error
@@ -246,11 +241,9 @@ func TestRoundRunsOnAPathWithOnlyCodex(t *testing.T) {
 	r := newRound(t)
 	cleanRoundEnv(t)
 	bin := t.TempDir()
-	put(t, filepath.Join(bin, "codex"), fakeCodex)
-	if err := os.Chmod(filepath.Join(bin, "codex"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", bin)
+	stubbin.RequirePOSIX(t, "fakeCodex records argv with printf and shifts positional parameters")
+	stubbin.MakeScript(t, bin, "codex", fakeCodex)
+	stubbin.Alone(t, bin)
 	t.Setenv("LIGHTHOUSE_CODEX_BUDGET_CMD", writeSeam(t, `printf '%s\n' '{"decision": "codex", "reason": "ok"}'`))
 	if code := r.run(); code != 0 {
 		t.Fatalf("exit %d, stderr: %s", code, r.stderr.String())

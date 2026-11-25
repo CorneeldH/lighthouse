@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/CorneeldH/lighthouse/internal/bashwrites"
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
 )
 
 const (
@@ -64,7 +65,7 @@ func TestGofmtCheck(t *testing.T) {
 	stubbed := func(rc string) (env []string, log string) {
 		dir := toolDir(t, bin, gofmtTools, "", map[string]string{"gofmt": gofmtStub})
 		log = filepath.Join(t.TempDir(), "stub.log")
-		return []string{"PATH=" + dir + string(os.PathListSeparator) + os.Getenv("PATH"), "STUB_LOG=" + log, "STUB_RC=" + rc}, log
+		return []string{"PATH=" + stubbin.PathValue(t, dir), "STUB_LOG=" + log, "STUB_RC=" + rc}, log
 	}
 	// without is an environment whose PATH holds the real tooling minus one tool.
 	without := func(tool string) []string {

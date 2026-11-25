@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
+
 	"github.com/spf13/cobra"
 
 	"github.com/CorneeldH/lighthouse/internal/testpath"
@@ -49,9 +51,10 @@ func reviewSandbox(t *testing.T) reviewEnv {
 	skill := filepath.Join(repo, ".claude", "skills", "lighthouse-review-spec")
 	put(filepath.Join(skill, "reviewer-prompt.md"), "---BEGIN PROMPT---\nSpec: {{DOC_PATH}}\n---END PROMPT---\n", 0o644)
 	put(filepath.Join(skill, "findings.schema.json"), "{}", 0o644)
-	put(filepath.Join(bin, "codex"), fakeReviewCodex, 0o755)
+	stubbin.RequirePOSIX(t, "argument loop with case on $1 and $CAPTURE from the environment")
+	stubbin.MakeScript(t, bin, "codex", strings.TrimPrefix(fakeReviewCodex, "#!/bin/sh\n"))
 	put(filepath.Join(home, ".codex", "auth.json"), "{}", 0o600)
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	stubbin.Prepend(t, bin)
 	testpath.SetHome(t, home)
 	t.Setenv("CODEX_HOME", "")
 	t.Setenv("CODEX_SPECREVIEW_HOME", filepath.Join(tmp, "ch"))
