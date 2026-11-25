@@ -101,3 +101,21 @@ func toJSON(t *testing.T, v any) string {
 	}
 	return string(b)
 }
+
+func TestShell_SourcesOnlyForCommandSignals(t *testing.T) {
+	f := shellFinding(
+		bashRec("s", "b", `C:\Users\u\r`, "ls"),
+		bashRec("s", "b", `C:\Users\u\r`, "ls"),
+	)
+	if len(f.Sources) != 0 {
+		t.Errorf("cwd-only records must carry no sources: %+v", f.Sources)
+	}
+	f = shellFinding(
+		bashRec("s", "b", `C:\Users\u\r`, "ls"),
+		bashRec("s", "b", `C:\Users\u\r`, "powershell -c ls"),
+		bashRec("s", "b", `C:\Users\u\r`, "dos2unix x"),
+	)
+	if len(f.Sources) == 0 {
+		t.Error("command signals must carry sources")
+	}
+}

@@ -57,7 +57,6 @@ func (d *shell) Add(r Record) {
 	}
 	if f := shellForm(r.Cwd); f != "" {
 		d.forms[f]++
-		hit = true
 	}
 	for _, c := range r.Commands {
 		if powershellRe.MatchString(c) {
