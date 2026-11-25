@@ -1,0 +1,67 @@
+# Dev build for lighthouse: after every merge to main that adds a changelog fragment of a
+# releasable type (added, changed, fixed, removed; never internal), makes a vX.Y.Z-dev.N build on
+# the dev channel by calling prerelease.yml. The merges queue in one concurrency group, so two
+# merges close together get two numbers, never one tag twice. See docs/releasing.md.
+name: dev-build
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dev-build
+  cancel-in-progress: false
+
+jobs:
+  # Decides whether this push starts a build and which tag it gets; pushes nothing.
+  decide:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.decide.outputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - id: decide
+        run: |
+          set -euo pipefail
+          # A fragment that an earlier release already shipped (a fix landed on main again) does
+          # not start a build either.
+          released=$(go run ./ci/changelog released)
+          build=false
+          while IFS= read -r file; do
+            name=${file##*/}
+            case "$name" in *.md) ;; *) continue ;; esac
+            if printf '%s\n' "$released" | grep -Fxq -- "$name"; then continue; fi
+            if git show "HEAD:$file" | grep -Eq '^type:[[:space:]]*(added|changed|fixed|removed)[[:space:]]*$'; then
+              build=true
+            fi
+          done < <(git diff-tree --no-commit-id --name-only --diff-filter=A -r -m --first-parent HEAD -- changelog.d/)
+          if [ "$build" != true ]; then
+            echo "dev-build: this push adds no releasable fragment, no build"
+            echo "tag=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          tag=$(go run ./ci/changelog next --kind dev)
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: decide
+    if: needs.decide.outputs.tag != ''
+    permissions:
+      contents: write
+    uses: ./.github/workflows/prerelease.yml
+    with:
+      tag: ${{ needs.decide.outputs.tag }}

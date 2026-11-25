@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-const prereleaseTagRE = `^v[0-9]+\.[0-9]+\.[0-9]+-[0-9A-Za-z.-]+$`
+const prereleaseTagRE = `^v[0-9]+\.[0-9]+\.[0-9]+-(dev|rc|test)\.[0-9]+$`
 
 const tagWithUI = `ci/tag-with-ui.sh "$tag" "$RUNNER_TEMP/ui-dist"`
 
@@ -223,7 +223,7 @@ func TestReleaseRetryDoesNotRebuild(t *testing.T) {
 func TestOnlyReleaseJobPersistsCredentials(t *testing.T) {
 	persisting := map[string]bool{"release.yml/release": true, "prerelease.yml/tag": true}
 	total := 0
-	for _, file := range []string{"release.yml", "build.yml", "macos.yml", "prerelease.yml"} {
+	for _, file := range []string{"release.yml", "build.yml", "macos.yml", "prerelease.yml", "dev-build.yml"} {
 		text := workflow(t, file)
 		for name, job := range jobs(text) {
 			n := strings.Count(job, "persist-credentials: true")
@@ -254,9 +254,10 @@ func TestWritePermissionOnlyWhereNeeded(t *testing.T) {
 		"build.yml/publish":    true,
 		"prerelease.yml/tag":   true,
 		"prerelease.yml/build": true,
+		"dev-build.yml/build":  true,
 	}
 	found := map[string]bool{}
-	for _, file := range []string{"release.yml", "build.yml", "macos.yml", "prerelease.yml"} {
+	for _, file := range []string{"release.yml", "build.yml", "macos.yml", "prerelease.yml", "dev-build.yml"} {
 		text := workflow(t, file)
 		mustNotContain(t, file+" top-level permissions", topOf(text), "contents: write")
 		for name, job := range jobs(text) {
@@ -320,7 +321,7 @@ func TestPublishUsesNotesFileAndClobber(t *testing.T) {
 
 // An input or ref name interpolated into a run script is a script injection into a job with a token.
 func TestNoInputsInRunScripts(t *testing.T) {
-	for _, file := range []string{"release.yml", "build.yml", "macos.yml", "prerelease.yml"} {
+	for _, file := range []string{"release.yml", "build.yml", "macos.yml", "prerelease.yml", "dev-build.yml"} {
 		for _, block := range runBlocks(workflow(t, file)) {
 			if strings.Contains(block, "${{") {
 				t.Errorf("%s interpolates an expression in a run script: %s", file, block)
@@ -494,17 +495,35 @@ func TestOvertakenDispatchOrRerunFails(t *testing.T) {
 	}
 }
 
-// A pre-release with an automatic trigger publishes test builds on its own; without its `tag`
-// input nobody can name the tag.
+// A pre-release with an automatic trigger of its own publishes test builds on its own; without
+// workflow_call dev-build and the release train cannot call it, without a `tag` input nobody can
+// name the tag of a call.
 func TestPrereleaseTriggerAndInput(t *testing.T) {
 	on := onBlock(t, workflow(t, "prerelease.yml"))
-	mustContain(t, "prerelease.yml on:", on, "workflow_dispatch:")
-	mustMatch(t, "prerelease.yml on:", on, `^    inputs:\s*\n      tag:`)
-	for _, trigger := range []string{"push", "pull_request", "schedule", "workflow_call"} {
+	mustContain(t, "prerelease.yml on:", on, "workflow_dispatch:", "workflow_call:")
+	mustMatch(t, "prerelease.yml on:", on, `(?s)workflow_call:\s*\n\s+inputs:\s*\n\s+tag:`)
+	mustMatch(t, "prerelease.yml on:", on, `(?s)workflow_dispatch:\s*\n\s+inputs:\s*\n\s+tag:`)
+	for _, trigger := range []string{"push", "pull_request", "schedule"} {
 		if regexp.MustCompile(`(?m)^  ` + trigger + `\b`).MatchString(on) {
 			t.Errorf("prerelease.yml has the trigger %s", trigger)
 		}
 	}
+}
+
+// A manual run that can make a dev or rc tag puts a build on the dev channel or in a release
+// candidate without the soak and fragment checks; the caller is told apart by `github.workflow`.
+func TestPrereleaseManualRunMakesTestTagsOnly(t *testing.T) {
+	for _, name := range []string{"ui", "tag"} {
+		job := jobOf(t, "prerelease.yml", name)
+		mustContain(t, "prerelease "+name, job, "WORKFLOW: ${{ github.workflow }}", `"$WORKFLOW" = prerelease`, `grep -Eq -- '-test\.[0-9]+$'`)
+	}
+}
+
+// A manual run without a tag must count the next -test.N itself, from the tags of the remote.
+func TestPrereleaseCountsTheTestTag(t *testing.T) {
+	tag := jobOf(t, "prerelease.yml", "tag")
+	mustContain(t, "tag job", tag, "go run ./ci/changelog next --kind test", "fetch-depth: 0")
+	inOrder(t, "tag job", tag, "next --kind test", prereleaseTagRE, "ci/tag-with-ui.sh")
 }
 
 // A `ui` or `tag` job that lets a tag that is not vX.Y.Z-<suffix> through, or checks it after the
