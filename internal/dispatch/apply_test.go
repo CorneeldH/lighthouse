@@ -451,7 +451,7 @@ func TestApplyStartWithoutTriggerCommentPostsNoRocket(t *testing.T) {
 func TestApplyStartRelocatesAPlanFromAnotherCheckout(t *testing.T) {
 	h := newHarness(t)
 	h.wp.root = t.TempDir()
-	plan := h.wp.root + "/forge/issue-7-x/design/plans/p.md"
+	plan := filepath.Join(h.wp.root, "forge", "issue-7-x", "design", "plans", "p.md")
 	writeEmpty(t, plan)
 	a := startAction()
 	a.Command = "/lighthouse-review-plan /home/u/repo/.claude/worktrees/issue-7-x/design/plans/p.md"

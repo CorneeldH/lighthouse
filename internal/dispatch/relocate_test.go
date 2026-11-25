@@ -27,7 +27,7 @@ func TestRelocate(t *testing.T) {
 			// Run 19 of #237: the handoff was written in a worktree of the main checkout.
 			name:    "a plan in another checkout",
 			command: "/superpowers:subagent-driven-development /home/u/repo/.claude/worktrees/issue-147-x/design/plans/p.md",
-			want:    "/superpowers:subagent-driven-development " + wt + "/design/plans/p.md",
+			want:    "/superpowers:subagent-driven-development " + filepath.Join(wt, "design", "plans", "p.md"),
 		},
 		{
 			name:    "a plan in the run's worktree stays",

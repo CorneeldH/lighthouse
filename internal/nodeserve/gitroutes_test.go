@@ -270,7 +270,7 @@ func TestRelocateFindsPathInNodeWorktree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := "/lighthouse-x " + root + "/plans/p.md"; got.Command != want {
+	if want := "/lighthouse-x " + filepath.Join(root, "plans", "p.md"); got.Command != want {
 		t.Errorf("command = %q, want %q", got.Command, want)
 	}
 }
