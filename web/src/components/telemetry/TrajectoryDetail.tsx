@@ -13,21 +13,27 @@ function Usage({ rows }: { rows: UsageRow[] | null }): JSX.Element | null {
     <ul className="ml-4 list-disc">
       {rows.map((u, i) => (
         <li key={`${u.model}-${i}`}>
-          {`${u.model}: ${u.tokens} tokens, cost ${u.cost === null ? 'not measured' : money(u.cost)} (${u.cost_kind})`}
+          {`${u.model}: ${u.tokens} tokens, cost ${u.cost === null ? 'not measured' : money(u.cost)}${u.cost_kind === '' ? '' : ` (${u.cost_kind})`}`}
         </li>
       ))}
     </ul>
   )
 }
 
-function Findings({ rows }: { rows: FindingRow[] }): JSX.Element {
+// A finding by reference only; an empty severity is left out and no decision is "undecided".
+function Findings({ rows, withComponent = false }: { rows: FindingRow[]; withComponent?: boolean }): JSX.Element {
   return (
     <ul className="ml-4 list-disc">
-      {rows.map((f, i) => (
-        <li key={`${f.key}-${i}`}>
-          <span>{f.key}</span> · {f.severity} · {f.decision} · <code>{f.record_path}</code>
-        </li>
-      ))}
+      {rows.map((f, i) => {
+        const meta = [f.severity, f.decision === '' ? 'undecided' : f.decision].filter((m) => m !== '')
+        return (
+          <li key={`${f.key}-${i}`}>
+            {withComponent && `${f.component} · `}
+            <span>{f.key}</span>
+            {meta.map((m) => ` · ${m}`).join('')} · <code>{f.record_path}</code>
+          </li>
+        )
+      })}
     </ul>
   )
 }
@@ -69,6 +75,7 @@ export function TrajectoryDetail({ id }: { id: number }): JSX.Element {
   const reviews = d.reviews ?? []
   const recoveries = d.recoveries ?? []
   const events = d.events ?? []
+  const otherFindings = d.findings ?? []
   return (
     <div className="space-y-4">
       {back}
@@ -114,6 +121,13 @@ export function TrajectoryDetail({ id }: { id: number }): JSX.Element {
           </ul>
         )}
       </section>
+      {otherFindings.length > 0 && (
+        <section aria-label="Other findings">
+          <h4 className="font-semibold">Other findings</h4>
+          <p className="text-sm text-muted-foreground">Findings without a review run, such as task reviews from an SDD ledger.</p>
+          <Findings rows={otherFindings} withComponent />
+        </section>
+      )}
       <section aria-label="Recovery">
         <h4 className="font-semibold">Recovery</h4>
         {recoveries.length === 0 ? <p>None</p> : (

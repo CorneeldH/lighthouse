@@ -61,6 +61,17 @@ describe('TrajectoryList', () => {
     expect(await screen.findByText('33.72 (estimate)')).toBeTruthy()
   })
 
+  it('shows recovery as a label and an empty size as not measured', async () => {
+    mount(<TrajectoryList filter={{}} />, () =>
+      json({ trajectories: [row({ id: 1, issue: 1, recovery: 'none_measured', size: '' }), row({ id: 2, issue: 2, recovery: 'recovered' })] }),
+    )
+    await screen.findByText('recovered')
+    const cells = (i: number): string[] => within(bodyRows()[i]).getAllByRole('cell').map((c) => c.textContent ?? '')
+    expect(cells(0)[2]).toBe('not measured')
+    expect(cells(0)[4]).toBe('not measured')
+    expect(screen.queryByText('none_measured')).toBeNull()
+  })
+
   it('sorts on issue and toggles the direction', async () => {
     mount(<TrajectoryList filter={{}} />, () => json({ trajectories: [row({ id: 1, issue: 5 }), row({ id: 2, issue: 3 }), row({ id: 3, issue: 9 })] }))
     await screen.findAllByRole('link')
@@ -92,7 +103,7 @@ describe('TrajectoryDetail', () => {
     repo: 'a/b',
     issue: 10,
     runs: [{ id: 1, assignment: 'work', outcome: 'ok', started_at: 's', ended_at: null, usage: [{ model: 'opus', tokens: 1200, cost: 1.23456, cost_kind: 'reported' }] }],
-    sessions: [{ id: 4, assignment: 'work', branch: 'b', ended_at: null, harness: 'claude', link_basis: 'branch', started_at: 's', usage: [{ model: 'sonnet', tokens: 300, cost: null, cost_kind: 'estimated' }] }],
+    sessions: [{ id: 4, assignment: 'work', branch: 'b', ended_at: null, harness: 'claude', link_basis: 'branch', started_at: 's', usage: [{ model: 'sonnet', tokens: 300, cost: null, cost_kind: '' }] }],
     reviews: [1, 2, 3].map((i) => ({
       id: i,
       component: 'plan',
@@ -103,7 +114,7 @@ describe('TrajectoryDetail', () => {
       text: 'SECRET',
       findings: [{ text: 'SECRET', component: 'plan', decision: 'adopted', key: `K${i}`, record_path: `rec/${i}.json`, severity: 'high' }],
     })),
-    findings: [],
+    findings: [{ component: 'task_review', decision: '', key: 'T1', record_path: '/ledger.md', severity: '' }],
     recoveries: [{ pr: 5, status: 'recovered', merged_at: 'm', items: [{ at: 'a', kind: 'fix', ref: 'r1' }] }],
     events: [],
     questions: { dispatcher: 2, transcript: 3 },
@@ -123,7 +134,9 @@ describe('TrajectoryDetail', () => {
     expect(screen.getByText('opus: 1200 tokens, cost 1.23 (reported)')).toBeTruthy()
     // by_cause is in seconds.
     expect(screen.getByText('work: 1.5 h')).toBeTruthy()
-    expect(screen.getByText('sonnet: 300 tokens, cost not measured (estimated)')).toBeTruthy()
+    expect(screen.getByText('sonnet: 300 tokens, cost not measured')).toBeTruthy()
+    const other = screen.getByRole('region', { name: 'Other findings' })
+    expect(within(other).getByText(/T1/).closest('li')?.textContent).toBe('task_review · T1 · undecided · /ledger.md')
     expect(screen.getByText(/dispatcher: 2/)).toBeTruthy()
     expect(screen.getByText(/transcript: 3/)).toBeTruthy()
   })

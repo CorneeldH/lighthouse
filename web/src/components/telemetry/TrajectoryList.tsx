@@ -4,6 +4,15 @@ import { forgeErrorText, type TelemetryFilter } from '@/lib/api'
 import { useTelemetryTrajectories } from '@/lib/queries'
 import { money } from './format'
 
+// The recovery states of report.recoveryState, as the list shows them.
+const RECOVERY_LABELS: Record<string, string> = {
+  none_measured: 'not measured',
+  open: 'window open',
+  recovered: 'recovered',
+  none: 'no recovery needed',
+}
+const recoveryLabel = (r: string): string => RECOVERY_LABELS[r] ?? r
+
 type SortKey = 'repo' | 'issue' | 'size' | 'cost' | 'recovery'
 const COLUMNS: SortKey[] = ['repo', 'issue', 'size', 'cost', 'recovery']
 
@@ -77,9 +86,9 @@ export function TrajectoryList({ filter }: { filter: TelemetryFilter }): JSX.Ele
                   </a>
                 </td>
                 <td>{r.issue}</td>
-                <td>{r.size}</td>
+                <td>{r.size === '' ? 'not measured' : r.size}</td>
                 <td>{r.cost === null ? 'not measured' : `${money(r.cost)} (${r.cost_kind})`}</td>
-                <td>{r.recovery}</td>
+                <td>{recoveryLabel(r.recovery)}</td>
                 <td>{(r.components ?? []).join(', ')}</td>
               </tr>
             ))}
