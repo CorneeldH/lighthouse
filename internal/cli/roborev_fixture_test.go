@@ -8,6 +8,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -142,7 +144,7 @@ func (r *gateRun) sub(v any) any {
 		for _, k := range keys {
 			x = strings.ReplaceAll(x, "$"+k, r.vars[k])
 		}
-		return x
+		return nativePaths(x, r.vars)
 	case []any:
 		out := make([]any, len(x))
 		for i, e := range x {
@@ -157,6 +159,22 @@ func (r *gateRun) sub(v any) any {
 		return out
 	}
 	return v
+}
+
+// nativePaths gives the path tail after an absolute variable value the native separator: a fixture
+// writes "$state/feat.json", the code under test returns "...\\feat.json" on Windows.
+func nativePaths(x string, vars map[string]string) string {
+	if runtime.GOOS != "windows" {
+		return x
+	}
+	for _, v := range vars {
+		if !filepath.IsAbs(v) {
+			continue
+		}
+		re := regexp.MustCompile(regexp.QuoteMeta(v) + `[/\w.\-]*`)
+		x = re.ReplaceAllStringFunc(x, filepath.FromSlash)
+	}
+	return x
 }
 
 func gateStr(m map[string]any, key string) string { s, _ := m[key].(string); return s }
@@ -177,6 +195,11 @@ func (r *gateRun) setup(actions []map[string]any) {
 			onlyGit := filepath.Join(r.tmp, "only-git")
 			if err := os.Mkdir(onlyGit, 0o755); err != nil {
 				t.Fatal(err)
+			}
+			if runtime.GOOS == "windows" {
+				// git.exe needs its sibling DLLs, so a symlink or copy of it does not run.
+				stubbin.Only(t, onlyGit, "git")
+				break
 			}
 			git, err := exec.LookPath("git")
 			if err != nil {
