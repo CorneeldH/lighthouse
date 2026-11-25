@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/fixturesetup"
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
 )
 
 type fixtureCase struct {
@@ -113,11 +114,10 @@ func TestOriginNotARepoIsAnError(t *testing.T) {
 func TestOriginTimeoutText(t *testing.T) {
 	// A git that outlives the deadline is killed by the context: that must read as a timeout,
 	// not as "git failed (rc -1)".
+	stubbin.RequirePOSIX(t, "exec of a long sleep")
 	bin := t.TempDir()
-	if err := os.WriteFile(bin+"/git", []byte("#!/bin/sh\nexec sleep 30\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", bin+":"+os.Getenv("PATH"))
+	stubbin.MakeScript(t, bin, "git", "exec sleep 30\n")
+	stubbin.Prepend(t, bin)
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
 	_, _, err := Origin(ctx, "/some/root")

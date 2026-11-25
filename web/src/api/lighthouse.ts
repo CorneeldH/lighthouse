@@ -4,6 +4,53 @@
  * lighthouse
  * OpenAPI spec version: dev
  */
+export interface Measure {
+  n: number;
+  reason?: string;
+  /** @nullable */
+  value: number | null;
+}
+
+export type GroupBySeverity = {[key: string]: number};
+
+export interface Group {
+  active: Measure;
+  adopted: Measure;
+  by_severity: GroupBySeverity;
+  cost: Measure;
+  cost_kind: string;
+  findings: number;
+  found: Measure;
+  human_wait: Measure;
+  left_open: number;
+  name: string;
+  questions: Measure;
+  recovered: Measure;
+  recovery_items: Measure;
+  reviews: number;
+  trajectories: number;
+  undecided: number;
+}
+
+export interface Outside {
+  before_cohort: number;
+  mixed_lane: number;
+  no_lane: number;
+  no_recovery: number;
+  running: number;
+}
+
+export interface Block {
+  /** @nullable */
+  groups: Group[] | null;
+  kind: string;
+  label: string;
+  label_note: string;
+  name: string;
+  outside: Outside;
+  reason?: string;
+}
+
 export interface Blocker {
   issue: number;
   repo: string;
@@ -30,6 +77,77 @@ export interface ClosedIssue {
   url: string;
 }
 
+/**
+ * @nullable
+ */
+export type ResetCredits = {
+  available: number;
+  expires: string[];
+} | null;
+
+export type WindowReportState = typeof WindowReportState[keyof typeof WindowReportState];
+
+
+export const WindowReportState = {
+  ok: 'ok',
+  stale: 'stale',
+  not_measurable: 'not_measurable',
+} as const;
+
+export interface WindowReport {
+  /** @nullable */
+  age_s: number | null;
+  lower_bound: boolean;
+  /** @nullable */
+  pct: number | null;
+  reason?: string;
+  reset_at: string;
+  state: WindowReportState;
+}
+
+export interface CodexReport {
+  reset_credits: ResetCredits | null;
+  session: WindowReport;
+  week: WindowReport;
+}
+
+export interface Options {
+  /** @nullable */
+  areas: string[] | null;
+  /** @nullable */
+  harnesses: string[] | null;
+  /** @nullable */
+  models: string[] | null;
+  /** @nullable */
+  pr_sizes: string[] | null;
+  /** @nullable */
+  repos: string[] | null;
+  /** @nullable */
+  routes: string[] | null;
+  /** @nullable */
+  sizes: string[] | null;
+}
+
+export interface ComponentsReport {
+  /** @nullable */
+  blocks: Block[] | null;
+  options: Options;
+}
+
+export interface CoverageLine {
+  /** @nullable */
+  count: number | null;
+  key: string;
+  note: string;
+  reason: string;
+}
+
+export interface CoverageReport {
+  /** @nullable */
+  lines: CoverageLine[] | null;
+  not_migrated: boolean;
+}
+
 export interface DeferredView {
   at: string;
   issue: number;
@@ -37,6 +155,106 @@ export interface DeferredView {
   repo: string;
   schedule?: string;
   title: string;
+}
+
+export type DetailByCause = {[key: string]: number | null};
+
+export interface EventRow {
+  at: string;
+  kind: string;
+  ref: string;
+  run_id?: number;
+  session_id?: number;
+}
+
+export interface FindingRow {
+  component: string;
+  decision: string;
+  key: string;
+  record_path: string;
+  severity: string;
+}
+
+export interface QuestionCounts {
+  dispatcher: number;
+  transcript: number;
+}
+
+export interface RecoveryItemRow {
+  at: string;
+  kind: string;
+  ref: string;
+}
+
+export interface RecoveryRow {
+  /** @nullable */
+  items: RecoveryItemRow[] | null;
+  merged_at: string;
+  pr: number;
+  status: string;
+}
+
+export interface ReviewRow {
+  component: string;
+  finding_count: number;
+  /** @nullable */
+  findings: FindingRow[] | null;
+  id: number;
+  outcome: string;
+  ran_at: string;
+  record_path: string;
+}
+
+export interface UsageRow {
+  /** @nullable */
+  cost: number | null;
+  cost_kind: string;
+  model: string;
+  tokens: number;
+}
+
+export interface RunRow {
+  assignment: string;
+  /** @nullable */
+  ended_at: string | null;
+  id: number;
+  outcome: string;
+  started_at: string;
+  /** @nullable */
+  usage: UsageRow[] | null;
+}
+
+export interface SessionRow {
+  assignment: string;
+  branch: string;
+  /** @nullable */
+  ended_at: string | null;
+  harness: string;
+  id: number;
+  link_basis: string;
+  started_at: string;
+  /** @nullable */
+  usage: UsageRow[] | null;
+}
+
+export interface Detail {
+  by_cause: DetailByCause;
+  /** @nullable */
+  events: EventRow[] | null;
+  /** @nullable */
+  findings: FindingRow[] | null;
+  id: number;
+  issue: number;
+  questions: QuestionCounts;
+  /** @nullable */
+  recoveries: RecoveryRow[] | null;
+  repo: string;
+  /** @nullable */
+  reviews: ReviewRow[] | null;
+  /** @nullable */
+  runs: RunRow[] | null;
+  /** @nullable */
+  sessions: SessionRow[] | null;
 }
 
 export interface ErrorDetail {
@@ -74,6 +292,7 @@ export interface MilestoneRef {
   number: number;
   state: string;
   title: string;
+  url: string;
 }
 
 export interface Issue {
@@ -91,6 +310,26 @@ export interface Issue {
   url: string;
 }
 
+export interface ListRow {
+  closed: boolean;
+  /** @nullable */
+  components: string[] | null;
+  /** @nullable */
+  cost: number | null;
+  cost_kind: string;
+  id: number;
+  issue: number;
+  recovery: string;
+  repo: string;
+  size: string;
+}
+
+export interface Marker {
+  kind: string;
+  text: string;
+  week: string;
+}
+
 export interface Milestone {
   /** @nullable */
   closed: ClosedIssue[] | null;
@@ -99,6 +338,7 @@ export interface Milestone {
   number: number;
   open: number;
   title: string;
+  url: string;
 }
 
 export interface Question {
@@ -153,26 +393,6 @@ export interface Repo {
   slug: string;
 }
 
-export type WindowReportState = typeof WindowReportState[keyof typeof WindowReportState];
-
-
-export const WindowReportState = {
-  ok: 'ok',
-  stale: 'stale',
-  not_measurable: 'not_measurable',
-} as const;
-
-export interface WindowReport {
-  /** @nullable */
-  age_s: number | null;
-  lower_bound: boolean;
-  /** @nullable */
-  pct: number | null;
-  reason?: string;
-  reset_at: string;
-  state: WindowReportState;
-}
-
 export interface SourceReport {
   session: WindowReport;
   week: WindowReport;
@@ -180,7 +400,7 @@ export interface SourceReport {
 
 export interface Report {
   claude: SourceReport;
-  codex: SourceReport;
+  codex: CodexReport;
 }
 
 export interface Run {
@@ -239,6 +459,30 @@ export interface RunsOutputBody {
   workspace_url: string;
 }
 
+export interface TelemetryTrajectoriesOutputBody {
+  /** @nullable */
+  trajectories: ListRow[] | null;
+}
+
+export interface Week {
+  /** @nullable */
+  closed: number | null;
+  /** @nullable */
+  cost: number | null;
+  /** @nullable */
+  questions: number | null;
+  /** @nullable */
+  recovered: number | null;
+  start: string;
+}
+
+export interface TimelineReport {
+  /** @nullable */
+  markers: Marker[] | null;
+  /** @nullable */
+  weeks: Week[] | null;
+}
+
 export type GetLatestCommentParams = {
 /**
  * Slug of a served repo, owner/name
@@ -248,6 +492,86 @@ repo: string;
  * @minimum 1
  */
 issue: number;
+};
+
+export type GetTelemetryComponentsParams = {
+/**
+ * repository slug owner/name; empty is every repo
+ */
+repo?: string;
+/**
+ * triage route
+ */
+route?: string;
+/**
+ * plan size class
+ */
+size?: string;
+/**
+ * PR size class
+ */
+pr_size?: string;
+/**
+ * area label
+ */
+area?: string;
+/**
+ * dominant model
+ */
+model?: string;
+/**
+ * harness
+ */
+harness?: string;
+};
+
+export type GetTelemetryCoverageParams = {
+/**
+ * repository slug owner/name; empty is every repo
+ */
+repo?: string;
+};
+
+export type GetTelemetryTimelineParams = {
+/**
+ * repository slug owner/name; empty is every repo
+ */
+repo?: string;
+};
+
+export type GetTelemetryTrajectoriesParams = {
+/**
+ * repository slug owner/name; empty is every repo
+ */
+repo?: string;
+/**
+ * triage route
+ */
+route?: string;
+/**
+ * plan size class
+ */
+size?: string;
+/**
+ * PR size class
+ */
+pr_size?: string;
+/**
+ * area label
+ */
+area?: string;
+/**
+ * dominant model
+ */
+model?: string;
+/**
+ * harness
+ */
+harness?: string;
+/**
+ * keep only trajectories in which this component ran
+ */
+component?: string;
 };
 
 export type HTTPStatusCode1xx = 100 | 101 | 102 | 103;
@@ -704,6 +1028,284 @@ export const getRuns = async ( options?: RequestInit): Promise<getRunsResponse> 
 
   const data: getRunsResponse['data'] = body ? JSON.parse(body) : {}
   return { data, status: res.status, headers: res.headers } as getRunsResponse
+}
+
+
+
+export type getTelemetryComponentsResponse200 = {
+  data: ComponentsReport
+  status: 200
+}
+
+export type getTelemetryComponentsResponseDefault = {
+  data: ErrorModel
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type getTelemetryComponentsResponseSuccess = (getTelemetryComponentsResponse200) & {
+  headers: Headers;
+};
+export type getTelemetryComponentsResponseError = (getTelemetryComponentsResponseDefault) & {
+  headers: Headers;
+};
+
+export type getTelemetryComponentsResponse = (getTelemetryComponentsResponseSuccess | getTelemetryComponentsResponseError)
+
+export const getGetTelemetryComponentsUrl = (params?: GetTelemetryComponentsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/telemetry/components?${stringifiedParams}` : `/api/telemetry/components`
+}
+
+/**
+ * @summary Get API telemetry components
+ */
+export const getTelemetryComponents = async (params?: GetTelemetryComponentsParams, options?: RequestInit): Promise<getTelemetryComponentsResponse> => {
+
+  const res = await fetch(getGetTelemetryComponentsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: getTelemetryComponentsResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as getTelemetryComponentsResponse
+}
+
+
+
+export type getTelemetryCoverageResponse200 = {
+  data: CoverageReport
+  status: 200
+}
+
+export type getTelemetryCoverageResponseDefault = {
+  data: ErrorModel
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type getTelemetryCoverageResponseSuccess = (getTelemetryCoverageResponse200) & {
+  headers: Headers;
+};
+export type getTelemetryCoverageResponseError = (getTelemetryCoverageResponseDefault) & {
+  headers: Headers;
+};
+
+export type getTelemetryCoverageResponse = (getTelemetryCoverageResponseSuccess | getTelemetryCoverageResponseError)
+
+export const getGetTelemetryCoverageUrl = (params?: GetTelemetryCoverageParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/telemetry/coverage?${stringifiedParams}` : `/api/telemetry/coverage`
+}
+
+/**
+ * @summary Get API telemetry coverage
+ */
+export const getTelemetryCoverage = async (params?: GetTelemetryCoverageParams, options?: RequestInit): Promise<getTelemetryCoverageResponse> => {
+
+  const res = await fetch(getGetTelemetryCoverageUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: getTelemetryCoverageResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as getTelemetryCoverageResponse
+}
+
+
+
+export type getTelemetryTimelineResponse200 = {
+  data: TimelineReport
+  status: 200
+}
+
+export type getTelemetryTimelineResponseDefault = {
+  data: ErrorModel
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type getTelemetryTimelineResponseSuccess = (getTelemetryTimelineResponse200) & {
+  headers: Headers;
+};
+export type getTelemetryTimelineResponseError = (getTelemetryTimelineResponseDefault) & {
+  headers: Headers;
+};
+
+export type getTelemetryTimelineResponse = (getTelemetryTimelineResponseSuccess | getTelemetryTimelineResponseError)
+
+export const getGetTelemetryTimelineUrl = (params?: GetTelemetryTimelineParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/telemetry/timeline?${stringifiedParams}` : `/api/telemetry/timeline`
+}
+
+/**
+ * @summary Get API telemetry timeline
+ */
+export const getTelemetryTimeline = async (params?: GetTelemetryTimelineParams, options?: RequestInit): Promise<getTelemetryTimelineResponse> => {
+
+  const res = await fetch(getGetTelemetryTimelineUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: getTelemetryTimelineResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as getTelemetryTimelineResponse
+}
+
+
+
+export type getTelemetryTrajectoriesResponse200 = {
+  data: TelemetryTrajectoriesOutputBody
+  status: 200
+}
+
+export type getTelemetryTrajectoriesResponseDefault = {
+  data: ErrorModel
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type getTelemetryTrajectoriesResponseSuccess = (getTelemetryTrajectoriesResponse200) & {
+  headers: Headers;
+};
+export type getTelemetryTrajectoriesResponseError = (getTelemetryTrajectoriesResponseDefault) & {
+  headers: Headers;
+};
+
+export type getTelemetryTrajectoriesResponse = (getTelemetryTrajectoriesResponseSuccess | getTelemetryTrajectoriesResponseError)
+
+export const getGetTelemetryTrajectoriesUrl = (params?: GetTelemetryTrajectoriesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/telemetry/trajectories?${stringifiedParams}` : `/api/telemetry/trajectories`
+}
+
+/**
+ * @summary Get API telemetry trajectories
+ */
+export const getTelemetryTrajectories = async (params?: GetTelemetryTrajectoriesParams, options?: RequestInit): Promise<getTelemetryTrajectoriesResponse> => {
+
+  const res = await fetch(getGetTelemetryTrajectoriesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: getTelemetryTrajectoriesResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as getTelemetryTrajectoriesResponse
+}
+
+
+
+export type getTelemetryTrajectoryResponse200 = {
+  data: Detail
+  status: 200
+}
+
+export type getTelemetryTrajectoryResponseDefault = {
+  data: ErrorModel
+  status: Exclude<HTTPStatusCodes, 200>
+}
+
+export type getTelemetryTrajectoryResponseSuccess = (getTelemetryTrajectoryResponse200) & {
+  headers: Headers;
+};
+export type getTelemetryTrajectoryResponseError = (getTelemetryTrajectoryResponseDefault) & {
+  headers: Headers;
+};
+
+export type getTelemetryTrajectoryResponse = (getTelemetryTrajectoryResponseSuccess | getTelemetryTrajectoryResponseError)
+
+export const getGetTelemetryTrajectoryUrl = (id: number,) => {
+
+
+
+
+  return `/api/telemetry/trajectories/${id}`
+}
+
+/**
+ * @summary Get API telemetry trajectories by ID
+ */
+export const getTelemetryTrajectory = async (id: number, options?: RequestInit): Promise<getTelemetryTrajectoryResponse> => {
+
+  const res = await fetch(getGetTelemetryTrajectoryUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+)
+
+
+  const body = [204, 205, 304].includes(res.status) ? null : await res.text();
+
+  const data: getTelemetryTrajectoryResponse['data'] = body ? JSON.parse(body) : {}
+  return { data, status: res.status, headers: res.headers } as getTelemetryTrajectoryResponse
 }
 
 

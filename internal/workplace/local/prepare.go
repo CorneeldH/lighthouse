@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/CorneeldH/lighthouse/internal/gitpath"
 	"github.com/CorneeldH/lighthouse/internal/workplace"
 )
 
@@ -167,6 +168,7 @@ func (a *Adapter) excludeWorktrees(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	common = gitpath.Native(common)
 	if !filepath.IsAbs(common) {
 		common = filepath.Join(a.RepoDir, common)
 	}

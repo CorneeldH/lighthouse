@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 )
 
 // checkInstructionsEnv blanks what a controller run or the host would leak into the command and
@@ -84,23 +86,25 @@ func TestCheckInstructionsNoRootCouldNotCheck(t *testing.T) {
 
 func TestPersonalSkills(t *testing.T) {
 	t.Run("override wins", func(t *testing.T) {
-		t.Setenv("CHECK_INSTRUCTIONS_PERSONAL", "/some/dir")
-		t.Setenv("HOME", "/home/x")
-		if got := personalSkills(); got != "/some/dir" {
+		dir := testpath.Abs("some", "dir")
+		t.Setenv("CHECK_INSTRUCTIONS_PERSONAL", dir)
+		testpath.SetHome(t, testpath.Abs("home", "x"))
+		if got := personalSkills(); got != dir {
 			t.Errorf("got %q", got)
 		}
 	})
 	t.Run("home", func(t *testing.T) {
 		t.Setenv("CHECK_INSTRUCTIONS_PERSONAL", "")
-		t.Setenv("HOME", "/home/x")
-		if got := personalSkills(); got != "/home/x/.claude/skills" {
+		home := testpath.Abs("home", "x")
+		testpath.SetHome(t, home)
+		if got, want := personalSkills(), filepath.Join(home, ".claude", "skills"); got != want {
 			t.Errorf("got %q", got)
 		}
 	})
 	// Red when an unset HOME gives "/.claude/skills", a path that can exist on a machine.
 	t.Run("no home", func(t *testing.T) {
 		t.Setenv("CHECK_INSTRUCTIONS_PERSONAL", "")
-		t.Setenv("HOME", "")
+		testpath.SetHome(t, "")
 		if got := personalSkills(); got != "$HOME/.claude/skills" {
 			t.Errorf("got %q", got)
 		}

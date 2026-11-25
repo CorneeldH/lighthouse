@@ -10,8 +10,11 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
 )
 
 const (
@@ -111,10 +114,11 @@ func stubPwsh(t *testing.T, msg, rc string) string {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
-	script := "#!/bin/sh\necho '" + msg + "' >&2\nexit " + rc + "\n"
-	if err := os.WriteFile(filepath.Join(dir, "pwsh"), []byte(script), 0o755); err != nil {
+	code, err := strconv.Atoi(rc)
+	if err != nil {
 		t.Fatal(err)
 	}
+	stubbin.Make(t, dir, "pwsh", stubbin.Spec{Stderr: msg + "\n", Exit: code})
 	return dir
 }
 
@@ -267,7 +271,6 @@ func toolsOnlyPath(t *testing.T) string {
 func TestPowershellLintCouldNotCheck(t *testing.T) {
 	root := installRepo(t, "core", "powershell")
 	bad := readPsFixture(t, psInvokeExpr)
-	path := os.Getenv("PATH")
 	t.Run("no pwsh on PATH", func(t *testing.T) {
 		r := runPsLint(t, root, "canary.ps1", bad, "PATH="+toolsOnlyPath(t))
 		requireCouldNotCheck(t, r, "pwsh is not on PATH")
@@ -276,17 +279,17 @@ func TestPowershellLintCouldNotCheck(t *testing.T) {
 		// Emptying PSModulePath does not hide the module (PowerShell 7 adds its own paths back):
 		// the stub answers as the helper does without the module.
 		dir := stubPwsh(t, "psscriptanalyzer-repo.ps1: the PSScriptAnalyzer module cannot be loaded", "3")
-		r := runPsLint(t, root, "canary.ps1", bad, "PATH="+dir+string(os.PathListSeparator)+path)
+		r := runPsLint(t, root, "canary.ps1", bad, "PATH="+stubbin.PathValue(t, dir))
 		requireCouldNotCheck(t, r, "PSScriptAnalyzer module cannot be loaded")
 	})
 	t.Run("pwsh fails without output", func(t *testing.T) {
 		dir := stubPwsh(t, "boom", "1")
-		r := runPsLint(t, root, "canary.ps1", bad, "PATH="+dir+string(os.PathListSeparator)+path)
+		r := runPsLint(t, root, "canary.ps1", bad, "PATH="+stubbin.PathValue(t, dir))
 		requireCouldNotCheck(t, r, "rc=1")
 	})
 	t.Run("rc 10 without a finding", func(t *testing.T) {
 		dir := stubPwsh(t, "no lines", "10")
-		r := runPsLint(t, root, "canary.ps1", bad, "PATH="+dir+string(os.PathListSeparator)+path)
+		r := runPsLint(t, root, "canary.ps1", bad, "PATH="+stubbin.PathValue(t, dir))
 		requireCouldNotCheck(t, r, "rc=10")
 	})
 	t.Run("helper missing", func(t *testing.T) {
@@ -304,16 +307,14 @@ func TestPowershellLintCouldNotCheck(t *testing.T) {
 // message shows which root the hook chose. Without the normalisation dirname answers `.` for a path
 // without a slash, the hook's working directory (the other repository).
 func TestPowershellLintBackslashPathFindsTheFileRepo(t *testing.T) {
+	stubbin.RequirePOSIX(t, "$4, the fourth argument of the stub")
 	dir, err := os.MkdirTemp(workDir, "pwsh")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
-	stub := "#!/bin/sh\necho \"helper=$4\" >&2\nexit 1\n"
-	if err := os.WriteFile(filepath.Join(dir, "pwsh"), []byte(stub), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	pathEnv := "PATH=" + dir + string(os.PathListSeparator) + os.Getenv("PATH")
+	stubbin.MakeScript(t, dir, "pwsh", "echo \"helper=$4\" >&2\nexit 1\n")
+	pathEnv := "PATH=" + stubbin.PathValue(t, dir)
 	helper := func(root string) string {
 		return "helper=" + filepath.Join(root, ".lighthouse", "scripts", "psscriptanalyzer-repo.ps1")
 	}

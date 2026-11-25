@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
 )
 
 // Classification: io (real git, a fake git binary). Fails if the push's object-dir lookup runs
@@ -24,15 +26,13 @@ func testRemote(tempDir, path string) HTTPSRemote {
 }
 
 func TestObjectDirHonoursTheRemoteTimeout(t *testing.T) {
+	stubbin.RequirePOSIX(t, "exec of a long sleep")
 	bin := t.TempDir()
-	fake := filepath.Join(bin, "git")
-	if err := os.WriteFile(fake, []byte("#!/bin/sh\nexec sleep 30\n"), 0o700); err != nil {
-		t.Fatal(err)
-	}
+	stubbin.MakeScript(t, bin, "git", "exec sleep 30\n")
 	old := remoteTimeout
 	remoteTimeout = 200 * time.Millisecond
 	t.Cleanup(func() { remoteTimeout = old })
-	t.Setenv("PATH", bin+":/usr/bin:/bin") // exec resolves git in the process's PATH
+	stubbin.Prepend(t, bin) // exec resolves git in the process's PATH
 	r := testRemote(t.TempDir(), os.Getenv("PATH"))
 	start := time.Now()
 	_, err := r.objectDir(context.Background(), t.TempDir())
@@ -47,11 +47,9 @@ func TestObjectDirHonoursTheRemoteTimeout(t *testing.T) {
 func TestObjectDirPassesTheHardeningOptions(t *testing.T) {
 	bin := t.TempDir()
 	argsFile := filepath.Join(t.TempDir(), "args")
-	script := "#!/bin/sh\nprintf '%s\\n' \"$@\" > " + argsFile + "\necho /nonexistent/.git\n"
-	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", bin+":/usr/bin:/bin") // exec resolves git in the process's PATH
+	stubbin.RequirePOSIX(t, "printf of \"$@\" into a file")
+	stubbin.MakeScript(t, bin, "git", "printf '%s\\n' \"$@\" > "+argsFile+"\necho /nonexistent/.git\n")
+	stubbin.Prepend(t, bin) // exec resolves git in the process's PATH
 	r := testRemote(t.TempDir(), os.Getenv("PATH"))
 	if _, err := r.objectDir(context.Background(), t.TempDir()); err != nil {
 		t.Fatalf("objectDir: %v", err)

@@ -1,9 +1,15 @@
-import { QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useRef, useState } from 'react'
 import {
   ApiError,
   fetchCleanup,
   fetchPriorities,
+  fetchTelemetryComponents,
+  fetchTelemetryCoverage,
+  fetchTelemetryTimeline,
+  fetchTelemetryTrajectories,
+  fetchTelemetryTrajectory,
+  type TelemetryFilter,
   fetchQuestions,
   fetchReturned,
   fetchRuns,
@@ -25,6 +31,7 @@ export const queryKeys = {
   cleanup: ['cleanup'],
   runs: ['runs'],
   priorities: ['priorities'],
+  telemetry: (part: string, arg?: unknown) => ['telemetry', part, arg] as const,
   usage: ['usage'],
   health: ['health'],
 } as const
@@ -62,6 +69,55 @@ export function usePriorities() {
     queryFn: ({ signal }) => fetchPriorities(signal),
     refetchInterval: FORGE_INTERVAL_MS,
     staleTime: FORGE_INTERVAL_MS,
+  })
+}
+
+export function useTelemetryComponents(filter: TelemetryFilter) {
+  return useQuery({
+    queryKey: queryKeys.telemetry('components', filter),
+    queryFn: ({ signal }) => fetchTelemetryComponents(filter, signal),
+    refetchInterval: FORGE_INTERVAL_MS,
+    staleTime: FORGE_INTERVAL_MS,
+    placeholderData: keepPreviousData,
+  })
+}
+
+export function useTelemetryTimeline(filter: TelemetryFilter) {
+  return useQuery({
+    queryKey: queryKeys.telemetry('timeline', filter),
+    queryFn: ({ signal }) => fetchTelemetryTimeline(filter, signal),
+    refetchInterval: FORGE_INTERVAL_MS,
+    staleTime: FORGE_INTERVAL_MS,
+    placeholderData: keepPreviousData,
+  })
+}
+
+export function useTelemetryTrajectories(filter: TelemetryFilter) {
+  return useQuery({
+    queryKey: queryKeys.telemetry('trajectories', filter),
+    queryFn: ({ signal }) => fetchTelemetryTrajectories(filter, signal),
+    refetchInterval: FORGE_INTERVAL_MS,
+    staleTime: FORGE_INTERVAL_MS,
+    placeholderData: keepPreviousData,
+  })
+}
+
+export function useTelemetryTrajectory(id: number) {
+  return useQuery({
+    queryKey: queryKeys.telemetry('trajectory', id),
+    queryFn: ({ signal }) => fetchTelemetryTrajectory(id, signal),
+    refetchInterval: FORGE_INTERVAL_MS,
+    staleTime: FORGE_INTERVAL_MS,
+  })
+}
+
+export function useTelemetryCoverage(filter: TelemetryFilter) {
+  return useQuery({
+    queryKey: queryKeys.telemetry('coverage', filter),
+    queryFn: ({ signal }) => fetchTelemetryCoverage(filter, signal),
+    refetchInterval: FORGE_INTERVAL_MS,
+    staleTime: FORGE_INTERVAL_MS,
+    placeholderData: keepPreviousData,
   })
 }
 

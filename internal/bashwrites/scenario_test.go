@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/fixturesetup"
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
 )
 
 // End-to-end scenarios of bash-write-check: Pre, a real `bash -c` call and Post against a real git
@@ -861,12 +862,10 @@ func TestScenarioOutsideAnyRepoIsSilentAndGitDoesNotFail(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	writeFile(t, filepath.Join(shim, "git"), "#!/bin/sh\nprintf '%s\\n' \"$*\" >> '"+calls+"'\n'"+realGit+"' \"$@\"\nrc=$?\n"+
+	stubbin.RequirePOSIX(t, "$* logging, exec of the real git and $? handling")
+	stubbin.MakeScript(t, shim, "git", "printf '%s\\n' \"$*\" >> '"+calls+"'\n'"+realGit+"' \"$@\"\nrc=$?\n"+
 		"[ \"$rc\" -eq 0 ] || printf '%s %s\\n' \"$rc\" \"$*\" >> '"+failures+"'\nexit \"$rc\"\n")
-	if err := os.Chmod(filepath.Join(shim, "git"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	path := shim + string(os.PathListSeparator) + os.Getenv("PATH")
+	path := stubbin.PathValue(t, shim)
 	quiet(t, s.call(heredoc("x.sh", brokenSh), callOpts{cwd: plain, env: map[string]string{"PATH": path}}))
 	// The shim really was on the path: pre and post called git, none of them failed.
 	logged, err := os.ReadFile(calls)

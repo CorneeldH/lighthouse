@@ -4,6 +4,7 @@
     "proposed_when": "always",
     "detect": [],
     "skills": [
+      "architecture-scan",
       "audit-agent-config",
       "audit-worktrees",
       "close-issue",

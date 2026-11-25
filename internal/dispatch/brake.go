@@ -53,6 +53,16 @@ func (b *Brake) apply(ps []planned) []planned {
 	passed, admitted, admittedSoftware := 0, 0, 0
 	admittedOn := map[string]int{}
 	for _, p := range ps {
+		if p.Kind == KindPushRecover {
+			// A recover is never dropped: apply reads Braked to answer in plain language.
+			if b.Paused {
+				p.Braked = "pause"
+			} else {
+				p.Braked = b.UsageClosed()
+			}
+			out = append(out, p)
+			continue
+		}
 		if p.group() != 2 {
 			out = append(out, p)
 			continue

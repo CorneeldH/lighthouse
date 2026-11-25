@@ -188,3 +188,61 @@ test('the theme toggle forces dark or light and keeps the choice', async ({ page
   await theme.getByRole('button', { name: 'System' }).click()
   await expect(body).toHaveCSS('background-color', 'rgb(15, 20, 32)')
 })
+
+// The trajectory internal/telemetry/report/e2efixture writes: one review, one finding, one recovery.
+const FIXTURE_REPO = 'test/telemetry'
+const CORRELATION = 'Observed, not caused: reviews run more often on hard issues.'
+
+test('telemetry: tab shows components, timeline, trajectories and coverage', async ({ page, github, lighthouse }) => {
+  github.set({ issues: [] })
+  await page.goto(`${await lighthouse.start({ token: true, cache: 'fresh', telemetry: true })}/#telemetry`)
+  await expect(page.getByRole('tab', { name: 'Telemetry' })).toHaveAttribute('aria-selected', 'true')
+  for (const name of ['Components', 'Timeline', 'Trajectories', 'Coverage']) {
+    await expect(page.getByRole('region', { name, exact: true })).toBeVisible()
+  }
+
+  const planReview = page.getByRole('region', { name: 'plan_review', exact: true })
+  await expect(planReview).toContainText(CORRELATION)
+  // The one trajectory has a plan review: it is in the "with" group with one review that found something.
+  // The row header also carries the group size, so match "with" as a whole word ("without" is the other group).
+  const withRow = planReview.getByRole('row').filter({ has: page.getByRole('rowheader', { name: /^with\b/ }) })
+  await expect(withRow).toContainText('100%')
+  await expect(withRow).toContainText('1 trajectories · 1 reviews')
+  await expect(planReview).toContainText('with: 1 findings (major 1), 0 left open, 0 undecided')
+  // Review costs are not measured in the block itself, not only in Coverage.
+  await expect(planReview).toContainText('not measured — review costs are not recorded')
+  await expect(planReview.getByTitle('Comparison label')).toHaveText('correlation')
+  // A block without a comparison has no label badge, only its reason.
+  const taskReview = page.getByRole('region', { name: 'task_review', exact: true })
+  await expect(taskReview).toContainText('not measured')
+  await expect(taskReview.getByTitle('Comparison label')).toHaveCount(0)
+
+  const coverage = page.getByRole('region', { name: 'Coverage', exact: true })
+  const reviewCosts = coverage.getByRole('listitem').filter({ hasText: 'review costs: not recorded' })
+  await expect(reviewCosts).toContainText('not measured')
+
+  const trajectories = page.getByRole('region', { name: 'Trajectories', exact: true })
+  await expect(trajectories.getByRole('link', { name: FIXTURE_REPO })).toBeVisible()
+})
+
+test('telemetry: a trajectory row opens its detail and back', async ({ page, github, lighthouse }) => {
+  github.set({ issues: [] })
+  await page.goto(`${await lighthouse.start({ token: true, cache: 'fresh', telemetry: true })}/#telemetry`)
+  await expect(page.getByRole('region', { name: 'plan_review', exact: true })).toContainText(CORRELATION)
+  const coverage = page.getByRole('region', { name: 'Coverage', exact: true })
+  await expect(coverage.getByRole('listitem').filter({ hasText: 'review costs: not recorded' })).toContainText(
+    'not measured',
+  )
+
+  await page.getByRole('region', { name: 'Trajectories', exact: true }).getByRole('link', { name: FIXTURE_REPO }).click()
+  await expect(page).toHaveURL(/#telemetry\/trajectory\/\d+$/)
+  await expect(page.getByRole('heading', { name: `${FIXTURE_REPO} #7` })).toBeVisible()
+  const reviews = page.getByRole('region', { name: 'Reviews', exact: true })
+  await expect(reviews).toContainText('plan_review')
+  await expect(reviews).toContainText('1 findings')
+  await expect(page.getByRole('region', { name: 'Recovery', exact: true })).toContainText('PR #70 · recovered')
+
+  await page.getByRole('button', { name: 'Back to overview' }).click()
+  await expect(page).toHaveURL(/#telemetry$/)
+  await expect(page.getByRole('region', { name: 'plan_review', exact: true })).toContainText(CORRELATION)
+})

@@ -25,6 +25,7 @@ type MilestoneRef struct {
 	Number int    `json:"number"`
 	Title  string `json:"title"`
 	State  string `json:"state"`
+	URL    string `json:"url"`
 }
 
 // Blocker is an open issue that blocks another; Repo is the repo of the blocker, which can
@@ -70,6 +71,7 @@ type Milestone struct {
 	Description string `json:"description"`
 	Open        int    `json:"open"`
 	Done        int    `json:"done"`
+	URL         string `json:"url"`
 	// Closed are the issues behind Done; never nil.
 	Closed []ClosedIssue `json:"closed"`
 }
@@ -122,7 +124,7 @@ func Build(ctx context.Context, srcs []Source, ov overview.Overview) ([]Repo, er
 				Status: status[key(s.Slug, pi.Number)], Label: issuestate.BlockingKey(pi.Labels, s.Labels),
 				OpenQuestion: asked[key(s.Slug, pi.Number)], NeedsLabel: issuestate.HasNeedsLabel(pi.Labels, s.Labels)}
 			if m := pi.Milestone; m != nil {
-				i.Milestone = &MilestoneRef{Number: m.Number, Title: m.Title, State: m.State}
+				i.Milestone = &MilestoneRef{Number: m.Number, Title: m.Title, State: m.State, URL: m.URL}
 			}
 			for _, b := range pi.BlockedBy {
 				i.BlockedBy = append(i.BlockedBy, Blocker{Repo: b.Repo, Issue: b.Issue})
@@ -135,7 +137,7 @@ func Build(ctx context.Context, srcs []Source, ov overview.Overview) ([]Repo, er
 				closed = append(closed, ClosedIssue{Number: c.Number, Title: c.Title, URL: c.URL})
 			}
 			r.Milestones = append(r.Milestones, Milestone{Number: m.Number, Title: m.Title, Description: m.Description,
-				Open: m.Open, Done: m.Done, Closed: closed})
+				URL: m.URL, Open: m.Open, Done: m.Done, Closed: closed})
 		}
 		applyWeights(&r)
 		repos = append(repos, r)

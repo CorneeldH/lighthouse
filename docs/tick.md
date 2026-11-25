@@ -155,7 +155,12 @@ head-SHA, zonder commit-titel en zonder branch-opruiming. Gaat de merge door, da
 
 **De workflow-push.** Raakt een branch `.github/workflows/`, dan pusht een run niet: GitHub weigert dat
 met het token van tick, en een run krijgt nooit een token met `workflow`-scope
-(`workflow-push-gate` blokkeert zo'n `git push` in een controller-run). De run draait roborev over de
+(`workflow-push-gate` blokkeert zo'n `git push` in een controller-run). Alleen de eigen wijziging van de
+branch telt: commits die al op `origin/<default>` staan niet, en een pad uit de netto diff alleen als
+`HEAD` er ook verschilt van de merge-base met `origin/<default>` (de main die de branch het laatst
+binnenhaalde). Een merge van main die alleen de workflows van main
+binnenbrengt (de update-merge van fix-pr) pusht de run dus zelf; een eigen workflow-wijziging naast die
+merge, of een conflict dat anders dan main is opgelost, telt wel. De run draait roborev over de
 ongepushte range en post een 🤖 Handoff met `next: push-workflows` (en, zolang er nog geen PR is,
 `after: /lighthouse-write-pr <nr>` en de `roborev:`-regel van `lighthouse roborev-gate body-line
 --push`). `Judge` kent `push-workflows` als eigen verdict; het staat niet in de lijst van
@@ -228,15 +233,27 @@ slash-commando's.
   (`reason_pusher_red_ceiling`). De telling begint opnieuw bij een groene doorgang (een push of een
   Vraag) en bij elke Teruggegeven van de token-login, ook een die voor een geweigerde start is
   gepost. Vindt tick geen run of geen sessie voor de handoff, dan geeft hij het issue meteen terug.
-- **Het antwoord `push` is toestemming.** Voor precies de `sha` uit de laatste Vraag van de pusher. Tick
-  start de pusher opnieuw met `--permit <sha>`; hij draait de vloer opnieuw, en alleen als de SHA
-  niet verschoof gaat hij zonder review door, zoals bij een geslaagde push. Toestemming heft alleen de
-  review op (een `reject` of shadow mode), nooit een rode vloer, policy of lint. Een Vraag waarna de
-  worktree verschoof, geeft geen toestemming: een antwoord `push` geeft dan dezelfde Vraag opnieuw. Elk ander antwoord hervat niets, want er is geen sessie. Bekende
-  grens: een run post met hetzelfde account als de gebruiker en kan dus `push` antwoorden; dan valt de
-  review weg en blijft de vloer staan. De roborev-records zijn door de run beheerd: check 5 is hygiëne
-  tegen een vergeten of verouderde review, geen vertrouwensgrens. GitHub's eigen scope-controle blijft
-  de grens.
+- **Het antwoord op een pusher-Vraag is toestemming, in gewone taal.** Voor precies de `sha` uit de laatste
+  Vraag van de pusher. Per antwoord loopt de stroom zo: (1) exact `push` start de pusher meteen, zonder
+  classifier. (2) Elk ander antwoord gaat eerst langs git (zie *Afloop van een push-rij*): bevat origin
+  de SHA, dan gaat de keten verder, ongeacht de tekst. (3) Staat de SHA niet op origin, dan leest een
+  classifier het antwoord: `permit`, `pushed` of `other`. Bij `permit` start tick de pusher opnieuw met
+  `--permit <sha>`, ook voor een Vraag zonder `after:`; hij draait de vloer opnieuw, en alleen als de SHA
+  niet verschoof gaat hij zonder review door, zoals bij een geslaagde push. Bij `pushed`, `other`, een
+  falende classifier of een time-out post tick één 🤖-reactie die zegt wat wel werkt en start niets: de
+  reactie is de nieuwe open Vraag voor een volgend antwoord, en het issue gaat niet terug. Een Vraag
+  waarna de worktree verschoof, geeft geen toestemming: de pusher geeft dan dezelfde Vraag opnieuw.
+  De classifier is één `claude -p` zonder tools (`--tools ""`), met een JSON-schema voor de uitkomst, in
+  een lege tijdelijke map en zonder forge-token in de omgeving, met een time-out van 60 seconden. Hij
+  leest alleen de rode stap, de SHA, de branch en de tekst van het antwoord; de antwoordtekst staat in een
+  data-blok en is nooit een instructie. In twijfel (een vraag, een voorwaarde, *niet pushen*) is de
+  uitkomst `other`. Toestemming heft alleen de review op (een `reject` of shadow mode), nooit een rode
+  vloer, policy of lint. Bekende grens: de toestemming blijft SHA-gebonden (de classifier beslist nooit
+  over een andere SHA dan die van de Vraag) en de pusher draait de vloer altijd, wat de classifier ook
+  zegt; een run post met hetzelfde account als de gebruiker en kan dus een toestemming geven, en dan
+  valt de review weg en blijft de vloer staan. De roborev-records zijn door de run beheerd: check 5 is
+  hygiëne tegen een vergeten of verouderde review, geen vertrouwensgrens. GitHub's eigen scope-controle
+  blijft de grens.
 - **Wat de hook niet dekt.** `workflow-push-gate` leest het commando; een alias, `eval git push`,
   `G=git; $G push`, een script dat pusht of een herschreven remote-tracking-ref ontsnapt eraan. Het is
   een vangnet tegen ongelukken, geen grens: de grens blijft dat GitHub een push met `.github/workflows/`
@@ -441,15 +458,25 @@ geen sessie, ook niet terwijl de rij op CI wacht.
   sessie-retry: de eerstvolgende tick start de pusher opnieuw, en na de tweede mislukking komt de Vraag
   of Teruggegeven.
 
-- **Pusher-Vraag met een ander antwoord.** Staat op de Vraag van de pusher een antwoord dat niet `push`
-  is, dan herstelt tick op de `sha` van die Vraag: staat die sha op de remote (`git ls-remote`, zonder
-  forge-token in de omgeving), dan gaat de rij met een Handoff verder en draagt de lane van de Vraag
-  mee. Staat ze er niet, of kan git het niet zeggen, dan komt een 🤖 Teruggegeven met het antwoord
-  of de git-fout als reden (`reason_pusher_answer_moved`, `reason_pusher_git_failed`). Noemt de Vraag
-  geen `after:`, dan gaat het issue terug met `reason_pusher_no_after`. Mislukt de post van die Handoff
-  of Teruggegeven, dan sluit de rij als `returned` en niet als `start_failed`: alleen het antwoord
-  `push` start de pusher, ook bij een tweede poging. De sleutel is dan op en het vangnet (`idle`)
-  pakt het issue op.
+- **Pusher-Vraag met een ander antwoord dan `push`.** Eerst de git-check op de `sha` van de Vraag:
+  `git ls-remote` van de branch (zonder forge-token in de omgeving). Is het resultaat gelijk aan de SHA,
+  dan bevat origin hem. Is het resultaat leeg, dan staat de branch niet op origin en is het antwoord
+  nee, zonder fetch. Anders haalt tick alleen die commit op (`git fetch --no-write-fetch-head`, dus
+  `origin/<branch>` en `FETCH_HEAD` in de worktree blijven ongemoeid) en toetst
+  `git merge-base --is-ancestor`: ook een merge bovenop de SHA telt als ja. Bij ja gaat de rij met een
+  Handoff verder en draagt de lane van de Vraag mee; noemt de Vraag geen `after:`, dan gaat het issue
+  terug met `reason_pusher_no_after`. Bij nee, of als git het niet kan zeggen, beslist de classifier
+  (zie *Het antwoord op een pusher-Vraag is toestemming, in gewone taal*): `permit` start de pusher,
+  elke andere uitkomst geeft één reactie en sluit de rij als `question`. Kon git het niet zeggen, dan
+  noemt de reactie `COULD NOT CHECK` (`reply_push_could_not_check`). Een git-fout is dus geen reden
+  om het issue terug te geven. De rem: staat de SHA niet op origin en is de pauze of de usage-rem
+  dicht, dan claimt tick niets en post niets; het antwoord blijft liggen en een tick met een open rem
+  leest het opnieuw. Je hoeft dus niet opnieuw te antwoorden. De git-check zelf mag langs de rem.
+  Mislukt een post van de reactie, Handoff of Teruggegeven, dan sluit de rij als `returned` en niet
+  als `start_failed`: de sleutel is dan op en het vangnet (`idle`) pakt het issue op. Mislukt de start
+  na een classifier-`permit` (`start_failed`), dan telt hetzelfde antwoord opnieuw als toestemming:
+  de rij draagt de notitie `{"answer":"permit"}`, en de eerstvolgende tick start de pusher opnieuw
+  (`pushAgain`) zonder nieuw antwoord; na de tweede mislukking komt de Vraag of Teruggegeven.
 
 ### Afloop met de lokale werkplek
 
@@ -473,7 +500,7 @@ beëindigt ook wat een klare claude achterliet, zoals een dev-server (zie [workp
 Naast issue-runs start de tick runs op een vast schema, zonder issue: een *geplande run* (#121). Het
 ontwerp staat in [de spec](developer/planning/specs/2026-11-16-issue-121-geplande-runs-design.md).
 Het run-model, de planner en de afloop zijn er; van de jobs is `map-refresh` er (zie
-[Job `map-refresh`](#job-map-refresh)), `reflect` ook (zie [Job `reflect`](#job-reflect)), `map-planned` ook (zie [Job `map-planned`](#job-map-planned)). Een `[[schedule]]`-blok
+[Job `map-refresh`](#job-map-refresh)), `reflect` ook (zie [Job `reflect`](#job-reflect)), `map-planned` ook (zie [Job `map-planned`](#job-map-planned)), `architecture-scan` ook (zie [Job `architecture-scan`](#job-architecture-scan)). Een `[[schedule]]`-blok
 met een job zonder registratie geeft bij elke gather van de repo
 `lighthouse: <repo> scheduled:<naam>:<slot>: no job <job>`. Dat is een regel, geen fout: de tick
 eindigt met exitcode 0, bewaart zijn tick-state en start niets.
@@ -655,6 +682,14 @@ Hij heeft geen `params`: een sleutel in `[schedule.params]` is een configfout. E
 oudere `lighthouse`-binary kent de job niet en weigert een `lighthouse.toml` met `job = "map-planned"`
 (de repo wordt overgeslagen); bouw de host opnieuw na de merge, vóór de schedule meedraait.
 
+**De veldentabel.** Welke velden de plek op de kaart draagt, staat per soort item in een tweede tabel in
+het labelsdocument, met de koppen `Label`, `Item`, `Place` en `From issue` (zie
+[labels.md](developer/labels.md)). `Label` is het label van de rij; `Item` de soort item, met
+tussen haakjes de plek in het document waar zo'n item staat; `Place` de velden die de plek onder
+`### Op de kaart` noemt; `From issue` de velden die `map-planned` uit titel en body van het issue
+overneemt, zonder iets te verzinnen. `write-issue` baseert stap 3f op die tabel en vraagt de velden
+van `Place`. Zonder tabel, of zonder rij voor het label, blijft stap 3f zoals hij was, en zet `map-planned` het item zoals de uitleg het geeft, zonder andere velden.
+
 **De poort.** Na een fetch leest de poort de rijen van het labelsdocument op `origin/<standaardbranch>`.
 Zonder `paths.labels`, zonder bestand of zonder rij met `Document` en `Planned` geeft hij `skip`
 (`no planned documents`). Een issue is aan de beurt als het open is, het label van de rij draagt (bij
@@ -686,6 +721,76 @@ corpus): elk gewijzigd pad, ook een nieuw bestand, is een kaartdocument van een 
 gewijzigd document is te lezen als gewoon bestand, en elk issuenummer dat erbij kwam draagt het label van
 een rij van dat document. `Finish` schrijft, waar de repo `changelog.d/` heeft, het fragment
 `changelog.d/scheduled-map-planned-<run>.md` met `type: internal` en een vaste zin.
+
+## Job `architecture-scan`
+
+De job scant elk kwartaal de architectuur van de repo op ondiepe modules en laat één beslisissue achter met
+gerangschikte verdiepingskandidaten (#386); skill `/lighthouse-architecture-scan`. Hij wijzigt geen code en
+maakt alleen dat ene issue. Een oudere `lighthouse`-binary kent de job niet en weigert een `lighthouse.toml`
+met `job = "architecture-scan"` (de repo wordt overgeslagen); bouw de host opnieuw na de merge, vóór de
+schedule meedraait (zie [install.md](install.md)).
+
+| Param | Standaard | Betekenis |
+|---|---|---|
+| `command` | `/lighthouse-architecture-scan` | Het slash-commando; de job voegt `--corpus` en `--out` toe |
+| `window` | `3 months` | Het venster waarover de hotspots worden geteld (`git log --since`) |
+| `labels` | geen | Extra labels op het scanissue, naast `needs_decision` |
+| `tools` | `Read Glob Grep Write` | De toolset van de agent; elke tool buiten die lijst (nooit `Bash` of `Agent`) is een configfout |
+| `max_runtime` | `60m` | De maximale looptijd van de sessie |
+
+Een onbekende sleutel in `[schedule.params]` is een configfout.
+
+**De poort.** Na een fetch vergelijkt de poort `origin/<standaardbranch>` met de `base` in de marker van
+het open scanissue. Zijn ze gelijk, dan `skip` (er is niets nieuws om te scannen); anders start de run met
+een run-id `scan-<tijdstempel>`. Elke fout van de poort (fetch, forge, geen `labels.needs_decision`) is een
+fout, nooit een skip: er komt geen run-rij, de tick eindigt met exitcode 1 en de volgende tick probeert het
+opnieuw, zoals bij `map-planned`.
+
+**Het corpus.** `.lighthouse/run/architecture-scan-corpus.json` (JSON): `language`, `search_dirs` (de
+zoekpaden, uit `[paths] search_dirs`), `paths` (de kaartdocumenten van `[paths]` die in de werkplek
+bestaan), `hotspots` (per bestand `path` en `changes` binnen het venster, de 200 drukste bestanden), `base` (de sha van de standaardbranch), `issues` (open issues met nummer, titel, labels en body, de
+body op 2000 tekens afgekapt), `open_scan` en `last_closed_scan` (het scanissue met nummer, body met de
+vinkjes en comments, oudste eerst). Het corpus is invoer, nooit gezag: de agent kan het bewerken, dus
+`Check` en `Finish` lezen de forge opnieuw. Het corpus is hoogstens 400 000 bytes groot.
+
+**Het resultaat.** De agent schrijft alleen `architecture-scan-result.md` in de root van de werkplek: elk
+ander pad of een symlink laat de run mislukken. De vaste koppen komen uit
+[`.lighthouse/headings.toml`](../.lighthouse/headings.toml) (`scan_candidates`, `scan_still_open`,
+`scan_method`, `scan_top`) in de taal van de repo. Een kandidaat is een `###`-blok
+`### <naam> (`<sleutel>`)` met velden en claims; een claim is een bullet die op precies één markering eindigt:
+``[nagemeten: `<commando>` → <uitkomst>]``, `[niet nagemeten]` of `[niet meetbaar vanaf hier]`. Een kandidaat
+die een open issue al dekt, staat onder *nog open* als `- #<nr> — <kandidaat>`. Een kandidaat uit het
+referentie-issue zonder vinkje komt bijgewerkt terug onder dezelfde sleutel; een afgewezen kandidaat
+(`- [x] Afgewezen`) blijft altijd, met zijn vinkje, zodat de beslissing nooit verder terug hoeft te worden
+gezocht dan dat issue. Een afgewezen kandidaat die met nieuw bewijs terugkomt, krijgt een gewone regel (geen
+bullet) `eerder afgewezen, opnieuw omdat …`.
+
+**Het scanissue en de marker.** Een scanissue is een issue met het label `needs_decision`, de marker op
+regel 1 van de body en als auteur de login van het token; zijn er meerdere open, dan telt het oudste. De
+marker is `<!-- lighthouse: {"kind":"architecture-scan","version":1,"run":"<run-id>","base":"<sha>","first":"<datum>","scans":<n>} -->`;
+regel 2 is een waarschuwing dat de kandidaten al `first` onbeslist zijn (kop `scan_unresolved`). Is er geen
+open scanissue, dan maakt `Finish` er een met de titel `architecture-scan: <Kandidaten>`; is er wel een, dan
+werkt het de body bij en plaatst het de vorige body als comment met de kop `<Scan van> <datum>`. De vinkjes
+van afgewezen kandidaten in de levende body blijven behouden. Een resultaat zonder niet-afgewezen kandidaat
+en zonder open scanissue maakt niets. De body is hoogstens 60 000 tekens, marker en waarschuwing inbegrepen.
+Heeft het open scanissue het run-id van deze run al, dan doet een herhaalde `Finish` niets.
+
+**Cleanup en Check.** `Cleanup` verwijdert het corpus en laat de run mislukken als `git status` geen
+niet-leeg resultaatbestand toont; het ontbreken van het bestand is alleen goed als het open scanissue het
+run-id van de run al draagt (een eerdere postcheck publiceerde en verwijderde het). `Allowed` laat alleen het
+resultaatpad toe. `Check` heeft als gezag de werkplek en de forge, nooit het corpus: het resultaat is het
+enige gewijzigde pad, parseert tegen de koppen van de repo, bevat geen geheim (secretscan), noemt onder
+*nog open* alleen open issues buiten het scanissue zelf, houdt elk vinkje van het levende referentie-issue
+en past binnen de bodylimiet.
+
+**Mislukken.** Drie soorten. Een fout van de poort geeft geen run-rij en tick-exitcode 1 (de slot blijft
+staan). Een fout van `Stage` (corpus bouwen of wegschrijven) sluit de run als `retry`, zodat de slot
+openblijft, en bij de tweede poging als `failed`; die apply-actie mislukt, dus de tick eindigt met
+exitcode 1. Een fout van `Cleanup`, `Check` of `Finish` na de sessie sluit de run als `failed` (reden
+`postcheck: cleanup:`, `check:` of `finish:`), zonder retry, en de tick eindigt met
+exitcode 0. Faalt `Cleanup` of `Check`, dan is er geen issue of comment; een fout van `Finish` zelf kan een
+al gepubliceerd issue of een al geplaatste comment laten staan. Elke `Finish`-route verwijdert het resultaatbestand, ook vroege uitgangen, zodat het
+nooit op een branch komt. Telemetrie van de run volgt in #375.
 
 ## Exitcodes
 
@@ -1128,6 +1233,31 @@ Een lege profielnaam is een fout; de tabel vereist `[controller]`. Een repo zond
 gedraagt zich als voorheen, en een repo met `location_prefix` maar zonder `[controller.locations]` ook:
 hij negeert locatielabels, ook twee tegelijk. Een upgrade is daarom veilig. Pas de tabel maakt het
 label bindend: een onbekende waarde of twee labels stellen de start dan uit.
+
+## Versiewissel
+
+Elk uur kijkt de tick in `lighthouse.db` naar wisselingen van versie: superpowers, model (per lane) en harness
+(per harnessnaam), afgeleid uit de setups van de runs. Het moment van de laatste kijk staat in de
+state-map (`telemetry/`) en wordt ook na een mislukte kijk geschreven, zodat een logregel hooguit eens per uur
+verschijnt. Per reeks telt alleen de laatste wissel. De tick installeert niets en leest alleen de database.
+
+```toml
+[telemetry]
+proposals_repo = "eigenaar/repo"   # waar de voorstellen komen; moet een repo van [dispatch] zijn
+```
+
+Zonder `proposals_repo`, of met een repo die niet in `[dispatch] repos` staat, geeft de tick één logregel en
+gaat verder; een forge die deze tick niet opende telt wel als mislukking. Per wissel opent de tick één issue
+met de machineregel `<!-- lighthouse-version-change: <dimensie> [<reeks>] →<nieuw> -->`. Staat die regel al
+in een issue, open of gesloten, dan komt er geen tweede. De taal volgt `[project] language` van de repo. Een
+mislukte wissel geeft een logregel en de andere gaan door.
+
+**De markering.** `telemetry.VersionMarkers` geeft elke wissel, ook de overgeslagen (`Skip`), als punt met een
+week (`VersionMarker.Week`, een `time.Time` op de maandag van de ISO-week); de issues gebruiken alleen de
+deelverzameling van `LatestProposals`. #379 leest dit als `markers` op de tijdlijn. Is #379 nog niet
+gemerged, dan is de koppeling er nog niet: wie als laatste merget, legt haar. Controleer met
+`git fetch && git grep -n 'Markers' origin/main -- internal/telemetry`; zet dan `Week` om naar de string
+`2006-01-02` van `Marker.Week` van #379 en voeg de test toe dat een wissel in de juiste week verschijnt.
 
 ## Zicht
 

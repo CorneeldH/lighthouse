@@ -473,6 +473,10 @@ func recordUsageTx(ctx context.Context, tx *sql.Tx, u UsageRecord) (int64, bool,
 // second offering of the same origin updates severity, decision, record path,
 // record sum and recorded_at, and reports not new.
 func RecordFinding(ctx context.Context, db *sql.DB, f FindingRecord) (int64, bool, error) {
+	return inTx(ctx, db, func(tx *sql.Tx) (int64, bool, error) { return recordFindingTx(ctx, tx, f) })
+}
+
+func recordFindingTx(ctx context.Context, tx *sql.Tx, f FindingRecord) (int64, bool, error) {
 	if err := f.validate(); err != nil {
 		return 0, false, err
 	}
@@ -483,34 +487,32 @@ func RecordFinding(ctx context.Context, db *sql.DB, f FindingRecord) (int64, boo
 		return 0, false, fmt.Errorf("telemetry: finding takes a run or a session, not both; got run %d, session %d",
 			f.RunID, f.SessionID)
 	}
-	return inTx(ctx, db, func(tx *sql.Tx) (int64, bool, error) {
-		repo, err := resolveRepo(ctx, tx, f.Repo)
-		if err != nil {
-			return 0, false, err
-		}
-		if err := checkOwnerFits(ctx, tx, f, repo); err != nil {
-			return 0, false, err
-		}
-		tid, err := ensureTrajectory(ctx, tx, repo, f.Issue, f.RecordedAt)
-		if err != nil {
-			return 0, false, err
-		}
-		id, isNew, err := insertOrFind(ctx, tx, "findings", `INSERT INTO findings (source, source_id, recorded_at,
-			trajectory_id, run_id, session_id, component, finding_key, severity, decision, record_path, record_sum)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`,
-			[]any{f.Source, f.SourceID, stamp(f.RecordedAt), tid, nullID(f.RunID), nullID(f.SessionID),
-				f.Component, f.FindingKey, f.Severity, nullString(f.Decision), f.RecordPath, f.RecordSum},
-			bySource(f.Origin))
-		if err != nil || isNew {
-			return id, isNew, err
-		}
-		if _, err := tx.ExecContext(ctx, `UPDATE findings SET severity = ?, decision = ?, record_path = ?,
-			record_sum = ?, recorded_at = ? WHERE id = ?`,
-			f.Severity, nullString(f.Decision), f.RecordPath, f.RecordSum, stamp(f.RecordedAt), id); err != nil {
-			return 0, false, fmt.Errorf("telemetry: update finding: %w", err)
-		}
-		return id, false, nil
-	})
+	repo, err := resolveRepo(ctx, tx, f.Repo)
+	if err != nil {
+		return 0, false, err
+	}
+	if err := checkOwnerFits(ctx, tx, f, repo); err != nil {
+		return 0, false, err
+	}
+	tid, err := ensureTrajectory(ctx, tx, repo, f.Issue, f.RecordedAt)
+	if err != nil {
+		return 0, false, err
+	}
+	id, isNew, err := insertOrFind(ctx, tx, "findings", `INSERT INTO findings (source, source_id, recorded_at,
+		trajectory_id, run_id, session_id, component, finding_key, severity, decision, record_path, record_sum)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING`,
+		[]any{f.Source, f.SourceID, stamp(f.RecordedAt), tid, nullID(f.RunID), nullID(f.SessionID),
+			f.Component, f.FindingKey, f.Severity, nullString(f.Decision), f.RecordPath, f.RecordSum},
+		bySource(f.Origin))
+	if err != nil || isNew {
+		return id, isNew, err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE findings SET severity = ?, decision = ?, record_path = ?,
+		record_sum = ?, recorded_at = ? WHERE id = ?`,
+		f.Severity, nullString(f.Decision), f.RecordPath, f.RecordSum, stamp(f.RecordedAt), id); err != nil {
+		return 0, false, fmt.Errorf("telemetry: update finding: %w", err)
+	}
+	return id, false, nil
 }
 
 // checkOwnerFits checks that the run or session of a finding points at the

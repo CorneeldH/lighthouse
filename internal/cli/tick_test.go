@@ -73,7 +73,9 @@ func tickFixture(t *testing.T, repos ...string) (tickEnv, string) {
 		for i, r := range repos {
 			quoted[i] = fmt.Sprintf("%q", r)
 		}
-		body = "[dispatch]\nrepos = [" + strings.Join(quoted, ", ") + "]\n"
+		// proposals_repo is the usual repo o/r, so the version step has nothing to log in the tests that
+		// compare errOut exactly; it comes first so that tests can append [dispatch.*] tables.
+		body = "[telemetry]\nproposals_repo = \"o/r\"\n\n[dispatch]\nrepos = [" + strings.Join(quoted, ", ") + "]\n"
 	}
 	if err := os.WriteFile(host, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
@@ -219,13 +221,17 @@ func TestTickWithoutRuntimeDir(t *testing.T) {
 	}
 }
 
+// noProposalsRepo is the log line of the version step when host.toml has no [telemetry]
+// proposals_repo, once per fresh state directory.
+const noProposalsRepo = "lighthouse: version change: no [telemetry] proposals_repo in host.toml: no proposals\n"
+
 func TestTickNoRepos(t *testing.T) {
 	env, db := tickFixture(t)
 	var errOut bytes.Buffer
 	if err := tick(context.Background(), env, db, &errOut); err != nil {
 		t.Fatal(err)
 	}
-	if want := "lighthouse: no repos in [dispatch] of " + env.HostToml + "\n"; errOut.String() != want {
+	if want := "lighthouse: no repos in [dispatch] of " + env.HostToml + "\n" + noProposalsRepo; errOut.String() != want {
 		t.Errorf("errOut = %q, want %q", errOut.String(), want)
 	}
 	conn, err := sql.Open("sqlite", db)
@@ -237,8 +243,8 @@ func TestTickNoRepos(t *testing.T) {
 	if err := conn.QueryRow(`PRAGMA user_version`).Scan(&v); err != nil {
 		t.Fatal(err)
 	}
-	if v != 13 {
-		t.Errorf("user_version = %d, want 13", v)
+	if v != 14 {
+		t.Errorf("user_version = %d, want 14", v)
 	}
 }
 
@@ -249,7 +255,7 @@ func TestTickNoRepos_NoHostToml(t *testing.T) {
 	if err := tick(context.Background(), env, db, &errOut); err != nil {
 		t.Fatal(err)
 	}
-	if want := "lighthouse: no host.toml: no repos to check\n"; errOut.String() != want {
+	if want := "lighthouse: no host.toml: no repos to check\n" + noProposalsRepo; errOut.String() != want {
 		t.Errorf("errOut = %q, want %q", errOut.String(), want)
 	}
 }
@@ -453,8 +459,9 @@ func TestTickSkipsDuplicateSlug(t *testing.T) {
 		t.Fatalf("err = %v, want errSilent\n%s", err, errOut.String())
 	}
 	lines := strings.Split(strings.TrimSpace(errOut.String()), "\n")
-	if len(lines) != 2 {
-		t.Fatalf("errOut = %q, want two skip lines", errOut.String())
+	// The skipped repos are no repos of the tick, so proposals_repo o/r is none either.
+	if want := "lighthouse: version change: proposals_repo o/r is no repo of [dispatch]: no proposals"; len(lines) != 3 || lines[2] != want {
+		t.Fatalf("errOut = %q, want two skip lines and %q", errOut.String(), want)
 	}
 	for i, self := range []string{first, second} {
 		if !strings.HasPrefix(lines[i], "lighthouse: skip "+self+": ") || !strings.Contains(lines[i], first) ||
@@ -755,7 +762,7 @@ func TestTickStartsNewIssue(t *testing.T) {
 		t.Fatalf("spawns = %+v, want one", spawns)
 	}
 	if l := spawns[0]; l.Prompt != "/lighthouse-start-issue 7 (issue #7, controller-run)" || l.Mode != "start" ||
-		l.Profile != "software" || l.MCPConfig != "/etc/lh/mcp.json" || !strings.HasPrefix(l.InstructionsFile, env.StateDir+"/") {
+		l.Profile != "software" || l.MCPConfig != "/etc/lh/mcp.json" || !strings.HasPrefix(l.InstructionsFile, env.StateDir+string(filepath.Separator)) {
 		t.Errorf("spawn = %+v, want a start with the controller-run prompt, profile software, its mcp_config and instructions under %s", l, env.StateDir)
 	}
 	if text, err := os.ReadFile(spawns[0].InstructionsFile); err != nil || !strings.Contains(string(text), "asks at the round limit") {

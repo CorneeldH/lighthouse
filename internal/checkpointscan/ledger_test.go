@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
 )
 
 func TestLedgerRoundTripAndMerge(t *testing.T) {
@@ -42,9 +44,8 @@ func fakeGitleaks(t *testing.T, version string, code int) {
 		t.Skip("shell stub")
 	}
 	bin := t.TempDir()
-	script := "#!/bin/sh\necho '" + version + "'\nexit " + string(rune('0'+code)) + "\n"
-	noErr(t, os.WriteFile(filepath.Join(bin, "gitleaks"), []byte(script), 0o755))
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	stubbin.Make(t, bin, "gitleaks", stubbin.Spec{Stdout: version + "\n", Exit: code})
+	stubbin.Prepend(t, bin)
 }
 
 // realTempDir is t.TempDir() with symlinks resolved: git and the code under test report the

@@ -3,6 +3,7 @@ import type { JSX } from 'react'
 import { useUsage } from '@/lib/queries'
 import { useNow } from '@/lib/now'
 import { Panel } from './Panel'
+import { ResetCredits } from './ResetCredits'
 import { UsageWindow } from './UsageWindow'
 
 export function UsagePanel(): JSX.Element {
@@ -23,6 +24,7 @@ export function UsagePanel(): JSX.Element {
           <UsageWindow label="Claude week" window={data.claude.week} now={now} />
           <UsageWindow label="Codex session" window={data.codex.session} now={now} />
           <UsageWindow label="Codex week" window={data.codex.week} now={now} />
+          <ResetCredits credits={data.codex.reset_credits} now={now} />
         </div>
       )}
     </Panel>

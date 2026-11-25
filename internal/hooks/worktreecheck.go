@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/CorneeldH/lighthouse/internal/gitpath"
 	"github.com/CorneeldH/lighthouse/internal/hook"
 )
 
@@ -75,8 +76,8 @@ func WorktreeCheck(ctx context.Context, _, _ string, p hook.Payload) hook.Result
 	if err != nil {
 		return warnUncheckable("git could not read '" + dir + "': " + orNoMessage(rawGitCommon) + ".")
 	}
-	gitDir, okDir := physicalDir(dir, rawGitDir)
-	gitCommon, okCommon := physicalDir(dir, rawGitCommon)
+	gitDir, okDir := physicalDir(dir, gitpath.Native(rawGitDir))
+	gitCommon, okCommon := physicalDir(dir, gitpath.Native(rawGitCommon))
 	if !okDir || !okCommon {
 		return warnUncheckable("cannot resolve the git directories of '" + dir + "'.")
 	}

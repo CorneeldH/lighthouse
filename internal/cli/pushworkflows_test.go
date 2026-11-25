@@ -19,6 +19,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/runs"
 	"github.com/CorneeldH/lighthouse/internal/store"
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 	"github.com/CorneeldH/lighthouse/internal/workplace"
 )
 
@@ -37,7 +38,7 @@ func TestPusherResolvesSameDBAndPauseFile(t *testing.T) {
 	// Tick's environment.
 	t.Setenv("XDG_STATE_HOME", state)
 	t.Setenv("LIGHTHOUSE_CONTROLLER_STATE", controller)
-	t.Setenv("HOME", home)
+	testpath.SetHome(t, home)
 	tickDB, err := store.DefaultPath()
 	if err != nil {
 		t.Fatal(err)
@@ -50,8 +51,8 @@ func TestPusherResolvesSameDBAndPauseFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sent := pushOptions{repo: "o/r", issue: 7, worktree: "/w/x", runID: 3, db: db, pauseFile: pause,
-		cloneDir: clone, stateDir: "/s", hostToml: "/h/host.toml", permit: strings.Repeat("a", 40)}
+	sent := pushOptions{repo: "o/r", issue: 7, worktree: testpath.Abs("w", "x"), runID: 3, db: db, pauseFile: pause,
+		cloneDir: clone, stateDir: testpath.Abs("s"), hostToml: testpath.Abs("h", "host.toml"), permit: strings.Repeat("a", 40)}
 	args := pushWorkflowsArgs(sent)
 
 	// The pusher's cleaned environment: neither variable is set.
@@ -285,8 +286,9 @@ func TestSpawnHelperProcess(t *testing.T) {
 // without a worktree.
 func TestPushWorkflowsMergeFlags(t *testing.T) {
 	head := strings.Repeat("c", 40)
-	sent := pushOptions{repo: "o/r", issue: 7, runID: 3, db: "/d/l.db", pauseFile: "/s/PAUSE",
-		cloneDir: "/s/push/o/r.git", stateDir: "/s", hostToml: "/h/host.toml", merge: true, pr: 12, sha: head}
+	wt := testpath.Abs("w", "x")
+	sent := pushOptions{repo: "o/r", issue: 7, runID: 3, db: testpath.Abs("d", "l.db"), pauseFile: testpath.Abs("s", "PAUSE"),
+		cloneDir: testpath.Abs("s", "push", "o", "r.git"), stateDir: testpath.Abs("s"), hostToml: testpath.Abs("h", "host.toml"), merge: true, pr: 12, sha: head}
 	args := pushWorkflowsArgs(sent)
 	var got pushOptions
 	env := pushEnv{Getenv: os.Getenv, Run: func(_ context.Context, _ pushEnv, o pushOptions) error { got = o; return nil }}
@@ -300,11 +302,11 @@ func TestPushWorkflowsMergeFlags(t *testing.T) {
 		"no pr":      func() pushOptions { o := sent; o.pr = 0; return o }(),
 		"short sha":  func() pushOptions { o := sent; o.sha = "abc123"; return o }(),
 		"permit":     func() pushOptions { o := sent; o.permit = head; return o }(),
-		"worktree":   func() pushOptions { o := sent; o.worktree = "/w/x"; return o }(),
+		"worktree":   func() pushOptions { o := sent; o.worktree = wt; return o }(),
 		"push no wt": func() pushOptions { o := sent; o.merge, o.pr, o.sha = false, 0, ""; return o }(),
 		"pr no merge": func() pushOptions {
 			o := sent
-			o.merge, o.worktree = false, "/w/x"
+			o.merge, o.worktree = false, wt
 			return o
 		}(),
 	} {
@@ -320,14 +322,15 @@ func TestPushWorkflowsMergeFlags(t *testing.T) {
 // exact environment apply gave, which holds no workflow token.
 func TestTickStartsMergePusher(t *testing.T) {
 	home := t.TempDir()
+	dbPath := testpath.Abs("d", "l.db")
 	vars := map[string]string{"HOME": home, "PATH": "/usr/bin"}
 	var gotArgs, gotEnv []string
-	te := tickEnv{Getenv: func(k string) string { return vars[k] }, HostToml: "/h/host.toml", DBPath: "/d/l.db",
+	te := tickEnv{Getenv: func(k string) string { return vars[k] }, HostToml: testpath.Abs("h", "host.toml"), DBPath: dbPath,
 		Spawn: func(_ context.Context, args, e []string) error { gotArgs, gotEnv = args, e; return nil }}
 	head := strings.Repeat("c", 40)
 	spec := dispatch.PusherSpec{Repo: "o/r", Issue: 7, RunID: 3, Merge: true, PR: 12, HeadSHA: head,
 		Env: []string{"PATH=/usr/bin", "HOME=" + home, "GH_TOKEN=tok"}}
-	if err := te.startPusher("/s")(context.Background(), spec); err != nil {
+	if err := te.startPusher(testpath.Abs("s"))(context.Background(), spec); err != nil {
 		t.Fatalf("startPusher: %v", err)
 	}
 	if !reflect.DeepEqual(gotEnv, spec.Env) {
@@ -339,7 +342,7 @@ func TestTickStartsMergePusher(t *testing.T) {
 	if err := runPushWorkflows(pe, gotArgs); err != nil {
 		t.Fatalf("push-workflows %v: %v", gotArgs, err)
 	}
-	if !got.merge || got.pr != 12 || got.sha != head || got.worktree != "" || got.runID != 3 || got.db != "/d/l.db" {
+	if !got.merge || got.pr != 12 || got.sha != head || got.worktree != "" || got.runID != 3 || got.db != dbPath {
 		t.Errorf("pusher resolves %+v, want the merge of PR 12 on %s for run 3", got, head)
 	}
 }

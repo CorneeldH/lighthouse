@@ -3,13 +3,13 @@ package pins
 import (
 	"context"
 	"errors"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
 )
 
 func fakeRunner(out string, err error) Runner {
@@ -101,12 +101,11 @@ func TestMeasureTool_usesVersionArgs(t *testing.T) {
 // A real script on PATH that knows `version` but fails on `--version`: proves ExecRunner passes
 // version_args through, runs without a shell and returns the output.
 func TestMeasureTool_realScriptOnPath(t *testing.T) {
+	stubbin.RequirePOSIX(t, "test on $1 and $# in the version script")
 	dir := t.TempDir()
-	script := "#!/bin/sh\nif [ \"$1\" = version ] && [ $# -eq 1 ]; then echo 'fakeforge 0.5.1'; exit 0; fi\necho \"unknown flag $*\" >&2\nexit 2\n"
-	if err := os.WriteFile(filepath.Join(dir, "fakeforge"), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	script := "if [ \"$1\" = version ] && [ $# -eq 1 ]; then echo 'fakeforge 0.5.1'; exit 0; fi\necho \"unknown flag $*\" >&2\nexit 2\n"
+	stubbin.MakeScript(t, dir, "fakeforge", script)
+	stubbin.Prepend(t, dir)
 
 	p := Pin{Name: "fakeforge", Kind: KindTool, Version: "0.5.1", Command: "fakeforge", VersionArgs: []string{"version"}}
 	if got := MeasureTool(context.Background(), ExecRunner, p, 5*time.Second); got.Status != StatusCurrent {
@@ -127,12 +126,10 @@ func TestMeasureTool_realScriptOnPath(t *testing.T) {
 // starts) makes MeasureTool, and so `lighthouse init`, wait for that child instead of ending
 // as an error shortly after the time-out.
 func TestMeasureTool_childHoldingStdoutDoesNotHang(t *testing.T) {
+	stubbin.RequirePOSIX(t, "a background child that keeps stdout open")
 	dir := t.TempDir()
-	script := "#!/bin/sh\nsleep 30 &\necho 'holder 1.0.0'\n"
-	if err := os.WriteFile(filepath.Join(dir, "holder"), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	stubbin.MakeScript(t, dir, "holder", "sleep 30 &\necho 'holder 1.0.0'\n")
+	stubbin.Prepend(t, dir)
 	p := Pin{Name: "holder", Kind: KindTool, Version: "1.0.0", Command: "holder"}
 	start := time.Now()
 	got := MeasureTool(context.Background(), ExecRunner, p, time.Second)

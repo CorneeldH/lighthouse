@@ -15,7 +15,9 @@ const STATUSES = new Set(["works", "planned", "idea"]);
 const EFFECTS = new Set(["blocks", "warns", "formats", "records"]);
 // An optional `form` names a part that is no skill, agent, hook or workflow of a pack.
 const FORMS = new Set(["tool", "dispatcher"]);
-const REQUIRED = ["id", "phase", "row", "kind", "trigger", "label", "what", "how", "when", "without", "status"];
+const REQUIRED = ["id", "phase", "row", "kind", "trigger", "label", "what", "status"];
+// A planned step may leave out how, when and without until it is built.
+const REQUIRED_UNLESS_PLANNED = ["how", "when", "without"];
 
 const readJson = (file) => JSON.parse(fs.readFileSync(file, "utf-8"));
 const clone = (value) => structuredClone(value);
@@ -41,7 +43,8 @@ function vocabularyProblems(chain) {
   const seenCells = new Set();
   for (const chip of chain.chips) {
     const name = chip.id;
-    for (const key of REQUIRED) if (!(key in chip)) problems.push(`${name}: lacks '${key}'`);
+    const required = chip.status === "planned" ? REQUIRED : [...REQUIRED, ...REQUIRED_UNLESS_PLANNED];
+    for (const key of required) if (!(key in chip)) problems.push(`${name}: lacks '${key}'`);
     if (!KINDS.has(chip.kind)) problems.push(`${name}: unknown kind`);
     if (!TRIGGERS.has(chip.trigger)) problems.push(`${name}: unknown trigger`);
     if (!STATUSES.has(chip.status)) problems.push(`${name}: unknown status`);
@@ -145,6 +148,44 @@ test("vocabularyProblems flags an unknown status and an unknown effect", () => {
         naam: "unknown effect",
         mutatie: (c) => (c.chips[1].effects = ["shouts"]),
         verwacht: ["main-commit-gate: unknown effect"],
+      },
+    ],
+    vocabularyProblems,
+  );
+});
+
+test("vocabularyProblems loosens how, when and without only for planned", () => {
+  const find = (c) => c.chips.find((x) => x.id === "planned-issue");
+  const strip = (c) => {
+    for (const k of ["how", "when", "without"]) delete find(c)[k];
+  };
+  const lacks = ["how", "when", "without"].map((k) => `planned-issue: lacks '${k}'`);
+  fixtureCases(
+    [
+      { naam: "planned without how, when, without", mutatie: strip, verwacht: [] },
+      {
+        naam: "works without how, when, without",
+        mutatie: (c) => {
+          strip(c);
+          find(c).status = "works";
+        },
+        verwacht: lacks,
+      },
+      {
+        naam: "idea without how, when, without",
+        mutatie: (c) => {
+          strip(c);
+          find(c).status = "idea";
+        },
+        verwacht: lacks,
+      },
+      {
+        naam: "planned without what",
+        mutatie: (c) => {
+          strip(c);
+          delete find(c).what;
+        },
+        verwacht: ["planned-issue: lacks 'what'"],
       },
     ],
     vocabularyProblems,
@@ -277,4 +318,73 @@ test("the old chain page forwards to the loop", () => {
   const html = fs.readFileSync(path.join(SITE, "chain.html"), "utf-8");
   assert.ok(html.includes('<meta http-equiv="refresh" content="0; url=loop.html">'));
   assert.ok(html.includes('href="loop.html"'));
+});
+
+// The field table in labels.md names, per kind of item, the fields a planned place carries. It
+// stays in step with loop.json: its array exists and every field it names sits on some item.
+const FIELD_TABLE_HEAD = ["Label", "Item", "Place", "From issue"];
+// `after` is no field of a chip: it refers to the step the new one follows, and map-planned turns
+// it into a route position. It is therefore never found on an item.
+const NOT_A_FIELD = new Set(["after"]);
+
+const tableCells = (line) =>
+  line
+    .trim()
+    .replace(/^\|/, "")
+    .replace(/\|$/, "")
+    .split("|")
+    .map((c) => c.trim());
+const backticks = (text) => [...text.matchAll(/`([^`]+)`/g)].map((m) => m[1]);
+
+function fieldTableProblems(labelsMd, loop) {
+  const lines = labelsMd.split("\n");
+  const head = lines.findIndex((l) => tableCells(l).join("|") === FIELD_TABLE_HEAD.join("|"));
+  if (head < 0) return [];
+  const problems = [];
+  for (const line of lines.slice(head + 2)) {
+    if (!line.trim().startsWith("|")) break;
+    const [, item, place, fromIssue] = tableCells(line);
+    const array = /\(`([^`]+)`\)/.exec(item)?.[1];
+    if (!Array.isArray(loop[array])) {
+      problems.push(`${array}: not an array of loop.json`);
+      continue;
+    }
+    const check = (cell, what) => {
+      for (const field of backticks(cell)) {
+        if (NOT_A_FIELD.has(field)) continue;
+        if (!loop[array].some((entry) => field in entry)) {
+          problems.push(`${array}: ${what} field '${field}' on no item`);
+        }
+      }
+    };
+    check(place, "place");
+    check(fromIssue, "from-issue");
+  }
+  return problems;
+}
+
+const FIELD_MD = (item, place, from) =>
+  `| Label | Item | Place | From issue |\n|---|---|---|---|\n| \`loop\` | ${item} | ${place} | ${from} |\n`;
+const MINI_LOOP = { chips: [{ id: "a", phase: "p", what: "w" }] };
+
+test("fieldTableProblems checks the table against the object", () => {
+  assert.deepEqual(fieldTableProblems(FIELD_MD("stap (`chips`)", "`phase`, `after`", "`what`"), MINI_LOOP), []);
+  assert.deepEqual(fieldTableProblems(FIELD_MD("stap (`nope`)", "`phase`", ""), MINI_LOOP), [
+    "nope: not an array of loop.json",
+  ]);
+  assert.deepEqual(fieldTableProblems(FIELD_MD("stap (`chips`)", "`zzz`", ""), MINI_LOOP), [
+    "chips: place field 'zzz' on no item",
+  ]);
+  assert.deepEqual(fieldTableProblems(FIELD_MD("stap (`chips`)", "`phase`", "`zzz`"), MINI_LOOP), [
+    "chips: from-issue field 'zzz' on no item",
+  ]);
+  assert.deepEqual(fieldTableProblems("# geen tabel\n\n| Label | Kleur |\n|---|---|\n", MINI_LOOP), []);
+});
+
+test("labels.md field table matches loop.json", () => {
+  const md = fs.readFileSync(path.join(ROOT, "docs", "developer", "labels.md"), "utf-8");
+  assert.deepEqual(fieldTableProblems(md, load("loop.json")), []);
+  assert.ok(md.includes("| Label | Item | Place | From issue |"), "the field table lacks its header row");
+  assert.ok(/^\| `loop` \| stap \(`chips`\) \|/m.test(md), "the table lacks the row for chips");
+  assert.ok(/^\| `loop` \| handoff \(`handoffs`\) \|/m.test(md), "the table lacks the row for handoffs");
 });

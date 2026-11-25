@@ -280,16 +280,16 @@ nl = "shadow mode: de review beslist niet, jij wel"
 en = "shadow mode: the review does not decide, you do"
 
 [question_push_permit]
-nl = "Antwoord `push` om precies deze SHA te laten pushen: de vloer draait dan opnieuw, de review niet."
-en = "Answer `push` to have exactly this SHA pushed: the floor runs again, the review does not."
+nl = "Antwoord `push` of geef een andere duidelijke toestemming om precies deze SHA te laten pushen: de vloer draait dan opnieuw, de review niet. Heb je zelf gepusht, antwoord dan `gepusht`."
+en = "Answer `push` or give another clear permission to have exactly this SHA pushed: the floor runs again, the review does not. If you pushed it yourself, answer `pushed`."
 
 [question_push_retry]
-nl = "Antwoord `push` als de oorzaak hieronder is verholpen: de pusher draait dan opnieuw voor precies deze SHA, zonder review. Of push met de hand."
-en = "Answer `push` once the cause below is fixed: the pusher then runs again for exactly this SHA, without review. Or push by hand."
+nl = "Antwoord `push` of geef een andere duidelijke toestemming als de oorzaak hieronder is verholpen: de pusher draait dan opnieuw voor precies deze SHA, zonder review. Of push met de hand."
+en = "Answer `push` or give another clear permission once the cause below is fixed: the pusher then runs again for exactly this SHA, without review. Or push by hand."
 
 [question_push_moved]
-nl = "De worktree staat niet meer op de SHA waarvoor je toestemming gaf. Een antwoord `push` geeft deze Vraag opnieuw: laat de nieuwe commits via een nieuwe handoff reviewen, of push met de hand."
-en = "The worktree is no longer on the SHA you permitted. An answer `push` gives this Question again: have the new commits reviewed through a new handoff, or push by hand."
+nl = "De worktree staat niet meer op de SHA waarvoor je toestemming gaf. Een antwoord `push` of een andere duidelijke toestemming geeft deze Vraag opnieuw: laat de nieuwe commits via een nieuwe handoff reviewen, of push met de hand."
+en = "The worktree is no longer on the SHA you permitted. An answer `push` or another clear permission gives this Question again: have the new commits reviewed through a new handoff, or push by hand."
 
 [question_push_manual]
 nl = "Push met de hand, of laat het werk repareren en een nieuwe handoff schrijven."
@@ -310,6 +310,32 @@ en = "Merge it yourself"
 [question_push_attachment]
 nl = "De diff is afgekapt; de volledige diff staat in"
 en = "The diff is cut off; the full diff is in"
+
+# The reply of tick to an answer on a pusher Vraag that started nothing
+# {sha} and {branch} are filled in by tick.
+[reply_push_not_on_origin]
+nl = "De SHA `{sha}` staat niet op `origin/{branch}`."
+en = "The SHA `{sha}` is not on `origin/{branch}`."
+
+[reply_push_not_permit]
+nl = "Tick las het antwoord niet als toestemming om te pushen."
+en = "Tick did not read the answer as permission to push."
+
+[reply_push_unreadable]
+nl = "Tick kon het antwoord niet lezen."
+en = "Tick could not read the answer."
+
+[reply_push_could_not_check]
+nl = "COULD NOT CHECK: git kon niet zien of origin de SHA bevat."
+en = "COULD NOT CHECK: git could not tell whether origin has the SHA."
+
+[reply_push_works]
+nl = "Wat werkt: antwoord `push` of geef een andere duidelijke toestemming, dan pusht de pusher precies deze SHA. Of push zelf en antwoord daarna `gepusht`."
+en = "What works: answer `push` or give other clear permission, and the pusher pushes exactly this SHA. Or push it yourself and then answer `pushed`."
+
+[reply_push_link]
+nl = "De Vraag met de diff en het oordeel van de reviewers"
+en = "The Question with the diff and the reviewers' verdict"
 
 [note_pushed]
 nl = "Workflow-bestanden gepusht door de pusher"
@@ -548,3 +574,28 @@ en = "over"
 [tenet_evidence]
 nl = "Bewijs"
 en = "Evidence"
+
+# Architecture scan
+[scan_candidates]
+nl = "Kandidaten"
+en = "Candidates"
+
+[scan_still_open]
+nl = "Nog open uit eerdere scans"
+en = "Still open from earlier scans"
+
+[scan_method]
+nl = "Methode"
+en = "Method"
+
+[scan_top]
+nl = "Topaanbeveling"
+en = "Top recommendation"
+
+[scan_unresolved]
+nl = "Onbeslist sinds"
+en = "Undecided since"
+
+[scan_of]
+nl = "Scan van"
+en = "Scan of"

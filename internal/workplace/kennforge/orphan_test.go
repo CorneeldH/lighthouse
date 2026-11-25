@@ -4,6 +4,7 @@ import (
 	"context"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -168,5 +169,28 @@ func TestCheckCloneReportsWorktreeOnly(t *testing.T) {
 	got, err := CheckClone(t.Context(), workplace.ExecRunner(), home, "github", "", "CorneeldH/lighthouse")
 	if err != nil || !strings.Contains(got, "core.worktree=/some/worktree") {
 		t.Errorf("CheckClone = %q, %v; want a report of core.worktree", got, err)
+	}
+}
+
+// CheckClone names the clone in the one native, cleaned form, whatever form git prints: here a
+// trailing "/." and a CRLF. Red when the common dir is used as git printed it (Windows prints
+// forward slashes and CRLF).
+func TestCheckCloneNamesCleanedClone(t *testing.T) {
+	home, clone := cloneFixture(t)
+	gitIn(t, clone, "config", "core.bare", "false")
+	real := workplace.ExecRunner()
+	run := func(ctx context.Context, timeout time.Duration, name string, args ...string) (string, int, error) {
+		out, code, err := real(ctx, timeout, name, args...)
+		if slices.Contains(args, "--git-common-dir") {
+			out = strings.TrimSpace(out) + string(filepath.Separator) + ".\r\n"
+		}
+		return out, code, err
+	}
+	got, err := CheckClone(t.Context(), run, home, "github", "", "CorneeldH/lighthouse")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "git -C " + clone + " config core.bare true"; !strings.Contains(got, want) {
+		t.Errorf("report %q lacks %q", got, want)
 	}
 }

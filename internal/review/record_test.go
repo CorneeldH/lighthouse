@@ -14,6 +14,7 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/config"
 	"github.com/CorneeldH/lighthouse/internal/orderedjson"
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 )
 
 // The cases that patch the code itself: the host judgment, a
@@ -41,7 +42,7 @@ func TestReserveWritesWithoutHostToml(t *testing.T) {
 	data := t.TempDir()
 	t.Setenv("LIGHTHOUSE_DATA", data)
 	t.Setenv("XDG_DATA_HOME", "")
-	t.Setenv("HOME", "")
+	testpath.SetHome(t, "")
 	t.Setenv("XDG_CONFIG_HOME", "")
 	t.Setenv("LIGHTHOUSE_HOST_TOML", filepath.Join(t.TempDir(), "missing.toml"))
 	attemptDir := t.TempDir()

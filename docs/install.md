@@ -200,6 +200,11 @@ The API is read-only. Its routes:
 | `GET /api/returned` | the returned issues, from the same overview |
 | `GET /api/cleanup` | the workspaces to clean up, from the database |
 | `GET /api/latest-comment?repo=owner/name&issue=N` | the comments of one issue, from the forge; redirects (302) to the newest comment, or to the issue page when it has none or the read fails. A repo `serve` does not serve gets 404 |
+| `GET /api/telemetry/components` | the comparison block per component, filtered by `repo`, `route`, `size`, `pr_size`, `area`, `model`, `harness`; from the database (see [`telemetry-ui.md`](telemetry-ui.md)) |
+| `GET /api/telemetry/timeline?repo=owner/name` | cost, questions, closed and recovered trajectories per week, from the database |
+| `GET /api/telemetry/trajectories` | the trajectories, with the filters of `components` plus `component`, from the database |
+| `GET /api/telemetry/trajectories/{id}` | the detail of one trajectory, from the database; 404 when it does not exist |
+| `GET /api/telemetry/coverage?repo=owner/name` | every gap in the measurement with its count or reason, from the database |
 
 ## Check the hooks
 
@@ -461,6 +466,16 @@ wordt niets geschreven) en meet op die ref.
   limiet van de zoek-API; een forgefout, ook een limiet, geeft exit 1 voordat er iets wordt
   geschreven. Alleen GitHub: GitLab kan gemergde PR's nog niet opsommen, dus daar is de opdracht een
   fout (exit 1).
+- **Kenmerken.** Na het herstel legt een tweede ronde per traject de kenmerken vast die het
+  tabblad Telemetry gebruikt ([`telemetry-ui.md`](telemetry-ui.md)): de route uit het laatste
+  triagecomment vóór de eerste review, het gebied uit het enige label met `[labels] area_prefix`
+  en de PR-grootte in coderegels. Die ronde raakt elk traject met een `recoveries`-rij dat nog
+  een route, gebied of PR-grootte mist, of een PR binnen `--days` heeft; zonder `area_prefix`
+  telt een leeg gebied niet als gat. Wat niet lukt (een forgefout, geen triagemarker, geen of
+  meer dan één gebiedslabel) laat de oude waarde staan en geeft één regel
+  `traits #<issue>: <reden>`; de exitcode blijft 0. Een traject zonder triagemarker blijft een
+  doel: elke run leest zijn issue en comments opnieuw (twee forge-lezingen) en print de regel
+  opnieuw.
 
 ### Inzet, kosten en tokens
 
@@ -627,12 +642,17 @@ A repository can have runs on a fixed schedule, without an issue (#121, see
 ```toml
 [[schedule]]
 name = "codebase-map"   # required; [a-z0-9-]+, unique per repository: it goes into a branch name
-job  = "map-refresh"    # required; map-refresh, reflect or map-planned
+job  = "map-refresh"    # required; map-refresh, reflect, map-planned or architecture-scan
 cron = "0 4 1 * *"      # required; five fields, in the local time of the host
 # profile = "software"  # the profile of the run; default [controller] profile
 
 [schedule.params]       # per job; every parameter has a default
 publish_dir = "docs/developer/codebase"
+
+[[schedule]]
+name = "architecture-scan"
+job  = "architecture-scan"
+cron = "0 6 1 1,4,7,10 *"   # quarterly, 06:00 on the 1st
 
 [[schedule]]
 name   = "reflect"
@@ -643,7 +663,7 @@ anchor = "2026-10-12"   # weeks-th week after it count (a week runs Monday to Su
 ```
 
 An invalid block makes the repository's config invalid, like any other config error. Jobs `map-refresh`,
-`reflect` and `map-planned` are available (their params are in [tick.md](tick.md#job-map-refresh) and [tick.md](tick.md#job-reflect); `map-planned` takes none, see [tick.md](tick.md#job-map-planned)). An older binary refuses a `lighthouse.toml` with a `job` it does not know and skips the repo, so rebuild the host after the merge that adds such a block. A schedule
+`reflect`, `map-planned` and `architecture-scan` are available (their params are in [tick.md](tick.md#job-map-refresh), [tick.md](tick.md#job-reflect) and [tick.md](tick.md#job-architecture-scan); `map-planned` takes none, see [tick.md](tick.md#job-map-planned)). An older binary refuses a `lighthouse.toml` with a `job` it does not know and skips the repo, so rebuild the host after the merge that adds such a block. A schedule
 that names a job the binary does not know makes the tick report, at each gather of the repo,
 `lighthouse: <repo> scheduled:<name>:<slot>: no job <job>` (a line, not an error: the tick still exits 0 and
 saves its state) and start nothing.
