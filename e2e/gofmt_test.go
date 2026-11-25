@@ -8,9 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/CorneeldH/lighthouse/internal/stubbin"
-
 	"github.com/CorneeldH/lighthouse/internal/bashwrites"
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
 )
 
 const (

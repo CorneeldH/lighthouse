@@ -31,9 +31,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/CorneeldH/lighthouse/internal/stubbin"
-
 	"github.com/BurntSushi/toml"
+
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
 )
 
 const zeroSHA = "0000000000000000000000000000000000000000"

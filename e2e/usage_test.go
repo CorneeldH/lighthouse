@@ -215,8 +215,8 @@ func TestUsageCodexNotMeasurableE2E(t *testing.T) {
 	binDir := t.TempDir()
 	env := append(usageEnv(t, t.TempDir(), binDir),
 		"HOME="+t.TempDir(),
-		// Only the stub dir and the dir of sh: a real codex elsewhere on the PATH must not run.
-		"PATH="+stubbin.PathValue(t, binDir, "sh"),
+		// The PATH is the empty stub dir alone: no codex can be found.
+		"PATH="+binDir,
 	)
 	cmd := exec.Command(bin, "usage", "codex")
 	cmd.Env = env

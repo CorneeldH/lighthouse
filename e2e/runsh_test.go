@@ -22,9 +22,9 @@ import (
 	"sync"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/stubbin"
-	"time"
 )
 
 // runShTools is what run.sh and the fakes call (the dirname, setsid and git of run.sh included).

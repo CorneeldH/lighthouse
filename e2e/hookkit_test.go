@@ -12,9 +12,9 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/stubbin"
-	"time"
 )
 
 // skipOnWindows skips t on native Windows, where the behaviour under test does not exist.
