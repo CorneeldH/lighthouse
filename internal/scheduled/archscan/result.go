@@ -143,8 +143,14 @@ func parseResult(b []byte, h headings) (Result, error) {
 	section := ""
 	var cur *Candidate
 	var raw []string
+	// boxes counts the checkbox lines of cur, from its heading on line curLine: exactly one, or
+	// the candidate could never be rejected (none) or be read two ways (more).
+	boxes, curLine := 0, 0
 	flush := func() {
 		if cur != nil {
+			if boxes != 1 {
+				errs = append(errs, fmt.Errorf("line %d: candidate %s has %d checkbox lines %q, want exactly one", curLine, cur.Key, boxes, checkboxOpen))
+			}
 			cur.Raw = strings.TrimRight(strings.Join(raw, "\n"), "\n")
 			res.Candidates = append(res.Candidates, *cur)
 			cur, raw = nil, nil
@@ -181,6 +187,7 @@ func parseResult(b []byte, h headings) (Result, error) {
 				seenKey[m[2]] = true
 				cur = &Candidate{Key: m[2], Name: m[1]}
 				raw = []string{line}
+				boxes, curLine = 0, n+1
 				continue
 			}
 			if cur == nil {
@@ -189,7 +196,9 @@ func parseResult(b []byte, h headings) (Result, error) {
 			raw = append(raw, line)
 			switch {
 			case strings.HasPrefix(line, checkboxOpen):
+				boxes++
 			case strings.HasPrefix(line, checkboxChecked):
+				boxes++
 				cur.Rejected = true
 			case strings.HasPrefix(line, "- ") || strings.HasPrefix(line, "* "):
 				c, err := parseMark(line[2:])
