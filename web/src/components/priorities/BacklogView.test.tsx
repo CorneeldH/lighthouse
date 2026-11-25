@@ -46,15 +46,15 @@ describe('BacklogView', () => {
   })
 
   it('shows a status block per row, with the state of the node', () => {
-    view([repo(A, [iss(5), iss(6, [], undefined, { label: 'needs_shaping' })])])
+    view([repo(A, [iss(5), iss(6, [], undefined, { labels: ['needs_mind'] })])])
     const state = (n: number) =>
       within(rows().find((r) => within(r).queryByText(`title-${n}`))!).getByTestId('backlog-status').getAttribute('data-state')
     expect(state(5)).toBe('ready')
-    expect(state(6)).toBe('needs_shaping')
+    expect(state(6)).toBe('needs_mind')
   })
 
-  it('underlines the number only for needs_shaping and needs_human', () => {
-    view([repo(A, [iss(5), iss(6, [], undefined, { label: 'needs_shaping' }), iss(7, [], undefined, { label: 'needs_decision' })])])
+  it('underlines the number only for needs_mind and needs_hands', () => {
+    view([repo(A, [iss(5), iss(6, [], undefined, { labels: ['needs_mind'] }), iss(7, [], undefined, { labels: ['needs_hands'] })])])
     const num = (n: number) => screen.getByRole('link', { name: String(n) })
     expect(num(5).getAttribute('data-underlined')).toBeNull()
     expect(num(6).getAttribute('data-underlined')).toBe('true')
