@@ -271,6 +271,14 @@ func tick(ctx context.Context, env tickEnv, dbPath string, errOut io.Writer) err
 	if collectRuns(ctx, env, st.DB, cfg, loadedRepos(loaded), errOut) {
 		failed = true
 	}
+	// A failed step never holds the sweeps back either: it only turns the tick red.
+	tel, err := hostconfig.LoadTelemetry(env.HostToml)
+	if err != nil {
+		_, _ = fmt.Fprintf(errOut, "lighthouse: version change: %s\n", oneLine(err))
+		failed = true
+	} else if proposeVersionChanges(ctx, env, st.DB, tel, loadedRepos(loaded), ticked, errOut) {
+		failed = true
+	}
 	if sweepRepos(ctx, env, st.DB, cfg, ticked, checked, errOut) {
 		failed = true
 	}
