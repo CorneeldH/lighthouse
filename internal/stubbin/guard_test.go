@@ -49,7 +49,7 @@ func scan(t *testing.T, path, rel string) []string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	var out []string
 	prev := ""
 	n := 0
@@ -60,11 +60,11 @@ func scan(t *testing.T, path, rel string) []string {
 		line := sc.Text()
 		before := prev
 		prev = line
-		if !(strings.Contains(line, "PATH") || strings.Contains(line, "PathListSeparator")) {
+		if !strings.Contains(line, "PATH") && !strings.Contains(line, "PathListSeparator") {
 			continue
 		}
-		if !(strings.Contains(line, `"/usr/bin"`) || strings.Contains(line, `"/bin"`) ||
-			strings.Contains(line, `/usr/bin:`) || strings.Contains(line, `:/bin`)) {
+		if !strings.Contains(line, `"/usr/bin"`) && !strings.Contains(line, `"/bin"`) &&
+			!strings.Contains(line, `/usr/bin:`) && !strings.Contains(line, `:/bin`) {
 			continue
 		}
 		const marker = "stubbin-guard: system dirs needed"
