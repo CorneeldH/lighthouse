@@ -12,6 +12,7 @@
 //     the fragments and prints the tag. Nothing releasable, or a version that has a tag, is exit 1.
 //   - `released` prints the fragment names an earlier `chore(release): vX.Y.Z` commit removed.
 //   - `next --kind K [--branch B]` prints the next dev, rc, test, minor, major or patch tag.
+//   - `sync --tag T --source DIR` copies the section of T into --root and removes its fragments.
 //   - `notes <tag>` prints the CHANGELOG.md section of a tag.
 //
 // Every call takes `--root` (default `.`). The positional tag of `notes` may stand before or
@@ -50,7 +51,7 @@ func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
-const usageText = "usage: changelog <check|release|released|next|notes> [flags]"
+const usageText = "usage: changelog <check|release|released|next|sync|notes> [flags]"
 
 // parseFlags parses args into fs. A positional argument is returned in order; `--root` may come
 // after one. Errors and help text go to stderr.
@@ -149,6 +150,29 @@ func run(args []string, stdout, stderr io.Writer) int {
 				}
 				return usageError(err.Error())
 			}
+		}
+		sayf(stderr, "COULD NOT CHECK: %v\n", err)
+		return 2
+	case "sync":
+		tag := fs.String("tag", "", "release tag, vX.Y.Z")
+		source := fs.String("source", "", "checkout of the tag")
+		pos, code, done := parseFlags(fs, args[1:])
+		if done {
+			return code
+		}
+		if len(pos) > 0 {
+			return usageError("unexpected argument '" + pos[0] + "'")
+		}
+		if _, ok := parseTag(*tag); !ok || *source == "" {
+			return usageError("--tag vX.Y.Z and --source are required")
+		}
+		err := syncTag(*root, *source, *tag, stderr)
+		switch err.(type) {
+		case nil:
+			return 0
+		case *releaseError:
+			say(stderr, err)
+			return 1
 		}
 		sayf(stderr, "COULD NOT CHECK: %v\n", err)
 		return 2
