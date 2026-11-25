@@ -15,7 +15,9 @@ const STATUSES = new Set(["works", "planned", "idea"]);
 const EFFECTS = new Set(["blocks", "warns", "formats", "records"]);
 // An optional `form` names a part that is no skill, agent, hook or workflow of a pack.
 const FORMS = new Set(["tool", "dispatcher"]);
-const REQUIRED = ["id", "phase", "row", "kind", "trigger", "label", "what", "how", "when", "without", "status"];
+const REQUIRED = ["id", "phase", "row", "kind", "trigger", "label", "what", "status"];
+// A planned step may leave out how, when and without until it is built.
+const REQUIRED_UNLESS_PLANNED = ["how", "when", "without"];
 
 const readJson = (file) => JSON.parse(fs.readFileSync(file, "utf-8"));
 const clone = (value) => structuredClone(value);
@@ -41,7 +43,8 @@ function vocabularyProblems(chain) {
   const seenCells = new Set();
   for (const chip of chain.chips) {
     const name = chip.id;
-    for (const key of REQUIRED) if (!(key in chip)) problems.push(`${name}: lacks '${key}'`);
+    const required = chip.status === "planned" ? REQUIRED : [...REQUIRED, ...REQUIRED_UNLESS_PLANNED];
+    for (const key of required) if (!(key in chip)) problems.push(`${name}: lacks '${key}'`);
     if (!KINDS.has(chip.kind)) problems.push(`${name}: unknown kind`);
     if (!TRIGGERS.has(chip.trigger)) problems.push(`${name}: unknown trigger`);
     if (!STATUSES.has(chip.status)) problems.push(`${name}: unknown status`);
@@ -145,6 +148,44 @@ test("vocabularyProblems flags an unknown status and an unknown effect", () => {
         naam: "unknown effect",
         mutatie: (c) => (c.chips[1].effects = ["shouts"]),
         verwacht: ["main-commit-gate: unknown effect"],
+      },
+    ],
+    vocabularyProblems,
+  );
+});
+
+test("vocabularyProblems loosens how, when and without only for planned", () => {
+  const find = (c) => c.chips.find((x) => x.id === "planned-issue");
+  const strip = (c) => {
+    for (const k of ["how", "when", "without"]) delete find(c)[k];
+  };
+  const lacks = ["how", "when", "without"].map((k) => `planned-issue: lacks '${k}'`);
+  fixtureCases(
+    [
+      { naam: "planned without how, when, without", mutatie: strip, verwacht: [] },
+      {
+        naam: "works without how, when, without",
+        mutatie: (c) => {
+          strip(c);
+          find(c).status = "works";
+        },
+        verwacht: lacks,
+      },
+      {
+        naam: "idea without how, when, without",
+        mutatie: (c) => {
+          strip(c);
+          find(c).status = "idea";
+        },
+        verwacht: lacks,
+      },
+      {
+        naam: "planned without what",
+        mutatie: (c) => {
+          strip(c);
+          delete find(c).what;
+        },
+        verwacht: ["planned-issue: lacks 'what'"],
       },
     ],
     vocabularyProblems,
