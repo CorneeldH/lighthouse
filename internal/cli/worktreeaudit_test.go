@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -73,7 +74,7 @@ func TestWorktreeAuditCases(t *testing.T) {
 				t.Errorf("exit code = %d, want %d; stdout %q stderr %q", code, c.Expect.Code, out.String(), errOut.String())
 			}
 			contains := len(c.Expect.StdoutContains)+len(c.Expect.StderrContains) > 0
-			if want := fixturesetup.Fill(t, c.Expect.Stdout, root); !contains && out.String() != want {
+			if want := nativeRootPaths(fixturesetup.Fill(t, c.Expect.Stdout, root), root); !contains && out.String() != want {
 				t.Errorf("stdout\n got %q\nwant %q", out.String(), want)
 			}
 			if want := fixturesetup.Fill(t, c.Expect.Stderr, root); !contains && errOut.String() != want {
@@ -166,4 +167,14 @@ func TestWorktreeAuditForgeOpensGitLab(t *testing.T) {
 	if f.Kind() != "gitlab" {
 		t.Errorf("kind = %q, want gitlab", f.Kind())
 	}
+}
+
+// nativeRootPaths turns the part after root of every path under root into the native form: the
+// fixture writes `{root}/.claude/worktrees/x`, the command prints what git reports, with
+// backslashes on Windows. On other systems this changes nothing.
+func nativeRootPaths(text, root string) string {
+	re := regexp.MustCompile(regexp.QuoteMeta(root) + `(/[^\s"]*)`)
+	return re.ReplaceAllStringFunc(text, func(m string) string {
+		return root + filepath.FromSlash(strings.TrimPrefix(m, root))
+	})
 }

@@ -286,7 +286,8 @@ func TestMainCommitGateFromAWorktree(t *testing.T) {
 			worktree := filepath.Join(root, ".claude", "worktrees", "issue-1-x")
 			gitIn(t, root, "worktree", "add", "-q", "-b", "issue-1-x", worktree)
 
-			res := gate(t, strings.ReplaceAll(c.command, "ROOT", root), worktree)
+			// The command is shell text: a backslash path would lose its backslashes to the quoting.
+			res := gate(t, strings.ReplaceAll(c.command, "ROOT", filepath.ToSlash(root)), worktree)
 
 			checkResult(t, res, c.code, strings.ReplaceAll(c.stderr, "ROOT", root))
 		})
@@ -364,7 +365,7 @@ exit 128
 				stubGit(t, c.stub)
 			}
 
-			res := gate(t, "git -C "+target+" commit -m x", dir)
+			res := gate(t, "git -C "+filepath.ToSlash(target)+" commit -m x", dir)
 
 			checkResult(t, res, c.code, strings.ReplaceAll(c.stderr, "DIR", target))
 		})
