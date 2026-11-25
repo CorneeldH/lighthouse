@@ -1,7 +1,7 @@
 import type { CSSProperties, JSX, MouseEventHandler, PointerEventHandler } from 'react'
 import type { GNode } from '@/lib/priorities/derive'
 import { Block } from './Block'
-import { NODE_H, NODE_W } from './layout'
+import { NODE_H, NODE_W, type DepsOrder } from './layout'
 
 interface Props {
   node: GNode
@@ -14,12 +14,21 @@ interface Props {
   testId: string
   dimmed: boolean
   highlighted: boolean
+  // The sort order of the view; the pill shows its number. Missing counts as 'crossings'.
+  depsOrder?: DepsOrder
   style?: CSSProperties
   onPointerDown?: PointerEventHandler<HTMLAnchorElement>
   onPointerEnter?: PointerEventHandler<HTMLAnchorElement>
   onMouseEnter?: MouseEventHandler<HTMLAnchorElement>
   onMouseLeave?: MouseEventHandler<HTMLAnchorElement>
   onClick?: MouseEventHandler<HTMLAnchorElement>
+}
+
+// The number the pill shows for a sort order; 0 means no pill.
+function pillValue(node: GNode, order: DepsOrder): number {
+  if (order === 'prio') return node.prioWeight
+  if (order === 'weight') return node.weight
+  return node.waiting >= 2 ? node.waiting : 0
 }
 
 // One issue card: a solid milestone strip, one status block of the shape language before the
@@ -32,6 +41,7 @@ export function NodeCard({
   testId,
   dimmed,
   highlighted,
+  depsOrder,
   style,
   onPointerDown,
   onPointerEnter,
@@ -39,6 +49,7 @@ export function NodeCard({
   onMouseLeave,
   onClick,
 }: Props): JSX.Element {
+  const pill = pillValue(node, depsOrder ?? 'crossings')
   const underlined = node.state === 'needs_mind' || node.state === 'needs_hands'
   return (
     <a
@@ -80,13 +91,13 @@ export function NodeCard({
         {node.title}
       </span>
       {node.cycle && <span className="flex-none text-[10.5px] font-semibold text-muted-foreground">cycle</span>}
-      {node.waiting >= 2 && (
+      {pill > 0 && (
         <span
-          data-testid="waiting-pill"
+          data-testid="card-pill"
           title={`${node.waiting} wait · weight ${node.weight} · factor ${node.factor} · prio-weight ${node.prioWeight}`}
           className="flex-none rounded-full bg-lh-navy px-1.5 text-[11px] font-semibold text-white"
         >
-          {node.waiting}
+          {pill}
         </span>
       )}
     </a>
