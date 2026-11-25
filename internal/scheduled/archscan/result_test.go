@@ -220,3 +220,62 @@ func TestWithCheckboxesKeepsLiveTick(t *testing.T) {
 		t.Error("nil live must keep the body as it is")
 	}
 }
+
+func TestParseResultCRLF(t *testing.T) {
+	in := strings.ReplaceAll(validResult, "\n", "\r\n")
+	r, err := parseResult([]byte(in), testHeadings(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(r.Candidates) != 2 || r.Candidates[0].Claims[1].Outcome != "12 treffers" || !r.Candidates[1].Rejected { // lighthouse: allow-language
+		t.Errorf("result = %+v", r)
+	}
+	if r.Body != in {
+		t.Error("body must stay as written")
+	}
+	if got := RejectedKeys(r.WithCheckboxes(map[string]bool{"split-store": true})); len(got) != 2 { // lighthouse: allow-language
+		t.Errorf("rejected = %v", got)
+	}
+}
+
+func TestParseResultStillOpenOverflow(t *testing.T) {
+	in := strings.Replace(validResult, "#12", "#99999999999999999999999", 1)
+	if _, err := parseResult([]byte(in), testHeadings(t)); err == nil {
+		t.Error("want error")
+	}
+}
+
+func TestParseResultMixedMarks(t *testing.T) {
+	for _, c := range []string{
+		"- x [niet nagemeten] [nagemeten: `c` → o]",           // lighthouse: allow-language
+		"- x [nagemeten: `c` → o] [niet nagemeten]",           // lighthouse: allow-language
+		"- x [nagemeten: `c` → o] [nagemeten: `d` → p]",       // lighthouse: allow-language
+		"- x [niet meetbaar vanaf hier] [nagemeten: `c` → o]", // lighthouse: allow-language
+	} {
+		if _, err := parseResult([]byte(resultWith(c)), testHeadings(t)); err == nil {
+			t.Errorf("%q: want error", c)
+		}
+	}
+}
+
+func TestParseResultCandidateHeadingWithoutKey(t *testing.T) {
+	in := strings.Replace(validResult, "### Verwijder de cache (`drop-cache`)", "### Verwijder de cache", 1) // lighthouse: allow-language
+	if _, err := parseResult([]byte(in), testHeadings(t)); err == nil {
+		t.Error("want error")
+	}
+}
+
+func TestRejectedKeysIgnoresOtherSections(t *testing.T) {
+	in := strings.Replace(validResult, "Venster 3 maanden, basiscommit abc123.", "### Fake (`fake`)\n\n- [x] Afgewezen", 1) // lighthouse: allow-language
+	got := RejectedKeys(in)
+	if got["fake"] || !got["drop-cache"] {
+		t.Errorf("got %v", got)
+	}
+	r, err := parseResult([]byte(in), testHeadings(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out := r.WithCheckboxes(map[string]bool{"fake": true}); out != in {
+		t.Error("a ### block outside the candidates must not be ticked")
+	}
+}

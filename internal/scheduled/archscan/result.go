@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
 	lhconfig "github.com/CorneeldH/lighthouse/internal/config"
@@ -61,7 +62,7 @@ var (
 // parseMark reads the single mark at the end of a claim bullet. It parses from the end so that
 // brackets inside the command do not matter.
 func parseMark(line string) (Claim, error) {
-	line = strings.TrimRight(line, " \t")
+	line = strings.TrimRight(line, " \t\r")
 	c := Claim{Text: line}
 	rest := ""
 	switch {
@@ -85,11 +86,20 @@ func parseMark(line string) (Claim, error) {
 	default:
 		return c, errors.New("claim without a mark")
 	}
-	r := strings.TrimRight(rest, " \t")
-	if strings.HasSuffix(r, litNotMeasured) || strings.HasSuffix(r, litUnmeasurable) {
+	if endsWithMark(rest) {
 		return c, errors.New("claim with more than one mark")
 	}
 	return c, nil
+}
+
+// endsWithMark reports whether s, ignoring trailing blanks, ends on a complete mark.
+func endsWithMark(s string) bool {
+	s = strings.TrimRight(s, " \t\r")
+	if strings.HasSuffix(s, litNotMeasured) || strings.HasSuffix(s, litUnmeasurable) {
+		return true
+	}
+	i := strings.LastIndex(s, litMeasuredOpen)
+	return strings.HasSuffix(s, "]") && i >= 0 && strings.Contains(s[i:], litMeasuredArrow)
 }
 
 // sectionOf names the required section a `## ` line opens, or "".
@@ -141,6 +151,7 @@ func parseResult(b []byte, h headings) (Result, error) {
 		}
 	}
 	for n, line := range strings.Split(body, "\n") {
+		line = strings.TrimSuffix(line, "\r")
 		if s := sectionOf(line, names); s != "" {
 			flush()
 			section = s
@@ -190,8 +201,11 @@ func parseResult(b []byte, h headings) (Result, error) {
 			}
 		case "scan_still_open":
 			if m := stillOpenRE.FindStringSubmatch(line); m != nil {
-				var nr int
-				fmt.Sscanf(m[1], "%d", &nr)
+				nr, err := strconv.Atoi(m[1])
+				if err != nil {
+					errs = append(errs, fmt.Errorf("line %d: issue number %s: %w", n+1, m[1], err))
+					continue
+				}
 				res.StillOpen = append(res.StillOpen, nr)
 			}
 		}
@@ -211,22 +225,26 @@ func parseResult(b []byte, h headings) (Result, error) {
 }
 
 // rewrite walks the candidate blocks of body and lets fn decide, per checkbox line, the new line.
+// Candidates live in the first `## ` section that holds a candidate heading; a `###` block in
+// any other section (method, still open) is not a candidate.
 func rewrite(body string, fn func(key, line string) string) string {
 	lines := strings.Split(body, "\n")
 	key := ""
+	inSection, done := false, false
 	for i, l := range lines {
-		if strings.HasPrefix(l, candidateLevel) {
+		t := strings.TrimSuffix(l, "\r")
+		switch {
+		case strings.HasPrefix(t, sectionLevel) || strings.HasPrefix(t, "# "):
 			key = ""
-			if m := candidateRE.FindStringSubmatch(l); m != nil {
-				key = m[2]
+			if inSection {
+				done, inSection = true, false
 			}
-			continue
-		}
-		if strings.HasPrefix(l, sectionLevel) || strings.HasPrefix(l, "# ") {
+		case strings.HasPrefix(t, candidateLevel):
 			key = ""
-			continue
-		}
-		if key != "" && (strings.HasPrefix(l, checkboxOpen) || strings.HasPrefix(l, checkboxChecked)) {
+			if m := candidateRE.FindStringSubmatch(t); m != nil && !done {
+				key, inSection = m[2], true
+			}
+		case key != "" && (strings.HasPrefix(t, checkboxOpen) || strings.HasPrefix(t, checkboxChecked)):
 			lines[i] = fn(key, l)
 		}
 	}
