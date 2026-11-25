@@ -167,7 +167,7 @@ describe('DepsView', () => {
   it('een kaart heeft in elke stand hoogstens één pil', () => {
     for (const order of ORDERS) {
       view([repo(A, [iss(1, [], { prio_weight: 10 }), iss(2, [[A, 1]]), iss(3, [[A, 1]]), iss(4, [[A, 1]])])], [A], [], order)
-      expect(within(node(`${A}#1`)).queryAllByTestId('card-pill').length).toBeLessThanOrEqual(1)
+      expect(within(node(`${A}#1`)).queryAllByTestId('card-pill')).toHaveLength(1)
       expect(within(node(`${A}#1`)).queryByTestId('waiting-pill')).toBeNull()
       cleanup()
     }
@@ -200,13 +200,14 @@ describe('DepsView', () => {
     expect(pillText(screen.getByTestId(`loose-${A}#1`))).toBe('7')
   })
 
-  it('bij Weight blijft de pil bij één directe afhankelijke en valt een vreemde stand terug op wachtenden', () => {
-    const repos = [repo(A, [iss(1), iss(2, [[A, 1]])])]
-    view(repos, [A], [], 'weight')
+  it('bij Weight blijft de pil bij één directe afhankelijke staan', () => {
+    view([repo(A, [iss(1), iss(2, [[A, 1]])])], [A], [], 'weight')
     expect(pillText(node(`${A}#1`))).toBe('1')
-    cleanup()
-    view(repos, [A], [], 'bogus' as DepsOrder)
-    expect(within(node(`${A}#1`)).queryByTestId('card-pill')).toBeNull()
+  })
+
+  it('een vreemde stand valt terug op de pil met het aantal wachtenden', () => {
+    view([repo(A, [iss(1), iss(2, [[A, 1]]), iss(3, [[A, 1]]), iss(4, [[A, 1]])])], [A], [], 'bogus' as DepsOrder)
+    expect(pillText(node(`${A}#1`))).toBe('3')
   })
 
   it('keeps a blocker in a filtered-out repo as a solid grey node, and the column of its dependent', () => {
