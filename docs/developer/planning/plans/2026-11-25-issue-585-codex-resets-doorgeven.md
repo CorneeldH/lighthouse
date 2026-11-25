@@ -12,13 +12,15 @@
 
 ## Globale randvoorwaarden
 
-- `null` is nooit `0`: onbekend (`rollout-log`, onleesbare credits, `not_measurable`, nil lezing) geeft JSON `null`; `{"available":0,"expires":[]}` geeft `available: 0` en `expires: []` (nooit `null`).
+- `null` is nooit `0`: onbekend (`rollout-log`, onleesbare credits, nil lezing, `not_measurable` zonder lezing) geeft JSON `null`; `{"available":0,"expires":[]}` geeft `available: 0` en `expires: []` (nooit `null`).
 - `expires`: UTC-tijden in `timeLayout`, oudste eerst (zoals `resetCredits()` in `internal/usage/codex.go` ze al aanlevert).
 - De app-server krijgt alleen `initialize`, `initialized` en `account/rateLimits/read`. `resetCredits()` en `DecideBudget` (drempels, volgorde, exitcode 6) veranderen niet.
 - Claude (`SourceReport.Claude`) krijgt het veld niet.
 - `web/openapi.json` en `web/src/api/` nooit met de hand; genereren (zie taak 2).
 - Code, commentaar en changelog-fragment in het Engels; docs, commits en PR in het Nederlands.
-- Voor elke commit: `[test_gate] command` uit `lighthouse.toml` en `lighthouse imports check`. Nooit `--no-verify`.
+- Preflight vóór de eerste taak: `cd web && npm ci` (in een verse worktree bestaat `web/node_modules` niet; zonder faalt `npm run gen` met exit 127). Gebruik Node uit `web/.nvmrc` als dat beschikbaar is.
+- Voor elke commit: `[test_gate] command` uit `lighthouse.toml` en `go run ./cmd/lighthouse imports check` (de `lighthouse` op PATH geeft hier `COULD NOT CHECK`). Nooit `--no-verify`.
+- Huma v2.39.1 paniekt op `nullable:"true"` op een objectveld (`schema.go:622`) en maakt `[]string` standaard nullable. Een nullable object krijg je met een struct-brede override: `_ struct{} \`nullable:"true"\`` in `ResetCredits` (`schema.go:979`); `Expires` krijgt `nullable:"false"`.
 
 ## Review Focus
 
@@ -26,7 +28,7 @@
 - Het literal `null` in `CodexState.ResetCredits` (naast een nil `RawMessage`) geeft ook `null` (taak 1).
 - `available: 0` met lege `expires` toont in de UI niets over resets of een neutrale tekst, nooit een vervaldatum (taak 4).
 - Een `fallback` met `available: 0` of `null` laat `reason` ongewijzigd (taak 3).
-- Een `not_measurable`-beslissing en een `nil`-lezing hebben `reset_credits: null` in de budget-JSON (taak 3).
+- Een `nil`-lezing (`not_measurable` zonder lezing) heeft `reset_credits: null` in de budget-JSON; een `not_measurable` mét lezing (verlopen log) toont de resets van die lezing (taak 3).
 
 ---
 
@@ -37,7 +39,7 @@
 - Test: `internal/usage/codex_test.go`
 
 **Interfaces:**
-- Produceert: `type ResetCredits struct { Available int \`json:"available"\`; Expires []string \`json:"expires"\` }` en `func (s CodexState) Credits() *ResetCredits`. Nil bij `nil`/leeg/`null`/onleesbaar `ResetCredits`; anders de geparste waarde met `Expires` nooit nil (lege slice).
+- Produceert: `type ResetCredits struct { Available int \`json:"available"\`; Expires []string \`json:"expires" nullable:"false"\`; _ struct{} \`nullable:"true"\` }` (de `_`-regel maakt het type als geheel nullable in het schema; zie de randvoorwaarden) en `func (s CodexState) Credits() *ResetCredits`. Nil bij `nil`/leeg/`null`/onleesbaar `ResetCredits`; anders de geparste waarde met `Expires` nooit nil (lege slice).
 
 - [ ] **Stap 1: faalende test** `TestCodexStateCredits` (table-driven) met: `nil` → `nil`; `json.RawMessage("null")` → `nil`; `{"available":0,"expires":[]}` → `&ResetCredits{0, []string{}}` (let op: `Expires` is een lege, niet-nil slice); `{"available":2,"expires":["2026-12-01T10:00:00Z","2026-12-09T10:00:00Z"]}` → die twee, in volgorde; `{"available":"x"}` → `nil`.
 - [ ] **Stap 2:** `go test ./internal/usage -run TestCodexStateCredits` faalt (methode ontbreekt).
@@ -58,9 +60,9 @@
 
 - [ ] **Stap 1: faalende tests** in `TestReportCodex`: (a) lezing met `available: 2` en twee vervaldata → `Codex.ResetCredits` gelijk aan die waarde; (b) `available: 0` → `&ResetCredits{0, []string{}}`; (c) `rollout-log`-stand en `ReadCodex` die een fout geeft → `nil`; (d) JSON-marshal van het rapport bevat `"reset_credits":null` in (c) en `"available":0` in (b); (e) `Claude` heeft geen `reset_credits`-sleutel in de JSON.
 - [ ] **Stap 2:** tests falen (type ontbreekt).
-- [ ] **Stap 3:** implementeer `CodexReport` en vul het in `codexReport`; houd een helper voor de gedeelde vensters zodat `windowReport` niet verdubbelt.
+- [ ] **Stap 3:** implementeer `CodexReport` en vul het in `codexReport`; houd een helper voor de gedeelde vensters zodat `windowReport` niet verdubbelt. Pas in dezelfde stap `fakeReport` in `internal/server/server_test.go:45` aan (`Codex: usage.CodexReport{...}`), anders compileert de servertest niet.
 - [ ] **Stap 4:** `go test ./internal/usage/... ./internal/server/...`; `TestOpenAPISnapshot` faalt nu op drift.
-- [ ] **Stap 5:** `go test ./internal/server -run TestOpenAPISnapshot -update`, daarna `cd web && npm run gen`. Controleer met `git diff --stat` dat alleen `openapi.json` en `src/api/` veranderen en dat het veld in beide staat (`reset_credits`, nullable).
+- [ ] **Stap 5:** `go test ./internal/server -run TestOpenAPISnapshot -update`, daarna `cd web && npm run gen`. Controleer met `git diff --stat` dat alleen `openapi.json` en `src/api/` veranderen en dat het veld in beide staat: in het schema `reset_credits` met type `["object","null"]` en `expires` als niet-nullable array, in `lighthouse.ts` `reset_credits: ResetCredits | null` en `expires: string[]`. Klopt dat niet, pas de tags aan vóór taak 4.
 - [ ] **Stap 6:** voeg een testgeval aan `internal/server/server_test.go` toe dat het `reset_credits`-veld in het HTTP-antwoord controleert (waarde en `null`).
 - [ ] **Stap 7:** commit `feat(usage): GET /api/usage geeft de Codex reset_credits (#585)`.
 
@@ -74,7 +76,7 @@
 - Verbruikt: `CodexState.Credits()`.
 - Produceert: `BudgetOutcome.ResetCredits *ResetCredits \`json:"reset_credits"\`` als **laatste** veld (na `thresholds`, zodat de bestaande sleutelvolgorde intact blijft). `fallback` met `Credits().Available > 0` krijgt `reason = "<bestaande reden>; reset available (<N>, first expires <eerste expires>)"` (Engelse tekst, zoals de bestaande reasons; `expires` kan leeg zijn bij `available > 0`: laat dan het deel "first expires" weg).
 
-- [ ] **Stap 1: faalende tests:** (a) `fallback` met `available: 2` en vervaldata: `ResetCredits` gevuld en `Reason` bevat `reset available`; (b) `fallback` met `available: 0` en met `nil`: `Reason` exact als vóór de wijziging; (c) `codex`-beslissing en `not_measurable` (ook `r == nil`): `ResetCredits` is nil (JSON `null`) respectievelijk gevuld volgens de lezing; (d) `Decision`, `Window` en `ResetAt` zijn in alle gevallen gelijk aan de uitkomst zonder credits; (e) bijgewerkte exacte JSON in `TestBudgetOutcomeJSONKeyOrder` met `"reset_credits"` als laatste sleutel.
+- [ ] **Stap 1: faalende tests:** (a) `fallback` met `available: 2` en vervaldata: `ResetCredits` gevuld en `Reason` bevat `reset available`; (b) `fallback` met `available: 0` en met `nil`: `Reason` exact als vóór de wijziging; (c) expliciete tabel: `r == nil` (`not_measurable`) → `ResetCredits` nil (JSON `null`); `codex`-beslissing → gevuld volgens de lezing; `not_measurable` uit de `outcome`-closure (verlopen log, lezing bestaat) → gevuld volgens de lezing (onleesbare credits → nil); (d) `Decision`, `Window` en `ResetAt` zijn in alle gevallen gelijk aan de uitkomst zonder credits; (e) bijgewerkte exacte JSON in `TestBudgetOutcomeJSONKeyOrder` met `"reset_credits"` als laatste sleutel.
 - [ ] **Stap 2:** tests falen.
 - [ ] **Stap 3:** implementeer veld, vulling in de `outcome`-closure en de reden bij `fallback`. Geen wijziging in `DecideBudget`-tak- of drempellogica. Controleer dat `internal/roborev/gate.go` en `internal/review/runner.go` het extra veld negeren (draai hun tests).
 - [ ] **Stap 4:** `go test ./internal/usage/... ./internal/roborev/... ./internal/review/... ./internal/cli/...` slaagt.
@@ -87,12 +89,12 @@
 - Wijzig: `web/src/components/UsagePanel.tsx`
 
 **Interfaces:**
-- Verbruikt: gegenereerd type `ResetCredits | null` op `data.codex.reset_credits` (naam volgt uit orval; controleer in `web/src/api/lighthouse.ts`); `formatReset(iso, now)` uit `@/lib/format`.
+- Verbruikt: gegenereerd type `ResetCredits | null` op `data.codex.reset_credits` (naam volgt uit orval; controleer in `web/src/api/lighthouse.ts`); `expires` is `string[]` (niet-nullable, zie randvoorwaarden); een nieuwe `formatDate(iso)` in `@/lib/format` (met test in `format.test.ts` indien aanwezig) levert dag en maand (bv. `Dec 9`), want `formatReset` toont alleen een tijd of weekdag+tijd en is voor een vervaldatum weken ver weg misleidend.
 - Produceert: `export function ResetCredits({ credits, now }: { credits: ResetCreditsType | null; now: Date }): JSX.Element | null`.
 
-Gedrag: `null` → `null` renderen (niets; geen "0 resets"). `available > 0` → tekst `<N> reset(s) available` plus `first expires <formatReset(expires[0])>` als `expires[0]` bestaat. `available === 0` → niets renderen (er is geen reset; de balk voor het venster zegt al genoeg) — de beslissing is vastgelegd in de test.
+Gedrag: `null` → `null` renderen (niets; geen "0 resets"). `available > 0` → tekst `<N> reset(s) available` plus `first expires <formatDate(expires[0])>` als `expires[0]` bestaat. `available === 0` → niets renderen (er is geen reset; de balk voor het venster zegt al genoeg) — de beslissing is vastgelegd in de test.
 
-- [ ] **Stap 1: faalende tests** in `ResetCredits.test.tsx`: `null` rendert niets; `{available: 0, expires: []}` rendert niets en nergens staat "0"; `{available: 2, expires: [t1, t2]}` toont "2" en de eerste vervaldatum (niet `t2`); `{available: 1, expires: []}` toont "1" zonder "expires". In `UsagePanel.test.tsx`: met een mocked `useUsage` (patroon van `App.test.tsx` / `lib/queries.test.tsx`) staat het resetblok onder Codex en niet onder Claude; bij `reset_credits: null` ontbreekt het.
+- [ ] **Stap 1: faalende tests** in `ResetCredits.test.tsx`: `null` rendert niets; `{available: 0, expires: []}` rendert niets en nergens staat "0"; `{available: 2, expires: [t1, t2]}` toont "2" en de dag en maand van `t1` (niet `t2`, niet alleen een tijd of weekdag); `{available: 1, expires: []}` toont "1" zonder "expires". In `UsagePanel.test.tsx`: met een mocked `useUsage` (patroon van `App.test.tsx` / `lib/queries.test.tsx`) staat het resetblok onder Codex en niet onder Claude; bij `reset_credits: null` ontbreekt het.
 - [ ] **Stap 2:** `cd web && npm test` faalt.
 - [ ] **Stap 3:** implementeer de component en plaats hem in `UsagePanel` onder de twee Codex-vensters.
 - [ ] **Stap 4:** `cd web && npm run lint && npm run typecheck && npm test` slaagt.
@@ -108,5 +110,5 @@ Gedrag: `null` → `null` renderen (niets; geen "0 resets"). `available > 0` →
 - [ ] **Stap 1:** zoek of er al een test is die de app-server-methodes vastzet (`grep -n "rateLimits/read\|initialized" internal/usage/*_test.go`). Zo niet: voeg `TestAppServerOnlyCallsReadMethods` toe die de verzonden JSON-RPC-methodes van de bestaande fake app-server-aanpak verzamelt en gelijk stelt aan `initialize`, `initialized`, `account/rateLimits/read`.
 - [ ] **Stap 2:** docs: voeg `reset_credits` toe aan de API-vorm (`codex.reset_credits`: `{"available": N, "expires": [...]}` of `null`, nooit `0` bij onbekend; Claude heeft het veld niet) en aan de `codex-usage budget`-sleutellijst (laatste sleutel; bij `fallback` met `available > 0` noemt `reason` de reset; de beslissing verandert niet; Lighthouse zet een reset nooit zelf in).
 - [ ] **Stap 3:** changelog-fragment `type: added`, één Engelse regel eindigend op `(#585)`, in het formaat van `changelog.d/issue-556-tab-backlog.md`.
-- [ ] **Stap 4:** `go run ./cmd/lighthouse init --upgrade` geeft `No changes.`; volledige `go test ./...`, `go vet ./...`, `lighthouse imports check`; `cd web && npm run gen && git status --porcelain -- src/api` is leeg.
+- [ ] **Stap 4:** `go run ./cmd/lighthouse init --upgrade` geeft `No changes.`; volledige `go test ./...`, `go vet ./...`, `go run ./cmd/lighthouse imports check`; `cd web && npm run gen && git status --porcelain -- src/api` is leeg.
 - [ ] **Stap 5:** commit `docs(usage): reset_credits in API en budget, changelogfragment (#585)`.
