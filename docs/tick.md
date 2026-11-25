@@ -1128,6 +1128,30 @@ gedraagt zich als voorheen, en een repo met `location_prefix` maar zonder `[cont
 hij negeert locatielabels, ook twee tegelijk. Een upgrade is daarom veilig. Pas de tabel maakt het
 label bindend: een onbekende waarde of twee labels stellen de start dan uit.
 
+## Versiewissel
+
+Elk uur kijkt de tick in `lighthouse.db` naar wisselingen van versie: superpowers, model (per lane) en harness
+(per harnessnaam), afgeleid uit de setups van de runs. Het moment van de laatste kijk staat in de
+state-map (`telemetry/`) en wordt ook na een mislukte kijk geschreven, zodat een logregel hooguit eens per uur
+verschijnt. Per reeks telt alleen de laatste wissel. De tick installeert niets en leest alleen de database.
+
+```toml
+[telemetry]
+proposals_repo = "eigenaar/repo"   # waar de voorstellen komen; moet een repo van [dispatch] zijn
+```
+
+Zonder `proposals_repo`, of met een repo die niet in `[dispatch] repos` staat, geeft de tick één logregel en
+gaat verder; een forge die deze tick niet opende telt wel als mislukking. Per wissel opent de tick één issue
+met de machineregel `<!-- lighthouse-version-change: <dimensie> [<reeks>] →<nieuw> -->`. Staat die regel al
+in een issue, open of gesloten, dan komt er geen tweede. De taal volgt `[project] language` van de repo. Een
+mislukte wissel geeft een logregel en de andere gaan door.
+
+**De markering.** `telemetry.VersionMarkers` geeft dezelfde wissels als punten met een week
+(`VersionMarker.Week`, een `time.Time` op de maandag van de ISO-week); #379 leest dit als `markers` op de
+tijdlijn. Is #379 nog niet gemerged, dan is de koppeling er nog niet: wie als laatste merget, legt haar. Controleer met
+`git fetch && git grep -n 'Markers' origin/main -- internal/telemetry`; zet dan `Week` om naar de string
+`2006-01-02` van `Marker.Week` van #379 en voeg de test toe dat een wissel in de juiste week verschijnt.
+
 ## Zicht
 
 Wat de tick gestart heeft, zie je terug in `GET /api/runs` en in de blokken *Running runs*, *Parked runs*, *Queue* en *Night* van
