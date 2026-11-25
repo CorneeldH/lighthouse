@@ -92,8 +92,9 @@ de rang.
 De SPA leidt deze begrippen af in `web/src/lib/priorities/derive.ts`; de server levert ze niet.
 
 - **Actief.** Een issue is actief als er een open of geparkeerde run op staat, of als de
-  bordstatus `In progress` of `Controller` is (zoals `issueState` en de
-  [spec](developer/planning/specs/2026-11-20-statusmodel-en-statusschema-design.md)).
+  bordstatus `Controller` is, of `In progress` zonder blokkade; met een blokkade is `In progress`
+  niet actief (zoals `issueState` en de
+  [spec](developer/planning/specs/2026-11-24-statusmodel-mind-hands-design.md)).
 - **Toestand van een issue.** `issueState` kiest de eerste passende regel: een gesloten issue is
   *done*; het label `needs_mind` of een open vraag geeft *needs mind*; `needs_hands` zonder
   blokkade geeft *needs hands*; een live run, bordstatus `Controller` of `In progress` zonder
