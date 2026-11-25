@@ -136,6 +136,47 @@ describe('ComparisonBlock', () => {
   })
 })
 
+describe('ComparisonBlock group details', () => {
+  it('shows group size, reviews, recovery items and the findings line of a review block', () => {
+    const g = group('with')
+    g.trajectories = 12
+    g.reviews = 3
+    g.recovery_items = m(1.25, 12)
+    g.findings = 7
+    g.by_severity = { MAJOR: 4, MINOR: 3 }
+    g.left_open = 2
+    g.undecided = 0
+    render(<ComparisonBlock block={block({ kind: 'toggle', groups: [g] })} />)
+    const el = screen.getByRole('region', { name: 'route' })
+    expect(within(el).getByRole('columnheader', { name: 'Recovery items' })).toBeTruthy()
+    expect(within(el).getByText('1.3')).toBeTruthy()
+    expect(within(el).getByText('12 trajectories · 3 reviews')).toBeTruthy()
+    expect(within(el).getByText('with: 7 findings (MAJOR 4, MINOR 3), 2 left open, 0 undecided')).toBeTruthy()
+  })
+
+  it('shows no reviews or findings line for a values block', () => {
+    const g = group('sdd')
+    g.trajectories = 5
+    render(<ComparisonBlock block={block({ kind: 'values', groups: [g] })} />)
+    const el = screen.getByRole('region', { name: 'route' })
+    expect(within(el).getByText('5 trajectories')).toBeTruthy()
+    expect(within(el).queryByText(/findings/)).toBeNull()
+  })
+})
+
+describe('MeasureCell wording', () => {
+  it('shows n/a for a measure that does not apply, with the reason as title', () => {
+    render(<MeasureCell measure={m(null, 0, 'not applicable')} />)
+    expect(screen.getByText('n/a').getAttribute('title')).toBe('not applicable')
+    expect(screen.queryByText('not measured')).toBeNull()
+  })
+
+  it('names the unit of a small n', () => {
+    render(<MeasureCell measure={m(0.5, 3)} unit="reviews" />)
+    expect(screen.getByText('too few reviews')).toBeTruthy()
+  })
+})
+
 describe('FilterBar', () => {
   it('calls onChange with the chosen route', () => {
     const onChange = vi.fn()
