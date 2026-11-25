@@ -69,7 +69,13 @@ find the place from, in this order:
 ### 3. Place, or ask, or decide
 
 - **Unambiguous place**: put the item in the document, exactly as the explanation of step 1
-  says, with the field `issue` set to the issue number and nothing else invented.
+  says, with the field `issue` set to the issue number. For the other fields the job:
+  - takes the fields under `From issue` from the title and body of the issue, in the language of
+    the document (translating is allowed, and neither taking over nor translating is inventing);
+  - does what the explanation says for every field the explanation derives;
+  - leaves out every field that the table does not name and the explanation does not derive.
+
+  A place with a value the explanation calls invalid is an unclear place: ask.
 - **The issue gets no item** (the explanation says a change of this kind gives none): a decision,
   `{"issue": 13, "value": "no-item"}` in `decisions`.
 - **Unclear place**: a question in `questions` with topic `place`: the candidate places first
