@@ -138,7 +138,8 @@ naar de memory van een ander project is net zo goed harness-memory.
   `rm` telt mee omdat verwijderen via de migratie loopt, en die vraagt eerst akkoord.
 
 **Stand.** Uit `components.toml`, zoals elke Go-hook (`internal/hook/hook.go`):
-- `on`: exit 2 met een melding;
+- `on`: een `permissionDecision` `deny` (`hookSpecificOutput`) met een melding, exit 0; de hook staat
+  niet in `blocking`;
 - `log`: exit 0 met één regel in het logboek;
 - `off`: niets.
 
@@ -170,7 +171,7 @@ Put a lasting rule in the repo with /lighthouse-place-instruction; move existing
 
 #### `lighthouse memory scan`
 
-Een subcommando in `internal/cli`, met de logica in een nieuw pakket `internal/memorymigrate`. Het
+Een subcommando in `internal/cli`, met de logica in het pakket `internal/automemory`. Het
 commando leest alleen.
 
 **Welke mappen.** Claude Code codeert het projectpad tot een mapnaam door elk teken dat geen letter
@@ -245,7 +246,7 @@ geeft het commando, en de gebruiker voert het uit.
 
 ## Tests
 
-- **`internal/memorymigrate`.** Een synthetische config-map in een tempdir met een bekende verdeling:
+- **`internal/automemory`.** Een synthetische config-map in een tempdir met een bekende verdeling:
   - twee mappen voor dezelfde repo, die alleen in hoofdletters verschillen (`D--x-repo` en
     `d--x-repo`);
   - een aanroep vanuit een worktree van de repo, die dezelfde mappen vindt als de main checkout;
