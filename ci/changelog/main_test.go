@@ -83,7 +83,7 @@ func TestRunReleaseDefaultDateIsToday(t *testing.T) {
 
 func TestRunReleaseGitFails(t *testing.T) {
 	code, _, stderr := runCLI("release", "--version", "v0.1.7", "--root", filepath.Join(t.TempDir(), "nope"))
-	if code != 2 || !strings.HasPrefix(stderr, "COULD NOT CHECK: git tag failed: ") {
+	if code != 2 || !strings.HasPrefix(stderr, "COULD NOT CHECK: git tag ") {
 		t.Fatalf("code=%d stderr=%q", code, stderr)
 	}
 }

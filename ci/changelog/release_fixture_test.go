@@ -57,7 +57,7 @@ func TestReleaseFixture(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			got, err := release(dir, tag, date, []string{prev})
+			got, err := release(dir, tag, date, []string{prev}, nil, nil)
 			if err != nil || got != tag {
 				t.Fatalf("release = %q, %v; want %s", got, err, tag)
 			}

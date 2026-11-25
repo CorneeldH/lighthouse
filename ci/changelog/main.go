@@ -10,6 +10,7 @@
 //     `B...H` and refuses any fragment that does not parse.
 //   - `release --version vX.Y.Z [--date YYYY-MM-DD]` writes the section into CHANGELOG.md, removes
 //     the fragments and prints the tag. Nothing releasable, or a version that has a tag, is exit 1.
+//   - `released` prints the fragment names an earlier `chore(release): vX.Y.Z` commit removed.
 //   - `notes <tag>` prints the CHANGELOG.md section of a tag.
 //
 // Every call takes `--root` (default `.`). The positional tag of `notes` may stand before or
@@ -33,9 +34,8 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strings"
+	"sort"
 	"time"
 )
 
@@ -48,7 +48,7 @@ func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
-const usageText = "usage: changelog <check|release|notes> [flags]"
+const usageText = "usage: changelog <check|release|released|notes> [flags]"
 
 // parseFlags parses args into fs. A positional argument is returned in order; `--root` may come
 // after one. Errors and help text go to stderr.
@@ -118,6 +118,28 @@ func run(args []string, stdout, stderr io.Writer) int {
 			return usageError("invalid --version '" + *version + "' (want vX.Y.Z)")
 		}
 		return runRelease(*root, *version, *date, stdout, stderr)
+	case "released":
+		pos, code, done := parseFlags(fs, args[1:])
+		if done {
+			return code
+		}
+		if len(pos) > 0 {
+			return usageError("unexpected argument '" + pos[0] + "'")
+		}
+		released, err := releasedFragments(*root)
+		if err != nil {
+			sayf(stderr, "COULD NOT CHECK: %v\n", err)
+			return 2
+		}
+		names := make([]string, 0, len(released))
+		for n := range released {
+			names = append(names, n)
+		}
+		sort.Strings(names)
+		for _, n := range names {
+			say(stdout, n)
+		}
+		return 0
 	case "notes":
 		pos, code, done := parseFlags(fs, args[1:])
 		if done {
@@ -150,19 +172,17 @@ func runCheck(root, base, head string, stderr io.Writer) int {
 }
 
 func runRelease(root, version, date string, stdout, stderr io.Writer) int {
-	cmd := exec.Command("git", "-C", root, "tag", "--list", "v*")
-	var gitErr strings.Builder
-	cmd.Stderr = &gitErr
-	out, err := cmd.Output()
+	tags, err := releaseTags(root)
 	if err != nil {
-		detail := strings.TrimSpace(gitErr.String())
-		if detail == "" {
-			detail = err.Error()
-		}
-		sayf(stderr, "COULD NOT CHECK: git tag failed: %s\n", detail)
+		sayf(stderr, "COULD NOT CHECK: %v\n", err)
 		return 2
 	}
-	tag, err := release(root, version, date, strings.Fields(string(out)))
+	released, err := releasedFragments(root)
+	if err != nil {
+		sayf(stderr, "COULD NOT CHECK: %v\n", err)
+		return 2
+	}
+	tag, err := release(root, version, date, tags, released, stderr)
 	switch err.(type) {
 	case nil:
 		say(stdout, tag)

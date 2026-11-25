@@ -338,7 +338,7 @@ func releaseRoot(t *testing.T, fragments map[string]string, changelog string, wi
 
 func TestReleaseWritesChangelogAndRemovesFragments(t *testing.T) {
 	root := releaseRoot(t, map[string]string{"a.md": "fixed", "b.md": "added", "c.md": "internal"}, preamble+oldRelease, true)
-	tag, err := release(root, "v0.2.0", "2026-10-27", []string{"v0.1.6"})
+	tag, err := release(root, "v0.2.0", "2026-10-27", []string{"v0.1.6"}, nil, nil)
 	if err != nil || tag != "v0.2.0" {
 		t.Fatalf("release = %q, %v; want v0.2.0", tag, err)
 	}
@@ -355,7 +355,7 @@ func TestReleaseWritesChangelogAndRemovesFragments(t *testing.T) {
 
 func TestReleaseNothingReleasable(t *testing.T) {
 	root := releaseRoot(t, map[string]string{"a.md": "internal"}, preamble+oldRelease, true)
-	_, err := release(root, "v0.2.0", "2026-10-27", []string{"v0.1.6"})
+	_, err := release(root, "v0.2.0", "2026-10-27", []string{"v0.1.6"}, nil, nil)
 	var re *releaseError
 	if !errors.As(err, &re) || re.msg != "nothing to release" {
 		t.Fatalf("err = %v, want releaseError nothing to release", err)
@@ -371,7 +371,7 @@ func TestReleaseNothingReleasable(t *testing.T) {
 
 func TestReleaseWithoutChangelogRefuses(t *testing.T) {
 	root := releaseRoot(t, map[string]string{"a.md": "fixed"}, "", false)
-	_, err := release(root, "v0.2.0", "2026-10-27", []string{"v0.1.6"})
+	_, err := release(root, "v0.2.0", "2026-10-27", []string{"v0.1.6"}, nil, nil)
 	var re *releaseError
 	if !errors.As(err, &re) || !strings.HasPrefix(re.msg, filepath.Join(root, "CHANGELOG.md")+": cannot read: ") {
 		t.Fatalf("err = %v, want releaseError", err)
@@ -383,7 +383,7 @@ func TestReleaseWithoutChangelogRefuses(t *testing.T) {
 
 func TestReleaseUsesGivenVersion(t *testing.T) {
 	root := releaseRoot(t, map[string]string{"a.md": "added", "b.md": "fixed"}, preamble+oldRelease, true)
-	tag, err := release(root, "v0.30.0", "2026-10-27", []string{"v0.27.0"})
+	tag, err := release(root, "v0.30.0", "2026-10-27", []string{"v0.27.0"}, nil, nil)
 	if err != nil || tag != "v0.30.0" {
 		t.Fatalf("release = %q, %v; want v0.30.0", tag, err)
 	}
@@ -395,7 +395,7 @@ func TestReleaseUsesGivenVersion(t *testing.T) {
 
 func TestReleaseRefusesExistingTag(t *testing.T) {
 	root := releaseRoot(t, map[string]string{"a.md": "fixed"}, preamble+oldRelease, true)
-	_, err := release(root, "v0.1.6", "2026-10-27", []string{"v0.1.6"})
+	_, err := release(root, "v0.1.6", "2026-10-27", []string{"v0.1.6"}, nil, nil)
 	var re *releaseError
 	if !errors.As(err, &re) || re.msg != "v0.1.6 already has a tag" {
 		t.Fatalf("err = %v, want releaseError", err)

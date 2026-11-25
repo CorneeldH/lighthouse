@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path"
@@ -289,15 +290,25 @@ func extractSection(changelog, tag string) (string, bool) {
 }
 
 // release writes the section of version for the open fragments into CHANGELOG.md and removes
-// them. It returns version. A version that already has a tag, or no releasable fragment, is
-// refused (releaseError) and leaves the tree alone.
-func release(root, version, date string, tags []string) (string, error) {
+// them. A fragment named in released went out in an earlier release: it is removed without
+// entering the section and reported on notes (nil is silent). It returns version. A version that
+// already has a tag, or no releasable fragment left, is refused (releaseError) and leaves the
+// tree alone.
+func release(root, version, date string, tags []string, released map[string]bool, notes io.Writer) (string, error) {
 	if contains(tags, version) {
 		return "", &releaseError{msg: version + " already has a tag"}
 	}
-	frags, err := readFragments(filepath.Join(root, fragmentDir))
+	all, err := readFragments(filepath.Join(root, fragmentDir))
 	if err != nil {
 		return "", err
+	}
+	var frags, skipped []fragment
+	for _, f := range all {
+		if released[filepath.Base(f.path)] {
+			skipped = append(skipped, f)
+		} else {
+			frags = append(frags, f)
+		}
 	}
 	releasableFound := false
 	for _, f := range frags {
@@ -317,9 +328,14 @@ func release(root, version, date string, tags []string) (string, error) {
 	if err := os.WriteFile(p, []byte(out), 0o644); err != nil {
 		return "", err
 	}
-	for _, f := range frags {
+	for _, f := range all {
 		if err := os.Remove(f.path); err != nil {
 			return "", err
+		}
+	}
+	if notes != nil {
+		for _, f := range skipped {
+			say(notes, "skipped "+filepath.Base(f.path)+": already released")
 		}
 	}
 	return version, nil
