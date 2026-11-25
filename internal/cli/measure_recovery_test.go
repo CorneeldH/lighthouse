@@ -15,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/CorneeldH/lighthouse/internal/forge"
+	"github.com/CorneeldH/lighthouse/internal/protocol"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/store"
 )
@@ -55,6 +56,33 @@ type mrFake struct {
 	mergedErr, issErr  error
 	searches, headList int
 	query              string
+	// traits: labels and comments served for every issue; issueErr fails one issue.
+	labels     []string
+	comments   []protocol.Comment
+	issueErr   map[int]error
+	issueCalls int
+	commCalls  int
+}
+
+func (f *mrFake) Issue(_ context.Context, n int) (forge.Issue, error) {
+	f.issueCalls++
+	if err := f.issueErr[n]; err != nil {
+		return forge.Issue{}, err
+	}
+	return forge.Issue{Number: n, Labels: f.labels}, nil
+}
+
+func (f *mrFake) Comments(context.Context, int) ([]protocol.Comment, error) {
+	f.commCalls++
+	return f.comments, nil
+}
+
+// mrTriage is a triage comment of gate, posted before every merge of the rig.
+func mrTriage(gate string) []protocol.Comment {
+	return []protocol.Comment{{
+		Body:      protocol.RenderTriageMarker(protocol.TriageMarker{Gate: gate}) + "\nroute",
+		CreatedAt: mrMerge7.Add(-48 * time.Hour).Format(time.RFC3339),
+	}}
 }
 
 func (f *mrFake) MergedPRs(context.Context, time.Time, time.Time) ([]forge.PRSummary, error) {
@@ -107,8 +135,9 @@ func newMRRig(t *testing.T) *mrRig {
 	}
 	_ = s.Close()
 	r.fake = &mrFake{
-		merged: []forge.PRSummary{{Number: 7, MergedAt: mrMerge7}},
-		heads:  []forge.PullHead{{Number: 7, HeadRef: "issue-3-eerste"}},
+		merged:   []forge.PRSummary{{Number: 7, MergedAt: mrMerge7}},
+		heads:    []forge.PullHead{{Number: 7, HeadRef: "issue-3-eerste"}},
+		comments: mrTriage("2"),
 	}
 	return r
 }
@@ -235,7 +264,7 @@ func TestMeasureRecoveryClosedRowCallsNoForgeSearch(t *testing.T) {
 	if code, _, errOut := r.run(r.base()...); code != 0 {
 		t.Fatalf("first run: exit %d, stderr %q", code, errOut)
 	}
-	*r.fake = mrFake{merged: r.fake.merged, heads: r.fake.heads}
+	*r.fake = mrFake{merged: r.fake.merged, heads: r.fake.heads, comments: r.fake.comments}
 	if code, out, errOut := r.run(r.base()...); code != 0 || out != "" {
 		t.Fatalf("second run: exit %d, out %q, stderr %q; want silence", code, out, errOut)
 	}
@@ -333,5 +362,127 @@ func TestMeasureRecoveryOpenRowKeepsItsIssueWhenHeadIsGone(t *testing.T) {
 				t.Errorf("recoveries on issue 3 = %d, want 1", n)
 			}
 		})
+	}
+}
+
+func (r *mrRig) exec(query string, args ...any) {
+	r.t.Helper()
+	db, err := sql.Open("sqlite", r.db)
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	if _, err := db.Exec(query, args...); err != nil {
+		r.t.Fatal(err)
+	}
+}
+
+func (r *mrRig) text(query string) string {
+	r.t.Helper()
+	db, err := sql.Open("sqlite", r.db)
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	var v sql.NullString
+	if err := db.QueryRow(query).Scan(&v); err != nil {
+		r.t.Fatal(err)
+	}
+	return v.String
+}
+
+func (r *mrRig) withAreaPrefix() {
+	r.t.Helper()
+	toml := "[forge]\nrepo = \"o/r\"\n\n[labels]\narea_prefix = \"2-area:\"\n"
+	if err := os.WriteFile(filepath.Join(r.clone, "lighthouse.toml"), []byte(toml), 0o600); err != nil {
+		r.t.Fatal(err)
+	}
+}
+
+func TestTraitPassBackfillsClosedRow(t *testing.T) {
+	r := newMRRig(t)
+	r.withAreaPrefix()
+	if code, _, errOut := r.run(r.base()...); code != 0 {
+		t.Fatalf("first run: exit %d, stderr %q", code, errOut)
+	}
+	r.exec(`UPDATE trajectories SET route = NULL, area = NULL`)
+	r.exec(`UPDATE recoveries SET code_lines = NULL`)
+	r.fake.labels = []string{"bug", "2-area:web"}
+	r.fake.comments = mrTriage("invariant")
+	if code, out, errOut := r.run(r.base()...); code != 0 || out != "" {
+		t.Fatalf("exit %d, out %q, stderr %q; want silence", code, out, errOut)
+	}
+	if got := r.text(`SELECT route FROM trajectories WHERE issue = 3`); got != "0" {
+		t.Errorf("route = %q, want 0 (invariant)", got)
+	}
+	if got := r.text(`SELECT area FROM trajectories WHERE issue = 3`); got != "web" {
+		t.Errorf("area = %q, want web", got)
+	}
+	if n := r.count(`SELECT count(*) FROM recoveries WHERE pr = 7 AND code_lines IS NOT NULL`); n != 1 {
+		t.Errorf("code_lines of #7 not filled")
+	}
+	if got := r.text(`SELECT status FROM recoveries WHERE pr = 7`); got != "recovered" {
+		t.Errorf("status = %q, want recovered: a trait pass never reopens", got)
+	}
+}
+
+func TestTraitPassForgeErrorKeepsOldValue(t *testing.T) {
+	r := newMRRig(t)
+	r.fake.merged = []forge.PRSummary{{Number: 7, MergedAt: mrMerge7}, {Number: 8, MergedAt: mrMerge8}}
+	r.fake.heads = append(r.fake.heads, forge.PullHead{Number: 8, HeadRef: "issue-4-tweede"})
+	if code, _, errOut := r.run(r.base()...); code != 0 {
+		t.Fatalf("first run: exit %d, stderr %q", code, errOut)
+	}
+	r.exec(`UPDATE trajectories SET route = NULL WHERE issue = 4`)
+	r.exec(`UPDATE trajectories SET route = 'old' WHERE issue = 3`)
+	r.fake.issueErr = map[int]error{3: errors.New("rate limited")}
+	code, out, errOut := r.run(r.base()...)
+	if code != 0 {
+		t.Fatalf("exit %d, stderr %q; want 0", code, errOut)
+	}
+	if got := r.text(`SELECT route FROM trajectories WHERE issue = 3`); got != "old" {
+		t.Errorf("route of #3 = %q, want old kept", got)
+	}
+	if got := r.text(`SELECT route FROM trajectories WHERE issue = 4`); got != "2" {
+		t.Errorf("route of #4 = %q, want 2: the second trajectory is still done", got)
+	}
+	if n := strings.Count(out, "traits #3: "); n != 1 || strings.Contains(out, "traits #4") {
+		t.Errorf("output %q; want exactly one traits line for #3", out)
+	}
+}
+
+func TestTraitPassRereadsInsideWindow(t *testing.T) {
+	r := newMRRig(t)
+	r.withAreaPrefix()
+	r.fake.labels = []string{"2-area:web"}
+	if code, _, errOut := r.run(r.base()...); code != 0 {
+		t.Fatalf("first run: exit %d, stderr %q", code, errOut)
+	}
+	if got := r.text(`SELECT area FROM trajectories WHERE issue = 3`); got != "web" {
+		t.Fatalf("area = %q, want web", got)
+	}
+	r.fake.labels = []string{"2-area:api"}
+	if code, _, errOut := r.run(r.base()...); code != 0 {
+		t.Fatalf("second run: exit %d, stderr %q", code, errOut)
+	}
+	if got := r.text(`SELECT area FROM trajectories WHERE issue = 3`); got != "api" {
+		t.Errorf("area = %q, want api: the PR is inside the window", got)
+	}
+}
+
+func TestTraitPassSkipsSettledTrajectory(t *testing.T) {
+	r := newMRRig(t)
+	if code, _, errOut := r.run(r.base()...); code != 0 {
+		t.Fatalf("first run: exit %d, stderr %q", code, errOut)
+	}
+	r.exec(`UPDATE trajectories SET route = '2', area = 'web'`)
+	r.exec(`UPDATE recoveries SET code_lines = 1 WHERE code_lines IS NULL`)
+	r.fake.issueCalls, r.fake.commCalls = 0, 0
+	r.fake.merged = nil
+	if code, out, errOut := r.run(r.base("--days", "1")...); code != 0 || out != "" {
+		t.Fatalf("exit %d, out %q, stderr %q", code, out, errOut)
+	}
+	if r.fake.issueCalls != 0 || r.fake.commCalls != 0 {
+		t.Errorf("forge reads: %d issue, %d comments, want none for a settled trajectory", r.fake.issueCalls, r.fake.commCalls)
 	}
 }

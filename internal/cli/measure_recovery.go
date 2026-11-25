@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"io"
@@ -16,6 +17,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/CorneeldH/lighthouse/internal/forge"
+	"github.com/CorneeldH/lighthouse/internal/protocol"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/store"
 	"github.com/CorneeldH/lighthouse/internal/telemetry"
@@ -26,6 +28,8 @@ type recoveryForge interface {
 	MergedPRs(ctx context.Context, since, until time.Time) ([]forge.PRSummary, error)
 	PullHeads(ctx context.Context) ([]forge.PullHead, error)
 	SearchIssues(ctx context.Context, text string) ([]forge.Issue, error)
+	Issue(ctx context.Context, number int) (forge.Issue, error)
+	Comments(ctx context.Context, number int) ([]protocol.Comment, error)
 }
 
 // measureRecoveryEnv is what `lighthouse measure-recovery` takes from its surroundings, so a
@@ -67,7 +71,10 @@ func newMeasureRecoveryCommand(env measureRecoveryEnv) *cobra.Command {
 			"store the result in lighthouse.db. The repo and its default branch come from the\n" +
 			"lighthouse.toml in --repo-dir; the clone there is fetched first and measured as\n" +
 			"origin/<default branch>. A measurement that is closed (recovered or none) is not touched\n" +
-			"again. GitHub only: GitLab cannot list merged PRs yet.\n\n" +
+			"again. After that, per trajectory that still lacks a route, an area or the size of a PR, or\n" +
+			"has a PR in that span, the route (triage marker), area (label) and code lines are\n" +
+			"recorded; a forge error or missing marker or label keeps the old value and prints one\n" +
+			"`traits #<issue>: <reason>` line. GitHub only: GitLab cannot list merged PRs yet.\n\n" +
 			"Exit: 0 measured, also when PRs were skipped | 1 a config, git, forge or database error |\n" +
 			"2 wrong usage. All measuring happens before the first write, so a git or forge error\n" +
 			"writes nothing; each PR is then written in its own transaction, so a database error\n" +
@@ -177,7 +184,96 @@ func runMeasureRecovery(ctx context.Context, env measureRecoveryEnv, dir, dbPath
 			return err
 		}
 	}
-	return printRecoveries(out, recs, skipped)
+	if err := printRecoveries(out, recs, skipped); err != nil {
+		return err
+	}
+	src := telemetry.GitSource{Dir: dir, Branch: "origin/" + repo.DefaultBranch}
+	return runTraitPass(ctx, f, src, st.DB, repo, now, days, out)
+}
+
+// runTraitPass records route, area and size of every trajectory that still lacks one or has a PR
+// in the window. A forge error, a missing marker or a missing label leaves the old value and
+// writes one `traits #<issue>: <reason>` line; the exit code does not change.
+func runTraitPass(ctx context.Context, f recoveryForge, src telemetry.GitSource, db *sql.DB, repo repoconfig.Repo, now time.Time, days int, out io.Writer) error {
+	targets, err := telemetry.TraitTargets(ctx, db, repo.Slug, now, days)
+	if err != nil {
+		return err
+	}
+	for _, tg := range targets {
+		if !tg.NeedsFill && !tg.InWindow {
+			continue
+		}
+		t := telemetry.Traits{Repo: repo.Slug, Issue: tg.Issue}
+		var reasons []string
+		before := tg.LastMergedAt
+		if tg.FirstReviewAt != nil {
+			before = *tg.FirstReviewAt
+		}
+		issue, err := f.Issue(ctx, tg.Issue)
+		var comments []protocol.Comment
+		if err != nil {
+			reasons = append(reasons, "read issue: "+err.Error())
+		} else if comments, err = f.Comments(ctx, tg.Issue); err != nil {
+			reasons = append(reasons, "read comments: "+err.Error())
+		}
+		if err == nil {
+			if repo.Labels.AreaPrefix != "" {
+				if area, ok := telemetry.AreaFromLabels(issue.Labels, repo.Labels.AreaPrefix); ok {
+					t.Area = &area
+				} else {
+					reasons = append(reasons, "no single area label")
+				}
+			}
+			if route, ok := telemetry.RouteFromComments(comments, before); ok {
+				t.Route = &route
+			} else {
+				reasons = append(reasons, "no triage marker")
+			}
+		}
+		missing, err := prsWithoutCodeLines(ctx, db, repo.Slug, tg.Issue)
+		if err != nil {
+			return err
+		}
+		for _, pr := range missing {
+			n, err := src.CodeLines(ctx, pr)
+			if err != nil {
+				reasons = append(reasons, fmt.Sprintf("code lines of #%d: %v", pr, err))
+				continue
+			}
+			if t.CodeLines == nil {
+				t.CodeLines = map[int]int{}
+			}
+			t.CodeLines[pr] = n
+		}
+		if err := telemetry.RecordTraits(ctx, db, t); err != nil {
+			return err
+		}
+		for _, r := range reasons {
+			if _, err := fmt.Fprintf(out, "traits #%d: %s\n", tg.Issue, r); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// prsWithoutCodeLines lists the PRs of a trajectory whose recovery row has no size yet.
+func prsWithoutCodeLines(ctx context.Context, db *sql.DB, repo string, issue int) ([]int, error) {
+	rows, err := db.QueryContext(ctx, `SELECT r.pr FROM recoveries r JOIN trajectories t ON t.id = r.trajectory_id
+		WHERE t.repo = ? AND t.issue = ? AND r.code_lines IS NULL ORDER BY r.pr`, repo, issue)
+	if err != nil {
+		return nil, fmt.Errorf("measure-recovery: PRs without code lines: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var prs []int
+	for rows.Next() {
+		var pr int
+		if err := rows.Scan(&pr); err != nil {
+			return nil, fmt.Errorf("measure-recovery: scan PR: %w", err)
+		}
+		prs = append(prs, pr)
+	}
+	return prs, rows.Err()
 }
 
 // skip is a PR that was not measured, with the reason.
