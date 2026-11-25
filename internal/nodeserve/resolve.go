@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/CorneeldH/lighthouse/internal/gitpath"
 	"github.com/CorneeldH/lighthouse/internal/nodeapi"
 	"github.com/CorneeldH/lighthouse/internal/workplace"
 )
@@ -42,7 +43,7 @@ func (h *handler) resolve(ctx context.Context, id string) (workplace.Workspace, 
 	if err != nil || code != 0 {
 		return workplace.Workspace{}, internal("worktree %s of %s is not a git worktree (exit %d): %v", path, id, code, err)
 	}
-	top, err := filepath.EvalSymlinks(strings.TrimSpace(out))
+	top, err := filepath.EvalSymlinks(gitpath.Native(out))
 	if err != nil {
 		return workplace.Workspace{}, internal("toplevel of %s: %v", path, err)
 	}

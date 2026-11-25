@@ -49,6 +49,8 @@ func Dir() (string, error) {
 // logPath is the logbook file of the repository root belongs to. The key is the first 16 hex
 // characters of the sha256 of the absolute `git rev-parse --git-common-dir`, so a worktree and
 // the main checkout share a file. A relative answer (`.git`) is made absolute against root.
+// The hash covers the RAW git output on purpose, not gitpath.Native: normalising it would change
+// the key on Windows and orphan the logs that exist there.
 func logPath(root string) (string, error) {
 	out, err := exec.Command("git", "--no-optional-locks", "-C", root, "rev-parse", "--git-common-dir").Output()
 	if err != nil {
