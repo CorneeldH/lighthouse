@@ -48,6 +48,7 @@ func TestMemoryGate(t *testing.T) {
 		{"bash relative redirect", memoryPayload(t, "Bash", "command", "echo x > memory/a.md", home+"/.claude/projects/p"), 2, "memory-gate: auto-memory write blocked"},
 		{"bash read", memoryPayload(t, "Bash", "command", "cat ~/.claude/projects/p/memory/a.md", tmp), 0, ""},
 		{"bash copy out", memoryPayload(t, "Bash", "command", "cp ~/.claude/projects/p/memory/a.md out/a.md", tmp), 0, ""},
+		{"bash mv out of memory", memoryPayload(t, "Bash", "command", "mv ~/.claude/projects/p/memory/a.md docs/a.md", tmp), 2, "memory-gate: auto-memory write blocked"},
 		{"not json", []byte("not json"), 2, "COULD NOT CHECK"},
 	}
 	for _, c := range cases {
@@ -75,6 +76,23 @@ func TestMemoryGate(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// red if MemoryGate ignores CLAUDE_CONFIG_DIR.
+func TestMemoryGateConfigDir(t *testing.T) {
+	home := t.TempDir()
+	cfg := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("CLAUDE_CONFIG_DIR", cfg)
+	raw := memoryPayload(t, "Write", "file_path", cfg+"/projects/p/memory/a.md", home)
+
+	res := MemoryGate(context.Background(), "", "", hook.Payload{Raw: raw})
+
+	specific, _ := res.Output["hookSpecificOutput"].(map[string]any)
+	if res.Code != 0 || specific["permissionDecision"] != "deny" {
+		t.Fatalf("got code %d, output %v; want a deny", res.Code, res.Output)
 	}
 }
 

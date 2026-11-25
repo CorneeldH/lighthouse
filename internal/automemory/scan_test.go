@@ -68,6 +68,26 @@ func TestScan(t *testing.T) {
 	}
 }
 
+func TestHasOutsidePath(t *testing.T) {
+	cases := []struct {
+		name, body, root string
+		want             bool
+	}{
+		{"sibling prefix", "see /x/repo2/notes", "/x/repo", true},
+		{"inside", "see /x/repo/notes", "/x/repo", false},
+		{"windows backslash", `see D:\x\repo\notes`, "D:/x/repo", false},
+		{"windows slash", "see D:/x/repo/notes", "D:/x/repo", false},
+		{"windows sibling", `see D:\x\repo2\notes`, "D:/x/repo", true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := hasOutsidePath(c.body, c.root); got != c.want {
+				t.Errorf("hasOutsidePath(%q, %q) = %v, want %v", c.body, c.root, got, c.want)
+			}
+		})
+	}
+}
+
 func TestScanMissingProjects(t *testing.T) {
 	res, err := Scan(t.TempDir(), "/x/repo")
 	if err != nil {

@@ -2,6 +2,7 @@
 package automemory
 
 import (
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -33,7 +34,10 @@ func Normalize(p, home string) string {
 	case strings.HasPrefix(p, "${HOME}/"):
 		p = home + p[len("${HOME}"):]
 	}
-	return strings.ToLower(p)
+	if p == "" {
+		return ""
+	}
+	return strings.ToLower(path.Clean(p))
 }
 
 // IsMemoryPath reports whether p lies in an auto-memory directory, under

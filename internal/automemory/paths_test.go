@@ -22,6 +22,9 @@ func TestIsMemoryPath(t *testing.T) {
 		{"uppercase MEMORY", "/home/u/.claude/projects/p/MEMORY/a.md", "", true},
 		{"config dir trailing slash", "/cfg/projects/p/memory/a.md", "/cfg/", true},
 		{"config dir bare memory", "/cfg/projects/p/memory", "/cfg", true},
+		{"dotdot", "~/.claude/projects/p/x/../memory/a.md", "", true},
+		{"double slash", "/home/u/.claude/projects//p/memory/a.md", "", true},
+		{"dotdot out", "/home/u/.claude/projects/p/memory/../notes/a.md", "", false},
 		{"config dir memoryx", "/cfg/projects/p/memoryx/a.md", "/cfg", false},
 	}
 	for _, c := range cases {
@@ -41,6 +44,8 @@ func TestNormalize(t *testing.T) {
 		"$HOME/x":    "/home/u/x",
 		"${HOME}/x":  "/home/u/x",
 		"/Other/~/x": "/other/~/x",
+		"":           "",
+		"a/../b//c":  "b/c",
 	}
 	for in, want := range cases {
 		if got := Normalize(in, "/home/u"); got != want {

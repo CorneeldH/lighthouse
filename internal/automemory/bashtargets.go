@@ -155,7 +155,10 @@ func commandTargets(words []string) []string {
 	switch name {
 	case "tee", "rm", "touch", "mkdir":
 		return nonOptions(rest)
-	case "cp", "mv", "ln", "install":
+	case "mv":
+		// mv deletes its sources, so every argument is a write target.
+		return nonOptions(rest)
+	case "cp", "ln", "install":
 		files := nonOptions(rest)
 		if len(files) == 0 {
 			return nil

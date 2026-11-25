@@ -31,7 +31,7 @@ type ScanResult struct {
 	Files []Proposal `json:"files"`
 }
 
-var absPathRe = regexp.MustCompile(`(^|\s)(/|[A-Za-z]:\\)\S+`)
+var absPathRe = regexp.MustCompile(`(^|\s)(/|[A-Za-z]:[\\/])\S+`)
 
 // MainCheckout returns the main checkout of the repository that contains dir:
 // the parent of the common git directory.
@@ -160,8 +160,10 @@ func propose(path, dir, file, content, repoMain string) Proposal {
 }
 
 func hasOutsidePath(body, repoMain string) bool {
+	root := strings.TrimRight(strings.ReplaceAll(repoMain, `\`, "/"), "/")
 	for _, m := range absPathRe.FindAllString(body, -1) {
-		if !strings.HasPrefix(strings.TrimSpace(m), repoMain) {
+		m = strings.ReplaceAll(strings.TrimSpace(m), `\`, "/")
+		if m != root && !strings.HasPrefix(m, root+"/") {
 			return true
 		}
 	}
