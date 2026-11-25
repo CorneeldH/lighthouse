@@ -298,6 +298,9 @@
           },
           "title": {
             "type": "string"
+          },
+          "url": {
+            "type": "string"
           }
         },
         "required": [
@@ -306,6 +309,7 @@
           "description",
           "open",
           "done",
+          "url",
           "closed"
         ],
         "type": "object"
@@ -322,12 +326,16 @@
           },
           "title": {
             "type": "string"
+          },
+          "url": {
+            "type": "string"
           }
         },
         "required": [
           "number",
           "title",
-          "state"
+          "state",
+          "url"
         ],
         "type": "object"
       },

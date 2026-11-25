@@ -11,7 +11,7 @@ const B = 'b/y'
 const iss = (
   number: number,
   by: Array<[string, number]> = [],
-  milestone?: { number: number; state: string; title: string },
+  milestone?: { number: number; state: string; title: string; url: string },
 ): Issue => ({
   number,
   title: `title-${number}`,
@@ -37,7 +37,7 @@ const rows = () => screen.queryAllByTestId('unassigned-row')
 
 describe('UnassignedView', () => {
   it('shows number as forge link and title per open issue without milestone', () => {
-    view([repo(A, [iss(5, []), iss(6, [], { number: 1, state: 'open', title: 'M1' })])])
+    view([repo(A, [iss(5, []), iss(6, [], { number: 1, state: 'open', title: 'M1', url: 'u-m1' })])])
     expect(rows()).toHaveLength(1)
     const link = screen.getByRole('link', { name: '5' })
     expect(link.getAttribute('href')).toBe('https://forge/5')
@@ -67,7 +67,7 @@ describe('UnassignedView', () => {
   })
 
   it('marks an open issue in a closed milestone with the title and the word closed', () => {
-    view([repo(A, [iss(7, [], { number: 3, state: 'closed', title: 'Old one' })])])
+    view([repo(A, [iss(7, [], { number: 3, state: 'closed', title: 'Old one', url: 'u-old' })])])
     const r = rows()[0]
     expect(within(r).getByText('Old one · closed')).toBeTruthy()
   })
@@ -85,7 +85,7 @@ describe('UnassignedView', () => {
   })
 
   it('says one sentence and no list when there are none', () => {
-    view([repo(A, [iss(1, [], { number: 1, state: 'open', title: 'M1' })])])
+    view([repo(A, [iss(1, [], { number: 1, state: 'open', title: 'M1', url: 'u-m1' })])])
     expect(screen.getByText('No open issues without a milestone.')).toBeTruthy()
     expect(screen.queryByRole('list')).toBeNull()
     expect(rows()).toHaveLength(0)

@@ -50,7 +50,7 @@ const iss = (
   prio_weight: 0,
   factor: 0,
   blocked_by: by.length ? by.map(([r, i]) => ({ repo: r, issue: i })) : null,
-  ...(ms === null ? {} : { milestone: { number: ms, state: 'open', title: `M${ms}` } }),
+  ...(ms === null ? {} : { milestone: { number: ms, state: 'open', title: `M${ms}`, url: `u-m${ms}` } }),
   ...extra,
 })
 const ms = (number: number, done: number, open: number, description = ''): Milestone => ({
@@ -59,6 +59,7 @@ const ms = (number: number, done: number, open: number, description = ''): Miles
   done,
   open,
   description,
+  url: `u-m${number}`,
   closed: [],
 })
 const repo = (slug: string, issues: Issue[], milestones: Milestone[]): Repo => ({ slug, issues, milestones })
