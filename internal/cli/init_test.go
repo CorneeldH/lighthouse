@@ -12,6 +12,7 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/agentaudit"
 	"github.com/CorneeldH/lighthouse/internal/lintcheck"
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 )
 
 // hooksCheckStubbed is true while a test has put its own hooksCheck in place; runInit then
@@ -50,7 +51,7 @@ func runInit(t *testing.T, args ...string) (code int, stdout, stderr string) {
 		t.Fatalf("git init: %v\n%s", err, out)
 	}
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	testpath.SetHome(t, home)
 	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(home, ".claude"))
 	t.Setenv("LIGHTHOUSE_REPO_ROOT", "")
 	t.Setenv("LIGHTHOUSE_TOML", "")

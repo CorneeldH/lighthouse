@@ -119,7 +119,7 @@ error) the workflow fetches `main` and retries, three times at most.
 ## Testing the build
 
 To test `build.yml` without a release, run the `prerelease` workflow (`workflow_dispatch`) with
-the tag `vX.Y.Z-rc.N`, from the branch you want to test. It builds the UI, adds the `dist`
+the tag `vX.Y.Z-test.N`, from the branch you want to test. It builds the UI, adds the `dist`
 commit and pushes the tag. The build needs no `CHANGELOG.md` section for it: the release gets a
 fixed note and `--prerelease`. Delete it afterwards with
 `gh release delete <tag> --cleanup-tag --yes`. A prerelease tag pushed by hand has no `dist`, so

@@ -14,6 +14,7 @@ on:
       - cmd/**
       - internal/**
       - pack/core/**
+      - pack/powershell/**
       - go.mod
       - go.sum
       - ci/windows-measure.sh
@@ -55,6 +56,11 @@ jobs:
         with:
           go-version-file: go.mod
       - run: go build -o "$RUNNER_TEMP/lighthouse.exe" ./cmd/lighthouse
+      # Rows 17 and 18 run powershell-lint-check (#581): pwsh is on windows-latest, the module is
+      # not. Pinned at the version the Linux canary job pins.
+      - name: install PSScriptAnalyzer
+        shell: pwsh
+        run: Install-Module PSScriptAnalyzer -RequiredVersion 1.23.0 -Scope AllUsers -Force
       # Claude Code on Windows hands the hooks a Windows path (cwd, CLAUDE_PROJECT_DIR), so the
       # work dir goes in in that form too. The script exits 1 when a row fails; `shell: bash`
       # runs with pipefail, so that ends the step red after the table is in the summary.

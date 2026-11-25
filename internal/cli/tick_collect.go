@@ -53,7 +53,7 @@ func collectRuns(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Di
 		return true
 	}
 	now := env.now()
-	last := readLastCollect(stateDir)
+	last := readTimeFile(stateDir, lastCollectFile)
 	openDue := last.IsZero() || now.Sub(last) >= collectEvery
 	var openTried bool
 	for _, repo := range repos {
@@ -83,10 +83,10 @@ func collectRuns(ctx context.Context, env tickEnv, db *sql.DB, cfg hostconfig.Di
 	return failed
 }
 
-// readLastCollect is the moment in <state>/telemetry/last-collect; zero when the file is
-// missing or does not hold a time, which collects at once.
-func readLastCollect(stateDir string) time.Time {
-	raw, err := os.ReadFile(filepath.Join(stateDir, "telemetry", lastCollectFile))
+// readTimeFile is the moment in <state>/telemetry/<name>; zero when the file is missing or
+// does not hold a time, which makes the step due at once.
+func readTimeFile(stateDir, name string) time.Time {
+	raw, err := os.ReadFile(filepath.Join(stateDir, "telemetry", name))
 	if err != nil {
 		return time.Time{}
 	}

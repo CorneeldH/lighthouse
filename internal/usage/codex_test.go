@@ -15,6 +15,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 )
 
 const fakeAppServerEnv = "LIGHTHOUSE_FAKE_APP_SERVER"
@@ -322,7 +324,7 @@ func TestCodexReaderAllHomesFail(t *testing.T) {
 }
 
 func TestNewCodexReaderNoHome(t *testing.T) {
-	t.Setenv("HOME", "")
+	testpath.SetHome(t, "")
 	t.Setenv("CODEX_HOME", "")
 	if _, err := NewCodexReader(); err == nil {
 		t.Error("want an error without HOME")
@@ -330,13 +332,14 @@ func TestNewCodexReaderNoHome(t *testing.T) {
 }
 
 func TestNewCodexReaderHomes(t *testing.T) {
-	t.Setenv("HOME", "/h")
+	h := testpath.Abs("h")
+	testpath.SetHome(t, h)
 	t.Setenv("CODEX_HOME", "")
 	r, err := NewCodexReader()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(r.Homes) != 2 || r.Homes[0] != "/h/.codex" || r.Homes[1] != "/h/.codex-specreview" {
+	if len(r.Homes) != 2 || r.Homes[0] != filepath.Join(h, ".codex") || r.Homes[1] != filepath.Join(h, ".codex-specreview") {
 		t.Errorf("Homes = %v", r.Homes)
 	}
 	if r.Timeout != 20*time.Second {
@@ -345,13 +348,14 @@ func TestNewCodexReaderHomes(t *testing.T) {
 }
 
 func TestNewCodexReaderCodexHome(t *testing.T) {
-	t.Setenv("HOME", "/h")
-	t.Setenv("CODEX_HOME", "/run/codex")
+	codex := testpath.Abs("run", "codex")
+	testpath.SetHome(t, testpath.Abs("h"))
+	t.Setenv("CODEX_HOME", codex)
 	r, err := NewCodexReader()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(r.Homes, []string{"/run/codex"}) {
+	if !reflect.DeepEqual(r.Homes, []string{codex}) {
 		t.Errorf("Homes = %v", r.Homes)
 	}
 	if r.Timeout != 20*time.Second {
@@ -360,30 +364,32 @@ func TestNewCodexReaderCodexHome(t *testing.T) {
 }
 
 func TestNewCodexReaderCodexHomeWithoutHome(t *testing.T) {
-	t.Setenv("HOME", "")
-	t.Setenv("CODEX_HOME", "/run/codex")
+	codex := testpath.Abs("run", "codex")
+	testpath.SetHome(t, "")
+	t.Setenv("CODEX_HOME", codex)
 	r, err := NewCodexReader()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(r.Homes, []string{"/run/codex"}) {
+	if !reflect.DeepEqual(r.Homes, []string{codex}) {
 		t.Errorf("Homes = %v", r.Homes)
 	}
 }
 
 func TestCodexHome(t *testing.T) {
+	h, codex := testpath.Abs("h"), testpath.Abs("run", "codex")
 	cases := []struct {
 		home, codexHome, want string
 		wantErr               bool
 	}{
-		{"/h", "", "/h/.codex", false},
-		{"/h", "/run/codex", "/run/codex", false},
-		{"", "/run/codex", "/run/codex", false},
+		{h, "", filepath.Join(h, ".codex"), false},
+		{h, codex, codex, false},
+		{"", codex, codex, false},
 		{"", "", "", true},
 	}
 	for _, c := range cases {
 		t.Run(c.home+"|"+c.codexHome, func(t *testing.T) {
-			t.Setenv("HOME", c.home)
+			testpath.SetHome(t, c.home)
 			t.Setenv("CODEX_HOME", c.codexHome)
 			got, err := CodexHome()
 			if (err != nil) != c.wantErr {
@@ -420,6 +426,30 @@ func TestParseAppServerLimitSelection(t *testing.T) {
 			}
 			if got.Session.Pct != tc.wantSession || got.Week.Pct != tc.wantWeek {
 				t.Errorf("pct = %d/%d, want %d/%d", got.Session.Pct, got.Week.Pct, tc.wantSession, tc.wantWeek)
+			}
+		})
+	}
+}
+
+func TestCodexStateCredits(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  json.RawMessage
+		want *ResetCredits
+	}{
+		{"nil", nil, nil},
+		{"null", json.RawMessage("null"), nil},
+		{"zero", json.RawMessage(`{"available":0,"expires":[]}`), &ResetCredits{Available: 0, Expires: []string{}}},
+		{"two", json.RawMessage(`{"available":2,"expires":["2026-12-01T10:00:00Z","2026-12-09T10:00:00Z"]}`),
+			&ResetCredits{Available: 2, Expires: []string{"2026-12-01T10:00:00Z", "2026-12-09T10:00:00Z"}}},
+		{"unreadable", json.RawMessage(`{"available":"x"}`), nil},
+		{"no expires key", json.RawMessage(`{"available":1}`), &ResetCredits{Available: 1, Expires: []string{}}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := CodexState{ResetCredits: tc.raw}.Credits()
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("Credits() = %+v, want %+v", got, tc.want)
 			}
 		})
 	}

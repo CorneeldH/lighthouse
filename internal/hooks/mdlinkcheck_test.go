@@ -7,6 +7,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
 )
 
 // Classification: this is a hook/gate change; the likely regression surface is which written
@@ -165,15 +167,9 @@ func TestLinkCheckTrace(t *testing.T) {
 // fakeGit puts a git on PATH that fails rev-parse with "fatal: broken".
 func fakeGit(t *testing.T) {
 	t.Helper()
-	if runtime.GOOS == "windows" {
-		t.Skip("the fake git is a sh script")
-	}
 	bin := t.TempDir()
-	script := "#!/bin/sh\necho 'fatal: broken' >&2\nexit 128\n"
-	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", bin)
+	stubbin.Make(t, bin, "git", stubbin.Spec{Stderr: "fatal: broken\n", Exit: 128})
+	stubbin.Alone(t, bin)
 }
 
 func TestLinkCheckCouldNotCheck(t *testing.T) {

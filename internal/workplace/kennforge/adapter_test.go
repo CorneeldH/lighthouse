@@ -16,10 +16,16 @@ import (
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/nodeapi"
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 	"github.com/CorneeldH/lighthouse/internal/workplace"
 )
 
 const testSessionID = "11111111-1111-4111-8111-111111111111"
+
+var (
+	testMCPNode = testpath.Abs("node", "mcp.json")
+	testNodeWS  = testpath.Abs("node", "ws1")
+)
 
 // fakeForge scripts the forge routes and counts the requests per route.
 type fakeForge struct {
@@ -552,11 +558,11 @@ func TestPrepareFoundOnDivergedMain(t *testing.T) {
 func spec() workplace.LaunchSpec {
 	return workplace.LaunchSpec{
 		Repo: "lighthouse", Issue: 7, SessionID: testSessionID, Mode: "start",
-		Profile: "software", Prompt: "do the thing", InstructionsFile: "/abs/instr.md",
+		Profile: "software", Prompt: "do the thing", InstructionsFile: testpath.Abs("abs", "instr.md"),
 	}
 }
 
-var ws1 = workplace.Workspace{ID: "ws1", Path: "/x", Branch: "issue-1-x"}
+var ws1 = workplace.Workspace{ID: "ws1", Path: testpath.Abs("x"), Branch: "issue-1-x"}
 
 const handoffKey = "POST /api/v1/workspaces/ws1/runtime/agent-handoffs"
 
@@ -1117,7 +1123,7 @@ func TestLocalIDIsNoForgeWorkspace(t *testing.T) {
 func TestSpawnOnNodeWritesCarrierBeforeHandoff(t *testing.T) {
 	_, _, sa, a := twoNodes(t, "node-a")
 	l := nodeSpec(t)
-	l.MCPConfig = "/node/mcp.json"
+	l.MCPConfig = testMCPNode
 	if _, err := a.Spawn(context.Background(), ws1, l); err != nil {
 		t.Fatal(err)
 	}
@@ -1128,7 +1134,7 @@ func TestSpawnOnNodeWritesCarrierBeforeHandoff(t *testing.T) {
 	req := decodeLaunch(t, sa)
 	wantReq := nodeapi.LaunchRequest{
 		Repo: "lighthouse", Issue: 7, SessionID: testSessionID, Mode: "start", Profile: "software",
-		Prompt: "do the thing", MCPConfig: "/node/mcp.json", Instructions: "# instructions of the run\n",
+		Prompt: "do the thing", MCPConfig: testMCPNode, Instructions: "# instructions of the run\n",
 	}
 	if req != wantReq {
 		t.Errorf("launch = %+v, want %+v", req, wantReq)
@@ -1297,12 +1303,12 @@ func TestSessionsOnNodeCarrySessionID(t *testing.T) {
 func TestPrepareOnNodeFollowsRemote(t *testing.T) {
 	fa, _, sa, a := twoNodes(t, "node-a")
 	fa.listBody = listWith("issue-1-x")
-	fa.path = "/node/ws1"
+	fa.path = testNodeWS
 	ws, err := a.Prepare(context.Background(), "issue-1-x")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ws != (workplace.Workspace{ID: "ws1", Path: "/node/ws1", Branch: "issue-1-x"}) {
+	if ws != (workplace.Workspace{ID: "ws1", Path: testNodeWS, Branch: "issue-1-x"}) {
 		t.Errorf("ws = %+v", ws)
 	}
 	if got := sa.body(followRoute); got != `{"branch":"issue-1-x","created":false}` {
@@ -1315,8 +1321,8 @@ func TestPrepareOnNodeFollowsRemote(t *testing.T) {
 func TestPrepareOnNodeOwnWorkReturnsOwnWorkError(t *testing.T) {
 	fa, _, sa, a := twoNodes(t, "node-a")
 	fa.listBody = listWith("issue-1-x")
-	fa.path = "/node/ws1"
-	sent := workplace.Workspace{ID: "ws1", Path: "/node/ws1", Branch: "issue-1-x"}
+	fa.path = testNodeWS
+	sent := workplace.Workspace{ID: "ws1", Path: testNodeWS, Branch: "issue-1-x"}
 	sa.on(followRoute, http.StatusConflict, nodeapi.OwnWork{
 		Status: 409, Code: nodeapi.CodeOwnWork, Detail: "own work", Workspace: sent, Commits: 2, Dirty: true,
 	})
@@ -1334,7 +1340,7 @@ func TestPrepareOnNodeOwnWorkReturnsOwnWorkError(t *testing.T) {
 func TestPrepareFollowUnreachableFails(t *testing.T) {
 	fa, _, sa, a := twoNodes(t, "node-a")
 	fa.listBody = listWith("issue-1-x")
-	fa.path = "/node/ws1"
+	fa.path = testNodeWS
 	sa.srv.Close()
 	_, err := a.Prepare(context.Background(), "issue-1-x")
 	var own *workplace.OwnWorkError
@@ -1405,7 +1411,7 @@ func TestRemoveGoneNeedsHubConfirmation(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			fa, _, sa, a := twoNodes(t, "node-a")
-			fa.path = "/node/ws1"
+			fa.path = testNodeWS
 			c.hub(fa)
 			for _, route := range []string{sessionsRoute, stopRoute, killRoute} {
 				sa.on(route, http.StatusNotFound, gone())
@@ -1540,11 +1546,13 @@ func TestNodeWithoutServeFails(t *testing.T) {
 
 func TestWorktreeRootIsWhereKennForgeMakesWorktrees(t *testing.T) {
 	// The layout is the one a kenn-forge worktree path has: .../.kenn/forge/worktrees/github/github.com/<owner>/<repo>/work-…
-	got := WorktreeRoot("/home/u", "", "", "CorneeldH/Lighthouse")
-	if want := "/home/u/.kenn/forge/worktrees/github/github.com/corneeldh/lighthouse"; got != want {
+	home := testpath.Abs("home", "u")
+	got := WorktreeRoot(home, "", "", "CorneeldH/Lighthouse")
+	if want := filepath.Join(home, ".kenn", "forge", "worktrees", "github", "github.com", "corneeldh", "lighthouse"); got != want {
 		t.Errorf("WorktreeRoot = %q, want %q", got, want)
 	}
-	if got := WorktreeRoot("/h", "gitlab", "git.example.com", "a/b"); got != "/h/.kenn/forge/worktrees/gitlab/git.example.com/a/b" {
-		t.Errorf("WorktreeRoot (gitlab) = %q", got)
+	h := testpath.Abs("h")
+	if got, want := WorktreeRoot(h, "gitlab", "git.example.com", "a/b"), filepath.Join(h, ".kenn", "forge", "worktrees", "gitlab", "git.example.com", "a", "b"); got != want {
+		t.Errorf("WorktreeRoot (gitlab) = %q, want %q", got, want)
 	}
 }

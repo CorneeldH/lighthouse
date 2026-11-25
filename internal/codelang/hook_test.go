@@ -7,11 +7,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
-	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/CorneeldH/lighthouse/internal/hook"
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
 )
 
 // Classification: this is a hook/gate change; the likely regression surface is the exit code,
@@ -175,12 +175,8 @@ func TestHookNotAGitRepo(t *testing.T) {
 func fakeGit(t *testing.T, out string, code int) {
 	t.Helper()
 	bin := t.TempDir()
-	script := "#!/bin/sh\nprintf '%s' '" + out + "'\nexit " + strconv.Itoa(code) + "\n"
-	writeFile(t, filepath.Join(bin, "git"), []byte(script))
-	if err := os.Chmod(filepath.Join(bin, "git"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", bin)
+	stubbin.Make(t, bin, "git", stubbin.Spec{Stdout: out, Exit: code})
+	stubbin.Alone(t, bin)
 }
 
 func TestHookGitFailures(t *testing.T) {

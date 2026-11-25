@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
+
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 )
 
 // agentAuditTree writes files (slash paths) under a new repository root, points
@@ -26,7 +28,7 @@ func agentAuditTree(t *testing.T, files map[string]string) string {
 		}
 	}
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	testpath.SetHome(t, home)
 	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(home, ".claude"))
 	t.Setenv("LIGHTHOUSE_REPO_ROOT", root)
 	t.Setenv("LIGHTHOUSE_TOML", filepath.Join(root, "lighthouse.toml"))
@@ -50,7 +52,7 @@ func TestAgentAuditNoRepoRoot(t *testing.T) {
 	t.Setenv("LIGHTHOUSE_REPO_ROOT", "")
 	t.Setenv("LIGHTHOUSE_TOML", "")
 	t.Setenv("GIT_CEILING_DIRECTORIES", filepath.Dir(dir))
-	t.Setenv("HOME", t.TempDir())
+	testpath.SetHome(t, t.TempDir())
 	t.Chdir(dir)
 	code, out, errOut := runAgentAudit(t)
 	if code != 2 || out != "" {

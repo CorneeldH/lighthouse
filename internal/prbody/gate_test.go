@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/fixturesetup"
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
 )
 
 // The twins of tests/pack/test_pr_body_gate.py that are no data: `gh`, git repos and time.
@@ -48,17 +49,14 @@ func newProject(t *testing.T) (base, project string) {
 	return base, filepath.Join(base, "project")
 }
 
-// stubBin writes executable scripts into a fresh directory and returns it.
-func stubBin(t *testing.T, scripts map[string]string) string {
+// stubBin writes POSIX scripts (with or without their #!/bin/sh line) into a fresh directory and
+// returns it. reason names the POSIX behaviour the scripts imitate.
+func stubBin(t *testing.T, reason string, scripts map[string]string) string {
 	t.Helper()
+	stubbin.RequirePOSIX(t, reason)
 	dir := filepath.Join(t.TempDir(), "bin")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
 	for name, text := range scripts {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(text), 0o755); err != nil {
-			t.Fatal(err)
-		}
+		stubbin.MakeScript(t, dir, name, strings.TrimPrefix(text, "#!/bin/sh\n"))
 	}
 	return dir
 }
@@ -66,7 +64,7 @@ func stubBin(t *testing.T, scripts map[string]string) string {
 // prependPath puts dir first on PATH.
 func prependPath(t *testing.T, dir string) {
 	t.Helper()
-	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	stubbin.Prepend(t, dir)
 }
 
 // setTimeouts overrides the gate's timeouts for one test.
@@ -251,7 +249,8 @@ func TestScopeUnknownCwdBlocks(t *testing.T) {
 func TestScopeOtherGitErrorBlocks(t *testing.T) {
 	_, project := newProject(t)
 	// A git that fails without "not a git repository" is no proof of "outside".
-	t.Setenv("PATH", stubBin(t, map[string]string{"git": "#!/bin/sh\necho kapot >&2\nexit 128\n"}))
+	// The PATH holds only the stub, as before: no other tool is reachable.
+	stubbin.Alone(t, filepath.Dir(stubbin.Make(t, filepath.Join(t.TempDir(), "bin"), "git", stubbin.Spec{Stderr: "kapot\n", Exit: 128})))
 	d, reason := InScope(context.Background(), pcAt(project), project, acmeRepo)
 	eq(t, "scope", [2]string{d, reason}, [2]string{"block", "repo of the project cannot be determined (git failed (rc 128): kapot)"})
 }
@@ -504,7 +503,7 @@ func TestMainDeadlineGitBlocksLoudly(t *testing.T) {
 	oldGit := gitTimeout
 	gitTimeout = time.Hour
 	t.Cleanup(func() { gitTimeout = oldGit })
-	prependPath(t, stubBin(t, map[string]string{"git": "#!/bin/sh\nsleep 120\n"}))
+	prependPath(t, stubBin(t, "sleep 120 as a hung git", map[string]string{"git": "#!/bin/sh\nsleep 120\n"}))
 	writeFile(t, filepath.Join(project, "body.md"), closesBody("9", 1))
 	got := runMain(t, project, "gh pr create -F body.md", project)
 	eq(t, "main", got, mainResult{2, "", blocked("repo of the project cannot be determined (COULD NOT CHECK: git timeout or deadline reached)")})
@@ -618,7 +617,7 @@ func TestDeadlineUnderHookTimeout(t *testing.T) {
 func hangingGH(t *testing.T) string {
 	t.Helper()
 	pidFile := filepath.Join(t.TempDir(), "child.pid")
-	prependPath(t, stubBin(t, map[string]string{"gh": "#!/bin/sh\nsleep 30 &\necho $! > \"" + pidFile + "\"\nsleep 30\n"}))
+	prependPath(t, stubBin(t, "background child and process group", map[string]string{"gh": "#!/bin/sh\nsleep 30 &\necho $! > \"" + pidFile + "\"\nsleep 30\n"}))
 	t.Cleanup(func() {
 		if pid, err := readPid(pidFile); err == nil {
 			_ = syscall.Kill(pid, syscall.SIGKILL)

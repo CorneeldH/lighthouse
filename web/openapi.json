@@ -98,6 +98,26 @@
         ],
         "type": "object"
       },
+      "CodexReport": {
+        "additionalProperties": false,
+        "properties": {
+          "reset_credits": {
+            "$ref": "#/components/schemas/ResetCredits"
+          },
+          "session": {
+            "$ref": "#/components/schemas/WindowReport"
+          },
+          "week": {
+            "$ref": "#/components/schemas/WindowReport"
+          }
+        },
+        "required": [
+          "session",
+          "week",
+          "reset_credits"
+        ],
+        "type": "object"
+      },
       "ComponentsReport": {
         "additionalProperties": false,
         "properties": {
@@ -1124,7 +1144,7 @@
             "$ref": "#/components/schemas/SourceReport"
           },
           "codex": {
-            "$ref": "#/components/schemas/SourceReport"
+            "$ref": "#/components/schemas/CodexReport"
           }
         },
         "required": [
@@ -1132,6 +1152,29 @@
           "codex"
         ],
         "type": "object"
+      },
+      "ResetCredits": {
+        "additionalProperties": false,
+        "properties": {
+          "available": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "expires": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "available",
+          "expires"
+        ],
+        "type": [
+          "object",
+          "null"
+        ]
       },
       "Result": {
         "additionalProperties": false,

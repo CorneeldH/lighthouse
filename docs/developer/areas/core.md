@@ -27,6 +27,10 @@ controleren, en geeft op elke machine hetzelfde oordeel.
   wordt er niet stiller of minder streng door
   ([forge-wrapper](../planning/specs/2026-11-16-issue-260-forge-wrapper-design.md),
   [close-issue op de forge](../planning/specs/2026-11-19-issue-406-close-issue-forge-design.md)).
+- Git-paden (`--show-toplevel`, `--git-common-dir`, `--git-dir`, `worktree list`) gaan via
+  `internal/gitpath.Native`, want git geeft op Windows schuine strepen en een CRLF-einde; meldingen
+  tonen native paden. `TestEveryGitPathReadUsesGitpath` bewaakt dat elk bestand dat zo'n pad leest
+  de helper importeert.
 
 ## Bewust niet
 

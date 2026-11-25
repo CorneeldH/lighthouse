@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 )
 
 func writeFile(t *testing.T, dir, name, body string) {
@@ -111,15 +113,17 @@ func TestRemoveMarkerOnlySameKey(t *testing.T) {
 }
 
 func TestMarkerDir(t *testing.T) {
+	x, h := testpath.Abs("x"), testpath.Abs("h")
+	homeResume := filepath.Join(h, ".local", "share", "lighthouse", "resume")
 	tests := []struct {
 		name    string
 		env     map[string]string
 		want    string
 		wantErr bool
 	}{
-		{"xdg", map[string]string{"XDG_DATA_HOME": "/x", "HOME": "/h"}, "/x/lighthouse/resume", false},
-		{"home", map[string]string{"HOME": "/h"}, "/h/.local/share/lighthouse/resume", false},
-		{"relative xdg falls to home", map[string]string{"XDG_DATA_HOME": "x", "HOME": "/h"}, "/h/.local/share/lighthouse/resume", false},
+		{"xdg", map[string]string{"XDG_DATA_HOME": x, "HOME": h}, filepath.Join(x, "lighthouse", "resume"), false},
+		{"home", map[string]string{"HOME": h}, homeResume, false},
+		{"relative xdg falls to home", map[string]string{"XDG_DATA_HOME": "x", "HOME": h}, homeResume, false},
 		{"both relative", map[string]string{"XDG_DATA_HOME": "x", "HOME": "h"}, "", true},
 	}
 	for _, tt := range tests {
@@ -134,14 +138,15 @@ func TestMarkerDir(t *testing.T) {
 
 func TestMarkerDirControllerRunUsesStateDir(t *testing.T) {
 	run := "11111111-2222-4333-8444-555555555555"
-	env := map[string]string{"HOME": "/home/vscode", "LIGHTHOUSE_CONTROLLER_RUN": run, "LIGHTHOUSE_STATE_DIR": "/home/corneel/.local/state/lighthouse/dispatch"}
+	stateDir := testpath.Abs("home", "corneel", ".local", "state", "lighthouse", "dispatch")
+	env := map[string]string{"HOME": testpath.Abs("home", "vscode"), "LIGHTHOUSE_CONTROLLER_RUN": run, "LIGHTHOUSE_STATE_DIR": stateDir}
 	got, err := MarkerDir(func(k string) string { return env[k] })
-	if err != nil || got != "/home/corneel/.local/state/lighthouse/dispatch/resume" {
+	if err != nil || got != filepath.Join(stateDir, "resume") {
 		t.Fatalf("MarkerDir in a container = %q, %v", got, err)
 	}
 	// The host (no controller run) reads the user dir and the state dir, so it finds that marker.
-	host := map[string]string{"HOME": "/home/corneel"}
-	dirs, err := HostMarkerDirs(func(k string) string { return host[k] }, "/home/corneel/.local/state/lighthouse/dispatch")
+	host := map[string]string{"HOME": testpath.Abs("home", "corneel")}
+	dirs, err := HostMarkerDirs(func(k string) string { return host[k] }, stateDir)
 	if err != nil || len(dirs) != 2 || dirs[1] != got {
 		t.Fatalf("HostMarkerDirs = %v, %v: want the state resume dir second", dirs, err)
 	}

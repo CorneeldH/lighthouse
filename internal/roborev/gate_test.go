@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/CorneeldH/lighthouse/internal/orderedjson"
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
 )
 
 // pushGateRepo is a clone of a bare origin: main pushed, branch feat with one pushed commit and
@@ -49,12 +50,9 @@ func newPushGateRepo(t *testing.T) *pushGateRepo {
 	r.commitLines("fix.go", 3)
 	bin := filepath.Join(dir, "bin")
 	for _, tool := range []string{"roborev", "codex"} {
-		r.writeAbs(filepath.Join(bin, tool), "#!/bin/sh\n")
-		if err := os.Chmod(filepath.Join(bin, tool), 0o755); err != nil {
-			t.Fatal(err)
-		}
+		stubbin.Make(t, bin, tool, stubbin.Spec{})
 	}
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	stubbin.Prepend(t, bin)
 	return r
 }
 

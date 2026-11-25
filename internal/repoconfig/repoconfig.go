@@ -15,6 +15,7 @@ import (
 	"github.com/BurntSushi/toml"
 
 	"github.com/CorneeldH/lighthouse/internal/config"
+	"github.com/CorneeldH/lighthouse/internal/levels"
 )
 
 // Repo is the dispatch-relevant view of one lighthouse.toml.
@@ -34,6 +35,9 @@ type Repo struct {
 	// TriageErr is an unknown key, a value below 1 or an invalid regex in [controller.triage]. Load
 	// does not fail on it: it is shared with the tick, which must keep serving the repo.
 	TriageErr error
+	// ControllerErr is an unreadable .lighthouse/components.toml, needed for the review defaults of
+	// [controller]. Load does not fail on it: the knobs stay true and Dispatchable reports it.
+	ControllerErr error
 	// Report is [report]; Sink is "stdout" when unset. ReportErr is a wrong type, an unknown sink
 	// or an unusable dir. Load does not fail on it: Slug, Triageable and Dispatchable keep working.
 	Report    Report
@@ -100,8 +104,10 @@ type Board struct {
 	PriorityOptions map[string]string `toml:"priority_options"`
 }
 
-// Controller is [controller]. Load fills the defaults: Profile "software", SpecReview and
-// PlanReview true. AtRoundLimit is read from the TOML key named in rawController.
+// Controller is [controller]. Load fills the defaults: Profile "software"; SpecReview and
+// PlanReview follow the installed level (false when skill:review-spec / skill:review-plan is off
+// in .lighthouse/components.toml, else true), and an explicit key always wins; AtRoundLimit
+// defaults to the continue value. AtRoundLimit is read from the TOML key named in rawController.
 type Controller struct {
 	Profile      string
 	SpecReview   bool
@@ -253,11 +259,27 @@ func LoadFile(path string) (Repo, error) {
 		return Repo{}, errors.New("controller.locations: [controller] table required")
 	}
 	if c := raw.Controller; c != nil && md.Type("controller") == "Hash" {
+		specReview, planReview := true, true
+		if c.SpecReview == nil || c.PlanReview == nil {
+			installed, _, err := levels.ReadInstalled(dir)
+			if err != nil {
+				r.ControllerErr = fmt.Errorf("%s: %w", filepath.Join(dir, levels.InstalledPath), err)
+			} else {
+				specReview = installed.Stand("skill:review-spec") != levels.StandOff
+				planReview = installed.Stand("skill:review-plan") != levels.StandOff
+			}
+		}
+		if c.SpecReview != nil {
+			specReview = *c.SpecReview
+		}
+		if c.PlanReview != nil {
+			planReview = *c.PlanReview
+		}
 		r.Controller = &Controller{
 			Profile:      c.Profile,
-			SpecReview:   c.SpecReview == nil || *c.SpecReview,
-			PlanReview:   c.PlanReview == nil || *c.PlanReview,
-			AtRoundLimit: c.AtRoundLimit,
+			SpecReview:   specReview,
+			PlanReview:   planReview,
+			AtRoundLimit: cmp.Or(c.AtRoundLimit, "doorgaan"),
 			Locations:    c.Locations,
 		}
 		for _, value := range slices.Sorted(maps.Keys(c.Locations)) {
@@ -386,6 +408,9 @@ func Dispatchable(r Repo) error {
 	add := func(format string, a ...any) { errs = append(errs, fmt.Errorf(format, a...)) }
 	if r.Controller == nil {
 		add("missing [controller]")
+	}
+	if r.ControllerErr != nil {
+		errs = append(errs, r.ControllerErr)
 	}
 	if !r.UsageGuardController {
 		add("usage_guard.controller is not true")
