@@ -50,7 +50,9 @@ Per document, read the taxonomy file at `taxonomy` and the explanation under its
 the row of that `label`. That explanation says what "adding as planned" means for that document
 (the shape of an item, where it goes, and whether `planned` `always` or `milestone` applies) and
 whether a change to an existing part gives an item. Follow it per document; do not carry the
-rule of one document over to another. Then read the document itself, to learn its shape and which
+rule of one document over to another. A table in the taxonomy file with the columns `Label`,
+`Item`, `Place` and `From issue` is "the field table": its `Place` fields come only from the
+placement section or the answer, never worked out by the job. Then read the document itself, to learn its shape and which
 issue numbers already stand on it.
 
 ### 2. Find the place per issue
@@ -73,9 +75,11 @@ find the place from, in this order:
   - takes the fields under `From issue` from the title and body of the issue, in the language of
     the document (translating is allowed, and neither taking over nor translating is inventing);
   - does what the explanation says for every field the explanation derives;
-  - leaves out every field that the table does not name and the explanation does not derive.
+  - leaves out every field that the field table does not name and the explanation does not derive.
 
-  A place with a value the explanation calls invalid is an unclear place: ask.
+  Without a field table, or without a row for the label, the job places the item as the
+  explanation gives it and adds no other fields. A place that lacks a `Place` field of the field
+  table, or has a value that table or the explanation calls invalid, is an unclear place: ask.
 - **The issue gets no item** (the explanation says a change of this kind gives none): a decision,
   `{"issue": 13, "value": "no-item"}` in `decisions`.
 - **Unclear place**: a question in `questions` with topic `place`: the candidate places first

@@ -661,7 +661,7 @@ het labelsdocument, met de koppen `Label`, `Item`, `Place` en `From issue` (zie
 tussen haakjes de plek in het document waar zo'n item staat; `Place` de velden die de plek onder
 `### Op de kaart` noemt; `From issue` de velden die `map-planned` uit titel en body van het issue
 overneemt, zonder iets te verzinnen. `write-issue` baseert stap 3f op die tabel en vraagt de velden
-van `Place`. Zonder tabel, of zonder rij voor het label, blijft stap 3f zoals hij was.
+van `Place`. Zonder tabel, of zonder rij voor het label, blijft stap 3f zoals hij was, en zet `map-planned` het item zoals de uitleg het geeft, zonder andere velden.
 
 **De poort.** Na een fetch leest de poort de rijen van het labelsdocument op `origin/<standaardbranch>`.
 Zonder `paths.labels`, zonder bestand of zonder rij met `Document` en `Planned` geeft hij `skip`
