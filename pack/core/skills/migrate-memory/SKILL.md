@@ -36,7 +36,8 @@ content (read the file; reading is free).
 
 ## Step 3 — Agreement per group
 
-One `AskUserQuestion` per group, with its files in the question. The user may move a file to
+One `AskUserQuestion` per group, with its files in the question (or ask in chat when that tool is
+not available). The user may move a file to
 another group. For `undecided`, propose a destination per file first, with the reason, and ask in
 the same question.
 

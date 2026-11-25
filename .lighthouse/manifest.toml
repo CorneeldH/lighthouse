@@ -71,7 +71,7 @@ kind = "file"
 path = ".agents/skills/lighthouse-migrate-memory/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "c6da87f26fa3292079953c063cf46d3ba9e2937578ded0a68384ead538611c74"
+sha256 = "1786f2b257f68760579c84b5bc12194cc7c05b056521fc077737f19473ae9ea5"
 
 [[unit]]
 kind = "file"
@@ -540,7 +540,7 @@ kind = "file"
 path = ".claude/skills/lighthouse-migrate-memory/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "c6da87f26fa3292079953c063cf46d3ba9e2937578ded0a68384ead538611c74"
+sha256 = "1786f2b257f68760579c84b5bc12194cc7c05b056521fc077737f19473ae9ea5"
 
 [[unit]]
 kind = "file"
