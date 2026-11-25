@@ -19,7 +19,7 @@ var markers = []string{
 // allowlist holds the files that name a git-path argument without reading a
 // path back from git, with the reason. Keys are slash paths under internal/.
 var allowlist = map[string]string{
-	"levellog/levellog.go":     "hashes the raw git-common-dir output; the hash must not change with the path form",
+	"levellog/levellog.go":     "hash key of existing logs; its own filepath.Clean already makes the path native",
 	"worktreeaudit/collect.go": "reads only the raw porcelain; rows.go converts it and does import gitpath",
 	"gitinvocations/find.go":   "parses the global options of a git command line; reads no path from git",
 }
