@@ -84,7 +84,11 @@ func newLabelsCommandWith(env labelsEnv) *cobra.Command {
 			"proposes To do for stuck In progress issues and deletes the old labels; it needs the tick paused\n" +
 			"(lighthouse pause), takes tick.lock, shows the plan, asks to confirm (--yes skips the question), reads\n" +
 			"the forge again and then writes. Stage all does both. After [labels] is rewritten, stage forge needs\n" +
-			"--old needs_shaping=<name> (repeatable) to name the old labels. Exit 2 on a config error.",
+			"--old needs_shaping=<name> (repeatable) to name the old labels; without it the built-in names are used\n" +
+			"and a run that finds nothing says so on stderr. Without needs_mind or needs_hands in [labels] the new\n" +
+			"names follow the old ones: a name ending in needs-shaping gives the same prefix plus needs-mind\n" +
+			"(3-needs-shaping gives 3-needs-mind), needs-testing likewise gives needs-hands; any other old name\n" +
+			"gives the built-in default. Exit 2 on a config error.",
 		Args: cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
 			return runLabelsMigrate(c, env, stage, olds, yes)
@@ -111,10 +115,14 @@ func runLabelsMigrate(cmd *cobra.Command, env labelsEnv, stage string, olds []st
 	if err != nil {
 		return configErr(err)
 	}
+	keys, err := labelmigrate.ReadLabelsKeys(tomlPath)
+	if err != nil {
+		return configErr(err)
+	}
 	if err := applyOld(&old, olds); err != nil {
 		return configErr(err)
 	}
-	repo, src, err := loadRepoForMigration(tomlPath)
+	repo, src, err := loadRepoForMigration(tomlPath, old, keys)
 	if err != nil {
 		return configErr(err)
 	}
@@ -135,7 +143,7 @@ func runLabelsMigrate(cmd *cobra.Command, env labelsEnv, stage string, olds []st
 				return err
 			}
 		}
-		if tomlNew, err = labelmigrate.RewriteLabelsTable(src, l.NeedsMind); err != nil {
+		if tomlNew, err = labelmigrate.RewriteLabelsTableHands(src, l.NeedsMind, derivedHands(keys, l)); err != nil {
 			return err
 		}
 	}
@@ -208,6 +216,12 @@ func runLabelsMigrate(cmd *cobra.Command, env labelsEnv, stage string, olds []st
 	}
 	if len(plan) == 0 {
 		_, _ = fmt.Fprintln(out, "forge: nothing to do")
+		if !keys.Old && len(olds) == 0 {
+			// Once the files are written the old keys are gone, so the old names are the built-in
+			// defaults; a repo with other names would see nothing to do although the old labels remain.
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "warning: [labels] has no old keys and no --old was given, so the old names are the built-in %s, %s and %s; none of them is on the forge. If the forge still has the old labels under other names, run again with --old needs_shaping=<name> (and needs_decision, needs_testing).\n",
+				old.Shaping, old.Decision, old.Testing)
+		}
 	} else {
 		_, _ = fmt.Fprintf(out, "forge plan, %d steps:\n", len(plan))
 		for _, s := range plan {
@@ -271,15 +285,36 @@ func applyOld(old *labelmigrate.OldNames, olds []string) error {
 	return nil
 }
 
+// deriveName replaces the suffix oldSuffix of oldName by newSuffix, so a prefix such as `3-` is
+// kept; any other oldName gives def.
+func deriveName(oldName, oldSuffix, newSuffix, def string) string {
+	if p, ok := strings.CutSuffix(oldName, oldSuffix); ok {
+		return p + newSuffix
+	}
+	return def
+}
+
+// derivedHands is the needs_hands name RewriteLabelsTableHands must write: the derived one when
+// [labels] has no needs_hands and it differs from the built-in default, "" otherwise.
+func derivedHands(keys labelmigrate.LabelsKeys, l repoconfig.Labels) string {
+	if keys.Hands || l.NeedsHands == repoconfig.DefaultLabels().NeedsHands {
+		return ""
+	}
+	return l.NeedsHands
+}
+
 // loadRepoForMigration loads the lighthouse.toml at path although it still holds the removed
-// [labels] keys: the old lines are dropped in memory first. It returns the config, with Dir the
-// directory of path, and the file as it is.
-func loadRepoForMigration(path string) (repoconfig.Repo, []byte, error) {
+// [labels] keys: the old lines are dropped in memory first. Without needs_mind or needs_hands in
+// the file their names follow the old ones (`3-needs-shaping` gives `3-needs-mind`). It returns
+// the config, with Dir the directory of path, and the file as it is.
+func loadRepoForMigration(path string, old labelmigrate.OldNames, keys labelmigrate.LabelsKeys) (repoconfig.Repo, []byte, error) {
 	src, err := os.ReadFile(path)
 	if err != nil {
 		return repoconfig.Repo{}, nil, err
 	}
-	clean, err := labelmigrate.RewriteLabelsTable(src, repoconfig.DefaultLabels().NeedsMind)
+	def := repoconfig.DefaultLabels()
+	mind := deriveName(old.Shaping, "needs-shaping", "needs-mind", def.NeedsMind)
+	clean, err := labelmigrate.RewriteLabelsTable(src, mind)
 	if err != nil {
 		return repoconfig.Repo{}, nil, err
 	}
@@ -297,6 +332,12 @@ func loadRepoForMigration(path string) (repoconfig.Repo, []byte, error) {
 		return repoconfig.Repo{}, nil, err
 	}
 	repo.Dir = filepath.Dir(path)
+	if !keys.Mind {
+		repo.Labels.NeedsMind = mind
+	}
+	if !keys.Hands {
+		repo.Labels.NeedsHands = deriveName(old.Testing, "needs-testing", "needs-hands", def.NeedsHands)
+	}
 	return repo, src, nil
 }
 

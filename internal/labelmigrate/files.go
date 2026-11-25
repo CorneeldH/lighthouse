@@ -22,6 +22,26 @@ type OldNames struct{ Shaping, Decision, Testing string }
 // OldDefaults are the built-in names the retired labels had without a [labels] table.
 var OldDefaults = OldNames{"needs-shaping", "needs-decision", "needs-testing"}
 
+// LabelsKeys says which keys [labels] holds: any of the old ones, needs_mind, needs_hands. Like
+// ReadOldNames, ReadLabelsKeys reads raw.
+type LabelsKeys struct{ Old, Mind, Hands bool }
+
+// ReadLabelsKeys reads which of the old and new human-label keys [labels] of tomlPath sets.
+func ReadLabelsKeys(tomlPath string) (LabelsKeys, error) {
+	var raw struct {
+		Labels map[string]any `toml:"labels"`
+	}
+	if _, err := toml.DecodeFile(tomlPath, &raw); err != nil {
+		return LabelsKeys{}, fmt.Errorf("labelmigrate: cannot read %s: %w", tomlPath, err)
+	}
+	_, s := raw.Labels["needs_shaping"]
+	_, d := raw.Labels["needs_decision"]
+	_, t := raw.Labels["needs_testing"]
+	_, m := raw.Labels["needs_mind"]
+	_, h := raw.Labels["needs_hands"]
+	return LabelsKeys{Old: s || d || t, Mind: m, Hands: h}, nil
+}
+
 // ReadOldNames reads the old keys of [labels] raw, without the refusal config.Load applies;
 // a missing key gets its old default. A missing or unreadable file is an error.
 func ReadOldNames(tomlPath string) (OldNames, error) {
@@ -105,6 +125,7 @@ func RewriteTaxonomy(src []byte, old OldNames, mind, hands string) ([]byte, erro
 
 var oldKeyRE = regexp.MustCompile(`^\s*(needs_shaping|needs_decision|needs_testing)\s*=`)
 var mindKeyRE = regexp.MustCompile(`^\s*needs_mind\s*=`)
+var handsKeyRE = regexp.MustCompile(`^\s*needs_hands\s*=`)
 
 // tableHeader reports whether the trimmed line t is a table header ([x] or [[x]], with an
 // optional trailing comment) and whether that header is [labels].
@@ -124,9 +145,15 @@ func tableHeader(t string) (isLabels, ok bool) {
 // comments stay, and other tables are not touched. When needs_mind is already there the old lines
 // are only removed.
 func RewriteLabelsTable(src []byte, mind string) ([]byte, error) {
+	return RewriteLabelsTableHands(src, mind, "")
+}
+
+// RewriteLabelsTableHands is RewriteLabelsTable that, when hands is not empty and [labels] has no
+// needs_hands, also writes needs_hands = "<hands>" after the needs_mind line it places.
+func RewriteLabelsTableHands(src []byte, mind, hands string) ([]byte, error) {
 	lines := strings.Split(string(src), "\n")
 	inLabels := false
-	hasMind := false
+	hasMind, hasHands := false, false
 	for _, l := range lines {
 		t := strings.TrimSpace(l)
 		if isLabelsHeader, ok := tableHeader(t); ok {
@@ -135,6 +162,9 @@ func RewriteLabelsTable(src []byte, mind string) ([]byte, error) {
 		}
 		if inLabels && mindKeyRE.MatchString(l) {
 			hasMind = true
+		}
+		if inLabels && handsKeyRE.MatchString(l) {
+			hasHands = true
 		}
 	}
 	out := make([]string, 0, len(lines))
@@ -147,6 +177,9 @@ func RewriteLabelsTable(src []byte, mind string) ([]byte, error) {
 		} else if inLabels && oldKeyRE.MatchString(l) {
 			if !placed {
 				out = append(out, fmt.Sprintf("needs_mind = %q", mind))
+				if hands != "" && !hasHands {
+					out = append(out, fmt.Sprintf("needs_hands = %q", hands))
+				}
 				placed = true
 			}
 			continue

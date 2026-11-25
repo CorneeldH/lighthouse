@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -26,6 +27,8 @@ type labelsFake struct {
 	status    map[int]string
 	writes    int
 	plannings int
+	// failDelete is the 1-based DeleteLabel call that fails without deleting; 0 is never.
+	failDelete, deletes int
 	// onPlanning runs after the nth Planning call has returned its issues.
 	onPlanning func(n int, f *labelsFake)
 }
@@ -52,6 +55,10 @@ func (f *labelsFake) CreateLabel(_ context.Context, name, _ string) error {
 }
 
 func (f *labelsFake) DeleteLabel(_ context.Context, name string) error {
+	f.deletes++
+	if f.deletes == f.failDelete {
+		return errors.New("delete refused")
+	}
 	f.writes++
 	f.labels = slices.DeleteFunc(f.labels, func(s string) bool { return s == name })
 	return nil
@@ -284,5 +291,149 @@ func TestLabelsMigrateFilesStageLabelsHeaderWithComment(t *testing.T) {
 	got, _ := os.ReadFile(h.toml)
 	if strings.Contains(string(got), "needs_shaping") || !strings.Contains(string(got), `needs_mind = "3-needs-mind"`) {
 		t.Fatalf("lighthouse.toml:\n%s", got)
+	}
+}
+
+// useOldToml gives the harness a repo whose [labels] still holds the three old keys with the
+// given prefix, and no needs_mind or needs_hands; the forge carries labels with that prefix.
+func (h *labelsHarness) useOldToml(prefix string) {
+	h.t.Helper()
+	text := "[forge]\nrepo = \"Owner/repo\"\n\n[paths]\nlabels = \"labels.md\"\n\n[labels]\n" +
+		"needs_shaping = \"" + prefix + "needs-shaping\"\nneeds_decision = \"" + prefix + "needs-decision\"\nneeds_testing = \"" + prefix + "needs-testing\"\n"
+	if err := os.WriteFile(h.toml, []byte(text), 0o600); err != nil {
+		h.t.Fatal(err)
+	}
+	tax := "| Label | Colour |\n|---|---|\n| `" + prefix + "needs-shaping` | `D93F0B` |\n| `" + prefix + "needs-testing` | `0E8A16` |\n"
+	if err := os.WriteFile(filepath.Join(h.dir, "labels.md"), []byte(tax), 0o600); err != nil {
+		h.t.Fatal(err)
+	}
+	h.fake.labels = []string{prefix + "needs-shaping", prefix + "needs-decision", prefix + "needs-testing"}
+	h.fake.issues = []forge.PlanIssue{{Number: 1, Labels: []string{prefix + "needs-shaping"}}}
+}
+
+func TestLabelsMigrateDerivesNewNamesFromOldPrefix(t *testing.T) {
+	h := newLabelsHarness(t, false)
+	h.useOldToml("3-")
+	if code, out := h.run("", "--stage", "files"); code != 0 {
+		t.Fatalf("code=%d out=%q", code, out)
+	}
+	got, _ := os.ReadFile(h.toml)
+	if !strings.Contains(string(got), `needs_mind = "3-needs-mind"`) || !strings.Contains(string(got), `needs_hands = "3-needs-hands"`) {
+		t.Fatalf("lighthouse.toml:\n%s", got)
+	}
+	tax, _ := os.ReadFile(filepath.Join(h.dir, "labels.md"))
+	if !strings.Contains(string(tax), "`3-needs-mind`") || !strings.Contains(string(tax), "`3-needs-hands`") {
+		t.Fatalf("taxonomy:\n%s", tax)
+	}
+	if _, err := config.Load(h.toml); err != nil {
+		t.Fatalf("config.Load: %v", err)
+	}
+}
+
+func TestLabelsMigrateNoPrefixKeepsDefaults(t *testing.T) {
+	h := newLabelsHarness(t, false)
+	h.useOldToml("")
+	if code, out := h.run("", "--stage", "files"); code != 0 {
+		t.Fatalf("code=%d out=%q", code, out)
+	}
+	got, _ := os.ReadFile(h.toml)
+	if !strings.Contains(string(got), `needs_mind = "needs-mind"`) || strings.Contains(string(got), "needs_hands") {
+		t.Fatalf("lighthouse.toml:\n%s", got)
+	}
+}
+
+func TestLabelsMigrateKeepsExplicitNewKeys(t *testing.T) {
+	h := newLabelsHarness(t, false) // harness toml has needs_mind and needs_hands with 3-
+	b, _ := os.ReadFile(h.toml)
+	text := strings.ReplaceAll(string(b), "needs_shaping = \"needs-shaping\"", "needs_shaping = \"9-needs-shaping\"")
+	if err := os.WriteFile(h.toml, []byte(text), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if code, out := h.run("", "--stage", "files"); code != 0 {
+		t.Fatalf("code=%d out=%q", code, out)
+	}
+	got, _ := os.ReadFile(h.toml)
+	if !strings.Contains(string(got), `needs_mind = "3-needs-mind"`) {
+		t.Fatalf("lighthouse.toml:\n%s", got)
+	}
+}
+
+func TestLabelsMigrateStageAll(t *testing.T) {
+	h := newLabelsHarness(t, true)
+	h.useOldToml("3-")
+	code, out := h.run("", "--yes")
+	if code != 0 {
+		t.Fatalf("code=%d out=%q", code, out)
+	}
+	if !slices.Equal(h.fake.issues[0].Labels, []string{"3-needs-mind"}) {
+		t.Fatalf("issue labels = %v", h.fake.issues[0].Labels)
+	}
+	if slices.Contains(h.fake.labels, "3-needs-shaping") || !slices.Contains(h.fake.labels, "3-needs-mind") {
+		t.Fatalf("forge labels = %v", h.fake.labels)
+	}
+	got, _ := os.ReadFile(h.toml)
+	if !strings.Contains(string(got), `needs_mind = "3-needs-mind"`) || strings.Contains(string(got), "needs_shaping") {
+		t.Fatalf("lighthouse.toml:\n%s", got)
+	}
+}
+
+var threeOld = []string{"--old", "needs_shaping=3-needs-shaping", "--old", "needs_decision=3-needs-decision", "--old", "needs_testing=3-needs-testing"}
+
+func TestLabelsMigrateRerunAfterPartialFailure(t *testing.T) {
+	h := newLabelsHarness(t, true)
+	h.useOldToml("3-")
+	h.fake.failDelete = 1
+	code, out := h.run("", "--yes")
+	if code != 1 || !strings.Contains(out, "delete refused") {
+		t.Fatalf("first run code=%d out=%q, want 1", code, out)
+	}
+	if got, _ := os.ReadFile(h.toml); strings.Contains(string(got), "needs_shaping") {
+		t.Fatalf("files were not written before the failing delete:\n%s", got)
+	}
+	// Without --old the old names fall back to the defaults: the run must say so loudly.
+	code, out = h.run("", "--stage", "forge", "--yes")
+	if code != 0 || !strings.Contains(out, "forge: nothing to do") || !strings.Contains(out, "--old") || !strings.Contains(out, "built-in") {
+		t.Fatalf("rerun without --old code=%d out=%q, want a warning naming --old and the built-in names", code, out)
+	}
+	if !slices.Contains(h.fake.labels, "3-needs-decision") {
+		t.Fatalf("forge labels = %v, want the old labels still there", h.fake.labels)
+	}
+	code, out = h.run("", append([]string{"--stage", "forge", "--yes"}, threeOld...)...)
+	if code != 0 || strings.Contains(out, "built-in") {
+		t.Fatalf("rerun with --old code=%d out=%q, want 0 and no warning", code, out)
+	}
+	for _, n := range []string{"3-needs-shaping", "3-needs-decision", "3-needs-testing"} {
+		if slices.Contains(h.fake.labels, n) {
+			t.Fatalf("forge labels = %v, want %s deleted", h.fake.labels, n)
+		}
+	}
+}
+
+func TestLabelsMigrateNoWarningWhenTomlHasOldKeys(t *testing.T) {
+	h := newLabelsHarness(t, true)
+	h.fake.issues, h.fake.labels = nil, []string{"3-needs-mind"}
+	code, out := h.run("", "--stage", "forge", "--yes")
+	if code != 0 || !strings.Contains(out, "nothing to do") || strings.Contains(out, "built-in") {
+		t.Fatalf("code=%d out=%q, want nothing to do without a warning", code, out)
+	}
+}
+
+func TestLabelsMigrateOldFlagErrors(t *testing.T) {
+	h := newLabelsHarness(t, true)
+	for _, bad := range []string{"needs_shaping", "needs_shaping=", "bogus=x"} {
+		code, out := h.run("", "--stage", "forge", "--yes", "--old", bad)
+		if code != 2 || h.fake.writes != 0 {
+			t.Fatalf("--old %q: code=%d out=%q writes=%d, want 2 and no writes", bad, code, out, h.fake.writes)
+		}
+	}
+}
+
+func TestLabelsMigrateOldFlagOverridesToml(t *testing.T) {
+	h := newLabelsHarness(t, true)
+	h.fake.labels = []string{"legacy-shaping"}
+	h.fake.issues = []forge.PlanIssue{{Number: 1, Labels: []string{"legacy-shaping"}}}
+	code, out := h.run("", "--stage", "forge", "--yes", "--old", "needs_shaping=legacy-shaping")
+	if code != 0 || !slices.Equal(h.fake.issues[0].Labels, []string{"3-needs-mind"}) || slices.Contains(h.fake.labels, "legacy-shaping") {
+		t.Fatalf("code=%d out=%q labels=%v issue=%v", code, out, h.fake.labels, h.fake.issues[0].Labels)
 	}
 }
