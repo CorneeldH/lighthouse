@@ -25,11 +25,12 @@ type Spec struct {
 	LogFile string
 }
 
-// MakeScript writes the POSIX script sh (without shebang) as executable name in dir and returns its
-// path. On Windows it skips the test: such a script imitates POSIX behaviour.
+// MakeScript writes the POSIX script sh (without shebang) as executable name in dir (created when
+// missing) and returns its path. On Windows it skips the test: such a script imitates POSIX behaviour.
 func MakeScript(t *testing.T, dir, name, sh string) string {
 	t.Helper()
 	RequirePOSIX(t, "script "+name)
+	mkdir(t, dir)
 	p := filepath.Join(dir, name)
 	if err := os.WriteFile(p, []byte("#!/bin/sh\n"+sh), 0o755); err != nil {
 		t.Fatal(err)
@@ -51,7 +52,8 @@ func Prepend(t *testing.T, dir string) {
 	t.Setenv("PATH", PathValue(t, dir))
 }
 
-// Only sets the PATH to dir plus the directory of each tool in keep.
+// Only sets the PATH to dir plus the directory of each tool in keep. Without keep it behaves like
+// Prepend: dir followed by the current PATH.
 func Only(t *testing.T, dir string, keep ...string) {
 	t.Helper()
 	t.Setenv("PATH", PathValue(t, dir, keep...))
@@ -144,4 +146,12 @@ func shText(s Spec) string {
 	}
 	b.WriteString("exit " + strconv.Itoa(s.Exit) + "\n")
 	return b.String()
+}
+
+// mkdir creates dir with its parents, so callers need no MkdirAll of their own.
+func mkdir(t *testing.T, dir string) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 }

@@ -131,3 +131,20 @@ func TestReadLogNormalizesCRLF(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+func TestMakeCreatesMissingDir(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "a", "bin")
+	Make(t, dir, "fakebin", Spec{})
+	if st, err := os.Stat(dir); err != nil || !st.IsDir() {
+		t.Fatalf("dir not created: %v", err)
+	}
+}
+
+func TestMakeScriptCreatesMissingDir(t *testing.T) {
+	RequirePOSIX(t, "script")
+	dir := filepath.Join(t.TempDir(), "a", "bin")
+	MakeScript(t, dir, "fakebin", "exit 0\n")
+	if _, err := os.Stat(filepath.Join(dir, "fakebin")); err != nil {
+		t.Fatal(err)
+	}
+}
