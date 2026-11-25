@@ -711,9 +711,9 @@ een run-id `scan-<tijdstempel>`. Elke fout van de poort (fetch, forge, geen `lab
 fout, nooit een skip: er komt geen run-rij, de tick eindigt met exitcode 1 en de volgende tick probeert het
 opnieuw, zoals bij `map-planned`.
 
-**Het corpus.** `.lighthouse/run/architecture-scan-corpus.json` (JSON): `language`, `search_dirs` en
-`paths` (de zoekpaden, uit `[paths] search_dirs`), `hotspots` (per bestand `path` en `changes` binnen het
-venster), `base` (de sha van de standaardbranch), `issues` (open issues met nummer, titel, labels en body, de
+**Het corpus.** `.lighthouse/run/architecture-scan-corpus.json` (JSON): `language`, `search_dirs` (de
+zoekpaden, uit `[paths] search_dirs`), `paths` (de kaartdocumenten van `[paths]` die in de werkplek
+bestaan), `hotspots` (per bestand `path` en `changes` binnen het venster, de 200 drukste bestanden), `base` (de sha van de standaardbranch), `issues` (open issues met nummer, titel, labels en body, de
 body op 2000 tekens afgekapt), `open_scan` en `last_closed_scan` (het scanissue met nummer, body met de
 vinkjes en comments, oudste eerst). Het corpus is invoer, nooit gezag: de agent kan het bewerken, dus
 `Check` en `Finish` lezen de forge opnieuw. Het corpus is hoogstens 400 000 bytes groot.
@@ -748,10 +748,14 @@ enige gewijzigde pad, parseert tegen de koppen van de repo, bevat geen geheim (s
 *nog open* alleen open issues buiten het scanissue zelf, houdt elk vinkje van het levende referentie-issue
 en past binnen de bodylimiet.
 
-**Mislukken.** Twee soorten. Een fout van de poort geeft geen run-rij en tick-exitcode 1 (de slot blijft
-staan). Een fout vanaf `Stage` (corpus, sessie, `Cleanup`, `Check`, `Finish`) sluit de run als `failed`, zonder
-issue of comment, en de tick eindigt met exitcode 0. Elke `Finish`-route verwijdert het resultaatbestand,
-ook vroege uitgangen, zodat het nooit op een branch komt. Telemetrie van de run volgt in #375.
+**Mislukken.** Drie soorten. Een fout van de poort geeft geen run-rij en tick-exitcode 1 (de slot blijft
+staan). Een fout van `Stage` (corpus bouwen of wegschrijven) sluit de run als `retry`, zodat de slot
+openblijft, en bij de tweede poging als `failed`; die apply-actie mislukt, dus de tick eindigt met
+exitcode 1. Een fout van `Cleanup`, `Check` of `Finish` na de sessie sluit de run als `failed` (reden
+`postcheck: cleanup:`, `check:` of `finish:`), zonder retry, en de tick eindigt met
+exitcode 0. Faalt `Cleanup` of `Check`, dan is er geen issue of comment; een fout van `Finish` zelf kan een
+al gepubliceerd issue of een al geplaatste comment laten staan. Elke `Finish`-route verwijdert het resultaatbestand, ook vroege uitgangen, zodat het
+nooit op een branch komt. Telemetrie van de run volgt in #375.
 
 ## Exitcodes
 
