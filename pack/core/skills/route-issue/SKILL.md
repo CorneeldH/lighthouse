@@ -225,7 +225,8 @@ cancel each other: a blockade (label or relation) is reported by Gate 0 and does
 When `labels.needs_mind` and `labels.needs_hands` are both on, `labels.needs_mind` steers the route
 (4c) and the stop of `labels.needs_hands` waits until the thinking is done. With an open blocker the
 reason says so too, but the stop stays: Gate 0 reports the blockade and routes on, the route arrives
-at the stop in this table, and the line carries both the blockade and the stop.
+at the stop in this table once `labels.needs_mind` is gone, and the line carries both the blockade
+and the stop.
 
 The two blocked labels hold the plan, not the spec: they wait on something outside the session,
 so the issue may get a spec, and `lighthouse-start-issue` executes only gate 4c. Interactively

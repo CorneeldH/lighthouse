@@ -25,13 +25,14 @@ func TestWriteIssueSetsRelationBeforeLabel(t *testing.T) {
 		t.Run(variant, func(t *testing.T) {
 			s := section(t, body, "#### 3e. Set a block", "#### 3f.")
 			wantOrder(t, s, "lighthouse forge issue block <nr> --by <blocker-nr>", `--add-label "$BLOCKED"`)
+			wantAll(t, s, `--remove-label "$EXTERNAL"`)
 			f := flat(s)
 			wantAll(t, f,
 				"The relation comes **before** the label, so that a half failure never leaves a label without a relation.",
 				"**Verify with the list, not from the summary**",
 				"`created_at` after the noted start time",
 				"**unknown** + the search call, stop before every mutation. Never create again blindly",
-				"Only when relation and winning blocking label stand there together, report success.")
+				"Only when relation and `labels.blocked_issue` stand there together, with `labels.blocked_external` gone, report success.")
 			for _, verdict := range []string{"holds", "lapsed", "unlinked", "label missing"} {
 				wantAll(t, s, "**"+verdict+"**")
 			}
@@ -48,7 +49,7 @@ func TestWriteIssueBlockingLabelsComeFromConfigInRankOrder(t *testing.T) {
 	for variant, body := range variants(t, writeIssue) {
 		t.Run(variant, func(t *testing.T) {
 			wantAll(t, flat(section(t, body, "#### 3e. Set a block", "### 4.")),
-				`BLOCKED=$(lighthouse config labels.blocked_issue) || exit 2 lighthouse forge issue edit <nr> --add-label "$BLOCKED"`)
+				`BLOCKED=$(lighthouse config labels.blocked_issue) || exit 2 EXTERNAL=$(lighthouse config labels.blocked_external) || exit 2 lighthouse forge issue edit <nr> --add-label "$BLOCKED" --remove-label "$EXTERNAL"`)
 			rank := section(t, body, "#### 3c.", "#### 3d.")
 			var rows []string
 			for i, key := range keys {

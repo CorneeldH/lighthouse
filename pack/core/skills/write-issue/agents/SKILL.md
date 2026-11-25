@@ -225,16 +225,18 @@ controller the same holds (`lighthouse-start-issue` step 4, *Blocked?*). The inv
    lighthouse forge issue blockers <nr> | jq '.[].number'
    ```
 
-4. **Only then the label.** `labels.needs_mind` stays on, and so does `labels.needs_hands`.
-   `labels.blocked_external` comes off in the same edit (`--remove-label <label>`):
+4. **Only then the label.** `labels.needs_mind` stays on, and so does `labels.needs_hands`: they sit
+   on another axis. `labels.blocked_issue` beats `labels.blocked_external`, so when the issue has
+   `labels.blocked_external` it comes off in the same edit:
 
    ```bash
    BLOCKED=$(lighthouse config labels.blocked_issue) || exit 2
-   lighthouse forge issue edit <nr> --add-label "$BLOCKED"
+   EXTERNAL=$(lighthouse config labels.blocked_external) || exit 2
+   lighthouse forge issue edit <nr> --add-label "$BLOCKED" --remove-label "$EXTERNAL"
    ```
 
 5. **Final check**: the list from step 3 and `lighthouse forge issue view <nr> --field labels`.
-   Only when relation and winning blocking label stand there together, report success.
+   Only when relation and `labels.blocked_issue` stand there together, with `labels.blocked_external` gone, report success.
 
 At every error you never derive the state from which step failed: you read it and report what
 *really* stands, with the command that repairs the invariant. Never remove a relation to
@@ -345,7 +347,7 @@ as what it names is done. Read first what stands: the labels, and for `labels.bl
 - **Another label takes over** (a decision is taken, but now the issue waits on another one):
   choose the new label with the axis rule from 3c: it replaces the old one only within its axis. If it is `labels.blocked_issue`, set the relation
   first with 3e steps 2–3. Then the move in one edit, so the issue never stands for a moment
-  without a blocking label (the ready queue) or with two:
+  without a blocking label (the ready queue) or with two on the same axis:
 
   ```bash
   OLD=$(lighthouse config labels.<old key>) || exit 2
