@@ -1,4 +1,5 @@
 import { ChevronDown, ChevronUp } from 'lucide-react'
+import { MilestoneTitle } from './MilestoneTitle'
 import { useLayoutEffect, useRef, useState, type JSX } from 'react'
 import {
   milestoneRows,
@@ -108,7 +109,7 @@ function Row({ row, colors, moves }: { row: MilestoneRow; colors: Map<string, st
           style={{ background: color }}
         />
         <div>
-          {row.title}
+          <MilestoneTitle title={row.title} url={row.url} />
           {moves && moves.place !== null && (
             <>
               <small

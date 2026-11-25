@@ -642,3 +642,11 @@ func TestScheduledJobGivesForgeAndTrust(t *testing.T) {
 		t.Errorf("env forge %v, trusted nil %v; want the repo forge and a Trusted", jenv.Forge, jenv.Trusted == nil)
 	}
 }
+
+// Classification: wiring. Fails if the blank import of archscan is missing from the CLI: the
+// tick then logs `no job architecture-scan`.
+func TestScheduledRegistryHasArchitectureScan(t *testing.T) {
+	if j, ok := scheduled.Lookup("architecture-scan"); !ok || j.Name() != "architecture-scan" {
+		t.Fatal("job architecture-scan is not registered")
+	}
+}

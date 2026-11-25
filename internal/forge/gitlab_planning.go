@@ -29,7 +29,7 @@ func (g *GitLab) PrioInputs(ctx context.Context) (PrioInputs, error) {
 		return PrioInputs{}, err
 	}
 	for _, m := range milestones {
-		out.Milestones = append(out.Milestones, Milestone{Number: m.ID, Title: m.Title, State: "open", Description: m.Description})
+		out.Milestones = append(out.Milestones, Milestone{Number: m.ID, Title: m.Title, State: "open", Description: m.Description, URL: m.WebURL})
 	}
 	return out, nil
 }
@@ -39,6 +39,7 @@ type glPlanMilestone struct {
 	ID          int    `json:"id"`
 	Title       string `json:"title"`
 	Description string `json:"description"`
+	WebURL      string `json:"web_url"`
 }
 
 // Planning reads the open issues of the project with their milestone and open blockers, and
@@ -84,7 +85,7 @@ func (g *GitLab) Planning(ctx context.Context) (Planning, error) {
 			return Planning{}, err
 		}
 		mc := MilestoneCount{
-			Milestone: Milestone{Number: m.ID, Title: m.Title, State: "open", Description: m.Description},
+			Milestone: Milestone{Number: m.ID, Title: m.Title, State: "open", Description: m.Description, URL: m.WebURL},
 			Done:      len(closed), Closed: make([]ClosedIssue, 0, len(closed)),
 		}
 		for _, c := range closed {

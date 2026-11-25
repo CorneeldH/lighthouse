@@ -146,6 +146,7 @@ type ghMilestone struct {
 	Title        string `json:"title"`
 	State        string `json:"state"`
 	Description  string `json:"description"`
+	URL          string `json:"html_url"`
 	OpenIssues   int    `json:"open_issues"`
 	ClosedIssues int    `json:"closed_issues"`
 }

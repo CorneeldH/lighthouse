@@ -11,7 +11,7 @@ const B = 'b/y'
 const iss = (
   number: number,
   by: Array<[string, number]> = [],
-  milestone?: { number: number; state: string; title: string },
+  milestone?: { number: number; state: string; title: string; url: string },
   over: Partial<Issue> = {},
 ): Issue => ({
   number,
@@ -38,11 +38,29 @@ const rows = () => screen.queryAllByTestId('backlog-row')
 
 describe('BacklogView', () => {
   it('shows number as forge link and title per open issue without milestone', () => {
-    view([repo(A, [iss(5, []), iss(6, [], { number: 1, state: 'open', title: 'M1' })])])
+    view([repo(A, [iss(5, []), iss(6, [], { number: 1, state: 'open', title: 'M1', url: 'u-m1' })])])
     expect(rows()).toHaveLength(1)
     const link = screen.getByRole('link', { name: '5' })
     expect(link.getAttribute('href')).toBe('https://forge/5')
     expect(screen.getByText('title-5')).toBeTruthy()
+  })
+
+  it('links the title of a closed milestone and names it closed; no milestone link without one', () => {
+    view([
+      repo(A, [
+        iss(5, [], { number: 2, state: 'closed', title: 'Old', url: 'https://forge/m2' }),
+        iss(6),
+        iss(7, [], { number: 3, state: 'closed', title: 'NoUrl', url: '' }),
+      ]),
+    ])
+    const byNr = (n: number) => rows().find((r) => within(r).queryByText(`title-${n}`))!
+    const link = within(byNr(5)).getByRole('link', { name: 'Old' })
+    expect(link.getAttribute('href')).toBe('https://forge/m2')
+    expect(link.getAttribute('target')).toBe('_blank')
+    expect(byNr(5).textContent).toContain('Old · closed')
+    expect(within(byNr(6)).getAllByRole('link')).toHaveLength(1)
+    expect(within(byNr(7)).queryByRole('link', { name: 'NoUrl' })).toBeNull()
+    expect(byNr(7).textContent).toContain('NoUrl · closed')
   })
 
   it('shows a status block per row, with the state of the node', () => {
@@ -84,9 +102,9 @@ describe('BacklogView', () => {
   })
 
   it('marks an open issue in a closed milestone with the title and the word closed', () => {
-    view([repo(A, [iss(7, [], { number: 3, state: 'closed', title: 'Old one' })])])
+    view([repo(A, [iss(7, [], { number: 3, state: 'closed', title: 'Old one', url: 'u-old' })])])
     const r = rows()[0]
-    expect(within(r).getByText('Old one · closed')).toBeTruthy()
+    expect(r.textContent).toContain('Old one · closed')
     expect(within(r).getByTestId('backlog-status')).toBeTruthy()
   })
 
@@ -103,7 +121,7 @@ describe('BacklogView', () => {
   })
 
   it('says one sentence and no list when there are none', () => {
-    view([repo(A, [iss(1, [], { number: 1, state: 'open', title: 'M1' })])])
+    view([repo(A, [iss(1, [], { number: 1, state: 'open', title: 'M1', url: 'u-m1' })])])
     expect(screen.getByText('No open issues in the backlog.')).toBeTruthy()
     expect(screen.queryByRole('list')).toBeNull()
     expect(rows()).toHaveLength(0)

@@ -23,6 +23,7 @@ type glMilestone struct {
 	State       string `json:"state"`
 	Description string `json:"description"`
 	GroupID     *int   `json:"group_id"`
+	WebURL      string `json:"web_url"`
 }
 
 // milestone translates to a Milestone; Number is the global id.
@@ -31,7 +32,7 @@ func (m glMilestone) milestone() Milestone {
 	if state == "active" {
 		state = "open"
 	}
-	return Milestone{Number: m.ID, Title: m.Title, State: state, Description: m.Description}
+	return Milestone{Number: m.ID, Title: m.Title, State: state, Description: m.Description, URL: m.WebURL}
 }
 
 // change translates a merge request to a Change.

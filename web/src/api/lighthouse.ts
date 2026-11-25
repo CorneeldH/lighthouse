@@ -292,6 +292,7 @@ export interface MilestoneRef {
   number: number;
   state: string;
   title: string;
+  url: string;
 }
 
 export interface Issue {
@@ -337,6 +338,7 @@ export interface Milestone {
   number: number;
   open: number;
   title: string;
+  url: string;
 }
 
 export interface Question {

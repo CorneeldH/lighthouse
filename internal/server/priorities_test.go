@@ -25,11 +25,11 @@ func TestPrioritiesReturnsReposAndRuns(t *testing.T) {
 		Slug: "o/r",
 		Issues: []priorities.Issue{{
 			Number: 3, Title: "three", URL: "https://x/3", Status: "Ready", Labels: []string{"needs_mind", "blocked_external"}, OpenQuestion: true, PrioWeight: 5, Factor: 2,
-			Milestone: &priorities.MilestoneRef{Number: 1, Title: "M1", State: "open"},
+			Milestone: &priorities.MilestoneRef{Number: 1, Title: "M1", State: "open", URL: "https://x/m/1"},
 			BlockedBy: []priorities.Blocker{{Repo: "o/s", Issue: 9}},
 		}},
 		Milestones: []priorities.Milestone{
-			{Number: 1, Title: "M1", Description: "d", Open: 2, Done: 1, Closed: []priorities.ClosedIssue{{Number: 4, Title: "four", URL: "https://x/4"}}},
+			{Number: 1, Title: "M1", Description: "d", URL: "https://x/m/1", Open: 2, Done: 1, Closed: []priorities.ClosedIssue{{Number: 4, Title: "four", URL: "https://x/4"}}},
 			{Number: 2, Title: "M2", Closed: []priorities.ClosedIssue{}},
 		},
 	}}
@@ -62,6 +62,9 @@ func TestPrioritiesReturnsReposAndRuns(t *testing.T) {
 	}
 	if string(milestones[0]["closed"]) != `[{"number":4,"title":"four","url":"https://x/4"}]` {
 		t.Errorf("closed = %s", milestones[0]["closed"])
+	}
+	if string(milestones[0]["url"]) != `"https://x/m/1"` {
+		t.Errorf("milestone url = %s", milestones[0]["url"])
 	}
 	if string(milestones[1]["closed"]) != "[]" {
 		t.Errorf("empty closed = %s, want [] and never null", milestones[1]["closed"])

@@ -311,6 +311,7 @@
       "how": [
         "It runs only when LIGHTHOUSE_CONTROLLER_RUN marks a controller run; elsewhere it does nothing.",
         "The range is origin/<branch>..HEAD, or from the merge-base with origin/<default branch> when the branch is not on origin.",
+        "What is on origin/<default branch> already does not count: a merge of main that only brings main's workflows in passes.",
         "It sees a push after `cd`, `;`, `|`, `&&`, with `git -C <path>` and with refspecs; an alias it cannot see.",
         "A touched workflow blocks with exit 2: the run reviews with V2b and posts the handoff with `next: push-workflows`.",
         "When it cannot measure the range, it blocks with COULD NOT CHECK."

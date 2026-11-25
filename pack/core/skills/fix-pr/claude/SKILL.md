@@ -177,7 +177,7 @@ fix is the rerun of the failed jobs (`../lighthouse-forge/<kind>.md §ci`), not 
 Keep working on the branch and push only when it is done. Every push to an open PR starts a full
 new round of checks, so "a quick update in between" costs a whole runner cycle and makes the check
 history unreadable. Exception: a fix on a *red* check — that one does belong on it right away.
-On the workflow route (a controller run, if present, whose unpushed commits `origin/<branch>..HEAD` touch `.github/workflows/`) never push (`workflow-push-gate` blocks it): review them with V2b of `/lighthouse-write-pr` on the push record (`lighthouse roborev-gate gate --push`, as described there), then post the handoff with `next: push-workflows` and without `after:` (`/lighthouse-write-handoff`); the workflow pusher pushes.
+On the workflow route (a controller run, if present, whose unpushed commits `origin/<branch>..HEAD` touch `.github/workflows/` themselves; what a merge of `origin/<default branch>` brings in does not count) never push (`workflow-push-gate` blocks it): review them with V2b of `/lighthouse-write-pr` on the push record (`lighthouse roborev-gate gate --push`, as described there), then post the handoff with `next: push-workflows` and without `after:` (`/lighthouse-write-handoff`); the workflow pusher pushes.
 
 As soon as `lighthouse forge pr checks <nr>` has no `fail` or `pending` and `mergeable` is `mergeable`: **report and stop**.
 `mergeable: unknown` is not a conflict: re-read after a short wait.

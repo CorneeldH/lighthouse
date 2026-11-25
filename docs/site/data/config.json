@@ -486,6 +486,7 @@
               "readers": [
                 "internal/scheduled/mapplanned/mapplanned.go",
                 "internal/repoconfig/repoconfig.go",
+                "pack/core/skills/architecture-scan",
                 "pack/core/skills/close-issue",
                 "pack/core/skills/write-issue",
                 "internal/direction/direction.go",
@@ -501,6 +502,7 @@
               "example": "docs/strategy.md",
               "readers": [
                 "internal/scheduled/mapplanned/mapplanned.go",
+                "pack/core/skills/architecture-scan",
                 "pack/core/skills/write-issue",
                 "internal/repoconfig/repoconfig.go",
                 "internal/direction/direction.go",
@@ -572,8 +574,10 @@
               "default": [
                 "."
               ],
-              "about": "The directories searched when starting an issue.",
+              "about": "The directories searched when starting an issue, and where the architecture scan counts its hotspots.",
               "readers": [
+                "internal/scheduled/archscan/corpus.go",
+                "pack/core/skills/architecture-scan",
                 "pack/core/skills/start-issue"
               ]
             },
@@ -602,6 +606,7 @@
               "readers": [
                 "internal/scheduled/mapplanned/mapplanned.go",
                 "internal/repoconfig/repoconfig.go",
+                "pack/core/skills/architecture-scan",
                 "pack/core/skills/write-issue",
                 "internal/direction/direction.go",
                 "internal/initcmd/direction.go",
@@ -701,6 +706,7 @@
               "about": "The label for an issue that waits for a person's thinking: shaping or a decision.",
               "readers": [
                 "internal/repoconfig/repoconfig.go",
+                "internal/scheduled/archscan/archscan.go",
                 "internal/scheduled/mapplanned/corpus.go",
                 "internal/scheduled/mapplanned/mapplanned.go",
                 "pack/core/skills/route-issue",

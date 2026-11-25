@@ -34,10 +34,11 @@ func (f *fakeForge) BoardItems(context.Context) ([]forge.BoardItem, error) {
 func TestBuildJoinsStatusInMemory(t *testing.T) {
 	src := &fakeForge{t: t, planning: forge.Planning{
 		Issues: []forge.PlanIssue{
-			{Number: 1, Title: "one", URL: "u1", Milestone: &forge.Milestone{Number: 7, Title: "M", State: "open"}},
+			{Number: 1, Title: "one", URL: "u1", Milestone: &forge.Milestone{Number: 7, Title: "M", State: "open", URL: "<fake-url>"}},
 			{Number: 2, Title: "two", URL: "u2"},
+			{Number: 3, Title: "three", URL: "u3", Milestone: &forge.Milestone{Number: 8, Title: "Old", State: "closed"}},
 		},
-		Milestones: []forge.MilestoneCount{{Milestone: forge.Milestone{Number: 7, Title: "M", Description: "d"}, Open: 3, Done: 4}},
+		Milestones: []forge.MilestoneCount{{Milestone: forge.Milestone{Number: 7, Title: "M", Description: "d", URL: "<fake-url>"}, Open: 3, Done: 4}},
 	}}
 	statuses := []overview.IssueStatus{{Repo: "o/a", Issue: 1, Status: "Controller"}, {Repo: "o/b", Issue: 2, Status: "Other"}}
 
@@ -45,7 +46,7 @@ func TestBuildJoinsStatusInMemory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
-	if len(got) != 1 || got[0].Slug != "o/a" || len(got[0].Issues) != 2 {
+	if len(got) != 1 || got[0].Slug != "o/a" || len(got[0].Issues) != 3 {
 		t.Fatalf("Build = %+v", got)
 	}
 	i1, i2 := got[0].Issues[0], got[0].Issues[1]
@@ -55,10 +56,13 @@ func TestBuildJoinsStatusInMemory(t *testing.T) {
 	if i2.Status != "" {
 		t.Errorf("issue 2 (status only in another repo) = %q, want empty", i2.Status)
 	}
-	if i1.Milestone == nil || *i1.Milestone != (MilestoneRef{Number: 7, Title: "M", State: "open"}) || i2.Milestone != nil {
+	if i1.Milestone == nil || *i1.Milestone != (MilestoneRef{Number: 7, Title: "M", State: "open", URL: "<fake-url>"}) || i2.Milestone != nil {
 		t.Errorf("milestones = %+v, %+v", i1.Milestone, i2.Milestone)
 	}
-	if want := (Milestone{Number: 7, Title: "M", Description: "d", Open: 3, Done: 4, Closed: []ClosedIssue{}}); len(got[0].Milestones) != 1 || !reflect.DeepEqual(got[0].Milestones[0], want) {
+	if i3 := got[0].Issues[2]; i3.Milestone == nil || i3.Milestone.URL != "" {
+		t.Errorf("issue 3 milestone without URL = %+v, want URL empty", i3.Milestone)
+	}
+	if want := (Milestone{Number: 7, Title: "M", Description: "d", URL: "<fake-url>", Open: 3, Done: 4, Closed: []ClosedIssue{}}); len(got[0].Milestones) != 1 || !reflect.DeepEqual(got[0].Milestones[0], want) {
 		t.Errorf("milestones = %+v, want %+v", got[0].Milestones, want)
 	}
 }
