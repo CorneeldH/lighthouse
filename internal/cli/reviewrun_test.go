@@ -10,6 +10,8 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/stubbin"
 
 	"github.com/spf13/cobra"
+
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 )
 
 // fakeReviewCodex records that it ran and the value of --cd, and answers with a clean result.
@@ -53,7 +55,7 @@ func reviewSandbox(t *testing.T) reviewEnv {
 	stubbin.MakeScript(t, bin, "codex", strings.TrimPrefix(fakeReviewCodex, "#!/bin/sh\n"))
 	put(filepath.Join(home, ".codex", "auth.json"), "{}", 0o600)
 	stubbin.Prepend(t, bin)
-	t.Setenv("HOME", home)
+	testpath.SetHome(t, home)
 	t.Setenv("CODEX_HOME", "")
 	t.Setenv("CODEX_SPECREVIEW_HOME", filepath.Join(tmp, "ch"))
 	t.Setenv("LIGHTHOUSE_REPO_ROOT", repo)
@@ -96,10 +98,10 @@ func TestReviewRunBudgetUsesTheThresholdsOfTheRepoConfig(t *testing.T) {
 	}{
 		{"above the session threshold", 50, 6, "CODEX_BUDGET: fallback — 5h 50% ≥ 40%\n",
 			`{"decision":"fallback","reason":"5h 50% ≥ 40%","window":"codex-5h","reset_at":"2099-01-01T05:00:00Z",` +
-				`"session_pct":50,"week_pct":1,"source":"app-server","lower_bound":false,"thresholds":{"session":40,"week":95}}` + "\n", false},
+				`"session_pct":50,"week_pct":1,"source":"app-server","lower_bound":false,"thresholds":{"session":40,"week":95},"reset_credits":null}` + "\n", false},
 		{"below the session threshold", 10, 0, "",
 			`{"decision":"codex","reason":"ok: 5h 10%, week 1%","window":null,"reset_at":null,` +
-				`"session_pct":10,"week_pct":1,"source":"app-server","lower_bound":false,"thresholds":{"session":40,"week":95}}` + "\n", true},
+				`"session_pct":10,"week_pct":1,"source":"app-server","lower_bound":false,"thresholds":{"session":40,"week":95},"reset_credits":null}` + "\n", true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

@@ -32,6 +32,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/created"
 	"github.com/CorneeldH/lighthouse/internal/deps"
 	"github.com/CorneeldH/lighthouse/internal/forge"
+	"github.com/CorneeldH/lighthouse/internal/gitpath"
 	"github.com/CorneeldH/lighthouse/internal/hostconfig"
 	labelsync "github.com/CorneeldH/lighthouse/internal/labels"
 	"github.com/CorneeldH/lighthouse/internal/levels"
@@ -446,7 +447,7 @@ func repoRoot(dir string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("%s is not a git repository (or git failed)", dir)
 	}
-	return strings.TrimSpace(string(out)), nil
+	return gitpath.Native(string(out)), nil
 }
 
 func writes(a reconcile.Action, force bool) bool {

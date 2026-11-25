@@ -10,12 +10,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 	"github.com/CorneeldH/lighthouse/internal/usage"
 )
 
 // cli-output change; the regression surface is the stdout/stderr line and the exit code.
 func TestUsageRefreshExitsZeroWithoutHome(t *testing.T) {
-	t.Setenv("HOME", "")
+	testpath.SetHome(t, "")
 	t.Setenv("XDG_CACHE_HOME", "")
 	var out, errOut bytes.Buffer
 	root := NewRoot(strings.NewReader(""), &out, &errOut)
@@ -164,7 +165,7 @@ func TestUsageAlarmCommandReadsCopyInControllerRun(t *testing.T) {
 }
 
 func TestUsageAlarmCommandWithoutHome(t *testing.T) {
-	t.Setenv("HOME", "")
+	testpath.SetHome(t, "")
 	t.Setenv("XDG_CACHE_HOME", "")
 	var out, errOut bytes.Buffer
 	root := NewRoot(strings.NewReader(""), &out, &errOut)

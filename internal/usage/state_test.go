@@ -4,25 +4,30 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 )
 
 func TestDefaultPaths(t *testing.T) {
+	x, h, ctl, s := testpath.Abs("x"), testpath.Abs("h"), testpath.Abs("ctl"), testpath.Abs("s")
+	hAlarm := filepath.Join(h, ".local", "state", "lighthouse", "controller", "usage-window.alarm")
+	hCache := filepath.Join(h, ".cache", "lighthouse")
 	cases := []struct {
 		name, xdg, home, ctl, xdgState, want, wantMirror string
 		wantErr                                          bool
 	}{
-		{"xdg wins", "/x", "/h", "", "", "/x/lighthouse", "/h/.local/state/lighthouse/controller/usage-window.alarm", false},
-		{"home fallback", "", "/h", "", "", "/h/.cache/lighthouse", "/h/.local/state/lighthouse/controller/usage-window.alarm", false},
-		{"relative xdg kept", "rel", "/h", "", "", "rel/lighthouse", "/h/.local/state/lighthouse/controller/usage-window.alarm", false},
-		{"copy next to the pause flag", "", "/h", "/ctl", "/s", "/h/.cache/lighthouse", "/ctl/usage-window.alarm", false},
-		{"copy under XDG_STATE_HOME", "", "/h", "", "/s", "/h/.cache/lighthouse", "/s/lighthouse/controller/usage-window.alarm", false},
-		{"no place for a copy", "/x", "", "", "", "/x/lighthouse", "", false},
+		{"xdg wins", x, h, "", "", filepath.Join(x, "lighthouse"), hAlarm, false},
+		{"home fallback", "", h, "", "", hCache, hAlarm, false},
+		{"relative xdg kept", "rel", h, "", "", filepath.Join("rel", "lighthouse"), hAlarm, false},
+		{"copy next to the pause flag", "", h, ctl, s, hCache, filepath.Join(ctl, "usage-window.alarm"), false},
+		{"copy under XDG_STATE_HOME", "", h, "", s, hCache, filepath.Join(s, "lighthouse", "controller", "usage-window.alarm"), false},
+		{"no place for a copy", x, "", "", "", filepath.Join(x, "lighthouse"), "", false},
 		{"both empty", "", "", "", "", "", "", true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			t.Setenv("XDG_CACHE_HOME", c.xdg)
-			t.Setenv("HOME", c.home)
+			testpath.SetHome(t, c.home)
 			t.Setenv("LIGHTHOUSE_CONTROLLER_STATE", c.ctl)
 			t.Setenv("XDG_STATE_HOME", c.xdgState)
 			p, err := DefaultPaths()
@@ -40,12 +45,13 @@ func TestDefaultPaths(t *testing.T) {
 }
 
 func TestPathsFiles(t *testing.T) {
-	p := Paths{Dir: "/d"}
+	d := testpath.Abs("d")
+	p := Paths{Dir: d}
 	for got, want := range map[string]string{
-		p.Cache():   "/d/usage-window.json",
-		p.Alarm():   "/d/usage-window.alarm",
-		p.Lock():    "/d/usage-window.lock",
-		p.Workdir(): "/d/usage-refresh",
+		p.Cache():   filepath.Join(d, "usage-window.json"),
+		p.Alarm():   filepath.Join(d, "usage-window.alarm"),
+		p.Lock():    filepath.Join(d, "usage-window.lock"),
+		p.Workdir(): filepath.Join(d, "usage-refresh"),
 	} {
 		if got != want {
 			t.Errorf("got %q, want %q", got, want)

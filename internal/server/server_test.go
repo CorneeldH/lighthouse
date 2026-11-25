@@ -42,7 +42,7 @@ func fakeReport(context.Context) usage.Report {
 			Session: usage.WindowReport{State: usage.StateOK, Pct: intp(99), AgeS: intp(5)},
 			Week:    usage.WindowReport{State: usage.StateStale, Pct: intp(48), AgeS: intp(1000)},
 		},
-		Codex: usage.SourceReport{Session: notMeasurable, Week: notMeasurable},
+		Codex: usage.CodexReport{Session: notMeasurable, Week: notMeasurable},
 	}
 }
 
@@ -227,5 +227,41 @@ func TestNodeRoutesAbsentWithoutNode(t *testing.T) {
 	rec := get(New(testSite(), d), "/api/node/v1/info")
 	if rec.Code != http.StatusOK || rec.Body.String() != "node:/api/node/v1/info" {
 		t.Fatalf("with node: %d %q, want 200 \"node:/api/node/v1/info\"", rec.Code, rec.Body.String())
+	}
+}
+
+func TestUsageResetCredits(t *testing.T) {
+	cases := []struct {
+		name    string
+		credits *usage.ResetCredits
+		want    string
+	}{
+		{"value", &usage.ResetCredits{Available: 2, Expires: []string{"2026-09-07T00:00:00Z"}}, `{"available":2,"expires":["2026-09-07T00:00:00Z"]}`},
+		{"zero", &usage.ResetCredits{Available: 0, Expires: []string{}}, `{"available":0,"expires":[]}`},
+		{"unknown", nil, `null`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			d := testDeps(stubSource{}, nil)
+			d.Report = func(ctx context.Context) usage.Report {
+				r := fakeReport(ctx)
+				r.Codex.ResetCredits = c.credits
+				return r
+			}
+			rec := get(New(testSite(), d), "/api/usage")
+			var body struct {
+				Codex  map[string]json.RawMessage `json:"codex"`
+				Claude map[string]json.RawMessage `json:"claude"`
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+				t.Fatal(err)
+			}
+			if got := string(body.Codex["reset_credits"]); got != c.want {
+				t.Errorf("reset_credits = %s, want %s", got, c.want)
+			}
+			if _, ok := body.Claude["reset_credits"]; ok {
+				t.Error("claude has reset_credits")
+			}
+		})
 	}
 }

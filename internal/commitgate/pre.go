@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/CorneeldH/lighthouse/internal/gitinvocations"
+	"github.com/CorneeldH/lighthouse/internal/gitpath"
 	"github.com/CorneeldH/lighthouse/internal/hook"
 	"github.com/CorneeldH/lighthouse/internal/prbody"
 	"github.com/CorneeldH/lighthouse/internal/repoidentity"
@@ -157,6 +158,7 @@ func (g *Gate) commitRoots(ctx context.Context, commits []gitinvocations.Invocat
 		if err != nil {
 			root = ""
 		}
+		root = gitpath.Native(root)
 		if root == "" {
 			// '<target> is not a repo' is a real outcome: nothing to test. A git that breaks
 			// (dubious ownership, broken installation) is not.
@@ -190,6 +192,7 @@ func (g *Gate) commonDir(ctx context.Context, dir string) (string, *Result) {
 	if err != nil {
 		out = ""
 	}
+	out = gitpath.Native(out)
 	if out == "" {
 		res := g.Block("git could not determine the common git dir of '" + dir + "': " + orNoMessage(message) + ".")
 		return "", &res

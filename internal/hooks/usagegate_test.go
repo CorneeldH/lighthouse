@@ -12,6 +12,7 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/hook"
 	"github.com/CorneeldH/lighthouse/internal/stubbin"
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 )
 
 // Classification: this is a hook/gate change; the likely regression surface is the one JSON
@@ -37,7 +38,7 @@ func gateEnv(t *testing.T) gateDirs {
 		resume: filepath.Join(tmp, "data", "lighthouse", "resume"),
 		ctl:    filepath.Join(tmp, "ctl"),
 	}
-	t.Setenv("HOME", filepath.Join(tmp, "home"))
+	testpath.SetHome(t, filepath.Join(tmp, "home"))
 	t.Setenv("XDG_CACHE_HOME", g.cache)
 	t.Setenv("XDG_STATE_HOME", g.state)
 	t.Setenv("XDG_DATA_HOME", filepath.Join(tmp, "data"))

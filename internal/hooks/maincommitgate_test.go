@@ -396,3 +396,17 @@ func TestMainCommitGateNamesTheConfiguredRoot(t *testing.T) {
 		t.Fatalf("the block does not name the configured root: %q", res.Stderr)
 	}
 }
+
+func TestMainCommitGateBlockMessageHasTheNativeRoot(t *testing.T) {
+	// A git that prints a messy top level (doubled and trailing slash) must come out in the
+	// native, cleaned form in the block message.
+	setConfig(t, "[project]\nlanguage = \"en\"\n")
+	stubGit(t, "case \"$*\" in\n  *--show-toplevel*) printf '/repo/root//\\n' ;;\n  *) echo main ;;\nesac\n")
+
+	res := gate(t, "git commit -m x", t.TempDir())
+
+	want := "'" + filepath.Clean("/repo/root") + "' is on branch 'main'"
+	if res.Code != 2 || !strings.Contains(res.Stderr, want) {
+		t.Fatalf("got code %d, stderr %q; want 2 and %q in it", res.Code, res.Stderr, want)
+	}
+}

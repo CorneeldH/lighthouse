@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
+
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 )
 
 func TestUninstallCommandRegistered(t *testing.T) {
@@ -32,7 +34,7 @@ func TestUninstallCommandNotInstalled(t *testing.T) {
 		t.Fatalf("git init: %v\n%s", err, out)
 	}
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	testpath.SetHome(t, home)
 	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(home, ".claude"))
 	t.Setenv("LIGHTHOUSE_REPO_ROOT", "")
 	t.Setenv("LIGHTHOUSE_TOML", "")

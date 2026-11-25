@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/CorneeldH/lighthouse/internal/stubbin"
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 	"github.com/CorneeldH/lighthouse/internal/usage"
 )
 
@@ -60,7 +61,7 @@ func newRound(t *testing.T) *round {
 
 	r := &round{capture: filepath.Join(tmp, "capture.txt")}
 	stubbin.Prepend(t, bin)
-	t.Setenv("HOME", home)
+	testpath.SetHome(t, home)
 	t.Setenv("CODEX_HOME", "")
 	t.Setenv("CODEX_SPECREVIEW_HOME", filepath.Join(tmp, "ch"))
 	t.Setenv("LIGHTHOUSE_REPO_ROOT", repo)
@@ -95,7 +96,7 @@ func TestBudgetPanicIsNotMeasurable(t *testing.T) {
 	}
 	data := readFile(t, r.opts.Out+".budget.json")
 	want := `{"decision": "not_measurable", "reason": "budget check failed: exit 1", "window": null, "reset_at": null, ` +
-		`"session_pct": null, "week_pct": null, "source": null, "lower_bound": null, "thresholds": null}` + "\n"
+		`"session_pct": null, "week_pct": null, "source": null, "lower_bound": null, "thresholds": null, "reset_credits": null}` + "\n"
 	if string(data) != want {
 		t.Errorf("budget.json = %q, want %q", data, want)
 	}

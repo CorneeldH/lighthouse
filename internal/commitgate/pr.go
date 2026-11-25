@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/CorneeldH/lighthouse/internal/gitinvocations"
+	"github.com/CorneeldH/lighthouse/internal/gitpath"
 	"github.com/CorneeldH/lighthouse/internal/prbody"
 )
 
@@ -85,6 +86,7 @@ func (g *Gate) createRoots(ctx context.Context, creates []prbody.PrCreate, cwd s
 		if err != nil {
 			root = ""
 		}
+		root = gitpath.Native(root)
 		if root == "" {
 			if containsAny(message, notARepo) {
 				continue

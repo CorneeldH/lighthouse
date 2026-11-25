@@ -187,7 +187,7 @@ func TestMissingContextPathIsAUsageError(t *testing.T) {
 }
 
 const notMeasurableTail = `"window": null, "reset_at": null, "session_pct": null, "week_pct": null, ` +
-	`"source": null, "lower_bound": null, "thresholds": null}` + "\n"
+	`"source": null, "lower_bound": null, "thresholds": null, "reset_credits": null}` + "\n"
 
 // pytest: test_budget_fallback_stops_before_codex (the seam command), test_broken_budget_check_is_not_measurable_and_codex_runs,
 // test_budget_codex_writes_record_and_runs.

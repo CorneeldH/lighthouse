@@ -8,9 +8,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
+	"github.com/CorneeldH/lighthouse/internal/gitinvocations"
+	"github.com/CorneeldH/lighthouse/internal/prbody"
 	"github.com/CorneeldH/lighthouse/internal/stubbin"
 )
 
@@ -404,5 +407,47 @@ func TestPreTestsTheDefaultBranchAndRecordsTheRest(t *testing.T) {
 	heads, ok := markerHeads(t)
 	if want := (map[string]string{feature: gitIn(t, feature, "rev-parse", "HEAD")}); !ok || !reflect.DeepEqual(heads, want) {
 		t.Fatalf("marker heads = %v (%v), want %v", heads, ok, want)
+	}
+}
+
+// fakeRootGit puts a `git` on PATH that prints a messy top level: a doubled and a trailing slash.
+func fakeRootGit(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake git is a sh script")
+	}
+	bin := t.TempDir()
+	write(t, filepath.Join(bin, "git"), "#!/bin/sh\nprintf '/repo/root//\\n'\n")
+	if err := os.Chmod(filepath.Join(bin, "git"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+}
+
+func TestCommitRootsAreNative(t *testing.T) {
+	fakeRootGit(t)
+	dir := t.TempDir()
+
+	roots, block := (&Gate{}).commitRoots(context.Background(), []gitinvocations.Invocation{{Target: dir}})
+
+	if block != nil {
+		t.Fatalf("blocked: %+v", block)
+	}
+	if want := []string{filepath.Clean("/repo/root")}; !reflect.DeepEqual(roots, want) {
+		t.Errorf("roots %q; want %q", roots, want)
+	}
+}
+
+func TestCreateRootsAreNative(t *testing.T) {
+	fakeRootGit(t)
+	dir := t.TempDir()
+
+	roots, block := (&Gate{}).createRoots(context.Background(), []prbody.PrCreate{{Cwd: &dir}}, dir)
+
+	if block != nil {
+		t.Fatalf("blocked: %+v", block)
+	}
+	if want := []string{filepath.Clean("/repo/root")}; !reflect.DeepEqual(roots, want) {
+		t.Errorf("roots %q; want %q", roots, want)
 	}
 }

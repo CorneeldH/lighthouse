@@ -22,6 +22,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/BurntSushi/toml"
+
+	"github.com/CorneeldH/lighthouse/internal/gitpath"
 )
 
 // Error is a configuration error: the text names the file and the key, and the CLI exits 2.
@@ -360,7 +362,7 @@ func RepoRoot() (string, error) {
 		}
 		return "", errf("repository root not found: %s", msg)
 	}
-	root := strings.TrimSpace(string(out))
+	root := gitpath.Native(string(out))
 	if root == "" {
 		return "", errf("repository root not found: git rev-parse failed")
 	}

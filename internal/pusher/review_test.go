@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/hostconfig"
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 )
 
 const (
@@ -280,7 +281,7 @@ func TestReviewerEnvHasNoToken(t *testing.T) {
 	t.Setenv("WORKFLOW_PUSH_TOKEN", workflowTok)
 	t.Setenv("SNEAKY", workflowTok)
 	t.Setenv("API_KEY", "model-key")
-	t.Setenv("HOME", t.TempDir())
+	testpath.SetHome(t, t.TempDir())
 	r := rv("secrets", "r1")
 	r.Env = []string{"API_KEY", "SNEAKY", "GH_TOKEN"}
 	v := Review(context.Background(), solo(time.Minute, r), sampleDiff, []string{forgeTok, workflowTok}, nil)
@@ -437,7 +438,7 @@ func TestReviewRunsUnderBwrapWithConfigBinds(t *testing.T) {
 func TestReviewRefusesGuardedBinds(t *testing.T) {
 	setupReview(t, true, map[string]string{"r1": answer(approveJSON)})
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	testpath.SetHome(t, home)
 	mk := func(p string) string {
 		if err := os.MkdirAll(p, 0o700); err != nil {
 			t.Fatal(err)
@@ -671,7 +672,7 @@ func TestReviewerCannotReadTokenFile(t *testing.T) {
 	if err := os.WriteFile(token, []byte(workflowTok), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("HOME", home)
+	testpath.SetHome(t, home)
 	reader := "#!/bin/sh\ncat >/dev/null\nread=\n" +
 		"cat " + token + " >/dev/null 2>&1 && read=\"$read token\"\n" +
 		"ls " + home + " >/dev/null 2>&1 && read=\"$read home\"\n" +

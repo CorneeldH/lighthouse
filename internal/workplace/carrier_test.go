@@ -9,30 +9,38 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 )
 
 const testUUID = "0b8f3a52-6c1e-4d7a-9f20-3a1c5e7b9d11"
+
+var (
+	testInstr = testpath.Abs("abs", "instr.md")
+	testMCP   = testpath.Abs("abs", "mcp.json")
+	testState = testpath.Abs("state")
+)
 
 func baseSpec() LaunchSpec {
 	return LaunchSpec{
 		Repo: "CorneeldH/lighthouse", Issue: 113, SessionID: testUUID,
 		Mode: "start", Profile: "dev", Prompt: "do the thing",
-		Native: true, InstructionsFile: "/abs/instr.md", MCPConfig: "/abs/mcp.json",
+		Native: true, InstructionsFile: testInstr, MCPConfig: testMCP,
 	}
 }
 
 var testNow = time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC)
 
 func TestNewCarrierArgsStart(t *testing.T) {
-	c, err := NewCarrier(baseSpec(), "/state", testNow)
+	c, err := NewCarrier(baseSpec(), testState, testNow)
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := []string{
 		"--permission-mode", "auto", "--strict-mcp-config",
 		"--allowedTools=Read(~/.claude/plugins/cache/**)",
-		"--mcp-config", "/abs/mcp.json",
-		"--append-system-prompt-file", "/abs/instr.md",
+		"--mcp-config", testMCP,
+		"--append-system-prompt-file", testInstr,
 		"--session-id", testUUID,
 		"--model", "sonnet",
 		"do the thing",
@@ -40,7 +48,7 @@ func TestNewCarrierArgsStart(t *testing.T) {
 	if !reflect.DeepEqual(c.Args, want) {
 		t.Errorf("args:\n got %q\nwant %q", c.Args, want)
 	}
-	wantEnv := map[string]string{"LIGHTHOUSE_CONTROLLER_RUN": testUUID, "LIGHTHOUSE_STATE_DIR": "/state"}
+	wantEnv := map[string]string{"LIGHTHOUSE_CONTROLLER_RUN": testUUID, "LIGHTHOUSE_STATE_DIR": testState}
 	if !reflect.DeepEqual(c.Env, wantEnv) {
 		t.Errorf("env: got %v, want %v", c.Env, wantEnv)
 	}
@@ -54,14 +62,14 @@ func TestNewCarrierArgsStart(t *testing.T) {
 func TestNewCarrierArgsResumeNoMCP(t *testing.T) {
 	l := baseSpec()
 	l.Mode, l.MCPConfig, l.Native = "resume", "", false
-	c, err := NewCarrier(l, "/state", testNow)
+	c, err := NewCarrier(l, testState, testNow)
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := []string{
 		"--permission-mode", "auto", "--strict-mcp-config",
 		"--allowedTools=Read(~/.claude/plugins/cache/**)",
-		"--append-system-prompt-file", "/abs/instr.md",
+		"--append-system-prompt-file", testInstr,
 		"--resume", testUUID,
 		"do the thing",
 	}
@@ -85,7 +93,7 @@ func TestNewCarrierRejects(t *testing.T) {
 	for name, mutate := range cases {
 		l := baseSpec()
 		mutate(&l)
-		if _, err := NewCarrier(l, "/state", testNow); err == nil {
+		if _, err := NewCarrier(l, testState, testNow); err == nil {
 			t.Errorf("%s: want error", name)
 		}
 	}
@@ -102,7 +110,7 @@ func TestNewCarrierRejectsRelativeStateDir(t *testing.T) {
 func TestNewCarrierAcceptsDashInsidePrompt(t *testing.T) {
 	l := baseSpec()
 	l.Prompt = "fix a-b --now"
-	c, err := NewCarrier(l, "/state", testNow)
+	c, err := NewCarrier(l, testState, testNow)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -265,7 +273,7 @@ func TestRemoveCarrierOtherNodeUntouched(t *testing.T) {
 func TestNewCarrierToolsRestrictsAvailableTools(t *testing.T) {
 	l := baseSpec()
 	l.Tools = []string{"Read", "Glob", "Grep", "Write"}
-	c, err := NewCarrier(l, "/state", testNow)
+	c, err := NewCarrier(l, testState, testNow)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -299,7 +307,7 @@ func TestNewCarrierToolsRestrictsAvailableTools(t *testing.T) {
 }
 
 func TestNewCarrierNoToolsHasNoToolsFlag(t *testing.T) {
-	c, err := NewCarrier(baseSpec(), "/state", testNow)
+	c, err := NewCarrier(baseSpec(), testState, testNow)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -314,7 +322,7 @@ func TestNewCarrierToolsWithoutMCPConfigIsStrictAndHasNoMCPConfig(t *testing.T) 
 	l := baseSpec() // the profile's MCP config is not passed on: MCPConfig stays empty
 	l.MCPConfig = ""
 	l.Tools = []string{"Read"}
-	c, err := NewCarrier(l, "/state", testNow)
+	c, err := NewCarrier(l, testState, testNow)
 	if err != nil {
 		t.Fatal(err)
 	}

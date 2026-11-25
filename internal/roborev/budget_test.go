@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/stubbin"
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 	"github.com/CorneeldH/lighthouse/internal/usage"
 )
 
@@ -21,7 +22,7 @@ func budgetEnv(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("LIGHTHOUSE_TOML", toml)
-	t.Setenv("HOME", filepath.Join(dir, "home"))
+	testpath.SetHome(t, filepath.Join(dir, "home"))
 	t.Setenv("CODEX_HOME", filepath.Join(dir, "codex-home"))
 	t.Setenv("PATH", dir)
 }

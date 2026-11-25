@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/CorneeldH/lighthouse/internal/packs"
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 )
 
 const sum64 = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -75,7 +76,7 @@ func assertRows(t *testing.T, what string, got, want []string) {
 func TestClaudeJSONHonoursConfigDir(t *testing.T) {
 	root := t.TempDir()
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	testpath.SetHome(t, home)
 
 	t.Run("set", func(t *testing.T) {
 		dir := t.TempDir()
@@ -179,7 +180,7 @@ func TestCollectAttributesSources(t *testing.T) {
 	})
 	env := Env{Root: root, MainRoot: mainRoot, ConfigDir: configDir, ClaudeJSON: filepath.Join(home, ".claude.json"), Home: home}
 	before := treeHash(t, root, home)
-	t.Setenv("HOME", t.TempDir()) // Collect takes home from Env.Home, not from the process
+	testpath.SetHome(t, t.TempDir()) // Collect takes home from Env.Home, not from the process
 
 	inv, err := Collect(env)
 	if err != nil {
