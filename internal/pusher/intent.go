@@ -352,8 +352,9 @@ func bound(val string, top, job map[string]any) string {
 
 func isMap(v any) bool { _, ok := asMap(v); return ok }
 
-// canon is a stable text of a decoded YAML value; fmt prints map keys sorted.
-func canon(v any) string { return fmt.Sprint(v) }
+// canon is a stable text of a decoded YAML value; %#v prints map keys sorted and keeps the type,
+// so the string "[a]" and the list [a] never give the same text.
+func canon(v any) string { return fmt.Sprintf("%#v", v) }
 
 // caseVariant names a key of m that differs from a key extract reads only in case.
 func caseVariant(where string, m map[string]any) string {

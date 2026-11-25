@@ -320,3 +320,12 @@ func TestInIntentClassNewFileAndUnparsable(t *testing.T) {
 		}
 	})
 }
+
+func TestCanonDistinguishesStringFromList(t *testing.T) {
+	if canon("[ubuntu-latest]") == canon([]any{"ubuntu-latest"}) {
+		t.Fatal("canon: a string and a list of the same text collide")
+	}
+	if canon(map[string]any{"a": "b"}) == canon("map[a:b]") {
+		t.Fatal("canon: a string and a map of the same text collide")
+	}
+}
