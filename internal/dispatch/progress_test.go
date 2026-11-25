@@ -3,6 +3,7 @@ package dispatch
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -31,6 +32,14 @@ func TestPhase(t *testing.T) {
 		if got := Phase(c.command); got != c.want {
 			t.Errorf("Phase(%q) = %q, want %q", c.command, got, c.want)
 		}
+	}
+}
+
+// skipOnWindows skips t on native Windows, where the behaviour under test does not exist.
+func skipOnWindows(t *testing.T, why string) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip(why + "; see host-assumptions.md")
 	}
 }
 
@@ -66,22 +75,26 @@ func checkProgress(t *testing.T, command string, want Progress) {
 }
 
 func TestReadProgressBuild(t *testing.T) {
+	skipOnWindows(t, "the controller does not run on native Windows: ReadProgress takes POSIX plan paths only")
 	_, _, cmd := sddWorktree(t, "Task 1: complete (abc)\nTask 2: complete\n")
 	checkProgress(t, cmd, Progress{Task: 3, Tasks: 4, Step: "build"})
 }
 
 func TestReadProgressReview(t *testing.T) {
+	skipOnWindows(t, "the controller does not run on native Windows: ReadProgress takes POSIX plan paths only")
 	_, work, cmd := sddWorktree(t, "Task 1: complete (abc)\nTask 2: complete\n")
 	write(t, filepath.Join(work, "task-3-report.md"), "r")
 	checkProgress(t, cmd, Progress{Task: 3, Tasks: 4, Step: "review"})
 }
 
 func TestReadProgressFinalReview(t *testing.T) {
+	skipOnWindows(t, "the controller does not run on native Windows: ReadProgress takes POSIX plan paths only")
 	_, _, cmd := sddWorktree(t, "Task 1: complete\nTask 2: complete\nTask 3: complete\nTask 4: complete\n")
 	checkProgress(t, cmd, Progress{Task: 4, Tasks: 4, Step: "final-review"})
 }
 
 func TestReadProgressDutchAndLateStart(t *testing.T) {
+	skipOnWindows(t, "the controller does not run on native Windows: ReadProgress takes POSIX plan paths only")
 	_, _, cmd := sddWorktree(t, "Taak 3: complete\n")
 	checkProgress(t, cmd, Progress{Task: 4, Tasks: 4, Step: "build"})
 }
@@ -107,6 +120,7 @@ func TestReadProgressMissingWorktree(t *testing.T) {
 }
 
 func TestReadProgressOtherPlanIgnored(t *testing.T) {
+	skipOnWindows(t, "the controller does not run on native Windows: ReadProgress takes POSIX plan paths only")
 	root, _, cmd := sddWorktree(t, "Task 1: complete\n")
 	other := filepath.Join(root, ".superpowers/sdd/other")
 	write(t, filepath.Join(other, "plan-path"), "plans/p/other.md\n")
@@ -131,6 +145,7 @@ func TestReadProgressOtherCommand(t *testing.T) {
 
 // A directory whose name starts with ".." is inside the worktree, not above it.
 func TestReadProgressDotDotDirectoryInsideRoot(t *testing.T) {
+	skipOnWindows(t, "the controller does not run on native Windows: ReadProgress takes POSIX plan paths only")
 	root := t.TempDir()
 	write(t, filepath.Join(root, ".git"), "gitdir: elsewhere\n")
 	write(t, filepath.Join(root, "..plans/plan.md"), "# Plan\n\n### Task 1: a\n\n### Task 2: b\n")

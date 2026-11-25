@@ -64,7 +64,7 @@ kind = "file"
 path = ".agents/skills/lighthouse-map-planned/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "f406cf0fde0484fa57f98bb638db7b5ef5788c7ce2f96588525f41f4d17b3dd8"
+sha256 = "aaa1f819fd634aa3e0d8dac9e936e59a7fc7244d7eb185b9729b33172aa882aa"
 
 [[unit]]
 kind = "file"
@@ -169,7 +169,7 @@ kind = "file"
 path = ".agents/skills/lighthouse-upgrade/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "54f500c4a30bbd851b540d80040a5253a7d75b319dd76d7863d065e431c09281"
+sha256 = "4ec68b49777b0e68db8044dbd7aef6f030d649fa89ece4d71f3c2d21afb1bd54"
 
 [[unit]]
 kind = "file"
@@ -183,7 +183,7 @@ kind = "file"
 path = ".agents/skills/lighthouse-write-issue/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "2e8e78cb78a33ce91ad46a05c169c392454fb1b30ab24983d848dc44b5925b0c"
+sha256 = "c8811a33cab17531ea495214c9b1a739360e5323e67a900183267561953264cd"
 
 [[unit]]
 kind = "file"
@@ -396,6 +396,14 @@ sha256 = "d7332f9a4488bab4db5cfe8bd3aad3f3d5227e65347290d95d1e3812c5a6ce11"
 [[unit]]
 kind = "hook"
 path = ".claude/settings.json"
+id = "SessionStart||\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/run.sh telemetry-collect-check"
+package = "core"
+version = "dev"
+sha256 = "84f788c266b23de2ff797358d2ef034293c3a07564a0eec5e0a94f257c693d2e"
+
+[[unit]]
+kind = "hook"
+path = ".claude/settings.json"
 id = "Stop||\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lighthouse/go-imports-gate.sh"
 package = "go"
 version = "dev"
@@ -502,7 +510,7 @@ kind = "file"
 path = ".claude/skills/lighthouse-map-planned/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "f406cf0fde0484fa57f98bb638db7b5ef5788c7ce2f96588525f41f4d17b3dd8"
+sha256 = "aaa1f819fd634aa3e0d8dac9e936e59a7fc7244d7eb185b9729b33172aa882aa"
 
 [[unit]]
 kind = "file"
@@ -607,7 +615,7 @@ kind = "file"
 path = ".claude/skills/lighthouse-upgrade/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "aee84e9062eb13331225c25a21466027ee00b9618e58d68659f137e9662991cb"
+sha256 = "de96e7938368607238a12a59593ebf43d07687f46739469612f1b6f8b1353e72"
 
 [[unit]]
 kind = "file"
@@ -621,7 +629,7 @@ kind = "file"
 path = ".claude/skills/lighthouse-write-issue/SKILL.md"
 package = "core"
 version = "dev"
-sha256 = "bc375b5f755cca28275c9528f87d0a4fd92b966e9b63abeb9e6c9c1e5fd436e6"
+sha256 = "d91411a84d4040c2f083c64a98515e5f8c60133ae54ffc852406ed2edc4c7e8b"
 
 [[unit]]
 kind = "file"
@@ -656,7 +664,7 @@ kind = "file"
 path = ".lighthouse/headings.toml"
 package = "core"
 version = "dev"
-sha256 = "7a6840f9331806d1e663c805a3d5f51ff0c0ff44d70e02040bdb992316925ddf"
+sha256 = "85d790d34820def1edbe7589bdba033b26a7f164f27dae7794ce482400c7327e"
 
 [[unit]]
 kind = "block"

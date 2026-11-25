@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/forge"
+	"github.com/CorneeldH/lighthouse/internal/store"
 	_ "modernc.org/sqlite" // pure-Go driver, registers "sqlite"
 )
 
@@ -53,8 +54,7 @@ func DefaultPath(getenv func(string) string) string {
 }
 
 func dsn(path string) string {
-	q := url.Values{"_pragma": {"busy_timeout(5000)", "journal_mode(WAL)", "synchronous(NORMAL)"}}
-	return (&url.URL{Scheme: "file", Path: path, RawQuery: q.Encode()}).String()
+	return store.FileURI(path, url.Values{"_pragma": {"busy_timeout(5000)", "journal_mode(WAL)", "synchronous(NORMAL)"}})
 }
 
 // Open opens the cache file at path (an absolute path), creating its directory (0o700) and its

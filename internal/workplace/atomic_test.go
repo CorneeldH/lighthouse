@@ -23,6 +23,11 @@ func TestWriteFileAtomicModes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	tmps, _ := filepath.Glob(filepath.Join(dir, "*.tmp"))
+	if len(tmps) != 0 {
+		t.Errorf("temp files left: %v", tmps)
+	}
+	skipOnWindows(t, "NTFS has no POSIX mode bits")
 	if m := st.Mode().Perm(); m != 0o600 {
 		t.Errorf("file mode = %o, want 600", m)
 	}
@@ -32,9 +37,5 @@ func TestWriteFileAtomicModes(t *testing.T) {
 	}
 	if m := dst.Mode().Perm(); m != 0o700 {
 		t.Errorf("dir mode = %o, want 700", m)
-	}
-	tmps, _ := filepath.Glob(filepath.Join(dir, "*.tmp"))
-	if len(tmps) != 0 {
-		t.Errorf("temp files left: %v", tmps)
 	}
 }

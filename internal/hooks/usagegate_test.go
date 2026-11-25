@@ -150,7 +150,7 @@ func TestUsageGateSpeaksOncePerWindow(t *testing.T) {
 func TestUsageGateStopWritesItsKey(t *testing.T) {
 	g := gateEnv(t)
 	at := writeAlarm(t, g)
-	key := filepath.Join(g.state, "lighthouse", "usage-guard", "venster-"+at+".stop.s1.done")
+	key := filepath.Join(g.state, "lighthouse", "usage-guard", "venster-"+strings.ReplaceAll(at, ":", "-")+".stop.s1.done")
 
 	res := call(t, usageGate, "stop", session(nil))
 	if got := reason(t, res); !strings.Contains(got, " Commit nothing more. ") {

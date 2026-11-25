@@ -43,6 +43,7 @@ esac
 var lintTools = []string{"bash", "jq", "git", "cat", "tr", "head", "sed", "lighthouse", "mktemp", "rm"}
 
 func TestGoLintGate(t *testing.T) {
+	skipOnWindows(t, "the pack hooks run through runPackHook's tool dir, which breaks bash -c quoting on Windows (#559); and lighthouse init per subtest takes ~5 s there")
 	bin := buildLighthouse(t)
 
 	// newRepo is a repository with the go pack installed, and a go.mod unless goMod is false;

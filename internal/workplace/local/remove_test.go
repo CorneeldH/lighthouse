@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"syscall"
 	"testing"
@@ -309,6 +310,42 @@ func TestTranscriptUnsafeSessionID(t *testing.T) {
 	_, err := a.Transcript(t.Context(), ws.ID, "../x")
 	if err == nil || errors.Is(err, workplace.ErrNotMeasurable) {
 		t.Errorf("Transcript = %v, want an unsafe-id error", err)
+	}
+}
+
+var _ workplace.RawTranscripts = (*Adapter)(nil)
+
+// RawTranscript gives the whole files of the session, as ReadDelta does with no offsets.
+func TestRawTranscriptReadsHostProjectDir(t *testing.T) {
+	repo, _ := newRepo(t)
+	a, _, _ := newAdapter(t, repo)
+	ws := prepare(t, a, "issue-1-x")
+	if _, err := a.RawTranscript(t.Context(), ws.ID, testSID); !errors.Is(err, workplace.ErrNotMeasurable) {
+		t.Errorf("RawTranscript without a project dir = %v, want ErrNotMeasurable", err)
+	}
+	dir := workplace.ProjectDir(a.Home, ws.Path)
+	if err := os.MkdirAll(filepath.Join(dir, testSID, "subagents"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, testSID+".jsonl"), []byte(unknownTranscript), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, testSID, "subagents", "agent-a.jsonl"), []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := a.RawTranscript(t.Context(), ws.ID, testSID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := workplace.ReadDelta(dir, testSID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || !reflect.DeepEqual(got, want) || string(got[0].Data) != unknownTranscript || got[0].From != 0 {
+		t.Errorf("RawTranscript = %+v, want %+v", got, want)
+	}
+	if _, err := a.RawTranscript(t.Context(), ws.ID, "../x"); err == nil || errors.Is(err, workplace.ErrNotMeasurable) {
+		t.Errorf("RawTranscript of an unsafe id = %v, want an unsafe-id error", err)
 	}
 }
 

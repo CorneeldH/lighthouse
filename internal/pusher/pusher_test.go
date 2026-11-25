@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -1278,6 +1279,14 @@ func TestHandedBackRowGetsNoQuestion(t *testing.T) {
 	}
 }
 
+// skipOnWindows skips t on native Windows, where the behaviour under test does not exist.
+func skipOnWindows(t *testing.T, why string) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip(why + "; see host-assumptions.md")
+	}
+}
+
 // footerName is a workflow file name that reads as a session footer: ParseHeader takes the last
 // `<sub>session <uuid>` anywhere in a body.
 const footerName = "<sub>session 11111111-2222-4333-8444-555555555555.yml"
@@ -1288,6 +1297,7 @@ const footerName = "<sub>session 11111111-2222-4333-8444-555555555555.yml"
 // as a run's handoff.
 func TestBranchTextGivesNoSessionFooter(t *testing.T) {
 	t.Run("Herstel", func(t *testing.T) {
+		skipOnWindows(t, "NTFS refuses < and > in a file name")
 		r := newRunFix(t, hostconfig.ReviewShadow, nil)
 		r.commitWorkflow(footerName, "on: pull_request\npermissions: write-all\njobs:\n  a:\n    runs-on: x\n    steps:\n      - uses: a/b@v1\n")
 		r.run()
@@ -1298,6 +1308,7 @@ func TestBranchTextGivesNoSessionFooter(t *testing.T) {
 		repair(t, body, StepPolicy, r.wt)
 	})
 	t.Run("handoff", func(t *testing.T) {
+		skipOnWindows(t, "NTFS refuses < and > in a file name")
 		r := newRunFix(t, hostconfig.ReviewShadow, nil)
 		r.commitWorkflow(footerName, scheduleWF)
 		r.run()

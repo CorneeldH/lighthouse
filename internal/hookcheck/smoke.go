@@ -185,7 +185,9 @@ func smokeEnv(env Env, tmp string) ([]string, error) {
 	set := map[string]string{
 		"CLAUDE_PROJECT_DIR":       projectDir(env.GOOS, env.Root),
 		"LIGHTHOUSE_USAGE_REFRESH": "1",
-		"LIGHTHOUSE_HOST_TOML":     filepath.Join(tmp, "host.toml"),
+		// telemetry-collect-check then writes its sidecar in tmp and starts no collector.
+		"LIGHTHOUSE_TELEMETRY_COLLECT": "off",
+		"LIGHTHOUSE_HOST_TOML":         filepath.Join(tmp, "host.toml"),
 	}
 	for _, name := range stateVars {
 		dir := filepath.Join(tmp, strings.ToLower(name))

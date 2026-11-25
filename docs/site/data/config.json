@@ -490,7 +490,8 @@
                 "pack/core/skills/close-issue",
                 "pack/core/skills/write-issue",
                 "internal/direction/direction.go",
-                "internal/initcmd/direction.go"
+                "internal/initcmd/direction.go",
+                "internal/initcmd/uninstall.go"
               ]
             },
             {
@@ -504,7 +505,8 @@
                 "pack/core/skills/write-issue",
                 "internal/repoconfig/repoconfig.go",
                 "internal/direction/direction.go",
-                "internal/initcmd/direction.go"
+                "internal/initcmd/direction.go",
+                "internal/initcmd/uninstall.go"
               ]
             },
             {
@@ -530,7 +532,8 @@
                 "pack/core/skills/write-issue",
                 "pack/core/skills/write-pr",
                 "internal/direction/direction.go",
-                "internal/initcmd/direction.go"
+                "internal/initcmd/direction.go",
+                "internal/initcmd/uninstall.go"
               ]
             },
             {
@@ -553,6 +556,8 @@
               "about": "Where plans are written.",
               "readers": [
                 "internal/cli/pushworkflows.go",
+                "internal/cli/telemetry_collect.go",
+                "internal/cli/tick_collect.go",
                 "internal/kpi/startissue.go",
                 "internal/postartefact/postartefact.go",
                 "internal/pusher/floor.go",
@@ -606,7 +611,8 @@
                 "internal/repoconfig/repoconfig.go",
                 "pack/core/skills/write-issue",
                 "internal/direction/direction.go",
-                "internal/initcmd/direction.go"
+                "internal/initcmd/direction.go",
+                "internal/initcmd/uninstall.go"
               ]
             }
           ]
@@ -1073,6 +1079,7 @@
               "default": ".claude/worktrees",
               "about": "The folder the worktrees live in: relative to the main checkout, or absolute.",
               "readers": [
+                "internal/cli/telemetry_collect.go",
                 "internal/hooks/hooks.go",
                 "internal/initcmd/initcmd.go",
                 "internal/worktreeaudit/collect.go",

@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Measures lighthouse on one host the way a user meets it (#90): `init --yes --level strict`
 # (the level with every core hook) in a fresh repository, then the core hooks with the payloads
-# Claude Code sends them, read from the registrations `init` wrote. Every step runs, a failed step does not stop the next. It prints one
-# markdown table, row per step: expected, rc, verdict and the first line of stderr, and exits 1
-# when a row fails. On Linux every row must be a pass; the windows-measure workflow runs it on
+# Claude Code sends them, read from the registrations `init` wrote, and last the hook of
+# pack/powershell after `init --upgrade --pack powershell` (#581). Every step runs, a failed step
+# does not stop the next. It prints one markdown table, row per step: expected, rc, verdict and
+# the first line of stderr, and exits 1 when a row fails. On Linux every row must be a pass; the windows-measure workflow runs it on
 # native Windows (Git Bash) as a gate.
 #
 # Usage: ci/windows-measure.sh <lighthouse binary> <empty work dir>
@@ -71,7 +72,7 @@ ENV="$WORK/env.txt"
   uname -s
   bash --version | head -1
   git --version
-  for p in python3 python py uv jq; do
+  for p in python3 python py uv jq pwsh; do
     printf '%s: %s\n' "$p" "$(command -v "$p" || echo missing)"
   done
   python3 --version 2>&1 || true
@@ -176,6 +177,20 @@ HOOK_FILE="$WT_WIN${SEP}new.txt" HOOK_CWD="$WT_WIN" hook PreToolUse "run.sh work
 row "15. worktree-check, write in the external worktree" "rc 0, no \`Worktree check:\`" "$RC" "$(mark rc0_no_check)" "$ERR"
 HOOK_CWD="$WT_WIN" hook PreToolUse "run.sh main-commit-gate" "git commit -m x"
 row "16. main-commit-gate, commit in the external worktree" "rc 0" "$RC" "$(mark ok 0)" "$ERR"
+
+# pack/powershell (#581): `--pack` adds it to the measured repo, rows 1 and 12 stay on core alone.
+# Its hook runs on an Edit|Write of a `.ps1` file, with pwsh and PSScriptAnalyzer from the host.
+(cd "$REPO" && PATH="$BIN_DIR:$PATH" "$BIN" init --upgrade --yes --pack powershell) >"$OUT" 2>"$ERR"
+RC=$?
+# Not `ok`, as row 1: the diff init prints carries the skills, whose text names COULD NOT CHECK.
+upgrade_ok() { [ "$RC" = 0 ] && grep -q '^packages = .*"powershell"' "$REPO/.lighthouse/manifest.toml"; }
+row "16b. \`lighthouse init --upgrade --yes --pack powershell\`" "rc 0, manifest names \`powershell\`" "$RC" "$(mark upgrade_ok)" "$ERR"
+printf 'Invoke-Expression "x"\n' >"$REPO/bad.ps1"
+HOOK_FILE="$REPO_WIN${SEP}bad.ps1" hook PostToolUse "powershell-lint-check" ""
+row "17. powershell-lint-check, \`Invoke-Expression\` in a \`.ps1\`" "rc 2, \`[powershell-lint-check/PSAvoidUsingInvokeExpression]\`" "$RC" "$(mark ok 2 '[powershell-lint-check/PSAvoidUsingInvokeExpression]')" "$ERR"
+printf 'Write-Output "x"\n' >"$REPO/good.ps1"
+HOOK_FILE="$REPO_WIN${SEP}good.ps1" hook PostToolUse "powershell-lint-check" ""
+row "18. powershell-lint-check, a clean \`.ps1\`" "rc 0" "$RC" "$(mark ok 0)" "$ERR"
 
 echo "### Host"
 echo

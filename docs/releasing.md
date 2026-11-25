@@ -35,7 +35,7 @@ when it stamps the build, and the binary reports `dev` instead of the version.
 
 ## The macOS gate
 
-A release waits for a green run of `macos.yml` (the pytest suite, the Go race tests and the e2e
+A release waits for a green run of `macos.yml` (the pytest job of `pack/python`, the Go race tests and the e2e
 tests on `macos-latest`) on the commit that started the release run, `github.sha`. Pull requests
 run no macOS job (#337).
 
@@ -119,7 +119,7 @@ error) the workflow fetches `main` and retries, three times at most.
 ## Testing the build
 
 To test `build.yml` without a release, run the `prerelease` workflow (`workflow_dispatch`) with
-the tag `vX.Y.Z-rc.N`, from the branch you want to test. It builds the UI, adds the `dist`
+the tag `vX.Y.Z-test.N`, from the branch you want to test. It builds the UI, adds the `dist`
 commit and pushes the tag. The build needs no `CHANGELOG.md` section for it: the release gets a
 fixed note and `--prerelease`. Delete it afterwards with
 `gh release delete <tag> --cleanup-tag --yes`. A prerelease tag pushed by hand has no `dist`, so

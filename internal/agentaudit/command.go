@@ -321,6 +321,10 @@ func scan(command, base, root, home string) (found, missing string) {
 			word = filepath.Join(home, word[2:])
 		case !filepath.IsAbs(word):
 			word = filepath.Join(base, word)
+		default:
+			// Clean as Join does: `$CLAUDE_PROJECT_DIR/.claude/…` on Windows mixes `\` and `/`,
+			// and the same script must compare equal to itself (#559).
+			word = filepath.Clean(word)
 		}
 		info, err := os.Stat(word)
 		switch {

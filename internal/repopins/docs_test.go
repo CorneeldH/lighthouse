@@ -538,3 +538,13 @@ func TestAgentGuideIsLinkedFromInstallPage(t *testing.T) {
 		t.Error("download.js does not add a copy button to .agent-prompt")
 	}
 }
+
+func TestGettingStartedNamesUninstall(t *testing.T) {
+	doc := gettingStarted(t)
+	body := section(t, doc, "Remove lighthouse")
+	for _, want := range []string{"lighthouse uninstall", "--yes", "--force"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("section 'Remove lighthouse' does not name %s", want)
+		}
+	}
+}

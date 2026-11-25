@@ -461,7 +461,7 @@
       "what": "Runs the write checks on what a Bash call wrote.",
       "how": [
         "The pre mode runs on PreToolUse for Bash, records a baseline and always exits 0.",
-        "The post mode runs on PostToolUse and PostToolUseFailure for Bash and sends each changed file through its gate: shell-lint-check.sh, ruff-format-check.sh, run.sh code-language-check or run.sh md-link-check.",
+        "The post mode runs on PostToolUse and PostToolUseFailure for Bash and sends each changed file through its gate: shell-lint-check.sh, powershell-lint-check.sh, ruff-format-check.sh, run.sh code-language-check or run.sh md-link-check.",
         "A finding blocks with exit 2, and a gate whose pack is not installed is reported per file without blocking.",
         "When the lighthouse binary is missing or the dispatcher fails, it blocks with COULD NOT CHECK."
       ],
@@ -771,12 +771,6 @@
       "from": "push-workflows",
       "to": "fix-pr",
       "status": "works"
-    },
-    {
-      "from": "close-issue",
-      "to": "close-followup",
-      "status": "planned",
-      "issue": 527
     }
   ],
   "routes": [

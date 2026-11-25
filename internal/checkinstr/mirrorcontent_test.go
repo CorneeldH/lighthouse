@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -97,6 +98,9 @@ func TestMirrorContentUnreadable(t *testing.T) {
 	}{{"unreadable file", false}, {"unreadable skill directory", true}}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			if tc.dir && runtime.GOOS == "windows" {
+				t.Skip("chmod 000 does not close a directory on NTFS; see host-assumptions.md")
+			}
 			files := emptySkillRoots().with(mirrored("paia-dicht", skillText("paia-dicht", "Doet iets.", nil, "# x\n")))
 			base := t.TempDir()
 			root := filepath.Join(base, "repo")

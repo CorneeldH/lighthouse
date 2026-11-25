@@ -46,6 +46,9 @@ type reviewEnv struct {
 // in /usr/bin would otherwise still find the real one.
 func setupReview(t *testing.T, withBwrap bool, scripts map[string]string) reviewEnv {
 	t.Helper()
+	if withBwrap {
+		skipOnWindows(t, "a review runs only inside a bwrap sandbox, which native Windows lacks")
+	}
 	bin := t.TempDir()
 	e := reviewEnv{bin: bin, log: filepath.Join(t.TempDir(), "bwrap.log")}
 	if withBwrap {

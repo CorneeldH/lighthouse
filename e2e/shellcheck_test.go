@@ -187,6 +187,7 @@ func TestShellHooksRegistered(t *testing.T) {
 }
 
 func TestShellLintCheck(t *testing.T) {
+	skipOnWindows(t, "shellcheck has no MINGW release, so the pinned shellcheck cannot be fetched; the other cases run through runPackHook, which breaks bash -c quoting on Windows (#559)")
 	needTool(t, "jq")
 	bin := buildLighthouse(t)
 	repo := shellRepo(t, bin)
@@ -391,6 +392,7 @@ func TestShellcheckRepo(t *testing.T) {
 	}
 
 	t.Run("strict_set_from_config", func(t *testing.T) {
+		skipOnWindows(t, "shellcheck has no MINGW release, so the pinned shellcheck cannot be fetched")
 		// Without files the script checks `shell.strict_dirs`, at style, new files included.
 		env := []string{"SHELLCHECK_BIN=" + pinnedShellcheck(t), "LIGHTHOUSE_TOML=" + tomlFile(t, "[shell]\nstrict_dirs = [\"ops\"]\n")}
 		writeFile(t, repo, "ops/clean.sh", cleanSh)
@@ -406,6 +408,7 @@ func TestShellcheckRepo(t *testing.T) {
 	})
 
 	t.Run("empty_strict_set_is_not_green", func(t *testing.T) {
+		skipOnWindows(t, "shellcheck has no MINGW release, so the pinned shellcheck cannot be fetched")
 		env := []string{"SHELLCHECK_BIN=" + pinnedShellcheck(t), "LIGHTHOUSE_TOML=" + tomlFile(t, "[shell]\nstrict_dirs = []\n")}
 		code, stdout, stderr := runScript(env)
 		if code != 2 || !strings.Contains(stderr, "this is not green") {
@@ -438,6 +441,7 @@ func TestShellcheckRepo(t *testing.T) {
 }
 
 func TestShellcheckBin(t *testing.T) {
+	skipOnWindows(t, "shellcheck has no release for native Windows, so shellcheck-bin.sh downloads nothing there (#559)")
 	bin := buildLighthouse(t)
 	installed := shellRepo(t, bin)
 	lib := shellLib(installed)

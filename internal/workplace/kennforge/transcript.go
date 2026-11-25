@@ -17,7 +17,10 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/workplace"
 )
 
-var _ workplace.Transcripts = (*Adapter)(nil)
+var (
+	_ workplace.Transcripts    = (*Adapter)(nil)
+	_ workplace.RawTranscripts = (*Adapter)(nil)
+)
 
 const (
 	transcriptTimeout = 30 * time.Second
@@ -107,6 +110,48 @@ func (a *Adapter) TranscriptDelta(ctx context.Context, workspaceID, sessionID st
 		return nil, err
 	}
 	return workplace.ReadDelta(dir, sessionID, from)
+}
+
+// RawTranscript is the whole transcript files of session sessionID, each with From 0: the
+// files the collector parses itself. On self it reads in the same place Transcript does, the
+// devcontainer with the software profile, this host under Home with any other, with the
+// container fallback of #514; a session in no container wraps fs.ErrNotExist. On another node
+// it syncs the mirror of lighthouse serve (syncMirror) and reads the files there, so it holds
+// the whole files although serve sends only the new bytes. Errors are those of Transcript.
+func (a *Adapter) RawTranscript(ctx context.Context, workspaceID, sessionID string) ([]workplace.FileDelta, error) {
+	if err := notForge(workspaceID); err != nil {
+		return nil, err
+	}
+	n, err := a.serve()
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", err, workplace.ErrUnanswered)
+	}
+	if n != nil {
+		dir, release, err := a.syncMirror(ctx, n, workspaceID, sessionID)
+		if err != nil {
+			return nil, err
+		}
+		defer release()
+		return workplace.ReadDelta(dir, sessionID, nil)
+	}
+	w, err := a.transcriptWorkspace(ctx, workspaceID, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	if a.Profile == "software" {
+		return a.containerDelta(ctx, w.WorktreeDir, sessionID, nil)
+	}
+	dir, err := workplace.HostTranscriptDir(a.Home, workspaceID, w.WorktreeDir)
+	if errors.Is(err, workplace.ErrNotMeasurable) {
+		// #514: a run in a container under another profile keeps its transcripts there too.
+		if deltas, cerr := a.containerDelta(ctx, w.WorktreeDir, sessionID, nil); cerr == nil {
+			return deltas, nil
+		}
+	}
+	if err != nil {
+		return nil, err
+	}
+	return workplace.ReadDelta(dir, sessionID, nil)
 }
 
 // transcriptWorkspace checks what Transcript and TranscriptDelta read from and reads the

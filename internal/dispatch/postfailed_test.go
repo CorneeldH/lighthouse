@@ -25,19 +25,20 @@ func TestWritePostFailedFieldOrder(t *testing.T) {
 	if !strings.HasPrefix(string(data), want) {
 		t.Fatalf("note = %s, want prefix %s", data, want)
 	}
-	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if info.Mode().Perm() != 0o600 {
-		t.Fatalf("mode = %v, want 0600", info.Mode().Perm())
-	}
 	got, err := ReadPostFailed(dir, postFailedSession)
 	if err != nil || got == nil {
 		t.Fatalf("read = %v, %v", got, err)
 	}
 	if got.Body != n.Body || got.Error != "a; b" || got.Issue != 121 || !got.At.Equal(n.At) {
 		t.Fatalf("round trip = %+v", got)
+	}
+	skipOnWindows(t, "NTFS has no POSIX mode bits")
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("mode = %v, want 0600", info.Mode().Perm())
 	}
 }
 

@@ -119,7 +119,9 @@
       "prompt": "Your question stands on the issue like this; the controller added the option letters:\n\n🤖 Vraag\n\n**Vraag 1.** Links of rechts?\n\n- Links\n- Rechts\n\nThe user's answer:\n\nLinks.",
       "branch": "issue-7-bouw-de-keten",
       "comment_id": 65,
-      "language": "nl"
+      "language": "nl",
+      "event_ref": "63",
+      "event_at": "2026-10-31T11:30:00Z"
     }
   ]
 }
