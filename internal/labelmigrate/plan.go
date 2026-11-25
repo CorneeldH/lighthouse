@@ -79,11 +79,12 @@ func BuildPlan(ctx context.Context, f forge.Forge, old OldNames, l repoconfig.La
 			labels = slices.DeleteFunc(labels, func(s string) bool { return slices.Contains(remove, s) })
 			labels = append(labels, add...)
 		}
-		if slices.Contains(labels, l.NeedsMind) && len(is.BlockedBy) > 0 && !slices.Contains(labels, l.BlockedIssue) {
+		open := hasOpenBlocker(is.BlockedBy)
+		if slices.Contains(labels, l.NeedsMind) && open && !slices.Contains(labels, l.BlockedIssue) {
 			blocks = append(blocks, Step{Kind: KindBlock, Issue: is.Number, Add: []string{l.BlockedIssue}})
 			labels = append(labels, l.BlockedIssue)
 		}
-		blocked := len(is.BlockedBy) > 0 || slices.Contains(labels, l.BlockedIssue) || slices.Contains(labels, l.BlockedExternal)
+		blocked := open || slices.Contains(labels, l.BlockedIssue) || slices.Contains(labels, l.BlockedExternal)
 		if !blocked {
 			continue
 		}
@@ -188,4 +189,9 @@ func describe(s Step) string {
 		return fmt.Sprintf("status #%d -> %s", s.Issue, s.Status)
 	}
 	return fmt.Sprintf("%s #%d +%v -%v", s.Kind, s.Issue, s.Add, s.Remove)
+}
+
+// hasOpenBlocker reports whether one of bs is still open; a closed blocker blocks nothing.
+func hasOpenBlocker(bs []forge.Blocker) bool {
+	return slices.ContainsFunc(bs, func(b forge.Blocker) bool { return b.State == "OPEN" })
 }

@@ -305,3 +305,19 @@ func TestExecuteOrderAndOutput(t *testing.T) {
 		t.Errorf("status = %q", f.status[1])
 	}
 }
+
+func TestBuildPlanClosedBlockerDoesNotBlock(t *testing.T) {
+	mind := issue(1, "needs-shaping")
+	mind.BlockedBy = []forge.Blocker{{Issue: 9, State: "CLOSED"}}
+	prog := issue(2)
+	prog.BlockedBy = []forge.Blocker{{Issue: 9, State: "CLOSED"}}
+	f := newFake(mind, prog)
+	f.status[2] = "In progress"
+	steps := build(t, f, func(int) (string, error) { return "done", nil })
+	if b := find(steps, "block"); len(b) != 0 {
+		t.Errorf("closed blocker produced block steps: %+v", b)
+	}
+	if s := find(steps, "status"); len(s) != 0 {
+		t.Errorf("closed blocker produced status steps: %+v", s)
+	}
+}
