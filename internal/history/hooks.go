@@ -26,13 +26,25 @@ func OverlapFromAudit(env agentaudit.Env, guards []packs.Guard) ([]HookOverlap, 
 		if !ok {
 			continue
 		}
-		source, _, _ := strings.Cut(hook, "/")
+		source, path, _ := strings.Cut(hook, "/")
 		switch source {
 		case agentaudit.SourceProject, agentaudit.SourceLocal, agentaudit.SourceUser:
-			out = append(out, HookOverlap{Hook: hook, Guard: guard})
+			out = append(out, HookOverlap{Hook: source + "/" + safeHookPath(path), Guard: guard})
 		}
 	}
 	return out, nil
+}
+
+// safeHookPath keeps a repo-relative or `~/` script path and reduces anything else (an
+// absolute path, or an inline command with arguments) to its basename, so no user name or
+// argument reaches the report.
+func safeHookPath(path string) string {
+	absolute := strings.HasPrefix(path, "/") || strings.HasPrefix(path, `\`) ||
+		(len(path) >= 2 && path[1] == ':' && isLetter(path[0]))
+	if absolute || strings.ContainsAny(path, " \t\n\"'$`;&|<>=\\") {
+		return hookBasename(path)
+	}
+	return path
 }
 
 // hookBasename is the basename of the first word of a hook command, without quotes. Both
@@ -105,6 +117,13 @@ func (d *hooks) Finish(env Env) Finding {
 		names = append(names, o.Hook)
 	}
 	sort.Strings(names)
+	sort.Slice(overlapping, func(i, j int) bool {
+		a, b := overlapping[i], overlapping[j]
+		if a["hook"] != b["hook"] {
+			return a["hook"] < b["hook"]
+		}
+		return a["guard"] < b["guard"]
+	})
 	f.Measured = map[string]any{"overlapping": overlapping, "blocking_by_hook": d.blocking}
 	if len(overlapping) == 0 && len(d.blocking) == 0 {
 		return f

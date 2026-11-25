@@ -2,6 +2,7 @@ package history
 
 import (
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,7 +11,6 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/agentaudit"
 	"github.com/CorneeldH/lighthouse/internal/packs"
 	"github.com/CorneeldH/lighthouse/pack"
-	"io/fs"
 )
 
 func coreGuards(t *testing.T) []packs.Guard {
@@ -150,5 +150,65 @@ func TestHooks_NoneAndNoData(t *testing.T) {
 	}
 	if strings.Contains(toJSON(t, f), "boom") {
 		t.Error("error text in finding")
+	}
+}
+
+func TestOverlapFromAudit_NoLeak(t *testing.T) {
+	home := t.TempDir()
+	configDir := filepath.Join(home, ".claude")
+	t.Setenv("HOME", home)
+	t.Setenv("CLAUDE_CONFIG_DIR", configDir)
+	root := t.TempDir()
+	outside := t.TempDir() // neither under the repo nor under home
+	reg := func(cmds ...string) string {
+		var hs []string
+		for _, c := range cmds {
+			hs = append(hs, `{"type": "command", "command": "`+c+`"}`)
+		}
+		return `{"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [` + strings.Join(hs, ",") + `]}]}}`
+	}
+	writeTree(t, home, map[string]string{
+		".claude/settings.json": reg(filepath.Join(home, "bin", "alice-guard.sh")),
+		"bin/alice-guard.sh":    ownGuard,
+	})
+	writeTree(t, root, map[string]string{
+		".claude/settings.local.json": reg(filepath.Join(outside, "bobsecret", "abs-guard.sh"), "bash -c 'git commit main' --token=hunter2"),
+	})
+	writeTree(t, outside, map[string]string{"bobsecret/abs-guard.sh": ownGuard})
+	env := agentaudit.Env{Root: root, MainRoot: root, Home: home, ConfigDir: configDir, ClaudeJSON: filepath.Join(home, ".claude.json")}
+	got, err := OverlapFromAudit(env, coreGuards(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) < 2 {
+		t.Fatalf("want the home and the absolute hook, got %+v", got)
+	}
+	s := toJSON(t, got)
+	for _, bad := range []string{"bobsecret", "hunter2", outside, home, "--token"} {
+		if strings.Contains(s, bad) {
+			t.Errorf("%q leaks in %s", bad, s)
+		}
+	}
+	var sawHome, sawAbs bool
+	for _, o := range got {
+		sawHome = sawHome || o.Hook == "gebruiker/~/bin/alice-guard.sh"
+		sawAbs = sawAbs || o.Hook == "lokaal/abs-guard.sh"
+	}
+	if !sawHome || !sawAbs {
+		t.Errorf("names %+v", got)
+	}
+}
+
+func TestSafeHookPath(t *testing.T) {
+	for in, want := range map[string]string{
+		".claude/hooks/x.sh":           ".claude/hooks/x.sh",
+		"~/bin/x.sh":                   "~/bin/x.sh",
+		"/home/alice/x.sh":             "x.sh",
+		`C:\Users\alice\x.ps1`:         "x.ps1",
+		"curl http://u:pw@h/x --k=abc": "curl",
+	} {
+		if got := safeHookPath(in); got != want {
+			t.Errorf("%q: %q, want %q", in, got, want)
+		}
 	}
 }
