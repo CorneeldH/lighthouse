@@ -14,5 +14,5 @@ CREATE TABLE review_runs (
 CREATE INDEX review_runs_trajectory ON review_runs(trajectory_id);
 
 ALTER TABLE trajectories ADD COLUMN route TEXT;      -- gate from the triage marker: '0', '1', '2', '4a', '4b', '4c'
-ALTER TABLE trajectories ADD COLUMN area TEXT;       -- the label with labels.area_prefix, without the prefix
+ALTER TABLE trajectories ADD COLUMN area TEXT;       -- the area label, without its prefix
 ALTER TABLE recoveries ADD COLUMN code_lines INTEGER; -- roborev.CountCodeLines on the PR diff
