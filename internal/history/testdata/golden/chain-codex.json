@@ -13,7 +13,7 @@
   "findings": [
     {
       "key": "trunk",
-      "status": "found",
+      "status": "none",
       "confidence": "high",
       "measured": {
         "commits_by_branch": {

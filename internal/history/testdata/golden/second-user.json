@@ -49,9 +49,8 @@
       },
       "meaning": "Work outside issues does not fit the chain from issue to PR.",
       "proposal": {
-        "kind": "knob",
-        "text": "Install the issue labels so issues and PRs carry the chain.",
-        "flag": "--labels"
+        "kind": "advice",
+        "text": "Move work to GitHub issues and track it there."
       }
     },
     {
