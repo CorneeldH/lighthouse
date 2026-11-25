@@ -151,14 +151,28 @@ func TestBudgetWeekIsJudgedBeforeSession(t *testing.T) {
 	}
 }
 
-// pytest: NINE_KEYS (the JSON is a contract: the review skills read these keys through lighthouse review-run).
+// pytest: NINE_KEYS (the JSON is a contract: the review skills read these keys through lighthouse review-run);
+// reset_credits (#585) is a tenth key, added after that provenance.
 func TestBudgetOutcomeJSONKeyOrder(t *testing.T) {
 	data, err := json.Marshal(decide(rd(92, 41)))
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := `{"decision":"fallback","reason":"5h 92% ≥ 90%","window":"codex-5h","reset_at":"2026-09-28T23:00:00Z",` +
-		`"session_pct":92,"week_pct":41,"source":"app-server","lower_bound":false,"thresholds":{"session":90,"week":95}}`
+		`"session_pct":92,"week_pct":41,"source":"app-server","lower_bound":false,"thresholds":{"session":90,"week":95},"reset_credits":null}`
+	if string(data) != want {
+		t.Errorf("json = %s\nwant   %s", data, want)
+	}
+	withCredits := rd(92, 41)
+	withCredits.ResetCredits = json.RawMessage(`{"available":2,"expires":["2026-10-04T23:53:00Z"]}`)
+	data, err = json.Marshal(decide(withCredits))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want = `{"decision":"fallback","reason":"5h 92% ≥ 90%; reset available (2, first expires 2026-10-04T23:53:00Z)",` +
+		`"window":"codex-5h","reset_at":"2026-09-28T23:00:00Z",` +
+		`"session_pct":92,"week_pct":41,"source":"app-server","lower_bound":false,"thresholds":{"session":90,"week":95},` +
+		`"reset_credits":{"available":2,"expires":["2026-10-04T23:53:00Z"]}}`
 	if string(data) != want {
 		t.Errorf("json = %s\nwant   %s", data, want)
 	}
@@ -167,9 +181,80 @@ func TestBudgetOutcomeJSONKeyOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	want = `{"decision":"not_measurable","reason":"not measurable","window":null,"reset_at":null,"session_pct":null,` +
-		`"week_pct":null,"source":null,"lower_bound":null,"thresholds":{"session":90,"week":95}}`
+		`"week_pct":null,"source":null,"lower_bound":null,"thresholds":{"session":90,"week":95},"reset_credits":null}`
 	if string(data) != want {
 		t.Errorf("json = %s\nwant   %s", data, want)
+	}
+}
+
+func withCredits(r *CodexState, raw string) *CodexState {
+	if raw != "" {
+		r.ResetCredits = json.RawMessage(raw)
+	}
+	return r
+}
+
+func TestBudgetFallbackReasonNamesAvailableReset(t *testing.T) {
+	got := decide(withCredits(rd(92, 41), `{"available":2,"expires":["2026-10-04T23:53:00Z","2026-10-22T20:18:18Z"]}`))
+	if got.Reason != "5h 92% ≥ 90%; reset available (2, first expires 2026-10-04T23:53:00Z)" {
+		t.Errorf("reason = %q", got.Reason)
+	}
+	if got.ResetCredits == nil || got.ResetCredits.Available != 2 || len(got.ResetCredits.Expires) != 2 {
+		t.Errorf("reset_credits = %+v", got.ResetCredits)
+	}
+	// available > 0 with no expiry dates: the "first expires" part is left out.
+	got = decide(withCredits(rd(92, 41), `{"available":1,"expires":[]}`))
+	if got.Reason != "5h 92% ≥ 90%; reset available (1)" {
+		t.Errorf("reason = %q", got.Reason)
+	}
+}
+
+func TestBudgetFallbackReasonUnchangedWithoutAvailableReset(t *testing.T) {
+	for name, raw := range map[string]string{
+		"nil":        "",
+		"zero":       `{"available":0,"expires":[]}`,
+		"unreadable": `{"available":"x"}`,
+	} {
+		got := decide(withCredits(rd(92, 41), raw))
+		if got.Reason != "5h 92% ≥ 90%" {
+			t.Errorf("%s: reason = %q", name, got.Reason)
+		}
+	}
+	got := decide(withCredits(rd(92, 41), `{"available":0,"expires":[]}`))
+	if got.ResetCredits == nil || got.ResetCredits.Available != 0 || got.ResetCredits.Expires == nil {
+		t.Errorf("zero credits = %+v, want available 0 and non-nil expires", got.ResetCredits)
+	}
+}
+
+func TestBudgetResetCreditsPerDecision(t *testing.T) {
+	const raw = `{"available":3,"expires":["2026-10-04T23:53:00Z"]}`
+	expiredLog := budgetReading(10, 10, true, "2026-09-28T19:00:00Z", resetW)
+	cases := map[string]struct {
+		r    *CodexState
+		want bool
+	}{
+		"nil reading":            {nil, false},
+		"codex":                  {withCredits(rd(10, 10), raw), true},
+		"fallback":               {withCredits(rd(92, 41), raw), true},
+		"expired log":            {withCredits(expiredLog, raw), true},
+		"expired log unreadable": {withCredits(budgetReading(10, 10, true, "2026-09-28T19:00:00Z", resetW), `{"available":"x"}`), false},
+		"rollout-log null":       {budgetReading(10, 10, true, resetS, resetW), false},
+	}
+	for name, c := range cases {
+		got := decide(c.r)
+		if (got.ResetCredits != nil) != c.want {
+			t.Errorf("%s: ResetCredits = %+v, want filled=%v", name, got.ResetCredits, c.want)
+		}
+		if c.r == nil {
+			continue
+		}
+		// The decision, window and reset_at do not depend on the credits.
+		bare := *c.r
+		bare.ResetCredits = nil
+		base := decide(&bare)
+		if got.Decision != base.Decision || !reflect.DeepEqual(got.Window, base.Window) || !reflect.DeepEqual(got.ResetAt, base.ResetAt) {
+			t.Errorf("%s: %+v differs from %+v without credits", name, got, base)
+		}
 	}
 }
 

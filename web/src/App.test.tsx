@@ -23,4 +23,21 @@ describe('App', () => {
     expect(ids).toEqual(['usage', 'questions', 'returned', 'running', 'parked', 'queue', 'night', 'cleanup'])
     client.clear()
   })
+
+  it('renders TelemetryTab on the Telemetry tab', () => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(() => new Promise<Response>(() => {})))
+    window.location.hash = '#telemetry'
+    const client = newQueryClient()
+    const { getByRole } = render(
+      <QueryClientProvider client={client}>
+        <App />
+      </QueryClientProvider>,
+    )
+    expect(getByRole('heading', { name: 'Telemetry' })).toBeTruthy()
+    for (const name of ['Components', 'Timeline', 'Trajectories', 'Coverage']) {
+      expect(getByRole('region', { name })).toBeTruthy()
+    }
+    window.location.hash = ''
+    client.clear()
+  })
 })

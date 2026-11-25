@@ -6,6 +6,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/CorneeldH/lighthouse/internal/gitpath"
 )
 
 // Default is the root of the worktrees when `[worktree] root` is not set.
@@ -42,7 +44,7 @@ func MainCheckout(dir string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("main checkout of %s not found: %w", dir, err)
 	}
-	common := strings.TrimSpace(string(out))
+	common := gitpath.Native(string(out))
 	if common == "" {
 		return "", fmt.Errorf("main checkout of %s not found: empty git common dir", dir)
 	}

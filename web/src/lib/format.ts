@@ -36,3 +36,8 @@ export function formatDuration(ageS: number): string {
 export function formatClock(iso: string): string {
   return hhmm(new Date(iso))
 }
+
+// Day and month of an ISO timestamp ("Dec 9"), in local time.
+export function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}

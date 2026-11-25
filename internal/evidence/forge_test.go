@@ -145,7 +145,7 @@ func TestRunRowForgeUnreachableIsUnmeasurable(t *testing.T) {
 	withConfig(t, "")
 	marker := filepath.Join(t.TempDir(), "lh-called")
 	t.Setenv("LH_MARKER", marker)
-	stubBin(t, map[string]string{"lighthouse": lhForgeStub})
+	stubBin(t, "touch marker, case on $* and env defaults", map[string]string{"lighthouse": lhForgeStub})
 	o, d := runOne(t, "`lighthouse forge issue view 1`", "y", t.TempDir(), false, defaultTimeout)
 	want(t, o, d, Unmeasurable, "forge not reachable")
 	if exists(marker) {
@@ -186,7 +186,7 @@ func runForgeBody(t *testing.T, config, command string, probeFail bool) (int, st
 	}
 	ghMarker := filepath.Join(t.TempDir(), "gh-called")
 	t.Setenv("GH_MARKER", ghMarker)
-	stubBin(t, map[string]string{"lighthouse": lhForgeStub, "gh": ghStub})
+	stubBin(t, "touch marker, case on $* and env defaults", map[string]string{"lighthouse": lhForgeStub, "gh": ghStub})
 	bodyFile := filepath.Join(t.TempDir(), "body.md")
 	writeFile(t, bodyFile, body(5, []row3{{"1. een", command, "y"}}), 0o644)
 	var out bytes.Buffer
@@ -220,7 +220,7 @@ func runForgeGitLab(t *testing.T, probeFail bool) (int, string, string) {
 	t.Setenv("LH_PROBE_FAIL", map[bool]string{true: "1", false: ""}[probeFail])
 	ghMarker := filepath.Join(t.TempDir(), "gh-called")
 	t.Setenv("GH_MARKER", ghMarker)
-	stubBin(t, map[string]string{"lighthouse": lhForgeStub, "gh": ghStub})
+	stubBin(t, "touch marker, case on $* and env defaults", map[string]string{"lighthouse": lhForgeStub, "gh": ghStub})
 	bodyFile := filepath.Join(t.TempDir(), "body.md")
 	writeFile(t, bodyFile, body(5, []row3{{"1. een", "`lighthouse forge issue view 1`", "y"}}), 0o644)
 	var out bytes.Buffer

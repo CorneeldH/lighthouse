@@ -211,6 +211,33 @@ func OpenReadOnly(ctx context.Context, path string) (*Store, error) {
 	return &Store{DB: db}, nil
 }
 
+// OpenReadOnlyLive opens the database at path read-only for a long-running reader: mode=ro and
+// query_only, never immutable, so rows written after the open become visible. It does not migrate
+// and does not set the journal mode. A database that does not exist returns an error that wraps
+// fs.ErrNotExist.
+func OpenReadOnlyLive(ctx context.Context, path string) (*Store, error) {
+	path, err := filepath.Abs(path)
+	if err != nil {
+		return nil, fmt.Errorf("resolve database path: %w", err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		return nil, fmt.Errorf("open database %s: %w", path, err)
+	}
+	q := url.Values{
+		"mode":    {"ro"},
+		"_pragma": {"busy_timeout(5000)", "query_only(1)"},
+	}
+	db, err := sql.Open("sqlite", FileURI(path, q))
+	if err != nil {
+		return nil, fmt.Errorf("open database %s: %w", path, err)
+	}
+	if err := db.PingContext(ctx); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("open database %s: %w", path, err)
+	}
+	return &Store{DB: db}, nil
+}
+
 // SchemaVersions returns the user_version of db and the version this lighthouse expects.
 func SchemaVersions(ctx context.Context, db *sql.DB) (have, want int, err error) {
 	list, err := loadMigrations(migrationFS)

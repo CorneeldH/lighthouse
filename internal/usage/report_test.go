@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -138,6 +139,44 @@ func TestReportCodex(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestReportCodexResetCredits(t *testing.T) {
+	gen := reportNow.Format(timeLayout)
+	exp := []string{"2026-09-07T00:00:00Z", "2026-09-09T00:00:00Z"}
+	read := func(st CodexState, err error) *Reporter {
+		return &Reporter{ReadCodex: func(context.Context) (CodexState, error) { return st, err }, Now: func() time.Time { return reportNow }}
+	}
+	two := CodexState{Source: "app-server", GeneratedAt: gen, ResetCredits: json.RawMessage(`{"available":2,"expires":["2026-09-07T00:00:00Z","2026-09-09T00:00:00Z"]}`)}
+	zero := CodexState{Source: "app-server", GeneratedAt: gen, ResetCredits: json.RawMessage(`{"available":0,"expires":[]}`)}
+	rollout := CodexState{Source: "rollout-log", GeneratedAt: gen}
+
+	got := read(two, nil).Report(context.Background()).Codex.ResetCredits
+	if got == nil || got.Available != 2 || !reflect.DeepEqual(got.Expires, exp) {
+		t.Errorf("two credits = %+v", got)
+	}
+	rep := read(zero, nil).Report(context.Background())
+	if want := (&ResetCredits{Available: 0, Expires: []string{}}); !reflect.DeepEqual(rep.Codex.ResetCredits, want) {
+		t.Errorf("zero credits = %+v", rep.Codex.ResetCredits)
+	}
+	b, _ := json.Marshal(rep.Codex)
+	if !bytes.Contains(b, []byte(`"available":0`)) || !bytes.Contains(b, []byte(`"expires":[]`)) {
+		t.Errorf("json = %s", b)
+	}
+	for name, r := range map[string]*Reporter{"rollout-log": read(rollout, nil), "read error": read(CodexState{}, errors.New("boom"))} {
+		rep := r.Report(context.Background())
+		if rep.Codex.ResetCredits != nil {
+			t.Errorf("%s: credits = %+v, want nil", name, rep.Codex.ResetCredits)
+		}
+		b, _ := json.Marshal(rep.Codex)
+		if !bytes.Contains(b, []byte(`"reset_credits":null`)) {
+			t.Errorf("%s: json = %s", name, b)
+		}
+		cb, _ := json.Marshal(rep.Claude)
+		if bytes.Contains(cb, []byte("reset_credits")) {
+			t.Errorf("claude json = %s", cb)
+		}
 	}
 }
 

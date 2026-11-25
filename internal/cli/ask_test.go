@@ -17,6 +17,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/forge/forgetest"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
 )
 
 const askSession = "3f2b8c1e-5d4a-4e7b-9c10-0a1b2c3d4e5f"
@@ -400,12 +401,10 @@ func TestAskGhTokenOnlyForGitHub(t *testing.T) {
 }
 
 func TestGhAuthTokenWithinGivesUpOnAHangingGh(t *testing.T) {
+	stubbin.RequirePOSIX(t, "exec of a long sleep")
 	dir := t.TempDir()
-	stub := "#!/bin/sh\nexec sleep 10\n"
-	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(stub), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	stubbin.MakeScript(t, dir, "gh", "exec sleep 10\n")
+	stubbin.Prepend(t, dir)
 	start := time.Now()
 	got := ghAuthTokenWithin(200 * time.Millisecond)
 	if got != "" {
@@ -418,10 +417,8 @@ func TestGhAuthTokenWithinGivesUpOnAHangingGh(t *testing.T) {
 
 func TestGhAuthTokenWithinReadsTheToken(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte("#!/bin/sh\necho tok123\n"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	stubbin.Make(t, dir, "gh", stubbin.Spec{Stdout: "tok123\n"})
+	stubbin.Prepend(t, dir)
 	if got := ghAuthTokenWithin(5 * time.Second); got != "tok123" {
 		t.Errorf("token = %q, want tok123", got)
 	}

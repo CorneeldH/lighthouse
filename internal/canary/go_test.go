@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
 )
 
 const (
@@ -159,21 +161,19 @@ func TestGoLintGateCleanModulePasses(t *testing.T) {
 // runOut and exits runRC.
 func fakeGolangciV1(t *testing.T, runOut string, runRC int) string {
 	t.Helper()
+	stubbin.RequirePOSIX(t, "case on $1 and the FAKE_RUN_* variables")
 	dir, err := os.MkdirTemp(workDir, "fake-v1-")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
-	script := "#!/bin/sh\ncase \"$1\" in\n" +
+	script := "case \"$1\" in\n" +
 		"  version) echo 1.64.8 ;;\n" +
 		"  config) exit 0 ;;\n" +
 		"  run) printf '%s\\n' \"$FAKE_RUN_OUT\"; exit \"$FAKE_RUN_RC\" ;;\n" +
 		"esac\n"
-	if err := os.WriteFile(filepath.Join(dir, "golangci-lint"), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	path := dir + string(os.PathListSeparator) + filepath.Dir(lighthouseBin(t)) + string(os.PathListSeparator) + os.Getenv("PATH")
-	return path
+	stubbin.MakeScript(t, dir, "golangci-lint", script)
+	return stubbin.PathValue(t, dir+string(os.PathListSeparator)+filepath.Dir(lighthouseBin(t)))
 }
 
 func TestGoLintGateV1IsUnchecked(t *testing.T) {

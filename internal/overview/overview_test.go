@@ -12,6 +12,7 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/forge"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
+	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 )
 
 type fakeSource struct {
@@ -73,7 +74,7 @@ func TestBuildUntrustedAnswerStaysQuestion(t *testing.T) {
 		}},
 	}
 	var calls []string
-	got, err := Build(context.Background(), src, nil, trustOnly(&calls, "owner"))
+	got, err := Build(context.Background(), src, nil, nil, repoconfig.Labels{}, trustOnly(&calls, "owner"))
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
@@ -101,7 +102,7 @@ func TestBuildTrustedAnswerIsAnswered(t *testing.T) {
 		},
 	}
 	var calls []string
-	got, err := Build(context.Background(), src, nil, trustOnly(&calls, "owner"))
+	got, err := Build(context.Background(), src, nil, nil, repoconfig.Labels{}, trustOnly(&calls, "owner"))
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
@@ -119,7 +120,7 @@ func TestBuildTrustFailureFailsBuild(t *testing.T) {
 		}},
 	}
 	boom := errors.New("role lookup failed")
-	_, err := Build(context.Background(), src, nil, func(context.Context, string) (bool, error) { return false, boom })
+	_, err := Build(context.Background(), src, nil, nil, repoconfig.Labels{}, func(context.Context, string) (bool, error) { return false, boom })
 	if !errors.Is(err, boom) {
 		t.Errorf("Build err = %v, want %v", err, boom)
 	}
@@ -167,7 +168,7 @@ func TestBuild(t *testing.T) {
 		},
 	}
 
-	got, err := Build(context.Background(), src, nil, nil)
+	got, err := Build(context.Background(), src, nil, nil, repoconfig.Labels{}, nil)
 	if err != nil {
 		t.Fatalf("Build: %v", err)
 	}
@@ -201,7 +202,7 @@ func TestBuildAnswerURLFallsBackToIssue(t *testing.T) {
 		issues:   []forge.Issue{issue(1)},
 		comments: map[int][]protocol.Comment{1: {question("", "2026-01-01T10:00:00Z", "Why?")}},
 	}
-	got, err := Build(context.Background(), src, nil, nil)
+	got, err := Build(context.Background(), src, nil, nil, repoconfig.Labels{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,7 +224,7 @@ func TestBuildOrder(t *testing.T) {
 		},
 	}
 
-	got, err := Build(context.Background(), src, nil, nil)
+	got, err := Build(context.Background(), src, nil, nil, repoconfig.Labels{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -249,7 +250,7 @@ func TestBuildFailsWhole(t *testing.T) {
 		src.issues = append(src.issues, issue(n))
 		src.comments[n] = []protocol.Comment{question("c", "2026-01-01T00:00:00Z", "q")}
 	}
-	got, err := Build(context.Background(), src, nil, nil)
+	got, err := Build(context.Background(), src, nil, nil, repoconfig.Labels{}, nil)
 	if !errors.Is(err, boom) {
 		t.Fatalf("err = %v, want boom", err)
 	}
@@ -260,7 +261,7 @@ func TestBuildFailsWhole(t *testing.T) {
 
 func TestBuildListFails(t *testing.T) {
 	boom := errors.New("list down")
-	got, err := Build(context.Background(), &fakeSource{listErr: boom}, nil, nil)
+	got, err := Build(context.Background(), &fakeSource{listErr: boom}, nil, nil, repoconfig.Labels{}, nil)
 	if !errors.Is(err, boom) {
 		t.Fatalf("err = %v, want list down", err)
 	}
@@ -270,7 +271,7 @@ func TestBuildListFails(t *testing.T) {
 }
 
 func TestBuildEmptyIsNotNil(t *testing.T) {
-	got, err := Build(context.Background(), &fakeSource{}, nil, nil)
+	got, err := Build(context.Background(), &fakeSource{}, nil, nil, repoconfig.Labels{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -292,7 +293,7 @@ func TestBuildOnlyController(t *testing.T) {
 			13:  {question("c13", "2026-10-26T12:00:00Z", "Welke poort?")},
 		},
 	}
-	got, err := Build(context.Background(), src, map[int]bool{12: true, 13: true}, nil)
+	got, err := Build(context.Background(), src, map[int]bool{12: true, 13: true}, nil, repoconfig.Labels{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -426,6 +427,53 @@ func TestBuildAllBoardErrorWithControllerFails(t *testing.T) {
 	}
 	if got.Questions != nil || got.Returned != nil {
 		t.Errorf("overview = %+v, want empty", got)
+	}
+}
+
+// TestBuildAllReturnedOnToDo is #605: since #448 a returned issue moves to To do with a needs_*
+// label, so the Returned list must read it there too. 379 is returned on To do with
+// 3-needs-hands; 20 is on To do with an open question and a needs_* label (not a returned
+// issue, so no question either); 21 is on To do without a needs_* label (a human's own work,
+// whose comments are never read); 22 is returned and still on Controller (board write failed).
+func TestBuildAllReturnedOnToDo(t *testing.T) {
+	l := repoconfig.DefaultLabels()
+	withLabel := func(n int, labels ...string) forge.Issue {
+		is := issue(n)
+		is.Labels = labels
+		return is
+	}
+	src := &fakeSource{
+		issues: []forge.Issue{withLabel(379, l.NeedsHands), withLabel(20, l.NeedsMind), withLabel(21), withLabel(22, l.NeedsHands)},
+		comments: map[int][]protocol.Comment{
+			379: returnedComment("2026-11-25T08:00:00Z"),
+			20:  {question("c20", "2026-11-25T09:00:00Z", "A of B?")},
+			21:  returnedComment("2026-11-25T10:00:00Z"),
+			22:  returnedComment("2026-11-25T11:00:00Z"),
+		},
+	}
+	board := &fakeBoard{items: []forge.BoardItem{
+		{Repo: "o/r", Issue: 379, Status: "To do"},
+		{Repo: "o/r", Issue: 20, Status: "To do"},
+		{Repo: "o/r", Issue: 21, Status: "To do"},
+		{Repo: "o/r", Issue: 22, Status: "Controller"},
+	}}
+	got, err := BuildAll(context.Background(), []RepoSource{
+		{Slug: "o/r", Src: boardSource{src, board}, Board: true, Controller: true, Labels: l}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var nums []int
+	for _, r := range got.Returned {
+		nums = append(nums, r.Number)
+	}
+	if !slices.Equal(nums, []int{379, 22}) {
+		t.Errorf("returned = %v, want [379 22]", nums)
+	}
+	if len(got.Questions) != 0 {
+		t.Errorf("questions = %+v, want none: 20 is not in Controller", got.Questions)
+	}
+	if slices.Contains(src.called, 21) {
+		t.Error("Comments called for 21, on To do without a needs_* label")
 	}
 }
 

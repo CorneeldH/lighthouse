@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/CorneeldH/lighthouse/internal/bashwrites"
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
 )
 
 const (
@@ -93,13 +94,15 @@ func overrideEnv(base []string, extra ...string) []string {
 }
 
 // pathWith is a PATH value with dir first and the PATH of the test process after it.
-func pathWith(dir string) string {
-	return "PATH=" + dir + string(os.PathListSeparator) + os.Getenv("PATH")
+func pathWith(t *testing.T, dir string) string {
+	t.Helper()
+	return "PATH=" + stubbin.PathValue(t, dir)
 }
 
 // writeExe writes an executable script dir/name.
 func writeExe(t *testing.T, dir, name, body string) string {
 	t.Helper()
+	stubbin.RequirePOSIX(t, "executable script "+name+" starts with a bash or sh shebang")
 	p := filepath.Join(dir, name)
 	if err := os.WriteFile(p, []byte(body), 0o755); err != nil {
 		t.Fatal(err)
@@ -293,7 +296,7 @@ func TestShellLintCheck(t *testing.T) {
 		// The stub says 0.9.0 but lints with the pin: a shellcheck that reports nothing would fail
 		// the floor check of the hook.
 		dir := toolDir(t, bin, nil, "", map[string]string{"shellcheck": fakeShellcheck("0.9.0", pinnedShellcheck(t)), "curl": failingCurl})
-		code, stdout, stderr := hook(edit(repo, "clean.sh", cleanSh), pathWith(dir))
+		code, stdout, stderr := hook(edit(repo, "clean.sh", cleanSh), pathWith(t, dir))
 		if code != 0 {
 			t.Fatalf("rc %d\n%s%s", code, stdout, stderr)
 		}
@@ -304,7 +307,7 @@ func TestShellLintCheck(t *testing.T) {
 
 	t.Run("floor_block_carries_the_divergent_version_notice", func(t *testing.T) {
 		dir := toolDir(t, bin, nil, "", map[string]string{"shellcheck": fakeShellcheck("0.9.0", pinnedShellcheck(t)), "curl": failingCurl})
-		code, stdout, stderr := hook(edit(repo, "clean.sh", cleanSh), pathWith(dir), "SHELLCHECK_OPTS=--exclude=SC2164")
+		code, stdout, stderr := hook(edit(repo, "clean.sh", cleanSh), pathWith(t, dir), "SHELLCHECK_OPTS=--exclude=SC2164")
 		if code != 2 {
 			t.Fatalf("rc %d, want 2\n%s%s", code, stdout, stderr)
 		}
@@ -449,7 +452,7 @@ func TestShellcheckBin(t *testing.T) {
 	// resolve runs fn from the lib in dir, with stubs first on the PATH and no SHELLCHECK_BIN.
 	resolve := func(dir, stubs, fn string) (int, string, string) {
 		t.Helper()
-		env := overrideEnv(append(cleanEnv(), gitEnv...), pathWith(stubs), "SHELLCHECK_BIN=")
+		env := overrideEnv(append(cleanEnv(), gitEnv...), pathWith(t, stubs), "SHELLCHECK_BIN=")
 		return runIn(t, dir, env, "bash", "-c", fmt.Sprintf(". %q\n%s\n", lib, fn))
 	}
 

@@ -1,7 +1,9 @@
-import { spawn, type ChildProcess } from 'node:child_process'
+import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { promisify } from 'node:util'
 import { test as base } from '@playwright/test'
 import { FAKE_TOKEN, startFakeGitHub, type FakeGitHub } from './fake-github.ts'
 
@@ -12,11 +14,27 @@ export interface StartOptions {
   token: boolean
   // The Claude usage cache: measured now, an hour ago (stale), or absent.
   cache: 'fresh' | 'old' | 'none'
+  // Seed lighthouse.db with one trajectory, review and recovery before serve starts.
+  telemetry?: boolean
 }
 
 export interface Lighthouse {
   // Starts lighthouse serve and returns its base URL.
   start(opts: StartOptions): Promise<string>
+}
+
+// The repository root, where `go run` finds the e2e fixture of the telemetry tab.
+const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url))
+const SEED_TIMEOUT_MS = 120_000
+
+// seedTelemetry migrates db and writes the telemetry fixture into it (internal/telemetry/report/e2efixture).
+async function seedTelemetry(db: string): Promise<void> {
+  await promisify(execFile)('go', ['run', './internal/telemetry/report/e2efixture', db], {
+    cwd: REPO_ROOT,
+    // The same build as the binary of CI (CGO_ENABLED=0), so go run reuses its cache.
+    env: { ...process.env, CGO_ENABLED: '0' },
+    timeout: SEED_TIMEOUT_MS,
+  })
 }
 
 const LISTENING = /lighthouse: listening on (\S+)\n/
@@ -95,7 +113,7 @@ export const test = base.extend<{ github: FakeGitHub; lighthouse: Lighthouse }>(
     const procs: ChildProcess[] = []
 
     await use({
-      async start({ token, cache }) {
+      async start({ token, cache, telemetry }) {
         const home = join(root, 'home')
         const path = join(root, 'path')
         const xdg = join(root, 'xdg')
@@ -103,6 +121,8 @@ export const test = base.extend<{ github: FakeGitHub; lighthouse: Lighthouse }>(
         await mkdir(path, { recursive: true })
         await mkdir(xdg, { recursive: true })
         if (cache !== 'none') await writeCache(xdg, cache)
+        const db = join(root, 'l.db')
+        if (telemetry) await seedTelemetry(db)
 
         // Built from scratch, never from process.env: no real token, Codex or cache leaks in.
         // An empty HOME and PATH make Codex not measurable (no app-server, no rollout logs).
@@ -117,7 +137,7 @@ export const test = base.extend<{ github: FakeGitHub; lighthouse: Lighthouse }>(
             '--addr',
             '127.0.0.1:0',
             '--db',
-            join(root, 'l.db'),
+            db,
             '--repo',
             'test/repo',
             '--forge-url',

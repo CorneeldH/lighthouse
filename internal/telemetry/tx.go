@@ -87,3 +87,45 @@ func setPlanTx(ctx context.Context, tx *sql.Tx, repo string, issue int, tasks *i
 	}
 	return nil
 }
+
+// RecordFinding is RecordFinding inside the transaction.
+func (t *Tx) RecordFinding(ctx context.Context, f FindingRecord) (int64, bool, error) {
+	return recordFindingTx(ctx, t.tx, f)
+}
+
+// RecordReviewRun records a review run. Issue 0 stores no trajectory and the
+// reason no_trajectory. A second offering of the same origin updates record
+// path, record sum, ran_at, outcome, finding count, trajectory and
+// recorded_at, and reports not new.
+func (t *Tx) RecordReviewRun(ctx context.Context, r ReviewRunRecord) (int64, bool, error) {
+	return recordReviewRunTx(ctx, t.tx, r)
+}
+
+// DeleteChain deletes the findings and review runs of source whose source_id
+// starts with prefix and not with keep (all of them under prefix when keep is
+// empty), and returns how many of each. It compares with substr, never LIKE:
+// "_" and "%" in a chain name are no wildcards.
+func (t *Tx) DeleteChain(ctx context.Context, source, prefix, keep string) (findings, runs int64, err error) {
+	for i, table := range []string{"findings", "review_runs"} {
+		query := `DELETE FROM ` + table + ` WHERE source = ? AND substr(source_id, 1, length(?)) = ?`
+		args := []any{source, prefix, prefix}
+		if keep != "" {
+			query += ` AND substr(source_id, 1, length(?)) != ?`
+			args = append(args, keep, keep)
+		}
+		res, err := t.tx.ExecContext(ctx, query, args...)
+		if err != nil {
+			return 0, 0, fmt.Errorf("telemetry: delete %s: %w", table, err)
+		}
+		n, err := res.RowsAffected()
+		if err != nil {
+			return 0, 0, fmt.Errorf("telemetry: delete %s: %w", table, err)
+		}
+		if i == 0 {
+			findings = n
+		} else {
+			runs = n
+		}
+	}
+	return findings, runs, nil
+}

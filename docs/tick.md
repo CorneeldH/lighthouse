@@ -677,6 +677,14 @@ Hij heeft geen `params`: een sleutel in `[schedule.params]` is een configfout. E
 oudere `lighthouse`-binary kent de job niet en weigert een `lighthouse.toml` met `job = "map-planned"`
 (de repo wordt overgeslagen); bouw de host opnieuw na de merge, vóór de schedule meedraait.
 
+**De veldentabel.** Welke velden de plek op de kaart draagt, staat per soort item in een tweede tabel in
+het labelsdocument, met de koppen `Label`, `Item`, `Place` en `From issue` (zie
+[labels.md](developer/labels.md)). `Label` is het label van de rij; `Item` de soort item, met
+tussen haakjes de plek in het document waar zo'n item staat; `Place` de velden die de plek onder
+`### Op de kaart` noemt; `From issue` de velden die `map-planned` uit titel en body van het issue
+overneemt, zonder iets te verzinnen. `write-issue` baseert stap 3f op die tabel en vraagt de velden
+van `Place`. Zonder tabel, of zonder rij voor het label, blijft stap 3f zoals hij was, en zet `map-planned` het item zoals de uitleg het geeft, zonder andere velden.
+
 **De poort.** Na een fetch leest de poort de rijen van het labelsdocument op `origin/<standaardbranch>`.
 Zonder `paths.labels`, zonder bestand of zonder rij met `Document` en `Planned` geeft hij `skip`
 (`no planned documents`). Een issue is aan de beurt als het open is, het label van de rij draagt (bij
@@ -1150,6 +1158,31 @@ Een lege profielnaam is een fout; de tabel vereist `[controller]`. Een repo zond
 gedraagt zich als voorheen, en een repo met `location_prefix` maar zonder `[controller.locations]` ook:
 hij negeert locatielabels, ook twee tegelijk. Een upgrade is daarom veilig. Pas de tabel maakt het
 label bindend: een onbekende waarde of twee labels stellen de start dan uit.
+
+## Versiewissel
+
+Elk uur kijkt de tick in `lighthouse.db` naar wisselingen van versie: superpowers, model (per lane) en harness
+(per harnessnaam), afgeleid uit de setups van de runs. Het moment van de laatste kijk staat in de
+state-map (`telemetry/`) en wordt ook na een mislukte kijk geschreven, zodat een logregel hooguit eens per uur
+verschijnt. Per reeks telt alleen de laatste wissel. De tick installeert niets en leest alleen de database.
+
+```toml
+[telemetry]
+proposals_repo = "eigenaar/repo"   # waar de voorstellen komen; moet een repo van [dispatch] zijn
+```
+
+Zonder `proposals_repo`, of met een repo die niet in `[dispatch] repos` staat, geeft de tick één logregel en
+gaat verder; een forge die deze tick niet opende telt wel als mislukking. Per wissel opent de tick één issue
+met de machineregel `<!-- lighthouse-version-change: <dimensie> [<reeks>] →<nieuw> -->`. Staat die regel al
+in een issue, open of gesloten, dan komt er geen tweede. De taal volgt `[project] language` van de repo. Een
+mislukte wissel geeft een logregel en de andere gaan door.
+
+**De markering.** `telemetry.VersionMarkers` geeft elke wissel, ook de overgeslagen (`Skip`), als punt met een
+week (`VersionMarker.Week`, een `time.Time` op de maandag van de ISO-week); de issues gebruiken alleen de
+deelverzameling van `LatestProposals`. #379 leest dit als `markers` op de tijdlijn. Is #379 nog niet
+gemerged, dan is de koppeling er nog niet: wie als laatste merget, legt haar. Controleer met
+`git fetch && git grep -n 'Markers' origin/main -- internal/telemetry`; zet dan `Week` om naar de string
+`2006-01-02` van `Marker.Week` van #379 en voeg de test toe dat een wissel in de juiste week verschijnt.
 
 ## Zicht
 

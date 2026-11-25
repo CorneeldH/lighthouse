@@ -6,8 +6,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 
+	"github.com/CorneeldH/lighthouse/internal/gitpath"
 	"github.com/CorneeldH/lighthouse/internal/hook"
 	"github.com/CorneeldH/lighthouse/internal/manifest"
 	"github.com/CorneeldH/lighthouse/internal/packs"
@@ -71,7 +71,7 @@ func mainRoot(root string) string {
 	if err != nil {
 		return root
 	}
-	common := strings.TrimSpace(string(out))
+	common := gitpath.Native(string(out))
 	if filepath.Base(common) != ".git" {
 		return root // a bare repository or an unusual layout: no checkout above it
 	}

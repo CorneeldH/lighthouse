@@ -9,6 +9,8 @@ import (
 	"runtime"
 	"sort"
 	"testing"
+
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 )
 
 // skipOnWindows skips t on native Windows, where the behaviour under test does not exist.
@@ -51,7 +53,7 @@ func hostless(t *testing.T) (home, configDir string) {
 	t.Helper()
 	home = t.TempDir()
 	configDir = filepath.Join(home, ".claude")
-	t.Setenv("HOME", home)
+	testpath.SetHome(t, home)
 	t.Setenv("CLAUDE_CONFIG_DIR", configDir)
 	return home, configDir
 }

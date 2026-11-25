@@ -9,13 +9,14 @@ import (
 	"errors"
 	"net"
 	"net/http"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
 )
 
 type serveProc struct {
@@ -196,7 +197,7 @@ func TestServeUsageE2E(t *testing.T) {
 
 	// The last value wins in cmd.Env: a real codex on the developer's PATH or HOME must not run.
 	env = append(env,
-		"PATH="+binDir+string(os.PathListSeparator)+"/usr/bin"+string(os.PathListSeparator)+"/bin",
+		"PATH="+stubbin.PathValue(t, binDir, "sh", "cat"),
 		"HOME="+t.TempDir(),
 	)
 	p := startServe(t, bin, env, "serve", "--addr", "127.0.0.1:0", "--db", filepath.Join(t.TempDir(), "l.db"))

@@ -1176,3 +1176,19 @@ func TestServePrioritiesLabelKeyFromRepoFlagUsesDefaults(t *testing.T) {
 		t.Errorf("label keys = %v, want #1 needs_mind through the default name", got)
 	}
 }
+
+// TestServeTelemetryOnAFreshDatabase: without a database file, store.Open creates it, so the
+// read-only open beside it succeeds and the telemetry endpoints serve.
+func TestServeTelemetryOnAFreshDatabase(t *testing.T) {
+	addr, stop := startServe(t)
+	code, body := getBody(t, addr, "/api/telemetry/coverage")
+	if code != http.StatusOK || !strings.Contains(body, `"not_migrated":false`) {
+		t.Errorf("coverage = %d %s, want 200 on a migrated database", code, body)
+	}
+	if code, body := getBody(t, addr, "/api/telemetry/trajectories"); code != http.StatusOK || strings.TrimSpace(body) != `{"trajectories":[]}` {
+		t.Errorf("trajectories = %d %s, want 200 with none", code, body)
+	}
+	if err := stop(); err != nil {
+		t.Fatalf("serve = %v, want nil", err)
+	}
+}

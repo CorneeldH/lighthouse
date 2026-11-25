@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/CorneeldH/lighthouse/internal/hook"
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
 )
 
 func check(t *testing.T, filePath, cwd string) hook.Result {
@@ -208,14 +209,13 @@ func wantMessage(t *testing.T, res hook.Result, want string) {
 	}
 }
 
-// shimGit puts a git on PATH, and only that, that runs script (a sh script).
+// shimGit puts a git on PATH, and only that (PATH is exactly its directory), that runs script (a sh script).
 func shimGit(t *testing.T, script string) {
 	t.Helper()
+	stubbin.RequirePOSIX(t, "the shim git is a sh script (locale branching, exec of the real git)")
 	bin := t.TempDir()
-	if err := os.WriteFile(filepath.Join(bin, "git"), []byte("#!/bin/sh\n"+script), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", bin)
+	stubbin.MakeScript(t, bin, "git", script)
+	stubbin.Alone(t, bin)
 }
 
 func TestWorktreeCheckIsSilentOnAFeatureBranchInTheMainCheckout(t *testing.T) {

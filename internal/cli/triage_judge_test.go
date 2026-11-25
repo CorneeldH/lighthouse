@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 	tri "github.com/CorneeldH/lighthouse/internal/triage"
 )
 
@@ -16,17 +18,15 @@ import (
 // its cwd into dir, then runs body.
 func fakeClaude(t *testing.T, body string) (dir string) {
 	t.Helper()
+	stubbin.RequirePOSIX(t, "for loop over \"$@\", stdin through cat and pwd")
 	dir = t.TempDir()
 	bin := t.TempDir()
-	script := "#!/bin/sh\n" +
-		"for a in \"$@\"; do printf '%s\\0' \"$a\"; done > " + filepath.Join(dir, "args") + "\n" +
+	script := "for a in \"$@\"; do printf '%s\\0' \"$a\"; done > " + filepath.Join(dir, "args") + "\n" +
 		"cat > " + filepath.Join(dir, "stdin") + "\n" +
 		"pwd > " + filepath.Join(dir, "cwd") + "\n" +
 		body + "\n"
-	if err := os.WriteFile(filepath.Join(bin, "claude"), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	stubbin.MakeScript(t, bin, "claude", script)
+	stubbin.Prepend(t, bin)
 	return dir
 }
 
@@ -213,10 +213,11 @@ func TestLoadJudgeConfig(t *testing.T) {
 
 func TestJudgeSettingsPath(t *testing.T) {
 	env := func(m map[string]string) func(string) string { return func(k string) string { return m[k] } }
-	if got := judgeSettingsPath(env(map[string]string{"CLAUDE_CONFIG_DIR": "/c", "HOME": "/h"})); got != "/c/settings.json" {
+	c, h := testpath.Abs("c"), testpath.Abs("h")
+	if got := judgeSettingsPath(env(map[string]string{"CLAUDE_CONFIG_DIR": c, "HOME": h})); got != filepath.Join(c, "settings.json") {
 		t.Errorf("got %q", got)
 	}
-	if got := judgeSettingsPath(env(map[string]string{"HOME": "/h"})); got != "/h/.claude/settings.json" {
+	if got := judgeSettingsPath(env(map[string]string{"HOME": h})); got != filepath.Join(h, ".claude", "settings.json") {
 		t.Errorf("got %q", got)
 	}
 	if got := judgeSettingsPath(env(nil)); got != "" {

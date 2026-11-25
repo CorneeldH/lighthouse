@@ -43,6 +43,8 @@ func testDeps(src forge.Forge, board *fakeBoard) Deps {
 		// Set so the OpenAPI snapshot includes the milestone-rank endpoint.
 		PriorityForges:  map[string]forge.Forge{},
 		PatchPriorities: func(func([]priorities.Repo) []priorities.Repo) bool { return true },
+		// Set so the OpenAPI snapshot includes the telemetry endpoints.
+		Telemetry: &fakeTelemetry{},
 	}
 }
 

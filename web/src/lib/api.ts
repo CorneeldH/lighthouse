@@ -6,11 +6,21 @@ import {
   getPriorities,
   getQuestions,
   getReturned,
+  getTelemetryComponents,
+  getTelemetryCoverage,
+  getTelemetryTimeline,
+  getTelemetryTrajectories,
+  getTelemetryTrajectory,
   getRuns,
   getUsage,
   postMilestoneRanks,
   type RankChange,
   type Issue,
+  type ComponentsReport,
+  type CoverageReport,
+  type Detail,
+  type ListRow,
+  type TimelineReport,
   type Milestone,
   type Question,
   type Repo,
@@ -143,4 +153,56 @@ export function forgeErrorText(err: unknown): string {
     return `Forge unreachable: ${err.detail === '' ? `HTTP ${err.status}` : err.detail}`
   }
   return 'Server unreachable'
+}
+
+export type TelemetryFilter = {
+  repo?: string
+  route?: string
+  size?: string
+  pr_size?: string
+  area?: string
+  model?: string
+  harness?: string
+  component?: string
+}
+
+// Drops empty values so an unset filter never reaches the query string.
+function clean<K extends keyof TelemetryFilter>(filter: TelemetryFilter, keys: readonly K[]): Partial<Record<K, string>> {
+  const out: Partial<Record<K, string>> = {}
+  for (const k of keys) {
+    const v = filter[k]
+    if (v !== undefined && v !== '') out[k] = v
+  }
+  return out
+}
+
+const COMPONENT_KEYS = ['repo', 'route', 'size', 'pr_size', 'area', 'model', 'harness'] as const
+const TRAJECTORY_KEYS = [...COMPONENT_KEYS, 'component'] as const
+
+export async function fetchTelemetryComponents(filter: TelemetryFilter, signal?: AbortSignal): Promise<ComponentsReport> {
+  const res = await call(() => getTelemetryComponents(clean(filter, COMPONENT_KEYS), { signal }))
+  const body = res.data as ComponentsReport
+  return { ...body, blocks: body.blocks ?? [] }
+}
+
+export async function fetchTelemetryTimeline(filter: TelemetryFilter, signal?: AbortSignal): Promise<TimelineReport> {
+  const res = await call(() => getTelemetryTimeline(clean(filter, ['repo'] as const), { signal }))
+  const body = res.data as TimelineReport
+  return { markers: body.markers ?? [], weeks: body.weeks ?? [] }
+}
+
+export async function fetchTelemetryTrajectories(filter: TelemetryFilter, signal?: AbortSignal): Promise<ListRow[]> {
+  const res = await call(() => getTelemetryTrajectories(clean(filter, TRAJECTORY_KEYS), { signal }))
+  return (res.data as { trajectories: ListRow[] | null }).trajectories ?? []
+}
+
+export async function fetchTelemetryTrajectory(id: number, signal?: AbortSignal): Promise<Detail> {
+  const res = await call(() => getTelemetryTrajectory(id, { signal }))
+  return res.data as Detail
+}
+
+export async function fetchTelemetryCoverage(filter: TelemetryFilter, signal?: AbortSignal): Promise<CoverageReport> {
+  const res = await call(() => getTelemetryCoverage(clean(filter, ['repo'] as const), { signal }))
+  const body = res.data as CoverageReport
+  return { ...body, lines: body.lines ?? [] }
 }
