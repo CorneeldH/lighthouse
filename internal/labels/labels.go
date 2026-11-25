@@ -59,13 +59,23 @@ func indexOf(lowered, headers []string) int {
 	return -1
 }
 
-// ParseTaxonomy returns the labels of every table with a label column and a colour column,
-// in document order; headers match case-insensitively and colours come back upper-case.
-func ParseTaxonomy(text string) []Label {
-	var found []Label
+// Row is one data row of a taxonomy table: its line number (0-based, in the text split on
+// "\n"), the table it belongs to (0-based, document order), the cell indexes of the label and
+// colour columns (indexes into the cells between the outer "|"; in strings.Split(line, "|")
+// cell i is element i+1) and the parsed label.
+type Row struct {
+	Line, Table, NameCol, ColorCol int
+	Label
+}
+
+// ParseRows returns the rows with a backticked name and a backticked colour of every table with
+// a label column and a colour column, in document order. ParseTaxonomy is its label view.
+func ParseRows(text string) []Row {
+	var found []Row
 	nameI, colorI := -1, -1
 	inTable := false
-	for _, line := range strings.Split(text, "\n") {
+	table := -1
+	for ln, line := range strings.Split(text, "\n") {
 		if !strings.HasPrefix(line, "|") {
 			inTable = false
 			continue
@@ -79,6 +89,7 @@ func ParseTaxonomy(text string) []Label {
 			n, c := indexOf(lowered, nameHeaders), indexOf(lowered, colorHeaders)
 			if n >= 0 && c >= 0 {
 				nameI, colorI, inTable = n, c, true
+				table++
 			}
 			continue
 		}
@@ -90,8 +101,18 @@ func ParseTaxonomy(text string) []Label {
 		}
 		name, color := nameRE.FindStringSubmatch(cs[nameI]), colorRE.FindStringSubmatch(cs[colorI])
 		if name != nil && color != nil {
-			found = append(found, Label{name[1], strings.ToUpper(color[1])})
+			found = append(found, Row{ln, table, nameI, colorI, Label{name[1], strings.ToUpper(color[1])}})
 		}
+	}
+	return found
+}
+
+// ParseTaxonomy returns the labels of every table with a label column and a colour column,
+// in document order; headers match case-insensitively and colours come back upper-case.
+func ParseTaxonomy(text string) []Label {
+	var found []Label
+	for _, r := range ParseRows(text) {
+		found = append(found, r.Label)
 	}
 	return found
 }
