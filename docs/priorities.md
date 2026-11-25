@@ -148,8 +148,12 @@ De SPA leidt deze begrippen af in `web/src/lib/priorities/derive.ts`; de server 
   `/api/priorities` (#509, zie *Prio-gewicht*); een externe knoop zonder die velden krijgt 0.
   De keuze staat in `localStorage` onder `lighthouse.priorities`, veld `depsOrder`; een
   ontbrekende of vreemde waarde, of een blokkerende `localStorage`, valt terug op *Prio-weight*.
-  De pil met het aantal wachtenden (vanaf 2) toont bij hover `N wait · weight W · factor F ·
-  prio-weight P`.
+  Elke kaart toont één pil met het getal van de gekozen sortering: bij *Prio-weight* het
+  prio-gewicht, bij *Weight* het gewicht (beide alleen als het groter is dan 0), bij *Fewest
+  crossings* het aantal wachtenden vanaf 2. Het sorteergetal vervangt de pil met het aantal
+  wachtenden; er staat nooit meer dan één pil op een kaart. De tooltip toont in elke stand
+  `N wait · weight W · factor F · prio-weight P`. Wisselen van *Sort* wisselt het getal zonder
+  herladen.
 - **Shaping.** Een milestone is in shaping als hij geen open issues heeft en geen issues die als
   `completed` zijn gesloten (`isShaping`: nul issues), of als een regel van de
   milestonebeschrijving (zonder hoofdletters en omringende spaties) `Status: shaping` is. Een

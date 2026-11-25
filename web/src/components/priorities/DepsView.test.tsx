@@ -4,6 +4,7 @@ import type { Issue, Repo, Run } from '@/api/lighthouse'
 import { buildGraph } from '@/lib/priorities/derive'
 import { assignColors } from '@/lib/priorities/palette'
 import { DepsView } from './DepsView'
+import type { DepsOrder } from './layout'
 
 afterEach(cleanup)
 
@@ -21,13 +22,15 @@ const iss = (number: number, by: Array<[string, number]> = [], extra: Partial<Is
 })
 const repo = (slug: string, issues: Issue[]): Repo => ({ slug, issues, milestones: [] })
 
-function view(repos: Repo[], selected: string[], runs: Run[] = []) {
+function view(repos: Repo[], selected: string[], runs: Run[] = [], depsOrder?: DepsOrder) {
   const graph = buildGraph(repos, runs)
   const nodes = [...graph.nodes.values()].filter((n) => selected.includes(n.repo))
   const colors = assignColors(
     nodes.flatMap((n) => (n.milestone ? [{ repo: n.repo, number: n.milestone.number }] : [])),
   )
-  return render(<DepsView graph={graph} repos={repos} selected={new Set(selected)} colors={colors} />)
+  const sel = new Set(selected)
+  const result = render(<DepsView graph={graph} repos={repos} selected={sel} colors={colors} depsOrder={depsOrder} />)
+  return { ...result, graph, colors, selected: sel }
 }
 const node = (key: string) => screen.getByTestId(`node-${key}`)
 
@@ -125,8 +128,8 @@ describe('DepsView', () => {
     view([repo(A, [iss(1), iss(2, [[A, 1]]), iss(3, [[A, 1]]), iss(4, [[A, 3]])])], [A])
     // #1 has 3 waiting, #3 has 1, #2 has 0.
     expect(within(node(`${A}#1`)).getByText('3')).toBeTruthy()
-    expect(within(node(`${A}#3`)).queryByTestId('waiting-pill')).toBeNull()
-    expect(within(node(`${A}#2`)).queryByTestId('waiting-pill')).toBeNull()
+    expect(within(node(`${A}#3`)).queryByTestId('card-pill')).toBeNull()
+    expect(within(node(`${A}#2`)).queryByTestId('card-pill')).toBeNull()
   })
 
   it('the pill shows the waiting count; its title carries the weights', () => {
@@ -134,9 +137,77 @@ describe('DepsView', () => {
       [repo(A, [iss(1, [], { factor: 3, prio_weight: 10 }), iss(2, [[A, 1]]), iss(3, [[A, 1]]), iss(4, [[A, 1]])])],
       [A],
     )
-    const pill = within(node(`${A}#1`)).getByTestId('waiting-pill')
+    const pill = within(node(`${A}#1`)).getByTestId('card-pill')
     expect(pill.textContent).toBe('3')
     expect(pill.getAttribute('title')).toBe('3 wait · weight 3 · factor 3 · prio-weight 10')
+  })
+
+  const pillText = (el: HTMLElement) => within(el).queryByTestId('card-pill')?.textContent ?? null
+  const ORDERS: DepsOrder[] = ['prio', 'weight', 'crossings']
+
+  it('bij Prio-weight toont de kaart het prio-gewicht, en geen pil bij 0', () => {
+    view([repo(A, [iss(1, [], { prio_weight: 10 }), iss(2)])], [A], [], 'prio')
+    expect(pillText(screen.getByTestId(`loose-${A}#1`))).toBe('10')
+    expect(within(screen.getByTestId(`loose-${A}#2`)).queryByTestId('card-pill')).toBeNull()
+  })
+
+  it('bij Weight toont de kaart het gewicht, en geen pil bij 0', () => {
+    view([repo(A, [iss(1), iss(2, [[A, 1]])])], [A], [], 'weight')
+    expect(pillText(node(`${A}#1`))).toBe('1')
+    expect(within(node(`${A}#2`)).queryByTestId('card-pill')).toBeNull()
+  })
+
+  it('bij Fewest crossings blijft de pil het aantal wachtenden vanaf 2', () => {
+    view([repo(A, [iss(1), iss(2, [[A, 1]]), iss(3, [[A, 1]]), iss(4, [[A, 3]])])], [A], [], 'crossings')
+    expect(pillText(node(`${A}#1`))).toBe('3')
+    expect(within(node(`${A}#3`)).queryByTestId('card-pill')).toBeNull()
+    expect(within(node(`${A}#2`)).queryByTestId('card-pill')).toBeNull()
+  })
+
+  it('een kaart heeft in elke stand hoogstens één pil', () => {
+    for (const order of ORDERS) {
+      view([repo(A, [iss(1, [], { prio_weight: 10 }), iss(2, [[A, 1]]), iss(3, [[A, 1]]), iss(4, [[A, 1]])])], [A], [], order)
+      expect(within(node(`${A}#1`)).queryAllByTestId('card-pill')).toHaveLength(1)
+      expect(within(node(`${A}#1`)).queryByTestId('waiting-pill')).toBeNull()
+      cleanup()
+    }
+  })
+
+  it('de tooltip noemt in elke stand wachtenden, gewicht, factor en prio-gewicht', () => {
+    for (const order of ORDERS) {
+      view(
+        [repo(A, [iss(1, [], { factor: 3, prio_weight: 10 }), iss(2, [[A, 1]]), iss(3, [[A, 1]]), iss(4, [[A, 1]])])],
+        [A],
+        [],
+        order,
+      )
+      const pill = within(node(`${A}#1`)).getByTestId('card-pill')
+      expect(pill.getAttribute('title')).toBe('3 wait · weight 3 · factor 3 · prio-weight 10')
+      cleanup()
+    }
+  })
+
+  it('wisselen van sortering wisselt het getal zonder herladen', () => {
+    const repos = [repo(A, [iss(1, [], { prio_weight: 10 }), iss(2, [[A, 1]]), iss(3, [[A, 1]]), iss(4, [[A, 1]])])]
+    const { rerender, graph, colors, selected } = view(repos, [A], [], 'prio')
+    expect(pillText(node(`${A}#1`))).toBe('10')
+    rerender(<DepsView graph={graph} repos={repos} selected={selected} colors={colors} depsOrder="weight" />)
+    expect(pillText(node(`${A}#1`))).toBe('3')
+  })
+
+  it('een kaart in No open dependencies toont het prio-gewicht bij Prio-weight', () => {
+    view([repo(A, [iss(1, [], { prio_weight: 7 })])], [A], [], 'prio')
+    expect(pillText(screen.getByTestId(`loose-${A}#1`))).toBe('7')
+  })
+
+  it('bij Weight blijft de pil bij één directe afhankelijke staan', () => {
+    view([repo(A, [iss(1), iss(2, [[A, 1]])])], [A], [], 'weight')
+    expect(pillText(node(`${A}#1`))).toBe('1')
+  })
+
+  it('een vreemde stand valt terug op de pil met het aantal wachtenden', () => {
+    view([repo(A, [iss(1), iss(2, [[A, 1]]), iss(3, [[A, 1]]), iss(4, [[A, 1]])])], [A], [], 'bogus' as DepsOrder)
+    expect(pillText(node(`${A}#1`))).toBe('3')
   })
 
   it('keeps a blocker in a filtered-out repo as a solid grey node, and the column of its dependent', () => {
