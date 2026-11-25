@@ -1,4 +1,4 @@
 ---
 type: fixed
 ---
-Git-paden (`--show-toplevel`, `--git-common-dir`, `--git-dir`, `worktree list`) worden in de hooks, `init`, de worktree-audit en de overige leesplekken omgezet naar de native vorm van het besturingssysteem, zodat ze op Windows kloppen en meldingen native paden tonen (#565).
+Git paths (`--show-toplevel`, `--git-common-dir`, `--git-dir`, `worktree list`) are converted to the operating system's native form in the hooks, `init`, the worktree audit and the other read sites, so they compare correctly on Windows and messages show native paths (#565).
