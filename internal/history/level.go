@@ -14,7 +14,9 @@ const (
 )
 
 var (
-	testCmdRe  = regexp.MustCompile(`\b(?:go\s+test|pytest|npm\s+test|cargo\s+test|lighthouse\s+gate)\b`)
+	// testCmdRe matches a test command only in command position, so `pip install pytest`
+	// or a commit message that names pytest is not a test run.
+	testCmdRe  = regexp.MustCompile(`(?:^|[;&|(\n])\s*(?:\w+=\S*\s+)*(?:go\s+test|(?:uv\s+run\s+|python3?\s+-m\s+)?pytest|npm\s+test|cargo\s+test|lighthouse\s+gate)(?:\s|$|[;&|)])`)
 	codexCmdRe = regexp.MustCompile(`(?:^|[;&|(])\s*(?:\w+=\S*\s+)*codex(?:\s|$)`)
 )
 
@@ -41,14 +43,16 @@ func newChainTracker() *chainTracker { return &chainTracker{tested: map[string]b
 
 func (c *chainTracker) add(r Record, sess string) {
 	for _, cmd := range r.Commands {
-		if testCmdRe.MatchString(cmd) {
-			c.tested[sess] = true
-		}
-		if gitCommitRe.MatchString(cmd) {
+		test := testCmdRe.FindStringIndex(cmd)
+		if commit := gitCommitRe.FindStringIndex(cmd); commit != nil {
 			c.Commits++
-			if c.tested[sess] {
+			// A test earlier in the same command counts; one after the commit does not.
+			if c.tested[sess] || (test != nil && test[0] < commit[0]) {
 				c.CommitsAfterTest++
 			}
+		}
+		if test != nil {
+			c.tested[sess] = true
 		}
 		if codexCmdRe.MatchString(cmd) {
 			c.Codex++

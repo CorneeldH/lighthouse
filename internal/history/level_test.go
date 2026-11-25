@@ -58,3 +58,50 @@ func TestAnalyze_TestInSubagentBeforeCommit(t *testing.T) {
 		t.Fatalf("level %+v", rep.Level)
 	}
 }
+
+func TestChainTracker_TestedCommits(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		cmds   []string
+		tested int
+	}{
+		{"commit message names pytest", []string{`git commit -m "add pytest"`}, 0},
+		{"pip install pytest", []string{"pip install pytest", "git commit -m x"}, 0},
+		{"test then commit in one command", []string{"go test ./... && git commit -m x"}, 1},
+		{"commit then test in one command", []string{"git commit -m x && go test ./..."}, 0},
+		{"test in an earlier call", []string{"go test ./...", "git commit -m x"}, 1},
+		{"commit before the first test", []string{"git commit -m x", "go test ./..."}, 0},
+		{"cargo test", []string{"cd x && cargo test", "git commit -m x"}, 1},
+		{"npm test", []string{"npm test", "git commit -m x"}, 1},
+		{"uv run pytest", []string{"uv run pytest -q", "git commit -m x"}, 1},
+		{"bare pytest", []string{"pytest", "git commit -m x"}, 1},
+		{"lighthouse gate", []string{"lighthouse gate", "git commit -m x"}, 1},
+		{"env prefix", []string{"CI=1 go test ./...", "git commit -m x"}, 1},
+		{"echo go test is not a test", []string{"echo go test", "git commit -m x"}, 0},
+	} {
+		c := newChainTracker()
+		for _, cmd := range tc.cmds {
+			c.add(Record{Commands: []string{cmd}}, "s")
+		}
+		if c.CommitsAfterTest != tc.tested || c.Commits != 1 {
+			t.Errorf("%s: commits %d tested %d, want 1/%d", tc.name, c.Commits, c.CommitsAfterTest, tc.tested)
+		}
+	}
+}
+
+func TestChainTracker_Codex(t *testing.T) {
+	for cmd, want := range map[string]int{
+		"codex exec foo":                  1,
+		"cd x && codex review":            1,
+		"FOO=1 codex exec x":              1,
+		`git commit -m codex`:             0,
+		"echo codex":                      0,
+		`git commit -m "ask codex later"`: 0,
+	} {
+		c := newChainTracker()
+		c.add(Record{Commands: []string{cmd}}, "s")
+		if c.Codex != want {
+			t.Errorf("%q: codex %d, want %d", cmd, c.Codex, want)
+		}
+	}
+}
