@@ -53,7 +53,7 @@ func TestMemoryGate(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			res := MemoryGate(context.Background(), "", "", hook.Payload{Raw: c.raw})
-			if res.Code != c.code && !(c.code == 2 && res.Code == 0) {
+			if res.Code != c.code && (c.code != 2 || res.Code != 0) {
 				t.Fatalf("got code %d, want %d", res.Code, c.code)
 			}
 			switch c.want {
