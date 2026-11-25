@@ -216,6 +216,9 @@ func minimalPayload(t *testing.T, r registration, project, worktree string) map[
 		return editPayload(r.event, filepath.Join(project, "doc.md"), worktree)
 	case "memory-gate":
 		// A write outside memory: the hook passes without reading anything.
+		if r.matcher == "Bash" {
+			return bash("echo hi")
+		}
 		writeFile(t, worktree, "doc.md", "# doc\n")
 		return editPayload(r.event, filepath.Join(worktree, "doc.md"), worktree)
 	case "md-link-check":
