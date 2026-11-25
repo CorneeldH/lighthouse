@@ -12,6 +12,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
 	"time"
 )
 
@@ -95,6 +97,7 @@ func registeredHook(t *testing.T, repo, event, matcher, script string) (string, 
 // on exactly one missing tool.
 func toolDir(t *testing.T, bin string, tools []string, drop string, stubs map[string]string) string {
 	t.Helper()
+	stubbin.RequirePOSIX(t, "symlinks to the real tools and bash stub scripts")
 	dir := t.TempDir()
 	for _, tool := range tools {
 		if tool == drop || tool == "lighthouse" {

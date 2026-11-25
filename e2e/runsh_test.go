@@ -22,6 +22,8 @@ import (
 	"sync"
 	"syscall"
 	"testing"
+
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
 	"time"
 )
 
@@ -31,8 +33,7 @@ var runShTools = []string{
 	"date", "mktemp", "sleep", "chmod", "dirname", "head", "nohup", "setsid",
 }
 
-const fakeGo = `#!/bin/sh
-printf '%s|%s\n' "$(pwd -P)" "$*" >>"$FAKE_GO_LOG"
+const fakeGo = `printf '%s|%s\n' "$(pwd -P)" "$*" >>"$FAKE_GO_LOG"
 if [ "$1" != build ] || [ "$2" != -o ] || [ "$4" != ./cmd/lighthouse ]; then
   echo "fake go: unexpected arguments: $*" >&2
   exit 99
@@ -55,8 +56,7 @@ printf '#!/bin/sh\necho "built-binary $*"\n' >"$3"
 chmod +x "$3"
 `
 
-const fakeLighthouse = `#!/bin/sh
-cat >"$FAKE_LH_STDIN"
+const fakeLighthouse = `cat >"$FAKE_LH_STDIN"
 sleep "${FAKE_LH_SLEEP:-0}"
 if [ -n "${FAKE_LH_SHOW_ROOT:-}" ]; then printf 'root=%s\n' "${LIGHTHOUSE_REPO_ROOT-unset}"; fi
 if [ -n "${FAKE_LH_OUT+x}" ]; then printf '%s' "$FAKE_LH_OUT"; else echo "path-binary $*"; fi
@@ -153,10 +153,10 @@ func newRunShRepo(t *testing.T, o runShOpts) *runShRepo {
 		}
 	}
 	if !o.noGo {
-		writeExec(t, filepath.Join(r.pathDir, "go"), fakeGo, 0o755)
+		stubbin.MakeScript(t, r.pathDir, "go", fakeGo)
 	}
 	if !o.noLH {
-		writeExec(t, filepath.Join(r.pathDir, "lighthouse"), fakeLighthouse, 0o755)
+		stubbin.MakeScript(t, r.pathDir, "lighthouse", fakeLighthouse)
 	}
 	r.goLog = filepath.Join(tmp, "go.log")
 	r.stdin = filepath.Join(tmp, "lh-stdin")
@@ -326,7 +326,7 @@ func age(t *testing.T, path string, d time.Duration) {
 // oldCheckoutBinary is a checkout binary built for another HEAD.
 func (r *runShRepo) oldCheckoutBinary() {
 	r.t.Helper()
-	writeExec(r.t, filepath.Join(r.bin, "lighthouse"), "#!/bin/sh\necho \"old-binary $*\"\n", 0o755)
+	stubbin.MakeScript(r.t, r.bin, "lighthouse", "echo \"old-binary $*\"\n")
 	writeFile(r.t, r.bin, "stamp", "0000000000000000000000000000000000000000\n")
 }
 
