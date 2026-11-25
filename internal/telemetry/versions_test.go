@@ -394,3 +394,23 @@ func TestVersionMarkers_ReadOnlyConnection(t *testing.T) {
 		t.Fatalf("got %+v, %v", got, err)
 	}
 }
+
+func TestVersionChanges_PrereleaseOrderIsSemver(t *testing.T) {
+	db := openDB(t)
+	insertSetup(t, db, sp(0, "7.0.0-rc.1"))
+	insertSetup(t, db, sp(1, "7.0.0-rc.2"))
+	insertSetup(t, db, sp(2, "7.0.0-rc.10"))
+	for _, c := range changes(t, db) {
+		if c.Skip {
+			t.Fatalf("rc.10 after rc.2 must not skip: %+v", c)
+		}
+	}
+
+	db = openDB(t)
+	insertSetup(t, db, sp(0, "7.0.0-rc.10"))
+	insertSetup(t, db, sp(1, "7.0.0-rc.2"))
+	got := changes(t, db)
+	if len(got) != 1 || !got[0].Skip {
+		t.Fatalf("rc.2 after rc.10 must skip: %+v", got)
+	}
+}

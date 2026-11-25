@@ -153,10 +153,10 @@ func dimensionChanges(ctx context.Context, db *sql.DB, dim Dimension) ([]Version
 		}
 		skip := false
 		if v, err := pins.ParseVersion(val); err == nil {
-			if dim != DimModel && s.max != nil && versionLess(v, *s.max) {
+			if dim != DimModel && s.max != nil && v.Compare(*s.max) < 0 {
 				skip = true
 			}
-			if s.max == nil || versionLess(*s.max, v) {
+			if s.max == nil || s.max.Compare(v) < 0 {
 				s.max = &v
 			}
 		}
@@ -170,30 +170,6 @@ func dimensionChanges(ctx context.Context, db *sql.DB, dim Dimension) ([]Version
 	return out, nil
 }
 
-// versionLess orders by major, minor, patch; at equal core a prerelease sorts below the release
-// and two prereleases compare as text (enough to tell "older than seen" apart).
-func versionLess(a, b pins.Version) bool {
-	if a.Major != b.Major {
-		return a.Major < b.Major
-	}
-	if a.Minor != b.Minor {
-		return a.Minor < b.Minor
-	}
-	if a.Patch != b.Patch {
-		return a.Patch < b.Patch
-	}
-	if a.Pre == b.Pre {
-		return false
-	}
-	if a.Pre == "" {
-		return false
-	}
-	if b.Pre == "" {
-		return true
-	}
-	return a.Pre < b.Pre
-}
-
 // VersionMarker is one version change placed on its ISO week for the charts.
 type VersionMarker struct {
 	Week time.Time // Monday 00:00 UTC of the ISO week of the change
@@ -201,7 +177,8 @@ type VersionMarker struct {
 	Text string
 }
 
-// VersionMarkers returns a marker per version change, in the order of VersionChanges. It only reads.
+// VersionMarkers returns a marker per version change, Skip changes included, in the order of
+// VersionChanges. It only reads.
 func VersionMarkers(ctx context.Context, db *sql.DB) ([]VersionMarker, error) {
 	changes, err := VersionChanges(ctx, db)
 	if err != nil {
@@ -239,7 +216,7 @@ func ComponentsFor(d Dimension) []string {
 }
 
 // LatestProposals keeps the last change per (dimension, series). A series whose last change is a
-// Skip gives nothing, not an earlier change.
+// Skip gives nothing, not an earlier change. The output order is the first appearance of each series.
 func LatestProposals(changes []VersionChange) []VersionChange {
 	type key struct {
 		d Dimension
