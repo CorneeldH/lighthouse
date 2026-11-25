@@ -34,6 +34,7 @@ type keyed struct {
 func Analyze(files []SessionFiles, env Env, o AnalyzeOptions) Report {
 	rep := Report{Schema: 1, Sessions: len(files), Findings: []Finding{}}
 	dets := newDetectors(env)
+	chain := newChainTracker()
 	var first, last time.Time
 	for _, s := range files {
 		var recs []keyed
@@ -60,6 +61,7 @@ func Analyze(files []SessionFiles, env Env, o AnalyzeOptions) Report {
 		}
 		sort.SliceStable(recs, func(i, j int) bool { return recs[i].key.Before(recs[j].key) })
 		for _, k := range recs {
+			chain.add(k.rec, s.ID)
 			for _, d := range dets {
 				d.Add(k.rec)
 			}
@@ -78,14 +80,15 @@ func Analyze(files []SessionFiles, env Env, o AnalyzeOptions) Report {
 		}
 		rep.Findings = append(rep.Findings, f)
 	}
-	rep.Level = decideLevel(rep)
-	return rep
-}
-
-// decideLevel is a stub until the level rules land.
-func decideLevel(r Report) Level {
-	if r.Sessions == 0 {
-		return Level{Recommended: "light", Reason: "no history"}
+	c := Counts{Chain: chain.chainCounts, Sessions: rep.Sessions}
+	for _, d := range dets {
+		switch v := d.(type) {
+		case *trunk:
+			c.TrunkPushes, c.KnownPushes = v.Counts()
+		case *workTracking:
+			c.PRs = v.PRs()
+		}
 	}
-	return Level{Recommended: "light", Reason: "not evaluated"}
+	rep.Level = decideLevel(c)
+	return rep
 }
