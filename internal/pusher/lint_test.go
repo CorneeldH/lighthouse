@@ -56,9 +56,7 @@ func fakeTools(t *testing.T, tools map[string]string) {
 	t.Helper()
 	bin := t.TempDir()
 	for name, text := range tools {
-		if err := os.WriteFile(filepath.Join(bin, name), []byte(text), 0o755); err != nil {
-			t.Fatal(err)
-		}
+		stubScript(t, bin, name, text)
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+"/usr/bin"+string(os.PathListSeparator)+"/bin")
 }

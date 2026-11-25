@@ -21,6 +21,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/protocol"
 	"github.com/CorneeldH/lighthouse/internal/runs"
 	"github.com/CorneeldH/lighthouse/internal/store"
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
 )
 
 // fakeForge keeps the comments of issue 1 and the PRs of the branch; it knows nothing else.
@@ -148,10 +149,7 @@ func newRunFix(t *testing.T, review string, scripts map[string]string) *runFix {
 		all[name] = text
 	}
 	for name, text := range all {
-		write(t, filepath.Join(r.bin, name), text)
-		if err := os.Chmod(filepath.Join(r.bin, name), 0o755); err != nil {
-			t.Fatal(err)
-		}
+		stubScript(t, r.bin, name, text)
 	}
 	t.Setenv("PATH", r.bin+string(os.PathListSeparator)+"/usr/bin"+string(os.PathListSeparator)+"/bin")
 	r.cfg = hostconfig.WorkflowPush{TokenFile: token, Review: review, Timeout: 30 * time.Minute,
@@ -331,10 +329,7 @@ func TestPushesTheSHAItReadOnce(t *testing.T) {
 	mover := "#!/bin/sh\ncat >/dev/null\n" +
 		"git -C " + r.wt + " -c user.name=T -c user.email=t@x -c commit.gpgsign=false commit -q --allow-empty -m moved\n" +
 		"printf '%s' '" + approveJSON + "' > \"$1\"\n"
-	write(t, filepath.Join(r.bin, "mover"), mover)
-	if err := os.Chmod(filepath.Join(r.bin, "mover"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	stubScript(t, r.bin, "mover", mover)
 	r.cfg.Reviewers = []hostconfig.Reviewer{rv("supply-chain", "approve"), rv("injection", "mover")}
 	r.run()
 	if moved := r.head(); moved == head {
@@ -815,14 +810,9 @@ func TestPushTokenOnlyInPushCommandEnv(t *testing.T) {
 		t.Fatal(err)
 	}
 	log := filepath.Join(r.dir, "git.log")
-	write(t, filepath.Join(r.bin, "git"), "#!/bin/sh\n{ printf 'ARGV'; printf ' %s' \"$@\"; printf '\\n'; env | sed 's/^/ENV /'; } >> "+log+"\nexec "+real+" \"$@\"\n")
+	stubScript(t, r.bin, "git", "#!/bin/sh\n{ printf 'ARGV'; printf ' %s' \"$@\"; printf '\\n'; env | sed 's/^/ENV /'; } >> "+log+"\nexec "+real+" \"$@\"\n")
 	envLog := filepath.Join(r.dir, "reviewer.env")
-	write(t, filepath.Join(r.bin, "envdump"), "#!/bin/sh\nenv >> "+envLog+"\ncat >/dev/null\nprintf '%s' '"+approveJSON+"' > \"$1\"\n")
-	for _, name := range []string{"git", "envdump"} {
-		if err := os.Chmod(filepath.Join(r.bin, name), 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
+	stubScript(t, r.bin, "envdump", "#!/bin/sh\nenv >> "+envLog+"\ncat >/dev/null\nprintf '%s' '"+approveJSON+"' > \"$1\"\n")
 	r.cfg.Reviewers = []hostconfig.Reviewer{rv("supply-chain", "envdump"), rv("injection", "envdump")}
 	// The pusher's own process carries the forge token for its comments, as tick starts it.
 	t.Setenv("GH_TOKEN", forgeTok)
@@ -1199,6 +1189,14 @@ func TestHandedBackRowGetsNoQuestion(t *testing.T) {
 }
 
 // skipOnWindows skips t on native Windows, where the behaviour under test does not exist.
+// stubScript writes the sh script text (with or without its #!/bin/sh line) as executable name in
+// dir. The stubs of this package imitate POSIX tools, so on Windows the test is skipped.
+func stubScript(t *testing.T, dir, name, text string) {
+	t.Helper()
+	stubbin.RequirePOSIX(t, "the stub "+name+" is a sh script")
+	stubbin.MakeScript(t, dir, name, strings.TrimPrefix(text, "#!/bin/sh\n"))
+}
+
 func skipOnWindows(t *testing.T, why string) {
 	t.Helper()
 	if runtime.GOOS == "windows" {

@@ -373,10 +373,7 @@ func TestMergeTokenOnlyToTheMergeClient(t *testing.T) {
 		t.Fatal(err)
 	}
 	log := filepath.Join(m.dir, "git.log")
-	write(t, filepath.Join(m.bin, "git"), "#!/bin/sh\n{ printf 'ARGV'; printf ' %s' \"$@\"; printf '\\n'; env | sed 's/^/ENV /'; } >> "+log+"\nexec "+real+" \"$@\"\n")
-	if err := os.Chmod(filepath.Join(m.bin, "git"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	stubScript(t, m.bin, "git", "#!/bin/sh\n{ printf 'ARGV'; printf ' %s' \"$@\"; printf '\\n'; env | sed 's/^/ENV /'; } >> "+log+"\nexec "+real+" \"$@\"\n")
 	t.Setenv("GH_TOKEN", forgeTok)
 	m.merge(head)
 	if len(m.merger.calls) != 1 {
