@@ -273,5 +273,6 @@
       "autoUpdate": false
     }
   },
-  "language": "dutch"
+  "language": "dutch",
+  "autoMemoryEnabled": false
 }
