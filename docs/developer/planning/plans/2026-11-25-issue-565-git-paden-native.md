@@ -56,7 +56,7 @@
 **Interfaces:**
 - Verbruikt: `gitpath.Native`.
 
-- [ ] **Stap 1: Schrijf de falende test** in `internal/commitgate/roots_test.go`: de stub (zie `:238-245`) levert `"/repo/root/\n"`-achtige uitvoer met afsluitende newline; assert dat het resultaat `filepath.Clean("/repo/root")` is. Zelfde idee in `maincommitgate_test.go`: assert dat de blokmelding `filepath.Clean(root)` bevat (op Linux gelijk aan nu; het pint de keuze).
+- [ ] **Stap 1: Schrijf de falende test** in `internal/commitgate/roots_test.go`: `stubGit` (`roots_test.go:81-98`) is een sh-script dat faalt of de echte git draait en kan dus geen vaste uitvoer leveren: gebruik een fake-git zoals het `hooks`-pakket (een script op het PATH dat `"/repo/root//\n"` echoot) zodat `Clean` op Linux zichtbaar is; assert `filepath.Clean("/repo/root")`. Zelfde idee in `maincommitgate_test.go`: assert dat de blokmelding `filepath.Clean(root)` bevat (op Linux gelijk aan nu; het pint de keuze).
 - [ ] **Stap 2: Draai** de nieuwe tests — verwacht FAIL waar een plek nog rauw leest, anders alvast PASS en dan de pin als regressiebewaking laten staan.
 - [ ] **Stap 3: Vervang** op elke genoemde regel `strings.TrimSpace(out)` (of rauw gebruik) door `gitpath.Native(out)`. Houd de lege-uitvoer-takken (`if root == ""`) intact; ze werken nu op de genormaliseerde waarde.
 - [ ] **Stap 4: Draai** `go test -race -shuffle=on ./internal/commitgate/ ./internal/hooks/ ./internal/initcmd/` — verwacht PASS.
@@ -66,22 +66,22 @@
 
 **Bestanden (wijzig):**
 - `--show-toplevel`: `internal/codelang/hook.go:189`, `internal/config/config.go:348`, `internal/cli/ask.go:202`, `internal/cli/pins.go:76`, `internal/nodeserve/resolve.go:41`, `internal/postartefact/postartefact.go:254`, `internal/checkpointscan/push.go:128`
-- `--git-common-dir` / `--git-dir`: `internal/worktreeroot/worktreeroot.go:41` (`MainCheckout`), `internal/bashwrites/roots.go:106`, `internal/prbody/scope.go:90`, `internal/agentaudit/env.go:70`, `internal/pins/localplugin.go:100`, `internal/scheduled/start.go:94`, `internal/scheduled/remote.go:103`, `internal/checkpointscan/ledger.go:23`, `internal/workplace/local/prepare.go:166`, `internal/workplace/kennforge/adapter.go:459`, `:468`, `:572`
+- `--git-common-dir` / `--git-dir`: `internal/worktreeroot/worktreeroot.go:41` (`MainCheckout`), `internal/bashwrites/roots.go:106`, `internal/prbody/scope.go:90`, `internal/agentaudit/env.go:70`, `internal/pins/localplugin.go:100`, `internal/scheduled/start.go:90` (`--absolute-git-dir`) en `:94`, `internal/roborev/state.go:52` (`--absolute-git-dir`), `internal/scheduled/remote.go:103`, `internal/checkpointscan/ledger.go:23`, `internal/workplace/local/prepare.go:166`, `internal/workplace/kennforge/adapter.go:459`, `:468`, `:572`
 - Test: `internal/worktreeroot/worktreeroot_test.go`, `internal/workplace/kennforge/adapter_test.go`
 
 **Interfaces:**
 - Verbruikt: `gitpath.Native`. `kennforge/adapter.go:468` en `telemetry_collect.go:255` doen al `filepath.Clean(strings.TrimSpace(..))`: vervang door de helper zodat er één vorm is.
 
-- [ ] **Stap 1: Schrijf de falende test** `TestMainCheckoutTrailingNewline`-achtig in `worktreeroot_test.go` met een echte tijdelijke git-repo (`git init`): `MainCheckout(sub)` geeft het native pad van de repo, zonder newline. Lees hoe `adapter_test.go` zijn git-stub opzet en pin voor `:459` dat het clone-check-pad `filepath.Clean`-vorm heeft.
+- [ ] **Stap 1: Schrijf de falende test** `TestMainCheckoutTrailingNewline`-achtig in `worktreeroot_test.go` met een echte tijdelijke git-repo (`git init`): `MainCheckout(sub)` geeft het native pad van de repo, zonder newline. Lees hoe `adapter_test.go` zijn git-stub opzet en pin voor `:572` (clone-check; `:459` is de linked-worktree-check van git-dir tegen common-dir) dat het pad `filepath.Clean`-vorm heeft.
 - [ ] **Stap 2: Draai** — verwacht PASS of FAIL naargelang; noteer welke.
-- [ ] **Stap 3: Pas elke genoemde plek aan.** Bij een plek die `--path-format=absolute` en `filepath.Dir(common)` combineert (`MainCheckout`): eerst `gitpath.Native`, dan `filepath.Dir`. `internal/levellog/levellog.go:53` **niet** aanpassen (zie randvoorwaarden); voeg daar alleen het uitleg-commentaar toe.
+- [ ] **Stap 3: Pas elke genoemde plek aan.** Waar stdout en stderr in één variabele staan (`hooks/mdlinkcheck.go:84`, `codelang/hook.go:193`, `hooks/worktreecheck.go:67/74`), pas `Native` alleen toe op het succespad, ná de foutentak: nooit op een git-foutmelding. `scheduled/remote.go:103`: houd de bestaande `TrimSuffix`-plus-`ContainsAny("\n\r")`-controle op de ruwe waarde en pas `Native` daarna toe (anders verdwijnt de afwijzing van een afsluitende `\r`). In `scheduled/start.go:90` hasht de digest nu gitDir en commonDir beide in de native vorm. Bij een plek die `--path-format=absolute` en `filepath.Dir(common)` combineert (`MainCheckout`): eerst `gitpath.Native`, dan `filepath.Dir`. `internal/levellog/levellog.go:53` **niet** aanpassen (zie randvoorwaarden); voeg daar alleen het uitleg-commentaar toe.
 - [ ] **Stap 4: Draai** `go test -race -shuffle=on ./...` — verwacht PASS.
 - [ ] **Stap 5: Commit** `fix(core): overige git-paden native lezen (#565)`.
 
 ### Taak 4: `worktree list --porcelain`
 
 **Bestanden:**
-- Wijzig: `internal/worktreeaudit/rows.go:246` (`ParseWorktrees`), `internal/worktreeaudit/collect.go:172`, `internal/workplace/local/worktree.go:36`, `internal/cli/triage_gather.go:221`, `internal/cli/telemetry_collect.go:248`, `internal/telemetry/collect/plan.go:63`
+- Wijzig: `internal/worktreeaudit/rows.go:246` (`ParseWorktrees`; hier gebeurt de omzetting, `collect.go:172` leest alleen de ruwe porcelain en geeft die aan `ParseWorktrees`: daar **geen** `Native` op de hele uitvoer, want dat maakt `refs/heads/x` tot `refs\heads\x` op Windows), `internal/workplace/local/worktree.go:36`, `internal/cli/triage_gather.go:221`, `internal/cli/telemetry_collect.go:248`/`:255`, `internal/telemetry/collect/plan.go:63`
 - Test: `internal/worktreeaudit/twins_test.go` en een nieuwe tabeltest naast `ParseWorktrees`
 
 **Interfaces:**
@@ -89,7 +89,7 @@
 
 - [ ] **Stap 1: Lees eerst** `twins_test.go` en bepaal of de Python-twin paden vergelijkt. Zo ja: houd de twin-uitvoer op Linux gelijk (de helper verandert daar niets) en noteer dat in het commit-bericht.
 - [ ] **Stap 2: Schrijf de falende test** `TestParseWorktreesNative`: invoer `worktree /a b/c\nHEAD x\nbranch refs/heads/y\n\n` geeft pad `"/a b/c"` (Linux-gelijk), en op `windows` met `C:/a b/c` → `` `C:\a b\c` `` (guard met `runtime.GOOS`).
-- [ ] **Stap 3: Pas** de vijf leesplekken aan; waar ze al `filepath.Clean(strings.TrimSpace(..))` doen, vervang door de helper.
+- [ ] **Stap 3: Pas** de leesplekken aan (de zes bestanden hierboven, `collect.go` uitgezonderd; `telemetry_collect.go:248/255` hoort bij deze taak, taak 3 raakt het niet aan); waar ze al `filepath.Clean(strings.TrimSpace(..))` doen, vervang door de helper.
 - [ ] **Stap 4: Draai** `go test -race -shuffle=on ./...` — verwacht PASS.
 - [ ] **Stap 5: Commit** `fix(worktreeaudit): worktree-paden native (#565)`.
 
@@ -100,8 +100,8 @@
 - Maak: `changelog.d/issue-565-git-paden-native.md` (volg het formaat van de bestanden in `changelog.d/`)
 - Wijzig: de ontwikkelaarsdocumentatie waar paden/hooks beschreven staan (zoek met `grep -rn "show-toplevel" docs/`); één alinea: "git-paden gaan via `internal/gitpath.Native`; meldingen tonen native paden".
 
-- [ ] **Stap 1: Schrijf** `TestEveryGitPathReadUsesGitpath`: loop over `internal/**/*.go` zonder `_test.go`, `testdata` en `internal/gitpath`; voor elk bestand met een van de strings `"--show-toplevel"`, `"--git-common-dir"`, `"--git-dir"` of `"worktree", "list"` moet het bestand `internal/gitpath` importeren, of op een allowlist staan met reden (`levellog.go`: ruwe hash; `gitinvocations/find.go`, `pusher/floor.go`, `scheduled/remote.go:151`: bouwen alleen argumenten; `direction.go`, `checkinstructions.go`, `checkhooks.go`: noemen het alleen in een melding).
-- [ ] **Stap 2: Draai** — verwacht PASS als taken 2–4 volledig waren; een FAIL wijst een gemiste plek aan: repareer die.
+- [ ] **Stap 1: Schrijf** `TestEveryGitPathReadUsesGitpath`: loop over `internal/**/*.go` zonder `_test.go`, `testdata` en `internal/gitpath`; voor elk bestand met een van de strings `"--show-toplevel"`, `"--git-common-dir"`, `"--git-dir"`, `"--absolute-git-dir"` of `"worktree", "list"` moet het bestand `internal/gitpath` importeren, of op een allowlist staan met reden (`levellog.go`: ruwe hash; `worktreeaudit/collect.go`: leest alleen de ruwe porcelain, de omzetting staat in `rows.go` (dat de helper wel importeert); `gitinvocations/find.go`, `pusher/floor.go`, `scheduled/remote.go:151`: bouwen alleen argumenten; `direction.go`, `checkinstructions.go`, `checkhooks.go`: noemen het alleen in een melding).
+- [ ] **Stap 2: Draai** — verwacht PASS als taken 2–4 volledig waren (met `collect.go` op de allowlist; geef `gitpath` nooit aan `collect.go` om de test groen te krijgen). De test controleert één import per bestand: een tweede ruwe leesplek in een bestand dat al importeert (`hooks/maincommitgate.go:110` naast `:192`) vang je met de pins uit taak 2, niet met deze test; een FAIL wijst een gemiste plek aan: repareer die.
 - [ ] **Stap 3: Mutatiecheck:** haal tijdelijk de import uit één bestand, zie de test rood worden, zet terug.
 - [ ] **Stap 4: Schrijf** changelog (Nederlands) en documentatie.
 - [ ] **Stap 5: Draai** `go test -race -shuffle=on ./...` en `lighthouse imports check` — verwacht PASS.
