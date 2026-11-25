@@ -514,3 +514,40 @@ func TestServeTokenFileMustBeAbsolute(t *testing.T) {
 		t.Fatalf("err = %v, want one naming serve_token_file", err)
 	}
 }
+
+func TestLoadTelemetry(t *testing.T) {
+	cases := []struct {
+		name, path, want string
+	}{
+		{"no path", "", ""},
+		{"missing file", filepath.Join(t.TempDir(), "nope.toml"), ""},
+		{"no table", writeHost(t, "[dispatch]\nslots = 2\n"), ""},
+		{"set", writeHost(t, "[telemetry]\nproposals_repo = \"o/r\"\n"), "o/r"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := LoadTelemetry(c.path)
+			if err != nil || got.ProposalsRepo != c.want {
+				t.Errorf("LoadTelemetry = %+v, %v; want %q", got, err, c.want)
+			}
+		})
+	}
+	for name, body := range map[string]string{
+		"no slash":    "[telemetry]\nproposals_repo = \"nope\"\n",
+		"three parts": "[telemetry]\nproposals_repo = \"a/b/c\"\n",
+		"empty part":  "[telemetry]\nproposals_repo = \"a/\"\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := LoadTelemetry(writeHost(t, body))
+			if err == nil || !strings.Contains(err.Error(), "proposals_repo") {
+				t.Errorf("err = %v, want one naming proposals_repo", err)
+			}
+		})
+	}
+	t.Run("unknown key", func(t *testing.T) {
+		_, err := LoadTelemetry(writeHost(t, "[telemetry]\nproposal_repo = \"o/r\"\n"))
+		if err == nil || !strings.Contains(err.Error(), "proposal_repo") {
+			t.Errorf("err = %v, want one naming the key", err)
+		}
+	})
+}
