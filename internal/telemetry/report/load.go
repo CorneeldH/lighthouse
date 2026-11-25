@@ -86,7 +86,10 @@ type Recovery struct {
 
 // QuestionCounts splits the questions of a trajectory by source: a run of the
 // dispatcher or an interactive session.
-type QuestionCounts struct{ Dispatcher, Transcript int }
+type QuestionCounts struct {
+	Dispatcher int `json:"dispatcher"`
+	Transcript int `json:"transcript"`
+}
 
 // Cohorts holds, per repo and component, the ran_at of the first linked
 // review_runs row of that component.

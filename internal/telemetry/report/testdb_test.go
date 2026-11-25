@@ -138,13 +138,19 @@ func (f *fixture) addSetup(o owner, lane, model, harness string) {
 // addUsage records the usage of one model; a nil cost is unpriced.
 func (f *fixture) addUsage(o owner, model string, tokens int64, cost *float64, kind string) {
 	f.t.Helper()
+	f.addUsageAt(o, model, tokens, cost, kind, t0)
+}
+
+// addUsageAt is addUsage with the recorded_at of the row.
+func (f *fixture) addUsageAt(o owner, model string, tokens int64, cost *float64, kind string, recorded time.Time) {
+	f.t.Helper()
 	run, session := o.args()
 	var k any
 	if cost != nil {
 		k = kind
 	}
 	f.exec(`INSERT INTO usage (source, source_id, recorded_at, run_id, session_id, model, input_tokens, cost, cost_kind)
-		VALUES ('fx', ?, ?, ?, ?, ?, ?, ?, ?)`, f.sourceID(), stampOf(t0), run, session, model, tokens, cost, k)
+		VALUES ('fx', ?, ?, ?, ?, ?, ?, ?, ?)`, f.sourceID(), stampOf(recorded), run, session, model, tokens, cost, k)
 }
 
 // addReview records a linked review run of component at ranAt.
