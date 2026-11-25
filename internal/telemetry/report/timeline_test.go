@@ -15,7 +15,7 @@ func timeline(t *testing.T, db *sql.DB, now time.Time, f Filter) TimelineReport 
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	r, err := Timeline(d, db, f)
+	r, err := Timeline(context.Background(), d, db, f)
 	if err != nil {
 		t.Fatalf("Timeline: %v", err)
 	}
@@ -146,5 +146,21 @@ func TestTimelineFilterByRepo(t *testing.T) {
 	if fmtF(w.Cost) != "1" || fmtI(w.Questions) != "1" || w.Closed != nil {
 		t.Errorf("filtered week = cost %s, questions %s, closed %s; want 1, 1, nil",
 			fmtF(w.Cost), fmtI(w.Questions), fmtI(w.Closed))
+	}
+}
+
+func TestTimelineStopsOnCancelledContext(t *testing.T) {
+	db, f := newFixture(t)
+	tid := f.addTrajectory("o/r", 1)
+	run := f.addRun(tid, "standard", at(0), at(10))
+	f.addUsage(ofRun(run), "opus", 10, fp(1), "estimate")
+	d, err := Load(context.Background(), db, at(60))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := Timeline(ctx, d, db, Filter{}); err == nil {
+		t.Fatal("Timeline with a cancelled context: no error; want the context error")
 	}
 }

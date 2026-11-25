@@ -43,7 +43,7 @@ func (r *Reader) Timeline(ctx context.Context, f Filter) (TimelineReport, error)
 	if err != nil {
 		return TimelineReport{}, err
 	}
-	return Timeline(d, r.db, f)
+	return Timeline(ctx, d, r.db, f)
 }
 
 // Trajectories lists the trajectories under f.

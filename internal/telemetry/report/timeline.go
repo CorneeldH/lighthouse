@@ -85,7 +85,7 @@ func (s *series) int(w time.Time) *int {
 // Timeline builds the weekly timeline of d under f, reading the priced usage
 // and the questions from db. The weeks run from the first week of any series
 // to the week of d.Now (or the last week with data, if later).
-func Timeline(d *Dataset, db *sql.DB, f Filter) (TimelineReport, error) {
+func Timeline(ctx context.Context, d *Dataset, db *sql.DB, f Filter) (TimelineReport, error) {
 	r := TimelineReport{Weeks: []Week{}, Markers: []Marker{}}
 	if len(d.Missing) > 0 {
 		return r, nil
@@ -106,7 +106,7 @@ func Timeline(d *Dataset, db *sql.DB, f Filter) (TimelineReport, error) {
 			}
 		}
 	}
-	l := loader{ctx: context.Background(), db: db}
+	l := loader{ctx: ctx, db: db}
 	err := l.each("usage", `SELECT `+ownerTrajectory+`, x.recorded_at, x.cost FROM usage x
 		LEFT JOIN runs r ON r.id = x.run_id LEFT JOIN sessions s ON s.id = x.session_id
 		WHERE x.cost IS NOT NULL`, func(rows *sql.Rows) error {
