@@ -47,6 +47,46 @@ met een milestone) of `always` (altijd); leeg betekent dat het label geen aanmaa
 dagelijkse job `map-planned` zet zo'n issue als `planned` item op de kaart, of stelt een vraag
 als de plek onduidelijk is; `write-issue` legt plek en wens vast bij het aanmaken.
 
+Welke velden de plek op de kaart draagt, staat per soort item in een tabel:
+
+| Label | Item | Place | From issue |
+|---|---|---|---|
+| `loop` | stap (`chips`) | `phase`, `after`, `kind`, `trigger`, `label` | `what` |
+| `loop` | handoff (`handoffs`) | `from`, `to` | |
+
+- *Item*: de soort item, met tussen haakjes en backticks de plek in het document waar zo'n item
+  staat. Voor `loop.json` is dat de array.
+- *Place*: wat de plek onder `### Op de kaart` noemt. `write-issue` vraagt het aan wie het issue
+  schrijft.
+- *From issue*: de velden die `map-planned` uit titel en body van het issue overneemt, in de taal
+  van het document. Vertalen telt als overnemen, niet als verzinnen. Leeg: het item heeft er geen.
+- `status` en `issue` staan niet in de tabel: die zet `map-planned` altijd (`planned` en het
+  nummer van het issue).
+
+Per soort item geldt:
+
+- **Stap.**
+  - `phase` is een `id` uit `phases`; `kind` en `trigger` zijn waarden die andere chips al dragen.
+  - `after` is geen veld van de chip maar een verwijzing: het `id` van de stap waarna de nieuwe
+    komt. De job neemt de nieuwe stap op in elke route waarvan `chips` dat `id` bevat, direct na
+    het eerste voorkomen. Een `after` die op geen enkele route staat, of waarvan de `phase` na de
+    eigen `phase` van de nieuwe stap ligt, is geen geldige plek.
+  - `row` is de eerstvolgende vrije rij in die fase; andere chips schuiven niet.
+  - `label` is een korte Engelse naam in kleine letters met streepjes, zoals de bestaande `id`'s;
+    `write-issue` vraagt hem. `id` is gelijk aan `label`; een `label` dat al een `id` is, is geen
+    geldige plek.
+  - `what` is één Engelse zin die de job uit titel en body van het issue overneemt.
+  - `how`, `when` en `without` blijven weg tot de PR die de stap levert.
+- **Handoff.** `from` en `to` zijn `id`'s van stappen die samen op één route liggen, `from` eerst.
+  Een stap die hetzelfde issue nieuw toevoegt, telt mee met zijn `label`, dat zijn `id` wordt.
+- **Route.** Krijgt nog geen gepland item.
+- **Vorm.** Eén regel per item onder `### Op de kaart`: `<item>: <veld> <waarde>, <veld> <waarde>`,
+  bijvoorbeeld `handoff: from close-issue, to close-followup`. Een issue met een nieuwe stap en een
+  handoff ernaartoe heeft twee regels; elke regel is compleet.
+
+De test `docs/site/test/loop.test.mjs` houdt de tabel tegen `loop.json`: een array die er niet is,
+of een veld dat op geen enkel item voorkomt (behalve `after`), laat hem falen.
+
 `go run ./ci/loop_roadmap` en de workflow `loop-roadmap` (`.github/workflows/loop-roadmap.yml`)
 controleren dit in twee standen:
 
