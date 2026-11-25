@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/CorneeldH/lighthouse/internal/protocol"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 )
 
@@ -121,6 +122,45 @@ func TestReviewSkip(t *testing.T) {
 	cmd, key = ReviewSkip("/lighthouse-start-issue 7", repoconfig.Controller{})
 	if cmd != "/lighthouse-start-issue 7" || key != "" {
 		t.Fatalf("other: %q %q", cmd, key)
+	}
+}
+
+func TestReviewSkipOnLightRepo(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".lighthouse"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "lighthouse.toml"), []byte("[forge]\nrepo = \"o/r\"\n[controller]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	comps := "level = \"light\"\nsince = \"2026-01-01T00:00:00Z\"\n[components]\n\"skill:review-spec\" = \"off\"\n\"skill:review-plan\" = \"off\"\n"
+	if err := os.WriteFile(filepath.Join(dir, ".lighthouse", "components.toml"), []byte(comps), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r, err := repoconfig.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Controller == nil {
+		t.Fatal("no [controller]")
+	}
+	cmd, key := ReviewSkip("/lighthouse-review-spec /a/b.md", *r.Controller)
+	if cmd != "/superpowers:writing-plans /a/b.md" || key != "skip_spec_review" {
+		t.Fatalf("spec: %q %q", cmd, key)
+	}
+	cmd, key = ReviewSkip("/lighthouse-review-plan /a/p.md", *r.Controller)
+	if cmd != "/superpowers:subagent-driven-development /a/p.md" || key != "skip_plan_review" {
+		t.Fatalf("plan: %q %q", cmd, key)
+	}
+
+	installed := map[string]bool{"lighthouse-start-issue": true}
+	got, skip := judgeHandoff(RepoInput{Controller: *r.Controller, Installed: installed}, 7,
+		protocol.Handoff{Next: "/lighthouse-review-spec /a/b.md"})
+	if got.Verdict == VerdictSkillMissing {
+		t.Fatalf("verdict %+v: the review skill is not needed on a light repo", got)
+	}
+	if skip != "skip_spec_review" {
+		t.Fatalf("skip %q", skip)
 	}
 }
 
