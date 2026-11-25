@@ -5,6 +5,13 @@ packages = ["core", "go", "node"]
 
 [[unit]]
 kind = "file"
+path = ".agents/skills/lighthouse-architecture-scan/SKILL.md"
+package = "core"
+version = "dev"
+sha256 = "cb8d6749b927697fec5f74664ff6db604ef2450ee9c426375f9349d1d1628a62"
+
+[[unit]]
+kind = "file"
 path = ".agents/skills/lighthouse-audit-agent-config/SKILL.md"
 package = "core"
 version = "dev"
@@ -451,6 +458,13 @@ sha256 = "d5ab47d5af8dfec5a3c8aa1ef64555bce9bb5fac3cce1ffa8a4d5e72f68e689d"
 
 [[unit]]
 kind = "file"
+path = ".claude/skills/lighthouse-architecture-scan/SKILL.md"
+package = "core"
+version = "dev"
+sha256 = "cb8d6749b927697fec5f74664ff6db604ef2450ee9c426375f9349d1d1628a62"
+
+[[unit]]
+kind = "file"
 path = ".claude/skills/lighthouse-audit-agent-config/SKILL.md"
 package = "core"
 version = "dev"
@@ -664,7 +678,7 @@ kind = "file"
 path = ".lighthouse/headings.toml"
 package = "core"
 version = "dev"
-sha256 = "0deb70a6780540b982b26f5754c6e56ae8657c2cb2237ab4a2fe17c16770c483"
+sha256 = "b1fb1ff43db75c041eb8ab7b2bec1bf6665e92cee34a3a2889d655be36adbbb8"
 
 [[unit]]
 kind = "block"

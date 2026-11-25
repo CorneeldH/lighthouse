@@ -121,3 +121,14 @@ func TestLoadScheduleAcceptsMapPlanned(t *testing.T) {
 		t.Errorf("job = %q", r.Schedules[0].Job)
 	}
 }
+
+func TestScheduleAcceptsArchitectureScan(t *testing.T) {
+	// Fails if architecture-scan is missing from scheduleJobs: its schedule would not load.
+	r, err := Load(write(t, "[forge]\nrepo = \"o/r\"\n[[schedule]]\nname = \"architecture-scan\"\njob = \"architecture-scan\"\ncron = \"0 5 1 * *\"\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.Schedules[0].Job != "architecture-scan" {
+		t.Errorf("job = %q", r.Schedules[0].Job)
+	}
+}

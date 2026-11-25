@@ -170,6 +170,12 @@ path = "pack/core/skills/map-planned/SKILL.md"
 new = true
 
 [[file]]
+# Derived from mattpocock/skills (MIT, © Matt Pocock), skills/engineering/improve-codebase-architecture,
+# through the scan skill of personal_ai_agent; the upstream pin is in the front matter.
+path = "pack/core/skills/architecture-scan/SKILL.md"
+new = true
+
+[[file]]
 path = "pack/core/skills/audit-worktrees/SKILL.md"
 new = true
 

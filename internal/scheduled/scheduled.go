@@ -16,11 +16,13 @@ import (
 
 // Verdict is the outcome of a job's Go gate. Skip is non-empty when the slot is not worth a run;
 // it is the reason. Mode and Args select the job's slash-command variant, Score is the gate's
-// measure (for logs and the run row).
+// measure (for logs and the run row). RunID is the id of the run, set by the gate of a job that
+// needs one in its output (the architecture scan puts it in its decision issue).
 type Verdict struct {
 	Skip       string
 	Mode, Args string
 	Score      int
+	RunID      string
 }
 
 // LaunchPlan says how the agent of a scheduled run starts.
