@@ -204,7 +204,11 @@ test('telemetry: tab shows components, timeline, trajectories and coverage', asy
   const planReview = page.getByRole('region', { name: 'plan_review', exact: true })
   await expect(planReview).toContainText(CORRELATION)
   // The one trajectory has a plan review: it is in the "with" group with one review that found something.
-  await expect(planReview.getByRole('row').filter({ has: page.getByRole('rowheader', { name: 'with', exact: true }) })).toContainText('100%')
+  // The row header also carries the group size, so match "with" as a whole word ("without" is the other group).
+  const withRow = planReview.getByRole('row').filter({ has: page.getByRole('rowheader', { name: /^with\b/ }) })
+  await expect(withRow).toContainText('100%')
+  await expect(withRow).toContainText('1 trajectories · 1 reviews')
+  await expect(planReview).toContainText('with: 1 findings (major 1), 0 left open, 0 undecided')
   // Review costs are not measured in the block itself, not only in Coverage.
   await expect(planReview).toContainText('not measured — review costs are not recorded')
   await expect(planReview.getByTitle('Comparison label')).toHaveText('correlation')
