@@ -195,7 +195,7 @@ func runMeasureRecovery(ctx context.Context, env measureRecoveryEnv, dir, dbPath
 // in the window. A forge error, a missing marker or a missing label leaves the old value and
 // writes one `traits #<issue>: <reason>` line; the exit code does not change.
 func runTraitPass(ctx context.Context, f recoveryForge, src telemetry.GitSource, db *sql.DB, repo repoconfig.Repo, now time.Time, days int, out io.Writer) error {
-	targets, err := telemetry.TraitTargets(ctx, db, repo.Slug, now, days)
+	targets, err := telemetry.TraitTargets(ctx, db, repo.Slug, now, days, repo.Labels.AreaPrefix != "")
 	if err != nil {
 		return err
 	}

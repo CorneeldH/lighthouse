@@ -486,3 +486,21 @@ func TestTraitPassSkipsSettledTrajectory(t *testing.T) {
 		t.Errorf("forge reads: %d issue, %d comments, want none for a settled trajectory", r.fake.issueCalls, r.fake.commCalls)
 	}
 }
+
+func TestTraitPassWithoutAreaPrefixSettlesWithNullArea(t *testing.T) {
+	r := newMRRig(t)
+	if code, _, errOut := r.run(r.base()...); code != 0 {
+		t.Fatalf("first run: exit %d, stderr %q", code, errOut)
+	}
+	// No area prefix: the area stays NULL, and that must not keep the trajectory a target.
+	r.exec(`UPDATE trajectories SET route = '2', area = NULL`)
+	r.exec(`UPDATE recoveries SET code_lines = 1 WHERE code_lines IS NULL`)
+	r.fake.issueCalls, r.fake.commCalls = 0, 0
+	r.fake.merged = nil
+	if code, out, errOut := r.run(r.base("--days", "1")...); code != 0 || out != "" {
+		t.Fatalf("exit %d, out %q, stderr %q", code, out, errOut)
+	}
+	if r.fake.issueCalls != 0 || r.fake.commCalls != 0 {
+		t.Errorf("forge reads: %d issue, %d comments, want none without an area prefix", r.fake.issueCalls, r.fake.commCalls)
+	}
+}

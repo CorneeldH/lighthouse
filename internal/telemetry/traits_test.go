@@ -176,7 +176,7 @@ func TestTraitTargets(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	got, err := TraitTargets(ctx, db, "o/r", now, 30)
+	got, err := TraitTargets(ctx, db, "o/r", now, 30, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,5 +196,32 @@ func TestTraitTargets(t *testing.T) {
 	}
 	if b.NeedsFill || b.InWindow || b.FirstReviewAt != nil {
 		t.Errorf("issue 4 = %+v", b)
+	}
+}
+
+func TestTraitTargetsAreaCountsOnlyWithPrefix(t *testing.T) {
+	ctx := context.Background()
+	db := openDB(t)
+	old := RecoveryRecord{
+		Origin: Origin{Source: "recovery", SourceID: "o/r#8", RecordedAt: t0},
+		Repo:   "o/r", Issue: 4,
+		Recovery: Recovery{PR: 8, MergedAt: mergedAt.Add(-90 * 24 * time.Hour), Status: RecoveryNone},
+	}
+	if _, _, err := RecordRecovery(ctx, db, old); err != nil {
+		t.Fatal(err)
+	}
+	// Route and size are known; the area stays NULL because the repo has no area prefix.
+	if err := RecordTraits(ctx, db, Traits{Repo: "o/r", Issue: 4, Route: strp("1"), CodeLines: map[int]int{8: 5}}); err != nil {
+		t.Fatal(err)
+	}
+	now := mergedAt.Add(24 * time.Hour)
+	for _, withArea := range []bool{true, false} {
+		got, err := TraitTargets(ctx, db, "o/r", now, 30, withArea)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(got) != 1 || got[0].NeedsFill != withArea {
+			t.Errorf("withArea %v: targets = %+v; want NeedsFill %v", withArea, got, withArea)
+		}
 	}
 }

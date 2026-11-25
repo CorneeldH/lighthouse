@@ -108,20 +108,22 @@ type TraitTarget struct {
 	Repo          string
 	Issue         int
 	PRs           []int
-	NeedsFill     bool       // route, area or the code lines of a PR are NULL
+	NeedsFill     bool       // route, area (only when it counts) or the code lines of a PR are NULL
 	InWindow      bool       // a PR merged within the window
 	FirstReviewAt *time.Time // the smallest review run time of the trajectory
 	LastMergedAt  time.Time
 }
 
 // TraitTargets lists the trajectories of repo with a recovery row; InWindow
-// looks `days` back from now.
-func TraitTargets(ctx context.Context, db *sql.DB, repo string, now time.Time, days int) ([]TraitTarget, error) {
+// looks `days` back from now. withArea says whether a NULL area counts toward
+// NeedsFill: a repo without an area prefix never fills it, so it would stay a
+// target forever.
+func TraitTargets(ctx context.Context, db *sql.DB, repo string, now time.Time, days int, withArea bool) ([]TraitTarget, error) {
 	rows, err := db.QueryContext(ctx, `SELECT t.issue, r.pr, r.merged_at, r.code_lines IS NULL,
-			t.route IS NULL OR t.area IS NULL,
+			t.route IS NULL OR (? AND t.area IS NULL),
 			(SELECT MIN(ran_at) FROM review_runs WHERE trajectory_id = t.id)
 		FROM trajectories t JOIN recoveries r ON r.trajectory_id = t.id
-		WHERE t.repo = ? ORDER BY t.issue, r.pr`, repo)
+		WHERE t.repo = ? ORDER BY t.issue, r.pr`, withArea, repo)
 	if err != nil {
 		return nil, fmt.Errorf("telemetry: trait targets: %w", err)
 	}
