@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
 	tri "github.com/CorneeldH/lighthouse/internal/triage"
 )
 
@@ -16,17 +17,15 @@ import (
 // its cwd into dir, then runs body.
 func fakeClaude(t *testing.T, body string) (dir string) {
 	t.Helper()
+	stubbin.RequirePOSIX(t, "for loop over \"$@\", stdin through cat and pwd")
 	dir = t.TempDir()
 	bin := t.TempDir()
-	script := "#!/bin/sh\n" +
-		"for a in \"$@\"; do printf '%s\\0' \"$a\"; done > " + filepath.Join(dir, "args") + "\n" +
+	script := "for a in \"$@\"; do printf '%s\\0' \"$a\"; done > " + filepath.Join(dir, "args") + "\n" +
 		"cat > " + filepath.Join(dir, "stdin") + "\n" +
 		"pwd > " + filepath.Join(dir, "cwd") + "\n" +
 		body + "\n"
-	if err := os.WriteFile(filepath.Join(bin, "claude"), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	stubbin.MakeScript(t, bin, "claude", script)
+	stubbin.Prepend(t, bin)
 	return dir
 }
 
