@@ -424,3 +424,27 @@ func TestParseAppServerLimitSelection(t *testing.T) {
 		})
 	}
 }
+
+func TestCodexStateCredits(t *testing.T) {
+	tests := []struct {
+		name string
+		raw  json.RawMessage
+		want *ResetCredits
+	}{
+		{"nil", nil, nil},
+		{"null", json.RawMessage("null"), nil},
+		{"zero", json.RawMessage(`{"available":0,"expires":[]}`), &ResetCredits{Available: 0, Expires: []string{}}},
+		{"two", json.RawMessage(`{"available":2,"expires":["2026-12-01T10:00:00Z","2026-12-09T10:00:00Z"]}`),
+			&ResetCredits{Available: 2, Expires: []string{"2026-12-01T10:00:00Z", "2026-12-09T10:00:00Z"}}},
+		{"unreadable", json.RawMessage(`{"available":"x"}`), nil},
+		{"no expires key", json.RawMessage(`{"available":1}`), &ResetCredits{Available: 1, Expires: []string{}}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := CodexState{ResetCredits: tc.raw}.Credits()
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("Credits() = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
