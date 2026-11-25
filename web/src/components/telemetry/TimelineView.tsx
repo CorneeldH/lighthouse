@@ -131,6 +131,25 @@ export function TimelineView({ filter }: { filter: TelemetryFilter }): JSX.Eleme
               ))}
             </tbody>
           </table>
+          <table aria-label="Closed and recovered per week" className="text-sm">
+            <caption className="text-left text-xs text-muted-foreground">Trajectories closed per week and how many of them needed recovery</caption>
+            <thead>
+              <tr className="text-left">
+                <th scope="col" className="pr-4">Week</th>
+                <th scope="col" className="pr-4">Closed</th>
+                <th scope="col">Recovered</th>
+              </tr>
+            </thead>
+            <tbody>
+              {weeks.map((w) => (
+                <tr key={w.start}>
+                  <th scope="row" className="pr-4 font-normal">{w.start}</th>
+                  <td className="pr-4">{cell(w.closed)}</td>
+                  <td>{cell(w.recovered)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
           {markers.length > 0 && (
             <ul className="sr-only">
               {markers.map((m, i) => (

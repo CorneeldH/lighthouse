@@ -89,7 +89,52 @@ describe('TimelineView', () => {
   })
 })
 
+describe('TimelineView closed and recovered', () => {
+  it('shows closed and recovered per week in a visible table, null as not measured and 0 as 0', async () => {
+    const body: TimelineReport = {
+      weeks: [
+        { start: '2026-01-05', cost: 1, questions: null, closed: null, recovered: null },
+        { start: '2026-01-12', cost: 1, questions: null, closed: 3, recovered: 0 },
+      ],
+      markers: [],
+    }
+    renderWith(body, <TimelineView filter={{}} />)
+    const table = await screen.findByRole('table', { name: 'Closed and recovered per week' })
+    expect(table.className).not.toContain('sr-only')
+    const row = (await screen.findAllByRole('row')).find((r) => r.textContent?.startsWith('2026-01-12') && r.closest('table') === table)
+    expect(row?.textContent).toBe('2026-01-1230')
+    expect(table.textContent).toContain('not measured')
+  })
+})
+
 describe('CoverageView', () => {
+  it('does not repeat not measured from the note', async () => {
+    const body: CoverageReport = {
+      not_migrated: false,
+      lines: [
+        { key: 'task_review', reason: 'task_review: no ledger', count: null, note: 'not measured; 3 indexed ledger findings' },
+        { key: 'final_review', reason: 'final_review: no source', count: null, note: 'not measured' },
+        { key: 'harness_codex', reason: 'Codex: no source', count: null, note: 'not measured until Explore/exploit' },
+      ],
+    }
+    const { container } = renderWith(body, <CoverageView filter={{}} />)
+    await screen.findByText('task_review: no ledger')
+    expect(container.textContent).not.toMatch(/not measured\s*not measured/)
+    expect(screen.getByText('3 indexed ledger findings')).toBeTruthy()
+    expect(screen.getByText('until Explore/exploit')).toBeTruthy()
+    expect(screen.getAllByText('not measured')).toHaveLength(3)
+  })
+
+  it('shows the missing tables of a not-migrated database', async () => {
+    const body: CoverageReport = {
+      not_migrated: true,
+      lines: [{ key: 'not_migrated', reason: 'database not migrated', count: null, note: 'missing tables: review_runs' }],
+    }
+    renderWith(body, <CoverageView filter={{}} />)
+    expect(await screen.findByText('database not migrated')).toBeTruthy()
+    expect(screen.getByText('missing tables: review_runs')).toBeTruthy()
+  })
+
   it('shows not measured for a null count, never 0', async () => {
     const body: CoverageReport = {
       not_migrated: false,
