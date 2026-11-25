@@ -78,8 +78,8 @@ func TestMigrateTwice(t *testing.T) {
 	if !reflect.DeepEqual(schema1, schema2) || v1 != v2 {
 		t.Errorf("schema changed on second open:\n%v (v%d)\n%v (v%d)", schema1, v1, schema2, v2)
 	}
-	if v2 != 13 {
-		t.Errorf("user_version = %d, want 13", v2)
+	if v2 != 14 {
+		t.Errorf("user_version = %d, want 14", v2)
 	}
 	rows, err := s.DB.Query(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name`)
 	if err != nil {
@@ -94,7 +94,7 @@ func TestMigrateTwice(t *testing.T) {
 		tables = append(tables, name)
 	}
 	_ = rows.Close()
-	if want := []string{"action_failures", "findings", "meta", "recoveries", "recovery_items", "runs", "schedule_slots", "sessions", "setups", "tick_state", "trajectories", "trajectory_events", "usage"}; !reflect.DeepEqual(tables, want) {
+	if want := []string{"action_failures", "findings", "meta", "recoveries", "recovery_items", "review_runs", "runs", "schedule_slots", "sessions", "setups", "tick_state", "trajectories", "trajectory_events", "usage"}; !reflect.DeepEqual(tables, want) {
 		t.Errorf("tables = %v, want %v", tables, want)
 	}
 	// column -> primary key position (0 = not part of the key)
@@ -1126,5 +1126,40 @@ func TestTrajectoryEventsConstraints(t *testing.T) {
 		if _, err := s.DB.Exec(ins, c.source, c.sourceID, c.run, c.session, c.kind, c.ref); err == nil {
 			t.Errorf("%s: insert accepted, want constraint error", c.name)
 		}
+	}
+}
+
+func TestMigration0014AddsReviewRunsAndTraits(t *testing.T) {
+	ctx := context.Background()
+	s, err := Open(ctx, filepath.Join(t.TempDir(), "lighthouse.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer func() { _ = s.Close() }()
+
+	for _, tc := range [][2]string{{"trajectories", "route"}, {"trajectories", "area"}, {"recoveries", "code_lines"}} {
+		table, col := tc[0], tc[1]
+		var n int
+		if err := s.DB.QueryRow(`SELECT count(*) FROM pragma_table_info(?) WHERE name = ?`, table, col).Scan(&n); err != nil || n != 1 {
+			t.Errorf("column %s.%s: count %d, err %v", table, col, n, err)
+		}
+	}
+
+	if _, err := s.DB.Exec(`INSERT INTO trajectories (repo, issue, created_at) VALUES ('r', 1, 't')`); err != nil {
+		t.Fatalf("insert trajectory: %v", err)
+	}
+	const ins = `INSERT INTO review_runs (source, source_id, recorded_at, trajectory_id, unlinked_reason, component, record_path, record_sum, ran_at, finding_count)
+		VALUES (?, ?, 't', ?, ?, ?, 'p', 's', 't', 0)`
+	if _, err := s.DB.Exec(ins, "a", "1", nil, nil, "plan_review"); err == nil {
+		t.Error("NULL trajectory without reason: want CHECK failure")
+	}
+	if _, err := s.DB.Exec(ins, "a", "1", nil, "no_trajectory", "plan_review"); err != nil {
+		t.Errorf("NULL trajectory with reason: %v", err)
+	}
+	if _, err := s.DB.Exec(ins, "a", "1", nil, "no_trajectory", "spec_review"); err == nil {
+		t.Error("duplicate (source, source_id): want UNIQUE failure")
+	}
+	if _, err := s.DB.Exec(ins, "a", "2", nil, "no_trajectory", "task_review"); err == nil {
+		t.Error("component task_review: want CHECK failure")
 	}
 }

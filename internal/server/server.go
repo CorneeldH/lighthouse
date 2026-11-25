@@ -42,6 +42,8 @@ type Deps struct {
 	Runs            func(context.Context) ([]dispatch.RunView, []dispatch.DeferredView, error)
 	RunsMeta        RunsMeta
 	Node            http.Handler // the node-API under /api/node/; nil without [node] in host.toml
+	// Telemetry serves the telemetry endpoints; nil leaves them out.
+	Telemetry TelemetryReader
 }
 
 // New returns the handler: the JSON API under /api/ and site as SPA elsewhere, behind the Host check.
@@ -71,6 +73,9 @@ func New(site fs.FS, d Deps) http.Handler {
 	registerPriorities(api, d.Priorities, d.Runs)
 	if d.PriorityForges != nil && d.PatchPriorities != nil {
 		registerMilestoneRanks(api, d.PriorityForges, d.PatchPriorities)
+	}
+	if d.Telemetry != nil {
+		registerTelemetry(api, d.Telemetry)
 	}
 
 	if d.Node != nil {

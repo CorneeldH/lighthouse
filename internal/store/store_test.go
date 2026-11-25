@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"io/fs"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -237,5 +238,64 @@ func TestOpenRelativePath(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(dir, "sub", f)); err != nil {
 			t.Errorf("expected file: %v", err)
 		}
+	}
+}
+
+func TestOpenReadOnlyLiveRefusesWrites(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "lighthouse.db")
+	w, err := OpenShared(ctx, path)
+	if err != nil {
+		t.Fatalf("OpenShared: %v", err)
+	}
+	defer func() { _ = w.Close() }()
+	st, err := OpenReadOnlyLive(ctx, path)
+	if err != nil {
+		t.Fatalf("OpenReadOnlyLive: %v", err)
+	}
+	defer func() { _ = st.Close() }()
+	if _, err := st.DB.Exec(`INSERT INTO trajectories (repo, issue, created_at) VALUES ('r', 1, 't')`); err == nil {
+		t.Error("INSERT through a live read-only connection succeeded")
+	}
+}
+
+func TestOpenReadOnlyLiveSeesLaterWrites(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "lighthouse.db")
+	w, err := OpenShared(ctx, path)
+	if err != nil {
+		t.Fatalf("OpenShared: %v", err)
+	}
+	defer func() { _ = w.Close() }()
+	if _, err := os.Stat(path + "-wal"); err != nil {
+		t.Fatalf("want a -wal file next to the database: %v", err)
+	}
+	st, err := OpenReadOnlyLive(ctx, path)
+	if err != nil {
+		t.Fatalf("OpenReadOnlyLive: %v", err)
+	}
+	defer func() { _ = st.Close() }()
+	count := func() int {
+		var n int
+		if err := st.DB.QueryRow(`SELECT count(*) FROM trajectories`).Scan(&n); err != nil {
+			t.Fatalf("count: %v", err)
+		}
+		return n
+	}
+	if n := count(); n != 0 {
+		t.Fatalf("count before write = %d, want 0", n)
+	}
+	if _, err := w.DB.Exec(`INSERT INTO trajectories (repo, issue, created_at) VALUES ('r', 1, 't')`); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if n := count(); n != 1 {
+		t.Errorf("count after write = %d, want 1", n)
+	}
+}
+
+func TestOpenReadOnlyLiveMissingFile(t *testing.T) {
+	_, err := OpenReadOnlyLive(context.Background(), filepath.Join(t.TempDir(), "none.db"))
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("err = %v, want fs.ErrNotExist", err)
 	}
 }
