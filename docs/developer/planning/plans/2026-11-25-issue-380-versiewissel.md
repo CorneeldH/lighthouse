@@ -17,6 +17,7 @@
 - Alleen `runs.assignment = 'standard'` en `sessions.assignment = 'standard'` tellen mee.
 - `NULL` in de versiekolom wordt overgeslagen; de eerste waarde van een reeks is geen wissel; A→B→A→B levert één wissel.
 - Reeksen: `superpowers` één reeks (runs en sessies); `model` per `setups.lane` en alleen dispatcher-runs (`run_id` gezet); `harness` per `harness` (runs en sessies).
+- Rijen met `harness` NULL tellen niet mee voor de dimensie `harness`.
 - Marker: `<!-- lighthouse-version-change: <dimensie> [<harness|lane> ]→<nieuwe waarde> -->`, zonder oude waarde; zoek altijd de volledige comment tot en met ` -->`.
 - Koppeling dimensie→onderdelen: `superpowers` → `task_review`, `final_review`; `model` → `model`; `harness` → `harness`.
 - Hooguit eens per uur (`collectEvery`-patroon), tijdsbestand ook na een mislukte poging geschreven.
@@ -39,6 +40,7 @@
 - Create `internal/telemetry/versions.go` — `VersionChange`, `VersionChanges`, `VersionMarker`, `VersionMarkers`, `ErrNoSetups`, `ComponentsFor`.
 - Create `internal/telemetry/versions_test.go` — echte `lighthouse.db` in tempdir (naar `record_test.go`).
 - Modify `internal/hostconfig/hostconfig.go` — `LoadTelemetry` (`[telemetry] proposals_repo`).
+- Modify `internal/cli/tick_collect.go` — generalise `readLastCollect` to `readTimeFile`.
 - Create `internal/cli/tick_versions.go` — `proposeVersionChanges`, marker, tekst, uurpoort.
 - Create `internal/cli/tick_versions_test.go` — nep-forge (naar `internal/pins/lane/*_test.go`).
 - Modify `internal/cli/tick.go` — aanroep na `collectRuns`.
@@ -75,7 +77,7 @@
   - `TestVersionChanges_FirstValueNoChange`, `TestVersionChanges_NullSkipped` (A, NULL, A → none).
   - `TestVersionChanges_OrdersByStartedAtNotRecordedAt`: `recorded_at` reversed → *old/new* still follow `started_at`.
   - `TestVersionChanges_EqualStartedAtOrdersBySetupsID`.
-  - `TestVersionChanges_ModelPerLaneDispatcherOnly`: `sdd` rows (`''`/opus) and `native` rows (sonnet) interleaved → no change; a session row with another model → ignored; a run in lane `native` going `sonnet-a`→`sonnet-b` → one change with `Series:"native"`.
+  - `TestVersionChanges_ModelPerLaneDispatcherOnly`: `sdd` rows (model `NULL` or `opus`; `''` counts as a value, so do not use it) and `native` rows (sonnet) interleaved → no change; a session row with another model → ignored; a run in lane `native` going `sonnet-a`→`sonnet-b` → one change with `Series:"native"`.
   - `TestVersionChanges_HarnessPerHarness`: `claude 2.1` and `codex 0.6` rows → no change; `claude 2.1`→`2.2` → one, `Series:"claude"`.
   - `TestVersionChanges_OnlyStandardAssignment`: `shadow:x` run and `variant:a=b` session with a new version → none.
   - `TestVersionChanges_NoSetupsTable`: DB without `setups` → `errors.Is(err, ErrNoSetups)`.
@@ -105,7 +107,7 @@
   - `TestVersionMarkers_WeekKindText`: change at `2026-11-25` (Wed) → `Week` Monday `2026-11-23`, `Kind:"superpowers"`, `Text:"superpowers 7.0.1→7.0.2"`; harness text `"harness claude 2.1→2.2"`; model text `"model native sonnet-a→sonnet-b"`.
   - `TestVersionChanges_OlderNeverSeenIsSkip`: `7.0.2`,`7.0.1` (first seen) → one change `Skip:true`; `7.0.2`→`7.0.3` `Skip:false`; model `a`→`b` `Skip:false`; `vlatest`→`nightly` (non-semver) `Skip:false`.
   - `TestLatestProposals`: three superpowers changes → only the last; a skipped last one → none for that series (not an earlier one); an unknown dimension is not possible, so assert `ComponentsFor("superpowers")` equals `[]string{"task_review","final_review"}`.
-  - `TestVersionMarkers_ReadOnlyConnection`: run `VersionMarkers` on a connection opened with `store.OpenReadOnly` on a copy of the DB; no error.
+  - `TestVersionMarkers_ReadOnlyConnection`: run `VersionMarkers` on a connection opened with `store.OpenReadOnly` on the DB file after the source store is closed (so the WAL is checkpointed); no error.
 - [ ] **Step 2: Run** `go test ./internal/telemetry -run 'TestVersionMarkers|TestLatestProposals|OlderNeverSeen' -v` — Expected: FAIL.
 - [ ] **Step 3: Implement** the four items above. `Week` via the Monday-of-ISO-week of `At.UTC()`. Skip rule computed in the same pass as Task 1.
 - [ ] **Step 4: Run** `go test ./internal/telemetry -v` — Expected: PASS.
@@ -150,12 +152,13 @@
 - [ ] **Step 2: Run** `go test ./internal/hostconfig ./internal/cli -run 'TestLoadTelemetry|TestVersionMarker|TestPropose' -v` — Expected: FAIL.
 - [ ] **Step 3: Implement `LoadTelemetry`** in `hostconfig.go`, same decoding pattern as `LoadDispatch` (only the `[telemetry]` table; `owner/name` shape check; unknown key under `telemetry` is an error).
 - [ ] **Step 4: Implement `proposeVersionChanges`** in `tick_versions.go`:
-  1. empty `tel.ProposalsRepo` or not in `ticked`/`repos` → one log line, return false (no gate file written);
-  2. read `<state>/telemetry/last-version-check` (same format as `readLastCollect`; reuse its parse helper by generalising it to `readTimeFile(stateDir, name)`); under an hour → return false;
-  3. always `defer` writing the time file (`workplace.WriteFileAtomic`);
+  1. read `<state>/telemetry/last-version-check` (same format as `readLastCollect`; reuse its parse helper by generalising it to `readTimeFile(stateDir, name)`, in `internal/cli/tick_collect.go`); under an hour → return false;
+  2. always `defer` writing the time file (`workplace.WriteFileAtomic`), also on the exits of step 3, so the log line below appears at most once an hour;
+  3. empty `tel.ProposalsRepo` or not in `repos` → one log line, return false (success). In `repos` but not in `ticked` (forge failed to open this tick) → one log line with the forge reason, return true (`failed`);
   4. `VersionChanges` → `LatestProposals`; for each: `FindByMarker(versionMarker(c))`; none found → `CreateIssue`. Any error → one log line `lighthouse: version change: <reason>`, `failed = true`, continue with the next.
   Title and body texts per language `nl`/`en`: change with old→new, first run or session and time, affected components, reason ("een versiewissel is een trigger volgens #388" / English equivalent), pointer to `docs/developer/planning/specs/2026-11-24-issue-388-explore-exploit-design.md`, then the marker line. State that lighthouse does not start the measurement.
 - [ ] **Step 5: Wire in `tick.go`:** after `collectRuns`, load `hostconfig.LoadTelemetry(env.HostToml)` (error → log line, `failed = true`) and call `proposeVersionChanges(ctx, env, st.DB, tel, loadedRepos(loaded), ticked, errOut)`; failure sets `failed` but never returns early. Add a tick-level test in `tick_versions_test.go`: a failing forge leaves the sweeps running.
+- [ ] **Step 5b: Existing tick tests.** The missing-key log line (once per fresh state dir) also lands in `errOut` of the existing tick tests that compare it exactly (`grep -n 'errOut.String()' internal/cli/tick_test.go`; `tickFixture` writes a `host.toml` with only `[dispatch]`). Update those expectations (or let `tickFixture` seed `[telemetry] proposals_repo` of a fixture dispatch repo when the test is not about this line) so that they stay exact; do not silence the line.
 - [ ] **Step 6: Run** `go test ./internal/hostconfig ./internal/cli -v` — Expected: PASS.
 - [ ] **Step 7: Commit** `feat(tick): één voorstel-issue per versiewissel (#380)`.
 
@@ -166,7 +169,7 @@
 - Modify: `docs/tick.md`
 
 - [ ] **Step 1:** Add the fragment (`type: added`, one Dutch-or-English line per the sibling fragments, e.g. `The tick proposes one issue per version change of superpowers, model or harness, and derives the change list from setups (#380).`).
-- [ ] **Step 2:** In `docs/tick.md` add a short section *Versiewissel*: the hour gate, `[telemetry] proposals_repo`, the marker, and that `VersionMarkers` is what #379 reads (`markers`); note that whoever merges last wires it (`grep -n "markers" internal/telemetry` on `main` decides whether #379 already landed; if so, wire the one call in the timeline reader and add the test that a change appears in the right week).
+- [ ] **Step 2:** In `docs/tick.md` add a short section *Versiewissel*: the hour gate, `[telemetry] proposals_repo`, the marker, and that `VersionMarkers` is what #379 reads (`markers`); note that whoever merges last wires it (`git fetch && git grep -n 'Markers' origin/main -- internal/telemetry` decides whether #379 already landed; if so, wire the one call in the timeline reader (convert `VersionMarker.Week`, a `time.Time`, to #379's `Marker.Week` string `2006-01-02`) and add the test that a change appears in the right week).
 - [ ] **Step 3:** Run the full gate: `[test_gate] command` from `lighthouse.toml`, `lighthouse imports check`, and `go run ./cmd/lighthouse init --upgrade` (expected `No changes.`; this change touches no `pack/`).
 - [ ] **Step 4: Commit** `docs(tick): versiewissel en changelog (#380)`.
 
