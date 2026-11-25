@@ -103,6 +103,7 @@ func NewRoot(in io.Reader, out, errOut io.Writer) *cobra.Command {
 	root.AddCommand(newPinsCommand(defaultPinsEnv, laneEnvFrom(os.Getenv, "")))
 	root.AddCommand(newBoardStartCommand())
 	root.AddCommand(newStateCommand())
+	root.AddCommand(newLabelsCommand())
 	root.AddCommand(newUnblockDependentsCommand())
 	root.AddCommand(newPostArtefactCommand(defaultPostArtefactEnv()))
 	root.AddCommand(newWorktreeAuditCommand(defaultWorktreeAuditEnv()))

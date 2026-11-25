@@ -179,6 +179,9 @@ func run(ctx context.Context, f forge.Forge, s Step) error {
 	return fmt.Errorf("unknown step kind %q", s.Kind)
 }
 
+// String is the one-line form of a step, as Execute prints it.
+func (s Step) String() string { return describe(s) }
+
 func describe(s Step) string {
 	switch s.Kind {
 	case KindCreateLabel:
