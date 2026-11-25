@@ -59,6 +59,8 @@ func (f *fakeForge) CreateLabel(_ context.Context, name, color string) error {
 	return nil
 }
 
+func (f *fakeForge) DeleteLabel(context.Context, string) error { return nil }
+
 func (f *fakeForge) creates() []Label { return f.created }
 
 type result struct {

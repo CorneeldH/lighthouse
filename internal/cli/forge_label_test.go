@@ -23,6 +23,8 @@ func (l *labelCreateForge) CreateLabel(_ context.Context, name, color string) er
 	return l.err
 }
 
+func (l *labelCreateForge) DeleteLabel(context.Context, string) error { return nil }
+
 // Classification: behaviour. Fails when the command changes the name (case, colon) or hands the
 // forge a colour with a "#", which GitLab's forge adds itself.
 func TestForgeLabelCreate(t *testing.T) {

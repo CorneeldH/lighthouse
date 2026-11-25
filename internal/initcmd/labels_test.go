@@ -274,6 +274,8 @@ func (f *labelForge) CreateLabel(_ context.Context, name, _ string) error {
 	return nil
 }
 
+func (f *labelForge) DeleteLabel(context.Context, string) error { return nil }
+
 // withForge makes the label step use f (nil means the forge cannot be opened).
 func withForge(f forge.Forge) func(*Options) {
 	return func(o *Options) { o.LabelForge = func(string) forge.Forge { return f } }

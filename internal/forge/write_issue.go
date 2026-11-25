@@ -603,6 +603,20 @@ func (c *GitHub) CreateLabel(ctx context.Context, name, color string) error {
 	return err
 }
 
+// DeleteLabel deletes the label name; GitHub removes it from every issue too. A 404 means the
+// label does not exist and is no error.
+func (c *GitHub) DeleteLabel(ctx context.Context, name string) error {
+	if err := c.configured(); err != nil {
+		return err
+	}
+	_, err := c.do(ctx, http.MethodDelete, c.repoURL("/labels/"+neturl.PathEscape(name)), nil, nil)
+	var se *httpStatusError
+	if errors.As(err, &se) && se.Code == http.StatusNotFound {
+		return nil
+	}
+	return err
+}
+
 // CommitKnown reports whether GitHub knows the commit sha. A 404 or 422 (an unknown or
 // malformed sha) is false, nil.
 func (c *GitHub) CommitKnown(ctx context.Context, sha string) (bool, error) {

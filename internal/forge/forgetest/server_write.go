@@ -450,6 +450,24 @@ func (s *Server) createLabel(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]any{"name": name, "color": color})
 }
 
+// deleteLabel removes a label from the repository and from every issue; an unknown name answers 404.
+func (s *Server) deleteLabel(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("label")
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	i := slices.Index(s.Labels, name)
+	if i < 0 {
+		writeJSON(w, http.StatusNotFound, map[string]any{"message": "Not Found"})
+		return
+	}
+	s.Labels = slices.Delete(s.Labels, i, i+1)
+	delete(s.LabelColors, name)
+	for _, it := range s.Issues {
+		it["labels"] = labelObjects(slices.DeleteFunc(labelNames(it["labels"]), func(n string) bool { return n == name }))
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // commit answers a sha in Commits with 200 and any other with 404.
 func (s *Server) commit(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
