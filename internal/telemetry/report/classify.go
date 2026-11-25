@@ -1,5 +1,6 @@
-// Package report holds the pure classification and labelling rules of the
-// telemetry UI. It opens no database.
+// Package report holds the classification and labelling rules of the
+// telemetry UI and loads its dataset. It opens no database: Load reads
+// through the connection it is given.
 package report
 
 import (
