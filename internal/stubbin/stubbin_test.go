@@ -87,7 +87,7 @@ func TestWindowsCmdText(t *testing.T) {
 		`@echo off`,
 		`type "C:\d\tool.stdout"`,
 		`type "C:\d\tool.stderr" 1>&2`,
-		`echo(%*>>"C:\l\calls.log"`,
+		`>>"C:\l\calls.log" echo(%*`,
 		`exit /b 7`,
 	} {
 		if !strings.Contains(got, want) {
@@ -98,6 +98,10 @@ func TestWindowsCmdText(t *testing.T) {
 		if strings.Contains(got, bad) {
 			t.Errorf("cmd text echoes user output %q:\n%s", bad, got)
 		}
+	}
+	// The redirect comes first: `echo(%*>>"log"` would read a trailing digit argument as a handle.
+	if strings.Contains(got, `%*>>`) {
+		t.Errorf("redirect must precede echo:\n%s", got)
 	}
 	plain := cmdText(Spec{}, `C:\d\tool`)
 	if strings.Contains(plain, ".stderr") || strings.Contains(plain, "echo(") {

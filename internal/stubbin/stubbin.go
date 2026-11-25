@@ -20,7 +20,8 @@ type Spec struct {
 	Stdout string
 	Stderr string
 	Exit   int
-	// LogFile, when set, gets one line per call: the arguments separated by one space.
+	// LogFile, when set, gets one line per call: the arguments separated by one space. Quoted
+	// arguments are logged differently on cmd (%* keeps the quotes), so avoid quotes in logged args.
 	LogFile string
 }
 
@@ -123,7 +124,7 @@ func cmdText(s Spec, base string) string {
 		b.WriteString(`type "` + base + ".stderr\" 1>&2\r\n")
 	}
 	if s.LogFile != "" {
-		b.WriteString(`echo(%*>>"` + s.LogFile + "\"\r\n")
+		b.WriteString(`>>"` + s.LogFile + `" echo(%*` + "\r\n")
 	}
 	b.WriteString("exit /b " + strconv.Itoa(s.Exit) + "\r\n")
 	return b.String()
@@ -135,7 +136,7 @@ func shText(s Spec) string {
 	var b strings.Builder
 	b.WriteString("#!/bin/sh\n")
 	if s.LogFile != "" {
-		b.WriteString(`echo "$*" >> ` + q(s.LogFile) + "\n")
+		b.WriteString(`printf '%s\n' "$*" >> ` + q(s.LogFile) + "\n")
 	}
 	b.WriteString("printf '%s' " + q(s.Stdout) + "\n")
 	if s.Stderr != "" {
