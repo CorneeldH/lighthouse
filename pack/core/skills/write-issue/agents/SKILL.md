@@ -263,7 +263,17 @@ column, not merely because the issue touches something the document describes. T
 before step 4; the label goes into the `--label` of step 4. No taxonomy file, or no such row: skip
 this step.
 
-**Planned on the map.** When the label's row also has a `Planned` value (`always`, or `milestone` and the issue gets the milestone from 3d), ask two things in the conversation before step 4. *Where does it belong?* The document and the explanation under the table give the candidates; a new part of the map, and `no item` when the explanation says a change to an existing part gives none, are always candidates. *Do we want it?* Always ask; when `paths.tenets`, `paths.areas` or `lighthouse config paths.strategy` gives a file or folder, first test the issue against the tenets, the leading policy (`heading:policy`) and the deliberate no's (`heading:not_now`) of its area, and the strategy, and say what came out; name the ID that carries the judgement (`<area>/N<n>`, `strategy/S<n>`, `tenet <letter>`). A key that is not set (`lighthouse config` exits 1) skips silently; a set path that does not exist is reported in the conversation ("does not exist"). Write the place as one line under `### heading:map_placement` in the body. An answer of no to the second question: no issue, or no free label. Doubt, or "decide later": `labels.needs_decision` with the reason in the body. Headless (no conversation): write the place only when it is unambiguous, ask nothing, and leave the rest to the scheduled job. This step never writes the document.
+**Planned on the map.** When the label's row also has a `Planned` value (`always`, or `milestone` and the issue gets the milestone from 3d), ask two things in the conversation before step 4. *Where does it belong?* The document and the explanation under the table give the candidates; a new part of the map, and `no item` when the explanation says a change to an existing part gives none, are always candidates. *Do we want it?* Always ask; when `paths.tenets`, `paths.areas` or `lighthouse config paths.strategy` gives a file or folder, first test the issue against the tenets, the leading policy (`heading:policy`) and the deliberate no's (`heading:not_now`) of its area, and the strategy, and say what came out; name the ID that carries the judgement (`<area>/N<n>`, `strategy/S<n>`, `tenet <letter>`). A key that is not set (`lighthouse config` exits 1) skips silently; a set path that does not exist is reported in the conversation ("does not exist"). Write the place as one line per item under `### heading:map_placement` in the body. An answer of no to the second question: no issue, or no free label. Doubt, or "decide later": `labels.needs_decision` with the reason in the body. Headless (no conversation): write the place only when it is unambiguous, ask nothing, and leave the rest to the scheduled job.
+
+When the label's row has a `Planned` value, the place follows the field table:
+
+- When the taxonomy file has a table with the columns `Label`, `Item` and `Place` with rows for this label, those rows are the kinds of item. Ask for each item which kind it is, then keep asking until the place names every field of the `Place` column of that row, each with a value that is valid according to the explanation.
+- Write each place as a line of its own, in the form the explanation gives.
+- `no item` stays a candidate.
+- Headless: write a line only when it names every field of the `Place` column with a valid value; otherwise write no line and leave the question to the scheduled job.
+- Without such a table, or without a row for this label: the step as it is without this paragraph.
+
+This step never writes the document.
 
 ### 4. Create the issue
 
