@@ -548,3 +548,28 @@ en = "over"
 [tenet_evidence]
 nl = "Bewijs"
 en = "Evidence"
+
+# Architecture scan
+[scan_candidates]
+nl = "Kandidaten"
+en = "Candidates"
+
+[scan_still_open]
+nl = "Nog open uit eerdere scans"
+en = "Still open from earlier scans"
+
+[scan_method]
+nl = "Methode"
+en = "Method"
+
+[scan_top]
+nl = "Topaanbeveling"
+en = "Top recommendation"
+
+[scan_unresolved]
+nl = "Onbeslist sinds"
+en = "Undecided since"
+
+[scan_of]
+nl = "Scan van"
+en = "Scan of"
