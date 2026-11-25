@@ -118,8 +118,9 @@ Then apply the deletion test yourself to everything that looks shallow.
 - A candidate with a tick (`- [x] Afgewezen`) in the reference issue was rejected. It always
   stays in the result, under the same key and with its tick, so the decision never has to be
   read further back than that issue; a result that drops it or its tick fails the run. Copy it
-  unchanged, unless you have new evidence: then update it, keep the tick, and add one line
-  `eerder afgewezen, opnieuw omdat …` (in the corpus `language`) with the new evidence. Without
+  unchanged, unless you have new evidence: then update it, keep the tick, and add one plain
+  line (not a list item: a bullet is read by the parser as a claim without a mark and fails the
+  run) `eerder afgewezen, opnieuw omdat …` (in the corpus `language`) with the new evidence. Without
   new evidence, never raise the same friction again under another key.
 
 ## 5. Candidates
