@@ -473,7 +473,7 @@ beëindigt ook wat een klare claude achterliet, zoals een dev-server (zie [workp
 Naast issue-runs start de tick runs op een vast schema, zonder issue: een *geplande run* (#121). Het
 ontwerp staat in [de spec](developer/planning/specs/2026-11-16-issue-121-geplande-runs-design.md).
 Het run-model, de planner en de afloop zijn er; van de jobs is `map-refresh` er (zie
-[Job `map-refresh`](#job-map-refresh)), `reflect` ook (zie [Job `reflect`](#job-reflect)), `map-planned` ook (zie [Job `map-planned`](#job-map-planned)). Een `[[schedule]]`-blok
+[Job `map-refresh`](#job-map-refresh)), `reflect` ook (zie [Job `reflect`](#job-reflect)), `map-planned` ook (zie [Job `map-planned`](#job-map-planned)), `architecture-scan` ook (zie [Job `architecture-scan`](#job-architecture-scan)). Een `[[schedule]]`-blok
 met een job zonder registratie geeft bij elke gather van de repo
 `lighthouse: <repo> scheduled:<naam>:<slot>: no job <job>`. Dat is een regel, geen fout: de tick
 eindigt met exitcode 0, bewaart zijn tick-state en start niets.
@@ -686,6 +686,72 @@ corpus): elk gewijzigd pad, ook een nieuw bestand, is een kaartdocument van een 
 gewijzigd document is te lezen als gewoon bestand, en elk issuenummer dat erbij kwam draagt het label van
 een rij van dat document. `Finish` schrijft, waar de repo `changelog.d/` heeft, het fragment
 `changelog.d/scheduled-map-planned-<run>.md` met `type: internal` en een vaste zin.
+
+## Job `architecture-scan`
+
+De job scant elk kwartaal de architectuur van de repo op ondiepe modules en laat één beslisissue achter met
+gerangschikte verdiepingskandidaten (#386); skill `/lighthouse-architecture-scan`. Hij wijzigt geen code en
+maakt alleen dat ene issue. Een oudere `lighthouse`-binary kent de job niet en weigert een `lighthouse.toml`
+met `job = "architecture-scan"` (de repo wordt overgeslagen); bouw de host opnieuw na de merge, vóór de
+schedule meedraait (zie [install.md](install.md)).
+
+| Param | Standaard | Betekenis |
+|---|---|---|
+| `command` | `/lighthouse-architecture-scan` | Het slash-commando; de job voegt `--corpus` en `--out` toe |
+| `window` | `3 months` | Het venster waarover de hotspots worden geteld (`git log --since`) |
+| `labels` | geen | Extra labels op het scanissue, naast `needs_decision` |
+| `tools` | `Read Glob Grep Write` | De toolset van de agent; elke tool buiten die lijst (nooit `Bash` of `Agent`) is een configfout |
+| `max_runtime` | `60m` | De maximale looptijd van de sessie |
+
+Een onbekende sleutel in `[schedule.params]` is een configfout.
+
+**De poort.** Na een fetch vergelijkt de poort `origin/<standaardbranch>` met de `base` in de marker van
+het open scanissue. Zijn ze gelijk, dan `skip` (er is niets nieuws om te scannen); anders start de run met
+een run-id `scan-<tijdstempel>`. Elke fout van de poort (fetch, forge, geen `labels.needs_decision`) is een
+fout, nooit een skip: er komt geen run-rij, de tick eindigt met exitcode 1 en de volgende tick probeert het
+opnieuw, zoals bij `map-planned`.
+
+**Het corpus.** `.lighthouse/run/architecture-scan-corpus.json` (JSON): `language`, `search_dirs` en
+`paths` (de zoekpaden, uit `[paths] search_dirs`), `hotspots` (per bestand `path` en `changes` binnen het
+venster), `base` (de sha van de standaardbranch), `issues` (open issues met nummer, titel, labels en body, de
+body op 2000 tekens afgekapt), `open_scan` en `last_closed_scan` (het scanissue met nummer, body met de
+vinkjes en comments, oudste eerst). Het corpus is invoer, nooit gezag: de agent kan het bewerken, dus
+`Check` en `Finish` lezen de forge opnieuw. Het corpus is hoogstens 400 000 bytes groot.
+
+**Het resultaat.** De agent schrijft alleen `architecture-scan-result.md` in de root van de werkplek: elk
+ander pad of een symlink laat de run mislukken. De vaste koppen komen uit
+[`.lighthouse/headings.toml`](../.lighthouse/headings.toml) (`scan_candidates`, `scan_still_open`,
+`scan_method`, `scan_top`) in de taal van de repo. Een kandidaat is een `###`-blok
+`### <naam> (`<sleutel>`)` met velden en claims; een claim is een bullet die op precies één markering eindigt:
+``[nagemeten: `<commando>` → <uitkomst>]``, `[niet nagemeten]` of `[niet meetbaar vanaf hier]`. Een kandidaat
+die een open issue al dekt, staat onder *nog open* als `- #<nr> — <kandidaat>`. Een kandidaat uit het
+referentie-issue zonder vinkje komt bijgewerkt terug onder dezelfde sleutel; een afgewezen kandidaat
+(`- [x] Afgewezen`) blijft altijd, met zijn vinkje, zodat de beslissing nooit verder terug hoeft te worden
+gezocht dan dat issue. Een afgewezen kandidaat die met nieuw bewijs terugkomt, krijgt een gewone regel (geen
+bullet) `eerder afgewezen, opnieuw omdat …`.
+
+**Het scanissue en de marker.** Een scanissue is een issue met het label `needs_decision`, de marker op
+regel 1 van de body en als auteur de login van het token; zijn er meerdere open, dan telt het oudste. De
+marker is `<!-- lighthouse: {"kind":"architecture-scan","version":1,"run":"<run-id>","base":"<sha>","first":"<datum>","scans":<n>} -->`;
+regel 2 is een waarschuwing dat de kandidaten al `first` onbeslist zijn (kop `scan_unresolved`). Is er geen
+open scanissue, dan maakt `Finish` er een met de titel `architecture-scan: <Kandidaten>`; is er wel een, dan
+werkt het de body bij en plaatst het de vorige body als comment met de kop `<Scan van> <datum>`. De vinkjes
+van afgewezen kandidaten in de levende body blijven behouden. Een resultaat zonder niet-afgewezen kandidaat
+en zonder open scanissue maakt niets. De body is hoogstens 60 000 tekens, marker en waarschuwing inbegrepen.
+Heeft het open scanissue het run-id van deze run al, dan doet een herhaalde `Finish` niets.
+
+**Cleanup en Check.** `Cleanup` verwijdert het corpus en laat de run mislukken als `git status` geen
+niet-leeg resultaatbestand toont; het ontbreken van het bestand is alleen goed als het open scanissue het
+run-id van de run al draagt (een eerdere postcheck publiceerde en verwijderde het). `Allowed` laat alleen het
+resultaatpad toe. `Check` heeft als gezag de werkplek en de forge, nooit het corpus: het resultaat is het
+enige gewijzigde pad, parseert tegen de koppen van de repo, bevat geen geheim (secretscan), noemt onder
+*nog open* alleen open issues buiten het scanissue zelf, houdt elk vinkje van het levende referentie-issue
+en past binnen de bodylimiet.
+
+**Mislukken.** Twee soorten. Een fout van de poort geeft geen run-rij en tick-exitcode 1 (de slot blijft
+staan). Een fout vanaf `Stage` (corpus, sessie, `Cleanup`, `Check`, `Finish`) sluit de run als `failed`, zonder
+issue of comment, en de tick eindigt met exitcode 0. Elke `Finish`-route verwijdert het resultaatbestand,
+ook vroege uitgangen, zodat het nooit op een branch komt. Telemetrie van de run volgt in #375.
 
 ## Exitcodes
 

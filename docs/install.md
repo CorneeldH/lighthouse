@@ -531,12 +531,17 @@ A repository can have runs on a fixed schedule, without an issue (#121, see
 ```toml
 [[schedule]]
 name = "codebase-map"   # required; [a-z0-9-]+, unique per repository: it goes into a branch name
-job  = "map-refresh"    # required; map-refresh, reflect or map-planned
+job  = "map-refresh"    # required; map-refresh, reflect, map-planned or architecture-scan
 cron = "0 4 1 * *"      # required; five fields, in the local time of the host
 # profile = "software"  # the profile of the run; default [controller] profile
 
 [schedule.params]       # per job; every parameter has a default
 publish_dir = "docs/developer/codebase"
+
+[[schedule]]
+name = "architecture-scan"
+job  = "architecture-scan"
+cron = "0 6 1 1,4,7,10 *"   # quarterly, 06:00 on the 1st
 
 [[schedule]]
 name   = "reflect"
@@ -547,7 +552,7 @@ anchor = "2026-10-12"   # weeks-th week after it count (a week runs Monday to Su
 ```
 
 An invalid block makes the repository's config invalid, like any other config error. Jobs `map-refresh`,
-`reflect` and `map-planned` are available (their params are in [tick.md](tick.md#job-map-refresh) and [tick.md](tick.md#job-reflect); `map-planned` takes none, see [tick.md](tick.md#job-map-planned)). An older binary refuses a `lighthouse.toml` with a `job` it does not know and skips the repo, so rebuild the host after the merge that adds such a block. A schedule
+`reflect`, `map-planned` and `architecture-scan` are available (their params are in [tick.md](tick.md#job-map-refresh), [tick.md](tick.md#job-reflect) and [tick.md](tick.md#job-architecture-scan); `map-planned` takes none, see [tick.md](tick.md#job-map-planned)). An older binary refuses a `lighthouse.toml` with a `job` it does not know and skips the repo, so rebuild the host after the merge that adds such a block. A schedule
 that names a job the binary does not know makes the tick report, at each gather of the repo,
 `lighthouse: <repo> scheduled:<name>:<slot>: no job <job>` (a line, not an error: the tick still exits 0 and
 saves its state) and start nothing.
