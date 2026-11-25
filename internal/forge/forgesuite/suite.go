@@ -4,8 +4,10 @@
 package forgesuite
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"testing"
@@ -168,6 +170,7 @@ var Cases = []Case{
 	{"ReopenIssueCommentFails", reopenIssueCommentFails},
 	{"MilestonesAndLookup", milestonesAndLookup},
 	{"MilestoneCountsAndState", milestoneCountsAndState},
+	{"MilestoneURL", milestoneURL},
 	{"MilestoneAmbiguousTitle", milestoneAmbiguousTitle},
 	{"LabelsList", labelsList},
 	{"PullHeads", pullHeads},
@@ -430,6 +433,78 @@ func planning(t *testing.T, f Fixture) {
 	}
 	if c := got.Milestones[1]; c.Title != "M9" || c.Open != 0 || c.Done != 0 {
 		t.Errorf("M9 = %+v, want 0 open and 0 done", c)
+	}
+}
+
+// milestoneURL: the web URL of a milestone the forge gives reaches Milestones, the milestone of an
+// issue, Planning and PrioInputs; a milestone without one reads as "" and is no error.
+func milestoneURL(t *testing.T, f Fixture) {
+	withURL := forge.Milestone{Number: 3, Title: "M3", State: "open", URL: "https://forge.example/m/3"}
+	bare := forge.Milestone{Number: 9, Title: "M9", State: "open"}
+	f.AddMilestone(t, withURL)
+	f.AddMilestone(t, bare)
+	f.AddIssue(t, forge.Issue{Number: 1, Title: "One", Author: "ann", State: "open", Milestone: &withURL})
+	f.AddIssue(t, forge.Issue{Number: 2, Title: "Two", Author: "ann", State: "open", Milestone: &bare})
+	urls := func(ms []forge.Milestone) map[string]string {
+		out := map[string]string{}
+		for _, m := range ms {
+			out[m.Title] = m.URL
+		}
+		return out
+	}
+	want := map[string]string{"M3": withURL.URL, "M9": ""}
+
+	ms, err := f.Forge().Milestones(t.Context(), "open")
+	if err != nil {
+		t.Fatalf("Milestones(open): %v", err)
+	}
+	if got := urls(ms); !maps.Equal(got, want) {
+		t.Errorf("Milestones URLs = %v, want %v", got, want)
+	}
+	issues, err := f.Forge().OpenIssues(t.Context())
+	if err != nil {
+		t.Fatalf("OpenIssues: %v", err)
+	}
+	for _, is := range issues {
+		if is.Milestone == nil || is.Milestone.URL != want[is.Milestone.Title] {
+			t.Errorf("issue #%d Milestone = %+v, want the URL of its milestone in %v", is.Number, is.Milestone, want)
+		}
+	}
+	if len(issues) != 2 {
+		t.Errorf("OpenIssues = %d issues, want 2", len(issues))
+	}
+	if !f.SupportsPlanning() {
+		return
+	}
+	pl, err := f.Forge().Planning(t.Context())
+	if err != nil {
+		t.Fatalf("Planning: %v", err)
+	}
+	counted := map[string]string{}
+	for _, c := range pl.Milestones {
+		counted[c.Title] = c.URL
+	}
+	if !maps.Equal(counted, want) {
+		t.Errorf("Planning.Milestones URLs = %v, want %v", counted, want)
+	}
+	if len(pl.Issues) != 2 {
+		t.Fatalf("Planning.Issues = %+v, want 2", pl.Issues)
+	}
+	for _, pi := range pl.Issues {
+		if pi.Milestone == nil || pi.Milestone.URL != want[pi.Milestone.Title] {
+			t.Errorf("PlanIssue #%d Milestone = %+v, want URL %q", pi.Number, pi.Milestone, want[pi.Milestone.Title])
+		}
+	}
+	if pr, ok := f.Forge().(interface {
+		PrioInputs(context.Context) (forge.PrioInputs, error)
+	}); ok {
+		in, err := pr.PrioInputs(t.Context())
+		if err != nil {
+			t.Fatalf("PrioInputs: %v", err)
+		}
+		if got := urls(in.Milestones); !maps.Equal(got, want) {
+			t.Errorf("PrioInputs.Milestones URLs = %v, want %v", got, want)
+		}
 	}
 }
 
