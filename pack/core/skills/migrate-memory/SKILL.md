@@ -44,8 +44,8 @@ the same question.
 
 - `instruction`: always through `/lighthouse-place-instruction`, which picks the layer and asks
   before every write. Never write into `AGENTS.md` or `CLAUDE.md` directly.
-- `issue`: a draft through `/lighthouse-write-issue` when it is installed, otherwise a draft text
-  in the chat.
+- `issue`: a draft through `/lighthouse-write-issue` if installed, otherwise a draft text in the
+  chat.
 - `docs`: propose a file and text under `docs/`; write it after agreement.
 - `host`: propose the entry for `host.toml`; write it after agreement.
 - `drop`: nothing, except mark the file as handled.

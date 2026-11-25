@@ -226,8 +226,8 @@ func TestLevelCountsOnlyInstalledPackages(t *testing.T) {
 				in.Components["skill:"+s] = levels.StandOff
 			}
 			return in
-		}(), "12"},
-		{"strict", &levels.Installed{Level: "strict", Since: "2026-03-01T10:00:00Z", Components: map[string]levels.Stand{}}, "24"},
+		}(), "13"},
+		{"strict", &levels.Installed{Level: "strict", Since: "2026-03-01T10:00:00Z", Components: map[string]levels.Stand{}}, "25"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root := levelRepo(t, tc.in, "")
