@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/gitinvocations"
+	"github.com/CorneeldH/lighthouse/internal/gitpath"
 	"github.com/CorneeldH/lighthouse/internal/repoidentity"
 )
 
@@ -107,7 +108,7 @@ func ProjectFilter(roots map[string]bool, projectDir string, deadline time.Time)
 		if err != nil {
 			return "", err
 		}
-		return realpath(strings.TrimSpace(decodeReplace(out))), nil
+		return realpath(gitpath.Native(decodeReplace(out))), nil
 	}
 	ref, err := commonDir(projectDir)
 	if err != nil {

@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/CorneeldH/lighthouse/internal/config"
+	"github.com/CorneeldH/lighthouse/internal/gitpath"
 	"github.com/CorneeldH/lighthouse/internal/hook"
 )
 
@@ -204,5 +205,5 @@ func gitRoot(dir string) (root string, res hook.Result, done bool) {
 	case out == "":
 		return "", blocked("git gave no repository root for '"+dir+"'.", ""), true
 	}
-	return out, hook.Result{}, false
+	return gitpath.Native(out), hook.Result{}, false
 }

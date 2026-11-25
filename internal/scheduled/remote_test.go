@@ -14,6 +14,7 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/scheduled"
 	"github.com/CorneeldH/lighthouse/internal/scheduled/scheduledtest"
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
 	"github.com/CorneeldH/lighthouse/internal/workplace"
 )
 
@@ -104,11 +105,9 @@ func gitSpy(t *testing.T) string {
 	}
 	dir := t.TempDir()
 	log := filepath.Join(dir, "args.log")
-	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> " + log + "\nexec " + real + " \"$@\"\n"
-	if err := os.WriteFile(filepath.Join(dir, "git"), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	stubbin.RequirePOSIX(t, "$* logging and exec of the real git")
+	stubbin.MakeScript(t, dir, "git", "printf '%s\\n' \"$*\" >> "+log+"\nexec "+real+" \"$@\"\n")
+	stubbin.Prepend(t, dir)
 	return log
 }
 

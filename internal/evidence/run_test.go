@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/prbody"
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
 )
 
 // The run tests here and in internal/cli/evidence_test.go replace the former pytest black-box
@@ -35,14 +36,16 @@ func withConfig(t *testing.T, extra string) {
 	t.Setenv("LIGHTHOUSE_TOML", path)
 }
 
-// stubBin is a directory with one executable script per name, put first on PATH.
-func stubBin(t *testing.T, stubs map[string]string) string {
+// stubBin is a directory with one executable script per name (with or without its #!/bin/sh line),
+// put first on PATH. reason names the POSIX behaviour the scripts imitate.
+func stubBin(t *testing.T, reason string, stubs map[string]string) string {
 	t.Helper()
+	stubbin.RequirePOSIX(t, reason)
 	dir := t.TempDir()
 	for name, script := range stubs {
-		writeFile(t, filepath.Join(dir, name), script, 0o755)
+		stubbin.MakeScript(t, dir, name, strings.TrimPrefix(script, "#!/bin/sh\n"))
 	}
-	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	stubbin.Prepend(t, dir)
 	return dir
 }
 
@@ -116,7 +119,7 @@ func TestRunRowOutsideAllowlistDoesNotRun(t *testing.T) {
 func TestRunRowGHNotReachable(t *testing.T) {
 	withConfig(t, "")
 	marker := filepath.Join(t.TempDir(), "gh-called")
-	stubBin(t, map[string]string{"gh": "#!/bin/sh\ntouch " + marker + "\necho x\n"})
+	stubBin(t, "touch of a marker file by the gh stub", map[string]string{"gh": "#!/bin/sh\ntouch " + marker + "\necho x\n"})
 	o, d := runOne(t, "`gh pr view 1`", "x", t.TempDir(), false, defaultTimeout)
 	want(t, o, d, Unmeasurable, "gh not reachable")
 	if _, err := os.Stat(marker); err == nil {
@@ -127,7 +130,7 @@ func TestRunRowGHNotReachable(t *testing.T) {
 func TestRunRowBinaryMissing(t *testing.T) {
 	withConfig(t, "")
 	dir := t.TempDir()
-	t.Setenv("PATH", dir)
+	stubbin.Alone(t, dir)
 	o, d := runOne(t, "`grep -F a f`", "a", dir, true, defaultTimeout)
 	want(t, o, d, Unmeasurable, "not found: grep")
 }
@@ -135,9 +138,10 @@ func TestRunRowBinaryMissing(t *testing.T) {
 // A grep on PATH that is not executable: Python's exec gives EACCES, not ENOENT.
 func TestRunRowBinaryNotExecutable(t *testing.T) {
 	withConfig(t, "")
+	stubbin.RequirePOSIX(t, "a file mode without the execute bit")
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "grep"), "#!/bin/sh\n", 0o644)
-	t.Setenv("PATH", dir)
+	stubbin.Alone(t, dir)
 	o, d := runOne(t, "`grep -F a f`", "a", dir, true, defaultTimeout)
 	want(t, o, d, Unmeasurable, "not executable: [Errno 13] Permission denied: 'grep'")
 }
@@ -193,7 +197,7 @@ func TestRunRowReadsStderr(t *testing.T) {
 func TestRunRowEnvironmentAndStdin(t *testing.T) {
 	withConfig(t, "")
 	t.Setenv("GH_PAGER", "less")
-	stubBin(t, map[string]string{"cat": "#!/bin/sh\nprintf 'pager=%s|%s|%s prompt=%s color=%s stdin=' \"$GIT_PAGER\" \"$PAGER\" \"$GH_PAGER\" \"$GH_PROMPT_DISABLED\" \"$NO_COLOR\"\n/bin/cat\necho end\n"})
+	stubBin(t, "env dump and exec of the real cat", map[string]string{"cat": "#!/bin/sh\nprintf 'pager=%s|%s|%s prompt=%s color=%s stdin=' \"$GIT_PAGER\" \"$PAGER\" \"$GH_PAGER\" \"$GH_PROMPT_DISABLED\" \"$NO_COLOR\"\n/bin/cat\necho end\n"})
 	o, d := runOne(t, "`cat`", "pager=cat|cat|cat prompt=1 color=1 stdin=end", t.TempDir(), true, defaultTimeout)
 	want(t, o, d, Holds, "exit code 0, `pager=cat|cat|cat prompt=1 color=1 stdin=end` found")
 }
@@ -268,7 +272,7 @@ func gone(pid int) bool {
 func TestRunRowKillsTheGroupOnTimeout(t *testing.T) {
 	withConfig(t, "")
 	pidFile := filepath.Join(t.TempDir(), "child.pid")
-	stubBin(t, map[string]string{"grep": "#!/bin/sh\nsleep 120 &\necho $! > \"" + pidFile + "\"\nsleep 120\n"})
+	stubBin(t, "background child and process group", map[string]string{"grep": "#!/bin/sh\nsleep 120 &\necho $! > \"" + pidFile + "\"\nsleep 120\n"})
 	t.Cleanup(func() {
 		if pid, err := readPid(pidFile); err == nil {
 			_ = syscall.Kill(pid, syscall.SIGKILL)
@@ -294,7 +298,7 @@ func TestRunRowKillsTheGroupOnTimeout(t *testing.T) {
 func TestRunRowKillsTheGroupAfterEOF(t *testing.T) {
 	withConfig(t, "")
 	pidFile := filepath.Join(t.TempDir(), "child.pid")
-	stubBin(t, map[string]string{"grep": "#!/bin/sh\nsleep 60 >/dev/null 2>&1 &\necho $! > \"" + pidFile + "\"\necho a\n"})
+	stubBin(t, "background child and process group", map[string]string{"grep": "#!/bin/sh\nsleep 60 >/dev/null 2>&1 &\necho $! > \"" + pidFile + "\"\necho a\n"})
 	t.Cleanup(func() {
 		if pid, err := readPid(pidFile); err == nil {
 			_ = syscall.Kill(pid, syscall.SIGKILL)
@@ -316,7 +320,7 @@ func TestRunRowKillsTheGroupAfterEOF(t *testing.T) {
 // bound of 30 s is far from that and far from the normal 1 s (#338).
 func TestRunRowTimeoutAfterEOF(t *testing.T) {
 	withConfig(t, "")
-	stubBin(t, map[string]string{"grep": "#!/bin/sh\necho a\nexec sleep 120 >/dev/null 2>&1\n"})
+	stubBin(t, "exec of a long sleep", map[string]string{"grep": "#!/bin/sh\necho a\nexec sleep 120 >/dev/null 2>&1\n"})
 	start := time.Now()
 	o, d := runOne(t, "`grep -F a f`", "a", t.TempDir(), true, time.Second)
 	if elapsed := time.Since(start); elapsed >= 30*time.Second {
@@ -348,7 +352,7 @@ func runCLI(t *testing.T, text string, beforePR bool, ghOut string) (int, string
 	marker := filepath.Join(t.TempDir(), "gh-called")
 	t.Setenv("GH_MARKER", marker)
 	t.Setenv("GH_STUB_OUT", ghOut)
-	stubBin(t, map[string]string{"gh": ghStub})
+	stubBin(t, "touch marker and case on $1 $2", map[string]string{"gh": ghStub})
 	bodyFile := filepath.Join(t.TempDir(), "body.md")
 	writeFile(t, bodyFile, text, 0o644)
 	var out bytes.Buffer
@@ -415,7 +419,9 @@ func TestRunBeforePREmptyAfterPRResultIsInvalid(t *testing.T) {
 func TestRunGHNotReachableIsExit4(t *testing.T) {
 	withConfig(t, "[project]\nlanguage = \"en\"\n")
 	dir := t.TempDir()
-	stubBin(t, map[string]string{"gh": "#!/bin/sh\nexit 1\n"})
+	ghDir := t.TempDir()
+	stubbin.Make(t, ghDir, "gh", stubbin.Spec{Exit: 1})
+	stubbin.Prepend(t, ghDir)
 	bodyFile := filepath.Join(t.TempDir(), "body.md")
 	writeFile(t, bodyFile, body(5, []row3{{"1. een", "`gh pr view 1`", "x"}}), 0o644)
 	var out bytes.Buffer

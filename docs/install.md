@@ -92,10 +92,17 @@ lighthouse init --upgrade --level standard
 behaves as `strict`. See [Setup levels](levels.md#what-each-level-skips-and-why) for what each
 level skips and why.
 
+- **Which level fits.** `lighthouse history` reads the Claude Code transcripts of the repository
+  on this machine and prints one JSON report with a recommended level and a few proposals: where
+  pushes go, whether work runs through issues and PRs, where worktrees live. It reads only,
+  writes nothing, uses no network and prints no prompt, tool output or file content. Run it in
+  the root of the repository before `init`; `--sources` adds the files and line numbers behind
+  each finding. An agent that installs lighthouse for you does this as the History step of
+  [the agent guide](site/agents/install.md).
+
 Existing auto-memory? After `init`, run `/lighthouse-migrate-memory`: it sorts the Claude Code
 memory files of this repo into instructions, issues, docs and `host.toml`, one group at a time,
 and leaves the deleting to you.
-
 - **When to scale up.** Move to `standard` once your first PRs hurt without tracking issues or
   reviews, or once you want `commit-test-gate` to run after each commit; first check that
   `lighthouse level` shows few reports for `md-link-check` and `code-language-check`, which
@@ -138,8 +145,13 @@ The server listens on `127.0.0.1:8127` and stores its database in
 A timer can keep the binary current. [lighthouse-upgrade.service](../deploy/systemd/lighthouse-upgrade.service)
 runs `lighthouse self-update --restart lighthouse.service`, and
 [lighthouse-upgrade.timer](../deploy/systemd/lighthouse-upgrade.timer) starts it daily. The
-binary is replaced only when the newest release is newer and its checksum matches, and the
-server restarts only after a replacement. A `dev` build is skipped.
+binary is replaced only when the newest release on the channel is newer and its checksum matches, and the
+server restarts only after a replacement. A local build without a tag (`dev`) is skipped.
+
+The timer follows the channel stored in `~/.config/lighthouse/channel`; without that file it is
+`release`. Choose once, by hand: `lighthouse self-update --channel dev` stores `dev` and
+updates at once, `--channel release` goes back, and `lighthouse channel` prints the current
+one.
 
 ```bash
 cp deploy/systemd/lighthouse-upgrade.{service,timer} ~/.config/systemd/user/
@@ -154,7 +166,9 @@ The installed binary must already be a release that has `self-update`: upgrade o
 first. Under the unit's hardening `~/go/bin/lighthouse` must not be a symlink to a path outside
 `~/go/bin`, because that directory is the only one the unit may write.
 
-Every release goes live without a review. To stop:
+Every release on the channel goes live without a review. On `release` that is the newest
+release; on `dev` it is the newest `dev` or `rc` prerelease of the next version too, never a
+`-test` tag. To stop:
 `systemctl --user disable --now lighthouse-upgrade.timer`.
 
 Which version runs, and what the last run did:
@@ -190,6 +204,11 @@ The API is read-only. Its routes:
 | `GET /api/returned` | the returned issues, from the same overview |
 | `GET /api/cleanup` | the workspaces to clean up, from the database |
 | `GET /api/latest-comment?repo=owner/name&issue=N` | the comments of one issue, from the forge; redirects (302) to the newest comment, or to the issue page when it has none or the read fails. A repo `serve` does not serve gets 404 |
+| `GET /api/telemetry/components` | the comparison block per component, filtered by `repo`, `route`, `size`, `pr_size`, `area`, `model`, `harness`; from the database (see [`telemetry-ui.md`](telemetry-ui.md)) |
+| `GET /api/telemetry/timeline?repo=owner/name` | cost, questions, closed and recovered trajectories per week, from the database |
+| `GET /api/telemetry/trajectories` | the trajectories, with the filters of `components` plus `component`, from the database |
+| `GET /api/telemetry/trajectories/{id}` | the detail of one trajectory, from the database; 404 when it does not exist |
+| `GET /api/telemetry/coverage?repo=owner/name` | every gap in the measurement with its count or reason, from the database |
 
 ## Check the hooks
 
@@ -451,6 +470,16 @@ wordt niets geschreven) en meet op die ref.
   limiet van de zoek-API; een forgefout, ook een limiet, geeft exit 1 voordat er iets wordt
   geschreven. Alleen GitHub: GitLab kan gemergde PR's nog niet opsommen, dus daar is de opdracht een
   fout (exit 1).
+- **Kenmerken.** Na het herstel legt een tweede ronde per traject de kenmerken vast die het
+  tabblad Telemetry gebruikt ([`telemetry-ui.md`](telemetry-ui.md)): de route uit het laatste
+  triagecomment vóór de eerste review, het gebied uit het enige label met `[labels] area_prefix`
+  en de PR-grootte in coderegels. Die ronde raakt elk traject met een `recoveries`-rij dat nog
+  een route, gebied of PR-grootte mist, of een PR binnen `--days` heeft; zonder `area_prefix`
+  telt een leeg gebied niet als gat. Wat niet lukt (een forgefout, geen triagemarker, geen of
+  meer dan één gebiedslabel) laat de oude waarde staan en geeft één regel
+  `traits #<issue>: <reden>`; de exitcode blijft 0. Een traject zonder triagemarker blijft een
+  doel: elke run leest zijn issue en comments opnieuw (twee forge-lezingen) en print de regel
+  opnieuw.
 
 ### Inzet, kosten en tokens
 
@@ -617,12 +646,17 @@ A repository can have runs on a fixed schedule, without an issue (#121, see
 ```toml
 [[schedule]]
 name = "codebase-map"   # required; [a-z0-9-]+, unique per repository: it goes into a branch name
-job  = "map-refresh"    # required; map-refresh, reflect or map-planned
+job  = "map-refresh"    # required; map-refresh, reflect, map-planned or architecture-scan
 cron = "0 4 1 * *"      # required; five fields, in the local time of the host
 # profile = "software"  # the profile of the run; default [controller] profile
 
 [schedule.params]       # per job; every parameter has a default
 publish_dir = "docs/developer/codebase"
+
+[[schedule]]
+name = "architecture-scan"
+job  = "architecture-scan"
+cron = "0 6 1 1,4,7,10 *"   # quarterly, 06:00 on the 1st
 
 [[schedule]]
 name   = "reflect"
@@ -633,7 +667,7 @@ anchor = "2026-10-12"   # weeks-th week after it count (a week runs Monday to Su
 ```
 
 An invalid block makes the repository's config invalid, like any other config error. Jobs `map-refresh`,
-`reflect` and `map-planned` are available (their params are in [tick.md](tick.md#job-map-refresh) and [tick.md](tick.md#job-reflect); `map-planned` takes none, see [tick.md](tick.md#job-map-planned)). An older binary refuses a `lighthouse.toml` with a `job` it does not know and skips the repo, so rebuild the host after the merge that adds such a block. A schedule
+`reflect`, `map-planned` and `architecture-scan` are available (their params are in [tick.md](tick.md#job-map-refresh), [tick.md](tick.md#job-reflect) and [tick.md](tick.md#job-architecture-scan); `map-planned` takes none, see [tick.md](tick.md#job-map-planned)). An older binary refuses a `lighthouse.toml` with a `job` it does not know and skips the repo, so rebuild the host after the merge that adds such a block. A schedule
 that names a job the binary does not know makes the tick report, at each gather of the repo,
 `lighthouse: <repo> scheduled:<name>:<slot>: no job <job>` (a line, not an error: the tick still exits 0 and
 saves its state) and start nothing.

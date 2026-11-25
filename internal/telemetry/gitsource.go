@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/CorneeldH/lighthouse/internal/roborev"
 )
 
 // GitSource implements RecoverySource on a local clone. Issues supplies the
@@ -104,4 +106,21 @@ func parseGitLog(out []byte) ([]Commit, error) {
 		}
 	}
 	return commits, nil
+}
+
+// CodeLines counts the code lines the squash commit of pr added and removed,
+// by the rules of roborev.CountCodeLines. ErrNoMergeCommit when there is none.
+func (g GitSource) CodeLines(ctx context.Context, pr int) (int, error) {
+	c, err := g.MergeCommit(ctx, pr)
+	if err != nil {
+		return 0, err
+	}
+	cmd := exec.CommandContext(ctx, "git", "-C", g.Dir, "show", "--numstat", "--no-renames", "-z", "--format=", c.SHA)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		return 0, fmt.Errorf("telemetry: git show %s: %w: %s", c.SHA, err, strings.TrimSpace(stderr.String()))
+	}
+	return roborev.CountCodeLines(string(out)), nil
 }

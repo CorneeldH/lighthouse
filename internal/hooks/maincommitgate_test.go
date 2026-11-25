@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/CorneeldH/lighthouse/internal/hook"
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
 )
 
 // repo makes a git repository on branch with one commit, and points the config at a
@@ -285,7 +286,8 @@ func TestMainCommitGateFromAWorktree(t *testing.T) {
 			worktree := filepath.Join(root, ".claude", "worktrees", "issue-1-x")
 			gitIn(t, root, "worktree", "add", "-q", "-b", "issue-1-x", worktree)
 
-			res := gate(t, strings.ReplaceAll(c.command, "ROOT", root), worktree)
+			// The command is shell text: a backslash path would lose its backslashes to the quoting.
+			res := gate(t, strings.ReplaceAll(c.command, "ROOT", filepath.ToSlash(root)), worktree)
 
 			checkResult(t, res, c.code, strings.ReplaceAll(c.stderr, "ROOT", root))
 		})
@@ -332,11 +334,10 @@ func TestMainCommitGateUnreadablePayloadBlocks(t *testing.T) {
 // stubGit puts a `git` that runs script first on the PATH.
 func stubGit(t *testing.T, script string) {
 	t.Helper()
+	stubbin.RequirePOSIX(t, "the stub git is a sh script (locale and exit-code branching)")
 	bin := t.TempDir()
-	if err := os.WriteFile(filepath.Join(bin, "git"), []byte("#!/bin/sh\n"+script), 0o755); err != nil { //nolint:gosec // an executable stub
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", bin)
+	stubbin.MakeScript(t, bin, "git", script)
+	stubbin.Alone(t, bin)
 }
 
 func TestMainCommitGateTargetWithoutARepository(t *testing.T) {
@@ -364,7 +365,7 @@ exit 128
 				stubGit(t, c.stub)
 			}
 
-			res := gate(t, "git -C "+target+" commit -m x", dir)
+			res := gate(t, "git -C "+filepath.ToSlash(target)+" commit -m x", dir)
 
 			checkResult(t, res, c.code, strings.ReplaceAll(c.stderr, "DIR", target))
 		})
@@ -394,5 +395,19 @@ func TestMainCommitGateNamesTheConfiguredRoot(t *testing.T) {
 
 	if !strings.Contains(res.Stderr, "git worktree add '/data/my wt'/<name> -b") || strings.Contains(res.Stderr, ".claude/worktrees") {
 		t.Fatalf("the block does not name the configured root: %q", res.Stderr)
+	}
+}
+
+func TestMainCommitGateBlockMessageHasTheNativeRoot(t *testing.T) {
+	// A git that prints a messy top level (doubled and trailing slash) must come out in the
+	// native, cleaned form in the block message.
+	setConfig(t, "[project]\nlanguage = \"en\"\n")
+	stubGit(t, "case \"$*\" in\n  *--show-toplevel*) printf '/repo/root//\\n' ;;\n  *) echo main ;;\nesac\n")
+
+	res := gate(t, "git commit -m x", t.TempDir())
+
+	want := "'" + filepath.Clean("/repo/root") + "' is on branch 'main'"
+	if res.Code != 2 || !strings.Contains(res.Stderr, want) {
+		t.Fatalf("got code %d, stderr %q; want 2 and %q in it", res.Code, res.Stderr, want)
 	}
 }

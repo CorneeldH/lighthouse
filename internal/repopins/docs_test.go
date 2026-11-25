@@ -241,10 +241,14 @@ func agentSection(t *testing.T, title string) string {
 
 var agentInstallBinary = regexp.MustCompile(`(?ms)^## Install the binary\n.*?^## `)
 
+// The History section runs `lighthouse history`, whose flags are not init flags.
+var agentHistory = regexp.MustCompile(`(?ms)^## History\n.*?^## `)
+
 // A production change that fails this test: removing or renaming an `init` flag that the
 // agent guide tells the agent to run (outside the download blocks); --help is cobra's own.
 func TestAgentGuideInitFlagsExist(t *testing.T) {
 	text := agentInstallBinary.ReplaceAllString(agentGuide(t), "## ")
+	text = agentHistory.ReplaceAllString(text, "## ")
 	chunks := append(codeSpansOutsideFences(text), fencedBlocks(text)...)
 	flagRe := regexp.MustCompile(`(?:^|[^\w-])--(\w[\w-]*)`)
 	used := map[string]bool{}
@@ -536,5 +540,15 @@ func TestAgentGuideIsLinkedFromInstallPage(t *testing.T) {
 	}
 	if !regexp.MustCompile(`addCopyButtons\(\[[^\]]*\.agent-prompt`).MatchString(read(t, "docs", "site", "download.js")) {
 		t.Error("download.js does not add a copy button to .agent-prompt")
+	}
+}
+
+func TestGettingStartedNamesUninstall(t *testing.T) {
+	doc := gettingStarted(t)
+	body := section(t, doc, "Remove lighthouse")
+	for _, want := range []string{"lighthouse uninstall", "--yes", "--force"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("section 'Remove lighthouse' does not name %s", want)
+		}
 	}
 }

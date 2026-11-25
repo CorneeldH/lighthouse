@@ -221,16 +221,17 @@ func TestScriptOwnersTable(t *testing.T) {
 		}
 	}
 	want := map[string]string{
-		"scripts/gate_python.py":          "base",
-		"scripts/quality/__init__.py":     "base",
-		"scripts/quality/baseline.py":     "base",
-		"scripts/quality/diffcov.py":      "base",
-		"scripts/quality/gitenv.py":       "base",
-		"scripts/quality/prcov.py":        "base",
-		"scripts/quality/prcov_issues.py": "base",
-		"scripts/quality/ratchet.py":      "base",
-		"scripts/shellcheck-repo.sh":      "shell-lint-check",
-		"scripts/lib/shellcheck-bin.sh":   "shell-lint-check",
+		"scripts/gate_python.py":            "base",
+		"scripts/quality/__init__.py":       "base",
+		"scripts/quality/baseline.py":       "base",
+		"scripts/quality/diffcov.py":        "base",
+		"scripts/quality/gitenv.py":         "base",
+		"scripts/quality/prcov.py":          "base",
+		"scripts/quality/prcov_issues.py":   "base",
+		"scripts/quality/ratchet.py":        "base",
+		"scripts/shellcheck-repo.sh":        "shell-lint-check",
+		"scripts/lib/shellcheck-bin.sh":     "shell-lint-check",
+		"scripts/psscriptanalyzer-repo.ps1": "powershell-lint-check",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("script owners = %v, want %v", got, want)

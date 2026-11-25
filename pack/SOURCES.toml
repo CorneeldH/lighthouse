@@ -170,6 +170,12 @@ path = "pack/core/skills/map-planned/SKILL.md"
 new = true
 
 [[file]]
+# Derived from mattpocock/skills (MIT, © Matt Pocock), skills/engineering/improve-codebase-architecture,
+# through the scan skill of personal_ai_agent; the upstream pin is in the front matter.
+path = "pack/core/skills/architecture-scan/SKILL.md"
+new = true
+
+[[file]]
 path = "pack/core/skills/audit-worktrees/SKILL.md"
 new = true
 
@@ -318,6 +324,26 @@ path = "pack/shell/detect.toml"
 new = true
 
 [[file]]
+path = "pack/powershell/hooks/powershell-lint-check.sh"
+new = true
+
+[[file]]
+path = "pack/powershell/hooks/hooks.json"
+new = true
+
+[[file]]
+path = "pack/powershell/scripts/psscriptanalyzer-repo.ps1"
+new = true
+
+[[file]]
+path = "pack/powershell/requires.toml"
+new = true
+
+[[file]]
+path = "pack/powershell/detect.toml"
+new = true
+
+[[file]]
 path = "pack/go/hooks/go-lint-gate.sh"
 new = true
 
@@ -399,4 +425,8 @@ new = true
 
 [[file]]
 path = "pack/shell/levels.toml"
+new = true
+
+[[file]]
+path = "pack/powershell/levels.toml"
 new = true

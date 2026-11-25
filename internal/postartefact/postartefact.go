@@ -31,6 +31,7 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/config"
 	"github.com/CorneeldH/lighthouse/internal/forge"
+	"github.com/CorneeldH/lighthouse/internal/gitpath"
 	"github.com/CorneeldH/lighthouse/internal/park"
 	"github.com/CorneeldH/lighthouse/internal/procrun"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
@@ -255,6 +256,7 @@ func (p *poster) resolveFile(pathArg string) (top, file, kind string, err *Error
 	if runErr != nil {
 		return "", "", "", fail("%s is not in a git repository", pathArg)
 	}
+	top = gitpath.Native(top)
 	rel, relErr := filepath.Rel(top, path)
 	if relErr != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return "", "", "", fail("%s is not in a git repository", pathArg)

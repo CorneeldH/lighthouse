@@ -8,7 +8,7 @@ import { PrioritiesTab } from './PrioritiesTab'
 const json = (body: unknown, status = 200) =>
   Promise.resolve(new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } }))
 
-const M = { number: 1, state: 'open', title: 'Alpha' }
+const M = { number: 1, state: 'open', title: 'Alpha', url: 'https://forge/m1' }
 const PRIORITIES = {
   repos: [
     {
@@ -18,7 +18,7 @@ const PRIORITIES = {
         { number: 2, title: 't2', url: 'u2', status: 'To do', label: '', open_question: false, needs_label: false, blocked_by: [{ repo: 'a/x', issue: 1 }], milestone: M },
         { number: 3, title: 't3', url: 'u3', status: 'To do', label: '', open_question: false, needs_label: false, blocked_by: null },
       ],
-      milestones: [{ number: 1, title: 'Alpha', description: '', done: 0, open: 2 }],
+      milestones: [{ number: 1, title: 'Alpha', description: '', done: 0, open: 2, url: 'https://forge/m1', closed: [] }],
     },
     { slug: 'a/y', issues: [], milestones: [] },
   ],
@@ -79,7 +79,7 @@ describe('PrioritiesTab', () => {
     await screen.findByRole('button', { name: 'a/x' })
     expect(screen.getByRole('button', { name: /Dependencies/ }).textContent).toContain('3')
     expect(screen.getByRole('button', { name: /^Milestones/ }).textContent).toContain('1')
-    expect(screen.getByRole('button', { name: /Without milestone/ }).textContent).toContain('1')
+    expect(screen.getByRole('button', { name: /Backlog/ }).textContent).toContain('1')
   })
 
   it('a chip toggle filters the counts and survives a remount through the prefs', async () => {
@@ -91,6 +91,24 @@ describe('PrioritiesTab', () => {
     cleanup()
     renderTab()
     expect((await screen.findByRole('button', { name: 'a/x' })).getAttribute('aria-pressed')).toBe('false')
+  })
+
+  it('shows the row count on the Backlog tab', async () => {
+    const issue = (n: number) => ({ number: n, title: `t${n}`, url: `u${n}`, status: 'To do', label: '', open_question: false, needs_label: false, blocked_by: null })
+    stub(() =>
+      json({
+        repos: [
+          { slug: 'a/x', issues: [issue(1), issue(2)], milestones: [] },
+          { slug: 'a/y', issues: [issue(3)], milestones: [] },
+        ],
+        runs: [],
+      }),
+    )
+    renderTab()
+    const tab = async () => (await screen.findByRole('button', { name: /Backlog/ })).textContent
+    expect(await tab()).toContain('3')
+    fireEvent.click(screen.getByRole('button', { name: 'a/y' }))
+    expect(await tab()).toContain('2')
   })
 
   it('the switcher swaps the view', async () => {
@@ -135,9 +153,9 @@ describe('PrioritiesTab', () => {
   describe('legend and colours', () => {
     const iss = (n: number, ms: { number: number; title: string } | null) => ({
       number: n, title: `t${n}`, url: `u${n}`, status: 'To do', label: '', open_question: false, needs_label: false, blocked_by: null,
-      ...(ms ? { milestone: { ...ms, state: 'open' } } : {}),
+      ...(ms ? { milestone: { ...ms, state: 'open', url: `https://forge/m${ms.number}` } } : {}),
     })
-    const ms = (number: number, title: string) => ({ number, title, description: '', done: 0, open: 1 })
+    const ms = (number: number, title: string) => ({ number, title, description: '', done: 0, open: 1, url: `https://forge/m${number}`, closed: [] })
     const TWO = {
       repos: [
         { slug: 'a/x', issues: [iss(1, { number: 1, title: 'Alpha' })], milestones: [ms(1, 'Alpha'), ms(2, 'Empty')] },
@@ -152,6 +170,21 @@ describe('PrioritiesTab', () => {
     const swatches = () =>
       Array.from(screen.getByRole('list', { name: 'Milestones' }).querySelectorAll('li'))
         .map((li) => [li.textContent, (li.querySelector('i') as HTMLElement).style.background])
+
+    it('makes the legend label a link to the milestone; Without milestone has no link', async () => {
+      stub(() => json(TWO))
+      renderTab()
+      await screen.findByRole('button', { name: 'a/x' })
+      const link = legend().getByRole('link', { name: 'a/x · Alpha' })
+      expect(link.getAttribute('href')).toBe('https://forge/m1')
+      expect(link.getAttribute('target')).toBe('_blank')
+      cleanup()
+      stub(() => json({ repos: [{ slug: 'a/x', issues: [iss(1, { number: 1, title: 'Alpha' }), { ...iss(2, null) }], milestones: [ms(1, 'Alpha')] }], runs: [] }))
+      renderTab()
+      await screen.findByRole('button', { name: 'a/x' })
+      const none = legend().getByText('Without milestone').closest('li') as HTMLElement
+      expect(none.querySelector('a')).toBeNull()
+    })
 
     it('lists only milestones with a node in the deps view, with repo prefix for >1 repo', async () => {
       stub(() => json(TWO))
@@ -184,7 +217,7 @@ describe('PrioritiesTab', () => {
       stub(() => json(TWO))
       renderTab()
       await screen.findByRole('button', { name: 'a/x' })
-      for (const name of [/^Dependencies/, /^Milestones/, /Without milestone/]) {
+      for (const name of [/^Dependencies/, /^Milestones/, /Backlog/]) {
         fireEvent.click(screen.getByRole('button', { name }))
         expect(screen.getByRole('list', { name: 'Milestones' })).toBeTruthy()
         expect(statusList()).toBeTruthy()
@@ -249,7 +282,7 @@ describe('PrioritiesTab', () => {
     it('the without-milestone view has no milestone colours when no closed milestone is named', async () => {
       stub(() => json(TWO))
       renderTab()
-      fireEvent.click(await screen.findByRole('button', { name: /Without milestone/ }))
+      fireEvent.click(await screen.findByRole('button', { name: /Backlog/ }))
       expect(screen.getByRole('list', { name: 'Milestones' }).querySelectorAll('li')).toHaveLength(0)
       expect(Array.from(statusList().querySelectorAll('li')).map((li) => li.textContent)).toEqual(STATE_LABELS)
     })
@@ -322,13 +355,13 @@ describe('PrioritiesTab', () => {
       expect(column()[0]).toBe(3)
     })
 
-    it('is absent in Milestones and Without milestone', async () => {
+    it('is absent in Milestones and Backlog', async () => {
       stub(() => json(SORT))
       renderTab()
       await screen.findByTestId('view-deps')
       fireEvent.click(screen.getByRole('button', { name: /^Milestones/ }))
       expect(screen.queryByRole('group', { name: 'Sort' })).toBeNull()
-      fireEvent.click(screen.getByRole('button', { name: /Without milestone/ }))
+      fireEvent.click(screen.getByRole('button', { name: /Backlog/ }))
       expect(screen.queryByRole('group', { name: 'Sort' })).toBeNull()
     })
   })

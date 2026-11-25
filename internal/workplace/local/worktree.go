@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/CorneeldH/lighthouse/internal/gitpath"
 	"github.com/CorneeldH/lighthouse/internal/workplace"
 )
 
@@ -17,7 +18,7 @@ func parseWorktrees(porcelain string) []worktree {
 	for line := range strings.Lines(porcelain) {
 		line = strings.TrimRight(line, "\n")
 		if path, ok := strings.CutPrefix(line, "worktree "); ok {
-			out = append(out, worktree{Path: path})
+			out = append(out, worktree{Path: gitpath.Native(path)})
 			continue
 		}
 		if ref, ok := strings.CutPrefix(line, "branch "); ok && len(out) > 0 {

@@ -9,6 +9,7 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/orderedjson"
 	"github.com/CorneeldH/lighthouse/internal/roborev"
+	"github.com/CorneeldH/lighthouse/internal/stubbin"
 	"github.com/CorneeldH/lighthouse/internal/usage"
 )
 
@@ -24,12 +25,9 @@ func pushReviewFixture(t *testing.T) *fixture {
 	write(t, filepath.Join(f.wt, ".roborev.toml"), "")
 	bin := filepath.Join(f.dir, "bin")
 	for _, tool := range []string{"roborev", "codex"} {
-		write(t, filepath.Join(bin, tool), "#!/bin/sh\n")
-		if err := os.Chmod(filepath.Join(bin, tool), 0o755); err != nil {
-			t.Fatal(err)
-		}
+		stubbin.Make(t, bin, tool, stubbin.Spec{})
 	}
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	stubbin.Prepend(t, bin)
 	t.Setenv("LIGHTHOUSE_TOML", "")
 	t.Setenv("LIGHTHOUSE_REPO_ROOT", "")
 	return f
@@ -134,10 +132,7 @@ func noClaudeAlarm() (usage.Alarm, bool) { return usage.Alarm{}, false }
 func TestRoborevPushClaudeRecordPassesCheckFive(t *testing.T) {
 	f := pushReviewFixture(t)
 	bin := filepath.Join(f.dir, "bin")
-	write(t, filepath.Join(bin, "claude"), "#!/bin/sh\n")
-	if err := os.Chmod(filepath.Join(bin, "claude"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	stubbin.Make(t, bin, "claude", stubbin.Spec{})
 	head := f.head()
 
 	out, err := roborev.GatePush(f.wt, fallbackOK, noClaudeAlarm)

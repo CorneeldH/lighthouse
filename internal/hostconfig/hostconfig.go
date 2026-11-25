@@ -507,3 +507,45 @@ func validNight(s string) bool {
 	}
 	return true
 }
+
+// Telemetry is the [telemetry] table of host.toml.
+type Telemetry struct {
+	// ProposalsRepo is the owner/name of the repo that gets one issue per version change; ""
+	// is off. It must be a repo of [dispatch] repos, which the tick checks.
+	ProposalsRepo string
+}
+
+// LoadTelemetry reads the [telemetry] table of the host.toml at path. A missing file, an empty
+// path or a missing key gives the zero value. A proposals_repo that is not owner/name or an
+// unknown key under telemetry is an error naming its key. Keys outside telemetry are ignored.
+func LoadTelemetry(path string) (Telemetry, error) {
+	if path == "" {
+		return Telemetry{}, nil
+	}
+	var raw struct {
+		Telemetry struct {
+			ProposalsRepo *string `toml:"proposals_repo"`
+		} `toml:"telemetry"`
+	}
+	md, err := toml.DecodeFile(path, &raw)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return Telemetry{}, nil
+		}
+		return Telemetry{}, fmt.Errorf("read %s: %w", path, err)
+	}
+	for _, key := range md.Undecoded() {
+		if key[0] == "telemetry" {
+			return Telemetry{}, fmt.Errorf("%s: unknown key in %s", key, path)
+		}
+	}
+	var t Telemetry
+	if p := raw.Telemetry.ProposalsRepo; p != nil && *p != "" {
+		parts := strings.Split(*p, "/")
+		if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+			return Telemetry{}, fmt.Errorf("telemetry.proposals_repo: %q is not owner/name", *p)
+		}
+		t.ProposalsRepo = *p
+	}
+	return t, nil
+}

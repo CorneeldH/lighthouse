@@ -486,10 +486,12 @@
               "readers": [
                 "internal/scheduled/mapplanned/mapplanned.go",
                 "internal/repoconfig/repoconfig.go",
+                "pack/core/skills/architecture-scan",
                 "pack/core/skills/close-issue",
                 "pack/core/skills/write-issue",
                 "internal/direction/direction.go",
-                "internal/initcmd/direction.go"
+                "internal/initcmd/direction.go",
+                "internal/initcmd/uninstall.go"
               ]
             },
             {
@@ -500,10 +502,12 @@
               "example": "docs/strategy.md",
               "readers": [
                 "internal/scheduled/mapplanned/mapplanned.go",
+                "pack/core/skills/architecture-scan",
                 "pack/core/skills/write-issue",
                 "internal/repoconfig/repoconfig.go",
                 "internal/direction/direction.go",
-                "internal/initcmd/direction.go"
+                "internal/initcmd/direction.go",
+                "internal/initcmd/uninstall.go"
               ]
             },
             {
@@ -529,7 +533,8 @@
                 "pack/core/skills/write-issue",
                 "pack/core/skills/write-pr",
                 "internal/direction/direction.go",
-                "internal/initcmd/direction.go"
+                "internal/initcmd/direction.go",
+                "internal/initcmd/uninstall.go"
               ]
             },
             {
@@ -569,8 +574,10 @@
               "default": [
                 "."
               ],
-              "about": "The directories searched when starting an issue.",
+              "about": "The directories searched when starting an issue, and where the architecture scan counts its hotspots.",
               "readers": [
+                "internal/scheduled/archscan/corpus.go",
+                "pack/core/skills/architecture-scan",
                 "pack/core/skills/start-issue"
               ]
             },
@@ -599,9 +606,11 @@
               "readers": [
                 "internal/scheduled/mapplanned/mapplanned.go",
                 "internal/repoconfig/repoconfig.go",
+                "pack/core/skills/architecture-scan",
                 "pack/core/skills/write-issue",
                 "internal/direction/direction.go",
-                "internal/initcmd/direction.go"
+                "internal/initcmd/direction.go",
+                "internal/initcmd/uninstall.go"
               ]
             }
           ]
@@ -684,6 +693,7 @@
               "about": "The label for an issue that waits for a decision.",
               "readers": [
                 "internal/repoconfig/repoconfig.go",
+                "internal/scheduled/archscan/archscan.go",
                 "internal/scheduled/mapplanned/corpus.go",
                 "internal/scheduled/mapplanned/mapplanned.go",
                 "pack/core/skills/route-issue",

@@ -16,7 +16,7 @@ import { loadPrefs, savePrefs, type ViewId } from '@/lib/priorities/prefs'
 import { DepsView } from './DepsView'
 import { MilestonesView } from './MilestonesView'
 import { Toolbar, type LegendItem } from './Toolbar'
-import { UnassignedView } from './UnassignedView'
+import { BacklogView } from './BacklogView'
 
 export function PrioritiesTab(): JSX.Element {
   const { data, error, isPending } = usePriorities()
@@ -39,26 +39,26 @@ export function PrioritiesTab(): JSX.Element {
     const unassigned = withoutMilestone(inView, graph).filter((r) => selected.has(r.node.repo))
     const nodes = [...graph.nodes.values()].filter((n) => selected.has(n.repo))
     return {
-      // Issues without a milestone in view: nodes in the graph, every row of the unassigned view.
+      // Issues without a milestone in view: nodes in the graph, every row of the backlog view.
       hasUnassigned: {
         deps: nodes.some((n) => !n.milestone),
         milestones: false,
-        unassigned: unassigned.length > 0,
+        backlog: unassigned.length > 0,
       } satisfies Record<ViewId, boolean>,
       counts: {
         deps: nodes.length,
         milestones: rows.length,
-        unassigned: unassigned.length,
+        backlog: unassigned.length,
       } satisfies Record<ViewId, number>,
       // Milestones that get a colour, per view: nodes shown in the graph, the rows shown, the
       // closed milestones named on the rows without an open milestone.
       inViewMilestones: {
-        deps: nodes.flatMap((n) => (n.milestone ? [{ repo: n.repo, number: n.milestone.number, title: n.milestone.title }] : [])),
-        milestones: rows.map((m) => ({ repo: m.repo, number: m.number, title: m.title })),
-        unassigned: unassigned.flatMap((r) =>
-          r.node.milestone ? [{ repo: r.node.repo, number: r.node.milestone.number, title: r.node.milestone.title }] : [],
+        deps: nodes.flatMap((n) => (n.milestone ? [{ repo: n.repo, number: n.milestone.number, title: n.milestone.title, url: n.milestone.url }] : [])),
+        milestones: rows.map((m) => ({ repo: m.repo, number: m.number, title: m.title, url: m.url })),
+        backlog: unassigned.flatMap((r) =>
+          r.node.milestone ? [{ repo: r.node.repo, number: r.node.milestone.number, title: r.node.milestone.title, url: r.node.milestone.url }] : [],
         ),
-      } satisfies Record<ViewId, Array<{ repo: string; number: number; title: string }>>,
+      } satisfies Record<ViewId, Array<{ repo: string; number: number; title: string; url: string }>>,
     }
   }, [repos, graph, selected])
   const prefix = selected.size > 1
@@ -78,7 +78,7 @@ export function PrioritiesTab(): JSX.Element {
 
   const legend: LegendItem[] = [...colors.keys()].map((key) => {
     const m = shown.find((x) => `${x.repo}#m${x.number}` === key) as (typeof shown)[number]
-    return { key, label: prefix ? `${m.repo} · ${m.title}` : m.title, color: colors.get(key) as string }
+    return { key, label: prefix ? `${m.repo} · ${m.title}` : m.title, color: colors.get(key) as string, url: m.url }
   })
   if (derived.hasUnassigned[prefs.view]) legend.push({ key: 'none', label: 'Without milestone', color: NO_MILESTONE_COLOR })
 
@@ -93,7 +93,7 @@ export function PrioritiesTab(): JSX.Element {
 
   const props = { graph, repos, selected, colors, order: prefs.msOrder, depsOrder: prefs.depsOrder, onMove, pendingRepos }
   const empty = data !== undefined && repos.length === 0
-  const View = prefs.view === 'deps' ? DepsView : prefs.view === 'milestones' ? MilestonesView : UnassignedView
+  const View = prefs.view === 'deps' ? DepsView : prefs.view === 'milestones' ? MilestonesView : BacklogView
   return (
     <div className="w-full">
       <Panel id="priorities" title="Priorities" icon={ListOrdered} tone="navy" error={error} loading={isPending && !error}>

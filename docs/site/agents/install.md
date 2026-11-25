@@ -18,7 +18,8 @@ is <https://corneeldh.github.io/lighthouse/agents/install.md>. The binaries come
 - Never use `sudo`. Everything goes into the user's own account: the binary into `~/.local/bin`.
 - Use only the subcommands and flags that `lighthouse --help` and `lighthouse init --help` show.
   This guide can be newer than the release you install. If a flag from this guide is missing
-  there, stop and tell the user which one.
+  there, stop and tell the user which one. One exception: `history` missing from
+  `lighthouse --help` skips [History](#history), see there.
 - Change `AGENTS.md` and `CLAUDE.md` only through the diff of `lighthouse init` that the user
   approved. Never edit them by hand, with one exception: the line `@AGENTS.md` in `CLAUDE.md`,
   after a yes (see [Run lighthouse init](#run-lighthouse-init)).
@@ -47,15 +48,16 @@ Read, do not change, and do not ask yet. Find out:
    `.lighthouse/manifest.toml` exist? If `.lighthouse/manifest.toml` exists, stop. Tell the user
    lighthouse is already installed; updating it is outside this guide.
 5. Which requirements are missing. Check each tool with `command -v <tool>`, `tomllib` (only for the `python` package) with
-   `python3 -I -c 'import tomllib'`, and `superpowers` in
+   `python3 -I -c 'import tomllib'`, `PSScriptAnalyzer` (only for the `powershell` package) with
+   `pwsh -NoProfile -NonInteractive -Command "if (-not (Get-Module -ListAvailable PSScriptAnalyzer)) { exit 1 }"`, and `superpowers` in
    `~/.claude/plugins/installed_plugins.json`.
 6. Which languages the repository uses (`git ls-files`): this decides which packages `init` picks.
 
 | Tool | Package | Without it |
 |---|---|---|
 | `python3`, `tomllib` (Python 3.11+) | python | `ty-gate`, `gate_python` and `python-standard` cannot run. The other packages need no Python. |
-| `git` | core, expo, go, shell | Nothing works. |
-| `jq` | core, go, python, shell | The hooks cannot read their payload and report `COULD NOT CHECK`. |
+| `git` | core, expo, go, powershell, shell | Nothing works. |
+| `jq` | core, go, powershell, python, shell | The hooks cannot read their payload and report `COULD NOT CHECK`. |
 | `gh` | core, python | The skills that do not yet use `lighthouse forge` cannot reach GitHub. The chain skills need `gh` only for the fallback `gh auth token`. |
 | `superpowers` | core, expo | The skills cannot hand off worktrees, specs, plans and debugging. |
 | `codex` (optional) | core | The two adversarial reviews stop with `CODEX_MISSING`. |
@@ -63,15 +65,18 @@ Read, do not change, and do not ask yet. Find out:
 | `go`, `gofmt`, `golangci-lint` | go | Go code is not formatted or linted. |
 | `node`, `npm` | node | The node test gate reports `COULD NOT CHECK`. |
 | `npx` | node | `node-imports-gate` reports `COULD NOT CHECK`; nothing was checked for undeclared imports. |
+| `pwsh`, `PSScriptAnalyzer` | powershell | The `powershell-lint-check` hook blocks with `COULD NOT CHECK` on a `.ps1` or `.psm1` file. Install the module with `Install-Module PSScriptAnalyzer -Scope CurrentUser` (or `-Scope AllUsers`, with admin rights). |
 | `curl`, `tar`, `xz` | shell | No `shellcheck` download; sha256sum or shasum verifies it; the `shell-lint-check` hook blocks. |
 
 Report what you found to the user in one block. Then go to the choices.
 
 ## Choices
 
-Ask choices 1 to 5, 8 and 9 now, in order, and skip one that does not apply. Choices 6 and 7 depend
+The order is: choice 1, then [Install the binary](#install-the-binary), then [History](#history),
+then choices 2 to 5, 8 and 9, in order. Skip a choice that does not apply. Choices 6 and 7 depend
 on what `init` proposes: ask them after the dry run, in step 2 of
-[Run lighthouse init](#run-lighthouse-init).
+[Run lighthouse init](#run-lighthouse-init). History needs the binary, so ask choice 1 first and
+install the binary before you ask the others.
 
 | # | Choice | Options, recommended first | Notes |
 |---|---|---|---|
@@ -173,7 +178,60 @@ A user who works in WSL installs inside WSL with the Linux x86-64 block instead.
 `lighthouse check-hooks` says whether the hooks can run on the machine.
 
 Then run `lighthouse --help` and `lighthouse init --help`, and hold this guide to them (see
-[Ground rules](#ground-rules)).
+[Ground rules](#ground-rules)). Go on with [History](#history), then ask choices 2 to 5, 8 and 9
+from [Choices](#choices).
+
+## History
+
+Lighthouse can read the Claude Code transcripts of this repository and propose a start level and
+a few settings from how the user already works. It needs the binary, so it comes after
+[Install the binary](#install-the-binary) and before choices 2 to 5, 8 and 9: its results steer
+the level, choice 9 (labels) and the advice.
+
+If `history` is not in `lighthouse --help` (an older release on the `PATH`), skip this section and
+put one line under "Still open": history analysis skipped, the release has no `lighthouse history`.
+This is the exception to the ground rule that stops on a missing flag.
+
+1. Ask the user, as a choice with the recommended answer first: **local** (recommended) · deep ·
+   none. Say what each level reads, in the user's language:
+   - local: `lighthouse history` reads the transcripts on this machine and prints one JSON report
+     of counts, branch names and path patterns. It sends nothing and prints no prompt, tool
+     output or file content.
+   - deep: as local, and you then re-read a few transcript lines the report points to. Say
+     the consent text for your harness:
+     - In Claude Code: "Deep re-reads fragments of earlier sessions; that costs tokens."
+     - In Codex and OpenCode, add: "The fragments go to <provider>, not to Anthropic." Name the
+       provider of the harness you run in.
+   - none: nothing is read.
+2. none: run nothing, and go on with choices 2 to 5, 8 and 9.
+3. local: run `lighthouse history` in the root of the repository.
+4. deep: run `lighthouse history --sources`. For each finding with `confidence: "low"` and a
+   `sources` list, read at most the lines it names, one at a time:
+
+   ```bash
+   sed -n '<n>p' <file> | cut -c1-4000
+   ```
+
+   A transcript line can be megabytes, so always cut it. Read at most 10 lines per finding and 50
+   in all. A finding with `status: "no_data"` has no sources; skip it. Use what you read only to
+   add to the explanation; never change the `measured` values.
+5. Present all proposals to the user in one message, in the user's language and with a short
+   explanation each: first the level (`level.recommended`) with its `level.reason`, then per
+   finding the `meaning` and the `proposal` (`proposal.text` and `meaning` are English; translate
+   them). A `proposal.kind` of `knob` is a choice the user accepts or declines; it carries a
+   `flag`. An `advice` is an explanation with nothing to do. After a deep run, say which points
+   you filled in from the lines you read. The accepted knobs go into the `init` command in
+   [Run lighthouse init](#run-lighthouse-init), the level as `--level <level>`.
+6. If `lighthouse history` exits 1 or 2, quote its stderr line to the user and go on without a
+   report. Do not retry with other flags.
+
+The report has `"schema": 1`, `sessions`, `skipped_lines`, `level` and `findings`. Each finding
+has `key` (`trunk`, `work_tracking`, `memory`, `shell`, `hooks` or `worktrees`), `status`
+(`found`, `none` or `no_data`) and `confidence` (`high` or `low`). With no transcripts the
+command still exits 0: `sessions` is 0, every finding is `no_data` and the level is `light` with
+the reason `no history`; say so and go on. When the report has a `hint` (for example the
+candidate `/mnt/c/Users/<name>/.claude/projects` under WSL), ask the user before you run the
+command again with `--projects-dir <dir>`: it is the same consent, but another directory.
 
 ## Run lighthouse init
 
@@ -190,8 +248,9 @@ In the root of the repository:
    `lighthouse init: nothing written`, writes nothing and exits 1. That is the expected result
    here.
 2. Ask choice 6 and choice 7 now. Build the command: `lighthouse init`, plus a `--pack <name>` or
-   `--no-pack <name>` for every change from choice 6, plus `--labels` after a yes on choice 9 and
-   `--create-labels` after a yes on choice 9a. If there is a flag, run the dry run again with
+   `--no-pack <name>` for every change from choice 6, plus `--level <level>` and the `flag` of
+   every knob the user accepted in [History](#history), plus `--labels` after a yes on choice 9
+   and `--create-labels` after a yes on choice 9a. If there is a flag, run the dry run again with
    those flags, for example `lighthouse init --no-pack shell --labels </dev/null`.
 3. Show the diff to the user, or summarise it per file and offer the full diff. Ask for approval.
 4. After a yes, run the same command with one `y` on stdin:

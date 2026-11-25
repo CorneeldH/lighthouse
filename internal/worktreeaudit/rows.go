@@ -16,6 +16,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/CorneeldH/lighthouse/internal/gitpath"
 	"github.com/CorneeldH/lighthouse/internal/pytext"
 )
 
@@ -258,7 +259,7 @@ func ParseWorktrees(porcelain string) []WorktreeInfo {
 		switch {
 		case strings.HasPrefix(line, "worktree "):
 			flush()
-			cur = &WorktreeInfo{Path: line[len("worktree "):]}
+			cur = &WorktreeInfo{Path: gitpath.Native(line[len("worktree "):])}
 		case cur == nil:
 			// Python keeps the fields until the next `worktree` line and drops them without a path.
 		case strings.HasPrefix(line, "branch refs/heads/"):

@@ -92,3 +92,24 @@ func TestMapPlannedStaysSilentWithoutDirectionKeys(t *testing.T) {
 		})
 	}
 }
+
+// Classification: fails when step 3 stops taking the fields of the table over from the issue,
+// stops doing what the explanation derives, stops leaving out fields no table or explanation
+// names, no longer asks on an invalid place, or brings back the old "nothing else invented".
+func TestMapPlannedTakesTheFieldsOfTheTable(t *testing.T) {
+	for variant, body := range variants(t, mapPlanned) {
+		t.Run(variant, func(t *testing.T) {
+			step := flat(section(t, body, "### 3.", "\n### 4."))
+			wantAll(t, step,
+				"takes the fields under `From issue` from the title and body of the issue, in the language of the document (translating is allowed",
+				"does what the explanation says for every field the explanation derives",
+				"leaves out every field that the field table does not name and the explanation does not derive",
+				"Without a field table, or without a row for the label, the job places the item as the explanation gives it and adds no other fields",
+				"A place that lacks a `Place` field of the field table, or has a value that table or the explanation calls invalid, is an unclear place: ask")
+			wantAll(t, flat(section(t, body, "### 1.", "\n### 2.")),
+				"A table in the taxonomy file with the columns `Label`, `Item`, `Place` and `From issue` is \"the field table\"",
+				"its `Place` fields come only from the placement section or the answer, never worked out by the job")
+			wantNone(t, step, "nothing else invented")
+		})
+	}
+}

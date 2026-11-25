@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/CorneeldH/lighthouse/internal/gitpath"
 	"github.com/CorneeldH/lighthouse/internal/workplace"
 )
 
@@ -95,6 +96,7 @@ func GitState(ctx context.Context, run workplace.Runner, dir string) (string, er
 	if err != nil {
 		return "", err
 	}
+	gitDir, commonDir = gitpath.Native(gitDir), gitpath.Native(commonDir)
 	h := sha256.New()
 	_, _ = fmt.Fprintf(h, "git-dir\x00%s\x00common-dir\x00%s\x00", gitDir, commonDir)
 	for _, p := range gitStateFiles(gitDir, commonDir) {

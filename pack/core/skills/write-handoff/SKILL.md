@@ -253,7 +253,7 @@ tick starts the next phase itself. Two entries:
    [ "$(git branch --show-current)" = "$B" ] || git push -u origin HEAD
    ```
    A failed push does not block the post: its error line goes under `Watch out:` in the block.
-   Exception on the workflow route (a controller run, if present): when the unpushed range (`origin/<branch>..HEAD`, or from the merge-base with `origin/<default branch>` when the branch is not on origin) touches `.github/workflows/`, never push (`workflow-push-gate` blocks it): run V2b of `/lighthouse-write-pr` with `lighthouse roborev-gate gate --push` first, then post the block with `next: push-workflows`, `after: /lighthouse-write-pr <nr>` (only while there is no PR) and `roborev: <the output of lighthouse roborev-gate body-line --push>`; the workflow pusher pushes.
+   Exception on the workflow route (a controller run, if present): when the unpushed range (`origin/<branch>..HEAD`, or from the merge-base with `origin/<default branch>` when the branch is not on origin) touches `.github/workflows/` itself (what a merge of `origin/<default branch>` brings in does not count), never push (`workflow-push-gate` blocks it): run V2b of `/lighthouse-write-pr` with `lighthouse roborev-gate gate --push` first, then post the block with `next: push-workflows`, `after: /lighthouse-write-pr <nr>` (only while there is no PR) and `roborev: <the output of lighthouse roborev-gate body-line --push>`; the workflow pusher pushes.
    Then post:
    ```bash
    H=$(lighthouse headings kind_handoff) || exit 2

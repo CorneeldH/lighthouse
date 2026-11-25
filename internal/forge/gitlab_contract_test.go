@@ -99,7 +99,11 @@ func (g *gitlabFixture) AddIssue(_ *testing.T, is forge.Issue) {
 			state = "active"
 		}
 		// The milestone ID is the number the client must return; the iid differs on purpose.
-		it["milestone"] = map[string]any{"id": m.Number, "iid": m.Number + 10, "title": m.Title, "state": state}
+		ms := map[string]any{"id": m.Number, "iid": m.Number + 10, "title": m.Title, "state": state}
+		if m.URL != "" {
+			ms["web_url"] = m.URL
+		}
+		it["milestone"] = ms
 	}
 	if !is.ClosedAt.IsZero() {
 		it["closed_at"] = is.ClosedAt.UTC().Format(time.RFC3339)
@@ -206,7 +210,11 @@ func (g *gitlabFixture) AddMilestone(_ *testing.T, m forge.Milestone) {
 	if state == "open" {
 		state = "active"
 	}
-	g.srv.AddMilestone(map[string]any{"id": m.Number, "iid": m.Number + 10, "title": m.Title, "state": state, "description": m.Description})
+	ms := map[string]any{"id": m.Number, "iid": m.Number + 10, "title": m.Title, "state": state, "description": m.Description}
+	if m.URL != "" {
+		ms["web_url"] = m.URL
+	}
+	g.srv.AddMilestone(ms)
 }
 
 // PRCommentBodies reads the notes of the merge request: the issue with that iid is another item.

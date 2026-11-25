@@ -247,15 +247,6 @@ func TestWorkflowPushGateSeesThroughSpellings(t *testing.T) {
 			r.git(r.dir, "rm", "-q", ".github/workflows/ci.yml")
 			r.git(r.dir, "commit", "-q", "-m", "drop")
 		}, func(*pushRepo) string { return "git push -u origin HEAD" }, ".github/workflows/ci.yml"},
-		{"merge of main that changed a workflow", func(r *pushRepo) {
-			r.commit("a.txt", "a\n")
-			r.push()
-			r.git(r.dir, "checkout", "-q", "main")
-			r.commit(".github/workflows/ci.yml", "on: push\n")
-			r.git(r.dir, "push", "-q", "origin", "main")
-			r.git(r.dir, "checkout", "-q", "issue-1-x")
-			r.git(r.dir, "merge", "-q", "--no-edit", "main")
-		}, func(*pushRepo) string { return "git push" }, ".github/workflows/ci.yml"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -264,6 +255,20 @@ func TestWorkflowPushGateSeesThroughSpellings(t *testing.T) {
 			wantPushBlocked(t, pushGate(t, testRun, c.command(r), r.dir), c.want)
 		})
 	}
+}
+
+// A merge of main brings in workflows that are on origin/main already: that is no workflow
+// change of the branch, so the update-merge of fix-pr pushes itself.
+func TestWorkflowPushGatePassesAMergeOfMainThatChangedAWorkflow(t *testing.T) {
+	r := newPushRepo(t)
+	r.commit("a.txt", "a\n")
+	r.push()
+	r.git(r.dir, "checkout", "-q", "main")
+	r.commit(".github/workflows/ci.yml", "on: push\n")
+	r.git(r.dir, "push", "-q", "origin", "main")
+	r.git(r.dir, "checkout", "-q", "issue-1-x")
+	r.git(r.dir, "merge", "-q", "--no-edit", "main")
+	wantPushPass(t, pushGate(t, testRun, "git push", r.dir))
 }
 
 func wfCommit(r *pushRepo) { r.commit(".github/workflows/ci.yml", "on: push\n") }

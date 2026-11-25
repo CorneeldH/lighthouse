@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 )
 
 func TestLoadNodeAbsentIsFalse(t *testing.T) {
@@ -29,8 +31,9 @@ func TestLoadNodeAbsentIsFalse(t *testing.T) {
 }
 
 func TestLoadNodePresent(t *testing.T) {
-	n, ok, err := LoadNode(writeHost(t, "[node]\ntoken_file = \"/tok/n\"\n"))
-	if err != nil || !ok || n.TokenFile != "/tok/n" {
+	tok := testpath.Abs("tok", "n")
+	n, ok, err := LoadNode(writeHost(t, "[node]\ntoken_file = "+lit(tok)+"\n"))
+	if err != nil || !ok || n.TokenFile != tok {
 		t.Errorf("LoadNode = %+v, %v, %v", n, ok, err)
 	}
 }

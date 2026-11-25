@@ -30,8 +30,10 @@ import (
 
 	"github.com/CorneeldH/lighthouse/internal/agentsmd"
 	"github.com/CorneeldH/lighthouse/internal/automemory"
+	"github.com/CorneeldH/lighthouse/internal/created"
 	"github.com/CorneeldH/lighthouse/internal/deps"
 	"github.com/CorneeldH/lighthouse/internal/forge"
+	"github.com/CorneeldH/lighthouse/internal/gitpath"
 	"github.com/CorneeldH/lighthouse/internal/hostconfig"
 	labelsync "github.com/CorneeldH/lighthouse/internal/labels"
 	"github.com/CorneeldH/lighthouse/internal/levels"
@@ -133,6 +135,28 @@ func Run(o Options) int {
 }
 
 var errDeclined = errors.New("nothing written")
+
+// showDiffs prints the diff of every changed path.
+func showDiffs(o Options, plan map[string]*planned, paths []string) {
+	for _, p := range paths {
+		printDiff(o.Out, p, plan[p])
+	}
+}
+
+// confirm reports whether to go on: --yes, otherwise the answer of ask.
+func confirm(o Options, ask func() bool) bool {
+	return o.Yes || ask()
+}
+
+// applyAll applies every changed path with apply, stopping at the first error.
+func applyAll(root string, plan map[string]*planned, paths []string, apply func(root, rel string, p *planned) error) error {
+	for _, p := range paths {
+		if err := apply(root, p, plan[p]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 func execute(o Options) error {
 	if o.CreateLabels && !o.Labels {
@@ -278,17 +302,13 @@ func execute(o Options) error {
 		_, _ = fmt.Fprintln(o.Out, "No changes.")
 		reportBudget(o, plan, lookup)
 	} else {
-		for _, p := range paths {
-			printDiff(o.Out, p, plan[p])
-		}
+		showDiffs(o, plan, paths)
 		reportBudget(o, plan, lookup)
-		if !o.Yes && !ask(o.Out, in, "Apply these changes? [y/N] ") {
+		if !confirm(o, func() bool { return ask(o.Out, in, "Apply these changes? [y/N] ") }) {
 			return errDeclined
 		}
-		for _, p := range paths {
-			if err := apply(root, p, plan[p]); err != nil {
-				return err
-			}
+		if err := applyAll(root, plan, paths, apply); err != nil {
+			return err
 		}
 		_, _ = fmt.Fprintf(o.Out, "Wrote %d file(s).\n", len(paths))
 		if haveLevels {
@@ -448,7 +468,7 @@ func repoRoot(dir string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("%s is not a git repository (or git failed)", dir)
 	}
-	return strings.TrimSpace(string(out)), nil
+	return gitpath.Native(string(out)), nil
 }
 
 func writes(a reconcile.Action, force bool) bool {
@@ -530,6 +550,7 @@ func buildPlan(o Options, root string, names []string, desired []packs.Unit, cha
 		}
 	}
 
+	var add created.Created
 	replyLanguage := settings.ResponseLanguage(projectLanguage(root))
 	p, err := load(settingsPath)
 	if err != nil {
@@ -542,6 +563,7 @@ func buildPlan(o Options, root string, names []string, desired []packs.Unit, cha
 	if doc == nil {
 		doc = orderedjson.NewObject()
 	}
+	before := settingsKeysPresent(doc)
 	if hooksTouched {
 		var want []packs.Registration
 		for _, u := range desired {
@@ -565,6 +587,15 @@ func buildPlan(o Options, root string, names []string, desired []packs.Unit, cha
 		_, _ = fmt.Fprintf(o.Err, "note: %s had autoMemoryEnabled %v; memory-gate is on, so it is now false\n", settingsPath, kept)
 	case kept != nil:
 		_, _ = fmt.Fprintf(o.Err, "warning: %s has autoMemoryEnabled %v; memory-gate is at log, so it stays and auto-memory stays on\n", settingsPath, kept)
+	}
+	after := settingsKeysPresent(doc)
+	for _, k := range createdSettingsKeys {
+		if after[k] && !before[k] {
+			add.SettingsKeys = append(add.SettingsKeys, k)
+		}
+	}
+	if after["language"] && !before["language"] {
+		add.SettingsLanguage = replyLanguage
 	}
 	out, err := orderedjson.Marshal(doc)
 	if err != nil {
@@ -601,6 +632,7 @@ func buildPlan(o Options, root string, names []string, desired []packs.Unit, cha
 		return nil, err
 	}
 	ga.new = ensureGitattributes(ga.old)
+	add.Gitattributes = missingGitattributes(ga.old)
 
 	if seeds.labelsPath != "" && seeds.labelsTemplate != nil {
 		// Seed once: the file is the project's after this, so it is not in the manifest.
@@ -620,6 +652,15 @@ func buildPlan(o Options, root string, names []string, desired []packs.Unit, cha
 		}
 	}
 
+	for _, rel := range []string{configPath, agentsMDPath, claudeMDPath, settingsPath, gitattributesPath} {
+		if p := plan[rel]; p != nil && !p.existed && p.new != nil {
+			add.Files = append(add.Files, rel)
+		}
+	}
+	if err := planCreated(root, load, add); err != nil {
+		return nil, err
+	}
+
 	mp, err := load(manifest.Path)
 	if err != nil {
 		return nil, err
@@ -635,6 +676,45 @@ func buildPlan(o Options, root string, names []string, desired []packs.Unit, cha
 	}
 	mp.new = manifest.Encode(nm)
 	return plan, nil
+}
+
+// createdSettingsKeys are the settings.json keys init can add, in the order they are recorded.
+var createdSettingsKeys = []string{"language", "hooks", "permissions", "permissions.allow", "autoMemoryEnabled"}
+
+// settingsKeysPresent reports which of createdSettingsKeys doc has.
+func settingsKeysPresent(doc *orderedjson.Object) map[string]bool {
+	has := map[string]bool{}
+	for _, k := range []string{"language", "hooks", "permissions", "autoMemoryEnabled"} {
+		_, has[k] = doc.Get(k)
+	}
+	if v, ok := doc.Get("permissions"); ok {
+		if perms, isObj := v.(*orderedjson.Object); isObj {
+			_, has["permissions.allow"] = perms.Get("allow")
+		}
+	}
+	return has
+}
+
+// planCreated grows .lighthouse/created.toml with add. It only grows: nothing is
+// removed, and nothing is written when add brings nothing new.
+func planCreated(root string, load func(string) (*planned, error), add created.Created) error {
+	have, found, err := created.Read(root)
+	if err != nil {
+		return err
+	}
+	merged := have.Merge(add)
+	if found && bytes.Equal(created.Encode(merged), created.Encode(have)) {
+		return nil
+	}
+	if !found && merged.Empty() {
+		return nil
+	}
+	p, err := load(created.Path)
+	if err != nil {
+		return err
+	}
+	p.new = created.Encode(merged)
+	return nil
 }
 
 // jsonEqual reports whether a and b hold the same JSON with the same key order,

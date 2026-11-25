@@ -23,6 +23,8 @@ controller.
 - Eén bron voor de UI van een release: de binary bedt de gebouwde SPA in, en geen gebouwde bestanden
   op `main` ([SPA-skelet](../planning/specs/2026-10-26-spa-skelet-design.md),
   [UI in go install](../planning/specs/2026-11-16-issue-349-go-install-ui-design.md)).
+- De milestone-titel linkt naar de URL die de forge-lezer levert (`forge.Milestone.URL`), nooit naar een
+  in de SPA gebouwde URL; bij een lege URL blijft de titel platte tekst.
 
 ## Bewust niet
 

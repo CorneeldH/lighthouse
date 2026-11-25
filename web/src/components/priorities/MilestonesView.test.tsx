@@ -50,7 +50,7 @@ const iss = (
   prio_weight: 0,
   factor: 0,
   blocked_by: by.length ? by.map(([r, i]) => ({ repo: r, issue: i })) : null,
-  ...(ms === null ? {} : { milestone: { number: ms, state: 'open', title: `M${ms}` } }),
+  ...(ms === null ? {} : { milestone: { number: ms, state: 'open', title: `M${ms}`, url: `u-m${ms}` } }),
   ...extra,
 })
 const ms = (number: number, done: number, open: number, description = ''): Milestone => ({
@@ -59,6 +59,7 @@ const ms = (number: number, done: number, open: number, description = ''): Miles
   done,
   open,
   description,
+  url: `u-m${number}`,
   closed: [],
 })
 const repo = (slug: string, issues: Issue[], milestones: Milestone[]): Repo => ({ slug, issues, milestones })
@@ -128,6 +129,15 @@ describe('MilestonesView', () => {
     expect(shaping.getAttribute('data-state')).toBe('needs_shaping')
     expect(shaping.style.outline).toBe('1.5px dashed var(--foreground)')
     expect(blocks(`${A}#m1`).every((x) => !x.hasAttribute('data-needs-human'))).toBe(true)
+  })
+
+  it('links the row title to the milestone url, and shows plain text when the url is empty', () => {
+    view([repo(A, [], [ms(1, 0, 0), { ...ms(2, 0, 0), url: '' }])])
+    const link = within(row(`${A}#m1`)).getByRole('link', { name: 'M1' })
+    expect(link.getAttribute('href')).toBe('u-m1')
+    expect(link.getAttribute('target')).toBe('_blank')
+    expect(within(row(`${A}#m2`)).queryByRole('link', { name: 'M2' })).toBeNull()
+    expect(within(row(`${A}#m2`)).getByText('M2')).toBeTruthy()
   })
 
   it('opens the issue url in a new tab on click', () => {

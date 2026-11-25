@@ -1,4 +1,5 @@
 import type { JSX } from 'react'
+import { MilestoneTitle } from './MilestoneTitle'
 import type { ViewId } from '@/lib/priorities/prefs'
 import type { DepsOrder } from './layout'
 import type { IssueStateName } from '@/lib/priorities/derive'
@@ -8,6 +9,7 @@ export interface LegendItem {
   key: string
   label: string
   color: string
+  url?: string
 }
 
 interface ToolbarProps {
@@ -40,7 +42,7 @@ const HEADING = 'text-[0.65rem] font-semibold uppercase tracking-wider text-mute
 const VIEWS: Array<{ id: ViewId; label: string }> = [
   { id: 'deps', label: 'Dependencies' },
   { id: 'milestones', label: 'Milestones' },
-  { id: 'unassigned', label: 'Without milestone' },
+  { id: 'backlog', label: 'Backlog' },
 ]
 
 // The computed order sorts on % done; its button shows only the sign, its name says it in full.
@@ -151,7 +153,7 @@ export function Toolbar({
             {legend.map((l) => (
               <li key={l.key} className="inline-flex items-center gap-1.5">
                 <i aria-hidden className="inline-block size-3 rounded-sm" style={{ background: l.color }} />
-                {l.label}
+                <MilestoneTitle title={l.label} url={l.url} />
               </li>
             ))}
           </ul>

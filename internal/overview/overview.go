@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/CorneeldH/lighthouse/internal/forge"
+	"github.com/CorneeldH/lighthouse/internal/issuestate"
 	"github.com/CorneeldH/lighthouse/internal/protocol"
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 )
@@ -55,8 +56,9 @@ type Overview struct {
 
 // RepoSource is one repository for BuildAll: its slug and where its issues come from. Board
 // reads the board once for the statuses; Controller, which needs Board, also narrows the
-// questions and returned issues to the issues in Status Controller. Without Controller every
-// open issue counts, as without [dispatch].
+// questions and returned issues to the issues in Status Controller. A returned issue also counts
+// on To do with a needs_* label of Labels: issuestate.Return moves it there (#448, #605).
+// Without Controller every open issue counts, as without [dispatch].
 type RepoSource struct {
 	Slug       string
 	Src        forge.Forge
@@ -85,7 +87,7 @@ func BuildAll(ctx context.Context, repos []RepoSource) (Overview, error) {
 	all := Overview{Questions: []Question{}, Returned: []Returned{}, Statuses: []IssueStatus{}}
 	for _, r := range repos {
 		var statuses []IssueStatus
-		var in map[int]bool
+		var in, back map[int]bool
 		if r.Board {
 			items, err := r.Src.BoardItems(ctx)
 			switch {
@@ -93,15 +95,19 @@ func BuildAll(ctx context.Context, repos []RepoSource) (Overview, error) {
 				return Overview{}, fmt.Errorf("%s: %w", r.Slug, err)
 			case err == nil:
 				if r.Controller {
-					in = map[int]bool{}
+					in, back = map[int]bool{}, map[int]bool{}
 				}
 				for _, it := range items {
 					if it.Repo != r.Slug {
 						continue
 					}
 					statuses = append(statuses, IssueStatus{Repo: r.Slug, Issue: it.Issue, Status: it.Status})
-					if r.Controller && it.Status == "Controller" {
+					switch {
+					case !r.Controller:
+					case it.Status == "Controller":
 						in[it.Issue] = true
+					case it.Status == issuestate.ToDo:
+						back[it.Issue] = true
 					}
 				}
 			}
@@ -110,7 +116,7 @@ func BuildAll(ctx context.Context, repos []RepoSource) (Overview, error) {
 		if r.NewTrusted != nil {
 			trusted = r.NewTrusted()
 		}
-		o, err := Build(ctx, r.Src, in, trusted)
+		o, err := Build(ctx, r.Src, in, back, r.Labels, trusted)
 		if err != nil {
 			return Overview{}, fmt.Errorf("%s: %w", r.Slug, err)
 		}
@@ -135,21 +141,26 @@ type entry[T any] struct {
 }
 
 // Build lists the open questions and returned issues, oldest header comment first. With a
-// non-nil in only the issues it names count, and no comments are read for the
-// others. A question whose every answer is by an untrusted author stays open: the
-// dispatcher ignores such an answer too, so the overview must still ask for one; a nil trusted
-// trusts everyone. Any failure fails the whole build: a partial list would hide issues.
-func Build(ctx context.Context, src forge.Forge, in map[int]bool, trusted Trusted) (Overview, error) {
+// non-nil in only the issues it names count, plus, for the returned list alone, the issues back
+// names that carry a needs_* label of labels; no comments are read for the others. A question
+// whose every answer is by an untrusted author stays open: the dispatcher ignores such an
+// answer too, so the overview must still ask for one; a nil trusted trusts everyone. Any failure fails the whole build: a partial list would hide issues.
+func Build(ctx context.Context, src forge.Forge, in, back map[int]bool, labels repoconfig.Labels, trusted Trusted) (Overview, error) {
 	issues, err := src.OpenIssues(ctx)
 	if err != nil {
 		return Overview{}, err
 	}
+	// returnedOnly marks the kept issues that count only for the returned list.
+	var returnedOnly []bool
 	if in != nil {
 		// A new slice: the source may keep the one it returned.
 		kept := make([]forge.Issue, 0, len(issues))
 		for _, issue := range issues {
-			if in[issue.Number] {
-				kept = append(kept, issue)
+			switch {
+			case in[issue.Number]:
+				kept, returnedOnly = append(kept, issue), append(returnedOnly, false)
+			case back[issue.Number] && labels.NeedsName(issue.Labels) != "":
+				kept, returnedOnly = append(kept, issue), append(returnedOnly, true)
 			}
 		}
 		issues = kept
@@ -161,7 +172,8 @@ func Build(ctx context.Context, src forge.Forge, in map[int]bool, trusted Truste
 	// After the goroutines of fetchStatuses: a Trusted caches and is not concurrency-safe.
 	if trusted != nil {
 		for i := range statuses {
-			if statuses[i].State != protocol.StateOther || len(statuses[i].Answers) == 0 {
+			if statuses[i].State != protocol.StateOther || len(statuses[i].Answers) == 0 ||
+				(returnedOnly != nil && returnedOnly[i]) {
 				continue
 			}
 			ok, err := anyTrusted(ctx, trusted, statuses[i].Answers)
@@ -180,6 +192,9 @@ func Build(ctx context.Context, src forge.Forge, in map[int]bool, trusted Truste
 		status := statuses[i]
 		switch status.State {
 		case protocol.StateQuestion:
+			if returnedOnly != nil && returnedOnly[i] {
+				continue
+			}
 			answerURL := status.Comment.URL
 			if answerURL == "" {
 				answerURL = issue.URL

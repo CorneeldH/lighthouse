@@ -7,6 +7,18 @@ import (
 
 const gitattributesPath = ".gitattributes"
 
+// missingGitattributes returns the lighthouse rules ensureGitattributes would add to old.
+func missingGitattributes(old []byte) []string {
+	var missing []string
+	if !hasAttrPattern(old, "*.sh", "") {
+		missing = append(missing, "*.sh eol=lf")
+	}
+	if !hasAttrPattern(old, ".claude/hooks/lighthouse/**", "eol=lf") {
+		missing = append(missing, ".claude/hooks/lighthouse/** eol=lf")
+	}
+	return missing
+}
+
 // ensureGitattributes returns old with the rules that keep the hook scripts LF at the end:
 // `*.sh eol=lf` unless a line already has exactly that pattern, and
 // `.claude/hooks/lighthouse/** eol=lf` unless a line with that pattern already sets eol=lf.
@@ -17,13 +29,7 @@ func ensureGitattributes(old []byte) []byte {
 	if bytes.Contains(old, []byte("\r\n")) {
 		eol = "\r\n"
 	}
-	var missing []string
-	if !hasAttrPattern(old, "*.sh", "") {
-		missing = append(missing, "*.sh eol=lf")
-	}
-	if !hasAttrPattern(old, ".claude/hooks/lighthouse/**", "eol=lf") {
-		missing = append(missing, ".claude/hooks/lighthouse/** eol=lf")
-	}
+	missing := missingGitattributes(old)
 	if len(missing) == 0 {
 		return old
 	}

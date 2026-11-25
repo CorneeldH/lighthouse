@@ -69,3 +69,27 @@ func TestInitNoPackKeepsGitattributes(t *testing.T) {
 		t.Errorf(".gitattributes changed by --no-pack:\n%s\nwas:\n%s", after, before)
 	}
 }
+
+func TestMissingGitattributes(t *testing.T) {
+	const sh, hooks = "*.sh eol=lf", ".claude/hooks/lighthouse/** eol=lf"
+	for _, tc := range []struct {
+		name, old string
+		want      []string
+	}{
+		{"empty", "", []string{sh, hooks}},
+		{"sh present", sh + "\n", []string{hooks}},
+		{"both present", sh + "\n" + hooks + "\n", nil},
+		{"hooks pattern without eol", sh + "\n.claude/hooks/lighthouse/** -text\n", []string{hooks}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var in []byte
+			if tc.old != "" {
+				in = []byte(tc.old)
+			}
+			got := missingGitattributes(in)
+			if strings.Join(got, "|") != strings.Join(tc.want, "|") {
+				t.Errorf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

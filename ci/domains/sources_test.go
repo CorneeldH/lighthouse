@@ -66,6 +66,9 @@ func withoutExemptions(rel, text string) string {
 	case rel == "internal/pins/lane/body.go", rel == "internal/pins/lane/body_test.go":
 		// docs/pins.md is text in an issue or PR body; Go reads no file there.
 		return strings.ReplaceAll(text, "docs/pins.md", "")
+	case rel == "internal/history/worktracking.go", rel == "internal/history/worktracking_test.go":
+		// docs/tasks/*.md is a pattern matched against paths in transcript commands; Go reads no file there.
+		return strings.ReplaceAll(text, "docs/", "")
 	case rel == "internal/direction/direction_test.go":
 		// docs/... are the configured paths of a fixture repo in t.TempDir(), never this repo's docs;
 		// the real documents are classified as go by goDocs and goDocPrefixes.
@@ -123,6 +126,9 @@ func withoutExemptions(rel, text string) string {
 		return strings.ReplaceAll(text, "docs/", "")
 	case rel == "internal/repoconfig/repoconfig_test.go":
 		// docs/... are the Document paths of a labels document inside a test string, never read from this repo.
+		return strings.ReplaceAll(text, "docs/", "")
+	case rel == "internal/cli/tick_versions.go":
+		// docs/... is the spec path printed in the proposal issue as a pointer, never read from this repo.
 		return strings.ReplaceAll(text, "docs/", "")
 	case strings.HasPrefix(rel, "internal/scheduled/mapplanned/"):
 		// docs/... are map documents and changelog.d is the fragment directory of the target repo of

@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -86,6 +87,28 @@ func TestMainCheckout(t *testing.T) {
 		if got != main {
 			t.Errorf("MainCheckout(%q) = %q, want %q", dir, got, main)
 		}
+	}
+}
+
+// From a subdirectory the answer is the native path of the main checkout, without a trailing
+// newline or CRLF. Red when MainCheckout uses git's output as printed.
+func TestMainCheckoutFromSubdir(t *testing.T) {
+	base, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	main := filepath.Join(base, "main")
+	sub := filepath.Join(main, "a", "b")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	git(t, main, "init", "-q")
+	got, err := MainCheckout(sub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != main || strings.ContainsAny(got, "\r\n") {
+		t.Errorf("MainCheckout(%q) = %q, want %q", sub, got, main)
 	}
 }
 

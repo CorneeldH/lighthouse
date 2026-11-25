@@ -1,0 +1,5 @@
+# init proposes pack/powershell when git tracks (or would track) a PowerShell script or module
+# anywhere. Same rule as pack/shell/detect.toml: the powershell-lint-check hook works per file
+# and needs no project command, so every .ps1 and .psm1 counts.
+
+files = ["**/*.ps1", "**/*.psm1"]

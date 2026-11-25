@@ -363,6 +363,7 @@
       "how": [
         "It runs only when LIGHTHOUSE_CONTROLLER_RUN marks a controller run; elsewhere it does nothing.",
         "The range is origin/<branch>..HEAD, or from the merge-base with origin/<default branch> when the branch is not on origin.",
+        "What is on origin/<default branch> already does not count: a merge of main that only brings main's workflows in passes.",
         "It sees a push after `cd`, `;`, `|`, `&&`, with `git -C <path>` and with refspecs; an alias it cannot see.",
         "A touched workflow blocks with exit 2: the run reviews with V2b and posts the handoff with `next: push-workflows`.",
         "When it cannot measure the range, it blocks with COULD NOT CHECK."
@@ -596,9 +597,35 @@
       "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/shell/hooks/shell-lint-check.sh"
     },
     {
-      "id": "usage-gate-tool",
+      "id": "powershell-lint-check",
       "phase": "post-tool",
       "row": 7,
+      "kind": "hook",
+      "trigger": "tool",
+      "events": [
+        "PostToolUse"
+      ],
+      "matcher": "Edit|Write",
+      "command": "powershell-lint-check.sh",
+      "effects": [
+        "blocks"
+      ],
+      "label": "powershell-lint-check",
+      "what": "Runs PSScriptAnalyzer on an edited PowerShell script.",
+      "how": [
+        "It checks a fixed set of rules, so a PSScriptAnalyzerSettings.psd1 cannot switch one off.",
+        "A finding of one of those rules blocks with exit 2.",
+        "When pwsh, the PSScriptAnalyzer module or the tooling is missing, it blocks with COULD NOT CHECK; it is never silent."
+      ],
+      "when": "After each Edit or Write.",
+      "without": "A PowerShell script with a PSScriptAnalyzer finding is committed.",
+      "status": "works",
+      "source": "https://github.com/CorneeldH/lighthouse/blob/main/pack/powershell/hooks/powershell-lint-check.sh"
+    },
+    {
+      "id": "usage-gate-tool",
+      "phase": "post-tool",
+      "row": 8,
       "kind": "hook",
       "trigger": "tool",
       "events": [
@@ -911,6 +938,7 @@
         "gofmt-check",
         "ruff-format-check",
         "shell-lint-check",
+        "powershell-lint-check",
         "bash-write-check-post",
         "go-lint-gate",
         "ty-gate",

@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/CorneeldH/lighthouse/internal/gitpath"
 	"github.com/CorneeldH/lighthouse/internal/telemetry/transcript"
 )
 
@@ -63,7 +64,7 @@ func repoRoots(ctx context.Context, opt Options) []string {
 	if out, ok, err := gitOut(ctx, opt, "worktree", "list", "--porcelain"); err == nil && ok {
 		for _, ln := range strings.Split(out, "\n") {
 			if p, found := strings.CutPrefix(ln, "worktree "); found {
-				roots = append(roots, filepath.Clean(strings.TrimSpace(p)))
+				roots = append(roots, gitpath.Native(p))
 			}
 		}
 	}

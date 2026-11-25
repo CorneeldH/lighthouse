@@ -25,6 +25,7 @@ import (
 	"github.com/CorneeldH/lighthouse/internal/repoconfig"
 	"github.com/CorneeldH/lighthouse/internal/server"
 	"github.com/CorneeldH/lighthouse/internal/store"
+	telemetryreport "github.com/CorneeldH/lighthouse/internal/telemetry/report"
 	"github.com/CorneeldH/lighthouse/internal/usage"
 	"github.com/CorneeldH/lighthouse/internal/web"
 	"github.com/CorneeldH/lighthouse/internal/workplace"
@@ -201,9 +202,23 @@ func serve(ctx context.Context, addr, dbPath string, repos []overview.RepoSource
 	if err != nil {
 		return err
 	}
+	// The telemetry endpoints read on their own read-only connection; without it they are left out.
+	var telemetryReader server.TelemetryReader
+	ro, err := store.OpenReadOnlyLive(ctx, dbPath)
+	if err != nil {
+		_, _ = fmt.Fprintf(errOut, "lighthouse: telemetry endpoints off: %s\n", oneLine(err))
+	} else {
+		telemetryReader = telemetryreport.NewReader(ro.DB, time.Now)
+	}
+	closeStores := func() error {
+		if ro != nil {
+			_ = ro.Close()
+		}
+		return st.Close()
+	}
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
-		_ = st.Close()
+		_ = closeStores()
 		return err
 	}
 	_, _ = fmt.Fprintf(errOut, "lighthouse: listening on %s\n", ln.Addr())
@@ -233,8 +248,9 @@ func serve(ctx context.Context, addr, dbPath string, repos []overview.RepoSource
 		Leftovers: func(ctx context.Context) ([]workplace.Leftover, error) {
 			return workplace.Leftovers(ctx, st.DB)
 		},
-		RunsMeta: meta,
-		Node:     node,
+		RunsMeta:  meta,
+		Node:      node,
+		Telemetry: telemetryReader,
 		Runs: func(ctx context.Context) ([]dispatch.RunView, []dispatch.DeferredView, error) {
 			return dispatch.LoadView(ctx, st.DB, slugs)
 		},
@@ -259,7 +275,7 @@ func serve(ctx context.Context, addr, dbPath string, repos []overview.RepoSource
 	cancelRefresh()
 	stopped()
 	prioStopped()
-	if err := st.Close(); err != nil && runErr == nil {
+	if err := closeStores(); err != nil && runErr == nil {
 		runErr = err
 	}
 	return runErr

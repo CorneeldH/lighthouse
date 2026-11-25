@@ -28,7 +28,8 @@ hook cannot check, it blocks with `COULD NOT CHECK`, or says so where it never b
   `Closes #N` with evidence, `Refs #N — <reason>` or `No issue: <reason>`.
 - `workflow-push-gate` (`run.sh workflow-push-gate`) — PreToolUse `Bash`. Only in a controller run: blocks
   a `git push` whose range (`origin/<branch>..HEAD`, or from the merge-base when the branch is not on
-  origin) touches `.github/workflows/`; the workflow pusher pushes that (`next: push-workflows`).
+  origin) touches `.github/workflows/` itself (what is on `origin/<default>` already, such as a merge of main,
+  does not count); the workflow pusher pushes that (`next: push-workflows`).
 - `telemetry-collect-check` (`run.sh telemetry-collect-check`) — SessionStart. A base hook (no stand, no override): notes the
   lighthouse and pack versions of the session in a sidecar file in the state directory and starts
   `lighthouse telemetry collect --since-last` detached, except in a controller run or with

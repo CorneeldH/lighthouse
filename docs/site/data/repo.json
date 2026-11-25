@@ -164,6 +164,16 @@
       "force": false
     },
     {
+      "id": "created",
+      "place": ".lighthouse/created.toml",
+      "label": "created.toml",
+      "dir": ".lighthouse",
+      "kind": "config",
+      "act": "adds",
+      "upgrade": "only grows: a run adds what it newly created",
+      "force": false
+    },
+    {
       "id": "pr-template",
       "place": ".github/pull_request_template.md",
       "label": "pull_request_template.md",

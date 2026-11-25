@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/CorneeldH/lighthouse/internal/runs"
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 )
 
 var lcNow = time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC)
@@ -46,7 +47,7 @@ func (f *fakeWP) Prepare(_ context.Context, branch string) (Workspace, error) {
 	if f.prepareErr != nil {
 		return Workspace{}, f.prepareErr
 	}
-	return Workspace{ID: "w1", Path: "/p/w1", Branch: branch}, nil
+	return Workspace{ID: "w1", Path: testpath.Abs("p", "w1"), Branch: branch}, nil
 }
 
 func (f *fakeWP) Spawn(_ context.Context, _ Workspace, _ LaunchSpec) (Session, error) {
@@ -376,7 +377,7 @@ func gitRunner(status, head string, ahead string) Runner {
 func cleanRunner() Runner { return gitRunner("", "abc", "0") }
 
 func cand(issue int) Candidate {
-	return Candidate{Repo: lcRepo, Issue: issue, Workspace: Workspace{ID: "w1", Path: "/p/w1", Branch: "issue-7"}}
+	return Candidate{Repo: lcRepo, Issue: issue, Workspace: Workspace{ID: "w1", Path: testpath.Abs("p", "w1"), Branch: "issue-7"}}
 }
 
 func leftoverReasons(t *testing.T, db *sql.DB) map[string]string {
@@ -423,7 +424,7 @@ func TestCleanupRemovesClean(t *testing.T) {
 // A candidate without a path gets it from Lookup; git measures that path, and the leftover has it.
 func TestCleanupLooksUpPath(t *testing.T) {
 	db := openLeftoverDB(t)
-	w := &fakeWP{lookupPath: "/p/looked"}
+	w := &fakeWP{lookupPath: testpath.Abs("p", "looked")}
 	var paths []string
 	run := func(ctx context.Context, d time.Duration, name string, args ...string) (string, int, error) {
 		for i, a := range args {
@@ -439,21 +440,21 @@ func TestCleanupLooksUpPath(t *testing.T) {
 	if err != nil || removed || w.removes != 0 {
 		t.Fatalf("Cleanup = %v, %v, removes %d", removed, err, w.removes)
 	}
-	if !reflect.DeepEqual(w.looked, []string{"w1"}) || !reflect.DeepEqual(paths, []string{"/p/looked"}) {
-		t.Errorf("looked = %v, git paths = %v; want [w1], [/p/looked]", w.looked, paths)
+	if !reflect.DeepEqual(w.looked, []string{"w1"}) || !reflect.DeepEqual(paths, []string{testpath.Abs("p", "looked")}) {
+		t.Errorf("looked = %v, git paths = %v; want [w1], [%s]", w.looked, paths, testpath.Abs("p", "looked"))
 	}
 	ls, err := Leftovers(context.Background(), db)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(ls) != 1 || ls[0].Path != "/p/looked" || ls[0].Reason != "uncommitted changes" {
-		t.Errorf("leftovers = %+v, want one with path /p/looked and uncommitted changes", ls)
+	if len(ls) != 1 || ls[0].Path != testpath.Abs("p", "looked") || ls[0].Reason != "uncommitted changes" {
+		t.Errorf("leftovers = %+v, want one with path %s and uncommitted changes", ls, testpath.Abs("p", "looked"))
 	}
 }
 
 func TestCleanupLooksUpPathAndRemoves(t *testing.T) {
 	db := openLeftoverDB(t)
-	w := &fakeWP{lookupPath: "/p/looked"}
+	w := &fakeWP{lookupPath: testpath.Abs("p", "looked")}
 	c := cand(7)
 	c.Workspace.Path = ""
 	removed, err := Cleanup(context.Background(), db, w, cleanRunner(), c, lcNow)
@@ -1159,7 +1160,7 @@ func TestCleanupNodeWithoutGitMeterKeeps(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []Leftover{{Repo: lcRepo, Issue: 7, Node: c.Node, WorkspaceID: "w1", Path: "/p/w1", Reason: "not measurable: node " + c.Node + ": no git measurement"}}
+	want := []Leftover{{Repo: lcRepo, Issue: 7, Node: c.Node, WorkspaceID: "w1", Path: testpath.Abs("p", "w1"), Reason: "not measurable: node " + c.Node + ": no git measurement"}}
 	if !reflect.DeepEqual(ls, want) {
 		t.Errorf("leftovers = %+v, want %+v", ls, want)
 	}

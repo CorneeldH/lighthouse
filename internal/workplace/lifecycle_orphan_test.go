@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/CorneeldH/lighthouse/internal/testpath"
 )
 
 // orphanWP is a fakeWP that also answers the branch check of a workspace whose worktree is gone.
@@ -100,11 +102,11 @@ func TestCleanupMissingDirWithoutBranchCheckKeeps(t *testing.T) {
 	}
 }
 
-// The other tests give a workspace a made-up path under /p/ that is never on disk; only a path
+// The other tests give a workspace a made-up path under <root>/p/ that is never on disk; only a path
 // that really does not exist counts as a missing worktree here.
 func init() {
 	real := WorktreeMissing
 	WorktreeMissing = func(path string) bool {
-		return !strings.HasPrefix(path, "/p/") && real(path)
+		return !strings.HasPrefix(path, testpath.Abs("p")+string(filepath.Separator)) && real(path)
 	}
 }

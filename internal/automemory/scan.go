@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/CorneeldH/lighthouse/internal/gitpath"
 	"gopkg.in/yaml.v3"
 )
 
@@ -43,7 +44,7 @@ func MainCheckout(dir string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("git rev-parse --git-common-dir in %s: %w: %s", dir, err, strings.TrimSpace(stderr.String()))
 	}
-	common := strings.TrimSpace(string(out))
+	common := gitpath.Native(string(out))
 	if common == "" {
 		return "", fmt.Errorf("git rev-parse --git-common-dir in %s: empty output", dir)
 	}

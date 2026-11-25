@@ -37,10 +37,18 @@ type SourceReport struct {
 	Week    WindowReport `json:"week"`
 }
 
+// CodexReport is the Codex source: the two windows plus the reset credits.
+type CodexReport struct {
+	Session WindowReport `json:"session"`
+	Week    WindowReport `json:"week"`
+	// ResetCredits is null when unknown (rollout-log, unreadable, not measurable).
+	ResetCredits *ResetCredits `json:"reset_credits"`
+}
+
 // Report is the body of GET /api/usage.
 type Report struct {
 	Claude SourceReport `json:"claude"`
-	Codex  SourceReport `json:"codex"`
+	Codex  CodexReport  `json:"codex"`
 }
 
 // Reporter combines the Claude cache and the Codex measurement. It writes nothing.
@@ -73,7 +81,7 @@ func (r *Reporter) claude() SourceReport {
 	}
 }
 
-func (r *Reporter) codexReport(ctx context.Context) SourceReport {
+func (r *Reporter) codexReport(ctx context.Context) CodexReport {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if !r.have || r.Now().Sub(r.codexAt) > r.reuse() {
@@ -84,18 +92,23 @@ func (r *Reporter) codexReport(ctx context.Context) SourceReport {
 		r.have = true
 	}
 	if r.codexEr != nil {
-		return notMeasurable(r.codexEr.Error())
+		return codexOf(notMeasurable(r.codexEr.Error()), nil)
 	}
 	at, err := time.Parse(timeLayout, r.codex.GeneratedAt)
 	if err != nil {
-		return notMeasurable("unreadable Codex timestamp: " + err.Error())
+		return codexOf(notMeasurable("unreadable Codex timestamp: "+err.Error()), nil)
 	}
 	measured := at.Add(-time.Duration(r.codex.AgeS) * time.Second)
 	age := ageSince(r.Now(), measured)
-	return SourceReport{
+	return codexOf(SourceReport{
 		Session: windowReport(r.codex.Session.Pct, r.codex.Session.ResetAt, age, r.codex.LowerBound),
 		Week:    windowReport(r.codex.Week.Pct, r.codex.Week.ResetAt, age, r.codex.LowerBound),
-	}
+	}, r.codex.Credits())
+}
+
+// codexOf adds the reset credits to the shared windows.
+func codexOf(w SourceReport, c *ResetCredits) CodexReport {
+	return CodexReport{Session: w.Session, Week: w.Week, ResetCredits: c}
 }
 
 // reuse is how long the remembered Codex outcome stays valid.
