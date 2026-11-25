@@ -12,9 +12,9 @@ func TestNative(t *testing.T) {
 		in   string
 		want string
 	}{
-		{"trailing newline", "/a/b\n", "/a/b"},
-		{"trailing crlf", "/a/b\r\n", "/a/b"},
-		{"surrounding spaces", "  /a/b ", "/a/b"},
+		{"trailing newline", "/a/b\n", filepath.FromSlash("/a/b")},
+		{"trailing crlf", "/a/b\r\n", filepath.FromSlash("/a/b")},
+		{"surrounding spaces", "  /a/b ", filepath.FromSlash("/a/b")},
 		{"empty", "", ""},
 		{"only newline", "\n", ""},
 		{"relative git dir", ".git\n", ".git"},
