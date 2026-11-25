@@ -1,0 +1,132 @@
+{
+  "schema": 1,
+  "sessions": 2,
+  "span": {
+    "first": "2026-03-02",
+    "last": "2026-06-10"
+  },
+  "skipped_lines": 0,
+  "level": {
+    "recommended": "light",
+    "reason": "not standard: 1 PRs (need at least 3); 100% of pushes on the trunk (need under 20%); 0% of commits after a test command (need at least 50%)"
+  },
+  "findings": [
+    {
+      "key": "trunk",
+      "status": "found",
+      "confidence": "high",
+      "measured": {
+        "commits_by_branch": {
+          "release/r1": 1,
+          "release/r5.11": 1
+        },
+        "pushes_by_branch": {
+          "release/r1": 1,
+          "release/r5.11": 1
+        },
+        "trunk_names": [
+          "release/r1",
+          "release/r5.11"
+        ],
+        "trunk_push_ratio": 1,
+        "unknown_branch": 0
+      },
+      "meaning": "Pushes go straight to the trunk; main-commit-gate blocks that from day one. A shifting trunk (release/rN) clashes with one fixed default branch.",
+      "proposal": {
+        "kind": "advice",
+        "text": "Pick one fixed trunk (main) and work on a branch per issue."
+      }
+    },
+    {
+      "key": "work_tracking",
+      "status": "found",
+      "confidence": "high",
+      "measured": {
+        "file_tasks": 2,
+        "issue_commands": 0,
+        "pr_commands": 0,
+        "prs": 1
+      },
+      "meaning": "Work outside issues does not fit the chain from issue to PR.",
+      "proposal": {
+        "kind": "advice",
+        "text": "Move work to GitHub issues and track it there."
+      }
+    },
+    {
+      "key": "memory",
+      "status": "found",
+      "confidence": "high",
+      "measured": {
+        "case_variant_cwds": 1,
+        "case_variant_dirs": 0,
+        "files": 0,
+        "index_at_limit": false,
+        "index_lines": 0
+      },
+      "meaning": "An index at the read limit is partly ignored, and lighthouse writes nothing to harness memory.",
+      "proposal": {
+        "kind": "advice",
+        "text": "Clean up auto-memory; a rule that must last belongs in the repo."
+      }
+    },
+    {
+      "key": "shell",
+      "status": "found",
+      "confidence": "high",
+      "measured": {
+        "crlf_signals": 2,
+        "cwd_forms": {
+          "msys": 1,
+          "windows_drive": 15
+        },
+        "entrypoints": {
+          "cli": 16
+        },
+        "patterns": {
+          "powershell": 1
+        },
+        "platform": "windows"
+      },
+      "meaning": "Shows whether Claude Code runs on native Windows, WSL or Linux, which decides the install block of the guide.",
+      "proposal": {
+        "kind": "advice",
+        "text": "Line endings caused trouble; add a .gitattributes with `* text=auto eol=lf`."
+      }
+    },
+    {
+      "key": "hooks",
+      "status": "none",
+      "confidence": "low",
+      "measured": {
+        "blocking_by_hook": {},
+        "overlapping": []
+      },
+      "meaning": "Shows which hooks block tool calls and which project hooks may duplicate a lighthouse hook.",
+      "proposal": {
+        "kind": "advice",
+        "text": "No overlap found; run /lighthouse-audit-agent-config for a full audit of the hooks."
+      }
+    },
+    {
+      "key": "worktrees",
+      "status": "found",
+      "confidence": "high",
+      "measured": {
+        "adds": 1,
+        "distinct_worktrees": 1,
+        "path_patterns": {
+          "sync_folder": 1
+        },
+        "sync_folders": {
+          "OneDrive": 2
+        }
+      },
+      "meaning": "Shows where worktrees are made; worktrees in a synchronisation folder give lock and copy problems.",
+      "proposal": {
+        "kind": "advice",
+        "text": "Keep worktrees outside synchronisation folders, for example under ~/.claude/worktrees."
+      }
+    }
+  ]
+}

@@ -92,6 +92,13 @@ lighthouse init --upgrade --level standard
 behaves as `strict`. See [Setup levels](levels.md#what-each-level-skips-and-why) for what each
 level skips and why.
 
+- **Which level fits.** `lighthouse history` reads the Claude Code transcripts of the repository
+  on this machine and prints one JSON report with a recommended level and a few proposals: where
+  pushes go, whether work runs through issues and PRs, where worktrees live. It reads only,
+  writes nothing, uses no network and prints no prompt, tool output or file content. Run it in
+  the root of the repository before `init`; `--sources` adds the files and line numbers behind
+  each finding. An agent that installs lighthouse for you does this as the History step of
+  [the agent guide](site/agents/install.md).
 - **When to scale up.** Move to `standard` once your first PRs hurt without tracking issues or
   reviews, or once you want `commit-test-gate` to run after each commit; first check that
   `lighthouse level` shows few reports for `md-link-check` and `code-language-check`, which
