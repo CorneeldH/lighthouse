@@ -12,14 +12,14 @@ func fieldIssue(n int, state string) map[string]any {
 		"number": n, "title": "Titel", "html_url": "https://github.com/o/r/issues/7", "comments": 2,
 		"state": state, "body": "De body", "node_id": "I_kw7", "updated_at": "2026-10-30T12:00:00Z",
 		"user":      map[string]any{"login": "anna"},
-		"labels":    []any{map[string]any{"name": "needs-shaping"}, map[string]any{"name": "area-x"}},
+		"labels":    []any{map[string]any{"name": "needs-mind"}, map[string]any{"name": "area-x"}},
 		"milestone": map[string]any{"number": 3, "title": "M2", "state": "open", "description": "Omschrijving"},
 	}
 }
 
 func wantFields(n int, state string) Issue {
 	return Issue{Number: n, Title: "Titel", URL: "https://github.com/o/r/issues/7", Comments: 2, State: state,
-		Body: "De body", Author: "anna", Labels: []string{"needs-shaping", "area-x"},
+		Body: "De body", Author: "anna", Labels: []string{"needs-mind", "area-x"},
 		UpdatedAt: time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC),
 		Milestone: &Milestone{Number: 3, Title: "M2", State: "open", Description: "Omschrijving"}}
 }

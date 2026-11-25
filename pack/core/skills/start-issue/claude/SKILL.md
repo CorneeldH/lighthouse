@@ -136,8 +136,8 @@ Report the one `board:` line the command prints. Only `To do` (and a legacy `On 
 Without `[forge.board]` (`lighthouse config forge.board.project_number`
 gives rc 1) the command prints `board: skipped — no [forge.board] configured`. A `board: skipped`
 line is not a stop: picking up goes on. A `board: ERROR` line (rc 2, broken config) is reported
-and picking up goes on as well. Skip the step on a `labels.blocked_*` label from step 2, or on an
-open `blocked_by` without a label (*label missing*): the issue may get a spec, but the plan and
+and picking up goes on as well. Skip the step on every blockade, also with `labels.needs_mind`: a
+`labels.blocked_*` label from step 2, or an open `blocked_by` without a label (*label missing*). The issue may get a spec, but the plan and
 the execution wait, and the board would show `In progress` for work that stands still. It stays
 on `To do`, also with `labels.blocked_issue`: the controller parks a blocked issue there too.
 Skip it as well on `labels.needs_hands`: the next step is a human's, and the
@@ -210,7 +210,9 @@ Report the choice in one line: `— stacked on #<x>`, `— waits for #<x>` or
 `— waits for #<x>, handoff posted`.
 
 **Gate 4c: needs_mind.** The spec shapes the issue. Once the user has approved the spec
-(an approved spec, committed), remove the label so the issue is no longer held for shaping:
+(an approved spec, committed), remove the label so the issue is no longer held for thinking. Only
+`labels.needs_mind` comes off, never a swap to `labels.blocked_issue`: a blockade is a label of its own
+on its own axis and stays as it is.
 
 ```bash
 lighthouse forge issue edit <nr> --remove-label "$(lighthouse config labels.needs_mind)"

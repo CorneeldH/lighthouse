@@ -61,8 +61,8 @@ func TestGitHubEditIssueAddsAndRemovesLabels(t *testing.T) {
 	if g := writes(srv); !reflect.DeepEqual(g, want) {
 		t.Errorf("writes = %v, want %v (no PATCH for labels only)", g, want)
 	}
-	if !reflect.DeepEqual(got.Labels, []string{"needs-shaping", "bug"}) {
-		t.Errorf("labels = %v, want [needs-shaping bug]", got.Labels)
+	if !reflect.DeepEqual(got.Labels, []string{"needs-mind", "bug"}) {
+		t.Errorf("labels = %v, want [needs-mind bug]", got.Labels)
 	}
 }
 

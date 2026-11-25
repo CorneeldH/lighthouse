@@ -44,6 +44,7 @@ func TestWriteIssueSetsRelationBeforeLabel(t *testing.T) {
 func TestWriteIssueBlockingLabelsComeFromConfigInRankOrder(t *testing.T) {
 	keys := []string{"labels.needs_mind", "labels.blocked_issue",
 		"labels.blocked_external", "labels.needs_hands"}
+	axes := []string{"think", "wait", "wait", "do"}
 	for variant, body := range variants(t, writeIssue) {
 		t.Run(variant, func(t *testing.T) {
 			wantAll(t, flat(section(t, body, "#### 3e. Set a block", "### 4.")),
@@ -51,7 +52,7 @@ func TestWriteIssueBlockingLabelsComeFromConfigInRankOrder(t *testing.T) {
 			rank := section(t, body, "#### 3c.", "#### 3d.")
 			var rows []string
 			for i, key := range keys {
-				rows = append(rows, "| "+string(rune('1'+i))+" | `"+key+"` |")
+				rows = append(rows, "| "+axes[i]+" | `"+key+"` |")
 			}
 			wantOrder(t, rank, rows...)
 		})
@@ -421,6 +422,26 @@ func TestSkillsStaySilentWithoutDirectionKeys(t *testing.T) {
 					t.Errorf("%s: missing skips silently", name)
 				}
 			}
+		})
+	}
+}
+
+// Classification: fails when write-issue 3c goes back to one rank table (a `needs_mind` or
+// `needs_hands` label is then dropped by a blocking one), or when 3e lets `needs_mind` hold an
+// open `blocked_by` back from `labels.blocked_issue` instead of calling it *label missing*.
+func TestWriteIssueLabelAxesAndNeedsMindWithBlocker(t *testing.T) {
+	for variant, body := range variants(t, writeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			c := flat(section(t, body, "#### 3c.", "#### 3d."))
+			wantAll(t, c, "Three axes", "`labels.needs_mind` and `labels.needs_hands` stand apart",
+				"`labels.blocked_issue` wins only over `labels.blocked_external`")
+			wantNone(t, c, "lowest rank", "| Rank |")
+			e := flat(section(t, body, "#### 3e.", "#### 3f."))
+			wantAll(t, e, "| `labels.needs_mind` | ≥ 1 | **label missing**",
+				"`labels.needs_mind` stays on")
+			wantNone(t, e, "the lower label wins", "that label wins and the blocked-issue label does not go on")
+			wantAll(t, flat(section(t, body, "## An existing issue", "## A defect in an external tool")),
+				"only within its axis")
 		})
 	}
 }

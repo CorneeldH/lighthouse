@@ -125,18 +125,18 @@ again (see "An existing issue").
 The test: **can I just say this to the agent?** If so → no label, however much work it is. No
 label means it can be picked up; that is the ready queue.
 
-At most one. If two apply, the **lowest rank** wins — you cannot connect what has not been
-delivered yet, and not judge what has not been built yet. The names come from `[labels]`
-(`lighthouse config labels.<key>`):
+Three axes. `labels.needs_mind` and `labels.needs_hands` stand apart: each can sit next to any other
+label. On the wait axis at most one label stands, and `labels.blocked_issue` wins only over
+`labels.blocked_external`. The names come from `[labels]` (`lighthouse config labels.<key>`):
 
-| Rank | Key | Binds when |
+| Axis | Key | Binds when |
 |---|---|---|
-| 1 | `labels.needs_mind` | What/why not sharp yet, or one choice of the user blocks. Everything after it is premature |
-| 2 | `labels.blocked_issue` | Waits on another issue in this repo |
-| 3 | `labels.blocked_external` | Waits on a third party, API, vendor, delivery |
-| 4 | `labels.needs_hands` | The user has to set up, enter, connect, buy, or judge whether the build does what was meant |
+| think | `labels.needs_mind` | The user has to think: what/why not sharp yet, or one choice of the user blocks |
+| wait | `labels.blocked_issue` | Waits on another issue in this repo |
+| wait | `labels.blocked_external` | Waits on a third party, API, vendor, delivery |
+| do | `labels.needs_hands` | The user has to set up, enter, connect, buy, run, test, or judge whether the build does what was meant |
 
-`labels.needs_hands` is **setting up, entering, connecting** or **verifying that something works as
+`labels.needs_hands` is **setting up, entering, connecting, running** or **testing and verifying that something works as
 meant**. The technical test the agent has done already; what remains is human judgement.
 
 A blocking label and the board go together (only if a board is configured): an issue that
@@ -193,8 +193,8 @@ The invariant, per open issue (label names from `[labels]`):
 | `labels.blocked_issue` | ≥ 1 | **holds** |
 | `labels.blocked_issue` | 0, but closed relations | **lapsed**: label off |
 | `labels.blocked_issue` | no relation | **unlinked**: set the relation, or label off |
-| `labels.needs_mind` | ≥ 1 | **holds**: the lower label wins, the relation waits |
-| no blocking label, or one with a higher rank than `labels.blocked_issue` | ≥ 1 | **label missing**: `labels.blocked_issue` on (the higher label off) |
+| `labels.needs_mind` | ≥ 1 | **label missing** while `labels.blocked_issue` is absent: it goes on, `labels.needs_mind` stays on |
+| no wait label, or `labels.blocked_external` | ≥ 1 | **label missing**: `labels.blocked_issue` on (`labels.blocked_external` off) |
 | no label or another one | 0 | **holds**, outside this invariant |
 
 `labels.blocked_external` falls outside it: it waits on something outside the repo. Repair:
@@ -225,9 +225,8 @@ controller the same holds (`lighthouse-start-issue` step 4, *Blocked?*). The inv
    lighthouse forge issue blockers <nr> | jq '.[].number'
    ```
 
-4. **Only then the label.** If `labels.needs_mind` is on already,
-   that label wins and the blocked-issue label does not go on. A blocking label with a higher
-   rank comes off in the same edit (`--remove-label <label>`):
+4. **Only then the label.** `labels.needs_mind` stays on, and so does `labels.needs_hands`.
+   `labels.blocked_external` comes off in the same edit (`--remove-label <label>`):
 
    ```bash
    BLOCKED=$(lighthouse config labels.blocked_issue) || exit 2
@@ -317,7 +316,7 @@ workflow above. Do not guess which part:
 | 1. Choose the template | drops: the template stands |
 | 2. Format the body | drops as a rewrite; a body change goes through the edit below |
 | 3a., 3b. Axes | only when the axis label is missing or wrong |
-| 3c. The block | holds: at most one blocking label, the lowest rank wins |
+| 3c. The block | holds: on the wait axis at most one label, `labels.blocked_issue` wins |
 | 3d. Milestone | only when the change moves the issue to another theme |
 | 3e. Set a block | holds, without its step 1: the issue exists already |
 | 3f. Free labels with a document | only when the change makes the issue match a `When` column; then `lighthouse forge issue edit <nr> --add-label <label>`, since step 4 drops |
@@ -344,7 +343,7 @@ as what it names is done. Read first what stands: the labels, and for `labels.bl
   For `labels.blocked_issue` only when the 3e invariant says **lapsed** or **unlinked**: with an
   open blocker the label holds.
 - **Another label takes over** (a decision is taken, but now the issue waits on another one):
-  choose the new label with the rank from 3c. If it is `labels.blocked_issue`, set the relation
+  choose the new label with the axis rule from 3c: it replaces the old one only within its axis. If it is `labels.blocked_issue`, set the relation
   first with 3e steps 2–3. Then the move in one edit, so the issue never stands for a moment
   without a blocking label (the ready queue) or with two:
 

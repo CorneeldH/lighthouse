@@ -14,8 +14,8 @@ var triageRenders = []struct {
 		`<!-- lighthouse: {"kind":"triage","version":1,"gate":"4b"} -->`},
 	{"gate 0", TriageMarker{Gate: "0", Blockers: []int{114}, Stop: true},
 		`<!-- lighthouse: {"kind":"triage","version":1,"gate":"0","blockers":[114],"label":null} -->`},
-	{"label", TriageMarker{Gate: "4c", Label: "3-needs-decision", Stop: true},
-		`<!-- lighthouse: {"kind":"triage","version":1,"gate":"4c","blockers":[],"label":"3-needs-decision"} -->`},
+	{"label", TriageMarker{Gate: "4c", Label: "3-needs-mind", Stop: true},
+		`<!-- lighthouse: {"kind":"triage","version":1,"gate":"4c","blockers":[],"label":"3-needs-mind"} -->`},
 	{"invariant", TriageMarker{Gate: "invariant", Stop: true},
 		`<!-- lighthouse: {"kind":"triage","version":1,"gate":"invariant"} -->`},
 }
@@ -50,8 +50,8 @@ func TestParseTriageMarkerSpaced(t *testing.T) {
 			TriageMarker{Gate: "4b"}},
 		{`<!-- lighthouse: {"kind": "triage", "version": 1, "gate": "0", "blockers": [114], "label": null} -->`,
 			TriageMarker{Gate: "0", Blockers: []int{114}, Stop: true}},
-		{`<!-- lighthouse: {"kind": "triage", "version": 1, "gate": "4c", "blockers": [], "label": "3-needs-decision"} -->`,
-			TriageMarker{Gate: "4c", Label: "3-needs-decision", Stop: true}},
+		{`<!-- lighthouse: {"kind": "triage", "version": 1, "gate": "4c", "blockers": [], "label": "3-needs-mind"} -->`,
+			TriageMarker{Gate: "4c", Label: "3-needs-mind", Stop: true}},
 		{`<!-- lighthouse: {"kind": "triage", "version": 1, "gate": "invariant"} -->`,
 			TriageMarker{Gate: "invariant", Stop: true}},
 	}
@@ -72,8 +72,8 @@ func TestParseTriageMarkerPaia(t *testing.T) {
 			TriageMarker{Gate: "0", Blockers: []int{12}, Label: "3-blocked-issue", Stop: true}},
 		{`<!-- lighthouse: {"kind": "triage", "version": 1, "gate": "4b", "blockers": [], "label3": "3-needs-hands"} -->`,
 			TriageMarker{Gate: "4b", Label: "3-needs-hands", Stop: true}},
-		{`<!-- paia: {"soort": "triage", "versie": 1, "poort": "4c", "label3": "3-needs-decision"} -->`,
-			TriageMarker{Gate: "4c", Label: "3-needs-decision", Stop: true}},
+		{`<!-- paia: {"soort": "triage", "versie": 1, "poort": "4c", "label3": "3-needs-mind"} -->`,
+			TriageMarker{Gate: "4c", Label: "3-needs-mind", Stop: true}},
 	}
 	for _, c := range cases {
 		got, ok := ParseTriageMarker(c.body)

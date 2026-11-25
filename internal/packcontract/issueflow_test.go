@@ -282,7 +282,7 @@ func TestStartIssueBlockedOnlyRunsGate4c(t *testing.T) {
 			scout := section(t, body, "#### Scout", "## Non-negotiable")
 			wantAll(t, scout, "heading:scout_skipped — blocker #<x> open, the plan waits for the merge.")
 			step3 := flat(section(t, body, "### 3.", "### 4."))
-			wantAll(t, step3, "Skip the step on a `labels.blocked_*` label from step 2, or on an open `blocked_by` without a label (*label missing*)")
+			wantAll(t, step3, "Skip the step on every blockade, also with `labels.needs_mind`: a `labels.blocked_*` label from step 2, or an open `blocked_by` without a label (*label missing*)")
 			wantNone(t, step3, "gate 0 stops then")
 		})
 	}
@@ -777,5 +777,46 @@ func TestStartIssueRemovesNeedsShapingAfterApprovedSpec(t *testing.T) {
 			wantAll(t, body, "approved spec", "`labels.needs_mind`", "--remove-label")
 			wantNone(t, body, "`To do` and `On hold`")
 		})
+	}
+}
+
+// Classification: fails when route-issue sends `needs_mind` with a blockade anywhere but through
+// gate 4c with `— blocker #<x> open` (spec yes, plan no), loses the narrow brainstorm for an
+// existing spec or a single choice, or still calls the label table a rank order.
+func TestRouteIssueNeedsMindWithBlockadeAndNarrowSpec(t *testing.T) {
+	for variant, body := range variants(t, routeIssue) {
+		t.Run(variant, func(t *testing.T) {
+			g0 := flat(section(t, body, "### Gate 0", "### Gate 1"))
+			wantAll(t, g0, "`labels.needs_mind` with a blockade", "gate 4c, with `— blocker #<x> open`",
+				"a spec yes, a plan no")
+			wantNone(t, g0, "the lower label wins")
+			wantAll(t, g0, "if the issue does not carry `labels.blocked_issue`, report **label missing**")
+			labels := flat(section(t, body, "## A blocking label", "## Non-negotiable"))
+			wantAll(t, labels, "narrow", "the open choice as the first question")
+			wantNone(t, labels, "rank rule", "lowest rank")
+		})
+	}
+}
+
+// Classification: fails when start-issue skips the board start only for a blocker without
+// `needs_mind`, or at gate 4c swaps the issue to `labels.blocked_issue` after the approved spec
+// instead of taking only `labels.needs_mind` off.
+func TestStartIssueBlockadeWithNeedsMind(t *testing.T) {
+	for variant, body := range variants(t, startIssue) {
+		t.Run(variant, func(t *testing.T) {
+			step3 := flat(section(t, body, "### 3.", "### 4."))
+			wantAll(t, step3, "on every blockade, also with `labels.needs_mind`")
+			c := flat(section(t, body, "**Gate 4c: needs_mind.**", "#### Scout"))
+			wantAll(t, c, "Only `labels.needs_mind` comes off", "never a swap to `labels.blocked_issue`")
+		})
+	}
+}
+
+// Classification: fails when any pack skill, agent or template names one of the removed label
+// keys or their literal names again.
+func TestPackNamesNoRemovedLabelKeys(t *testing.T) {
+	for _, unit := range []string{"core/skills", "core/templates"} {
+		wantNone(t, joinedText(t, unit), "needs_shaping", "needs_decision", "needs_testing",
+			"needs-shaping", "needs-decision", "needs-testing")
 	}
 }

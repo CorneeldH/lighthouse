@@ -674,7 +674,7 @@ krijgt geen item). Toolset: `Read Write Edit Glob Grep`; `max_runtime` is `30m`.
 run en de forge en plaatst de vragen en beslissingen als comment met de kop `🗺 Kaart · map-planned`
 (`nl`; anders `🗺 Map · map-planned`) en de machineregel
 `<!-- lighthouse:map-planned kind=<question|decision> topic=<place|wish> off=<letter> -->`. Een vraag over
-een wens zet ook het label `needs_decision`. Een issue met al een open of afgehandelde vraag krijgt geen
+een wens zet ook het label `needs_mind`. Een issue met al een open of afgehandelde vraag krijgt geen
 tweede comment, dus een herhaalde `Cleanup` post niets dubbel. Een antwoord telt alleen van een login met
 een rol uit `answer_permissions`; een andere heropent niets en sluit niets af. Daarna worden corpus en
 resultbestand verwijderd, zodat ze nooit op de branch komen.
@@ -737,8 +737,8 @@ label en status, dan de run sluiten. Mislukt het label, dan blijft de run open.
 
 | Reden op de Teruggegeven | Label |
 |---|---|
-| `reason_needs_brainstorm` | `needs_shaping` |
-| `reason_interactive` | `needs_decision` |
+| `reason_needs_brainstorm` | `needs_mind` |
+| `reason_interactive` | `needs_mind` |
 | regel 13 met actieve blokkade | `blocked_issue` |
 | alle andere redenen | `needs_hands` |
 

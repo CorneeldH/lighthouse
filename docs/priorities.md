@@ -96,10 +96,9 @@ De SPA leidt deze begrippen af in `web/src/lib/priorities/derive.ts`; de server 
   [spec](developer/planning/specs/2026-11-20-statusmodel-en-statusschema-design.md)).
 - **Toestand van een issue.** `issueState` kiest de eerste passende regel; een gesloten issue is
   *done*. Een actief issue (live run, bordstatus `In progress` of `Controller`) is *needs shaping*
-  bij het label `needs_shaping`, anders *needs human* bij een open vraag of een ander
-  `needs_*`-label, anders *active*. Een niet-actief issue is *needs shaping* bij `needs_shaping`,
-  *needs human* bij `needs_decision`, *blocked* bij een label `blocked_*` of open blockers,
-  *needs human* bij `needs_hands` of `needs_testing`, anders *to do* (intern `ready`). De
+  bij het label `needs_mind`, anders *needs human* bij een open vraag of bij `needs_hands`, anders
+  *active*. Een niet-actief issue is *needs shaping* bij `needs_mind`, *blocked* bij een label
+  `blocked_*` of open blockers, *needs human* bij `needs_hands`, anders *to do* (intern `ready`). De
   milestone-balk tekent die zes toestanden met één vormentaal en groepeert de blokjes per
   toestand, van links naar rechts: done, needs human, active, to do, needs shaping, blocked. De
   legenda heeft de kopjes *Milestones* en *Status*; de volgorde onder *Status* is blocked, needs

@@ -34,11 +34,11 @@ niets: het heeft alleen `Read`, `Grep` en `Glob`.
 Een issue op poort 4a, 4b of 2 gaat naar `Controller`, tenzij het een `needs_*`-label draagt: een
 issue met een `needs_*`-label gaat nooit via triage naar `Controller` (de rij is *interactief*,
 alleen de comment). Poort 0 en 1 houden hun status en krijgen alleen de comment. Poort 4c krijgt de
-comment met ontwerpvragen, elk met opties en een aanbevolen optie, en het label `needs_shaping`.
+comment met ontwerpvragen, elk met opties en een aanbevolen optie, en het label `needs_mind`.
 `/lighthouse-start-issue` haalt dat label weg zodra de spec goedgekeurd is. Een vermoedelijk dubbel of al afgerond
 issue wordt gemeld, nooit gesloten of doorgezet. Al afgerond is ook werk dat een commit onder een
 ander issuenummer leverde, zonder dit issue te noemen: het model weegt de code die het zelf leest,
-niet alleen de git log van dit nummer. Triage zet alleen `needs_shaping` bij poort 4c, geen andere
+niet alleen de git log van dit nummer. Triage zet alleen `needs_mind` bij poort 4c, geen andere
 labels, en legt geen `blocked_by`-relaties.
 
 Vrije tekst van het model komt op één regel in de comment, zonder codefence, `<sub>` of `<!--`.

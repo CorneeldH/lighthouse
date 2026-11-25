@@ -109,23 +109,28 @@ bereikt en gaat er weer af.
 De toets: **kan ik dit gewoon tegen de agent zeggen?** Zo ja → geen label, ongeacht hoeveel
 werk het is. Geen label betekent oppakbaar.
 
-Hoogstens één. Gelden er twee, dan wint de **laagste rang**.
+Drie assen. `needs_mind` en `needs_hands` staan los van alles: elk kan naast elk ander label
+staan. Op de wachtas staat hoogstens één label, en `blocked_issue` wint alleen van
+`blocked_external`.
 
-| Rang | Label | Kleur | Bindt wanneer |
+| As | Label | Kleur | Bindt wanneer |
 |---|---|---|---|
-| 1 | `3-needs-shaping` | `FBCA04` | Wat/waarom nog niet scherp. Alles erna is prematuur |
-| 2 | `3-needs-decision` | `FBCA04` | Eén keuze van Corneel blokkeert, de rest is helder |
-| 3 | `3-blocked-issue` | `D93F0B` | Wacht op een ander issue in deze repo |
-| 4 | `3-blocked-external` | `D93F0B` | Wacht op derde partij, API, vendor, levering |
-| 5 | `3-needs-hands` | `FBCA04` | Hij moet instellen, invoeren, aansluiten, aanschaffen |
-| 6 | `3-needs-testing` | `FBCA04` | Bouw staat; hij moet oordelen of het doet wat bedoeld is |
+| denken | `3-needs-mind` | `FBCA04` | Corneel moet denken: wat/waarom nog niet scherp, of één keuze van hem blokkeert |
+| wachten | `3-blocked-issue` | `D93F0B` | Wacht op een ander issue in deze repo |
+| wachten | `3-blocked-external` | `D93F0B` | Wacht op derde partij, API, vendor, levering |
+| doen | `3-needs-hands` | `FBCA04` | Hij moet instellen, invoeren, aansluiten, aanschaffen, draaien of testen, of oordelen of het doet wat bedoeld is |
 
 Amber = de bal ligt bij Corneel, rood = buiten.
 
-`lighthouse state label <nr> <key>` past de rangregel toe: het label met de laagste rang blijft of
-komt erop, de andere blokkadelabels gaan eraf. `<key>` is de sleutel uit `[labels]`, zoals
-`needs_hands`. `lighthouse state return <nr> <key>` doet hetzelfde en zet het issue daarna op
-`To do`.
+`lighthouse state label <nr> <key>` past de regel per as toe: `needs_mind` zetten laat een
+blokkadelabel staan; `blocked_issue` zetten laat `needs_mind` en `needs_hands` staan en haalt alleen
+`blocked_external` weg. `<key>` is de sleutel uit `[labels]`, zoals `needs_hands`. De uitvoerregel
+`label: #<nr> …` noemt alle blokkade- en mens-labels die na de wijziging op het issue staan.
+`lighthouse state return <nr> <key>` doet hetzelfde en zet het issue daarna op `To do`.
+
+Een blokkade haalt `needs_hands` niet weg: het label blijft staan, zodat de handeling niet
+vergeten wordt als de voorganger dicht gaat. De status laat de blokkade winnen, zie
+[priorities.md](../priorities.md).
 
 Een `needs_*`-label betekent: interactief oppakken. De tick start er geen run voor en triage stuurt
 het issue niet naar `Controller`; staat zo'n issue op `Controller`, dan zet de tick het op `To do` en
