@@ -92,3 +92,20 @@ func TestMapPlannedStaysSilentWithoutDirectionKeys(t *testing.T) {
 		})
 	}
 }
+
+// Classification: fails when step 3 stops taking the fields of the table over from the issue,
+// stops doing what the explanation derives, stops leaving out fields no table or explanation
+// names, no longer asks on an invalid place, or brings back the old "nothing else invented".
+func TestMapPlannedTakesTheFieldsOfTheTable(t *testing.T) {
+	for variant, body := range variants(t, mapPlanned) {
+		t.Run(variant, func(t *testing.T) {
+			step := flat(section(t, body, "### 3.", "\n### 4."))
+			wantAll(t, step,
+				"takes the fields under `From issue` from the title and body of the issue, in the language of the document (translating is allowed",
+				"does what the explanation says for every field the explanation derives",
+				"leaves out every field that the table does not name and the explanation does not derive",
+				"A place with a value the explanation calls invalid is an unclear place: ask")
+			wantNone(t, step, "nothing else invented")
+		})
+	}
+}
