@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatAge, formatAgo, formatDuration, formatPct, formatReset } from './format'
+import { formatAge, formatAgo, formatDate, formatDuration, formatPct, formatReset } from './format'
 
 describe('formatAge', () => {
   it('rounds down to the unit', () => {
@@ -53,5 +53,11 @@ describe('formatDuration', () => {
     expect(formatDuration(300)).toBe('5 min')
     expect(formatDuration(7200)).toBe('2 h')
     expect(formatDuration(7500)).toBe('2 h 5 min')
+  })
+})
+
+describe('formatDate', () => {
+  it('gives the day and month without a time or weekday', () => {
+    expect(formatDate('2026-12-09T12:00:00Z')).toBe('Dec 9')
   })
 })
