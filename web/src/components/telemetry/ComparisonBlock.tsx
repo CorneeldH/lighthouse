@@ -23,7 +23,7 @@ export function ComparisonBlock({ block }: { block: Block }): JSX.Element {
   const outside = outsideLine(block.outside)
   const groups = block.groups ?? []
   return (
-    <section role="region" aria-label={block.name} className="space-y-2 rounded-md border p-3">
+    <section aria-label={block.name} className="space-y-2 rounded-md border p-3">
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="font-medium">{block.name}</h3>
         <span className="rounded-full bg-lh-navy px-2 py-0.5 text-xs font-medium text-white ring-1 ring-border">{block.label}</span>

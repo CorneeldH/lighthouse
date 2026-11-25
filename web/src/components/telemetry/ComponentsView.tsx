@@ -14,15 +14,9 @@ export function ComponentsView({ filter, onFilterChange }: ComponentsViewProps):
   return (
     <div className="space-y-3">
       {q.error !== null && q.error !== undefined && <p role="alert">{forgeErrorText(q.error)}</p>}
-      {q.isPending && <p>Loading…</p>}
-      {q.data && (
-        <>
-          <FilterBar options={q.data.options} value={filter} onChange={onFilterChange} />
-          {(q.data.blocks ?? []).map((b) => (
-            <ComparisonBlock key={b.name} block={b} />
-          ))}
-        </>
-      )}
+      {(q.isPending || q.isPlaceholderData) && <p>Loading…</p>}
+      {q.data && <FilterBar options={q.data.options} value={filter} onChange={onFilterChange} />}
+      {q.data && (q.data.blocks ?? []).map((b) => <ComparisonBlock key={b.name} block={b} />)}
     </div>
   )
 }

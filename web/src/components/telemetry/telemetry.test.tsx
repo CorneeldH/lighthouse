@@ -110,3 +110,17 @@ describe('FilterBar', () => {
     expect(onChange).toHaveBeenCalledWith({ route: '2' })
   })
 })
+
+describe('MeasureCell boundaries', () => {
+  it('shows a real 0 as 0, not as not measured', () => {
+    render(<MeasureCell measure={m(0, 12)} />)
+    expect(screen.getByText('0')).toBeTruthy()
+    expect(screen.queryByText('not measured')).toBeNull()
+  })
+
+  it('treats n=4 as too few and n=5 as enough', () => {
+    render(<MeasureCell measure={m(7, 4)} />)
+    expect(screen.getByText('too few trajectories')).toBeTruthy()
+    expect(screen.getByText('7').className).toContain('text-muted-foreground')
+  })
+})

@@ -1,4 +1,4 @@
-import { QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useRef, useState } from 'react'
 import {
   ApiError,
@@ -78,6 +78,7 @@ export function useTelemetryComponents(filter: TelemetryFilter) {
     queryFn: ({ signal }) => fetchTelemetryComponents(filter, signal),
     refetchInterval: FORGE_INTERVAL_MS,
     staleTime: FORGE_INTERVAL_MS,
+    placeholderData: keepPreviousData,
   })
 }
 
@@ -87,6 +88,7 @@ export function useTelemetryTimeline(filter: TelemetryFilter) {
     queryFn: ({ signal }) => fetchTelemetryTimeline(filter, signal),
     refetchInterval: FORGE_INTERVAL_MS,
     staleTime: FORGE_INTERVAL_MS,
+    placeholderData: keepPreviousData,
   })
 }
 
@@ -96,6 +98,7 @@ export function useTelemetryTrajectories(filter: TelemetryFilter) {
     queryFn: ({ signal }) => fetchTelemetryTrajectories(filter, signal),
     refetchInterval: FORGE_INTERVAL_MS,
     staleTime: FORGE_INTERVAL_MS,
+    placeholderData: keepPreviousData,
   })
 }
 
@@ -105,6 +108,7 @@ export function useTelemetryTrajectory(id: number) {
     queryFn: ({ signal }) => fetchTelemetryTrajectory(id, signal),
     refetchInterval: FORGE_INTERVAL_MS,
     staleTime: FORGE_INTERVAL_MS,
+    placeholderData: keepPreviousData,
   })
 }
 
@@ -114,6 +118,7 @@ export function useTelemetryCoverage(filter: TelemetryFilter) {
     queryFn: ({ signal }) => fetchTelemetryCoverage(filter, signal),
     refetchInterval: FORGE_INTERVAL_MS,
     staleTime: FORGE_INTERVAL_MS,
+    placeholderData: keepPreviousData,
   })
 }
 
