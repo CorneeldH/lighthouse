@@ -37,7 +37,9 @@ verdubbeld).
   dezelfde hash verandert niets. Per keten gebeurt het verwijderen van oude rijen, het schrijven
   van de run en het schrijven van de bevindingen in één transactie: bij een fout blijven de rijen
   van de vorige poging staan. Een onleesbaar record of een foute `written_at` blijft een
-  `skipped`-regel zonder rij. Het ledger (`--ledger`) schrijft geen `review_runs`.
+  `skipped`-regel zonder rij. Het ledger (`--ledger`) schrijft geen `review_runs`. Het tabblad
+  Telemetry leest deze rijen voor de vergelijking met en zonder review: zie
+  [`telemetry-ui.md`](telemetry-ui.md).
 - **Nieuwste poging per keten.** Per keten telt de poging met de grootste naam. Heeft die alleen
   `attempt.json` (nog `.<attempt>.tmp/`, of een mislukte `write`), dan geldt de keten als niet
   geslaagd: de bevindingen van oudere pogingen verdwijnen en er komen er geen bij.
