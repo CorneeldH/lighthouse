@@ -118,3 +118,23 @@ func TestRewriteLabelsTable(t *testing.T) {
 		t.Fatalf("not idempotent:\n%s", again)
 	}
 }
+
+func TestRewriteLabelsTableHeaderWithComment(t *testing.T) {
+	src := "[labels] # human labels\nneeds_shaping = \"3-needs-shaping\"\narea_prefix = \"2-area:\"\n\n[paths] # p\nneeds_shaping = \"keep\"\n"
+	got, err := RewriteLabelsTable([]byte(src), "3-needs-mind")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "[labels] # human labels\nneeds_mind = \"3-needs-mind\"\narea_prefix = \"2-area:\"\n\n[paths] # p\nneeds_shaping = \"keep\"\n"
+	if string(got) != want {
+		t.Fatalf("got:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+func TestRewriteLabelsTableHeaderWithCommentKeepsExistingMind(t *testing.T) {
+	src := "[labels] # x\nneeds_mind = \"3-needs-mind\"\nneeds_shaping = \"3-needs-shaping\"\n"
+	got, _ := RewriteLabelsTable([]byte(src), "3-needs-mind")
+	if want := "[labels] # x\nneeds_mind = \"3-needs-mind\"\n"; string(got) != want {
+		t.Fatalf("got %q", got)
+	}
+}

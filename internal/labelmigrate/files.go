@@ -106,6 +106,19 @@ func RewriteTaxonomy(src []byte, old OldNames, mind, hands string) ([]byte, erro
 var oldKeyRE = regexp.MustCompile(`^\s*(needs_shaping|needs_decision|needs_testing)\s*=`)
 var mindKeyRE = regexp.MustCompile(`^\s*needs_mind\s*=`)
 
+// tableHeader reports whether the trimmed line t is a table header ([x] or [[x]], with an
+// optional trailing comment) and whether that header is [labels].
+func tableHeader(t string) (isLabels, ok bool) {
+	if !strings.HasPrefix(t, "[") {
+		return false, false
+	}
+	if i := strings.Index(t, "]"); i > 0 {
+		inner := strings.TrimSpace(t[1:i])
+		return !strings.HasPrefix(t, "[[") && inner == "labels", true
+	}
+	return false, true
+}
+
 // RewriteLabelsTable replaces, in [labels], the lines of needs_shaping, needs_decision and
 // needs_testing by one needs_mind = "<mind>" at the place of the first of them; other lines and
 // comments stay, and other tables are not touched. When needs_mind is already there the old lines
@@ -116,8 +129,8 @@ func RewriteLabelsTable(src []byte, mind string) ([]byte, error) {
 	hasMind := false
 	for _, l := range lines {
 		t := strings.TrimSpace(l)
-		if strings.HasPrefix(t, "[") {
-			inLabels = t == "[labels]"
+		if isLabelsHeader, ok := tableHeader(t); ok {
+			inLabels = isLabelsHeader
 			continue
 		}
 		if inLabels && mindKeyRE.MatchString(l) {
@@ -129,8 +142,8 @@ func RewriteLabelsTable(src []byte, mind string) ([]byte, error) {
 	placed := hasMind
 	for _, l := range lines {
 		t := strings.TrimSpace(l)
-		if strings.HasPrefix(t, "[") {
-			inLabels = t == "[labels]"
+		if isLabelsHeader, ok := tableHeader(t); ok {
+			inLabels = isLabelsHeader
 		} else if inLabels && oldKeyRE.MatchString(l) {
 			if !placed {
 				out = append(out, fmt.Sprintf("needs_mind = %q", mind))

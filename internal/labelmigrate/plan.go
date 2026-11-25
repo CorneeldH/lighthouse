@@ -81,8 +81,13 @@ func BuildPlan(ctx context.Context, f forge.Forge, old OldNames, l repoconfig.La
 		}
 		open := hasOpenBlocker(is.BlockedBy)
 		if slices.Contains(labels, l.NeedsMind) && open && !slices.Contains(labels, l.BlockedIssue) {
-			blocks = append(blocks, Step{Kind: KindBlock, Issue: is.Number, Add: []string{l.BlockedIssue}})
-			labels = append(labels, l.BlockedIssue)
+			// blocked_issue beats blocked_external, as in issuestate.SetLabel.
+			var rm []string
+			if l.BlockedExternal != "" && l.BlockedExternal != l.BlockedIssue && slices.Contains(labels, l.BlockedExternal) {
+				rm = []string{l.BlockedExternal}
+			}
+			blocks = append(blocks, Step{Kind: KindBlock, Issue: is.Number, Add: []string{l.BlockedIssue}, Remove: rm})
+			labels = append(slices.DeleteFunc(labels, func(s string) bool { return slices.Contains(rm, s) }), l.BlockedIssue)
 		}
 		blocked := open || slices.Contains(labels, l.BlockedIssue) || slices.Contains(labels, l.BlockedExternal)
 		if !blocked {
@@ -119,7 +124,7 @@ func stuckInProgress(ctx context.Context, f forge.Forge, n int, runs RunLookup) 
 		return false, nil
 	}
 	if runs == nil {
-		return false, errors.New("stap 3 vraagt de runs-database")
+		return false, errors.New("step 3 needs the runs database")
 	}
 	state, err := runs(n)
 	if err != nil {

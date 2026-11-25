@@ -175,6 +175,26 @@ func TestBuildPlanBlocksMindWithOpenBlocker(t *testing.T) {
 	}
 }
 
+func TestBuildPlanBlockReplacesBlockedExternal(t *testing.T) {
+	is := issue(1, "3-needs-mind", "blocked-external")
+	is.BlockedBy = []forge.Blocker{{Issue: 9, State: "OPEN"}}
+	f := newFake(is)
+	blocks := find(build(t, f, nil), "block")
+	if len(blocks) != 1 || !slices.Equal(blocks[0].Add, []string{"blocked-issue"}) ||
+		!slices.Equal(blocks[0].Remove, []string{"blocked-external"}) {
+		t.Fatalf("block = %+v, want Add blocked-issue, Remove blocked-external", blocks)
+	}
+	if err := Execute(t.Context(), f, blocks, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	if again := find(build(t, f, nil), "block"); len(again) != 0 {
+		t.Fatalf("second plan = %+v, want none", again)
+	}
+	if got := f.issues[0].Labels; slices.Contains(got, "blocked-external") || !slices.Contains(got, "blocked-issue") {
+		t.Fatalf("labels = %v", got)
+	}
+}
+
 func TestBuildPlanInProgressBlockedNoRun(t *testing.T) {
 	mk := func(status string) *fakeForge {
 		is := issue(1, "blocked-external")
@@ -197,7 +217,7 @@ func TestBuildPlanInProgressBlockedNoRun(t *testing.T) {
 		t.Errorf("Controller: status = %+v, want none", st)
 	}
 	if _, err := BuildPlan(t.Context(), mk("In progress"), OldDefaults, newLabels, nil); err == nil ||
-		!strings.Contains(err.Error(), "stap 3 vraagt de runs-database") {
+		!strings.Contains(err.Error(), "step 3 needs the runs database") {
 		t.Errorf("nil RunLookup err = %v", err)
 	}
 }

@@ -185,7 +185,7 @@ func TestLabelsMigrateRefusesStep3WithoutDB(t *testing.T) {
 		BlockedBy: []forge.Blocker{{Issue: 2, State: "OPEN"}}}}
 	h.fake.status[5] = "In progress"
 	code, out := h.run("", "--stage", "forge", "--yes")
-	if code != 1 || !strings.Contains(out, "stap 3 vraagt de runs-database") || h.fake.writes != 0 {
+	if code != 1 || !strings.Contains(out, "step 3 needs the runs database") || h.fake.writes != 0 {
 		t.Fatalf("code=%d out=%q writes=%d, want 1, the step 3 refusal, no writes", code, out, h.fake.writes)
 	}
 }
@@ -249,5 +249,40 @@ func TestLabelsMigrateRereadsAfterConfirm(t *testing.T) {
 		if !slices.Contains(is.Labels, "3-needs-mind") || slices.Contains(is.Labels, "needs-decision") {
 			t.Fatalf("issue %d labels = %v, want the executed plan to follow the new state", is.Number, is.Labels)
 		}
+	}
+}
+
+// RF1: a lighthouse.toml without a [labels] table keeps working: nothing to rewrite there.
+func TestLabelsMigrateFilesStageWithoutLabelsTable(t *testing.T) {
+	h := newLabelsHarness(t, false)
+	text := "[forge]\nrepo = \"Owner/repo\"\n\n[paths]\nlabels = \"labels.md\"\n"
+	if err := os.WriteFile(h.toml, []byte(text), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, out := h.run("", "--stage", "files")
+	if code != 0 {
+		t.Fatalf("code=%d out=%q, want 0", code, out)
+	}
+	if got, _ := os.ReadFile(h.toml); string(got) != text {
+		t.Fatalf("lighthouse.toml changed:\n%s", got)
+	}
+	tax, _ := os.ReadFile(filepath.Join(h.dir, "labels.md"))
+	if !strings.Contains(string(tax), "`needs-mind`") || !strings.Contains(string(tax), "`needs-hands`") {
+		t.Fatalf("taxonomy:\n%s", tax)
+	}
+}
+
+func TestLabelsMigrateFilesStageLabelsHeaderWithComment(t *testing.T) {
+	h := newLabelsHarness(t, false)
+	b, _ := os.ReadFile(h.toml)
+	if err := os.WriteFile(h.toml, []byte(strings.Replace(string(b), "[labels]\n", "[labels] # human\n", 1)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if code, out := h.run("", "--stage", "files"); code != 0 {
+		t.Fatalf("code=%d out=%q", code, out)
+	}
+	got, _ := os.ReadFile(h.toml)
+	if strings.Contains(string(got), "needs_shaping") || !strings.Contains(string(got), `needs_mind = "3-needs-mind"`) {
+		t.Fatalf("lighthouse.toml:\n%s", got)
 	}
 }
