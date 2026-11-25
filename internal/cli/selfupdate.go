@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -20,13 +21,60 @@ import (
 // selfUpdateTimeout bounds the whole update: the HTTP client in selfupdate has no timeout of its own.
 const selfUpdateTimeout = 5 * time.Minute
 
+// selfupdateRun is replaceable so tests can observe the options the command passes.
+var selfupdateRun = selfupdate.Run
+
+func newChannelCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "channel",
+		Short: "Print the stored self-update channel (release or dev)",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			path := selfupdate.ChannelPath()
+			if path == "" {
+				return errors.New("channel: no home directory")
+			}
+			c, err := selfupdate.ReadChannel(path)
+			if err != nil {
+				return err
+			}
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), c)
+			return nil
+		},
+	}
+}
+
 func newSelfUpdateCommand() *cobra.Command {
-	var unit string
+	var unit, channel string
 	cmd := &cobra.Command{
 		Use:   "self-update",
 		Short: "Replace this binary with the latest release, after verifying its checksum",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			chPath := selfupdate.ChannelPath()
+			var ch selfupdate.Channel
+			if cmd.Flags().Changed("channel") {
+				c, err := selfupdate.ParseChannel(channel)
+				if err != nil {
+					return err
+				}
+				ch = c
+				if chPath == "" {
+					return errors.New("--channel: no home directory to store it in")
+				}
+				if err := selfupdate.WriteChannel(chPath, ch); err != nil {
+					return err
+				}
+			} else {
+				if chPath == "" {
+					return errors.New("self-update: no home directory to read the channel from")
+				}
+				c, err := selfupdate.ReadChannel(chPath)
+				if err != nil {
+					return err
+				}
+				ch = c
+			}
 			exe, err := os.Executable()
 			if err != nil {
 				return err
@@ -46,6 +94,7 @@ func newSelfUpdateCommand() *cobra.Command {
 				APIBase:      "https://api.github.com",
 				DownloadBase: "https://github.com",
 				Token:        os.Getenv("GH_TOKEN"),
+				Channel:      ch,
 			}
 			if unit != "" {
 				opts.Restart = func() error {
@@ -56,7 +105,7 @@ func newSelfUpdateCommand() *cobra.Command {
 					return nil
 				}
 			}
-			res, err := selfupdate.Run(ctx, opts)
+			res, err := selfupdateRun(ctx, opts)
 			if err != nil {
 				return err
 			}
@@ -64,6 +113,7 @@ func newSelfUpdateCommand() *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().StringVar(&channel, "channel", "", "channel to follow and store: release or dev (not given: the stored one)")
 	cmd.Flags().StringVar(&unit, "restart", "", "systemd user unit to try-restart after a replace (empty: no restart)")
 	return cmd
 }
@@ -74,7 +124,7 @@ func reportSelfUpdate(out io.Writer, r selfupdate.Result, unit string) {
 	case selfupdate.SkippedDev:
 		_, _ = fmt.Fprintln(out, "self-update: skipped — dev build")
 	case selfupdate.UpToDate:
-		_, _ = fmt.Fprintf(out, "self-update: up to date (%s)\n", r.To)
+		_, _ = fmt.Fprintf(out, "self-update: up to date (%s; newest on channel %s)\n", r.From, r.To)
 	case selfupdate.Replaced:
 		_, _ = fmt.Fprintf(out, "self-update: replaced %s with %s\n", r.From, r.To)
 		if unit != "" {
