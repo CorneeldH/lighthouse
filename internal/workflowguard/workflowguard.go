@@ -1,7 +1,9 @@
 // Package workflowguard measures whether a push touches .github/workflows/, the one change a
 // controller run never pushes itself: the workflow pusher does, after its checks. The hook
 // workflow-push-gate, `lighthouse post-artefact` and `lighthouse roborev-gate gate --push` share
-// the range it computes, so the run reviews exactly what the gate would refuse.
+// the range it computes, so the run reviews exactly what the gate would refuse. Only the branch's
+// own change counts: what is on origin/<default branch> already, such as the workflows a merge of
+// main brings in, is no change of the branch.
 package workflowguard
 
 import (
@@ -63,25 +65,48 @@ func remoteBranch(git Git, branch string) (string, error) {
 	return "", nil
 }
 
-// Touched are the paths under Dir that base..tip touches, sorted: every path a non-merge commit
-// in the range changes, plus the net diff of base and tip (which holds what a merge brings in).
-// A file that a commit adds and a later one removes counts: GitHub sees every pushed commit.
-// Renames count as a delete and an add.
-func Touched(git Git, base, tip string) ([]string, error) {
-	perCommit, err := git("log", "--no-ext-diff", "--no-textconv", "--no-renames", "--format=", "--name-only", "-z", base+".."+tip)
+// Touched are the paths under Dir that base..tip touches as the branch's own change, sorted:
+// every path a non-merge commit in the range changes, plus the net diff of base and tip (which
+// holds what a merge brings in). A file that a commit adds and a later one removes counts: GitHub
+// sees every pushed commit. Renames count as a delete and an add.
+//
+// upstream is origin/<default branch>, or "" when it does not exist. What is on it is no change of
+// the branch, so a merge of main does not make main's workflows the branch's: commits reachable
+// from upstream leave the per-commit list, and a path of the net diff counts only when tip also
+// differs there from merge-base(upstream, tip), the main the branch last took in: upstream may
+// have moved on since. A conflict resolved unlike main does differ, and counts. Without upstream
+// every path of the range counts.
+func Touched(git Git, base, tip, upstream string) ([]string, error) {
+	logArgs := []string{"log", "--no-ext-diff", "--no-textconv", "--no-renames", "--format=", "--name-only", "-z", base + ".." + tip}
+	if upstream != "" {
+		logArgs = append(logArgs, "^"+upstream)
+	}
+	perCommit, err := git(logArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("cannot list the commits of %s..%s: %w", base, tip, err)
 	}
-	net, err := git("diff", "--no-ext-diff", "--no-textconv", "--no-renames", "--name-only", "-z", base, tip)
+	net, err := diffPaths(git, base, tip)
 	if err != nil {
-		return nil, fmt.Errorf("cannot diff %s and %s: %w", base, tip, err)
+		return nil, err
 	}
-	seen := map[string]bool{}
-	for _, field := range strings.Split(perCommit+"\x00"+net, "\x00") {
-		path := strings.TrimLeft(field, "\n")
-		if strings.HasPrefix(path, Dir) {
-			seen[path] = true
+	if upstream != "" {
+		out, err := git("merge-base", upstream, tip)
+		if err != nil {
+			return nil, fmt.Errorf("no merge-base of %s and %s: %w", upstream, tip, err)
 		}
+		fromUpstream, err := diffPaths(git, strings.TrimSpace(out), tip)
+		if err != nil {
+			return nil, err
+		}
+		for p := range net {
+			if !fromUpstream[p] {
+				delete(net, p)
+			}
+		}
+	}
+	seen := pathsIn(perCommit)
+	for p := range net {
+		seen[p] = true
 	}
 	paths := make([]string, 0, len(seen))
 	for p := range seen {
@@ -91,13 +116,39 @@ func Touched(git Git, base, tip string) ([]string, error) {
 	return paths, nil
 }
 
-// Check is Base and Touched in one: the range as `<base>..<tip>` and the workflow paths in it.
+// diffPaths are the paths under Dir in which from and to differ.
+func diffPaths(git Git, from, to string) (map[string]bool, error) {
+	out, err := git("diff", "--no-ext-diff", "--no-textconv", "--no-renames", "--name-only", "-z", from, to)
+	if err != nil {
+		return nil, fmt.Errorf("cannot diff %s and %s: %w", from, to, err)
+	}
+	return pathsIn(out), nil
+}
+
+// pathsIn are the paths under Dir in NUL-separated git output; `log --format=` puts a newline
+// before the names of each commit.
+func pathsIn(out string) map[string]bool {
+	seen := map[string]bool{}
+	for _, field := range strings.Split(out, "\x00") {
+		if path := strings.TrimLeft(field, "\n"); strings.HasPrefix(path, Dir) {
+			seen[path] = true
+		}
+	}
+	return seen
+}
+
+// Check is Base and Touched in one: the range as `<base>..<tip>` and the workflow paths in it
+// that are the branch's own change.
 func Check(git Git, tip, dest, defaultBranch string) (rng string, paths []string, err error) {
 	base, err := Base(git, tip, dest, defaultBranch)
 	if err != nil {
 		return "", nil, err
 	}
-	paths, err = Touched(git, base, tip)
+	upstream, err := remoteBranch(git, defaultBranch)
+	if err != nil {
+		return "", nil, err
+	}
+	paths, err = Touched(git, base, tip, upstream)
 	if err != nil {
 		return "", nil, err
 	}
