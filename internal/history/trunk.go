@@ -111,6 +111,18 @@ func (d *trunk) Add(r Record) {
 // uses them.
 func (d *trunk) Counts() (trunkPushes, knownPushes int) { return d.trunkPush, d.knownPush }
 
+// releaseNames counts the distinct release/* names among the trunks pushed to: two or more
+// mean a shifting trunk.
+func (d *trunk) releaseNames() int {
+	n := 0
+	for _, name := range d.names {
+		if strings.HasPrefix(name, "release/") {
+			n++
+		}
+	}
+	return n
+}
+
 func (d *trunk) Finish(Env) Finding {
 	ratio := 0.0
 	if d.knownPush > 0 {
@@ -135,7 +147,7 @@ func (d *trunk) Finish(Env) Finding {
 			"A shifting trunk (release/rN) clashes with one fixed default branch.",
 		Proposal: Proposal{Kind: "advice", Text: "Pick one fixed trunk (main) and work on a branch per issue."},
 	}
-	if d.trunkPush > 0 {
+	if d.knownPush > 0 && (ratio >= maxTrunkPushRatio || d.releaseNames() >= 2) {
 		f.Status = "found"
 		f.Sources = d.hits.Top()
 	}
