@@ -1,9 +1,22 @@
 import type { JSX } from 'react'
-import type { FindingRow } from '@/api/lighthouse'
+import type { FindingRow, UsageRow } from '@/api/lighthouse'
 import { ApiError, forgeErrorText } from '@/lib/api'
 import { useTelemetryTrajectory } from '@/lib/queries'
 
 const show = (v: number | null): string => (v === null ? 'not measured' : String(v))
+
+function Usage({ rows }: { rows: UsageRow[] | null }): JSX.Element | null {
+  if (rows === null || rows.length === 0) return null
+  return (
+    <ul className="ml-4 list-disc">
+      {rows.map((u, i) => (
+        <li key={`${u.model}-${i}`}>
+          {`${u.model}: ${u.tokens} tokens, cost ${u.cost === null ? 'not measured' : u.cost} (${u.cost_kind})`}
+        </li>
+      ))}
+    </ul>
+  )
+}
 
 function Findings({ rows }: { rows: FindingRow[] }): JSX.Element {
   return (
@@ -67,6 +80,7 @@ export function TrajectoryDetail({ id }: { id: number }): JSX.Element {
             {runs.map((r) => (
               <li key={r.id}>
                 #{r.id} {r.assignment} · {r.outcome} · {r.started_at} → {r.ended_at ?? 'running'}
+                <Usage rows={r.usage} />
               </li>
             ))}
           </ul>
@@ -79,6 +93,7 @@ export function TrajectoryDetail({ id }: { id: number }): JSX.Element {
             {sessions.map((s) => (
               <li key={s.id}>
                 #{s.id} {s.harness} · {s.assignment} · {s.branch} · {s.link_basis} · {s.started_at} → {s.ended_at ?? 'running'}
+                <Usage rows={s.usage} />
               </li>
             ))}
           </ul>

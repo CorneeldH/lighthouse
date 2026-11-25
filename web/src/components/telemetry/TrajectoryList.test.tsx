@@ -56,6 +56,16 @@ describe('TrajectoryList', () => {
     expect(issues()).toEqual(['2', '3', '1'])
   })
 
+  it('sorts on issue and toggles the direction', async () => {
+    mount(<TrajectoryList filter={{}} />, () => json({ trajectories: [row({ id: 1, issue: 5 }), row({ id: 2, issue: 3 }), row({ id: 3, issue: 9 })] }))
+    await screen.findAllByRole('link')
+    const issues = (): string[] => bodyRows().map((r) => within(r).getAllByRole('cell')[1].textContent ?? '')
+    fireEvent.click(screen.getByRole('button', { name: /issue/i }))
+    expect(issues()).toEqual(['3', '5', '9'])
+    fireEvent.click(screen.getByRole('button', { name: /issue/i }))
+    expect(issues()).toEqual(['9', '5', '3'])
+  })
+
   it('links each row to its trajectory', async () => {
     mount(<TrajectoryList filter={{}} />, () => json({ trajectories: rows }))
     await screen.findByText('not measured')
@@ -76,8 +86,8 @@ describe('TrajectoryDetail', () => {
     id: 7,
     repo: 'a/b',
     issue: 10,
-    runs: [{ id: 1, assignment: 'work', outcome: 'ok', started_at: 's', ended_at: null, usage: null }],
-    sessions: [],
+    runs: [{ id: 1, assignment: 'work', outcome: 'ok', started_at: 's', ended_at: null, usage: [{ model: 'opus', tokens: 1200, cost: 0, cost_kind: 'reported' }] }],
+    sessions: [{ id: 4, assignment: 'work', branch: 'b', ended_at: null, harness: 'claude', link_basis: 'branch', started_at: 's', usage: [{ model: 'sonnet', tokens: 300, cost: null, cost_kind: 'estimated' }] }],
     reviews: [1, 2, 3].map((i) => ({
       id: i,
       component: 'plan',
@@ -85,7 +95,8 @@ describe('TrajectoryDetail', () => {
       outcome: 'done',
       ran_at: 'x',
       record_path: `rec/${i}.json`,
-      findings: [{ component: 'plan', decision: 'adopted', key: `K${i}`, record_path: `rec/${i}.json`, severity: 'high' }],
+      text: 'SECRET',
+      findings: [{ text: 'SECRET', component: 'plan', decision: 'adopted', key: `K${i}`, record_path: `rec/${i}.json`, severity: 'high' }],
     })),
     findings: [],
     recoveries: [{ pr: 5, status: 'recovered', merged_at: 'm', items: [{ at: 'a', kind: 'fix', ref: 'r1' }] }],
@@ -99,11 +110,13 @@ describe('TrajectoryDetail', () => {
     await screen.findByText('K1')
     expect(screen.getByText('K3')).toBeTruthy()
     expect(screen.getAllByText('rec/2.json').length).toBeGreaterThan(0)
-    expect(document.body.textContent).not.toMatch(/"text"/)
+    expect(screen.queryByText(/SECRET/)).toBeNull()
     for (const h of ['Runs', 'Sessions', 'Reviews', 'Recovery', 'Events', 'Time by cause']) {
       expect(screen.getByRole('heading', { name: h })).toBeTruthy()
     }
     expect(screen.getByText('review: not measured')).toBeTruthy()
+    expect(screen.getByText('opus: 1200 tokens, cost 0 (reported)')).toBeTruthy()
+    expect(screen.getByText('sonnet: 300 tokens, cost not measured (estimated)')).toBeTruthy()
     expect(screen.getByText(/dispatcher: 2/)).toBeTruthy()
     expect(screen.getByText(/transcript: 3/)).toBeTruthy()
   })
