@@ -314,6 +314,26 @@ path = "pack/shell/detect.toml"
 new = true
 
 [[file]]
+path = "pack/powershell/hooks/powershell-lint-check.sh"
+new = true
+
+[[file]]
+path = "pack/powershell/hooks/hooks.json"
+new = true
+
+[[file]]
+path = "pack/powershell/scripts/psscriptanalyzer-repo.ps1"
+new = true
+
+[[file]]
+path = "pack/powershell/requires.toml"
+new = true
+
+[[file]]
+path = "pack/powershell/detect.toml"
+new = true
+
+[[file]]
 path = "pack/go/hooks/go-lint-gate.sh"
 new = true
 
@@ -395,4 +415,8 @@ new = true
 
 [[file]]
 path = "pack/shell/levels.toml"
+new = true
+
+[[file]]
+path = "pack/powershell/levels.toml"
 new = true

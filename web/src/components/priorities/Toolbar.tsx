@@ -40,7 +40,7 @@ const HEADING = 'text-[0.65rem] font-semibold uppercase tracking-wider text-mute
 const VIEWS: Array<{ id: ViewId; label: string }> = [
   { id: 'deps', label: 'Dependencies' },
   { id: 'milestones', label: 'Milestones' },
-  { id: 'unassigned', label: 'Without milestone' },
+  { id: 'backlog', label: 'Backlog' },
 ]
 
 // The computed order sorts on % done; its button shows only the sign, its name says it in full.

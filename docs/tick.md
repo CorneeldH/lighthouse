@@ -1109,7 +1109,8 @@ de spec beschrijft de sleutels.
 
 Het `lighthouse.toml` van elke repo in `repos` heeft:
 
-- een `[controller]`-tabel;
+- een `[controller]`-tabel (de standaard van `spec_review` en `plan_review` komt uit het niveau, zie
+  [Controller knobs per level](levels.md#controller-knobs-per-level));
 - `[usage_guard]` met `controller = true`;
 - `[forge.board]` met `project_number` (positief), `project_id`, `status_field_id` en
   `priority_field_id`, en onder `status_options` minstens `To do`, `In progress`, `Done` en `Controller`.
